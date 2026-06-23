@@ -46,15 +46,29 @@ pipeline {
             }
         }
 
-        stage('Web - Install Dependencies') {
+        stage('Web - Install & Build (prod)') {
             steps {
-                sh 'ssh $SSH_OPTS $PROD_USER@$PROD_HOST "cd $APP_DIR/teamplus-web && npm install"'
+                sh '''
+                    ssh $SSH_OPTS $PROD_USER@$PROD_HOST "
+                        set -e
+                        cd $APP_DIR/teamplus-web
+                        npm install
+                        npm run build
+                    "
+                '''
             }
         }
 
-        stage('Admin - Install Dependencies') {
+        stage('Admin - Install & Build (prod)') {
             steps {
-                sh 'ssh $SSH_OPTS $PROD_USER@$PROD_HOST "cd $APP_DIR/teamplus-admin && npm install"'
+                sh '''
+                    ssh $SSH_OPTS $PROD_USER@$PROD_HOST "
+                        set -e
+                        cd $APP_DIR/teamplus-admin
+                        npm install
+                        npm run build
+                    "
+                '''
             }
         }
 
@@ -89,9 +103,11 @@ REMOTE
             }
         }
 
-        stage('Backend - Generate Prisma Client') {
+        stage('Backend - Build (prod)') {
             steps {
-                sh 'ssh $SSH_OPTS $PROD_USER@$PROD_HOST "cd $APP_DIR/teamplus-backend && npx prisma generate"'
+                // prebuild: prisma:generate + rimraf dist + tsconfig.tsbuildinfo
+                // build  : nest build → dist/main.js (start:prod 가 사용)
+                sh 'ssh $SSH_OPTS $PROD_USER@$PROD_HOST "cd $APP_DIR/teamplus-backend && npm run build"'
             }
         }
 
@@ -205,16 +221,23 @@ REMOTE
             }
         }
 
-        stage('Deploy (pm2 on prod)') {
+        stage('Deploy (pm2 on prod · production mode)') {
             steps {
+                // 운영 모드: backend=start:prod (node dist/main), web/admin/home=start (next start)
+                // 이전 dev/watch 프로세스가 떠있을 가능성 대비 → delete 후 재기동(no-op if absent)
                 sh '''
                     ssh $SSH_OPTS $PROD_USER@$PROD_HOST bash -s <<REMOTE
-echo "Restarting teamplus services on prod..."
-pm2 restart teamplus-backend --update-env || pm2 start npm --name "teamplus-backend" --cwd $APP_DIR/teamplus-backend -- run start:dev
-pm2 restart teamplus-web --update-env     || pm2 start npm --name "teamplus-web"     --cwd $APP_DIR/teamplus-web     -- run dev
-pm2 restart teamplus-admin --update-env   || pm2 start npm --name "teamplus-admin"   --cwd $APP_DIR/teamplus-admin   -- run dev
-pm2 restart teamplus-home --update-env    || pm2 start npm --name "teamplus-home"    --cwd $APP_DIR/teamplus-home    -- run start
+set -e
+echo "Restarting teamplus services on prod (production build)..."
+for app in teamplus-backend teamplus-web teamplus-admin teamplus-home; do
+    pm2 delete \$app 2>/dev/null || true
+done
+pm2 start npm --name "teamplus-backend" --cwd $APP_DIR/teamplus-backend -- run start:prod
+pm2 start npm --name "teamplus-web"     --cwd $APP_DIR/teamplus-web     -- run start
+pm2 start npm --name "teamplus-admin"   --cwd $APP_DIR/teamplus-admin   -- run start
+pm2 start npm --name "teamplus-home"    --cwd $APP_DIR/teamplus-home    -- run start
 pm2 save
+pm2 list
 REMOTE
                 '''
             }
