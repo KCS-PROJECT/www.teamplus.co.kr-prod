@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  [PROD/RELEASE 네트워크 보안 설정 · 2026-06-07 하드닝 · CODE_REVIEW_APP AP-S4]
+  release/profile 빌드 전용 — cleartext(HTTP) 전면 차단(HTTPS 강제, Google Play 보안 권장).
+  dev/LAN/DEV 서버 HTTP 예외는 debug 빌드에만 적용되도록 분리:
+    → android/app/src/debug/res/xml/network_security_config.xml (빌드타입 오버라이드)
+  이로써 dev IP cleartext 예외가 운영 APK에 포함되지 않아 공격면이 축소된다.
+  ⚠️ release 빌드로 staging(211.236.x HTTP) QA가 필요하면 staging HTTPS화 또는 debug 빌드 사용.
+  ⚠️ iOS 는 ios/Runner/Info.plist NSAppTransportSecurity 와 동기화(Debug 구성에만 예외 도메인).
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

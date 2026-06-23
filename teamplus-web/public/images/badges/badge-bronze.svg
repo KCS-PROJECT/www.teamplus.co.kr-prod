@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">
+  <defs>
+    <linearGradient id="bronze" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FDBA74"/>
+      <stop offset="50%" style="stop-color:#C2410C"/>
+      <stop offset="100%" style="stop-color:#7C2D12"/>
+    </linearGradient>
+  </defs>
+  <circle cx="40" cy="40" r="35" fill="url(#bronze)" stroke="#7C2D12" stroke-width="2"/>
+  <polygon points="40,15 46,32 64,32 50,43 55,60 40,50 25,60 30,43 16,32 34,32" fill="#FFF7ED"/>
+</svg>

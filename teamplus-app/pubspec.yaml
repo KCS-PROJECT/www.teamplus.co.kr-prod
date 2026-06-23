@@ -1,0 +1,228 @@
+name: teamplus_app
+description: "TEAMPLUS - Ice Hockey Club Management System"
+publish_to: "none"
+
+version: 1.0.0+6
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # HTTP & Network
+  dio: ^5.7.0
+  connectivity_plus: ^7.1.1
+
+  # WebSocket (Socket.IO)
+  socket_io_client: ^3.0.2
+
+  # Secure Storage
+  flutter_secure_storage: ^10.0.0
+
+  # State Management (Riverpod recommended for modern Flutter)
+  riverpod: ^3.2.1
+  flutter_riverpod: ^3.3.1
+
+  # JSON serialization
+  json_annotation: ^4.9.0
+
+  # Logging & Debugging
+  pretty_dio_logger: ^1.4.0
+
+  # Router
+  go_router: ^17.0.0
+
+  # Utilities
+  intl: ^0.20.2
+
+  # Local Storage (for non-sensitive data like onboarding state)
+  shared_preferences: ^2.2.3
+
+  # Offline Cache (Hive - lightweight NoSQL for offline data caching)
+  # ⚠️ 2026-05-22 Phase A: SQLite(drift) 도입 — Phase C에서 제거 예정.
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+
+  # Local SQLite (drift 2.x — 2026-05-22 신규)
+  #   - 도메인 1:1 캐시 + 범용 KV(Bridge `storage` 핸들러 노출 예정)
+  #   - sqlite3_flutter_libs: iOS/Android native SQLite 번들
+  #   - sqlite3: 임시 디렉토리 지정용 (drift LazyDatabase 권장 패턴)
+  #   - drift_dev: build_runner 코드 생성 (.g.dart)
+  drift: ^2.20.0
+  sqlite3: ^2.4.0
+  sqlite3_flutter_libs: ^0.5.24
+
+  # WebView
+  flutter_inappwebview: ^6.0.0
+
+  # HTTP
+  http: ^1.2.0
+
+  # Deep Links
+  app_links: ^7.0.0
+
+  # URL Launcher (for external apps)
+  url_launcher: ^6.3.1
+
+  # QR Code Scanner & Generator
+  mobile_scanner: ^7.1.4
+  qr_flutter: ^4.1.0
+
+  # Permissions
+  permission_handler: ^12.0.1
+
+  # 📤 File Upload (통합 업로드 Bridge · 2026-04-15)
+  image_picker: ^1.1.0 # 갤러리/카메라 이미지 선택
+  file_picker: ^12.0.0-beta.1 # 임의 파일 선택 (문서/ZIP) — v12 는 iOS 14+ 필요 (Podfile/Runner 14.0)
+  path_provider: ^2.1.3 # 앱 내부 디렉토리 경로
+  path: ^1.9.0 # 경로 조작 (basename/extension/join)
+  mime: ^2.0.0 # MIME 타입 감지
+  http_parser: ^4.0.2 # Dio MultipartFile Content-Type (MediaType)
+
+  # 🔐 Security - Encryption (CRITICAL for Phase 7)
+  encrypt: ^5.0.3
+  pointycastle: ^3.9.1
+  crypto: ^3.0.6 # SHA-256 (가입 PIN 해싱)
+
+  # 🔐 Security - Biometric Authentication
+  local_auth: ^3.0.1
+
+  # Push Notifications (Local + FCM)
+  flutter_local_notifications: ^21.0.0
+  firebase_core: ^4.8.0
+  firebase_messaging: ^16.2.1
+
+  # 🔐 Security - Device Security Detection
+  flutter_jailbreak_detection: ^1.9.4
+
+  # App Version Info
+  package_info_plus: ^10.1.0
+
+  # 📤 Share (프로필 QR 공유)
+  share_plus: ^13.1.0
+
+  # Cupertino Icons — iOS 스타일 위젯(Switch.adaptive · CupertinoAlertDialog) 폰트 번들
+  #   미선언 시 빌드 경고: "Expected to find fonts for (.../CupertinoIcons, MaterialIcons)"
+  cupertino_icons: ^1.0.8
+
+  # SVG Support
+  flutter_svg: ^2.0.10
+
+  # Native Splash Screen
+  flutter_native_splash: ^2.4.3
+
+  # Error/Performance Monitoring (Sentry)
+  # 2026-05-14: ApiLifecycle SLA breach + uncaught exception 자동 전송.
+  # SENTRY_DSN dart-define 미설정 시 enabled: false → no-op.
+  # 2026-05-17: 8.x → 9.x 업그레이드 — sentry-cocoa 최신 SDK API 호환
+  #   (Xcode 26 + SPM 자동 다운로드한 sentry-cocoa 8.46+ 와 8.14.2 API 미스매치 해결).
+  sentry_flutter: ^9.20.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  # Testing & Mocking
+  mockito: ^5.4.4
+  mocktail: ^1.0.0
+
+  # Code generation
+  build_runner: ^2.4.14
+  json_serializable: ^6.8.0
+  drift_dev: ^2.20.0   # drift SQLite ORM 코드 생성 (2026-05-22 신규)
+
+  # Linting
+  flutter_lints: ^6.0.0
+
+  # App Icon Generator & Package Name Tool (build-time CLI — dart run 전용)
+  flutter_launcher_icons: ^0.14.4
+  change_app_package_name: ^1.5.0
+
+flutter:
+  uses-material-design: true
+
+  # Assets
+  assets:
+    - assets/js/native_bridge.js
+    - assets/svg/
+    - assets/images/
+    - assets/fonts/
+    - assets/certificates/dev/ # 🔐 SSL/TLS Certificate Pinning (Phase 7)
+    - assets/certificates/prod/ # 🔐 SSL/TLS Certificate Pinning (Phase 7)
+
+  # Fonts - Pretendard (한글 최적화) — Full Weight Family (Thin 100 ~ Black 900)
+  # 출처: assets/fonts/Pretendard-{Weight}.otf · 9개 OTF 로컬 번들
+  fonts:
+    - family: Pretendard
+      fonts:
+        - asset: assets/fonts/Pretendard-Thin.otf
+          weight: 100
+        - asset: assets/fonts/Pretendard-ExtraLight.otf
+          weight: 200
+        - asset: assets/fonts/Pretendard-Light.otf
+          weight: 300
+        - asset: assets/fonts/Pretendard-Regular.otf
+          weight: 400
+        - asset: assets/fonts/Pretendard-Medium.otf
+          weight: 500
+        - asset: assets/fonts/Pretendard-SemiBold.otf
+          weight: 600
+        - asset: assets/fonts/Pretendard-Bold.otf
+          weight: 700
+        - asset: assets/fonts/Pretendard-ExtraBold.otf
+          weight: 800
+        - asset: assets/fonts/Pretendard-Black.otf
+          weight: 900
+
+# Flutter Native Splash Configuration
+#
+# [수정 2026-05-19 v7] 사용자 직접 지시 — 콘텐츠 사이즈 2.5배 확대 + native/Flutter
+#   양쪽 표시 크기 동일화.
+#
+#   - 배경: #1E40AF (브랜드 파란색)
+#   - 중앙 이미지: splash_combined.png (2520×2364 PNG, 투명 배경)
+#       └─ 상단 로고 1350×1350 + 140px 간격 + 하단 워드마크 2250×700
+#       └─ 폰트 "팀플러스+" 240px / 서브카피 75px
+#
+# 재생성 명령:
+#   cd teamplus-app && dart run flutter_native_splash:create
+#
+# ⚠️ 매번 :create 직후 후처리 2개 필수 (storyboard / launch_background 가 덮어써짐):
+#   1) ios/Runner/Base.lproj/LaunchScreen.storyboard
+#      → imageView contentMode="center" → "scaleAspectFit"  (LaunchImage 만)
+#   2) android/app/src/main/res/drawable{,-v21}/launch_background.xml
+#      → <bitmap android:gravity="center"> → "fill_horizontal|center_vertical" + android:mipMap="true"
+#   양쪽 모두 큰 합성 PNG 를 화면 폭 기준 fit 시키기 위함. native 의 fit 결과가
+#   Flutter `InitialDestinationGate._BrandedSplashSurface` (SizedBox.expand +
+#   BoxFit.contain) 와 정확히 동일 사이즈로 보이도록 함.
+flutter_native_splash:
+  color: "#1E40AF"
+  image: assets/images/splash_combined.png
+  android_12:
+    color: "#1E40AF"
+    image: assets/images/splash_combined.png
+    icon_background_color: "#1E40AF"
+  ios: true
+  android: true
+  fullscreen: true
+
+# Flutter Launcher Icons Configuration
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/teamplus_app_icon.png"
+  adaptive_icon_background: "#1E40AF"
+  adaptive_icon_foreground: "assets/images/teamplus_app_icon_foreground.png"
+  min_sdk_android: 21
+  remove_alpha_ios: true
+  web:
+    generate: true
+    image_path: "assets/images/teamplus_app_icon.png"
+    background_color: "#1E40AF"
+    theme_color: "#1E40AF"
+  windows:
+    generate: false
+  macos:
+    generate: false

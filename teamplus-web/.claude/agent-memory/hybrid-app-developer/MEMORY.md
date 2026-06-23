@@ -1,0 +1,1 @@
+- [T06 payment field pending](project_t06_payment_field_pending.md) — roster isUnpaid() UI hook 작성 완료, 백엔드 paymentStatus 필드는 backend-doctor 가 추가 예정 (graceful degradation).

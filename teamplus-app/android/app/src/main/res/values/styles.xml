@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Theme applied to the Android Window while the process is starting when the OS's Dark Mode setting is off -->
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <!-- Show a splash screen on the activity. Automatically removed when
+             the Flutter engine draws its first frame -->
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:forceDarkAllowed">false</item>
+        <!--
+          [2026-06-06 BUG FIX] android:windowFullscreen 제거.
+          이 플래그(FLAG_FULLSCREEN)는 OS 윈도우 레벨에서 status bar 를 숨겨
+          MediaQuery.viewPadding.top 을 0 으로 만든다. Flutter 의
+          setEnabledSystemUIMode(edgeToEdge) 는 이 플래그를 해제하지 못해
+          실기기에서 status bar 영역(appstatus)이 영구 붕괴됐다.
+          windowDrawsSystemBarBackgrounds=true(시스템바 표시)와도 상호 모순.
+          edge-to-edge splash 는 windowDrawsSystemBarBackgrounds + cutout 모드로 충분.
+        -->
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+    <!-- Theme applied to the Android Window as soon as the process has started.
+         This theme determines the color of the Android Window while your
+         Flutter UI initializes, as well as behind your Flutter UI while its
+         running.
+
+         This Theme is only used starting with V2 of Flutter's Android embedding. -->
+    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">?android:colorBackground</item>
+    </style>
+</resources>

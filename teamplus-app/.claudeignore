@@ -1,0 +1,35 @@
+# Flutter build outputs
+build/
+.dart_tool/
+
+# Platform build artifacts
+android/.gradle/
+android/app/build/
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+
+# Generated files
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Lock files
+pubspec.lock
+
+# IDE
+.idea/
+*.iml
+
+# Assets (binary)
+assets/fonts/
+assets/images/
+assets/certificates/
+
+# Logs & temp
+#*.log
+.metadata
+.playwright-mcp/
+
+# OS
+.DS_Store

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  데이터 추출 규칙 (Android 12 / API 31+ · 2026-05-26 신규)
+  - 클라우드 백업·기기 간 이전에서 보안 저장소를 제외해 토큰 유출 + 복원 후 키 불일치 크래시 방지.
+  - flutter_secure_storage(EncryptedSharedPreferences: FlutterSecureStorage.xml)는 Keystore 키에 묶여
+    있어 다른 기기로 복원 시 복호화 불가 → 반드시 제외.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="FlutterSecureStorage.xml"/>
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="FlutterSecureStorage.xml"/>
+    </device-transfer>
+</data-extraction-rules>

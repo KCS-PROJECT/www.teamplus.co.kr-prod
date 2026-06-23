@@ -1,0 +1,1 @@
+- [Restart vs GlobalKey/singleton hazard](teamplus-app-restart-globalkey-singleton.md) — soft-restart regenerating ProviderScope re-triggers Duplicate GlobalKey crash + kills WebSocket singleton permanently

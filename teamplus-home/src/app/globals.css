@@ -1,0 +1,282 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Pretendard 폰트 — Full Weight Family (Thin 100 ~ Black 900) ───
+   출처: /public/fonts/Pretendard-{Weight}.otf · 9개 OTF 로컬 호스팅
+   정책: 외부 CDN 의존 제거 → CSP 단순화 + 오프라인/사내망 환경에서도 일관 렌더링
+         font-display: swap → FOIT 방지, FOUT 허용 */
+@font-face {
+  font-family: 'Pretendard';
+  src: url('/fonts/Pretendard-Thin.otf') format('opentype');
+  font-weight: 100;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pretendard';
+  src: url('/fonts/Pretendard-ExtraLight.otf') format('opentype');
+  font-weight: 200;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pretendard';
+  src: url('/fonts/Pretendard-Light.otf') format('opentype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pretendard';
+  src: url('/fonts/Pretendard-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pretendard';
+  src: url('/fonts/Pretendard-Medium.otf') format('opentype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pretendard';
+  src: url('/fonts/Pretendard-SemiBold.otf') format('opentype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pretendard';
+  src: url('/fonts/Pretendard-Bold.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pretendard';
+  src: url('/fonts/Pretendard-ExtraBold.otf') format('opentype');
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pretendard';
+  src: url('/fonts/Pretendard-Black.otf') format('opentype');
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@layer base {
+  :root {
+    --radius-card: 1.25rem;
+    --radius-pill: 9999px;
+  }
+
+  * {
+    @apply border-wline;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-wbg text-wtext-1 font-sans antialiased;
+    /* 비편집 텍스트 위에 I-beam(text) 커서가 떠 '타이핑 가능'처럼 보이는 것 방지.
+       cursor 는 상속 속성 → body 를 default(화살표)로 두고, 아래에서 상호작용 요소·
+       실제 입력 필드만 적절한 커서로 복원한다. 텍스트 드래그 선택은 그대로 동작한다. */
+    cursor: default;
+    /* 캐럿 브라우징(F7) 등으로 비편집 텍스트에 깜박이는 '타이핑 캐럿'이 뜨는 것을 숨김.
+       caret-color 도 상속 속성 → 실제 입력 필드만 아래에서 복원한다. */
+    caret-color: transparent;
+  }
+
+  /* 상호작용 요소 — 손가락(pointer) */
+  a,
+  button,
+  summary,
+  select,
+  [role='button'],
+  [role='tab'] {
+    cursor: pointer;
+  }
+
+  /* 실제 입력 필드만 텍스트 커서 + 깜박이는 캐럿 복원 */
+  input,
+  textarea,
+  [contenteditable],
+  [contenteditable='true'] {
+    cursor: text;
+    caret-color: auto;
+  }
+  input[type='checkbox'],
+  input[type='radio'],
+  input[type='button'],
+  input[type='submit'],
+  input[type='range'] {
+    cursor: pointer;
+  }
+
+  :disabled {
+    cursor: not-allowed;
+  }
+
+  ::selection {
+    @apply bg-ice-100 text-rink-900;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-white/10 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-white/20;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display tracking-normal;
+    /* 한국어 어절 단위 줄바꿈 + 줄 균형 자동 조정.
+       Tailwind 기본 word-break:break-word 는 한국어 음절 단위로 끊겨 어색함을 유발.
+       keep-all + balance 조합은 영문 단어도 자연스럽게 처리. */
+    word-break: keep-all;
+    text-wrap: balance;
+    overflow-wrap: break-word;
+  }
+
+  /* 본문 단락도 한국어 어절 단위 끊김 보장 (긴 단어 강제 분리 방지).
+     balance 는 헤딩 전용, 본문은 pretty 로 미세 균형. */
+  p {
+    word-break: keep-all;
+    text-wrap: pretty;
+    overflow-wrap: break-word;
+  }
+
+  /* framer-motion initial opacity:0 stuck 보호망 — reduced-motion 환경에서
+     IntersectionObserver/stagger 트리거가 늦어 invisible 상태로 머무는 케이스 강제 visible.
+     (정상 사용자 브라우저는 reduced-motion OFF 이므로 영향 없음) */
+  @media (prefers-reduced-motion: reduce) {
+    [style*="opacity: 0"],
+    [style*="opacity:0"] {
+      opacity: 1 !important;
+      transform: none !important;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  .container-site {
+    @apply mx-auto w-full max-w-7xl px-5 sm:px-8 lg:px-10;
+  }
+
+  .glass {
+    @apply bg-wsurface border border-wline shadow-sh-1;
+  }
+
+  .glass-card {
+    @apply relative overflow-hidden rounded-[var(--radius-card)] bg-wsurface border border-wline shadow-sh-1
+      transition-colors duration-300 ease-out;
+  }
+
+  .glass-card:hover {
+    @apply border-ice-100;
+  }
+
+  .grid-bg {
+    background-image:
+      linear-gradient(rgba(229, 233, 242, 0.75) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(229, 233, 242, 0.75) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(ellipse at center, black 40%, transparent 80%);
+    -webkit-mask-image: radial-gradient(ellipse at center, black 40%, transparent 80%);
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-ice-500 px-6 py-3 text-sm font-semibold text-white
+      shadow-sh-2 transition-colors duration-200 hover:bg-ice-600 active:bg-ice-700
+      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 focus-visible:ring-offset-wbg;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-semibold
+      border border-wline bg-wsurface text-rink-800
+      hover:border-ice-100 hover:bg-ice-50
+      transition-colors duration-200
+      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 focus-visible:ring-offset-wbg;
+  }
+
+  .btn-link {
+    @apply inline-flex items-center gap-1.5 text-sm font-medium text-wtext-2 hover:text-ice-600 transition-colors;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium
+      bg-ice-50 border border-ice-100 text-ice-700;
+  }
+
+  .divider {
+    @apply h-px w-full bg-wline;
+  }
+
+  .section {
+    @apply relative py-16 sm:py-24 lg:py-28;
+  }
+
+  .section-eyebrow {
+    @apply inline-flex items-center gap-2 text-sm font-bold text-ice-600;
+  }
+
+  .shimmer {
+    background: linear-gradient(
+      110deg,
+      transparent 33%,
+      rgba(255, 255, 255, 0.08) 50%,
+      transparent 67%
+    );
+    background-size: 1000px 100%;
+    @apply animate-shimmer;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+
+  .mask-fade-r {
+    mask-image: linear-gradient(to right, black 70%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, black 70%, transparent 100%);
+  }
+
+  .mask-fade-b {
+    mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+  }
+}

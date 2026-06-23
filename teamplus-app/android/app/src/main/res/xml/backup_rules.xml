@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  전체 백업 규칙 (Android 11 / API 30 이하 · 2026-05-26 신규)
+  - 자동 백업에서 보안 저장소(flutter_secure_storage)를 제외해 토큰 유출 + 복원 크래시 방지.
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="FlutterSecureStorage.xml"/>
+</full-backup-content>

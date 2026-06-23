@@ -1,0 +1,97 @@
+# ============================================================
+# .claudeignore - TEAMPLUS Project
+# Claude Code 컨텍스트에서 제외할 파일/디렉토리
+# ============================================================
+
+# ── node_modules (전체 ~2.9GB) ──
+**/node_modules/
+
+# ── Build Outputs ──
+teamplus-web/.next/
+teamplus-admin/.next/
+teamplus-admin/.next-dev/
+teamplus-backend/dist/
+teamplus-app/build/
+teamplus-web/.swc/
+
+# ── Package Lock Files (대용량, 코드 분석 불필요) ──
+**/package-lock.json
+**/pubspec.lock
+
+# ── Flutter/Mobile Build & Cache ──
+teamplus-app/.dart_tool/
+teamplus-app/android/.gradle/
+teamplus-app/android/build/
+teamplus-app/ios/Pods/
+teamplus-app/ios/.symlinks/
+teamplus-app/.flutter-plugins
+teamplus-app/.flutter-plugins-dependencies
+teamplus-app/flutter_01.log
+
+# ── Environment Files (보안) ──
+**/.env
+**/.env.local
+**/.env.development.local
+**/.env.production.local
+
+# ── Test Coverage Reports ──
+**/coverage/
+
+# ── backdata (기획 자료 ~159MB: pptx, pdf, m4a, 이미지) ──
+backdata/
+
+# ── 미디어/바이너리 파일 ──
+**/*.m4a
+**/*.mp3
+**/*.mp4
+**/*.wav
+**/*.pptx
+**/*.xlsx
+**/*.jpeg
+**/*.jpg
+**/*.png
+**/*.gif
+**/*.ico
+**/*.svg
+**/*.pdf
+**/*.woff
+**/*.woff2
+**/*.ttf
+**/*.eot
+
+# ── uploads 디렉토리 ──
+uploads/
+
+# ── Prisma Migrations (히스토리, 스키마만 필요) ──
+teamplus-backend/prisma/migrations/
+
+# ── OS/IDE 파일 ──
+**/.DS_Store
+**/.vscode/
+**/.idea/
+**/*.swp
+**/*.swo
+**/Thumbs.db
+
+# ── Git ──
+.git/
+
+# ── Playwright MCP ──
+.playwright-mcp/
+
+# ── Public Static Assets (이미지/폰트) ──
+#teamplus-web/public/images/
+#teamplus-web/public/fonts/
+#teamplus-admin/public/images/
+#teamplus-app/assets/images/
+#teamplus-app/assets/fonts/
+
+# ── Logs ──
+#**/*.log
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+
+# ── Temp Files (Office lock files 등) ──
+**/~$*
+mindvault-out

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#1E40AF</color>
+    <!-- FCM 알림 아이콘 틴트 색상 (브랜드 ice #2f5fff) -->
+    <color name="notification_color">#2F5FFF</color>
+</resources>

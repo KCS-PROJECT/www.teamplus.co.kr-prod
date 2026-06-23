@@ -1,0 +1,101 @@
+# Git worktrees
+.worktrees/
+
+# Miscellaneous
+.env
+.env.local
+
+# Firecrawl scrape cache (Flutter docs 등 외부 문서 로컬 캐시)
+.firecrawl/
+*.class
+1.log
+*.pyc
+*.swp
+.DS_Store
+**/.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+node_modules/
+dist/
+build/
+coverage/
+playwright-report/
+test-results/
+.playwright-mcp/
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+.next/
+**/.next/
+out/
+#.vscode
+
+# MS Office 임시·락 파일 (Excel/Word/PowerPoint)
+~$*
+
+# Environment local overrides (서버별 포트/URL 설정)
+**/.env.local
+
+# Build artifacts (do not commit)
+teamplus-app/build/
+teamplus-web/.next/
+teamplus-admin/.next/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+.worktrees
+tsconfig.tsbuildinfo
+mindvault-out
+
+# Large binary build artifacts (>100MB GitHub limit)
+# APK/IPA 빌드 결과물은 git 추적 대상에서 제외 — GitHub Releases 또는 외부 CDN 사용
+teamplus-home/public/app/app-release.apk
+*.apk
+*.ipa
+*.aab
+
+
+# Logs
+logs/
+*/log
+/log/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

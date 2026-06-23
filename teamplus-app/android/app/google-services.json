@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "83385395284",
+    "project_id": "kcs-project-52f3d-bd758",
+    "storage_bucket": "kcs-project-52f3d-bd758.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:83385395284:android:504ba5f916e844225e65c1",
+        "android_client_info": {
+          "package_name": "kr.co.teamplus"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBnseFCMcoXzFnaM01j9sKF7EMlXoiD9a0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

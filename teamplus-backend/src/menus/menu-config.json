@@ -1,0 +1,282 @@
+{
+  "version": "1.0.0",
+  "updatedAt": "2026-01-14T12:00:00Z",
+  "menus": [
+    {
+      "id": "home",
+      "label": "홈",
+      "icon": "home",
+      "route": "/home",
+      "order": 1,
+      "roles": ["parent", "coach", "admin", "child"],
+      "badge": null,
+      "children": []
+    },
+    {
+      "id": "classes",
+      "label": "수업 관리",
+      "icon": "school",
+      "route": "/classes",
+      "order": 2,
+      "roles": ["coach", "admin"],
+      "badge": {
+        "type": "count",
+        "provider": "pendingEnrollments"
+      },
+      "children": [
+        {
+          "id": "class-list",
+          "label": "수업 목록",
+          "icon": "list",
+          "route": "/classes/list",
+          "order": 1,
+          "roles": ["coach", "admin"],
+          "badge": null,
+          "children": []
+        },
+        {
+          "id": "class-schedule",
+          "label": "일정 관리",
+          "icon": "calendar_today",
+          "route": "/classes/schedule",
+          "order": 2,
+          "roles": ["coach", "admin"],
+          "badge": null,
+          "children": []
+        },
+        {
+          "id": "class-attendance",
+          "label": "출석 관리",
+          "icon": "check_circle",
+          "route": "/classes/attendance",
+          "order": 3,
+          "roles": ["coach", "admin"],
+          "badge": null,
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "members",
+      "label": "회원 관리",
+      "icon": "people",
+      "route": "/members",
+      "order": 3,
+      "roles": ["coach", "admin"],
+      "badge": {
+        "type": "count",
+        "provider": "pendingMembers"
+      },
+      "children": [
+        {
+          "id": "member-list",
+          "label": "회원 목록",
+          "icon": "list_alt",
+          "route": "/members/list",
+          "order": 1,
+          "roles": ["coach", "admin"],
+          "badge": null,
+          "children": []
+        },
+        {
+          "id": "member-pending",
+          "label": "승인 대기",
+          "icon": "pending_actions",
+          "route": "/members/pending",
+          "order": 2,
+          "roles": ["coach", "admin"],
+          "badge": {
+            "type": "count",
+            "provider": "pendingMembers"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "my-children",
+      "label": "내 아이",
+      "icon": "child_care",
+      "route": "/children",
+      "order": 2,
+      "roles": ["parent"],
+      "badge": null,
+      "children": [
+        {
+          "id": "children-list",
+          "label": "아이 목록",
+          "icon": "people",
+          "route": "/children/list",
+          "order": 1,
+          "roles": ["parent"],
+          "badge": null,
+          "children": []
+        },
+        {
+          "id": "children-attendance",
+          "label": "출석 현황",
+          "icon": "check_circle",
+          "route": "/children/attendance",
+          "order": 2,
+          "roles": ["parent"],
+          "badge": null,
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "my-classes",
+      "label": "내 수업",
+      "icon": "school",
+      "route": "/my-classes",
+      "order": 3,
+      "roles": ["parent", "child"],
+      "badge": null,
+      "children": []
+    },
+    {
+      "id": "payments",
+      "label": "결제",
+      "icon": "payment",
+      "route": "/payments",
+      "order": 4,
+      "roles": ["parent"],
+      "badge": {
+        "type": "dot",
+        "provider": "hasPendingPayment"
+      },
+      "children": [
+        {
+          "id": "payment-history",
+          "label": "결제 내역",
+          "icon": "receipt_long",
+          "route": "/payments/history",
+          "order": 1,
+          "roles": ["parent"],
+          "badge": null,
+          "children": []
+        },
+        {
+          "id": "payment-pending",
+          "label": "결제 대기",
+          "icon": "pending",
+          "route": "/payments/pending",
+          "order": 2,
+          "roles": ["parent"],
+          "badge": {
+            "type": "dot",
+            "provider": "hasPendingPayment"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "payment-management",
+      "label": "결제 관리",
+      "icon": "account_balance_wallet",
+      "route": "/payment-management",
+      "order": 5,
+      "roles": ["coach", "admin"],
+      "badge": null,
+      "children": [
+        {
+          "id": "payment-overview",
+          "label": "결제 현황",
+          "icon": "analytics",
+          "route": "/payment-management/overview",
+          "order": 1,
+          "roles": ["coach", "admin"],
+          "badge": null,
+          "children": []
+        },
+        {
+          "id": "payment-records",
+          "label": "결제 기록",
+          "icon": "receipt",
+          "route": "/payment-management/records",
+          "order": 2,
+          "roles": ["coach", "admin"],
+          "badge": null,
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "qr-checkin",
+      "label": "QR 출석",
+      "icon": "qr_code_scanner",
+      "route": "/qr-checkin",
+      "order": 5,
+      "roles": ["child", "parent"],
+      "badge": null,
+      "children": []
+    },
+    {
+      "id": "qr-scanner",
+      "label": "QR 스캐너",
+      "icon": "qr_code_scanner",
+      "route": "/qr-scanner",
+      "order": 6,
+      "roles": ["coach", "admin"],
+      "badge": null,
+      "children": []
+    },
+    {
+      "id": "notifications",
+      "label": "알림",
+      "icon": "notifications",
+      "route": "/notifications",
+      "order": 90,
+      "roles": ["parent", "coach", "admin", "child"],
+      "badge": {
+        "type": "count",
+        "provider": "unreadNotifications"
+      },
+      "children": []
+    },
+    {
+      "id": "settings",
+      "label": "설정",
+      "icon": "settings",
+      "route": "/settings",
+      "order": 98,
+      "roles": ["admin"],
+      "badge": null,
+      "children": [
+        {
+          "id": "settings-club",
+          "label": "클럽 설정",
+          "icon": "sports_hockey",
+          "route": "/settings/club",
+          "order": 1,
+          "roles": ["admin"],
+          "badge": null,
+          "children": []
+        },
+        {
+          "id": "settings-system",
+          "label": "시스템 설정",
+          "icon": "build",
+          "route": "/settings/system",
+          "order": 2,
+          "roles": ["admin"],
+          "badge": null,
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "profile",
+      "label": "프로필",
+      "icon": "person",
+      "route": "/profile",
+      "order": 99,
+      "roles": ["parent", "coach", "admin", "child"],
+      "badge": null,
+      "children": []
+    }
+  ],
+  "bottomNav": ["home", "my-classes", "qr-checkin", "notifications", "profile"],
+  "drawer": ["home", "my-children", "my-classes", "classes", "members", "payments", "payment-management", "qr-checkin", "qr-scanner", "notifications", "settings", "profile"]
+}

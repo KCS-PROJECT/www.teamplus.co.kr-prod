@@ -1,0 +1,41 @@
+{
+  "extends": [
+    "next/core-web-vitals",
+    "next/typescript"
+  ],
+  "rules": {
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "CallExpression[callee.object.name='window'][callee.property.name='addEventListener'][arguments.0.value='resize']",
+        "message": "[autolayout SoT] Use useScreenMetrics() — single subscriber via ClientProviders.subscribeToDeviceMetrics. See docs/Architecture/SCREEN_METRICS.md §6.4."
+      },
+      {
+        "selector": "CallExpression[callee.object.name='window'][callee.property.name='addEventListener'][arguments.0.value='orientationchange']",
+        "message": "[autolayout SoT] Use useScreenMetrics().orientation or [data-orientation] CSS selector. See docs/Architecture/SCREEN_METRICS.md."
+      },
+      {
+        "selector": "MemberExpression[object.name='window'][property.name='innerWidth']",
+        "message": "[autolayout SoT] Use useScreenMetrics().width or var(--screen-width). Direct window.innerWidth differs from Flutter MediaQuery — see docs/Architecture/SCREEN_METRICS.md §6.2."
+      },
+      {
+        "selector": "MemberExpression[object.name='window'][property.name='innerHeight']",
+        "message": "[autolayout SoT] Use useScreenMetrics().height or var(--screen-height). See docs/Architecture/SCREEN_METRICS.md §6.2."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "src/hooks/useScreenMetrics.ts",
+        "src/hooks/useKeyboardAvoidance.ts",
+        "src/services/native-bridge.ts",
+        "src/components/providers/ClientProviders.tsx",
+        "src/lib/scroll-lock.ts"
+      ],
+      "rules": {
+        "no-restricted-syntax": "off"
+      }
+    }
+  ]
+}

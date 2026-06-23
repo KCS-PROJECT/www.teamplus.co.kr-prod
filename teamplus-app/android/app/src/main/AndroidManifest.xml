@@ -1,0 +1,201 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- 🔐 Network Permissions -->
+    <uses-permission
+        android:name="android.permission.INTERNET"/>
+    <uses-permission
+        android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <!--
+      📢 광고 ID(AD_ID) 미사용 선언 (2026-05-26).
+      광고를 넣지 않으므로 firebase/play-services 가 자동 병합하는 AD_ID 권한을 명시적으로 제거한다.
+      → Play Console 데이터 보안에서 '광고 ID 수집 안 함'과 일치 (불일치 시 제출 차단/리젝).
+    -->
+    <uses-permission
+        android:name="com.google.android.gms.permission.AD_ID"
+        tools:node="remove"/>
+    <!-- 🔐 Biometric Authentication Permissions -->
+    <uses-permission
+        android:name="android.permission.USE_BIOMETRIC"/>
+    <uses-permission
+        android:name="android.permission.USE_FINGERPRINT"/>
+    <!-- 📤 Upload: Camera (사진 촬영) -->
+    <uses-permission
+        android:name="android.permission.CAMERA"/>
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false"/>
+    <!--
+      📤 Upload: Android Photo Picker 전환 (2026-06-04).
+      image_picker 가 Android 13+ 는 시스템 Photo Picker(ACTION_PICK_IMAGES),
+      12- 는 ACTION_GET_CONTENT 로 동작하므로 READ_MEDIA_* 권한이 불필요하다.
+      Google Play '사진/동영상 권한' 정책상 1회성 picker 앱은 권한 선언이 금지되므로,
+      image_picker/file_picker 가 manifest merge 로 자동 주입하는 분까지 명시 제거한다.
+      → AD_ID(위) 와 동일한 tools:node="remove" 패턴.
+    -->
+    <uses-permission
+        android:name="android.permission.READ_MEDIA_IMAGES"
+        tools:node="remove"/>
+    <uses-permission
+        android:name="android.permission.READ_MEDIA_VIDEO"
+        tools:node="remove"/>
+    <uses-permission
+        android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
+        tools:node="remove"/>
+    <!-- 📤 Upload: Legacy Android 12- (ACTION_GET_CONTENT 폴백 안전망 · 정책 대상 아님) -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32"/>
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28"/>
+    <!-- 🔔 Push Notification: Android 13+ (API 33) 런타임 알림 권한 -->
+    <uses-permission
+        android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- 🔔 Push Notification: 알림 진동 + 부팅 후 예약 알림 복원 -->
+    <uses-permission
+        android:name="android.permission.VIBRATE"/>
+    <uses-permission
+        android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <!--
+      ⚠️ 위치/캘린더/연락처/신체활동 권한 제거 (2026-05-26).
+      해당 기능(아이스링크 추천·캘린더 자동등록·연락처 초대·활동 거리 측정)이 미구현이며,
+      미사용 민감 권한 선언은 Google Play 민감권한 정책 + iOS 5.1.1 리젝 사유.
+      → 기능 구현 시 권한 + signup_permissions_screen 항목 + iOS usage string 을 함께 재추가할 것.
+    -->
+    <application
+        android:label="팀플러스"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <!-- Specifies an Android theme to apply to this Activity as soon as
+                 the Android process has started. This theme is visible to the user
+                 while the Flutter UI initializes. After that, this theme continues
+                 to determine the Window background behind the Flutter UI. -->
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme"/>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <!-- 🔗 Deep Link: Custom URL Scheme (teamplus://) -->
+            <intent-filter
+                android:autoVerify="false">
+                <action
+                    android:name="android.intent.action.VIEW"/>
+                <category
+                    android:name="android.intent.category.DEFAULT"/>
+                <category
+                    android:name="android.intent.category.BROWSABLE"/>
+                <data
+                    android:scheme="teamplus"/>
+            </intent-filter>
+            <!-- 🔗 카카오톡 공유 앱 스킴 (kakao{네이티브앱키}://) -->
+            <intent-filter
+                android:autoVerify="false">
+                <action
+                    android:name="android.intent.action.VIEW"/>
+                <category
+                    android:name="android.intent.category.DEFAULT"/>
+                <category
+                    android:name="android.intent.category.BROWSABLE"/>
+                <data
+                    android:scheme="kakao3135b23ea4171cc782e24807bcfa9a51"/>
+            </intent-filter>
+            <!-- 🔗 App Links: Universal Links (운영 — 유일한 활성 딥링크 도메인)
+                 ⚠️ 2026-06-15: 레거시 app.teamplus.com intent-filter 제거.
+                    해당 도메인은 DNS SERVFAIL(폐기)로 autoVerify 검증이 영구 실패하여
+                    Play Console 딥링크 페이지에 "확인되지 않은 도메인" 오류를 유발했음
+                    (Google: "모든 딥 링크가 영향을 받습니다"). 죽은 도메인을 호스트
+                    allowlist 에 남기면 재등록 피싱 위험도 있어 완전 제거한다. -->
+            <intent-filter
+                android:autoVerify="true">
+                <action
+                    android:name="android.intent.action.VIEW"/>
+                <category
+                    android:name="android.intent.category.DEFAULT"/>
+                <category
+                    android:name="android.intent.category.BROWSABLE"/>
+                <data
+                    android:scheme="https"
+                    android:host="teamplusweb.icetimes.co.kr"/>
+            </intent-filter>
+        </activity>
+        <!-- 🔔 FCM 백그라운드/종료 상태 알림 기본 채널.
+             앱에서 생성하는 teamplus_default 채널과 일치시켜, 백엔드가 channelId 를
+             지정하지 않은 메시지도 '기타' 채널이 아닌 정의된 채널로 표시되게 한다. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="teamplus_default"/>
+        <!-- 🔔 FCM 기본 알림 아이콘(단색 화이트 실루엣) + 틴트 색상.
+             아이콘 미지정 시 Android 가 런처 아이콘을 흰 사각형으로 강제하므로 전용 아이콘을 지정한다. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_notification"/>
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/notification_color"/>
+        <!-- Don't delete the meta-data below.
+             This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2"/>
+    </application>
+    <!-- Required to query activities that can process text, see:
+         https://developer.android.com/training/package-visibility and
+         https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
+
+         In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
+    <queries>
+        <intent>
+            <action
+                android:name="android.intent.action.PROCESS_TEXT"/>
+            <data
+                android:mimeType="text/plain"/>
+        </intent>
+        <!-- 🔗 카카오톡 외부 앱 호출 (Share·Login·Channel) — Android 11+ 패키지 가시성 -->
+        <package
+            android:name="com.kakao.talk"/>
+        <intent>
+            <action
+                android:name="android.intent.action.VIEW"/>
+            <data
+                android:scheme="kakaolink"/>
+        </intent>
+        <intent>
+            <action
+                android:name="android.intent.action.VIEW"/>
+            <data
+                android:scheme="kakaotalk"/>
+        </intent>
+        <intent>
+            <action
+                android:name="android.intent.action.VIEW"/>
+            <data
+                android:scheme="kakaoplus"/>
+        </intent>
+        <intent>
+            <action
+                android:name="android.intent.action.VIEW"/>
+            <data
+                android:scheme="kakaokompassauth"/>
+        </intent>
+        <intent>
+            <action
+                android:name="android.intent.action.VIEW"/>
+            <data
+                android:scheme="storylink"/>
+        </intent>
+    </queries>
+</manifest>

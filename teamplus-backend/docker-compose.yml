@@ -1,0 +1,81 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: teamplus-postgres
+    environment:
+      POSTGRES_USER: ${DB_USER:-teamplus_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-LocalPassword123}
+      POSTGRES_DB: ${DB_NAME:-teamplus_db}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${DB_USER:-teamplus_user} -d ${DB_NAME:-teamplus_db}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - teamplus-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: teamplus-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - teamplus-network
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: teamplus-backend
+    ports:
+      - "${BACKEND_PORT:-5003}:5003"
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://${DB_USER:-teamplus_user}:${DB_PASSWORD:-LocalPassword123}@postgres:5432/${DB_NAME:-teamplus_db}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-key-change-in-production}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-900} # 15 minutes
+      JWT_REFRESH_EXPIRATION: ${JWT_REFRESH_EXPIRATION:-604800} # 7 days
+      INICIS_MERCHANT_KEY: ${INICIS_MERCHANT_KEY:-test-key}
+      INICIS_STORE_ID: ${INICIS_STORE_ID:-test-store}
+      KAKAO_API_KEY: ${KAKAO_API_KEY:-test-kakao-key}
+      KAKAO_SENDER_ID: ${KAKAO_SENDER_ID:-test-sender}
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src
+      - ./prisma:/app/prisma
+      - /app/node_modules
+    networks:
+      - teamplus-network
+    restart: unless-stopped
+    command: npm run start:dev
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  teamplus-network:
+    driver: bridge

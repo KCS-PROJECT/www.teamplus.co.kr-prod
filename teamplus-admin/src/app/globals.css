@@ -1,0 +1,426 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   TEAMPLUS Design System
+   - Primary: Deep Blue (#1E40AF)
+   - Hover: Darker Blue (#1E3A8A)
+   - Accent: Mint Green (#22C55E)
+   - WCAG 2.1 AA Compliant (4.5:1 contrast)
+   ============================================ */
+
+/* Pretendard 폰트 — Full Weight Family (Thin 100 ~ Black 900)
+   출처: /public/fonts/Pretendard-{Weight}.otf · 9개 OTF 로컬 호스팅
+   정책: font-display: swap → FOIT 방지, FOUT 허용 */
+@font-face {
+  font-family: 'Pretendard';
+  src: url('/fonts/Pretendard-Thin.otf') format('opentype');
+  font-weight: 100;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pretendard';
+  src: url('/fonts/Pretendard-ExtraLight.otf') format('opentype');
+  font-weight: 200;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pretendard';
+  src: url('/fonts/Pretendard-Light.otf') format('opentype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pretendard';
+  src: url('/fonts/Pretendard-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pretendard';
+  src: url('/fonts/Pretendard-Medium.otf') format('opentype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pretendard';
+  src: url('/fonts/Pretendard-SemiBold.otf') format('opentype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pretendard';
+  src: url('/fonts/Pretendard-Bold.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pretendard';
+  src: url('/fonts/Pretendard-ExtraBold.otf') format('opentype');
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pretendard';
+  src: url('/fonts/Pretendard-Black.otf') format('opentype');
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Critical: Prevent dark mode flash - must be first */
+html {
+  background-color: var(--color-background);
+  scroll-behavior: smooth;
+}
+
+html.dark {
+  background-color: var(--color-background);
+  color-scheme: dark;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
+    'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@layer base {
+  :root {
+    /* TEAMPLUS Brand Colors - Updated */
+    --ice-primary: 217 65% 54%;         /* #1E40AF - Ice Blue */
+    --ice-primary-dark: 217 65% 44%;    /* #1E3A8A - Darker Blue */
+    --ice-primary-light: 217 65% 64%;   /* #60A5FA - Light Blue */
+    --ice-accent: 142 71% 45%;          /* #22C55E - Mint Green */
+    --ice-accent-light: 142 71% 55%;    /* #4ADE80 - Light Mint */
+    --ice-accent-dark: 142 71% 35%;     /* #16A34A - Dark Mint */
+
+    /* Semantic Colors */
+    --ice-success: 142 71% 45%;         /* #22C55E - Green (same as accent) */
+    --ice-warning: 38 92% 50%;          /* #F59E0B - Amber */
+    --ice-error: 0 84% 60%;             /* #EF4444 - Red */
+    --ice-info: 217 65% 54%;            /* #1E40AF - Blue (same as primary) */
+
+    /* Neutral Scale */
+    --ice-slate-50: 210 40% 98%;
+    --ice-slate-100: 210 40% 96%;
+    --ice-slate-200: 214 32% 91%;
+    --ice-slate-300: 213 27% 84%;
+    --ice-slate-400: 215 20% 65%;
+    --ice-slate-500: 215 16% 47%;
+    --ice-slate-600: 215 19% 35%;
+    --ice-slate-700: 215 25% 27%;
+    --ice-slate-800: 217 33% 17%;
+    --ice-slate-900: 222 47% 11%;
+
+    /* shadcn/ui compatible variables */
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 217 65% 54%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 142 71% 45%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 217 65% 54%;
+
+    /* Chart Colors */
+    --chart-1: 217 65% 54%;
+    --chart-2: 142 71% 45%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 199 89% 48%;
+    --chart-5: 0 84% 60%;
+
+    /* Spacing & Sizing */
+    --radius: 0.5rem;
+    --radius-sm: 0.375rem;
+    --radius-lg: 0.75rem;
+
+    /* Component Sizes (WCAG Touch Targets) */
+    --btn-height: 48px;
+    --btn-height-sm: 40px;
+    --btn-height-lg: 56px;
+    --input-height: 44px;
+    --touch-target: 48px;
+
+    /* Web/App 공통 토큰 (HEX 대응) */
+    --color-primary: hsl(var(--ice-primary));
+    --color-primary-hover: hsl(var(--ice-primary-dark));
+    --color-primary-light: hsl(var(--ice-primary-light));
+    --color-success: hsl(var(--ice-success));
+    --color-warning: hsl(var(--ice-warning));
+    --color-error: hsl(var(--ice-error));
+    --color-background: hsl(var(--ice-slate-50));
+    --color-surface: hsl(var(--ice-slate-100));
+    --color-border: hsl(var(--ice-slate-200));
+    --color-text-primary: hsl(var(--ice-slate-900));
+    --color-text-secondary: hsl(var(--ice-slate-600));
+    --color-text-muted: hsl(var(--ice-slate-500));
+  }
+
+  .dark {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+    --card: 217 33% 17%;
+    --card-foreground: 210 40% 98%;
+    --popover: 217 33% 17%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217 65% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 215 25% 27%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 215 25% 27%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 142 71% 50%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 215 25% 27%;
+    --input: 215 25% 27%;
+    --ring: 217 65% 60%;
+    --chart-1: 217 65% 60%;
+    --chart-2: 142 71% 50%;
+    --chart-3: 38 92% 55%;
+    --chart-4: 199 89% 55%;
+    --chart-5: 0 84% 65%;
+
+    --color-background: hsl(var(--ice-slate-900));
+    --color-surface: hsl(var(--ice-slate-800));
+    --color-border: hsl(var(--ice-slate-700));
+    --color-text-primary: hsl(var(--ice-slate-50));
+    --color-text-secondary: hsl(var(--ice-slate-300));
+    --color-text-muted: hsl(var(--ice-slate-400));
+  }
+}
+
+/* TEAMPLUS Brand Utilities */
+@layer utilities {
+  .bg-ice-primary {
+    background-color: hsl(217 65% 54%);
+  }
+  .bg-ice-accent {
+    background-color: hsl(142 71% 45%);
+  }
+  .text-ice-primary {
+    color: hsl(217 65% 54%);
+  }
+  .text-ice-accent {
+    color: hsl(142 71% 45%);
+  }
+  .border-ice-primary {
+    border-color: hsl(217 65% 54%);
+  }
+  .border-ice-accent {
+    border-color: hsl(142 71% 45%);
+  }
+
+  /* Gradient backgrounds */
+  .bg-ice-gradient {
+    background: linear-gradient(135deg, hsl(217 65% 54%) 0%, hsl(217 65% 44%) 100%);
+  }
+  .bg-ice-gradient-accent {
+    background: linear-gradient(135deg, hsl(217 65% 54%) 0%, hsl(142 71% 45%) 100%);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* ============================================
+   Page Transition & Content Animations
+   - CSS-only, 60fps, no gradient/blur
+   ============================================ */
+
+/* 페이지 콘텐츠 진입 애니메이션 */
+@keyframes admin-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* staggered 카드 등장 */
+@keyframes admin-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 드롭다운/모달 열기 */
+@keyframes admin-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 드롭다운/모달 닫기 */
+@keyframes admin-scale-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+/* 사이드바 활성 메뉴 인디케이터 */
+@keyframes admin-indicator-in {
+  from {
+    transform: scaleY(0);
+    opacity: 0;
+  }
+  to {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+/* 로딩 스켈레톤 쉬머 */
+@keyframes admin-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* 유틸리티 클래스 */
+.animate-admin-fade-in {
+  animation: admin-fade-in 0.3s ease-out both;
+}
+
+.animate-admin-slide-up {
+  animation: admin-slide-up 0.35s ease-out both;
+}
+
+.animate-admin-scale-in {
+  animation: admin-scale-in 0.2s ease-out both;
+}
+
+.animate-admin-scale-out {
+  animation: admin-scale-out 0.15s ease-in both;
+}
+
+.animate-admin-indicator {
+  animation: admin-indicator-in 0.25s ease-out both;
+}
+
+/* Stagger delay 유틸리티 (최대 500ms) */
+.stagger-1 { animation-delay: 50ms; }
+.stagger-2 { animation-delay: 100ms; }
+.stagger-3 { animation-delay: 150ms; }
+.stagger-4 { animation-delay: 200ms; }
+.stagger-5 { animation-delay: 250ms; }
+.stagger-6 { animation-delay: 300ms; }
+
+/* 스켈레톤 쉬머 효과 */
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--ice-slate-200)) 25%,
+    hsl(var(--ice-slate-100)) 50%,
+    hsl(var(--ice-slate-200)) 75%
+  );
+  background-size: 200% 100%;
+  animation: admin-shimmer 1.5s ease-in-out infinite;
+}
+
+.dark .skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--ice-slate-700)) 25%,
+    hsl(var(--ice-slate-600)) 50%,
+    hsl(var(--ice-slate-700)) 75%
+  );
+  background-size: 200% 100%;
+}
+
+/* Chrome autofill 흰색 배경 강제 적용 — @layer 밖에서 최고 우선순위 */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0px 1000px #ffffff inset !important;
+  -webkit-text-fill-color: #0f172a !important;
+  transition: background-color 9999s ease-in-out 0s;
+  caret-color: #0f172a;
+}
+
+.dark input:-webkit-autofill,
+.dark input:-webkit-autofill:hover,
+.dark input:-webkit-autofill:focus,
+.dark input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0px 1000px #1e293b inset !important;
+  -webkit-text-fill-color: #f8fafc !important;
+  caret-color: #f8fafc;
+}
+
+/* 로그인 화면은 라이트 UI로 고정되어 자동완성 색상도 별도로 고정한다. */
+input.login-autofill-fix {
+  color-scheme: light;
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+}
+
+input.login-autofill-fix:-webkit-autofill,
+input.login-autofill-fix:-webkit-autofill:hover,
+input.login-autofill-fix:-webkit-autofill:focus,
+input.login-autofill-fix:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0px 1000px #ffffff inset !important;
+  box-shadow: 0 0 0px 1000px #ffffff inset !important;
+  -webkit-text-fill-color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+  caret-color: #0f172a;
+}

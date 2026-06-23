@@ -1,0 +1,5 @@
+{
+  "name": "teamplus",
+  "description": "A vivid and responsive authentication flow for the teamplus application, including Login, Find ID/Password, and Sign Up screens.",
+  "requestFramePermissions": []
+}

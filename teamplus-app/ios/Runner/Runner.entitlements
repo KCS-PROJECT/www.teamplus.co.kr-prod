@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>aps-environment</key>
+	<string>development</string>
+	<!-- Universal Links (딥링크 검증). AASA(/.well-known/apple-app-site-association)와 도메인 일치 필수.
+	     Apple Developer 포털 App ID에 Associated Domains capability 활성화 + 각 도메인이 HTTPS로 AASA를 서빙해야 한다. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<!-- 2026-06-15: 레거시 app.teamplus.com 제거 (DNS 폐기 — AASA 서빙 불가). -->
+		<string>applinks:teamplusweb.icetimes.co.kr</string>
+	</array>
+</dict>
+</plist>

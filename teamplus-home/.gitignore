@@ -1,0 +1,16 @@
+node_modules/
+.next/
+out/
+.log
+/log/
+.env
+.env.local
+.env.*.local
+.DS_Store
+tsconfig.tsbuildinfo
+next-env.d.ts
+
+# SQLite DB 파일 — 배포 서버의 데이터는 영속화 디렉토리로
+data/*.db
+data/*.db-journal
+prisma/migrations/

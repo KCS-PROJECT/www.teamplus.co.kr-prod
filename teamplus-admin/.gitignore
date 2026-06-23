@@ -1,0 +1,14 @@
+
+# Next.js dev build cache
+.next-dev/
+
+# Application log directory (file logging system v8.6, 2026-05-20)
+/log/
+*.log
+
+# Environment variables (명시적 — 시크릿·로컬 개발 설정 보호)
+# 주의: 기존에 추적 중인 .env.local · .env.development.local 은 현상 유지 (사용자 지시).
+# 본 규칙은 신규 env 파일의 git 추적 차단을 위해 추가.
+.env
+.env.local
+.env.*.local

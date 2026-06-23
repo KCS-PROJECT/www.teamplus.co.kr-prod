@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="200" viewBox="0 0 800 200">
+  <rect width="800" height="200" fill="#F1F5F9"/>
+  <rect x="50" y="50" width="700" height="100" rx="12" fill="#E2E8F0" stroke="#CBD5E1" stroke-width="2" stroke-dasharray="8,4"/>
+  <rect x="340" y="85" width="120" height="30" rx="6" fill="#CBD5E1"/>
+  <text x="400" y="106" font-family="Arial, sans-serif" font-size="14" fill="#64748B" text-anchor="middle">BANNER</text>
+  <circle cx="100" cy="100" r="25" fill="#CBD5E1"/>
+  <rect x="90" y="90" width="20" height="20" rx="2" fill="#94A3B8"/>
+</svg>

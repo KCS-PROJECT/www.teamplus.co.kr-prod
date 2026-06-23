@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  App Privacy Manifest (Apple 필수 · 2026-05-26 신규)
+  - NSPrivacyTracking=false: 광고/추적 SDK 미사용 → ATT 불요 (심사 5.1.2)
+  - NSPrivacyAccessedAPITypes: 앱이 사용하는 "필수 사유 API" 선언
+      · UserDefaults (shared_preferences) → CA92.1 (앱 자체 설정 저장)
+      · File timestamp (path_provider / file_picker / 이미지 캐시) → C617.1 (앱 컨테이너 내 파일)
+  - 데이터 수집 항목(개인정보·결제 등)의 소비자 공개는 App Store Connect 개인정보 라벨이 SoT.
+  ⚠️ 추적/분석 SDK 추가 시 NSPrivacyTracking·NSPrivacyTrackingDomains·수집 항목을 갱신할 것.
+-->
+<plist version="1.0">
+<dict>
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>C617.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

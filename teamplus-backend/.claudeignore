@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Lock files
+package-lock.json
+
+# Environment secrets
+.env
+.env.local
+
+# Test artifacts
+coverage/
+test-results/
+
+# Prisma generated client
+prisma/generated/
+
+# IDE / OS
+.DS_Store
+.idea/
+.github/
+
+# Uploaded files (binary)
+uploads/

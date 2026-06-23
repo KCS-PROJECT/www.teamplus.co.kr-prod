@@ -1,0 +1,27 @@
+// TEAMPLUS Home — 홍보 홈페이지 공지 게시판 전용 DB
+// SQLite 단일 파일 · 배포 시 /opt/teamplus/teamplus-home/data/notices.db 로 영속화
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Notice (공지 게시판) ──────────────────────────────
+model Notice {
+  id        Int      @id @default(autoincrement())
+  title     String
+  category  String   @default("Notice") // Notice | Release | Feature | Partner
+  summary   String
+  content   String   // 본문 (줄바꿈 허용, Markdown 미지원 · 단순 텍스트)
+  published Boolean  @default(true)
+  pinned    Boolean  @default(false)
+  views     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([published, pinned, createdAt])
+}

@@ -1,0 +1,108 @@
+# iOS 최소 버전 설정 (2026-05-12 상향: firebase_core 4.x / file_picker 12 요구)
+platform :ios, '15.0'
+
+# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+  unless File.exist?(generated_xcode_build_settings_path)
+    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure flutter pub get is executed first"
+  end
+
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Generated.xcconfig, then run flutter pub get"
+end
+
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+
+flutter_ios_podfile_setup
+
+target 'Runner' do
+  use_frameworks!
+
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+  target 'RunnerTests' do
+    inherit! :search_paths
+  end
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+    target.build_configurations.each do |config|
+      # iOS 최소 배포 타겟 고정 — Pods의 일부 의존성이 더 낮은 버전으로
+      # 빌드 설정되어 경고/Swift 컴파일 에러를 유발하는 것을 방지.
+      # 2026-05-12 상향: firebase_core 4.x / file_picker 12 가 iOS 14+/15+ API 사용.
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+      # BoringSSL-GRPC 등 일부 Pod의 `-G` 플래그 경고 억제 (Xcode 15+)
+      if config.build_settings['OTHER_CFLAGS'].is_a?(Array)
+        config.build_settings['OTHER_CFLAGS'] = config.build_settings['OTHER_CFLAGS'].reject { |f| f == '-G' }
+      end
+
+      # 🔐 iOS 26 + Xcode 26 호환 — Pod 측 자체 코드 서명을 비활성화하여
+      # Runner 메인 타겟의 "Embed Pods Frameworks" 단계에서 통합 재서명되도록 일임.
+      # 일부 framework(예: objective_c.framework)가 자동 서명 단계에서 누락되어
+      # "ApplicationVerificationFailed (0xe8008014)" / "MIInstallerErrorDomain Code=13"
+      # 으로 디바이스 설치가 실패하는 이슈를 방지한다.
+      # 표준 권장 패턴 (CocoaPods + Apple Silicon + iOS 17+).
+      config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
+      config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
+      config.build_settings['EXPANDED_CODE_SIGN_IDENTITY'] = ''
+
+      # 📦 Xcode 26 strict modular header 정책 회피 — permission_handler_apple 9.4.7
+      # 등 일부 Pod의 umbrella header 가 double-quoted include 를 사용하여
+      # "include of non-modular header inside framework module" / "Flutter/Flutter.h
+      # file not found" 빌드 에러 발생. release 빌드에서 특히 노출.
+      config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+
+      # 🚫 [2026-05-17] Module Verifier 비활성화 — permission_handler_apple 9.4.7
+      # umbrella header (`#include "PermissionHandlerEnums.h"`) 가 framework header
+      # 내부에서 double-quoted include 를 사용하여 Xcode 15+ 의 strict module
+      # verifier(`VerifyModule` 빌드 단계)가 "could not build module" / "Test.h
+      # could not build module 'Test'" 로 빌드 실패. 또한 verifier 단계는 별도
+      # Test.framework 를 만들면서 Flutter/Flutter.h search path 가 누락되어
+      # "'Flutter/Flutter.h' file not found" 회귀 발생.
+      #
+      # ENABLE_MODULE_VERIFIER=NO 로 verify 단계 자체를 끄고,
+      # CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER=NO 로 큰따옴표 include
+      # 경고를 error 로 승격하지 않도록 한다. 실제 plugin code 동작에는 영향 없음.
+      config.build_settings['ENABLE_MODULE_VERIFIER'] = 'NO'
+      config.build_settings['CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER'] = 'NO'
+
+      # 🔑 permission_handler 권한 매크로 — 사용 권한만 1, 미사용은 0 으로 컴파일.
+      # 미정의 시 매크로 분기 실패로 build error 또는 미사용 코드까지 컴파일되어
+      # framework header 누락 에러 발생 가능. teamplus 앱 실사용 권한:
+      #   notifications(푸시), camera(QR), photos(프로필 업로드),
+      #   microphone(추후 채팅 음성), location(추후 매치 위치).
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] += [
+        'PERMISSION_NOTIFICATIONS=1',
+        'PERMISSION_CAMERA=1',
+        'PERMISSION_PHOTOS=1',
+        'PERMISSION_MICROPHONE=1',
+        'PERMISSION_LOCATION=1',
+        'PERMISSION_EVENTS=0',
+        'PERMISSION_EVENTS_FULL_ACCESS=0',
+        'PERMISSION_REMINDERS=0',
+        'PERMISSION_CONTACTS=0',
+        'PERMISSION_SPEECH_RECOGNIZER=0',
+        'PERMISSION_BLUETOOTH=0',
+        'PERMISSION_SENSORS=0',
+        'PERMISSION_MEDIA_LIBRARY=0',
+        'PERMISSION_APP_TRACKING_TRANSPARENCY=0',
+        'PERMISSION_CRITICAL_ALERTS=0',
+        'PERMISSION_ASSISTANT=0',
+      ]
+    end
+  end
+end

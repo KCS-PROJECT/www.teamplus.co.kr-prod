@@ -1,0 +1,1853 @@
+/* Material Symbols Outlined @font-face는 app/layout.tsx <head> inline <style>에서 선언.
+   이유: <link rel="preload">와 동일 파싱 시점에 등록되어야 브라우저가 preload된 woff2를
+   즉시 font 리소스로 매칭, "preloaded but not used" 경고 해소.
+   font-display: block은 유지 — FOUT(아이콘 이름 텍스트 노출) 방지. WEB-049 재발 방지. */
+
+.material-symbols-outlined {
+  font-family: "Material Symbols Outlined";
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: "liga";
+  -webkit-font-smoothing: antialiased;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ========================================
+   TEAMPLUS Design System - Human Design
+   Professional Sports Club Management
+   ======================================== */
+
+/* Pretendard 폰트 — Full Weight Family (Thin 100 ~ Black 900)
+ *
+ * v18 (2026-05-22): WOFF2 우선 적용 + OTF fallback.
+ *   iOS WKWebView 가 OTF 13.5MB 동시 요청 시 로드 실패하던 회귀(`?` tofu) 해결.
+ *   WOFF2 (50% 크기 · Apple 공식 권장 포맷)를 1순위로 두고, OTF 는 WOFF2 미지원 환경 폴백.
+ *   출처: orioncactus/pretendard 공식 release (`packages/pretendard/dist/web/static/woff2`)
+ *
+ * 정책: font-display: swap → FOIT 방지, FOUT 허용 (Tailwind 'font-sans' 적용 시 fallback 우선 표시)
+ * 향후 Variable 전환 시 단일 @font-face 로 교체 가능 (font-weight: 100 900 + format('woff2-variations'))
+ */
+@font-face {
+  font-family: "Pretendard";
+  src: url("/fonts/Pretendard-Thin.woff2") format("woff2"),
+       url("/fonts/Pretendard-Thin.otf") format("opentype");
+  font-weight: 100;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Pretendard";
+  src: url("/fonts/Pretendard-ExtraLight.woff2") format("woff2"),
+       url("/fonts/Pretendard-ExtraLight.otf") format("opentype");
+  font-weight: 200;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Pretendard";
+  src: url("/fonts/Pretendard-Light.woff2") format("woff2"),
+       url("/fonts/Pretendard-Light.otf") format("opentype");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Pretendard";
+  src: url("/fonts/Pretendard-Regular.woff2") format("woff2"),
+       url("/fonts/Pretendard-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Pretendard";
+  src: url("/fonts/Pretendard-Medium.woff2") format("woff2"),
+       url("/fonts/Pretendard-Medium.otf") format("opentype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Pretendard";
+  src: url("/fonts/Pretendard-SemiBold.woff2") format("woff2"),
+       url("/fonts/Pretendard-SemiBold.otf") format("opentype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Pretendard";
+  src: url("/fonts/Pretendard-Bold.woff2") format("woff2"),
+       url("/fonts/Pretendard-Bold.otf") format("opentype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Pretendard";
+  src: url("/fonts/Pretendard-ExtraBold.woff2") format("woff2"),
+       url("/fonts/Pretendard-ExtraBold.otf") format("opentype");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Pretendard";
+  src: url("/fonts/Pretendard-Black.woff2") format("woff2"),
+       url("/fonts/Pretendard-Black.otf") format("opentype");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ========================================
+   Base Layer - Clean & Professional
+   ======================================== */
+@layer base {
+  :root {
+    /* ─── TEAMPLUS Wallet v2 — 신한pLay풍 핀테크 ─────────────────────
+       Brand Primary: Ice Blue #2f5fff (HSL 229 100% 59%)
+       기존 #1E3FAE (HSL 217 65% 54%) → 새 값으로 갱신.
+       기존 화면들의 primary 클래스도 이 값을 따라 시각적으로 갱신됨. */
+    --ice-primary: 229 100% 59%; /* #2f5fff */
+    --ice-primary-dark: 230 80% 51%; /* #1f47e6 → 700 어두운 톤 */
+    --ice-primary-light: 226 100% 76%; /* #85a8ff */
+    --ice-accent: 142 71% 45%;
+    --ice-accent-light: 142 71% 55%;
+    --ice-accent-dark: 142 71% 35%;
+    --ice-success: 142 71% 45%;
+    --ice-warning: 38 92% 50%;
+    --ice-error: 0 84% 60%;
+    --ice-info: 217 65% 54%;
+    --ice-slate-50: 210 40% 98%;
+    --ice-slate-100: 210 40% 96%;
+    --ice-slate-200: 214 32% 91%;
+    --ice-slate-300: 213 27% 84%;
+    --ice-slate-400: 215 20% 65%;
+    --ice-slate-500: 215 16% 47%;
+    --ice-slate-600: 215 19% 35%;
+    --ice-slate-700: 215 25% 27%;
+    --ice-slate-800: 217 33% 17%;
+    --ice-slate-900: 222 47% 11%;
+
+    /* Primary Brand Colors */
+    --color-primary: hsl(var(--ice-primary));
+    --color-primary-hover: hsl(var(--ice-primary-dark));
+    --color-primary-light: hsl(var(--ice-primary-light));
+
+    /* Semantic Colors */
+    --color-success: hsl(var(--ice-success));
+    --color-warning: hsl(var(--ice-warning));
+    --color-error: hsl(var(--ice-error));
+
+    /* Neutral Colors */
+    --color-background: hsl(var(--ice-slate-50));
+    --color-surface: hsl(var(--ice-slate-100));
+    --color-border: hsl(var(--ice-slate-200));
+    --color-text-primary: hsl(var(--ice-slate-900));
+    --color-text-secondary: hsl(var(--ice-slate-600));
+    --color-text-muted: hsl(var(--ice-slate-500));
+
+    /* Safe Area — Native Bridge (Flutter MediaQuery) 가 주입 시 override.
+       Android WebView 에서 env(safe-area-inset-*) 가 0px 로 평가되는 문제 해결용
+       (teamplus-web/src/components/providers/ClientProviders.tsx 의 useEffect 에서
+       ui.applyDeviceInsetsToCss() 로 주입). 브라우저 환경에서는 env() 폴백 유지.
+       Flutter Native WebView 의 top inset 은 네이티브 Scaffold 가 이미 예약하므로
+       document-start bridge 와 native-bridge.ts 에서 0px 로 고정된다. */
+    --safe-area-inset-top: env(safe-area-inset-top, 0px);
+    /* bottom 만 Android 안전 minimum 16px — Bridge 응답 전 초기 렌더링에서 BottomNav
+       가 system gesture indicator 영역에 잘리는 회귀 차단. native-bridge 응답 후
+       정확한 viewPadding.bottom 값으로 즉시 override 됨 (≥16px 케이스 우선). */
+    --safe-area-inset-bottom: max(16px, env(safe-area-inset-bottom, 0px));
+    --safe-area-inset-left: env(safe-area-inset-left, 0px);
+    --safe-area-inset-right: env(safe-area-inset-right, 0px);
+
+    /* Viewport / Auto Layout SoT — Flutter MediaQuery + visualViewport 폴백 (2026-05-09 v3).
+       Native (Flutter WebView) 환경에서는 `native-bridge.ts.subscribeToDeviceMetrics`
+       가 Flutter MediaQuery 의 logical pixels 값을 즉시 주입하고, Web 브라우저 환경에서는
+       visualViewport / window 값을 폴백 주입한다. 회전·키보드·접힘 등 metrics 변경 시
+       Flutter `didChangeMetrics` push → Web 1프레임 내 갱신.
+       문서: docs/Architecture/SCREEN_METRICS.md
+       구독: src/components/providers/ClientProviders.tsx (단일 진입점) */
+    --screen-width: 100vw;
+    --screen-height: 100vh;
+    --screen-width-px: 360; /* unitless — calc 식 산술용 */
+    --screen-height-px: 740; /* unitless */
+    --viewport-width: 100vw;
+    --viewport-height: 100vh;
+    --device-pixel-ratio: 1;
+    --device-orientation: "portrait";
+    --device-platform: "web";
+    --keyboard-inset-bottom: 0px;
+    --mobile-shell-max-width: 448px;
+    --mobile-shell-width: min(
+      var(--viewport-width),
+      var(--screen-width),
+      var(--mobile-shell-max-width)
+    );
+    /* AppBar 콘텐츠 우측 시프트 (v9, 2026-05-08) — main/submain 헤더의
+       우측 액션 trailing padding 을 줄이고, 타이틀과 액션 묶음을 같은 양만큼
+       오른쪽 이동한다. padding 기반 autolayout 은 유지한다. */
+    --mobile-page-x: clamp(21px, 5.8vw, 25px);
+    --appbar-content-shift-x: 10px;
+    --appbar-action-size: clamp(44px, 11.2vw, 48px);
+    /* [2026-05-11] AppBar 타이틀 22px 통일 (사용자 요구). 모든 화면 SoT. */
+    --appbar-title-size: 22px;
+    --appbar-action-trailing-space: clamp(4px, 1.5vw, 8px);
+  }
+
+  /* ─── 디바이스 breakpoint 기반 autolayout 토큰 (2026-05-09) ─────────
+     [data-screen-bp="xs"]    ≤ 359px  (구형 안드로이드 작은 폰)
+     [data-screen-bp="sm"]    ≤ 413px  (iPhone Mini, 일반 안드로이드)
+     [data-screen-bp="md"]    ≤ 479px  (iPhone Pro Max, Galaxy Plus)
+     [data-screen-bp="lg"]    ≤ 767px  (Foldable, large phone landscape)
+     [data-screen-bp="xl"]    ≥ 768px  (Tablet / Desktop)
+     SoT: native-bridge.ts.computeScreenBreakpoint
+     2026-05-11: --appbar-title-size 는 22px 전 화면 단일값 (위 :root 정의 유지). */
+  html[data-screen-bp="xs"] {
+    --mobile-page-x: 16px;
+    --appbar-action-size: 40px;
+    --appbar-title-size: 22px;
+  }
+  html[data-screen-bp="sm"] {
+    --mobile-page-x: 20px;
+    --appbar-action-size: 44px;
+    --appbar-title-size: 22px;
+  }
+  html[data-screen-bp="md"] {
+    --mobile-page-x: 24px;
+    --appbar-action-size: 46px;
+    --appbar-title-size: 22px;
+  }
+  html[data-screen-bp="lg"],
+  html[data-screen-bp="xl"] {
+    --mobile-page-x: 28px;
+    --appbar-action-size: 48px;
+    --appbar-title-size: 22px;
+  }
+
+  :root {
+    /* spacer for nesting fix */
+    --autolayout-marker: 0;
+
+    /* ─── TEAMPLUS Wallet v2 토큰 (HEX 직접) ─────────────────────────
+       탭 컴포넌트, 카드, 그라디언트 등에서 사용. Tailwind 클래스(ice-500 등)와 병행.
+       JSX inline-style 에서 var(--c-ice-500) 형태로 참조 가능. */
+    --c-ice-50: #eef4ff;
+    --c-ice-100: #dbe6ff;
+    --c-ice-200: #b8ccff;
+    --c-ice-300: #85a8ff;
+    --c-ice-400: #5a82ff;
+    --c-ice-500: #2f5fff;
+    --c-ice-600: #1f47e6;
+    --c-ice-700: #1837b8;
+    --c-ice-800: #142c8f;
+    --c-ice-900: #0e1f66;
+
+    --c-rink-50: #eef0f5;
+    --c-rink-100: #d6dae5;
+    --c-rink-300: #8b95ad;
+    --c-rink-500: #4a5572;
+    --c-rink-700: #2a3247;
+    --c-rink-800: #1f2536;
+    --c-rink-900: #141826;
+    --c-puck: #0a0d14;
+
+    --c-flame-100: #ffe2da;
+    --c-flame-500: #ff5a36;
+    --c-mint-100: #cdf6eb;
+    --c-mint-500: #00d4a8;
+    --c-sun-100: #fff3cf;
+    --c-sun-500: #ffc940;
+
+    --c-success: #16a34a;
+    --c-warning: #f59e0b;
+    --c-danger: #ef4444;
+    --c-info: #2f5fff;
+
+    /* Wallet semantic surfaces & text */
+    --c-bg: #f6f8fc;
+    --c-surface: #ffffff;
+    --c-line: #e5e9f2;
+    --c-line-2: #eef1f7;
+    --c-text-1: #0a0d14;
+    --c-text-2: #2a3247;
+    --c-text-3: #6b7588;
+    --c-text-4: #9aa4ba;
+    --c-text-on: #ffffff;
+
+    /* Spacing scale (Wallet) */
+    --w-sp-1: 4px;
+    --w-sp-2: 8px;
+    --w-sp-3: 12px;
+    --w-sp-4: 16px;
+    --w-sp-5: 20px;
+    --w-sp-6: 24px;
+    --w-sp-7: 32px;
+    --w-sp-8: 40px;
+    --w-sp-9: 56px;
+    --w-sp-10: 72px;
+
+    /* Radius */
+    --w-r-xs: 4px;
+    --w-r-sm: 8px;
+    --w-r-md: 12px;
+    --w-r-lg: 16px;
+    --w-r-xl: 20px;
+    --w-r-2xl: 28px;
+    --w-r-pill: 999px;
+
+    /* Shadow */
+    --w-sh-1:
+      0 1px 2px rgba(20, 24, 38, 0.04), 0 1px 3px rgba(20, 24, 38, 0.06);
+    --w-sh-2:
+      0 2px 6px rgba(20, 24, 38, 0.06), 0 4px 12px rgba(20, 24, 38, 0.05);
+    --w-sh-3:
+      0 8px 24px rgba(20, 24, 38, 0.08), 0 2px 6px rgba(20, 24, 38, 0.05);
+    --w-sh-4:
+      0 16px 40px rgba(20, 24, 38, 0.12), 0 4px 12px rgba(20, 24, 38, 0.06);
+    --w-sh-blue: 0 8px 24px rgba(47, 95, 255, 0.28);
+    --w-sh-rink: 0 8px 24px rgba(20, 24, 38, 0.32);
+
+    /* Motion */
+    --w-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+    --w-dur-fast: 120ms;
+    --w-dur: 200ms;
+    --w-dur-slow: 320ms;
+  }
+
+  .dark {
+    --color-background: hsl(var(--ice-slate-900));
+    --color-surface: hsl(var(--ice-slate-800));
+    --color-border: hsl(var(--ice-slate-700));
+    --color-text-primary: hsl(var(--ice-slate-50));
+    --color-text-secondary: hsl(var(--ice-slate-300));
+    --color-text-muted: hsl(var(--ice-slate-400));
+
+    /* Wallet v2 dark mapping — rink-800 표면 + puck 배경 */
+    --c-bg: #0a0d14; /* puck */
+    --c-surface: #1f2536; /* rink-800 */
+    --c-line: rgba(255, 255, 255, 0.08);
+    --c-line-2: rgba(255, 255, 255, 0.04);
+    --c-text-1: #ffffff;
+    --c-text-2: #d6dae5; /* rink-100 */
+    --c-text-3: #8b95ad; /* rink-300 */
+    --c-text-4: #4a5572; /* rink-500 */
+  }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    /*
+     * 모바일 길게 누름 텍스트 선택 전역 차단 (2026-04-22 · Plan web-greedy-hippo).
+     * 네이티브 앱 느낌 UX 확보. 사용자가 복사해야 하는 컨텐츠(약관·공지·채팅·영수증·
+     * QR)는 `.selectable-text` 클래스 또는 input/textarea 자동 복구 규칙 참조.
+     */
+    user-select: none;
+    -webkit-user-select: none;
+    scroll-behavior: smooth;
+  }
+
+  /* 예외 A — 입력 필드는 반드시 선택/붙여넣기 가능해야 함 */
+  input,
+  textarea,
+  [contenteditable="true"],
+  [contenteditable=""] {
+    user-select: text;
+    -webkit-user-select: text;
+    -webkit-touch-callout: default;
+  }
+
+  /* 예외 B — "사용자가 복사 필요한 컨텐츠" 명시용 의미론 클래스.
+   * 하위 요소까지 상속 보장을 위해 `.selectable-text *` 포함.
+   * 적용처: 약관(`/terms`), 공지 상세(`/notice-detail/[id]`), 채팅(`/chat/*`, `/team-chat`),
+   *        영수증(`/receipt/[id]`), QR 값(`/qr-generate`, `/my-qr`).
+   */
+  .selectable-text,
+  .selectable-text * {
+    user-select: text;
+    -webkit-user-select: text;
+    -webkit-touch-callout: default;
+  }
+
+  body {
+    @apply bg-frost-50 text-frost-900 antialiased;
+    font-feature-settings:
+      "ss01" on,
+      "ss02" on;
+    /* Dark mode 전환 시 부드러운 애니메이션 (깜박임 방지) */
+    transition:
+      background-color 0.2s ease,
+      color 0.2s ease;
+    /* Hybrid 앱(Flutter WebView): viewport-fit=cover 로 WKWebView 가 status bar /
+       home indicator 까지 viewport 를 확장한다. 일반 페이지 콘텐츠가 안전 영역을
+       침범하지 않도록 body 단위 padding 으로 흡수.
+         · top    → status bar 보호
+         · left/right → 노치/Dynamic Island 좌우 보호
+         · bottom 은 Flutter Scaffold.bottomNavigationBar 가 별도 처리하므로 제외
+       LoadingPuck 등 `fixed inset-0` 풀스크린 오버레이는 viewport 기준 절대
+       위치이므로 body padding 영향 없이 status bar 영역까지 풀스크린 유지. */
+    /* Native Bridge 주입 우선 → env() 폴백 (Android WebView 0px 평가 문제 해결) */
+    padding-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+    padding-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+    padding-right: var(
+      --safe-area-inset-right,
+      env(safe-area-inset-right, 0px)
+    );
+  }
+
+  /*
+   * Mobile shell body scrolling:
+   * isolate the content region so iPhone/WebView uses momentum scrolling
+   * without chaining scroll to the fixed outer shell.
+   */
+  [data-mobile-shell] > main,
+  [data-mobile-shell] > [class*="overflow-auto"],
+  [data-mobile-shell] > [class*="overflow-y-auto"] {
+    min-height: 0;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: none;
+    overscroll-behavior-y: contain;
+    touch-action: pan-y pinch-zoom;
+  }
+
+  [data-mobile-shell] {
+    min-width: 0;
+    container-type: inline-size;
+  }
+
+  [data-mobile-shell]
+    :where(p, h1, h2, h3, h4, h5, h6, li, dd, dt, label, a, button) {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: keep-all;
+  }
+
+  [data-mobile-shell] :where(img, svg, video, canvas) {
+    max-width: 100%;
+  }
+
+  .dark body {
+    @apply bg-frost-950 text-frost-50;
+  }
+
+  /* Selection */
+  ::selection {
+    @apply bg-primary/20 text-primary;
+  }
+
+  /* Browser autofill colors can ignore component backgrounds on auth forms. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  textarea:-webkit-autofill,
+  textarea:-webkit-autofill:hover,
+  textarea:-webkit-autofill:focus,
+  select:-webkit-autofill,
+  select:-webkit-autofill:hover,
+  select:-webkit-autofill:focus {
+    -webkit-text-fill-color: hsl(var(--ice-slate-900));
+    caret-color: hsl(var(--ice-slate-900));
+    -webkit-box-shadow: 0 0 0 1000px #fff inset;
+    box-shadow: 0 0 0 1000px #fff inset;
+    transition: background-color 99999s ease-out 0s;
+  }
+
+  .dark input:-webkit-autofill,
+  .dark input:-webkit-autofill:hover,
+  .dark input:-webkit-autofill:focus,
+  .dark textarea:-webkit-autofill,
+  .dark textarea:-webkit-autofill:hover,
+  .dark textarea:-webkit-autofill:focus,
+  .dark select:-webkit-autofill,
+  .dark select:-webkit-autofill:hover,
+  .dark select:-webkit-autofill:focus {
+    -webkit-text-fill-color: hsl(var(--ice-slate-50));
+    caret-color: hsl(var(--ice-slate-50));
+    -webkit-box-shadow: 0 0 0 1000px hsl(var(--ice-slate-800)) inset;
+    box-shadow: 0 0 0 1000px hsl(var(--ice-slate-800)) inset;
+  }
+}
+
+/* ========================================
+   Component Layer - Human Design Patterns
+   ======================================== */
+@layer components {
+  /* Card - Clean Surface */
+  .card-surface {
+    @apply bg-white dark:bg-frost-800;
+    @apply border border-frost-200 dark:border-frost-700;
+    @apply rounded-2xl;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  }
+
+  .card-surface:hover {
+    @apply border-frost-300 dark:border-frost-600;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  }
+
+  /* Ice Theme Card - Subtle Ice Tint */
+  .card-ice {
+    @apply bg-sky-50 dark:bg-sky-900/20;
+    @apply border border-sky-200 dark:border-sky-800/50;
+    @apply rounded-2xl;
+  }
+
+  /* Credit Card - Professional Gradient (Exception for branding) */
+  .credit-card-bg {
+    background: var(--color-primary);
+  }
+
+  /* Button Base */
+  .btn-base {
+    @apply font-semibold rounded-xl;
+    @apply transition-colors duration-200;
+    @apply focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* Primary Button - Solid Color */
+  .btn-primary {
+    @apply bg-primary text-white;
+    @apply hover:bg-primary-700;
+    @apply active:bg-primary-800;
+  }
+
+  /* Secondary Button */
+  .btn-secondary {
+    @apply bg-frost-100 dark:bg-frost-700 text-frost-700 dark:text-frost-200;
+    @apply hover:bg-frost-200 dark:hover:bg-frost-600;
+  }
+
+  /* Ghost Button */
+  .btn-ghost {
+    @apply text-frost-600 dark:text-frost-300;
+    @apply hover:bg-frost-100 dark:hover:bg-frost-800;
+  }
+
+  /* Icon Container */
+  .icon-container {
+    @apply flex items-center justify-center;
+    @apply rounded-xl;
+  }
+
+  .icon-container-sm {
+    @apply w-10 h-10;
+  }
+
+  .icon-container-md {
+    @apply w-12 h-12;
+  }
+
+  .icon-container-lg {
+    @apply w-14 h-14;
+  }
+
+  /* Section Indicator */
+  .section-indicator {
+    @apply w-1 h-5 bg-primary rounded-full;
+  }
+
+  /* Status Badge */
+  .status-badge {
+    @apply inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold;
+  }
+
+  .status-badge-active {
+    @apply bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400;
+  }
+
+  .status-badge-pending {
+    @apply bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400;
+  }
+
+  .status-badge-inactive {
+    @apply bg-frost-100 text-frost-600 dark:bg-frost-800 dark:text-frost-400;
+  }
+
+  /* List Item */
+  .list-item {
+    @apply flex items-center gap-4 p-4;
+    @apply border-b border-frost-100 dark:border-frost-700/50;
+    @apply last:border-b-0;
+  }
+
+  .list-item-hover {
+    @apply hover:bg-frost-50 dark:hover:bg-frost-800/50;
+    @apply transition-colors duration-150;
+    @apply cursor-pointer;
+  }
+
+  /* Input Field */
+  .input-field {
+    @apply w-full px-4 py-3;
+    @apply bg-white dark:bg-frost-800;
+    @apply border border-frost-200 dark:border-frost-700;
+    @apply rounded-xl;
+    @apply text-frost-900 dark:text-frost-100;
+    @apply placeholder:text-frost-400;
+    @apply focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary;
+    @apply transition-colors duration-200;
+  }
+
+  /* Navigation Item */
+  .nav-item {
+    @apply flex flex-col items-center gap-1 py-2 px-3;
+    @apply text-frost-400 dark:text-frost-500;
+    @apply transition-colors duration-200;
+  }
+
+  .nav-item-active {
+    @apply text-primary;
+  }
+
+  /* Quick Action Card */
+  .quick-action {
+    @apply flex flex-col items-center justify-center gap-3 p-5;
+    @apply bg-white dark:bg-frost-800;
+    @apply border border-frost-200 dark:border-frost-700;
+    @apply rounded-2xl;
+    @apply hover:border-primary/30 hover:shadow-sm;
+    @apply transition-all duration-200;
+    @apply cursor-pointer;
+  }
+
+  /* Floating Action Button */
+  .fab {
+    @apply w-14 h-14;
+    @apply bg-primary text-white;
+    @apply rounded-full;
+    @apply flex items-center justify-center;
+    @apply shadow-lg;
+    @apply hover:bg-primary-700;
+    /* active:scale 대신 brightness로 피드백 (깜박임 방지) */
+    @apply active:brightness-95;
+    @apply transition-all duration-200;
+  }
+
+  /* ─── Card Typography 5-Level Hierarchy (2026-05-16 SoT) ─────────
+     한국 핀테크 표준 (토스/카카오뱅크/신한플레이) 기반.
+     모든 카드 영역의 글씨 크기는 이 5단 위계만 사용.
+     기존 text-w-* 토큰과 공존하지만, 카드 안에서는 .text-card-* 우선.
+     아동 UI(CHILD 그룹)는 .text-card-*-child 사용 — WCAG AAA 18px+.
+     색상은 CSS var(--c-text-1/2/3) 사용 → 다크모드 자동 매핑.
+     SPEC: docs/Planning/SPEC_TYPOGRAPHY_UNIFICATION.md
+     ────────────────────────────────────────────────────────────── */
+  .text-card-section {
+    font-size: clamp(17px, 4.2vw, 18px);
+    line-height: 1.4;
+    font-weight: 700;
+    color: var(--c-text-1);
+    letter-spacing: -0.01em;
+  }
+  .text-card-title {
+    font-size: clamp(15px, 3.8vw, 16px);
+    line-height: 1.45;
+    font-weight: 600;
+    color: var(--c-text-1);
+    letter-spacing: -0.005em;
+  }
+  .text-card-emphasis {
+    font-size: clamp(14px, 3.6vw, 15px);
+    line-height: 1.5;
+    font-weight: 500;
+    color: var(--c-text-2);
+  }
+  .text-card-body {
+    font-size: clamp(13px, 3.4vw, 14px);
+    line-height: 1.55;
+    font-weight: 400;
+    color: var(--c-text-2);
+  }
+  .text-card-meta {
+    font-size: 12px;
+    line-height: 1.45;
+    font-weight: 400;
+    color: var(--c-text-3);
+  }
+
+  /* ─── Popup/Modal/Sheet Fullscreen Dim Overlay (2026-05-16 SoT) ──
+     모든 Modal/BottomSheet/Popup/Dialog/Drawer 의 dim overlay 표준.
+     viewport 전체(status bar / appbar / bottom nav / bottom indicator)를
+     cover 하고 다른 화면 이벤트를 완전히 차단한다.
+
+     사용:
+       <div className="overlay-fullscreen-wrapper" role="dialog" aria-modal="true">
+         <div className="overlay-fullscreen-dim" aria-hidden="true" />
+         <div className="relative pointer-events-auto ...">{body}</div>
+       </div>
+
+     Native (Flutter WebView): useNativeScrim 훅을 함께 호출하여
+     iOS notch / Home Indicator / Android Navigation Bar 영역까지 native
+     scrim 으로 dim 처리 (CSS 만으로는 WebView 외부 영역 cover 불가).
+
+     SPEC: docs/Planning/SPEC_POPUP_FULLSCREEN_DIM.md
+     ────────────────────────────────────────────────────────────── */
+  .overlay-fullscreen-wrapper {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    z-index: 9990;
+    display: flex;
+    pointer-events: auto;
+    /* iOS WebView 에서 body padding 영향 받지 않도록 강제 */
+    margin: 0;
+    padding: 0;
+  }
+  .overlay-fullscreen-dim {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgb(20 24 38 / 0.55); /* rink-900 / 55% — Modal 표준 */
+    pointer-events: auto;
+  }
+  /* BottomSheet variant — 약간 약한 dim (0.45) */
+  .overlay-fullscreen-dim-sheet {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgb(20 24 38 / 0.45); /* rink-900 / 45% — Sheet 표준 */
+    pointer-events: auto;
+  }
+  /* Critical 시스템 알림 — 진한 dim (0.70) */
+  .overlay-fullscreen-dim-critical {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgb(20 24 38 / 0.7);
+    pointer-events: auto;
+  }
+
+  /* ─── BottomNav dim — 단일 스크림 모델 (2026-05-30 v3 · 이중 dim 제거) ──────
+     [배경] 모든 오버레이(Modal · ConfirmDialog · BottomSheet · *Sheet 류)는 이미
+       자신의 풀스크린 backdrop 으로 BottomNav(z-40) 위를 덮는다:
+         · portal `.overlay-fullscreen-wrapper` (z-9990, inset:0), 또는
+         · 컴포넌트 자체 `fixed inset-0` backdrop (z ≥ 60, document.body portal).
+       즉 BottomNav 영역은 본문과 동일한 backdrop 한 겹으로 이미 균일하게 dim 된다.
+
+     [v2 버그 · 2026-05-30 사용자 리포트] body[data-modal-open] 시 BottomNav 에
+       `::after` 로 dim 을 한 겹 더 그렸는데, 위 backdrop 과 누적되어
+       backdrop(0.55) + ::after(0.55) = 이중 dim → BottomNav 영역만 본문보다
+       어둡게 보이는 색조 불일치 발생.
+
+     [v3 수정] `::after` 이중 dim 제거. dim 은 오버레이의 풀스크린 backdrop 하나가
+       BottomNav 를 포함한 viewport 전체를 균일하게 덮는 단일 스크림으로 일원화.
+       네이티브 safe-area(status bar / home indicator)는 useNativeScrim 이 동일 색
+       #8C141826(= rgb(20 24 38 / 0.55), rink-900/55)로 칠해 본문 dim 과 톤 일치.
+       (`data-bottom-nav` 속성은 BottomNav 식별용으로 유지 — 더 이상 dim 에 미사용.)
+
+     SoT: docs/Planning/SPEC_POPUP_FULLSCREEN_DIM.md
+     ────────────────────────────────────────────────────────────── */
+
+  /* ─── Child Variant — WCAG AAA (18px+ 보장) ─────────────────────── */
+  .text-card-section-child {
+    font-size: clamp(19px, 4.8vw, 20px);
+    line-height: 1.4;
+    font-weight: 700;
+    color: var(--c-text-1);
+  }
+  .text-card-title-child {
+    font-size: clamp(17px, 4.4vw, 18px);
+    line-height: 1.45;
+    font-weight: 600;
+    color: var(--c-text-1);
+  }
+  .text-card-emphasis-child {
+    font-size: clamp(15px, 4vw, 16px);
+    line-height: 1.5;
+    font-weight: 500;
+    color: var(--c-text-2);
+  }
+  .text-card-body-child {
+    font-size: clamp(14px, 3.8vw, 15px);
+    line-height: 1.55;
+    font-weight: 400;
+    color: var(--c-text-2);
+  }
+  .text-card-meta-child {
+    font-size: 14px;
+    line-height: 1.45;
+    font-weight: 400;
+    color: var(--c-text-3);
+  }
+}
+
+/* ========================================
+   Utility Layer
+   ======================================== */
+@layer utilities {
+  /* Safe Area Padding — 2026-05-08 v2 일괄 utilities 추가
+     · Native Bridge 주입 시: var(--safe-area-inset-*) 우선
+     · 브라우저 환경: env() 폴백 자동 적용 (globals.css :root 에서 변수 정의됨) */
+  .pb-safe {
+    padding-bottom: max(1.5rem, var(--safe-area-inset-bottom));
+  }
+  /* 단독 safe-area (추가 padding 없음) */
+  .pb-safe-bottom {
+    padding-bottom: var(--safe-area-inset-bottom);
+  }
+  .pt-safe-top {
+    padding-top: var(--safe-area-inset-top);
+  }
+  .pl-safe-left {
+    padding-left: var(--safe-area-inset-left);
+  }
+  .pr-safe-right {
+    padding-right: var(--safe-area-inset-right);
+  }
+  /* safe-area + 추가 spacing (자주 쓰이는 조합) */
+  .pb-safe-2 {
+    padding-bottom: calc(0.5rem + var(--safe-area-inset-bottom));
+  }
+  .pb-safe-3 {
+    padding-bottom: calc(0.75rem + var(--safe-area-inset-bottom));
+  }
+  .pb-safe-4 {
+    padding-bottom: calc(1rem + var(--safe-area-inset-bottom));
+  }
+  .pb-safe-8 {
+    padding-bottom: calc(2rem + var(--safe-area-inset-bottom));
+  }
+  /* fixed bottom 요소가 navigation/indicator 영역 침범 방지용 mb */
+  .mb-safe-bottom {
+    margin-bottom: var(--safe-area-inset-bottom);
+  }
+
+  /* ─── FAB / sticky bottom button 표준 위치 (2026-05-13 이슈 D7/D9/D11/D14) ──────
+     BottomNav 높이(60px) + safe-area-inset-bottom + 추가 gap 자동 계산.
+     FAB 또는 sticky bottom CTA 가 BottomNav 위에 정확히 떠 있도록 함.
+
+     사용:
+       <button className="fixed right-4 bottom-fab-safe ...">  ← FAB
+       <div className="sticky bottom-0 px-4 pt-3 pb-fab-safe">...</div>  ← sticky CTA group
+
+     주의: 페이지가 BottomNav 없는 컨텍스트(detail · payment 등) 면
+       pb-safe-3 / pb-safe-4 등 BottomNav 미반영 유틸을 사용. */
+  .bottom-fab-safe {
+    bottom: calc(
+      60px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) +
+        0.75rem
+    );
+  }
+  .pb-fab-safe {
+    padding-bottom: calc(
+      60px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) +
+        0.75rem
+    );
+  }
+  /* BottomNav 가 있는 페이지에서 sticky bottom CTA 그룹용 — 외부 컨테이너에 적용.
+     `pb-fab-safe` 와 동일한 계산이지만 의미가 분리되어 grep 으로 추적 용이. */
+  .mb-bottom-nav-safe {
+    margin-bottom: calc(
+      60px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))
+    );
+  }
+
+  /* ─── 키보드 회피 유틸 (2026-05-09 SPEC_LOGIN_KEYBOARD) ────────────────
+     `--keyboard-inset-bottom` 은 native-bridge.ts.subscribeToDeviceMetrics 가
+     Flutter `viewInsets.bottom` (or visualViewport 폴백) 으로 RAF 디바운싱 갱신.
+     아래 유틸은 폼/스크롤 컨테이너가 키보드 가림을 자동 회피하도록 한다.
+
+     키보드 표시/숨김 시 100~250ms 의 자연스러운 transition 으로 점프 방지.
+     `motion-reduce:` 유저 prefer 시 transition 즉시 (접근성). */
+
+  /* 폼 컨테이너용 — 키보드 inset 만큼 아래 padding 추가 (safe-area 와 합산) */
+  .pb-keyboard-safe {
+    padding-bottom: calc(
+      var(--safe-area-inset-bottom, 0px) + var(--keyboard-inset-bottom, 0px)
+    );
+    transition: padding-bottom 200ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  /* `pb-keyboard-safe` + 기본 spacing (자주 쓰이는 조합 — auth 폼) */
+  .pb-keyboard-safe-8 {
+    padding-bottom: calc(
+      2rem + var(--safe-area-inset-bottom, 0px) +
+        var(--keyboard-inset-bottom, 0px)
+    );
+    transition: padding-bottom 200ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  /* 풀 스크린 폼 컨테이너 — 키보드 표시 시 viewport 안쪽으로 자동 축소.
+     `min-h-screen` (100vh) 의 단점:
+       · iOS Safari 의 동적 toolbar 시 100vh 가 viewport 보다 큼 → 화면 잘림
+       · 키보드 표시 시 100vh 가 변하지 않아 input 이 키보드 아래로 밀림
+     `100dvh` (dynamic viewport height) 사용 — 키보드/toolbar 변화 자동 반영. */
+  .min-h-screen-safe {
+    /* 폴백 (구형 Safari) → 동적 vh */
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  /* 활성 input 자동 가시영역 보장 — 스크롤 컨테이너의 아래쪽 여유 영역.
+     `scroll-padding-bottom` 으로 스크롤 anchoring 시 input 이 키보드에 가까이 붙지 않게 한다. */
+  .scroll-keyboard-safe {
+    scroll-padding-bottom: calc(var(--keyboard-inset-bottom, 0px) + 24px);
+    /* iOS bounce 스크롤 자연스럽게 */
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* prefers-reduced-motion 사용자: transition 제거 (접근성 — DESIGN.md §모션) */
+  @media (prefers-reduced-motion: reduce) {
+    .pb-keyboard-safe,
+    .pb-keyboard-safe-8 {
+      transition: none;
+    }
+  }
+
+  /* Hide Scrollbar */
+  .hide-scrollbar,
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .hide-scrollbar::-webkit-scrollbar,
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Custom Scrollbar */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-frost-300 dark:bg-frost-600 rounded-full;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    @apply bg-frost-400 dark:bg-frost-500;
+  }
+
+  /* Text Styles */
+  .text-heading {
+    @apply text-frost-900 dark:text-white font-bold;
+  }
+
+  .text-body {
+    @apply text-frost-700 dark:text-frost-200;
+  }
+
+  .text-caption {
+    @apply text-frost-500 dark:text-frost-400 text-sm;
+  }
+
+  .text-muted {
+    @apply text-frost-400 dark:text-frost-500;
+  }
+
+  /* Focus Ring */
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2;
+  }
+
+  /* ─── WCAG 2.4.7 Focus Visible — 전역 키보드 포커스 인디케이터 (2026-05-12 a11y) ──
+     키보드/스크린 리더 사용자에게 항상 명확한 focus ring 제공 (마우스는 제외).
+     - outline 사용: box-shadow 보다 layout-safe.
+     - 색상: ice-500 (#2f5fff) 2px solid + 2px offset → 대비 ≥ 3:1 (WCAG 1.4.11).
+     - 다크 모드: 동일 색상 (브랜드 일관성 + 대비 충족).
+     - .focus-visible-disabled 으로 opt-out 가능 (예: 커스텀 ring 사용 시). */
+  *:focus-visible {
+    outline: 2px solid var(--c-ice-500, #2f5fff);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+  /* opt-out: 자체 ring 클래스를 가진 요소는 기본 outline 제거 */
+  .focus-visible-disabled:focus-visible {
+    outline: none;
+  }
+
+  /* Fixed elements centered to mobile canvas */
+  .fixed-center-x {
+    @apply left-1/2 -translate-x-1/2 w-full max-w-md;
+  }
+
+  /* Truncate Multi-line */
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* Page Transition Animations */
+  .animate-page-enter {
+    animation: pageEnter 0.25s ease-out both;
+  }
+
+  /* Stagger Delays for Sequential Items */
+  .stagger-1 {
+    animation-delay: 50ms;
+  }
+  .stagger-2 {
+    animation-delay: 100ms;
+  }
+  .stagger-3 {
+    animation-delay: 150ms;
+  }
+  .stagger-4 {
+    animation-delay: 200ms;
+  }
+  .stagger-5 {
+    animation-delay: 250ms;
+  }
+  .stagger-6 {
+    animation-delay: 300ms;
+  }
+}
+
+/* Reduced Motion Support — WCAG 2.3.3 (Animation from Interactions)
+   글로벌 catch-all: 모든 커스텀 Tailwind animation·CSS transition·scroll-behavior를
+   reduced-motion 사용자에게 최소화한다. 이전의 named-class 나열 방식은
+   sheet-up/puck-travel/fab-* 등 신규 애니메이션을 누락하는 문제가 있었다. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* WCAG 2.2.2 Pause/Stop/Hide 예외 — 로딩 인디케이터는 "필수 활동"
+     LoadingPuck (L1) / LoadingRing (L2) / 일반 aria-busy 로더는 reduced-motion
+     사용자에게도 회전을 유지해야 한다. 그렇지 않으면 시스템이 일하는지 멈춘 건지
+     판별 불가 (사용자 보고: 2026-05-11 iOS '동작 줄이기' ON 상태에서 스피너 정지).
+     `revert` 로 cascade 의 다음 단계(Tailwind 기본 animate-* / 인라인 keyframe) 복원. */
+  [data-loading-puck],
+  [data-loading-puck] *,
+  [data-loading-puck] *::before,
+  [data-loading-puck] *::after,
+  [data-loading-ring],
+  [data-loading-ring] *,
+  [data-loading-ring] *::before,
+  [data-loading-ring] *::after,
+  [role="alert"][aria-busy="true"],
+  [role="alert"][aria-busy="true"] *,
+  [role="alert"][aria-busy="true"] *::before,
+  [role="alert"][aria-busy="true"] *::after {
+    animation-duration: revert !important;
+    animation-iteration-count: revert !important;
+    animation-delay: revert !important;
+    transition-duration: revert !important;
+  }
+}
+
+/* ========================================
+   Mobile/WebView Select Height Fix
+   appearance-none 적용 시 iOS Safari / Flutter WebView에서
+   select 높이가 수축되는 문제 방지
+   ======================================== */
+select {
+  min-height: 44px;
+  -webkit-padding-before: 0;
+  -webkit-padding-after: 0;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* ========================================
+   Date Input Calendar Icon
+   커스텀 아이콘 오버레이 방식:
+   네이티브 indicator를 투명하게 숨기고 커스텀 아이콘을 덮어씌움
+   ======================================== */
+.date-input-hide-indicator::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  cursor: pointer;
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 48px;
+  height: 100%;
+}
+
+/* ========================================
+   Scrollbar Styles — 전역 스크롤바 숨김
+   모든 역할(admin/director/coach/parent/teen/child/academy)의 body/contents 영역에서
+   스크롤바 미표시, 스크롤 동작은 유지.
+   스크롤바가 필요한 영역은 `.custom-scrollbar` 클래스로 opt-in.
+   ======================================== */
+html,
+body {
+  -ms-overflow-style: none; /* IE / Edge(구형) */
+  scrollbar-width: none; /* Firefox */
+}
+
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none; /* Chrome / Safari / WebKit */
+}
+
+/* 스크롤바가 필요한 영역은 .custom-scrollbar로 복원 */
+.custom-scrollbar {
+  -ms-overflow-style: auto;
+  scrollbar-width: thin;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+  display: block;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-frost-300 dark:bg-frost-700 rounded-full;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  @apply bg-frost-400 dark:bg-frost-600;
+}
+
+/* ========================================
+   Keyframe Animations - Minimal & Purposeful
+   ======================================== */
+
+@keyframes pageEnter {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Stat Cards Swipe - JS 기반 드래그 처리 */
+.stat-swipe-item {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Notification Dot Animation */
+.animate-pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+/* ========================================
+   Tab Slide Animations - Smooth Transitions
+   ======================================== */
+@keyframes slide-in-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-out-to-left {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+}
+
+@keyframes slide-out-to-right {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in-from-right 0.3s ease-out;
+}
+
+/* ========================================
+   Toast Entrance Animation
+   - `components/ui/Toast.tsx` 에서 사용.
+   - BottomNav 위쪽(화면 하단 고정 위치)에서 위로 살짝 밀어 올리며 등장.
+   - prefers-reduced-motion 사용자에게는 애니메이션을 비활성화한다.
+   ======================================== */
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-slide-up {
+    animation: none;
+  }
+}
+
+.animate-slide-out-left {
+  animation: slide-out-to-left 0.15s ease-out forwards;
+}
+
+.animate-slide-out-right {
+  animation: slide-out-to-right 0.15s ease-out forwards;
+}
+
+/* ========================================
+   Nordic Ice Shop Components
+   Premium Ice Hockey Shopping Experience
+   ======================================== */
+
+/* Frosted Glass Header */
+.header-frost {
+  @apply bg-white/80 dark:bg-slate-900/80;
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.dark .header-frost {
+  background: rgba(15, 23, 42, 0.85);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Ice Crystal Category Icon */
+.category-ice {
+  position: relative;
+  background: #bae6fd;
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -2px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.category-ice:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 8px 12px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -4px rgba(0, 0, 0, 0.06);
+}
+
+.category-ice:active {
+  transform: translateY(0);
+}
+
+.dark .category-ice {
+  background: #075985;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+}
+
+/* Time Deal Pulse Animation */
+@keyframes urgency-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+  }
+}
+
+.timer-urgent {
+  animation: urgency-pulse 2s ease-in-out infinite;
+}
+
+@keyframes countdown-flash {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.timer-flash {
+  animation: countdown-flash 1s ease-in-out infinite;
+}
+
+/* Product Card Hover Lift */
+.product-card-lift {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform, box-shadow;
+}
+
+.product-card-lift:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow:
+    0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 8px 10px -6px rgba(0, 0, 0, 0.1);
+}
+
+.product-card-lift:active {
+  transform: translateY(-2px) scale(1.01);
+}
+
+/* Discount Badge */
+.badge-discount {
+  background: #dc2626;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  animation: badge-glow 2s ease-in-out infinite;
+}
+
+@keyframes badge-glow {
+  0%,
+  100% {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  }
+  50% {
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+  }
+}
+
+/* Heart Button Animation */
+@keyframes heart-pop {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.3);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.heart-active {
+  animation: heart-pop 0.3s ease-out;
+}
+
+/* Shop Section Title with Ice Accent */
+.section-title-ice {
+  position: relative;
+  display: inline-block;
+}
+
+.section-title-ice::after {
+  content: "";
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  width: 40px;
+  height: 3px;
+  background: #0ea5e9;
+  border-radius: 2px;
+}
+
+/* Cart Badge Bounce */
+@keyframes cart-bounce {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+}
+
+.cart-badge-bounce {
+  animation: cart-bounce 0.3s ease-out;
+}
+
+/* Swipe Banner Overlay */
+.banner-overlay {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+/* Ice Shimmer Effect for Loading */
+@keyframes ice-shimmer {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.shimmer-ice {
+  background: #e0f2fe;
+  animation: ice-shimmer 1.5s ease-in-out infinite;
+}
+
+.dark .shimmer-ice {
+  background: #0c4a6e;
+}
+
+/* Navigation progress bar shimmer */
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+/* ========================================
+   Task #51 D-9 Accessibility Settings
+   사용자 접근성 설정 (설정 페이지에서 조절)
+   - --a11y-font-scale: 1 · 1.125 · 1.25 · 1.5
+   - .a11y-high-contrast: 대비 강화
+   - .a11y-reduced-motion: 애니메이션 최소화 (기기 설정 보조)
+   - .a11y-sr-hints: focus 시 aria-label 힌트 노출
+   ======================================== */
+
+:root {
+  --a11y-font-scale: 1;
+}
+
+/* 🔍 Fluid Typography & Layout (2026-05-08 v3 → 2026-05-11 v4) — 화면 해상도 기반 자동 스케일.
+   사용자 요구: "모든 화면에 해상도에 맞게 autolayout · 글꼴도 자동 크기 조정".
+   ─────────────────────────────────────────────────────────────────────────
+   v4 변경 (보통 한국 모바일 앱 사이즈 정렬):
+     이전 clamp(14px, 13px + 0.7vw, 17px) 은 320px 화면에서 root=14 → text-base(1rem)=14
+     였다 (보통 앱 16 대비 -12.5%). 토스/카카오뱅크/카카오톡 본문 16px 기준으로 정렬.
+   ─────────────────────────────────────────────────────────────────────────
+   html 루트 font-size 를 clamp() 로 정의 → 모든 rem 단위가 viewport 폭에 비례 스케일.
+     · 320px 화면 (작은 안드로이드):    15px (clamp min, 이전 14 → +1)
+     · 375px 화면 (iPhone SE/14):      16.3px (이전 14.6 → +1.7)
+     · 414px 화면 (iPhone 14 Pro Max): 16.6px (이전 15.9 → +0.7)
+     · 480px 화면:                     17.4px (이전 16.4 → +1)
+     · 768px 화면 (태블릿):             18px (clamp max, 이전 17 → +1)
+   결과: rem 기반 모든 컴포넌트 (text-base/p-2/gap-3 등) 가 자동으로 화면에 맞춰
+   확대·축소되어 별도 작업 없이 220+ 페이지 전체 fluid scaling 적용.
+
+   접근성 통합 (--a11y-font-scale): 0.85/1.0/1.15/1.3 등 사용자 설정과 곱연산
+   유지 → 시스템 글자 크기 환경 설정 그대로 작동. */
+html {
+  font-size: calc(clamp(15px, 14px + 0.5vw, 18px) * var(--a11y-font-scale, 1));
+  /* iOS Safari/WKWebView 의 자동 텍스트 축소(휴리스틱) 차단 — 풀폭 컨테이너에서
+     사용자가 의도하지 않은 폰트 사이즈 변동을 방지 (2026-05-11). */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* 🛡️ 모바일 가독성 안전망 — Tailwind JIT 가 생성한 작은 절대값 텍스트 차단 (2026-05-11).
+   `text-[8px]`/`text-[9px]`/`text-[10px]`/`text-[11px]` 등 디자인 의도와 무관하게 가독성
+   한계 미만으로 사용된 985+ 건의 인라인 절대값을 12px 로 자동 보정. 토큰 기반(text-w-*)
+   사용처는 영향 없음.
+   - `[class~="..."]` 셀렉터는 공백 구분 단어 매치 → Tailwind 다중 클래스 안에서도 정확히 매치.
+   - !important 는 인라인 절대값 우선순위 (Tailwind utility specificity 0,0,1,0) 보다 위로 둠.
+   - 디자인 의도가 작은 값이 정말 필요한 경우 `text-w-caption` (12px) 토큰을 명시 사용. */
+[class~="text-[8px]"],
+[class~="text-[9px]"],
+[class~="text-[10px]"],
+[class~="text-[11px]"] {
+  font-size: 12px !important;
+  line-height: 1.45 !important;
+}
+
+/* 고대비 모드: 테두리·글자 강화 (라이트/다크 모두 대응) */
+html.a11y-high-contrast {
+  --tw-border-opacity: 1;
+}
+
+html.a11y-high-contrast body {
+  color: #0f172a;
+}
+
+html.a11y-high-contrast.dark body {
+  color: #f8fafc;
+}
+
+html.a11y-high-contrast button,
+html.a11y-high-contrast a,
+html.a11y-high-contrast [role="button"],
+html.a11y-high-contrast input,
+html.a11y-high-contrast textarea,
+html.a11y-high-contrast select {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+html.a11y-high-contrast .text-slate-400,
+html.a11y-high-contrast .text-slate-500 {
+  color: #334155 !important;
+}
+
+html.a11y-high-contrast.dark .text-slate-400,
+html.a11y-high-contrast.dark .text-slate-500 {
+  color: #e2e8f0 !important;
+}
+
+/* 애니메이션 감소: Tailwind `motion-reduce` 유틸리티와 동등한 효과를 전역 적용 */
+html.a11y-reduced-motion *,
+html.a11y-reduced-motion *::before,
+html.a11y-reduced-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* WCAG 2.2.2 Pause/Stop/Hide 예외 (a11y-reduced-motion 클래스 분기)
+   prefers-reduced-motion 미디어 쿼리와 동일한 LoadingPuck/Ring/aria-busy 예외 */
+html.a11y-reduced-motion [data-loading-puck],
+html.a11y-reduced-motion [data-loading-puck] *,
+html.a11y-reduced-motion [data-loading-ring],
+html.a11y-reduced-motion [data-loading-ring] *,
+html.a11y-reduced-motion [role="alert"][aria-busy="true"],
+html.a11y-reduced-motion [role="alert"][aria-busy="true"] * {
+  animation-duration: revert !important;
+  animation-iteration-count: revert !important;
+  transition-duration: revert !important;
+}
+
+/* ========================================
+   📍 페이지 진입 stagger 애니메이션 (2026-05-11)
+   ========================================
+   사용자별 메인 + BottomNav 탭 진입 시 콘텐츠가 순차적으로 등장하여
+   "역동적" 인상을 제공한다. `MobileContainer` 의 `data-mobile-shell` 마커 안
+   `<main>` 직계 자식들에 `slideUp` keyframe (fade + translateY 8px → 0) 을
+   40ms 간격으로 cap 280ms 까지 stagger 적용.
+
+   ─ Motion SoT (CLAUDE.md):
+       · stagger 40ms · cap 280ms · ease-ios (cubic-bezier(0.22, 1, 0.36, 1))
+       · duration 360ms — 페이지 hero 진입 (200ms < hero < 500ms)
+   ─ 효과:
+       1. 사용자별 메인 (parent/coach/admin/director/child/teen) 첫 진입
+       2. BottomNav 5 탭 클릭 시 페이지 unmount → mount → 자동 재실행
+       3. 페이지 직접 변경 0건 (220 페이지 글로벌 적용)
+   ─ Opt-out:
+       <main data-no-enter> 마커 사용 시 비활성 (모달/특수 페이지)
+   ─ 접근성:
+       prefers-reduced-motion: reduce 환경에서 자동 비활성 (WCAG 2.3.3)
+       (LoadingPuck 등 "필수 활동" 은 위 a11y-reduced-motion 예외와 별개)
+*/
+[data-mobile-shell] main:not([data-no-enter]) > :where(*) {
+  animation: slideUp 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+[data-mobile-shell] main:not([data-no-enter]) > :where(*):nth-child(1) {
+  animation-delay: 0ms;
+}
+[data-mobile-shell] main:not([data-no-enter]) > :where(*):nth-child(2) {
+  animation-delay: 40ms;
+}
+[data-mobile-shell] main:not([data-no-enter]) > :where(*):nth-child(3) {
+  animation-delay: 80ms;
+}
+[data-mobile-shell] main:not([data-no-enter]) > :where(*):nth-child(4) {
+  animation-delay: 120ms;
+}
+[data-mobile-shell] main:not([data-no-enter]) > :where(*):nth-child(5) {
+  animation-delay: 160ms;
+}
+[data-mobile-shell] main:not([data-no-enter]) > :where(*):nth-child(6) {
+  animation-delay: 200ms;
+}
+[data-mobile-shell] main:not([data-no-enter]) > :where(*):nth-child(7) {
+  animation-delay: 240ms;
+}
+[data-mobile-shell] main:not([data-no-enter]) > :where(*):nth-child(n + 8) {
+  animation-delay: 280ms;
+}
+
+/* prefers-reduced-motion: reduce (시스템 설정) 환경 — stagger 비활성.
+   위 a11y-reduced-motion 클래스 룰과 별도로 시스템 미디어 쿼리도 명시 존중. */
+@media (prefers-reduced-motion: reduce) {
+  [data-mobile-shell] main > * {
+    animation: none !important;
+  }
+}
+
+/* 스크린 리더 힌트: 포커스 시 aria-label 시각화 */
+html.a11y-sr-hints [aria-label]:focus-visible::after {
+  content: " — " attr(aria-label);
+  font-size: 12px;
+  color: #1e3fae;
+  background: #fef9c3;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+html.a11y-sr-hints.dark [aria-label]:focus-visible::after {
+  color: #fef9c3;
+  background: #1e3a8a;
+}
+
+/* ─── Child Hero 아이스하키 슈팅 애니메이션 ──────────────
+   · 왼쪽 스틱이 퍽을 쳐서 오른쪽으로 고속 슈팅
+   · iOS WebView / Android InAppWebView 호환을 위해 globals.css 에 정의
+     (inline <style> 태그는 일부 WebView 에서 keyframes 파싱 실패 사례 있음)
+   · motion-reduce 사용자는 `html.a11y-reduced-motion` 규칙으로 자동 정지
+*/
+@keyframes puck-shoot {
+  0%,
+  40% {
+    transform: translate3d(0, 0, 0) scale(1, 1);
+    opacity: 1;
+  }
+  48% {
+    transform: translate3d(0, 0, 0) scale(0.78, 1.22);
+    opacity: 1;
+  }
+  50% {
+    transform: translate3d(10px, 0, 0) scale(1.25, 0.8);
+    opacity: 1;
+  }
+  55% {
+    transform: translate3d(80px, 0, 0) scale(1.35, 0.85);
+    opacity: 1;
+  }
+  58% {
+    transform: translate3d(160px, 0, 0) scale(1.2, 0.9);
+    opacity: 0;
+  }
+  59%,
+  92% {
+    transform: translate3d(0, 0, 0) scale(1, 1);
+    opacity: 0;
+  }
+  98%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1, 1);
+    opacity: 1;
+  }
+}
+
+@keyframes stick-shoot {
+  0%,
+  40% {
+    transform: rotate(0deg);
+  }
+  44% {
+    transform: rotate(-18deg);
+  }
+  50% {
+    transform: rotate(15deg);
+  }
+  58% {
+    transform: rotate(3deg);
+  }
+  66%,
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+/* Recharts 차트 외곽 border/outline 일괄 제거 */
+.recharts-wrapper,
+.recharts-wrapper *,
+.recharts-surface,
+.recharts-responsive-container,
+.recharts-responsive-container *,
+.recharts-wrapper svg,
+.recharts-surface svg {
+  outline: none !important;
+  border: none !important;
+}
+
+.recharts-wrapper:focus,
+.recharts-wrapper:focus-visible,
+.recharts-surface:focus,
+.recharts-surface:focus-visible,
+.recharts-wrapper svg:focus,
+.recharts-wrapper svg:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.recharts-bar-rectangle path,
+.recharts-rectangle {
+  stroke: none !important;
+}
+
+.recharts-cartesian-axis-line,
+.recharts-cartesian-grid-horizontal line:first-child,
+.recharts-cartesian-grid-vertical line:first-child,
+.recharts-cartesian-grid-horizontal line:last-child,
+.recharts-cartesian-grid-vertical line:last-child {
+  stroke: none !important;
+}
+
+/* ========================================
+   Task #10 (P5) — 토스 결제위젯 배지 가독성 보강 (2026-05-14)
+   ----------------------------------------
+   증상: Step 3 (`/payment/checkout`) 의 3번째 결제수단 "퀵계좌이체" 옆 "30% 소득공제"
+        배지가 Android WebView 360~414px 폭에서 하단이 잘림.
+   원인: 토스 SDK v2 가 배지 텍스트에 line-height:1 + 부모 overflow:hidden 조합으로
+        렌더링 → 한글 "공제" 의 디센더 픽셀이 컨테이너 바깥으로 밀려 잘림.
+   조치: `#payment-method` 하위 모든 descendant 에 대해 (1) overflow:visible 폴백,
+        (2) 배지로 추정되는 인라인 span(text-content 포함) 의 line-height 최소 1.4
+        및 vertical padding 2px 보강.
+   안전성: 토스 SDK 가 자체 클릭 핸들러를 inline span 으로 사용하지 않으므로 pointer
+          이벤트에 영향 없음. `data-toss-widget-host` 마커로 토스 위젯 영역만 적용.
+   ======================================== */
+[data-toss-widget-host],
+[data-toss-widget-host] *:not(input):not(button):not(svg):not(path) {
+  overflow: visible !important;
+}
+
+/* 토스 위젯 내부 inline span / label / em (= 배지 후보) 가독성 보강.
+   "30% 소득공제" 같은 한글 배지는 line-height 가 너무 타이트하면 디센더가 잘림. */
+[data-toss-widget-host] span,
+[data-toss-widget-host] em,
+[data-toss-widget-host] label,
+[data-toss-widget-host] small {
+  line-height: 1.45 !important;
+  padding-block: 2px;
+}
+
+/* 토스 위젯 컨테이너 자체에 자연스러운 하단 여백 — 마지막 결제수단(퀵계좌이체) 행이
+   다음 섹션(약관 동의)에 너무 붙어 배지가 시각적으로 잘려보이는 현상 추가 방지. */
+[data-toss-widget-host] {
+  padding-bottom: 8px;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   풀스크린 로딩 표면 — GPU 합성 + sub-pixel 안정화 (2026-05-14 v10)
+   [data-loading-puck] / [data-loading-ring] 표면 안의 가운데 콘텐츠가
+   60fps GPU 합성으로 합성되도록 layer 강제. translate3d/perspective 로
+   sub-pixel jitter 제거. transform-origin 명시로 회전 중심축 고정.
+   AI 스타일 금지 — gradient/blur/colored shadow 절대 사용하지 않음.
+   ───────────────────────────────────────────────────────────────── */
+[data-loading-puck],
+[data-loading-ring] {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  perspective: 1000px;
+  -webkit-perspective: 1000px;
+  contain: layout style paint;
+}
+
+/* 가운데 콘텐츠 wrapper — sub-pixel 보정
+   v16 (2026-05-16 T9): will-change 제거 — 정적 wrapper(transform 변경 없음)에
+   will-change 를 강제하면 GPU 레이어가 불필요하게 promote 됨 (메모리/composite 비용).
+   translate3d 만으로 sub-pixel jitter 방지 충분. */
+[data-loading-puck] > div,
+[data-loading-ring] > div {
+  transform: translate3d(0, 0, 0);
+}
+
+/* SVG (회전 링, SMIL group, animate-loading-ring-rotate) —
+   transform-origin 명시로 중심축 흔들림 0 */
+[data-loading-puck] svg,
+[data-loading-ring] svg {
+  transform-origin: 50% 50%;
+  -webkit-transform-origin: 50% 50%;
+}
+
+/* 호흡/회전 요소 — GPU layer + backface 안정화
+   v16 (2026-05-16 T9): will-change 를 실제 변경 속성에만 정밀 한정.
+   - puck-bob: transform 만 (퍽 떠오름)
+   - puck-arc: stroke-dasharray + stroke-dashoffset (SVG attribute)
+   - puck-shadow: transform + opacity (퍽 그림자 — 떠오름 + 페이드)
+   일괄 `transform, opacity` 선언은 bob/arc 에 불필요한 opacity 레이어 promote 유발 →
+   over-promotion 방지를 위해 셀렉터 분리. */
+[data-loading-puck] .animate-puck-bob {
+  transform-origin: 50% 50%;
+  -webkit-transform-origin: 50% 50%;
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+[data-loading-puck] .animate-puck-arc {
+  transform-origin: 50% 50%;
+  -webkit-transform-origin: 50% 50%;
+  /* arc 는 SVG stroke-dasharray/offset 만 변경 — transform/opacity 모두 변경 없음.
+     컴포넌트 inline style 에서 `willChange: 'stroke-dasharray, stroke-dashoffset'` 명시. */
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+[data-loading-puck] .animate-puck-shadow {
+  transform-origin: 50% 50%;
+  -webkit-transform-origin: 50% 50%;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* WCAG 2.2.2 "필수 활동(로딩)" 예외 — 회전은 유지, 호흡 모션만 정지 */
+@media (prefers-reduced-motion: reduce) {
+  [data-loading-puck] .animate-puck-arc,
+  [data-loading-puck] .animate-loading-halo-pulse,
+  .animate-loading-overlay-in,
+  .animate-loading-overlay-out {
+    animation: none !important;
+  }
+}

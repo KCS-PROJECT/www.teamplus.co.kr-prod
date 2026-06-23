@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  [DEBUG 전용 네트워크 보안 설정 · 2026-06-07]
+  debug 빌드에서만 적용(빌드타입 리소스 오버라이드) → 로컬/LAN/DEV 서버 HTTP(cleartext) 허용.
+  release/profile(PROD) 빌드는 main/res/xml/network_security_config.xml(cleartext 전면 차단)을 사용하므로
+  dev IP 예외가 운영 APK에 포함되지 않는다(공격면 축소 · CODE_REVIEW_APP AP-S4).
+  ⚠️ 새 개발 IP 추가 시 ios/Runner/Info.plist NSExceptionDomains(Debug 구성) 와 함께 동기화할 것.
+  ⚠️ release 빌드로 staging(211.236.x HTTP) QA가 필요하면 staging을 HTTPS화하거나 debug 빌드로 검증할 것.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- 시뮬레이터/로컬 -->
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <!-- Android 에뮬레이터 → 호스트 머신 매핑 -->
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <!-- 홈/LAN 개발 머신 -->
+        <domain includeSubdomains="true">192.168.0.100</domain>
+        <domain includeSubdomains="true">192.168.0.105</domain>
+        <domain includeSubdomains="true">192.168.45.205</domain>
+        <!-- DEV 서버 (SSL 인증서 없음 → HTTP) -->
+        <domain includeSubdomains="true">211.236.162.105</domain>
+        <domain includeSubdomains="true">211.236.162.115</domain>
+        <!-- 개발자별 LAN IP — dart_defines/{dsh,kms,kty}.json 과 동기화 -->
+        <domain includeSubdomains="true">211.236.174.86</domain>
+        <domain includeSubdomains="true">211.236.174.90</domain>
+        <domain includeSubdomains="true">211.236.174.110</domain>
+        <domain includeSubdomains="true">211.236.174.115</domain>
+        <domain includeSubdomains="true">211.236.174.220</domain>
+    </domain-config>
+</network-security-config>

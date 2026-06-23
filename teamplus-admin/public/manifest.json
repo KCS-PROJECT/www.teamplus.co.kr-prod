@@ -1,0 +1,26 @@
+{
+  "name": "TEAMPLUS - 팀플러스",
+  "short_name": "팀플러스",
+  "description": "아이스 하키 클럽 관리 플랫폼",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3B7DD8",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/apple-touch-icon.svg",
+      "sizes": "180x180",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "categories": ["sports", "business", "productivity"],
+  "lang": "ko"
+}
