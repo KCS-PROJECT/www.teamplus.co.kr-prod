@@ -488,41 +488,9 @@ export default function LoginPage() {
             </p>
             <div className="flex items-center justify-center gap-3">
               <h1 className="text-6xl font-extrabold tracking-tight">
-                <span className="text-white">아이</span>
-                <span className="text-[#4ADE80]">스</span>
-                <span className="text-white">타임</span>
+                <span className="text-white">팀플러스</span>
+                <span className="text-[#4ADE80]">+</span>
               </h1>
-              {/* Hockey Stick Icon with pulse */}
-              <svg className="w-14 h-14" viewBox="0 0 64 64" fill="none">
-                <path
-                  d="M12 52L32 32L44 20L48 16"
-                  stroke="#4ADE80"
-                  strokeWidth="5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M48 16L52 20L48 24"
-                  stroke="#4ADE80"
-                  strokeWidth="5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M52 52L32 32L20 20L16 16"
-                  stroke="#4ADE80"
-                  strokeWidth="5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M16 16L12 20L16 24"
-                  stroke="#4ADE80"
-                  strokeWidth="5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
             </div>
           </div>
 
@@ -559,40 +527,9 @@ export default function LoginPage() {
             >
               <div className="inline-flex items-center gap-2 mb-4">
                 <h1 className="text-4xl font-extrabold tracking-tight">
-                  <span className="text-white">아이</span>
-                  <span className="text-[#4ADE80]">스</span>
-                  <span className="text-white">타임</span>
+                  <span className="text-white">팀플러스</span>
+                  <span className="text-[#4ADE80]">+</span>
                 </h1>
-                <svg className="w-9 h-9" viewBox="0 0 64 64" fill="none">
-                  <path
-                    d="M12 52L32 32L44 20L48 16"
-                    stroke="#4ADE80"
-                    strokeWidth="5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M48 16L52 20L48 24"
-                    stroke="#4ADE80"
-                    strokeWidth="5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M52 52L32 32L20 20L16 16"
-                    stroke="#4ADE80"
-                    strokeWidth="5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M16 16L12 20L16 24"
-                    stroke="#4ADE80"
-                    strokeWidth="5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
               </div>
               <p className="text-white/70 text-sm">
                 아이스하키 대회·수강 관리를 한 번에
@@ -775,29 +712,6 @@ export default function LoginPage() {
                   )}
                 </Button>
               </form>
-
-              {/* Divider */}
-              <div className="relative my-6">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-slate-200"></div>
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-3 bg-white text-slate-400">또는</span>
-                </div>
-              </div>
-
-              {/* Sign Up Link */}
-              <div className="text-center">
-                <p className="text-sm text-slate-600">
-                  아직 계정이 없으신가요?{" "}
-                  <Link
-                    href="/signup"
-                    className="font-semibold text-primary hover:text-primary-dark transition-colors"
-                  >
-                    회원가입
-                  </Link>
-                </p>
-              </div>
             </div>
 
             {/* Mobile Footer */}
