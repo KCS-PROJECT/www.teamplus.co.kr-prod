@@ -49,6 +49,10 @@ const ALLOWED_ORIGINS: ReadonlyArray<string | RegExp> = [
   new RegExp(`^http://192\\.168\\.\\d{1,3}\\.\\d{1,3}:${WEB_PORT}$`),
   // 프로덕션 도메인
   /^https:\/\/([a-z0-9-]+\.)?teamplus\.com$/,
+  // 운영 도메인 (icetimes.co.kr 체계) — 앱 WebView 로드 대상은 teamplusweb 서브도메인만.
+  // SoT: src/lib/deeplink.ts(유일한 활성 WebView/딥링크 도메인), middleware.ts CSP 의
+  //   *.icetimes.co.kr connect-src 와 정합. teamplusadmin/teamplus(홍보)는 앱 미로드라 제외.
+  /^https:\/\/teamplusweb\.icetimes\.co\.kr$/,
   ...ENV_EXTRA_ORIGINS,
 ];
 
