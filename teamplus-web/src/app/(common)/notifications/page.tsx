@@ -11,8 +11,9 @@ import { usePageReady } from '@/hooks/usePageReady';
 import { useToast } from '@/components/ui/Toast';
 import { useModal } from '@/components/ui/Modal';
 import { MESSAGES } from '@/lib/messages';
-import { NotificationCategory } from '@/types/notification';
+import { Notification, NotificationCategory } from '@/types/notification';
 import { useDefaultUI } from '@/hooks/useNativeUI';
+import { useNavigation } from '@/hooks/useNavigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotificationContext } from '@/contexts/NotificationContext';
 
@@ -25,6 +26,8 @@ export default function NotificationsPage() {
 
   // Native 앱에서 BottomNav 표시 (기본 UI 설정)
   useDefaultUI();
+
+  const { navigate } = useNavigation();
 
   const {
     groups,
@@ -87,6 +90,22 @@ export default function NotificationsPage() {
   const handleResetFilter = useCallback(() => {
     setCategory('all');
   }, [setCategory]);
+
+  // 알림 클릭 — actionable(data.href) 알림만 해당 화면으로 이동(가입 승인 요청 → /approval 등).
+  //   읽음 처리는 NotificationItem.handleClick 이 onRead → onClick 순으로 선행 수행.
+  const handleItemClick = useCallback(
+    (notification: Notification) => {
+      let href = notification.data?.href;
+      if (!href) return;
+      // [2026-06-23 통합] 회원 승인 알림(백엔드 linkUrl 정적 "/approval")은 통합 페이지
+      //   /director-approvals 로 이동(코치 포함 전 매니저 공용). 다른 진입점과 동일 규칙.
+      if (href === '/approval') {
+        href = '/director-approvals';
+      }
+      navigate(href);
+    },
+    [navigate],
+  );
 
   // [2026-06-19 사용자 직접 지시] 전체 읽음 — 목록(서버) + 상단 벨 배지 동기 처리.
   const handleMarkAllRead = useCallback(async () => {
@@ -284,6 +303,7 @@ export default function NotificationsPage() {
           onLoadMore={loadMore}
           onRead={markAsRead}
           onDelete={deleteNotification}
+          onItemClick={handleItemClick}
           enableSwipe={true}
           emptyVariant={filter.category && filter.category !== 'all' ? 'filter' : 'notifications'}
           onEmptyAction={filter.category !== 'all' ? handleResetFilter : undefined}

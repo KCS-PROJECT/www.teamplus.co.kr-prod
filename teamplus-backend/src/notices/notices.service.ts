@@ -496,7 +496,7 @@ export class NoticesService {
         notificationType: "team_notice_created",
         title: "팀 공지",
         message: notice.title,
-        linkUrl: `/notices/${notice.id}`,
+        linkUrl: `/notice/${notice.id}`,
       });
     }
 
@@ -1054,7 +1054,7 @@ export class NoticesService {
         notificationType: "notice_comment_added",
         title: "공지 새 댓글",
         message: `"${notice.title}" 공지에 새 댓글이 달렸어요.`,
-        linkUrl: `/notices/${noticeId}`,
+        linkUrl: `/notice/${noticeId}`,
       });
     }
 

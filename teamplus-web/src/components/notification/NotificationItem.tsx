@@ -49,6 +49,10 @@ export const NotificationItem = memo(function NotificationItem({
   const style = NOTIFICATION_STYLES[notification.type];
   const typeLabel = NOTIFICATION_TYPE_LABEL[notification.type] ?? '알림';
 
+  // 이동 가능(actionable) 알림 — data.href 존재 시에만 클릭 이동·화살표 노출.
+  //   href 없는 정보성 알림은 읽음 처리만 수행(이동 없음).
+  const isActionable = !!notification.data?.href;
+
   const handleClick = () => {
     if (!notification.isRead && onRead) {
       onRead(notification.id);
@@ -58,10 +62,10 @@ export const NotificationItem = memo(function NotificationItem({
     }
   };
 
-  // SR 친화적 종합 라벨: "{제목}, {메시지} — {시각}{미읽음 여부}"
+  // SR 친화적 종합 라벨: "{제목}, {메시지} — {시각}{미읽음 여부}{이동 가능 여부}"
   const ariaLabel = `${notification.title}. ${notification.message}. ${notification.time}${
     !notification.isRead ? ', 미읽음' : ''
-  }`;
+  }${isActionable ? ', 눌러서 이동' : ''}`;
 
   const content = (
     <article
@@ -71,7 +75,8 @@ export const NotificationItem = memo(function NotificationItem({
       aria-posinset={posInSet}
       aria-setsize={setSize}
       className={cn(
-        'group relative flex gap-3 p-3.5 cursor-pointer rounded-2xl',
+        'group relative flex gap-3 p-3.5 rounded-2xl',
+        isActionable ? 'cursor-pointer' : 'cursor-default',
         notification.isRead
           ? 'bg-wbg dark:bg-rink-900'
           : 'bg-wsurface dark:bg-rink-800',
@@ -149,7 +154,14 @@ export const NotificationItem = memo(function NotificationItem({
         </p>
       </div>
 
-      {/* [2026-06-19 사용자 직접 지시] 우측 화살표(>) 제거 — 알림 카드는 정보 표시 전용(이동 없음). */}
+      {/* 우측 화살표(>) — data.href 있는 actionable 알림(예: 가입 승인 요청)만 노출. 이동 가능 어포던스. */}
+      {isActionable && (
+        <div className="flex-shrink-0 self-center pr-0.5" aria-hidden="true">
+          <svg width={18} height={18} viewBox="0 0 24 24" fill="none" className="text-wtext-4 dark:text-rink-400">
+            <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+      )}
     </article>
   );
 

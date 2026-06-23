@@ -210,11 +210,12 @@ export class CommunityService {
     }
 
     // 팀 소속 학생의 학부모에게 푸시 (실패는 게시글 작성에 영향 없음)
+    //   linkUrl 미지정 — 팀 게시글 상세 페이지가 웹에 없어 정보성(읽음 전용) 알림으로 발송.
+    //   상세 화면 추가 시 해당 경로를 linkUrl 로 지정.
     void this.notificationsService.notifyTeamParents(teamId, {
       notificationType: "team_post_created",
       title: "팀 공지",
       message: post.title,
-      linkUrl: `/teams/${teamId}/posts/${post.id}`,
     });
 
     return this.getTeamPostDetail(post.id, requester);

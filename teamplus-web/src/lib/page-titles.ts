@@ -110,7 +110,7 @@ export const PAGE_TITLES: Record<string, string> = {
   '/attendance-manage': '출석 관리',
   '/profile-edit': '프로필 수정',
   '/promotions': '프로모션',
-  '/approval': '수강 신청 승인',
+  '/approval': '회원 승인 관리',
   '/qr-generate': 'QR 코드 발급',
   '/academy': '오픈클래스',
   '/training-manage': '훈련 관리',

@@ -1018,6 +1018,7 @@ export const MESSAGES = {
     } as Record<string, string>,
     // 권한 관련
     viewOnlyHint: "조회만 가능합니다. 수정은 감독/코치 권한이 필요합니다.",
+    endedNoEdit: "종료된 대회는 수정할 수 없습니다.",
     applyCta: "참가 신청(결제)하기",
     bracketTitle: (round: string) => `${round} 대진표`,
     // 탭 라벨
@@ -1568,9 +1569,9 @@ export const MESSAGES = {
     // ─── 팀 자체 삭제 (위험 작업, 2단계 확인) ───────────────────
     //  V01 (2026-05-15): 선수단 탭 하단 "삭제하기" 버튼이 팀 자체 삭제로 동작 →
     //   라벨 명확화("팀 자체 삭제") + 2단계 confirm 으로 오클릭 방지.
-    deleteTeamButtonLabel: "팀 자체 삭제",
-    deleteTeamAriaLabel: "팀 자체 삭제하기 (위험 작업)",
-    deleteTeamWarningTitle: "팀 자체 삭제",
+    deleteTeamButtonLabel: "팀 삭제하기",
+    deleteTeamAriaLabel: "팀 삭제하기 (위험 작업)",
+    deleteTeamWarningTitle: "팀 삭제",
     deleteTeamWarningFirst:
       "정말로 이 팀을 삭제하시겠습니까?\n팀 운영이 종료되며, 선수단 명단·경기 일정·운영 데이터에 더 이상 접근할 수 없게 됩니다.",
     deleteTeamFirstConfirmText: "계속",
@@ -1975,6 +1976,7 @@ export const MESSAGES = {
 
     // 헬퍼 (라벨 함수)
     ageLabel: (n: number) => `${n}세`,
+    birthYearLabel: (y: number) => `${y}년생`,
     jerseyAriaLabel: (n: number | null | undefined) =>
       `등번호 ${n != null ? n : "-"}`,
     matchAriaLabel: (opponent: string) => `${opponent} 전`,

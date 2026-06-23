@@ -1869,6 +1869,9 @@ export class TeamsService {
             email: true,
             userType: true,
             phone: true,
+            birthDate: true,
+            // 출생연도 SoT — ChildProfile.birthDate 우선(User.birthDate 는 자녀 정보 수정 후 stale 가능)
+            childProfile: { select: { birthDate: true } },
           },
         },
         teamGroupMembers: {
@@ -1893,6 +1896,9 @@ export class TeamsService {
     const roster = teamMembers
       .map((tm) => {
         const grp = tm.teamGroupMembers[0]; // 가장 최근 그룹 정보 (있으면)
+        const birthDate =
+          tm.user.childProfile?.birthDate ?? tm.user.birthDate ?? null;
+        const birthYear = birthDate ? new Date(birthDate).getFullYear() : null;
         return {
           // 그룹 배정된 경우 TeamGroupMember.id, 아니면 sentinel ("unassigned:<TeamMember.id>")
           id: grp?.id ?? `unassigned:${tm.id}`,
@@ -1913,6 +1919,7 @@ export class TeamsService {
             playerName: tm.playerName,
             playerAge: tm.playerAge,
             playerLevel: tm.playerLevel,
+            birthYear,
             approvalStatus: tm.approvalStatus,
             firstName: tm.user.firstName,
             lastName: tm.user.lastName,

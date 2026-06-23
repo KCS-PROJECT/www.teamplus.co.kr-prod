@@ -238,6 +238,8 @@ export interface RosterMember {
     playerName: string;
     playerAge: number;
     playerLevel: string | null;
+    /** 출생연도 (ChildProfile.birthDate 우선, 미등록 시 null) */
+    birthYear: number | null;
     approvalStatus: string;
     user: {
       id: string;
