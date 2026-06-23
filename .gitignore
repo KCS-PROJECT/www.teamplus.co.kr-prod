@@ -46,7 +46,8 @@ out/
 teamplus-app/build/
 teamplus-web/.next/
 teamplus-admin/.next/
-
+teamplus-backend/log/
+teamplus-backend/uploads/
 # IntelliJ related
 *.iml
 *.ipr
@@ -93,9 +94,29 @@ teamplus-home/public/app/app-release.apk
 
 # Logs
 logs/
+# 예외: Next.js 라우트 소스의 logs 디렉토리(예: admin /dashboard/system/logs/*)는 코드이므로 추적.
+#   로그 파일 디렉토리(logs/)만 무시하고, src/app 하위 라우트 logs 는 git 추적 대상.
+!**/src/app/**/logs/
+!**/src/app/**/logs/**
 */log
 /log/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Firebase 서비스 계정 키 (절대 커밋 금지 — Admin SDK 비공개 키)
+*firebase-adminsdk*.json
+*-service-account*.json
+serviceAccountKey.json
+
+# gstack 보안 리포트 (로컬 전용 — 커밋 금지)
+.gstack/
+
+# Claude Code 로컬 권한 설정 (시크릿 포함 — 절대 커밋 금지, 2026-06-12 보안 감사)
+.claude/settings.local.json
+**/.claude/settings.local.json
+
+# Apple .p8 private keys (SIWA/APNs) — never commit (load via env)
+*.p8
+keyfiles/*.p8
