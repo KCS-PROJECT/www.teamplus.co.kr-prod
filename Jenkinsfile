@@ -48,10 +48,14 @@ pipeline {
 
         stage('Web - Install & Build (prod)') {
             steps {
+                // [2026-06-23] web의 build 스크립트는 rimraf 미포함 → 누적된 chunks 가
+                //   .next 안에 잔존하면 다음 빌드의 page chunk 와 충돌해 런타임에
+                //   MODULE_NOT_FOUND (e.g. './5611.js') 가 발생. 깨끗한 빌드 강제.
                 sh '''
                     ssh $SSH_OPTS $PROD_USER@$PROD_HOST "
                         set -e
                         cd $APP_DIR/teamplus-web
+                        rm -rf .next .next-dev
                         npm install
                         npm run build
                     "

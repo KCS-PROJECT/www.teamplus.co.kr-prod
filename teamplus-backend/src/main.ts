@@ -285,10 +285,20 @@ async function bootstrap() {
       }
 
       // 화이트리스트에 있거나 와일드카드(개발용) 허용
-      if (
+      // [2026-06-23] *.<domain> 패턴 매칭 지원 (예: https://*.icetimes.co.kr → 모든 서브도메인 허용)
+      const matchesWildcard = (allowed: string, origin: string): boolean => {
+        // "https://*.icetimes.co.kr" → /^https:\/\/[^./]+\.icetimes\.co\.kr$/
+        const m = allowed.match(/^(https?:\/\/)\*\.(.+)$/);
+        if (!m) return false;
+        const re = new RegExp(`^${m[1]}[^./]+\\.${m[2].replace(/\./g, "\\.")}$`);
+        return re.test(origin);
+      };
+      const isAllowed =
         allowedOrigins.includes(origin) ||
-        (!isProduction && allowedOrigins.includes("*"))
-      ) {
+        allowedOrigins.some((a) => matchesWildcard(a, origin)) ||
+        (!isProduction && allowedOrigins.includes("*"));
+
+      if (isAllowed) {
         callback(null, true);
       } else {
         // 개발 환경: 경고 로그 후 허용
