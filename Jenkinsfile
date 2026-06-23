@@ -225,21 +225,17 @@ REMOTE
             }
         }
 
-        stage('Deploy (pm2 on prod · production mode)') {
+        stage('Deploy (pm2 on prod · ecosystem)') {
             steps {
-                // 운영 모드: backend=start:prod (node dist/main), web/admin/home=start (next start)
-                // 이전 dev/watch 프로세스가 떠있을 가능성 대비 → delete 후 재기동(no-op if absent)
+                // [2026-06-23] 멱등 운영을 위해 ecosystem.config.cjs + pm2 startOrReload 채택.
+                //   이전 패턴(`pm2 start npm --name <n>` 다회 호출)은 동일 이름이라도 추가
+                //   인스턴스를 만들어 좀비/포트 충돌/무한 재시작 루프(↺ 888회 관측)를 유발.
+                //   startOrReload 는 존재 시 0-downtime reload, 부재 시 start 로 한 번에 처리.
                 sh '''
                     ssh $SSH_OPTS $PROD_USER@$PROD_HOST bash -s <<REMOTE
 set -e
-echo "Restarting teamplus services on prod (production build)..."
-for app in teamplus-backend teamplus-web teamplus-admin teamplus-home; do
-    pm2 delete \$app 2>/dev/null || true
-done
-pm2 start npm --name "teamplus-backend" --cwd $APP_DIR/teamplus-backend -- run start:prod
-pm2 start npm --name "teamplus-web"     --cwd $APP_DIR/teamplus-web     -- run start
-pm2 start npm --name "teamplus-admin"   --cwd $APP_DIR/teamplus-admin   -- run start
-pm2 start npm --name "teamplus-home"    --cwd $APP_DIR/teamplus-home    -- run start
+echo "Deploying teamplus services on prod via ecosystem.config.cjs..."
+pm2 startOrReload $APP_DIR/ecosystem.config.cjs --update-env
 pm2 save
 pm2 list
 REMOTE
