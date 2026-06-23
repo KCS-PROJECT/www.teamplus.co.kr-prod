@@ -2,144 +2,143 @@ pipeline {
     agent any
 
     environment {
-        APP_DIR = '/kcs-project/www.teamplus.co.kr'
+        // 운영서버 (.230) 정보 — Jenkins(.115)에서 SSH 로 원격 실행
+        APP_DIR     = '/kcs-project/www.teamplus.co.kr-prod'
+        PROD_HOST   = '211.236.174.230'
+        PROD_PORT   = '7514'
+        PROD_USER   = 'root'
+        SSH_KEY     = '/var/lib/jenkins/.ssh/id_ed25519'
+        // StrictHostKeyChecking=no + 별도 known_hosts 로 멱등 운영 (호스트키 회전 대비)
+        SSH_OPTS    = "-i /var/lib/jenkins/.ssh/id_ed25519 -p 7514 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/var/lib/jenkins/.ssh/known_hosts.prod -o BatchMode=yes -o ConnectTimeout=10"
+        // 운영 공개 API URL (NEXT_PUBLIC_API_URL 교정용)
+        PROD_API_URL = 'http://211.236.174.230:5003'
     }
 
     options {
         skipDefaultCheckout true
+        disableConcurrentBuilds()
+        timeout(time: 30, unit: 'MINUTES')
+        timestamps()
     }
 
-    triggers {
-        githubPush()
-        pollSCM('H/2 * * * *')
-    }
+    // ⚠️ 수동 배포 전용 — githubPush / pollSCM 트리거 의도적으로 미설정
 
     stages {
-        stage('Pull Latest Code') {
+        stage('Pull Latest Code (main → prod)') {
             steps {
                 sh '''
-                    git config --global --add safe.directory /kcs-project/www.teamplus.co.kr
-                    cd /kcs-project/www.teamplus.co.kr
-
-                    # 업로드/런타임 파일이 root:pm2 로 생성되어 jenkins 가 reset --hard 하지 못하는 경우 방지
-                    sudo chown -R jenkins:jenkins /kcs-project/www.teamplus.co.kr 2>/dev/null || true
-
-                    git fetch origin develop
-                    git checkout develop
-                    git reset --hard origin/develop
+                    ssh $SSH_OPTS $PROD_USER@$PROD_HOST "
+                        set -e
+                        git config --global --add safe.directory $APP_DIR
+                        cd $APP_DIR
+                        chown -R root:root $APP_DIR 2>/dev/null || true
+                        git fetch origin main
+                        git checkout main
+                        git reset --hard origin/main
+                        git log -1 --oneline
+                    "
                 '''
             }
         }
 
         stage('Backend - Install Dependencies') {
             steps {
-                sh 'cd /kcs-project/www.teamplus.co.kr/teamplus-backend && npm install'
+                sh 'ssh $SSH_OPTS $PROD_USER@$PROD_HOST "cd $APP_DIR/teamplus-backend && npm install"'
             }
         }
 
         stage('Web - Install Dependencies') {
             steps {
-                sh 'cd /kcs-project/www.teamplus.co.kr/teamplus-web && npm install'
+                sh 'ssh $SSH_OPTS $PROD_USER@$PROD_HOST "cd $APP_DIR/teamplus-web && npm install"'
             }
         }
 
         stage('Admin - Install Dependencies') {
             steps {
-                sh 'cd /kcs-project/www.teamplus.co.kr/teamplus-admin && npm install'
+                sh 'ssh $SSH_OPTS $PROD_USER@$PROD_HOST "cd $APP_DIR/teamplus-admin && npm install"'
             }
         }
 
         stage('Home - Install & Build') {
             steps {
                 sh '''
-                    cd /kcs-project/www.teamplus.co.kr/teamplus-home
-                    mkdir -p data
+                    ssh $SSH_OPTS $PROD_USER@$PROD_HOST bash -s <<REMOTE
+set -e
+cd $APP_DIR/teamplus-home
+mkdir -p data
 
-                    # .env 자동 생성 (git 에는 없음 · 서버 최초 1회 + 복구용)
-                    # [2026-06-15] home 관리자 로그인/공지 CMS 제거 — ADMIN_PASSWORD·JWT_SECRET 불필요.
-                    #   /news 는 Prisma 로 notices.db 를 읽기 전용 조회만 하므로 DATABASE_URL 만 있으면 된다.
-                    if [ ! -s .env ]; then
-                        echo "[.env] 없음 — 자동 생성"
-                        cat > .env <<EOF
+# .env 자동 생성 (git 미추적 · 운영 최초 1회 + 복구용)
+if [ ! -s .env ]; then
+    echo "[.env] 없음 — 자동 생성"
+    cat > .env <<'EOF'
 DATABASE_URL="file:../data/notices.db"
 EOF
-                        chmod 600 .env
-                    else
-                        echo "[.env] 이미 존재 — 유지"
-                    fi
+    chmod 600 .env
+else
+    echo "[.env] 이미 존재 — 유지"
+fi
 
-                    set -a
-                    . ./.env
-                    set +a
+set -a
+. ./.env
+set +a
 
-                    npm install
-                    npm run build
-                    npm run db:seed || echo "[seed] skipped"
+npm install
+npm run build
+npm run db:seed || echo "[seed] skipped"
+REMOTE
                 '''
             }
         }
 
         stage('Backend - Generate Prisma Client') {
             steps {
-                sh 'cd /kcs-project/www.teamplus.co.kr/teamplus-backend && npx prisma generate'
+                sh 'ssh $SSH_OPTS $PROD_USER@$PROD_HOST "cd $APP_DIR/teamplus-backend && npx prisma generate"'
             }
         }
 
-        stage('Fix Port & Config') {
+        stage('Fix Port & Config (prod)') {
             steps {
                 sh '''
-                    cd /kcs-project/www.teamplus.co.kr
-                    echo "Checking port configurations..."
+                    ssh $SSH_OPTS $PROD_USER@$PROD_HOST bash -s <<REMOTE
+set -e
+cd $APP_DIR
+echo "Checking port configurations (prod)..."
 
-                    # Backend .env — DB IP 교정 (옛 162.x → 174.115)
-                    if grep -q "211.236.162" teamplus-backend/.env 2>/dev/null; then
-                        sed -i 's/211.236.162.[0-9]*/211.236.174.115/g' teamplus-backend/.env
-                        echo "Fixed backend .env DB IP"
-                    fi
-                    if grep -q "211.236.162" teamplus-backend/.env.local 2>/dev/null; then
-                        sed -i 's/211.236.162.[0-9]*/211.236.174.115/g' teamplus-backend/.env.local
-                        echo "Fixed backend .env.local DB IP"
-                    fi
+# Backend .env — DB host 교정 (개발 .115 / 옛 .162.x → 운영 로컬 127.0.0.1)
+for f in teamplus-backend/.env teamplus-backend/.env.local; do
+    [ -f "\$f" ] || continue
+    sed -i 's/211\\.236\\.174\\.115/127.0.0.1/g' "\$f"
+    sed -i 's/211\\.236\\.162\\.[0-9]*/127.0.0.1/g' "\$f"
+    echo "[port-fix] DB host 교정: \$f"
+done
 
-                    # Web .env.local — API URL (localhost → 배포 IP:5003)
-                    if [ -f teamplus-web/.env.local ] && grep -q "localhost:5003" teamplus-web/.env.local 2>/dev/null; then
-                        sed -i 's|NEXT_PUBLIC_API_URL=http://localhost:5003|NEXT_PUBLIC_API_URL=http://211.236.174.115:5003|' teamplus-web/.env.local
-                        echo "Fixed web .env.local API URL"
-                    fi
-                    if [ -f teamplus-web/.env.local ] && grep -q "localhost:5003" teamplus-web/.env.local 2>/dev/null; then
-                        sed -i 's|NEXT_PUBLIC_API_URL=http://localhost:5003|NEXT_PUBLIC_API_URL=http://211.236.174.115:5003|' teamplus-web/.env.local
-                    fi
+# Web/Admin .env.local — NEXT_PUBLIC_API_URL → 운영 공개 IP
+for f in teamplus-web/.env.local teamplus-admin/.env.local; do
+    [ -f "\$f" ] || continue
+    sed -i 's|NEXT_PUBLIC_API_URL=http://localhost:5003|NEXT_PUBLIC_API_URL=$PROD_API_URL|' "\$f"
+    sed -i 's|NEXT_PUBLIC_API_URL=http://211\\.236\\.174\\.115:5003|NEXT_PUBLIC_API_URL=$PROD_API_URL|' "\$f"
+    echo "[port-fix] API URL 교정: \$f"
+done
 
-                    # Admin .env.local — API URL (localhost → 배포 IP:5003)
-                    if grep -q "localhost:5003" teamplus-admin/.env.local 2>/dev/null; then
-                        sed -i 's|NEXT_PUBLIC_API_URL=http://localhost:5003|NEXT_PUBLIC_API_URL=http://211.236.174.115:5003|' teamplus-admin/.env.local
-                        echo "Fixed admin .env.local API URL"
-                    fi
-                    if grep -q "localhost:5003" teamplus-admin/.env.local 2>/dev/null; then
-                        sed -i 's|NEXT_PUBLIC_API_URL=http://localhost:5003|NEXT_PUBLIC_API_URL=http://211.236.174.115:5003|' teamplus-admin/.env.local
-                    fi
+# Backend crypto fallback patch
+[ -f scripts/fix-crypto-fallback.py ] && python3 scripts/fix-crypto-fallback.py || echo "[crypto-fix] skipped"
 
-                    # Backend crypto fallback patch
-                    [ -f scripts/fix-crypto-fallback.py ] && python3 scripts/fix-crypto-fallback.py || echo "[crypto-fix] skipped"
+# Home 포트 SoT — 5010 고정
+sed -i 's/next dev -p 5020/next dev -p 5010/g; s/next start -p 5020/next start -p 5010/g' teamplus-home/package.json
+echo "[port-fix] home 5020 -> 5010"
 
-                    # 포트 SoT — 이 서버는 home=5010 사용. develop 본체는 home 만 5020 (마이그레이션 누락) → sed-fix.
-                    # web/admin 은 develop 본체가 이미 5001/5002 이므로 sed 불필요.
-                    sed -i 's/next dev -p 5020/next dev -p 5010/g; s/next start -p 5020/next start -p 5010/g' teamplus-home/package.json
-                    echo "[port-fix] home 5020 -> 5010"
+# Backend .env BACKEND_PORT 안전망
+if [ -f teamplus-backend/.env ]; then
+    if grep -q "^BACKEND_PORT=" teamplus-backend/.env; then
+        sed -i 's/^BACKEND_PORT=.*/BACKEND_PORT=5003/' teamplus-backend/.env
+    else
+        echo "BACKEND_PORT=5003" >> teamplus-backend/.env
+    fi
+    echo "[port-fix] backend=5003"
+fi
 
-                    # 브랜드명 한글 고정 + CSP 확장 (5001/5002/5003/5010) 은 develop 본체에 직접 반영됨 — sed 불필요
-
-                    # Backend .env BACKEND_PORT (원격 .env.example 은 5003 이지만 안전망)
-                    if [ -f teamplus-backend/.env ]; then
-                        if grep -q "^BACKEND_PORT=" teamplus-backend/.env; then
-                            sed -i 's/^BACKEND_PORT=.*/BACKEND_PORT=5003/' teamplus-backend/.env
-                        else
-                            echo "BACKEND_PORT=5003" >> teamplus-backend/.env
-                        fi
-                        echo "[port-fix] backend=5003"
-                    fi
-
-                    echo "Config check complete"
+echo "Config check complete (prod)"
+REMOTE
                 '''
             }
         }
@@ -147,17 +146,24 @@ EOF
         stage('Ensure Payment Provider Keys') {
             steps {
                 sh '''
-                    set -e
-                    ENV_FILE=/kcs-project/www.teamplus.co.kr/teamplus-backend/.env
+                    ssh $SSH_OPTS $PROD_USER@$PROD_HOST bash -s <<REMOTE
+set -e
+ENV_FILE=$APP_DIR/teamplus-backend/.env
 
-                    # ⚠️ 보안 메모: 토스페이먼츠 sandbox(test) 키
-                    if grep -q "^PAYMENT_PROVIDER=" "$ENV_FILE"; then
-                        echo "[toss-env] PAYMENT_PROVIDER 이미 설정됨 — 토스 키 주입 skip"
-                    else
-                        echo "[toss-env] PAYMENT_PROVIDER 미설정 — 토스 sandbox 키 주입"
-                        cat >> "$ENV_FILE" <<'EOF'
+if [ ! -f "\$ENV_FILE" ]; then
+    echo "[toss-env] backend .env 미존재 — 최초 배포는 .env 사전 배치 필요 (skip)"
+    exit 0
+fi
 
-# ─── TossPayments (결제위젯 v2 · sandbox test keys · Jenkinsfile 자동 주입) ────
+# ⚠️ 운영 라이브키 발급 시 별도 교체 작업 필요 — 현재 sandbox 키
+if grep -q "^PAYMENT_PROVIDER=" "\$ENV_FILE"; then
+    echo "[toss-env] PAYMENT_PROVIDER 이미 설정됨 — skip"
+else
+    echo "[toss-env] sandbox 토스 키 주입 (⚠️ 운영 라이브키 전환 시 교체 필수)"
+    cat >> "\$ENV_FILE" <<'EOF'
+
+# ─── TossPayments (결제위젯 v2 · sandbox test keys · Jenkinsfile-prod 자동 주입) ────
+# ⚠️ 운영 라이브키 발급 후 반드시 교체할 것.
 PAYMENT_PROVIDER=toss
 TOSS_CLIENT_KEY=test_gck_yL0qZ4G1VOlO2zOma6aoroWb2MQY
 TOSS_SECRET_KEY=test_gsk_E92LAa5PVbNqG0xALgEeV7YmpXyJ
@@ -166,26 +172,25 @@ TOSS_API_BASE=https://api.tosspayments.com
 TOSS_API_VERSION=2024-06-01
 TOSS_MID=iteampy7km
 EOF
-                        echo "[toss-env] 토스 키 7개 주입 완료"
-                    fi
+fi
 
-                    ensure_key() {
-                        local key="$1"
-                        local value="$2"
-                        if ! grep -q "^${key}=" "$ENV_FILE"; then
-                            echo "${key}=${value}" >> "$ENV_FILE"
-                            echo "[toss-env] +${key}"
-                        fi
-                    }
-                    ensure_key TOSS_CLIENT_KEY     "test_gck_yL0qZ4G1VOlO2zOma6aoroWb2MQY"
-                    ensure_key TOSS_SECRET_KEY     "test_gsk_E92LAa5PVbNqG0xALgEeV7YmpXyJ"
-                    ensure_key TOSS_WEBHOOK_SECRET "6dde5010b20cd671e12e54d46b85edc5ef0bd244b3493fb309dc1f59b2c91710"
-                    ensure_key TOSS_API_BASE       "https://api.tosspayments.com"
-                    ensure_key TOSS_API_VERSION    "2024-06-01"
-                    ensure_key TOSS_MID            "iteampy7km"
+ensure_key() {
+    local key="\$1"; local value="\$2"
+    if ! grep -q "^\${key}=" "\$ENV_FILE"; then
+        echo "\${key}=\${value}" >> "\$ENV_FILE"
+        echo "[toss-env] +\${key}"
+    fi
+}
+ensure_key TOSS_CLIENT_KEY     "test_gck_yL0qZ4G1VOlO2zOma6aoroWb2MQY"
+ensure_key TOSS_SECRET_KEY     "test_gsk_E92LAa5PVbNqG0xALgEeV7YmpXyJ"
+ensure_key TOSS_WEBHOOK_SECRET "6dde5010b20cd671e12e54d46b85edc5ef0bd244b3493fb309dc1f59b2c91710"
+ensure_key TOSS_API_BASE       "https://api.tosspayments.com"
+ensure_key TOSS_API_VERSION    "2024-06-01"
+ensure_key TOSS_MID            "iteampy7km"
 
-                    echo "[toss-env] final TOSS_/PAYMENT_PROVIDER lines:"
-                    grep -E "^PAYMENT_PROVIDER=|^TOSS_" "$ENV_FILE" | sed 's/=.*/=***masked***/'
+echo "[toss-env] final TOSS_/PAYMENT_PROVIDER lines:"
+grep -E '^PAYMENT_PROVIDER=|^TOSS_' "\$ENV_FILE" | sed 's/=.*/=***masked***/'
+REMOTE
                 '''
             }
         }
@@ -193,29 +198,25 @@ EOF
         stage('Backend - Apply DB Migrations') {
             steps {
                 sh '''
-                    cd /kcs-project/www.teamplus.co.kr/teamplus-backend
-                    # 원격 공유 DB 는 drift 정책상 prisma migrate dev 미사용 → 스키마 변경을
-                    # prisma/manual-migrations/*.sql 로 수동 작성한다. 그런데 prisma migrate deploy 는
-                    # prisma/migrations/ 만 적용하고 manual-migrations/ 는 적용하지 않으므로, 신규
-                    # 테이블/컬럼이 운영 DB 에 생성되지 않아 500("데이터베이스 오류")이 발생했다
-                    # (예: contact_inquiries 누락). 여기서 수동 SQL 을 멱등 적용해 재발을 막는다.
-                    # 모든 SQL 은 IF NOT EXISTS / duplicate_object 가드 포함 → 매 배포 반복 안전.
-                    # DATABASE_URL 은 Fix Port 단계에서 .115 로 교정된 backend/.env 를 prisma 가 로드.
-                    npm run db:migrate:manual || echo "[migrate:manual] WARNING — 적용 실패, 위 로그 확인(배포는 계속)"
+                    ssh $SSH_OPTS $PROD_USER@$PROD_HOST "
+                        cd $APP_DIR/teamplus-backend
+                        npm run db:migrate:manual || echo '[migrate:manual] WARNING — 적용 실패, 위 로그 확인(배포는 계속)'
+                    "
                 '''
             }
         }
 
-        stage('Deploy') {
+        stage('Deploy (pm2 on prod)') {
             steps {
                 sh '''
-                    echo "Restarting teamplus services..."
-                    # --update-env: .env 변경을 process.env 에 반영
-                    sudo pm2 restart teamplus-backend --update-env || sudo pm2 start npm --name "teamplus-backend" --cwd /kcs-project/www.teamplus.co.kr/teamplus-backend -- run start:dev
-                    sudo pm2 restart teamplus-web --update-env || sudo pm2 start npm --name "teamplus-web" --cwd /kcs-project/www.teamplus.co.kr/teamplus-web -- run dev
-                    sudo pm2 restart teamplus-admin --update-env || sudo pm2 start npm --name "teamplus-admin" --cwd /kcs-project/www.teamplus.co.kr/teamplus-admin -- run dev
-                    sudo pm2 restart teamplus-home --update-env || sudo pm2 start npm --name "teamplus-home" --cwd /kcs-project/www.teamplus.co.kr/teamplus-home -- run start
-                    sudo pm2 save
+                    ssh $SSH_OPTS $PROD_USER@$PROD_HOST bash -s <<REMOTE
+echo "Restarting teamplus services on prod..."
+pm2 restart teamplus-backend --update-env || pm2 start npm --name "teamplus-backend" --cwd $APP_DIR/teamplus-backend -- run start:dev
+pm2 restart teamplus-web --update-env     || pm2 start npm --name "teamplus-web"     --cwd $APP_DIR/teamplus-web     -- run dev
+pm2 restart teamplus-admin --update-env   || pm2 start npm --name "teamplus-admin"   --cwd $APP_DIR/teamplus-admin   -- run dev
+pm2 restart teamplus-home --update-env    || pm2 start npm --name "teamplus-home"    --cwd $APP_DIR/teamplus-home    -- run start
+pm2 save
+REMOTE
                 '''
             }
         }
@@ -224,11 +225,13 @@ EOF
             steps {
                 sh '''
                     sleep 15
-                    echo "Checking services..."
-                    curl -sf http://localhost:5003/health > /dev/null && echo "Backend (5003): OK" || echo "Backend (5003): STARTING..."
-                    curl -sf http://localhost:5001 > /dev/null && echo "Web (5001): OK" || echo "Web (5001): STARTING..."
-                    curl -sf http://localhost:5002 > /dev/null && echo "Admin (5002): OK" || echo "Admin (5002): STARTING..."
-                    curl -sf http://localhost:5010 > /dev/null && echo "Home (5010): OK" || echo "Home (5010): STARTING..."
+                    ssh $SSH_OPTS $PROD_USER@$PROD_HOST bash -s <<'REMOTE'
+echo "Checking services on prod..."
+curl -sf http://localhost:5003/health > /dev/null && echo "Backend (5003): OK"  || echo "Backend (5003): STARTING..."
+curl -sf http://localhost:5001          > /dev/null && echo "Web     (5001): OK" || echo "Web     (5001): STARTING..."
+curl -sf http://localhost:5002          > /dev/null && echo "Admin   (5002): OK" || echo "Admin   (5002): STARTING..."
+curl -sf http://localhost:5010          > /dev/null && echo "Home    (5010): OK" || echo "Home    (5010): STARTING..."
+REMOTE
                 '''
             }
         }
@@ -236,10 +239,10 @@ EOF
 
     post {
         success {
-            echo 'TEAMPLUS deployment successful! (5001/5002/5003/5010)'
+            echo 'TEAMPLUS PROD deployment successful! (5001/5002/5003/5010 on 211.236.174.230)'
         }
         failure {
-            echo 'TEAMPLUS deployment failed!'
+            echo 'TEAMPLUS PROD deployment failed!'
         }
     }
 }
