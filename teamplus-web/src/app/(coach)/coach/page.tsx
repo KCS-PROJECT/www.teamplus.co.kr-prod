@@ -178,12 +178,12 @@ export default function CoachDashboardPage() {
               pending 팀은 권한 없으므로 approved 팀만 전달. */}
 
         {/* 1. 회원 승인 — 처리 필요 알림이라 최상단 노출 (승인 대기 0건이면 숨김).
-         *    코치 전용 /approval 페이지로 분기 (C1 fix 2026-05-14) — /director-approvals 는
-         *    감독 도메인이라 코치 진입 시 권한 차이로 Flutter 앱 오류 화면이 뜨던 이슈 해결. */}
+         *    [2026-06-23 통합] 코치도 /director-approvals 단일 페이지 사용 — 전 팀 통합·일괄·이력
+         *    제공. 과거 C1(코치→감독 도메인 권한차로 앱 오류)은 전 계층 COACH 권한 보강으로 해소됨. */}
         <PendingApprovalsSection
           teamIds={approvedTeams}
           isTeamsLoading={teams === null}
-          targetPath="/approval"
+          targetPath="/director-approvals"
         />
 
         {/* 2. 공지사항 — 코치는 작성 권한 보유 → 카드 하단 작성 버튼 노출.

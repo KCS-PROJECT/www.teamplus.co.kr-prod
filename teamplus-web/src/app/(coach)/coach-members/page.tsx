@@ -280,7 +280,7 @@ export default function CoachMembersPage() {
                   {pendingMembers.length}
                 </span>
               </div>
-              <NavLink href="/approval" className="text-card-meta text-ice-500 font-medium">
+              <NavLink href="/director-approvals" className="text-card-meta text-ice-500 font-medium">
                 {MESSAGES.dashboard.viewAll}
               </NavLink>
             </div>

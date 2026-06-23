@@ -661,7 +661,6 @@ export default function TeamDetailPage() {
               <RosterPanel
                 roster={roster}
                 canManage={canManage}
-                onAddClick={() => setRosterModalOpen(true)}
                 onRemove={handleRosterRemove}
                 onEdit={handleRosterEdit}
               />
@@ -1274,54 +1273,26 @@ function SummaryStat({
 function RosterPanel({
   roster,
   canManage,
-  onAddClick,
   onRemove,
   onEdit,
 }: {
   roster: RosterMember[];
   canManage: boolean;
-  onAddClick: () => void;
   onRemove: (item: RosterMember) => void;
   onEdit: (item: RosterMember) => void;
 }) {
   if (roster.length === 0) {
     return (
-      <div className="space-y-4">
-        <EmptyState
-          icon="group_off"
-          title={MESSAGES.team.rosterEmpty}
-          description={MESSAGES.team.rosterEmptyHint}
-        />
-        {canManage && (
-          <button
-            type="button"
-            onClick={onAddClick}
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-ice-500 text-card-body font-bold text-white hover:bg-ice-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 active:scale-[0.98]"
-          >
-            <Icon
-              name="person_add"
-              className="text-[18px]"
-              aria-hidden="true"
-            />
-            {MESSAGES.team.addMember}
-          </button>
-        )}
-      </div>
+      <EmptyState
+        icon="group_off"
+        title={MESSAGES.team.rosterEmpty}
+        description={MESSAGES.team.rosterEmptyHint}
+      />
     );
   }
 
   return (
-    <div className="space-y-3">
-      {canManage && (
-        <button
-          type="button"
-          onClick={onAddClick}
-          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-ice-500/40 bg-white text-card-body font-bold text-ice-500 hover:bg-ice-500/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/30 dark:bg-rink-800 dark:hover:bg-ice-500/10"
-        >
-          <Icon name="add" className="text-[18px]" aria-hidden="true" />
-          {MESSAGES.team.addMember}
-        </button>
-      )}
+    <div className="space-y-3 px-5">
       <ul className="space-y-3" aria-label={MESSAGES.team.ariaRosterList}>
         {roster.map((item) => (
           <li key={item.id}>
@@ -1352,12 +1323,14 @@ function RosterCard({
   onEdit: (item: RosterMember) => void;
 }) {
   const pos = item.position ? POSITION_COLOR[item.position] : null;
-  // [수정 2026-05-11] 포지션 미지정 시 "미지정" 대신 본인 로그인 ID(email) 노출.
-  //  · 포지션 등록된 경우엔 기존 라벨(골리/디펜더/포워드) 유지.
-  const userEmail = item.member.user?.email ?? null;
-  const posLabel = item.position
-    ? POSITION_LABEL[item.position]
-    : (userEmail ?? MESSAGES.team.positionUnassigned);
+  // 메타 줄 — 있는 정보만 ' · ' 로 연결. 포지션은 기능 도입 시 자동 노출, 그 전엔 출생연도·그룹만.
+  const metaParts = [
+    item.position ? POSITION_LABEL[item.position] : null,
+    item.member.birthYear
+      ? MESSAGES.team.birthYearLabel(item.member.birthYear)
+      : null,
+    item.groupName ?? (item.isGrouped ? null : MESSAGES.team.groupUnassigned),
+  ].filter(Boolean);
 
   return (
     <article className="rounded-2xl border border-wline-2 bg-white p-4 shadow-card dark:border-rink-700 dark:bg-rink-800">
@@ -1401,13 +1374,11 @@ function RosterCard({
               </span>
             )}
           </div>
-          <p className="mt-0.5 text-card-meta text-wtext-3 dark:text-rink-300">
-            {posLabel}
-            {item.member.playerAge > 0 &&
-              ` · ${MESSAGES.team.ageLabel(item.member.playerAge)}`}
-            {item.groupName && ` · ${item.groupName}`}
-            {!item.isGrouped && ` · ${MESSAGES.team.groupUnassigned}`}
-          </p>
+          {metaParts.length > 0 && (
+            <p className="mt-0.5 text-card-meta text-wtext-3 dark:text-rink-300">
+              {metaParts.join(" · ")}
+            </p>
+          )}
         </div>
 
         {/* [수정 2026-05-13] 선수단탭에서 학생 카드 수정/삭제 버튼 제거.

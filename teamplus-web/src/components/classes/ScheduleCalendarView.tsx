@@ -178,10 +178,10 @@ export function ScheduleCalendarView({
   const upcomingGroups = dateGroups.filter((g) => g.key >= todayKey);
   const pastCount = pastGroups.reduce((sum, g) => sum + g.items.length, 0);
   const hasUpcoming = upcomingGroups.length > 0;
-  // 다가오는 일정이 없으면(전 회차 종료) 과거를 기본 노출해 빈 화면을 막는다.
-  const readOnlyVisibleGroups =
-    showPast || !hasUpcoming ? dateGroups : upcomingGroups;
-  const showPastToggle = pastCount > 0 && hasUpcoming;
+  // 전부 지난 일정인 수업도 다른 수업과 동일하게 기본 접고 토글로 펼친다.
+  //   (다가오는 일정이 없을 때만 전체를 펼치던 예외 제거 — 동작 일관성)
+  const readOnlyVisibleGroups = showPast ? dateGroups : upcomingGroups;
+  const showPastToggle = pastCount > 0;
 
   // 개별 회차 수정 시트.
   const [editing, setEditing] = useState<ScheduleCalendarItem | null>(null);

@@ -16,6 +16,9 @@ import { useNativeUI } from '@/hooks/useNativeUI';
 const GlobalMenu = dynamic(() => import('@/components/layout/GlobalMenu').then(mod => ({ default: mod.GlobalMenu })), { ssr: false });
 
 // ─── 회원 승인 관리 페이지 ──────────────────────────────
+// ⚠️ [DEPRECATED 2026-06-23] 진입점 없음(orphan). 회원 승인 동선은 /director-approvals 로 통합됨
+//    (전 팀 통합·일괄·이력 제공, 코치 포함 전 매니저 공용). 본 페이지는 롤백 대비로 보존만 하며
+//    수정·확장은 /director-approvals(useDirectorApprovals)에서 진행할 것. 이 파일 편집 금지.
 // 조회: GET /teams/managed/list → teamId
 //       GET /teams/:teamId/members?status=pending|approved|rejected
 // 승인/거절: member-approvals 모듈 (rejectionReason 보존 + MemberApprovalLog 감사 로그)
