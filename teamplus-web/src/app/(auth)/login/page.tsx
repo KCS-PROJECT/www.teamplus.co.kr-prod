@@ -94,109 +94,6 @@ function hasHangul(value: string): boolean {
   return HANGUL_REGEX.test(value);
 }
 
-// ========== 커스텀 계정 선택 드롭다운 ==========
-interface AccountOption {
-  label: string;
-  value: string;
-  email: string;
-  password: string;
-}
-
-interface AccountSelectorProps {
-  options: readonly AccountOption[];
-  value: string;
-  onChange: (value: string) => void;
-  disabled?: boolean;
-}
-
-function AccountSelector({
-  options,
-  value,
-  onChange,
-  disabled,
-}: AccountSelectorProps) {
-  const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const selected = options.find((o) => o.value === value) ?? options[0];
-
-  useEffect(() => {
-    if (!open) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
-      ) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [open]);
-
-  return (
-    <div ref={containerRef} className="relative">
-      {/* 트리거 버튼 */}
-      <button
-        type="button"
-        onClick={() => !disabled && setOpen((prev) => !prev)}
-        disabled={disabled}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        className="flex items-center w-full h-12 min-h-[48px] pl-12 pr-10 bg-wsurface dark:bg-rink-800 border border-wline dark:border-rink-700 rounded-w-md text-w-body text-wtext-1 dark:text-white focus:outline-none focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20 transition-all motion-reduce:transition-none duration-200 disabled:bg-wbg disabled:dark:bg-puck disabled:cursor-not-allowed disabled:opacity-60 text-left"
-      >
-        <span className="truncate">{selected.label}</span>
-      </button>
-      {/* 좌측 아이콘 */}
-      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-        <Icon name="person" className="text-wtext-4" />
-      </div>
-      {/* 우측 chevron */}
-      <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-        <Icon
-          name="expand_more"
-          className={`text-wtext-4 transition-transform motion-reduce:transition-none duration-200 ${open ? "rotate-180" : ""}`}
-        />
-      </div>
-
-      {/* 드롭다운 목록 */}
-      {open && (
-        <ul
-          role="listbox"
-          className="absolute z-50 top-[calc(100%+4px)] left-0 right-0 bg-wsurface dark:bg-rink-800 border border-wline dark:border-rink-700 rounded-w-md shadow-sh-2 overflow-hidden"
-        >
-          {options.map((option) => {
-            const isSelected = option.value === value;
-            return (
-              <li
-                key={option.value}
-                role="option"
-                aria-selected={isSelected}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  onChange(option.value);
-                  setOpen(false);
-                }}
-                className={`flex items-center gap-3 px-4 min-h-[52px] cursor-pointer transition-colors motion-reduce:transition-none duration-150
-                  ${
-                    isSelected
-                      ? "bg-ice-500/10 dark:bg-ice-500/20 text-ice-500 font-semibold"
-                      : "text-wtext-2 dark:text-rink-100 hover:bg-wbg dark:hover:bg-rink-700"
-                  }`}
-              >
-                <Icon
-                  name="check"
-                  className={`text-[18px] shrink-0 ${isSelected ? "text-ice-500" : "text-transparent"}`}
-                />
-                <span className="text-w-body">{option.label}</span>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
-  );
-}
-
 export default function LoginPage() {
   // Native 앱에서 로그인 화면 UI 설정 (페이지 마운트 시 적용)
   // useAuthUI 프리셋: showStatusBar=true, showAppBar=false, showBottomNav=false
@@ -277,15 +174,6 @@ export default function LoginPage() {
       window.location.pathname + (cleanQuery ? `?${cleanQuery}` : "");
     window.history.replaceState(null, "", cleanUrl);
   }, [toast]);
-
-  // Hydration 완료 플래그 — isNativeApp() 분기로 인한 SSR/CSR 불일치 방지
-  // 서버 SSR 시 isNativeApp()=false → AccountSelector 렌더
-  // WebView CSR 시 isNativeApp()=true  → AccountSelector 미렌더
-  // 초기 hydration 단계에서는 서버와 동일하게 렌더 후, useEffect 이후에만 native 분기 적용
-  const [isHydrated, setIsHydrated] = useState(false);
-  useEffect(() => {
-    setIsHydrated(true);
-  }, []);
 
   /**
    * 클라이언트 사이드 네비게이션 (무한 루프 방지)
@@ -379,39 +267,6 @@ export default function LoginPage() {
   const { isLocked, lockoutMessage, onLoginFailed, onLoginSuccess } =
     useLoginRateLimit();
 
-  // 테스트 계정 목록 — 시드(prisma/seeds/run-team-data.ts) 와 동기화
-  // [수정 2026-05-22] 신학생·웹관리자 항목 제거. 웹관리자는 admin 페이지에서 별도 관리.
-  const TEST_ACCOUNTS = [
-    { label: "직접 입력", value: "", email: "", password: "" },
-    {
-      label: "감독 (Director) — 임감독",
-      value: "director",
-      email: "lim12345",
-      password: "Test1234!",
-    },
-    {
-      label: "코치 (Coach) — 김코치",
-      value: "coach",
-      email: "kim_coach",
-      password: "Test1234!",
-    },
-    {
-      // [수정 2026-05-11] 학부모/학생 기본 계정을 신부모/신학생으로 교체.
-      label: "학부모 (Parent) — 신부모",
-      value: "parent",
-      email: "shin1234",
-      password: "Test1234!",
-    },
-    {
-      // [추가 2026-05-15] 오픈클래스 감독 — ACADEMY_DIRECTOR. (coach) 그룹 공용 사용.
-      label: "오픈클래스 감독 (Academy Director) — 오분글",
-      value: "academy_director",
-      email: "oven1234",
-      password: "Test1234!",
-    },
-  ] as const;
-
-  const [selectedUser, setSelectedUser] = useState("");
   // "아이디 저장" 체크박스 — 체크 시 로그인 성공한 아이디를 localStorage 에 보관해
   // 다음 진입 시 자동 채움. (비밀번호는 저장하지 않음 — 보안 정책)
   // 사용자 직접 지시 (2026-05-23): "로그인 유지" → "아이디 저장" 동작으로 통합.
@@ -483,15 +338,6 @@ export default function LoginPage() {
     target.setSelectionRange(caret, caret);
     // RHF 동기화
     target.dispatchEvent(new Event("input", { bubbles: true }));
-  };
-
-  const handleUserSelect = (value: string) => {
-    setSelectedUser(value);
-    const account = TEST_ACCOUNTS.find((a) => a.value === value);
-    if (account) {
-      setValue("email", account.email);
-      setValue("password", account.password);
-    }
   };
 
   // 아이디 저장 — mount 시 localStorage 에서 체크 상태 + 저장된 아이디 복원
@@ -838,16 +684,6 @@ export default function LoginPage() {
             noValidate
             autoComplete="off"
           >
-            {/* 테스트 계정 셀렉터 — 기능 그대로 유지 */}
-            {(!isHydrated || !isNativeApp()) && (
-              <AccountSelector
-                options={TEST_ACCOUNTS}
-                value={selectedUser}
-                onChange={handleUserSelect}
-                disabled={isSubmitting}
-              />
-            )}
-
             <div className="flex flex-col gap-1">
               {(() => {
                 // [추가 2026-05-23] 한글 IME 입력 차단 — register onChange 를 sanitizer 로 wrap.
