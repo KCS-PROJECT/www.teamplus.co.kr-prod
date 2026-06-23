@@ -18,7 +18,6 @@ pipeline {
         skipDefaultCheckout true
         disableConcurrentBuilds()
         timeout(time: 30, unit: 'MINUTES')
-        timestamps()
     }
 
     // ⚠️ 수동 배포 전용 — githubPush / pollSCM 트리거 의도적으로 미설정
