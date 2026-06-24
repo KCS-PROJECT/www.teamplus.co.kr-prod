@@ -147,10 +147,19 @@ export class FcmGateway implements OnModuleInit {
         ...(message.data && { data: message.data }),
         android: {
           priority: "high",
-          notification: { sound: "default", channelId: "teamplus_default" },
+          notification: {
+            sound: "default",
+            // 진동 활성 채널(_v2) + 우선순위/진동 명시. 구버전 teamplus_default 는
+            // 진동이 동결되어 _v2 로 버전업, 미존재 시 매니페스트 기본 채널 폴백.
+            channelId: "teamplus_default_v2",
+            priority: "max",
+            defaultVibrateTimings: true,
+          },
         },
         apns: {
-          payload: { aps: { sound: "default", badge: 1 } },
+          // 뱃지는 사용자별 unread count 가 필요하나 이 게이트웨이 메서드들은
+          // 현재 호출처가 없다. 잘못된 하드코딩 "1" 을 제거하고 omit 한다.
+          payload: { aps: { sound: "default" } },
         },
       });
 
@@ -187,10 +196,19 @@ export class FcmGateway implements OnModuleInit {
       ...(message.data && { data: message.data }),
       android: {
         priority: "high",
-        notification: { sound: "default", channelId: "teamplus_default" },
+        notification: {
+          sound: "default",
+          // 진동 활성 채널(_v2) + 우선순위/진동 명시. 구버전 teamplus_default 는
+          // 진동이 동결되어 _v2 로 버전업, 미존재 시 매니페스트 기본 채널 폴백.
+          channelId: "teamplus_default_v2",
+          priority: "max",
+          defaultVibrateTimings: true,
+        },
       },
       apns: {
-        payload: { aps: { sound: "default", badge: 1 } },
+        // 뱃지는 사용자별 unread count 가 필요하나 이 게이트웨이 메서드들은
+        // 현재 호출처가 없다. 잘못된 하드코딩 "1" 을 제거하고 omit 한다.
+        payload: { aps: { sound: "default" } },
       },
     };
 
@@ -244,10 +262,19 @@ export class FcmGateway implements OnModuleInit {
         ...(message.data && { data: message.data }),
         android: {
           priority: "high",
-          notification: { sound: "default", channelId: "teamplus_default" },
+          notification: {
+            sound: "default",
+            // 진동 활성 채널(_v2) + 우선순위/진동 명시. 구버전 teamplus_default 는
+            // 진동이 동결되어 _v2 로 버전업, 미존재 시 매니페스트 기본 채널 폴백.
+            channelId: "teamplus_default_v2",
+            priority: "max",
+            defaultVibrateTimings: true,
+          },
         },
         apns: {
-          payload: { aps: { sound: "default", badge: 1 } },
+          // 뱃지는 사용자별 unread count 가 필요하나 이 게이트웨이 메서드들은
+          // 현재 호출처가 없다. 잘못된 하드코딩 "1" 을 제거하고 omit 한다.
+          payload: { aps: { sound: "default" } },
         },
       });
 

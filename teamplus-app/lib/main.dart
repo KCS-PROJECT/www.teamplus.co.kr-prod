@@ -11,6 +11,7 @@ import 'core/router/deep_link_handler.dart';
 import 'core/security/app_lock_manager.dart';
 import 'app.dart' show TeamplusApp;
 import 'core/security/ssl_pinning_service.dart';
+import 'core/security/jailbreak_detection_service.dart';
 import 'core/constants/app_environment.dart';
 import 'core/notification/push_notification_service.dart';
 import 'core/storage/offline_cache_service.dart';
@@ -61,6 +62,16 @@ Future<void> _deferredInit() async {
         await SslPinningService().initialize();
       } catch (e) {
         debugPrint('⚠️ SSL Pinning 초기화 실패 (백그라운드): $e');
+      }
+    }(),
+    // [보안 H3] 루팅/탈옥 단말 감지 — release 빌드에서만 검사하고, 감지 시
+    //   SEVERE 로그 + Sentry 리포트로 표면화·모니터링만 수행 (앱 차단/종료 안 함).
+    //   비차단 fire-and-forget — 첫 페인트에 영향 없음.
+    () async {
+      try {
+        await JailbreakDetectionService().checkAndReport();
+      } catch (e) {
+        debugPrint('⚠️ 탈옥 감지 체크 실패 (백그라운드): $e');
       }
     }(),
     () async {
@@ -159,8 +170,7 @@ void removeNativeSplashOnce({String trigger = 'unknown'}) {
 }
 
 void main() {
-  // ignore: avoid_print
-  print('[Boot] main() 진입');
+  debugPrint('[Boot] main() 진입');
   BootTimeline.instance.start();
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -188,8 +198,7 @@ void main() {
   });
 
   BootTimeline.instance.mark('widgets_binding_ready');
-  // ignore: avoid_print
-  print('[Boot] WidgetsBinding ready');
+  debugPrint('[Boot] WidgetsBinding ready');
 
   // 🌍 환경 설정 초기화 (동기 — 매우 빠름)
   // 빌드 시 둘 중 하나로 환경 선택 (대소문자 무시):
@@ -215,15 +224,13 @@ void main() {
   if (envRaw.isNotEmpty) {
     forced = envMap[envRaw.toLowerCase()];
     if (forced == null) {
-      // ignore: avoid_print
-      print(
+      debugPrint(
         '[Boot] ⚠️ Unknown env value "$envRaw" '
         '(APP_ENV/ENV expects local|home|dev|prod) — falling back to auto detect.',
       );
     }
   } else {
-    // ignore: avoid_print
-    print(
+    debugPrint(
       '[Boot] ℹ️ No APP_ENV/ENV dart-define detected — '
       'auto detect by build mode (release→PROD, debug→LOCAL). '
       'Hint: --dart-define=APP_ENV=dev for dev server.',
@@ -232,8 +239,7 @@ void main() {
   AppEnvironment.instance.initialize(forceEnvironment: forced);
   // [보안 2026-06-07] release 로그에 백엔드 인프라(api/web URL) 노출 방지 — 디버그에서만 출력
   if (kDebugMode) {
-    // ignore: avoid_print
-    print(
+    debugPrint(
       '[Boot] env=${AppEnvironment.instance.config.type.name} '
       'api=${AppEnvironment.instance.config.apiBaseUrl} '
       'web=${AppEnvironment.instance.config.webAppUrl}',
@@ -285,8 +291,7 @@ void main() {
   ApiClient().onAuthRequired = _redirectToLoginFromApi;
 
   BootTimeline.instance.mark('run_app');
-  // ignore: avoid_print
-  print('[Boot] runApp 호출 직전');
+  debugPrint('[Boot] runApp 호출 직전');
 
   // [2026-05-14] Sentry init — SENTRY_DSN dart-define 활성 시에만 실제 전송.
   //   미설정 시 enabled: false → no-op. uncaught exception 자동 캡처 + ApiLifecycle
@@ -332,8 +337,7 @@ void main() {
       ),
     );
   }
-  // ignore: avoid_print
-  print('[Boot] runApp 호출 완료');
+  debugPrint('[Boot] runApp 호출 완료');
 
   // 🔔 푸시 알림 탭 → 알림함 이동 (foreground 로컬알림 탭 + background/terminated FCM 탭이
   //   모두 notificationStream 으로 합류). navigatorKey 미준비(콜드스타트 극초기) 시 무시.
@@ -355,8 +359,7 @@ void main() {
         platform: kIsWeb ? 'web' : 'app',
       );
     } catch (e) {
-      // ignore: avoid_print
-      print('[Boot] AppLogger 초기화 실패 (무시): $e');
+      debugPrint('[Boot] AppLogger 초기화 실패 (무시): $e');
     }
   }();
 }

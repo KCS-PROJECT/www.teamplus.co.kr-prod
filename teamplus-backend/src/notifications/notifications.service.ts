@@ -282,6 +282,11 @@ export class NotificationsService {
    * - 트랜잭션 내부 createMany 로 인앱 알림을 적재한 출석 정정 등 → 인앱은 유지하고 푸시만 추가
    * - 알림센터 적재가 불필요한 채팅 메시지 등 → 자체 unreadCount 를 쓰므로 푸시만 발송
    * 푸시 수신거부(pushEnabled=false) 사용자는 제외하고, 실패는 격리한다.
+   *
+   * @param options.setBadge `false` 면 iOS 앱 뱃지를 설정하지 않는다(omit).
+   *   채팅처럼 알림센터에 적재되지 않는 푸시가 unread=0 으로 뱃지를 잘못
+   *   클리어하는 것을 막는다. 출석 정정 등 트랜잭션 내 notification row 를
+   *   생성하는 경로는 기본값(setBadge 미전달=뱃지 유지)을 그대로 사용한다.
    */
   async pushOnlyToUsers(
     userIds: string[],
@@ -291,6 +296,7 @@ export class NotificationsService {
       message: string;
       linkUrl?: string;
     },
+    options?: { setBadge?: boolean },
   ): Promise<void> {
     const unique = Array.from(new Set(userIds)).filter(Boolean);
     const targets = await this.filterPushEnabled(unique);
@@ -305,6 +311,7 @@ export class NotificationsService {
           type: payload.notificationType,
           ...(payload.linkUrl ? { linkUrl: payload.linkUrl } : {}),
         },
+        options,
       );
     } catch (error) {
       this.logger.warn(`FCM 단독 발송 실패: ${error}`);

@@ -307,8 +307,9 @@ class ApiLifecycleInterceptor extends Interceptor {
 
   String? _extractMessage(DioException err) {
     final data = err.response?.data;
-    if (data is Map && data['message'] is String)
+    if (data is Map && data['message'] is String) {
       return data['message'] as String;
+    }
     return err.message;
   }
 

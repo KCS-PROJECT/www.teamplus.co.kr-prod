@@ -133,11 +133,13 @@
             </intent-filter>
         </activity>
         <!-- 🔔 FCM 백그라운드/종료 상태 알림 기본 채널.
-             앱에서 생성하는 teamplus_default 채널과 일치시켜, 백엔드가 channelId 를
-             지정하지 않은 메시지도 '기타' 채널이 아닌 정의된 채널로 표시되게 한다. -->
+             앱에서 생성하는 teamplus_default_v2 채널(진동 활성)과 일치시켜, 백엔드가
+             channelId 를 지정하지 않았거나 존재하지 않는 채널을 지정한 메시지도
+             '기타' 채널이 아닌 진동이 켜진 정의된 채널로 표시되게 한다.
+             (구버전 teamplus_default 채널은 진동이 동결되어 _v2 로 버전업) -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="teamplus_default"/>
+            android:value="teamplus_default_v2"/>
         <!-- 🔔 FCM 기본 알림 아이콘(단색 화이트 실루엣) + 틴트 색상.
              아이콘 미지정 시 Android 가 런처 아이콘을 흰 사각형으로 강제하므로 전용 아이콘을 지정한다. -->
         <meta-data

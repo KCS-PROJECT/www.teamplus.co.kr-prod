@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../constants/app_environment.dart';
-import '../storage/secure_storage_service.dart';
+import '../network/api_client.dart';
 import '../webview/js_bridge.dart';
 
 /// KG이니시스 결제 결과
@@ -202,11 +202,11 @@ class KGInicisService {
     required int amount,
   }) async {
     try {
-      final secureStorage = SecureStorageService();
-      final accessToken = await secureStorage.getAccessToken();
-
-      final dio = Dio();
-      final response = await dio.post(
+      // [보안 2026-06-24] 결제 검증 요청을 앱 공용 네트워킹 레이어(ApiClient)로 라우팅.
+      // raw Dio() 는 SSL Pinning·인터셉터를 우회하여 MITM 위험이 있으므로,
+      // ApiClient(SslPinningService.createAdapter() 어댑터 + 인증/재시도 인터셉터)를 사용한다.
+      // Authorization Bearer 토큰은 _AuthInterceptor 가 SecureStorage 에서 자동 첨부한다.
+      final response = await ApiClient().post(
         '${appEnv.apiBaseUrl}/payments/verify',
         data: {
           'transactionId': transactionId,
@@ -214,7 +214,6 @@ class KGInicisService {
           'amount': amount,
         },
         options: Options(
-          headers: {'Authorization': 'Bearer $accessToken'},
           sendTimeout: const Duration(seconds: 15),
           receiveTimeout: const Duration(seconds: 15),
         ),
@@ -238,18 +237,15 @@ class KGInicisService {
     required String reason,
   }) async {
     try {
-      final secureStorage = SecureStorageService();
-      final accessToken = await secureStorage.getAccessToken();
-
-      final dio = Dio();
-      final response = await dio.post(
+      // [보안 2026-06-24] 결제 취소 요청도 ApiClient 경유 — SSL Pinning + 인터셉터 적용.
+      // Authorization Bearer 토큰은 _AuthInterceptor 가 SecureStorage 에서 자동 첨부한다.
+      final response = await ApiClient().post(
         '${appEnv.apiBaseUrl}/payments/cancel',
         data: {
           'transactionId': transactionId,
           'reason': reason,
         },
         options: Options(
-          headers: {'Authorization': 'Bearer $accessToken'},
           sendTimeout: const Duration(seconds: 15),
           receiveTimeout: const Duration(seconds: 15),
         ),

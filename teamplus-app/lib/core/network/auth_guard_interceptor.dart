@@ -50,8 +50,9 @@ class AuthGuardInterceptor extends Interceptor {
     try {
       onAuthRequired?.call(options.path);
     } catch (e) {
-      if (kDebugMode)
+      if (kDebugMode) {
         debugPrint('[AuthGuard] onAuthRequired handler failed: $e');
+      }
     }
 
     final err = DioException(

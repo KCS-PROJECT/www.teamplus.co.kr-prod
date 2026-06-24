@@ -2,9 +2,11 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../auth/jwt_format.dart';
 import '../constants/api_constants.dart';
+import '../logging/app_logger.dart';
 import '../storage/secure_storage_service.dart';
 
 /// WebSocket 연결 상태
@@ -261,7 +263,22 @@ class WebSocketService with WidgetsBindingObserver {
       if (kDebugMode) {
         debugPrint('🔌 Connecting to WebSocket: $url');
       }
-    } catch (e) {
+    } catch (e, st) {
+      // 연결 실패 — 구조화 로깅 + Sentry 보고 (실시간 알림/채팅 가용성에 직접 영향).
+      //   ⚠️ accessToken 은 Socket.IO auth 옵션으로만 전달되며 예외 객체/URL 에 포함되지
+      //   않으므로 로깅 안전. namespace 만 컨텍스트로 남긴다.
+      AppLogger.instance.error(
+        'WebSocket 연결 실패',
+        error: e,
+        stackTrace: st,
+        category: ErrorCategory.external,
+        context: {
+          'op': 'websocket.connect',
+          'namespace': namespace ?? '(default)',
+          'externalSource': 'socket.io',
+        },
+      );
+      _reportWebSocketToSentry(e, st, operation: 'websocket.connect');
       if (kDebugMode) {
         debugPrint('❌ WebSocket connection error: $e');
       }
@@ -590,11 +607,22 @@ class WebSocketService with WidgetsBindingObserver {
       }
       return null;
     } catch (e) {
+      // ⚠️ 토큰 누출 방지: DioException 직렬화에 refresh token(request body) 이 포함될 수
+      //   있어 raw 예외 객체를 sink/Sentry 로 전송하지 않는다. 예외 타입 + 메시지 80자만 기록.
+      //   (연결 실패 자체는 connect() 경로에서 Sentry 보고되므로 여기선 구조화 로깅만)
+      final safeMsg = e.toString();
+      final trimmed =
+          safeMsg.length > 80 ? '${safeMsg.substring(0, 80)}...' : safeMsg;
+      AppLogger.instance.warn(
+        'WebSocket 토큰 refresh 실패 (재로그인 필요 가능)',
+        context: {
+          'op': 'websocket.tokenRefresh',
+          'errorType': e.runtimeType.toString(),
+          'detail': trimmed,
+        },
+      );
       if (kDebugMode) {
-        // 토큰·세션 ID 노출 차단 위해 메시지 80자 trim
-        final safeMsg = e.toString();
-        debugPrint(
-            '❌ WebSocket token refresh 실패: ${safeMsg.length > 80 ? "${safeMsg.substring(0, 80)}..." : safeMsg}');
+        debugPrint('❌ WebSocket token refresh 실패: $trimmed');
       }
       return null;
     }
@@ -624,6 +652,30 @@ class WebSocketService with WidgetsBindingObserver {
     _statusController.close();
     _eventController.close();
     _eventListeners.clear();
+  }
+}
+
+/// Sentry 보고 — SENTRY_DSN 미설정/미초기화 시 no-op.
+///
+/// main.dart 의 Sentry init 패턴에 맞춰 try/catch 로 감싸 미초기화 환경에서도
+/// 호출부에 예외가 전파되지 않도록 한다. accessToken 은 connect() 의 auth 옵션으로만
+/// 전달되어 예외 객체에 포함되지 않으므로 connect 실패 예외 보고는 안전하다.
+void _reportWebSocketToSentry(
+  Object error,
+  StackTrace? stackTrace, {
+  required String operation,
+}) {
+  try {
+    Sentry.captureException(
+      error,
+      stackTrace: stackTrace,
+      withScope: (scope) {
+        scope.level = SentryLevel.error;
+        scope.setTag('operation', operation);
+      },
+    );
+  } catch (_) {
+    /* Sentry 미초기화 시 무시 */
   }
 }
 
