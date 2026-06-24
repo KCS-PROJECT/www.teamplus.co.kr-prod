@@ -24,7 +24,7 @@ export interface AppSettings {
   signupEnabled: boolean;
   socialLoginEnabled: boolean;
   maxLoginAttempts: number;
-  // 크레딧/QR
+  // 결제권/QR
   creditExpireDays: number;
   qrExpireMinutes: number;
   // 약관 버전

@@ -30,7 +30,7 @@ const screens: Screen[] = [
   {
     src: '/images/app-classes.png',
     title: '수업 · 결제',
-    description: '수강 신청부터 크레딧·결제까지 하나의 흐름으로 이어집니다.',
+    description: '수강 신청부터 수업권·결제까지 하나의 흐름으로 이어집니다.',
     badge: '수업',
     badgeTone: 'mint',
   },

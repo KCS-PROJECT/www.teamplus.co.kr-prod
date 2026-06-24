@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { Icon } from '@/components/ui/Icon';
 
 /**
- * SolidStatusCard - 큰 상태 카드 (시즌권/크레딧/티켓 등)
+ * SolidStatusCard - 큰 상태 카드 (시즌권/결제권/티켓 등)
  *
  * 시안의 그라디언트 카드를 솔리드 컬러로 변환한 버전.
  * - 큰 라벨 + 큰 숫자 + 진도바(선택) + 액션 버튼 + mini 리스트(선택)

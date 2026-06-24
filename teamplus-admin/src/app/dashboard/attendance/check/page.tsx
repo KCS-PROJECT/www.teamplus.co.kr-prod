@@ -836,7 +836,7 @@ export default function AttendanceCheckPage() {
                   scope="col"
                   className="px-4 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider"
                 >
-                  크레딧
+                  결제권
                 </th>
               </tr>
             </thead>

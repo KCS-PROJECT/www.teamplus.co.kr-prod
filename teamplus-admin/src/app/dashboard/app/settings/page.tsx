@@ -638,7 +638,7 @@ function AppSettingsContent() {
                     htmlFor={creditExpireDaysId}
                     className="block text-sm font-medium text-slate-700 dark:text-slate-300"
                   >
-                    크레딧 만료일 (일)
+                    결제권 만료일 (일)
                   </label>
                   <Input
                     id={creditExpireDaysId}
@@ -653,11 +653,11 @@ function AppSettingsContent() {
                       )
                     }
                     placeholder="예: 90"
-                    aria-label="크레딧 만료일 (일)"
+                    aria-label="결제권 만료일 (일)"
                     className="h-11 bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 dark:text-white"
                   />
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    구매 후 크레딧이 만료되기까지의 기간
+                    구매 후 결제권이 만료되기까지의 기간
                   </p>
                 </div>
                 <div className="space-y-2">

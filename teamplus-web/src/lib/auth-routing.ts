@@ -148,6 +148,9 @@ const PROTECTED_PATHS_BY_ROLE: Record<UserType, string[]> = {
     //  middleware 의 PROTECTED_PATHS_BY_ROLE 에 누락되어 dashboard(/director) 으로 redirect 되던 버그.
     '/classes',
     '/attendance',
+    // 가입 승인 요청 알림(membership_requested, linkUrl="/approval") 동선.
+    //  (coach) layout 가드는 director 를 허용하나 middleware paths 누락으로 /director 로 튕기던 버그.
+    '/approval',
   ],
   academy_director: [
     // [수정 2026-05-13 P1] ACADEMY_DIRECTOR 전용 대시보드 URL 분리 (/academy-director).
@@ -189,6 +192,8 @@ const PROTECTED_PATHS_BY_ROLE: Record<UserType, string[]> = {
     // [추가 2026-05-12] 홈 캘린더 액션 동선 보강 (출석 확인 / 결제 확인)
     '/attendance',
     '/classes',
+    // 가입 승인 요청 알림(membership_requested, linkUrl="/approval") 동선 — (coach) layout 가드 정합화.
+    '/approval',
   ],
   coach: [
     '/coach',
@@ -269,7 +274,7 @@ const PROTECTED_PATHS_BY_ROLE: Record<UserType, string[]> = {
     '/classes',
     '/attendance',
     // [B14 추가 2026-05-26] 마이페이지 > 활동 > 출석 기록의 "자녀별 상세 출석 보기" 진입 경로.
-    //  /attendance-history 는 자녀 선택 + 자녀별 출석 상세 페이지(자녀목록·출석·크레딧 조회)인데
+    //  /attendance-history 는 자녀 선택 + 자녀별 출석 상세 페이지(자녀목록·출석·결제권 조회)인데
     //  parent RBAC 에 누락되어 있었다. matchesPath('/attendance-history','/attendance') 는
     //  segment 경계 매칭상 false 이고, child/teen 만 등록돼 ALL_PROTECTED_PATHS 에는 포함되므로
     //  학부모 클릭 시 dashboard(/parent) 로 redirect 되어 홈으로 튕기던 버그(B14) 발생.

@@ -162,14 +162,14 @@ export default function ReceiptDetailPage() {
               />
             </div>
 
-            {/* 크레딧 발급 정보 */}
+            {/* 결제권 발급 정보 */}
             {receipt.creditsIssued > 0 && (
               <div className="mx-5 mt-4 flex items-center gap-3 bg-ice-500/5 dark:bg-ice-500/10 rounded-xl p-4">
                 <div className="w-10 h-10 rounded-w-pill bg-ice-500/10 flex items-center justify-center shrink-0">
                   <Icon name="toll" className="text-xl text-ice-500 dark:text-blue-400" />
                 </div>
                 <div>
-                  <p className="text-card-body font-bold text-wtext-1 dark:text-white">크레딧 발급</p>
+                  <p className="text-card-body font-bold text-wtext-1 dark:text-white">결제권 발급</p>
                   <p className="text-card-body text-ice-500 dark:text-blue-400 font-semibold">{receipt.creditsIssued}회</p>
                 </div>
               </div>

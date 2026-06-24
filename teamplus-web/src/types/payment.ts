@@ -41,7 +41,7 @@ export interface PaymentOption {
   monthlyFixedAmount?: number;
 }
 
-/** 크레딧 사용 상태 */
+/** 결제권 사용 상태 */
 export type UsageStatus = 'attended' | 'absent' | 'cancelled';
 
 // ============================================
@@ -64,7 +64,7 @@ export interface PaymentHistoryItem {
   orderNumber?: string;
 }
 
-/** 크레딧 사용 내역 아이템 */
+/** 결제권 사용 내역 아이템 */
 export interface UsageHistoryItem {
   id: string;
   className: string;
@@ -108,10 +108,10 @@ export interface Receipt {
 }
 
 // ============================================
-// 크레딧 타입
+// 결제권 타입
 // ============================================
 
-/** 크레딧 상태 */
+/** 결제권 상태 */
 export interface CreditStatus {
   currentCredits: number;
   totalCredits: number;
@@ -155,7 +155,7 @@ export interface GetUsageHistoryResponse {
   hasMore: boolean;
 }
 
-/** 크레딧 상태 조회 응답 */
+/** 결제권 상태 조회 응답 */
 export interface GetCreditStatusResponse {
   creditStatus: CreditStatus;
 }

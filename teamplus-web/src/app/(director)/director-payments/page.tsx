@@ -206,18 +206,18 @@ export default function DirectorPaymentsPage() {
           </section>
         </div>
 
-        {/* ── 크레딧 관리 진입 카드 ──────────────────────────────────────── */}
+        {/* ── 결제권 관리 진입 카드 ──────────────────────────────────────── */}
         <div className="px-5 pb-5">
           <NavLink
             href="/director-credits"
             className="group flex items-center gap-3 rounded-w-md border border-wline-2 bg-wsurface p-4 shadow-sh-1 transition-colors motion-reduce:transition-none hover:border-ice-500/40 hover:bg-ice-50/50 active:brightness-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/30 dark:border-rink-700 dark:bg-rink-800 dark:hover:border-ice-500/40 dark:hover:bg-rink-700"
-            aria-label="크레딧 관리 페이지로 이동"
+            aria-label="결제권 관리 페이지로 이동"
           >
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-w-md bg-ice-50 dark:bg-ice-500/15">
               <Icon name="account_balance_wallet" className="text-[20px] text-ice-500" aria-hidden="true" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-card-title text-wtext-1 dark:text-white">크레딧 관리</p>
+              <p className="text-card-title text-wtext-1 dark:text-white">결제권 관리</p>
               <p className="mt-0.5 text-card-meta text-wtext-3 dark:text-wtext-4">
                 회원별 잔액 · 충전 · 차감 내역
               </p>

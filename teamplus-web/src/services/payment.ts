@@ -169,7 +169,7 @@ export async function getPaymentHistory(
 }
 
 /**
- * 크레딧 사용 내역 조회
+ * 결제권 사용 내역 조회
  *
  * 현재 백엔드에 전용 엔드포인트가 없어 빈 배열을 반환한다.
  * 추후 `/credits/transactions/me` 와 같은 엔드포인트가 추가되면 이 함수만 교체한다.
@@ -190,7 +190,7 @@ export async function getUsageHistory(
 }
 
 /**
- * 현재 크레딧 상태 조회
+ * 현재 결제권 상태 조회
  *
  * 백엔드 `/credits/stats/me`는 통계 flat 객체를 반환하므로
  * 프론트 타입 `CreditStatus` 로 매핑한다.

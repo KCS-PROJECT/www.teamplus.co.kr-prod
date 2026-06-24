@@ -15,7 +15,7 @@ import '../../features/main/presentation/providers/menu_provider.dart';
 /// 역할별 접이식 카테고리:
 /// - Admin/Coach: 일반관리, 업무관리, 쇼핑관리, 앱관리
 /// - Director: 일반관리, 업무관리, 대회/원정, 소통
-/// - Parent: 자녀관리, 수업/일정, 결제/크레딧, 성장/평가
+/// - Parent: 자녀관리, 수업/일정, 결제/수업권, 성장/평가
 /// - Teen: 나의 활동, 성과/보상
 /// - Child: 나의 활동, 나의 보물
 class AppDrawer extends ConsumerStatefulWidget {
@@ -331,7 +331,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
       ),
       _buildExpansionSection(
         key: 'payment-credit',
-        title: '결제/크레딧',
+        title: '결제/수업권',
         icon: Icons.payment_outlined,
         children: _getParentPaymentItems(),
       ),
@@ -652,7 +652,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
     return const [
       _DrawerMenuItem(
         icon: Icons.credit_card_outlined,
-        label: '크레딧 관리',
+        label: '결제권 관리',
         route: '/credits',
       ),
       _DrawerMenuItem(

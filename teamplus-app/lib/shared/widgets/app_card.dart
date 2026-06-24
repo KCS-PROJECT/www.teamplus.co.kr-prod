@@ -260,7 +260,7 @@ class CreditStatusCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                '크레딧',
+                '결제권',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,

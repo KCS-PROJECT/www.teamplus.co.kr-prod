@@ -63,7 +63,7 @@ const seedData: NotificationHistory[] = [
   },
   {
     id: 'history-4',
-    title: '크레딧 만료 안내',
+    title: '결제권 만료 안내',
     templateName: 'CREDIT_EXPIRING',
     channel: 'sms',
     target: '만료 예정 회원',

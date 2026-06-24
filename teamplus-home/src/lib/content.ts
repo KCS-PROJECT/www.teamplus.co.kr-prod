@@ -9,7 +9,7 @@ export const BRAND = {
   name: "팀플러스+",
   tagline: "아이의 아이스하키 하루를 함께 보는 앱",
   descriptor:
-    "수업 일정, QR 출석, 성장 기록, 결제와 크레딧까지 학부모와 코치가 한곳에서 확인합니다.",
+    "수업 일정, QR 출석, 성장 기록, 결제와 수업권까지 학부모와 코치가 한곳에서 확인합니다.",
   contact: {
     email: "icehockey@knewscorp.co.kr",
     phone: "02-557-5321",
@@ -79,7 +79,7 @@ export const HERO = {
   headlineTop: "아이의 아이스하키 하루를",
   headlineAccent: "한눈에 확인하세요",
   subCopy:
-    "수업 일정, QR 출석, 성장 기록, 결제와 크레딧까지. 팀플러스+는 아이가 빙판 위에서 보내는 시간을 부모와 코치가 놓치지 않도록 연결합니다.",
+    "수업 일정, QR 출석, 성장 기록, 결제와 수업권까지. 팀플러스+는 아이가 빙판 위에서 보내는 시간을 부모와 코치가 놓치지 않도록 연결합니다.",
   metrics: [
     { label: "수업 일정", value: "오늘" },
     { label: "QR 출석", value: "즉시" },
@@ -109,8 +109,8 @@ export const HERO_FEATURES = [
   {
     icon: "ShieldCheck",
     accent: "ice",
-    title: "안전한 결제·크레딧",
-    desc: "KG이니시스 공식 연동으로 결제와 크레딧을 안전하게 관리합니다.",
+    title: "안전한 결제·수업권",
+    desc: "KG이니시스 공식 연동으로 결제와 수업권을 안전하게 관리합니다.",
   },
 ] as const;
 
@@ -123,7 +123,7 @@ export const STATS = [
     value: "한 흐름",
     label: "클럽 운영 연결",
     description:
-      "수업 편성, QR 출석, 크레딧 차감, 알림 전달을 따로 처리하지 않고 하나의 운영 흐름으로 묶습니다.",
+      "수업 편성, QR 출석, 결제권 차감, 알림 전달을 따로 처리하지 않고 하나의 운영 흐름으로 묶습니다.",
   },
   {
     value: "반복↓",
@@ -195,7 +195,7 @@ export const APP_FLOW = [
   },
   {
     label: "월말",
-    title: "결제와 크레딧을 정리합니다",
+    title: "결제와 수업권을 정리합니다",
     description: "수업권 잔여 횟수와 결제 내역을 보호자 기준으로 관리합니다.",
   },
 ];
@@ -232,7 +232,7 @@ export const USER_VALUES: Array<{
     bullets: [
       "자녀 여러 명 한 계정",
       "수업·출석 실시간 알림",
-      "결제·크레딧 잔여 관리",
+      "결제·수업권 잔여 관리",
     ],
     highlight: true,
     family: [
@@ -449,24 +449,24 @@ export const FEATURE_GROUPS: Array<{
 
 /**
  * 시그니처 워크플로 — "8개가 따로가 아니라 한 흐름"을 증명하는 /features 핵심 장면.
- * QR 출석 한 번이 크레딧·결제·기록으로 이어지는 연결성. 수치는 STATS/FEATURES 재사용(날조 0).
+ * QR 출석 한 번이 수업권·결제·기록으로 이어지는 연결성. 수치는 STATS/FEATURES 재사용(날조 0).
  */
 export const FEATURE_SIGNATURE = {
   kicker: "한 번의 출석, 끊기지 않는 흐름",
   headlineTop: "QR 한 번이",
-  headlineBottom: "출석 · 크레딧 · 기록까지",
+  headlineBottom: "출석 · 결제권 · 기록까지",
   description:
-    "코치가 5분 일회용 QR을 띄우면 아이가 그 자리에서 체크인하고, 크레딧 차감과 정산, 성장 기록까지 끊김 없이 이어집니다. 따로 도는 8개 기능이 아니라 하나의 운영입니다.",
+    "코치가 5분 일회용 QR을 띄우면 아이가 그 자리에서 체크인하고, 결제권 차감과 정산, 성장 기록까지 끊김 없이 이어집니다. 따로 도는 8개 기능이 아니라 하나의 운영입니다.",
   stat: { value: "자동", label: "출석 이후 흐름" },
   flow: [
     { step: "QR 출석", note: "5분 일회용 · 3초 연속 스캔" },
-    { step: "크레딧 차감", note: "수업권 잔여 자동 반영" },
+    { step: "결제권 차감", note: "수업권 잔여 자동 반영" },
     { step: "결제 · 정산", note: "KG이니시스 공식 연동" },
     { step: "성장 기록", note: "출석 · 진도 · 코치 메모" },
   ],
-  // [0] = 앞(큰) hero · [1] = 뒤(작은) 보조. 결과(학부모 출석·크레딧)를 hero 로, QR 생성(코치)을 보조로.
+  // [0] = 앞(큰) hero · [1] = 뒤(작은) 보조. 결과(학부모 출석·결제권)를 hero 로, QR 생성(코치)을 보조로.
   screens: [
-    { src: "/images/screens/parent/14-attendance-history.png", cap: "학부모 · 출석·크레딧" },
+    { src: "/images/screens/parent/14-attendance-history.png", cap: "학부모 · 출석·결제권" },
     { src: "/images/screens/coach/04-qr-generate.png", cap: "코치 · QR 출석" },
   ],
 } as const;
@@ -719,8 +719,8 @@ export const FAQ: FaqItem[] = [
     a: "자녀는 보호자가 이름(또는 별명)과 생년월일만으로 등록하는 자녀 프로필로 관리됩니다. 별도의 자녀 계정이나 어린이가 직접 조작하는 화면 없이, 수업 신청 · 출석 확인 · 결제까지 모든 이용은 보호자 계정에서 이루어집니다.",
   },
   {
-    q: "결제와 크레딧은 어떻게 관리되나요?",
-    a: "보호자가 결제 내역과 남은 크레딧을 확인합니다. 카드 정보는 서버에 직접 저장하지 않고 결제사 토큰화 흐름을 따릅니다.",
+    q: "결제와 수업권은 어떻게 관리되나요?",
+    a: "보호자가 결제 내역과 남은 결제권을 확인합니다. 카드 정보는 서버에 직접 저장하지 않고 결제사 토큰화 흐름을 따릅니다.",
   },
   {
     q: "코치는 무엇이 편해지나요?",
@@ -771,9 +771,9 @@ export const PROBLEM_SOLUTION = {
   afterLabel: "팀플러스, 한 흐름으로 모읍니다",
   pairs: [
     { before: "종이 출석부에 손으로 체크", after: "QR 한 번으로 그 자리에서 자동 기록" },
-    { before: "엑셀로 수업료·미수금 수기 정산", after: "결제·크레딧이 출석과 함께 자동 정리" },
+    { before: "엑셀로 수업료·미수금 수기 정산", after: "결제·수업권이 출석과 함께 자동 정리" },
     { before: "단톡방 공지가 학부모·코치 뒤섞임", after: "역할별 화면과 알림으로 따로 전달" },
-    { before: "결제·환불 요청을 메신저로 일일이", after: "보호자가 결제·크레딧을 앱에서 직접 관리" },
+    { before: "결제·환불 요청을 메신저로 일일이", after: "보호자가 결제·수업권을 앱에서 직접 관리" },
   ],
 } as const;
 
@@ -811,7 +811,7 @@ export const WHY_TEAMPLUS = {
     {
       title: "결제·출석·정산이 한 흐름",
       description:
-        "QR 출석이 크레딧 차감과 KG이니시스 결제·정산까지 끊김 없이 이어집니다.",
+        "QR 출석이 결제권 차감과 KG이니시스 결제·정산까지 끊김 없이 이어집니다.",
       marker: "한 흐름 운영",
     },
   ],

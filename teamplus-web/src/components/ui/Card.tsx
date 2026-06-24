@@ -102,7 +102,7 @@ export function CreditCard({ current, total, expiryDate, lastUsed }: CreditCardP
       <div className="flex justify-between items-start mb-4">
         <div>
           <p className="text-wtext-3 dark:text-rink-300 text-sm font-medium">
-            자녀 보유 크레딧
+            자녀 보유 결제권
           </p>
           <div className="flex items-baseline gap-1 mt-2">
             <span className="text-4xl font-bold text-wtext-1 dark:text-white">

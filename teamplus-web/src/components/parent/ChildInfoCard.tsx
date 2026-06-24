@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 /**
  * ChildInfoCard - 자녀 정보 요약 카드
  *
- * 프로필 이모지, 이름, 학년, 출석률, 다음 수업, 잔여 크레딧 등
+ * 프로필 이모지, 이름, 학년, 출석률, 다음 수업, 잔여 결제권 등
  * 자녀 한 명의 핵심 정보를 카드 형태로 보여줍니다.
  */
 interface ChildInfoCardProps {
@@ -22,7 +22,7 @@ interface ChildInfoCardProps {
   nextClass?: string;
   /** 다음 수업 시간 */
   nextClassTime?: string;
-  /** 잔여 크레딧 */
+  /** 잔여 결제권 */
   remainingCredits?: number;
   /** 카드 클릭 핸들러 */
   onClick?: () => void;
@@ -104,7 +104,7 @@ export function ChildInfoCard({
         </div>
       )}
 
-      {/* 크레딧 — 2026-05-16: 다크 구분선 rink-600 으로 한 단계 밝게 */}
+      {/* 결제권 — 2026-05-16: 다크 구분선 rink-600 으로 한 단계 밝게 */}
       {remainingCredits !== undefined && (
         <div className="flex items-center gap-2 pt-3 border-t border-wline-2 dark:border-rink-600">
           <Icon
@@ -113,7 +113,7 @@ export function ChildInfoCard({
             aria-hidden="true"
           />
           <span className="text-xs text-wtext-3 dark:text-rink-200">
-            잔여 크레딧
+            잔여 결제권
           </span>
           <span
             className={cn(

@@ -117,7 +117,7 @@ function EmptyState({ type, filtered }: { type: 'payment' | 'usage'; filtered?: 
         {filtered
           ? '다른 기간을 선택해보세요.'
           : type === 'payment'
-            ? '아직 결제 내역이 없어요. 크레딧을 충전해보세요!'
+            ? '아직 결제 내역이 없어요. 결제권을 충전해보세요!'
             : '아직 사용 내역이 없어요. 수업에 출석해보세요!'}
       </p>
     </div>
@@ -186,7 +186,7 @@ interface UsageSummary {
   creditsUsed: number;
 }
 
-/** 활성 탭 기준 기간 요약 카드 — 결제: 총 결제 금액 / 사용: 사용한 크레딧 */
+/** 활성 탭 기준 기간 요약 카드 — 결제: 총 결제 금액 / 사용: 사용한 결제권 */
 function SummaryCard({
   activeTab,
   payment,
@@ -201,7 +201,7 @@ function SummaryCard({
     <section className="px-4 pt-3">
       <div className="rounded-w-lg bg-wsurface dark:bg-rink-800 p-4 shadow-sh-1">
         <span className="text-card-meta text-wtext-3 dark:text-rink-300">
-          {isPayment ? '기간 내 총 결제 금액' : '기간 내 사용한 크레딧'}
+          {isPayment ? '기간 내 총 결제 금액' : '기간 내 사용한 결제권'}
         </span>
         <p className="mt-1.5 truncate whitespace-nowrap font-num text-w-h2 font-bold tabular-nums text-wtext-1 dark:text-white">
           {isPayment
@@ -423,7 +423,7 @@ function UsageHistoryCard({ item }: { item: UsageHistoryItem }) {
           </span>
         </div>
         {isCancelled && (
-          <span className="text-card-meta text-wtext-4">크레딧 복구됨</span>
+          <span className="text-card-meta text-wtext-4">결제권 복구됨</span>
         )}
       </div>
     </div>
@@ -547,7 +547,7 @@ function UsageHistoryList({
         <p className="text-w-caption leading-relaxed text-wtext-4 dark:text-rink-300">
           사용 내역은 최근 1년까지 조회 가능합니다.
           <br />
-          수업 취소 시 크레딧이 자동으로 복구됩니다.
+          수업 취소 시 결제권이 자동으로 복구됩니다.
         </p>
       </div>
     </main>
@@ -673,7 +673,7 @@ export default function PaymentHistoryPage() {
   }, []);
 
   /** [추가 2026-05-13] 결제취소 — 토스/KG 분기는 backend PaymentRefundService 가 처리.
-   *  성공 시 결제 내역 + 크레딧 잔액 동시 재조회 (refund 시 크레딧 복원되므로).
+   *  성공 시 결제 내역 + 결제권 잔액 동시 재조회 (refund 시 결제권 복원되므로).
    */
   const handleCancelPayment = async (paymentId: string, productName: string) => {
     const ok = await modal.confirm({
@@ -740,7 +740,7 @@ export default function PaymentHistoryPage() {
           </button>
         </div>
 
-        {/* Summary Card — 기간 내 결제 금액 / 사용 크레딧 요약 */}
+        {/* Summary Card — 기간 내 결제 금액 / 사용 결제권 요약 */}
         {showSummary && (
           <SummaryCard activeTab={activeTab} payment={paymentSummary} usage={usageSummary} />
         )}

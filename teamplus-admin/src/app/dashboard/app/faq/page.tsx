@@ -38,7 +38,7 @@ const categories = [
   { value: 'account', label: '계정/로그인', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-primary-light' },
   { value: 'class', label: '수업/클래스', color: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' },
   { value: 'payment', label: '결제/환불', color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' },
-  { value: 'attendance', label: '출석/크레딧', color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400' },
+  { value: 'attendance', label: '출석/결제권', color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400' },
   { value: 'app', label: '앱 사용', color: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' },
 ];
 

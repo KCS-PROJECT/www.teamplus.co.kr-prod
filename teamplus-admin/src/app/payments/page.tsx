@@ -239,8 +239,8 @@ export default function PaymentsPage() {
           <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-2">결제 안내</h4>
           <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-1 leading-relaxed">
             <li>• 결제는 KG이니시스를 통해 안전하게 처리됩니다.</li>
-            <li>• 결제 완료 후 크레딧이 자동으로 충전됩니다.</li>
-            <li>• 크레딧은 90일간 유효하며, 출석 시 1회당 1크레딧이 차감됩니다.</li>
+            <li>• 결제 완료 후 결제권이 자동으로 충전됩니다.</li>
+            <li>• 결제권은 90일간 유효하며, 출석 시 결제권 1회가 차감됩니다.</li>
             <li>• 결제 취소는 결제일로부터 7일 이내 가능합니다.</li>
           </ul>
         </div>

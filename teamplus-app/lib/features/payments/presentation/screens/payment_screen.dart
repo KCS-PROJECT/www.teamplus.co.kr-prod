@@ -107,7 +107,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
           if (!mounted) return;
 
           if (verified) {
-            // 크레딧 잔액 캐시 무효화 (결제 성공으로 크레딧 발급됨)
+            // 결제권 잔액 캐시 무효화 (결제 성공으로 결제권 발급됨)
             ref.invalidate(myCreditBalanceProvider);
             _showPaymentSuccessDialog(paymentResult.orderNumber);
           } else {
@@ -168,7 +168,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
             const Text('결제가 완료되었습니다.'),
             const SizedBox(height: 8),
             const Text(
-              '크레딧이 자동으로 발급되었습니다.',
+              '수업권이 자동으로 발급되었습니다.',
               style: TextStyle(
                 fontSize: 13,
                 color: AppColors.lightText,
@@ -367,7 +367,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
                         ),
                         const SizedBox(height: 8),
                         const Text(
-                          '• 결제 후 크레딧이 자동으로 발급됩니다\n• 크레딧은 90일 동안 유효합니다',
+                          '• 결제 후 수업권이 자동으로 발급됩니다\n• 수업권은 90일 동안 유효합니다',
                           style: TextStyle(
                             fontSize: 12,
                             color: AppColors.lightText,

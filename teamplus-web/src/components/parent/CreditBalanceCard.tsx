@@ -6,13 +6,13 @@ import { NavLink } from '@/components/ui/NavLink';
 import { cn } from '@/lib/utils';
 
 /**
- * CreditBalanceCard - 크레딧 잔액 카드
+ * CreditBalanceCard - 결제권 잔액 카드
  *
- * 보유 크레딧 수치, 프로그레스 바, 만료 안내를 표시합니다.
- * 대시보드와 크레딧 페이지에서 공통으로 사용합니다.
+ * 보유 결제권 수치, 프로그레스 바, 만료 안내를 표시합니다.
+ * 대시보드와 결제권 페이지에서 공통으로 사용합니다.
  */
 interface CreditBalanceCardProps {
-  /** 현재 보유 크레딧 수 */
+  /** 현재 보유 결제권 수 */
   current: number;
   /** 프로그레스 바 최대값 (기본: 12) */
   max?: number;
@@ -60,7 +60,7 @@ export function CreditBalanceCard({
             />
           </div>
           <span className="text-sm font-bold text-wtext-1 dark:text-white">
-            보유 크레딧
+            보유 결제권
           </span>
         </div>
         <NavLink
@@ -72,7 +72,7 @@ export function CreditBalanceCard({
         </NavLink>
       </div>
 
-      {/* 크레딧 수치 */}
+      {/* 결제권 수치 */}
       <div className="flex items-baseline gap-1.5">
         <span className="text-4xl font-extrabold text-wtext-1 dark:text-white tracking-tight tabular-nums">
           {isAnimated ? <CountUp end={current} duration={1800} /> : 0}
@@ -90,7 +90,7 @@ export function CreditBalanceCard({
           aria-valuenow={current}
           aria-valuemin={0}
           aria-valuemax={max}
-          aria-label={`보유 크레딧 ${current}회`}
+          aria-label={`보유 결제권 ${current}회`}
         >
           <div
             className={cn(

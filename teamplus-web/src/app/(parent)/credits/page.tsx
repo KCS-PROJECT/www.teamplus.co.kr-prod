@@ -221,7 +221,7 @@ export default function CreditsPage() {
   const [isSortSheetOpen, setIsSortSheetOpen] = useState(false);
   const [sortOrder, setSortOrder] = useState<SortOrder>('recent');
 
-  // 풀스크린 로더 fast-path (v11) — 크레딧/이력 fetch 완료 시점에 PageTransitionLoader OFF
+  // 풀스크린 로더 fast-path (v11) — 결제권/이력 fetch 완료 시점에 PageTransitionLoader OFF
   usePageReady(!isLoading);
 
   // [appbar-harness / 2026-05-13] 이중 헤더 방지 — Web `<PageAppBar />` 단독 렌더.
@@ -238,7 +238,7 @@ export default function CreditsPage() {
     showBottomNav: true,
   });
 
-  // 자녀 목록 + 크레딧 정보 로드
+  // 자녀 목록 + 결제권 정보 로드
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -439,7 +439,7 @@ export default function CreditsPage() {
           [W3.B 2026-05-18 / Task #4] extraActions — 검색·정렬 액션 추가 (이전: 새로고침 단독).
             결제 내역에서 자녀 이름·상품명 검색 + 정렬(최신/오래된/금액) 지원. */}
       <PageAppBar
-        title="결제 및 크레딧"
+        title="결제 및 수업권"
         showBack
         forceNative
         extraActions={[
@@ -519,7 +519,7 @@ export default function CreditsPage() {
                   type="button"
                   role="tab"
                   onClick={() => setSelectedChildId(child.id)}
-                  aria-label={`${child.name} 크레딧 보기`}
+                  aria-label={`${child.name} 결제권 보기`}
                   aria-selected={selectedChildId === child.id}
                   aria-pressed={selectedChildId === child.id}
                   className={cn(
@@ -538,11 +538,11 @@ export default function CreditsPage() {
           </section>
         )}
 
-        {/* 크레딧 잔액 카드 */}
+        {/* 결제권 잔액 카드 */}
         {selectedChild && (
           <section
             className="px-4 pt-3"
-            aria-label="크레딧 잔액"
+            aria-label="결제권 잔액"
             role="status"
             aria-live="polite"
             aria-atomic="true"
@@ -554,7 +554,7 @@ export default function CreditsPage() {
                   <div className="flex flex-col gap-1.5">
                     <span className="flex items-center gap-1.5 text-card-meta font-bold uppercase tracking-wider text-wtext-4 dark:text-wtext-3">
                       <Icon name="account_balance_wallet" className="text-[14px]" aria-hidden="true" />
-                      잔여 크레딧
+                      잔여 결제권
                     </span>
                     <span className="text-card-body font-semibold text-wtext-2 dark:text-rink-200">
                       {selectedChild.name}의 {MESSAGES.dashboard.parentDashboard.creditSummary}
@@ -565,7 +565,7 @@ export default function CreditsPage() {
                   </div>
                 </div>
 
-                {/* 크레딧 대형 숫자 (hero) */}
+                {/* 결제권 대형 숫자 (hero) */}
                 <div className="flex items-end justify-between">
                   <div className="flex items-baseline gap-1.5">
                     <span className="text-6xl font-black text-wtext-1 tracking-tighter tabular-nums leading-none dark:text-white">
@@ -592,7 +592,7 @@ export default function CreditsPage() {
                   >
                     <Icon name="warning" className="shrink-0 text-[18px] text-sun-500" aria-hidden="true" />
                     <span className="text-card-meta font-medium text-wtext-2 dark:text-sun-100">
-                      <span className="font-bold tabular-nums">{selectedChild.expiringCredits}회</span> 크레딧이 <span className="font-bold">{selectedChild.expiringDate}</span>에 만료 예정입니다
+                      <span className="font-bold tabular-nums">{selectedChild.expiringCredits}회</span> 결제권이 <span className="font-bold">{selectedChild.expiringDate}</span>에 만료 예정입니다
                     </span>
                   </div>
                 )}
@@ -600,7 +600,7 @@ export default function CreditsPage() {
                 {/* 구분선 */}
                 <div className="h-px w-full bg-wline dark:bg-rink-700" aria-hidden="true" />
 
-                {/* [2026-06-09 심사 3.1.1] 크레딧 성격 명시 — 디지털 화폐/콘텐츠 오인 방지 */}
+                {/* [2026-06-09 심사 3.1.1] 결제권 성격 명시 — 디지털 화폐/콘텐츠 오인 방지 */}
                 <p className="flex items-start gap-1.5 text-card-meta leading-relaxed text-wtext-3 dark:text-rink-300">
                   <Icon
                     name="info"
@@ -617,7 +617,7 @@ export default function CreditsPage() {
                 >
                   <Icon name="add_card" className="text-[20px]" aria-hidden="true" />
                   <span className="text-card-body font-bold tracking-wide">
-                    크레딧 충전하기
+                    결제권 충전하기
                   </span>
                 </button>
               </div>
@@ -655,7 +655,7 @@ export default function CreditsPage() {
               onClick={() => setActiveTab('usage')}
               role="tab"
               aria-selected={activeTab === 'usage'}
-              aria-label="크레딧 사용 내역 보기"
+              aria-label="결제권 사용 내역 보기"
               className={cn(
                 'flex-1 flex items-center justify-center rounded-lg min-h-[48px] py-2.5 text-card-body font-bold transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40',
                 activeTab === 'usage'
@@ -672,7 +672,7 @@ export default function CreditsPage() {
         <main
           className="flex flex-col gap-5 px-4 py-2 pb-8"
           role="tabpanel"
-          aria-label={activeTab === 'payment' ? '결제 내역' : '크레딧 사용 내역'}
+          aria-label={activeTab === 'payment' ? '결제 내역' : '결제권 사용 내역'}
         >
           {activeTab === 'payment' ? (
             /* 결제 내역 */
@@ -854,7 +854,7 @@ export default function CreditsPage() {
                             </span>
                           </div>
 
-                          {/* 크레딧 수 */}
+                          {/* 결제권 수 */}
                           <div className="shrink-0 text-right">
                             <span
                               className={cn(

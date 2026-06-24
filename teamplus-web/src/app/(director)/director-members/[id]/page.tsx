@@ -109,7 +109,7 @@ export default function DirectorMemberDetailPage() {
   const [editRole, setEditRole] = useState<MemberRole>('PARENT');
   const [editNote, setEditNote] = useState('');
 
-  // 출석/크레딧 요약
+  // 출석/결제권 요약
   const [attendance, setAttendance] = useState<AttendanceSummary | null>(null);
   const [credit, setCredit] = useState<CreditSummary | null>(null);
 
@@ -153,7 +153,7 @@ export default function DirectorMemberDetailPage() {
           });
         }
 
-        // 크레딧 요약 (API에서 제공되면)
+        // 결제권 요약 (API에서 제공되면)
         if (d.credit || d.credits) {
           const cr = (d.credit ?? d.credits) as Record<string, number>;
           setCredit({
@@ -470,18 +470,18 @@ export default function DirectorMemberDetailPage() {
             </section>
           )}
 
-          {/* 크레딧 요약 */}
+          {/* 결제권 요약 */}
           {credit && (
-            <section className="mx-4 mb-4" aria-label="크레딧 현황">
+            <section className="mx-4 mb-4" aria-label="결제권 현황">
               <div className="rounded-xl bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 p-5">
                 <h3 className="mb-4 flex items-center gap-2 text-card-body font-bold text-wtext-1 dark:text-white">
                   <span className="flex size-7 items-center justify-center rounded-lg bg-amber-50 dark:bg-amber-900/20">
                     <Icon name="toll" className="text-[16px] text-amber-600 dark:text-amber-400" aria-hidden="true" />
                   </span>
-                  크레딧 현황
+                  결제권 현황
                 </h3>
                 <div className="grid grid-cols-3 gap-3">
-                  <StatBox label="총 크레딧" value={`${credit.totalCredits}`} />
+                  <StatBox label="총 결제권" value={`${credit.totalCredits}`} />
                   <StatBox label="사용" value={`${credit.usedCredits}`} />
                   <StatBox label="잔여" value={`${credit.remainingCredits}`} highlight />
                 </div>

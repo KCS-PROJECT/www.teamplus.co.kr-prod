@@ -25,7 +25,7 @@ const TIMELINE = [
     year: '2025',
     phase: 'MVP',
     items: [
-      '회원·수업·출석·결제·크레딧 MVP 출시',
+      '회원·수업·출석·결제·수업권 MVP 출시',
       'KG이니시스 · 카카오 Alimtalk 공식 연동',
     ],
   },
@@ -61,7 +61,7 @@ export default function SolutionPage() {
             <span className="text-ice-500">한 플랫폼에서</span>
           </>
         }
-        description="팀플러스+는 회원 모집, 수업 편성, QR 출석, 결제·크레딧, 공지까지 클럽 운영의 반복 업무를 하나의 운영 흐름으로 연결합니다. 작은 아카데미부터 복수 팀을 운영하는 클럽까지, 권한과 화면을 역할별로 나눠 안정적으로 도입할 수 있습니다."
+        description="팀플러스+는 회원 모집, 수업 편성, QR 출석, 결제·수업권, 공지까지 클럽 운영의 반복 업무를 하나의 운영 흐름으로 연결합니다. 작은 아카데미부터 복수 팀을 운영하는 클럽까지, 권한과 화면을 역할별로 나눠 안정적으로 도입할 수 있습니다."
         primary={{ src: '/images/app-team.png', alt: '팀플러스 팀 관리 앱 화면' }}
         secondary={{ src: '/images/app-home.png', alt: '' }}
       >

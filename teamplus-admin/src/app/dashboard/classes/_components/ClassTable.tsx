@@ -315,7 +315,7 @@ export default function ClassTable({
           <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3 mb-4">
             <p className="text-sm text-amber-800 dark:text-amber-300">
               <strong>중요:</strong> 취소 시 등록된 {cancellingClass?.enrolled || 0}명의 회원에게
-              수업 크레딧이 자동으로 복구됩니다.
+              수업권이 자동으로 복구됩니다.
             </p>
           </div>
           <div>
