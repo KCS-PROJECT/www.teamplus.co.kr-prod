@@ -957,10 +957,10 @@ export default function ClassDetailPage() {
   if (!classData) {
     return (
       <MobileContainer hasBottomNav>
-        <PageAppBar variant="detail" title={isOpenClass ? "오픈클래스 상세" : "수업 상세"} forceNative />
+        <PageAppBar variant="detail" title={isOpenClass ? "오픈클래스 상세" : "훈련 상세"} forceNative />
         <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-20">
           <div
-            className="flex items-center justify-center size-16 rounded-2xl bg-ice-500/10 text-ice-500 ring-4 ring-ice-500/5"
+            className="flex items-center justify-center size-16 rounded-2xl bg-it-blue-500/10 text-it-blue-500 ring-4 ring-it-blue-500/5"
             aria-hidden="true"
           >
             <Icon name="error_outline" className="text-[32px]" />
@@ -974,7 +974,7 @@ export default function ClassDetailPage() {
           <button
             type="button"
             onClick={() => back()}
-            className="mt-2 inline-flex items-center gap-2 h-11 px-5 rounded-xl bg-ice-500 hover:bg-ice-700 text-white text-card-body font-semibold transition-colors motion-reduce:transition-none active:brightness-95"
+            className="mt-2 inline-flex items-center gap-2 h-11 px-5 rounded-xl bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-body font-semibold transition-colors motion-reduce:transition-none active:brightness-95"
           >
             뒤로 가기
           </button>
@@ -1018,9 +1018,11 @@ export default function ClassDetailPage() {
   const isUrgent = !isFull && remaining > 0 && remaining <= 3;
 
   // classes 도메인 SoT (class-categories.ts) — regular/lesson + deprecated/training 도메인 키 호환.
-  const typeLabel = classData.trainingType
+  const rawTypeLabel = classData.trainingType
     ? TRAINING_TYPE_LABEL[classData.trainingType] ?? null
     : null;
+  // 이 화면(훈련 상세)에서는 '정규수업' 배지를 '정규훈련'으로 노출(일정·classes-manage 통일). /classes 학부모 목록은 무관.
+  const typeLabel = rawTypeLabel === '정규수업' ? '정규훈련' : rawTypeLabel;
   // levelLabel 은 순수히 level 만 표시 (typeLabel fallback 제거 — 색상/의미 혼선 방지)
   const levelLabel = translateLevel(classData.levelRequired);
   const hasProducts = (classData.products ?? []).length > 0;
@@ -1061,11 +1063,11 @@ export default function ClassDetailPage() {
 
   return (
     <MobileContainer hasBottomNav>
-      <PageAppBar variant="detail" title={isOpenClass ? "오픈클래스 상세" : "수업 상세"} forceNative />
+      <PageAppBar variant="detail" title={isOpenClass ? "오픈클래스 상세" : "훈련 상세"} forceNative />
 
       <main
         className={cn(
-          "flex-1 overflow-y-auto hide-scrollbar",
+          "flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck",
           // [수정 2026-05-14 D2] 앱 최대 스크롤 시 sticky 액션바와 일정 정보가 겹치는 회귀 수정.
           // 액션바 높이(약 75px) + bottom 오프셋(60px BottomNav) + safe-area-inset-bottom(최대 ~44px) ≈ 180px.
           // pb-44(176px) → pb-52(208px) + safe-area 추가로 모든 디바이스에서 여유 확보.
@@ -1091,7 +1093,7 @@ export default function ClassDetailPage() {
               />
             ) : (
               <div
-                className="shrink-0 flex size-12 items-center justify-center rounded-2xl bg-ice-500 text-white shadow-md"
+                className="shrink-0 flex size-12 items-center justify-center rounded-2xl bg-it-blue-500 text-white shadow-md"
                 aria-hidden="true"
               >
                 <svg width={26} height={26} viewBox="0 0 26 26" fill="none">
@@ -1133,7 +1135,7 @@ export default function ClassDetailPage() {
                     </span>
                   )}
                   {levelLabel && (
-                    <span className="px-1.5 py-0.5 rounded-md bg-ice-500/10 text-ice-500 text-card-meta font-extrabold tracking-wider">
+                    <span className="px-1.5 py-0.5 rounded-md bg-it-blue-500/10 text-it-blue-500 text-card-meta font-extrabold tracking-wider">
                       {levelLabel}
                     </span>
                   )}
@@ -1151,7 +1153,7 @@ export default function ClassDetailPage() {
                   "flex size-8 items-center justify-center rounded-lg transition-colors motion-reduce:transition-none active:brightness-95",
                   isFavorite
                     ? "text-rose-500"
-                    : "text-wtext-3 dark:text-rink-300 hover:text-ice-500",
+                    : "text-wtext-3 dark:text-rink-300 hover:text-it-blue-500",
                 )}
                 aria-label={isFavorite ? "찜 해제" : "찜 추가"}
                 aria-pressed={isFavorite}
@@ -1165,7 +1167,7 @@ export default function ClassDetailPage() {
               <button
                 type="button"
                 onClick={handleShare}
-                className="flex size-8 items-center justify-center rounded-lg text-wtext-3 dark:text-rink-300 hover:text-ice-500 transition-colors motion-reduce:transition-none active:brightness-95"
+                className="flex size-8 items-center justify-center rounded-lg text-wtext-3 dark:text-rink-300 hover:text-it-blue-500 transition-colors motion-reduce:transition-none active:brightness-95"
                 aria-label={MESSAGES.class.shareAriaLabel(classData.className)}
               >
                 <Icon
@@ -1212,7 +1214,7 @@ export default function ClassDetailPage() {
                         ? "bg-wtext-4 dark:bg-wbg0"
                         : isUrgent
                           ? "bg-rose-500"
-                          : "bg-ice-500",
+                          : "bg-it-blue-500",
                     )}
                     style={{ width: `${Math.min(occupancy, 100)}%` }}
                   />
@@ -1230,7 +1232,7 @@ export default function ClassDetailPage() {
                   onClick={() =>
                     navigate(`/attendance-manage?classId=${classId}`)
                   }
-                  className="h-9 rounded-[10px] bg-wbg dark:bg-rink-900/40 border border-wline-2 dark:border-rink-700 flex items-center justify-center gap-1.5 hover:border-ice-500/40 transition-colors motion-reduce:transition-none active:brightness-95"
+                  className="h-9 rounded-[10px] bg-wbg dark:bg-rink-900/40 border border-wline-2 dark:border-rink-700 flex items-center justify-center gap-1.5 hover:border-it-blue-500/40 transition-colors motion-reduce:transition-none active:brightness-95"
                   aria-label="출석 이력 보기"
                 >
                   <Icon
@@ -1251,7 +1253,7 @@ export default function ClassDetailPage() {
                 <button
                   type="button"
                   onClick={() => navigate(`/classes/${classId}/students`)}
-                  className="h-9 rounded-[10px] bg-wbg dark:bg-rink-900/40 border border-wline-2 dark:border-rink-700 flex items-center justify-center gap-1.5 hover:border-ice-500/40 transition-colors motion-reduce:transition-none active:brightness-95"
+                  className="h-9 rounded-[10px] bg-wbg dark:bg-rink-900/40 border border-wline-2 dark:border-rink-700 flex items-center justify-center gap-1.5 hover:border-it-blue-500/40 transition-colors motion-reduce:transition-none active:brightness-95"
                   aria-label={MESSAGES.academy.students.actionPlayersAriaLabel}
                 >
                   <Icon
@@ -1423,7 +1425,7 @@ export default function ClassDetailPage() {
                         <button
                           type="button"
                           onClick={r.onSubClick}
-                          className="shrink-0 inline-flex items-center gap-0.5 min-h-[28px] pl-1.5 -mr-1 text-[11px] font-bold text-ice-500 active:brightness-90"
+                          className="shrink-0 inline-flex items-center gap-0.5 min-h-[28px] pl-1.5 -mr-1 text-[11px] font-bold text-it-blue-500 active:brightness-90"
                           aria-label={`담당 코치 전체 보기 (${r.s})`}
                         >
                           {r.s}
@@ -1449,7 +1451,7 @@ export default function ClassDetailPage() {
                             key={`${d.dayOfWeek}-${idx}`}
                             className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5"
                           >
-                            <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-md bg-ice-500/10 text-ice-500 text-[11px] font-extrabold">
+                            <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-md bg-it-blue-500/10 text-it-blue-500 text-[11px] font-extrabold">
                               {d.dayOfWeek}
                             </span>
                             <span className="text-[13px] font-semibold tracking-tight tabular-nums text-wtext-1 dark:text-white">
@@ -1571,7 +1573,7 @@ export default function ClassDetailPage() {
         {/* ── 수강 플랜 — 카드 리스트 (BEST 배지) ── */}
         <div className="mx-5 mt-4">
           <p className="px-1 pb-2 text-card-meta font-extrabold text-wtext-2 dark:text-rink-100 tracking-tight">
-            {isOpenClass ? "훈련비용" : "수강 플랜"}
+            {isOpenClass ? "훈련비용" : "수업료"}
           </p>
           {hasProducts ? (
             <div className="flex flex-col gap-2">
@@ -1616,7 +1618,7 @@ export default function ClassDetailPage() {
                       className={cn(
                         "relative flex items-center gap-3 px-4 py-3.5 rounded-[14px] shadow-sm transition-colors motion-reduce:transition-none",
                         !isManager && !isDisabled && "cursor-pointer",
-                        isSelected && "ring-2 ring-ice-500 ring-offset-1 dark:ring-offset-rink-900",
+                        isSelected && "ring-2 ring-it-blue-500 ring-offset-1 dark:ring-offset-rink-900",
                         // [2026-06-18] 결제완료 패키지 — emerald 강조 테두리.
                         isPaidPackage && "ring-2 ring-emerald-500 ring-offset-1 dark:ring-offset-rink-900",
                         // [수정 2026-05-22 사용자 직접 지시] 회색 톤으로 다운, 카드 내부 사유 표시.
@@ -1636,7 +1638,7 @@ export default function ClassDetailPage() {
                             isPaidPackage
                               ? 'bg-emerald-500 border-emerald-500 text-white'
                               : isSelected
-                                ? 'bg-ice-500 border-ice-500 text-white'
+                                ? 'bg-it-blue-500 border-it-blue-500 text-white'
                                 : 'bg-wsurface dark:bg-rink-900 border-wline-2 dark:border-rink-600',
                             isDisabled && !isPaidPackage && 'opacity-40',
                           )}
@@ -1696,16 +1698,16 @@ export default function ClassDetailPage() {
           )}
         </div>
 
-        {/* ── 위치 카드 ── */}
+        {/* ── 장소 카드 ── */}
         {hasVenue && (
           <div className="mx-5 mt-4">
             <p className="px-1 pb-2 text-card-meta font-extrabold text-wtext-2 dark:text-rink-100 tracking-tight">
-              위치
+              장소
             </p>
             <div className="rounded-[18px] bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-sm overflow-hidden">
               <div className="px-4 py-3 flex items-center gap-3">
                 <div
-                  className="shrink-0 flex size-9 items-center justify-center rounded-lg bg-ice-500/10 text-ice-500"
+                  className="shrink-0 flex size-9 items-center justify-center rounded-lg bg-it-blue-500/10 text-it-blue-500"
                   aria-hidden="true"
                 >
                   <Icon name="location_on" size={18} />
@@ -1846,7 +1848,7 @@ export default function ClassDetailPage() {
                     onClick={handleEnrollClick}
                     disabled={rightDisabled || !!postpaidEnrollment}
                     aria-disabled={rightDisabled || !!postpaidEnrollment}
-                    className="flex-[6] min-w-0 h-12 rounded-xl bg-ice-500 hover:bg-ice-700 text-white font-extrabold text-card-body tracking-tight transition-colors motion-reduce:transition-none active:brightness-95 disabled:bg-wline dark:disabled:bg-rink-700 disabled:text-wtext-3 disabled:cursor-not-allowed disabled:hover:bg-wline dark:disabled:hover:bg-rink-700"
+                    className="flex-[6] min-w-0 h-12 rounded-xl bg-it-blue-500 hover:bg-it-blue-600 text-white font-extrabold text-card-body tracking-tight transition-colors motion-reduce:transition-none active:brightness-95 disabled:bg-wline dark:disabled:bg-rink-700 disabled:text-wtext-3 disabled:cursor-not-allowed disabled:hover:bg-wline dark:disabled:hover:bg-rink-700"
                   >
                     {postpaidEnrollment
                       ? MESSAGES.enrollment.enrolledLabel
@@ -1971,7 +1973,7 @@ export default function ClassDetailPage() {
               //  실제 수정 폼(/classes-manage/create?edit={classId}) 으로 직접 이동.
               onClick={() => navigate(editClassPath)}
               aria-label="수업 수정하기"
-              className="min-w-0 h-11 rounded-xl bg-ice-500 hover:bg-ice-700 text-white text-card-body font-extrabold tracking-tight transition-colors motion-reduce:transition-none active:brightness-95 truncate"
+              className="min-w-0 h-11 rounded-xl bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-body font-extrabold tracking-tight transition-colors motion-reduce:transition-none active:brightness-95 truncate"
             >
               수업 수정하기
             </button>

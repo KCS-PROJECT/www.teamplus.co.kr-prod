@@ -2,10 +2,10 @@
 
 import { useEffect } from 'react';
 import { useNavigation } from '@/components/ui/NavLink';
-import { Icon } from '@/components/ui/Icon';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { usePageReady } from '@/hooks/usePageReady';
+import { MESSAGES } from '@/lib/messages';
 
 export default function SplashPage() {
   usePageReady(true); // 정적 페이지 — 마운트 즉시 ready
@@ -28,83 +28,56 @@ export default function SplashPage() {
   }, [navigate]);
 
   return (
-    <MobileContainer hasBottomNav={false} className="bg-wsurface dark:bg-puck">
-      <main className="relative flex h-full w-full flex-col items-center justify-between px-8">
-        {/* Main Content */}
-        <div className="flex-grow flex flex-col items-center justify-center">
-          <div className="flex flex-col items-center">
-            {/* Logo with Pulse Rings */}
-            <div className="relative w-32 h-32 mb-10 flex items-center justify-center">
-              {/* Pulse Rings — 외곽 펄스 (motion-reduce 자동 비활성) */}
-              <span
-                className="absolute inset-0 rounded-w-pill bg-ice-500/20 motion-safe:animate-ping motion-reduce:animate-none"
-                aria-hidden="true"
-              />
-              <span
-                className="absolute inset-2 rounded-w-pill bg-ice-500/10 motion-safe:animate-pulse motion-reduce:animate-none"
-                aria-hidden="true"
-              />
+    <MobileContainer hasBottomNav={false} className="bg-it-blue-900">
+      {/* ICETIMES 스플래시 — navy 풀블리드 + 흰 라운드 로고(빨강 arm) + TEAMPLUS 워드마크.
+          시안 SoT: backdata/teamplus_하우머치스타일/ui_kits/auth/Splash.jsx */}
+      <main className="relative flex h-full w-full flex-col items-center justify-center overflow-hidden px-8">
+        {/* 로고 — rx11 흰 라운드 사각형, 빨강 arm = it-red-500 */}
+        <svg
+          width="84"
+          height="84"
+          viewBox="0 0 40 40"
+          fill="none"
+          role="img"
+          aria-label={MESSAGES.auth.brand.wordmark}
+          className="relative motion-safe:animate-fade-in motion-reduce:animate-none"
+        >
+          <rect width="40" height="40" rx="11" fill="#ffffff" />
+          <rect x="17.3" y="8" width="5.4" height="24" rx="2.7" fill="#14224f" />
+          <rect x="8" y="17.3" width="12.4" height="5.4" rx="2.7" fill="#14224f" />
+          <rect x="20.2" y="17.3" width="11.8" height="5.4" rx="2.7" fill="#c8202e" />
+        </svg>
 
-              {/* Logo Puck — 위/아래 분리된 하키 퍽 */}
-              <div className="relative w-24 h-24 flex items-center justify-center">
-                <div className="absolute bottom-0 w-24 h-16 bg-rink-900 dark:bg-rink-700 rounded-w-pill" />
-                <div className="absolute top-0 w-24 h-16 bg-rink-800 dark:bg-rink-500 rounded-w-pill flex items-center justify-center border-b-4 border-rink-900 dark:border-rink-700">
-                  <Icon name="sports_hockey" filled className="text-white text-4xl" />
-                </div>
-              </div>
-            </div>
-
-            {/* Wordmark — TEAMPLUS 영문 로고 */}
-            <div className="flex items-center gap-1 mb-2">
-              <span className="text-ice-500 text-w-caption font-extrabold tracking-[0.4em]">
-                TEAMPLUS
-              </span>
-              <span className="w-1.5 h-1.5 rounded-w-pill bg-ice-500 motion-safe:animate-pulse motion-reduce:animate-none" />
-            </div>
-
-            {/* App Title */}
-            <h1 className="text-w-h1 font-extrabold tracking-tight text-ice-500 leading-tight mb-3">
-              팀플러스
-            </h1>
-            <p className="text-wtext-3 dark:text-rink-300 text-w-body-lg font-medium tracking-normal text-center">
-              아이스하키 대회·수강 관리를 한 번에
-            </p>
-          </div>
+        {/* 워드마크 — TEAMPLUS 32px / 800 / -0.035em (시안 Splash.jsx L15) */}
+        <div className="mt-[26px] text-[32px] font-extrabold leading-none tracking-[-0.035em] text-white">
+          {MESSAGES.auth.brand.wordmark}
         </div>
 
-        {/* Bottom Section */}
-        <div className="pb-10 w-full max-w-[240px] flex flex-col items-center gap-8">
-          {/* Progress Bar — 좌→우 진행 애니메이션 */}
-          <div
-            className="w-full h-1.5 bg-wbg dark:bg-rink-800 rounded-w-pill overflow-hidden"
-            role="progressbar"
-            aria-label="앱 로딩 중"
-          >
-            <div className="h-full bg-ice-500 rounded-w-pill motion-safe:animate-[splash-progress_2.4s_ease-out_forwards] w-2/3" />
-          </div>
+        {/* 서브 카피 — 14px / 500 / -0.01em / white .66 (시안 L16) */}
+        <p className="mt-2.5 text-[14px] font-medium tracking-[-0.01em] text-white/[.66]">
+          {MESSAGES.auth.brand.tagline}
+        </p>
 
-          {/* Powered By */}
-          <div className="flex flex-col items-center gap-4">
-            <span className="text-w-caption text-wtext-4 dark:text-rink-500 font-bold tracking-[0.2em]">
-              POWERED BY TEAMPLUS
-            </span>
-          </div>
+        {/* 3 dots — 로딩 인디케이터 */}
+        <div
+          className="absolute bottom-16 flex gap-2"
+          role="progressbar"
+          aria-label="앱 로딩 중"
+        >
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              aria-hidden="true"
+              className="h-1.5 w-1.5 rounded-w-pill bg-white/45 motion-safe:animate-pulse motion-reduce:animate-none"
+              style={{ animationDelay: `${i * 0.18}s` }}
+            />
+          ))}
         </div>
 
-        {/* 진행바 키프레임 */}
-        <style jsx>{`
-          @keyframes splash-progress {
-            0% {
-              width: 8%;
-            }
-            60% {
-              width: 60%;
-            }
-            100% {
-              width: 100%;
-            }
-          }
-        `}</style>
+        {/* 하단 — ICE HOCKEY CLUB OS */}
+        <div className="absolute bottom-7 text-[11.5px] font-semibold tracking-[0.04em] text-white/40">
+          {MESSAGES.auth.brand.footer}
+        </div>
       </main>
     </MobileContainer>
   );

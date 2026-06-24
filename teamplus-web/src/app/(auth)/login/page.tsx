@@ -11,7 +11,6 @@
 //    리다이렉트를 이미 처리하므로 매 요청 SSR 불필요. TTFB 30~60ms 단축.
 import { useState, useEffect, useRef } from "react";
 import { flushSync } from "react-dom";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -94,6 +93,138 @@ function hasHangul(value: string): boolean {
   return HANGUL_REGEX.test(value);
 }
 
+// ========== ICETIMES 워드마크 로고 (TEAMPLUS + 커스텀 "+" 마크, 빨강 arm) ==========
+// 시안 SoT: backdata/teamplus_하우머치스타일/ui_kits/auth/Login.jsx (TPLogo)
+function TPLogo({ height = 34 }: { height?: number }) {
+  return (
+    <div className="flex items-center gap-[11px]">
+      <svg
+        width={height}
+        height={height}
+        viewBox="0 0 40 40"
+        fill="none"
+        role="img"
+        aria-label="TEAMPLUS"
+      >
+        <rect width="40" height="40" rx="11" fill="#0b4d96" />
+        <rect x="17.3" y="8" width="5.4" height="24" rx="2.7" fill="#ffffff" />
+        <rect x="8" y="17.3" width="12.4" height="5.4" rx="2.7" fill="#ffffff" />
+        <rect x="20.2" y="17.3" width="11.8" height="5.4" rx="2.7" fill="#c8202e" />
+      </svg>
+      <span
+        className="font-extrabold leading-none tracking-[-0.035em]"
+        style={{ fontSize: height * 0.6 }}
+      >
+        <span className="text-it-ink-800 dark:text-white">TEAM</span>
+        <span className="text-it-blue-600 dark:text-it-blue-300">PLUS</span>
+      </span>
+    </div>
+  );
+}
+
+// ========== 커스텀 계정 선택 드롭다운 ==========
+interface AccountOption {
+  label: string;
+  value: string;
+  email: string;
+  password: string;
+}
+
+interface AccountSelectorProps {
+  options: readonly AccountOption[];
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}
+
+function AccountSelector({
+  options,
+  value,
+  onChange,
+  disabled,
+}: AccountSelectorProps) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const selected = options.find((o) => o.value === value) ?? options[0];
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      {/* 트리거 버튼 */}
+      <button
+        type="button"
+        onClick={() => !disabled && setOpen((prev) => !prev)}
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className="flex items-center w-full h-[52px] pl-12 pr-10 bg-it-surface dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[15.5px] font-semibold text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 transition-all motion-reduce:transition-none duration-200 disabled:bg-it-line disabled:dark:bg-puck disabled:cursor-not-allowed disabled:opacity-60 text-left"
+      >
+        <span className="truncate">{selected.label}</span>
+      </button>
+      {/* 좌측 아이콘 */}
+      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+        <Icon name="person" className="text-it-ink-400" />
+      </div>
+      {/* 우측 chevron */}
+      <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+        <Icon
+          name="expand_more"
+          className={`text-it-ink-400 transition-transform motion-reduce:transition-none duration-200 ${open ? "rotate-180" : ""}`}
+        />
+      </div>
+
+      {/* 드롭다운 목록 */}
+      {open && (
+        <ul
+          role="listbox"
+          className="absolute z-50 top-[calc(100%+4px)] left-0 right-0 bg-it-surface dark:bg-rink-800 border border-it-line-strong dark:border-rink-700 rounded-w-md shadow-sh-2 overflow-hidden"
+        >
+          {options.map((option) => {
+            const isSelected = option.value === value;
+            return (
+              <li
+                key={option.value}
+                role="option"
+                aria-selected={isSelected}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+                className={`flex items-center gap-3 px-4 min-h-[52px] cursor-pointer transition-colors motion-reduce:transition-none duration-150
+                  ${
+                    isSelected
+                      ? "bg-it-blue-50 dark:bg-it-blue-900/30 text-it-blue-600 dark:text-it-blue-300 font-semibold"
+                      : "text-it-ink-700 dark:text-rink-100 hover:bg-it-fill dark:hover:bg-rink-700"
+                  }`}
+              >
+                <Icon
+                  name="check"
+                  className={`text-[18px] shrink-0 ${isSelected ? "text-it-blue-600 dark:text-it-blue-300" : "text-transparent"}`}
+                />
+                <span className="text-[15.5px] font-semibold">{option.label}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function LoginPage() {
   // Native 앱에서 로그인 화면 UI 설정 (페이지 마운트 시 적용)
   // useAuthUI 프리셋: showStatusBar=true, showAppBar=false, showBottomNav=false
@@ -174,6 +305,15 @@ export default function LoginPage() {
       window.location.pathname + (cleanQuery ? `?${cleanQuery}` : "");
     window.history.replaceState(null, "", cleanUrl);
   }, [toast]);
+
+  // Hydration 완료 플래그 — isNativeApp() 분기로 인한 SSR/CSR 불일치 방지
+  // 서버 SSR 시 isNativeApp()=false → AccountSelector 렌더
+  // WebView CSR 시 isNativeApp()=true  → AccountSelector 미렌더
+  // 초기 hydration 단계에서는 서버와 동일하게 렌더 후, useEffect 이후에만 native 분기 적용
+  const [isHydrated, setIsHydrated] = useState(false);
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
 
   /**
    * 클라이언트 사이드 네비게이션 (무한 루프 방지)
@@ -267,6 +407,39 @@ export default function LoginPage() {
   const { isLocked, lockoutMessage, onLoginFailed, onLoginSuccess } =
     useLoginRateLimit();
 
+  // 테스트 계정 목록 — 시드(prisma/seeds/run-team-data.ts) 와 동기화
+  // [수정 2026-05-22] 신학생·웹관리자 항목 제거. 웹관리자는 admin 페이지에서 별도 관리.
+  const TEST_ACCOUNTS = [
+    { label: "직접 입력", value: "", email: "", password: "" },
+    {
+      label: "감독 (Director) — 임감독",
+      value: "director",
+      email: "lim12345",
+      password: "Test1234!",
+    },
+    {
+      label: "코치 (Coach) — 김코치",
+      value: "coach",
+      email: "kim_coach",
+      password: "Test1234!",
+    },
+    {
+      // [수정 2026-05-11] 학부모/학생 기본 계정을 신부모/신학생으로 교체.
+      label: "학부모 (Parent) — 신부모",
+      value: "parent",
+      email: "shin1234",
+      password: "Test1234!",
+    },
+    {
+      // [추가 2026-05-15] 오픈클래스 감독 — ACADEMY_DIRECTOR. (coach) 그룹 공용 사용.
+      label: "오픈클래스 감독 (Academy Director) — 오분글",
+      value: "academy_director",
+      email: "oven1234",
+      password: "Test1234!",
+    },
+  ] as const;
+
+  const [selectedUser, setSelectedUser] = useState("");
   // "아이디 저장" 체크박스 — 체크 시 로그인 성공한 아이디를 localStorage 에 보관해
   // 다음 진입 시 자동 채움. (비밀번호는 저장하지 않음 — 보안 정책)
   // 사용자 직접 지시 (2026-05-23): "로그인 유지" → "아이디 저장" 동작으로 통합.
@@ -338,6 +511,15 @@ export default function LoginPage() {
     target.setSelectionRange(caret, caret);
     // RHF 동기화
     target.dispatchEvent(new Event("input", { bubbles: true }));
+  };
+
+  const handleUserSelect = (value: string) => {
+    setSelectedUser(value);
+    const account = TEST_ACCOUNTS.find((a) => a.value === value);
+    if (account) {
+      setValue("email", account.email);
+      setValue("password", account.password);
+    }
   };
 
   // 아이디 저장 — mount 시 localStorage 에서 체크 상태 + 저장된 아이디 복원
@@ -576,41 +758,21 @@ export default function LoginPage() {
   const isSignupEnabled = settings?.signupEnabled ?? true;
 
   return (
-    <MobileContainer hasBottomNav={false} className="bg-wbg dark:bg-puck">
+    <MobileContainer hasBottomNav={false} className="bg-it-surface dark:bg-puck">
       <main data-no-enter className="flex flex-1 flex-col overflow-y-auto scroll-keyboard-safe">
         <MaintenanceBanner />
-        <div className="flex-1 flex flex-col px-7 pt-8 pb-keyboard-safe-8 max-w-md mx-auto w-full">
-          {/* ─── 로고 + 헤드라인 ─────────────────────── */}
+        <div className="flex-1 flex flex-col px-[26px] pt-10 pb-keyboard-safe-8 max-w-md mx-auto w-full">
+          {/* ─── 로고 + 헤드라인 (ICETIMES flat — 카드 박스 제거) ─────── */}
           <div className="flex flex-col">
-            <div className="flex items-center gap-2.5 mb-6">
-              <div className="w-10 h-10 bg-ice-500 rounded-w-md flex items-center justify-center shadow-md">
-                <Image
-                  src="/images/app_icons/splash_logo.png"
-                  alt="팀플러스"
-                  width={28}
-                  height={28}
-                  priority
-                  className="w-7 h-7 object-contain"
-                />
-              </div>
-              {/* width/height 는 실제 본질 크기(954×218) 그대로 — 표시 크기는 h-5 w-auto 가 제어.
-                  display 크기(88×20)를 props 로 주면 height 만 속성과 일치(미변경)하고 w-auto
-                  계산폭(≈87.5)이 어긋나 next/image 의 단일 차원 변경 경고가 떴음. (aspect ratio 유지) */}
-              <Image
-                src="/images/app_icons/splash_wordmark3.png"
-                alt="팀플러스"
-                width={954}
-                height={218}
-                priority
-                className="h-5 w-auto object-contain dark:invert"
-              />
+            <div className="mb-[30px]">
+              <TPLogo height={34} />
             </div>
 
-            <h1 className="text-[24px] leading-[1.35] font-extrabold tracking-tight text-wtext-1 dark:text-white">
+            <h1 className="text-[25px] leading-[1.32] font-extrabold tracking-tight text-it-ink-900 dark:text-white">
               오늘도 빙판 위에서
               <br />한 뼘 더 자라요
             </h1>
-            <p className="mt-2 text-card-body text-wtext-3 dark:text-rink-300">
+            <p className="mt-2.5 text-[15px] leading-[1.5] text-it-ink-500 dark:text-rink-300">
               로그인하고 수업 · 진도 · 결제를 한 번에 관리하세요.
             </p>
           </div>
@@ -680,16 +842,28 @@ export default function LoginPage() {
           <form
             ref={formRef}
             onSubmit={handleSubmit(handleLogin)}
-            className="mt-7 flex flex-col gap-3"
+            className="mt-7 flex flex-col gap-[11px]"
             noValidate
             autoComplete="off"
           >
+            {/* 테스트 계정 셀렉터 — 기능 그대로 유지 */}
+            {(!isHydrated || !isNativeApp()) && (
+              <AccountSelector
+                options={TEST_ACCOUNTS}
+                value={selectedUser}
+                onChange={handleUserSelect}
+                disabled={isSubmitting}
+              />
+            )}
+
             <div className="flex flex-col gap-1">
               {(() => {
                 // [추가 2026-05-23] 한글 IME 입력 차단 — register onChange 를 sanitizer 로 wrap.
                 const emailReg = register("email");
                 return (
                   <Input
+                    iceTheme
+                    className="h-[52px]"
                     type="text"
                     inputMode="text"
                     autoCapitalize="none"
@@ -733,6 +907,8 @@ export default function LoginPage() {
                 const passwordReg = register("password");
                 return (
                   <Input
+                    iceTheme
+                    className="h-[52px]"
                     type="password"
                     inputMode="text"
                     autoCapitalize="none"
@@ -770,8 +946,8 @@ export default function LoginPage() {
               )}
             </div>
 
-            {/* 옵션 줄: 아이디 저장 체크 + 아이디/비밀번호 찾기 */}
-            <div className="flex items-center justify-between mt-1 mb-2 px-1">
+            {/* 옵션 줄: 아이디 저장 체크 + 아이디/비밀번호 찾기 (시안 margin 14px 2px 18px) */}
+            <div className="flex items-center justify-between mt-[14px] mb-[18px] px-0.5">
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input
                   type="checkbox"
@@ -782,11 +958,11 @@ export default function LoginPage() {
                 />
                 <span
                   aria-hidden="true"
-                  className={`w-[18px] h-[18px] rounded-[4px] border flex items-center justify-center transition-colors motion-reduce:transition-none
+                  className={`w-[19px] h-[19px] rounded-[5px] border-[1.5px] flex items-center justify-center transition-colors motion-reduce:transition-none
                   ${
                     rememberEmail
-                      ? "bg-ice-500 border-ice-500"
-                      : "bg-wsurface dark:bg-rink-800 border-wline dark:border-rink-700"
+                      ? "bg-it-blue-500 border-it-blue-500"
+                      : "bg-it-surface dark:bg-rink-800 border-it-line-strong dark:border-rink-700"
                   }`}
                 >
                   {rememberEmail && (
@@ -801,26 +977,26 @@ export default function LoginPage() {
                     </svg>
                   )}
                 </span>
-                <span className="text-card-body font-semibold text-wtext-2 dark:text-rink-100">
+                <span className="text-[14px] font-semibold text-it-ink-700 dark:text-rink-100">
                   아이디 저장
                 </span>
               </label>
 
-              <div className="flex items-center gap-2 text-card-body text-wtext-3 dark:text-rink-300">
+              <div className="flex items-center gap-2 text-[13.5px] text-it-ink-500 dark:text-rink-300">
                 {/* [수정 2026-05-19] /find-id 와 /find-password 는 통합 페이지로
                     /find-id?tab=id|password 단일 라우트가 두 탭을 모두 처리한다.
                     직접 ?tab= 쿼리를 부여하여 /find-password → /find-id 2단계
                     리다이렉트 깜빡임 제거 (find-id/page.tsx:34 searchParams.get('tab')). */}
                 <NavLink
                   href="/find-id?tab=id"
-                  className="hover:text-ice-500 transition-colors motion-reduce:transition-none"
+                  className="hover:text-it-blue-600 transition-colors motion-reduce:transition-none"
                 >
                   아이디 찾기
                 </NavLink>
-                <span className="text-wtext-4 dark:text-rink-500">·</span>
+                <span className="text-it-ink-300 dark:text-rink-500">·</span>
                 <NavLink
                   href="/find-id?tab=password"
-                  className="hover:text-ice-500 transition-colors motion-reduce:transition-none"
+                  className="hover:text-it-blue-600 transition-colors motion-reduce:transition-none"
                 >
                   비밀번호 찾기
                 </NavLink>
@@ -829,6 +1005,7 @@ export default function LoginPage() {
 
             {/* 로그인 버튼 — 내장 스피너 비활성화 (풀스크린 LoadingPuck 로 일원화) */}
             <Button
+              iceTheme
               type="submit"
               fullWidth
               loading={false}
@@ -852,28 +1029,28 @@ export default function LoginPage() {
           </form>
 
 
-          {/* ─── 푸터: 회원가입 + 약관 ───────────────── */}
-          <div className="mt-auto pt-8">
+          {/* ─── 푸터: 회원가입 + 약관 (시안 paddingTop 28 · row gap6 mb14) ── */}
+          <div className="mt-auto pt-7">
             {isSignupEnabled && (
-              <div className="flex items-center justify-center gap-1 mb-4">
-                <span className="text-card-body text-wtext-3 dark:text-rink-300">
+              <div className="flex items-center justify-center gap-1.5 mb-3.5">
+                <span className="text-[14px] text-it-ink-500 dark:text-rink-300">
                   아직 회원이 아니신가요?
                 </span>
                 <NavLink
                   href="/signup"
-                  className="text-card-body font-bold text-ice-500 hover:text-ice-700 transition-colors motion-reduce:transition-none"
+                  className="text-[14px] font-extrabold text-it-blue-500 hover:text-it-blue-600 transition-colors motion-reduce:transition-none"
                 >
                   회원가입
                 </NavLink>
               </div>
             )}
-            <p className="text-center text-card-meta text-wtext-4 dark:text-rink-500">
+            <p className="text-center text-[12px] leading-[1.6] text-it-ink-400 dark:text-rink-500">
               로그인 시{" "}
-              <NavLink href="/terms" className="text-ice-500 hover:underline">
+              <NavLink href="/terms" className="text-it-blue-500 hover:underline">
                 이용약관
               </NavLink>{" "}
               및{" "}
-              <NavLink href="/terms" className="text-ice-500 hover:underline">
+              <NavLink href="/terms" className="text-it-blue-500 hover:underline">
                 개인정보처리방침
               </NavLink>
               에 동의합니다.

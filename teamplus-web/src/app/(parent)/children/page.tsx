@@ -3,6 +3,7 @@
 import { useState, useMemo, type ReactNode } from 'react';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { SubmainAppBar } from '@/components/layout/SubmainAppBar';
+import { SectionHead } from '@/components/wallet';
 import { Icon } from '@/components/ui/Icon';
 import { useNavigation } from '@/components/ui/NavLink';
 import { useChildren } from '@/hooks/useChildren';
@@ -101,27 +102,27 @@ export default function ChildrenManagementPage() {
           화면 정중앙에 배치. 자녀 ≥1 케이스는 기존 상단 정렬 그대로 유지. */}
       <div
         className={cn(
-          'flex-1 overflow-y-auto hide-scrollbar bg-wbg dark:bg-puck pb-30',
+          'flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck pb-30',
           childCount === 0 && 'flex flex-col items-center justify-center',
         )}
       >
         {/* 에러 상태 — role=alert (디자인 시스템 유지) */}
         {error && (
           <div
-            className="mx-5 mt-3 flex items-center gap-3 rounded-w-md bg-flame-100 dark:bg-flame-500/15 p-3 border border-flame-500/40"
+            className="mx-5 mt-3 flex items-center gap-3 rounded-w-md bg-it-red-50 dark:bg-it-red-500/15 p-3 border border-it-red-500/40"
             role="alert"
             aria-live="assertive"
           >
-            <Icon name="error" className="text-flame-500 text-xl shrink-0" aria-hidden="true" />
+            <Icon name="error" className="text-it-red-500 text-xl shrink-0" aria-hidden="true" />
             <div className="flex-1 min-w-0">
-              <p className="text-card-body font-medium text-wtext-2 dark:text-flame-100">
+              <p className="text-card-body font-medium text-it-ink-700 dark:text-it-red-100">
                 {error}
               </p>
             </div>
             <button
               type="button"
               onClick={() => refresh()}
-              className="shrink-0 text-card-body font-semibold text-flame-500hover:underline min-h-[44px] px-2"
+              className="shrink-0 text-card-body font-semibold text-it-red-500 hover:underline min-h-[44px] px-2"
             >
               {MESSAGES.dashboard.errorRetry}
             </button>
@@ -139,16 +140,16 @@ export default function ChildrenManagementPage() {
             기존 상단 패딩(`pt-4`) 제거 → 부모의 justify-center 가 수직 중앙 처리.
           */
           <div className="w-full px-4">
-            <div className="flex flex-col items-center justify-center py-16 px-6 rounded-w-lg bg-wsurface dark:bg-rink-800 border border-wline dark:border-rink-700 shadow-sh-1">
-              <div className="relative flex items-center justify-center size-20 rounded-w-pill bg-ice-500/10 mb-5 ring-8 ring-ice-500/5">
-                <Icon name="family_restroom" className="text-4xl text-ice-500" aria-hidden="true" />
+            <div className="flex flex-col items-center justify-center py-16 px-6 rounded-w-lg bg-it-surface dark:bg-rink-800 border border-it-line dark:border-rink-700 shadow-sh-1">
+              <div className="relative flex items-center justify-center size-20 rounded-w-pill bg-it-blue-500/10 mb-5 ring-8 ring-it-blue-500/5">
+                <Icon name="family_restroom" className="text-4xl text-it-blue-500" aria-hidden="true" />
               </div>
-              <p className="text-card-emphasis font-bold text-wtext-1 dark:text-white mb-2">
+              <p className="text-card-emphasis font-bold text-it-ink-900 dark:text-white mb-2">
                 첫 아이를 등록해보세요
               </p>
-              <p className="text-card-body text-wtext-3 dark:text-rink-300 text-center leading-relaxed max-w-[260px]">
+              <p className="text-card-body text-it-ink-500 dark:text-rink-300 text-center leading-relaxed max-w-[260px]">
                 우측 하단
-                <span className="inline-flex items-center justify-center align-middle w-5 h-5 rounded-w-pill bg-ice-500 text-white mx-1">
+                <span className="inline-flex items-center justify-center align-middle w-5 h-5 rounded-w-pill bg-it-blue-500 text-white mx-1">
                   <Icon name="add" className="text-[14px]" aria-hidden="true" />
                 </span>
                 버튼을 눌러
@@ -158,7 +159,7 @@ export default function ChildrenManagementPage() {
               <button
                 type="button"
                 onClick={() => navigate('/children/add')}
-                className="mt-6 inline-flex items-center gap-2 min-h-[44px] px-5 rounded-w-md bg-ice-500 hover:bg-ice-700 text-white text-card-body font-semibold transition-colors motion-reduce:transition-none active:brightness-95"
+                className="mt-6 inline-flex items-center gap-2 min-h-[44px] px-5 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-body font-semibold transition-colors motion-reduce:transition-none active:brightness-95"
               >
                 <Icon name="add" className="text-[18px]" aria-hidden="true" />
                 선수 등록하기
@@ -229,7 +230,7 @@ export default function ChildrenManagementPage() {
         type="button"
         onClick={() => navigate('/children/add')}
         disabled={!canAdd}
-        className="fixed right-5 bottom-[calc(80px+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px)))] z-50 flex h-14 w-14 items-center justify-center rounded-w-pill bg-ice-500 text-white shadow-sh-blue hover:bg-ice-700 hover:shadow-sh-3 active:brightness-95 transition-all motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 disabled:bg-wtext-4 dark:disabled:bg-rink-500 disabled:cursor-not-allowed disabled:active:brightness-100 disabled:hover:bg-wtext-4 dark:disabled:hover:bg-rink-500 disabled:hover:shadow-sh-blue"
+        className="fixed right-5 bottom-[calc(80px+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px)))] z-50 flex h-14 w-14 items-center justify-center rounded-w-pill bg-it-blue-500 text-white shadow-sh-blue hover:bg-it-blue-600 hover:shadow-sh-3 active:brightness-95 transition-all motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 disabled:bg-it-ink-300 dark:disabled:bg-rink-500 disabled:cursor-not-allowed disabled:active:brightness-100 disabled:hover:bg-it-ink-300 dark:disabled:hover:bg-rink-500 disabled:hover:shadow-sh-blue"
         aria-label={canAdd ? '선수 등록하기' : `선수는 최대 ${MAX_CHILDREN}명까지 등록할 수 있습니다`}
       >
         <Icon name="add" className="text-[28px]" aria-hidden="true" />
@@ -277,23 +278,23 @@ function ChildSwitcherTabs({
             aria-selected={t.active}
             onClick={() => onSelect(t.id)}
             className={cn(
+              /* [시안] 칩 h42, pl8/pr14, fs14.5/800, border 1.5px line-strong */
               'inline-flex items-center gap-2 h-[42px] pl-2 pr-3.5 rounded-w-pill whitespace-nowrap shrink-0 transition-colors motion-reduce:transition-none',
-              'text-card-body font-extrabold tracking-[-0.02em]',
-              // 사용자 직접 지시 2026-05-17 : 활성 칩("신 신학생" 영역) 을 ice-500 브랜드 파란색으로.
-              // 이전 wtext-1(검정 슬레이트) 배경 → ice-500 변경, 텍스트는 흰색 유지로 가독성 보장.
+              'text-[14.5px] font-extrabold tracking-[-0.02em]',
+              // ICETIMES: 활성 칩 it-blue-500 브랜드 파란색, 비활성 흰 표면 + line-strong 테두리.
               t.active
-                ? 'bg-ice-500 text-white border-0 dark:bg-ice-500 dark:text-white'
-                : 'bg-wsurface text-wtext-2 border border-wline dark:bg-rink-800 dark:text-rink-100 dark:border-rink-700',
+                ? 'bg-it-blue-500 text-white border-[1.5px] border-it-blue-500 dark:bg-it-blue-500 dark:text-white'
+                : 'bg-it-surface text-it-ink-700 border-[1.5px] border-it-line-strong dark:bg-rink-800 dark:text-rink-100 dark:border-rink-700',
             )}
             aria-pressed={t.active}
           >
-            {/* ref: avatar 24×24 rounded full / active: white/20 bg + white fg / inactive: ice50 bg + ice600 fg */}
+            {/* ref: avatar 24×24 rounded full / active: white/20 bg + white fg / inactive: blue50 bg + blue600 fg */}
             <span
               className={cn(
                 'w-7 h-7 rounded-full grid place-items-center text-card-meta font-extrabold',
                 t.active
                   ? 'bg-white/20 text-white dark:bg-rink-900/20 dark:text-rink-900'
-                  : 'bg-ice-50 text-ice-600 dark:bg-ice-500/15 dark:text-ice-500',
+                  : 'bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-500/15 dark:text-it-blue-300',
               )}
             >
               {t.init}
@@ -301,10 +302,10 @@ function ChildSwitcherTabs({
             {t.name}
             <span
               className={cn(
-                'text-card-meta font-bold',
+                'text-[12.5px] font-bold',
                 t.active
                   ? 'text-white/70 dark:text-rink-900/70'
-                  : 'text-wtext-4 dark:text-rink-300',
+                  : 'text-it-ink-400 dark:text-rink-300',
               )}
             >
               {t.grade}
@@ -338,7 +339,7 @@ function HeroChildCard({
     ? { badge: 'bg-warning-500/10 text-warning-600 dark:bg-warning-500/15 dark:text-warning-500', dot: 'bg-warning-500' }
     : isApproved
       ? { badge: 'bg-success-500/10 text-success-700 dark:bg-success-500/15 dark:text-success-500', dot: 'bg-success-500' }
-      : { badge: 'bg-wline-2 text-wtext-3 dark:bg-rink-700 dark:text-wtext-4', dot: 'bg-wtext-4 dark:bg-rink-300' };
+      : { badge: 'bg-it-fill text-it-ink-500 dark:bg-rink-700 dark:text-wtext-4', dot: 'bg-it-ink-400 dark:bg-rink-300' };
   const birthLabel = child.birthDate
     ? new Date(child.birthDate).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\. /g, '.').replace(/\.$/, '')
     : DASH;
@@ -346,16 +347,15 @@ function HeroChildCard({
   const init = initialOf(child.name);
 
   return (
-    <div className="pt-3.5 px-5">
-      {/* ref: surface / radius 18 / border 1px line2 / padding 16 18 14
-          [수정 2026-05-17] 사용자 직접 지시 3건:
-            ① 이름 글씨 축소 text-w-h2(28px) → text-w-h3(22px)
-            ② 정보 수정 버튼 → 우측 단순 `>` chevron 으로 단순화
-            ③ 아바타("사진 미등록" 영역) 를 카드 왼쪽으로 이동 [Avatar | 정보 | >] */}
-      <div className="rounded-[18px] bg-wsurface dark:bg-rink-800 border border-wline-2 dark:border-rink-700 px-[18px] pt-4 pb-4">
+    /* [ICETIMES flat 재작업 2026-06-24] 시안(ParentChildren.jsx) 구조로 전환.
+       카드 박스(rounded-[18px] border) 제거 → full-bleed 흰 섹션(bg-it-surface)이
+       8px 회색 갭(상위 bg-it-canvas 위 mt-2)으로 쌓인다. 좌우 패딩은 섹션 내부(px-5)가 담당.
+       /director Hero 와 동일한 flat 언어. 이름/배지/메타/아바타 레이아웃은 불변. */
+    <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
+      <div className="px-5 pt-4 pb-4">
         <div className="flex items-center gap-3.5">
-          {/* ① Avatar 슬롯 — 왼쪽으로 이동, 사이즈 108→92 축소 (텍스트 옆 배치 균형) */}
-          <div className="w-[92px] h-[92px] shrink-0 rounded-[18px] bg-ice-50 dark:bg-ice-500/15 flex flex-col items-center justify-center relative">
+          {/* ① Avatar 슬롯 — [시안 ParentChildren.jsx] 88×88 r18 */}
+          <div className="w-[88px] h-[88px] shrink-0 rounded-[18px] bg-it-blue-50 dark:bg-it-blue-500/15 flex flex-col items-center justify-center relative">
             {resolveImageSrc(child.imageUrl) ? (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
@@ -365,10 +365,10 @@ function HeroChildCard({
               />
             ) : (
               <>
-                <span className="text-[34px] font-black text-ice-600 dark:text-ice-500 tracking-[-0.04em] leading-none">
+                <span className="text-[32px] font-black text-it-blue-600 dark:text-it-blue-300 tracking-[-0.04em] leading-none">
                   {init}
                 </span>
-                <span className="mt-1 inline-flex items-center gap-[3px] text-card-meta font-bold text-ice-600 dark:text-ice-500">
+                <span className="mt-1 inline-flex items-center gap-[3px] text-card-meta font-bold text-it-blue-600 dark:text-it-blue-300">
                   <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
                     <rect
                       x="1.5"
@@ -390,9 +390,10 @@ function HeroChildCard({
           {/* ② 텍스트 정보 영역 — 배지 / 이름 / 메타 */}
           <div className="flex-1 min-w-0">
             {/* 승인 상태 배지 */}
+            {/* [시안] 배지 px9 py3 r7 fs12/800, dot 6×6 */}
             <span
               className={cn(
-                'inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-card-meta font-extrabold tracking-[0.02em]',
+                'inline-flex items-center gap-[5px] px-[9px] py-[3px] rounded-[7px] text-[12px] font-extrabold tracking-[0.02em]',
                 statusStyle.badge,
               )}
             >
@@ -401,13 +402,13 @@ function HeroChildCard({
             </span>
 
             {/* 이름 — text-w-h3(22px) 로 축소 */}
-            <p className="mt-1.5 text-w-h3 font-extrabold text-wtext-1 dark:text-white tracking-[-0.03em] leading-tight truncate">
+            <p className="mt-1.5 text-w-h3 font-extrabold text-it-ink-900 dark:text-white tracking-[-0.03em] leading-tight truncate">
               {child.name}
             </p>
 
             {/* 메타 — 생년월일 · 팀명 */}
-            <p className="mt-1 flex items-center gap-1.5 text-card-meta text-wtext-3 dark:text-wtext-4">
-              <span className="font-bold text-wtext-2 dark:text-wtext-4 tabular-nums">{birthLabel}</span>
+            <p className="mt-1 flex items-center gap-1.5 text-card-meta text-it-ink-500 dark:text-wtext-4">
+              <span className="font-bold text-it-ink-700 dark:text-wtext-4 tabular-nums">{birthLabel}</span>
               <span className="opacity-40">·</span>
               <span className="truncate">{teamLabel}</span>
             </p>
@@ -418,7 +419,7 @@ function HeroChildCard({
             type="button"
             onClick={onEditInfo}
             aria-label="정보 수정"
-            className="shrink-0 w-9 h-9 -mr-1 grid place-items-center rounded-full text-wtext-3 dark:text-wtext-4 transition-colors motion-reduce:transition-none hover:bg-wbg dark:hover:bg-rink-900/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
+            className="shrink-0 w-9 h-9 -mr-1 grid place-items-center rounded-full text-it-ink-300 dark:text-wtext-4 transition-colors motion-reduce:transition-none hover:bg-it-fill dark:hover:bg-rink-900/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40"
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
               <path
@@ -432,7 +433,7 @@ function HeroChildCard({
           </button>
         </div>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -486,41 +487,42 @@ function QuickActionsList({
   ];
 
   return (
-    <div>
-      {/* 헤더 — /parent SectionHead 동일 위계 (font-extrabold text-[15px] sm:text-[16px]) */}
-      <div className="flex items-center justify-between px-4 sm:px-5 pt-4 sm:pt-[18px] pb-2">
-        <div className="text-wtext-1 dark:text-white tracking-[-0.02em] font-extrabold text-[15px] sm:text-[16px]">
-          관리
-        </div>
-      </div>
-      <div className="mx-4 sm:mx-5 rounded-2xl bg-wsurface dark:bg-rink-800 border border-wline-2 dark:border-rink-700">
+    /* [ICETIMES flat 재작업 2026-06-24] 관리 리스트를 카드 박스(mx-5 rounded-2xl border)
+       에서 full-bleed 흰 섹션(bg-it-surface)으로 전환. 행은 hairline(border-it-line)으로
+       구분되며 마지막 행 구분선 제거. 시안(ParentChildren.jsx) ListRow + /director 와 동일. */
+    <section className="mt-2 bg-it-surface dark:bg-it-blue-950 pb-2">
+      {/* 헤더 — SectionHead(iceTheme) 동일 위계 (17px/800) */}
+      <SectionHead title="관리" iceTheme />
+      <div className="px-4 sm:px-5">
         {rows.map((r, i) => (
           <button
             key={r.key}
             type="button"
             onClick={() => onNav(r.key)}
             className={cn(
-              'w-full flex items-center gap-3 px-4 py-3.5 text-left',
-              i < rows.length - 1 && 'border-b border-wline-2 dark:border-rink-700',
-              'transition-colors motion-reduce:transition-none active:bg-wbg dark:active:bg-rink-900/40',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ice-500/40',
+              'w-full flex items-center gap-3 py-3.5 text-left',
+              i < rows.length - 1 && 'border-b border-it-line dark:border-it-blue-900',
+              'transition-colors motion-reduce:transition-none active:bg-it-fill dark:active:bg-rink-900/40',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-it-blue-500/40',
             )}
           >
-            {/* icon box — ref: 36×36 rounded 10 / bg T.bg / border 1px line2 */}
-            <span className="w-9 h-9 shrink-0 grid place-items-center rounded-[10px] bg-wbg dark:bg-rink-900 border border-wline-2 dark:border-rink-700 text-wtext-2 dark:text-wtext-4">
+            {/* icon box — [시안] 38×38 r10 / bg fill / border 1px line */}
+            <span className="w-[38px] h-[38px] shrink-0 grid place-items-center rounded-[10px] bg-it-fill dark:bg-rink-900 border border-it-line dark:border-it-blue-900 text-it-ink-600 dark:text-wtext-4">
               <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
                 {r.icon}
               </svg>
             </span>
             <span className="flex-1 min-w-0">
               <span className="flex items-center gap-1.5">
-                <span className="text-card-title font-extrabold text-wtext-1 dark:text-white tracking-[-0.02em]">
+                {/* [시안 ListRow] title 15.5/700 */}
+                <span className="text-[15.5px] font-bold text-it-ink-900 dark:text-white tracking-[-0.01em]">
                   {r.label}
                 </span>
-                {/* ref warn dot: T.warning(#f59e0b) = TEAMPLUS warning 토큰 정확 매핑 */}
+                {/* ref warn dot: T.warning = TEAMPLUS warning 토큰 정확 매핑 */}
                 {r.warn && <span className="w-1.5 h-1.5 rounded-full bg-warning-500" />}
               </span>
-              <span className="block mt-1 text-card-meta font-semibold text-wtext-3 dark:text-wtext-4">
+              {/* [시안 ListRow] subtitle 13/500/muted */}
+              <span className="block mt-0.5 text-[13px] font-medium text-it-ink-500 dark:text-wtext-4">
                 {r.sub}
               </span>
             </span>
@@ -531,7 +533,7 @@ function QuickActionsList({
               viewBox="0 0 14 14"
               fill="none"
               aria-hidden="true"
-              className="shrink-0 text-wtext-3 dark:text-wtext-4"
+              className="shrink-0 text-it-ink-300 dark:text-wtext-4"
             >
               <path
                 d="M5 3l4 4-4 4"
@@ -544,7 +546,7 @@ function QuickActionsList({
           </button>
         ))}
       </div>
-    </div>
+    </section>
   );
 }
 

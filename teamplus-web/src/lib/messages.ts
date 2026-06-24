@@ -212,6 +212,12 @@ export const MESSAGES = {
   //   대신 명확하게 "로그인 중 오류가 발생했어요"는 유지하되 "다시 시도해주세요"로 회복 경로 제시.
   auth: {
     loginError: "로그인 중 오류가 발생했어요. 다시 시도해주세요.",
+    // ICETIMES 브랜드 카피 — 스플래시/로그인 비주얼 전용 (2026-06-24 ICETIMES 롤아웃)
+    brand: {
+      wordmark: "TEAMPLUS",
+      tagline: "아이스하키 클럽 운영의 모든 것",
+      footer: "ICE HOCKEY CLUB OS",
+    },
     // 단일 세션 정책 — 다른 기기에서 사용 중인 계정으로 로그인 시 확인 모달
     sessionExists: {
       title: "이미 로그인된 계정이에요",
@@ -309,6 +315,7 @@ export const MESSAGES = {
     },
     links: {
       classList: "수업 목록",
+      trainingList: "훈련 목록",
       memberList: "학생 목록",
       scheduleManage: "일정 관리",
       coachInfo: "코치 정보",

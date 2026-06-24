@@ -13,9 +13,7 @@
  */
 
 import { memo, useEffect } from "react";
-import Image from "next/image";
 import { cn } from "@/lib/utils";
-import { MESSAGES } from "@/lib/messages";
 import { lockBodyScroll, unlockBodyScroll } from "@/lib/scroll-lock";
 
 export interface LoadingPuckProps {
@@ -153,62 +151,15 @@ interface PuckBodyProps {
 }
 
 function PuckBody({ dark = false }: PuckBodyProps) {
-  // [롤백 2026-05-22] 사용자 직접 지시 — fullsize 팝업 스피너 애니메이션을 어제(2026-05-21)
-  //   상태로 복원. 오늘 추가한 v19(translate3d 0,-10px,0) + v20(wrapper 96×96 + 로고 absolute)
-  //   변경을 되돌려 v18 구조(flex-col + 로고 위 + mt-2 + 스피너)로 회귀.
-  // [수정 2026-05-28 사용자 직접 지시] 퍽 애니메이션 하단에 "로딩중..." 고정 문구 추가.
-  //   묶음(로고+퍽+텍스트)은 컨테이너 justify-center 로 화면 정중앙 배치한다.
-  //   (직전 translate3d Y -9vh 로 위로 올렸으나 "너무 위로 올라간 느낌" 피드백으로 0 복원 —
-  //    translate3d 0,0,0 은 위치 이동 없이 GPU promote 용도만 유지.)
-  //   고정 단일 카피라 v18 동적 message 회귀(문구 변화로 두 화면 인지)와 무관.
+  // 로고/워드마크(상단)·"로딩중..." 문구(하단) 제거 — 퍽 스피너만 화면 정중앙에 표시.
+  //   a11y 는 컨테이너의 role="status" + aria-label="로딩 중" 으로 전달된다.
   return (
-    <>
-      <div
-        className="relative z-10 flex flex-col items-center"
-        style={{ transform: 'translate3d(0, 0, 0)' }}
-      >
-        <div className="flex items-center justify-center gap-2">
-          <div className="w-7 h-7 bg-ice-500 rounded-w-sm flex items-center justify-center shadow-sm">
-            <Image
-              src="/images/app_icons/splash_logo.png"
-              alt=""
-              width={20}
-              height={20}
-              priority
-              aria-hidden
-              className="w-5 h-5 object-contain"
-            />
-          </div>
-          {/* width/height 는 실제 본질 크기(954×218) — 표시 크기는 h-4 w-auto 가 제어.
-              next/image 단일 차원 변경(aspect ratio) 경고 방지 (login 헤더 로고와 동일 패턴). */}
-          <Image
-            src="/images/app_icons/splash_wordmark3.png"
-            alt=""
-            width={954}
-            height={218}
-            priority
-            aria-hidden
-            className="h-4 w-auto object-contain dark:invert"
-          />
-        </div>
-
-        <div className="mt-2">
-          <PuckLoaderArt dark={dark} />
-        </div>
-
-        {/* [추가 2026-05-28 사용자 직접 지시] 퍽 애니메이션 하단 "로딩중..." 고정 문구.
-            단계 변화 없는 단일 카피이므로 v18 동적 message 회귀와 무관. 라이트/다크 표면이
-            각각 별도 PuckBody 인스턴스로 분리 렌더되므로 dark prop 으로 색상 직접 분기. */}
-        <p
-          className={cn(
-            "mt-5 text-w-small font-medium tracking-tight",
-            dark ? "text-wtext-4" : "text-wtext-3",
-          )}
-        >
-          {MESSAGES.loading.spinner}
-        </p>
-      </div>
-    </>
+    <div
+      className="relative z-10 flex flex-col items-center"
+      style={{ transform: 'translate3d(0, 0, 0)' }}
+    >
+      <PuckLoaderArt dark={dark} />
+    </div>
   );
 }
 

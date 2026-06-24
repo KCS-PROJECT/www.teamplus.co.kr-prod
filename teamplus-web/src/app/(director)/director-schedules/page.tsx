@@ -39,7 +39,7 @@ const DAY_LABELS = WEEKDAY_HEADERS;
 //   - 'tournament' = 대회/매치 (TOURNAMENT / GAME / EVENT)
 const CATEGORY_TABS = [
   { key: 'all', label: '전체', match: null as null | string[] },
-  { key: 'regular', label: '정규수업', match: ['REGULAR', 'regular'] },
+  { key: 'regular', label: '정규훈련', match: ['REGULAR', 'regular'] },
   { key: 'tournament', label: '대회', match: ['TOURNAMENT', 'GAME', 'EVENT', 'tournament'] },
 ] as const;
 
@@ -75,16 +75,18 @@ function formatShortDate(dateKey: string): string {
 // ────────────────────────────────────────────
 
 function EmptyScheduleCard({ dateLabel }: { dateLabel?: string }) {
+  // ICETIMES flat: 점선 카드 박스(rounded-2xl border-dashed bg) 제거 → /director 홈의
+  //   DirectorEmptyCard(iceTheme) 와 동일한 박스 없는 flat empty state. 상위 흰 섹션 면을 그대로 사용.
   return (
-    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-wline bg-white p-8 text-center dark:border-rink-700 dark:bg-rink-800/40">
-      <div className="mb-3 flex size-12 items-center justify-center rounded-w-pill bg-wline-2 dark:bg-rink-700">
+    <div className="flex flex-col items-center justify-center px-5 py-10 text-center" role="status">
+      <div className="mb-3 flex size-12 items-center justify-center rounded-w-pill bg-it-fill dark:bg-it-blue-900">
         <Icon
           name="calendar_today"
-          className="text-2xl text-wtext-3 dark:text-rink-300"
+          className="text-2xl text-it-ink-400 dark:text-rink-300"
           aria-hidden="true"
         />
       </div>
-      <p className="text-card-body font-medium text-wtext-3 dark:text-rink-300">
+      <p className="text-card-body font-medium text-it-ink-500 dark:text-rink-300">
         {dateLabel ? `${dateLabel}에 ` : ''}
         {MESSAGES.dashboard.noSchedule}
       </p>
@@ -188,19 +190,19 @@ export default function DirectorSchedulesPage() {
   const renderRow = useCallback(
     (cls: CalendarClass) => {
       const color = getTrainingColor(cls.type);
-      // 종류 칩 배경 = color/18% tint (캘린더 dot 색상과 일치).
+      // 종류 칩 배경 = color/14% tint (시안 KitScheduleRow color-mix 14% 와 일치, 캘린더 dot 색상 동조).
       const tintBg =
         color.bg === 'bg-blue-500'
-          ? 'bg-blue-500/[0.18] dark:bg-blue-500/20'
+          ? 'bg-blue-500/[0.14] dark:bg-blue-500/20'
           : color.bg === 'bg-emerald-500'
-            ? 'bg-emerald-500/[0.18] dark:bg-emerald-500/20'
+            ? 'bg-emerald-500/[0.14] dark:bg-emerald-500/20'
             : color.bg === 'bg-red-500'
-              ? 'bg-red-500/[0.18] dark:bg-red-500/20'
+              ? 'bg-red-500/[0.14] dark:bg-red-500/20'
               : color.bg === 'bg-amber-500'
-                ? 'bg-amber-500/[0.18] dark:bg-amber-500/20'
+                ? 'bg-amber-500/[0.14] dark:bg-amber-500/20'
                 : color.bg === 'bg-orange-500'
-                  ? 'bg-orange-500/[0.18] dark:bg-orange-500/20'
-                  : 'bg-violet-500/[0.18] dark:bg-violet-500/20';
+                  ? 'bg-orange-500/[0.14] dark:bg-orange-500/20'
+                  : 'bg-violet-500/[0.14] dark:bg-violet-500/20';
 
       // 대회/매치 일정 클릭 → 대회 및 경기 목록. 일반 수업은 classId 있으면 상세.
       const normalizedType = String(cls.type ?? '').toLowerCase();
@@ -216,6 +218,7 @@ export default function DirectorSchedulesPage() {
 
       return (
         <ScheduleRow
+          iceTheme
           colorBar={{ bg: color.bg, darkBg: color.darkBg }}
           chip={{ label: color.label, className: cn(color.text, tintBg) }}
           time={cls.time}
@@ -255,10 +258,11 @@ export default function DirectorSchedulesPage() {
                 aria-selected={isActive}
                 onClick={() => setCategoryKey(tab.key)}
                 className={cn(
-                  'inline-flex h-[30px] shrink-0 items-center rounded-w-pill border px-3.5 text-card-meta font-extrabold tracking-[-0.01em] transition-colors motion-reduce:transition-none',
+                  // 시안 Chip.jsx: h36 · padding 0 16px · 14px/700 · border 1.5px · rounded-pill.
+                  'inline-flex h-9 shrink-0 items-center rounded-w-pill border-[1.5px] px-4 text-[14px] font-bold tracking-[-0.01em] transition-colors motion-reduce:transition-none',
                   isActive
-                    ? 'border-ice-500 bg-ice-500 text-white'
-                    : 'border-wline bg-white text-wtext-2 hover:border-wline-2 dark:border-rink-700 dark:bg-rink-800 dark:text-rink-100',
+                    ? 'border-it-blue-500 bg-it-blue-500 text-white'
+                    : 'border-it-line-strong bg-it-surface text-it-ink-600 hover:border-it-ink-300 dark:border-rink-700 dark:bg-rink-800 dark:text-rink-100',
                 )}
               >
                 {tab.label}
@@ -282,13 +286,13 @@ export default function DirectorSchedulesPage() {
       <SubmainAppBar title="수업 일정" />
 
       <main
-        className="hide-scrollbar flex-1 overflow-y-auto bg-wbg dark:bg-rink-900"
+        className="hide-scrollbar flex-1 overflow-y-auto bg-it-canvas dark:bg-rink-900"
         role="main"
         aria-label="전체 일정"
       >
-        {/* 월별 캘린더 — 외곽 카드 (radius 18 + border + shadow) */}
-        <section className="px-5 pt-3" aria-label="월간 캘린더">
-          <div className="rounded-[18px] border border-wline bg-white px-3 pb-3 pt-3.5 shadow-[0_4px_14px_rgba(20,24,38,0.04)] dark:border-rink-700 dark:bg-rink-800">
+        {/* 월별 캘린더 — flat 흰 섹션 (카드 박스·그림자 제거) */}
+        <section className="bg-it-surface px-5 pb-3 pt-3.5 dark:bg-rink-800" aria-label="월간 캘린더">
+          <div>
             {/* 월 네비게이션 */}
             <div className="flex items-center justify-center gap-6 pb-3.5 pt-1">
               <button
@@ -299,11 +303,11 @@ export default function DirectorSchedulesPage() {
               >
                 <Icon
                   name="chevron_left"
-                  className="text-card-body text-wtext-2 dark:text-rink-100"
+                  className="text-card-body text-it-ink-500 dark:text-rink-100"
                   aria-hidden="true"
                 />
               </button>
-              <h2 className="text-card-title font-extrabold tracking-[-0.02em] text-wtext-1 dark:text-white">
+              <h2 className="text-card-title font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
                 {monthLabel}
               </h2>
               <button
@@ -314,19 +318,19 @@ export default function DirectorSchedulesPage() {
               >
                 <Icon
                   name="chevron_right"
-                  className="text-card-body text-wtext-2 dark:text-rink-100"
+                  className="text-card-body text-it-ink-500 dark:text-rink-100"
                   aria-hidden="true"
                 />
               </button>
             </div>
 
             {errorMessage && (
-              <div className="mb-3 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-card-body text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
+              <div className="mb-3 rounded-w-md border border-it-red-100 bg-it-red-50 px-4 py-3 text-card-body text-it-red-700 dark:border-it-red-500/40 dark:bg-it-red-500/15 dark:text-it-red-300">
                 {errorMessage}
               </div>
             )}
 
-            {/* 요일 헤더 — 일=flame-500 / 토=ice-500 / 평일=wtext-3 */}
+            {/* 요일 헤더 — 일=red / 토=blue / 평일=ink */}
             <div className="mb-1 grid grid-cols-7 px-1" role="row">
               {DAY_LABELS.map((day, index) => (
                 <div
@@ -334,10 +338,10 @@ export default function DirectorSchedulesPage() {
                   className={cn(
                     'py-1 text-center text-card-meta font-semibold',
                     colIsSunday(index)
-                      ? 'text-flame-500'
+                      ? 'text-it-red-500'
                       : colIsSaturday(index)
-                        ? 'text-ice-500'
-                        : 'text-wtext-3 dark:text-rink-300',
+                        ? 'text-it-blue-500'
+                        : 'text-it-ink-400 dark:text-rink-300',
                   )}
                   role="columnheader"
                 >
@@ -369,13 +373,10 @@ export default function DirectorSchedulesPage() {
                     onClick={() => day.isCurrentMonth && handleDateSelect(day.dateKey)}
                     disabled={!day.isCurrentMonth}
                     className={cn(
-                      'relative flex h-[38px] flex-col items-center justify-center gap-[2px] rounded-w-md transition-colors duration-150 motion-reduce:transition-none',
-                      'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-1 focus-visible:ring-offset-wsurface dark:focus-visible:ring-offset-rink-800',
-                      day.isCurrentMonth
-                        ? 'hover:bg-wline-2 dark:hover:bg-rink-700'
-                        : 'cursor-default opacity-30',
-                      isSelected && 'bg-ice-500 hover:bg-ice-600',
-                      day.isToday && !isSelected && 'ring-2 ring-inset ring-ice-500',
+                      // 시안 KitCalendar: 40px 셀 안에 28×28 날짜 칩. 선택/오늘 강조는 칩에만.
+                      'relative flex h-10 flex-col items-center justify-center gap-[2px] rounded-w-md transition-colors duration-150 motion-reduce:transition-none',
+                      'focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus-visible:ring-offset-1 focus-visible:ring-offset-it-surface dark:focus-visible:ring-offset-rink-800',
+                      day.isCurrentMonth ? '' : 'cursor-default opacity-30',
                     )}
                     role="gridcell"
                     aria-current={day.isToday ? 'date' : undefined}
@@ -384,18 +385,20 @@ export default function DirectorSchedulesPage() {
                       day.isToday ? ' 오늘' : ''
                     }${hasClasses ? ` 수업 ${day.classes.length}개` : ''}`}
                   >
+                    {/* 시안: 28×28 rounded-[8px] 날짜 칩 — 선택=it-blue 흰글자 · 오늘=inset ring 2px it-blue-400 */}
                     <span
                       className={cn(
-                        'text-card-meta font-semibold leading-none tabular-nums',
+                        'flex h-7 w-7 items-center justify-center rounded-[8px] text-[13.5px] font-bold leading-none tabular-nums transition-colors motion-reduce:transition-none',
                         isSelected
-                          ? 'text-white'
+                          ? 'bg-it-blue-500 text-white'
                           : day.isCurrentMonth
                             ? colIsSunday(dayOfWeek)
-                              ? 'text-flame-500'
+                              ? 'text-it-red-500'
                               : colIsSaturday(dayOfWeek)
-                                ? 'text-ice-500'
-                                : 'text-wtext-1 dark:text-white'
-                            : 'text-wtext-4 dark:text-rink-500',
+                                ? 'text-it-blue-500'
+                                : 'text-it-ink-800 dark:text-white'
+                            : 'text-it-ink-300 dark:text-rink-500',
+                        day.isToday && !isSelected && 'ring-2 ring-inset ring-it-blue-400',
                       )}
                     >
                       {day.date}
@@ -403,6 +406,7 @@ export default function DirectorSchedulesPage() {
                     <div className="flex h-1 items-center justify-center gap-[2px]">
                       {hasClasses && day.isCurrentMonth && (
                         <CalendarDot
+                          iceTheme
                           types={day.trainingTypes}
                           size="sm"
                           tone={isSelected ? 'selected' : 'default'}
@@ -416,14 +420,16 @@ export default function DirectorSchedulesPage() {
 
             {/* 범례 */}
             <CalendarLegend
-              className="mt-2.5 justify-center gap-3.5 border-t border-wline pt-2.5 text-card-meta dark:border-rink-700"
+              className="mt-2.5 justify-center gap-3.5 border-t border-it-line pt-2.5 text-card-meta dark:border-rink-700"
               variant={isAcademyMode ? 'academy' : 'team-only'}
+              iceTheme
             />
           </div>
         </section>
 
         {/* 기간 탭 + 카테고리 + B-1 통합 리스트 — 공통 컴포넌트 */}
         <ScheduleRangeList<CalendarClass>
+          iceTheme
           rangeKey={rangeKey}
           onRangeChange={handleRangeChange}
           groups={groups}

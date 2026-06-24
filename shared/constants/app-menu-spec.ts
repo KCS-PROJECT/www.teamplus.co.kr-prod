@@ -145,7 +145,7 @@ const DIRECTOR_MENU: AppMenuGroupSpec[] = [
     label: "수업 관리",
     icon: "book-open",
     children: [
-      { label: "수업 관리", icon: "list", href: "/classes-manage" },
+      { label: "훈련 관리", icon: "list", href: "/classes-manage" },
       { label: "전체 일정", icon: "calendar", href: "/director-schedules" },
     ],
   },

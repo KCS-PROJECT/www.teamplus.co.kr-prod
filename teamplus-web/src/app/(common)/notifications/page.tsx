@@ -31,7 +31,6 @@ export default function NotificationsPage() {
 
   const {
     groups,
-    notifications,
     isLoading,
     unreadCount,
     totalCount,
@@ -69,14 +68,6 @@ export default function NotificationsPage() {
     notice: statsByCategory.notice.unread,
     system: statsByCategory.system.unread,
   };
-
-  // [2026-05-19 04n 디자인] Hero Card 대상 — 가장 최근 미읽음 알림 (없으면 가장 최근 알림 1건)
-  const heroNotification = useMemo(() => {
-    const sortedByDate = [...notifications].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
-    return sortedByDate.find((n) => !n.isRead) ?? sortedByDate[0] ?? null;
-  }, [notifications]);
 
   // 카테고리 변경
   const handleCategoryChange = useCallback(
@@ -150,97 +141,6 @@ export default function NotificationsPage() {
       <PageAppBar title="알림" forceNative />
 
       <div className="flex-1 overflow-y-auto bg-wbg dark:bg-puck">
-        {/* [04n Hero Card] 상단 고정 / 가장 최근 미읽음 알림 — gradient 대신 solid ice-500 사용 (절대 규칙 #1) */}
-        {heroNotification && (
-          <div className="px-5 pt-3">
-            <div
-              className={cn(
-                'relative overflow-hidden rounded-2xl text-white',
-                'bg-ice-500',
-                'px-5 pt-5 pb-5',
-                'shadow-sh-2',
-              )}
-            >
-              {/* 우상단 "상단 고정" 칩 */}
-              <div
-                className={cn(
-                  'absolute top-3.5 right-3.5',
-                  'inline-flex items-center gap-1.5',
-                  'px-2.5 py-1 rounded-full',
-                  'bg-white/15 border border-white/30',
-                  'text-[11px] font-bold',
-                )}
-              >
-                <svg width={11} height={11} viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                  <path
-                    d="M6 2v8M3 6l3 3 3-3"
-                    stroke="#fff"
-                    strokeWidth={1.4}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    transform="rotate(180 6 6)"
-                  />
-                </svg>
-                상단 고정
-              </div>
-
-              {/* 본문 영역 */}
-              <div className="flex items-center gap-3.5 mt-4">
-                {/* 아이콘 박스 (56×56, 흰 배경, soft shadow) */}
-                <div
-                  className={cn(
-                    'flex-shrink-0 w-14 h-14 rounded-2xl',
-                    'inline-flex items-center justify-center',
-                    'bg-white/90',
-                    'shadow-[0_6px_14px_rgba(0,0,0,0.18)]',
-                  )}
-                  aria-hidden="true"
-                >
-                  <svg width={28} height={28} viewBox="0 0 28 28" fill="none">
-                    <path
-                      d="M9 4l-3 8 4 3-2 9 12-11-4-3 2-9z"
-                      fill="#2f5fff"
-                      stroke="#2f5fff"
-                      strokeWidth={1.5}
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </div>
-                <div className="flex-1 min-w-0">
-                  {/* 중요 칩 */}
-                  <div
-                    className={cn(
-                      'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md mb-1.5',
-                      'bg-sun-100 text-amber-800',
-                      'text-[10.5px] font-extrabold tracking-wider',
-                    )}
-                  >
-                    중요
-                  </div>
-                  <div className="text-[18px] font-extrabold tracking-tight leading-tight line-clamp-1">
-                    {heroNotification.title}
-                  </div>
-                  <div className="mt-1 text-[11px] font-bold text-white/90 tabular-nums">
-                    {heroNotification.time}
-                  </div>
-                </div>
-              </div>
-
-              {/* 부연 메시지 박스 */}
-              <div
-                className={cn(
-                  'mt-3.5 px-3 py-2.5 rounded-[10px]',
-                  'bg-white/15 border border-white/20',
-                  'text-[12.5px] font-medium leading-[1.5] text-white/90',
-                  'line-clamp-2',
-                )}
-              >
-                {heroNotification.message}
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* [04n Segmented Tabs] 카테고리 탭 */}
         <CategoryTabs
           activeCategory={filter.category || 'all'}

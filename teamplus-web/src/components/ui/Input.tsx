@@ -53,10 +53,12 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   required?: boolean;
   /** Accessible id - auto-generated if not provided */
   inputId?: string;
+  /** ICETIMES 시안 스킨(하우머치 스타일). false(기본)면 기존 디자인 1:1 보존. */
+  iceTheme?: boolean;
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ className, label, icon, error, helperText, type, required, inputId, id, ...props }, ref) => {
+  ({ className, label, icon, error, helperText, type, required, inputId, id, iceTheme = false, ...props }, ref) => {
     const [showPassword, setShowPassword] = useState(false);
     const isPassword = type === 'password';
     // WCAG 접근성: label-input 연결을 위한 id 생성
@@ -65,6 +67,78 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     const fieldId = inputId || id || generatedId;
     const errorId = error ? `${fieldId}-error` : undefined;
     const helperId = helperText ? `${fieldId}-helper` : undefined;
+
+    // ── ICETIMES 시안: 컨테이너(border+fill)가 input/아이콘을 감싸는 구조 ──
+    // height 52(login)/50(signup) 는 className 으로 컨테이너에 전달.
+    if (iceTheme) {
+      return (
+        <div className="w-full">
+          {label && (
+            <label
+              htmlFor={fieldId}
+              className="inline-flex gap-1 text-[13.5px] font-bold text-it-ink-700 dark:text-it-ink-200 mb-[7px]"
+            >
+              {label}
+              {required && <span className="text-it-red-500" aria-hidden="true">*</span>}
+            </label>
+          )}
+          <div
+            className={cn(
+              'flex items-center gap-2.5 h-[50px] px-3.5',
+              'bg-it-fill dark:bg-it-ink-800 rounded-w-md',
+              'border-[1.5px] border-it-line-strong dark:border-it-ink-700',
+              'focus-within:border-it-blue-500',
+              'transition-colors duration-150',
+              error && 'border-it-red-400 focus-within:border-it-red-400',
+              props.disabled && 'opacity-60 cursor-not-allowed',
+              className,
+            )}
+          >
+            {icon && (
+              <Icon name={icon} className="text-it-ink-400 shrink-0" aria-hidden="true" />
+            )}
+            <InputBase
+              ref={ref}
+              id={fieldId}
+              type={isPassword && showPassword ? 'text' : type}
+              autoComplete={props.autoComplete || (isPassword ? 'current-password' : undefined)}
+              aria-invalid={!!error}
+              aria-describedby={[errorId, helperId].filter(Boolean).join(' ') || undefined}
+              aria-required={required}
+              className={cn(
+                'flex-1 min-w-0 h-full bg-transparent border-none outline-none',
+                'text-[15.5px] font-semibold text-it-ink-800 dark:text-white',
+                'placeholder-it-ink-400 dark:placeholder-it-ink-300',
+                props.disabled && 'cursor-not-allowed',
+              )}
+              {...props}
+            />
+            {isPassword && (
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="shrink-0 inline-flex items-center justify-center text-it-ink-400 hover:text-it-ink-600 dark:hover:text-it-ink-200 transition-colors min-w-[24px] min-h-[24px]"
+                tabIndex={0}
+                aria-label={showPassword ? '비밀번호 숨기기' : '비밀번호 보기'}
+              >
+                <Icon name={showPassword ? 'visibility_off' : 'visibility'} />
+              </button>
+            )}
+          </div>
+          {error && (
+            <p id={errorId} className="mt-1.5 text-[12.5px] font-medium text-it-red-500 flex items-center gap-1" role="alert">
+              <Icon name="error" className="text-[16px]" aria-hidden="true" />
+              {error}
+            </p>
+          )}
+          {helperText && !error && (
+            <p id={helperId} className="mt-1.5 text-[12.5px] font-medium text-it-ink-400 dark:text-it-ink-300">
+              {helperText}
+            </p>
+          )}
+        </div>
+      );
+    }
 
     return (
       <div className="w-full">
