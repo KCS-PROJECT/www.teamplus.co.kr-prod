@@ -1,6 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import '../logging/app_logger.dart';
 
 /// 본인인증 WebView 화면
 ///
@@ -153,7 +156,20 @@ class _IdentityWebViewState extends State<IdentityWebView> {
                 return NavigationActionPolicy.ALLOW;
               },
               onReceivedError: (controller, request, error) {
-                debugPrint('WebView 에러: ${error.description}');
+                // 구조화 로깅 — 본인인증 페이지 로드 실패.
+                //   ⚠️ PII 방지: 전체 URL(인증 요청 파라미터 포함 가능)은 로깅하지 않고
+                //   provider 와 에러 설명만 기록. 사용자에겐 기존 스낵바(재시도) 유지.
+                AppLogger.instance.warn(
+                  '본인인증 WebView 로드 에러',
+                  context: {
+                    'op': 'identity.webview.onReceivedError',
+                    'provider': widget.provider,
+                    'description': error.description,
+                  },
+                );
+                if (kDebugMode) {
+                  debugPrint('WebView 에러: ${error.description}');
+                }
                 _handleError(error.description);
               },
               onConsoleMessage: (controller, consoleMessage) {
@@ -273,10 +289,37 @@ class _IdentityWebViewState extends State<IdentityWebView> {
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {
-        debugPrint('[IdentityWebView] 외부 앱 실행 불가: $url');
+        // 실행 가능한 핸들러 없음 — 구조화 로깅. ⚠️ PII 방지: 인증 토큰/요청ID 가 포함될 수
+        //   있는 전체 딥링크 URL 은 로깅하지 않고 스킴(scheme)만 기록.
+        final scheme = url.contains('://') ? url.split('://').first : '(unknown)';
+        AppLogger.instance.warn(
+          '본인인증 외부 앱 실행 불가 (canLaunchUrl=false)',
+          context: {
+            'op': 'identity.openExternalApp',
+            'scheme': scheme,
+            'provider': widget.provider,
+          },
+        );
+        if (kDebugMode) {
+          debugPrint('[IdentityWebView] 외부 앱 실행 불가 (scheme: $scheme)');
+        }
       }
     } catch (e) {
-      debugPrint('[IdentityWebView] 외부 앱 실행 실패: $e');
+      // 외부 앱 실행 실패 — 구조화 로깅. ⚠️ PII 방지: 전체 URL 미로깅, 스킴만 기록.
+      //   복구 가능한 UX 실패(딥링크 핸들러 부재 등)이므로 Sentry 미보고.
+      final scheme = url.contains('://') ? url.split('://').first : '(unknown)';
+      AppLogger.instance.warn(
+        '본인인증 외부 앱 실행 실패',
+        context: {
+          'op': 'identity.openExternalApp',
+          'scheme': scheme,
+          'provider': widget.provider,
+          'errorType': e.runtimeType.toString(),
+        },
+      );
+      if (kDebugMode) {
+        debugPrint('[IdentityWebView] 외부 앱 실행 실패: $e');
+      }
     }
   }
 

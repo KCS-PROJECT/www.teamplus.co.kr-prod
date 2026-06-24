@@ -135,7 +135,7 @@ class _InitialDestinationGateState
   Future<MaintenanceStatus>? _maintenance;
 
   bool _splashReady = false;
-  bool _hideSplash = false;
+  final bool _hideSplash = false;
 
   /// Splash 가 mount 된 동안 적용할 SystemUI 스타일.
   ///

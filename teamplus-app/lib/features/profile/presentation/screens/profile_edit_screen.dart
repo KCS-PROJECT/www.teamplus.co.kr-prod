@@ -391,8 +391,9 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                     prefixIcon: Icons.phone_outlined,
                     errorText: _phoneError,
                     onChanged: (_) {
-                      if (_phoneError != null)
+                      if (_phoneError != null) {
                         setState(() => _phoneError = null);
+                      }
                     },
                   ),
                   const SizedBox(height: 8),

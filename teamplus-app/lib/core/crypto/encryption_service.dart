@@ -1,6 +1,9 @@
 import 'dart:convert';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:flutter/foundation.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
+
+import '../logging/app_logger.dart';
 
 /// 암호화 결과 인터페이스
 ///
@@ -107,7 +110,15 @@ class EncryptionService {
       obj['_pad'] = padding;
       return jsonEncode(obj);
     } catch (e) {
-      // JSON이 아닌 경우 직접 패딩
+      // JSON 이 아닌 평문(비-JSON)은 정상 케이스 — 직접 공백 패딩으로 폴백.
+      //   ⚠️ 평문/키 노출 금지: 평문 내용은 절대 로깅하지 않고 폴백 사용 사실만 debug 기록.
+      AppLogger.instance.debug(
+        'EncryptionService: 비-JSON 평문 → 공백 패딩 폴백',
+        context: {
+          'op': 'encryption.addPadding',
+          'reason': e.runtimeType.toString(),
+        },
+      );
       final paddingNeeded = minPlaintextSize - currentSize;
       return plaintext + ' ' * paddingNeeded;
     }
@@ -163,8 +174,17 @@ class EncryptionService {
         iv: base64Encode(iv.bytes),
         authTag: base64Encode(authTag),
       );
-    } catch (e) {
-      debugPrint('[Crypto] Encryption failed: $e');
+    } catch (e, st) {
+      // 암호화 실패 — 구조화 로깅 + Sentry 보고 (로그인 자격증명 암호화 실패는 로그인 차단으로 직결).
+      //   ⚠️ 평문/키/IV 는 절대 로깅하지 않는다. 실패 사실·예외 타입만 기록.
+      AppLogger.instance.error(
+        'AES-256-GCM 암호화 실패',
+        error: e,
+        stackTrace: st,
+        category: ErrorCategory.client,
+        context: {'op': 'encryption.encryptCredentials'},
+      );
+      _reportCryptoToSentry(e, st, operation: 'encryption.encryptCredentials');
       throw Exception('Encryption failed: $e');
     }
   }
@@ -203,3 +223,27 @@ class EncryptionService {
 /// final payload = await encryptionService.encryptCredentials(credentials);
 /// ```
 final encryptionService = EncryptionService();
+
+/// Sentry 보고 — SENTRY_DSN 미설정/미초기화 시 no-op.
+///
+/// main.dart 의 Sentry init 패턴(DSN 없으면 초기화 안 됨)에 맞춰 try/catch 로 감싸
+/// 미초기화 환경에서도 호출부에 예외가 전파되지 않도록 한다.
+/// ⚠️ 평문/키 등 민감정보는 전달하지 않는다 — 예외 객체(타입/메시지)만 보고.
+void _reportCryptoToSentry(
+  Object error,
+  StackTrace? stackTrace, {
+  required String operation,
+}) {
+  try {
+    Sentry.captureException(
+      error,
+      stackTrace: stackTrace,
+      withScope: (scope) {
+        scope.level = SentryLevel.error;
+        scope.setTag('operation', operation);
+      },
+    );
+  } catch (_) {
+    /* Sentry 미초기화 시 무시 */
+  }
+}

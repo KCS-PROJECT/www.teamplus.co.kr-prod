@@ -505,12 +505,19 @@ export class ChatService {
         ? content.slice(0, 100)
         : "사진·파일을 보냈습니다.";
 
-      await this.notifications.pushOnlyToUsers(userIds, {
-        notificationType: "chat_message",
-        title: senderName,
-        message: preview,
-        linkUrl: `/chat/${roomId}`,
-      });
+      // 채팅 메시지는 알림센터(notification 테이블)에 적재되지 않으므로
+      // unread count 가 0 일 수 있다 → iOS 앱 뱃지를 0 으로 잘못 클리어하는
+      // 엣지를 막기 위해 badge 를 설정하지 않는다(setBadge:false).
+      await this.notifications.pushOnlyToUsers(
+        userIds,
+        {
+          notificationType: "chat_message",
+          title: senderName,
+          message: preview,
+          linkUrl: `/chat/${roomId}`,
+        },
+        { setBadge: false },
+      );
     } catch (error) {
       this.logger.warn(`채팅 푸시 발송 실패: ${error}`);
     }

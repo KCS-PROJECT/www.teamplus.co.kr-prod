@@ -169,11 +169,16 @@ export class FcmService implements OnModuleInit {
       `FCM 푸시 발송 시작: userId=${userId}, 디바이스=${tokens.length}대`,
     );
 
+    // 모든 토큰이 한 사용자의 것이므로 해당 사용자의 미확인 알림 수를 뱃지로 사용.
+    // (push 직전 DB create 가 완료된 상태라 이 카운트에 새 알림이 포함됨)
+    const badge = await this.countUnread(userId);
+
     const result = await this.sendToTokensWithRetry(
       tokens,
       title,
       message,
       data,
+      badge,
     );
 
     // 무효 토큰 비활성화
@@ -191,6 +196,10 @@ export class FcmService implements OnModuleInit {
    * @param title 알림 제목
    * @param message 알림 본문
    * @param data 추가 데이터 (key-value, 선택)
+   * @param options.setBadge 기본 true. `false` 이면 unread groupBy 를 건너뛰고
+   *   전 토큰을 **badge omit** 으로 1회 발송한다. 채팅처럼 알림센터(notification
+   *   테이블)에 적재되지 않아 unread count 가 0 일 수 있는 푸시가 iOS 뱃지를
+   *   0 으로 덮어써 클리어시키는 엣지를 방지한다. (chat 전용)
    * @returns 발송 결과
    */
   async sendPushToUsers(
@@ -198,12 +207,14 @@ export class FcmService implements OnModuleInit {
     title: string,
     message: string,
     data?: FcmDataPayload,
+    options?: { setBadge?: boolean },
   ): Promise<FcmSendResult> {
     if (!this.isReady()) {
       this.logger.debug("FCM 미초기화 상태 — 일괄 푸시 발송 건너뜀");
       return { successCount: 0, failureCount: 0, invalidTokens: [] };
     }
 
+    // userId 까지 조회해야 토큰별 소유자(=뱃지 값)를 판별할 수 있다.
     const devices = await this.prisma.userDevice.findMany({
       where: {
         userId: { in: userIds },
@@ -211,31 +222,98 @@ export class FcmService implements OnModuleInit {
         fcmToken: { not: "" },
       },
       select: {
-        id: true,
+        userId: true,
         fcmToken: true,
       },
     });
 
-    const tokens = Array.from(
-      new Set(devices.map((d) => d.fcmToken).filter((t): t is string => !!t)),
-    );
-
-    if (tokens.length === 0) {
+    if (devices.length === 0) {
       return { successCount: 0, failureCount: 0, invalidTokens: [] };
     }
 
-    const result = await this.sendToTokensWithRetry(
-      tokens,
-      title,
-      message,
-      data,
-    );
-
-    if (result.invalidTokens.length > 0) {
-      await this.deactivateInvalidTokens(result.invalidTokens);
+    // setBadge=false: unread 집계를 건너뛰고 badge omit 으로 전 토큰 1회 발송.
+    // (chat 등 알림센터 미적재 푸시 — 잘못된 뱃지 클리어/오설정 방지)
+    if (options?.setBadge === false) {
+      const tokens = Array.from(
+        new Set(
+          devices.map((d) => d.fcmToken).filter((t): t is string => !!t),
+        ),
+      );
+      if (tokens.length === 0) {
+        return { successCount: 0, failureCount: 0, invalidTokens: [] };
+      }
+      const result = await this.sendToTokensWithRetry(
+        tokens,
+        title,
+        message,
+        data,
+        // badge 인자 생략 → aps.badge omit
+      );
+      if (result.invalidTokens.length > 0) {
+        await this.deactivateInvalidTokens(result.invalidTokens);
+      }
+      return result;
     }
 
-    return result;
+    // 대상 사용자들의 미확인 알림 수를 단 1회 groupBy 로 일괄 계산.
+    // 결과에 없는 사용자(미확인 0건)는 0 으로 간주.
+    const grouped = await this.prisma.notification.groupBy({
+      by: ["userId"],
+      where: { userId: { in: userIds }, isRead: false },
+      _count: { _all: true },
+    });
+    const unreadByUser = new Map<string, number>();
+    for (const g of grouped) {
+      unreadByUser.set(g.userId, g._count._all);
+    }
+
+    // 토큰을 소유자의 뱃지 값별로 그룹핑(Map<badge, token[]>).
+    // 동일 토큰이 여러 active row 에 걸쳐 있어도 한 기기에 1회만 발송하도록 dedupe.
+    const seenTokens = new Set<string>();
+    const tokensByBadge = new Map<number, string[]>();
+    for (const d of devices) {
+      const token = d.fcmToken;
+      if (!token || seenTokens.has(token)) continue;
+      seenTokens.add(token);
+
+      const badge = unreadByUser.get(d.userId) ?? 0;
+      const list = tokensByBadge.get(badge);
+      if (list) {
+        list.push(token);
+      } else {
+        tokensByBadge.set(badge, [token]);
+      }
+    }
+
+    if (seenTokens.size === 0) {
+      return { successCount: 0, failureCount: 0, invalidTokens: [] };
+    }
+
+    // 뱃지 값별로 1회씩 발송 → FCM 호출 수 = distinct 뱃지 수(최소화),
+    // 사용자별 뱃지 정확성은 유지.
+    const totalResult: FcmSendResult = {
+      successCount: 0,
+      failureCount: 0,
+      invalidTokens: [],
+    };
+    for (const [badge, tokens] of tokensByBadge) {
+      const result = await this.sendToTokensWithRetry(
+        tokens,
+        title,
+        message,
+        data,
+        badge,
+      );
+      totalResult.successCount += result.successCount;
+      totalResult.failureCount += result.failureCount;
+      totalResult.invalidTokens.push(...result.invalidTokens);
+    }
+
+    if (totalResult.invalidTokens.length > 0) {
+      await this.deactivateInvalidTokens(totalResult.invalidTokens);
+    }
+
+    return totalResult;
   }
 
   /**
@@ -262,7 +340,30 @@ export class FcmService implements OnModuleInit {
       return { successCount: 0, failureCount: 0, invalidTokens: [] };
     }
 
+    // 사용자 컨텍스트가 없는 임의 토큰 발송(관리자 Push 등) — 뱃지 omit.
+    // (특정 사용자에 귀속되지 않아 정확한 unread count 산정 불가)
     return this.sendToTokensWithRetry(tokens, title, body, data);
+  }
+
+  /**
+   * 특정 사용자의 미확인(isRead=false) 알림 수.
+   * iOS 앱 아이콘 뱃지 카운트 산정에 사용한다.
+   * (notifications.service.getUnreadCount 과 동일 쿼리 — 여기서는 Redis 캐시 의존을
+   *  피하고 push 직전 최신값을 직접 집계해 정확성을 우선한다)
+   */
+  private async countUnread(userId: string): Promise<number> {
+    try {
+      return await this.prisma.notification.count({
+        where: { userId, isRead: false },
+      });
+    } catch (error) {
+      const err = error as Error;
+      this.logger.warn(
+        `미확인 알림 수 집계 실패 (userId=${userId}): ${err.message} — 뱃지 omit`,
+      );
+      // 집계 실패 시 NaN 반환 → sendChunkWithRetry 가 뱃지를 omit(잘못된 값 강제 금지)
+      return NaN;
+    }
   }
 
   /**
@@ -276,6 +377,7 @@ export class FcmService implements OnModuleInit {
     title: string,
     body: string,
     data?: FcmDataPayload,
+    badge?: number,
   ): Promise<FcmSendResult> {
     const totalResult: FcmSendResult = {
       successCount: 0,
@@ -292,6 +394,7 @@ export class FcmService implements OnModuleInit {
         title,
         body,
         data,
+        badge,
       );
       totalResult.successCount += chunkResult.successCount;
       totalResult.failureCount += chunkResult.failureCount;
@@ -308,15 +411,27 @@ export class FcmService implements OnModuleInit {
 
   /**
    * 단일 청크(최대 500개 토큰) 발송 + 재시도
+   *
+   * @param badge iOS 앱 아이콘 뱃지 카운트. 유한한 0 이상 정수일 때만 페이로드에
+   *              포함되며, undefined/음수/NaN 이면 `aps.badge` 필드를 **생략**한다.
+   *              (과거 하드코딩 `1` 로 항상 "1" 만 표시되던 버그 수정)
    */
   private async sendChunkWithRetry(
     tokens: string[],
     title: string,
     body: string,
     data?: FcmDataPayload,
+    badge?: number,
     attempt: number = 1,
   ): Promise<FcmSendResult> {
     try {
+      // iOS 뱃지: 유효한 카운트가 주어졌을 때만 설정. 그렇지 않으면 생략하여
+      // OS 가 기존 뱃지를 유지/무시하도록 한다(잘못된 "1" 강제 금지).
+      const aps: { sound: string; badge?: number } = { sound: "default" };
+      if (typeof badge === "number" && Number.isFinite(badge) && badge >= 0) {
+        aps.badge = badge;
+      }
+
       const fcmMessage: any = {
         tokens,
         notification: {
@@ -327,15 +442,18 @@ export class FcmService implements OnModuleInit {
           priority: "high" as const,
           notification: {
             sound: "default",
-            channelId: "teamplus_default",
+            // 진동이 활성화된 앱 채널(_v2). 구버전 teamplus_default 채널은 진동이
+            // 동결되어 _v2 로 버전업. 미존재 채널은 매니페스트 기본 채널로 폴백.
+            channelId: "teamplus_default_v2",
+            // 진동/우선순위 명시 — pre-O 기기 및 heads-up 보장.
+            // (AndroidNotification.priority: 'min'|'low'|'default'|'high'|'max')
+            priority: "max" as const,
+            defaultVibrateTimings: true,
           },
         },
         apns: {
           payload: {
-            aps: {
-              sound: "default",
-              badge: 1,
-            },
+            aps,
           },
         },
       };
@@ -385,6 +503,7 @@ export class FcmService implements OnModuleInit {
             title,
             body,
             data,
+            badge,
             attempt + 1,
           );
 
@@ -410,7 +529,14 @@ export class FcmService implements OnModuleInit {
           FcmService.INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
         this.logger.warn(`FCM 전체 재시도: ${delay}ms 후 재시도`);
         await this.sleep(delay);
-        return this.sendChunkWithRetry(tokens, title, body, data, attempt + 1);
+        return this.sendChunkWithRetry(
+          tokens,
+          title,
+          body,
+          data,
+          badge,
+          attempt + 1,
+        );
       }
 
       // 모든 재시도 실패

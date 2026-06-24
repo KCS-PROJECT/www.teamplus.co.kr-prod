@@ -900,6 +900,25 @@ extension WebViewBridgeHandlers on WebViewBridge {
             data: {'cancelled': true},
           ).toJson();
 
+        case 'syncBadge':
+          // [badge-on-read] 사용자가 알림센터 진입 / '모두 읽음' 시 Web 이 호출.
+          //   서버 미확인 수(count)로 iOS 앱 아이콘 배지를 '내려' 동기화한다.
+          //   count 미지정 → 0(전체 확인으로 간주, 클리어). 음수는 0 으로 보정.
+          //   백엔드 푸시(aps.badge)가 올린 배지를 사용자가 확인하는 순간 정확히 차감.
+          final rawCount = notificationData['count'];
+          final count = rawCount is num ? rawCount.toInt() : 0;
+          await _notificationService.updateBadgeCount(count);
+          return BridgeResponse.success(
+            data: {'badge': count < 0 ? 0 : count},
+          ).toJson();
+
+        case 'clearBadge':
+          // [badge-on-read] 명시적 배지 클리어(0). syncBadge 의 count=0 단축형.
+          await _notificationService.clearBadge();
+          return BridgeResponse.success(
+            data: {'badge': 0},
+          ).toJson();
+
         default:
           return BridgeResponse.error(error: '알 수 없는 알림 요청입니다.').toJson();
       }

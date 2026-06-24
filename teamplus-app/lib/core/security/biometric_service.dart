@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
+
+import '../logging/app_logger.dart';
 
 /// 생체인증 가용성 상태
 enum BiometricAvailability {
@@ -73,7 +76,18 @@ class BiometricService {
 
       return BiometricAvailability.available;
     } catch (e) {
-      debugPrint('[Biometric] Error checking availability: $e');
+      // 가용성 probe 실패 → unavailable 폴백. probe 단계 실패는 노이즈가 크므로 warn 로깅만
+      // 수행하고 Sentry 보고는 하지 않는다(실제 인증 시도 경로에서만 Sentry 보고).
+      AppLogger.instance.warn(
+        '생체인증 가용성 확인 실패 → unavailable 폴백',
+        context: {
+          'op': 'biometric.checkAvailability',
+          'errorType': e.runtimeType.toString(),
+        },
+      );
+      if (kDebugMode) {
+        debugPrint('[Biometric] Error checking availability: $e');
+      }
       return BiometricAvailability.unavailable;
     }
   }
@@ -112,12 +126,39 @@ class BiometricService {
 
       debugPrint('[Biometric] Authentication result: $isAuthenticated');
       return isAuthenticated ? BiometricResult.success : BiometricResult.failed;
-    } on PlatformException catch (e) {
-      // 플랫폼 예외 처리
-      debugPrint('[Biometric] PlatformException: ${e.code} - ${e.message}');
-      return _handlePlatformException(e);
-    } catch (e) {
-      debugPrint('[Biometric] Unexpected error: $e');
+    } on PlatformException catch (e, st) {
+      // 플랫폼 예외 → BiometricResult 매핑. 구조화 로깅(code/매핑 결과만 — 민감정보 아님) 후,
+      // 사용자 취소는 정상 흐름이므로 Sentry 제외, 그 외(lockout/notavailable 등)만 보고.
+      final result = _handlePlatformException(e);
+      AppLogger.instance.warn(
+        '생체인증 PlatformException',
+        context: {
+          'op': 'biometric.authenticate',
+          'code': e.code,
+          'mappedResult': result.name,
+        },
+      );
+      if (kDebugMode) {
+        debugPrint('[Biometric] PlatformException: ${e.code} - ${e.message}');
+      }
+      if (result != BiometricResult.userCancelled) {
+        _reportBiometricToSentry(e, st,
+            operation: 'biometric.authenticate.platform');
+      }
+      return result;
+    } catch (e, st) {
+      // 예기치 못한 생체인증 오류 — 구조화 로깅 + Sentry 보고.
+      AppLogger.instance.error(
+        '생체인증 처리 중 예기치 못한 오류',
+        error: e,
+        stackTrace: st,
+        category: ErrorCategory.auth,
+        context: {'op': 'biometric.authenticate'},
+      );
+      _reportBiometricToSentry(e, st, operation: 'biometric.authenticate');
+      if (kDebugMode) {
+        debugPrint('[Biometric] Unexpected error: $e');
+      }
       return BiometricResult.unknown;
     }
   }
@@ -172,7 +213,17 @@ class BiometricService {
 
       return await _localAuth.getAvailableBiometrics();
     } catch (e) {
-      debugPrint('[Biometric] Error getting available biometrics: $e');
+      // 목록 조회 실패 → 빈 목록 폴백 (호출부에서 미지원으로 처리). warn 로깅만.
+      AppLogger.instance.warn(
+        '생체인증 목록 조회 실패 → 빈 목록 폴백',
+        context: {
+          'op': 'biometric.getAvailableBiometrics',
+          'errorType': e.runtimeType.toString(),
+        },
+      );
+      if (kDebugMode) {
+        debugPrint('[Biometric] Error getting available biometrics: $e');
+      }
       return [];
     }
   }
@@ -200,12 +251,46 @@ class BiometricService {
             biometrics.map((b) => b.toString().split('.').last).toList(),
       };
     } catch (e) {
-      debugPrint('[Biometric] Error getting status: $e');
+      // 디버그용 상태 조회 실패 — warn 로깅 후 기존 폴백 맵 반환(behavior 유지).
+      AppLogger.instance.warn(
+        '생체인증 상태 조회 실패',
+        context: {
+          'op': 'biometric.getStatus',
+          'errorType': e.runtimeType.toString(),
+        },
+      );
+      if (kDebugMode) {
+        debugPrint('[Biometric] Error getting status: $e');
+      }
       return {
         'available': false,
         'error': e.toString(),
       };
     }
+  }
+}
+
+/// Sentry 보고 — SENTRY_DSN 미설정/미초기화 시 no-op.
+///
+/// main.dart 의 Sentry init 패턴에 맞춰 try/catch 로 감싸 미초기화 환경에서도
+/// 호출부에 예외가 전파되지 않도록 한다. 생체인증 코드/메시지 등 민감하지 않은
+/// 정보만 예외 객체로 전달된다(자격증명·생체 템플릿은 OS 가 보유, 앱에 노출 안 됨).
+void _reportBiometricToSentry(
+  Object error,
+  StackTrace? stackTrace, {
+  required String operation,
+}) {
+  try {
+    Sentry.captureException(
+      error,
+      stackTrace: stackTrace,
+      withScope: (scope) {
+        scope.level = SentryLevel.error;
+        scope.setTag('operation', operation);
+      },
+    );
+  } catch (_) {
+    /* Sentry 미초기화 시 무시 */
   }
 }
 
