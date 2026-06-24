@@ -58,7 +58,7 @@ final checkInAttendanceProvider =
         debugPrint('[QR] 체크인 성공: qrData=${params.qrData}');
       }
 
-      // 크레딧 잔액 provider 무효화 (체크인 성공 시 크레딧 차감됨)
+      // 결제권 잔액 provider 무효화 (체크인 성공 시 결제권 차감됨)
       ref.invalidate(myCreditBalanceProvider);
 
       return CheckInResult.fromJson(resultData);
@@ -71,7 +71,7 @@ final checkInAttendanceProvider =
       if (statusCode == 401) throw Exception('인증이 만료되었습니다. 다시 로그인해주세요.');
       if (statusCode == 404) throw Exception('수업 정보를 찾을 수 없습니다.');
       if (statusCode == 409) throw Exception(message ?? '이미 출석 체크되었습니다.');
-      if (statusCode == 422) throw Exception(message ?? '크레딧이 부족합니다.');
+      if (statusCode == 422) throw Exception(message ?? '결제권이 부족합니다.');
 
       throw Exception(message ?? '출석 체크인에 실패했습니다. 다시 시도해주세요.');
     } catch (e) {

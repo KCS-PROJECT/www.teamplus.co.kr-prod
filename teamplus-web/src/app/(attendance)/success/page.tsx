@@ -72,7 +72,7 @@ function AttendanceSuccessContent() {
         {/* 스크린리더용 즉시 안내 — assertive 로 출석 완료 사실 즉시 announce */}
         <span className="sr-only" role="status" aria-live="assertive" aria-atomic="true">
           {info.playerName ? `${info.playerName} ` : ''}출석 완료. {info.className}
-          {info.creditsRemaining ? `, 남은 크레딧 ${info.creditsRemaining}회` : ''}
+          {info.creditsRemaining ? `, 남은 결제권 ${info.creditsRemaining}회` : ''}
         </span>
 
         {/* Decorative Background Elements */}

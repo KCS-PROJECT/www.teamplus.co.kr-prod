@@ -59,7 +59,7 @@ function SuccessAnimation({
         {MESSAGES.payment2.completed}
       </h2>
 
-      {/* Credits badge - Primary Blue. 후불(POSTPAID)은 사후 정산이라 크레딧 발급 문구 대신 정산 완료 안내. */}
+      {/* Credits badge - Primary Blue. 후불(POSTPAID)은 사후 정산이라 결제권 발급 문구 대신 정산 완료 안내. */}
       <p className="text-card-emphasis text-ice-500 font-bold bg-ice-500/10 px-4 py-1.5 rounded-w-pill inline-block">
         {isPostpaid
           ? MESSAGES.postpaidPay.completedNote
@@ -286,7 +286,7 @@ function PaymentCompleteContent() {
           setConfirmError(res.error?.message ?? MESSAGES.payment2.confirmFailed);
           return;
         }
-        // 영수증·크레딧 정보는 기존 verifyPaymentCompletion 으로 조회
+        // 영수증·결제권 정보는 기존 verifyPaymentCompletion 으로 조회
         //  (Payment 완료 처리되었으므로 orderNumber 로 receipt/credit 조회 가능)
         const detail = await verifyPaymentCompletion({ orderNumber: tossOrderId });
         if (detail.success && detail.data) {

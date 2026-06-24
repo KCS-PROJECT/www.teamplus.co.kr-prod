@@ -504,9 +504,9 @@ export const MESSAGES = {
     processing: "처리 중...",
     securePayment: "안전하게 암호화되어 처리되었습니다",
     classLabel: "수업",
-    // [추가 2026-06-09] App Store 3.1.1 — 크레딧은 디지털 콘텐츠/화폐가 아닌 '오프라인 대면 수업 수강료 결제 수단'임을 명시(심사 오인 방지)
+    // [추가 2026-06-09] App Store 3.1.1 — 결제권은 디지털 콘텐츠/화폐가 아닌 '오프라인 대면 수업 수강료 결제 수단'임을 명시(심사 오인 방지)
     offlineCreditNotice:
-      "본 크레딧은 오프라인 빙상 아이스하키 수업의 수업료 결제 수단이며, 수업 당일 현장 QR 출석 시 차감됩니다.",
+      "본 결제권은 오프라인 빙상 아이스하키 수업의 수업료 결제 수단이며, 수업 당일 현장 QR 출석 시 차감됩니다.",
     // [추가 2026-05-18] 결제 완료 페이지 — 신규 결제 금액 카드 + 결제 상세 항목 정리
     totalAmountLabel: "최종 결제 금액",
     orderNumberLabel: "주문번호",
@@ -3164,7 +3164,7 @@ export const MESSAGES = {
     feePerSessionLabel: "1회 수업료",
     singlePricePlaceholder: "1회 수업료를 입력하세요.",
     perSessionRef: (won: number) => `1회당 약 ${won.toLocaleString()}원`,
-    // 결제일로부터 크레딧이 만료되기까지의 유효기간 라벨 (1회권 포함 전 상품 공통).
+    // 결제일로부터 결제권이 만료되기까지의 유효기간 라벨 (1회권 포함 전 상품 공통).
     validDays: (days: number) => `유효 ${days}일`,
     addPackage: "패키지 추가",
     // 등록 화면 수강료 카드 내부에 임베드되는 추가 패키지(정기권) 영역 라벨.

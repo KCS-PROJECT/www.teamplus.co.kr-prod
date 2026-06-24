@@ -113,7 +113,7 @@ export default function MemberDetailPage() {
     <div className="space-y-6">
       <PageHeader
         title="회원 상세"
-        subtitle="회원 프로필, 승인 상태, 크레딧 정보를 확인합니다."
+        subtitle="회원 프로필, 승인 상태, 결제권 정보를 확인합니다."
         action={{
           label: '목록으로',
           onClick: () => router.push('/dashboard/members'),
@@ -162,21 +162,21 @@ export default function MemberDetailPage() {
         </dl>
       </Card>
 
-      {/* 크레딧 정보 */}
+      {/* 결제권 정보 */}
       <Card className="p-6 shadow-md rounded-xl">
         <div className="flex items-center gap-2 mb-4">
           <CreditCard className="w-4 h-4 text-primary" aria-hidden="true" />
-          <h2 className="text-base font-semibold text-slate-900 dark:text-white">크레딧 정보</h2>
+          <h2 className="text-base font-semibold text-slate-900 dark:text-white">결제권 정보</h2>
         </div>
         {credit ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <MetricCard label="총 크레딧" value={`${credit.totalCredits}`} accent="default" />
-            <MetricCard label="사용 크레딧" value={`${credit.usedCredits}`} accent="blue" />
-            <MetricCard label="잔여 크레딧" value={`${credit.remainingCredits}`} accent="primary" />
+            <MetricCard label="총 결제권" value={`${credit.totalCredits}`} accent="default" />
+            <MetricCard label="사용 결제권" value={`${credit.usedCredits}`} accent="blue" />
+            <MetricCard label="잔여 결제권" value={`${credit.remainingCredits}`} accent="primary" />
           </div>
         ) : (
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            크레딧 정보가 없습니다.
+            결제권 정보가 없습니다.
           </p>
         )}
       </Card>

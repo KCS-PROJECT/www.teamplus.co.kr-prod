@@ -274,7 +274,7 @@ const PROTECTED_PATHS_BY_ROLE: Record<UserType, string[]> = {
     '/classes',
     '/attendance',
     // [B14 추가 2026-05-26] 마이페이지 > 활동 > 출석 기록의 "자녀별 상세 출석 보기" 진입 경로.
-    //  /attendance-history 는 자녀 선택 + 자녀별 출석 상세 페이지(자녀목록·출석·크레딧 조회)인데
+    //  /attendance-history 는 자녀 선택 + 자녀별 출석 상세 페이지(자녀목록·출석·결제권 조회)인데
     //  parent RBAC 에 누락되어 있었다. matchesPath('/attendance-history','/attendance') 는
     //  segment 경계 매칭상 false 이고, child/teen 만 등록돼 ALL_PROTECTED_PATHS 에는 포함되므로
     //  학부모 클릭 시 dashboard(/parent) 로 redirect 되어 홈으로 튕기던 버그(B14) 발생.

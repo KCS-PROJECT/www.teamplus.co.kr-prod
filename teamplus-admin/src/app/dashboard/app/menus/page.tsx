@@ -205,7 +205,7 @@ const iconOptions: { value: string; label: string; Icon: LucideIcon }[] = [
   { value: 'user-check',       label: '승인',         Icon: UserCheck },
   { value: 'user-plus',        label: '회원 등록',    Icon: UserPlus },
   { value: 'users',            label: '회원',         Icon: Users },
-  { value: 'wallet',           label: '크레딧',       Icon: Wallet },
+  { value: 'wallet',           label: '결제권',       Icon: Wallet },
   { value: 'menu',             label: '메뉴(기본)',   Icon: Menu },
 ];
 

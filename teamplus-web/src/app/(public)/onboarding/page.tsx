@@ -197,7 +197,7 @@ const slides: OnboardingSlide[] = [
     illustration: <PaymentIllustration />,
     eyebrow: '결제·관리',
     title: '결제도 간편하게',
-    description: '수업료 결제와 크레딧 관리를\n앱에서 바로 처리하세요.',
+    description: '수업료 결제와 수업권 관리를\n앱에서 바로 처리하세요.',
   },
 ];
 

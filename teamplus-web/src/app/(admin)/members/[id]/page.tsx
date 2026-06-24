@@ -204,7 +204,7 @@ export default function MemberDetailPage() {
                 id="credit-section"
                 className="text-card-emphasis font-bold text-wtext-1 dark:text-white"
               >
-                크레딧 관리
+                결제권 관리
               </h3>
               <NavLink
                 href={`/members/${params?.id}/credits`}
@@ -218,7 +218,7 @@ export default function MemberDetailPage() {
             <div className="flex items-center justify-between rounded-2xl border border-wline-2 dark:border-rink-700 bg-white dark:bg-rink-800 p-5 shadow-sm">
               <div>
                 <p className="text-card-meta font-semibold text-wtext-3 dark:text-rink-300">
-                  현재 잔여 크레딧
+                  현재 잔여 결제권
                 </p>
                 <div className="mt-1 flex items-baseline gap-1">
                   <span className="text-4xl font-black text-wtext-1 dark:text-white tabular-nums">
@@ -258,7 +258,7 @@ export default function MemberDetailPage() {
               className="inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-ice-500 px-4 py-3.5 text-card-body font-bold text-white shadow-md hover:bg-ice-700 active:brightness-95 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900"
             >
               <Icon name="edit" className="text-[18px]" aria-hidden="true" />
-              크레딧 관리
+              결제권 관리
             </NavLink>
           </section>
 
@@ -284,7 +284,7 @@ export default function MemberDetailPage() {
                   <Icon name="history" className="text-2xl text-wtext-3" aria-hidden="true" />
                 </div>
                 <p className="text-card-body text-wtext-3 dark:text-rink-300">
-                  최근 크레딧 변동 내역이 없습니다.
+                  최근 결제권 변동 내역이 없습니다.
                 </p>
               </div>
             ) : (

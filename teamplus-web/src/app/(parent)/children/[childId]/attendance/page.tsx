@@ -8,7 +8,7 @@
  *
  * 데이터 소스:
  *   - useChildClassHistory({ childId }) — class-history 페이지와 동일 hook 재사용 (SoT).
- *     크레딧/결제권 관련 호출은 하지 않는다(MemberCredit.classId 귀속이라 합산 무의미).
+ *     결제권/결제권 관련 호출은 하지 않는다(MemberCredit.classId 귀속이라 합산 무의미).
  *   - 자녀 이름은 useChildren.
  *
  * 집계 정의:

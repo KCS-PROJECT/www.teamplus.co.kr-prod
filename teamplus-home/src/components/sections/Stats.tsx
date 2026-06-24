@@ -11,7 +11,7 @@ import { DUR, EASE_OUT, VIEWPORT, stagger } from '@/lib/motion';
  */
 export function Stats() {
   const [primary, ...benefits] = STATS;
-  const flow = ['수업 편성', 'QR 출석', '크레딧 정리', '알림 공유'];
+  const flow = ['수업 편성', 'QR 출석', '결제권 정리', '알림 공유'];
 
   return (
     <section aria-label="핵심 운영 메트릭" className="relative py-14 sm:py-20">

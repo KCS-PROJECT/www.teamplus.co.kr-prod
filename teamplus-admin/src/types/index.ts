@@ -350,7 +350,7 @@ export interface AttendanceHistoryFilter {
 // ==================== Credit ====================
 
 /**
- * 회원 크레딧 정보
+ * 회원 결제권 정보
  */
 export interface MemberCredit {
   id: string;

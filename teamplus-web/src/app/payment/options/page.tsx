@@ -845,7 +845,7 @@ function PaymentOptionsContent() {
                 )}
               </li>
               <li>· {MESSAGES.classProduct.paymentInfoExtraDays(30)}</li>
-              {/* [2026-06-09 심사 3.1.1] 크레딧=오프라인 대면 수업 결제 수단 명시 */}
+              {/* [2026-06-09 심사 3.1.1] 결제권=오프라인 대면 수업 결제 수단 명시 */}
               <li>· {MESSAGES.payment2.offlineCreditNotice}</li>
             </ul>
           </section>

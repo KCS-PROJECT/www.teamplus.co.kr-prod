@@ -112,7 +112,7 @@ final localDatabaseProvider = Provider<LocalDatabase>(
   (ref) => ref.watch(localDbServiceProvider).db,
 );
 
-/// 내 크레딧 잔액 Provider
+/// 내 결제권 잔액 Provider
 /// 체크인 성공 또는 결제 완료 후 invalidate 하여 최신 잔액을 조회
 /// 엔드포인트: GET /credits/stats/me → availableRemaining 필드
 final myCreditBalanceProvider = FutureProvider<int>((ref) async {

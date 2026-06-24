@@ -17,7 +17,7 @@ export function CreditSection({ current, expiryDate }: CreditSectionProps) {
           <div className="flex flex-col gap-2">
             <p className="text-wtext-3 dark:text-rink-300 text-sm font-medium flex items-center gap-1.5">
               <Icon name="stars" className="text-base text-ice-500" aria-hidden="true" />
-              보유 크레딧
+              보유 결제권
             </p>
             <div className="flex items-baseline gap-1">
               <span className="text-4xl font-extrabold text-wtext-1 dark:text-white tracking-tight leading-none">

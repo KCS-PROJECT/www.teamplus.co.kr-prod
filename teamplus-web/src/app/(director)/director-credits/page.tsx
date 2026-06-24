@@ -24,11 +24,11 @@ import type {
 } from '@/types/payment';
 
 /**
- * Director Credits Page — 감독 개인의 "결제 및 크레딧 현황" 페이지.
+ * Director Credits Page — 감독 개인의 "결제 및 수업권 현황" 페이지.
  *
  * 기존 /director-payments (팀 전체 결제 관리)와는 용도가 다르다:
  *   - /director-payments: 팀 전체 수입/미수금/팀별 결제 관리 (관리자 view)
- *   - /director-credits : 감독 본인의 크레딧 현황 + 결제·사용 내역 (마이페이지 view)
+ *   - /director-credits : 감독 본인의 결제권 현황 + 결제·사용 내역 (마이페이지 view)
  *
  * 디자인 원칙 — AI 스타일 금지 규칙 엄수:
  *   - gradient / backdrop-blur / colored-shadow 일절 사용 금지
@@ -241,7 +241,7 @@ export default function DirectorCreditsPage() {
   );
 
   const handleCharge = useCallback(() => {
-    // 크레딧 충전 → 상품 선택 페이지 이동
+    // 결제권 충전 → 상품 선택 페이지 이동
     navigate('/products');
   }, [navigate]);
 

@@ -192,7 +192,7 @@ class _ProfileNotificationSettingsScreenState
                       icon: Icons.credit_card_outlined,
                       iconColor: AppColors.warning,
                       title: '결제 알림',
-                      subtitle: '결제 완료 및 크레딧 변동 알림',
+                      subtitle: '결제 완료 및 결제권 변동 알림',
                       value: s['paymentAlert']!,
                       enabled: pushOn,
                       onChanged: (v) => _toggle('paymentAlert', v),

@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 const COMPARE = [
   { label: '회원 수 제한', values: ['50명', '300명', '무제한'] },
   { label: '수업 · 스케줄', values: [true, true, true] },
-  { label: 'QR 출석 · 크레딧', values: [true, true, true] },
+  { label: 'QR 출석 · 결제권', values: [true, true, true] },
   { label: 'KG이니시스 결제', values: [true, true, true] },
   { label: '알림톡 템플릿', values: ['3개', '5개', '무제한'] },
   { label: '클럽 쇼핑몰', values: [false, true, true] },

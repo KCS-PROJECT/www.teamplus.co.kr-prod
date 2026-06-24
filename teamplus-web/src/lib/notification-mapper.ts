@@ -104,7 +104,7 @@ export function normalizeNotificationType(raw?: string): NotificationType {
   ) {
     return 'match';
   }
-  // 공지류 — 팀 공지/아카데미/대회/팀/크레딧/피드백 → deriveCategory 'notice'.
+  // 공지류 — 팀 공지/아카데미/대회/팀/결제권/피드백 → deriveCategory 'notice'.
   if (
     t === 'club' ||
     t.startsWith('club_') ||
@@ -221,7 +221,7 @@ export const NOTIFICATION_TYPES_BY_CATEGORY: Record<
     'postpaid_billing',
     'tournament_postpaid_billing',
   ],
-  // 공지 — 팀 공지/아카데미/대회/원정/크레딧/피드백/매치. 실측: team_notice_created(87)
+  // 공지 — 팀 공지/아카데미/대회/원정/결제권/피드백/매치. 실측: team_notice_created(87)
   //        ·tournament_created(27)·academy_notice(14)·trip_waitlist_promoted(13).
   notice: [
     'team_notice_created',

@@ -74,7 +74,7 @@ const ROLE_STATS: Record<UserRole, DrawerStatItem[]> = {
   ],
   parent: [
     { icon: "child_care", label: "자녀", value: "0 명", tone: "primary" },
-    { icon: "credit_card", label: "크레딧", value: "0 회", tone: "success" },
+    { icon: "credit_card", label: "결제권", value: "0 회", tone: "success" },
   ],
   teen: [
     {
@@ -167,7 +167,7 @@ const ROLE_MENUS: Record<UserRole, MainMenuItem[]> = {
       subItems: [
         { href: "/members", icon: "person_search", label: "전체 회원" },
         { href: "/members-create", icon: "person_add", label: "회원 등록" },
-        { href: "/members", icon: "credit_card", label: "크레딧 관리" },
+        { href: "/members", icon: "credit_card", label: "결제권 관리" },
       ],
     },
     {
@@ -250,7 +250,7 @@ const ROLE_MENUS: Record<UserRole, MainMenuItem[]> = {
     {
       id: "payment",
       icon: "payments",
-      label: "결제 / 크레딧",
+      label: "결제 / 수업권",
       subItems: [
         { href: "/director-payments", icon: "receipt_long", label: "결제관리" },
         { href: "/director-credits", icon: "account_balance_wallet", label: "결제권 관리" },
@@ -375,9 +375,9 @@ const ROLE_MENUS: Record<UserRole, MainMenuItem[]> = {
     {
       id: "payment",
       icon: "payments",
-      label: "결제 / 크레딧",
+      label: "결제 / 결제권",
       subItems: [
-        { href: PATHS.parent.payments, icon: "credit_card", label: "크레딧 현황" },
+        { href: PATHS.parent.payments, icon: "credit_card", label: "결제권 현황" },
         { href: "/payment/history", icon: "receipt_long", label: "결제 내역" },
       ],
     },

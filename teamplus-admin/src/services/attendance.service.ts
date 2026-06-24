@@ -38,7 +38,7 @@ export const checkIn = async (
     if (errorMessage?.includes('already')) {
       throw new Error('이미 출석 체크인했습니다.');
     } else if (errorMessage?.includes('credit')) {
-      throw new Error('크레딧이 부족합니다. 수업권을 구매해주세요.');
+      throw new Error('결제권이 부족합니다. 수업권을 구매해주세요.');
     } else if (errorMessage?.includes('qr')) {
       throw new Error('QR 코드가 올바르지 않습니다.');
     } else if (errorMessage?.includes('schedule')) {
@@ -172,9 +172,9 @@ export const cancelAttendance = async (
 };
 
 /**
- * 멤버 크레딧 조회
+ * 멤버 결제권 조회
  * @param memberId - 멤버 ID
- * @returns 크레딧 정보 (총 크레딧, 사용 크레딧, 잔여 크레딧)
+ * @returns 결제권 정보 (총 결제권, 사용 결제권, 잔여 결제권)
  */
 export const getMemberCredit = async (
   memberId: string
@@ -183,22 +183,22 @@ export const getMemberCredit = async (
     const credit = await api.get<MemberCredit>(`/members/${memberId}/credit`);
     return credit;
   } catch (error: unknown) {
-    console.error('[Attendance Service] 크레딧 조회 실패:', error);
+    console.error('[Attendance Service] 결제권 조회 실패:', error);
 
     if (getApiErrorStatus(error) === 404) {
-      throw new Error('크레딧 정보를 찾을 수 없습니다.');
+      throw new Error('결제권 정보를 찾을 수 없습니다.');
     }
 
     throw new Error(
-      getApiErrorMessage(error, '크레딧 정보를 불러오는 데 실패했습니다.')
+      getApiErrorMessage(error, '결제권 정보를 불러오는 데 실패했습니다.')
     );
   }
 };
 
 /**
- * 모든 멤버 크레딧 조회 (코치/관리자)
+ * 모든 멤버 결제권 조회 (코치/관리자)
  * @param clubId - 클럽 ID
- * @returns 모든 멤버의 크레딧 정보
+ * @returns 모든 멤버의 결제권 정보
  */
 export const getAllMemberCredits = async (
   clubId: string
@@ -209,14 +209,14 @@ export const getAllMemberCredits = async (
     );
     return credits;
   } catch (error: unknown) {
-    console.error('[Attendance Service] 크레딧 조회 실패:', error);
+    console.error('[Attendance Service] 결제권 조회 실패:', error);
 
     if (getApiErrorStatus(error) === 403) {
-      throw new Error('크레딧 조회 권한이 없습니다.');
+      throw new Error('결제권 조회 권한이 없습니다.');
     }
 
     throw new Error(
-      getApiErrorMessage(error, '크레딧 정보를 불러오는 데 실패했습니다.')
+      getApiErrorMessage(error, '결제권 정보를 불러오는 데 실패했습니다.')
     );
   }
 };

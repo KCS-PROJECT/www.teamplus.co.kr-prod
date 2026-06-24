@@ -105,7 +105,7 @@ export function useQrCheckin(): UseQrCheckinReturn {
         } else if (serverCode === 'QR_ALREADY_SCANNED' || msg.includes('이미 사용된')) {
           code = 'REUSED';
           message = MESSAGES.qrScan.reused;
-        } else if (serverCode === 'INSUFFICIENT_CREDIT' || msg.includes('크레딧')) {
+        } else if (serverCode === 'INSUFFICIENT_CREDIT' || msg.includes('결제권')) {
           code = 'INSUFFICIENT_CREDIT';
           message = MESSAGES.qrScan.insufficientCredit;
         } else if (serverCode === 'NOT_REGISTERED' || msg.includes('수강 등록')) {

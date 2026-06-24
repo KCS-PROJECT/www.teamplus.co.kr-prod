@@ -3,7 +3,7 @@
 /**
  * StatCard - TEAMPLUS Shared Component
  * 단순 통계 카드 (라벨 + 숫자 + 단위 + 옵션 아이콘).
- * 사용 화면: /parent (크레딧 요약), /coach (오늘 출석률),
+ * 사용 화면: /parent (결제권 요약), /coach (오늘 출석률),
  * /admin (승인 대기), /director (팀 통계), /statistics
  */
 
@@ -13,7 +13,7 @@ import { ReactNode } from 'react';
 export type StatAccentColor = 'primary' | 'success' | 'warning' | 'error';
 
 export interface StatCardProps {
-  /** 통계 라벨 (예: "보유 크레딧", "출석률") */
+  /** 통계 라벨 (예: "보유 결제권", "출석률") */
   label: string;
   /** 숫자 값 (문자열 또는 숫자 모두 허용) */
   value: string | number;

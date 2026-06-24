@@ -72,7 +72,7 @@ const ROLE_STATS: Record<UserRole, DrawerStatItem[]> = {
   ],
   parent: [
     { icon: "child_care", label: "자녀", value: "0 명", tone: "primary" },
-    { icon: "credit_card", label: "크레딧", value: "0 회", tone: "success" },
+    { icon: "credit_card", label: "결제권", value: "0 회", tone: "success" },
   ],
   teen: [
     {

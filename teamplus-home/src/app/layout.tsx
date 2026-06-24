@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     "클럽 관리",
     "회원 관리",
     "QR 출석",
-    "결제 크레딧",
+    "결제 결제권",
     "알림톡",
     "KG이니시스",
     "SaaS",

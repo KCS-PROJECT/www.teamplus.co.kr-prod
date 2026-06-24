@@ -161,7 +161,7 @@ export default function PrivacyPage() {
               </p>
               <p className="text-w-caption text-ice-600 dark:text-ice-300 leading-relaxed">
                 정보통신망법에 따라 본인의 개인정보를 JSON 파일로 다운로드할 수 있습니다.
-                수집 항목: 프로필, 출석 이력(2년), 크레딧 내역, 수업 등록, 알림 이력(90일), 로그인 기록(1년).
+                수집 항목: 프로필, 출석 이력(2년), 결제권 내역, 수업 등록, 알림 이력(90일), 로그인 기록(1년).
                 <br />
                 <span className="font-semibold">30일에 1회 요청 가능 · 다운로드 링크 7일 유효</span>
               </p>
@@ -283,7 +283,7 @@ export default function PrivacyPage() {
             {[
               { icon: 'person', label: '프로필 정보', desc: '이름, 이메일, 전화번호, 생년월일' },
               { icon: 'event_available', label: '출석 이력', desc: '최근 2년' },
-              { icon: 'toll', label: '크레딧 내역', desc: '전체 거래 이력' },
+              { icon: 'toll', label: '결제권 내역', desc: '전체 거래 이력' },
               { icon: 'school', label: '수업 등록', desc: '신청·취소 이력' },
               { icon: 'notifications', label: '알림 이력', desc: '최근 90일' },
               { icon: 'login', label: '로그인 기록', desc: '최근 1년' },

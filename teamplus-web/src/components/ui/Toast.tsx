@@ -54,7 +54,7 @@ interface ToastContextType {
     error: (message: string, options?: ToastOptions) => void;
     /**
      * 주의 — 사용자 환기 (앰버). 만료 임박, 데이터 불완전 등.
-     * @example toast.warning('크레딧 만료가 7일 남았습니다.');
+     * @example toast.warning('결제권 만료가 7일 남았습니다.');
      */
     warning: (message: string, options?: ToastOptions) => void;
     /**
