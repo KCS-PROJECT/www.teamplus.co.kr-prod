@@ -24,6 +24,10 @@ interface ChildData {
   credits: number;
   expiringCredits: number;
   expiringDate: string;
+  // [시안 ParentCredits.jsx] navy hero 하단 누적 발급/사용 통계 2-col.
+  //   /credits/stats/{id} 응답에 이미 포함(추가 호출 없음 — graceful degradation).
+  totalIssued: number;
+  totalUsed: number;
 }
 
 interface PaymentHistory {
@@ -72,6 +76,9 @@ interface CreditSummary {
   expiringCredits?: number;
   expiringDate?: string;
   nearestExpiryDate?: string;
+  // [시안] 누적 발급/사용 — 백엔드 /credits/stats SoT (totalIssued/totalUsed).
+  totalIssued?: number;
+  totalUsed?: number;
 }
 
 interface PaymentApiItem {
@@ -124,9 +131,9 @@ function formatDateParts(dateStr: string): { date: string; time: string; monthKe
 
 function getPaymentIcon(status: string): { icon: string; bg: string; color: string } {
   if (status === 'cancelled' || status === 'CANCELLED' || status === 'REFUNDED') {
-    return { icon: 'remove_shopping_cart', bg: 'bg-wline dark:bg-rink-700', color: 'text-wtext-4 dark:text-wtext-3' };
+    return { icon: 'remove_shopping_cart', bg: 'bg-it-fill dark:bg-rink-700', color: 'text-it-ink-400 dark:text-wtext-3' };
   }
-  return { icon: 'confirmation_number', bg: 'bg-ice-100 dark:bg-ice-500/15', color: 'text-ice-500' };
+  return { icon: 'confirmation_number', bg: 'bg-it-blue-50 dark:bg-it-blue-500/15', color: 'text-it-blue-500' };
 }
 
 function groupByMonth<T extends { date: string }>(items: T[]): MonthGroup<T>[] {
@@ -164,30 +171,30 @@ function getUsageTypeLabel(type: UsageHistory['type'], credits: number, reason?:
 
 function getUsageTypeColor(type: UsageHistory['type'], credits: number) {
   switch (type) {
-    case 'deduction': return 'text-flame-500 dark:text-flame-500';
-    case 'restore': return 'text-mint-500 dark:text-mint-500';
-    case 'expired': return 'text-wtext-4 dark:text-wtext-3';
+    case 'deduction': return 'text-it-red-500';
+    case 'restore': return 'text-success';
+    case 'expired': return 'text-it-ink-400 dark:text-wtext-3';
     case 'adjusted':
-      // 감독 조정 양수: ice-500 (파랑 — 추가/혜택), 음수: flame-500 (주황 — 차감/주의)
+      // 감독 조정 양수: it-blue (파랑 — 추가/혜택), 음수: it-red (차감/주의)
       return credits >= 0
-        ? 'text-ice-500 dark:text-ice-500'
-        : 'text-flame-500 dark:text-flame-500';
+        ? 'text-it-blue-500'
+        : 'text-it-red-500';
   }
 }
 
 function getUsageIcon(type: UsageHistory['type'], credits: number = 0) {
   switch (type) {
     case 'deduction':
-      return { name: 'remove_circle_outline', bg: 'bg-flame-100 dark:bg-flame-500/15', color: 'text-flame-500' };
+      return { name: 'remove_circle_outline', bg: 'bg-it-red-50 dark:bg-it-red-500/15', color: 'text-it-red-500' };
     case 'restore':
-      return { name: 'replay', bg: 'bg-mint-100 dark:bg-mint-500/15', color: 'text-mint-500' };
+      return { name: 'replay', bg: 'bg-success-100 dark:bg-success-700/20', color: 'text-success' };
     case 'expired':
-      return { name: 'schedule', bg: 'bg-wline dark:bg-rink-700', color: 'text-wtext-4 dark:text-wtext-3' };
+      return { name: 'schedule', bg: 'bg-it-fill dark:bg-rink-700', color: 'text-it-ink-400 dark:text-wtext-3' };
     case 'adjusted':
       // 감독 조정은 'tune' 아이콘 — 양수/음수 부호로 색상 분기.
       return credits >= 0
-        ? { name: 'tune', bg: 'bg-ice-100 dark:bg-ice-500/15', color: 'text-ice-500' }
-        : { name: 'tune', bg: 'bg-flame-100 dark:bg-flame-500/15', color: 'text-flame-500' };
+        ? { name: 'tune', bg: 'bg-it-blue-50 dark:bg-it-blue-500/15', color: 'text-it-blue-500' }
+        : { name: 'tune', bg: 'bg-it-red-50 dark:bg-it-red-500/15', color: 'text-it-red-500' };
   }
 }
 
@@ -263,6 +270,8 @@ export default function CreditsPage() {
               credits: credit.available ?? credit.totalCredits ?? 0,
               expiringCredits: credit.expiringCredits ?? 0,
               expiringDate: credit.nearestExpiryDate ?? credit.expiringDate ?? '',
+              totalIssued: credit.totalIssued ?? 0,
+              totalUsed: credit.totalUsed ?? 0,
             };
           } catch {
             return {
@@ -271,6 +280,8 @@ export default function CreditsPage() {
               credits: 0,
               expiringCredits: 0,
               expiringDate: '',
+              totalIssued: 0,
+              totalUsed: 0,
             };
           }
         })
@@ -458,23 +469,23 @@ export default function CreditsPage() {
 
       {/* 검색바 — extraActions 검색 아이콘 토글로 노출/숨김 */}
       {isSearchOpen && (
-        <div className="px-4 pt-3 pb-1 bg-wbg dark:bg-puck border-b border-wline-2 dark:border-rink-700">
-          <div className="flex items-center gap-2 bg-wsurface dark:bg-rink-800 border border-wline dark:border-rink-700 rounded-w-md px-3 py-2.5">
-            <Icon name="search" className="text-card-emphasis text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+        <div className="px-4 pt-3 pb-1 bg-it-canvas dark:bg-puck border-b border-it-line-strong dark:border-rink-700">
+          <div className="flex items-center gap-2 bg-it-surface dark:bg-rink-800 border border-it-line dark:border-rink-700 rounded-w-md px-3 py-2.5">
+            <Icon name="search" className="text-card-emphasis text-it-ink-500 dark:text-rink-300" aria-hidden="true" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="자녀 이름 또는 상품명으로 검색"
               aria-label="결제 내역 검색"
-              className="flex-1 bg-transparent border-0 outline-none text-card-body text-wtext-1 dark:text-white placeholder-wtext-3 dark:placeholder-rink-300"
+              className="flex-1 bg-transparent border-0 outline-none text-card-body text-it-ink-900 dark:text-white placeholder-it-ink-400 dark:placeholder-rink-300"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
                 aria-label="검색어 지우기"
-                className="text-wtext-3 dark:text-rink-300 hover:text-wtext-2 dark:hover:text-rink-100"
+                className="text-it-ink-500 dark:text-rink-300 hover:text-it-ink-700 dark:hover:text-rink-100"
               >
                 <Icon name="close" className="text-card-emphasis" aria-hidden="true" />
               </button>
@@ -492,7 +503,7 @@ export default function CreditsPage() {
                 (2) `touch-pan-y` (Tailwind utility) 로 세로 스크롤 제스처 명시,
                 (3) `overscroll-contain` 로 BottomNav 침범 시 부모 바운스 차단.
           상세: docs/Architecture/SCREEN_METRICS.md §"WebView 스크롤 가드" */}
-      <div className="hide-scrollbar flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y bg-wbg dark:bg-puck">
+      <div className="hide-scrollbar flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y bg-it-canvas dark:bg-puck">
         {/* 자녀 선택 탭
             [수정 2026-05-15 T05-K] 카테고리(자녀) UI 잘림 회귀 수정.
               이전: `flex flex-1 + gap-2` — 4명 이상이면 버튼 폭이 28px 이하로 좁아져
@@ -523,14 +534,15 @@ export default function CreditsPage() {
                   aria-selected={selectedChildId === child.id}
                   aria-pressed={selectedChildId === child.id}
                   className={cn(
-                    'flex items-center justify-center gap-2 rounded-w-md min-h-[48px] py-2.5 px-4 text-card-body font-semibold whitespace-nowrap snap-start transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40',
+                    /* [시안 Chip 1:1] pill h-[42px] px-4, fs14/700, blue active fill /
+                       비활성 흰 표면 + line-strong 1.5px border (사각 person 칩 → pill) */
+                    'flex items-center justify-center gap-1.5 rounded-w-pill h-[42px] px-4 text-[14px] font-bold tracking-[-0.01em] whitespace-nowrap snap-start transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40',
                     children.length >= 4 ? 'shrink-0' : 'flex-1',
                     selectedChildId === child.id
-                      ? 'bg-ice-500 text-white shadow-sh-1'
-                      : 'bg-wsurface text-wtext-3 hover:bg-wline dark:bg-rink-800 dark:text-wtext-3 dark:hover:bg-rink-700 border border-wline dark:border-rink-700',
+                      ? 'bg-it-blue-500 text-white border-[1.5px] border-it-blue-500'
+                      : 'bg-it-surface text-it-ink-600 hover:bg-it-fill dark:bg-rink-800 dark:text-wtext-3 dark:hover:bg-rink-700 border-[1.5px] border-it-line-strong dark:border-rink-700',
                   )}
                 >
-                  <Icon name="person" className="text-[16px] shrink-0" aria-hidden="true" />
                   <span className="truncate">{child.name}</span>
                 </button>
               ))}
@@ -538,139 +550,136 @@ export default function CreditsPage() {
           </section>
         )}
 
-        {/* 결제권 잔액 카드 */}
+        {/* 결제권 잔액 — ICETIMES navy 히어로 밴드 (full-bleed, 카드 박스 제거) */}
         {selectedChild && (
           <section
-            className="px-4 pt-3"
+            className="bg-it-blue-800 dark:bg-it-blue-950 px-4 pt-[22px] pb-6"
             aria-label="결제권 잔액"
             role="status"
             aria-live="polite"
             aria-atomic="true"
           >
-            <div className="overflow-hidden rounded-w-xl bg-wsurface shadow-sh-2 border border-wline p-6 dark:bg-rink-800 dark:border-rink-700">
-              <div className="flex flex-col gap-5">
-                {/* 상단: 라벨 + 아이콘 */}
-                <div className="flex items-start justify-between">
-                  <div className="flex flex-col gap-1.5">
-                    <span className="flex items-center gap-1.5 text-card-meta font-bold uppercase tracking-wider text-wtext-4 dark:text-wtext-3">
-                      <Icon name="account_balance_wallet" className="text-[14px]" aria-hidden="true" />
-                      잔여 결제권
-                    </span>
-                    <span className="text-card-body font-semibold text-wtext-2 dark:text-rink-200">
-                      {selectedChild.name}의 {MESSAGES.dashboard.parentDashboard.creditSummary}
-                    </span>
-                  </div>
-                  <div className="flex size-12 shrink-0 items-center justify-center rounded-w-lg bg-ice-100 text-ice-500 dark:bg-ice-500/15 dark:text-ice-500">
-                    <Icon name="stars" className="text-[28px]" aria-hidden="true" />
-                  </div>
+            {/* [시안 ParentCredits.jsx 1:1] 라벨 — "{자녀명} · 보유 결제권"
+                fs11/700 uppercase tracking 0.12em white/soft 단일 행 */}
+            <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-white/60">
+              <Icon name="account_balance_wallet" className="text-[14px]" aria-hidden="true" />
+              {selectedChild.name} · {MESSAGES.dashboard.parentDashboard.creditSummary}
+            </div>
+
+            {/* [시안] 금액 38px/800 + "회" 19px/700 (text-6xl 60px 과대 → 시안 스케일) */}
+            <div className="mt-2 flex items-baseline gap-[3px]">
+              <span className="text-[38px] font-extrabold leading-[1.05] tracking-[-0.02em] text-white tabular-nums">
+                {selectedChild.credits}
+              </span>
+              <span className="text-[19px] font-bold text-white">회</span>
+            </div>
+
+            {/* [시안] 만료 임박 — 단일 inline pill (우측 블록 + alert 박스 → 통합)
+                bg white/.12, schedule icon, 연한 적색 텍스트 12.5/700 */}
+            {selectedChild.expiringCredits > 0 && (
+              <div
+                className="mt-3 inline-flex items-center gap-1.5 rounded-w-pill bg-white/[0.12] px-[11px] py-[5px] text-[12.5px] font-bold text-it-red-200"
+                role="alert"
+                aria-live="polite"
+              >
+                <Icon name="schedule" className="text-[15px]" aria-hidden="true" />
+                <span className="tabular-nums">
+                  {selectedChild.expiringDate
+                    ? `${selectedChild.expiringDate} ${selectedChild.expiringCredits}회 만료`
+                    : `${selectedChild.expiringCredits}회 만료 예정`}
+                </span>
+              </div>
+            )}
+
+            {/* [시안] 누적 발급/사용 2-col — 상단 border, fs18/800 */}
+            <div className="mt-[18px] flex gap-6 border-t border-white/[0.14] pt-4">
+              <div>
+                <div className="text-[12px] text-white/60">누적 발급</div>
+                <div className="mt-[3px] text-[18px] font-extrabold text-white tabular-nums">
+                  {selectedChild.totalIssued}
+                  <span className="text-[12px] font-semibold text-white/60"> 회</span>
                 </div>
-
-                {/* 결제권 대형 숫자 (hero) */}
-                <div className="flex items-end justify-between">
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="text-6xl font-black text-wtext-1 tracking-tighter tabular-nums leading-none dark:text-white">
-                      {selectedChild.credits}
-                    </span>
-                    <span className="text-w-h2 font-bold text-wtext-3 dark:text-wtext-3">회</span>
-                  </div>
-                  {selectedChild.expiringCredits > 0 && (
-                    <div className="text-right">
-                      <p className="text-card-meta font-medium text-wtext-4 dark:text-wtext-3 uppercase tracking-wider">만료 임박</p>
-                      <p className="text-card-emphasis font-bold text-sun-500 dark:text-sun-500 tabular-nums">
-                        {selectedChild.expiringCredits}회
-                      </p>
-                    </div>
-                  )}
+              </div>
+              <div>
+                <div className="text-[12px] text-white/60">누적 사용</div>
+                <div className="mt-[3px] text-[18px] font-extrabold text-white tabular-nums">
+                  {selectedChild.totalUsed}
+                  <span className="text-[12px] font-semibold text-white/60"> 회</span>
                 </div>
-
-                {/* 만료 예정 경고 — 동적 변경 시 스크린리더 안내 */}
-                {selectedChild.expiringCredits > 0 && (
-                  <div
-                    className="flex items-center gap-2 rounded-lg bg-sun-100 px-3 py-2.5 border border-sun-500/40 dark:bg-sun-500/15 dark:border-sun-500/40"
-                    role="alert"
-                    aria-live="polite"
-                  >
-                    <Icon name="warning" className="shrink-0 text-[18px] text-sun-500" aria-hidden="true" />
-                    <span className="text-card-meta font-medium text-wtext-2 dark:text-sun-100">
-                      <span className="font-bold tabular-nums">{selectedChild.expiringCredits}회</span> 결제권이 <span className="font-bold">{selectedChild.expiringDate}</span>에 만료 예정입니다
-                    </span>
-                  </div>
-                )}
-
-                {/* 구분선 */}
-                <div className="h-px w-full bg-wline dark:bg-rink-700" aria-hidden="true" />
-
-                {/* [2026-06-09 심사 3.1.1] 결제권 성격 명시 — 디지털 화폐/콘텐츠 오인 방지 */}
-                <p className="flex items-start gap-1.5 text-card-meta leading-relaxed text-wtext-3 dark:text-rink-300">
-                  <Icon
-                    name="info"
-                    className="mt-px shrink-0 text-[14px]"
-                    aria-hidden="true"
-                  />
-                  <span>{MESSAGES.payment2.offlineCreditNotice}</span>
-                </p>
-
-                {/* CTA 버튼 */}
-                <button
-                  onClick={() => navigate('/payment/select')}
-                  className="flex w-full items-center justify-center gap-2 rounded-w-md bg-ice-500 py-3.5 text-white shadow-sh-1 transition-colors motion-reduce:transition-none active:brightness-95 hover:bg-ice-700"
-                >
-                  <Icon name="add_card" className="text-[20px]" aria-hidden="true" />
-                  <span className="text-card-body font-bold tracking-wide">
-                    결제권 충전하기
-                  </span>
-                </button>
               </div>
             </div>
+
+            {/* CTA 버튼 — ICETIMES accent(red) (시안 Button accent lg) */}
+            <button
+              onClick={() => navigate('/payment/select')}
+              className="mt-[18px] flex w-full items-center justify-center gap-2 rounded-w-md bg-it-red-500 py-3.5 text-white shadow-sh-1 transition-colors motion-reduce:transition-none active:brightness-95 hover:bg-it-red-600"
+            >
+              <Icon name="add_card" className="text-[20px]" aria-hidden="true" />
+              <span className="text-card-body font-bold tracking-wide">
+                결제권 충전하기
+              </span>
+            </button>
+
+            {/* [2026-06-09 심사 3.1.1] 결제권 성격 명시 — 디지털 화폐/콘텐츠 오인 방지 (기능 보존) */}
+            <p className="mt-3 flex items-start gap-1.5 text-card-meta leading-relaxed text-white/55">
+              <Icon
+                name="info"
+                className="mt-px shrink-0 text-[14px]"
+                aria-hidden="true"
+              />
+              <span>{MESSAGES.payment2.offlineCreditNotice}</span>
+            </p>
           </section>
         )}
 
-        {/* 탭 내비게이션 */}
+        {/* 탭 내비게이션 — [시안 SegmentedTabs 1:1] 8px 갭 위 full-width 흰 세그먼트.
+            pill 토글 → underline 탭 (blue active 800 + blue 2.5px underline). */}
         <section
-          className="sticky top-[57px] z-40 mt-4 bg-wbg px-4 pb-2 pt-2 dark:bg-puck"
+          className="sticky top-[57px] z-40 mt-2 dark:bg-puck"
           aria-label="내역 탭"
         >
           <div
-            className="flex rounded-w-md bg-wline-2/60 p-1 dark:bg-rink-800"
+            className="flex border-b border-it-line bg-it-surface dark:border-rink-700 dark:bg-rink-800"
             role="tablist"
             aria-label="결제/사용 내역"
           >
-            <button
-              type="button"
-              onClick={() => setActiveTab('payment')}
-              role="tab"
-              aria-selected={activeTab === 'payment'}
-              aria-label="결제 내역 보기"
-              className={cn(
-                'flex-1 flex items-center justify-center rounded-lg min-h-[48px] py-2.5 text-card-body font-bold transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40',
-                activeTab === 'payment'
-                  ? 'bg-wsurface text-ice-500 shadow-sh-1 dark:bg-rink-700 dark:text-ice-500'
-                  : 'text-wtext-3 hover:text-wtext-2 dark:text-wtext-3 dark:hover:text-rink-200',
-              )}
-            >
-              {MESSAGES.dashboard.adminDashboard.payments}
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('usage')}
-              role="tab"
-              aria-selected={activeTab === 'usage'}
-              aria-label="결제권 사용 내역 보기"
-              className={cn(
-                'flex-1 flex items-center justify-center rounded-lg min-h-[48px] py-2.5 text-card-body font-bold transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40',
-                activeTab === 'usage'
-                  ? 'bg-wsurface text-ice-500 shadow-sh-1 dark:bg-rink-700 dark:text-ice-500'
-                  : 'text-wtext-3 hover:text-wtext-2 dark:text-wtext-3 dark:hover:text-rink-200',
-              )}
-            >
-              사용 내역
-            </button>
+            {([
+              { key: 'payment' as const, label: MESSAGES.dashboard.adminDashboard.payments, aria: '결제 내역 보기' },
+              { key: 'usage' as const, label: '사용 내역', aria: '결제권 사용 내역 보기' },
+            ]).map((t) => {
+              const active = activeTab === t.key;
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setActiveTab(t.key)}
+                  role="tab"
+                  aria-selected={active}
+                  aria-label={t.aria}
+                  className={cn(
+                    'relative flex-1 min-h-[48px] px-1 pb-[13px] pt-[14px] text-[15px] tracking-[-0.01em] transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-it-blue-500/40',
+                    active
+                      ? 'font-extrabold text-it-blue-600 dark:text-it-blue-300'
+                      : 'font-semibold text-it-ink-500 dark:text-wtext-3',
+                  )}
+                >
+                  {t.label}
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      'absolute inset-x-0 -bottom-px h-[2.5px] rounded-[2px]',
+                      active ? 'bg-it-blue-500' : 'bg-transparent',
+                    )}
+                  />
+                </button>
+              );
+            })}
           </div>
         </section>
 
-        {/* 탭 콘텐츠 */}
+        {/* 탭 콘텐츠 — ICETIMES flat 섹션 (8px 회색 갭 위 흰 패널) */}
         <main
-          className="flex flex-col gap-5 px-4 py-2 pb-8"
+          className="flex flex-col gap-2 py-2 pb-8"
           role="tabpanel"
           aria-label={activeTab === 'payment' ? '결제 내역' : '결제권 사용 내역'}
         >
@@ -679,118 +688,90 @@ export default function CreditsPage() {
             <>
               {visiblePaymentHistory.length > 0 ? (
                 visiblePaymentHistory.map((group) => (
-                  <div key={group.month} className="flex flex-col gap-3">
-                    {/* 월 헤더 */}
-                    <div className="flex items-center justify-between px-1">
-                      <h3 className="text-card-meta font-bold uppercase tracking-wider text-wtext-3 dark:text-wtext-3">
-                        {group.month}
-                      </h3>
-                      {group.count != null && group.count > 0 && (
-                        <span className="rounded-w-pill bg-wline px-2 py-0.5 text-card-meta font-medium text-wtext-4 dark:bg-rink-800 dark:text-wtext-3">
-                          총 {group.count}건
-                        </span>
-                      )}
+                  <section key={group.month} className="bg-it-surface dark:bg-rink-800 px-4 pt-3.5 pb-1.5">
+                    {/* [시안] 월 헤더 — fs12.5/800/faint (총N건 pill 제거) */}
+                    <div className="mb-1 text-[12.5px] font-extrabold text-it-ink-400 dark:text-wtext-3">
+                      {group.month}
                     </div>
 
-                    {/* 결제 아이템 */}
+                    {/* [시안 PRow 1:1] 단일 행 — 아이콘44 / title15·sub12.5 / 우측 금액15·상태11.5 */}
                     {group.items.map((item) => (
                       <div
                         key={item.id}
                         className={cn(
-                          'flex flex-col gap-3 rounded-w-lg bg-wsurface p-4 shadow-sh-1 border border-wline transition-colors motion-reduce:transition-none dark:bg-rink-800 dark:border-rink-700',
-                          item.status === 'cancelled' && 'opacity-80',
+                          'flex items-center gap-3 border-b border-it-line py-[13px] last:border-b-0 dark:border-rink-700',
+                          item.status === 'cancelled' && 'opacity-60',
                         )}
                       >
-                        <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
                           <div className="flex gap-3">
                             {/* 아이콘 */}
                             <div
                               className={cn(
-                                'flex size-12 shrink-0 items-center justify-center rounded-w-md',
+                                'flex size-11 shrink-0 items-center justify-center rounded-w-md',
                                 item.iconBgClass,
                               )}
                             >
                               <Icon name={item.icon} className={cn('text-[22px]', item.iconColorClass)} aria-hidden="true" />
                             </div>
                             {/* 정보 */}
-                            <div className="flex flex-col justify-center gap-0.5">
+                            <div className="flex min-w-0 flex-col justify-center gap-0.5">
                               <h4
                                 className={cn(
-                                  'text-card-emphasis font-bold leading-tight',
+                                  'truncate text-[15px] font-bold leading-tight',
                                   item.status === 'cancelled'
-                                    ? 'text-wtext-3 line-through decoration-wtext-4/50 dark:text-wtext-3'
-                                    : 'text-wtext-1 dark:text-white',
+                                    ? 'text-it-ink-500 line-through decoration-it-ink-400/50 dark:text-wtext-3'
+                                    : 'text-it-ink-900 dark:text-white',
                                 )}
                               >
                                 {item.title}
                               </h4>
-                              <span className="text-card-meta font-medium text-wtext-3 dark:text-wtext-3">
+                              <span className="text-[12.5px] text-it-ink-500 dark:text-wtext-3 tabular-nums">
                                 {item.date} {'\u00B7'} {item.time}
                               </span>
                             </div>
                           </div>
-                          {/* 금액 */}
-                          <p
+                        </div>
+                        {/* 우측 — 금액 15/800 + rightSub 11.5(상태/영수증·환불 기능 보존) */}
+                        <div className="shrink-0 text-right">
+                          <div
                             className={cn(
-                              'text-card-emphasis font-semibold shrink-0 tabular-nums text-right tracking-tight',
+                              'text-[15px] font-extrabold tabular-nums tracking-tight',
                               item.status === 'cancelled'
-                                ? 'text-wtext-4 line-through decoration-slate-400/50 dark:text-wtext-3'
-                                : 'text-wtext-1 dark:text-white',
+                                ? 'text-it-ink-400 line-through decoration-it-ink-300/50 dark:text-wtext-3'
+                                : 'text-it-ink-900 dark:text-white',
                             )}
                           >
                             {formatAmount(item.amount)}원
-                          </p>
-                        </div>
-
-                        {/* 하단: 상태 + 영수증 */}
-                        <div className="flex items-center justify-between border-t border-wline pt-3 dark:border-rink-700">
-                          <div className="flex items-center gap-1.5">
-                            <span
-                              className={cn(
-                                'flex size-2 rounded-w-pill',
-                                item.status === 'completed' ? 'bg-mint-500' : 'bg-flame-500',
-                              )}
-                              aria-hidden="true"
-                            />
-                            <span
-                              className={cn(
-                                'text-card-meta font-semibold',
-                                item.status === 'completed'
-                                  ? 'text-mint-500 dark:text-mint-500'
-                                  : 'text-flame-500 dark:text-flame-500',
-                              )}
-                            >
-                              {item.status === 'completed' ? MESSAGES.payment.success : MESSAGES.payment.fail}
-                            </span>
                           </div>
                           {item.status === 'completed' ? (
                             <button
                               type="button"
                               onClick={() => navigate(`/payment/receipt/${item.id}`)}
                               aria-label={`${item.title || '결제'} 영수증 보기`}
-                              className="inline-flex items-center min-h-[48px] px-1 text-card-body font-medium text-ice-500 hover:text-ice-700 underline underline-offset-2 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 rounded"
+                              className="mt-0.5 inline-flex items-center text-[11.5px] font-semibold text-success underline underline-offset-2 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 rounded"
                             >
-                              영수증 보기
+                              {MESSAGES.payment.success}
                             </button>
                           ) : (
-                            <span className="text-card-meta font-medium text-wtext-4 dark:text-wtext-3">
+                            <span className="mt-0.5 block text-[11.5px] font-semibold text-it-ink-400 dark:text-wtext-3">
                               환불 완료
                             </span>
                           )}
                         </div>
                       </div>
                     ))}
-                  </div>
+                  </section>
                 ))
               ) : (
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <div className="flex size-14 items-center justify-center rounded-w-pill bg-wline mb-3 dark:bg-rink-800">
-                    <Icon name="credit_card_off" className="text-[28px] text-wtext-4 dark:text-wtext-3" aria-hidden="true" />
+                <div className="bg-it-surface dark:bg-rink-800 flex flex-col items-center justify-center py-16 text-center">
+                  <div className="flex size-14 items-center justify-center rounded-w-pill bg-it-fill mb-3 dark:bg-rink-700">
+                    <Icon name="credit_card_off" className="text-[28px] text-it-ink-400 dark:text-wtext-3" aria-hidden="true" />
                   </div>
-                  <p className="text-card-body font-medium text-wtext-3 dark:text-wtext-4">
+                  <p className="text-card-body font-medium text-it-ink-500 dark:text-wtext-4">
                     {MESSAGES.payment2.emptyPaymentHistory}
                   </p>
-                  <p className="mt-1 text-card-meta text-wtext-4 dark:text-wtext-3">
+                  <p className="mt-1 text-card-meta text-it-ink-400 dark:text-wtext-3">
                     {MESSAGES.payment2.paymentHistoryHint}
                   </p>
                 </div>
@@ -801,32 +782,25 @@ export default function CreditsPage() {
             <>
               {visibleUsageHistory.length > 0 ? (
                 visibleUsageHistory.map((group) => (
-                  <div key={group.month} className="flex flex-col gap-3">
-                    {/* 월 헤더 */}
-                    <div className="flex items-center justify-between px-1">
-                      <h3 className="text-card-meta font-bold uppercase tracking-wider text-wtext-3 dark:text-wtext-3">
-                        {group.month}
-                      </h3>
-                      {group.count != null && group.count > 0 && (
-                        <span className="rounded-w-pill bg-wline px-2 py-0.5 text-card-meta font-medium text-wtext-4 dark:bg-rink-800 dark:text-wtext-3">
-                          총 {group.count}건
-                        </span>
-                      )}
+                  <section key={group.month} className="bg-it-surface dark:bg-rink-800 px-4 pt-3.5 pb-1.5">
+                    {/* [시안] 월 헤더 — fs12.5/800/faint (총N건 pill 제거) */}
+                    <div className="mb-1 text-[12.5px] font-extrabold text-it-ink-400 dark:text-wtext-3">
+                      {group.month}
                     </div>
 
-                    {/* 사용 아이템 */}
+                    {/* 사용 아이템 — flat hairline 행 (시안 PRow) */}
                     {group.items.map((item) => {
                       // [Step 7 2026-05-19] 감독 조정은 credits 부호로 아이콘/색 분기.
                       const iconInfo = getUsageIcon(item.type, item.credits);
                       return (
                         <div
                           key={item.id}
-                          className="flex items-center gap-3 rounded-w-lg bg-wsurface p-4 shadow-sh-1 border border-wline dark:bg-rink-800 dark:border-rink-700"
+                          className="flex items-center gap-3 border-b border-it-line py-3.5 last:border-b-0 dark:border-rink-700"
                         >
                           {/* 아이콘 */}
                           <div
                             className={cn(
-                              'flex size-12 shrink-0 items-center justify-center rounded-w-md',
+                              'flex size-11 shrink-0 items-center justify-center rounded-w-md',
                               iconInfo.bg,
                             )}
                           >
@@ -835,17 +809,17 @@ export default function CreditsPage() {
 
                           {/* 정보 */}
                           <div className="flex-1 min-w-0">
-                            <h4 className="text-card-body font-bold text-wtext-1 leading-tight truncate dark:text-white">
+                            <h4 className="text-[15px] font-bold text-it-ink-900 leading-tight truncate dark:text-white">
                               {item.className}
                             </h4>
                             <div className="flex items-center gap-1 mt-0.5">
-                              <span className="text-card-meta text-wtext-3 dark:text-wtext-4">
+                              <span className="text-card-meta text-it-ink-500 dark:text-wtext-4">
                                 {item.date} {'\u00B7'} {item.time}
                               </span>
                               {item.coachName && (
                                 <>
-                                  <span className="text-card-meta text-wtext-4 dark:text-wtext-3">{'\u00B7'}</span>
-                                  <span className="text-card-meta text-wtext-3 dark:text-wtext-4">{item.coachName}</span>
+                                  <span className="text-card-meta text-it-ink-400 dark:text-wtext-3">{'\u00B7'}</span>
+                                  <span className="text-card-meta text-it-ink-500 dark:text-wtext-4">{item.coachName}</span>
                                 </>
                               )}
                             </div>
@@ -854,16 +828,16 @@ export default function CreditsPage() {
                             </span>
                           </div>
 
-                          {/* 결제권 수 */}
+                          {/* 결제권 수 — [시안] 우측 15/800. 차감(-1회) blue-600 / 복원 success / 만료 faint */}
                           <div className="shrink-0 text-right">
                             <span
                               className={cn(
-                                'text-card-emphasis font-bold tabular-nums',
+                                'text-[15px] font-extrabold tabular-nums',
                                 item.credits > 0
-                                  ? 'text-mint-500 dark:text-mint-500'
+                                  ? 'text-success'
                                   : item.type === 'expired'
-                                    ? 'text-wtext-4 dark:text-wtext-3'
-                                    : 'text-flame-500 dark:text-flame-500',
+                                    ? 'text-it-ink-400 dark:text-wtext-3'
+                                    : 'text-it-blue-600 dark:text-it-blue-300',
                               )}
                             >
                               {item.credits > 0 ? '+' : ''}{item.credits}회
@@ -872,17 +846,17 @@ export default function CreditsPage() {
                         </div>
                       );
                     })}
-                  </div>
+                  </section>
                 ))
               ) : (
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <div className="flex size-14 items-center justify-center rounded-w-pill bg-wline mb-3 dark:bg-rink-800">
-                    <Icon name="history" className="text-[28px] text-wtext-4 dark:text-wtext-3" aria-hidden="true" />
+                <div className="bg-it-surface dark:bg-rink-800 flex flex-col items-center justify-center py-16 text-center">
+                  <div className="flex size-14 items-center justify-center rounded-w-pill bg-it-fill mb-3 dark:bg-rink-700">
+                    <Icon name="history" className="text-[28px] text-it-ink-400 dark:text-wtext-3" aria-hidden="true" />
                   </div>
-                  <p className="text-card-body font-medium text-wtext-3 dark:text-wtext-4">
+                  <p className="text-card-body font-medium text-it-ink-500 dark:text-wtext-4">
                     {MESSAGES.payment2.emptyUsageHistory}
                   </p>
-                  <p className="mt-1 text-card-meta text-wtext-4 dark:text-wtext-3">
+                  <p className="mt-1 text-card-meta text-it-ink-400 dark:text-wtext-3">
                     {MESSAGES.payment2.usageHistoryHint}
                   </p>
                 </div>
@@ -891,19 +865,19 @@ export default function CreditsPage() {
           )}
 
           {/* 환불 요청 버튼 */}
-          <div className="mt-2">
+          <div className="mt-2 px-4">
             <button
               onClick={() => toast.info(MESSAGES.payment2.refundContactInfo)}
-              className="flex w-full items-center justify-center gap-2 rounded-w-md border border-wline bg-wsurface py-3.5 text-card-body font-semibold text-wtext-2 transition-colors motion-reduce:transition-none hover:bg-wbg active:brightness-95 dark:border-rink-700 dark:bg-rink-800 dark:text-wtext-4 dark:hover:bg-rink-700"
+              className="flex w-full items-center justify-center gap-2 rounded-w-md border border-it-line-strong bg-it-surface py-3.5 text-card-body font-semibold text-it-ink-700 transition-colors motion-reduce:transition-none hover:bg-it-fill active:brightness-95 dark:border-rink-700 dark:bg-rink-800 dark:text-wtext-4 dark:hover:bg-rink-700"
             >
-              <Icon name="currency_exchange" className="text-[18px] text-wtext-3 dark:text-wtext-4" aria-hidden="true" />
+              <Icon name="currency_exchange" className="text-[18px] text-it-ink-500 dark:text-wtext-4" aria-hidden="true" />
               환불 요청하기
             </button>
           </div>
 
           {/* 하단 안내 */}
-          <div className="mt-4 px-2 text-center">
-            <p className="text-card-meta leading-relaxed text-wtext-4 dark:text-wtext-3">
+          <div className="mt-4 px-4 text-center">
+            <p className="text-card-meta leading-relaxed text-it-ink-400 dark:text-wtext-3">
               {MESSAGES.payment2.historyNote}
             </p>
           </div>
@@ -925,9 +899,9 @@ export default function CreditsPage() {
             onClick={() => setIsSortSheetOpen(false)}
             className="absolute inset-0 bg-black/40"
           />
-          <div className="relative w-full max-w-[var(--mobile-shell-width,28rem)] bg-wsurface dark:bg-rink-800 rounded-t-2xl pt-3 pb-safe-4 border-t border-wline-2 dark:border-rink-700">
-            <div className="mx-auto mb-2 h-1.5 w-12 rounded-full bg-wline-2 dark:bg-rink-700" aria-hidden="true" />
-            <h3 className="px-5 pb-2 text-card-emphasis font-bold text-wtext-1 dark:text-white">정렬</h3>
+          <div className="relative w-full max-w-[var(--mobile-shell-width,28rem)] bg-it-surface dark:bg-rink-800 rounded-t-2xl pt-3 pb-safe-4 border-t border-it-line-strong dark:border-rink-700">
+            <div className="mx-auto mb-2 h-1.5 w-12 rounded-full bg-it-line-strong dark:bg-rink-700" aria-hidden="true" />
+            <h3 className="px-5 pb-2 text-card-emphasis font-bold text-it-ink-900 dark:text-white">정렬</h3>
             <ul role="listbox" aria-label="정렬 옵션">
               {SORT_OPTIONS.map((option) => {
                 const isActive = sortOrder === option.key;
@@ -944,22 +918,22 @@ export default function CreditsPage() {
                       className={cn(
                         'w-full flex items-center justify-between px-5 py-4 text-left transition-colors motion-reduce:transition-none active:brightness-95',
                         isActive
-                          ? 'bg-ice-500/5 dark:bg-ice-500/15'
-                          : 'hover:bg-wbg dark:hover:bg-rink-700',
+                          ? 'bg-it-blue-50 dark:bg-it-blue-500/15'
+                          : 'hover:bg-it-fill dark:hover:bg-rink-700',
                       )}
                     >
                       <span
                         className={cn(
                           'text-card-body font-semibold',
                           isActive
-                            ? 'text-ice-500'
-                            : 'text-wtext-1 dark:text-white',
+                            ? 'text-it-blue-600'
+                            : 'text-it-ink-900 dark:text-white',
                         )}
                       >
                         {option.label}
                       </span>
                       {isActive && (
-                        <Icon name="check" className="text-card-emphasis text-ice-500" aria-hidden="true" />
+                        <Icon name="check" className="text-card-emphasis text-it-blue-600" aria-hidden="true" />
                       )}
                     </button>
                   </li>

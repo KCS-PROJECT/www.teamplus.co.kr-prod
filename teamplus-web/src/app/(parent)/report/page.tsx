@@ -19,7 +19,7 @@ import type { SkillData } from '@/components/report/RadarChart';
 // Report Components - RadarChart lazy loaded (SVG chart component)
 const RadarChart = dynamic(() => import('@/components/report/RadarChart').then(mod => ({ default: mod.RadarChart })), {
   ssr: false,
-  loading: () => <div className="w-full aspect-square max-w-[280px] mx-auto bg-wline-2 dark:bg-rink-800 rounded-lg animate-pulse motion-reduce:animate-none" />,
+  loading: () => <div className="w-full aspect-square max-w-[280px] mx-auto bg-it-fill dark:bg-rink-800 rounded-lg animate-pulse motion-reduce:animate-none" />,
 });
 import { SkillStatCard } from '@/components/report/SkillStatCard';
 import { CoachCommentCard } from '@/components/report/CoachCommentCard';
@@ -99,17 +99,20 @@ function AttendanceBarChart({ data, isAnimated }: { data: MonthlyAttendance[]; i
   const maxRate = 100;
 
   return (
-    <div className="bg-white dark:bg-rink-800 rounded-xl p-4 shadow-sm border border-wline-2 dark:border-rink-700">
-      <div className="flex items-center justify-between mb-4">
+    /* [ICETIMES flat 재작업 2026-06-24] 카드 박스(rounded-xl border) 제거 → flat 면.
+       차트 막대/수치/애니메이션 로직은 동결. 외곽 표면만 평탄화. */
+    <div className="bg-it-surface dark:bg-it-blue-950 p-4">
+      {/* [시안] 헤더 — 아이콘박스 32 r9, h3 fs15/800, "최근 6개월" 12/faint */}
+      <div className="flex items-center justify-between mb-[14px]">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center">
-            <Icon name="how_to_reg" className="text-emerald-600 text-card-emphasis" aria-hidden="true" />
+          <div className="w-8 h-8 rounded-[9px] bg-success-100 dark:bg-success-700/20 flex items-center justify-center">
+            <Icon name="how_to_reg" className="text-success text-[18px]" aria-hidden="true" />
           </div>
-          <h3 className="text-card-body font-bold text-wtext-1 dark:text-white">
+          <h3 className="text-[15px] font-extrabold text-it-ink-900 dark:text-white">
             월별 출석률
           </h3>
         </div>
-        <span className="text-card-meta text-wtext-3 dark:text-rink-300">
+        <span className="text-[12px] text-it-ink-400 dark:text-rink-300">
           최근 6개월
         </span>
       </div>
@@ -122,15 +125,15 @@ function AttendanceBarChart({ data, isAnimated }: { data: MonthlyAttendance[]; i
 
           return (
             <div key={item.month} className="flex-1 flex flex-col items-center gap-1">
-              <span className="text-card-meta font-bold text-wtext-2 dark:text-rink-100 tabular-nums">
+              <span className="text-[11.5px] font-extrabold text-it-ink-700 dark:text-rink-100 tabular-nums">
                 {isAnimated ? `${item.rate}%` : '0%'}
               </span>
-              <div className="w-full bg-wline-2 dark:bg-rink-700 rounded-t-md overflow-hidden relative" style={{ height: '80px' }}>
+              <div className="w-full bg-it-line dark:bg-rink-700 rounded-t-md overflow-hidden relative" style={{ height: '80px' }}>
                 <div
                   className={cn(
                     'absolute bottom-0 w-full rounded-t-md transition-all motion-reduce:transition-none duration-700 ease-out',
-                    isGood ? 'bg-emerald-500 dark:bg-emerald-400' :
-                    isFair ? 'bg-ice-500' : 'bg-amber-500'
+                    isGood ? 'bg-success' :
+                    isFair ? 'bg-it-blue-500' : 'bg-warning-500'
                   )}
                   style={{
                     height: `${heightPercent}%`,
@@ -138,7 +141,7 @@ function AttendanceBarChart({ data, isAnimated }: { data: MonthlyAttendance[]; i
                   }}
                 />
               </div>
-              <span className="text-card-meta text-wtext-3 dark:text-rink-300">
+              <span className="text-[11.5px] text-it-ink-500 dark:text-rink-300">
                 {item.month}
               </span>
             </div>
@@ -148,11 +151,11 @@ function AttendanceBarChart({ data, isAnimated }: { data: MonthlyAttendance[]; i
 
       {/* Average */}
       {data.length > 0 && (
-        <div className="flex items-center justify-between mt-3 pt-3 border-t border-wline-2 dark:border-rink-700">
-          <span className="text-card-meta text-wtext-3 dark:text-rink-300">
+        <div className="flex items-center justify-between mt-3 pt-3 border-t border-it-line dark:border-rink-700">
+          <span className="text-card-meta text-it-ink-400 dark:text-rink-300">
             평균 출석률
           </span>
-          <span className="text-card-body font-bold text-wtext-1 dark:text-white tabular-nums">
+          <span className="text-card-body font-bold text-it-ink-900 dark:text-white tabular-nums">
             {Math.round(data.reduce((sum, d) => sum + d.rate, 0) / data.length)}%
           </span>
         </div>
@@ -340,10 +343,10 @@ export default function GrowthReportPage() {
         ]}
       />
 
-      {/* Child Selection Tabs */}
+      {/* Child Selection Tabs — 회색 캔버스 위 세그먼트 (/director flat 언어 정합) */}
       {childrenList.length > 1 && (
-        <div className="px-4 pt-4" role="tablist" aria-label="자녀 선택">
-          <div className="flex gap-2 p-1 bg-wline-2 dark:bg-rink-800 rounded-lg">
+        <div className="bg-it-canvas dark:bg-puck px-4 pt-4" role="tablist" aria-label="자녀 선택">
+          <div className="flex gap-2 p-1 bg-it-fill dark:bg-rink-800 rounded-lg">
             {childrenList.map((child, index) => (
               <button
                 key={child.id}
@@ -356,10 +359,11 @@ export default function GrowthReportPage() {
                   setActiveTab('overview');
                 }}
                 className={cn(
-                  'flex-1 flex items-center justify-center gap-2 min-h-[48px] px-3 text-card-body font-semibold rounded-lg transition-all motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40',
+                  /* [시안] 세그먼트 min-h44, fs14.5/700, active 흰 surface + shadow */
+                  'flex-1 flex items-center justify-center gap-2 min-h-[44px] px-3 text-[14.5px] font-bold rounded-[9px] transition-all motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40',
                   selectedChildIndex === index
-                    ? 'bg-white dark:bg-rink-700 shadow-sm text-wtext-1 dark:text-white'
-                    : 'text-wtext-3 dark:text-rink-300 hover:text-wtext-2 dark:hover:text-rink-100'
+                    ? 'bg-it-surface dark:bg-rink-700 shadow-sh-1 text-it-ink-900 dark:text-white'
+                    : 'text-it-ink-500 dark:text-rink-300 hover:text-it-ink-700 dark:hover:text-rink-100'
                 )}
               >
                 <span aria-hidden="true">{child.profileEmoji}</span>
@@ -370,8 +374,8 @@ export default function GrowthReportPage() {
         </div>
       )}
 
-      {/* Report Tab Navigation */}
-      <div className="px-4 pt-3" role="tablist" aria-label="리포트 탭">
+      {/* Report Tab Navigation — 회색 캔버스 위 탭 */}
+      <div className="bg-it-canvas dark:bg-puck px-4 pt-3 pb-1" role="tablist" aria-label="리포트 탭">
         <div className="flex gap-1 overflow-x-auto hide-scrollbar">
           {tabs.map((tab) => (
             <button
@@ -381,10 +385,11 @@ export default function GrowthReportPage() {
               aria-selected={activeTab === tab.key}
               onClick={() => setActiveTab(tab.key)}
               className={cn(
-                'flex items-center gap-1.5 min-h-[48px] px-3 text-card-body font-semibold rounded-lg whitespace-nowrap transition-all motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40',
+                /* [시안] 탭 min-h40, px13, fs13.5/700, gap5, r10. active blue fill / idle transparent */
+                'flex items-center gap-[5px] min-h-[40px] px-[13px] text-[13.5px] font-bold rounded-[10px] whitespace-nowrap transition-all motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40',
                 activeTab === tab.key
-                  ? 'bg-ice-500 text-white'
-                  : 'text-wtext-3 dark:text-rink-300 hover:bg-wline-2 dark:hover:bg-rink-800'
+                  ? 'bg-it-blue-500 text-white'
+                  : 'text-it-ink-500 dark:text-rink-300 hover:bg-it-fill dark:hover:bg-rink-800'
               )}
             >
               <Icon name={tab.icon} className="text-[16px]" aria-hidden="true" />
@@ -394,12 +399,15 @@ export default function GrowthReportPage() {
         </div>
       </div>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto px-4 pt-4 pb-30 space-y-4">
+      {/* Main Content
+          [ICETIMES flat 재작업 2026-06-24] /director 와 동일 flat 언어 — main 은 회색
+          캔버스(bg-it-canvas dark:bg-puck), 콘텐츠 블록은 각자 mt-2 흰 섹션으로 쌓인다.
+          이전 px-4 space-y-4 + 카드 박스(rounded-xl border) → full-bleed flat 섹션 전환. */}
+      <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck !pb-8">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="flex items-center gap-2 text-card-body text-wtext-3 dark:text-rink-300">
-              <div className="w-4 h-4 border-2 border-wline dark:border-rink-700 border-t-primary rounded-w-pill animate-spin" />
+            <div className="flex items-center gap-2 text-card-body text-it-ink-500 dark:text-rink-300">
+              <div className="w-4 h-4 border-2 border-it-line dark:border-rink-700 border-t-it-blue-500 rounded-w-pill animate-spin" />
               <span>{MESSAGES.common.loading}</span>
             </div>
           </div>
@@ -408,114 +416,121 @@ export default function GrowthReportPage() {
             {/* ─── Overview Tab ───────────────────────── */}
             {activeTab === 'overview' && (
               <>
-                {/* Child Summary Card */}
-                <div className="bg-white dark:bg-rink-800 rounded-2xl p-5 shadow-sm border border-wline-2 dark:border-rink-700">
+                {/* Child Summary Card — flat 섹션 (카드 박스 제거) */}
+                <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-5">
                   <div className="flex items-center gap-3 mb-4">
                     <div
-                      className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-3xl shrink-0"
+                      className="w-14 h-14 rounded-2xl bg-it-blue-50 dark:bg-it-blue-500/15 flex items-center justify-center text-3xl shrink-0"
                       aria-hidden="true"
                     >
                       {selectedChild?.profileEmoji}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h2 className="text-card-title font-extrabold text-wtext-1 dark:text-white truncate">
+                      {/* [시안] 이름 18/800, grade 13/muted */}
+                      <h2 className="text-[18px] font-extrabold text-it-ink-900 dark:text-white truncate">
                         {selectedChild?.name}
                       </h2>
-                      <p className="text-card-body text-wtext-3 dark:text-rink-300 truncate">
+                      <p className="text-[13px] text-it-ink-500 dark:text-rink-300 truncate">
                         {selectedChild?.grade || '수업 미배정'}
                       </p>
                     </div>
                   </div>
 
-                  {/* Quick Stats */}
-                  <div className="grid grid-cols-3 gap-2 pt-4 border-t border-wline-2 dark:border-rink-700">
-                    <div className="flex flex-col items-center gap-1 py-2 rounded-xl bg-blue-50/50 dark:bg-blue-900/10">
-                      <Icon name="how_to_reg" className="text-ice-500 text-card-emphasis" aria-hidden="true" />
-                      <p className="text-xl font-extrabold text-ice-500 tabular-nums leading-none mt-1">
+                  {/* Quick Stats — [시안] 3-col 모두 bg-fill 통일 배경, value 19px/800, icon 18, 라벨 11/muted */}
+                  <div className="grid grid-cols-3 gap-2 pt-[14px] border-t border-it-line dark:border-it-blue-900">
+                    <div className="flex flex-col items-center gap-1 py-[10px] rounded-xl bg-it-fill dark:bg-rink-800">
+                      <Icon name="how_to_reg" className="text-it-blue-500 text-[18px]" aria-hidden="true" />
+                      <p className="text-[19px] font-extrabold text-it-blue-500 tabular-nums leading-none">
                         {averageAttendance}%
                       </p>
-                      <p className="text-card-meta text-wtext-3 dark:text-rink-300 font-medium">
+                      <p className="text-[11px] text-it-ink-500 dark:text-rink-300 font-medium">
                         평균 출석률
                       </p>
                     </div>
-                    <div className="flex flex-col items-center gap-1 py-2 rounded-xl bg-emerald-50/50 dark:bg-emerald-900/10">
-                      <Icon name="sports_score" className="text-emerald-600 dark:text-emerald-400 text-card-emphasis" aria-hidden="true" />
-                      <p className="text-xl font-extrabold text-emerald-600 dark:text-emerald-400 tabular-nums leading-none mt-1">
+                    <div className="flex flex-col items-center gap-1 py-[10px] rounded-xl bg-it-fill dark:bg-rink-800">
+                      <Icon name="sports_score" className="text-success text-[18px]" aria-hidden="true" />
+                      <p className="text-[19px] font-extrabold text-success tabular-nums leading-none">
                         {reportData.tournaments.length}
                       </p>
-                      <p className="text-card-meta text-wtext-3 dark:text-rink-300 font-medium">
+                      <p className="text-[11px] text-it-ink-500 dark:text-rink-300 font-medium">
                         대회 참가
                       </p>
                     </div>
-                    <div className="flex flex-col items-center gap-1 py-2 rounded-xl bg-amber-50/50 dark:bg-amber-900/10">
-                      <Icon name="emoji_events" className="text-amber-500 text-card-emphasis" aria-hidden="true" />
-                      <p className="text-xl font-extrabold text-amber-500 tabular-nums leading-none mt-1">
+                    <div className="flex flex-col items-center gap-1 py-[10px] rounded-xl bg-it-fill dark:bg-rink-800">
+                      <Icon name="emoji_events" className="text-warning-600 text-[18px]" aria-hidden="true" />
+                      <p className="text-[19px] font-extrabold text-warning-600 tabular-nums leading-none">
                         {reportData.badges.length}
                       </p>
-                      <p className="text-card-meta text-wtext-3 dark:text-rink-300 font-medium">
+                      <p className="text-[11px] text-it-ink-500 dark:text-rink-300 font-medium">
                         획득 뱃지
                       </p>
                     </div>
                   </div>
-                </div>
+                </section>
 
-                {/* Attendance Chart */}
-                <AttendanceBarChart data={reportData.attendance} isAnimated={isAnimated} />
+                {/* Attendance Chart — flat 섹션 (8px 갭) */}
+                <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
+                  <AttendanceBarChart data={reportData.attendance} isAnimated={isAnimated} />
+                </section>
 
-                {/* Phase 3.5: 6개월 성장 트렌드 (출석률 기반) */}
+                {/* Phase 3.5: 6개월 성장 트렌드 (출석률 기반) — GrowthTrendChart 는 자체 표면
+                    소유 공유 컴포넌트. flat 섹션으로 감싸 8px 갭만 부여(차트 로직 동결). */}
                 {reportData.attendance.length >= 2 && (
-                  <GrowthTrendChart
-                    title="6개월 성장 추이"
-                    subtitle="월별 출석률 기반"
-                    badge="LAST 6M"
-                    data={reportData.attendance.map((m) => ({
-                      label: m.month,
-                      value: m.rate,
-                    }))}
-                  />
+                  <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-4">
+                    <GrowthTrendChart
+                      iceTheme
+                      title="6개월 성장 추이"
+                      subtitle="월별 출석률 기반"
+                      badge="LAST 6M"
+                      data={reportData.attendance.map((m) => ({
+                        label: m.month,
+                        value: m.rate,
+                      }))}
+                    />
+                  </section>
                 )}
 
-                {/* Recent Coach Comment */}
+                {/* Recent Coach Comment — CoachCommentCard 자체 표면 소유 공유 컴포넌트.
+                    flat 섹션으로 감싸 8px 갭만 부여(컴포넌트 내부 불변). */}
                 {reportData.coachComment && (
-                  <CoachCommentCard
-                    content={reportData.coachComment.content}
-                    date={reportData.coachComment.date}
-                    onReply={() => navigate('/messages')}
-                  />
+                  <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-4">
+                    <CoachCommentCard
+                      iceTheme
+                      content={reportData.coachComment.content}
+                      date={reportData.coachComment.date}
+                      onReply={() => navigate('/messages')}
+                    />
+                  </section>
                 )}
 
-                {/* Recent Badges Preview */}
+                {/* Recent Badges Preview — flat 섹션 */}
                 {reportData.badges.length > 0 && (
-                  <div className="bg-white dark:bg-rink-800 rounded-xl p-4 shadow-sm border border-wline-2 dark:border-rink-700">
+                  <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-4">
+                    {/* [시안] 헤더 h3 15/800 + 전체보기 12.5/700/blue, 뱃지 원형 44, 라벨 11.5 */}
                     <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center">
-                          <Icon name="emoji_events" className="text-amber-600 text-card-emphasis" aria-hidden="true" />
-                        </div>
-                        <h3 className="text-card-body font-bold text-wtext-1 dark:text-white">
-                          획득 뱃지
-                        </h3>
-                      </div>
+                      <h3 className="text-[15px] font-extrabold text-it-ink-900 dark:text-white">
+                        획득 뱃지
+                      </h3>
                       <button
                         onClick={() => setActiveTab('achievements')}
-                        className="text-card-meta font-semibold text-ice-500"
+                        className="text-[12.5px] font-bold text-it-blue-500"
                       >
                         전체보기
                       </button>
                     </div>
                     <div className="flex gap-3">
                       {reportData.badges.slice(0, 4).map((badge) => (
-                        <div key={badge.id} className="flex flex-col items-center gap-1 flex-1">
-                          <div className="w-10 h-10 rounded-w-pill bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center">
-                            <Icon name={badge.icon} className="text-amber-600 dark:text-amber-400 text-card-title" />
+                        <div key={badge.id} className="flex flex-col items-center gap-[5px] flex-1">
+                          <div className="w-11 h-11 rounded-w-pill bg-warning-500/10 dark:bg-warning-500/15 flex items-center justify-center">
+                            <Icon name={badge.icon} className="text-warning-600 text-[22px]" />
                           </div>
-                          <span className="text-card-meta text-wtext-2 dark:text-rink-300 text-center leading-tight">
+                          <span className="text-[11.5px] text-it-ink-700 dark:text-rink-300 text-center leading-tight">
                             {badge.name}
                           </span>
                         </div>
                       ))}
                     </div>
-                  </div>
+                  </section>
                 )}
               </>
             )}
@@ -523,24 +538,24 @@ export default function GrowthReportPage() {
             {/* ─── Skill Evaluation Tab ────────────────── */}
             {activeTab === 'skill' && (
               <>
-                {/* Coach Info */}
+                {/* Coach Info — flat 섹션 (카드 박스 제거) */}
                 {reportData.coachInfo && (
-                  <section className="flex items-center gap-4 bg-white dark:bg-rink-800 p-4 rounded-xl shadow-sm border border-wline-2 dark:border-rink-700">
+                  <section className="mt-2 flex items-center gap-4 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-4">
                     <div className="relative shrink-0">
-                      <div className="h-14 w-14 rounded-w-pill bg-wline dark:bg-rink-700 overflow-hidden border-2 border-ice-500 flex items-center justify-center">
-                        <Icon name="person" className="text-2xl text-wtext-3" />
+                      <div className="h-14 w-14 rounded-w-pill bg-it-fill dark:bg-rink-700 overflow-hidden border-2 border-it-blue-500 flex items-center justify-center">
+                        <Icon name="person" className="text-2xl text-it-ink-400" />
                       </div>
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1">
-                        <h2 className="text-card-emphasis font-bold text-wtext-1 dark:text-white truncate">
+                        <h2 className="text-card-emphasis font-bold text-it-ink-900 dark:text-white truncate">
                           {reportData.coachInfo.name} 코치
                         </h2>
-                        <span className="text-card-meta font-medium px-2 py-1 rounded bg-ice-500/10 text-ice-500">
+                        <span className="text-card-meta font-medium px-2 py-1 rounded bg-it-blue-500/10 text-it-blue-600">
                           {reportData.coachInfo.role}
                         </span>
                       </div>
-                      <p className="text-card-body text-wtext-3 dark:text-rink-300 flex items-center gap-1">
+                      <p className="text-card-body text-it-ink-500 dark:text-rink-300 flex items-center gap-1">
                         <Icon name="calendar_today" className="text-[14px]" />
                         {reportData.coachInfo.evaluationDate} 평가 완료
                       </p>
@@ -548,56 +563,60 @@ export default function GrowthReportPage() {
                   </section>
                 )}
 
-                {/* Radar Chart */}
+                {/* Radar Chart — flat 섹션 (차트 SVG 로직 동결, 외곽 박스만 평탄화) */}
                 {reportData.skillData && (
-                  <section className="bg-white dark:bg-rink-800 rounded-xl p-6 shadow-sm border border-wline-2 dark:border-rink-700">
+                  <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-6">
                     <div className="flex justify-between items-center mb-6">
-                      <h3 className="font-bold text-wtext-1 dark:text-white">
+                      <h3 className="text-[15px] font-extrabold text-it-ink-900 dark:text-white">
                         능력치 분석
                       </h3>
-                      <span className="text-card-meta text-wtext-3 font-medium">5.0 만점</span>
+                      <span className="text-[12px] text-it-ink-400 font-medium">5.0 만점</span>
                     </div>
-                    <RadarChart data={reportData.skillData} isAnimated={isAnimated} />
+                    <RadarChart data={reportData.skillData} isAnimated={isAnimated} iceTheme />
                   </section>
                 )}
 
-                {/* Stats Grid */}
+                {/* Stats Grid — SkillStatCard 자체 표면 소유. flat 섹션으로 감싸 갭 부여. */}
                 {reportData.skillData && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <SkillStatCard icon="ice_skating" label="스케이팅" score={reportData.skillData.skating} />
-                    <SkillStatCard icon="sports_hockey" label="슈팅" score={reportData.skillData.shooting} />
-                    <SkillStatCard icon="multiple_stop" label="패스" score={reportData.skillData.passing} />
-                    <SkillStatCard icon="sprint" label="민첩성" score={reportData.skillData.agility} />
+                  <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-4 grid grid-cols-2 gap-3">
+                    <SkillStatCard icon="ice_skating" label="스케이팅" score={reportData.skillData.skating} iceTheme />
+                    <SkillStatCard icon="sports_hockey" label="슈팅" score={reportData.skillData.shooting} iceTheme />
+                    <SkillStatCard icon="multiple_stop" label="패스" score={reportData.skillData.passing} iceTheme />
+                    <SkillStatCard icon="sprint" label="민첩성" score={reportData.skillData.agility} iceTheme />
                     <div className="col-span-2">
                       <SkillStatCard
+                        iceTheme
                         icon="groups"
                         label="팀워크"
                         score={reportData.skillData.teamwork}
                         highlight={reportData.skillData.teamwork >= 4.5 ? 'Top Tier' : undefined}
                       />
                     </div>
-                  </div>
+                  </section>
                 )}
 
-                {/* Coach Comment */}
+                {/* Coach Comment — flat 섹션 (공유 컴포넌트 내부 불변) */}
                 {reportData.coachComment && (
-                  <CoachCommentCard
-                    content={reportData.coachComment.content}
-                    date={reportData.coachComment.date}
-                    onReply={() => navigate('/messages')}
-                  />
+                  <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-4">
+                    <CoachCommentCard
+                      iceTheme
+                      content={reportData.coachComment.content}
+                      date={reportData.coachComment.date}
+                      onReply={() => navigate('/messages')}
+                    />
+                  </section>
                 )}
 
-                {/* No Skill Data */}
+                {/* No Skill Data — flat 섹션 (빈 상태) */}
                 {!reportData.skillData && (
-                  <div className="bg-white dark:bg-rink-800 rounded-xl p-8 border border-wline-2 dark:border-rink-700 flex flex-col items-center justify-center gap-2">
-                    <div className="w-12 h-12 rounded-w-pill bg-wline-2 dark:bg-rink-700 flex items-center justify-center">
-                      <Icon name="bar_chart" className="text-2xl text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+                  <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-8 flex flex-col items-center justify-center gap-2">
+                    <div className="w-12 h-12 rounded-w-pill bg-it-fill dark:bg-it-blue-900 flex items-center justify-center">
+                      <Icon name="bar_chart" className="text-2xl text-it-ink-400 dark:text-rink-300" aria-hidden="true" />
                     </div>
-                    <p className="text-card-body text-wtext-3 dark:text-rink-300 text-center">
+                    <p className="text-card-body text-it-ink-500 dark:text-rink-300 text-center">
                       {MESSAGES.empty('기술 평가')}
                     </p>
-                  </div>
+                  </section>
                 )}
               </>
             )}
@@ -605,13 +624,13 @@ export default function GrowthReportPage() {
             {/* ─── Class History Tab ──────────────────── */}
             {activeTab === 'history' && (
               <>
-                {/* Class Timeline */}
-                <div className="bg-white dark:bg-rink-800 rounded-xl p-4 shadow-sm border border-wline-2 dark:border-rink-700">
+                {/* Class Timeline — flat 섹션 (타임라인 연결선은 의미 구조라 유지) */}
+                <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-4">
                   <div className="flex items-center gap-2 mb-4">
-                    <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
-                      <Icon name="school" className="text-ice-500 text-card-emphasis" aria-hidden="true" />
+                    <div className="w-8 h-8 rounded-[9px] bg-it-blue-50 dark:bg-it-blue-500/15 flex items-center justify-center">
+                      <Icon name="school" className="text-it-blue-500 text-[18px]" aria-hidden="true" />
                     </div>
-                    <h3 className="text-card-body font-bold text-wtext-1 dark:text-white">
+                    <h3 className="text-[15px] font-extrabold text-it-ink-900 dark:text-white">
                       수업 이력
                     </h3>
                   </div>
@@ -626,27 +645,27 @@ export default function GrowthReportPage() {
                               className={cn(
                                 'w-3 h-3 rounded-w-pill shrink-0 mt-1.5',
                                 item.status === 'ACTIVE'
-                                  ? 'bg-emerald-500'
-                                  : 'bg-wline dark:bg-rink-500'
+                                  ? 'bg-success'
+                                  : 'bg-it-line-strong dark:bg-rink-500'
                               )}
                             />
                             {index < reportData.classHistory.length - 1 && (
-                              <div className="w-px flex-1 bg-wline dark:bg-rink-700 my-1" />
+                              <div className="w-px flex-1 bg-it-line-strong dark:bg-rink-700 my-1" />
                             )}
                           </div>
 
                           {/* Content */}
                           <div className="flex-1 pb-4">
                             <div className="flex items-center justify-between mb-1">
-                              <h4 className="text-card-body font-bold text-wtext-1 dark:text-white">
+                              <h4 className="text-[15px] font-bold text-it-ink-900 dark:text-white">
                                 {item.className}
                               </h4>
                               <StatusBadge status={item.status} />
                             </div>
-                            <p className="text-card-meta text-wtext-3 dark:text-rink-300">
+                            <p className="text-[12.5px] text-it-ink-500 dark:text-rink-300 tabular-nums">
                               {item.period}
                             </p>
-                            <p className="text-card-meta text-wtext-3 dark:text-rink-300 mt-0.5">
+                            <p className="text-[12.5px] text-it-ink-500 dark:text-rink-300 mt-0.5">
                               담당: {item.coach}
                             </p>
                           </div>
@@ -654,27 +673,29 @@ export default function GrowthReportPage() {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-card-body text-wtext-3 dark:text-rink-300 text-center py-4">
+                    <p className="text-card-body text-it-ink-500 dark:text-rink-300 text-center py-4">
                       {MESSAGES.empty('수업 이력')}
                     </p>
                   )}
-                </div>
+                </section>
 
-                {/* Attendance Trend */}
-                <AttendanceBarChart data={reportData.attendance} isAnimated={isAnimated} />
+                {/* Attendance Trend — flat 섹션 */}
+                <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
+                  <AttendanceBarChart data={reportData.attendance} isAnimated={isAnimated} />
+                </section>
               </>
             )}
 
             {/* ─── Achievements Tab ───────────────────── */}
             {activeTab === 'achievements' && (
               <>
-                {/* Tournament Records */}
-                <div className="bg-white dark:bg-rink-800 rounded-xl p-4 shadow-sm border border-wline-2 dark:border-rink-700">
+                {/* Tournament Records — flat 섹션 (행은 hairline 구분) */}
+                <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-4">
                   <div className="flex items-center gap-2 mb-4">
-                    <div className="w-8 h-8 rounded-lg bg-violet-50 dark:bg-violet-900/20 flex items-center justify-center">
-                      <Icon name="sports_score" className="text-violet-600 text-card-emphasis" aria-hidden="true" />
+                    <div className="w-8 h-8 rounded-[9px] bg-it-blue-50 dark:bg-it-blue-500/15 flex items-center justify-center">
+                      <Icon name="sports_score" className="text-it-blue-600 text-[18px]" aria-hidden="true" />
                     </div>
-                    <h3 className="text-card-body font-bold text-wtext-1 dark:text-white">
+                    <h3 className="text-[15px] font-extrabold text-it-ink-900 dark:text-white">
                       대회 참가 기록
                     </h3>
                   </div>
@@ -684,18 +705,18 @@ export default function GrowthReportPage() {
                       {reportData.tournaments.map((tournament) => (
                         <div
                           key={tournament.id}
-                          className="flex items-center justify-between py-2 border-b border-wline-2 dark:border-rink-700 last:border-0"
+                          className="flex items-center justify-between py-2 border-b border-it-line dark:border-rink-700 last:border-0"
                         >
                           <div className="flex-1 min-w-0">
-                            <h4 className="text-card-body font-semibold text-wtext-1 dark:text-white truncate">
+                            <h4 className="text-[14.5px] font-bold text-it-ink-900 dark:text-white truncate">
                               {tournament.name}
                             </h4>
-                            <p className="text-card-meta text-wtext-3 dark:text-rink-300 mt-0.5">
+                            <p className="text-[12.5px] text-it-ink-500 dark:text-rink-300 mt-0.5 tabular-nums">
                               {tournament.date}
                             </p>
                           </div>
                           {tournament.placement && (
-                            <span className="ml-3 px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-card-meta font-bold text-amber-600 dark:text-amber-400 shrink-0">
+                            <span className="ml-3 px-2.5 py-1 rounded-[9px] bg-warning-500/10 dark:bg-warning-500/15 text-[12.5px] font-extrabold text-warning-600 shrink-0">
                               {tournament.placement}
                             </span>
                           )}
@@ -703,23 +724,23 @@ export default function GrowthReportPage() {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-card-body text-wtext-3 dark:text-rink-300 text-center py-4">
+                    <p className="text-card-body text-it-ink-500 dark:text-rink-300 text-center py-4">
                       {MESSAGES.empty('대회 기록')}
                     </p>
                   )}
-                </div>
+                </section>
 
-                {/* Badges Grid */}
-                <div className="bg-white dark:bg-rink-800 rounded-xl p-4 shadow-sm border border-wline-2 dark:border-rink-700">
+                {/* Badges Grid — flat 섹션 */}
+                <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-4">
                   <div className="flex items-center gap-2 mb-4">
-                    <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center">
-                      <Icon name="military_tech" className="text-amber-600 text-card-emphasis" aria-hidden="true" />
+                    <div className="w-8 h-8 rounded-[9px] bg-warning-500/10 dark:bg-warning-500/15 flex items-center justify-center">
+                      <Icon name="military_tech" className="text-warning-600 text-[18px]" aria-hidden="true" />
                     </div>
-                    <h3 className="text-card-body font-bold text-wtext-1 dark:text-white">
+                    <h3 className="text-[15px] font-extrabold text-it-ink-900 dark:text-white">
                       뱃지 컬렉션
                     </h3>
                     {reportData.badges.length > 0 && (
-                      <span className="ml-auto text-card-meta font-medium text-wtext-3 dark:text-rink-300">
+                      <span className="ml-auto text-[12.5px] font-medium text-it-ink-500 dark:text-rink-300">
                         {reportData.badges.length}개
                       </span>
                     )}
@@ -730,19 +751,19 @@ export default function GrowthReportPage() {
                       {reportData.badges.map((badge) => (
                         <div
                           key={badge.id}
-                          className="flex items-center gap-3 p-3 rounded-lg bg-wbg dark:bg-rink-700/50"
+                          className="flex items-center gap-3 p-3 rounded-lg bg-it-fill dark:bg-rink-700/50"
                         >
-                          <div className="w-10 h-10 rounded-w-pill bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center shrink-0">
+                          <div className="w-10 h-10 rounded-w-pill bg-warning-500/10 dark:bg-warning-500/15 flex items-center justify-center shrink-0">
                             <Icon
                               name={badge.icon}
-                              className="text-amber-600 dark:text-amber-400 text-card-title"
+                              className="text-warning-600 text-card-title"
                             />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-card-body font-semibold text-wtext-1 dark:text-white truncate">
+                            <p className="text-card-body font-semibold text-it-ink-900 dark:text-white truncate">
                               {badge.name}
                             </p>
-                            <p className="text-card-meta text-wtext-3 dark:text-rink-300">
+                            <p className="text-card-meta text-it-ink-500 dark:text-rink-300">
                               {badge.earnedDate}
                             </p>
                           </div>
@@ -750,11 +771,11 @@ export default function GrowthReportPage() {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-card-body text-wtext-3 dark:text-rink-300 text-center py-4">
+                    <p className="text-card-body text-it-ink-500 dark:text-rink-300 text-center py-4">
                       {MESSAGES.empty('뱃지')}
                     </p>
                   )}
-                </div>
+                </section>
               </>
             )}
           </>

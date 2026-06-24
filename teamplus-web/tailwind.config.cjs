@@ -144,6 +144,29 @@ module.exports = {
           bg:   '#0a0a0a', // 카메라 풀스크린 배경
           scan: '#3DDC84', // 코너 마커 / 스캔 라인 (Android Green)
         },
+        // ─── ICETIMES 디자인 시스템 토큰 (하우머치 스타일) ──────────────
+        // 인증 3화면 파일럿 전용 네임스페이스. 기존 ice/rink/w* 토큰과 분리하여
+        // 전역 오염 0 보장. SoT: backdata/teamplus_하우머치스타일/tokens/colors.css
+        // 라이트 우선 + dark 근사(it-blue-900/it-ink-900) 적용.
+        'it-blue': {
+          50: '#eef4fb', 100: '#d7e6f4', 200: '#aecbe9', 300: '#79a8d7',
+          400: '#3d80c1', 500: '#0e5db0', 600: '#0b4d96', 700: '#163f86',
+          800: '#1a2e6a', 900: '#14224f', 950: '#0d1735',
+        },
+        'it-red': {
+          50: '#fdecee', 100: '#fad2d6', 200: '#f2a6ad', 300: '#e8727d',
+          400: '#d84350', 500: '#c8202e', 600: '#aa1825', 700: '#88141e',
+        },
+        'it-ink': {
+          50: '#f4f6f8', 100: '#eceff1', 200: '#dde3e6', 300: '#c0c8cc',
+          400: '#93a0a6', 500: '#6b7a80', 600: '#4b5b62', 700: '#33454c',
+          800: '#1e3135', 900: '#14242b',
+        },
+        'it-canvas': '#f4f6f8',
+        'it-surface': '#ffffff',
+        'it-fill': '#f7f9fb',
+        'it-line': '#eceff1',
+        'it-line-strong': '#dde3e6',
       },
       fontFamily: {
         // v18 (2026-05-22) — iOS WKWebView Pretendard OTF 로드 실패 시에도 한글 글리프

@@ -20,11 +20,17 @@
 import { ReactNode } from 'react';
 
 import { MESSAGES } from '@/lib/messages';
+import { cn } from '@/lib/utils';
 
 interface Props {
   variant: 'today-class' | 'notice' | 'approval' | 'coach' | 'new-student';
   /** 외부에서 메시지 override (옵션) */
   message?: string;
+  /**
+   * [ICETIMES Phase 2b] ICETIMES flat 테마. 기본 false = 기존 스타일 그대로.
+   *   true 시 카드 shadow 제거 + flat it-surface/it-line, 아이콘 배경 it-fill 적용.
+   */
+  iceTheme?: boolean;
 }
 
 // 기존 RecentNoticesSection.tsx 의 표준 문구 — `MESSAGES` 키가 없어 코드 전반에 동일
@@ -106,23 +112,33 @@ const ICON_MAP: Record<Props['variant'], ReactNode> = {
   'new-student': <PersonAddIcon />,
 };
 
-export function DirectorEmptyCard({ variant, message }: Props) {
+export function DirectorEmptyCard({ variant, message, iceTheme = false }: Props) {
   const text = message ?? TEXT_MAP[variant];
   const icon = ICON_MAP[variant];
 
   return (
     <div
-      className="bg-wsurface dark:bg-rink-800 border border-wline dark:border-rink-700 flex flex-col items-center"
+      className={cn(
+        'flex flex-col items-center',
+        // ICETIMES flat: 카드 박스(border/radius/shadow) 제거 → 상위 full-bleed 섹션의
+        //   흰 면을 그대로 사용. 기본 테마는 기존 카드 박스 유지(픽셀 동일).
+        iceTheme
+          ? 'bg-transparent'
+          : 'border bg-wsurface dark:bg-rink-800 border-wline dark:border-rink-700',
+      )}
       style={{
-        borderRadius: 18,
-        boxShadow: '0 4px 14px rgba(20,24,38,0.04)',
+        borderRadius: iceTheme ? 0 : 18,
+        boxShadow: iceTheme ? 'none' : '0 4px 14px rgba(20,24,38,0.04)',
         padding: '32px 20px',
         gap: 10,
       }}
       role="status"
     >
       <div
-        className="bg-wbg dark:bg-rink-900 flex items-center justify-center"
+        className={cn(
+          'flex items-center justify-center',
+          iceTheme ? 'bg-it-fill dark:bg-it-blue-900' : 'bg-wbg dark:bg-rink-900',
+        )}
         style={{ width: 44, height: 44, borderRadius: '50%' }}
       >
         {icon}

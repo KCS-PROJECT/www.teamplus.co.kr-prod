@@ -129,7 +129,16 @@ function normalizeClassList(
   return Array.isArray(list) ? list : [];
 }
 
-export function EnrolledTrainingSection() {
+interface EnrolledTrainingSectionProps {
+  /**
+   * ICETIMES flat variant. 기본 false = 기존 동작.
+   * true 일 때 섹션 헤더/자녀 라벨 텍스트를 it-ink 톤으로 평탄화한다.
+   * 카드 표면은 ClassListCard(외부 컴포넌트)가 소유하므로 변경 대상 아님.
+   */
+  iceTheme?: boolean;
+}
+
+export function EnrolledTrainingSection({ iceTheme = false }: EnrolledTrainingSectionProps = {}) {
   const { selectableChildren } = useChildren();
   // [2026-06-19 사용자 직접 지시] 등록훈련은 현재 선택된 자녀(홈/전체메뉴 선택) 기준으로만 노출.
   const { selectedChildId } = useSelectedChild();
@@ -222,10 +231,23 @@ export function EnrolledTrainingSection() {
   if (childrenWithEnrolled.length === 0) return null;
 
   return (
-    <section className="px-4 sm:px-5 pt-4" aria-label="등록훈련">
+    <section
+      className={cn(
+        'px-4 sm:px-5 pt-4',
+        // ICETIMES: 회색 캔버스 위에 떠 보이지 않도록 흰 섹션으로 self-wrap(mt-2 = 상단 8px 회색 갭).
+        //   pb-4 로 카드 묶음 하단 여백 확보. 기본 테마는 기존 padding 그대로(회귀 0).
+        iceTheme && 'mt-2 bg-it-surface pb-4 dark:bg-rink-800',
+      )}
+      aria-label="등록훈련"
+    >
       <div className="flex items-center gap-1.5 px-1 pb-2">
         <Icon name="task_alt" className="text-card-title text-emerald-500" aria-hidden="true" />
-        <h2 className="text-card-body font-extrabold text-wtext-1 dark:text-white tracking-[-0.02em]">
+        <h2
+          className={cn(
+            'text-card-body font-extrabold tracking-[-0.02em]',
+            iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white',
+          )}
+        >
           등록훈련
         </h2>
       </div>
@@ -234,9 +256,19 @@ export function EnrolledTrainingSection() {
           const classes = classesByChild.get(child.id) ?? [];
           return (
             <div key={child.id}>
-              <p className="px-1 pb-1.5 text-card-meta font-bold text-wtext-2 dark:text-rink-100">
+              <p
+                className={cn(
+                  'px-1 pb-1.5 text-card-meta font-bold',
+                  iceTheme ? 'text-it-ink-700 dark:text-rink-100' : 'text-wtext-2 dark:text-rink-100',
+                )}
+              >
                 {child.name}
-                <span className="ml-1 text-wtext-3 dark:text-rink-300 tabular-nums">
+                <span
+                  className={cn(
+                    'ml-1 tabular-nums',
+                    iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300',
+                  )}
+                >
                   ({classes.length})
                 </span>
               </p>

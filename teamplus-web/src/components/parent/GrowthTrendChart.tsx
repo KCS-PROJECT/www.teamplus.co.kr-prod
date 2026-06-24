@@ -29,6 +29,8 @@ export interface GrowthTrendChartProps {
   badge?: string;
   /** 추가 className */
   className?: string;
+  /** ICETIMES flat + 색상 적용. 기본 false = 기존 외형 그대로 (미전달 화면 영향 0). 차트 로직·좌표 계산 동결, 색상만 분기. */
+  iceTheme?: boolean;
 }
 
 const VIEWBOX_WIDTH = 400;
@@ -43,6 +45,7 @@ export function GrowthTrendChart({
   subtitle,
   badge,
   className = '',
+  iceTheme = false,
 }: GrowthTrendChartProps) {
   const points = data && data.length > 0 ? data : [];
   const hasData = points.length >= 2;
@@ -63,20 +66,45 @@ export function GrowthTrendChart({
   return (
     <div
       className={cn(
-        'bg-white dark:bg-rink-800 rounded-2xl border border-wline dark:border-rink-700 p-5',
+        'rounded-2xl p-5',
+        iceTheme
+          ? // ICETIMES flat: hairline + 그림자 없음 (기본도 무그림자였으나 표면·라인을 it-* 로).
+            'bg-it-surface dark:bg-it-ink-900 border border-it-line dark:border-it-ink-700'
+          : 'bg-white dark:bg-rink-800 border border-wline dark:border-rink-700',
         className
       )}
     >
       {/* 헤더 */}
       <div className="flex justify-between items-start mb-4">
         <div>
-          <h3 className="text-base font-bold text-wtext-1 dark:text-white">{title}</h3>
+          <h3
+            className={cn(
+              'text-base font-bold',
+              iceTheme ? 'text-it-ink-900 dark:text-white' : 'text-wtext-1 dark:text-white',
+            )}
+          >
+            {title}
+          </h3>
           {subtitle && (
-            <p className="text-xs text-wtext-3 dark:text-rink-300 mt-0.5">{subtitle}</p>
+            <p
+              className={cn(
+                'text-xs mt-0.5',
+                iceTheme ? 'text-it-ink-400 dark:text-it-ink-300' : 'text-wtext-3 dark:text-rink-300',
+              )}
+            >
+              {subtitle}
+            </p>
           )}
         </div>
         {badge && (
-          <span className="text-[10px] bg-wline-2 dark:bg-rink-700 px-2 py-1 rounded text-wtext-3 dark:text-rink-100 uppercase font-semibold">
+          <span
+            className={cn(
+              'text-[10px] px-2 py-1 rounded uppercase font-semibold',
+              iceTheme
+                ? 'bg-it-blue-50 dark:bg-it-blue-800/30 text-it-blue-500 dark:text-it-blue-300'
+                : 'bg-wline-2 dark:bg-rink-700 text-wtext-3 dark:text-rink-100',
+            )}
+          >
             {badge}
           </span>
         )}
@@ -102,7 +130,11 @@ export function GrowthTrendChart({
                     x2={PADDING + CHART_WIDTH}
                     y1={y}
                     y2={y}
-                    className="stroke-slate-100 dark:stroke-slate-700"
+                    className={cn(
+                      iceTheme
+                        ? 'stroke-it-line dark:stroke-it-ink-700'
+                        : 'stroke-slate-100 dark:stroke-slate-700',
+                    )}
                     strokeWidth="0.5"
                     strokeDasharray="2,2"
                   />
@@ -113,7 +145,7 @@ export function GrowthTrendChart({
               <path
                 d={linePath}
                 fill="none"
-                className="stroke-primary"
+                className={cn(iceTheme ? 'stroke-it-blue-500' : 'stroke-primary')}
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -126,7 +158,11 @@ export function GrowthTrendChart({
                     cx={c.x}
                     cy={c.y}
                     r="4"
-                    className="fill-white stroke-primary dark:fill-slate-800"
+                    className={cn(
+                      iceTheme
+                        ? 'fill-white stroke-it-blue-500 dark:fill-it-ink-900'
+                        : 'fill-white stroke-primary dark:fill-slate-800',
+                    )}
                     strokeWidth="2"
                   />
                   {/* 마지막 포인트 하이라이트 */}
@@ -135,7 +171,10 @@ export function GrowthTrendChart({
                       x={c.x}
                       y={c.y - 10}
                       textAnchor="middle"
-                      className="fill-primary text-[10px] font-bold"
+                      className={cn(
+                        'text-[10px] font-bold',
+                        iceTheme ? 'fill-it-blue-500' : 'fill-primary',
+                      )}
                     >
                       {c.value}
                     </text>
@@ -150,7 +189,10 @@ export function GrowthTrendChart({
                   x={c.x}
                   y={VIEWBOX_HEIGHT + 12}
                   textAnchor="middle"
-                  className="fill-slate-400 dark:fill-slate-500 text-[9px] font-medium"
+                  className={cn(
+                    'text-[9px] font-medium',
+                    iceTheme ? 'fill-it-ink-400 dark:fill-it-ink-500' : 'fill-slate-400 dark:fill-slate-500',
+                  )}
                 >
                   {c.label}
                 </text>
@@ -159,22 +201,69 @@ export function GrowthTrendChart({
           </div>
 
           {/* 요약 통계 */}
-          <div className="flex items-center justify-between mt-3 pt-3 border-t border-wline-2 dark:border-rink-700">
+          <div
+            className={cn(
+              'flex items-center justify-between mt-3 pt-3 border-t',
+              iceTheme ? 'border-it-line dark:border-it-ink-700' : 'border-wline-2 dark:border-rink-700',
+            )}
+          >
             <div>
-              <p className="text-[10px] text-wtext-3 uppercase font-bold">현재</p>
-              <p className="text-lg font-extrabold text-wtext-1 dark:text-white">
+              <p
+                className={cn(
+                  'text-[10px] uppercase font-bold',
+                  iceTheme ? 'text-it-ink-400 dark:text-it-ink-300' : 'text-wtext-3',
+                )}
+              >
+                현재
+              </p>
+              <p
+                className={cn(
+                  'text-lg font-extrabold',
+                  iceTheme
+                    ? 'font-num tabular-nums text-it-ink-900 dark:text-white'
+                    : 'text-wtext-1 dark:text-white',
+                )}
+              >
                 {coordinates[coordinates.length - 1]?.value ?? 0}
               </p>
             </div>
             <div>
-              <p className="text-[10px] text-wtext-3 uppercase font-bold">평균</p>
-              <p className="text-lg font-bold text-wtext-2 dark:text-rink-100">
+              <p
+                className={cn(
+                  'text-[10px] uppercase font-bold',
+                  iceTheme ? 'text-it-ink-400 dark:text-it-ink-300' : 'text-wtext-3',
+                )}
+              >
+                평균
+              </p>
+              <p
+                className={cn(
+                  'text-lg font-bold',
+                  iceTheme
+                    ? 'font-num tabular-nums text-it-ink-700 dark:text-it-ink-100'
+                    : 'text-wtext-2 dark:text-rink-100',
+                )}
+              >
                 {Math.round(points.reduce((sum, p) => sum + p.value, 0) / points.length)}
               </p>
             </div>
             <div>
-              <p className="text-[10px] text-wtext-3 uppercase font-bold">최고</p>
-              <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+              <p
+                className={cn(
+                  'text-[10px] uppercase font-bold',
+                  iceTheme ? 'text-it-ink-400 dark:text-it-ink-300' : 'text-wtext-3',
+                )}
+              >
+                최고
+              </p>
+              <p
+                className={cn(
+                  'text-lg font-bold',
+                  iceTheme
+                    ? 'font-num tabular-nums text-it-red-500 dark:text-it-red-300'
+                    : 'text-emerald-600 dark:text-emerald-400',
+                )}
+              >
                 {Math.max(...points.map((p) => p.value))}
               </p>
             </div>
@@ -182,10 +271,29 @@ export function GrowthTrendChart({
         </>
       ) : (
         <div className="flex flex-col items-center justify-center py-12 text-center">
-          <div className="w-12 h-12 rounded-full bg-wline-2 dark:bg-rink-700 flex items-center justify-center mb-2">
-            <span className="material-symbols-outlined text-wtext-3">show_chart</span>
+          <div
+            className={cn(
+              'w-12 h-12 rounded-full flex items-center justify-center mb-2',
+              iceTheme ? 'bg-it-fill dark:bg-it-ink-800' : 'bg-wline-2 dark:bg-rink-700',
+            )}
+          >
+            <span
+              className={cn(
+                'material-symbols-outlined',
+                iceTheme ? 'text-it-ink-400 dark:text-it-ink-300' : 'text-wtext-3',
+              )}
+            >
+              show_chart
+            </span>
           </div>
-          <p className="text-sm text-wtext-3 dark:text-rink-300">데이터가 부족합니다</p>
+          <p
+            className={cn(
+              'text-sm',
+              iceTheme ? 'text-it-ink-400 dark:text-it-ink-300' : 'text-wtext-3 dark:text-rink-300',
+            )}
+          >
+            데이터가 부족합니다
+          </p>
         </div>
       )}
     </div>

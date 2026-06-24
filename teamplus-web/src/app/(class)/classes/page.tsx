@@ -491,12 +491,12 @@ function FilterTabs({
               aria-selected={active}
               onClick={() => onChange(opt.value)}
               className={cn(
-                "shrink-0 h-9 px-4 rounded-w-pill text-card-body font-bold whitespace-nowrap",
-                "transition-[background-color,color,border-color] motion-reduce:transition-none active:scale-[0.96]",
-                "border-2",
+                // 시안 Chip — h36/px16/fs14/fw700/-0.01em/pill/border1.5 (core/Chip.jsx)
+                "shrink-0 inline-flex items-center h-9 px-4 rounded-w-pill text-[14px] font-bold tracking-[-0.01em] whitespace-nowrap",
+                "border-[1.5px] transition-[background-color,color,border-color] motion-reduce:transition-none active:scale-[0.96]",
                 active
-                  ? "bg-ice-500 border-ice-500 text-white"
-                  : "bg-transparent border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 hover:border-wline dark:hover:border-rink-700",
+                  ? "bg-it-blue-500 border-it-blue-500 text-white"
+                  : "bg-it-surface dark:bg-rink-800 border-it-line-strong dark:border-rink-700 text-it-ink-600 dark:text-rink-100 hover:border-it-blue-300 dark:hover:border-rink-600",
               )}
             >
               {opt.label}
@@ -507,9 +507,9 @@ function FilterTabs({
     );
   }
 
-  // Coach/Parent (Default) — ref screen-parent-class-list.jsx Tab chips 디자인 1:1.
-  //   ref: h 32 / padding "0 14px" / rounded 999 / 12.5px font-bold tracking-[-0.01em]
-  //   활성 색상은 TEAMPLUS 시스템 유지 (사용자 명시 "색상변경금지") — ref text1 대신 ice-500.
+  // Coach/Parent (Default) — 시안 core/Chip.jsx 1:1 정합.
+  //   h36 / px16 / fs14 / fw700 / -0.01em / pill / border1.5 ·
+  //   active=it-blue fill·white / idle=it-surface + it-line-strong border + it-ink-600.
   return (
     <div
       className="flex items-center gap-2 overflow-x-auto hide-scrollbar"
@@ -526,12 +526,12 @@ function FilterTabs({
             aria-selected={active}
             onClick={() => onChange(opt.value)}
             className={cn(
-              "shrink-0 inline-flex items-center h-8 px-3.5 rounded-w-pill text-card-meta font-bold whitespace-nowrap tracking-[-0.01em]",
-              "transition-colors motion-reduce:transition-none active:brightness-95",
-              "focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40",
+              "shrink-0 inline-flex items-center h-9 px-4 rounded-w-pill text-[14px] font-bold whitespace-nowrap tracking-[-0.01em]",
+              "border-[1.5px] transition-colors motion-reduce:transition-none active:brightness-95",
+              "focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40",
               active
-                ? "bg-ice-500 text-white"
-                : "bg-wsurface dark:bg-rink-800 text-wtext-2 dark:text-rink-100 border border-wline dark:border-rink-700 hover:bg-wbg dark:hover:bg-rink-900",
+                ? "bg-it-blue-500 border-it-blue-500 text-white"
+                : "bg-it-surface dark:bg-rink-800 border-it-line-strong dark:border-rink-700 text-it-ink-600 dark:text-rink-100 hover:border-it-blue-300 dark:hover:bg-rink-900",
             )}
           >
             {opt.label}
@@ -561,7 +561,8 @@ const ChildClassCard = memo(function ChildClassCard({
       ? (item.scheduleTimeLabel ?? null)
       : formatClassTime(item.startTime, item.endTime);
   const daysLabel = dayScheduleLabel ?? formatScheduleLabel(item);
-  const typeLabel = TRAINING_TYPE_LABEL[item.trainingType];
+  const rawTypeLabel = TRAINING_TYPE_LABEL[item.trainingType];
+  const typeLabel = rawTypeLabel === '정규수업' ? '정규훈련' : rawTypeLabel;
 
   // [2026-05-19] 등록상태 분기 (학생 본인 시점 — 연령 분기는 user.birthDate 미보장으로 skip)
   const isAlreadyEnrolled = enrolledClassIds?.has(item.id) ?? false;
@@ -692,7 +693,8 @@ const TeenClassCard = memo(function TeenClassCard({
     : item.trainingType === "lesson"
       ? (item.scheduleTimeLabel ?? null)
       : formatClassTime(item.startTime, item.endTime);
-  const typeLabel = TRAINING_TYPE_LABEL[item.trainingType];
+  const rawTypeLabel = TRAINING_TYPE_LABEL[item.trainingType];
+  const typeLabel = rawTypeLabel === '정규수업' ? '정규훈련' : rawTypeLabel;
   const daysLabel = dayScheduleLabel ?? formatScheduleLabel(item);
   const theme = getTeenTheme(item.trainingType);
   // [2026-05-19] 등록상태 분기 (Teen 본인 시점 — 연령 분기 skip)
@@ -848,7 +850,8 @@ const DefaultClassCard = memo(function DefaultClassCard({
     : item.trainingType === "lesson"
       ? (item.scheduleTimeLabel ?? null)
       : formatClassTime(item.startTime, item.endTime);
-  const typeLabel = TRAINING_TYPE_LABEL[item.trainingType];
+  const rawTypeLabel = TRAINING_TYPE_LABEL[item.trainingType];
+  const typeLabel = rawTypeLabel === '정규수업' ? '정규훈련' : rawTypeLabel;
   const daysLabel = dayScheduleLabel ?? formatScheduleLabel(item);
 
   // [2026-05-19 추가] 등록 상태 분기
@@ -920,6 +923,7 @@ const DefaultClassCard = memo(function DefaultClassCard({
   return (
     <ClassListCard
       href={`/classes/${item.id}`}
+      iceTheme
       trainingType={item.trainingType}
       iconImageUrl={item.teamLogoUrl}
       typeBadgeLabel={
@@ -1167,6 +1171,7 @@ const DefaultTournamentCard = memo(function DefaultTournamentCard({
   return (
     <ClassListCard
       href={`/tournaments/${item.id}`}
+      iceTheme
       trainingType="tournament"
       ariaLabel={`${item.name} 대회 상세 보기`}
       title={item.name}
@@ -1217,10 +1222,10 @@ function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 px-5 text-center">
-      {/* primary tonal — /children empty 패턴 (bg-ice-500/10 + ring-ice-500/5) */}
+      {/* primary tonal — /children empty 패턴 (it-blue tonal) */}
       <div
         className={cn(
-          "flex items-center justify-center rounded-2xl bg-ice-500/10 text-ice-500 ring-4 ring-ice-500/5 mb-5",
+          "flex items-center justify-center rounded-2xl bg-it-blue-500/10 text-it-blue-500 ring-4 ring-it-blue-500/5 mb-5",
           isChild ? "size-20" : "size-16",
         )}
         aria-hidden="true"
@@ -1254,39 +1259,37 @@ function EmptyState({
 }
 
 // ── 섹션 영역 (학부모/감독 — 정규수업/오픈클래스/대회 구분) ──────────
-// [2026-06-12] 상단 필터 태그 제거 → 유형별 섹션 카드영역으로 분리.
-//   각 섹션 헤더(좌측 컬러 악센트 + 제목 + 개수) + 카드 리스트.
+// [2026-06-12→06-24 ICETIMES flat] 상단 필터 태그 제거 → 유형별 섹션 카드영역으로 분리.
+//   [재작업] 좌측 stripe + 카드 박스(gap-3) 구조를 /director 와 동일한 full-bleed flat
+//   섹션으로 전환: 흰 패널(bg-it-surface)이 8px 회색 갭(mt-2)으로 쌓이고, 헤더는
+//   SectionHead(iceTheme) 17px/800 it-ink 톤 + 우측 개수. 수업 행은 공유 ClassListCard
+//   iceTheme(무라운드 + 하단 hairline)이 담당해 카드 박스/그림자가 사라진다.
 //   섹션 내부는 등록완료 → 등록(미등록) 순으로 정렬한다.
 function ClassSection({
   title,
-  accent,
   count,
   children,
 }: {
   title: string;
-  /** 좌측 컬러 악센트 바 (정규=emerald · 오픈=ice · 대회=red) */
-  accent: string;
   count: number;
   children: ReactNode;
 }) {
   if (count === 0) return null;
   return (
-    <section aria-label={`${title} 목록`} className="flex flex-col">
-      <header className="flex items-center gap-2 px-1 pb-2.5">
-        <span
-          className={cn("w-1 h-[18px] rounded-full", accent)}
-          aria-hidden="true"
-        />
-        <h2 className="text-card-emphasis font-extrabold text-wtext-1 dark:text-white">
+    <section
+      aria-label={`${title} 목록`}
+      className="mt-2 bg-it-surface dark:bg-it-blue-950"
+    >
+      <header className="flex items-center gap-2 px-4 sm:px-5 pt-4 sm:pt-[18px] pb-2">
+        <h2 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
           {title}
         </h2>
-        <span className="text-card-meta font-bold text-wtext-3 dark:text-wtext-4 tabular-nums">
+        {/* 시안 SectionHeader count — 15px/800 it-blue (AcademyList.jsx) */}
+        <span className="text-[15px] font-extrabold text-it-blue-500 dark:text-it-blue-300 tabular-nums">
           {count}
         </span>
       </header>
-      <div className="flex flex-col gap-3" role="list">
-        {children}
-      </div>
+      <div role="list">{children}</div>
     </section>
   );
 }
@@ -1610,14 +1613,21 @@ export default function ClassesPage() {
 
   return (
     <MobileContainer hasBottomNav>
-      <SubmainAppBar title={MESSAGES.dashboard.links.classList} />
+      <SubmainAppBar title={MESSAGES.dashboard.links.trainingList} />
 
       {/* Content — Hero/Search/Filter/Cards 모두 함께 스크롤 (AppBar만 sticky 유지) */}
-      <main className="flex-1 overflow-y-auto hide-scrollbar">
+      {/* [ICETIMES flat 2026-06-24] default(학부모/감독) 섹션은 회색 캔버스 위 full-bleed
+          흰 패널로 쌓이도록 main 배경을 it-canvas 로. 아동/청소년 카드 뷰는 기존 흰 배경 유지. */}
+      <main
+        className={cn(
+          "flex-1 overflow-y-auto hide-scrollbar",
+          !isChild && !isTeen && "bg-it-canvas dark:bg-puck !pb-8",
+        )}
+      >
         {/* Teen Hero — 친근한 인사말 + 큰 타이틀 + 수업 개수 강조 */}
         {isTeen && !isLoading && (
           <section className="px-6 pt-5 pb-4" aria-label="수업 요약">
-            <p className="text-card-meta font-bold uppercase tracking-[0.14em] text-ice-500 dark:text-blue-400">
+            <p className="text-card-meta font-bold uppercase tracking-[0.14em] text-it-blue-500 dark:text-it-blue-300">
               Find your class
             </p>
             <h2 className="mt-1 text-w-h2 font-extrabold tracking-tight text-wtext-1 dark:text-white leading-tight">
@@ -1653,7 +1663,7 @@ export default function ClassesPage() {
         <div
           className={cn(
             "flex flex-col",
-            isChild || isTeen ? "gap-3 px-6" : "gap-6 px-5 pt-4",
+            isChild || isTeen ? "gap-3 px-6" : "",
             "transition-opacity duration-200 motion-reduce:transition-none",
             isFetching && "pointer-events-none opacity-50",
           )}
@@ -1670,7 +1680,6 @@ export default function ClassesPage() {
             <>
               <ClassSection
                 title="등록 훈련"
-                accent="bg-sun-500"
                 count={sections.enrolled.length}
               >
                 {sections.enrolled.map((item) => (
@@ -1680,8 +1689,7 @@ export default function ClassesPage() {
                 ))}
               </ClassSection>
               <ClassSection
-                title="정규수업"
-                accent="bg-emerald-500"
+                title="정규훈련"
                 count={sections.regular.length}
               >
                 {sections.regular.map((item) => (
@@ -1692,7 +1700,6 @@ export default function ClassesPage() {
               </ClassSection>
               <ClassSection
                 title="대회"
-                accent="bg-red-500"
                 count={sections.tournaments.length}
               >
                 {sections.tournaments.map((item) => (
@@ -1703,7 +1710,6 @@ export default function ClassesPage() {
               </ClassSection>
               <ClassSection
                 title="오픈클래스"
-                accent="bg-ice-500"
                 count={sections.open.length}
               >
                 {sections.open.map((item) => (
@@ -1720,7 +1726,7 @@ export default function ClassesPage() {
                 <div
                   className="flex flex-col gap-3"
                   role="list"
-                  aria-label="수업 목록"
+                  aria-label="훈련 목록"
                 >
                   {filteredClasses.map((item) => (
                     <div key={item.id} role="listitem">

@@ -47,6 +47,8 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   size?: 'sm' | 'md' | 'lg';
   fullWidth?: boolean;
   loading?: boolean;
+  /** ICETIMES 시안 스킨(하우머치 스타일). false(기본)면 기존 디자인 1:1 보존. */
+  iceTheme?: boolean;
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
@@ -57,6 +59,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       size = 'md',
       fullWidth = false,
       loading = false,
+      iceTheme = false,
       disabled,
       children,
       ...props
@@ -72,6 +75,39 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       // active:scale 대신 brightness로 피드백 제공 (깜박임 방지)
       'active:brightness-95'
     );
+
+    // ── ICETIMES 시안(하우머치 스타일) ──────────────────────────────
+    // primary=it-blue-500 / secondary=outline(it-blue-600 + it-line-strong)
+    // lg=h54/16px, md=h48/15px. radius 12px(rounded-w-md).
+    const iceBase = cn(
+      'relative inline-flex items-center justify-center gap-2',
+      'font-bold tracking-tight rounded-w-md',
+      'transition-[filter] duration-150',
+      'focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 focus-visible:ring-offset-2',
+      'disabled:opacity-[0.42] disabled:cursor-not-allowed',
+      'active:brightness-95'
+    );
+
+    const iceVariants: Record<ButtonVariant, string> = {
+      primary: cn('bg-it-blue-500 text-white', 'hover:brightness-110'),
+      secondary: cn(
+        'bg-transparent text-it-blue-600 dark:text-it-blue-300 border-[1.5px] border-it-line-strong dark:border-it-ink-700',
+        'hover:bg-it-fill dark:hover:bg-it-ink-800'
+      ),
+      outline: cn(
+        'bg-transparent text-it-blue-600 dark:text-it-blue-300 border-[1.5px] border-it-blue-500',
+        'hover:bg-it-blue-500/5'
+      ),
+      ghost: cn('bg-transparent text-it-ink-600 dark:text-it-ink-200', 'hover:bg-it-fill dark:hover:bg-it-ink-800'),
+      danger: cn('bg-it-red-500 text-white', 'hover:brightness-110'),
+      success: cn('bg-success text-white', 'hover:brightness-110'),
+    };
+
+    const iceSizes = {
+      sm: 'px-3.5 h-[38px] text-w-small min-h-[38px]', // 38px
+      md: 'px-[18px] h-12 text-[15px] min-h-[48px]', // 48px
+      lg: 'px-[22px] h-[54px] text-base min-h-[54px]', // 54px
+    };
 
     const variants = {
       primary: cn(
@@ -121,9 +157,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       <ButtonBase
         ref={ref}
         className={cn(
-          baseStyles,
-          variants[variant],
-          sizes[size],
+          iceTheme ? iceBase : baseStyles,
+          iceTheme ? iceVariants[variant] : variants[variant],
+          iceTheme ? iceSizes[size] : sizes[size],
           fullWidth && 'w-full',
           className
         )}

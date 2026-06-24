@@ -109,12 +109,16 @@ export default function ParentCalendarPage() {
       event.startTime && event.endTime
         ? `${event.startTime} - ${event.endTime}`
         : event.startTime ?? null;
+    // 칩색은 lib calendar-colors.ts 의미색 SoT 와 정합 (colorBar 와 일치):
+    //   [ICETIMES flat 재작업 2026-06-24] SoT 정합 — 정규(REGULAR)=초록(emerald/success) ·
+    //   레슨(LESSON)=파랑(it-blue) · 대회(GAME)=빨강(it-red).
+    //   (이전: 정규=red 로 SoT 위반 → calendar-colors.ts §REGULAR(emerald) 기준으로 교정.)
     const chipClassName =
       event.type === 'REGULAR'
-        ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+        ? 'bg-success-100 text-success-700 dark:bg-success-700/25 dark:text-success-500'
         : event.type === 'LESSON'
-          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
-          : 'bg-blue-50 text-ice-500 dark:bg-blue-900/30 dark:text-blue-300';
+          ? 'bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-500/20 dark:text-it-blue-300'
+          : 'bg-it-red-50 text-it-red-600 dark:bg-it-red-500/20 dark:text-it-red-300';
     const chipLabel =
       event.type === 'REGULAR'
         ? MESSAGES.calendar.training
@@ -123,6 +127,7 @@ export default function ParentCalendarPage() {
           : MESSAGES.calendar.tournament;
     return (
       <ScheduleRow
+        iceTheme
         colorBar={{ bg: color.bg, darkBg: color.darkBg }}
         chip={{ label: chipLabel, className: chipClassName }}
         time={timeDisplay}
@@ -132,16 +137,18 @@ export default function ParentCalendarPage() {
     );
   }, []);
 
+  /* [ICETIMES flat 재작업 2026-06-24] 빈 상태 카드 박스(rounded-2xl border-dashed) 제거 →
+     flat 면 위 아이콘+문구만. ScheduleRangeList 가 흰 섹션 안에서 렌더하므로 박스 불필요. */
   const emptyState = (
-    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-wline bg-white p-8 text-center dark:border-rink-700 dark:bg-rink-800/40">
-      <div className="mb-3 flex size-12 items-center justify-center rounded-w-pill bg-wline-2 dark:bg-rink-700">
+    <div className="flex flex-col items-center justify-center py-10 text-center">
+      <div className="mb-3 flex size-12 items-center justify-center rounded-w-pill bg-it-fill dark:bg-it-blue-900">
         <Icon
           name="calendar_today"
-          className="text-2xl text-wtext-3 dark:text-rink-300"
+          className="text-2xl text-it-ink-400 dark:text-rink-300"
           aria-hidden="true"
         />
       </div>
-      <p className="text-card-body font-medium text-wtext-3 dark:text-rink-300">
+      <p className="text-card-body font-medium text-it-ink-500 dark:text-rink-300">
         {MESSAGES.calendar.noEvents}
       </p>
     </div>
@@ -157,15 +164,16 @@ export default function ParentCalendarPage() {
       <SubmainAppBar title={MESSAGES.calendar.title} />
 
       <main
-        className="hide-scrollbar flex-1 overflow-y-auto bg-wbg dark:bg-rink-900"
+        className="hide-scrollbar flex-1 overflow-y-auto bg-it-canvas dark:bg-puck !pb-8"
         role="main"
         aria-label={MESSAGES.calendar.title}
       >
         {/* [2026-06-18] 등록훈련 — 달력 위에 자녀별 등록완료 수업 카드(수업목록 카드 형태). */}
-        <EnrolledTrainingSection />
+        <EnrolledTrainingSection iceTheme />
 
         {/* 월간 캘린더 — 선택 날짜 상세 섹션은 숨기고 하단 통합 리스트로 대체 */}
         <UnifiedCalendarGrid
+          iceTheme
           calendarGrid={calendarGrid}
           currentMonth={calendar.currentMonth}
           monthLabel={calendar.monthLabel}
@@ -182,6 +190,7 @@ export default function ParentCalendarPage() {
         />
 
         <ScheduleRangeList<CalendarEvent>
+          iceTheme
           rangeKey={rangeKey}
           onRangeChange={handleRangeChange}
           groups={groups}
@@ -194,9 +203,6 @@ export default function ParentCalendarPage() {
           emptyState={emptyState}
           emptyDayMessage={MESSAGES.calendar.noEvents}
         />
-
-        {/* BottomNav 여백 */}
-        <div className="h-4" aria-hidden="true" />
       </main>
     </MobileContainer>
   );

@@ -80,29 +80,29 @@ function RoleCard({
       type="button"
       onClick={onClick}
       className={`
-        p-3 rounded-w-md border-2 transition-all motion-reduce:transition-none duration-200 text-center w-full
+        py-4 px-2.5 rounded-w-md border-2 transition-all motion-reduce:transition-none duration-200 text-center w-full
         ${
           selected
-            ? "bg-ice-100 border-ice-500 dark:bg-ice-500/15 dark:border-ice-400"
-            : "bg-wsurface dark:bg-rink-800 border-wline dark:border-rink-700 hover:border-wline-2"
+            ? "bg-it-blue-50 border-it-blue-500 dark:bg-it-blue-900/30 dark:border-it-blue-400"
+            : "bg-it-surface dark:bg-rink-800 border-it-line-strong dark:border-rink-700 hover:border-it-blue-200"
         }
       `}
     >
       <div
         className={`
-        w-10 h-10 mx-auto rounded-w-pill flex items-center justify-center mb-2
-        ${selected ? "bg-ice-500 text-white dark:bg-ice-500" : "bg-wbg dark:bg-rink-700 text-wtext-3 dark:text-rink-300"}
+        w-[42px] h-[42px] mx-auto rounded-w-pill flex items-center justify-center mb-2
+        ${selected ? "bg-it-blue-500 text-white dark:bg-it-blue-500" : "bg-it-ink-100 dark:bg-rink-700 text-it-ink-500 dark:text-rink-300"}
       `}
       >
-        <Icon name={role.icon} className="text-xl" />
+        <Icon name={role.icon} className="text-[22px]" />
       </div>
       <p
-        className={`text-card-body font-semibold ${selected ? "text-ice-700 dark:text-ice-300" : "text-wtext-2 dark:text-rink-100"}`}
+        className={`text-[15px] font-bold ${selected ? "text-it-blue-700 dark:text-it-blue-300" : "text-it-ink-800 dark:text-rink-100"}`}
       >
         {role.label}
       </p>
       <p
-        className={`text-[10px] mt-0.5 ${selected ? "text-ice-600 dark:text-ice-300" : "text-wtext-4 dark:text-rink-500"}`}
+        className={`text-[11px] mt-0.5 ${selected ? "text-it-blue-600 dark:text-it-blue-300" : "text-it-ink-400 dark:text-rink-500"}`}
       >
         {role.desc}
       </p>
@@ -624,7 +624,7 @@ export default function SignupPage() {
   const canSubmit = hasValidRequiredFields && !isSubmitting;
 
   return (
-    <MobileContainer hasBottomNav={false} className="bg-wbg dark:bg-puck">
+    <MobileContainer hasBottomNav={false} className="bg-it-canvas dark:bg-puck">
       {/* [수정 2026-06-15 사용자 직접 지시] 회원가입 헤더:
             · title='회원가입' + centerTitle → 화면 정중앙 타이틀
             · onBack=() => /login            → ← back 동작
@@ -671,13 +671,13 @@ export default function SignupPage() {
         <form ref={formRef} onSubmit={handleSignup} className="space-y-6">
           {/* Role Selection */}
           <section>
-            <h2 className="text-card-body font-semibold text-wtext-2 dark:text-rink-100 mb-1.5 flex items-center gap-1">
-              가입 유형 <span className="text-flame-500">*</span>
+            <h2 className="text-[16px] font-extrabold tracking-[-0.01em] text-it-ink-800 dark:text-rink-100 mb-1.5 flex items-center gap-1">
+              가입 유형 <span className="text-it-red-500">*</span>
             </h2>
-            <p className="text-card-meta text-wtext-3 dark:text-rink-300 mb-3">
+            <p className="text-[13px] text-it-ink-500 dark:text-rink-300 mb-3">
               {MESSAGES.team.signupRoleHelper}
             </p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2.5">
               {roleOptions.map((role) => (
                 <RoleCard
                   key={role.id}
@@ -712,7 +712,7 @@ export default function SignupPage() {
               아래의 모든 입력 섹션(감독 유형/팀 선택/기본 정보/휴대폰/비밀번호/약관/가입 버튼)은
               selectedRole 선택 후에야 표시된다 (2026-05-26 사용자 요청). */}
           {!selectedRole && (
-            <div className="rounded-w-xl border border-dashed border-wline dark:border-rink-700 px-5 py-8 text-center text-wtext-3 dark:text-rink-300">
+            <div className="rounded-w-md border border-dashed border-it-line-strong dark:border-rink-700 px-5 py-8 text-center text-it-ink-500 dark:text-rink-300">
               <p className="text-card-body">
                 위에서 가입 유형을 선택하면<br />
                 회원 정보 입력 화면이 나타납니다.
@@ -728,22 +728,22 @@ export default function SignupPage() {
               오픈클래스 감독(academy)은 별도 공유 URL(`?director=academy`)로 진입한
               경우(isAcademyMode)에만 directorType='academy' 가 되어 폼이 노출된다. */}
           {selectedRole === "director" && (
-            <section className="bg-wsurface dark:bg-rink-800 rounded-w-xl p-5 border border-wline dark:border-rink-700">
+            <section className="bg-it-surface dark:bg-rink-800 rounded-w-md p-5 border border-it-line-strong dark:border-rink-700">
               {/* 모드별 헤더 — 팀 감독 / 오픈클래스 감독 */}
               <div className="mb-5 flex items-center gap-3">
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-w-pill bg-ice-500 text-white">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-w-pill bg-it-blue-500 text-white">
                   <Icon
                     name={directorType === "academy" ? "school" : "groups"}
-                    className="text-card-title [color:inherit]"
+                    className="text-[20px] [color:inherit]"
                   />
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-card-body font-semibold text-wtext-2 dark:text-rink-100">
+                  <p className="text-[15px] font-bold text-it-ink-800 dark:text-rink-100">
                     {directorType === "academy"
                       ? MESSAGES.team.signupDirectorTypeAcademy
                       : MESSAGES.team.signupDirectorTypeTeam}
                   </p>
-                  <p className="text-card-meta mt-0.5 text-wtext-3 dark:text-rink-300">
+                  <p className="text-card-meta mt-0.5 text-it-ink-500 dark:text-rink-300">
                     {directorType === "academy"
                       ? MESSAGES.team.signupDirectorTypeAcademyDesc
                       : MESSAGES.team.signupDirectorTypeTeamDesc}
@@ -753,12 +753,13 @@ export default function SignupPage() {
 
               {/* 팀 감독 — 팀 정보 입력 (설계서 §4.5) */}
               {directorType === "team" && (
-                <div className="border-t border-wline dark:border-rink-700 pt-5">
-                  <p className="text-card-meta text-wtext-3 dark:text-rink-300 mb-4">
+                <div className="border-t border-it-line dark:border-rink-700 pt-5">
+                  <p className="text-card-meta text-it-ink-500 dark:text-rink-300 mb-4">
                     {MESSAGES.team.signupTeamSectionHelper}
                   </p>
                   <div className="space-y-4">
                     <Input
+                      iceTheme
                       label={MESSAGES.team.signupTeamNameLabel}
                       placeholder={MESSAGES.team.signupTeamNamePlaceholder}
                       icon="groups"
@@ -777,12 +778,13 @@ export default function SignupPage() {
 
               {/* 오픈클래스 감독 — 오픈클래스 정보 입력 (설계서 §4.6, 별도 URL 진입 전용) */}
               {directorType === "academy" && (
-                <div className="border-t border-wline dark:border-rink-700 pt-5">
-                  <p className="text-card-meta text-wtext-3 dark:text-rink-300 mb-4">
+                <div className="border-t border-it-line dark:border-rink-700 pt-5">
+                  <p className="text-card-meta text-it-ink-500 dark:text-rink-300 mb-4">
                     {MESSAGES.team.signupAcademySectionHelper}
                   </p>
                   <div className="space-y-4">
                     <Input
+                      iceTheme
                       label={MESSAGES.team.signupAcademyNameLabel}
                       placeholder={MESSAGES.team.signupAcademyNamePlaceholder}
                       icon="school"
@@ -804,7 +806,7 @@ export default function SignupPage() {
           {/* 코치 가입 시 팀 선택 (필수) — 감독이 만든 팀에 가입 신청 (설계서 §4.5).
               학부모는 가입 시 팀을 선택하지 않고, 자녀 등록 시점에 자녀별로 팀을 고른다. */}
           {selectedRole === "coach" && (
-            <section className="bg-wsurface dark:bg-rink-800 rounded-w-xl p-5 border border-wline dark:border-rink-700">
+            <section className="bg-it-surface dark:bg-rink-800 rounded-w-md p-5 border border-it-line-strong dark:border-rink-700">
               {(() => {
                 const currentCode = formData.coachTeamId;
                 const errorMsg = errors.coachTeamId;
@@ -829,6 +831,7 @@ export default function SignupPage() {
                     <div className="flex items-end gap-2">
                       <div className="flex-1">
                         <Input
+                          iceTheme
                           label={label}
                           placeholder={placeholder}
                           icon="badge"
@@ -843,6 +846,7 @@ export default function SignupPage() {
                         />
                       </div>
                       <Button
+                        iceTheme
                         type="button"
                         variant="secondary"
                         size="md"
@@ -868,8 +872,8 @@ export default function SignupPage() {
           )}
 
           {/* 기본 정보 */}
-          <section className="bg-wsurface dark:bg-rink-800 rounded-w-xl p-5 border border-wline dark:border-rink-700">
-            <h2 className="text-card-body font-semibold text-wtext-2 dark:text-rink-100 mb-4">
+          <section className="bg-it-surface dark:bg-rink-800 rounded-w-md p-5 border border-it-line-strong dark:border-rink-700">
+            <h2 className="text-[16px] font-extrabold tracking-[-0.01em] text-it-ink-800 dark:text-rink-100 mb-4">
               기본 정보
             </h2>
 
@@ -897,6 +901,7 @@ export default function SignupPage() {
               ) : (
                 <div className="grid grid-cols-2 gap-3">
                   <Input
+                    iceTheme
                     label="성"
                     placeholder="홍"
                     icon="person"
@@ -908,6 +913,7 @@ export default function SignupPage() {
                     disabled={isSubmitting}
                   />
                   <Input
+                    iceTheme
                     label="이름"
                     placeholder="길동"
                     value={formData.firstName}
@@ -922,10 +928,10 @@ export default function SignupPage() {
 
               {/* 아이디 + 중복확인 버튼 */}
               <div>
-                <label className="block text-card-body font-medium text-wtext-2 dark:text-rink-100 mb-1.5">
-                  아이디 <span className="text-rose-500">*</span>
+                <label className="block text-[13.5px] font-bold text-it-ink-700 dark:text-rink-100 mb-1.5">
+                  아이디 <span className="text-it-red-500">*</span>
                   {emailDuplicateStatus === "available" && (
-                    <span className="ml-2 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                    <span className="ml-2 text-[11px] font-bold text-mint-600 dark:text-mint-500">
                       ✓ 사용 가능
                     </span>
                   )}
@@ -933,6 +939,7 @@ export default function SignupPage() {
                 <div className="flex gap-2">
                   <div className="flex-1">
                     <Input
+                      iceTheme
                       type="text"
                       name="username"
                       autoComplete="username"
@@ -950,6 +957,7 @@ export default function SignupPage() {
                     />
                   </div>
                   <Button
+                    iceTheme
                     type="button"
                     variant="outline"
                     size="md"
@@ -969,20 +977,20 @@ export default function SignupPage() {
           {/* B안 (2026-05-26) — 본인인증 강제 대상은 이름 영역에서 휴대폰까지 함께 인증되므로
               별도 휴대폰 섹션 숨김. (자동 채움된 휴대폰은 가입 완료 화면에서 마스킹 표시) */}
           {!isIdentityRequiredRole && (
-          <section className="bg-wsurface dark:bg-rink-800 rounded-w-xl p-5 border border-wline dark:border-rink-700">
-            <h2 className="text-card-body font-semibold text-wtext-2 dark:text-rink-100 mb-4">
+          <section className="bg-it-surface dark:bg-rink-800 rounded-w-md p-5 border border-it-line-strong dark:border-rink-700">
+            <h2 className="text-[16px] font-extrabold tracking-[-0.01em] text-it-ink-800 dark:text-rink-100 mb-4">
               휴대폰 번호
             </h2>
             <div>
               <label
                 htmlFor={phoneId}
-                className="block text-card-body font-medium text-wtext-2 dark:text-rink-100 mb-1.5"
+                className="block text-[13.5px] font-bold text-it-ink-700 dark:text-rink-100 mb-1.5"
               >
                 휴대폰 번호
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Icon name="phone_android" className="text-wtext-4" />
+                  <Icon name="phone_android" className="text-it-ink-400" />
                 </div>
                 <input
                   id={phoneId}
@@ -998,10 +1006,10 @@ export default function SignupPage() {
                   aria-required="true"
                   aria-invalid={!!errors.phone}
                   aria-describedby={errors.phone ? `${phoneId}-error` : undefined}
-                  className={`block w-full pl-12 pr-4 py-3 bg-wbg dark:bg-puck border rounded-w-md text-wtext-1 dark:text-white placeholder-wtext-4 focus:outline-none focus:ring-2 focus:ring-ice-500/20 focus:border-ice-500 transition-all motion-reduce:transition-none disabled:opacity-60 disabled:cursor-not-allowed ${
+                  className={`block w-full h-[50px] pl-12 pr-4 bg-it-fill dark:bg-puck border-[1.5px] rounded-w-md text-[15.5px] font-semibold text-it-ink-800 dark:text-white placeholder-it-ink-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 transition-all motion-reduce:transition-none disabled:opacity-60 disabled:cursor-not-allowed ${
                     errors.phone
                       ? "border-flame-500"
-                      : "border-wline dark:border-rink-700"
+                      : "border-it-line-strong dark:border-rink-700"
                   }`}
                 />
               </div>
@@ -1015,8 +1023,8 @@ export default function SignupPage() {
           )}
 
           {/* 비밀번호 설정 */}
-          <section className="bg-wsurface dark:bg-rink-800 rounded-w-xl p-5 border border-wline dark:border-rink-700">
-            <h2 className="text-card-body font-semibold text-wtext-2 dark:text-rink-100 mb-4">
+          <section className="bg-it-surface dark:bg-rink-800 rounded-w-md p-5 border border-it-line-strong dark:border-rink-700">
+            <h2 className="text-[16px] font-extrabold tracking-[-0.01em] text-it-ink-800 dark:text-rink-100 mb-4">
               비밀번호 설정
             </h2>
 
@@ -1025,15 +1033,15 @@ export default function SignupPage() {
               <div>
                 <label
                   htmlFor={passwordId}
-                  className="block text-card-body font-medium text-wtext-2 dark:text-rink-100 mb-1.5"
+                  className="block text-[13.5px] font-bold text-it-ink-700 dark:text-rink-100 mb-1.5"
                 >
-                  비밀번호 <span className="text-rose-500">*</span>
+                  비밀번호 <span className="text-it-red-500">*</span>
                 </label>
                 <div className="relative group">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                     <Icon
                       name="lock"
-                      className="text-wtext-4 group-focus-within:text-ice-500 transition-colors motion-reduce:transition-none"
+                      className="text-it-ink-400 group-focus-within:text-it-blue-500 transition-colors motion-reduce:transition-none"
                     />
                   </div>
                   <input
@@ -1051,10 +1059,10 @@ export default function SignupPage() {
                     aria-invalid={!!errors.password}
                     aria-describedby={errors.password ? `${passwordId}-error` : undefined}
                     autoComplete="new-password"
-                    className={`block w-full pl-12 pr-12 py-3 bg-wbg dark:bg-puck border rounded-w-md text-wtext-1 dark:text-white placeholder-wtext-4 focus:outline-none focus:ring-2 focus:ring-ice-500/20 focus:border-ice-500 transition-all motion-reduce:transition-none disabled:opacity-50 ${
+                    className={`block w-full h-[50px] pl-12 pr-12 bg-it-fill dark:bg-puck border-[1.5px] rounded-w-md text-[15.5px] font-semibold text-it-ink-800 dark:text-white placeholder-it-ink-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 transition-all motion-reduce:transition-none disabled:opacity-50 ${
                       errors.password
                         ? "border-flame-500"
-                        : "border-wline dark:border-rink-700"
+                        : "border-it-line-strong dark:border-rink-700"
                     }`}
                   />
                   <button
@@ -1081,15 +1089,15 @@ export default function SignupPage() {
               <div>
                 <label
                   htmlFor={passwordConfirmId}
-                  className="block text-card-body font-medium text-wtext-2 dark:text-rink-100 mb-1.5"
+                  className="block text-[13.5px] font-bold text-it-ink-700 dark:text-rink-100 mb-1.5"
                 >
-                  비밀번호 확인 <span className="text-rose-500">*</span>
+                  비밀번호 확인 <span className="text-it-red-500">*</span>
                 </label>
                 <div className="relative group">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                     <Icon
                       name="lock"
-                      className="text-wtext-4 group-focus-within:text-ice-500 transition-colors motion-reduce:transition-none"
+                      className="text-it-ink-400 group-focus-within:text-it-blue-500 transition-colors motion-reduce:transition-none"
                     />
                   </div>
                   <input
@@ -1107,10 +1115,10 @@ export default function SignupPage() {
                     aria-invalid={!!errors.passwordConfirm}
                     aria-describedby={errors.passwordConfirm ? `${passwordConfirmId}-error` : undefined}
                     autoComplete="new-password"
-                    className={`block w-full pl-12 pr-12 py-3 bg-wbg dark:bg-puck border rounded-w-md text-wtext-1 dark:text-white placeholder-wtext-4 focus:outline-none focus:ring-2 focus:ring-ice-500/20 focus:border-ice-500 transition-all motion-reduce:transition-none disabled:opacity-50 ${
+                    className={`block w-full h-[50px] pl-12 pr-12 bg-it-fill dark:bg-puck border-[1.5px] rounded-w-md text-[15.5px] font-semibold text-it-ink-800 dark:text-white placeholder-it-ink-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 transition-all motion-reduce:transition-none disabled:opacity-50 ${
                       errors.passwordConfirm
                         ? "border-flame-500"
-                        : "border-wline dark:border-rink-700"
+                        : "border-it-line-strong dark:border-rink-700"
                     }`}
                   />
                   <button
@@ -1140,49 +1148,49 @@ export default function SignupPage() {
           </section>
 
           {/* Agreements */}
-          <section className="bg-wsurface dark:bg-rink-800 rounded-w-xl p-5 border border-wline dark:border-rink-700">
-            <h2 className="text-card-body font-semibold text-wtext-2 dark:text-rink-100 mb-4">
+          <section className="bg-it-surface dark:bg-rink-800 rounded-w-md p-5 border border-it-line-strong dark:border-rink-700">
+            <h2 className="text-[16px] font-extrabold tracking-[-0.01em] text-it-ink-800 dark:text-rink-100 mb-4">
               약관 동의
             </h2>
 
             {/* All Agree */}
-            <label className="flex items-center gap-3 pb-3 border-b border-wline dark:border-rink-700 cursor-pointer">
+            <label className="flex items-center gap-3 pb-3 border-b border-it-line dark:border-rink-700 cursor-pointer">
               <button
                 type="button"
                 onClick={handleAllAgree}
                 className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all motion-reduce:transition-none ${
                   agreements.all
-                    ? "bg-ice-500 border-ice-500"
-                    : "border-wline dark:border-rink-700 hover:border-wline-2"
+                    ? "bg-it-blue-500 border-it-blue-500"
+                    : "border-it-line-strong dark:border-rink-700 hover:border-it-blue-300"
                 }`}
               >
                 {agreements.all && (
                   <Icon name="check" className="text-white text-card-body" />
                 )}
               </button>
-              <span className="text-wtext-1 dark:text-white font-semibold text-card-body">
+              <span className="text-it-ink-900 dark:text-white font-bold text-[15px]">
                 전체 약관에 동의합니다
               </span>
             </label>
 
             <div className="pt-3 space-y-1">
               {/* Terms */}
-              <label className="flex items-center gap-3 py-2 cursor-pointer">
+              <label className="flex items-center gap-3 py-2.5 cursor-pointer">
                 <button
                   type="button"
                   onClick={() => handleAgreementChange("terms")}
-                  className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all motion-reduce:transition-none flex-shrink-0 ${
+                  className={`w-5 h-5 rounded-[5px] border-[1.5px] flex items-center justify-center transition-all motion-reduce:transition-none flex-shrink-0 ${
                     agreements.terms
-                      ? "bg-ice-500 border-ice-500"
-                      : "border-wline dark:border-rink-700"
+                      ? "bg-it-blue-500 border-it-blue-500"
+                      : "border-it-line-strong dark:border-rink-700"
                   }`}
                 >
                   {agreements.terms && (
                     <Icon name="check" className="text-white text-card-meta" />
                   )}
                 </button>
-                <span className="text-wtext-3 dark:text-rink-300 text-card-body flex-1">
-                  <span className="text-flame-500 font-medium">[필수]</span>{" "}
+                <span className="text-it-ink-700 dark:text-rink-300 text-[14.5px] flex-1">
+                  <span className="text-it-red-500 font-bold">[필수]</span>{" "}
                   서비스 이용약관
                 </span>
                 <button
@@ -1196,27 +1204,27 @@ export default function SignupPage() {
                   className="p-1 -m-1 rounded-w-pill hover:bg-wbg dark:hover:bg-rink-700/40 transition-colors motion-reduce:transition-none"
                   aria-label="서비스 이용약관 보기"
                 >
-                  <Icon name="chevron_right" className="text-wtext-4 text-card-emphasis" />
+                  <Icon name="chevron_right" className="text-it-ink-300 text-[20px]" />
                 </button>
               </label>
 
               {/* Privacy */}
-              <label className="flex items-center gap-3 py-2 cursor-pointer">
+              <label className="flex items-center gap-3 py-2.5 cursor-pointer">
                 <button
                   type="button"
                   onClick={() => handleAgreementChange("privacy")}
-                  className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all motion-reduce:transition-none flex-shrink-0 ${
+                  className={`w-5 h-5 rounded-[5px] border-[1.5px] flex items-center justify-center transition-all motion-reduce:transition-none flex-shrink-0 ${
                     agreements.privacy
-                      ? "bg-ice-500 border-ice-500"
-                      : "border-wline dark:border-rink-700"
+                      ? "bg-it-blue-500 border-it-blue-500"
+                      : "border-it-line-strong dark:border-rink-700"
                   }`}
                 >
                   {agreements.privacy && (
                     <Icon name="check" className="text-white text-card-meta" />
                   )}
                 </button>
-                <span className="text-wtext-3 dark:text-rink-300 text-card-body flex-1">
-                  <span className="text-flame-500 font-medium">[필수]</span>{" "}
+                <span className="text-it-ink-700 dark:text-rink-300 text-[14.5px] flex-1">
+                  <span className="text-it-red-500 font-bold">[필수]</span>{" "}
                   개인정보 처리방침
                 </span>
                 <button
@@ -1229,27 +1237,27 @@ export default function SignupPage() {
                   className="p-1 -m-1 rounded-w-pill hover:bg-wbg dark:hover:bg-rink-700/40 transition-colors motion-reduce:transition-none"
                   aria-label="개인정보 처리방침 보기"
                 >
-                  <Icon name="chevron_right" className="text-wtext-4 text-card-emphasis" />
+                  <Icon name="chevron_right" className="text-it-ink-300 text-[20px]" />
                 </button>
               </label>
 
               {/* Marketing */}
-              <label className="flex items-center gap-3 py-2 cursor-pointer">
+              <label className="flex items-center gap-3 py-2.5 cursor-pointer">
                 <button
                   type="button"
                   onClick={() => handleAgreementChange("marketing")}
-                  className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all motion-reduce:transition-none flex-shrink-0 ${
+                  className={`w-5 h-5 rounded-[5px] border-[1.5px] flex items-center justify-center transition-all motion-reduce:transition-none flex-shrink-0 ${
                     agreements.marketing
-                      ? "bg-ice-500 border-ice-500"
-                      : "border-wline dark:border-rink-700"
+                      ? "bg-it-blue-500 border-it-blue-500"
+                      : "border-it-line-strong dark:border-rink-700"
                   }`}
                 >
                   {agreements.marketing && (
                     <Icon name="check" className="text-white text-card-meta" />
                   )}
                 </button>
-                <span className="text-wtext-3 dark:text-rink-300 text-card-body flex-1">
-                  <span className="text-wtext-4">[선택]</span> 마케팅 정보 수신
+                <span className="text-it-ink-700 dark:text-rink-300 text-[14.5px] flex-1">
+                  <span className="text-it-ink-400">[선택]</span> 마케팅 정보 수신
                 </span>
                 <button
                   type="button"
@@ -1261,7 +1269,7 @@ export default function SignupPage() {
                   className="p-1 -m-1 rounded-w-pill hover:bg-wbg dark:hover:bg-rink-700/40 transition-colors motion-reduce:transition-none"
                   aria-label="마케팅 정보 수신 약관 보기"
                 >
-                  <Icon name="chevron_right" className="text-wtext-4 text-card-emphasis" />
+                  <Icon name="chevron_right" className="text-it-ink-300 text-[20px]" />
                 </button>
               </label>
             </div>
@@ -1269,6 +1277,7 @@ export default function SignupPage() {
 
           {/* Submit Button */}
           <Button
+            iceTheme
             type="submit"
             fullWidth
             loading={isSubmitting}
@@ -1285,12 +1294,12 @@ export default function SignupPage() {
 
           {/* Login Link */}
           <div className="text-center pt-2 pb-4">
-            <span className="text-wtext-3 dark:text-rink-300 text-card-body">
+            <span className="text-it-ink-500 dark:text-rink-300 text-card-body">
               이미 계정이 있으신가요?{" "}
             </span>
             <NavLink
               href="/login"
-              className="text-ice-500 font-semibold text-card-body hover:underline"
+              className="text-it-blue-600 font-bold text-card-body hover:underline"
             >
               로그인
             </NavLink>

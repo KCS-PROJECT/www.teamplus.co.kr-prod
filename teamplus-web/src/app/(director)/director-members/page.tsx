@@ -31,7 +31,7 @@ type MemberRole = 'TEEN' | 'CHILD';
 type SortKey = 'name' | 'birthDate';
 
 // 모든 학생은 "선수" 로 통합 표시 (역할 배지 자체는 단일 라벨이라 별도 표시 안 함)
-const ROLE_STYLE = { bg: 'bg-wline-2 dark:bg-rink-700', text: 'text-wtext-2 dark:text-wtext-4' };
+const ROLE_STYLE = { bg: 'bg-it-line dark:bg-rink-700', text: 'text-it-ink-700 dark:text-wtext-4' };
 
 const SORT_OPTIONS: { key: SortKey; label: string; icon: string }[] = [
   { key: 'name', label: '이름순', icon: 'sort_by_alpha' },
@@ -234,13 +234,13 @@ export default function DirectorMembersPage() {
         ]}
       />
 
-      <main className="flex-1 overflow-y-auto hide-scrollbar bg-wbg dark:bg-puck" role="main" aria-label="선수 관리">
-        {/* 검색바 */}
-        <section className="px-5 pt-5" aria-label="선수 검색">
+      <main className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck" role="main" aria-label="선수 관리">
+        {/* 검색바 — flat 흰 섹션 (카드 박스 제거) */}
+        <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-4" aria-label="선수 검색">
           <div className="relative">
             <Icon
               name="search"
-              className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-card-title text-wtext-3 dark:text-wtext-4"
+              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[20px] text-it-ink-400 dark:text-wtext-4"
               aria-hidden="true"
             />
             <input
@@ -249,14 +249,14 @@ export default function DirectorMembersPage() {
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="이름으로 검색"
               aria-label="선수 이름 검색"
-              className="h-12 w-full rounded-w-md border border-wline-2 dark:border-rink-700 bg-wsurface dark:bg-rink-800 pl-11 pr-10 text-card-body text-wtext-1 dark:text-white placeholder:text-wtext-4 dark:placeholder:text-wtext-3 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20"
+              className="h-12 w-full rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 pl-11 pr-10 text-[15px] font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-wtext-3 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
                 aria-label="검색어 지우기"
-                className="absolute right-3 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-w-pill text-wtext-3 transition-colors motion-reduce:transition-none hover:bg-wline-2 hover:text-wtext-1 dark:hover:bg-rink-700 dark:hover:text-white"
+                className="absolute right-3 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-w-pill text-it-ink-400 transition-colors motion-reduce:transition-none hover:bg-it-line hover:text-it-ink-800 dark:hover:bg-rink-700 dark:hover:text-white"
               >
                 <Icon name="close" className="text-[18px]" aria-hidden="true" />
               </button>
@@ -264,40 +264,43 @@ export default function DirectorMembersPage() {
           </div>
         </section>
 
-        {/* 목록 헤더 — SectionHead 위계 통일 (SPEC §2.3) */}
-        <section className="flex items-center justify-between px-4 sm:px-5 pt-4 sm:pt-[18px] pb-2" aria-label="선수 목록 헤더">
-          <div className="flex items-baseline gap-2">
-            <h2 className="text-wtext-1 dark:text-white tracking-[-0.02em] font-extrabold text-card-title sm:text-card-title">
-              선수 목록
-            </h2>
-            {!isLoading && (
-              <span className="text-card-body font-bold font-num tabular-nums text-ice-500">
-                {sortedMembers.length}
-              </span>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={openFilterSheet}
-            aria-label="선수 목록 필터링"
-            className="inline-flex h-9 items-center gap-1.5 rounded-w-md bg-wsurface px-3 text-card-meta font-bold text-wtext-2 border border-wline-2 transition-colors motion-reduce:transition-none hover:bg-wline-2/40 active:brightness-95 dark:border-rink-700 dark:bg-rink-800 dark:text-wtext-4 dark:hover:bg-rink-700"
-          >
-            <Icon name="filter_list" className="text-[16px]" aria-hidden="true" />
-            <span>필터링</span>
-            {activeFilterCount > 0 && (
-              <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-w-pill bg-ice-500 px-1 text-card-meta font-bold font-num tabular-nums text-white">
-                {activeFilterCount}
-              </span>
-            )}
-          </button>
-        </section>
+        {/* flat 섹션 사이 8px 회색 갭 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
 
-        {/* 선수 리스트 — 1줄 카드 (아바타 · 이름 / 생년월일) */}
-        <section className="flex flex-col gap-2.5 px-5" aria-label="선수 목록">
+        {/* 선수 목록 — flat 흰 섹션 (헤더 + hairline 구분 행, 카드 박스 제거) */}
+        <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-7" aria-label="선수 목록">
+          {/* 목록 헤더 — SectionHead 위계 통일 (SPEC §2.3) */}
+          <div className="flex items-center justify-between pb-1" aria-label="선수 목록 헤더">
+            <div className="flex items-baseline gap-2">
+              <h2 className="text-it-ink-800 dark:text-white tracking-[-0.02em] font-extrabold text-[17px]">
+                선수 목록
+              </h2>
+              {!isLoading && (
+                <span className="text-[15px] font-extrabold font-num tabular-nums text-it-blue-500">
+                  {sortedMembers.length}
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={openFilterSheet}
+              aria-label="선수 목록 필터링"
+              className="inline-flex h-[34px] items-center gap-1.5 rounded-w-md bg-it-surface px-3 text-[13px] font-bold text-it-ink-700 border-[1.5px] border-it-line-strong transition-colors motion-reduce:transition-none hover:bg-it-fill active:brightness-95 dark:border-rink-700 dark:bg-rink-800 dark:text-wtext-4 dark:hover:bg-rink-700"
+            >
+              <Icon name="filter_list" className="text-[16px] text-it-ink-600 dark:text-wtext-4" aria-hidden="true" />
+              <span>필터링</span>
+              {activeFilterCount > 0 && (
+                <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-w-pill bg-it-blue-500 px-1 text-card-meta font-bold font-num tabular-nums text-white">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+          </div>
+
           {isLoading ? null : sortedMembers.length === 0 ? (
             // 빈 상태 — 1줄 텍스트 + 인라인 링크 (§7.5.3)
             <div className="flex flex-col items-center justify-center py-16">
-              <p className="text-card-body font-medium text-wtext-2 dark:text-wtext-4 text-center">
+              <p className="text-card-body font-medium text-it-ink-700 dark:text-wtext-4 text-center">
                 {searchQuery.trim()
                   ? `"${searchQuery.trim()}" 검색 결과가 없습니다.`
                   : MESSAGES.empty('선수')}
@@ -306,66 +309,72 @@ export default function DirectorMembersPage() {
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="mt-3 text-card-meta font-bold text-ice-500 transition-colors motion-reduce:transition-none hover:text-ice-600 underline underline-offset-2"
+                  className="mt-3 text-card-meta font-bold text-it-blue-500 transition-colors motion-reduce:transition-none hover:text-it-blue-600 underline underline-offset-2"
                 >
                   검색어 초기화
                 </button>
               )}
             </div>
           ) : (
-            sortedMembers.map((member, idx) => {
-              const initial = member.name?.charAt(0) || '?';
+            <div className="flex flex-col">
+              {sortedMembers.map((member, idx) => {
+                const initial = member.name?.charAt(0) || '?';
+                const isLast = idx === sortedMembers.length - 1;
 
-              return (
-                <div
-                  key={member.id}
-                  style={{ animationDelay: `${Math.min(idx * 40, 280)}ms` }}
-                  className="flex w-full items-center gap-3 rounded-w-lg bg-wsurface dark:bg-rink-800 p-3.5 border border-wline-2 dark:border-rink-700 shadow-sh-1"
-                >
-                  {/* 아바타 */}
-                  <div className={cn(
-                    'relative flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-w-pill',
-                    ROLE_STYLE.bg,
-                  )}>
-                    {resolveImageSrc(member.avatarUrl) ? (
-                      /* eslint-disable-next-line @next/next/no-img-element */
-                      <img
-                        src={resolveImageSrc(member.avatarUrl)}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <span className={cn('text-card-body font-bold', ROLE_STYLE.text)}>{initial}</span>
+                return (
+                  <div
+                    key={member.id}
+                    style={{ animationDelay: `${Math.min(idx * 40, 280)}ms` }}
+                    className={cn(
+                      'flex w-full items-center gap-3 py-[13px] min-h-[56px]',
+                      !isLast && 'border-b border-it-line dark:border-rink-700',
                     )}
-                  </div>
-
-                  {/* 선수 이름 (좌측) */}
-                  <h3 className="flex-1 min-w-0 truncate text-card-body font-bold text-wtext-1 dark:text-white">
-                    {member.name}
-                  </h3>
-
-                  {/* 생년월일 (우측) */}
-                  <span
-                    className="shrink-0 inline-flex items-center gap-1 text-card-meta font-medium text-wtext-3 dark:text-wtext-4"
-                    aria-label={`생년월일 ${formatDate(member.birthDate)}`}
                   >
-                    <Icon name="cake" className="text-[15px] text-ice-500" aria-hidden="true" />
-                    <span className="font-num tabular-nums">{formatDate(member.birthDate)}</span>
-                  </span>
-                </div>
-              );
-            })
+                    {/* 아바타 */}
+                    <div className={cn(
+                      'relative flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-w-pill',
+                      ROLE_STYLE.bg,
+                    )}>
+                      {resolveImageSrc(member.avatarUrl) ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={resolveImageSrc(member.avatarUrl)}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className={cn('text-[18px] font-bold', ROLE_STYLE.text)}>{initial}</span>
+                      )}
+                    </div>
+
+                    {/* 선수 이름 (좌측) */}
+                    <h3 className="flex-1 min-w-0 truncate text-[15.5px] font-bold tracking-[-0.01em] text-it-ink-800 dark:text-white">
+                      {member.name}
+                    </h3>
+
+                    {/* 생년월일 (우측) */}
+                    <span
+                      className="shrink-0 inline-flex items-center gap-1 text-[13px] font-medium text-it-ink-500 dark:text-wtext-4"
+                      aria-label={`생년월일 ${formatDate(member.birthDate)}`}
+                    >
+                      <Icon name="cake" className="text-[15px] text-it-blue-500" aria-hidden="true" />
+                      <span className="font-num tabular-nums">{formatDate(member.birthDate)}</span>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </section>
 
         {/* 페이지네이션 */}
         {!isLoading && totalPages > 1 && (
-          <nav className="flex items-center justify-center gap-2 px-5 pt-8 pb-4" aria-label="페이지 이동">
+          <nav className="flex items-center justify-center gap-2 px-5 pt-6 pb-4" aria-label="페이지 이동">
             <button
               type="button"
               onClick={() => goToPage(page - 1)}
               disabled={page <= 1}
-              className="flex size-11 items-center justify-center rounded-w-md border border-wline-2 dark:border-rink-700 bg-wsurface dark:bg-rink-800 text-wtext-2 dark:text-wtext-4 transition-colors motion-reduce:transition-none hover:bg-wline-2/40 dark:hover:bg-rink-700 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex size-11 items-center justify-center rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-it-ink-700 dark:text-wtext-4 transition-colors motion-reduce:transition-none hover:bg-it-fill dark:hover:bg-rink-700 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-40"
               aria-label="이전 페이지"
             >
               <Icon name="chevron_left" className="text-[18px]" aria-hidden="true" />
@@ -391,8 +400,8 @@ export default function DirectorMembersPage() {
                   className={cn(
                     'flex size-11 items-center justify-center rounded-w-md text-card-body font-bold font-num tabular-nums transition-colors motion-reduce:transition-none active:brightness-95',
                     isCurrent
-                      ? 'bg-ice-500 text-white shadow-sh-1'
-                      : 'border border-wline-2 bg-wsurface text-wtext-2 hover:bg-wline-2/40 dark:border-rink-700 dark:bg-rink-800 dark:text-wtext-4 dark:hover:bg-rink-700',
+                      ? 'bg-it-blue-500 text-white'
+                      : 'border-[1.5px] border-it-line-strong bg-it-surface text-it-ink-700 hover:bg-it-fill dark:border-rink-700 dark:bg-rink-800 dark:text-wtext-4 dark:hover:bg-rink-700',
                   )}
                   aria-label={`${pageNum} 페이지`}
                   aria-current={isCurrent ? 'page' : undefined}
@@ -406,7 +415,7 @@ export default function DirectorMembersPage() {
               type="button"
               onClick={() => goToPage(page + 1)}
               disabled={page >= totalPages}
-              className="flex size-11 items-center justify-center rounded-w-md border border-wline-2 dark:border-rink-700 bg-wsurface dark:bg-rink-800 text-wtext-2 dark:text-wtext-4 transition-colors motion-reduce:transition-none hover:bg-wline-2/40 dark:hover:bg-rink-700 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex size-11 items-center justify-center rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-it-ink-700 dark:text-wtext-4 transition-colors motion-reduce:transition-none hover:bg-it-fill dark:hover:bg-rink-700 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-40"
               aria-label="다음 페이지"
             >
               <Icon name="chevron_right" className="text-[18px]" aria-hidden="true" />
@@ -430,14 +439,14 @@ export default function DirectorMembersPage() {
             <button
               type="button"
               onClick={resetFilter}
-              className="flex-1 rounded-w-md border border-wline-2 bg-wsurface py-3 text-card-body font-bold text-wtext-1 transition-colors motion-reduce:transition-none hover:bg-wline-2/40 dark:border-rink-700 dark:bg-rink-800 dark:text-white dark:hover:bg-rink-700"
+              className="flex-1 rounded-w-md border-[1.5px] border-it-line-strong bg-it-surface py-3 text-card-body font-bold text-it-ink-800 transition-colors motion-reduce:transition-none hover:bg-it-fill dark:border-rink-700 dark:bg-rink-800 dark:text-white dark:hover:bg-rink-700"
             >
               초기화
             </button>
             <button
               type="button"
               onClick={applyFilter}
-              className="flex-[2] rounded-w-md bg-ice-500 py-3 text-card-body font-bold text-white transition-colors duration-200 ease-ios motion-reduce:transition-none hover:bg-ice-600 active:brightness-95"
+              className="flex-[2] rounded-w-md bg-it-blue-500 py-3 text-card-body font-bold text-white transition-colors duration-200 ease-ios motion-reduce:transition-none hover:bg-it-blue-600 active:brightness-95"
             >
               적용하기
             </button>
@@ -445,7 +454,7 @@ export default function DirectorMembersPage() {
         }
       >
         <section aria-label="정렬 기준" className="pt-2">
-          <h3 className="mb-3 text-card-meta font-bold uppercase tracking-[0.12em] text-wtext-3 dark:text-wtext-4">
+          <h3 className="mb-3 text-card-meta font-bold uppercase tracking-[0.12em] text-it-ink-500 dark:text-wtext-4">
             정렬 기준
           </h3>
           <div
@@ -463,17 +472,17 @@ export default function DirectorMembersPage() {
                   aria-checked={selected}
                   onClick={() => setDraftSortKey(opt.key)}
                   className={cn(
-                    'flex items-center gap-3 rounded-w-md border px-4 py-3 text-left transition-colors duration-200 ease-wallet motion-reduce:transition-none active:brightness-95',
+                    'flex items-center gap-3 rounded-w-md border-[1.5px] px-4 py-3 text-left transition-colors duration-200 ease-wallet motion-reduce:transition-none active:brightness-95',
                     selected
-                      ? 'border-ice-500 bg-ice-50 dark:border-ice-500 dark:bg-ice-500/15'
-                      : 'border-wline-2 bg-wsurface hover:bg-wline-2/40 dark:border-rink-700 dark:bg-rink-800 dark:hover:bg-rink-700',
+                      ? 'border-it-blue-500 bg-it-blue-50 dark:border-it-blue-500 dark:bg-it-blue-900/30'
+                      : 'border-it-line-strong bg-it-surface hover:bg-it-fill dark:border-rink-700 dark:bg-rink-800 dark:hover:bg-rink-700',
                   )}
                 >
                   <Icon
                     name={opt.icon}
                     className={cn(
                       'text-card-section',
-                      selected ? 'text-ice-500' : 'text-wtext-3 dark:text-wtext-4',
+                      selected ? 'text-it-blue-500' : 'text-it-ink-400 dark:text-wtext-4',
                     )}
                     aria-hidden="true"
                   />
@@ -481,8 +490,8 @@ export default function DirectorMembersPage() {
                     className={cn(
                       'flex-1 text-card-body font-bold',
                       selected
-                        ? 'text-ice-500'
-                        : 'text-wtext-1 dark:text-white',
+                        ? 'text-it-blue-500'
+                        : 'text-it-ink-800 dark:text-white',
                     )}
                   >
                     {opt.label}
@@ -490,7 +499,7 @@ export default function DirectorMembersPage() {
                   {selected && (
                     <Icon
                       name="check_circle"
-                      className="text-card-title text-ice-500"
+                      className="text-card-title text-it-blue-500"
                       aria-hidden="true"
                     />
                   )}

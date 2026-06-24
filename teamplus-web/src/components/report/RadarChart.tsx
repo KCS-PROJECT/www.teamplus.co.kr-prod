@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import { cn } from '@/lib/utils';
 
 export interface SkillData {
   skating: number;
@@ -13,9 +14,11 @@ export interface SkillData {
 interface RadarChartProps {
   data: SkillData;
   isAnimated?: boolean;
+  /** ICETIMES 색상 적용. 기본 false = 기존 primary 색 그대로 (미전달 화면 영향 0). 로직·축 계산 동결, 색상만 분기. */
+  iceTheme?: boolean;
 }
 
-export function RadarChart({ data, isAnimated = true }: RadarChartProps) {
+export function RadarChart({ data, isAnimated = true, iceTheme = false }: RadarChartProps) {
   const average = useMemo(() => (
     (data.skating + data.shooting + data.passing + data.agility + data.teamwork) /
     5
@@ -93,14 +96,31 @@ export function RadarChart({ data, isAnimated = true }: RadarChartProps) {
           5점 만점. 평균 {average}점. 항목별 점수: {ariaSummary}.
         </desc>
         {/* Background Webs */}
-        <g className="stroke-slate-200 dark:stroke-slate-700 fill-transparent" strokeWidth="1" aria-hidden="true">
+        <g
+          className={cn(
+            'fill-transparent',
+            iceTheme
+              ? 'stroke-it-line dark:stroke-it-ink-700'
+              : 'stroke-slate-200 dark:stroke-slate-700',
+          )}
+          strokeWidth="1"
+          aria-hidden="true"
+        >
           {webRings.map((d, i) => (
             <path key={i} d={d} />
           ))}
         </g>
 
         {/* Axis Lines */}
-        <g className="stroke-slate-200 dark:stroke-slate-700" strokeWidth="1" aria-hidden="true">
+        <g
+          className={cn(
+            iceTheme
+              ? 'stroke-it-line dark:stroke-it-ink-700'
+              : 'stroke-slate-200 dark:stroke-slate-700',
+          )}
+          strokeWidth="1"
+          aria-hidden="true"
+        >
           {axisPoints.map((point, i) => (
             <line key={i} x1="100" y1="100" x2={point.x} y2={point.y} />
           ))}
@@ -109,7 +129,7 @@ export function RadarChart({ data, isAnimated = true }: RadarChartProps) {
         {/* Data Shape */}
         <path
           d={pathD}
-          className="fill-primary/20 stroke-primary"
+          className={cn(iceTheme ? 'fill-it-blue-500/20 stroke-it-blue-500' : 'fill-primary/20 stroke-primary')}
           strokeWidth="2"
           style={{
             transition: 'all 1s ease-out',
@@ -123,7 +143,7 @@ export function RadarChart({ data, isAnimated = true }: RadarChartProps) {
             cx={point.x}
             cy={point.y}
             r="3"
-            className="fill-primary"
+            className={cn(iceTheme ? 'fill-it-blue-500' : 'fill-primary')}
             style={{
               transition: 'all 1s ease-out',
               transitionDelay: `${i * 100}ms`,
@@ -139,7 +159,10 @@ export function RadarChart({ data, isAnimated = true }: RadarChartProps) {
             x={label.x}
             y={label.y}
             textAnchor={label.anchor as 'start' | 'middle' | 'end'}
-            className="text-card-meta fill-slate-500 dark:fill-slate-400 font-bold"
+            className={cn(
+              'text-card-meta font-bold',
+              iceTheme ? 'fill-it-ink-400 dark:fill-it-ink-300' : 'fill-slate-500 dark:fill-slate-400',
+            )}
           >
             {label.label}
           </text>
@@ -151,7 +174,7 @@ export function RadarChart({ data, isAnimated = true }: RadarChartProps) {
           y="102"
           textAnchor="middle"
           dominantBaseline="middle"
-          className="text-card-body font-bold fill-primary"
+          className={cn('text-card-body font-bold', iceTheme ? 'fill-it-blue-500' : 'fill-primary')}
           style={{
             transition: 'opacity 0.5s ease-out',
             transitionDelay: '800ms',

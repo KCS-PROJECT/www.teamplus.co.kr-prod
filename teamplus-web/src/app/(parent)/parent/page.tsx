@@ -361,7 +361,7 @@ export default function ParentDashboardPage() {
       />
       <main
         ref={mainRef}
-        className="flex-1 min-h-0 overflow-y-auto bg-wbg dark:bg-puck"
+        className="flex-1 min-h-0 overflow-y-auto bg-it-canvas dark:bg-puck !pb-8"
         role="main"
         aria-label="학부모 홈"
       >
@@ -374,27 +374,34 @@ export default function ParentDashboardPage() {
         {((!isChildrenLoading && allChildren.length === 0) ||
           rejectedCount > 0 ||
           pendingCount > 0) && (
-          <div className="px-4 sm:px-5 pt-6 flex flex-col gap-2">
+          /* ICETIMES flat: 떠 있는 rounded 카드 → full-bleed 흰 섹션 안의 attention 행.
+               director 승인대기 배너(DirectorPendingApprovals iceTheme)와 동일 패턴 —
+               rounded/border 제거, 의미색은 행 배경 틴트 1요소로만 유지. */
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 flex flex-col">
             {!isChildrenLoading && allChildren.length === 0 && (
-              <div className="w-full rounded-w-lg bg-ice-50 dark:bg-ice-500/15 border border-ice-200 dark:border-ice-500/30 p-5 sm:p-6 flex flex-col items-center text-center gap-3">
-                <Icon
-                  name="person_add"
-                  className="text-ice-600 dark:text-ice-400 text-w-h2"
-                  aria-hidden="true"
-                />
-                <div className="flex flex-col gap-1">
-                  <p className="text-card-emphasis font-bold text-ice-700 dark:text-ice-300 break-keep">
-                    {MESSAGES.team.parentNoChildren}
-                  </p>
-                  <p className="text-card-body text-ice-600 dark:text-ice-400 break-keep">
-                    {MESSAGES.team.parentNoChildrenHint}
-                  </p>
+              /* 빈 자녀 배너 — flat 톤 유지하되 안내(제목+보조 hint) + 명시 primary CTA 복원.
+                   rejected/pending 단일 행과 달리 신규 학부모에게 다음 액션 가이드가 필요. */
+              <div className="px-4 sm:px-5 py-4 flex flex-col gap-3">
+                <div className="flex items-start gap-2.5">
+                  <Icon
+                    name="person_add"
+                    className="text-[20px] shrink-0 text-it-blue-600 dark:text-it-blue-300 mt-0.5"
+                    aria-hidden="true"
+                  />
+                  <div className="flex flex-col gap-1 min-w-0">
+                    <p className="text-card-body font-semibold text-wtext-1 dark:text-white break-keep">
+                      {MESSAGES.team.parentNoChildren}
+                    </p>
+                    <p className="text-card-meta text-it-ink-500 dark:text-it-blue-300 break-keep">
+                      {MESSAGES.team.parentNoChildrenHint}
+                    </p>
+                  </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => navigate('/children/add')}
                   aria-label="선수 등록하기"
-                  className="mt-1 inline-flex w-full min-h-[48px] items-center justify-center gap-1.5 rounded-xl bg-ice-500 text-white text-card-emphasis font-bold shadow-sm hover:bg-ice-700 active:brightness-95 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900"
+                  className="inline-flex w-full min-h-[48px] items-center justify-center gap-1.5 rounded-xl bg-it-blue-500 text-white text-card-emphasis font-bold shadow-sm hover:bg-it-blue-600 active:brightness-95 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900"
                 >
                   <Icon
                     name="add"
@@ -415,51 +422,61 @@ export default function ParentDashboardPage() {
                       : '/children',
                   )
                 }
-                className="w-full rounded-w-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3 sm:p-4 flex items-start gap-2 sm:gap-3 text-left active:brightness-95 transition-colors motion-reduce:transition-none"
+                className="w-full flex items-center gap-2.5 px-4 sm:px-5 py-3.5 text-left bg-it-red-500/[0.07] dark:bg-it-red-500/[0.12] hover:bg-it-red-500/[0.12] transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-it-red-500"
               >
                 <Icon
                   name="block"
-                  className="shrink-0 text-red-600 dark:text-red-400 text-card-emphasis sm:text-card-title mt-0.5"
+                  className="text-[20px] shrink-0 text-it-red-500 dark:text-it-red-300"
                   aria-hidden="true"
                 />
-                <p className="text-card-body text-red-700 dark:text-red-400 flex-1 font-medium break-keep">
+                <span className="flex-1 min-w-0 text-card-body font-semibold text-wtext-1 dark:text-white break-keep">
                   {MESSAGES.team.dashboardRejectedBanner(
                     rejectedChildren[0]?.name ?? '자녀',
                     rejectedCount - 1,
                     rejectedChildren[0]?.rejectionReason,
                   )}
-                </p>
+                </span>
+                <Icon
+                  name="chevron_right"
+                  className="text-[20px] shrink-0 text-it-red-500 dark:text-it-red-300"
+                  aria-hidden="true"
+                />
               </button>
             )}
             {pendingCount > 0 && (
               <button
                 type="button"
                 onClick={() => navigate('/children')}
-                className="w-full rounded-w-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 sm:p-4 flex items-start gap-2 sm:gap-3 text-left active:brightness-95 transition-colors motion-reduce:transition-none"
+                className="w-full flex items-center gap-2.5 px-4 sm:px-5 py-3.5 text-left bg-amber-500/[0.08] dark:bg-amber-500/[0.12] hover:bg-amber-500/[0.13] transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-500"
               >
                 <Icon
                   name="hourglass_top"
-                  className="shrink-0 text-amber-600 dark:text-amber-400 text-card-emphasis sm:text-card-title mt-0.5"
+                  className="text-[20px] shrink-0 text-amber-600 dark:text-amber-400"
                   aria-hidden="true"
                 />
-                <p className="text-card-body text-amber-700 dark:text-amber-400 flex-1 font-medium break-keep">
+                <span className="flex-1 min-w-0 text-card-body font-semibold text-wtext-1 dark:text-white break-keep">
                   {MESSAGES.team.dashboardPendingBanner(
                     pendingChildren[0]?.name ?? '자녀',
                     pendingCount - 1,
                   )}
-                </p>
+                </span>
+                <Icon
+                  name="chevron_right"
+                  className="text-[20px] shrink-0 text-amber-600 dark:text-amber-400"
+                  aria-hidden="true"
+                />
               </button>
             )}
-          </div>
+          </section>
         )}
 
         {/* ① 공지사항 — 팀 단위 정보 (최상단 배너 다음). 자녀 칩 필터와 무관.
               학부모는 "공지사항" 타이틀(타 역할은 기본 "팀 공지사항"). */}
-        <RecentNoticesSection title={MESSAGES.dashboard.notices} />
+        <RecentNoticesSection title={MESSAGES.dashboard.notices} iceTheme />
 
         {/* ② 수업 목록 — 팀 등록 수업 상위 5건 요약 + 전체보기.
               팀 전체 카탈로그라 자녀 칩 필터와 무관 → 칩보다 위에 배치. */}
-        <TeamClassesSummary selectedChildId={selectedChildId} onReady={setSummaryReady} />
+        <TeamClassesSummary selectedChildId={selectedChildId} onReady={setSummaryReady} iceTheme />
 
         {/* ③ 자녀 칩 row — 승인 자녀 2명+ 일 때만.
               달력 바로 위 = 탭이 아래 일정(달력·선택일 수업)을 제어한다는 시각 단서. */}
@@ -473,6 +490,7 @@ export default function ParentDashboardPage() {
               {approvedChildren.map((c) => (
                 <ChildChip
                   key={c.id}
+                  iceTheme
                   active={selectedChildId === c.id}
                   label={c.name}
                   onClick={() => setSelectedChildId(c.id)}
@@ -482,28 +500,33 @@ export default function ParentDashboardPage() {
           </div>
         )}
 
-        {/* ④ 수업 일정 — 월 달력. 자녀 등록 수업으로 필터(enabledClassIds).
+        {/* ④ 수업 일정 — full-bleed flat 섹션(ICETIMES). 월 달력. 자녀 등록 수업 필터.
               날짜 클릭 → onSelectionChange 로 아래 선택일 수업 갱신(초기값 오늘). */}
-        <SectionHead title={MESSAGES.dashboard.classSchedule} />
-        <div className="px-4 sm:px-5 pt-1">
-          <ClassCalendarSection
-            teamIds={teams ?? []}
-            academies={academies}
-            enabledClassIds={enabledClassIds}
-            enabledChildId={selectedChildId}
-            onSelectionChange={setSelection}
-            onReady={setCalendarReady}
-          />
-        </div>
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
+          <SectionHead title={MESSAGES.dashboard.classSchedule} iceTheme />
+          <div className="px-4 sm:px-5 pb-3">
+            <ClassCalendarSection
+              teamIds={teams ?? []}
+              academies={academies}
+              enabledClassIds={enabledClassIds}
+              enabledChildId={selectedChildId}
+              onSelectionChange={setSelection}
+              onReady={setCalendarReady}
+              iceTheme
+            />
+          </div>
+        </section>
 
-        {/* ⑤ [2026-06-10] 이번주 일정 — 수업 있는 날만 그룹 표시 + 출석 버튼. 전체 일정은 캘린더로. */}
-        <SectionHead
-          title="이번주 일정"
-          action="전체 일정 보기 ›"
-          onActionClick={() => navigate('/parent-calendar')}
-        />
-        <div className="px-4 sm:px-5">
-          {selection.weekGroups.length === 0 ? (
+        {/* ⑤ [2026-06-10] 이번주 일정 — full-bleed flat 섹션(ICETIMES). 수업 있는 날만 그룹 + 출석 버튼. */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
+          <SectionHead
+            title="이번주 일정"
+            action="전체 일정 보기 ›"
+            onActionClick={() => navigate('/parent-calendar')}
+            iceTheme
+          />
+          <div className="px-4 sm:px-5 pb-3">
+            {selection.weekGroups.length === 0 ? (
             <SelectedDayClassList
               classes={[]}
               scheduleIdToChildIds={scheduleIdToChildIds}
@@ -513,11 +536,13 @@ export default function ParentDashboardPage() {
               todayKey={todayKey}
               onCheckIn={checkInChild}
               postpaidScheduleIds={postpaidScheduleIds}
+              iceTheme
             />
           ) : (
             <WeekScheduleList
               groups={selection.weekGroups}
               todayKey={todayKey}
+              iceTheme
               renderDayClasses={(classes) => (
                 <SelectedDayClassList
                   classes={classes}
@@ -529,18 +554,14 @@ export default function ParentDashboardPage() {
                   onCheckIn={checkInChild}
                   postpaidScheduleIds={postpaidScheduleIds}
                   bare
+                  iceTheme
                 />
               )}
             />
           )}
-        </div>
+          </div>
+        </section>
 
-        {/* 하단 여백 — BottomNav · iOS safe-area 통합. 마지막 카드가 BottomNav 에
-              가려지지 않도록 SCREEN_METRICS SoT `var(--safe-area-inset-bottom, 0px)` 폴백 패턴. */}
-        <div
-          className="pb-[calc(var(--safe-area-inset-bottom,0px)+24px)]"
-          aria-hidden="true"
-        />
       </main>
 
       <GlobalMenu isOpen={isMenuOpen} onClose={closeMenu} />

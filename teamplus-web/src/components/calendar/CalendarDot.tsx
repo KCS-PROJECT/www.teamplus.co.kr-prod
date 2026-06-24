@@ -20,6 +20,11 @@ interface CalendarDotProps {
   /** 선택 상태 톤 */
   tone?: 'default' | 'selected';
   className?: string;
+  /**
+   * ICETIMES(하우머치) flat variant. 기본 false = 기존 동작(6px dot).
+   * true 일 때 시안 KitCalendar 의 4px dot 으로 표시한다. (false 경로 회귀 0)
+   */
+  iceTheme?: boolean;
 }
 
 export function CalendarDot({
@@ -27,6 +32,7 @@ export function CalendarDot({
   size = 'sm',
   tone = 'default',
   className,
+  iceTheme = false,
 }: CalendarDotProps) {
   // 2026-05-16: types.length === 0 일 때도 mount 유지 — 빈 placeholder 영역(h-3 sm / h-4 md)
   //   reserve 하여 캘린더 셀 안에서 날짜 숫자 위치가 일정 유무와 상관없이 일관되게 정렬되도록 보장.
@@ -35,7 +41,8 @@ export function CalendarDot({
   const displayTypes = uniqueTypes.slice(0, 4);
   const overflow = uniqueTypes.length - 4;
 
-  const dotSize = size === 'sm' ? 'w-1.5 h-1.5' : 'w-2 h-2';
+  // 시안 KitCalendar dot = 4px. iceTheme 시 4px, 아니면 기존 6px(sm)/8px(md).
+  const dotSize = iceTheme ? 'w-1 h-1' : size === 'sm' ? 'w-1.5 h-1.5' : 'w-2 h-2';
   const reserveHeight = size === 'sm' ? 'h-3' : 'h-4';
   const overlapSpace = size === 'sm' ? '-space-x-[2px]' : '-space-x-[3px]';
   const overflowTextClass =
@@ -83,9 +90,11 @@ interface CalendarLegendProps {
   className?: string;
   /** 노출할 범례 키 집합. 기본 'team' (정규/오픈/대회 3분류) */
   variant?: 'team' | 'team-only' | 'academy';
+  /** ICETIMES flat variant. 기본 false. true 일 때 라벨 텍스트를 it-ink 톤으로. */
+  iceTheme?: boolean;
 }
 
-export function CalendarLegend({ className, variant = 'team' }: CalendarLegendProps) {
+export function CalendarLegend({ className, variant = 'team', iceTheme = false }: CalendarLegendProps) {
   const legend =
     variant === 'academy'
       ? ACADEMY_CALENDAR_LEGEND
@@ -99,7 +108,14 @@ export function CalendarLegend({ className, variant = 'team' }: CalendarLegendPr
           <span
             className={cn('w-2.5 h-2.5 rounded-full shrink-0', item.bg, item.darkBg)}
           />
-          <span className="text-xs text-wtext-2 dark:text-rink-300 font-medium">
+          <span
+            className={cn(
+              'text-xs font-medium',
+              iceTheme
+                ? 'text-it-ink-600 dark:text-rink-300'
+                : 'text-wtext-2 dark:text-rink-300',
+            )}
+          >
             {item.label}
           </span>
         </div>

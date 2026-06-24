@@ -147,14 +147,14 @@ export default function AcademyDirectorDashboardPage() {
       />
       <main
         ref={mainRef}
-        className="flex-1 min-h-0 overflow-y-auto bg-wbg dark:bg-puck"
+        className="flex-1 min-h-0 overflow-y-auto bg-it-canvas dark:bg-puck !pb-8"
         role="main"
         aria-label="오픈클래스 감독 홈"
       >
         {/* 캘린더 데이터·풀스크린 로더 신호는 아래 월 달력 섹션이 함께 공급한다. */}
 
         {/* [2026-06-09] 오픈클래스 홈 — 공지사항 숨김 처리 (사용자 요청). */}
-        {false && <RecentNoticesSection viewAllHref="/director-notices" />}
+        {false && <RecentNoticesSection viewAllHref="/director-notices" iceTheme />}
 
         {/* 회원 승인 영역 — 오픈클래스는 멤버 승인 절차 없음 (회의록 §4.6).
               P2 에서 AcademyEnrollments(수강 신청 관리) 위젯 신설 후 이 자리에 추가 예정. */}
@@ -167,47 +167,49 @@ export default function AcademyDirectorDashboardPage() {
             showEnrollment={false}
             targetPath="/classes-manage"
             onReady={setSummaryReady}
+            iceTheme
           />
         )}
 
-        {/* 2. 수업 일정 — 월 달력. 날짜 클릭 시 아래 오늘 수업 갱신(초기값 오늘). */}
-        <SectionHead title={MESSAGES.dashboard.classSchedule} />
-        <div className="px-4 sm:px-5 pt-1">
-          <ClassCalendarSection
-            teamIds={[]}
-            academies={academies ?? []}
-            onSelectionChange={setSelection}
-            onReady={setCalendarReady}
-            legendVariant="academy"
-          />
-        </div>
-
-        {/* 3. [2026-06-09] 이번주 일정 — 수업 있는 날만 그룹 표시. 전체 일정은 일정 페이지로. */}
-        <SectionHead
-          title="이번주 일정"
-          action="전체 일정 보기 ›"
-          onActionClick={() => navigate('/academy-schedules')}
-        />
-        <div className="px-4 sm:px-5">
-          {selection.weekGroups.length === 0 ? (
-            <DirectorEmptyCard variant="today-class" />
-          ) : (
-            <WeekScheduleList
-              groups={selection.weekGroups}
-              renderDayClasses={(classes) => (
-                <SelectedDayClassList classes={classes} canManage bare />
-              )}
+        {/* 2. 수업 일정 — full-bleed flat 섹션(ICETIMES). 월 달력.
+              날짜 클릭 시 아래 오늘 수업 갱신(초기값 오늘). */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
+          <SectionHead title={MESSAGES.dashboard.classSchedule} iceTheme />
+          <div className="px-4 sm:px-5 pb-3">
+            <ClassCalendarSection
+              teamIds={[]}
+              academies={academies ?? []}
+              onSelectionChange={setSelection}
+              onReady={setCalendarReady}
+              legendVariant="academy"
+              iceTheme
             />
-          )}
-        </div>
+          </div>
+        </section>
 
-        {/* [수정 2026-05-30] 하단 여백 — BottomNav · iOS safe-area 통합.
-              종전 `h-8`(32px 고정)은 노치/홈인디케이터 단말에서 마지막 카드가 BottomNav 에
-              가려지던 회귀를 유발(코치·감독 홈과 동일 패턴으로 정렬). SCREEN_METRICS SoT. */}
-        <div
-          className="pb-[calc(var(--safe-area-inset-bottom,0px)+24px)]"
-          aria-hidden="true"
-        />
+        {/* 3. [2026-06-09] 이번주 일정 — full-bleed flat 섹션(ICETIMES). 수업 있는 날만 그룹 표시. */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
+          <SectionHead
+            title="이번주 일정"
+            action="전체 일정 보기 ›"
+            onActionClick={() => navigate('/academy-schedules')}
+            iceTheme
+          />
+          <div className="px-4 sm:px-5 pb-3">
+            {selection.weekGroups.length === 0 ? (
+              <DirectorEmptyCard variant="today-class" iceTheme />
+            ) : (
+              <WeekScheduleList
+                groups={selection.weekGroups}
+                renderDayClasses={(classes) => (
+                  <SelectedDayClassList classes={classes} canManage bare iceTheme />
+                )}
+                iceTheme
+              />
+            )}
+          </div>
+        </section>
+
       </main>
 
       <GlobalMenu isOpen={isMenuOpen} onClose={closeMenu} />

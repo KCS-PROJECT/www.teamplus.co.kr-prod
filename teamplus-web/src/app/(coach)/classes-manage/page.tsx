@@ -22,8 +22,6 @@ import {
   type TournamentListItem,
 } from '@/services/tournament.service';
 import { shouldHideTypeBadge } from '@/lib/class-categories';
-// [추가 W2.A-3 2026-05-18] 가로 스크롤 잘림 차단 — 외부 .overflow-x-auto + 내부 .min-w-max 패턴.
-import { CategoryChipsRow } from '@/components/shared';
 
 
 // ─── Types ──────────────────────────────────────────
@@ -254,7 +252,7 @@ const MODE_CONFIG: Record<ClassMode, {
   priceText: string;
 }> = {
   REGULAR: {
-    label: '정규수업',
+    label: '정규훈련',
     bgColor: 'bg-emerald-50 dark:bg-emerald-900/20',
     textColor: 'text-emerald-600 dark:text-emerald-400',
     accentBorder: 'bg-emerald-500',
@@ -406,12 +404,13 @@ function ClassCard({ item }: { item: ClassItem }) {
   return (
     <ClassListCard
       href={`/classes/${item.id}`}
+      iceTheme
       trainingType={item.trainingType}
       iconImageUrl={item.teamLogoUrl}
       typeBadgeLabel={shouldHideTypeBadge(item.trainingType) ? undefined : modeCfg.label}
       dimmed={isDimmed}
       titleDimmed={isDimmed}
-      ariaLabel={`${item.title} 수업 상세 보기`}
+      ariaLabel={`${item.title} 훈련 상세 보기`}
       title={item.title}
       titleRight={
         // [2026-06-19] 진행 상태(예정/진행 중/종료) 배지를 제목 줄 우측 상단으로 이동.
@@ -433,7 +432,7 @@ function ClassCard({ item }: { item: ClassItem }) {
       )}
       {status === 'REJECTED' && (
         <p className={cn('px-3 py-2 rounded-lg text-card-meta font-semibold', statusCfg.pillBg, statusCfg.pillText)}>
-          관리자에 의해 거절된 수업입니다
+          관리자에 의해 거절된 훈련입니다
         </p>
       )}
       {/* 전체일정 — 모든 타입 실제 일정 날짜로 통일 (등록일자 제거 · 2026-06-10 사용자 지시). */}
@@ -505,6 +504,7 @@ function TournamentManageCard({ item }: { item: TournamentListItem }) {
   return (
     <ClassListCard
       href={`/tournaments/${item.id}`}
+      iceTheme
       trainingType="tournament"
       ariaLabel={`${item.name} 대회 상세 보기`}
       title={item.name}
@@ -531,6 +531,23 @@ function TournamentManageCard({ item }: { item: TournamentListItem }) {
         {formatTournamentTargetYears(item) ?? '전체'}
       </ClassCardInfoRow>
     </ClassListCard>
+  );
+}
+
+// ─── Flat 섹션 헤더 (ICETIMES) ───────────────────────
+// wallet SectionHead(iceTheme) 와 동일 17px/800 it-ink 톤 + 우측 개수 num.
+//   /director full-bleed flat 섹션 패턴과 정렬. (count 슬롯이 필요해 page-local 정의)
+function ClassSectionHead({ title, count }: { title: string; count: number }) {
+  return (
+    <div className="flex items-center gap-2 px-4 sm:px-5 pt-4 sm:pt-[18px] pb-2">
+      <h2 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
+        {title}
+      </h2>
+      {/* 시안 SectionHeader count — 15px/800 it-blue (AcademyClasses.jsx) */}
+      <span className="text-[15px] font-extrabold text-it-blue-500 dark:text-it-blue-300 tabular-nums">
+        {count}
+      </span>
+    </div>
   );
 }
 
@@ -905,7 +922,7 @@ export default function ClassManagePage() {
     ? [{ key: 'all', label: '전체' }]
     : [
         { key: 'all', label: '전체' },
-        { key: 'regular', label: '정규수업' },
+        { key: 'regular', label: '정규훈련' },
         { key: 'tournament', label: '대회' },
       ];
 
@@ -932,10 +949,10 @@ export default function ClassManagePage() {
 
   return (
     <MobileContainer hasBottomNav>
-      <SubmainAppBar title="수업 목록" />
+      <SubmainAppBar title="훈련 목록" />
 
       <main
-        className="flex-1 overflow-y-auto hide-scrollbar px-5 pt-2.5 pb-30"
+        className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck !pb-8"
         onScroll={(e) => {
           const st = e.currentTarget.scrollTop;
           const last = lastScrollTopRef.current;
@@ -944,27 +961,25 @@ export default function ClassManagePage() {
           else if (st < last - 8) setIsFabHidden(false); // 위로 스크롤 → 표시
           lastScrollTopRef.current = st;
         }}
+        aria-busy={isLoading}
       >
-        {/* [2026-06-17] 상단 전체/정규수업/대회 필터 칩 제거 — 학부모 수업목록처럼 섹션 구분. */}
-
-        {/* 수업 목록 — 정규수업/대회 섹션 구분 */}
-        <div
-          className="flex flex-col gap-3"
-          role="list"
-          aria-label="수업 목록"
-          aria-busy={isLoading}
-        >
-          {isLoading ? null : fetchError ? (
+        {/* [ICETIMES flat 재작업 2026-06-24] 시안(AcademyClasses.jsx) 구조로 전환.
+            카드 박스(px 좌우 패딩 + stripe 마커 헤더)를 제거하고 /director 와 동일하게
+            full-bleed 흰 섹션(bg-it-surface)을 8px 회색 갭(mt-2)으로 쌓는다.
+            각 섹션 헤더는 SectionHead 와 동일 17px/800 it-ink 톤 + 우측 개수.
+            수업 행은 공유 ClassListCard iceTheme(무라운드 + 하단 hairline)이 담당. */}
+        {isLoading ? null : fetchError ? (
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
             <div
               className="flex flex-col items-center justify-center py-16 animate-fade-in motion-reduce:animate-none"
               role="alert"
               aria-live="polite"
             >
-              <div className="w-16 h-16 rounded-w-pill bg-red-100 dark:bg-red-900/20 flex items-center justify-center mb-3">
-                <Icon name="error_outline" className="text-3xl text-red-500 dark:text-red-400" aria-hidden="true" />
+              <div className="w-16 h-16 rounded-w-pill bg-it-red-50 dark:bg-it-red-700/20 flex items-center justify-center mb-3">
+                <Icon name="error_outline" className="text-3xl text-it-red-500 dark:text-it-red-300" aria-hidden="true" />
               </div>
               <p className="text-card-body text-wtext-2 dark:text-wtext-4 font-semibold mb-1">
-                수업 목록을 불러오지 못했습니다
+                훈련 목록을 불러오지 못했습니다
               </p>
               <p className="text-card-meta text-wtext-3 dark:text-wtext-4 mb-4 text-center px-6 leading-relaxed">
                 일시적인 서버 오류일 수 있습니다.<br />잠시 후 다시 시도해주세요.
@@ -977,63 +992,54 @@ export default function ClassManagePage() {
                   academyIdsRef.current = null;
                   fetchClasses();
                 }}
-                aria-label="수업 목록 다시 불러오기"
-                className="px-4 py-2 text-card-body font-semibold text-ice-500 bg-ice-500/10 rounded-lg hover:bg-ice-500/20 transition-colors motion-reduce:transition-none active:brightness-95"
+                aria-label="훈련 목록 다시 불러오기"
+                className="px-4 py-2 text-card-body font-semibold text-it-blue-500 bg-it-blue-500/10 rounded-lg hover:bg-it-blue-500/20 transition-colors motion-reduce:transition-none active:brightness-95"
               >
                 다시 시도
               </button>
             </div>
-          ) : (
-            // [2026-06-17] 정규수업 / 대회 섹션 구분 — 학부모 수업목록 패턴 통일.
-            <div className="flex flex-col gap-6">
-              {/* 정규수업 섹션 */}
-              <section aria-label={isAcademyMode ? '오픈클래스' : '정규수업'}>
-                <div className="flex items-center gap-2 mb-2.5">
-                  <span
-                    className={cn('h-4 w-1 rounded-full', isAcademyMode ? 'bg-ice-500' : 'bg-emerald-500')}
-                    aria-hidden="true"
-                  />
-                  <h2 className="text-card-title font-extrabold text-wtext-1 dark:text-white">
-                    {isAcademyMode ? '오픈클래스' : '정규수업'}
-                  </h2>
-                  <span className="text-card-meta font-bold text-wtext-3 dark:text-wtext-4 tabular-nums">
-                    {sortedAndFiltered.length}
-                  </span>
+          </section>
+        ) : (
+          // [2026-06-17→06-24] 정규수업 / 대회 섹션을 full-bleed flat 섹션으로 구분.
+          <>
+            {/* 정규수업 섹션 — full-bleed 흰 패널 + hairline 행. */}
+            <section
+              className="mt-2 bg-it-surface dark:bg-it-blue-950"
+              aria-label={isAcademyMode ? '오픈클래스' : '정규훈련'}
+            >
+              <ClassSectionHead
+                title={isAcademyMode ? '오픈클래스' : '정규훈련'}
+                count={sortedAndFiltered.length}
+              />
+              {sortedAndFiltered.length > 0 ? (
+                <div role="list">
+                  {sortedAndFiltered.map((item, idx) => (
+                    <div
+                      key={`cls-${item.id}`}
+                      role="listitem"
+                      className="motion-reduce:animate-none"
+                      style={{ animationDelay: `${Math.min(idx * 40, 280)}ms` }}
+                    >
+                      <ClassCard item={item} />
+                    </div>
+                  ))}
                 </div>
-                {sortedAndFiltered.length > 0 ? (
-                  <div className="flex flex-col gap-3">
-                    {sortedAndFiltered.map((item, idx) => (
-                      <div
-                        key={`cls-${item.id}`}
-                        role="listitem"
-                        className="motion-reduce:animate-none"
-                        style={{ animationDelay: `${Math.min(idx * 40, 280)}ms` }}
-                      >
-                        <ClassCard item={item} />
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="px-1 py-6 text-card-body text-wtext-3 dark:text-wtext-4 text-center">
-                    등록된 수업이 없습니다.
-                  </p>
-                )}
-              </section>
+              ) : (
+                <p className="px-4 sm:px-5 py-6 text-card-body text-wtext-3 dark:text-wtext-4 text-center">
+                  등록된 훈련이 없습니다.
+                </p>
+              )}
+            </section>
 
-              {/* 대회 섹션 — 오픈클래스(academy) 모드는 대회 개념이 없어 숨김. */}
-              {!isAcademyMode && (
-              <section aria-label="대회">
-                <div className="flex items-center gap-2 mb-2.5">
-                  <span className="h-4 w-1 rounded-full bg-red-500" aria-hidden="true" />
-                  <h2 className="text-card-title font-extrabold text-wtext-1 dark:text-white">
-                    대회
-                  </h2>
-                  <span className="text-card-meta font-bold text-wtext-3 dark:text-wtext-4 tabular-nums">
-                    {tournaments.length}
-                  </span>
-                </div>
+            {/* 대회 섹션 — 오픈클래스(academy) 모드는 대회 개념이 없어 숨김. */}
+            {!isAcademyMode && (
+              <section
+                className="mt-2 bg-it-surface dark:bg-it-blue-950"
+                aria-label="대회"
+              >
+                <ClassSectionHead title="대회" count={tournaments.length} />
                 {tournaments.length > 0 ? (
-                  <div className="flex flex-col gap-3">
+                  <div role="list">
                     {tournaments.map((t, idx) => (
                       <div
                         key={`tnmt-${t.id}`}
@@ -1046,15 +1052,14 @@ export default function ClassManagePage() {
                     ))}
                   </div>
                 ) : (
-                  <p className="px-1 py-6 text-card-body text-wtext-3 dark:text-wtext-4 text-center">
+                  <p className="px-4 sm:px-5 py-6 text-card-body text-wtext-3 dark:text-wtext-4 text-center">
                     등록된 대회가 없습니다.
                   </p>
                 )}
               </section>
-              )}
-            </div>
-          )}
-        </div>
+            )}
+          </>
+        )}
       </main>
 
       {/* FAB — 수업 추가
@@ -1078,7 +1083,7 @@ export default function ClassManagePage() {
           bottom: 'calc(76px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))',
         }}
         className={cn(
-          'fixed right-6 z-30 w-14 h-14 bg-ice-500 hover:bg-ice-700 rounded-w-pill flex items-center justify-center shadow-sh-2 transition-all duration-200 motion-reduce:transition-none active:brightness-90',
+          'fixed right-6 z-30 w-14 h-14 bg-it-blue-500 hover:bg-it-blue-600 rounded-w-pill flex items-center justify-center shadow-sh-2 transition-all duration-200 motion-reduce:transition-none active:brightness-90',
           // 아래로 스크롤 시 FAB 를 화면 아래로 내려 카드 액션("공유")을 가리지 않음.
           isFabHidden
             ? 'translate-y-[160%] opacity-0 pointer-events-none'

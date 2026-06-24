@@ -251,9 +251,15 @@ interface Props {
    * selectedDateKey 초기값이 오늘(todayKey)이므로 onSelectionChange 는 오늘 수업을 공급한다.
    */
   headless?: boolean;
+  /**
+   * [ICETIMES Phase 2b] ICETIMES flat 테마 적용 여부. 기본 false = 기존 스타일 그대로.
+   *   true 시 흰 카드 박스(shadow) → flat it-surface 섹션 + hairline(it-line)으로 전환.
+   *   미전달 화면은 영향 0 (기존 픽셀 동일 보장).
+   */
+  iceTheme?: boolean;
 }
 
-export function ClassCalendarSection({ teamIds, academies, onSelectionChange, enabledClassIds, enabledChildId, onReady, legendVariant = 'team', headless = false }: Props) {
+export function ClassCalendarSection({ teamIds, academies, onSelectionChange, enabledClassIds, enabledChildId, onReady, legendVariant = 'team', headless = false, iceTheme = false }: Props) {
   const today = useMemo(() => new Date(), []);
   const todayKey = useMemo(() => getDateKey(today), [today]);
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
@@ -716,8 +722,22 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
   if (headless) return null;
 
   return (
-    <div className="rounded-w-xl bg-wsurface dark:bg-rink-800 shadow-sh-1 border border-wline dark:border-rink-700 overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-wline-2 dark:border-rink-700">
+    <div
+      className={cn(
+        // ICETIMES flat: 카드 박스(rounded/border/shadow) 제거 → 상위 full-bleed 섹션의
+        //   흰 배경을 그대로 사용. 기본 테마는 기존 카드 박스 유지(픽셀 동일).
+        iceTheme
+          ? ''
+          : 'rounded-w-xl border overflow-hidden bg-wsurface dark:bg-rink-800 shadow-sh-1 border-wline dark:border-rink-700',
+      )}
+    >
+      <div
+        className={cn(
+          'flex items-center justify-between py-3 border-b',
+          // ICETIMES flat: 좌우 패딩은 상위 섹션이 담당 → px 제거. 구분선 hairline(it-line).
+          iceTheme ? 'border-it-line dark:border-it-blue-900' : 'px-4 border-wline-2 dark:border-rink-700',
+        )}
+      >
         <button
           type="button"
           onClick={goToPrevMonth}
@@ -739,7 +759,7 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
         </button>
       </div>
 
-      <div className="px-4 pt-3 pb-2">
+      <div className={cn('pt-3 pb-2', iceTheme ? '' : 'px-4')}>
         <div className="mb-1 grid grid-cols-7" role="row">
           {DAY_LABELS.map((day, idx) => (
             <div
@@ -747,9 +767,9 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
               className={cn(
                 'py-1 text-center text-card-meta font-semibold',
                 colIsSunday(idx)
-                  ? 'text-flame-500'
+                  ? iceTheme ? 'text-it-red-500' : 'text-flame-500'
                   : colIsSaturday(idx)
-                  ? 'text-ice-500'
+                  ? iceTheme ? 'text-it-blue-500' : 'text-ice-500'
                   : 'text-wtext-3 dark:text-rink-300',
               )}
               role="columnheader"
@@ -788,11 +808,15 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
                   className={cn(
                     // [2026-05-16] 키보드 포커스 가시성 — focus-visible:ring-2 추가
                     //  마우스 클릭 시 ring 노이즈 없이 키보드 사용자에게만 명확한 포커스 표시.
+                    // [ICETIMES] iceTheme 시 셀(button)은 배경/ring 없이 칩(아래 span)이
+                    //   시안 KitCalendar 의 28×28 칩 시각요소(bg/inset-ring)를 담당한다.
                     'relative flex min-h-[48px] flex-col items-center justify-center rounded-w-md py-1.5 transition-colors duration-150 motion-reduce:transition-none',
                     'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-1 focus-visible:ring-offset-wsurface dark:focus-visible:ring-offset-rink-800',
-                    day.isCurrentMonth ? 'hover:bg-wline-2 dark:hover:bg-rink-700' : 'cursor-default opacity-30',
-                    isSelected && 'bg-ice-500 hover:bg-ice-600',
-                    day.isToday && !isSelected && 'ring-2 ring-inset ring-ice-500',
+                    day.isCurrentMonth
+                      ? iceTheme ? 'hover:bg-it-fill dark:hover:bg-it-blue-900' : 'hover:bg-wline-2 dark:hover:bg-rink-700'
+                      : 'cursor-default opacity-30',
+                    !iceTheme && isSelected && 'bg-ice-500 hover:bg-ice-600',
+                    !iceTheme && day.isToday && !isSelected && 'ring-2 ring-inset ring-ice-500',
                   )}
                   aria-label={`${currentMonth + 1}월 ${day.date}일${day.isToday ? ' 오늘' : ''}${hasClasses ? ` 수업 ${day.classes.length}개` : ''}`}
                   aria-selected={isSelected}
@@ -801,14 +825,20 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
                 >
                   <span
                     className={cn(
-                      'text-card-title font-semibold leading-none tabular-nums',
+                      iceTheme
+                        // 시안 KitCalendar 칩 — 28×28 rounded-8px, 13.5px/700.
+                        //   선택=it-blue-500 bg 흰글자, 오늘=inset ring 2px it-blue-400.
+                        ? 'flex h-7 w-7 items-center justify-center rounded-lg text-[13.5px] font-bold leading-none tracking-[-0.02em] tabular-nums'
+                        : 'text-card-title font-semibold leading-none tabular-nums',
+                      iceTheme && isSelected && 'bg-it-blue-500 text-white',
+                      iceTheme && day.isToday && !isSelected && 'ring-2 ring-inset ring-it-blue-400',
                       isSelected
                         ? 'text-white'
                         : day.isCurrentMonth
                         ? colIsSunday(dayOfWeek)
-                          ? 'text-flame-500'
+                          ? iceTheme ? 'text-it-red-500' : 'text-flame-500'
                           : colIsSaturday(dayOfWeek)
-                          ? 'text-ice-500'
+                          ? iceTheme ? 'text-it-blue-500' : 'text-ice-500'
                           : 'text-wtext-1 dark:text-white'
                         : 'text-wtext-4 dark:text-rink-500',
                     )}
@@ -822,7 +852,8 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
                     types={day.isCurrentMonth && hasClasses ? day.trainingTypes : []}
                     size="sm"
                     tone={isSelected ? 'selected' : 'default'}
-                    className={cn('mt-1', isSelected && '[&_span]:bg-white/85')}
+                    iceTheme={iceTheme}
+                    className={cn(iceTheme ? 'mt-0.5' : 'mt-1', isSelected && '[&_span]:bg-white/85')}
                   />
                 </button>
               );
@@ -832,7 +863,11 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
       </div>
 
       <CalendarLegend
-        className="justify-center px-4 py-3 border-t border-wline-2 dark:border-rink-700"
+        className={cn(
+          'justify-center py-3 border-t',
+          // ICETIMES flat: 좌우 패딩 상위 섹션 담당 → px 제거. 구분선 hairline(it-line).
+          iceTheme ? 'border-it-line dark:border-it-blue-900' : 'px-4 border-wline-2 dark:border-rink-700',
+        )}
         variant={legendVariant}
       />
     </div>
@@ -886,6 +921,12 @@ interface SelectedDayClassListProps {
   /** 외부 박스(카드) 제거 — 상위에서 통합 박스로 감쌀 때 사용(주간 일정 통합 리스트). */
   bare?: boolean;
   /**
+   * [ICETIMES Phase 2b] ICETIMES flat 테마. 기본 false = 기존 스타일 그대로.
+   *   true 시 카드 박스 shadow 제거 + flat it-surface/it-line, 행 hover/구분선 it 톤 적용.
+   *   강조색(출석 버튼 ice-500 등)은 it-blue 로 매핑. child variant 의 WCAG AAA 규격은 불변.
+   */
+  iceTheme?: boolean;
+  /**
    * [Phase B] 후불(POSTPAID) 일정의 scheduleId 집합 — 출석 모달 "결제권 차감" 문구 분기용.
    * 포함된 scheduleId(=CalendarClass.id)는 차감 안내·잔여 결제권 표기를 생략한다(사후 정산).
    */
@@ -909,6 +950,7 @@ export function SelectedDayClassList({
   variant = 'default',
   bare = false,
   postpaidScheduleIds,
+  iceTheme = false,
 }: SelectedDayClassListProps) {
   const { navigate } = useNavigation();
   const { modal } = useModal();
@@ -1009,8 +1051,20 @@ export function SelectedDayClassList({
 
   if (classes.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-1.5 rounded-w-xl bg-wsurface dark:bg-rink-800 shadow-sh-1 border border-wline dark:border-rink-700 p-5">
-        <div className="flex h-10 w-10 items-center justify-center rounded-w-pill bg-wline-2 dark:bg-rink-700">
+      <div
+        className={cn(
+          'flex flex-col items-center gap-1.5 p-5',
+          // ICETIMES flat: 카드 박스(rounded/border/shadow) 제거 → 상위 흰 섹션 면 사용.
+          //   기본 테마는 기존 카드 박스 유지(픽셀 동일 — 타 역할 회귀 0).
+          iceTheme
+            ? ''
+            : 'rounded-w-xl border bg-wsurface dark:bg-rink-800 shadow-sh-1 border-wline dark:border-rink-700',
+        )}
+      >
+        <div className={cn(
+          'flex h-10 w-10 items-center justify-center rounded-w-pill',
+          iceTheme ? 'bg-it-fill dark:bg-it-blue-900' : 'bg-wline-2 dark:bg-rink-700',
+        )}>
           <Icon name="event_busy" className="text-xl text-wtext-3 dark:text-rink-300" aria-hidden="true" />
         </div>
         <p className="text-card-title text-wtext-3 dark:text-rink-300">{MESSAGES.dashboard.noSchedule}</p>
@@ -1081,8 +1135,22 @@ export function SelectedDayClassList({
   }
 
   return (
-    <div className={bare ? undefined : 'rounded-w-xl bg-wsurface dark:bg-rink-800 shadow-sh-1 border border-wline dark:border-rink-700 overflow-hidden'}>
-      <ul className="divide-y divide-wline-2 dark:divide-rink-700">
+    <div
+      className={
+        bare
+          ? undefined
+          : cn(
+              // ICETIMES flat: 카드 박스 제거 → 상위 흰 섹션 면 사용. 기본 테마는 기존 카드 유지.
+              iceTheme
+                ? ''
+                : 'rounded-w-xl border overflow-hidden bg-wsurface dark:bg-rink-800 shadow-sh-1 border-wline dark:border-rink-700',
+            )
+      }
+    >
+      <ul className={cn(
+        'divide-y',
+        iceTheme ? 'divide-it-line dark:divide-it-blue-900' : 'divide-wline-2 dark:divide-rink-700',
+      )}>
         {classes.map((cls) => {
           // ─── Phase 1: 출석 상태 4-state 분기 ───
           const dateKey = cls.scheduledDate
@@ -1139,42 +1207,63 @@ export function SelectedDayClassList({
           const typeStyle = resolveTypeStyle(cls.type);
           const cardBody = (
             <>
-              {/* 행 디자인 — 통합캘린더 ScheduleRow 토큰과 일치(default). child 는 WCAG AAA 유지. */}
+              {/* 행 디자인 — 통합캘린더 ScheduleRow 토큰과 일치(default). child 는 WCAG AAA 유지.
+                   [ICETIMES] iceTheme 시 시안 KitScheduleRow colorbar — w-1 rounded-[3px]. */}
               <div className={cn(
-                'mt-1 w-1 shrink-0 rounded-full',
+                'mt-1 w-1 shrink-0',
+                !isChild && iceTheme ? 'rounded-[3px]' : 'rounded-full',
                 isChild ? 'h-14' : 'min-h-[44px]',
                 typeStyle.stripe,
               )} />
               <div className="min-w-0 flex-1">
-                <div className={cn('flex items-center gap-2', isChild ? 'mb-2' : 'mb-1')}>
+                <div className={cn(
+                  'flex items-center',
+                  isChild ? 'gap-2 mb-2' : !isChild && iceTheme ? 'gap-[7px] mb-[3px]' : 'gap-2 mb-1',
+                )}>
+                  {/* [ICETIMES] iceTheme chip — 11.5px/700 tint14%(pillBg/pillText 토큰 유지). */}
                   <span className={cn(
-                    'rounded-full font-semibold',
-                    isChild ? 'px-2.5 py-1 text-card-body' : 'px-2 py-0.5 text-xs',
+                    'rounded-full',
+                    isChild
+                      ? 'px-2.5 py-1 text-card-body font-semibold'
+                      : !isChild && iceTheme
+                        ? 'px-[7px] py-0.5 text-[11.5px] font-bold'
+                        : 'px-2 py-0.5 text-xs font-semibold',
                     typeStyle.pillBg,
                     typeStyle.pillText,
                   )}>
                     {typeStyle.label}
                   </span>
+                  {/* [ICETIMES] iceTheme time — 13px/700. */}
                   <span className={cn(
                     'tabular-nums',
                     isChild
                       ? 'font-num font-semibold text-card-body text-wtext-2 dark:text-rink-100'
-                      : 'text-xs text-wtext-3 dark:text-rink-300',
+                      : !isChild && iceTheme
+                        ? 'text-[13px] font-bold text-wtext-2 dark:text-rink-100'
+                        : 'text-xs text-wtext-3 dark:text-rink-300',
                   )}>
                     {cls.time}
                   </span>
                 </div>
+                {/* [ICETIMES] iceTheme title — 15px/700. */}
                 <p className={cn(
                   'truncate text-wtext-1 dark:text-white',
-                  isChild ? 'text-card-title font-black' : 'text-sm font-bold',
+                  isChild
+                    ? 'text-card-title font-black'
+                    : !isChild && iceTheme
+                      ? 'text-[15px] font-bold'
+                      : 'text-sm font-bold',
                 )}>
                   {cls.title}
                 </p>
+                {/* [ICETIMES] iceTheme location — place icon 14 + 12.5px text. */}
                 <div className={cn(
                   'flex items-center gap-3',
                   isChild
                     ? 'mt-1.5 text-card-body font-medium text-wtext-2 dark:text-rink-100'
-                    : 'mt-1 text-xs text-wtext-3 dark:text-rink-300',
+                    : !isChild && iceTheme
+                      ? 'mt-0.5 text-[12.5px] text-wtext-3 dark:text-rink-300'
+                      : 'mt-1 text-xs text-wtext-3 dark:text-rink-300',
                 )}>
                   {cls.coach && (
                     <span className="flex items-center gap-1 truncate">
@@ -1217,7 +1306,8 @@ export function SelectedDayClassList({
                   type="button"
                   onClick={() => navigate(cardHref)}
                   className={cn(
-                    'w-full flex items-start gap-3 text-left rounded-w-md hover:bg-wline-2/50 dark:hover:bg-rink-700/50 transition-colors duration-150 motion-reduce:transition-none',
+                    'w-full flex items-start gap-3 text-left rounded-w-md transition-colors duration-150 motion-reduce:transition-none',
+                    iceTheme ? 'hover:bg-it-fill dark:hover:bg-it-blue-900' : 'hover:bg-wline-2/50 dark:hover:bg-rink-700/50',
                     isChild ? '-mx-1.5 px-1.5 py-1.5' : '-mx-1 px-1 py-1',
                   )}
                   aria-label={cardAriaLabel}
@@ -1276,8 +1366,13 @@ export function SelectedDayClassList({
                       }}
                       disabled={isSubmittingThisCard}
                       className={cn(
-                        'inline-flex items-center gap-1.5 rounded-w-md bg-ice-500 shadow-sm',
-                        'hover:bg-ice-700 active:brightness-95 transition-colors motion-reduce:transition-none',
+                        'inline-flex items-center gap-1.5 rounded-w-md shadow-sm',
+                        // [ICETIMES] 시안 ParentHome 출석하기 = accent(it-red) sm.
+                        //   child 는 WCAG AAA 메인 CTA 로 it-blue 유지(시안에 child 정의 없음).
+                        iceTheme
+                          ? isChild ? 'bg-it-blue-500 hover:bg-it-blue-600' : 'bg-it-red-500 hover:bg-it-red-600'
+                          : 'bg-ice-500 hover:bg-ice-700',
+                        'active:brightness-95 transition-colors motion-reduce:transition-none',
                         'disabled:cursor-not-allowed disabled:opacity-60',
                         isChild
                           ? 'w-full min-h-[72px] justify-center px-4 py-3 text-card-title-child font-bold !text-white gap-2'

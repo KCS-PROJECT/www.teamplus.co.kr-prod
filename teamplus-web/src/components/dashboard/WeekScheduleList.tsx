@@ -28,6 +28,11 @@ interface Props {
   todayKey?: string;
   /** 날짜 그룹 하나의 수업 리스트 렌더 (SelectedDayClassList ... bare) */
   renderDayClasses: (classes: CalendarClass[]) => ReactNode;
+  /**
+   * [ICETIMES Phase 2b] ICETIMES flat 테마. 기본 false = 기존 스타일 그대로.
+   *   true 시 외부 카드 shadow 제거 + flat it-surface/it-line, 오늘 배지 it-blue 강조.
+   */
+  iceTheme?: boolean;
 }
 
 function getTodayKey(): string {
@@ -41,7 +46,7 @@ function formatDayHeading(dateKey: string): string {
   return `${d.getMonth() + 1}월 ${d.getDate()}일 (${wd})`;
 }
 
-export function WeekScheduleList({ groups, todayKey: todayKeyProp, renderDayClasses }: Props) {
+export function WeekScheduleList({ groups, todayKey: todayKeyProp, renderDayClasses, iceTheme = false }: Props) {
   const [showPast, setShowPast] = useState(false);
   const todayKey = todayKeyProp ?? getTodayKey();
 
@@ -53,18 +58,29 @@ export function WeekScheduleList({ groups, todayKey: todayKeyProp, renderDayClas
     const isToday = g.dateKey === todayKey;
     return (
       <div key={g.dateKey} className="pt-3 pb-1">
+        {/* [ICETIMES] iceTheme DayGroup 날짜 — 14px/800. 시안 DayGroup: 날짜 라벨은 ink,
+             '오늘' 강조는 red pill 로만 (일정화면 ScheduleRangeList 와 통일). */}
         <span
           className={cn(
-            'flex items-center gap-1.5 px-4 mb-1 text-card-meta font-extrabold tracking-[-0.01em]',
-            isToday ? 'text-ice-500' : 'text-wtext-2 dark:text-rink-100',
+            'flex items-center gap-1.5 px-4 mb-1 tracking-[-0.01em]',
+            iceTheme ? 'text-[14px] font-extrabold' : 'text-card-meta font-extrabold',
+            isToday
+              ? iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-ice-500'
+              : 'text-wtext-2 dark:text-rink-100',
           )}
         >
+          {/* ICETIMES(시안): 날짜 → '오늘' pill 순서. 기존(false): pill → 날짜. */}
+          {iceTheme && formatDayHeading(g.dateKey)}
           {isToday && (
-            <span className="rounded-w-pill bg-ice-500/10 dark:bg-ice-500/15 px-1.5 py-0.5 text-[11px] font-bold text-ice-500">
+            <span className={cn(
+              iceTheme
+                ? 'rounded-w-pill bg-it-red-500 px-2 py-[2px] text-[11px] font-extrabold text-white'
+                : 'rounded-w-pill bg-ice-500/10 dark:bg-ice-500/15 px-1.5 py-0.5 text-[11px] font-bold text-ice-500',
+            )}>
               {MESSAGES.dashboard.weekSchedule.todayBadge}
             </span>
           )}
-          {formatDayHeading(g.dateKey)}
+          {!iceTheme && formatDayHeading(g.dateKey)}
         </span>
         {renderDayClasses(g.classes)}
       </div>
@@ -72,13 +88,23 @@ export function WeekScheduleList({ groups, todayKey: todayKeyProp, renderDayClas
   };
 
   return (
-    <div className="overflow-hidden rounded-w-xl border border-wline bg-wsurface shadow-sh-1 divide-y divide-wline-2 dark:border-rink-700 dark:bg-rink-800 dark:divide-rink-700">
+    <div className={cn(
+      'divide-y',
+      // ICETIMES flat: 카드 박스(rounded/border/shadow) 제거 → 상위 full-bleed 섹션의
+      //   흰 배경을 그대로 사용. 행 사이 hairline(it-line)만 유지. 기본 테마는 기존 카드 유지.
+      iceTheme
+        ? 'divide-it-line dark:divide-it-blue-900'
+        : 'overflow-hidden rounded-w-xl border border-wline bg-wsurface shadow-sh-1 divide-wline-2 dark:border-rink-700 dark:bg-rink-800 dark:divide-rink-700',
+    )}>
       {pastGroups.length > 0 && (
         <button
           type="button"
           onClick={() => setShowPast((v) => !v)}
           aria-expanded={showPast}
-          className="flex w-full items-center justify-center gap-1 px-4 py-2.5 text-card-meta font-semibold text-wtext-3 dark:text-rink-300 hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors duration-150 motion-reduce:transition-none"
+          className={cn(
+            'flex w-full items-center justify-center gap-1 px-4 py-2.5 text-card-meta font-semibold text-wtext-3 dark:text-rink-300 transition-colors duration-150 motion-reduce:transition-none',
+            iceTheme ? 'hover:bg-it-fill dark:hover:bg-it-blue-900' : 'hover:bg-wline-2 dark:hover:bg-rink-700',
+          )}
         >
           <Icon
             name={showPast ? 'expand_less' : 'expand_more'}

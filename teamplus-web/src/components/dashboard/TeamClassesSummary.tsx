@@ -135,6 +135,11 @@ interface Props {
   classesCategory?: 'regular' | 'open';
   /** 대회 포함 여부 — 기본 true. 오픈클래스(academy)는 false(대회 개념 없음). */
   showTournament?: boolean;
+  /**
+   * [ICETIMES Phase 2b] ICETIMES flat 테마. 기본 false = 기존 스타일 그대로.
+   *   true 시 카드 shadow 제거 + flat it-surface/it-line, 행 hover/구분선 it 톤 적용.
+   */
+  iceTheme?: boolean;
 }
 
 export function TeamClassesSummary({
@@ -146,6 +151,7 @@ export function TeamClassesSummary({
   classesEndpoint = '/classes',
   classesCategory,
   showTournament = true,
+  iceTheme = false,
 }: Props) {
   const { navigate } = useNavigation();
   const [items, setItems] = useState<SummaryItem[]>([]);
@@ -266,18 +272,29 @@ export function TeamClassesSummary({
     onReadyRef.current?.(true);
   }, [isLoading]);
 
+  // ICETIMES flat: 섹션 자체가 full-bleed 흰 면(8px 회색 갭=mt-2). 내부 카드 박스/좌우 패딩 제거.
+  //   기본 테마는 기존 px 래퍼 + 카드 박스 유지(픽셀 동일 — 타 역할 회귀 0).
+  const Wrapper = iceTheme ? 'section' : 'div';
   return (
-    <>
+    <Wrapper className={cn(iceTheme && 'mt-2 bg-it-surface dark:bg-it-blue-950')}>
       <SectionHead
         title={MESSAGES.dashboard.links.classList}
         action={`${MESSAGES.dashboard.viewAll} ›`}
         onActionClick={() => navigate(targetPath)}
+        iceTheme={iceTheme}
       />
-      <div className="px-4 sm:px-5">
-        <div className="rounded-w-xl bg-wsurface dark:bg-rink-800 shadow-sh-1 border border-wline dark:border-rink-700 overflow-hidden">
+      <div className={cn(iceTheme ? '' : 'px-4 sm:px-5')}>
+        <div className={cn(
+          iceTheme
+            ? ''
+            : 'rounded-w-xl border overflow-hidden bg-wsurface dark:bg-rink-800 shadow-sh-1 border-wline dark:border-rink-700',
+        )}>
           {isLoading ? null : items.length === 0 ? (
             <div className="px-5 py-8 flex flex-col items-center gap-2 text-center">
-              <div className="flex h-11 w-11 items-center justify-center rounded-w-pill bg-wline-2 dark:bg-rink-700">
+              <div className={cn(
+                'flex h-11 w-11 items-center justify-center rounded-w-pill',
+                iceTheme ? 'bg-it-fill dark:bg-it-blue-900' : 'bg-wline-2 dark:bg-rink-700',
+              )}>
                 <Icon
                   name="sports_hockey"
                   className="text-2xl text-wtext-3 dark:text-rink-300"
@@ -289,7 +306,10 @@ export function TeamClassesSummary({
               </p>
             </div>
           ) : (
-            <ul className="divide-y divide-wline-2 dark:divide-rink-700">
+            <ul className={cn(
+              'divide-y',
+              iceTheme ? 'divide-it-line dark:divide-it-blue-800' : 'divide-wline-2 dark:divide-rink-700',
+            )}>
               {items.map((item) => {
                 const isTournament = item.kind === 'tournament';
                 // 수업: 타입 배지 / 대회: 'tournament' 고정 배지(red).
@@ -311,7 +331,10 @@ export function TeamClassesSummary({
                     <button
                       type="button"
                       onClick={() => navigate(href)}
-                      className="w-full px-4 py-3 flex items-start gap-3 text-left hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors duration-150 motion-reduce:transition-none"
+                      className={cn(
+                        'w-full px-4 py-3 flex items-start gap-3 text-left transition-colors duration-150 motion-reduce:transition-none',
+                        iceTheme ? 'hover:bg-it-fill dark:hover:bg-it-blue-900' : 'hover:bg-wline-2 dark:hover:bg-rink-700',
+                      )}
                       aria-label={ariaLabel}
                     >
                       <div className="min-w-0 flex-1">
@@ -325,7 +348,15 @@ export function TeamClassesSummary({
                           >
                             {typeLabel}
                           </span>
-                          <p className="truncate text-card-title font-bold text-wtext-1 dark:text-white">
+                          <p
+                            className={cn(
+                              'truncate font-bold',
+                              // ICETIMES(true): 시안 ListRow title 15.5px/700/-0.01em.
+                              iceTheme
+                                ? 'text-[15.5px] tracking-[-0.01em] text-it-ink-800 dark:text-white'
+                                : 'text-card-title text-wtext-1 dark:text-white',
+                            )}
+                          >
                             {item.title}
                           </p>
                           {item.enrolled && (
@@ -337,7 +368,12 @@ export function TeamClassesSummary({
                       </div>
                       <Icon
                         name="chevron_right"
-                        className="mt-2 text-[18px] text-wtext-4 dark:text-rink-500 shrink-0"
+                        className={cn(
+                          'shrink-0 text-[18px]',
+                          iceTheme
+                            ? 'mt-3 text-it-ink-300 dark:text-it-ink-400'
+                            : 'mt-2 text-wtext-4 dark:text-rink-500',
+                        )}
                         aria-hidden="true"
                       />
                     </button>
@@ -348,6 +384,6 @@ export function TeamClassesSummary({
           )}
         </div>
       </div>
-    </>
+    </Wrapper>
   );
 }
