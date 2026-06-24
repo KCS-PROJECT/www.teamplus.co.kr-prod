@@ -84,7 +84,8 @@ function HeroCard({
           background: "linear-gradient(135deg, #1a2240 0%, #0f1426 100%)",
           borderRadius: 22,
           padding: "22px 22px 24px",
-          minHeight: 200,
+          // stats 없을 때(현재 마이페이지)는 내용 높이에 맞춤 — minHeight 고정 해제
+          minHeight: stats.length > 0 ? 200 : undefined,
           boxShadow: "0 14px 30px rgba(15,20,38,0.25)",
         }}
       >
@@ -880,11 +881,7 @@ export default function MyPage() {
         name={displayName ? `${displayName}님` : `${roleLabel}님`}
         info={`${roleLabel} 계정 · TEAMPLUS`}
         logoUrl={teamLogoUrl}
-        stats={[
-          { label: "누적 수업", value: "—", unit: "회" },
-          { label: "포인트", value: "—", unit: "P" },
-          { label: "활동 기간", value: "—" },
-        ]}
+        stats={[]}
       />
 
       <SectionLabel>내 정보</SectionLabel>

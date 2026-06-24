@@ -224,10 +224,9 @@ export default function TeamListPage() {
 
   // [BUG FIX 2026-05-19 W3 #5] 가입 신청 처리 페이지로 라우팅 (팀 상세가 아닌 승인 페이지).
   //   기존: handleCardClick → /team/:id (팀 상세로 이동, 가입 신청 처리 UI 없음).
-  //   변경: 역할별 가입 신청 처리 경로로 이동.
-  //     director / academy_director / admin → /director-approvals (감독 승인 페이지)
-  //     coach → /approval (coach (member) 그룹 승인 페이지)
-  //     기타 → /team/:id fallback (가입 신청 처리 권한이 없는 경우 팀 상세로 fallback).
+  //   [2026-06-23 통합] 매니저(director/academy_director/admin/coach) 전원 → /director-approvals
+  //     단일 승인 페이지. 코치 전용 /approval 분기 제거(전 계층 COACH 권한 보강으로 C1 해소).
+  //     기타 역할 → /team/:id fallback (가입 신청 처리 권한 없음).
   //   [수정 2026-05-21 v3] pending coach 차단 — 본인 멤버십이 승인되지 않은 상태에서
   //   다른 가입 신청을 처리할 권한이 없으므로 안내 토스트만 노출하고 navigate 차단.
   const handlePendingClick = useCallback(
@@ -237,10 +236,13 @@ export default function TeamListPage() {
         return;
       }
       const role = (user?.userType ?? '').toLowerCase();
-      if (role === 'director' || role === 'academy_director' || role === 'admin') {
+      if (
+        role === 'director' ||
+        role === 'academy_director' ||
+        role === 'admin' ||
+        role === 'coach'
+      ) {
         navigate('/director-approvals');
-      } else if (role === 'coach') {
-        navigate('/approval');
       } else {
         navigate(`/team/${teamId}`);
       }

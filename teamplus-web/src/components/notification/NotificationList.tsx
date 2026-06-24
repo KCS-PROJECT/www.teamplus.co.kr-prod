@@ -2,7 +2,7 @@
 
 import { NotificationItem } from './NotificationItem';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { NotificationGroup } from '@/types/notification';
+import { Notification, NotificationGroup } from '@/types/notification';
 import { cn } from '@/lib/utils';
 
 interface NotificationListProps {
@@ -12,6 +12,8 @@ interface NotificationListProps {
   onLoadMore?: () => void;
   onRead?: (id: string) => void;
   onDelete?: (id: string) => void;
+  /** 알림 클릭 시 호출 — actionable(data.href) 알림의 화면 이동에 사용. */
+  onItemClick?: (notification: Notification) => void;
   enableSwipe?: boolean;
   emptyVariant?: 'notifications' | 'filter';
   onEmptyAction?: () => void;
@@ -51,12 +53,13 @@ export function NotificationList({
   onLoadMore,
   onRead,
   onDelete,
+  onItemClick,
   enableSwipe = true,
   emptyVariant = 'notifications',
   onEmptyAction,
 }: NotificationListProps) {
-  // [2026-06-18 사용자 직접 지시] 알림 카드는 '정보 표시 전용' — 클릭 시 페이지 이동 제거.
-  //   (탭하면 읽음 처리만 수행 · 이동 없음. 이동 경로가 불명확하다는 피드백 반영.)
+  // 알림 클릭 동작 — data.href 있는 actionable 알림(가입 승인 요청 등)만 해당 화면으로 이동,
+  //   나머지 정보성 알림은 읽음 처리만 수행(이동 없음). 이동은 onItemClick(상위 페이지)이 결정.
 
   if (isLoading && groups.length === 0) {
     return null;
@@ -103,6 +106,7 @@ export function NotificationList({
                   notification={notification}
                   onRead={onRead}
                   onDelete={onDelete}
+                  onClick={onItemClick}
                   enableSwipe={enableSwipe}
                   posInSet={sectionStart + idx + 1}
                   setSize={totalCount}
