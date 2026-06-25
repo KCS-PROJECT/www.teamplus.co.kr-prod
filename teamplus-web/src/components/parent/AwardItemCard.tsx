@@ -97,6 +97,12 @@ export interface AwardItemCardProps {
   onClick?: (award: PlayerAward) => void;
   /** 추가 클래스 (도피 해치 · 사용 자제) */
   className?: string;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 카드 박스(rounded-xl/shadow/외곽 border) → it-* 토큰 + 트로피 박스 + 유형
+   *   배지를 it-blue 톤으로 통일. (children/[childId]/awards · profile-card 호출처만 전달)
+   */
+  iceTheme?: boolean;
 }
 
 export function AwardItemCard({
@@ -104,6 +110,7 @@ export function AwardItemCard({
   mode,
   onClick,
   className,
+  iceTheme = false,
 }: AwardItemCardProps) {
   const badgeClass = getAwardTypeBadgeClass(award.awardType);
   const icon = getAwardTypeIcon(award.awardType);
@@ -114,6 +121,105 @@ export function AwardItemCard({
   const handleClick = interactive
     ? () => onClick!(award)
     : undefined;
+
+  // ── [ICETIMES] preview 모드 — hairline 행 톤. 박스 유지하되 it-* 토큰으로 통일. ──
+  if (iceTheme && mode === 'preview') {
+    const PreviewWrapper: React.ElementType = interactive ? 'button' : 'div';
+    return (
+      <PreviewWrapper
+        type={interactive ? 'button' : undefined}
+        onClick={handleClick}
+        className={cn(
+          'w-full text-left rounded-w-md border border-it-line dark:border-it-blue-900 bg-it-surface dark:bg-it-blue-950 px-3 py-2.5',
+          interactive &&
+            'hover:border-it-blue-500/40 transition-colors motion-reduce:transition-none active:bg-it-fill dark:active:bg-rink-900/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40',
+          className,
+        )}
+      >
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-w-pill text-[11px] font-bold bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-500/15 dark:text-it-blue-300">
+            <Icon name={icon} size={13} aria-hidden="true" />
+            {label}
+          </span>
+          <span className="text-[11px] text-it-ink-400 dark:text-rink-300 tabular-nums shrink-0">
+            {date}
+          </span>
+        </div>
+        <p className="text-card-body font-bold text-it-ink-900 dark:text-white truncate">
+          {award.awardName}
+        </p>
+        {award.awardedBy && (
+          <p className="text-[11px] text-it-ink-400 dark:text-rink-300 mt-0.5 truncate">
+            {award.awardedBy}
+          </p>
+        )}
+      </PreviewWrapper>
+    );
+  }
+
+  // ── [ICETIMES] page 모드 — flat(트로피 박스 + hairline 행). awards page-local 톤 일치. ──
+  if (iceTheme && mode === 'page') {
+    const PageWrapper: React.ElementType = interactive ? 'button' : 'div';
+    return (
+      <PageWrapper
+        type={interactive ? 'button' : undefined}
+        onClick={handleClick}
+        className={cn(
+          'w-full text-left flex items-start gap-3 rounded-w-md border border-it-line dark:border-it-blue-900 bg-it-surface dark:bg-it-blue-950 px-4 py-4',
+          interactive &&
+            'transition-colors motion-reduce:transition-none active:bg-it-fill dark:active:bg-rink-900/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40',
+          className,
+        )}
+      >
+        {/* 트로피 아이콘 박스 — 38×38 r10 / it-fill / hairline */}
+        <span className="w-[38px] h-[38px] shrink-0 grid place-items-center rounded-[10px] bg-it-fill dark:bg-rink-900 border border-it-line dark:border-it-blue-900 text-it-blue-500">
+          <Icon name={icon} size={18} aria-hidden="true" />
+        </span>
+
+        <span className="flex-1 min-w-0">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-w-pill text-[11px] font-bold bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-500/15 dark:text-it-blue-300">
+            <Icon name={icon} size={13} aria-hidden="true" />
+            {label}
+          </span>
+          <span className="block mt-1.5 text-[15.5px] font-bold text-it-ink-900 dark:text-white tracking-[-0.01em] leading-snug">
+            {award.awardName}
+          </span>
+          {award.description && (
+            <span className="block mt-0.5 text-[13px] font-medium text-it-ink-500 dark:text-rink-300 line-clamp-2">
+              {award.description}
+            </span>
+          )}
+          <span className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-card-meta text-it-ink-500 dark:text-rink-300">
+            <span className="inline-flex items-center gap-1 tabular-nums">
+              <Icon name="calendar_today" size={12} aria-hidden="true" />
+              {date}
+            </span>
+            {award.season && (
+              <span className="inline-flex items-center gap-1 tabular-nums">
+                <Icon name="date_range" size={12} aria-hidden="true" />
+                {award.season}
+              </span>
+            )}
+            {award.awardedBy && (
+              <span className="inline-flex items-center gap-1">
+                <Icon name="person" size={12} aria-hidden="true" />
+                {award.awardedBy}
+              </span>
+            )}
+          </span>
+        </span>
+
+        {interactive && (
+          <Icon
+            name="chevron_right"
+            size={18}
+            className="shrink-0 mt-1 text-it-ink-300 dark:text-rink-500"
+            aria-hidden="true"
+          />
+        )}
+      </PageWrapper>
+    );
+  }
 
   // ── preview 모드 (profile-card 박스 안 컴팩트 미리보기) ──────────
   if (mode === 'preview') {

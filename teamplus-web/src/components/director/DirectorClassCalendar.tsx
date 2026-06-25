@@ -373,7 +373,7 @@ export function DirectorClassCalendar({ teamIds, onSelectionChange }: Props) {
         style={{ marginTop: 10, paddingTop: 10, gap: 14 }}
       >
         {[
-          { label: '정규수업', color: 'var(--c-mint-500, #00d4a8)' },
+          { label: '정규훈련', color: 'var(--c-mint-500, #00d4a8)' },
           { label: '오픈클래스', color: 'var(--c-ice-500, #2f5fff)' },
           { label: '대회', color: 'var(--c-flame-500, #ff5a36)' },
         ].map((l) => (

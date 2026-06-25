@@ -8,8 +8,6 @@ import { PageAppBar } from '@/components/layout/PageAppBar';
 import { useToast } from '@/components/ui/Toast';
 import { useNavigation } from '@/components/ui/NavLink';
 import { RsvpResponseCard } from '@/components/rsvp/RsvpResponseCard';
-import { RsvpSummaryCard } from '@/components/rsvp/RsvpSummaryCard';
-import { CategoryChipsRow, type CategoryChipItem } from '@/components/shared/CategoryChipsRow';
 import { MESSAGES } from '@/lib/messages';
 import { cn } from '@/lib/utils';
 import type { RsvpScheduleInfo, RsvpSummary, RsvpStatus } from '@/types/rsvp';
@@ -197,10 +195,11 @@ export default function RsvpPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title="RSVP 응답" forceNative />
 
-      {/* Child Filter Tabs */}
+      {/* Child Filter Tabs — [ICETIMES flat 2026-06-25] /report 자녀 세그먼트 패턴 정합.
+          회색 캔버스 위 it-fill 세그먼트, active 흰 surface. 미응답 배지는 it-red. */}
       {childrenData.length > 1 && (
-        <div className="px-4 pt-4">
-          <div className="flex gap-2 p-1 bg-wline-2 dark:bg-rink-800 rounded-lg">
+        <div className="bg-it-canvas dark:bg-puck px-4 pt-4" role="tablist" aria-label="자녀 선택">
+          <div className="flex gap-2 p-1 bg-it-fill dark:bg-rink-800 rounded-lg">
             {childrenData.map((child, index) => {
               const pendingCount = child.pending.filter(
                 (item) => getEffectiveStatus(item.schedule.scheduleId, item.myStatus) === 'NO_RESPONSE'
@@ -210,21 +209,22 @@ export default function RsvpPage() {
                 <button
                   key={child.childId}
                   type="button"
+                  role="tab"
                   onClick={() => setSelectedChildIndex(index)}
                   aria-label={`${child.childName}${pendingCount > 0 ? ` 응답 대기 ${pendingCount}건` : ''}`}
-                  aria-pressed={selectedChildIndex === index}
+                  aria-selected={selectedChildIndex === index}
                   className={cn(
-                    'flex-1 relative min-h-[48px] py-2.5 px-3 text-card-body font-semibold rounded-lg transition-all motion-reduce:transition-none',
+                    'flex-1 relative min-h-[44px] py-2.5 px-3 text-[14.5px] font-bold rounded-[9px] transition-all motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40',
                     selectedChildIndex === index
-                      ? 'bg-white dark:bg-rink-700 shadow-sm text-wtext-1 dark:text-white'
-                      : 'text-wtext-3 dark:text-rink-300 hover:text-wtext-2 dark:hover:text-rink-100'
+                      ? 'bg-it-surface dark:bg-rink-700 shadow-sh-1 text-it-ink-900 dark:text-white'
+                      : 'text-it-ink-500 dark:text-rink-300 hover:text-it-ink-700 dark:hover:text-rink-100'
                   )}
                 >
                   {child.childName}
                   {pendingCount > 0 && (
                     <span
                       aria-hidden="true"
-                      className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-w-pill bg-red-500 text-white text-card-meta font-bold px-1"
+                      className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-w-pill bg-it-red-500 text-white text-card-meta font-bold px-1 tabular-nums"
                     >
                       {pendingCount}
                     </span>
@@ -236,38 +236,68 @@ export default function RsvpPage() {
         </div>
       )}
 
-      {/* Filter Tabs — [W3.B 2026-05-18 / Task #1] 카테고리 잘림 회귀 수정.
-          이전: 자체 `flex gap-1.5 overflow-x-auto hide-scrollbar` — 외부에서만 가로 스크롤을
-                허용해도 내부 자식이 `min-w-max` 없이 늘어나므로 4개 칩이 좁은 화면에서 잘림.
-          조치: `CategoryChipsRow` (SoT — 외부 overflow-x-auto + 내부 min-w-max 패턴) 로
-                대체하여 가로 스크롤 잘림 0건. 외부 `paddingX="px-4"` 로 페이지 grid 정합. */}
-      <CategoryChipsRow
-        ariaLabel="RSVP 상태 필터"
-        paddingX="px-4"
-        activeKey={activeFilter}
-        onChange={(key) => setActiveFilter(key as RsvpFilter)}
-        chips={FILTER_TABS.map<CategoryChipItem>((tab) => ({
-          key: tab.key,
-          label: tab.label,
-          icon: tab.icon,
-          count: filterCounts[tab.key],
-        }))}
-      />
+      {/* Filter Tabs — [ICETIMES flat 2026-06-25] /report 리포트 탭 패턴 정합.
+          회색 캔버스 위 가로 스크롤 탭, active it-blue fill. CategoryChipsRow(공유 SoT) 는
+          가로 스크롤 잘림 차단 패턴(외부 overflow-x-auto + 내부 min-w-max) 을 page-local 로
+          1:1 재현하여 회귀 0 (4개 칩 좁은 화면 잘림 없음). */}
+      <div className="bg-it-canvas dark:bg-puck px-4 pt-3 pb-1" role="tablist" aria-label="RSVP 상태 필터">
+        <div className="flex gap-1 overflow-x-auto hide-scrollbar">
+          <div className="flex min-w-max gap-1">
+            {FILTER_TABS.map((tab) => {
+              const count = filterCounts[tab.key];
+              const isActive = activeFilter === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => setActiveFilter(tab.key)}
+                  className={cn(
+                    'flex items-center gap-[5px] min-h-[40px] px-[13px] text-[13.5px] font-bold rounded-[10px] whitespace-nowrap transition-all motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40',
+                    isActive
+                      ? 'bg-it-blue-500 text-white'
+                      : 'text-it-ink-500 dark:text-rink-300 hover:bg-it-fill dark:hover:bg-rink-800'
+                  )}
+                >
+                  <Icon name={tab.icon} className="text-[16px]" aria-hidden="true" />
+                  {tab.label}
+                  {count > 0 && (
+                    <span
+                      className={cn(
+                        'inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-bold tabular-nums',
+                        isActive ? 'bg-white/20 text-white' : 'bg-it-fill dark:bg-rink-700 text-it-ink-700 dark:text-rink-200'
+                      )}
+                      aria-label={`${count}건`}
+                    >
+                      {count > 99 ? '99+' : count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto px-4 pt-4 pb-30 space-y-6">
-        {/* Pending Section */}
+      {/* Main Content
+          [ICETIMES flat 재작업 2026-06-25] /report 와 동일 flat 언어 — main 은 회색 캔버스
+          (bg-it-canvas dark:bg-puck), 콘텐츠 블록은 각자 mt-2 흰 섹션으로 쌓인다. 이전
+          px-4 space-y-6 + 카드 박스 → full-bleed flat 섹션 전환. RSVP 응답/로컬상태 로직 동결,
+          비주얼만. RsvpResponseCard 는 iceTheme variant 로 카드 박스 → flat 타일 정합. */}
+      <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck !pb-8">
+        {/* Pending Section — flat 흰 섹션 */}
         {showPending && (
-        <section>
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-5">
           <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center">
-              <Icon name="pending_actions" className="text-amber-600 text-card-emphasis" aria-hidden="true" />
+            <div className="w-8 h-8 rounded-[9px] bg-it-blue-50 dark:bg-it-blue-500/15 flex items-center justify-center">
+              <Icon name="pending_actions" className="text-it-blue-500 dark:text-it-blue-300 text-card-emphasis" aria-hidden="true" />
             </div>
-            <h2 className="text-card-emphasis font-bold text-wtext-1 dark:text-white">
+            <h2 className="text-[15px] font-extrabold text-it-ink-900 dark:text-white">
               응답 대기
             </h2>
             {pendingItems.length > 0 && (
-              <span className="ml-auto text-card-meta font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded-w-pill tabular-nums">
+              <span className="ml-auto text-card-meta font-bold text-it-red-500 dark:text-it-red-300 bg-it-red-500/10 dark:bg-it-red-500/15 px-2 py-1 rounded-w-pill tabular-nums">
                 {pendingItems.length}건
               </span>
             )}
@@ -283,19 +313,20 @@ export default function RsvpPage() {
                   myStatus={getEffectiveStatus(item.schedule.scheduleId, item.myStatus)}
                   onRespond={handleRespond(item.schedule.scheduleId)}
                   loading={respondingId === item.schedule.scheduleId}
+                  iceTheme
                 />
               ))}
             </div>
           ) : (
-            <div className="bg-white dark:bg-rink-800 rounded-xl p-8 border border-wline-2 dark:border-rink-700 flex flex-col items-center justify-center gap-2">
-              <div className="w-12 h-12 rounded-w-pill bg-wline-2 dark:bg-rink-700 flex items-center justify-center">
+            <div className="flex flex-col items-center justify-center gap-2 py-8">
+              <div className="w-12 h-12 rounded-w-pill bg-it-fill dark:bg-rink-700 flex items-center justify-center">
                 <Icon
                   name="check_circle"
-                  className="text-2xl text-emerald-500 dark:text-emerald-400"
+                  className="text-2xl text-success"
                   aria-hidden="true"
                 />
               </div>
-              <p className="text-card-body text-wtext-3 dark:text-rink-300 text-center">
+              <p className="text-card-body text-it-ink-500 dark:text-rink-300 text-center">
                 {MESSAGES.empty('대기 중인 RSVP')}
               </p>
             </div>
@@ -303,22 +334,22 @@ export default function RsvpPage() {
         </section>
         )}
 
-        {/* Responded History Section */}
+        {/* Responded History Section — flat 흰 섹션, 항목은 hairline 행 */}
         {showResponded && filteredRespondedItems.length > 0 && (
-          <section>
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-5">
             <div className="flex items-center gap-2 mb-3">
-              <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center">
-                <Icon name="history" className="text-emerald-600 text-card-emphasis" aria-hidden="true" />
+              <div className="w-8 h-8 rounded-[9px] bg-it-blue-50 dark:bg-it-blue-500/15 flex items-center justify-center">
+                <Icon name="history" className="text-it-blue-500 dark:text-it-blue-300 text-card-emphasis" aria-hidden="true" />
               </div>
-              <h2 className="text-card-emphasis font-bold text-wtext-1 dark:text-white">
+              <h2 className="text-[15px] font-extrabold text-it-ink-900 dark:text-white">
                 응답 완료
               </h2>
-              <span className="ml-auto text-card-meta font-medium text-wtext-3 dark:text-rink-300 tabular-nums">
+              <span className="ml-auto text-card-meta font-medium text-it-ink-500 dark:text-rink-300 tabular-nums">
                 {filteredRespondedItems.length}건
               </span>
             </div>
 
-            <div className="space-y-3">
+            <div>
               {filteredRespondedItems.map((item) => {
                 const effectiveStatus = getEffectiveStatus(
                   item.schedule.scheduleId,
@@ -328,18 +359,18 @@ export default function RsvpPage() {
                 return (
                   <div
                     key={item.schedule.scheduleId}
-                    className="bg-white dark:bg-rink-800 rounded-xl p-4 shadow-sm border border-wline-2 dark:border-rink-700"
+                    className="py-3 border-b border-it-line dark:border-it-blue-900 last:border-0"
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-card-body font-bold text-wtext-1 dark:text-white">
+                      <h3 className="text-card-body font-bold text-it-ink-900 dark:text-white">
                         {item.schedule.title}
                       </h3>
                       <span
                         className={cn(
                           'inline-flex items-center gap-1 px-2 py-1 rounded-lg text-card-meta font-bold',
                           effectiveStatus === 'ATTENDING'
-                            ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400'
-                            : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'
+                            ? 'bg-it-blue-50 dark:bg-it-blue-500/15 text-it-blue-600 dark:text-it-blue-300'
+                            : 'bg-it-red-500/10 dark:bg-it-red-500/15 text-it-red-500 dark:text-it-red-300'
                         )}
                       >
                         <Icon
@@ -349,7 +380,7 @@ export default function RsvpPage() {
                         {effectiveStatus === 'ATTENDING' ? '참석' : '불참'}
                       </span>
                     </div>
-                    <div className="flex items-center gap-3 text-card-meta text-wtext-3 dark:text-rink-300">
+                    <div className="flex items-center gap-3 text-card-meta text-it-ink-500 dark:text-rink-300">
                       <span className="flex items-center gap-1">
                         <Icon name="calendar_today" className="text-[12px]" />
                         {item.schedule.date}({item.schedule.dayOfWeek})
@@ -359,7 +390,7 @@ export default function RsvpPage() {
                         {item.schedule.startTime}~{item.schedule.endTime}
                       </span>
                     </div>
-                    <div className="flex items-center gap-3 mt-2 pt-2 border-t border-wline-2 dark:border-rink-700 text-card-meta text-wtext-3 dark:text-rink-300">
+                    <div className="flex items-center gap-3 mt-2 pt-2 border-t border-it-line dark:border-it-blue-900 text-card-meta text-it-ink-500 dark:text-rink-300">
                       <span>참석 {item.summary.attending}</span>
                       <span>불참 {item.summary.declined}</span>
                       <span>미응답 {item.summary.noResponse}</span>
@@ -371,16 +402,16 @@ export default function RsvpPage() {
           </section>
         )}
 
-        {/* 필터 결과 없음 */}
+        {/* 필터 결과 없음 — flat 흰 섹션 */}
         {activeFilter !== 'ALL' && filterCounts[activeFilter] === 0 && (
-          <section className="bg-white dark:bg-rink-800 rounded-2xl p-10 border border-wline-2 dark:border-rink-700 flex flex-col items-center justify-center gap-3">
-            <div className="w-14 h-14 rounded-2xl bg-wline-2 dark:bg-rink-700 flex items-center justify-center">
-              <Icon name="filter_alt_off" className="text-2xl text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-10 flex flex-col items-center justify-center gap-3">
+            <div className="w-14 h-14 rounded-2xl bg-it-fill dark:bg-rink-700 flex items-center justify-center">
+              <Icon name="filter_alt_off" className="text-2xl text-it-ink-400 dark:text-rink-300" aria-hidden="true" />
             </div>
-            <p className="text-card-body font-semibold text-wtext-2 dark:text-rink-100 text-center">
+            <p className="text-card-body font-semibold text-it-ink-700 dark:text-rink-100 text-center">
               해당 상태의 응답이 없습니다
             </p>
-            <p className="text-card-meta text-wtext-3 dark:text-rink-300 text-center">
+            <p className="text-card-meta text-it-ink-500 dark:text-rink-300 text-center">
               다른 필터를 선택해 보세요
             </p>
           </section>

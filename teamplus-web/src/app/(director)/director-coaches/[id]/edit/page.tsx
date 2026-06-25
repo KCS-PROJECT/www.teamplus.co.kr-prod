@@ -28,13 +28,13 @@ const FALLBACK_SPECIALTY: SpecialtyOption[] = [
   { value: 'ICE_HOCKEY_GENERAL', label: '종합 코칭' },
 ];
 
-/** 입력 필드 공통 스타일 — h-12 (48px) 터치 타겟 */
+/** 입력 필드 공통 스타일 — h-12 (48px) 터치 타겟 · ICETIMES 폼 입력 규격 */
 const INPUT_CLASS =
-  'w-full h-12 rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-700 px-4 text-card-body text-wtext-1 dark:text-white placeholder:text-wtext-3 dark:placeholder:text-wtext-3 outline-none transition-colors motion-reduce:transition-none focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20';
+  'w-full h-12 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-700 px-4 text-card-body font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-wtext-3 outline-none transition-colors motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20';
 
 /** textarea 전용 (h 제한 없음) */
 const TEXTAREA_CLASS =
-  'w-full rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-700 px-4 py-3 text-card-body text-wtext-1 dark:text-white placeholder:text-wtext-3 dark:placeholder:text-wtext-3 outline-none transition-colors motion-reduce:transition-none focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20 resize-none';
+  'w-full rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-700 px-4 py-3 text-card-body font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-wtext-3 outline-none transition-colors motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 resize-none';
 
 export default function DirectorCoachEditPage() {
   // 인증/권한 체크는 (director)/layout.tsx 에서 단 한 번 수행됨 (중복 호출 금지)
@@ -202,15 +202,15 @@ export default function DirectorCoachEditPage() {
     return (
       <MobileContainer hasBottomNav>
         <PageAppBar title="코치 수정" onBack={back} forceNative />
-        <main className="flex-1 flex flex-col items-center justify-center px-6" role="main" aria-label="코치 수정">
-          <div className="w-16 h-16 rounded-w-pill bg-wline-2 dark:bg-rink-700 flex items-center justify-center mb-4">
-            <Icon name="error_outline" className="text-3xl text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+        <main className="flex-1 flex flex-col items-center justify-center px-6 bg-it-canvas dark:bg-puck" role="main" aria-label="코치 수정">
+          <div className="w-16 h-16 rounded-w-pill bg-it-line dark:bg-rink-700 flex items-center justify-center mb-4">
+            <Icon name="error_outline" className="text-3xl text-it-ink-400 dark:text-rink-300" aria-hidden="true" />
           </div>
-          <p className="text-card-body text-wtext-3 dark:text-rink-300 mb-4">{MESSAGES.error.general}</p>
+          <p className="text-card-body text-it-ink-500 dark:text-rink-300 mb-4">{MESSAGES.error.general}</p>
           <button
             type="button"
             onClick={loadCoach}
-            className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-ice-500 px-5 py-2.5 text-card-body font-bold text-white shadow-sm hover:bg-ice-700 transition-colors motion-reduce:transition-none active:brightness-95"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-w-md bg-it-blue-500 px-5 py-2.5 text-card-body font-bold text-white hover:bg-it-blue-600 transition-colors motion-reduce:transition-none active:brightness-95"
           >
             <Icon name="refresh" className="text-[18px]" aria-hidden="true" />
             <span>다시 시도하기</span>
@@ -226,31 +226,34 @@ export default function DirectorCoachEditPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title="코치 수정" onBack={back} forceNative />
 
-      <main className="flex-1 overflow-y-auto hide-scrollbar" role="main" aria-label="코치 수정">
-        {/* 타이틀 영역 */}
-        <div className="px-6 pt-6 pb-4">
-          <h2 className="text-2xl font-bold text-wtext-1 dark:text-white">코치 정보 수정</h2>
-          <p className="mt-1 text-card-body text-wtext-3 dark:text-rink-300">
+      <main className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck" role="main" aria-label="코치 수정">
+        {/* 타이틀 영역 — flat 흰 섹션 */}
+        <section className="bg-it-surface dark:bg-rink-800 px-6 pt-6 pb-5">
+          <h2 className="text-2xl font-bold text-it-ink-800 dark:text-white">코치 정보 수정</h2>
+          <p className="mt-1 text-card-body text-it-ink-500 dark:text-rink-300">
             {MESSAGES.coach.editDescription}
           </p>
-        </div>
+        </section>
 
         {/* 에러 배너 */}
         {errorMessage && (
-          <div className="mx-6 mb-4 flex items-center gap-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 p-4" role="alert">
-            <Icon name="error" className="text-red-500 dark:text-red-400 text-xl shrink-0" aria-hidden="true" />
-            <p className="text-card-body text-red-600 dark:text-red-400">{errorMessage}</p>
+          <div className="mx-5 mt-3 flex items-center gap-3 rounded-w-md bg-it-red-50 dark:bg-it-red-500/15 border-[1.5px] border-it-red-100 dark:border-it-red-500/30 p-4" role="alert">
+            <Icon name="error" className="text-it-red-500 dark:text-it-red-300 text-xl shrink-0" aria-hidden="true" />
+            <p className="text-card-body text-it-red-600 dark:text-it-red-300">{errorMessage}</p>
           </div>
         )}
 
-        {/* 폼 카드 */}
-        <form onSubmit={handleSubmit} className="mx-6 mb-8">
-          <div className="rounded-2xl bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 p-6 shadow-sm">
+        {/* flat 섹션 사이 8px 회색 갭 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+        {/* 폼 — flat 흰 섹션 (카드 박스 제거) */}
+        <form onSubmit={handleSubmit}>
+          <section className="bg-it-surface dark:bg-rink-800 px-6 pt-6 pb-7">
 
             {/* 프로필 사진 영역 */}
             <div className="flex flex-col items-center mb-8">
               <div className="relative">
-                <div className="flex h-28 w-28 items-center justify-center rounded-w-pill bg-wline-2 dark:bg-rink-700 overflow-hidden border-4 border-white dark:border-rink-700 shadow-md">
+                <div className="flex h-28 w-28 items-center justify-center rounded-w-pill bg-it-fill dark:bg-rink-700 overflow-hidden border-4 border-it-surface dark:border-rink-700">
                   {(() => {
                     // [수정 2026-05-23] /uploads/... 상대 경로가 next/image 에서 도메인 미허용으로
                     //  404 가 되던 문제 차단. data: URL 은 그대로 통과, 그 외에는 resolveImageSrc 로
@@ -270,7 +273,7 @@ export default function DirectorCoachEditPage() {
                     ) : (
                       <Icon
                         name="person"
-                        className="text-5xl text-wtext-4 dark:text-rink-300"
+                        className="text-5xl text-it-ink-400 dark:text-rink-300"
                         aria-hidden="true"
                       />
                     );
@@ -279,7 +282,7 @@ export default function DirectorCoachEditPage() {
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="absolute bottom-0 right-0 flex h-10 w-10 items-center justify-center rounded-w-pill bg-ice-500 text-white shadow-sm hover:bg-ice-700 transition-colors motion-reduce:transition-none active:brightness-95"
+                  className="absolute bottom-0 right-0 flex h-10 w-10 items-center justify-center rounded-w-pill bg-it-blue-500 text-white hover:bg-it-blue-600 transition-colors motion-reduce:transition-none active:brightness-95"
                   aria-label="프로필 사진 변경"
                 >
                   <Icon name="photo_camera" className="text-card-title" aria-hidden="true" />
@@ -293,13 +296,13 @@ export default function DirectorCoachEditPage() {
                   aria-hidden="true"
                 />
               </div>
-              <span className="mt-2 text-card-meta text-wtext-3 dark:text-rink-300">프로필 사진 변경</span>
+              <span className="mt-2 text-card-meta text-it-ink-500 dark:text-rink-300">프로필 사진 변경</span>
             </div>
 
             {/* 이름 */}
             <div className="mb-5">
-              <label htmlFor="edit-coach-name" className="mb-2 block text-card-body font-bold text-wtext-1 dark:text-white">
-                이름 <span className="text-red-500" aria-hidden="true">*</span>
+              <label htmlFor="edit-coach-name" className="mb-2 block text-card-body font-bold text-it-ink-800 dark:text-white">
+                이름 <span className="text-it-red-500" aria-hidden="true">*</span>
               </label>
               <input
                 id="edit-coach-name"
@@ -316,8 +319,8 @@ export default function DirectorCoachEditPage() {
 
             {/* 전문 분야 */}
             <div className="mb-5">
-              <label className="mb-2 block text-card-body font-bold text-wtext-1 dark:text-white">
-                전문 분야 <span className="text-red-500" aria-hidden="true">*</span>
+              <label className="mb-2 block text-card-body font-bold text-it-ink-800 dark:text-white">
+                전문 분야 <span className="text-it-red-500" aria-hidden="true">*</span>
               </label>
               <button
                 type="button"
@@ -326,14 +329,14 @@ export default function DirectorCoachEditPage() {
                 onClick={() => setShowSpecialtySheet(true)}
                 className={`${INPUT_CLASS} text-left flex items-center justify-between`}
               >
-                <span className={specialty ? '' : 'text-wtext-3 dark:text-rink-300'}>
+                <span className={specialty ? '' : 'text-it-ink-400 dark:text-rink-300'}>
                   {specialty
                     ? specialtyOptions.find((o) => o.value === specialty)?.label ?? '분야를 선택하세요'
                     : '분야를 선택하세요'}
                 </span>
                 <Icon
                   name="expand_more"
-                  className="text-xl text-wtext-3 dark:text-rink-300"
+                  className="text-xl text-it-ink-400 dark:text-rink-300"
                   aria-hidden="true"
                 />
               </button>
@@ -341,8 +344,8 @@ export default function DirectorCoachEditPage() {
 
             {/* 연락처 */}
             <div className="mb-5">
-              <label htmlFor="edit-coach-phone" className="mb-2 block text-card-body font-bold text-wtext-1 dark:text-white">
-                연락처 <span className="text-red-500" aria-hidden="true">*</span>
+              <label htmlFor="edit-coach-phone" className="mb-2 block text-card-body font-bold text-it-ink-800 dark:text-white">
+                연락처 <span className="text-it-red-500" aria-hidden="true">*</span>
               </label>
               <input
                 id="edit-coach-phone"
@@ -360,7 +363,7 @@ export default function DirectorCoachEditPage() {
 
             {/* 주요 약력 및 수상 */}
             <div>
-              <label htmlFor="edit-coach-career" className="mb-2 block text-card-body font-bold text-wtext-1 dark:text-white">
+              <label htmlFor="edit-coach-career" className="mb-2 block text-card-body font-bold text-it-ink-800 dark:text-white">
                 주요 약력 및 수상
               </label>
               <textarea
@@ -372,22 +375,22 @@ export default function DirectorCoachEditPage() {
                 className={TEXTAREA_CLASS}
               />
             </div>
-          </div>
+          </section>
 
           {/* 액션 버튼 — 취소 / 저장하기 */}
-          <div className="mt-6 flex gap-3">
+          <div className="px-5 pt-6 flex gap-3">
             <button
               type="button"
               onClick={() => back()}
               disabled={isSubmitting}
-              className="flex min-h-[48px] flex-1 items-center justify-center rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 py-3.5 text-card-emphasis font-bold text-wtext-2 dark:text-rink-100 transition-colors motion-reduce:transition-none hover:bg-wbg dark:hover:bg-rink-700 active:brightness-95 disabled:opacity-50"
+              className="flex min-h-[48px] flex-1 items-center justify-center rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 py-3.5 text-card-emphasis font-bold text-it-ink-600 dark:text-rink-100 transition-colors motion-reduce:transition-none hover:bg-it-fill dark:hover:bg-rink-700 active:brightness-95 disabled:opacity-50"
             >
               취소
             </button>
             <button
               type="submit"
               disabled={!isValid || isSubmitting}
-              className="flex min-h-[48px] flex-[2] items-center justify-center gap-2 rounded-xl bg-ice-500 py-3.5 text-card-emphasis font-bold text-white shadow-sm transition-colors motion-reduce:transition-none hover:bg-ice-700 active:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex min-h-[48px] flex-[2] items-center justify-center gap-2 rounded-w-md bg-it-blue-500 py-3.5 text-card-emphasis font-bold text-white transition-colors motion-reduce:transition-none hover:bg-it-blue-600 active:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Icon name="save" className="text-[20px]" aria-hidden="true" />
               <span>{isSubmitting ? MESSAGES.common.saving : '저장하기'}</span>
@@ -408,22 +411,22 @@ export default function DirectorCoachEditPage() {
           className="absolute inset-0 bg-black/50"
           onClick={() => setShowSpecialtySheet(false)}
         />
-        <div className="relative w-full max-w-md bg-white dark:bg-rink-800 rounded-t-3xl shadow-md pb-10">
+        <div className="relative w-full max-w-md bg-it-surface dark:bg-rink-800 rounded-t-3xl shadow-md pb-10">
           <div className="flex justify-center pt-4 pb-3">
-            <div className="w-12 h-1.5 rounded-w-pill bg-wline dark:bg-rink-500" />
+            <div className="w-12 h-1.5 rounded-w-pill bg-it-line-strong dark:bg-rink-500" />
           </div>
           <div className="flex items-center justify-between px-6 pb-4">
-            <h3 className="text-card-title font-bold text-wtext-1 dark:text-white">전문 분야 선택</h3>
+            <h3 className="text-card-title font-bold text-it-ink-800 dark:text-white">전문 분야 선택</h3>
             <button
               type="button"
               onClick={() => setShowSpecialtySheet(false)}
-              className="flex size-11 items-center justify-center rounded-w-pill hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none active:brightness-95"
+              className="flex size-11 items-center justify-center rounded-w-pill hover:bg-it-line dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none active:brightness-95"
               aria-label="닫기"
             >
-              <Icon name="close" className="text-2xl text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+              <Icon name="close" className="text-2xl text-it-ink-500 dark:text-rink-300" aria-hidden="true" />
             </button>
           </div>
-          <div className="h-px bg-wline-2 dark:bg-rink-700 mx-6" />
+          <div className="h-px bg-it-line dark:bg-rink-700 mx-6" />
           <div className="py-2 px-2">
             {specialtyOptions.map((opt) => (
               <button
@@ -433,21 +436,21 @@ export default function DirectorCoachEditPage() {
                   setSpecialty(opt.value);
                   setShowSpecialtySheet(false);
                 }}
-                className={`flex min-h-[48px] w-full items-center justify-between px-4 py-4 rounded-xl text-left transition-colors motion-reduce:transition-none active:bg-wline-2 dark:active:bg-rink-700 ${
+                className={`flex min-h-[48px] w-full items-center justify-between px-4 py-4 rounded-w-md text-left transition-colors motion-reduce:transition-none active:bg-it-line dark:active:bg-rink-700 ${
                   specialty === opt.value
-                    ? 'bg-blue-50 dark:bg-blue-900/20'
-                    : 'hover:bg-wbg dark:hover:bg-rink-700/50'
+                    ? 'bg-it-blue-50 dark:bg-it-blue-500/15'
+                    : 'hover:bg-it-fill dark:hover:bg-rink-700/50'
                 }`}
               >
                 <span className={`text-card-title ${
                   specialty === opt.value
-                    ? 'text-ice-500 font-bold'
-                    : 'text-wtext-1 dark:text-white font-medium'
+                    ? 'text-it-blue-500 font-bold'
+                    : 'text-it-ink-800 dark:text-white font-medium'
                 }`}>
                   {opt.label}
                 </span>
                 {specialty === opt.value && (
-                  <Icon name="check_circle" className="text-2xl text-ice-500" aria-hidden="true" />
+                  <Icon name="check_circle" className="text-2xl text-it-blue-500" aria-hidden="true" />
                 )}
               </button>
             ))}

@@ -529,7 +529,7 @@ function ClassCreatePageInner() {
       />
 
       <main
-        className="flex-1 overflow-y-auto hide-scrollbar bg-wbg dark:bg-puck px-5 pt-4 pb-[100px]"
+        className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck px-5 pt-4 pb-[100px]"
         role="main"
         aria-label={pageTitle}
         aria-busy={isLoadingData}
@@ -541,22 +541,22 @@ function ClassCreatePageInner() {
         ) : hasNoAcademy ? (
           /* 오픈클래스 감독인데 운영 중인 오픈클래스이 0개 — 오픈클래스 생성 페이지로 안내. */
           <section
-            className="rounded-[20px] bg-wsurface dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-sh-1 p-8 mt-4 flex flex-col items-center text-center"
+            className="-mx-5 mt-2 bg-it-surface dark:bg-it-blue-950 px-8 py-12 flex flex-col items-center text-center"
             role="status"
             aria-live="polite"
           >
-            <div className="w-16 h-16 rounded-full bg-wline-2 dark:bg-rink-700 flex items-center justify-center mb-4">
-              <Icon name="school" className="text-3xl text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+            <div className="w-16 h-16 rounded-w-pill bg-it-fill dark:bg-rink-700 flex items-center justify-center mb-4">
+              <Icon name="school" className="text-3xl text-it-ink-400 dark:text-rink-300" aria-hidden="true" />
             </div>
-            <h2 className="text-card-title font-extrabold text-wtext-1 dark:text-white tracking-[-0.02em] mb-2">
+            <h2 className="text-card-section font-extrabold text-it-ink-800 dark:text-white tracking-[-0.02em] mb-2">
               {MESSAGES.academy.noAcademyTitle}
             </h2>
-            <p className="text-card-body text-wtext-3 dark:text-rink-300 leading-relaxed mb-6">
+            <p className="text-card-body text-it-ink-500 dark:text-rink-300 leading-relaxed mb-6">
               {MESSAGES.academy.noAcademyDescription}
             </p>
             <NavLink
               href="/academy/create"
-              className="h-12 px-6 rounded-xl bg-ice-500 hover:bg-ice-700 text-white text-card-body font-extrabold tracking-[-0.02em] inline-flex items-center justify-center transition-colors active:brightness-90"
+              className="h-12 px-6 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-body font-extrabold tracking-[-0.02em] inline-flex items-center justify-center transition-colors active:brightness-90"
             >
               {MESSAGES.academy.createAcademyCta}
             </NavLink>
@@ -576,6 +576,7 @@ function ClassCreatePageInner() {
               enrollmentCount={enrollmentCount}
               context={isAcademyMode ? 'academy' : 'team'}
               academyId={myAcademyId ?? undefined}
+              iceTheme
               // 등록 모드 추가 패키지(선불) — ClassForm 내부에서 PackageManageSection 렌더에 사용.
               packageDraftValue={draftProducts}
               onPackageDraftChange={handleProductsChange}
@@ -596,6 +597,7 @@ function ClassCreatePageInner() {
                     onPackageChange={handleProductsChange}
                     packageDirty={productsDirty}
                     classSessionsPerWeek={initialData?.classDays?.length}
+                    iceTheme
                   />
                 ) : undefined
               }

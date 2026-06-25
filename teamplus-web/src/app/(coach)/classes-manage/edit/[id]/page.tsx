@@ -103,7 +103,7 @@ const STATUS_MAP: Record<string, { label: string; className: string }> = {
   },
   COMPLETED: {
     label: '완료',
-    className: 'bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-100',
+    className: 'bg-it-fill text-it-ink-500 dark:bg-rink-700 dark:text-rink-100',
   },
 };
 
@@ -192,7 +192,7 @@ function getCategoryLabel(data: ClassDetailApiResponse): string {
   const map: Record<string, string> = {
     lesson: '레슨',
     regular_training: '정규훈련',
-    regular_class: '정규수업',
+    regular_class: '정규훈련',
     group_class: '그룹수업',
     game: '게임',
     fun: '펀',
@@ -304,25 +304,25 @@ export default function ClassDetailPage() {
     return (
       <MobileContainer hasBottomNav={false}>
         <PageAppBar title="모집관리" forceNative />
-        <main className="flex-1 flex flex-col items-center justify-center px-5 py-16">
-          <div className="w-14 h-14 rounded-w-pill bg-red-100 dark:bg-red-900/20 flex items-center justify-center mb-3" aria-hidden="true">
-            <Icon name="error" className="text-2xl text-red-500 dark:text-red-400" />
+        <main className="flex-1 flex flex-col items-center justify-center px-5 py-16 bg-it-canvas dark:bg-puck">
+          <div className="w-14 h-14 rounded-w-pill bg-it-red-50 dark:bg-it-red-700/20 flex items-center justify-center mb-3" aria-hidden="true">
+            <Icon name="error" className="text-2xl text-it-red-500 dark:text-it-red-300" />
           </div>
-          <p className="text-card-body text-wtext-3 dark:text-rink-300 font-medium mb-4">
+          <p className="text-card-body text-it-ink-500 dark:text-rink-300 font-medium mb-4">
             {MESSAGES.error.general}
           </p>
           <div className="flex gap-2">
             <button
               type="button"
               onClick={() => back()}
-              className="px-4 py-2 text-card-body font-medium text-wtext-2 dark:text-rink-100 bg-wline-2 dark:bg-rink-700 rounded-lg hover:bg-wline dark:hover:bg-rink-500 transition-colors motion-reduce:transition-none"
+              className="px-4 py-2 text-card-body font-medium text-it-ink-800 dark:text-rink-100 bg-it-fill dark:bg-rink-700 rounded-w-md hover:bg-it-line dark:hover:bg-rink-500 transition-colors motion-reduce:transition-none"
             >
               뒤로 가기
             </button>
             <button
               type="button"
               onClick={fetchClassDetail}
-              className="px-4 py-2 text-card-body font-medium text-ice-500 bg-ice-500/10 rounded-lg hover:bg-ice-500/20 transition-colors motion-reduce:transition-none"
+              className="px-4 py-2 text-card-body font-medium text-it-blue-500 bg-it-blue-500/10 rounded-w-md hover:bg-it-blue-500/20 transition-colors motion-reduce:transition-none"
             >
               {MESSAGES.dashboard.errorRetry}
             </button>
@@ -362,7 +362,7 @@ export default function ClassDetailPage() {
              iPhone (safe-area≈34px): 60+34+64+32 = 190px,
              모두 Action Bar 상단(158-194px)을 안전하게 비켜갑니다. */}
       <main
-        className="flex-1 overflow-y-auto hide-scrollbar"
+        className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck"
         style={{
           WebkitOverflowScrolling: 'touch' as never,
           paddingBottom:
@@ -370,12 +370,12 @@ export default function ClassDetailPage() {
         }}
       >
         {/* ────────────────────────────────────────────
-             [1] 수업 프로필 카드 (Hero)
+             [1] 수업 프로필 (Hero) — full-bleed 흰 섹션
              ──────────────────────────────────────────── */}
-        <section className="mx-5 mt-5 bg-white dark:bg-rink-800 rounded-2xl p-5 shadow-sm border border-wline-2 dark:border-rink-700">
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-5">
           {/* 카테고리 + 상태 토글 */}
           <div className="flex items-center justify-between mb-3">
-            <span className="inline-flex items-center text-card-meta font-bold tracking-wider uppercase text-ice-500 bg-ice-500/10 px-2 py-1 rounded-md">
+            <span className="inline-flex items-center text-card-meta font-bold tracking-wider uppercase text-it-blue-500 bg-it-blue-50 dark:bg-it-blue-500/15 px-2 py-1 rounded-md">
               {categoryLabel}
             </span>
             <button
@@ -395,12 +395,12 @@ export default function ClassDetailPage() {
           </div>
 
           {/* 제목 */}
-          <h1 className="text-2xl font-bold text-wtext-1 dark:text-white leading-tight mb-4">
+          <h1 className="text-2xl font-bold text-it-ink-800 dark:text-white leading-tight mb-4">
             {className}
           </h1>
 
           {/* 담당 코치 — 제목 바로 아래 이동 */}
-          <div className="flex items-center gap-2.5 pb-4 border-b border-wline-2 dark:border-rink-700">
+          <div className="flex items-center gap-2.5 pb-4 border-b border-it-line dark:border-it-blue-900">
             <div
               className={cn(
                 'w-9 h-9 rounded-w-pill flex items-center justify-center shrink-0',
@@ -413,10 +413,10 @@ export default function ClassDetailPage() {
               </span>
             </div>
             <div className="min-w-0">
-              <p className="text-card-body font-semibold text-wtext-1 dark:text-rink-100 truncate">
+              <p className="text-card-body font-semibold text-it-ink-800 dark:text-rink-100 truncate">
                 {classData.instructorName ?? classData.coachName ?? '담당 코치 미지정'}
               </p>
-              <p className="text-card-meta text-wtext-3 dark:text-rink-300">담당 코치</p>
+              <p className="text-card-meta text-it-ink-500 dark:text-rink-300">담당 코치</p>
             </div>
           </div>
 
@@ -443,24 +443,24 @@ export default function ClassDetailPage() {
         </section>
 
         {/* ────────────────────────────────────────────
-             [2] 일정 · 장소 카드
+             [2] 일정 · 장소 — full-bleed 흰 섹션
              ──────────────────────────────────────────── */}
-        <section className="mx-5 mt-4 bg-white dark:bg-rink-800 rounded-2xl p-5 shadow-sm border border-wline-2 dark:border-rink-700">
-          <h2 className="text-card-meta font-bold text-wtext-2 dark:text-rink-300 uppercase tracking-widest mb-4">
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-5">
+          <h2 className="text-card-meta font-bold text-it-ink-500 dark:text-rink-300 uppercase tracking-widest mb-4">
             일정 · 장소
           </h2>
 
           <div className="grid gap-5 sm:grid-cols-2">
             {/* 일정 */}
             <div>
-              <p className="text-card-meta font-bold text-wtext-3 dark:text-rink-300 mb-1.5">날짜</p>
-              <p className="text-card-body font-bold text-wtext-1 dark:text-white tabular-nums">
+              <p className="text-card-meta font-bold text-it-ink-500 dark:text-rink-300 mb-1.5">날짜</p>
+              <p className="text-card-body font-bold text-it-ink-800 dark:text-white tabular-nums">
                 {formatDate(classData.startTime)}
                 {classData.endTime && formatDate(classData.startTime) !== formatDate(classData.endTime)
                   ? ` ~ ${formatDate(classData.endTime)}`
                   : ''}
               </p>
-              <p className="text-card-body text-wtext-2 dark:text-rink-300 mt-0.5 tabular-nums">
+              <p className="text-card-body text-it-ink-500 dark:text-rink-300 mt-0.5 tabular-nums">
                 {formatTime(classData.startTime)}
                 {classData.endTime ? ` ~ ${formatTime(classData.endTime)}` : ''}
               </p>
@@ -473,7 +473,7 @@ export default function ClassDetailPage() {
                     {days.map((d) => (
                       <span
                         key={d}
-                        className="text-card-meta font-bold px-2 py-0.5 rounded bg-ice-500/10 text-ice-500"
+                        className="text-card-meta font-bold px-2 py-0.5 rounded bg-it-blue-50 dark:bg-it-blue-500/15 text-it-blue-500"
                       >
                         {d}
                       </span>
@@ -490,14 +490,14 @@ export default function ClassDetailPage() {
               const hasVenue = !!venueLabel;
               return (
                 <div>
-                  <p className="text-card-meta font-bold text-wtext-3 dark:text-rink-300 mb-2">장소</p>
+                  <p className="text-card-meta font-bold text-it-ink-500 dark:text-rink-300 mb-2">장소</p>
                   <div className="flex items-start gap-3">
                     <div
                       className={cn(
-                        'w-10 h-10 rounded-xl flex items-center justify-center shrink-0',
+                        'w-10 h-10 rounded-w-md flex items-center justify-center shrink-0',
                         hasVenue
-                          ? 'bg-ice-500/10'
-                          : 'bg-wline-2 dark:bg-rink-700',
+                          ? 'bg-it-blue-50 dark:bg-it-blue-500/15'
+                          : 'bg-it-fill dark:bg-rink-700',
                       )}
                       aria-hidden="true"
                     >
@@ -505,7 +505,7 @@ export default function ClassDetailPage() {
                         name="location_on"
                         className={cn(
                           'text-card-section',
-                          hasVenue ? 'text-ice-500' : 'text-wtext-3 dark:text-rink-300',
+                          hasVenue ? 'text-it-blue-500' : 'text-it-ink-400 dark:text-rink-300',
                         )}
                         aria-hidden="true"
                       />
@@ -515,14 +515,14 @@ export default function ClassDetailPage() {
                         className={cn(
                           'text-card-emphasis font-bold truncate leading-tight',
                           hasVenue
-                            ? 'text-wtext-1 dark:text-white'
-                            : 'text-wtext-3 dark:text-rink-300',
+                            ? 'text-it-ink-800 dark:text-white'
+                            : 'text-it-ink-400 dark:text-rink-300',
                         )}
                       >
                         {venueLabel ?? '장소 미정'}
                       </p>
                       {venueAddress && (
-                        <p className="mt-1 text-card-body text-wtext-3 dark:text-rink-300 break-keep leading-relaxed">
+                        <p className="mt-1 text-card-body text-it-ink-500 dark:text-rink-300 break-keep leading-relaxed">
                           {venueAddress}
                         </p>
                       )}
@@ -540,7 +540,7 @@ export default function ClassDetailPage() {
                         }
                       }}
                       aria-label="장소 주소 복사"
-                      className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-ice-500/5 hover:bg-ice-500/10 px-2.5 py-1.5 text-card-meta font-semibold text-ice-500 dark:text-blue-300 transition-colors motion-reduce:transition-none active:brightness-95"
+                      className="mt-3 inline-flex items-center gap-1.5 rounded-w-md bg-it-blue-500/5 hover:bg-it-blue-500/10 px-2.5 py-1.5 text-card-meta font-semibold text-it-blue-500 dark:text-it-blue-300 transition-colors motion-reduce:transition-none active:brightness-95"
                     >
                       <Icon name="content_copy" className="text-[14px]" aria-hidden="true" />
                       주소 복사
@@ -552,26 +552,26 @@ export default function ClassDetailPage() {
           </div>
 
           {/* 강의 설명 */}
-          <div className="mt-5 pt-5 border-t border-wline-2 dark:border-rink-700">
-            <p className="text-card-meta font-bold text-wtext-3 dark:text-rink-300 mb-2">강의 설명</p>
-            <p className="text-card-body text-wtext-2 dark:text-rink-100 leading-relaxed whitespace-pre-wrap">
+          <div className="mt-5 pt-5 border-t border-it-line dark:border-it-blue-900">
+            <p className="text-card-meta font-bold text-it-ink-500 dark:text-rink-300 mb-2">강의 설명</p>
+            <p className="text-card-body text-it-ink-800 dark:text-rink-100 leading-relaxed whitespace-pre-wrap">
               {classData.description || '등록된 설명이 없습니다.'}
             </p>
           </div>
         </section>
 
         {/* ────────────────────────────────────────────
-             [3] 수강 현황 카드
+             [3] 수강 현황 — full-bleed 흰 섹션
              ──────────────────────────────────────────── */}
-        <section className="mx-5 mt-4 bg-white dark:bg-rink-800 rounded-2xl p-5 shadow-sm border border-wline-2 dark:border-rink-700">
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-card-title font-bold text-wtext-1 dark:text-white">수강 현황</h2>
+            <h2 className="text-card-section font-bold text-it-ink-800 dark:text-white">수강 현황</h2>
             <span
               className={cn(
                 'text-card-meta font-bold px-3 py-1 rounded-w-pill tabular-nums',
                 enrolledCount >= capacity
-                  ? 'bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400'
-                  : 'bg-ice-500/10 text-ice-500',
+                  ? 'bg-it-red-50 text-it-red-500 dark:bg-it-red-700/20 dark:text-it-red-300'
+                  : 'bg-it-blue-50 dark:bg-it-blue-500/15 text-it-blue-500',
               )}
             >
               {enrolledCount} / {capacity}명
@@ -580,7 +580,7 @@ export default function ClassDetailPage() {
 
           {/* 진행 바 */}
           <div
-            className="h-2 rounded-w-pill bg-wline-2 dark:bg-rink-700 overflow-hidden mb-5"
+            className="h-2 rounded-w-pill bg-it-line dark:bg-rink-700 overflow-hidden mb-5"
             role="progressbar"
             aria-valuemin={0}
             aria-valuemax={capacity}
@@ -590,7 +590,7 @@ export default function ClassDetailPage() {
             <div
               className={cn(
                 'h-full transition-[width] duration-300 motion-reduce:transition-none',
-                enrolledCount >= capacity ? 'bg-red-500' : 'bg-ice-500',
+                enrolledCount >= capacity ? 'bg-it-red-500' : 'bg-it-blue-500',
               )}
               style={{ width: `${Math.min(100, capacity > 0 ? (enrolledCount / capacity) * 100 : 0)}%` }}
             />
@@ -599,23 +599,23 @@ export default function ClassDetailPage() {
           {/* 대기 */}
           {waitlistCount > 0 && (
             <div
-              className="flex items-center gap-2 p-3 mb-4 rounded-lg border border-dashed border-amber-300 dark:border-amber-700 bg-amber-50/70 dark:bg-amber-900/10"
+              className="flex items-center gap-2 px-3 py-2.5 mb-4 rounded-w-md bg-sun-500/10"
               role="status"
             >
               <span
-                className="w-2 h-2 rounded-w-pill bg-amber-500"
+                className="w-2 h-2 rounded-w-pill bg-sun-500"
                 aria-hidden="true"
               />
-              <p className="text-card-body font-medium text-amber-700 dark:text-amber-400">
+              <p className="text-card-body font-medium text-sun-500">
                 대기 인원 {waitlistCount}명
               </p>
             </div>
           )}
 
-          {/* 학생 리스트 (최대 5명) */}
+          {/* 학생 리스트 (최대 5명) — hairline 행 */}
           {enrollments.length > 0 ? (
             <ul
-              className="flex flex-col gap-2 mb-4 list-none"
+              className="flex flex-col mb-4 -mx-5 list-none"
               role="list"
               aria-label={`등록 학생 미리보기 ${Math.min(enrollments.length, 5)}명`}
             >
@@ -627,7 +627,7 @@ export default function ClassDetailPage() {
                     key={student.id}
                     role="listitem"
                     aria-label={`${name}${student.teamName ? `, ${student.teamName}` : ''}${statusLabel ? `, ${statusLabel}` : ''}`}
-                    className="flex items-center gap-3 p-3 bg-wbg dark:bg-rink-900/50 rounded-lg border border-wline-2 dark:border-rink-700"
+                    className="flex items-center gap-3 px-5 py-3 border-b border-it-line dark:border-it-blue-900 last:border-b-0"
                   >
                     <div
                       className={cn(
@@ -639,17 +639,17 @@ export default function ClassDetailPage() {
                       <span className="text-card-body font-bold text-white">{getInitial(name)}</span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-card-body font-semibold text-wtext-1 dark:text-rink-100 truncate">
+                      <p className="text-card-body font-semibold text-it-ink-800 dark:text-rink-100 truncate">
                         {name}
                       </p>
                       {student.teamName && (
-                        <p className="text-card-meta text-wtext-3 dark:text-rink-300 truncate">
+                        <p className="text-card-meta text-it-ink-500 dark:text-rink-300 truncate">
                           {student.teamName}
                         </p>
                       )}
                     </div>
                     <span
-                      className="text-card-meta font-semibold text-emerald-600 dark:text-emerald-400 shrink-0"
+                      className="text-card-meta font-semibold text-mint shrink-0"
                       aria-hidden="true"
                     >
                       {statusLabel}
@@ -660,7 +660,7 @@ export default function ClassDetailPage() {
             </ul>
           ) : (
             <p
-              className="text-card-body text-wtext-3 dark:text-rink-300 text-center py-6 mb-2"
+              className="text-card-body text-it-ink-500 dark:text-rink-300 text-center py-6 mb-2"
               role="status"
             >
               {MESSAGES.empty('등록 학생')}
@@ -671,7 +671,7 @@ export default function ClassDetailPage() {
             type="button"
             onClick={() => navigate(`/classes-manage/${classId}/roster`)}
             aria-label={`${className} 명단관리 — 배치/미배치 학생 보기`}
-            className="w-full h-11 rounded-xl border border-wline dark:border-rink-700 text-card-body font-semibold text-wtext-2 dark:text-rink-100 hover:bg-wbg dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none active:brightness-95 focus-visible:ring-2 focus-visible:ring-ice-500 focus:outline-none"
+            className="w-full h-11 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 text-card-body font-semibold text-it-ink-800 dark:text-rink-100 hover:bg-it-fill dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none active:brightness-95 focus-visible:ring-2 focus-visible:ring-it-blue-500 focus:outline-none"
           >
             명단 전체 보기
           </button>
@@ -684,8 +684,8 @@ export default function ClassDetailPage() {
              [5] 장소 지도 (Maps key 있을 때만 · fallback 개선)
              ──────────────────────────────────────────── */}
         {process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY && (classData.venueName || classData.venue) ? (
-          <section className="mx-5 mt-4 rounded-2xl overflow-hidden border border-wline dark:border-rink-700">
-            <div className="h-44 bg-wline-2 dark:bg-rink-800">
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 overflow-hidden">
+            <div className="h-44 bg-it-fill dark:bg-rink-800">
               <iframe
                 title="훈련 장소 지도"
                 width="100%"
@@ -699,27 +699,27 @@ export default function ClassDetailPage() {
                 allowFullScreen
               />
             </div>
-            <div className="bg-white dark:bg-rink-800 px-4 py-3">
-              <p className="text-card-body font-bold text-wtext-1 dark:text-rink-100 truncate">
+            <div className="px-5 py-4">
+              <p className="text-card-body font-bold text-it-ink-800 dark:text-rink-100 truncate">
                 {classData.venueName ?? classData.venue}
               </p>
               {(classData.venueAddress ?? classData.venueSub) && (
-                <p className="text-card-meta text-wtext-3 dark:text-rink-300 truncate mt-0.5">
+                <p className="text-card-meta text-it-ink-500 dark:text-rink-300 truncate mt-0.5">
                   {classData.venueAddress ?? classData.venueSub}
                 </p>
               )}
             </div>
           </section>
         ) : (classData.venueAddress || classData.venueName || classData.venue) ? (
-          <section className="mx-5 mt-4 bg-white dark:bg-rink-800 rounded-2xl p-5 shadow-sm border border-wline-2 dark:border-rink-700">
-            <h2 className="text-card-meta font-bold text-wtext-2 dark:text-rink-300 uppercase tracking-widest mb-3">
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-5">
+            <h2 className="text-card-meta font-bold text-it-ink-500 dark:text-rink-300 uppercase tracking-widest mb-3">
               길찾기
             </h2>
-            <p className="text-card-body font-bold text-wtext-1 dark:text-rink-100 mb-1">
+            <p className="text-card-body font-bold text-it-ink-800 dark:text-rink-100 mb-1">
               {classData.venueName ?? classData.venue}
             </p>
             {(classData.venueAddress ?? classData.venueSub) && (
-              <p className="text-card-meta text-wtext-3 dark:text-rink-300 mb-3 break-keep">
+              <p className="text-card-meta text-it-ink-500 dark:text-rink-300 mb-3 break-keep">
                 {classData.venueAddress ?? classData.venueSub}
               </p>
             )}
@@ -730,7 +730,7 @@ export default function ClassDetailPage() {
               target="_blank"
               rel="noopener noreferrer"
               aria-label={`${classData.venueName ?? classData.venue} 위치를 카카오맵에서 새 창으로 길찾기`}
-              className="inline-flex items-center justify-center w-full h-11 rounded-xl border border-ice-500 text-card-body font-semibold text-ice-500 dark:text-blue-300 dark:border-blue-400 hover:bg-ice-500/5 dark:hover:bg-blue-900/20 transition-colors motion-reduce:transition-none active:brightness-95 focus-visible:ring-2 focus-visible:ring-ice-500 focus:outline-none"
+              className="inline-flex items-center justify-center w-full h-11 rounded-w-md border-[1.5px] border-it-blue-500 text-card-body font-semibold text-it-blue-500 dark:text-it-blue-300 hover:bg-it-blue-500/5 dark:hover:bg-it-blue-500/10 transition-colors motion-reduce:transition-none active:brightness-95 focus-visible:ring-2 focus-visible:ring-it-blue-500 focus:outline-none"
             >
               카카오맵으로 길찾기
             </a>
@@ -742,12 +742,12 @@ export default function ClassDetailPage() {
              네비게이션성 CTA 이므로 본문에 두어 시각적 우선순위를 낮춤.
              승인(APPROVED) 수업에만 노출 — 승인 대기·반려 수업에서는 스케줄 등록 자체가 불가하므로 숨김. */}
         {classData.approvalStatus === 'APPROVED' && (
-          <div className="mx-5 mt-4 mb-4">
+          <div className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4">
             <button
               type="button"
               onClick={() => navigate(`/classes-manage/${classId}/schedules`)}
               aria-label="수업 일정 관리 페이지로 이동"
-              className="w-full h-12 rounded-xl border border-ice-500 text-card-body font-semibold text-ice-500 dark:text-blue-300 dark:border-blue-400 hover:bg-ice-500/5 dark:hover:bg-blue-900/20 transition-colors motion-reduce:transition-none active:brightness-95 flex items-center justify-center gap-2"
+              className="w-full h-12 rounded-w-md border-[1.5px] border-it-blue-500 text-card-body font-semibold text-it-blue-500 dark:text-it-blue-300 hover:bg-it-blue-500/5 dark:hover:bg-it-blue-500/10 transition-colors motion-reduce:transition-none active:brightness-95 flex items-center justify-center gap-2"
             >
               <Icon name="event" className="text-[18px]" aria-hidden="true" />
               {MESSAGES.class.scheduleManage}
@@ -784,7 +784,7 @@ export default function ClassDetailPage() {
       >
         {/* 내부 바 — bg/border 를 내부에 두어 폭이 MobileContainer·BottomNav 와 정확히 일치 */}
         <div
-          className="mx-auto border-t border-wline dark:border-rink-700 bg-white dark:bg-rink-900"
+          className="mx-auto border-t border-it-line dark:border-rink-700 bg-it-surface dark:bg-rink-900"
           style={{ width: 'min(100%, var(--mobile-shell-width, 448px))' }}
         >
           <div className="flex min-w-0 gap-2 px-4 py-2.5">
@@ -792,7 +792,7 @@ export default function ClassDetailPage() {
               type="button"
               onClick={() => back()}
               aria-label="뒤로 가기"
-              className="min-w-0 flex-1 h-11 rounded-xl border border-wline dark:border-rink-700 text-card-body font-semibold text-wtext-2 dark:text-rink-100 hover:bg-wbg dark:hover:bg-rink-800 transition-colors motion-reduce:transition-none active:brightness-95"
+              className="min-w-0 flex-1 h-11 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 text-card-body font-semibold text-it-ink-800 dark:text-rink-100 hover:bg-it-fill dark:hover:bg-rink-800 transition-colors motion-reduce:transition-none active:brightness-95"
             >
               취소
             </button>
@@ -800,7 +800,7 @@ export default function ClassDetailPage() {
               type="button"
               onClick={() => navigate(`/classes-manage/create?edit=${classId}`)}
               aria-label="수업 수정"
-              className="min-w-0 flex-[1.3] h-11 rounded-xl bg-ice-500 hover:bg-ice-700 text-card-body font-semibold text-white transition-colors motion-reduce:transition-none active:brightness-95"
+              className="min-w-0 flex-[1.3] h-11 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-card-body font-semibold text-white transition-colors motion-reduce:transition-none active:brightness-95"
             >
               수정하기
             </button>
@@ -809,7 +809,7 @@ export default function ClassDetailPage() {
               // [수정 2026-05-11] 삭제 버튼 항상 활성화 — 확인 모달이 안전장치 역할.
               onClick={() => setShowDeleteConfirm(true)}
               aria-label="수업 삭제"
-              className="w-11 h-11 shrink-0 rounded-xl border border-red-200 dark:border-red-800 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors motion-reduce:transition-none active:brightness-95 flex items-center justify-center"
+              className="w-11 h-11 shrink-0 rounded-w-md border-[1.5px] border-it-red-100 dark:border-it-red-700/40 text-it-red-500 dark:text-it-red-300 hover:bg-it-red-50 dark:hover:bg-it-red-700/10 transition-colors motion-reduce:transition-none active:brightness-95 flex items-center justify-center"
             >
               <Icon name="delete_outline" className="text-[20px]" aria-hidden="true" />
             </button>
@@ -826,22 +826,22 @@ export default function ClassDetailPage() {
           aria-labelledby="delete-modal-title"
           aria-describedby="delete-modal-desc"
         >
-          <div className="bg-white dark:bg-rink-800 rounded-2xl w-full max-w-sm p-6 shadow-md">
+          <div className="bg-it-surface dark:bg-rink-800 rounded-w-xl w-full max-w-sm p-6 shadow-sh-3">
             <div
-              className="w-12 h-12 rounded-w-pill bg-red-100 dark:bg-red-900/20 flex items-center justify-center mx-auto mb-4"
+              className="w-12 h-12 rounded-w-pill bg-it-red-50 dark:bg-it-red-700/20 flex items-center justify-center mx-auto mb-4"
               aria-hidden="true"
             >
-              <Icon name="warning" className="text-2xl text-red-500 dark:text-red-400" aria-hidden="true" />
+              <Icon name="warning" className="text-2xl text-it-red-500 dark:text-it-red-300" aria-hidden="true" />
             </div>
             <h3
               id="delete-modal-title"
-              className="text-card-title font-bold text-wtext-1 dark:text-white text-center mb-2"
+              className="text-card-title font-bold text-it-ink-800 dark:text-white text-center mb-2"
             >
               수업 삭제
             </h3>
             <p
               id="delete-modal-desc"
-              className="text-card-body text-wtext-3 dark:text-rink-300 text-center mb-6 leading-relaxed"
+              className="text-card-body text-it-ink-500 dark:text-rink-300 text-center mb-6 leading-relaxed"
             >
               {MESSAGES.class.deleteConfirm}
             </p>
@@ -850,7 +850,7 @@ export default function ClassDetailPage() {
                 type="button"
                 onClick={() => setShowDeleteConfirm(false)}
                 aria-label="수업 삭제 취소"
-                className="flex-1 h-11 rounded-xl border border-wline dark:border-rink-700 text-card-body font-semibold text-wtext-2 dark:text-rink-100 hover:bg-wbg dark:hover:bg-rink-800 transition-colors motion-reduce:transition-none active:brightness-95 focus-visible:ring-2 focus-visible:ring-ice-500 focus:outline-none"
+                className="flex-1 h-11 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 text-card-body font-semibold text-it-ink-800 dark:text-rink-100 hover:bg-it-fill dark:hover:bg-rink-800 transition-colors motion-reduce:transition-none active:brightness-95 focus-visible:ring-2 focus-visible:ring-it-blue-500 focus:outline-none"
               >
                 취소
               </button>
@@ -861,10 +861,10 @@ export default function ClassDetailPage() {
                 aria-label={isDeleting ? `${className} 수업 삭제 처리 중` : `${className} 수업 삭제하기`}
                 aria-busy={isDeleting}
                 className={cn(
-                  'flex-1 h-11 rounded-xl text-card-body font-semibold text-white transition-colors motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-red-500 focus:outline-none',
+                  'flex-1 h-11 rounded-w-md text-card-body font-semibold text-white transition-colors motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-it-red-500 focus:outline-none',
                   isDeleting
-                    ? 'bg-red-300 dark:bg-red-900/50 cursor-not-allowed'
-                    : 'bg-red-500 hover:bg-red-600 active:brightness-95',
+                    ? 'bg-it-red-300 dark:bg-it-red-700/50 cursor-not-allowed'
+                    : 'bg-it-red-500 hover:bg-it-red-600 active:brightness-95',
                 )}
               >
                 {isDeleting ? '삭제 중...' : '삭제하기'}
@@ -892,13 +892,13 @@ function MetaCell({
 }) {
   const valueClass = cn(
     'text-xl font-extrabold tabular-nums truncate leading-tight',
-    emphasis === 'warn' && 'text-red-600 dark:text-red-400',
-    emphasis === 'info' && 'text-ice-500',
-    !emphasis && 'text-wtext-1 dark:text-white',
+    emphasis === 'warn' && 'text-it-red-500 dark:text-it-red-300',
+    emphasis === 'info' && 'text-it-blue-500',
+    !emphasis && 'text-it-ink-800 dark:text-white',
   );
   return (
     <div className="min-w-0 text-center">
-      <dt className="text-card-meta font-bold text-wtext-3 dark:text-rink-300 uppercase tracking-widest mb-2">
+      <dt className="text-card-meta font-bold text-it-ink-500 dark:text-rink-300 uppercase tracking-widest mb-2">
         {label}
       </dt>
       <dd className={valueClass} title={value}>

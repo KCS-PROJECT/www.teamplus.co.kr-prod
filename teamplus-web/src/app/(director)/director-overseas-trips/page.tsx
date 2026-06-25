@@ -17,12 +17,12 @@ import type { OverseasTrip, TripStatus } from '@/types/overseas-trip';
 // ─── Constants ──────────────────────────────────────
 
 const STATUS_BADGE: Record<TripStatus, { className: string; label: string }> = {
-  draft:     { className: 'bg-wline-2 text-wtext-1 dark:bg-rink-700 dark:text-wtext-4', label: MESSAGES.overseasTrip.status.draft },
+  draft:     { className: 'bg-it-line text-it-ink-500 dark:bg-rink-700 dark:text-wtext-4', label: MESSAGES.overseasTrip.status.draft },
   open:      { className: 'bg-mint-100 text-mint-500 dark:bg-mint-500/15 dark:text-mint-500', label: MESSAGES.overseasTrip.status.open },
   closed:    { className: 'bg-sun-100 text-sun-500 dark:bg-sun-500/15 dark:text-sun-500', label: MESSAGES.overseasTrip.status.closed },
-  ongoing:   { className: 'bg-blue-100 text-ice-500 dark:bg-ice-500/15 dark:text-ice-500', label: MESSAGES.overseasTrip.status.ongoing },
-  completed: { className: 'bg-purple-100 text-purple-700 dark:bg-purple-900/20 dark:text-purple-400', label: MESSAGES.overseasTrip.status.completed },
-  cancelled: { className: 'bg-red-100 text-flame-500 dark:bg-flame-500/15 dark:text-flame-500', label: MESSAGES.overseasTrip.status.cancelled },
+  ongoing:   { className: 'bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-500/15 dark:text-it-blue-500', label: MESSAGES.overseasTrip.status.ongoing },
+  completed: { className: 'bg-it-line text-it-ink-800 dark:bg-rink-700 dark:text-wtext-4', label: MESSAGES.overseasTrip.status.completed },
+  cancelled: { className: 'bg-it-red-500/10 text-it-red-500 dark:bg-it-red-500/15 dark:text-it-red-500', label: MESSAGES.overseasTrip.status.cancelled },
 };
 
 type TabType = 'upcoming' | 'ongoing' | 'past';
@@ -155,71 +155,72 @@ export default function DirectorOverseasTripsPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title={MESSAGES.overseasTrip.listTitle} forceNative />
 
-      <main className="flex-1 overflow-y-auto hide-scrollbar pb-6" role="main" aria-label="해외 원정 목록">
-        {/* 통계 요약 — 히어로 */}
-        <section className="px-4 pt-4" aria-label="원정 현황 요약">
-          <div className="rounded-w-lg border border-wline-2 bg-white p-5 shadow-sh-1 dark:border-rink-700 dark:bg-rink-800">
-            <div className="mb-3 flex items-center gap-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-w-md bg-ice-50 dark:bg-ice-500/15">
-                <Icon
-                  name="flight_takeoff"
-                  className="text-card-title text-ice-500 dark:text-ice-500"
-                  aria-hidden="true"
-                />
-              </div>
-              <div>
-                <h2 className="text-card-body font-bold text-wtext-1 dark:text-white">
-                  해외 원정 현황
-                </h2>
-                <p className="text-card-meta text-wtext-3 dark:text-wtext-4">
-                  전체 {trips.length}건의 원정을 관리합니다
-                </p>
-              </div>
+      <main className="flex-1 overflow-y-auto hide-scrollbar pb-6 bg-it-canvas dark:bg-puck" role="main" aria-label="해외 원정 목록">
+        {/* 통계 요약 — flat 흰 섹션 (카드 박스 제거) */}
+        <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-5" aria-label="원정 현황 요약">
+          <div className="mb-4 flex items-center gap-2">
+            <div className="flex h-9 w-9 items-center justify-center rounded-w-md bg-it-blue-50 dark:bg-it-blue-500/15">
+              <Icon
+                name="flight_takeoff"
+                className="text-card-title text-it-blue-500"
+                aria-hidden="true"
+              />
             </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="rounded-w-md bg-wbg dark:bg-puck/40 p-3">
-                <p className="text-card-meta font-medium text-wtext-3 dark:text-wtext-4">
-                  전체
-                </p>
-                <p className="mt-0.5 text-xl font-extrabold text-wtext-1 tabular-nums dark:text-white">
-                  {trips.length}
-                </p>
-              </div>
-              <div className="rounded-w-md bg-mint-100 dark:bg-mint-500/15 p-3">
-                <p className="text-card-meta font-medium text-mint-500 dark:text-mint-500">
-                  {MESSAGES.overseasTrip.status.open}
-                </p>
-                <p className="mt-0.5 text-xl font-extrabold text-mint-500 tabular-nums dark:text-emerald-300">
-                  {trips.filter((t) => t.status === 'open').length}
-                </p>
-              </div>
-              <div className="rounded-w-md bg-ice-50 dark:bg-ice-500/15 p-3">
-                <p className="text-card-meta font-medium text-ice-500 dark:text-ice-500">
-                  {MESSAGES.overseasTrip.status.ongoing}
-                </p>
-                <p className="mt-0.5 text-xl font-extrabold text-ice-500 tabular-nums dark:text-ice-500">
-                  {trips.filter((t) => t.status === 'ongoing').length}
-                </p>
-              </div>
+            <div>
+              <h2 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
+                해외 원정 현황
+              </h2>
+              <p className="text-card-meta text-it-ink-500 dark:text-wtext-4">
+                전체 {trips.length}건의 원정을 관리합니다
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-w-md bg-it-fill dark:bg-puck/40 p-3">
+              <p className="text-card-meta font-medium text-it-ink-500 dark:text-wtext-4">
+                전체
+              </p>
+              <p className="mt-0.5 text-xl font-extrabold text-it-ink-800 tabular-nums dark:text-white">
+                {trips.length}
+              </p>
+            </div>
+            <div className="rounded-w-md bg-mint-100 dark:bg-mint-500/15 p-3">
+              <p className="text-card-meta font-medium text-mint-500 dark:text-mint-500">
+                {MESSAGES.overseasTrip.status.open}
+              </p>
+              <p className="mt-0.5 text-xl font-extrabold text-mint-500 tabular-nums">
+                {trips.filter((t) => t.status === 'open').length}
+              </p>
+            </div>
+            <div className="rounded-w-md bg-it-blue-50 dark:bg-it-blue-500/15 p-3">
+              <p className="text-card-meta font-medium text-it-blue-500">
+                {MESSAGES.overseasTrip.status.ongoing}
+              </p>
+              <p className="mt-0.5 text-xl font-extrabold text-it-blue-500 tabular-nums">
+                {trips.filter((t) => t.status === 'ongoing').length}
+              </p>
             </div>
           </div>
         </section>
 
+        {/* flat 섹션 사이 8px 회색 갭 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
         {/* 필터 탭 — sticky pill 스타일 + 슬라이딩 인디케이터 */}
         <section
-          className="sticky top-14 z-10 bg-wbg dark:bg-puck px-4 pb-2 pt-4"
+          className="sticky top-14 z-10 bg-it-surface dark:bg-rink-800 px-5 pb-3 pt-3"
           aria-label="원정 상태 필터"
         >
           <div
             ref={tabsNavRef}
             role="tablist"
             aria-label="원정 상태 필터"
-            className="relative flex gap-1.5 rounded-w-md bg-wsurface dark:bg-rink-800 border border-wline-2 dark:border-rink-700 p-1"
+            className="relative flex gap-1.5 rounded-w-md bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 p-1"
           >
             {/* 슬라이딩 primary 배경 */}
             <span
               aria-hidden="true"
-              className="absolute top-1 bottom-1 rounded-lg bg-ice-500 shadow-sh-1 transition-[left,width] duration-300 ease-out motion-reduce:transition-none"
+              className="absolute top-1 bottom-1 rounded-w-md bg-it-blue-500 transition-[left,width] duration-300 ease-out motion-reduce:transition-none"
               style={{
                 left: `${tabIndicator.left}px`,
                 width: `${tabIndicator.width}px`,
@@ -241,10 +242,10 @@ export default function DirectorOverseasTripsPage() {
                   }}
                   onClick={() => setActiveTab(tab.key)}
                   className={cn(
-                    'relative z-[1] flex-1 min-h-[40px] rounded-lg py-2 text-card-meta font-bold transition-colors duration-200 motion-reduce:transition-none inline-flex items-center justify-center gap-1',
+                    'relative z-[1] flex-1 min-h-[40px] rounded-w-md py-2 text-card-meta font-bold transition-colors duration-200 motion-reduce:transition-none inline-flex items-center justify-center gap-1',
                     isActive
                       ? 'text-white'
-                      : 'text-wtext-2 dark:text-wtext-4 hover:text-wtext-1 dark:hover:text-white',
+                      : 'text-it-ink-600 dark:text-wtext-4 hover:text-it-ink-800 dark:hover:text-white',
                   )}
                 >
                   {tab.label}
@@ -253,7 +254,7 @@ export default function DirectorOverseasTripsPage() {
                       'tabular-nums',
                       isActive
                         ? 'text-white/90'
-                        : 'text-wtext-3 dark:text-wtext-4',
+                        : 'text-it-ink-400 dark:text-wtext-4',
                     )}
                   >
                     {count}
@@ -264,19 +265,22 @@ export default function DirectorOverseasTripsPage() {
           </div>
         </section>
 
-        {/* 목록 */}
-        <section className="px-4 pt-3 pb-6" aria-label="원정 목록">
+        {/* flat 섹션 사이 8px 회색 갭 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+        {/* 목록 — flat 흰 섹션 (hairline 구분 행, 카드 박스 제거) */}
+        <section className="bg-it-surface dark:bg-rink-800 px-5 pt-2 pb-6" aria-label="원정 목록">
           {isLoading ? null : filteredTrips.length === 0 ? (
             <div role="status" className="flex flex-col items-center py-14 px-6 text-center">
               <Icon
                 name="flight"
-                className="mb-3 text-5xl text-wtext-3 dark:text-wtext-4"
+                className="mb-3 text-5xl text-it-ink-300 dark:text-wtext-4"
                 aria-hidden="true"
               />
-              <p className="text-card-body font-semibold text-wtext-2 dark:text-wtext-4">
+              <p className="text-card-body font-semibold text-it-ink-800 dark:text-wtext-4">
                 {MESSAGES.overseasTrip.noTrips}
               </p>
-              <p className="mt-1.5 max-w-[240px] text-card-meta leading-relaxed text-wtext-3 dark:text-wtext-4">
+              <p className="mt-1.5 max-w-[240px] text-card-meta leading-relaxed text-it-ink-500 dark:text-wtext-4">
                 {activeTab === 'upcoming'
                   ? '우측 하단 버튼으로 새로운 원정을 등록해보세요.'
                   : activeTab === 'ongoing'
@@ -285,8 +289,9 @@ export default function DirectorOverseasTripsPage() {
               </p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {filteredTrips.map((trip) => {
+            <div className="flex flex-col">
+              {filteredTrips.map((trip, idx) => {
+                const isLast = idx === filteredTrips.length - 1;
                 const dday =
                   trip.status === 'open' || trip.status === 'closed'
                     ? getDDay(trip.startDate)
@@ -302,7 +307,10 @@ export default function DirectorOverseasTripsPage() {
                   <NavLink
                     key={trip.id}
                     href={`/director-overseas-trips/${trip.id}`}
-                    className="block rounded-w-md border border-wline-2 bg-white p-4 shadow-sh-1 transition-colors motion-reduce:transition-none hover:border-ice-500/30 hover:bg-ice-50/30 dark:border-rink-700 dark:bg-rink-800 dark:hover:border-ice-500/40 dark:hover:bg-blue-900/10"
+                    className={cn(
+                      'block py-4 transition-colors motion-reduce:transition-none hover:bg-it-fill dark:hover:bg-rink-700/40',
+                      !isLast && 'border-b border-it-line dark:border-rink-700',
+                    )}
                     aria-label={`${trip.title} 원정 상세 보기`}
                   >
                     {/* 상단: 상태 + D-day */}
@@ -315,33 +323,33 @@ export default function DirectorOverseasTripsPage() {
                         {STATUS_BADGE[trip.status]?.label ?? trip.status}
                       </span>
                       {dday && (
-                        <span className="shrink-0 rounded-md bg-ice-500 px-2 py-0.5 text-card-meta font-extrabold text-white tabular-nums">
+                        <span className="shrink-0 rounded-w-md bg-it-blue-500 px-2 py-0.5 text-card-meta font-extrabold text-white tabular-nums">
                           {dday}
                         </span>
                       )}
                     </div>
 
                     {/* 제목 */}
-                    <h3 className="truncate text-card-title font-bold text-wtext-1 dark:text-white leading-snug">
+                    <h3 className="truncate text-[15.5px] font-bold tracking-[-0.01em] text-it-ink-800 dark:text-white leading-snug">
                       {trip.title}
                     </h3>
 
                     {/* 위치 + 기간 */}
                     <div className="mt-2 space-y-1">
-                      <div className="flex items-center gap-1.5 text-card-meta text-wtext-2 dark:text-wtext-4">
+                      <div className="flex items-center gap-1.5 text-card-meta text-it-ink-600 dark:text-wtext-4">
                         <Icon
                           name="location_on"
-                          className="text-card-body text-wtext-3"
+                          className="text-card-body text-it-blue-500"
                           aria-hidden="true"
                         />
                         <span>
                           {trip.country} {trip.city}
                         </span>
                       </div>
-                      <div className="flex items-center gap-1.5 text-card-meta text-wtext-2 dark:text-wtext-4 tabular-nums">
+                      <div className="flex items-center gap-1.5 text-card-meta text-it-ink-600 dark:text-wtext-4 tabular-nums">
                         <Icon
                           name="calendar_today"
-                          className="text-card-body text-wtext-3"
+                          className="text-card-body text-it-blue-500"
                           aria-hidden="true"
                         />
                         <span>
@@ -351,23 +359,23 @@ export default function DirectorOverseasTripsPage() {
                     </div>
 
                     {/* 참가자 진행률 */}
-                    <div className="mt-3 pt-3 border-t border-wline-2 dark:border-rink-700">
+                    <div className="mt-3">
                       <div className="mb-1.5 flex items-center justify-between">
-                        <span className="inline-flex items-center gap-1 text-card-meta font-semibold text-wtext-3 dark:text-wtext-4">
+                        <span className="inline-flex items-center gap-1 text-card-meta font-semibold text-it-ink-500 dark:text-wtext-4">
                           <Icon name="group" className="text-card-meta" aria-hidden="true" />
                           참가자
                         </span>
-                        <span className="text-card-meta font-bold tabular-nums text-wtext-1 dark:text-white">
+                        <span className="text-card-meta font-bold tabular-nums text-it-ink-800 dark:text-white">
                           {participantCount}
-                          <span className="text-wtext-3 dark:text-wtext-4 font-medium">
+                          <span className="text-it-ink-400 dark:text-wtext-4 font-medium">
                             /{trip.maxParticipants}명
                           </span>
                         </span>
                       </div>
-                      <div className="h-1.5 rounded-w-pill bg-wline-2 dark:bg-rink-700 overflow-hidden">
+                      <div className="h-1.5 rounded-w-pill bg-it-line dark:bg-rink-700 overflow-hidden">
                         <div
                           className={`h-full rounded-w-pill transition-all motion-reduce:transition-none duration-500 ${
-                            isFull ? 'bg-sun-500' : 'bg-ice-500'
+                            isFull ? 'bg-sun-500' : 'bg-it-blue-500'
                           }`}
                           style={{ width: `${Math.min(fillPct, 100)}%` }}
                         />
@@ -376,7 +384,7 @@ export default function DirectorOverseasTripsPage() {
 
                     {/* 하단 부가 정보 */}
                     {(trip.estimatedCost || trip.team?.name) && (
-                      <div className="mt-3 flex items-center justify-between gap-2 text-card-meta text-wtext-3 dark:text-wtext-4">
+                      <div className="mt-3 flex items-center justify-between gap-2 text-card-meta text-it-ink-500 dark:text-wtext-4">
                         {trip.team?.name && (
                           <span className="flex items-center gap-1 truncate">
                             <Icon
@@ -390,7 +398,7 @@ export default function DirectorOverseasTripsPage() {
                         {trip.estimatedCost && (
                           <span className="flex items-center gap-1 shrink-0">
                             <Icon name="payments" className="text-card-meta" aria-hidden="true" />
-                            <span className="font-semibold tabular-nums text-wtext-1 dark:text-white">
+                            <span className="font-semibold tabular-nums text-it-ink-800 dark:text-white">
                               {formatCurrency(trip.estimatedCost)}
                             </span>
                           </span>
@@ -409,7 +417,7 @@ export default function DirectorOverseasTripsPage() {
       <NavLink
         href="/director-overseas-trips/create"
         aria-label="신규 원정 등록하기"
-        className="fixed bottom-[calc(76px+env(safe-area-inset-bottom))] right-5 z-30 flex h-14 w-14 items-center justify-center rounded-w-pill bg-ice-500 hover:bg-ice-600 text-white shadow-sh-1 hover:shadow-sh-2 active:brightness-95 transition-all motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-puck"
+        className="fixed bottom-[calc(76px+env(safe-area-inset-bottom))] right-5 z-30 flex h-14 w-14 items-center justify-center rounded-w-pill bg-it-blue-500 hover:bg-it-blue-600 text-white shadow-sh-1 hover:shadow-sh-2 active:brightness-95 transition-all motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-puck"
       >
         <Icon name="add" className="text-2xl" aria-hidden="true" />
       </NavLink>

@@ -78,6 +78,11 @@ interface ClassFormProps {
   onPackageDraftChange?: (next: DraftProduct[]) => void;
   /** [등록 모드] 추가 패키지 보류 변경 존재 여부. */
   packageDirty?: boolean;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 카드 박스 제거(flat) + it-* 토큰(it-blue 헤더·it-fill 입력)으로 교체.
+   */
+  iceTheme?: boolean;
 }
 
 export function ClassForm({
@@ -94,8 +99,28 @@ export function ClassForm({
   packageDraftValue,
   onPackageDraftChange,
   packageDirty = false,
+  iceTheme = false,
 }: ClassFormProps) {
   const isAcademy = context === 'academy';
+  // [ICETIMES] flat 토큰 헬퍼 — iceTheme=true 일 때만 it-* 스타일 적용(회귀 0).
+  //   sectionHead: it-blue 세로바 헤더 / card: 카드 박스 제거(flat) / input·textarea: it-fill.
+  const ic = {
+    head: iceTheme
+      ? 'flex items-center gap-2.5 text-card-title font-extrabold text-it-blue-500 dark:text-it-blue-300 tracking-[-0.02em] pb-1'
+      : 'flex items-center gap-2.5 text-card-title font-extrabold text-ice-600 dark:text-ice-400 tracking-[-0.02em] pb-1',
+    headBar: iceTheme ? 'w-1 h-4 rounded-sm bg-it-blue-500' : 'w-1 h-4 rounded-sm bg-ice-500',
+    // 카드 박스 — iceTheme 은 flat(흰 배경·hairline 1.5px·무그림자), 기본은 카드.
+    card: iceTheme
+      ? 'bg-it-surface dark:bg-rink-800 p-5 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700'
+      : 'bg-white dark:bg-rink-800 p-5 rounded-xl shadow-sm border border-wline dark:border-rink-700',
+    label: iceTheme
+      ? 'block text-card-meta font-bold mb-2 text-it-ink-600 dark:text-rink-200 tracking-[-0.01em]'
+      : 'block text-card-meta font-bold mb-2 text-wtext-2 dark:text-rink-200 tracking-[-0.01em]',
+    input: iceTheme
+      ? 'w-full bg-it-fill dark:bg-rink-700 border-[1.5px] border-it-line-strong dark:border-rink-600 rounded-w-md text-sm h-12 px-4 focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 transition-colors motion-reduce:transition-none text-it-ink-800 dark:text-white placeholder:text-it-ink-400'
+      : 'w-full bg-wbg dark:bg-rink-700 border border-wline-2 dark:border-rink-600 rounded-xl text-sm h-12 px-4 focus:border-ice-500 focus:ring-1 focus:ring-ice-500/20 transition-all text-wtext-1 dark:text-white placeholder:text-wtext-3',
+    required: iceTheme ? 'text-it-red-500 ml-1' : 'text-flame-500 ml-1',
+  };
   const [formData, setFormData] = useState<ClassFormData>({
     ...DEFAULT_FORM_DATA,
     // academy 컨텍스트는 항상 'lesson' 강제.
@@ -377,16 +402,22 @@ export function ClassForm({
                 · 필드 간 spacing: mt-5 (20px) */}
         <AnimatedSection delay={0}>
           <section className="space-y-3">
-            <h2 className="flex items-center gap-2.5 text-card-title font-extrabold text-ice-600 dark:text-ice-400 tracking-[-0.02em] pb-1">
-              <span className="w-1 h-4 rounded-sm bg-ice-500" aria-hidden="true" />
+            <h2 className={ic.head}>
+              <span className={ic.headBar} aria-hidden="true" />
               수업 기본 정보
             </h2>
 
-            <div className="rounded-[18px] bg-wsurface dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-sh-1 p-5">
+            <div
+              className={
+                iceTheme
+                  ? 'rounded-w-md bg-it-surface dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 p-5'
+                  : 'rounded-[18px] bg-wsurface dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-sh-1 p-5'
+              }
+            >
               {/* 수업 명칭 */}
               <div>
-                <label className="block text-card-meta font-bold mb-2 text-wtext-2 dark:text-rink-200 tracking-[-0.01em]">
-                  수업 명칭<span className="text-flame-500 ml-1" aria-hidden="true">*</span>
+                <label className={ic.label}>
+                  수업 명칭<span className={ic.required} aria-hidden="true">*</span>
                 </label>
                 <input
                   type="text"
@@ -395,7 +426,7 @@ export function ClassForm({
                   placeholder="예: 토요일 오전 파워 스케이팅"
                   maxLength={50}
                   className={cn(
-                    'w-full bg-wbg dark:bg-rink-700 border border-wline-2 dark:border-rink-600 rounded-xl text-sm h-12 px-4 focus:border-ice-500 focus:ring-1 focus:ring-ice-500/20 transition-all text-wtext-1 dark:text-white placeholder:text-wtext-3',
+                    ic.input,
                     errors.className && 'border-red-400 focus:border-red-400'
                   )}
                   aria-label="수업 명칭"
@@ -413,10 +444,16 @@ export function ClassForm({
 
               {/* 대상 연령 — 전체 연령 대상(기본) 토글. 끄면 출생연도 개별 선택 그리드 노출. */}
               <div className="mt-5">
-                <label className="block text-card-meta font-bold mb-2 text-wtext-2 dark:text-rink-200 tracking-[-0.01em]">
+                <label className={ic.label}>
                   대상 연령
                 </label>
-                <div className="rounded-xl border border-wline-2 dark:border-rink-600 bg-wbg dark:bg-rink-700 px-3.5 py-3">
+                <div
+                  className={
+                    iceTheme
+                      ? 'rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-600 bg-it-fill dark:bg-rink-700 px-3.5 py-3'
+                      : 'rounded-xl border border-wline-2 dark:border-rink-600 bg-wbg dark:bg-rink-700 px-3.5 py-3'
+                  }
+                >
                   <Toggle
                     checked={!restrictAge}
                     onChange={(allAges) => {
@@ -460,18 +497,26 @@ export function ClassForm({
                             aria-checked={checked}
                             onClick={() => toggleBirthYear(birthYear)}
                             className={cn(
-                              'flex items-center gap-2.5 px-3.5 h-12 rounded-xl border text-sm font-bold transition-colors',
-                              checked
-                                ? 'bg-ice-100 border-ice-500 text-ice-700 dark:bg-ice-500/15 dark:border-ice-400 dark:text-ice-300'
-                                : 'bg-wbg dark:bg-rink-700 border-wline-2 dark:border-rink-600 text-wtext-2 dark:text-rink-200 hover:bg-wline-2 dark:hover:bg-rink-600'
+                              'flex items-center gap-2.5 px-3.5 h-12 rounded-w-md border-[1.5px] text-sm font-bold transition-colors motion-reduce:transition-none',
+                              iceTheme
+                                ? checked
+                                  ? 'bg-it-blue-50 border-it-blue-500 text-it-blue-500 dark:bg-it-blue-500/15 dark:border-it-blue-300 dark:text-it-blue-300'
+                                  : 'bg-it-fill dark:bg-rink-700 border-it-line-strong dark:border-rink-600 text-it-ink-600 dark:text-rink-200 hover:bg-it-line dark:hover:bg-rink-600'
+                                : checked
+                                  ? 'bg-ice-100 border-ice-500 text-ice-700 dark:bg-ice-500/15 dark:border-ice-400 dark:text-ice-300'
+                                  : 'bg-wbg dark:bg-rink-700 border-wline-2 dark:border-rink-600 text-wtext-2 dark:text-rink-200 hover:bg-wline-2 dark:hover:bg-rink-600'
                             )}
                           >
                             <span
                               className={cn(
-                                'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors',
-                                checked
-                                  ? 'bg-ice-500 border-ice-500 text-white'
-                                  : 'bg-wsurface dark:bg-rink-800 border-wline-2 dark:border-rink-500'
+                                'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors motion-reduce:transition-none',
+                                iceTheme
+                                  ? checked
+                                    ? 'bg-it-blue-500 border-it-blue-500 text-white'
+                                    : 'bg-it-surface dark:bg-rink-800 border-it-line-strong dark:border-rink-500'
+                                  : checked
+                                    ? 'bg-ice-500 border-ice-500 text-white'
+                                    : 'bg-wsurface dark:bg-rink-800 border-wline-2 dark:border-rink-500'
                               )}
                               aria-hidden="true"
                             >
@@ -483,11 +528,11 @@ export function ClassForm({
                       })}
                     </div>
                     {birthYearSummaryLabel && (
-                      <p className="mt-2 text-xs font-bold text-ice-600 dark:text-ice-400 tabular-nums">
+                      <p className={cn('mt-2 text-xs font-bold tabular-nums', iceTheme ? 'text-it-blue-500 dark:text-it-blue-300' : 'text-ice-600 dark:text-ice-400')}>
                         {birthYearSummaryLabel}
                       </p>
                     )}
-                    <p className="mt-1.5 text-xs text-wtext-3 dark:text-rink-300">
+                    <p className={cn('mt-1.5 text-xs', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                       대상 출생연도를 선택해주세요 (복수 선택 가능)
                     </p>
                   </>
@@ -501,17 +546,19 @@ export function ClassForm({
         {isAcademy && (
           <AnimatedSection delay={90}>
             <section className="space-y-4">
-              <h2 className="flex items-center gap-2.5 text-card-title font-extrabold text-ice-600 dark:text-ice-400 tracking-[-0.02em] pb-1">
-                <span className="w-1 h-4 rounded-sm bg-ice-500" aria-hidden="true" />
+              <h2 className={ic.head}>
+                <span className={ic.headBar} aria-hidden="true" />
                 정원
               </h2>
-              <div className="bg-white dark:bg-rink-800 p-5 rounded-xl shadow-sm border border-wline dark:border-rink-700 space-y-2">
-                <label className="block text-card-meta font-bold text-wtext-3 dark:text-rink-300 uppercase tracking-wider">
-                  최대 인원 <span className="text-red-500">*</span>
+              <div className={cn(ic.card, 'space-y-2')}>
+                <label className={cn('block text-card-meta font-bold uppercase tracking-wider', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
+                  최대 인원 <span className={iceTheme ? 'text-it-red-500' : 'text-red-500'}>*</span>
                 </label>
                 <div className={cn(
-                  'flex items-center gap-2 bg-wbg dark:bg-rink-900 px-3 py-2.5 rounded-lg border',
-                  errors.capacity ? 'border-red-400' : 'border-wline dark:border-rink-700'
+                  'flex items-center gap-2 px-3 py-2.5 rounded-w-md',
+                  iceTheme
+                    ? cn('bg-it-fill dark:bg-rink-900 border-[1.5px]', errors.capacity ? 'border-red-400' : 'border-it-line-strong dark:border-rink-700')
+                    : cn('bg-wbg dark:bg-rink-900 border', errors.capacity ? 'border-red-400' : 'border-wline dark:border-rink-700')
                 )}>
                   <input
                     type="text"
@@ -522,11 +569,11 @@ export function ClassForm({
                       handleChange('capacity', raw === '' ? 0 : Math.min(parseInt(raw), 100));
                     }}
                     placeholder="예: 10"
-                    className="w-full bg-transparent border-0 p-0 text-sm font-extrabold text-wtext-1 dark:text-white focus:ring-0 focus:outline-none"
+                    className={cn('w-full bg-transparent border-0 p-0 text-sm font-extrabold focus:ring-0 focus:outline-none', iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white')}
                     aria-label="최대 인원"
                     aria-invalid={!!errors.capacity}
                   />
-                  <span className="text-xs font-bold text-wtext-3 shrink-0">명</span>
+                  <span className={cn('text-xs font-bold shrink-0', iceTheme ? 'text-it-ink-500' : 'text-wtext-3')}>명</span>
                 </div>
                 {errors.capacity && (
                   <p className="text-xs text-red-500 flex items-center gap-1" role="alert">
@@ -543,18 +590,22 @@ export function ClassForm({
               [2026-06-05] 수업 기본 정보 바로 아래로 이동 (기존 일정·장소 다음 → 위로). */}
         <AnimatedSection delay={100}>
           <section className="space-y-4">
-            <h2 className="flex items-center gap-2.5 text-card-title font-extrabold text-ice-600 dark:text-ice-400 tracking-[-0.02em] pb-1">
-              <span className="w-1 h-4 rounded-sm bg-ice-500" aria-hidden="true" />
+            <h2 className={ic.head}>
+              <span className={ic.headBar} aria-hidden="true" />
               수업 상세 설명
             </h2>
-            <div className="bg-white dark:bg-rink-800 p-5 rounded-xl shadow-sm border border-wline dark:border-rink-700">
+            <div className={ic.card}>
               <textarea
                 value={formData.description}
                 onChange={(e) => handleChange('description', e.target.value)}
                 placeholder="수업에 대한 상세 내용이나 수강생이 알아야 할 주의사항을 입력해 주세요."
                 maxLength={500}
                 rows={5}
-                className="w-full bg-wsurface dark:bg-rink-700 border border-wline-2 dark:border-rink-600 rounded-xl text-sm min-h-[120px] px-4 py-3 leading-relaxed focus:border-ice-500 focus:ring-1 focus:ring-ice-500/20 resize-none text-wtext-1 dark:text-white placeholder:text-wtext-3"
+                className={
+                  iceTheme
+                    ? 'w-full bg-it-fill dark:bg-rink-700 border-[1.5px] border-it-line-strong dark:border-rink-600 rounded-w-md text-sm min-h-[120px] px-4 py-3 leading-relaxed focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 resize-none text-it-ink-800 dark:text-white placeholder:text-it-ink-400 transition-colors motion-reduce:transition-none'
+                    : 'w-full bg-wsurface dark:bg-rink-700 border border-wline-2 dark:border-rink-600 rounded-xl text-sm min-h-[120px] px-4 py-3 leading-relaxed focus:border-ice-500 focus:ring-1 focus:ring-ice-500/20 resize-none text-wtext-1 dark:text-white placeholder:text-wtext-3'
+                }
                 aria-label="수업 설명"
               />
             </div>
@@ -564,19 +615,19 @@ export function ClassForm({
         {/* ── SECTION 3: 일정 및 장소 설정 ── */}
         <AnimatedSection delay={200}>
           <section className="space-y-4">
-            <h2 className="flex items-center gap-2.5 text-card-title font-extrabold text-ice-600 dark:text-ice-400 tracking-[-0.02em] pb-1">
-              <span className="w-1 h-4 rounded-sm bg-ice-500" aria-hidden="true" />
+            <h2 className={ic.head}>
+              <span className={ic.headBar} aria-hidden="true" />
               일정 및 장소 설정
             </h2>
 
             {/* [2026-06-09] 미니달력 날짜별 일정(날짜·시간·장소). 요일 토글 대체. */}
             {(
-              <div className="bg-white dark:bg-rink-800 p-5 rounded-xl shadow-sm border border-wline-2 dark:border-rink-700 space-y-3">
-                <label className="block text-sm font-bold text-wtext-2 dark:text-rink-100">
+              <div className={cn(ic.card, 'space-y-3')}>
+                <label className={cn('block text-sm font-bold', iceTheme ? 'text-it-ink-600 dark:text-rink-100' : 'text-wtext-2 dark:text-rink-100')}>
                   수업 일정
                 </label>
                 {formData.dateSchedules.length === 0 ? (
-                  <p className="text-xs text-wtext-3 dark:text-rink-300 px-1 py-1">
+                  <p className={cn('text-xs px-1 py-1', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                     아래 버튼으로 일정을 추가하고 날짜·시간·장소를 지정하세요.
                   </p>
                 ) : (
@@ -584,15 +635,19 @@ export function ClassForm({
                     {formData.dateSchedules.map((s, idx) => (
                       <li
                         key={s.key}
-                        className="rounded-xl border border-wline-2 dark:border-rink-700 bg-wbg dark:bg-rink-900/40 p-3 space-y-2"
+                        className={
+                          iceTheme
+                            ? 'rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-900/40 p-3 space-y-2'
+                            : 'rounded-xl border border-wline-2 dark:border-rink-700 bg-wbg dark:bg-rink-900/40 p-3 space-y-2'
+                        }
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1.5">
-                            <span className="text-card-meta font-extrabold text-wtext-2 dark:text-rink-100">
+                            <span className={cn('text-card-meta font-extrabold', iceTheme ? 'text-it-ink-600 dark:text-rink-100' : 'text-wtext-2 dark:text-rink-100')}>
                               {idx + 1}회차
                             </span>
                             {s.date && (
-                              <span className="text-card-meta font-bold text-ice-600 dark:text-ice-400" aria-hidden="true">
+                              <span className={cn('text-card-meta font-bold', iceTheme ? 'text-it-blue-500 dark:text-it-blue-300' : 'text-ice-600 dark:text-ice-400')} aria-hidden="true">
                                 ({getKoreanWeekday(s.date)})
                               </span>
                             )}
@@ -610,7 +665,11 @@ export function ClassForm({
                           type="date"
                           value={s.date}
                           onChange={(e) => updateDateSchedule(s.key, { date: e.target.value })}
-                          className="w-full h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-wtext-1 dark:text-white focus:outline-none focus:border-ice-500"
+                          className={
+                            iceTheme
+                              ? 'w-full h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500'
+                              : 'w-full h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-wtext-1 dark:text-white focus:outline-none focus:border-ice-500'
+                          }
                           aria-label={`${idx + 1}회차 날짜`}
                         />
                         <div className="grid grid-cols-2 gap-2">
@@ -618,14 +677,22 @@ export function ClassForm({
                             type="time"
                             value={s.startTime}
                             onChange={(e) => updateDateSchedule(s.key, { startTime: e.target.value })}
-                            className="h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-wtext-1 dark:text-white focus:outline-none focus:border-ice-500"
+                            className={
+                              iceTheme
+                                ? 'h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500'
+                                : 'h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-wtext-1 dark:text-white focus:outline-none focus:border-ice-500'
+                            }
                             aria-label={`${idx + 1}회차 시작 시간`}
                           />
                           <input
                             type="time"
                             value={s.endTime}
                             onChange={(e) => updateDateSchedule(s.key, { endTime: e.target.value })}
-                            className="h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-wtext-1 dark:text-white focus:outline-none focus:border-ice-500"
+                            className={
+                              iceTheme
+                                ? 'h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500'
+                                : 'h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-wtext-1 dark:text-white focus:outline-none focus:border-ice-500'
+                            }
                             aria-label={`${idx + 1}회차 종료 시간`}
                           />
                         </div>
@@ -635,13 +702,17 @@ export function ClassForm({
                             setVenueTargetDateKey(s.key);
                             setVenueSheetOpen(true);
                           }}
-                          className="w-full flex items-center gap-2 h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-left text-wtext-1 dark:text-white hover:border-ice-500/40 transition-colors"
+                          className={
+                            iceTheme
+                              ? 'w-full flex items-center gap-2 h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-left text-it-ink-800 dark:text-white hover:border-it-blue-500/40 transition-colors motion-reduce:transition-none'
+                              : 'w-full flex items-center gap-2 h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-left text-wtext-1 dark:text-white hover:border-ice-500/40 transition-colors'
+                          }
                         >
-                          <Icon name="location_on" className="text-base text-wtext-3" aria-hidden="true" />
-                          <span className={s.venueName ? '' : 'text-wtext-3'}>
+                          <Icon name="location_on" className={cn('text-base', iceTheme ? 'text-it-ink-400' : 'text-wtext-3')} aria-hidden="true" />
+                          <span className={s.venueName ? '' : iceTheme ? 'text-it-ink-400' : 'text-wtext-3'}>
                             {s.venueName || '장소 선택'}
                           </span>
-                          <Icon name="chevron_right" className="text-base text-wtext-4 ml-auto" aria-hidden="true" />
+                          <Icon name="chevron_right" className={cn('text-base ml-auto', iceTheme ? 'text-it-ink-300' : 'text-wtext-4')} aria-hidden="true" />
                         </button>
                       </li>
                     ))}
@@ -650,7 +721,11 @@ export function ClassForm({
                 <button
                   type="button"
                   onClick={() => setMultiDateOpen(true)}
-                  className="mt-1 flex h-10 w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-ice-500/50 text-sm font-bold text-ice-500 hover:bg-ice-500/[0.06] transition-colors"
+                  className={
+                    iceTheme
+                      ? 'mt-1 flex h-10 w-full items-center justify-center gap-1.5 rounded-w-md border border-dashed border-it-blue-500/50 text-sm font-bold text-it-blue-500 hover:bg-it-blue-500/[0.06] transition-colors motion-reduce:transition-none'
+                      : 'mt-1 flex h-10 w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-ice-500/50 text-sm font-bold text-ice-500 hover:bg-ice-500/[0.06] transition-colors'
+                  }
                 >
                   <Icon name="calendar_month" className="text-base" aria-hidden="true" />
                   일정 추가
@@ -674,44 +749,44 @@ export function ClassForm({
                   onClick={closeVenueSheet}
                 />
                 {/* Sheet */}
-                <div className="absolute bottom-0 left-0 right-0 bg-white dark:bg-rink-800 rounded-t-2xl shadow-md animate-[slideUp_300ms_ease-out] max-h-[75vh] flex flex-col">
+                <div className={cn('absolute bottom-0 left-0 right-0 rounded-t-2xl shadow-md animate-[slideUp_300ms_ease-out] max-h-[75vh] flex flex-col', iceTheme ? 'bg-it-surface dark:bg-rink-800' : 'bg-white dark:bg-rink-800')}>
                   {/* Handle */}
                   <div className="flex justify-center pt-3 pb-1">
-                    <div className="w-10 h-1 rounded-full bg-wline dark:bg-rink-500" />
+                    <div className={cn('w-10 h-1 rounded-full', iceTheme ? 'bg-it-line-strong dark:bg-rink-500' : 'bg-wline dark:bg-rink-500')} />
                   </div>
 
                   {/* Header */}
-                  <div className="flex items-center justify-between px-5 py-3 border-b border-wline-2 dark:border-rink-700">
-                    <h3 className="text-base font-bold text-wtext-1 dark:text-white">
+                  <div className={cn('flex items-center justify-between px-5 py-3 border-b', iceTheme ? 'border-it-line dark:border-rink-700' : 'border-wline-2 dark:border-rink-700')}>
+                    <h3 className={cn('text-base font-bold', iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white')}>
                       {venueTargetDay ? `${venueTargetDay}요일 장소 선택` : '훈련 장소 선택'}
                     </h3>
                     <button
                       type="button"
                       onClick={closeVenueSheet}
-                      className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors"
+                      className={cn('w-8 h-8 flex items-center justify-center rounded-full transition-colors motion-reduce:transition-none', iceTheme ? 'hover:bg-it-fill dark:hover:bg-rink-700' : 'hover:bg-wline-2 dark:hover:bg-rink-700')}
                       aria-label="닫기"
                     >
-                      <Icon name="close" className="text-lg text-wtext-3" />
+                      <Icon name="close" className={cn('text-lg', iceTheme ? 'text-it-ink-500' : 'text-wtext-3')} />
                     </button>
                   </div>
 
                   {/* Search */}
                   <div className="px-5 py-3">
-                    <div className="flex items-center gap-3 bg-wsurface dark:bg-rink-700 border border-wline-2 dark:border-rink-600 px-4 py-3 rounded-xl transition-colors">
-                      <Icon name="search" className="text-wtext-3 text-xl shrink-0" aria-hidden="true" />
+                    <div className={cn('flex items-center gap-3 px-4 py-3 rounded-w-md transition-colors motion-reduce:transition-none', iceTheme ? 'bg-it-fill dark:bg-rink-700 border-[1.5px] border-it-line-strong dark:border-rink-600' : 'bg-wsurface dark:bg-rink-700 border border-wline-2 dark:border-rink-600')}>
+                      <Icon name="search" className={cn('text-xl shrink-0', iceTheme ? 'text-it-ink-400' : 'text-wtext-3')} aria-hidden="true" />
                       <input
                         type="text"
                         value={venueSearch}
                         onChange={(e) => setVenueSearch(e.target.value)}
                         placeholder="장소명 또는 주소 검색"
-                        className="bg-transparent border-0 p-0 text-sm w-full focus:ring-0 focus:outline-none text-wtext-1 dark:text-white placeholder:text-wtext-3"
+                        className={cn('bg-transparent border-0 p-0 text-sm w-full focus:ring-0 focus:outline-none', iceTheme ? 'text-it-ink-800 dark:text-white placeholder:text-it-ink-400' : 'text-wtext-1 dark:text-white placeholder:text-wtext-3')}
                         autoFocus
                       />
                       {venueSearch && (
                         <button
                           type="button"
                           onClick={() => setVenueSearch('')}
-                          className="text-wtext-3 hover:text-wtext-2 transition-colors shrink-0"
+                          className={cn('transition-colors motion-reduce:transition-none shrink-0', iceTheme ? 'text-it-ink-400 hover:text-it-ink-600' : 'text-wtext-3 hover:text-wtext-2')}
                           aria-label="검색어 지우기"
                         >
                           <Icon name="close" className="text-base" />
@@ -737,30 +812,38 @@ export function ClassForm({
                               type="button"
                               onClick={() => handleVenueSelect(v.id, v.name, v.address ?? '')}
                               className={cn(
-                                'w-full flex items-center gap-4 p-4 rounded-xl text-left transition-colors active:brightness-95',
-                                isSelected
-                                  ? 'bg-ice-500/5 border-2 border-ice-500'
-                                  : 'bg-wbg dark:bg-rink-900/50 border border-wline-2 dark:border-rink-700 hover:border-ice-500/30',
+                                'w-full flex items-center gap-4 p-4 rounded-w-md text-left transition-colors motion-reduce:transition-none active:brightness-95',
+                                iceTheme
+                                  ? isSelected
+                                    ? 'bg-it-blue-500/5 border-2 border-it-blue-500'
+                                    : 'bg-it-fill dark:bg-rink-900/50 border-[1.5px] border-it-line-strong dark:border-rink-700 hover:border-it-blue-500/30'
+                                  : isSelected
+                                    ? 'bg-ice-500/5 border-2 border-ice-500'
+                                    : 'bg-wbg dark:bg-rink-900/50 border border-wline-2 dark:border-rink-700 hover:border-ice-500/30',
                               )}
                             >
                               <div className={cn(
                                 'w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border',
-                                isSelected
-                                  ? 'bg-ice-500/10 border-ice-500/20'
-                                  : 'bg-white dark:bg-rink-700 border-wline dark:border-rink-700',
+                                iceTheme
+                                  ? isSelected
+                                    ? 'bg-it-blue-500/10 border-it-blue-500/20'
+                                    : 'bg-it-surface dark:bg-rink-700 border-it-line dark:border-rink-700'
+                                  : isSelected
+                                    ? 'bg-ice-500/10 border-ice-500/20'
+                                    : 'bg-white dark:bg-rink-700 border-wline dark:border-rink-700',
                               )}>
-                                <Icon name="location_on" className={cn('text-xl', isSelected ? 'text-ice-500' : 'text-wtext-3')} aria-hidden="true" />
+                                <Icon name="location_on" className={cn('text-xl', iceTheme ? (isSelected ? 'text-it-blue-500' : 'text-it-ink-400') : (isSelected ? 'text-ice-500' : 'text-wtext-3'))} aria-hidden="true" />
                               </div>
                               <div className="min-w-0 flex-1">
-                                <p className={cn('text-sm font-bold', isSelected ? 'text-ice-500' : 'text-wtext-1 dark:text-rink-100')}>
+                                <p className={cn('text-sm font-bold', iceTheme ? (isSelected ? 'text-it-blue-500' : 'text-it-ink-800 dark:text-rink-100') : (isSelected ? 'text-ice-500' : 'text-wtext-1 dark:text-rink-100'))}>
                                   {v.name}
                                 </p>
                                 {v.address && (
-                                  <p className="text-card-meta text-wtext-3 dark:text-rink-300 mt-0.5 truncate">{v.address}</p>
+                                  <p className={cn('text-card-meta mt-0.5 truncate', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>{v.address}</p>
                                 )}
                               </div>
                               {isSelected && (
-                                <Icon name="check_circle" className="text-xl text-ice-500 shrink-0" aria-hidden="true" />
+                                <Icon name="check_circle" className={cn('text-xl shrink-0', iceTheme ? 'text-it-blue-500' : 'text-ice-500')} aria-hidden="true" />
                               )}
                             </button>
                           );
@@ -768,10 +851,10 @@ export function ClassForm({
                       </div>
                     ) : (
                       <div className="flex flex-col items-center justify-center py-12">
-                        <div className="w-14 h-14 rounded-full bg-wline-2 dark:bg-rink-700 flex items-center justify-center mb-3">
-                          <Icon name="search_off" className="text-2xl text-wtext-3" aria-hidden="true" />
+                        <div className={cn('w-14 h-14 rounded-full flex items-center justify-center mb-3', iceTheme ? 'bg-it-fill dark:bg-rink-700' : 'bg-wline-2 dark:bg-rink-700')}>
+                          <Icon name="search_off" className={cn('text-2xl', iceTheme ? 'text-it-ink-400' : 'text-wtext-3')} aria-hidden="true" />
                         </div>
-                        <p className="text-sm text-wtext-3 dark:text-rink-300 font-medium">
+                        <p className={cn('text-sm font-medium', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                           {venueSearch ? `"${venueSearch}" 검색 결과가 없습니다` : '등록된 훈련 장소가 없습니다'}
                         </p>
                       </div>
@@ -793,15 +876,15 @@ export function ClassForm({
           <section className="space-y-4">
             {mode === 'create' ? (
               <>
-                <h2 className="flex items-center gap-2.5 text-card-title font-extrabold text-ice-600 dark:text-ice-400 tracking-[-0.02em] pb-1">
-                  <span className="w-1 h-4 rounded-sm bg-ice-500" aria-hidden="true" />
+                <h2 className={ic.head}>
+                  <span className={ic.headBar} aria-hidden="true" />
                   {MESSAGES.classProduct.feeSectionTitle}
                 </h2>
-                <div className="bg-white dark:bg-rink-800 p-5 rounded-xl space-y-6 shadow-sm border border-wline dark:border-rink-700">
+                <div className={cn(ic.card, 'space-y-6')}>
                   <div className="grid grid-cols-2 gap-4">
                     {/* [Phase B-5] 결제 방식 — 선불/후불 (팀·오픈 공통) */}
                     <div className="col-span-2 space-y-2">
-                      <label className="block text-card-meta font-bold text-wtext-3 dark:text-rink-300 uppercase tracking-wider">
+                      <label className={cn('block text-card-meta font-bold uppercase tracking-wider', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                         {MESSAGES.classProduct.billingModeLabel}
                       </label>
                       <div className="grid grid-cols-2 gap-2">
@@ -818,10 +901,14 @@ export function ClassForm({
                               }}
                               aria-pressed={active}
                               className={cn(
-                                'h-11 rounded-lg border text-sm font-bold transition-colors motion-reduce:transition-none',
-                                active
-                                  ? 'border-ice-500 bg-ice-50 text-ice-600 dark:bg-rink-700 dark:text-ice-400 dark:border-ice-500'
-                                  : 'border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-wtext-2 dark:text-rink-200',
+                                'h-11 rounded-w-md border-[1.5px] text-sm font-bold transition-colors motion-reduce:transition-none',
+                                iceTheme
+                                  ? active
+                                    ? 'border-it-blue-500 bg-it-blue-50 text-it-blue-500 dark:bg-rink-700 dark:text-it-blue-300 dark:border-it-blue-500'
+                                    : 'border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-it-ink-600 dark:text-rink-200'
+                                  : active
+                                    ? 'border-ice-500 bg-ice-50 text-ice-600 dark:bg-rink-700 dark:text-ice-400 dark:border-ice-500'
+                                    : 'border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-wtext-2 dark:text-rink-200',
                               )}
                             >
                               {bm === 'PREPAID'
@@ -831,7 +918,7 @@ export function ClassForm({
                           );
                         })}
                       </div>
-                      <p className="text-card-caption text-wtext-3 dark:text-rink-300">
+                      <p className={cn('text-card-caption', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                         {formData.billingMode === 'PREPAID'
                           ? MESSAGES.classProduct.billingModePrepaidHint
                           : MESSAGES.classProduct.billingModePostpaidHint}
@@ -840,15 +927,17 @@ export function ClassForm({
 
                     {/* 1회 수강권 — 필수 (팀·오픈 공통) */}
                     <div className="col-span-2 space-y-2">
-                          <label className="block text-card-meta font-bold text-wtext-3 dark:text-rink-300 uppercase tracking-wider">
+                          <label className={cn('block text-card-meta font-bold uppercase tracking-wider', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                             {formData.billingMode === 'POSTPAID'
                               ? MESSAGES.classProduct.feePerSessionLabel
                               : MESSAGES.classProduct.singlePriceLabel}{' '}
-                            <span className="text-red-500">*</span>
+                            <span className={iceTheme ? 'text-it-red-500' : 'text-red-500'}>*</span>
                           </label>
                           <div className={cn(
-                            'flex items-center gap-2 bg-wbg dark:bg-rink-900 px-3 py-2.5 rounded-lg border',
-                            errors.singlePrice ? 'border-red-400' : 'border-wline dark:border-rink-700'
+                            'flex items-center gap-2 px-3 py-2.5 rounded-w-md',
+                            iceTheme
+                              ? cn('bg-it-fill dark:bg-rink-900 border-[1.5px]', errors.singlePrice ? 'border-red-400' : 'border-it-line-strong dark:border-rink-700')
+                              : cn('bg-wbg dark:bg-rink-900 border', errors.singlePrice ? 'border-red-400' : 'border-wline dark:border-rink-700')
                           )}>
                             <input
                               type="text"
@@ -861,7 +950,7 @@ export function ClassForm({
                                 handleChange('singlePrice', num);
                               }}
                               placeholder={MESSAGES.classProduct.singlePricePlaceholder}
-                              className="w-full bg-transparent border-0 p-0 text-sm font-extrabold text-wtext-1 dark:text-white focus:ring-0 focus:outline-none placeholder:font-light placeholder:italic"
+                              className={cn('w-full bg-transparent border-0 p-0 text-sm font-extrabold focus:ring-0 focus:outline-none placeholder:font-light placeholder:italic', iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white')}
                               aria-label={
                                 formData.billingMode === 'POSTPAID'
                                   ? MESSAGES.classProduct.feePerSessionLabel
@@ -869,7 +958,7 @@ export function ClassForm({
                               }
                               aria-invalid={!!errors.singlePrice}
                             />
-                            <span className="text-xs font-bold text-wtext-3 shrink-0">원</span>
+                            <span className={cn('text-xs font-bold shrink-0', iceTheme ? 'text-it-ink-500' : 'text-wtext-3')}>원</span>
                           </div>
                           {errors.singlePrice && (
                             <p className="text-xs text-red-500 flex items-center gap-1" role="alert">
@@ -882,12 +971,12 @@ export function ClassForm({
                           {formData.singlePrice !== '' &&
                             Number(formData.singlePrice) > 0 &&
                             formData.dateSchedules.length > 0 && (
-                              <div className="mt-2 rounded-lg border border-ice-100 dark:border-rink-700 bg-ice-50 dark:bg-rink-700/40 px-3 py-2">
+                              <div className={cn('mt-2 rounded-w-md border px-3 py-2', iceTheme ? 'border-it-blue-100 dark:border-rink-700 bg-it-blue-50 dark:bg-rink-700/40' : 'border-ice-100 dark:border-rink-700 bg-ice-50 dark:bg-rink-700/40')}>
                                 <div className="flex items-center justify-between">
-                                  <span className="text-card-meta font-bold text-wtext-2 dark:text-rink-100">
+                                  <span className={cn('text-card-meta font-bold', iceTheme ? 'text-it-ink-600 dark:text-rink-100' : 'text-wtext-2 dark:text-rink-100')}>
                                     총 수업료
                                   </span>
-                                  <span className="text-sm font-extrabold text-ice-600 dark:text-ice-400 tabular-nums">
+                                  <span className={cn('text-sm font-extrabold tabular-nums', iceTheme ? 'text-it-blue-500 dark:text-it-blue-300' : 'text-ice-600 dark:text-ice-400')}>
                                     {(
                                       Number(formData.singlePrice) *
                                       formData.dateSchedules.length
@@ -895,7 +984,7 @@ export function ClassForm({
                                     원
                                   </span>
                                 </div>
-                                <p className="mt-0.5 text-card-caption text-wtext-3 dark:text-rink-300 tabular-nums">
+                                <p className={cn('mt-0.5 text-card-caption tabular-nums', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                                   1회권 {Number(formData.singlePrice).toLocaleString('ko-KR')}원 ×{' '}
                                   {formData.dateSchedules.length}회차
                                 </p>
@@ -909,8 +998,8 @@ export function ClassForm({
                       PackageEditSheet 설계상 항상 정기권(MONTHLY_FIXED)이라 1회권과 중복되지 않는다.
                       저장 시 부모(create/page)가 수업 생성 후 bulk 로 일괄 반영한다. */}
                   {formData.billingMode === 'PREPAID' && onPackageDraftChange && (
-                    <div className="pt-4 border-t border-wline-2 dark:border-rink-700 space-y-3">
-                      <p className="text-card-meta font-bold text-wtext-3 dark:text-rink-300 uppercase tracking-wider">
+                    <div className={cn('pt-4 border-t space-y-3', iceTheme ? 'border-it-line dark:border-rink-700' : 'border-wline-2 dark:border-rink-700')}>
+                      <p className={cn('text-card-meta font-bold uppercase tracking-wider', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                         {MESSAGES.classProduct.embedSectionLabel}
                       </p>
                       <PackageManageSection
@@ -922,6 +1011,7 @@ export function ClassForm({
                         dirty={packageDirty}
                         classSessionsPerWeek={formData.classDays.length}
                         billingMode={formData.billingMode}
+                        iceTheme={iceTheme}
                       />
                     </div>
                   )}
@@ -941,15 +1031,15 @@ export function ClassForm({
         {isAcademy && (
           <AnimatedSection delay={325}>
             <section className="space-y-4">
-              <h2 className="flex items-center gap-2.5 text-card-title font-extrabold text-ice-600 dark:text-ice-400 tracking-[-0.02em] pb-1">
-                <span className="w-1 h-4 rounded-sm bg-ice-500" aria-hidden="true" />
+              <h2 className={ic.head}>
+                <span className={ic.headBar} aria-hidden="true" />
                 노출 팀 선택
                 {formData.selectedVisibleTeams.length > 0 && (
-                  <span className="text-ice-500">({formData.selectedVisibleTeams.length}개)</span>
+                  <span className={iceTheme ? 'text-it-blue-500' : 'text-ice-500'}>({formData.selectedVisibleTeams.length}개)</span>
                 )}
               </h2>
-              <div className="bg-white dark:bg-rink-800 p-5 rounded-xl space-y-3 shadow-sm border border-wline dark:border-rink-700">
-                <p className="text-card-meta text-wtext-3 dark:text-rink-300 leading-relaxed font-medium">
+              <div className={cn(ic.card, 'space-y-3')}>
+                <p className={cn('text-card-meta leading-relaxed font-medium', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                   이 오픈클래스를 어느 팀에 노출할지 선택하세요. 선택한 팀의 감독·코치·학부모·학생에게만
                   수업 목록과 캘린더에 표시됩니다.
                 </p>
@@ -972,23 +1062,29 @@ export function ClassForm({
                           onClick={() => handleVisibleTeamToggle(team)}
                           aria-pressed={selected}
                           className={cn(
-                            'inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-card-body font-bold transition-colors active:brightness-95',
-                            selected
-                              ? 'bg-ice-500/5 border-2 border-ice-500 text-ice-500'
-                              : 'bg-wbg dark:bg-rink-900/50 border border-wline-2 dark:border-rink-700 text-wtext-2 dark:text-rink-200 hover:border-ice-500/30',
+                            'inline-flex items-center gap-1.5 px-3 py-2 rounded-w-md text-card-body font-bold transition-colors motion-reduce:transition-none active:brightness-95',
+                            iceTheme
+                              ? selected
+                                ? 'bg-it-blue-500/5 border-2 border-it-blue-500 text-it-blue-500'
+                                : 'bg-it-fill dark:bg-rink-900/50 border-[1.5px] border-it-line-strong dark:border-rink-700 text-it-ink-600 dark:text-rink-200 hover:border-it-blue-500/30'
+                              : selected
+                                ? 'bg-ice-500/5 border-2 border-ice-500 text-ice-500'
+                                : 'bg-wbg dark:bg-rink-900/50 border border-wline-2 dark:border-rink-700 text-wtext-2 dark:text-rink-200 hover:border-ice-500/30',
                           )}
                         >
                           <span
                             className={cn(
-                              'w-4 h-4 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors',
-                              selected ? 'bg-ice-500 border-ice-500' : 'border-wline dark:border-rink-500',
+                              'w-4 h-4 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors motion-reduce:transition-none',
+                              iceTheme
+                                ? selected ? 'bg-it-blue-500 border-it-blue-500' : 'border-it-line-strong dark:border-rink-500'
+                                : selected ? 'bg-ice-500 border-ice-500' : 'border-wline dark:border-rink-500',
                             )}
                           >
                             {selected && <Icon name="check" className="text-[10px] text-white" aria-hidden="true" />}
                           </span>
                           {team.name}
                           {team.teamCode && (
-                            <span className="text-card-meta font-medium text-wtext-3 dark:text-rink-400">
+                            <span className={cn('text-card-meta font-medium', iceTheme ? 'text-it-ink-400 dark:text-rink-400' : 'text-wtext-3 dark:text-rink-400')}>
                               {team.teamCode}
                             </span>
                           )}
@@ -1010,20 +1106,20 @@ export function ClassForm({
 
         {/* ── SECTION 5: 팀 운영 정책 안내 ── */}
         <AnimatedSection delay={350}>
-          <div className="bg-blue-50 dark:bg-rink-800 p-5 rounded-2xl border border-blue-100 dark:border-rink-700 relative overflow-hidden">
+          <div className={cn('p-5 rounded-w-md relative overflow-hidden', iceTheme ? 'bg-it-blue-50 dark:bg-rink-800 border-[1.5px] border-it-blue-100 dark:border-rink-700' : 'bg-blue-50 dark:bg-rink-800 border border-blue-100 dark:border-rink-700')}>
             <div className="relative z-10 flex gap-4">
-              <div className="w-10 h-10 bg-ice-500/10 dark:bg-white/10 rounded-xl flex items-center justify-center shrink-0">
-                <Icon name="info" className="text-ice-500 dark:text-blue-400 text-xl" aria-hidden="true" />
+              <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center shrink-0', iceTheme ? 'bg-it-blue-500/10 dark:bg-white/10' : 'bg-ice-500/10 dark:bg-white/10')}>
+                <Icon name="info" className={cn('text-xl', iceTheme ? 'text-it-blue-500 dark:text-blue-400' : 'text-ice-500 dark:text-blue-400')} aria-hidden="true" />
               </div>
               <div className="space-y-1.5">
-                <p className="text-sm font-bold text-ice-500 dark:text-blue-400">팀 운영 정책 안내</p>
-                <p className="text-card-meta text-wtext-2 dark:text-rink-300 leading-relaxed font-medium">
+                <p className={cn('text-sm font-bold', iceTheme ? 'text-it-blue-500 dark:text-blue-400' : 'text-ice-500 dark:text-blue-400')}>팀 운영 정책 안내</p>
+                <p className={cn('text-card-meta leading-relaxed font-medium', iceTheme ? 'text-it-ink-600 dark:text-rink-300' : 'text-wtext-2 dark:text-rink-300')}>
                   수업 개설 정보는 실시간으로 학부모 앱에 공지됩니다.
                   모든 정산 및 취소는 팀 표준 약관을 준수합니다.
                 </p>
               </div>
             </div>
-            <div className="absolute -right-4 -top-4 w-16 h-16 bg-ice-500/5 dark:bg-white/5 rounded-full" aria-hidden="true" />
+            <div className={cn('absolute -right-4 -top-4 w-16 h-16 rounded-full', iceTheme ? 'bg-it-blue-500/5 dark:bg-white/5' : 'bg-ice-500/5 dark:bg-white/5')} aria-hidden="true" />
           </div>
         </AnimatedSection>
 
@@ -1095,7 +1191,9 @@ export function ClassForm({
                   'flex-[1.5] py-4 rounded-2xl font-bold text-base text-white transition-all active:scale-[0.98] flex items-center justify-center gap-2',
                   isSubmitting
                     ? 'bg-wtext-4 dark:bg-rink-500 cursor-not-allowed'
-                    : 'bg-ice-500 hover:bg-ice-700 shadow-md'
+                    : iceTheme
+                      ? 'bg-it-blue-500 hover:bg-it-blue-600'
+                      : 'bg-ice-500 hover:bg-ice-700 shadow-md'
                 )}
                 aria-label="수정 저장하기"
               >
@@ -1120,7 +1218,9 @@ export function ClassForm({
                   'flex-[1.5] py-4 rounded-2xl font-bold text-base text-white transition-all motion-reduce:transition-none active:scale-[0.98] flex items-center justify-center gap-2',
                   isSubmitting
                     ? 'bg-wtext-4 dark:bg-rink-500 cursor-not-allowed'
-                    : 'bg-ice-500 hover:bg-ice-700 shadow-md'
+                    : iceTheme
+                      ? 'bg-it-blue-500 hover:bg-it-blue-600'
+                      : 'bg-ice-500 hover:bg-ice-700 shadow-md'
                 )}
                 aria-label={isEditMode ? '수정 저장하기' : '개설'}
               >
@@ -1150,6 +1250,7 @@ export function ClassForm({
         venues={venues.map(v => ({ id: v.id, name: v.name }))}
         onConfirm={applyMultiDates}
         onClose={() => setMultiDateOpen(false)}
+        iceTheme={iceTheme}
       />
 
       {/* ── 삭제 확인 모달 (Portal) ── */}

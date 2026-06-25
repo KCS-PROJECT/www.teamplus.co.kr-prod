@@ -61,15 +61,15 @@ interface Division {
 const STATUS_MAP: Record<LeagueStatus, { label: string; className: string }> = {
   draft: {
     label: '준비중',
-    className: 'bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-wtext-4',
+    className: 'bg-it-line text-it-ink-600 dark:bg-rink-700 dark:text-wtext-4',
   },
   active: {
     label: '진행중',
-    className: 'bg-blue-100 text-ice-500 dark:bg-ice-500/15 dark:text-ice-500',
+    className: 'bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-500/15 dark:text-it-blue-500',
   },
   completed: {
     label: '완료',
-    className: 'bg-wline-2 text-wtext-3 dark:bg-rink-700 dark:text-wtext-3',
+    className: 'bg-it-line text-it-ink-500 dark:bg-rink-700 dark:text-wtext-3',
   },
 };
 
@@ -99,24 +99,19 @@ function formatDateRange(start: string | null, end: string | null): string {
   return `~ ${fmt(end!)}`;
 }
 
-// ─── League Card ───────────────────────────────────────
-const STATUS_ACCENT: Record<LeagueStatus, string> = {
-  draft: 'bg-wline-2 dark:bg-rink-700',
-  active: 'bg-ice-500',
-  completed: 'bg-wline-2 dark:bg-rink-700',
-};
-
+// ─── League Row (flat · hairline) ──────────────────────
 function LeagueCard({
   league,
   onClick,
   delay,
+  isLast,
 }: {
   league: League;
   onClick: () => void;
   delay: number;
+  isLast: boolean;
 }) {
   const status = STATUS_MAP[league.status];
-  const accent = STATUS_ACCENT[league.status];
   const dateRange = formatDateRange(league.startDate, league.endDate);
   const divisionCount = league._count?.divisions ?? 0;
 
@@ -125,86 +120,78 @@ function LeagueCard({
       <button
         type="button"
         onClick={onClick}
-        className="relative w-full text-left bg-wsurface dark:bg-rink-800 rounded-w-md border border-wline-2 dark:border-rink-700 p-4 pl-5 min-h-[44px] shadow-sh-1 hover:shadow-sh-1 active:brightness-95 transition-all motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
+        className={cn(
+          'w-full text-left px-1 py-[15px] min-h-[56px] active:brightness-95 transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40',
+          !isLast && 'border-b border-it-line dark:border-rink-700',
+        )}
         aria-label={`${league.name} ${status.label}, 디비전 ${divisionCount}개`}
       >
-        {/* Left accent bar (status) */}
-        <span
-          className={cn(
-            'absolute left-0 top-4 bottom-4 w-1 rounded-r-full',
-            accent,
-          )}
-          aria-hidden="true"
-        />
-
         {/* Header */}
-        <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
-            <h3 className="text-card-title font-bold text-wtext-1 dark:text-white truncate leading-snug">
-              {league.name}
-            </h3>
-            <p className="text-card-meta text-wtext-3 dark:text-wtext-4 mt-1 tabular-nums">
+            <div className="flex items-center gap-2">
+              <h3 className="min-w-0 truncate text-[15.5px] font-bold tracking-[-0.01em] text-it-ink-800 dark:text-white leading-snug">
+                {league.name}
+              </h3>
+              <span
+                className={cn(
+                  'shrink-0 rounded-w-pill px-2.5 py-1 text-card-meta font-bold',
+                  status.className,
+                )}
+              >
+                {status.label}
+              </span>
+            </div>
+            <p className="text-card-meta text-it-ink-500 dark:text-wtext-4 mt-1 font-num tabular-nums">
               {league.season} {league.year}
             </p>
           </div>
-          <span
-            className={cn(
-              'shrink-0 rounded-w-pill px-2.5 py-1 text-card-meta font-bold',
-              status.className,
-            )}
-          >
-            {status.label}
+          <span className="shrink-0 inline-flex items-center gap-1.5 self-center text-card-meta font-semibold text-it-ink-700 dark:text-white">
+            <Icon name="layers" className="text-[15px] text-it-blue-500" aria-hidden="true" />
+            디비전 <span className="font-num tabular-nums">{divisionCount}</span>개
+            <Icon
+              name="chevron_right"
+              className="text-[18px] text-it-ink-400 dark:text-wtext-4"
+              aria-hidden="true"
+            />
           </span>
         </div>
 
         {/* Info row */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-card-meta text-wtext-3 dark:text-wtext-4">
-          {league.ageGroup && (
-            <span className="inline-flex items-center gap-1">
-              <Icon
-                name="child_care"
-                className="text-card-body text-wtext-3 dark:text-wtext-4"
-                aria-hidden="true"
-              />
-              {league.ageGroup}
-            </span>
-          )}
-          {league.region && (
-            <span className="inline-flex items-center gap-1">
-              <Icon
-                name="location_on"
-                className="text-card-body text-wtext-3 dark:text-wtext-4"
-                aria-hidden="true"
-              />
-              {league.region}
-            </span>
-          )}
-          {dateRange && (
-            <span className="inline-flex items-center gap-1 tabular-nums">
-              <Icon
-                name="calendar_month"
-                className="text-card-body text-wtext-3 dark:text-wtext-4"
-                aria-hidden="true"
-              />
-              {dateRange}
-            </span>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="mt-3 flex items-center justify-between border-t border-wline-2 dark:border-rink-700 pt-3">
-          <span className="inline-flex items-center gap-1.5 text-card-meta font-semibold text-wtext-1 dark:text-white">
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-ice-500/15 text-ice-500">
-              <Icon name="layers" className="text-[14px]" aria-hidden="true" />
-            </span>
-            디비전 <span className="tabular-nums">{divisionCount}</span>개
-          </span>
-          <Icon
-            name="chevron_right"
-            className="text-xl text-wtext-3 dark:text-wtext-4"
-            aria-hidden="true"
-          />
-        </div>
+        {(league.ageGroup || league.region || dateRange) && (
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-card-meta text-it-ink-500 dark:text-wtext-4">
+            {league.ageGroup && (
+              <span className="inline-flex items-center gap-1">
+                <Icon
+                  name="child_care"
+                  className="text-card-body text-it-ink-400 dark:text-wtext-4"
+                  aria-hidden="true"
+                />
+                {league.ageGroup}
+              </span>
+            )}
+            {league.region && (
+              <span className="inline-flex items-center gap-1">
+                <Icon
+                  name="location_on"
+                  className="text-card-body text-it-ink-400 dark:text-wtext-4"
+                  aria-hidden="true"
+                />
+                {league.region}
+              </span>
+            )}
+            {dateRange && (
+              <span className="inline-flex items-center gap-1 font-num tabular-nums">
+                <Icon
+                  name="calendar_month"
+                  className="text-card-body text-it-ink-400 dark:text-wtext-4"
+                  aria-hidden="true"
+                />
+                {dateRange}
+              </span>
+            )}
+          </div>
+        )}
       </button>
     </AnimatedSection>
   );
@@ -214,9 +201,11 @@ function LeagueCard({
 function DivisionCard({
   division,
   delay,
+  isLast,
 }: {
   division: Division;
   delay: number;
+  isLast: boolean;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const teams = division.teamDivisions ?? [];
@@ -225,27 +214,27 @@ function DivisionCard({
 
   return (
     <AnimatedSection delay={delay}>
-      <div className="bg-wsurface dark:bg-rink-800 rounded-w-md border border-wline-2 dark:border-rink-700 overflow-hidden">
+      <div className={cn(!isLast && 'border-b border-it-line dark:border-rink-700')}>
         {/* Division Header */}
         <button
           type="button"
           onClick={() => setIsExpanded((prev) => !prev)}
           aria-expanded={isExpanded}
           aria-controls={`division-${division.id}-teams`}
-          className="w-full text-left px-4 py-3.5 min-h-[44px] flex items-center justify-between active:brightness-95 transition-all motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
+          className="w-full text-left px-1 py-[15px] min-h-[56px] flex items-center justify-between active:brightness-95 transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40"
         >
           <div className="flex items-center gap-3 min-w-0">
-            <span className="shrink-0 w-10 h-10 rounded-lg bg-ice-500/15 dark:bg-ice-500/20 flex items-center justify-center">
-              <span className="text-card-body font-bold text-ice-500">
+            <span className="shrink-0 w-10 h-10 rounded-w-md bg-it-blue-50 dark:bg-it-blue-500/20 flex items-center justify-center">
+              <span className="text-card-body font-bold font-num text-it-blue-500">
                 D{division.level}
               </span>
             </span>
             <div className="min-w-0">
-              <h4 className="text-card-body font-bold text-wtext-1 dark:text-white truncate">
+              <h4 className="text-[15px] font-bold text-it-ink-800 dark:text-white truncate">
                 {division.name}
               </h4>
               {division.description && (
-                <p className="text-card-meta text-wtext-3 dark:text-wtext-4 truncate mt-0.5">
+                <p className="text-card-meta text-it-ink-500 dark:text-wtext-4 truncate mt-0.5">
                   {division.description}
                 </p>
               )}
@@ -253,51 +242,54 @@ function DivisionCard({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <span className="text-card-meta text-wtext-3 dark:text-wtext-4">
+            <span className="text-card-meta font-num tabular-nums text-it-ink-500 dark:text-wtext-4">
               {teamCount}{maxTeams ? `/${maxTeams}` : ''}팀
             </span>
             <Icon
               name={isExpanded ? 'expand_less' : 'expand_more'}
-              className="text-xl text-wtext-3 dark:text-wtext-4"
+              className="text-xl text-it-ink-400 dark:text-wtext-4"
             />
           </div>
         </button>
 
-        {/* Teams List */}
+        {/* Teams List — 펼침 시 인셋 박스 */}
         {isExpanded && (
           <div
             id={`division-${division.id}-teams`}
-            className="border-t border-wline-2 dark:border-rink-700"
+            className="mb-3 rounded-w-md bg-it-fill dark:bg-rink-900/40"
           >
             {teams.length === 0 ? (
-              <div className="px-4 py-6 text-center text-card-body text-wtext-3 dark:text-wtext-4">
+              <div className="px-4 py-6 text-center text-card-body text-it-ink-500 dark:text-wtext-4">
                 {MESSAGES.empty('소속 팀')}
               </div>
             ) : (
-              <div className="divide-y divide-wline-2/50 dark:divide-rink-700/50">
+              <div className="flex flex-col">
                 {teams
                   .slice()
                   .sort((a, b) => (a.seed ?? 999) - (b.seed ?? 999))
-                  .map((td) => (
+                  .map((td, ti, arr) => (
                     <div
                       key={td.id}
-                      className="flex items-center justify-between px-4 py-3"
+                      className={cn(
+                        'flex items-center justify-between px-4 py-3',
+                        ti !== arr.length - 1 && 'border-b border-it-line dark:border-rink-700',
+                      )}
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <span className="shrink-0 w-7 h-7 rounded-w-pill bg-wline-2 dark:bg-rink-700 flex items-center justify-center text-card-meta font-bold text-wtext-2 dark:text-wtext-4">
+                        <span className="shrink-0 w-7 h-7 rounded-w-pill bg-it-line dark:bg-rink-700 flex items-center justify-center text-card-meta font-bold font-num tabular-nums text-it-ink-700 dark:text-wtext-4">
                           {td.seed ?? '-'}
                         </span>
                         <div className="min-w-0">
-                          <p className="text-card-body font-semibold text-wtext-1 dark:text-white truncate">
+                          <p className="text-card-body font-semibold text-it-ink-800 dark:text-white truncate">
                             {td.team.name}
                           </p>
-                          <p className="text-card-meta text-wtext-3 dark:text-wtext-4 truncate">
+                          <p className="text-card-meta text-it-ink-500 dark:text-wtext-4 truncate">
                             {td.team.club.clubName}
                           </p>
                         </div>
                       </div>
                       {td.team.division && (
-                        <span className="shrink-0 text-card-meta text-wtext-3 dark:text-wtext-4">
+                        <span className="shrink-0 text-card-meta text-it-ink-500 dark:text-wtext-4">
                           {td.team.division}
                         </span>
                       )}
@@ -408,53 +400,66 @@ export default function DirectorLeaguesPage() {
           ]}
         />
 
-        {/* League Summary */}
-        <div className="px-4 py-3 bg-wsurface dark:bg-rink-800 border-b border-wline-2 dark:border-rink-700">
-          <div className="flex items-center gap-2 flex-wrap text-card-body text-wtext-2 dark:text-wtext-4">
-            <span className="font-semibold">{selectedLeague.season} {selectedLeague.year}</span>
-            {selectedLeague.ageGroup && (
-              <>
-                <span className="text-wtext-3 dark:text-wtext-4">|</span>
-                <span>{selectedLeague.ageGroup}</span>
-              </>
-            )}
-            {selectedLeague.region && (
-              <>
-                <span className="text-wtext-3 dark:text-wtext-4">|</span>
-                <span>{selectedLeague.region}</span>
-              </>
-            )}
-          </div>
-          {selectedLeague.description && (
-            <p className="text-card-meta text-wtext-3 dark:text-wtext-4 mt-1">
-              {selectedLeague.description}
-            </p>
-          )}
-        </div>
-
-        {/* Division List */}
         <main
-          className="flex-1 px-4 py-4 flex flex-col gap-3 overflow-y-auto hide-scrollbar"
+          className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck"
           role="main"
           aria-label="디비전 목록"
         >
-          {isDivisionLoading ? null : sortedDivisions.length === 0 ? (
-            <EmptySection icon="layers" message={MESSAGES.empty('디비전')} />
-          ) : (
-            <>
-              <p className="px-1 text-card-meta font-semibold text-wtext-3 dark:text-wtext-4">
-                총 <span className="tabular-nums text-wtext-1 dark:text-white">{sortedDivisions.length}</span>개 디비전
+          {/* League Summary — flat 흰 섹션 (구분 점으로 분리, 파이프 제거) */}
+          <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-4" aria-label="리그 요약">
+            <div className="flex items-center gap-2 flex-wrap text-card-body text-it-ink-700 dark:text-wtext-4">
+              <span className="font-semibold font-num tabular-nums">{selectedLeague.season} {selectedLeague.year}</span>
+              {selectedLeague.ageGroup && (
+                <span className="inline-flex items-center gap-2">
+                  <span className="size-1 rounded-full bg-it-ink-300 dark:bg-rink-700" aria-hidden="true" />
+                  {selectedLeague.ageGroup}
+                </span>
+              )}
+              {selectedLeague.region && (
+                <span className="inline-flex items-center gap-2">
+                  <span className="size-1 rounded-full bg-it-ink-300 dark:bg-rink-700" aria-hidden="true" />
+                  {selectedLeague.region}
+                </span>
+              )}
+            </div>
+            {selectedLeague.description && (
+              <p className="text-card-meta text-it-ink-500 dark:text-wtext-4 mt-1.5">
+                {selectedLeague.description}
               </p>
-              {sortedDivisions.map((division, idx) => (
-                <DivisionCard
-                  key={division.id}
-                  division={division}
-                  delay={idx * 60}
-                />
-              ))}
-            </>
-          )}
-          <div className="h-8" />
+            )}
+          </section>
+
+          {/* flat 섹션 사이 8px 회색 갭 */}
+          <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+          {/* Division List — flat 흰 섹션 (헤더 + hairline 행) */}
+          <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-7" aria-label="디비전 목록">
+            {isDivisionLoading ? null : sortedDivisions.length === 0 ? (
+              <EmptySection icon="layers" message={MESSAGES.empty('디비전')} />
+            ) : (
+              <>
+                <div className="flex items-baseline gap-2 pb-1">
+                  <h2 className="text-it-ink-800 dark:text-white tracking-[-0.02em] font-extrabold text-[17px]">
+                    디비전
+                  </h2>
+                  <span className="text-[15px] font-extrabold font-num tabular-nums text-it-blue-500">
+                    {sortedDivisions.length}
+                  </span>
+                </div>
+                <div className="flex flex-col">
+                  {sortedDivisions.map((division, idx) => (
+                    <DivisionCard
+                      key={division.id}
+                      division={division}
+                      delay={idx * 60}
+                      isLast={idx === sortedDivisions.length - 1}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+            <div className="h-6" />
+          </section>
         </main>
         <GlobalMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
       </MobileContainer>
@@ -470,51 +475,64 @@ export default function DirectorLeaguesPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title="리그 관리" forceNative />
 
-      {/* Age Group Filter */}
-      <div className="px-4 pt-2 pb-1">
-        <TabBar
-          tabs={AGE_GROUP_TABS}
-          activeTab={ageGroupFilter}
-          onChange={setAgeGroupFilter}
-          variant="pill"
-        />
-      </div>
-
-      {/* League List */}
       <main
-        className="flex-1 px-4 py-4 flex flex-col gap-3 overflow-y-auto hide-scrollbar"
+        className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck"
         role="main"
         aria-label="리그 목록"
       >
-        {isLeagueLoading ? null : filteredLeagues.length === 0 ? (
-          <EmptySection
-            icon="emoji_events"
-            message={MESSAGES.empty('리그')}
+        {/* Age Group Filter — flat 흰 섹션 */}
+        <section className="bg-it-surface dark:bg-rink-800 px-4 pt-3 pb-2" aria-label="연령 그룹 필터">
+          <TabBar
+            tabs={AGE_GROUP_TABS}
+            activeTab={ageGroupFilter}
+            onChange={setAgeGroupFilter}
+            variant="pill"
           />
-        ) : (
-          <>
-            <div className="flex items-center justify-between px-1">
-              <p className="text-card-meta font-semibold text-wtext-3 dark:text-wtext-4">
-                총 <span className="tabular-nums text-wtext-1 dark:text-white">{filteredLeagues.length}</span>개 리그
-              </p>
-              {ageGroupFilter !== 'all' && (
-                <span className="inline-flex items-center gap-1 rounded-w-pill bg-ice-500/15 px-2 py-0.5 text-card-meta font-bold text-ice-500">
-                  <Icon name="filter_alt" className="text-[12px]" aria-hidden="true" />
-                  {ageGroupFilter}
-                </span>
-              )}
-            </div>
-            {filteredLeagues.map((league, idx) => (
-              <LeagueCard
-                key={league.id}
-                league={league}
-                onClick={() => handleLeagueClick(league)}
-                delay={idx * 80}
-              />
-            ))}
-          </>
-        )}
-        <div className="h-8" />
+        </section>
+
+        {/* flat 섹션 사이 8px 회색 갭 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+        {/* League List — flat 흰 섹션 (헤더 + hairline 행) */}
+        <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-7" aria-label="리그 목록">
+          {isLeagueLoading ? null : filteredLeagues.length === 0 ? (
+            <EmptySection
+              icon="emoji_events"
+              message={MESSAGES.empty('리그')}
+            />
+          ) : (
+            <>
+              <div className="flex items-center justify-between pb-1">
+                <div className="flex items-baseline gap-2">
+                  <h2 className="text-it-ink-800 dark:text-white tracking-[-0.02em] font-extrabold text-[17px]">
+                    리그 목록
+                  </h2>
+                  <span className="text-[15px] font-extrabold font-num tabular-nums text-it-blue-500">
+                    {filteredLeagues.length}
+                  </span>
+                </div>
+                {ageGroupFilter !== 'all' && (
+                  <span className="inline-flex items-center gap-1 rounded-w-pill bg-it-blue-50 dark:bg-it-blue-500/15 px-2.5 py-1 text-card-meta font-bold text-it-blue-500">
+                    <Icon name="filter_alt" className="text-[12px]" aria-hidden="true" />
+                    {ageGroupFilter}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-col">
+                {filteredLeagues.map((league, idx) => (
+                  <LeagueCard
+                    key={league.id}
+                    league={league}
+                    onClick={() => handleLeagueClick(league)}
+                    delay={idx * 80}
+                    isLast={idx === filteredLeagues.length - 1}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+          <div className="h-6" />
+        </section>
       </main>
       <GlobalMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </MobileContainer>

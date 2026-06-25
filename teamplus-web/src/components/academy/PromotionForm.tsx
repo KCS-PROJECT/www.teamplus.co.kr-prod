@@ -17,6 +17,12 @@ interface PromotionFormProps {
   initialData?: Partial<PromotionFormData>;
   onSubmit: (data: PromotionFormData) => Promise<void>;
   isSubmitting?: boolean;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 인풋 bg-it-fill + border-[1.5px] border-it-line-strong, 라벨 it-ink,
+   *   레슨유형 칩/포커스 it-blue, 필수 it-red, 토글/제출 it-blue. (현재 /academy/create 만 전달.)
+   */
+  iceTheme?: boolean;
 }
 
 const LESSON_TYPES: Array<{ key: LessonType; label: string }> = [
@@ -39,6 +45,7 @@ export function PromotionForm({
   initialData,
   onSubmit,
   isSubmitting = false,
+  iceTheme = false,
 }: PromotionFormProps) {
   const [title, setTitle] = useState(initialData?.title ?? '');
   const [content, setContent] = useState(initialData?.content ?? '');
@@ -63,16 +70,33 @@ export function PromotionForm({
 
   const [errors, setErrors] = useState<Partial<Record<keyof PromotionFormData, string>>>({});
 
-  const inputClass = cn(
-    'w-full px-3 py-2.5 rounded-lg border text-sm',
-    'bg-white dark:bg-rink-800 text-wtext-1 dark:text-white',
-    'border-wline dark:border-rink-700',
-    'placeholder:text-wtext-3 dark:placeholder:text-wtext-3',
-    'focus:outline-none focus:ring-2 focus:ring-ice-500 focus:border-transparent',
-    'transition-colors motion-reduce:transition-none',
-  );
+  const inputClass = iceTheme
+    ? cn(
+        'w-full px-4 py-3 rounded-w-md text-card-body font-medium',
+        'bg-it-fill dark:bg-rink-900 text-it-ink-800 dark:text-white',
+        'border-[1.5px] border-it-line-strong dark:border-rink-700',
+        'placeholder:text-it-ink-400 dark:placeholder:text-rink-300',
+        'focus:outline-none focus:border-it-blue-500',
+        'transition-colors motion-reduce:transition-none',
+      )
+    : cn(
+        'w-full px-3 py-2.5 rounded-lg border text-sm',
+        'bg-white dark:bg-rink-800 text-wtext-1 dark:text-white',
+        'border-wline dark:border-rink-700',
+        'placeholder:text-wtext-3 dark:placeholder:text-wtext-3',
+        'focus:outline-none focus:ring-2 focus:ring-ice-500 focus:border-transparent',
+        'transition-colors motion-reduce:transition-none',
+      );
 
-  const labelClass = 'block text-sm font-medium text-wtext-2 dark:text-rink-100 mb-1.5';
+  const labelClass = iceTheme
+    ? 'mb-1.5 block text-card-body font-bold text-it-ink-800 dark:text-rink-100'
+    : 'block text-sm font-medium text-wtext-2 dark:text-rink-100 mb-1.5';
+
+  const requiredMarkClass = iceTheme ? 'text-it-red-500' : 'text-red-500';
+  const errorTextClass = iceTheme ? 'text-it-red-500' : 'text-red-500';
+  const errorBorderClass = iceTheme
+    ? 'border-it-red-500 dark:border-it-red-500'
+    : 'border-red-500 dark:border-red-500';
 
   const validate = useCallback((): boolean => {
     const next: Partial<Record<keyof PromotionFormData, string>> = {};
@@ -144,7 +168,7 @@ export function PromotionForm({
       {/* 제목 (필수) */}
       <div>
         <label htmlFor="promo-title" className={labelClass}>
-          {MESSAGES.promotion.fieldTitle} <span className="text-red-500">*</span>
+          {MESSAGES.promotion.fieldTitle} <span className={requiredMarkClass}>*</span>
         </label>
         <input
           id="promo-title"
@@ -155,17 +179,17 @@ export function PromotionForm({
             setErrors((prev) => ({ ...prev, title: undefined }));
           }}
           placeholder={MESSAGES.promotion.fieldTitlePlaceholder}
-          className={cn(inputClass, errors.title && 'border-red-500 dark:border-red-500')}
+          className={cn(inputClass, errors.title && errorBorderClass)}
           maxLength={200}
           aria-invalid={!!errors.title}
         />
-        {errors.title && <p className="mt-1 text-xs text-red-500">{errors.title}</p>}
+        {errors.title && <p className={cn('mt-1 text-xs', errorTextClass)}>{errors.title}</p>}
       </div>
 
       {/* 레슨 유형 (필수) */}
       <div>
         <span className={labelClass} id="promo-lessontype-label">
-          {MESSAGES.promotion.fieldLessonType} <span className="text-red-500">*</span>
+          {MESSAGES.promotion.fieldLessonType} <span className={requiredMarkClass}>*</span>
         </span>
         <div
           role="radiogroup"
@@ -181,12 +205,21 @@ export function PromotionForm({
                 role="radio"
                 aria-checked={active}
                 onClick={() => setLessonType(key)}
-                className={cn(
-                  'h-11 px-3 rounded-xl text-sm font-semibold border transition-colors motion-reduce:transition-none',
-                  active
-                    ? 'bg-ice-500 text-white border-ice-500'
-                    : 'bg-white dark:bg-rink-800 text-wtext-2 dark:text-rink-100 border-wline dark:border-rink-700 hover:border-ice-500 hover:text-ice-500',
-                )}
+                className={
+                  iceTheme
+                    ? cn(
+                        'h-11 px-3 rounded-w-md text-card-body font-bold border-[1.5px] transition-colors motion-reduce:transition-none',
+                        active
+                          ? 'bg-it-blue-500 text-white border-it-blue-500'
+                          : 'bg-it-surface dark:bg-rink-800 text-it-ink-600 dark:text-rink-100 border-it-line-strong dark:border-rink-700 hover:border-it-blue-500 hover:text-it-blue-500',
+                      )
+                    : cn(
+                        'h-11 px-3 rounded-xl text-sm font-semibold border transition-colors motion-reduce:transition-none',
+                        active
+                          ? 'bg-ice-500 text-white border-ice-500'
+                          : 'bg-white dark:bg-rink-800 text-wtext-2 dark:text-rink-100 border-wline dark:border-rink-700 hover:border-ice-500 hover:text-ice-500',
+                      )
+                }
               >
                 {label}
               </button>
@@ -194,14 +227,14 @@ export function PromotionForm({
           })}
         </div>
         {errors.lessonType && (
-          <p className="mt-1 text-xs text-red-500">{errors.lessonType}</p>
+          <p className={cn('mt-1 text-xs', errorTextClass)}>{errors.lessonType}</p>
         )}
       </div>
 
       {/* 상세 내용 (필수) */}
       <div>
         <label htmlFor="promo-content" className={labelClass}>
-          {MESSAGES.promotion.fieldContent} <span className="text-red-500">*</span>
+          {MESSAGES.promotion.fieldContent} <span className={requiredMarkClass}>*</span>
         </label>
         <textarea
           id="promo-content"
@@ -214,12 +247,12 @@ export function PromotionForm({
           className={cn(
             inputClass,
             'resize-none h-36',
-            errors.content && 'border-red-500 dark:border-red-500',
+            errors.content && errorBorderClass,
           )}
           maxLength={5000}
           aria-invalid={!!errors.content}
         />
-        {errors.content && <p className="mt-1 text-xs text-red-500">{errors.content}</p>}
+        {errors.content && <p className={cn('mt-1 text-xs', errorTextClass)}>{errors.content}</p>}
       </div>
 
       {/* 일정 */}
@@ -350,12 +383,30 @@ export function PromotionForm({
       </div>
 
       {/* 공개 여부 */}
-      <div className="flex items-center justify-between bg-white dark:bg-rink-800 rounded-xl border border-wline-2 dark:border-rink-700 px-4 py-3">
+      <div
+        className={
+          iceTheme
+            ? 'flex items-center justify-between rounded-w-md bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 px-4 py-3'
+            : 'flex items-center justify-between bg-white dark:bg-rink-800 rounded-xl border border-wline-2 dark:border-rink-700 px-4 py-3'
+        }
+      >
         <div>
-          <p className="text-sm font-semibold text-wtext-1 dark:text-white">
+          <p
+            className={
+              iceTheme
+                ? 'text-card-body font-bold text-it-ink-800 dark:text-white'
+                : 'text-sm font-semibold text-wtext-1 dark:text-white'
+            }
+          >
             {MESSAGES.promotion.fieldActive}
           </p>
-          <p className="text-xs text-wtext-3 dark:text-rink-300 mt-0.5">
+          <p
+            className={
+              iceTheme
+                ? 'mt-0.5 text-card-meta text-it-ink-500 dark:text-rink-300'
+                : 'text-xs text-wtext-3 dark:text-rink-300 mt-0.5'
+            }
+          >
             {isActive ? MESSAGES.promotion.fieldActiveOn : MESSAGES.promotion.fieldActiveOff}
           </p>
         </div>
@@ -364,13 +415,19 @@ export function PromotionForm({
           role="switch"
           aria-checked={isActive}
           onClick={() => setIsActive((prev) => !prev)}
-          className={cn(
-            'relative w-12 h-7 rounded-full transition-colors motion-reduce:transition-none',
-            'focus:outline-none focus:ring-2 focus:ring-ice-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900',
-            isActive
-              ? 'bg-ice-500'
-              : 'bg-wline dark:bg-rink-500',
-          )}
+          className={
+            iceTheme
+              ? cn(
+                  'relative w-12 h-7 rounded-w-pill transition-colors motion-reduce:transition-none',
+                  'focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900',
+                  isActive ? 'bg-it-blue-500' : 'bg-it-line-strong dark:bg-rink-500',
+                )
+              : cn(
+                  'relative w-12 h-7 rounded-full transition-colors motion-reduce:transition-none',
+                  'focus:outline-none focus:ring-2 focus:ring-ice-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900',
+                  isActive ? 'bg-ice-500' : 'bg-wline dark:bg-rink-500',
+                )
+          }
         >
           <span
             className={cn(
@@ -386,17 +443,26 @@ export function PromotionForm({
       <button
         type="submit"
         disabled={isSubmitting}
-        className={cn(
-          'w-full py-3 rounded-xl text-white font-bold text-[15px]',
-          'bg-ice-500 hover:bg-ice-700 active:bg-ice-700',
-          'disabled:opacity-50 disabled:cursor-not-allowed',
-          'transition-colors motion-reduce:transition-none focus:outline-none focus:ring-2 focus:ring-ice-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900',
-        )}
+        className={
+          iceTheme
+            ? cn(
+                'w-full inline-flex h-12 items-center justify-center gap-2 rounded-w-md text-white font-bold text-card-emphasis',
+                'bg-it-blue-500 hover:bg-it-blue-600 active:brightness-95',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
+                'transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900',
+              )
+            : cn(
+                'w-full py-3 rounded-xl text-white font-bold text-[15px]',
+                'bg-ice-500 hover:bg-ice-700 active:bg-ice-700',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
+                'transition-colors motion-reduce:transition-none focus:outline-none focus:ring-2 focus:ring-ice-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900',
+              )
+        }
       >
         {isSubmitting ? (
           <span className="flex items-center justify-center gap-2">
             <span
-              className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"
+              className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin motion-reduce:animate-none"
               aria-hidden="true"
             />
             처리 중...

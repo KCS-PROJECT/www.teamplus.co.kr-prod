@@ -42,9 +42,16 @@ import { AcademyStudentEmpty } from './AcademyStudentEmpty';
 
 interface AcademyStudentsTabProps {
   academyId: string;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 Tab 직접 렌더 요소(헤더 텍스트·로딩 스피너·에러/재시도·load-more)에
+   *   it-* 토큰 적용. 자식 카드(AcademyStudentCard 등)는 담당 외라 미변경.
+   *   (현재 /academy/[id] 수강생 탭만 전달.)
+   */
+  iceTheme?: boolean;
 }
 
-export function AcademyStudentsTab({ academyId }: AcademyStudentsTabProps) {
+export function AcademyStudentsTab({ academyId, iceTheme = false }: AcademyStudentsTabProps) {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const debouncedQuery = useDebounce(query, 300);
@@ -141,7 +148,10 @@ export function AcademyStudentsTab({ academyId }: AcademyStudentsTabProps) {
       {summaryText && (
         <h2
           aria-label={MESSAGES.academy.students.summaryAriaLabel}
-          className="text-wtext-1 dark:text-white tracking-[-0.02em] font-extrabold text-[15px] sm:text-[16px] break-keep"
+          className={cn(
+            'tracking-[-0.02em] font-extrabold text-[15px] sm:text-[16px] break-keep',
+            iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white',
+          )}
         >
           {summaryText}
         </h2>
@@ -162,23 +172,43 @@ export function AcademyStudentsTab({ academyId }: AcademyStudentsTabProps) {
           aria-busy="true"
           className="flex items-center justify-center py-10"
         >
-          <div className="w-7 h-7 border-2 border-ice-500 border-t-transparent rounded-full animate-spin" />
+          <div
+            className={cn(
+              'w-7 h-7 border-2 border-t-transparent rounded-full animate-spin motion-reduce:animate-none',
+              iceTheme ? 'border-it-blue-500' : 'border-ice-500',
+            )}
+          />
         </div>
       ) : errorMessage ? (
         <div role="alert" className="flex flex-col items-center gap-3 py-10 text-center">
-          <p className="text-card-body font-semibold text-wtext-2 dark:text-rink-100">
+          <p
+            className={cn(
+              'text-card-body font-semibold',
+              iceTheme ? 'text-it-ink-600 dark:text-rink-100' : 'text-wtext-2 dark:text-rink-100',
+            )}
+          >
             {MESSAGES.error.general}
           </p>
           <button
             type="button"
             onClick={() => void refresh()}
-            className={cn(
-              'inline-flex h-10 items-center gap-1 rounded-w-pill px-4',
-              'bg-ice-500 text-white text-card-body font-bold',
-              'hover:bg-ice-700 active:brightness-95',
-              'transition-colors duration-150 motion-reduce:transition-none',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900',
-            )}
+            className={
+              iceTheme
+                ? cn(
+                    'inline-flex h-10 items-center gap-1 rounded-w-pill px-4',
+                    'bg-it-blue-500 text-white text-card-body font-bold',
+                    'hover:bg-it-blue-600 active:brightness-95',
+                    'transition-colors duration-150 motion-reduce:transition-none',
+                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900',
+                  )
+                : cn(
+                    'inline-flex h-10 items-center gap-1 rounded-w-pill px-4',
+                    'bg-ice-500 text-white text-card-body font-bold',
+                    'hover:bg-ice-700 active:brightness-95',
+                    'transition-colors duration-150 motion-reduce:transition-none',
+                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900',
+                  )
+            }
           >
             {MESSAGES.academy.students.retry}
           </button>
@@ -225,21 +255,41 @@ export function AcademyStudentsTab({ academyId }: AcademyStudentsTabProps) {
           className="flex items-center justify-center py-4 min-h-[40px]"
         >
           {isLoadingMore ? (
-            <span className="inline-flex items-center gap-2 text-card-meta text-wtext-3 dark:text-rink-300">
-              <span className="w-4 h-4 border-2 border-ice-500 border-t-transparent rounded-full animate-spin" />
+            <span
+              className={cn(
+                'inline-flex items-center gap-2 text-card-meta',
+                iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300',
+              )}
+            >
+              <span
+                className={cn(
+                  'w-4 h-4 border-2 border-t-transparent rounded-full animate-spin motion-reduce:animate-none',
+                  iceTheme ? 'border-it-blue-500' : 'border-ice-500',
+                )}
+              />
               {MESSAGES.academy.students.loadingMore}
             </span>
           ) : loadMoreErrorMessage ? (
             <button
               type="button"
               onClick={() => void loadMore()}
-              className={cn(
-                'inline-flex items-center gap-1 rounded-w-pill px-3 py-1.5',
-                'bg-wline-2 dark:bg-rink-700 text-wtext-2 dark:text-rink-100 text-card-meta font-bold',
-                'hover:bg-wline dark:hover:bg-rink-500 active:brightness-95',
-                'transition-colors duration-150 motion-reduce:transition-none',
-                'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500',
-              )}
+              className={
+                iceTheme
+                  ? cn(
+                      'inline-flex items-center gap-1 rounded-w-pill px-3 py-1.5',
+                      'bg-it-fill dark:bg-rink-700 text-it-ink-600 dark:text-rink-100 text-card-meta font-bold',
+                      'hover:bg-it-line dark:hover:bg-rink-500 active:brightness-95',
+                      'transition-colors duration-150 motion-reduce:transition-none',
+                      'focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500',
+                    )
+                  : cn(
+                      'inline-flex items-center gap-1 rounded-w-pill px-3 py-1.5',
+                      'bg-wline-2 dark:bg-rink-700 text-wtext-2 dark:text-rink-100 text-card-meta font-bold',
+                      'hover:bg-wline dark:hover:bg-rink-500 active:brightness-95',
+                      'transition-colors duration-150 motion-reduce:transition-none',
+                      'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500',
+                    )
+              }
             >
               <Icon name="refresh" className="text-[16px]" aria-hidden="true" />
               {MESSAGES.academy.students.retry}

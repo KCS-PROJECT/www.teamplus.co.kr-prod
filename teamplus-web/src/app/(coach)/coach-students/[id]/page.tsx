@@ -46,16 +46,26 @@ interface ClassRecord {
 // 코치 메모 기능은 백엔드 미구현(/coach-notes 엔드포인트 없음) + 공식 PRD/로드맵 등재 없음.
 type DetailTab = 'info' | 'attendance';
 
-const LEVEL_MAP: Record<string, { label: string; className: string }> = {
-  BEGINNER:     { label: '초급', className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' },
-  INTERMEDIATE: { label: '중급', className: 'bg-blue-100 text-ice-500 dark:bg-blue-900/20 dark:text-blue-400' },
-  ADVANCED:     { label: '고급', className: 'bg-purple-100 text-purple-700 dark:bg-purple-900/20 dark:text-purple-400' },
+const LEVEL_MAP: Record<string, { label: string }> = {
+  BEGINNER:     { label: '초급' },
+  INTERMEDIATE: { label: '중급' },
+  ADVANCED:     { label: '고급' },
 };
 
+// 히어로(navy) 위 레벨 배지 — 흰 글자 반투명
+const HERO_LEVEL_BADGE = 'bg-white/15 text-white';
+
+// ICETIMES 출석 상태 — it-blue(출석)/it-ink(지각)/it-red(결석)
 const ATTENDANCE_STATUS_STYLES: Record<string, string> = {
-  '출석': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400',
-  '지각': 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400',
-  '결석': 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400',
+  '출석': 'bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-900/30 dark:text-it-blue-300',
+  '지각': 'bg-it-fill text-it-ink-600 dark:bg-rink-700 dark:text-wtext-4',
+  '결석': 'bg-it-red-50 text-it-red-500 dark:bg-it-red-500/15 dark:text-it-red-300',
+};
+
+const ATTENDANCE_STAT_COLOR: Record<'present' | 'late' | 'absent', string> = {
+  present: 'text-it-blue-500',
+  late: 'text-it-ink-600 dark:text-wtext-4',
+  absent: 'text-it-red-500',
 };
 
 const LEVELS = [
@@ -64,32 +74,34 @@ const LEVELS = [
   { value: 'ADVANCED', label: '고급' },
 ];
 
-// ─── Info Row ──────────────────────────────────────
-function InfoRow({ icon, label, value }: { icon: string; label: string; value: string }) {
+// ─── Info Row (ICETIMES) ───────────────────────────
+function InfoRow({ icon, label, value, isLast }: { icon: string; label: string; value: string; isLast?: boolean }) {
   return (
-    <div className="flex items-center gap-3 py-3">
-      <div className="w-8 h-8 rounded-lg bg-wline-2 dark:bg-rink-700 flex items-center justify-center shrink-0">
-        <Icon name={icon} className="text-[16px] text-wtext-3 dark:text-rink-300" aria-hidden="true" />
-      </div>
+    <div className={cn('flex items-start gap-3 py-3', !isLast && 'border-b border-it-line dark:border-rink-700')}>
+      <Icon
+        name={icon}
+        className="mt-0.5 shrink-0 text-card-title text-it-blue-500"
+        aria-hidden="true"
+      />
       <div className="flex-1 min-w-0">
-        <p className="text-card-meta text-wtext-3 dark:text-rink-300 mb-0.5">{label}</p>
-        <p className="text-card-body font-medium text-wtext-1 dark:text-white truncate">{value}</p>
+        <p className="mb-0.5 text-card-meta font-semibold uppercase tracking-wide text-it-ink-400 dark:text-wtext-4">{label}</p>
+        <p className="break-all text-card-body font-medium text-it-ink-800 dark:text-white">{value}</p>
       </div>
     </div>
   );
 }
 
-// ─── Attendance Row ───────────────────────────────
-const AttendanceRow = memo(function AttendanceRow({ record }: { record: AttendanceRecord }) {
+// ─── Attendance Row (ICETIMES flat — hairline) ───────
+const AttendanceRow = memo(function AttendanceRow({ record, isLast }: { record: AttendanceRecord; isLast: boolean }) {
   return (
-    <div className="flex items-center justify-between py-3 border-b border-wline-2 dark:border-rink-700/50 last:border-0">
+    <div className={cn('flex items-center justify-between py-3', !isLast && 'border-b border-it-line dark:border-rink-700')}>
       <div className="flex-1 min-w-0">
-        <p className="text-card-body font-medium text-wtext-1 dark:text-white">{record.className}</p>
-        <p className="text-card-meta text-wtext-3 dark:text-rink-300">{record.date}</p>
+        <p className="text-card-body font-medium text-it-ink-800 dark:text-white">{record.className}</p>
+        <p className="text-card-meta text-it-ink-500 dark:text-wtext-4 font-num tabular-nums">{record.date}</p>
       </div>
       <span className={cn(
-        'px-2.5 py-1 rounded-w-pill text-card-meta font-bold shrink-0',
-        ATTENDANCE_STATUS_STYLES[record.status] ?? 'bg-wline-2 text-wtext-2'
+        'shrink-0 rounded-w-pill px-2.5 py-1 text-card-meta font-bold',
+        ATTENDANCE_STATUS_STYLES[record.status] ?? 'bg-it-fill text-it-ink-600',
       )}>
         {record.status}
       </span>
@@ -100,7 +112,7 @@ const AttendanceRow = memo(function AttendanceRow({ record }: { record: Attendan
 // [제거 2026-05-19] NoteCard / NoteModal / DeleteConfirmModal(메모 삭제용) 컴포넌트 제거.
 // 코치 메모 기능 전체 삭제 (백엔드 미구현 + 공식 PRD 등재 없음).
 
-// ─── Level Change Modal ──────────────────────────
+// ─── Level Change Modal (오버레이 — 카드 형태 유지) ──
 function LevelChangeModal({
   isOpen,
   currentLevel,
@@ -128,12 +140,12 @@ function LevelChangeModal({
         aria-hidden="true"
       />
       <div
-        className="relative w-full max-w-sm bg-white dark:bg-rink-800 rounded-2xl p-6"
+        className="relative w-full max-w-sm bg-it-surface dark:bg-rink-800 rounded-w-xl p-6"
         role="dialog"
         aria-modal="true"
         aria-labelledby="level-change-title"
       >
-        <h3 id="level-change-title" className="text-card-emphasis font-bold text-wtext-1 dark:text-white mb-4">레벨 변경</h3>
+        <h3 id="level-change-title" className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white mb-4">레벨 변경</h3>
         <div
           className="flex flex-col gap-2 mb-6"
           role="radiogroup"
@@ -147,31 +159,37 @@ function LevelChangeModal({
               aria-checked={selectedLevel === level.value}
               onClick={() => setSelectedLevel(level.value)}
               className={cn(
-                'flex items-center justify-between px-4 py-3 rounded-xl text-card-body font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ice-500 focus:outline-none',
+                'flex items-center justify-between rounded-w-md border-[1.5px] px-4 py-3 text-card-body font-bold transition-colors motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-it-blue-500/30 focus:outline-none active:brightness-95',
                 selectedLevel === level.value
-                  ? 'bg-ice-500 text-white'
-                  : 'bg-wbg dark:bg-rink-900 text-wtext-2 dark:text-rink-100 hover:bg-wline-2 dark:hover:bg-rink-700'
+                  ? 'border-it-blue-500 bg-it-blue-50 text-it-blue-500 dark:border-it-blue-500 dark:bg-it-blue-900/30'
+                  : 'border-it-line-strong bg-it-surface text-it-ink-800 hover:bg-it-fill dark:border-rink-700 dark:bg-rink-800 dark:text-white dark:hover:bg-rink-700',
               )}
             >
               <span>{level.label}</span>
               {selectedLevel === level.value && (
-                <Icon name="check" className="text-card-title" aria-hidden="true" />
+                <Icon name="check" className="text-card-title text-it-blue-500" aria-hidden="true" />
               )}
             </button>
           ))}
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" onClick={onClose} className="flex-1" aria-label="레벨 변경 취소">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-12 flex-1 rounded-w-md border-[1.5px] border-it-line-strong bg-it-surface text-card-body font-bold text-it-ink-800 transition-colors motion-reduce:transition-none hover:bg-it-fill active:brightness-95 dark:border-rink-700 dark:bg-rink-800 dark:text-white dark:hover:bg-rink-700"
+            aria-label="레벨 변경 취소"
+          >
             취소
-          </Button>
-          <Button
+          </button>
+          <button
+            type="button"
             onClick={() => onConfirm(selectedLevel)}
             disabled={selectedLevel === currentLevel}
-            className="flex-1"
+            className="h-12 flex-1 rounded-w-md bg-it-blue-500 text-card-body font-bold text-white transition-colors motion-reduce:transition-none hover:bg-it-blue-600 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
             aria-label={`레벨을 ${LEVELS.find(l => l.value === selectedLevel)?.label ?? ''}로 변경하기`}
           >
             변경하기
-          </Button>
+          </button>
         </div>
       </div>
     </div>
@@ -187,7 +205,7 @@ export default function CoachStudentDetailPage() {
   const [activeTab, setActiveTab] = useState<DetailTab>('info');
   const [student, setStudent] = useState<StudentDetail | null>(null);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
-  const [classRecords, setClassRecords] = useState<ClassRecord[]>([]);
+  const [, setClassRecords] = useState<ClassRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // 풀스크린 로더 fast-path (v11) — fetch 완료 시점에 PageTransitionLoader OFF
@@ -195,7 +213,7 @@ export default function CoachStudentDetailPage() {
 
   // 모달 상태 — [제거 2026-05-19] 코치 메모 관련 state 5개 제거 (notes/isNoteModalOpen/editingNote/isDeleteModalOpen/deletingNoteId).
   const [isLevelModalOpen, setIsLevelModalOpen] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  const [, setIsSaving] = useState(false);
 
   useNativeUI({
     showStatusBar: true,
@@ -262,7 +280,7 @@ export default function CoachStudentDetailPage() {
     return { present, late, absent, total: attendanceRecords.length };
   }, [attendanceRecords]);
 
-  const levelInfo = student ? (LEVEL_MAP[student.level] ?? { label: student.level, className: 'bg-wline-2 text-wtext-2' }) : null;
+  const levelInfo = student ? (LEVEL_MAP[student.level] ?? { label: student.level }) : null;
 
   // ─── 렌더링 ─────────────────────────────────────────
   if (isLoading) return null;
@@ -271,11 +289,11 @@ export default function CoachStudentDetailPage() {
     return (
       <MobileContainer hasBottomNav>
         <PageAppBar title="학생 상세" />
-        <main className="flex-1 flex flex-col items-center justify-center px-5">
-          <div className="size-16 rounded-w-pill bg-wline-2 dark:bg-rink-800 flex items-center justify-center mb-4">
-            <Icon name="error_outline" className="text-3xl text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+        <main className="flex-1 flex flex-col items-center justify-center px-5 bg-it-canvas dark:bg-puck">
+          <div className="size-16 rounded-w-pill bg-it-line dark:bg-rink-700 flex items-center justify-center mb-4">
+            <Icon name="error_outline" className="text-3xl text-it-ink-400 dark:text-wtext-4" aria-hidden="true" />
           </div>
-          <p className="text-card-body text-wtext-3 dark:text-rink-300 font-medium text-center mb-4">
+          <p className="text-card-body text-it-ink-500 dark:text-wtext-4 font-medium text-center mb-4">
             학생 정보를 불러올 수 없습니다.
           </p>
           <Button variant="outline" onClick={fetchStudentDetail}>
@@ -290,90 +308,89 @@ export default function CoachStudentDetailPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title={student.name} />
 
-      <main className="flex-1 overflow-y-auto hide-scrollbar px-5 py-4 pb-30">
-        {/* 학생 프로필 카드 */}
-        <section className="bg-white dark:bg-rink-800 rounded-2xl border border-wline-2 dark:border-rink-700 p-5 mb-5">
-          <div className="flex items-center gap-4 mb-4">
-            <div className="relative">
-              <div className="w-16 h-16 rounded-w-pill bg-wline-2 dark:bg-rink-700 flex items-center justify-center">
-                <Icon name="person" className="text-2xl text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+      <main className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck pb-30" role="main" aria-label="학생 상세">
+        {/* 프로필 히어로 — navy 밴드 full-bleed */}
+        <section className="bg-it-blue-800 dark:bg-it-blue-950 px-5 pb-7 pt-7" aria-label="학생 프로필">
+          <div className="flex items-center gap-4">
+            <div className="relative shrink-0">
+              <div className="size-16 rounded-w-pill bg-white/15 dark:bg-white/10 flex items-center justify-center">
+                <Icon name="person" className="text-2xl text-white" aria-hidden="true" />
               </div>
-              <div className={cn(
-                'absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-w-pill border-2 border-white dark:border-rink-800',
-                student.isActive ? 'bg-green-500' : 'bg-wtext-4'
-              )} />
+              <span className={cn(
+                'absolute -bottom-0.5 -right-0.5 size-4 rounded-w-pill border-2 border-it-blue-800 dark:border-it-blue-950',
+                student.isActive ? 'bg-mint-500' : 'bg-white/40',
+              )} aria-hidden="true" />
             </div>
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
-                <h2 className="text-card-title font-bold text-wtext-1 dark:text-white">{student.name}</h2>
-                <span className="text-card-meta text-wtext-3 dark:text-rink-300">{student.age}세</span>
+                <h2 className="text-[20px] font-extrabold tracking-[-0.01em] text-white truncate">{student.name}</h2>
+                <span className="shrink-0 text-card-meta text-white/70">{student.age}세</span>
               </div>
               <div className="flex items-center gap-2">
                 {levelInfo && (
-                  <span className={cn('text-card-meta font-bold px-2 py-0.5 rounded-w-pill', levelInfo.className)}>
+                  <span className={cn('rounded-w-pill px-2.5 py-1 text-card-meta font-bold', HERO_LEVEL_BADGE)}>
                     {levelInfo.label}
                   </span>
                 )}
-                <span className="text-card-meta text-wtext-3 dark:text-rink-300">{student.className}</span>
+                {student.className && (
+                  <span className="text-card-meta text-white/70 truncate">{student.className}</span>
+                )}
               </div>
             </div>
-            <div className="text-right">
-              <p className={cn(
-                'text-2xl font-extrabold tabular-nums',
-                student.attendanceRate >= 90 ? 'text-emerald-600 dark:text-emerald-400'
-                  : student.attendanceRate >= 70 ? 'text-amber-600 dark:text-amber-400'
-                    : 'text-red-600 dark:text-red-400'
-              )}>
+            <div className="text-right shrink-0">
+              <p className="text-2xl font-extrabold font-num tabular-nums text-white">
                 {student.attendanceRate}%
               </p>
-              <p className="text-card-meta text-wtext-3 dark:text-rink-300">출석률</p>
+              <p className="text-card-meta text-white/70">출석률</p>
             </div>
           </div>
 
-          {/* 빠른 액션 — [수정 2026-05-19] '메모 작성' 버튼 제거 (코치 메모 도메인 삭제).
-              레벨 변경 버튼만 남아 단독으로 가득 채움. */}
-          <div className="flex gap-2">
-            <button
-              onClick={() => setIsLevelModalOpen(true)}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-wbg dark:bg-rink-900 rounded-xl text-card-meta font-medium text-wtext-2 dark:text-rink-100 hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors active:brightness-95"
-            >
-              <Icon name="swap_vert" className="text-card-body" aria-hidden="true" />
-              레벨 변경
-            </button>
-          </div>
+          {/* 빠른 액션 — 레벨 변경 (히어로 위 outline 칩) */}
+          <button
+            type="button"
+            onClick={() => setIsLevelModalOpen(true)}
+            className="mt-5 flex w-full items-center justify-center gap-1.5 rounded-w-md border-[1.5px] border-white/25 bg-white/10 py-2.5 text-card-body font-bold text-white transition-colors motion-reduce:transition-none hover:bg-white/15 active:brightness-95"
+          >
+            <Icon name="swap_vert" className="text-card-title" aria-hidden="true" />
+            레벨 변경
+          </button>
         </section>
 
-        {/* 탭 */}
-        <div
-          className="flex gap-1 mb-4 bg-wline-2 dark:bg-rink-800 rounded-lg p-1"
-          role="tablist"
-          aria-label="학생 상세 정보 탭"
-        >
-          {/* [수정 2026-05-19] 'notes' 탭 제거 (코치 메모 도메인 삭제). info + attendance 2개 탭만. */}
-          {([
-            { key: 'info' as DetailTab, label: '기본 정보', icon: 'person' },
-            { key: 'attendance' as DetailTab, label: '출석 이력', icon: 'calendar_month' },
-          ]).map(tab => (
-            <button
-              key={tab.key}
-              type="button"
-              role="tab"
-              aria-selected={activeTab === tab.key}
-              aria-controls={`student-tab-panel-${tab.key}`}
-              id={`student-tab-${tab.key}`}
-              onClick={() => setActiveTab(tab.key)}
-              className={cn(
-                'flex-1 flex items-center justify-center gap-1 py-2.5 text-card-meta font-medium rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-ice-500 focus:outline-none',
-                activeTab === tab.key
-                  ? 'bg-white dark:bg-rink-700 text-wtext-1 dark:text-white shadow-sm'
-                  : 'text-wtext-3 dark:text-rink-300'
-              )}
-            >
-              <Icon name={tab.icon} className="text-card-body" aria-hidden="true" />
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        {/* flat 섹션 사이 8px 회색 갭 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+        {/* 탭 — 흰 섹션 내부 segmented */}
+        <section className="bg-it-surface dark:bg-rink-800 px-5 pt-4 pb-2">
+          <div
+            className="flex gap-1 rounded-w-md bg-it-fill dark:bg-rink-900 p-1"
+            role="tablist"
+            aria-label="학생 상세 정보 탭"
+          >
+            {([
+              { key: 'info' as DetailTab, label: '기본 정보', icon: 'person' },
+              { key: 'attendance' as DetailTab, label: '출석 이력', icon: 'calendar_month' },
+            ]).map(tab => (
+              <button
+                key={tab.key}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab.key}
+                aria-controls={`student-tab-panel-${tab.key}`}
+                id={`student-tab-${tab.key}`}
+                onClick={() => setActiveTab(tab.key)}
+                className={cn(
+                  'flex-1 flex items-center justify-center gap-1 py-2.5 text-card-meta font-bold rounded-w-sm transition-colors motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-it-blue-500/30 focus:outline-none',
+                  activeTab === tab.key
+                    ? 'bg-it-surface dark:bg-rink-700 text-it-blue-500'
+                    : 'text-it-ink-500 dark:text-wtext-4',
+                )}
+              >
+                <Icon name={tab.icon} className="text-card-body" aria-hidden="true" />
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </section>
 
         {/* ─── 기본 정보 탭 ────────────────────── */}
         {activeTab === 'info' && (
@@ -381,15 +398,15 @@ export default function CoachStudentDetailPage() {
             id="student-tab-panel-info"
             role="tabpanel"
             aria-labelledby="student-tab-info"
-            className="bg-white dark:bg-rink-800 rounded-xl border border-wline-2 dark:border-rink-700 px-4 divide-y divide-slate-50 dark:divide-slate-700/50"
+            className="bg-it-surface dark:bg-rink-800 px-5 pt-1 pb-6"
           >
             <InfoRow icon="person" label="이름" value={student.name} />
             <InfoRow icon="cake" label="나이" value={`${student.age}세`} />
-            <InfoRow icon="school" label="수업" value={student.className} />
+            <InfoRow icon="school" label="수업" value={student.className || '-'} />
             <InfoRow icon="escalator_warning" label="보호자" value={student.parentName || '-'} />
             <InfoRow icon="phone" label="연락처" value={student.parentPhone || '-'} />
             <InfoRow icon="calendar_today" label="가입일" value={student.joinedAt || '-'} />
-            <InfoRow icon="signal_cellular_alt" label="레벨" value={levelInfo?.label ?? student.level} />
+            <InfoRow icon="signal_cellular_alt" label="레벨" value={levelInfo?.label ?? student.level} isLast />
           </section>
         )}
 
@@ -399,52 +416,56 @@ export default function CoachStudentDetailPage() {
             id="student-tab-panel-attendance"
             role="tabpanel"
             aria-labelledby="student-tab-attendance"
-            className="flex flex-col gap-4"
           >
-            {/* 출석 통계 */}
-            <div className="bg-white dark:bg-rink-800 rounded-xl border border-wline-2 dark:border-rink-700 p-4">
-              <h3 className="text-card-body font-bold text-wtext-1 dark:text-white mb-3">최근 출석 통계</h3>
+            {/* 출석 통계 — flat 흰 섹션 */}
+            <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-5">
+              <h3 className="mb-4 text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">최근 출석 통계</h3>
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div>
-                  <p className="text-card-title font-extrabold text-emerald-600 dark:text-emerald-400 tabular-nums">{attendanceStats.present}</p>
-                  <p className="text-card-meta text-wtext-3 dark:text-rink-300">출석</p>
+                  <p className={cn('text-card-section font-extrabold font-num tabular-nums', ATTENDANCE_STAT_COLOR.present)}>{attendanceStats.present}</p>
+                  <p className="text-card-meta text-it-ink-500 dark:text-wtext-4">출석</p>
                 </div>
                 <div>
-                  <p className="text-card-title font-extrabold text-amber-600 dark:text-amber-400 tabular-nums">{attendanceStats.late}</p>
-                  <p className="text-card-meta text-wtext-3 dark:text-rink-300">지각</p>
+                  <p className={cn('text-card-section font-extrabold font-num tabular-nums', ATTENDANCE_STAT_COLOR.late)}>{attendanceStats.late}</p>
+                  <p className="text-card-meta text-it-ink-500 dark:text-wtext-4">지각</p>
                 </div>
                 <div>
-                  <p className="text-card-title font-extrabold text-red-600 dark:text-red-400 tabular-nums">{attendanceStats.absent}</p>
-                  <p className="text-card-meta text-wtext-3 dark:text-rink-300">결석</p>
+                  <p className={cn('text-card-section font-extrabold font-num tabular-nums', ATTENDANCE_STAT_COLOR.absent)}>{attendanceStats.absent}</p>
+                  <p className="text-card-meta text-it-ink-500 dark:text-wtext-4">결석</p>
                 </div>
               </div>
-            </div>
+            </section>
 
-            {/* 출석 이력 목록 */}
-            <div className="bg-white dark:bg-rink-800 rounded-xl border border-wline-2 dark:border-rink-700 px-4">
-              <div className="flex items-center justify-between py-3 border-b border-wline-2 dark:border-rink-700/50">
-                <h3 className="text-card-body font-bold text-wtext-1 dark:text-white">최근 출석 이력</h3>
-                <span className="text-card-meta text-wtext-3 dark:text-rink-300 tabular-nums">{attendanceStats.total}건</span>
+            {/* flat 섹션 사이 8px 회색 갭 */}
+            <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+            {/* 출석 이력 목록 — flat 흰 섹션 */}
+            <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6">
+              <div className="flex items-center justify-between pb-1 border-b border-it-line dark:border-rink-700">
+                <h3 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">최근 출석 이력</h3>
+                <span className="text-card-meta text-it-ink-500 dark:text-wtext-4 font-num tabular-nums">{attendanceStats.total}건</span>
               </div>
               {attendanceRecords.length > 0 ? (
                 <ul className="list-none" role="list" aria-label="최근 출석 이력 목록">
-                  {attendanceRecords.map(record => (
+                  {attendanceRecords.map((record, idx) => (
                     <li key={record.id} role="listitem">
-                      <AttendanceRow record={record} />
+                      <AttendanceRow record={record} isLast={idx === attendanceRecords.length - 1} />
                     </li>
                   ))}
                 </ul>
               ) : (
                 <div className="flex flex-col items-center justify-center py-10" role="status">
-                  <Icon name="event_busy" className="text-3xl text-wtext-4 dark:text-rink-500 mb-2" aria-hidden="true" />
-                  <p className="text-card-body text-wtext-3 dark:text-rink-300">{MESSAGES.attendance2.emptyHistory}</p>
+                  <Icon name="event_busy" className="text-3xl text-it-ink-300 dark:text-rink-500 mb-2" aria-hidden="true" />
+                  <p className="text-card-body text-it-ink-500 dark:text-wtext-4">{MESSAGES.attendance2.emptyHistory}</p>
                 </div>
               )}
-            </div>
+            </section>
           </div>
         )}
 
         {/* [제거 2026-05-19] '메모 탭' 패널 통째 삭제 (코치 메모 도메인 전체 제거). */}
+
+        <div className="h-6 bg-it-canvas dark:bg-puck" aria-hidden="true" />
       </main>
 
       {/* 모달들 — [수정 2026-05-19] NoteModal / DeleteConfirmModal 렌더링 제거. */}

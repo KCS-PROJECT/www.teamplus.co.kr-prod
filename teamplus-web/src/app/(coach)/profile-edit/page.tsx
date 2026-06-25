@@ -146,24 +146,24 @@ export default function CoachProfileEditPage() {
       <PageAppBar title="프로필 수정" />
 
       {/* 본문 — 키보드 활성 시 입력/버튼 가림 방지 (pb-keyboard-safe-32) */}
-      <main className="flex-1 overflow-y-auto hide-scrollbar px-5 pt-6 pb-keyboard-safe-32 scroll-keyboard-safe">
+      <main className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck px-5 pt-6 pb-keyboard-safe-32 scroll-keyboard-safe">
         {/* 프로필 이미지 */}
         <div className="flex flex-col items-center mb-6">
           <div className="relative">
-            <div className="w-24 h-24 rounded-w-pill overflow-hidden bg-wline dark:bg-rink-700 ring-4 ring-white dark:ring-rink-800 shadow-md">
+            <div className="w-24 h-24 rounded-w-pill overflow-hidden bg-it-line dark:bg-rink-700 ring-4 ring-it-surface dark:ring-rink-800 shadow-sh-1">
               {resolveImageSrc(avatarPreview) ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img loading="lazy" decoding="async" src={resolveImageSrc(avatarPreview)} alt="프로필 사진" className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
-                  <Icon name="person" className="text-5xl text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+                  <Icon name="person" className="text-5xl text-it-ink-400 dark:text-rink-300" aria-hidden="true" />
                 </div>
               )}
             </div>
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="absolute bottom-0 right-0 w-9 h-9 rounded-w-pill bg-ice-500 flex items-center justify-center shadow-md hover:bg-ice-700 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/50 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900 ring-2 ring-white dark:ring-rink-900"
+              className="absolute bottom-0 right-0 w-9 h-9 rounded-w-pill bg-it-blue-500 flex items-center justify-center shadow-sh-1 hover:bg-it-blue-600 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/50 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900 ring-2 ring-it-surface dark:ring-rink-900"
               aria-label="프로필 사진 변경"
             >
               <Icon name="camera_alt" className="text-white text-[16px]" aria-hidden="true" />
@@ -177,24 +177,24 @@ export default function CoachProfileEditPage() {
               aria-hidden="true"
             />
           </div>
-          <p className="mt-3 text-card-meta text-wtext-3 dark:text-rink-300">사진을 탭해서 변경할 수 있어요</p>
+          <p className="mt-3 text-card-meta text-it-ink-500 dark:text-rink-300">사진을 탭해서 변경할 수 있어요</p>
         </div>
 
         {/* 소속 팀 (읽기 전용) */}
         {coachClub && (
-          <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800">
+          <div className="mb-6 p-4 bg-it-blue-50 dark:bg-it-blue-900/30 rounded-w-md border-[1.5px] border-it-blue-100 dark:border-it-blue-800">
             <div className="flex items-center gap-3">
               <span
                 aria-hidden="true"
-                className="shrink-0 inline-flex w-10 h-10 items-center justify-center rounded-xl bg-ice-500/10 dark:bg-ice-500/20 text-ice-500 dark:text-blue-300"
+                className="shrink-0 inline-flex w-10 h-10 items-center justify-center rounded-w-md bg-it-blue-500/10 dark:bg-it-blue-500/20 text-it-blue-500 dark:text-it-blue-300"
               >
                 <Icon name="sports_hockey" className="text-[22px]" />
               </span>
               <div className="flex-1 min-w-0">
-                <p className="text-card-meta font-bold text-ice-500/80 dark:text-blue-300/80 uppercase tracking-wider mb-0.5">소속 팀</p>
-                <p className="text-card-body font-semibold text-wtext-1 dark:text-white truncate">{coachClub.name}</p>
+                <p className="text-card-meta font-bold text-it-blue-500/80 dark:text-it-blue-300/80 uppercase tracking-wider mb-0.5">소속 팀</p>
+                <p className="text-card-body font-semibold text-it-ink-800 dark:text-white truncate">{coachClub.name}</p>
                 {coachClub.location && (
-                  <p className="text-card-meta text-wtext-3 dark:text-rink-300 truncate">{coachClub.location}</p>
+                  <p className="text-card-meta text-it-ink-500 dark:text-rink-300 truncate">{coachClub.location}</p>
                 )}
               </div>
             </div>
@@ -202,7 +202,7 @@ export default function CoachProfileEditPage() {
         )}
 
         {/* Section: 기본 정보 */}
-        <h2 className="text-card-meta font-bold text-wtext-3 dark:text-rink-300 uppercase tracking-wider mb-3">
+        <h2 className="text-card-meta font-bold text-it-ink-500 dark:text-rink-300 uppercase tracking-wider mb-3">
           기본 정보
         </h2>
 
@@ -210,8 +210,8 @@ export default function CoachProfileEditPage() {
         <div className="flex flex-col gap-5">
           {/* 성 */}
           <div>
-            <label htmlFor="lastName" className="block text-card-body font-semibold text-wtext-2 dark:text-rink-100 mb-2">
-              성 <span className="text-red-500">*</span>
+            <label htmlFor="lastName" className="block text-card-body font-semibold text-it-ink-800 dark:text-rink-100 mb-2">
+              성 <span className="text-it-red-500">*</span>
             </label>
             <input
               id="lastName"
@@ -219,8 +219,8 @@ export default function CoachProfileEditPage() {
               value={lastName}
               onChange={(e) => { setLastName(e.target.value); setFormErrors((p) => ({ ...p, lastName: undefined })); }}
               className={cn(
-                'w-full h-12 px-4 bg-white dark:bg-rink-800 border rounded-xl text-card-body text-wtext-1 dark:text-white placeholder-wtext-3 focus:outline-none focus:ring-2 focus:ring-ice-500/20 focus:border-ice-500 transition-all',
-                formErrors.lastName ? 'border-red-400 dark:border-red-500' : 'border-wline dark:border-rink-700'
+                'w-full h-12 px-4 bg-it-fill dark:bg-rink-800 border-[1.5px] rounded-w-md text-[15px] font-medium text-it-ink-800 dark:text-white placeholder:text-it-ink-400 focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 transition-colors motion-reduce:transition-none',
+                formErrors.lastName ? 'border-it-red-400 dark:border-it-red-500' : 'border-it-line-strong dark:border-rink-700'
               )}
               placeholder={MESSAGES.placeholders.enterFirstName}
               required
@@ -229,14 +229,14 @@ export default function CoachProfileEditPage() {
               autoComplete="family-name"
             />
             {formErrors.lastName && (
-              <p className="mt-1.5 text-card-meta text-red-500" role="alert">{formErrors.lastName}</p>
+              <p className="mt-1.5 text-card-meta text-it-red-500" role="alert">{formErrors.lastName}</p>
             )}
           </div>
 
           {/* 이름 */}
           <div>
-            <label htmlFor="firstName" className="block text-card-body font-semibold text-wtext-2 dark:text-rink-100 mb-2">
-              이름 <span className="text-red-500">*</span>
+            <label htmlFor="firstName" className="block text-card-body font-semibold text-it-ink-800 dark:text-rink-100 mb-2">
+              이름 <span className="text-it-red-500">*</span>
             </label>
             <input
               id="firstName"
@@ -244,8 +244,8 @@ export default function CoachProfileEditPage() {
               value={firstName}
               onChange={(e) => { setFirstName(e.target.value); setFormErrors((p) => ({ ...p, firstName: undefined })); }}
               className={cn(
-                'w-full h-12 px-4 bg-white dark:bg-rink-800 border rounded-xl text-card-body text-wtext-1 dark:text-white placeholder-wtext-3 focus:outline-none focus:ring-2 focus:ring-ice-500/20 focus:border-ice-500 transition-all',
-                formErrors.firstName ? 'border-red-400 dark:border-red-500' : 'border-wline dark:border-rink-700'
+                'w-full h-12 px-4 bg-it-fill dark:bg-rink-800 border-[1.5px] rounded-w-md text-[15px] font-medium text-it-ink-800 dark:text-white placeholder:text-it-ink-400 focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 transition-colors motion-reduce:transition-none',
+                formErrors.firstName ? 'border-it-red-400 dark:border-it-red-500' : 'border-it-line-strong dark:border-rink-700'
               )}
               placeholder={MESSAGES.placeholders.enterLastName}
               required
@@ -254,7 +254,7 @@ export default function CoachProfileEditPage() {
               autoComplete="given-name"
             />
             {formErrors.firstName && (
-              <p className="mt-1.5 text-card-meta text-red-500" role="alert">{formErrors.firstName}</p>
+              <p className="mt-1.5 text-card-meta text-it-red-500" role="alert">{formErrors.firstName}</p>
             )}
           </div>
 
@@ -263,13 +263,13 @@ export default function CoachProfileEditPage() {
         {/* Section: 연락처 (읽기 전용) */}
         {(phone || email) && (
           <>
-            <h2 className="text-card-meta font-bold text-wtext-3 dark:text-rink-300 uppercase tracking-wider mt-8 mb-3">
+            <h2 className="text-card-meta font-bold text-it-ink-500 dark:text-rink-300 uppercase tracking-wider mt-8 mb-3">
               연락처
             </h2>
             <div className="flex flex-col gap-5">
               {phone && (
                 <div>
-                  <label htmlFor="phone" className="block text-card-body font-semibold text-wtext-2 dark:text-rink-100 mb-2">
+                  <label htmlFor="phone" className="block text-card-body font-semibold text-it-ink-800 dark:text-rink-100 mb-2">
                     휴대폰 번호
                   </label>
                   <div className="relative">
@@ -278,16 +278,16 @@ export default function CoachProfileEditPage() {
                       type="tel"
                       value={phone}
                       readOnly
-                      className="w-full h-12 px-4 pr-10 bg-wbg dark:bg-rink-800/50 border border-wline dark:border-rink-700 rounded-xl text-card-body text-wtext-3 dark:text-rink-300 cursor-not-allowed tabular-nums"
+                      className="w-full h-12 px-4 pr-10 bg-it-canvas dark:bg-rink-800/50 border-[1.5px] border-it-line dark:border-rink-700 rounded-w-md text-[15px] font-medium text-it-ink-500 dark:text-rink-300 cursor-not-allowed tabular-nums"
                       aria-readonly="true"
                     />
                     <Icon
                       name="lock"
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-wtext-3 dark:text-rink-300 text-card-title pointer-events-none"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-it-ink-400 dark:text-rink-300 text-card-title pointer-events-none"
                       aria-hidden="true"
                     />
                   </div>
-                  <p className="mt-1.5 text-card-meta text-wtext-3 dark:text-rink-300 flex items-center gap-1">
+                  <p className="mt-1.5 text-card-meta text-it-ink-500 dark:text-rink-300 flex items-center gap-1">
                     <Icon name="info" className="text-[14px]" aria-hidden="true" />
                     휴대폰 번호 변경은 고객센터로 문의해주세요.
                   </p>
@@ -296,7 +296,7 @@ export default function CoachProfileEditPage() {
 
               {email && (
                 <div>
-                  <label htmlFor="email" className="block text-card-body font-semibold text-wtext-2 dark:text-rink-100 mb-2">
+                  <label htmlFor="email" className="block text-card-body font-semibold text-it-ink-800 dark:text-rink-100 mb-2">
                     아이디
                   </label>
                   <div className="relative">
@@ -305,16 +305,16 @@ export default function CoachProfileEditPage() {
                       type="email"
                       value={email}
                       readOnly
-                      className="w-full h-12 px-4 pr-10 bg-wbg dark:bg-rink-800/50 border border-wline dark:border-rink-700 rounded-xl text-card-body text-wtext-3 dark:text-rink-300 cursor-not-allowed"
+                      className="w-full h-12 px-4 pr-10 bg-it-canvas dark:bg-rink-800/50 border-[1.5px] border-it-line dark:border-rink-700 rounded-w-md text-[15px] font-medium text-it-ink-500 dark:text-rink-300 cursor-not-allowed"
                       aria-readonly="true"
                     />
                     <Icon
                       name="lock"
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-wtext-3 dark:text-rink-300 text-card-title pointer-events-none"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-it-ink-400 dark:text-rink-300 text-card-title pointer-events-none"
                       aria-hidden="true"
                     />
                   </div>
-                  <p className="mt-1.5 text-card-meta text-wtext-3 dark:text-rink-300 flex items-center gap-1">
+                  <p className="mt-1.5 text-card-meta text-it-ink-500 dark:text-rink-300 flex items-center gap-1">
                     <Icon name="info" className="text-[14px]" aria-hidden="true" />
                     아이디는 변경할 수 없습니다.
                   </p>
@@ -324,13 +324,13 @@ export default function CoachProfileEditPage() {
           </>
         )}
 
-        {/* 하단 수정/취소 버튼 — coach/classes-manage 패턴 (outline + primary) */}
+        {/* 하단 수정/취소 버튼 — ICETIMES 폼 패턴 (outline + primary) */}
         <div className="mt-8 mb-6 flex gap-3">
           <button
             type="button"
             onClick={() => router.back()}
             disabled={isSubmitting}
-            className="flex-1 h-12 rounded-xl border border-wline dark:border-rink-700 text-card-body font-semibold text-wtext-2 dark:text-rink-100 hover:bg-wbg dark:hover:bg-rink-700 transition-colors active:brightness-95 motion-reduce:transition-none disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900"
+            className="flex-1 h-12 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 text-card-body font-bold text-it-ink-800 dark:text-rink-100 hover:bg-it-fill dark:hover:bg-rink-700 transition-colors active:brightness-95 motion-reduce:transition-none disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900"
             aria-label="수정 취소"
           >
             취소
@@ -340,10 +340,10 @@ export default function CoachProfileEditPage() {
             onClick={handleSubmit}
             disabled={!isDirty || isSubmitting}
             className={cn(
-              'flex-[1.5] h-12 rounded-xl text-card-body font-semibold transition-colors active:brightness-95 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900',
+              'flex-[1.5] h-12 rounded-w-md text-card-body font-bold transition-colors active:brightness-95 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900',
               isDirty && !isSubmitting
-                ? 'bg-ice-500 hover:bg-ice-700 text-white'
-                : 'bg-wline-2 dark:bg-rink-800 text-wtext-3 dark:text-rink-300 cursor-not-allowed'
+                ? 'bg-it-blue-500 hover:bg-it-blue-600 text-white'
+                : 'bg-it-fill dark:bg-rink-800 text-it-ink-400 dark:text-rink-300 cursor-not-allowed'
             )}
             aria-disabled={!isDirty || isSubmitting}
             aria-label="프로필 수정하기"

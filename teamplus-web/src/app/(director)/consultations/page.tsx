@@ -65,22 +65,22 @@ function groupMessagesByDate(messages: ChatMessage[]): { date: string; messages:
 
 function EmptyConsultations() {
   return (
-    <div className="px-4 pt-6">
+    <div className="px-5 pt-6">
       <div
         role="status"
-        className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-wline bg-wbg px-6 py-16 text-center dark:border-rink-700 dark:bg-rink-800/50"
+        className="flex flex-col items-center justify-center gap-2 rounded-w-lg border border-dashed border-it-line-strong bg-it-fill px-6 py-16 text-center dark:border-rink-700 dark:bg-rink-800/50"
       >
-        <div className="mb-2 flex h-16 w-16 items-center justify-center rounded-w-pill bg-wline-2 dark:bg-rink-700">
+        <div className="mb-2 flex h-16 w-16 items-center justify-center rounded-w-pill bg-it-line dark:bg-rink-700">
           <Icon
             name="forum"
-            className="text-4xl text-wtext-3 dark:text-rink-300"
+            className="text-4xl text-it-ink-400 dark:text-rink-300"
             aria-hidden="true"
           />
         </div>
-        <p className="text-card-title font-bold text-wtext-1 dark:text-white">
+        <p className="text-card-title font-bold text-it-ink-800 dark:text-white">
           {MESSAGES.empty('상담 내역')}
         </p>
-        <p className="max-w-xs text-card-body leading-relaxed text-wtext-3 dark:text-rink-300">
+        <p className="max-w-xs text-card-body leading-relaxed text-it-ink-500 dark:text-rink-300">
           코치와 학부모 간의 상담이 시작되면 여기에 표시됩니다.
         </p>
       </div>
@@ -93,19 +93,19 @@ function EmptyChat() {
     <div className="flex h-full items-center justify-center px-6">
       <div
         role="status"
-        className="flex w-full max-w-sm flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-wline bg-white px-6 py-16 text-center dark:border-rink-700 dark:bg-rink-800"
+        className="flex w-full max-w-sm flex-col items-center justify-center gap-2 rounded-w-lg border border-dashed border-it-line-strong bg-it-surface px-6 py-16 text-center dark:border-rink-700 dark:bg-rink-800"
       >
-        <div className="mb-2 flex h-16 w-16 items-center justify-center rounded-w-pill bg-wline-2 dark:bg-rink-700">
+        <div className="mb-2 flex h-16 w-16 items-center justify-center rounded-w-pill bg-it-line dark:bg-rink-700">
           <Icon
             name="chat_bubble_outline"
-            className="text-4xl text-wtext-3 dark:text-rink-300"
+            className="text-4xl text-it-ink-400 dark:text-rink-300"
             aria-hidden="true"
           />
         </div>
-        <p className="text-card-title font-bold text-wtext-1 dark:text-white">
+        <p className="text-card-title font-bold text-it-ink-800 dark:text-white">
           상담을 선택해주세요
         </p>
-        <p className="max-w-xs text-card-body leading-relaxed text-wtext-3 dark:text-rink-300">
+        <p className="max-w-xs text-card-body leading-relaxed text-it-ink-500 dark:text-rink-300">
           목록에서 상담을 선택하면 대화 내용을 확인할 수 있습니다.
         </p>
       </div>
@@ -117,12 +117,12 @@ function EmptyChat() {
 
 function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="mx-4 mt-3 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 flex items-center gap-3">
-      <Icon name="error_outline" className="text-red-500 dark:text-red-400 text-xl shrink-0" aria-hidden="true" />
-      <p className="flex-1 text-card-body text-red-700 dark:text-red-300">{message}</p>
+    <div className="mx-4 mt-3 p-3 rounded-w-md bg-it-red-50 dark:bg-it-red-500/15 border border-it-red-200 dark:border-it-red-700 flex items-center gap-3">
+      <Icon name="error_outline" className="text-it-red-500 dark:text-it-red-400 text-xl shrink-0" aria-hidden="true" />
+      <p className="flex-1 text-card-body text-it-red-700 dark:text-it-red-300">{message}</p>
       <button
         onClick={onRetry}
-        className="text-card-body font-medium text-red-600 dark:text-red-400 hover:underline shrink-0"
+        className="text-card-body font-medium text-it-red-600 dark:text-it-red-400 hover:underline shrink-0"
       >
         {MESSAGES.dashboard.errorRetry}
       </button>
@@ -237,13 +237,13 @@ export default function ConsultationsPage() {
   // ─── Render: List Panel ─────────────────────────────
 
   const listPanel = (
-    <div className="flex flex-col h-full bg-white dark:bg-rink-800">
+    <div className="flex flex-col h-full bg-it-surface dark:bg-rink-800">
       {/* Search */}
-      <div className="px-4 pt-3 pb-2">
+      <div className="px-5 pt-4 pb-3">
         <div className="relative">
           <Icon
             name="search"
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-wtext-3 dark:text-rink-300 text-card-title"
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[20px] text-it-ink-400 dark:text-wtext-4"
             aria-hidden="true"
           />
           <input
@@ -252,32 +252,33 @@ export default function ConsultationsPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className={cn(
-              'w-full pl-9 pr-4 py-2.5 rounded-xl',
-              'bg-wbg dark:bg-rink-900',
-              'border border-wline dark:border-rink-700',
-              'text-card-body text-wtext-1 dark:text-white',
-              'placeholder:text-wtext-3 dark:placeholder:text-wtext-3',
-              'focus:outline-none focus:ring-2 focus:ring-ice-500/30 focus:border-ice-500'
+              'h-12 w-full pl-11 pr-10 rounded-w-md',
+              'bg-it-fill dark:bg-rink-900',
+              'border-[1.5px] border-it-line-strong dark:border-rink-700',
+              'text-[15px] font-semibold text-it-ink-800 dark:text-white',
+              'placeholder:text-it-ink-400 dark:placeholder:text-wtext-3',
+              'outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none',
+              'focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500'
             )}
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-w-pill hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
+              className="absolute right-3 top-1/2 -translate-y-1/2 flex size-7 items-center justify-center rounded-w-pill text-it-ink-400 hover:bg-it-line hover:text-it-ink-800 dark:hover:bg-rink-700 dark:hover:text-white transition-colors motion-reduce:transition-none"
               aria-label="검색어 삭제"
             >
-              <Icon name="close" className="text-wtext-3 text-card-title" aria-hidden="true" />
+              <Icon name="close" className="text-[18px]" aria-hidden="true" />
             </button>
           )}
         </div>
       </div>
 
-      {/* Filter tabs */}
+      {/* Filter chips */}
       <div
         role="tablist"
         aria-label="상담 필터"
-        className="flex gap-1.5 overflow-x-auto hide-scrollbar px-4 pb-3"
+        className="flex gap-1.5 overflow-x-auto hide-scrollbar px-5 pb-3"
       >
         {FILTER_TABS.map((tab) => {
           const selected = activeTab === tab.key;
@@ -293,10 +294,10 @@ export default function ConsultationsPage() {
               aria-selected={selected}
               onClick={() => setActiveTab(tab.key)}
               className={cn(
-                'inline-flex shrink-0 items-center gap-1.5 rounded-w-pill border px-3 py-1.5 min-h-[32px] text-card-meta font-bold transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40',
+                'inline-flex shrink-0 items-center gap-1.5 rounded-w-pill border-[1.5px] px-3.5 h-9 text-card-body font-bold transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40',
                 selected
-                  ? 'border-ice-500 bg-ice-500 text-white shadow-sm'
-                  : 'border-wline bg-white text-wtext-2 hover:bg-wbg dark:border-rink-700 dark:bg-rink-800 dark:text-rink-100 dark:hover:bg-rink-700',
+                  ? 'border-it-blue-500 bg-it-blue-500 text-white'
+                  : 'border-it-line-strong bg-it-surface text-it-ink-600 hover:bg-it-fill dark:border-rink-700 dark:bg-rink-800 dark:text-wtext-4 dark:hover:bg-rink-700',
               )}
             >
               <Icon
@@ -308,10 +309,10 @@ export default function ConsultationsPage() {
               {tab.key === 'unanswered' && unansweredCount > 0 && (
                 <span
                   className={cn(
-                    'ml-0.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-w-pill px-1 text-card-meta font-black tabular-nums',
+                    'ml-0.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-w-pill px-1 text-card-meta font-black font-num tabular-nums',
                     selected
-                      ? 'bg-white text-ice-500'
-                      : 'bg-red-500 text-white',
+                      ? 'bg-white text-it-blue-500'
+                      : 'bg-it-red-500 text-white',
                   )}
                   aria-label={`미답변 ${unansweredCount}건`}
                 >
@@ -323,8 +324,8 @@ export default function ConsultationsPage() {
         })}
       </div>
 
-      {/* Divider */}
-      <div className="h-px bg-wline-2 dark:bg-rink-700" />
+      {/* Divider hairline */}
+      <div className="h-px bg-it-line dark:bg-rink-700" />
 
       {/* List */}
       <div className="flex-1 overflow-y-auto hide-scrollbar">
@@ -351,20 +352,20 @@ export default function ConsultationsPage() {
   // ─── Render: Chat Panel ─────────────────────────────
 
   const chatPanel = (
-    <div className="flex flex-col h-full bg-wbg dark:bg-rink-900">
+    <div className="flex flex-col h-full bg-it-canvas dark:bg-rink-900">
       {/* Chat header */}
       {selectedConsultation ? (
-        <div className="px-4 py-3 bg-white dark:bg-rink-800 border-b border-wline-2 dark:border-rink-700 flex items-center gap-3">
+        <div className="px-4 py-3 bg-it-surface dark:bg-rink-800 border-b border-it-line dark:border-rink-700 flex items-center gap-3">
           {/* Back button (mobile) */}
           <button
             type="button"
             onClick={handleBackToList}
-            className="flex items-center justify-center w-10 h-10 rounded-w-pill hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none md:hidden"
+            className="flex items-center justify-center w-10 h-10 rounded-w-pill hover:bg-it-line dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none md:hidden"
             aria-label="목록으로 돌아가기"
           >
             <Icon
               name="arrow_back_ios_new"
-              className="text-card-title text-wtext-2 dark:text-rink-100"
+              className="text-card-title text-it-ink-700 dark:text-rink-100"
               aria-hidden="true"
             />
           </button>
@@ -372,17 +373,15 @@ export default function ConsultationsPage() {
           {/* Student info */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <h2 className="text-card-body font-bold text-wtext-1 dark:text-white truncate">
+              <h2 className="text-card-body font-bold text-it-ink-800 dark:text-white truncate">
                 {selectedConsultation.studentName}
               </h2>
               <span
                 className={cn(
                   'shrink-0 rounded-w-pill px-2 py-0.5 text-card-meta font-bold',
                   selectedConsultation.status === 'ACTIVE'
-                    ? 'bg-blue-100 text-ice-500 dark:bg-blue-900/20 dark:text-blue-400'
-                    : selectedConsultation.status === 'ARCHIVED'
-                      ? 'bg-wline-2 text-wtext-3 dark:bg-rink-700 dark:text-rink-300'
-                      : 'bg-wline-2 text-wtext-3 dark:bg-rink-700 dark:text-rink-300',
+                    ? 'bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-500/15 dark:text-it-blue-500'
+                    : 'bg-it-line text-it-ink-500 dark:bg-rink-700 dark:text-rink-300',
                 )}
               >
                 {selectedConsultation.status === 'ACTIVE'
@@ -392,7 +391,7 @@ export default function ConsultationsPage() {
                     : '종료'}
               </span>
             </div>
-            <p className="text-card-meta text-wtext-3 dark:text-rink-300 truncate mt-0.5">
+            <p className="text-card-meta text-it-ink-500 dark:text-rink-300 truncate mt-0.5">
               {selectedConsultation.parentName} &middot; {selectedConsultation.coachName}
             </p>
           </div>
@@ -400,21 +399,21 @@ export default function ConsultationsPage() {
           {/* Actions */}
           <div className="flex items-center gap-1 shrink-0">
             {/* Realtime sync indicator */}
-            <div className="flex items-center gap-1 px-2 py-1 rounded-w-pill bg-green-50 dark:bg-green-900/20">
-              <span className="w-1.5 h-1.5 rounded-w-pill bg-green-500 animate-pulse motion-reduce:animate-none" aria-hidden="true" />
-              <span className="text-card-meta font-medium text-green-600 dark:text-green-400">실시간</span>
+            <div className="flex items-center gap-1 px-2 py-1 rounded-w-pill bg-mint-500/10 dark:bg-mint-500/15">
+              <span className="w-1.5 h-1.5 rounded-w-pill bg-mint-500 animate-pulse motion-reduce:animate-none" aria-hidden="true" />
+              <span className="text-card-meta font-medium text-mint-600 dark:text-mint-500">실시간</span>
             </div>
 
             {/* PDF export */}
             <button
               type="button"
               onClick={handlePdfExport}
-              className="flex items-center justify-center w-10 h-10 rounded-w-pill hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
+              className="flex items-center justify-center w-10 h-10 rounded-w-pill hover:bg-it-line dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40"
               aria-label="PDF 추출"
             >
               <Icon
                 name="picture_as_pdf"
-                className="text-card-title text-wtext-2 dark:text-rink-100"
+                className="text-card-title text-it-ink-700 dark:text-rink-100"
                 aria-hidden="true"
               />
             </button>
@@ -423,12 +422,12 @@ export default function ConsultationsPage() {
             <button
               type="button"
               onClick={refreshChat}
-              className="flex items-center justify-center w-10 h-10 rounded-w-pill hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
+              className="flex items-center justify-center w-10 h-10 rounded-w-pill hover:bg-it-line dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40"
               aria-label="새로고침"
             >
               <Icon
                 name="refresh"
-                className="text-card-title text-wtext-2 dark:text-rink-100"
+                className="text-card-title text-it-ink-700 dark:text-rink-100"
                 aria-hidden="true"
               />
             </button>
@@ -452,8 +451,8 @@ export default function ConsultationsPage() {
           </div>
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center" role="status">
-            <Icon name="chat" className="text-4xl text-wtext-4 dark:text-rink-500 mb-3" aria-hidden="true" />
-            <p className="text-card-body text-wtext-3 dark:text-rink-300">
+            <Icon name="chat" className="text-4xl text-it-ink-300 dark:text-rink-500 mb-3" aria-hidden="true" />
+            <p className="text-card-body text-it-ink-500 dark:text-rink-300">
               {MESSAGES.empty('대화 내역')}
             </p>
           </div>
@@ -476,10 +475,10 @@ export default function ConsultationsPage() {
 
       {/* Read-only mode indicator */}
       {selectedConsultation && (
-        <div className="px-4 py-3 bg-white dark:bg-rink-800 border-t border-wline-2 dark:border-rink-700">
-          <div className="flex items-center justify-center gap-2 py-2 rounded-xl bg-wline-2 dark:bg-rink-700">
-            <Icon name="visibility" className="text-card-title text-wtext-3 dark:text-rink-300" aria-hidden="true" />
-            <span className="text-card-body text-wtext-3 dark:text-rink-300">
+        <div className="px-4 py-3 bg-it-surface dark:bg-rink-800 border-t border-it-line dark:border-rink-700">
+          <div className="flex items-center justify-center gap-2 py-2 rounded-w-md bg-it-fill dark:bg-rink-700">
+            <Icon name="visibility" className="text-card-title text-it-ink-500 dark:text-rink-300" aria-hidden="true" />
+            <span className="text-card-body text-it-ink-500 dark:text-rink-300">
               조회 전용 모드 (메시지 입력 불가)
             </span>
           </div>
@@ -494,7 +493,7 @@ export default function ConsultationsPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title="상담 로그" showBack forceNative />
 
-      <main className="flex-1 flex flex-col overflow-hidden" role="main" aria-label="감독 상담 로그">
+      <main className="flex-1 flex flex-col overflow-hidden bg-it-canvas dark:bg-puck" role="main" aria-label="감독 상담 로그">
         {/* Mobile layout: toggle between list and chat */}
         <div className="flex-1 flex overflow-hidden md:hidden">
           {showList ? (
@@ -506,8 +505,8 @@ export default function ConsultationsPage() {
 
         {/* Desktop layout: side-by-side */}
         <div className="flex-1 hidden md:flex overflow-hidden">
-          {/* Sidebar: consultation list */}
-          <div className="w-[320px] shrink-0 overflow-hidden ring-1 ring-wline dark:ring-rink-700">
+          {/* Sidebar: consultation list — 채팅 패널(it-canvas)과 배경 톤차로 구분 */}
+          <div className="w-[320px] shrink-0 overflow-hidden">
             {listPanel}
           </div>
 

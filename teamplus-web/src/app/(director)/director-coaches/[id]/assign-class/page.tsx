@@ -274,15 +274,15 @@ export default function DirectorCoachAssignClassPage() {
       <PageAppBar title="수업 배정" onBack={back} forceNative />
 
       <main
-        className="flex-1 overflow-y-auto hide-scrollbar bg-wbg dark:bg-puck pb-[calc(96px+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px))+72px)]"
+        className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck pb-[calc(96px+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px))+72px)]"
         role="main"
         aria-label="코치 수업 배정"
       >
-        {/* 코치 정보 카드 */}
+        {/* 코치 정보 — navy 히어로 밴드 (배정 대상 강조) */}
         {coach && (
-          <section className="px-5 pt-5" aria-label="배정 대상 코치">
-            <div className="flex items-center gap-4 rounded-w-xl bg-wsurface dark:bg-rink-800 border border-wline-2 dark:border-rink-700 p-4 shadow-sh-1">
-              <div className="relative size-14 shrink-0 overflow-hidden rounded-w-md bg-wline-2 dark:bg-rink-700 flex items-center justify-center">
+          <section className="bg-it-blue-800 dark:bg-it-blue-950 px-6 pt-5 pb-5" aria-label="배정 대상 코치">
+            <div className="flex items-center gap-4">
+              <div className="relative size-14 shrink-0 overflow-hidden rounded-w-md bg-it-blue-700/60 dark:bg-rink-700 flex items-center justify-center">
                 {resolveImageSrc(coach.avatarUrl) ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img
@@ -291,19 +291,19 @@ export default function DirectorCoachAssignClassPage() {
                     className="h-full w-full object-cover"
                   />
                 ) : (
-                  <span className="text-card-section font-bold text-ice-500">
+                  <span className="text-card-section font-bold text-white/80">
                     {initial}
                   </span>
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-card-meta font-medium text-wtext-3 dark:text-wtext-4">
+                <p className="text-card-meta font-medium text-white/65">
                   배정 대상 코치
                 </p>
-                <h2 className="text-card-title font-bold text-wtext-1 dark:text-white truncate mt-0.5">
+                <h2 className="text-card-title font-bold text-white truncate mt-0.5">
                   {coach.name}
                 </h2>
-                <p className="text-card-body text-wtext-3 dark:text-wtext-4 truncate mt-0.5">
+                <p className="text-card-body text-white/75 truncate mt-0.5">
                   {coach.specialty}
                 </p>
               </div>
@@ -311,15 +311,18 @@ export default function DirectorCoachAssignClassPage() {
           </section>
         )}
 
-        {/* 선택 카운트 */}
-        <section className="px-5 pt-4" aria-label="선택 수업 카운트">
+        {/* flat 섹션 사이 8px 회색 갭 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+        {/* 선택 카운트 — flat 흰 섹션 */}
+        <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-4" aria-label="선택 수업 카운트">
           <div className="flex items-center justify-between">
-            <h3 className="text-card-title font-extrabold text-wtext-1 dark:text-white tracking-tight">
+            <h3 className="text-[17px] font-extrabold text-it-ink-800 dark:text-white tracking-[-0.02em]">
               배정할 수업
             </h3>
-            <span className="text-card-body font-bold font-num tabular-nums text-ice-500">
+            <span className="text-card-body font-bold font-num tabular-nums text-it-blue-500">
               {selectedCount}
-              <span className="text-wtext-3 dark:text-wtext-4 font-medium">
+              <span className="text-it-ink-500 dark:text-wtext-4 font-medium">
                 {' / '}
                 {classes.length}
               </span>
@@ -327,51 +330,51 @@ export default function DirectorCoachAssignClassPage() {
           </div>
         </section>
 
-        {/* 빈 상태 */}
+        {/* 빈 상태 — flat 흰 섹션 (점선 박스 제거) */}
         {!hasAnyClass && (
-          <div className="px-5 pt-8">
+          <section className="bg-it-surface dark:bg-rink-800 px-6 pb-16">
             <div
               role="status"
-              className="flex flex-col items-center justify-center gap-2 rounded-w-lg border border-dashed border-wline-2 bg-wsurface px-6 py-16 text-center dark:border-rink-700 dark:bg-rink-800"
+              className="flex flex-col items-center justify-center gap-2 pt-8 text-center"
             >
-              <div className="mb-2 flex h-16 w-16 items-center justify-center rounded-w-pill bg-wline-2 dark:bg-rink-700">
+              <div className="mb-2 flex h-16 w-16 items-center justify-center rounded-w-pill bg-it-line dark:bg-rink-700">
                 <Icon
                   name="sports_hockey"
-                  className="text-[36px] text-wtext-3 dark:text-wtext-4"
+                  className="text-[36px] text-it-ink-400 dark:text-wtext-4"
                   aria-hidden="true"
                 />
               </div>
-              <p className="text-card-body font-bold text-wtext-1 dark:text-white">
+              <p className="text-card-body font-bold text-it-ink-800 dark:text-white">
                 배정 가능한 수업이 없습니다
               </p>
-              <p className="max-w-xs text-card-meta leading-relaxed text-wtext-3 dark:text-wtext-4">
+              <p className="max-w-xs text-card-meta leading-relaxed text-it-ink-500 dark:text-wtext-4">
                 새 수업을 먼저 등록하거나 이미 모든 수업이 이 코치에게
                 배정되어 있을 수 있습니다.
               </p>
               <button
                 type="button"
                 onClick={() => navigate('/classes-manage/create')}
-                className="mt-3 inline-flex min-h-[40px] items-center gap-1.5 rounded-w-md bg-ice-500 px-4 py-2 text-card-body font-bold text-white transition-colors motion-reduce:transition-none hover:bg-ice-600 active:brightness-95"
+                className="mt-3 inline-flex min-h-[40px] items-center gap-1.5 rounded-w-md bg-it-blue-500 px-4 py-2 text-card-body font-bold text-white transition-colors motion-reduce:transition-none hover:bg-it-blue-600 active:brightness-95"
               >
                 <Icon name="add" className="text-[18px]" aria-hidden="true" />
                 새 수업 등록하기
               </button>
             </div>
-          </div>
+          </section>
         )}
 
-        {/* 미배정 수업 섹션 */}
+        {/* 미배정 수업 섹션 — flat 흰 섹션 */}
         {unassignedList.length > 0 && (
           <section
-            className="px-5 pt-5"
+            className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-5"
             aria-label="코치가 배정되지 않은 수업"
           >
             <div className="mb-3 flex items-center gap-2">
               <span
-                className="inline-flex h-2 w-2 rounded-w-pill bg-flame-500"
+                className="inline-flex h-2 w-2 rounded-w-pill bg-it-red-500"
                 aria-hidden="true"
               />
-              <h3 className="text-card-meta font-bold uppercase tracking-[0.12em] text-wtext-3 dark:text-wtext-4">
+              <h3 className="text-card-meta font-bold uppercase tracking-[0.12em] text-it-ink-500 dark:text-wtext-4">
                 미배정 ({unassignedList.length})
               </h3>
             </div>
@@ -388,19 +391,24 @@ export default function DirectorCoachAssignClassPage() {
           </section>
         )}
 
-        {/* 다른 코치 배정 수업 섹션 (재할당 후보) */}
+        {/* flat 섹션 사이 8px 회색 갭 */}
+        {unassignedList.length > 0 && reassignList.length > 0 && (
+          <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+        )}
+
+        {/* 다른 코치 배정 수업 섹션 (재할당 후보) — flat 흰 섹션 */}
         {reassignList.length > 0 && (
-          <section className="px-5 pt-5" aria-label="다른 코치가 배정된 수업">
+          <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-5" aria-label="다른 코치가 배정된 수업">
             <div className="mb-3 flex items-center gap-2">
               <span
-                className="inline-flex h-2 w-2 rounded-w-pill bg-wtext-3"
+                className="inline-flex h-2 w-2 rounded-w-pill bg-it-ink-400"
                 aria-hidden="true"
               />
-              <h3 className="text-card-meta font-bold uppercase tracking-[0.12em] text-wtext-3 dark:text-wtext-4">
+              <h3 className="text-card-meta font-bold uppercase tracking-[0.12em] text-it-ink-500 dark:text-wtext-4">
                 다른 코치 배정 ({reassignList.length})
               </h3>
             </div>
-            <p className="mb-3 text-card-meta text-wtext-3 dark:text-wtext-4">
+            <p className="mb-3 text-card-meta text-it-ink-500 dark:text-wtext-4">
               선택 시 코치가 변경됩니다.
             </p>
             <ul className="flex flex-col gap-2">
@@ -433,10 +441,10 @@ export default function DirectorCoachAssignClassPage() {
             onClick={handleAssign}
             disabled={selectedCount === 0 || isSubmitting}
             className={cn(
-              'flex h-12 w-full items-center justify-center gap-2 rounded-w-pill text-card-emphasis font-extrabold transition-colors motion-reduce:transition-none active:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2',
+              'flex h-12 w-full items-center justify-center gap-2 rounded-w-pill text-card-emphasis font-extrabold transition-colors motion-reduce:transition-none active:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus-visible:ring-offset-2',
               selectedCount === 0 || isSubmitting
-                ? 'bg-wline-2 dark:bg-rink-700 text-wtext-3 dark:text-wtext-4 cursor-not-allowed'
-                : 'bg-ice-500 text-white shadow-sh-blue hover:bg-ice-600',
+                ? 'bg-it-line dark:bg-rink-700 text-it-ink-400 dark:text-wtext-4 cursor-not-allowed'
+                : 'bg-it-blue-500 text-white shadow-sh-blue hover:bg-it-blue-600',
             )}
             aria-label={`선택한 ${selectedCount}개 수업 배정하기`}
           >
@@ -485,46 +493,46 @@ function ClassRowCard({ cls, selected, onToggle }: ClassRowCardProps) {
         onClick={onToggle}
         aria-pressed={selected}
         className={cn(
-          'flex w-full items-center gap-3 rounded-w-lg border p-3.5 text-left transition-colors duration-200 ease-wallet motion-reduce:transition-none active:brightness-95',
+          'flex w-full items-center gap-3 rounded-w-md border-[1.5px] p-3.5 text-left transition-colors duration-200 ease-wallet motion-reduce:transition-none active:brightness-95',
           selected
-            ? 'border-ice-500 bg-ice-500/5 dark:border-ice-500 dark:bg-ice-500/10'
-            : 'border-wline-2 bg-wsurface hover:border-wline dark:border-rink-700 dark:bg-rink-800 dark:hover:border-rink-500',
+            ? 'border-it-blue-500 bg-it-blue-50 dark:border-it-blue-500 dark:bg-it-blue-500/10'
+            : 'border-it-line-strong bg-it-surface hover:border-it-ink-300 dark:border-rink-700 dark:bg-rink-800 dark:hover:border-rink-500',
         )}
       >
         {/* Checkbox 표시 */}
         <span
           className={cn(
-            'flex size-6 shrink-0 items-center justify-center rounded-w-sm border-2 transition-colors',
+            'flex size-6 shrink-0 items-center justify-center rounded-w-xs border-2 transition-colors',
             selected
-              ? 'bg-ice-500 border-ice-500 text-white'
-              : 'bg-wsurface dark:bg-rink-800 border-wline dark:border-rink-700',
+              ? 'bg-it-blue-500 border-it-blue-500 text-white'
+              : 'bg-it-surface dark:bg-rink-800 border-it-line-strong dark:border-rink-700',
           )}
           aria-hidden="true"
         >
           {selected && <Icon name="check" className="text-[16px]" />}
         </span>
 
-        {/* 수업 아이콘 */}
+        {/* 수업 아이콘 — 정규 SoT 초록(emerald) */}
         <span
-          className="flex size-10 shrink-0 items-center justify-center rounded-w-md bg-ice-500/10 dark:bg-ice-500/15"
+          className="flex size-10 shrink-0 items-center justify-center rounded-w-md bg-emerald-50 dark:bg-emerald-900/20"
           aria-hidden="true"
         >
-          <Icon name="sports_hockey" className="text-[20px] text-ice-500" />
+          <Icon name="sports_hockey" className="text-[20px] text-emerald-500" />
         </span>
 
         {/* 정보 */}
         <span className="flex-1 min-w-0">
           <span className="flex items-center gap-1.5">
-            <span className="block text-card-body font-bold text-wtext-1 dark:text-white truncate">
+            <span className="block text-card-body font-bold text-it-ink-800 dark:text-white truncate">
               {cls.name}
             </span>
             {cls.isUnassigned && (
-              <span className="inline-flex shrink-0 items-center rounded-w-xs bg-flame-500/10 dark:bg-flame-500/20 px-1.5 py-0.5 text-card-meta font-bold text-flame-500">
+              <span className="inline-flex shrink-0 items-center rounded-w-xs bg-it-red-50 dark:bg-it-red-500/20 px-1.5 py-0.5 text-card-meta font-bold text-it-red-500">
                 미배정
               </span>
             )}
           </span>
-          <span className="mt-0.5 flex items-center gap-2 text-card-meta text-wtext-3 dark:text-wtext-4">
+          <span className="mt-0.5 flex items-center gap-2 text-card-meta text-it-ink-500 dark:text-wtext-4">
             <span className="truncate">{cls.teamName}</span>
             {cls.schedule && (
               <>
@@ -534,9 +542,9 @@ function ClassRowCard({ cls, selected, onToggle }: ClassRowCardProps) {
             )}
           </span>
           {cls.currentCoachName && !cls.isUnassigned && (
-            <span className="mt-0.5 block text-card-meta text-wtext-3 dark:text-wtext-4">
+            <span className="mt-0.5 block text-card-meta text-it-ink-500 dark:text-wtext-4">
               현재 코치:{' '}
-              <span className="font-bold text-wtext-2 dark:text-wtext-4">
+              <span className="font-bold text-it-ink-600 dark:text-wtext-4">
                 {cls.currentCoachName}
               </span>
             </span>

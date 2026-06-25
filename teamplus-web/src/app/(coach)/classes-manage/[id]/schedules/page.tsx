@@ -254,8 +254,8 @@ export default function ClassSchedulesManagePage() {
     return (
       <MobileContainer hasBottomNav={false}>
         <AppBar title="수업 일정 관리" onBack={() => router.back()} forceNative />
-        <main className="flex-1 flex items-center justify-center p-6">
-          <p className="text-wtext-2 dark:text-rink-300">수업을 찾을 수 없습니다.</p>
+        <main className="flex-1 flex items-center justify-center p-6 bg-it-canvas dark:bg-puck">
+          <p className="text-it-ink-500 dark:text-rink-300">수업을 찾을 수 없습니다.</p>
         </main>
       </MobileContainer>
     );
@@ -264,61 +264,59 @@ export default function ClassSchedulesManagePage() {
   return (
     <MobileContainer hasBottomNav={false}>
       <AppBar title="수업 일정 관리" forceNative />
-      <main className="flex-1 overflow-y-auto pb-24" style={{ WebkitOverflowScrolling: 'touch' as never }}>
-        {/* ─── 수업명 + 승인 상태 배너 ─── */}
-        <section className="mx-5 mt-5">
-          <h1 className="text-xl font-bold text-wtext-1 dark:text-white mb-3">{cls.className}</h1>
+      <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck pb-24" style={{ WebkitOverflowScrolling: 'touch' as never }}>
+        {/* ─── 수업명 + 승인 상태 배너 — full-bleed 흰 섹션 ─── */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-5">
+          <h1 className="text-xl font-bold text-it-ink-800 dark:text-white mb-3">{cls.className}</h1>
           <ApprovalBanner status={cls.approvalStatus} reason={cls.rejectionReason} />
         </section>
 
-        {/* ─── 일정 추가 ─── */}
-        <section className="mx-5 mt-6">
-          <h2 className="text-card-body font-bold text-wtext-1 dark:text-white mb-3">일정 추가</h2>
-          <div
-            className={cn(
-              'bg-white dark:bg-rink-800 rounded-2xl p-5 border border-wline-2 dark:border-rink-700 shadow-sm',
-              !isApproved && 'opacity-60',
-            )}
-            aria-disabled={!isApproved}
-          >
-            {/* 미니달력으로 복수 날짜 + 공통 시간·장소 추가 */}
-            <div className="space-y-3">
-              <p className="text-card-meta text-wtext-3 dark:text-rink-300 leading-relaxed">
-                달력에서 날짜를 선택하고 공통 시간·장소를 적용해 일정을 추가합니다.
-                매달 단위로 필요할 때마다 계속 추가할 수 있어요.
-              </p>
-              <button
-                type="button"
-                onClick={() => setMultiDateOpen(true)}
-                disabled={!isApproved || isSubmittingDates}
-                className="w-full flex items-center justify-center gap-1.5 py-3 bg-ice-500 hover:bg-ice-700 disabled:bg-wline dark:disabled:bg-rink-700 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors motion-reduce:transition-none"
-              >
-                <Icon name="calendar_month" className="text-base" aria-hidden="true" />
-                {isSubmittingDates ? '추가 중…' : '일정 추가'}
-              </button>
-            </div>
+        {/* ─── 일정 추가 — full-bleed 흰 섹션 (카드 박스 제거) ─── */}
+        <section
+          className={cn(
+            'mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-5',
+            !isApproved && 'opacity-60',
+          )}
+          aria-disabled={!isApproved}
+        >
+          <h2 className="text-card-section font-bold text-it-ink-800 dark:text-white mb-3">일정 추가</h2>
+          {/* 미니달력으로 복수 날짜 + 공통 시간·장소 추가 */}
+          <div className="space-y-3">
+            <p className="text-card-meta text-it-ink-500 dark:text-rink-300 leading-relaxed">
+              달력에서 날짜를 선택하고 공통 시간·장소를 적용해 일정을 추가합니다.
+              매달 단위로 필요할 때마다 계속 추가할 수 있어요.
+            </p>
+            <button
+              type="button"
+              onClick={() => setMultiDateOpen(true)}
+              disabled={!isApproved || isSubmittingDates}
+              className="w-full flex items-center justify-center gap-1.5 py-3 bg-it-blue-500 hover:bg-it-blue-600 disabled:bg-it-line dark:disabled:bg-rink-700 disabled:cursor-not-allowed text-white font-bold rounded-w-md transition-colors motion-reduce:transition-none active:brightness-95"
+            >
+              <Icon name="calendar_month" className="text-base" aria-hidden="true" />
+              {isSubmittingDates ? '추가 중…' : '일정 추가'}
+            </button>
           </div>
         </section>
 
-        {/* ─── 등록된 일정 목록 ─── */}
-        <section className="mx-5 mt-6" aria-labelledby="registered-schedules-heading">
+        {/* ─── 등록된 일정 목록 — full-bleed 흰 섹션 ─── */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-5" aria-labelledby="registered-schedules-heading">
           <div className="flex items-center justify-between mb-3">
             <h2
               id="registered-schedules-heading"
-              className="text-card-body font-bold text-wtext-1 dark:text-white"
+              className="text-card-section font-bold text-it-ink-800 dark:text-white"
             >
               등록된 일정
             </h2>
             <div className="flex items-center gap-2.5">
               <span
-                className="text-card-meta text-wtext-3 dark:text-rink-300"
+                className="text-card-meta text-it-ink-500 dark:text-rink-300"
                 aria-live="polite"
                 aria-atomic="true"
               >
                 {schedules.length}건
               </span>
               <div
-                className="inline-flex rounded-lg bg-wline-2 dark:bg-rink-700 p-0.5"
+                className="inline-flex rounded-w-md bg-it-fill dark:bg-rink-700 p-0.5"
                 role="group"
                 aria-label="일정 표시 방식"
               >
@@ -331,8 +329,8 @@ export default function ClassSchedulesManagePage() {
                     className={cn(
                       'flex items-center gap-1 px-2.5 py-1 rounded-md text-card-meta font-bold transition-colors motion-reduce:transition-none',
                       scheduleView === mode
-                        ? 'bg-white dark:bg-rink-800 text-wtext-1 dark:text-white shadow-sm'
-                        : 'text-wtext-3 dark:text-rink-300',
+                        ? 'bg-it-surface dark:bg-rink-800 text-it-ink-800 dark:text-white shadow-sm'
+                        : 'text-it-ink-500 dark:text-rink-300',
                     )}
                   >
                     <Icon
@@ -346,86 +344,88 @@ export default function ClassSchedulesManagePage() {
               </div>
             </div>
           </div>
-          <div className="bg-white dark:bg-rink-800 rounded-2xl border border-wline-2 dark:border-rink-700 shadow-sm overflow-hidden">
-            {scheduleView === 'calendar' ? (
+          {scheduleView === 'calendar' ? (
+            // 캘린더 뷰는 공유 컴포넌트(ScheduleCalendarView). flat 섹션 내부에 박스 없이 렌더.
+            <div className="-mx-5">
               <ScheduleCalendarView
                 schedules={schedules}
                 isApproved={isApproved}
                 venues={venues.map((v) => ({ id: v.id, name: v.name }))}
                 onCancel={handleCancel}
                 onUpdate={handleUpdateSchedule}
+                iceTheme
               />
-            ) : schedules.length === 0 ? (
-              <p
-                className="p-5 text-center text-card-body text-wtext-3 dark:text-rink-300"
-                role="status"
-              >
-                등록된 일정이 없습니다.
-              </p>
-            ) : (
-              <ul
-                className="divide-y divide-slate-100 dark:divide-slate-700"
-                role="list"
-                aria-label={`등록된 일정 ${schedules.length}건`}
-              >
-                {schedules.map((s) => (
-                  <li
-                    key={s.id}
-                    role="listitem"
-                    className={cn(
-                      'flex items-center justify-between px-4 py-3 gap-3',
-                      s.isCancelled && 'opacity-50',
-                    )}
-                    aria-label={`${formatScheduleLabel(s)}${s.venue?.name ? `, ${s.venue.name}` : ''}${s.isCancelled ? ', 취소됨' : ''}`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Icon
-                        name={s.isCancelled ? 'event_busy' : 'event_available'}
+            </div>
+          ) : schedules.length === 0 ? (
+            <p
+              className="py-5 text-center text-card-body text-it-ink-500 dark:text-rink-300"
+              role="status"
+            >
+              등록된 일정이 없습니다.
+            </p>
+          ) : (
+            <ul
+              className="-mx-5 list-none"
+              role="list"
+              aria-label={`등록된 일정 ${schedules.length}건`}
+            >
+              {schedules.map((s) => (
+                <li
+                  key={s.id}
+                  role="listitem"
+                  className={cn(
+                    'flex items-center justify-between px-5 py-3 gap-3 border-b border-it-line dark:border-it-blue-900 last:border-b-0',
+                    s.isCancelled && 'opacity-50',
+                  )}
+                  aria-label={`${formatScheduleLabel(s)}${s.venue?.name ? `, ${s.venue.name}` : ''}${s.isCancelled ? ', 취소됨' : ''}`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Icon
+                      name={s.isCancelled ? 'event_busy' : 'event_available'}
+                      className={cn(
+                        'text-card-title shrink-0',
+                        s.isCancelled ? 'text-it-ink-400 dark:text-rink-300' : 'text-it-blue-500',
+                      )}
+                      aria-hidden="true"
+                    />
+                    <div className="min-w-0">
+                      <span
                         className={cn(
-                          'text-card-title shrink-0',
-                          s.isCancelled ? 'text-wtext-3 dark:text-rink-300' : 'text-ice-500',
+                          'block text-card-body text-it-ink-800 dark:text-white tabular-nums truncate',
+                          s.isCancelled && 'line-through',
                         )}
-                        aria-hidden="true"
-                      />
-                      <div className="min-w-0">
-                        <span
-                          className={cn(
-                            'block text-card-body text-wtext-1 dark:text-white tabular-nums truncate',
-                            s.isCancelled && 'line-through',
-                          )}
-                        >
-                          {formatScheduleLabel(s)}
-                        </span>
-                        {s.venue?.name && (
-                          <span className="block text-card-meta text-wtext-3 dark:text-rink-300 truncate">
-                            {s.venue.name}
-                          </span>
-                        )}
-                      </div>
-                      {s.isCancelled && (
-                        <span
-                          className="text-card-meta font-bold px-2 py-0.5 rounded bg-wline dark:bg-rink-700 text-wtext-2 dark:text-rink-300 shrink-0"
-                          role="status"
-                        >
-                          취소됨
+                      >
+                        {formatScheduleLabel(s)}
+                      </span>
+                      {s.venue?.name && (
+                        <span className="block text-card-meta text-it-ink-500 dark:text-rink-300 truncate">
+                          {s.venue.name}
                         </span>
                       )}
                     </div>
-                    {!s.isCancelled && isApproved && (
-                      <button
-                        type="button"
-                        onClick={() => handleCancel(s.id)}
-                        className="text-card-meta font-bold text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 px-2 py-1 rounded transition-colors motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-red-500 focus:outline-none shrink-0"
-                        aria-label={`${formatScheduleLabel(s)} 회차 취소하기`}
+                    {s.isCancelled && (
+                      <span
+                        className="text-card-meta font-bold px-2 py-0.5 rounded bg-it-line dark:bg-rink-700 text-it-ink-500 dark:text-rink-300 shrink-0"
+                        role="status"
                       >
-                        취소하기
-                      </button>
+                        취소됨
+                      </span>
                     )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+                  </div>
+                  {!s.isCancelled && isApproved && (
+                    <button
+                      type="button"
+                      onClick={() => handleCancel(s.id)}
+                      className="text-card-meta font-bold text-it-red-500 hover:text-it-red-600 dark:text-it-red-300 px-2 py-1 rounded transition-colors motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-it-red-500 focus:outline-none shrink-0"
+                      aria-label={`${formatScheduleLabel(s)} 회차 취소하기`}
+                    >
+                      취소하기
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       </main>
 
@@ -439,6 +439,7 @@ export default function ClassSchedulesManagePage() {
         venues={venues.map((v) => ({ id: v.id, name: v.name }))}
         onConfirm={handleConfirmDates}
         onClose={() => setMultiDateOpen(false)}
+        iceTheme
       />
     </MobileContainer>
   );
@@ -452,11 +453,11 @@ function ApprovalBanner({ status, reason }: { status: ClassHeader['approvalStatu
   if (status === 'PENDING') {
     return (
       <div
-        className="flex items-center gap-2 px-4 py-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800"
+        className="flex items-center gap-2 px-4 py-3 rounded-w-md bg-sun-500/10"
         role="alert"
       >
-        <Icon name="hourglass_empty" className="text-card-title text-amber-600 dark:text-amber-400" aria-hidden="true" />
-        <p className="text-card-body text-amber-800 dark:text-amber-200 font-medium">
+        <Icon name="hourglass_empty" className="text-card-title text-sun-500" aria-hidden="true" />
+        <p className="text-card-body text-it-ink-800 dark:text-rink-100 font-medium">
           감독 승인 대기중 · 승인 완료 후 일정 생성이 가능합니다.
         </p>
       </div>
@@ -465,14 +466,14 @@ function ApprovalBanner({ status, reason }: { status: ClassHeader['approvalStatu
   if (status === 'REJECTED') {
     return (
       <div
-        className="flex items-start gap-2 px-4 py-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800"
+        className="flex items-start gap-2 px-4 py-3 rounded-w-md bg-it-red-50 dark:bg-it-red-700/15"
         role="alert"
       >
-        <Icon name="cancel" className="text-card-title text-red-600 dark:text-red-400 mt-0.5" aria-hidden="true" />
+        <Icon name="cancel" className="text-card-title text-it-red-500 dark:text-it-red-300 mt-0.5" aria-hidden="true" />
         <div className="flex-1 min-w-0">
-          <p className="text-card-body text-red-800 dark:text-red-200 font-medium">반려됨</p>
+          <p className="text-card-body text-it-red-500 dark:text-it-red-300 font-medium">반려됨</p>
           {reason && (
-            <p className="text-card-meta text-red-700 dark:text-red-300 mt-1 break-words">{reason}</p>
+            <p className="text-card-meta text-it-red-500/80 dark:text-it-red-300/80 mt-1 break-words">{reason}</p>
           )}
         </div>
       </div>

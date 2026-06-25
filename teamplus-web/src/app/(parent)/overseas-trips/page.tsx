@@ -29,12 +29,12 @@ import type { OverseasTrip, MyTripItem, TripStatus, RegistrationStatus } from '@
 // ─── Constants ──────────────────────────────────────
 
 const STATUS_BADGE: Record<TripStatus, { className: string; label: string }> = {
-  draft:     { className: 'bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-100', label: MESSAGES.overseasTrip.status.draft },
-  open:      { className: 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400', label: MESSAGES.overseasTrip.status.open },
-  closed:    { className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400', label: MESSAGES.overseasTrip.status.closed },
-  ongoing:   { className: 'bg-blue-100 text-ice-500 dark:bg-blue-900/20 dark:text-blue-400', label: MESSAGES.overseasTrip.status.ongoing },
-  completed: { className: 'bg-purple-100 text-purple-700 dark:bg-purple-900/20 dark:text-purple-400', label: MESSAGES.overseasTrip.status.completed },
-  cancelled: { className: 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400', label: MESSAGES.overseasTrip.status.cancelled },
+  draft:     { className: 'bg-it-line text-it-ink-500 dark:bg-rink-700 dark:text-wtext-4', label: MESSAGES.overseasTrip.status.draft },
+  open:      { className: 'bg-mint-100 text-mint-500 dark:bg-mint-500/15 dark:text-mint-500', label: MESSAGES.overseasTrip.status.open },
+  closed:    { className: 'bg-sun-100 text-sun-500 dark:bg-sun-500/15 dark:text-sun-500', label: MESSAGES.overseasTrip.status.closed },
+  ongoing:   { className: 'bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-500/15 dark:text-it-blue-500', label: MESSAGES.overseasTrip.status.ongoing },
+  completed: { className: 'bg-it-line text-it-ink-800 dark:bg-rink-700 dark:text-wtext-4', label: MESSAGES.overseasTrip.status.completed },
+  cancelled: { className: 'bg-it-red-500/10 text-it-red-500 dark:bg-it-red-500/15 dark:text-it-red-500', label: MESSAGES.overseasTrip.status.cancelled },
 };
 
 const REG_STATUS_LABEL: Record<RegistrationStatus, string> = {
@@ -45,21 +45,21 @@ const REG_STATUS_LABEL: Record<RegistrationStatus, string> = {
   waitlisted:   MESSAGES.overseasTrip.registrationStatus.waitlisted,
 };
 
-// ref status row 색상 매핑 — 모집 중(success) · 마감 임박(warning) · 사전 신청(ice)
+// status row 색상 매핑 — 모집 중(mint) · 마감 임박(sun) · 진행 중(it-blue) (ICETIMES_ROLLOUT §3 상태색 SoT)
 function getStatusInfo(status: TripStatus): { label: string; dot: string; text: string } {
   switch (status) {
     case 'open':
-      return { label: '모집 중', dot: 'bg-success-500', text: 'text-success-700 dark:text-success-500' };
+      return { label: '모집 중', dot: 'bg-mint-500', text: 'text-mint-500' };
     case 'closed':
-      return { label: '마감 임박', dot: 'bg-warning-500', text: 'text-warning-500' };
+      return { label: '마감 임박', dot: 'bg-sun-500', text: 'text-sun-500' };
     case 'ongoing':
-      return { label: '진행 중', dot: 'bg-ice-500', text: 'text-ice-500' };
+      return { label: '진행 중', dot: 'bg-it-blue-500', text: 'text-it-blue-500' };
     case 'completed':
-      return { label: '완료', dot: 'bg-wtext-4', text: 'text-wtext-3 dark:text-wtext-4' };
+      return { label: '완료', dot: 'bg-it-ink-400', text: 'text-it-ink-500 dark:text-wtext-4' };
     case 'cancelled':
-      return { label: '취소', dot: 'bg-red-500', text: 'text-red-600' };
+      return { label: '취소', dot: 'bg-it-red-500', text: 'text-it-red-500' };
     default:
-      return { label: '준비 중', dot: 'bg-wtext-4', text: 'text-wtext-3 dark:text-wtext-4' };
+      return { label: '준비 중', dot: 'bg-it-ink-400', text: 'text-it-ink-500 dark:text-wtext-4' };
   }
 }
 
@@ -247,7 +247,7 @@ export default function ParentOverseasTripsPage() {
       <div
         role="tablist"
         aria-label="원정 목록 탭"
-        className="sticky top-[60px] z-10 bg-wsurface dark:bg-rink-900 px-2 flex border-b border-wline-2 dark:border-rink-700 relative"
+        className="sticky top-[60px] z-10 bg-it-surface dark:bg-it-blue-950 px-2 flex border-b border-it-line dark:border-rink-700 relative"
       >
         <button
           type="button"
@@ -257,8 +257,8 @@ export default function ParentOverseasTripsPage() {
           className={cn(
             'flex-1 py-3 text-card-body font-extrabold tracking-[-0.02em] transition-colors duration-300 ease-out motion-reduce:transition-none',
             activeTab === 'all'
-              ? 'text-ice-500 dark:text-ice-500'
-              : 'text-wtext-3 dark:text-wtext-4 hover:text-wtext-2 dark:hover:text-wtext-4/80',
+              ? 'text-it-blue-500 dark:text-it-blue-500'
+              : 'text-it-ink-500 dark:text-wtext-4 hover:text-it-ink-800 dark:hover:text-wtext-4/80',
           )}
         >
           {MESSAGES.overseasTrip.listTitle}
@@ -271,8 +271,8 @@ export default function ParentOverseasTripsPage() {
           className={cn(
             'flex-1 py-3 text-card-body font-extrabold tracking-[-0.02em] transition-colors duration-300 ease-out motion-reduce:transition-none inline-flex items-center justify-center gap-1.5',
             activeTab === 'my'
-              ? 'text-ice-500 dark:text-ice-500'
-              : 'text-wtext-3 dark:text-wtext-4 hover:text-wtext-2 dark:hover:text-wtext-4/80',
+              ? 'text-it-blue-500 dark:text-it-blue-500'
+              : 'text-it-ink-500 dark:text-wtext-4 hover:text-it-ink-800 dark:hover:text-wtext-4/80',
           )}
         >
           {MESSAGES.overseasTrip.myTripsTitle}
@@ -280,10 +280,10 @@ export default function ParentOverseasTripsPage() {
             <span
               className={cn(
                 'inline-flex items-center justify-center py-[1px] px-1.5 rounded-full text-card-meta leading-none font-extrabold font-num tabular-nums transition-colors duration-300 ease-out motion-reduce:transition-none',
-                /* count badge: 활성 시 ice-500 배경 + 흰 텍스트 / 비활성 시 wtext-3 회색 */
+                /* count badge: 활성 시 it-blue 배경 + 흰 텍스트 / 비활성 시 회색 */
                 activeTab === 'my'
-                  ? 'bg-ice-500 text-white'
-                  : 'bg-wtext-3 dark:bg-rink-600 text-white',
+                  ? 'bg-it-blue-500 text-white'
+                  : 'bg-it-ink-400 dark:bg-rink-600 text-white',
               )}
             >
               {myCount}
@@ -298,7 +298,7 @@ export default function ParentOverseasTripsPage() {
         */}
         <span
           aria-hidden="true"
-          className="absolute -bottom-px h-[2px] bg-ice-500 transition-[left] duration-300 ease-out motion-reduce:transition-none"
+          className="absolute -bottom-px h-[2px] bg-it-blue-500 transition-[left] duration-300 ease-out motion-reduce:transition-none"
           style={{
             width: 'calc(50% - 1rem)',
             left: activeTab === 'all' ? '0.5rem' : 'calc(50% + 0.5rem)',
@@ -306,50 +306,55 @@ export default function ParentOverseasTripsPage() {
         />
       </div>
 
-      {/* Body — ref: paddingTop 16 paddingBottom 100 */}
-      <div className="flex-1 overflow-y-auto hide-scrollbar pt-4 pb-30">
+      {/* Body — flat: 회색 캔버스 + full-bleed 흰 섹션 */}
+      <div className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck pt-2 pb-30">
         {/* ─── 원정 일정 탭 ─────────────────────────────── */}
         {activeTab === 'all' && (
           <div role="tabpanel" aria-label="원정 일정">
-            {/* Filter chips — ref: padding "0 20px 12px" gap 8 overflow-x */}
+            {/* Filter chips — flat 흰 섹션 (칩) */}
             {!isLoading && countryChips.length > 1 && (
-              <div className="px-5 pb-3 flex gap-2 overflow-x-auto hide-scrollbar">
-                {countryChips.map((c) => {
-                  const on = countryFilter === c;
-                  return (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setCountryFilter(c)}
-                      className={cn(
-                        'shrink-0 h-8 px-3.5 rounded-full text-card-meta font-bold whitespace-nowrap transition-colors motion-reduce:transition-none',
-                        /* 첨부 이미지: Filter 활성도 검정 — ref 그대로 */
-                        on
-                          ? 'bg-wtext-1 dark:bg-rink-50 text-white dark:text-rink-900'
-                          : 'bg-wsurface dark:bg-rink-800 text-wtext-2 dark:text-wtext-4 border border-wline dark:border-rink-700',
-                      )}
-                      aria-pressed={on}
-                    >
-                      {c}
-                    </button>
-                  );
-                })}
-              </div>
+              <>
+                <section className="bg-it-surface dark:bg-it-blue-950 px-5 pt-4 pb-4" aria-label="국가 필터">
+                  <div className="flex gap-2 overflow-x-auto hide-scrollbar">
+                    {countryChips.map((c) => {
+                      const on = countryFilter === c;
+                      return (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setCountryFilter(c)}
+                          className={cn(
+                            'shrink-0 h-9 px-4 rounded-w-pill text-[14px] font-bold whitespace-nowrap border-[1.5px] transition-colors duration-150 ease-ios motion-reduce:transition-none active:brightness-95',
+                            on
+                              ? 'bg-it-blue-500 border-it-blue-500 text-white'
+                              : 'bg-it-surface dark:bg-rink-800 text-it-ink-600 dark:text-wtext-4 border-it-line-strong dark:border-rink-700',
+                          )}
+                          aria-pressed={on}
+                        >
+                          {c}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+                <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+              </>
             )}
 
-            {/* Count — ref: padding "0 24px 12px" / 12.5px text3 700 / 개수는 text1 800 */}
-            {!isLoading && filteredTrips.length > 0 && (
-              <div className="px-6 pb-3 text-card-meta font-bold text-wtext-3 dark:text-wtext-4">
-                모집 중{' '}
-                <span className="text-wtext-1 dark:text-white font-extrabold tabular-nums">
-                  {filteredTrips.length}
-                </span>
-                건
-              </div>
-            )}
+            {/* 목록 — flat 흰 섹션 (count + hairline 행) */}
+            <section className="bg-it-surface dark:bg-it-blue-950 px-5 pt-4 pb-7" aria-label="원정 목록">
+              {/* Count */}
+              {!isLoading && filteredTrips.length > 0 && (
+                <div className="pb-1 text-card-meta font-bold text-it-ink-500 dark:text-wtext-4">
+                  모집 중{' '}
+                  <span className="text-it-ink-800 dark:text-white font-extrabold tabular-nums">
+                    {filteredTrips.length}
+                  </span>
+                  건
+                </div>
+              )}
 
-            {/* Trip cards / Empty */}
-            <div className="px-5 flex flex-col gap-2.5">
+              {/* Trip rows / Empty */}
               {isLoading ? null : filteredTrips.length === 0 ? (
                 <EmptyState
                   icon="flight"
@@ -357,18 +362,28 @@ export default function ParentOverseasTripsPage() {
                   sub={MESSAGES.overseasTrip.noTrips}
                 />
               ) : (
-                filteredTrips.map((trip, idx) => (
-                  <TripCard key={trip.id} trip={trip} isHot={idx === 0} />
-                ))
+                <div className="flex flex-col">
+                  {filteredTrips.map((trip, idx) => (
+                    <TripCard
+                      key={trip.id}
+                      trip={trip}
+                      isHot={idx === 0}
+                      isLast={idx === filteredTrips.length - 1}
+                    />
+                  ))}
+                </div>
               )}
-              <div className="h-4" />
-            </div>
+            </section>
           </div>
         )}
 
         {/* ─── 내 원정 탭 ───────────────────────────────── */}
         {activeTab === 'my' && (
-          <div role="tabpanel" aria-label="내 원정" className="px-5 flex flex-col gap-3">
+          <section
+            role="tabpanel"
+            aria-label="내 원정"
+            className="bg-it-surface dark:bg-it-blue-950 px-5 pt-5 pb-7 flex flex-col gap-4"
+          >
             {isMyLoading ? null : myTrips.length === 0 ? (
               <EmptyState
                 icon="flight"
@@ -378,10 +393,7 @@ export default function ParentOverseasTripsPage() {
             ) : (
               myTrips.map((item) => <MyTripCard key={item.registration.id} item={item} />)
             )}
-
-            {/* (2026-05-15 사용자 요청) "지난 원정" 영역(헤더 + dashed empty box) 제거 */}
-            <div className="h-4" />
-          </div>
+          </section>
         )}
       </div>
     </MobileContainer>
@@ -392,7 +404,7 @@ export default function ParentOverseasTripsPage() {
  * Subcomponents — ref 1:1 매핑
  * ────────────────────────────────────────────────────────────────────────── */
 
-function TripCard({ trip, isHot }: { trip: OverseasTrip; isHot: boolean }) {
+function TripCard({ trip, isHot, isLast }: { trip: OverseasTrip; isHot: boolean; isLast: boolean }) {
   const statusInfo = getStatusInfo(trip.status);
   const flag = flagOf(trip.country);
   const days = calcDays(trip.startDate, trip.endDate);
@@ -403,103 +415,89 @@ function TripCard({ trip, isHot }: { trip: OverseasTrip; isHot: boolean }) {
   return (
     <NavLink
       href={`/overseas-trips/${trip.id}`}
-      className="block bg-wsurface dark:bg-rink-800 rounded-2xl border border-wline-2 dark:border-rink-700 transition-colors motion-reduce:transition-none active:brightness-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
+      className={cn(
+        'block py-4 transition-colors motion-reduce:transition-none hover:bg-it-fill dark:hover:bg-rink-700/40 active:brightness-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40',
+        !isLast && 'border-b border-it-line dark:border-rink-700',
+      )}
       aria-label={`${trip.title} 원정 상세 보기`}
     >
-      <div className="px-4 pt-3.5 pb-3.5">
-        {/* Top row: flag + region + dot + status + hot — ref gap 6 */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-[15px] leading-none" aria-hidden="true">
-            {flag}
+      {/* Top row: flag + region + dot + status + hot */}
+      <div className="flex items-center gap-1.5">
+        <span className="text-[15px] leading-none" aria-hidden="true">
+          {flag}
+        </span>
+        <span className="text-card-meta font-extrabold text-it-ink-600 dark:text-wtext-4 tracking-[0.04em]">
+          {trip.country}
+        </span>
+        <span className="w-[2px] h-[2px] rounded-full bg-it-ink-400" />
+        <span className={cn('inline-flex items-center gap-[3px] text-card-meta font-bold', statusInfo.text)}>
+          <span className={cn('w-1 h-1 rounded-full', statusInfo.dot)} />
+          {statusInfo.label}
+        </span>
+        {isHot && (
+          <span className="ml-auto rounded-w-pill bg-it-red-500/10 px-2 py-0.5 text-card-meta font-extrabold text-it-red-500 tracking-[0.04em]">
+            인기
           </span>
-          <span className="text-card-meta font-extrabold text-wtext-2 dark:text-wtext-4 tracking-[0.04em]">
-            {trip.country}
+        )}
+      </div>
+
+      {/* Title */}
+      <h3 className="mt-2 text-card-title font-extrabold text-it-ink-800 dark:text-white tracking-[-0.025em] leading-[1.3] line-clamp-2">
+        {trip.title}
+      </h3>
+      {/* City */}
+      <p className="mt-1 text-card-meta font-semibold text-it-ink-500 dark:text-wtext-4">
+        {trip.city}
+      </p>
+
+      {/* Date row */}
+      <div className="mt-2.5 flex items-center gap-1.5 text-card-meta font-bold text-it-ink-700 dark:text-wtext-4">
+        <Icon name="calendar_today" className="text-card-body text-it-blue-500 shrink-0" aria-hidden="true" />
+        <span className="font-num tabular-nums">{formatDateRange(trip.startDate, trip.endDate)}</span>
+        {days !== null && (
+          <>
+            <span className="opacity-40">·</span>
+            <span className="font-num tabular-nums text-it-ink-500 dark:text-wtext-4">{days}박</span>
+          </>
+        )}
+      </div>
+
+      {/* Capacity bar */}
+      <div className="mt-3">
+        <div className="flex items-center justify-between text-card-meta font-semibold text-it-ink-500 dark:text-wtext-4">
+          <span>모집 현황</span>
+          <span className="font-num tabular-nums">
+            {seats}/{max}석
           </span>
-          <span className="w-[2px] h-[2px] rounded-full bg-wtext-4" />
-          <span className={cn('inline-flex items-center gap-[3px] text-card-meta font-bold', statusInfo.text)}>
-            <span className={cn('w-1 h-1 rounded-full', statusInfo.dot)} />
-            {statusInfo.label}
-          </span>
-          {isHot && (
-            <span className="ml-auto text-card-meta font-extrabold text-wtext-3 dark:text-wtext-4 tracking-[0.06em]">
-              인기
-            </span>
-          )}
         </div>
-
-        {/* Title — ref: 15 / 800 / mt 8 / -0.025em / line 1.3 */}
-        <h3 className="mt-2 text-card-title font-extrabold text-wtext-1 dark:text-white tracking-[-0.025em] leading-[1.3] line-clamp-2">
-          {trip.title}
-        </h3>
-        {/* City — ref: 11.5 / text3 / mt 4 / 600 */}
-        <p className="mt-1 text-card-meta font-semibold text-wtext-3 dark:text-wtext-4">
-          {trip.city}
-        </p>
-
-        {/* Date row — ref: mt 10 / gap 6 / 11.5 text2 700 / FONT_NUM / 캘린더 svg */}
-        <div className="mt-2.5 flex items-center gap-1.5 text-card-meta font-bold text-wtext-2 dark:text-wtext-4">
-          <svg
-            width="11"
-            height="11"
-            viewBox="0 0 11 11"
-            fill="none"
-            aria-hidden="true"
-            className="text-wtext-3 dark:text-wtext-4 shrink-0"
-          >
-            <rect x="1.5" y="2.5" width="8" height="7" rx="1" stroke="currentColor" strokeWidth="1.3" />
-            <path
-              d="M1.5 4.5h8M4 1.5v2M7 1.5v2"
-              stroke="currentColor"
-              strokeWidth="1.3"
-              strokeLinecap="round"
-            />
-          </svg>
-          <span className="font-num tabular-nums">{formatDateRange(trip.startDate, trip.endDate)}</span>
-          {days !== null && (
-            <>
-              <span className="opacity-40">·</span>
-              <span className="font-num tabular-nums text-wtext-3 dark:text-wtext-4">{days}박</span>
-            </>
-          )}
-        </div>
-
-        {/* Capacity bar — ref: mt 12 / "모집 현황" + N/M석 + 3px progress */}
-        <div className="mt-3">
-          <div className="flex items-center justify-between text-card-meta font-semibold text-wtext-3 dark:text-wtext-4">
-            <span>모집 현황</span>
-            <span className="font-num tabular-nums">
-              {seats}/{max}석
-            </span>
-          </div>
+        <div
+          className="mt-[5px] h-[3px] rounded-full bg-it-line dark:bg-rink-700 overflow-hidden"
+          role="progressbar"
+          aria-valuenow={seats}
+          aria-valuemin={0}
+          aria-valuemax={max}
+        >
           <div
-            className="mt-[5px] h-[3px] rounded-full bg-wline-2 dark:bg-rink-700 overflow-hidden"
-            role="progressbar"
-            aria-valuenow={seats}
-            aria-valuemin={0}
-            aria-valuemax={max}
-          >
-            <div
-              className="h-full rounded-full bg-wtext-2 dark:bg-wtext-4 transition-[width] duration-500 motion-reduce:transition-none"
-              style={{ width: `${pct}%` }}
-            />
-          </div>
+            className="h-full rounded-full bg-it-blue-500 transition-[width] duration-500 motion-reduce:transition-none"
+            style={{ width: `${pct}%` }}
+          />
         </div>
+      </div>
 
-        {/* Footer — ref: mt 12 / 가격(16 800 FONT_NUM -0.02em) + "원~/1인" + 자세히 button(h 32 rounded 999) */}
-        <div className="mt-3 flex items-center justify-between">
-          <div className="inline-flex items-baseline gap-[3px]">
-            <span className="text-card-title font-extrabold text-wtext-1 dark:text-white font-num tabular-nums tracking-[-0.02em]">
-              {formatCurrency(trip.estimatedCost)}
-            </span>
-            <span className="text-card-meta font-bold text-wtext-3 dark:text-wtext-4">원~ / 1인</span>
-          </div>
-          <span
-            className="inline-flex items-center justify-center h-8 px-3.5 rounded-full bg-ice-500 text-white text-card-meta font-extrabold tracking-[-0.01em]"
-            aria-hidden="true"
-          >
-            자세히
+      {/* Footer — 가격 + 자세히 pill */}
+      <div className="mt-3 flex items-center justify-between">
+        <div className="inline-flex items-baseline gap-[3px]">
+          <span className="text-card-title font-extrabold text-it-ink-800 dark:text-white font-num tabular-nums tracking-[-0.02em]">
+            {formatCurrency(trip.estimatedCost)}
           </span>
+          <span className="text-card-meta font-bold text-it-ink-500 dark:text-wtext-4">원~ / 1인</span>
         </div>
+        <span
+          className="inline-flex items-center justify-center h-8 px-3.5 rounded-w-pill bg-it-blue-500 text-white text-card-meta font-extrabold tracking-[-0.01em]"
+          aria-hidden="true"
+        >
+          자세히
+        </span>
       </div>
     </NavLink>
   );
@@ -538,38 +536,38 @@ function MyTripCard({ item }: { item: MyTripItem }) {
   const currentStepLabel = stepList.find((s) => s.current)?.label ?? '진행 중';
 
   return (
-    <div className="bg-wsurface dark:bg-rink-800 rounded-2xl border border-wline-2 dark:border-rink-700 px-[18px] py-4">
+    <div className="bg-it-surface dark:bg-rink-800 rounded-w-md border border-it-line dark:border-rink-700 px-[18px] py-4">
       {/* Top row: flag + region + D-day */}
       <div className="flex items-center gap-2">
         <span className="text-[18px] leading-none" aria-hidden="true">
           {flag}
         </span>
-        <span className="text-card-meta font-extrabold text-wtext-2 dark:text-wtext-4 tracking-[-0.01em]">
+        <span className="text-card-meta font-extrabold text-it-ink-600 dark:text-wtext-4 tracking-[-0.01em]">
           {item.trip.country}
           {item.trip.city ? ` · ${item.trip.city}` : ''}
         </span>
         <div className="flex-1" />
         {dDay !== null && dDay > 0 && (
-          /* 첨부 이미지: D-day pill은 정보 표시이므로 검정(wtext-1) ref 그대로 */
-          <span className="inline-flex items-center px-[9px] py-[3px] rounded-full bg-wtext-1 dark:bg-rink-50 text-white dark:text-rink-900 text-card-meta font-extrabold font-num tabular-nums tracking-[0.02em]">
+          /* D-day pill — it-blue */
+          <span className="inline-flex items-center px-[9px] py-[3px] rounded-w-pill bg-it-blue-500 text-white text-card-meta font-extrabold font-num tabular-nums tracking-[0.02em]">
             D-{dDay}
           </span>
         )}
       </div>
-      <h3 className="mt-2 text-card-title font-extrabold text-wtext-1 dark:text-white tracking-[-0.025em]">
+      <h3 className="mt-2 text-card-title font-extrabold text-it-ink-800 dark:text-white tracking-[-0.025em]">
         {item.trip.title}
       </h3>
-      <p className="mt-1 text-card-meta text-wtext-3 dark:text-wtext-4 font-num tabular-nums">
+      <p className="mt-1 text-card-meta text-it-ink-500 dark:text-wtext-4 font-num tabular-nums">
         {formatDateRange(item.trip.startDate, item.trip.endDate)}
       </p>
 
-      {/* Steps progress — ref: bg / radius 12 / padding "12 14" */}
-      <div className="mt-3.5 bg-wbg dark:bg-rink-900 rounded-xl px-3.5 py-3">
+      {/* Steps progress — inset 영역 */}
+      <div className="mt-3.5 bg-it-fill dark:bg-rink-900 rounded-w-md px-3.5 py-3">
         <div className="flex items-center justify-between mb-2.5">
-          <span className="text-card-meta font-extrabold text-wtext-2 dark:text-wtext-4 tracking-[-0.01em]">
+          <span className="text-card-meta font-extrabold text-it-ink-700 dark:text-wtext-4 tracking-[-0.01em]">
             준비 단계 · {currentStepLabel}
           </span>
-          <span className="text-card-meta font-extrabold text-wtext-2 dark:text-wtext-4 font-num tabular-nums">
+          <span className="text-card-meta font-extrabold text-it-ink-700 dark:text-wtext-4 font-num tabular-nums">
             {currentStepIdx + 1}/{totalSteps}
           </span>
         </div>
@@ -579,27 +577,25 @@ function MyTripCard({ item }: { item: MyTripItem }) {
               key={j}
               className={cn(
                 'flex-1 h-1 rounded-full',
-                /* 첨부 이미지: 진행바 채움색은 검정 ref 그대로 */
-                j <= currentStepIdx ? 'bg-wtext-1 dark:bg-rink-50' : 'bg-wline-2 dark:bg-rink-700',
+                j <= currentStepIdx ? 'bg-it-blue-500' : 'bg-it-line dark:bg-rink-700',
               )}
             />
           ))}
         </div>
       </div>
 
-      {/* Step list — ref: marker(16×16) + label */}
+      {/* Step list — marker(16×16) + label */}
       <div className="mt-2.5 flex flex-col">
         {stepList.map((s, j) => (
           <div key={j} className="flex items-center gap-2.5 py-[7px]">
             <div
               className={cn(
                 'w-4 h-4 rounded-full grid place-items-center shrink-0',
-                /* 첨부 이미지: Step current marker는 검정(ref text1) */
                 s.done
-                  ? 'bg-wtext-2 dark:bg-wtext-4'
+                  ? 'bg-it-blue-500'
                   : s.current
-                    ? 'bg-wtext-1 dark:bg-rink-50 border-2 border-wline-2 dark:border-rink-700'
-                    : 'bg-wline-2 dark:bg-rink-700',
+                    ? 'bg-it-blue-500 border-2 border-it-blue-50 dark:border-rink-700'
+                    : 'bg-it-line dark:bg-rink-700',
               )}
             >
               {s.done && (
@@ -619,17 +615,16 @@ function MyTripCard({ item }: { item: MyTripItem }) {
               className={cn(
                 'text-card-body tracking-[-0.01em]',
                 s.done
-                  ? 'text-wtext-3 dark:text-wtext-4 font-semibold line-through'
+                  ? 'text-it-ink-500 dark:text-wtext-4 font-semibold line-through'
                   : s.current
-                    ? 'text-wtext-1 dark:text-white font-extrabold'
-                    : 'text-wtext-4 dark:text-wtext-4/70 font-semibold',
+                    ? 'text-it-ink-800 dark:text-white font-extrabold'
+                    : 'text-it-ink-400 dark:text-wtext-4/70 font-semibold',
               )}
             >
               {s.label}
             </span>
             {s.current && (
-              /* 첨부 이미지: "진행 →" 텍스트는 검정(wtext-1) ref 그대로 */
-              <span className="ml-auto text-card-meta font-extrabold text-wtext-1 dark:text-white">
+              <span className="ml-auto text-card-meta font-extrabold text-it-blue-500">
                 진행 →
               </span>
             )}
@@ -637,26 +632,23 @@ function MyTripCard({ item }: { item: MyTripItem }) {
         ))}
       </div>
 
-      {/* Payment summary — ref: bg / border / radius 12 / padding "12 14" / 32×32 카드 아이콘 + label + 결제 button */}
+      {/* Payment summary — inset 영역 + 결제 pill */}
       {item.trip.depositDeadline && item.trip.depositAmount && (
-        <div className="mt-3 px-3.5 py-3 rounded-xl bg-wbg dark:bg-rink-900 border border-wline-2 dark:border-rink-700 flex items-center gap-2.5">
-          <div className="w-8 h-8 shrink-0 rounded-[10px] bg-wsurface dark:bg-rink-800 border border-wline-2 dark:border-rink-700 grid place-items-center text-wtext-2 dark:text-wtext-4">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <rect x="2" y="4" width="12" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
-              <path d="M2 7h12" stroke="currentColor" strokeWidth="1.4" />
-            </svg>
+        <div className="mt-3 px-3.5 py-3 rounded-w-md bg-it-fill dark:bg-rink-900 border border-it-line dark:border-rink-700 flex items-center gap-2.5">
+          <div className="w-8 h-8 shrink-0 rounded-[10px] bg-it-surface dark:bg-rink-800 border border-it-line dark:border-rink-700 grid place-items-center text-it-ink-600 dark:text-wtext-4">
+            <Icon name="credit_card" className="text-card-body text-it-blue-500" aria-hidden="true" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-card-meta font-bold text-wtext-3 dark:text-wtext-4">
+            <p className="text-card-meta font-bold text-it-ink-500 dark:text-wtext-4">
               다음 결제 ·{' '}
               <span className="font-num tabular-nums">{formatDateRefStyle(item.trip.depositDeadline)}</span>
             </p>
-            <p className="mt-0.5 text-card-body font-extrabold text-wtext-1 dark:text-white font-num tabular-nums">
+            <p className="mt-0.5 text-card-body font-extrabold text-it-ink-800 dark:text-white font-num tabular-nums">
               잔금 {formatCurrency(item.trip.depositAmount)}원
             </p>
           </div>
           <span
-            className="inline-flex items-center justify-center h-[30px] px-3 rounded-full bg-ice-500 text-white text-card-meta font-extrabold tracking-[-0.01em]"
+            className="inline-flex items-center justify-center h-[30px] px-3 rounded-w-pill bg-it-blue-500 text-white text-card-meta font-extrabold tracking-[-0.01em]"
             aria-hidden="true"
           >
             결제
@@ -666,7 +658,7 @@ function MyTripCard({ item }: { item: MyTripItem }) {
 
       {/* 등록 상태 (선택적 표시) */}
       {!item.trip.depositDeadline && (
-        <p className="mt-2 text-card-meta font-bold text-wtext-2 dark:text-wtext-4">
+        <p className="mt-2 text-card-meta font-bold text-it-ink-600 dark:text-wtext-4">
           {regLabel}
         </p>
       )}
@@ -676,14 +668,14 @@ function MyTripCard({ item }: { item: MyTripItem }) {
 
 function EmptyState({ icon, title, sub }: { icon: string; title: string; sub: ReactNode }) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 rounded-2xl bg-wsurface dark:bg-rink-800 border border-wline-2 dark:border-rink-700">
-      <div className="flex items-center justify-center size-16 rounded-full bg-wline-2 dark:bg-rink-700 mb-4">
-        <Icon name={icon} className="text-3xl text-wtext-3 dark:text-wtext-4" aria-hidden="true" />
+    <div className="flex flex-col items-center justify-center py-16">
+      <div className="flex items-center justify-center size-14 rounded-w-pill bg-it-fill dark:bg-rink-700 mb-4">
+        <Icon name={icon} className="text-2xl text-it-ink-400 dark:text-wtext-4" aria-hidden="true" />
       </div>
-      <p className="text-card-title font-extrabold text-wtext-2 dark:text-wtext-4 mb-1 tracking-[-0.02em]">
+      <p className="text-card-title font-extrabold text-it-ink-700 dark:text-wtext-4 mb-1 tracking-[-0.02em]">
         {title}
       </p>
-      <p className="text-card-meta font-semibold text-wtext-3 dark:text-wtext-4 text-center px-8">
+      <p className="text-card-meta font-semibold text-it-ink-500 dark:text-wtext-4 text-center px-8">
         {sub}
       </p>
     </div>

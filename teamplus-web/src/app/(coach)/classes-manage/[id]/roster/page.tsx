@@ -100,7 +100,7 @@ function getInitial(name: string): string {
 
 function getInitialColor(name: string): string {
   const colors = [
-    'bg-ice-500',
+    'bg-it-blue-500',
     'bg-mint',
     'bg-flame',
     'bg-sun-500',
@@ -334,7 +334,7 @@ export default function RosterPage() {
     return (
       <MobileContainer hasBottomNav={false}>
         <PageAppBar title="명단관리" forceNative />
-        <main className="flex-1" />
+        <main className="flex-1 bg-it-canvas dark:bg-puck" />
       </MobileContainer>
     );
   }
@@ -343,20 +343,20 @@ export default function RosterPage() {
     return (
       <MobileContainer hasBottomNav={false}>
         <PageAppBar title="명단관리" forceNative />
-        <main className="flex-1 flex flex-col items-center justify-center px-5 py-16">
+        <main className="flex-1 flex flex-col items-center justify-center px-5 py-16 bg-it-canvas dark:bg-puck">
           <div
-            className="w-14 h-14 rounded-w-pill bg-red-100 dark:bg-red-900/20 flex items-center justify-center mb-3"
+            className="w-14 h-14 rounded-w-pill bg-it-red-50 dark:bg-it-red-700/20 flex items-center justify-center mb-3"
             aria-hidden="true"
           >
-            <Icon name="error" className="text-2xl text-red-500 dark:text-red-400" />
+            <Icon name="error" className="text-2xl text-it-red-500 dark:text-it-red-300" />
           </div>
-          <p className="text-card-body text-wtext-3 dark:text-rink-300 font-medium mb-4">
+          <p className="text-card-body text-it-ink-500 dark:text-rink-300 font-medium mb-4">
             {error ?? MESSAGES.error.general}
           </p>
           <button
             type="button"
             onClick={() => back()}
-            className="px-4 py-2 text-card-body font-medium text-wtext-2 dark:text-rink-100 bg-wline-2 dark:bg-rink-700 rounded-lg hover:bg-wline dark:hover:bg-rink-500 transition-colors motion-reduce:transition-none"
+            className="px-4 py-2 text-card-body font-medium text-it-ink-800 dark:text-rink-100 bg-it-fill dark:bg-rink-700 rounded-w-md hover:bg-it-line dark:hover:bg-rink-500 transition-colors motion-reduce:transition-none"
           >
             뒤로 가기
           </button>
@@ -369,44 +369,42 @@ export default function RosterPage() {
     <MobileContainer hasBottomNav={false}>
       <PageAppBar title="명단관리" forceNative />
 
-      <main className="flex-1 overflow-y-auto pb-10 bg-wbg dark:bg-puck">
-        {/* ─── Header summary ─── */}
-        <section className="px-5 pt-5">
-          <div className="rounded-w-xl bg-rink-800 dark:bg-rink-900 p-5 shadow-sh-rink">
-            <p className="text-card-meta font-bold uppercase tracking-[0.12em] text-wtext-4 mb-1">
-              ROSTER
-            </p>
-            <h1 className="text-card-title font-bold text-white truncate">{className}</h1>
-            <p className="mt-1.5 text-card-meta text-wtext-4">
-              대상 {ageRangeLabel} · 배치 {placedStudents.length}명 · 미배치{' '}
-              {unplacedStudents.length}명
-            </p>
-          </div>
+      <main className="flex-1 overflow-y-auto pb-10 bg-it-canvas dark:bg-puck">
+        {/* ─── Header summary — navy 밴드 full-bleed (ICETIMES 히어로) ─── */}
+        <section className="bg-it-blue-800 dark:bg-it-blue-950 px-5 py-6">
+          <p className="text-card-meta font-bold uppercase tracking-[0.12em] text-it-blue-200 mb-1">
+            ROSTER
+          </p>
+          <h1 className="text-card-section font-bold text-white truncate">{className}</h1>
+          <p className="mt-1.5 text-card-meta text-it-blue-200">
+            대상 {ageRangeLabel} · 배치 {placedStudents.length}명 · 미배치{' '}
+            {unplacedStudents.length}명
+          </p>
         </section>
 
-        {/* ─── 배치된 학생 ─── */}
-        <section className="mx-5 mt-5 bg-white dark:bg-rink-800 rounded-2xl p-5 shadow-sm border border-wline-2 dark:border-rink-700">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-card-title font-bold text-wtext-1 dark:text-white">
+        {/* ─── 배치된 학생 — full-bleed 흰 섹션 + hairline 행 ─── */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
+          <div className="flex items-center justify-between px-4 sm:px-5 pt-4 pb-2">
+            <h2 className="text-card-section font-bold text-it-ink-800 dark:text-white">
               배치된 학생 ({placedStudents.length})
             </h2>
             {classData.capacity != null && (
-              <span className="text-card-meta font-bold px-3 py-1 rounded-w-pill tabular-nums bg-ice-500/10 text-ice-500">
+              <span className="text-card-meta font-bold px-3 py-1 rounded-w-pill tabular-nums bg-it-blue-50 dark:bg-it-blue-500/15 text-it-blue-500">
                 {placedStudents.length} / {classData.capacity}명
               </span>
             )}
           </div>
 
           {placedStudents.length === 0 ? (
-            <p className="text-card-body text-wtext-3 dark:text-rink-300 text-center py-6">
+            <p className="text-card-body text-it-ink-500 dark:text-rink-300 text-center py-6">
               아직 배치된 학생이 없습니다.
             </p>
           ) : (
-            <ul className="flex flex-col gap-2 list-none" role="list">
+            <ul className="flex flex-col list-none" role="list">
               {placedStudents.map((s) => (
                 <li
                   key={s.key}
-                  className="flex items-center gap-3 p-3 bg-wbg dark:bg-rink-900/50 rounded-lg border border-wline-2 dark:border-rink-700"
+                  className="flex items-center gap-3 px-4 sm:px-5 py-3 border-b border-it-line dark:border-it-blue-900 last:border-b-0"
                 >
                   <div
                     className={cn(
@@ -420,11 +418,11 @@ export default function RosterPage() {
                     </span>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-card-body font-semibold text-wtext-1 dark:text-rink-100 truncate">
+                    <p className="text-card-body font-semibold text-it-ink-800 dark:text-rink-100 truncate">
                       {s.name}
                     </p>
                   </div>
-                  <span className="text-card-meta font-semibold text-emerald-600 dark:text-emerald-400 shrink-0">
+                  <span className="text-card-meta font-semibold text-mint shrink-0">
                     {s.status === 'paid' ? '등록 완료' : s.status}
                   </span>
                   {/* [추가 2026-05-19 Step 6] 회차 조정 버튼 — 코치/감독 (배치 학생 대상).
@@ -437,7 +435,7 @@ export default function RosterPage() {
                         setAdjustTarget({ userId: s.userId, name: s.name })
                       }
                       disabled={mutatingUserId === s.userId}
-                      className="shrink-0 inline-flex items-center justify-center h-8 px-2.5 rounded-md border border-ice-500/40 text-card-meta font-bold text-ice-500 hover:bg-ice-500/10 transition-colors motion-reduce:transition-none active:brightness-95 disabled:opacity-50"
+                      className="shrink-0 inline-flex items-center justify-center h-8 px-2.5 rounded-md border-[1.5px] border-it-blue-500/40 text-card-meta font-bold text-it-blue-500 hover:bg-it-blue-500/10 transition-colors motion-reduce:transition-none active:brightness-95 disabled:opacity-50"
                       aria-label={`${s.name} 회차 조정`}
                     >
                       회차 조정
@@ -449,7 +447,7 @@ export default function RosterPage() {
                       type="button"
                       onClick={() => handleUnassign(s.userId, s.name)}
                       disabled={mutatingUserId === s.userId}
-                      className="shrink-0 inline-flex items-center justify-center h-8 px-2.5 rounded-md border border-wline-2 dark:border-rink-700 text-card-meta font-bold text-flame hover:bg-flame/10 transition-colors motion-reduce:transition-none active:brightness-95 disabled:opacity-50"
+                      className="shrink-0 inline-flex items-center justify-center h-8 px-2.5 rounded-md border-[1.5px] border-it-line-strong dark:border-rink-700 text-card-meta font-bold text-it-red-500 hover:bg-it-red-50 dark:hover:bg-it-red-700/10 transition-colors motion-reduce:transition-none active:brightness-95 disabled:opacity-50"
                       aria-label={`${s.name} 배치 해제`}
                     >
                       {mutatingUserId === s.userId ? '처리 중' : '해제'}
@@ -461,24 +459,24 @@ export default function RosterPage() {
           )}
         </section>
 
-        {/* ─── 미배치 학생 ─── */}
-        <section className="mx-5 mt-4 bg-white dark:bg-rink-800 rounded-2xl p-5 shadow-sm border border-wline-2 dark:border-rink-700">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-card-title font-bold text-wtext-1 dark:text-white">
+        {/* ─── 미배치 학생 — full-bleed 흰 섹션 + hairline 행 ─── */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
+          <div className="flex items-center justify-between px-4 sm:px-5 pt-4 pb-2">
+            <h2 className="text-card-section font-bold text-it-ink-800 dark:text-white">
               미배치 학생 ({unplacedStudents.length})
             </h2>
             {/* [수정 2026-05-13] ageRangeLabel 제거 — 미배치 영역은 연령 무관 전체 표시. */}
-            <span className="text-card-meta text-wtext-3 dark:text-rink-300">
+            <span className="text-card-meta text-it-ink-500 dark:text-rink-300">
               연령 무관
             </span>
           </div>
 
           {unplacedStudents.length === 0 ? (
-            <p className="text-card-body text-wtext-3 dark:text-rink-300 text-center py-6">
+            <p className="text-card-body text-it-ink-500 dark:text-rink-300 text-center py-6">
               미배치 학생이 없습니다.
             </p>
           ) : (
-            <ul className="flex flex-col gap-2 list-none" role="list">
+            <ul className="flex flex-col list-none" role="list">
               {unplacedStudents.map((m) => {
                 const name =
                   (m.playerName ??
@@ -488,7 +486,7 @@ export default function RosterPage() {
                 return (
                   <li
                     key={m.id}
-                    className="flex items-center gap-3 p-3 bg-wbg dark:bg-rink-900/50 rounded-lg border border-wline-2 dark:border-rink-700"
+                    className="flex items-center gap-3 px-4 sm:px-5 py-3 border-b border-it-line dark:border-it-blue-900 last:border-b-0"
                   >
                     <div
                       className={cn(
@@ -502,11 +500,11 @@ export default function RosterPage() {
                       </span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-card-body font-semibold text-wtext-1 dark:text-rink-100 truncate">
+                      <p className="text-card-body font-semibold text-it-ink-800 dark:text-rink-100 truncate">
                         {name}
                       </p>
                       {age != null && (
-                        <p className="text-card-meta text-wtext-3 dark:text-rink-300">
+                        <p className="text-card-meta text-it-ink-500 dark:text-rink-300">
                           {age}세
                         </p>
                       )}
@@ -520,7 +518,7 @@ export default function RosterPage() {
                         <button
                           type="button"
                           disabled
-                          className="shrink-0 inline-flex items-center justify-center h-8 px-3 rounded-md bg-wline-2 text-wtext-3 dark:bg-rink-700 dark:text-rink-300 text-card-meta font-extrabold cursor-not-allowed"
+                          className="shrink-0 inline-flex items-center justify-center h-8 px-3 rounded-md bg-it-fill text-it-ink-400 dark:bg-rink-700 dark:text-rink-300 text-card-meta font-extrabold cursor-not-allowed"
                           aria-label={`${name} 결제 필요로 배치 불가`}
                           title="결제 완료 후 배치할 수 있습니다"
                         >
@@ -531,14 +529,14 @@ export default function RosterPage() {
                           type="button"
                           onClick={() => handleAssign(m.user!.id!, name)}
                           disabled={mutatingUserId === m.user.id}
-                          className="shrink-0 inline-flex items-center justify-center h-8 px-3 rounded-md bg-ice-500 hover:bg-ice-600 text-white text-card-meta font-extrabold transition-colors motion-reduce:transition-none active:brightness-95 disabled:opacity-50"
+                          className="shrink-0 inline-flex items-center justify-center h-8 px-3 rounded-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-meta font-extrabold transition-colors motion-reduce:transition-none active:brightness-95 disabled:opacity-50"
                           aria-label={`${name} 배치하기`}
                         >
                           {mutatingUserId === m.user.id ? '처리 중' : '배치하기'}
                         </button>
                       )
                     ) : (
-                      <span className="text-card-meta font-semibold text-wtext-3 dark:text-rink-300 shrink-0">
+                      <span className="text-card-meta font-semibold text-it-ink-400 dark:text-rink-300 shrink-0">
                         미배치
                       </span>
                     )}

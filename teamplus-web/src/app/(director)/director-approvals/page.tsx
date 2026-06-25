@@ -29,18 +29,19 @@ import {
 // Constants
 // ---------------------------------------------------------------------------
 
+// ICETIMES flat — 상태 배지(정규=초록·대기=ink·반려=red SoT)
 const STATUS_BADGE_STYLES = {
   approved: {
     label: '승인 완료',
-    className: 'bg-mint-100 text-mint-700 dark:bg-mint-500/15 dark:text-mint-500',
+    className: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400',
   },
   rejected: {
     label: '반려',
-    className: 'bg-flame-100 text-flame-700 dark:bg-flame-500/15 dark:text-flame-500',
+    className: 'bg-it-red-50 text-it-red-600 dark:bg-it-red-500/15 dark:text-it-red-400',
   },
   pending: {
     label: '대기 중',
-    className: 'bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-wtext-4',
+    className: 'bg-it-line text-it-ink-600 dark:bg-it-blue-900/40 dark:text-it-ink-200',
   },
 } as const;
 
@@ -94,98 +95,97 @@ function MemberApprovalCard({
   const isRejected = record.status === 'rejected';
 
   return (
-    <article className="overflow-hidden rounded-w-lg border border-wline-2 dark:border-rink-700 bg-wsurface dark:bg-rink-800 shadow-sh-1">
-      <div className="p-4">
-        {/* 이름 + 생년월일 + (자녀) + 상태 배지 */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="truncate text-card-title font-bold text-wtext-1 dark:text-white">
-            {record.name}
+    // ICETIMES flat — 카드 박스 제거. 부모 섹션의 divide-it-line hairline 으로 행 구분.
+    <div className="py-4">
+      {/* 이름 + 생년월일 + (자녀) + 상태 배지 */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="truncate text-[15.5px] font-bold tracking-[-0.01em] text-it-ink-800 dark:text-white">
+          {record.name}
+        </span>
+        {ageLabel && (
+          <span className="text-[13px] font-medium text-it-ink-500 dark:text-it-ink-300 tabular-nums">
+            {ageLabel}
           </span>
-          {ageLabel && (
-            <span className="text-card-meta font-medium text-wtext-3 dark:text-rink-300 tabular-nums">
-              {ageLabel}
-            </span>
-          )}
-          {record.parentName && record.parentName !== '-' && (
-            <span className="text-card-meta font-medium text-wtext-3 dark:text-rink-300">
-              (자녀)
-            </span>
-          )}
-          <span
-            className={`ml-auto inline-flex items-center rounded-w-pill px-2 py-0.5 text-card-meta font-bold ${badge.className}`}
-          >
-            {badge.label}
-          </span>
-        </div>
-
-        {/* 부모 (자녀인 경우) */}
-        {record.parentName && record.parentName !== '-' && (
-          <p className="mt-1 inline-flex items-center gap-1 text-card-meta text-wtext-3 dark:text-rink-300">
-            <Icon name="family_restroom" className="text-[13px]" aria-hidden="true" />
-            부모: {record.parentName}
-          </p>
         )}
+        {record.parentName && record.parentName !== '-' && (
+          <span className="text-[13px] font-medium text-it-ink-500 dark:text-it-ink-300">
+            (자녀)
+          </span>
+        )}
+        <span
+          className={`ml-auto inline-flex items-center rounded-w-pill px-2 py-0.5 text-[12px] font-bold ${badge.className}`}
+        >
+          {badge.label}
+        </span>
+      </div>
 
-        {/* 신청·처리 일시 — 한 줄 인라인 */}
-        <p className="mt-2 text-card-meta text-wtext-2 dark:text-rink-100 tabular-nums">
-          <span className="text-wtext-3 dark:text-rink-400">신청</span> {appliedDateTime}
-          {processedDateTime !== '-' && (
-            <>
-              <span className="mx-1.5 text-wtext-4 dark:text-rink-500" aria-hidden="true">·</span>
-              <span className="text-wtext-3 dark:text-rink-400">처리</span> {processedDateTime}
-            </>
-          )}
+      {/* 부모 (자녀인 경우) */}
+      {record.parentName && record.parentName !== '-' && (
+        <p className="mt-1 inline-flex items-center gap-1 text-[13px] text-it-ink-500 dark:text-it-ink-300">
+          <Icon name="family_restroom" className="text-[13px] text-it-blue-500" aria-hidden="true" />
+          부모: {record.parentName}
         </p>
+      )}
 
-        {/* 반려 사유 (반려 상태만 표시) */}
-        {isRejected && record.rejectReason && (
-          <div className="mt-2.5 rounded-w-md border border-flame-100 dark:border-flame-500/30 bg-flame-100/40 dark:bg-flame-500/10 p-3">
-            <div className="flex items-start gap-2">
-              <Icon
-                name="info"
-                className="mt-0.5 shrink-0 text-card-emphasis text-flame-700 dark:text-flame-500"
-                aria-hidden="true"
-              />
-              <div className="min-w-0">
-                <p className="text-card-meta font-bold uppercase tracking-wider text-flame-700 dark:text-flame-500">
-                  반려 사유
-                </p>
-                <p className="mt-0.5 text-card-meta leading-relaxed text-wtext-2 dark:text-rink-100">
-                  {record.rejectReason}
-                </p>
-              </div>
+      {/* 신청·처리 일시 — 한 줄 인라인 */}
+      <p className="mt-2 text-[13px] text-it-ink-600 dark:text-it-ink-200 tabular-nums">
+        <span className="text-it-ink-400 dark:text-it-ink-300">신청</span> {appliedDateTime}
+        {processedDateTime !== '-' && (
+          <>
+            <span className="mx-1.5 text-it-ink-300 dark:text-it-ink-400" aria-hidden="true">·</span>
+            <span className="text-it-ink-400 dark:text-it-ink-300">처리</span> {processedDateTime}
+          </>
+        )}
+      </p>
+
+      {/* 반려 사유 (반려 상태만 표시) — flat inset */}
+      {isRejected && record.rejectReason && (
+        <div className="mt-2.5 rounded-w-md border border-it-red-100 dark:border-it-red-500/30 bg-it-red-50 dark:bg-it-red-500/10 p-3">
+          <div className="flex items-start gap-2">
+            <Icon
+              name="info"
+              className="mt-0.5 shrink-0 text-card-emphasis text-it-red-600 dark:text-it-red-400"
+              aria-hidden="true"
+            />
+            <div className="min-w-0">
+              <p className="text-[12px] font-bold uppercase tracking-wider text-it-red-600 dark:text-it-red-400">
+                반려 사유
+              </p>
+              <p className="mt-0.5 text-[13px] leading-relaxed text-it-ink-700 dark:text-it-ink-200">
+                {record.rejectReason}
+              </p>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* 카드별 액션 — 반려 / 승인. [2026-06-18]
-            · 이미 '승인 완료'된 회원: 액션 버튼 숨김(재처리 불필요).
-            · '반려'된 회원: 반려/승인 둘 다 비활성화 — 부모가 '다시 신청'해서 '대기'로 돌아와야 승인 가능.
-            · '대기' 회원만 반려/승인 모두 활성. */}
-        {!isApproved && (
-          <div className="mt-3 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => onReject(record)}
-              disabled={busy || isRejected}
-              aria-label={`${record.name} 반려`}
-              className="h-10 flex-1 rounded-w-md border border-flame-500 text-card-body font-semibold text-flame-600 transition-colors motion-reduce:transition-none hover:bg-flame-100 active:brightness-95 focus:outline-none focus:ring-2 focus:ring-flame-500/40 disabled:cursor-not-allowed disabled:opacity-40 dark:border-flame-500 dark:text-flame-500 dark:hover:bg-flame-500/10"
-            >
-              반려
-            </button>
-            <button
-              type="button"
-              onClick={() => onApprove(record)}
-              disabled={busy || isRejected}
-              aria-label={`${record.name} 승인`}
-              className="h-10 flex-1 rounded-w-md bg-ice-500 text-card-body font-semibold text-white transition-colors motion-reduce:transition-none hover:bg-ice-600 active:brightness-95 focus:outline-none focus:ring-2 focus:ring-ice-500/40 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              승인
-            </button>
-          </div>
-        )}
-      </div>
-    </article>
+      {/* 카드별 액션 — 반려 / 승인. [2026-06-18]
+          · 이미 '승인 완료'된 회원: 액션 버튼 숨김(재처리 불필요).
+          · '반려'된 회원: 반려/승인 둘 다 비활성화 — 부모가 '다시 신청'해서 '대기'로 돌아와야 승인 가능.
+          · '대기' 회원만 반려/승인 모두 활성. */}
+      {!isApproved && (
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onReject(record)}
+            disabled={busy || isRejected}
+            aria-label={`${record.name} 반려`}
+            className="h-10 flex-1 rounded-w-md border-[1.5px] border-it-red-500 text-card-body font-semibold text-it-red-600 transition-colors motion-reduce:transition-none hover:bg-it-red-50 active:brightness-95 focus:outline-none focus:ring-2 focus:ring-it-red-500/40 disabled:cursor-not-allowed disabled:opacity-40 dark:border-it-red-400 dark:text-it-red-400 dark:hover:bg-it-red-500/10"
+          >
+            반려
+          </button>
+          <button
+            type="button"
+            onClick={() => onApprove(record)}
+            disabled={busy || isRejected}
+            aria-label={`${record.name} 승인`}
+            className="h-10 flex-1 rounded-w-md bg-it-blue-500 text-card-body font-semibold text-white transition-colors motion-reduce:transition-none hover:bg-it-blue-600 active:brightness-95 focus:outline-none focus:ring-2 focus:ring-it-blue-500/40 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            승인
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -264,74 +264,91 @@ export default function DirectorApprovalsPage() {
       <PageAppBar title="회원 승인 내역" forceNative />
 
       <main
-        className="flex-1 overflow-y-auto hide-scrollbar bg-wbg dark:bg-rink-900"
+        className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck !pb-8"
         role="main"
         aria-label="회원 승인 내역"
       >
-        <div className="p-4 space-y-3">
-          {isLoading ? null : loadError ? (
+        {isLoading ? null : loadError ? (
+          // 에러 — full-bleed 흰 섹션
+          <section className="bg-it-surface dark:bg-it-blue-950">
             <div
-              className="flex flex-col items-center justify-center py-16 gap-3"
+              className="flex flex-col items-center justify-center py-16 gap-3 px-5"
               role="alert"
             >
-              <div className="w-14 h-14 rounded-w-pill bg-flame-100 dark:bg-flame-500/15 flex items-center justify-center">
+              <div className="w-14 h-14 rounded-w-pill bg-it-red-50 dark:bg-it-red-500/15 flex items-center justify-center">
                 <Icon
                   name="error_outline"
-                  className="text-3xl text-flame-700 dark:text-flame-500"
+                  className="text-3xl text-it-red-600 dark:text-it-red-400"
                   aria-hidden="true"
                 />
               </div>
-              <p className="text-card-body text-wtext-3 dark:text-rink-300 text-center">
+              <p className="text-card-body text-it-ink-500 dark:text-it-ink-300 text-center">
                 {MESSAGES.error.network}
               </p>
               <button
                 type="button"
                 onClick={() => void refresh()}
-                className="mt-1 inline-flex items-center gap-1 rounded-w-md bg-ice-500 px-4 py-2 text-card-body font-bold text-white hover:bg-ice-600 transition-colors motion-reduce:transition-none active:brightness-95"
+                className="mt-1 inline-flex items-center gap-1 rounded-w-md bg-it-blue-500 px-4 py-2 text-card-body font-bold text-white hover:bg-it-blue-600 transition-colors motion-reduce:transition-none active:brightness-95"
               >
                 <Icon name="refresh" className="text-card-title" aria-hidden="true" />
                 {MESSAGES.dashboard.errorRetry}
               </button>
             </div>
-          ) : displayed.length === 0 ? (
+          </section>
+        ) : displayed.length === 0 ? (
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
             <EmptyState
               variant="filter"
               title="조회 결과가 없어요"
               description="아직 가입 신청한 회원이 없습니다."
               icon="inbox"
             />
-          ) : (
-            <>
-              <ul className="space-y-3" role="list" aria-label="회원 목록">
-                {displayed.map((record) => (
-                  <li key={record.id}>
-                    <MemberApprovalCard
-                      record={record}
-                      busy={busyId === record.id}
-                      onApprove={handleApprove}
-                      onReject={openReject}
-                    />
-                  </li>
-                ))}
-              </ul>
+          </section>
+        ) : (
+          // 회원 목록 — full-bleed 흰 섹션 + hairline 구분 행 (카드 박스 제거)
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 pt-5 pb-7" aria-label="회원 목록">
+            <div className="flex items-baseline gap-2 pb-1">
+              <h2 className="text-it-ink-800 dark:text-white tracking-[-0.02em] font-extrabold text-[17px]">
+                회원 목록
+              </h2>
+              <span className="text-[15px] font-extrabold font-num tabular-nums text-it-blue-500">
+                {sortedRecords.length}
+              </span>
+            </div>
 
-              {hasMore && (
-                <button
-                  type="button"
-                  onClick={() => setDisplayCount((prev) => prev + PAGE_SIZE)}
-                  className="flex h-12 w-full items-center justify-center gap-1.5 rounded-w-lg border border-wline-2 dark:border-rink-700 bg-wsurface dark:bg-rink-800 text-card-body font-semibold text-wtext-2 dark:text-rink-100 shadow-sh-1 transition-colors motion-reduce:transition-none hover:bg-wbg dark:hover:bg-rink-700 active:brightness-95"
-                >
-                  <span>더보기</span>
-                  <Icon
-                    name="expand_more"
-                    className="text-card-emphasis"
-                    aria-hidden="true"
+            <ul
+              className="flex flex-col divide-y divide-it-line dark:divide-it-blue-900"
+              role="list"
+              aria-label="회원 목록"
+            >
+              {displayed.map((record) => (
+                <li key={record.id}>
+                  <MemberApprovalCard
+                    record={record}
+                    busy={busyId === record.id}
+                    onApprove={handleApprove}
+                    onReject={openReject}
                   />
-                </button>
-              )}
-            </>
-          )}
-        </div>
+                </li>
+              ))}
+            </ul>
+
+            {hasMore && (
+              <button
+                type="button"
+                onClick={() => setDisplayCount((prev) => prev + PAGE_SIZE)}
+                className="mt-4 flex h-12 w-full items-center justify-center gap-1.5 rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-surface dark:bg-it-blue-950 text-card-body font-semibold text-it-ink-700 dark:text-it-ink-200 transition-colors motion-reduce:transition-none hover:bg-it-fill dark:hover:bg-it-blue-900/40 active:brightness-95"
+              >
+                <span>더보기</span>
+                <Icon
+                  name="expand_more"
+                  className="text-card-emphasis"
+                  aria-hidden="true"
+                />
+              </button>
+            )}
+          </section>
+        )}
       </main>
 
       {/* 반려 시트 — 공통 BottomSheet + 사유 입력 (단건) */}
@@ -350,7 +367,7 @@ export default function DirectorApprovalsPage() {
                 setRejectTarget(null);
                 setRejectReason('');
               }}
-              className="h-12 flex-1 rounded-w-md bg-wbg text-card-title font-semibold text-wtext-2 transition-colors motion-reduce:transition-none hover:bg-wline-2 active:brightness-95 dark:bg-rink-700/40 dark:text-rink-100 dark:hover:bg-rink-700/60"
+              className="h-12 flex-1 rounded-w-md bg-it-fill text-card-title font-semibold text-it-ink-700 transition-colors motion-reduce:transition-none hover:bg-it-line active:brightness-95 dark:bg-it-blue-900/40 dark:text-it-ink-200 dark:hover:bg-it-blue-900/60"
             >
               취소
             </button>
@@ -358,7 +375,7 @@ export default function DirectorApprovalsPage() {
               type="button"
               onClick={() => void submitReject()}
               disabled={!rejectReason.trim() || busyId === rejectTarget?.id}
-              className="h-12 flex-1 rounded-w-md bg-flame-600 text-card-title font-semibold text-white transition-colors motion-reduce:transition-none hover:brightness-95 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+              className="h-12 flex-1 rounded-w-md bg-it-red-500 text-card-title font-semibold text-white transition-colors motion-reduce:transition-none hover:bg-it-red-600 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
             >
               반려하기
             </button>
@@ -368,9 +385,9 @@ export default function DirectorApprovalsPage() {
         <div className="mt-2">
           <label
             htmlFor="reject-reason"
-            className="block text-card-meta font-bold text-wtext-3 dark:text-rink-300 mb-1.5"
+            className="block text-card-meta font-bold text-it-ink-500 dark:text-it-ink-300 mb-1.5"
           >
-            반려 사유 <span className="text-flame-700 dark:text-flame-500">*</span>
+            반려 사유 <span className="text-it-red-500 dark:text-it-red-400">*</span>
           </label>
           <textarea
             id="reject-reason"
@@ -378,10 +395,10 @@ export default function DirectorApprovalsPage() {
             onChange={(e) => setRejectReason(e.target.value)}
             placeholder={MESSAGES.placeholders.enterRejectReason}
             rows={3}
-            className="w-full rounded-w-md border border-wline bg-wbg px-4 py-3 text-card-body text-wtext-1 placeholder:text-wtext-4 focus:outline-none focus:ring-2 focus:ring-ice-500/40 focus:border-ice-500 resize-none transition-colors motion-reduce:transition-none dark:border-rink-700 dark:bg-rink-700/40 dark:text-white dark:placeholder:text-wtext-3"
+            className="w-full rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill px-4 py-3 text-card-body text-it-ink-800 placeholder:text-it-ink-400 focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 resize-none transition-colors motion-reduce:transition-none dark:border-it-blue-900 dark:bg-it-blue-900/40 dark:text-white dark:placeholder:text-it-ink-300"
           />
           {!rejectReason.trim() && (
-            <p className="mt-1 text-card-meta text-flame-700 dark:text-flame-500">
+            <p className="mt-1 text-card-meta text-it-red-500 dark:text-it-red-400">
               반려 사유는 필수 입력입니다.
             </p>
           )}

@@ -72,13 +72,13 @@ function NoticeForm({ academyId }: { academyId: string }) {
   return (
     <section
       aria-label="공지 발송"
-      className="rounded-2xl border border-gray-200 dark:border-rink-700 bg-white dark:bg-rink-800 p-5 shadow-sm space-y-5"
+      className="bg-it-surface dark:bg-it-blue-950 px-5 py-5 space-y-5"
     >
       <header>
-        <h3 className="text-xl font-bold text-wtext-1 dark:text-white tracking-tight">
+        <h3 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
           새 공지 발송
         </h3>
-        <p className="mt-1 text-card-body font-medium text-wtext-3 dark:text-rink-300">
+        <p className="mt-1 text-card-body font-medium text-it-ink-500 dark:text-rink-300">
           {MESSAGES.academy.noticeRecipientHint}
         </p>
       </header>
@@ -86,10 +86,10 @@ function NoticeForm({ academyId }: { academyId: string }) {
       <div>
         <label
           htmlFor={titleId}
-          className="mb-1.5 flex items-center gap-1 text-card-body font-bold text-wtext-2 dark:text-rink-100"
+          className="mb-1.5 flex items-center gap-1 text-card-body font-bold text-it-ink-800 dark:text-rink-100"
         >
           {MESSAGES.academy.noticeTitle}
-          <span className="text-red-500" aria-label="필수 입력">*</span>
+          <span className="text-it-red-500" aria-label="필수 입력">*</span>
         </label>
         <input
           id={titleId}
@@ -100,17 +100,17 @@ function NoticeForm({ academyId }: { academyId: string }) {
           maxLength={100}
           required
           aria-required="true"
-          className="w-full h-12 px-4 rounded-xl border border-gray-200 dark:border-rink-700 bg-wbg dark:bg-rink-900 text-card-body font-medium text-wtext-1 dark:text-white focus:outline-none focus:ring-2 focus:ring-ice-500/30 focus:border-ice-500 motion-reduce:transition-none"
+          className="w-full h-12 px-4 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-900 text-card-body font-medium text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500 motion-reduce:transition-none"
         />
       </div>
 
       <div>
         <label
           htmlFor={messageId}
-          className="mb-1.5 flex items-center gap-1 text-card-body font-bold text-wtext-2 dark:text-rink-100"
+          className="mb-1.5 flex items-center gap-1 text-card-body font-bold text-it-ink-800 dark:text-rink-100"
         >
           {MESSAGES.academy.noticeContent}
-          <span className="text-red-500" aria-label="필수 입력">*</span>
+          <span className="text-it-red-500" aria-label="필수 입력">*</span>
         </label>
         <textarea
           id={messageId}
@@ -121,9 +121,9 @@ function NoticeForm({ academyId }: { academyId: string }) {
           rows={6}
           required
           aria-required="true"
-          className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-rink-700 bg-wbg dark:bg-rink-900 text-card-body font-medium text-wtext-1 dark:text-white focus:outline-none focus:ring-2 focus:ring-ice-500/30 focus:border-ice-500 resize-none motion-reduce:transition-none"
+          className="w-full px-4 py-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-900 text-card-body font-medium text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500 resize-none motion-reduce:transition-none"
         />
-        <p className="mt-1.5 text-right text-card-meta font-semibold text-wtext-3 dark:text-rink-300 tabular-nums">
+        <p className="mt-1.5 text-right text-card-meta font-semibold text-it-ink-500 dark:text-rink-300 tabular-nums">
           {message.length} / 2000
         </p>
       </div>
@@ -133,11 +133,11 @@ function NoticeForm({ academyId }: { academyId: string }) {
         onClick={handleSend}
         disabled={isSending || !title.trim() || !message.trim()}
         className={cn(
-          'w-full inline-flex h-12 items-center justify-center gap-1.5 rounded-xl text-card-emphasis font-bold transition-colors motion-reduce:transition-none',
-          'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900',
+          'w-full inline-flex h-12 items-center justify-center gap-1.5 rounded-w-md text-card-emphasis font-bold transition-colors motion-reduce:transition-none',
+          'focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900',
           isSending || !title.trim() || !message.trim()
-            ? 'bg-wline dark:bg-rink-700 text-wtext-3 dark:text-rink-300 cursor-not-allowed'
-            : 'bg-ice-500 text-white hover:bg-ice-700 active:brightness-95',
+            ? 'bg-it-line dark:bg-rink-700 text-it-ink-400 dark:text-rink-300 cursor-not-allowed'
+            : 'bg-it-blue-500 text-white hover:bg-it-blue-600 active:brightness-95',
         )}
       >
         {!isSending && <Icon name="send" className="text-[18px]" aria-hidden="true" />}
@@ -224,9 +224,9 @@ export default function AcademyDetailPage() {
     return (
       <MobileContainer hasBottomNav>
         <PageAppBar title={MESSAGES.academy.manage} />
-        <div className="flex flex-col items-center justify-center px-6 py-20">
-          <Icon name="error_outline" className="text-4xl text-wtext-4 dark:text-rink-500 mb-3" />
-          <p className="text-card-body text-wtext-3 dark:text-rink-300">{MESSAGES.error.general}</p>
+        <div className="flex flex-col items-center justify-center px-6 py-20 bg-it-canvas dark:bg-puck">
+          <Icon name="error_outline" className="text-4xl text-it-ink-400 dark:text-rink-500 mb-3" />
+          <p className="text-card-body text-it-ink-500 dark:text-rink-300">{MESSAGES.error.general}</p>
         </div>
       </MobileContainer>
     );
@@ -236,26 +236,23 @@ export default function AcademyDetailPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title={academy.name} />
 
-      <main className="flex-1 overflow-y-auto hide-scrollbar">
-        {/* Hero 섹션 */}
-        <section className="px-5 pt-6 pb-5">
-          <p className="text-card-meta font-bold uppercase tracking-[0.18em] text-ice-500 mb-2">
-            Academy Detail
-          </p>
-          <h2 className="text-3xl font-black text-wtext-1 dark:text-white leading-tight tracking-tight line-clamp-2">
+      <main className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck !pb-8">
+        {/* Hero 섹션 — flat 흰 섹션 (박스 제거 · 17px/800 it-ink 타이틀) */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 pt-4 pb-4">
+          <h2 className="text-[22px] font-extrabold text-it-ink-800 dark:text-white leading-tight tracking-[-0.02em] line-clamp-2">
             {academy.name}
           </h2>
           {academy.region && (
-            <p className="mt-2 inline-flex items-center gap-1 text-card-body font-semibold text-wtext-3 dark:text-rink-300">
+            <p className="mt-2 inline-flex items-center gap-1 text-card-body font-semibold text-it-ink-500 dark:text-rink-300">
               <Icon name="place" className="text-[16px]" aria-hidden="true" />
               {academy.region}
             </p>
           )}
         </section>
 
-        {/* 탭 네비게이션 */}
+        {/* 탭 네비게이션 — flat 흰 면 + it-blue 밑줄 */}
         <div
-          className="sticky top-0 z-10 bg-wbg dark:bg-rink-900 border-b border-wline-2 dark:border-rink-800"
+          className="sticky top-0 z-10 mt-2 bg-it-surface dark:bg-it-blue-950 border-b border-it-line dark:border-rink-800"
           role="tablist"
           aria-label="오픈클래스 섹션"
         >
@@ -269,10 +266,10 @@ export default function AcademyDetailPage() {
                 onClick={() => setActiveTab(tab.key)}
                 className={cn(
                   'flex-1 flex items-center justify-center gap-1.5 py-3.5 text-card-body font-bold transition-colors motion-reduce:transition-none',
-                  'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-inset',
+                  'focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus-visible:ring-inset',
                   activeTab === tab.key
-                    ? 'text-ice-500 border-b-2 border-ice-500'
-                    : 'text-wtext-3 dark:text-rink-300 border-b-2 border-transparent',
+                    ? 'text-it-blue-500 border-b-2 border-it-blue-500'
+                    : 'text-it-ink-400 dark:text-rink-300 border-b-2 border-transparent',
                 )}
               >
                 <Icon name={tab.icon} className="text-card-emphasis" aria-hidden="true" />
@@ -282,26 +279,26 @@ export default function AcademyDetailPage() {
           </div>
         </div>
 
-        <div className="px-5 py-6 pb-28">
-          {/* ── 개요 탭 ── */}
+        <div className="px-5 py-6">
+          {/* ── 개요 탭 ── flat: 카드 박스 제거 → 인셋(it-fill) 블록 + hairline 행 */}
           {activeTab === 'overview' && (
-            <div className="space-y-6" role="tabpanel">
-              {/* 오픈클래스 코드 */}
+            <div className="space-y-5" role="tabpanel">
+              {/* 오픈클래스 코드 — it-fill 인셋 블록 */}
               <section
                 aria-label="오픈클래스 코드"
-                className="rounded-2xl border border-gray-200 dark:border-rink-700 bg-white dark:bg-rink-800 p-5 shadow-sm"
+                className="rounded-w-md bg-it-fill dark:bg-it-blue-900/40 border border-it-line dark:border-rink-700 p-5"
               >
-                <p className="text-card-meta font-bold uppercase tracking-wider text-wtext-3 dark:text-rink-300 mb-2">
+                <p className="text-card-meta font-bold uppercase tracking-wider text-it-ink-400 dark:text-rink-300 mb-2">
                   {MESSAGES.academy.codeLabel}
                 </p>
                 <div className="flex items-center gap-3">
-                  <code className="flex-1 text-2xl font-mono font-black text-ice-500 tracking-[0.2em]">
+                  <code className="flex-1 text-2xl font-mono font-black text-it-blue-500 tracking-[0.2em]">
                     {academy.code}
                   </code>
                   <button
                     type="button"
                     onClick={handleCopyCode}
-                    className="shrink-0 inline-flex h-10 items-center gap-1 rounded-xl bg-wline-2 dark:bg-rink-700 px-3 text-card-body font-bold text-wtext-2 dark:text-rink-100 hover:bg-wline dark:hover:bg-rink-500 active:brightness-95 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900"
+                    className="shrink-0 inline-flex h-10 items-center gap-1 rounded-w-md bg-it-surface dark:bg-rink-700 border border-it-line-strong dark:border-rink-600 px-3 text-card-body font-bold text-it-ink-800 dark:text-rink-100 hover:bg-it-line dark:hover:bg-rink-500 active:brightness-95 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900"
                     aria-label="오픈클래스 코드 복사"
                   >
                     <Icon name={codeCopied ? 'check' : 'content_copy'} className="text-[16px]" aria-hidden="true" />
@@ -310,79 +307,76 @@ export default function AcademyDetailPage() {
                 </div>
               </section>
 
-              {/* 통계 — 대담한 숫자 */}
+              {/* 통계 — it-fill 인셋 3분할 */}
               <section aria-label="오픈클래스 통계" className="grid grid-cols-3 gap-3">
-                <div className="rounded-2xl border border-gray-200 dark:border-rink-700 bg-white dark:bg-rink-800 p-4 text-center shadow-sm">
-                  <p className="text-3xl font-black text-ice-500 tabular-nums">
+                <div className="rounded-w-md bg-it-fill dark:bg-it-blue-900/40 border border-it-line dark:border-rink-700 p-4 text-center">
+                  <p className="text-3xl font-black text-it-blue-500 tabular-nums">
                     {academy._count?.members ?? 0}
                   </p>
-                  <p className="mt-1 text-card-meta font-bold text-wtext-3 dark:text-rink-300">
+                  <p className="mt-1 text-card-meta font-bold text-it-ink-500 dark:text-rink-300">
                     수강생
                   </p>
                 </div>
-                <div className="rounded-2xl border border-gray-200 dark:border-rink-700 bg-white dark:bg-rink-800 p-4 text-center shadow-sm">
-                  <p className="text-3xl font-black text-ice-500 tabular-nums">
+                <div className="rounded-w-md bg-it-fill dark:bg-it-blue-900/40 border border-it-line dark:border-rink-700 p-4 text-center">
+                  <p className="text-3xl font-black text-it-blue-500 tabular-nums">
                     {academy._count?.coaches ?? 0}
                   </p>
-                  <p className="mt-1 text-card-meta font-bold text-wtext-3 dark:text-rink-300">
+                  <p className="mt-1 text-card-meta font-bold text-it-ink-500 dark:text-rink-300">
                     코치
                   </p>
                 </div>
-                <div className="rounded-2xl border border-gray-200 dark:border-rink-700 bg-white dark:bg-rink-800 p-4 text-center shadow-sm">
-                  <p className="text-3xl font-black text-ice-500 tabular-nums">
+                <div className="rounded-w-md bg-it-fill dark:bg-it-blue-900/40 border border-it-line dark:border-rink-700 p-4 text-center">
+                  <p className="text-3xl font-black text-it-blue-500 tabular-nums">
                     {academy._count?.classes ?? 0}
                   </p>
-                  <p className="mt-1 text-card-meta font-bold text-wtext-3 dark:text-rink-300">
+                  <p className="mt-1 text-card-meta font-bold text-it-ink-500 dark:text-rink-300">
                     수업
                   </p>
                 </div>
               </section>
 
-              {/* 오픈클래스 정보 */}
-              <section
-                aria-label="오픈클래스 정보"
-                className="rounded-2xl border border-gray-200 dark:border-rink-700 bg-white dark:bg-rink-800 shadow-sm overflow-hidden"
-              >
-                <h3 className="border-b border-wline-2 dark:border-rink-700 px-5 py-3.5 text-card-emphasis font-bold text-wtext-1 dark:text-white">
+              {/* 오픈클래스 정보 — 섹션 제목 + hairline 행 (박스 제거) */}
+              <section aria-label="오픈클래스 정보">
+                <h3 className="pb-2 text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
                   오픈클래스 정보
                 </h3>
-                <dl className="divide-y divide-slate-100 dark:divide-slate-700">
+                <dl className="border-t border-it-line dark:border-rink-700">
                   {academy.description && (
-                    <div className="px-5 py-4">
-                      <dt className="text-card-meta font-bold uppercase tracking-wider text-wtext-3 dark:text-rink-300 mb-1">
+                    <div className="border-b border-it-line dark:border-rink-700 py-4">
+                      <dt className="text-card-meta font-bold uppercase tracking-wider text-it-ink-400 dark:text-rink-300 mb-1">
                         소개
                       </dt>
-                      <dd className="text-card-body font-medium text-wtext-1 dark:text-white leading-relaxed">
+                      <dd className="text-card-body font-medium text-it-ink-800 dark:text-white leading-relaxed">
                         {academy.description}
                       </dd>
                     </div>
                   )}
                   {academy.region && (
-                    <div className="px-5 py-4">
-                      <dt className="text-card-meta font-bold uppercase tracking-wider text-wtext-3 dark:text-rink-300 mb-1">
+                    <div className="border-b border-it-line dark:border-rink-700 py-4">
+                      <dt className="text-card-meta font-bold uppercase tracking-wider text-it-ink-400 dark:text-rink-300 mb-1">
                         지역
                       </dt>
-                      <dd className="text-card-body font-semibold text-wtext-1 dark:text-white">
+                      <dd className="text-card-body font-semibold text-it-ink-800 dark:text-white">
                         {academy.region}
                       </dd>
                     </div>
                   )}
                   {academy.contactPhone && (
-                    <div className="px-5 py-4">
-                      <dt className="text-card-meta font-bold uppercase tracking-wider text-wtext-3 dark:text-rink-300 mb-1">
+                    <div className="border-b border-it-line dark:border-rink-700 py-4">
+                      <dt className="text-card-meta font-bold uppercase tracking-wider text-it-ink-400 dark:text-rink-300 mb-1">
                         연락처
                       </dt>
-                      <dd className="text-card-body font-semibold text-wtext-1 dark:text-white tabular-nums">
+                      <dd className="text-card-body font-semibold text-it-ink-800 dark:text-white tabular-nums">
                         {academy.contactPhone}
                       </dd>
                     </div>
                   )}
                   {academy.contactEmail && (
-                    <div className="px-5 py-4">
-                      <dt className="text-card-meta font-bold uppercase tracking-wider text-wtext-3 dark:text-rink-300 mb-1">
+                    <div className="border-b border-it-line dark:border-rink-700 py-4">
+                      <dt className="text-card-meta font-bold uppercase tracking-wider text-it-ink-400 dark:text-rink-300 mb-1">
                         이메일
                       </dt>
-                      <dd className="text-card-body font-semibold text-wtext-1 dark:text-white break-all">
+                      <dd className="text-card-body font-semibold text-it-ink-800 dark:text-white break-all">
                         {academy.contactEmail}
                       </dd>
                     </div>
@@ -390,11 +384,11 @@ export default function AcademyDetailPage() {
                 </dl>
               </section>
 
-              {/* 편집 버튼 */}
+              {/* 편집 버튼 — it-blue outline (시안 secondary) */}
               <button
                 type="button"
                 onClick={handleEdit}
-                className="w-full inline-flex h-12 items-center justify-center gap-1.5 rounded-xl border-2 border-ice-500 text-ice-500 text-card-emphasis font-bold hover:bg-ice-500/5 dark:hover:bg-ice-500/10 active:brightness-95 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900"
+                className="w-full inline-flex h-12 items-center justify-center gap-1.5 rounded-w-md border-[1.5px] border-it-line-strong text-it-blue-600 text-card-emphasis font-bold hover:bg-it-blue-500/5 dark:hover:bg-it-blue-500/10 active:brightness-95 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900"
               >
                 <Icon name="edit" className="text-[18px]" aria-hidden="true" />
                 수정하기
@@ -404,7 +398,7 @@ export default function AcademyDetailPage() {
 
           {/* ── 수강생 탭 (Master-Detail Drill-down) ── */}
           {activeTab === 'students' && academyId && (
-            <AcademyStudentsTab academyId={academyId} />
+            <AcademyStudentsTab academyId={academyId} iceTheme />
           )}
 
           {/* ── 코치 탭 ── */}
@@ -413,6 +407,7 @@ export default function AcademyDetailPage() {
               coaches={coaches}
               onRemove={handleRemoveCoach}
               isLoading={isCoachesLoading}
+              iceTheme
             />
           )}
 

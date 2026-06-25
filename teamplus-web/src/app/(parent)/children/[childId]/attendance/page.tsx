@@ -68,16 +68,16 @@ function formatDay(iso: string): string {
 
 function ClassRow({ item }: { item: ChildClassHistoryItem }) {
   return (
-    <div className="flex items-start gap-3 border-b border-wline-2 py-3 last:border-b-0 dark:border-rink-700">
+    <div className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
       <span
-        className="mt-1.5 size-2 shrink-0 rounded-w-pill bg-green-500 dark:bg-green-400"
+        className="mt-1.5 size-2 shrink-0 rounded-w-pill bg-mint-500"
         aria-hidden="true"
       />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-card-body font-semibold text-wtext-1 dark:text-white">
+        <p className="truncate text-card-body font-semibold text-it-ink-800 dark:text-white">
           {item.name}
         </p>
-        <div className="mt-1 flex items-center gap-3 text-card-meta text-wtext-3 dark:text-rink-300">
+        <div className="mt-1 flex items-center gap-3 text-card-meta text-it-ink-500 dark:text-rink-300">
           <span className="tabular-nums flex items-center gap-1">
             <Icon name="event" className="text-[14px]" aria-hidden="true" />
             {formatDay(item.attendedAt)}
@@ -189,15 +189,15 @@ export default function ChildAttendancePage() {
       />
 
       <main
-        className="flex-1 overflow-y-auto hide-scrollbar bg-wbg dark:bg-rink-900"
+        className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck"
         role="main"
         aria-label="자녀 출석 현황"
       >
-        <div className="flex flex-col gap-4 px-4 py-4">
-          {/* 에러 배너 */}
-          {errorMessage && (
+        {/* 에러 배너 */}
+        {errorMessage && (
+          <div className="px-4 pt-4">
             <div
-              className="flex items-start gap-2 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-card-body text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300"
+              className="flex items-start gap-2 rounded-w-md border-[1.5px] border-it-red-500/30 bg-it-red-500/10 px-4 py-3 text-card-body text-it-red-500 dark:border-it-red-500/30 dark:bg-it-red-500/15"
               role="alert"
             >
               <Icon
@@ -207,115 +207,128 @@ export default function ChildAttendancePage() {
               />
               <span>{errorMessage}</span>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* 상단 지표 — 올해 / 이번 달 present 카운트 */}
-          <section
-            aria-label="출석 요약"
-            className="rounded-2xl border border-wline-2 bg-wsurface p-5 shadow-sh-1 dark:border-rink-700 dark:bg-rink-800"
-          >
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col items-center gap-1">
-                <span className="tabular-nums text-w-h1 font-extrabold text-ice-500">
-                  {yearPresent}
-                </span>
-                <span className="text-card-meta font-medium text-wtext-3 dark:text-rink-300">
-                  {MESSAGES.childAttendance.yearLabel}
-                </span>
-              </div>
-              <div className="flex flex-col items-center gap-1">
-                <span className="tabular-nums text-w-h1 font-extrabold text-wtext-1 dark:text-white">
-                  {thisMonthPresent.length}
-                </span>
-                <span className="text-card-meta font-medium text-wtext-3 dark:text-rink-300">
-                  {MESSAGES.childAttendance.monthLabel}
-                </span>
-              </div>
+        {/* 상단 지표 — flat 흰 섹션, 올해 / 이번 달 present 카운트 */}
+        <section
+          aria-label="출석 요약"
+          className="bg-it-surface dark:bg-rink-800 px-5 pt-6 pb-6"
+        >
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col items-center gap-1">
+              <span className="tabular-nums text-w-h1 font-extrabold text-mint-500">
+                {yearPresent}
+              </span>
+              <span className="text-card-meta font-semibold text-it-ink-500 dark:text-rink-300">
+                {MESSAGES.childAttendance.yearLabel}
+              </span>
             </div>
-          </section>
+            <div className="flex flex-col items-center gap-1">
+              <span className="tabular-nums text-w-h1 font-extrabold text-it-ink-800 dark:text-white">
+                {thisMonthPresent.length}
+              </span>
+              <span className="text-card-meta font-semibold text-it-ink-500 dark:text-rink-300">
+                {MESSAGES.childAttendance.monthLabel}
+              </span>
+            </div>
+          </div>
+        </section>
 
-          {/* 수업별 출석 (올해) — 0건이면 섹션 숨김 */}
-          {byClass.length > 0 && (
+        {/* 수업별 출석 (올해) — 0건이면 섹션 숨김 */}
+        {byClass.length > 0 && (
+          <>
+            <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
             <section
               aria-label={MESSAGES.childAttendance.byClassTitle}
-              className="rounded-2xl border border-wline-2 bg-wsurface p-4 shadow-sh-1 dark:border-rink-700 dark:bg-rink-800"
+              className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6"
             >
-              <h2 className="mb-2 text-card-title font-extrabold text-wtext-1 dark:text-white">
+              <h2 className="mb-3 text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
                 {MESSAGES.childAttendance.byClassTitle}
               </h2>
-              <ul className="flex flex-col">
+              <ul className="flex flex-col divide-y divide-it-line dark:divide-rink-700">
                 {byClass.map((row) => (
                   <li
                     key={row.name}
-                    className="flex items-center justify-between border-b border-wline-2 py-2.5 last:border-b-0 dark:border-rink-700"
+                    className="flex items-center justify-between py-2.5 first:pt-0 last:pb-0"
                   >
-                    <span className="min-w-0 flex-1 truncate text-card-body font-semibold text-wtext-1 dark:text-white">
+                    <span className="min-w-0 flex-1 truncate text-card-body font-semibold text-it-ink-800 dark:text-white">
                       {row.name}
                     </span>
-                    <span className="tabular-nums shrink-0 text-card-body font-bold text-ice-500">
+                    <span className="tabular-nums shrink-0 text-card-body font-bold text-it-blue-500">
                       {MESSAGES.calendar.historyCount(row.count)}
                     </span>
                   </li>
                 ))}
               </ul>
             </section>
-          )}
+          </>
+        )}
 
-          {/* 이번 달 출석 리스트 (또는 직전 달 폴백) */}
-          {monthList ? (
-            <section
-              aria-label={MESSAGES.childAttendance.monthListTitle(
-                monthList.month,
-              )}
-              className="rounded-2xl border border-wline-2 bg-wsurface p-4 shadow-sh-1 dark:border-rink-700 dark:bg-rink-800"
-            >
-              <div className="mb-1 flex items-baseline justify-between gap-2">
-                <h2 className="text-card-title font-extrabold text-wtext-1 dark:text-white">
-                  {MESSAGES.childAttendance.monthListTitle(monthList.month)}
-                </h2>
-                <span className="tabular-nums text-card-meta font-semibold text-wtext-3 dark:text-rink-300">
-                  {MESSAGES.calendar.historyCount(monthList.items.length)}
-                </span>
-              </div>
-              {monthList.isPrev && (
-                <p className="mb-1 flex items-center gap-1 text-card-meta text-wtext-3 dark:text-rink-300">
-                  <Icon name="info" className="text-[14px]" aria-hidden="true" />
-                  {MESSAGES.childAttendance.prevMonthHint}
-                </p>
-              )}
-              <div>
-                {monthList.items.map((item, idx) => (
-                  <ClassRow key={`${item.attendedAt}-${idx}`} item={item} />
-                ))}
-              </div>
-            </section>
-          ) : (
-            <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-wline-2 bg-wsurface p-10 text-center dark:border-rink-700 dark:bg-rink-800">
-              <div className="flex size-14 items-center justify-center rounded-w-pill bg-wline-2 dark:bg-rink-700">
+        {/* 이번 달 출석 리스트 (또는 직전 달 폴백) */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+        {monthList ? (
+          <section
+            aria-label={MESSAGES.childAttendance.monthListTitle(
+              monthList.month,
+            )}
+            className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6"
+          >
+            <div className="mb-1 flex items-baseline justify-between gap-2">
+              <h2 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
+                {MESSAGES.childAttendance.monthListTitle(monthList.month)}
+              </h2>
+              <span className="tabular-nums text-card-meta font-semibold text-it-ink-500 dark:text-rink-300">
+                {MESSAGES.calendar.historyCount(monthList.items.length)}
+              </span>
+            </div>
+            {monthList.isPrev && (
+              <p className="mb-1 flex items-center gap-1 text-card-meta text-it-ink-500 dark:text-rink-300">
+                <Icon name="info" className="text-[14px]" aria-hidden="true" />
+                {MESSAGES.childAttendance.prevMonthHint}
+              </p>
+            )}
+            <div className="mt-2 divide-y divide-it-line dark:divide-rink-700">
+              {monthList.items.map((item, idx) => (
+                <ClassRow key={`${item.attendedAt}-${idx}`} item={item} />
+              ))}
+            </div>
+          </section>
+        ) : (
+          <section className="bg-it-surface dark:bg-rink-800 px-5 py-10">
+            <div className="flex flex-col items-center justify-center gap-3 text-center">
+              <div className="flex size-14 items-center justify-center rounded-w-pill bg-it-line dark:bg-rink-700">
                 <Icon
                   name="event_busy"
-                  className="text-3xl text-wtext-3 dark:text-rink-300"
+                  className="text-3xl text-it-ink-400 dark:text-rink-300"
                   aria-hidden="true"
                 />
               </div>
-              <p className="text-card-body text-wtext-3 dark:text-rink-300">
+              <p className="text-card-body text-it-ink-500 dark:text-rink-300">
                 {MESSAGES.childAttendance.emptyThisMonth}
               </p>
             </div>
-          )}
+          </section>
+        )}
 
-          {/* 연간 전체 이력 보기 */}
-          {child && (
-            <button
-              type="button"
-              onClick={() => navigate(`/children/${child.id}/class-history`)}
-              className="flex w-full items-center justify-center gap-1.5 rounded-2xl bg-wsurface px-4 py-4 text-card-body font-bold text-ice-500 shadow-sh-1 border border-wline-2 transition-colors hover:bg-wline-2/40 active:brightness-95 motion-reduce:transition-none dark:border-rink-700 dark:bg-rink-800 dark:hover:bg-rink-700/40"
-            >
-              {MESSAGES.childAttendance.viewYearHistory}
-              <Icon name="arrow_forward" className="text-xl" aria-hidden="true" />
-            </button>
-          )}
-        </div>
+        {/* 연간 전체 이력 보기 */}
+        {child && (
+          <>
+            <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+            <section className="bg-it-surface dark:bg-rink-800 px-5 py-4">
+              <button
+                type="button"
+                onClick={() => navigate(`/children/${child.id}/class-history`)}
+                className="flex w-full items-center justify-center gap-1.5 rounded-w-md bg-it-fill px-4 py-4 text-card-body font-bold text-it-blue-500 border-[1.5px] border-it-line-strong transition-colors hover:bg-it-line/40 active:brightness-95 motion-reduce:transition-none dark:border-rink-700 dark:bg-rink-900 dark:hover:bg-rink-700/40"
+              >
+                {MESSAGES.childAttendance.viewYearHistory}
+                <Icon name="arrow_forward" className="text-xl" aria-hidden="true" />
+              </button>
+            </section>
+          </>
+        )}
+
+        <div className="h-6 bg-it-canvas dark:bg-puck" aria-hidden="true" />
       </main>
     </MobileContainer>
   );

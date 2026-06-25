@@ -52,7 +52,7 @@ export const MESSAGES = {
     selectProductDescription: "원하시는 결제 방식을 선택해주세요.",
     // 수업 유형 (정규/레슨 2카테고리)
     kindLabel: {
-      regular: "정규수업",
+      regular: "정규훈련",
       lesson: "레슨",
     },
     kindDescription: {
@@ -2883,7 +2883,7 @@ export const MESSAGES = {
     addSheet: {
       title: "추가하기",
       classRegister: "수업 등록",
-      classRegisterDesc: "팀 정규 수업을 새로 등록합니다",
+      classRegisterDesc: "팀 정규 훈련을 새로 등록합니다",
       tournamentRegister: "대회 등록",
       tournamentRegisterDesc: "팀 대회를 새로 등록합니다",
     },

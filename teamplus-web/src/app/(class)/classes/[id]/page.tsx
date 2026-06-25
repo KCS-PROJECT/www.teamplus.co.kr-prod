@@ -1021,8 +1021,7 @@ export default function ClassDetailPage() {
   const rawTypeLabel = classData.trainingType
     ? TRAINING_TYPE_LABEL[classData.trainingType] ?? null
     : null;
-  // 이 화면(훈련 상세)에서는 '정규수업' 배지를 '정규훈련'으로 노출(일정·classes-manage 통일). /classes 학부모 목록은 무관.
-  const typeLabel = rawTypeLabel === '정규수업' ? '정규훈련' : rawTypeLabel;
+  const typeLabel = rawTypeLabel;
   // levelLabel 은 순수히 level 만 표시 (typeLabel fallback 제거 — 색상/의미 혼선 방지)
   const levelLabel = translateLevel(classData.levelRequired);
   const hasProducts = (classData.products ?? []).length > 0;
