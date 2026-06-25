@@ -267,7 +267,7 @@ export function TabsTrigger({
     'font-medium text-sm',
     // color 전환만 유지 (배경/밑줄은 인디케이터가 담당)
     'transition-colors duration-200 motion-reduce:transition-none',
-    'focus:outline-none focus:ring-2 focus:ring-ice-500/50 focus:ring-offset-2',
+    'focus:outline-none focus:ring-2 focus:ring-ice-500/50 focus:ring-offset-2 focus-visible-disabled',
     'disabled:opacity-50 disabled:cursor-not-allowed',
     'relative z-[1]'
   );

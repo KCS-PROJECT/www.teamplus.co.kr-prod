@@ -49,7 +49,7 @@ const WEEKDAYS = WEEKDAY_HEADERS;
 const FIELD_CLASS =
   'w-full h-12 px-4 rounded-[12px] bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 ' +
   'text-card-meta font-semibold text-wtext-1 dark:text-white transition-colors motion-reduce:transition-none ' +
-  'hover:border-ice-500 focus:outline-none focus:border-ice-500 focus:shadow-[0_0_0_3px_rgb(47_95_255_/_0.1)]';
+  'hover:border-ice-500 focus:outline-none focus:border-ice-500 focus:shadow-[0_0_0_3px_rgb(47_95_255_/_0.1)] focus-visible-disabled';
 
 export function MultiDatePickerModal({
   isOpen,

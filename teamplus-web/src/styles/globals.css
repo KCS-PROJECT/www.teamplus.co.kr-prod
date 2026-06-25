@@ -979,7 +979,8 @@
   *:focus-visible {
     outline: 2px solid var(--c-ice-500, #2f5fff);
     outline-offset: 2px;
-    border-radius: 2px;
+    /* border-radius 강제 금지 — outline 은 요소 본래 radius 를 자동으로 따라간다.
+       2px 를 강제하면 rounded-* 요소가 포커스 시 모서리가 각지는 회귀가 발생. */
   }
   /* opt-out: 자체 ring 클래스를 가진 요소는 기본 outline 제거 */
   .focus-visible-disabled:focus-visible {

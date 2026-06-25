@@ -106,7 +106,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
               aria-describedby={[errorId, helperId].filter(Boolean).join(' ') || undefined}
               aria-required={required}
               className={cn(
-                'flex-1 min-w-0 h-full bg-transparent border-none outline-none',
+                // focus-visible-disabled: 전역 *:focus-visible(globals.css) 의 각진 ice-500
+                // outline 을 opt-out → 컨테이너의 둥근 focus-within border 만 포커스 강조로 유지.
+                'flex-1 min-w-0 h-full bg-transparent border-none outline-none focus-visible-disabled',
                 'text-[15.5px] font-semibold text-it-ink-800 dark:text-white',
                 'placeholder-it-ink-400 dark:placeholder-it-ink-300',
                 props.disabled && 'cursor-not-allowed',
@@ -174,7 +176,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
               'border border-wline dark:border-rink-700 rounded-lg',
               'text-wtext-1 dark:text-white text-[15px]',
               'placeholder-wtext-3 dark:placeholder-rink-300',
-              'focus:outline-none focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20',
+              'focus:outline-none focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20 focus-visible-disabled',
               'transition-all duration-200',
               icon ? 'pl-12' : 'pl-4',
               isPassword ? 'pr-12' : 'pr-4',
@@ -256,7 +258,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
             'border border-wline dark:border-rink-700 rounded-lg',
             'text-wtext-1 dark:text-white text-[15px]',
             'placeholder-wtext-3 dark:placeholder-rink-300',
-            'focus:outline-none focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20',
+            'focus:outline-none focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20 focus-visible-disabled',
             'transition-all duration-200 resize-none',
             'min-h-[120px]',
             error && 'border-error focus:border-error focus:ring-error/20',
@@ -334,7 +336,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
               'block w-full h-12 min-h-[48px] px-4 bg-white dark:bg-rink-800',
               'border border-wline dark:border-rink-700 rounded-lg',
               'text-wtext-1 dark:text-white text-[15px]',
-              'focus:outline-none focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20',
+              'focus:outline-none focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20 focus-visible-disabled',
               'transition-all duration-200',
               'appearance-none cursor-pointer',
               'pr-10',
@@ -406,7 +408,7 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(
               'w-5 h-5 rounded border-2 border-wline dark:border-rink-700',
               'bg-white dark:bg-rink-800',
               'checked:bg-ice-500 checked:border-ice-500',
-              'focus:outline-none focus:ring-2 focus:ring-ice-500/20 focus:ring-offset-2',
+              'focus:outline-none focus:ring-2 focus:ring-ice-500/20 focus:ring-offset-2 focus-visible-disabled',
               'transition-all duration-200 cursor-pointer',
               'appearance-none'
             )}
@@ -461,7 +463,7 @@ export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(
             'border border-wline dark:border-rink-700 rounded-full',
             'text-wtext-1 dark:text-white text-[15px]',
             'placeholder-wtext-3 dark:placeholder-rink-300',
-            'focus:outline-none focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20 focus:bg-white dark:focus:bg-rink-800',
+            'focus:outline-none focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20 focus:bg-white dark:focus:bg-rink-800 focus-visible-disabled',
             'transition-all duration-200',
             className
           )}
