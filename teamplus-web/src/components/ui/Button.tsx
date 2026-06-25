@@ -70,7 +70,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       'relative inline-flex items-center justify-center',
       'font-semibold rounded-lg',
       'transition-colors duration-200',
-      'focus:outline-none focus:ring-2 focus:ring-offset-2',
+      'focus:outline-none focus:ring-2 focus:ring-offset-2 focus-visible-disabled',
       'disabled:opacity-50 disabled:cursor-not-allowed',
       // active:scale 대신 brightness로 피드백 제공 (깜박임 방지)
       'active:brightness-95'
@@ -83,7 +83,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       'relative inline-flex items-center justify-center gap-2',
       'font-bold tracking-tight rounded-w-md',
       'transition-[filter] duration-150',
-      'focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 focus-visible:ring-offset-2',
+      'focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 focus-visible:ring-offset-2 focus-visible-disabled',
       'disabled:opacity-[0.42] disabled:cursor-not-allowed',
       'active:brightness-95'
     );
@@ -217,7 +217,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
     const baseStyles = cn(
       'inline-flex items-center justify-center rounded-full',
       'transition-colors duration-200',
-      'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ice-500/50',
+      'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ice-500/50 focus-visible-disabled',
       // active:scale 대신 brightness로 피드백 제공 (깜박임 방지)
       'active:brightness-95'
     );
@@ -302,7 +302,7 @@ export const Fab = forwardRef<HTMLButtonElement, FabProps>(
           'hover:shadow-md',
           // active:scale 대신 brightness로 피드백 제공 (깜박임 방지)
           'active:brightness-95',
-          'focus:outline-none focus:ring-4',
+          'focus:outline-none focus:ring-4 focus-visible-disabled',
           variants[variant],
           sizes[size],
           className

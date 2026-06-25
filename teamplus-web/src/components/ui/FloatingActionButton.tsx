@@ -27,7 +27,7 @@ export interface FloatingActionButtonProps {
 }
 
 const FAB_CLASS =
-  'fixed bottom-fab-safe right-4 z-30 flex items-center justify-center size-14 rounded-w-pill bg-ice-500 text-white shadow-sh-1 hover:bg-ice-600 active:brightness-95 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40';
+  'fixed bottom-fab-safe right-4 z-30 flex items-center justify-center size-14 rounded-w-pill bg-ice-500 text-white shadow-sh-1 hover:bg-ice-600 active:brightness-95 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 focus-visible-disabled';
 
 export function FloatingActionButton({
   href,
