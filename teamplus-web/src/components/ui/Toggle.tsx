@@ -57,7 +57,7 @@ export function Toggle({
       onClick={() => onChange(!checked)}
       className={cn(
         'relative inline-flex shrink-0 cursor-pointer rounded-full border-2 border-transparent',
-        'transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2',
+        'transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 focus-visible-disabled',
         styles.track,
         checked
           ? 'bg-ice-500'

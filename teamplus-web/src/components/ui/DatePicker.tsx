@@ -292,7 +292,7 @@ export function DatePicker({
           'bg-white dark:bg-rink-800',
           'border rounded-lg',
           'text-left text-[15px]',
-          'focus:outline-none focus:ring-2 focus:ring-ice-500/20',
+          'focus:outline-none focus:ring-2 focus:ring-ice-500/20 focus-visible-disabled',
           'transition-all duration-200',
           error
             ? 'border-error focus:border-error'

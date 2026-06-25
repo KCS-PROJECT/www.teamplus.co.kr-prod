@@ -335,7 +335,7 @@ export function DatePickerModal({
                   ? '이전 연도'
                   : '이전 연도 페이지'
             }
-            className="w-9 h-9 grid place-items-center rounded-full hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors text-wtext-2 dark:text-rink-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 disabled:opacity-30 disabled:cursor-not-allowed"
+            className="w-9 h-9 grid place-items-center rounded-full hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors text-wtext-2 dark:text-rink-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 focus-visible-disabled disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
               <path
@@ -358,7 +358,7 @@ export function DatePickerModal({
                   setViewMode('year');
                 }}
                 aria-label="연도 선택"
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-card-title font-bold text-wtext-1 dark:text-white hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-card-title font-bold text-wtext-1 dark:text-white hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 focus-visible-disabled"
               >
                 <span>{viewYear}년</span>
                 <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
@@ -376,7 +376,7 @@ export function DatePickerModal({
                 type="button"
                 onClick={() => setViewMode('month')}
                 aria-label="월 선택"
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-card-title font-bold text-wtext-1 dark:text-white hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-card-title font-bold text-wtext-1 dark:text-white hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 focus-visible-disabled"
               >
                 <span>{MONTH_LABELS[viewMonth]}</span>
                 <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
@@ -396,7 +396,7 @@ export function DatePickerModal({
               type="button"
               onClick={() => setViewMode('day')}
               aria-label="날짜 보기로 돌아가기"
-              className="inline-flex items-center gap-1 px-3 py-1 rounded-md text-card-title font-bold text-wtext-1 dark:text-white hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
+              className="inline-flex items-center gap-1 px-3 py-1 rounded-md text-card-title font-bold text-wtext-1 dark:text-white hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 focus-visible-disabled"
             >
               <span>{headerCenter}</span>
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
@@ -422,7 +422,7 @@ export function DatePickerModal({
                   ? '다음 연도'
                   : '다음 연도 페이지'
             }
-            className="w-9 h-9 grid place-items-center rounded-full hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors text-wtext-2 dark:text-rink-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 disabled:opacity-30 disabled:cursor-not-allowed"
+            className="w-9 h-9 grid place-items-center rounded-full hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors text-wtext-2 dark:text-rink-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 focus-visible-disabled disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
               <path
@@ -485,7 +485,7 @@ export function DatePickerModal({
                     role="gridcell"
                     className={cn(
                       'h-10 grid place-items-center rounded-full text-card-body font-bold transition-colors',
-                      'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40',
+                      'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 focus-visible-disabled',
                       disabled
                         ? 'text-wtext-4 dark:text-rink-500 cursor-not-allowed'
                         : isSelected
@@ -531,7 +531,7 @@ export function DatePickerModal({
                   role="gridcell"
                   className={cn(
                     'h-12 rounded-xl text-card-title font-bold transition-colors',
-                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40',
+                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 focus-visible-disabled',
                     disabled
                       ? 'text-wtext-4 dark:text-rink-500 cursor-not-allowed'
                       : isSelected
@@ -567,7 +567,7 @@ export function DatePickerModal({
                     role="gridcell"
                     className={cn(
                       'h-12 rounded-xl text-card-title font-bold tabular-nums transition-colors',
-                      'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40',
+                      'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 focus-visible-disabled',
                       disabled
                         ? 'text-wtext-4 dark:text-rink-500 cursor-not-allowed'
                         : isSelected

@@ -11,6 +11,7 @@
 //    리다이렉트를 이미 처리하므로 매 요청 SSR 불필요. TTFB 30~60ms 단축.
 import { useState, useEffect, useRef } from "react";
 import { flushSync } from "react-dom";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -93,35 +94,6 @@ function hasHangul(value: string): boolean {
   return HANGUL_REGEX.test(value);
 }
 
-// ========== ICETIMES 워드마크 로고 (TEAMPLUS + 커스텀 "+" 마크, 빨강 arm) ==========
-// 시안 SoT: backdata/teamplus_하우머치스타일/ui_kits/auth/Login.jsx (TPLogo)
-function TPLogo({ height = 34 }: { height?: number }) {
-  return (
-    <div className="flex items-center gap-[11px]">
-      <svg
-        width={height}
-        height={height}
-        viewBox="0 0 40 40"
-        fill="none"
-        role="img"
-        aria-label="TEAMPLUS"
-      >
-        <rect width="40" height="40" rx="11" fill="#0b4d96" />
-        <rect x="17.3" y="8" width="5.4" height="24" rx="2.7" fill="#ffffff" />
-        <rect x="8" y="17.3" width="12.4" height="5.4" rx="2.7" fill="#ffffff" />
-        <rect x="20.2" y="17.3" width="11.8" height="5.4" rx="2.7" fill="#c8202e" />
-      </svg>
-      <span
-        className="font-extrabold leading-none tracking-[-0.035em]"
-        style={{ fontSize: height * 0.6 }}
-      >
-        <span className="text-it-ink-800 dark:text-white">TEAM</span>
-        <span className="text-it-blue-600 dark:text-it-blue-300">PLUS</span>
-      </span>
-    </div>
-  );
-}
-
 // ========== 커스텀 계정 선택 드롭다운 ==========
 interface AccountOption {
   label: string;
@@ -170,7 +142,7 @@ function AccountSelector({
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="flex items-center w-full h-[52px] pl-12 pr-10 bg-it-surface dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[15.5px] font-semibold text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 transition-all motion-reduce:transition-none duration-200 disabled:bg-it-line disabled:dark:bg-puck disabled:cursor-not-allowed disabled:opacity-60 text-left"
+        className="flex items-center w-full h-[52px] pl-12 pr-10 bg-it-surface dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[15.5px] font-semibold text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 focus-visible-disabled transition-all motion-reduce:transition-none duration-200 disabled:bg-it-line disabled:dark:bg-puck disabled:cursor-not-allowed disabled:opacity-60 text-left"
       >
         <span className="truncate">{selected.label}</span>
       </button>
@@ -762,10 +734,30 @@ export default function LoginPage() {
       <main data-no-enter className="flex flex-1 flex-col overflow-y-auto scroll-keyboard-safe">
         <MaintenanceBanner />
         <div className="flex-1 flex flex-col px-[26px] pt-10 pb-keyboard-safe-8 max-w-md mx-auto w-full">
-          {/* ─── 로고 + 헤드라인 (ICETIMES flat — 카드 박스 제거) ─────── */}
+          {/* ─── 로고 + 헤드라인 ─────────────────────── */}
           <div className="flex flex-col">
-            <div className="mb-[30px]">
-              <TPLogo height={34} />
+            <div className="flex items-center gap-2.5 mb-6">
+              <div className="w-10 h-10 bg-ice-500 rounded-w-md flex items-center justify-center shadow-md">
+                <Image
+                  src="/images/app_icons/splash_logo.png"
+                  alt="팀플러스"
+                  width={28}
+                  height={28}
+                  priority
+                  className="w-7 h-7 object-contain"
+                />
+              </div>
+              {/* width/height 는 실제 본질 크기(954×218) 그대로 — 표시 크기는 h-5 w-auto 가 제어.
+                  display 크기(88×20)를 props 로 주면 height 만 속성과 일치(미변경)하고 w-auto
+                  계산폭(≈87.5)이 어긋나 next/image 의 단일 차원 변경 경고가 떴음. (aspect ratio 유지) */}
+              <Image
+                src="/images/app_icons/splash_wordmark3.png"
+                alt="팀플러스"
+                width={954}
+                height={218}
+                priority
+                className="h-5 w-auto object-contain dark:invert"
+              />
             </div>
 
             <h1 className="text-[25px] leading-[1.32] font-extrabold tracking-tight text-it-ink-900 dark:text-white">

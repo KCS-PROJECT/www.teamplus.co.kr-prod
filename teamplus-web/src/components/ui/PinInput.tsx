@@ -163,7 +163,7 @@ export default function PinInput({
             className={cn(
               // 공통 스타일
               'text-center font-bold rounded-xl border-2 bg-white',
-              'outline-none transition-colors duration-150',
+              'outline-none transition-colors duration-150 focus-visible-disabled',
               'dark:bg-rink-800 dark:text-white',
               // 사이즈: 48×48 정사각형 고정 (업계 표준, WCAG AA 터치 타겟 충족)
               childMode
