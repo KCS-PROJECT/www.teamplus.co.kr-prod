@@ -117,124 +117,124 @@ export default function PasswordChangePage() {
     <MobileContainer hasBottomNav={true}>
       <PageAppBar title="비밀번호 변경" forceNative />
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto px-4 py-6 bg-wbg dark:bg-puck">
-        {/* Info Banner */}
-        <div className="mb-6 p-4 bg-ice-50 dark:bg-ice-500/10 rounded-w-md border border-ice-100 dark:border-ice-500/20">
-          <div className="flex gap-3">
-            <Icon name="info" className="text-ice-500 text-xl shrink-0" />
-            <p className="text-w-small text-wtext-2 dark:text-rink-200">
+      {/* Main Content — ICETIMES flat: 회색 캔버스 + full-bleed 흰 섹션 */}
+      <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck !pb-8">
+        {/* 안내 — 흰 섹션 상단 인셋(it-fill) hairline 행 */}
+        <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6">
+          <div className="flex gap-3 px-4 py-3.5 rounded-w-md bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700">
+            <Icon name="info" className="text-it-blue-500 text-xl shrink-0" aria-hidden="true" />
+            <p className="text-w-small text-it-ink-500 dark:text-rink-200 leading-relaxed">
               안전한 비밀번호를 위해 8자 이상의 영문, 숫자, 특수문자를 조합해 주세요.
             </p>
           </div>
-        </div>
 
-        {/* Form */}
-        <div className="space-y-5">
-          {/* Current Password */}
-          <div>
-            <label className="block text-w-small font-medium text-wtext-2 dark:text-rink-200 mb-2">
-              현재 비밀번호
-            </label>
-            <div className="relative">
-              <input
-                type={showPasswords.current ? 'text' : 'password'}
-                value={formData.currentPassword}
-                onChange={(e) => handleChange('currentPassword', e.target.value)}
-                className={`w-full h-11 px-4 pr-12 rounded-w-md border ${
-                  errors.currentPassword
-                    ? 'border-red-500 focus:ring-red-200'
-                    : 'border-wline-2 dark:border-rink-700 focus:ring-ice-500/20'
-                } bg-wsurface dark:bg-rink-800 text-wtext-1 dark:text-white text-w-small focus:ring-2 focus:border-ice-500 transition-colors`}
-                placeholder={MESSAGES.placeholders.enterCurrentPassword}
-              />
+          {/* Form */}
+          <div className="mt-5 space-y-5">
+            {/* Current Password */}
+            <div>
+              <label className="block text-card-meta font-bold text-it-ink-500 dark:text-rink-100 mb-1.5">
+                현재 비밀번호
+              </label>
+              <div className="relative">
+                <input
+                  type={showPasswords.current ? 'text' : 'password'}
+                  value={formData.currentPassword}
+                  onChange={(e) => handleChange('currentPassword', e.target.value)}
+                  className={`w-full h-[50px] px-4 pr-12 rounded-w-md border-[1.5px] bg-it-fill dark:bg-rink-900 text-it-ink-800 dark:text-white text-[15.5px] font-semibold tracking-[-0.01em] transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/30 ${
+                    errors.currentPassword
+                      ? 'border-it-red-500'
+                      : 'border-it-line-strong dark:border-rink-700 focus:border-it-blue-500'
+                  }`}
+                  placeholder={MESSAGES.placeholders.enterCurrentPassword}
+                />
+                <button
+                  type="button"
+                  onClick={() => toggleShowPassword('current')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-it-ink-400 hover:text-it-ink-500"
+                  aria-label={showPasswords.current ? '비밀번호 숨기기' : '비밀번호 보기'}
+                >
+                  <Icon name={showPasswords.current ? 'visibility_off' : 'visibility'} aria-hidden="true" />
+                </button>
+              </div>
+              {errors.currentPassword && (
+                <p className="mt-2 text-card-body text-it-red-500" role="alert">{errors.currentPassword}</p>
+              )}
+            </div>
+
+            {/* New Password */}
+            <div>
+              <label className="block text-card-meta font-bold text-it-ink-500 dark:text-rink-100 mb-1.5">
+                새 비밀번호
+              </label>
+              <div className="relative">
+                <input
+                  type={showPasswords.new ? 'text' : 'password'}
+                  value={formData.newPassword}
+                  onChange={(e) => handleChange('newPassword', e.target.value)}
+                  className={`w-full h-[50px] px-4 pr-12 rounded-w-md border-[1.5px] bg-it-fill dark:bg-rink-900 text-it-ink-800 dark:text-white text-[15.5px] font-semibold tracking-[-0.01em] transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/30 ${
+                    errors.newPassword
+                      ? 'border-it-red-500'
+                      : 'border-it-line-strong dark:border-rink-700 focus:border-it-blue-500'
+                  }`}
+                  placeholder={MESSAGES.placeholders.enterNewPassword}
+                />
+                <button
+                  type="button"
+                  onClick={() => toggleShowPassword('new')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-it-ink-400 hover:text-it-ink-500"
+                  aria-label={showPasswords.new ? '비밀번호 숨기기' : '비밀번호 보기'}
+                >
+                  <Icon name={showPasswords.new ? 'visibility_off' : 'visibility'} aria-hidden="true" />
+                </button>
+              </div>
+              {errors.newPassword && (
+                <p className="mt-2 text-card-body text-it-red-500" role="alert">{errors.newPassword}</p>
+              )}
+            </div>
+
+            {/* Confirm Password */}
+            <div>
+              <label className="block text-card-meta font-bold text-it-ink-500 dark:text-rink-100 mb-1.5">
+                새 비밀번호 확인
+              </label>
+              <div className="relative">
+                <input
+                  type={showPasswords.confirm ? 'text' : 'password'}
+                  value={formData.confirmPassword}
+                  onChange={(e) => handleChange('confirmPassword', e.target.value)}
+                  className={`w-full h-[50px] px-4 pr-12 rounded-w-md border-[1.5px] bg-it-fill dark:bg-rink-900 text-it-ink-800 dark:text-white text-[15.5px] font-semibold tracking-[-0.01em] transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/30 ${
+                    errors.confirmPassword
+                      ? 'border-it-red-500'
+                      : 'border-it-line-strong dark:border-rink-700 focus:border-it-blue-500'
+                  }`}
+                  placeholder={MESSAGES.placeholders.enterConfirmPassword}
+                />
+                <button
+                  type="button"
+                  onClick={() => toggleShowPassword('confirm')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-it-ink-400 hover:text-it-ink-500"
+                  aria-label={showPasswords.confirm ? '비밀번호 숨기기' : '비밀번호 보기'}
+                >
+                  <Icon name={showPasswords.confirm ? 'visibility_off' : 'visibility'} aria-hidden="true" />
+                </button>
+              </div>
+              {errors.confirmPassword && (
+                <p className="mt-2 text-card-body text-it-red-500" role="alert">{errors.confirmPassword}</p>
+              )}
+            </div>
+
+            {/* Submit Button — it-blue lg h54 */}
+            <div className="pt-3">
               <button
-                type="button"
-                onClick={() => toggleShowPassword('current')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-wtext-4 hover:text-wtext-2"
-                aria-label={showPasswords.current ? '비밀번호 숨기기' : '비밀번호 보기'}
+                onClick={handleSubmit}
+                disabled={isLoading}
+                className="w-full h-[54px] bg-it-blue-500 hover:bg-it-blue-600 active:bg-it-blue-700 text-white text-[16px] font-extrabold tracking-[-0.01em] rounded-w-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40"
               >
-                <Icon name={showPasswords.current ? 'visibility_off' : 'visibility'} />
+                {isLoading ? '변경 중...' : '비밀번호 변경'}
               </button>
             </div>
-            {errors.currentPassword && (
-              <p className="mt-1.5 text-w-caption text-red-500">{errors.currentPassword}</p>
-            )}
           </div>
-
-          {/* New Password */}
-          <div>
-            <label className="block text-w-small font-medium text-wtext-2 dark:text-rink-200 mb-2">
-              새 비밀번호
-            </label>
-            <div className="relative">
-              <input
-                type={showPasswords.new ? 'text' : 'password'}
-                value={formData.newPassword}
-                onChange={(e) => handleChange('newPassword', e.target.value)}
-                className={`w-full h-11 px-4 pr-12 rounded-w-md border ${
-                  errors.newPassword
-                    ? 'border-red-500 focus:ring-red-200'
-                    : 'border-wline-2 dark:border-rink-700 focus:ring-ice-500/20'
-                } bg-wsurface dark:bg-rink-800 text-wtext-1 dark:text-white text-w-small focus:ring-2 focus:border-ice-500 transition-colors`}
-                placeholder={MESSAGES.placeholders.enterNewPassword}
-              />
-              <button
-                type="button"
-                onClick={() => toggleShowPassword('new')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-wtext-4 hover:text-wtext-2"
-                aria-label={showPasswords.new ? '비밀번호 숨기기' : '비밀번호 보기'}
-              >
-                <Icon name={showPasswords.new ? 'visibility_off' : 'visibility'} />
-              </button>
-            </div>
-            {errors.newPassword && (
-              <p className="mt-1.5 text-w-caption text-red-500">{errors.newPassword}</p>
-            )}
-          </div>
-
-          {/* Confirm Password */}
-          <div>
-            <label className="block text-w-small font-medium text-wtext-2 dark:text-rink-200 mb-2">
-              새 비밀번호 확인
-            </label>
-            <div className="relative">
-              <input
-                type={showPasswords.confirm ? 'text' : 'password'}
-                value={formData.confirmPassword}
-                onChange={(e) => handleChange('confirmPassword', e.target.value)}
-                className={`w-full h-11 px-4 pr-12 rounded-w-md border ${
-                  errors.confirmPassword
-                    ? 'border-red-500 focus:ring-red-200'
-                    : 'border-wline-2 dark:border-rink-700 focus:ring-ice-500/20'
-                } bg-wsurface dark:bg-rink-800 text-wtext-1 dark:text-white text-w-small focus:ring-2 focus:border-ice-500 transition-colors`}
-                placeholder={MESSAGES.placeholders.enterConfirmPassword}
-              />
-              <button
-                type="button"
-                onClick={() => toggleShowPassword('confirm')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-wtext-4 hover:text-wtext-2"
-                aria-label={showPasswords.confirm ? '비밀번호 숨기기' : '비밀번호 보기'}
-              >
-                <Icon name={showPasswords.confirm ? 'visibility_off' : 'visibility'} />
-              </button>
-            </div>
-            {errors.confirmPassword && (
-              <p className="mt-1.5 text-w-caption text-red-500">{errors.confirmPassword}</p>
-            )}
-          </div>
-
-          {/* Submit Button */}
-          <div className="pt-4">
-            <button
-              onClick={handleSubmit}
-              disabled={isLoading}
-              className="w-full h-12 bg-ice-500 hover:bg-ice-600 active:bg-ice-700 text-white font-semibold rounded-w-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors motion-reduce:transition-none"
-            >
-              {isLoading ? '변경 중...' : '비밀번호 변경'}
-            </button>
-          </div>
-        </div>
+        </section>
       </main>
     </MobileContainer>
   );

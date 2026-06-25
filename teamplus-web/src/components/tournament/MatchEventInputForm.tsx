@@ -29,6 +29,11 @@ interface Props {
   match: MatchDetail;
   onSubmit: (input: CreateMatchEventInput) => Promise<void>;
   isSubmitting?: boolean;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 카드 박스 → flat, 입력 it-fill+1.5px, 색만 it-* 치환(검증 로직 동결).
+   */
+  iceTheme?: boolean;
 }
 
 const EVENT_TYPES: { value: MatchEventType; label: string; icon: string }[] = [
@@ -47,7 +52,7 @@ const PENALTY_TYPES: { value: PenaltyType; label: string; minutes: number }[] = 
 
 const MM_SS_REGEX = /^[0-9]{1,2}:[0-5][0-9]$/;
 
-export function MatchEventInputForm({ match, onSubmit, isSubmitting }: Props) {
+export function MatchEventInputForm({ match, onSubmit, isSubmitting, iceTheme = false }: Props) {
   const periodId = useId();
   const timeId = useId();
   const typeId = useId();
@@ -100,15 +105,46 @@ export function MatchEventInputForm({ match, onSubmit, isSubmitting }: Props) {
     }
   };
 
+  // ── iceTheme 토큰 클래스 (false 경로는 기존 클래스 1:1 유지) ──
+  const labelCls = iceTheme
+    ? 'mb-2 block text-xs font-bold text-it-ink-600 dark:text-rink-100'
+    : 'mb-2 block text-xs font-bold text-wtext-2 dark:text-rink-100';
+  // 선택형 chip(이벤트 타입/팀) — idle/active 분기.
+  const chipIdle = iceTheme
+    ? 'border-it-line-strong bg-it-fill text-it-ink-600 hover:bg-it-line dark:border-rink-700 dark:bg-rink-700 dark:text-rink-100 dark:hover:bg-rink-500'
+    : 'border-wline bg-wbg text-wtext-2 hover:bg-wline-2 dark:border-rink-700 dark:bg-rink-700 dark:text-rink-100 dark:hover:bg-rink-500';
+  const chipActive = iceTheme
+    ? 'border-it-blue-500 bg-it-blue-500 text-white'
+    : 'border-ice-500 bg-ice-500 text-white';
+  const chipBorderW = iceTheme ? 'border-[1.5px]' : 'border';
+  const chipRadius = iceTheme ? 'rounded-w-md' : 'rounded-lg';
+  // 텍스트/셀렉트 인풋 — it-fill + 1.5px border.
+  const inputCls = iceTheme
+    ? 'h-10 w-full rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill px-3 text-sm text-it-ink-800 focus:border-it-blue-500 focus:bg-it-surface focus:outline-none dark:border-rink-700 dark:bg-rink-700 dark:text-white'
+    : 'h-10 w-full rounded-lg border border-wline bg-white px-3 text-sm dark:border-rink-700 dark:bg-rink-700 dark:text-white';
+
   return (
-    <div className="rounded-2xl border border-wline bg-white p-4 shadow-sm dark:border-rink-700 dark:bg-rink-800">
-      <h3 className="mb-4 text-sm font-bold text-wtext-1 dark:text-white">
+    <div
+      className={cn(
+        'p-4',
+        iceTheme
+          ? // ICETIMES flat — 카드 박스(rounded-2xl/shadow) 제거, hairline 경계.
+            'rounded-w-md border-[1.5px] border-it-line bg-it-surface dark:border-rink-700 dark:bg-it-blue-950'
+          : 'rounded-2xl border border-wline bg-white shadow-sm dark:border-rink-700 dark:bg-rink-800',
+      )}
+    >
+      <h3
+        className={cn(
+          'mb-4 text-sm font-bold',
+          iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white',
+        )}
+      >
         이벤트 기록하기
       </h3>
 
       {/* 이벤트 타입 */}
       <div className="mb-4">
-        <label htmlFor={typeId} className="mb-2 block text-xs font-bold text-wtext-2 dark:text-rink-100">
+        <label htmlFor={typeId} className={labelCls}>
           이벤트 타입
         </label>
         <div id={typeId} className="grid grid-cols-4 gap-2" role="radiogroup" aria-label="이벤트 타입 선택">
@@ -120,10 +156,10 @@ export function MatchEventInputForm({ match, onSubmit, isSubmitting }: Props) {
               role="radio"
               aria-checked={eventType === type.value}
               className={cn(
-                'flex flex-col items-center gap-1 rounded-lg border px-2 py-2 text-xs font-bold transition-colors',
-                eventType === type.value
-                  ? 'border-ice-500 bg-ice-500 text-white'
-                  : 'border-wline bg-wbg text-wtext-2 hover:bg-wline-2 dark:border-rink-700 dark:bg-rink-700 dark:text-rink-100 dark:hover:bg-rink-500',
+                'flex flex-col items-center gap-1 px-2 py-2 text-xs font-bold transition-colors',
+                chipBorderW,
+                chipRadius,
+                eventType === type.value ? chipActive : chipIdle,
               )}
             >
               <Icon name={type.icon} className="text-base" />
@@ -135,7 +171,7 @@ export function MatchEventInputForm({ match, onSubmit, isSubmitting }: Props) {
 
       {/* 팀 선택 */}
       <div className="mb-4">
-        <label htmlFor={teamId} className="mb-2 block text-xs font-bold text-wtext-2 dark:text-rink-100">
+        <label htmlFor={teamId} className={labelCls}>
           팀 선택
         </label>
         <div id={teamId} className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="팀 선택">
@@ -146,10 +182,10 @@ export function MatchEventInputForm({ match, onSubmit, isSubmitting }: Props) {
             aria-checked={selectedTeamId === match.homeTeam?.id}
             disabled={!match.homeTeam}
             className={cn(
-              'flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-xs font-bold transition-colors',
-              selectedTeamId === match.homeTeam?.id
-                ? 'border-ice-500 bg-ice-500 text-white'
-                : 'border-wline bg-wbg text-wtext-2 hover:bg-wline-2 dark:border-rink-700 dark:bg-rink-700 dark:text-rink-100',
+              'flex items-center justify-center gap-2 px-3 py-2.5 text-xs font-bold transition-colors',
+              chipBorderW,
+              chipRadius,
+              selectedTeamId === match.homeTeam?.id ? chipActive : chipIdle,
               !match.homeTeam && 'cursor-not-allowed opacity-50',
             )}
           >
@@ -163,10 +199,10 @@ export function MatchEventInputForm({ match, onSubmit, isSubmitting }: Props) {
             aria-checked={selectedTeamId === match.awayTeam?.id}
             disabled={!match.awayTeam}
             className={cn(
-              'flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-xs font-bold transition-colors',
-              selectedTeamId === match.awayTeam?.id
-                ? 'border-ice-500 bg-ice-500 text-white'
-                : 'border-wline bg-wbg text-wtext-2 hover:bg-wline-2 dark:border-rink-700 dark:bg-rink-700 dark:text-rink-100',
+              'flex items-center justify-center gap-2 px-3 py-2.5 text-xs font-bold transition-colors',
+              chipBorderW,
+              chipRadius,
+              selectedTeamId === match.awayTeam?.id ? chipActive : chipIdle,
               !match.awayTeam && 'cursor-not-allowed opacity-50',
             )}
           >
@@ -179,14 +215,14 @@ export function MatchEventInputForm({ match, onSubmit, isSubmitting }: Props) {
       {/* 피리어드 + 시간 */}
       <div className="mb-4 grid grid-cols-2 gap-3">
         <div>
-          <label htmlFor={periodId} className="mb-2 block text-xs font-bold text-wtext-2 dark:text-rink-100">
+          <label htmlFor={periodId} className={labelCls}>
             피리어드
           </label>
           <select
             id={periodId}
             value={periodNumber}
             onChange={(e) => setPeriodNumber(Number(e.target.value))}
-            className="h-10 w-full rounded-lg border border-wline bg-white px-3 text-sm dark:border-rink-700 dark:bg-rink-700 dark:text-white"
+            className={inputCls}
           >
             {[1, 2, 3, 4, 5].map((n) => (
               <option key={n} value={n}>
@@ -196,7 +232,7 @@ export function MatchEventInputForm({ match, onSubmit, isSubmitting }: Props) {
           </select>
         </div>
         <div>
-          <label htmlFor={timeId} className="mb-2 block text-xs font-bold text-wtext-2 dark:text-rink-100">
+          <label htmlFor={timeId} className={labelCls}>
             시간 (MM:SS)
           </label>
           <input
@@ -207,7 +243,7 @@ export function MatchEventInputForm({ match, onSubmit, isSubmitting }: Props) {
             placeholder="12:45"
             pattern="[0-9]{1,2}:[0-5][0-9]"
             aria-describedby={error ? `${timeId}-error` : undefined}
-            className="h-10 w-full rounded-lg border border-wline bg-white px-3 text-sm tabular-nums dark:border-rink-700 dark:bg-rink-700 dark:text-white"
+            className={cn(inputCls, 'tabular-nums')}
           />
         </div>
       </div>
@@ -215,7 +251,7 @@ export function MatchEventInputForm({ match, onSubmit, isSubmitting }: Props) {
       {/* 페널티 타입 서브필드 */}
       {eventType === 'penalty' && (
         <div className="mb-4">
-          <label className="mb-2 block text-xs font-bold text-wtext-2 dark:text-rink-100">
+          <label className={labelCls}>
             페널티 종류
           </label>
           <div className="grid grid-cols-2 gap-2">
@@ -228,10 +264,14 @@ export function MatchEventInputForm({ match, onSubmit, isSubmitting }: Props) {
                   if (p.minutes > 0) setPenaltyMinutes(p.minutes);
                 }}
                 className={cn(
-                  'rounded-lg border px-2 py-2 text-xs font-bold transition-colors',
+                  'px-2 py-2 text-xs font-bold transition-colors',
+                  chipBorderW,
+                  chipRadius,
                   penaltyType === p.value
-                    ? 'border-red-500 bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300'
-                    : 'border-wline bg-wbg text-wtext-2 hover:bg-wline-2 dark:border-rink-700 dark:bg-rink-700 dark:text-rink-100',
+                    ? iceTheme
+                      ? 'border-it-red-500 bg-it-red-50 text-it-red-500 dark:bg-it-red-500/15 dark:text-it-red-300'
+                      : 'border-red-500 bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300'
+                    : chipIdle,
                 )}
               >
                 {p.label}
@@ -243,7 +283,7 @@ export function MatchEventInputForm({ match, onSubmit, isSubmitting }: Props) {
 
       {/* 설명 (선택) */}
       <div className="mb-4">
-        <label className="mb-2 block text-xs font-bold text-wtext-2 dark:text-rink-100">
+        <label className={labelCls}>
           메모 (선택)
         </label>
         <input
@@ -252,7 +292,7 @@ export function MatchEventInputForm({ match, onSubmit, isSubmitting }: Props) {
           onChange={(e) => setDescription(e.target.value)}
           placeholder="선수명, 어시스트 정보 등"
           maxLength={100}
-          className="h-10 w-full rounded-lg border border-wline bg-white px-3 text-sm dark:border-rink-700 dark:bg-rink-700 dark:text-white"
+          className={inputCls}
         />
       </div>
 
@@ -260,7 +300,12 @@ export function MatchEventInputForm({ match, onSubmit, isSubmitting }: Props) {
         <p
           id={`${timeId}-error`}
           role="alert"
-          className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-600 dark:bg-red-900/20 dark:text-red-400"
+          className={cn(
+            'mb-3 px-3 py-2 text-xs font-medium',
+            iceTheme
+              ? 'rounded-w-md bg-it-red-50 text-it-red-500 dark:bg-it-red-500/15 dark:text-it-red-300'
+              : 'rounded-lg bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400',
+          )}
         >
           {error}
         </p>
@@ -270,11 +315,21 @@ export function MatchEventInputForm({ match, onSubmit, isSubmitting }: Props) {
         type="button"
         onClick={handleSubmit}
         disabled={isSubmitting}
-        className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-ice-500 text-sm font-bold text-white hover:bg-ice-700 disabled:opacity-50"
+        className={cn(
+          'flex h-12 w-full items-center justify-center gap-2 text-sm font-bold text-white disabled:opacity-50',
+          iceTheme
+            ? 'rounded-w-md bg-it-blue-500 hover:bg-it-blue-600'
+            : 'rounded-xl bg-ice-500 hover:bg-ice-700',
+        )}
       >
         {isSubmitting ? (
           <>
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+            <span
+              className={cn(
+                'h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white',
+                iceTheme && 'motion-reduce:animate-none',
+              )}
+            />
             기록 중...
           </>
         ) : (

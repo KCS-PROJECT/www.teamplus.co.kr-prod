@@ -26,6 +26,7 @@ export default function TeamNoticesPage() {
           canWrite={canWrite}
           showReadState
           activeOnly
+          iceTheme
         />
       </div>
       <RoleBottomNav />

@@ -15,6 +15,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
+import { Icon } from '@/components/ui/Icon';
 import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
 import { useNativeUI } from '@/hooks/useNativeUI';
@@ -117,56 +118,63 @@ function PostpaidPayContent() {
   return (
     <MobileContainer hasBottomNav={false}>
       <PageAppBar title={MESSAGES.postpaidPay.title} forceNative />
-      <main className="flex-1 overflow-y-auto bg-wbg dark:bg-puck px-5 py-5">
+      <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck">
         {invalid ? (
-          <p className="py-10 text-center text-card-body text-wtext-3 dark:text-rink-300">
+          <p className="py-10 text-center text-card-body text-it-ink-500 dark:text-rink-300">
             {MESSAGES.postpaidPay.invalid}
           </p>
         ) : (
           <>
-            {/* 청구 요약 */}
-            <section className="rounded-2xl bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-sm p-5 mb-4">
-              <p className="text-card-meta text-wtext-3 dark:text-rink-300 truncate">
-                {orderName}
-              </p>
-              <p className="mt-1 text-2xl font-bold text-ice-500 tabular-nums">
-                {amount.toLocaleString()}원
-              </p>
+            {/* 청구 요약 — ICETIMES navy 히어로 밴드 (full-bleed, 카드 박스 제거) */}
+            <section className="bg-it-blue-800 dark:bg-it-blue-950 px-5 pt-[22px] pb-6">
+              <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-white/60">
+                <Icon name="receipt_long" className="text-[14px]" aria-hidden="true" />
+                <span className="truncate">{orderName}</span>
+              </div>
+              <div className="mt-2 flex items-baseline gap-[3px]">
+                <span className="text-[38px] font-extrabold leading-[1.05] tracking-[-0.02em] text-white tabular-nums">
+                  {amount.toLocaleString()}
+                </span>
+                <span className="text-[19px] font-bold text-white">원</span>
+              </div>
             </section>
 
-            {/* 상태 */}
-            {error ? (
-              <p
-                role="alert"
-                className="py-6 text-center text-card-meta text-error-600 dark:text-error-400"
-              >
-                {error}
-              </p>
-            ) : !isReady ? (
-              <div className="flex items-center justify-center py-10">
-                <Spinner size="lg" />
-              </div>
-            ) : null}
+            {/* 결제 수단 + 상태 — 흰 섹션 (8px 회색 갭) */}
+            <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-5">
+              {/* 상태 */}
+              {error ? (
+                <p
+                  role="alert"
+                  className="py-6 text-center text-card-meta text-it-red-600 dark:text-it-red-200"
+                >
+                  {error}
+                </p>
+              ) : !isReady ? (
+                <div className="flex items-center justify-center py-10">
+                  <Spinner size="lg" />
+                </div>
+              ) : null}
 
-            {/* 토스 위젯 호스트 */}
-            <div
-              id="payment-method"
-              className="min-h-[240px] overflow-visible"
-            />
-            <div id="agreement" className="mt-2" />
+              {/* 토스 위젯 호스트 */}
+              <div
+                id="payment-method"
+                className="min-h-[240px] overflow-visible"
+              />
+              <div id="agreement" className="mt-2" />
 
-            {isReady && !error && (
-              <button
-                type="button"
-                onClick={handlePay}
-                disabled={isPaying}
-                className="mt-5 w-full h-12 rounded-xl bg-ice-500 text-white font-bold text-card-title shadow-md transition-colors motion-reduce:transition-none hover:bg-ice-500/90 active:brightness-95 disabled:opacity-60"
-              >
-                {isPaying
-                  ? MESSAGES.postpaidPay.paying
-                  : MESSAGES.postpaidPay.payCta(amount)}
-              </button>
-            )}
+              {isReady && !error && (
+                <button
+                  type="button"
+                  onClick={handlePay}
+                  disabled={isPaying}
+                  className="mt-5 w-full h-12 rounded-w-md bg-it-blue-500 text-white font-bold text-card-title shadow-sh-1 transition-colors motion-reduce:transition-none hover:bg-it-blue-600 active:brightness-95 disabled:opacity-60"
+                >
+                  {isPaying
+                    ? MESSAGES.postpaidPay.paying
+                    : MESSAGES.postpaidPay.payCta(amount)}
+                </button>
+              )}
+            </section>
           </>
         )}
       </main>

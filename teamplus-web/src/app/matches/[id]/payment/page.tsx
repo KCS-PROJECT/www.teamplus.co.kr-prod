@@ -20,12 +20,11 @@ import type { MatchDetail } from "@/types/match";
 import { usePageReady } from '@/hooks/usePageReady';
 
 /**
- * 매치 참가 신청 페이지
- * - 상단 장소 카드 (bg-wline-2 + 위치 아이콘)
- * - 포지션 선택 (MatchPositionPicker 3열 라디오 카드)
- * - 활성: border-2 border-ice-500 + 체크 아이콘
- * - 안내 메시지 (bg-wbg + 전체 border)
- * - 하단 고정: "선택 완료 및 참가하기" primary 버튼
+ * 매치 참가 신청 페이지 (ICETIMES flat)
+ * - 상단 장소 히어로 (navy 밴드 full-bleed)
+ * - 포지션 선택 (MatchPositionPicker — 공유 컴포넌트)
+ * - 폼/안내/금액 요약은 flat 흰 섹션(it-surface) + 8px 회색 갭
+ * - 하단 고정: 동의 체크 + primary 버튼 (it-blue)
  */
 
 type LevelType = "" | "입문" | "초급" | "중급" | "고급" | "상급" | "전문가";
@@ -131,6 +130,7 @@ export default function MatchPaymentPage() {
         <MatchErrorState
           message={loadError ?? MESSAGES.error.general}
           onRetry={() => void loadMatch()}
+          iceTheme
         />
       </MobileContainer>
     );
@@ -144,65 +144,65 @@ export default function MatchPaymentPage() {
         forceNative
       />
 
-      <main className="flex-1 overflow-y-auto hide-scrollbar px-5 pt-5 pb-52 space-y-5">
-        {/* 장소 카드 */}
-        <section className="bg-wline-2 dark:bg-rink-800 rounded-2xl overflow-hidden">
-          <div className="p-5">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-white dark:bg-rink-700 flex items-center justify-center shrink-0">
-                <Icon
-                  name="location_on"
-                  className="text-xl text-ice-500 dark:text-blue-400"
-                />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h2 className="text-card-emphasis font-bold text-wtext-1 dark:text-white truncate">
-                  {match.title}
-                </h2>
-                <p className="mt-1 text-card-body text-wtext-2 dark:text-rink-100">
-                  {match.rinkName}
+      <main className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck pb-52">
+        {/* 장소 히어로 — navy 밴드 full-bleed */}
+        <section className="bg-it-blue-800 dark:bg-it-blue-950 px-5 pt-6 pb-6">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-w-md bg-white/15 flex items-center justify-center shrink-0">
+              <Icon
+                name="location_on"
+                className="text-xl text-white"
+                aria-hidden="true"
+              />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-card-emphasis font-bold text-white truncate">
+                {match.title}
+              </h2>
+              <p className="mt-1 text-card-body text-white/85">
+                {match.rinkName}
+              </p>
+              {match.rinkAddress && (
+                <p className="mt-0.5 text-card-meta text-white/70">
+                  {match.rinkAddress}
                 </p>
-                {match.rinkAddress && (
-                  <p className="mt-0.5 text-card-meta text-wtext-3 dark:text-rink-300">
-                    {match.rinkAddress}
-                  </p>
-                )}
-              </div>
+              )}
             </div>
-            <div className="mt-4 flex items-center gap-4 text-card-body text-wtext-2 dark:text-rink-100">
-              <span className="flex items-center gap-1.5">
-                <Icon
-                  name="calendar_month"
-                  className="text-card-emphasis text-wtext-3 dark:text-rink-300"
-                />
-                {scheduleText}
-              </span>
-            </div>
+          </div>
+          <div className="mt-4 flex items-center gap-4 text-card-body text-white/85">
+            <span className="flex items-center gap-1.5">
+              <Icon
+                name="calendar_month"
+                className="text-card-emphasis text-white/70"
+                aria-hidden="true"
+              />
+              {scheduleText}
+            </span>
           </div>
         </section>
 
-        {/* 선호 포지션 선택 */}
-        <section className="bg-white dark:bg-rink-800 rounded-2xl border border-wline-2 dark:border-rink-700 p-5">
-          <h3 className="text-card-emphasis font-bold text-wtext-1 dark:text-white mb-4">
+        {/* 선호 포지션 선택 — flat 흰 섹션 */}
+        <section className="mt-2 bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6">
+          <h3 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white mb-4">
             {MESSAGES.match.payment.preferredPosition}
           </h3>
-          <MatchPositionPicker value={position} onChange={setPosition} />
+          <MatchPositionPicker value={position} onChange={setPosition} iceTheme />
         </section>
 
-        {/* 신청 정보 */}
-        <section className="bg-white dark:bg-rink-800 rounded-2xl border border-wline-2 dark:border-rink-700 p-5 space-y-4">
-          <h3 className="text-card-emphasis font-bold text-wtext-1 dark:text-white">
+        {/* 신청 정보 — flat 흰 섹션 */}
+        <section className="mt-2 bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6 space-y-4">
+          <h3 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
             {MESSAGES.match.payment.sections.applicationInfo}
           </h3>
 
           <label className="block">
-            <span className="text-card-body text-wtext-2 dark:text-rink-100">
+            <span className="text-card-body font-semibold text-it-ink-700 dark:text-wtext-4">
               {MESSAGES.match.payment.level.label}
             </span>
             <select
               value={level}
               onChange={(e) => setLevel(e.target.value as LevelType)}
-              className="mt-1 w-full h-11 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-900 text-card-body text-wtext-1 dark:text-white focus:border-ice-500 focus:ring-1 focus:ring-ice-500"
+              className="mt-2 w-full h-12 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 text-[15px] font-medium text-it-ink-800 dark:text-white outline-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 transition-colors duration-150 ease-ios motion-reduce:transition-none"
             >
               <option value="">{MESSAGES.match.payment.level.none}</option>
               {MESSAGES.match.payment.level.options.map((opt) => (
@@ -214,7 +214,7 @@ export default function MatchPaymentPage() {
           </label>
 
           <label className="block">
-            <span className="text-card-body text-wtext-2 dark:text-rink-100">
+            <span className="text-card-body font-semibold text-it-ink-700 dark:text-wtext-4">
               {MESSAGES.match.payment.note.label}
             </span>
             <textarea
@@ -222,67 +222,71 @@ export default function MatchPaymentPage() {
               onChange={(e) => setNote(e.target.value)}
               maxLength={500}
               placeholder={MESSAGES.match.payment.note.placeholder}
-              className="mt-1 w-full min-h-[88px] px-3 py-2 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-900 text-card-body text-wtext-1 dark:text-white resize-none focus:border-ice-500 focus:ring-1 focus:ring-ice-500"
+              className="mt-2 w-full min-h-[88px] px-4 py-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 text-[15px] font-medium text-it-ink-800 dark:text-white placeholder:text-it-ink-400 resize-none outline-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 transition-colors duration-150 ease-ios motion-reduce:transition-none"
             />
           </label>
         </section>
 
-        {/* 안내 메시지 */}
-        <section className="bg-wbg dark:bg-rink-800/60 rounded-xl border border-wline dark:border-rink-700 p-4">
-          <h4 className="text-card-body font-bold text-wtext-1 dark:text-white mb-2">
-            {MESSAGES.match.payment.notice.title}
-          </h4>
-          <ul className="space-y-1.5 text-card-meta text-wtext-2 dark:text-rink-100 leading-relaxed">
-            {MESSAGES.match.payment.notice.items.map((item) => (
-              <li key={item} className="flex items-start gap-2">
-                <span className="mt-1 w-1 h-1 rounded-w-pill bg-wtext-4 dark:bg-wbg0 shrink-0" />
-                {item}
-              </li>
-            ))}
-          </ul>
+        {/* 안내 메시지 — flat 흰 섹션 (인셋 fill) */}
+        <section className="mt-2 bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6">
+          <div className="rounded-w-md bg-it-fill dark:bg-rink-900 p-4">
+            <h4 className="text-card-body font-bold text-it-ink-800 dark:text-white mb-2">
+              {MESSAGES.match.payment.notice.title}
+            </h4>
+            <ul className="space-y-1.5 text-card-meta text-it-ink-700 dark:text-wtext-4 leading-relaxed">
+              {MESSAGES.match.payment.notice.items.map((item) => (
+                <li key={item} className="flex items-start gap-2">
+                  <span className="mt-1.5 w-1 h-1 rounded-w-pill bg-it-ink-400 shrink-0" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
         </section>
 
-        {/* 결제 금액 요약 */}
-        <section className="bg-white dark:bg-rink-800 rounded-2xl border border-wline-2 dark:border-rink-700 p-5">
+        {/* 결제 금액 요약 — flat 흰 섹션 */}
+        <section className="mt-2 bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6">
           <MatchInfoRow
             icon="payments"
             label={MESSAGES.match.payment.basePrice}
             value={`${match.price.toLocaleString("ko-KR")}원`}
+            last
+            iceTheme
           />
-          <div className="mt-3 pt-3 border-t border-wline-2 dark:border-rink-700 flex items-center justify-between">
-            <span className="text-card-body font-bold text-wtext-1 dark:text-white">
+          <div className="mt-3 pt-3 border-t border-it-line dark:border-rink-700 flex items-center justify-between">
+            <span className="text-card-body font-bold text-it-ink-800 dark:text-white">
               {MESSAGES.match.payment.total}
             </span>
-            <span className="text-xl font-bold text-ice-500">
+            <span className="text-xl font-bold text-it-blue-500 tabular-nums">
               {match.price.toLocaleString("ko-KR")}원
             </span>
           </div>
         </section>
 
         {submitError && (
-          <div className="rounded-xl border border-red-200 bg-red-50 dark:border-red-800/50 dark:bg-red-900/20 px-4 py-3 text-card-body text-red-600 dark:text-red-400">
+          <div className="mx-5 mt-2 rounded-w-md border-[1.5px] border-it-red-500/30 bg-it-red-500/10 px-4 py-3 text-card-body text-it-red-500">
             {submitError}
           </div>
         )}
       </main>
 
       {/* 하단 CTA 고정 */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-rink-900 border-t border-wline dark:border-rink-700 z-40">
+      <div className="fixed bottom-0 left-0 right-0 bg-it-surface dark:bg-rink-900 border-t border-it-line dark:border-rink-700 z-40">
         <div className="px-5 py-4 pb-8 w-full max-w-md mx-auto space-y-3">
           <label className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => setAgreed((prev) => !prev)}
               aria-pressed={agreed}
-              className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-colors motion-reduce:transition-none ${
+              className={`w-6 h-6 rounded-w-sm border-2 flex items-center justify-center transition-colors motion-reduce:transition-none ${
                 agreed
-                  ? "bg-ice-500 border-ice-500"
-                  : "border-wline dark:border-rink-700"
+                  ? "bg-it-blue-500 border-it-blue-500"
+                  : "border-it-line-strong dark:border-rink-700"
               }`}
             >
-              {agreed && <Icon name="check" className="text-white text-card-body" />}
+              {agreed && <Icon name="check" className="text-white text-card-body" aria-hidden="true" />}
             </button>
-            <span className="text-card-body text-wtext-2 dark:text-rink-100">
+            <span className="text-card-body text-it-ink-700 dark:text-wtext-4">
               {MESSAGES.match.payment.agree}
             </span>
           </label>
@@ -291,7 +295,7 @@ export default function MatchPaymentPage() {
             type="button"
             onClick={handleApply}
             disabled={!agreed || processing || !position}
-            className="w-full h-14 rounded-xl bg-ice-500 text-white text-card-emphasis font-bold disabled:bg-wline disabled:dark:bg-rink-700 disabled:text-wtext-3 hover:bg-ice-700 transition-colors motion-reduce:transition-none flex items-center justify-center gap-2"
+            className="w-full h-14 rounded-w-md bg-it-blue-500 text-white text-card-emphasis font-bold disabled:bg-it-line disabled:dark:bg-rink-700 disabled:text-it-ink-400 hover:bg-it-blue-600 transition-colors motion-reduce:transition-none flex items-center justify-center gap-2"
           >
             {processing ? (
               <>

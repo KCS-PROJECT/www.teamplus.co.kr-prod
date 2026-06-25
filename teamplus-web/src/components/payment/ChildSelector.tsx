@@ -45,6 +45,8 @@ interface ChildSelectorProps {
   multiSelect?: boolean;
   selectedIds?: Set<string>;
   onToggle?: (id: string) => void;
+  /** [2026-06-25] 표시 변형 — 'avatar'(기본, 원형 아바타 캐러셀) | 'pill'(ICETIMES 하우스 pill 토글). */
+  variant?: 'avatar' | 'pill';
 }
 
 export function ChildSelector({
@@ -59,7 +61,111 @@ export function ChildSelector({
   multiSelect = false,
   selectedIds,
   onToggle,
+  variant = 'avatar',
 }: ChildSelectorProps) {
+  /* ── ICETIMES 하우스 pill 변형 (수업 상세 전용) ── */
+  if (variant === 'pill') {
+    return (
+      <div
+        className="flex flex-wrap gap-2"
+        role={multiSelect ? 'group' : 'radiogroup'}
+        aria-label={MESSAGES.enrollment.childSelectorAriaLabel}
+      >
+        {childList.map((child) => {
+          const isPaid = paidChildIds?.has(child.id) ?? false;
+          const isEnrolled = enrolledChildIds.has(child.id);
+          const isNotApproved = !isEnrolled && notApprovedChildIds.has(child.id);
+          const isAgeIncompatible =
+            !isEnrolled && !isNotApproved && ageIncompatibleChildIds.has(child.id);
+          const isDisabled = isEnrolled || isNotApproved || isAgeIncompatible;
+          const isSelected =
+            !isDisabled &&
+            (multiSelect
+              ? (selectedIds?.has(child.id) ?? false)
+              : selectedId === child.id);
+          const approvalKind = approvalStatusById.get(child.id);
+          const disabledLabel = isEnrolled
+            ? MESSAGES.enrollment.disabledEnrolledLabel
+            : isNotApproved
+              ? approvalKind === 'rejected'
+                ? MESSAGES.team.disabledRejectedLabel
+                : approvalKind === 'pending'
+                  ? MESSAGES.team.disabledPendingLabel
+                  : MESSAGES.team.disabledNotMemberLabel
+              : isAgeIncompatible
+                ? MESSAGES.enrollment.disabledAgeLabel
+                : null;
+          // pill 폭 절약용 축약 라벨 — 전체 사유는 aria-label 로 유지.
+          const shortLabel = isEnrolled
+            ? MESSAGES.enrollment.disabledEnrolledShort
+            : isNotApproved
+              ? approvalKind === 'rejected'
+                ? MESSAGES.team.disabledRejectedShort
+                : approvalKind === 'pending'
+                  ? MESSAGES.team.disabledPendingShort
+                  : MESSAGES.team.disabledNotMemberShort
+              : isAgeIncompatible
+                ? MESSAGES.enrollment.disabledAgeShort
+                : null;
+          const paidLabel =
+            isPaid && !disabledLabel ? MESSAGES.enrollment.paidBadgeLabel : null;
+          const initial = child.name?.charAt(0) ?? '?';
+          return (
+            <button
+              key={child.id}
+              type="button"
+              disabled={isDisabled}
+              aria-pressed={isSelected}
+              aria-label={`${child.name}${disabledLabel ? ` (${disabledLabel})` : ''}`}
+              onClick={() => {
+                if (isDisabled) return;
+                if (multiSelect) onToggle?.(child.id);
+                else onSelect(child.id);
+              }}
+              className={`inline-flex items-center gap-2 h-[42px] pl-2 pr-3.5 rounded-w-pill border-[1.5px] text-[14.5px] font-extrabold tracking-tight whitespace-nowrap transition-colors motion-reduce:transition-none ${
+                isDisabled
+                  ? 'bg-wbg dark:bg-rink-900/40 border-wline-2 dark:border-rink-700 text-wtext-3 dark:text-rink-300 opacity-60 cursor-not-allowed'
+                  : isSelected
+                    ? isPaid
+                      ? 'bg-it-red-500 border-it-red-500 text-white'
+                      : 'bg-it-blue-500 border-it-blue-500 text-white'
+                    : 'bg-wsurface dark:bg-rink-900 border-wline dark:border-rink-600 text-wtext-2 dark:text-rink-100'
+              }`}
+            >
+              <span
+                className={`flex h-7 w-7 items-center justify-center rounded-w-pill text-[12px] font-extrabold ${
+                  isDisabled
+                    ? 'bg-wline dark:bg-rink-700 text-wtext-3 dark:text-rink-300'
+                    : isSelected
+                      ? 'bg-white/20 text-white'
+                      : 'bg-it-blue-500/10 text-it-blue-600'
+                }`}
+                aria-hidden="true"
+              >
+                {isDisabled ? <Icon name="lock" className="text-[14px]" /> : initial}
+              </span>
+              {child.name}
+              {shortLabel && (
+                <span className="text-[11px] font-bold text-wtext-3 dark:text-rink-300">
+                  {shortLabel}
+                </span>
+              )}
+              {paidLabel && (
+                <span
+                  className={`text-[11px] font-bold ${
+                    isSelected ? 'text-white/80' : 'text-it-red-500'
+                  }`}
+                >
+                  · {paidLabel}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <div
       className="flex gap-4 overflow-x-auto no-scrollbar py-2 -mx-5 px-5 snap-x"

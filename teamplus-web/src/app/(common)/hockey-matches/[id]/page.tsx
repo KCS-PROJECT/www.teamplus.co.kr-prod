@@ -144,68 +144,70 @@ export default function HockeyMatchDetailPage() {
         extraActions={[{ icon: "share", label: "공유하기", onClick: () => {} }]}
       />
 
-      <main className="flex flex-col gap-6 px-5 pb-30 pt-6">
+      <main className="flex flex-col bg-it-canvas dark:bg-puck pb-30 pt-0">
         {isUpcoming ? (
-          /* [2026-06-15] 예정 경기 — 라이브 스코어 대신 실제 일정 정보 카드 표시.
-             (대회 일정은 상대팀이 자유 텍스트(opponentName)이고 경기 전이라 스코어/통계가 없음) */
-          <section
-            aria-label="경기 정보"
-            className="overflow-hidden rounded-2xl border border-wline-2 bg-white dark:border-rink-700 dark:bg-rink-800"
-          >
-            <div className="flex items-center gap-3 border-b border-wline-2 px-5 py-4 dark:border-rink-700">
-              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-red-500 text-white">
-                <Icon name="emoji_events" className="text-[24px]" aria-hidden="true" filled />
-              </div>
-              <div className="min-w-0">
-                {match.tournament?.name && (
-                  <p className="truncate text-w-caption font-bold text-red-500">
-                    {match.tournament.name}
-                  </p>
-                )}
-                <h2 className="truncate text-w-title font-extrabold text-wtext-1 dark:text-white">
-                  {match.matchOrder ? `${match.matchOrder}경기 ` : ""}vs {opponentLabel}
-                </h2>
-              </div>
-            </div>
-            <dl className="flex flex-col gap-3 px-5 py-4">
+          // [2026-06-15] 예정 경기 — 라이브 스코어 대신 실제 일정 정보 표시.
+          //   ICETIMES — 헤더는 navy 히어로, 정보는 flat 흰 섹션 hairline 행.
+          <>
+            <section
+              aria-label="경기 정보"
+              className="bg-it-blue-800 dark:bg-it-blue-950 px-5 py-5"
+            >
               <div className="flex items-center gap-3">
-                <Icon name="calendar_today" className="text-[18px] text-wtext-3" aria-hidden="true" />
-                <dt className="w-16 shrink-0 text-w-small text-wtext-3 dark:text-rink-300">일정</dt>
-                <dd className="text-w-small font-bold text-wtext-1 dark:text-white tabular-nums">
+                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-w-md bg-it-red-500 text-white">
+                  <Icon name="emoji_events" className="text-[24px]" aria-hidden="true" filled />
+                </div>
+                <div className="min-w-0">
+                  {match.tournament?.name && (
+                    <p className="truncate text-w-caption font-bold text-it-red-300">
+                      {match.tournament.name}
+                    </p>
+                  )}
+                  <h2 className="truncate text-w-title font-extrabold text-white">
+                    {match.matchOrder ? `${match.matchOrder}경기 ` : ""}vs {opponentLabel}
+                  </h2>
+                </div>
+              </div>
+            </section>
+            <dl className="mt-2 flex flex-col bg-it-surface dark:bg-it-blue-950 px-5 py-2">
+              <div className="flex items-center gap-3 border-b border-it-line py-3.5 dark:border-rink-700">
+                <Icon name="calendar_today" className="text-[18px] text-it-ink-400" aria-hidden="true" />
+                <dt className="w-16 shrink-0 text-w-small text-it-ink-500 dark:text-rink-300">일정</dt>
+                <dd className="text-w-small font-bold text-it-ink-800 dark:text-white tabular-nums">
                   {fmtDateTime(match.scheduledAt)}
                 </dd>
               </div>
-              <div className="flex items-center gap-3">
-                <Icon name="place" className="text-[18px] text-wtext-3" aria-hidden="true" />
-                <dt className="w-16 shrink-0 text-w-small text-wtext-3 dark:text-rink-300">장소</dt>
-                <dd className="min-w-0 truncate text-w-small font-bold text-wtext-1 dark:text-white">
+              <div className="flex items-center gap-3 border-b border-it-line py-3.5 dark:border-rink-700">
+                <Icon name="place" className="text-[18px] text-it-ink-400" aria-hidden="true" />
+                <dt className="w-16 shrink-0 text-w-small text-it-ink-500 dark:text-rink-300">장소</dt>
+                <dd className="min-w-0 truncate text-w-small font-bold text-it-ink-800 dark:text-white">
                   {venueLabel}
                 </dd>
               </div>
-              <div className="flex items-center gap-3">
-                <Icon name="payments" className="text-[18px] text-wtext-3" aria-hidden="true" />
-                <dt className="w-16 shrink-0 text-w-small text-wtext-3 dark:text-rink-300">참가비</dt>
-                <dd className="text-w-small font-bold text-wtext-1 dark:text-white tabular-nums">
+              <div className="flex items-center gap-3 py-3.5">
+                <Icon name="payments" className="text-[18px] text-it-ink-400" aria-hidden="true" />
+                <dt className="w-16 shrink-0 text-w-small text-it-ink-500 dark:text-rink-300">참가비</dt>
+                <dd className="text-w-small font-bold text-it-ink-800 dark:text-white tabular-nums">
                   {feeLabel}
                 </dd>
               </div>
             </dl>
-          </section>
+          </>
         ) : (
-          <>
-            {/* Live Score Header */}
-            <LiveScoreHeader match={match} stats={stats} />
+          <section className="mt-2 flex flex-col gap-6 bg-it-surface dark:bg-it-blue-950 px-5 py-5">
+            {/* Live Score Header (공유 컴포넌트 — ICETIMES flat variant) */}
+            <LiveScoreHeader match={match} stats={stats} iceTheme />
 
             {/* 실시간 경기 기록 */}
-            <section aria-labelledby="events-title">
+            <div aria-labelledby="events-title">
               <div className="mb-4 flex items-center justify-between">
                 <h2
                   id="events-title"
-                  className="text-w-title font-bold text-wtext-1 dark:text-white"
+                  className="text-w-title font-bold text-it-ink-800 dark:text-white"
                 >
                   실시간 경기 기록
                 </h2>
-                <span className="text-w-caption text-wtext-3">
+                <span className="text-w-caption text-it-ink-400">
                   총 {match.events.length}건
                 </span>
               </div>
@@ -215,29 +217,32 @@ export default function HockeyMatchDetailPage() {
                 homeTeamName={match.homeTeam?.name}
                 awayTeamName={match.opponentName ?? match.awayTeam?.name}
                 isManager={false}
+                iceTheme
               />
-            </section>
+            </div>
 
-            {/* 경기 통계 */}
-            <MatchStatsGrid match={match} />
-          </>
+            {/* 경기 통계 (공유 컴포넌트 — ICETIMES flat variant) */}
+            <MatchStatsGrid match={match} iceTheme />
+          </section>
         )}
 
         {/* 권한 안내 (일반 사용자) */}
         {!isManager && (
-          <p className="rounded-xl border border-wline bg-wbg px-4 py-3 text-center text-w-caption text-wtext-3 dark:border-rink-700 dark:bg-rink-800 dark:text-rink-300">
-            {MESSAGES.tournament.viewOnlyHint}
-          </p>
+          <div className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4">
+            <p className="rounded-w-md border border-it-line-strong bg-it-fill px-4 py-3 text-center text-w-caption text-it-ink-500 dark:border-rink-700 dark:bg-rink-800 dark:text-rink-300">
+              {MESSAGES.tournament.viewOnlyHint}
+            </p>
+          </div>
         )}
       </main>
 
       {/* Sticky Bottom CTA */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-wline bg-white/90 p-5 pb-8 dark:border-rink-700 dark:bg-rink-900/90">
+      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-it-line bg-it-surface/90 p-5 pb-8 dark:border-rink-700 dark:bg-it-blue-950/90">
         <div className="mx-auto flex max-w-md gap-3">
           <button
             type="button"
             onClick={() => navigate("/tournaments")}
-            className="flex h-14 flex-1 items-center justify-center gap-2 rounded-2xl border border-wline bg-white text-w-small font-bold text-wtext-1 hover:bg-wbg dark:border-rink-700 dark:bg-rink-800 dark:text-rink-100 dark:hover:bg-rink-700"
+            className="flex h-14 flex-1 items-center justify-center gap-2 rounded-w-md border-[1.5px] border-it-line-strong bg-it-surface text-w-small font-bold text-it-ink-800 hover:bg-it-fill dark:border-rink-700 dark:bg-rink-800 dark:text-rink-100 dark:hover:bg-rink-700"
           >
             <Icon name="history" className="text-xl" />
             전체 일정
@@ -246,7 +251,7 @@ export default function HockeyMatchDetailPage() {
             <button
               type="button"
               onClick={() => navigate(`/hockey-matches/${id}/live`)}
-              className="flex h-14 flex-[2] items-center justify-center gap-2 rounded-2xl bg-ice-500 text-w-small font-bold text-white shadow-md transition-transform motion-reduce:transition-none hover:bg-ice-700 active:scale-95"
+              className="flex h-14 flex-[2] items-center justify-center gap-2 rounded-w-md bg-it-blue-500 text-w-small font-bold text-white shadow-sh-1 transition-transform motion-reduce:transition-none hover:bg-it-blue-600 active:scale-95"
             >
               <Icon name="edit_square" className="text-xl" />
               실시간 스코어 입력
@@ -255,7 +260,7 @@ export default function HockeyMatchDetailPage() {
             <button
               type="button"
               onClick={() => navigate(`/hockey-matches/${id}/live`)}
-              className="flex h-14 flex-[2] items-center justify-center gap-2 rounded-2xl bg-ice-500 text-w-small font-bold text-white shadow-md transition-transform motion-reduce:transition-none hover:bg-ice-700 active:scale-95"
+              className="flex h-14 flex-[2] items-center justify-center gap-2 rounded-w-md bg-it-blue-500 text-w-small font-bold text-white shadow-sh-1 transition-transform motion-reduce:transition-none hover:bg-it-blue-600 active:scale-95"
             >
               <Icon name="scoreboard" className="text-xl" />
               실시간 스코어보드

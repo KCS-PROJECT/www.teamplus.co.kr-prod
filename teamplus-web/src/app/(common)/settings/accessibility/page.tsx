@@ -86,31 +86,33 @@ export default function AccessibilitySettingsPage() {
         forceNative
       />
 
-      {/* Content */}
-      <main className="flex-1 p-4 space-y-4 overflow-y-auto hide-scrollbar bg-wbg dark:bg-puck">
-        {/* 안내문 */}
-        <p className="text-w-small text-wtext-2 dark:text-rink-200 leading-relaxed px-1">
-          {MESSAGES.accessibility.pageDescription}
-        </p>
+      {/* Content — ICETIMES flat: 회색 캔버스 + full-bleed 흰 섹션 */}
+      <main className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck !pb-8">
+        {/* 안내문 — 흰 섹션 */}
+        <section className="bg-it-surface dark:bg-rink-800 mt-2 px-5 py-4">
+          <p className="text-w-small text-it-ink-500 dark:text-rink-200 leading-relaxed">
+            {MESSAGES.accessibility.pageDescription}
+          </p>
+        </section>
 
-        {/* 글자 크기 */}
+        {/* 글자 크기 — flat 흰 섹션 (카드 박스 제거) */}
         <section
-          className="bg-wsurface dark:bg-rink-800 rounded-w-xl border border-wline-2 dark:border-rink-700 shadow-sh-1 overflow-hidden"
+          className="bg-it-surface dark:bg-rink-800 mt-2"
           aria-labelledby="a11y-font-size-title"
         >
-          <div className="px-4 pt-4 pb-2">
+          <div className="px-5 pt-5 pb-2">
             <h2
               id="a11y-font-size-title"
-              className="text-w-body-lg font-bold text-wtext-1 dark:text-white"
+              className="text-w-body-lg font-bold text-it-ink-800 dark:text-white"
             >
               {MESSAGES.accessibility.fontSizeSection}
             </h2>
-            <p className="text-w-caption text-wtext-3 dark:text-rink-300 mt-1">
+            <p className="text-w-caption text-it-ink-500 dark:text-rink-300 mt-1">
               {MESSAGES.accessibility.fontSizeDescription}
             </p>
           </div>
 
-          <div className="px-4 pb-3">
+          <div className="px-5 pb-3">
             <div
               className="grid grid-cols-4 gap-2"
               role="radiogroup"
@@ -125,10 +127,10 @@ export default function AccessibilitySettingsPage() {
                     role="radio"
                     aria-checked={isSelected}
                     onClick={() => setFontScale(opt.value)}
-                    className={`h-14 rounded-w-md border-2 font-semibold transition-colors motion-reduce:transition-none ${
+                    className={`h-14 rounded-w-md border-[1.5px] font-semibold transition-colors motion-reduce:transition-none ${
                       isSelected
-                        ? "bg-ice-50 dark:bg-ice-500/10 border-ice-500 text-ice-600 dark:text-ice-400"
-                        : "bg-wsurface dark:bg-rink-800 border-wline-2 dark:border-rink-600 text-wtext-2 dark:text-rink-200 hover:border-wline dark:hover:border-rink-500"
+                        ? "bg-it-blue-50 dark:bg-it-blue-900/20 border-it-blue-500 text-it-blue-500 dark:text-it-blue-300"
+                        : "bg-it-fill dark:bg-rink-900 border-it-line-strong dark:border-rink-600 text-it-ink-500 dark:text-rink-200 hover:border-it-blue-500/40 dark:hover:border-rink-500"
                     }`}
                   >
                     <span
@@ -147,11 +149,11 @@ export default function AccessibilitySettingsPage() {
             </div>
           </div>
 
-          <div className="mx-4 mb-4 p-3 rounded-w-md bg-wbg dark:bg-rink-700/40 border border-wline-2 dark:border-rink-700">
-            <p className="text-w-caption font-bold text-wtext-4 dark:text-rink-400 uppercase mb-1">
+          <div className="mx-5 mb-5 p-3 rounded-w-md bg-it-fill dark:bg-rink-900 border border-it-line dark:border-rink-700">
+            <p className="text-w-caption font-bold text-it-ink-400 dark:text-rink-400 uppercase mb-1">
               PREVIEW
             </p>
-            <p className="text-wtext-1 dark:text-rink-100 leading-relaxed">
+            <p className="text-it-ink-800 dark:text-rink-100 leading-relaxed">
               {MESSAGES.accessibility.fontSizePreview}
             </p>
           </div>
@@ -191,30 +193,32 @@ export default function AccessibilitySettingsPage() {
           onChange={setScreenReaderHints}
         />
 
-        {/* 도움말 */}
-        <div className="flex items-start gap-3 p-4 bg-wsurface dark:bg-rink-800/50 rounded-w-md">
-          <Icon
-            name="info"
-            className="text-wtext-4 dark:text-rink-400 flex-shrink-0 mt-0.5"
-            aria-hidden="true"
-          />
-          <p className="text-w-caption text-wtext-3 dark:text-rink-300 leading-relaxed">
-            {MESSAGES.accessibility.tip}
-          </p>
-        </div>
+        {/* 도움말 — 흰 섹션 */}
+        <section className="bg-it-surface dark:bg-rink-800 mt-2 px-5 py-4">
+          <div className="flex items-start gap-3 px-4 py-3.5 rounded-w-md bg-it-fill dark:bg-rink-900 border border-it-line dark:border-rink-700">
+            <Icon
+              name="info"
+              className="text-it-ink-400 dark:text-rink-400 flex-shrink-0 mt-0.5"
+              aria-hidden="true"
+            />
+            <p className="text-w-caption text-it-ink-500 dark:text-rink-300 leading-relaxed">
+              {MESSAGES.accessibility.tip}
+            </p>
+          </div>
+        </section>
 
         {/* 기본값으로 되돌리기 */}
-        <div className="pt-2">
+        <div className="px-5 pt-4">
           <button
             type="button"
             onClick={handleReset}
             disabled={isDefault}
-            className={`w-full h-12 rounded-w-md font-semibold text-w-small transition-colors motion-reduce:transition-none ${
+            className={`w-full h-[54px] rounded-w-md font-extrabold text-[16px] tracking-[-0.01em] transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 ${
               isDefault
-                ? "bg-wsurface dark:bg-rink-800 text-wtext-4 dark:text-rink-400 cursor-not-allowed"
+                ? "bg-it-surface dark:bg-rink-800 text-it-ink-400 dark:text-rink-400 cursor-not-allowed border-[1.5px] border-it-line-strong dark:border-rink-700 focus-visible:ring-it-line-strong"
                 : confirmReset
-                  ? "bg-red-500 text-white hover:bg-red-600"
-                  : "bg-wsurface dark:bg-rink-800 text-wtext-2 dark:text-rink-200 border border-wline-2 dark:border-rink-700 hover:bg-wbg dark:hover:bg-rink-700/40"
+                  ? "bg-it-red-500 text-white hover:bg-it-red-600 focus-visible:ring-it-red-500/40"
+                  : "bg-it-surface dark:bg-rink-800 text-it-ink-800 dark:text-rink-200 border-[1.5px] border-it-line-strong dark:border-rink-700 hover:bg-it-fill dark:hover:bg-rink-700/40 focus-visible:ring-it-line-strong"
             }`}
             aria-label={
               confirmReset
@@ -230,14 +234,12 @@ export default function AccessibilitySettingsPage() {
             <button
               type="button"
               onClick={() => setConfirmReset(false)}
-              className="w-full mt-2 h-10 rounded-w-md text-w-small text-wtext-3 dark:text-rink-300 hover:text-wtext-2 dark:hover:text-rink-200"
+              className="w-full mt-2 h-10 rounded-w-md text-w-small text-it-ink-500 dark:text-rink-300 hover:text-it-ink-800 dark:hover:text-rink-200"
             >
               {MESSAGES.common.cancel}
             </button>
           )}
         </div>
-
-        <div className="h-4" />
       </main>
     </MobileContainer>
   );
@@ -268,15 +270,15 @@ function ToggleSection({
 }: ToggleSectionProps) {
   return (
     <section
-      className="bg-wsurface dark:bg-rink-800 rounded-w-xl border border-wline-2 dark:border-rink-700 shadow-sh-1 overflow-hidden"
+      className="bg-it-surface dark:bg-rink-800 mt-2"
       aria-labelledby={`a11y-${icon}-title`}
     >
-      <div className="flex items-start gap-3 p-4">
+      <div className="flex items-start gap-3 px-5 py-4">
         <div
-          className={`w-10 h-10 shrink-0 rounded-w-pill flex items-center justify-center ${
+          className={`w-10 h-10 shrink-0 rounded-w-md flex items-center justify-center ${
             checked
-              ? "bg-ice-500 text-white"
-              : "bg-wbg dark:bg-rink-700 text-wtext-3 dark:text-rink-300"
+              ? "bg-it-blue-500 text-white"
+              : "bg-it-fill dark:bg-rink-900 text-it-ink-400 dark:text-rink-300"
           }`}
         >
           <Icon name={icon} className="text-xl" aria-hidden="true" />
@@ -284,11 +286,11 @@ function ToggleSection({
         <div className="flex-1 min-w-0">
           <h2
             id={`a11y-${icon}-title`}
-            className="text-w-body-lg font-bold text-wtext-1 dark:text-white"
+            className="text-w-body-lg font-bold text-it-ink-800 dark:text-white"
           >
             {title}
           </h2>
-          <p className="text-w-caption text-wtext-3 dark:text-rink-300 mt-1 leading-relaxed">
+          <p className="text-w-caption text-it-ink-500 dark:text-rink-300 mt-1 leading-relaxed">
             {description}
           </p>
         </div>
@@ -301,7 +303,7 @@ function ToggleSection({
           aria-label={`${title}: ${checked ? onLabel : offLabel}`}
           onClick={() => onChange(!checked)}
           className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-w-pill transition-colors motion-reduce:transition-none ${
-            checked ? "bg-ice-500" : "bg-wline dark:bg-rink-600"
+            checked ? "bg-it-blue-500" : "bg-it-line-strong dark:bg-rink-600"
           }`}
         >
           <span
@@ -314,8 +316,8 @@ function ToggleSection({
       </div>
 
       {footNote && (
-        <div className="px-4 pb-4">
-          <p className="text-w-caption text-wtext-4 dark:text-rink-400 leading-relaxed">
+        <div className="px-5 pb-4">
+          <p className="text-w-caption text-it-ink-400 dark:text-rink-400 leading-relaxed">
             {footNote}
           </p>
         </div>

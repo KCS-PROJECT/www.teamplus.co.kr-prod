@@ -161,18 +161,19 @@ export default function WishlistPage() {
     <MobileContainer hasBottomNav>
       <SubmainAppBar title={MESSAGES.wishlist.title} />
 
-      {/* Filter Tabs */}
-      <div className="sticky top-14 z-9 bg-white dark:bg-rink-900 border-b border-wline-2 dark:border-rink-800 px-4">
+      {/* Filter Tabs — flat 흰 섹션 (hairline 하단) */}
+      <div className="sticky top-14 z-9 bg-it-surface dark:bg-rink-900 border-b border-it-line dark:border-rink-800 px-4">
         <FilterTabs
           tabs={FILTER_TABS}
           activeKey={activeTab}
           onChange={(key) => setActiveTab(key as WishlistTab)}
           ariaLabel="찜 목록 필터"
+          iceTheme
         />
       </div>
 
       {/* Content */}
-      <main className="flex-1 overflow-y-auto hide-scrollbar bg-wbg dark:bg-rink-900">
+      <main className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck">
         {filteredItems.length === 0 ? (
           <EmptyStateAction
             icon="favorite"
@@ -181,25 +182,28 @@ export default function WishlistPage() {
             actionLabel={MESSAGES.wishlist.browseClasses}
             actionHref="/home"
             variant="illustrated"
+            iceTheme
           />
         ) : (
-          <div className="px-4 pt-4 pb-30 flex flex-col gap-4">
+          <section className="bg-it-surface dark:bg-rink-800 mt-2 px-4 pt-2 pb-30 flex flex-col divide-y divide-it-line dark:divide-it-blue-900">
             {filteredItems.map((item) => (
-              <WishlistItemCard
-                key={item.id}
-                type={item.type}
-                imageUrl={item.imageUrl ?? undefined}
-                title={item.name}
-                subtitle={item.subtitle}
-                originalPrice={item.originalPrice}
-                price={item.price}
-                tag={item.tag}
-                ctaLabel="신청하기"
-                onRemove={() => handleRemoveItem(item.id)}
-                onCtaClick={() => handleCtaClick(item)}
-              />
+              <div key={item.id} className="py-4">
+                <WishlistItemCard
+                  type={item.type}
+                  imageUrl={item.imageUrl ?? undefined}
+                  title={item.name}
+                  subtitle={item.subtitle}
+                  originalPrice={item.originalPrice}
+                  price={item.price}
+                  tag={item.tag}
+                  ctaLabel="신청하기"
+                  onRemove={() => handleRemoveItem(item.id)}
+                  onCtaClick={() => handleCtaClick(item)}
+                  iceTheme
+                />
+              </div>
             ))}
-          </div>
+          </section>
         )}
       </main>
       <GlobalMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />

@@ -27,6 +27,11 @@ export interface StatCardProps {
   onClick?: () => void;
   /** 추가 className */
   className?: string;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(광범위 사용 — 회귀 0 엄격).
+   *   true 시 카드 박스 → flat(무라운드 hairline), accent 색만 it-* 치환.
+   */
+  iceTheme?: boolean;
 }
 
 const ACCENT_TEXT: Record<StatAccentColor, string> = {
@@ -43,6 +48,21 @@ const ACCENT_BG: Record<StatAccentColor, string> = {
   error: 'bg-error/10',
 };
 
+// ICETIMES 톤 — primary=it-blue · error=it-red · success=mint · warning=sun. (절제: 2색 우선)
+const ACCENT_TEXT_ICE: Record<StatAccentColor, string> = {
+  primary: 'text-it-blue-500',
+  success: 'text-mint-500',
+  warning: 'text-sun-500',
+  error: 'text-it-red-500',
+};
+
+const ACCENT_BG_ICE: Record<StatAccentColor, string> = {
+  primary: 'bg-it-blue-500/10',
+  success: 'bg-mint-500/10',
+  warning: 'bg-sun-500/10',
+  error: 'bg-it-red-500/10',
+};
+
 export function StatCard({
   label,
   value,
@@ -51,19 +71,29 @@ export function StatCard({
   accentColor = 'primary',
   onClick,
   className,
+  iceTheme = false,
 }: StatCardProps) {
+  const accentText = (iceTheme ? ACCENT_TEXT_ICE : ACCENT_TEXT)[accentColor];
+  const accentBg = (iceTheme ? ACCENT_BG_ICE : ACCENT_BG)[accentColor];
+
   const content = (
     <>
       <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-medium text-wtext-3 dark:text-rink-300">
+        <p
+          className={cn(
+            'text-sm font-medium',
+            iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300',
+          )}
+        >
           {label}
         </p>
         {icon && (
           <span
             className={cn(
-              'shrink-0 w-9 h-9 rounded-lg flex items-center justify-center',
-              ACCENT_BG[accentColor],
-              ACCENT_TEXT[accentColor]
+              'shrink-0 w-9 h-9 flex items-center justify-center',
+              iceTheme ? 'rounded-w-md' : 'rounded-lg',
+              accentBg,
+              accentText
             )}
             aria-hidden="true"
           >
@@ -72,11 +102,16 @@ export function StatCard({
         )}
       </div>
       <p className="mt-3 flex items-baseline gap-1">
-        <span className={cn('text-2xl font-bold tracking-tight', ACCENT_TEXT[accentColor])}>
+        <span className={cn('text-2xl font-bold tracking-tight', accentText)}>
           {value}
         </span>
         {unit && (
-          <span className="text-sm font-semibold text-wtext-3 dark:text-rink-300">
+          <span
+            className={cn(
+              'text-sm font-semibold',
+              iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300',
+            )}
+          >
             {unit}
           </span>
         )}
@@ -84,13 +119,22 @@ export function StatCard({
     </>
   );
 
-  const baseClass = cn(
-    'bg-white dark:bg-rink-800',
-    'rounded-2xl p-5',
-    'border border-wline-2 dark:border-rink-700',
-    'transition-colors duration-150',
-    className
-  );
+  const baseClass = iceTheme
+    ? cn(
+        // ICETIMES flat — 카드 박스(rounded-2xl + border) → hairline 경계만.
+        'bg-it-surface dark:bg-it-blue-950',
+        'rounded-w-md p-5',
+        'border-[1.5px] border-it-line dark:border-rink-700',
+        'transition-colors duration-150',
+        className,
+      )
+    : cn(
+        'bg-white dark:bg-rink-800',
+        'rounded-2xl p-5',
+        'border border-wline-2 dark:border-rink-700',
+        'transition-colors duration-150',
+        className
+      );
 
   if (onClick) {
     return (
@@ -100,9 +144,10 @@ export function StatCard({
         aria-label={`${label} ${value}${unit ?? ''}`}
         className={cn(
           baseClass,
-          'text-left w-full',
-          'hover:border-ice-500/30 active:brightness-95',
-          'focus:outline-none focus:ring-2 focus:ring-ice-500/40'
+          'text-left w-full active:brightness-95 focus:outline-none',
+          iceTheme
+            ? 'hover:border-it-blue-500/30 focus:ring-2 focus:ring-it-blue-500/40'
+            : 'hover:border-ice-500/30 focus:ring-2 focus:ring-ice-500/40',
         )}
       >
         {content}

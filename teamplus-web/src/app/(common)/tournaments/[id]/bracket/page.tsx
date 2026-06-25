@@ -127,9 +127,9 @@ function BracketMatchCard({ match, isFinal = false }: { match: BracketMatch; isF
       return (
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-w-small font-medium text-wtext-3 italic">TBD</span>
+            <span className="text-w-small font-medium text-it-ink-400 italic">TBD</span>
           </div>
-          <span className="text-w-small text-wtext-3">-</span>
+          <span className="text-w-small text-it-ink-400">-</span>
         </div>
       );
     }
@@ -140,11 +140,11 @@ function BracketMatchCard({ match, isFinal = false }: { match: BracketMatch; isF
           <div className={`w-5 h-5 rounded-w-pill flex items-center justify-center text-w-caption font-bold ${team.colorClass}`}>
             {team.shortName}
           </div>
-          <span className={`text-w-small truncate max-w-[80px] ${isWinner ? 'font-bold' : 'font-medium'}`}>
+          <span className={`text-w-small truncate max-w-[80px] text-it-ink-800 dark:text-rink-100 ${isWinner ? 'font-bold' : 'font-medium'}`}>
             {team.name}
           </span>
         </div>
-        <span className={`text-w-small ${isWinner ? 'font-bold text-wtext-1 dark:text-white' : score !== undefined ? 'font-medium' : 'text-wtext-3'}`}>
+        <span className={`text-w-small ${isWinner ? 'font-bold text-it-ink-800 dark:text-white' : score !== undefined ? 'font-medium text-it-ink-800 dark:text-rink-100' : 'text-it-ink-400'}`}>
           {score !== undefined ? score : '-'}
         </span>
       </div>
@@ -156,10 +156,10 @@ function BracketMatchCard({ match, isFinal = false }: { match: BracketMatch; isF
 
   if (isFinal) {
     return (
-      <div className="relative flex w-48 flex-col bg-white dark:bg-rink-800 rounded-xl shadow-md border-2 border-blue-600 overflow-hidden">
-        <div className="flex items-center justify-between px-3 py-2 bg-blue-600/5 border-b border-wline-2 dark:border-rink-700">
-          <span className="text-w-caption text-blue-600 font-bold">{match.date} {match.time}</span>
-          <span className="text-w-caption text-blue-600/70 font-bold">{match.venue}</span>
+      <div className="relative flex w-48 flex-col bg-it-surface dark:bg-rink-800 rounded-w-md shadow-sh-2 border-2 border-it-blue-500 overflow-hidden">
+        <div className="flex items-center justify-between px-3 py-2 bg-it-blue-50 border-b border-it-line dark:border-rink-700">
+          <span className="text-w-caption text-it-blue-500 font-bold">{match.date} {match.time}</span>
+          <span className="text-w-caption text-it-blue-500/70 font-bold">{match.venue}</span>
         </div>
         <div className="p-4 space-y-4">
           {match.teamA ? (
@@ -167,30 +167,30 @@ function BracketMatchCard({ match, isFinal = false }: { match: BracketMatch; isF
               <div className={`w-10 h-10 rounded-w-pill flex items-center justify-center text-w-small font-bold ${match.teamA.colorClass}`}>
                 {match.teamA.shortName}
               </div>
-              <span className="text-w-small font-medium text-wtext-2 dark:text-rink-100">{match.teamA.name}</span>
+              <span className="text-w-small font-medium text-it-ink-600 dark:text-rink-100">{match.teamA.name}</span>
             </div>
           ) : (
             <div className="flex items-center justify-center flex-col gap-2">
-              <div className="w-10 h-10 rounded-w-pill bg-wline-2 dark:bg-rink-700 border-2 border-dashed border-wline dark:border-rink-300 flex items-center justify-center">
-                <Icon name="question_mark" className="text-xl text-wtext-3" />
+              <div className="w-10 h-10 rounded-w-pill bg-it-fill dark:bg-rink-700 border-2 border-dashed border-it-line-strong dark:border-rink-300 flex items-center justify-center">
+                <Icon name="question_mark" className="text-xl text-it-ink-400" />
               </div>
-              <span className="text-w-small font-medium text-wtext-3">Finalist A</span>
+              <span className="text-w-small font-medium text-it-ink-400">Finalist A</span>
             </div>
           )}
-          <div className="flex justify-center text-w-caption text-wtext-3 font-bold">VS</div>
+          <div className="flex justify-center text-w-caption text-it-ink-400 font-bold">VS</div>
           {match.teamB ? (
             <div className="flex items-center justify-center flex-col gap-2">
               <div className={`w-10 h-10 rounded-w-pill flex items-center justify-center text-w-small font-bold ${match.teamB.colorClass}`}>
                 {match.teamB.shortName}
               </div>
-              <span className="text-w-small font-medium text-wtext-2 dark:text-rink-100">{match.teamB.name}</span>
+              <span className="text-w-small font-medium text-it-ink-600 dark:text-rink-100">{match.teamB.name}</span>
             </div>
           ) : (
             <div className="flex items-center justify-center flex-col gap-2">
-              <div className="w-10 h-10 rounded-w-pill bg-wline-2 dark:bg-rink-700 border-2 border-dashed border-wline dark:border-rink-300 flex items-center justify-center">
-                <Icon name="question_mark" className="text-xl text-wtext-3" />
+              <div className="w-10 h-10 rounded-w-pill bg-it-fill dark:bg-rink-700 border-2 border-dashed border-it-line-strong dark:border-rink-300 flex items-center justify-center">
+                <Icon name="question_mark" className="text-xl text-it-ink-400" />
               </div>
-              <span className="text-w-small font-medium text-wtext-3">Finalist B</span>
+              <span className="text-w-small font-medium text-it-ink-400">Finalist B</span>
             </div>
           )}
         </div>
@@ -199,10 +199,10 @@ function BracketMatchCard({ match, isFinal = false }: { match: BracketMatch; isF
   }
 
   return (
-    <div className={`relative flex w-48 flex-col bg-white dark:bg-rink-800 rounded-xl shadow-sm border border-wline dark:border-rink-700 overflow-hidden ${!match.isCompleted && !match.teamA && !match.teamB ? 'opacity-80' : ''}`}>
-      <div className="flex items-center justify-between px-3 py-2 bg-wbg dark:bg-rink-900/50 border-b border-wline-2 dark:border-rink-700">
-        <span className="text-w-caption text-wtext-3 font-medium">{match.date} {match.time}</span>
-        <span className="text-w-caption text-wtext-3">{match.venue}</span>
+    <div className={`relative flex w-48 flex-col bg-it-surface dark:bg-rink-800 rounded-w-md shadow-sh-1 border border-it-line dark:border-rink-700 overflow-hidden ${!match.isCompleted && !match.teamA && !match.teamB ? 'opacity-80' : ''}`}>
+      <div className="flex items-center justify-between px-3 py-2 bg-it-fill dark:bg-rink-900/50 border-b border-it-line dark:border-rink-700">
+        <span className="text-w-caption text-it-ink-400 font-medium">{match.date} {match.time}</span>
+        <span className="text-w-caption text-it-ink-400">{match.venue}</span>
       </div>
       <div className="p-3 space-y-3">
         {getTeamDisplay(match.teamA, match.scoreA, isTeamAWinner, isTeamBWinner)}
@@ -217,7 +217,7 @@ function BracketConnector({ height, className = '' }: { height: number; classNam
   return (
     <div className={`w-8 flex flex-col justify-center items-center ${className}`}>
       <div
-        className="w-full border-r border-t border-b border-wline dark:border-rink-700 rounded-r-lg"
+        className="w-full border-r border-t border-b border-it-line-strong dark:border-rink-700 rounded-r-lg"
         style={{ height: `${height}px` }}
       />
     </div>
@@ -247,12 +247,12 @@ export default function BracketPage() {
         ]}
       />
 
-      {/* 대회 정보 요약 */}
-      <div className="px-4 py-4 bg-wbg dark:bg-rink-900/50 border-b border-wline dark:border-rink-800">
-        <h1 className="text-w-title font-bold text-wtext-1 dark:text-white mb-1">
+      {/* 대회 정보 요약 — navy 히어로(대회 요약 강조) */}
+      <div className="px-4 py-5 bg-it-blue-800 dark:bg-it-blue-950">
+        <h1 className="text-w-title font-bold text-white mb-1">
           2024 윈터 아이스하키 리그
         </h1>
-        <div className="flex items-center gap-4 text-w-small text-wtext-3 dark:text-rink-300">
+        <div className="flex items-center gap-4 text-w-small text-white/70">
           <div className="flex items-center gap-1">
             <Icon name="calendar_today" className="text-w-body-lg" />
             <span>2024.12.01 - 2025.01.15</span>
@@ -261,15 +261,15 @@ export default function BracketPage() {
       </div>
 
       {/* 섹션 타이틀 */}
-      <div className="flex items-center justify-between px-4 pt-6 pb-2">
-        <h2 className="text-w-title font-bold text-wtext-1 dark:text-white">8강 대진표</h2>
-        <span className="text-w-caption text-blue-600 font-medium bg-blue-600/10 px-2 py-1 rounded">
+      <div className="flex items-center justify-between px-4 pt-6 pb-2 bg-it-canvas dark:bg-puck">
+        <h2 className="text-w-title font-bold text-it-ink-800 dark:text-white">8강 대진표</h2>
+        <span className="text-w-caption text-it-blue-500 font-medium bg-it-blue-50 px-2 py-1 rounded-w-pill">
           Update: Today 10:00
         </span>
       </div>
 
       {/* 대진표 시각화 컨테이너 */}
-      <div className="w-full overflow-x-auto pb-8 pt-2 pl-4" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+      <div className="w-full overflow-x-auto pb-8 pt-2 pl-4 bg-it-canvas dark:bg-puck" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
         <style jsx>{`
           div::-webkit-scrollbar {
             display: none;
@@ -278,7 +278,7 @@ export default function BracketPage() {
         <div className="flex min-w-max gap-4 pr-4">
           {/* 라운드 1: 8강 */}
           <div className="flex flex-col gap-6 pt-0">
-            <div className="text-center pb-2 text-w-caption font-bold text-wtext-3 uppercase tracking-widest">
+            <div className="text-center pb-2 text-w-caption font-bold text-it-ink-400 uppercase tracking-widest">
               Quarter Finals
             </div>
             {quarterFinals.map((match) => (
@@ -295,7 +295,7 @@ export default function BracketPage() {
 
           {/* 라운드 2: 4강 */}
           <div className="flex flex-col justify-around pt-0">
-            <div className="text-center pb-2 text-w-caption font-bold text-wtext-3 uppercase tracking-widest mb-[100px]">
+            <div className="text-center pb-2 text-w-caption font-bold text-it-ink-400 uppercase tracking-widest mb-[100px]">
               Semi Finals
             </div>
             <div className="flex flex-col gap-[120px]">
@@ -312,7 +312,7 @@ export default function BracketPage() {
 
           {/* 라운드 3: 결승 */}
           <div className="flex flex-col justify-center pt-0">
-            <div className="text-center pb-2 text-w-caption font-bold text-blue-600 uppercase tracking-widest mb-2">
+            <div className="text-center pb-2 text-w-caption font-bold text-it-blue-500 uppercase tracking-widest mb-2">
               Final
             </div>
             <BracketMatchCard match={finalMatch} isFinal />
@@ -324,55 +324,55 @@ export default function BracketPage() {
       </div>
 
       {/* 범례 */}
-      <div className="px-4 pb-6">
-        <div className="bg-wbg dark:bg-rink-800/50 rounded-xl p-4">
-          <h3 className="text-w-small font-bold text-wtext-2 dark:text-rink-100 mb-3">범례</h3>
+      <div className="px-4 pb-6 bg-it-canvas dark:bg-puck">
+        <div className="bg-it-surface dark:bg-rink-800/50 rounded-w-md p-4">
+          <h3 className="text-w-small font-bold text-it-ink-600 dark:text-rink-100 mb-3">범례</h3>
           <div className="flex flex-wrap gap-4">
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-blue-600 rounded-w-pill" />
-              <span className="text-w-caption text-wtext-2 dark:text-rink-300">진행중</span>
+              <div className="w-3 h-3 bg-it-blue-500 rounded-w-pill" />
+              <span className="text-w-caption text-it-ink-600 dark:text-rink-300">진행중</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-green-500 rounded-w-pill" />
-              <span className="text-w-caption text-wtext-2 dark:text-rink-300">완료</span>
+              <div className="w-3 h-3 bg-mint rounded-w-pill" />
+              <span className="text-w-caption text-it-ink-600 dark:text-rink-300">완료</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-wline dark:bg-rink-500 rounded-w-pill" />
-              <span className="text-w-caption text-wtext-2 dark:text-rink-300">예정</span>
+              <div className="w-3 h-3 bg-it-line-strong dark:bg-rink-500 rounded-w-pill" />
+              <span className="text-w-caption text-it-ink-600 dark:text-rink-300">예정</span>
             </div>
           </div>
         </div>
       </div>
 
       {/* 참가팀 목록 */}
-      <div className="px-4 pb-8">
-        <h3 className="text-w-title font-bold text-wtext-1 dark:text-white mb-4">참가팀</h3>
+      <div className="px-4 pb-8 bg-it-canvas dark:bg-puck">
+        <h3 className="text-w-title font-bold text-it-ink-800 dark:text-white mb-4">참가팀</h3>
         <div className="grid grid-cols-2 gap-3">
           {Object.values(teams).map((team) => (
             <div
               key={team.id}
-              className="flex items-center gap-3 bg-white dark:bg-rink-800 rounded-xl p-3 border border-wline dark:border-rink-700"
+              className="flex items-center gap-3 bg-it-surface dark:bg-rink-800 rounded-w-md p-3 border border-it-line dark:border-rink-700"
             >
               <div className={`w-8 h-8 rounded-w-pill flex items-center justify-center text-w-caption font-bold ${team.colorClass}`}>
                 {team.shortName}
               </div>
-              <span className="text-w-small font-medium text-wtext-1 dark:text-white">{team.name}</span>
+              <span className="text-w-small font-medium text-it-ink-800 dark:text-white">{team.name}</span>
             </div>
           ))}
         </div>
       </div>
 
       {/* 하단 고정 버튼 */}
-      <div className="sticky bottom-0 left-0 right-0 p-4 bg-white/90 dark:bg-rink-900/90 border-t border-wline dark:border-rink-700">
+      <div className="sticky bottom-0 left-0 right-0 p-4 bg-it-surface/90 dark:bg-it-blue-950/90 border-t border-it-line dark:border-rink-700">
         <div className="max-w-md mx-auto flex gap-3">
           <NavLink
             href={`/tournaments/${params?.id ?? ''}`}
-            className="flex-1 flex items-center justify-center gap-2 py-3 bg-wline-2 dark:bg-rink-800 text-wtext-2 dark:text-rink-100 font-bold rounded-xl hover:bg-wline dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
+            className="flex-1 flex items-center justify-center gap-2 py-3 bg-it-fill dark:bg-rink-800 text-it-ink-600 dark:text-rink-100 font-bold rounded-w-md hover:bg-it-line dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
           >
             <Icon name="info" className="text-w-title" />
             <span>대회 정보</span>
           </NavLink>
-          <button type="button" className="flex-1 flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors motion-reduce:transition-none">
+          <button type="button" className="flex-1 flex items-center justify-center gap-2 py-3 bg-it-blue-500 hover:bg-it-blue-600 text-white font-bold rounded-w-md transition-colors motion-reduce:transition-none">
             <Icon name="share" className="text-w-title" />
             <span>공유하기</span>
           </button>

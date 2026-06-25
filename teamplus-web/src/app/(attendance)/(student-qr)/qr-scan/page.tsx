@@ -255,22 +255,22 @@ export default function QRScanPage() {
             ============================================ */}
         {envIssue !== null && (
           <div className="absolute inset-0 z-30 flex items-center justify-center px-6 bg-rink-900">
-            <div className="bg-white dark:bg-rink-800 rounded-2xl p-6 shadow-md max-w-sm w-full flex flex-col items-center gap-4">
-              <div className="w-16 h-16 rounded-w-pill bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+            <div className="bg-white dark:bg-rink-800 rounded-w-2xl p-6 shadow-md max-w-sm w-full flex flex-col items-center gap-4">
+              <div className="w-16 h-16 rounded-w-pill bg-it-red-50 dark:bg-it-red-500/20 flex items-center justify-center">
                 <Icon
                   name="videocam_off"
-                  className="text-red-600 dark:text-red-400 text-4xl"
+                  className="text-it-red-500 dark:text-it-red-300 text-4xl"
                   weight={700}
                   aria-hidden="true"
                 />
               </div>
               <div className="text-center">
-                <h3 className="text-xl font-bold text-wtext-1 dark:text-white mb-2">
+                <h3 className="text-xl font-bold text-it-ink-800 dark:text-white mb-2">
                   {envIssue === "PERMISSION_DENIED"
                     ? MESSAGES.qrScan.permissionDeniedTitle
                     : MESSAGES.qrScan.title}
                 </h3>
-                <p className="text-card-title text-wtext-2 dark:text-rink-100 leading-relaxed">
+                <p className="text-card-title text-it-ink-700 dark:text-rink-100 leading-relaxed">
                   {envIssue === "INSECURE_CONTEXT" &&
                     MESSAGES.qrScan.insecureContext}
                   {envIssue === "NOT_SUPPORTED" && MESSAGES.qrScan.notSupported}
@@ -279,7 +279,7 @@ export default function QRScanPage() {
                 </p>
                 {/* 카메라 권한 없이도 사용 가능한 대체 경로 안내 (iOS 5.1.1(iv)) */}
                 {envIssue === "PERMISSION_DENIED" && (
-                  <p className="mt-3 text-card-body text-wtext-3 dark:text-rink-300 leading-relaxed">
+                  <p className="mt-3 text-card-body text-it-ink-500 dark:text-rink-300 leading-relaxed">
                     {MESSAGES.qrScan.permissionAltHint}
                   </p>
                 )}
@@ -289,7 +289,7 @@ export default function QRScanPage() {
                   <button
                     type="button"
                     onClick={handleRetryPermission}
-                    className="min-h-[72px] w-full rounded-xl bg-ice-500 hover:bg-ice-700 text-white text-xl font-bold shadow-md active:brightness-95 transition-[filter] motion-reduce:transition-none"
+                    className="min-h-[72px] w-full rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-xl font-bold shadow-sm active:brightness-95 transition-[filter] motion-reduce:transition-none"
                   >
                     {MESSAGES.qrScan.permissionRetry}
                   </button>
@@ -301,7 +301,7 @@ export default function QRScanPage() {
                   <button
                     type="button"
                     onClick={() => navigate("/my-qr")}
-                    className="min-h-[72px] w-full rounded-xl bg-rink-800 hover:bg-rink-900 text-white text-xl font-bold active:brightness-95 transition-[filter] motion-reduce:transition-none dark:bg-rink-700 dark:hover:bg-rink-500"
+                    className="min-h-[72px] w-full rounded-w-md bg-it-blue-800 hover:bg-it-blue-900 text-white text-xl font-bold active:brightness-95 transition-[filter] motion-reduce:transition-none dark:bg-rink-700 dark:hover:bg-rink-500"
                   >
                     {MESSAGES.qrScan.showMyQr}
                   </button>
@@ -309,7 +309,7 @@ export default function QRScanPage() {
                 <button
                   type="button"
                   onClick={() => router.back()}
-                  className="min-h-[72px] w-full rounded-xl bg-wline-2 dark:bg-rink-700 hover:bg-wline dark:hover:bg-rink-500 text-wtext-1 dark:text-white text-xl font-bold active:brightness-95 transition-[filter] motion-reduce:transition-none"
+                  className="min-h-[72px] w-full rounded-w-md bg-it-fill dark:bg-rink-700 hover:bg-it-line dark:hover:bg-rink-500 text-it-ink-800 dark:text-white text-xl font-bold active:brightness-95 transition-[filter] motion-reduce:transition-none"
                 >
                   {MESSAGES.qrScan.cancel}
                 </button>
@@ -448,14 +448,14 @@ export default function QRScanPage() {
             ============================================ */}
         {state === "checking" && (
           <div className="absolute inset-0 z-40 bg-rink-900/70 flex items-center justify-center">
-            <div className="bg-white dark:bg-rink-800 rounded-2xl p-8 shadow-md flex flex-col items-center gap-4">
+            <div className="bg-white dark:bg-rink-800 rounded-w-2xl p-8 shadow-md flex flex-col items-center gap-4">
               <Icon
                 name="sync"
-                className="text-ice-500 text-5xl animate-spin motion-reduce:animate-none"
+                className="text-it-blue-500 text-5xl animate-spin motion-reduce:animate-none"
                 weight={700}
                 aria-hidden="true"
               />
-              <p className="text-card-title font-bold text-wtext-1 dark:text-white">
+              <p className="text-card-title font-bold text-it-ink-800 dark:text-white">
                 {MESSAGES.qrScan.checking}
               </p>
             </div>
@@ -466,16 +466,16 @@ export default function QRScanPage() {
             성공 오버레이 (자동 이동 전 짧은 피드백)
             ============================================ */}
         {state === "success" && (
-          <div className="absolute inset-0 z-40 bg-ice-500/90 flex items-center justify-center">
-            <div className="bg-white rounded-2xl p-8 shadow-md flex flex-col items-center gap-4 motion-reduce:animate-none animate-bounce">
+          <div className="absolute inset-0 z-40 bg-it-blue-500/90 flex items-center justify-center">
+            <div className="bg-white rounded-w-2xl p-8 shadow-md flex flex-col items-center gap-4 motion-reduce:animate-none animate-bounce">
               <Icon
                 name="check_circle"
                 filled
-                className="text-ice-500 text-7xl"
+                className="text-emerald-500 text-7xl"
                 weight={700}
                 aria-hidden="true"
               />
-              <p className="text-2xl font-bold text-wtext-1">
+              <p className="text-2xl font-bold text-it-ink-800">
                 {MESSAGES.qrScan.success}
               </p>
             </div>
@@ -544,8 +544,8 @@ const ERROR_STYLES: Record<CheckinError["code"], ErrorStyle> = {
   },
   INSUFFICIENT_CREDIT: {
     icon: "account_balance_wallet",
-    bg: "bg-red-100 dark:bg-red-900/30",
-    color: "text-red-600 dark:text-red-400",
+    bg: "bg-it-red-50 dark:bg-it-red-500/20",
+    color: "text-it-red-500 dark:text-it-red-300",
   },
   NOT_REGISTERED: {
     icon: "school",
@@ -559,18 +559,18 @@ const ERROR_STYLES: Record<CheckinError["code"], ErrorStyle> = {
   },
   EXPIRED: {
     icon: "error",
-    bg: "bg-red-100 dark:bg-red-900/30",
-    color: "text-red-600 dark:text-red-400",
+    bg: "bg-it-red-50 dark:bg-it-red-500/20",
+    color: "text-it-red-500 dark:text-it-red-300",
   },
   REUSED: {
     icon: "error",
-    bg: "bg-red-100 dark:bg-red-900/30",
-    color: "text-red-600 dark:text-red-400",
+    bg: "bg-it-red-50 dark:bg-it-red-500/20",
+    color: "text-it-red-500 dark:text-it-red-300",
   },
   UNKNOWN: {
     icon: "error",
-    bg: "bg-red-100 dark:bg-red-900/30",
-    color: "text-red-600 dark:text-red-400",
+    bg: "bg-it-red-50 dark:bg-it-red-500/20",
+    color: "text-it-red-500 dark:text-it-red-300",
   },
 };
 
@@ -635,7 +635,7 @@ function ErrorOverlay({ error, onReset, router, navigate, childId }: ErrorOverla
       aria-modal="true"
       aria-labelledby="qr-scan-error-title"
     >
-      <div className="bg-white dark:bg-rink-800 rounded-2xl p-6 shadow-md max-w-sm w-full flex flex-col items-center gap-4">
+      <div className="bg-white dark:bg-rink-800 rounded-w-2xl p-6 shadow-md max-w-sm w-full flex flex-col items-center gap-4">
         <div
           className={`w-16 h-16 rounded-w-pill ${style.bg} flex items-center justify-center`}
         >
@@ -648,7 +648,7 @@ function ErrorOverlay({ error, onReset, router, navigate, childId }: ErrorOverla
         </div>
         <p
           id="qr-scan-error-title"
-          className="text-card-title font-bold text-wtext-1 dark:text-white text-center leading-relaxed"
+          className="text-card-title font-bold text-it-ink-800 dark:text-white text-center leading-relaxed"
         >
           {error.message}
         </p>
@@ -656,14 +656,14 @@ function ErrorOverlay({ error, onReset, router, navigate, childId }: ErrorOverla
           <button
             type="button"
             onClick={primaryAction.onClick}
-            className="min-h-[72px] w-full rounded-xl bg-ice-500 hover:bg-ice-700 text-white text-xl font-bold shadow-md active:brightness-95 transition-[filter] motion-reduce:transition-none"
+            className="min-h-[72px] w-full rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-xl font-bold shadow-sm active:brightness-95 transition-[filter] motion-reduce:transition-none"
           >
             {primaryAction.label}
           </button>
           <button
             type="button"
             onClick={secondaryAction.onClick}
-            className="min-h-[72px] w-full rounded-xl bg-wline-2 dark:bg-rink-700 hover:bg-wline dark:hover:bg-rink-500 text-wtext-1 dark:text-white text-xl font-bold active:brightness-95 transition-[filter] motion-reduce:transition-none"
+            className="min-h-[72px] w-full rounded-w-md bg-it-fill dark:bg-rink-700 hover:bg-it-line dark:hover:bg-rink-500 text-it-ink-800 dark:text-white text-xl font-bold active:brightness-95 transition-[filter] motion-reduce:transition-none"
           >
             {secondaryAction.label}
           </button>

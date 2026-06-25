@@ -11,13 +11,21 @@ import { COMPANY_INFO } from "@/lib/legal/policy-content";
  * 재사용: shop-profile · home · shop-checkout 등 쇼핑몰 거래 화면에 배치 가능.
  * 디자인: GlobalMenu 푸터 토큰 체계(text-card-meta · text-wtext-4) 준수.
  * 구분자는 RULE-D04(literal `|` 금지)에 따라 가운뎃점(·) 사용.
+ *
+ * [ICETIMES] iceTheme(기본 false) — true 시 본문/구분자를 it-ink 토큰으로 교체(회귀 0).
  */
-export function ShopBusinessFooter() {
+export function ShopBusinessFooter({ iceTheme = false }: { iceTheme?: boolean }) {
+  const textClass = iceTheme
+    ? 'text-it-ink-400 dark:text-it-ink-300'
+    : 'text-wtext-4 dark:text-rink-300';
+  const dotClass = iceTheme
+    ? 'mx-1.5 text-it-line-strong dark:text-it-ink-500'
+    : 'mx-1.5 text-wline-2 dark:text-rink-600';
   return (
-    <div className="text-card-meta text-wtext-4 dark:text-rink-300 leading-relaxed space-y-0.5">
+    <div className={`text-card-meta ${textClass} leading-relaxed space-y-0.5`}>
       <p>
         <span className="font-semibold">{COMPANY_INFO.name}</span>
-        <span className="mx-1.5 text-wline-2 dark:text-rink-600" aria-hidden="true">
+        <span className={dotClass} aria-hidden="true">
           ·
         </span>
         대표 {COMPANY_INFO.ceo}
@@ -27,7 +35,7 @@ export function ShopBusinessFooter() {
       <p>{COMPANY_INFO.address}</p>
       <p>
         고객센터 {COMPANY_INFO.csPhone}
-        <span className="mx-1.5 text-wline-2 dark:text-rink-600" aria-hidden="true">
+        <span className={dotClass} aria-hidden="true">
           ·
         </span>
         {COMPANY_INFO.csEmail}

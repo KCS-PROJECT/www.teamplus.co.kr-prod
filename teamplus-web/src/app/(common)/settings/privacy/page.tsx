@@ -52,11 +52,11 @@ function formatBytes(bytes: number | null | undefined): string {
 }
 
 const STATUS_LABEL: Record<string, { text: string; color: string }> = {
-  pending: { text: '대기 중', color: 'text-wtext-3' },
-  processing: { text: '수집 중...', color: 'text-ice-600 dark:text-ice-400' },
-  ready: { text: '다운로드 준비 완료', color: 'text-emerald-600 dark:text-emerald-400' },
-  failed: { text: '처리 실패', color: 'text-red-600 dark:text-red-400' },
-  expired: { text: '만료됨', color: 'text-wtext-4' },
+  pending: { text: '대기 중', color: 'text-it-ink-500' },
+  processing: { text: '수집 중...', color: 'text-it-blue-500' },
+  ready: { text: '다운로드 준비 완료', color: 'text-mint-600 dark:text-mint-500' },
+  failed: { text: '처리 실패', color: 'text-it-red-500' },
+  expired: { text: '만료됨', color: 'text-it-ink-400' },
 };
 
 export default function PrivacyPage() {
@@ -150,16 +150,16 @@ export default function PrivacyPage() {
     <MobileContainer hasBottomNav={false}>
       <PageAppBar title="개인정보 관리" showBack forceNative />
 
-      <main className="flex-1 overflow-y-auto px-5 py-6 space-y-6 bg-wbg dark:bg-puck">
-        {/* 안내 섹션 */}
-        <section className="p-4 rounded-w-lg bg-ice-50 dark:bg-ice-500/10 border border-ice-100 dark:border-ice-500/20">
-          <div className="flex items-start gap-3">
-            <Icon name="info" className="text-ice-600 dark:text-ice-400 text-xl mt-0.5 shrink-0" />
+      <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck !pb-8">
+        {/* 안내 섹션 — 흰 섹션 + it-blue 인셋 */}
+        <section className="bg-it-surface dark:bg-rink-800 mt-2 px-5 py-5">
+          <div className="flex items-start gap-3 p-4 rounded-w-md bg-it-blue-50 dark:bg-it-blue-900/20 border-[1.5px] border-it-blue-100 dark:border-it-blue-900/40">
+            <Icon name="info" className="text-it-blue-500 text-xl mt-0.5 shrink-0" aria-hidden="true" />
             <div>
-              <p className="text-w-small font-bold text-ice-700 dark:text-ice-200 mb-1">
+              <p className="text-w-small font-bold text-it-blue-700 dark:text-it-blue-300 mb-1">
                 개인정보 열람권 (PIPA §35)
               </p>
-              <p className="text-w-caption text-ice-600 dark:text-ice-300 leading-relaxed">
+              <p className="text-w-caption text-it-blue-600 dark:text-it-blue-300/80 leading-relaxed">
                 정보통신망법에 따라 본인의 개인정보를 JSON 파일로 다운로드할 수 있습니다.
                 수집 항목: 프로필, 출석 이력(2년), 결제권 내역, 수업 등록, 알림 이력(90일), 로그인 기록(1년).
                 <br />
@@ -169,18 +169,18 @@ export default function PrivacyPage() {
           </div>
         </section>
 
-        {/* 내보내기 상태 */}
-        <section>
-          <h2 className="text-w-small font-bold text-wtext-4 dark:text-rink-400 tracking-wider uppercase mb-3">
+        {/* 내보내기 상태 — flat 흰 섹션 */}
+        <section className="bg-it-surface dark:bg-rink-800 mt-2 px-5 py-5">
+          <h2 className="text-w-small font-bold text-it-ink-400 dark:text-rink-400 tracking-wider uppercase mb-3">
             개인정보 내보내기
           </h2>
 
           {!isLoading && (
-            <div className="p-4 rounded-w-lg bg-wsurface dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-sh-1 space-y-4">
+            <div className="space-y-4">
               {/* 최신 요청 상태 */}
               {exportStatus?.hasRequest && exportStatus.status ? (
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 flex items-center justify-center rounded-w-pill bg-wbg dark:bg-rink-700">
+                  <div className="w-10 h-10 flex items-center justify-center rounded-w-md bg-it-fill dark:bg-rink-900">
                     <Icon
                       name={
                         exportStatus.status === 'ready'
@@ -191,36 +191,37 @@ export default function PrivacyPage() {
                           ? 'timer_off'
                           : 'hourglass_empty'
                       }
-                      className={`text-[24px] ${statusInfo?.color ?? 'text-wtext-4'}`}
+                      className={`text-[24px] ${statusInfo?.color ?? 'text-it-ink-400'}`}
+                      aria-hidden="true"
                     />
                   </div>
                   <div className="flex-1">
-                    <p className={`text-w-small font-bold ${statusInfo?.color ?? 'text-wtext-3'}`}>
+                    <p className={`text-w-small font-bold ${statusInfo?.color ?? 'text-it-ink-500'}`}>
                       {statusInfo?.text ?? '알 수 없음'}
                     </p>
-                    <p className="text-w-caption text-wtext-3 dark:text-rink-300">
+                    <p className="text-w-caption tabular-nums text-it-ink-500 dark:text-rink-300">
                       요청일: {formatDate(exportStatus.requestedAt)}
                       {exportStatus.readyAt ? ` · 완료: ${formatDate(exportStatus.readyAt)}` : ''}
                     </p>
                     {exportStatus.expiresAt && exportStatus.status === 'ready' && (
-                      <p className="text-w-caption text-wtext-4 mt-0.5">
+                      <p className="text-w-caption tabular-nums text-it-ink-400 mt-0.5">
                         만료: {formatDate(exportStatus.expiresAt)}
                         {exportStatus.fileSize ? ` · ${formatBytes(exportStatus.fileSize)}` : ''}
                       </p>
                     )}
                     {exportStatus.status === 'processing' && (
-                      <p className="text-w-caption text-ice-500 mt-1 flex items-center gap-1">
-                        <span className="inline-block w-2 h-2 rounded-w-pill bg-ice-500 animate-pulse motion-reduce:animate-none" />
+                      <p className="text-w-caption text-it-blue-500 mt-1 flex items-center gap-1">
+                        <span className="inline-block w-2 h-2 rounded-w-pill bg-it-blue-500 animate-pulse motion-reduce:animate-none" />
                         데이터 수집 중... 잠시만 기다려 주세요
                       </p>
                     )}
                     {exportStatus.errorMessage && (
-                      <p className="text-w-caption text-red-500 mt-0.5">{exportStatus.errorMessage}</p>
+                      <p className="text-w-caption text-it-red-500 mt-0.5">{exportStatus.errorMessage}</p>
                     )}
                   </div>
                 </div>
               ) : (
-                <p className="text-w-small text-wtext-3 dark:text-rink-300">
+                <p className="text-w-small text-it-ink-500 dark:text-rink-300">
                   아직 요청 내역이 없습니다.
                 </p>
               )}
@@ -274,12 +275,12 @@ export default function PrivacyPage() {
           )}
         </section>
 
-        {/* 개인정보 수집·이용 안내 */}
-        <section>
-          <h2 className="text-w-small font-bold text-wtext-4 dark:text-rink-400 tracking-wider uppercase mb-3">
+        {/* 개인정보 수집·이용 안내 — flat 흰 섹션 + hairline 행 (카드 박스 제거) */}
+        <section className="bg-it-surface dark:bg-rink-800 mt-2 pb-1">
+          <h2 className="text-w-small font-bold text-it-ink-400 dark:text-rink-400 tracking-wider uppercase px-5 pt-5 pb-2">
             수집 항목 안내
           </h2>
-          <div className="space-y-2">
+          <div>
             {[
               { icon: 'person', label: '프로필 정보', desc: '이름, 이메일, 전화번호, 생년월일' },
               { icon: 'event_available', label: '출석 이력', desc: '최근 2년' },
@@ -290,12 +291,12 @@ export default function PrivacyPage() {
             ].map((item) => (
               <div
                 key={item.label}
-                className="flex items-center gap-3 px-4 py-3 rounded-w-lg bg-wsurface dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-sh-1"
+                className="flex items-center gap-3 px-5 py-3.5 border-b border-it-line dark:border-rink-700 last:border-b-0"
               >
-                <Icon name={item.icon} className="text-wtext-4 dark:text-rink-400 text-xl shrink-0" />
+                <Icon name={item.icon} className="text-it-ink-400 dark:text-rink-400 text-xl shrink-0" aria-hidden="true" />
                 <div>
-                  <p className="text-w-small font-medium text-wtext-2 dark:text-rink-100">{item.label}</p>
-                  <p className="text-w-caption text-wtext-3 dark:text-rink-300">{item.desc}</p>
+                  <p className="text-w-small font-semibold text-it-ink-800 dark:text-rink-100">{item.label}</p>
+                  <p className="text-w-caption text-it-ink-500 dark:text-rink-300">{item.desc}</p>
                 </div>
               </div>
             ))}

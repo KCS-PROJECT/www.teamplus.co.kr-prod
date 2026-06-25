@@ -30,7 +30,6 @@ import { ScheduleCalendarView } from "@/components/classes/ScheduleCalendarView"
 // 기존 자체 정의(CLASS_TYPE_LABEL) 는 옛 대문자 enum 만 인식해 신규 데이터를 놓치는 버그였음.
 import {
   TRAINING_TYPE_LABEL,
-  getTrainingTypeBadgeClass,
   formatDaySchedulesFull,
   sortDaySchedules,
   type DaySchedule,
@@ -323,7 +322,6 @@ export default function ClassDetailPage() {
     showBottomNav: true,
     isDataLoaded: !isLoading,
   });
-  const [isFavorite, setIsFavorite] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   /* ── 수강신청 — /payment/options 로 이동 ──
    * 상품 선택은 options 페이지에서 결제 방식으로 수행
@@ -824,12 +822,6 @@ export default function ClassDetailPage() {
     });
   };
 
-  /* ── 즐겨찾기 (UI 전용, API 미연동) ── */
-
-  const handleToggleFavorite = () => {
-    setIsFavorite((prev) => !prev);
-  };
-
   /* ── 데이터 로드 ── */
 
   useEffect(() => {
@@ -1055,6 +1047,58 @@ export default function ClassDetailPage() {
 
   const hasVenue = !!(classData.venueName || classData.venueAddress);
 
+  /* ── 히어로(네이비 밴드) 파생값 — 헤더·정보카드와 공유 ── */
+  // eyebrow — 분류 · 레벨 (예: "정규 훈련 · 입문")
+  const heroEyebrow = [typeLabel, levelLabel].filter(Boolean).join(" · ");
+
+  // 시간 줄 — 요일별 규칙 우선, 없으면 단일 시작~종료.
+  const heroScheduleText = (() => {
+    const dayLabel = formatDaySchedulesFull(classData.daySchedules);
+    if (dayLabel) return dayLabel;
+    if (classData.startTime && classData.endTime)
+      return `${formatTime(classData.startTime)} ~ ${formatTime(classData.endTime)}`;
+    if (classData.startTime) return formatTime(classData.startTime);
+    return null;
+  })();
+
+  // 회당 시간 — 히어로 스탯 표기용 (시:분 차이, 자정 넘김 보정).
+  const sessionDurationLabel = (() => {
+    if (!classData.startTime || !classData.endTime) return null;
+    const start = new Date(classData.startTime);
+    const end = new Date(classData.endTime);
+    const startMin = start.getUTCHours() * 60 + start.getUTCMinutes();
+    const endMin = end.getUTCHours() * 60 + end.getUTCMinutes();
+    let diffMin = endMin - startMin;
+    if (diffMin < 0) diffMin += 24 * 60;
+    if (diffMin <= 0) return null;
+    if (diffMin >= 60) {
+      const hours = Math.floor(diffMin / 60);
+      const mins = diffMin % 60;
+      return mins ? `${hours}시간 ${mins}분` : `${hours}시간`;
+    }
+    return `${diffMin}분`;
+  })();
+
+  // 기간 스탯 — 개별 일정 총 N회 → 주차 → 단일.
+  const heroPeriodStat = hasScheduleList
+    ? `${scheduleList.length}회`
+    : weekCount !== null
+      ? `${weekCount}주`
+      : isSingleDay
+        ? "단일"
+        : null;
+
+  // 히어로 스탯 3열 (값 있는 항목만)
+  const heroStats: { label: string; value: string; unit: string }[] = [
+    ...(capacity > 0
+      ? [{ label: "정원", value: `${enrolled}/${capacity}`, unit: "명" }]
+      : []),
+    ...(heroPeriodStat ? [{ label: "기간", value: heroPeriodStat, unit: "" }] : []),
+    ...(sessionDurationLabel
+      ? [{ label: "회당", value: sessionDurationLabel, unit: "" }]
+      : []),
+  ];
+
   const capacityAriaLabel =
     capacity > 0
       ? `정원 ${capacity}명 중 ${enrolled}명 신청 · ${remaining > 0 ? `${remaining}석 남음` : "마감"}`
@@ -1064,35 +1108,68 @@ export default function ClassDetailPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar variant="detail" title={isOpenClass ? "오픈클래스 상세" : "훈련 상세"} forceNative />
 
+      {/* MobileContainer 의 [&>main]:pb-30(120px) 잉여 여백을 inline paddingBottom 으로 override.
+          매니저: 하단 스티키 액션바 가림 방지 여백 확보 / 그 외: 24px 소폭 여백.
+          전역 축소(모든 페이지)는 별도 계획 — claudedocs/mobilecontainer-pb30-global-reduction-plan.md */}
       <main
-        className={cn(
-          "flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck",
-          // [수정 2026-05-14 D2] 앱 최대 스크롤 시 sticky 액션바와 일정 정보가 겹치는 회귀 수정.
-          // 액션바 높이(약 75px) + bottom 오프셋(60px BottomNav) + safe-area-inset-bottom(최대 ~44px) ≈ 180px.
-          // pb-44(176px) → pb-52(208px) + safe-area 추가로 모든 디바이스에서 여유 확보.
-          isManager
-            ? "pb-52 [padding-bottom:calc(13rem+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px)))]"
-            : "pb-8",
-        )}
-        style={{ WebkitOverflowScrolling: "touch" as never }}
+        className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck"
+        style={{
+          WebkitOverflowScrolling: "touch" as never,
+          paddingBottom: isManager
+            ? "calc(150px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))"
+            : "1.5rem",
+        }}
       >
-        {/* ── 메인 카드 — 헤더(로고 타일 + 칩) + 모집 배너(manager) + 정원 + 빠른 액션(manager) ── */}
+        {/* ── 네이비 히어로 밴드 — eyebrow + 칩 + 로고/제목 + 시간·장소 + 스탯 3열 ──
+            형제 화면(training-manage/[id])과 동일한 하우스 패턴(navy full-bleed). */}
         <section
-          className="mx-5 mt-3 rounded-[18px] bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-sm overflow-hidden"
+          className="bg-it-blue-800 dark:bg-it-blue-950 px-5 pt-5 pb-5"
           aria-label="수업 요약"
         >
-          {/* 헤더: 로고 타일 + 이름 + 칩 + 우측 액션 */}
-          <div className="flex items-center gap-3 px-4 py-2.5">
+          {/* eyebrow(분류 · 레벨) + 남은 자리 칩 */}
+          <div className="flex items-center justify-between gap-2">
+            {heroEyebrow ? (
+              <span className="inline-flex items-center rounded-md bg-white/15 px-2 py-0.5 text-[11px] font-bold uppercase tracking-widest text-white/90">
+                {heroEyebrow}
+              </span>
+            ) : (
+              <span aria-hidden="true" />
+            )}
+            {capacity > 0 && !isOpenClass && (
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-w-pill px-2.5 py-1 text-[12px] font-bold whitespace-nowrap",
+                  isFull
+                    ? "bg-white/12 text-white/70"
+                    : isUrgent
+                      ? "bg-it-red-500/25 text-it-red-100"
+                      : "bg-white/15 text-white",
+                )}
+              >
+                {!isFull && (
+                  <Icon
+                    name="local_fire_department"
+                    className="text-[14px]"
+                    aria-hidden="true"
+                  />
+                )}
+                {isFull ? "마감" : `${remaining}석 남음`}
+              </span>
+            )}
+          </div>
+
+          {/* 로고 타일 + 수업명 + 찜/공유 */}
+          <div className="mt-3 flex items-start gap-3">
             {/* 팀 로고 타일 — logoUrl 있으면 이미지, 없으면 기본 아이콘 */}
             {resolveImageSrc(classData.teamLogoUrl) ? (
               <img
                 src={resolveImageSrc(classData.teamLogoUrl)}
-                alt={classData.club?.clubName ?? ''}
-                className="shrink-0 size-12 rounded-2xl object-cover shadow-md bg-wline dark:bg-rink-700"
+                alt={classData.club?.clubName ?? ""}
+                className="shrink-0 size-12 rounded-2xl object-cover bg-white/15"
               />
             ) : (
               <div
-                className="shrink-0 flex size-12 items-center justify-center rounded-2xl bg-it-blue-500 text-white shadow-md"
+                className="shrink-0 flex size-12 items-center justify-center rounded-2xl bg-white/15 text-white"
                 aria-hidden="true"
               >
                 <svg width={26} height={26} viewBox="0 0 26 26" fill="none">
@@ -1107,176 +1184,160 @@ export default function ClassDetailPage() {
               </div>
             )}
 
-            {/* 이름 + 배지 + 메타 — 3단 구조 (2026-05-20 재배치).
-                기존: 수업명 옆에 배지를 wrap 으로 붙임 → 수업명 길이에 따라 배지 위치가 달라짐.
-                개선: 제목(1줄) → 배지(1줄) → 메타(1줄) 로 시각 위계 명확화 + 배지 위치 일관성 확보. */}
-            <div className="flex-1 min-w-0">
-              {/* 수업명 — 1열 단독, truncate 로 한 줄 ellipsis */}
-              <h1 className="text-card-emphasis font-extrabold text-wtext-1 dark:text-white tracking-tight truncate">
-                {classData.className}
-              </h1>
-              {/* 배지 줄 — 분류(typeLabel: 정규/레슨/대회) + 레벨(levelLabel: 입문/중급/고급).
-                  [수정 2026-05-20] `text-card-meta` 커스텀 utility 가 twMerge 의 `text-{color}` 그룹으로
-                  잘못 분류되어 `getTrainingTypeBadgeClass` 가 반환하는 `text-blue-700` 등에 의해 제거되던
-                  회귀 수정. 그 결과 폰트 사이즈가 부모(16px) 로 inherit 되어 옆 레벨 배지(12px) 보다
-                  1.3~2배 크게 표시되는 버그. native arbitrary 값(`text-[12px] leading-[1.45]`)으로 풀어써
-                  twMerge 충돌을 회피한다. */}
-              {(typeLabel || levelLabel) && (
-                <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                  {typeLabel && classData.trainingType && (
-                    <span
-                      className={cn(
-                        "px-1.5 py-0.5 rounded-md text-[12px] leading-[1.45] font-extrabold tracking-wider",
-                        getTrainingTypeBadgeClass(classData.trainingType),
-                      )}
-                    >
-                      {typeLabel}
-                    </span>
-                  )}
-                  {levelLabel && (
-                    <span className="px-1.5 py-0.5 rounded-md bg-it-blue-500/10 text-it-blue-500 text-card-meta font-extrabold tracking-wider">
-                      {levelLabel}
-                    </span>
-                  )}
-                </div>
-              )}
-              {/* 요일·회차 메타는 하단 "수업 정보" 영역에 별도 노출되므로 헤더에서는 생략(중복 방지). */}
-            </div>
+            <h1 className="flex-1 min-w-0 text-[22px] font-extrabold tracking-[-0.01em] leading-[1.18] text-white line-clamp-2">
+              {classData.className}
+            </h1>
 
-            {/* 우측 액션 — 찜 / 공유 */}
-            <div className="shrink-0 flex items-center">
-              <button
-                type="button"
-                onClick={handleToggleFavorite}
-                className={cn(
-                  "flex size-8 items-center justify-center rounded-lg transition-colors motion-reduce:transition-none active:brightness-95",
-                  isFavorite
-                    ? "text-rose-500"
-                    : "text-wtext-3 dark:text-rink-300 hover:text-it-blue-500",
-                )}
-                aria-label={isFavorite ? "찜 해제" : "찜 추가"}
-                aria-pressed={isFavorite}
-              >
-                <Icon
-                  name={isFavorite ? "bookmark" : "bookmark_border"}
-                  className="text-[18px]"
-                  aria-hidden="true"
-                />
-              </button>
+            {/* 우측 액션 — 공유 (네이비 위 흰 톤) */}
+            <div className="shrink-0 flex items-center -mr-1">
               <button
                 type="button"
                 onClick={handleShare}
-                className="flex size-8 items-center justify-center rounded-lg text-wtext-3 dark:text-rink-300 hover:text-it-blue-500 transition-colors motion-reduce:transition-none active:brightness-95"
+                className="flex size-8 items-center justify-center rounded-lg text-white/70 hover:text-white transition-colors motion-reduce:transition-none active:brightness-95"
                 aria-label={MESSAGES.class.shareAriaLabel(classData.className)}
               >
-                <Icon
-                  name="ios_share"
-                  className="text-[18px]"
-                  aria-hidden="true"
-                />
+                <Icon name="ios_share" className="text-[18px]" aria-hidden="true" />
               </button>
             </div>
           </div>
 
-          {/* [제거 2026-05-19] 모집 상태 인라인 배너 — 정원 충원 영역과 정보 100% 중복 +
-              "모집관리" 버튼이 /classes-manage/edit/[id] (수업 상세 + 액션 hub) 으로
-              우회 이동하여 의도-동작 mismatch.
-              정원 정보는 바로 아래 "정원 충원" 진행률 영역에서 더 정확하게 표시 (enrolled/capacity · occupancy%).
-              운영자 액션은 빠른 액션 4종(출석/수강생/결제/공유) + Bottom Action Bar(삭제/일정관리/수정하기) 로 충분.
-              /classes-manage/edit/[id] 진입점은 /classes-organize, /coach-schedules 에서 유지. */}
-
-          {/* 정원 + 빠른 액션 영역 — 정원(capacity>0)도 없고 운영자도 아니면 영역 자체 비노출(빈 패딩 방지) */}
-          {(capacity > 0 || isManager) && (
-          <div className="px-4 pt-3 pb-4">
-            {capacity > 0 && !isOpenClass && (
-              <div className={cn(isManager ? "mb-3" : "")}>
-                <div className="flex items-baseline justify-between mb-1">
-                  <span className="text-card-meta font-bold text-wtext-3 dark:text-rink-300 tracking-widest">
-                    정원 충원
-                  </span>
-                  <span className="text-card-meta font-extrabold text-wtext-1 dark:text-white tabular-nums">
-                    {enrolled}/{capacity}명 · {occupancy}%
-                  </span>
+          {/* 시간 · 장소 */}
+          {(heroScheduleText || classData.venueName) && (
+            <div className="mt-3 flex flex-col gap-1.5">
+              {heroScheduleText && (
+                <div className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white/80">
+                  <Icon
+                    name="schedule"
+                    className="text-[15px] text-it-blue-200"
+                    aria-hidden="true"
+                  />
+                  <span className="truncate">{heroScheduleText}</span>
                 </div>
+              )}
+              {classData.venueName && (
+                <div className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white/80">
+                  <Icon
+                    name="place"
+                    className="text-[15px] text-it-blue-200"
+                    aria-hidden="true"
+                  />
+                  <span className="truncate">{classData.venueName}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 스탯 — 정원 · 기간 · 회당 */}
+          {heroStats.length > 0 && (
+            <div className="mt-4 pt-4 flex border-t border-white/15">
+              {heroStats.map((s, i) => (
                 <div
-                  className="h-1 w-full rounded-w-pill bg-wline-2 dark:bg-rink-700 overflow-hidden"
-                  role="progressbar"
-                  aria-valuenow={enrolled}
-                  aria-valuemin={0}
-                  aria-valuemax={capacity}
-                  aria-label={capacityAriaLabel}
+                  key={s.label}
+                  className={cn(
+                    "flex-1",
+                    i < heroStats.length - 1 && "border-r border-white/15",
+                    i > 0 && "pl-4",
+                  )}
                 >
-                  <div
-                    className={cn(
-                      "h-full rounded-w-pill transition-[width] duration-500 motion-reduce:transition-none",
-                      isFull
-                        ? "bg-wtext-4 dark:bg-wbg0"
-                        : isUrgent
-                          ? "bg-rose-500"
-                          : "bg-it-blue-500",
+                  <div className="text-[12px] text-white/60">{s.label}</div>
+                  <div className="mt-0.5 text-[18px] font-extrabold tracking-tight text-white tabular-nums whitespace-nowrap">
+                    {s.value}
+                    {s.unit && (
+                      <span className="text-[12px] font-semibold text-white/60">
+                        {" "}
+                        {s.unit}
+                      </span>
                     )}
-                    style={{ width: `${Math.min(occupancy, 100)}%` }}
-                  />
+                  </div>
                 </div>
-              </div>
-            )}
+              ))}
+            </div>
+          )}
 
-            {/* 빠른 액션 4종 — manager 전용 (2x2 grid)
-                [수정 2026-05-18 SPEC v2] 수강생 버튼이 결제 페이지로 잘못 라우팅되던 버그 fix.
-                  수강생(/classes/:id/students) 과 결제 확인(/classes/:id/payments) 을 별도 분리. */}
-            {isManager && (
-              <div className="grid grid-cols-2 gap-1.5">
-                <button
-                  type="button"
-                  onClick={() =>
-                    navigate(`/attendance-manage?classId=${classId}`)
-                  }
-                  className="h-9 rounded-[10px] bg-wbg dark:bg-rink-900/40 border border-wline-2 dark:border-rink-700 flex items-center justify-center gap-1.5 hover:border-it-blue-500/40 transition-colors motion-reduce:transition-none active:brightness-95"
-                  aria-label="출석 이력 보기"
-                >
-                  <Icon
-                    name="checklist"
-                    size={14}
-                    className="text-wtext-2 dark:text-rink-100"
-                    aria-hidden="true"
-                  />
-                  <span className="text-card-meta font-bold text-wtext-2 dark:text-rink-100 tracking-tight">
-                    출석 이력
-                  </span>
-                </button>
-                {/* [제거 2026-05-19] 코치메모 버튼 삭제 — 백엔드 미구현 + 공식 PRD/로드맵 등재 없음.
-                    유사 도메인 ClassDiary(/api/v1/class-diary)가 정식으로 존재. */}
-                {/* 선수정보 — 수강생 명단 + 결제 상태를 한 화면에서 확인 (팀·학원 공용).
-                    URL: /classes/:id/students ((coach-access) 그룹 RBAC 가드). 기존 학원 전용
-                    수강생 페이지를 흡수 통합 — 단일 진입점. */}
-                <button
-                  type="button"
-                  onClick={() => navigate(`/classes/${classId}/students`)}
-                  className="h-9 rounded-[10px] bg-wbg dark:bg-rink-900/40 border border-wline-2 dark:border-rink-700 flex items-center justify-center gap-1.5 hover:border-it-blue-500/40 transition-colors motion-reduce:transition-none active:brightness-95"
-                  aria-label={MESSAGES.academy.students.actionPlayersAriaLabel}
-                >
-                  <Icon
-                    name="group"
-                    size={14}
-                    className="text-wtext-2 dark:text-rink-100"
-                    aria-hidden="true"
-                  />
-                  <span className="text-card-meta font-bold text-wtext-2 dark:text-rink-100 tracking-tight">
-                    {MESSAGES.academy.students.actionPlayers}
-                  </span>
-                </button>
+          {/* 정원 충원 진행률 — 보조 막대 (정원 운영 정보 유지) */}
+          {capacity > 0 && !isOpenClass && (
+            <div className="mt-4">
+              <div className="flex items-baseline justify-between mb-1">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-white/60">
+                  정원 충원
+                </span>
+                <span className="text-[11px] font-extrabold text-white tabular-nums">
+                  {enrolled}/{capacity}명 · {occupancy}%
+                </span>
               </div>
-            )}
-          </div>
+              <div
+                className="h-1 w-full rounded-w-pill bg-white/15 overflow-hidden"
+                role="progressbar"
+                aria-valuenow={enrolled}
+                aria-valuemin={0}
+                aria-valuemax={capacity}
+                aria-label={capacityAriaLabel}
+              >
+                <div
+                  className={cn(
+                    "h-full rounded-w-pill transition-[width] duration-500 motion-reduce:transition-none",
+                    isFull
+                      ? "bg-white/50"
+                      : isUrgent
+                        ? "bg-it-red-400"
+                        : "bg-white",
+                  )}
+                  style={{ width: `${Math.min(occupancy, 100)}%` }}
+                />
+              </div>
+            </div>
           )}
         </section>
 
-        {/* ── 수업 정보 카드 — 키-값-보조 테이블 ── */}
-        <div className="mx-5 mt-3">
-          <p className="px-1 pb-2 text-card-meta font-extrabold text-wtext-2 dark:text-rink-100 tracking-tight">
+        {/* ── 매니저 빠른 액션 2종 — 히어로 직하단 흰 영역 ──
+            [수정 2026-05-18 SPEC v2] 수강생(/classes/:id/students) 과 결제 확인을 별도 분리. */}
+        {isManager && (
+          <div className="mx-5 mt-3 grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              onClick={() => navigate(`/attendance-manage?classId=${classId}`)}
+              className="h-9 rounded-[10px] bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 flex items-center justify-center gap-1.5 hover:border-it-blue-500/40 transition-colors motion-reduce:transition-none active:brightness-95"
+              aria-label="출석 이력 보기"
+            >
+              <Icon
+                name="checklist"
+                size={14}
+                className="text-wtext-2 dark:text-rink-100"
+                aria-hidden="true"
+              />
+              <span className="text-card-meta font-bold text-wtext-2 dark:text-rink-100 tracking-tight">
+                출석 이력
+              </span>
+            </button>
+            {/* 선수정보 — 수강생 명단 + 결제 상태 (팀·학원 공용 단일 진입점). */}
+            <button
+              type="button"
+              onClick={() => navigate(`/classes/${classId}/students`)}
+              className="h-9 rounded-[10px] bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 flex items-center justify-center gap-1.5 hover:border-it-blue-500/40 transition-colors motion-reduce:transition-none active:brightness-95"
+              aria-label={MESSAGES.academy.students.actionPlayersAriaLabel}
+            >
+              <Icon
+                name="group"
+                size={14}
+                className="text-wtext-2 dark:text-rink-100"
+                aria-hidden="true"
+              />
+              <span className="text-card-meta font-bold text-wtext-2 dark:text-rink-100 tracking-tight">
+                {MESSAGES.academy.students.actionPlayers}
+              </span>
+            </button>
+          </div>
+        )}
+
+        {/* ── 수업 정보 — 소개·기간·시간·장소·대상·일정 통합 (full-bleed 흰 섹션) ── */}
+        <section
+          className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4"
+          aria-label="수업 정보"
+        >
+          <h2 className="text-[15px] font-extrabold text-wtext-1 dark:text-white tracking-tight">
             수업 정보
-          </p>
-          <div className="rounded-[18px] bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-sm px-4">
+          </h2>
+          <div className="mt-1">
             {(() => {
               type Row = {
                 k: string;
@@ -1382,15 +1443,19 @@ export default function ClassDetailPage() {
               //   기간 행은 일정 min~max·총 N회로 산출해 항상 표시한다.
               // 개별 일정(달력) 또는 요일 규칙이 있으면 시간·장소는 그쪽에서 표시하므로
               //   단일 행을 빼고, 단일 회차일 때만 단일 시간·장소 행을 둔다.
+              // [순서] 대상 → (시간·장소) → 기간 — 기간을 바로 아래 "일정" 섹션과 인접시킴.
               const rows: Row[] = [
-                { k: "기간", v: periodValue, s: periodSub } as Row,
+                ...(classData.description
+                  ? [{ k: "소개", v: classData.description, s: "" } as Row]
+                  : []),
+                ageRow,
                 ...(hasScheduleList || hasDaySchedules
                   ? []
                   : [
                       { k: "시간", v: timeValue, s: timeSub } as Row,
                       { k: "장소", v: venueValue, s: venueSub, warn: venueWarn } as Row,
                     ]),
-                ageRow,
+                { k: "기간", v: periodValue, s: periodSub } as Row,
                 ...(isOpen
                   ? [{ k: "회당\n훈련비", v: feeValue, s: "" } as Row]
                   : []),
@@ -1402,39 +1467,42 @@ export default function ClassDetailPage() {
                     <div
                       key={r.k}
                       className={cn(
-                        "flex items-center gap-3 py-2.5",
+                        "py-3",
                         (i < arr.length - 1 || (hasDaySchedules && !hasScheduleList)) &&
                           "border-b border-wline-2 dark:border-rink-700",
                       )}
                     >
-                      <div className="w-12 text-[11px] font-bold text-wtext-3 dark:text-rink-300 tracking-wider whitespace-pre-line leading-tight">
+                      {/* uppercase eyebrow key — 시안 하우스 스타일 */}
+                      <div className="text-[11px] font-extrabold uppercase tracking-[0.06em] text-wtext-3 dark:text-rink-300 whitespace-pre-line leading-tight">
                         {r.k}
                       </div>
-                      <div
-                        className={cn(
-                          "flex-1 text-[13px] font-semibold tracking-tight tabular-nums truncate",
-                          r.warn
-                            ? "text-orange-500"
-                            : "text-wtext-1 dark:text-white",
-                        )}
-                      >
-                        {r.v}
-                      </div>
-                      {r.onSubClick ? (
-                        <button
-                          type="button"
-                          onClick={r.onSubClick}
-                          className="shrink-0 inline-flex items-center gap-0.5 min-h-[28px] pl-1.5 -mr-1 text-[11px] font-bold text-it-blue-500 active:brightness-90"
-                          aria-label={`담당 코치 전체 보기 (${r.s})`}
+                      <div className="mt-1 flex items-center justify-between gap-2">
+                        <div
+                          className={cn(
+                            "min-w-0 flex-1 text-[14.5px] font-semibold tracking-tight tabular-nums leading-relaxed whitespace-pre-line",
+                            r.warn
+                              ? "text-orange-500"
+                              : "text-wtext-1 dark:text-white",
+                          )}
                         >
-                          {r.s}
-                          <Icon name="chevron_right" className="text-[14px]" aria-hidden="true" />
-                        </button>
-                      ) : (
-                        <div className="text-[11px] font-medium text-wtext-3 dark:text-rink-300 shrink-0">
-                          {r.s}
+                          {r.v}
                         </div>
-                      )}
+                        {r.onSubClick ? (
+                          <button
+                            type="button"
+                            onClick={r.onSubClick}
+                            className="shrink-0 inline-flex items-center gap-0.5 min-h-[28px] pl-1.5 text-[11px] font-bold text-it-blue-500 active:brightness-90"
+                            aria-label={`담당 코치 전체 보기 (${r.s})`}
+                          >
+                            {r.s}
+                            <Icon name="chevron_right" className="text-[14px]" aria-hidden="true" />
+                          </button>
+                        ) : r.s ? (
+                          <div className="shrink-0 text-[11px] font-medium text-wtext-3 dark:text-rink-300">
+                            {r.s}
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                   ))}
 
@@ -1471,45 +1539,28 @@ export default function ClassDetailPage() {
               );
             })()}
           </div>
-        </div>
 
-        {/* ── 수업 소개 카드 ── */}
-        <div className="mx-5 mt-4">
-          <p className="px-1 pb-2 text-card-meta font-extrabold text-wtext-2 dark:text-rink-100 tracking-tight">
-            수업 소개
-          </p>
-          <div className="rounded-[18px] bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-sm px-4 py-3.5">
-            <p className="text-card-body text-wtext-2 dark:text-rink-100 leading-relaxed whitespace-pre-line">
-              {classData.description || "등록된 설명이 없습니다."}
-            </p>
-          </div>
-        </div>
-
-        {/* ── 수업일정(일정 목록) + 캘린더 보기(아코디언) — 읽기 전용 ── */}
-        {hasScheduleList && (
-          <>
-            {/* 수업일정 — 일정 목록 (캘린더 위) */}
-            <div className="mx-5 mt-4">
-              <p className="px-1 pb-2 text-card-meta font-extrabold text-wtext-2 dark:text-rink-100 tracking-tight">
-                수업일정
-                <span className="ml-1.5 font-semibold text-wtext-3 dark:text-rink-300 tabular-nums">
+          {/* 수업일정 — 정보 섹션 내부 통합 (목록 + 캘린더 아코디언) */}
+          {hasScheduleList && (
+            <div className="mt-3 pt-3 border-t border-wline-2 dark:border-rink-700">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-[11px] font-extrabold uppercase tracking-[0.06em] text-wtext-3 dark:text-rink-300">
+                  일정
+                </h3>
+                <span className="text-[11px] font-semibold text-wtext-3 dark:text-rink-300 tabular-nums">
                   {scheduleList.length}건
                 </span>
-              </p>
-              <div className="rounded-[18px] bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-sm overflow-hidden">
+              </div>
+              <div className="rounded-[14px] border border-wline-2 dark:border-rink-700 overflow-hidden">
                 <ScheduleCalendarView schedules={scheduleList} readOnly part="list" />
               </div>
-            </div>
-
-            {/* 캘린더 보기 — 아코디언, 기본 접힘 */}
-            <div className="mx-5 mt-4">
               <button
                 type="button"
                 onClick={() => setShowCalendar((v) => !v)}
                 aria-expanded={showCalendar}
-                className="flex w-full items-center justify-between px-1 pb-2"
+                className="mt-3 flex w-full items-center justify-between"
               >
-                <span className="text-card-meta font-extrabold text-wtext-2 dark:text-rink-100 tracking-tight">
+                <span className="text-[11px] font-extrabold uppercase tracking-[0.06em] text-wtext-3 dark:text-rink-300">
                   캘린더 보기
                 </span>
                 <Icon
@@ -1519,13 +1570,13 @@ export default function ClassDetailPage() {
                 />
               </button>
               {showCalendar && (
-                <div className="rounded-[18px] bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-sm overflow-hidden">
+                <div className="mt-2 rounded-[14px] border border-wline-2 dark:border-rink-700 overflow-hidden">
                   <ScheduleCalendarView schedules={scheduleList} readOnly part="calendar" />
                 </div>
               )}
             </div>
-          </>
-        )}
+          )}
+        </section>
 
         {/* ── 가격 표시 (싱글/월 가격 라벨 기반) ──
             [추가 2026-05-15 T03 협업 / T05-F1] singlePriceLabel/monthlyPriceLabel 노출.
@@ -1543,12 +1594,15 @@ export default function ClassDetailPage() {
           );
           if (!singleText && !monthlyText) return null;
           return (
-            <div className="mx-5 mt-4">
-              <p className="px-1 pb-2 text-card-meta font-extrabold text-wtext-2 dark:text-rink-100 tracking-tight">
+            <section
+              className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4"
+              aria-label="가격"
+            >
+              <h2 className="text-[15px] font-extrabold text-wtext-1 dark:text-white tracking-tight">
                 가격
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-[14px] border border-wline-2 bg-white p-3 dark:border-rink-700 dark:bg-rink-800">
+              </h2>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <div className="rounded-[14px] border border-wline-2 bg-it-fill p-3 dark:border-rink-700 dark:bg-rink-900/40">
                   <p className="text-card-meta font-bold uppercase tracking-wider text-wtext-3 dark:text-wtext-4">
                     회당
                   </p>
@@ -1556,7 +1610,7 @@ export default function ClassDetailPage() {
                     {singleText ?? "—"}
                   </p>
                 </div>
-                <div className="rounded-[14px] border border-wline-2 bg-white p-3 dark:border-rink-700 dark:bg-rink-800">
+                <div className="rounded-[14px] border border-wline-2 bg-it-fill p-3 dark:border-rink-700 dark:bg-rink-900/40">
                   <p className="text-card-meta font-bold uppercase tracking-wider text-wtext-3 dark:text-wtext-4">
                     정기권
                   </p>
@@ -1565,17 +1619,20 @@ export default function ClassDetailPage() {
                   </p>
                 </div>
               </div>
-            </div>
+            </section>
           );
         })()}
 
-        {/* ── 수강 플랜 — 카드 리스트 (BEST 배지) ── */}
-        <div className="mx-5 mt-4">
-          <p className="px-1 pb-2 text-card-meta font-extrabold text-wtext-2 dark:text-rink-100 tracking-tight">
+        {/* ── 수강권 선택 — 라디오 행 리스트 (full-bleed 흰 섹션) ── */}
+        <section
+          className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4"
+          aria-label={isOpenClass ? "훈련비용" : "수업료"}
+        >
+          <h2 className="text-[15px] font-extrabold text-wtext-1 dark:text-white tracking-tight">
             {isOpenClass ? "훈련비용" : "수업료"}
-          </p>
+          </h2>
           {hasProducts ? (
-            <div className="flex flex-col gap-2">
+            <div className="mt-1">
               {(() => {
                 // [2026-06-09] 수강 플랜 정렬 — 1회권→N회권(PER_SESSION, sessionsPerMonth 오름차순)
                 //   →전체(MONTHLY_FIXED) 순으로 노출.
@@ -1584,7 +1641,8 @@ export default function ClassDetailPage() {
                     p.feeType === 'MONTHLY_FIXED' ? 100000 : (p.sessionsPerMonth ?? 0);
                   return order(a) - order(b);
                 });
-                return products.map((p) => {
+                return products.map((p, idx) => {
+                  const isLast = idx === products.length - 1;
                   // [2026-06-09] 오픈클래스는 '수업 종료일 초과' 오판정으로 비활성/문구가 뜨지 않도록
                   //   항상 활성 처리(오픈클래스는 종료일 개념이 날짜별 일정과 맞지 않음).
                   const baseDisabled = !isOpenClass && p.isPurchasable === false;
@@ -1615,16 +1673,9 @@ export default function ClassDetailPage() {
                       role={!isManager && !isDisabled ? 'button' : undefined}
                       aria-pressed={!isManager && !isDisabled ? isSelected : undefined}
                       className={cn(
-                        "relative flex items-center gap-3 px-4 py-3.5 rounded-[14px] shadow-sm transition-colors motion-reduce:transition-none",
+                        "relative flex items-center gap-3 py-3.5 transition-colors motion-reduce:transition-none",
                         !isManager && !isDisabled && "cursor-pointer",
-                        isSelected && "ring-2 ring-it-blue-500 ring-offset-1 dark:ring-offset-rink-900",
-                        // [2026-06-18] 결제완료 패키지 — emerald 강조 테두리.
-                        isPaidPackage && "ring-2 ring-emerald-500 ring-offset-1 dark:ring-offset-rink-900",
-                        // [수정 2026-05-22 사용자 직접 지시] 회색 톤으로 다운, 카드 내부 사유 표시.
-                        //   학부모/학생은 백엔드에서 비활성 응답 자체 제외되므로 본 분기는 코치·감독·관리자 시점에서만 활성.
-                        isDisabled && !isPaidPackage
-                          ? "border border-wline-2 dark:border-rink-700 bg-wline-2/40 dark:bg-rink-700/40"
-                          : "border border-wline-2 dark:border-rink-700 bg-white dark:bg-rink-800",
+                        !isLast && "border-b border-wline-2 dark:border-rink-700",
                       )}
                       aria-disabled={isDisabled || undefined}
                     >
@@ -1633,17 +1684,21 @@ export default function ClassDetailPage() {
                       {!isManager && (
                         <span
                           className={cn(
-                            'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors',
+                            'flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-w-pill border-[1.5px] transition-colors',
                             isPaidPackage
                               ? 'bg-emerald-500 border-emerald-500 text-white'
                               : isSelected
-                                ? 'bg-it-blue-500 border-it-blue-500 text-white'
-                                : 'bg-wsurface dark:bg-rink-900 border-wline-2 dark:border-rink-600',
+                                ? 'bg-it-blue-500 border-it-blue-500'
+                                : 'bg-white dark:bg-rink-900 border-it-line-strong dark:border-rink-600',
                             isDisabled && !isPaidPackage && 'opacity-40',
                           )}
                           aria-hidden="true"
                         >
-                          {(isSelected || isPaidPackage) && <Icon name="check" className="text-sm" />}
+                          {isPaidPackage ? (
+                            <Icon name="check" className="text-sm" />
+                          ) : isSelected ? (
+                            <span className="h-2 w-2 rounded-w-pill bg-white" />
+                          ) : null}
                         </span>
                       )}
                       <div className={cn("flex-1 min-w-0", isDisabled && !isPaidPackage && "opacity-70")}>
@@ -1670,7 +1725,14 @@ export default function ClassDetailPage() {
                         )}
                       </div>
                       <div className={cn("shrink-0 text-right", isDisabled && "opacity-70")}>
-                        <p className="text-card-title font-extrabold text-wtext-1 dark:text-white tracking-tight tabular-nums leading-none">
+                        <p
+                          className={cn(
+                            "text-card-title font-extrabold tracking-tight tabular-nums leading-none",
+                            isSelected
+                              ? "text-it-blue-600 dark:text-it-blue-300"
+                              : "text-wtext-1 dark:text-white",
+                          )}
+                        >
                           {formatPrice(p.price)}
                           <span className="ml-0.5 text-card-meta font-bold text-wtext-3 dark:text-rink-300">
                             원
@@ -1683,7 +1745,7 @@ export default function ClassDetailPage() {
               })()}
             </div>
           ) : (
-            <div className="flex items-center gap-3 rounded-[18px] bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-sm px-4 py-4">
+            <div className="mt-3 flex items-center gap-3 rounded-[14px] bg-it-fill dark:bg-rink-900/40 border border-wline-2 dark:border-rink-700 px-4 py-4">
               <div
                 className="shrink-0 flex size-9 items-center justify-center rounded-lg bg-wline-2 dark:bg-rink-700 text-wtext-3 dark:text-rink-300"
                 aria-hidden="true"
@@ -1695,35 +1757,36 @@ export default function ClassDetailPage() {
               </p>
             </div>
           )}
-        </div>
+        </section>
 
-        {/* ── 장소 카드 ── */}
+        {/* ── 장소 — full-bleed 흰 섹션 ── */}
         {hasVenue && (
-          <div className="mx-5 mt-4">
-            <p className="px-1 pb-2 text-card-meta font-extrabold text-wtext-2 dark:text-rink-100 tracking-tight">
+          <section
+            className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4"
+            aria-label="장소"
+          >
+            <h2 className="text-[15px] font-extrabold text-wtext-1 dark:text-white tracking-tight">
               장소
-            </p>
-            <div className="rounded-[18px] bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-sm overflow-hidden">
-              <div className="px-4 py-3 flex items-center gap-3">
-                <div
-                  className="shrink-0 flex size-9 items-center justify-center rounded-lg bg-it-blue-500/10 text-it-blue-500"
-                  aria-hidden="true"
-                >
-                  <Icon name="location_on" size={18} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-card-body font-bold text-wtext-1 dark:text-white truncate tracking-tight">
-                    {classData.venueName ?? "장소 미정"}
+            </h2>
+            <div className="mt-3 flex items-center gap-3">
+              <div
+                className="shrink-0 flex size-9 items-center justify-center rounded-lg bg-it-blue-500/10 text-it-blue-500"
+                aria-hidden="true"
+              >
+                <Icon name="location_on" size={18} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-card-body font-bold text-wtext-1 dark:text-white truncate tracking-tight">
+                  {classData.venueName ?? "장소 미정"}
+                </p>
+                {classData.venueAddress && (
+                  <p className="text-card-meta text-wtext-3 dark:text-rink-300 truncate mt-0.5">
+                    {classData.venueAddress}
                   </p>
-                  {classData.venueAddress && (
-                    <p className="text-card-meta text-wtext-3 dark:text-rink-300 truncate mt-0.5">
-                      {classData.venueAddress}
-                    </p>
-                  )}
-                </div>
+                )}
               </div>
             </div>
-          </div>
+          </section>
         )}
 
         {/* ── parent ChildSelector + CTA — 자녀 단일 선택 진입점 ──
@@ -1738,7 +1801,7 @@ export default function ClassDetailPage() {
               - 그 외 → 좌측 "돌아가기" / 우측 "등록(결제)하기"
         */}
         {isParent && (
-          <div className="mx-5 mt-5 flex flex-col gap-4">
+          <div className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4 flex flex-col gap-5">
             {/* ChildSelector — 자녀 ≥1명 일 때만 노출. 0명은 handleEnrollClick 의 modal.alert 가 안내. */}
             {parentChildren.length > 0 && (() => {
               // "모두 잠금" 판정 (paid 는 잠금 아님 — 결제취소 가능하므로 제외)
@@ -1758,15 +1821,15 @@ export default function ClassDetailPage() {
                   : null;
               return (
                 <section aria-label="수강생 선택">
-                  <div className="flex items-center justify-between mb-2 px-1">
-                    <h3 className="text-card-body font-bold text-wtext-1 dark:text-white">
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-[15px] font-extrabold text-wtext-1 dark:text-white tracking-tight">
                       수강생 선택
-                    </h3>
-                    {ageRangeLabel && (
-                      <span className="text-card-meta font-medium text-wtext-3 dark:text-rink-300">
-                        수강 연령 · {ageRangeLabel}
-                      </span>
-                    )}
+                      {ageRangeLabel && (
+                        <span className="ml-1.5 text-[12.5px] font-semibold text-wtext-3 dark:text-rink-300">
+                          · {ageRangeLabel}
+                        </span>
+                      )}
+                    </h2>
                   </div>
                   <ChildSelector
                     childList={parentChildren}
@@ -1782,6 +1845,7 @@ export default function ClassDetailPage() {
                     multiSelect={isOpenClass}
                     selectedIds={selectedChildIds}
                     onToggle={handleChildToggle}
+                    variant="pill"
                   />
                   {/* 안내 메시지 — 모든 자녀가 잠금이면(paid 제외) 메시지 표시 */}
                   {noneSelectable && ageRangeLabel && (

@@ -189,46 +189,41 @@ function PaymentCheckoutContent() {
       <PageAppBar title="수업 결제" forceNative />
 
       {/* Stepper */}
-      <div className="px-6 py-4">
-        <PaymentStepIndicator currentStep={3} />
+      <div className="px-6 py-4 bg-it-canvas dark:bg-puck">
+        <PaymentStepIndicator currentStep={3} iceTheme />
       </div>
 
       <main
-        className="flex-1 flex flex-col px-5 space-y-5 overflow-y-auto [&>*]:shrink-0"
+        className="flex-1 flex flex-col overflow-y-auto bg-it-canvas dark:bg-puck [&>*]:shrink-0"
         role="main"
       >
-        <StepHeadline currentStep={3} />
-
-        {/* 결제 금액 요약 */}
-        <section aria-labelledby="payment-amount-label">
-          <div className="bg-white dark:bg-rink-800 rounded-2xl p-6 shadow-sm border border-wline-2 dark:border-rink-700 relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-4 opacity-10">
-              <Icon name="receipt_long" className="text-6xl text-ice-500" aria-hidden="true" />
-            </div>
-            <div className="relative z-10">
-              <p
-                id="payment-amount-label"
-                className="text-wtext-3 dark:text-rink-300 text-card-body font-medium mb-1"
-              >
-                총 결제 금액
-              </p>
-              <div className="flex items-baseline gap-1">
-                <span
-                  className="text-3xl font-bold text-wtext-1 dark:text-white tracking-tight tabular-nums"
-                  aria-label={`${amount.toLocaleString()}원`}
-                >
-                  {amount.toLocaleString()}
-                </span>
-                <span className="text-xl font-medium text-wtext-1 dark:text-white" aria-hidden="true">
-                  원
-                </span>
-              </div>
-            </div>
+        {/* 결제 금액 요약 — ICETIMES navy 히어로 밴드 (full-bleed, 카드 박스 제거) */}
+        <section
+          className="bg-it-blue-800 dark:bg-it-blue-950 px-5 pt-[22px] pb-6"
+          aria-labelledby="payment-amount-label"
+        >
+          <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-white/60">
+            <Icon name="receipt_long" className="text-[14px]" aria-hidden="true" />
+            <span id="payment-amount-label">총 결제 금액</span>
+          </div>
+          <div className="mt-2 flex items-baseline gap-[3px]">
+            <span
+              className="text-[38px] font-extrabold leading-[1.05] tracking-[-0.02em] text-white tabular-nums"
+              aria-label={`${amount.toLocaleString()}원`}
+            >
+              {amount.toLocaleString()}
+            </span>
+            <span className="text-[19px] font-bold text-white" aria-hidden="true">원</span>
           </div>
         </section>
 
-        {/* 토스 결제수단 위젯 */}
-        <section aria-label="결제 수단 선택">
+        {/* Step Headline — 흰 섹션 시작 (8px 회색 갭) */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 pt-5 pb-1">
+          <StepHeadline currentStep={3} iceTheme />
+        </section>
+
+        {/* 토스 결제수단 위젯 — 흰 섹션 */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-5" aria-label="결제 수단 선택">
           {/* [수정 2026-05-13] overflow-hidden 제거 — 토스 위젯 내부 dropdown/모달 펼침 시
               컨테이너에 잘려 클릭이 비활성으로 보이던 문제. 토스 SDK 가 자체 스타일을 가지므로
               wrapper 는 min-height 만 유지.
@@ -244,27 +239,27 @@ function PaymentCheckoutContent() {
           />
         </section>
 
-        {/* 토스 약관 위젯 */}
-        <section aria-label="약관 동의">
+        {/* 토스 약관 위젯 — 흰 섹션 */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4" aria-label="약관 동의">
           <div id="agreement" className="min-h-[80px]" />
+
+          {/* 위젯 로딩 / 에러 안내 */}
+          {!isReady && !error && (
+            <div className="flex items-center justify-center py-4 gap-2 text-it-ink-500 dark:text-rink-300">
+              <Spinner className="w-4 h-4" />
+              <span className="text-card-meta">{MESSAGES.loading.paymentWidget}</span>
+            </div>
+          )}
+          {error && (
+            <div className="rounded-w-md border border-it-red-500/30 bg-it-red-50 dark:bg-it-red-500/15 p-4 text-card-body text-it-red-600 dark:text-it-red-200">
+              {error}
+            </div>
+          )}
         </section>
 
-        {/* 위젯 로딩 / 에러 안내 */}
-        {!isReady && !error && (
-          <div className="flex items-center justify-center py-4 gap-2 text-wtext-3 dark:text-rink-300">
-            <Spinner className="w-4 h-4" />
-            <span className="text-card-meta">{MESSAGES.loading.paymentWidget}</span>
-          </div>
-        )}
-        {error && (
-          <div className="rounded-xl border border-flame-200 bg-flame-50 dark:bg-flame-900/20 p-4 text-card-body text-flame-700 dark:text-flame-300">
-            {error}
-          </div>
-        )}
-
-        {/* CTA */}
-        <section className="flex flex-col gap-3 pt-2 pb-6">
-          <div className="flex items-center justify-center gap-1.5 text-wtext-3 dark:text-rink-300">
+        {/* CTA — 흰 섹션 */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 pt-4 pb-6 flex flex-col gap-3">
+          <div className="flex items-center justify-center gap-1.5 text-it-ink-400 dark:text-rink-300">
             <Icon name="lock" filled className="text-card-body" />
             <span className="text-[11px] font-medium">
               {MESSAGES.payment2.securePayment} (TossPayments)
@@ -273,7 +268,7 @@ function PaymentCheckoutContent() {
           {/* [추가] 환불 규정 보기 — 결제 전 환불 정책 고지 (앱 심사 Task 3) */}
           <NavLink
             href="/terms?section=refund"
-            className="inline-flex items-center justify-center gap-1 self-center text-[12px] font-medium text-wtext-2 dark:text-rink-100 underline underline-offset-2 hover:text-ice-500 dark:hover:text-blue-300 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 rounded"
+            className="inline-flex items-center justify-center gap-1 self-center text-[12px] font-medium text-it-ink-600 dark:text-rink-100 underline underline-offset-2 hover:text-it-blue-500 dark:hover:text-it-blue-300 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 rounded"
           >
             <Icon name="receipt_long" className="text-[14px]" aria-hidden="true" />
             {MESSAGES.payment2.viewRefundPolicy}
@@ -282,7 +277,7 @@ function PaymentCheckoutContent() {
             type="button"
             onClick={handlePayment}
             disabled={!isReady || isPaying || !!error}
-            className="w-full bg-ice-500 hover:bg-ice-500/90 active:brightness-95 transition-all motion-reduce:transition-none text-white rounded-xl py-4 px-6 shadow-md flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed font-bold text-card-title"
+            className="w-full bg-it-blue-500 hover:bg-it-blue-600 active:brightness-95 transition-colors motion-reduce:transition-none text-white rounded-w-md py-4 px-6 shadow-sh-1 flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed font-bold text-card-title"
           >
             {isPaying ? (
               <span className="flex items-center gap-2">
@@ -296,7 +291,7 @@ function PaymentCheckoutContent() {
           <button
             type="button"
             onClick={() => back()}
-            className="w-full bg-wline-2 dark:bg-rink-700 text-wtext-2 dark:text-rink-100 rounded-xl py-3 font-semibold text-card-body"
+            className="w-full bg-it-fill dark:bg-rink-700 text-it-ink-600 dark:text-rink-100 rounded-w-md py-3 font-semibold text-card-body transition-colors motion-reduce:transition-none hover:bg-it-line active:brightness-95"
           >
             {cancelLabel}
           </button>

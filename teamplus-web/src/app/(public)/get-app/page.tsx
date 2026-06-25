@@ -66,37 +66,37 @@ export default function GetAppPage() {
   return (
     <MobileContainer
       hasBottomNav={false}
-      className="bg-wbg dark:bg-rink-900"
+      className="bg-it-canvas dark:bg-puck"
       ariaLabel="앱 설치 안내"
     >
-      <div className="flex flex-col min-h-full px-5 pt-10 pb-8">
-        {/* Hero */}
-        <section className="flex flex-col items-center text-center pt-6 pb-8">
+      <div className="flex flex-col min-h-full">
+        {/* Hero — navy 밴드 full-bleed */}
+        <section className="bg-it-blue-800 dark:bg-it-blue-950 flex flex-col items-center text-center px-5 pt-14 pb-10">
           <AppMarkIllustration />
-          <h1 className="mt-7 text-w-h2 font-bold text-wtext-1 dark:text-white">
+          <h1 className="mt-7 text-w-h2 font-extrabold tracking-[-0.02em] text-white">
             {MESSAGES.appInstall.pageTitle}
           </h1>
-          <p className="mt-3 text-w-body text-wtext-3 dark:text-slate-400 leading-relaxed max-w-xs">
+          <p className="mt-3 text-w-body text-white/75 leading-relaxed max-w-xs">
             {MESSAGES.appInstall.pageSubtitle}
           </p>
           {!isOther && mounted && (
-            <p className="mt-4 text-w-small text-ice-500 font-medium">
+            <p className="mt-4 text-w-small text-white font-semibold">
               {MESSAGES.appInstall.detectedHint(isIos ? 'iOS' : 'Android')}
             </p>
           )}
         </section>
 
-        {/* 스토어 선택 카드 */}
+        {/* 스토어 선택 — flat 흰 섹션 (카드 박스 제거) */}
         <section
-          className="bg-white dark:bg-rink-800 rounded-w-2xl p-5 shadow-sh-1"
+          className="bg-it-surface dark:bg-rink-800 mt-2 px-5 pt-5 pb-5"
           aria-label={MESSAGES.appInstall.chooseDevice}
         >
           {isOther && (
-            <div className="mb-4 pb-4 border-b border-wline dark:border-rink-800/60">
-              <h2 className="text-w-body font-semibold text-wtext-1 dark:text-white">
+            <div className="mb-4 pb-4 border-b border-it-line dark:border-rink-700">
+              <h2 className="text-w-body font-bold text-it-ink-800 dark:text-white">
                 {MESSAGES.appInstall.otherDeviceTitle}
               </h2>
-              <p className="mt-1 text-w-small text-wtext-3 dark:text-slate-400 leading-relaxed">
+              <p className="mt-1 text-w-small text-it-ink-500 dark:text-wtext-4 leading-relaxed">
                 {MESSAGES.appInstall.otherDeviceDescription}
               </p>
             </div>
@@ -121,7 +121,7 @@ export default function GetAppPage() {
         </section>
 
         {/* 웹 계속 이용 — 보조 액션 */}
-        <div className="mt-auto pt-8 flex justify-center">
+        <div className="mt-auto pt-8 pb-8 flex justify-center">
           <button
             type="button"
             onClick={() => {
@@ -130,7 +130,7 @@ export default function GetAppPage() {
                 : '/';
               router.push(target);
             }}
-            className="text-w-small text-wtext-3 dark:text-slate-400 underline underline-offset-4 decoration-wline-2 dark:decoration-rink-800 hover:text-wtext-1 dark:hover:text-white transition-colors"
+            className="text-w-small text-it-ink-500 dark:text-wtext-4 underline underline-offset-4 decoration-it-line-strong dark:decoration-rink-700 hover:text-it-ink-800 dark:hover:text-white transition-colors"
           >
             {MESSAGES.appInstall.continueWeb}
           </button>
@@ -163,19 +163,19 @@ function StoreButton({
       target="_blank"
       rel="noopener noreferrer"
       className={cn(
-        'group flex items-center gap-4 rounded-w-xl px-4 py-4 transition-colors',
+        'group flex items-center gap-4 rounded-w-md px-4 py-4 transition-colors',
         highlighted
-          ? 'bg-ice-500 text-white hover:bg-ice-600 active:bg-ice-600'
-          : 'bg-wbg dark:bg-rink-900 text-wtext-1 dark:text-white hover:bg-wline-2 dark:hover:bg-rink-800/80',
+          ? 'bg-it-blue-500 text-white hover:bg-it-blue-600 active:brightness-95'
+          : 'bg-it-fill dark:bg-puck/30 text-it-ink-800 dark:text-white border border-it-line-strong dark:border-rink-700 hover:bg-it-line dark:hover:bg-rink-700',
       )}
       aria-label={`${deviceLabel} — ${label}`}
     >
       <span
         className={cn(
-          'flex h-11 w-11 shrink-0 items-center justify-center rounded-w-lg',
+          'flex h-11 w-11 shrink-0 items-center justify-center rounded-w-md',
           highlighted
             ? 'bg-white/15 text-white'
-            : 'bg-white dark:bg-rink-800 text-wtext-1 dark:text-white',
+            : 'bg-it-surface dark:bg-rink-800 text-it-ink-800 dark:text-white',
         )}
         aria-hidden="true"
       >
@@ -185,18 +185,18 @@ function StoreButton({
         <span
           className={cn(
             'block text-w-caption',
-            highlighted ? 'text-white/80' : 'text-wtext-3 dark:text-slate-400',
+            highlighted ? 'text-white/80' : 'text-it-ink-500 dark:text-wtext-4',
           )}
         >
           {deviceLabel}
         </span>
-        <span className="block text-w-body font-semibold">{label}</span>
+        <span className="block text-w-body font-bold">{label}</span>
       </span>
       <Icon
         name="chevron_right"
         className={cn(
           'transition-transform group-hover:translate-x-0.5 text-xl',
-          highlighted ? 'text-white/80' : 'text-wtext-4 dark:text-slate-500',
+          highlighted ? 'text-white/80' : 'text-it-ink-400 dark:text-wtext-4',
         )}
         aria-hidden="true"
       />
@@ -209,12 +209,12 @@ function StoreButton({
 
 function AppMarkIllustration() {
   return (
-    <div className="flex h-32 w-32 items-center justify-center rounded-w-2xl bg-white dark:bg-rink-800 shadow-sh-2">
+    <div className="flex h-32 w-32 items-center justify-center rounded-w-xl bg-it-surface dark:bg-rink-800 shadow-sh-2">
       <svg
         viewBox="0 0 96 96"
         xmlns="http://www.w3.org/2000/svg"
         aria-hidden="true"
-        className="h-20 w-20 text-ice-500"
+        className="h-20 w-20 text-it-blue-500"
       >
         {/* App tile background */}
         <rect x="8" y="8" width="80" height="80" rx="20" fill="currentColor" opacity="0.1" />

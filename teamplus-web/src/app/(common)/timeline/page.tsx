@@ -277,13 +277,13 @@ export default function TimelineFeedPage() {
           [수정 2026-05-17] 사용자 직접 지시: 기존 하단 floating pill(필터·검색)
           → 상단으로 이동하여 활용성 강화. 검색 input 은 항상 노출, 필터 버튼은
           tune 아이콘 단일 액션. 헤더-탭 사이 회색 배경 영역에 배치하여 탭과 자연 분리. */}
-      <div className="shrink-0 bg-wsurface dark:bg-rink-900 px-5 pt-3 pb-3">
+      <div className="shrink-0 bg-it-surface dark:bg-it-blue-950 px-5 pt-3 pb-3">
         <div className="flex items-center gap-2">
-          {/* 검색 input — 회색 캔버스(bg-wbg) + 좌측 search 아이콘 */}
+          {/* 검색 input — it-fill 인셋 + 1.5px border + 좌측 search 아이콘 */}
           <label className="relative flex-1 flex items-center">
             <Icon
               name="search"
-              className="absolute left-3 text-[18px] text-wtext-3 dark:text-rink-300 pointer-events-none"
+              className="absolute left-3 text-[18px] text-it-ink-500 dark:text-rink-300 pointer-events-none"
               aria-hidden="true"
             />
             <input
@@ -292,14 +292,14 @@ export default function TimelineFeedPage() {
               aria-label="타임라인 검색"
               className={cn(
                 "w-full h-10 pl-10 pr-3 rounded-w-md",
-                "bg-wbg dark:bg-rink-800 border border-wline-2 dark:border-rink-700",
-                "text-[13.5px] text-wtext-1 dark:text-white placeholder:text-wtext-4 dark:placeholder:text-rink-400",
-                "tracking-[-0.01em] focus:outline-none focus-visible:border-ice-500",
+                "bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700",
+                "text-[13.5px] text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-rink-400",
+                "tracking-[-0.01em] focus:outline-none focus-visible:border-it-blue-500",
                 "transition-colors motion-reduce:transition-none",
               )}
             />
           </label>
-          {/* 필터 버튼 — BottomSheet 트리거. 활성 필터가 있으면 우상단 flame-500 dot indicator */}
+          {/* 필터 버튼 — BottomSheet 트리거. 활성 필터가 있으면 우상단 it-red dot indicator */}
           <button
             type="button"
             onClick={() => setIsFilterOpen(true)}
@@ -307,20 +307,20 @@ export default function TimelineFeedPage() {
             aria-haspopup="dialog"
             aria-expanded={isFilterOpen}
             className={cn(
-              "relative shrink-0 grid place-items-center w-10 h-10 rounded-w-md border",
+              "relative shrink-0 grid place-items-center w-10 h-10 rounded-w-md border-[1.5px]",
               isFilterActive
-                ? "bg-ice-500 border-ice-500 text-white"
-                : "bg-wbg dark:bg-rink-800 border-wline-2 dark:border-rink-700 text-wtext-2 dark:text-rink-100",
+                ? "bg-it-blue-500 border-it-blue-500 text-white"
+                : "bg-it-fill dark:bg-rink-800 border-it-line-strong dark:border-rink-700 text-it-ink-700 dark:text-rink-100",
               "transition-colors motion-reduce:transition-none",
-              !isFilterActive && "hover:bg-wline-2 dark:hover:bg-rink-700",
-              "focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40",
+              !isFilterActive && "hover:bg-it-line dark:hover:bg-rink-700",
+              "focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40",
             )}
           >
             <Icon name="tune" className="text-[18px]" aria-hidden="true" />
             {isFilterActive && (
               <span
                 aria-hidden="true"
-                className="absolute -top-[3px] -right-[3px] w-2.5 h-2.5 rounded-full bg-flame-500 ring-2 ring-wsurface dark:ring-rink-900"
+                className="absolute -top-[3px] -right-[3px] w-2.5 h-2.5 rounded-full bg-it-red-500 ring-2 ring-it-surface dark:ring-rink-900"
               />
             )}
           </button>
@@ -329,7 +329,7 @@ export default function TimelineFeedPage() {
 
       {/* ── 탭 (전체/수업/결제/메모/안내) — 활성 탭 underline ───────── */}
       <nav
-        className="shrink-0 bg-wsurface dark:bg-rink-900 border-b border-wline-2 dark:border-rink-700/60"
+        className="shrink-0 bg-it-surface dark:bg-it-blue-950 border-b border-it-line dark:border-rink-700/60"
         aria-label="타임라인 필터"
       >
         <ul className="flex items-stretch gap-5 px-5 pt-3">
@@ -344,15 +344,15 @@ export default function TimelineFeedPage() {
                   className={cn(
                     "relative -mb-px pb-3 text-[14px] tracking-[-0.01em] transition-colors motion-reduce:transition-none",
                     isActive
-                      ? "font-bold text-wtext-1 dark:text-white"
-                      : "font-medium text-wtext-4 dark:text-rink-300 hover:text-wtext-2 dark:hover:text-rink-100",
+                      ? "font-bold text-it-ink-800 dark:text-white"
+                      : "font-medium text-it-ink-400 dark:text-rink-300 hover:text-it-ink-700 dark:hover:text-rink-100",
                   )}
                 >
                   {tab.label}
                   {isActive && (
                     <span
                       aria-hidden="true"
-                      className="pointer-events-none absolute inset-x-0 -bottom-px h-[2.5px] rounded-full bg-wtext-1 dark:bg-white"
+                      className="pointer-events-none absolute inset-x-0 -bottom-px h-[2.5px] rounded-full bg-it-blue-500"
                     />
                   )}
                 </button>
@@ -367,16 +367,16 @@ export default function TimelineFeedPage() {
           타임라인은 진입 시 컴포넌트가 위로 올라오는 애니메이션 없이 즉시 표시. */}
       <main
         data-no-enter
-        className="relative flex-1 overflow-y-auto bg-wbg dark:bg-rink-900"
+        className="relative flex-1 overflow-y-auto bg-it-surface dark:bg-it-blue-950 mt-2"
       >
         {filteredDays.length === 0 ? (
           <div className="flex flex-col items-center justify-center pt-24 gap-3 px-6 text-center">
             <Icon
               name="schedule"
-              className="text-[44px] text-wtext-4 dark:text-rink-500"
+              className="text-[44px] text-it-ink-400 dark:text-rink-500"
               aria-hidden="true"
             />
-            <p className="text-card-body text-wtext-3 dark:text-rink-300">
+            <p className="text-card-body text-it-ink-500 dark:text-rink-300">
               해당 항목이 없습니다.
             </p>
           </div>
@@ -393,7 +393,7 @@ export default function TimelineFeedPage() {
                   · 해결 2) 색상을 wtext-4/55 → wtext-3 (한 단계 더 진한 회색 #4b556a) 로 강화. */}
             <span
               aria-hidden="true"
-              className="pointer-events-none absolute left-[23px] top-0 bottom-0 w-px border-l border-dashed border-wtext-3/70 dark:border-rink-300/55"
+              className="pointer-events-none absolute left-[23px] top-0 bottom-0 w-px border-l border-dashed border-it-ink-300 dark:border-rink-300/55"
               style={{
                 // [수정 2026-05-17 v5] 사용자 직접 지시 — 마지막 day 의 ice dot ↔ row dot 사이 점선 가시성 회복.
                 //   v4 mask: 아래쪽 transparent 56px + fade 56~80px(24px). 두 dot 사이(52px) 가
@@ -427,11 +427,11 @@ export default function TimelineFeedPage() {
                   <span
                     aria-hidden="true"
                     className={cn(
-                      "shrink-0 z-10 w-3 h-3 rounded-full bg-ice-500",
-                      "ring-[3px] ring-wbg dark:ring-rink-900",
+                      "shrink-0 z-10 w-3 h-3 rounded-full bg-it-blue-500",
+                      "ring-[3px] ring-it-surface dark:ring-rink-900",
                     )}
                   />
-                  <span className="font-num tabular-nums text-[13px] font-bold leading-none text-ice-600 dark:text-ice-300 tracking-[-0.01em]">
+                  <span className="font-num tabular-nums text-[13px] font-bold leading-none text-it-blue-600 dark:text-ice-300 tracking-[-0.01em]">
                     {day.date}
                   </span>
                 </div>
@@ -494,37 +494,37 @@ function LessonRow({ item }: { item: TimelineLesson }) {
           multi-line row(제목+서브 두 줄)에서도 시간/제목과 같은 baseline 유지. */}
       <span
         aria-hidden="true"
-        className="absolute z-10 left-[-5.5px] top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-wsurface dark:bg-rink-900 border-[2.5px] border-wtext-2 dark:border-rink-300"
+        className="absolute z-10 left-[-5.5px] top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-it-surface dark:bg-rink-900 border-[2.5px] border-it-ink-700 dark:border-rink-300"
       />
-      <span className="w-14 font-num tabular-nums text-[12px] font-semibold text-wtext-3 dark:text-rink-300">
+      <span className="w-14 font-num tabular-nums text-[12px] font-semibold text-it-ink-500 dark:text-rink-300">
         {item.time}
       </span>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          <span className="text-[14px] font-bold text-wtext-1 dark:text-white tracking-[-0.01em] truncate">
+          <span className="text-[14px] font-bold text-it-ink-800 dark:text-white tracking-[-0.01em] truncate">
             {item.title}
           </span>
-          {/* 참고자료 Chip active=true 매칭 — 활성 배경(mint-500/flame-500/sun-500) + 흰 텍스트 */}
+          {/* 출석 상태 칩 — 결석=it-red(강조) · 지각=sun · 출석=mint */}
           <span
             className={cn(
               "shrink-0 inline-flex items-center h-[18px] px-[7px] rounded-full text-[10px] font-bold tracking-[-0.01em]",
               isAbsent
-                ? "bg-flame-500 text-white"
+                ? "bg-it-red-500 text-white"
                 : isLate
-                  ? "bg-sun-500 text-wtext-1"
+                  ? "bg-sun-500 text-it-ink-800"
                   : "bg-mint-500 text-white",
             )}
           >
             {item.badge}
           </span>
         </div>
-        <p className="mt-0.5 text-[12px] text-wtext-3 dark:text-rink-300 truncate">
+        <p className="mt-0.5 text-[12px] text-it-ink-500 dark:text-rink-300 truncate">
           {item.sub}
         </p>
       </div>
       <Icon
         name="chevron_right"
-        className="shrink-0 text-[16px] text-wtext-4 dark:text-rink-300"
+        className="shrink-0 text-[16px] text-it-ink-400 dark:text-rink-300"
         aria-hidden="true"
       />
     </div>
@@ -537,29 +537,29 @@ function PaymentRow({ item }: { item: TimelinePayment }) {
       {/* node dot — row 수직 정중앙 정렬 → 시간/제목/금액과 같은 baseline. */}
       <span
         aria-hidden="true"
-        className="absolute z-10 left-[-5.5px] top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-wsurface dark:bg-rink-900 border-[2.5px] border-wtext-2 dark:border-rink-300"
+        className="absolute z-10 left-[-5.5px] top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-it-surface dark:bg-rink-900 border-[2.5px] border-it-ink-700 dark:border-rink-300"
       />
-      <span className="w-14 font-num tabular-nums text-[12px] font-semibold text-wtext-3 dark:text-rink-300">
+      <span className="w-14 font-num tabular-nums text-[12px] font-semibold text-it-ink-500 dark:text-rink-300">
         {item.time}
       </span>
       <div className="flex-1 min-w-0">
-        <p className="text-[14px] font-bold text-wtext-1 dark:text-white tracking-[-0.01em] truncate">
+        <p className="text-[14px] font-bold text-it-ink-800 dark:text-white tracking-[-0.01em] truncate">
           {item.title}
         </p>
-        <p className="mt-0.5 text-[12px] text-wtext-3 dark:text-rink-300 truncate">
+        <p className="mt-0.5 text-[12px] text-it-ink-500 dark:text-rink-300 truncate">
           {item.sub}
         </p>
       </div>
       <div className="flex items-center gap-1 shrink-0">
-        <span className="font-num tabular-nums text-[15px] font-extrabold text-wtext-1 dark:text-white">
+        <span className="font-num tabular-nums text-[15px] font-extrabold text-it-ink-800 dark:text-white">
           {item.amount.toLocaleString()}
-          <span className="ml-0.5 text-[12px] font-semibold text-wtext-2 dark:text-rink-100">
+          <span className="ml-0.5 text-[12px] font-semibold text-it-ink-700 dark:text-rink-100">
             원
           </span>
         </span>
         <Icon
           name="chevron_right"
-          className="text-[16px] text-wtext-4 dark:text-rink-300"
+          className="text-[16px] text-it-ink-400 dark:text-rink-300"
           aria-hidden="true"
         />
       </div>
@@ -574,12 +574,12 @@ function NoteRow({ item }: { item: TimelineNote }) {
         aria-hidden="true"
         className="absolute left-[-5.5px] top-[14px] w-3 h-3 rounded-full bg-sun-100 border-[2.5px] border-sun-500"
       />
-      {/* 참고자료 매칭 — bg #FFF8E0, headerColor #9a7900 (sun.offText)
-          [수정 2026-05-17] 좌측 세로 표시(border-l-[3px] border-sun-500) 제거 — 사용자 직접 지시. */}
+      {/* 코치 메모 — sun 톤 노란 카드 (토큰: sun-100 / sun-500).
+          [수정 2026-05-17] 좌측 세로 표시 제거 — 사용자 직접 지시. */}
       <div
-        className="rounded-[14px] px-3.5 py-3 bg-[#FFF8E0] dark:bg-amber-950/40"
+        className="rounded-w-md px-3.5 py-3 bg-sun-100 dark:bg-amber-950/40"
       >
-        <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#9a7900] dark:text-amber-300">
+        <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-700 dark:text-amber-300">
           <Icon
             name="chat_bubble_outline"
             className="text-[12px]"
@@ -589,7 +589,7 @@ function NoteRow({ item }: { item: TimelineNote }) {
           <span aria-hidden="true">·</span>
           <span className="font-num tabular-nums">{item.time}</span>
         </div>
-        <p className="mt-1 text-[13px] leading-[1.55] text-wtext-1 dark:text-white">
+        <p className="mt-1 text-[13px] leading-[1.55] text-it-ink-800 dark:text-white">
           “{item.body}”
         </p>
       </div>
@@ -682,12 +682,12 @@ function FilterSheet({
             type="button"
             onClick={() => setDraft(DEFAULT_FILTER)}
             className={cn(
-              "h-12 px-5 rounded-w-md border text-[14px] font-bold tracking-[-0.01em]",
-              "bg-wsurface dark:bg-rink-800 border-wline-2 dark:border-rink-700",
-              "text-wtext-2 dark:text-rink-100",
+              "h-12 px-5 rounded-w-md border-[1.5px] text-[14px] font-bold tracking-[-0.01em]",
+              "bg-it-surface dark:bg-rink-800 border-it-line-strong dark:border-rink-700",
+              "text-it-ink-700 dark:text-rink-100",
               "transition-colors motion-reduce:transition-none",
-              "hover:bg-wbg dark:hover:bg-rink-900/40",
-              "focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40",
+              "hover:bg-it-fill dark:hover:bg-rink-900/40",
+              "focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40",
             )}
           >
             초기화
@@ -696,10 +696,10 @@ function FilterSheet({
             type="button"
             onClick={() => onApply(draft)}
             className={cn(
-              "flex-1 h-12 rounded-w-md bg-ice-500 text-white text-[14px] font-extrabold tracking-[-0.01em]",
+              "flex-1 h-12 rounded-w-md bg-it-blue-500 text-white text-[14px] font-extrabold tracking-[-0.01em]",
               "transition-colors motion-reduce:transition-none",
-              "hover:bg-ice-700 active:brightness-95",
-              "focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40",
+              "hover:bg-it-blue-600 active:brightness-95",
+              "focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40",
             )}
           >
             적용
@@ -766,11 +766,11 @@ function FilterSection({
   return (
     <section>
       <div className="flex items-baseline gap-1.5 mb-2.5">
-        <h3 className="text-[13.5px] font-extrabold text-wtext-1 dark:text-white tracking-[-0.01em]">
+        <h3 className="text-[13.5px] font-extrabold text-it-ink-800 dark:text-white tracking-[-0.01em]">
           {label}
         </h3>
         {hint && (
-          <span className="text-[11.5px] font-medium text-wtext-3 dark:text-wtext-4">
+          <span className="text-[11.5px] font-medium text-it-ink-500 dark:text-wtext-4">
             {hint}
           </span>
         )}
@@ -795,12 +795,12 @@ function FilterChip({
       onClick={onClick}
       aria-pressed={selected}
       className={cn(
-        "h-9 px-3.5 rounded-w-pill border text-[13px] font-bold tracking-[-0.01em]",
+        "h-9 px-3.5 rounded-w-pill border-[1.5px] text-[13px] font-bold tracking-[-0.01em]",
         "transition-colors motion-reduce:transition-none",
-        "focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40",
         selected
-          ? "bg-ice-500 border-ice-500 text-white"
-          : "bg-wbg dark:bg-rink-900 border-wline-2 dark:border-rink-700 text-wtext-2 dark:text-rink-100 hover:bg-wline-2 dark:hover:bg-rink-700",
+          ? "bg-it-blue-500 border-it-blue-500 text-white"
+          : "bg-it-fill dark:bg-rink-900 border-it-line-strong dark:border-rink-700 text-it-ink-700 dark:text-rink-100 hover:bg-it-line dark:hover:bg-rink-700",
       )}
     >
       {children}

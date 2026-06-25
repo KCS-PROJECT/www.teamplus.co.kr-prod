@@ -56,6 +56,11 @@ interface MatchCreateFormProps {
   onSubmit: (values: MatchFormValues) => Promise<void> | void;
   onCancel?: () => void;
   error?: string | null;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 it-* 토큰(flat 섹션 · it-fill 인풋 border 1.5px · it-blue 칩/제출).
+   */
+  iceTheme?: boolean;
 }
 
 /**
@@ -74,6 +79,7 @@ export function MatchCreateForm({
   onSubmit,
   onCancel,
   error,
+  iceTheme = false,
 }: MatchCreateFormProps) {
   const merged = useMemo<MatchFormValues>(
     () => ({ ...DEFAULT_VALUES, ...initialValues }),
@@ -139,21 +145,29 @@ export function MatchCreateForm({
       ? MESSAGES.match.form.submit.update
       : MESSAGES.match.form.submit.create;
 
+  // [ICETIMES] flat — 테마별 클래스. iceTheme=false 시 기존 constant 1:1 사용(회귀 0).
+  const fieldInputClass = iceTheme ? iceInputClass : inputClass;
+  const fieldTextareaClass = iceTheme ? iceTextareaClass : textareaClass;
+  const sectionClass = iceTheme
+    ? 'bg-it-surface dark:bg-rink-800 border border-it-line dark:border-it-blue-900 rounded-w-md p-5 space-y-4'
+    : 'bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 rounded-2xl p-5 space-y-4';
+
   return (
     <form id="match-form" onSubmit={handleSubmit} className="space-y-5">
       {/* 섹션 1: 기본 정보 */}
-      <section className="bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 rounded-2xl p-5 space-y-4">
+      <section className={sectionClass}>
         <SectionTitle
           icon="edit_note"
           title={MESSAGES.match.form.sections.basic}
+          iceTheme={iceTheme}
         />
 
-        <Field label={MESSAGES.match.form.titleField.label} required>
+        <Field label={MESSAGES.match.form.titleField.label} required iceTheme={iceTheme}>
           <input
             value={values.title}
             onChange={(e) => update('title', e.target.value)}
             placeholder={MESSAGES.match.form.titleField.placeholder}
-            className={inputClass}
+            className={fieldInputClass}
           />
         </Field>
 
@@ -162,59 +176,63 @@ export function MatchCreateForm({
             · xs breakpoint 에서 grid-cols-1 로 세로 스택
             · 각 input 에 min-w-0 추가 → date/time input 의 intrinsic min-content 회피 */}
         <div className="grid grid-cols-2 gap-3 [[data-screen-bp='xs']_&]:grid-cols-1">
-          <Field label={MESSAGES.match.form.date.label} required>
+          <Field label={MESSAGES.match.form.date.label} required iceTheme={iceTheme}>
             <input
               type="date"
               value={values.date}
               onChange={(e) => update('date', e.target.value)}
-              className={cn(inputClass, 'min-w-0 box-border')}
+              className={cn(fieldInputClass, 'min-w-0 box-border')}
             />
           </Field>
-          <Field label={MESSAGES.match.form.time.label} required>
+          <Field label={MESSAGES.match.form.time.label} required iceTheme={iceTheme}>
             <input
               type="time"
               value={values.time}
               onChange={(e) => update('time', e.target.value)}
-              className={cn(inputClass, 'min-w-0 box-border')}
+              className={cn(fieldInputClass, 'min-w-0 box-border')}
             />
           </Field>
         </div>
 
-        <Field label={MESSAGES.match.form.rink.label} required>
+        <Field label={MESSAGES.match.form.rink.label} required iceTheme={iceTheme}>
           <div className="relative">
             <Icon
               name="location_on"
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-wtext-3 text-[20px]"
+              className={cn(
+                'absolute left-3 top-1/2 -translate-y-1/2 text-[20px]',
+                iceTheme ? 'text-it-ink-400' : 'text-wtext-3'
+              )}
             />
             <input
               value={values.rinkName}
               onChange={(e) => update('rinkName', e.target.value)}
               placeholder={MESSAGES.match.form.rink.placeholder}
-              className={cn(inputClass, 'pl-10')}
+              className={cn(fieldInputClass, 'pl-10')}
             />
           </div>
         </Field>
 
-        <Field label={MESSAGES.match.form.rinkAddress.label}>
+        <Field label={MESSAGES.match.form.rinkAddress.label} iceTheme={iceTheme}>
           <input
             value={values.rinkAddress}
             onChange={(e) => update('rinkAddress', e.target.value)}
             placeholder={MESSAGES.match.form.rinkAddress.placeholder}
-            className={inputClass}
+            className={fieldInputClass}
           />
         </Field>
       </section>
 
       {/* 섹션 2: 모집 요건 */}
-      <section className="bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 rounded-2xl p-5 space-y-4">
+      <section className={sectionClass}>
         <SectionTitle
           icon="groups"
           title={MESSAGES.match.form.sections.requirements}
+          iceTheme={iceTheme}
         />
 
         {/* [수정 W2.D 2026-05-18 #6] xs 폭 number input 겹침 — grid-cols-1 분기 + min-w-0 */}
         <div className="grid grid-cols-2 gap-3 [[data-screen-bp='xs']_&]:grid-cols-1">
-          <Field label={MESSAGES.match.form.maxParticipants.label} required>
+          <Field label={MESSAGES.match.form.maxParticipants.label} required iceTheme={iceTheme}>
             <input
               type="number"
               min={2}
@@ -224,10 +242,10 @@ export function MatchCreateForm({
               onChange={(e) =>
                 update('maxParticipants', Number(e.target.value))
               }
-              className={cn(inputClass, 'min-w-0 box-border')}
+              className={cn(fieldInputClass, 'min-w-0 box-border')}
             />
           </Field>
-          <Field label={MESSAGES.match.form.price.label} required>
+          <Field label={MESSAGES.match.form.price.label} required iceTheme={iceTheme}>
             <input
               type="number"
               min={0}
@@ -236,12 +254,12 @@ export function MatchCreateForm({
               inputMode="numeric"
               value={Number.isFinite(values.price) ? values.price : ''}
               onChange={(e) => update('price', Number(e.target.value))}
-              className={cn(inputClass, 'min-w-0 box-border')}
+              className={cn(fieldInputClass, 'min-w-0 box-border')}
             />
           </Field>
         </div>
 
-        <Field label={MESSAGES.match.form.level.label}>
+        <Field label={MESSAGES.match.form.level.label} iceTheme={iceTheme}>
           <div className="flex flex-wrap gap-2">
             {LEVEL_OPTIONS.map((option) => {
               const active = values.level === option;
@@ -251,10 +269,20 @@ export function MatchCreateForm({
                   type="button"
                   onClick={() => update('level', option)}
                   className={cn(
-                    'inline-flex items-center h-10 px-4 rounded-full text-sm font-semibold border transition-colors',
-                    active
-                      ? 'bg-ice-500 border-ice-500 text-white'
-                      : 'bg-white dark:bg-rink-900 border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 hover:border-ice-500 hover:text-ice-500'
+                    'inline-flex items-center h-10 px-4 text-sm font-semibold transition-colors motion-reduce:transition-none',
+                    iceTheme
+                      ? cn(
+                          'rounded-w-pill border-[1.5px] font-bold',
+                          active
+                            ? 'bg-it-blue-500 border-it-blue-500 text-white'
+                            : 'bg-it-surface dark:bg-rink-900 border-it-line-strong dark:border-rink-700 text-it-ink-600 dark:text-it-ink-300 hover:border-it-blue-500 hover:text-it-blue-500'
+                        )
+                      : cn(
+                          'rounded-full border',
+                          active
+                            ? 'bg-ice-500 border-ice-500 text-white'
+                            : 'bg-white dark:bg-rink-900 border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 hover:border-ice-500 hover:text-ice-500'
+                        )
                   )}
                   aria-pressed={active}
                 >
@@ -267,13 +295,13 @@ export function MatchCreateForm({
 
         {/* [수정 W2.D 2026-05-18 #6] xs 폭 select 겹침 — grid-cols-1 분기 + min-w-0 */}
         <div className="grid grid-cols-2 gap-3 [[data-screen-bp='xs']_&]:grid-cols-1">
-          <Field label={MESSAGES.match.form.levelCode.label}>
+          <Field label={MESSAGES.match.form.levelCode.label} iceTheme={iceTheme}>
             <select
               value={values.levelCode}
               onChange={(e) =>
                 update('levelCode', e.target.value as LevelCodeType)
               }
-              className={cn(inputClass, 'min-w-0 box-border')}
+              className={cn(fieldInputClass, 'min-w-0 box-border')}
             >
               {LEVEL_CODE_OPTIONS.map((option) => (
                 <option key={option || 'none'} value={option}>
@@ -284,11 +312,11 @@ export function MatchCreateForm({
               ))}
             </select>
           </Field>
-          <Field label={MESSAGES.match.form.gender.label}>
+          <Field label={MESSAGES.match.form.gender.label} iceTheme={iceTheme}>
             <select
               value={values.gender}
               onChange={(e) => update('gender', e.target.value as GenderType)}
-              className={cn(inputClass, 'min-w-0 box-border')}
+              className={cn(fieldInputClass, 'min-w-0 box-border')}
             >
               {GENDER_OPTIONS.map((option) => (
                 <option key={option} value={option}>
@@ -301,27 +329,28 @@ export function MatchCreateForm({
       </section>
 
       {/* 섹션 3: 안내 사항 */}
-      <section className="bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 rounded-2xl p-5 space-y-4">
+      <section className={sectionClass}>
         <SectionTitle
           icon="info"
           title={MESSAGES.match.form.sections.description}
+          iceTheme={iceTheme}
         />
 
-        <Field label={MESSAGES.match.form.rules.label}>
+        <Field label={MESSAGES.match.form.rules.label} iceTheme={iceTheme}>
           <textarea
             value={values.rulesText}
             onChange={(e) => update('rulesText', e.target.value)}
             placeholder={MESSAGES.match.form.rules.placeholder}
-            className={cn(textareaClass, 'min-h-[100px]')}
+            className={cn(fieldTextareaClass, 'min-h-[100px]')}
           />
         </Field>
 
-        <Field label={MESSAGES.match.form.description.label}>
+        <Field label={MESSAGES.match.form.description.label} iceTheme={iceTheme}>
           <textarea
             value={values.description}
             onChange={(e) => update('description', e.target.value)}
             placeholder={MESSAGES.match.form.description.placeholder}
-            className={cn(textareaClass, 'min-h-[120px]')}
+            className={cn(fieldTextareaClass, 'min-h-[120px]')}
           />
         </Field>
       </section>
@@ -329,20 +358,37 @@ export function MatchCreateForm({
       {displayError && (
         <div
           role="alert"
-          className="rounded-xl border border-red-200 bg-red-50 dark:border-red-800/50 dark:bg-red-900/20 px-4 py-3 text-sm text-red-600 dark:text-red-400"
+          className={cn(
+            'px-4 py-3 text-sm',
+            iceTheme
+              ? 'rounded-w-md border border-it-red-200 bg-it-red-50 dark:border-it-red-700/50 dark:bg-it-red-500/15 text-it-red-500 dark:text-it-red-300'
+              : 'rounded-xl border border-red-200 bg-red-50 dark:border-red-800/50 dark:bg-red-900/20 text-red-600 dark:text-red-400'
+          )}
         >
           {displayError}
         </div>
       )}
 
       {/* Sticky bottom action bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white dark:bg-rink-900 border-t border-wline-2 dark:border-rink-700">
+      <div
+        className={cn(
+          'fixed bottom-0 left-0 right-0 z-40 border-t',
+          iceTheme
+            ? 'bg-it-surface dark:bg-rink-900 border-it-line dark:border-it-blue-900'
+            : 'bg-white dark:bg-rink-900 border-wline-2 dark:border-rink-700'
+        )}
+      >
         <div className="max-w-md mx-auto px-4 py-4 flex gap-3">
           {onCancel && (
             <button
               type="button"
               onClick={onCancel}
-              className="flex-1 h-12 rounded-xl border border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 text-sm font-bold hover:bg-wbg dark:hover:bg-rink-800 transition-colors"
+              className={cn(
+                'flex-1 h-12 text-sm font-bold transition-colors motion-reduce:transition-none',
+                iceTheme
+                  ? 'rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 text-it-ink-700 dark:text-it-ink-200 hover:bg-it-fill dark:hover:bg-rink-800'
+                  : 'rounded-xl border border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 hover:bg-wbg dark:hover:bg-rink-800'
+              )}
             >
               {MESSAGES.match.applicants.reject.cancel}
             </button>
@@ -351,7 +397,10 @@ export function MatchCreateForm({
             type="submit"
             form="match-form"
             disabled={isSubmitting}
-            className="flex-[2] h-12 rounded-xl bg-ice-500 text-white text-sm font-bold disabled:opacity-60 hover:bg-ice-700 transition-colors flex items-center justify-center gap-2"
+            className={cn(
+              'flex-[2] h-12 text-white text-sm font-bold disabled:opacity-60 transition-colors motion-reduce:transition-none flex items-center justify-center gap-2',
+              iceTheme ? 'rounded-w-md bg-it-blue-500 hover:bg-it-blue-600' : 'rounded-xl bg-ice-500 hover:bg-ice-700'
+            )}
           >
             {isSubmitting ? (
               <>
@@ -375,13 +424,25 @@ const inputClass =
 const textareaClass =
   'w-full px-3 py-2 rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-900 text-sm text-wtext-1 dark:text-white resize-y focus:border-ice-500 focus:ring-1 focus:ring-ice-500 focus:outline-none';
 
-function SectionTitle({ icon, title }: { icon: string; title: string }) {
+// [ICETIMES] flat — it-fill 인풋 컨테이너, border 1.5px, it-blue 포커스.
+const iceInputClass =
+  'w-full h-11 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-rink-900 text-sm text-it-ink-800 dark:text-white placeholder:text-it-ink-400 focus:border-it-blue-500 focus:ring-1 focus:ring-it-blue-500 focus:outline-none';
+
+const iceTextareaClass =
+  'w-full px-3 py-2 rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-rink-900 text-sm text-it-ink-800 dark:text-white placeholder:text-it-ink-400 resize-y focus:border-it-blue-500 focus:ring-1 focus:ring-it-blue-500 focus:outline-none';
+
+function SectionTitle({ icon, title, iceTheme = false }: { icon: string; title: string; iceTheme?: boolean }) {
   return (
     <div className="flex items-center gap-2">
-      <span className="text-ice-500">
+      <span className={iceTheme ? 'text-it-blue-500' : 'text-ice-500'}>
         <Icon name={icon} className="text-lg" />
       </span>
-      <h2 className="text-base font-bold text-wtext-1 dark:text-white">
+      <h2
+        className={cn(
+          'text-base font-bold',
+          iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white'
+        )}
+      >
         {title}
       </h2>
     </div>
@@ -392,17 +453,24 @@ function Field({
   label,
   required,
   children,
+  iceTheme = false,
 }: {
   label: string;
   required?: boolean;
   children: React.ReactNode;
+  iceTheme?: boolean;
 }) {
   return (
     <label className="block">
-      <span className="text-sm font-semibold text-wtext-2 dark:text-rink-100">
+      <span
+        className={cn(
+          'text-sm font-semibold',
+          iceTheme ? 'text-it-ink-700 dark:text-it-ink-200' : 'text-wtext-2 dark:text-rink-100'
+        )}
+      >
         {label}
         {required && (
-          <span className="text-red-500 ml-0.5" aria-hidden="true">
+          <span className={cn('ml-0.5', iceTheme ? 'text-it-red-500' : 'text-red-500')} aria-hidden="true">
             *
           </span>
         )}

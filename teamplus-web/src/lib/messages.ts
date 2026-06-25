@@ -130,7 +130,9 @@ export const MESSAGES = {
       `${childName} 의 ${className} 수업 결제가 취소됩니다.`,
     selectedChildHelper: "수강생을 변경하려면 이전 단계로 돌아가세요",
     disabledEnrolledLabel: "이미 수강 중",
+    disabledEnrolledShort: "수강중",
     disabledAgeLabel: "연령 제한",
+    disabledAgeShort: "연령",
     // 결제 단계에서 선택된 자녀가 수업 대상 연령(출생연도)에 맞지 않을 때 진행 차단 안내.
     ageBlockedNotice: "선택한 자녀는 이 수업의 대상 연령이 아니에요. 다른 자녀를 선택해주세요.",
     allChildrenEnrolled: "모든 자녀가 이미 이 수업을 수강 중입니다.",
@@ -1711,8 +1713,11 @@ export const MESSAGES = {
 
     // disable 라벨 (수강신청/결제 자녀 선택 화면)
     disabledPendingLabel: "가입 승인 대기",
+    disabledPendingShort: "승인대기",
     disabledRejectedLabel: "가입 반려",
+    disabledRejectedShort: "반려",
     disabledNotMemberLabel: "미가입 팀",
+    disabledNotMemberShort: "미가입",
 
     // 대시보드 상단 배너 (/parent) — [2026-06-18] 실제 자녀 이름 표기. 2명 이상이면 "OO 외 N명".
     dashboardPendingBanner: (name: string, extraCount: number) =>

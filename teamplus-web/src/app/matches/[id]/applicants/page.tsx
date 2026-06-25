@@ -236,8 +236,8 @@ export default function MatchApplicantsPage() {
           onBack={() => back()}
           forceNative
         />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="w-8 h-8 border-2 border-ice-500 border-t-transparent rounded-w-pill animate-spin motion-reduce:animate-none" />
+        <div className="flex-1 flex items-center justify-center bg-it-canvas dark:bg-puck">
+          <div className="w-8 h-8 border-2 border-it-blue-500 border-t-transparent rounded-w-pill animate-spin motion-reduce:animate-none" />
         </div>
       </MobileContainer>
     );
@@ -255,6 +255,7 @@ export default function MatchApplicantsPage() {
         <MatchErrorState
           message={error ?? MESSAGES.error.general}
           onRetry={loadApplicants}
+          iceTheme
         />
       </MobileContainer>
     );
@@ -268,42 +269,42 @@ export default function MatchApplicantsPage() {
         forceNative
       />
 
-      <main className="flex-1 overflow-y-auto pb-30">
-        {/* 매치 요약 */}
-        <section className="p-4">
-          <div className="bg-white dark:bg-rink-800 rounded-2xl p-5 border border-wline-2 dark:border-rink-700">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-lg bg-ice-500/10 dark:bg-ice-500/20 flex items-center justify-center shrink-0">
-                <Icon name="sports_hockey" className="text-ice-500 text-xl" />
-              </div>
-              <div>
-                <p className="text-card-meta text-wtext-3 dark:text-rink-300">
-                  {MESSAGES.match.applicants.listTitle}
-                </p>
-                <p className="font-bold text-wtext-1 dark:text-white">
-                  {MESSAGES.match.applicants.summary(
-                    data.approvedCount,
-                    data.totalSlots,
-                  )}
-                </p>
-              </div>
-              <span className="ml-auto text-card-meta font-semibold text-amber-600 dark:text-amber-400">
-                {MESSAGES.match.applicants.remaining(
-                  Math.max(0, data.totalSlots - data.approvedCount),
-                )}
-              </span>
+      <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck pb-30">
+        {/* 매치 요약 — navy 히어로 밴드 full-bleed */}
+        <section className="bg-it-blue-800 dark:bg-it-blue-950 px-5 pt-5 pb-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-w-md bg-white/15 flex items-center justify-center shrink-0">
+              <Icon name="sports_hockey" className="text-white text-xl" aria-hidden="true" />
             </div>
-            <MatchProgressBar
-              current={data.approvedCount}
-              total={data.totalSlots}
-            />
+            <div>
+              <p className="text-card-meta text-white/70">
+                {MESSAGES.match.applicants.listTitle}
+              </p>
+              <p className="font-bold text-white">
+                {MESSAGES.match.applicants.summary(
+                  data.approvedCount,
+                  data.totalSlots,
+                )}
+              </p>
+            </div>
+            <span className="ml-auto text-card-meta font-semibold text-sun-500">
+              {MESSAGES.match.applicants.remaining(
+                Math.max(0, data.totalSlots - data.approvedCount),
+              )}
+            </span>
           </div>
+          <MatchProgressBar
+            current={data.approvedCount}
+            total={data.totalSlots}
+            iceTheme
+            onNavy
+          />
         </section>
 
-        {/* 대기 중 섹션 */}
+        {/* 대기 중 섹션 — flat 흰 섹션 */}
         {pendingApplicants.length > 0 && (
-          <section className="px-4 pt-4 pb-2">
-            <h2 className="text-card-meta font-bold text-wtext-3 dark:text-rink-300 uppercase tracking-wider mb-3">
+          <section className="mt-2 bg-it-surface dark:bg-rink-800 px-4 pt-5 pb-5">
+            <h2 className="text-card-meta font-bold text-it-ink-500 dark:text-wtext-4 uppercase tracking-wider mb-3">
               {MESSAGES.match.applicants.pending} ({pendingApplicants.length})
             </h2>
             <div className="space-y-3">
@@ -316,16 +317,17 @@ export default function MatchApplicantsPage() {
                   processing={processingId === applicant.id || bulkProcessing}
                   onApprove={() => changeStatus(applicant.id, "approved")}
                   onReject={() => openRejectDialog([applicant.id])}
+                  iceTheme
                 />
               ))}
             </div>
           </section>
         )}
 
-        {/* 승인됨 섹션 */}
+        {/* 승인됨 섹션 — flat 흰 섹션 */}
         {approvedApplicants.length > 0 && (
-          <section className="px-4 pt-4 pb-2">
-            <h2 className="text-card-meta font-bold text-wtext-3 dark:text-rink-300 uppercase tracking-wider mb-3">
+          <section className="mt-2 bg-it-surface dark:bg-rink-800 px-4 pt-5 pb-5">
+            <h2 className="text-card-meta font-bold text-it-ink-500 dark:text-wtext-4 uppercase tracking-wider mb-3">
               {MESSAGES.match.applicants.approved} ({approvedApplicants.length})
             </h2>
             <div className="space-y-3">
@@ -334,16 +336,17 @@ export default function MatchApplicantsPage() {
                   key={applicant.id}
                   data={toRowData(applicant)}
                   readOnly
+                  iceTheme
                 />
               ))}
             </div>
           </section>
         )}
 
-        {/* 거절 섹션 */}
+        {/* 거절 섹션 — flat 흰 섹션 */}
         {rejectedApplicants.length > 0 && (
-          <section className="px-4 pt-4 pb-2">
-            <h2 className="text-card-meta font-bold text-wtext-3 dark:text-rink-300 uppercase tracking-wider mb-3">
+          <section className="mt-2 bg-it-surface dark:bg-rink-800 px-4 pt-5 pb-5">
+            <h2 className="text-card-meta font-bold text-it-ink-500 dark:text-wtext-4 uppercase tracking-wider mb-3">
               {MESSAGES.match.applicants.rejected} ({rejectedApplicants.length})
             </h2>
             <div className="space-y-3">
@@ -352,17 +355,18 @@ export default function MatchApplicantsPage() {
                   key={applicant.id}
                   data={toRowData(applicant)}
                   readOnly
+                  iceTheme
                 />
               ))}
             </div>
           </section>
         )}
 
-        {/* 빈 상태 */}
+        {/* 빈 상태 — flat 흰 섹션 */}
         {data.applicants.length === 0 && (
-          <div className="flex flex-col items-center gap-3 py-12 text-center">
-            <Icon name="person_search" className="text-5xl text-wtext-4" />
-            <p className="text-card-body text-wtext-3">{MESSAGES.empty("신청자")}</p>
+          <div className="mt-2 bg-it-surface dark:bg-rink-800 flex flex-col items-center gap-3 py-16 text-center">
+            <Icon name="person_search" className="text-5xl text-it-ink-400" aria-hidden="true" />
+            <p className="text-card-body text-it-ink-500 dark:text-wtext-4">{MESSAGES.empty("신청자")}</p>
           </div>
         )}
       </main>
@@ -376,6 +380,7 @@ export default function MatchApplicantsPage() {
           onBulkApprove={approveSelected}
           onBulkReject={() => openRejectDialog(Array.from(selectedIds))}
           isProcessing={bulkProcessing}
+          iceTheme
         />
       )}
 
@@ -386,6 +391,7 @@ export default function MatchApplicantsPage() {
         onConfirm={handleRejectConfirm}
         applicantNames={rejectTargetNames}
         isSubmitting={rejectSubmitting}
+        iceTheme
       />
     </MobileContainer>
   );

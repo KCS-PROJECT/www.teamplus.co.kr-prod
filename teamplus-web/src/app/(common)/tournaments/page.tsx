@@ -109,7 +109,7 @@ export default function CommonTournamentsPage() {
       }
       const ui: TournamentUiStatus = mapTournamentUiStatus(
         t.status,
-        t.registrationDeadline,
+        t.endDate,
         now,
       );
       const isActive =
@@ -165,16 +165,16 @@ export default function CommonTournamentsPage() {
         forceNative
       />
 
-      <main className="flex-1 overflow-y-auto bg-wbg pb-30 dark:bg-puck">
-        {/* 검색 + 필터 영역 — 일반 flow, 스크롤 시 함께 이동 */}
-        <div className="border-b border-wline-2 bg-wsurface dark:border-rink-700 dark:bg-rink-800">
+      <main className="flex-1 overflow-y-auto bg-it-canvas pb-30 dark:bg-puck">
+        {/* 검색 + 필터 영역 — flat 흰 섹션(카드 박스 제거) */}
+        <div className="border-b border-it-line bg-it-surface dark:border-rink-700 dark:bg-it-blue-950">
           {/* 검색창 */}
           <div className="px-5 pt-3">
             <label htmlFor="tournament-search" className="sr-only">
               대회 검색
             </label>
             <div className="group relative">
-              <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-wtext-3 dark:text-wtext-4 transition-colors duration-150 ease-ios group-focus-within:text-ice-500">
+              <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-it-ink-400 dark:text-wtext-4 transition-colors duration-150 ease-ios group-focus-within:text-it-blue-500">
                 <Icon name="search" className="text-[20px]" aria-hidden="true" />
               </div>
               <input
@@ -183,13 +183,13 @@ export default function CommonTournamentsPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="대회명, 팀, 장소 검색"
-                className="h-11 w-full appearance-none rounded-w-lg border-none bg-wline-2 pl-10 pr-10 text-w-body text-wtext-1 placeholder:text-wtext-3 transition-colors duration-150 ease-ios focus:bg-wsurface focus:outline-none focus:ring-2 focus:ring-ice-500/20 dark:bg-rink-700 dark:text-white dark:placeholder:text-wtext-4 dark:focus:bg-rink-800 [&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none [&::-webkit-search-results-button]:appearance-none [&::-webkit-search-results-decoration]:appearance-none"
+                className="h-11 w-full appearance-none rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill pl-10 pr-10 text-w-body text-it-ink-800 placeholder:text-it-ink-400 transition-colors duration-150 ease-ios focus:border-it-blue-500 focus:bg-it-surface focus:outline-none dark:border-rink-700 dark:bg-rink-700 dark:text-white dark:placeholder:text-wtext-4 dark:focus:bg-rink-800 [&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none [&::-webkit-search-results-button]:appearance-none [&::-webkit-search-results-decoration]:appearance-none"
               />
               {search && (
                 <button
                   type="button"
                   onClick={() => setSearch("")}
-                  className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-w-pill text-wtext-3 hover:bg-wline-2/60 hover:text-wtext-1 transition-colors motion-reduce:transition-none dark:text-wtext-4 dark:hover:bg-rink-600 dark:hover:text-white"
+                  className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-w-pill text-it-ink-400 hover:bg-it-fill hover:text-it-ink-800 transition-colors motion-reduce:transition-none dark:text-wtext-4 dark:hover:bg-rink-600 dark:hover:text-white"
                   aria-label="검색어 지우기"
                 >
                   <Icon name="close" className="text-w-body-lg" />
@@ -203,12 +203,12 @@ export default function CommonTournamentsPage() {
             <div
               role="tablist"
               aria-label="대회 필터"
-              className="relative flex h-11 w-full items-center rounded-w-md bg-wline-2 p-1 dark:bg-rink-700"
+              className="relative flex h-11 w-full items-center rounded-w-md bg-it-fill border-[1.5px] border-it-line-strong p-1 dark:border-rink-700 dark:bg-rink-700"
             >
               {/* 탭 간 부드럽게 슬라이드하는 인디케이터 */}
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute bottom-1 top-1 left-1 w-[calc(50%-0.25rem)] rounded-w-sm bg-ice-500 shadow-sh-1 transition-transform duration-300 ease-ios"
+                className="pointer-events-none absolute bottom-1 top-1 left-1 w-[calc(50%-0.25rem)] rounded-w-sm bg-it-blue-500 transition-transform duration-300 ease-ios"
                 style={{
                   transform:
                     tab === "active" ? "translateX(0%)" : "translateX(100%)",
@@ -223,7 +223,7 @@ export default function CommonTournamentsPage() {
                   "relative z-10 flex h-full grow items-center justify-center rounded-w-sm px-2 text-w-small font-bold tracking-wide transition-colors duration-300 ease-ios motion-reduce:transition-none",
                   tab === "active"
                     ? "text-white"
-                    : "text-wtext-2 dark:text-wtext-4",
+                    : "text-it-ink-600 dark:text-wtext-4",
                 )}
               >
                 진행 중인 대회
@@ -237,7 +237,7 @@ export default function CommonTournamentsPage() {
                   "relative z-10 flex h-full grow items-center justify-center rounded-w-sm px-2 text-w-small font-bold tracking-wide transition-colors duration-300 ease-ios motion-reduce:transition-none",
                   tab === "past"
                     ? "text-white"
-                    : "text-wtext-2 dark:text-wtext-4",
+                    : "text-it-ink-600 dark:text-wtext-4",
                 )}
               >
                 지난 대회
@@ -266,7 +266,7 @@ export default function CommonTournamentsPage() {
                   className="flex items-center gap-2 pt-1"
                   aria-live="polite"
                 >
-                  <span className="inline-flex items-center gap-1.5 rounded-w-pill bg-ice-50 px-2.5 py-1 text-w-caption font-bold text-ice-500 dark:bg-ice-500/15">
+                  <span className="inline-flex items-center gap-1.5 rounded-w-pill bg-it-blue-50 px-2.5 py-1 text-w-caption font-bold text-it-blue-500 dark:bg-it-blue-500/15">
                     <Icon
                       name="emoji_events"
                       className="text-[14px]"
@@ -291,15 +291,19 @@ export default function CommonTournamentsPage() {
                   }
                 />
               ) : (
-                activeList.map((t) => (
-                  <TournamentListCard
-                    key={t.id}
-                    tournament={t}
-                    isManager={isManager}
-                    onEdit={handleEdit}
-                    onDelete={handleDelete}
-                  />
-                ))
+                // ICETIMES — flat 카드는 full-bleed 흰 섹션 위에 hairline 행으로(회색 위 떠보임 방지).
+                <section className="-mx-4 bg-it-surface px-4 dark:bg-it-blue-950">
+                  {activeList.map((t) => (
+                    <TournamentListCard
+                      key={t.id}
+                      tournament={t}
+                      isManager={isManager}
+                      onEdit={handleEdit}
+                      onDelete={handleDelete}
+                      iceTheme
+                    />
+                  ))}
+                </section>
               )}
             </div>
             {/* 지난 대회 패널 */}
@@ -313,7 +317,7 @@ export default function CommonTournamentsPage() {
                   className="flex items-center gap-2 pt-1"
                   aria-live="polite"
                 >
-                  <span className="inline-flex items-center gap-1.5 rounded-w-pill bg-wline-2 px-2.5 py-1 text-w-caption font-bold text-wtext-2 dark:bg-rink-700 dark:text-wtext-4">
+                  <span className="inline-flex items-center gap-1.5 rounded-w-pill bg-it-fill px-2.5 py-1 text-w-caption font-bold text-it-ink-600 dark:bg-rink-700 dark:text-wtext-4">
                     <Icon
                       name="history"
                       className="text-[14px]"
@@ -331,28 +335,32 @@ export default function CommonTournamentsPage() {
                 >
                   <Icon
                     name={search ? "search_off" : "emoji_events"}
-                    className="mb-3 text-[40px] text-wtext-3 dark:text-wtext-4"
+                    className="mb-3 text-[40px] text-it-ink-300 dark:text-wtext-4"
                     aria-hidden="true"
                   />
-                  <p className="text-w-body font-bold text-wtext-1 dark:text-white">
+                  <p className="text-w-body font-bold text-it-ink-800 dark:text-white">
                     {search ? "검색 결과가 없어요" : "지난 대회가 없어요"}
                   </p>
-                  <p className="mt-2 mx-auto max-w-xs text-w-caption leading-relaxed text-wtext-3 dark:text-wtext-4">
+                  <p className="mt-2 mx-auto max-w-xs text-w-caption leading-relaxed text-it-ink-500 dark:text-wtext-4">
                     {search
                       ? "다른 검색어로 시도해보세요."
                       : "종료된 대회 기록이 쌓이면 이곳에 표시됩니다."}
                   </p>
                 </div>
               ) : (
-                pastList.map((t) => (
-                  <TournamentListCard
-                    key={t.id}
-                    tournament={t}
-                    isManager={isManager}
-                    onEdit={handleEdit}
-                    onDelete={handleDelete}
-                  />
-                ))
+                // ICETIMES — flat 카드는 full-bleed 흰 섹션 위에 hairline 행으로(회색 위 떠보임 방지).
+                <section className="-mx-4 bg-it-surface px-4 dark:bg-it-blue-950">
+                  {pastList.map((t) => (
+                    <TournamentListCard
+                      key={t.id}
+                      tournament={t}
+                      isManager={isManager}
+                      onEdit={handleEdit}
+                      onDelete={handleDelete}
+                      iceTheme
+                    />
+                  ))}
+                </section>
               )}
             </div>
           </div>
@@ -374,7 +382,7 @@ export default function CommonTournamentsPage() {
             <button
               type="button"
               onClick={() => navigate('/tournaments/create')}
-              className="inline-flex h-14 w-14 items-center justify-center rounded-w-pill bg-ice-500 text-white shadow-sh-blue transition-all duration-200 ease-ios-spring motion-reduce:transition-none hover:bg-ice-600 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-puck"
+              className="inline-flex h-14 w-14 items-center justify-center rounded-w-pill bg-it-blue-500 text-white shadow-sh-1 transition-all duration-200 ease-ios-spring motion-reduce:transition-none hover:bg-it-blue-600 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-puck"
               aria-label="새 대회 등록하기"
             >
               <Icon name="add" className="text-[28px]" aria-hidden="true" />
@@ -395,20 +403,20 @@ function EmptyState({ title, description }: EmptyStateProps = {}) {
   return (
     <div
       role="status"
-      className="flex flex-col items-center justify-center gap-2 rounded-w-lg border border-dashed border-wline-2 bg-wsurface px-6 py-16 text-center dark:border-rink-700 dark:bg-rink-800"
+      className="flex flex-col items-center justify-center gap-2 rounded-w-lg border border-dashed border-it-line-strong bg-it-surface px-6 py-16 text-center dark:border-rink-700 dark:bg-it-blue-950"
     >
-      <div className="mb-2 flex h-16 w-16 items-center justify-center rounded-w-pill bg-wline-2 dark:bg-rink-700">
+      <div className="mb-2 flex h-16 w-16 items-center justify-center rounded-w-pill bg-it-fill dark:bg-rink-700">
         <Icon
           name="emoji_events"
-          className="text-[36px] text-wtext-3 dark:text-wtext-4"
+          className="text-[36px] text-it-ink-400 dark:text-wtext-4"
           aria-hidden="true"
         />
       </div>
-      <p className="text-w-body font-bold text-wtext-1 dark:text-white">
+      <p className="text-w-body font-bold text-it-ink-800 dark:text-white">
         {title ?? MESSAGES.empty("대회")}
       </p>
       {description && (
-        <p className="max-w-xs text-w-caption leading-relaxed text-wtext-3 dark:text-wtext-4">
+        <p className="max-w-xs text-w-caption leading-relaxed text-it-ink-500 dark:text-wtext-4">
           {description}
         </p>
       )}
