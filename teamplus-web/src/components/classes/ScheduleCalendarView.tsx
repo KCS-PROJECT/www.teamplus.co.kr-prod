@@ -42,12 +42,25 @@ interface ScheduleCalendarViewProps {
   /** 렌더 범위 — 'calendar'(달력만) | 'list'(일정 목록만) | 'both'(기본, 달력+목록).
    *  수업 상세에서 달력/목록을 별도 섹션으로 분리 배치할 때 사용. */
   part?: 'calendar' | 'list' | 'both';
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 it-* 토큰(파랑 선택칩·점·it-fill 입력)으로 교체.
+   *   달력 색 SoT(정규=초록·오픈=파랑·대회=빨강)는 타입별 캘린더용이며,
+   *   본 뷰는 단일 수업 회차 점이라 it-blue 단색이 맞다.
+   */
+  iceTheme?: boolean;
 }
 
 const FIELD_CLASS =
   'w-full h-12 px-4 rounded-[12px] bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 ' +
   'text-card-meta font-semibold text-wtext-1 dark:text-white transition-colors motion-reduce:transition-none ' +
   'hover:border-ice-500 focus:outline-none focus:border-ice-500 focus:shadow-[0_0_0_3px_rgb(47_95_255_/_0.1)]';
+
+// [ICETIMES] flat 입력 — it-fill 배경 + 1.5px it-line-strong + it-blue 포커스.
+const FIELD_CLASS_ICE =
+  'w-full h-12 px-4 rounded-w-md bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 ' +
+  'text-card-meta font-semibold text-it-ink-800 dark:text-white transition-colors motion-reduce:transition-none ' +
+  'focus:outline-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20';
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'] as const;
 
@@ -81,7 +94,9 @@ export function ScheduleCalendarView({
   onUpdate,
   readOnly = false,
   part = 'both',
+  iceTheme = false,
 }: ScheduleCalendarViewProps) {
+  const fieldClass = iceTheme ? FIELD_CLASS_ICE : FIELD_CLASS;
   const now = useMemo(() => new Date(), []);
   const todayKey = useMemo(
     () => `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`,
@@ -217,21 +232,27 @@ export function ScheduleCalendarView({
         <button
           type="button"
           onClick={goPrev}
-          className="size-9 flex items-center justify-center rounded-lg hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
+          className={cn(
+            'size-9 flex items-center justify-center rounded-lg transition-colors motion-reduce:transition-none',
+            iceTheme ? 'hover:bg-it-fill dark:hover:bg-rink-700' : 'hover:bg-wline-2 dark:hover:bg-rink-700',
+          )}
           aria-label="이전 달"
         >
-          <Icon name="chevron_left" className="text-xl text-wtext-2 dark:text-rink-100" />
+          <Icon name="chevron_left" className={cn('text-xl', iceTheme ? 'text-it-ink-600 dark:text-rink-100' : 'text-wtext-2 dark:text-rink-100')} />
         </button>
-        <span className="text-card-body font-bold text-wtext-1 dark:text-white tabular-nums">
+        <span className={cn('text-card-body font-bold tabular-nums', iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white')}>
           {viewYear}년 {viewMonth + 1}월
         </span>
         <button
           type="button"
           onClick={goNext}
-          className="size-9 flex items-center justify-center rounded-lg hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
+          className={cn(
+            'size-9 flex items-center justify-center rounded-lg transition-colors motion-reduce:transition-none',
+            iceTheme ? 'hover:bg-it-fill dark:hover:bg-rink-700' : 'hover:bg-wline-2 dark:hover:bg-rink-700',
+          )}
           aria-label="다음 달"
         >
-          <Icon name="chevron_right" className="text-xl text-wtext-2 dark:text-rink-100" />
+          <Icon name="chevron_right" className={cn('text-xl', iceTheme ? 'text-it-ink-600 dark:text-rink-100' : 'text-wtext-2 dark:text-rink-100')} />
         </button>
       </div>
 
@@ -242,11 +263,17 @@ export function ScheduleCalendarView({
             key={w}
             className={cn(
               'py-1 text-center text-w-caption font-bold',
-              colIsSunday(i)
-                ? 'text-flame-500'
-                : colIsSaturday(i)
-                  ? 'text-ice-500'
-                  : 'text-wtext-3 dark:text-rink-300',
+              iceTheme
+                ? colIsSunday(i)
+                  ? 'text-it-red-500'
+                  : colIsSaturday(i)
+                    ? 'text-it-blue-500'
+                    : 'text-it-ink-500 dark:text-rink-300'
+                : colIsSunday(i)
+                  ? 'text-flame-500'
+                  : colIsSaturday(i)
+                    ? 'text-ice-500'
+                    : 'text-wtext-3 dark:text-rink-300',
             )}
           >
             {w}
@@ -272,9 +299,11 @@ export function ScheduleCalendarView({
                 'flex min-h-[48px] flex-col items-center justify-center gap-1 rounded-xl py-1.5 transition-colors motion-reduce:transition-none',
                 cell.date === null
                   ? 'cursor-default'
-                  : 'hover:bg-wline-2 active:brightness-95 dark:hover:bg-rink-700',
-                isSelected && 'bg-ice-500 hover:bg-ice-700',
-                isToday && !isSelected && 'ring-2 ring-inset ring-ice-500',
+                  : iceTheme
+                    ? 'hover:bg-it-fill active:brightness-95 dark:hover:bg-rink-700'
+                    : 'hover:bg-wline-2 active:brightness-95 dark:hover:bg-rink-700',
+                isSelected && (iceTheme ? 'bg-it-blue-500 hover:bg-it-blue-600' : 'bg-ice-500 hover:bg-ice-700'),
+                isToday && !isSelected && (iceTheme ? 'ring-2 ring-inset ring-it-blue-500' : 'ring-2 ring-inset ring-ice-500'),
               )}
               aria-label={
                 cell.date === null
@@ -293,11 +322,17 @@ export function ScheduleCalendarView({
                     ? 'text-white'
                     : cell.date === null
                       ? 'text-transparent'
-                      : colIsSunday(cell.dow)
-                        ? 'text-flame-500'
-                        : colIsSaturday(cell.dow)
-                          ? 'text-ice-500'
-                          : 'text-wtext-1 dark:text-white',
+                      : iceTheme
+                        ? colIsSunday(cell.dow)
+                          ? 'text-it-red-500'
+                          : colIsSaturday(cell.dow)
+                            ? 'text-it-blue-500'
+                            : 'text-it-ink-800 dark:text-white'
+                        : colIsSunday(cell.dow)
+                          ? 'text-flame-500'
+                          : colIsSaturday(cell.dow)
+                            ? 'text-ice-500'
+                            : 'text-wtext-1 dark:text-white',
                 )}
               >
                 {cell.date ?? ''}
@@ -307,7 +342,7 @@ export function ScheduleCalendarView({
                 {hasSchedule && (
                   <span
                     aria-hidden="true"
-                    className={cn('size-1.5 rounded-full', isSelected ? 'bg-white' : 'bg-ice-500')}
+                    className={cn('size-1.5 rounded-full', isSelected ? 'bg-white' : iceTheme ? 'bg-it-blue-500' : 'bg-ice-500')}
                   />
                 )}
               </span>
@@ -320,26 +355,31 @@ export function ScheduleCalendarView({
 
       {/* 등록된 전체 일정 — 날짜 오름차순 그룹. 달력 셀 탭 시 해당 날짜 그룹으로 스크롤·강조. */}
       {part !== 'calendar' && (
-      <div className={cn(part === 'list' ? '' : 'mt-4 border-t border-wline-2 dark:border-rink-700 pt-4')}>
+      <div className={cn(part === 'list' ? '' : iceTheme ? 'mt-4 border-t border-it-line dark:border-rink-700 pt-4' : 'mt-4 border-t border-wline-2 dark:border-rink-700 pt-4')}>
         {part !== 'list' && (
-        <h3 className="mb-3 flex items-center gap-1.5 text-card-body font-bold text-wtext-1 dark:text-white">
-          <Icon name="event" className="text-card-title text-ice-500" aria-hidden="true" />
+        <h3 className={cn('mb-3 flex items-center gap-1.5 text-card-body font-bold', iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white')}>
+          <Icon name="event" className={cn('text-card-title', iceTheme ? 'text-it-blue-500' : 'text-ice-500')} aria-hidden="true" />
           전체 일정
-          <span className="text-card-meta font-semibold text-wtext-3 dark:text-rink-300 tabular-nums">
+          <span className={cn('text-card-meta font-semibold tabular-nums', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
             {totalCount}건
           </span>
         </h3>
         )}
         {totalCount === 0 ? (
-          <div className="flex flex-col items-center gap-2 rounded-xl border border-wline-2 dark:border-rink-700 bg-wbg dark:bg-rink-900 p-6">
-            <Icon name="event_busy" className="text-2xl text-wtext-3 dark:text-rink-300" aria-hidden="true" />
-            <p className="text-card-meta text-wtext-3 dark:text-rink-300">등록된 일정이 없습니다.</p>
+          <div className={cn('flex flex-col items-center gap-2 rounded-xl p-6', iceTheme ? 'border-[1.5px] border-it-line dark:border-rink-700 bg-it-fill dark:bg-rink-900' : 'border border-wline-2 dark:border-rink-700 bg-wbg dark:bg-rink-900')}>
+            <Icon name="event_busy" className={cn('text-2xl', iceTheme ? 'text-it-ink-400 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')} aria-hidden="true" />
+            <p className={cn('text-card-meta', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>등록된 일정이 없습니다.</p>
           </div>
         ) : readOnly ? (
           // 읽기 전용(수업 상세) — 날짜 그룹 헤더 + 회차(시간·장소) 들여쓰기로 위계 강조.
           //   과거 일정은 기본 접고 상단 토글로 펼친다.
           <ul
-            className="rounded-xl border border-wline-2 dark:border-rink-700 overflow-hidden divide-y divide-wline-2 dark:divide-rink-700"
+            className={cn(
+              'rounded-xl overflow-hidden',
+              iceTheme
+                ? 'border-[1.5px] border-it-line-strong dark:border-rink-700 divide-y divide-it-line dark:divide-rink-700'
+                : 'border border-wline-2 dark:border-rink-700 divide-y divide-wline-2 dark:divide-rink-700',
+            )}
             role="list"
             aria-label={`등록된 일정 ${totalCount}건`}
           >
@@ -349,7 +389,10 @@ export function ScheduleCalendarView({
                   type="button"
                   onClick={() => setShowPast((v) => !v)}
                   aria-expanded={showPast}
-                  className="flex w-full items-center justify-center gap-1 px-3 py-2 text-card-meta font-bold text-ice-500 hover:bg-ice-500/[0.05] transition-colors motion-reduce:transition-none"
+                  className={cn(
+                    'flex w-full items-center justify-center gap-1 px-3 py-2 text-card-meta font-bold transition-colors motion-reduce:transition-none',
+                    iceTheme ? 'text-it-blue-500 hover:bg-it-blue-500/[0.05]' : 'text-ice-500 hover:bg-ice-500/[0.05]',
+                  )}
                 >
                   <Icon
                     name={showPast ? 'expand_less' : 'expand_more'}
@@ -375,21 +418,23 @@ export function ScheduleCalendarView({
                   className={cn(
                     'px-3 py-2.5 transition-colors motion-reduce:transition-none',
                     // 지난 일정은 비활성처럼 흐린 배경 처리.
-                    isPast && 'bg-wbg/70 opacity-55 dark:bg-rink-900/50',
-                    isSelected && 'bg-ice-500/[0.06] opacity-100',
+                    isPast && (iceTheme ? 'bg-it-fill/70 opacity-55 dark:bg-rink-900/50' : 'bg-wbg/70 opacity-55 dark:bg-rink-900/50'),
+                    isSelected && (iceTheme ? 'bg-it-blue-500/[0.06] opacity-100' : 'bg-ice-500/[0.06] opacity-100'),
                   )}
                 >
                   <div className="flex items-center gap-1.5">
                     <span
                       className={cn(
                         'text-card-meta font-bold tabular-nums',
-                        isToday ? 'text-ice-500' : 'text-wtext-1 dark:text-white',
+                        iceTheme
+                          ? isToday ? 'text-it-blue-500' : 'text-it-ink-800 dark:text-white'
+                          : isToday ? 'text-ice-500' : 'text-wtext-1 dark:text-white',
                       )}
                     >
                       {dateLabel}
                     </span>
                     {isToday && (
-                      <span className="rounded bg-ice-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                      <span className={cn('rounded px-1.5 py-0.5 text-[10px] font-bold text-white', iceTheme ? 'bg-it-red-500' : 'bg-ice-500')}>
                         오늘
                       </span>
                     )}
@@ -400,18 +445,18 @@ export function ScheduleCalendarView({
                         key={s.id}
                         className="flex items-baseline gap-1.5 text-card-meta"
                       >
-                        <span className="shrink-0 font-semibold text-wtext-1 dark:text-white tabular-nums">
+                        <span className={cn('shrink-0 font-semibold tabular-nums', iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white')}>
                           {timeLabel(s)}
                         </span>
                         {s.venue?.name && (
                           <>
                             <span
-                              className="shrink-0 text-wtext-4 dark:text-rink-300"
+                              className={cn('shrink-0', iceTheme ? 'text-it-ink-400 dark:text-rink-300' : 'text-wtext-4 dark:text-rink-300')}
                               aria-hidden="true"
                             >
                               ·
                             </span>
-                            <span className="min-w-0 truncate text-wtext-3 dark:text-rink-300">
+                            <span className={cn('min-w-0 truncate', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                               {s.venue.name}
                             </span>
                           </>
@@ -425,7 +470,12 @@ export function ScheduleCalendarView({
           </ul>
         ) : (
           <ul
-            className="rounded-xl border border-wline-2 dark:border-rink-700 overflow-hidden divide-y divide-wline-2 dark:divide-rink-700"
+            className={cn(
+              'rounded-xl overflow-hidden',
+              iceTheme
+                ? 'border-[1.5px] border-it-line-strong dark:border-rink-700 divide-y divide-it-line dark:divide-rink-700'
+                : 'border border-wline-2 dark:border-rink-700 divide-y divide-wline-2 dark:divide-rink-700',
+            )}
             role="list"
             aria-label={`등록된 일정 ${totalCount}건`}
           >
@@ -441,25 +491,27 @@ export function ScheduleCalendarView({
                   }}
                   className={cn(
                     'transition-colors motion-reduce:transition-none',
-                    isSelected && 'bg-ice-500/[0.06]',
+                    isSelected && (iceTheme ? 'bg-it-blue-500/[0.06]' : 'bg-ice-500/[0.06]'),
                   )}
                 >
                   <div
                     className={cn(
                       'flex items-center gap-1.5 px-3 py-1.5',
-                      isSelected ? 'bg-ice-500/10' : 'bg-wbg dark:bg-rink-900',
+                      iceTheme
+                        ? isSelected ? 'bg-it-blue-500/10' : 'bg-it-fill dark:bg-rink-900'
+                        : isSelected ? 'bg-ice-500/10' : 'bg-wbg dark:bg-rink-900',
                     )}
                   >
-                    <span className="text-w-caption font-bold text-wtext-1 dark:text-white tabular-nums">
+                    <span className={cn('text-w-caption font-bold tabular-nums', iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white')}>
                       {dateLabel}
                     </span>
                     {isToday && (
-                      <span className="rounded bg-ice-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                      <span className={cn('rounded px-1.5 py-0.5 text-[10px] font-bold text-white', iceTheme ? 'bg-it-red-500' : 'bg-ice-500')}>
                         오늘
                       </span>
                     )}
                   </div>
-                  <ul className="divide-y divide-wline-2 dark:divide-rink-700" role="list">
+                  <ul className={cn(iceTheme ? 'divide-y divide-it-line dark:divide-rink-700' : 'divide-y divide-wline-2 dark:divide-rink-700')} role="list">
                     {items.map((s) => (
                       <li
                         key={s.id}
@@ -467,11 +519,11 @@ export function ScheduleCalendarView({
                         className="flex items-center justify-between gap-2 px-3 py-2"
                       >
                         <div className="flex items-baseline gap-2 min-w-0">
-                          <span className="text-card-meta font-semibold text-wtext-1 dark:text-white tabular-nums shrink-0">
+                          <span className={cn('text-card-meta font-semibold tabular-nums shrink-0', iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white')}>
                             {timeLabel(s)}
                           </span>
                           {s.venue?.name && (
-                            <span className="text-w-caption text-wtext-3 dark:text-rink-300 truncate">
+                            <span className={cn('text-w-caption truncate', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                               {s.venue.name}
                             </span>
                           )}
@@ -481,7 +533,12 @@ export function ScheduleCalendarView({
                             <button
                               type="button"
                               onClick={() => openEdit(s)}
-                              className="text-card-meta font-bold text-ice-500 hover:text-ice-700 px-2 py-1 rounded transition-colors motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-ice-500 focus:outline-none"
+                              className={cn(
+                                'text-card-meta font-bold px-2 py-1 rounded transition-colors motion-reduce:transition-none focus:outline-none',
+                                iceTheme
+                                  ? 'text-it-blue-500 hover:text-it-blue-600 focus-visible:ring-2 focus-visible:ring-it-blue-500'
+                                  : 'text-ice-500 hover:text-ice-700 focus-visible:ring-2 focus-visible:ring-ice-500',
+                              )}
                               aria-label={`${dateLabel} ${timeLabel(s)} 회차 수정하기`}
                             >
                               수정하기
@@ -489,7 +546,12 @@ export function ScheduleCalendarView({
                             <button
                               type="button"
                               onClick={() => onCancel?.(s.id)}
-                              className="text-card-meta font-bold text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 px-2 py-1 rounded transition-colors motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-red-500 focus:outline-none"
+                              className={cn(
+                                'text-card-meta font-bold px-2 py-1 rounded transition-colors motion-reduce:transition-none focus:outline-none',
+                                iceTheme
+                                  ? 'text-it-red-500 hover:text-it-red-600 dark:text-it-red-300 focus-visible:ring-2 focus-visible:ring-it-red-500'
+                                  : 'text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 focus-visible:ring-2 focus-visible:ring-red-500',
+                              )}
                               aria-label={`${dateLabel} ${timeLabel(s)} 회차 취소하기`}
                             >
                               취소하기
@@ -517,7 +579,11 @@ export function ScheduleCalendarView({
             <button
               type="button"
               onClick={() => setEditing(null)}
-              className="flex-1 h-11 rounded-xl border border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 font-bold"
+              className={
+                iceTheme
+                  ? 'flex-1 h-11 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 text-it-ink-800 dark:text-rink-100 font-bold transition-colors motion-reduce:transition-none active:brightness-95'
+                  : 'flex-1 h-11 rounded-xl border border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 font-bold'
+              }
             >
               취소
             </button>
@@ -525,7 +591,11 @@ export function ScheduleCalendarView({
               type="button"
               onClick={handleSave}
               disabled={isSaving}
-              className="flex-1 h-11 rounded-xl bg-ice-500 text-white font-bold disabled:opacity-50"
+              className={
+                iceTheme
+                  ? 'flex-1 h-11 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white font-bold disabled:opacity-50 transition-colors motion-reduce:transition-none active:brightness-95'
+                  : 'flex-1 h-11 rounded-xl bg-ice-500 text-white font-bold disabled:opacity-50'
+              }
             >
               {isSaving ? '저장 중…' : '저장하기'}
             </button>
@@ -535,32 +605,32 @@ export function ScheduleCalendarView({
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
-              <label className="block text-w-caption font-bold text-wtext-3 dark:text-rink-300">시작 시간</label>
+              <label className={cn('block text-w-caption font-bold', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>시작 시간</label>
               <input
                 type="time"
                 value={editStart}
                 onChange={(e) => setEditStart(e.target.value)}
-                className={`${FIELD_CLASS} tabular-nums`}
+                className={`${fieldClass} tabular-nums`}
                 aria-label="시작 시간"
               />
             </div>
             <div className="space-y-1">
-              <label className="block text-w-caption font-bold text-wtext-3 dark:text-rink-300">종료 시간</label>
+              <label className={cn('block text-w-caption font-bold', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>종료 시간</label>
               <input
                 type="time"
                 value={editEnd}
                 onChange={(e) => setEditEnd(e.target.value)}
-                className={`${FIELD_CLASS} tabular-nums`}
+                className={`${fieldClass} tabular-nums`}
                 aria-label="종료 시간"
               />
             </div>
           </div>
           <div className="space-y-1">
-            <label className="block text-w-caption font-bold text-wtext-3 dark:text-rink-300">장소</label>
+            <label className={cn('block text-w-caption font-bold', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>장소</label>
             <select
               value={editVenue}
               onChange={(e) => setEditVenue(e.target.value)}
-              className={FIELD_CLASS}
+              className={fieldClass}
               aria-label="장소"
             >
               <option value="">장소 선택 안 함</option>

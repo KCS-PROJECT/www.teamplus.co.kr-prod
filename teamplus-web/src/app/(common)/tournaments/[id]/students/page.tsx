@@ -113,96 +113,98 @@ export default function TournamentStudentsPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title="대회 선수 정보" />
 
-      <main className="flex flex-col gap-4 px-4 py-4">
-        {tournamentName && (
-          <p className="flex items-center gap-1.5 text-card-body font-bold text-wtext-1 dark:text-white">
-            <Icon name="emoji_events" className="text-[18px] text-red-500" aria-hidden="true" filled />
-            {tournamentName}
-          </p>
-        )}
-
+      <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck !pb-8" role="main">
         {!isManager ? (
-          <div className="rounded-xl border border-wline-2 bg-wbg px-4 py-6 text-center text-w-small text-wtext-3 dark:border-rink-700 dark:bg-rink-800 dark:text-rink-300">
-            선수 정보는 코치/감독만 조회할 수 있습니다.
-          </div>
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 py-6">
+            <p className="rounded-w-md border border-it-line-strong bg-it-fill px-4 py-6 text-center text-w-small text-it-ink-500 dark:border-rink-700 dark:bg-rink-800 dark:text-rink-300">
+              선수 정보는 코치/감독만 조회할 수 있습니다.
+            </p>
+          </section>
         ) : error ? (
-          <div className="rounded-xl border border-flame-200 bg-flame-50 dark:bg-flame-900/20 p-4 text-w-small text-flame-700 dark:text-flame-300">
-            {error}
-          </div>
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 py-6">
+            <p className="rounded-w-md border border-it-red-200 bg-it-red-50 dark:bg-it-red-500/10 p-4 text-w-small text-it-red-700 dark:text-it-red-300">
+              {error}
+            </p>
+          </section>
         ) : (
           <>
-            {/* 결제 요약 */}
-            <section
-              aria-label="결제 현황 요약"
-              className="grid grid-cols-3 gap-2"
-            >
-              <SummaryCard label="참가" value={`${summary.total}명`} />
-              <SummaryCard
-                label="완납"
-                value={`${summary.paid}명`}
-                tone="paid"
-              />
-              <SummaryCard
-                label="미납"
-                value={`${summary.unpaid}명`}
-                tone="unpaid"
-              />
-            </section>
-            <div className="rounded-xl border border-wline-2 bg-white px-4 py-3 dark:border-rink-700 dark:bg-rink-800 flex items-center justify-between">
-              <span className="text-w-small font-medium text-wtext-3 dark:text-rink-300">
-                총 수금액
-              </span>
-              <span className="text-card-title font-extrabold text-wtext-1 dark:text-white tabular-nums">
-                {summary.collected.toLocaleString('ko-KR')}원
-              </span>
-            </div>
-
-            {/* 선수 목록 */}
-            {rows.length === 0 ? (
-              <div className="rounded-xl border border-wline-2 bg-wbg px-4 py-6 text-center text-w-small text-wtext-3 dark:border-rink-700 dark:bg-rink-800 dark:text-rink-300">
-                {MESSAGES.empty('참가 선수')}
+            {/* 대회명 + 결제 요약 — navy 히어로(요약 강조) */}
+            <section className="bg-it-blue-800 dark:bg-it-blue-950 px-5 pt-5 pb-5" aria-label="결제 현황 요약">
+              {tournamentName && (
+                <p className="mb-4 flex items-center gap-1.5 text-card-body font-extrabold text-white">
+                  <Icon name="emoji_events" className="text-[18px] text-it-red-300" aria-hidden="true" filled />
+                  {tournamentName}
+                </p>
+              )}
+              <div className="grid grid-cols-3 gap-2">
+                <SummaryCard label="참가" value={`${summary.total}명`} />
+                <SummaryCard label="완납" value={`${summary.paid}명`} tone="paid" />
+                <SummaryCard label="미납" value={`${summary.unpaid}명`} tone="unpaid" />
               </div>
-            ) : (
-              <ul className="flex flex-col gap-2" role="list">
-                {rows.map((r) => (
-                  <li
-                    key={r.id}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-wline-2 bg-white px-4 py-3 dark:border-rink-700 dark:bg-rink-800"
-                  >
-                    <span className="flex items-center gap-2 min-w-0">
-                      <Icon name="person" className="text-[20px] text-wtext-3" aria-hidden="true" />
-                      <span className="min-w-0">
-                        <span className="block truncate font-bold text-wtext-1 dark:text-white">
-                          {r.name}
+              <div className="mt-2 flex items-center justify-between rounded-w-md bg-white/10 px-4 py-3">
+                <span className="text-w-small font-medium text-white/70">
+                  총 수금액
+                </span>
+                <span className="text-card-title font-extrabold text-white tabular-nums">
+                  {summary.collected.toLocaleString('ko-KR')}원
+                </span>
+              </div>
+            </section>
+
+            {/* flat 섹션 사이 8px 회색 갭 */}
+            <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+            {/* 선수 목록 — flat 흰 섹션(hairline 구분 행, 카드 박스 제거) */}
+            <section className="bg-it-surface dark:bg-it-blue-950 px-5 pt-2 pb-6" aria-label="참가 선수 목록">
+              {rows.length === 0 ? (
+                <div className="rounded-w-md border border-it-line-strong bg-it-fill px-4 py-6 text-center text-w-small text-it-ink-500 dark:border-rink-700 dark:bg-rink-800 dark:text-rink-300">
+                  {MESSAGES.empty('참가 선수')}
+                </div>
+              ) : (
+                <ul className="flex flex-col" role="list">
+                  {rows.map((r, idx) => (
+                    <li
+                      key={r.id}
+                      className={cn(
+                        'flex items-center justify-between gap-3 py-3.5',
+                        idx !== rows.length - 1 && 'border-b border-it-line dark:border-rink-700',
+                      )}
+                    >
+                      <span className="flex items-center gap-2 min-w-0">
+                        <Icon name="person" className="text-[20px] text-it-ink-400" aria-hidden="true" />
+                        <span className="min-w-0">
+                          <span className="block truncate font-bold text-it-ink-800 dark:text-white">
+                            {r.name}
+                          </span>
+                          {r.birthYear && (
+                            <span className="block text-card-meta text-it-ink-400 dark:text-rink-300 tabular-nums">
+                              {r.birthYear}년생
+                            </span>
+                          )}
                         </span>
-                        {r.birthYear && (
-                          <span className="block text-card-meta text-wtext-3 dark:text-rink-300 tabular-nums">
-                            {r.birthYear}년생
+                      </span>
+                      <span className="flex flex-col items-end gap-0.5 shrink-0">
+                        <span
+                          className={cn(
+                            'inline-flex items-center px-2 py-0.5 rounded-w-pill text-w-caption font-bold',
+                            r.isPaid
+                              ? 'bg-mint/10 text-mint dark:bg-mint/15'
+                              : 'bg-it-fill text-it-ink-500 dark:bg-rink-700 dark:text-rink-300',
+                          )}
+                        >
+                          {r.isPaid ? '완납' : '미납'}
+                        </span>
+                        {r.amount > 0 && (
+                          <span className="text-card-meta text-it-ink-400 dark:text-rink-300 tabular-nums">
+                            {r.amount.toLocaleString('ko-KR')}원
                           </span>
                         )}
                       </span>
-                    </span>
-                    <span className="flex flex-col items-end gap-0.5 shrink-0">
-                      <span
-                        className={cn(
-                          'inline-flex items-center px-2 py-0.5 rounded-full text-w-caption font-bold',
-                          r.isPaid
-                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
-                            : 'bg-wline-2 text-wtext-3 dark:bg-rink-700 dark:text-rink-300',
-                        )}
-                      >
-                        {r.isPaid ? '완납' : '미납'}
-                      </span>
-                      {r.amount > 0 && (
-                        <span className="text-card-meta text-wtext-3 dark:text-rink-300 tabular-nums">
-                          {r.amount.toLocaleString('ko-KR')}원
-                        </span>
-                      )}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
           </>
         )}
       </main>
@@ -220,16 +222,16 @@ function SummaryCard({
   tone?: 'paid' | 'unpaid';
 }) {
   return (
-    <div className="rounded-xl border border-wline-2 bg-white px-3 py-3 text-center dark:border-rink-700 dark:bg-rink-800">
-      <p className="text-w-caption text-wtext-3 dark:text-rink-300">{label}</p>
+    <div className="rounded-w-md bg-white/10 px-3 py-3 text-center">
+      <p className="text-w-caption text-white/70">{label}</p>
       <p
         className={cn(
           'mt-0.5 text-card-title font-extrabold tabular-nums',
           tone === 'paid'
-            ? 'text-emerald-600 dark:text-emerald-400'
+            ? 'text-mint'
             : tone === 'unpaid'
-              ? 'text-flame-600 dark:text-flame-400'
-              : 'text-wtext-1 dark:text-white',
+              ? 'text-it-red-300'
+              : 'text-white',
         )}
       >
         {value}

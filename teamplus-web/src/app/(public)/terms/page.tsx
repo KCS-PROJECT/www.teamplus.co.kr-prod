@@ -176,39 +176,34 @@ export default function TermsPage() {
       {/* [2026-05-13 이슈 D16] forceNative — App/Web 동일 AppBar. */}
       <PageAppBar title="약관 및 정책" forceNative />
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto">
-        {isLoading ? (
-          <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-            <div className="w-10 h-10 rounded-w-pill border-2 border-ice-500/20 border-t-ice-500 animate-spin mb-4 motion-reduce:animate-none" />
-            <p className="text-card-body text-wtext-3 dark:text-rink-300">불러오는 중...</p>
-          </div>
-        ) : loadError ? (
-          <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-            <div className="w-16 h-16 rounded-w-md bg-flame-100 dark:bg-flame-500/15 flex items-center justify-center mb-4">
-              <Icon name="error_outline" className="text-3xl text-flame-500" />
+      {/* Main Content — ICETIMES flat: 회색 캔버스 + 흰 섹션 */}
+      <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck">
+        {isLoading ? null : loadError ? (
+          <section className="bg-it-surface dark:bg-rink-800 mt-2 flex flex-col items-center justify-center py-16 px-4 text-center">
+            <div className="w-16 h-16 rounded-w-md bg-it-red-50 dark:bg-it-red-500/15 flex items-center justify-center mb-4">
+              <Icon name="error_outline" className="text-3xl text-it-red-500" />
             </div>
-            <p className="text-card-body font-medium text-wtext-2 dark:text-rink-100 mb-1">
+            <p className="text-[15px] font-bold text-it-ink-800 dark:text-white mb-1">
               약관을 불러오지 못했어요
             </p>
-            <p className="text-card-meta text-wtext-4 mb-4">{loadError}</p>
+            <p className="text-[13px] text-it-ink-500 dark:text-wtext-4 mb-4">{loadError}</p>
             <button
               onClick={() => window.location.reload()}
-              className="h-10 px-5 rounded-w-md bg-ice-500 text-white text-card-body font-semibold hover:bg-ice-600 transition-colors motion-reduce:transition-none"
+              className="h-10 px-5 rounded-w-md bg-it-blue-500 text-white text-[14px] font-bold hover:bg-it-blue-600 transition-colors motion-reduce:transition-none"
             >
               다시 시도하기
             </button>
-          </div>
+          </section>
         ) : terms.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-            <div className="w-16 h-16 rounded-w-md bg-wbg dark:bg-rink-800 flex items-center justify-center mb-4">
-              <Icon name="description" className="text-3xl text-wtext-4 dark:text-rink-500" />
+          <section className="bg-it-surface dark:bg-rink-800 mt-2 flex flex-col items-center justify-center py-16 px-4 text-center">
+            <div className="w-16 h-16 rounded-w-md bg-it-fill dark:bg-rink-700 flex items-center justify-center mb-4">
+              <Icon name="description" className="text-3xl text-it-ink-400 dark:text-wtext-4" />
             </div>
-            <p className="text-card-body font-medium text-wtext-3 dark:text-rink-300 mb-1">
+            <p className="text-[15px] font-bold text-it-ink-700 dark:text-wtext-4 mb-1">
               등록된 약관이 없습니다
             </p>
-            <p className="text-card-body text-wtext-4">관리자에게 문의해 주세요</p>
-          </div>
+            <p className="text-[14px] text-it-ink-500 dark:text-wtext-4">관리자에게 문의해 주세요</p>
+          </section>
         ) : (
           <>
             {/* PIPA 경고 배너 (개발자/운영자용) */}
@@ -226,136 +221,139 @@ export default function TermsPage() {
               </div>
             )}
 
-            {/* Intro */}
-            <div className="px-5 pt-5 pb-3">
-              <h2 className="text-card-title font-bold text-wtext-1 dark:text-white mb-1">
+            {/* Intro — flat 흰 섹션 */}
+            <section className="bg-it-surface dark:bg-rink-800 mt-2 px-5 pt-5 pb-4">
+              <h2 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white mb-1">
                 이용약관 및 정책
               </h2>
-              <p className="text-card-body text-wtext-3 dark:text-rink-300 leading-relaxed">
+              <p className="text-[14px] text-it-ink-500 dark:text-wtext-4 leading-relaxed">
                 서비스 이용에 관한 약관과 개인정보 처리방침을 확인해주세요.
               </p>
-            </div>
+            </section>
 
-            {/* Terms List — 카드 형태 */}
-            <ul className="px-4 pb-2 space-y-2.5">
-              {terms.map((item) => {
-                const meta = TYPE_META[item.type] ?? { label: item.title, required: false };
-                const isExpanded = expandedId === item.id;
-                const displayTitle = item.title || meta.label;
+            {/* flat 섹션 사이 8px 회색 갭 */}
+            <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
 
-                return (
-                  <li
-                    key={item.id}
-                    id={`terms-${item.id}`}
-                    className={`scroll-mt-20 rounded-w-xl border bg-wsurface dark:bg-rink-800 overflow-hidden transition-all duration-200 motion-reduce:transition-none ${
-                      isExpanded
-                        ? 'border-ice-500/40 dark:border-ice-500/50 shadow-sh-2'
-                        : 'border-wline dark:border-rink-700 shadow-sh-1'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => toggleExpand(item.id)}
-                      aria-expanded={isExpanded}
-                      aria-controls={`terms-panel-${item.id}`}
-                      className="w-full min-h-[64px] px-4 py-4 flex items-center gap-3 hover:bg-wbg dark:hover:bg-rink-700/40 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 focus-visible:ring-inset"
+            {/* Terms List — flat 흰 섹션 (카드 박스 제거 → hairline 행) */}
+            <section className="bg-it-surface dark:bg-rink-800 px-5 pt-2 pb-3">
+              <ul className="flex flex-col">
+                {terms.map((item, idx) => {
+                  const meta = TYPE_META[item.type] ?? { label: item.title, required: false };
+                  const isExpanded = expandedId === item.id;
+                  const displayTitle = item.title || meta.label;
+                  const isLast = idx === terms.length - 1;
+
+                  return (
+                    <li
+                      key={item.id}
+                      id={`terms-${item.id}`}
+                      className={`scroll-mt-20 ${!isLast && !isExpanded ? 'border-b border-it-line dark:border-rink-700' : ''}`}
                     >
-                      <span
-                        aria-hidden="true"
-                        className={`shrink-0 inline-flex w-10 h-10 items-center justify-center rounded-w-md ${
-                          meta.required
-                            ? 'bg-ice-500/10 dark:bg-ice-500/20 text-ice-500 dark:text-ice-300'
-                            : 'bg-wbg dark:bg-rink-700 text-wtext-3 dark:text-rink-300'
-                        }`}
+                      <button
+                        type="button"
+                        onClick={() => toggleExpand(item.id)}
+                        aria-expanded={isExpanded}
+                        aria-controls={`terms-panel-${item.id}`}
+                        className="w-full min-h-[60px] py-4 flex items-center gap-3 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 focus-visible:ring-inset"
                       >
-                        <Icon name={meta.required ? 'gavel' : 'description'} className="text-[22px]" />
-                      </span>
-                      <div className="flex-1 text-left min-w-0">
-                        <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
-                          <h3 className="text-card-title text-wtext-1 dark:text-white">
-                            {displayTitle}
-                          </h3>
-                          {meta.required && (
-                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-flame-100 dark:bg-flame-500/20 text-flame-500 dark:text-flame-100">
-                              필수
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[11px] text-wtext-3 dark:text-rink-300 tabular-nums">
-                          v{item.version} · 최종 수정 {formatDate(item.updatedAt)}
-                        </p>
-                      </div>
-                      <span
-                        aria-hidden="true"
-                        className={`shrink-0 inline-flex w-8 h-8 items-center justify-center rounded-w-pill transition-all duration-200 motion-reduce:transition-none ${
-                          isExpanded
-                            ? 'bg-ice-500/10 dark:bg-ice-500/20 text-ice-500 dark:text-ice-300'
-                            : 'bg-wbg dark:bg-rink-700 text-wtext-3 dark:text-rink-300'
-                        }`}
-                      >
-                        <Icon
-                          name="expand_more"
-                          className={`text-[22px] transition-transform duration-200 motion-reduce:transition-none ${
-                            isExpanded ? 'rotate-180' : 'rotate-0'
+                        <span
+                          aria-hidden="true"
+                          className={`shrink-0 inline-flex w-10 h-10 items-center justify-center rounded-w-md ${
+                            meta.required
+                              ? 'bg-it-blue-50 dark:bg-it-blue-900/40 text-it-blue-500'
+                              : 'bg-it-fill dark:bg-rink-700 text-it-ink-400 dark:text-wtext-4'
                           }`}
-                        />
-                      </span>
-                    </button>
-
-                    {/* Expanded Content */}
-                    {isExpanded && (
-                      <div
-                        id={`terms-panel-${item.id}`}
-                        role="region"
-                        aria-label={`${displayTitle} 본문`}
-                        className="border-t border-wline dark:border-rink-700"
-                      >
-                        {/* Fallback (DB 미등록) 본문 표시 시 "변호사 검토 진행 중" 배너 */}
-                        {item.id.startsWith('fallback-') && (
-                          <div className="px-4 py-2.5 bg-sun-100/60 dark:bg-sun-500/15 border-b border-sun-500/30">
-                            <div className="flex items-start gap-1.5">
-                              <Icon name="info" className="text-sun-500 text-card-emphasis shrink-0 mt-0.5" />
-                              <p className="text-card-meta text-wtext-2 dark:text-sun-100 leading-relaxed">
-                                본 본문은 표준 템플릿 기반 임시 안내입니다. 정식 약관은 변호사 검토 완료 후 갱신됩니다.
-                              </p>
-                            </div>
+                        >
+                          <Icon name={meta.required ? 'gavel' : 'description'} className="text-[22px]" />
+                        </span>
+                        <div className="flex-1 text-left min-w-0">
+                          <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                            <h3 className="text-[15.5px] font-bold tracking-[-0.01em] text-it-ink-800 dark:text-white">
+                              {displayTitle}
+                            </h3>
+                            {meta.required && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-w-md bg-it-red-50 dark:bg-it-red-500/20 text-it-red-500 dark:text-it-red-100">
+                                필수
+                              </span>
+                            )}
                           </div>
-                        )}
-                        <div className="max-h-[60vh] overflow-y-auto p-4 bg-wbg/50 dark:bg-rink-900/20">
-                          <pre className="text-[13px] text-wtext-2 dark:text-rink-100 leading-relaxed whitespace-pre-wrap font-sans">
-                            {item.content}
-                          </pre>
+                          <p className="text-[11px] text-it-ink-500 dark:text-wtext-4 tabular-nums">
+                            v{item.version} · 최종 수정 {formatDate(item.updatedAt)}
+                          </p>
                         </div>
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+                        <span
+                          aria-hidden="true"
+                          className={`shrink-0 inline-flex w-8 h-8 items-center justify-center rounded-w-pill transition-all duration-200 motion-reduce:transition-none ${
+                            isExpanded
+                              ? 'bg-it-blue-50 dark:bg-it-blue-900/40 text-it-blue-500'
+                              : 'bg-it-fill dark:bg-rink-700 text-it-ink-400 dark:text-wtext-4'
+                          }`}
+                        >
+                          <Icon
+                            name="expand_more"
+                            className={`text-[22px] transition-transform duration-200 motion-reduce:transition-none ${
+                              isExpanded ? 'rotate-180' : 'rotate-0'
+                            }`}
+                          />
+                        </span>
+                      </button>
+
+                      {/* Expanded Content — 인셋 영역 */}
+                      {isExpanded && (
+                        <div
+                          id={`terms-panel-${item.id}`}
+                          role="region"
+                          aria-label={`${displayTitle} 본문`}
+                          className={`rounded-w-md overflow-hidden mb-4 ${!isLast ? 'border-b border-it-line dark:border-rink-700' : ''}`}
+                        >
+                          {/* Fallback (DB 미등록) 본문 표시 시 "변호사 검토 진행 중" 배너 */}
+                          {item.id.startsWith('fallback-') && (
+                            <div className="px-4 py-2.5 bg-sun-100/60 dark:bg-sun-500/15 border-b border-sun-500/30">
+                              <div className="flex items-start gap-1.5">
+                                <Icon name="info" className="text-sun-500 text-card-emphasis shrink-0 mt-0.5" />
+                                <p className="text-card-meta text-wtext-2 dark:text-sun-100 leading-relaxed">
+                                  본 본문은 표준 템플릿 기반 임시 안내입니다. 정식 약관은 변호사 검토 완료 후 갱신됩니다.
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                          <div className="max-h-[60vh] overflow-y-auto p-4 bg-it-fill dark:bg-puck/30">
+                            <pre className="text-[13px] text-it-ink-800 dark:text-wtext-2 leading-relaxed whitespace-pre-wrap font-sans">
+                              {item.content}
+                            </pre>
+                          </div>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
           </>
         )}
 
-        {/* Footer Contact */}
-        <div className="px-4 pt-6 pb-8">
-          <div className="rounded-w-xl bg-wsurface dark:bg-rink-800 border border-wline dark:border-rink-700 shadow-sh-1 p-5 flex flex-col items-center text-center">
-            <div className="w-12 h-12 rounded-w-xl bg-ice-500/10 dark:bg-ice-500/20 flex items-center justify-center mb-3">
-              <Icon name="support_agent" className="text-[28px] text-ice-500 dark:text-ice-300" aria-hidden="true" />
-            </div>
-            <h3 className="text-card-title font-bold text-wtext-1 dark:text-white mb-1">
-              약관 관련 문의사항이 있으신가요?
-            </h3>
-            <p className="text-card-meta text-wtext-3 dark:text-rink-300 mb-4">
-              피드백으로 의견을 보내주세요.
-            </p>
-            <NavLink
-              href="/feedback"
-              className="inline-flex items-center justify-center gap-1.5 h-11 px-5 rounded-w-md bg-ice-500 hover:bg-ice-600 text-white text-card-body font-semibold shadow-sh-1 active:brightness-95 transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
-            >
-              <Icon name="feedback" className="text-[18px]" aria-hidden="true" />
-              피드백 보내기
-            </NavLink>
+        {/* flat 섹션 사이 8px 회색 갭 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+        {/* Footer Contact — flat 흰 섹션 */}
+        <section className="bg-it-surface dark:bg-rink-800 px-5 pt-6 pb-8 flex flex-col items-center text-center">
+          <div className="w-12 h-12 rounded-w-md bg-it-blue-50 dark:bg-it-blue-900/40 flex items-center justify-center mb-3">
+            <Icon name="support_agent" className="text-[28px] text-it-blue-500" aria-hidden="true" />
           </div>
-        </div>
+          <h3 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white mb-1">
+            약관 관련 문의사항이 있으신가요?
+          </h3>
+          <p className="text-[13px] text-it-ink-500 dark:text-wtext-4 mb-4">
+            피드백으로 의견을 보내주세요.
+          </p>
+          <NavLink
+            href="/feedback"
+            className="inline-flex items-center justify-center gap-1.5 h-12 px-6 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-[15px] font-bold active:brightness-95 transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40"
+          >
+            <Icon name="feedback" className="text-[18px]" aria-hidden="true" />
+            피드백 보내기
+          </NavLink>
+        </section>
       </main>
     </MobileContainer>
   );

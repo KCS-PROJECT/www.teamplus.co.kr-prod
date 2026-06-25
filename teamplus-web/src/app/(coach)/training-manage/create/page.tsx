@@ -16,11 +16,11 @@ import {
 import { MESSAGES } from '@/lib/messages';
 import { cn } from '@/lib/utils';
 
-// ─── 공통 input/select 스타일 ───────────────────────
+// ─── 공통 input/select 스타일 (ICETIMES — it-fill + 1.5px it-line-strong) ──
 const INPUT_BASE =
-  'w-full h-12 px-4 bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 rounded-xl text-card-body text-wtext-1 dark:text-white placeholder:text-wtext-3 focus:outline-none focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20 transition-colors motion-reduce:transition-none';
+  'w-full h-12 px-4 bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[15px] font-medium text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-wtext-3 focus:outline-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 transition-colors motion-reduce:transition-none';
 const LABEL_BASE =
-  'block text-card-body font-semibold text-wtext-2 dark:text-rink-100 mb-2';
+  'block text-card-body font-semibold text-it-ink-800 dark:text-rink-100 mb-2';
 
 // 훈련 유형 아이콘 매핑
 const TYPE_ICON_MAP: Record<string, string> = {
@@ -155,22 +155,22 @@ export default function CreateTrainingPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title="훈련 등록" showBack />
 
-      <main className="flex-1 overflow-y-auto px-5 pt-5 pb-keyboard-safe-32 scroll-keyboard-safe space-y-6">
+      <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck px-5 pt-5 pb-keyboard-safe-32 scroll-keyboard-safe space-y-6">
         {/* 에러 메시지 */}
         {errorMsg && (
           <div
             role="alert"
-            className="flex items-start gap-2.5 p-3.5 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl"
+            className="flex items-start gap-2.5 p-3.5 bg-it-red-50 dark:bg-it-red-700/20 border-[1.5px] border-it-red-200 dark:border-it-red-700 rounded-w-md"
           >
-            <Icon name="error" className="text-red-500 text-card-title shrink-0 mt-0.5" aria-hidden="true" />
-            <p className="text-card-body text-red-700 dark:text-red-300 leading-relaxed">{errorMsg}</p>
+            <Icon name="error" className="text-it-red-500 text-card-title shrink-0 mt-0.5" aria-hidden="true" />
+            <p className="text-card-body text-it-red-600 dark:text-it-red-300 leading-relaxed">{errorMsg}</p>
           </div>
         )}
 
         {/* 훈련 유형 선택 */}
         <section>
           <label className={LABEL_BASE}>
-            훈련 유형 <span className="text-red-500" aria-hidden="true">*</span>
+            훈련 유형 <span className="text-it-red-500" aria-hidden="true">*</span>
           </label>
           <div
             role="radiogroup"
@@ -187,10 +187,10 @@ export default function CreateTrainingPage() {
                   aria-checked={isSelected}
                   onClick={() => setTrainingType(type)}
                   className={cn(
-                    'flex flex-col items-center justify-center gap-1.5 min-h-[76px] p-3 rounded-xl border-2 text-card-meta font-semibold transition-colors motion-reduce:transition-none',
+                    'flex flex-col items-center justify-center gap-1.5 min-h-[76px] p-3 rounded-w-md border-[1.5px] text-card-meta font-semibold transition-colors motion-reduce:transition-none',
                     isSelected
-                      ? 'border-ice-500 bg-ice-500/5 text-ice-500'
-                      : 'border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-wtext-2 dark:text-rink-100 hover:border-ice-500/40',
+                      ? 'border-it-blue-500 bg-it-blue-50 dark:bg-it-blue-500/10 text-it-blue-500'
+                      : 'border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-it-ink-600 dark:text-rink-100 hover:border-it-blue-300',
                   )}
                 >
                   <Icon
@@ -209,7 +209,7 @@ export default function CreateTrainingPage() {
         <section className="space-y-5">
           <div>
             <label htmlFor={classNameId} className={LABEL_BASE}>
-              훈련 이름 <span className="text-red-500" aria-hidden="true">*</span>
+              훈련 이름 <span className="text-it-red-500" aria-hidden="true">*</span>
             </label>
             <input
               id={classNameId}
@@ -235,14 +235,14 @@ export default function CreateTrainingPage() {
               placeholder={MESSAGES.placeholders.enterTrainingIntro}
               maxLength={500}
               rows={3}
-              className="w-full px-4 py-3 bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 rounded-xl text-card-body text-wtext-1 dark:text-white placeholder:text-wtext-3 focus:outline-none focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20 resize-none transition-colors motion-reduce:transition-none"
+              className="w-full px-4 py-3 bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[15px] font-medium text-it-ink-800 dark:text-white placeholder:text-it-ink-400 focus:outline-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 resize-none transition-colors motion-reduce:transition-none"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor={instructorNameId} className={LABEL_BASE}>
-                담당 코치 <span className="text-red-500" aria-hidden="true">*</span>
+                담당 코치 <span className="text-it-red-500" aria-hidden="true">*</span>
               </label>
               <input
                 id={instructorNameId}
@@ -258,7 +258,7 @@ export default function CreateTrainingPage() {
             </div>
             <div>
               <label htmlFor={capacityId} className={LABEL_BASE}>
-                최대 인원 <span className="text-red-500" aria-hidden="true">*</span>
+                최대 인원 <span className="text-it-red-500" aria-hidden="true">*</span>
               </label>
               <input
                 id={capacityId}
@@ -334,7 +334,7 @@ export default function CreateTrainingPage() {
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label htmlFor={startDateId} className={LABEL_BASE}>
-                시작 날짜 <span className="text-red-500" aria-hidden="true">*</span>
+                시작 날짜 <span className="text-it-red-500" aria-hidden="true">*</span>
               </label>
               <input
                 id={startDateId}
@@ -349,7 +349,7 @@ export default function CreateTrainingPage() {
             </div>
             <div>
               <label htmlFor={startTimeId} className={LABEL_BASE}>
-                시작 시간 <span className="text-red-500" aria-hidden="true">*</span>
+                시작 시간 <span className="text-it-red-500" aria-hidden="true">*</span>
               </label>
               <input
                 id={startTimeId}
@@ -364,7 +364,7 @@ export default function CreateTrainingPage() {
             </div>
             <div>
               <label htmlFor={endTimeId} className={LABEL_BASE}>
-                종료 시간 <span className="text-red-500" aria-hidden="true">*</span>
+                종료 시간 <span className="text-it-red-500" aria-hidden="true">*</span>
               </label>
               <input
                 id={endTimeId}
@@ -383,7 +383,7 @@ export default function CreateTrainingPage() {
         {/* 일정 날짜 (일괄 생성) */}
         <section>
           <label htmlFor={scheduleDatesId} className={LABEL_BASE}>
-            일괄 일정 생성 <span className="text-card-meta font-normal text-wtext-3 dark:text-rink-300">(선택)</span>
+            일괄 일정 생성 <span className="text-card-meta font-normal text-it-ink-500 dark:text-rink-300">(선택)</span>
           </label>
           <input
             id={scheduleDatesId}
@@ -393,7 +393,7 @@ export default function CreateTrainingPage() {
             placeholder="2026-04-07, 2026-04-14, 2026-04-21"
             className={INPUT_BASE}
           />
-          <p className="flex items-start gap-1.5 text-card-meta text-wtext-3 dark:text-rink-300 mt-2">
+          <p className="flex items-start gap-1.5 text-card-meta text-it-ink-500 dark:text-rink-300 mt-2">
             <Icon name="info" className="text-card-body shrink-0 mt-0.5" aria-hidden="true" />
             <span>쉼표로 구분하여 여러 날짜를 입력하면 일정이 한 번에 생성됩니다. (형식: YYYY-MM-DD)</span>
           </p>
@@ -405,7 +405,7 @@ export default function CreateTrainingPage() {
             type="button"
             onClick={handleCancel}
             disabled={isSubmitting}
-            className="flex-1 h-12 rounded-xl border border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 text-card-body font-semibold hover:bg-wbg dark:hover:bg-rink-800 disabled:opacity-60 transition-colors motion-reduce:transition-none"
+            className="flex-1 h-12 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 text-it-ink-800 dark:text-rink-100 text-card-body font-bold hover:bg-it-fill dark:hover:bg-rink-800 disabled:opacity-60 transition-colors motion-reduce:transition-none active:brightness-95"
           >
             취소
           </button>
@@ -414,10 +414,10 @@ export default function CreateTrainingPage() {
             onClick={handleSubmit}
             disabled={isSubmitting}
             className={cn(
-              'h-12 rounded-xl text-white text-card-body font-semibold transition-colors motion-reduce:transition-none',
+              'h-12 rounded-w-md text-white text-card-body font-bold transition-colors motion-reduce:transition-none',
               isSubmitting
-                ? 'bg-wtext-4 cursor-not-allowed flex-[1.5]'
-                : 'bg-ice-500 hover:bg-ice-700 active:brightness-95 flex-[1.5]',
+                ? 'bg-it-ink-400 cursor-not-allowed flex-[1.5]'
+                : 'bg-it-blue-500 hover:bg-it-blue-600 active:brightness-95 flex-[1.5]',
             )}
           >
             {isSubmitting ? '등록 중...' : '등록하기'}

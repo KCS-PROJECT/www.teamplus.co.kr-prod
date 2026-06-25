@@ -138,7 +138,7 @@ export default function ClassCompletePage() {
         titleClassName="text-card-section font-bold"
       />
       <main
-        className="flex-1 overflow-y-auto px-5 pb-30 pt-8 bg-wbg dark:bg-rink-900"
+        className="flex-1 overflow-y-auto px-5 pb-30 pt-8 bg-it-canvas dark:bg-puck"
         role="main"
         aria-labelledby="class-complete-title"
       >
@@ -159,7 +159,7 @@ export default function ClassCompletePage() {
           <h1
             id="class-complete-title"
             className={cn(
-              'text-xl font-extrabold text-wtext-1 dark:text-white text-center leading-snug mb-2 transition-all duration-500 delay-200',
+              'text-xl font-extrabold text-it-ink-800 dark:text-white text-center leading-snug mb-2 transition-all duration-500 delay-200',
               animate ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0',
             )}
           >
@@ -168,10 +168,10 @@ export default function ClassCompletePage() {
             성공적으로 완료되었습니다
           </h1>
 
-          {/* 정보 카드 */}
+          {/* 정보 — full-bleed 흰 섹션 (카드 박스 제거). */}
           {data ? (
             <div className={cn(
-              'w-full mt-8 bg-wbg dark:bg-rink-800 rounded-2xl border border-wline-2 dark:border-rink-700 overflow-hidden transition-all duration-500 delay-300',
+              '-mx-5 w-[calc(100%+2.5rem)] mt-8 bg-it-surface dark:bg-it-blue-950 overflow-hidden transition-all duration-500 delay-300',
               animate ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0',
             )}>
               {/* 수업 정보 */}
@@ -223,8 +223,8 @@ export default function ClassCompletePage() {
                 )}
               </div>
 
-              {/* 구분선 */}
-              <div className="border-t border-dashed border-wline dark:border-rink-700 mx-6" />
+              {/* 구분선 — hairline */}
+              <div className="border-t border-it-line dark:border-it-blue-900 mx-6" />
 
               {/* 수강료 — feeItems(전체 패키지 목록) 우선 표시. 변경 가격·다중 정기권 정확 반영.
                   미전달(구 경로) 시 기존 singlePrice/monthlyPrice 폴백. */}
@@ -235,10 +235,10 @@ export default function ClassCompletePage() {
                       key={`${it.name}-${i}`}
                       className="flex items-center justify-between gap-3"
                     >
-                      <span className="text-card-body text-wtext-3 dark:text-rink-300 min-w-0 truncate">
+                      <span className="text-card-body text-it-ink-500 dark:text-rink-300 min-w-0 truncate">
                         {it.name}
                       </span>
-                      <span className="text-card-title font-extrabold text-wtext-1 dark:text-white shrink-0 tabular-nums">
+                      <span className="text-card-title font-extrabold text-it-ink-800 dark:text-white shrink-0 tabular-nums">
                         {formatPrice(it.price)}
                       </span>
                     </div>
@@ -246,21 +246,21 @@ export default function ClassCompletePage() {
                 ) : (
                   <>
                     <div className="flex items-center justify-between">
-                      <span className="text-card-body text-wtext-3 dark:text-rink-300">
+                      <span className="text-card-body text-it-ink-500 dark:text-rink-300">
                         {MESSAGES.classProduct.singlePriceLabel}
                       </span>
-                      <span className="text-card-title font-extrabold text-wtext-1 dark:text-white">
+                      <span className="text-card-title font-extrabold text-it-ink-800 dark:text-white">
                         {formatPrice(data.singlePrice)}
                       </span>
                     </div>
                     {data.monthlyPrice !== '' && Number(data.monthlyPrice) > 0 && (
                       <div className="flex items-center justify-between">
-                        <span className="text-card-body text-wtext-3 dark:text-rink-300">
+                        <span className="text-card-body text-it-ink-500 dark:text-rink-300">
                           {data.packageWeeks && data.packageTotalSessions && data.packageSessionsPerWeek
                             ? `${data.packageWeeks}주 정기권 (주 ${data.packageSessionsPerWeek}회 · 총 ${data.packageTotalSessions}회)`
                             : '정기 패키지'}
                         </span>
-                        <span className="text-card-title font-extrabold text-wtext-1 dark:text-white">
+                        <span className="text-card-title font-extrabold text-it-ink-800 dark:text-white">
                           {formatPrice(data.monthlyPrice)}
                         </span>
                       </div>
@@ -270,10 +270,10 @@ export default function ClassCompletePage() {
               </div>
 
               {/* 안내 문구 */}
-              <div className="px-6 py-4 bg-wline-2/60 dark:bg-rink-900/40">
+              <div className="px-6 py-4 bg-it-fill dark:bg-rink-900/40 border-t border-it-line dark:border-it-blue-900">
                 <div className="flex gap-2">
-                  <Icon name="info" className="text-card-emphasis text-wtext-3 dark:text-rink-300 shrink-0 mt-0.5" aria-hidden="true" />
-                  <p className="text-card-meta text-wtext-3 dark:text-rink-300 leading-relaxed whitespace-pre-line">
+                  <Icon name="info" className="text-card-emphasis text-it-ink-400 dark:text-rink-300 shrink-0 mt-0.5" aria-hidden="true" />
+                  <p className="text-card-meta text-it-ink-500 dark:text-rink-300 leading-relaxed whitespace-pre-line">
                     {isEdit
                       ? '수업 정보가 수정되었습니다.\n변경 사항은 즉시 반영됩니다.'
                       : '수업이 등록되었습니다.\n수정 화면에서 결제 패키지를 더 추가하거나 관리할 수 있어요.'}
@@ -283,10 +283,10 @@ export default function ClassCompletePage() {
             </div>
           ) : (
             <div className={cn(
-              'w-full mt-8 bg-wbg dark:bg-rink-800 rounded-2xl border border-wline-2 dark:border-rink-700 px-6 py-8 text-center transition-all duration-500 delay-300',
+              '-mx-5 w-[calc(100%+2.5rem)] mt-8 bg-it-surface dark:bg-it-blue-950 px-6 py-8 text-center transition-all duration-500 delay-300',
               animate ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0',
             )}>
-              <p className="text-card-body text-wtext-3 dark:text-rink-300">
+              <p className="text-card-body text-it-ink-500 dark:text-rink-300">
                 수업 처리가 완료되었습니다.
               </p>
             </div>
@@ -300,8 +300,8 @@ export default function ClassCompletePage() {
             href="/classes-manage"
             aria-label="수업 목록 페이지로 이동하기"
             className={cn(
-              'w-full h-14 rounded-xl flex items-center justify-center text-card-title font-bold transition-colors motion-reduce:transition-none active:brightness-90 focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 focus:outline-none',
-              'bg-ice-500 hover:bg-ice-700 text-white',
+              'w-full h-14 rounded-w-md flex items-center justify-center text-card-title font-bold transition-colors motion-reduce:transition-none active:brightness-90 focus-visible:ring-2 focus-visible:ring-it-blue-500 focus-visible:ring-offset-2 focus:outline-none',
+              'bg-it-blue-500 hover:bg-it-blue-600 text-white',
               animate ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0',
             )}
           >
@@ -331,14 +331,14 @@ function InfoRow({
 }) {
   return (
     <div className="flex items-start justify-between gap-4" role="group" aria-label={`${label}: ${value}`}>
-      <span className="text-card-body text-wtext-3 dark:text-rink-300 shrink-0" aria-hidden="true">{label}</span>
+      <span className="text-card-body text-it-ink-500 dark:text-rink-300 shrink-0" aria-hidden="true">{label}</span>
       <span
         className={cn(
           'text-card-body text-right',
           multiline ? 'min-w-0 break-keep leading-relaxed whitespace-pre-line' : '',
           bold
-            ? 'font-bold text-ice-500'
-            : 'font-semibold text-wtext-1 dark:text-rink-100',
+            ? 'font-bold text-it-blue-500'
+            : 'font-semibold text-it-ink-800 dark:text-rink-100',
         )}
         aria-hidden="true"
       >

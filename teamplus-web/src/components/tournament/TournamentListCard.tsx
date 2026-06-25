@@ -36,6 +36,12 @@ interface Props {
   onDelete?: (id: string) => void;
   /** 카드 클릭 시 이동 경로. 기본값: `/tournaments/${id}` */
   href?: string;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 카드 박스(rounded/shadow/border) → hairline 행, it-* 토큰 적용.
+   *   (대회/경기 목록 화면만 전달.)
+   */
+  iceTheme?: boolean;
 }
 
 function formatDateRange(start: string, end: string): string {
@@ -50,19 +56,23 @@ export function TournamentListCard({
   onEdit,
   onDelete,
   href,
+  iceTheme = false,
 }: Props) {
   const dDay = calculateDDay(tournament.registrationDeadline);
   const uiStatus: TournamentUiStatus = mapTournamentUiStatus(
     tournament.status,
-    tournament.registrationDeadline,
+    tournament.endDate,
   );
   const dateRange = formatDateRange(tournament.startDate, tournament.endDate);
   // [2026-06-08] 대회장소 자유 텍스트(tournament.location) 최우선 표시 — 직접 입력한 장소 반영.
+  // [2026-06-22] venue?.name(대회 전체 장소) 폴백 추가 + club.clubName(클럽·팀명) 제거 —
+  //   장소 자리에 팀명이 노출되거나, venue 입력해도 "장소 추후 안내"로 뜨던 버그 수정.
+  //   목록은 대회 전체 장소만 표시(경기별 장소는 상세에서 확인).
   const locationName =
     tournament.location ||
+    tournament.venue?.name ||
     tournament.rink?.location ||
     tournament.rink?.name ||
-    tournament.club?.clubName ||
     '장소 추후 안내';
 
   // [2026-06-08] 참가 인원(참가팀) 표시 삭제로 selectedCount/registrationCount 제거.
@@ -70,7 +80,20 @@ export function TournamentListCard({
   // D-Day 리본 (좌상단)
   const dDayRibbon = (() => {
     if (dDay === undefined) return null;
-    if (dDay <= 2) {
+    const urgent = dDay <= 2;
+    if (iceTheme) {
+      return (
+        <span
+          className={cn(
+            'absolute left-0 top-0 rounded-br-w-md px-2 py-1 text-[10px] font-bold text-white',
+            urgent ? 'bg-it-red-500' : 'bg-it-blue-500',
+          )}
+        >
+          D-{dDay}
+        </span>
+      );
+    }
+    if (urgent) {
       return (
         <span className="absolute left-0 top-0 rounded-br-lg bg-red-600 px-2 py-1 text-[10px] font-bold text-white">
           D-{dDay}
@@ -88,6 +111,18 @@ export function TournamentListCard({
 
   // [2026-06-08] 카드 하단 참가 인원(참가팀) 표시(footerLeft) 삭제 — CTA 만 노출.
 
+  // iceTheme CTA 클래스 — flat(it-* 토큰). false 경로는 기존 클래스 1:1 유지.
+  const itGhostBtn =
+    'flex h-9 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-w-md border-[1.5px] border-it-line-strong bg-it-surface px-3 text-xs font-bold text-it-ink-800 hover:bg-it-fill dark:border-rink-700 dark:bg-rink-800 dark:text-rink-100 dark:hover:bg-rink-700';
+  const itDangerBtn =
+    'flex h-9 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-w-md border-[1.5px] border-it-red-200 bg-it-surface px-3 text-xs font-bold text-it-red-500 hover:bg-it-red-50 dark:border-it-red-500/40 dark:bg-rink-800 dark:text-it-red-300 dark:hover:bg-it-red-500/10';
+  const itPrimaryBtn =
+    'ml-auto flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-w-md bg-it-blue-500 px-4 text-xs font-bold text-white hover:bg-it-blue-600';
+  const itOutlineBtn =
+    'ml-auto flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-w-md border-[1.5px] border-it-line-strong bg-it-surface px-4 text-xs font-bold text-it-ink-800 hover:bg-it-fill dark:border-rink-700 dark:bg-rink-800 dark:text-rink-100 dark:hover:bg-rink-700';
+  const itDisabledBtn =
+    'ml-auto flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-w-md bg-it-fill px-4 text-xs font-bold text-it-ink-600 dark:bg-rink-700 dark:text-rink-100';
+
   const footerCta = (() => {
     if (isManager) {
       return (
@@ -99,7 +134,11 @@ export function TournamentListCard({
               e.stopPropagation();
               onEdit?.(tournament.id);
             }}
-            className="flex h-9 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-wline bg-white px-3 text-xs font-bold text-wtext-2 hover:bg-wbg dark:border-rink-700 dark:bg-rink-800 dark:text-rink-100 dark:hover:bg-rink-700"
+            className={
+              iceTheme
+                ? itGhostBtn
+                : 'flex h-9 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-wline bg-white px-3 text-xs font-bold text-wtext-2 hover:bg-wbg dark:border-rink-700 dark:bg-rink-800 dark:text-rink-100 dark:hover:bg-rink-700'
+            }
             aria-label="대회 수정하기"
           >
             <Icon name="edit" className="text-sm" aria-hidden="true" />
@@ -112,7 +151,11 @@ export function TournamentListCard({
               e.stopPropagation();
               onDelete?.(tournament.id);
             }}
-            className="flex h-9 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-red-200 bg-white px-3 text-xs font-bold text-red-600 hover:bg-red-50 dark:border-red-800/50 dark:bg-rink-800 dark:text-red-400 dark:hover:bg-red-900/20"
+            className={
+              iceTheme
+                ? itDangerBtn
+                : 'flex h-9 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-red-200 bg-white px-3 text-xs font-bold text-red-600 hover:bg-red-50 dark:border-red-800/50 dark:bg-rink-800 dark:text-red-400 dark:hover:bg-red-900/20'
+            }
             aria-label="대회 삭제하기"
           >
             <Icon name="delete" className="text-sm" aria-hidden="true" />
@@ -127,7 +170,11 @@ export function TournamentListCard({
       return (
         <NavLink
           href={`/tournaments/${tournament.id}/apply`}
-          className="ml-auto flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-ice-500 px-4 text-xs font-bold text-white hover:bg-ice-700"
+          className={
+            iceTheme
+              ? itPrimaryBtn
+              : 'ml-auto flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-ice-500 px-4 text-xs font-bold text-white hover:bg-ice-700'
+          }
         >
           신청하기
         </NavLink>
@@ -137,7 +184,11 @@ export function TournamentListCard({
       return (
         <NavLink
           href={`${targetHref}/bracket`}
-          className="ml-auto flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-lg border border-wline bg-white px-4 text-xs font-bold text-wtext-2 hover:bg-wbg dark:border-rink-700 dark:bg-rink-800 dark:text-rink-100 dark:hover:bg-rink-700"
+          className={
+            iceTheme
+              ? itOutlineBtn
+              : 'ml-auto flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-lg border border-wline bg-white px-4 text-xs font-bold text-wtext-2 hover:bg-wbg dark:border-rink-700 dark:bg-rink-800 dark:text-rink-100 dark:hover:bg-rink-700'
+          }
         >
           대진표 보기
         </NavLink>
@@ -147,7 +198,11 @@ export function TournamentListCard({
       return (
         <button
           type="button"
-          className="ml-auto flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-wline-2 px-4 text-xs font-bold text-wtext-2 hover:bg-wline dark:bg-rink-700 dark:text-rink-100 dark:hover:bg-rink-500"
+          className={
+            iceTheme
+              ? itDisabledBtn
+              : 'ml-auto flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-wline-2 px-4 text-xs font-bold text-wtext-2 hover:bg-wline dark:bg-rink-700 dark:text-rink-100 dark:hover:bg-rink-500'
+          }
           disabled
         >
           대기 등록
@@ -157,7 +212,11 @@ export function TournamentListCard({
     return (
       <NavLink
         href={targetHref}
-        className="ml-auto flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-lg border border-wline bg-white px-4 text-xs font-bold text-wtext-2 hover:bg-wbg dark:border-rink-700 dark:bg-rink-800 dark:text-rink-100 dark:hover:bg-rink-700"
+        className={
+          iceTheme
+            ? itOutlineBtn
+            : 'ml-auto flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-lg border border-wline bg-white px-4 text-xs font-bold text-wtext-2 hover:bg-wbg dark:border-rink-700 dark:bg-rink-800 dark:text-rink-100 dark:hover:bg-rink-700'
+        }
       >
         결과 보기
       </NavLink>
@@ -167,18 +226,33 @@ export function TournamentListCard({
   return (
     <article
       className={cn(
-        'group relative overflow-hidden rounded-xl border border-wline-2 bg-white transition-all hover:shadow-md dark:border-rink-800 dark:bg-rink-800',
+        iceTheme
+          ? // ICETIMES flat — 카드 박스(rounded/shadow/border) 제거. hairline 행만.
+            'group relative overflow-hidden border-b border-it-line dark:border-rink-700'
+          : 'group relative overflow-hidden rounded-xl border border-wline-2 bg-white transition-all hover:shadow-md dark:border-rink-800 dark:bg-rink-800',
         uiStatus === 'closed' && 'opacity-90',
       )}
     >
       <NavLink href={targetHref} className="block">
-        <div className="flex flex-row gap-4 p-4">
+        <div className={cn('flex flex-row gap-4', iceTheme ? 'px-1 pt-1 pb-3' : 'p-4')}>
           {/* 썸네일 */}
-          <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-lg bg-wline-2 dark:bg-rink-700">
+          <div
+            className={cn(
+              'relative h-24 w-24 shrink-0 overflow-hidden',
+              iceTheme
+                ? 'rounded-w-md bg-it-fill dark:bg-rink-700'
+                : 'rounded-lg bg-wline-2 dark:bg-rink-700',
+            )}
+          >
             <div className="flex h-full w-full items-center justify-center">
               <Icon
                 name="emoji_events"
-                className="text-4xl text-wtext-4 dark:text-rink-300"
+                className={cn(
+                  'text-4xl',
+                  iceTheme
+                    ? 'text-it-ink-300 dark:text-rink-300'
+                    : 'text-wtext-4 dark:text-rink-300',
+                )}
               />
             </div>
             {dDayRibbon}
@@ -188,8 +262,15 @@ export function TournamentListCard({
           <div className="flex min-w-0 flex-1 flex-col justify-between">
             <div className="flex flex-col gap-1">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <TournamentStatusBadge status={uiStatus} />
-                <span className="shrink-0 whitespace-nowrap text-[11px] text-wtext-3 dark:text-rink-300">
+                <TournamentStatusBadge status={uiStatus} iceTheme={iceTheme} />
+                <span
+                  className={cn(
+                    'shrink-0 whitespace-nowrap text-[11px]',
+                    iceTheme
+                      ? 'text-it-ink-400 dark:text-rink-300'
+                      : 'text-wtext-3 dark:text-rink-300',
+                  )}
+                >
                   {/* [수정 2026-06-16] 출생연도 라벨 — 개별 연도 집합 우선("2014·2016·2019년생"),
                       없으면 from/to 범위 폴백, 레거시 대회는 "전체". */}
                   {formatEligibleBirthYearsLabel(
@@ -199,21 +280,40 @@ export function TournamentListCard({
                   )}
                 </span>
               </div>
-              <h3 className="truncate text-base font-bold leading-tight text-wtext-1 dark:text-white">
+              <h3
+                className={cn(
+                  'truncate text-base font-bold leading-tight',
+                  iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white',
+                )}
+              >
                 {tournament.name}
               </h3>
               <div className="mt-1 flex flex-col gap-1">
-                <div className="flex items-center gap-1.5 text-xs text-wtext-3 dark:text-rink-300">
+                <div
+                  className={cn(
+                    'flex items-center gap-1.5 text-xs',
+                    iceTheme
+                      ? 'text-it-ink-500 dark:text-rink-300'
+                      : 'text-wtext-3 dark:text-rink-300',
+                  )}
+                >
                   <Icon
                     name="calendar_today"
-                    className="text-[14px] text-wtext-3"
+                    className={cn('text-[14px]', iceTheme ? 'text-it-ink-400' : 'text-wtext-3')}
                   />
                   <span>{dateRange}</span>
                 </div>
-                <div className="flex items-center gap-1.5 text-xs text-wtext-3 dark:text-rink-300">
+                <div
+                  className={cn(
+                    'flex items-center gap-1.5 text-xs',
+                    iceTheme
+                      ? 'text-it-ink-500 dark:text-rink-300'
+                      : 'text-wtext-3 dark:text-rink-300',
+                  )}
+                >
                   <Icon
                     name="location_on"
-                    className="text-[14px] text-wtext-3"
+                    className={cn('text-[14px]', iceTheme ? 'text-it-ink-400' : 'text-wtext-3')}
                   />
                   <span className="truncate">{locationName}</span>
                 </div>
@@ -223,7 +323,10 @@ export function TournamentListCard({
 
           {/* Chevron — 상세 이동 힌트 */}
           <div
-            className="flex shrink-0 items-center text-wtext-4 transition-transform duration-200 group-hover:translate-x-0.5 dark:text-rink-500"
+            className={cn(
+              'flex shrink-0 items-center transition-transform duration-200 group-hover:translate-x-0.5',
+              iceTheme ? 'text-it-ink-300 dark:text-rink-500' : 'text-wtext-4 dark:text-rink-500',
+            )}
             aria-hidden="true"
           >
             <Icon name="chevron_right" className="text-2xl" />
@@ -232,7 +335,15 @@ export function TournamentListCard({
       </NavLink>
 
       {/* 푸터 — [2026-06-08] 참가 인원(참가팀) 표시 삭제, CTA 만 우측 노출. */}
-      <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2 border-t border-wline-2 bg-wbg/50 p-3 dark:border-rink-700/50 dark:bg-white/5">
+      <div
+        className={cn(
+          'flex flex-wrap items-center justify-end gap-x-3 gap-y-2',
+          iceTheme
+            ? // flat — 상단 hairline 구분만, 배경 박스 없음.
+              'border-t border-it-line pt-3 pb-3 dark:border-rink-700'
+            : 'border-t border-wline-2 bg-wbg/50 p-3 dark:border-rink-700/50 dark:bg-white/5',
+        )}
+      >
         {footerCta}
       </div>
     </article>

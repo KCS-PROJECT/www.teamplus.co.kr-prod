@@ -14,7 +14,7 @@
  *  - 대회 기간(start/end)은 경기 일정 날짜의 min/max 로 자동 파생
  */
 
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSessionAuth } from "@/hooks/useSessionAuth";
 import { useNavigation } from "@/components/ui/NavLink";
@@ -57,22 +57,38 @@ interface ScheduleMatchRow {
   date: string;
   /** HH:MM */
   time: string;
+  /** 경기별 장소(링크장) id. "" = 대회 전체 장소 사용(폴백). */
+  venueId: string;
+  /** 장소 검색 입력값 겸 선택 장소명(표시용). */
+  venueQuery: string;
 }
 
 /** 출생연도 미상(birthYear=null) 선수 묶음의 연도칩 sentinel. */
 const BIRTH_YEAR_UNKNOWN = "unknown" as const;
 
 /**
- * 비-선수(코치/매니저) 제외 — 실제 선수만 참가대상 후보로 노출.
+ * 비-선수(코치/매니저/학부모) 제외 — 실제 선수만 참가대상 후보로 노출.
  * roleInTeam 우선, 없으면 user.userType 으로 판정.
+ * [2026-06-25] 학부모(PARENT) 제외 추가 — 변경된 로직상 학부모는 팀 소속이 없어야 하나,
+ *   레거시로 TeamMember 에 PARENT 로 남은 데이터가 참가후보(전체선택)에 노출되던 버그 방지.
  */
 function isPlayerMember(m: TeamMemberRow): boolean {
   const role = (m.roleInTeam ?? "").toUpperCase();
-  if (role === "HEAD_COACH" || role === "COACH" || role === "MANAGER") {
+  if (
+    role === "HEAD_COACH" ||
+    role === "COACH" ||
+    role === "MANAGER" ||
+    role === "PARENT"
+  ) {
     return false;
   }
   const type = (m.user?.userType ?? "").toUpperCase();
-  if (type === "COACH" || type === "DIRECTOR" || type === "ACADEMY_DIRECTOR") {
+  if (
+    type === "COACH" ||
+    type === "DIRECTOR" ||
+    type === "ACADEMY_DIRECTOR" ||
+    type === "PARENT"
+  ) {
     return false;
   }
   return true;
@@ -138,7 +154,17 @@ export default function TournamentCreatePage() {
     return venues.filter((v) => v.name.toLowerCase().includes(q));
   }, [venueQuery, venues]);
 
+  // 경기별 장소 검색 — 행마다 입력값(venueQuery)으로 저장된 링크장을 필터(대회장소 패턴 동일).
+  const filterVenuesByQuery = (q: string) => {
+    const t = q.trim().toLowerCase();
+    if (!t) return [] as typeof venues;
+    return venues.filter((v) => v.name.toLowerCase().includes(t));
+  };
+
   const [submitting, setSubmitting] = useState(false);
+  // 연타 가드 — submitting state 는 비동기라 빠른 연타에 두 번째 제출이 통과할 수 있어
+  //   동기 ref 로 실제 제출 진입을 1회로 제한한다.
+  const submittingRef = useRef(false);
   const [isPrefilling, setIsPrefilling] = useState(isEditMode);
   // 등록 시도 후에만 validation alert 노출 (초기 진입 시 불필요한 에러 카드 방지)
   const [hasAttempted, setHasAttempted] = useState(false);
@@ -226,6 +252,8 @@ export default function TournamentCreatePage() {
               opponentName: m.awayTeam?.name ?? m.opponentName ?? "",
               date: toDateInputValue(m.scheduledAt),
               time: `${hh}:${mm}`,
+              venueId: m.venue?.id ?? "",
+              venueQuery: m.venue?.name ?? "",
             };
           });
           setScheduleMatches(rows);
@@ -370,7 +398,7 @@ export default function TournamentCreatePage() {
     matchKeySeq.n += 1;
     setScheduleMatches((prev) => [
       ...prev,
-      { key: `m${matchKeySeq.n}`, opponentName: "", date: "", time: "" },
+      { key: `m${matchKeySeq.n}`, opponentName: "", date: "", time: "", venueId: "", venueQuery: "" },
     ]);
   };
   const removeScheduleMatch = (key: string) => {
@@ -422,7 +450,13 @@ export default function TournamentCreatePage() {
       toast.error(validationError);
       return;
     }
+    // 연타 가드 — 이미 제출 진행 중이면 무시 (검증 통과 후).
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setSubmitting(true);
+    // 성공 시 상세 페이지로 전환되며, 전환 지연 구간의 재클릭 중복 생성을 막기 위해
+    //   전환을 시작한 경우엔 ref 를 유지한다(실패 시에만 해제).
+    let navigated = false;
     try {
       // [2026-06-16] 대회 기간(start/end)을 경기 일정에서 파생 — 유효 경기(date+time) 날짜의
       //   최소/최대를 시작/종료일로 사용. validationError 가 1건 이상 보장하므로 항상 존재.
@@ -482,6 +516,8 @@ export default function TournamentCreatePage() {
             opponentName: m.opponentName.trim() || undefined,
             scheduledAt: `${m.date}T${m.time}:00`,
             matchOrder: i + 1,
+            // 경기별 장소 우선, 미입력 시 대회 전체 장소로 폴백 저장.
+            venueId: m.venueId || venueId || undefined,
           });
         }
         toast.success(
@@ -492,6 +528,7 @@ export default function TournamentCreatePage() {
         // [수정 T07-H 2026-05-15] 수정 모드: replace 사용.
         //   사유: edit 페이지에서 detail 로 navigate 하면 history 가 [list, detail, edit, detail] 로 쌓여
         //   사용자가 뒤로가기 누르면 edit 페이지로 되돌아가는 회귀가 발생. replace 로 edit 항목을 제거.
+        navigated = true;
         if (isEditMode) {
           await replace(`/tournaments/${res.data.id}`);
         } else {
@@ -502,6 +539,8 @@ export default function TournamentCreatePage() {
       }
     } finally {
       setSubmitting(false);
+      // 전환을 시작한 경우(navigated) ref 유지 — 전환 지연 중 재클릭 차단. 실패 시에만 해제.
+      if (!navigated) submittingRef.current = false;
     }
   };
 
@@ -513,11 +552,11 @@ export default function TournamentCreatePage() {
           title={isEditMode ? "대회 수정" : "새 대회 등록"}
           forceNative
         />
-        <main className="flex flex-1 flex-col items-center justify-center bg-wbg px-8 dark:bg-puck">
-          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-wline dark:bg-rink-800">
-            <Icon name="lock" className="text-3xl text-wtext-3" />
+        <main className="flex flex-1 flex-col items-center justify-center bg-it-canvas px-8 dark:bg-puck">
+          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-w-md bg-it-fill dark:bg-rink-800">
+            <Icon name="lock" className="text-3xl text-it-ink-400" />
           </div>
-          <p className="text-center text-w-small text-wtext-3 dark:text-rink-300">
+          <p className="text-center text-w-small text-it-ink-500 dark:text-rink-300">
             {MESSAGES.error.general}
           </p>
         </main>
@@ -535,9 +574,10 @@ export default function TournamentCreatePage() {
         forceNative
       />
 
-      <main className="flex-1 overflow-y-auto bg-wbg dark:bg-puck pb-[calc(60px+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px)))]">
+      <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck pb-[calc(60px+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px)))]">
         {/* [수정 2026-05-11] Hero Section 전체 제거 — 사용자 요청. 시각적 노이즈/스크롤
-            낭비를 줄이고 폼에 바로 집중. PageAppBar 제목으로 컨텍스트는 충분. */}
+            낭비를 줄이고 폼에 바로 집중. PageAppBar 제목으로 컨텍스트는 충분.
+            ICETIMES flat — 섹션 간 8px 회색 갭(gap-2), 각 SectionCard 는 full-bleed 흰 섹션. */}
 
         <form
           id="tournament-create-form"
@@ -545,7 +585,7 @@ export default function TournamentCreatePage() {
             e.preventDefault();
             void handleSubmit();
           }}
-          className="flex flex-col gap-3 px-4 py-4 pb-6"
+          className="flex flex-col gap-2 pt-2 pb-6"
         >
           {/* Section 1: 기본 정보 */}
           <SectionCard
@@ -561,7 +601,7 @@ export default function TournamentCreatePage() {
                 onChange={(e) => setName(e.target.value)}
                 placeholder="예: 2026 TEAMPLUS 주니어 리그"
                 maxLength={100}
-                className={`${pillInput} placeholder:text-wtext-4 placeholder:font-light placeholder:italic`}
+                className={`${pillInput} placeholder:text-it-ink-300 placeholder:font-light placeholder:italic`}
                 required
               />
               <Hint>{name.length}/100자</Hint>
@@ -593,7 +633,7 @@ export default function TournamentCreatePage() {
                   className={pillInput}
                 />
                 {!venueId && venueQuery.trim() && (
-                  <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-40 divide-y divide-wline-2 overflow-y-auto rounded-lg border border-wline-2 bg-white shadow-card dark:divide-rink-700 dark:border-rink-700 dark:bg-rink-800">
+                  <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-40 divide-y divide-it-line overflow-y-auto rounded-w-md border-[1.5px] border-it-line-strong bg-it-surface shadow-sh-2 dark:divide-rink-700 dark:border-rink-700 dark:bg-rink-800">
                     {filteredVenues.length > 0 ? (
                       filteredVenues.map((v) => (
                         <li key={v.id}>
@@ -603,14 +643,14 @@ export default function TournamentCreatePage() {
                               setVenueId(v.id);
                               setVenueQuery(v.name);
                             }}
-                            className="w-full px-3 py-2.5 text-left text-w-body font-medium text-wtext-1 transition-colors motion-reduce:transition-none hover:bg-wbg dark:text-white dark:hover:bg-rink-700/40"
+                            className="w-full px-3 py-2.5 text-left text-w-body font-medium text-it-ink-800 transition-colors motion-reduce:transition-none hover:bg-it-fill dark:text-white dark:hover:bg-rink-700/40"
                           >
                             {v.name}
                           </button>
                         </li>
                       ))
                     ) : (
-                      <li className="px-3 py-2.5 text-w-caption text-wtext-3 dark:text-rink-300">
+                      <li className="px-3 py-2.5 text-w-caption text-it-ink-500 dark:text-rink-300">
                         &ldquo;{venueQuery.trim()}&rdquo; 검색 결과가 없습니다
                       </li>
                     )}
@@ -624,7 +664,7 @@ export default function TournamentCreatePage() {
                     setVenueId("");
                     setVenueQuery("");
                   }}
-                  className="mt-1 inline-flex items-center gap-1 text-w-caption font-semibold text-wtext-3 underline dark:text-rink-300"
+                  className="mt-1 inline-flex items-center gap-1 text-w-caption font-semibold text-it-ink-500 underline dark:text-rink-300"
                 >
                   선택 해제 (장소 미지정)
                 </button>
@@ -643,11 +683,11 @@ export default function TournamentCreatePage() {
             description="참가할 선수를 직접 선택하세요 (최소 1명)"
           >
             {membersLoading ? (
-              <p className="px-1 py-2 text-w-caption text-wtext-3 dark:text-rink-300">
+              <p className="px-1 py-2 text-w-caption text-it-ink-500 dark:text-rink-300">
                 {MESSAGES.common.loading}
               </p>
             ) : teamMembers.length === 0 ? (
-              <p className="px-1 py-2 text-w-caption text-wtext-3 dark:text-rink-300">
+              <p className="px-1 py-2 text-w-caption text-it-ink-500 dark:text-rink-300">
                 {MESSAGES.tournament.participantEmpty}
               </p>
             ) : (
@@ -657,8 +697,8 @@ export default function TournamentCreatePage() {
                   <span
                     className={`min-w-0 truncate text-w-small font-extrabold ${
                       selectedPlayerIds.size > 0
-                        ? "text-wtext-1 dark:text-white"
-                        : "text-wtext-3 dark:text-rink-300"
+                        ? "text-it-ink-800 dark:text-white"
+                        : "text-it-ink-500 dark:text-rink-300"
                     }`}
                   >
                     {selectedPlayerIds.size > 0
@@ -670,7 +710,7 @@ export default function TournamentCreatePage() {
                   <button
                     type="button"
                     onClick={() => setPickerOpen(true)}
-                    className="shrink-0 rounded-xl border border-ice-500 bg-ice-500/[0.08] px-4 py-2 text-w-small font-extrabold text-ice-500 transition-colors motion-reduce:transition-none hover:bg-ice-500/[0.12] active:scale-[0.98] dark:bg-ice-500/15"
+                    className="shrink-0 rounded-w-md border-[1.5px] border-it-blue-500 bg-it-blue-50 px-4 py-2 text-w-small font-extrabold text-it-blue-500 transition-colors motion-reduce:transition-none hover:bg-it-blue-100 active:scale-[0.98] dark:bg-it-blue-500/15"
                   >
                     {selectedPlayerIds.size > 0
                       ? MESSAGES.tournament.participantPickerChange
@@ -679,7 +719,7 @@ export default function TournamentCreatePage() {
                 </div>
 
                 {orphanSelectedIds.length > 0 && (
-                  <p className="text-w-caption text-wtext-3 dark:text-rink-300">
+                  <p className="text-w-caption text-it-ink-500 dark:text-rink-300">
                     {MESSAGES.tournament.participantLeftTeam} (
                     {orphanSelectedIds.length}명)
                   </p>
@@ -719,10 +759,10 @@ export default function TournamentCreatePage() {
                       if (isEditMode) return;
                       setBillingMode(mode);
                     }}
-                    className={`flex h-11 items-center justify-center rounded-xl border text-w-small font-extrabold transition-colors motion-reduce:transition-none ${
+                    className={`flex h-11 items-center justify-center rounded-w-md border-[1.5px] text-w-small font-extrabold transition-colors motion-reduce:transition-none ${
                       active
-                        ? "border-ice-500 bg-ice-500/[0.08] text-ice-500 dark:bg-ice-500/15"
-                        : "border-wline-2 bg-wsurface text-wtext-2 hover:border-wline dark:border-rink-700 dark:bg-rink-800 dark:text-rink-100"
+                        ? "border-it-blue-500 bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-500/15"
+                        : "border-it-line-strong bg-it-surface text-it-ink-600 hover:border-it-ink-300 dark:border-rink-700 dark:bg-rink-800 dark:text-rink-100"
                     } ${isEditMode ? "cursor-not-allowed opacity-60" : ""}`}
                   >
                     {label}
@@ -752,7 +792,7 @@ export default function TournamentCreatePage() {
                     className={`${pillInput} min-w-0 box-border pr-8 text-left font-num tabular-nums placeholder:font-light placeholder:italic`}
                   />
                   {tournamentFee && (
-                    <span className="pointer-events-none absolute right-3 text-card-meta font-medium text-wtext-3">
+                    <span className="pointer-events-none absolute right-3 text-card-meta font-medium text-it-ink-400">
                       원
                     </span>
                   )}
@@ -770,7 +810,7 @@ export default function TournamentCreatePage() {
             description={MESSAGES.tournamentForm.scheduleHint}
           >
             {scheduleMatches.length === 0 ? (
-              <p className="px-1 py-2 text-w-caption text-wtext-3 dark:text-rink-300">
+              <p className="px-1 py-2 text-w-caption text-it-ink-400 dark:text-rink-300">
                 아직 등록된 경기가 없습니다. 아래 버튼으로 추가하세요.
               </p>
             ) : (
@@ -781,21 +821,21 @@ export default function TournamentCreatePage() {
                   return (
                   <li
                     key={m.key}
-                    className="rounded-xl border border-wline-2 bg-wbg px-3 py-3 dark:border-rink-700 dark:bg-rink-900/40"
+                    className="rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill px-3 py-3 dark:border-rink-700 dark:bg-rink-900/40"
                   >
                     <div className="mb-2 flex items-center justify-between">
-                      <span className="text-w-caption font-extrabold text-wtext-2 dark:text-rink-100">
+                      <span className="text-w-caption font-extrabold text-it-ink-600 dark:text-rink-100">
                         {idx + 1}경기
                       </span>
                       {locked ? (
-                        <span className="rounded-md bg-wline-2 px-2 py-1 text-w-caption font-extrabold text-wtext-3 dark:bg-rink-800 dark:text-rink-300">
+                        <span className="rounded-w-pill bg-it-fill px-2 py-1 text-w-caption font-extrabold text-it-ink-400 dark:bg-rink-800 dark:text-rink-300">
                           지난 경기
                         </span>
                       ) : (
                         <button
                           type="button"
                           onClick={() => removeScheduleMatch(m.key)}
-                          className="rounded-md px-2 py-1 text-w-caption font-extrabold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
+                          className="rounded-w-pill px-2 py-1 text-w-caption font-extrabold text-it-red-500 hover:bg-it-red-50 dark:text-it-red-300 dark:hover:bg-it-red-500/10"
                           aria-label={`${idx + 1}경기 삭제`}
                         >
                           삭제
@@ -833,6 +873,52 @@ export default function TournamentCreatePage() {
                         className={`${pillInput} min-w-0 box-border font-num tabular-nums disabled:opacity-60`}
                       />
                     </div>
+                    {/* 경기별 장소 — 입력 문구로 저장된 링크장 검색(대회장소 패턴). 비우면 대회 장소 사용. */}
+                    <div className="relative mt-2">
+                      <input
+                        type="text"
+                        value={m.venueQuery}
+                        onChange={(e) =>
+                          updateScheduleMatch(m.key, {
+                            venueQuery: e.target.value,
+                            ...(m.venueId ? { venueId: "" } : {}),
+                          })
+                        }
+                        disabled={locked}
+                        placeholder="경기 장소 찾아보기 (비우면 대회 장소)"
+                        aria-label={`${idx + 1}경기 장소 검색`}
+                        className={`${pillInput} disabled:opacity-60`}
+                      />
+                      {!m.venueId && m.venueQuery.trim() && (() => {
+                        const list = filterVenuesByQuery(m.venueQuery);
+                        return (
+                          <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-40 divide-y divide-it-line overflow-y-auto rounded-w-md border-[1.5px] border-it-line-strong bg-it-surface shadow-sh-2 dark:divide-rink-700 dark:border-rink-700 dark:bg-rink-800">
+                            {list.length > 0 ? (
+                              list.map((v) => (
+                                <li key={v.id}>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      updateScheduleMatch(m.key, {
+                                        venueId: v.id,
+                                        venueQuery: v.name,
+                                      })
+                                    }
+                                    className="w-full px-3 py-2.5 text-left text-w-body font-medium text-it-ink-800 transition-colors motion-reduce:transition-none hover:bg-it-fill dark:text-white dark:hover:bg-rink-700/40"
+                                  >
+                                    {v.name}
+                                  </button>
+                                </li>
+                              ))
+                            ) : (
+                              <li className="px-3 py-2.5 text-w-caption text-it-ink-500 dark:text-rink-300">
+                                &ldquo;{m.venueQuery.trim()}&rdquo; 검색 결과가 없습니다
+                              </li>
+                            )}
+                          </ul>
+                        );
+                      })()}
+                    </div>
                   </li>
                   );
                 })}
@@ -841,24 +927,26 @@ export default function TournamentCreatePage() {
             <button
               type="button"
               onClick={addScheduleMatch}
-              className="mt-3 flex h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-ice-500/50 text-w-small font-bold text-ice-500 transition-colors motion-reduce:transition-none hover:bg-ice-500/[0.06]"
+              className="mt-3 flex h-11 w-full items-center justify-center gap-1.5 rounded-w-md border border-dashed border-it-blue-500/50 text-w-small font-bold text-it-blue-500 transition-colors motion-reduce:transition-none hover:bg-it-blue-50"
             >
               <Icon name="add" className="text-w-title" aria-hidden="true" />
               경기 추가
             </button>
           </SectionCard>
 
+          {/* validation alert + 등록 버튼 — flat 흰 섹션 */}
+          <div className="bg-it-surface dark:bg-it-blue-950 px-4 py-4 flex flex-col gap-3">
           {hasAttempted && validationError && (
             <div
               role="alert"
-              className="flex items-start gap-2 rounded-xl border border-error/20 bg-error/5 px-3 py-3"
+              className="flex items-start gap-2 rounded-w-md border border-it-red-200 bg-it-red-50 dark:bg-it-red-500/10 px-3 py-3"
             >
               <Icon
                 name="error_outline"
-                className="mt-0.5 text-w-body-lg text-error"
+                className="mt-0.5 text-w-body-lg text-it-red-500"
                 aria-hidden="true"
               />
-              <p className="text-w-caption font-medium leading-relaxed text-error">
+              <p className="text-w-caption font-medium leading-relaxed text-it-red-700 dark:text-it-red-300">
                 {validationError}
               </p>
             </div>
@@ -871,7 +959,7 @@ export default function TournamentCreatePage() {
           <button
             type="submit"
             disabled={!canSubmit}
-            className="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-ice-500 text-w-small font-bold text-white shadow-md transition-all motion-reduce:transition-none hover:bg-ice-700 hover:shadow-lg active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ice-500/30"
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-w-md bg-it-blue-500 text-w-small font-bold text-white shadow-sh-1 transition-colors motion-reduce:transition-none hover:bg-it-blue-600 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40"
           >
             {submitting ? (
               <>
@@ -895,6 +983,7 @@ export default function TournamentCreatePage() {
               </>
             )}
           </button>
+          </div>
         </form>
       </main>
 
@@ -954,19 +1043,20 @@ function SectionCard({
 }) {
   // [수정 W2.D 2026-05-18 #9/#10] overflow-hidden — 자식 input(date/number) 의 intrinsic
   //   min-content 가 카드 영역 밖으로 넘치는 회귀를 카드 단위에서 한 번 더 차단.
+  // ICETIMES flat — 카드 박스(rounded/border/shadow) 제거, full-bleed 흰 섹션.
   return (
     <section
-      className={`rounded-2xl border border-wline-2 bg-white p-4 shadow-card dark:border-rink-800 dark:bg-rink-900 ${overflowVisible ? "overflow-visible" : "overflow-hidden"}`}
+      className={`bg-it-surface px-4 py-4 dark:bg-it-blue-950 ${overflowVisible ? "overflow-visible" : "overflow-hidden"}`}
     >
       {/* [수정 2026-05-30] 섹션 헤더 아이콘 배경 박스(bg-ice-500/10 · rounded-xl) 제거 — 사용자 요청.
           아이콘만 인라인 배치하고 제목 라인에 맞춰 mt-0.5 정렬. */}
       <div className="mb-4 flex items-start gap-2.5">
-        <Icon name={icon} className="mt-0.5 shrink-0 text-[22px] text-ice-500" aria-hidden="true" />
+        <Icon name={icon} className="mt-0.5 shrink-0 text-[22px] text-it-blue-500" aria-hidden="true" />
         <div className="flex min-w-0 flex-col">
-          <h3 className="text-w-body font-bold text-wtext-1 dark:text-white">
+          <h3 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
             {title}
           </h3>
-          <p className="mt-0.5 text-w-caption leading-snug text-wtext-3 dark:text-rink-300">
+          <p className="mt-0.5 text-w-caption leading-snug text-it-ink-500 dark:text-rink-300">
             {description}
           </p>
         </div>
@@ -987,10 +1077,10 @@ function Field({
 }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-w-caption font-bold text-wtext-2 dark:text-rink-100">
+      <span className="text-w-caption font-bold text-it-ink-600 dark:text-rink-100">
         {label}
         {required && (
-          <span className="ml-0.5 text-error" aria-label="필수">
+          <span className="ml-0.5 text-it-red-500" aria-label="필수">
             *
           </span>
         )}
@@ -1016,23 +1106,23 @@ function PlayerRow({
 }) {
   return (
     <label
-      className={`flex items-center gap-3 rounded-lg px-2 py-2.5 cursor-pointer transition-colors motion-reduce:transition-none ${
+      className={`flex items-center gap-3 rounded-w-md px-2 py-2.5 cursor-pointer transition-colors motion-reduce:transition-none ${
         checked
-          ? "bg-ice-500/[0.06] dark:bg-ice-500/10"
-          : "hover:bg-wline-2/60 dark:hover:bg-rink-800"
+          ? "bg-it-blue-50 dark:bg-it-blue-500/10"
+          : "hover:bg-it-fill dark:hover:bg-rink-800"
       }`}
     >
       <input
         type="checkbox"
         checked={checked}
         onChange={() => onToggle(member.userId)}
-        className="h-4 w-4 rounded border-wline-2 text-ice-500 focus:ring-ice-500/30"
+        className="h-4 w-4 rounded border-it-line-strong text-it-blue-500 focus:ring-it-blue-500/30"
       />
-      <span className="flex-1 min-w-0 truncate text-w-small font-extrabold text-wtext-1 dark:text-white">
+      <span className="flex-1 min-w-0 truncate text-w-small font-extrabold text-it-ink-800 dark:text-white">
         {playerLabel(member)}
       </span>
       {typeof member.playerAge === "number" && (
-        <span className="shrink-0 text-w-caption tabular-nums text-wtext-3 dark:text-rink-300">
+        <span className="shrink-0 text-w-caption tabular-nums text-it-ink-400 dark:text-rink-300">
           {member.playerAge}세
         </span>
       )}
@@ -1139,7 +1229,7 @@ function ParticipantPickerSheet({
         <button
           type="button"
           onClick={onClose}
-          className="flex h-12 w-full items-center justify-center rounded-xl bg-ice-500 text-w-small font-bold text-white transition-colors motion-reduce:transition-none hover:bg-ice-700 active:scale-[0.98]"
+          className="flex h-12 w-full items-center justify-center rounded-w-md bg-it-blue-500 text-w-small font-bold text-white transition-colors motion-reduce:transition-none hover:bg-it-blue-600 active:scale-[0.98]"
         >
           {MESSAGES.tournament.participantPickerDone(doneCount)}
         </button>
@@ -1149,7 +1239,7 @@ function ParticipantPickerSheet({
       <div className="relative">
         <Icon
           name="search"
-          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-w-body-lg text-wtext-3"
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-w-body-lg text-it-ink-400"
           aria-hidden="true"
         />
         <input
@@ -1169,7 +1259,7 @@ function ParticipantPickerSheet({
           <div
             role="tablist"
             aria-label={MESSAGES.tournament.participantPickerTitle}
-            className="mt-3 grid grid-cols-3 gap-1 rounded-w-lg bg-wline-2 p-1 dark:bg-rink-800"
+            className="mt-3 grid grid-cols-3 gap-1 rounded-w-md bg-it-fill border-[1.5px] border-it-line-strong p-1 dark:border-rink-700 dark:bg-rink-800"
           >
             {(
               [
@@ -1186,10 +1276,10 @@ function ParticipantPickerSheet({
                   role="tab"
                   aria-selected={active}
                   onClick={() => handleSegmentChange(tab)}
-                  className={`flex h-9 items-center justify-center rounded-md text-w-caption font-extrabold transition-colors motion-reduce:transition-none ${
+                  className={`flex h-9 items-center justify-center rounded-w-sm text-w-caption font-extrabold transition-colors motion-reduce:transition-none ${
                     active
-                      ? "bg-wsurface text-ice-500 shadow-card dark:bg-rink-900"
-                      : "text-wtext-2 hover:text-wtext-1 dark:text-rink-300 dark:hover:text-white"
+                      ? "bg-it-surface text-it-blue-500 shadow-sh-1 dark:bg-rink-900"
+                      : "text-it-ink-600 hover:text-it-ink-800 dark:text-rink-300 dark:hover:text-white"
                   }`}
                 >
                   {label}
@@ -1223,10 +1313,10 @@ function ParticipantPickerSheet({
                         type="button"
                         onClick={() => setActiveFilter(chip.value)}
                         aria-pressed={active}
-                        className={`shrink-0 whitespace-nowrap rounded-w-pill border px-3.5 py-1.5 text-w-caption font-extrabold transition-colors motion-reduce:transition-none ${
+                        className={`shrink-0 whitespace-nowrap rounded-w-pill border-[1.5px] px-3.5 py-1.5 text-w-caption font-extrabold transition-colors motion-reduce:transition-none ${
                           active
-                            ? "border-ice-500 bg-ice-500/[0.08] text-ice-500 dark:bg-ice-500/15"
-                            : "border-wline-2 bg-wsurface text-wtext-2 hover:border-wline dark:border-rink-700 dark:bg-rink-800 dark:text-rink-100"
+                            ? "border-it-blue-500 bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-500/15"
+                            : "border-it-line-strong bg-it-surface text-it-ink-600 hover:border-it-ink-300 dark:border-rink-700 dark:bg-rink-800 dark:text-rink-100"
                         }`}
                       >
                         {chip.label}
@@ -1248,7 +1338,7 @@ function ParticipantPickerSheet({
                 type="button"
                 onClick={() => onToggle(m.userId)}
                 aria-label={`${playerLabel(m)} 선택 해제`}
-                className="flex items-center gap-1 rounded-w-pill border border-ice-500/40 bg-ice-500/[0.08] py-1.5 pl-3 pr-2 text-w-caption font-extrabold text-ice-500 transition-colors motion-reduce:transition-none hover:bg-ice-500/[0.14] dark:bg-ice-500/15"
+                className="flex items-center gap-1 rounded-w-pill border-[1.5px] border-it-blue-500/40 bg-it-blue-50 py-1.5 pl-3 pr-2 text-w-caption font-extrabold text-it-blue-500 transition-colors motion-reduce:transition-none hover:bg-it-blue-100 dark:bg-it-blue-500/15"
               >
                 <span className="max-w-[7rem] truncate">{playerLabel(m)}</span>
                 <Icon name="close" className="text-base" aria-hidden="true" />
@@ -1265,33 +1355,33 @@ function ParticipantPickerSheet({
       <div className="mt-3 h-[50vh]">
         {teamMembers.length === 0 ? (
           <div className="flex h-full items-center justify-center">
-            <p className="px-1 text-center text-w-caption text-wtext-3 dark:text-rink-300">
+            <p className="px-1 text-center text-w-caption text-it-ink-500 dark:text-rink-300">
               {MESSAGES.tournament.participantEmpty}
             </p>
           </div>
         ) : filteredPlayers.length === 0 ? (
           <div className="flex h-full items-center justify-center">
-            <p className="px-1 text-center text-w-caption text-wtext-3 dark:text-rink-300">
+            <p className="px-1 text-center text-w-caption text-it-ink-500 dark:text-rink-300">
               {MESSAGES.tournament.participantSearchEmpty}
             </p>
           </div>
         ) : (
-          <div className="flex h-full flex-col rounded-xl border border-wline-2 bg-wbg dark:border-rink-700 dark:bg-rink-900/40">
+          <div className="flex h-full flex-col rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill dark:border-rink-700 dark:bg-rink-900/40">
             {/* 전체 선택 행 — 현재 표시 대상 기준 선택/전체 카운트 + 체크박스 아이콘으로 상태 표시(고정). */}
             <button
               type="button"
               onClick={() => onToggleAll(filteredPlayers)}
               aria-pressed={allVisibleSelected}
-              className="flex w-full shrink-0 items-center gap-2.5 border-b border-wline-2 px-3 py-3 text-left transition-colors motion-reduce:transition-none hover:bg-wline-2/50 dark:border-rink-700 dark:hover:bg-rink-800"
+              className="flex w-full shrink-0 items-center gap-2.5 border-b border-it-line px-3 py-3 text-left transition-colors motion-reduce:transition-none hover:bg-it-line/50 dark:border-rink-700 dark:hover:bg-rink-800"
             >
               <Icon
                 name={allVisibleSelected ? "check_box" : "check_box_outline_blank"}
                 className={`shrink-0 text-w-body-lg ${
-                  allVisibleSelected ? "text-ice-500" : "text-wtext-3"
+                  allVisibleSelected ? "text-it-blue-500" : "text-it-ink-400"
                 }`}
                 aria-hidden="true"
               />
-              <span className="min-w-0 flex-1 truncate text-w-small font-extrabold text-wtext-1 dark:text-white">
+              <span className="min-w-0 flex-1 truncate text-w-small font-extrabold text-it-ink-800 dark:text-white">
                 {MESSAGES.tournament.participantSelectAllCount(
                   visibleSelectedCount,
                   filteredPlayers.length,
@@ -1327,7 +1417,7 @@ function Hint({
 }) {
   return (
     <p
-      className={`text-w-caption text-wtext-3 dark:text-rink-300 ${
+      className={`text-w-caption text-it-ink-500 dark:text-rink-300 ${
         align === "right" ? "text-right" : "text-left"
       }`}
     >
@@ -1336,9 +1426,9 @@ function Hint({
   );
 }
 
-// 필 스타일 input — 목록 페이지 검색바와 동일 계열
+// ICETIMES 컨테이너형 input — border 1.5px + bg-it-fill, 포커스 it-blue (SoT §3).
 const pillInputBase =
-  "w-full rounded-xl border-none bg-wline-2 px-3 text-w-body text-wtext-1 placeholder:text-wtext-3 transition-colors motion-reduce:transition-none focus:bg-white focus:outline-none focus:ring-2 focus:ring-ice-500/30 dark:bg-rink-800 dark:text-white dark:placeholder:text-wtext-3 dark:focus:bg-rink-800";
+  "w-full rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill px-3 text-w-body text-it-ink-800 placeholder:text-it-ink-400 transition-colors motion-reduce:transition-none focus:border-it-blue-500 focus:bg-it-surface focus:outline-none dark:border-rink-700 dark:bg-rink-800 dark:text-white dark:placeholder:text-wtext-3 dark:focus:bg-rink-800";
 // 단일 행 input — 고정 높이 h-11(44px).
 const pillInput = `h-11 ${pillInputBase}`;
 // 멀티라인 textarea — h-11 고정 높이 대신 4줄 기준 min-height 적용.
@@ -1378,14 +1468,14 @@ function DateTriggerButton({
     >
       <span
         className={`truncate font-num tabular-nums ${
-          value ? "font-bold text-wtext-1 dark:text-white" : "text-wtext-3"
+          value ? "font-bold text-it-ink-800 dark:text-white" : "text-it-ink-400"
         }`}
       >
         {value ? formatDateLabel(value) : placeholder}
       </span>
       <Icon
         name="calendar_today"
-        className="shrink-0 text-base text-wtext-3"
+        className="shrink-0 text-base text-it-ink-400"
         aria-hidden="true"
       />
     </button>

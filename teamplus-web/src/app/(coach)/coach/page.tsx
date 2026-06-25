@@ -170,12 +170,14 @@ export default function CoachDashboardPage() {
       />
       <main
         ref={mainRef}
-        className="flex-1 min-h-0 overflow-y-auto bg-wbg dark:bg-puck"
+        className="flex-1 min-h-0 overflow-y-auto bg-it-canvas dark:bg-puck !pb-8"
         role="main"
         aria-label="코치 홈"
       >
-        {/* 캘린더 데이터·풀스크린 로더 신호는 아래 월 달력 섹션이 함께 공급한다.
-              pending 팀은 권한 없으므로 approved 팀만 전달. */}
+        {/* [ICETIMES flat 재작업 2026-06-25] 감독 홈(DirectorHome) 구조로 전환.
+            카드 박스 제거 → full-bleed 흰 섹션(bg-it-surface)이 8px 회색 갭(mt-2)으로 쌓임.
+            섹션 좌우 패딩은 각 위젯 내부가 담당(px-4 sm:px-5).
+            pending 팀은 권한 없으므로 approved 팀만 전달. */}
 
         {/* 1. 회원 승인 — 처리 필요 알림이라 최상단 노출 (승인 대기 0건이면 숨김).
          *    [2026-06-23 통합] 코치도 /director-approvals 단일 페이지 사용 — 전 팀 통합·일괄·이력
@@ -184,48 +186,57 @@ export default function CoachDashboardPage() {
           teamIds={approvedTeams}
           isTeamsLoading={teams === null}
           targetPath="/director-approvals"
+          iceTheme
         />
 
-        {/* 2. 공지사항 — 코치는 작성 권한 보유 → 카드 하단 작성 버튼 노출.
+        {/* 2. 공지사항 — 코치는 작성 권한 보유 → 섹션 하단 작성 버튼 노출.
               전체보기는 수정/삭제 가능한 관리 페이지(/director-notices)로 이동. */}
         <RecentNoticesSection
           viewAllHref="/director-notices"
           onCreateNotice={() => navigate('/notices-create')}
+          iceTheme
         />
 
-        {/* 3. 수업 일정 — 월 달력. 날짜 클릭 시 아래 선택일 일정 갱신(초기값 오늘). */}
-        {/* 수업 목록 — 내 팀 정규수업 요약 (달력 위, 운영자라 등록완료 배지 미표시).
+        {/* 3. 수업 목록 — full-bleed flat 섹션. 내 팀 정규수업 요약 (운영자라 등록완료 배지 미표시).
             classesCategory='regular' → 오픈클래스 제외, '/classes-manage'(정규+대회) 와 동일 기준. */}
-        <TeamClassesSummary showEnrollment={false} classesCategory="regular" targetPath="/classes-manage" onReady={setSummaryReady} />
+        <TeamClassesSummary showEnrollment={false} classesCategory="regular" targetPath="/classes-manage" onReady={setSummaryReady} iceTheme />
 
-        <SectionHead title={MESSAGES.dashboard.classSchedule} />
-        <div className="px-4 sm:px-5 pt-1">
-          <ClassCalendarSection
-            teamIds={approvedTeams}
-            onSelectionChange={setSelection}
-            onReady={setCalendarReady}
-            legendVariant="team-only"
-          />
-        </div>
-
-        {/* 4. [2026-06-18] 이번주 일정 — 수업 있는 날만 그룹 표시 (감독 홈과 동일). 전체 일정은 일정 페이지로. */}
-        <SectionHead
-          title="이번주 일정"
-          action="전체 일정 보기 ›"
-          onActionClick={() => navigate('/director-schedules')}
-        />
-        <div className="px-4 sm:px-5">
-          {selection.weekGroups.length === 0 ? (
-            <DirectorEmptyCard variant="today-class" />
-          ) : (
-            <WeekScheduleList
-              groups={selection.weekGroups}
-              renderDayClasses={(classes) => (
-                <SelectedDayClassList classes={classes} canManage bare />
-              )}
+        {/* 4. 수업 일정 — full-bleed flat 섹션. 월 달력. 날짜 클릭 시 아래 선택일 일정 갱신(초기값 오늘). */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
+          <SectionHead title={MESSAGES.dashboard.classSchedule} iceTheme />
+          <div className="px-4 sm:px-5 pb-3">
+            <ClassCalendarSection
+              teamIds={approvedTeams}
+              onSelectionChange={setSelection}
+              onReady={setCalendarReady}
+              legendVariant="team-only"
+              iceTheme
             />
-          )}
-        </div>
+          </div>
+        </section>
+
+        {/* 5. [2026-06-18] 이번주 일정 — full-bleed flat 섹션. 수업 있는 날만 그룹 표시 (감독 홈과 동일). */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
+          <SectionHead
+            title="이번주 일정"
+            action="전체 일정 보기 ›"
+            onActionClick={() => navigate('/director-schedules')}
+            iceTheme
+          />
+          <div className="px-4 sm:px-5 pb-3">
+            {selection.weekGroups.length === 0 ? (
+              <DirectorEmptyCard variant="today-class" iceTheme />
+            ) : (
+              <WeekScheduleList
+                groups={selection.weekGroups}
+                iceTheme
+                renderDayClasses={(classes) => (
+                  <SelectedDayClassList classes={classes} canManage bare iceTheme />
+                )}
+              />
+            )}
+          </div>
+        </section>
 
         {/* 4-α. 미결제 학부모 위젯 (Step 10 · 2026-05-19)
               · 매월 28일~다음달 5일 등록 마감 그레이스 기간에만 자동 노출.

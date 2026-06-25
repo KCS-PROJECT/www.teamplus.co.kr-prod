@@ -54,12 +54,18 @@ interface Props {
    * 기본값: '/director-approvals' (감독). 코치는 본인 전용 '/approval' 로 분기 (C1 fix 2026-05-14).
    */
   targetPath?: string;
+  /**
+   * [ICETIMES Phase 2] flat 테마. 기본 false = 기존 떠있는 rounded 배너 1:1 보존(회귀 0).
+   *   true 시 full-bleed 흰 섹션 안의 it-red attention 행 (DirectorPendingApprovals iceTheme 와 톤 일치).
+   */
+  iceTheme?: boolean;
 }
 
 export function PendingApprovalsSection({
   teamIds,
   isTeamsLoading,
   targetPath = '/director-approvals',
+  iceTheme = false,
 }: Props) {
   const { navigate } = useNavigation();
   const [total, setTotal] = useState(0);
@@ -95,6 +101,28 @@ export function PendingApprovalsSection({
 
   // 승인 대기 0건(또는 로딩 중)이면 배너를 숨긴다 — 처리할 일이 있을 때만 노출.
   if (isTeamsLoading || isLoading || total === 0) return null;
+
+  // ICETIMES flat: 떠있는 rounded 배너 → full-bleed 흰 섹션 안의 it-red attention 행.
+  //   카드 박스(rounded/border) 제거, it-red 틴트는 행 배경으로만(주의 강조 1요소).
+  //   DirectorPendingApprovals iceTheme 분기와 동일 톤.
+  if (iceTheme) {
+    return (
+      <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
+        <button
+          type="button"
+          onClick={() => navigate(targetPath)}
+          className="w-full flex items-center gap-2.5 px-4 sm:px-5 py-3.5 text-left bg-it-red-500/[0.07] dark:bg-it-red-500/[0.12] hover:bg-it-red-500/[0.12] transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-it-red-500"
+          aria-label={`${total}명이 승인 대기 중입니다 — 전체 보기`}
+        >
+          <Icon name="how_to_reg" className="text-[20px] shrink-0 text-it-red-500" aria-hidden="true" />
+          <span className="flex-1 min-w-0 text-card-body font-semibold text-wtext-1 dark:text-white">
+            {MESSAGES.dashboard.pendingMembersBanner(total)}
+          </span>
+          <Icon name="chevron_right" className="text-[20px] shrink-0 text-it-red-500" aria-hidden="true" />
+        </button>
+      </section>
+    );
+  }
 
   return (
     <div className="px-4 sm:px-5 pt-3">

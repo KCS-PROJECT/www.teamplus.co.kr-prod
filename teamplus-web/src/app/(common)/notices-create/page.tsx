@@ -179,21 +179,22 @@ export default function NoticeCreatePage() {
       {/* main 스크롤 영역 — !pb-0 으로 MobileContainer 의 [&>main]:pb-30 강제 무력화.
           (CTA 가 sibling footer 로 분리되므로 main 내부 pb 불필요 — gap 0 으로 자연 연결) */}
       <main
-        className="flex-1 overflow-y-auto !pb-0 w-full max-w-md mx-auto"
+        className="flex-1 overflow-y-auto !pb-0 w-full max-w-md mx-auto bg-it-canvas dark:bg-puck"
         style={{ WebkitOverflowScrolling: 'touch' as never }}
       >
-        <div className="px-5 py-5 space-y-5">
-          {/* Title Input — 박스형 (director-notices compose 레이아웃 정합) */}
+        {/* 제목·내용 — flat 흰 섹션 (카드 박스 제거) */}
+        <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-5 space-y-5" aria-label="공지 내용">
+          {/* Title Input — 컨테이너형 (iceTheme Input) */}
           <div>
             <label
               htmlFor={titleId}
-              className="block text-card-body font-bold text-wtext-1 dark:text-white mb-2"
+              className="block text-[14px] font-bold text-it-ink-800 dark:text-white mb-2"
             >
               제목
             </label>
             <input
               id={titleId}
-              className="w-full px-4 py-3 bg-wsurface dark:bg-rink-800 border border-wline-2 dark:border-rink-700 rounded-w-md text-card-body text-wtext-1 dark:text-white placeholder:text-wtext-3 dark:placeholder:text-wtext-3 focus:outline-none focus:ring-2 focus:ring-ice-500/20 focus:border-ice-500 transition-colors motion-reduce:transition-none"
+              className="w-full px-4 h-[50px] bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[15.5px] font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-wtext-3 focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 transition-colors motion-reduce:transition-none ease-ios"
               placeholder={MESSAGES.placeholders.enterTitleSimple}
               type="text"
               value={title}
@@ -203,18 +204,18 @@ export default function NoticeCreatePage() {
             />
           </div>
 
-          {/* Body Textarea — 박스형 (고정 높이) */}
+          {/* Body Textarea — 컨테이너형 (고정 높이) */}
           <div>
             <label
               htmlFor={contentId}
-              className="block text-card-body font-bold text-wtext-1 dark:text-white mb-2"
+              className="block text-[14px] font-bold text-it-ink-800 dark:text-white mb-2"
             >
               내용
             </label>
             <textarea
               id={contentId}
               rows={10}
-              className="w-full px-4 py-3 bg-wsurface dark:bg-rink-800 border border-wline-2 dark:border-rink-700 rounded-w-md text-card-body text-wtext-1 dark:text-white placeholder:text-wtext-3 dark:placeholder:text-wtext-3 focus:outline-none focus:ring-2 focus:ring-ice-500/20 focus:border-ice-500 transition-colors motion-reduce:transition-none resize-none"
+              className="w-full px-4 py-3 bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[15.5px] font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-wtext-3 focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 transition-colors motion-reduce:transition-none ease-ios resize-none"
               placeholder="내용을 입력하세요..."
               value={content}
               onChange={(e) => setContent(e.target.value)}
@@ -222,48 +223,52 @@ export default function NoticeCreatePage() {
               aria-required="true"
             />
           </div>
+        </section>
 
+        {/* flat 섹션 사이 8px 회색 갭 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+        {/* 옵션 — flat 흰 섹션 (상단 고정 + 노출 기간, hairline 구분) */}
+        <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6" aria-label="공지 옵션">
           {/* [2026-06-09] 상단 고정 옵션 — 최대 2개까지. */}
-          <div className="rounded-w-md border border-wline-2 dark:border-rink-700 bg-wsurface dark:bg-rink-800 px-4 py-3">
-            <label
-              className={cn(
-                'flex items-center gap-3',
-                !isPinned && pinnedFull ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
-              )}
-            >
-              <input
-                type="checkbox"
-                checked={isPinned}
-                disabled={!isPinned && pinnedFull}
-                onChange={(e) => setIsPinned(e.target.checked)}
-                className="h-5 w-5 shrink-0 accent-ice-500"
-              />
-              <span className="flex-1">
-                <span className="block text-card-body font-bold text-wtext-1 dark:text-white">
-                  상단 고정
-                </span>
-                <span className="block text-card-meta text-wtext-3 dark:text-rink-300">
-                  {!isPinned && pinnedFull
-                    ? '이미 2개가 고정되어 있어 추가할 수 없습니다.'
-                    : '공지 목록 상단에 고정해 노출합니다 (최대 2개).'}
-                </span>
+          <label
+            className={cn(
+              'flex items-center gap-3 pb-4 border-b border-it-line dark:border-rink-700',
+              !isPinned && pinnedFull ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+            )}
+          >
+            <input
+              type="checkbox"
+              checked={isPinned}
+              disabled={!isPinned && pinnedFull}
+              onChange={(e) => setIsPinned(e.target.checked)}
+              className="h-5 w-5 shrink-0 accent-it-blue-500"
+            />
+            <span className="flex-1">
+              <span className="block text-[14px] font-bold text-it-ink-800 dark:text-white">
+                상단 고정
               </span>
-            </label>
-          </div>
+              <span className="block text-card-meta text-it-ink-500 dark:text-rink-300 mt-0.5">
+                {!isPinned && pinnedFull
+                  ? '이미 2개가 고정되어 있어 추가할 수 없습니다.'
+                  : '공지 목록 상단에 고정해 노출합니다 (최대 2개).'}
+              </span>
+            </span>
+          </label>
 
           {/* [2026-06-18] 공지 등록기간(노출 기간) — 비워두면 상시 노출. */}
-          <div className="rounded-w-md border border-wline-2 dark:border-rink-700 bg-wsurface dark:bg-rink-800 px-4 py-3">
-            <span className="block text-card-body font-bold text-wtext-1 dark:text-white">
+          <div className="pt-4">
+            <span className="block text-[14px] font-bold text-it-ink-800 dark:text-white">
               노출 기간
             </span>
-            <span className="mt-0.5 block text-card-meta text-wtext-3 dark:text-rink-300">
+            <span className="mt-0.5 block text-card-meta text-it-ink-500 dark:text-rink-300">
               설정한 기간에만 공지가 노출됩니다. 비워두면 상시 노출됩니다.
             </span>
             <div className="mt-3 grid grid-cols-2 gap-3">
               <div>
                 <label
                   htmlFor="notice-start-date"
-                  className="block text-card-meta font-semibold text-wtext-2 dark:text-rink-100 mb-1.5"
+                  className="block text-card-meta font-semibold text-it-ink-600 dark:text-rink-100 mb-1.5"
                 >
                   시작일
                 </label>
@@ -273,13 +278,13 @@ export default function NoticeCreatePage() {
                   value={startDate}
                   max={endDate || undefined}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-wbg dark:bg-rink-900 border border-wline-2 dark:border-rink-700 rounded-w-md text-card-body text-wtext-1 dark:text-white focus:outline-none focus:ring-2 focus:ring-ice-500/20 focus:border-ice-500 transition-colors motion-reduce:transition-none"
+                  className="w-full px-3 h-[46px] bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[14px] font-semibold text-it-ink-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 transition-colors motion-reduce:transition-none ease-ios"
                 />
               </div>
               <div>
                 <label
                   htmlFor="notice-end-date"
-                  className="block text-card-meta font-semibold text-wtext-2 dark:text-rink-100 mb-1.5"
+                  className="block text-card-meta font-semibold text-it-ink-600 dark:text-rink-100 mb-1.5"
                 >
                   종료일
                 </label>
@@ -289,7 +294,7 @@ export default function NoticeCreatePage() {
                   value={endDate}
                   min={startDate || undefined}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full px-3 py-2.5 bg-wbg dark:bg-rink-900 border border-wline-2 dark:border-rink-700 rounded-w-md text-card-body text-wtext-1 dark:text-white focus:outline-none focus:ring-2 focus:ring-ice-500/20 focus:border-ice-500 transition-colors motion-reduce:transition-none"
+                  className="w-full px-3 h-[46px] bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[14px] font-semibold text-it-ink-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 transition-colors motion-reduce:transition-none ease-ios"
                 />
               </div>
             </div>
@@ -300,24 +305,24 @@ export default function NoticeCreatePage() {
                   setStartDate('');
                   setEndDate('');
                 }}
-                className="mt-2 inline-flex items-center gap-1 text-card-meta font-semibold text-wtext-3 dark:text-rink-300 underline"
+                className="mt-2.5 inline-flex items-center gap-1 text-card-meta font-semibold text-it-ink-500 dark:text-rink-300 underline"
               >
                 <Icon name="close" className="text-[14px]" aria-hidden="true" />
                 기간 초기화 (상시 노출)
               </button>
             )}
           </div>
-        </div>
+        </section>
       </main>
 
-      {/* CTA Footer — main 외부 sibling, 본문 wbg 배경 상속으로 자연 연결.
+      {/* CTA Footer — main 외부 sibling. it-canvas 배경 상속으로 자연 연결.
           MobileContainer 의 outer pb(60px+safe-area) 가 RoleBottomNav 영역 보장. */}
-      <div className="w-full max-w-md mx-auto px-5 py-3">
+      <div className="w-full max-w-md mx-auto px-5 py-3 bg-it-canvas dark:bg-puck">
         <button
           type="button"
           onClick={handleSubmit}
           disabled={isSubmitting || isPrefilling}
-          className="w-full h-12 rounded-w-pill bg-ice-500 text-white font-extrabold text-card-emphasis hover:bg-ice-700 active:brightness-95 transition-all motion-reduce:transition-none shadow-md flex items-center justify-center gap-2 disabled:bg-wline dark:disabled:bg-rink-700 disabled:cursor-not-allowed"
+          className="w-full h-[54px] rounded-w-md bg-it-blue-500 text-white font-extrabold text-[16px] hover:bg-it-blue-600 active:brightness-95 transition-colors motion-reduce:transition-none flex items-center justify-center gap-2 disabled:bg-it-line-strong dark:disabled:bg-rink-700 disabled:cursor-not-allowed"
         >
           {isSubmitting
             ? isEditMode

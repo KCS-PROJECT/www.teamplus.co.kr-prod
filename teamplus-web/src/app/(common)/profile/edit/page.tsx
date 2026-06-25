@@ -237,12 +237,12 @@ export default function ProfileEditPage() {
       {/* Main Content — 단일 스크롤 컨테이너, 액션바는 컨텐츠 끝에 인라인 배치
           data-no-enter: globals.css §"페이지 진입 stagger 애니메이션" opt-out 마커.
           하단→위 slideUp(translateY 100%→0) 진입 효과 비활성 (사용자 직접 지시 2026-05-17). */}
-      <main data-no-enter className="flex-1 overflow-y-auto overflow-x-hidden bg-wbg dark:bg-puck">
+      <main data-no-enter className="flex-1 overflow-y-auto overflow-x-hidden bg-it-canvas dark:bg-puck !pb-8">
         {isInitialLoading ? (
           <div
             role="status"
             aria-live="polite"
-            className="flex flex-col items-center gap-3 py-16 text-wtext-3 dark:text-rink-300"
+            className="flex flex-col items-center gap-3 py-16 text-it-ink-500 dark:text-rink-300"
           >
             <Icon
               name="progress_activity"
@@ -253,14 +253,14 @@ export default function ProfileEditPage() {
           </div>
         ) : loadError ? (
           <div className="px-4 py-16 text-center">
-            <p className="text-w-small font-medium text-red-600 dark:text-red-400">
+            <p className="text-w-small font-medium text-it-red-500">
               {loadError}
             </p>
           </div>
         ) : (
           <>
             {/* === Section 1: Avatar === */}
-            <section className="flex flex-col items-center bg-wsurface dark:bg-rink-800 pt-7 px-6 pb-[22px]">
+            <section className="flex flex-col items-center bg-it-surface dark:bg-rink-800 pt-7 px-6 pb-[22px]">
               <AvatarUploader
                 currentUrl={formData.avatarUrl}
                 size={92}
@@ -272,11 +272,11 @@ export default function ProfileEditPage() {
             </section>
 
             {/* 8px 회색 구분선 */}
-            <div aria-hidden="true" className="h-2 bg-wbg dark:bg-puck" />
+            <div aria-hidden="true" className="h-2 bg-it-canvas dark:bg-puck" />
 
             {/* === Section 2: Identity (성·이름 1fr 1.6fr 그리드) === */}
-            <section className="bg-wsurface dark:bg-rink-800 pt-5 px-6 pb-[22px]">
-              <h2 className="text-[11px] font-extrabold text-wtext-3 dark:text-rink-300 tracking-[0.12em] mb-3.5">
+            <section className="bg-it-surface dark:bg-rink-800 pt-5 px-6 pb-[22px]">
+              <h2 className="text-[11px] font-extrabold text-it-ink-400 dark:text-rink-300 tracking-[0.12em] mb-3.5">
                 본인 정보
               </h2>
 
@@ -285,9 +285,9 @@ export default function ProfileEditPage() {
                 <div>
                   <label
                     htmlFor={lastNameId}
-                    className="block text-[13px] font-extrabold text-wtext-2 dark:text-rink-200 tracking-[-0.01em] mb-2"
+                    className="block text-[13px] font-extrabold text-it-ink-800 dark:text-rink-200 tracking-[-0.01em] mb-2"
                   >
-                    성<span className="text-flame-500 ml-[3px]">*</span>
+                    성<span className="text-it-red-500 ml-[3px]">*</span>
                   </label>
                   <input
                     id={lastNameId}
@@ -296,10 +296,10 @@ export default function ProfileEditPage() {
                     readOnly
                     aria-readonly="true"
                     autoComplete="family-name"
-                    className={`w-full h-[50px] px-4 rounded-[12px] border border-wline-2 dark:border-rink-700 bg-wbg dark:bg-rink-900 text-[14px] tracking-[-0.01em] cursor-not-allowed focus:outline-none ${
+                    className={`w-full h-[50px] px-4 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-900 text-[14px] tracking-[-0.01em] cursor-not-allowed focus:outline-none ${
                       formData.lastName
-                        ? "text-wtext-1 dark:text-white font-bold"
-                        : "text-wtext-4 dark:text-rink-400 font-medium"
+                        ? "text-it-ink-800 dark:text-white font-bold"
+                        : "text-it-ink-400 dark:text-rink-400 font-medium"
                     }`}
                   />
                 </div>
@@ -308,9 +308,9 @@ export default function ProfileEditPage() {
                 <div>
                   <label
                     htmlFor={firstNameId}
-                    className="block text-[13px] font-extrabold text-wtext-2 dark:text-rink-200 tracking-[-0.01em] mb-2"
+                    className="block text-[13px] font-extrabold text-it-ink-800 dark:text-rink-200 tracking-[-0.01em] mb-2"
                   >
-                    이름<span className="text-flame-500 ml-[3px]">*</span>
+                    이름<span className="text-it-red-500 ml-[3px]">*</span>
                   </label>
                   <input
                     id={firstNameId}
@@ -319,10 +319,10 @@ export default function ProfileEditPage() {
                     readOnly
                     aria-readonly="true"
                     autoComplete="given-name"
-                    className={`w-full h-[50px] px-4 rounded-[12px] border border-wline-2 dark:border-rink-700 bg-wbg dark:bg-rink-900 text-[14px] tracking-[-0.01em] cursor-not-allowed focus:outline-none ${
+                    className={`w-full h-[50px] px-4 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-900 text-[14px] tracking-[-0.01em] cursor-not-allowed focus:outline-none ${
                       formData.firstName
-                        ? "text-wtext-1 dark:text-white font-bold"
-                        : "text-wtext-4 dark:text-rink-400 font-medium"
+                        ? "text-it-ink-800 dark:text-white font-bold"
+                        : "text-it-ink-400 dark:text-rink-400 font-medium"
                     }`}
                   />
                 </div>
@@ -332,9 +332,9 @@ export default function ProfileEditPage() {
               <div className="mt-[18px]">
                 <label
                   htmlFor={phoneId}
-                  className="block text-[13px] font-extrabold text-wtext-2 dark:text-rink-200 tracking-[-0.01em] mb-2"
+                  className="block text-[13px] font-extrabold text-it-ink-800 dark:text-rink-200 tracking-[-0.01em] mb-2"
                 >
-                  연락처<span className="text-flame-500 ml-[3px]">*</span>
+                  연락처<span className="text-it-red-500 ml-[3px]">*</span>
                 </label>
                 <input
                   id={phoneId}
@@ -344,13 +344,13 @@ export default function ProfileEditPage() {
                   aria-readonly="true"
                   autoComplete="tel"
                   inputMode="tel"
-                  className={`w-full h-[50px] px-4 rounded-[12px] border border-wline-2 dark:border-rink-700 bg-wbg dark:bg-rink-900 text-[14px] tracking-[-0.01em] cursor-not-allowed focus:outline-none tabular-nums ${
+                  className={`w-full h-[50px] px-4 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-900 text-[14px] tracking-[-0.01em] cursor-not-allowed focus:outline-none tabular-nums ${
                     formData.phone
-                      ? "text-wtext-1 dark:text-white font-bold"
-                      : "text-wtext-4 dark:text-rink-400 font-medium"
+                      ? "text-it-ink-800 dark:text-white font-bold"
+                      : "text-it-ink-400 dark:text-rink-400 font-medium"
                   }`}
                 />
-                <p className="mt-2 text-[11.5px] font-medium text-wtext-3 dark:text-rink-400 tracking-[-0.01em]">
+                <p className="mt-2 text-[11.5px] font-medium text-it-ink-500 dark:text-rink-400 tracking-[-0.01em]">
                   휴대폰 번호 변경시 본인인증이 필요합니다.
                 </p>
               </div>
@@ -358,15 +358,15 @@ export default function ProfileEditPage() {
             </section>
 
             {/* 8px 회색 구분선 */}
-            <div aria-hidden="true" className="h-2 bg-wbg dark:bg-puck" />
+            <div aria-hidden="true" className="h-2 bg-it-canvas dark:bg-puck" />
 
             {/* === Section 3: Address === */}
             {/* [수정 2026-05-13 D24] '우편번호 검색' 버튼 라벨 6글자 + 아이콘이
                좁은 폭(≤359px / [data-screen-bp="xs"]) 디바이스에서 잘림 보고.
                라벨을 '검색' 2글자로 단축하고 aria-label 로 의미는 유지.
                input min-w-0 로 좁은 화면에서 input 도 적절히 축소 가능하게 보정. */}
-            <section className="bg-wsurface dark:bg-rink-800 pt-5 px-6 pb-6">
-              <h2 className="text-[11px] font-extrabold text-wtext-3 dark:text-rink-300 tracking-[0.12em] mb-3.5">
+            <section className="bg-it-surface dark:bg-rink-800 pt-5 px-6 pb-6">
+              <h2 className="text-[11px] font-extrabold text-it-ink-400 dark:text-rink-300 tracking-[0.12em] mb-3.5">
                 주소
               </h2>
 
@@ -374,7 +374,7 @@ export default function ProfileEditPage() {
               <div>
                 <label
                   htmlFor={zipCodeId}
-                  className="block text-[13px] font-extrabold text-wtext-2 dark:text-rink-200 tracking-[-0.01em] mb-2"
+                  className="block text-[13px] font-extrabold text-it-ink-800 dark:text-rink-200 tracking-[-0.01em] mb-2"
                 >
                   우편번호
                 </label>
@@ -386,10 +386,10 @@ export default function ProfileEditPage() {
                     readOnly
                     aria-label="우편번호 (검색 후 자동 입력)"
                     placeholder="우편번호"
-                    className={`flex-1 min-w-0 h-[50px] px-4 rounded-[12px] border border-wline-2 dark:border-rink-700 bg-wbg dark:bg-rink-900 text-[14px] tracking-[-0.01em] cursor-default focus:outline-none tabular-nums ${
+                    className={`flex-1 min-w-0 h-[50px] px-4 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-900 text-[14px] tracking-[-0.01em] cursor-default focus:outline-none tabular-nums ${
                       formData.zipCode
-                        ? "text-wtext-1 dark:text-white font-bold"
-                        : "text-wtext-4 dark:text-rink-400 font-medium"
+                        ? "text-it-ink-800 dark:text-white font-bold"
+                        : "text-it-ink-400 dark:text-rink-400 font-medium"
                     }`}
                   />
                   <button
@@ -397,7 +397,7 @@ export default function ProfileEditPage() {
                     onClick={handlePostcodeSearch}
                     disabled={isSaving}
                     aria-label="우편번호 검색"
-                    className="shrink-0 h-[50px] px-4 rounded-[12px] bg-ice-500 hover:bg-ice-600 active:bg-ice-700 text-white text-[13px] font-extrabold tracking-[-0.01em] shadow-sh-blue disabled:opacity-50 disabled:cursor-not-allowed transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 inline-flex items-center gap-1.5 whitespace-nowrap"
+                    className="shrink-0 h-[50px] px-4 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 active:bg-it-blue-700 text-white text-[13px] font-extrabold tracking-[-0.01em] disabled:opacity-50 disabled:cursor-not-allowed transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 inline-flex items-center gap-1.5 whitespace-nowrap"
                   >
                     <Icon
                       name="search"
@@ -413,7 +413,7 @@ export default function ProfileEditPage() {
               <div className="mt-[18px]">
                 <label
                   htmlFor={addressId}
-                  className="block text-[13px] font-extrabold text-wtext-2 dark:text-rink-200 tracking-[-0.01em] mb-2"
+                  className="block text-[13px] font-extrabold text-it-ink-800 dark:text-rink-200 tracking-[-0.01em] mb-2"
                 >
                   주소
                 </label>
@@ -424,10 +424,10 @@ export default function ProfileEditPage() {
                   readOnly
                   aria-readonly="true"
                   placeholder={MESSAGES.placeholders.searchAddress}
-                  className={`w-full h-[50px] px-4 rounded-[12px] border border-wline-2 dark:border-rink-700 bg-wbg dark:bg-rink-900 text-[14px] tracking-[-0.01em] cursor-default focus:outline-none ${
+                  className={`w-full h-[50px] px-4 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-900 text-[14px] tracking-[-0.01em] cursor-default focus:outline-none ${
                     formData.address
-                      ? "text-wtext-1 dark:text-white font-bold"
-                      : "text-wtext-4 dark:text-rink-400 font-medium"
+                      ? "text-it-ink-800 dark:text-white font-bold"
+                      : "text-it-ink-400 dark:text-rink-400 font-medium"
                   }`}
                 />
               </div>
@@ -436,7 +436,7 @@ export default function ProfileEditPage() {
               <div className="mt-[18px]">
                 <label
                   htmlFor={addressDetailId}
-                  className="block text-[13px] font-extrabold text-wtext-2 dark:text-rink-200 tracking-[-0.01em] mb-2"
+                  className="block text-[13px] font-extrabold text-it-ink-800 dark:text-rink-200 tracking-[-0.01em] mb-2"
                 >
                   상세주소
                 </label>
@@ -447,10 +447,10 @@ export default function ProfileEditPage() {
                   onChange={(e) => handleAddressDetailChange(e.target.value)}
                   placeholder={MESSAGES.placeholders.enterDetailAddress}
                   maxLength={200}
-                  className={`w-full h-[50px] px-4 rounded-[12px] border-[1.5px] border-wline-2 dark:border-rink-700 bg-wsurface dark:bg-rink-900 text-[14px] tracking-[-0.01em] focus:outline-none focus-visible:border-ice-500 focus-visible:ring-4 focus-visible:ring-ice-500/15 focus:border-ice-500 transition-[border-color,box-shadow] motion-reduce:transition-none ${
+                  className={`w-full h-[50px] px-4 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-900 text-[14px] tracking-[-0.01em] focus:outline-none focus-visible:border-it-blue-500 focus-visible:ring-2 focus-visible:ring-it-blue-500/30 focus:border-it-blue-500 transition-[border-color,box-shadow] motion-reduce:transition-none ${
                     formData.addressDetail
-                      ? "text-wtext-1 dark:text-white font-bold"
-                      : "text-wtext-4 dark:text-rink-400 font-medium"
+                      ? "text-it-ink-800 dark:text-white font-bold"
+                      : "text-it-ink-400 dark:text-rink-400 font-medium"
                   }`}
                 />
               </div>
@@ -463,7 +463,7 @@ export default function ProfileEditPage() {
                   type="button"
                   onClick={() => back()}
                   disabled={isSaving}
-                  className="h-[50px] rounded-[14px] bg-wsurface dark:bg-rink-800 border border-wline-2 dark:border-rink-700 text-wtext-2 dark:text-rink-200 text-[14.5px] font-bold tracking-[-0.02em] hover:bg-wbg dark:hover:bg-rink-700 active:bg-wline-2 dark:active:bg-rink-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-wline/60"
+                  className="h-[54px] rounded-w-md bg-it-surface dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 text-it-ink-800 dark:text-rink-200 text-[15px] font-bold tracking-[-0.02em] hover:bg-it-fill dark:hover:bg-rink-700 active:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-line-strong"
                 >
                   {MESSAGES.common.cancel}
                 </button>
@@ -472,7 +472,7 @@ export default function ProfileEditPage() {
                   onClick={handleSubmit}
                   disabled={!isDirty || isSaving}
                   aria-busy={isSaving}
-                  className="h-[50px] rounded-[14px] bg-ice-500 hover:bg-ice-600 active:bg-ice-700 text-white text-[14.5px] font-extrabold tracking-[-0.02em] shadow-sh-blue disabled:opacity-50 disabled:cursor-not-allowed transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 inline-flex items-center justify-center gap-1.5"
+                  className="h-[54px] rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 active:bg-it-blue-700 text-white text-[16px] font-extrabold tracking-[-0.02em] disabled:opacity-50 disabled:cursor-not-allowed transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 inline-flex items-center justify-center gap-1.5"
                 >
                   <Icon name="save" className="text-base" aria-hidden="true" />
                   {isSaving ? MESSAGES.common.saving : MESSAGES.common.save}

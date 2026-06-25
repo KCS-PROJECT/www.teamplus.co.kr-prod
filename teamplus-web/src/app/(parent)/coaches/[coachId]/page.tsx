@@ -137,16 +137,16 @@ export default function ParentCoachProfilePage() {
           코치 프로필 상세 화면도 다른 (parent) 상세 화면과 동일하게 시계/종/메뉴 3 액션 유지. */}
       <PageAppBar title="코치 프로필" />
 
-      <main className="flex-1 overflow-y-auto hide-scrollbar">
+      <main className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck">
         {isLoading ? null : (
           <>
-            {/* 프로필 히어로 */}
+            {/* 프로필 히어로 — navy 밴드 (full-bleed) */}
             <section
               aria-label="코치 기본 정보"
-              className="px-5 pt-6 pb-7 flex flex-col items-center bg-white dark:bg-rink-900 border-b border-wline-2 dark:border-rink-800"
+              className="px-5 pt-6 pb-7 flex flex-col items-center bg-it-blue-800 dark:bg-it-blue-950"
             >
               <div className="relative mb-4">
-                <div className="size-28 rounded-w-pill overflow-hidden border-[3px] border-white dark:border-rink-700 bg-wline-2 dark:bg-rink-700 flex items-center justify-center shadow-md">
+                <div className="size-28 rounded-w-pill overflow-hidden border-[3px] border-white/20 bg-white/10 flex items-center justify-center shadow-sh-2">
                   {resolveImageSrc(coach.imageUrl) ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -155,37 +155,37 @@ export default function ParentCoachProfilePage() {
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <Icon name="person" className="text-5xl text-wtext-3" aria-hidden="true" />
+                    <Icon name="person" className="text-5xl text-white/70" aria-hidden="true" />
                   )}
                 </div>
                 {coach.isVerified && (
                   <div
-                    className="absolute -bottom-0.5 -right-0.5 flex items-center justify-center size-8 rounded-w-pill bg-ice-500 text-white border-[3px] border-white dark:border-rink-900 shadow-sm"
+                    className="absolute -bottom-0.5 -right-0.5 flex items-center justify-center size-8 rounded-w-pill bg-it-blue-500 text-white border-[3px] border-it-blue-800 dark:border-it-blue-950 shadow-sm"
                     aria-label="인증된 코치"
                   >
                     <Icon name="verified" className="text-card-emphasis" filled aria-hidden="true" />
                   </div>
                 )}
               </div>
-              <h2 className="text-xl font-bold text-wtext-1 dark:text-white mb-1">
+              <h2 className="text-xl font-extrabold text-white mb-1 tracking-[-0.02em]">
                 {coach.name} 코치
               </h2>
-              <p className="text-ice-500 font-semibold text-card-body mb-3">{coach.position}</p>
+              <p className="text-white/75 font-semibold text-card-body mb-3">{coach.position}</p>
 
-              {/* 지표 칩 */}
+              {/* 지표 칩 — navy 위 반투명 패널 */}
               <div className="flex flex-wrap items-center justify-center gap-2">
-                <span className="inline-flex items-center gap-1.5 h-8 px-3 rounded-w-pill bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-card-meta font-semibold">
+                <span className="inline-flex items-center gap-1.5 h-8 px-3 rounded-w-pill bg-sun-500/20 text-sun-500 text-card-meta font-semibold">
                   <Icon name="star" className="text-card-body" filled aria-hidden="true" />
                   <span className="tabular-nums">{coach.rating.toFixed(1)}</span>
                 </span>
                 {coach.reviewCount > 0 && (
-                  <span className="inline-flex items-center gap-1.5 h-8 px-3 rounded-w-pill bg-wline-2 dark:bg-rink-800 text-wtext-2 dark:text-rink-100 text-card-meta font-semibold">
+                  <span className="inline-flex items-center gap-1.5 h-8 px-3 rounded-w-pill bg-white/10 text-white/85 text-card-meta font-semibold">
                     <Icon name="reviews" className="text-card-body" aria-hidden="true" />
                     <span className="tabular-nums">리뷰 {coach.reviewCount}개</span>
                   </span>
                 )}
                 {coach.experienceYears > 0 && (
-                  <span className="inline-flex items-center gap-1.5 h-8 px-3 rounded-w-pill bg-wline-2 dark:bg-rink-800 text-wtext-2 dark:text-rink-100 text-card-meta font-semibold">
+                  <span className="inline-flex items-center gap-1.5 h-8 px-3 rounded-w-pill bg-white/10 text-white/85 text-card-meta font-semibold">
                     <Icon name="workspace_premium" className="text-card-body" aria-hidden="true" />
                     <span className="tabular-nums">경력 {coach.experienceYears}년</span>
                   </span>
@@ -193,25 +193,25 @@ export default function ParentCoachProfilePage() {
               </div>
             </section>
 
-            {/* 컨텐츠 영역 */}
-            <div className="flex flex-col gap-4 p-4">
-              {/* 소개 */}
+            {/* 컨텐츠 영역 — 회색 캔버스 + flat 흰 섹션들 */}
+            <div className="flex flex-col gap-2 pb-4">
+              {/* 소개 — flat 흰 섹션 */}
               <section
                 aria-labelledby="coach-bio-heading"
-                className="bg-white dark:bg-rink-800 rounded-2xl border border-wline-2 dark:border-rink-700 shadow-sm p-5"
+                className="bg-it-surface dark:bg-it-blue-950 px-5 pt-5 pb-5"
               >
                 <div className="flex items-center gap-2 mb-3">
-                  <div className="flex items-center justify-center size-7 rounded-lg bg-blue-50 dark:bg-blue-900/20">
-                    <Icon name="info" className="text-card-body text-ice-500" aria-hidden="true" />
+                  <div className="flex items-center justify-center size-7 rounded-w-md bg-it-blue-50 dark:bg-it-blue-500/15">
+                    <Icon name="info" className="text-card-body text-it-blue-500" aria-hidden="true" />
                   </div>
                   <h3
                     id="coach-bio-heading"
-                    className="text-card-body font-bold text-wtext-1 dark:text-white"
+                    className="text-card-title font-bold text-it-ink-800 dark:text-white"
                   >
                     코치 소개
                   </h3>
                 </div>
-                <p className="text-card-body leading-relaxed text-wtext-2 dark:text-rink-100">
+                <p className="text-card-body leading-relaxed text-it-ink-700 dark:text-wtext-4">
                   {coach.bio}
                 </p>
               </section>
@@ -220,15 +220,15 @@ export default function ParentCoachProfilePage() {
               {coach.careers.length > 0 && (
                 <section
                   aria-labelledby="coach-careers-heading"
-                  className="bg-white dark:bg-rink-800 rounded-2xl border border-wline-2 dark:border-rink-700 shadow-sm p-5"
+                  className="bg-it-surface dark:bg-it-blue-950 px-5 pt-5 pb-5"
                 >
                   <div className="flex items-center gap-2 mb-4">
-                    <div className="flex items-center justify-center size-7 rounded-lg bg-emerald-50 dark:bg-emerald-900/20">
+                    <div className="flex items-center justify-center size-7 rounded-w-md bg-emerald-50 dark:bg-emerald-900/20">
                       <Icon name="workspace_premium" className="text-card-body text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
                     </div>
                     <h3
                       id="coach-careers-heading"
-                      className="text-card-body font-bold text-wtext-1 dark:text-white"
+                      className="text-card-title font-bold text-it-ink-800 dark:text-white"
                     >
                       주요 경력
                     </h3>
@@ -236,14 +236,14 @@ export default function ParentCoachProfilePage() {
                   <ul className="flex flex-col gap-3">
                     {coach.careers.map((career, idx) => (
                       <li key={idx} className="flex items-start gap-3">
-                        <div className="flex items-center justify-center size-9 rounded-lg bg-blue-50 dark:bg-blue-900/20 shrink-0">
-                          <Icon name={career.icon} className="text-ice-500 text-card-emphasis" aria-hidden="true" />
+                        <div className="flex items-center justify-center size-9 rounded-w-md bg-it-blue-50 dark:bg-it-blue-500/15 shrink-0">
+                          <Icon name={career.icon} className="text-it-blue-500 text-card-emphasis" aria-hidden="true" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-card-body font-semibold text-wtext-1 dark:text-white leading-snug">
+                          <p className="text-card-body font-semibold text-it-ink-800 dark:text-white leading-snug">
                             {career.title}
                           </p>
-                          <p className="text-card-meta text-wtext-3 dark:text-rink-300 mt-0.5">
+                          <p className="text-card-meta text-it-ink-500 dark:text-wtext-4 mt-0.5">
                             {career.period}
                           </p>
                         </div>
@@ -257,15 +257,15 @@ export default function ParentCoachProfilePage() {
               {coach.certifications.length > 0 && (
                 <section
                   aria-labelledby="coach-certs-heading"
-                  className="bg-white dark:bg-rink-800 rounded-2xl border border-wline-2 dark:border-rink-700 shadow-sm p-5"
+                  className="bg-it-surface dark:bg-it-blue-950 px-5 pt-5 pb-5"
                 >
                   <div className="flex items-center gap-2 mb-4">
-                    <div className="flex items-center justify-center size-7 rounded-lg bg-amber-50 dark:bg-amber-900/20">
+                    <div className="flex items-center justify-center size-7 rounded-w-md bg-amber-50 dark:bg-amber-900/20">
                       <Icon name="verified_user" className="text-card-body text-amber-600 dark:text-amber-400" aria-hidden="true" />
                     </div>
                     <h3
                       id="coach-certs-heading"
-                      className="text-card-body font-bold text-wtext-1 dark:text-white"
+                      className="text-card-title font-bold text-it-ink-800 dark:text-white"
                     >
                       자격 사항
                     </h3>
@@ -274,7 +274,7 @@ export default function ParentCoachProfilePage() {
                     {coach.certifications.map((cert, idx) => (
                       <li
                         key={idx}
-                        className="flex items-center gap-2.5 text-card-body text-wtext-2 dark:text-rink-100 bg-wbg dark:bg-rink-900/50 p-3 rounded-lg"
+                        className="flex items-center gap-2.5 text-card-body text-it-ink-700 dark:text-wtext-4 bg-it-fill dark:bg-rink-900/50 p-3 rounded-w-md"
                       >
                         <Icon
                           name="check_circle"
@@ -292,15 +292,15 @@ export default function ParentCoachProfilePage() {
               {/* 수강생 후기 */}
               <section
                 aria-labelledby="coach-reviews-heading"
-                className="bg-white dark:bg-rink-800 rounded-2xl border border-wline-2 dark:border-rink-700 shadow-sm p-5"
+                className="bg-it-surface dark:bg-it-blue-950 px-5 pt-5 pb-5"
               >
                 <div className="flex items-center gap-2 mb-4">
-                  <div className="flex items-center justify-center size-7 rounded-lg bg-rose-50 dark:bg-rose-900/20">
+                  <div className="flex items-center justify-center size-7 rounded-w-md bg-rose-50 dark:bg-rose-900/20">
                     <Icon name="reviews" className="text-card-body text-rose-500 dark:text-rose-400" aria-hidden="true" />
                   </div>
                   <h3
                     id="coach-reviews-heading"
-                    className="text-card-body font-bold text-wtext-1 dark:text-white"
+                    className="text-card-title font-bold text-it-ink-800 dark:text-white"
                   >
                     수강생 후기
                   </h3>
@@ -310,11 +310,11 @@ export default function ParentCoachProfilePage() {
                     {coach.recentReviews.map((review, idx) => (
                       <li
                         key={idx}
-                        className="p-4 bg-wbg dark:bg-rink-900/50 rounded-xl"
+                        className="p-4 bg-it-fill dark:bg-rink-900/50 rounded-w-md"
                       >
                         <div className="flex justify-between items-center mb-1.5">
                           <div className="flex items-center gap-2">
-                            <span className="text-card-meta font-bold text-wtext-1 dark:text-white">
+                            <span className="text-card-meta font-bold text-it-ink-800 dark:text-white">
                               {review.parentName}
                             </span>
                             <div className="flex items-center" aria-label={`별점 ${review.rating}점`}>
@@ -322,16 +322,16 @@ export default function ParentCoachProfilePage() {
                                 <Icon
                                   key={i}
                                   name="star"
-                                  className="text-card-meta text-amber-400"
+                                  className="text-card-meta text-sun-500"
                                   filled
                                   aria-hidden="true"
                                 />
                               ))}
                             </div>
                           </div>
-                          <span className="text-[11px] text-wtext-3 tabular-nums">{review.date}</span>
+                          <span className="text-[11px] text-it-ink-400 dark:text-wtext-4 tabular-nums">{review.date}</span>
                         </div>
-                        <p className="text-card-body text-wtext-2 dark:text-rink-100 leading-relaxed">
+                        <p className="text-card-body text-it-ink-700 dark:text-wtext-4 leading-relaxed">
                           {review.content}
                         </p>
                       </li>
@@ -339,14 +339,14 @@ export default function ParentCoachProfilePage() {
                   </ul>
                 ) : (
                   <div className="flex flex-col items-center justify-center py-8 text-center">
-                    <div className="flex items-center justify-center size-12 rounded-w-pill bg-wline-2 dark:bg-rink-700 mb-3">
+                    <div className="flex items-center justify-center size-12 rounded-w-pill bg-it-fill dark:bg-rink-700 mb-3">
                       <Icon
                         name="forum"
-                        className="text-2xl text-wtext-3 dark:text-rink-300"
+                        className="text-2xl text-it-ink-400 dark:text-wtext-4"
                         aria-hidden="true"
                       />
                     </div>
-                    <p className="text-card-body text-wtext-3 dark:text-rink-300">
+                    <p className="text-card-body text-it-ink-500 dark:text-wtext-4">
                       {MESSAGES.empty('후기')}
                     </p>
                   </div>
@@ -358,11 +358,11 @@ export default function ParentCoachProfilePage() {
       </main>
 
       {/* 하단 액션 버튼 */}
-      <footer className="fixed bottom-0 left-0 right-0 z-40 max-w-md mx-auto p-4 bg-white dark:bg-rink-900 border-t border-wline-2 dark:border-rink-800">
+      <footer className="fixed bottom-0 left-0 right-0 z-40 max-w-md mx-auto p-4 bg-it-surface dark:bg-rink-900 border-t border-it-line dark:border-rink-800">
         <button
           type="button"
           onClick={handleConsultation}
-          className="w-full min-h-[52px] bg-ice-500 hover:bg-ice-700 text-white rounded-xl font-bold text-card-emphasis flex items-center justify-center gap-2 shadow-md transition-colors motion-reduce:transition-none active:brightness-95"
+          className="w-full min-h-[52px] bg-it-blue-500 hover:bg-it-blue-600 text-white rounded-w-md font-bold text-card-emphasis flex items-center justify-center gap-2 shadow-sm transition-colors motion-reduce:transition-none active:brightness-95"
           aria-label={`${coach.name} 코치에게 1:1 상담 신청하기`}
         >
           <Icon name="chat_bubble" className="text-card-title" aria-hidden="true" />

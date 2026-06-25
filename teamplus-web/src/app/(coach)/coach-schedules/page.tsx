@@ -5,7 +5,6 @@ import dynamic from 'next/dynamic';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
 import { Icon } from '@/components/ui/Icon';
-import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { useNavigation } from '@/components/ui/NavLink';
 import { api } from '@/services/api-client';
@@ -81,7 +80,7 @@ export default function ScheduleManagePage() {
       <PageAppBar title="일정 관리" />
 
       <main
-        className="flex-1 overflow-y-auto px-5 py-6"
+        className="flex-1 overflow-y-auto bg-it-canvas dark:bg-rink-900 !pb-8"
         role="main"
         aria-label="일정 관리"
         aria-busy={isLoading}
@@ -93,56 +92,57 @@ export default function ScheduleManagePage() {
             aria-live="polite"
             aria-label="일정 목록 불러오는 중"
           >
-            <div className="w-8 h-8 border-2 border-wline border-t-primary rounded-w-pill animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            <div className="w-8 h-8 border-2 border-it-line border-t-it-blue-500 rounded-w-pill animate-spin motion-reduce:animate-none" aria-hidden="true" />
             <span className="sr-only">일정 목록을 불러오는 중입니다.</span>
           </div>
         ) : classes.length === 0 ? (
           <div
-            className="flex flex-col items-center justify-center py-16 text-wtext-3"
+            className="mt-2 flex flex-col items-center justify-center bg-it-surface py-16 text-it-ink-400 dark:bg-rink-800 dark:text-rink-300"
             role="status"
           >
             <Icon name="event_busy" className="text-5xl mb-3" aria-hidden="true" />
             <p className="text-card-body">등록된 일정이 없습니다</p>
           </div>
         ) : (
+          /* 일정 목록 — full-bleed flat 섹션 (카드 박스 제거 → hairline 행). */
           <ul
-            className="space-y-4 list-none"
+            className="mt-2 list-none divide-y divide-it-line bg-it-surface dark:divide-rink-700 dark:bg-rink-800"
             role="list"
             aria-label="등록된 수업 일정 목록"
           >
             {classes.map((cls) => (
               <li key={cls.id} role="listitem">
-                <Card hover>
-                  <article aria-labelledby={`schedule-title-${cls.id}`}>
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-1">
-                        <h2
-                          id={`schedule-title-${cls.id}`}
-                          className="text-card-emphasis font-bold text-wtext-1 dark:text-white"
-                        >
-                          {cls.className}
-                        </h2>
-                        <p className="text-card-meta text-wtext-3 dark:text-rink-300">
-                          <span className="sr-only">일시: </span>
-                          {formatDate(cls.startTime)} · {formatTime(cls.startTime)} -{' '}
-                          {formatTime(cls.endTime)}
-                        </p>
-                        <p className="text-card-meta text-wtext-3 dark:text-rink-300">
-                          <span className="sr-only">담당 코치: </span>
-                          {cls.instructorName}
-                        </p>
-                      </div>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => navigate(`/classes-manage/edit/${cls.id}`)}
-                        aria-label={`${cls.className} 수업 편집하기`}
-                      >
-                        편집
-                      </Button>
-                    </div>
-                  </article>
-                </Card>
+                <article
+                  className="flex items-start justify-between px-5 py-4"
+                  aria-labelledby={`schedule-title-${cls.id}`}
+                >
+                  <div className="min-w-0 space-y-1">
+                    <h2
+                      id={`schedule-title-${cls.id}`}
+                      className="truncate text-card-emphasis font-bold text-it-ink-800 dark:text-white"
+                    >
+                      {cls.className}
+                    </h2>
+                    <p className="text-card-meta text-it-ink-500 dark:text-rink-300">
+                      <span className="sr-only">일시: </span>
+                      {formatDate(cls.startTime)} · {formatTime(cls.startTime)} -{' '}
+                      {formatTime(cls.endTime)}
+                    </p>
+                    <p className="text-card-meta text-it-ink-500 dark:text-rink-300">
+                      <span className="sr-only">담당 코치: </span>
+                      {cls.instructorName}
+                    </p>
+                  </div>
+                  <Button
+                    iceTheme
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => navigate(`/classes-manage/edit/${cls.id}`)}
+                    aria-label={`${cls.className} 수업 편집하기`}
+                  >
+                    편집
+                  </Button>
+                </article>
               </li>
             ))}
           </ul>
@@ -152,7 +152,7 @@ export default function ScheduleManagePage() {
       <button
         type="button"
         onClick={() => navigate('/classes-manage/create')}
-        className="fixed bottom-24 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-w-pill bg-ice-500 text-white shadow-md hover:bg-ice-700 active:brightness-95 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900"
+        className="fixed bottom-24 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-w-pill bg-it-blue-500 text-white shadow-md hover:bg-it-blue-600 active:brightness-95 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900"
         aria-label="일정 추가"
       >
         <Icon name="add" className="text-[28px]" aria-hidden="true" />

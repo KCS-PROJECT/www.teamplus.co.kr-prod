@@ -96,21 +96,21 @@ export default function ChildAwardsPage() {
     return (
       <MobileContainer hasBottomNav>
         <PageAppBar title={MESSAGES.awards.titleList} forceNative />
-        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
-          <div className="flex items-center justify-center size-16 rounded-w-pill bg-wline-2 dark:bg-rink-700 mb-4">
+        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center bg-it-canvas dark:bg-puck">
+          <div className="flex items-center justify-center size-16 rounded-w-pill bg-it-line dark:bg-rink-700 mb-4">
             <Icon
               name="person_off"
-              className="text-3xl text-wtext-3 dark:text-rink-300"
+              className="text-3xl text-it-ink-400 dark:text-rink-300"
               aria-hidden="true"
             />
           </div>
-          <p className="text-card-emphasis font-semibold text-wtext-2 dark:text-rink-100 mb-1">
+          <p className="text-card-emphasis font-semibold text-it-ink-800 dark:text-rink-100 mb-1">
             자녀 정보를 찾을 수 없습니다.
           </p>
           <button
             type="button"
             onClick={() => router.back()}
-            className="mt-6 min-h-[48px] px-5 rounded-xl bg-ice-500 hover:bg-ice-700 text-white font-semibold text-card-body transition-colors motion-reduce:transition-none active:brightness-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
+            className="mt-6 min-h-[48px] px-5 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white font-semibold text-card-body transition-colors motion-reduce:transition-none active:brightness-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40"
           >
             {MESSAGES.common.goBack}
           </button>
@@ -124,18 +124,18 @@ export default function ChildAwardsPage() {
     return (
       <MobileContainer hasBottomNav>
         <PageAppBar title={title} forceNative />
-        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
-          <div className="flex items-center justify-center size-16 rounded-w-pill bg-amber-100 dark:bg-amber-900/20 mb-4">
+        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center bg-it-canvas dark:bg-puck">
+          <div className="flex items-center justify-center size-16 rounded-w-pill bg-sun-100 dark:bg-sun-500/15 mb-4">
             <Icon
               name="info"
-              className="text-3xl text-amber-500 dark:text-amber-400"
+              className="text-3xl text-sun-500"
               aria-hidden="true"
             />
           </div>
-          <p className="text-card-emphasis font-semibold text-wtext-2 dark:text-rink-100 mb-2">
+          <p className="text-card-emphasis font-semibold text-it-ink-800 dark:text-rink-100 mb-2">
             {MESSAGES.awards.needTeamMembership}
           </p>
-          <p className="text-card-body text-wtext-3 dark:text-rink-300">
+          <p className="text-card-body text-it-ink-500 dark:text-rink-300">
             자녀가 팀에 가입되고 승인되면 수상 이력을 등록할 수 있습니다.
           </p>
         </div>
@@ -152,18 +152,18 @@ export default function ChildAwardsPage() {
           시각적으로 FAB 바로 위에 닿아 답답한 회귀가 발생. 7rem(112px) 로 안전 마진 확보.
           ↑ env(safe-area-inset-bottom) → var(--safe-area-inset-bottom, env(...)) 표준화 —
           Android WebView 의 env() 0px 평가 회귀 (CLAUDE.md MUST FOLLOW · SCREEN_METRICS SoT) 차단. */}
-      <div className="flex-1 overflow-y-auto hide-scrollbar p-4 pb-[calc(72px+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px))+7rem)]">
+      <div className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck p-4 pb-[calc(72px+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px))+7rem)]">
         <AnimatedSection delay={0}>
           <div className="mb-5 mt-2 flex items-center gap-3">
-            <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-amber-50 dark:bg-amber-900/20 ring-4 ring-amber-50/50 dark:ring-amber-900/10">
-              <Icon name="military_tech" className="text-[24px] text-amber-500" aria-hidden="true" />
+            <div className="flex size-12 shrink-0 items-center justify-center rounded-w-md bg-sun-100 dark:bg-sun-500/15">
+              <Icon name="military_tech" className="text-[24px] text-sun-500" aria-hidden="true" />
             </div>
             <div className="min-w-0 flex-1">
-              <h1 className="text-xl font-extrabold text-wtext-1 dark:text-white leading-tight truncate">
+              <h1 className="text-xl font-extrabold text-it-ink-800 dark:text-white leading-tight truncate">
                 {child.name}
-                <span className="text-ice-500">.</span>
+                <span className="text-it-blue-500">.</span>
               </h1>
-              <p className="text-wtext-3 dark:text-rink-300 text-card-meta mt-0.5 truncate">
+              <p className="text-it-ink-500 dark:text-rink-300 text-card-meta mt-0.5 truncate">
                 {child.club ? `${child.club} · ` : ''}
                 {MESSAGES.awards.countLabel(awards.length)}
               </p>
@@ -184,7 +184,7 @@ export default function ChildAwardsPage() {
                   value={typeFilter}
                   onChange={(e) => setTypeFilter(e.target.value)}
                   aria-label="수상 유형 필터"
-                  className="w-full h-11 pl-10 pr-8 rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-wtext-1 dark:text-white text-card-body focus:outline-none focus:ring-2 focus:ring-ice-500/30 focus:border-ice-500 transition-colors motion-reduce:transition-none appearance-none"
+                  className="w-full h-11 pl-10 pr-8 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 text-it-ink-800 dark:text-white text-card-body focus:outline-none focus:ring-2 focus:ring-it-blue-500/30 focus:border-it-blue-500 transition-colors motion-reduce:transition-none appearance-none"
                 >
                   <option value="">전체 유형</option>
                   {AWARD_TYPES.map((t) => (
@@ -197,7 +197,7 @@ export default function ChildAwardsPage() {
                   <Icon
                     name="filter_list"
                     size={16}
-                    className="text-wtext-3 dark:text-rink-300"
+                    className="text-it-ink-400 dark:text-rink-300"
                     aria-hidden="true"
                   />
                 </div>
@@ -205,7 +205,7 @@ export default function ChildAwardsPage() {
                   <Icon
                     name="expand_more"
                     size={16}
-                    className="text-wtext-3 dark:text-rink-300"
+                    className="text-it-ink-400 dark:text-rink-300"
                     aria-hidden="true"
                   />
                 </div>
@@ -222,7 +222,7 @@ export default function ChildAwardsPage() {
                   onChange={(e) => setSeasonFilter(e.target.value)}
                   aria-label="시즌 필터"
                   disabled={seasons.length === 0}
-                  className="w-full h-11 pl-10 pr-8 rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-wtext-1 dark:text-white text-card-body focus:outline-none focus:ring-2 focus:ring-ice-500/30 focus:border-ice-500 transition-colors motion-reduce:transition-none appearance-none disabled:opacity-60"
+                  className="w-full h-11 pl-10 pr-8 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 text-it-ink-800 dark:text-white text-card-body focus:outline-none focus:ring-2 focus:ring-it-blue-500/30 focus:border-it-blue-500 transition-colors motion-reduce:transition-none appearance-none disabled:opacity-60"
                 >
                   <option value="">전체 시즌</option>
                   {seasons.map((s) => (
@@ -235,7 +235,7 @@ export default function ChildAwardsPage() {
                   <Icon
                     name="date_range"
                     size={16}
-                    className="text-wtext-3 dark:text-rink-300"
+                    className="text-it-ink-400 dark:text-rink-300"
                     aria-hidden="true"
                   />
                 </div>
@@ -243,7 +243,7 @@ export default function ChildAwardsPage() {
                   <Icon
                     name="expand_more"
                     size={16}
-                    className="text-wtext-3 dark:text-rink-300"
+                    className="text-it-ink-400 dark:text-rink-300"
                     aria-hidden="true"
                   />
                 </div>
@@ -254,21 +254,21 @@ export default function ChildAwardsPage() {
 
         {/* 에러 */}
         {errorMessage && (
-          <div className="mb-4 flex items-center gap-3 rounded-xl bg-red-50 dark:bg-red-900/20 p-3 border border-red-100 dark:border-red-900/30">
+          <div className="mb-4 flex items-center gap-3 rounded-w-md bg-it-red-500/10 dark:bg-it-red-500/15 p-3 border-[1.5px] border-it-red-500/30 dark:border-it-red-500/30">
             <Icon
               name="error"
-              className="text-red-500 dark:text-red-400 text-xl shrink-0"
+              className="text-it-red-500 text-xl shrink-0"
               aria-hidden="true"
             />
             <div className="flex-1 min-w-0">
-              <p className="text-card-body font-medium text-red-700 dark:text-red-300">
+              <p className="text-card-body font-medium text-it-red-500">
                 {errorMessage}
               </p>
             </div>
             <button
               type="button"
               onClick={refresh}
-              className="shrink-0 text-card-body font-semibold text-red-600 dark:text-red-400 hover:underline"
+              className="shrink-0 text-card-body font-semibold text-it-red-500 hover:underline"
             >
               {MESSAGES.common.retry}
             </button>
@@ -283,24 +283,25 @@ export default function ChildAwardsPage() {
                 <AwardItemCard
                   award={award}
                   mode="page"
+                  iceTheme
                   onClick={(a) => handleAwardClick(a.id)}
                 />
               </AnimatedSection>
             ))
           ) : (
             <AnimatedSection delay={150}>
-              <div className="flex flex-col items-center justify-center py-16 rounded-2xl bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700">
-                <div className="flex items-center justify-center size-16 rounded-w-pill bg-wline-2 dark:bg-rink-700 mb-4">
+              <div className="flex flex-col items-center justify-center py-16 rounded-w-md bg-it-surface dark:bg-rink-800 border-[1.5px] border-it-line dark:border-rink-700">
+                <div className="flex items-center justify-center size-16 rounded-w-pill bg-it-line dark:bg-rink-700 mb-4">
                   <Icon
                     name="emoji_events"
-                    className="text-3xl text-wtext-3 dark:text-rink-300"
+                    className="text-3xl text-it-ink-400 dark:text-rink-300"
                     aria-hidden="true"
                   />
                 </div>
-                <p className="text-card-emphasis font-semibold text-wtext-2 dark:text-rink-100 mb-1">
+                <p className="text-card-emphasis font-semibold text-it-ink-800 dark:text-rink-100 mb-1">
                   {MESSAGES.awards.noAwards}
                 </p>
-                <p className="text-card-body text-wtext-3 dark:text-rink-300 text-center px-8">
+                <p className="text-card-body text-it-ink-500 dark:text-rink-300 text-center px-8">
                   {MESSAGES.awards.addFirst}
                 </p>
               </div>
@@ -319,7 +320,7 @@ export default function ChildAwardsPage() {
         <button
           type="button"
           onClick={handleAddNew}
-          className="w-full flex items-center justify-center gap-2 rounded-2xl h-14 bg-ice-500 hover:bg-ice-700 text-white font-bold text-card-emphasis shadow-md transition-colors motion-reduce:transition-none active:brightness-95"
+          className="w-full flex items-center justify-center gap-2 rounded-w-md h-14 bg-it-blue-500 hover:bg-it-blue-600 text-white font-bold text-card-emphasis shadow-md transition-colors motion-reduce:transition-none active:brightness-95"
         >
           <Icon name="add_circle" size={22} aria-hidden="true" />
           <span>수상 이력 등록</span>

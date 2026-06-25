@@ -43,6 +43,7 @@ import {
   listManagedTeams,
 } from "@/services/team.service";
 import { api } from "@/services/api-client";
+import { env } from "@/lib/env";
 
 /**
  * [성능 2026-05-28 P0-F] 로그인 성공 직후 역할별 대시보드 핵심 데이터를 미리 발사한다.
@@ -838,8 +839,8 @@ export default function LoginPage() {
             noValidate
             autoComplete="off"
           >
-            {/* 테스트 계정 셀렉터 — 기능 그대로 유지 */}
-            {(!isHydrated || !isNativeApp()) && (
+            {/* 테스트 계정 셀렉터 — 운영(production 빌드)에서는 숨김, 개발 서버에서만 노출 */}
+            {!env.isProduction && (!isHydrated || !isNativeApp()) && (
               <AccountSelector
                 options={TEST_ACCOUNTS}
                 value={selectedUser}

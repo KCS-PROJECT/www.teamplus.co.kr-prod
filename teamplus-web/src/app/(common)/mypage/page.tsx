@@ -77,16 +77,13 @@ function HeroCard({
   logoUrl?: string | null;
 }) {
   return (
-    <div style={{ padding: "16px 20px 0" }}>
+    <div className="bg-it-blue-800 dark:bg-it-blue-950">
       <div
         className="relative overflow-hidden text-white"
         style={{
-          background: "linear-gradient(135deg, #1a2240 0%, #0f1426 100%)",
-          borderRadius: 22,
           padding: "22px 22px 24px",
           // stats 없을 때(현재 마이페이지)는 내용 높이에 맞춤 — minHeight 고정 해제
           minHeight: stats.length > 0 ? 200 : undefined,
-          boxShadow: "0 14px 30px rgba(15,20,38,0.25)",
         }}
       >
         {/* 데코 — 원형 border (solid) */}
@@ -115,21 +112,6 @@ function HeroCard({
             border: "1px dashed rgba(255,255,255,0.14)",
           }}
         />
-        {/* 데코 — ice 글로우 (SVG radial; CSS gradient 회피) */}
-        <svg
-          aria-hidden
-          className="absolute pointer-events-none"
-          style={{ right: -50, top: -50, width: 220, height: 220 }}
-          viewBox="0 0 220 220"
-        >
-          <defs>
-            <radialGradient id="hero-ice-glow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="var(--c-ice-500)" stopOpacity="0.30" />
-              <stop offset="60%" stopColor="var(--c-ice-500)" stopOpacity="0" />
-            </radialGradient>
-          </defs>
-          <circle cx="110" cy="110" r="110" fill="url(#hero-ice-glow)" />
-        </svg>
 
         {/* 소속 팀 로고 — 메인화면 Hero 와 동일 (우상단, 배경 없음) */}
         <HeroTeamLogo logoUrl={logoUrl} />
@@ -137,14 +119,12 @@ function HeroCard({
         {/* role badge + email */}
         <div className="relative inline-flex items-center" style={{ gap: 10 }}>
           <span
-            className="font-extrabold inline-flex items-center"
+            className="font-extrabold inline-flex items-center bg-it-red-500 text-white"
             style={{
               padding: "4px 10px",
               borderRadius: 8,
-              background: "var(--c-flame-500)",
               fontSize: 11,
               letterSpacing: "-0.01em",
-              color: "#fff",
             }}
           >
             {role}
@@ -265,7 +245,7 @@ function SectionLabel({
       style={{ padding: "20px 24px 10px" }}
     >
       <span
-        className="font-extrabold text-wtext-1 dark:text-white"
+        className="font-extrabold text-it-ink-800 dark:text-white"
         style={{ fontSize: 14, letterSpacing: "-0.02em" }}
       >
         {children}
@@ -274,8 +254,8 @@ function SectionLabel({
         <button
           type="button"
           onClick={onActionClick}
-          className="bg-transparent border-0 p-0 font-bold"
-          style={{ fontSize: 12, color: "var(--c-ice-500)" }}
+          className="bg-transparent border-0 p-0 font-bold text-it-blue-500"
+          style={{ fontSize: 12 }}
         >
           {action} ›
         </button>
@@ -302,25 +282,23 @@ function Row({
   right?: ReactNode;
   onClick?: () => void;
 }) {
+  // ICETIMES flat: 카드 박스(rounded/shadow/외곽 border) 제거 → hairline 행.
+  //   부모 white 섹션 안에서 border-b 하나로 구분, 마지막 행은 border 제거.
   const className =
-    "flex items-center w-full text-left bg-wsurface dark:bg-rink-800 border border-wline-2 dark:border-rink-700";
+    "flex items-center w-full text-left bg-it-surface dark:bg-rink-800 border-b border-it-line dark:border-rink-700 last:border-b-0";
   const style = {
     gap: 14,
-    padding: "16px 18px",
-    borderRadius: 16,
-    boxShadow: "0 2px 8px rgba(20,24,38,0.03)",
+    padding: "16px 20px",
   } as const;
 
   const inner = (
     <>
       <div
-        className="grid place-items-center shrink-0"
+        className="grid place-items-center shrink-0 bg-it-blue-50 dark:bg-it-blue-900/30 text-it-blue-500"
         style={{
           width: 44,
           height: 44,
           borderRadius: 12,
-          background: "var(--c-ice-50)",
-          color: "var(--c-ice-500)",
         }}
         aria-hidden
       >
@@ -329,19 +307,17 @@ function Row({
       <div className="flex-1 min-w-0">
         <div className="inline-flex items-center" style={{ gap: 8 }}>
           <span
-            className="font-extrabold text-wtext-1 dark:text-white truncate"
+            className="font-extrabold text-it-ink-800 dark:text-white truncate"
             style={{ fontSize: 15, letterSpacing: "-0.02em" }}
           >
             {title}
           </span>
           {badge && (
             <span
-              className="font-extrabold whitespace-nowrap shrink-0"
+              className="font-extrabold whitespace-nowrap shrink-0 bg-it-red-50 text-it-red-500 dark:bg-it-red-500/15"
               style={{
                 padding: "2px 7px",
                 borderRadius: 6,
-                background: "var(--c-flame-100)",
-                color: "var(--c-flame-500)",
                 fontSize: 10,
               }}
             >
@@ -351,7 +327,7 @@ function Row({
         </div>
         {subtitle && (
           <div
-            className="text-wtext-3 dark:text-rink-300 truncate"
+            className="text-it-ink-500 dark:text-rink-300 truncate"
             style={{ fontSize: 12, marginTop: 3 }}
           >
             {subtitle}
@@ -365,11 +341,11 @@ function Row({
           viewBox="0 0 14 14"
           fill="none"
           aria-hidden
-          className="shrink-0"
+          className="shrink-0 text-it-ink-300 dark:text-rink-400"
         >
           <path
             d="M5 3l4 4-4 4"
-            stroke="var(--c-text-4)"
+            stroke="currentColor"
             strokeWidth={1.5}
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -411,46 +387,44 @@ function DocCard({
   onClick?: () => void;
 }) {
   const statusLabel = status === "expired" ? "만료" : "체결완료";
-  const statusColor =
-    status === "expired" ? "var(--c-text-4)" : "var(--c-mint-500)";
+  const statusClass =
+    status === "expired" ? "text-it-ink-300" : "text-mint-600 dark:text-mint-500";
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center w-full text-left bg-wsurface dark:bg-rink-800 border border-wline-2 dark:border-rink-700"
+      className="flex items-center w-full text-left bg-it-surface dark:bg-rink-800 border-b border-it-line dark:border-rink-700 last:border-b-0"
       style={{
         gap: 12,
-        padding: "14px 16px",
-        borderRadius: 14,
-        boxShadow: "0 2px 8px rgba(20,24,38,0.03)",
+        padding: "14px 20px",
       }}
     >
       <div
-        className="bg-wline-2 dark:bg-rink-700 flex items-start justify-end shrink-0"
+        className="bg-it-fill dark:bg-rink-700 flex items-start justify-end shrink-0 text-it-ink-300"
         style={{ width: 28, height: 32, borderRadius: 4, padding: 3 }}
         aria-hidden
       >
         <svg width={6} height={6} viewBox="0 0 6 6">
-          <path d="M0 0h6v6L0 0z" fill="var(--c-text-4)" />
+          <path d="M0 0h6v6L0 0z" fill="currentColor" />
         </svg>
       </div>
       <div className="flex-1 min-w-0">
         <div
-          className="font-extrabold text-wtext-1 dark:text-white truncate"
+          className="font-extrabold text-it-ink-800 dark:text-white truncate"
           style={{ fontSize: 14, letterSpacing: "-0.02em" }}
         >
           {title}
         </div>
         <div
-          className="font-num text-wtext-3 dark:text-rink-300 truncate"
+          className="font-num text-it-ink-500 dark:text-rink-300 truncate"
           style={{ fontSize: 11, marginTop: 2 }}
         >
           {date}
         </div>
       </div>
       <span
-        className="font-extrabold whitespace-nowrap shrink-0"
-        style={{ fontSize: 12, color: statusColor }}
+        className={`font-extrabold whitespace-nowrap shrink-0 ${statusClass}`}
+        style={{ fontSize: 12 }}
       >
         {statusLabel}
       </span>
@@ -478,7 +452,7 @@ function Toggle({
       aria-label={label}
       onClick={() => onChange(!on)}
       className={`relative shrink-0 border-0 cursor-pointer transition-colors ${
-        on ? "bg-ice-500" : "bg-wline-2 dark:bg-rink-500"
+        on ? "bg-it-blue-500" : "bg-it-line-strong dark:bg-rink-500"
       }`}
       style={{
         width: 44,
@@ -507,8 +481,9 @@ function Toggle({
 // ───────────────────────────────────────────────────────────────
 // Icons (stroke = ice-500, 1.6 weight) — 04h 아이콘 셋 정합
 // ───────────────────────────────────────────────────────────────
-const I_STROKE = "var(--c-ice-500)";
-const I_FILL = "var(--c-ice-500)";
+// ICETIMES: 아이콘은 Row 의 icon 컨테이너(text-it-blue-500)에서 currentColor 상속.
+const I_STROKE = "currentColor";
+const I_FILL = "currentColor";
 
 const IconPerson = () => (
   <svg width={20} height={20} viewBox="0 0 20 20" fill="none">
@@ -874,7 +849,7 @@ export default function MyPage() {
 
   // ─── 프로필 탭 (설정 통합: 내 정보 + 알림 + 화면 + 로그아웃) ───
   const profileTab = (
-    <div className="flex flex-col">
+    <div className="flex flex-col bg-it-canvas dark:bg-puck">
       <HeroCard
         role={roleLabel}
         email={displayEmail}
@@ -885,9 +860,8 @@ export default function MyPage() {
       />
 
       <SectionLabel>내 정보</SectionLabel>
-      <div
-        style={{ padding: "0 20px", display: "flex", flexDirection: "column", gap: 10 }}
-      >
+      {/* ICETIMES flat: full-bleed 흰 섹션 + hairline 행 (gap·padding 박스 제거) */}
+      <div className="bg-it-surface dark:bg-rink-800 flex flex-col">
         <Row
           icon={<IconPerson />}
           title="프로필 수정"
@@ -914,9 +888,7 @@ export default function MyPage() {
 
       {/* [2026-06-17] 설정 탭을 프로필 탭으로 통합 — 알림·화면·로그아웃을 아래에 노출, 설정 탭 삭제. */}
       <SectionLabel>{S.sections.notification}</SectionLabel>
-      <div
-        style={{ padding: "0 20px", display: "flex", flexDirection: "column", gap: 10 }}
-      >
+      <div className="bg-it-surface dark:bg-rink-800 flex flex-col">
         <Row
           icon={<IconBell />}
           title="푸시 알림"
@@ -938,9 +910,7 @@ export default function MyPage() {
       </div>
 
       <SectionLabel>{S.sections.display}</SectionLabel>
-      <div
-        style={{ padding: "0 20px", display: "flex", flexDirection: "column", gap: 10 }}
-      >
+      <div className="bg-it-surface dark:bg-rink-800 flex flex-col">
         <Row
           icon={<IconTheme />}
           title={S.items.theme.label}
@@ -971,14 +941,14 @@ export default function MyPage() {
           onClick={() => setIsLogoutOpen(true)}
           disabled={isLoggingOut}
           aria-label={MESSAGES.common.logoutConfirmButton}
-          className="h-12 w-full inline-flex items-center justify-center gap-1.5 rounded-2xl bg-wsurface dark:bg-rink-800 border border-wline dark:border-rink-700 text-card-body font-semibold text-wtext-2 dark:text-rink-100 hover:bg-wbg dark:hover:bg-rink-700/50 active:brightness-95 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-puck disabled:opacity-50"
+          className="h-12 w-full inline-flex items-center justify-center gap-1.5 rounded-w-md bg-it-surface dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 text-card-body font-semibold text-it-ink-800 dark:text-rink-100 hover:bg-it-fill dark:hover:bg-rink-700/50 active:brightness-95 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-puck disabled:opacity-50"
         >
           <Icon name="logout" className="text-[16px]" aria-hidden="true" />
           {isLoggingOut
             ? S.footer.logoutInProgress
             : MESSAGES.common.logoutConfirmTitle}
         </button>
-        <p className="text-center text-card-meta tabular-nums text-wtext-4 dark:text-rink-300 font-num">
+        <p className="text-center text-card-meta tabular-nums text-it-ink-400 dark:text-rink-300 font-num">
           {versionLabel}
         </p>
       </div>

@@ -88,27 +88,32 @@ export default function SkillReportPage() {
         ]}
       />
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto hide-scrollbar w-full max-w-md mx-auto pb-30 px-4 pt-6 space-y-6">
-        {/* Coach Profile Header */}
+      {/* Main Content
+          [ICETIMES flat 재작업 2026-06-25] /report 와 동일 flat 언어 — main 은 회색 캔버스
+          (bg-it-canvas dark:bg-puck), 콘텐츠 블록은 각자 mt-2 흰 섹션으로 쌓인다. 이전
+          max-w-md space-y-6 + 카드 박스(rounded-xl border) → full-bleed flat 섹션 전환.
+          데이터(useSkillReport)·차트(ScoreRadar) 로직 동결, 비주얼만. fixed footer 푸시 여백은
+          main !pb-32 로 확보. */}
+      <main className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck !pb-32">
+        {/* Coach Profile Header — flat 섹션 (카드 박스 제거) */}
         {coachInfo && (
-          <section className="flex items-center gap-4 bg-white dark:bg-rink-800 p-4 rounded-xl border border-wline-2 dark:border-rink-700">
+          <section className="mt-2 flex items-center gap-4 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-4">
             <div className="relative shrink-0">
-              <div className="h-14 w-14 rounded-w-pill bg-wline-2 dark:bg-rink-700 overflow-hidden border-2 border-ice-500 flex items-center justify-center">
-                <Icon name="person" className="text-2xl text-wtext-3" />
+              <div className="h-14 w-14 rounded-w-pill bg-it-fill dark:bg-rink-700 overflow-hidden border-2 border-it-blue-500 flex items-center justify-center">
+                <Icon name="person" className="text-2xl text-it-ink-400" />
               </div>
-              <div className="absolute bottom-0 right-0 h-3.5 w-3.5 bg-green-500 border-2 border-white dark:border-rink-800 rounded-w-pill" />
+              <div className="absolute bottom-0 right-0 h-3.5 w-3.5 bg-success border-2 border-it-surface dark:border-it-blue-950 rounded-w-pill" />
             </div>
             <div className="flex flex-col justify-center flex-1 min-w-0">
               <div className="flex items-center justify-between mb-1">
-                <h2 className="text-card-emphasis font-bold text-wtext-1 dark:text-white truncate">
+                <h2 className="text-card-emphasis font-bold text-it-ink-900 dark:text-white truncate">
                   {coachInfo.name}
                 </h2>
-                <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-900/20 text-ice-500">
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-it-blue-50 dark:bg-it-blue-500/15 text-it-blue-600 dark:text-it-blue-300">
                   {coachInfo.role}
                 </span>
               </div>
-              <div className="flex items-center gap-1.5 text-card-meta text-wtext-3 dark:text-rink-300">
+              <div className="flex items-center gap-1.5 text-card-meta text-it-ink-500 dark:text-rink-300">
                 <Icon name="calendar_today" className="text-card-body" />
                 <span>{coachInfo.evaluationDate} {MESSAGES.skillReport.evaluation}</span>
               </div>
@@ -116,15 +121,14 @@ export default function SkillReportPage() {
           </section>
         )}
 
-        {/* ScoreRadar */}
+        {/* ScoreRadar — flat 섹션 (차트 SVG 로직 동결, 외곽 박스만 평탄화) */}
         {data && (
-          <section className="bg-white dark:bg-rink-800 rounded-xl p-5 border border-wline-2 dark:border-rink-700 flex flex-col items-center shadow-sm">
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-5 flex flex-col items-center">
             <div className="w-full flex justify-between items-center mb-4">
-              <h3 className="font-bold text-wtext-1 dark:text-white flex items-center gap-2 text-card-emphasis">
-                <span className="w-1 h-4 bg-ice-500 rounded-w-pill" aria-hidden="true" />
+              <h3 className="text-[15px] font-extrabold text-it-ink-900 dark:text-white">
                 {MESSAGES.skillReport.overallAnalysis}
               </h3>
-              <span className="text-[11px] text-wtext-3 dark:text-rink-300 font-medium">
+              <span className="text-[12px] text-it-ink-400 dark:text-rink-300 font-medium">
                 {MESSAGES.skillReport.maxScore}
               </span>
             </div>
@@ -133,24 +137,25 @@ export default function SkillReportPage() {
               centerValue={avg}
               centerLabel={MESSAGES.skillReport.averageScore}
               size={260}
+              iceTheme
             />
             {/* 요약 캡션 — 평균 점수 시각 강조 */}
-            <div className="w-full mt-4 pt-4 border-t border-wline-2 dark:border-rink-700 flex items-center justify-between">
+            <div className="w-full mt-4 pt-4 border-t border-it-line dark:border-it-blue-900 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Icon
                   name="insights"
-                  className="text-ice-500 text-card-title"
+                  className="text-it-blue-500 dark:text-it-blue-300 text-card-title"
                   aria-hidden="true"
                 />
-                <span className="text-card-meta font-semibold text-wtext-2 dark:text-rink-100">
+                <span className="text-card-meta font-semibold text-it-ink-700 dark:text-rink-100">
                   종합 평균
                 </span>
               </div>
               <div className="flex items-baseline gap-1">
-                <span className="text-2xl font-extrabold text-ice-500 tabular-nums tracking-tight">
+                <span className="text-2xl font-extrabold font-num text-it-blue-600 dark:text-it-blue-300 tabular-nums tracking-tight">
                   {avg}
                 </span>
-                <span className="text-card-body font-bold text-wtext-3 dark:text-rink-300">
+                <span className="text-card-body font-bold text-it-ink-500 dark:text-rink-300">
                   / 5.0
                 </span>
               </div>
@@ -158,16 +163,17 @@ export default function SkillReportPage() {
           </section>
         )}
 
-        {/* Detailed Stats Grid */}
+        {/* Detailed Stats Grid — SkillStatCard 자체 표면 소유. flat 섹션으로 감싸 갭 부여. */}
         {data && (
-          <section className="space-y-3">
-            <h3 className="font-bold text-wtext-1 dark:text-white px-1 text-card-emphasis">
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-5">
+            <h3 className="text-[15px] font-extrabold text-it-ink-900 dark:text-white mb-3">
               {MESSAGES.skillReport.detailedScores}
             </h3>
             <div className="grid grid-cols-2 gap-3">
               {SKILL_AXES.map((axis) => (
                 <SkillStatCard
                   key={axis.key}
+                  iceTheme
                   icon={axis.icon}
                   label={MESSAGES.skillReport[axis.labelKey] as string}
                   score={data[axis.key as keyof typeof data] as number}
@@ -175,6 +181,7 @@ export default function SkillReportPage() {
               ))}
               <div className="col-span-2">
                 <SkillStatCard
+                  iceTheme
                   icon="groups"
                   label={MESSAGES.skillReport.teamwork}
                   score={data.teamwork}
@@ -185,29 +192,32 @@ export default function SkillReportPage() {
           </section>
         )}
 
-        {/* Coach Comment */}
+        {/* Coach Comment — flat 섹션 (공유 컴포넌트 내부 불변) */}
         {comment && (
-          <CoachCommentCard
-            content={comment.content}
-            date={comment.date}
-            onReply={() => navigate('/messages')}
-          />
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-5">
+            <CoachCommentCard
+              iceTheme
+              content={comment.content}
+              date={comment.date}
+              onReply={() => navigate('/messages')}
+            />
+          </section>
         )}
       </main>
 
-      {/* Bottom Action Bar */}
-      <footer className="fixed bottom-0 left-0 right-0 z-40 bg-white dark:bg-rink-900 border-t border-wline dark:border-rink-800 pb-safe">
+      {/* Bottom Action Bar — page-local fixed 푸터 (AppBar/BottomNav 영역 아님). it-* 스왑. */}
+      <footer className="fixed bottom-0 left-0 right-0 z-40 bg-it-surface dark:bg-puck border-t border-it-line dark:border-it-blue-900 pb-safe">
         <div className="max-w-md mx-auto px-4 py-4 flex gap-3">
           <button
             onClick={handleShare}
-            className="flex-1 h-12 flex items-center justify-center gap-2 bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 font-bold rounded-xl active:brightness-95 transition-colors motion-reduce:transition-none"
+            className="flex-1 h-12 flex items-center justify-center gap-2 bg-it-surface dark:bg-it-blue-950 border border-it-line-strong dark:border-it-blue-900 text-it-ink-700 dark:text-rink-100 font-bold rounded-xl active:brightness-95 transition-colors motion-reduce:transition-none"
           >
             <Icon name="ios_share" className="text-card-title" />
             <span className="text-card-body">{MESSAGES.skillReport.shareReport}</span>
           </button>
           <button
             onClick={() => navigate('/messages')}
-            className="flex-[2] h-12 flex items-center justify-center gap-2 bg-ice-500 hover:bg-ice-700 text-white font-bold rounded-xl active:brightness-95 transition-colors motion-reduce:transition-none"
+            className="flex-[2] h-12 flex items-center justify-center gap-2 bg-it-blue-500 hover:bg-it-blue-700 text-white font-bold rounded-xl active:brightness-95 transition-colors motion-reduce:transition-none"
           >
             <Icon name="chat" className="text-card-title" />
             <span className="text-card-emphasis">{MESSAGES.skillReport.askCoach}</span>

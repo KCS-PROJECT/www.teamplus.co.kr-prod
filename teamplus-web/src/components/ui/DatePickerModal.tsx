@@ -90,6 +90,12 @@ export interface DatePickerModalProps {
   maxDate?: Date;
   /** 접근성 라벨 */
   ariaLabel?: string;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 선택/오늘 강조색을 it-blue 로 스왑. **날짜 수학·뷰모드·좌표 로직 전부 동결,
+   *   색만 변경.** (children/add 호출처만 전달)
+   */
+  iceTheme?: boolean;
 }
 
 export function DatePickerModal({
@@ -100,6 +106,7 @@ export function DatePickerModal({
   minDate,
   maxDate,
   ariaLabel = '날짜 선택',
+  iceTheme = false,
 }: DatePickerModalProps) {
   // 서버 시각 SoT (`/api/v1/datetime`) 기반. 메모리 캐시 hit 시 동기 즉시값,
   // miss 시 클라이언트 `new Date()` fallback → mount 후 useEffect에서 fetch + overwrite.
@@ -485,13 +492,19 @@ export function DatePickerModal({
                     role="gridcell"
                     className={cn(
                       'h-10 grid place-items-center rounded-full text-card-body font-bold transition-colors',
-                      'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 focus-visible-disabled',
+                      iceTheme
+                        ? 'focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 focus-visible-disabled'
+                        : 'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 focus-visible-disabled',
                       disabled
                         ? 'text-wtext-4 dark:text-rink-500 cursor-not-allowed'
                         : isSelected
-                          ? 'bg-ice-500 text-white'
+                          ? iceTheme
+                            ? 'bg-it-blue-500 text-white'
+                            : 'bg-ice-500 text-white'
                           : isToday
-                            ? 'bg-ice-500/10 text-ice-500'
+                            ? iceTheme
+                              ? 'bg-it-blue-50 dark:bg-it-blue-500/15 text-it-blue-600 dark:text-it-blue-300'
+                              : 'bg-ice-500/10 text-ice-500'
                             : cn(
                                 'hover:bg-wline-2 dark:hover:bg-rink-700',
                                 colIsSunday(dayOfWeek) && 'text-red-500',
@@ -531,13 +544,19 @@ export function DatePickerModal({
                   role="gridcell"
                   className={cn(
                     'h-12 rounded-xl text-card-title font-bold transition-colors',
-                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 focus-visible-disabled',
+                    iceTheme
+                      ? 'focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 focus-visible-disabled'
+                      : 'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 focus-visible-disabled',
                     disabled
                       ? 'text-wtext-4 dark:text-rink-500 cursor-not-allowed'
                       : isSelected
-                        ? 'bg-ice-500 text-white'
+                        ? iceTheme
+                          ? 'bg-it-blue-500 text-white'
+                          : 'bg-ice-500 text-white'
                         : isCurrent
-                          ? 'bg-ice-500/10 text-ice-500'
+                          ? iceTheme
+                            ? 'bg-it-blue-50 dark:bg-it-blue-500/15 text-it-blue-600 dark:text-it-blue-300'
+                            : 'bg-ice-500/10 text-ice-500'
                           : 'text-wtext-1 dark:text-white hover:bg-wline-2 dark:hover:bg-rink-700',
                   )}
                 >
@@ -567,13 +586,19 @@ export function DatePickerModal({
                     role="gridcell"
                     className={cn(
                       'h-12 rounded-xl text-card-title font-bold tabular-nums transition-colors',
-                      'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 focus-visible-disabled',
+                      iceTheme
+                        ? 'focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 focus-visible-disabled'
+                        : 'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 focus-visible-disabled',
                       disabled
                         ? 'text-wtext-4 dark:text-rink-500 cursor-not-allowed'
                         : isSelected
-                          ? 'bg-ice-500 text-white'
+                          ? iceTheme
+                            ? 'bg-it-blue-500 text-white'
+                            : 'bg-ice-500 text-white'
                           : isCurrent
-                            ? 'bg-ice-500/10 text-ice-500'
+                            ? iceTheme
+                              ? 'bg-it-blue-50 dark:bg-it-blue-500/15 text-it-blue-600 dark:text-it-blue-300'
+                              : 'bg-ice-500/10 text-ice-500'
                             : 'text-wtext-1 dark:text-white hover:bg-wline-2 dark:hover:bg-rink-700',
                     )}
                   >

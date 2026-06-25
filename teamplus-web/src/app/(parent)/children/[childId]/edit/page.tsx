@@ -66,14 +66,14 @@ function AgeBadge({ age }: { age: number }) {
   const isChild = age < CHILD_TEEN_BOUNDARY;
   return (
     <div className="flex items-center gap-2 mt-2">
-      <span className="text-card-body text-wtext-2 dark:text-rink-300">
+      <span className="text-card-body text-it-ink-500 dark:text-rink-300">
         {age}세
       </span>
       <span
         className={`text-card-meta font-bold px-2 py-0.5 rounded-w-pill ${
           isChild
-            ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-            : 'bg-blue-100 text-ice-500 dark:bg-blue-900/30 dark:text-blue-400'
+            ? 'bg-sun-100 text-sun-500 dark:bg-sun-500/15 dark:text-sun-500'
+            : 'bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-900/30 dark:text-it-blue-500'
         }`}
       >
         {isChild ? 'CHILD' : 'TEEN'}
@@ -374,9 +374,9 @@ export default function EditChildPage() {
         {/* [appbar-harness-v4 · parent-agent · 2026-05-12] showMenu={false} 제거 —
             에러 상태에서도 우측 3 액션(시계/종/메뉴) 유지하여 SPEC §7 통일성 준수. */}
         <PageAppBar title="선수 정보 수정" forceNative />
-        <div className="flex-1 flex flex-col items-center justify-center px-6">
-          <Icon name="error_outline" className="text-5xl text-wtext-4 dark:text-rink-500 mb-3" aria-hidden="true" />
-          <p className="text-card-body text-wtext-3 dark:text-rink-300 font-medium text-center mb-4">
+        <div className="flex-1 flex flex-col items-center justify-center px-6 bg-it-canvas dark:bg-puck">
+          <Icon name="error_outline" className="text-5xl text-it-ink-400 dark:text-rink-500 mb-3" aria-hidden="true" />
+          <p className="text-card-body text-it-ink-500 dark:text-rink-300 font-medium text-center mb-4">
             {loadError}
           </p>
           <Button variant="outline" onClick={() => back()}>
@@ -392,19 +392,18 @@ export default function EditChildPage() {
       <PageAppBar title="선수 정보 수정" forceNative />
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto hide-scrollbar">
+      <div className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck">
         <form
           onSubmit={(e) => {
             e.preventDefault();
             handleSubmit();
           }}
-          className="p-4 pb-6 space-y-6"
         >
-          {/* 기본 정보 섹션 */}
-          <section className="bg-white dark:bg-rink-800 rounded-2xl border border-wline-2 dark:border-rink-700 shadow-sm p-4">
-            <h3 className="text-card-body font-bold text-wtext-1 dark:text-white mb-4 flex items-center gap-2">
-              <span className="flex size-7 items-center justify-center rounded-w-pill bg-ice-500/10 text-ice-500">
-                <Icon name="person" className="text-[16px]" aria-hidden="true" />
+          {/* 기본 정보 섹션 — flat 흰 섹션 */}
+          <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6">
+            <h3 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white mb-5 flex items-center gap-2">
+              <span className="flex size-7 items-center justify-center rounded-w-md bg-it-blue-50 dark:bg-it-blue-900/30">
+                <Icon name="person" className="text-[16px] text-it-blue-500" aria-hidden="true" />
               </span>
               기본 정보
             </h3>
@@ -421,11 +420,11 @@ export default function EditChildPage() {
                       formData.imageUrl ? '자녀 사진 변경' : '자녀 사진 추가'
                     }
                     className={cn(
-                      'w-20 h-20 rounded-full grid place-items-center overflow-hidden transition-opacity',
-                      'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40',
+                      'w-20 h-20 rounded-w-pill grid place-items-center overflow-hidden transition-opacity',
+                      'focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40',
                       formData.imageUrl
-                        ? 'bg-wsurface dark:bg-rink-800 border border-wline dark:border-rink-700'
-                        : 'bg-ice-50 dark:bg-ice-500/15 border-2 border-dashed border-ice-200 dark:border-ice-500/40',
+                        ? 'bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700'
+                        : 'bg-it-blue-50 dark:bg-it-blue-900/20 border-2 border-dashed border-it-blue-500/30 dark:border-it-blue-500/40',
                       (isSubmitting || isUploadingImage) && 'opacity-60 cursor-not-allowed',
                     )}
                   >
@@ -439,14 +438,14 @@ export default function EditChildPage() {
                     ) : (
                       <Icon
                         name="person"
-                        className="text-[36px] text-ice-400 dark:text-ice-500"
+                        className="text-[36px] text-it-blue-400 dark:text-it-blue-500"
                         aria-hidden="true"
                       />
                     )}
                   </button>
                   {isUploadingImage ? (
                     <div
-                      className="absolute -right-0.5 -bottom-0.5 w-[26px] h-[26px] rounded-full bg-ice-500 text-white grid place-items-center border-[3px] border-white dark:border-rink-800"
+                      className="absolute -right-0.5 -bottom-0.5 w-[26px] h-[26px] rounded-w-pill bg-it-blue-500 text-white grid place-items-center border-[3px] border-white dark:border-rink-800"
                       aria-label="업로드 중"
                       role="status"
                     >
@@ -456,7 +455,7 @@ export default function EditChildPage() {
                     </div>
                   ) : (
                     <div
-                      className="absolute -right-0.5 -bottom-0.5 w-[26px] h-[26px] rounded-full bg-ice-500 text-white grid place-items-center text-base font-bold border-[3px] border-white dark:border-rink-800 pointer-events-none"
+                      className="absolute -right-0.5 -bottom-0.5 w-[26px] h-[26px] rounded-w-pill bg-it-blue-500 text-white grid place-items-center text-base font-bold border-[3px] border-white dark:border-rink-800 pointer-events-none"
                       aria-hidden="true"
                     >
                       +
@@ -468,7 +467,7 @@ export default function EditChildPage() {
                       onClick={handleImageRemove}
                       disabled={isSubmitting}
                       aria-label="자녀 사진 제거"
-                      className="absolute -left-1 -top-1 w-6 h-6 rounded-full bg-wtext-2 dark:bg-rink-700 text-white grid place-items-center border-[2px] border-white dark:border-rink-800 hover:bg-wtext-1 dark:hover:bg-rink-600 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
+                      className="absolute -left-1 -top-1 w-6 h-6 rounded-w-pill bg-it-ink-500 dark:bg-rink-700 text-white grid place-items-center border-[2px] border-white dark:border-rink-800 hover:bg-it-ink-800 dark:hover:bg-rink-600 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40"
                     >
                       <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
                         <path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
@@ -516,10 +515,10 @@ export default function EditChildPage() {
               <div className="w-full min-w-0">
                 <label
                   htmlFor={birthDateId}
-                  className="block text-card-body font-semibold text-wtext-2 dark:text-rink-100 mb-2"
+                  className="block text-card-meta font-bold text-it-ink-500 dark:text-rink-100 mb-1.5"
                 >
                   생년월일
-                  <span className="text-red-600 ml-1" aria-hidden="true">*</span>
+                  <span className="text-it-red-500 ml-1" aria-hidden="true">*</span>
                 </label>
                 <button
                   id={birthDateId}
@@ -532,11 +531,11 @@ export default function EditChildPage() {
                   aria-haspopup="dialog"
                   aria-expanded={isDatePickerOpen}
                   className={cn(
-                    'w-full h-12 min-h-[48px] px-4 rounded-lg bg-white dark:bg-rink-800 border flex items-center gap-2.5 text-left transition-colors motion-reduce:transition-none',
+                    'w-full h-12 min-h-[48px] px-4 rounded-w-md bg-it-fill dark:bg-rink-800 border-[1.5px] flex items-center gap-2.5 text-left transition-colors motion-reduce:transition-none',
                     errors.birthDate
-                      ? 'border-red-600'
-                      : 'border-wline dark:border-rink-700 hover:border-ice-500/40',
-                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/30',
+                      ? 'border-it-red-500'
+                      : 'border-it-line-strong dark:border-rink-700 hover:border-it-blue-500/40',
+                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/30',
                     isSubmitting && 'opacity-60 cursor-not-allowed',
                   )}
                 >
@@ -544,8 +543,8 @@ export default function EditChildPage() {
                     className={cn(
                       'flex-1 text-card-title tracking-[-0.01em] truncate',
                       formData.birthDate
-                        ? 'text-wtext-1 dark:text-white font-semibold'
-                        : 'text-wtext-4 dark:text-wtext-4/80 font-medium',
+                        ? 'text-it-ink-800 dark:text-white font-semibold'
+                        : 'text-it-ink-400 dark:text-wtext-4/80 font-medium',
                     )}
                   >
                     {formData.birthDate ? formatDateLabel(formData.birthDate) : '연도. 월. 일.'}
@@ -557,14 +556,14 @@ export default function EditChildPage() {
                     viewBox="0 0 16 16"
                     fill="none"
                     aria-hidden="true"
-                    className="text-wtext-3 dark:text-wtext-4 shrink-0"
+                    className="text-it-ink-400 dark:text-wtext-4 shrink-0"
                   >
                     <rect x="2" y="3" width="12" height="11" rx="1.4" stroke="currentColor" strokeWidth="1.4" />
                     <path d="M2 6h12M5 1.5v3M11 1.5v3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
                   </svg>
                 </button>
                 {errors.birthDate && (
-                  <p className="mt-2 text-card-body text-red-600 flex items-center gap-1" role="alert">
+                  <p className="mt-2 text-card-body text-it-red-500 flex items-center gap-1" role="alert">
                     <Icon name="error" className="text-[16px]" aria-hidden="true" />
                     {errors.birthDate}
                   </p>
@@ -575,11 +574,14 @@ export default function EditChildPage() {
             </div>
           </section>
 
-          {/* 추가 정보 섹션 */}
-          <section className="bg-white dark:bg-rink-800 rounded-2xl border border-wline-2 dark:border-rink-700 shadow-sm p-4">
-            <h3 className="text-card-body font-bold text-wtext-1 dark:text-white mb-4 flex items-center gap-2">
-              <span className="flex size-7 items-center justify-center rounded-w-pill bg-ice-500/10 text-ice-500">
-                <Icon name="info" className="text-[16px]" aria-hidden="true" />
+          {/* 8px 회색 갭 */}
+          <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+          {/* 추가 정보 섹션 — flat 흰 섹션 */}
+          <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6">
+            <h3 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white mb-5 flex items-center gap-2">
+              <span className="flex size-7 items-center justify-center rounded-w-md bg-it-blue-50 dark:bg-it-blue-900/30">
+                <Icon name="info" className="text-[16px] text-it-blue-500" aria-hidden="true" />
               </span>
               추가 정보
             </h3>
@@ -587,7 +589,7 @@ export default function EditChildPage() {
             <div className="space-y-4">
               {/* 성별 */}
               <div>
-                <label className="block text-card-body font-semibold text-wtext-2 dark:text-rink-100 mb-2">
+                <label className="block text-card-meta font-bold text-it-ink-500 dark:text-rink-100 mb-1.5">
                   성별
                 </label>
                 <div className="grid grid-cols-2 gap-2">
@@ -597,10 +599,10 @@ export default function EditChildPage() {
                       type="button"
                       onClick={() => updateField('gender', formData.gender === opt.value ? '' : opt.value)}
                       disabled={isSubmitting}
-                      className={`py-3 rounded-xl border-2 text-card-body font-semibold transition-all motion-reduce:transition-none duration-200 ${
+                      className={`py-3 rounded-w-md border-[1.5px] text-card-body font-semibold transition-all motion-reduce:transition-none duration-200 ${
                         formData.gender === opt.value
-                          ? 'bg-blue-50 border-blue-500 text-ice-500 dark:bg-blue-900/20 dark:border-blue-400 dark:text-blue-300'
-                          : 'bg-white dark:bg-rink-800 border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 hover:border-wline dark:hover:border-rink-700'
+                          ? 'bg-it-blue-50 border-it-blue-500 text-it-blue-500 dark:bg-it-blue-900/20 dark:border-it-blue-500 dark:text-it-blue-500'
+                          : 'bg-it-fill dark:bg-rink-800 border-it-line-strong dark:border-rink-700 text-it-ink-800 dark:text-rink-100 hover:border-it-blue-500/40 dark:hover:border-rink-700'
                       } disabled:opacity-60 disabled:cursor-not-allowed`}
                     >
                       {opt.label}
@@ -612,15 +614,18 @@ export default function EditChildPage() {
             </div>
           </section>
 
-          {/* 팀 정보 섹션 (Phase 3) — 소속 팀 변경 */}
-          <section className="bg-white dark:bg-rink-800 rounded-2xl border border-wline-2 dark:border-rink-700 shadow-sm p-4">
-            <h3 className="text-card-body font-bold text-wtext-1 dark:text-white mb-1 flex items-center gap-2">
-              <span className="flex size-7 items-center justify-center rounded-w-pill bg-ice-500/10 text-ice-500">
-                <Icon name="groups" className="text-[16px]" aria-hidden="true" />
+          {/* 8px 회색 갭 */}
+          <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+          {/* 팀 정보 섹션 (Phase 3) — flat 흰 섹션, 소속 팀 변경 */}
+          <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6">
+            <h3 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white mb-1 flex items-center gap-2">
+              <span className="flex size-7 items-center justify-center rounded-w-md bg-it-blue-50 dark:bg-it-blue-900/30">
+                <Icon name="groups" className="text-[16px] text-it-blue-500" aria-hidden="true" />
               </span>
               팀 정보
             </h3>
-            <p className="text-card-meta text-wtext-3 dark:text-rink-300 mb-3 ml-9">
+            <p className="text-card-meta text-it-ink-500 dark:text-rink-300 mb-3 ml-9">
               {MESSAGES.team.childEditTeamSelectHelper}
             </p>
 
@@ -628,24 +633,24 @@ export default function EditChildPage() {
               type="button"
               onClick={() => !isSubmitting && setIsTeamPickerOpen(true)}
               disabled={isSubmitting}
-              className="w-full flex items-center justify-between gap-2 px-3.5 py-3 rounded-xl bg-wbg dark:bg-rink-900 border border-wline-2 dark:border-rink-700 text-left transition-colors motion-reduce:transition-none hover:border-ice-300 dark:hover:border-ice-500/40 disabled:opacity-60"
+              className="w-full flex items-center justify-between gap-2 px-3.5 py-3 rounded-w-md bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 text-left transition-colors motion-reduce:transition-none hover:border-it-blue-500/40 dark:hover:border-it-blue-500/40 disabled:opacity-60"
             >
               <span className="min-w-0">
-                <span className="block text-card-meta font-bold text-wtext-3 dark:text-wtext-4">
+                <span className="block text-card-meta font-bold text-it-ink-500 dark:text-wtext-4">
                   {MESSAGES.team.childEditTeamCurrentLabel}
                 </span>
                 <span
                   className={cn(
                     'mt-1 block truncate',
                     selectedTeam
-                      ? 'text-card-title font-extrabold text-wtext-1 dark:text-white tracking-[-0.02em]'
-                      : 'text-card-body font-semibold text-wtext-3 dark:text-wtext-4',
+                      ? 'text-card-title font-extrabold text-it-ink-800 dark:text-white tracking-[-0.02em]'
+                      : 'text-card-body font-semibold text-it-ink-500 dark:text-wtext-4',
                   )}
                 >
                   {selectedTeam ? selectedTeam.name : MESSAGES.team.childrenAddTeamNoneOption}
                 </span>
               </span>
-              <span className="shrink-0 inline-flex items-center gap-1 text-card-meta font-bold text-ice-600 dark:text-ice-500">
+              <span className="shrink-0 inline-flex items-center gap-1 text-card-meta font-bold text-it-blue-500">
                 {selectedTeam
                   ? MESSAGES.team.childrenAddTeamChangeAction
                   : MESSAGES.team.childrenAddTeamPickAction}
@@ -658,27 +663,27 @@ export default function EditChildPage() {
                 type="button"
                 onClick={() => setSelectedTeam(null)}
                 disabled={isSubmitting}
-                className="mt-2 inline-flex items-center gap-1 text-card-meta font-semibold text-wtext-3 dark:text-wtext-4 underline disabled:opacity-60"
+                className="mt-2 inline-flex items-center gap-1 text-card-meta font-semibold text-it-ink-500 dark:text-wtext-4 underline disabled:opacity-60"
               >
                 <Icon name="close" className="text-[14px]" aria-hidden="true" />
                 {MESSAGES.team.childrenAddTeamClear}
               </button>
             ) : (
-              <p className="mt-2 text-card-meta text-wtext-3 dark:text-wtext-4">
+              <p className="mt-2 text-card-meta text-it-ink-500 dark:text-wtext-4">
                 {MESSAGES.team.childrenAddTeamNoneHint}
               </p>
             )}
 
             {/* 상태 안내 — 변경 감지 우선, 미변경 시 현재 승인 대기 안내 */}
             {teamChangedView ? (
-              <p className="mt-2 text-card-meta font-semibold text-ice-600 dark:text-ice-500">
+              <p className="mt-2 text-card-meta font-semibold text-it-blue-500">
                 {selectedTeam
                   ? MESSAGES.team.childEditTeamChangeNotice
                   : MESSAGES.team.childEditTeamRemoveNotice}
               </p>
             ) : (
               teamPending && (
-                <p className="mt-2 text-card-meta font-semibold text-amber-600 dark:text-amber-400">
+                <p className="mt-2 text-card-meta font-semibold text-sun-500">
                   {MESSAGES.team.childEditTeamPendingHint}
                 </p>
               )
@@ -694,7 +699,7 @@ export default function EditChildPage() {
           MobileContainer(flex flex-col) 의 정상 흐름 푸터(shrink-0)로 변경해 스크롤 영역(flex-1)
           아래에 확실히 고정. safe-area 는 paddingBottom 으로 직접 보정. */}
       <div
-        className="shrink-0 grid grid-cols-5 gap-2 px-4 pt-3 w-full min-w-0 border-t border-wline-2 dark:border-rink-700 bg-wbg dark:bg-puck"
+        className="shrink-0 grid grid-cols-5 gap-2 px-4 pt-3 w-full min-w-0 border-t border-it-line dark:border-rink-700 bg-it-surface dark:bg-puck"
         style={{
           paddingBottom:
             'calc(12px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))',
@@ -706,7 +711,7 @@ export default function EditChildPage() {
           variant="outline"
           onClick={handleDelete}
           disabled={isSubmitting || isDeleting}
-          className="col-span-2 border-red-500 text-red-600 hover:border-red-500 hover:bg-red-50 dark:border-red-500 dark:text-red-400 dark:hover:bg-red-950/30"
+          className="col-span-2 border-it-red-500 text-it-red-500 hover:border-it-red-500 hover:bg-it-red-500/10 dark:border-it-red-500 dark:text-it-red-500 dark:hover:bg-it-red-500/15"
         >
           {isDeleting ? (
             <span className="flex items-center justify-center gap-2">

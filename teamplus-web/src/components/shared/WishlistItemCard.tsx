@@ -37,6 +37,12 @@ export interface WishlistItemCardProps {
   onCtaClick?: () => void;
   /** 추가 className */
   className?: string;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 카드 박스(rounded-2xl·border·shadow) 제거 → 흰 섹션 위 flat 행 + it-* 토큰.
+   *   상태 태그는 달력/재고 SoT(success=mint·error=it-red)로 매핑.
+   */
+  iceTheme?: boolean;
 }
 
 const TAG_TONE: Record<WishlistTagTone, string> = {
@@ -44,6 +50,14 @@ const TAG_TONE: Record<WishlistTagTone, string> = {
   success: 'bg-success text-white',
   warning: 'bg-warning text-white',
   error: 'bg-error text-white',
+};
+
+// [ICETIMES] 상태 태그 — 재고/할인 SoT(success=mint·error=it-red), primary=it-blue.
+const TAG_TONE_ICE: Record<WishlistTagTone, string> = {
+  primary: 'bg-it-blue-500 text-white',
+  success: 'bg-mint-600 text-white',
+  warning: 'bg-sun-500 text-it-ink-900',
+  error: 'bg-it-red-500 text-white',
 };
 
 const TYPE_ICON: Record<WishlistItemType, string> = {
@@ -76,6 +90,7 @@ export function WishlistItemCard({
   onRemove,
   onCtaClick,
   className,
+  iceTheme = false,
 }: WishlistItemCardProps) {
   const typeLabel = TYPE_LABEL[type];
 
@@ -92,15 +107,27 @@ export function WishlistItemCard({
   return (
     <article
       className={cn(
-        'bg-white dark:bg-rink-800',
-        'rounded-2xl overflow-hidden',
-        'border border-wline-2 dark:border-rink-700',
-        'shadow-sm',
+        iceTheme
+          ? // flat — 카드 박스 제거. 흰 섹션 위 행, 이미지만 hairline 라운드.
+            'bg-transparent'
+          : cn(
+              'bg-white dark:bg-rink-800',
+              'rounded-2xl overflow-hidden',
+              'border border-wline-2 dark:border-rink-700',
+              'shadow-sm',
+            ),
         className
       )}
     >
       {/* Top: Image 16:9 with overlays */}
-      <div className="relative aspect-[16/9] bg-wline-2 dark:bg-rink-700">
+      <div
+        className={cn(
+          'relative aspect-[16/9]',
+          iceTheme
+            ? 'bg-it-fill dark:bg-it-blue-900/30 rounded-w-md overflow-hidden border border-it-line dark:border-it-blue-900'
+            : 'bg-wline-2 dark:bg-rink-700'
+        )}
+      >
         {resolveImageSrc(imageUrl) ? (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
@@ -111,7 +138,12 @@ export function WishlistItemCard({
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <span
-              className="material-symbols-outlined text-wtext-3 dark:text-rink-300 text-5xl"
+              className={cn(
+                'material-symbols-outlined text-5xl',
+                iceTheme
+                  ? 'text-it-ink-400 dark:text-it-ink-300'
+                  : 'text-wtext-3 dark:text-rink-300'
+              )}
               aria-hidden="true"
             >
               {TYPE_ICON[type]}
@@ -126,7 +158,7 @@ export function WishlistItemCard({
               'absolute top-2.5 left-2.5',
               'inline-flex items-center px-2 py-0.5 rounded-full',
               'text-[11px] font-semibold',
-              TAG_TONE[tag.tone]
+              (iceTheme ? TAG_TONE_ICE : TAG_TONE)[tag.tone]
             )}
           >
             {tag.label}
@@ -141,11 +173,12 @@ export function WishlistItemCard({
           className={cn(
             'absolute top-2 right-2',
             'w-9 h-9 rounded-full',
-            'bg-white/90 dark:bg-rink-900/80',
             'flex items-center justify-center',
-            'text-error hover:bg-white dark:hover:bg-rink-900',
             'active:brightness-95 transition-colors duration-150',
-            'focus:outline-none focus:ring-2 focus:ring-ice-500/40'
+            'focus:outline-none focus:ring-2',
+            iceTheme
+              ? 'bg-it-surface/90 dark:bg-it-blue-950/80 text-it-red-500 hover:bg-it-surface dark:hover:bg-it-blue-950 focus:ring-it-blue-500/40'
+              : 'bg-white/90 dark:bg-rink-900/80 text-error hover:bg-white dark:hover:bg-rink-900 focus:ring-ice-500/40'
           )}
         >
           <span className="material-symbols-outlined text-[22px]" style={{ fontVariationSettings: '"FILL" 1' }} aria-hidden="true">
@@ -155,19 +188,40 @@ export function WishlistItemCard({
       </div>
 
       {/* Bottom: content */}
-      <div className="p-4">
+      <div className={iceTheme ? 'pt-3' : 'p-4'}>
         <div className="flex items-center gap-1.5 mb-1">
-          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-wline-2 dark:bg-rink-700 text-wtext-2 dark:text-rink-100">
+          <span
+            className={cn(
+              'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold',
+              iceTheme
+                ? 'bg-it-fill dark:bg-it-blue-900/40 text-it-ink-600 dark:text-it-ink-200'
+                : 'bg-wline-2 dark:bg-rink-700 text-wtext-2 dark:text-rink-100'
+            )}
+          >
             {typeLabel}
           </span>
         </div>
 
-        <h3 className="text-[15px] font-bold text-wtext-1 dark:text-white line-clamp-1">
+        <h3
+          className={cn(
+            'text-[15px] font-bold line-clamp-1',
+            iceTheme
+              ? 'text-it-ink-800 dark:text-white tracking-[-0.01em]'
+              : 'text-wtext-1 dark:text-white'
+          )}
+        >
           {title}
         </h3>
 
         {subtitle && (
-          <p className="mt-1 text-sm text-wtext-3 dark:text-rink-300 line-clamp-1">
+          <p
+            className={cn(
+              'mt-1 text-sm line-clamp-1',
+              iceTheme
+                ? 'text-it-ink-500 dark:text-it-ink-300'
+                : 'text-wtext-3 dark:text-rink-300'
+            )}
+          >
             {subtitle}
           </p>
         )}
@@ -175,11 +229,23 @@ export function WishlistItemCard({
         {/* Price row */}
         <div className="mt-3 flex items-baseline gap-2 ml-auto text-right">
           {originalPrice != null && originalPrice > price && (
-            <span className="text-xs line-through text-gray-400 dark:text-rink-300">
+            <span
+              className={cn(
+                'text-xs line-through',
+                iceTheme
+                  ? 'text-it-ink-400 dark:text-it-ink-300'
+                  : 'text-gray-400 dark:text-rink-300'
+              )}
+            >
               {formatKrw(originalPrice)}
             </span>
           )}
-          <span className="text-ice-500 text-lg font-bold">
+          <span
+            className={cn(
+              'text-lg font-bold tabular-nums',
+              iceTheme ? 'text-it-blue-500' : 'text-ice-500'
+            )}
+          >
             {formatKrw(price)}
           </span>
         </div>
@@ -191,11 +257,12 @@ export function WishlistItemCard({
             onClick={handleCta}
             aria-label={`${title} ${ctaLabel}`}
             className={cn(
-              'mt-3 w-full h-10 rounded-lg',
-              'bg-ice-500 text-white text-sm font-semibold',
-              'hover:bg-ice-700 active:brightness-95',
-              'transition-colors duration-150',
-              'focus:outline-none focus:ring-2 focus:ring-ice-500/40'
+              'mt-3 w-full h-10 text-sm font-semibold',
+              'active:brightness-95 transition-colors duration-150',
+              'focus:outline-none focus:ring-2',
+              iceTheme
+                ? 'rounded-w-md bg-it-blue-500 text-white hover:bg-it-blue-600 focus:ring-it-blue-500/40'
+                : 'rounded-lg bg-ice-500 text-white hover:bg-ice-700 focus:ring-ice-500/40'
             )}
           >
             {ctaLabel}

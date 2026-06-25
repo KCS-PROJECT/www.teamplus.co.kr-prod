@@ -474,44 +474,46 @@ function PaymentOptionsContent() {
       <PageAppBar title="수업 결제" />
 
       {/* Stepper */}
-      <div className="w-full px-6 py-4">
-        <PaymentStepIndicator currentStep={2} />
+      <div className="w-full px-6 py-4 bg-it-canvas dark:bg-puck">
+        <PaymentStepIndicator currentStep={2} iceTheme />
       </div>
 
       {/* Main Content — 내부 스크롤 + inline CTA. [&>*]:shrink-0 으로 flex 자식이 자연 높이 이하로 압축되지 않도록 고정. */}
-      <main className="flex-1 flex flex-col gap-6 px-5 pt-2 overflow-y-auto [&>*]:shrink-0">
-        {/* Step Headline */}
-        <StepHeadline currentStep={2} />
+      <main className="flex-1 flex flex-col overflow-y-auto bg-it-canvas dark:bg-puck [&>*]:shrink-0">
+        {/* Step Headline — 흰 섹션 */}
+        <section className="bg-it-surface dark:bg-it-blue-950 px-5 pt-5 pb-1">
+          <StepHeadline currentStep={2} iceTheme />
+        </section>
 
-        {/* Class Summary Card */}
+        {/* Class Summary — 흰 섹션 hairline 행 (8px 회색 갭, 카드 박스 제거) */}
         {isLoading ? null : (
-          <section className="group relative overflow-hidden rounded-2xl bg-white dark:bg-rink-800 p-1 shadow-sm transition-all motion-reduce:transition-none hover:shadow-md border border-wline-2 dark:border-rink-700">
-            <div className="flex gap-4 p-3 items-center">
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4">
+            <div className="flex gap-4 items-center">
               {/* Image */}
-              <div className="relative w-24 h-24 shrink-0 rounded-xl overflow-hidden bg-wline-2 dark:bg-rink-700 flex items-center justify-center">
+              <div className="relative w-20 h-20 shrink-0 rounded-w-md overflow-hidden bg-it-fill dark:bg-rink-700 flex items-center justify-center">
                 <Icon
                   name="sports_hockey"
-                  className="text-4xl text-wtext-3"
+                  className="text-4xl text-it-ink-400"
                 />
               </div>
               {/* Text Info */}
-              <div className="flex flex-col gap-1 flex-1">
+              <div className="flex flex-col gap-1 flex-1 min-w-0">
                 {classInfo?.levelRequired && (
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="px-2 py-0.5 rounded-w-pill bg-blue-50 dark:bg-blue-900/30 text-ice-500 text-[10px] font-bold uppercase tracking-wider">
+                    <span className="px-2 py-0.5 rounded-w-pill bg-it-blue-50 dark:bg-it-blue-500/15 text-it-blue-500 text-[10px] font-bold uppercase tracking-wider">
                       {classInfo.levelRequired}
                     </span>
                   </div>
                 )}
-                <h3 className="text-card-emphasis font-bold leading-tight line-clamp-2 text-wtext-1 dark:text-white">
+                <h3 className="text-[15.5px] font-bold leading-tight line-clamp-2 text-it-ink-900 dark:text-white">
                   {classInfo?.className ?? "-"}
                 </h3>
-                <p className="text-wtext-3 dark:text-rink-300 text-card-meta mt-1">
+                <p className="text-it-ink-500 dark:text-rink-300 text-card-meta mt-1">
                   {product
                     ? `${product.productName} (월 ${product.sessionsPerMonth}회)`
                     : "-"}
                 </p>
-                <p className="text-wtext-1 dark:text-white text-card-body font-bold mt-2">
+                <p className="text-it-ink-900 dark:text-white text-card-body font-extrabold tabular-nums mt-2">
                   {(product?.price ?? 0).toLocaleString()}원
                 </p>
               </div>
@@ -524,14 +526,14 @@ function PaymentOptionsContent() {
             "단일만 나온다"는 혼선을 해소. 현재 결제 대상은 강조 + "결제중" 뱃지. */}
         {!isLoading && isMultiPay && (
           <section
-            className="rounded-2xl bg-white dark:bg-rink-800 shadow-sm p-5 border border-wline-2 dark:border-rink-700"
+            className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4"
             aria-label="선택한 전체 수강 내역"
           >
-            <div className="flex items-center justify-between mb-3 px-1">
-              <h3 className="text-card-emphasis font-bold text-wtext-1 dark:text-white">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-card-emphasis font-bold text-it-ink-900 dark:text-white">
                 선택한 수강 내역
               </h3>
-              <span className="text-card-meta font-medium text-wtext-3 dark:text-rink-300">
+              <span className="text-card-meta font-medium text-it-ink-500 dark:text-rink-300">
                 전체 {payItems.length}건
                 {currentPayIndex >= 0
                   ? ` · ${currentPayIndex + 1}/${payItems.length} 결제`
@@ -545,30 +547,30 @@ function PaymentOptionsContent() {
                   <li
                     key={`${it.childId}-${it.productId}`}
                     className={cn(
-                      "flex items-center justify-between gap-3 rounded-w-lg px-3.5 py-3 border transition-colors",
+                      "flex items-center justify-between gap-3 rounded-w-md px-3.5 py-3 border transition-colors",
                       isCurrent
-                        ? "border-ice-500 bg-ice-50/60 dark:bg-rink-700"
-                        : "border-wline-2 dark:border-rink-700 bg-wbg dark:bg-rink-800 opacity-80",
+                        ? "border-it-blue-500 bg-it-blue-50/60 dark:bg-rink-700"
+                        : "border-it-line dark:border-rink-700 bg-it-fill dark:bg-rink-800 opacity-80",
                     )}
                   >
                     <div className="flex flex-col gap-0.5 min-w-0">
-                      <span className="text-card-body font-bold text-wtext-1 dark:text-white truncate">
+                      <span className="text-card-body font-bold text-it-ink-900 dark:text-white truncate">
                         {it.childName}
                       </span>
-                      <span className="text-card-meta text-wtext-3 dark:text-rink-300 truncate">
+                      <span className="text-card-meta text-it-ink-500 dark:text-rink-300 truncate">
                         {it.prod?.productName ?? "-"}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-card-body font-bold text-wtext-1 dark:text-white tabular-nums">
+                      <span className="text-card-body font-bold text-it-ink-900 dark:text-white tabular-nums">
                         {(it.prod?.price ?? 0).toLocaleString()}원
                       </span>
                       <span
                         className={cn(
                           "px-2 py-0.5 rounded-w-pill text-[10px] font-bold whitespace-nowrap",
                           isCurrent
-                            ? "bg-ice-500 text-white"
-                            : "bg-wline-2 dark:bg-rink-700 text-wtext-3 dark:text-rink-300",
+                            ? "bg-it-blue-500 text-white"
+                            : "bg-it-line dark:bg-rink-700 text-it-ink-500 dark:text-rink-300",
                         )}
                       >
                         {isCurrent ? "결제중" : "대기"}
@@ -578,18 +580,16 @@ function PaymentOptionsContent() {
                 );
               })}
             </ul>
-            <div className="relative my-4">
-              <div className="w-full border-t border-wline-2 dark:border-rink-700 border-dashed" />
-            </div>
-            <div className="flex items-center justify-between px-1">
-              <span className="text-card-body font-medium text-wtext-3 dark:text-rink-300">
+            <div className="my-4 border-t border-it-line dark:border-rink-700" />
+            <div className="flex items-center justify-between">
+              <span className="text-card-body font-medium text-it-ink-500 dark:text-rink-300">
                 전체 합계 ({payItems.length}건)
               </span>
-              <span className="text-card-emphasis font-bold text-wtext-1 dark:text-white tabular-nums">
+              <span className="text-card-emphasis font-extrabold text-it-ink-900 dark:text-white tabular-nums">
                 {payTotalAmount.toLocaleString()}원
               </span>
             </div>
-            <p className="mt-2 px-1 text-[12px] leading-relaxed text-wtext-3 dark:text-rink-300">
+            <p className="mt-2 text-[12px] leading-relaxed text-it-ink-500 dark:text-rink-300">
               결제는 한 건씩 순차로 진행됩니다. 이번 결제 완료 후 다음 건을 이어
               결제할 수 있어요.
             </p>
@@ -598,8 +598,8 @@ function PaymentOptionsContent() {
 
         {/* Fee Type Selection — PaymentOptionCard (A-5 feeType 분기 UI) */}
         {!isLoading && hasFeeTypeChoice && (
-          <section>
-            <h3 className="text-card-emphasis font-bold text-wtext-1 dark:text-white mb-3 px-1">
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4">
+            <h3 className="text-card-emphasis font-bold text-it-ink-900 dark:text-white mb-3">
               결제 방식 선택
             </h3>
             <div className="grid grid-cols-1 gap-3">
@@ -657,6 +657,7 @@ function PaymentOptionsContent() {
                     onSelect={() => handleFeeTypeChange(feeType)}
                     disabled={isCardDisabled}
                     disabledBadge={disabledBadge}
+                    iceTheme
                   />
                 );
               })}
@@ -666,12 +667,12 @@ function PaymentOptionsContent() {
               <button
                 type="button"
                 onClick={() => setIsPackageSheetOpen(true)}
-                className="mt-3 flex w-full items-center justify-between rounded-xl border border-wline-2 bg-white px-4 py-3 text-left transition-colors motion-reduce:transition-none hover:border-ice-500/40 active:brightness-95 dark:border-rink-700 dark:bg-rink-800"
+                className="mt-3 flex w-full items-center justify-between rounded-w-md border border-it-line-strong bg-it-fill px-4 py-3 text-left transition-colors motion-reduce:transition-none hover:border-it-blue-500/40 active:brightness-95 dark:border-rink-700 dark:bg-rink-800"
                 aria-haspopup="dialog"
                 aria-expanded={isPackageSheetOpen}
               >
                 <div className="flex items-center gap-3">
-                  <span className="flex size-8 items-center justify-center rounded-w-pill bg-ice-500/10 text-ice-500">
+                  <span className="flex size-8 items-center justify-center rounded-w-pill bg-it-blue-50 dark:bg-it-blue-500/15 text-it-blue-500">
                     <Icon
                       name="tune"
                       className="text-card-emphasis"
@@ -679,15 +680,15 @@ function PaymentOptionsContent() {
                     />
                   </span>
                   <div className="flex flex-col">
-                    <span className="text-[11px] font-semibold uppercase tracking-wider text-wtext-3 dark:text-rink-300">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-it-ink-500 dark:text-rink-300">
                       선택된 패키지
                     </span>
-                    <span className="text-card-body font-bold text-wtext-1 dark:text-white">
+                    <span className="text-card-body font-bold text-it-ink-900 dark:text-white">
                       {product?.productName ?? "패키지 선택"}
                     </span>
                   </div>
                 </div>
-                <span className="text-card-meta font-semibold text-ice-500">변경</span>
+                <span className="text-card-meta font-semibold text-it-blue-500">변경</span>
               </button>
             )}
           </section>
@@ -700,8 +701,8 @@ function PaymentOptionsContent() {
         {!isLoading &&
           selectedFeeType === "PER_SESSION" &&
           product?.feePerSession && (
-            <section className="rounded-2xl bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 p-5">
-              <h3 className="text-card-body font-bold text-wtext-1 dark:text-white mb-4">
+            <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4">
+              <h3 className="text-card-body font-bold text-it-ink-900 dark:text-white mb-4">
                 수업 횟수 선택
               </h3>
               <div className="flex items-center justify-between">
@@ -713,7 +714,7 @@ function PaymentOptionsContent() {
                     }
                     disabled={sessionCount <= 1}
                     aria-label="수업 횟수 감소"
-                    className="flex items-center justify-center w-10 h-10 rounded-w-pill border-2 border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 hover:border-ice-500 hover:text-ice-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all motion-reduce:transition-none"
+                    className="flex items-center justify-center w-10 h-10 rounded-w-pill border-2 border-it-line-strong dark:border-rink-700 text-it-ink-600 dark:text-rink-100 hover:border-it-blue-500 hover:text-it-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors motion-reduce:transition-none"
                   >
                     <Icon
                       name="remove"
@@ -721,7 +722,7 @@ function PaymentOptionsContent() {
                       aria-hidden="true"
                     />
                   </button>
-                  <span className="text-2xl font-bold text-wtext-1 dark:text-white w-12 text-center">
+                  <span className="text-2xl font-bold text-it-ink-900 dark:text-white w-12 text-center tabular-nums">
                     {sessionCount}
                   </span>
                   <button
@@ -731,17 +732,17 @@ function PaymentOptionsContent() {
                     }
                     disabled={sessionCount >= 20}
                     aria-label="수업 횟수 증가"
-                    className="flex items-center justify-center w-10 h-10 rounded-w-pill bg-ice-500 text-white hover:bg-ice-500/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all motion-reduce:transition-none"
+                    className="flex items-center justify-center w-10 h-10 rounded-w-pill bg-it-blue-500 text-white hover:bg-it-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors motion-reduce:transition-none"
                   >
                     <Icon name="add" className="text-card-title font-bold" />
                   </button>
                 </div>
                 <div className="text-right">
-                  <p className="text-card-meta text-wtext-3 dark:text-rink-300">
+                  <p className="text-card-meta text-it-ink-500 dark:text-rink-300">
                     {sessionCount}회 × {product.feePerSession.toLocaleString()}
                     원
                   </p>
-                  <p className="text-card-title font-bold text-ice-500 mt-0.5">
+                  <p className="text-card-title font-bold text-it-blue-600 dark:text-it-blue-300 mt-0.5 tabular-nums">
                     {(product.feePerSession * sessionCount).toLocaleString()}원
                   </p>
                 </div>
@@ -751,74 +752,73 @@ function PaymentOptionsContent() {
 
         {/* Student Selection — [수정 2026-05-18] readonly 표시 (자녀 변경은 수업 상세 페이지에서만). */}
         {isLoading ? null : (
-          <section>
-            <div className="flex items-center justify-between mb-3 px-1">
-              <h3 className="text-card-emphasis font-bold text-wtext-1 dark:text-white">
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-card-emphasis font-bold text-it-ink-900 dark:text-white">
                 수강생
               </h3>
               {ageRangeLabel && (
-                <span className="text-card-meta font-medium text-wtext-3 dark:text-rink-300">
+                <span className="text-card-meta font-medium text-it-ink-500 dark:text-rink-300">
                   수강 연령 · {ageRangeLabel}
                 </span>
               )}
             </div>
             <SelectedChildDisplay
               child={children.find((c) => c.id === selectedChild)}
+              iceTheme
             />
           </section>
         )}
 
-        {/* Payment Breakdown — 결제 금액 변경 시 스크린리더 안내 */}
+        {/* Payment Breakdown — 결제 금액 변경 시 스크린리더 안내 (흰 섹션 hairline) */}
         <section
-          className="rounded-2xl bg-white dark:bg-rink-800 shadow-sm p-6 border border-wline-2 dark:border-rink-700 mt-2"
+          className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-5"
           aria-labelledby="payment-breakdown-title"
           role="region"
         >
           <h3
             id="payment-breakdown-title"
-            className="text-card-body font-bold text-wtext-3 uppercase tracking-wider mb-4"
+            className="text-card-body font-bold text-it-ink-500 uppercase tracking-wider mb-4"
           >
             결제 상세
           </h3>
           <div className="space-y-3">
             <div className="flex justify-between items-center text-card-body">
-              <span className="text-wtext-3 dark:text-rink-300">
+              <span className="text-it-ink-500 dark:text-rink-300">
                 {selectedFeeType === "MONTHLY_FIXED"
                   ? "정기권 수업료"
                   : `${product?.sessionsPerMonth ?? 1}회`}
               </span>
-              <span className="font-medium text-wtext-1 dark:text-white">
+              <span className="font-bold text-it-ink-900 dark:text-white tabular-nums">
                 {calculatedPrice.toLocaleString()}원
               </span>
             </div>
             <div className="flex justify-between items-center text-card-body">
-              <span className="text-wtext-3 dark:text-rink-300 flex items-center gap-1">
+              <span className="text-it-ink-500 dark:text-rink-300 flex items-center gap-1">
                 할인 금액
-                <Icon name="info" className="text-[14px] text-wtext-4" />
+                <Icon name="info" className="text-[14px] text-it-ink-400" />
               </span>
               {/* discount > 0 일 때만 차감 부호 노출 — 0원 시 "-0원" 어색 표시 제거
                   (2026-05-11 사용자 피드백). 다른 페이지(cart, shop-checkout,
                   MatchPaymentSummary) 의 패턴과 일관성 확보. */}
-              <span className="font-medium text-ice-500 tabular-nums">
+              <span className="font-bold text-it-blue-600 dark:text-it-blue-300 tabular-nums">
                 {discount > 0 && '-'}{discount.toLocaleString()}원
               </span>
             </div>
           </div>
           {/* Divider */}
-          <div className="relative my-5">
-            <div className="w-full border-t border-wline-2 dark:border-rink-700 border-dashed"></div>
-          </div>
+          <div className="my-5 border-t border-it-line dark:border-rink-700" />
           <div
             className="flex justify-between items-end"
             role="status"
             aria-live="polite"
             aria-atomic="true"
           >
-            <span className="text-card-emphasis font-bold text-wtext-1 dark:text-white pb-1">
+            <span className="text-card-emphasis font-bold text-it-ink-900 dark:text-white pb-1">
               최종 결제 금액
             </span>
             <span
-              className="text-2xl font-bold text-ice-500 tracking-tight"
+              className="text-2xl font-extrabold text-it-blue-600 dark:text-it-blue-300 tracking-tight tabular-nums"
               aria-label={`${finalPrice.toLocaleString()}원`}
             >
               {finalPrice.toLocaleString()}원
@@ -831,13 +831,14 @@ function PaymentOptionsContent() {
             선택된 패키지의 durationDays + 30 으로 동적 표시. PER_SESSION 1회권은 본 기간 30일이라 정책 안내 일관 적용. */}
         {product?.durationDays && product.durationDays > 0 && (
           <section
-            className="mx-1 mt-2 rounded-w-lg border border-wline-2 dark:border-rink-700 bg-ice-50/40 dark:bg-rink-800 px-4 py-3"
+            className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4"
             aria-label={MESSAGES.classProduct.paymentInfoTitle}
           >
-            <p className="text-card-meta font-bold text-wtext-2 dark:text-rink-100 mb-1.5">
-              ℹ {MESSAGES.classProduct.paymentInfoTitle}
-            </p>
-            <ul className="space-y-1 text-card-meta text-wtext-3 dark:text-rink-300 leading-relaxed">
+            <div className="rounded-w-md border border-it-line-strong dark:border-rink-700 bg-it-blue-50/50 dark:bg-rink-800 px-4 py-3">
+              <p className="text-card-meta font-bold text-it-ink-600 dark:text-rink-100 mb-1.5">
+                ℹ {MESSAGES.classProduct.paymentInfoTitle}
+              </p>
+              <ul className="space-y-1 text-card-meta text-it-ink-500 dark:text-rink-300 leading-relaxed">
               <li>
                 ·{' '}
                 {MESSAGES.classProduct.paymentInfoUsableDays(
@@ -847,14 +848,15 @@ function PaymentOptionsContent() {
               <li>· {MESSAGES.classProduct.paymentInfoExtraDays(30)}</li>
               {/* [2026-06-09 심사 3.1.1] 결제권=오프라인 대면 수업 결제 수단 명시 */}
               <li>· {MESSAGES.payment2.offlineCreditNotice}</li>
-            </ul>
+              </ul>
+            </div>
           </section>
         )}
 
-        {/* Terms & CTA — inline (스크롤 마지막 섹션) */}
+        {/* Terms & CTA — 흰 섹션 (스크롤 마지막 섹션) */}
         {/* Phase 2 P4 통합 — 인라인 체크박스는 유지(상태 가시성), "약관 자세히 보기" 로 BottomSheetConfirm */}
-        <section className="flex flex-col gap-4 pt-2">
-          <div className="flex items-start gap-3 px-1">
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4 flex flex-col gap-4">
+          <div className="flex items-start gap-3">
             <div className="flex items-center h-5">
               <input
                 type="checkbox"
@@ -868,25 +870,25 @@ function PaymentOptionsContent() {
                     prev.map((t) => (t.required ? { ...t, checked: next } : t)),
                   );
                 }}
-                className="size-5 rounded border-wline text-ice-500 focus:ring-ice-500 dark:border-rink-700 dark:bg-rink-700 cursor-pointer"
+                className="size-5 rounded border-it-line-strong text-it-blue-500 focus:ring-it-blue-500 dark:border-rink-700 dark:bg-rink-700 cursor-pointer"
               />
             </div>
             <div className="text-card-body flex-1">
               <label
-                className="font-medium text-wtext-1 dark:text-white cursor-pointer"
+                className="font-medium text-it-ink-900 dark:text-white cursor-pointer"
                 htmlFor="terms"
               >
                 {MESSAGES.payment2.termsRequired}{" "}
-                <span className="text-red-500">*</span>
+                <span className="text-it-red-500">*</span>
               </label>
               <div className="flex items-center gap-2 mt-0.5">
-                <p className="text-wtext-3 dark:text-rink-300 text-card-meta">
+                <p className="text-it-ink-500 dark:text-rink-300 text-card-meta">
                   {MESSAGES.payment2.refundPolicy}
                 </p>
                 <button
                   type="button"
                   onClick={() => setIsTermsSheetOpen(true)}
-                  className="text-card-meta font-semibold text-ice-500 underline-offset-2 hover:underline"
+                  className="text-card-meta font-semibold text-it-blue-500 underline-offset-2 hover:underline"
                   aria-haspopup="dialog"
                 >
                   자세히 보기
@@ -900,7 +902,7 @@ function PaymentOptionsContent() {
           {product && product.isPurchasable === false && (
             <p
               role="alert"
-              className="mb-2 text-card-meta text-error-600 dark:text-error-400"
+              className="mb-2 text-card-meta text-it-red-600 dark:text-it-red-200"
             >
               {product.disabledReason ?? MESSAGES.classProduct.unavailableEndDateExceed}
               {' · '}
@@ -911,7 +913,7 @@ function PaymentOptionsContent() {
           {selectedChild && ageIncompatibleChildIds.has(selectedChild) && (
             <p
               role="alert"
-              className="mb-2 text-card-meta text-error-600 dark:text-error-400"
+              className="mb-2 text-card-meta text-it-red-600 dark:text-it-red-200"
             >
               {MESSAGES.enrollment.ageBlockedNotice}
             </p>
@@ -927,10 +929,10 @@ function PaymentOptionsContent() {
             return (
           <NavLink
             href={`/payment/checkout?classId=${classId}&productId=${product?.id ?? productId}&childId=${selectedChild}&amount=${finalPrice}&feeType=${selectedFeeType}${selectedFeeType === "PER_SESSION" ? `&sessionCount=${sessionCount}` : ""}`}
-            className={`w-full flex items-center justify-center gap-2 rounded-xl py-4 font-bold text-card-title shadow-md transition-all motion-reduce:transition-none active:brightness-95 ${
+            className={`w-full flex items-center justify-center gap-2 rounded-w-md py-4 font-bold text-card-title shadow-sh-1 transition-colors motion-reduce:transition-none active:brightness-95 ${
               canProceed
-                ? "bg-ice-500 hover:bg-ice-500/90 text-white"
-                : "bg-wline dark:bg-rink-700 text-wtext-3 cursor-not-allowed shadow-none"
+                ? "bg-it-blue-500 hover:bg-it-blue-600 text-white"
+                : "bg-it-line dark:bg-rink-700 text-it-ink-400 cursor-not-allowed shadow-none"
             }`}
             aria-disabled={!canProceed}
             onClick={(e) => {

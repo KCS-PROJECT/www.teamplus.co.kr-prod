@@ -73,12 +73,12 @@ function StatCard({ icon, value, label, isHighlighted = false }: {
   isHighlighted?: boolean;
 }) {
   return (
-    <div className="flex-1 flex flex-col items-center gap-1 rounded-2xl bg-white dark:bg-rink-800 p-4 shadow-sm border border-wline-2 dark:border-white/5">
-      <div className={`flex items-center gap-1 ${isHighlighted ? 'text-ice-500' : 'text-wtext-1 dark:text-white'}`}>
+    <div className={`flex-1 flex flex-col items-center gap-1 rounded-w-md p-4 border-[1.5px] ${isHighlighted ? 'bg-it-blue-50 border-it-blue-500/30 dark:bg-it-blue-900/30 dark:border-it-blue-500/30' : 'bg-it-fill border-it-line dark:bg-rink-700/40 dark:border-rink-700/50'}`}>
+      <div className={`flex items-center gap-1 ${isHighlighted ? 'text-it-blue-500' : 'text-it-ink-800 dark:text-white'}`}>
         <Icon name={icon} className="text-card-title" />
-        <p className="tracking-tight text-xl font-extrabold">{typeof value === 'number' ? value.toLocaleString() : value}</p>
+        <p className="tracking-tight text-xl font-extrabold tabular-nums">{typeof value === 'number' ? value.toLocaleString() : value}</p>
       </div>
-      <p className="text-wtext-3 dark:text-rink-300 text-card-meta font-medium">{label}</p>
+      <p className="text-it-ink-500 dark:text-rink-300 text-card-meta font-medium">{label}</p>
     </div>
   );
 }
@@ -86,15 +86,15 @@ function StatCard({ icon, value, label, isHighlighted = false }: {
 function DeliveryStatusItem({ status }: { status: DeliveryStatus }) {
   return (
     <div className="flex flex-col items-center gap-2 text-center group cursor-pointer">
-      <div className="relative rounded-w-pill bg-blue-50 dark:bg-white/5 p-3 group-hover:bg-ice-500/10 transition-colors motion-reduce:transition-none">
-        <Icon name={status.icon} className="text-wtext-3 group-hover:text-ice-500 transition-colors motion-reduce:transition-none" />
+      <div className="relative rounded-w-pill bg-it-blue-50 dark:bg-white/5 p-3 group-hover:bg-it-blue-100 transition-colors motion-reduce:transition-none">
+        <Icon name={status.icon} className="text-it-ink-500 group-hover:text-it-blue-500 transition-colors motion-reduce:transition-none" />
         {status.count && status.count > 0 && (
-          <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-w-pill bg-ice-500 text-card-meta font-bold text-white ring-2 ring-white dark:ring-rink-800">
+          <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-w-pill bg-it-blue-500 text-card-meta font-bold text-white ring-2 ring-it-surface dark:ring-rink-800">
             {status.count}
           </span>
         )}
       </div>
-      <p className="text-card-meta font-medium text-wtext-3 dark:text-rink-300 group-hover:text-ice-500 transition-colors motion-reduce:transition-none">
+      <p className="text-card-meta font-medium text-it-ink-500 dark:text-rink-300 group-hover:text-it-blue-500 transition-colors motion-reduce:transition-none">
         {status.label}
       </p>
     </div>
@@ -103,32 +103,32 @@ function DeliveryStatusItem({ status }: { status: DeliveryStatus }) {
 
 function WishlistCard({ item, onRemove }: { item: WishlistItem; onRemove: (id: string) => void }) {
   return (
-    <div className="min-w-[150px] w-[150px] flex-shrink-0 snap-start bg-white dark:bg-rink-800 rounded-2xl border border-wline-2 dark:border-white/5 overflow-hidden shadow-sm relative group">
+    <div className="min-w-[150px] w-[150px] flex-shrink-0 snap-start bg-it-surface dark:bg-rink-800 rounded-w-md border border-it-line dark:border-white/5 overflow-hidden relative group">
       <button type="button"         onClick={() => onRemove(item.id)}
-        className="absolute top-2 right-2 z-10 w-6 h-6 flex items-center justify-center bg-white dark:bg-rink-800 rounded-w-pill text-wtext-3 hover:text-red-500 transition-colors motion-reduce:transition-none"
+        className="absolute top-2 right-2 z-10 w-6 h-6 flex items-center justify-center bg-it-surface dark:bg-rink-800 border border-it-line rounded-w-pill text-it-ink-400 hover:text-it-red-500 transition-colors motion-reduce:transition-none"
       >
         <Icon name="close" className="text-card-body" />
       </button>
-      <div className="aspect-square bg-blue-50/50 dark:bg-white/5 flex items-center justify-center relative">
-        <Icon name={item.iconName} className={`text-5xl ${item.inStock ? 'text-blue-200 dark:text-blue-900/50' : 'text-wtext-3 dark:text-wtext-2'}`} />
-        <div className={`absolute bottom-2 left-2 text-white text-card-meta font-bold px-1.5 py-0.5 rounded shadow-sm ${
-          item.inStock ? 'bg-green-500/90' : 'bg-red-500/90'
+      <div className="aspect-square bg-it-fill dark:bg-white/5 flex items-center justify-center relative">
+        <Icon name={item.iconName} className={`text-5xl ${item.inStock ? 'text-it-blue-200 dark:text-blue-900/50' : 'text-it-ink-400 dark:text-wtext-2'}`} />
+        <div className={`absolute bottom-2 left-2 text-white text-card-meta font-bold px-1.5 py-0.5 rounded-w-md ${
+          item.inStock ? 'bg-mint-500' : 'bg-it-red-500'
         }`}>
           {item.inStock ? '재고 있음' : '품절'}
         </div>
       </div>
       <div className="p-3">
-        <h4 className={`text-card-meta font-medium line-clamp-1 mb-1 ${item.inStock ? 'text-wtext-1 dark:text-white' : 'text-wtext-3 dark:text-rink-300'}`}>
+        <h4 className={`text-card-meta font-medium line-clamp-1 mb-1 ${item.inStock ? 'text-it-ink-800 dark:text-white' : 'text-it-ink-400 dark:text-rink-300'}`}>
           {item.name}
         </h4>
-        <p className={`text-card-body font-bold mb-3 ${item.inStock ? 'text-wtext-1 dark:text-white' : 'text-wtext-3 dark:text-rink-300'}`}>
+        <p className={`text-card-body font-bold mb-3 tabular-nums ${item.inStock ? 'text-it-ink-800 dark:text-white' : 'text-it-ink-400 dark:text-rink-300'}`}>
           {item.price.toLocaleString()}원
         </p>
         <button type="button"           disabled={!item.inStock}
-          className={`w-full flex items-center justify-center gap-1 py-2 rounded-lg transition-all motion-reduce:transition-none text-card-meta font-bold ${
+          className={`w-full flex items-center justify-center gap-1 py-2 rounded-w-md transition-all motion-reduce:transition-none text-card-meta font-bold ${
             item.inStock
-              ? 'bg-ice-500/10 hover:bg-ice-500 text-ice-500 hover:text-white'
-              : 'bg-wline-2 dark:bg-white/5 text-wtext-3 cursor-not-allowed'
+              ? 'bg-it-blue-50 hover:bg-it-blue-500 text-it-blue-500 hover:text-white'
+              : 'bg-it-fill dark:bg-white/5 text-it-ink-400 cursor-not-allowed'
           }`}
         >
           <Icon name={item.inStock ? 'shopping_cart' : 'notifications_active'} className="text-card-body" />
@@ -152,19 +152,19 @@ function MenuSection({ title, menus }: {
   );
 
   return (
-    <section className="px-4 mb-5">
-      <h4 className="text-card-body font-semibold text-wtext-3 dark:text-rink-300 mb-3 px-1">{title}</h4>
-      <div className="flex flex-col rounded-2xl bg-white dark:bg-rink-800 overflow-hidden border border-wline-2 dark:border-white/5">
+    <section className="mb-2">
+      <h4 className="text-card-body font-semibold text-it-ink-500 dark:text-rink-300 mb-2 px-5">{title}</h4>
+      <div className="flex flex-col bg-it-surface dark:bg-rink-800">
         {menus.map((menu, index) => {
-          const rowClass = `flex items-center justify-between p-4 w-full hover:bg-blue-50/50 dark:hover:bg-white/5 transition-colors motion-reduce:transition-none group text-left ${
-            index < menus.length - 1 ? 'border-b border-wline-2 dark:border-white/5' : ''
+          const rowClass = `flex items-center justify-between p-4 px-5 w-full hover:bg-it-fill dark:hover:bg-white/5 transition-colors motion-reduce:transition-none group text-left ${
+            index < menus.length - 1 ? 'border-b border-it-line dark:border-white/5' : ''
           }`;
           const iconClass = menu.disabled
-            ? 'text-wtext-4 dark:text-rink-500'
-            : 'text-ice-500 group-hover:text-ice-500/80 dark:text-blue-400 dark:group-hover:text-blue-300 transition-colors motion-reduce:transition-none';
+            ? 'text-it-ink-400 dark:text-rink-500'
+            : 'text-it-blue-500 group-hover:text-it-blue-600 dark:text-blue-400 dark:group-hover:text-blue-300 transition-colors motion-reduce:transition-none';
           const labelClass = menu.disabled
-            ? 'text-card-body font-medium text-wtext-3 dark:text-rink-300'
-            : 'text-card-body font-medium dark:text-rink-100';
+            ? 'text-card-body font-medium text-it-ink-400 dark:text-rink-300'
+            : 'text-card-body font-medium text-it-ink-800 dark:text-rink-100';
 
           if (menu.disabled) {
             return (
@@ -178,11 +178,11 @@ function MenuSection({ title, menus }: {
                 <div className="flex items-center gap-3">
                   <Icon name={menu.icon} className={iconClass} aria-hidden="true" />
                   <span className={labelClass}>{menu.label}</span>
-                  <span className="inline-flex items-center rounded-w-pill bg-wline-2 dark:bg-rink-700 px-2 py-0.5 text-card-meta font-semibold text-wtext-3 dark:text-rink-300">
+                  <span className="inline-flex items-center rounded-w-pill bg-it-fill dark:bg-rink-700 px-2 py-0.5 text-card-meta font-semibold text-it-ink-500 dark:text-rink-300">
                     준비 중
                   </span>
                 </div>
-                <Icon name="schedule" className="text-wtext-4 dark:text-rink-500 text-xl" aria-hidden="true" />
+                <Icon name="schedule" className="text-it-ink-400 dark:text-rink-500 text-xl" aria-hidden="true" />
               </button>
             );
           }
@@ -197,7 +197,7 @@ function MenuSection({ title, menus }: {
                 <Icon name={menu.icon} className={iconClass} aria-hidden="true" />
                 <span className={labelClass}>{menu.label}</span>
               </div>
-              <Icon name="chevron_right" className="text-wtext-4 text-xl group-hover:text-ice-500 dark:group-hover:text-blue-300 transition-colors motion-reduce:transition-none" aria-hidden="true" />
+              <Icon name="chevron_right" className="text-it-ink-400 text-xl group-hover:text-it-blue-500 dark:group-hover:text-blue-300 transition-colors motion-reduce:transition-none" aria-hidden="true" />
             </NavLink>
           );
         })}
@@ -274,33 +274,34 @@ export default function ShopProfilePage() {
       <SubmainAppBar title="마이 페이지" />
 
       {/* Main Content */}
-      <main className="flex flex-col w-full max-w-md mx-auto pb-30">
-        {/* Profile Section */}
-        <section className="px-4 py-2">
+      <main className="flex flex-col w-full max-w-md mx-auto bg-it-canvas dark:bg-puck pb-30">
+        {/* Profile Section — flat 흰 섹션 */}
+        <section className="bg-it-surface dark:bg-rink-800 px-4 pt-2 pb-4">
           <div className="flex flex-col items-center gap-4 py-4">
             <div className="relative">
-              <div className="w-24 h-24 rounded-w-pill bg-wline dark:bg-rink-700 border-2 border-ice-500 p-0.5 flex items-center justify-center">
-                <Icon name="person" className="text-4xl text-wtext-3 dark:text-rink-300" />
+              <div className="w-24 h-24 rounded-w-pill bg-it-fill dark:bg-rink-700 border-2 border-it-blue-500 p-0.5 flex items-center justify-center">
+                <Icon name="person" className="text-4xl text-it-ink-400 dark:text-rink-300" />
               </div>
-              <div className="absolute bottom-0 right-0 bg-ice-500 rounded-w-pill p-1 border-2 border-wline-2 dark:border-background-dark flex items-center justify-center">
+              <div className="absolute bottom-0 right-0 bg-it-blue-500 rounded-w-pill p-1 border-2 border-it-surface dark:border-background-dark flex items-center justify-center">
                 <Icon name="edit_square" className="text-white text-[16px]" />
               </div>
             </div>
             <div className="text-center">
-              <h3 className="text-xl font-bold mb-1 text-wtext-1 dark:text-white">{profile.name}</h3>
-              <div className="inline-flex items-center gap-1 bg-ice-500/10 px-3 py-1 rounded-w-pill border border-ice-500/20">
-                <Icon name="emoji_events" filled className="text-ice-500 text-card-body" />
-                <span className="text-ice-500 text-card-body font-semibold">{profile.grade}</span>
+              <h3 className="text-xl font-bold mb-1 text-it-ink-800 dark:text-white">{profile.name}</h3>
+              <div className="inline-flex items-center gap-1 bg-it-blue-50 px-3 py-1 rounded-w-pill border border-it-blue-500/20">
+                <Icon name="emoji_events" filled className="text-it-blue-500 text-card-body" />
+                <span className="text-it-blue-500 text-card-body font-semibold">{profile.grade}</span>
               </div>
             </div>
-            <button type="button" className="w-full mt-2 bg-ice-500 hover:bg-ice-500/90 text-white font-bold py-3 px-4 rounded-xl transition-all motion-reduce:transition-none shadow-md flex items-center justify-center gap-2 active:brightness-95">
+            <button type="button" className="w-full mt-2 bg-it-blue-500 hover:bg-it-blue-600 text-white font-bold py-3 px-4 rounded-w-md transition-all motion-reduce:transition-none flex items-center justify-center gap-2 active:brightness-95">
               <span>프로필 수정</span>
             </button>
           </div>
         </section>
 
-        {/* Stats Section */}
-        <section className="px-4 py-2">
+        {/* Stats Section — flat 흰 섹션 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+        <section className="bg-it-surface dark:bg-rink-800 px-4 py-4">
           <div className="flex gap-3">
             <StatCard icon="toll" value={profile.puckPoints} label="퍽 포인트" isHighlighted />
             <StatCard icon="confirmation_number" value={profile.coupons} label="티켓 쿠폰" />
@@ -308,31 +309,31 @@ export default function ShopProfilePage() {
           </div>
         </section>
 
-        {/* Delivery Status Section */}
-        <section className="px-4 py-4">
-          <div className="rounded-2xl bg-white dark:bg-rink-800 p-5 shadow-sm border border-wline-2 dark:border-white/5">
-            <div className="flex justify-between items-center mb-5">
-              <h3 className="text-card-emphasis font-bold text-wtext-1 dark:text-white">장비 배송 현황</h3>
-              <NavLink href="/orders" className="text-card-meta text-wtext-3 flex items-center gap-0.5 hover:text-ice-500 transition-colors motion-reduce:transition-none">
-                전체보기 <Icon name="chevron_right" className="text-card-body" />
-              </NavLink>
-            </div>
-            <div className="grid grid-cols-4 gap-2">
-              {deliveryStatuses.map(status => (
-                <DeliveryStatusItem key={status.id} status={status} />
-              ))}
-            </div>
+        {/* Delivery Status Section — flat 흰 섹션 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+        <section className="bg-it-surface dark:bg-rink-800 px-4 py-5">
+          <div className="flex justify-between items-center mb-5">
+            <h3 className="text-card-emphasis font-bold text-it-ink-800 dark:text-white">장비 배송 현황</h3>
+            <NavLink href="/orders" className="text-card-meta text-it-ink-500 flex items-center gap-0.5 hover:text-it-blue-500 transition-colors motion-reduce:transition-none">
+              전체보기 <Icon name="chevron_right" className="text-card-body" />
+            </NavLink>
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {deliveryStatuses.map(status => (
+              <DeliveryStatusItem key={status.id} status={status} />
+            ))}
           </div>
         </section>
 
-        {/* Wishlist Section */}
-        <section className="px-4 mb-6">
-          <div className="flex justify-between items-center mb-3 px-1">
-            <h3 className="text-card-emphasis font-bold text-wtext-1 dark:text-white flex items-center gap-2">
-              <Icon name="favorite" className="text-ice-500" />
+        {/* Wishlist Section — flat 흰 섹션 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+        <section className="bg-it-surface dark:bg-rink-800 px-4 py-5">
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="text-card-emphasis font-bold text-it-ink-800 dark:text-white flex items-center gap-2">
+              <Icon name="favorite" className="text-it-blue-500" />
               나의 위시리스트
             </h3>
-          <NavLink href="/mypage" className="text-card-meta text-wtext-3 flex items-center gap-0.5 hover:text-ice-500 transition-colors motion-reduce:transition-none">
+          <NavLink href="/mypage" className="text-card-meta text-it-ink-500 flex items-center gap-0.5 hover:text-it-blue-500 transition-colors motion-reduce:transition-none">
             더보기 <Icon name="chevron_right" className="text-card-body" />
           </NavLink>
           </div>
@@ -344,6 +345,7 @@ export default function ShopProfilePage() {
         </section>
 
         {/* Menu Sections */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
         {/* [2026-06-09 심사 2.1] '준비 중'(disabled) 메뉴는 미완성 노출 회피 위해 렌더에서 제외.
             기능 완성 시 위 배열에서 해당 항목 disabled 제거하면 자동 노출됨. */}
         {shoppingMenus.some((m) => !m.disabled) && (
@@ -360,21 +362,22 @@ export default function ShopProfilePage() {
         )}
         <MenuSection title="고객 지원" menus={supportMenus} />
 
-        {/* Footer */}
-        <section className="px-4 mb-8">
-          <div className="flex justify-center gap-4 text-card-body text-wtext-3">
-            <NavLink href="/terms" className="underline hover:text-wtext-1 dark:hover:text-rink-100 transition-colors motion-reduce:transition-none">
+        {/* Footer — flat 흰 섹션 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+        <section className="bg-it-surface dark:bg-rink-800 px-4 pt-5 pb-8">
+          <div className="flex justify-center gap-4 text-card-body text-it-ink-500">
+            <NavLink href="/terms" className="underline hover:text-it-ink-800 dark:hover:text-rink-100 transition-colors motion-reduce:transition-none">
               이용약관
             </NavLink>
-            <NavLink href="/terms" className="underline hover:text-wtext-1 dark:hover:text-rink-100 transition-colors motion-reduce:transition-none">
+            <NavLink href="/terms" className="underline hover:text-it-ink-800 dark:hover:text-rink-100 transition-colors motion-reduce:transition-none">
               개인정보처리방침
             </NavLink>
           </div>
           {/* 전자상거래법 §10 사업자정보 — 통신판매업 신고번호 포함 (쇼핑몰 전용) */}
-          <div className="mt-4 border-t border-wline-2 dark:border-rink-700/60 pt-3.5">
-            <ShopBusinessFooter />
+          <div className="mt-4 border-t border-it-line dark:border-rink-700/60 pt-3.5">
+            <ShopBusinessFooter iceTheme />
           </div>
-          <p className="mt-2 text-center text-card-meta text-wtext-3 dark:text-rink-300 pb-4">앱 버전 1.0.5</p>
+          <p className="mt-2 text-center text-card-meta text-it-ink-400 dark:text-rink-300 pb-4">앱 버전 1.0.5</p>
         </section>
       </main>
     </MobileContainer>

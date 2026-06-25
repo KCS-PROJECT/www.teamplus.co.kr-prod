@@ -140,13 +140,14 @@ export default function NotificationsPage() {
       {/* AppBar 불변 — 04n NoticeAppBar 의 디자인 패턴은 PageAppBar default 가 이미 만족 */}
       <PageAppBar title="알림" forceNative />
 
-      <div className="flex-1 overflow-y-auto bg-wbg dark:bg-puck">
-        {/* [04n Segmented Tabs] 카테고리 탭 */}
+      <div className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck">
+        {/* [ICETIMES flat] 카테고리 탭 — it-fill 세그먼티드 + it-blue active (공유 컴포넌트 iceTheme variant) */}
         <CategoryTabs
           activeCategory={filter.category || 'all'}
           onCategoryChange={handleCategoryChange}
           unreadCounts={unreadCounts}
           categories={tabCategories}
+          iceTheme
         />
 
         {/* [2026-06-19 사용자 직접 지시] 통계 칩(전체/안읽음) + 전체 읽음 버튼 — 모두 동일 크기(h-9) 한 줄 툴바.
@@ -155,21 +156,21 @@ export default function NotificationsPage() {
           <div className="px-5 pt-3 flex items-center justify-between gap-2">
             {/* 좌측 — 전체 / 안 읽음 통계 칩 (전체 읽음 배지와 동일 h-9 크기) */}
             <div className="flex items-center gap-2 min-w-0">
-              <span className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl border border-wline-2 dark:border-rink-700 bg-wsurface dark:bg-rink-800 text-[13px] font-extrabold text-wtext-2 dark:text-rink-100">
-                <svg width={14} height={14} viewBox="0 0 16 16" fill="none" aria-hidden="true" className="text-wtext-3 dark:text-rink-400">
+              <span className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-w-pill border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-[13px] font-extrabold text-it-ink-700 dark:text-rink-100">
+                <svg width={14} height={14} viewBox="0 0 16 16" fill="none" aria-hidden="true" className="text-it-ink-500 dark:text-rink-400">
                   <rect x="3" y="4" width="10" height="9" rx="1.5" stroke="currentColor" strokeWidth={1.4} />
                   <path d="M3 7h10M6 2.5v2M10 2.5v2" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" />
                 </svg>
                 전체
-                <span className="tabular-nums text-wtext-1 dark:text-white">{totalCount}</span>
+                <span className="tabular-nums text-it-ink-800 dark:text-white">{totalCount}</span>
               </span>
-              <span className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl border border-wline-2 dark:border-rink-700 bg-wsurface dark:bg-rink-800 text-[13px] font-extrabold text-wtext-2 dark:text-rink-100">
-                <svg width={14} height={14} viewBox="0 0 16 16" fill="none" aria-hidden="true" className="text-wtext-3 dark:text-rink-400">
+              <span className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-w-pill border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-[13px] font-extrabold text-it-ink-700 dark:text-rink-100">
+                <svg width={14} height={14} viewBox="0 0 16 16" fill="none" aria-hidden="true" className="text-it-ink-500 dark:text-rink-400">
                   <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth={1.4} />
-                  <circle cx="8" cy="8" r="2.5" className="fill-flame" />
+                  <circle cx="8" cy="8" r="2.5" className="fill-it-red-500" />
                 </svg>
                 안읽음
-                <span className="tabular-nums text-flame">{unreadCount}</span>
+                <span className="tabular-nums text-it-red-500">{unreadCount}</span>
               </span>
             </div>
 
@@ -179,10 +180,10 @@ export default function NotificationsPage() {
               onClick={handleMarkAllRead}
               disabled={unreadCount === 0}
               className={cn(
-                'shrink-0 inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl border text-[13px] font-extrabold tracking-tight transition-colors motion-reduce:transition-none active:brightness-95',
+                'shrink-0 inline-flex items-center gap-1.5 h-9 px-3.5 rounded-w-pill border-[1.5px] text-[13px] font-extrabold tracking-tight transition-colors motion-reduce:transition-none active:brightness-95',
                 unreadCount > 0
-                  ? 'border-ice-500 bg-ice-500 text-white hover:bg-ice-700'
-                  : 'border-wline-2 dark:border-rink-700 bg-wsurface dark:bg-rink-800 text-wtext-3 dark:text-rink-400 cursor-not-allowed',
+                  ? 'border-it-blue-500 bg-it-blue-500 text-white hover:bg-it-blue-600'
+                  : 'border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-it-ink-400 dark:text-rink-400 cursor-not-allowed',
               )}
               aria-label={MESSAGES.notifications.markAllRead}
             >
@@ -195,7 +196,7 @@ export default function NotificationsPage() {
           </div>
         )}
 
-        {/* [04n 카드 리스트] 알림 목록 — SectionLabel + 04n 카드 패턴 */}
+        {/* [ICETIMES flat] 알림 목록 — full-bleed 흰 섹션 + hairline 행 (공유 컴포넌트 iceTheme variant) */}
         <NotificationList
           groups={groups}
           isLoading={isLoading}
@@ -207,6 +208,7 @@ export default function NotificationsPage() {
           enableSwipe={true}
           emptyVariant={filter.category && filter.category !== 'all' ? 'filter' : 'notifications'}
           onEmptyAction={filter.category !== 'all' ? handleResetFilter : undefined}
+          iceTheme
         />
 
         {/* 새로고침 버튼 영역 — 2026-05-23 제거 (사용자 직접 지시).

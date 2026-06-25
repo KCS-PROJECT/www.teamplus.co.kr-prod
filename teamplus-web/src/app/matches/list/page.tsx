@@ -192,7 +192,7 @@ export default function MatchListPage() {
         ]}
       />
 
-      <div className="sticky top-14 z-29 bg-white/95 dark:bg-puck/95 border-b border-wline-2 dark:border-rink-700">
+      <div className="sticky top-14 z-29 bg-it-surface/95 dark:bg-puck/95 border-b border-it-line dark:border-rink-700">
         {/* 역할 기반 탭 */}
         <div className="px-4 pb-3">
           <MatchSegmentedTabs
@@ -204,6 +204,7 @@ export default function MatchListPage() {
                 navigate('/matches/pickup');
               }
             }}
+            iceTheme
           />
         </div>
 
@@ -213,147 +214,157 @@ export default function MatchListPage() {
             <div className="relative">
               <Icon
                 name="search"
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-wtext-3 text-[20px]"
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-it-ink-400 text-[20px]"
+                aria-hidden="true"
               />
               <input
                 type="text"
                 placeholder={MESSAGES.match.list.searchPlaceholder}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full h-10 pl-10 pr-4 bg-wline-2 dark:bg-rink-700 border-none rounded-w-md text-card-body text-wtext-1 dark:text-white placeholder:text-wtext-3 focus:outline-none focus:ring-2 focus:ring-ice-500"
+                className="w-full h-12 pl-11 pr-4 bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[15px] font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-wtext-3 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20"
               />
             </div>
           </div>
         )}
 
         {/* Filter Chips */}
-        <div className="flex gap-3 px-4 py-3 overflow-x-auto scrollbar-hide">
+        <div className="flex gap-2.5 px-4 py-3 overflow-x-auto scrollbar-hide">
           <MatchFilterChip
             active={activeFilter === 'date'}
             icon="calendar_today"
             label={MESSAGES.match.list.filters.date}
             onClick={() => handleFilterClick('date')}
+            iceTheme
           />
           <MatchFilterChip
             active={activeFilter === 'level'}
             icon="leaderboard"
             label={MESSAGES.match.list.filters.level}
             onClick={() => handleFilterClick('level')}
+            iceTheme
           />
           <MatchFilterChip
             active={activeFilter === 'location'}
             icon="location_on"
             label={MESSAGES.match.list.filters.location}
             onClick={() => handleFilterClick('location')}
+            iceTheme
           />
           <button
             type="button"
             onClick={handleResetFilters}
             aria-label={MESSAGES.match.list.resetFilterAriaLabel}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-w-pill bg-wline-2 dark:bg-rink-700 hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-w-pill border-[1.5px] border-it-line-strong bg-it-surface text-it-ink-600 hover:bg-it-fill active:brightness-95 dark:border-rink-700 dark:bg-rink-800 dark:text-wtext-4 dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
           >
-            <Icon name="refresh" className="text-[20px] text-wtext-3 dark:text-wtext-4" />
+            <Icon name="refresh" className="text-[20px]" aria-hidden="true" />
           </button>
         </div>
       </div>
 
-      {/* Main */}
-      <main className="flex-1 flex flex-col gap-3 p-4 overflow-y-auto pb-30">
-        {/* Section Header — accent bar + title + count chip */}
-        <div className="flex items-center gap-2 mt-2">
-          <span className="h-6 w-1 bg-ice-500 rounded-w-pill" aria-hidden="true" />
-          <h2 className="text-wtext-1 dark:text-white font-bold text-card-title tracking-tight">
-            {sectionTitle}
-          </h2>
-          {!isLoading && !error && filteredMatches.length > 0 && (
-            <span
-              className="ml-auto inline-flex items-center rounded-w-pill bg-ice-500/15 px-2.5 py-1 text-[11px] font-bold text-ice-500 dark:bg-ice-500/20"
+      {/* Main — flat 회색 캔버스 + 흰 섹션 */}
+      <main className="flex-1 flex flex-col overflow-y-auto bg-it-canvas dark:bg-puck pb-30">
+        {/* 매치 목록 — flat 흰 섹션 (카드 박스 제거) */}
+        <section className="mt-2 bg-it-surface dark:bg-rink-800 px-4 pt-5 pb-6">
+          {/* Section Header — SectionHead 위계 (제목 17/800 + count blue) */}
+          <div className="flex items-center gap-2 pb-3">
+            <h2 className="text-it-ink-800 dark:text-white font-extrabold text-[17px] tracking-[-0.02em]">
+              {sectionTitle}
+            </h2>
+            {!isLoading && !error && filteredMatches.length > 0 && (
+              <span
+                className="text-[15px] font-extrabold font-num tabular-nums text-it-blue-500"
+                aria-live="polite"
+              >
+                {filteredMatches.length}
+              </span>
+            )}
+          </div>
+
+          {/* Loading */}
+          {isLoading && (
+            <div
+              className="flex flex-col items-center justify-center gap-3 py-16"
+              role="status"
               aria-live="polite"
             >
-              {MESSAGES.match.list.countLabel(filteredMatches.length)}
-            </span>
-          )}
-        </div>
-
-        {/* Loading */}
-        {isLoading && (
-          <div
-            className="flex flex-col items-center justify-center gap-3 py-16"
-            role="status"
-            aria-live="polite"
-          >
-            <div
-              className="w-8 h-8 border-2 border-ice-500 border-t-transparent rounded-w-pill animate-spin motion-reduce:animate-none"
-              aria-hidden="true"
-            />
-            <span className="text-card-meta text-wtext-3 dark:text-wtext-4">
-              {MESSAGES.common.loading}
-            </span>
-          </div>
-        )}
-
-        {/* Error */}
-        {!isLoading && error && (
-          <MatchErrorState message={error} onRetry={() => void loadMatches()} />
-        )}
-
-        {/* Empty */}
-        {!isLoading && !error && filteredMatches.length === 0 && (
-          <div
-            role="status"
-            className="flex flex-col items-center justify-center gap-2 rounded-w-lg border border-dashed border-wline-2 bg-white px-6 py-16 text-center dark:border-rink-700 dark:bg-rink-800"
-          >
-            <div className="mb-2 flex h-16 w-16 items-center justify-center rounded-w-pill bg-wline-2 dark:bg-rink-700">
-              <Icon
-                name="sports_hockey"
-                className="text-4xl text-wtext-3 dark:text-wtext-4"
+              <div
+                className="w-8 h-8 border-2 border-it-blue-500 border-t-transparent rounded-w-pill animate-spin motion-reduce:animate-none"
                 aria-hidden="true"
               />
+              <span className="text-card-meta text-it-ink-500 dark:text-wtext-4">
+                {MESSAGES.common.loading}
+              </span>
             </div>
-            <p className="text-[15px] font-bold text-wtext-1 dark:text-white">
-              {searchQuery.trim()
-                ? '검색 결과가 없어요'
-                : MESSAGES.empty('매치')}
-            </p>
-            <p className="max-w-xs text-[13px] leading-relaxed text-wtext-3 dark:text-wtext-4">
-              {searchQuery.trim()
-                ? '다른 검색어로 다시 시도해보세요.'
-                : permissions.canCreate
-                ? '우측 하단 버튼을 눌러 첫 매치를 만들어보세요.'
-                : '새로운 매치가 열리면 이곳에서 바로 확인하실 수 있습니다.'}
-            </p>
-          </div>
-        )}
+          )}
 
-        {/* Match cards */}
-        {!isLoading && !error && filteredMatches.map((match) => (
-          <MatchCard key={match.id} match={match} />
-        ))}
+          {/* Error */}
+          {!isLoading && error && (
+            <MatchErrorState message={error} onRetry={() => void loadMatches()} iceTheme />
+          )}
 
-        {/* 더보기 버튼 — 검색어가 없고 추가 페이지가 남아있을 때만 노출 */}
-        {!isLoading && !error && !searchQuery.trim() && hasMore && (
-          <div className="flex justify-center pt-2">
-            <button
-              type="button"
-              onClick={loadMore}
-              disabled={isLoadingMore}
-              className="flex items-center gap-2 px-5 py-2.5 text-card-body font-semibold text-ice-500 border border-ice-500 rounded-w-pill hover:bg-ice-50 disabled:opacity-60 disabled:cursor-not-allowed transition-colors motion-reduce:transition-none"
-              aria-label={MESSAGES.match.list.loadMoreAriaLabel}
+          {/* Empty — 박스 제거, 인라인 빈 상태 */}
+          {!isLoading && !error && filteredMatches.length === 0 && (
+            <div
+              role="status"
+              className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center"
             >
-              {isLoadingMore ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-ice-500 border-t-transparent rounded-w-pill animate-spin" />
-                  {MESSAGES.match.list.loadingMore}
-                </>
-              ) : (
-                <>
-                  <Icon name="expand_more" className="text-card-title" />
-                  {MESSAGES.match.list.loadMore(matches.length, total)}
-                </>
-              )}
-            </button>
-          </div>
-        )}
+              <div className="mb-2 flex h-16 w-16 items-center justify-center rounded-w-pill bg-it-line dark:bg-rink-700">
+                <Icon
+                  name="sports_hockey"
+                  className="text-4xl text-it-ink-400 dark:text-wtext-4"
+                  aria-hidden="true"
+                />
+              </div>
+              <p className="text-[15px] font-bold text-it-ink-800 dark:text-white">
+                {searchQuery.trim()
+                  ? '검색 결과가 없어요'
+                  : MESSAGES.empty('매치')}
+              </p>
+              <p className="max-w-xs text-[13px] leading-relaxed text-it-ink-500 dark:text-wtext-4">
+                {searchQuery.trim()
+                  ? '다른 검색어로 다시 시도해보세요.'
+                  : permissions.canCreate
+                  ? '우측 하단 버튼을 눌러 첫 매치를 만들어보세요.'
+                  : '새로운 매치가 열리면 이곳에서 바로 확인하실 수 있습니다.'}
+              </p>
+            </div>
+          )}
+
+          {/* Match cards (공유 컴포넌트 — page-local 미수정) */}
+          {!isLoading && !error && filteredMatches.length > 0 && (
+            <div className="flex flex-col gap-3">
+              {filteredMatches.map((match) => (
+                <MatchCard key={match.id} match={match} iceTheme />
+              ))}
+            </div>
+          )}
+
+          {/* 더보기 버튼 — 검색어가 없고 추가 페이지가 남아있을 때만 노출 */}
+          {!isLoading && !error && !searchQuery.trim() && hasMore && (
+            <div className="flex justify-center pt-4">
+              <button
+                type="button"
+                onClick={loadMore}
+                disabled={isLoadingMore}
+                className="flex items-center gap-2 px-5 py-2.5 text-card-body font-semibold text-it-blue-500 border-[1.5px] border-it-line-strong rounded-w-pill hover:bg-it-fill disabled:opacity-60 disabled:cursor-not-allowed transition-colors motion-reduce:transition-none dark:border-rink-700 dark:hover:bg-rink-700"
+                aria-label={MESSAGES.match.list.loadMoreAriaLabel}
+              >
+                {isLoadingMore ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-it-blue-500 border-t-transparent rounded-w-pill animate-spin" />
+                    {MESSAGES.match.list.loadingMore}
+                  </>
+                ) : (
+                  <>
+                    <Icon name="expand_more" className="text-card-title" />
+                    {MESSAGES.match.list.loadMore(matches.length, total)}
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+        </section>
       </main>
 
       {/* FAB - 매치 생성 (역할 기반)
@@ -374,7 +385,7 @@ export default function MatchListPage() {
               type="button"
               onClick={handleCreateMatch}
               aria-label={MESSAGES.match.list.createFab}
-              className="flex items-center gap-2 h-14 pl-4 pr-5 rounded-w-pill bg-ice-500 text-white shadow-sh-blue hover:bg-ice-600 active:brightness-95 transition-colors motion-reduce:transition-none"
+              className="flex items-center gap-2 h-14 pl-4 pr-5 rounded-w-pill bg-it-blue-500 text-white shadow-sh-blue hover:bg-it-blue-600 active:brightness-95 transition-colors motion-reduce:transition-none"
             >
               <Icon name="add" className="text-2xl" />
               <span className="text-card-body font-bold">

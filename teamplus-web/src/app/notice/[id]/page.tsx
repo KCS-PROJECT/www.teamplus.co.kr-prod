@@ -101,10 +101,10 @@ function mapRawComment(c: RawComment): CommentData {
 /* ───────── 섹션 라벨 (좌측 스트라이프 + 14px 800) ───────── */
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between px-6 pt-5 pb-2.5">
+    <div className="flex items-center justify-between px-5 pt-4 pb-2.5">
       <div className="inline-flex items-center gap-2">
-        <span aria-hidden="true" className="w-[3px] h-3.5 bg-ice-500 rounded-sm" />
-        <span className="text-[14px] font-extrabold text-wtext-1 dark:text-white tracking-[-0.02em] inline-flex items-center gap-1.5">
+        <span aria-hidden="true" className="w-[3px] h-3.5 bg-it-blue-500 rounded-sm" />
+        <span className="text-[14px] font-extrabold text-it-ink-800 dark:text-white tracking-[-0.02em] inline-flex items-center gap-1.5">
           {children}
         </span>
       </div>
@@ -297,8 +297,8 @@ export default function NoticeDetailPage() {
     return (
       <MobileContainer hasBottomNav={false}>
         {header}
-        <div className="flex-1 flex items-center justify-center">
-          <div className="w-8 h-8 border-2 border-ice-500 border-t-transparent rounded-w-pill animate-spin motion-reduce:animate-none" />
+        <div className="flex-1 flex items-center justify-center bg-it-canvas dark:bg-puck">
+          <div className="w-8 h-8 border-2 border-it-blue-500 border-t-transparent rounded-w-pill animate-spin motion-reduce:animate-none" />
         </div>
       </MobileContainer>
     );
@@ -308,26 +308,26 @@ export default function NoticeDetailPage() {
     return (
       <MobileContainer hasBottomNav={false}>
         {header}
-        <div className="flex flex-col items-center justify-center flex-1 py-20">
+        <div className="flex flex-col items-center justify-center flex-1 py-20 bg-it-canvas dark:bg-puck">
           <Icon
             name={hasError ? 'wifi_off' : 'error_outline'}
-            className="text-6xl text-wtext-4 dark:text-rink-500 mb-4"
+            className="text-6xl text-it-ink-300 dark:text-rink-500 mb-4"
             aria-hidden="true"
           />
-          <p className="text-wtext-3 dark:text-rink-300 text-center">
+          <p className="text-it-ink-500 dark:text-rink-300 text-center">
             {hasError ? '공지사항을 불러오지 못했습니다.' : '공지사항을 찾을 수 없습니다.'}
           </p>
           {hasError && (
             <button
               onClick={() => void loadNotice()}
-              className="mt-4 px-6 py-2.5 bg-ice-500 hover:bg-ice-600 text-white font-semibold rounded-xl transition-colors motion-reduce:transition-none active:brightness-95"
+              className="mt-4 px-6 h-11 bg-it-blue-500 hover:bg-it-blue-600 text-white font-semibold rounded-w-md transition-colors motion-reduce:transition-none active:brightness-95"
             >
               다시 시도
             </button>
           )}
           <NavLink
             href="/notices"
-            className="mt-3 text-ice-500 font-medium hover:underline text-card-body"
+            className="mt-3 text-it-blue-500 font-medium hover:underline text-card-body"
           >
             목록으로 돌아가기
           </NavLink>
@@ -343,135 +343,143 @@ export default function NoticeDetailPage() {
       {header}
 
       <main
-        className="flex-1 overflow-y-auto bg-wbg dark:bg-rink-900 pb-10"
+        className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck pb-10"
         role="main"
         aria-label="공지사항 상세"
       >
-        {/* [2026-05-18] DESIGN.md SoT — solid ice-500 + sh-blue 토큰 (AI 스타일 제거). */}
-        <div className="px-5 pt-3">
-          <div className="relative overflow-hidden rounded-[18px] bg-ice-500 px-5 pt-3.5 pb-3.5 text-white shadow-sh-blue">
-            {/* 우상단 조회수 chip */}
-            <div className="absolute top-3 right-3.5 inline-flex items-center gap-1.5 rounded-w-pill border border-white/30 bg-white/15 px-2.5 py-1 text-[11px] font-bold text-white tabular-nums">
-              <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                <path d="M1 6s2-3 5-3 5 3 5 3-2 3-5 3-5-3-5-3z" stroke="#fff" strokeWidth="1.3" />
-                <circle cx="6" cy="6" r="1.6" stroke="#fff" strokeWidth="1.3" />
-              </svg>
-              {notice.viewCount.toLocaleString()}
-            </div>
+        {/* Hero — full-bleed navy 밴드 (ICETIMES flat · 카드 박스 제거). */}
+        <div className="relative bg-it-blue-800 dark:bg-it-blue-950 px-5 pt-4 pb-5 text-white">
+          {/* 우상단 조회수 chip */}
+          <div className="absolute top-4 right-5 inline-flex items-center gap-1.5 rounded-w-pill border border-white/30 bg-white/15 px-2.5 py-1 text-[11px] font-bold text-white tabular-nums">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <path d="M1 6s2-3 5-3 5 3 5 3-2 3-5 3-5-3-5-3z" stroke="#fff" strokeWidth="1.3" />
+              <circle cx="6" cy="6" r="1.6" stroke="#fff" strokeWidth="1.3" />
+            </svg>
+            {notice.viewCount.toLocaleString()}
+          </div>
 
-            <div className="mt-1">
-              <span className="inline-block rounded-lg bg-white/20 px-2.5 py-1 text-[11px] font-extrabold tracking-[0.02em] text-white">
-                {kindLabel}
-              </span>
-            </div>
+          <div>
+            <span className="inline-block rounded-w-xs bg-white/20 px-2.5 py-1 text-[11px] font-extrabold tracking-[0.02em] text-white">
+              {kindLabel}
+            </span>
+          </div>
 
-            <div className="mt-2 pr-10 text-[18px] font-extrabold leading-[1.3] tracking-[-0.025em]">
-              {notice.title}
-            </div>
+          <h1 className="mt-2.5 pr-10 text-[20px] font-extrabold leading-[1.3] tracking-[-0.025em]">
+            {notice.title}
+          </h1>
 
-            <div className="mt-1.5 inline-flex items-center gap-1.5 text-[11px] font-bold text-white/85 tabular-nums">
-              <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                <rect x="1.5" y="2.5" width="9" height="8" rx="1" stroke="#fff" strokeWidth="1.3" />
-                <path d="M1.5 4.5h9M4 1.5v2M8 1.5v2" stroke="#fff" strokeWidth="1.3" strokeLinecap="round" />
-              </svg>
-              {notice.date}
-            </div>
+          <div className="mt-2 inline-flex items-center gap-1.5 text-[11.5px] font-bold text-white/85 tabular-nums">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <rect x="1.5" y="2.5" width="9" height="8" rx="1" stroke="#fff" strokeWidth="1.3" />
+              <path d="M1.5 4.5h9M4 1.5v2M8 1.5v2" stroke="#fff" strokeWidth="1.3" strokeLinecap="round" />
+            </svg>
+            {notice.date}
           </div>
         </div>
 
-        {/* 본문 카드 — 내용이 짧아도 최소 높이 확보(1줄 납작 방지) */}
-        <SectionLabel>본문</SectionLabel>
-        <div className="px-5">
-          <div className="min-h-[160px] rounded-[14px] border border-wline-2 dark:border-rink-700 bg-wsurface dark:bg-rink-800 p-[18px] shadow-[0_4px_14px_rgba(20,24,38,0.04)]">
+        {/* flat 섹션 사이 8px 회색 갭 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+        {/* 본문 — flat 흰 섹션 (카드 박스 제거, 내용이 짧아도 최소 높이 확보) */}
+        <section className="bg-it-surface dark:bg-rink-800 pb-5" aria-label="공지 본문">
+          <SectionLabel>본문</SectionLabel>
+          <div className="px-5">
             <div
               className={cn(
-                'text-[14px] leading-[1.7] font-medium text-wtext-2 dark:text-wtext-4 whitespace-pre-line',
-                '[&_b]:text-ice-600 [&_b]:font-extrabold',
-                '[&_strong]:text-ice-600 [&_strong]:font-extrabold',
+                'min-h-[140px] text-[14.5px] leading-[1.7] font-medium text-it-ink-700 dark:text-wtext-4 whitespace-pre-line',
+                '[&_b]:text-it-blue-600 [&_b]:font-extrabold',
+                '[&_strong]:text-it-blue-600 [&_strong]:font-extrabold',
                 '[&_p]:my-3 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0',
                 '[&_ul]:list-disc [&_ul]:list-inside [&_ul]:my-3 [&_ul]:space-y-1',
               )}
               dangerouslySetInnerHTML={{ __html: sanitizeHtml(notice.content) }}
             />
           </div>
-        </div>
+        </section>
 
-        {/* 댓글 영역 */}
-        <SectionLabel>
-          댓글
-          {comments.length > 0 && (
-            <span className="ml-1 rounded-w-pill bg-wline-2 dark:bg-rink-700 px-1.5 py-px text-[11px] font-extrabold text-wtext-2 dark:text-wtext-4 tabular-nums">
-              {comments.length}
-            </span>
-          )}
-        </SectionLabel>
-        <div className="px-5 pb-2">
-          <CommentThread
-            comments={comments}
-            onSubmit={handleCommentSubmit}
-            placeholder={MESSAGES.placeholders.enterCommentSimple}
-            currentUserId={currentUserId}
-          />
-        </div>
+        {/* flat 섹션 사이 8px 회색 갭 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+        {/* 댓글 — flat 흰 섹션 */}
+        <section className="bg-it-surface dark:bg-rink-800 pb-3" aria-label="댓글">
+          <SectionLabel>
+            댓글
+            {comments.length > 0 && (
+              <span className="ml-1 rounded-w-pill bg-it-line dark:bg-rink-700 px-1.5 py-px text-[11px] font-extrabold text-it-ink-700 dark:text-wtext-4 tabular-nums">
+                {comments.length}
+              </span>
+            )}
+          </SectionLabel>
+          <div className="px-5 pb-2">
+            <CommentThread
+              comments={comments}
+              onSubmit={handleCommentSubmit}
+              placeholder={MESSAGES.placeholders.enterCommentSimple}
+              currentUserId={currentUserId}
+            />
+          </div>
+        </section>
 
         {/* [2026-06-19 사용자 직접 지시] 공지 수정/삭제 — 서비스 공지(targetTeamId=null)는 admin(시스템관리자)만,
             팀 공지는 감독만 노출. (서비스 공지에서 감독에게 보이던 버튼 제거) */}
         {(notice?.targetTeamId ? isDirector : isAdmin) && (
-          <div className="px-5 pt-1 pb-2 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={handleEditNotice}
-              className="h-11 rounded-w-md border border-wline dark:border-rink-700 bg-wsurface dark:bg-rink-800 text-card-body font-semibold text-wtext-2 dark:text-rink-100 transition-colors motion-reduce:transition-none hover:bg-wbg dark:hover:bg-rink-700 active:brightness-95 focus:outline-none focus:ring-2 focus:ring-ice-500/40 inline-flex items-center justify-center gap-1.5"
-            >
-              <Icon name="edit" className="text-[18px]" aria-hidden="true" />
-              수정하기
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleDeleteNotice()}
-              className="h-11 rounded-w-md border border-red-500 text-card-body font-semibold text-red-600 transition-colors motion-reduce:transition-none hover:bg-red-50 active:brightness-95 focus:outline-none focus:ring-2 focus:ring-red-500/40 inline-flex items-center justify-center gap-1.5 dark:border-red-500 dark:text-red-400 dark:hover:bg-red-950/30"
-            >
-              <Icon name="delete" className="text-[18px]" aria-hidden="true" />
-              삭제하기
-            </button>
-          </div>
+          <>
+            <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+            <section className="bg-it-surface dark:bg-rink-800 px-5 py-4 grid grid-cols-2 gap-2" aria-label="공지 관리">
+              <button
+                type="button"
+                onClick={handleEditNotice}
+                className="h-12 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-card-body font-bold text-it-ink-700 dark:text-rink-100 transition-colors motion-reduce:transition-none hover:bg-it-fill dark:hover:bg-rink-700 active:brightness-95 focus:outline-none focus:ring-2 focus:ring-it-blue-500/40 inline-flex items-center justify-center gap-1.5"
+              >
+                <Icon name="edit" className="text-[18px]" aria-hidden="true" />
+                수정하기
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDeleteNotice()}
+                className="h-12 rounded-w-md border-[1.5px] border-it-red-500 text-card-body font-bold text-it-red-500 transition-colors motion-reduce:transition-none hover:bg-it-red-50 active:brightness-95 focus:outline-none focus:ring-2 focus:ring-it-red-500/40 inline-flex items-center justify-center gap-1.5 dark:hover:bg-it-red-500/10"
+              >
+                <Icon name="delete" className="text-[18px]" aria-hidden="true" />
+                삭제하기
+              </button>
+            </section>
+          </>
         )}
 
-        {/* 다른 공지 보기 */}
+        {/* 다른 공지 보기 — flat 흰 섹션 (hairline 행) */}
         {(prevNotice || nextNotice) && (
           <>
-            <SectionLabel>다른 공지 보기</SectionLabel>
-            <div className="px-5">
-              <div className="rounded-[14px] border border-wline-2 dark:border-rink-700 bg-wsurface dark:bg-rink-800 px-4 py-1.5 shadow-[0_4px_14px_rgba(20,24,38,0.04)]">
+            <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+            <section className="bg-it-surface dark:bg-rink-800 pb-3" aria-label="다른 공지 보기">
+              <SectionLabel>다른 공지 보기</SectionLabel>
+              <div className="px-5">
                 {nextNotice ? (
                   <NavLink
                     href={`/notice/${nextNotice.id}`}
                     className={cn(
-                      'flex w-full items-center gap-3 py-3 text-left',
-                      prevNotice && 'border-b border-wline-2 dark:border-rink-700',
+                      'flex w-full items-center gap-3 py-3.5 text-left',
+                      prevNotice && 'border-b border-it-line dark:border-rink-700',
                     )}
                   >
-                    <span className="w-8 shrink-0 text-[11px] font-extrabold tracking-[0.02em] text-ice-600">
+                    <span className="w-9 shrink-0 text-[11px] font-extrabold tracking-[0.02em] text-it-blue-500">
                       다음글
                     </span>
-                    <span className="flex-1 truncate text-[13px] font-bold tracking-[-0.01em] text-wtext-1 dark:text-white">
+                    <span className="flex-1 truncate text-[13.5px] font-bold tracking-[-0.01em] text-it-ink-800 dark:text-white">
                       {nextNotice.title}
                     </span>
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" className="text-wtext-3 dark:text-wtext-4">
-                      <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
+                    <Icon name="chevron_right" className="shrink-0 text-[18px] text-it-ink-400 dark:text-wtext-4" aria-hidden="true" />
                   </NavLink>
                 ) : (
                   <div
                     className={cn(
-                      'flex w-full items-center gap-3 py-3',
-                      prevNotice && 'border-b border-wline-2 dark:border-rink-700',
+                      'flex w-full items-center gap-3 py-3.5',
+                      prevNotice && 'border-b border-it-line dark:border-rink-700',
                     )}
                   >
-                    <span className="w-8 shrink-0 text-[11px] font-extrabold tracking-[0.02em] text-wtext-3 dark:text-wtext-4">
+                    <span className="w-9 shrink-0 text-[11px] font-extrabold tracking-[0.02em] text-it-ink-400 dark:text-wtext-4">
                       다음글
                     </span>
-                    <span className="flex-1 truncate text-[13px] font-medium text-wtext-3 dark:text-wtext-4">
+                    <span className="flex-1 truncate text-[13px] font-medium text-it-ink-400 dark:text-wtext-4">
                       다음 공지사항이 없습니다.
                     </span>
                   </div>
@@ -479,30 +487,28 @@ export default function NoticeDetailPage() {
                 {prevNotice ? (
                   <NavLink
                     href={`/notice/${prevNotice.id}`}
-                    className="flex w-full items-center gap-3 py-3 text-left"
+                    className="flex w-full items-center gap-3 py-3.5 text-left"
                   >
-                    <span className="w-8 shrink-0 text-[11px] font-extrabold tracking-[0.02em] text-ice-600">
+                    <span className="w-9 shrink-0 text-[11px] font-extrabold tracking-[0.02em] text-it-blue-500">
                       이전글
                     </span>
-                    <span className="flex-1 truncate text-[13px] font-bold tracking-[-0.01em] text-wtext-1 dark:text-white">
+                    <span className="flex-1 truncate text-[13.5px] font-bold tracking-[-0.01em] text-it-ink-800 dark:text-white">
                       {prevNotice.title}
                     </span>
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" className="text-wtext-3 dark:text-wtext-4">
-                      <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
+                    <Icon name="chevron_right" className="shrink-0 text-[18px] text-it-ink-400 dark:text-wtext-4" aria-hidden="true" />
                   </NavLink>
                 ) : (
-                  <div className="flex w-full items-center gap-3 py-3">
-                    <span className="w-8 shrink-0 text-[11px] font-extrabold tracking-[0.02em] text-wtext-3 dark:text-wtext-4">
+                  <div className="flex w-full items-center gap-3 py-3.5">
+                    <span className="w-9 shrink-0 text-[11px] font-extrabold tracking-[0.02em] text-it-ink-400 dark:text-wtext-4">
                       이전글
                     </span>
-                    <span className="flex-1 truncate text-[13px] font-medium text-wtext-3 dark:text-wtext-4">
+                    <span className="flex-1 truncate text-[13px] font-medium text-it-ink-400 dark:text-wtext-4">
                       이전 공지사항이 없습니다.
                     </span>
                   </div>
                 )}
               </div>
-            </div>
+            </section>
           </>
         )}
 

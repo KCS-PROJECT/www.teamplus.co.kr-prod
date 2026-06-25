@@ -59,7 +59,19 @@ export interface VenueFormSheetProps {
    * - 미제공 시: 파일 input 은 로컬 미리보기 전용
    */
   onUploadImage?: (file: File) => Promise<VenueUploadResult>;
+  /**
+   * [ICETIMES Phase 2] flat 테마. 기본 false = 기존 스타일 1:1 보존(회귀 0).
+   *   true 시 입력=it-fill+1.5px(it-line-strong), 포커스=it-blue, CTA=it-blue 로 통일.
+   */
+  iceTheme?: boolean;
 }
+
+// ICETIMES flat 입력 컨테이너 — it-fill 배경 + 1.5px it-line-strong + it-blue 포커스.
+const ICE_INPUT =
+  'border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-wtext-3 focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20';
+// 기존 입력 — wbg 배경 + wline + ice 포커스.
+const BASE_INPUT =
+  'border border-wline dark:border-rink-700 bg-wbg dark:bg-rink-800 text-wtext-1 dark:text-white focus:ring-2 focus:ring-ice-500';
 
 const STATUS_OPTIONS: { value: VenueStatus; label: string }[] = [
   { value: 'active', label: MESSAGES.venue.status.active },
@@ -90,7 +102,10 @@ export function VenueFormSheet({
   canDelete = false,
   statusExtraSlot,
   onUploadImage,
+  iceTheme = false,
 }: VenueFormSheetProps) {
+  // 입력 비주얼 — iceTheme 면 it-* flat, 아니면 기존 wbg/ice. (구조·로직 동일)
+  const inputCls = iceTheme ? ICE_INPUT : BASE_INPUT;
   // [2026-05-12 → 2026-05-16 v2] 네이티브 status bar 영역만 dim — Sheet 패턴.
   //   BottomSheet 류는 `bottom: false` — 시트 카드가 화면 하단까지 차지.
   //   SoT: docs/Design/MODAL_DIM_POLICY.md
@@ -451,7 +466,10 @@ export function VenueFormSheet({
                 role="status"
                 aria-live="polite"
               >
-                <div className="bg-white dark:bg-rink-900 rounded-lg px-4 py-2 text-sm font-semibold text-ice-500 shadow-md flex items-center gap-2">
+                <div className={cn(
+                  'bg-white dark:bg-rink-900 rounded-lg px-4 py-2 text-sm font-semibold shadow-md flex items-center gap-2',
+                  iceTheme ? 'text-it-blue-500' : 'text-ice-500',
+                )}>
                   <Icon
                     name="progress_activity"
                     className="text-[18px] animate-spin"
@@ -497,7 +515,10 @@ export function VenueFormSheet({
                       className={cn(
                         'px-3 py-1.5 rounded-md text-xs font-bold transition-colors',
                         status === opt.value
-                          ? 'bg-white dark:bg-rink-700 text-ice-500 shadow-sm'
+                          ? cn(
+                              'bg-white dark:bg-rink-700 shadow-sm',
+                              iceTheme ? 'text-it-blue-500' : 'text-ice-500',
+                            )
                           : 'text-wtext-3 hover:text-wtext-1 dark:hover:text-white',
                       )}
                     >
@@ -524,7 +545,10 @@ export function VenueFormSheet({
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder={MESSAGES.venue.form.namePlaceholder}
-                  className="w-full rounded-lg border border-wline dark:border-rink-700 bg-wbg dark:bg-rink-800 text-wtext-1 dark:text-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-ice-500"
+                  className={cn(
+                    'w-full rounded-lg px-4 py-3 text-sm focus:outline-none',
+                    inputCls,
+                  )}
                   required
                   aria-required="true"
                 />
@@ -546,7 +570,10 @@ export function VenueFormSheet({
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder={MESSAGES.venue.form.phonePlaceholder}
-                    className="w-full rounded-lg border border-wline dark:border-rink-700 bg-wbg dark:bg-rink-800 text-wtext-1 dark:text-white pl-10 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-ice-500"
+                    className={cn(
+                      'w-full rounded-lg pl-10 pr-4 py-3 text-sm focus:outline-none',
+                      inputCls,
+                    )}
                   />
                 </div>
               </div>
@@ -566,7 +593,10 @@ export function VenueFormSheet({
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
                 placeholder={MESSAGES.venue.form.addressPlaceholder}
-                className="w-full rounded-lg border border-wline dark:border-rink-700 bg-wbg dark:bg-rink-800 text-wtext-1 dark:text-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-ice-500"
+                className={cn(
+                  'w-full rounded-lg px-4 py-3 text-sm focus:outline-none',
+                  inputCls,
+                )}
               />
               <input
                 id={addressDetailId}
@@ -574,7 +604,10 @@ export function VenueFormSheet({
                 value={addressDetail}
                 onChange={(e) => setAddressDetail(e.target.value)}
                 placeholder={MESSAGES.venue.form.addressDetailPlaceholder}
-                className="w-full rounded-lg border border-wline dark:border-rink-700 bg-wbg dark:bg-rink-800 text-wtext-1 dark:text-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-ice-500"
+                className={cn(
+                  'w-full rounded-lg px-4 py-3 text-sm focus:outline-none',
+                  inputCls,
+                )}
                 aria-label={MESSAGES.venue.form.addressDetailLabel}
               />
             </section>
@@ -598,7 +631,10 @@ export function VenueFormSheet({
                     onChange={(e) => setLatitude(e.target.value)}
                     placeholder="37.566535"
                     aria-describedby={`${latitudeId}-hint`}
-                    className="w-full rounded-lg border border-wline dark:border-rink-700 bg-wbg dark:bg-rink-800 text-wtext-1 dark:text-white px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-ice-500"
+                    className={cn(
+                      'w-full rounded-lg px-3 py-2 text-sm tabular-nums focus:outline-none',
+                      inputCls,
+                    )}
                   />
                   <p id={`${latitudeId}-hint`} className="text-card-meta text-wtext-3">
                     -90 ~ 90
@@ -616,7 +652,10 @@ export function VenueFormSheet({
                     onChange={(e) => setLongitude(e.target.value)}
                     placeholder="126.977969"
                     aria-describedby={`${longitudeId}-hint`}
-                    className="w-full rounded-lg border border-wline dark:border-rink-700 bg-wbg dark:bg-rink-800 text-wtext-1 dark:text-white px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-ice-500"
+                    className={cn(
+                      'w-full rounded-lg px-3 py-2 text-sm tabular-nums focus:outline-none',
+                      inputCls,
+                    )}
                   />
                   <p id={`${longitudeId}-hint`} className="text-card-meta text-wtext-3">
                     -180 ~ 180
@@ -644,7 +683,10 @@ export function VenueFormSheet({
                     type="time"
                     value={openTime}
                     onChange={(e) => setOpenTime(e.target.value || '00:00')}
-                    className="w-full rounded-lg border border-wline dark:border-rink-700 bg-wbg dark:bg-rink-800 text-wtext-1 dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ice-500"
+                    className={cn(
+                      'w-full rounded-lg px-3 py-2 text-sm focus:outline-none',
+                      inputCls,
+                    )}
                   />
                 </div>
                 <div className="space-y-1">
@@ -656,7 +698,10 @@ export function VenueFormSheet({
                     type="time"
                     value={closeTime}
                     onChange={(e) => setCloseTime(e.target.value || '00:00')}
-                    className="w-full rounded-lg border border-wline dark:border-rink-700 bg-wbg dark:bg-rink-800 text-wtext-1 dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ice-500"
+                    className={cn(
+                      'w-full rounded-lg px-3 py-2 text-sm focus:outline-none',
+                      inputCls,
+                    )}
                   />
                 </div>
               </div>
@@ -686,8 +731,12 @@ export function VenueFormSheet({
                       className={cn(
                         'flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors min-h-[44px]',
                         selected
-                          ? 'bg-blue-50 border-ice-500 text-ice-500 dark:bg-blue-900/30 dark:border-blue-400 dark:text-blue-200'
-                          : 'bg-wbg border-wline text-wtext-2 hover:border-ice-500 dark:bg-rink-800 dark:border-rink-700 dark:text-rink-100',
+                          ? iceTheme
+                            ? 'bg-it-blue-50 border-it-blue-500 text-it-blue-500 dark:bg-it-blue-500/20 dark:border-it-blue-400 dark:text-it-blue-200'
+                            : 'bg-blue-50 border-ice-500 text-ice-500 dark:bg-blue-900/30 dark:border-blue-400 dark:text-blue-200'
+                          : iceTheme
+                            ? 'bg-it-fill border-it-line-strong text-it-ink-700 hover:border-it-blue-500 dark:bg-rink-800 dark:border-rink-700 dark:text-rink-100'
+                            : 'bg-wbg border-wline text-wtext-2 hover:border-ice-500 dark:bg-rink-800 dark:border-rink-700 dark:text-rink-100',
                       )}
                     >
                       <Icon
@@ -749,8 +798,12 @@ export function VenueFormSheet({
                         className={cn(
                           'px-3 py-2 rounded-lg text-xs font-bold border transition-colors min-h-[44px]',
                           selected
-                            ? 'bg-ice-500 border-ice-500 text-white'
-                            : 'bg-white dark:bg-rink-800 border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 hover:border-ice-500',
+                            ? iceTheme
+                              ? 'bg-it-blue-500 border-it-blue-500 text-white'
+                              : 'bg-ice-500 border-ice-500 text-white'
+                            : iceTheme
+                              ? 'bg-white dark:bg-rink-800 border-it-line-strong dark:border-rink-700 text-it-ink-700 dark:text-rink-100 hover:border-it-blue-500'
+                              : 'bg-white dark:bg-rink-800 border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 hover:border-ice-500',
                         )}
                       >
                         {size}
@@ -775,7 +828,10 @@ export function VenueFormSheet({
                     value={capacity}
                     onChange={(e) => setCapacity(e.target.value)}
                     placeholder={MESSAGES.venue.form.capacityPlaceholder}
-                    className="w-full rounded-lg border border-wline dark:border-rink-700 bg-wbg dark:bg-rink-800 text-wtext-1 dark:text-white px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-ice-500"
+                    className={cn(
+                      'w-full rounded-lg px-3 py-3 text-sm focus:outline-none',
+                      inputCls,
+                    )}
                   />
                 </div>
                 <div className="space-y-1">
@@ -794,7 +850,10 @@ export function VenueFormSheet({
                     value={hourlyRate}
                     onChange={(e) => setHourlyRate(e.target.value)}
                     placeholder={MESSAGES.venue.form.hourlyRatePlaceholder}
-                    className="w-full rounded-lg border border-wline dark:border-rink-700 bg-wbg dark:bg-rink-800 text-wtext-1 dark:text-white px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-ice-500"
+                    className={cn(
+                      'w-full rounded-lg px-3 py-3 text-sm focus:outline-none',
+                      inputCls,
+                    )}
                   />
                 </div>
               </div>
@@ -812,7 +871,10 @@ export function VenueFormSheet({
                 onChange={(e) => setDescription(e.target.value)}
                 maxLength={2000}
                 placeholder={MESSAGES.venue.form.descriptionPlaceholder}
-                className="w-full rounded-lg border border-wline dark:border-rink-700 bg-wbg dark:bg-rink-800 text-wtext-1 dark:text-white px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ice-500"
+                className={cn(
+                  'w-full rounded-lg px-4 py-3 text-sm resize-none focus:outline-none',
+                  inputCls,
+                )}
               />
             </section>
 
@@ -843,7 +905,12 @@ export function VenueFormSheet({
             type="button"
             onClick={handleSave}
             disabled={isSaving}
-            className="w-full bg-ice-500 hover:bg-ice-700 text-white font-bold py-3.5 rounded-xl shadow-md transition-colors motion-reduce:transition-none flex items-center justify-center gap-2 disabled:opacity-60"
+            className={cn(
+              'w-full text-white font-bold py-3.5 rounded-xl shadow-md transition-colors motion-reduce:transition-none flex items-center justify-center gap-2 disabled:opacity-60',
+              iceTheme
+                ? 'bg-it-blue-500 hover:bg-it-blue-600'
+                : 'bg-ice-500 hover:bg-ice-700',
+            )}
           >
             <Icon name="check" className="text-[20px]" aria-hidden="true" />
             {isSaving

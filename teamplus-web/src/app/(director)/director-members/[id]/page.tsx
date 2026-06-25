@@ -59,11 +59,12 @@ const ROLE_LABEL: Record<MemberRole, string> = {
   CHILD: '아동',
 };
 
+// ICETIMES 프로필 히어로(navy) 위 아바타 — 단일 중성 톤
 const ROLE_STYLE: Record<MemberRole, { bg: string; text: string }> = {
-  COACH: { bg: 'bg-blue-50 dark:bg-blue-900/20', text: 'text-blue-600 dark:text-blue-400' },
-  PARENT: { bg: 'bg-emerald-50 dark:bg-emerald-900/20', text: 'text-emerald-600 dark:text-emerald-400' },
-  TEEN: { bg: 'bg-orange-50 dark:bg-orange-900/20', text: 'text-orange-600 dark:text-orange-400' },
-  CHILD: { bg: 'bg-purple-50 dark:bg-purple-900/20', text: 'text-purple-600 dark:text-purple-400' },
+  COACH: { bg: 'bg-white/15 dark:bg-white/10', text: 'text-white' },
+  PARENT: { bg: 'bg-white/15 dark:bg-white/10', text: 'text-white' },
+  TEEN: { bg: 'bg-white/15 dark:bg-white/10', text: 'text-white' },
+  CHILD: { bg: 'bg-white/15 dark:bg-white/10', text: 'text-white' },
 };
 
 const STATUS_LABEL: Record<MemberDetail['status'], string> = {
@@ -72,18 +73,19 @@ const STATUS_LABEL: Record<MemberDetail['status'], string> = {
   pending: '대기',
 };
 
+// 히어로(navy) 위에 얹는 상태 칩 — 흰 글자 기반 반투명 칩
 const STATUS_STYLE: Record<MemberDetail['status'], string> = {
-  active: 'bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-800 text-green-600 dark:text-green-400',
-  inactive: 'bg-wline-2 dark:bg-rink-700 border-wline dark:border-rink-700 text-wtext-3 dark:text-rink-300',
-  pending: 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-100 dark:border-yellow-800 text-yellow-600 dark:text-yellow-400',
+  active: 'bg-mint-500/20 text-white',
+  inactive: 'bg-white/15 text-white/80',
+  pending: 'bg-sun-500/25 text-white',
 };
 
-/** 입력 필드 공통 스타일 */
+/** 입력 필드 공통 스타일 (ICETIMES — it-fill + 1.5px it-line-strong) */
 const INPUT_CLASS =
-  'w-full rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-700 px-4 py-3 text-card-body text-wtext-1 dark:text-white placeholder:text-wtext-3 dark:placeholder:text-wtext-3 outline-none transition-colors motion-reduce:transition-none focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20';
+  'w-full rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 px-4 py-3 text-[15px] font-medium text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-wtext-3 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20';
 
 const INPUT_READONLY_CLASS =
-  'w-full rounded-xl border border-wline-2 dark:border-rink-700 bg-wbg dark:bg-rink-800 px-4 py-3 text-card-body text-wtext-1 dark:text-white';
+  'w-full rounded-w-md border-[1.5px] border-it-line dark:border-rink-700 bg-it-canvas dark:bg-puck px-4 py-3 text-[15px] font-medium text-it-ink-500 dark:text-wtext-4';
 
 export default function DirectorMemberDetailPage() {
   // 인증/권한 체크는 (director)/layout.tsx 에서 단 한 번 수행됨 (중복 호출 금지)
@@ -259,11 +261,11 @@ export default function DirectorMemberDetailPage() {
     return (
       <MobileContainer hasBottomNav>
         <PageAppBar title="회원 상세" onBack={back} forceNative />
-        <main className="flex-1 flex flex-col items-center justify-center px-4">
-          <div className="w-16 h-16 rounded-w-pill bg-wline-2 dark:bg-rink-700 flex items-center justify-center mb-4">
-            <Icon name="person_off" className="text-3xl text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+        <main className="flex-1 flex flex-col items-center justify-center px-4 bg-it-canvas dark:bg-puck">
+          <div className="w-16 h-16 rounded-w-pill bg-it-line dark:bg-rink-700 flex items-center justify-center mb-4">
+            <Icon name="person_off" className="text-3xl text-it-ink-400 dark:text-wtext-4" aria-hidden="true" />
           </div>
-          <p className="text-card-body text-wtext-3 dark:text-rink-300">
+          <p className="text-card-body text-it-ink-500 dark:text-wtext-4">
             {MESSAGES.empty('회원')}
           </p>
         </main>
@@ -297,10 +299,10 @@ export default function DirectorMemberDetailPage() {
           }
         />
 
-        <main className="flex-1 overflow-y-auto pb-30 hide-scrollbar bg-wbg dark:bg-rink-900" role="main" aria-label="회원 상세">
-          {/* 프로필 헤더 */}
-          <section className="px-4 pt-6 pb-4" aria-label="회원 프로필">
-            <div className="flex flex-col items-center rounded-2xl bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 px-5 py-6">
+        <main className="flex-1 overflow-y-auto pb-30 hide-scrollbar bg-it-canvas dark:bg-puck" role="main" aria-label="회원 상세">
+          {/* 프로필 히어로 — navy 밴드 full-bleed (요약 강조) */}
+          <section className="bg-it-blue-800 dark:bg-it-blue-950 px-5 pb-7 pt-7" aria-label="회원 프로필">
+            <div className="flex flex-col items-center">
               <div className={cn(
                 'relative mb-4 flex size-24 items-center justify-center overflow-hidden rounded-w-pill',
                 roleStyle.bg,
@@ -313,24 +315,21 @@ export default function DirectorMemberDetailPage() {
                     className="h-full w-full object-cover"
                   />
                 ) : (
-                  <span className={cn('text-3xl font-bold', roleStyle.text)}>{initial}</span>
+                  <span className={cn('text-3xl font-extrabold', roleStyle.text)}>{initial}</span>
                 )}
               </div>
-              <h2 className="text-xl font-bold text-wtext-1 dark:text-white">{member.name}</h2>
+              <h2 className="text-[22px] font-extrabold tracking-[-0.01em] text-white">{member.name}</h2>
               {member.email && (
-                <p className="mt-1 text-card-meta text-wtext-3 dark:text-rink-300 break-all text-center">
+                <p className="mt-1 text-card-meta text-white/70 break-all text-center">
                   {member.email}
                 </p>
               )}
               <div className="mt-3 flex items-center gap-2">
-                <span className={cn(
-                  'inline-flex items-center rounded-w-pill px-2.5 py-1 text-card-meta font-bold',
-                  roleStyle.bg, roleStyle.text,
-                )}>
+                <span className="inline-flex items-center rounded-w-pill bg-white/15 px-2.5 py-1 text-card-meta font-bold text-white">
                   {ROLE_LABEL[member.role]}
                 </span>
                 <span className={cn(
-                  'inline-flex items-center rounded-w-pill border px-2.5 py-1 text-card-meta font-bold',
+                  'inline-flex items-center rounded-w-pill px-2.5 py-1 text-card-meta font-bold',
                   statusStyle,
                 )}>
                   {STATUS_LABEL[member.status]}
@@ -339,12 +338,14 @@ export default function DirectorMemberDetailPage() {
             </div>
           </section>
 
-          {/* 회원 정보 카드 */}
-          <section className="mx-4 mb-4" aria-label="기본 정보">
-            <div className="rounded-xl bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 p-5">
-              <h3 className="mb-5 flex items-center gap-2 text-card-body font-bold text-wtext-1 dark:text-white">
-                <span className="flex size-7 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-900/20">
-                  <Icon name="person" className="text-[16px] text-ice-500" aria-hidden="true" />
+          {/* flat 섹션 사이 8px 회색 갭 */}
+          <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+          {/* 회원 정보 — flat 흰 섹션 (카드 박스 제거) */}
+          <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6" aria-label="기본 정보">
+              <h3 className="mb-5 flex items-center gap-2 text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
+                <span className="flex size-7 items-center justify-center rounded-w-md bg-it-blue-50 dark:bg-it-blue-900/30">
+                  <Icon name="person" className="text-[16px] text-it-blue-500" aria-hidden="true" />
                 </span>
                 기본 정보
               </h3>
@@ -353,8 +354,8 @@ export default function DirectorMemberDetailPage() {
                 <div className="space-y-5">
                   {/* 이름 */}
                   <div>
-                    <label htmlFor="edit-name" className="mb-1.5 block text-card-meta font-bold text-wtext-2 dark:text-rink-100">
-                      이름 <span className="text-red-500" aria-hidden="true">*</span>
+                    <label htmlFor="edit-name" className="mb-1.5 block text-card-meta font-bold text-it-ink-500 dark:text-wtext-4">
+                      이름 <span className="text-it-red-500" aria-hidden="true">*</span>
                     </label>
                     <input
                       id="edit-name"
@@ -369,13 +370,13 @@ export default function DirectorMemberDetailPage() {
 
                   {/* 이메일 (읽기 전용) */}
                   <div>
-                    <label className="mb-1.5 block text-card-meta font-bold text-wtext-2 dark:text-rink-100">이메일</label>
+                    <label className="mb-1.5 block text-card-meta font-bold text-it-ink-500 dark:text-wtext-4">이메일</label>
                     <div className={INPUT_READONLY_CLASS}>{member.email || '-'}</div>
                   </div>
 
                   {/* 연락처 */}
                   <div>
-                    <label htmlFor="edit-phone" className="mb-1.5 block text-card-meta font-bold text-wtext-2 dark:text-rink-100">연락처</label>
+                    <label htmlFor="edit-phone" className="mb-1.5 block text-card-meta font-bold text-it-ink-500 dark:text-wtext-4">연락처</label>
                     <input
                       id="edit-phone"
                       type="tel"
@@ -388,20 +389,20 @@ export default function DirectorMemberDetailPage() {
 
                   {/* 역할 */}
                   <div>
-                    <label className="mb-1.5 block text-card-meta font-bold text-wtext-2 dark:text-rink-100">역할</label>
+                    <label className="mb-1.5 block text-card-meta font-bold text-it-ink-500 dark:text-wtext-4">역할</label>
                     <button
                       type="button"
                       onClick={() => setShowRoleSheet(true)}
                       className={`${INPUT_CLASS} flex h-12 items-center justify-between text-left`}
                     >
                       <span>{ROLE_LABEL[editRole]}</span>
-                      <Icon name="expand_more" className="text-xl text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+                      <Icon name="expand_more" className="text-xl text-it-ink-400 dark:text-wtext-4" aria-hidden="true" />
                     </button>
                   </div>
 
                   {/* 메모 */}
                   <div>
-                    <label htmlFor="edit-note" className="mb-1.5 block text-card-meta font-bold text-wtext-2 dark:text-rink-100">메모</label>
+                    <label htmlFor="edit-note" className="mb-1.5 block text-card-meta font-bold text-it-ink-500 dark:text-wtext-4">메모</label>
                     <textarea
                       id="edit-note"
                       value={editNote}
@@ -417,7 +418,7 @@ export default function DirectorMemberDetailPage() {
                     <button
                       type="button"
                       onClick={cancelEdit}
-                      className="h-12 flex-1 rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-card-body font-bold text-wtext-2 dark:text-rink-100 transition-colors motion-reduce:transition-none hover:bg-wbg dark:hover:bg-rink-700 active:brightness-95"
+                      className="h-12 flex-1 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-card-body font-bold text-it-ink-800 dark:text-white transition-colors motion-reduce:transition-none hover:bg-it-fill dark:hover:bg-rink-700 active:brightness-95"
                     >
                       취소
                     </button>
@@ -425,14 +426,14 @@ export default function DirectorMemberDetailPage() {
                       type="button"
                       onClick={handleSave}
                       disabled={isSaving || !editName.trim()}
-                      className="h-12 flex-[2] rounded-xl bg-ice-500 text-card-body font-bold text-white transition-colors motion-reduce:transition-none hover:bg-ice-700 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="h-12 flex-[2] rounded-w-md bg-it-blue-500 text-card-body font-bold text-white transition-colors motion-reduce:transition-none hover:bg-it-blue-600 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {isSaving ? MESSAGES.common.saving : '저장하기'}
                     </button>
                   </div>
                 </div>
               ) : (
-                <dl className="divide-y divide-slate-100 dark:divide-slate-700">
+                <dl className="divide-y divide-it-line dark:divide-rink-700">
                   <InfoRow icon="email" label="이메일" value={member.email || '-'} />
                   <InfoRow icon="phone" label="연락처" value={formatPhone(member.phone)} />
                   <InfoRow icon="badge" label="역할" value={ROLE_LABEL[member.role]} />
@@ -448,16 +449,16 @@ export default function DirectorMemberDetailPage() {
                   )}
                 </dl>
               )}
-            </div>
           </section>
 
-          {/* 출석 이력 요약 */}
+          {/* 출석 이력 요약 — flat 흰 섹션 */}
           {attendance && (
-            <section className="mx-4 mb-4" aria-label="출석 현황">
-              <div className="rounded-xl bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 p-5">
-                <h3 className="mb-4 flex items-center gap-2 text-card-body font-bold text-wtext-1 dark:text-white">
-                  <span className="flex size-7 items-center justify-center rounded-lg bg-emerald-50 dark:bg-emerald-900/20">
-                    <Icon name="fact_check" className="text-[16px] text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+            <>
+              <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+              <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6" aria-label="출석 현황">
+                <h3 className="mb-4 flex items-center gap-2 text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
+                  <span className="flex size-7 items-center justify-center rounded-w-md bg-mint-100 dark:bg-mint-500/15">
+                    <Icon name="fact_check" className="text-[16px] text-mint-500" aria-hidden="true" />
                   </span>
                   출석 현황
                 </h3>
@@ -466,17 +467,18 @@ export default function DirectorMemberDetailPage() {
                   <StatBox label="출석" value={`${attendance.attendedClasses}회`} />
                   <StatBox label="출석률" value={`${attendance.attendanceRate}%`} highlight />
                 </div>
-              </div>
-            </section>
+              </section>
+            </>
           )}
 
-          {/* 결제권 요약 */}
+          {/* 결제권 요약 — flat 흰 섹션 */}
           {credit && (
-            <section className="mx-4 mb-4" aria-label="결제권 현황">
-              <div className="rounded-xl bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 p-5">
-                <h3 className="mb-4 flex items-center gap-2 text-card-body font-bold text-wtext-1 dark:text-white">
-                  <span className="flex size-7 items-center justify-center rounded-lg bg-amber-50 dark:bg-amber-900/20">
-                    <Icon name="toll" className="text-[16px] text-amber-600 dark:text-amber-400" aria-hidden="true" />
+            <>
+              <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+              <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6" aria-label="결제권 현황">
+                <h3 className="mb-4 flex items-center gap-2 text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
+                  <span className="flex size-7 items-center justify-center rounded-w-md bg-sun-100 dark:bg-sun-500/15">
+                    <Icon name="toll" className="text-[16px] text-sun-500" aria-hidden="true" />
                   </span>
                   결제권 현황
                 </h3>
@@ -485,11 +487,11 @@ export default function DirectorMemberDetailPage() {
                   <StatBox label="사용" value={`${credit.usedCredits}`} />
                   <StatBox label="잔여" value={`${credit.remainingCredits}`} highlight />
                 </div>
-              </div>
-            </section>
+              </section>
+            </>
           )}
 
-          <div className="h-6" aria-hidden="true" />
+          <div className="h-6 bg-it-canvas dark:bg-puck" aria-hidden="true" />
         </main>
       </MobileContainer>
 
@@ -513,24 +515,24 @@ export default function DirectorMemberDetailPage() {
                   setShowRoleSheet(false);
                 }}
                 className={cn(
-                  'flex w-full items-center justify-between rounded-xl px-4 py-4 text-left transition-colors motion-reduce:transition-none',
+                  'flex w-full items-center justify-between rounded-w-md px-4 py-4 text-left transition-colors motion-reduce:transition-none',
                   selected
-                    ? 'bg-ice-500/10 dark:bg-ice-500/20'
-                    : 'hover:bg-wbg active:bg-wline-2 dark:hover:bg-rink-700/40 dark:active:bg-rink-700/60',
+                    ? 'bg-it-blue-50 dark:bg-it-blue-900/30'
+                    : 'hover:bg-it-fill active:bg-it-line dark:hover:bg-rink-700/40 dark:active:bg-rink-700/60',
                 )}
               >
                 <span
                   className={cn(
                     'text-card-title',
                     selected
-                      ? 'font-bold text-ice-500'
-                      : 'font-medium text-wtext-1 dark:text-white',
+                      ? 'font-bold text-it-blue-500'
+                      : 'font-medium text-it-ink-800 dark:text-white',
                   )}
                 >
                   {opt.label}
                 </span>
                 {selected && (
-                  <Icon name="check_circle" className="text-2xl text-ice-500" aria-hidden="true" />
+                  <Icon name="check_circle" className="text-2xl text-it-blue-500" aria-hidden="true" />
                 )}
               </button>
             );
@@ -549,14 +551,14 @@ function InfoRow({ icon, label, value }: { icon: string; label: string; value: s
     <div className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
       <Icon
         name={icon}
-        className="mt-0.5 shrink-0 text-card-title text-wtext-3 dark:text-rink-300"
+        className="mt-0.5 shrink-0 text-card-title text-it-blue-500"
         aria-hidden="true"
       />
       <div className="flex-1 min-w-0">
-        <dt className="mb-0.5 text-card-meta font-semibold uppercase tracking-wide text-wtext-3 dark:text-rink-300">
+        <dt className="mb-0.5 text-card-meta font-semibold uppercase tracking-wide text-it-ink-400 dark:text-wtext-4">
           {label}
         </dt>
-        <dd className="break-all text-card-body font-medium text-wtext-1 dark:text-white">
+        <dd className="break-all text-card-body font-medium text-it-ink-800 dark:text-white">
           {value}
         </dd>
       </div>
@@ -568,15 +570,15 @@ function InfoRow({ icon, label, value }: { icon: string; label: string; value: s
 function StatBox({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
     <div className={cn(
-      'flex flex-col items-center gap-1.5 rounded-xl px-2 py-3.5 border',
+      'flex flex-col items-center gap-1.5 rounded-w-md px-2 py-3.5 border-[1.5px]',
       highlight
-        ? 'bg-blue-50 border-ice-500/30 dark:bg-blue-900/20 dark:border-ice-500/30'
-        : 'bg-wbg border-wline-2 dark:bg-rink-700/40 dark:border-rink-700/50',
+        ? 'bg-it-blue-50 border-it-blue-500/30 dark:bg-it-blue-900/30 dark:border-it-blue-500/30'
+        : 'bg-it-fill border-it-line dark:bg-rink-700/40 dark:border-rink-700/50',
     )}>
-      <span className="text-card-meta font-semibold text-wtext-3 dark:text-rink-300">{label}</span>
+      <span className="text-card-meta font-semibold text-it-ink-500 dark:text-wtext-4">{label}</span>
       <span className={cn(
         'text-card-title font-bold tabular-nums',
-        highlight ? 'text-ice-500' : 'text-wtext-1 dark:text-white',
+        highlight ? 'text-it-blue-500' : 'text-it-ink-800 dark:text-white',
       )}>
         {value}
       </span>

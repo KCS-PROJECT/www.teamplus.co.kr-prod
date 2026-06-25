@@ -34,10 +34,10 @@ function mapReceiptStatus(status: string): ReceiptStatus {
 }
 
 const STATUS_ICON_MAP: Record<string, { icon: string; bg: string; color: string; label: string }> = {
-  completed: { icon: 'check_circle', bg: 'bg-green-100 dark:bg-green-900/20', color: 'text-green-600 dark:text-green-400', label: '결제 완료' },
-  cancelled: { icon: 'cancel', bg: 'bg-red-100 dark:bg-red-900/20', color: 'text-red-600 dark:text-red-400', label: '결제 취소' },
-  refunded:  { icon: 'replay', bg: 'bg-amber-100 dark:bg-amber-900/20', color: 'text-amber-600 dark:text-amber-400', label: '환불 완료' },
-  pending:   { icon: 'schedule', bg: 'bg-sky-100 dark:bg-sky-900/20', color: 'text-sky-600 dark:text-sky-400', label: '결제 대기중' },
+  completed: { icon: 'check_circle', bg: 'bg-it-blue-50 dark:bg-it-blue-500/15', color: 'text-it-blue-600 dark:text-it-blue-300', label: '결제 완료' },
+  cancelled: { icon: 'cancel', bg: 'bg-it-red-50 dark:bg-it-red-500/15', color: 'text-it-red-600 dark:text-it-red-200', label: '결제 취소' },
+  refunded:  { icon: 'replay', bg: 'bg-it-fill dark:bg-rink-700', color: 'text-it-ink-500 dark:text-rink-300', label: '환불 완료' },
+  pending:   { icon: 'schedule', bg: 'bg-it-blue-50 dark:bg-it-blue-500/15', color: 'text-it-blue-500 dark:text-it-blue-300', label: '결제 대기중' },
 };
 
 function StatusHeader({ status }: { status: string }) {
@@ -129,28 +129,30 @@ export default function ReceiptDetailPage() {
     <MobileContainer hasBottomNav={false} className="selectable-text">
       <BackHeader title="영수증 상세" onBack={() => back()} />
 
-      <main className="flex-1 overflow-y-auto hide-scrollbar pb-30">
+      <main className="flex-1 overflow-y-auto hide-scrollbar pb-30 bg-it-canvas dark:bg-puck">
         {isLoading ? null : error ? (
           /* 에러 상태 */
           <div className="flex flex-col items-center justify-center py-20 px-6">
-            <div className="w-16 h-16 rounded-w-pill bg-red-100 dark:bg-red-900/20 flex items-center justify-center mb-4">
-              <Icon name="error" className="text-3xl text-red-500 dark:text-red-400" />
+            <div className="w-16 h-16 rounded-w-pill bg-it-red-50 dark:bg-it-red-500/15 flex items-center justify-center mb-4">
+              <Icon name="error" className="text-3xl text-it-red-500 dark:text-it-red-200" />
             </div>
-            <h2 className="text-card-title font-bold text-wtext-1 dark:text-white mb-2">
+            <h2 className="text-card-title font-bold text-it-ink-900 dark:text-white mb-2">
               {MESSAGES.error.title}
             </h2>
-            <p className="text-card-body text-wtext-3 dark:text-rink-300 text-center mb-6">{error}</p>
+            <p className="text-card-body text-it-ink-500 dark:text-rink-300 text-center mb-6">{error}</p>
             <Button onClick={fetchReceipt} variant="outline">
               다시 시도
             </Button>
           </div>
         ) : receipt ? (
           <>
-            {/* 상태 아이콘 */}
-            <StatusHeader status={receipt.status} />
+            {/* 상태 아이콘 — 흰 섹션 (full-bleed) */}
+            <section className="bg-it-surface dark:bg-it-blue-950">
+              <StatusHeader status={receipt.status} />
+            </section>
 
-            {/* 영수증 카드 - 공통 컴포넌트 */}
-            <div className="px-5">
+            {/* 영수증 카드 - 공통 컴포넌트 (8px 회색 갭 위 흰 섹션) */}
+            <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4">
               <ReceiptCard
                 merchantName={receipt.storeName}
                 orderNumber={receipt.orderNumber}
@@ -159,25 +161,26 @@ export default function ReceiptDetailPage() {
                 productName={receipt.productName}
                 totalAmount={receipt.totalAmount}
                 status={mapReceiptStatus(receipt.status)}
+                iceTheme
               />
-            </div>
 
-            {/* 결제권 발급 정보 */}
-            {receipt.creditsIssued > 0 && (
-              <div className="mx-5 mt-4 flex items-center gap-3 bg-ice-500/5 dark:bg-ice-500/10 rounded-xl p-4">
-                <div className="w-10 h-10 rounded-w-pill bg-ice-500/10 flex items-center justify-center shrink-0">
-                  <Icon name="toll" className="text-xl text-ice-500 dark:text-blue-400" />
+              {/* 결제권 발급 정보 */}
+              {receipt.creditsIssued > 0 && (
+                <div className="mt-4 flex items-center gap-3 bg-it-blue-50 dark:bg-it-blue-500/15 rounded-w-md p-4">
+                  <div className="w-10 h-10 rounded-w-pill bg-it-blue-500/10 flex items-center justify-center shrink-0">
+                    <Icon name="toll" className="text-xl text-it-blue-500 dark:text-it-blue-300" />
+                  </div>
+                  <div>
+                    <p className="text-card-body font-bold text-it-ink-900 dark:text-white">결제권 발급</p>
+                    <p className="text-card-body text-it-blue-600 dark:text-it-blue-300 font-semibold">{receipt.creditsIssued}회</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-card-body font-bold text-wtext-1 dark:text-white">결제권 발급</p>
-                  <p className="text-card-body text-ice-500 dark:text-blue-400 font-semibold">{receipt.creditsIssued}회</p>
-                </div>
-              </div>
-            )}
+              )}
+            </section>
 
             {/* 안내 텍스트 */}
-            <div className="text-center mt-6 px-5">
-              <p className="text-card-meta text-wtext-3 dark:text-rink-300 leading-relaxed">
+            <div className="text-center mt-4 px-5">
+              <p className="text-card-meta text-it-ink-400 dark:text-rink-300 leading-relaxed">
                 전자영수증은 소득공제 및 증빙용으로 사용할 수 있습니다.
               </p>
             </div>
@@ -187,7 +190,7 @@ export default function ReceiptDetailPage() {
 
       {/* 하단 액션 고정 바 */}
       {!isLoading && !error && receipt && (
-        <footer className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white dark:bg-rink-900 border-t border-wline-2 dark:border-rink-800 px-5 pt-4 pb-8 z-20">
+        <footer className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-it-surface dark:bg-rink-900 border-t border-it-line dark:border-rink-800 px-5 pt-4 pb-8 z-20">
           <div className="flex flex-col gap-3">
             <Button
               onClick={handleDownloadImage}

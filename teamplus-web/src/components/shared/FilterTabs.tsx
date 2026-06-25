@@ -37,6 +37,11 @@ export interface FilterTabsProps {
   className?: string;
   /** aria-label (탭 그룹 설명) */
   ariaLabel?: string;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 hairline·인디케이터·활성색·카운트 배지를 it-blue 토큰으로 교체.
+   */
+  iceTheme?: boolean;
 }
 
 export function FilterTabs({
@@ -45,6 +50,7 @@ export function FilterTabs({
   onChange,
   className,
   ariaLabel = '필터 탭',
+  iceTheme = false,
 }: FilterTabsProps) {
   const { registerTab, containerRef, rect, ready } = useAnimatedTabIndicator({
     activeValue: activeKey,
@@ -67,7 +73,10 @@ export function FilterTabs({
       role="tablist"
       aria-label={ariaLabel}
       className={cn(
-        'relative flex items-center gap-8 border-b border-wline-2 dark:border-rink-700',
+        'relative flex items-center gap-8 border-b',
+        iceTheme
+          ? 'border-it-line dark:border-it-blue-900'
+          : 'border-wline-2 dark:border-rink-700',
         'overflow-x-auto no-scrollbar',
         className
       )}
@@ -75,7 +84,7 @@ export function FilterTabs({
       <AnimatedTabIndicator
         style={indicatorStyle}
         ready={ready}
-        className="bg-ice-500 z-0"
+        className={cn('z-0', iceTheme ? 'bg-it-blue-500' : 'bg-ice-500')}
       />
       {tabs.map((tab) => {
         const isActive = tab.key === activeKey;
@@ -90,11 +99,16 @@ export function FilterTabs({
             onClick={() => onChange(tab.key)}
             className={cn(
               'relative z-[1] shrink-0 py-3 text-sm transition-colors duration-150 motion-reduce:transition-none',
-              'focus:outline-none focus:ring-2 focus:ring-ice-500/40 rounded',
+              'focus:outline-none focus:ring-2 rounded',
+              iceTheme ? 'focus:ring-it-blue-500/40' : 'focus:ring-ice-500/40',
               'inline-flex items-center gap-1.5',
               isActive
-                ? 'text-ice-500 font-bold'
-                : 'text-wtext-3 dark:text-rink-300 font-medium hover:text-wtext-2 dark:hover:text-rink-100'
+                ? iceTheme
+                  ? 'text-it-blue-500 font-bold'
+                  : 'text-ice-500 font-bold'
+                : iceTheme
+                  ? 'text-it-ink-500 dark:text-it-ink-300 font-medium hover:text-it-ink-700 dark:hover:text-white'
+                  : 'text-wtext-3 dark:text-rink-300 font-medium hover:text-wtext-2 dark:hover:text-rink-100'
             )}
           >
             <span>{tab.label}</span>
@@ -103,8 +117,12 @@ export function FilterTabs({
                 className={cn(
                   'inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-bold',
                   isActive
-                    ? 'bg-ice-500 text-white'
-                    : 'bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-100'
+                    ? iceTheme
+                      ? 'bg-it-blue-500 text-white'
+                      : 'bg-ice-500 text-white'
+                    : iceTheme
+                      ? 'bg-it-fill text-it-ink-600 dark:bg-it-blue-900/40 dark:text-it-ink-200'
+                      : 'bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-100'
                 )}
                 aria-label={`${tab.count}건`}
               >

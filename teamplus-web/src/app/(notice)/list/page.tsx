@@ -90,10 +90,10 @@ function SectionLabel({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between px-6 pt-5 pb-2.5">
+    <div className="flex items-center justify-between px-5 pt-5 pb-2.5">
       <div className="inline-flex items-center gap-2">
-        <span aria-hidden="true" className="w-[3px] h-3.5 bg-ice-500 rounded-sm" />
-        <span className="text-[14px] font-extrabold text-wtext-1 dark:text-white tracking-[-0.02em] inline-flex items-center gap-1.5">
+        <span aria-hidden="true" className="w-[3px] h-3.5 bg-it-blue-500 rounded-sm" />
+        <span className="text-[15px] font-extrabold text-it-ink-800 dark:text-white tracking-[-0.02em] inline-flex items-center gap-1.5">
           {children}
         </span>
       </div>
@@ -102,18 +102,18 @@ function SectionLabel({
   );
 }
 
-/* ───────── 카테고리별 chip 컬러 (참고자료 kindColor 패턴) ───────── */
+/* ───────── 카테고리별 chip 컬러 (ICETIMES it-* 토큰) ───────── */
 const CATEGORY_CHIP_TONE: Record<NoticeCategory, { bg: string; text: string }> = {
-  notice: { bg: "bg-wtext-2/10 dark:bg-white/10", text: "text-wtext-2 dark:text-white" },
+  notice: { bg: "bg-it-blue-50 dark:bg-it-blue-500/15", text: "text-it-blue-500" },
   event: { bg: "bg-emerald-500/10", text: "text-emerald-600 dark:text-emerald-400" },
-  academy: { bg: "bg-ice-500/10", text: "text-ice-500" },
+  academy: { bg: "bg-it-blue-50 dark:bg-it-blue-500/15", text: "text-it-blue-500" },
 };
 
 /* ───────── 카테고리별 좌측 아이콘 앵커 (리스트 스캔성↑) ───────── */
 const CATEGORY_ICON: Record<NoticeCategory, { name: string; bg: string; text: string }> = {
-  notice: { name: "campaign", bg: "bg-ice-500/10 dark:bg-ice-500/15", text: "text-ice-500" },
+  notice: { name: "campaign", bg: "bg-it-blue-50 dark:bg-it-blue-500/15", text: "text-it-blue-500" },
   event: { name: "celebration", bg: "bg-emerald-500/10 dark:bg-emerald-500/15", text: "text-emerald-600 dark:text-emerald-400" },
-  academy: { name: "school", bg: "bg-ice-500/10 dark:bg-ice-500/15", text: "text-ice-500" },
+  academy: { name: "school", bg: "bg-it-blue-50 dark:bg-it-blue-500/15", text: "text-it-blue-500" },
 };
 
 /* ───────── 탭별 빈 상태 메시지 ───────── */
@@ -313,74 +313,70 @@ export default function NoticeListPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title={pageTitle} forceNative />
 
-      <div className="flex-1 overflow-y-auto pb-30 bg-wbg dark:bg-rink-900 hide-scrollbar">
-        {/* Hero 카드 — 고정 공지가 있을 때만 노출 (참고자료 04e Hero 패턴) */}
-        {!isLoading && pinnedNotices.map((pinned) => (
-          <div key={pinned.id} className="px-5 pt-3">
-            <NavLink
-              href={`/notice/${pinned.id}`}
-              aria-label={`상단 고정 · ${pinned.title}`}
-              className={cn(
-                "relative block overflow-hidden rounded-w-xl px-5 pt-[22px] pb-5 text-white",
-                // [2026-05-18] DESIGN.md SoT 정합 — solid color + sh-blue 토큰 사용
-                // (AI 스타일 금지: bg-gradient-to-*, shadow-[..rgba] 제거).
-                "bg-ice-500 shadow-sh-blue",
-                "transition-transform duration-200 ease-ios active:scale-[0.985] motion-reduce:transition-none",
-              )}
-            >
-              {/* 우상단 chip — 상단 고정 */}
-              <div className="absolute top-3.5 right-3.5 inline-flex items-center gap-1.5 rounded-w-pill border border-white/30 bg-white/15 px-2.5 py-1 text-[11px] font-bold text-white">
-                <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+      <div className="flex-1 overflow-y-auto pb-30 bg-it-canvas dark:bg-puck hide-scrollbar">
+        {/* Hero — 고정 공지 full-bleed navy 밴드 (ICETIMES flat · 박스 제거). */}
+        {!isLoading && pinnedNotices.map((pinned, pIdx) => (
+          <NavLink
+            key={pinned.id}
+            href={`/notice/${pinned.id}`}
+            aria-label={`상단 고정 · ${pinned.title}`}
+            className={cn(
+              "relative block px-5 pt-4 pb-5 text-white bg-it-blue-800 dark:bg-it-blue-950",
+              pIdx > 0 && "border-t border-white/10",
+              "transition-[filter] duration-200 ease-ios active:brightness-95 motion-reduce:transition-none",
+            )}
+          >
+            {/* 우상단 chip — 상단 고정 */}
+            <div className="absolute top-4 right-5 inline-flex items-center gap-1.5 rounded-w-pill border border-white/30 bg-white/15 px-2.5 py-1 text-[11px] font-bold text-white">
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                <path
+                  d="M6 2v8M3 6l3 3 3-3"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  transform="rotate(180 6 6)"
+                />
+              </svg>
+              상단 고정
+            </div>
+
+            <div className="flex items-center gap-3.5">
+              {/* 별 아이콘 박스 */}
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-w-md bg-white/95 text-it-blue-500">
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
                   <path
-                    d="M6 2v8M3 6l3 3 3-3"
+                    d="M9 4l-3 8 4 3-2 9 12-11-4-3 2-9z"
+                    fill="currentColor"
                     stroke="currentColor"
-                    strokeWidth="1.4"
-                    strokeLinecap="round"
+                    strokeWidth="1.5"
                     strokeLinejoin="round"
-                    transform="rotate(180 6 6)"
                   />
                 </svg>
-                상단 고정
               </div>
-
-              <div className="mt-[18px] flex items-center gap-3.5">
-                {/* 별 아이콘 박스 */}
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-w-md bg-white/95 text-ice-500 shadow-sh-3">
-                  <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
-                    <path
-                      d="M9 4l-3 8 4 3-2 9 12-11-4-3 2-9z"
-                      fill="currentColor"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
+              <div className="min-w-0 flex-1">
+                <div className="mb-1.5 inline-flex items-center gap-1 rounded-w-xs bg-it-red-500 px-2 py-0.5 text-[10.5px] font-extrabold tracking-[0.02em] text-white">
+                  <Icon name="priority_high" className="text-[12px]" aria-hidden="true" />
+                  중요
                 </div>
-                <div className="min-w-0 flex-1">
-                  <div className="mb-1.5 inline-flex items-center gap-1 rounded-w-sm bg-sun-100 px-2 py-0.5 text-[10.5px] font-extrabold tracking-[0.02em] text-amber-800">
-                    <Icon name="priority_high" className="text-[12px]" aria-hidden="true" />
-                    중요
-                  </div>
-                  <div className="text-[18px] font-extrabold leading-[1.3] tracking-[-0.025em] line-clamp-2">
-                    {pinned.title}
-                  </div>
-                  <div className="mt-1 text-[11px] font-bold text-white/90 tabular-nums">
-                    {pinned.date || ""}
-                  </div>
+                <div className="text-[18px] font-extrabold leading-[1.3] tracking-[-0.025em] line-clamp-2">
+                  {pinned.title}
+                </div>
+                <div className="mt-1 text-[11px] font-bold text-white/90 tabular-nums">
+                  {pinned.date || ""}
                 </div>
               </div>
+            </div>
 
-              {/* 안내 박스 — 본문 미리보기. 박스 overflow-hidden + 내부 line-clamp 이중 클램프로
-                  텍스트가 카드 밖으로 새는 현상 방지. 본문이 없으면 박스 자체를 숨김. */}
-              {pinned.subtitle && (
-                <div className="mt-3.5 overflow-hidden rounded-w-md border border-white/20 bg-white/15 px-3 py-2.5">
-                  <p className="text-[12.5px] font-medium leading-[1.5] text-white/95 line-clamp-2">
-                    {pinned.subtitle}
-                  </p>
-                </div>
-              )}
-            </NavLink>
-          </div>
+            {/* 안내 박스 — 본문 미리보기. 이중 클램프로 텍스트 누출 방지. 본문 없으면 숨김. */}
+            {pinned.subtitle && (
+              <div className="mt-3.5 overflow-hidden rounded-w-md border border-white/20 bg-white/10 px-3 py-2.5">
+                <p className="text-[12.5px] font-medium leading-[1.5] text-white/95 line-clamp-2">
+                  {pinned.subtitle}
+                </p>
+              </div>
+            )}
+          </NavLink>
         ))}
 
         {/* Tabs — 04e segmented control · 슬라이딩 인디케이터 */}
@@ -393,7 +389,7 @@ export default function NoticeListPage() {
           <div
             ref={tabListRef}
             className={cn(
-              "relative grid gap-1 rounded-w-md border border-wline-2 dark:border-rink-700 bg-wsurface dark:bg-rink-800 p-1",
+              "relative grid gap-1 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 p-1",
               tabs.length >= 3 ? "grid-cols-3" : "grid-cols-2",
             )}
           >
@@ -401,8 +397,7 @@ export default function NoticeListPage() {
             <span
               aria-hidden="true"
               className={cn(
-                // [2026-05-18] DESIGN.md SoT — sh-blue 토큰 사용 (colored shadow 토큰화).
-                "pointer-events-none absolute top-1 h-9 rounded-w-sm bg-ice-500 shadow-sh-blue",
+                "pointer-events-none absolute top-1 h-9 rounded-w-sm bg-it-blue-500",
                 "transition-[transform,width,opacity] duration-[320ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none will-change-transform",
                 pillStyle ? "opacity-100" : "opacity-0",
               )}
@@ -425,9 +420,9 @@ export default function NoticeListPage() {
                   aria-selected={on}
                   onClick={() => setActiveCategory(t.key)}
                   className={cn(
-                    "relative z-10 inline-flex h-9 items-center justify-center gap-1.5 rounded-w-sm text-[13px] font-extrabold tracking-[-0.01em] focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40",
+                    "relative z-10 inline-flex h-9 items-center justify-center gap-1.5 rounded-w-sm text-[13px] font-extrabold tracking-[-0.01em] focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40",
                     "transition-colors duration-300 ease-out motion-reduce:transition-none",
-                    on ? "text-white" : "text-wtext-2 dark:text-wtext-4 hover:text-ice-500",
+                    on ? "text-white" : "text-it-ink-600 dark:text-wtext-4 hover:text-it-blue-500",
                   )}
                 >
                   {t.label}
@@ -435,7 +430,7 @@ export default function NoticeListPage() {
                     className={cn(
                       "inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-w-pill px-1.5 text-[10px] font-extrabold tabular-nums",
                       "transition-colors duration-300 ease-out motion-reduce:transition-none",
-                      on ? "bg-white/25 text-white" : "bg-wline-2 dark:bg-rink-700 text-wtext-3 dark:text-wtext-4",
+                      on ? "bg-white/25 text-white" : "bg-it-line dark:bg-rink-700 text-it-ink-500 dark:text-wtext-4",
                     )}
                   >
                     {t.count}
@@ -451,15 +446,15 @@ export default function NoticeListPage() {
         {!isTeamScope && !isLoading && totalCount > 0 && (
           <div className="px-5 pt-3 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
-              <span className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl border border-wline-2 dark:border-rink-700 bg-wsurface dark:bg-rink-800 text-[13px] font-extrabold text-wtext-2 dark:text-rink-100">
-                <Icon name="campaign" className="text-[14px] text-wtext-3 dark:text-rink-400" aria-hidden="true" />
+              <span className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-[13px] font-extrabold text-it-ink-700 dark:text-rink-100">
+                <Icon name="campaign" className="text-[14px] text-it-ink-400 dark:text-rink-400" aria-hidden="true" />
                 전체
-                <span className="tabular-nums text-wtext-1 dark:text-white">{totalCount}</span>
+                <span className="tabular-nums text-it-ink-800 dark:text-white">{totalCount}</span>
               </span>
-              <span className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl border border-wline-2 dark:border-rink-700 bg-wsurface dark:bg-rink-800 text-[13px] font-extrabold text-wtext-2 dark:text-rink-100">
-                <span className="size-2 rounded-full bg-flame" aria-hidden="true" />
+              <span className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-[13px] font-extrabold text-it-ink-700 dark:text-rink-100">
+                <span className="size-2 rounded-full bg-it-red-500" aria-hidden="true" />
                 안읽음
-                <span className="tabular-nums text-flame">{noticeUnread}</span>
+                <span className="tabular-nums text-it-red-500">{noticeUnread}</span>
               </span>
             </div>
             <button
@@ -467,10 +462,10 @@ export default function NoticeListPage() {
               onClick={handleMarkAllNoticesRead}
               disabled={noticeUnread === 0 || isMarkingAll}
               className={cn(
-                "shrink-0 inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl border text-[13px] font-extrabold tracking-tight transition-colors motion-reduce:transition-none active:brightness-95",
+                "shrink-0 inline-flex items-center gap-1.5 h-9 px-3.5 rounded-w-md border-[1.5px] text-[13px] font-extrabold tracking-tight transition-colors motion-reduce:transition-none active:brightness-95",
                 noticeUnread > 0 && !isMarkingAll
-                  ? "border-ice-500 bg-ice-500 text-white hover:bg-ice-700"
-                  : "border-wline-2 dark:border-rink-700 bg-wsurface dark:bg-rink-800 text-wtext-3 dark:text-rink-400 cursor-not-allowed",
+                  ? "border-it-blue-500 bg-it-blue-500 text-white hover:bg-it-blue-600"
+                  : "border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-it-ink-400 dark:text-rink-400 cursor-not-allowed",
               )}
               aria-label={MESSAGES.notifications.markAllRead}
             >
@@ -484,37 +479,46 @@ export default function NoticeListPage() {
         )}
 
         {/* 최근 소식 — 일반 공지가 있을 때만 라벨 노출 (고정 공지만 있고 0건이면 숨김) */}
-        {!isLoading && regularNotices.length > 0 && (
-          <SectionLabel action={null}>
-            최근 소식
-            <span className="ml-1 rounded-w-pill bg-wline-2 dark:bg-rink-700 px-1.5 py-px text-[11px] font-extrabold text-wtext-2 dark:text-wtext-4 tabular-nums">
-              {regularNotices.length}
-            </span>
-          </SectionLabel>
+        {/* flat 섹션 사이 8px 회색 갭 (Hero·탭·배지 아래) */}
+        {!isLoading && (
+          <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
         )}
 
-        {/* 카드 리스트 */}
-        <div
+        {/* 최근 소식 — flat 흰 섹션 (hairline 행, 카드 박스 제거) */}
+        <section
           key={activeCategory}
-          className="flex flex-col gap-2.5 px-5 animate-fade-in motion-reduce:animate-none"
+          className="bg-it-surface dark:bg-rink-800 pb-6 animate-fade-in motion-reduce:animate-none"
+          aria-label="최근 소식"
         >
-          {!isLoading &&
-            regularNotices.map((r) => {
-              const tone = CATEGORY_CHIP_TONE[r.category];
-              const catIcon = CATEGORY_ICON[r.category];
-              const kindLabel = NOTICE_CATEGORY_LABEL[r.category];
-              const unread = r.isRead === false;
-              return (
-                <NavLink
-                  key={r.id}
-                  href={`/notice/${r.id}`}
-                  className={cn(
-                    "block rounded-w-lg border border-wline-2 dark:border-rink-700 bg-wsurface dark:bg-rink-800 p-3.5 shadow-sh-1 hover:border-wline hover:shadow-sh-2 active:bg-wbg dark:active:bg-rink-700 dark:hover:border-rink-500 transition-[box-shadow,border-color,background-color] duration-200 ease-ios motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40",
-                    r.isExpired && "opacity-70",
-                  )}
-                  aria-label={`[${kindLabel}] ${r.title} — ${r.date}${unread ? " · 미확인" : ""}${r.isExpired ? " · 종료됨" : ""}`}
-                >
-                  <div className="flex items-start gap-3">
+          {!isLoading && regularNotices.length > 0 && (
+            <SectionLabel action={null}>
+              최근 소식
+              <span className="ml-1 rounded-w-pill bg-it-line dark:bg-rink-700 px-1.5 py-px text-[11px] font-extrabold text-it-ink-700 dark:text-wtext-4 tabular-nums">
+                {regularNotices.length}
+              </span>
+            </SectionLabel>
+          )}
+
+          {/* 공지 목록 — hairline 행 */}
+          <div className="flex flex-col px-5">
+            {!isLoading &&
+              regularNotices.map((r, idx) => {
+                const tone = CATEGORY_CHIP_TONE[r.category];
+                const catIcon = CATEGORY_ICON[r.category];
+                const kindLabel = NOTICE_CATEGORY_LABEL[r.category];
+                const unread = r.isRead === false;
+                const isLast = idx === regularNotices.length - 1;
+                return (
+                  <NavLink
+                    key={r.id}
+                    href={`/notice/${r.id}`}
+                    className={cn(
+                      "flex items-start gap-3 py-3.5 transition-colors duration-200 ease-ios motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 active:brightness-95",
+                      !isLast && "border-b border-it-line dark:border-rink-700",
+                      r.isExpired && "opacity-70",
+                    )}
+                    aria-label={`[${kindLabel}] ${r.title} — ${r.date}${unread ? " · 미확인" : ""}${r.isExpired ? " · 종료됨" : ""}`}
+                  >
                     {/* 좌측 카테고리 아이콘 앵커 — 미확인 시 우상단 점 표시 */}
                     <div
                       className={cn(
@@ -529,7 +533,7 @@ export default function NoticeListPage() {
                       />
                       {unread && (
                         <span
-                          className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-w-pill bg-flame-500 ring-2 ring-wsurface dark:ring-rink-800"
+                          className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-w-pill bg-it-red-500 ring-2 ring-it-surface dark:ring-rink-800"
                           aria-label="미확인 공지"
                         />
                       )}
@@ -539,22 +543,22 @@ export default function NoticeListPage() {
                       <div className="flex items-center gap-2">
                         <span
                           className={cn(
-                            "rounded-md px-2 py-0.5 text-[11px] font-extrabold tracking-[-0.01em]",
+                            "rounded-w-xs px-2 py-0.5 text-[11px] font-extrabold tracking-[-0.01em]",
                             tone.bg,
                             tone.text,
                           )}
                         >
                           {kindLabel}
                         </span>
-                        <span aria-hidden="true" className="h-0.5 w-0.5 rounded-w-pill bg-wtext-4" />
-                        <span className="text-[11px] font-bold text-wtext-3 dark:text-wtext-4 tabular-nums">
+                        <span aria-hidden="true" className="h-0.5 w-0.5 rounded-w-pill bg-it-ink-400" />
+                        <span className="text-[11px] font-bold text-it-ink-500 dark:text-wtext-4 tabular-nums">
                           {r.date}
                         </span>
                       </div>
 
                       <h3
                         className={cn(
-                          "mt-2 text-[15px] leading-[1.35] tracking-[-0.025em] text-wtext-1 dark:text-white line-clamp-2",
+                          "mt-2 text-[15px] leading-[1.35] tracking-[-0.025em] text-it-ink-800 dark:text-white line-clamp-2",
                           unread ? "font-extrabold" : "font-bold",
                         )}
                       >
@@ -562,7 +566,7 @@ export default function NoticeListPage() {
                       </h3>
 
                       {r.subtitle && (
-                        <p className="mt-1.5 text-[12.5px] font-medium leading-[1.55] text-wtext-3 dark:text-wtext-4 line-clamp-2">
+                        <p className="mt-1.5 text-[12.5px] font-medium leading-[1.55] text-it-ink-500 dark:text-wtext-4 line-clamp-2">
                           {r.subtitle}
                         </p>
                       )}
@@ -570,92 +574,88 @@ export default function NoticeListPage() {
 
                     <Icon
                       name="chevron_right"
-                      className="mt-0.5 shrink-0 text-base text-wtext-3 dark:text-wtext-4"
+                      className="mt-0.5 shrink-0 text-base text-it-ink-400 dark:text-wtext-4"
+                      aria-hidden="true"
+                    />
+                  </NavLink>
+                );
+              })}
+
+            {/* Load More Button */}
+            {!isLoading && hasMore && regularNotices.length > 0 && (
+              <button
+                type="button"
+                onClick={handleLoadMore}
+                disabled={isLoadingMore}
+                className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 py-3.5 text-[13px] font-bold text-it-ink-600 dark:text-wtext-4 hover:bg-it-fill dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none disabled:opacity-50"
+              >
+                {isLoadingMore ? (
+                  <>
+                    <span
+                      aria-hidden="true"
+                      className="h-4 w-4 animate-spin motion-reduce:animate-none rounded-w-pill border-2 border-it-line-strong dark:border-rink-700 border-t-it-blue-500"
+                    />
+                    <span>{MESSAGES.common.loading}</span>
+                  </>
+                ) : (
+                  <>
+                    <Icon name="expand_more" className="text-base" aria-hidden="true" />
+                    <span>{MESSAGES.notice.list.loadMoreShort}</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            {/* Empty State — 탭별 멘트 */}
+            {!isLoading && regularNotices.length === 0 && pinnedNotices.length === 0 && (() => {
+              const empty = EMPTY_STATE_BY_TAB[activeCategory] ?? EMPTY_STATE_BY_TAB.all;
+              return (
+                <div
+                  className="flex flex-col items-center justify-center px-6 py-16 text-center"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-w-pill bg-it-blue-50 dark:bg-it-blue-500/15">
+                    <Icon
+                      name={empty.icon}
+                      className="text-3xl text-it-blue-500"
                       aria-hidden="true"
                     />
                   </div>
-                </NavLink>
+                  <p className="text-[15px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
+                    {empty.title}
+                  </p>
+                  <p className="mt-1.5 text-[12.5px] font-medium leading-[1.5] text-it-ink-500 dark:text-wtext-4">
+                    {empty.hint}
+                  </p>
+                </div>
               );
-            })}
+            })()}
 
-          {/* Load More Button */}
-          {!isLoading && hasMore && regularNotices.length > 0 && (
-            <button
-              type="button"
-              onClick={handleLoadMore}
-              disabled={isLoadingMore}
-              className="mt-1 inline-flex w-full items-center justify-center gap-2 rounded-w-lg border border-wline-2 dark:border-rink-700 bg-wsurface dark:bg-rink-800 py-3.5 text-[13px] font-bold text-wtext-2 dark:text-wtext-4 hover:bg-wbg dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none disabled:opacity-50"
-            >
-              {isLoadingMore ? (
-                <>
-                  <span
-                    aria-hidden="true"
-                    className="h-4 w-4 animate-spin motion-reduce:animate-none rounded-w-pill border-2 border-wline-2 dark:border-rink-700 border-t-ice-500"
-                  />
-                  <span>{MESSAGES.common.loading}</span>
-                </>
-              ) : (
-                <>
-                  <Icon name="expand_more" className="text-base" aria-hidden="true" />
-                  <span>{MESSAGES.notice.list.loadMoreShort}</span>
-                </>
-              )}
-            </button>
-          )}
-
-          {/* Empty State — 탭별 멘트 */}
-          {!isLoading && regularNotices.length === 0 && pinnedNotices.length === 0 && (() => {
-            const empty = EMPTY_STATE_BY_TAB[activeCategory] ?? EMPTY_STATE_BY_TAB.all;
-            return (
+            {/* 고정 공지만 있고 일반 공지가 0건 — Hero 아래가 텅 비지 않도록 가벼운 안내. */}
+            {!isLoading && regularNotices.length === 0 && pinnedNotices.length > 0 && (
               <div
-                className="flex flex-col items-center justify-center px-6 py-16 text-center"
+                className="flex flex-col items-center justify-center px-6 py-12 text-center"
                 role="status"
                 aria-live="polite"
               >
-                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-w-pill bg-ice-500/10 dark:bg-ice-500/15">
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-w-pill bg-it-line dark:bg-rink-700">
                   <Icon
-                    name={empty.icon}
-                    className="text-3xl text-ice-500"
+                    name="inbox"
+                    className="text-2xl text-it-ink-400 dark:text-wtext-4"
                     aria-hidden="true"
                   />
                 </div>
-                <p className="text-[15px] font-extrabold tracking-[-0.02em] text-wtext-1 dark:text-white">
-                  {empty.title}
+                <p className="text-[13px] font-bold text-it-ink-600 dark:text-wtext-4">
+                  다른 소식은 아직 없어요
                 </p>
-                <p className="mt-1.5 text-[12.5px] font-medium leading-[1.5] text-wtext-3 dark:text-wtext-4">
-                  {empty.hint}
+                <p className="mt-1 text-[12px] font-medium text-it-ink-500 dark:text-wtext-4">
+                  새로운 공지가 올라오면 이곳에서 알려드릴게요
                 </p>
               </div>
-            );
-          })()}
-
-          {/* 고정 공지만 있고 일반 공지가 0건 — Hero 아래가 텅 비지 않도록 가벼운 안내 노출.
-              (풀 빈 상태와 달리 Hero 가 이미 화면을 채우므로 절제된 톤으로) */}
-          {!isLoading && regularNotices.length === 0 && pinnedNotices.length > 0 && (
-            <div
-              className="flex flex-col items-center justify-center px-6 py-12 text-center"
-              role="status"
-              aria-live="polite"
-            >
-              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-w-pill bg-wline-2 dark:bg-rink-800">
-                <Icon
-                  name="inbox"
-                  className="text-2xl text-wtext-3 dark:text-wtext-4"
-                  aria-hidden="true"
-                />
-              </div>
-              <p className="text-[13px] font-bold text-wtext-2 dark:text-wtext-4">
-                다른 소식은 아직 없어요
-              </p>
-              <p className="mt-1 text-[12px] font-medium text-wtext-3 dark:text-wtext-4">
-                새로운 공지가 올라오면 이곳에서 알려드릴게요
-              </p>
-            </div>
-          )}
-
-        </div>
-
-        <div className="h-6" />
+            )}
+          </div>
+        </section>
       </div>
 
       {/* 공지 작성 FAB — admin/director만 노출 */}

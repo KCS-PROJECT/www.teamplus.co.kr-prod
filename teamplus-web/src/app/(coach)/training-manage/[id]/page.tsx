@@ -76,24 +76,24 @@ function ScheduleCard({
   return (
     <div
       className={cn(
-        'p-4 bg-white dark:bg-rink-800 rounded-xl border transition-colors motion-reduce:transition-none',
+        'px-4 sm:px-5 py-4 border-b border-it-line dark:border-rink-700 transition-colors motion-reduce:transition-none',
         schedule.isCancelled
-          ? 'border-red-200 dark:border-red-800 bg-red-50/40 dark:bg-red-900/10'
+          ? 'bg-it-red-50/40 dark:bg-it-red-700/10'
           : isPast
-            ? 'border-wline dark:border-rink-700 opacity-70'
-            : 'border-wline dark:border-rink-700',
+            ? 'opacity-70'
+            : '',
       )}
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <div
             className={cn(
-              'w-12 h-12 rounded-xl flex flex-col items-center justify-center shrink-0',
+              'w-12 h-12 rounded-w-md flex flex-col items-center justify-center shrink-0',
               schedule.isCancelled
-                ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+                ? 'bg-it-red-100 dark:bg-it-red-700/30 text-it-red-500 dark:text-it-red-300'
                 : isPast
-                  ? 'bg-wline-2 dark:bg-rink-700 text-wtext-3 dark:text-rink-300'
-                  : 'bg-ice-500/10 text-ice-500',
+                  ? 'bg-it-fill dark:bg-rink-700 text-it-ink-500 dark:text-rink-300'
+                  : 'bg-it-blue-50 dark:bg-it-blue-500/10 text-it-blue-500',
             )}
           >
             <span className="text-card-meta font-semibold leading-none">
@@ -105,17 +105,17 @@ function ScheduleCard({
           </div>
 
           <div className="min-w-0">
-            <p className="text-card-body font-semibold text-wtext-1 dark:text-white truncate">
+            <p className="text-card-body font-semibold text-it-ink-800 dark:text-white truncate">
               {formatDate(schedule.scheduledDate)}
             </p>
-            <div className="flex gap-3 mt-1 text-card-meta text-wtext-3 dark:text-rink-300">
+            <div className="flex gap-3 mt-1 text-card-meta text-it-ink-500 dark:text-rink-300">
               <span className="inline-flex items-center gap-1">
                 <Icon name="how_to_reg" className="text-card-body" aria-hidden="true" />
-                출석 <span className="font-semibold text-wtext-2 dark:text-rink-100">{attendanceCount}</span>
+                출석 <span className="font-semibold text-it-ink-800 dark:text-rink-100">{attendanceCount}</span>
               </span>
               <span className="inline-flex items-center gap-1">
                 <Icon name="thumb_up" className="text-card-body" aria-hidden="true" />
-                RSVP <span className="font-semibold text-wtext-2 dark:text-rink-100">{rsvpCount}</span>
+                RSVP <span className="font-semibold text-it-ink-800 dark:text-rink-100">{rsvpCount}</span>
               </span>
             </div>
           </div>
@@ -123,7 +123,7 @@ function ScheduleCard({
 
         <div className="flex items-center gap-2 shrink-0">
           {schedule.isCancelled ? (
-            <span className="inline-flex items-center h-7 px-2.5 text-card-meta text-red-600 dark:text-red-400 font-semibold bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+            <span className="inline-flex items-center h-7 px-2.5 text-card-meta text-it-red-500 dark:text-it-red-300 font-semibold bg-it-red-50 dark:bg-it-red-700/20 border border-it-red-200 dark:border-it-red-700 rounded-lg">
               취소됨
             </span>
           ) : !isPast ? (
@@ -132,7 +132,7 @@ function ScheduleCard({
               onClick={handleCancel}
               disabled={cancelling}
               aria-label={`${formatDate(schedule.scheduledDate)} 일정 취소`}
-              className="inline-flex items-center justify-center h-8 px-3 text-card-meta font-medium text-wtext-3 dark:text-rink-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors motion-reduce:transition-none disabled:opacity-50"
+              className="inline-flex items-center justify-center h-8 px-3 text-card-meta font-medium text-it-ink-500 dark:text-rink-300 hover:text-it-red-500 hover:bg-it-red-50 dark:hover:bg-it-red-700/20 rounded-lg transition-colors motion-reduce:transition-none disabled:opacity-50"
             >
               {cancelling ? '...' : '취소'}
             </button>
@@ -141,7 +141,7 @@ function ScheduleCard({
       </div>
 
       {schedule.cancellationReason && (
-        <p className="mt-3 text-card-meta text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900 rounded-lg px-3 py-2">
+        <p className="mt-3 text-card-meta text-it-red-500 dark:text-it-red-300 bg-it-red-50 dark:bg-it-red-700/20 border border-it-red-100 dark:border-it-red-700 rounded-lg px-3 py-2">
           <span className="font-semibold">취소 사유 · </span>
           {schedule.cancellationReason}
         </p>
@@ -214,11 +214,11 @@ export default function TrainingDetailPage() {
     return (
       <MobileContainer hasBottomNav>
         <PageAppBar title="훈련 상세" showBack />
-        <div className="flex flex-col items-center justify-center py-20 text-center px-5">
-          <div className="w-16 h-16 bg-red-50 dark:bg-red-900/20 rounded-w-pill flex items-center justify-center mb-4">
-            <Icon name="error_outline" className="text-3xl text-red-500" aria-hidden="true" />
+        <div className="flex-1 flex flex-col items-center justify-center py-20 text-center px-5 bg-it-canvas dark:bg-puck">
+          <div className="w-16 h-16 bg-it-red-50 dark:bg-it-red-700/20 rounded-w-pill flex items-center justify-center mb-4">
+            <Icon name="error_outline" className="text-3xl text-it-red-500" aria-hidden="true" />
           </div>
-          <p className="text-card-body text-wtext-2 dark:text-rink-100">
+          <p className="text-card-body text-it-ink-800 dark:text-rink-100">
             {error ?? '훈련 세션을 찾을 수 없습니다.'}
           </p>
         </div>
@@ -240,61 +240,61 @@ export default function TrainingDetailPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title="훈련 상세" showBack />
 
-      <div className="px-5 pt-5 pb-32 space-y-5">
-        {/* 상단 정보 카드 */}
-        <section className="bg-white dark:bg-rink-800 rounded-xl border border-wline dark:border-rink-700 shadow-sm p-5">
+      <main className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck pb-32">
+        {/* 상단 정보 히어로 — navy 밴드 full-bleed (요약 강조) */}
+        <section className="bg-it-blue-800 dark:bg-it-blue-950 px-5 pt-6 pb-6" aria-label="훈련 정보">
           <div className="flex items-start gap-4">
-            <div className={cn('w-14 h-14 rounded-xl flex items-center justify-center shrink-0', typeInfo.bg)}>
-              <Icon name={typeInfo.icon} className={cn('text-2xl', typeInfo.color)} aria-hidden="true" />
+            <div className="w-14 h-14 rounded-w-md flex items-center justify-center shrink-0 bg-white/15">
+              <Icon name={typeInfo.icon} className="text-2xl text-white" aria-hidden="true" />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-                <span className="text-card-meta font-bold uppercase tracking-widest text-ice-500 bg-ice-500/10 px-2 py-0.5 rounded">
+                <span className="text-card-meta font-bold uppercase tracking-widest text-white bg-white/15 px-2 py-0.5 rounded">
                   {typeLabel}
                 </span>
                 {!training.isActive && (
-                  <span className="text-card-meta font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded">
+                  <span className="text-card-meta font-medium text-white bg-it-red-500/30 px-2 py-0.5 rounded">
                     비활성
                   </span>
                 )}
               </div>
-              <h2 className="text-card-title font-bold text-wtext-1 dark:text-white leading-tight">
+              <h2 className="text-[22px] font-extrabold tracking-[-0.01em] text-white leading-tight">
                 {training.className}
               </h2>
             </div>
           </div>
 
           {training.description && (
-            <p className="mt-4 text-card-body text-wtext-2 dark:text-rink-100 leading-relaxed bg-wbg dark:bg-rink-700/50 rounded-xl px-4 py-3">
+            <p className="mt-4 text-card-body text-white/80 leading-relaxed bg-white/10 rounded-w-md px-4 py-3">
               {training.description}
             </p>
           )}
 
-          <div className="grid grid-cols-2 gap-x-3 gap-y-3 mt-4 pt-4 border-t border-wline-2 dark:border-rink-700">
-            <div className="flex items-center gap-2 text-card-body text-wtext-2 dark:text-rink-100">
-              <Icon name="person" className="text-card-emphasis text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+          <div className="grid grid-cols-2 gap-x-3 gap-y-3 mt-4 pt-4 border-t border-white/15">
+            <div className="flex items-center gap-2 text-card-body text-white/90">
+              <Icon name="person" className="text-card-emphasis text-white/60" aria-hidden="true" />
               <span className="truncate">{training.instructorName}</span>
             </div>
-            <div className="flex items-center gap-2 text-card-body text-wtext-2 dark:text-rink-100">
-              <Icon name="groups" className="text-card-emphasis text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+            <div className="flex items-center gap-2 text-card-body text-white/90">
+              <Icon name="groups" className="text-card-emphasis text-white/60" aria-hidden="true" />
               <span>정원 {training.capacity}명</span>
             </div>
-            <div className="flex items-center gap-2 text-card-body text-wtext-2 dark:text-rink-100">
-              <Icon name="schedule" className="text-card-emphasis text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+            <div className="flex items-center gap-2 text-card-body text-white/90">
+              <Icon name="schedule" className="text-card-emphasis text-white/60" aria-hidden="true" />
               <span>{formatTime(training.startTime)} - {formatTime(training.endTime)}</span>
             </div>
-            <div className="flex items-center gap-2 text-card-body text-wtext-2 dark:text-rink-100">
-              <Icon name="business" className="text-card-emphasis text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+            <div className="flex items-center gap-2 text-card-body text-white/90">
+              <Icon name="business" className="text-card-emphasis text-white/60" aria-hidden="true" />
               <span className="truncate">{training.club.clubName}</span>
             </div>
           </div>
         </section>
 
-        {/* 일정 추가 */}
-        <section className="bg-white dark:bg-rink-800 rounded-xl border border-wline dark:border-rink-700 shadow-sm p-5">
+        {/* 일정 추가 — flat 흰 섹션 */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 pt-5 pb-5">
           <div className="flex items-center gap-2 mb-3">
-            <Icon name="event_available" className="text-card-title text-ice-500" aria-hidden="true" />
-            <h3 className="text-card-body font-semibold text-wtext-1 dark:text-white">일정 추가</h3>
+            <Icon name="event_available" className="text-card-title text-it-blue-500" aria-hidden="true" />
+            <h3 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">일정 추가</h3>
           </div>
           <div className="flex gap-2">
             <input
@@ -302,17 +302,17 @@ export default function TrainingDetailPage() {
               value={newScheduleDate}
               onChange={(e) => setNewScheduleDate(e.target.value)}
               aria-label="추가할 일정 날짜"
-              className="flex-1 h-11 px-3 bg-wbg dark:bg-rink-700 border border-wline dark:border-rink-700 rounded-xl text-card-body text-wtext-1 dark:text-white focus:outline-none focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20 transition-colors motion-reduce:transition-none"
+              className="flex-1 h-11 px-3 bg-it-fill dark:bg-rink-700 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[15px] font-medium text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 transition-colors motion-reduce:transition-none"
             />
             <button
               type="button"
               onClick={handleAddSchedule}
               disabled={addingSchedule || !newScheduleDate}
               className={cn(
-                'h-11 px-5 rounded-xl text-card-body font-semibold text-white transition-colors motion-reduce:transition-none shadow-sm',
+                'h-11 px-5 rounded-w-md text-card-body font-bold text-white transition-colors motion-reduce:transition-none',
                 addingSchedule || !newScheduleDate
-                  ? 'bg-wline dark:bg-rink-500 cursor-not-allowed'
-                  : 'bg-ice-500 hover:bg-ice-700 active:brightness-95',
+                  ? 'bg-it-ink-300 dark:bg-rink-500 cursor-not-allowed'
+                  : 'bg-it-blue-500 hover:bg-it-blue-600 active:brightness-95',
               )}
             >
               {addingSchedule ? '...' : '추가'}
@@ -320,100 +320,100 @@ export default function TrainingDetailPage() {
           </div>
         </section>
 
-        {/* 일정 목록 */}
-        <section className="space-y-5">
-          {/* 예정된 일정 */}
-          {upcomingSchedules.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-2.5">
-                <h3 className="inline-flex items-center gap-1.5 text-card-meta font-semibold text-ice-500 uppercase tracking-wider">
-                  <span className="inline-block w-1.5 h-1.5 rounded-w-pill bg-ice-500" aria-hidden="true" />
-                  예정
-                </h3>
-                <span className="text-card-meta text-wtext-3 dark:text-rink-300">{upcomingSchedules.length}건</span>
-              </div>
-              <div className="space-y-2.5">
-                {upcomingSchedules.map((s) => (
-                  <ScheduleCard
-                    key={s.id}
-                    schedule={s}
-                    trainingId={trainingId}
-                    onCancel={refresh}
-                  />
-                ))}
-              </div>
+        {/* 일정 목록 — flat 흰 섹션 (hairline 행) */}
+        {/* 예정된 일정 */}
+        {upcomingSchedules.length > 0 && (
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950" aria-label="예정된 일정">
+            <div className="flex items-center justify-between px-4 sm:px-5 pt-4 pb-2">
+              <h3 className="inline-flex items-center gap-1.5 text-card-meta font-bold text-it-blue-500 uppercase tracking-wider">
+                <span className="inline-block w-1.5 h-1.5 rounded-w-pill bg-it-blue-500" aria-hidden="true" />
+                예정
+              </h3>
+              <span className="text-card-meta text-it-ink-500 dark:text-rink-300 tabular-nums">{upcomingSchedules.length}건</span>
             </div>
-          )}
-
-          {/* 완료된 일정 */}
-          {pastSchedules.length > 0 && (
             <div>
-              <div className="flex items-center justify-between mb-2.5">
-                <h3 className="inline-flex items-center gap-1.5 text-card-meta font-semibold text-wtext-3 dark:text-rink-300 uppercase tracking-wider">
-                  <span className="inline-block w-1.5 h-1.5 rounded-w-pill bg-wtext-4 dark:bg-wbg0" aria-hidden="true" />
-                  완료
-                </h3>
-                <span className="text-card-meta text-wtext-3 dark:text-rink-300">{pastSchedules.length}건</span>
-              </div>
-              <div className="space-y-2.5">
-                {pastSchedules.map((s) => (
-                  <ScheduleCard
-                    key={s.id}
-                    schedule={s}
-                    trainingId={trainingId}
-                    onCancel={refresh}
-                  />
-                ))}
-              </div>
+              {upcomingSchedules.map((s) => (
+                <ScheduleCard
+                  key={s.id}
+                  schedule={s}
+                  trainingId={trainingId}
+                  onCancel={refresh}
+                />
+              ))}
             </div>
-          )}
+          </section>
+        )}
 
-          {/* 취소된 일정 */}
-          {cancelledSchedules.length > 0 && (
+        {/* 완료된 일정 */}
+        {pastSchedules.length > 0 && (
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950" aria-label="완료된 일정">
+            <div className="flex items-center justify-between px-4 sm:px-5 pt-4 pb-2">
+              <h3 className="inline-flex items-center gap-1.5 text-card-meta font-bold text-it-ink-500 dark:text-rink-300 uppercase tracking-wider">
+                <span className="inline-block w-1.5 h-1.5 rounded-w-pill bg-it-ink-300" aria-hidden="true" />
+                완료
+              </h3>
+              <span className="text-card-meta text-it-ink-500 dark:text-rink-300 tabular-nums">{pastSchedules.length}건</span>
+            </div>
             <div>
-              <div className="flex items-center justify-between mb-2.5">
-                <h3 className="inline-flex items-center gap-1.5 text-card-meta font-semibold text-red-500 dark:text-red-400 uppercase tracking-wider">
-                  <span className="inline-block w-1.5 h-1.5 rounded-w-pill bg-red-500" aria-hidden="true" />
-                  취소됨
-                </h3>
-                <span className="text-card-meta text-wtext-3 dark:text-rink-300">{cancelledSchedules.length}건</span>
-              </div>
-              <div className="space-y-2.5">
-                {cancelledSchedules.map((s) => (
-                  <ScheduleCard
-                    key={s.id}
-                    schedule={s}
-                    trainingId={trainingId}
-                    onCancel={refresh}
-                  />
-                ))}
-              </div>
+              {pastSchedules.map((s) => (
+                <ScheduleCard
+                  key={s.id}
+                  schedule={s}
+                  trainingId={trainingId}
+                  onCancel={refresh}
+                />
+              ))}
             </div>
-          )}
+          </section>
+        )}
 
-          {training.schedules.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-14 text-center bg-white dark:bg-rink-800 rounded-xl border border-dashed border-wline dark:border-rink-700">
-              <div className="w-14 h-14 bg-wline-2 dark:bg-rink-700 rounded-w-pill flex items-center justify-center mb-3">
-                <Icon name="event_busy" className="text-2xl text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+        {/* 취소된 일정 */}
+        {cancelledSchedules.length > 0 && (
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950" aria-label="취소된 일정">
+            <div className="flex items-center justify-between px-4 sm:px-5 pt-4 pb-2">
+              <h3 className="inline-flex items-center gap-1.5 text-card-meta font-bold text-it-red-500 dark:text-it-red-300 uppercase tracking-wider">
+                <span className="inline-block w-1.5 h-1.5 rounded-w-pill bg-it-red-500" aria-hidden="true" />
+                취소됨
+              </h3>
+              <span className="text-card-meta text-it-ink-500 dark:text-rink-300 tabular-nums">{cancelledSchedules.length}건</span>
+            </div>
+            <div>
+              {cancelledSchedules.map((s) => (
+                <ScheduleCard
+                  key={s.id}
+                  schedule={s}
+                  trainingId={trainingId}
+                  onCancel={refresh}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {training.schedules.length === 0 && (
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
+            <div className="flex flex-col items-center justify-center py-14 text-center">
+              <div className="w-14 h-14 bg-it-fill dark:bg-rink-700 rounded-w-pill flex items-center justify-center mb-3">
+                <Icon name="event_busy" className="text-2xl text-it-ink-400 dark:text-rink-300" aria-hidden="true" />
               </div>
-              <p className="text-card-body font-medium text-wtext-2 dark:text-rink-100 mb-1">
+              <p className="text-card-body font-medium text-it-ink-800 dark:text-rink-100 mb-1">
                 등록된 일정이 없습니다.
               </p>
-              <p className="text-card-meta text-wtext-3 dark:text-rink-300">
+              <p className="text-card-meta text-it-ink-500 dark:text-rink-300">
                 위 입력란에서 일정을 추가해보세요.
               </p>
             </div>
-          )}
-        </section>
-      </div>
+          </section>
+        )}
+      </main>
 
       {/* 하단 Sticky 삭제 액션 */}
-      <div className="sticky bottom-0 left-0 right-0 bg-white dark:bg-rink-900 border-t border-wline dark:border-rink-700 px-5 py-4">
+      <div className="sticky bottom-0 left-0 right-0 bg-it-surface dark:bg-rink-900 border-t border-it-line dark:border-rink-700 px-5 py-4">
         <button
           type="button"
           onClick={handleDelete}
           disabled={deleting}
-          className="w-full h-12 rounded-xl border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 text-card-body font-semibold hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-60 transition-colors motion-reduce:transition-none"
+          className="w-full h-12 rounded-w-md border-[1.5px] border-it-red-200 dark:border-it-red-700 text-it-red-500 dark:text-it-red-300 text-card-body font-bold hover:bg-it-red-50 dark:hover:bg-it-red-700/20 disabled:opacity-60 transition-colors motion-reduce:transition-none active:brightness-95"
         >
           {deleting ? '삭제 중...' : '삭제하기'}
         </button>

@@ -213,45 +213,36 @@ export default function HelpCenterPage() {
         ref: padding: "20px 20px 100px". MobileContainer 가 pb-30(120px) 강제하므로
         하단 100px 은 컨테이너에서 보장되어 main 자체는 pt-5 px-5 만 부여.
       */}
-      <main className="flex-1 overflow-y-auto px-5 pt-5">
-        {/* Intro — ref: 22px font-extrabold text1 letter-spacing -0.03em / 13px text3 mt-1.5
-            ref div 는 line-height 명시 없음 → default(normal) 유지를 위해 leading 미지정. */}
-        <section>
-          <h2 className="text-card-section font-extrabold text-wtext-1 dark:text-white tracking-[-0.03em]">
+      <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck">
+        {/* Intro + 2×2 Menu Grid — full-bleed 흰 섹션 */}
+        <section className="bg-it-surface dark:bg-it-blue-950 px-5 pt-5 pb-6">
+          {/* Intro */}
+          <h2 className="text-card-section font-extrabold text-it-ink-800 dark:text-white tracking-[-0.03em]">
             무엇을 도와드릴까요?
           </h2>
-          <p className="mt-1.5 text-card-body font-medium text-wtext-3 dark:text-wtext-4 leading-[1.5]">
+          <p className="mt-1.5 text-card-body font-medium text-it-ink-500 dark:text-wtext-4 leading-[1.5]">
             자주 묻는 질문을 확인하거나 고객센터로 문의해주세요.
           </p>
-        </section>
 
-        {/* 2×2 Menu Grid — ref: gap 10, gridTemplateColumns 1fr 1fr */}
-        <section className="mt-5">
-          <div className="grid grid-cols-2 gap-2.5">
+          {/* 2×2 Menu Grid — flat: it-fill 타일 + hairline border (박스 그림자 제거) */}
+          <div className="mt-5 grid grid-cols-2 gap-2.5">
             {SHORTCUTS.map((item) => (
               <NavLink
                 key={item.href}
                 href={item.href}
                 aria-label={`${item.label} — ${item.description}`}
-                /*
-                  ref:
-                    background: T.surface, border: none, borderRadius: 16,
-                    boxShadow: "0 2px 8px rgba(20,24,38,0.04)",
-                    padding: "16px 16px 18px", flex column, gap 12, minHeight 150
-                */
                 className="
                   group flex flex-col gap-3 min-h-[150px]
-                  rounded-2xl bg-wsurface dark:bg-rink-800
+                  rounded-w-md bg-it-fill dark:bg-rink-800
+                  border-[1.5px] border-it-line-strong dark:border-rink-700
                   px-4 pt-4 pb-[18px]
-                  shadow-[0_2px_8px_rgba(20,24,38,0.04)]
-                  dark:shadow-[0_2px_8px_rgba(0,0,0,0.25)]
                   transition-transform motion-reduce:transition-none
                   active:scale-[0.98]
-                  focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40
+                  focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40
                 "
               >
-                {/* ref: 44×44 borderRadius 12 background T.line2 + 20×20 inline SVG */}
-                <div className="w-11 h-11 rounded-xl bg-wline-2 dark:bg-rink-700 grid place-items-center text-wtext-2 dark:text-wtext-4">
+                {/* ref: 44×44 borderRadius 12 background + 20×20 inline SVG */}
+                <div className="w-11 h-11 rounded-xl bg-it-line-strong dark:bg-rink-700 grid place-items-center text-it-ink-700 dark:text-wtext-4">
                   <svg
                     width="20"
                     height="20"
@@ -264,11 +255,11 @@ export default function HelpCenterPage() {
                 </div>
                 <div>
                   {/* ref: 14px font-extrabold text1 letter-spacing -0.02em */}
-                  <p className="text-card-body font-extrabold text-wtext-1 dark:text-white tracking-[-0.02em]">
+                  <p className="text-card-body font-extrabold text-it-ink-800 dark:text-white tracking-[-0.02em]">
                     {item.label}
                   </p>
                   {/* ref: 11px text3 mt 4 lineHeight 1.45 font-weight 500 */}
-                  <p className="mt-1 text-card-meta font-medium text-wtext-3 dark:text-wtext-4 leading-[1.45]">
+                  <p className="mt-1 text-card-meta font-medium text-it-ink-500 dark:text-wtext-4 leading-[1.45]">
                     {item.description}
                   </p>
                 </div>
@@ -277,16 +268,16 @@ export default function HelpCenterPage() {
           </div>
         </section>
 
-        {/* 자주 묻는 질문 — ref: mt 24 (헤더) + mt 10 (콘텐츠) */}
-        <section className="mt-6">
+        {/* 자주 묻는 질문 — full-bleed 흰 섹션 + hairline 행 */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 pt-4 pb-5">
           <div className="flex items-center justify-between">
             {/* ref: 14px font-extrabold text1 letter-spacing -0.02em */}
-            <h3 className="text-card-body font-extrabold text-wtext-1 dark:text-white tracking-[-0.02em]">
+            <h3 className="text-card-body font-extrabold text-it-ink-800 dark:text-white tracking-[-0.02em]">
               자주 묻는 질문
             </h3>
             <NavLink
               href="/faq"
-              className="inline-flex items-center gap-1 text-card-meta font-extrabold text-ice-500"
+              className="inline-flex items-center gap-1 text-card-meta font-extrabold text-it-blue-600"
             >
               전체 보기
               {/* ref: 10×10 chevron */}
@@ -321,13 +312,13 @@ export default function HelpCenterPage() {
                 className="
                   flex flex-col items-center gap-2.5
                   py-8 px-5
-                  rounded-2xl bg-wsurface dark:bg-rink-800
-                  border border-dashed border-wline dark:border-rink-700
+                  rounded-w-md bg-it-fill dark:bg-rink-800
+                  border border-dashed border-it-line-strong dark:border-rink-700
                 "
               >
                 {/* ref: 44×44 round-full bg line2 + 20×20 inline SVG (원 + 물음표 곡선 + 점)
                     ref svg color: stroke/fill T.text3 */}
-                <div className="w-11 h-11 rounded-full bg-wline-2 dark:bg-rink-700 grid place-items-center text-wtext-3 dark:text-wtext-4">
+                <div className="w-11 h-11 rounded-full bg-it-line-strong dark:bg-rink-700 grid place-items-center text-it-ink-500 dark:text-wtext-4">
                   <svg
                     width="20"
                     height="20"
@@ -351,35 +342,32 @@ export default function HelpCenterPage() {
                     <circle cx="10" cy="14.2" r="0.9" fill="currentColor" />
                   </svg>
                 </div>
-                <p className="text-card-body font-bold text-wtext-3 dark:text-wtext-4">
+                <p className="text-card-body font-bold text-it-ink-500 dark:text-wtext-4">
                   등록된 FAQ가 없습니다
                 </p>
               </div>
             ) : (
-              <ul className="flex flex-col gap-2">
+              <ul className="-mx-5 divide-y divide-it-line dark:divide-rink-800 border-t border-it-line dark:border-rink-800">
                 {topFaqs.map((faq) => (
                   <li key={faq.id}>
                     <NavLink
                       href={`/faq?id=${encodeURIComponent(faq.id)}`}
                       aria-label={`자주 묻는 질문: ${faq.question}`}
                       className="
-                        flex items-center justify-between gap-3 p-4
-                        rounded-2xl bg-wsurface dark:bg-rink-800
-                        shadow-[0_2px_8px_rgba(20,24,38,0.04)]
-                        dark:shadow-[0_2px_8px_rgba(0,0,0,0.25)]
-                        transition-transform motion-reduce:transition-none
-                        active:scale-[0.99]
+                        flex items-center justify-between gap-3 px-5 py-4
+                        transition-colors motion-reduce:transition-none
+                        active:bg-it-fill dark:active:bg-rink-800
                       "
                     >
                       <div className="flex items-start gap-3 flex-1 min-w-0">
-                        <span className="shrink-0 w-6 h-6 rounded-full bg-ice-50 dark:bg-ice-500/15 text-ice-500 grid place-items-center text-card-meta font-extrabold">
+                        <span className="shrink-0 w-6 h-6 rounded-full bg-it-blue-50 dark:bg-it-blue-500/15 text-it-blue-600 grid place-items-center text-card-meta font-extrabold">
                           Q
                         </span>
                         <div className="min-w-0 flex-1">
-                          <p className="text-card-meta font-medium text-wtext-3 dark:text-wtext-4 mb-0.5">
+                          <p className="text-card-meta font-medium text-it-ink-500 dark:text-wtext-4 mb-0.5">
                             {faq.category}
                           </p>
-                          <p className="text-card-body font-extrabold text-wtext-1 dark:text-white tracking-[-0.02em] truncate">
+                          <p className="text-card-body font-extrabold text-it-ink-800 dark:text-white tracking-[-0.02em] truncate">
                             {faq.question}
                           </p>
                         </div>
@@ -389,7 +377,7 @@ export default function HelpCenterPage() {
                         height="16"
                         viewBox="0 0 16 16"
                         fill="none"
-                        className="shrink-0 text-wtext-3 dark:text-wtext-4"
+                        className="shrink-0 text-it-ink-400 dark:text-wtext-4"
                         aria-hidden="true"
                       >
                         <path
@@ -408,32 +396,24 @@ export default function HelpCenterPage() {
           </div>
         </section>
 
-        {/* 직접 문의 — ref: mt 20 / 헤더 12px font-extrabold text3 letter-spacing -0.01em */}
-        <section className="mt-5">
-          <h3 className="text-card-meta font-extrabold text-wtext-3 dark:text-wtext-4 tracking-[-0.01em]">
+        {/* 직접 문의 — full-bleed 흰 섹션 + hairline 행 */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 pt-4 pb-5">
+          <h3 className="text-card-meta font-extrabold text-it-ink-500 dark:text-wtext-4 tracking-[-0.01em]">
             직접 문의
           </h3>
           <a
             href={mailtoHref}
             aria-label={`이메일 문의: ${supportEmail}`}
-            /*
-              ref:
-                mt 10, width 100%, padding 16, background surface, borderRadius 16
-                box-shadow 0 2px 8px rgba(20,24,38,0.04)
-                flex items center gap 14
-            */
             className="
-              mt-2.5 flex items-center gap-3.5 p-4 w-full
-              rounded-2xl bg-wsurface dark:bg-rink-800
-              shadow-[0_2px_8px_rgba(20,24,38,0.04)]
-              dark:shadow-[0_2px_8px_rgba(0,0,0,0.25)]
-              transition-transform motion-reduce:transition-none
-              active:scale-[0.99]
-              focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40
+              -mx-5 mt-2.5 flex items-center gap-3.5 px-5 py-4 w-[calc(100%+2.5rem)]
+              border-t border-it-line dark:border-rink-800
+              transition-colors motion-reduce:transition-none
+              active:bg-it-fill dark:active:bg-rink-800
+              focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40
             "
           >
-            {/* ref: 44×44 borderRadius 12 background T.ice50 / ice500 icon */}
-            <div className="w-11 h-11 shrink-0 rounded-xl bg-ice-50 dark:bg-ice-500/15 grid place-items-center">
+            {/* ref: 44×44 borderRadius 12 background it-blue tint / it-blue icon */}
+            <div className="w-11 h-11 shrink-0 rounded-xl bg-it-blue-50 dark:bg-it-blue-500/15 grid place-items-center text-it-blue-600">
               <svg
                 width="20"
                 height="20"
@@ -447,12 +427,12 @@ export default function HelpCenterPage() {
                   width="14"
                   height="11"
                   rx="2"
-                  stroke="#2f5fff"
+                  stroke="currentColor"
                   strokeWidth="1.6"
                 />
                 <path
                   d="M3 6.5l7 5 7-5"
-                  stroke="#2f5fff"
+                  stroke="currentColor"
                   strokeWidth="1.6"
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -460,11 +440,11 @@ export default function HelpCenterPage() {
               </svg>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-card-body font-extrabold text-wtext-1 dark:text-white tracking-[-0.02em]">
+              <p className="text-card-body font-extrabold text-it-ink-800 dark:text-white tracking-[-0.02em]">
                 이메일 문의
               </p>
               {/* ref: 12px text3 mt 2 FONT_NUM font-weight 600 — truncate 명시 없음 */}
-              <p className="mt-0.5 text-card-meta font-semibold text-wtext-3 dark:text-wtext-4 font-num tabular-nums">
+              <p className="mt-0.5 text-card-meta font-semibold text-it-ink-500 dark:text-wtext-4 font-num tabular-nums">
                 {supportEmail}
               </p>
             </div>
@@ -473,7 +453,7 @@ export default function HelpCenterPage() {
               height="16"
               viewBox="0 0 16 16"
               fill="none"
-              className="shrink-0 text-wtext-3 dark:text-wtext-4"
+              className="shrink-0 text-it-ink-400 dark:text-wtext-4"
               aria-hidden="true"
             >
               <path

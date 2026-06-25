@@ -10,6 +10,11 @@ interface MatchPositionPickerProps {
   /** GK 옵션 포함 여부 */
   includeGoalie?: boolean;
   className?: string;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 it-* 토큰(선택=it-blue / idle=it-fill + it-line-strong border 1.5px).
+   */
+  iceTheme?: boolean;
 }
 
 const OPTIONS: Array<{
@@ -35,6 +40,7 @@ export function MatchPositionPicker({
   onChange,
   includeGoalie = true,
   className,
+  iceTheme = false,
 }: MatchPositionPickerProps) {
   const options = includeGoalie
     ? OPTIONS
@@ -44,6 +50,50 @@ export function MatchPositionPicker({
     <div className={cn('grid grid-cols-3 gap-3', className)}>
       {options.map((option) => {
         const selected = value === option.value;
+
+        // [ICETIMES] flat — it-* 토큰. 선택=it-blue / idle=it-fill + it-line-strong border 1.5px.
+        if (iceTheme) {
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onChange(option.value)}
+              aria-pressed={selected}
+              className={cn(
+                'relative flex flex-col items-center gap-3 p-5 rounded-w-md transition-colors motion-reduce:transition-none',
+                selected
+                  ? 'bg-it-blue-500 text-white border-[1.5px] border-it-blue-500'
+                  : 'bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 text-it-ink-700 dark:text-it-ink-200 hover:border-it-blue-500/60'
+              )}
+            >
+              {selected && (
+                <span
+                  className="absolute top-2 right-2 w-5 h-5 bg-white text-it-blue-500 rounded-w-pill flex items-center justify-center"
+                  aria-hidden
+                >
+                  <Icon name="check" className="text-sm" />
+                </span>
+              )}
+              <div
+                className={cn(
+                  'w-12 h-12 rounded-w-pill flex items-center justify-center',
+                  selected ? 'bg-white/20' : 'bg-it-surface dark:bg-rink-900 text-it-ink-400 dark:text-it-ink-300'
+                )}
+              >
+                <Icon name={option.icon} className="text-2xl" />
+              </div>
+              <div className="text-center">
+                <p className={cn('text-xl font-black leading-none', selected ? 'text-white' : 'text-it-ink-700 dark:text-it-ink-200')}>
+                  {option.label}
+                </p>
+                <p className={cn('mt-1 text-[11px] font-medium', selected ? 'text-white/80' : 'text-it-ink-500 dark:text-it-ink-300')}>
+                  {option.sub}
+                </p>
+              </div>
+            </button>
+          );
+        }
+
         return (
           <button
             key={option.value}

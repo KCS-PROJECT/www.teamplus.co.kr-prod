@@ -13,6 +13,11 @@ interface MatchVSCardProps {
   scheduledAt: Date | string;
   rinkName: string;
   className?: string;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 navy 히어로 밴드 위 navy 톤 카드(흰 글자) — 밴드와 통합.
+   */
+  iceTheme?: boolean;
 }
 
 /**
@@ -33,6 +38,7 @@ export function MatchVSCard({
   scheduledAt,
   rinkName,
   className,
+  iceTheme = false,
 }: MatchVSCardProps) {
   const dt = typeof scheduledAt === 'string' ? new Date(scheduledAt) : scheduledAt;
   const dateLabel = Number.isNaN(dt.getTime())
@@ -50,6 +56,69 @@ export function MatchVSCard({
         minute: '2-digit',
         hour12: false,
       });
+
+  // [ICETIMES] flat — navy 히어로 밴드 위 navy 톤 카드(흰 글자). 밴드와 통합.
+  if (iceTheme) {
+    return (
+      <article
+        className={cn(
+          'bg-it-blue-900/60 dark:bg-it-blue-950 rounded-w-md border border-white/10 dark:border-white/5 overflow-hidden',
+          className
+        )}
+      >
+        {/* 매치 유형 배지 */}
+        <div className="flex justify-center pt-5">
+          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-w-pill bg-white/15 text-white text-card-meta font-bold">
+            <Icon name="sports_hockey" className="text-sm" />
+            {matchType}
+          </span>
+        </div>
+
+        {/* VS 본체 */}
+        <div className="flex items-center justify-between px-6 py-5">
+          <TeamBlock
+            name={homeTeamName ?? MESSAGES.match.detail.homeTeam}
+            role="HOME"
+            roleLabel={MESSAGES.match.detail.home}
+            placeholderIcon="groups"
+            iceTheme
+          />
+
+          <div className="flex flex-col items-center px-2">
+            <span
+              className="flex h-10 w-12 items-center justify-center rounded-w-md bg-white/15 text-sm font-black italic text-white"
+              aria-label={MESSAGES.match.detail.vsAriaLabel}
+            >
+              VS
+            </span>
+          </div>
+
+          <TeamBlock
+            name={awayTeamName ?? MESSAGES.match.detail.awayTeam}
+            role="AWAY"
+            roleLabel={MESSAGES.match.detail.away}
+            placeholderIcon="sports_hockey"
+            iceTheme
+          />
+        </div>
+
+        {/* 일시 · 장소 */}
+        <div className="border-t border-white/10 px-6 py-4">
+          <div className="flex items-center justify-center gap-2 mb-1.5">
+            <Icon name="event" className="text-white/70 text-base" />
+            <span className="text-card-emphasis font-semibold text-white">
+              {dateLabel}
+              {timeLabel && ` · ${timeLabel}`}
+            </span>
+          </div>
+          <div className="flex items-center justify-center gap-2">
+            <Icon name="location_on" className="text-white/80 text-base" />
+            <span className="text-card-body text-white/70">{rinkName}</span>
+          </div>
+        </div>
+      </article>
+    );
+  }
 
   return (
     <article
@@ -117,13 +186,34 @@ function TeamBlock({
   role,
   roleLabel,
   placeholderIcon,
+  iceTheme = false,
 }: {
   name: string;
   role: 'HOME' | 'AWAY';
   roleLabel: string;
   placeholderIcon: string;
+  iceTheme?: boolean;
 }) {
   const isHome = role === 'HOME';
+
+  // [ICETIMES] navy 밴드 위 — 흰/반투명 톤.
+  if (iceTheme) {
+    return (
+      <div className="flex flex-col items-center gap-2 w-1/3">
+        <div
+          className={cn(
+            'flex h-16 w-16 items-center justify-center rounded-w-pill border-2',
+            isHome ? 'bg-white/10 border-white/15' : 'bg-white/15 border-white/25'
+          )}
+        >
+          <Icon name={placeholderIcon} className={cn('text-3xl', isHome ? 'text-white/70' : 'text-white')} />
+        </div>
+        <span className="text-card-title text-white text-center break-keep line-clamp-2">{name}</span>
+        <span className="text-[10px] font-semibold tracking-wider text-white/60 uppercase">{roleLabel}</span>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col items-center gap-2 w-1/3">
       <div

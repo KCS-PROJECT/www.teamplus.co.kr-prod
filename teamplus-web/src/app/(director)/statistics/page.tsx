@@ -16,9 +16,11 @@
  *  - statistics.service 경유 Backend API 시도
  *  - clubId 없음/실패 시 FALLBACK 데이터 (개발/데모)
  *
- * 디자인:
+ * 디자인 (ICETIMES flat · 2026-06-25):
  *  - AI 스타일 금지 (gradient/backdrop-blur 미사용)
- *  - Primary #2f5fff + solid/alpha
+ *  - flat & sectioned — main 회색 캔버스(it-canvas) + mt-2 흰 섹션 누적(카드 박스 제거)
+ *  - Primary it-blue-500(#0e5db0) · 강조 it-red-500(#c8202e) + solid/alpha
+ *  - 차트 색만 ICETIMES SoT 스왑, 막대/툴팁/SVG 로직은 동결
  *  - motion-reduce 대응, focus-visible ring, SR table fallback
  */
 
@@ -66,15 +68,17 @@ import {
 } from "@/services/statistics.service";
 
 // ─── Color tokens ───────────────────────────────────
+// [ICETIMES flat 2026-06-25] primary → it-blue-500(#0e5db0), red → it-red-500(#c8202e).
+//   차트 색만 ICETIMES SoT(§4)로 스왑 · 차트 막대 로직/SVG 수학은 동결.
 const COLOR = {
-  primary: "#2f5fff",
+  primary: "#0e5db0",
   emerald: "#10b981",
   yellow: "#eab308",
-  red: "#ef4444",
+  red: "#c8202e",
   slate100: "#f1f5f9",
   slate200: "#e2e8f0",
-  slate500: "#64748b",
-  slate700: "#334155",
+  slate500: "#6b7a80",
+  slate700: "#33454c",
 } as const;
 
 type TrendDirection = "up" | "down" | "flat";
@@ -98,9 +102,9 @@ function attendanceColor(rate: number): string {
 }
 
 function attendanceColorClass(rate: number): string {
-  if (rate >= 85) return "bg-ice-500";
-  if (rate >= 70) return "bg-yellow-500";
-  return "bg-red-500";
+  if (rate >= 85) return "bg-it-blue-500";
+  if (rate >= 70) return "bg-warning-500";
+  return "bg-it-red-500";
 }
 
 // ─── Main Component ──────────────────────────────────
@@ -178,52 +182,52 @@ export default function StatisticsPage() {
       {
         key: "members",
         icon: "groups",
-        iconBg: "bg-ice-500/15",
-        iconColor: "text-ice-500",
+        iconBg: "bg-it-blue-50 dark:bg-it-blue-500/15",
+        iconColor: "text-it-blue-500",
         label: "총 회원",
         value: latestTrend?.total ?? 0,
         unit: "명",
         delta:
           latestTrend && prevTrend ? latestTrend.total - prevTrend.total : 0,
         spark: memberTrend.map((t) => t.total),
-        sparkColor: "bg-ice-500/40",
+        sparkColor: "bg-it-blue-500/40",
       },
       {
         key: "attendance",
         icon: "check_circle",
-        iconBg: "bg-mint-100 dark:bg-mint-500/15",
-        iconColor: "text-mint-500 dark:text-mint-500",
+        iconBg: "bg-success-100 dark:bg-success-700/20",
+        iconColor: "text-success",
         label: "평균 출석률",
         value: avgAttendance,
         unit: "%",
         delta: avgAttendance - prevAvgAttendance,
         spark: attendanceData.map((w) => w.rate),
-        sparkColor: "bg-mint-500/40",
+        sparkColor: "bg-success/40",
       },
       {
         key: "revenue",
         icon: "payments",
-        iconBg: "bg-ice-50 dark:bg-ice-500/15",
-        iconColor: "text-ice-500 dark:text-ice-500",
+        iconBg: "bg-it-blue-50 dark:bg-it-blue-500/15",
+        iconColor: "text-it-blue-500",
         label: "최근 매출",
         value: Math.round(latestRevenue / 10000),
         unit: "만원",
         delta: Math.round((latestRevenue - prevRevenue) / 10000),
         spark: revenueData.map((r) => r.amount),
-        sparkColor: "bg-ice-500/40",
+        sparkColor: "bg-it-blue-500/40",
       },
       {
         key: "joined",
         icon: "person_add",
-        iconBg: "bg-flame-100 dark:bg-flame-500/15",
-        iconColor: "text-flame-500 dark:text-flame-500",
+        iconBg: "bg-it-red-50 dark:bg-it-red-500/15",
+        iconColor: "text-it-red-500",
         label: "신규 가입",
         value: latestTrend?.joined ?? 0,
         unit: "명",
         delta:
           latestTrend && prevTrend ? latestTrend.joined - prevTrend.joined : 0,
         spark: memberTrend.map((t) => t.joined),
-        sparkColor: "bg-flame-500/40",
+        sparkColor: "bg-it-red-500/40",
       },
     ];
   }, [attendanceData, revenueData, memberTrend, latestTrend, prevTrend]);
@@ -244,38 +248,44 @@ export default function StatisticsPage() {
           조치: PageAppBar(variant=default) showBack=true 적용 — ← 뒤로가기 + 타이틀 + 메뉴. */}
       <PageAppBar title="통계" showBack forceNative />
 
+      {/* [ICETIMES flat 2026-06-25] /director·/report 와 동일 flat 언어 —
+          main 은 회색 캔버스(bg-it-canvas dark:bg-puck), 콘텐츠 블록은 각자
+          mt-2 흰 섹션으로 쌓인다. 이전 px-5 space-y-6 + 카드 박스(SectionCard
+          rounded border shadow) → full-bleed flat 섹션 전환. 차트 로직 동결. */}
       <main
-        className="hide-scrollbar flex-1 space-y-6 overflow-y-auto px-5 pt-6 pb-28"
+        className="hide-scrollbar flex-1 overflow-y-auto bg-it-canvas dark:bg-puck !pb-8"
         role="main"
         aria-label="팀 통계"
       >
-        {/* Hero — 대담한 타이포그래피 */}
-        <section aria-labelledby="statistics-hero">
-          <p className="mb-2 flex items-center gap-1.5 text-card-meta font-bold uppercase tracking-[0.18em] text-ice-500">
+        {/* Hero — flat 흰 섹션 (대담한 타이포그래피) */}
+        <section className="bg-it-surface dark:bg-it-blue-950 px-5 pt-6 pb-5" aria-labelledby="statistics-hero">
+          <p className="mb-2 flex items-center gap-1.5 text-card-meta font-bold uppercase tracking-[0.18em] text-it-blue-500">
             <span
-              className="inline-block h-1.5 w-1.5 rounded-w-pill bg-ice-500"
+              className="inline-block h-1.5 w-1.5 rounded-w-pill bg-it-blue-500"
               aria-hidden="true"
             />
             Club Insights
           </p>
           <h1
             id="statistics-hero"
-            className="text-3xl font-black leading-tight tracking-tight text-wtext-1 dark:text-white"
+            className="text-3xl font-black leading-tight tracking-tight text-it-ink-900 dark:text-white"
           >
             팀 한눈에
             <br />
             보기
           </h1>
-          <p className="mt-3 text-card-body font-medium text-wtext-3 dark:text-wtext-4 leading-relaxed">
+          <p className="mt-3 text-card-body font-medium text-it-ink-500 dark:text-wtext-4 leading-relaxed">
             최근 활동 기준 · 이전 구간 대비 변화를 함께 확인해보세요.
           </p>
         </section>
 
-        {/* 기간 필터 — 전역 */}
-        <PeriodFilter value={period} onChange={setPeriod} />
+        {/* 기간 필터 — flat 흰 섹션 (8px 갭) */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4">
+          <PeriodFilter value={period} onChange={setPeriod} />
+        </section>
 
-        {/* KPI 요약 */}
-        <section aria-labelledby="kpi-heading">
+        {/* KPI 요약 — flat 흰 섹션 (타일 flat) */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-5" aria-labelledby="kpi-heading">
           <h2 id="kpi-heading" className="sr-only">
             핵심 지표 요약
           </h2>
@@ -286,42 +296,42 @@ export default function StatisticsPage() {
           </div>
         </section>
 
-        {/* 1. 출석률 추이 (Recharts) */}
+        {/* 1. 출석률 추이 (Recharts) — flat 섹션 */}
         <SectionCard
           icon="trending_up"
-          iconBg="bg-ice-500/15"
-          iconColor="text-ice-500"
+          iconBg="bg-it-blue-50 dark:bg-it-blue-500/15"
+          iconColor="text-it-blue-500"
           title="출석률 추이"
         >
           <AttendanceBarChart items={attendanceData} />
         </SectionCard>
 
-        {/* 2. 매출 현황 (Recharts) */}
+        {/* 2. 매출 현황 (Recharts) — flat 섹션 */}
         <SectionCard
           icon="payments"
-          iconBg="bg-mint-100 dark:bg-mint-500/15"
-          iconColor="text-mint-500 dark:text-mint-500"
+          iconBg="bg-success-100 dark:bg-success-700/20"
+          iconColor="text-success"
           title="매출 현황"
         >
           <RevenueBarChart items={revenueData} />
         </SectionCard>
 
-        {/* 3. 회원 증감 */}
+        {/* 3. 회원 증감 — flat 섹션 */}
         <SectionCard
           icon="group_add"
-          iconBg="bg-ice-50 dark:bg-ice-500/15"
-          iconColor="text-ice-500 dark:text-ice-500"
+          iconBg="bg-it-blue-50 dark:bg-it-blue-500/15"
+          iconColor="text-it-blue-500"
           title="회원 증감 추이"
           subtitle={latestTrend ? `현재 총 ${latestTrend.total}명` : undefined}
         >
           <MemberTrendList items={memberTrend} />
         </SectionCard>
 
-        {/* 4. 수업별 출석률 */}
+        {/* 4. 수업별 출석률 — flat 섹션 */}
         <SectionCard
           icon="sports_hockey"
-          iconBg="bg-flame-100 dark:bg-flame-500/15"
-          iconColor="text-flame-500 dark:text-flame-500"
+          iconBg="bg-it-red-50 dark:bg-it-red-500/15"
+          iconColor="text-it-red-500"
           title="수업별 출석률 비교"
         >
           {sortedClassAttendance.length === 0 ? (
@@ -368,17 +378,17 @@ function PeriodFilter({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between px-1">
-        <p className="text-card-meta font-bold uppercase tracking-wider text-wtext-3 dark:text-wtext-4">
+        <p className="text-card-meta font-bold uppercase tracking-wider text-it-ink-500 dark:text-wtext-4">
           집계 기간
         </p>
-        <span className="text-card-meta font-medium text-wtext-3 dark:text-wtext-4 tabular-nums">
+        <span className="text-card-meta font-medium text-it-ink-500 dark:text-wtext-4 tabular-nums">
           {selectedHelper}
         </span>
       </div>
       <div
         role="tablist"
         aria-label="집계 기간 선택"
-        className="flex rounded-w-md border border-wline-2 bg-wline-2 p-1 dark:border-rink-700 dark:bg-rink-800"
+        className="flex rounded-w-md bg-it-fill p-1 dark:bg-rink-800"
       >
         {options.map((opt) => {
           const selected = value === opt.value;
@@ -389,10 +399,10 @@ function PeriodFilter({
               role="tab"
               aria-selected={selected}
               onClick={() => onChange(opt.value)}
-              className={`min-h-[36px] flex-1 rounded-lg px-2 py-1.5 text-card-meta font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 motion-reduce:transition-none ${
+              className={`min-h-[36px] flex-1 rounded-[9px] px-2 py-1.5 text-card-meta font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 motion-reduce:transition-none ${
                 selected
-                  ? "bg-white text-ice-500 shadow-sh-1 dark:bg-rink-700 dark:text-white"
-                  : "text-wtext-3 hover:text-wtext-1 dark:text-wtext-3 dark:hover:text-wtext-4"
+                  ? "bg-it-surface text-it-blue-500 shadow-sh-1 dark:bg-rink-700 dark:text-white"
+                  : "text-it-ink-500 hover:text-it-ink-800 dark:text-wtext-3 dark:hover:text-wtext-4"
               }`}
             >
               {opt.label}
@@ -413,7 +423,7 @@ function KpiCard({
   unit,
   delta,
   spark,
-  sparkColor = "bg-ice-500/40",
+  sparkColor = "bg-it-blue-500/40",
 }: {
   icon: string;
   iconBg: string;
@@ -427,14 +437,15 @@ function KpiCard({
 }) {
   const dir: TrendDirection = delta > 0 ? "up" : delta < 0 ? "down" : "flat";
   return (
+    /* [ICETIMES flat] 카드 박스(border shadow hover-translate) 제거 → flat 인셋 타일(bg-it-fill). */
     <div
-      className="rounded-w-md border border-wline-2 bg-white p-4 shadow-sh-1 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sh-2 motion-reduce:transition-none motion-reduce:hover:translate-y-0 dark:border-rink-700 dark:bg-rink-800"
+      className="rounded-xl bg-it-fill p-4 dark:bg-rink-800"
       role="group"
       aria-label={`${label} ${value}${unit}`}
     >
       <div className="mb-2 flex items-center justify-between">
         <div
-          className={`flex h-9 w-9 items-center justify-center rounded-lg ${iconBg}`}
+          className={`flex h-9 w-9 items-center justify-center rounded-[9px] ${iconBg}`}
         >
           <Icon
             name={icon}
@@ -444,14 +455,14 @@ function KpiCard({
         </div>
         <TrendBadge dir={dir} value={Math.abs(delta)} />
       </div>
-      <p className="text-card-meta font-semibold text-wtext-3 dark:text-wtext-4">
+      <p className="text-card-meta font-semibold text-it-ink-500 dark:text-wtext-4">
         {label}
       </p>
       <p className="mt-1 flex items-baseline gap-0.5">
-        <span className="text-w-h2 font-black leading-none tabular-nums text-wtext-1 dark:text-white">
+        <span className="text-w-h2 font-black leading-none tabular-nums text-it-ink-900 dark:text-white">
           {value.toLocaleString("ko-KR")}
         </span>
-        <span className="text-card-meta font-semibold text-wtext-3 dark:text-wtext-4">
+        <span className="text-card-meta font-semibold text-it-ink-500 dark:text-wtext-4">
           {unit}
         </span>
       </p>
@@ -485,8 +496,8 @@ function TrendBadge({ dir, value }: { dir: TrendDirection; value: number }) {
   if (dir === "flat" || value === 0) return null;
   const color =
     dir === "up"
-      ? "bg-emerald-50 text-mint-500 dark:bg-mint-500/15 dark:text-mint-500"
-      : "bg-red-50 text-flame-500 dark:bg-flame-500/15 dark:text-flame-500";
+      ? "bg-success-100 text-success dark:bg-success-700/20 dark:text-success"
+      : "bg-it-red-50 text-it-red-500 dark:bg-it-red-500/15 dark:text-it-red-500";
   const iconName = dir === "up" ? "arrow_upward" : "arrow_downward";
   const ariaLabel =
     dir === "up"
@@ -521,24 +532,25 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-w-md border border-wline-2 bg-white p-4 shadow-sh-1 dark:border-rink-700 dark:bg-rink-800">
+    /* [ICETIMES flat] 카드 박스(rounded border shadow) 제거 → mt-2 full-bleed 흰 섹션 + 8px 갭. */
+    <section className="mt-2 bg-it-surface px-5 py-4 dark:bg-it-blue-950">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <div
-            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${iconBg}`}
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] ${iconBg}`}
           >
             <Icon
               name={icon}
-              className={`text-card-emphasis ${iconColor}`}
+              className={`text-[18px] ${iconColor}`}
               aria-hidden="true"
             />
           </div>
           <div className="min-w-0">
-            <h2 className="text-card-body font-bold text-wtext-1 dark:text-white">
+            <h2 className="text-[15px] font-extrabold text-it-ink-900 dark:text-white">
               {title}
             </h2>
             {subtitle && (
-              <p className="text-card-meta text-wtext-3 dark:text-wtext-4">
+              <p className="text-card-meta text-it-ink-500 dark:text-wtext-4">
                 {subtitle}
               </p>
             )}
@@ -559,9 +571,9 @@ function AttendanceTooltip({ active, payload, label }: ChartTooltipProps) {
   const rawValue = payload[0]?.value;
   const v = typeof rawValue === "number" ? rawValue : Number(rawValue ?? 0);
   return (
-    <div className="rounded-lg border border-wline-2 bg-white px-3 py-2 shadow-sh-1 dark:border-rink-700 dark:bg-rink-800">
-      <p className="text-card-meta text-wtext-3 dark:text-wtext-4">{label}</p>
-      <p className="text-card-body font-bold text-wtext-1 dark:text-white">
+    <div className="rounded-lg border border-it-line bg-it-surface px-3 py-2 shadow-sh-1 dark:border-rink-700 dark:bg-rink-800">
+      <p className="text-card-meta text-it-ink-500 dark:text-wtext-4">{label}</p>
+      <p className="text-card-body font-bold text-it-ink-900 dark:text-white">
         <span className="tabular-nums">{v}</span>%
       </p>
     </div>
@@ -573,13 +585,13 @@ function RevenueTooltip({ active, payload, label }: ChartTooltipProps) {
   const rawValue = payload[0]?.value;
   const v = typeof rawValue === "number" ? rawValue : Number(rawValue ?? 0);
   return (
-    <div className="rounded-lg border border-wline-2 bg-white px-3 py-2 shadow-sh-1 dark:border-rink-700 dark:bg-rink-800">
-      <p className="text-card-meta text-wtext-3 dark:text-wtext-4">{label}</p>
-      <p className="text-card-body font-bold text-wtext-1 dark:text-white">
+    <div className="rounded-lg border border-it-line bg-it-surface px-3 py-2 shadow-sh-1 dark:border-rink-700 dark:bg-rink-800">
+      <p className="text-card-meta text-it-ink-500 dark:text-wtext-4">{label}</p>
+      <p className="text-card-body font-bold text-it-ink-900 dark:text-white">
         <span className="tabular-nums">
           {new Intl.NumberFormat("ko-KR").format(v)}
         </span>
-        <span className="ml-0.5 text-card-meta text-wtext-3">원</span>
+        <span className="ml-0.5 text-card-meta text-it-ink-500">원</span>
       </p>
     </div>
   );
@@ -725,7 +737,7 @@ function MemberTrendList({ items }: { items: MemberTrend[] }) {
     <ul className="space-y-3">
       {items.map((item) => (
         <li key={item.month} className="flex items-center gap-3">
-          <span className="w-8 text-card-meta font-medium text-wtext-3 dark:text-wtext-4">
+          <span className="w-8 text-card-meta font-medium text-it-ink-500 dark:text-wtext-4">
             {item.month}
           </span>
           <div className="flex flex-1 items-center gap-2">
@@ -735,10 +747,10 @@ function MemberTrendList({ items }: { items: MemberTrend[] }) {
                 aria-label={`가입 ${item.joined}명`}
               >
                 <span
-                  className="h-1.5 w-1.5 rounded-w-pill bg-mint-500"
+                  className="h-1.5 w-1.5 rounded-w-pill bg-success"
                   aria-hidden="true"
                 />
-                <span className="text-card-meta font-bold text-mint-500 dark:text-mint-500">
+                <span className="text-card-meta font-bold text-success">
                   +{item.joined}
                 </span>
               </span>
@@ -749,19 +761,19 @@ function MemberTrendList({ items }: { items: MemberTrend[] }) {
                 aria-label={`탈퇴 ${item.left}명`}
               >
                 <span
-                  className="h-1.5 w-1.5 rounded-w-pill bg-red-500"
+                  className="h-1.5 w-1.5 rounded-w-pill bg-it-red-500"
                   aria-hidden="true"
                 />
-                <span className="text-card-meta font-bold text-flame-500">
+                <span className="text-card-meta font-bold text-it-red-500">
                   -{item.left}
                 </span>
               </span>
             )}
             {item.left === 0 && item.joined === 0 && (
-              <span className="text-card-meta text-wtext-3">변동 없음</span>
+              <span className="text-card-meta text-it-ink-500">변동 없음</span>
             )}
           </div>
-          <span className="text-card-meta font-bold tabular-nums text-wtext-1 dark:text-white">
+          <span className="text-card-meta font-bold tabular-nums text-it-ink-900 dark:text-white">
             {item.total}명
           </span>
         </li>
@@ -788,10 +800,10 @@ function HBar({
   return (
     <div>
       <div className="mb-1 flex items-center justify-between">
-        <span className="truncate text-card-meta font-medium text-wtext-2 dark:text-wtext-4">
+        <span className="truncate text-card-meta font-medium text-it-ink-700 dark:text-wtext-4">
           {label}
         </span>
-        <span className="shrink-0 text-card-meta font-bold tabular-nums text-wtext-1 dark:text-white">
+        <span className="shrink-0 text-card-meta font-bold tabular-nums text-it-ink-900 dark:text-white">
           {topRight}
         </span>
       </div>
@@ -801,7 +813,7 @@ function HBar({
         aria-valuemin={0}
         aria-valuemax={max}
         aria-label={`${label} ${value}퍼센트`}
-        className="h-2 overflow-hidden rounded-w-pill bg-wline-2 dark:bg-rink-700"
+        className="h-2 overflow-hidden rounded-w-pill bg-it-line dark:bg-rink-700"
       >
         <div
           className={`h-full rounded-w-pill transition-[width] duration-700 ease-out motion-reduce:transition-none ${colorClass}`}
@@ -817,24 +829,24 @@ function EmptyChart({ label }: { label: string }) {
   return (
     <div
       role="status"
-      className="flex h-32 flex-col items-center justify-center rounded-lg border border-dashed border-wline-2 dark:border-rink-700"
+      className="flex h-32 flex-col items-center justify-center rounded-lg border border-dashed border-it-line-strong dark:border-rink-700"
     >
       <Icon
         name="bar_chart"
-        className="mb-2 text-3xl text-wtext-3 dark:text-wtext-4"
+        className="mb-2 text-3xl text-it-ink-400 dark:text-wtext-4"
         aria-hidden="true"
       />
-      <p className="text-card-meta text-wtext-3 dark:text-wtext-4">{label}</p>
+      <p className="text-card-meta text-it-ink-500 dark:text-wtext-4">{label}</p>
     </div>
   );
 }
 
 function Legend() {
   return (
-    <div className="mt-4 flex items-center gap-4 border-t border-wline-2 pt-3 dark:border-rink-700">
-      <LegendItem color="bg-ice-500" label="85% 이상" />
-      <LegendItem color="bg-yellow-500" label="70~84%" />
-      <LegendItem color="bg-red-500" label="70% 미만" />
+    <div className="mt-4 flex items-center gap-4 border-t border-it-line pt-3 dark:border-rink-700">
+      <LegendItem color="bg-it-blue-500" label="85% 이상" />
+      <LegendItem color="bg-warning-500" label="70~84%" />
+      <LegendItem color="bg-it-red-500" label="70% 미만" />
     </div>
   );
 }
@@ -843,7 +855,7 @@ function LegendItem({ color, label }: { color: string; label: string }) {
   return (
     <div className="flex items-center gap-1.5">
       <div className={`h-2 w-2 rounded-w-pill ${color}`} aria-hidden="true" />
-      <span className="text-card-meta text-wtext-3 dark:text-wtext-4">
+      <span className="text-card-meta text-it-ink-500 dark:text-wtext-4">
         {label}
       </span>
     </div>

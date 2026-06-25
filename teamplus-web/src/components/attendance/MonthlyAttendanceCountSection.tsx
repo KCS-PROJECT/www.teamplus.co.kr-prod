@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '@/components/ui/Icon';
 import { MESSAGES } from '@/lib/messages';
+import { cn } from '@/lib/utils';
 import {
   getMonthlyAttendanceCounts,
   type MonthlyAttendanceCounts,
@@ -27,7 +28,17 @@ function shiftMonth(ym: string, delta: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-export function MonthlyAttendanceCountSection({ classId }: { classId: string }) {
+export function MonthlyAttendanceCountSection({
+  classId,
+  iceTheme = false,
+}: {
+  classId: string;
+  /**
+   * [ICETIMES Phase 2] flat 테마. 기본 false = 기존 떠있는 rounded 카드 1:1 보존(회귀 0).
+   *   true 시 카드 박스 제거 → full-bleed 흰 섹션 + hairline 행.
+   */
+  iceTheme?: boolean;
+}) {
   const [yearMonth, setYearMonth] = useState<string>(() => currentYearMonth());
   const [data, setData] = useState<MonthlyAttendanceCounts | null>(null);
   const [loading, setLoading] = useState(true);
@@ -45,6 +56,104 @@ export function MonthlyAttendanceCountSection({ classId }: { classId: string }) 
 
   const items = data?.items ?? [];
   const nominal = data?.nominalSessions ?? null;
+
+  // ICETIMES flat: 떠있는 rounded 카드 박스 제거 → full-bleed 흰 섹션 + hairline 행.
+  //   페이지(attendance-manage)가 bg-it-canvas 회색이라 mt-2 갭으로 쌓이고, 섹션 배경은
+  //   흰 it-surface 필수(SoT §6-2). 출석 횟수 강조 it-blue, 합계 it-fill 인셋.
+  if (iceTheme) {
+    return (
+      <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-4">
+        <header className="mb-3">
+          <h2 className="text-card-title font-extrabold text-it-ink-800 dark:text-white">
+            {MESSAGES.monthlyAttendance.title}
+          </h2>
+        </header>
+
+        {/* 월 선택 */}
+        <div className="flex items-center justify-between mb-4">
+          <button
+            type="button"
+            onClick={() => setYearMonth((ym) => shiftMonth(ym, -1))}
+            aria-label={MESSAGES.monthlyAttendance.prevMonth}
+            className="flex size-9 items-center justify-center rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 text-it-ink-500 dark:text-rink-200"
+          >
+            <Icon name="chevron_left" aria-hidden="true" />
+          </button>
+          <span className="text-card-body font-bold text-it-ink-800 dark:text-white tabular-nums">
+            {MESSAGES.monthlyAttendance.monthLabel(yearMonth)}
+          </span>
+          <button
+            type="button"
+            onClick={() => setYearMonth((ym) => shiftMonth(ym, 1))}
+            disabled={yearMonth >= currentYearMonth()}
+            aria-label={MESSAGES.monthlyAttendance.nextMonth}
+            className="flex size-9 items-center justify-center rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 text-it-ink-500 dark:text-rink-200 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Icon name="chevron_right" aria-hidden="true" />
+          </button>
+        </div>
+
+        {/* 회원별 출석 횟수 — hairline 행 */}
+        {loading ? (
+          <ul className="space-y-2" aria-busy="true">
+            {[0, 1].map((i) => (
+              <li
+                key={i}
+                className="h-14 rounded-w-md bg-it-fill dark:bg-rink-700 animate-pulse motion-reduce:animate-none"
+              />
+            ))}
+          </ul>
+        ) : items.length === 0 ? (
+          <p className="py-6 text-center text-card-meta text-it-ink-500 dark:text-rink-300">
+            {MESSAGES.monthlyAttendance.empty}
+          </p>
+        ) : (
+          <ul className="flex flex-col">
+            {items.map((it, idx) => (
+              <li
+                key={it.userId}
+                className={cn(
+                  'flex items-center justify-between py-3',
+                  idx !== items.length - 1 &&
+                    'border-b border-it-line dark:border-rink-700',
+                )}
+              >
+                <div className="min-w-0">
+                  <p className="text-card-body font-bold text-it-ink-800 dark:text-white truncate">
+                    {it.name}
+                  </p>
+                  {nominal !== null && (
+                    <p className="text-card-meta text-it-ink-500 dark:text-rink-300">
+                      {MESSAGES.monthlyAttendance.nominalNote(nominal)}
+                    </p>
+                  )}
+                </div>
+                <span className="shrink-0 text-card-body font-bold text-it-blue-500 tabular-nums">
+                  {MESSAGES.monthlyAttendance.countUnit(it.attendanceCount)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* 합계 — it-fill 인셋 */}
+        {!loading && items.length > 0 && (
+          <div className="mt-4 flex items-center justify-between rounded-w-md bg-it-fill dark:bg-rink-800 px-3.5 py-3">
+            <span className="text-card-body font-semibold text-it-ink-500 dark:text-rink-300">
+              {MESSAGES.monthlyAttendance.total}
+            </span>
+            <span className="text-card-emphasis font-extrabold text-it-blue-500 tabular-nums">
+              {MESSAGES.monthlyAttendance.countUnit(data?.totalPresent ?? 0)}
+            </span>
+          </div>
+        )}
+
+        <p className="mt-3 text-card-caption text-it-ink-500 dark:text-rink-300 leading-relaxed">
+          {MESSAGES.monthlyAttendance.hint}
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section className="mx-4 mt-3 rounded-2xl bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-sm p-5">

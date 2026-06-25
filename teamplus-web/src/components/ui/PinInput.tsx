@@ -22,6 +22,13 @@ interface PinInputProps {
   childMode?: boolean;
   /** 에러 메시지 */
   error?: string;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 도트 칸 배경/테두리/포커스/에러 색을 it-* 톤으로 스왑.
+   *   **도트 칸 골격(사이즈·정사각형·키패드 동작)은 전부 동결, 색만 변경.**
+   *   (child-auth/pin 호출처만 전달)
+   */
+  iceTheme?: boolean;
 }
 
 export default function PinInput({
@@ -34,6 +41,7 @@ export default function PinInput({
   autoFocus = true,
   childMode = false,
   error,
+  iceTheme = false,
 }: PinInputProps) {
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -162,20 +170,27 @@ export default function PinInput({
             autoComplete="off"
             className={cn(
               // 공통 스타일
-              'text-center font-bold rounded-xl border-2 bg-white',
+              'text-center font-bold rounded-xl border-2',
               'outline-none transition-colors duration-150 focus-visible-disabled',
-              'dark:bg-rink-800 dark:text-white',
-              // 사이즈: 48×48 정사각형 고정 (업계 표준, WCAG AA 터치 타겟 충족)
+              // 배경 — iceTheme 시 it 톤(흰 도트), 기본은 기존 흰 배경
+              iceTheme
+                ? 'bg-it-surface dark:bg-rink-800 dark:text-white'
+                : 'bg-white dark:bg-rink-800 dark:text-white',
+              // 사이즈: 48×48 정사각형 고정 (업계 표준, WCAG AA 터치 타겟 충족) — 골격 동결
               childMode
                 ? 'w-12 h-12 text-xl'
                 : 'w-12 h-14 text-xl',
-              // 테두리/포커스 상태
+              // 테두리/포커스 상태 — 색만 it 톤 정합
               error
-                ? 'border-red-500 ring-1 ring-red-500'
-                : 'border-gray-200 dark:border-rink-700 focus:border-ice-500 focus:ring-1 focus:ring-ice-500',
-              // childMode 고대비 텍스트 (7:1 대비율)
-              childMode
-                ? 'text-wtext-1 dark:text-white'
+                ? iceTheme
+                  ? 'border-it-red-500 ring-1 ring-it-red-500'
+                  : 'border-red-500 ring-1 ring-red-500'
+                : iceTheme
+                  ? 'border-it-line-strong dark:border-rink-700 focus:border-it-blue-500 focus:ring-1 focus:ring-it-blue-500'
+                  : 'border-gray-200 dark:border-rink-700 focus:border-ice-500 focus:ring-1 focus:ring-ice-500',
+              // 고대비 텍스트 (7:1 대비율)
+              iceTheme
+                ? 'text-it-ink-900 dark:text-white'
                 : 'text-wtext-1 dark:text-white',
               // 비활성화
               disabled && 'opacity-50 cursor-not-allowed',
@@ -186,7 +201,8 @@ export default function PinInput({
       {error && (
         <p
           className={cn(
-            'text-red-500 text-sm mt-2 text-center',
+            'text-sm mt-2 text-center',
+            iceTheme ? 'text-it-red-500' : 'text-red-500',
             childMode && 'text-base font-medium',
           )}
           role="alert"

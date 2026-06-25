@@ -226,7 +226,7 @@ export default function LiveScoreboardPage() {
       <PageAppBar title="Live Score" />
 
       {/* 필터 탭 */}
-      <div className="sticky top-14 z-40 border-b border-wline-2 bg-white pb-4 pt-2 dark:border-rink-800 dark:bg-rink-900">
+      <div className="sticky top-14 z-40 border-b border-it-line bg-it-surface pb-4 pt-2 dark:border-rink-800 dark:bg-it-blue-950">
         <div className="no-scrollbar overflow-x-auto px-4">
           <div className="flex gap-2" role="tablist" aria-label="이벤트 필터">
             <FilterChip
@@ -248,19 +248,19 @@ export default function LiveScoreboardPage() {
         </div>
       </div>
 
-      <main className="flex flex-col gap-6 px-5 py-6">
-        {/* 스코어 헤더 */}
-        <LiveScoreHeader match={match} />
+      <main className="flex flex-col gap-6 bg-it-canvas dark:bg-puck px-5 py-6">
+        {/* 스코어 헤더 (공유 컴포넌트 — ICETIMES flat variant, 구조·로직 동결) */}
+        <LiveScoreHeader match={match} iceTheme />
 
-        {/* 관리자 전용: 상태 전환 버튼 */}
+        {/* 관리자 전용: 상태 전환 버튼 — flat 흰 섹션(박스 → 무라운드 hairline) */}
         {isManager && (
           <section
             aria-labelledby="status-controls-title"
-            className="rounded-2xl border border-wline bg-white p-4 shadow-sm dark:border-rink-700 dark:bg-rink-800"
+            className="-mx-5 bg-it-surface px-5 py-4 dark:bg-it-blue-950"
           >
             <h3
               id="status-controls-title"
-              className="mb-3 text-w-small font-bold text-wtext-1 dark:text-white"
+              className="mb-3 text-w-small font-bold text-it-ink-800 dark:text-white"
             >
               경기 상태 전환
             </h3>
@@ -277,10 +277,10 @@ export default function LiveScoreboardPage() {
                   key={opt.s}
                   type="button"
                   onClick={() => handleChangeStatus(opt.s as MatchStatus)}
-                  className={`flex flex-col items-center gap-1 rounded-lg border px-2 py-3 text-w-caption font-bold ${
+                  className={`flex flex-col items-center gap-1 rounded-w-md border-[1.5px] px-2 py-3 text-w-caption font-bold transition-colors motion-reduce:transition-none ${
                     match.status === opt.s
-                      ? "border-ice-500 bg-ice-500 text-white"
-                      : "border-wline bg-wbg text-wtext-2 hover:bg-wline-2 dark:border-rink-700 dark:bg-rink-700 dark:text-rink-100"
+                      ? "border-it-blue-500 bg-it-blue-500 text-white"
+                      : "border-it-line-strong bg-it-fill text-it-ink-600 hover:bg-it-line dark:border-rink-700 dark:bg-rink-700 dark:text-rink-100"
                   }`}
                 >
                   <Icon name={opt.icon} className="text-w-body-lg" />
@@ -290,8 +290,8 @@ export default function LiveScoreboardPage() {
             </div>
 
             {/* 피리어드 전환 */}
-            <div className="mt-3 flex items-center justify-between gap-2 rounded-lg bg-wbg p-2 dark:bg-rink-900">
-              <span className="pl-2 text-w-caption font-bold text-wtext-2 dark:text-rink-300">
+            <div className="mt-3 flex items-center justify-between gap-2 rounded-w-md bg-it-fill p-2 dark:bg-rink-900">
+              <span className="pl-2 text-w-caption font-bold text-it-ink-600 dark:text-rink-300">
                 현재 피리어드
               </span>
               <div className="flex gap-1">
@@ -307,10 +307,10 @@ export default function LiveScoreboardPage() {
                         n,
                       )
                     }
-                    className={`h-8 w-10 rounded-md text-w-caption font-bold ${
+                    className={`h-8 w-10 rounded-w-sm text-w-caption font-bold transition-colors motion-reduce:transition-none ${
                       match.currentPeriod === n
-                        ? "bg-ice-500 text-white"
-                        : "bg-white text-wtext-2 hover:bg-wline-2 dark:bg-rink-700 dark:text-rink-100"
+                        ? "bg-it-blue-500 text-white"
+                        : "bg-it-surface text-it-ink-600 hover:bg-it-line dark:bg-rink-700 dark:text-rink-100"
                     }`}
                   >
                     {MESSAGES.match.periodLabel(n)}
@@ -325,7 +325,7 @@ export default function LiveScoreboardPage() {
         <section aria-labelledby="events-title">
           <h2
             id="events-title"
-            className="mb-4 text-w-title font-bold text-wtext-1 dark:text-white"
+            className="mb-4 text-w-title font-bold text-it-ink-800 dark:text-white"
           >
             경기 이벤트
           </h2>
@@ -336,6 +336,7 @@ export default function LiveScoreboardPage() {
             awayTeamName={match.awayTeam?.name}
             isManager={isManager}
             onDelete={handleDeleteEvent}
+            iceTheme
           />
         </section>
 
@@ -345,11 +346,12 @@ export default function LiveScoreboardPage() {
             match={match}
             onSubmit={handleCreateEvent}
             isSubmitting={isSubmitting}
+            iceTheme
           />
         )}
 
         {!isManager && (
-          <p className="rounded-xl border border-wline bg-wbg px-4 py-3 text-center text-w-caption text-wtext-3 dark:border-rink-700 dark:bg-rink-800 dark:text-rink-300">
+          <p className="rounded-w-md border border-it-line-strong bg-it-fill px-4 py-3 text-center text-w-caption text-it-ink-500 dark:border-rink-700 dark:bg-rink-800 dark:text-rink-300">
             {MESSAGES.tournament.viewOnlyHint}
           </p>
         )}
@@ -375,8 +377,8 @@ function FilterChip({
       onClick={onClick}
       className={`whitespace-nowrap rounded-w-pill px-5 py-2 text-w-caption font-bold transition-colors motion-reduce:transition-none ${
         active
-          ? "bg-ice-500 text-white shadow-md"
-          : "border border-wline bg-white text-wtext-2 hover:bg-wbg dark:border-rink-700 dark:bg-rink-800 dark:text-rink-100 dark:hover:bg-rink-700"
+          ? "bg-it-blue-500 text-white shadow-sh-1"
+          : "border-[1.5px] border-it-line-strong bg-it-surface text-it-ink-600 hover:bg-it-fill dark:border-rink-700 dark:bg-rink-800 dark:text-rink-100 dark:hover:bg-rink-700"
       }`}
     >
       {label}

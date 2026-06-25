@@ -14,6 +14,11 @@ interface MatchRejectDialogProps {
   /** 거절 대상 신청자 이름 목록 (다중 선택 시 N명 표기) */
   applicantNames: string[];
   isSubmitting?: boolean;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 it-* 토큰(it-surface 시트 · it-fill textarea · it-red 거절 확정).
+   */
+  iceTheme?: boolean;
 }
 
 const REASON_MIN = 10;
@@ -37,6 +42,7 @@ export function MatchRejectDialog({
   onConfirm,
   applicantNames,
   isSubmitting = false,
+  iceTheme = false,
 }: MatchRejectDialogProps) {
   const [reason, setReason] = useState('');
   const [mounted, setMounted] = useState(false);
@@ -111,21 +117,32 @@ export function MatchRejectDialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-rink-900/50"
+      className={cn(
+        'fixed inset-0 z-[100] flex items-end sm:items-center justify-center',
+        iceTheme ? 'bg-it-blue-950/50' : 'bg-rink-900/50'
+      )}
       role="dialog"
       aria-modal="true"
       aria-labelledby="match-reject-title"
       onClick={handleClose}
     >
       <div
-        className="w-full max-w-md bg-white dark:bg-rink-800 rounded-t-2xl sm:rounded-2xl border border-wline-2 dark:border-rink-700 shadow-md"
+        className={cn(
+          'w-full max-w-md rounded-t-2xl sm:rounded-2xl shadow-md',
+          iceTheme
+            ? 'bg-it-surface dark:bg-rink-800 border border-it-line dark:border-it-blue-900'
+            : 'bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700'
+        )}
         onClick={(e) => e.stopPropagation()}
       >
         {/* 헤더 */}
         <div className="flex items-center justify-between px-5 pt-5 pb-3">
           <h2
             id="match-reject-title"
-            className="text-base font-bold text-wtext-1 dark:text-white"
+            className={cn(
+              'text-base font-bold',
+              iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white'
+            )}
           >
             {title}
           </h2>
@@ -134,23 +151,29 @@ export function MatchRejectDialog({
             onClick={handleClose}
             disabled={isSubmitting}
             aria-label="닫기"
-            className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors"
+            className={cn(
+              'flex h-8 w-8 items-center justify-center rounded-full transition-colors motion-reduce:transition-none',
+              iceTheme ? 'hover:bg-it-fill dark:hover:bg-rink-700' : 'hover:bg-wline-2 dark:hover:bg-rink-700'
+            )}
           >
-            <Icon name="close" className="text-wtext-3 dark:text-rink-300 text-xl" />
+            <Icon
+              name="close"
+              className={cn('text-xl', iceTheme ? 'text-it-ink-400 dark:text-it-ink-300' : 'text-wtext-3 dark:text-rink-300')}
+            />
           </button>
         </div>
 
         {/* 본문 */}
         <div className="px-5 pb-4 space-y-3">
           {count > 1 && (
-            <p className="text-xs text-wtext-3 dark:text-rink-300">
+            <p className={cn('text-xs', iceTheme ? 'text-it-ink-500 dark:text-it-ink-300' : 'text-wtext-3 dark:text-rink-300')}>
               {applicantNames.slice(0, 3).join(', ')}
               {count > 3 ? ` 외 ${count - 3}명` : ''}을(를) 거절합니다.
             </p>
           )}
 
           <label className="block">
-            <span className="text-sm font-semibold text-wtext-2 dark:text-rink-100">
+            <span className={cn('text-sm font-semibold', iceTheme ? 'text-it-ink-700 dark:text-it-ink-200' : 'text-wtext-2 dark:text-rink-100')}>
               {MESSAGES.match.applicants.reject.reasonLabel}
             </span>
             <textarea
@@ -159,13 +182,18 @@ export function MatchRejectDialog({
               onChange={(e) => setReason(e.target.value)}
               placeholder={MESSAGES.match.applicants.reject.reasonPlaceholder}
               maxLength={REASON_MAX}
-              className="mt-1.5 w-full min-h-[120px] px-3 py-2 rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-900 text-sm text-wtext-1 dark:text-white resize-none focus:border-ice-500 focus:ring-1 focus:ring-ice-500 focus:outline-none"
+              className={cn(
+                'mt-1.5 w-full min-h-[120px] px-3 py-2 text-sm resize-none focus:outline-none',
+                iceTheme
+                  ? 'rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-rink-900 text-it-ink-800 dark:text-white focus:border-it-blue-500 focus:ring-1 focus:ring-it-blue-500'
+                  : 'rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-900 text-wtext-1 dark:text-white focus:border-ice-500 focus:ring-1 focus:ring-ice-500'
+              )}
             />
             <div className="mt-1 flex items-center justify-between text-xs">
               <span
                 className={cn(
-                  'text-wtext-3 dark:text-rink-300',
-                  localError && 'text-red-500 dark:text-red-400'
+                  iceTheme ? 'text-it-ink-500 dark:text-it-ink-300' : 'text-wtext-3 dark:text-rink-300',
+                  localError && (iceTheme ? 'text-it-red-500 dark:text-it-red-300' : 'text-red-500 dark:text-red-400')
                 )}
               >
                 {localError ?? `${trimmed.length} / ${REASON_MAX}자 (최소 ${REASON_MIN}자)`}
@@ -175,12 +203,17 @@ export function MatchRejectDialog({
         </div>
 
         {/* 하단 액션 */}
-        <div className="flex gap-3 px-5 pb-5 pt-2 border-t border-wline-2 dark:border-rink-700">
+        <div className={cn('flex gap-3 px-5 pb-5 pt-2 border-t', iceTheme ? 'border-it-line dark:border-it-blue-900' : 'border-wline-2 dark:border-rink-700')}>
           <button
             type="button"
             onClick={handleClose}
             disabled={isSubmitting}
-            className="flex-1 h-11 rounded-xl border border-wline dark:border-rink-700 text-sm font-bold text-wtext-2 dark:text-rink-100 hover:bg-wbg dark:hover:bg-rink-700 transition-colors"
+            className={cn(
+              'flex-1 h-11 text-sm font-bold transition-colors motion-reduce:transition-none',
+              iceTheme
+                ? 'rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 text-it-ink-700 dark:text-it-ink-200 hover:bg-it-fill dark:hover:bg-rink-700'
+                : 'rounded-xl border border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 hover:bg-wbg dark:hover:bg-rink-700'
+            )}
           >
             {MESSAGES.match.applicants.reject.cancel}
           </button>
@@ -188,7 +221,10 @@ export function MatchRejectDialog({
             type="button"
             onClick={handleConfirm}
             disabled={!isValidLength || isSubmitting}
-            className="flex-1 h-11 rounded-xl bg-red-600 text-white text-sm font-bold disabled:opacity-50 hover:bg-red-700 transition-colors flex items-center justify-center gap-2"
+            className={cn(
+              'flex-1 h-11 text-white text-sm font-bold disabled:opacity-50 transition-colors motion-reduce:transition-none flex items-center justify-center gap-2',
+              iceTheme ? 'rounded-w-md bg-it-red-500 hover:bg-it-red-600' : 'rounded-xl bg-red-600 hover:bg-red-700'
+            )}
           >
             {isSubmitting ? (
               <>

@@ -84,6 +84,11 @@ interface PackageManageSectionProps {
   /** 1회권(PER_SESSION) 항목을 목록에서 제외 — 단가는 상위 '1회 수강료' 입력에서 관리(중복 방지).
    *  onChange 는 전체 draft 기준이라 숨겨진 PER_SESSION 도 보존된다. */
   excludePerSession?: boolean;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 it-* 토큰(추가 버튼·행·안내 배너)으로 교체.
+   */
+  iceTheme?: boolean;
 }
 
 function formatPrice(n: number): string {
@@ -101,6 +106,7 @@ export function PackageManageSection({
   billingMode,
   variant = 'card',
   excludePerSession = false,
+  iceTheme = false,
 }: PackageManageSectionProps) {
   const { toast } = useToast();
   const isDeferred = mode === 'deferred';
@@ -263,7 +269,9 @@ export function PackageManageSection({
       className={
         isEmbed
           ? 'space-y-3'
-          : 'bg-white dark:bg-rink-800 rounded-2xl p-5 shadow-sm border border-wline-2 dark:border-rink-700'
+          : iceTheme
+            ? 'bg-it-surface dark:bg-rink-800 rounded-w-md p-5 border-[1.5px] border-it-line-strong dark:border-rink-700'
+            : 'bg-white dark:bg-rink-800 rounded-2xl p-5 shadow-sm border border-wline-2 dark:border-rink-700'
       }
       aria-label={MESSAGES.classProduct.sectionTitle}
     >
@@ -274,7 +282,11 @@ export function PackageManageSection({
             <button
               type="button"
               onClick={handleAdd}
-              className="shrink-0 h-9 px-3 rounded-w-lg bg-ice-500 text-white text-card-meta font-bold whitespace-nowrap"
+              className={
+                iceTheme
+                  ? 'shrink-0 h-9 px-3 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-meta font-bold whitespace-nowrap transition-colors motion-reduce:transition-none active:brightness-95'
+                  : 'shrink-0 h-9 px-3 rounded-w-lg bg-ice-500 text-white text-card-meta font-bold whitespace-nowrap'
+              }
             >
               + {MESSAGES.classProduct.addPackage}
             </button>
@@ -283,10 +295,22 @@ export function PackageManageSection({
       ) : (
         <header className="flex items-start justify-between mb-3 gap-3">
           <div className="min-w-0">
-            <h2 className="text-card-title font-bold text-wtext-1 dark:text-white">
+            <h2
+              className={
+                iceTheme
+                  ? 'text-card-title font-bold text-it-ink-800 dark:text-white'
+                  : 'text-card-title font-bold text-wtext-1 dark:text-white'
+              }
+            >
               {MESSAGES.classProduct.sectionTitle}
             </h2>
-            <p className="text-card-meta text-wtext-3 dark:text-rink-300 mt-0.5">
+            <p
+              className={
+                iceTheme
+                  ? 'text-card-meta text-it-ink-500 dark:text-rink-300 mt-0.5'
+                  : 'text-card-meta text-wtext-3 dark:text-rink-300 mt-0.5'
+              }
+            >
               {MESSAGES.classProduct.sectionDescription}
             </p>
           </div>
@@ -294,7 +318,11 @@ export function PackageManageSection({
             <button
               type="button"
               onClick={handleAdd}
-              className="shrink-0 h-9 px-3 rounded-w-lg bg-ice-500 text-white text-card-meta font-bold whitespace-nowrap"
+              className={
+                iceTheme
+                  ? 'shrink-0 h-9 px-3 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-meta font-bold whitespace-nowrap transition-colors motion-reduce:transition-none active:brightness-95'
+                  : 'shrink-0 h-9 px-3 rounded-w-lg bg-ice-500 text-white text-card-meta font-bold whitespace-nowrap'
+              }
             >
               + {MESSAGES.classProduct.addPackage}
             </button>
@@ -306,12 +334,28 @@ export function PackageManageSection({
       {isPostpaid && !readonly && (
         <div
           role="note"
-          className="mb-3 rounded-w-lg bg-wbg dark:bg-rink-700/50 border border-wline-2 dark:border-rink-700 px-3 py-2.5"
+          className={
+            iceTheme
+              ? 'mb-3 rounded-w-md bg-it-fill dark:bg-rink-700/50 border border-it-line dark:border-rink-700 px-3 py-2.5'
+              : 'mb-3 rounded-w-lg bg-wbg dark:bg-rink-700/50 border border-wline-2 dark:border-rink-700 px-3 py-2.5'
+          }
         >
-          <p className="text-card-meta font-bold text-wtext-1 dark:text-rink-100">
+          <p
+            className={
+              iceTheme
+                ? 'text-card-meta font-bold text-it-ink-800 dark:text-rink-100'
+                : 'text-card-meta font-bold text-wtext-1 dark:text-rink-100'
+            }
+          >
             {MESSAGES.classProduct.postpaidLockTitle}
           </p>
-          <p className="text-card-caption text-wtext-3 dark:text-rink-300 mt-0.5">
+          <p
+            className={
+              iceTheme
+                ? 'text-card-caption text-it-ink-500 dark:text-rink-300 mt-0.5'
+                : 'text-card-caption text-wtext-3 dark:text-rink-300 mt-0.5'
+            }
+          >
             {MESSAGES.classProduct.postpaidLockHint}
           </p>
         </div>
@@ -323,9 +367,19 @@ export function PackageManageSection({
         <div
           role="status"
           aria-live="polite"
-          className="mb-3 rounded-w-lg bg-ice-50 dark:bg-rink-700/50 border border-ice-100 dark:border-rink-700 px-3 py-2.5"
+          className={
+            iceTheme
+              ? 'mb-3 rounded-w-md bg-it-blue-50 dark:bg-rink-700/50 border border-it-blue-100 dark:border-rink-700 px-3 py-2.5'
+              : 'mb-3 rounded-w-lg bg-ice-50 dark:bg-rink-700/50 border border-ice-100 dark:border-rink-700 px-3 py-2.5'
+          }
         >
-          <p className="text-card-meta font-semibold text-wtext-2 dark:text-rink-100">
+          <p
+            className={
+              iceTheme
+                ? 'text-card-meta font-semibold text-it-ink-800 dark:text-rink-100'
+                : 'text-card-meta font-semibold text-wtext-2 dark:text-rink-100'
+            }
+          >
             {MESSAGES.classProduct.deferredDeleteHint}
           </p>
         </div>
@@ -336,7 +390,11 @@ export function PackageManageSection({
           {[0, 1].map((i) => (
             <li
               key={i}
-              className="h-16 rounded-w-lg bg-wline-2 dark:bg-rink-700 animate-pulse"
+              className={
+                iceTheme
+                  ? 'h-16 rounded-w-md bg-it-fill dark:bg-rink-700 animate-pulse motion-reduce:animate-none'
+                  : 'h-16 rounded-w-lg bg-wline-2 dark:bg-rink-700 animate-pulse'
+              }
             />
           ))}
         </ul>
@@ -344,10 +402,22 @@ export function PackageManageSection({
         // embed(등록) — 추가 전이면 큰 빈 박스 없이 추가버튼만 노출.
         isEmbed ? null : (
           <div className="py-8 text-center">
-            <p className="text-card-body font-semibold text-wtext-2 dark:text-rink-200">
+            <p
+              className={
+                iceTheme
+                  ? 'text-card-body font-semibold text-it-ink-800 dark:text-rink-200'
+                  : 'text-card-body font-semibold text-wtext-2 dark:text-rink-200'
+              }
+            >
               {MESSAGES.classProduct.emptyTitle}
             </p>
-            <p className="text-card-meta text-wtext-3 dark:text-rink-300 mt-1">
+            <p
+              className={
+                iceTheme
+                  ? 'text-card-meta text-it-ink-500 dark:text-rink-300 mt-1'
+                  : 'text-card-meta text-wtext-3 dark:text-rink-300 mt-1'
+              }
+            >
               {MESSAGES.classProduct.emptyDescription}
             </p>
           </div>
@@ -365,6 +435,7 @@ export function PackageManageSection({
                   badge={null}
                   readonly={readonly}
                   canDelete={!isPostpaid}
+                  iceTheme={iceTheme}
                   onEdit={() => handleEdit(d)}
                   onDelete={() => handleDeleteDeferred(d)}
                 />
@@ -384,6 +455,7 @@ export function PackageManageSection({
                     badge={badge}
                     readonly={readonly}
                     canDelete={!isPostpaid}
+                    iceTheme={iceTheme}
                     onEdit={() => handleEdit(p)}
                     onDelete={() => handleDeleteImmediate(p)}
                   />
@@ -426,6 +498,7 @@ function PackageRow({
   badge,
   readonly,
   canDelete = true,
+  iceTheme = false,
   onEdit,
   onDelete,
 }: {
@@ -436,33 +509,52 @@ function PackageRow({
   readonly: boolean;
   /** 삭제 버튼 노출 여부 — 후불 수업은 false(1회 수업료 상품 삭제 불가). */
   canDelete?: boolean;
+  /** [ICETIMES] flat 테마 — it-* 토큰 적용. */
+  iceTheme?: boolean;
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const rowClass = iceTheme
+    ? disabled
+      ? 'rounded-w-md border-[1.5px] p-3 border-it-line bg-it-fill/60 dark:bg-rink-700/40 grayscale'
+      : 'rounded-w-md border-[1.5px] p-3 border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800'
+    : disabled
+      ? 'rounded-w-lg border p-3 border-wline-2 bg-wline-2/40 dark:bg-rink-700/40 grayscale'
+      : 'rounded-w-lg border p-3 border-wline dark:border-rink-700 bg-white dark:bg-rink-800';
   return (
-    <li
-      className={`rounded-w-lg border p-3 ${
-        disabled
-          ? 'border-wline-2 bg-wline-2/40 dark:bg-rink-700/40 grayscale'
-          : 'border-wline dark:border-rink-700 bg-white dark:bg-rink-800'
-      }`}
-    >
+    <li className={rowClass}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-card-body font-bold text-wtext-1 dark:text-rink-100 truncate">
+            <p
+              className={
+                iceTheme
+                  ? 'text-card-body font-bold text-it-ink-800 dark:text-rink-100 truncate'
+                  : 'text-card-body font-bold text-wtext-1 dark:text-rink-100 truncate'
+              }
+            >
               {name}
             </p>
             {badge && (
               <span
-                className="shrink-0 inline-flex items-center h-5 px-2 rounded-pill text-card-caption font-bold bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-200"
+                className={
+                  iceTheme
+                    ? 'shrink-0 inline-flex items-center h-5 px-2 rounded-pill text-card-caption font-bold bg-it-fill text-it-ink-500 dark:bg-rink-700 dark:text-rink-200'
+                    : 'shrink-0 inline-flex items-center h-5 px-2 rounded-pill text-card-caption font-bold bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-200'
+                }
                 aria-label={badge}
               >
                 {badge}
               </span>
             )}
           </div>
-          <p className="text-card-meta text-wtext-2 dark:text-rink-200 mt-1 tabular-nums">
+          <p
+            className={
+              iceTheme
+                ? 'text-card-meta text-it-ink-600 dark:text-rink-200 mt-1 tabular-nums'
+                : 'text-card-meta text-wtext-2 dark:text-rink-200 mt-1 tabular-nums'
+            }
+          >
             {formatPrice(price)}원
           </p>
         </div>
@@ -471,7 +563,11 @@ function PackageRow({
             <button
               type="button"
               onClick={onEdit}
-              className="h-8 px-3 rounded-w-lg border border-wline-2 dark:border-rink-700 bg-white dark:bg-rink-800 text-card-meta font-semibold text-wtext-1 dark:text-rink-100"
+              className={
+                iceTheme
+                  ? 'h-8 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-card-meta font-semibold text-it-ink-800 dark:text-rink-100 transition-colors motion-reduce:transition-none active:brightness-95'
+                  : 'h-8 px-3 rounded-w-lg border border-wline-2 dark:border-rink-700 bg-white dark:bg-rink-800 text-card-meta font-semibold text-wtext-1 dark:text-rink-100'
+              }
             >
               {MESSAGES.classProduct.editPackage}
             </button>
@@ -479,7 +575,11 @@ function PackageRow({
               <button
                 type="button"
                 onClick={onDelete}
-                className="h-8 px-3 rounded-w-lg border border-error-500/30 bg-white dark:bg-rink-800 text-card-meta font-semibold text-error-600 dark:text-error-400"
+                className={
+                  iceTheme
+                    ? 'h-8 px-3 rounded-w-md border-[1.5px] border-it-red-100 dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-card-meta font-semibold text-it-red-500 dark:text-it-red-300 transition-colors motion-reduce:transition-none active:brightness-95'
+                    : 'h-8 px-3 rounded-w-lg border border-error-500/30 bg-white dark:bg-rink-800 text-card-meta font-semibold text-error-600 dark:text-error-400'
+                }
               >
                 {MESSAGES.classProduct.deletePackage}
               </button>

@@ -12,6 +12,7 @@ import { api } from '@/services/api-client';
 import { MESSAGES } from '@/lib/messages';
 import { resolveImageSrc } from '@/lib/image-url';
 import { PATHS } from '@/lib/paths';
+import { cn } from '@/lib/utils';
 
 import { usePageReady } from '@/hooks/usePageReady';
 /** 한국어 종목명 → 영문 매핑 */
@@ -78,9 +79,9 @@ function formatDate(dateStr: string): string {
 }
 
 const CLASS_STATUS_MAP: Record<string, { label: string; className: string }> = {
-  active: { label: '진행중', className: 'bg-blue-100 text-ice-500 dark:bg-blue-900/20 dark:text-blue-400' },
-  completed: { label: '완료', className: 'bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-100' },
-  cancelled: { label: '취소됨', className: 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400' },
+  active: { label: '진행중', className: 'bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-500/20 dark:text-it-blue-300' },
+  completed: { label: '완료', className: 'bg-it-line text-it-ink-600 dark:bg-rink-700 dark:text-rink-100' },
+  cancelled: { label: '취소됨', className: 'bg-it-red-50 text-it-red-500 dark:bg-it-red-500/15 dark:text-it-red-300' },
 };
 
 export default function DirectorCoachDetailPage() {
@@ -261,15 +262,15 @@ export default function DirectorCoachDetailPage() {
     return (
       <MobileContainer hasBottomNav>
         <PageAppBar title="코치 상세" onBack={back} forceNative />
-        <main className="flex-1 flex flex-col items-center justify-center px-6" role="main" aria-label="코치 상세">
-          <div className="w-16 h-16 rounded-w-pill bg-wline-2 dark:bg-rink-700 flex items-center justify-center mb-4">
-            <Icon name="error_outline" className="text-3xl text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+        <main className="flex-1 flex flex-col items-center justify-center px-6 bg-it-canvas dark:bg-puck" role="main" aria-label="코치 상세">
+          <div className="w-16 h-16 rounded-w-pill bg-it-line dark:bg-rink-700 flex items-center justify-center mb-4">
+            <Icon name="error_outline" className="text-3xl text-it-ink-400 dark:text-rink-300" aria-hidden="true" />
           </div>
-          <p className="text-card-body text-wtext-3 dark:text-rink-300 mb-4">{MESSAGES.error.general}</p>
+          <p className="text-card-body text-it-ink-500 dark:text-rink-300 mb-4">{MESSAGES.error.general}</p>
           <button
             type="button"
             onClick={loadCoachDetail}
-            className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-ice-500 px-5 py-2.5 text-card-body font-bold text-white shadow-sm hover:bg-ice-700 transition-colors motion-reduce:transition-none active:brightness-95"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-w-md bg-it-blue-500 px-5 py-2.5 text-card-body font-bold text-white hover:bg-it-blue-600 transition-colors motion-reduce:transition-none active:brightness-95"
           >
             <Icon name="refresh" className="text-[18px]" aria-hidden="true" />
             <span>다시 시도하기</span>
@@ -301,128 +302,139 @@ export default function DirectorCoachDetailPage() {
                   icon: "delete",
                   onClick: () => setShowDeleteConfirm(true),
                   label: "삭제",
-                  className: "text-red-500 dark:text-red-400",
+                  className: "text-it-red-500 dark:text-it-red-300",
                 },
               ]
             : []
         }
       />
 
-      <main className="flex-1 overflow-y-auto hide-scrollbar" role="main" aria-label="코치 상세">
-        {/* 프로필 헤더 */}
-        <div className="flex flex-col items-center px-6 pt-8 pb-6">
-          <div className="relative size-24 overflow-hidden rounded-2xl bg-wline-2 dark:bg-rink-700 shadow-sm flex items-center justify-center">
-            {resolveImageSrc(coach.avatarUrl) ? (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img
-                src={resolveImageSrc(coach.avatarUrl)}
-                alt={`${coach.name} 코치`}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <span className="text-4xl font-bold text-ice-500/40">
-                {initial}
-              </span>
-            )}
+      <main
+        className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck"
+        role="main"
+        aria-label="코치 상세"
+      >
+        {/* 프로필 히어로 — navy full-bleed 밴드 */}
+        <section className="bg-it-blue-800 dark:bg-it-blue-950 px-6 pt-8 pb-7" aria-label="코치 프로필">
+          <div className="flex flex-col items-center">
+            <div className="relative size-24 overflow-hidden rounded-w-md bg-it-blue-700/60 dark:bg-rink-700 flex items-center justify-center">
+              {resolveImageSrc(coach.avatarUrl) ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={resolveImageSrc(coach.avatarUrl)}
+                  alt={`${coach.name} 코치`}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span className="text-4xl font-bold text-white/70">
+                  {initial}
+                </span>
+              )}
+            </div>
+
+            <h2 className="mt-4 text-xl font-bold text-white">{coach.name}</h2>
+
+            <div className="flex items-center gap-2 mt-2">
+              <p className="text-card-body text-white/75">{getSpecialtyDisplay(coach)}</p>
+            </div>
           </div>
+        </section>
 
-          <h2 className="mt-4 text-xl font-bold text-wtext-1 dark:text-white">{coach.name}</h2>
+        {/* flat 섹션 사이 8px 회색 갭 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
 
-          <div className="flex items-center gap-2 mt-2">
-            <p className="text-card-body text-wtext-3 dark:text-rink-300">{getSpecialtyDisplay(coach)}</p>
-          </div>
-        </div>
-
-        {/* 통계 카드 */}
-        <div className="px-6 mb-6">
+        {/* 통계 — flat 흰 섹션 (2분할 인셋 타일 · RULE-D04 세로 구분선 금지) */}
+        <section className="bg-it-surface dark:bg-rink-800 px-5 py-5" aria-label="코치 통계">
           <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-xl bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 p-4 shadow-card">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="flex size-8 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-900/20">
-                  <Icon name="school" className="text-[18px] text-ice-500" aria-hidden="true" />
-                </div>
-                <span className="text-card-meta font-medium text-wtext-3 dark:text-rink-300">배정된 수업</span>
+            <div className="flex flex-col items-center bg-it-fill dark:bg-rink-700/40 rounded-w-md py-4">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Icon name="school" className="text-[16px] text-it-blue-500" aria-hidden="true" />
+                <span className="text-card-meta font-medium text-it-ink-500 dark:text-rink-300">배정된 수업</span>
               </div>
-              <span className="text-2xl font-bold text-wtext-1 dark:text-white tabular-nums">
+              <span className="text-2xl font-bold text-it-ink-800 dark:text-white font-num tabular-nums">
                 {coach.weeklyClasses}
-                <span className="text-card-body font-medium text-wtext-3 dark:text-rink-300 ml-1">개</span>
+                <span className="text-card-body font-medium text-it-ink-500 dark:text-rink-300 ml-1">개</span>
               </span>
             </div>
-            <div className="rounded-xl bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 p-4 shadow-card">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="flex size-8 items-center justify-center rounded-lg bg-orange-50 dark:bg-orange-900/20">
-                  <Icon name="schedule" className="text-[18px] text-orange-500" aria-hidden="true" />
-                </div>
-                <span className="text-card-meta font-medium text-wtext-3 dark:text-rink-300">주간 시간</span>
+            <div className="flex flex-col items-center bg-it-fill dark:bg-rink-700/40 rounded-w-md py-4">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Icon name="schedule" className="text-[16px] text-it-blue-500" aria-hidden="true" />
+                <span className="text-card-meta font-medium text-it-ink-500 dark:text-rink-300">주간 시간</span>
               </div>
-              <span className="text-2xl font-bold text-wtext-1 dark:text-white tabular-nums">
+              <span className="text-2xl font-bold text-it-ink-800 dark:text-white font-num tabular-nums">
                 {coach.weeklyHours}
-                <span className="text-card-body font-medium text-wtext-3 dark:text-rink-300 ml-1">시간</span>
+                <span className="text-card-body font-medium text-it-ink-500 dark:text-rink-300 ml-1">시간</span>
               </span>
             </div>
           </div>
-        </div>
+        </section>
 
-        {/* 상세 정보 */}
-        <div className="px-6 mb-6">
-          <h3 className="text-card-body font-bold text-wtext-3 dark:text-rink-300 uppercase tracking-tight mb-3">
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+        {/* 상세 정보 — flat 흰 섹션 (hairline 행, 카드 박스 제거) */}
+        <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-2" aria-label="코치 상세 정보">
+          <h3 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white mb-1">
             상세 정보
           </h3>
-          <div className="rounded-2xl bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-card divide-y divide-slate-100 dark:divide-slate-700">
+          <div className="flex flex-col divide-y divide-it-line dark:divide-rink-700">
             {/* 연락처 */}
             {coach.phone && (
-              <div className="flex items-center gap-3 px-4 py-3.5">
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-wbg dark:bg-rink-700">
-                  <Icon name="phone" className="text-[18px] text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+              <div className="flex items-center gap-3 py-3.5">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-w-md bg-it-fill dark:bg-rink-700">
+                  <Icon name="phone" className="text-[18px] text-it-ink-500 dark:text-rink-300" aria-hidden="true" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <span className="text-card-meta text-wtext-3 dark:text-rink-300">연락처</span>
-                  <p className="text-card-body font-medium text-wtext-1 dark:text-white">{formatPhone(coach.phone)}</p>
+                  <span className="text-card-meta text-it-ink-500 dark:text-rink-300">연락처</span>
+                  <p className="text-card-body font-medium text-it-ink-800 dark:text-white">{formatPhone(coach.phone)}</p>
                 </div>
               </div>
             )}
 
             {/* 등록일 */}
             {coach.createdAt && (
-              <div className="flex items-center gap-3 px-4 py-3.5">
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-wbg dark:bg-rink-700">
-                  <Icon name="event" className="text-[18px] text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+              <div className="flex items-center gap-3 py-3.5">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-w-md bg-it-fill dark:bg-rink-700">
+                  <Icon name="event" className="text-[18px] text-it-ink-500 dark:text-rink-300" aria-hidden="true" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <span className="text-card-meta text-wtext-3 dark:text-rink-300">등록일</span>
-                  <p className="text-card-body font-medium text-wtext-1 dark:text-white">{formatDate(coach.createdAt)}</p>
+                  <span className="text-card-meta text-it-ink-500 dark:text-rink-300">등록일</span>
+                  <p className="text-card-body font-medium text-it-ink-800 dark:text-white">{formatDate(coach.createdAt)}</p>
                 </div>
               </div>
             )}
 
             {/* 약력 */}
             {coach.career && (
-              <div className="flex items-start gap-3 px-4 py-3.5">
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-wbg dark:bg-rink-700 mt-0.5">
-                  <Icon name="workspace_premium" className="text-[18px] text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+              <div className="flex items-start gap-3 py-3.5">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-w-md bg-it-fill dark:bg-rink-700 mt-0.5">
+                  <Icon name="workspace_premium" className="text-[18px] text-it-ink-500 dark:text-rink-300" aria-hidden="true" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <span className="text-card-meta text-wtext-3 dark:text-rink-300">약력 및 수상</span>
-                  <p className="text-card-body font-medium text-wtext-1 dark:text-white whitespace-pre-line mt-0.5">{coach.career}</p>
+                  <span className="text-card-meta text-it-ink-500 dark:text-rink-300">약력 및 수상</span>
+                  <p className="text-card-body font-medium text-it-ink-800 dark:text-white whitespace-pre-line mt-0.5">{coach.career}</p>
                 </div>
               </div>
             )}
           </div>
-        </div>
+        </section>
 
-        {/* 담당 수업 목록 */}
-        <div className="px-6 mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-card-body font-bold text-wtext-3 dark:text-rink-300 uppercase tracking-tight">
-              담당 수업
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+        {/* 담당 수업 목록 — flat 흰 섹션 (hairline 행, 카드 박스 제거) */}
+        <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6" aria-label="담당 수업">
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-baseline gap-2">
+              <h3 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
+                담당 수업
+              </h3>
               {classes.length > 0 && (
-                <span className="ml-2 text-ice-500">{classes.length}</span>
+                <span className="text-[15px] font-extrabold font-num tabular-nums text-it-blue-500">{classes.length}</span>
               )}
-            </h3>
+            </div>
             {coach.editable && (
               <button
                 type="button"
-                className="inline-flex min-h-[36px] items-center gap-1 rounded-lg px-3 py-2 text-card-meta font-bold text-ice-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors motion-reduce:transition-none active:brightness-95"
+                className="inline-flex min-h-[36px] items-center gap-1 rounded-w-md px-3 py-2 text-card-meta font-bold text-it-blue-500 hover:bg-it-blue-50 dark:hover:bg-it-blue-500/15 transition-colors motion-reduce:transition-none active:brightness-95"
                 aria-label="수업 배정하기"
                 // /director-coaches/:id/assign-class 수업 배정 전용 페이지로 이동 (PATHS.coaches.assignClass).
                 onClick={() => navigate(PATHS.coaches.assignClass(coachId))}
@@ -434,62 +446,66 @@ export default function DirectorCoachDetailPage() {
           </div>
 
           {classes.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-10 rounded-2xl bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-card">
-              <div className="w-12 h-12 rounded-w-pill bg-wline-2 dark:bg-rink-700 flex items-center justify-center mb-3">
-                <Icon name="school" className="text-2xl text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+            <div className="flex flex-col items-center justify-center py-12">
+              <div className="w-12 h-12 rounded-w-pill bg-it-line dark:bg-rink-700 flex items-center justify-center mb-3">
+                <Icon name="school" className="text-2xl text-it-ink-400 dark:text-rink-300" aria-hidden="true" />
               </div>
-              <p className="text-card-body text-wtext-3 dark:text-rink-300">{MESSAGES.empty('수업')}</p>
+              <p className="text-card-body text-it-ink-500 dark:text-rink-300">{MESSAGES.empty('수업')}</p>
             </div>
           ) : (
-            <div className="flex flex-col gap-3">
-              {classes.map((cls) => {
+            <div className="flex flex-col">
+              {classes.map((cls, idx) => {
                 const statusInfo = CLASS_STATUS_MAP[cls.status] ?? CLASS_STATUS_MAP.active;
+                const isLast = idx === classes.length - 1;
                 return (
                   <div
                     key={cls.id}
-                    className="flex items-center gap-3 rounded-xl bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 p-4 shadow-card"
+                    className={cn(
+                      'flex items-center gap-3 py-[13px]',
+                      !isLast && 'border-b border-it-line dark:border-rink-700',
+                    )}
                   >
-                    <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-900/20">
-                      <Icon name="sports_hockey" className="text-[20px] text-ice-500" aria-hidden="true" />
+                    <div className="flex size-10 shrink-0 items-center justify-center rounded-w-md bg-emerald-50 dark:bg-emerald-900/20">
+                      <Icon name="sports_hockey" className="text-[20px] text-emerald-500" aria-hidden="true" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <h4 className="text-card-body font-bold text-wtext-1 dark:text-white truncate">{cls.name}</h4>
-                        <span className={`shrink-0 inline-flex items-center rounded-md px-1.5 py-0.5 text-card-meta font-bold ${statusInfo.className}`}>
+                        <h4 className="text-[15.5px] font-bold tracking-[-0.01em] text-it-ink-800 dark:text-white truncate">{cls.name}</h4>
+                        <span className={`shrink-0 inline-flex items-center rounded-w-xs px-1.5 py-0.5 text-card-meta font-bold ${statusInfo.className}`}>
                           {statusInfo.label}
                         </span>
                       </div>
                       <div className="flex items-center gap-2 mt-0.5">
                         {cls.schedule && (
-                          <span className="text-card-meta text-wtext-3 dark:text-rink-300">{cls.schedule}</span>
+                          <span className="text-card-meta text-it-ink-500 dark:text-rink-300">{cls.schedule}</span>
                         )}
-                        <span className="text-card-meta text-wtext-3 dark:text-rink-300">
+                        <span className="text-card-meta text-it-ink-500 dark:text-rink-300">
                           {cls.students}명
                         </span>
                       </div>
                     </div>
-                    <Icon name="chevron_right" className="text-[20px] text-wtext-4 dark:text-rink-500 shrink-0" aria-hidden="true" />
+                    <Icon name="chevron_right" className="text-[20px] text-it-ink-300 dark:text-rink-500 shrink-0" aria-hidden="true" />
                   </div>
                 );
               })}
             </div>
           )}
-        </div>
+        </section>
 
         {/* 하단 액션 버튼 — 수정 / 삭제 (코치 계정만, 감독 본인 등 제외) */}
         {coach.editable && (
-          <div className="px-6 mb-8 flex gap-3">
+          <div className="px-5 pt-5 pb-8 flex gap-3">
             <button
               type="button"
               onClick={() => setShowDeleteConfirm(true)}
-              className="flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 py-3.5 text-card-emphasis font-bold text-wtext-2 dark:text-rink-100 transition-colors motion-reduce:transition-none hover:bg-wbg dark:hover:bg-rink-700 active:brightness-95"
+              className="flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 py-3.5 text-card-emphasis font-bold text-it-ink-600 dark:text-rink-100 transition-colors motion-reduce:transition-none hover:bg-it-fill dark:hover:bg-rink-700 active:brightness-95"
             >
               <Icon name="delete" className="text-[20px]" aria-hidden="true" />
               <span>삭제하기</span>
             </button>
             <NavLink
               href={`/director-coaches/${coachId}/edit`}
-              className="flex min-h-[48px] flex-[2] items-center justify-center gap-2 rounded-xl bg-ice-500 py-3.5 text-card-emphasis font-bold text-white shadow-sm hover:bg-ice-700 transition-colors motion-reduce:transition-none active:brightness-95"
+              className="flex min-h-[48px] flex-[2] items-center justify-center gap-2 rounded-w-md bg-it-blue-500 py-3.5 text-card-emphasis font-bold text-white hover:bg-it-blue-600 transition-colors motion-reduce:transition-none active:brightness-95"
             >
               <Icon name="edit" className="text-[20px]" aria-hidden="true" />
               <span>{MESSAGES.common.edit}</span>

@@ -23,7 +23,7 @@ export default function CoachMemberPushPage() {
   return (
     <MobileContainer hasBottomNav={false}>
       <PageAppBar title={MESSAGES.memberPush.pageTitle} forceNative />
-      <MemberPushComposer context="coach" />
+      <MemberPushComposer context="coach" iceTheme />
     </MobileContainer>
   );
 }

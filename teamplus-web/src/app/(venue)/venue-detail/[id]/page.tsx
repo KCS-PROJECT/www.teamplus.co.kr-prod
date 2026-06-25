@@ -104,19 +104,19 @@ export default function VenueDetailPage({ params }: VenueDetailPageProps) {
         }
       />
 
-      <main className="flex-1 overflow-y-auto pb-30">
-        {/* 지도 히어로 */}
+      <main className="flex-1 overflow-y-auto pb-30 bg-it-canvas dark:bg-puck">
+        {/* 지도 히어로 (공유 컴포넌트 VenueMapHero — iceTheme 미지원, 골격 유지) */}
         <VenueMapHero variant="detail" highlightVenue={venue} />
 
-        {/* 상단 오버랩 컨테이너 */}
-        <section className="-mt-6 relative z-10 bg-white dark:bg-rink-900 rounded-t-3xl shadow-[0_-4px_20px_-2px_rgba(0,0,0,0.05)]">
+        {/* 상단 오버랩 컨테이너 — flat 흰 섹션 */}
+        <section className="-mt-6 relative z-10 bg-it-surface dark:bg-it-blue-950 rounded-t-3xl">
           <div className="px-6 pt-7 pb-6">
             {isLoading ? (
-              <div className="py-10 flex items-center justify-center text-wtext-3 text-card-body">
+              <div className="py-10 flex items-center justify-center text-it-ink-500 text-card-body">
                 {MESSAGES.venue.loading}
               </div>
             ) : error || !venue ? (
-              <div className="py-10 flex flex-col items-center justify-center text-wtext-3">
+              <div className="py-10 flex flex-col items-center justify-center text-it-ink-500">
                 <Icon
                   name="error"
                   className="text-[40px] mb-2"
@@ -126,7 +126,7 @@ export default function VenueDetailPage({ params }: VenueDetailPageProps) {
                 <button
                   type="button"
                   onClick={refresh}
-                  className="text-card-meta font-bold text-ice-500 dark:text-blue-300 underline"
+                  className="text-card-meta font-bold text-it-blue-500 dark:text-it-blue-300 underline"
                 >
                   {MESSAGES.venue.retry}
                 </button>
@@ -137,9 +137,10 @@ export default function VenueDetailPage({ params }: VenueDetailPageProps) {
                 <div className="flex items-start justify-between mb-5">
                   <div className="flex-1 min-w-0 pr-3">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <VenueStatusBadge status={venue.status} size="sm" />
+                      {/* VenueStatusBadge — iceTheme 지원(공유 컴포넌트) → flat 상태색 전달 */}
+                      <VenueStatusBadge status={venue.status} size="sm" iceTheme />
                       {venue.rinkSize ? (
-                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-w-pill bg-wline-2 dark:bg-rink-700 text-wtext-2 dark:text-rink-100">
+                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-w-pill bg-it-fill dark:bg-rink-700 text-it-ink-700 dark:text-rink-100">
                           {venue.rinkSize}
                         </span>
                       ) : null}
@@ -147,19 +148,19 @@ export default function VenueDetailPage({ params }: VenueDetailPageProps) {
                     <h1
                       className={
                         childMode
-                          ? "text-[22px] font-bold text-wtext-1 dark:text-white leading-tight"
-                          : "text-2xl font-bold text-wtext-1 dark:text-white leading-tight"
+                          ? "text-[22px] font-bold text-it-ink-800 dark:text-white leading-tight"
+                          : "text-2xl font-bold text-it-ink-800 dark:text-white leading-tight"
                       }
                     >
                       {venue.name}
                     </h1>
-                    <p className="text-card-body text-wtext-3 dark:text-rink-300 mt-1 leading-relaxed">
+                    <p className="text-card-body text-it-ink-500 dark:text-rink-300 mt-1 leading-relaxed">
                       {venue.description ?? MESSAGES.venue.defaultDescription}
                     </p>
                   </div>
                   <button
                     type="button"
-                    className="w-10 h-10 flex items-center justify-center rounded-w-pill bg-wline-2 dark:bg-rink-700 text-wtext-3 hover:text-ice-500 transition-colors motion-reduce:transition-none"
+                    className="w-10 h-10 flex items-center justify-center rounded-w-pill bg-it-fill dark:bg-rink-700 text-it-ink-500 hover:text-it-blue-500 transition-colors motion-reduce:transition-none"
                     aria-label={MESSAGES.venue.actions.share}
                   >
                     <Icon
@@ -187,7 +188,7 @@ export default function VenueDetailPage({ params }: VenueDetailPageProps) {
                         <button
                           type="button"
                           onClick={copyAddress}
-                          className="text-[11px] font-bold text-ice-500 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-300 px-2 py-1 rounded"
+                          className="text-[11px] font-bold text-it-blue-500 bg-it-blue-50 dark:bg-it-blue-900/30 dark:text-it-blue-300 px-2 py-1 rounded-w-md"
                         >
                           {MESSAGES.venue.info.copyAddress}
                         </button>
@@ -202,7 +203,7 @@ export default function VenueDetailPage({ params }: VenueDetailPageProps) {
                     primary={operatingLabel}
                     secondary={
                       venue.operatingHours ? (
-                        <span className="inline-block px-2 py-0.5 rounded bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-300 font-medium">
+                        <span className="inline-block px-2 py-0.5 rounded-w-md bg-it-red-50 dark:bg-it-red-500/20 text-it-red-500 dark:text-it-red-300 font-medium">
                           {MESSAGES.venue.info.enterNotice}
                         </span>
                       ) : null
@@ -213,12 +214,12 @@ export default function VenueDetailPage({ params }: VenueDetailPageProps) {
             )}
           </div>
 
-          {/* 섹션 구분선 */}
-          <div className="h-2 bg-wbg dark:bg-rink-800/50 border-y border-wline-2 dark:border-rink-700" />
+          {/* 섹션 구분선 — flat 8px 회색 갭 */}
+          <div className="h-2 bg-it-canvas dark:bg-puck" />
 
-          {/* 보유 시설 */}
-          <div className="px-6 py-7">
-            <h2 className="text-card-title font-bold text-wtext-1 dark:text-white mb-5">
+          {/* 보유 시설 — 흰 섹션 (FacilityBadge·VenueImageGallery 는 공유 컴포넌트, iceTheme 미지원 → 골격 유지) */}
+          <div className="bg-it-surface dark:bg-it-blue-950 px-6 py-7">
+            <h2 className="text-card-title font-bold text-it-ink-800 dark:text-white mb-5">
               {MESSAGES.venue.facilities.title}
             </h2>
             <div className="grid grid-cols-4 gap-2">
@@ -228,8 +229,13 @@ export default function VenueDetailPage({ params }: VenueDetailPageProps) {
             </div>
           </div>
 
-          {/* 시설 둘러보기 */}
-          <VenueImageGallery />
+          {/* 섹션 구분선 — flat 8px 회색 갭 */}
+          <div className="h-2 bg-it-canvas dark:bg-puck" />
+
+          {/* 시설 둘러보기 (사진 갤러리 — 비주얼 결과물, 골격 유지) */}
+          <div className="bg-it-surface dark:bg-it-blue-950">
+            <VenueImageGallery />
+          </div>
         </section>
       </main>
 

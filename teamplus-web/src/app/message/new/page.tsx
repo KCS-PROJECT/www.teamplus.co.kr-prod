@@ -19,7 +19,6 @@ import { useState, type FormEvent } from 'react';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
 import { Icon } from '@/components/ui/Icon';
 import { useToast } from '@/components/ui/Toast';
 import { useNavigation } from '@/components/ui/NavLink';
@@ -130,89 +129,95 @@ export default function NewMessagePage() {
 
       <form
         onSubmit={handleSubmit}
-        className="flex-1 overflow-y-auto px-5 py-6"
+        className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck"
         aria-label="새 메시지 작성 폼"
       >
-        <div className="space-y-4">
-          <Card className="space-y-4">
+        {/* 메시지 입력 — flat 흰 섹션 (카드 박스 제거) */}
+        <section className="bg-it-surface dark:bg-rink-800 mt-2 px-5 pt-5 pb-5 space-y-4">
+          <div className="space-y-2">
+            <label htmlFor="msg-recipient" className="block text-[13px] font-bold text-it-ink-700 dark:text-wtext-2">
+              받는 사람
+            </label>
+            <input
+              id="msg-recipient"
+              value={recipient}
+              onChange={(event) => setRecipient(event.target.value)}
+              placeholder={MESSAGES.placeholders.enterRecipient}
+              aria-required="true"
+              className="w-full h-[50px] px-4 text-[15.5px] font-semibold text-it-ink-800 dark:text-white bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 placeholder:text-it-ink-400 dark:placeholder:text-wtext-3 transition-colors motion-reduce:transition-none"
+            />
+          </div>
+          <div className="space-y-2">
+            <label htmlFor="msg-subject" className="block text-[13px] font-bold text-it-ink-700 dark:text-wtext-2">
+              주제
+            </label>
+            <input
+              id="msg-subject"
+              value={topic}
+              onChange={(event) => setTopic(event.target.value)}
+              placeholder={MESSAGES.placeholders.enterMessageSubject}
+              className="w-full h-[50px] px-4 text-[15.5px] font-semibold text-it-ink-800 dark:text-white bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 placeholder:text-it-ink-400 dark:placeholder:text-wtext-3 transition-colors motion-reduce:transition-none"
+            />
+          </div>
+          <div className="space-y-2">
+            <label htmlFor="msg-body" className="block text-[13px] font-bold text-it-ink-700 dark:text-wtext-2">
+              내용
+            </label>
+            <textarea
+              id="msg-body"
+              value={content}
+              onChange={(event) => setContent(event.target.value)}
+              placeholder={MESSAGES.placeholders.enterMessageBody}
+              aria-required="true"
+              className="w-full min-h-[140px] px-4 py-3 text-[15.5px] font-semibold text-it-ink-800 dark:text-white bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 placeholder:text-it-ink-400 dark:placeholder:text-wtext-3 transition-colors motion-reduce:transition-none"
+            />
+          </div>
+        </section>
+
+        {/* flat 섹션 사이 8px 회색 갭 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+        {/* 예약 발송 — flat 흰 섹션 */}
+        <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-5 space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-w-pill bg-it-blue-50 dark:bg-it-blue-900/40 text-it-blue-500">
+              <Icon name="schedule_send" className="text-xl" aria-hidden="true" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[15px] font-bold text-it-ink-800 dark:text-white">{MESSAGES.chat.scheduleTitle}</p>
+              <p className="text-[12px] text-it-ink-500 dark:text-wtext-4">{MESSAGES.chat.scheduleHint}</p>
+            </div>
+          </div>
+          {showSchedule && (
             <div className="space-y-2">
-              <label htmlFor="msg-recipient" className="block text-w-small font-semibold text-wtext-2 dark:text-rink-100">
-                받는 사람
+              <label htmlFor="msg-scheduled-at" className="block text-[12px] font-bold text-it-ink-500 dark:text-wtext-4">
+                발송 일시
               </label>
               <input
-                id="msg-recipient"
-                value={recipient}
-                onChange={(event) => setRecipient(event.target.value)}
-                placeholder={MESSAGES.placeholders.enterRecipient}
-                aria-required="true"
-                className="w-full h-11 px-4 text-w-small text-wtext-1 dark:text-white bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-ice-500/30 placeholder:text-wtext-3 dark:placeholder:text-wtext-3"
+                id="msg-scheduled-at"
+                type="datetime-local"
+                value={scheduledAt}
+                onChange={(event) => setScheduledAt(event.target.value)}
+                min={getMinDateTimeLocal()}
+                className="w-full h-[50px] px-4 text-[15.5px] font-semibold text-it-ink-800 dark:text-white bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 transition-colors motion-reduce:transition-none"
               />
             </div>
-            <div className="space-y-2">
-              <label htmlFor="msg-subject" className="block text-w-small font-semibold text-wtext-2 dark:text-rink-100">
-                주제
-              </label>
-              <input
-                id="msg-subject"
-                value={topic}
-                onChange={(event) => setTopic(event.target.value)}
-                placeholder={MESSAGES.placeholders.enterMessageSubject}
-                className="w-full h-11 px-4 text-w-small text-wtext-1 dark:text-white bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-ice-500/30 placeholder:text-wtext-3 dark:placeholder:text-wtext-3"
-              />
-            </div>
-            <div className="space-y-2">
-              <label htmlFor="msg-body" className="block text-w-small font-semibold text-wtext-2 dark:text-rink-100">
-                내용
-              </label>
-              <textarea
-                id="msg-body"
-                value={content}
-                onChange={(event) => setContent(event.target.value)}
-                placeholder={MESSAGES.placeholders.enterMessageBody}
-                aria-required="true"
-                className="w-full min-h-[140px] px-4 py-3 text-w-small text-wtext-1 dark:text-white bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-ice-500/30 placeholder:text-wtext-3 dark:placeholder:text-wtext-3"
-              />
-            </div>
-          </Card>
+          )}
+          <Button
+            type="button"
+            variant="secondary"
+            iceTheme
+            className="w-full"
+            onClick={handleToggleSchedule}
+            aria-expanded={showSchedule}
+            aria-controls="msg-scheduled-at"
+          >
+            {showSchedule ? '예약 취소' : MESSAGES.chat.scheduleButton}
+          </Button>
+        </section>
 
-          <Card className="space-y-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-w-pill bg-ice-500/10 text-ice-500">
-                <Icon name="schedule_send" className="text-xl" aria-hidden="true" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-w-small font-semibold text-wtext-1 dark:text-white">{MESSAGES.chat.scheduleTitle}</p>
-                <p className="text-w-caption text-wtext-3 dark:text-rink-300">{MESSAGES.chat.scheduleHint}</p>
-              </div>
-            </div>
-            {showSchedule && (
-              <div className="space-y-2">
-                <label htmlFor="msg-scheduled-at" className="block text-w-caption font-semibold text-wtext-3 dark:text-rink-300">
-                  발송 일시
-                </label>
-                <input
-                  id="msg-scheduled-at"
-                  type="datetime-local"
-                  value={scheduledAt}
-                  onChange={(event) => setScheduledAt(event.target.value)}
-                  min={getMinDateTimeLocal()}
-                  className="w-full h-11 px-4 text-w-small text-wtext-1 dark:text-white bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-ice-500/30"
-                />
-              </div>
-            )}
-            <Button
-              type="button"
-              variant="secondary"
-              className="w-full"
-              onClick={handleToggleSchedule}
-              aria-expanded={showSchedule}
-              aria-controls="msg-scheduled-at"
-            >
-              {showSchedule ? '예약 취소' : MESSAGES.chat.scheduleButton}
-            </Button>
-          </Card>
-
-          <Button type="submit" className="w-full" disabled={isSending}>
+        <div className="px-5 pt-5 pb-8">
+          <Button type="submit" size="lg" iceTheme fullWidth disabled={isSending}>
             {isSending ? MESSAGES.chat.sending : MESSAGES.chat.sendButton}
           </Button>
         </div>

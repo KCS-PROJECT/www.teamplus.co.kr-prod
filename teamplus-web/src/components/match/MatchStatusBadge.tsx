@@ -22,6 +22,11 @@ interface MatchStatusBadgeProps {
   /** 작은 크기(목록 카드) / 기본(상세 페이지) */
   size?: 'sm' | 'md';
   className?: string;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 it-* 토큰 톤으로 배지 색을 치환(2색 blue/red 중심, recruiting=blue).
+   */
+  iceTheme?: boolean;
 }
 
 const CONFIG: Record<
@@ -50,6 +55,30 @@ const CONFIG: Record<
   },
 };
 
+// [ICETIMES] flat 테마 — it-* 토큰 톤. 모집=blue 강조, 마감임박/취소=red, 마감=ink.
+const ICE_CONFIG: Record<MatchStatus, { label: string; bg: string; text: string }> = {
+  recruiting: {
+    label: '모집 중',
+    bg: 'bg-it-blue-50 dark:bg-it-blue-900/40',
+    text: 'text-it-blue-600 dark:text-it-blue-300',
+  },
+  closing_soon: {
+    label: '마감 임박',
+    bg: 'bg-it-red-50 dark:bg-it-red-500/15',
+    text: 'text-it-red-500 dark:text-it-red-300',
+  },
+  closed: {
+    label: '마감됨',
+    bg: 'bg-it-line dark:bg-rink-700',
+    text: 'text-it-ink-600 dark:text-it-ink-300',
+  },
+  cancelled: {
+    label: '취소됨',
+    bg: 'bg-it-red-50 dark:bg-it-red-500/15',
+    text: 'text-it-red-500 dark:text-it-red-300',
+  },
+};
+
 /**
  * 매치 상태 배지.
  *
@@ -60,8 +89,9 @@ export function MatchStatusBadge({
   status,
   size = 'md',
   className,
+  iceTheme = false,
 }: MatchStatusBadgeProps) {
-  const config = CONFIG[status];
+  const config = (iceTheme ? ICE_CONFIG : CONFIG)[status];
   return (
     <span
       className={cn(

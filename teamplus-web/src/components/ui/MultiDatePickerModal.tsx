@@ -39,6 +39,11 @@ interface MultiDatePickerModalProps {
   /** 확인 시 선택된 날짜 배열(오름차순) + 공통 시간/장소 전달 */
   onConfirm: (dates: string[], common: MultiDateCommon) => void;
   onClose: () => void;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 it-* 토큰(파랑 선택칩·it-fill 입력)으로 교체.
+   */
+  iceTheme?: boolean;
 }
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -51,6 +56,12 @@ const FIELD_CLASS =
   'text-card-meta font-semibold text-wtext-1 dark:text-white transition-colors motion-reduce:transition-none ' +
   'hover:border-ice-500 focus:outline-none focus:border-ice-500 focus:shadow-[0_0_0_3px_rgb(47_95_255_/_0.1)] focus-visible-disabled';
 
+// [ICETIMES] flat 입력 — it-fill 배경 + 1.5px it-line-strong + it-blue 포커스.
+const FIELD_CLASS_ICE =
+  'w-full h-12 px-4 rounded-w-md bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 ' +
+  'text-card-meta font-semibold text-it-ink-800 dark:text-white transition-colors motion-reduce:transition-none ' +
+  'focus:outline-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 focus-visible-disabled';
+
 export function MultiDatePickerModal({
   isOpen,
   initialYear,
@@ -60,7 +71,9 @@ export function MultiDatePickerModal({
   venues,
   onConfirm,
   onClose,
+  iceTheme = false,
 }: MultiDatePickerModalProps) {
+  const fieldClass = iceTheme ? FIELD_CLASS_ICE : FIELD_CLASS;
   const [viewYear, setViewYear] = useState(initialYear);
   const [viewMonth, setViewMonth] = useState(initialMonth); // 1-12
   const [picked, setPicked] = useState<Set<string>>(() => new Set(selected));
@@ -152,14 +165,22 @@ export function MultiDatePickerModal({
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 h-11 rounded-xl border border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 font-bold"
+            className={
+              iceTheme
+                ? 'flex-1 h-11 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 text-it-ink-800 dark:text-rink-100 font-bold transition-colors motion-reduce:transition-none active:brightness-95'
+                : 'flex-1 h-11 rounded-xl border border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 font-bold'
+            }
           >
             취소
           </button>
           <button
             type="button"
             onClick={handleConfirm}
-            className="flex-1 h-11 rounded-xl bg-ice-500 text-white font-bold disabled:opacity-50"
+            className={
+              iceTheme
+                ? 'flex-1 h-11 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white font-bold disabled:opacity-50 transition-colors motion-reduce:transition-none active:brightness-95'
+                : 'flex-1 h-11 rounded-xl bg-ice-500 text-white font-bold disabled:opacity-50'
+            }
             disabled={picked.size === 0}
           >
             {picked.size > 0 ? `${picked.size}개 일정 추가` : '날짜를 선택하세요'}
@@ -193,7 +214,14 @@ export function MultiDatePickerModal({
       {/* 그리드 */}
       <div className="grid grid-cols-7 gap-1 text-center">
         {WEEKDAYS.map((w) => (
-          <span key={w} className="text-w-caption font-bold text-wtext-3 dark:text-rink-300 py-1">
+          <span
+            key={w}
+            className={
+              iceTheme
+                ? 'text-w-caption font-bold text-it-ink-500 dark:text-rink-300 py-1'
+                : 'text-w-caption font-bold text-wtext-3 dark:text-rink-300 py-1'
+            }
+          >
             {w}
           </span>
         ))}
@@ -202,6 +230,17 @@ export function MultiDatePickerModal({
           const iso = toISO(viewYear, viewMonth, d);
           const isPicked = picked.has(iso);
           const isDisabled = disabledSet.has(iso);
+          const cellClass = iceTheme
+            ? isDisabled
+              ? 'bg-it-fill dark:bg-rink-700 text-it-ink-300 dark:text-rink-500 line-through cursor-not-allowed'
+              : isPicked
+                ? 'bg-it-blue-500 text-white'
+                : 'text-it-ink-800 dark:text-white hover:bg-it-fill dark:hover:bg-rink-700'
+            : isDisabled
+              ? 'bg-wline-2 dark:bg-rink-700 text-wtext-4 dark:text-rink-500 line-through cursor-not-allowed'
+              : isPicked
+                ? 'bg-ice-500 text-white'
+                : 'text-wtext-1 dark:text-white hover:bg-wline-2 dark:hover:bg-rink-700';
           return (
             <button
               key={iso}
@@ -210,13 +249,7 @@ export function MultiDatePickerModal({
               disabled={isDisabled}
               aria-pressed={isPicked}
               aria-label={isDisabled ? `${viewMonth}월 ${d}일 이미 등록됨` : undefined}
-              className={`h-9 rounded-lg text-w-small font-bold tabular-nums transition-colors motion-reduce:transition-none ${
-                isDisabled
-                  ? 'bg-wline-2 dark:bg-rink-700 text-wtext-4 dark:text-rink-500 line-through cursor-not-allowed'
-                  : isPicked
-                    ? 'bg-ice-500 text-white'
-                    : 'text-wtext-1 dark:text-white hover:bg-wline-2 dark:hover:bg-rink-700'
-              }`}
+              className={`h-9 rounded-lg text-w-small font-bold tabular-nums transition-colors motion-reduce:transition-none ${cellClass}`}
             >
               {d}
             </button>
@@ -241,7 +274,7 @@ export function MultiDatePickerModal({
               type="time"
               value={startTime}
               onChange={(e) => setStartTime(e.target.value)}
-              className={`${FIELD_CLASS} tabular-nums`}
+              className={`${fieldClass} tabular-nums`}
               aria-label="공통 시작 시간"
             />
           </div>
@@ -251,7 +284,7 @@ export function MultiDatePickerModal({
               type="time"
               value={endTime}
               onChange={(e) => setEndTime(e.target.value)}
-              className={`${FIELD_CLASS} tabular-nums`}
+              className={`${fieldClass} tabular-nums`}
               aria-label="공통 종료 시간"
             />
           </div>
@@ -267,7 +300,7 @@ export function MultiDatePickerModal({
               if (venueId) setVenueId('');
             }}
             placeholder="장소 찾아보기"
-            className={FIELD_CLASS}
+            className={fieldClass}
             aria-label="공통 장소 검색"
           />
           {venueId ? (
@@ -277,12 +310,22 @@ export function MultiDatePickerModal({
                 setVenueId('');
                 setVenueQuery('');
               }}
-              className="mt-1 inline-flex items-center gap-1 text-w-caption font-semibold text-wtext-3 dark:text-rink-300 underline"
+              className={
+                iceTheme
+                  ? 'mt-1 inline-flex items-center gap-1 text-w-caption font-semibold text-it-ink-500 dark:text-rink-300 underline'
+                  : 'mt-1 inline-flex items-center gap-1 text-w-caption font-semibold text-wtext-3 dark:text-rink-300 underline'
+              }
             >
               선택 해제 (장소 미지정)
             </button>
           ) : venueQuery.trim() ? (
-            <ul className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-wline-2 dark:border-rink-700 divide-y divide-wline-2 dark:divide-rink-700">
+            <ul
+              className={
+                iceTheme
+                  ? 'mt-1 max-h-40 overflow-y-auto rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 divide-y divide-it-line dark:divide-rink-700'
+                  : 'mt-1 max-h-40 overflow-y-auto rounded-lg border border-wline-2 dark:border-rink-700 divide-y divide-wline-2 dark:divide-rink-700'
+              }
+            >
               {filteredVenues.length > 0 ? (
                 filteredVenues.map((v) => (
                   <li key={v.id}>
@@ -292,20 +335,36 @@ export function MultiDatePickerModal({
                         setVenueId(v.id);
                         setVenueQuery(v.name);
                       }}
-                      className="w-full px-3 py-2.5 text-left text-w-body font-medium text-wtext-1 dark:text-white hover:bg-wbg dark:hover:bg-rink-700/40 transition-colors motion-reduce:transition-none"
+                      className={
+                        iceTheme
+                          ? 'w-full px-3 py-2.5 text-left text-w-body font-medium text-it-ink-800 dark:text-white hover:bg-it-fill dark:hover:bg-rink-700/40 transition-colors motion-reduce:transition-none'
+                          : 'w-full px-3 py-2.5 text-left text-w-body font-medium text-wtext-1 dark:text-white hover:bg-wbg dark:hover:bg-rink-700/40 transition-colors motion-reduce:transition-none'
+                      }
                     >
                       {v.name}
                     </button>
                   </li>
                 ))
               ) : (
-                <li className="px-3 py-2.5 text-w-caption text-wtext-3 dark:text-rink-300">
+                <li
+                  className={
+                    iceTheme
+                      ? 'px-3 py-2.5 text-w-caption text-it-ink-500 dark:text-rink-300'
+                      : 'px-3 py-2.5 text-w-caption text-wtext-3 dark:text-rink-300'
+                  }
+                >
                   &ldquo;{venueQuery.trim()}&rdquo; 검색 결과가 없습니다
                 </li>
               )}
             </ul>
           ) : (
-            <p className="mt-1 text-w-caption text-wtext-3 dark:text-rink-300">
+            <p
+              className={
+                iceTheme
+                  ? 'mt-1 text-w-caption text-it-ink-500 dark:text-rink-300'
+                  : 'mt-1 text-w-caption text-wtext-3 dark:text-rink-300'
+              }
+            >
               장소명을 입력하면 저장된 장소가 표시됩니다. 비워두면 장소 미지정.
             </p>
           )}

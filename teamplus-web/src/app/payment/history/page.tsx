@@ -72,7 +72,7 @@ function LoadingState() {
   return (
     <div className="flex flex-col items-center justify-center py-20">
       <Spinner size="lg" />
-      <p className="text-wtext-3 dark:text-rink-300 text-card-body mt-3">{MESSAGES.loading.data}</p>
+      <p className="text-it-ink-500 dark:text-rink-300 text-card-body mt-3">{MESSAGES.loading.data}</p>
     </div>
   );
 }
@@ -80,16 +80,16 @@ function LoadingState() {
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 px-6">
-      <div className="w-16 h-16 rounded-w-pill bg-red-100 dark:bg-red-900/20 flex items-center justify-center mb-4">
-        <Icon name="error" className="text-red-500 text-3xl" />
+      <div className="w-16 h-16 rounded-w-pill bg-it-red-50 dark:bg-it-red-500/15 flex items-center justify-center mb-4">
+        <Icon name="error" className="text-it-red-500 text-3xl" />
       </div>
-      <h2 className="text-card-section text-wtext-1 dark:text-white mb-2">
+      <h2 className="text-card-section text-it-ink-900 dark:text-white mb-2">
         데이터를 불러올 수 없습니다
       </h2>
-      <p className="text-card-body text-wtext-3 dark:text-rink-300 text-center mb-6">{message}</p>
+      <p className="text-card-body text-it-ink-500 dark:text-rink-300 text-center mb-6">{message}</p>
       <button
         onClick={onRetry}
-        className="px-6 py-2.5 rounded-w-md bg-ice-500 hover:bg-ice-600 active:bg-ice-700 text-white font-bold text-card-body transition-colors motion-reduce:transition-none"
+        className="px-6 py-2.5 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 active:brightness-95 text-white font-bold text-card-body transition-colors motion-reduce:transition-none"
       >
         다시 시도
       </button>
@@ -99,21 +99,21 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 
 function EmptyState({ type, filtered }: { type: 'payment' | 'usage'; filtered?: boolean }) {
   return (
-    <div className="flex flex-col items-center justify-center py-20 px-6">
-      <div className="w-16 h-16 rounded-w-pill bg-wbg dark:bg-rink-800 flex items-center justify-center mb-4">
+    <div className="bg-it-surface dark:bg-rink-800 flex flex-col items-center justify-center py-16 px-6 text-center">
+      <div className="flex size-14 items-center justify-center rounded-w-pill bg-it-fill dark:bg-rink-700 mb-3">
         <Icon
           name={type === 'payment' ? 'receipt_long' : 'history'}
-          className="text-wtext-4 text-3xl"
+          className="text-it-ink-400 dark:text-wtext-3 text-[28px]"
         />
       </div>
-      <h2 className="text-card-section text-wtext-1 dark:text-white mb-2">
+      <h2 className="text-card-section text-it-ink-900 dark:text-white mb-2">
         {filtered
           ? '해당 기간 내역이 없습니다'
           : type === 'payment'
             ? '결제 내역이 없습니다'
             : '사용 내역이 없습니다'}
       </h2>
-      <p className="text-card-body text-wtext-3 dark:text-rink-300 text-center">
+      <p className="text-card-body text-it-ink-500 dark:text-rink-300">
         {filtered
           ? '다른 기간을 선택해보세요.'
           : type === 'payment'
@@ -131,43 +131,56 @@ function TabNavigation({
   activeTab: TabType;
   onTabChange: (tab: TabType) => void;
 }) {
+  // [ICETIMES SegmentedTabs 1:1] full-width 흰 세그먼트 + blue 밑줄 (pill 토글 제거).
   return (
-    <section className="sticky top-0 z-40 bg-wbg dark:bg-puck px-4 pb-2 pt-3">
-      <div className="flex gap-1 rounded-w-md bg-wline-2 dark:bg-rink-900/50 p-1">
-        <button
-          onClick={() => onTabChange('payment')}
-          className={cn(
-            'flex-1 relative isolate flex items-center justify-center rounded-w-md py-2.5 text-card-body font-bold transition-all motion-reduce:transition-none duration-200',
-            activeTab === 'payment'
-              ? 'text-ice-500 dark:text-white shadow-sh-1 bg-wsurface dark:bg-rink-800'
-              : 'text-wtext-3 hover:text-wtext-2 dark:text-rink-300 dark:hover:text-rink-200'
-          )}
-        >
-          결제 내역
-        </button>
-        <button
-          onClick={() => onTabChange('usage')}
-          className={cn(
-            'flex-1 flex items-center justify-center rounded-w-md py-2.5 text-card-body font-bold transition-all motion-reduce:transition-none duration-200',
-            activeTab === 'usage'
-              ? 'text-ice-500 dark:text-white shadow-sh-1 bg-wsurface dark:bg-rink-800'
-              : 'text-wtext-3 hover:text-wtext-2 dark:text-rink-300 dark:hover:text-rink-200'
-          )}
-        >
-          사용 내역
-        </button>
+    <section className="sticky top-0 z-40" aria-label="내역 탭">
+      <div
+        className="flex border-b border-it-line bg-it-surface dark:border-rink-700 dark:bg-rink-800"
+        role="tablist"
+        aria-label="결제/사용 내역"
+      >
+        {([
+          { key: 'payment' as const, label: '결제 내역' },
+          { key: 'usage' as const, label: '사용 내역' },
+        ]).map((t) => {
+          const active = activeTab === t.key;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => onTabChange(t.key)}
+              role="tab"
+              aria-selected={active}
+              className={cn(
+                'relative flex-1 min-h-[48px] px-1 pb-[13px] pt-[14px] text-[15px] tracking-[-0.01em] transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-it-blue-500/40',
+                active
+                  ? 'font-extrabold text-it-blue-600 dark:text-it-blue-300'
+                  : 'font-semibold text-it-ink-500 dark:text-wtext-3',
+              )}
+            >
+              {t.label}
+              <span
+                aria-hidden="true"
+                className={cn(
+                  'absolute inset-x-0 -bottom-px h-[2.5px] rounded-[2px]',
+                  active ? 'bg-it-blue-500' : 'bg-transparent',
+                )}
+              />
+            </button>
+          );
+        })}
       </div>
     </section>
   );
 }
 
-/** 요약 카드 내부 통계 한 줄 (점 + 라벨 + 값) */
+/** 요약 카드 내부 통계 한 줄 (점 + 라벨 + 값) — navy 히어로 위 light 텍스트 */
 function SummaryStat({ dot, label, value }: { dot: string; label: string; value: string }) {
   return (
     <div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap">
       <span className={cn('flex h-2 w-2 rounded-w-pill', dot)} aria-hidden="true" />
-      <span className="text-card-meta text-wtext-3 dark:text-rink-300">{label}</span>
-      <span className="text-card-meta font-bold tabular-nums text-wtext-1 dark:text-white">{value}</span>
+      <span className="text-card-meta text-white/60">{label}</span>
+      <span className="text-card-meta font-bold tabular-nums text-white">{value}</span>
     </div>
   );
 }
@@ -198,37 +211,36 @@ function SummaryCard({
 }) {
   const isPayment = activeTab === 'payment';
   return (
-    <section className="px-4 pt-3">
-      <div className="rounded-w-lg bg-wsurface dark:bg-rink-800 p-4 shadow-sh-1">
-        <span className="text-card-meta text-wtext-3 dark:text-rink-300">
-          {isPayment ? '기간 내 총 결제 금액' : '기간 내 사용한 결제권'}
-        </span>
-        <p className="mt-1.5 truncate whitespace-nowrap font-num text-w-h2 font-bold tabular-nums text-wtext-1 dark:text-white">
-          {isPayment
-            ? `${payment.totalAmount.toLocaleString()}원`
-            : `${usage.creditsUsed}회`}
-        </p>
+    <section className="bg-it-blue-800 dark:bg-it-blue-950 px-5 pt-[22px] pb-6">
+      <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-white/60">
+        <Icon name={isPayment ? 'payments' : 'confirmation_number'} className="text-[14px]" aria-hidden="true" />
+        {isPayment ? '기간 내 총 결제 금액' : '기간 내 사용한 결제권'}
+      </div>
+      <p className="mt-2 truncate whitespace-nowrap text-[38px] font-extrabold leading-[1.05] tracking-[-0.02em] tabular-nums text-white">
+        {isPayment
+          ? `${payment.totalAmount.toLocaleString()}원`
+          : `${usage.creditsUsed}회`}
+      </p>
 
-        <div className="mt-3 flex items-center gap-x-3 overflow-x-auto border-t border-wline-2 dark:border-rink-700 pt-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {isPayment ? (
-            <>
-              <SummaryStat dot="bg-emerald-500" label="결제 완료" value={`${payment.completedCount}건`} />
-              {payment.cancelledCount > 0 && (
-                <SummaryStat dot="bg-red-500" label="결제 취소" value={`${payment.cancelledCount}건`} />
-              )}
-            </>
-          ) : (
-            <>
-              <SummaryStat dot="bg-emerald-500" label="출석" value={`${usage.attended}회`} />
-              {usage.absent > 0 && (
-                <SummaryStat dot="bg-red-500" label="결석" value={`${usage.absent}회`} />
-              )}
-              {usage.cancelled > 0 && (
-                <SummaryStat dot="bg-wtext-4" label="수업 취소" value={`${usage.cancelled}회`} />
-              )}
-            </>
-          )}
-        </div>
+      <div className="mt-[18px] flex items-center gap-x-4 overflow-x-auto border-t border-white/[0.14] pt-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {isPayment ? (
+          <>
+            <SummaryStat dot="bg-mint" label="결제 완료" value={`${payment.completedCount}건`} />
+            {payment.cancelledCount > 0 && (
+              <SummaryStat dot="bg-it-red-500" label="결제 취소" value={`${payment.cancelledCount}건`} />
+            )}
+          </>
+        ) : (
+          <>
+            <SummaryStat dot="bg-mint" label="출석" value={`${usage.attended}회`} />
+            {usage.absent > 0 && (
+              <SummaryStat dot="bg-it-red-500" label="결석" value={`${usage.absent}회`} />
+            )}
+            {usage.cancelled > 0 && (
+              <SummaryStat dot="bg-white/40" label="수업 취소" value={`${usage.cancelled}회`} />
+            )}
+          </>
+        )}
       </div>
     </section>
   );
@@ -254,28 +266,28 @@ function PaymentHistoryCard({
   };
 
   const getIconBgColor = () => {
-    if (isCancelled) return 'bg-wbg dark:bg-rink-800 text-wtext-4';
+    if (isCancelled) return 'bg-it-fill dark:bg-rink-700 text-it-ink-400';
     if (item.type === 'trial')
-      return 'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400';
-    return 'bg-ice-50 dark:bg-ice-500/10 text-ice-500';
+      return 'bg-it-blue-50 dark:bg-it-blue-500/15 text-it-blue-500';
+    return 'bg-it-blue-50 dark:bg-it-blue-500/15 text-it-blue-500';
   };
 
   return (
     <div
       className={cn(
-        'group flex flex-col gap-3 rounded-w-lg bg-wsurface dark:bg-rink-800 p-4 shadow-sh-1 border border-transparent hover:border-ice-500/10 transition-colors motion-reduce:transition-none',
-        isCancelled && 'opacity-80 hover:opacity-100'
+        'flex flex-col gap-3 border-b border-it-line dark:border-rink-700 py-3.5 last:border-b-0',
+        isCancelled && 'opacity-70'
       )}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 gap-4">
+        <div className="flex min-w-0 gap-3">
           <div
             className={cn(
-              'flex h-12 w-12 shrink-0 items-center justify-center rounded-w-md',
+              'flex size-11 shrink-0 items-center justify-center rounded-w-md',
               getIconBgColor()
             )}
           >
-            <Icon name={getIcon()} className="text-2xl" />
+            <Icon name={getIcon()} className="text-[22px]" />
           </div>
           <div className="flex min-w-0 flex-col justify-center gap-0.5">
             {/* [추가 2026-05-13] 수업명 (className) → 상품명 위에 작은 라벨로 노출 */}
@@ -284,8 +296,8 @@ function PaymentHistoryCard({
                 className={cn(
                   'truncate text-card-meta leading-tight',
                   isCancelled
-                    ? 'text-wtext-4 line-through decoration-wtext-4/50'
-                    : 'text-ice-500 dark:text-ice-400',
+                    ? 'text-it-ink-400 line-through decoration-it-ink-400/50'
+                    : 'text-it-blue-500 dark:text-it-blue-300',
                 )}
               >
                 {item.className}
@@ -293,26 +305,26 @@ function PaymentHistoryCard({
             )}
             <h4
               className={cn(
-                'truncate text-card-title leading-tight',
+                'truncate text-[15px] font-bold leading-tight',
                 isCancelled
-                  ? 'text-wtext-3 dark:text-rink-300 line-through decoration-wtext-4/50'
-                  : 'text-wtext-1 dark:text-white'
+                  ? 'text-it-ink-500 dark:text-rink-300 line-through decoration-it-ink-400/50'
+                  : 'text-it-ink-900 dark:text-white'
               )}
             >
               {item.productName}
             </h4>
-            <span className="truncate whitespace-nowrap text-card-meta text-wtext-3 dark:text-rink-300 tabular-nums">
-              {item.date} · {item.time}
+            <span className="truncate whitespace-nowrap text-[12.5px] text-it-ink-500 dark:text-rink-300 tabular-nums">
+              {item.date} {'·'} {item.time}
             </span>
           </div>
         </div>
         <div className="shrink-0 text-right">
           <p
             className={cn(
-              'text-card-emphasis font-bold font-num tabular-nums',
+              'text-[15px] font-extrabold tabular-nums tracking-tight',
               isCancelled
-                ? 'text-wtext-4 line-through decoration-wtext-4/50'
-                : 'text-wtext-1 dark:text-white'
+                ? 'text-it-ink-400 line-through decoration-it-ink-300/50'
+                : 'text-it-ink-900 dark:text-white'
             )}
           >
             {item.amount.toLocaleString()}원
@@ -320,15 +332,15 @@ function PaymentHistoryCard({
         </div>
       </div>
 
-      <div className="flex items-center justify-between border-t border-wline-2 dark:border-rink-700 pt-3">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <span
-            className={cn('flex h-2 w-2 rounded-w-pill', isCancelled ? 'bg-red-500' : 'bg-emerald-500')}
+            className={cn('flex h-2 w-2 rounded-w-pill', isCancelled ? 'bg-it-red-500' : 'bg-mint')}
           />
           <span
             className={cn(
               'text-card-meta font-semibold',
-              isCancelled ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'
+              isCancelled ? 'text-it-red-500' : 'text-success'
             )}
           >
             {isCancelled ? '결제 취소' : '결제 완료'}
@@ -336,12 +348,12 @@ function PaymentHistoryCard({
         </div>
 
         {isCancelled ? (
-          <span className="text-card-meta text-wtext-4">{item.refundStatus ?? '환불 완료'}</span>
+          <span className="text-card-meta text-it-ink-400">{item.refundStatus ?? '환불 완료'}</span>
         ) : (
           <div className="flex items-center gap-3">
             <NavLink
               href={`/payment/receipt/${item.id}`}
-              className="text-card-meta text-wtext-4 hover:text-wtext-3 dark:hover:text-rink-300 underline underline-offset-2"
+              className="text-card-meta font-semibold text-success underline underline-offset-2"
             >
               영수증 보기
             </NavLink>
@@ -352,7 +364,7 @@ function PaymentHistoryCard({
                 type="button"
                 onClick={() => onCancel(item.id, item.productName)}
                 disabled={isCancelling}
-                className="px-3 py-1 rounded-w-md border border-red-500 text-red-600 dark:text-red-400 text-card-meta font-semibold hover:bg-red-50 dark:hover:bg-red-900/10 active:brightness-95 transition-colors motion-reduce:transition-none disabled:opacity-60 disabled:cursor-not-allowed"
+                className="px-3 py-1 rounded-w-md border border-it-red-500 text-it-red-600 dark:text-it-red-200 text-card-meta font-semibold hover:bg-it-red-50 dark:hover:bg-it-red-500/15 active:brightness-95 transition-colors motion-reduce:transition-none disabled:opacity-60 disabled:cursor-not-allowed"
                 aria-label="결제취소"
               >
                 {isCancelling ? '취소 중...' : '결제취소'}
@@ -375,71 +387,67 @@ function UsageHistoryCard({ item }: { item: UsageHistoryItem }) {
   };
 
   const getStatusColor = () => {
-    if (item.status === 'attended') return 'bg-emerald-500';
-    if (item.status === 'absent') return 'bg-red-500';
-    return 'bg-wtext-4';
+    if (item.status === 'attended') return 'bg-mint';
+    if (item.status === 'absent') return 'bg-it-red-500';
+    return 'bg-it-ink-300';
   };
 
   return (
     <div
       className={cn(
-        'flex flex-col gap-3 rounded-w-lg bg-wsurface dark:bg-rink-800 p-4 shadow-sh-1 border border-transparent',
-        isCancelled && 'opacity-80'
+        'flex flex-col gap-3 border-b border-it-line dark:border-rink-700 py-3.5 last:border-b-0',
+        isCancelled && 'opacity-70'
       )}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-w-md bg-wbg dark:bg-rink-700 text-wtext-2 dark:text-rink-200">
-            <Icon name="school" className="text-2xl" />
+        <div className="flex min-w-0 gap-3">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-w-md bg-it-fill dark:bg-rink-700 text-it-ink-500 dark:text-rink-200">
+            <Icon name="school" className="text-[22px]" />
           </div>
           <div className="flex min-w-0 flex-col justify-center gap-0.5">
-            <h4 className="truncate text-card-title text-wtext-1 dark:text-white leading-tight">
+            <h4 className="truncate text-[15px] font-bold text-it-ink-900 dark:text-white leading-tight">
               {item.className}
             </h4>
-            <span className="truncate whitespace-nowrap text-card-meta text-wtext-3 dark:text-rink-300 tabular-nums">
-              {item.date} · {item.time}
+            <span className="truncate whitespace-nowrap text-[12.5px] text-it-ink-500 dark:text-rink-300 tabular-nums">
+              {item.date} {'·'} {item.time}
             </span>
           </div>
         </div>
         <div className="shrink-0 text-right">
-          <p className="text-card-emphasis font-bold font-num tabular-nums text-wtext-1 dark:text-white">
+          <p className="text-[15px] font-extrabold tabular-nums text-it-blue-600 dark:text-it-blue-300">
             {isCancelled ? '0회' : `-${item.creditsUsed}회`}
           </p>
         </div>
       </div>
 
-      <div className="flex items-center justify-between border-t border-wline-2 dark:border-rink-700 pt-3">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <span className={cn('flex h-2 w-2 rounded-w-pill', getStatusColor())} />
           <span
             className={cn(
               'text-card-meta font-semibold',
-              item.status === 'attended' && 'text-emerald-600 dark:text-emerald-400',
-              item.status === 'absent' && 'text-red-500',
-              item.status === 'cancelled' && 'text-wtext-3'
+              item.status === 'attended' && 'text-success',
+              item.status === 'absent' && 'text-it-red-500',
+              item.status === 'cancelled' && 'text-it-ink-500'
             )}
           >
             {getStatusText()}
           </span>
         </div>
         {isCancelled && (
-          <span className="text-card-meta text-wtext-4">결제권 복구됨</span>
+          <span className="text-card-meta text-it-ink-400">결제권 복구됨</span>
         )}
       </div>
     </div>
   );
 }
 
-function MonthGroupHeader({ month, count }: { month: string; count: number }) {
+function MonthGroupHeader({ month }: { month: string; count?: number }) {
+  // [ICETIMES] 월 헤더 — fs12.5/800/faint (총N건 pill 제거)
   return (
-    <div className="flex items-center justify-between px-1">
-      <h3 className="truncate text-card-meta font-bold uppercase tracking-wider text-wtext-3 dark:text-rink-300">
-        {month}
-      </h3>
-      <span className="shrink-0 whitespace-nowrap text-w-caption font-medium text-wtext-4 bg-wsurface dark:bg-rink-800 px-2 py-0.5 rounded-w-pill tabular-nums">
-        총 {count}건
-      </span>
-    </div>
+    <h3 className="mb-1 truncate text-[12.5px] font-extrabold text-it-ink-400 dark:text-wtext-3">
+      {month}
+    </h3>
   );
 }
 
@@ -475,10 +483,10 @@ function PaymentHistoryList({
   }
 
   return (
-    <main className="flex flex-col gap-6 px-4 py-2">
+    <main className="flex flex-col gap-2 py-2">
       {entries.map(([month, items]) => (
-        <div key={month} className="flex flex-col gap-3">
-          <MonthGroupHeader month={month} count={items.length} />
+        <section key={month} className="bg-it-surface dark:bg-rink-800 px-4 pt-3.5 pb-1.5">
+          <MonthGroupHeader month={month} />
 
           {items.map((item) => (
             <PaymentHistoryCard
@@ -488,12 +496,12 @@ function PaymentHistoryList({
               isCancelling={cancellingId === item.id}
             />
           ))}
-        </div>
+        </section>
       ))}
 
       {/* Footer Note */}
-      <div className="mt-4 px-2 text-center">
-        <p className="text-w-caption leading-relaxed text-wtext-4 dark:text-rink-300">
+      <div className="mt-2 px-4 text-center">
+        <p className="text-w-caption leading-relaxed text-it-ink-400 dark:text-rink-300">
           결제 내역은 최근 1년까지 조회 가능합니다.
           <br />
           문의사항이 있으시면 고객센터를 이용해 주세요.
@@ -531,20 +539,20 @@ function UsageHistoryList({
   }
 
   return (
-    <main className="flex flex-col gap-6 px-4 py-2">
+    <main className="flex flex-col gap-2 py-2">
       {entries.map(([month, items]) => (
-        <div key={month} className="flex flex-col gap-3">
-          <MonthGroupHeader month={month} count={items.length} />
+        <section key={month} className="bg-it-surface dark:bg-rink-800 px-4 pt-3.5 pb-1.5">
+          <MonthGroupHeader month={month} />
 
           {items.map((item) => (
             <UsageHistoryCard key={item.id} item={item} />
           ))}
-        </div>
+        </section>
       ))}
 
       {/* Footer Note */}
-      <div className="mt-4 px-2 text-center">
-        <p className="text-w-caption leading-relaxed text-wtext-4 dark:text-rink-300">
+      <div className="mt-2 px-4 text-center">
+        <p className="text-w-caption leading-relaxed text-it-ink-400 dark:text-rink-300">
           사용 내역은 최근 1년까지 조회 가능합니다.
           <br />
           수업 취소 시 결제권이 자동으로 복구됩니다.
@@ -719,19 +727,19 @@ export default function PaymentHistoryPage() {
 
       {/* 스크롤 영역 — MobileContainer 직계 자식(overflow-y-auto)만 momentum 스크롤 대상.
           PageAppBar 는 영역 밖(고정 헤더)에 유지하고, 본문 전체를 이 컨테이너가 스크롤. */}
-      <div className="flex-1 min-h-0 overflow-y-auto [&>*]:shrink-0">
+      <div className="flex-1 min-h-0 overflow-y-auto bg-it-canvas dark:bg-puck [&>*]:shrink-0">
         {/* Tabs Navigation — 스크롤 영역 상단 sticky */}
         <TabNavigation activeTab={activeTab} onTabChange={setActiveTab} />
 
         {/* Filter Bar — 조회 건수 + 기간 선택 칩 (항상 노출, 빈 결과에서도 기간 변경 가능) */}
-        <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-1">
-          <span className="shrink-0 whitespace-nowrap text-card-meta text-wtext-3 dark:text-rink-300 tabular-nums">
+        <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-2">
+          <span className="shrink-0 whitespace-nowrap text-card-meta text-it-ink-500 dark:text-rink-300 tabular-nums">
             {isActiveLoading || activeError ? PERIOD_LABEL[periodFilter] : `${activeCount}건 조회`}
           </span>
           <button
             type="button"
             onClick={() => setIsFilterSheetOpen(true)}
-            className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-w-pill bg-wsurface dark:bg-rink-800 border border-wline-2 dark:border-rink-700 px-3 py-1.5 text-card-meta font-semibold text-wtext-2 dark:text-rink-100 hover:bg-wbg dark:hover:bg-rink-700/50 transition-colors motion-reduce:transition-none active:brightness-95"
+            className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-w-pill bg-it-surface dark:bg-rink-800 border border-it-line-strong dark:border-rink-700 px-3 py-1.5 text-card-meta font-semibold text-it-ink-600 dark:text-rink-100 hover:bg-it-fill dark:hover:bg-rink-700/50 transition-colors motion-reduce:transition-none active:brightness-95"
             aria-label="기간 필터 변경"
           >
             <Icon name="calendar_month" className="text-base" aria-hidden="true" />
@@ -740,9 +748,11 @@ export default function PaymentHistoryPage() {
           </button>
         </div>
 
-        {/* Summary Card — 기간 내 결제 금액 / 사용 결제권 요약 */}
+        {/* Summary Card — 기간 내 결제 금액 / 사용 결제권 요약 (navy 히어로, 8px 갭) */}
         {showSummary && (
-          <SummaryCard activeTab={activeTab} payment={paymentSummary} usage={usageSummary} />
+          <div className="mt-2">
+            <SummaryCard activeTab={activeTab} payment={paymentSummary} usage={usageSummary} />
+          </div>
         )}
 
         {/* History List — hasBottomNav=false 이므로 safe-area-inset-bottom 반영 유틸로 하단 여백 처리 */}

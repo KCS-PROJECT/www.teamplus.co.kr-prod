@@ -241,7 +241,7 @@ export default function TeamEditPage() {
     return (
       <MobileContainer hasBottomNav>
         <PageAppBar title="팀 정보 수정" onBack={() => router.back()} forceNative />
-        <main className="flex-1 bg-wbg dark:bg-rink-900" />
+        <main className="flex-1 bg-it-canvas dark:bg-puck" />
       </MobileContainer>
     );
   }
@@ -250,7 +250,7 @@ export default function TeamEditPage() {
     return (
       <MobileContainer hasBottomNav>
         <PageAppBar title="팀 정보 수정" onBack={() => router.back()} forceNative />
-        <main className="flex-1 bg-wbg dark:bg-rink-900" />
+        <main className="flex-1 bg-it-canvas dark:bg-puck" />
       </MobileContainer>
     );
   }
@@ -262,7 +262,7 @@ export default function TeamEditPage() {
     return (
       <MobileContainer hasBottomNav>
         <PageAppBar title="팀 정보 수정" onBack={() => router.back()} forceNative />
-        <main className="flex-1 bg-wbg dark:bg-rink-900" />
+        <main className="flex-1 bg-it-canvas dark:bg-puck" />
       </MobileContainer>
     );
   }
@@ -271,7 +271,7 @@ export default function TeamEditPage() {
     return (
       <MobileContainer hasBottomNav>
         <PageAppBar title="팀 정보 수정" onBack={() => router.back()} forceNative />
-        <main className="flex-1 flex items-center justify-center bg-wbg dark:bg-rink-900">
+        <main className="flex-1 flex items-center justify-center bg-it-canvas dark:bg-puck">
           <EmptyState
             icon="error_outline"
             title={loadError || MESSAGES.team.notFound}
@@ -289,46 +289,38 @@ export default function TeamEditPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title="팀 정보 수정" onBack={() => router.back()} forceNative />
       <main
-        className="hide-scrollbar flex-1 overflow-y-auto bg-wbg dark:bg-rink-900"
+        className="hide-scrollbar flex-1 overflow-y-auto bg-it-canvas dark:bg-puck"
         role="main"
         aria-label="팀 정보 수정"
       >
-        <form onSubmit={handleSubmit} className="px-5 pt-4">
-          {/* ── Info 배너 ── */}
-          <div
-            className="flex items-start gap-2.5 rounded-[12px] px-3.5 py-3 mb-5"
-            style={{
-              background: "rgb(47 95 255 / 0.05)",
-              border: "1px solid rgb(47 95 255 / 0.15)",
-            }}
-          >
+        {/* flat 흰 섹션 — 폼 전체를 흰 배경으로 묶음 (카드 박스 제거) */}
+        <form onSubmit={handleSubmit} className="bg-it-surface dark:bg-it-blue-950 px-5 pt-5 pb-6">
+          {/* ── Info 배너 — it-blue 소프트 배경 ── */}
+          <div className="flex items-start gap-2.5 rounded-w-md bg-it-blue-50 dark:bg-it-blue-500/10 border-[1.5px] border-it-blue-100 dark:border-it-blue-500/30 px-3.5 py-3 mb-5">
             <div className="shrink-0 mt-0.5">
               <Icon
                 name="info"
                 size={16}
-                className="text-ice-500"
+                className="text-it-blue-500"
                 aria-hidden="true"
               />
             </div>
-            <p
-              className="text-card-meta leading-relaxed font-semibold"
-              style={{ color: "#1E3FAE" }}
-            >
+            <p className="text-[13px] leading-relaxed font-semibold text-it-blue-600 dark:text-it-blue-300">
               기본 정보만 입력해도 등록할 수 있습니다. 로고/컬러는 나중에 수정 가능합니다.
             </p>
           </div>
 
           {/* ── 소속 팀 (read-only) ── */}
           <Field label="소속 팀">
-            <div className="h-12 rounded-[12px] bg-wbg dark:bg-rink-900/40 border border-wline dark:border-rink-700 px-4 flex items-center gap-2.5">
+            <div className="h-12 rounded-w-md bg-it-fill dark:bg-it-blue-900/40 border-[1.5px] border-it-line-strong dark:border-it-blue-900 px-4 flex items-center gap-2.5">
               <span
-                className="size-[7px] rounded-w-pill bg-ice-500"
+                className="size-[7px] rounded-w-pill bg-it-blue-500"
                 aria-hidden="true"
               />
-              <span className="text-card-body font-extrabold text-wtext-2 dark:text-rink-100 tracking-tight">
+              <span className="text-[15px] font-extrabold text-it-ink-700 dark:text-it-ink-200 tracking-tight">
                 {team.club?.clubName ?? "—"}
               </span>
-              <span className="ml-auto px-1.5 py-0.5 rounded-md bg-wline dark:bg-rink-700 text-wtext-3 dark:text-rink-300 text-card-meta font-extrabold tracking-wider">
+              <span className="ml-auto px-1.5 py-0.5 rounded-w-md bg-it-line dark:bg-it-blue-900 text-it-ink-500 dark:text-it-ink-300 text-[12px] font-extrabold tracking-wider">
                 읽기 전용
               </span>
             </div>
@@ -343,10 +335,10 @@ export default function TeamEditPage() {
           <Field label="팀 이름" required>
             <div
               className={cn(
-                "h-12 rounded-[12px] bg-white dark:bg-rink-800 px-4 flex items-center",
-                "border border-wline dark:border-rink-700",
+                "h-12 rounded-w-md bg-it-fill dark:bg-it-blue-950 px-4 flex items-center",
+                "border-[1.5px] border-it-line-strong dark:border-it-blue-900",
                 "transition-[border-color,box-shadow] duration-150 motion-reduce:transition-none",
-                "focus-within:border-ice-500 focus-within:shadow-[0_0_0_3px_rgb(47_95_255_/_0.1)]",
+                "focus-within:border-it-blue-500 focus-within:ring-2 focus-within:ring-it-blue-500/20",
               )}
             >
               <input
@@ -357,8 +349,8 @@ export default function TeamEditPage() {
                 // [수정 2026-05-23 v4] focus-visible-disabled — globals.css 의 전역
                 //  `*:focus-visible { outline: 2px solid #2f5fff; offset:2px }` 규칙이
                 //  input 에 안쪽 파란 outline 을 강제 적용하여, wrapper 의 focus-within
-                //  shadow 와 함께 "이중 파란선" 으로 보이는 회귀 → opt-out 으로 제거.
-                className="flex-1 bg-transparent border-0 outline-none focus-visible-disabled text-card-title font-extrabold text-wtext-1 dark:text-white tracking-tight placeholder:text-wtext-3 placeholder:font-medium"
+                //  ring 과 함께 "이중 파란선" 으로 보이는 회귀 → opt-out 으로 제거.
+                className="flex-1 bg-transparent border-0 outline-none focus-visible-disabled text-[16px] font-extrabold text-it-ink-800 dark:text-white tracking-tight placeholder:text-it-ink-400 placeholder:font-medium"
                 maxLength={32}
               />
             </div>
@@ -368,10 +360,10 @@ export default function TeamEditPage() {
           <Field label={MESSAGES.team.fieldSlogan} hint="한 줄 인용문 (선택)">
             <div
               className={cn(
-                "h-12 rounded-[12px] bg-white dark:bg-rink-800 px-4 flex items-center",
-                "border border-wline dark:border-rink-700",
+                "h-12 rounded-w-md bg-it-fill dark:bg-it-blue-950 px-4 flex items-center",
+                "border-[1.5px] border-it-line-strong dark:border-it-blue-900",
                 "transition-[border-color,box-shadow] duration-150 motion-reduce:transition-none",
-                "focus-within:border-ice-500 focus-within:shadow-[0_0_0_3px_rgb(47_95_255_/_0.1)]",
+                "focus-within:border-it-blue-500 focus-within:ring-2 focus-within:ring-it-blue-500/20",
               )}
             >
               <input
@@ -380,7 +372,7 @@ export default function TeamEditPage() {
                 onChange={(e) => setSlogan(e.target.value)}
                 placeholder={MESSAGES.team.fieldSloganPlaceholder}
                 // [수정 2026-05-23 v4] focus-visible-disabled — 이중 파란선 회귀 방지 (위 팀 이름 동일).
-                className="flex-1 bg-transparent border-0 outline-none focus-visible-disabled text-card-body font-bold italic text-wtext-1 dark:text-white tracking-tight placeholder:text-wtext-3 placeholder:font-medium placeholder:not-italic"
+                className="flex-1 bg-transparent border-0 outline-none focus-visible-disabled text-[15.5px] font-bold italic text-it-ink-800 dark:text-white tracking-tight placeholder:text-it-ink-400 placeholder:font-medium placeholder:not-italic"
                 maxLength={80}
               />
             </div>
@@ -394,10 +386,9 @@ export default function TeamEditPage() {
               placeholder={MESSAGES.team.fieldDescriptionPlaceholder}
               rows={3}
               maxLength={500}
-              // [수정 2026-05-23 v5] VenuePicker(홈 링크장) 와 동일 — focus 시 border 자체를
-              //  ice-500 으로 전환 + 외곽 ring opacity 0.1. focus-visible-disabled 로 전역
-              //  a11y outline 차단 (이중 파란선 회귀 방지).
-              className="w-full min-h-[88px] rounded-[12px] bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 px-4 py-3 text-card-body font-semibold text-wtext-1 dark:text-white tracking-tight outline-none focus-visible-disabled placeholder:text-wtext-3 placeholder:font-medium resize-none transition-[border-color,box-shadow] duration-150 motion-reduce:transition-none focus:border-ice-500 focus:shadow-[0_0_0_3px_rgb(47_95_255_/_0.1)]"
+              // [수정 2026-05-23 v5] focus 시 border it-blue + ring 0.2. focus-visible-disabled 로
+              //  전역 a11y outline 차단 (이중 파란선 회귀 방지).
+              className="w-full min-h-[88px] rounded-w-md bg-it-fill dark:bg-it-blue-950 border-[1.5px] border-it-line-strong dark:border-it-blue-900 px-4 py-3 text-[15px] font-semibold text-it-ink-800 dark:text-white tracking-tight outline-none focus-visible-disabled placeholder:text-it-ink-400 placeholder:font-medium resize-none transition-[border-color,box-shadow] duration-150 motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20"
             />
           </Field>
 
@@ -411,10 +402,10 @@ export default function TeamEditPage() {
           >
             <div
               className={cn(
-                "h-12 rounded-[12px] bg-white dark:bg-rink-800 px-4 flex items-center",
-                "border border-wline dark:border-rink-700",
+                "h-12 rounded-w-md bg-it-fill dark:bg-it-blue-950 px-4 flex items-center",
+                "border-[1.5px] border-it-line-strong dark:border-it-blue-900",
                 "transition-[border-color,box-shadow] duration-150 motion-reduce:transition-none",
-                "focus-within:border-ice-500 focus-within:shadow-[0_0_0_3px_rgb(47_95_255_/_0.1)]",
+                "focus-within:border-it-blue-500 focus-within:ring-2 focus-within:ring-it-blue-500/20",
               )}
             >
               <input
@@ -422,7 +413,7 @@ export default function TeamEditPage() {
                 value={teamCode}
                 onChange={(e) => setTeamCode(e.target.value)}
                 placeholder="예: RUBY-DUCKS (선택)"
-                className="flex-1 bg-transparent border-0 outline-none focus-visible-disabled text-card-body font-extrabold text-wtext-1 dark:text-white tracking-tight tabular-nums uppercase placeholder:text-wtext-3 placeholder:font-medium placeholder:normal-case"
+                className="flex-1 bg-transparent border-0 outline-none focus-visible-disabled text-[15.5px] font-extrabold text-it-ink-800 dark:text-white tracking-tight tabular-nums uppercase placeholder:text-it-ink-400 placeholder:font-medium placeholder:normal-case"
                 maxLength={32}
                 autoCapitalize="characters"
                 autoCorrect="off"
@@ -465,12 +456,12 @@ export default function TeamEditPage() {
                   logoUrlRef.current = file.url;
                 }}
               />
-              <div className="flex-1 text-card-meta font-semibold text-wtext-3 dark:text-rink-300">
+              <div className="flex-1 text-[13px] font-semibold text-it-ink-500 dark:text-it-ink-300">
                 <p>JPG · PNG · WebP</p>
                 <p>정사각형 권장 (예: 512×512)</p>
               </div>
             </div>
-            <p className="mt-2 text-[11px] leading-relaxed text-wtext-3 dark:text-rink-300">
+            <p className="mt-2 text-[11px] leading-relaxed text-it-ink-500 dark:text-it-ink-300">
               {MESSAGES.team.logoRightsNotice}
             </p>
           </Field>
@@ -502,8 +493,8 @@ export default function TeamEditPage() {
           </div>
 
           {serverError && (
-            <div className="rounded-[12px] bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-900/40 px-3.5 py-3 mb-5">
-              <p className="text-card-meta font-semibold text-rose-700 dark:text-rose-400">
+            <div className="rounded-w-md bg-it-red-50 dark:bg-it-red-500/10 border-[1.5px] border-it-red-200 dark:border-it-red-500/40 px-3.5 py-3 mb-5">
+              <p className="text-[13px] font-semibold text-it-red-600 dark:text-it-red-300">
                 {serverError}
               </p>
             </div>
@@ -517,7 +508,7 @@ export default function TeamEditPage() {
             BottomNav 에 가려지는 현상. team/page.tsx FAB 와 동일한 calc 패턴으로 일관성 확보.
             액션바 하단을 BottomNav 상단에 정확히 붙여 모든 디바이스에서 잘리지 않도록 보정. */}
       <div
-        className="absolute left-0 right-0 z-30 bg-white dark:bg-rink-800 border-t border-wline-2 dark:border-rink-700 px-5 py-2.5 grid grid-cols-3 gap-2.5"
+        className="absolute left-0 right-0 z-30 bg-it-surface dark:bg-it-blue-950 border-t border-it-line dark:border-it-blue-900 px-5 py-2.5 grid grid-cols-3 gap-2.5"
         style={{
           bottom: 'calc(60px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))',
         }}
@@ -526,7 +517,7 @@ export default function TeamEditPage() {
         <button
           type="button"
           onClick={() => router.back()}
-          className="h-[50px] rounded-[14px] bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 text-card-body font-extrabold tracking-tight hover:bg-wbg dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none active:brightness-95"
+          className="h-[50px] rounded-w-md bg-it-surface dark:bg-it-blue-950 border-[1.5px] border-it-line-strong dark:border-it-blue-900 text-it-ink-700 dark:text-it-ink-200 text-[15px] font-extrabold tracking-tight hover:bg-it-fill dark:hover:bg-it-blue-900 transition-colors motion-reduce:transition-none active:brightness-95"
         >
           취소
         </button>
@@ -535,7 +526,7 @@ export default function TeamEditPage() {
           onClick={() => handleSubmit()}
           disabled={submitting || !name.trim()}
           aria-disabled={submitting || !name.trim()}
-          className="col-span-2 h-[50px] rounded-[14px] bg-ice-500 hover:bg-ice-700 text-white text-card-body font-extrabold tracking-tight inline-flex items-center justify-center transition-colors motion-reduce:transition-none active:brightness-95 disabled:bg-wline dark:disabled:bg-rink-500 disabled:cursor-not-allowed"
+          className="col-span-2 h-[50px] rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-[15px] font-extrabold tracking-tight inline-flex items-center justify-center transition-colors duration-150 ease-ios motion-reduce:transition-none active:brightness-95 disabled:bg-it-line-strong dark:disabled:bg-it-blue-900 disabled:cursor-not-allowed"
         >
           {submitting ? MESSAGES.common.saving : MESSAGES.common.edit}
         </button>
@@ -559,16 +550,16 @@ function Field({
   return (
     <div className="mb-[18px]">
       <div className="flex items-center gap-1 mb-2">
-        <span className="text-card-body font-extrabold text-wtext-1 dark:text-white tracking-tight">
+        <span className="text-[14px] font-extrabold text-it-ink-800 dark:text-white tracking-tight">
           {label}
         </span>
         {required && (
-          <span className="text-rose-500 text-card-body font-extrabold">*</span>
+          <span className="text-it-red-500 text-[14px] font-extrabold">*</span>
         )}
       </div>
       {children}
       {hint && (
-        <div className="mt-1.5 text-card-meta font-semibold text-wtext-3 dark:text-rink-300">
+        <div className="mt-1.5 text-[13px] font-semibold text-it-ink-500 dark:text-it-ink-300">
           {hint}
         </div>
       )}
@@ -588,20 +579,17 @@ function ColorField({
 }) {
   return (
     <div>
-      <div className="text-card-body font-extrabold text-wtext-1 dark:text-white tracking-tight mb-2">
+      <div className="text-[14px] font-extrabold text-it-ink-800 dark:text-white tracking-tight mb-2">
         {label}
       </div>
-      <label className="h-14 rounded-[12px] bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 px-3 flex items-center gap-2.5 cursor-pointer">
+      <label className="h-14 rounded-w-md bg-it-fill dark:bg-it-blue-950 border-[1.5px] border-it-line-strong dark:border-it-blue-900 px-3 flex items-center gap-2.5 cursor-pointer">
         <span
-          className="size-8 rounded-lg shrink-0"
-          style={{
-            backgroundColor: value,
-            boxShadow: `0 4px 10px ${value}50`,
-          }}
+          className="size-8 rounded-w-md shrink-0"
+          style={{ backgroundColor: value }}
           aria-hidden="true"
         />
         <span
-          className="flex-1 text-card-body font-extrabold text-wtext-1 dark:text-white tabular-nums tracking-tight uppercase truncate"
+          className="flex-1 text-[15px] font-extrabold text-it-ink-800 dark:text-white tabular-nums tracking-tight uppercase truncate"
           style={{ letterSpacing: "-0.01em" }}
         >
           {value}
@@ -610,7 +598,7 @@ function ColorField({
           type="color"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="size-7 cursor-pointer rounded-md border border-wline dark:border-rink-700 bg-transparent"
+          className="size-7 cursor-pointer rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-transparent"
           aria-label={`${label} 선택`}
         />
       </label>

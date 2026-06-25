@@ -107,39 +107,40 @@ export default function BlockListPage() {
           forceNative 로 Web AppBar 를 강제 렌더한다. */}
       <PageAppBar title="차단 목록" forceNative />
 
-      <main className="flex-1 overflow-y-auto px-5 py-6">
+      <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck !pb-8">
         {isLoading ? null : blocks.length === 0 ? (
-          <div className="py-16 text-center">
-            <div className="w-16 h-16 rounded-w-pill bg-wline-2 dark:bg-rink-800 flex items-center justify-center mx-auto mb-4">
-              <Icon name="block" className="text-3xl text-wtext-4 dark:text-rink-500" />
+          <div className="bg-it-surface dark:bg-rink-800 mt-2 py-16 text-center">
+            <div className="w-16 h-16 rounded-w-pill bg-it-fill dark:bg-rink-900 flex items-center justify-center mx-auto mb-4">
+              <Icon name="block" className="text-3xl text-it-ink-400 dark:text-rink-500" aria-hidden="true" />
             </div>
-            <p className="text-w-small font-medium text-wtext-2 dark:text-rink-100 mb-1">
+            <p className="text-w-small font-bold text-it-ink-800 dark:text-rink-100 mb-1">
               차단한 사용자가 없습니다
             </p>
-            <p className="text-w-caption text-wtext-3">
+            <p className="text-w-caption text-it-ink-500 dark:text-rink-300">
               부적절한 사용자는 프로필에서 차단할 수 있어요
             </p>
           </div>
         ) : (
-          <ul className="space-y-2">
+          /* flat 흰 섹션 + hairline 행 (카드 박스 제거) */
+          <ul className="mt-2 bg-it-surface dark:bg-rink-800">
             {blocks.map((block) => (
               <li
                 key={block.blockedUserId}
-                className="p-4 rounded-xl bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 flex items-center gap-3"
+                className="px-5 py-4 flex items-center gap-3 border-b border-it-line dark:border-rink-700 last:border-b-0"
               >
-                <div className="w-12 h-12 rounded-w-pill bg-wline-2 dark:bg-rink-700 flex items-center justify-center">
-                  <Icon name="person" className="text-2xl text-wtext-3" />
+                <div className="w-12 h-12 rounded-w-pill bg-it-fill dark:bg-rink-900 flex items-center justify-center shrink-0">
+                  <Icon name="person" className="text-2xl text-it-ink-400 dark:text-rink-400" aria-hidden="true" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <p className="text-w-small font-bold text-wtext-1 dark:text-white">
+                    <p className="text-w-small font-bold text-it-ink-800 dark:text-white truncate">
                       {block.name}
                     </p>
-                    <span className="text-w-caption font-semibold px-2 py-0.5 rounded bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-100">
+                    <span className="text-w-caption font-semibold px-2 py-0.5 rounded-w-md bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-900/30 dark:text-it-blue-300 shrink-0">
                       {getRoleLabel(block.userType)}
                     </span>
                   </div>
-                  <p className="text-w-caption text-wtext-3">
+                  <p className="text-w-caption tabular-nums text-it-ink-500 dark:text-rink-300">
                     차단일 {formatDate(block.blockedAt)}
                   </p>
                 </div>

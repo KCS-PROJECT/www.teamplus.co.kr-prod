@@ -23,9 +23,9 @@ const ROLE_OPTIONS: { value: MemberRole; label: string; description: string }[] 
   { value: 'CHILD', label: '아동', description: '수업 참여 (12세 이하)' },
 ];
 
-/** 입력 필드 공통 스타일 */
+/** 입력 필드 공통 스타일 (ICETIMES — it-fill + 1.5px it-line-strong) */
 const INPUT_CLASS =
-  'w-full rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-700 px-4 py-3 text-card-body text-wtext-1 dark:text-white placeholder:text-wtext-3 dark:placeholder:text-wtext-3 outline-none transition-colors motion-reduce:transition-none focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20';
+  'w-full rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 px-4 py-3 text-[15px] font-medium text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-wtext-3 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20';
 
 /** 유효성 검증 */
 interface FormErrors {
@@ -163,51 +163,54 @@ export default function DirectorMemberCreatePage() {
       <MobileContainer hasBottomNav>
         <PageAppBar title="회원 등록" onBack={back} forceNative />
 
-        <main className="flex-1 overflow-y-auto hide-scrollbar bg-wbg dark:bg-rink-900" role="main" aria-label="회원 등록">
-          {/* 타이틀 영역 */}
-          <section className="px-6 pt-6 pb-4" aria-label="회원 등록 안내">
+        <main className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck" role="main" aria-label="회원 등록">
+          {/* 타이틀 영역 — flat 흰 섹션 */}
+          <section className="bg-it-surface dark:bg-rink-800 px-5 pt-6 pb-5" aria-label="회원 등록 안내">
             <div className="flex items-start gap-3">
-              <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-900/20">
-                <Icon name="person_add" className="text-[22px] text-ice-500" aria-hidden="true" />
+              <div className="flex size-11 shrink-0 items-center justify-center rounded-w-md bg-it-blue-50 dark:bg-it-blue-900/30">
+                <Icon name="person_add" className="text-[22px] text-it-blue-500" aria-hidden="true" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-wtext-1 dark:text-white">신규 회원 등록</h2>
-                <p className="mt-1 text-card-body text-wtext-3 dark:text-rink-300">
+                <h2 className="text-[22px] font-extrabold tracking-[-0.01em] text-it-ink-800 dark:text-white">신규 회원 등록</h2>
+                <p className="mt-1 text-card-body text-it-ink-500 dark:text-wtext-4">
                   새로운 회원의 정보를 입력해주세요.
                 </p>
               </div>
             </div>
           </section>
 
+          {/* flat 섹션 사이 8px 회색 갭 */}
+          <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
           {/* 에러 배너 */}
           {errorMessage && (
             <div
               role="alert"
-              className="mx-6 mb-4 flex items-start gap-3 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4"
+              className="mx-5 mb-2 flex items-start gap-3 rounded-w-md border-[1.5px] border-it-red-500/30 bg-it-red-500/10 p-4"
             >
               <Icon
                 name="error"
-                className="mt-0.5 shrink-0 text-xl text-red-500 dark:text-red-400"
+                className="mt-0.5 shrink-0 text-xl text-it-red-500"
                 aria-hidden="true"
               />
-              <p className="text-card-body font-medium text-red-700 dark:text-red-400">{errorMessage}</p>
+              <p className="text-card-body font-medium text-it-red-500">{errorMessage}</p>
             </div>
           )}
 
-          {/* 폼 카드 */}
-          <form onSubmit={handleSubmit} className="mx-6" noValidate>
-            <div className="rounded-xl bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 p-5 space-y-6">
+          {/* 폼 — flat 흰 섹션 (카드 박스 제거) */}
+          <form onSubmit={handleSubmit} noValidate>
+            <div className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6 space-y-6">
               {/* 그룹: 기본 정보 */}
               <div>
-                <h3 className="mb-4 flex items-center gap-2 text-card-meta font-bold uppercase tracking-wider text-wtext-3 dark:text-rink-300">
+                <h3 className="mb-4 flex items-center gap-2 text-card-meta font-bold uppercase tracking-wider text-it-ink-400 dark:text-wtext-4">
                   <Icon name="badge" className="text-[14px]" aria-hidden="true" />
                   기본 정보
                 </h3>
                 <div className="space-y-4">
                   {/* 이름 */}
                   <div>
-                    <label htmlFor="member-name" className="mb-1.5 block text-card-body font-bold text-wtext-1 dark:text-white">
-                      이름 <span className="text-red-500" aria-hidden="true">*</span>
+                    <label htmlFor="member-name" className="mb-1.5 block text-card-body font-bold text-it-ink-800 dark:text-white">
+                      이름 <span className="text-it-red-500" aria-hidden="true">*</span>
                     </label>
                     <input
                       id="member-name"
@@ -219,7 +222,7 @@ export default function DirectorMemberCreatePage() {
                       }}
                       onBlur={(e) => validateField('name', e.target.value)}
                       placeholder={MESSAGES.placeholders.enterFullName}
-                      className={cn(INPUT_CLASS, errors.name && 'border-red-400 dark:border-red-500 focus:border-red-400 focus:ring-red-200/40')}
+                      className={cn(INPUT_CLASS, errors.name && 'border-it-red-500 dark:border-it-red-500 focus:border-it-red-500 focus:ring-it-red-500/20')}
                       autoComplete="name"
                       required
                       aria-required="true"
@@ -227,7 +230,7 @@ export default function DirectorMemberCreatePage() {
                       aria-describedby={errors.name ? 'name-error' : undefined}
                     />
                     {errors.name && (
-                      <p id="name-error" className="mt-1.5 flex items-center gap-1 text-card-meta font-medium text-red-600 dark:text-red-400">
+                      <p id="name-error" className="mt-1.5 flex items-center gap-1 text-card-meta font-medium text-it-red-500">
                         <Icon name="error" className="text-[14px]" aria-hidden="true" />
                         {errors.name}
                       </p>
@@ -236,8 +239,8 @@ export default function DirectorMemberCreatePage() {
 
                   {/* 역할 선택 */}
                   <div>
-                    <label className="mb-1.5 block text-card-body font-bold text-wtext-1 dark:text-white">
-                      역할 <span className="text-red-500" aria-hidden="true">*</span>
+                    <label className="mb-1.5 block text-card-body font-bold text-it-ink-800 dark:text-white">
+                      역할 <span className="text-it-red-500" aria-hidden="true">*</span>
                     </label>
                     <button
                       type="button"
@@ -245,21 +248,21 @@ export default function DirectorMemberCreatePage() {
                       className={cn(
                         INPUT_CLASS,
                         'flex h-12 items-center justify-between text-left',
-                        errors.role && 'border-red-400 dark:border-red-500',
+                        errors.role && 'border-it-red-500 dark:border-it-red-500',
                       )}
                       aria-expanded={showRoleSheet}
                       aria-haspopup="dialog"
                       aria-describedby={errors.role ? 'role-error' : undefined}
                     >
-                      <span className={role ? '' : 'text-wtext-3 dark:text-rink-300'}>
+                      <span className={role ? '' : 'text-it-ink-400 dark:text-wtext-4'}>
                         {role
                           ? ROLE_OPTIONS.find((o) => o.value === role)?.label ?? '역할을 선택하세요'
                           : '역할을 선택하세요'}
                       </span>
-                      <Icon name="expand_more" className="text-xl text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+                      <Icon name="expand_more" className="text-xl text-it-ink-400 dark:text-wtext-4" aria-hidden="true" />
                     </button>
                     {errors.role && (
-                      <p id="role-error" className="mt-1.5 flex items-center gap-1 text-card-meta font-medium text-red-600 dark:text-red-400">
+                      <p id="role-error" className="mt-1.5 flex items-center gap-1 text-card-meta font-medium text-it-red-500">
                         <Icon name="error" className="text-[14px]" aria-hidden="true" />
                         {errors.role}
                       </p>
@@ -269,19 +272,19 @@ export default function DirectorMemberCreatePage() {
               </div>
 
               {/* 구분선 */}
-              <div className="h-px bg-wline-2 dark:bg-rink-700" aria-hidden="true" />
+              <div className="h-px bg-it-line dark:bg-rink-700" aria-hidden="true" />
 
               {/* 그룹: 연락처 */}
               <div>
-                <h3 className="mb-4 flex items-center gap-2 text-card-meta font-bold uppercase tracking-wider text-wtext-3 dark:text-rink-300">
+                <h3 className="mb-4 flex items-center gap-2 text-card-meta font-bold uppercase tracking-wider text-it-ink-400 dark:text-wtext-4">
                   <Icon name="contact_mail" className="text-[14px]" aria-hidden="true" />
                   연락처 정보
                 </h3>
                 <div className="space-y-4">
                   {/* 이메일 */}
                   <div>
-                    <label htmlFor="member-email" className="mb-1.5 block text-card-body font-bold text-wtext-1 dark:text-white">
-                      이메일 <span className="text-red-500" aria-hidden="true">*</span>
+                    <label htmlFor="member-email" className="mb-1.5 block text-card-body font-bold text-it-ink-800 dark:text-white">
+                      이메일 <span className="text-it-red-500" aria-hidden="true">*</span>
                     </label>
                     <input
                       id="member-email"
@@ -293,7 +296,7 @@ export default function DirectorMemberCreatePage() {
                       }}
                       onBlur={(e) => validateField('email', e.target.value)}
                       placeholder="example@email.com"
-                      className={cn(INPUT_CLASS, errors.email && 'border-red-400 dark:border-red-500 focus:border-red-400 focus:ring-red-200/40')}
+                      className={cn(INPUT_CLASS, errors.email && 'border-it-red-500 dark:border-it-red-500 focus:border-it-red-500 focus:ring-it-red-500/20')}
                       autoComplete="email"
                       required
                       aria-required="true"
@@ -301,7 +304,7 @@ export default function DirectorMemberCreatePage() {
                       aria-describedby={errors.email ? 'email-error' : undefined}
                     />
                     {errors.email && (
-                      <p id="email-error" className="mt-1.5 flex items-center gap-1 text-card-meta font-medium text-red-600 dark:text-red-400">
+                      <p id="email-error" className="mt-1.5 flex items-center gap-1 text-card-meta font-medium text-it-red-500">
                         <Icon name="error" className="text-[14px]" aria-hidden="true" />
                         {errors.email}
                       </p>
@@ -310,8 +313,8 @@ export default function DirectorMemberCreatePage() {
 
                   {/* 연락처 */}
                   <div>
-                    <label htmlFor="member-phone" className="mb-1.5 block text-card-body font-bold text-wtext-1 dark:text-white">
-                      연락처 <span className="text-red-500" aria-hidden="true">*</span>
+                    <label htmlFor="member-phone" className="mb-1.5 block text-card-body font-bold text-it-ink-800 dark:text-white">
+                      연락처 <span className="text-it-red-500" aria-hidden="true">*</span>
                     </label>
                     <input
                       id="member-phone"
@@ -320,7 +323,7 @@ export default function DirectorMemberCreatePage() {
                       onChange={handlePhoneChange}
                       onBlur={(e) => validateField('phone', e.target.value)}
                       placeholder="010-0000-0000"
-                      className={cn(INPUT_CLASS, errors.phone && 'border-red-400 dark:border-red-500 focus:border-red-400 focus:ring-red-200/40')}
+                      className={cn(INPUT_CLASS, errors.phone && 'border-it-red-500 dark:border-it-red-500 focus:border-it-red-500 focus:ring-it-red-500/20')}
                       inputMode="numeric"
                       autoComplete="tel"
                       required
@@ -329,7 +332,7 @@ export default function DirectorMemberCreatePage() {
                       aria-describedby={errors.phone ? 'phone-error' : undefined}
                     />
                     {errors.phone && (
-                      <p id="phone-error" className="mt-1.5 flex items-center gap-1 text-card-meta font-medium text-red-600 dark:text-red-400">
+                      <p id="phone-error" className="mt-1.5 flex items-center gap-1 text-card-meta font-medium text-it-red-500">
                         <Icon name="error" className="text-[14px]" aria-hidden="true" />
                         {errors.phone}
                       </p>
@@ -340,19 +343,19 @@ export default function DirectorMemberCreatePage() {
             </div>
 
             {/* 하단 액션 */}
-            <div className="mt-6 flex gap-3">
+            <div className="mt-2 flex gap-3 px-5 pt-4">
               <button
                 type="button"
                 onClick={() => back()}
                 disabled={isSubmitting}
-                className="h-12 flex-1 rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-card-body font-bold text-wtext-2 dark:text-rink-100 transition-colors motion-reduce:transition-none hover:bg-wbg dark:hover:bg-rink-700 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+                className="h-12 flex-1 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-card-body font-bold text-it-ink-800 dark:text-white transition-colors motion-reduce:transition-none hover:bg-it-fill dark:hover:bg-rink-700 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 취소
               </button>
               <button
                 type="submit"
                 disabled={!isFormValid || isSubmitting}
-                className="inline-flex h-12 flex-[2] items-center justify-center gap-2 rounded-xl bg-ice-500 text-card-body font-bold text-white transition-colors motion-reduce:transition-none hover:bg-ice-700 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex h-12 flex-[2] items-center justify-center gap-2 rounded-w-md bg-it-blue-500 text-card-body font-bold text-white transition-colors motion-reduce:transition-none hover:bg-it-blue-600 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Icon name="person_add" className="text-[18px]" aria-hidden="true" />
                 <span>{isSubmitting ? MESSAGES.common.saving : '등록하기'}</span>
@@ -361,7 +364,7 @@ export default function DirectorMemberCreatePage() {
           </form>
 
           {/* BottomNav 여백 */}
-          <div className="h-32" aria-hidden="true" />
+          <div className="h-32 bg-it-canvas dark:bg-puck" aria-hidden="true" />
         </main>
       </MobileContainer>
 
@@ -372,24 +375,24 @@ export default function DirectorMemberCreatePage() {
             className="absolute inset-0 bg-black/50"
             onClick={() => setShowRoleSheet(false)}
           />
-          <div className="relative w-full max-w-md bg-white dark:bg-rink-800 rounded-t-3xl shadow-md pb-10">
+          <div className="relative w-full max-w-md bg-it-surface dark:bg-rink-800 rounded-t-3xl shadow-md pb-10">
             {/* 핸들 */}
             <div className="flex justify-center pt-4 pb-3">
-              <div className="w-12 h-1.5 rounded-w-pill bg-wline dark:bg-rink-500" />
+              <div className="w-12 h-1.5 rounded-w-pill bg-it-line-strong dark:bg-rink-500" />
             </div>
             {/* 헤더 */}
             <div className="flex items-center justify-between px-6 pb-4">
-              <h3 className="text-card-title font-bold text-wtext-1 dark:text-white">역할 선택</h3>
+              <h3 className="text-card-title font-bold text-it-ink-800 dark:text-white">역할 선택</h3>
               <button
                 onClick={() => setShowRoleSheet(false)}
-                className="flex size-9 items-center justify-center rounded-w-pill hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
+                className="flex size-9 items-center justify-center rounded-w-pill hover:bg-it-line dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
                 aria-label="닫기"
               >
-                <Icon name="close" className="text-2xl text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+                <Icon name="close" className="text-2xl text-it-ink-400 dark:text-wtext-4" aria-hidden="true" />
               </button>
             </div>
             {/* 구분선 */}
-            <div className="h-px bg-wline-2 dark:bg-rink-700 mx-6" />
+            <div className="h-px bg-it-line dark:bg-rink-700 mx-6" />
             {/* 역할 옵션 목록 */}
             <div className="py-2 px-2">
               {ROLE_OPTIONS.map((opt) => (
@@ -400,26 +403,26 @@ export default function DirectorMemberCreatePage() {
                     setShowRoleSheet(false);
                     if (errors.role) validateField('role', opt.value);
                   }}
-                  className={`flex w-full items-center justify-between px-4 py-4 rounded-xl text-left transition-colors motion-reduce:transition-none active:bg-wline-2 dark:active:bg-rink-700 ${
+                  className={`flex w-full items-center justify-between px-4 py-4 rounded-w-md text-left transition-colors motion-reduce:transition-none active:bg-it-line dark:active:bg-rink-700 ${
                     role === opt.value
-                      ? 'bg-blue-50 dark:bg-blue-900/20'
-                      : 'hover:bg-wbg dark:hover:bg-rink-700/50'
+                      ? 'bg-it-blue-50 dark:bg-it-blue-900/30'
+                      : 'hover:bg-it-fill dark:hover:bg-rink-700/50'
                   }`}
                 >
                   <div className="flex flex-col">
                     <span className={`text-card-title ${
                       role === opt.value
-                        ? 'text-ice-500 font-bold'
-                        : 'text-wtext-1 dark:text-white font-medium'
+                        ? 'text-it-blue-500 font-bold'
+                        : 'text-it-ink-800 dark:text-white font-medium'
                     }`}>
                       {opt.label}
                     </span>
-                    <span className="text-card-meta text-wtext-3 dark:text-rink-300 mt-0.5">
+                    <span className="text-card-meta text-it-ink-500 dark:text-wtext-4 mt-0.5">
                       {opt.description}
                     </span>
                   </div>
                   {role === opt.value && (
-                    <Icon name="check_circle" className="text-2xl text-ice-500 shrink-0" aria-hidden="true" />
+                    <Icon name="check_circle" className="text-2xl text-it-blue-500 shrink-0" aria-hidden="true" />
                   )}
                 </button>
               ))}

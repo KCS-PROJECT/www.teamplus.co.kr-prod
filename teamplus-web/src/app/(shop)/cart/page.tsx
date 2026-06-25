@@ -54,7 +54,7 @@ function QuantityControl({
   const labelSuffix = itemName ? ` (${itemName})` : "";
   return (
     <div
-      className="flex items-center gap-3 bg-wbg dark:bg-rink-800/50 rounded-w-pill px-1.5 py-1 border border-wline dark:border-rink-700"
+      className="flex items-center gap-3 bg-it-fill dark:bg-rink-800/50 rounded-w-pill px-1.5 py-1 border border-it-line-strong dark:border-rink-700"
       role="group"
       aria-label={`수량 조절${labelSuffix}`}
     >
@@ -63,7 +63,7 @@ function QuantityControl({
         onClick={onDecrease}
         disabled={quantity <= 1}
         aria-label={`수량 1 감소${labelSuffix}`}
-        className="flex size-7 items-center justify-center rounded-w-pill bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 shadow-sm text-wtext-2 dark:text-rink-100 hover:text-ice-500 hover:border-ice-500 disabled:opacity-50 disabled:cursor-not-allowed active:brightness-95 transition-all motion-reduce:transition-none"
+        className="flex size-7 items-center justify-center rounded-w-pill bg-it-surface dark:bg-rink-800 border border-it-line-strong dark:border-rink-700 text-it-ink-600 dark:text-rink-100 hover:text-it-blue-500 hover:border-it-blue-500 disabled:opacity-50 disabled:cursor-not-allowed active:brightness-95 transition-all motion-reduce:transition-none"
       >
         <Icon
           name="remove"
@@ -72,7 +72,7 @@ function QuantityControl({
         />
       </button>
       <span
-        className="w-6 text-center text-card-body font-bold text-wtext-1 dark:text-white tabular-nums"
+        className="w-6 text-center text-card-body font-bold text-it-ink-800 dark:text-white tabular-nums"
         role="status"
         aria-live="polite"
         aria-atomic="true"
@@ -84,7 +84,7 @@ function QuantityControl({
         type="button"
         onClick={onIncrease}
         aria-label={`수량 1 증가${labelSuffix}`}
-        className="flex size-7 items-center justify-center rounded-w-pill bg-ice-500 shadow-sm text-white hover:bg-ice-500/90 active:brightness-95 transition-all motion-reduce:transition-none"
+        className="flex size-7 items-center justify-center rounded-w-pill bg-it-blue-500 text-white hover:bg-it-blue-600 active:brightness-95 transition-all motion-reduce:transition-none"
       >
         <Icon
           name="add"
@@ -109,7 +109,7 @@ function CartItemCard({
 }) {
   return (
     <div
-      className="relative flex flex-col gap-3 rounded-2xl bg-white dark:bg-rink-800 p-4 shadow-sm border border-wline-2 dark:border-white/5"
+      className="relative flex flex-col gap-3 py-4 border-b border-it-line dark:border-rink-700 last:border-b-0"
       role="group"
       aria-labelledby={`cart-item-${item.id}-name`}
       aria-describedby={`cart-item-${item.id}-price`}
@@ -121,13 +121,13 @@ function CartItemCard({
             checked={item.selected}
             onChange={() => onSelect(item.id)}
             aria-label={`${item.name} 선택`}
-            className="h-5 w-5 rounded-w-pill border-wline dark:border-rink-700 border-2 bg-transparent text-ice-500 checked:bg-ice-500 checked:border-ice-500 focus:ring-0 focus:ring-offset-0 transition-all motion-reduce:transition-none cursor-pointer"
+            className="h-5 w-5 rounded-w-pill border-it-line-strong dark:border-rink-700 border-2 bg-transparent text-it-blue-500 checked:bg-it-blue-500 checked:border-it-blue-500 focus:ring-0 focus:ring-offset-0 transition-all motion-reduce:transition-none cursor-pointer"
           />
         </div>
-        <div className="aspect-square rounded-xl size-24 shrink-0 border border-wline-2 dark:border-white/5 bg-wline-2 dark:bg-rink-700 flex items-center justify-center">
+        <div className="aspect-square rounded-w-md size-24 shrink-0 border border-it-line dark:border-white/5 bg-it-fill dark:bg-rink-700 flex items-center justify-center">
           <Icon
             name="checkroom"
-            className="text-3xl text-wtext-4 dark:text-rink-300"
+            className="text-3xl text-it-ink-400 dark:text-rink-300"
           />
         </div>
         <div className="flex flex-1 flex-col justify-between min-h-24">
@@ -135,18 +135,18 @@ function CartItemCard({
             <div>
               <h3
                 id={`cart-item-${item.id}-name`}
-                className="text-card-title font-bold text-wtext-1 dark:text-white line-clamp-2 leading-snug"
+                className="text-card-title font-bold text-it-ink-800 dark:text-white line-clamp-2 leading-snug"
               >
                 {item.name}
               </h3>
-              <p className="text-wtext-3 dark:text-rink-300 text-card-meta mt-1.5 font-medium">
+              <p className="text-it-ink-500 dark:text-rink-300 text-card-meta mt-1.5 font-medium">
                 옵션: {item.option}
               </p>
             </div>
             <button
               type="button"
               onClick={() => onRemove(item.id)}
-              className="text-wtext-3 hover:text-red-500 transition-colors motion-reduce:transition-none -mt-1 -mr-2 p-2 group"
+              className="text-it-ink-400 hover:text-it-red-500 transition-colors motion-reduce:transition-none -mt-1 -mr-2 p-2 group"
               aria-label={`${item.name} 장바구니에서 삭제`}
             >
               <Icon
@@ -165,7 +165,7 @@ function CartItemCard({
             />
             <p
               id={`cart-item-${item.id}-price`}
-              className="text-card-emphasis font-extrabold text-wtext-1 dark:text-white text-right tabular-nums"
+              className="text-card-emphasis font-extrabold text-it-ink-800 dark:text-white text-right tabular-nums"
               aria-label={`소계 ${(item.price * item.quantity).toLocaleString()}원`}
             >
               {(item.price * item.quantity).toLocaleString()}원
@@ -189,40 +189,40 @@ function OrderSummary({
   total: number;
 }) {
   return (
-    <div className="mx-4 rounded-2xl bg-white dark:bg-rink-800 p-6 shadow-sm border border-wline-2 dark:border-white/5">
+    <section className="bg-it-surface dark:bg-rink-800 px-5 py-6">
       <div className="flex justify-between gap-x-6 py-2">
-        <p className="text-wtext-2 dark:text-rink-300 text-card-title font-medium">
+        <p className="text-it-ink-600 dark:text-rink-300 text-card-title font-medium">
           총 상품 금액
         </p>
-        <p className="text-wtext-1 dark:text-white text-card-title font-semibold text-right">
+        <p className="text-it-ink-800 dark:text-white text-card-title font-semibold text-right">
           {subtotal.toLocaleString()}원
         </p>
       </div>
       <div className="flex justify-between gap-x-6 py-2">
-        <p className="text-wtext-2 dark:text-rink-300 text-card-title font-medium">
+        <p className="text-it-ink-600 dark:text-rink-300 text-card-title font-medium">
           배송비
         </p>
-        <p className="text-wtext-1 dark:text-white text-card-title font-semibold text-right">
+        <p className="text-it-ink-800 dark:text-white text-card-title font-semibold text-right">
           {shipping > 0 ? `${shipping.toLocaleString()}원` : "무료"}
         </p>
       </div>
       {discount > 0 && (
-        <div className="flex justify-between gap-x-6 py-2 border-b border-dashed border-wline dark:border-white/10 pb-4">
-          <p className="text-ice-500 text-card-title font-medium">할인 금액</p>
-          <p className="text-ice-500 text-card-title font-bold text-right">
+        <div className="flex justify-between gap-x-6 py-2 border-b border-dashed border-it-line dark:border-white/10 pb-4">
+          <p className="text-it-blue-500 text-card-title font-medium">할인 금액</p>
+          <p className="text-it-blue-500 text-card-title font-bold text-right">
             -{discount.toLocaleString()}원
           </p>
         </div>
       )}
       <div className="flex justify-between gap-x-6 pt-5 items-center">
-        <p className="text-wtext-1 dark:text-white text-card-emphasis font-bold">
+        <p className="text-it-ink-800 dark:text-white text-card-emphasis font-bold">
           결제 예정 금액
         </p>
-        <p className="text-ice-500 text-2xl font-black text-right tracking-tight">
+        <p className="text-it-blue-500 text-2xl font-black text-right tracking-tight tabular-nums">
           {total.toLocaleString()}원
         </p>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -377,7 +377,7 @@ export default function CartPage() {
           <button
             type="button"
             onClick={() => setIsEditing(!isEditing)}
-            className="flex h-9 items-center justify-center px-3 rounded-w-pill text-card-body font-bold text-wtext-1 dark:text-white hover:bg-wline-2 dark:hover:bg-rink-800 transition-colors"
+            className="flex h-9 items-center justify-center px-3 rounded-w-pill text-card-body font-bold text-it-ink-800 dark:text-white hover:bg-it-fill dark:hover:bg-rink-800 transition-colors"
           >
             {isEditing ? "완료" : "편집"}
           </button>
@@ -385,24 +385,24 @@ export default function CartPage() {
       />
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col pb-30">
-        {/* Select All */}
-        <div className="px-4 py-2 sticky top-[60px] z-40 bg-wbg dark:bg-background-dark transition-colors motion-reduce:transition-none">
+      <main className="flex-1 flex flex-col bg-it-canvas dark:bg-puck pb-30">
+        {/* Select All — flat 흰 섹션 */}
+        <div className="px-4 sticky top-[60px] z-40 bg-it-surface dark:bg-rink-800 transition-colors motion-reduce:transition-none border-b border-it-line dark:border-rink-700">
           <label className="flex items-center gap-x-3 py-3 cursor-pointer group select-none">
             <input
               type="checkbox"
               checked={allSelected}
               onChange={handleSelectAll}
               aria-label="전체 상품 선택"
-              className="h-5 w-5 rounded-w-pill border-wline dark:border-rink-700 border-2 bg-white dark:bg-rink-800 text-ice-500 checked:bg-ice-500 checked:border-ice-500 focus:ring-0 focus:ring-offset-0 transition-all motion-reduce:transition-none"
+              className="h-5 w-5 rounded-w-pill border-it-line-strong dark:border-rink-700 border-2 bg-it-surface dark:bg-rink-800 text-it-blue-500 checked:bg-it-blue-500 checked:border-it-blue-500 focus:ring-0 focus:ring-offset-0 transition-all motion-reduce:transition-none"
             />
-            <span className="text-card-title font-semibold text-wtext-2 dark:text-rink-100 group-hover:text-ice-500 transition-colors motion-reduce:transition-none">
+            <span className="text-card-title font-semibold text-it-ink-700 dark:text-rink-100 group-hover:text-it-blue-500 transition-colors motion-reduce:transition-none">
               전체 선택 ({selectedItems.length}/{cartItems.length})
             </span>
             {isEditing && selectedItems.length > 0 && (
               <button
                 onClick={handleRemoveSelected}
-                className="ml-auto text-card-body text-red-500 font-medium hover:underline"
+                className="ml-auto text-card-body text-it-red-500 font-medium hover:underline"
               >
                 선택 삭제
               </button>
@@ -413,7 +413,8 @@ export default function CartPage() {
         {/* Cart Items */}
         {isLoading ? null : cartItems.length > 0 ? (
           <>
-            <div className="flex flex-col gap-4 px-4">
+            {/* 상품 목록 — flat 흰 섹션 (8px 회색 갭) */}
+            <section className="flex flex-col px-4 bg-it-surface dark:bg-rink-800 mt-2">
               {cartItems.map((item) => (
                 <CartItemCard
                   key={item.id}
@@ -423,10 +424,10 @@ export default function CartPage() {
                   onQuantityChange={handleQuantityChange}
                 />
               ))}
-            </div>
+            </section>
 
-            {/* Spacer */}
-            <div className="h-6" />
+            {/* 8px 회색 갭 */}
+            <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
 
             {/* Order Summary */}
             <OrderSummary
@@ -440,14 +441,14 @@ export default function CartPage() {
           <div className="flex-1 flex flex-col items-center justify-center py-20">
             <Icon
               name="shopping_cart"
-              className="text-6xl text-wtext-4 dark:text-rink-500 mb-4"
+              className="text-6xl text-it-ink-400 dark:text-rink-500 mb-4"
             />
-            <p className="text-wtext-3 dark:text-rink-300 text-card-title font-medium">
+            <p className="text-it-ink-500 dark:text-rink-300 text-card-title font-medium">
               장바구니가 비어있습니다
             </p>
             <NavLink
               href="/products"
-              className="mt-4 px-6 py-3 bg-ice-500 text-white rounded-xl font-bold hover:bg-ice-500/90 transition-colors motion-reduce:transition-none"
+              className="mt-4 px-6 py-3 bg-it-blue-500 text-white rounded-w-md font-bold hover:bg-it-blue-600 transition-colors motion-reduce:transition-none"
             >
               쇼핑하러 가기
             </NavLink>
@@ -457,12 +458,12 @@ export default function CartPage() {
 
       {/* Fixed Bottom CTA */}
       {cartItems.length > 0 && (
-        <div className="fixed bottom-0 fixed-center-x bg-white dark:bg-rink-900 border-t border-wline-2 dark:border-white/10 px-4 pt-4 pb-8 z-50 shadow-md">
+        <div className="fixed bottom-0 fixed-center-x bg-it-surface dark:bg-rink-900 border-t border-it-line dark:border-white/10 px-4 pt-4 pb-8 z-50">
           <div className="flex items-center justify-between mb-4">
-            <span className="text-card-title font-semibold text-wtext-2 dark:text-rink-100">
+            <span className="text-card-title font-semibold text-it-ink-700 dark:text-rink-100">
               총 주문금액
             </span>
-            <span className="text-2xl font-bold text-ice-500 tracking-tight">
+            <span className="text-2xl font-bold text-it-blue-500 tracking-tight tabular-nums">
               {total.toLocaleString()}원
             </span>
           </div>
@@ -489,10 +490,10 @@ export default function CartPage() {
               }
               navigate("/shop-checkout");
             }}
-            className={`w-full text-white text-card-title font-bold py-4 rounded-2xl shadow-md flex items-center justify-center gap-2 transition-all motion-reduce:transition-none ${
+            className={`w-full text-white text-card-title font-bold py-4 rounded-w-md flex items-center justify-center gap-2 transition-all motion-reduce:transition-none ${
               selectedItems.length > 0
-                ? "bg-ice-500 hover:bg-ice-500/90 active:brightness-95"
-                : "bg-wline cursor-not-allowed"
+                ? "bg-it-blue-500 hover:bg-it-blue-600 active:brightness-95"
+                : "bg-it-line-strong cursor-not-allowed"
             }`}
           >
             <Icon name="shopping_bag" className="text-[22px]" />

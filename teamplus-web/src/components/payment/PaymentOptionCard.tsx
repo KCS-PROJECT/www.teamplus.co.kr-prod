@@ -57,6 +57,12 @@ export interface PaymentOptionCardProps {
    * MESSAGES 단일 SoT 위해 부모에서 전달.
    */
   disabledBadge?: string | null;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 카드(rounded-2xl + shadow) 1:1 보존(회귀 0).
+   *   true 시 카드 박스 제거 → it-fill 인셋 + hairline border, it-blue 토큰 정합.
+   *   계산식·금액·배지 정보 위계와 모든 로직(computeTotal 등)은 동일.
+   */
+  iceTheme?: boolean;
 }
 
 const ICON_BY_FEE_TYPE: Record<FeeType, string> = {
@@ -145,7 +151,7 @@ function hasRequiredFields(props: PaymentOptionCardProps): boolean {
 }
 
 export function PaymentOptionCard(props: PaymentOptionCardProps) {
-  const { feeType, selected = false, onSelect, className, disabled = false, disabledBadge } = props;
+  const { feeType, selected = false, onSelect, className, disabled = false, disabledBadge, iceTheme = false } = props;
   // disabled=true 면 onSelect 호출 자체 차단 (NavLink 가드와 이중 안전망).
   const isInteractive = typeof onSelect === 'function' && !disabled;
   const hasFields = hasRequiredFields(props);
@@ -167,14 +173,22 @@ export function PaymentOptionCard(props: PaymentOptionCardProps) {
   // [수정 2026-05-22 사용자 직접 지시] 학부모 결제 화면 카드 높이 축소.
   //   - p-5(20px) → p-4(16px) · gap-4(16px) → gap-3(12px) 로 누적 여백 28px 감소.
   //   - 정보 위계는 유지 (배지·제목·요약·계산식·총액 5단 그대로).
-  const containerBase =
-    'relative flex w-full flex-col gap-3 rounded-2xl border bg-white dark:bg-rink-800 p-4 shadow-md transition-colors motion-reduce:transition-none';
+  // [ICETIMES] iceTheme=true 시 카드 박스(rounded-2xl/shadow-md) 제거 → it-fill 인셋 + hairline.
+  const containerBase = iceTheme
+    ? 'relative flex w-full flex-col gap-3 rounded-w-md border bg-it-fill dark:bg-rink-800 p-4 transition-colors motion-reduce:transition-none'
+    : 'relative flex w-full flex-col gap-3 rounded-2xl border bg-white dark:bg-rink-800 p-4 shadow-md transition-colors motion-reduce:transition-none';
   // PACKAGE_END_GUARD: 비활성 시 grayscale + opacity-50, 클릭 비활성, hover/select 효과 제거.
-  const borderClass = disabled
-    ? 'border-wline-2 dark:border-rink-700 grayscale opacity-50 cursor-not-allowed shadow-none'
-    : selected
-      ? 'border-ice-500 ring-2 ring-ice-500/30'
-      : 'border-wline dark:border-rink-700 hover:border-wline dark:hover:border-rink-700';
+  const borderClass = iceTheme
+    ? disabled
+      ? 'border-it-line-strong dark:border-rink-700 grayscale opacity-50 cursor-not-allowed'
+      : selected
+        ? 'border-[1.5px] border-it-blue-500 ring-1 ring-it-blue-500/20'
+        : 'border-it-line-strong dark:border-rink-700 hover:border-it-blue-500/40 dark:hover:border-rink-700'
+    : disabled
+      ? 'border-wline-2 dark:border-rink-700 grayscale opacity-50 cursor-not-allowed shadow-none'
+      : selected
+        ? 'border-ice-500 ring-2 ring-ice-500/30'
+        : 'border-wline dark:border-rink-700 hover:border-wline dark:hover:border-rink-700';
 
   const Wrapper: React.ElementType = isInteractive ? 'button' : 'div';
 
@@ -187,12 +201,12 @@ export function PaymentOptionCard(props: PaymentOptionCardProps) {
         aria-label={`${badge} 결제 방식`}
       >
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1 rounded-full bg-wline-2 dark:bg-rink-700 px-2.5 py-1 text-xs font-bold text-wtext-2 dark:text-rink-100">
+          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ${iceTheme ? 'bg-it-line dark:bg-rink-700 text-it-ink-600 dark:text-rink-100' : 'bg-wline-2 dark:bg-rink-700 text-wtext-2 dark:text-rink-100'}`}>
             <Icon name={ICON_BY_FEE_TYPE[feeType]} className="text-[14px]" />
             {badge}
           </span>
         </div>
-        <p className="text-sm text-wtext-3 dark:text-rink-300">
+        <p className={`text-sm ${iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300'}`}>
           {MESSAGES.payment2.card.missingInfo}
         </p>
       </div>
@@ -214,16 +228,16 @@ export function PaymentOptionCard(props: PaymentOptionCardProps) {
     >
       {/* 상단: 배지 + 선택 체크 (disabled 시 disabledBadge 우선) */}
       <div className="flex items-start justify-between gap-2">
-        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 dark:bg-blue-900/30 px-2.5 py-1 text-xs font-bold text-ice-500">
+        <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ${iceTheme ? 'bg-it-blue-50 dark:bg-it-blue-500/15 text-it-blue-500' : 'bg-blue-50 dark:bg-blue-900/30 text-ice-500'}`}>
           <Icon name={ICON_BY_FEE_TYPE[feeType]} className="text-[14px]" />
           {badge}
         </span>
         {disabled && disabledBadge ? (
-          <span className="inline-flex items-center h-6 px-2 rounded-full text-[11px] font-bold bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-200">
+          <span className={`inline-flex items-center h-6 px-2 rounded-full text-[11px] font-bold ${iceTheme ? 'bg-it-line text-it-ink-600 dark:bg-rink-700 dark:text-rink-200' : 'bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-200'}`}>
             {disabledBadge}
           </span>
         ) : selected ? (
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-ice-500 text-white">
+          <span className={`flex h-6 w-6 items-center justify-center rounded-full text-white ${iceTheme ? 'bg-it-blue-500' : 'bg-ice-500'}`}>
             <Icon name="check" className="text-sm" />
           </span>
         ) : null}
@@ -231,23 +245,23 @@ export function PaymentOptionCard(props: PaymentOptionCardProps) {
 
       {/* 제목/요약 */}
       <div className="flex flex-col gap-1">
-        <h4 className="text-card-title text-wtext-1 dark:text-white">{title}</h4>
-        <p className="text-card-meta text-wtext-3 dark:text-rink-300 leading-relaxed">{summary}</p>
+        <h4 className={`text-card-title ${iceTheme ? 'text-it-ink-900 dark:text-white' : 'text-wtext-1 dark:text-white'}`}>{title}</h4>
+        <p className={`text-card-meta leading-relaxed ${iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300'}`}>{summary}</p>
       </div>
 
       {/* 계산식 — 배경 박스 제거 (2026-05-11 사용자 피드백). 카드 표면(bg-white)
           위에 inline 텍스트만 우측 정렬로 노출하여 시각 노이즈 제거. 상단에 hairline
           divider 만 유지해 제목·요약과 계산식 영역을 명확히 분리. */}
       {formula && (
-        <p className="border-t border-wline-2 dark:border-rink-700 pt-2 text-card-meta font-medium text-wtext-2 dark:text-rink-100 tabular-nums text-right">
+        <p className={`border-t pt-2 text-card-meta font-medium tabular-nums text-right ${iceTheme ? 'border-it-line dark:border-rink-700 text-it-ink-600 dark:text-rink-100' : 'border-wline-2 dark:border-rink-700 text-wtext-2 dark:text-rink-100'}`}>
           {formula}
         </p>
       )}
 
       {/* 최종 금액 (오른쪽 정렬 필수) */}
       <div className="flex items-end justify-between gap-3">
-        <span className="text-card-meta font-semibold text-wtext-3 dark:text-rink-300">{totalLabel}</span>
-        <span className="text-card-section text-wtext-1 dark:text-white tabular-nums text-right">
+        <span className={`text-card-meta font-semibold ${iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300'}`}>{totalLabel}</span>
+        <span className={`text-card-section tabular-nums text-right ${iceTheme ? 'text-it-ink-900 dark:text-white' : 'text-wtext-1 dark:text-white'}`}>
           {total.toLocaleString('ko-KR')}원
         </span>
       </div>

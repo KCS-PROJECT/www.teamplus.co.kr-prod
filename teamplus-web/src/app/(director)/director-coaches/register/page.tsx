@@ -19,9 +19,9 @@ const ID_REGEX = /^[a-z][a-z0-9_]{3,19}$/;
 const ID_RULE_MESSAGE =
   '아이디는 영문 소문자로 시작하고, 영문 소문자·숫자·언더스코어(_)를 사용해 4~20자로 입력해주세요.';
 
-/** 입력 필드 공통 스타일 — h-12 (48px) 터치 타겟 */
+/** 입력 필드 공통 스타일 — h-12 (48px) 터치 타겟 · ICETIMES 폼 입력 규격 */
 const INPUT_CLASS =
-  'w-full h-12 rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-700 px-4 text-card-body text-wtext-1 dark:text-white placeholder:text-wtext-3 dark:placeholder:text-wtext-3 outline-none transition-colors motion-reduce:transition-none focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20';
+  'w-full h-12 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-700 px-4 text-card-body font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-wtext-3 outline-none transition-colors motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20';
 
 export default function DirectorCoachRegisterPage() {
   // 인증/권한 체크는 (director)/layout.tsx 에서 단 한 번 수행됨 (중복 호출 금지)
@@ -184,74 +184,80 @@ export default function DirectorCoachRegisterPage() {
           onBack={() => replace('/director-coaches')}
           forceNative
         />
-        <main className="flex-1 overflow-y-auto hide-scrollbar" role="main" aria-label="코치 등록 완료">
-          <div className="px-6 pt-8 pb-4 flex flex-col items-center text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-w-pill bg-ice-500/10 dark:bg-ice-500/20">
-              <Icon name="check_circle" className="text-4xl text-ice-500" aria-hidden="true" />
+        <main className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck" role="main" aria-label="코치 등록 완료">
+          {/* 완료 헤더 — flat 흰 섹션 */}
+          <section className="bg-it-surface dark:bg-rink-800 px-6 pt-8 pb-6 flex flex-col items-center text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-w-pill bg-it-blue-50 dark:bg-it-blue-500/20">
+              <Icon name="check_circle" className="text-4xl text-it-blue-500" aria-hidden="true" />
             </div>
-            <h2 className="mt-4 text-2xl font-bold text-wtext-1 dark:text-white">
+            <h2 className="mt-4 text-2xl font-bold text-it-ink-800 dark:text-white">
               {MESSAGES.coach.created.title}
             </h2>
-            <p className="mt-2 text-card-body text-wtext-3 dark:text-rink-300">
+            <p className="mt-2 text-card-body text-it-ink-500 dark:text-rink-300">
               {MESSAGES.coach.created.guide}
             </p>
-          </div>
+          </section>
 
-          {/* 자격증명 카드 */}
-          <div className="mx-6 mb-4 rounded-2xl bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 p-5 shadow-sm">
-            <div className="flex items-center justify-between py-2">
-              <span className="text-card-meta font-bold text-wtext-3 dark:text-rink-300">
+          {/* flat 섹션 사이 8px 회색 갭 */}
+          <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+          {/* 자격증명 — flat 흰 섹션 (hairline 행, 카드 박스 제거) */}
+          <section className="bg-it-surface dark:bg-rink-800 px-6 py-2">
+            <div className="flex items-center justify-between py-3.5 border-b border-it-line dark:border-rink-700">
+              <span className="text-card-meta font-bold text-it-ink-500 dark:text-rink-300">
                 {MESSAGES.coach.created.idLabel}
               </span>
-              <span className="text-card-title font-bold text-wtext-1 dark:text-white tabular-nums break-all">
+              <span className="text-card-title font-bold text-it-ink-800 dark:text-white tabular-nums break-all">
                 {createdCreds.loginId}
               </span>
             </div>
-            <div className="h-px bg-wline-2 dark:bg-rink-700 my-1" />
-            <div className="flex items-center justify-between py-2">
-              <span className="text-card-meta font-bold text-wtext-3 dark:text-rink-300">
+            <div className="flex items-center justify-between py-3.5">
+              <span className="text-card-meta font-bold text-it-ink-500 dark:text-rink-300">
                 {MESSAGES.coach.created.pwLabel}
               </span>
-              <span className="text-card-title font-bold text-wtext-1 dark:text-white tabular-nums break-all">
+              <span className="text-card-title font-bold text-it-ink-800 dark:text-white tabular-nums break-all">
                 {createdCreds.password}
               </span>
             </div>
-          </div>
+          </section>
 
-          {/* 비밀번호 변경 안내 */}
-          <div className="mx-6 mb-6 flex items-start gap-2.5 rounded-xl bg-wline-2/60 dark:bg-rink-700/40 p-4">
-            <Icon name="info" className="text-wtext-3 dark:text-rink-300 text-xl shrink-0 mt-0.5" aria-hidden="true" />
-            <p className="text-card-meta text-wtext-2 dark:text-rink-200 leading-relaxed">
-              {MESSAGES.coach.created.changePwNotice}
-            </p>
-          </div>
+          <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
 
-          {/* 전달 버튼 */}
-          <div className="mx-6 flex flex-col gap-3">
-            <button
-              type="button"
-              onClick={handleShare}
-              className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-ice-500 py-3.5 text-card-emphasis font-bold text-white shadow-sm transition-colors motion-reduce:transition-none hover:bg-ice-700 active:brightness-95"
-            >
-              <Icon name="share" className="text-[20px]" aria-hidden="true" />
-              <span>{MESSAGES.coach.created.share}</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleCopy}
-              className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 py-3.5 text-card-emphasis font-bold text-wtext-2 dark:text-rink-100 transition-colors motion-reduce:transition-none hover:bg-wbg dark:hover:bg-rink-700 active:brightness-95"
-            >
-              <Icon name="content_copy" className="text-[20px]" aria-hidden="true" />
-              <span>{MESSAGES.coach.created.copy}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => replace('/director-coaches')}
-              className="flex min-h-[48px] items-center justify-center rounded-xl py-3.5 text-card-emphasis font-bold text-wtext-3 dark:text-rink-300 transition-colors motion-reduce:transition-none hover:bg-wbg dark:hover:bg-rink-800 active:brightness-95"
-            >
-              {MESSAGES.coach.created.goList}
-            </button>
-          </div>
+          {/* 비밀번호 변경 안내 + 전달 버튼 — flat 흰 섹션 */}
+          <section className="bg-it-surface dark:bg-rink-800 px-6 pt-5 pb-6">
+            <div className="mb-5 flex items-start gap-2.5 rounded-w-md bg-it-fill dark:bg-rink-700/40 p-4">
+              <Icon name="info" className="text-it-ink-400 dark:text-rink-300 text-xl shrink-0 mt-0.5" aria-hidden="true" />
+              <p className="text-card-meta text-it-ink-600 dark:text-rink-200 leading-relaxed">
+                {MESSAGES.coach.created.changePwNotice}
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={handleShare}
+                className="flex min-h-[48px] items-center justify-center gap-2 rounded-w-md bg-it-blue-500 py-3.5 text-card-emphasis font-bold text-white transition-colors motion-reduce:transition-none hover:bg-it-blue-600 active:brightness-95"
+              >
+                <Icon name="share" className="text-[20px]" aria-hidden="true" />
+                <span>{MESSAGES.coach.created.share}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="flex min-h-[48px] items-center justify-center gap-2 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 py-3.5 text-card-emphasis font-bold text-it-ink-600 dark:text-rink-100 transition-colors motion-reduce:transition-none hover:bg-it-fill dark:hover:bg-rink-700 active:brightness-95"
+              >
+                <Icon name="content_copy" className="text-[20px]" aria-hidden="true" />
+                <span>{MESSAGES.coach.created.copy}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => replace('/director-coaches')}
+                className="flex min-h-[48px] items-center justify-center rounded-w-md py-3.5 text-card-emphasis font-bold text-it-ink-500 dark:text-rink-300 transition-colors motion-reduce:transition-none hover:bg-it-fill dark:hover:bg-rink-800 active:brightness-95"
+              >
+                {MESSAGES.coach.created.goList}
+              </button>
+            </div>
+          </section>
 
           <div className="h-24" aria-hidden="true" />
         </main>
@@ -266,31 +272,34 @@ export default function DirectorCoachRegisterPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title="코치 등록" onBack={back} forceNative />
 
-      <main className="flex-1 overflow-y-auto hide-scrollbar" role="main" aria-label="코치 등록">
-        {/* 타이틀 영역 */}
-        <div className="px-6 pt-6 pb-4">
-          <h2 className="text-2xl font-bold text-wtext-1 dark:text-white">코치 등록</h2>
-          <p className="mt-1 text-card-body text-wtext-3 dark:text-rink-300">
+      <main className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck" role="main" aria-label="코치 등록">
+        {/* 타이틀 영역 — flat 흰 섹션 */}
+        <section className="bg-it-surface dark:bg-rink-800 px-6 pt-6 pb-5">
+          <h2 className="text-2xl font-bold text-it-ink-800 dark:text-white">코치 등록</h2>
+          <p className="mt-1 text-card-body text-it-ink-500 dark:text-rink-300">
             {MESSAGES.coach.registerDescription}
           </p>
-        </div>
+        </section>
 
         {/* 에러 배너 */}
         {errorMessage && (
-          <div className="mx-6 mb-4 flex items-center gap-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 p-4" role="alert">
-            <Icon name="error" className="text-red-500 dark:text-red-400 text-xl shrink-0" aria-hidden="true" />
-            <p className="text-card-body text-red-600 dark:text-red-400">{errorMessage}</p>
+          <div className="mx-5 mt-3 flex items-center gap-3 rounded-w-md bg-it-red-50 dark:bg-it-red-500/15 border-[1.5px] border-it-red-100 dark:border-it-red-500/30 p-4" role="alert">
+            <Icon name="error" className="text-it-red-500 dark:text-it-red-300 text-xl shrink-0" aria-hidden="true" />
+            <p className="text-card-body text-it-red-600 dark:text-it-red-300">{errorMessage}</p>
           </div>
         )}
 
-        {/* 폼 카드 */}
-        <form onSubmit={handleSubmit} className="mx-6 mb-8">
-          <div className="rounded-2xl bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 p-6 shadow-sm">
+        {/* flat 섹션 사이 8px 회색 갭 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+        {/* 폼 — flat 흰 섹션 (카드 박스 제거) */}
+        <form onSubmit={handleSubmit}>
+          <section className="bg-it-surface dark:bg-rink-800 px-6 pt-6 pb-7">
 
             {/* 직책 — 코치 / 단장. 단장도 코치와 동일 권한, 표기만 다름. */}
             <div className="mb-5">
-              <label className="mb-2 block text-card-body font-bold text-wtext-1 dark:text-white">
-                직책 <span className="text-red-500" aria-hidden="true">*</span>
+              <label className="mb-2 block text-card-body font-bold text-it-ink-800 dark:text-white">
+                직책 <span className="text-it-red-500" aria-hidden="true">*</span>
               </label>
               <div className="grid grid-cols-2 gap-2" role="group" aria-label="직책 선택">
                 {([['COACH', '코치'], ['MANAGER', '단장']] as const).map(([value, label]) => {
@@ -301,10 +310,10 @@ export default function DirectorCoachRegisterPage() {
                       type="button"
                       onClick={() => setRoleInTeam(value)}
                       aria-pressed={selected}
-                      className={`min-h-[48px] rounded-xl border text-card-emphasis font-bold transition-colors motion-reduce:transition-none ${
+                      className={`min-h-[48px] rounded-w-md border-[1.5px] text-card-emphasis font-bold transition-colors motion-reduce:transition-none ${
                         selected
-                          ? 'border-ice-500 bg-ice-500/5 dark:bg-ice-500/10 text-ice-500'
-                          : 'border-wline dark:border-rink-700 bg-white dark:bg-rink-700 text-wtext-2 dark:text-rink-100 hover:bg-wbg dark:hover:bg-rink-700'
+                          ? 'border-it-blue-500 bg-it-blue-50 dark:bg-it-blue-500/10 text-it-blue-500'
+                          : 'border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-700 text-it-ink-600 dark:text-rink-100 hover:bg-it-line dark:hover:bg-rink-700'
                       }`}
                     >
                       {label}
@@ -312,15 +321,15 @@ export default function DirectorCoachRegisterPage() {
                   );
                 })}
               </div>
-              <p className="mt-1.5 text-card-meta text-wtext-3 dark:text-rink-300">
+              <p className="mt-1.5 text-card-meta text-it-ink-500 dark:text-rink-300">
                 단장도 코치와 동일하게 팀을 관리할 수 있습니다.
               </p>
             </div>
 
             {/* 이름 */}
             <div className="mb-5">
-              <label htmlFor="coach-name" className="mb-2 block text-card-body font-bold text-wtext-1 dark:text-white">
-                이름 <span className="text-red-500" aria-hidden="true">*</span>
+              <label htmlFor="coach-name" className="mb-2 block text-card-body font-bold text-it-ink-800 dark:text-white">
+                이름 <span className="text-it-red-500" aria-hidden="true">*</span>
               </label>
               <input
                 id="coach-name"
@@ -337,8 +346,8 @@ export default function DirectorCoachRegisterPage() {
 
             {/* 연락처 */}
             <div className="mb-5">
-              <label htmlFor="coach-phone" className="mb-2 block text-card-body font-bold text-wtext-1 dark:text-white">
-                연락처 <span className="text-red-500" aria-hidden="true">*</span>
+              <label htmlFor="coach-phone" className="mb-2 block text-card-body font-bold text-it-ink-800 dark:text-white">
+                연락처 <span className="text-it-red-500" aria-hidden="true">*</span>
               </label>
               <input
                 id="coach-phone"
@@ -356,8 +365,8 @@ export default function DirectorCoachRegisterPage() {
 
             {/* 아이디 + 중복확인 */}
             <div className="mb-5">
-              <label htmlFor="coach-login-id" className="mb-2 block text-card-body font-bold text-wtext-1 dark:text-white">
-                아이디 <span className="text-red-500" aria-hidden="true">*</span>
+              <label htmlFor="coach-login-id" className="mb-2 block text-card-body font-bold text-it-ink-800 dark:text-white">
+                아이디 <span className="text-it-red-500" aria-hidden="true">*</span>
               </label>
               <div className="flex gap-2">
                 <input
@@ -377,13 +386,13 @@ export default function DirectorCoachRegisterPage() {
                   type="button"
                   onClick={handleCheckId}
                   disabled={isCheckingId || loginId.trim().length === 0}
-                  className="shrink-0 min-h-[48px] px-4 rounded-xl border border-ice-500 bg-ice-500/5 dark:bg-ice-500/10 text-card-emphasis font-bold text-ice-500 transition-colors motion-reduce:transition-none hover:bg-ice-500/10 active:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="shrink-0 min-h-[48px] px-4 rounded-w-md border-[1.5px] border-it-blue-500 bg-it-blue-50 dark:bg-it-blue-500/10 text-card-emphasis font-bold text-it-blue-500 transition-colors motion-reduce:transition-none hover:bg-it-blue-100 dark:hover:bg-it-blue-500/20 active:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isCheckingId ? '확인 중' : '중복확인'}
                 </button>
               </div>
               {idStatus === 'available' && (
-                <p className="mt-1.5 flex items-center gap-1 text-card-meta font-bold text-ice-500">
+                <p className="mt-1.5 flex items-center gap-1 text-card-meta font-bold text-it-blue-500">
                   <Icon name="check_circle" className="text-base" aria-hidden="true" />
                   사용 가능한 아이디입니다.
                 </p>
@@ -392,8 +401,8 @@ export default function DirectorCoachRegisterPage() {
 
             {/* 비밀번호 */}
             <div>
-              <label htmlFor="coach-password" className="mb-2 block text-card-body font-bold text-wtext-1 dark:text-white">
-                비밀번호 <span className="text-red-500" aria-hidden="true">*</span>
+              <label htmlFor="coach-password" className="mb-2 block text-card-body font-bold text-it-ink-800 dark:text-white">
+                비밀번호 <span className="text-it-red-500" aria-hidden="true">*</span>
               </label>
               <div className="relative">
                 <input
@@ -410,32 +419,32 @@ export default function DirectorCoachRegisterPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 flex size-8 items-center justify-center rounded-lg text-wtext-3 dark:text-rink-300 hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 flex size-8 items-center justify-center rounded-w-md text-it-ink-400 dark:text-rink-300 hover:bg-it-line dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
                   aria-label={showPassword ? '비밀번호 숨기기' : '비밀번호 표시'}
                 >
                   <Icon name={showPassword ? 'visibility_off' : 'visibility'} className="text-xl" aria-hidden="true" />
                 </button>
               </div>
-              <p className="mt-1.5 text-card-meta text-wtext-3 dark:text-rink-300">
+              <p className="mt-1.5 text-card-meta text-it-ink-500 dark:text-rink-300">
                 이 아이디와 비밀번호는 등록 후 코치에게 전달됩니다.
               </p>
             </div>
-          </div>
+          </section>
 
           {/* 액션 버튼 — 취소 / 등록하기 */}
-          <div className="mt-6 flex gap-3">
+          <div className="px-5 pt-6 flex gap-3">
             <button
               type="button"
               onClick={() => back()}
               disabled={isSubmitting}
-              className="flex min-h-[48px] flex-1 items-center justify-center rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 py-3.5 text-card-emphasis font-bold text-wtext-2 dark:text-rink-100 transition-colors motion-reduce:transition-none hover:bg-wbg dark:hover:bg-rink-700 active:brightness-95 disabled:opacity-50"
+              className="flex min-h-[48px] flex-1 items-center justify-center rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 py-3.5 text-card-emphasis font-bold text-it-ink-600 dark:text-rink-100 transition-colors motion-reduce:transition-none hover:bg-it-fill dark:hover:bg-rink-700 active:brightness-95 disabled:opacity-50"
             >
               취소
             </button>
             <button
               type="submit"
               disabled={!isValid || isSubmitting}
-              className="flex min-h-[48px] flex-[2] items-center justify-center gap-2 rounded-xl bg-ice-500 py-3.5 text-card-emphasis font-bold text-white shadow-sm transition-colors motion-reduce:transition-none hover:bg-ice-700 active:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex min-h-[48px] flex-[2] items-center justify-center gap-2 rounded-w-md bg-it-blue-500 py-3.5 text-card-emphasis font-bold text-white transition-colors motion-reduce:transition-none hover:bg-it-blue-600 active:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Icon name="person_add" className="text-[20px]" aria-hidden="true" />
               <span>{isSubmitting ? MESSAGES.common.processing : '등록하기'}</span>

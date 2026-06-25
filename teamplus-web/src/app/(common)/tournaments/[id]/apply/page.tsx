@@ -361,31 +361,31 @@ function TournamentApplyContent() {
     <MobileContainer>
       <PageAppBar title="대회 참가 결제" forceNative />
 
-      <main className="flex-1 flex flex-col px-5 py-4 gap-5 overflow-y-auto" role="main">
+      <main className="flex-1 flex flex-col bg-it-canvas dark:bg-puck gap-2 overflow-y-auto !pb-8" role="main">
         {isLoading ? (
           <div className="flex flex-1 items-center justify-center">
             <Spinner />
           </div>
         ) : !tournament ? (
-          <div className="rounded-xl border border-flame-200 bg-flame-50 dark:bg-flame-900/20 p-4 text-w-small text-flame-700 dark:text-flame-300">
+          <div className="mx-5 mt-4 rounded-w-md border border-it-red-200 bg-it-red-50 dark:bg-it-red-500/10 p-4 text-w-small text-it-red-700 dark:text-it-red-300">
             {error ?? '대회 정보를 불러올 수 없습니다.'}
           </div>
         ) : (
           <>
-            {/* 대회 정보 카드 */}
+            {/* 대회 정보 — navy 히어로(요약 강조) */}
             <section
               aria-labelledby="tournament-info"
-              className="bg-white dark:bg-rink-800 rounded-2xl p-5 border border-wline-2 dark:border-rink-700"
+              className="bg-it-blue-800 dark:bg-it-blue-950 px-5 pt-5 pb-5"
             >
               <div className="flex items-start gap-3">
-                <div className="w-12 h-12 shrink-0 rounded-xl bg-red-500 text-white grid place-items-center">
+                <div className="w-12 h-12 shrink-0 rounded-w-md bg-it-red-500 text-white grid place-items-center">
                   <Icon name="emoji_events" className="text-[24px]" aria-hidden="true" filled />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p id="tournament-info" className="text-w-caption font-bold uppercase tracking-wider text-red-500 mb-0.5">
+                  <p id="tournament-info" className="text-w-caption font-bold uppercase tracking-wider text-it-red-300 mb-0.5">
                     대회
                   </p>
-                  <h2 className="text-w-title font-extrabold text-wtext-1 dark:text-white truncate">
+                  <h2 className="text-w-title font-extrabold text-white truncate">
                     {tournament.name}
                   </h2>
                 </div>
@@ -407,10 +407,10 @@ function TournamentApplyContent() {
               </div>
             </section>
 
-            {/* 자녀 선택 */}
+            {/* 자녀 선택 — flat 흰 섹션 */}
             {childOptions.length > 0 ? (
-              <section aria-labelledby="child-select">
-                <p id="child-select" className="text-w-small font-bold text-wtext-2 dark:text-rink-100 mb-2">
+              <section aria-labelledby="child-select" className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4">
+                <p id="child-select" className="text-w-small font-bold text-it-ink-600 dark:text-rink-100 mb-2">
                   신청 선수
                 </p>
                 <div className="flex flex-col gap-2">
@@ -427,6 +427,7 @@ function TournamentApplyContent() {
                           paymentStatus={c.isPaid ? 'PAID' : (c.paymentStatus ?? 'UNPAID')}
                           orderNumber={c.orderNumber ?? null}
                           cancelling={cancellingId === c.id}
+                          iceTheme
                           onPay={() => {
                             const params = new URLSearchParams({
                               orderNumber: c.orderNumber ?? '',
@@ -453,24 +454,24 @@ function TournamentApplyContent() {
                         aria-label={
                           !c.isEligible ? `${c.name} 참가 대상 아님` : c.name
                         }
-                        className={`flex items-center justify-between gap-3 px-4 py-3 rounded-xl border transition-colors motion-reduce:transition-none ${
+                        className={`flex items-center justify-between gap-3 px-4 py-3 rounded-w-md border-[1.5px] transition-colors motion-reduce:transition-none ${
                           !c.isEligible
-                            ? 'border-wline-2 dark:border-rink-700 bg-wbg dark:bg-rink-900/40'
+                            ? 'border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-900/40'
                             : active
-                              ? 'border-ice-500 bg-ice-500/5 dark:bg-ice-500/10'
-                              : 'border-wline-2 dark:border-rink-700 bg-white dark:bg-rink-800'
+                              ? 'border-it-blue-500 bg-it-blue-50 dark:bg-it-blue-500/10'
+                              : 'border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800'
                         } disabled:opacity-60 disabled:cursor-not-allowed`}
                       >
                         <span className="flex items-center gap-2 min-w-0">
-                          <Icon name="person" className={`text-[20px] ${active && c.isEligible ? 'text-ice-500' : 'text-wtext-3'}`} aria-hidden="true" />
-                          <span className="font-bold text-wtext-1 dark:text-white truncate">{c.name}</span>
+                          <Icon name="person" className={`text-[20px] ${active && c.isEligible ? 'text-it-blue-500' : 'text-it-ink-400'}`} aria-hidden="true" />
+                          <span className="font-bold text-it-ink-800 dark:text-white truncate">{c.name}</span>
                         </span>
                         {!c.isEligible ? (
-                          <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded-full bg-wline-2 text-wtext-3 dark:bg-rink-700 dark:text-rink-300 text-w-caption font-bold">
+                          <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded-w-pill bg-it-fill text-it-ink-400 dark:bg-rink-700 dark:text-rink-300 text-w-caption font-bold">
                             참가 대상 아님
                           </span>
                         ) : active ? (
-                          <Icon name="check_circle" className="text-ice-500 text-[20px]" filled aria-hidden="true" />
+                          <Icon name="check_circle" className="text-it-blue-500 text-[20px]" filled aria-hidden="true" />
                         ) : null}
                       </button>
                     );
@@ -478,44 +479,44 @@ function TournamentApplyContent() {
                 </div>
               </section>
             ) : (
-              <div className="rounded-xl border border-flame-200 bg-flame-50 dark:bg-flame-900/20 p-4 text-w-small text-flame-700 dark:text-flame-300">
+              <div className="mx-5 mt-2 rounded-w-md border border-it-red-200 bg-it-red-50 dark:bg-it-red-500/10 p-4 text-w-small text-it-red-700 dark:text-it-red-300">
                 이 대회에 참가 가능한 자녀가 없습니다. 코치/감독에게 참가 대상 등록을 문의하세요.
               </div>
             )}
 
-            {/* 결제 금액 요약 — 후불 대회는 금액 미확정이므로 안내 문구로 대체. */}
+            {/* 결제 금액 요약 — flat 흰 섹션. 후불 대회는 금액 미확정이므로 안내 문구로 대체. */}
             {isPostpaid ? (
-              <section aria-labelledby="amount-label" className="bg-white dark:bg-rink-800 rounded-2xl p-5 border border-wline-2 dark:border-rink-700">
-                <p id="amount-label" className="text-w-small font-medium text-wtext-3 dark:text-rink-300 mb-1">
+              <section aria-labelledby="amount-label" className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-5">
+                <p id="amount-label" className="text-w-small font-medium text-it-ink-500 dark:text-rink-300 mb-1">
                   참가비
                 </p>
-                <p className="text-w-title font-bold text-wtext-1 dark:text-white">
+                <p className="text-w-title font-bold text-it-ink-800 dark:text-white">
                   {MESSAGES.tournament.postpaidFeeLabel}
                 </p>
               </section>
             ) : (
-              <section aria-labelledby="amount-label" className="bg-white dark:bg-rink-800 rounded-2xl p-5 border border-wline-2 dark:border-rink-700">
-                <p id="amount-label" className="text-w-small font-medium text-wtext-3 dark:text-rink-300 mb-1">
+              <section aria-labelledby="amount-label" className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-5">
+                <p id="amount-label" className="text-w-small font-medium text-it-ink-500 dark:text-rink-300 mb-1">
                   총 결제 금액
                 </p>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-bold text-wtext-1 dark:text-white tracking-tight tabular-nums font-num">
+                  <span className="text-3xl font-bold text-it-ink-800 dark:text-white tracking-tight tabular-nums font-num">
                     {amount.toLocaleString('ko-KR')}
                   </span>
-                  <span className="text-xl font-medium text-wtext-1 dark:text-white">원</span>
+                  <span className="text-xl font-medium text-it-ink-800 dark:text-white">원</span>
                 </div>
               </section>
             )}
 
             {/* 후불 대회 — 결제 위젯 없이 참가 신청만. 안내 + 신청 버튼. */}
             {isPostpaid && (
-              <>
-                <div className="rounded-xl border border-ice-500/30 bg-ice-500/5 dark:bg-ice-500/10 p-4 flex items-start gap-2.5 text-w-small text-wtext-2 dark:text-rink-100">
-                  <Icon name="info" className="text-[18px] text-ice-500 shrink-0 mt-0.5" aria-hidden="true" filled />
+              <div className="bg-it-surface dark:bg-it-blue-950 px-5 pb-2 flex flex-col gap-5">
+                <div className="rounded-w-md border-[1.5px] border-it-blue-500/30 bg-it-blue-50 dark:bg-it-blue-500/10 p-4 flex items-start gap-2.5 text-w-small text-it-ink-600 dark:text-rink-100">
+                  <Icon name="info" className="text-[18px] text-it-blue-500 shrink-0 mt-0.5" aria-hidden="true" filled />
                   <span>{MESSAGES.tournament.postpaidNotice}</span>
                 </div>
                 {error && (
-                  <div className="rounded-xl border border-flame-200 bg-flame-50 dark:bg-flame-900/20 p-4 text-w-small text-flame-700 dark:text-flame-300">
+                  <div className="rounded-w-md border border-it-red-200 bg-it-red-50 dark:bg-it-red-500/10 p-4 text-w-small text-it-red-700 dark:text-it-red-300">
                     {error}
                   </div>
                 )}
@@ -524,7 +525,7 @@ function TournamentApplyContent() {
                     type="button"
                     onClick={handlePostpaidRegister}
                     disabled={!selectedChildId || childOptions.length === 0 || isRegistering}
-                    className="w-full bg-ice-500 hover:bg-ice-500/90 active:brightness-95 transition-all text-white rounded-xl py-4 px-6 shadow-md flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed font-bold text-w-title"
+                    className="w-full bg-it-blue-500 hover:bg-it-blue-600 active:brightness-95 transition-colors motion-reduce:transition-none text-white rounded-w-md py-4 px-6 shadow-sh-1 flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed font-bold text-w-title"
                   >
                     {isRegistering ? (
                       <span className="flex items-center gap-2">
@@ -538,23 +539,23 @@ function TournamentApplyContent() {
                   <button
                     type="button"
                     onClick={() => back()}
-                    className="w-full bg-wline-2 dark:bg-rink-700 text-wtext-2 dark:text-rink-100 rounded-xl py-3 font-semibold text-w-small"
+                    className="w-full bg-it-fill dark:bg-rink-700 text-it-ink-600 dark:text-rink-100 rounded-w-md py-3 font-semibold text-w-small"
                   >
                     돌아가기
                   </button>
                 </div>
-              </>
+              </div>
             )}
 
             {/* 토스 위젯 (initStarted 후에만 렌더 — 무료/후불 대회는 표시 안 함) */}
             {!isFree && !isPostpaid && (
-              <>
+              <div className="bg-it-surface dark:bg-it-blue-950 px-5 pt-2 pb-2 flex flex-col gap-5">
                 {!initStarted && (
                   <button
                     type="button"
                     onClick={startPayment}
                     disabled={!selectedChildId || childOptions.length === 0}
-                    className="w-full bg-ice-500 hover:bg-ice-500/90 active:brightness-95 transition-all text-white rounded-xl py-4 px-6 shadow-md font-bold text-w-title disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="w-full bg-it-blue-500 hover:bg-it-blue-600 active:brightness-95 transition-colors motion-reduce:transition-none text-white rounded-w-md py-4 px-6 shadow-sh-1 font-bold text-w-title disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     결제 진행하기
                   </button>
@@ -568,18 +569,18 @@ function TournamentApplyContent() {
                       <div id="agreement" className="min-h-[80px]" />
                     </section>
                     {!isReady && !error && (
-                      <div className="flex items-center justify-center py-2 gap-2 text-wtext-3 dark:text-rink-300">
+                      <div className="flex items-center justify-center py-2 gap-2 text-it-ink-400 dark:text-rink-300">
                         <Spinner className="w-4 h-4" />
                         <span className="text-w-caption">{MESSAGES.loading.paymentWidget}</span>
                       </div>
                     )}
                     {error && (
-                      <div className="rounded-xl border border-flame-200 bg-flame-50 dark:bg-flame-900/20 p-4 text-w-small text-flame-700 dark:text-flame-300">
+                      <div className="rounded-w-md border border-it-red-200 bg-it-red-50 dark:bg-it-red-500/10 p-4 text-w-small text-it-red-700 dark:text-it-red-300">
                         {error}
                       </div>
                     )}
                     <div className="flex flex-col gap-3 pt-2 pb-6">
-                      <div className="flex items-center justify-center gap-1.5 text-wtext-3 dark:text-rink-300">
+                      <div className="flex items-center justify-center gap-1.5 text-it-ink-400 dark:text-rink-300">
                         <Icon name="lock" filled className="text-w-small" />
                         <span className="text-w-caption font-medium">
                           {MESSAGES.payment2.securePayment} (TossPayments)
@@ -589,7 +590,7 @@ function TournamentApplyContent() {
                         type="button"
                         onClick={handlePayment}
                         disabled={!isReady || isPaying || !!error}
-                        className="w-full bg-ice-500 hover:bg-ice-500/90 active:brightness-95 transition-all text-white rounded-xl py-4 px-6 shadow-md flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed font-bold text-w-title"
+                        className="w-full bg-it-blue-500 hover:bg-it-blue-600 active:brightness-95 transition-colors motion-reduce:transition-none text-white rounded-w-md py-4 px-6 shadow-sh-1 flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed font-bold text-w-title"
                       >
                         {isPaying ? (
                           <span className="flex items-center gap-2">
@@ -603,18 +604,18 @@ function TournamentApplyContent() {
                       <button
                         type="button"
                         onClick={() => back()}
-                        className="w-full bg-wline-2 dark:bg-rink-700 text-wtext-2 dark:text-rink-100 rounded-xl py-3 font-semibold text-w-small"
+                        className="w-full bg-it-fill dark:bg-rink-700 text-it-ink-600 dark:text-rink-100 rounded-w-md py-3 font-semibold text-w-small"
                       >
                         돌아가기
                       </button>
                     </div>
                   </>
                 )}
-              </>
+              </div>
             )}
 
             {isFree && (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 dark:bg-emerald-900/20 p-4 text-w-small text-emerald-700 dark:text-emerald-300">
+              <div className="mx-5 mt-2 rounded-w-md border border-mint/30 bg-mint/10 dark:bg-mint/15 p-4 text-w-small text-mint">
                 무료 대회입니다. 결제 없이 참가 신청 가능합니다. 자세한 신청 방법은 코치/감독에게 문의하세요.
               </div>
             )}
@@ -630,9 +631,9 @@ function TournamentApplyContent() {
 function Row({ icon, label, value }: { icon: string; label: string; value: string }) {
   return (
     <div className="flex items-center gap-2">
-      <Icon name={icon} className="text-[18px] text-wtext-3 dark:text-rink-300" aria-hidden="true" />
-      <span className="text-w-small font-semibold text-wtext-3 dark:text-rink-300 min-w-[56px]">{label}</span>
-      <span className="text-w-small font-bold text-wtext-1 dark:text-white truncate">{value}</span>
+      <Icon name={icon} className="text-[18px] text-white/60" aria-hidden="true" />
+      <span className="text-w-small font-semibold text-white/60 min-w-[56px]">{label}</span>
+      <span className="text-w-small font-bold text-white truncate">{value}</span>
     </div>
   );
 }

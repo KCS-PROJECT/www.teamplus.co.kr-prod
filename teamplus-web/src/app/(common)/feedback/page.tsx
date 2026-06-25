@@ -51,16 +51,16 @@ const CATEGORY_LABEL: Record<string, string> = {
 const STATUS_META: Record<string, { label: string; color: string }> = {
   pending: {
     label: '접수됨',
-    color: 'bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-wtext-4',
+    color: 'bg-it-line-strong text-it-ink-700 dark:bg-rink-700 dark:text-wtext-4',
   },
   reviewed: {
     label: '검토 중',
-    color: 'bg-blue-100 text-ice-500 dark:bg-ice-500/25 dark:text-ice-500',
+    color: 'bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-500/25 dark:text-it-blue-200',
   },
   resolved: {
     label: '답변 완료',
     color:
-      'bg-emerald-100 text-mint-500 dark:bg-emerald-900/30 dark:text-mint-500',
+      'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
   },
 };
 
@@ -131,13 +131,13 @@ function WriteTab({
   if (isSubmitted) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
-        <div className="w-16 h-16 rounded-w-pill bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mb-4">
-          <Icon name="check_circle" className="text-4xl text-mint-500" aria-hidden="true" />
+        <div className="w-16 h-16 rounded-w-pill bg-it-blue-50 dark:bg-it-blue-500/15 flex items-center justify-center mb-4">
+          <Icon name="check_circle" className="text-4xl text-it-blue-500" aria-hidden="true" />
         </div>
-        <h3 className="text-card-title font-bold text-wtext-1 dark:text-white mb-2">
+        <h3 className="text-card-title font-bold text-it-ink-800 dark:text-white mb-2">
           {MESSAGES.feedback.submitted}
         </h3>
-        <p className="text-card-body text-wtext-3 dark:text-wtext-4 mb-6">
+        <p className="text-card-body text-it-ink-500 dark:text-wtext-4 mb-6">
           {MESSAGES.feedback.thanks}
         </p>
         <Button
@@ -162,18 +162,18 @@ function WriteTab({
     <form onSubmit={handleFormSubmit(onSubmit)} className="space-y-6" noValidate>
       {/* Intro */}
       <div>
-        <h2 className="text-card-emphasis font-bold text-wtext-1 dark:text-white mb-1">
+        <h2 className="text-card-emphasis font-bold text-it-ink-800 dark:text-white mb-1">
           의견을 들려주세요
         </h2>
-        <p className="text-card-meta text-wtext-3 dark:text-wtext-4 leading-relaxed">
+        <p className="text-card-meta text-it-ink-500 dark:text-wtext-4 leading-relaxed">
           서비스 개선을 위한 여러분의 소중한 의견을 기다리고 있어요.
         </p>
       </div>
 
       {/* 유형 */}
       <fieldset>
-        <legend className="block text-card-body font-semibold text-wtext-1 dark:text-white mb-3">
-          유형 <span className="text-flame-500" aria-hidden="true">*</span>
+        <legend className="block text-card-body font-semibold text-it-ink-800 dark:text-white mb-3">
+          유형 <span className="text-it-red-500" aria-hidden="true">*</span>
         </legend>
         <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="피드백 유형">
           {CATEGORIES.map((cat) => {
@@ -186,10 +186,10 @@ function WriteTab({
                 aria-checked={isActive}
                 onClick={() => setValue('category', cat.value, { shouldValidate: false })}
                 className={cn(
-                  'min-h-[48px] py-3 px-4 rounded-w-md text-card-body font-semibold border transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40',
+                  'min-h-[48px] py-3 px-4 rounded-w-md text-card-body font-semibold border-[1.5px] transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40',
                   isActive
-                    ? 'bg-ice-500 text-white border-ice-500 shadow-sh-1'
-                    : 'bg-wsurface dark:bg-rink-800 text-wtext-2 dark:text-wtext-4 border-wline-2 dark:border-rink-700 hover:border-ice-500/40 hover:text-ice-500 dark:hover:text-blue-300',
+                    ? 'bg-it-blue-500 text-white border-it-blue-500'
+                    : 'bg-it-fill dark:bg-rink-800 text-it-ink-700 dark:text-wtext-4 border-it-line-strong dark:border-rink-700 hover:border-it-blue-500/40 hover:text-it-blue-600 dark:hover:text-blue-300',
                 )}
               >
                 {cat.label}
@@ -203,9 +203,9 @@ function WriteTab({
       <div>
         <label
           htmlFor={contentId}
-          className="block text-card-body font-semibold text-wtext-1 dark:text-white mb-2"
+          className="block text-card-body font-semibold text-it-ink-800 dark:text-white mb-2"
         >
-          내용 <span className="text-flame-500" aria-hidden="true">*</span>
+          내용 <span className="text-it-red-500" aria-hidden="true">*</span>
         </label>
         <textarea
           id={contentId}
@@ -214,13 +214,13 @@ function WriteTab({
           rows={7}
           aria-required="true"
           aria-invalid={!!formErrors.content || !!serverError}
-          className="w-full px-4 py-3 rounded-w-md border border-wline-2 dark:border-rink-700 bg-wsurface dark:bg-rink-800 text-wtext-1 dark:text-white text-card-body resize-none focus:outline-none focus:ring-2 focus:ring-ice-500/30 focus:border-ice-500 transition-colors motion-reduce:transition-none"
+          className="w-full px-4 py-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 text-it-ink-800 dark:text-white text-card-body resize-none focus:outline-none focus:ring-2 focus:ring-it-blue-500/30 focus:border-it-blue-500 transition-colors motion-reduce:transition-none"
           maxLength={2000}
         />
         <div className="flex items-center justify-between mt-1.5">
-          <span className="text-card-meta text-wtext-3">최소 10자 · 최대 2000자</span>
-          <span className="text-card-meta text-wtext-3 tabular-nums">
-            <span className={cn('font-semibold', content.length > 1800 && 'text-sun-500 dark:text-sun-500')}>
+          <span className="text-card-meta text-it-ink-500">최소 10자 · 최대 2000자</span>
+          <span className="text-card-meta text-it-ink-500 tabular-nums">
+            <span className={cn('font-semibold', content.length > 1800 && 'text-it-red-500')}>
               {content.length}
             </span>
             /2000
@@ -229,7 +229,7 @@ function WriteTab({
       </div>
 
       {inlineError && (
-        <p className="text-card-body text-flame-500 dark:text-flame-500 flex items-center gap-1.5 p-3 rounded-lg bg-flame-100 dark:bg-flame-500/15 border border-red-100 dark:border-red-900/40" role="alert">
+        <p className="text-card-body text-it-red-600 dark:text-it-red-300 flex items-center gap-1.5 p-3 rounded-lg bg-it-red-50 dark:bg-it-red-500/15 border border-it-red-100 dark:border-it-red-500/30" role="alert">
           <Icon name="error" className="text-card-emphasis" aria-hidden="true" />
           {inlineError}
         </p>
@@ -292,13 +292,13 @@ function HistoryTab({
 
   if (error) {
     return (
-      <div className="p-6 rounded-w-md bg-flame-100 dark:bg-flame-500/15 text-center">
-        <Icon name="error_outline" className="text-3xl text-flame-500 mb-2" aria-hidden="true" />
-        <p className="text-card-body text-wtext-1 dark:text-white">{error}</p>
+      <div className="p-6 rounded-w-md bg-it-red-50 dark:bg-it-red-500/15 text-center">
+        <Icon name="error_outline" className="text-3xl text-it-red-500 mb-2" aria-hidden="true" />
+        <p className="text-card-body text-it-ink-800 dark:text-white">{error}</p>
         <button
           type="button"
           onClick={onRetry}
-          className="mt-3 h-10 px-5 rounded-lg bg-ice-500 text-white text-card-body font-semibold hover:bg-ice-600 transition-colors motion-reduce:transition-none"
+          className="mt-3 h-10 px-5 rounded-lg bg-it-blue-500 text-white text-card-body font-semibold hover:bg-it-blue-600 transition-colors motion-reduce:transition-none"
         >
           다시 시도
         </button>
@@ -309,13 +309,13 @@ function HistoryTab({
   if (feedbacks.length === 0) {
     return (
       <div className="py-16 text-center">
-        <div className="w-16 h-16 rounded-w-pill bg-wline-2 dark:bg-rink-700 flex items-center justify-center mx-auto mb-4">
-          <Icon name="feedback" className="text-3xl text-wtext-3 dark:text-wtext-4" aria-hidden="true" />
+        <div className="w-16 h-16 rounded-w-pill bg-it-line-strong dark:bg-rink-700 flex items-center justify-center mx-auto mb-4">
+          <Icon name="feedback" className="text-3xl text-it-ink-500 dark:text-wtext-4" aria-hidden="true" />
         </div>
-        <p className="text-card-body font-medium text-wtext-2 dark:text-wtext-4 mb-1">
+        <p className="text-card-body font-medium text-it-ink-700 dark:text-wtext-4 mb-1">
           아직 보낸 피드백이 없습니다
         </p>
-        <p className="text-card-meta text-wtext-3 mb-5">의견이나 문의가 있으시면 언제든 남겨주세요</p>
+        <p className="text-card-meta text-it-ink-500 mb-5">의견이나 문의가 있으시면 언제든 남겨주세요</p>
         <Button type="button" variant="primary" onClick={onGoWrite}>
           {MESSAGES.feedback.newFeedback}
         </Button>
@@ -333,10 +333,10 @@ function HistoryTab({
           <li
             key={fb.id}
             className={cn(
-              'scroll-mt-20 rounded-w-md bg-wsurface dark:bg-rink-800 border overflow-hidden transition-all duration-200 motion-reduce:transition-none',
+              'scroll-mt-20 rounded-w-md bg-it-surface dark:bg-rink-800 border-[1.5px] overflow-hidden transition-colors duration-200 motion-reduce:transition-none',
               isExpanded
-                ? 'border-ice-500/40 dark:border-ice-500/50 shadow-sh-1'
-                : 'border-wline-2 dark:border-rink-700 shadow-sh-1'
+                ? 'border-it-blue-500/50 dark:border-it-blue-500/50'
+                : 'border-it-line-strong dark:border-rink-700'
             )}
           >
             <button
@@ -344,31 +344,31 @@ function HistoryTab({
               onClick={() => onExpand(fb.id)}
               aria-expanded={isExpanded}
               aria-controls={`fb-panel-${fb.id}`}
-              className="w-full p-4 text-left hover:bg-wline-2/40 dark:hover:bg-rink-700/40 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 focus-visible:ring-inset"
+              className="w-full p-4 text-left hover:bg-it-fill dark:hover:bg-rink-700/40 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 focus-visible:ring-inset"
             >
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
                   <span className={cn('text-card-meta font-bold px-2 py-0.5 rounded', statusMeta.color)}>
                     {statusMeta.label}
                   </span>
-                  <span className="text-card-meta text-wtext-3 dark:text-wtext-4">
+                  <span className="text-card-meta text-it-ink-500 dark:text-wtext-4">
                     {CATEGORY_LABEL[fb.category] ?? fb.category}
                   </span>
                   {hasReply && (
                     <span
-                      className="inline-flex items-center gap-1 text-card-meta font-bold px-2 py-0.5 rounded bg-blue-100 text-ice-500 dark:bg-ice-500/25 dark:text-ice-500"
+                      className="inline-flex items-center gap-1 text-card-meta font-bold px-2 py-0.5 rounded bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-500/25 dark:text-it-blue-200"
                       aria-label="관리자 답변 있음"
                     >
-                      <span className="w-1.5 h-1.5 rounded-w-pill bg-blue-500" aria-hidden="true" />
+                      <span className="w-1.5 h-1.5 rounded-w-pill bg-it-blue-500" aria-hidden="true" />
                       답변 있음
                     </span>
                   )}
                 </div>
-                <span className="text-card-meta text-wtext-3 shrink-0 tabular-nums">
+                <span className="text-card-meta text-it-ink-500 shrink-0 tabular-nums">
                   {formatDate(fb.createdAt)}
                 </span>
               </div>
-              <p className="text-card-body text-wtext-1 dark:text-white line-clamp-2">
+              <p className="text-card-body text-it-ink-800 dark:text-white line-clamp-2">
                 {fb.content}
               </p>
             </button>
@@ -378,28 +378,28 @@ function HistoryTab({
                 id={`fb-panel-${fb.id}`}
                 role="region"
                 aria-label="피드백 상세"
-                className="px-4 pb-4 space-y-3 border-t border-wline-2 dark:border-rink-700 bg-wbg/50 dark:bg-puck/20"
+                className="px-4 pb-4 space-y-3 border-t border-it-line dark:border-rink-700 bg-it-fill/50 dark:bg-puck/20"
               >
                 <div className="pt-3">
-                  <p className="text-card-meta font-bold text-wtext-3 uppercase mb-1 tracking-wider">내 의견</p>
-                  <p className="text-card-body text-wtext-1 dark:text-white whitespace-pre-wrap leading-relaxed">
+                  <p className="text-card-meta font-bold text-it-ink-500 uppercase mb-1 tracking-wider">내 의견</p>
+                  <p className="text-card-body text-it-ink-800 dark:text-white whitespace-pre-wrap leading-relaxed">
                     {fb.content}
                   </p>
                 </div>
                 {hasReply ? (
-                  <div className="p-3 rounded-lg bg-ice-50 dark:bg-ice-500/15 border border-blue-100 dark:border-blue-900/40">
+                  <div className="p-3 rounded-lg bg-it-blue-50 dark:bg-it-blue-500/15 border border-it-blue-100 dark:border-it-blue-500/30">
                     <div className="flex items-center gap-1 mb-1">
-                      <Icon name="support_agent" className="text-ice-500 dark:text-ice-500 text-[16px]" aria-hidden="true" />
-                      <p className="text-card-meta font-bold text-ice-500 dark:text-ice-500 tabular-nums">
+                      <Icon name="support_agent" className="text-it-blue-600 dark:text-it-blue-200 text-[16px]" aria-hidden="true" />
+                      <p className="text-card-meta font-bold text-it-blue-600 dark:text-it-blue-200 tabular-nums">
                         관리자 답변 · {formatDate(fb.adminReplyAt!)}
                       </p>
                     </div>
-                    <p className="text-card-body text-wtext-1 dark:text-white whitespace-pre-wrap">
+                    <p className="text-card-body text-it-ink-800 dark:text-white whitespace-pre-wrap">
                       {fb.adminNote}
                     </p>
                   </div>
                 ) : (
-                  <p className="text-card-meta text-wtext-3 italic">
+                  <p className="text-card-meta text-it-ink-500 italic">
                     아직 답변이 등록되지 않았습니다
                   </p>
                 )}
@@ -517,12 +517,12 @@ function FeedbackTabs() {
         ref={tabsNavRef}
         role="tablist"
         aria-label="피드백 탭"
-        className="relative flex-none flex px-4 pt-2 bg-wsurface dark:bg-rink-800"
+        className="relative flex-none flex px-4 pt-2 bg-it-surface dark:bg-it-blue-950"
       >
         {/* 하단 가이드 라인 */}
         <span
           aria-hidden="true"
-          className="absolute bottom-0 left-0 right-0 h-px bg-wline-2 dark:bg-rink-700"
+          className="absolute bottom-0 left-0 right-0 h-px bg-it-line dark:bg-rink-700"
         />
 
         <button
@@ -534,8 +534,8 @@ function FeedbackTabs() {
           className={cn(
             'flex-1 py-3 text-card-body transition-colors duration-200 motion-reduce:transition-none',
             tab === 'write'
-              ? 'font-bold text-ice-500'
-              : 'font-semibold text-wtext-3 dark:text-wtext-4 hover:text-wtext-1 dark:hover:text-wtext-4',
+              ? 'font-bold text-it-blue-600'
+              : 'font-semibold text-it-ink-500 dark:text-wtext-4 hover:text-it-ink-800 dark:hover:text-wtext-4',
           )}
         >
           피드백 보내기
@@ -549,8 +549,8 @@ function FeedbackTabs() {
           className={cn(
             'relative flex-1 py-3 text-card-body transition-colors duration-200 motion-reduce:transition-none flex items-center justify-center gap-1.5',
             tab === 'history'
-              ? 'font-bold text-ice-500'
-              : 'font-semibold text-wtext-3 dark:text-wtext-4 hover:text-wtext-1 dark:hover:text-wtext-4',
+              ? 'font-bold text-it-blue-600'
+              : 'font-semibold text-it-ink-500 dark:text-wtext-4 hover:text-it-ink-800 dark:hover:text-wtext-4',
           )}
         >
           내 피드백 내역
@@ -559,8 +559,8 @@ function FeedbackTabs() {
               className={cn(
                 'inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-w-pill text-card-meta font-bold tabular-nums transition-colors motion-reduce:transition-none',
                 tab === 'history'
-                  ? 'bg-ice-500 text-white'
-                  : 'bg-wline-2 dark:bg-rink-700 text-wtext-2 dark:text-wtext-4',
+                  ? 'bg-it-blue-500 text-white'
+                  : 'bg-it-line-strong dark:bg-rink-700 text-it-ink-700 dark:text-wtext-4',
               )}
               aria-label={`답변 ${replyCount}건`}
             >
@@ -572,7 +572,7 @@ function FeedbackTabs() {
         {/* 슬라이딩 인디케이터 */}
         <span
           aria-hidden="true"
-          className="absolute bottom-0 h-[2px] rounded-t-full bg-ice-500 transition-[left,width] duration-300 ease-out motion-reduce:transition-none"
+          className="absolute bottom-0 h-[2px] rounded-t-full bg-it-blue-500 transition-[left,width] duration-300 ease-out motion-reduce:transition-none"
           style={{
             left: `${tabIndicator.left}px`,
             width: `${tabIndicator.width}px`,
@@ -581,7 +581,7 @@ function FeedbackTabs() {
         />
       </div>
 
-      <main className="flex-1 overflow-y-auto px-5 py-6 pb-30 hide-scrollbar">
+      <main className="flex-1 overflow-y-auto px-5 py-6 pb-30 hide-scrollbar bg-it-canvas dark:bg-puck">
         {tab === 'write' ? (
           <WriteTab
             onSubmitted={() => void loadHistory()}

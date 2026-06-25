@@ -50,6 +50,7 @@ import {
 // Utils
 // ---------------------------------------------------------------------------
 
+// 점수 막대 — 데이터 시각화. 종합=blue / 출석=초록(정규 SoT) / 대회=red(대회 SoT) / 코치=ink.
 const SCORE_BARS: Array<{
   key: keyof ReturnType<typeof parseReason>;
   label: string;
@@ -61,8 +62,8 @@ const SCORE_BARS: Array<{
     key: 'composite',
     label: '종합',
     weight: 100,
-    colorClass: 'bg-ice-500',
-    bgClass: 'bg-blue-100 dark:bg-blue-900/20',
+    colorClass: 'bg-it-blue-500',
+    bgClass: 'bg-it-blue-50 dark:bg-it-blue-900/30',
   },
   {
     key: 'attendance',
@@ -75,15 +76,15 @@ const SCORE_BARS: Array<{
     key: 'tournament',
     label: '대회',
     weight: 40,
-    colorClass: 'bg-indigo-500',
-    bgClass: 'bg-indigo-50 dark:bg-indigo-900/20',
+    colorClass: 'bg-it-red-500',
+    bgClass: 'bg-it-red-50 dark:bg-it-red-500/15',
   },
   {
     key: 'coach',
     label: '코치',
     weight: 20,
-    colorClass: 'bg-orange-500',
-    bgClass: 'bg-orange-50 dark:bg-orange-900/20',
+    colorClass: 'bg-it-ink-500',
+    bgClass: 'bg-it-line dark:bg-it-blue-900/40',
   },
 ];
 
@@ -109,10 +110,10 @@ function formatChangedAt(iso: string): string {
 
 function tierChipClass(tier: number): string {
   if (tier === 3)
-    return 'bg-blue-100 text-ice-500 dark:bg-blue-900/30 dark:text-blue-300';
+    return 'bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-900/40 dark:text-it-blue-300';
   if (tier === 2)
-    return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300';
-  return 'bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-100';
+    return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300';
+  return 'bg-it-line text-it-ink-600 dark:bg-it-blue-900/40 dark:text-it-ink-200';
 }
 
 // ---------------------------------------------------------------------------
@@ -138,8 +139,8 @@ function TierDiff({ item }: { item: PendingLevelApproval }) {
     direction === 'up'
       ? 'text-emerald-600 dark:text-emerald-400'
       : direction === 'down'
-        ? 'text-rose-600 dark:text-rose-400'
-        : 'text-wtext-3 dark:text-rink-300';
+        ? 'text-it-red-500 dark:text-it-red-400'
+        : 'text-it-ink-400 dark:text-it-ink-300';
 
   return (
     <div className="flex items-center gap-2">
@@ -152,8 +153,8 @@ function TierDiff({ item }: { item: PendingLevelApproval }) {
       </span>
       <div className={`flex size-7 items-center justify-center rounded-w-pill ${
         direction === 'up' ? 'bg-emerald-50 dark:bg-emerald-900/30'
-        : direction === 'down' ? 'bg-rose-50 dark:bg-rose-900/30'
-        : 'bg-wline-2 dark:bg-rink-700'
+        : direction === 'down' ? 'bg-it-red-50 dark:bg-it-red-500/15'
+        : 'bg-it-line dark:bg-it-blue-900/40'
       }`}>
         <Icon
           name={arrowIcon}
@@ -188,18 +189,18 @@ function ScoreBars({ reason }: { reason: string | null }) {
         return (
           <div
             key={bar.key}
-            className="flex flex-col gap-1.5 rounded-xl border border-wline-2 dark:border-rink-700 bg-white dark:bg-rink-800 p-2.5"
+            className="flex flex-col gap-1.5 rounded-w-md bg-it-fill dark:bg-it-blue-900/30 p-2.5"
           >
             <div className="flex items-center justify-between text-card-meta">
-              <span className="font-semibold text-wtext-2 dark:text-rink-100">
+              <span className="font-semibold text-it-ink-700 dark:text-it-ink-200">
                 {bar.label}
                 {bar.weight < 100 && (
-                  <span className="ml-1 text-card-meta font-medium text-wtext-3">
+                  <span className="ml-1 text-card-meta font-medium text-it-ink-400 dark:text-it-ink-300">
                     · {bar.weight}%
                   </span>
                 )}
               </span>
-              <span className="font-bold tabular-nums text-wtext-1 dark:text-white">
+              <span className="font-bold tabular-nums text-it-ink-800 dark:text-white">
                 {numeric.toFixed(1)}
               </span>
             </div>
@@ -242,32 +243,33 @@ function ApprovalCard({
   const name = formatName(item.user);
 
   return (
-    <article className="rounded-xl border border-wline bg-white dark:border-rink-700 dark:bg-rink-800 p-5 space-y-4">
+    // ICETIMES flat — 카드 박스 제거. 부모 섹션 divide-it-line hairline 으로 행 구분.
+    <div className="py-5 space-y-4">
       {/* 상단 — 이름 + 메타정보 */}
       <header className="flex flex-col gap-3">
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-col gap-1 min-w-0">
-            <h3 className="truncate text-card-emphasis font-bold text-wtext-1 dark:text-white">
+            <h3 className="truncate text-card-emphasis font-bold text-it-ink-800 dark:text-white">
               {name}
             </h3>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-card-meta text-wtext-3 dark:text-rink-300">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-card-meta text-it-ink-400 dark:text-it-ink-300">
               {item.season && (
                 <span className="inline-flex items-center gap-1">
-                  <Icon name="event" className="text-[13px]" aria-hidden="true" />
+                  <Icon name="event" className="text-[13px] text-it-blue-500" aria-hidden="true" />
                   {item.season}
                 </span>
               )}
               <span className="inline-flex items-center gap-1 tabular-nums">
-                <Icon name="schedule" className="text-[13px]" aria-hidden="true" />
+                <Icon name="schedule" className="text-[13px] text-it-blue-500" aria-hidden="true" />
                 {formatChangedAt(item.changedAt)}
               </span>
             </div>
           </div>
         </div>
 
-        {/* 등급 변화 — 전/후 비교 박스 */}
-        <div className="rounded-lg bg-wbg dark:bg-rink-700/50 px-4 py-3">
-          <p className="mb-2 text-card-meta font-bold uppercase tracking-wider text-wtext-3 dark:text-rink-300">
+        {/* 등급 변화 — 전/후 비교 inset */}
+        <div className="rounded-w-md bg-it-fill dark:bg-it-blue-900/30 px-4 py-3">
+          <p className="mb-2 text-card-meta font-bold uppercase tracking-wider text-it-ink-400 dark:text-it-ink-300">
             등급 변화
           </p>
           <TierDiff item={item} />
@@ -276,7 +278,7 @@ function ApprovalCard({
 
       {/* 점수 막대 */}
       <div>
-        <p className="mb-2 text-card-meta font-bold uppercase tracking-wider text-wtext-3 dark:text-rink-300">
+        <p className="mb-2 text-card-meta font-bold uppercase tracking-wider text-it-ink-400 dark:text-it-ink-300">
           점수 상세
         </p>
         <ScoreBars reason={item.reason} />
@@ -288,7 +290,7 @@ function ApprovalCard({
           type="button"
           onClick={() => onOverride(item)}
           disabled={isBusy}
-          className="h-12 rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-card-body font-bold text-wtext-2 dark:text-rink-100 transition-colors motion-reduce:transition-none hover:bg-wbg dark:hover:bg-rink-700 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+          className="h-12 rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-surface dark:bg-it-blue-950 text-card-body font-bold text-it-blue-600 dark:text-it-ink-200 transition-colors motion-reduce:transition-none hover:bg-it-fill dark:hover:bg-it-blue-900/40 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
         >
           직접 변경
         </button>
@@ -296,12 +298,12 @@ function ApprovalCard({
           type="button"
           onClick={() => onApprove(item.id)}
           disabled={isBusy}
-          className="h-12 rounded-xl bg-ice-500 text-card-body font-bold text-white transition-colors motion-reduce:transition-none hover:bg-ice-700 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+          className="h-12 rounded-w-md bg-it-blue-500 text-card-body font-bold text-white transition-colors motion-reduce:transition-none hover:bg-it-blue-600 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isBusy ? '처리 중...' : '승인하기'}
         </button>
       </footer>
-    </article>
+    </div>
   );
 }
 
@@ -341,25 +343,25 @@ function OverrideSheet({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-rink-900/50"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-it-ink-900/50"
       role="dialog"
       aria-modal="true"
       aria-labelledby="override-sheet-title"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-t-3xl bg-white dark:bg-rink-800 p-5 pb-8 space-y-4 max-h-[85vh] overflow-y-auto hide-scrollbar"
+        className="w-full max-w-md rounded-t-3xl bg-it-surface dark:bg-it-blue-950 p-5 pb-8 space-y-4 max-h-[85vh] overflow-y-auto hide-scrollbar"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="space-y-1">
           <h2
             id="override-sheet-title"
-            className="text-card-title font-bold text-wtext-1 dark:text-white"
+            className="text-card-title font-bold text-it-ink-800 dark:text-white"
           >
             등급 직접 변경
           </h2>
-          <p className="text-card-meta text-wtext-3 dark:text-rink-300">
-            <span className="font-semibold text-wtext-2 dark:text-rink-100">
+          <p className="text-card-meta text-it-ink-400 dark:text-it-ink-300">
+            <span className="font-semibold text-it-ink-700 dark:text-it-ink-200">
               {formatName(item.user)}
             </span>
             님의 새 등급을 선택하세요.
@@ -376,10 +378,10 @@ function OverrideSheet({
                 role="radio"
                 aria-checked={active}
                 onClick={() => setSelected(t.level)}
-                className={`w-full rounded-xl border p-3 text-left transition-colors motion-reduce:transition-none ${
+                className={`w-full rounded-w-md border-[1.5px] p-3 text-left transition-colors motion-reduce:transition-none ${
                   active
-                    ? 'border-ice-500 bg-blue-50 dark:bg-blue-900/20'
-                    : 'border-wline dark:border-rink-700 bg-white dark:bg-rink-800 hover:bg-wbg dark:hover:bg-rink-700'
+                    ? 'border-it-blue-500 bg-it-blue-50 dark:border-it-blue-500 dark:bg-it-blue-900/30'
+                    : 'border-it-line-strong dark:border-it-blue-900 bg-it-surface dark:bg-it-blue-950 hover:bg-it-fill dark:hover:bg-it-blue-900/40'
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
@@ -393,12 +395,12 @@ function OverrideSheet({
                   {active && (
                     <Icon
                       name="check_circle"
-                      className="text-xl text-ice-500"
+                      className="text-xl text-it-blue-500"
                       aria-hidden="true"
                     />
                   )}
                 </div>
-                <p className="mt-1.5 text-card-meta text-wtext-3 dark:text-rink-300">
+                <p className="mt-1.5 text-card-meta text-it-ink-400 dark:text-it-ink-300">
                   {t.desc}
                 </p>
               </button>
@@ -411,7 +413,7 @@ function OverrideSheet({
             type="button"
             onClick={onClose}
             disabled={busy}
-            className="h-12 rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-card-body font-bold text-wtext-2 dark:text-rink-100 transition-colors motion-reduce:transition-none hover:bg-wbg dark:hover:bg-rink-700 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+            className="h-12 rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-surface dark:bg-it-blue-950 text-card-body font-bold text-it-ink-700 dark:text-it-ink-200 transition-colors motion-reduce:transition-none hover:bg-it-fill dark:hover:bg-it-blue-900/40 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {MESSAGES.common.cancel}
           </button>
@@ -421,7 +423,7 @@ function OverrideSheet({
               if (selected && !busy) onSubmit(item.id, selected);
             }}
             disabled={busy || !selected}
-            className="h-12 rounded-xl bg-ice-500 text-card-body font-bold text-white transition-colors motion-reduce:transition-none hover:bg-ice-700 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+            className="h-12 rounded-w-md bg-it-blue-500 text-card-body font-bold text-white transition-colors motion-reduce:transition-none hover:bg-it-blue-600 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy ? '처리 중...' : '변경하기'}
           </button>
@@ -507,89 +509,96 @@ export default function DirectorLevelApprovalsPage() {
       <PageAppBar title="선수 등급 승인" forceNative />
 
       <main
-        className="hide-scrollbar flex-1 overflow-y-auto pb-10 bg-wbg dark:bg-rink-900"
+        className="hide-scrollbar flex-1 overflow-y-auto bg-it-canvas dark:bg-puck !pb-8"
         role="main"
         aria-label="선수 등급 승인"
       >
-        {/* 요약 배너 */}
-        <section className="px-4 pt-4" aria-label="승인 대기 요약">
-          <div className="rounded-2xl bg-ice-500 p-5 text-white shadow-md">
-            <div className="mb-3 flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/15">
-                <Icon name="military_tech" className="text-[18px] text-white" aria-hidden="true" />
-              </div>
-              <h2 className="text-card-body font-semibold text-white/90">선수 등급 자동 산정</h2>
+        {/* 요약 — navy 히어로 밴드 full-bleed (ICETIMES §3) */}
+        <section className="bg-it-blue-800 dark:bg-it-blue-950 px-5 pt-6 pb-6 text-white" aria-label="승인 대기 요약">
+          <div className="mb-3 flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-w-md bg-white/15">
+              <Icon name="military_tech" className="text-[18px] text-white" aria-hidden="true" />
             </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-4xl font-bold tabular-nums">{isLoading ? '-' : totalCount}</span>
-              <span className="text-card-body font-medium text-white/70">건 대기 중</span>
-            </div>
-            <p className="mt-2 text-card-meta text-white/80 leading-relaxed">
-              종합 점수 = 출석률 × 40% + 대회 × 40% + 코치 평가 × 20%
-            </p>
+            <h2 className="text-card-body font-semibold text-white/90">선수 등급 자동 산정</h2>
           </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-[38px] font-extrabold font-num tabular-nums leading-none">{isLoading ? '-' : totalCount}</span>
+            <span className="text-card-body font-medium text-white/70">건 대기 중</span>
+          </div>
+          <p className="mt-2 text-card-meta text-white/70 leading-relaxed">
+            종합 점수 = 출석률 × 40% + 대회 × 40% + 코치 평가 × 20%
+          </p>
         </section>
 
-        {/* 시즌 필터 */}
-        <section className="px-4 pt-4" aria-label="시즌 선택">
-          <div className="rounded-xl border border-wline bg-white dark:border-rink-700 dark:bg-rink-800 p-5">
-            <label
-              htmlFor="season-select"
-              className="mb-2 block text-card-meta font-bold uppercase tracking-wider text-wtext-3 dark:text-rink-300"
+        {/* 시즌 필터 — full-bleed 흰 섹션 (8px 회색 갭) */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-5" aria-label="시즌 선택">
+          <label
+            htmlFor="season-select"
+            className="mb-2 block text-card-meta font-bold uppercase tracking-wider text-it-ink-400 dark:text-it-ink-300"
+          >
+            시즌 선택
+          </label>
+          <div className="relative">
+            <Icon
+              name="event_available"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-card-emphasis text-it-blue-500"
+              aria-hidden="true"
+            />
+            <select
+              id="season-select"
+              value={season}
+              onChange={(e) => setSeason(e.target.value)}
+              className="h-12 w-full cursor-pointer appearance-none rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-900/40 pl-9 pr-9 text-card-body font-medium text-it-ink-800 dark:text-white outline-none transition-colors motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20"
+              aria-label="시즌 선택"
             >
-              시즌 선택
-            </label>
-            <div className="relative">
-              <Icon
-                name="event_available"
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-card-emphasis text-wtext-3 dark:text-rink-300"
-                aria-hidden="true"
-              />
-              <select
-                id="season-select"
-                value={season}
-                onChange={(e) => setSeason(e.target.value)}
-                className="h-12 w-full cursor-pointer appearance-none rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-700 pl-9 pr-9 text-card-body font-medium text-wtext-1 dark:text-white outline-none transition-colors motion-reduce:transition-none focus:border-ice-500 focus:ring-1 focus:ring-ice-500"
-                aria-label="시즌 선택"
-              >
-                {seasonOptions.map((s) => (
-                  <option key={s} value={s}>
-                    {s} 시즌
-                  </option>
-                ))}
-              </select>
-              <Icon
-                name="expand_more"
-                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-card-emphasis text-wtext-3 dark:text-rink-300"
-                aria-hidden="true"
-              />
-            </div>
+              {seasonOptions.map((s) => (
+                <option key={s} value={s}>
+                  {s} 시즌
+                </option>
+              ))}
+            </select>
+            <Icon
+              name="expand_more"
+              className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-card-emphasis text-it-ink-400 dark:text-it-ink-300"
+              aria-hidden="true"
+            />
           </div>
         </section>
 
-        {/* 리스트 */}
+        {/* 리스트 — full-bleed 흰 섹션 + hairline 구분 행 */}
         {isLoading ? null : totalCount === 0 ? (
-          <EmptyState
-            variant="generic"
-            icon="military_tech"
-            title={MESSAGES.approvals.emptyApprovalHistory}
-            description="자동 계산된 등급 변경 요청이 이 시즌에는 없습니다."
-            className="mt-6"
-          />
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
+            <EmptyState
+              variant="generic"
+              icon="military_tech"
+              title={MESSAGES.approvals.emptyApprovalHistory}
+              description="자동 계산된 등급 변경 요청이 이 시즌에는 없습니다."
+            />
+          </section>
         ) : (
           <section
-            className="px-4 pt-4 pb-6 space-y-3"
+            className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 pt-5 pb-7"
             aria-label="승인 대기 목록"
           >
-            {items.map((item) => (
-              <ApprovalCard
-                key={item.id}
-                item={item}
-                onApprove={handleApprove}
-                onOverride={setOverrideTarget}
-                busyId={busyId}
-              />
-            ))}
+            <div className="flex items-baseline gap-2 pb-1">
+              <h2 className="text-it-ink-800 dark:text-white tracking-[-0.02em] font-extrabold text-[17px]">
+                승인 대기
+              </h2>
+              <span className="text-[15px] font-extrabold font-num tabular-nums text-it-blue-500">
+                {totalCount}
+              </span>
+            </div>
+            <div className="flex flex-col divide-y divide-it-line dark:divide-it-blue-900">
+              {items.map((item) => (
+                <ApprovalCard
+                  key={item.id}
+                  item={item}
+                  onApprove={handleApprove}
+                  onOverride={setOverrideTarget}
+                  busyId={busyId}
+                />
+              ))}
+            </div>
           </section>
         )}
       </main>

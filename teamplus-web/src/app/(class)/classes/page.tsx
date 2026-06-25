@@ -562,7 +562,7 @@ const ChildClassCard = memo(function ChildClassCard({
       : formatClassTime(item.startTime, item.endTime);
   const daysLabel = dayScheduleLabel ?? formatScheduleLabel(item);
   const rawTypeLabel = TRAINING_TYPE_LABEL[item.trainingType];
-  const typeLabel = rawTypeLabel === '정규수업' ? '정규훈련' : rawTypeLabel;
+  const typeLabel = rawTypeLabel;
 
   // [2026-05-19] 등록상태 분기 (학생 본인 시점 — 연령 분기는 user.birthDate 미보장으로 skip)
   const isAlreadyEnrolled = enrolledClassIds?.has(item.id) ?? false;
@@ -694,7 +694,7 @@ const TeenClassCard = memo(function TeenClassCard({
       ? (item.scheduleTimeLabel ?? null)
       : formatClassTime(item.startTime, item.endTime);
   const rawTypeLabel = TRAINING_TYPE_LABEL[item.trainingType];
-  const typeLabel = rawTypeLabel === '정규수업' ? '정규훈련' : rawTypeLabel;
+  const typeLabel = rawTypeLabel;
   const daysLabel = dayScheduleLabel ?? formatScheduleLabel(item);
   const theme = getTeenTheme(item.trainingType);
   // [2026-05-19] 등록상태 분기 (Teen 본인 시점 — 연령 분기 skip)
@@ -851,7 +851,7 @@ const DefaultClassCard = memo(function DefaultClassCard({
       ? (item.scheduleTimeLabel ?? null)
       : formatClassTime(item.startTime, item.endTime);
   const rawTypeLabel = TRAINING_TYPE_LABEL[item.trainingType];
-  const typeLabel = rawTypeLabel === '정규수업' ? '정규훈련' : rawTypeLabel;
+  const typeLabel = rawTypeLabel;
   const daysLabel = dayScheduleLabel ?? formatScheduleLabel(item);
 
   // [2026-05-19 추가] 등록 상태 분기

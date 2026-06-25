@@ -91,7 +91,7 @@ function ImageGallery({
 }) {
   const count = Math.max(images.length, 1);
   return (
-    <div className="relative w-full aspect-[4/5] bg-wline-2 dark:bg-rink-800">
+    <div className="relative w-full aspect-[4/5] bg-it-fill dark:bg-rink-800">
       <div className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar h-full w-full">
         {count > 0 && images.length > 0 ? (
           images.map((img) => (
@@ -111,7 +111,7 @@ function ImageGallery({
           <div className="snap-center shrink-0 w-full h-full flex items-center justify-center">
             <Icon
               name="checkroom"
-              className="text-8xl text-wtext-4 dark:text-rink-500"
+              className="text-8xl text-it-ink-400 dark:text-rink-500"
             />
           </div>
         )}
@@ -147,7 +147,7 @@ function OptionSelector({
 }) {
   return (
     <div>
-      <h3 className="text-card-body font-semibold text-wtext-1 dark:text-white mb-3">
+      <h3 className="text-card-body font-semibold text-it-ink-800 dark:text-white mb-3">
         {optionName}
       </h3>
       <div className="flex flex-wrap gap-3">
@@ -157,12 +157,12 @@ function OptionSelector({
             key={opt.id}
             onClick={() => opt.available && onSelect(opt.id)}
             disabled={!opt.available}
-            className={`flex items-center justify-center min-w-[3rem] h-10 px-3 rounded-lg border text-card-body font-medium transition-all motion-reduce:transition-none ${
+            className={`flex items-center justify-center min-w-[3rem] h-10 px-3 rounded-w-md border-[1.5px] text-card-body font-medium transition-all motion-reduce:transition-none ${
               !opt.available
-                ? "opacity-40 cursor-not-allowed border-wline dark:border-rink-700 text-wtext-3"
+                ? "opacity-40 cursor-not-allowed border-it-line dark:border-rink-700 text-it-ink-400"
                 : selectedValue === opt.id
-                  ? "border-ice-500 bg-ice-500/5 text-ice-500"
-                  : "border-wline dark:border-rink-700 bg-white dark:bg-white/5 text-wtext-1 dark:text-white hover:border-ice-500/50"
+                  ? "border-it-blue-500 bg-it-blue-50 text-it-blue-500"
+                  : "border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-white/5 text-it-ink-800 dark:text-white hover:border-it-blue-400"
             }`}
           >
             {opt.value}
@@ -260,8 +260,8 @@ export default function ProductDetailPage() {
   if (isLoading) {
     return (
       <MobileContainer hasBottomNav={false}>
-        <div className="flex-1 flex items-center justify-center">
-          <div className="w-8 h-8 border-2 border-ice-500 border-t-transparent rounded-w-pill animate-spin motion-reduce:animate-none" />
+        <div className="flex-1 flex items-center justify-center bg-it-canvas dark:bg-puck">
+          <div className="w-8 h-8 border-2 border-it-blue-500 border-t-transparent rounded-w-pill animate-spin motion-reduce:animate-none" />
         </div>
       </MobileContainer>
     );
@@ -273,9 +273,9 @@ export default function ProductDetailPage() {
         {/* [appbar-harness-v3 분류 C → A] 빈 상태도 PageAppBar SoT 사용 (variant='detail') */}
         {/* [2026-05-26 Track D B6] showAppBar:false → forceNative 로 Native/Web 동일 AppBar(뒤로가기 포함) 노출 */}
         <PageAppBar variant="detail" title="상품 상세" forceNative />
-        <div className="flex-1 flex flex-col items-center justify-center gap-4">
-          <Icon name="inventory_2" className="text-5xl text-wtext-4" />
-          <p className="text-wtext-3">상품을 찾을 수 없습니다.</p>
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 bg-it-canvas dark:bg-puck">
+          <Icon name="inventory_2" className="text-5xl text-it-ink-400" />
+          <p className="text-it-ink-500">상품을 찾을 수 없습니다.</p>
         </div>
       </MobileContainer>
     );
@@ -312,7 +312,7 @@ export default function ProductDetailPage() {
       />
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto pb-30 no-scrollbar">
+      <main className="flex-1 overflow-y-auto pb-30 no-scrollbar bg-it-canvas dark:bg-puck">
         {/* Image Gallery */}
         <ImageGallery
           images={product.images}
@@ -320,151 +320,156 @@ export default function ProductDetailPage() {
           onIndexChange={setCurrentImageIndex}
         />
 
-        {/* Product Info */}
-        <div className="px-5 pt-6 flex flex-col gap-2">
+        {/* Product Info — flat 흰 섹션 */}
+        <section className="bg-it-surface dark:bg-rink-800 px-5 pt-6 pb-6 flex flex-col gap-2">
           <div className="flex justify-between items-start gap-4">
-            <h1 className="text-2xl font-bold leading-tight text-wtext-1 dark:text-white">
+            <h1 className="text-2xl font-bold leading-tight text-it-ink-800 dark:text-white">
               {product.name}
             </h1>
             <button
               type="button"
               onClick={() => setIsFavorite(!isFavorite)}
-              className="text-wtext-3 dark:text-rink-300 hover:text-ice-500 transition-colors motion-reduce:transition-none pt-1"
+              className="text-it-ink-400 dark:text-rink-300 hover:text-it-blue-500 transition-colors motion-reduce:transition-none pt-1"
             >
               <Icon
                 name="favorite"
                 filled={isFavorite}
-                className={`text-[28px] ${isFavorite ? "text-red-500" : ""}`}
+                className={`text-[28px] ${isFavorite ? "text-it-red-500" : ""}`}
               />
             </button>
           </div>
           {(product.rating > 0 || product.reviewCount > 0) && (
             <div className="flex items-center gap-2 text-card-body">
               <StarRating rating={product.rating} size="lg" />
-              <span className="font-bold text-wtext-1 dark:text-white">
+              <span className="font-bold text-it-ink-800 dark:text-white">
                 {product.rating.toFixed(1)}
               </span>
-              <span className="text-wtext-3 dark:text-rink-300 underline decoration-slate-300 dark:decoration-slate-600">
+              <span className="text-it-ink-400 dark:text-rink-300 underline decoration-it-line-strong dark:decoration-slate-600">
                 ({product.reviewCount}개의 리뷰)
               </span>
             </div>
           )}
           <div className="mt-2 flex items-baseline gap-2 justify-end">
-            <h2 className="text-2xl font-bold text-ice-500">
+            <h2 className="text-2xl font-bold text-it-blue-500 tabular-nums">
               {product.price.toLocaleString()}원
             </h2>
             {product.originalPrice && product.originalPrice > product.price && (
               <>
-                <span className="text-wtext-3 line-through text-card-body">
+                <span className="text-it-ink-400 line-through text-card-body tabular-nums">
                   {product.originalPrice.toLocaleString()}원
                 </span>
                 {discount > 0 && (
-                  <span className="bg-ice-500/10 text-ice-500 text-card-meta font-bold px-2 py-1 rounded-lg">
+                  <span className="bg-it-red-50 text-it-red-500 text-card-meta font-bold px-2 py-1 rounded-w-md">
                     {discount}% 할인
                   </span>
                 )}
               </>
             )}
           </div>
-        </div>
+        </section>
 
-        {/* Options */}
+        {/* Options — flat 흰 섹션 */}
         {Object.keys(optionGroups).length > 0 && (
-          <div className="px-5 mt-8 space-y-6">
-            {Object.entries(optionGroups).map(([optionName, values]) => (
-              <OptionSelector
-                key={optionName}
-                optionName={optionName}
-                values={values}
-                selectedValue={selectedOptions[optionName] ?? ""}
-                onSelect={(id) =>
-                  setSelectedOptions((prev) => ({ ...prev, [optionName]: id }))
-                }
-              />
-            ))}
-          </div>
+          <>
+            <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+            <section className="bg-it-surface dark:bg-rink-800 px-5 py-6 space-y-6">
+              {Object.entries(optionGroups).map(([optionName, values]) => (
+                <OptionSelector
+                  key={optionName}
+                  optionName={optionName}
+                  values={values}
+                  selectedValue={selectedOptions[optionName] ?? ""}
+                  onSelect={(id) =>
+                    setSelectedOptions((prev) => ({ ...prev, [optionName]: id }))
+                  }
+                />
+              ))}
+            </section>
+          </>
         )}
 
-        {/* Product Description */}
+        {/* Product Description — flat 흰 섹션 */}
         {product.description && (
-          <div className="px-5 mt-8">
-            <h3 className="text-card-body font-semibold text-wtext-1 dark:text-white mb-3">
-              상품 정보
-            </h3>
-            <div className="relative">
-              <p className="text-wtext-2 dark:text-rink-100 text-card-body leading-relaxed whitespace-pre-line">
+          <>
+            <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+            <section className="bg-it-surface dark:bg-rink-800 px-5 py-6">
+              <h3 className="text-card-body font-semibold text-it-ink-800 dark:text-white mb-3">
+                상품 정보
+              </h3>
+              <p className="text-it-ink-700 dark:text-rink-100 text-card-body leading-relaxed whitespace-pre-line">
                 {product.description}
               </p>
-            </div>
-          </div>
+            </section>
+          </>
         )}
 
-        {/* Divider */}
-        <div className="h-px bg-wline dark:bg-rink-800 mx-5 my-8" />
-
-        {/* Reviews Summary */}
+        {/* Reviews Summary — flat 흰 섹션 */}
         {product.reviewCount > 0 && (
-          <div className="px-5 pb-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-card-title font-bold text-wtext-1 dark:text-white">
-                리뷰{" "}
-                <span className="text-wtext-3 font-normal text-card-body ml-1">
-                  ({product.reviewCount})
+          <>
+            <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+            <section className="bg-it-surface dark:bg-rink-800 px-5 py-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-card-title font-bold text-it-ink-800 dark:text-white">
+                  리뷰{" "}
+                  <span className="text-it-ink-400 font-normal text-card-body ml-1">
+                    ({product.reviewCount})
+                  </span>
+                </h3>
+              </div>
+              <div className="flex items-center gap-4 p-4 bg-it-fill dark:bg-rink-800/50 rounded-w-md border border-it-line dark:border-rink-700">
+                <StarRating rating={product.rating} size="lg" />
+                <span className="text-2xl font-bold text-it-ink-800 dark:text-white tabular-nums">
+                  {product.rating.toFixed(1)}
                 </span>
-              </h3>
-            </div>
-            <div className="flex items-center gap-4 p-4 bg-wbg dark:bg-rink-800/50 rounded-xl border border-wline-2 dark:border-rink-700">
-              <StarRating rating={product.rating} size="lg" />
-              <span className="text-2xl font-bold text-wtext-1 dark:text-white">
-                {product.rating.toFixed(1)}
-              </span>
-              <span className="text-card-body text-wtext-3 dark:text-rink-300">
-                / 5.0
-              </span>
-            </div>
-          </div>
+                <span className="text-card-body text-it-ink-400 dark:text-rink-300">
+                  / 5.0
+                </span>
+              </div>
+            </section>
+          </>
         )}
 
-        {/* Shipping Info */}
-        <div className="px-5 pb-8 space-y-3">
-          <div className="flex items-start gap-3 p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-100 dark:border-blue-900/20">
-            <Icon name="local_shipping" className="text-ice-500 mt-0.5" />
+        {/* Shipping Info — flat 흰 섹션 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+        <section className="bg-it-surface dark:bg-rink-800 px-5 py-6 space-y-3">
+          <div className="flex items-start gap-3 p-4 bg-it-blue-50 dark:bg-it-blue-900/10 rounded-w-md border border-it-blue-100 dark:border-it-blue-900/20">
+            <Icon name="local_shipping" className="text-it-blue-500 mt-0.5" />
             <div>
-              <div className="text-card-body font-bold text-wtext-1 dark:text-white">
+              <div className="text-card-body font-bold text-it-ink-800 dark:text-white">
                 무료 배송
               </div>
-              <div className="text-card-meta text-wtext-3 dark:text-rink-300 mt-0.5">
+              <div className="text-card-meta text-it-ink-500 dark:text-rink-300 mt-0.5">
                 주문 후 2~4일 이내 도착 예정
               </div>
             </div>
           </div>
-          <div className="flex items-start gap-3 p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-100 dark:border-blue-900/20">
-            <Icon name="verified_user" className="text-ice-500 mt-0.5" />
+          <div className="flex items-start gap-3 p-4 bg-it-blue-50 dark:bg-it-blue-900/10 rounded-w-md border border-it-blue-100 dark:border-it-blue-900/20">
+            <Icon name="verified_user" className="text-it-blue-500 mt-0.5" />
             <div>
-              <div className="text-card-body font-bold text-wtext-1 dark:text-white">
+              <div className="text-card-body font-bold text-it-ink-800 dark:text-white">
                 정품 보증
               </div>
-              <div className="text-card-meta text-wtext-3 dark:text-rink-300 mt-0.5">
+              <div className="text-card-meta text-it-ink-500 dark:text-rink-300 mt-0.5">
                 100% 정품을 보장하며 가품일 시 200% 환불
               </div>
             </div>
           </div>
-        </div>
+        </section>
       </main>
 
       {/* Fixed Bottom CTA */}
-      <div className="fixed bottom-0 fixed-center-x p-4 bg-white dark:bg-rink-900 border-t border-wline-2 dark:border-rink-800 z-40">
+      <div className="fixed bottom-0 fixed-center-x p-4 bg-it-surface dark:bg-rink-900 border-t border-it-line dark:border-rink-800 z-40">
         <div className="flex gap-3">
           <button
             type="button"
-            className="flex-1 h-12 rounded-xl border border-ice-500/20 bg-ice-500/5 text-ice-500 font-bold flex items-center justify-center gap-2 hover:bg-ice-500/10 transition-colors motion-reduce:transition-none"
+            className="flex-1 h-12 rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill text-it-blue-500 font-bold flex items-center justify-center gap-2 hover:bg-it-blue-50 transition-colors motion-reduce:transition-none"
           >
             <Icon name="add_shopping_cart" />
             장바구니
           </button>
           <button
             type="button"
-            className="flex-[2] h-12 rounded-xl bg-ice-500 text-white font-bold shadow-md flex items-center justify-center gap-2 hover:bg-ice-500/90 active:brightness-95 transition-all motion-reduce:transition-none"
+            className="flex-[2] h-12 rounded-w-md bg-it-blue-500 text-white font-bold flex items-center justify-center gap-2 hover:bg-it-blue-600 active:brightness-95 transition-all motion-reduce:transition-none"
           >
             구매하기
           </button>

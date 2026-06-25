@@ -43,6 +43,95 @@ const GROUP_META: { key: GroupKey; label: string; icon: string }[] = [
 interface MemberPushComposerProps {
   /** 진입 컨텍스트(역할) — 토스트/로깅 구분용. 권한 가드는 layout 이 처리. */
   context?: 'director' | 'coach';
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 main 회색 캔버스(bg-it-canvas) + 입력/칩/버튼 it-* 토큰 적용.
+   *   (현재 /director-members/push · /coach-members/push 화면만 전달.)
+   */
+  iceTheme?: boolean;
+}
+
+/**
+ * iceTheme 클래스 토큰 맵. false = 기존 클래스 문자열 1:1(회귀 0), true = it-* 정합.
+ * 단일 JSX 에 변수로 주입하여 분기별 마크업 중복 없이 회귀 안전을 보장한다.
+ */
+function pushTokens(iceTheme: boolean) {
+  if (iceTheme) {
+    return {
+      main: 'flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck',
+      desc: 'text-card-meta font-medium text-it-ink-500 dark:text-rink-300',
+      sectionTitle: 'mb-2 text-card-meta font-bold uppercase tracking-[0.12em] text-it-ink-500 dark:text-rink-300',
+      skeleton: 'animate-pulse rounded-w-md bg-it-fill dark:bg-it-blue-900',
+      teamCard: 'flex items-center gap-3 rounded-w-md border-[1.5px] border-it-line-strong bg-it-surface px-4 py-3 dark:border-it-blue-900 dark:bg-it-blue-950',
+      teamIconWrap: 'flex size-9 shrink-0 items-center justify-center rounded-w-pill bg-it-blue-50 dark:bg-it-blue-500/15',
+      teamIcon: 'text-[20px] text-it-blue-500',
+      teamName: 'flex-1 truncate text-card-body font-bold text-it-ink-800 dark:text-white',
+      teamRadioActive: 'border-it-blue-500 bg-it-blue-50 dark:border-it-blue-500 dark:bg-it-blue-500/15',
+      teamRadioIdle: 'border-it-line-strong bg-it-surface hover:bg-it-fill dark:border-it-blue-900 dark:bg-it-blue-950 dark:hover:bg-it-blue-900/40',
+      teamRadioIconActive: 'text-it-blue-500',
+      teamRadioIconIdle: 'text-it-ink-400 dark:text-rink-300',
+      teamRadioLabelActive: 'text-it-blue-500',
+      teamRadioLabelIdle: 'text-it-ink-800 dark:text-white',
+      teamRadioCheck: 'text-[22px] text-it-blue-500',
+      selectedCount: 'text-card-meta font-bold font-num tabular-nums text-it-blue-500',
+      search: 'h-12 w-full rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill pl-11 pr-10 text-card-body text-it-ink-800 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none placeholder:text-it-ink-400 focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 dark:border-it-blue-900 dark:bg-it-blue-900/40 dark:text-white dark:placeholder:text-rink-300',
+      searchIcon: 'pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[20px] text-it-ink-400 dark:text-rink-300',
+      searchClear: 'absolute right-3 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-w-pill text-it-ink-400 transition-colors motion-reduce:transition-none hover:bg-it-fill hover:text-it-ink-800 dark:hover:bg-it-blue-900/40 dark:hover:text-white',
+      selectAllBtn: 'inline-flex h-9 items-center gap-1.5 self-start rounded-w-md border-[1.5px] border-it-line-strong bg-it-surface px-3 text-card-meta font-bold text-it-ink-600 transition-colors motion-reduce:transition-none hover:bg-it-fill active:brightness-95 disabled:cursor-not-allowed disabled:opacity-40 dark:border-it-blue-900 dark:bg-it-blue-950 dark:text-rink-200 dark:hover:bg-it-blue-900/40',
+      groupIcon: 'text-[16px] text-it-blue-500',
+      groupLabel: 'text-card-meta font-bold text-it-ink-600 dark:text-rink-200',
+      groupCount: 'text-card-meta font-bold font-num tabular-nums text-it-ink-400 dark:text-rink-300',
+      recipientActive: 'border-it-blue-500 bg-it-blue-50 dark:border-it-blue-500 dark:bg-it-blue-500/15',
+      recipientIdle: 'border-it-line-strong bg-it-surface hover:bg-it-fill dark:border-it-blue-900 dark:bg-it-blue-950 dark:hover:bg-it-blue-900/40',
+      checkboxActive: 'border-it-blue-500 bg-it-blue-500',
+      checkboxIdle: 'border-it-line-strong bg-it-surface dark:border-it-blue-900 dark:bg-it-blue-950',
+      avatarWrap: 'flex size-9 shrink-0 items-center justify-center rounded-w-pill bg-it-fill dark:bg-it-blue-900',
+      avatarText: 'text-card-meta font-bold text-it-ink-600 dark:text-rink-200',
+      recipientName: 'flex-1 truncate text-card-body font-bold text-it-ink-800 dark:text-white',
+      label: 'text-card-meta font-bold text-it-ink-600 dark:text-rink-200',
+      charCount: 'text-card-meta font-medium font-num tabular-nums text-it-ink-400 dark:text-rink-300',
+      input: 'h-12 w-full rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill px-4 text-card-body text-it-ink-800 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none placeholder:text-it-ink-400 focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 dark:border-it-blue-900 dark:bg-it-blue-900/40 dark:text-white dark:placeholder:text-rink-300',
+      textarea: 'w-full resize-none rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill px-4 py-3 text-card-body leading-relaxed text-it-ink-800 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none placeholder:text-it-ink-400 focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 dark:border-it-blue-900 dark:bg-it-blue-900/40 dark:text-white dark:placeholder:text-rink-300',
+      footer: 'sticky bottom-0 left-0 right-0 border-t border-it-line bg-it-canvas px-5 pt-3 dark:border-it-blue-900 dark:bg-puck',
+    };
+  }
+  return {
+    main: 'flex-1 overflow-y-auto hide-scrollbar bg-wbg dark:bg-puck',
+    desc: 'text-card-meta font-medium text-wtext-3 dark:text-wtext-4',
+    sectionTitle: 'mb-2 text-card-meta font-bold uppercase tracking-[0.12em] text-wtext-3 dark:text-wtext-4',
+    skeleton: 'animate-pulse rounded-w-md bg-wline-2 dark:bg-rink-700',
+    teamCard: 'flex items-center gap-3 rounded-w-md border border-wline-2 bg-wsurface px-4 py-3 dark:border-rink-700 dark:bg-rink-800',
+    teamIconWrap: 'flex size-9 shrink-0 items-center justify-center rounded-w-pill bg-ice-50 dark:bg-ice-500/15',
+    teamIcon: 'text-[20px] text-ice-500',
+    teamName: 'flex-1 truncate text-card-body font-bold text-wtext-1 dark:text-white',
+    teamRadioActive: 'border-ice-500 bg-ice-50 dark:border-ice-500 dark:bg-ice-500/15',
+    teamRadioIdle: 'border-wline-2 bg-wsurface hover:bg-wline-2/40 dark:border-rink-700 dark:bg-rink-800 dark:hover:bg-rink-700',
+    teamRadioIconActive: 'text-ice-500',
+    teamRadioIconIdle: 'text-wtext-3 dark:text-wtext-4',
+    teamRadioLabelActive: 'text-ice-500',
+    teamRadioLabelIdle: 'text-wtext-1 dark:text-white',
+    teamRadioCheck: 'text-[22px] text-ice-500',
+    selectedCount: 'text-card-meta font-bold font-num tabular-nums text-ice-500',
+    search: 'h-12 w-full rounded-w-md border border-wline-2 bg-wsurface pl-11 pr-10 text-card-body text-wtext-1 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none placeholder:text-wtext-4 focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20 dark:border-rink-700 dark:bg-rink-800 dark:text-white dark:placeholder:text-wtext-3',
+    searchIcon: 'pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[20px] text-wtext-3 dark:text-wtext-4',
+    searchClear: 'absolute right-3 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-w-pill text-wtext-3 transition-colors motion-reduce:transition-none hover:bg-wline-2 hover:text-wtext-1 dark:hover:bg-rink-700 dark:hover:text-white',
+    selectAllBtn: 'inline-flex h-9 items-center gap-1.5 self-start rounded-w-md border border-wline-2 bg-wsurface px-3 text-card-meta font-bold text-wtext-2 transition-colors motion-reduce:transition-none hover:bg-wline-2/40 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rink-700 dark:bg-rink-800 dark:text-wtext-4 dark:hover:bg-rink-700',
+    groupIcon: 'text-[16px] text-ice-500',
+    groupLabel: 'text-card-meta font-bold text-wtext-2 dark:text-wtext-4',
+    groupCount: 'text-card-meta font-bold font-num tabular-nums text-wtext-3 dark:text-wtext-4',
+    recipientActive: 'border-ice-500 bg-ice-50 dark:border-ice-500 dark:bg-ice-500/15',
+    recipientIdle: 'border-wline-2 bg-wsurface hover:bg-wline-2/40 dark:border-rink-700 dark:bg-rink-800 dark:hover:bg-rink-700',
+    checkboxActive: 'border-ice-500 bg-ice-500',
+    checkboxIdle: 'border-wline bg-wsurface dark:border-rink-700 dark:bg-rink-800',
+    avatarWrap: 'flex size-9 shrink-0 items-center justify-center rounded-w-pill bg-wline-2 dark:bg-rink-700',
+    avatarText: 'text-card-meta font-bold text-wtext-2 dark:text-wtext-4',
+    recipientName: 'flex-1 truncate text-card-body font-bold text-wtext-1 dark:text-white',
+    label: 'text-card-meta font-bold text-wtext-2 dark:text-wtext-4',
+    charCount: 'text-card-meta font-medium font-num tabular-nums text-wtext-3 dark:text-wtext-4',
+    input: 'h-12 w-full rounded-w-md border border-wline-2 bg-wsurface px-4 text-card-body text-wtext-1 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none placeholder:text-wtext-4 focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20 dark:border-rink-700 dark:bg-rink-800 dark:text-white dark:placeholder:text-wtext-3',
+    textarea: 'w-full resize-none rounded-w-md border border-wline-2 bg-wsurface px-4 py-3 text-card-body leading-relaxed text-wtext-1 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none placeholder:text-wtext-4 focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20 dark:border-rink-700 dark:bg-rink-800 dark:text-white dark:placeholder:text-wtext-3',
+    footer: 'sticky bottom-0 left-0 right-0 border-t border-wline-2 bg-wbg px-5 pt-3 dark:border-rink-800 dark:bg-puck',
+  };
 }
 
 /**
@@ -57,11 +146,12 @@ interface MemberPushComposerProps {
  *
  * 디자인: AppBar/BottomNav 불가침 — 이 컴포넌트는 body 영역만 렌더.
  */
-export function MemberPushComposer({ context }: MemberPushComposerProps) {
+export function MemberPushComposer({ context, iceTheme = false }: MemberPushComposerProps) {
   const { toast } = useToast();
   const { back } = useNavigation();
   const titleInputId = useId();
   const messageInputId = useId();
+  const tk = pushTokens(iceTheme);
 
   // ── 팀 상태 ──
   const [teams, setTeams] = useState<ManagedTeam[]>([]);
@@ -279,40 +369,41 @@ export function MemberPushComposer({ context }: MemberPushComposerProps) {
 
   return (
     <main
-      className="flex-1 overflow-y-auto hide-scrollbar bg-wbg dark:bg-puck"
+      className={tk.main}
       role="main"
       aria-label={MESSAGES.memberPush.pageTitle}
     >
       <div className="flex flex-col gap-5 px-5 pt-5 pb-32">
         {/* 안내 */}
-        <p className="text-card-meta font-medium text-wtext-3 dark:text-wtext-4">
+        <p className={tk.desc}>
           {MESSAGES.memberPush.description}
         </p>
 
         {/* ── 팀 선택 ── */}
         <section aria-label={MESSAGES.memberPush.teamSectionTitle}>
-          <h2 className="mb-2 text-card-meta font-bold uppercase tracking-[0.12em] text-wtext-3 dark:text-wtext-4">
+          <h2 className={tk.sectionTitle}>
             {MESSAGES.memberPush.teamSectionTitle}
           </h2>
 
           {isTeamsLoading ? (
-            <div className="h-12 w-full animate-pulse rounded-w-md bg-wline-2 dark:bg-rink-700" aria-hidden="true" />
+            <div className={cn('h-12 w-full', tk.skeleton)} aria-hidden="true" />
           ) : teamsError ? (
             <EmptyState
               icon="error_outline"
               text={MESSAGES.memberPush.teamLoadError}
               actionLabel={MESSAGES.common.retry}
               onAction={() => void loadTeams()}
+              iceTheme={iceTheme}
             />
           ) : teams.length === 0 ? (
-            <EmptyState icon="groups_2" text={MESSAGES.memberPush.noTeam} />
+            <EmptyState icon="groups_2" text={MESSAGES.memberPush.noTeam} iceTheme={iceTheme} />
           ) : teams.length === 1 ? (
             // 단일 팀 — 자동 선택, 읽기 전용 카드
-            <div className="flex items-center gap-3 rounded-w-md border border-wline-2 bg-wsurface px-4 py-3 dark:border-rink-700 dark:bg-rink-800">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-w-pill bg-ice-50 dark:bg-ice-500/15">
-                <Icon name="groups" className="text-[20px] text-ice-500" aria-hidden="true" />
+            <div className={tk.teamCard}>
+              <span className={tk.teamIconWrap}>
+                <Icon name="groups" className={tk.teamIcon} aria-hidden="true" />
               </span>
-              <span className="flex-1 truncate text-card-body font-bold text-wtext-1 dark:text-white">
+              <span className={tk.teamName}>
                 {teams[0].name ?? MESSAGES.common.unknown}
               </span>
             </div>
@@ -330,26 +421,24 @@ export function MemberPushComposer({ context }: MemberPushComposerProps) {
                     onClick={() => setSelectedTeamId(t.id)}
                     className={cn(
                       'flex items-center gap-3 rounded-w-md border px-4 py-3 text-left transition-colors duration-200 ease-ios motion-reduce:transition-none active:brightness-95',
-                      selected
-                        ? 'border-ice-500 bg-ice-50 dark:border-ice-500 dark:bg-ice-500/15'
-                        : 'border-wline-2 bg-wsurface hover:bg-wline-2/40 dark:border-rink-700 dark:bg-rink-800 dark:hover:bg-rink-700',
+                      selected ? tk.teamRadioActive : tk.teamRadioIdle,
                     )}
                   >
                     <Icon
                       name="groups"
-                      className={cn('text-[20px]', selected ? 'text-ice-500' : 'text-wtext-3 dark:text-wtext-4')}
+                      className={cn('text-[20px]', selected ? tk.teamRadioIconActive : tk.teamRadioIconIdle)}
                       aria-hidden="true"
                     />
                     <span
                       className={cn(
                         'flex-1 truncate text-card-body font-bold',
-                        selected ? 'text-ice-500' : 'text-wtext-1 dark:text-white',
+                        selected ? tk.teamRadioLabelActive : tk.teamRadioLabelIdle,
                       )}
                     >
                       {t.name ?? MESSAGES.common.unknown}
                     </span>
                     {selected && (
-                      <Icon name="check_circle" className="text-[22px] text-ice-500" aria-hidden="true" />
+                      <Icon name="check_circle" className={tk.teamRadioCheck} aria-hidden="true" />
                     )}
                   </button>
                 );
@@ -362,11 +451,11 @@ export function MemberPushComposer({ context }: MemberPushComposerProps) {
         {selectedTeamId && (
           <section aria-label={MESSAGES.memberPush.recipientSectionTitle}>
             <div className="mb-2 flex items-center justify-between">
-              <h2 className="text-card-meta font-bold uppercase tracking-[0.12em] text-wtext-3 dark:text-wtext-4">
+              <h2 className={cn('text-card-meta font-bold uppercase tracking-[0.12em]', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-wtext-4')}>
                 {MESSAGES.memberPush.recipientSectionTitle}
               </h2>
               {selectedCount > 0 && (
-                <span className="text-card-meta font-bold font-num tabular-nums text-ice-500">
+                <span className={tk.selectedCount}>
                   {MESSAGES.memberPush.selectedCount(selectedCount)}
                 </span>
               )}
@@ -375,7 +464,7 @@ export function MemberPushComposer({ context }: MemberPushComposerProps) {
             {isRecipientsLoading ? (
               <div className="flex flex-col gap-2">
                 {[0, 1, 2].map((i) => (
-                  <div key={i} className="h-14 w-full animate-pulse rounded-w-md bg-wline-2 dark:bg-rink-700" aria-hidden="true" />
+                  <div key={i} className={cn('h-14 w-full', tk.skeleton)} aria-hidden="true" />
                 ))}
               </div>
             ) : recipientsError ? (
@@ -384,9 +473,10 @@ export function MemberPushComposer({ context }: MemberPushComposerProps) {
                 text={MESSAGES.memberPush.recipientLoadError}
                 actionLabel={MESSAGES.common.retry}
                 onAction={() => void loadRecipients(selectedTeamId)}
+                iceTheme={iceTheme}
               />
             ) : totalRecipientCount === 0 ? (
-              <EmptyState icon="person_off" text={MESSAGES.memberPush.recipientEmpty} />
+              <EmptyState icon="person_off" text={MESSAGES.memberPush.recipientEmpty} iceTheme={iceTheme} />
             ) : (
               <>
                 {/* 검색 + 전체선택 */}
@@ -394,7 +484,7 @@ export function MemberPushComposer({ context }: MemberPushComposerProps) {
                   <div className="relative">
                     <Icon
                       name="search"
-                      className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[20px] text-wtext-3 dark:text-wtext-4"
+                      className={tk.searchIcon}
                       aria-hidden="true"
                     />
                     <input
@@ -404,14 +494,14 @@ export function MemberPushComposer({ context }: MemberPushComposerProps) {
                       placeholder={MESSAGES.memberPush.recipientSearchPlaceholder}
                       aria-label={MESSAGES.memberPush.recipientSearchPlaceholder}
                       autoComplete="off"
-                      className="h-12 w-full rounded-w-md border border-wline-2 bg-wsurface pl-11 pr-10 text-card-body text-wtext-1 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none placeholder:text-wtext-4 focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20 dark:border-rink-700 dark:bg-rink-800 dark:text-white dark:placeholder:text-wtext-3"
+                      className={tk.search}
                     />
                     {searchQuery && (
                       <button
                         type="button"
                         onClick={() => setSearchQuery('')}
                         aria-label="검색어 지우기"
-                        className="absolute right-3 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-w-pill text-wtext-3 transition-colors motion-reduce:transition-none hover:bg-wline-2 hover:text-wtext-1 dark:hover:bg-rink-700 dark:hover:text-white"
+                        className={tk.searchClear}
                       >
                         <Icon name="close" className="text-[18px]" aria-hidden="true" />
                       </button>
@@ -422,7 +512,7 @@ export function MemberPushComposer({ context }: MemberPushComposerProps) {
                     type="button"
                     onClick={toggleSelectAllVisible}
                     disabled={visibleRecipients.length === 0}
-                    className="inline-flex h-9 items-center gap-1.5 self-start rounded-w-md border border-wline-2 bg-wsurface px-3 text-card-meta font-bold text-wtext-2 transition-colors motion-reduce:transition-none hover:bg-wline-2/40 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rink-700 dark:bg-rink-800 dark:text-wtext-4 dark:hover:bg-rink-700"
+                    className={tk.selectAllBtn}
                   >
                     <Icon
                       name={allVisibleSelected ? 'check_box' : 'check_box_outline_blank'}
@@ -439,7 +529,7 @@ export function MemberPushComposer({ context }: MemberPushComposerProps) {
 
                 {/* 그룹별 섹션 */}
                 {visibleRecipients.length === 0 ? (
-                  <EmptyState icon="search_off" text={MESSAGES.memberPush.recipientSearchEmpty} />
+                  <EmptyState icon="search_off" text={MESSAGES.memberPush.recipientSearchEmpty} iceTheme={iceTheme} />
                 ) : (
                   <div className="flex flex-col gap-4">
                     {GROUP_META.map((group) => {
@@ -448,11 +538,11 @@ export function MemberPushComposer({ context }: MemberPushComposerProps) {
                       return (
                         <div key={group.key}>
                           <div className="mb-2 flex items-center gap-1.5">
-                            <Icon name={group.icon} className="text-[16px] text-ice-500" aria-hidden="true" />
-                            <h3 className="text-card-meta font-bold text-wtext-2 dark:text-wtext-4">
+                            <Icon name={group.icon} className={tk.groupIcon} aria-hidden="true" />
+                            <h3 className={tk.groupLabel}>
                               {group.label}
                             </h3>
-                            <span className="text-card-meta font-bold font-num tabular-nums text-wtext-3 dark:text-wtext-4">
+                            <span className={tk.groupCount}>
                               {list.length}
                             </span>
                           </div>
@@ -469,28 +559,24 @@ export function MemberPushComposer({ context }: MemberPushComposerProps) {
                                     onClick={() => toggleRecipient(r.userId)}
                                     className={cn(
                                       'flex w-full items-center gap-3 rounded-w-md border px-3.5 py-3 text-left transition-colors duration-150 ease-ios motion-reduce:transition-none active:brightness-95',
-                                      checked
-                                        ? 'border-ice-500 bg-ice-50 dark:border-ice-500 dark:bg-ice-500/15'
-                                        : 'border-wline-2 bg-wsurface hover:bg-wline-2/40 dark:border-rink-700 dark:bg-rink-800 dark:hover:bg-rink-700',
+                                      checked ? tk.recipientActive : tk.recipientIdle,
                                     )}
                                   >
                                     <span
                                       className={cn(
                                         'flex size-6 shrink-0 items-center justify-center rounded-md border-2 transition-colors motion-reduce:transition-none',
-                                        checked
-                                          ? 'border-ice-500 bg-ice-500'
-                                          : 'border-wline bg-wsurface dark:border-rink-700 dark:bg-rink-800',
+                                        checked ? tk.checkboxActive : tk.checkboxIdle,
                                       )}
                                       aria-hidden="true"
                                     >
                                       {checked && <Icon name="check" className="text-[16px] text-white" />}
                                     </span>
-                                    <span className="flex size-9 shrink-0 items-center justify-center rounded-w-pill bg-wline-2 dark:bg-rink-700">
-                                      <span className="text-card-meta font-bold text-wtext-2 dark:text-wtext-4">
+                                    <span className={tk.avatarWrap}>
+                                      <span className={tk.avatarText}>
                                         {r.name?.charAt(0) || '?'}
                                       </span>
                                     </span>
-                                    <span className="flex-1 truncate text-card-body font-bold text-wtext-1 dark:text-white">
+                                    <span className={tk.recipientName}>
                                       {r.name}
                                     </span>
                                   </button>
@@ -511,7 +597,7 @@ export function MemberPushComposer({ context }: MemberPushComposerProps) {
         {/* ── 메시지 입력 ── (팀 선택 후에만 노출) */}
         {selectedTeamId && (
           <section aria-label={MESSAGES.memberPush.messageSectionTitle}>
-            <h2 className="mb-2 text-card-meta font-bold uppercase tracking-[0.12em] text-wtext-3 dark:text-wtext-4">
+            <h2 className={tk.sectionTitle}>
               {MESSAGES.memberPush.messageSectionTitle}
             </h2>
 
@@ -519,10 +605,10 @@ export function MemberPushComposer({ context }: MemberPushComposerProps) {
               {/* 제목 */}
               <div>
                 <div className="mb-1.5 flex items-center justify-between">
-                  <label htmlFor={titleInputId} className="text-card-meta font-bold text-wtext-2 dark:text-wtext-4">
+                  <label htmlFor={titleInputId} className={tk.label}>
                     {MESSAGES.memberPush.titleLabel}
                   </label>
-                  <span className="text-card-meta font-medium font-num tabular-nums text-wtext-3 dark:text-wtext-4">
+                  <span className={tk.charCount}>
                     {MESSAGES.memberPush.charCount(title.length, TITLE_MAX)}
                   </span>
                 </div>
@@ -533,17 +619,17 @@ export function MemberPushComposer({ context }: MemberPushComposerProps) {
                   onChange={(e) => setTitle(e.target.value.slice(0, TITLE_MAX))}
                   maxLength={TITLE_MAX}
                   placeholder={MESSAGES.memberPush.titlePlaceholder}
-                  className="h-12 w-full rounded-w-md border border-wline-2 bg-wsurface px-4 text-card-body text-wtext-1 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none placeholder:text-wtext-4 focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20 dark:border-rink-700 dark:bg-rink-800 dark:text-white dark:placeholder:text-wtext-3"
+                  className={tk.input}
                 />
               </div>
 
               {/* 내용 */}
               <div>
                 <div className="mb-1.5 flex items-center justify-between">
-                  <label htmlFor={messageInputId} className="text-card-meta font-bold text-wtext-2 dark:text-wtext-4">
+                  <label htmlFor={messageInputId} className={tk.label}>
                     {MESSAGES.memberPush.messageLabel}
                   </label>
-                  <span className="text-card-meta font-medium font-num tabular-nums text-wtext-3 dark:text-wtext-4">
+                  <span className={tk.charCount}>
                     {MESSAGES.memberPush.charCount(message.length, MESSAGE_MAX)}
                   </span>
                 </div>
@@ -554,7 +640,7 @@ export function MemberPushComposer({ context }: MemberPushComposerProps) {
                   maxLength={MESSAGE_MAX}
                   rows={5}
                   placeholder={MESSAGES.memberPush.messagePlaceholder}
-                  className="w-full resize-none rounded-w-md border border-wline-2 bg-wsurface px-4 py-3 text-card-body leading-relaxed text-wtext-1 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none placeholder:text-wtext-4 focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20 dark:border-rink-700 dark:bg-rink-800 dark:text-white dark:placeholder:text-wtext-3"
+                  className={tk.textarea}
                 />
               </div>
             </div>
@@ -565,7 +651,7 @@ export function MemberPushComposer({ context }: MemberPushComposerProps) {
       {/* ── 하단 고정 발송 버튼 ── */}
       {selectedTeamId && (
         <div
-          className="sticky bottom-0 left-0 right-0 border-t border-wline-2 bg-wbg px-5 pt-3 dark:border-rink-800 dark:bg-puck"
+          className={tk.footer}
           style={{ paddingBottom: 'calc(0.75rem + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))' }}
         >
           <Button
@@ -590,12 +676,32 @@ function EmptyState({
   text,
   actionLabel,
   onAction,
+  iceTheme = false,
 }: {
   icon: string;
   text: string;
   actionLabel?: string;
   onAction?: () => void;
+  iceTheme?: boolean;
 }) {
+  if (iceTheme) {
+    return (
+      <div className="flex flex-col items-center justify-center rounded-w-md border border-it-line bg-it-surface px-4 py-10 dark:border-it-blue-900 dark:bg-it-blue-950" role="status">
+        <Icon name={icon} className="mb-2 text-[32px] text-it-ink-400 dark:text-rink-300" aria-hidden="true" />
+        <p className="text-center text-card-body font-medium text-it-ink-600 dark:text-rink-200">{text}</p>
+        {actionLabel && onAction && (
+          <button
+            type="button"
+            onClick={onAction}
+            className="mt-3 text-card-meta font-bold text-it-blue-500 underline underline-offset-2 transition-colors motion-reduce:transition-none hover:text-it-blue-600"
+          >
+            {actionLabel}
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col items-center justify-center rounded-w-md border border-wline-2 bg-wsurface px-4 py-10 dark:border-rink-700 dark:bg-rink-800" role="status">
       <Icon name={icon} className="mb-2 text-[32px] text-wtext-4 dark:text-wtext-3" aria-hidden="true" />

@@ -136,40 +136,40 @@ export default function MyQrPage() {
          + 섹션 간격 mb-8→mb-5, mb-6→mb-4 로 단축. 하단 패딩에 safe-area-inset-bottom
          포함하여 홈인디케이터 영역과의 충돌 방지. */}
       <main
-        className="flex-1 overflow-y-auto px-6 pt-5 flex flex-col items-center"
+        className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck px-6 pt-5 flex flex-col items-center"
         style={{ paddingBottom: 'calc(24px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))' }}
       >
         {/* 프로필 정보 */}
         <div className="text-center mb-5">
-          <div className="w-20 h-20 rounded-w-pill bg-ice-500/10 dark:bg-ice-500/20 flex items-center justify-center mx-auto mb-3">
-            <Icon name="person" className="text-5xl text-ice-500" />
+          <div className="w-20 h-20 rounded-w-pill bg-it-blue-50 dark:bg-it-blue-500/20 flex items-center justify-center mx-auto mb-3">
+            <Icon name="person" className="text-5xl text-it-blue-500" />
           </div>
-          <p className="text-xl font-bold text-wtext-1 dark:text-white">
+          <p className="text-xl font-bold text-it-ink-800 dark:text-white">
             {user?.name ?? "사용자"}님
           </p>
-          <span className="inline-block mt-2 text-w-caption font-bold px-2 py-0.5 rounded bg-ice-500/10 text-ice-500">
+          <span className="inline-block mt-2 text-w-caption font-bold px-2 py-0.5 rounded bg-it-blue-50 dark:bg-it-blue-500/15 text-it-blue-600 dark:text-it-blue-200">
             {getRoleLabel(user?.userType)}
           </span>
         </div>
 
-        {/* QR 코드 */}
-        <div className="w-full max-w-xs bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 rounded-2xl p-6 mb-4">
+        {/* QR 코드 — 흰 면 + hairline border (그림자 없는 flat 타일) */}
+        <div className="w-full max-w-xs bg-it-surface dark:bg-it-blue-950 border border-it-line-strong dark:border-rink-700 rounded-w-md p-6 mb-4">
           {isLoading ? (
-            <div className="aspect-square flex items-center justify-center bg-wbg dark:bg-rink-900 rounded-lg">
-              <div className="w-10 h-10 rounded-w-pill border-2 border-ice-500/20 border-t-primary animate-spin motion-reduce:animate-none" />
+            <div className="aspect-square flex items-center justify-center bg-it-fill dark:bg-rink-900 rounded-lg">
+              <div className="w-10 h-10 rounded-w-pill border-2 border-it-blue-500/20 border-t-it-blue-500 animate-spin motion-reduce:animate-none" />
             </div>
           ) : isExpired || !qrData ? (
-            <div className="aspect-square flex flex-col items-center justify-center bg-wbg dark:bg-rink-900 rounded-lg">
+            <div className="aspect-square flex flex-col items-center justify-center bg-it-fill dark:bg-rink-900 rounded-lg">
               <Icon
                 name="qr_code_2"
-                className="text-6xl text-wtext-4 dark:text-rink-500 mb-2"
+                className="text-6xl text-it-ink-400 dark:text-rink-500 mb-2"
               />
-              <p className="text-w-small font-semibold text-wtext-3 dark:text-rink-300">
+              <p className="text-w-small font-semibold text-it-ink-500 dark:text-rink-300">
                 QR이 만료되었습니다
               </p>
               <button
                 onClick={handleRefresh}
-                className="mt-3 h-10 px-5 rounded-lg bg-ice-500 text-white text-w-small font-semibold"
+                className="mt-3 h-10 px-5 rounded-lg bg-it-blue-500 text-white text-w-small font-semibold"
               >
                 새로 발급받기
               </button>
@@ -189,15 +189,15 @@ export default function MyQrPage() {
         {/* 남은 시간 */}
         {qrData && !isExpired && (
           <div className="flex items-center gap-2 mb-3">
-            <Icon name="schedule" className="text-wtext-3 text-[20px]" />
-            <span className="text-w-small font-semibold text-wtext-2 dark:text-rink-100">
+            <Icon name="schedule" className="text-it-ink-500 text-[20px]" />
+            <span className="text-w-small font-semibold text-it-ink-700 dark:text-rink-100">
               남은 시간: {formatRemaining(remainingSec)}
             </span>
           </div>
         )}
 
         {/* 안내 */}
-        <p className="text-w-caption text-wtext-3 dark:text-rink-300 text-center max-w-[280px] mb-4 leading-relaxed">
+        <p className="text-w-caption text-it-ink-500 dark:text-rink-300 text-center max-w-[280px] mb-4 leading-relaxed">
           상대방이 QR 스캐너로 이 QR을 스캔하면 제 프로필을 확인할 수 있어요.
           15분 후 자동으로 만료됩니다.
         </p>

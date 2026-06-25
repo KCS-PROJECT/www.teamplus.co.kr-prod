@@ -263,18 +263,18 @@ export default function TeamListPage() {
       <SubmainAppBar title={appBarTitle} />
 
       <main
-        className="hide-scrollbar flex-1 overflow-y-auto bg-wbg dark:bg-rink-900"
+        className="hide-scrollbar flex-1 overflow-y-auto bg-it-canvas dark:bg-puck"
         role="main"
         aria-label={appBarTitle}
       >
         {/* ─── 검색바 ─── 팀이 2개 이상일 때만 노출 (1개면 검색 불필요). 부문 필터 칩은 제거됨. ─── */}
         {canManage && !isParent
           ? teams.length > 1 && (
-              <section className="px-5 pt-2.5" aria-label="팀 검색">
+              <section className="bg-it-surface dark:bg-it-blue-950 px-5 pt-5 pb-4" aria-label="팀 검색">
                 <div className="relative">
                   <Icon
                     name="search"
-                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[16px] text-wtext-3 dark:text-wtext-4 pointer-events-none"
+                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[20px] text-it-ink-400 dark:text-it-ink-300 pointer-events-none"
                     aria-hidden="true"
                   />
                   <input
@@ -283,16 +283,16 @@ export default function TeamListPage() {
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="팀 이름으로 검색"
                     aria-label="팀 이름으로 검색"
-                    className="w-full h-11 bg-wsurface dark:bg-rink-800 border border-wline-2 dark:border-rink-700 rounded-[12px] pl-10 pr-10 text-card-body text-wtext-1 dark:text-white placeholder:text-wtext-4 dark:placeholder:text-wtext-3 focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20 outline-none transition-colors motion-reduce:transition-none"
+                    className="w-full h-12 bg-it-fill dark:bg-it-blue-950 border-[1.5px] border-it-line-strong dark:border-it-blue-900 rounded-w-md pl-11 pr-10 text-[15px] font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-it-ink-300 focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none"
                   />
                   {searchQuery && (
                     <button
                       type="button"
                       onClick={() => setSearchQuery('')}
                       aria-label="검색어 지우기"
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-w-pill hover:bg-wline dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
+                      className="absolute right-3 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-w-pill text-it-ink-400 hover:bg-it-line dark:hover:bg-it-blue-900 transition-colors motion-reduce:transition-none"
                     >
-                      <Icon name="close" className="text-[18px] text-wtext-3 dark:text-wtext-4" aria-hidden="true" />
+                      <Icon name="close" className="text-[18px]" aria-hidden="true" />
                     </button>
                   )}
                 </div>
@@ -300,7 +300,7 @@ export default function TeamListPage() {
             )
           : myChildTeams.length + clubTeams.length > 1 && (
               <section
-                className="border-b border-wline-2 bg-wsurface px-5 pb-3 pt-4 dark:border-rink-700 dark:bg-rink-800"
+                className="border-b border-it-line bg-it-surface px-5 pb-3 pt-4 dark:border-it-blue-900 dark:bg-it-blue-950"
                 aria-label="팀 검색"
               >
                 <TeamSearchBar
@@ -311,10 +311,17 @@ export default function TeamListPage() {
               </section>
             )}
 
+        {/* flat 섹션 사이 8px 회색 갭 (관리자 검색바 ↔ 목록) */}
+        {canManage && !isParent && teams.length > 1 && (
+          <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+        )}
+
         {/* ─── 본문 ────────────────────────────── */}
         <section
           className={cn(
-            canManage && !isParent ? 'px-5 pt-3 pb-30' : 'px-4 pb-30 pt-4',
+            canManage && !isParent
+              ? 'bg-it-surface dark:bg-it-blue-950 px-5 pt-4 pb-30'
+              : 'px-4 pb-30 pt-4',
           )}
           aria-label="팀 목록"
         >
@@ -330,12 +337,12 @@ export default function TeamListPage() {
               />
             ) : !hasAnyParentResult ? (
               <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-                <h3 className="text-card-title font-bold text-wtext-1 dark:text-white">
+                <h3 className="text-card-title font-bold text-it-ink-800 dark:text-white">
                   {searchQuery.trim()
                     ? MESSAGES.team.noSearchResults
                     : MESSAGES.team.noChildTeamsYet}
                 </h3>
-                <p className="mt-2 text-card-body text-wtext-3 dark:text-wtext-4">
+                <p className="mt-2 text-card-body text-it-ink-500 dark:text-it-ink-400">
                   {searchQuery.trim()
                     ? MESSAGES.team.searchResultHint
                     : MESSAGES.team.noChildTeamsHint}
@@ -353,10 +360,10 @@ export default function TeamListPage() {
                   />
                   {filteredMyChildTeams.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-                      <h3 className="text-card-title font-bold text-wtext-1 dark:text-white">
+                      <h3 className="text-card-title font-bold text-it-ink-800 dark:text-white">
                         {MESSAGES.team.noChildTeamsYet}
                       </h3>
-                      <p className="mt-2 text-card-body text-wtext-3 dark:text-wtext-4">
+                      <p className="mt-2 text-card-body text-it-ink-500 dark:text-it-ink-400">
                         {MESSAGES.team.noChildTeamsHint}
                       </p>
                     </div>
@@ -405,10 +412,10 @@ export default function TeamListPage() {
                   />
                   {filteredClubTeams.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-                      <h3 className="text-card-title font-bold text-wtext-1 dark:text-white">
+                      <h3 className="text-card-title font-bold text-it-ink-800 dark:text-white">
                         {MESSAGES.team.noOtherTeams}
                       </h3>
-                      <p className="mt-2 text-card-body text-wtext-3 dark:text-wtext-4">
+                      <p className="mt-2 text-card-body text-it-ink-500 dark:text-it-ink-400">
                         {MESSAGES.team.emptyHint}
                       </p>
                     </div>
@@ -433,12 +440,12 @@ export default function TeamListPage() {
           ) : filteredTeams.length === 0 ? (
             // ─── 관리자/기타 조회자 빈 상태 ───
             <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-              <h3 className="text-card-title font-bold text-wtext-1 dark:text-white">
+              <h3 className="text-card-title font-bold text-it-ink-800 dark:text-white">
                 {searchQuery.trim()
                   ? MESSAGES.team.noSearchResults
                   : MESSAGES.team.empty}
               </h3>
-              <p className="mt-2 text-card-body text-wtext-3 dark:text-wtext-4">
+              <p className="mt-2 text-card-body text-it-ink-500 dark:text-it-ink-400">
                 {searchQuery.trim()
                   ? MESSAGES.team.searchResultHint
                   : MESSAGES.team.emptyHint}
@@ -560,7 +567,7 @@ function CoachTeamManageCard({
     : null;
 
   return (
-    <article className="relative overflow-hidden rounded-[18px] bg-wsurface dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-sh-1 hover:shadow-sh-2 transition-shadow motion-reduce:transition-none">
+    <article className="relative overflow-hidden rounded-w-md bg-it-surface dark:bg-it-blue-950 border-[1.5px] border-it-line dark:border-it-blue-900">
       <button
         type="button"
         onClick={onClick}
@@ -575,11 +582,11 @@ function CoachTeamManageCard({
             <img
               src={logoSrc}
               alt={`${team.name ?? '팀'} 로고`}
-              className="w-14 h-14 rounded-[16px] object-cover shrink-0 border border-wline-2 dark:border-rink-700 shadow-sh-1"
+              className="w-14 h-14 rounded-w-md object-cover shrink-0 border border-it-line dark:border-it-blue-900"
             />
           ) : (
             <div
-              className="w-14 h-14 rounded-[16px] flex items-center justify-center shrink-0 text-white shadow-sh-1"
+              className="w-14 h-14 rounded-w-md flex items-center justify-center shrink-0 text-white"
               style={{ backgroundColor: teamColor }}
               aria-hidden="true"
             >
@@ -590,7 +597,7 @@ function CoachTeamManageCard({
           <div className="flex-1 min-w-0">
             {/* 팀명 + age + gender — 팀명 17px (참고 동일) */}
             <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-              <h3 className="text-card-emphasis font-extrabold text-wtext-1 dark:text-white tracking-[-0.03em] truncate">
+              <h3 className="text-card-emphasis font-extrabold text-it-ink-800 dark:text-white tracking-[-0.03em] truncate">
                 {team.name ?? '팀명 미지정'}
               </h3>
               {/* [수정 2026-05-11] 팀(상위) 의 division 은 "전체" 로 통일 표기.
@@ -601,13 +608,13 @@ function CoachTeamManageCard({
               >
                 전체
               </span>
-              <span className="px-1.5 py-0.5 rounded bg-wline-2 dark:bg-rink-700 text-card-meta font-extrabold tracking-[0.04em] text-wtext-3 dark:text-wtext-4 shrink-0">
+              <span className="px-1.5 py-0.5 rounded bg-it-line dark:bg-it-blue-900 text-card-meta font-extrabold tracking-[0.04em] text-it-ink-500 dark:text-it-ink-400 shrink-0">
                 {gender}
               </span>
             </div>
             {/* 인원수 + 승무패 record */}
-            <div className="flex items-center gap-1.5 text-card-meta text-wtext-3 dark:text-wtext-4 min-w-0">
-              <span className="font-bold text-wtext-2 dark:text-wtext-4 tabular-nums shrink-0">
+            <div className="flex items-center gap-1.5 text-card-meta text-it-ink-500 dark:text-it-ink-400 min-w-0">
+              <span className="font-bold text-it-ink-700 dark:text-it-ink-400 tabular-nums shrink-0">
                 {memberCount}명
               </span>
               <span aria-hidden="true">·</span>
@@ -618,7 +625,7 @@ function CoachTeamManageCard({
             {/* [추가 2026-05-21 시나리오 B] 팀 코드 — 회원가입 시 입력한 식별 코드.
                  감독/코치/관리자 카드에 노출하여 가입 안내 시 즉시 공유 가능하도록. */}
             {team.teamCode && (
-              <div className="mt-1 inline-flex items-center gap-1 text-card-meta text-wtext-3 dark:text-wtext-4 min-w-0">
+              <div className="mt-1 inline-flex items-center gap-1 text-card-meta text-it-ink-500 dark:text-it-ink-400 min-w-0">
                 <Icon
                   name="qr_code_2"
                   className="shrink-0 text-[12px]"
@@ -633,7 +640,7 @@ function CoachTeamManageCard({
 
           {/* 상세 이동 표시 */}
           <span
-            className="w-8 h-8 inline-flex items-center justify-center text-wtext-3 dark:text-wtext-4 shrink-0"
+            className="w-8 h-8 inline-flex items-center justify-center text-it-ink-500 dark:text-it-ink-400 shrink-0"
             aria-hidden="true"
           >
             <Icon name="chevron_right" className="text-[28px]" aria-hidden="true" />
@@ -646,7 +653,7 @@ function CoachTeamManageCard({
           <div
             className={cn(
               'mx-4 mb-3 px-3 py-2.5 rounded-xl flex items-center gap-2.5 border',
-              !next.urgent && 'bg-wbg dark:bg-rink-900/40 border-wline-2 dark:border-rink-700',
+              !next.urgent && 'bg-it-fill dark:bg-it-blue-900/40 border-it-line dark:border-it-blue-900',
             )}
             style={
               next.urgent
@@ -658,7 +665,7 @@ function CoachTeamManageCard({
             <div
               className={cn(
                 'w-8 h-8 rounded-[10px] flex items-center justify-center shrink-0',
-                !next.urgent && 'bg-wsurface dark:bg-rink-800 border border-wline-2 dark:border-rink-700 text-wtext-2 dark:text-wtext-4',
+                !next.urgent && 'bg-it-surface dark:bg-it-blue-950 border border-it-line dark:border-it-blue-900 text-it-ink-700 dark:text-it-ink-400',
               )}
               style={
                 next.urgent
@@ -681,11 +688,11 @@ function CoachTeamManageCard({
                 >
                   {next.type}
                 </span>
-                <span className="text-card-meta font-bold text-wtext-1 dark:text-white tabular-nums">
+                <span className="text-card-meta font-bold text-it-ink-800 dark:text-white tabular-nums">
                   {next.date} {next.time}
                 </span>
               </div>
-              <div className="text-card-meta text-wtext-3 dark:text-wtext-4 mt-0.5 truncate">
+              <div className="text-card-meta text-it-ink-500 dark:text-it-ink-400 mt-0.5 truncate">
                 {next.place}
               </div>
             </div>
@@ -713,14 +720,14 @@ function CoachTeamManageCard({
       {/* [수정 2026-05-21 v3] pending coach 에게는 footer 자체 미노출 — 본인 승인되지
           않은 상태에서 다른 가입 신청 정보를 알 필요 없음 (옵션 B 진입 차단 정책과 정렬). */}
       {pending > 0 && team.myApprovalStatus !== 'pending' && (
-        <div className="border-t border-wline-2 dark:border-rink-700 bg-wbg dark:bg-rink-900/40 px-4 py-2.5 flex items-center gap-2">
+        <div className="border-t border-it-line dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-900/40 px-4 py-2.5 flex items-center gap-2">
           <span
             className="w-6 h-6 rounded-w-pill bg-flame-100 dark:bg-flame-500/15 text-flame-500 inline-flex items-center justify-center text-card-meta font-extrabold shrink-0"
             aria-hidden="true"
           >
             !
           </span>
-          <span className="flex-1 text-card-meta font-semibold text-wtext-2 dark:text-wtext-4">
+          <span className="flex-1 text-card-meta font-semibold text-it-ink-700 dark:text-it-ink-400">
             가입 신청{' '}
             <span className="font-extrabold text-flame-500">{pending}건</span>{' '}
             승인 대기
@@ -733,7 +740,7 @@ function CoachTeamManageCard({
               else onClick();
             }}
             aria-label={MESSAGES.team.pendingHandleAria(team.name ?? '팀')}
-            className="shrink-0 inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-card-meta font-bold text-ice-500 hover:bg-ice-500/10 active:brightness-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 transition-colors motion-reduce:transition-none"
+            className="shrink-0 inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-card-meta font-bold text-it-blue-500 hover:bg-it-blue-500/10 active:brightness-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 transition-colors motion-reduce:transition-none"
           >
             {MESSAGES.team.pendingHandleLabel}
             <Icon name="arrow_forward" className="text-[14px]" aria-hidden="true" />
@@ -786,26 +793,26 @@ function TeamSubGroupsCard({ teamId, teamName }: { teamId: string; teamName: str
   return (
     <section
       aria-label={`${teamName} 하위그룹`}
-      className="rounded-[14px] border border-wline-2 dark:border-rink-700 bg-wbg dark:bg-rink-900/40 px-3 py-2.5"
+      className="rounded-[14px] border border-it-line dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-900/40 px-3 py-2.5"
     >
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <Icon
             name="folder_open"
-            className="text-[14px] text-wtext-3 dark:text-wtext-4"
+            className="text-[14px] text-it-ink-500 dark:text-it-ink-400"
             aria-hidden="true"
           />
-          <span className="text-card-meta font-extrabold uppercase tracking-[0.04em] text-wtext-2 dark:text-rink-100">
+          <span className="text-card-meta font-extrabold uppercase tracking-[0.04em] text-it-ink-700 dark:text-white">
             하위그룹
           </span>
-          <span className="text-card-meta font-bold text-wtext-3 dark:text-wtext-4 tabular-nums">
+          <span className="text-card-meta font-bold text-it-ink-500 dark:text-it-ink-400 tabular-nums">
             {groups.length}
           </span>
         </div>
         <button
           type="button"
           onClick={() => navigate(`/team/${teamId}/groups`)}
-          className="text-card-meta font-bold text-ice-500 hover:text-ice-700 transition-colors motion-reduce:transition-none"
+          className="text-card-meta font-bold text-it-blue-500 hover:text-it-blue-600 transition-colors motion-reduce:transition-none"
           aria-label={`${teamName} 그룹 관리`}
         >
           관리하기
@@ -818,20 +825,20 @@ function TeamSubGroupsCard({ teamId, teamName }: { teamId: string; teamName: str
             <button
               type="button"
               onClick={() => navigate(`/team/${teamId}/groups/${g.id}/edit`)}
-              className="w-full h-full rounded-[10px] border border-wline-2 dark:border-rink-700 bg-wsurface dark:bg-rink-800 px-2.5 py-2 text-left flex items-center gap-2 hover:border-ice-500 hover:bg-ice-500/[0.04] transition-colors motion-reduce:transition-none active:brightness-95"
+              className="w-full h-full rounded-[10px] border border-it-line dark:border-it-blue-900 bg-it-surface dark:bg-it-blue-950 px-2.5 py-2 text-left flex items-center gap-2 hover:border-it-blue-500 hover:bg-it-blue-500/[0.04] transition-colors motion-reduce:transition-none active:brightness-95"
               aria-label={`${g.name} 그룹 상세`}
             >
               <span
-                className="shrink-0 w-7 h-7 rounded-[8px] bg-ice-500/10 text-ice-500 inline-flex items-center justify-center"
+                className="shrink-0 w-7 h-7 rounded-[8px] bg-it-blue-500/10 text-it-blue-500 inline-flex items-center justify-center"
                 aria-hidden="true"
               >
                 <Icon name="groups" className="text-[14px]" />
               </span>
               <span className="flex-1 min-w-0">
-                <span className="block text-card-meta font-extrabold text-wtext-1 dark:text-white tracking-[-0.02em] truncate">
+                <span className="block text-card-meta font-extrabold text-it-ink-800 dark:text-white tracking-[-0.02em] truncate">
                   {g.name}
                 </span>
-                <span className="block mt-0.5 text-card-meta font-semibold text-wtext-3 dark:text-wtext-4 tabular-nums">
+                <span className="block mt-0.5 text-card-meta font-semibold text-it-ink-500 dark:text-it-ink-400 tabular-nums">
                   {g.ageGroup && /^\d{4}$/.test(g.ageGroup)
                     ? `${g.ageGroup}년생`
                     : '연령 미지정'}{' '}
@@ -866,13 +873,13 @@ function ErrorView({
           aria-hidden="true"
         />
       </div>
-      <p className="text-card-body font-bold text-wtext-1 dark:text-white">
+      <p className="text-card-body font-bold text-it-ink-800 dark:text-white">
         {message}
       </p>
       <button
         type="button"
         onClick={onRetry}
-        className="mt-2 rounded-w-md border border-ice-500 bg-wsurface px-4 py-2 text-card-body font-bold text-ice-500 transition-colors duration-200 ease-wallet motion-reduce:transition-none hover:bg-ice-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/30 dark:bg-rink-800 dark:hover:bg-ice-500/15"
+        className="mt-2 rounded-w-md border border-it-blue-500 bg-it-surface px-4 py-2 text-card-body font-bold text-it-blue-500 transition-colors duration-200 ease-wallet motion-reduce:transition-none hover:bg-it-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/30 dark:bg-it-blue-950 dark:hover:bg-it-blue-500/15"
       >
         {MESSAGES.dashboard.errorRetry}
       </button>
@@ -895,25 +902,25 @@ function SectionHeader({
   return (
     <header className="flex items-start gap-3 px-1">
       <div
-        className="flex size-10 shrink-0 items-center justify-center rounded-w-md bg-ice-50 text-ice-500 dark:bg-ice-500/15"
+        className="flex size-10 shrink-0 items-center justify-center rounded-w-md bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-500/15"
         aria-hidden="true"
       >
         <Icon name={icon} className="text-[22px]" />
       </div>
       <div className="flex-1">
         <div className="flex items-center gap-2">
-          <h2 className="text-card-emphasis font-bold text-wtext-1 dark:text-white">
+          <h2 className="text-card-emphasis font-bold text-it-ink-800 dark:text-white">
             {title}
           </h2>
           <span
-            className="inline-flex items-center justify-center rounded-w-pill bg-wline-2 px-2 py-0.5 text-card-meta font-bold font-num tabular-nums text-wtext-2 dark:bg-rink-700 dark:text-wtext-4"
+            className="inline-flex items-center justify-center rounded-w-pill bg-it-line px-2 py-0.5 text-card-meta font-bold font-num tabular-nums text-it-ink-700 dark:bg-it-blue-900 dark:text-it-ink-400"
             aria-label={MESSAGES.team.teamCountLabel(count)}
           >
             {count}
           </span>
         </div>
         {hint && (
-          <p className="mt-0.5 text-card-meta text-wtext-3 dark:text-wtext-4">
+          <p className="mt-0.5 text-card-meta text-it-ink-500 dark:text-it-ink-400">
             {hint}
           </p>
         )}
@@ -942,21 +949,21 @@ function ChildChip({ child }: { child: MyChildInTeam }) {
 
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-w-pill border border-ice-500/30 bg-ice-50 px-3 py-1 text-card-meta font-bold text-ice-500 dark:border-ice-500/40 dark:bg-ice-500/15 dark:text-ice-500"
+      className="inline-flex items-center gap-1.5 rounded-w-pill border border-it-blue-500/30 bg-it-blue-50 px-3 py-1 text-card-meta font-bold text-it-blue-500 dark:border-it-blue-500/40 dark:bg-it-blue-500/15 dark:text-it-blue-500"
       aria-label={`${name}, ${jersey}${position ? `, ${position}` : ""}`}
     >
       <Icon name="face" className="text-[14px]" aria-hidden="true" />
       <span className="font-bold">{name}</span>
-      <span className="text-wtext-3 dark:text-wtext-4">·</span>
+      <span className="text-it-ink-500 dark:text-it-ink-400">·</span>
       <span className="font-num tabular-nums">{jersey}</span>
       {position && (
         <>
-          <span className="text-wtext-3 dark:text-wtext-4">·</span>
+          <span className="text-it-ink-500 dark:text-it-ink-400">·</span>
           <span>{position}</span>
         </>
       )}
       {child.isCaptain && (
-        <span className="ml-1 rounded-w-pill bg-sun-500 px-1.5 py-0.5 text-card-meta font-extrabold text-rink-900">
+        <span className="ml-1 rounded-w-pill bg-sun-500 px-1.5 py-0.5 text-card-meta font-extrabold text-it-blue-950">
           C
         </span>
       )}

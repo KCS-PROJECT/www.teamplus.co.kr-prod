@@ -19,6 +19,11 @@ import type {
 
 interface Props {
   match: MatchDetail;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 카드 박스 → flat, accent 색만 it-blue/it-red 치환(집계 로직·진행률 동결).
+   */
+  iceTheme?: boolean;
 }
 
 interface TeamStats {
@@ -63,7 +68,7 @@ function computeStats(
   return stats;
 }
 
-export function MatchStatsGrid({ match }: Props) {
+export function MatchStatsGrid({ match, iceTheme = false }: Props) {
   const homeStats = computeStats(match.events, match.homeTeam?.id);
   const awayStats = computeStats(match.events, match.awayTeam?.id);
 
@@ -71,7 +76,10 @@ export function MatchStatsGrid({ match }: Props) {
     <section aria-labelledby="match-stats-title">
       <h2
         id="match-stats-title"
-        className="mb-4 text-lg font-bold text-wtext-1 dark:text-white"
+        className={cn(
+          'mb-4 text-lg font-bold',
+          iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white',
+        )}
       >
         경기 통계
       </h2>
@@ -81,12 +89,14 @@ export function MatchStatsGrid({ match }: Props) {
           label="HOME"
           stats={homeStats}
           accent="primary"
+          iceTheme={iceTheme}
         />
         <StatsCard
           teamName={match.awayTeam?.name ?? '어웨이 팀'}
           label="AWAY"
           stats={awayStats}
           accent="teal"
+          iceTheme={iceTheme}
         />
       </div>
     </section>
@@ -98,52 +108,88 @@ function StatsCard({
   label,
   stats,
   accent,
+  iceTheme = false,
 }: {
   teamName: string;
   label: string;
   stats: TeamStats;
   accent: 'primary' | 'teal';
+  iceTheme?: boolean;
 }) {
-  const accentBar =
-    accent === 'primary' ? 'bg-ice-500' : 'bg-teal-600';
-  const accentText =
-    accent === 'primary' ? 'text-ice-500' : 'text-teal-600';
+  // ICETIMES 2색(blue+red) — home=it-blue · away=it-red. (기존: primary=ice / teal)
+  const accentBar = iceTheme
+    ? accent === 'primary'
+      ? 'bg-it-blue-500'
+      : 'bg-it-red-500'
+    : accent === 'primary'
+      ? 'bg-ice-500'
+      : 'bg-teal-600';
+  const accentText = iceTheme
+    ? accent === 'primary'
+      ? 'text-it-blue-500'
+      : 'text-it-red-500'
+    : accent === 'primary'
+      ? 'text-ice-500'
+      : 'text-teal-600';
 
   return (
-    <div className="rounded-2xl border border-wline bg-white p-4 shadow-sm dark:border-rink-700 dark:bg-rink-800">
-      <p className="mb-2 text-[10px] font-bold uppercase text-wtext-3 dark:text-rink-300">
+    <div
+      className={cn(
+        'p-4',
+        iceTheme
+          ? // ICETIMES flat — 카드 박스(rounded-2xl/shadow) 제거, hairline 경계.
+            'rounded-w-md border-[1.5px] border-it-line bg-it-surface dark:border-rink-700 dark:bg-it-blue-950'
+          : 'rounded-2xl border border-wline bg-white shadow-sm dark:border-rink-700 dark:bg-rink-800',
+      )}
+    >
+      <p
+        className={cn(
+          'mb-2 text-[10px] font-bold uppercase',
+          iceTheme ? 'text-it-ink-400 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300',
+        )}
+      >
         {label}
       </p>
-      <h3 className="mb-3 truncate text-sm font-bold text-wtext-1 dark:text-white">
+      <h3
+        className={cn(
+          'mb-3 truncate text-sm font-bold',
+          iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white',
+        )}
+      >
         {teamName}
       </h3>
       <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
         <div className="flex items-center justify-between">
-          <dt className="text-wtext-3 dark:text-rink-300">골</dt>
+          <dt className={iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300'}>골</dt>
           <dd className={cn('tabular-nums font-bold', accentText)}>
             {stats.goals}
           </dd>
         </div>
         <div className="flex items-center justify-between">
-          <dt className="text-wtext-3 dark:text-rink-300">슛</dt>
-          <dd className="font-bold tabular-nums text-wtext-1 dark:text-white">
+          <dt className={iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300'}>슛</dt>
+          <dd className={cn('font-bold tabular-nums', iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white')}>
             {stats.shots}
           </dd>
         </div>
         <div className="flex items-center justify-between">
-          <dt className="text-wtext-3 dark:text-rink-300">페널티</dt>
-          <dd className="font-bold tabular-nums text-wtext-1 dark:text-white">
+          <dt className={iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300'}>페널티</dt>
+          <dd className={cn('font-bold tabular-nums', iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white')}>
             {stats.penalties} ({stats.penaltyMinutes}m)
           </dd>
         </div>
         <div className="flex items-center justify-between">
-          <dt className="text-wtext-3 dark:text-rink-300">세이브</dt>
-          <dd className="font-bold tabular-nums text-wtext-1 dark:text-white">
+          <dt className={iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300'}>세이브</dt>
+          <dd className={cn('font-bold tabular-nums', iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white')}>
             {stats.saves}
           </dd>
         </div>
       </dl>
-      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-wline-2 dark:bg-rink-700">
+      <div
+        className={cn(
+          'mt-3 h-1.5 w-full overflow-hidden rounded-full',
+          iceTheme ? 'bg-it-line dark:bg-rink-700' : 'bg-wline-2 dark:bg-rink-700',
+        )}
+      >
         <div
           className={cn('h-full transition-all', accentBar)}
           style={{

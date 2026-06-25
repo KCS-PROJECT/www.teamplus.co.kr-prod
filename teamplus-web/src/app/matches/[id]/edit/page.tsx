@@ -176,9 +176,9 @@ export default function EditMatchPage() {
           onBack={() => back()}
           forceNative
         />
-        <div className="flex-1 flex items-center justify-center bg-white dark:bg-rink-900">
+        <div className="flex-1 flex items-center justify-center bg-it-canvas dark:bg-puck">
           <div
-            className="w-8 h-8 border-2 border-ice-500 border-t-transparent rounded-w-pill animate-spin motion-reduce:animate-none"
+            className="w-8 h-8 border-2 border-it-blue-500 border-t-transparent rounded-w-pill animate-spin motion-reduce:animate-none"
             role="status"
             aria-label="로딩 중"
           />
@@ -199,6 +199,7 @@ export default function EditMatchPage() {
         <MatchErrorState
           message={loadError ?? MESSAGES.match.error.loadFailed}
           onRetry={() => void loadMatch()}
+          iceTheme
         />
       </MobileContainer>
     );
@@ -208,7 +209,7 @@ export default function EditMatchPage() {
     <MobileContainer hasBottomNav={false}>
       <PageAppBar title={MESSAGES.match.form.editTitle} onBack={() => back()} forceNative />
 
-      <main className="flex-1 overflow-y-auto px-4 pt-5 pb-30">
+      <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck px-4 pt-5 pb-30">
         <MatchCreateForm
           mode="edit"
           initialValues={initialValues}
@@ -216,6 +217,7 @@ export default function EditMatchPage() {
           onCancel={() => navigate(`/matches/${matchId}`)}
           isSubmitting={isSubmitting}
           error={submitError}
+          iceTheme
         />
       </main>
     </MobileContainer>

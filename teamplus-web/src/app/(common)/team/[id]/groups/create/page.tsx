@@ -16,9 +16,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { MobileContainer } from "@/components/layout/MobileContainer";
 import { PageAppBar } from "@/components/layout/PageAppBar";
+import { Icon } from "@/components/ui/Icon";
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { useToast } from "@/components/ui/Toast";
 import { useSessionAuth } from "@/hooks/useSessionAuth";
+import { cn } from "@/lib/utils";
 import { MESSAGES } from "@/lib/messages";
 import { isTeamManager } from "@/lib/team-roles";
 import { api } from "@/services/api-client";
@@ -216,81 +218,88 @@ export default function TeamGroupCreatePage() {
 
       <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
         <div
-          className="flex-1 overflow-y-auto overscroll-contain px-4 pt-4 pb-4 space-y-5"
+          className="flex-1 overflow-y-auto overscroll-contain bg-it-canvas dark:bg-puck hide-scrollbar"
           style={{ WebkitOverflowScrolling: "touch" }}
         >
-          {/* 소속 팀 (readonly) */}
-          <div>
-            <label className="block text-w-small font-bold text-wtext-2 dark:text-rink-100 mb-1.5">
-              소속 팀
-            </label>
-            <div className="h-12 px-4 flex items-center rounded-lg bg-wline-2 dark:bg-rink-700 text-wtext-2 dark:text-rink-100 text-w-small">
-              {teamName || "—"}
+          {/* 그룹 기본 정보 — flat 흰 섹션 */}
+          <section className="bg-it-surface dark:bg-it-blue-950 px-5 pt-5 pb-6 space-y-5">
+            {/* 소속 팀 (readonly) */}
+            <div>
+              <label className="mb-2 block text-[14px] font-extrabold tracking-[-0.01em] text-it-ink-800 dark:text-white">
+                소속 팀
+              </label>
+              <div className="flex h-12 items-center gap-2.5 rounded-w-md bg-it-fill dark:bg-it-blue-900/40 border-[1.5px] border-it-line-strong dark:border-it-blue-900 px-4 text-[15px] font-bold text-it-ink-700 dark:text-it-ink-200">
+                <span className="size-[7px] rounded-w-pill bg-it-blue-500" aria-hidden="true" />
+                {teamName || "—"}
+              </div>
             </div>
-          </div>
 
-          {/* 하위그룹 이름 */}
-          <div>
-            <label
-              htmlFor="group-name"
-              className="block text-w-small font-bold text-wtext-2 dark:text-rink-100 mb-1.5"
-            >
-              {MESSAGES.team.groupNameLabel}{" "}
-              <span className="text-red-500">*</span>
-            </label>
-            <input
-              id="group-name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={MESSAGES.team.groupNamePlaceholder}
-              className="w-full h-12 px-4 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-wtext-1 dark:text-white text-w-small focus:outline-none focus:border-ice-500"
-            />
-            {errors.name && (
-              <p className="mt-1 text-w-caption text-red-600">{errors.name}</p>
-            )}
-          </div>
+            {/* 하위그룹 이름 */}
+            <div>
+              <label
+                htmlFor="group-name"
+                className="mb-2 flex items-center gap-1 text-[14px] font-extrabold tracking-[-0.01em] text-it-ink-800 dark:text-white"
+              >
+                {MESSAGES.team.groupNameLabel}
+                <span className="text-it-red-500">*</span>
+              </label>
+              <input
+                id="group-name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={MESSAGES.team.groupNamePlaceholder}
+                className="h-[50px] w-full rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-950 px-4 text-[15.5px] font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-it-ink-300 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20"
+              />
+              {errors.name && (
+                <p className="mt-1.5 text-[12px] font-semibold text-it-red-500">{errors.name}</p>
+              )}
+            </div>
 
-          {/* 연령대 */}
-          <div>
-            <label
-              htmlFor="group-age"
-              className="block text-w-small font-bold text-wtext-2 dark:text-rink-100 mb-1.5"
-            >
-              {MESSAGES.team.groupAgeGroupLabel}
-            </label>
-            <select
-              id="group-age"
-              value={ageGroup}
-              onChange={(e) => setAgeGroup(e.target.value)}
-              className="w-full h-12 px-4 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-wtext-1 dark:text-white text-w-small focus:outline-none focus:border-ice-500"
-            >
-              <option value="">{MESSAGES.team.groupAgeGroupPlaceholder}</option>
-              {selectableBirthYears.map((y) => (
-                <option key={y} value={String(y)}>
-                  {y}년생
-                </option>
-              ))}
-            </select>
-          </div>
+            {/* 연령대 */}
+            <div>
+              <label
+                htmlFor="group-age"
+                className="mb-2 block text-[14px] font-extrabold tracking-[-0.01em] text-it-ink-800 dark:text-white"
+              >
+                {MESSAGES.team.groupAgeGroupLabel}
+              </label>
+              <select
+                id="group-age"
+                value={ageGroup}
+                onChange={(e) => setAgeGroup(e.target.value)}
+                className="h-[50px] w-full rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-950 px-4 text-[15.5px] font-semibold text-it-ink-800 dark:text-white outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20"
+              >
+                <option value="">{MESSAGES.team.groupAgeGroupPlaceholder}</option>
+                {selectableBirthYears.map((y) => (
+                  <option key={y} value={String(y)}>
+                    {y}년생
+                  </option>
+                ))}
+              </select>
+            </div>
+          </section>
 
-          {/* 회원 선택 */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-w-small font-bold text-wtext-2 dark:text-rink-100">
+          {/* flat 섹션 사이 8px 회색 갭 */}
+          <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+          {/* 회원 선택 — flat 흰 섹션 */}
+          <section className="bg-it-surface dark:bg-it-blue-950 px-5 pt-5 pb-7">
+            <div className="mb-1 flex items-center justify-between">
+              <label className="text-[14px] font-extrabold tracking-[-0.01em] text-it-ink-800 dark:text-white">
                 {MESSAGES.team.groupMembersLabel}
               </label>
-              <span className="text-w-caption text-wtext-3 dark:text-rink-300">
+              <span className="text-[13px] font-medium text-it-ink-500 dark:text-it-ink-300 tabular-nums">
                 선택 {selectedIds.size}명 / 전체 {members.length}명
               </span>
             </div>
-            <p className="text-w-caption text-wtext-3 dark:text-rink-300 mb-2">
+            <p className="mb-3 text-[13px] font-medium text-it-ink-500 dark:text-it-ink-300">
               {MESSAGES.team.groupMembersHelper}
             </p>
 
             {/* [2026-06-05] 회원 선택 연령 필터 칩 — U8~U12 → 출생연도(년생) 동적 칩. */}
             <div
-              className="flex flex-wrap gap-2 mb-2"
+              className="mb-3 flex flex-wrap gap-2"
               role="tablist"
               aria-label="출생연도 필터"
             >
@@ -314,15 +323,19 @@ export default function TeamGroupCreatePage() {
                     role="tab"
                     aria-selected={active}
                     onClick={() => setAgeFilter(tab.key)}
-                    className={`h-9 px-3 rounded-w-pill text-w-caption font-bold transition-colors motion-reduce:transition-none ${
+                    className={cn(
+                      "inline-flex h-9 items-center gap-1 rounded-w-pill border-[1.5px] px-4 text-[14px] font-bold transition-colors duration-150 ease-ios motion-reduce:transition-none active:brightness-95",
                       active
-                        ? "bg-blue-700 text-white"
-                        : "bg-wline-2 dark:bg-rink-700 text-wtext-2 dark:text-rink-100 hover:bg-wline dark:hover:bg-rink-500"
-                    }`}
+                        ? "border-it-blue-500 bg-it-blue-500 text-white"
+                        : "border-it-line-strong bg-it-surface text-it-ink-600 hover:bg-it-fill dark:border-it-blue-900 dark:bg-it-blue-950 dark:text-it-ink-200 dark:hover:bg-it-blue-900",
+                    )}
                   >
                     {tab.label}
                     <span
-                      className={`ml-1 tabular-nums ${active ? "text-white/80" : "text-wtext-3 dark:text-rink-300"}`}
+                      className={cn(
+                        "tabular-nums",
+                        active ? "text-white/80" : "text-it-ink-400 dark:text-it-ink-300",
+                      )}
                     >
                       {tab.count}
                     </span>
@@ -332,17 +345,25 @@ export default function TeamGroupCreatePage() {
             </div>
 
             {/* 검색 */}
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="이름으로 검색"
-              className="w-full h-11 px-4 mb-2 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-wtext-1 dark:text-white text-w-small focus:outline-none focus:border-ice-500"
-            />
+            <div className="relative mb-3">
+              <Icon
+                name="search"
+                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[20px] text-it-ink-400 dark:text-it-ink-300"
+                aria-hidden="true"
+              />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="이름으로 검색"
+                aria-label="회원 이름 검색"
+                className="h-12 w-full rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-950 pl-11 pr-4 text-[15px] font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-it-ink-300 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20"
+              />
+            </div>
 
             {!membersLoading && members.length === 0 && (
-              <div className="rounded-lg border border-wline bg-wbg p-6 text-center dark:border-rink-700 dark:bg-rink-800/50">
-                <p className="text-w-small text-wtext-3 dark:text-rink-300">
+              <div className="flex flex-col items-center justify-center py-12">
+                <p className="text-center text-[14px] font-medium text-it-ink-700 dark:text-it-ink-300">
                   {MESSAGES.team.groupMembersEmpty}
                 </p>
               </div>
@@ -352,88 +373,84 @@ export default function TeamGroupCreatePage() {
             {!membersLoading &&
               members.length > 0 &&
               filteredMembers.length === 0 && (
-                <div className="rounded-lg border border-wline bg-wbg p-6 text-center dark:border-rink-700 dark:bg-rink-800/50">
-                  <p className="text-w-small text-wtext-3 dark:text-rink-300">
+                <div className="flex flex-col items-center justify-center py-12">
+                  <p className="text-center text-[14px] font-medium text-it-ink-700 dark:text-it-ink-300">
                     {MESSAGES.team.groupMembersFilterEmpty}
                   </p>
                 </div>
               )}
 
             {!membersLoading && filteredMembers.length > 0 && (
-              // [수정 2026-05-14] 내부 max-h + overflow 제거 — 페이지 자연 스크롤(상위 div) 에 위임.
-              //  중첩 스크롤 컨테이너가 모바일에서 터치 스크롤을 가로채는 문제 해결.
-              <ul className="rounded-lg border border-wline dark:border-rink-700 divide-y divide-slate-100 dark:divide-slate-700 bg-white dark:bg-rink-800">
-                {filteredMembers.map((m) => {
+              // hairline 행 (카드 박스 제거) — 페이지 자연 스크롤에 위임.
+              <div className="flex flex-col">
+                {filteredMembers.map((m, idx) => {
                   const checked = selectedIds.has(m.memberId);
+                  const isLast = idx === filteredMembers.length - 1;
                   return (
-                    <li key={m.memberId}>
-                      <label
-                        className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${
-                          checked
-                            ? "bg-blue-50 dark:bg-blue-900/20"
-                            : "hover:bg-wbg dark:hover:bg-rink-700/50"
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleMember(m.memberId)}
-                          className="w-5 h-5 text-ice-500 rounded border-wline focus:ring-ice-500"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p className="text-w-small font-semibold text-wtext-1 dark:text-white truncate">
-                              {m.playerName}
-                            </p>
-                            {/* [추가 2026-05-18 W2.B #9] 연령 칩 — 하위그룹 수정 페이지와 동일 패턴 */}
-                            {ageLabel(m) && (
-                              <span className="shrink-0 text-w-caption font-bold px-1.5 py-0.5 rounded bg-ice-500/10 text-ice-500 tabular-nums">
-                                {ageLabel(m)}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-w-caption text-wtext-3 dark:text-rink-300 mt-0.5">
-                            <span className="inline-block min-w-[24px]">
-                              {genderLabel(m.gender)}
-                            </span>
-                            <span className="mx-2 text-wtext-4 dark:text-rink-500">
-                              ·
-                            </span>
-                            <span>{m.playerAge}세</span>
+                    <label
+                      key={m.memberId}
+                      className={cn(
+                        "flex cursor-pointer items-center gap-3 py-3 min-h-[56px] transition-colors motion-reduce:transition-none",
+                        !isLast && "border-b border-it-line dark:border-it-blue-900",
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleMember(m.memberId)}
+                        className="size-5 shrink-0 rounded border-it-line-strong text-it-blue-500 focus:ring-it-blue-500"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="truncate text-[15px] font-bold text-it-ink-800 dark:text-white">
+                            {m.playerName}
                           </p>
+                          {/* [추가 2026-05-18 W2.B #9] 연령 칩 — 하위그룹 수정 페이지와 동일 패턴 */}
+                          {ageLabel(m) && (
+                            <span className="shrink-0 rounded-w-md bg-it-blue-50 px-1.5 py-0.5 text-[12px] font-bold tabular-nums text-it-blue-500 dark:bg-it-blue-500/15 dark:text-it-blue-300">
+                              {ageLabel(m)}
+                            </span>
+                          )}
                         </div>
-                      </label>
-                    </li>
+                        <p className="mt-0.5 text-[13px] font-medium text-it-ink-500 dark:text-it-ink-300">
+                          <span className="inline-block min-w-[24px]">
+                            {genderLabel(m.gender)}
+                          </span>
+                          <span className="mx-2 text-it-ink-300 dark:text-it-ink-400">·</span>
+                          <span className="tabular-nums">{m.playerAge}세</span>
+                        </p>
+                      </div>
+                    </label>
                   );
                 })}
-              </ul>
+              </div>
             )}
-          </div>
 
-          {errors.server && (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-w-small text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
-              {errors.server}
-            </div>
-          )}
+            {errors.server && (
+              <div className="mt-4 rounded-w-md border-[1.5px] border-it-red-200 bg-it-red-50 px-4 py-3 text-[14px] font-semibold text-it-red-600 dark:border-it-red-500/40 dark:bg-it-red-500/10 dark:text-it-red-300">
+                {errors.server}
+              </div>
+            )}
+          </section>
         </div>
 
         {/* [수정 2026-05-14] 액션 버튼 — fixed → shrink-0 자연 배치.
             BottomNav 위에 안전하게 위치하여 잔상(z-index 충돌) 해소.
             MobileContainer 의 hasBottomNav padding(60px+safe-area)이 BottomNav 영역을 보전. */}
-        <div className="shrink-0 bg-white dark:bg-rink-900 border-t border-wline dark:border-rink-700 px-4 py-3">
-          <div className="max-w-md mx-auto flex gap-2">
+        <div className="shrink-0 border-t border-it-line dark:border-it-blue-900 bg-it-surface dark:bg-it-blue-950 px-5 py-3">
+          <div className="mx-auto flex max-w-md gap-2.5">
             <button
               type="button"
               onClick={() => router.back()}
               disabled={submitting}
-              className="flex-1 h-12 rounded-lg border border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 font-bold text-w-small disabled:opacity-50"
+              className="h-[50px] flex-1 rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-surface dark:bg-it-blue-950 text-[15px] font-extrabold text-it-ink-700 dark:text-it-ink-200 transition-colors motion-reduce:transition-none hover:bg-it-fill dark:hover:bg-it-blue-900 active:brightness-95 disabled:opacity-50"
             >
               취소
             </button>
             <button
               type="submit"
               disabled={submitting || !name.trim()}
-              className="flex-[2] h-12 rounded-lg bg-blue-700 text-white font-bold text-w-small hover:bg-blue-800 transition-colors disabled:opacity-50"
+              className="h-[50px] flex-[2] rounded-w-md bg-it-blue-500 text-[15px] font-extrabold text-white transition-colors duration-150 ease-ios motion-reduce:transition-none hover:bg-it-blue-600 active:brightness-95 disabled:bg-it-line-strong dark:disabled:bg-it-blue-900 disabled:cursor-not-allowed"
             >
               {submitting ? "생성 중…" : MESSAGES.team.groupCreateButton}
             </button>

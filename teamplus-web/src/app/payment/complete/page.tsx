@@ -46,21 +46,21 @@ function SuccessAnimation({
       aria-live="assertive"
       aria-atomic="true"
     >
-      {/* Animated checkmark - Primary Blue 색상 */}
+      {/* Animated checkmark - ICETIMES blue */}
       <div className="relative flex items-center justify-center mb-6" aria-hidden="true">
-        {/* Main checkmark circle - Primary Blue */}
-        <div className="w-20 h-20 rounded-w-pill bg-ice-500 flex items-center justify-center shadow-md relative z-10">
+        {/* Main checkmark circle - ICETIMES blue */}
+        <div className="w-20 h-20 rounded-w-pill bg-it-blue-500 flex items-center justify-center shadow-sh-1 relative z-10">
           <Icon name="check" className="text-white text-4xl" weight={700} />
         </div>
       </div>
 
       {/* Success message */}
-      <h2 className="text-2xl font-extrabold text-wtext-1 dark:text-white mb-2 tracking-tight">
+      <h2 className="text-2xl font-extrabold text-it-ink-900 dark:text-white mb-2 tracking-tight">
         {MESSAGES.payment2.completed}
       </h2>
 
-      {/* Credits badge - Primary Blue. 후불(POSTPAID)은 사후 정산이라 결제권 발급 문구 대신 정산 완료 안내. */}
-      <p className="text-card-emphasis text-ice-500 font-bold bg-ice-500/10 px-4 py-1.5 rounded-w-pill inline-block">
+      {/* Credits badge - ICETIMES blue. 후불(POSTPAID)은 사후 정산이라 결제권 발급 문구 대신 정산 완료 안내. */}
+      <p className="text-card-emphasis text-it-blue-600 dark:text-it-blue-300 font-bold bg-it-blue-50 dark:bg-it-blue-500/15 px-4 py-1.5 rounded-w-pill inline-block">
         {isPostpaid
           ? MESSAGES.postpaidPay.completedNote
           : MESSAGES.payment2.creditIssued(creditsIssued)}
@@ -73,31 +73,32 @@ function SuccessAnimation({
  * PaymentAmountCard — 결제 금액 강조 카드 (신규 2026-05-18)
  *
  *  성공 메시지 ↔ 결제 상세 사이에 위치. 시각 위계 강화 목적.
- *  - 라벨: "최종 결제 금액" (text-card-meta)
- *  - 큰 금액: text-4xl + font-extrabold + text-ice-500 (Primary)
- *  - 주문번호: text-card-meta + font-mono (작은 회색 보조 정보)
+ *  [ICETIMES flat 재스킨] navy 히어로 밴드(bg-it-blue-800) full-bleed + 금액 38px/800.
+ *  - 라벨: "최종 결제 금액" (uppercase tracking, white/60)
+ *  - 큰 금액: 38px + font-extrabold + white tabular-nums
+ *  - 주문번호: font-mono white/55 (보조 정보)
  */
 function PaymentAmountCard({ receipt }: { receipt: Receipt }) {
   return (
-    <div
-      className="w-full mb-5 bg-white dark:bg-rink-800 rounded-2xl border border-wline dark:border-rink-700 shadow-sm px-6 py-7 text-center"
+    <section
+      className="w-full bg-it-blue-800 dark:bg-it-blue-950 px-6 pt-[22px] pb-6 text-center"
       role="region"
       aria-label={MESSAGES.payment2.totalAmountLabel}
     >
-      <p className="text-card-meta text-wtext-3 dark:text-rink-300 font-medium mb-2">
+      <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-white/60 mb-2">
         {MESSAGES.payment2.totalAmountLabel}
       </p>
       <p
-        className="text-4xl font-extrabold text-ice-500 tabular-nums tracking-tight mb-3"
+        className="text-[38px] font-extrabold text-white tabular-nums tracking-[-0.02em] leading-[1.05] mb-3"
         aria-label={`${receipt.totalAmount.toLocaleString()}원`}
       >
         {receipt.totalAmount.toLocaleString()}
-        <span className="text-2xl font-bold ml-1 text-wtext-1 dark:text-white" aria-hidden="true">원</span>
+        <span className="text-[19px] font-bold ml-1 text-white" aria-hidden="true">원</span>
       </p>
-      <p className="text-card-meta text-wtext-3 dark:text-rink-300 font-mono tracking-wide">
+      <p className="text-card-meta text-white/55 font-mono tracking-wide">
         {MESSAGES.payment2.orderNumberLabel} {receipt.orderNumber}
       </p>
-    </div>
+    </section>
   );
 }
 
@@ -105,23 +106,21 @@ function ReceiptCard({ receipt }: { receipt: Receipt }) {
 
   return (
     <div className="w-full" role="region" aria-label="결제 영수증">
-      <div className="relative w-full bg-white dark:bg-rink-800 rounded-2xl p-6 shadow-sm border border-wline dark:border-rink-700">
-        {/* Top notch decoration */}
-        <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-6 h-6 bg-wbg dark:bg-rink-900 rounded-w-pill border border-wline dark:border-rink-700 z-10" aria-hidden="true"></div>
-
+      {/* ICETIMES flat — 흰 섹션 + hairline 행 (카드 박스·notch 제거) */}
+      <section className="w-full bg-it-surface dark:bg-it-blue-950 px-5 py-2">
         {/*
           정의 목록(dl/dt/dd) — 영수증 항목의 시맨틱 구조.
           [수정 2026-05-18] 항목 순서 변경: 수업명 → 수강생 → 결제 수단 → 결제 일시 → 할부유무.
             주문번호 / 최종 결제 금액은 상단 PaymentAmountCard 로 이동.
         */}
-        <dl className="flex flex-col gap-5">
+        <dl className="flex flex-col">
           {/* 1. 수업명 — enrollment 있을 때만 표시 */}
           {receipt.className && (
-            <div className="flex justify-between items-center">
-              <dt className="text-card-body text-wtext-3 dark:text-rink-300 font-medium">
+            <div className="flex justify-between items-center gap-3 border-b border-it-line dark:border-rink-700 py-3.5 last:border-b-0">
+              <dt className="text-card-body text-it-ink-500 dark:text-rink-300 font-medium">
                 {MESSAGES.payment2.classLabel}
               </dt>
-              <dd className="text-card-body text-wtext-1 dark:text-white font-medium text-right max-w-[60%] truncate">
+              <dd className="text-card-body text-it-ink-900 dark:text-white font-bold text-right max-w-[60%] truncate">
                 {receipt.className}
               </dd>
             </div>
@@ -129,11 +128,11 @@ function ReceiptCard({ receipt }: { receipt: Receipt }) {
 
           {/* 2. 수강생 — enrollment 있을 때만 표시 */}
           {receipt.childName && (
-            <div className="flex justify-between items-center">
-              <dt className="text-card-body text-wtext-3 dark:text-rink-300 font-medium">
+            <div className="flex justify-between items-center gap-3 border-b border-it-line dark:border-rink-700 py-3.5 last:border-b-0">
+              <dt className="text-card-body text-it-ink-500 dark:text-rink-300 font-medium">
                 {MESSAGES.enrollment.studentLabel}
               </dt>
-              <dd className="text-card-body text-wtext-1 dark:text-white font-medium">
+              <dd className="text-card-body text-it-ink-900 dark:text-white font-bold">
                 {receipt.childName}
               </dd>
             </div>
@@ -146,11 +145,11 @@ function ReceiptCard({ receipt }: { receipt: Receipt }) {
               MESSAGES.payment2.paymentMethodMap 으로 한글 라벨 변환. fallback 으로 원본 코드 유지.
               공통코드화 미적용 사유: PG 스펙 종속 + 위젯 위임 구조 — 정적 매핑이 정답.
           */}
-          <div className="flex justify-between items-center">
-            <dt className="text-card-body text-wtext-3 dark:text-rink-300 font-medium">{MESSAGES.payment2.paymentMethodLabel}</dt>
+          <div className="flex justify-between items-center gap-3 border-b border-it-line dark:border-rink-700 py-3.5 last:border-b-0">
+            <dt className="text-card-body text-it-ink-500 dark:text-rink-300 font-medium">{MESSAGES.payment2.paymentMethodLabel}</dt>
             <dd className="flex items-center gap-2">
-              <Icon name="credit_card" className="text-wtext-3 dark:text-rink-300 text-base" aria-hidden="true" />
-              <span className="text-card-body text-wtext-1 dark:text-white font-medium">
+              <Icon name="credit_card" className="text-it-ink-400 dark:text-rink-300 text-base" aria-hidden="true" />
+              <span className="text-card-body text-it-ink-900 dark:text-white font-bold">
                 {MESSAGES.payment2.paymentMethodMap[receipt.paymentMethod] ?? receipt.paymentMethod}
                 {receipt.cardLastFour && ` (${receipt.cardLastFour})`}
               </span>
@@ -158,29 +157,29 @@ function ReceiptCard({ receipt }: { receipt: Receipt }) {
           </div>
 
           {/* 4. 결제 일시 */}
-          <div className="flex justify-between items-center">
-            <dt className="text-card-body text-wtext-3 dark:text-rink-300 font-medium">{MESSAGES.payment2.paymentDateLabel}</dt>
-            <dd className="text-card-body text-wtext-1 dark:text-white font-medium">
+          <div className="flex justify-between items-center gap-3 border-b border-it-line dark:border-rink-700 py-3.5 last:border-b-0">
+            <dt className="text-card-body text-it-ink-500 dark:text-rink-300 font-medium">{MESSAGES.payment2.paymentDateLabel}</dt>
+            <dd className="text-card-body text-it-ink-900 dark:text-white font-bold">
               {receipt.paymentDate}
             </dd>
           </div>
 
           {/* 5. 할부유무 — installment 응답 있을 때만 표시 (없으면 항목 자체 미노출) */}
           {receipt.installment && (
-            <div className="flex justify-between items-center">
-              <dt className="text-card-body text-wtext-3 dark:text-rink-300 font-medium">
+            <div className="flex justify-between items-center gap-3 border-b border-it-line dark:border-rink-700 py-3.5 last:border-b-0">
+              <dt className="text-card-body text-it-ink-500 dark:text-rink-300 font-medium">
                 {MESSAGES.payment2.installmentLabel}
               </dt>
-              <dd className="text-card-body text-wtext-1 dark:text-white font-medium">
+              <dd className="text-card-body text-it-ink-900 dark:text-white font-bold">
                 {receipt.installment}
               </dd>
             </div>
           )}
         </dl>
-      </div>
+      </section>
 
       {/* Security message */}
-      <div className="mt-6 flex items-center justify-center gap-2 text-card-meta text-wtext-3 dark:text-rink-300">
+      <div className="mt-4 flex items-center justify-center gap-2 text-card-meta text-it-ink-400 dark:text-rink-300">
         <Icon name="lock" className="text-[14px]" />
         <span>{MESSAGES.payment2.securePayment}</span>
       </div>
@@ -327,30 +326,41 @@ function PaymentCompleteContent() {
       {/* Main content — 헤더·스텝인디케이터 제거 후 safe-area-top 여백으로 시작.
           [수정 2026-05-18] AppBar 제거로 상단 padding을 safe-area 기반으로 보강.
           [&>*]:shrink-0 으로 flex 자식 압축 방지. */}
-      <main className="flex-1 flex flex-col items-center px-6 pt-[calc(var(--safe-area-inset-top,0px)+32px)] overflow-y-auto [&>*]:shrink-0">
+      <main className="flex-1 flex flex-col overflow-y-auto bg-it-canvas dark:bg-puck [&>*]:shrink-0">
         {confirmError && (
-          <div className="w-full mb-4 rounded-xl border border-flame-200 bg-flame-50 dark:bg-flame-900/20 p-4 text-card-body text-flame-700 dark:text-flame-300">
+          <div className="mx-5 mt-[calc(var(--safe-area-inset-top,0px)+16px)] rounded-w-md border border-it-red-500/30 bg-it-red-50 dark:bg-it-red-500/15 p-4 text-card-body text-it-red-600 dark:text-it-red-200">
             {MESSAGES.payment2.confirmFailed}: {confirmError}
           </div>
         )}
         {receipt ? (
           <>
-            <SuccessAnimation
-              creditsIssued={creditsIssued}
-              isPostpaid={(receipt.orderNumber ?? '').startsWith('POSTPAID-')}
-            />
-            <PaymentAmountCard receipt={receipt} />
-            <ReceiptCard receipt={receipt} />
+            {/* 성공 안내 — 흰 섹션 (full-bleed) */}
+            <section className="bg-it-surface dark:bg-it-blue-950 px-6 pt-[calc(var(--safe-area-inset-top,0px)+32px)] pb-6">
+              <SuccessAnimation
+                creditsIssued={creditsIssued}
+                isPostpaid={(receipt.orderNumber ?? '').startsWith('POSTPAID-')}
+              />
+            </section>
 
-            {/* Action buttons — inline (스크롤 마지막) */}
-            <div className="w-full flex gap-3 pt-6">
+            {/* 결제 금액 navy 히어로 — 8px 회색 갭 */}
+            <div className="mt-2">
+              <PaymentAmountCard receipt={receipt} />
+            </div>
+
+            {/* 영수증 — 8px 회색 갭 */}
+            <div className="mt-2">
+              <ReceiptCard receipt={receipt} />
+            </div>
+
+            {/* Action buttons — 흰 섹션 (8px 회색 갭) */}
+            <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-5 flex gap-3">
               <button
                 onClick={handleDownloadReceipt}
                 disabled={isDownloading}
-                className="flex-1 flex items-center justify-center gap-2 h-14 rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-wtext-2 dark:text-rink-100 font-bold text-card-emphasis hover:bg-wbg dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none active:brightness-95 disabled:opacity-50"
+                className="flex-1 flex items-center justify-center gap-2 h-14 rounded-w-md border border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-it-ink-600 dark:text-rink-100 font-bold text-card-emphasis hover:bg-it-fill dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none active:brightness-95 disabled:opacity-50"
               >
                 {isDownloading ? (
-                  <div className="w-5 h-5 rounded-w-pill border-2 border-wline border-t-slate-600 animate-spin motion-reduce:animate-none"></div>
+                  <div className="w-5 h-5 rounded-w-pill border-2 border-it-line-strong border-t-it-ink-500 animate-spin motion-reduce:animate-none"></div>
                 ) : (
                   <Icon name="download" className="text-xl" />
                 )}
@@ -377,24 +387,24 @@ function PaymentCompleteContent() {
                       `/payment/options?classId=${payQueue.classId}&childId=${next.childId}${next.productId ? `&productId=${next.productId}` : ''}`,
                     );
                   }}
-                  className="flex-[2] flex items-center justify-center h-14 rounded-xl bg-ice-500 text-white font-bold text-card-emphasis shadow-md hover:bg-ice-500/90 transition-all motion-reduce:transition-none active:brightness-95"
+                  className="flex-[2] flex items-center justify-center h-14 rounded-w-md bg-it-blue-500 text-white font-bold text-card-emphasis shadow-sh-1 hover:bg-it-blue-600 transition-colors motion-reduce:transition-none active:brightness-95"
                 >
                   다음 결제 진행 ({payQueue.pairs.length}건 남음)
                 </button>
               ) : (
                 <NavLink
                   href={homePath}
-                  className="flex-[2] flex items-center justify-center h-14 rounded-xl bg-ice-500 text-white font-bold text-card-emphasis shadow-md hover:bg-ice-500/90 transition-all motion-reduce:transition-none active:brightness-95"
+                  className="flex-[2] flex items-center justify-center h-14 rounded-w-md bg-it-blue-500 text-white font-bold text-card-emphasis shadow-sh-1 hover:bg-it-blue-600 transition-colors motion-reduce:transition-none active:brightness-95"
                 >
                   홈으로 이동
                 </NavLink>
               )}
-            </div>
+            </section>
           </>
         ) : (
           <div className="flex flex-col items-center justify-center py-20">
-            <div className="w-12 h-12 rounded-w-pill border-4 border-wline dark:border-rink-700 border-t-primary animate-spin mb-4 motion-reduce:animate-none"></div>
-            <p className="text-wtext-3 dark:text-rink-300 text-card-body">{MESSAGES.loading.standard}</p>
+            <div className="w-12 h-12 rounded-w-pill border-4 border-it-line-strong dark:border-rink-700 border-t-it-blue-500 animate-spin mb-4 motion-reduce:animate-none"></div>
+            <p className="text-it-ink-500 dark:text-rink-300 text-card-body">{MESSAGES.loading.standard}</p>
           </div>
         )}
       </main>
@@ -405,9 +415,9 @@ function PaymentCompleteContent() {
 function LoadingFallback() {
   return (
     <MobileContainer hasBottomNav={false}>
-      <div className="flex flex-col items-center justify-center min-h-screen">
-        <div className="w-12 h-12 rounded-w-pill border-4 border-wline dark:border-rink-700 border-t-primary animate-spin mb-4 motion-reduce:animate-none"></div>
-        <p className="text-wtext-3 dark:text-rink-300 text-card-body">로딩 중...</p>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-it-canvas dark:bg-puck">
+        <div className="w-12 h-12 rounded-w-pill border-4 border-it-line-strong dark:border-rink-700 border-t-it-blue-500 animate-spin mb-4 motion-reduce:animate-none"></div>
+        <p className="text-it-ink-500 dark:text-rink-300 text-card-body">로딩 중...</p>
       </div>
     </MobileContainer>
   );

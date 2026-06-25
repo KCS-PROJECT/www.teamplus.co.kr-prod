@@ -170,10 +170,10 @@ function CountdownTimer() {
 
   return (
     <span
-      className={`flex items-center justify-center gap-1 rounded-lg px-3 py-1.5 text-card-meta font-bold uppercase ${
+      className={`flex items-center justify-center gap-1 rounded-w-md px-3 py-1.5 text-card-meta font-bold uppercase tabular-nums ${
         isUrgent
-          ? 'bg-red-500 text-white timer-urgent'
-          : 'bg-red-500/10 text-red-500'
+          ? 'bg-it-red-500 text-white timer-urgent'
+          : 'bg-it-red-50 text-it-red-500'
       }`}
     >
       <Icon name="timer" className="text-card-body" />
@@ -187,13 +187,13 @@ function CountdownTimer() {
 function CategoryItem({ category }: { category: Category }) {
   return (
     <NavLink href={category.href} className="flex flex-col items-center gap-2.5 group">
-      <div className="category-ice flex h-16 w-16 items-center justify-center rounded-w-lg">
+      <div className="flex h-16 w-16 items-center justify-center rounded-w-md bg-it-blue-50 dark:bg-it-blue-900/30 border border-it-line dark:border-rink-700">
         <Icon
           name={category.icon}
-          className="text-w-h2 text-sky-700 dark:text-sky-200 relative z-10 group-hover:scale-110 transition-transform motion-reduce:transition-none duration-300"
+          className="text-w-h2 text-it-blue-500 dark:text-it-blue-300 relative z-10 group-hover:scale-110 transition-transform motion-reduce:transition-none duration-300"
         />
       </div>
-      <span className="text-card-meta font-semibold text-wtext-3 dark:text-wtext-4 group-hover:text-ice-500 transition-colors motion-reduce:transition-none">
+      <span className="text-card-meta font-semibold text-it-ink-600 dark:text-wtext-4 group-hover:text-it-blue-500 transition-colors motion-reduce:transition-none">
         {category.name}
       </span>
     </NavLink>
@@ -217,42 +217,42 @@ function ProductCard({ product }: { product: Product }) {
   return (
     <NavLink
       href={`/products/${product.id}`}
-      className="product-card-lift min-w-[160px] max-w-[160px] flex flex-col gap-2.5 rounded-w-lg bg-wsurface dark:bg-rink-800 p-3 shadow-sh-1 border border-wline dark:border-rink-700"
+      className="min-w-[160px] max-w-[160px] flex flex-col gap-2.5 rounded-w-md bg-it-surface dark:bg-rink-800 p-3 border border-it-line dark:border-rink-700 transition-transform motion-reduce:transition-none active:brightness-95"
     >
-      <div className="relative aspect-square w-full overflow-hidden rounded-w-md bg-wbg dark:bg-puck">
-        <div className="h-full w-full bg-wline dark:bg-rink-800 flex items-center justify-center">
-          <Icon name="sports_hockey" className="text-4xl text-wtext-4 dark:text-wtext-3" />
+      <div className="relative aspect-square w-full overflow-hidden rounded-w-md bg-it-fill dark:bg-puck">
+        <div className="h-full w-full bg-it-fill dark:bg-rink-800 flex items-center justify-center">
+          <Icon name="sports_hockey" className="text-4xl text-it-ink-400 dark:text-wtext-3" />
         </div>
         {product.discount && (
-          <div className="badge-discount absolute top-2 left-2 rounded-lg px-2 py-1 text-card-meta font-bold text-white">
+          <div className="absolute top-2 left-2 rounded-w-md bg-it-red-500 px-2 py-1 text-card-meta font-bold text-white">
             -{product.discount}%
           </div>
         )}
         <button
           onClick={handleLike}
-          className={`absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-w-pill bg-white/95 dark:bg-rink-800/95 shadow-sh-2 hover:scale-110 transition-all motion-reduce:transition-none ${justLiked ? 'heart-active' : ''}`}
+          className={`absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-w-pill bg-it-surface/95 dark:bg-rink-800/95 border border-it-line hover:scale-110 transition-all motion-reduce:transition-none ${justLiked ? 'heart-active' : ''}`}
           aria-label={liked ? '찜 해제' : '찜하기'}
         >
           <Icon
             name="favorite"
             filled={liked}
-            className={`text-card-title ${liked ? 'text-red-500' : 'text-wtext-4'}`}
+            className={`text-card-title ${liked ? 'text-it-red-500' : 'text-it-ink-400'}`}
           />
         </button>
       </div>
       <div className="flex flex-col gap-0.5">
-        <p className="text-card-meta text-wtext-4 dark:text-wtext-3 font-medium tracking-wide uppercase">
+        <p className="text-card-meta text-it-ink-400 dark:text-wtext-3 font-medium tracking-wide uppercase">
           {product.brand}
         </p>
-        <p className="truncate text-card-body font-semibold text-wtext-1 dark:text-white leading-snug">
+        <p className="truncate text-card-body font-semibold text-it-ink-800 dark:text-white leading-snug">
           {product.name}
         </p>
         <div className="flex items-center gap-2 mt-1 justify-end">
-          <span className="text-card-emphasis font-bold text-ice-500">
+          <span className="text-card-emphasis font-bold text-it-blue-500 tabular-nums">
             {product.price.toLocaleString()}원
           </span>
           {product.originalPrice && (
-            <span className="text-card-meta text-wtext-4 line-through">
+            <span className="text-card-meta text-it-ink-400 line-through tabular-nums">
               {product.originalPrice.toLocaleString()}원
             </span>
           )}
@@ -279,11 +279,11 @@ function FeaturedProductCard({ product }: { product: Product }) {
   return (
     <NavLink
       href={`/products/${product.id}`}
-      className="product-card-lift group flex flex-col gap-2.5 rounded-w-lg bg-wsurface dark:bg-rink-800 p-3 shadow-sh-1 border border-wline dark:border-rink-700"
+      className="group flex flex-col gap-2.5 rounded-w-md bg-it-surface dark:bg-rink-800 p-3 border border-it-line dark:border-rink-700 transition-transform motion-reduce:transition-none active:brightness-95"
     >
-      <div className="relative aspect-[4/5] w-full overflow-hidden rounded-w-md bg-wbg dark:bg-puck">
-        <div className="h-full w-full bg-wline dark:bg-rink-800 flex items-center justify-center">
-          <Icon name="sports_hockey" className="text-5xl text-wtext-4 dark:text-wtext-3 group-hover:scale-110 transition-transform motion-reduce:transition-none duration-500" />
+      <div className="relative aspect-[4/5] w-full overflow-hidden rounded-w-md bg-it-fill dark:bg-puck">
+        <div className="h-full w-full bg-it-fill dark:bg-rink-800 flex items-center justify-center">
+          <Icon name="sports_hockey" className="text-5xl text-it-ink-400 dark:text-wtext-3 group-hover:scale-110 transition-transform motion-reduce:transition-none duration-500" />
         </div>
         <button
           onClick={handleLike}
@@ -293,26 +293,26 @@ function FeaturedProductCard({ product }: { product: Product }) {
           <Icon
             name="favorite"
             filled={liked}
-            className={`text-card-title ${liked ? 'text-red-500' : 'text-white'}`}
+            className={`text-card-title ${liked ? 'text-it-red-500' : 'text-white'}`}
           />
         </button>
         {product.badge && (
-          <div className="absolute top-2.5 left-2.5 rounded-lg bg-ice-500 px-2.5 py-1 text-card-meta font-bold text-white uppercase tracking-wider shadow-sh-2">
+          <div className="absolute top-2.5 left-2.5 rounded-w-md bg-it-blue-500 px-2.5 py-1 text-card-meta font-bold text-white uppercase tracking-wider">
             {product.badge}
           </div>
         )}
       </div>
       <div className="flex flex-col gap-1">
-        <span className="text-card-meta uppercase font-bold tracking-wider text-wtext-4 dark:text-wtext-3">
+        <span className="text-card-meta uppercase font-bold tracking-wider text-it-ink-400 dark:text-wtext-3">
           {product.brand}
         </span>
-        <h4 className="line-clamp-2 text-card-body font-semibold text-wtext-1 dark:text-white leading-snug">
+        <h4 className="line-clamp-2 text-card-body font-semibold text-it-ink-800 dark:text-white leading-snug">
           {product.name}
         </h4>
         <div className="mt-1.5 flex items-baseline justify-end">
-          <span className="text-card-emphasis font-bold text-wtext-1 dark:text-white">
+          <span className="text-card-emphasis font-bold text-it-ink-800 dark:text-white tabular-nums">
             {product.price.toLocaleString()}
-            <span className="text-card-meta font-normal text-wtext-4 ml-0.5">원</span>
+            <span className="text-card-meta font-normal text-it-ink-400 ml-0.5">원</span>
           </span>
         </div>
       </div>
@@ -409,29 +409,33 @@ export default function ShopHomePage() {
             icon: 'shopping_bag',
             label: cartCount > 0 ? `장바구니 (${cartCount}개)` : '장바구니',
             onClick: () => navigate('/cart', { message: '로딩중...' }),
-            className: cartCount > 0 ? 'relative after:content-[""] after:absolute after:top-1 after:right-1 after:h-2 after:w-2 after:rounded-full after:bg-ice-500' : undefined,
+            className: cartCount > 0 ? 'relative after:content-[""] after:absolute after:top-1 after:right-1 after:h-2 after:w-2 after:rounded-full after:bg-it-blue-500' : undefined,
           },
         ]}
         onMenu={() => setIsMenuOpen(true)}
       />
 
-      <main className="flex-1 flex flex-col gap-7 overflow-y-auto pb-30 px-4 pt-5">
-        {/* Season Special Swipe Banner */}
-        <SwipeBanner
-          slides={seasonBanners}
-          autoPlayInterval={4000}
-          height="h-48"
-        />
+      <main className="flex-1 flex flex-col overflow-y-auto bg-it-canvas dark:bg-puck pb-30">
+        {/* Season Special Swipe Banner — 흰 섹션 */}
+        <section className="bg-it-surface dark:bg-rink-800 px-4 pt-5 pb-5">
+          <SwipeBanner
+            slides={seasonBanners}
+            autoPlayInterval={4000}
+            height="h-48"
+            iceTheme
+          />
+        </section>
 
-        {/* Categories - Ice Crystal Style */}
-        <section>
+        {/* Categories — flat 흰 섹션 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+        <section className="bg-it-surface dark:bg-rink-800 px-4 pt-5 pb-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="section-title-ice text-card-title font-bold text-wtext-1 dark:text-white">
+            <h3 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
               카테고리
             </h3>
             <NavLink
               href="/products"
-              className="text-card-meta font-semibold text-ice-500 hover:text-ice-500/80 transition-colors motion-reduce:transition-none flex items-center gap-0.5"
+              className="text-card-meta font-semibold text-it-blue-500 hover:text-it-blue-600 transition-colors motion-reduce:transition-none flex items-center gap-0.5"
             >
               전체보기
               <Icon name="chevron_right" className="text-card-body" />
@@ -444,11 +448,12 @@ export default function ShopHomePage() {
           </div>
         </section>
 
-        {/* Time Sale - Urgency Design */}
-        <section>
+        {/* Time Sale — flat 흰 섹션 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+        <section className="bg-it-surface dark:bg-rink-800 px-4 pt-5 pb-5">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <h3 className="section-title-ice text-card-title font-bold text-wtext-1 dark:text-white">
+              <h3 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
                 타임 특가
               </h3>
               <CountdownTimer />
@@ -461,16 +466,17 @@ export default function ShopHomePage() {
               ))}
             </div>
           ) : (
-            <p className="text-card-body text-wtext-4 dark:text-wtext-3 text-center py-6">
+            <p className="text-card-body text-it-ink-400 dark:text-wtext-3 text-center py-6">
               {MESSAGES.empty('타임 특가 상품')}
             </p>
           )}
         </section>
 
-        {/* Recommended Products - Premium Grid */}
-        <section>
+        {/* Recommended Products — flat 흰 섹션 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+        <section className="bg-it-surface dark:bg-rink-800 px-4 pt-5 pb-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="section-title-ice text-card-title font-bold text-wtext-1 dark:text-white">
+            <h3 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
               회원님을 위한 추천
             </h3>
           </div>
@@ -481,23 +487,23 @@ export default function ShopHomePage() {
               ))}
             </div>
           ) : (
-            <p className="text-card-body text-wtext-4 dark:text-wtext-3 text-center py-6">
+            <p className="text-card-body text-it-ink-400 dark:text-wtext-3 text-center py-6">
               {MESSAGES.empty('추천 상품')}
             </p>
           )}
-        </section>
 
-        {/* Load More Button - Ice Theme */}
-        <div className="flex justify-center pb-6 pt-2">
-          <NavLink
-            href="/products"
-            className="rounded-w-pill bg-wline dark:bg-rink-800 px-7 py-3.5 text-card-body font-semibold text-wtext-2 dark:text-white hover:bg-wline dark:hover:bg-rink-700 transition-all motion-reduce:transition-none hover:scale-105 active:scale-100 border border-wline dark:border-rink-700 flex items-center gap-2 shadow-sh-1"
-            loadingMessage="로딩중..."
-          >
-            상품 더보기
-            <Icon name="expand_more" className="text-card-title" />
-          </NavLink>
-        </div>
+          {/* Load More Button */}
+          <div className="flex justify-center pt-6">
+            <NavLink
+              href="/products"
+              className="rounded-w-pill bg-it-fill dark:bg-rink-800 px-7 py-3.5 text-card-body font-semibold text-it-ink-700 dark:text-white hover:bg-it-line dark:hover:bg-rink-700 transition-all motion-reduce:transition-none active:brightness-95 border-[1.5px] border-it-line-strong dark:border-rink-700 flex items-center gap-2"
+              loadingMessage="로딩중..."
+            >
+              상품 더보기
+              <Icon name="expand_more" className="text-card-title" />
+            </NavLink>
+          </div>
+        </section>
       </main>
 
       <GlobalMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />

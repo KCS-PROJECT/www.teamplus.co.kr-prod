@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigation } from "@/components/ui/NavLink";
+import { Icon } from "@/components/ui/Icon";
 import { MobileContainer } from "@/components/layout/MobileContainer";
 import { PageAppBar } from "@/components/layout/PageAppBar";
 import { useNativeUI } from '@/hooks/useNativeUI';
@@ -19,6 +20,7 @@ import { MESSAGES } from "@/lib/messages";
 import { isTeamManager } from "@/lib/team-roles";
 import { api } from "@/services/api-client";
 import { resolveImageSrc } from "@/lib/image-url";
+import { cn } from "@/lib/utils";
 
 interface ManagedTeam {
   id: string;
@@ -92,87 +94,116 @@ export default function TeamGroupsLandingPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title="그룹관리" forceNative />
 
-      <div className="px-4 pb-24 pt-4 space-y-4">
-        {/* 안내 */}
-        <div className="rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-4">
-          <p className="text-w-small text-blue-900 dark:text-blue-200 font-semibold">
-            팀을 선택하면 해당 팀의 하위 그룹을 관리할 수 있어요.
-          </p>
-          <p className="text-w-caption text-blue-800 dark:text-blue-300 mt-1">
-            그룹 = 팀 안의 작은 단위 (예: 선수반 A조, U10 평일반).
-          </p>
-        </div>
-
-        {/* 권한 체크 */}
-        {!authLoading && !canManage && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-w-small text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
-            {MESSAGES.team.permissionDenied}
+      <main className="flex-1 overflow-y-auto pb-24 bg-it-canvas dark:bg-puck">
+        {/* 안내 — flat 흰 섹션 (카드 박스 제거) */}
+        <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-5" aria-label="그룹관리 안내">
+          <div className="flex items-start gap-2.5">
+            <span aria-hidden="true" className="mt-0.5 w-[3px] h-9 rounded-sm bg-it-blue-500 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-[14px] font-bold text-it-ink-800 dark:text-white leading-[1.5]">
+                팀을 선택하면 해당 팀의 하위 그룹을 관리할 수 있어요.
+              </p>
+              <p className="text-card-meta text-it-ink-500 dark:text-rink-300 mt-1 leading-[1.5]">
+                그룹 = 팀 안의 작은 단위 (예: 선수반 A조, U10 평일반).
+              </p>
+            </div>
           </div>
-        )}
 
-        {/* 에러 */}
-        {!isLoading && error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-w-small text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
-            {error}
-          </div>
-        )}
-
-        {/* 비어있음 */}
-        {!isLoading && !error && canManage && teams.length === 0 && (
-          <div className="rounded-2xl border border-wline bg-white p-10 text-center dark:border-rink-700 dark:bg-rink-800">
-            <p className="text-w-small text-wtext-3 dark:text-rink-300">
-              관리할 수 있는 팀이 없습니다.
+          {/* 권한 체크 */}
+          {!authLoading && !canManage && (
+            <p className="mt-4 text-[13px] font-semibold text-it-red-500">
+              {MESSAGES.team.permissionDenied}
             </p>
-            <button
-              type="button"
-              onClick={() => navigate("/team/create")}
-              className="mt-4 inline-flex items-center bg-blue-700 text-white text-w-small font-bold px-4 py-2.5 rounded-lg hover:bg-blue-800"
-            >
-              + 하위그룹
-            </button>
-          </div>
+          )}
+
+          {/* 에러 */}
+          {!isLoading && error && (
+            <p className="mt-4 text-[13px] font-semibold text-it-red-500">{error}</p>
+          )}
+        </section>
+
+        {/* 비어있음 — flat 흰 섹션 */}
+        {!isLoading && !error && canManage && teams.length === 0 && (
+          <>
+            <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+            <section className="bg-it-surface dark:bg-rink-800 px-5 py-14 text-center" aria-label="관리 팀 없음">
+              <p className="text-card-body font-medium text-it-ink-700 dark:text-wtext-4">
+                관리할 수 있는 팀이 없습니다.
+              </p>
+              <button
+                type="button"
+                onClick={() => navigate("/team/create")}
+                className="mt-4 inline-flex items-center gap-1 bg-it-blue-500 text-white text-[14px] font-bold px-4 h-10 rounded-w-md hover:bg-it-blue-600 active:brightness-95 transition-colors motion-reduce:transition-none"
+              >
+                <Icon name="add" className="text-[18px]" aria-hidden="true" />
+                하위그룹 만들기
+              </button>
+            </section>
+          </>
         )}
 
-        {/* 팀 카드 목록 */}
+        {/* 팀 목록 — flat 흰 섹션 (헤더 + hairline 구분 행) */}
         {!isLoading && !error && teams.length > 0 && (
-          <ul className="space-y-3">
-            {teams.map((team) => (
-              <li key={team.id}>
-                <button
-                  type="button"
-                  onClick={() => navigate(`/team/${team.id}/groups`)}
-                  className="w-full text-left rounded-2xl border border-wline bg-white p-4 hover:border-blue-400 hover:shadow-sm transition-all dark:border-rink-700 dark:bg-rink-800 dark:hover:border-blue-700"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-lg bg-wline-2 dark:bg-rink-700 flex items-center justify-center text-wtext-3 dark:text-rink-300 text-w-caption font-semibold shrink-0 overflow-hidden">
-                      {resolveImageSrc(team.logoUrl) ? (
-                        // 외부 도메인일 수 있어 Image 대신 img — 페이지 빌드 안전
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={resolveImageSrc(team.logoUrl)}
-                          alt=""
-                          className="w-full h-full object-cover"
+          <>
+            <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+            <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-7" aria-label="관리 팀 목록">
+              <div className="flex items-baseline gap-2 pb-1">
+                <h2 className="text-it-ink-800 dark:text-white tracking-[-0.02em] font-extrabold text-[17px]">
+                  관리 팀
+                </h2>
+                <span className="text-[15px] font-extrabold font-num tabular-nums text-it-blue-500">
+                  {teams.length}
+                </span>
+              </div>
+              <ul className="flex flex-col">
+                {teams.map((team, idx) => {
+                  const isLast = idx === teams.length - 1;
+                  return (
+                    <li key={team.id}>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/team/${team.id}/groups`)}
+                        aria-label={`${team.name} 그룹 관리하기`}
+                        className={cn(
+                          "w-full text-left flex items-center gap-3 py-[13px] min-h-[64px] transition-colors motion-reduce:transition-none active:brightness-95",
+                          !isLast && "border-b border-it-line dark:border-rink-700",
+                        )}
+                      >
+                        <div className="size-12 rounded-w-md bg-it-line dark:bg-rink-700 flex items-center justify-center text-it-ink-500 dark:text-rink-300 text-card-meta font-bold shrink-0 overflow-hidden">
+                          {resolveImageSrc(team.logoUrl) ? (
+                            // 외부 도메인일 수 있어 Image 대신 img — 페이지 빌드 안전
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={resolveImageSrc(team.logoUrl)}
+                              alt=""
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            (team.shortName ?? team.name.slice(0, 2))
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-[15.5px] font-bold leading-tight tracking-[-0.01em] text-it-ink-800 dark:text-white truncate">
+                            {team.name}
+                          </h3>
+                          <p className="text-card-meta text-it-ink-500 dark:text-rink-300 mt-0.5">
+                            {team.division ? `${team.division} · ` : ""}그룹 관리하기
+                          </p>
+                        </div>
+                        <Icon
+                          name="chevron_right"
+                          className="shrink-0 text-[20px] text-it-ink-400 dark:text-wtext-4"
+                          aria-hidden="true"
                         />
-                      ) : (
-                        (team.shortName ?? team.name.slice(0, 2))
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-w-body-lg font-bold text-wtext-1 dark:text-white truncate">
-                        {team.name}
-                      </h3>
-                      <p className="text-w-caption text-wtext-3 dark:text-rink-300 mt-1">
-                        {team.division ? `${team.division} · ` : ""}그룹
-                        관리하기 →
-                      </p>
-                    </div>
-                  </div>
-                </button>
-              </li>
-            ))}
-          </ul>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          </>
         )}
-      </div>
+      </main>
     </MobileContainer>
   );
 }

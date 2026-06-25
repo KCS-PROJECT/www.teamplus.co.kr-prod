@@ -30,20 +30,20 @@ interface Promotion {
 
 type TabKey = 'all' | 'active' | 'closed';
 
-// ─── Status Map ──────────────────────────────────────
+// ─── Status Map (ICETIMES — mint/중립/sun) ───────────
 const PROMO_STATUS_MAP: Record<string, { label: string; className: string }> = {
-  ACTIVE: { label: '게시중', className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' },
-  CLOSED: { label: '마감', className: 'bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-300' },
-  DRAFT: { label: '임시저장', className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400' },
+  ACTIVE: { label: '게시중', className: 'bg-mint-100 text-rink-800 dark:bg-mint-500/20 dark:text-mint-100' },
+  CLOSED: { label: '마감', className: 'bg-it-fill text-it-ink-600 dark:bg-rink-700 dark:text-rink-300' },
+  DRAFT: { label: '임시저장', className: 'bg-sun-100 text-rink-800 dark:bg-sun-500/20 dark:text-sun-100' },
 };
 
 // 레슨 타입 식별용 inline dot (좌측 stripe는 .impeccable.md BAN — 사용 금지)
 const TYPE_DOT: Record<string, string> = {
-  '개인레슨': 'bg-blue-500',
-  '그룹레슨': 'bg-indigo-500',
-  '펀하키': 'bg-orange-500',
-  '캠프': 'bg-rose-500',
-  '정규훈련': 'bg-emerald-500',
+  '개인레슨': 'bg-it-blue-500',
+  '그룹레슨': 'bg-it-blue-700',
+  '펀하키': 'bg-sun-500',
+  '캠프': 'bg-it-red-500',
+  '정규훈련': 'bg-mint-500',
 };
 
 // ─── Promotion Card ──────────────────────────────────
@@ -57,20 +57,20 @@ const PromotionCard = memo(function PromotionCard({
   const statusInfo = PROMO_STATUS_MAP[promo.status] ?? PROMO_STATUS_MAP.ACTIVE;
   const dotColor = TYPE_DOT[promo.lessonType] ?? 'bg-wtext-4';
   const occupancy = promo.capacity > 0 ? Math.round((promo.enrolled / promo.capacity) * 100) : 0;
-  const occupancyColor = occupancy >= 90 ? 'bg-rose-500' : occupancy >= 70 ? 'bg-amber-500' : 'bg-ice-500';
+  const occupancyColor = occupancy >= 90 ? 'bg-it-red-500' : occupancy >= 70 ? 'bg-sun-500' : 'bg-it-blue-500';
 
   return (
-    <article className="group bg-white dark:bg-rink-900 rounded-2xl border border-wline dark:border-rink-800 overflow-hidden hover:border-wline dark:hover:border-rink-700 transition-colors motion-reduce:transition-none">
-      <div className="px-5 pt-4 pb-4">
+    <article className="group border-b border-it-line dark:border-rink-700 hover:bg-it-fill dark:hover:bg-rink-700/30 transition-colors motion-reduce:transition-none">
+      <div className="px-4 sm:px-5 pt-4 pb-4">
         {/* 상단: [● 타입] · 등록시점 ————— 상태 */}
         <div className="flex items-center justify-between gap-3 mb-3.5">
           <div className="flex items-center gap-2 min-w-0">
             <span className={cn('w-1.5 h-1.5 rounded-w-pill flex-shrink-0', dotColor)} aria-hidden="true" />
-            <span className="text-card-meta font-bold text-wtext-2 dark:text-rink-100 uppercase tracking-[0.14em]">
+            <span className="text-card-meta font-bold text-it-ink-600 dark:text-rink-100 uppercase tracking-[0.14em]">
               {promo.lessonType}
             </span>
-            <span className="text-wtext-4 dark:text-wtext-2 select-none" aria-hidden="true">·</span>
-            <span className="text-card-meta text-wtext-3 dark:text-rink-300 font-medium">
+            <span className="text-it-ink-300 dark:text-wtext-2 select-none" aria-hidden="true">·</span>
+            <span className="text-card-meta text-it-ink-500 dark:text-rink-300 font-medium">
               {promo.createdAt}
             </span>
           </div>
@@ -80,72 +80,72 @@ const PromotionCard = memo(function PromotionCard({
         </div>
 
         {/* 제목 — Pretendard bold, tight */}
-        <h3 className="text-card-title font-bold text-wtext-1 dark:text-white leading-[1.35] tracking-tight mb-1.5">
+        <h3 className="text-[15.5px] font-bold text-it-ink-800 dark:text-white leading-[1.35] tracking-tight mb-1.5">
           {promo.title}
         </h3>
 
         {/* 설명 — single line muted */}
-        <p className="text-card-meta text-wtext-3 dark:text-rink-300 line-clamp-1 mb-4 leading-relaxed">
+        <p className="text-card-meta text-it-ink-500 dark:text-rink-300 line-clamp-1 mb-4 leading-relaxed">
           {promo.description}
         </p>
 
         {/* 메타 — 각 항목 독립 라인 (pipe 제거) */}
-        <dl className="flex flex-col gap-1.5 text-card-meta text-wtext-2 dark:text-rink-100">
+        <dl className="flex flex-col gap-1.5 text-card-meta text-it-ink-800 dark:text-rink-100">
           <div className="flex items-center gap-2">
             <dt className="sr-only">일정</dt>
-            <Icon name="schedule" className="text-[14px] text-wtext-3 dark:text-rink-300 flex-shrink-0" aria-hidden="true" />
+            <Icon name="schedule" className="text-[14px] text-it-ink-500 dark:text-rink-300 flex-shrink-0" aria-hidden="true" />
             <dd className="tabular-nums">{promo.schedule}</dd>
           </div>
           <div className="flex items-center gap-2 min-w-0">
             <dt className="sr-only">장소</dt>
-            <Icon name="place" className="text-[14px] text-wtext-3 dark:text-rink-300 flex-shrink-0" aria-hidden="true" />
+            <Icon name="place" className="text-[14px] text-it-ink-500 dark:text-rink-300 flex-shrink-0" aria-hidden="true" />
             <dd className="truncate">{promo.location}</dd>
           </div>
         </dl>
-      </div>
 
-      {/* 가격 + 정원 ─ numbers as hero (가격 오른쪽 정렬) */}
-      <div className="px-5 pb-4 flex items-end justify-between gap-4">
-        {/* 정원 */}
-        <div className="flex flex-col gap-1.5 min-w-0">
-          <span className="text-card-meta font-bold text-wtext-3 dark:text-rink-300 uppercase tracking-[0.14em]">
-            정원
-          </span>
-          <div className="flex items-center gap-2">
-            <span className="text-card-body font-bold text-wtext-1 dark:text-white tabular-nums tracking-tight">
-              {promo.enrolled}
-              <span className="text-wtext-3 dark:text-rink-300 font-medium">/{promo.capacity}</span>
+        {/* 가격 + 정원 ─ numbers as hero (가격 오른쪽 정렬) */}
+        <div className="mt-4 flex items-end justify-between gap-4">
+          {/* 정원 */}
+          <div className="flex flex-col gap-1.5 min-w-0">
+            <span className="text-card-meta font-bold text-it-ink-500 dark:text-rink-300 uppercase tracking-[0.14em]">
+              정원
             </span>
-            <span
-              className="block w-14 h-1 bg-wline-2 dark:bg-rink-800 rounded-w-pill overflow-hidden"
-              role="progressbar"
-              aria-valuenow={promo.enrolled}
-              aria-valuemin={0}
-              aria-valuemax={promo.capacity}
-              aria-label={`정원 ${promo.enrolled}명 중 ${promo.capacity}명 충족`}
-            >
+            <div className="flex items-center gap-2">
+              <span className="text-card-body font-bold text-it-ink-800 dark:text-white tabular-nums tracking-tight">
+                {promo.enrolled}
+                <span className="text-it-ink-500 dark:text-rink-300 font-medium">/{promo.capacity}</span>
+              </span>
               <span
-                className={cn('block h-full transition-[width] duration-500 motion-reduce:transition-none', occupancyColor)}
-                style={{ width: `${Math.min(occupancy, 100)}%` }}
-              />
+                className="block w-14 h-1 bg-it-line dark:bg-rink-800 rounded-w-pill overflow-hidden"
+                role="progressbar"
+                aria-valuenow={promo.enrolled}
+                aria-valuemin={0}
+                aria-valuemax={promo.capacity}
+                aria-label={`정원 ${promo.enrolled}명 중 ${promo.capacity}명 충족`}
+              >
+                <span
+                  className={cn('block h-full transition-[width] duration-500 motion-reduce:transition-none', occupancyColor)}
+                  style={{ width: `${Math.min(occupancy, 100)}%` }}
+                />
+              </span>
+            </div>
+          </div>
+
+          {/* 가격 — 오른쪽 정렬, bold tabular-nums (hero number) */}
+          <div className="flex flex-col gap-1.5 items-end">
+            <span className="text-card-meta font-bold text-it-ink-500 dark:text-rink-300 uppercase tracking-[0.14em]">
+              금액
+            </span>
+            <span className="text-card-title font-bold text-it-ink-800 dark:text-white tabular-nums tracking-tight text-right">
+              {promo.price}
             </span>
           </div>
-        </div>
-
-        {/* 가격 — 오른쪽 정렬, bold tabular-nums (hero number) */}
-        <div className="flex flex-col gap-1.5 items-end">
-          <span className="text-card-meta font-bold text-wtext-3 dark:text-rink-300 uppercase tracking-[0.14em]">
-            금액
-          </span>
-          <span className="text-card-title font-bold text-wtext-1 dark:text-white tabular-nums tracking-tight text-right">
-            {promo.price}
-          </span>
         </div>
       </div>
 
       {/* 푸터 — 참여 지표 + 편집 */}
-      <div className="px-5 py-3 border-t border-wline-2 dark:border-rink-800 flex items-center justify-between">
-        <div className="flex items-center gap-4 text-card-meta text-wtext-3 dark:text-rink-300">
+      <div className="px-4 sm:px-5 py-3 border-t border-it-line dark:border-rink-800 flex items-center justify-between">
+        <div className="flex items-center gap-4 text-card-meta text-it-ink-500 dark:text-rink-300">
           <span className="inline-flex items-center gap-1 tabular-nums" aria-label={`조회수 ${promo.viewCount}`}>
             <Icon name="visibility" className="text-[13px]" aria-hidden="true" />
             {promo.viewCount.toLocaleString()}
@@ -159,7 +159,7 @@ const PromotionCard = memo(function PromotionCard({
         <button
           type="button"
           onClick={() => onEdit(promo.id)}
-          className="inline-flex items-center gap-1 text-card-meta font-semibold text-ice-500 dark:text-blue-400 hover:text-ice-700 dark:hover:text-blue-300 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:underline"
+          className="inline-flex items-center gap-1 text-card-meta font-semibold text-it-blue-500 dark:text-it-blue-300 hover:text-it-blue-600 dark:hover:text-it-blue-200 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:underline"
           aria-label={`${promo.title} 편집`}
         >
           편집
@@ -217,29 +217,29 @@ function CreatePromotionForm({
         aria-label="닫기"
         tabIndex={-1}
       />
-      <div className="relative w-full max-w-lg bg-white dark:bg-rink-900 rounded-t-2xl max-h-[85vh] overflow-y-auto hide-scrollbar">
+      <div className="relative w-full max-w-lg bg-it-surface dark:bg-rink-900 rounded-t-2xl max-h-[85vh] overflow-y-auto hide-scrollbar">
         {/* 핸들 */}
         <div className="flex justify-center pt-3 pb-2">
-          <div className="w-10 h-1 bg-wline dark:bg-rink-700 rounded-w-pill" />
+          <div className="w-10 h-1 bg-it-line-strong dark:bg-rink-700 rounded-w-pill" />
         </div>
 
         <div className="px-6 pb-8">
-          <h2 className="text-card-title font-bold text-wtext-1 dark:text-white mb-5">홍보 등록하기</h2>
+          <h2 className="text-card-title font-bold text-it-ink-800 dark:text-white mb-5">홍보 등록하기</h2>
 
           <div className="flex flex-col gap-4">
             {/* 레슨 타입 */}
             <div>
-              <label className="block text-card-meta font-bold text-wtext-2 dark:text-rink-100 mb-2">레슨 타입</label>
+              <label className="block text-card-meta font-bold text-it-ink-800 dark:text-rink-100 mb-2">레슨 타입</label>
               <div className="flex gap-2 flex-wrap">
                 {lessonTypes.map(type => (
                   <button
                     key={type}
                     onClick={() => setForm(prev => ({ ...prev, lessonType: type }))}
                     className={cn(
-                      'px-3 py-1.5 rounded-w-pill text-card-meta font-medium transition-colors',
+                      'h-9 px-4 rounded-w-pill text-[14px] font-bold transition-colors border-[1.5px]',
                       form.lessonType === type
-                        ? 'bg-ice-500 text-white'
-                        : 'bg-wline-2 dark:bg-rink-800 text-wtext-2 dark:text-rink-100'
+                        ? 'bg-it-blue-500 text-white border-it-blue-500'
+                        : 'bg-it-surface dark:bg-rink-800 text-it-ink-600 dark:text-rink-100 border-it-line-strong dark:border-rink-700'
                     )}
                   >
                     {type}
@@ -250,82 +250,82 @@ function CreatePromotionForm({
 
             {/* 제목 */}
             <div>
-              <label className="block text-card-meta font-bold text-wtext-2 dark:text-rink-100 mb-1.5">제목</label>
+              <label className="block text-card-meta font-bold text-it-ink-800 dark:text-rink-100 mb-1.5">제목</label>
               <input
                 type="text"
                 value={form.title}
                 onChange={(e) => setForm(prev => ({ ...prev, title: e.target.value }))}
                 placeholder="예: 주말 기초 스케이팅 클래스"
-                className="w-full px-4 py-3 bg-wbg dark:bg-rink-800 border border-wline dark:border-rink-700 rounded-xl text-card-body focus:outline-none focus:ring-2 focus:ring-ice-500/20 focus:border-ice-500"
+                className="w-full px-4 py-3 bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[15px] font-medium text-it-ink-800 dark:text-white placeholder:text-it-ink-400 focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500"
               />
             </div>
 
             {/* 일정 */}
             <div>
-              <label className="block text-card-meta font-bold text-wtext-2 dark:text-rink-100 mb-1.5">일정</label>
+              <label className="block text-card-meta font-bold text-it-ink-800 dark:text-rink-100 mb-1.5">일정</label>
               <input
                 type="text"
                 value={form.schedule}
                 onChange={(e) => setForm(prev => ({ ...prev, schedule: e.target.value }))}
                 placeholder="예: 매주 토 10:00-12:00"
-                className="w-full px-4 py-3 bg-wbg dark:bg-rink-800 border border-wline dark:border-rink-700 rounded-xl text-card-body focus:outline-none focus:ring-2 focus:ring-ice-500/20 focus:border-ice-500"
+                className="w-full px-4 py-3 bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[15px] font-medium text-it-ink-800 dark:text-white placeholder:text-it-ink-400 focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500"
               />
             </div>
 
             {/* 가격 & 정원 */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-card-meta font-bold text-wtext-2 dark:text-rink-100 mb-1.5">가격</label>
+                <label className="block text-card-meta font-bold text-it-ink-800 dark:text-rink-100 mb-1.5">가격</label>
                 <input
                   type="text"
                   value={form.price}
                   onChange={(e) => setForm(prev => ({ ...prev, price: e.target.value }))}
                   placeholder="예: 월 200,000원"
-                  className="w-full px-4 py-3 bg-wbg dark:bg-rink-800 border border-wline dark:border-rink-700 rounded-xl text-card-body focus:outline-none focus:ring-2 focus:ring-ice-500/20 focus:border-ice-500"
+                  className="w-full px-4 py-3 bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[15px] font-medium text-it-ink-800 dark:text-white placeholder:text-it-ink-400 focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-card-meta font-bold text-wtext-2 dark:text-rink-100 mb-1.5">정원</label>
+                <label className="block text-card-meta font-bold text-it-ink-800 dark:text-rink-100 mb-1.5">정원</label>
                 <input
                   type="number"
                   value={form.capacity}
                   onChange={(e) => setForm(prev => ({ ...prev, capacity: e.target.value }))}
                   placeholder="예: 15"
-                  className="w-full px-4 py-3 bg-wbg dark:bg-rink-800 border border-wline dark:border-rink-700 rounded-xl text-card-body focus:outline-none focus:ring-2 focus:ring-ice-500/20 focus:border-ice-500"
+                  className="w-full px-4 py-3 bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[15px] font-medium text-it-ink-800 dark:text-white placeholder:text-it-ink-400 focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500"
                 />
               </div>
             </div>
 
             {/* 장소 */}
             <div>
-              <label className="block text-card-meta font-bold text-wtext-2 dark:text-rink-100 mb-1.5">장소</label>
+              <label className="block text-card-meta font-bold text-it-ink-800 dark:text-rink-100 mb-1.5">장소</label>
               <input
                 type="text"
                 value={form.location}
                 onChange={(e) => setForm(prev => ({ ...prev, location: e.target.value }))}
                 placeholder="예: 목동 아이스링크 메인 A"
-                className="w-full px-4 py-3 bg-wbg dark:bg-rink-800 border border-wline dark:border-rink-700 rounded-xl text-card-body focus:outline-none focus:ring-2 focus:ring-ice-500/20 focus:border-ice-500"
+                className="w-full px-4 py-3 bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[15px] font-medium text-it-ink-800 dark:text-white placeholder:text-it-ink-400 focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500"
               />
             </div>
 
             {/* 설명 */}
             <div>
-              <label className="block text-card-meta font-bold text-wtext-2 dark:text-rink-100 mb-1.5">설명</label>
+              <label className="block text-card-meta font-bold text-it-ink-800 dark:text-rink-100 mb-1.5">설명</label>
               <textarea
                 value={form.description}
                 onChange={(e) => setForm(prev => ({ ...prev, description: e.target.value }))}
                 placeholder={MESSAGES.placeholders.enterClassIntro}
                 rows={3}
-                className="w-full px-4 py-3 bg-wbg dark:bg-rink-800 border border-wline dark:border-rink-700 rounded-xl text-card-body focus:outline-none focus:ring-2 focus:ring-ice-500/20 focus:border-ice-500 resize-none"
+                className="w-full px-4 py-3 bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[15px] font-medium text-it-ink-800 dark:text-white placeholder:text-it-ink-400 focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 resize-none"
               />
             </div>
 
             {/* 액션 */}
             <div className="flex gap-3 pt-2">
-              <Button variant="outline" size="lg" className="flex-1" onClick={onClose}>
+              <Button iceTheme variant="outline" size="lg" className="flex-1" onClick={onClose}>
                 취소
               </Button>
-              <Button size="lg" className="flex-1" onClick={handleSubmit}>
+              <Button iceTheme size="lg" className="flex-1" onClick={handleSubmit}>
                 등록하기
               </Button>
             </div>
@@ -344,23 +344,23 @@ function TabButton({ label, count, isActive, onClick }: { label: string; count: 
       onClick={onClick}
       className={cn(
         'relative h-11 inline-flex items-center gap-1.5 text-card-body font-semibold transition-colors whitespace-nowrap',
-        'motion-reduce:transition-none focus:outline-none focus-visible:text-ice-500 dark:focus-visible:text-blue-400',
+        'motion-reduce:transition-none focus:outline-none focus-visible:text-it-blue-500 dark:focus-visible:text-it-blue-300',
         isActive
-          ? 'text-wtext-1 dark:text-white'
-          : 'text-wtext-3 dark:text-rink-300 hover:text-wtext-2 dark:hover:text-rink-100'
+          ? 'text-it-ink-800 dark:text-white'
+          : 'text-it-ink-500 dark:text-rink-300 hover:text-it-ink-800 dark:hover:text-rink-100'
       )}
       aria-pressed={isActive}
     >
       <span className="tracking-tight">{label}</span>
       <span className={cn(
         'text-card-meta font-bold tabular-nums tracking-tight',
-        isActive ? 'text-ice-500 dark:text-blue-400' : 'text-wtext-3 dark:text-rink-300'
+        isActive ? 'text-it-blue-500 dark:text-it-blue-300' : 'text-it-ink-500 dark:text-rink-300'
       )}>
         {count}
       </span>
       {isActive && (
         <span
-          className="absolute inset-x-0 -bottom-px h-[2px] bg-ice-500 dark:bg-blue-400 rounded-w-pill"
+          className="absolute inset-x-0 -bottom-px h-[2px] bg-it-blue-500 dark:bg-it-blue-300 rounded-w-pill"
           aria-hidden="true"
         />
       )}
@@ -491,29 +491,26 @@ export default function CoachPromotionsPage() {
       {/* AppBar — + 제거, 햄버거 메뉴만 유지 */}
       <SubmainAppBar title="홍보 관리" />
 
-      <main className="flex-1 overflow-y-auto hide-scrollbar px-5 pt-5 pb-30">
-        {/* ─── 요약 통계 — number-led, 숫자가 주인공 ─── */}
-        <section className="grid grid-cols-3 gap-2 mb-7" aria-label="홍보 통계 요약">
+      <main className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck pb-30">
+        {/* ─── 요약 통계 — navy 히어로 full-bleed ─── */}
+        <section className="bg-it-blue-800 dark:bg-it-blue-950 px-5 pt-6 pb-6 grid grid-cols-3 gap-3" aria-label="홍보 통계 요약">
           {[
             { label: '게시물', value: promotions.length, icon: 'campaign' },
             { label: '조회수', value: totalViews, icon: 'visibility' },
             { label: '문의', value: totalInquiries, icon: 'forum' },
           ].map(stat => (
-            <div
-              key={stat.label}
-              className="bg-white dark:bg-rink-900 rounded-2xl border border-wline dark:border-rink-800 p-4"
-            >
+            <div key={stat.label}>
               {/* 숫자를 먼저 — hero number */}
-              <p className="text-card-section font-bold text-wtext-1 dark:text-white tabular-nums tracking-tighter leading-none">
+              <p className="text-[28px] font-extrabold text-white tabular-nums tracking-tight leading-none">
                 {stat.value.toLocaleString()}
               </p>
-              <div className="mt-3 flex items-center justify-between">
-                <span className="text-card-meta font-bold text-wtext-3 dark:text-rink-300 uppercase tracking-[0.14em]">
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-card-meta font-bold text-white/60 uppercase tracking-[0.14em]">
                   {stat.label}
                 </span>
                 <Icon
                   name={stat.icon}
-                  className="text-card-body text-wtext-4 dark:text-rink-500"
+                  className="text-card-body text-white/40"
                   aria-hidden="true"
                 />
               </div>
@@ -521,58 +518,61 @@ export default function CoachPromotionsPage() {
           ))}
         </section>
 
-        {/* ─── 탭 필터 — underline 스타일 ─── */}
-        <div
-          className="flex items-center gap-6 mb-5 border-b border-wline dark:border-rink-800 overflow-x-auto hide-scrollbar"
-          role="tablist"
-          aria-label="홍보 상태 필터"
-        >
-          <TabButton label="전체" count={counts.all} isActive={activeTab === 'all'} onClick={() => setActiveTab('all')} />
-          <TabButton label="게시중" count={counts.active} isActive={activeTab === 'active'} onClick={() => setActiveTab('active')} />
-          <TabButton label="마감" count={counts.closed} isActive={activeTab === 'closed'} onClick={() => setActiveTab('closed')} />
-        </div>
+        {/* ─── 탭 + 목록 — flat 흰 섹션 ─── */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
+          {/* 탭 필터 — underline 스타일 */}
+          <div
+            className="flex items-center gap-6 px-4 sm:px-5 border-b border-it-line dark:border-rink-800 overflow-x-auto hide-scrollbar"
+            role="tablist"
+            aria-label="홍보 상태 필터"
+          >
+            <TabButton label="전체" count={counts.all} isActive={activeTab === 'all'} onClick={() => setActiveTab('all')} />
+            <TabButton label="게시중" count={counts.active} isActive={activeTab === 'active'} onClick={() => setActiveTab('active')} />
+            <TabButton label="마감" count={counts.closed} isActive={activeTab === 'closed'} onClick={() => setActiveTab('closed')} />
+          </div>
 
-        {/* ─── 홍보 목록 ─── */}
-        <div className="flex flex-col gap-3" role="list" aria-label="홍보 게시물 목록">
-          {isLoading ? null : filtered.length > 0 ? (
-            filtered.map(promo => (
-              <div key={promo.id} role="listitem">
-                <PromotionCard promo={promo} onEdit={handleEdit} />
+          {/* 홍보 목록 — hairline 행 */}
+          <div role="list" aria-label="홍보 게시물 목록">
+            {isLoading ? null : filtered.length > 0 ? (
+              filtered.map(promo => (
+                <div key={promo.id} role="listitem">
+                  <PromotionCard promo={promo} onEdit={handleEdit} />
+                </div>
+              ))
+            ) : (
+              // ─── Empty State — 절제된 pure icon + brand CTA ───
+              <div className="flex flex-col items-center justify-center py-24 px-5 text-center">
+                <Icon
+                  name="campaign"
+                  className="text-w-display text-it-ink-300 dark:text-wtext-2 mb-5"
+                  aria-hidden="true"
+                />
+                <h3 className="text-card-body font-bold text-it-ink-800 dark:text-rink-100 mb-2 tracking-tight">
+                  등록된 홍보가 없습니다
+                </h3>
+                <p className="text-card-meta text-it-ink-500 dark:text-rink-300 mb-6 leading-[1.6] max-w-[250px]">
+                  레슨, 캠프, 펀하키 등을 홍보하여
+                  <br />
+                  회원과 학부모에게 알려보세요
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setIsFormOpen(true)}
+                  className="h-10 px-5 rounded-w-pill bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-meta font-bold transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900"
+                >
+                  첫 홍보 등록하기
+                </button>
               </div>
-            ))
-          ) : (
-            // ─── Empty State — 절제된 pure icon + brand CTA ───
-            <div className="flex flex-col items-center justify-center py-24 px-5 text-center">
-              <Icon
-                name="campaign"
-                className="text-w-display text-wtext-4 dark:text-wtext-2 mb-5"
-                aria-hidden="true"
-              />
-              <h3 className="text-card-body font-bold text-wtext-2 dark:text-rink-100 mb-2 tracking-tight">
-                등록된 홍보가 없습니다
-              </h3>
-              <p className="text-card-meta text-wtext-3 dark:text-rink-300 mb-6 leading-[1.6] max-w-[250px]">
-                레슨, 캠프, 펀하키 등을 홍보하여
-                <br />
-                회원과 학부모에게 알려보세요
-              </p>
-              <button
-                type="button"
-                onClick={() => setIsFormOpen(true)}
-                className="h-10 px-5 rounded-w-pill bg-ice-500 hover:bg-ice-700 text-white text-card-meta font-semibold transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900"
-              >
-                첫 홍보 등록하기
-              </button>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        </section>
       </main>
 
       {/* ─── FAB — 홍보 등록 ─── */}
       <button
         type="button"
         onClick={() => setIsFormOpen(true)}
-        className="fixed bottom-24 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-w-pill bg-ice-500 text-white shadow-md hover:bg-ice-700 active:brightness-95 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900"
+        className="fixed bottom-24 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-w-pill bg-it-blue-500 text-white shadow-sh-2 hover:bg-it-blue-600 active:brightness-95 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900"
         aria-label="홍보 등록"
       >
         <Icon name="add" className="text-[28px]" aria-hidden="true" />
