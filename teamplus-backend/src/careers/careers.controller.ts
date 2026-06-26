@@ -7,6 +7,7 @@ import {
   Body,
   Param,
   Query,
+  Request,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -27,6 +28,7 @@ import { CreatePlayerCareerDto } from "./dto/create-player-career.dto";
 import { UpdatePlayerCareerDto } from "./dto/update-player-career.dto";
 import { CreateStaffCareerDto } from "./dto/create-staff-career.dto";
 import { UpdateStaffCareerDto } from "./dto/update-staff-career.dto";
+import { AuthenticatedRequest } from "@/common/interfaces/authenticated-request.interface";
 
 @ApiTags("Careers (경력 관리)")
 @Controller("api/v1/careers")
@@ -164,7 +166,7 @@ export class CareersController {
   }
 
   @Post("staff")
-  @Roles("ADMIN", "DIRECTOR", "COACH")
+  @Roles("ADMIN", "DIRECTOR", "ACADEMY_DIRECTOR", "COACH")
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: "스태프 경력 등록" })
   @ApiResponse({ status: 201, description: "스태프 경력이 등록되었습니다." })
@@ -176,31 +178,55 @@ export class CareersController {
     status: 403,
     description: "감독, 코치, 관리자만 경력 등록 가능",
   })
-  async createStaffCareer(@Body() dto: CreateStaffCareerDto) {
-    return this.careersService.createStaffCareer(dto);
+  async createStaffCareer(
+    @Request() req: AuthenticatedRequest,
+    @Body() dto: CreateStaffCareerDto,
+  ) {
+    return this.careersService.createStaffCareer(
+      dto,
+      req.user.id,
+      req.user.userType,
+    );
   }
 
   @Patch("staff/:id")
-  @Roles("ADMIN", "DIRECTOR", "COACH")
+  @Roles("ADMIN", "DIRECTOR", "ACADEMY_DIRECTOR", "COACH")
   @ApiOperation({ summary: "스태프 경력 수정" })
   @ApiParam({ name: "id", description: "StaffCareer ID" })
   @ApiResponse({ status: 200, description: "스태프 경력이 수정되었습니다." })
   @ApiResponse({ status: 404, description: "스태프 경력을 찾을 수 없습니다." })
   async updateStaffCareer(
+    @Request() req: AuthenticatedRequest,
     @Param("id") id: string,
     @Body() dto: UpdateStaffCareerDto,
   ) {
-    return this.careersService.updateStaffCareer(id, dto);
+    return this.careersService.updateStaffCareer(
+      id,
+      dto,
+      req.user.id,
+      req.user.userType,
+    );
   }
 
   @Delete("staff/:id")
-  @Roles("ADMIN", "DIRECTOR")
+  @Roles("ADMIN", "DIRECTOR", "ACADEMY_DIRECTOR", "COACH")
   @ApiOperation({ summary: "스태프 경력 삭제" })
   @ApiParam({ name: "id", description: "StaffCareer ID" })
   @ApiResponse({ status: 200, description: "스태프 경력이 삭제되었습니다." })
+  @ApiResponse({
+    status: 403,
+    description: "해당 코치의 약력을 수정할 권한이 없습니다.",
+  })
   @ApiResponse({ status: 404, description: "스태프 경력을 찾을 수 없습니다." })
-  async deleteStaffCareer(@Param("id") id: string) {
-    return this.careersService.deleteStaffCareer(id);
+  async deleteStaffCareer(
+    @Request() req: AuthenticatedRequest,
+    @Param("id") id: string,
+  ) {
+    return this.careersService.deleteStaffCareer(
+      id,
+      req.user.id,
+      req.user.userType,
+    );
   }
 
   @Get("staff/profile/:userId")

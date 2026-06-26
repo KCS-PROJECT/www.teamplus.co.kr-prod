@@ -10,6 +10,7 @@ import { Icon } from "@/components/ui/Icon";
 import { useNavigation } from "@/components/ui/NavLink";
 import { useToast } from "@/components/ui/Toast";
 import { AvatarUploader } from "@/components/shared/AvatarUploader";
+import { CareerFormSheet, type StaffCareer } from "@/components/coach/CareerFormSheet";
 import { api } from "@/services/api-client";
 import { MESSAGES } from "@/lib/messages";
 import { useSessionAuth } from "@/hooks/useSessionAuth";
@@ -65,6 +66,13 @@ interface AddressSnapshot {
   addressDetail: string;
 }
 
+/**
+ * 약력(staff_careers) 자가 등록 노출 대상 역할.
+ * 코치·감독·아카데미원장 본인만 마이 프로필에서 약력을 등록/수정한다.
+ * (학부모/학생/아동 등은 약력 섹션 비표시)
+ */
+const STAFF_ROLES = ["coach", "director", "academy_director"];
+
 export default function ProfileEditPage() {
   // 공통 AppBar 사용 — Flutter 네이티브 AppBar 비활성화 (중복 헤더 방지)
   useNativeUI({
@@ -96,6 +104,12 @@ export default function ProfileEditPage() {
 
   const [postcodeOpen, setPostcodeOpen] = useState(false);
   const postcodeContainerRef = useRef<HTMLDivElement>(null);
+
+  // 약력(staff_careers) — 코치/감독 본인만. 코치당 1건의 자유 텍스트(careers[0]).
+  const isStaff = !!user && STAFF_ROLES.includes(user.userType);
+  const [careers, setCareers] = useState<StaffCareer[]>([]);
+  const [careerLoaded, setCareerLoaded] = useState(false);
+  const [careerSheetOpen, setCareerSheetOpen] = useState(false);
 
   // v16 (2026-05-16) 풀스크린 로더 hide 타이밍 정책:
   // 데이터 fetch 완료 + 화면 셋팅 완료 후에만 ready 신호.
@@ -143,6 +157,25 @@ export default function ProfileEditPage() {
       cancelled = true;
     };
   }, []);
+
+  // 약력 조회 — 코치/감독 본인 userId 로 staff_careers 조회 (코치당 1건)
+  const loadCareers = useCallback(async (userId: string) => {
+    const res = await api.get<{ careers?: StaffCareer[] }>(
+      `/careers/staff/profile/${userId}`,
+    );
+    if (res.success && res.data && Array.isArray(res.data.careers)) {
+      setCareers(res.data.careers);
+    } else {
+      setCareers([]);
+    }
+    setCareerLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (isStaff && user?.id) {
+      void loadCareers(user.id);
+    }
+  }, [isStaff, user?.id, loadCareers]);
 
   const handleAddressDetailChange = useCallback((value: string) => {
     setFormData((prev) => ({ ...prev, addressDetail: value }));
@@ -229,6 +262,10 @@ export default function ProfileEditPage() {
     isSaving,
     toast,
   ]);
+
+  // 약력 = 코치/감독당 1건의 자유 텍스트 (있으면 수정, 없으면 추가)
+  const bio = careers[0] ?? null;
+  const careerMode: "create" | "edit" = bio ? "edit" : "create";
 
   return (
     <MobileContainer hasBottomNav={true}>
@@ -456,6 +493,75 @@ export default function ProfileEditPage() {
               </div>
             </section>
 
+            {/* === Section 3.5: 약력 (코치·감독 본인 약력 자가 등록) === */}
+            {isStaff && user?.id && (
+              <>
+                {/* 8px 회색 구분선 */}
+                <div aria-hidden="true" className="h-2 bg-it-canvas dark:bg-puck" />
+
+                <section
+                  className="bg-it-surface dark:bg-rink-800 pt-5 px-6 pb-6"
+                  aria-label={MESSAGES.career.sectionTitle}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <h2 className="text-[11px] font-extrabold text-it-ink-400 dark:text-rink-300 tracking-[0.12em]">
+                      {MESSAGES.career.sectionTitle}
+                    </h2>
+                    {careerLoaded && bio && (
+                      <button
+                        type="button"
+                        onClick={() => setCareerSheetOpen(true)}
+                        className="inline-flex min-h-[36px] items-center gap-1 rounded-w-md px-3 py-2 text-card-meta font-bold text-it-blue-500 hover:bg-it-blue-50 dark:hover:bg-it-blue-500/15 transition-colors motion-reduce:transition-none active:brightness-95"
+                        aria-label={MESSAGES.career.editAction}
+                      >
+                        <Icon name="edit" className="text-[16px]" aria-hidden="true" />
+                        <span>{MESSAGES.career.editAction}</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {!careerLoaded ? (
+                    <div
+                      role="status"
+                      aria-live="polite"
+                      className="flex items-center justify-center py-8 text-it-ink-400 dark:text-rink-300"
+                    >
+                      <Icon
+                        name="progress_activity"
+                        className="text-xl animate-spin motion-reduce:animate-none"
+                        aria-hidden="true"
+                      />
+                    </div>
+                  ) : bio?.description ? (
+                    <p className="text-card-body text-it-ink-700 dark:text-rink-100 whitespace-pre-line mt-2">
+                      {bio.description}
+                    </p>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-10">
+                      <div className="w-12 h-12 rounded-w-pill bg-it-line dark:bg-rink-700 flex items-center justify-center mb-3">
+                        <Icon
+                          name="workspace_premium"
+                          className="text-2xl text-it-ink-400 dark:text-rink-300"
+                          aria-hidden="true"
+                        />
+                      </div>
+                      <p className="text-card-body text-it-ink-500 dark:text-rink-300 mb-3">
+                        {MESSAGES.career.emptyText}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setCareerSheetOpen(true)}
+                        className="inline-flex min-h-[40px] items-center gap-1.5 rounded-w-md bg-it-blue-50 dark:bg-it-blue-500/15 px-4 py-2 text-card-body font-bold text-it-blue-500 hover:bg-it-blue-100 dark:hover:bg-it-blue-500/25 transition-colors motion-reduce:transition-none active:brightness-95"
+                      >
+                        <Icon name="add" className="text-[18px]" aria-hidden="true" />
+                        <span>{MESSAGES.career.addEmptyCta}</span>
+                      </button>
+                    </div>
+                  )}
+                </section>
+              </>
+            )}
+
             {/* === Section 4: 액션 버튼 (배경 없음, 회색 캔버스 위에 부유) — 1fr 2fr 취소·저장하기 === */}
             <section className="px-6 pt-5 pb-6">
               <div className="grid grid-cols-[1fr_2fr] gap-2.5">
@@ -503,6 +609,20 @@ export default function ProfileEditPage() {
           className="w-full h-full min-h-[400px]"
         />
       </FullModal>
+
+      {/* 약력 입력/수정 바텀시트 — 코치/감독 본인 (코치당 1건 자유 텍스트) */}
+      {isStaff && user?.id && (
+        <CareerFormSheet
+          open={careerSheetOpen}
+          mode={careerMode}
+          userId={user.id}
+          initial={bio}
+          onClose={() => setCareerSheetOpen(false)}
+          onSaved={() => {
+            if (user?.id) void loadCareers(user.id);
+          }}
+        />
+      )}
     </MobileContainer>
   );
 }

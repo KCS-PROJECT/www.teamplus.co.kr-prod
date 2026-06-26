@@ -7,53 +7,32 @@ import { PageAppBar } from '@/components/layout/PageAppBar';
 import { Icon } from '@/components/ui/Icon';
 import { NavLink, useNavigation } from '@/components/ui/NavLink';
 import { ConfirmSheet } from '@/components/shared/ConfirmSheet';
+import { CareerFormSheet, type StaffCareer } from '@/components/coach/CareerFormSheet';
 import { useToast } from '@/components/ui/Toast';
 import { api } from '@/services/api-client';
 import { MESSAGES } from '@/lib/messages';
 import { resolveImageSrc } from '@/lib/image-url';
-import { PATHS } from '@/lib/paths';
-import { cn } from '@/lib/utils';
 
 import { usePageReady } from '@/hooks/usePageReady';
-/** 한국어 종목명 → 영문 매핑 */
-const SPECIALTY_EN_MAP: Record<string, string> = {
-  '피겨 스케이팅': 'Figure Skating',
-  '스피드 스케이팅': 'Speed Skating',
-  '쇼트트랙': 'Short Track',
-  '아이스하키': 'Ice Hockey',
-  '아이스 댄스': 'Ice Dance',
-  '컬링': 'Curling',
-};
+import { useSessionAuth } from '@/hooks/useSessionAuth';
 
 interface CoachDetail {
   id: string;
+  /** 약력(staff_careers) 조회용 실제 User.id — TeamMember.id 와 구분 */
+  userId?: string;
   name: string;
-  specialty: string;
-  specialtyEn?: string;
   phone?: string;
-  career?: string;
-  weeklyClasses: number;
-  weeklyHours: number;
   avatarUrl?: string | null;
   createdAt?: string;
+  /** 소속 팀 이름 (코치: coachProfile.team / 폴백: 매칭된 관리 팀) */
+  teamName?: string;
+  /** 원본 userType(대문자 enum) — 역할 배지 라벨 매핑용 */
+  userType?: string;
   /**
-   * userType==='COACH' 인 경우만 수정/삭제/수업 배정 가능.
+   * userType==='COACH' 인 경우만 수정/삭제 가능.
    * 감독 본인(DIRECTOR) 등은 /admin/coaches 전용 API 대상이 아니라 액션을 숨긴다.
    */
   editable: boolean;
-}
-
-interface AssignedClass {
-  id: string;
-  name: string;
-  schedule: string;
-  students: number;
-  status: 'active' | 'completed' | 'cancelled';
-}
-
-function getSpecialtyDisplay(coach: CoachDetail): string {
-  const en = coach.specialtyEn || SPECIALTY_EN_MAP[coach.specialty] || '';
-  return en ? `${coach.specialty} (${en})` : coach.specialty;
 }
 
 /** 전화번호 포맷 */
@@ -78,32 +57,34 @@ function formatDate(dateStr: string): string {
   }
 }
 
-const CLASS_STATUS_MAP: Record<string, { label: string; className: string }> = {
-  active: { label: '진행중', className: 'bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-500/20 dark:text-it-blue-300' },
-  completed: { label: '완료', className: 'bg-it-line text-it-ink-600 dark:bg-rink-700 dark:text-rink-100' },
-  cancelled: { label: '취소됨', className: 'bg-it-red-50 text-it-red-500 dark:bg-it-red-500/15 dark:text-it-red-300' },
-};
-
 export default function DirectorCoachDetailPage() {
   // 인증/권한 체크는 (director)/layout.tsx 에서 단 한 번 수행됨
   const params = useParams();
   const coachId = params?.id as string;
   const { navigate, back } = useNavigation();
   const { toast } = useToast();
+  // 약력 관리 권한 판정용 — 가드는 layout.tsx, 여기선 세션 읽기만
+  const { user } = useSessionAuth();
 
   const [coach, setCoach] = useState<CoachDetail | null>(null);
-  const [classes, setClasses] = useState<AssignedClass[]>([]);
+  const [careers, setCareers] = useState<StaffCareer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // 풀스크린 로더 fast-path (v11) — fetch 완료 시점에 PageTransitionLoader OFF
   usePageReady(!isLoading);
   const [error, setError] = useState(false);
 
-  // 삭제 확인
+  // 코치 삭제 확인
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // [BUG FIX 2026-05-19 W3 #9] 감독 수정/수업 배정 후 코치 상세 페이지 오류 회귀 해결.
+  // 약력 입력/수정 바텀시트 (코치당 1건 — 자유 텍스트)
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetMode, setSheetMode] = useState<'create' | 'edit'>('create');
+  const [editingCareer, setEditingCareer] = useState<StaffCareer | null>(null);
+  const [showCareerDeleteConfirm, setShowCareerDeleteConfirm] = useState(false);
+
+  // [BUG FIX 2026-05-19 W3 #9] 감독 수정 후 코치 상세 페이지 오류 회귀 해결.
   //   원인: `/admin/coaches/:id` 는 admin 전용 권한 API → director 호출 시 403/401.
   //         또한 list 페이지(/director-coaches)는 `/teams/.../members` 의 TeamMember.id 를
   //         coach.id 로 사용하지만, `/admin/coaches/:id` 는 Coach 모델 ID 기대 → ID 불일치 404.
@@ -121,34 +102,21 @@ export default function DirectorCoachDetailPage() {
       if (res.success && res.data) {
         const d = res.data;
         const user = (d.user ?? d) as Record<string, unknown>;
-        const note = typeof user.note === 'string' ? (() => { try { return JSON.parse(user.note as string); } catch { return {}; } })() : {};
 
         setCoach({
           id: (d.id ?? user.id ?? '') as string,
+          // 약력 조회용 실제 User.id — user.id 우선, 없으면 d.id
+          userId: ((user.id as string) ?? (d.id as string)) || undefined,
           name: (user.name as string) ?? (`${(user.lastName as string) ?? ''}${(user.firstName as string) ?? ''}`.trim() || '코치'),
-          specialty: (d.specialty as string) ?? ((note.specialty as string) ?? '아이스하키'),
-          specialtyEn: (d.specialtyEn as string) ?? undefined,
           phone: (d.phone as string) ?? (user.phone as string) ?? undefined,
-          career: (d.career as string) ?? (note.career as string) ?? undefined,
-          weeklyClasses: (d.weeklyClasses as number) ?? 0,
-          weeklyHours: (d.weeklyHours as number) ?? 0,
           avatarUrl: (d.avatarUrl as string) ?? (user.avatarUrl as string) ?? null,
           createdAt: (d.createdAt as string) ?? (user.createdAt as string) ?? undefined,
+          // 소속 팀: getCoach 응답은 coachProfile.team 을 top-level `team` 으로 평탄화
+          teamName: ((d.team as { name?: string } | null)?.name) ?? undefined,
+          userType: ((d.userType ?? user.userType) as string) || undefined,
           // getCoach 는 COACH 만 반환하지만 명시적으로 userType 확인
           editable: ((d.userType ?? user.userType) as string) === 'COACH',
         });
-
-        // 배정된 수업 목록
-        const rawClasses = (d.classes ?? d.assignedClasses ?? []) as Record<string, unknown>[];
-        if (Array.isArray(rawClasses)) {
-          setClasses(rawClasses.map((c) => ({
-            id: (c.id as string) ?? '',
-            name: (c.name as string) ?? (c.title as string) ?? '수업',
-            schedule: (c.schedule as string) ?? (c.time as string) ?? '',
-            students: (c.studentCount as number) ?? (c.students as number) ?? 0,
-            status: ((c.status as string) ?? 'active') as 'active' | 'completed' | 'cancelled',
-          })));
-        }
         setIsLoading(false);
         return; // 성공 — 종료
       }
@@ -175,6 +143,7 @@ export default function DirectorCoachDetailPage() {
       const teamsRes = await api.get<Array<{ id: string; name?: string }>>('/teams/my/managed');
       if (teamsRes.success && Array.isArray(teamsRes.data)) {
         let matched: FallbackMemberRow | null = null;
+        let matchedTeamName: string | undefined;
         for (const t of teamsRes.data) {
           const mr = await api.get<
             FallbackMemberRow[] | { members?: FallbackMemberRow[]; data?: FallbackMemberRow[] }
@@ -190,33 +159,29 @@ export default function DirectorCoachDetailPage() {
           const hit = list.find((m) => m.id === coachId || m.user?.id === coachId);
           if (hit) {
             matched = hit;
+            matchedTeamName = t.name ?? undefined;
             break;
           }
         }
         if (matched) {
           const u = matched.user ?? {};
-          const note = typeof u.note === 'string'
-            ? (() => { try { return JSON.parse(u.note as string); } catch { return {}; } })()
-            : {};
           setCoach({
             id: matched.id,
+            // 약력 조회용 실제 User.id — 폴백 경로는 member.user.id 사용
+            userId: u.id || undefined,
             name:
               (u.name ??
                 matched.playerName ??
                 `${u.lastName ?? ''}${u.firstName ?? ''}`.trim()) ||
               '코치',
-            specialty: (note.specialty as string) ?? '아이스하키',
-            specialtyEn: undefined,
             phone: u.phone,
-            career: (note.career as string) ?? undefined,
-            weeklyClasses: 0,
-            weeklyHours: 0,
             avatarUrl: u.avatarUrl ?? null,
             createdAt: u.createdAt,
+            teamName: matchedTeamName,
+            userType: u.userType || undefined,
             // 폴백 경로 — 감독 본인(DIRECTOR) 등은 COACH 가 아니므로 수정/삭제 불가
             editable: u.userType === 'COACH',
           });
-          setClasses([]); // 폴백 시 수업 정보 별도 endpoint 필요 — 비활성 처리
           setIsLoading(false);
           return;
         }
@@ -233,6 +198,28 @@ export default function DirectorCoachDetailPage() {
   useEffect(() => {
     void loadCoachDetail();
   }, [loadCoachDetail]);
+
+  /** 경력(staff_careers) 조회 — 코치 로딩 후 userId 확보 시 */
+  const loadCareers = useCallback(async (userId: string) => {
+    try {
+      const res = await api.get<{ careers?: StaffCareer[] }>(`/careers/staff/profile/${userId}`);
+      if (res.success && res.data && Array.isArray(res.data.careers)) {
+        setCareers(res.data.careers);
+      } else {
+        setCareers([]);
+      }
+    } catch {
+      setCareers([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (coach?.userId) {
+      void loadCareers(coach.userId);
+    } else {
+      setCareers([]);
+    }
+  }, [coach?.userId, loadCareers]);
 
   /** 코치 삭제 */
   const handleDelete = useCallback(async () => {
@@ -253,6 +240,41 @@ export default function DirectorCoachDetailPage() {
       setShowDeleteConfirm(false);
     }
   }, [coachId, isDeleting, navigate, toast]);
+
+  /** 약력 추가 시트 열기 */
+  const openCreateSheet = useCallback(() => {
+    setSheetMode('create');
+    setEditingCareer(null);
+    setSheetOpen(true);
+  }, []);
+
+  /** 약력 수정 시트 열기 (코치당 1건 — careers[0] 대상) */
+  const openEditSheet = useCallback(() => {
+    setSheetMode('edit');
+    setEditingCareer(careers[0] ?? null);
+    setSheetOpen(true);
+  }, [careers]);
+
+  /** 약력 삭제 실행 (코치당 1건 — careers[0] 대상) */
+  const handleCareerDelete = useCallback(async () => {
+    const target = careers[0];
+    if (!target) return;
+    try {
+      const res = await api.delete(`/careers/staff/${target.id}`);
+      if (res.success) {
+        toast.success(MESSAGES.career.deleted);
+        if (coach?.userId) void loadCareers(coach.userId);
+      } else if (res.error?.statusCode === 403) {
+        toast.error(MESSAGES.career.permissionDenied);
+      } else {
+        toast.error(MESSAGES.error.general);
+      }
+    } catch {
+      toast.error(MESSAGES.error.general);
+    } finally {
+      setShowCareerDeleteConfirm(false);
+    }
+  }, [careers, coach?.userId, loadCareers, toast]);
 
   // 로딩 상태
   if (isLoading) return null;
@@ -281,33 +303,21 @@ export default function DirectorCoachDetailPage() {
   }
 
   const initial = coach.name?.charAt(0) || '?';
+  // 역할 배지 라벨 — userType(대문자) → 한글. 매핑 없으면 미표시.
+  const roleLabel = coach.userType ? MESSAGES.coach.roleBadge[coach.userType] : undefined;
+  // 약력(staff_careers) 관리 권한: 대상이 코치(editable)이거나, 감독 본인이 자기 프로필을
+  // 보고 있거나, 관리자(ADMIN)인 경우 허용. 백엔드 소유권 가드(본인/관리팀/ADMIN)와 정렬.
+  // 코치 계정 수정/삭제 권한(coach.editable)과는 별개 — 약력 권한만 확장한다.
+  const canManageCareer =
+    !!coach.userId &&
+    (coach.editable || user?.id === coach.userId || user?.userType === 'admin');
+  // 약력 = 코치/감독당 1건의 자유 텍스트 (careers[0])
+  const bio = careers[0] ?? null;
 
   return (
     <MobileContainer hasBottomNav>
-      {/* [appbar-harness-v4 · 2026-05-12] rightAction → extraActions 변환:
-          시계/종/메뉴 우측 3 액션 SoT 보존하면서 수정/삭제 액션 추가. */}
-      <PageAppBar
-        title="코치 상세"
-        onBack={back}
-        forceNative
-        extraActions={
-          coach.editable
-            ? [
-                {
-                  icon: "edit",
-                  onClick: () => navigate(`/director-coaches/${coachId}/edit`),
-                  label: "수정",
-                },
-                {
-                  icon: "delete",
-                  onClick: () => setShowDeleteConfirm(true),
-                  label: "삭제",
-                  className: "text-it-red-500 dark:text-it-red-300",
-                },
-              ]
-            : []
-        }
-      />
+      {/* 수정/삭제는 하단 버튼으로 일원화 — 헤더 액션 중복 제거 */}
+      <PageAppBar title="코치 상세" onBack={back} forceNative />
 
       <main
         className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck"
@@ -334,41 +344,17 @@ export default function DirectorCoachDetailPage() {
 
             <h2 className="mt-4 text-xl font-bold text-white">{coach.name}</h2>
 
-            <div className="flex items-center gap-2 mt-2">
-              <p className="text-card-body text-white/75">{getSpecialtyDisplay(coach)}</p>
-            </div>
+            {roleLabel && (
+              <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+                <span className="inline-flex items-center rounded-w-pill bg-white/15 px-2.5 py-0.5 text-card-meta font-bold text-white">
+                  {roleLabel}
+                </span>
+              </div>
+            )}
           </div>
         </section>
 
         {/* flat 섹션 사이 8px 회색 갭 */}
-        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
-
-        {/* 통계 — flat 흰 섹션 (2분할 인셋 타일 · RULE-D04 세로 구분선 금지) */}
-        <section className="bg-it-surface dark:bg-rink-800 px-5 py-5" aria-label="코치 통계">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col items-center bg-it-fill dark:bg-rink-700/40 rounded-w-md py-4">
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <Icon name="school" className="text-[16px] text-it-blue-500" aria-hidden="true" />
-                <span className="text-card-meta font-medium text-it-ink-500 dark:text-rink-300">배정된 수업</span>
-              </div>
-              <span className="text-2xl font-bold text-it-ink-800 dark:text-white font-num tabular-nums">
-                {coach.weeklyClasses}
-                <span className="text-card-body font-medium text-it-ink-500 dark:text-rink-300 ml-1">개</span>
-              </span>
-            </div>
-            <div className="flex flex-col items-center bg-it-fill dark:bg-rink-700/40 rounded-w-md py-4">
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <Icon name="schedule" className="text-[16px] text-it-blue-500" aria-hidden="true" />
-                <span className="text-card-meta font-medium text-it-ink-500 dark:text-rink-300">주간 시간</span>
-              </div>
-              <span className="text-2xl font-bold text-it-ink-800 dark:text-white font-num tabular-nums">
-                {coach.weeklyHours}
-                <span className="text-card-body font-medium text-it-ink-500 dark:text-rink-300 ml-1">시간</span>
-              </span>
-            </div>
-          </div>
-        </section>
-
         <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
 
         {/* 상세 정보 — flat 흰 섹션 (hairline 행, 카드 박스 제거) */}
@@ -377,6 +363,19 @@ export default function DirectorCoachDetailPage() {
             상세 정보
           </h3>
           <div className="flex flex-col divide-y divide-it-line dark:divide-rink-700">
+            {/* 소속 팀 */}
+            {coach.teamName && (
+              <div className="flex items-center gap-3 py-3.5">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-w-md bg-it-fill dark:bg-rink-700">
+                  <Icon name="group" className="text-[18px] text-it-ink-500 dark:text-rink-300" aria-hidden="true" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="text-card-meta text-it-ink-500 dark:text-rink-300">소속 팀</span>
+                  <p className="text-card-body font-medium text-it-ink-800 dark:text-white">{coach.teamName}</p>
+                </div>
+              </div>
+            )}
+
             {/* 연락처 */}
             {coach.phone && (
               <div className="flex items-center gap-3 py-3.5">
@@ -402,95 +401,64 @@ export default function DirectorCoachDetailPage() {
                 </div>
               </div>
             )}
-
-            {/* 약력 */}
-            {coach.career && (
-              <div className="flex items-start gap-3 py-3.5">
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-w-md bg-it-fill dark:bg-rink-700 mt-0.5">
-                  <Icon name="workspace_premium" className="text-[18px] text-it-ink-500 dark:text-rink-300" aria-hidden="true" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <span className="text-card-meta text-it-ink-500 dark:text-rink-300">약력 및 수상</span>
-                  <p className="text-card-body font-medium text-it-ink-800 dark:text-white whitespace-pre-line mt-0.5">{coach.career}</p>
-                </div>
-              </div>
-            )}
           </div>
         </section>
 
         <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
 
-        {/* 담당 수업 목록 — flat 흰 섹션 (hairline 행, 카드 박스 제거) */}
-        <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6" aria-label="담당 수업">
-          <div className="flex items-center justify-between mb-1">
-            <div className="flex items-baseline gap-2">
+        {/* 약력 — staff_careers description 한 덩어리 (코치/감독당 1건, flat 흰 섹션) */}
+        {coach.userId && (
+          <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6" aria-label={MESSAGES.career.sectionTitle}>
+            <div className="flex items-center justify-between mb-1">
               <h3 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
-                담당 수업
+                {MESSAGES.career.sectionTitle}
               </h3>
-              {classes.length > 0 && (
-                <span className="text-[15px] font-extrabold font-num tabular-nums text-it-blue-500">{classes.length}</span>
+              {canManageCareer && bio && (
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={openEditSheet}
+                    className="inline-flex min-h-[36px] items-center gap-1 rounded-w-md px-3 py-2 text-card-meta font-bold text-it-blue-500 hover:bg-it-blue-50 dark:hover:bg-it-blue-500/15 transition-colors motion-reduce:transition-none active:brightness-95"
+                    aria-label={MESSAGES.career.editAction}
+                  >
+                    <Icon name="edit" className="text-[16px]" aria-hidden="true" />
+                    <span>{MESSAGES.career.editAction}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowCareerDeleteConfirm(true)}
+                    className="inline-flex min-h-[36px] items-center gap-1 rounded-w-md px-3 py-2 text-card-meta font-bold text-it-red-500 dark:text-it-red-300 hover:bg-it-red-50 dark:hover:bg-it-red-500/15 transition-colors motion-reduce:transition-none active:brightness-95"
+                    aria-label={MESSAGES.career.deleteAction}
+                  >
+                    <Icon name="delete" className="text-[16px]" aria-hidden="true" />
+                    <span>{MESSAGES.career.deleteAction}</span>
+                  </button>
+                </div>
               )}
             </div>
-            {coach.editable && (
-              <button
-                type="button"
-                className="inline-flex min-h-[36px] items-center gap-1 rounded-w-md px-3 py-2 text-card-meta font-bold text-it-blue-500 hover:bg-it-blue-50 dark:hover:bg-it-blue-500/15 transition-colors motion-reduce:transition-none active:brightness-95"
-                aria-label="수업 배정하기"
-                // /director-coaches/:id/assign-class 수업 배정 전용 페이지로 이동 (PATHS.coaches.assignClass).
-                onClick={() => navigate(PATHS.coaches.assignClass(coachId))}
-              >
-                <Icon name="add_task" className="text-[16px]" aria-hidden="true" />
-                <span>수업 배정</span>
-              </button>
-            )}
-          </div>
 
-          {classes.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12">
-              <div className="w-12 h-12 rounded-w-pill bg-it-line dark:bg-rink-700 flex items-center justify-center mb-3">
-                <Icon name="school" className="text-2xl text-it-ink-400 dark:text-rink-300" aria-hidden="true" />
-              </div>
-              <p className="text-card-body text-it-ink-500 dark:text-rink-300">{MESSAGES.empty('수업')}</p>
-            </div>
-          ) : (
-            <div className="flex flex-col">
-              {classes.map((cls, idx) => {
-                const statusInfo = CLASS_STATUS_MAP[cls.status] ?? CLASS_STATUS_MAP.active;
-                const isLast = idx === classes.length - 1;
-                return (
-                  <div
-                    key={cls.id}
-                    className={cn(
-                      'flex items-center gap-3 py-[13px]',
-                      !isLast && 'border-b border-it-line dark:border-rink-700',
-                    )}
+            {bio?.description ? (
+              <p className="text-card-body text-it-ink-700 dark:text-rink-100 whitespace-pre-line mt-2">{bio.description}</p>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12">
+                <div className="w-12 h-12 rounded-w-pill bg-it-line dark:bg-rink-700 flex items-center justify-center mb-3">
+                  <Icon name="workspace_premium" className="text-2xl text-it-ink-400 dark:text-rink-300" aria-hidden="true" />
+                </div>
+                <p className="text-card-body text-it-ink-500 dark:text-rink-300 mb-3">{MESSAGES.career.emptyText}</p>
+                {canManageCareer && (
+                  <button
+                    type="button"
+                    onClick={openCreateSheet}
+                    className="inline-flex min-h-[40px] items-center gap-1.5 rounded-w-md bg-it-blue-50 dark:bg-it-blue-500/15 px-4 py-2 text-card-body font-bold text-it-blue-500 hover:bg-it-blue-100 dark:hover:bg-it-blue-500/25 transition-colors motion-reduce:transition-none active:brightness-95"
                   >
-                    <div className="flex size-10 shrink-0 items-center justify-center rounded-w-md bg-emerald-50 dark:bg-emerald-900/20">
-                      <Icon name="sports_hockey" className="text-[20px] text-emerald-500" aria-hidden="true" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-[15.5px] font-bold tracking-[-0.01em] text-it-ink-800 dark:text-white truncate">{cls.name}</h4>
-                        <span className={`shrink-0 inline-flex items-center rounded-w-xs px-1.5 py-0.5 text-card-meta font-bold ${statusInfo.className}`}>
-                          {statusInfo.label}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        {cls.schedule && (
-                          <span className="text-card-meta text-it-ink-500 dark:text-rink-300">{cls.schedule}</span>
-                        )}
-                        <span className="text-card-meta text-it-ink-500 dark:text-rink-300">
-                          {cls.students}명
-                        </span>
-                      </div>
-                    </div>
-                    <Icon name="chevron_right" className="text-[20px] text-it-ink-300 dark:text-rink-500 shrink-0" aria-hidden="true" />
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
+                    <Icon name="add" className="text-[18px]" aria-hidden="true" />
+                    <span>{MESSAGES.career.addEmptyCta}</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </section>
+        )}
 
         {/* 하단 액션 버튼 — 수정 / 삭제 (코치 계정만, 감독 본인 등 제외) */}
         {coach.editable && (
@@ -515,17 +483,43 @@ export default function DirectorCoachDetailPage() {
 
       </main>
 
-      {/* 삭제 확인 시트 */}
+      {/* 코치 삭제 확인 시트 */}
       <ConfirmSheet
         open={showDeleteConfirm}
         title={MESSAGES.delete.confirm}
-        description={`${coach.name} 코치를 삭제하면 배정된 수업 정보도 함께 해제됩니다.`}
+        description={`${coach.name} 코치를 삭제하면 계정과 등록 정보가 함께 삭제됩니다.`}
         confirmLabel="삭제하기"
         cancelLabel="취소"
         variant="danger"
         onConfirm={handleDelete}
         onCancel={() => setShowDeleteConfirm(false)}
       />
+
+      {/* 약력 삭제 확인 시트 */}
+      <ConfirmSheet
+        open={showCareerDeleteConfirm}
+        title={MESSAGES.career.deleteConfirmTitle}
+        description={MESSAGES.career.deleteConfirmDescription}
+        confirmLabel="삭제하기"
+        cancelLabel="취소"
+        variant="danger"
+        onConfirm={handleCareerDelete}
+        onCancel={() => setShowCareerDeleteConfirm(false)}
+      />
+
+      {/* 약력 입력/수정 바텀시트 */}
+      {coach.userId && (
+        <CareerFormSheet
+          open={sheetOpen}
+          mode={sheetMode}
+          userId={coach.userId}
+          initial={editingCareer}
+          onClose={() => setSheetOpen(false)}
+          onSaved={() => {
+            if (coach.userId) void loadCareers(coach.userId);
+          }}
+        />
+      )}
     </MobileContainer>
   );
 }

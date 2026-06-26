@@ -3300,10 +3300,10 @@ model PlayerCareer {
 model StaffCareer {
   id               String    @id @default(cuid())
   userId           String    @map("user_id") /// User ID (DIRECTOR/COACH/ADMIN)
-  role             String /// 역할 (head_coach|assistant_coach|goalie_coach|director|manager|trainer|referee|analyst)
-  organizationName String    @map("organization_name") /// 소속 기관/클럽명
+  role             String?   /// 역할 (head_coach|assistant_coach|goalie_coach|director|manager|trainer|referee|analyst)
+  organizationName String?   @map("organization_name") /// 소속 기관/클럽명
   leagueName       String?   @map("league_name") /// 리그명
-  startDate        DateTime  @map("start_date") /// 경력 시작일
+  startDate        DateTime? @map("start_date") /// 경력 시작일
   endDate          DateTime? @map("end_date") /// 경력 종료일 (null=현재)
   isCurrent        Boolean   @default(false) @map("is_current") /// 현재 재직 여부
   description      String?   @db.Text /// 주요 업무·성과
