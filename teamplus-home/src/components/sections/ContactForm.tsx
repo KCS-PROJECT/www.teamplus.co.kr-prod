@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 type PlanOption = {
   value: string;
   label: string;
-  download?: { href: string; filename: string };
   notice?: string;
 };
 
@@ -15,16 +14,8 @@ const PLAN_OPTIONS: PlanOption[] = [
   { value: "starter", label: "Starter" },
   { value: "business", label: "Business" },
   { value: "enterprise", label: "Enterprise" },
-  {
-    value: "aos",
-    label: "AOS",
-    // [2026-05-20] href 는 API route — 서버 파일시스템 경로(/home/kcssi/...)는
-    //   public/ 밖이라 직접 링크 시 404. route handler 가 APK 를 스트리밍한다.
-    download: {
-      href: "/api/download/app",
-      filename: "teamplus-app-release.apk",
-    },
-  },
+  // [2026-06-26] AOS 직접 APK 다운로드 제거 + 안내 문구 제거 → 일반 선택 옵션으로 동작.
+  { value: "aos", label: "AOS" },
   { value: "ios", label: "iOS", notice: "iOS 앱은 준비중입니다." },
   { value: "undecided", label: "아직 고민 중" },
 ];
@@ -248,22 +239,6 @@ export function ContactForm() {
         <Field label="관심 플랜">
           <div className="flex flex-wrap gap-2">
             {PLAN_OPTIONS.map((p) => {
-              if (p.download) {
-                return (
-                  <a
-                    key={p.value}
-                    href={p.download.href}
-                    download={p.download.filename}
-                    onClick={() => setPlanNotice("")}
-                    className={cn(
-                      "rounded-full border px-4 py-2 text-xs font-semibold transition-colors",
-                      "border-wline bg-wsurface text-wtext-3 hover:bg-wbg",
-                    )}
-                  >
-                    {p.label}
-                  </a>
-                );
-              }
               return (
                 <button
                   key={p.value}

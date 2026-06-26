@@ -93,11 +93,15 @@ export function StoreBadge({ store, href, tone = 'dark', className }: StoreBadge
   return (
     <a
       href={href || undefined}
-      {...(isLinked ? { target: '_blank', rel: 'noopener noreferrer' } : { 'aria-disabled': true })}
-      aria-label={meta.aria}
+      {...(isLinked
+        ? { target: '_blank', rel: 'noopener noreferrer' }
+        : { 'aria-disabled': true, 'aria-label': `${meta.label} 출시 예정` })}
+      {...(isLinked ? { 'aria-label': meta.aria } : {})}
       className={cn(
-        'inline-flex items-center gap-3 rounded-2xl px-5 py-3 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 motion-reduce:transition-none aria-disabled:cursor-default',
+        'relative inline-flex items-center gap-3 rounded-2xl px-5 py-3 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 motion-reduce:transition-none',
         t.badge,
+        // 미출시: 버튼처럼 보이되 동작 안 함 → '출시 예정' 의도된 비활성 상태로 렌더(깨진 링크 인상 방지)
+        !isLinked && 'pointer-events-none opacity-60 shadow-none',
         className,
       )}
     >

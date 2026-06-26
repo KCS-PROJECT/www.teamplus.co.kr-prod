@@ -59,14 +59,16 @@ export const NAV_ITEMS = [
 ] as const;
 
 /**
- * Hero 4-grid 인라인 메트릭 — 마케팅 임팩트 수치.
- * (기존 `Hero.tsx` 로컬 `heroStats` 배열을 카피 SoT 로 이관 · 값 동일)
+ * Hero 하단 신뢰 라인 — 검증 가능한 제품 사실만 노출(날조 0).
+ * (기존 HERO_STATS 의 출처 불명 임팩트 수치 "17곳+/12,000건/97%/99.8%" 제거 →
+ *  FEATURES·TRUST_INDICATORS·BRAND.badges 와 정합하는 사실 라벨로 교체.
+ *  실측 운영 수치가 확보되면 이 라인에 근거와 함께 다시 노출할 수 있다.)
  */
-export const HERO_STATS = [
-  { label: "클럽 도입", value: "17곳+" },
-  { label: "월 결제 처리", value: "12,000건" },
-  { label: "출석 자동화", value: "97%" },
-  { label: "QR 성공률", value: "99.8%" },
+export const HERO_PROOF = [
+  "QR 출석 자동 기록",
+  "KG이니시스 공식 연동",
+  "카카오 알림톡 연동",
+  "역할별 맞춤 화면",
 ];
 
 /** 앱 스토어 다운로드 링크 — 출시 후 연결 (현재 빈 값). Hero · Final CTA 공용 SoT */
