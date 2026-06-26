@@ -48,6 +48,15 @@ teamplus-web/.next/
 teamplus-admin/.next/
 teamplus-backend/log/
 teamplus-backend/uploads/
+
+# [2026-06-26] 운영 업로드 디렉토리 — repo root /uploads 는 NestJS 정적 서빙 위치
+#   (workspace_root/uploads, WORKSPACE_ROOT 상수 기준). 사용자 업로드 파일은 디스크
+#   상태일 뿐 git 추적 대상 아님. 단 디렉토리 구조 보존 위해 .gitkeep 만 추적.
+#   기존에 실수로 커밋된 옛 이미지는 별도 정리 커밋으로 인덱스에서 제거함.
+/uploads/**
+!/uploads/
+!/uploads/**/
+!/uploads/**/.gitkeep
 # IntelliJ related
 *.iml
 *.ipr
