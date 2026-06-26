@@ -1,17 +1,18 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import Link from 'next/link';
 import {
   Sparkles,
   QrCode,
   TrendingUp,
   ShieldCheck,
+  ArrowRight,
   type LucideIcon,
 } from 'lucide-react';
-import { HERO, HERO_FEATURES, HERO_STATS, APP_DOWNLOAD } from '@/lib/content';
+import { HERO, HERO_FEATURES, HERO_PROOF, APP_DOWNLOAD } from '@/lib/content';
 import { BackgroundMesh } from '@/components/ui/BackgroundMesh';
 import { PhoneFrame } from '@/components/ui/PhoneFrame';
-import { AnimatedCounter } from '@/components/ui/AnimatedCounter';
 import { StoreBadge } from '@/components/ui/StoreBadge';
 import { DUR, EASE_OUT, stagger } from '@/lib/motion';
 
@@ -50,18 +51,26 @@ export function Hero() {
               {HERO.subCopy}
             </p>
 
-            {/* CTA — 스토어 배지(앱 다운로드) */}
-            <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-              <StoreBadge
-                store="apple"
-                href={APP_DOWNLOAD.appStore}
-                className="w-full justify-center sm:w-auto sm:justify-start"
-              />
-              <StoreBadge
-                store="google"
-                href={APP_DOWNLOAD.googlePlay}
-                className="w-full justify-center sm:w-auto sm:justify-start"
-              />
+            {/* CTA — 작동하는 1차 행동(도입 상담) + 2차(기능 보기). 앱 다운로드는 출시 전이라 하단에 '출시 예정'으로 분리. */}
+            <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <Link
+                href="/contact"
+                className="btn-primary group w-full px-7 py-3.5 text-base sm:w-auto"
+              >
+                도입 상담 신청
+                <ArrowRight
+                  size={18}
+                  strokeWidth={2.4}
+                  className="transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transform-none"
+                  aria-hidden
+                />
+              </Link>
+              <Link
+                href="/features"
+                className="btn-ghost w-full px-7 py-3.5 text-base sm:w-auto"
+              >
+                앱 기능 둘러보기
+              </Link>
             </div>
 
             {/* 핵심 기능 — 카드 장식 대신 운영 메모처럼 가볍게 노출 */}
@@ -92,22 +101,47 @@ export function Hero() {
               })}
             </div>
 
-            {/* 운영 임팩트 수치 프루프 스트립 — 좌측 컬럼 하단(카드 바로 아래) */}
+            {/* 신뢰 라인 — 검증 가능한 제품 사실만(날조 수치 제거). dot 마커로 절제 노출. */}
             <motion.ul
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.6, delay: 0.5 }}
-              className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-wline pt-6"
+              className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-2.5 border-t border-wline pt-6"
             >
-              {HERO_STATS.map((s) => (
-                <li key={s.label} className="flex items-baseline gap-1.5">
-                  <span className="font-num text-lg font-black tracking-normal text-rink-900">
-                    <AnimatedCounter value={s.value} className="tabular-nums" />
-                  </span>
-                  <span className="text-[13px] font-medium text-wtext-3">{s.label}</span>
+              {HERO_PROOF.map((p) => (
+                <li
+                  key={p}
+                  className="flex items-center gap-1.5 text-[13px] font-semibold text-wtext-2"
+                >
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-ice-500" aria-hidden />
+                  {p}
                 </li>
               ))}
             </motion.ul>
+
+            {/* 앱 다운로드 — 출시 전이라 '출시 예정' 비활성 상태로 정직하게 표기(깨진 버튼 인상 방지) */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.6, delay: 0.6 }}
+              className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center"
+            >
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-[0.08em] text-wtext-4">
+                <Sparkles size={13} aria-hidden />앱 출시 예정
+              </span>
+              <div className="flex gap-2.5">
+                <StoreBadge
+                  store="apple"
+                  href={APP_DOWNLOAD.appStore}
+                  className="scale-90 origin-left"
+                />
+                <StoreBadge
+                  store="google"
+                  href={APP_DOWNLOAD.googlePlay}
+                  className="scale-90 origin-left"
+                />
+              </div>
+            </motion.div>
           </motion.div>
 
           {/* Right — reference-style dual device showcase */}
