@@ -40,15 +40,58 @@ export class AttendanceService {
   ) {}
 
   /**
-   * [Phase B-3] POSTPAID(모드 A) 수업 여부 — 후불 정산 수업은 선결제·크레딧이 없으므로
+   * [Phase B-3] 후불 수업(학생 기준) 여부 — 후불은 선결제·크레딧이 없으므로
    * 출석 시 게이트(잔량 검증)와 차감을 모두 스킵하고 출석만 기록한다(사후 정산).
+   *
+   *  - POSTPAID 전용 수업: 항상 후불.
+   *  - PREPAID 전용 수업: 항상 선불.
+   *  - BOTH(선택형) 수업: 학생이 선택한 상품(enrollment.classProductId)의
+   *    billingTiming=POSTPAID 이면 그 학생만 후불. userId 미전달 시 선불로 간주(보수적).
    */
-  private async isPostpaidClass(classId: string): Promise<boolean> {
+  private async isPostpaidClass(
+    classId: string,
+    userId?: string,
+  ): Promise<boolean> {
     const cls = await this.prisma.class.findUnique({
       where: { id: classId },
       select: { billingMode: true },
     });
-    return cls?.billingMode === "POSTPAID";
+    if (!cls) return false;
+    if (cls.billingMode === "POSTPAID") return true;
+    if (cls.billingMode !== "BOTH") return false; // PREPAID 전용
+    if (!userId) return false;
+    return this.isStudentPostpaidForBothClass(classId, userId);
+  }
+
+  /**
+   * BOTH(선택형) 수업에서 특정 학생의 결제방식이 후불인지 — enrollment.classProductId →
+   * ClassProduct.billingTiming === POSTPAID 기준. 활성 수강 상태의 최신 enrollment 를 본다.
+   */
+  private async isStudentPostpaidForBothClass(
+    classId: string,
+    userId: string,
+  ): Promise<boolean> {
+    const enrollment = await this.prisma.enrollment.findFirst({
+      where: {
+        classId,
+        childId: userId,
+        status: { in: ["approved", "paid", "pending", "pending_approval"] },
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        product: { select: { billingTiming: true } },
+        // 보조 안전망 — classProductId FK 가 끊긴 레거시 행은 결제이력 상품으로 폴백 판정.
+        payment: {
+          select: { product: { select: { billingTiming: true } } },
+        },
+      },
+    });
+    if (!enrollment) return false;
+    const timing =
+      enrollment.product?.billingTiming ??
+      enrollment.payment?.product?.billingTiming ??
+      null;
+    return timing === "POSTPAID";
   }
 
   /**
@@ -261,7 +304,8 @@ export class AttendanceService {
     // ── 5) 수업권 잔량 사전 검증 (실제 차감/race 가드는 트랜잭션 안의 CreditDomainService.deductOne) ──
     // PR-B (v0.5): 사전 검증은 빠른 실패용. 실제 차감은 단일 진입점(CreditDomainService) 경유.
     // [Phase B-3] POSTPAID(모드 A) 수업은 선결제·게이트 없음 — 출석만 기록(사후 정산).
-    const isPostpaidClass = await this.isPostpaidClass(classId);
+    //   BOTH 수업은 그 학생(targetUserId)이 선택한 상품 기준으로 후불 여부 판정.
+    const isPostpaidClass = await this.isPostpaidClass(classId, targetUserId);
     if (!isPostpaidClass) {
       const allCredits = await this.prisma.memberCredit.findMany({
         where: { userId: targetUserId, classId, expiresAt: { gte: now } },
@@ -601,7 +645,8 @@ export class AttendanceService {
     // 수업권 확인 (User × Class 단위 — N-9)
     const now = new Date();
     // [Phase B-3] POSTPAID(모드 A) 수업은 선결제·게이트 없음 — 출석만 기록(사후 정산).
-    const isPostpaidClass = await this.isPostpaidClass(classId);
+    //   BOTH 수업은 그 학생(memberId)이 선택한 상품 기준으로 후불 여부 판정.
+    const isPostpaidClass = await this.isPostpaidClass(classId, memberId);
     if (!isPostpaidClass) {
       const memberCredit = await this.prisma.memberCredit.findFirst({
         where: {
@@ -1348,7 +1393,10 @@ export class AttendanceService {
         !wasPresent &&
         willBePresent &&
         !attendance.creditDeducted &&
-        !(await this.isPostpaidClass(attendance.schedule!.class!.id))
+        !(await this.isPostpaidClass(
+          attendance.schedule!.class!.id,
+          attendance.memberId,
+        ))
       ) {
         await this.creditDomain.deductOne(tx, {
           userId: attendance.memberId,
@@ -1999,7 +2047,8 @@ export class AttendanceService {
     // 7) 수업권 잔량 확인 (D-D — 부족 시 차단, 충전 CTA 미노출)
     //   [Phase B-3] POSTPAID(후불) 수업은 선결제·게이트 없음 — 출석만 기록(사후 정산).
     const now = new Date();
-    const isPostpaidClass = await this.isPostpaidClass(classId);
+    // BOTH 수업은 그 자녀(childId)가 선택한 상품 기준으로 후불 여부 판정.
+    const isPostpaidClass = await this.isPostpaidClass(classId, childId);
     if (!isPostpaidClass) {
       const credits = await this.prisma.memberCredit.findMany({
         where: { userId: childId, classId, expiresAt: { gte: now } },
@@ -2187,7 +2236,8 @@ export class AttendanceService {
     // 6) 수업권 잔량 확인 (D-D — 부족 시 차단)
     //   [Phase B-3] POSTPAID(후불) 수업은 선결제·게이트 없음 — 출석만 기록(사후 정산).
     const now = new Date();
-    const isPostpaidClass = await this.isPostpaidClass(classId);
+    // BOTH 수업은 그 학생(studentId)이 선택한 상품 기준으로 후불 여부 판정.
+    const isPostpaidClass = await this.isPostpaidClass(classId, studentId);
     if (!isPostpaidClass) {
       const credits = await this.prisma.memberCredit.findMany({
         where: { userId: studentId, classId, expiresAt: { gte: now } },
@@ -2345,8 +2395,35 @@ export class AttendanceService {
 
     const classId = schedule.class.id;
     const now = new Date();
-    // [Phase B-3] POSTPAID(후불) 수업은 선결제·차감 없음 — 출석만 기록(사후 정산).
-    const isPostpaidClass = await this.isPostpaidClass(classId);
+    // [Phase B-3] 후불 여부 — 전용(PREPAID/POSTPAID)은 수업 단위 1회 조회로 충분하나,
+    //   BOTH 는 학생마다 선·후불이 갈리므로 루프 안에서 학생별로 판정한다(혼재 대응).
+    const classBillingMode = (
+      await this.prisma.class.findUnique({
+        where: { id: classId },
+        select: { billingMode: true },
+      })
+    )?.billingMode;
+    const classLevelPostpaid = classBillingMode === "POSTPAID";
+    const isBothClass = classBillingMode === "BOTH";
+
+    // [m-3] BOTH 후불 학생을 루프 진입 전 일괄 조회 → Set 으로 O(1) 판정(N+1 제거).
+    const bothPostpaidMemberIds = isBothClass
+      ? new Set(
+          (
+            await this.prisma.enrollment.findMany({
+              where: {
+                classId,
+                childId: { in: memberIds },
+                status: {
+                  in: ["approved", "paid", "pending", "pending_approval"],
+                },
+                product: { billingTiming: "POSTPAID" },
+              },
+              select: { childId: true },
+            })
+          ).map((e) => e.childId),
+        )
+      : new Set<string>();
 
     type CoachResult = {
       memberId: string;
@@ -2384,6 +2461,11 @@ export class AttendanceService {
           });
           continue;
         }
+
+        // BOTH 수업은 학생별로 후불 여부를 판정(혼재 학생 정확 분기) — 사전조회 Set 사용.
+        const isPostpaidClass = isBothClass
+          ? bothPostpaidMemberIds.has(memberId)
+          : classLevelPostpaid;
 
         // 수업권 잔량 (후불 수업은 게이트 없음 — 사후 정산)
         if (!isPostpaidClass) {
@@ -2815,7 +2897,11 @@ export class AttendanceService {
     // 5) 신규 생성 — present 면 수업권 차감 트랜잭션
     //   [Phase B-3] POSTPAID(후불) 수업은 선결제·차감 없음 — 출석만 기록(사후 정산).
     //   present 표기(checkedInAt)는 유지하되 수업권 조회/차감만 건너뛴다.
-    const isPostpaidClass = await this.isPostpaidClass(schedule.class.id);
+    //   BOTH 수업은 그 학생(memberId)이 선택한 상품 기준으로 후불 여부 판정.
+    const isPostpaidClass = await this.isPostpaidClass(
+      schedule.class.id,
+      memberId,
+    );
     const isPresent = attendanceStatus === "present";
     const willDeduct = isPresent && !isPostpaidClass;
     const now = new Date();

@@ -362,6 +362,13 @@ export function ClassForm({
     const validationErrors = validateClassForm(formData, {
       skipPriceValidation: mode === 'edit',
       isAcademy,
+      // [Phase B-6] 선불·선택형 등록 시 정액 패키지 ≥1 강제 — draft 의 MONTHLY_FIXED 개수로 검증.
+      requireMonthlyFixedPackage:
+        mode === 'create' &&
+        (formData.billingMode === 'PREPAID' || formData.billingMode === 'BOTH'),
+      monthlyFixedPackageCount: (packageDraftValue ?? []).filter(
+        (d) => !d._deleted && d.feeType === 'MONTHLY_FIXED',
+      ).length,
     });
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
@@ -887,16 +894,23 @@ export function ClassForm({
                       <label className={cn('block text-card-meta font-bold uppercase tracking-wider', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                         {MESSAGES.classProduct.billingModeLabel}
                       </label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {(['PREPAID', 'POSTPAID'] as const).map((bm) => {
+                      <div className="grid grid-cols-3 gap-2">
+                        {(['PREPAID', 'POSTPAID', 'BOTH'] as const).map((bm) => {
                           const active = formData.billingMode === bm;
+                          const label =
+                            bm === 'PREPAID'
+                              ? MESSAGES.classProduct.billingModePrepaid
+                              : bm === 'POSTPAID'
+                                ? MESSAGES.classProduct.billingModePostpaid
+                                : MESSAGES.classProduct.billingModeBoth;
                           return (
                             <button
                               key={bm}
                               type="button"
                               onClick={() => {
                                 handleChange('billingMode', bm);
-                                // 후불 전환 시 담아둔 정기권 draft 제거 — 후불은 1회 수업료만 운영.
+                                // 후불 전환 시 담아둔 정기권 draft 제거 — 후불 전용은 1회 수업료만 운영.
+                                //   선택형(BOTH)은 정액 패키지를 함께 운영하므로 유지.
                                 if (bm === 'POSTPAID') onPackageDraftChange?.([]);
                               }}
                               aria-pressed={active}
@@ -911,9 +925,7 @@ export function ClassForm({
                                     : 'border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-wtext-2 dark:text-rink-200',
                               )}
                             >
-                              {bm === 'PREPAID'
-                                ? MESSAGES.classProduct.billingModePrepaid
-                                : MESSAGES.classProduct.billingModePostpaid}
+                              {label}
                             </button>
                           );
                         })}
@@ -921,16 +933,19 @@ export function ClassForm({
                       <p className={cn('text-card-caption', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                         {formData.billingMode === 'PREPAID'
                           ? MESSAGES.classProduct.billingModePrepaidHint
-                          : MESSAGES.classProduct.billingModePostpaidHint}
+                          : formData.billingMode === 'POSTPAID'
+                            ? MESSAGES.classProduct.billingModePostpaidHint
+                            : MESSAGES.classProduct.billingModeBothHint}
                       </p>
                     </div>
 
                     {/* 1회 수강권 — 필수 (팀·오픈 공통) */}
                     <div className="col-span-2 space-y-2">
                           <label className={cn('block text-card-meta font-bold uppercase tracking-wider', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
-                            {formData.billingMode === 'POSTPAID'
-                              ? MESSAGES.classProduct.feePerSessionLabel
-                              : MESSAGES.classProduct.singlePriceLabel}{' '}
+                            {/* [Phase B-6] 선불 전용은 참고·판매 안 함 라벨, 후불·선택형은 판매되는 1회 수업료. */}
+                            {formData.billingMode === 'PREPAID'
+                              ? MESSAGES.classProduct.singlePriceRefLabel
+                              : MESSAGES.classProduct.feePerSessionLabel}{' '}
                             <span className={iceTheme ? 'text-it-red-500' : 'text-red-500'}>*</span>
                           </label>
                           <div className={cn(
@@ -960,6 +975,12 @@ export function ClassForm({
                             />
                             <span className={cn('text-xs font-bold shrink-0', iceTheme ? 'text-it-ink-500' : 'text-wtext-3')}>원</span>
                           </div>
+                          {/* [Phase B-6] 선불 전용 — 1회 수업료는 참고용(판매 안 함) 안내. */}
+                          {formData.billingMode === 'PREPAID' && (
+                            <p className={cn('text-card-caption', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
+                              {MESSAGES.classProduct.singlePriceRefHint}
+                            </p>
+                          )}
                           {errors.singlePrice && (
                             <p className="text-xs text-red-500 flex items-center gap-1" role="alert">
                               <Icon name="error" className="text-xs" aria-hidden="true" />
@@ -997,11 +1018,21 @@ export function ClassForm({
                       1회권은 위 1회 수강료 입력으로 자동 생성되고, 여기서 추가하는 신규 패키지는
                       PackageEditSheet 설계상 항상 정기권(MONTHLY_FIXED)이라 1회권과 중복되지 않는다.
                       저장 시 부모(create/page)가 수업 생성 후 bulk 로 일괄 반영한다. */}
-                  {formData.billingMode === 'PREPAID' && onPackageDraftChange && (
+                  {/* [Phase B-6] 정액 패키지 — 선불·선택형에서 노출(후불 전용은 1회 수업료만). */}
+                  {(formData.billingMode === 'PREPAID' ||
+                    formData.billingMode === 'BOTH') &&
+                    onPackageDraftChange && (
                     <div className={cn('pt-4 border-t space-y-3', iceTheme ? 'border-it-line dark:border-rink-700' : 'border-wline-2 dark:border-rink-700')}>
                       <p className={cn('text-card-meta font-bold uppercase tracking-wider', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                         {MESSAGES.classProduct.embedSectionLabel}
                       </p>
+                      {/* [Phase B-6] 정액 패키지 ≥1 미충족 시 검증 에러 표시. */}
+                      {errors.packages && (
+                        <p className="text-xs text-red-500 flex items-center gap-1" role="alert">
+                          <Icon name="error" className="text-xs" aria-hidden="true" />
+                          {errors.packages}
+                        </p>
+                      )}
                       <PackageManageSection
                         mode="deferred"
                         variant="embed"

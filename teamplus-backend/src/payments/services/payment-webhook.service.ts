@@ -22,6 +22,7 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
 import { CreditDomainService } from "@/credits/credit-domain.service";
+import { endOfMonthKst } from "@/common/billing/billing-date.util";
 import { KgInicisGateway } from "../kg-inicis.gateway";
 
 export interface FinalizePaymentParams {
@@ -89,6 +90,8 @@ export class PaymentWebhookService {
             durationDays: true,
             sessionsPerMonth: true,
             feePerSession: true,
+            feeType: true,
+            billingTiming: true,
             class: { select: { billingMode: true } },
           },
         },
@@ -128,9 +131,11 @@ export class PaymentWebhookService {
 
         let creditsIssued = 0;
 
-        // [Phase B-3] POSTPAID(모드 A) 수업은 선결제 크레딧 발급 없음 — 후불 정산으로 청구한다.
+        // [Phase B-3/B4] 후불 발급 차단은 "상품(billingTiming)" 기준 — 수업 billingMode 가
+        //   BOTH 일 때 학생이 선택한 상품으로 정확히 분기된다(선불 상품=발급 / 후불 상품=미발급).
+        //   후불 상품은 출석 횟수 × feePerSession 으로 월말 정산하므로 크레딧을 발급하지 않는다.
         const isPostpaidClass =
-          payment.product?.class?.billingMode === "POSTPAID";
+          payment.product?.billingTiming === "POSTPAID";
 
         if (
           paymentStatus === "completed" &&
@@ -139,20 +144,23 @@ export class PaymentWebhookService {
         ) {
           this.logger.log(`수업권 발급 시작: orderNumber=${orderNumber}`);
 
-          // 2026-05-22 정책 — 수업권 사용 기간 = 본 패키지 기간(durationDays) + 미사용 회차 사용 30일.
-          //   학생이 본 기간 안에 모든 회차를 소진하지 못한 경우 30일 동안 추가 사용 가능.
-          //   (사용자 정책 결정 — "보너스"가 아닌 표준 정책으로 모든 신규 결제에 일관 적용)
-          //   - 결제 가드는 본 기간(durationDays) 기준 유지 — extra 30일은 가드 미적용.
+          // [B7] 선불 정액(MONTHLY_FIXED) 수업권 만료 = 결제한 그 달 말일 23:59:59 (약관 §13 정합).
+          //   그 외 feeType 은 기존 정책 유지 — durationDays + 미사용 회차 사용 30일.
+          //   (BOTH/POSTPAID 후불 PER_SESSION 은 위 isPostpaidClass 가드로 애초 미발급.)
           const MEMBER_CREDIT_EXTRA_USABLE_DAYS = 30;
           const now = new Date();
-          const durationDays = payment.product.durationDays ?? 28;
-          const expiresAt = new Date(now);
-          expiresAt.setDate(
-            expiresAt.getDate() +
-              durationDays +
-              MEMBER_CREDIT_EXTRA_USABLE_DAYS,
-          );
-          expiresAt.setHours(23, 59, 59, 999);
+          const expiresAt =
+            payment.product.feeType === "MONTHLY_FIXED"
+              ? endOfMonthKst(now)
+              : (() => {
+                  const durationDays = payment.product.durationDays ?? 28;
+                  const e = new Date(now);
+                  e.setDate(
+                    e.getDate() + durationDays + MEMBER_CREDIT_EXTRA_USABLE_DAYS,
+                  );
+                  e.setHours(23, 59, 59, 999);
+                  return e;
+                })();
 
           // 2026-04-27 (N-9): User × Class 단위로 수업권 발급. ClubMember 결합 제거.
           // 발급 대상자: 학부모 결제 → enrollment.childId. enrollment 없으면 결제자 본인.

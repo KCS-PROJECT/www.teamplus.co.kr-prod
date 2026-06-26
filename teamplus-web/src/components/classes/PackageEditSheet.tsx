@@ -63,8 +63,6 @@ interface PackageEditSheetProps {
 interface FormState {
   /** 신규/MONTHLY_FIXED 수정 — 주 수 (1~52). */
   weeks: string;
-  /** [Phase B-5] 수업 횟수 (MONTHLY_FIXED 번들) — sessionsPerMonth. */
-  sessions: string;
   /** 가격 — 모든 모드 공통. */
   price: string;
   /** 패키지명 (선택) — 비우면 자동 생성. */
@@ -84,8 +82,7 @@ function buildAutoDescription(
   feeType: string,
 ): string {
   if (feeType === 'PER_SESSION') return '1회 수업료';
-  const total = weeks * perWeek;
-  return `${weeks}주간 총 ${total}회 · 주 ${perWeek}회`;
+  return `${weeks}주 · 주 ${perWeek}회`;
 }
 
 /** ClassProductDto 와 DraftProduct 공통 필드만 본다 (toFormState 입력). */
@@ -101,12 +98,11 @@ type EditSource = Pick<
 
 function toFormState(p: EditSource): FormState {
   if (!p) {
-    return { weeks: '4', sessions: '4', price: '', productName: '', description: '' };
+    return { weeks: '4', price: '', productName: '', description: '' };
   }
   const weeks = p.durationDays ? Math.max(1, Math.round(p.durationDays / 7)) : 4;
   return {
     weeks: String(weeks),
-    sessions: String(p.sessionsPerMonth ?? 4),
     price: String(p.price ?? ''),
     productName: p.productName ?? '',
     description: p.description ?? '',
@@ -157,21 +153,11 @@ export function PackageEditSheet({
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  // [Phase B-5] 수업 횟수 직접 입력(번들). 1회당 참고가 = 가격 ÷ 수업 횟수.
+  // 정액(MONTHLY_FIXED)은 무차감 기간제 — 회차 게이트 없음. sessionsPerMonth 는
+  //   표시/정합용 파생값(주 수 × 주당 횟수)으로만 산출하고 별도 입력받지 않는다.
   const weeksNum = Math.max(1, Math.min(52, Number(form.weeks) || 0));
-  const sessionsNum = Math.max(1, Math.min(728, Number(form.sessions) || 0));
-  const previewSessionsPerMonth = isPerSession ? 1 : sessionsNum;
+  const previewSessionsPerMonth = isPerSession ? 1 : weeksNum * perWeek;
   const previewDurationDays = isPerSession ? (editSource?.durationDays ?? 30) : 30;
-  const priceNum = Number(form.price) || 0;
-  const perSessionRef =
-    !isPerSession && sessionsNum > 0 && priceNum > 0
-      ? Math.round(priceNum / sessionsNum)
-      : 0;
-  // 2026-05-22 정책 — 수업권 사용 기간 = 본 패키지 기간 + 미사용 회차 사용 30일.
-  //   백엔드 결제 시점에 expiresAt = now + durationDays + 30 으로 발급됨.
-  const MEMBER_CREDIT_EXTRA_USABLE_DAYS = 30;
-  const previewUsableDays =
-    previewDurationDays + MEMBER_CREDIT_EXTRA_USABLE_DAYS;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -308,19 +294,6 @@ export function PackageEditSheet({
           </div>
         )}
 
-        {/* 정기권 주 수 — [2026-06-09] 숨김 (가격·패키지명만 입력). */}
-        {false && (
-          <NumberField
-            label={MESSAGES.classProduct.fieldWeeks}
-            required
-            value={form.weeks}
-            onChange={(v) => update('weeks', v)}
-            min={1}
-            max={52}
-            suffix="주"
-          />
-        )}
-
         {/* 패키지명 — 필수 */}
         <TextField
           label={MESSAGES.classProduct.fieldProductName}
@@ -343,64 +316,6 @@ export function PackageEditSheet({
           format="comma"
           placeholder="180,000"
         />
-
-        {/* [Phase B-5] 수업 횟수 (정기/번들 전용) + 1회당 참고가 */}
-        {!isPerSession && (
-          <div className="space-y-1.5">
-            <NumberField
-              label={MESSAGES.classProduct.fieldSessions}
-              required
-              value={form.sessions}
-              onChange={(v) => update('sessions', v)}
-              min={1}
-              max={728}
-              suffix="회"
-            />
-            {perSessionRef > 0 && (
-              <p className="text-card-meta text-wtext-3 dark:text-rink-300">
-                {MESSAGES.classProduct.perSessionRef(perSessionRef)}
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* 자동 계산 미리보기 — [2026-06-09] 숨김 (가격·패키지명만 입력). */}
-        {false && (
-          <div className="rounded-w-lg bg-wbg dark:bg-rink-900 border border-wline-2 dark:border-rink-700 px-3 py-3 space-y-1">
-            <p className="text-card-meta font-bold text-wtext-3 dark:text-rink-300 uppercase tracking-wider">
-              {MESSAGES.classProduct.previewTitle}
-            </p>
-            <PreviewRow
-              label={MESSAGES.classProduct.previewSessionsPerWeek}
-              value={`${perWeek}회`}
-              hint={MESSAGES.classProduct.previewSessionsPerWeekHint}
-            />
-            <PreviewRow
-              label={MESSAGES.classProduct.previewTotalSessions}
-              value={`${previewSessionsPerMonth}회`}
-            />
-            <PreviewRow
-              label={MESSAGES.classProduct.previewUsageWindow}
-              value={`${previewUsableDays}일`}
-              hint={MESSAGES.classProduct.previewUsageWindowHint(
-                weeksNum,
-                MEMBER_CREDIT_EXTRA_USABLE_DAYS,
-              )}
-            />
-          </div>
-        )}
-
-        {/* 설명 — [2026-06-09] 숨김 (가격·패키지명만 입력). */}
-        {false && (
-          <TextField
-            label={MESSAGES.classProduct.fieldDescription}
-            optionalHint={MESSAGES.classProduct.fieldDescriptionHint}
-            value={form.description}
-            onChange={(v) => update('description', v)}
-            placeholder={buildAutoDescription(weeksNum, perWeek, feeType)}
-            maxLength={120}
-          />
-        )}
 
         {error && (
           <p
@@ -517,32 +432,6 @@ function TextField({
         maxLength={maxLength}
         className="w-full h-12 rounded-w-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 px-3 text-card-body text-wtext-1 dark:text-rink-100 placeholder:text-wtext-4"
       />
-    </div>
-  );
-}
-
-function PreviewRow({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-}) {
-  return (
-    <div className="flex items-baseline justify-between gap-2">
-      <span className="text-card-meta text-wtext-3 dark:text-rink-300">
-        {label}
-      </span>
-      <span className="text-card-body font-bold text-wtext-1 dark:text-rink-100 tabular-nums">
-        {value}
-        {hint && (
-          <span className="ml-1 text-card-caption font-medium text-wtext-3 dark:text-rink-300">
-            {hint}
-          </span>
-        )}
-      </span>
     </div>
   );
 }

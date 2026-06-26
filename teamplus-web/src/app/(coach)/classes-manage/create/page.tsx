@@ -391,10 +391,12 @@ function ClassCreatePageInner() {
             return '' as const;
           })(),
           packageMode: 'weeks' as const,
-          // [Phase B-5] 결제 방식 복원 — 후불 수업은 PackageManageSection 패키지 추가 차단에 사용.
-          billingMode: (d.billingMode === 'POSTPAID' ? 'POSTPAID' : 'PREPAID') as
-            | 'PREPAID'
-            | 'POSTPAID',
+          // [Phase B-5/B-6] 결제 방식 복원 — 후불은 패키지 추가 차단, 선택형(BOTH)은 정액 운영 허용.
+          billingMode: (d.billingMode === 'POSTPAID'
+            ? 'POSTPAID'
+            : d.billingMode === 'BOTH'
+              ? 'BOTH'
+              : 'PREPAID') as 'PREPAID' | 'POSTPAID' | 'BOTH',
           category: (d.category ?? '') as string,
           // [2026-05-15] 오픈클래스 노출 팀 복원 — getClass 응답의 visibleTeams 매핑.
           selectedVisibleTeams: Array.isArray(d.visibleTeams)
@@ -588,7 +590,9 @@ function ClassCreatePageInner() {
                     billingMode={
                       initialData?.billingMode === 'POSTPAID'
                         ? 'POSTPAID'
-                        : 'PREPAID'
+                        : initialData?.billingMode === 'BOTH'
+                          ? 'BOTH'
+                          : 'PREPAID'
                     }
                     perSessionPrice={perSessionPrice}
                     onPerSessionPriceChange={handlePerSessionPriceChange}

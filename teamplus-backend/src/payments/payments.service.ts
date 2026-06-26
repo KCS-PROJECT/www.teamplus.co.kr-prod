@@ -16,6 +16,7 @@ import { PaymentReceiptService } from "./services/payment-receipt.service";
 import { TossPaymentsGateway } from "./toss-payments.gateway";
 import { RedisService } from "@/redis/redis.service";
 import { CreditDomainService } from "@/credits/credit-domain.service";
+import { endOfMonthKst } from "@/common/billing/billing-date.util";
 import { NotificationsService } from "@/notifications/notifications.service";
 import { Logger } from "@nestjs/common";
 
@@ -95,6 +96,8 @@ export class PaymentsService {
             classId: true,
             durationDays: true,
             sessionsPerMonth: true,
+            feeType: true,
+            billingTiming: true,
           },
         },
       },
@@ -203,19 +206,32 @@ export class PaymentsService {
         //   - product 정보 (sessionsPerMonth/durationDays/classId) 가 있을 때만 발급
         //   - 발급 대상자: 첫 enrollment.childId 우선, 없으면 payment.userId (결제자 본인)
         //   - 토스 응답의 approvedAt 을 기준으로 expiresAt 계산
-        if (payment.product && payment.product.sessionsPerMonth > 0) {
-          // 2026-05-22 정책 — 수업권 사용 기간 = durationDays + 미사용 회차 사용 30일.
-          //   KG이니시스 webhook (payment-webhook.service.ts) 의 발급 로직과 정합.
+        // [B4 정합] 후불 상품(billingTiming=POSTPAID)은 크레딧 미발급 — 출석 횟수 × feePerSession
+        //   으로 월말 정산. BOTH 수업의 후불 선택분이 토스 confirm 으로 오발급되지 않도록 차단.
+        const isPostpaidProduct =
+          payment.product?.billingTiming === "POSTPAID";
+
+        if (
+          payment.product &&
+          payment.product.sessionsPerMonth > 0 &&
+          !isPostpaidProduct
+        ) {
+          // [B7] 선불 정액(MONTHLY_FIXED) 수업권 만료 = 결제한 그 달 말일 23:59:59 (약관 §13).
+          //   그 외 feeType 은 기존 정책 — durationDays + 미사용 회차 사용 30일.
           const MEMBER_CREDIT_EXTRA_USABLE_DAYS = 30;
           const approvedAt = new Date(tossResult.approvedAt ?? new Date());
-          const durationDays = payment.product.durationDays ?? 28;
-          const expiresAt = new Date(approvedAt);
-          expiresAt.setDate(
-            expiresAt.getDate() +
-              durationDays +
-              MEMBER_CREDIT_EXTRA_USABLE_DAYS,
-          );
-          expiresAt.setHours(23, 59, 59, 999);
+          const expiresAt =
+            payment.product.feeType === "MONTHLY_FIXED"
+              ? endOfMonthKst(approvedAt)
+              : (() => {
+                  const durationDays = payment.product.durationDays ?? 28;
+                  const e = new Date(approvedAt);
+                  e.setDate(
+                    e.getDate() + durationDays + MEMBER_CREDIT_EXTRA_USABLE_DAYS,
+                  );
+                  e.setHours(23, 59, 59, 999);
+                  return e;
+                })();
 
           const targetUserId = enrollments[0]?.childId ?? payment.userId;
 

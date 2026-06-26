@@ -124,8 +124,8 @@ export interface ClassFormData {
   venueAddress: string;
   singlePrice: number | '';
   monthlyPrice: number | '';
-  // [Phase B-5] 결제 방식 — 감독 지정 (선불 PREPAID / 후불 POSTPAID).
-  billingMode: 'PREPAID' | 'POSTPAID';
+  // [Phase B-5/B-6] 결제 방식 — 감독 지정. 선불 PREPAID / 후불 POSTPAID / 선택형 BOTH(학부모 택1).
+  billingMode: 'PREPAID' | 'POSTPAID' | 'BOTH';
   category: string;
   // 2026-05-12: 정규 수업 등록과 동시에 일정 자동 일괄 생성 (기본 ON).
   autoGenerateSchedules: boolean;
@@ -209,7 +209,8 @@ export const DEFAULT_FORM_DATA: ClassFormData = {
   venueAddress: '',
   singlePrice: '',
   monthlyPrice: '',
-  billingMode: 'PREPAID',
+  // [Phase B-6] 기본 결제방식 = 선택형(BOTH). 학부모가 결제 시 선·후불 택1.
+  billingMode: 'BOTH',
   category: '',
   autoGenerateSchedules: true,
   selectedVisibleTeams: [],
@@ -237,6 +238,8 @@ export interface FormErrors {
   singlePrice?: string;
   monthlyPrice?: string;
   packageWeeks?: string;
+  // [Phase B-6] 선불·선택형 정액 패키지 ≥1 강제 — 미충족 시 등록 차단.
+  packages?: string;
 }
 
 /** 날짜별 일정 변경 여부 판정 — 키/표시필드(venueName) 제외, date·시간·장소만 순서 무관 비교. */
@@ -254,7 +257,15 @@ export function dateSchedulesEqual(
 
 export function validateClassForm(
   data: ClassFormData,
-  options?: { skipPriceValidation?: boolean; isAcademy?: boolean; skipScheduleValidation?: boolean },
+  options?: {
+    skipPriceValidation?: boolean;
+    isAcademy?: boolean;
+    skipScheduleValidation?: boolean;
+    // [Phase B-6] 선불·선택형 등록 시 정액(MONTHLY_FIXED) 패키지 ≥1 강제.
+    //   드래프트는 ClassForm 이 보유하므로 충족 개수를 주입받아 검증한다(훅 결합 회피).
+    requireMonthlyFixedPackage?: boolean;
+    monthlyFixedPackageCount?: number;
+  },
 ): FormErrors {
   const errors: FormErrors = {};
 
@@ -302,6 +313,15 @@ export function validateClassForm(
     if (data.singlePrice === '' || data.singlePrice === 0) {
       errors.singlePrice = MESSAGES.classesEdit.validation.singlePriceRequired;
     }
+  }
+
+  // [Phase B-6] 선불(PREPAID)·선택형(BOTH) 등록 시 정액(MONTHLY_FIXED) 패키지 1개 이상 필수.
+  //   "아무 패키지"가 아니라 정액이어야 함(1회권으로 충족 방지) — 충족 개수는 호출처가 주입.
+  if (
+    options?.requireMonthlyFixedPackage &&
+    (options?.monthlyFixedPackageCount ?? 0) === 0
+  ) {
+    errors.packages = MESSAGES.classProduct.validationMonthlyFixedRequired;
   }
 
   return errors;

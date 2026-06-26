@@ -28,6 +28,10 @@ interface ChildData {
   //   /credits/stats/{id} 응답에 이미 포함(추가 호출 없음 — graceful degradation).
   totalIssued: number;
   totalUsed: number;
+  // 정액(기간제) 수업권 — 회수 차감 없는 무제한권. 회수 표시 대신 만료일 표기.
+  //   credits 는 회차권(차감형)만 집계(BD1 가 정액을 회수 합산에서 분리). 혼재 시 둘 다 표시.
+  isPeriodPass: boolean;
+  periodPassExpiresAt: string;
 }
 
 interface PaymentHistory {
@@ -71,14 +75,30 @@ interface ChildApiItem {
 }
 
 interface CreditSummary {
+  // ── 백엔드 getCreditStats(GET /credits/stats/:id) 실제 응답 키 (1순위) ──
+  //   availableRemaining: 회차권(차감형) 잔여 — 정액(무차감) 제외.
+  //   hasActivePeriodPass: 정액 기간제 활성 여부.
+  //   periodPassExpiresAt: 정액 만료일.
+  availableRemaining?: number;
+  hasActivePeriodPass?: boolean;
+  periodPassExpiresAt?: string;
+  periodPassCount?: number;
+  periodPasses?: unknown[];
+  totalRemaining?: number;
+  // [시안] 누적 발급/사용 — 백엔드 /credits/stats SoT (totalIssued/totalUsed).
+  totalIssued?: number;
+  totalUsed?: number;
+  // ── 구 호환 폴백 키 (백엔드 미제공 시 안전 폴백, 2순위) ──
   available?: number;
   totalCredits?: number;
   expiringCredits?: number;
   expiringDate?: string;
   nearestExpiryDate?: string;
-  // [시안] 누적 발급/사용 — 백엔드 /credits/stats SoT (totalIssued/totalUsed).
-  totalIssued?: number;
-  totalUsed?: number;
+  isPeriodPass?: boolean;
+  hasPeriodPass?: boolean;
+  feeType?: string;
+  periodPassExpiry?: string;
+  expiresAt?: string;
 }
 
 interface PaymentApiItem {
@@ -267,11 +287,27 @@ export default function CreditsPage() {
             return {
               id: child.id,
               name: `${child.lastName}${child.firstName}`,
-              credits: credit.available ?? credit.totalCredits ?? 0,
+              // 회차권 잔여(정액 제외) — 백엔드 availableRemaining 1순위, 구 키 폴백.
+              credits:
+                credit.availableRemaining ??
+                credit.available ??
+                credit.totalCredits ??
+                0,
               expiringCredits: credit.expiringCredits ?? 0,
               expiringDate: credit.nearestExpiryDate ?? credit.expiringDate ?? '',
               totalIssued: credit.totalIssued ?? 0,
               totalUsed: credit.totalUsed ?? 0,
+              // 정액 기간제 활성 — 백엔드 hasActivePeriodPass 1순위, 구 키/feeType 폴백.
+              isPeriodPass:
+                credit.hasActivePeriodPass ??
+                credit.isPeriodPass ??
+                credit.hasPeriodPass ??
+                credit.feeType === 'MONTHLY_FIXED',
+              periodPassExpiresAt:
+                credit.periodPassExpiresAt ??
+                credit.periodPassExpiry ??
+                credit.expiresAt ??
+                '',
             };
           } catch {
             return {
@@ -282,6 +318,8 @@ export default function CreditsPage() {
               expiringDate: '',
               totalIssued: 0,
               totalUsed: 0,
+              isPeriodPass: false,
+              periodPassExpiresAt: '',
             };
           }
         })
@@ -566,29 +604,56 @@ export default function CreditsPage() {
               {selectedChild.name} · {MESSAGES.dashboard.parentDashboard.creditSummary}
             </div>
 
-            {/* [시안] 금액 38px/800 + "회" 19px/700 (text-6xl 60px 과대 → 시안 스케일) */}
-            <div className="mt-2 flex items-baseline gap-[3px]">
-              <span className="text-[38px] font-extrabold leading-[1.05] tracking-[-0.02em] text-white tabular-nums">
-                {selectedChild.credits}
-              </span>
-              <span className="text-[19px] font-bold text-white">회</span>
-            </div>
+            {selectedChild.isPeriodPass ? (
+              /* 정액(기간제) — 회수 차감 없음. "이 달 무제한" + 만료일 표기. */
+              <>
+                <div className="mt-2">
+                  <span className="text-[30px] font-extrabold leading-[1.1] tracking-[-0.02em] text-white">
+                    {MESSAGES.credits.periodPass.unlimited}
+                  </span>
+                </div>
+                {selectedChild.periodPassExpiresAt && (
+                  <div className="mt-3 inline-flex items-center gap-1.5 rounded-w-pill bg-white/[0.12] px-[11px] py-[5px] text-[12.5px] font-bold text-white/85">
+                    <Icon name="event_available" className="text-[15px]" aria-hidden="true" />
+                    <span className="tabular-nums">
+                      {MESSAGES.credits.periodPass.expiresLabel(selectedChild.periodPassExpiresAt)}
+                    </span>
+                  </div>
+                )}
+                {/* 혼재 — 회차권(차감형)도 보유 시 회수 별도 표기. */}
+                {selectedChild.credits > 0 && (
+                  <div className="mt-2 text-[13px] font-semibold text-white/70 tabular-nums">
+                    {MESSAGES.credits.periodPass.sessionPassCount(selectedChild.credits)}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                {/* [시안] 금액 38px/800 + "회" 19px/700 (text-6xl 60px 과대 → 시안 스케일) */}
+                <div className="mt-2 flex items-baseline gap-[3px]">
+                  <span className="text-[38px] font-extrabold leading-[1.05] tracking-[-0.02em] text-white tabular-nums">
+                    {selectedChild.credits}
+                  </span>
+                  <span className="text-[19px] font-bold text-white">회</span>
+                </div>
 
-            {/* [시안] 만료 임박 — 단일 inline pill (우측 블록 + alert 박스 → 통합)
-                bg white/.12, schedule icon, 연한 적색 텍스트 12.5/700 */}
-            {selectedChild.expiringCredits > 0 && (
-              <div
-                className="mt-3 inline-flex items-center gap-1.5 rounded-w-pill bg-white/[0.12] px-[11px] py-[5px] text-[12.5px] font-bold text-it-red-200"
-                role="alert"
-                aria-live="polite"
-              >
-                <Icon name="schedule" className="text-[15px]" aria-hidden="true" />
-                <span className="tabular-nums">
-                  {selectedChild.expiringDate
-                    ? `${selectedChild.expiringDate} ${selectedChild.expiringCredits}회 만료`
-                    : `${selectedChild.expiringCredits}회 만료 예정`}
-                </span>
-              </div>
+                {/* [시안] 만료 임박 — 단일 inline pill (우측 블록 + alert 박스 → 통합)
+                    bg white/.12, schedule icon, 연한 적색 텍스트 12.5/700 */}
+                {selectedChild.expiringCredits > 0 && (
+                  <div
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-w-pill bg-white/[0.12] px-[11px] py-[5px] text-[12.5px] font-bold text-it-red-200"
+                    role="alert"
+                    aria-live="polite"
+                  >
+                    <Icon name="schedule" className="text-[15px]" aria-hidden="true" />
+                    <span className="tabular-nums">
+                      {selectedChild.expiringDate
+                        ? `${selectedChild.expiringDate} ${selectedChild.expiringCredits}회 만료`
+                        : `${selectedChild.expiringCredits}회 만료 예정`}
+                    </span>
+                  </div>
+                )}
+              </>
             )}
 
             {/* [시안] 누적 발급/사용 2-col — 상단 border, fs18/800 */}

@@ -264,6 +264,11 @@ export function PackageManageSection({
     ? visibleDrafts.length === 0
     : visibleProducts.length === 0;
 
+  // [Phase B-6 / F5] 정액(MONTHLY_FIXED) 패키지 존재 여부 — 감독 정액 수정 안내 노출 조건.
+  const hasMonthlyFixed = isDeferred
+    ? visibleDrafts.some((d) => d.feeType === 'MONTHLY_FIXED')
+    : visibleProducts.some((p) => p.feeType === 'MONTHLY_FIXED');
+
   return (
     <section
       className={
@@ -359,6 +364,21 @@ export function PackageManageSection({
             {MESSAGES.classProduct.postpaidLockHint}
           </p>
         </div>
+      )}
+
+      {/* [Phase B-6 / F5] 감독 매월 정액 직접 수정 안내 — 선불·선택형(정액 운영) 한정.
+          정액 패키지가 1개 이상일 때, 매월 금액을 감독이 직접 조정할 수 있음을 안내(A안). */}
+      {!isPostpaid && !readonly && hasMonthlyFixed && (
+        <p
+          role="note"
+          className={
+            iceTheme
+              ? 'mb-3 text-card-caption text-it-ink-500 dark:text-rink-300'
+              : 'mb-3 text-card-caption text-wtext-3 dark:text-rink-300'
+          }
+        >
+          {MESSAGES.classProduct.monthlyFixedAdjustHint}
+        </p>
       )}
 
       {/* [패키지 일괄 반영] 보류된 변경 안내 — '수정하기' 클릭 전까지 저장되지 않음.

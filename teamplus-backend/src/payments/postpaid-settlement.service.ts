@@ -132,7 +132,9 @@ export class PostpaidSettlementService {
           },
         },
         enrollments: {
-          where: { status: "paid" },
+          // 후불은 approved 로 수강 중이므로 preview 도 confirm 경로(aggregateAttendance)와
+          //   동일하게 approved+paid 를 포함한다(후불 학생 누락 방지).
+          where: { status: { in: ["approved", "paid"] } },
           select: {
             childId: true,
             child: { select: { id: true, email: true } },
@@ -236,6 +238,34 @@ export class PostpaidSettlementService {
         counts.set(a.memberId, (counts.get(a.memberId) ?? 0) + 1);
       }
     }
+
+    // BOTH(선택형) 수업은 "후불 상품을 선택한 학생"만 정산 대상이다.
+    //   동일 수업의 선불 학생은 크레딧 차감으로 이미 정산되었으므로 후불 청구에서 제외(이중청구 방지).
+    //   POSTPAID 전용 수업은 전원 후불이므로 필터를 적용하지 않는다(기존 동작 불변).
+    if (counts.size > 0) {
+      const cls = await this.prisma.class.findUnique({
+        where: { id: classId },
+        select: { billingMode: true },
+      });
+      if (cls?.billingMode === "BOTH") {
+        const postpaidEnrollments = await this.prisma.enrollment.findMany({
+          where: {
+            classId,
+            childId: { in: [...counts.keys()] },
+            status: { in: ["approved", "paid"] },
+            product: { billingTiming: BillingTiming.POSTPAID },
+          },
+          select: { childId: true },
+        });
+        const postpaidSet = new Set(
+          postpaidEnrollments.map((e) => e.childId),
+        );
+        for (const memberId of [...counts.keys()]) {
+          if (!postpaidSet.has(memberId)) counts.delete(memberId);
+        }
+      }
+    }
+
     return counts;
   }
 
