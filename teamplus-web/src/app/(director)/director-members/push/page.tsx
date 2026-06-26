@@ -23,7 +23,7 @@ export default function DirectorMemberPushPage() {
   return (
     <MobileContainer hasBottomNav={false}>
       <PageAppBar title={MESSAGES.memberPush.pageTitle} forceNative />
-      <MemberPushComposer context="director" />
+      <MemberPushComposer context="director" iceTheme />
     </MobileContainer>
   );
 }

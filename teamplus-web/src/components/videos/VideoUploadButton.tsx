@@ -39,6 +39,7 @@ import {
   type UploadVideoMetadata,
 } from '@/services/upload.service';
 import { MESSAGES } from '@/lib/messages';
+import { cn } from '@/lib/utils';
 import { UPLOAD_LIMITS, type UploadedFile } from '@/types/file';
 
 type Phase = 'idle' | 'selected' | 'uploading' | 'success' | 'error';
@@ -70,6 +71,12 @@ export interface VideoUploadButtonProps {
   /** category!='VIDEO' 일 때 refType + refId 로 도메인 연결 (예: 선수 사진 player_profile) */
   refType?: string;
   refId?: string;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 선택 버튼/진행바/결과 카드를 it-* 토큰으로 스왑. **업로드 로직·에러 매핑·
+   *   접근성 마크업 동결, 비주얼만.** (videos/upload 호출처만 전달)
+   */
+  iceTheme?: boolean;
 }
 
 export function VideoUploadButton({
@@ -83,6 +90,7 @@ export function VideoUploadButton({
   metadata,
   refType,
   refId,
+  iceTheme = false,
 }: VideoUploadButtonProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -221,24 +229,53 @@ export function VideoUploadButton({
       />
 
       {phase === 'idle' || phase === 'error' ? (
-        <Button
-          type="button"
-          variant="outline"
-          fullWidth={fullWidth}
-          onClick={handlePick}
-          disabled={isDisabled}
-        >
-          <Icon name="upload_file" size={18} aria-hidden="true" />
-          <span>{selectLabel}</span>
-        </Button>
+        iceTheme ? (
+          <button
+            type="button"
+            onClick={handlePick}
+            disabled={isDisabled}
+            className={cn(
+              'flex items-center justify-center gap-2 min-h-[52px] rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-rink-800 px-4 text-card-body font-bold text-it-blue-600 dark:text-it-blue-300 transition-colors motion-reduce:transition-none hover:bg-it-blue-50 dark:hover:bg-it-blue-900/40 active:brightness-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 disabled:opacity-60 disabled:cursor-not-allowed',
+              fullWidth && 'w-full',
+            )}
+          >
+            <Icon name="upload_file" size={18} aria-hidden="true" />
+            <span>{selectLabel}</span>
+          </button>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            fullWidth={fullWidth}
+            onClick={handlePick}
+            disabled={isDisabled}
+          >
+            <Icon name="upload_file" size={18} aria-hidden="true" />
+            <span>{selectLabel}</span>
+          </Button>
+        )
       ) : null}
 
       {file && phase !== 'idle' ? (
-        <div className="flex flex-col gap-2 rounded-xl border border-wline bg-white p-4 dark:border-rink-700 dark:bg-rink-800">
+        <div
+          className={cn(
+            'flex flex-col gap-2 p-4',
+            iceTheme
+              ? 'rounded-w-md border border-it-line bg-it-surface dark:border-it-blue-900 dark:bg-it-blue-950'
+              : 'rounded-xl border border-wline bg-white dark:border-rink-700 dark:bg-rink-800',
+          )}
+        >
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
               <Icon name="movie" size={18} aria-hidden="true" />
-              <span className="truncate text-sm text-wtext-1 dark:text-white">
+              <span
+                className={cn(
+                  'truncate text-sm',
+                  iceTheme
+                    ? 'text-it-ink-800 dark:text-white'
+                    : 'text-wtext-1 dark:text-white',
+                )}
+              >
                 {MESSAGES.video.selectedHint(file.name, sizeMb)}
               </span>
             </div>
@@ -262,14 +299,29 @@ export function VideoUploadButton({
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={percent}
-                className="h-2 w-full overflow-hidden rounded-full bg-wline dark:bg-rink-700"
+                className={cn(
+                  'h-2 w-full overflow-hidden rounded-full',
+                  iceTheme
+                    ? 'bg-it-line dark:bg-it-blue-900'
+                    : 'bg-wline dark:bg-rink-700',
+                )}
               >
                 <div
-                  className="h-full bg-ice-500 transition-all duration-150"
+                  className={cn(
+                    'h-full transition-all duration-150',
+                    iceTheme ? 'bg-it-blue-500' : 'bg-ice-500',
+                  )}
                   style={{ width: `${percent}%` }}
                 />
               </div>
-              <div className="flex items-center justify-between text-xs text-wtext-3 dark:text-rink-300">
+              <div
+                className={cn(
+                  'flex items-center justify-between text-xs',
+                  iceTheme
+                    ? 'text-it-ink-500 dark:text-rink-300'
+                    : 'text-wtext-3 dark:text-rink-300',
+                )}
+              >
                 <span>
                   {percent > 0
                     ? MESSAGES.video.uploading(percent)
@@ -278,7 +330,12 @@ export function VideoUploadButton({
                 <button
                   type="button"
                   onClick={handleCancel}
-                  className="text-red-600 underline-offset-2 hover:underline dark:text-red-400"
+                  className={cn(
+                    'underline-offset-2 hover:underline',
+                    iceTheme
+                      ? 'text-it-red-500 dark:text-it-red-400'
+                      : 'text-red-600 dark:text-red-400',
+                  )}
                 >
                   {MESSAGES.video.cancelButton}
                 </button>
@@ -287,14 +344,35 @@ export function VideoUploadButton({
           ) : null}
 
           {phase === 'selected' ? (
-            <Button type="button" fullWidth={fullWidth} onClick={handleUpload}>
-              <Icon name="cloud_upload" size={18} aria-hidden="true" />
-              <span>{MESSAGES.video.uploadButton}</span>
-            </Button>
+            iceTheme ? (
+              <button
+                type="button"
+                onClick={handleUpload}
+                className={cn(
+                  'flex items-center justify-center gap-2 min-h-[52px] rounded-w-md bg-it-blue-500 px-4 text-card-body font-bold text-white transition-colors motion-reduce:transition-none hover:bg-it-blue-600 active:brightness-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40',
+                  fullWidth && 'w-full',
+                )}
+              >
+                <Icon name="cloud_upload" size={18} aria-hidden="true" />
+                <span>{MESSAGES.video.uploadButton}</span>
+              </button>
+            ) : (
+              <Button type="button" fullWidth={fullWidth} onClick={handleUpload}>
+                <Icon name="cloud_upload" size={18} aria-hidden="true" />
+                <span>{MESSAGES.video.uploadButton}</span>
+              </Button>
+            )
           ) : null}
 
           {phase === 'success' ? (
-            <div className="flex items-center gap-2 text-sm font-medium text-green-600 dark:text-green-400">
+            <div
+              className={cn(
+                'flex items-center gap-2 text-sm font-medium',
+                iceTheme
+                  ? 'text-mint-600 dark:text-mint-500'
+                  : 'text-green-600 dark:text-green-400',
+              )}
+            >
               <Icon name="check_circle" size={18} aria-hidden="true" />
               <span>{MESSAGES.video.success}</span>
               <Button

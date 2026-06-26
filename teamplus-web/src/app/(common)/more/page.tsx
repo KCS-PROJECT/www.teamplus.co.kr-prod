@@ -41,13 +41,13 @@ interface UserProfile {
   updatedAt?: string | null;
 }
 
-// Role badge styles
+// Role badge styles — ICETIMES flat: it-blue tint (역할 구분 색은 유지하되 it-* 정합)
 const roleBadgeStyles: Record<UserRole, string> = {
-  parent: "bg-ice-500/10 text-ice-500",
+  parent: "bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-500/15 dark:text-it-blue-200",
   coach:
     "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
   admin: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-  player: "bg-blue-100 text-ice-500 dark:bg-blue-900/30 dark:text-blue-400",
+  player: "bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-500/15 dark:text-it-blue-200",
 };
 
 // Default menu groups
@@ -160,13 +160,13 @@ export default function MoreMenuPage() {
         ]}
       />
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto">
-        {/* Profile Section */}
-        <section className="px-6 pt-8 pb-8 border-b border-wline-2 dark:border-rink-800">
+      {/* Main Content — ICETIMES flat: 회색 캔버스 + full-bleed 흰 섹션 */}
+      <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck">
+        {/* Profile Section — full-bleed 흰 섹션 */}
+        <section className="bg-it-surface dark:bg-it-blue-950 px-6 pt-8 pb-8">
           <div className="flex items-center gap-5">
             {/* Avatar */}
-            <div className="w-[72px] h-[72px] rounded-w-pill overflow-hidden bg-wline-2 dark:bg-rink-700 ring-4 ring-ice-500/5 dark:ring-ice-500/10 shrink-0">
+            <div className="w-[72px] h-[72px] rounded-w-pill overflow-hidden bg-it-line-strong dark:bg-rink-700 ring-4 ring-it-blue-500/5 dark:ring-it-blue-500/10 shrink-0">
               {(() => {
                 const avatarSrc = resolveImageSrc(
                   user.avatarUrl,
@@ -214,61 +214,62 @@ export default function MoreMenuPage() {
           </div>
         </section>
 
-        {/* Menu Groups */}
-        <div className="px-6 py-8 space-y-12">
-          {menuGroups.map((group) => (
-            <div key={group.title}>
-              <h3 className="text-card-meta font-bold text-wtext-3 dark:text-rink-300 mb-2 px-1 tracking-wider uppercase">
-                {group.title}
-              </h3>
-              <ul className="divide-y divide-slate-50 dark:divide-slate-800">
-                {group.items.map((item) => (
-                  <li key={item.href}>
-                    <NavLink
-                      href={item.href}
-                      className="flex items-center justify-between py-4 group active:bg-wbg dark:active:bg-rink-800 -mx-2 px-2 rounded-xl transition-colors motion-reduce:transition-none"
-                    >
-                      <div className="flex items-center gap-4">
-                        <Icon
-                          name={item.icon}
-                          className="text-ice-500 text-[24px]"
-                        />
-                        <span className="text-card-title font-semibold text-wtext-2 dark:text-rink-100">
-                          {item.label}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {item.badge && (
-                          <span className="w-2 h-2 rounded-w-pill bg-red-500" />
-                        )}
-                        <Icon
-                          name="chevron_right"
-                          className="text-wtext-4 dark:text-rink-500 group-active:translate-x-0.5 transition-transform motion-reduce:transition-none text-[20px]"
-                        />
-                      </div>
-                    </NavLink>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
+        {/* Menu Groups — 그룹별 full-bleed 흰 섹션 + hairline 행 */}
+        {menuGroups.map((group) => (
+          <section
+            key={group.title}
+            className="mt-2 bg-it-surface dark:bg-it-blue-950"
+          >
+            <h3 className="px-6 pt-4 pb-1 text-card-meta font-bold text-it-ink-500 dark:text-rink-300 tracking-wider uppercase">
+              {group.title}
+            </h3>
+            <ul className="divide-y divide-it-line dark:divide-rink-800">
+              {group.items.map((item) => (
+                <li key={item.href}>
+                  <NavLink
+                    href={item.href}
+                    className="flex items-center justify-between px-6 py-4 group active:bg-it-fill dark:active:bg-rink-800 transition-colors motion-reduce:transition-none"
+                  >
+                    <div className="flex items-center gap-4">
+                      <Icon
+                        name={item.icon}
+                        className="text-it-blue-500 text-[24px]"
+                      />
+                      <span className="text-card-title font-semibold text-it-ink-800 dark:text-rink-100">
+                        {item.label}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {item.badge && (
+                        <span className="w-2 h-2 rounded-w-pill bg-it-red-500" />
+                      )}
+                      <Icon
+                        name="chevron_right"
+                        className="text-it-ink-300 dark:text-rink-500 group-active:translate-x-0.5 transition-transform motion-reduce:transition-none text-[20px]"
+                      />
+                    </div>
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
 
-        {/* Footer - Logout and Version */}
-        <div className="px-6 pt-4 pb-30">
+        {/* Footer - Logout and Version — full-bleed 흰 섹션 */}
+        <div className="mt-2 bg-it-surface dark:bg-it-blue-950 px-6 pt-4 pb-30">
           <button
             onClick={handleLogout}
             disabled={isLoggingOut}
             className={cn(
               "flex items-center gap-3 py-4 transition-all motion-reduce:transition-none",
               isLoggingOut
-                ? "text-wtext-3 dark:text-rink-300 cursor-not-allowed"
-                : "text-red-600 dark:text-red-500 active:opacity-60",
+                ? "text-it-ink-500 dark:text-rink-300 cursor-not-allowed"
+                : "text-it-red-500 dark:text-it-red-300 active:opacity-60",
             )}
           >
             {isLoggingOut ? (
               <>
-                <div className="w-[22px] h-[22px] border-2 border-wline dark:border-rink-700 border-t-slate-500 dark:border-t-slate-400 rounded-w-pill animate-spin motion-reduce:animate-none" />
+                <div className="w-[22px] h-[22px] border-2 border-it-line dark:border-rink-700 border-t-it-ink-500 dark:border-t-slate-400 rounded-w-pill animate-spin motion-reduce:animate-none" />
                 <span className="text-card-title font-bold">로그아웃 중...</span>
               </>
             ) : (
@@ -278,7 +279,7 @@ export default function MoreMenuPage() {
               </>
             )}
           </button>
-          <p className="mt-4 text-card-meta text-wtext-3 dark:text-rink-300 font-medium px-1">
+          <p className="mt-4 text-card-meta text-it-ink-500 dark:text-rink-300 font-medium px-1">
             {appVersionLabel}
           </p>
         </div>

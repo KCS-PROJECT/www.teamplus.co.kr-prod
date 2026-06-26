@@ -38,6 +38,13 @@ export interface TeamPickerSheetProps {
   isOpen: boolean;
   onClose: () => void;
   onSelect: (selection: TeamPickerSelection) => void;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 시트 내부 콘텐츠(검색 input·리스트 행·선택 버튼)를 it-* 톤으로 스왑.
+   *   **BottomSheet 컨테이너(담당 외)·검색·페이지네이션 로직은 동결, 비주얼만.**
+   *   (children/add 호출처만 전달)
+   */
+  iceTheme?: boolean;
 }
 
 interface LoadState {
@@ -63,6 +70,7 @@ export const TeamPickerSheet = memo(function TeamPickerSheet({
   isOpen,
   onClose,
   onSelect,
+  iceTheme = false,
 }: TeamPickerSheetProps) {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search.trim(), 300);
@@ -185,16 +193,39 @@ export const TeamPickerSheet = memo(function TeamPickerSheet({
       maxHeight="75vh"
     >
       {/* 검색 — 시트 상단 고정(스크롤 시 유지, 키보드가 입력란을 가리지 않음) */}
-      <div className="sticky top-0 z-10 -mx-5 bg-wsurface px-5 pb-3 pt-1 dark:bg-rink-800">
-        <Input
-          type="text"
-          inputMode="search"
-          icon="search"
-          placeholder={MESSAGES.team.pickerSearchPlaceholder}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          aria-label={MESSAGES.team.pickerSearchPlaceholder}
-        />
+      <div
+        className={
+          iceTheme
+            ? 'sticky top-0 z-10 -mx-5 bg-it-surface px-5 pb-3 pt-1 dark:bg-rink-800'
+            : 'sticky top-0 z-10 -mx-5 bg-wsurface px-5 pb-3 pt-1 dark:bg-rink-800'
+        }
+      >
+        {iceTheme ? (
+          <div className="relative">
+            <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-it-ink-400 dark:text-rink-300">
+              <Icon name="search" size={18} aria-hidden="true" />
+            </span>
+            <input
+              type="text"
+              inputMode="search"
+              placeholder={MESSAGES.team.pickerSearchPlaceholder}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label={MESSAGES.team.pickerSearchPlaceholder}
+              className="w-full h-12 pl-11 pr-3.5 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 text-it-ink-800 dark:text-white text-card-body placeholder:text-it-ink-400 dark:placeholder:text-rink-300 focus:outline-none focus:ring-2 focus:ring-it-blue-500/30 focus:border-it-blue-500 transition-colors motion-reduce:transition-none"
+            />
+          </div>
+        ) : (
+          <Input
+            type="text"
+            inputMode="search"
+            icon="search"
+            placeholder={MESSAGES.team.pickerSearchPlaceholder}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label={MESSAGES.team.pickerSearchPlaceholder}
+          />
+        )}
       </div>
 
       {/* 본문 — 로딩 / 에러 / 빈 상태 / 리스트 */}
@@ -261,35 +292,62 @@ export const TeamPickerSheet = memo(function TeamPickerSheet({
                   >
                     <div
                       className={
-                        'flex items-center gap-3 p-4 rounded-w-md border border-wline dark:border-rink-700 ' +
-                        'bg-wsurface dark:bg-rink-800 shadow-sh-1 ' +
-                        'transition-shadow motion-reduce:transition-none duration-200'
+                        iceTheme
+                          ? 'flex items-center gap-3 p-4 rounded-w-md border border-it-line dark:border-rink-700 bg-it-surface dark:bg-rink-800'
+                          : 'flex items-center gap-3 p-4 rounded-w-md border border-wline dark:border-rink-700 bg-wsurface dark:bg-rink-800 shadow-sh-1 transition-shadow motion-reduce:transition-none duration-200'
                       }
                     >
                       <span
-                        className="flex size-10 shrink-0 items-center justify-center rounded-w-pill bg-wbg dark:bg-rink-700 text-wtext-3 dark:text-rink-300"
+                        className={
+                          iceTheme
+                            ? 'flex size-10 shrink-0 items-center justify-center rounded-w-pill bg-it-blue-50 dark:bg-it-blue-500/15 text-it-blue-500'
+                            : 'flex size-10 shrink-0 items-center justify-center rounded-w-pill bg-wbg dark:bg-rink-700 text-wtext-3 dark:text-rink-300'
+                        }
                         aria-hidden="true"
                       >
                         <Icon name="groups" className="text-card-title" />
                       </span>
                       <div className="flex-1 min-w-0">
-                        <p className="text-card-body font-semibold text-wtext-1 dark:text-white truncate">
+                        <p
+                          className={
+                            iceTheme
+                              ? 'text-card-body font-semibold text-it-ink-900 dark:text-white truncate'
+                              : 'text-card-body font-semibold text-wtext-1 dark:text-white truncate'
+                          }
+                        >
                           {teamName}
                         </p>
-                        <p className="text-card-meta text-wtext-3 dark:text-rink-300 truncate">
+                        <p
+                          className={
+                            iceTheme
+                              ? 'text-card-meta text-it-ink-500 dark:text-rink-300 truncate'
+                              : 'text-card-meta text-wtext-3 dark:text-rink-300 truncate'
+                          }
+                        >
                           {coachName || '-'}
                         </p>
                       </div>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => handlePick(team)}
-                        disabled={disabled}
-                        className="shrink-0"
-                      >
-                        {MESSAGES.team.pickerSelectAction}
-                      </Button>
+                      {iceTheme ? (
+                        <button
+                          type="button"
+                          onClick={() => handlePick(team)}
+                          disabled={disabled}
+                          className="shrink-0 inline-flex items-center justify-center min-h-[36px] px-3.5 rounded-w-pill border-[1.5px] border-it-blue-500 bg-it-surface dark:bg-rink-800 text-card-meta font-bold text-it-blue-600 dark:text-it-blue-300 transition-colors motion-reduce:transition-none hover:bg-it-blue-50 dark:hover:bg-it-blue-900/40 active:brightness-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {MESSAGES.team.pickerSelectAction}
+                        </button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handlePick(team)}
+                          disabled={disabled}
+                          className="shrink-0"
+                        >
+                          {MESSAGES.team.pickerSelectAction}
+                        </Button>
+                      )}
                     </div>
                   </li>
                 );

@@ -57,34 +57,36 @@ export default function ParentVideoUploadPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title={MESSAGES.video.pageTitle} />
 
-      <main className="flex-1 px-6 py-6 flex flex-col gap-6 overflow-y-auto hide-scrollbar">
-        {/* 페이지 히어로 */}
-        <section className="flex items-start gap-3">
+      <main className="flex-1 flex flex-col overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck !pb-8">
+        {/* 페이지 히어로 — flat 흰 섹션 */}
+        <section className="bg-it-surface dark:bg-it-blue-950 px-5 pt-5 pb-5 flex items-start gap-3">
           <div
-            className="flex items-center justify-center size-12 rounded-2xl bg-blue-50 dark:bg-blue-900/20 shrink-0"
+            className="flex items-center justify-center size-12 rounded-w-md bg-it-blue-50 dark:bg-it-blue-500/15 shrink-0"
             aria-hidden="true"
           >
-            <Icon name="videocam" className="text-2xl text-ice-500" />
+            <Icon name="videocam" className="text-2xl text-it-blue-500" />
           </div>
           <div className="flex flex-col gap-1 min-w-0">
-            <h1 className="text-2xl font-bold text-wtext-1 dark:text-white leading-tight">
+            <h1 className="text-2xl font-bold text-it-ink-800 dark:text-white leading-tight">
               {MESSAGES.video.pageTitle}
             </h1>
-            <p className="text-card-body text-wtext-3 dark:text-rink-300 leading-relaxed">
+            <p className="text-card-body text-it-ink-500 dark:text-wtext-4 leading-relaxed">
               {MESSAGES.video.pageDescription}
             </p>
           </div>
         </section>
 
-        {/* 업로드 폼 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+        {/* 업로드 폼 — flat 흰 섹션 */}
         <section
           aria-label={MESSAGES.video.pageTitle}
-          className="flex flex-col gap-5 rounded-2xl border border-wline-2 dark:border-rink-700 bg-white dark:bg-rink-800 shadow-sm p-5"
+          className="flex flex-col gap-5 bg-it-surface dark:bg-it-blue-950 px-5 pt-5 pb-6"
         >
           <label className="flex flex-col gap-1.5">
-            <span className="text-card-body font-semibold text-wtext-2 dark:text-rink-100">
+            <span className="text-card-body font-semibold text-it-ink-700 dark:text-wtext-4">
               {MESSAGES.video.titleLabel}
-              <span className="ml-1 text-red-500" aria-hidden="true">
+              <span className="ml-1 text-it-red-500" aria-hidden="true">
                 *
               </span>
             </span>
@@ -97,12 +99,12 @@ export default function ParentVideoUploadPage() {
               disabled={!!registered}
               required
               aria-required="true"
-              className="w-full h-12 rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-700 px-3.5 text-card-body text-wtext-1 dark:text-white placeholder:text-wtext-3 dark:placeholder:text-wtext-3 focus:outline-none focus:ring-2 focus:ring-ice-500/30 focus:border-ice-500 transition-colors motion-reduce:transition-none disabled:bg-wbg dark:disabled:bg-rink-800 disabled:cursor-not-allowed"
+              className="w-full h-12 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-700 px-3.5 text-card-body text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-wtext-4 focus:outline-none focus:ring-2 focus:ring-it-blue-500/30 focus:border-it-blue-500 transition-colors motion-reduce:transition-none disabled:bg-it-fill dark:disabled:bg-rink-800 disabled:cursor-not-allowed"
             />
           </label>
 
           <label className="flex flex-col gap-1.5">
-            <span className="text-card-body font-semibold text-wtext-2 dark:text-rink-100">
+            <span className="text-card-body font-semibold text-it-ink-700 dark:text-wtext-4">
               {MESSAGES.video.descriptionLabel}
             </span>
             <textarea
@@ -112,13 +114,14 @@ export default function ParentVideoUploadPage() {
               rows={3}
               placeholder={MESSAGES.video.descriptionPlaceholder}
               disabled={!!registered}
-              className="w-full resize-none rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-700 px-3.5 py-2.5 text-card-body text-wtext-1 dark:text-white placeholder:text-wtext-3 dark:placeholder:text-wtext-3 focus:outline-none focus:ring-2 focus:ring-ice-500/30 focus:border-ice-500 transition-colors motion-reduce:transition-none disabled:bg-wbg dark:disabled:bg-rink-800 disabled:cursor-not-allowed"
+              className="w-full resize-none rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-700 px-3.5 py-2.5 text-card-body text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-wtext-4 focus:outline-none focus:ring-2 focus:ring-it-blue-500/30 focus:border-it-blue-500 transition-colors motion-reduce:transition-none disabled:bg-it-fill dark:disabled:bg-rink-800 disabled:cursor-not-allowed"
             />
           </label>
 
           <div className="pt-1">
             <VideoUploadButton
               category="VIDEO"
+              iceTheme
               metadata={metadata}
               disabled={!canUpload || !!registered}
               onRegistered={(video) => {
@@ -130,15 +133,15 @@ export default function ParentVideoUploadPage() {
           {!canUpload && !registered ? (
             <div
               role="note"
-              className="flex items-start gap-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-900/30 p-3"
+              className="flex items-start gap-2 rounded-w-md bg-sun-100 dark:bg-sun-500/10 border border-sun-500/30 dark:border-sun-500/20 p-3"
             >
               <Icon
                 name="info"
                 size={16}
-                className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0"
+                className="text-sun-500 mt-0.5 shrink-0"
                 aria-hidden="true"
               />
-              <p className="text-card-meta text-amber-800 dark:text-amber-300">
+              <p className="text-card-meta text-it-ink-700 dark:text-sun-500">
                 {MESSAGES.video.missingTitle}
               </p>
             </div>
@@ -147,47 +150,48 @@ export default function ParentVideoUploadPage() {
 
         {/* 업로드 결과 */}
         {registered ? (
-          <section
-            aria-label="업로드 결과"
-            role="status"
-            className="rounded-2xl border border-green-200 dark:border-green-900/40 bg-green-50 dark:bg-green-900/10 shadow-sm p-5"
-          >
-            <div className="flex items-center gap-2 text-card-body font-bold text-green-700 dark:text-green-400 mb-4">
-              <div className="flex items-center justify-center size-9 rounded-w-pill bg-green-100 dark:bg-green-900/30">
-                <Icon name="check_circle" size={18} aria-hidden="true" />
-              </div>
-              <span>{MESSAGES.video.registerSuccess}</span>
-            </div>
-            <dl className="flex flex-col gap-2 text-card-meta text-wtext-2 dark:text-rink-100 rounded-xl bg-white/60 dark:bg-rink-900/40 p-3 border border-green-100 dark:border-green-900/30">
-              <div className="flex gap-2">
-                <dt className="min-w-[60px] font-semibold text-wtext-3 dark:text-rink-300">
-                  제목
-                </dt>
-                <dd className="flex-1 truncate text-wtext-1 dark:text-white">
-                  {registered.title}
-                </dd>
-              </div>
-              <div className="flex gap-2">
-                <dt className="min-w-[60px] font-semibold text-wtext-3 dark:text-rink-300">
-                  URL
-                </dt>
-                <dd className="flex-1 truncate font-mono text-[11px]">
-                  {registered.videoUrl}
-                </dd>
-              </div>
-              {registered.status ? (
-                <div className="flex gap-2">
-                  <dt className="min-w-[60px] font-semibold text-wtext-3 dark:text-rink-300">
-                    상태
-                  </dt>
-                  <dd>{registered.status}</dd>
+          <>
+            <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+            <section
+              aria-label="업로드 결과"
+              role="status"
+              className="bg-it-surface dark:bg-it-blue-950 px-5 pt-5 pb-6"
+            >
+              <div className="flex items-center gap-2 text-card-body font-bold text-mint-500 mb-4">
+                <div className="flex items-center justify-center size-9 rounded-w-pill bg-mint-100 dark:bg-mint-500/15">
+                  <Icon name="check_circle" size={18} aria-hidden="true" />
                 </div>
-              ) : null}
-            </dl>
-          </section>
+                <span>{MESSAGES.video.registerSuccess}</span>
+              </div>
+              <dl className="flex flex-col gap-2 text-card-meta text-it-ink-700 dark:text-wtext-4 rounded-w-md bg-it-fill dark:bg-rink-900/40 p-3 border border-it-line dark:border-rink-700">
+                <div className="flex gap-2">
+                  <dt className="min-w-[60px] font-semibold text-it-ink-500 dark:text-wtext-4">
+                    제목
+                  </dt>
+                  <dd className="flex-1 truncate text-it-ink-800 dark:text-white">
+                    {registered.title}
+                  </dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="min-w-[60px] font-semibold text-it-ink-500 dark:text-wtext-4">
+                    URL
+                  </dt>
+                  <dd className="flex-1 truncate font-mono text-[11px]">
+                    {registered.videoUrl}
+                  </dd>
+                </div>
+                {registered.status ? (
+                  <div className="flex gap-2">
+                    <dt className="min-w-[60px] font-semibold text-it-ink-500 dark:text-wtext-4">
+                      상태
+                    </dt>
+                    <dd>{registered.status}</dd>
+                  </div>
+                ) : null}
+              </dl>
+            </section>
+          </>
         ) : null}
-
-        <div className="h-24" />
       </main>
 
       {!isNativeApp() && <BottomNav items={parentNavItems} />}

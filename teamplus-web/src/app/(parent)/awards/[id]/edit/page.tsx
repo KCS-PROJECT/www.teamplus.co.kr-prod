@@ -41,6 +41,13 @@ type FormState = {
   certificateUrl: string | null;
 };
 
+/** 입력 필드 공통 스타일 (ICETIMES — it-fill + 1.5px it-line-strong + it-blue 포커스) */
+const INPUT_CLASS =
+  'w-full rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 px-3.5 py-3 text-[15px] font-medium text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-wtext-3 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 disabled:opacity-60';
+
+/** 라벨 공통 스타일 (ICETIMES — it-ink-800 bold) */
+const LABEL_CLASS = 'mb-1.5 block text-card-body font-bold text-it-ink-800 dark:text-white';
+
 function todayIsoDate(): string {
   return new Date().toISOString().split('T')[0];
 }
@@ -281,21 +288,21 @@ export default function AwardEditPage() {
       <MobileContainer hasBottomNav>
         {/* [Task #7 / 2026-05-14] forceNative — Native WebView 에서도 Web 헤더 노출 (뒤로가기 동선 보존) */}
         <PageAppBar title={MESSAGES.awards.titleEdit} forceNative />
-        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
-          <div className="flex items-center justify-center size-16 rounded-w-pill bg-wline-2 dark:bg-rink-700 mb-4">
+        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center bg-it-canvas dark:bg-puck">
+          <div className="flex items-center justify-center size-16 rounded-w-pill bg-it-fill dark:bg-rink-700 mb-4">
             <Icon
               name="error_outline"
-              className="text-3xl text-wtext-3 dark:text-rink-300"
+              className="text-3xl text-it-ink-400 dark:text-rink-300"
               aria-hidden="true"
             />
           </div>
-          <p className="text-card-emphasis font-semibold text-wtext-2 dark:text-rink-100 mb-1">
+          <p className="text-card-emphasis font-semibold text-it-ink-800 dark:text-rink-100 mb-1">
             {errorMessage ?? MESSAGES.awards.loadError}
           </p>
           <button
             type="button"
             onClick={() => router.back()}
-            className="mt-6 min-h-[48px] px-5 rounded-xl bg-ice-500 hover:bg-ice-700 text-white font-semibold text-card-body transition-colors motion-reduce:transition-none active:brightness-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
+            className="mt-6 min-h-[48px] px-5 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white font-semibold text-card-body transition-colors motion-reduce:transition-none active:brightness-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40"
           >
             {MESSAGES.common.goBack}
           </button>
@@ -318,283 +325,269 @@ export default function AwardEditPage() {
           이전: pb-28 (112px) 고정 → safe-area 무반영. 또한 액션 영역이 absolute bottom-0 (padding-box 끝 = BottomNav 시작점)
                 으로 정확히 ParentBottomNav 위에 겹쳐 표시되는 fixed/sticky positioning 충돌.
           수정: BottomNav(60+safe) + FAB(56+12gap) + 안전 여유 = 6rem(96px) padding 확보. */}
+      {/* [ICETIMES flat] main = 회색 캔버스 + full-bleed 흰 섹션 (카드 박스 제거).
+          폼 입력은 INPUT_CLASS(it-fill + 1.5px it-line-strong), 라벨 it-ink-800, 필수표시 it-red. */}
       <form
         onSubmit={handleSubmit}
-        className="flex-1 overflow-y-auto hide-scrollbar px-4 pb-[calc(60px+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px))+6rem)] pt-4 flex flex-col gap-5"
+        className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck pb-[calc(60px+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px))+6rem)]"
       >
-        {/* 수상명 */}
-        <div>
-          <label
-            htmlFor={awardNameId}
-            className="block text-card-body font-semibold text-wtext-2 dark:text-rink-100 mb-1.5"
-          >
-            {MESSAGES.awards.labelAwardName}
-            <span className="text-red-500 ml-1" aria-hidden="true">*</span>
-          </label>
-          <input
-            id={awardNameId}
-            type="text"
-            value={form.awardName}
-            onChange={(e) => setForm((prev) => ({ ...prev, awardName: e.target.value }))}
-            placeholder={MESSAGES.awards.placeholderAwardName}
-            maxLength={200}
-            required
-            aria-required="true"
-            disabled={isBusy}
-            className="w-full h-11 px-3.5 rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-wtext-1 dark:text-white text-card-body placeholder:text-wtext-3 dark:placeholder:text-wtext-3 focus:outline-none focus:ring-2 focus:ring-ice-500/30 focus:border-ice-500 transition-colors motion-reduce:transition-none disabled:opacity-60"
-          />
-        </div>
-
-        {/* 수상 유형 */}
-        <div>
-          <label
-            htmlFor={awardTypeId}
-            className="block text-card-body font-semibold text-wtext-2 dark:text-rink-100 mb-1.5"
-          >
-            {MESSAGES.awards.labelAwardType}
-            <span className="text-red-500 ml-1" aria-hidden="true">*</span>
-          </label>
-          <select
-            id={awardTypeId}
-            value={form.awardType}
-            onChange={(e) => setForm((prev) => ({ ...prev, awardType: e.target.value as AwardType }))}
-            required
-            aria-required="true"
-            disabled={isBusy}
-            className="w-full h-11 px-3.5 rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-wtext-1 dark:text-white text-card-body focus:outline-none focus:ring-2 focus:ring-ice-500/30 focus:border-ice-500 transition-colors motion-reduce:transition-none appearance-none disabled:opacity-60"
-          >
-            {AWARD_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {MESSAGES.awards.typeLabel[t] ?? t}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* 수상일 */}
-        <div>
-          <label
-            htmlFor={awardedAtId}
-            className="block text-card-body font-semibold text-wtext-2 dark:text-rink-100 mb-1.5"
-          >
-            {MESSAGES.awards.labelAwardedAt}
-            <span className="text-red-500 ml-1" aria-hidden="true">*</span>
-          </label>
-          <input
-            id={awardedAtId}
-            type="date"
-            value={form.awardedAt}
-            onChange={(e) => setForm((prev) => ({ ...prev, awardedAt: e.target.value }))}
-            required
-            aria-required="true"
-            max={todayIsoDate()}
-            disabled={isBusy}
-            className="w-full h-11 px-3.5 rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-wtext-1 dark:text-white text-card-body focus:outline-none focus:ring-2 focus:ring-ice-500/30 focus:border-ice-500 transition-colors motion-reduce:transition-none disabled:opacity-60"
-          />
-        </div>
-
-        {/* 설명 */}
-        <div>
-          <label
-            htmlFor={descriptionId}
-            className="block text-card-body font-semibold text-wtext-2 dark:text-rink-100 mb-1.5"
-          >
-            {MESSAGES.awards.labelDescription}
-          </label>
-          <textarea
-            id={descriptionId}
-            value={form.description}
-            onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-            placeholder={MESSAGES.awards.placeholderDescription}
-            maxLength={2000}
-            rows={4}
-            disabled={isBusy}
-            className="w-full px-3.5 py-2.5 rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-wtext-1 dark:text-white text-card-body placeholder:text-wtext-3 dark:placeholder:text-wtext-3 focus:outline-none focus:ring-2 focus:ring-ice-500/30 focus:border-ice-500 transition-colors motion-reduce:transition-none resize-none disabled:opacity-60"
-          />
-        </div>
-
-        {/* 시즌 */}
-        <div>
-          <label
-            htmlFor={seasonId}
-            className="block text-card-body font-semibold text-wtext-2 dark:text-rink-100 mb-1.5"
-          >
-            {MESSAGES.awards.labelSeason}
-          </label>
-          <input
-            id={seasonId}
-            type="text"
-            value={form.season}
-            onChange={(e) => setForm((prev) => ({ ...prev, season: e.target.value }))}
-            placeholder={MESSAGES.awards.placeholderSeason}
-            maxLength={20}
-            disabled={isBusy}
-            className="w-full h-11 px-3.5 rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-wtext-1 dark:text-white text-card-body placeholder:text-wtext-3 dark:placeholder:text-wtext-3 focus:outline-none focus:ring-2 focus:ring-ice-500/30 focus:border-ice-500 transition-colors motion-reduce:transition-none disabled:opacity-60"
-          />
-        </div>
-
-        {/* 수여 기관 */}
-        <div>
-          <label
-            htmlFor={awardedById}
-            className="block text-card-body font-semibold text-wtext-2 dark:text-rink-100 mb-1.5"
-          >
-            {MESSAGES.awards.labelAwardedBy}
-          </label>
-          <input
-            id={awardedById}
-            type="text"
-            value={form.awardedBy}
-            onChange={(e) => setForm((prev) => ({ ...prev, awardedBy: e.target.value }))}
-            placeholder={MESSAGES.awards.placeholderAwardedBy}
-            maxLength={100}
-            disabled={isBusy}
-            className="w-full h-11 px-3.5 rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-wtext-1 dark:text-white text-card-body placeholder:text-wtext-3 dark:placeholder:text-wtext-3 focus:outline-none focus:ring-2 focus:ring-ice-500/30 focus:border-ice-500 transition-colors motion-reduce:transition-none disabled:opacity-60"
-          />
-        </div>
-
-        {/* 수상 사진 */}
-        <div>
-          <p className="block text-card-body font-semibold text-wtext-2 dark:text-rink-100 mb-1.5">
-            {MESSAGES.awards.labelImage}
-          </p>
-          {resolveImageSrc(displayImageUrl) ? (
-            <div className="relative rounded-xl overflow-hidden border border-wline dark:border-rink-700 bg-wbg dark:bg-rink-900">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={resolveImageSrc(displayImageUrl)}
-                alt="수상 사진 미리보기"
-                className="w-full h-48 object-cover"
-              />
-              {isUploadingImage && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 text-white">
-                  <p className="text-card-body font-semibold mb-2">
-                    {MESSAGES.awards.uploadingImage}
-                  </p>
-                  <div className="w-3/4 h-1.5 rounded-w-pill bg-white/30 overflow-hidden">
-                    <div
-                      className="h-full bg-white transition-all motion-reduce:transition-none"
-                      style={{ width: `${imageProgress}%` }}
-                    />
-                  </div>
-                  <p className="text-card-meta mt-1 tabular-nums">{imageProgress}%</p>
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={removeImage}
-                disabled={isBusy}
-                className="absolute top-2 right-2 flex min-h-[48px] min-w-[48px] items-center justify-center rounded-w-pill bg-black/60 text-white hover:bg-black/80 transition-colors motion-reduce:transition-none disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
-                aria-label={MESSAGES.awards.removeImage}
-              >
-                <Icon name="close" size={20} aria-hidden="true" />
-              </button>
-            </div>
-          ) : (
-            <label
-              className="flex flex-col items-center justify-center h-32 rounded-xl border-2 border-dashed border-wline dark:border-rink-700 bg-wbg dark:bg-rink-800 text-wtext-3 dark:text-rink-300 cursor-pointer hover:border-ice-500 hover:text-ice-500 transition-colors motion-reduce:transition-none"
-            >
-              <Icon name="add_a_photo" size={28} aria-hidden="true" />
-              <span className="text-card-meta mt-2">이미지 선택 (JPEG/PNG/WebP · 10MB)</span>
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/gif,image/webp"
-                className="sr-only"
-                onChange={handleImageSelect}
-                disabled={isBusy}
-              />
+        {/* 그룹 1: 수상 정보 — 흰 섹션 */}
+        <section className="mt-3 bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6 space-y-5">
+          {/* 수상명 */}
+          <div>
+            <label htmlFor={awardNameId} className={LABEL_CLASS}>
+              {MESSAGES.awards.labelAwardName}
+              <span className="text-it-red-500 ml-1" aria-hidden="true">*</span>
             </label>
-          )}
-        </div>
+            <input
+              id={awardNameId}
+              type="text"
+              value={form.awardName}
+              onChange={(e) => setForm((prev) => ({ ...prev, awardName: e.target.value }))}
+              placeholder={MESSAGES.awards.placeholderAwardName}
+              maxLength={200}
+              required
+              aria-required="true"
+              disabled={isBusy}
+              className={INPUT_CLASS}
+            />
+          </div>
 
-        {/* 상장 */}
-        <div>
-          <p className="block text-card-body font-semibold text-wtext-2 dark:text-rink-100 mb-1.5">
-            {MESSAGES.awards.labelCertificate}
-          </p>
-          {certFile ? (
-            <div className="rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 p-3 flex items-center gap-3">
-              <div className="flex items-center justify-center size-10 rounded-lg bg-blue-50 dark:bg-blue-900/20 shrink-0">
-                <Icon
-                  name={certFile.type.startsWith('image/') ? 'image' : 'picture_as_pdf'}
-                  size={20}
-                  className="text-ice-500"
-                  aria-hidden="true"
+          {/* 수상 유형 */}
+          <div>
+            <label htmlFor={awardTypeId} className={LABEL_CLASS}>
+              {MESSAGES.awards.labelAwardType}
+              <span className="text-it-red-500 ml-1" aria-hidden="true">*</span>
+            </label>
+            <select
+              id={awardTypeId}
+              value={form.awardType}
+              onChange={(e) => setForm((prev) => ({ ...prev, awardType: e.target.value as AwardType }))}
+              required
+              aria-required="true"
+              disabled={isBusy}
+              className={`${INPUT_CLASS} h-12 appearance-none`}
+            >
+              {AWARD_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {MESSAGES.awards.typeLabel[t] ?? t}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 수상일 */}
+          <div>
+            <label htmlFor={awardedAtId} className={LABEL_CLASS}>
+              {MESSAGES.awards.labelAwardedAt}
+              <span className="text-it-red-500 ml-1" aria-hidden="true">*</span>
+            </label>
+            <input
+              id={awardedAtId}
+              type="date"
+              value={form.awardedAt}
+              onChange={(e) => setForm((prev) => ({ ...prev, awardedAt: e.target.value }))}
+              required
+              aria-required="true"
+              max={todayIsoDate()}
+              disabled={isBusy}
+              className={INPUT_CLASS}
+            />
+          </div>
+
+          {/* 설명 */}
+          <div>
+            <label htmlFor={descriptionId} className={LABEL_CLASS}>
+              {MESSAGES.awards.labelDescription}
+            </label>
+            <textarea
+              id={descriptionId}
+              value={form.description}
+              onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+              placeholder={MESSAGES.awards.placeholderDescription}
+              maxLength={2000}
+              rows={4}
+              disabled={isBusy}
+              className={`${INPUT_CLASS} resize-none`}
+            />
+          </div>
+
+          {/* 시즌 */}
+          <div>
+            <label htmlFor={seasonId} className={LABEL_CLASS}>
+              {MESSAGES.awards.labelSeason}
+            </label>
+            <input
+              id={seasonId}
+              type="text"
+              value={form.season}
+              onChange={(e) => setForm((prev) => ({ ...prev, season: e.target.value }))}
+              placeholder={MESSAGES.awards.placeholderSeason}
+              maxLength={20}
+              disabled={isBusy}
+              className={INPUT_CLASS}
+            />
+          </div>
+
+          {/* 수여 기관 */}
+          <div>
+            <label htmlFor={awardedById} className={LABEL_CLASS}>
+              {MESSAGES.awards.labelAwardedBy}
+            </label>
+            <input
+              id={awardedById}
+              type="text"
+              value={form.awardedBy}
+              onChange={(e) => setForm((prev) => ({ ...prev, awardedBy: e.target.value }))}
+              placeholder={MESSAGES.awards.placeholderAwardedBy}
+              maxLength={100}
+              disabled={isBusy}
+              className={INPUT_CLASS}
+            />
+          </div>
+        </section>
+
+        {/* 그룹 2: 첨부 — 흰 섹션 */}
+        <section className="mt-2 bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6 space-y-5">
+          {/* 수상 사진 */}
+          <div>
+            <p className={LABEL_CLASS}>{MESSAGES.awards.labelImage}</p>
+            {resolveImageSrc(displayImageUrl) ? (
+              <div className="relative rounded-w-md overflow-hidden border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-900">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={resolveImageSrc(displayImageUrl)}
+                  alt="수상 사진 미리보기"
+                  className="w-full h-48 object-cover"
                 />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-card-body font-medium text-wtext-1 dark:text-white truncate">
-                  {certFile.name}
-                </p>
-                <p className="text-card-meta text-wtext-3 dark:text-rink-300 tabular-nums">
-                  {(certFile.size / 1024 / 1024).toFixed(2)} MB
-                </p>
-                {isUploadingCert && (
-                  <div className="mt-2 flex items-center gap-2">
-                    <div className="flex-1 h-1.5 rounded-w-pill bg-wline dark:bg-rink-700 overflow-hidden">
+                {isUploadingImage && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 text-white">
+                    <p className="text-card-body font-semibold mb-2">
+                      {MESSAGES.awards.uploadingImage}
+                    </p>
+                    <div className="w-3/4 h-1.5 rounded-w-pill bg-white/30 overflow-hidden">
                       <div
-                        className="h-full bg-ice-500 transition-all motion-reduce:transition-none"
-                        style={{ width: `${certProgress}%` }}
+                        className="h-full bg-white transition-all motion-reduce:transition-none"
+                        style={{ width: `${imageProgress}%` }}
                       />
                     </div>
-                    <span className="text-card-meta text-wtext-3 dark:text-rink-300 tabular-nums shrink-0">
-                      {certProgress}%
-                    </span>
+                    <p className="text-card-meta mt-1 tabular-nums">{imageProgress}%</p>
                   </div>
                 )}
-              </div>
-              <button
-                type="button"
-                onClick={removeCert}
-                disabled={isBusy}
-                className="flex min-h-[48px] min-w-[48px] items-center justify-center rounded-w-pill hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
-                aria-label={MESSAGES.awards.removeCertificate}
-              >
-                <Icon name="close" size={20} className="text-wtext-3" aria-hidden="true" />
-              </button>
-            </div>
-          ) : form.certificateUrl ? (
-            <div className="rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 p-3 flex items-center gap-3">
-              <div className="flex items-center justify-center size-10 rounded-lg bg-blue-50 dark:bg-blue-900/20 shrink-0">
-                <Icon name="description" size={20} className="text-ice-500" aria-hidden="true" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <a
-                  href={form.certificateUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-card-body font-medium text-ice-500 hover:underline truncate block"
+                <button
+                  type="button"
+                  onClick={removeImage}
+                  disabled={isBusy}
+                  className="absolute top-2 right-2 flex min-h-[48px] min-w-[48px] items-center justify-center rounded-w-pill bg-black/60 text-white hover:bg-black/80 transition-colors motion-reduce:transition-none disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+                  aria-label={MESSAGES.awards.removeImage}
                 >
-                  기존 상장 보기
-                </a>
-                <p className="text-card-meta text-wtext-3 dark:text-rink-300">새 파일을 선택하면 교체됩니다.</p>
+                  <Icon name="close" size={20} aria-hidden="true" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={removeCert}
-                disabled={isBusy}
-                className="flex min-h-[48px] min-w-[48px] items-center justify-center rounded-w-pill hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
-                aria-label={MESSAGES.awards.removeCertificate}
+            ) : (
+              <label
+                className="flex flex-col items-center justify-center h-32 rounded-w-md border-2 border-dashed border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 text-it-ink-400 dark:text-rink-300 cursor-pointer hover:border-it-blue-500 hover:text-it-blue-500 transition-colors motion-reduce:transition-none"
               >
-                <Icon name="close" size={20} className="text-wtext-3" aria-hidden="true" />
-              </button>
-            </div>
-          ) : (
-            <label
-              className="flex flex-col items-center justify-center h-32 rounded-xl border-2 border-dashed border-wline dark:border-rink-700 bg-wbg dark:bg-rink-800 text-wtext-3 dark:text-rink-300 cursor-pointer hover:border-ice-500 hover:text-ice-500 transition-colors motion-reduce:transition-none"
-            >
-              <Icon name="upload_file" size={28} aria-hidden="true" />
-              <span className="text-card-meta mt-2">파일 선택 (PDF/이미지 · 20MB)</span>
-              <input
-                type="file"
-                accept="application/pdf,image/jpeg,image/png,image/webp"
-                className="sr-only"
-                onChange={handleCertSelect}
-                disabled={isBusy}
-              />
-            </label>
-          )}
-        </div>
+                <Icon name="add_a_photo" size={28} aria-hidden="true" />
+                <span className="text-card-meta mt-2">이미지 선택 (JPEG/PNG/WebP · 10MB)</span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  className="sr-only"
+                  onChange={handleImageSelect}
+                  disabled={isBusy}
+                />
+              </label>
+            )}
+          </div>
+
+          {/* 상장 */}
+          <div>
+            <p className={LABEL_CLASS}>{MESSAGES.awards.labelCertificate}</p>
+            {certFile ? (
+              <div className="rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 p-3 flex items-center gap-3">
+                <div className="flex items-center justify-center size-10 rounded-[10px] bg-it-blue-50 dark:bg-it-blue-900/30 shrink-0">
+                  <Icon
+                    name={certFile.type.startsWith('image/') ? 'image' : 'picture_as_pdf'}
+                    size={20}
+                    className="text-it-blue-500"
+                    aria-hidden="true"
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-card-body font-medium text-it-ink-900 dark:text-white truncate">
+                    {certFile.name}
+                  </p>
+                  <p className="text-card-meta text-it-ink-500 dark:text-rink-300 tabular-nums">
+                    {(certFile.size / 1024 / 1024).toFixed(2)} MB
+                  </p>
+                  {isUploadingCert && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <div className="flex-1 h-1.5 rounded-w-pill bg-it-line dark:bg-rink-700 overflow-hidden">
+                        <div
+                          className="h-full bg-it-blue-500 transition-all motion-reduce:transition-none"
+                          style={{ width: `${certProgress}%` }}
+                        />
+                      </div>
+                      <span className="text-card-meta text-it-ink-500 dark:text-rink-300 tabular-nums shrink-0">
+                        {certProgress}%
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={removeCert}
+                  disabled={isBusy}
+                  className="flex min-h-[48px] min-w-[48px] items-center justify-center rounded-w-pill hover:bg-it-line dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40"
+                  aria-label={MESSAGES.awards.removeCertificate}
+                >
+                  <Icon name="close" size={20} className="text-it-ink-400" aria-hidden="true" />
+                </button>
+              </div>
+            ) : form.certificateUrl ? (
+              <div className="rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 p-3 flex items-center gap-3">
+                <div className="flex items-center justify-center size-10 rounded-[10px] bg-it-blue-50 dark:bg-it-blue-900/30 shrink-0">
+                  <Icon name="description" size={20} className="text-it-blue-500" aria-hidden="true" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <a
+                    href={form.certificateUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-card-body font-medium text-it-blue-500 hover:underline truncate block"
+                  >
+                    기존 상장 보기
+                  </a>
+                  <p className="text-card-meta text-it-ink-500 dark:text-rink-300">새 파일을 선택하면 교체됩니다.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={removeCert}
+                  disabled={isBusy}
+                  className="flex min-h-[48px] min-w-[48px] items-center justify-center rounded-w-pill hover:bg-it-line dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40"
+                  aria-label={MESSAGES.awards.removeCertificate}
+                >
+                  <Icon name="close" size={20} className="text-it-ink-400" aria-hidden="true" />
+                </button>
+              </div>
+            ) : (
+              <label
+                className="flex flex-col items-center justify-center h-32 rounded-w-md border-2 border-dashed border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 text-it-ink-400 dark:text-rink-300 cursor-pointer hover:border-it-blue-500 hover:text-it-blue-500 transition-colors motion-reduce:transition-none"
+              >
+                <Icon name="upload_file" size={28} aria-hidden="true" />
+                <span className="text-card-meta mt-2">파일 선택 (PDF/이미지 · 20MB)</span>
+                <input
+                  type="file"
+                  accept="application/pdf,image/jpeg,image/png,image/webp"
+                  className="sr-only"
+                  onChange={handleCertSelect}
+                  disabled={isBusy}
+                />
+              </label>
+            )}
+          </div>
+        </section>
 
         <div className="h-4" />
       </form>
@@ -611,7 +604,7 @@ export default function AwardEditPage() {
           type="button"
           onClick={() => router.back()}
           disabled={isBusy}
-          className="h-12 px-5 min-w-[96px] rounded-xl bg-wline-2 dark:bg-rink-800 text-wtext-2 dark:text-rink-100 font-semibold text-card-body hover:bg-wline dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none active:brightness-95 disabled:opacity-60"
+          className="h-12 px-5 min-w-[96px] rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-it-ink-800 dark:text-rink-100 font-bold text-card-body hover:bg-it-fill dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none active:brightness-95 disabled:opacity-60"
         >
           취소
         </button>
@@ -619,7 +612,7 @@ export default function AwardEditPage() {
           type="button"
           onClick={(e) => handleSubmit(e as unknown as React.FormEvent)}
           disabled={isBusy}
-          className="flex-1 h-12 rounded-xl bg-ice-500 hover:bg-ice-700 disabled:bg-wline disabled:dark:bg-rink-500 text-white font-bold text-card-emphasis shadow-md transition-colors motion-reduce:transition-none active:brightness-95 disabled:active:brightness-100 disabled:shadow-none"
+          className="flex-1 h-12 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 disabled:bg-it-line disabled:dark:bg-rink-500 text-white font-bold text-card-emphasis shadow-sh-blue transition-colors motion-reduce:transition-none active:brightness-95 disabled:active:brightness-100 disabled:shadow-none"
         >
           {isUploadingImage
             ? MESSAGES.awards.uploadingImage

@@ -32,13 +32,35 @@ export const PAYMENT_STEPS: PaymentStep[] = [
 interface PaymentStepIndicatorProps {
   currentStep: 1 | 2 | 3 | 4;
   variant?: 'default' | 'compact';
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일(ice-500) 1:1 보존(타 화면 회귀 0).
+   *   true 시 활성/완료 동그라미·라인·라벨을 it-blue 토큰으로 정합. 구조는 동일.
+   *   (결제 화면 stepper 호출처에서만 전달.)
+   */
+  iceTheme?: boolean;
 }
 
 export function PaymentStepIndicator({
   currentStep,
   variant = 'default',
+  iceTheme = false,
 }: PaymentStepIndicatorProps) {
   const isCompact = variant === 'compact';
+
+  // ── 토큰 분기 (iceTheme=false 경로 원본 1:1 보존) ──────────────────────────
+  const accentBg = iceTheme ? 'bg-it-blue-500' : 'bg-ice-500';
+  const accentText = iceTheme ? 'text-it-blue-500' : 'text-ice-500';
+  const activeRing = iceTheme ? 'ring-2 ring-it-blue-500/30' : 'ring-2 ring-ice-500/30';
+  const bgLine = iceTheme ? 'bg-it-line dark:bg-rink-700' : 'bg-wline dark:bg-rink-700';
+  const idleCircle = iceTheme
+    ? 'bg-it-surface dark:bg-rink-800 border border-it-line dark:border-rink-700 text-it-ink-400 dark:text-wtext-4'
+    : 'bg-wsurface dark:bg-rink-800 border border-wline dark:border-rink-700 text-wtext-3 dark:text-wtext-4';
+  const completedLabel = iceTheme
+    ? 'text-it-ink-600 dark:text-rink-200'
+    : 'text-wtext-2 dark:text-rink-200';
+  const idleLabel = iceTheme
+    ? 'text-it-ink-400 dark:text-rink-400'
+    : 'text-wtext-4 dark:text-rink-400';
 
   // ── 라인 구조 (2026-05-11 v3) ─────────────────────────────────────────────
   //
@@ -72,7 +94,7 @@ export function PaymentStepIndicator({
       <ol className="relative grid items-center px-2" style={{ gridTemplateColumns: `repeat(${stepCount}, 1fr)` }}>
         {/* Background line — 첫 동그라미 중심 ~ 마지막 동그라미 중심 (정확한 baseline) */}
         <div
-          className="absolute h-px bg-wline dark:bg-rink-700"
+          className={`absolute h-px ${bgLine}`}
           style={{
             top: dotTopOffset,
             left: lineLeft,
@@ -83,7 +105,7 @@ export function PaymentStepIndicator({
 
         {/* Active progress line — 첫 동그라미 중심부터 currentStep 동그라미 중심까지 1줄 연속 */}
         <div
-          className="absolute h-px bg-ice-500 transition-[width] motion-reduce:transition-none duration-300 ease-out"
+          className={`absolute h-px ${accentBg} transition-[width] motion-reduce:transition-none duration-300 ease-out`}
           style={{
             top: dotTopOffset,
             left: lineLeft,
@@ -111,10 +133,10 @@ export function PaymentStepIndicator({
                   ${isCompact ? 'size-7' : 'size-9'}
                   ${
                     isCompleted
-                      ? 'bg-ice-500 text-white'
+                      ? `${accentBg} text-white`
                       : isActive
-                        ? 'bg-ice-500 text-white ring-2 ring-ice-500/30'
-                        : 'bg-wsurface dark:bg-rink-800 border border-wline dark:border-rink-700 text-wtext-3 dark:text-wtext-4'
+                        ? `${accentBg} text-white ${activeRing}`
+                        : idleCircle
                   }
                 `}
               >
@@ -147,10 +169,10 @@ export function PaymentStepIndicator({
                   ${isCompact ? 'text-[10px]' : 'text-xs'}
                   ${
                     isActive
-                      ? 'text-ice-500 font-bold'
+                      ? `${accentText} font-bold`
                       : isCompleted
-                        ? 'text-wtext-2 dark:text-rink-200'
-                        : 'text-wtext-4 dark:text-rink-400'
+                        ? completedLabel
+                        : idleLabel
                   }
                 `}
               >
@@ -175,10 +197,31 @@ export function PaymentStepIndicator({
 interface StepHeadlineProps {
   currentStep: 1 | 2 | 3 | 4;
   customDescription?: string;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일(ice-500/wtext) 1:1 보존(회귀 0).
+   *   true 시 보조 텍스트·제목을 it-blue/it-ink 토큰으로 정합. 구조·문구 동일.
+   */
+  iceTheme?: boolean;
 }
 
-export function StepHeadline({ currentStep, customDescription }: StepHeadlineProps) {
+export function StepHeadline({ currentStep, customDescription, iceTheme = false }: StepHeadlineProps) {
   const step = PAYMENT_STEPS[currentStep - 1];
+
+  if (iceTheme) {
+    return (
+      <header className="mb-6">
+        <p className="mb-2 text-xs font-semibold text-it-ink-500 dark:text-rink-300 tracking-wide tabular-nums">
+          <span className="text-it-blue-500">{currentStep}</span>
+          <span className="text-it-ink-400 dark:text-rink-400">/{PAYMENT_STEPS.length}단계</span>
+          <span className="mx-1.5 text-it-ink-300 dark:text-rink-500">·</span>
+          <span className="text-it-ink-600 dark:text-rink-100">{step.label}</span>
+        </p>
+        <h1 className="text-2xl font-bold tracking-tight leading-snug text-it-ink-900 dark:text-white">
+          {customDescription || step.description}
+        </h1>
+      </header>
+    );
+  }
 
   return (
     <header className="mb-6">

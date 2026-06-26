@@ -165,57 +165,53 @@ export default function AttendanceManagePage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title="수업 출석 이력" forceNative />
       <main
-        className="flex-1 min-h-0 overflow-y-auto bg-wbg dark:bg-puck"
+        className="flex-1 min-h-0 overflow-y-auto bg-it-canvas dark:bg-puck"
         role="main"
         aria-label="수업 출석 이력"
       >
-        {/* Hero — 수업 메타 (rink-800 + shadow-sh-rink) */}
-        <section className="px-4 pt-4">
-          <div className="rounded-w-xl bg-rink-800 dark:bg-rink-900 shadow-sh-rink p-5 text-white">
-            <div className="text-card-meta font-extrabold tracking-[0.08em] text-ice-100/90">
-              ATTENDANCE HISTORY
-            </div>
-            {data ? (
-              <>
-                <h1 className="mt-2 text-card-section font-extrabold tracking-tight break-keep text-white">
-                  {data.classInfo.className}
-                </h1>
-                <p className="mt-1 text-card-body font-num text-rink-100 tabular-nums">
-                  코치 {data.classInfo.coachName} · 학생{" "}
-                  {data.classInfo.studentCount}명
-                </p>
-                <p className="mt-1 text-card-meta font-num text-ice-100/80 tabular-nums">
-                  {data.classInfo.completedCount}/
-                  {data.classInfo.totalScheduleCount}회차 진행
-                </p>
-              </>
-            ) : isLoading ? (
-              <div className="mt-2 h-6 w-2/3 rounded-w-sm bg-rink-700/60 animate-pulse motion-reduce:animate-none" />
-            ) : null}
+        {/* Hero — 수업 메타 (navy 밴드 full-bleed) */}
+        <section className="bg-it-blue-800 dark:bg-it-blue-950 px-5 pt-6 pb-6 text-white">
+          <div className="text-card-meta font-extrabold tracking-[0.08em] text-white/60">
+            ATTENDANCE HISTORY
           </div>
+          {data ? (
+            <>
+              <h1 className="mt-2 text-[22px] font-extrabold tracking-[-0.01em] break-keep text-white">
+                {data.classInfo.className}
+              </h1>
+              <p className="mt-1 text-card-body font-num text-white/80 tabular-nums">
+                코치 {data.classInfo.coachName} · 학생{" "}
+                {data.classInfo.studentCount}명
+              </p>
+              <p className="mt-1 text-card-meta font-num text-white/60 tabular-nums">
+                {data.classInfo.completedCount}/
+                {data.classInfo.totalScheduleCount}회차 진행
+              </p>
+            </>
+          ) : isLoading ? (
+            <div className="mt-2 h-6 w-2/3 rounded-w-sm bg-white/20 animate-pulse motion-reduce:animate-none" />
+          ) : null}
         </section>
 
-        {/* 통계 카드 (wsurface + shadow-sh-1, 3-grid) */}
+        {/* 통계 — flat 흰 섹션 (3-grid) */}
         {data && (
-          <section className="px-4 pt-3">
-            <div className="rounded-w-xl bg-wsurface dark:bg-rink-800 shadow-sh-1 border border-wline dark:border-rink-700 p-4">
-              <div className="grid grid-cols-3 gap-2">
-                <StatBlock
-                  label="평균 출석률"
-                  value={`${data.stats.avgAttendanceRate}%`}
-                  dotClass="bg-mint-500"
-                />
-                <StatBlock
-                  label="누적 결석"
-                  value={`${data.stats.totalAbsent}회`}
-                  dotClass="bg-flame-500"
-                />
-                <StatBlock
-                  label="누적 출석"
-                  value={`${data.stats.totalPresent}회`}
-                  dotClass="bg-ice-500"
-                />
-              </div>
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-4">
+            <div className="grid grid-cols-3 gap-2">
+              <StatBlock
+                label="평균 출석률"
+                value={`${data.stats.avgAttendanceRate}%`}
+                dotClass="bg-mint-500"
+              />
+              <StatBlock
+                label="누적 결석"
+                value={`${data.stats.totalAbsent}회`}
+                dotClass="bg-it-red-500"
+              />
+              <StatBlock
+                label="누적 출석"
+                value={`${data.stats.totalPresent}회`}
+                dotClass="bg-it-blue-500"
+              />
             </div>
           </section>
         )}
@@ -223,30 +219,28 @@ export default function AttendanceManagePage() {
         {/* [B-5-3 / Phase C] 결제방식별 섹션 택일 — 후불=정산, 선불=회원별 출석 횟수 */}
         {data &&
           (data.classInfo.billingMode === "POSTPAID" ? (
-            <PostpaidSettlementSection classId={classId} />
+            <PostpaidSettlementSection classId={classId} iceTheme />
           ) : (
-            <MonthlyAttendanceCountSection classId={classId} />
+            <MonthlyAttendanceCountSection classId={classId} iceTheme />
           ))}
 
         {/* 에러 */}
         {error && (
-          <section className="px-4 pt-4">
-            <div className="rounded-w-xl bg-wsurface dark:bg-rink-800 shadow-sh-1 border border-wline dark:border-rink-700 p-6 text-center">
-              <Icon
-                name="error_outline"
-                className="text-3xl text-flame-500"
-                aria-hidden="true"
-              />
-              <p className="mt-2 text-card-title font-semibold text-wtext-1 dark:text-white">
-                {error}
-              </p>
-            </div>
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-6 text-center">
+            <Icon
+              name="error_outline"
+              className="text-3xl text-it-red-500"
+              aria-hidden="true"
+            />
+            <p className="mt-2 text-card-title font-semibold text-it-ink-800 dark:text-white">
+              {error}
+            </p>
           </section>
         )}
 
         {/* 진행 중 섹션 — 있을 때만 노출 */}
         {data && data.inProgress.length > 0 && (
-          <section className="px-4 pt-4">
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950" aria-label="진행 중인 일정">
             <SectionLabel>진행 중</SectionLabel>
             <ScheduleList
               items={data.inProgress}
@@ -258,7 +252,7 @@ export default function AttendanceManagePage() {
 
         {/* 완료 섹션 — 메인 영역 */}
         {data && (
-          <section className="px-4 pt-4 pb-2">
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 pb-2" aria-label="완료된 일정">
             <SectionLabel>완료된 일정</SectionLabel>
             {data.completed.items.length === 0 ? (
               <EmptyHint message={MESSAGES.attendance.completedEmpty} />
@@ -272,7 +266,7 @@ export default function AttendanceManagePage() {
                 {data.completed.hasMore && (
                   <div
                     ref={completedSentinelRef}
-                    className="py-4 flex items-center justify-center text-card-meta text-wtext-3 dark:text-rink-300"
+                    className="py-4 flex items-center justify-center text-card-meta text-it-ink-500 dark:text-rink-300"
                     aria-live="polite"
                   >
                     {isLoadingMore ? "불러오는 중…" : "더 보기"}
@@ -285,20 +279,20 @@ export default function AttendanceManagePage() {
 
         {/* 예정 섹션 — 접힘/펼침 */}
         {data && data.upcomingCount > 0 && (
-          <section className="px-4 pt-2 pb-8">
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 pt-4 pb-8" aria-label="예정된 일정">
             <button
               type="button"
               onClick={() => void handleToggleUpcoming()}
-              className="w-full flex items-center justify-between px-4 py-3 rounded-w-md bg-wsurface dark:bg-rink-800 shadow-sh-1 border border-wline dark:border-rink-700 hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
+              className="w-full flex items-center justify-between px-4 py-3 rounded-w-md bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 hover:bg-it-line dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
               aria-expanded={upcomingExpanded}
               aria-controls="upcoming-list"
             >
-              <span className="text-card-body font-bold text-wtext-1 dark:text-white">
+              <span className="text-card-body font-bold text-it-ink-800 dark:text-white">
                 예정된 일정 {data.upcomingCount}건
               </span>
               <Icon
                 name={upcomingExpanded ? "expand_less" : "expand_more"}
-                className="text-xl text-wtext-3 dark:text-rink-300"
+                className="text-xl text-it-ink-500 dark:text-rink-300"
                 aria-hidden="true"
               />
             </button>
@@ -306,7 +300,7 @@ export default function AttendanceManagePage() {
             {upcomingExpanded && (
               <div id="upcoming-list" className="mt-3">
                 {upcomingLoading && upcomingItems.length === 0 ? (
-                  <div className="py-6 text-center text-card-meta text-wtext-3 dark:text-rink-300">
+                  <div className="py-6 text-center text-card-meta text-it-ink-500 dark:text-rink-300">
                     불러오는 중…
                   </div>
                 ) : upcomingItems.length === 0 ? (
@@ -322,7 +316,7 @@ export default function AttendanceManagePage() {
                         type="button"
                         onClick={() => void handleLoadMoreUpcoming()}
                         disabled={upcomingLoading}
-                        className="mt-2 w-full py-3 text-card-meta font-semibold text-ice-500 hover:text-ice-600 disabled:opacity-60"
+                        className="mt-2 w-full py-3 text-card-meta font-semibold text-it-blue-500 hover:text-it-blue-600 disabled:opacity-60"
                       >
                         {upcomingLoading ? "불러오는 중…" : "더 보기"}
                       </button>
@@ -358,11 +352,11 @@ function StatBlock({
           className={cn("h-1.5 w-1.5 rounded-w-pill", dotClass)}
           aria-hidden="true"
         />
-        <span className="text-card-meta font-semibold text-wtext-3 dark:text-rink-300">
+        <span className="text-card-meta font-semibold text-it-ink-500 dark:text-rink-300">
           {label}
         </span>
       </div>
-      <span className="text-card-title font-extrabold font-num text-wtext-1 dark:text-white tabular-nums">
+      <span className="text-card-title font-extrabold font-num text-it-ink-800 dark:text-white tabular-nums">
         {value}
       </span>
     </div>
@@ -371,8 +365,8 @@ function StatBlock({
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="pb-2">
-      <span className="text-card-meta font-extrabold tracking-[0.08em] text-wtext-3 dark:text-rink-300">
+    <div className="px-4 sm:px-5 pt-4 pb-2">
+      <span className="text-card-meta font-extrabold tracking-[0.08em] text-it-ink-500 dark:text-rink-300">
         {children}
       </span>
     </div>
@@ -381,8 +375,8 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 function EmptyHint({ message }: { message: string }) {
   return (
-    <div className="rounded-w-xl bg-wsurface dark:bg-rink-800 shadow-sh-1 border border-wline dark:border-rink-700 p-6 text-center">
-      <p className="text-card-title font-semibold text-wtext-2 dark:text-rink-100">
+    <div className="px-4 sm:px-5 py-6 text-center">
+      <p className="text-card-title font-semibold text-it-ink-800 dark:text-rink-100">
         {message}
       </p>
     </div>
@@ -400,7 +394,6 @@ function ScheduleList({
 }) {
   return (
     <ul
-      className="rounded-w-xl bg-wsurface dark:bg-rink-800 shadow-sh-1 border border-wline dark:border-rink-700 overflow-hidden divide-y divide-wline-2 dark:divide-rink-700"
       role="list"
       aria-label={
         variant === "inProgress" ? "진행 중인 일정 목록" : "완료된 일정 목록"
@@ -411,17 +404,17 @@ function ScheduleList({
           <button
             type="button"
             onClick={() => onClick(item.scheduleId)}
-            className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors duration-150 motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-ice-500 focus:outline-none"
+            className="w-full flex items-center gap-3 px-4 sm:px-5 py-3.5 text-left border-b border-it-line dark:border-rink-700 hover:bg-it-fill dark:hover:bg-rink-700/30 transition-colors duration-150 motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus:outline-none"
             aria-label={`${formatDateLabel(item.scheduledDate)} ${item.startTime ?? formatTimeLabel(item.scheduledDate)} 일정, 출석 ${item.present}/${item.total}명${item.unchecked > 0 ? `, 미확인 ${item.unchecked}명` : ""}${item.absent > 0 ? `, 결석 ${item.absent}명` : ""}, 출석 확인하기`}
           >
             <div className="min-w-0 flex-1">
-              <p className="text-card-title font-bold text-wtext-1 dark:text-white">
+              <p className="text-card-title font-bold text-it-ink-800 dark:text-white">
                 {formatDateLabel(item.scheduledDate)}{" "}
-                <span className="font-num tabular-nums font-semibold text-wtext-3 dark:text-rink-300">
+                <span className="font-num tabular-nums font-semibold text-it-ink-500 dark:text-rink-300">
                   {item.startTime ?? formatTimeLabel(item.scheduledDate)}
                 </span>
               </p>
-              <p className="mt-0.5 text-card-meta font-num text-wtext-3 dark:text-rink-300 tabular-nums">
+              <p className="mt-0.5 text-card-meta font-num text-it-ink-500 dark:text-rink-300 tabular-nums">
                 출석 {item.present}/{item.total}명
                 {item.unchecked > 0 && ` · 미확인 ${item.unchecked}`}
               </p>
@@ -434,7 +427,7 @@ function ScheduleList({
             />
             <Icon
               name="chevron_right"
-              className="text-xl text-wtext-3 dark:text-rink-300"
+              className="text-xl text-it-ink-400 dark:text-rink-300"
               aria-hidden="true"
             />
           </button>
@@ -472,17 +465,17 @@ function RateBadge({
       </span>
     );
   }
-  // completed
+  // completed — 미확인=중립 / 결석=it-red / 출석률=mint
   if (unchecked > 0) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-w-pill bg-wline-2 px-2 py-1 text-card-meta font-extrabold text-wtext-2 dark:bg-rink-700 dark:text-rink-100 font-num tabular-nums">
+      <span className="inline-flex items-center gap-1 rounded-w-pill bg-it-fill px-2 py-1 text-card-meta font-extrabold text-it-ink-800 dark:bg-rink-700 dark:text-rink-100 font-num tabular-nums">
         미확인 {unchecked}
       </span>
     );
   }
   if (absent > 0) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-w-pill bg-flame-100 px-2 py-1 text-card-meta font-extrabold text-flame-500 dark:bg-flame-500/20 dark:text-flame-100 font-num tabular-nums">
+      <span className="inline-flex items-center gap-1 rounded-w-pill bg-it-red-50 px-2 py-1 text-card-meta font-extrabold text-it-red-500 dark:bg-it-red-700/20 dark:text-it-red-300 font-num tabular-nums">
         결석 {absent}
       </span>
     );
@@ -503,7 +496,7 @@ function UpcomingList({
 }) {
   return (
     <ul
-      className="rounded-w-xl bg-wsurface dark:bg-rink-800 shadow-sh-1 border border-wline dark:border-rink-700 overflow-hidden divide-y divide-wline-2 dark:divide-rink-700"
+      className="rounded-w-md bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 overflow-hidden divide-y divide-it-line dark:divide-rink-700"
       role="list"
       aria-label="예정된 일정 목록"
     >
@@ -512,23 +505,23 @@ function UpcomingList({
           <button
             type="button"
             onClick={() => onClick(item.scheduleId)}
-            className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors duration-150 motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-ice-500 focus:outline-none"
+            className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-it-line dark:hover:bg-rink-700 transition-colors duration-150 motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus:outline-none"
             aria-label={`${formatDateLabel(item.scheduledDate)} ${item.startTime ?? formatTimeLabel(item.scheduledDate)} 예정 일정, 학생 ${item.total}명, 명단 확인하기`}
           >
             <div className="min-w-0 flex-1">
-              <p className="text-card-title font-bold text-wtext-2 dark:text-rink-100">
+              <p className="text-card-title font-bold text-it-ink-800 dark:text-rink-100">
                 {formatDateLabel(item.scheduledDate)}{" "}
-                <span className="font-num tabular-nums font-semibold text-wtext-3 dark:text-rink-300">
+                <span className="font-num tabular-nums font-semibold text-it-ink-500 dark:text-rink-300">
                   {item.startTime ?? formatTimeLabel(item.scheduledDate)}
                 </span>
               </p>
-              <p className="mt-0.5 text-card-meta font-num text-wtext-3 dark:text-rink-300 tabular-nums">
+              <p className="mt-0.5 text-card-meta font-num text-it-ink-500 dark:text-rink-300 tabular-nums">
                 학생 {item.total}명
               </p>
             </div>
             <Icon
               name="chevron_right"
-              className="text-xl text-wtext-3 dark:text-rink-300"
+              className="text-xl text-it-ink-400 dark:text-rink-300"
               aria-hidden="true"
             />
           </button>

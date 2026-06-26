@@ -171,8 +171,11 @@ function getCalendarDays(year: number, month: number) {
 }
 
 // ─── Event Type Colors ──────────────────────────────
+// 근무 일정 이벤트 타입(class/meeting/training) — 훈련 캘린더 SoT(calendar-colors.ts)와
+// 별개의 근무 taxonomy. ICETIMES 팔레트에 맞춰 class 만 it-blue 로 정렬, meeting/training 은
+// 구분용 accent(amber/emerald) 유지.
 const EVENT_COLORS: Record<string, string> = {
-  class: "bg-ice-500",
+  class: "bg-it-blue-500",
   meeting: "bg-amber-500",
   training: "bg-emerald-500",
 };
@@ -181,25 +184,25 @@ const EVENT_COLORS: Record<string, string> = {
 function ErrorState({ onRetry }: { onRetry: () => void }) {
   return (
     <MobileContainer hasBottomNav>
-      <div className="flex-1 flex flex-col items-center justify-center px-6 gap-4">
-        <div className="w-16 h-16 rounded-w-pill bg-red-50 dark:bg-red-900/20 flex items-center justify-center">
+      <div className="flex-1 flex flex-col items-center justify-center bg-it-canvas dark:bg-rink-900 px-6 gap-4">
+        <div className="w-16 h-16 rounded-w-pill bg-it-red-50 dark:bg-it-red-500/15 flex items-center justify-center">
           <Icon
             name="error_outline"
-            className="text-3xl text-red-500 dark:text-red-400"
+            className="text-3xl text-it-red-500 dark:text-it-red-300"
             aria-hidden="true"
           />
         </div>
         <div className="text-center">
-          <h2 className="text-card-title font-bold text-wtext-1 dark:text-white mb-1">
+          <h2 className="text-card-title font-bold text-it-ink-800 dark:text-white mb-1">
             {MESSAGES.error.title}
           </h2>
-          <p className="text-card-body text-wtext-3 dark:text-rink-300">
+          <p className="text-card-body text-it-ink-500 dark:text-rink-300">
             {MESSAGES.error.network}
           </p>
         </div>
         <button
           onClick={onRetry}
-          className="mt-2 px-6 py-3 bg-ice-500 hover:bg-ice-700 text-white font-semibold rounded-xl transition-colors active:brightness-95"
+          className="mt-2 px-6 py-3 bg-it-blue-500 hover:bg-it-blue-600 text-white font-semibold rounded-w-md transition-colors active:brightness-95"
         >
           다시 시도
         </button>
@@ -242,7 +245,7 @@ function ChangeRequestModal({
       role="presentation"
     >
       <div
-        className="bg-white dark:bg-rink-800 rounded-2xl w-[90%] max-w-sm p-6 shadow-lg"
+        className="bg-it-surface dark:bg-rink-800 rounded-w-xl w-[90%] max-w-sm p-6 shadow-lg"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -251,13 +254,13 @@ function ChangeRequestModal({
       >
         <h3
           id="change-request-title"
-          className="text-card-title font-bold text-wtext-1 dark:text-white mb-1"
+          className="text-card-title font-bold text-it-ink-800 dark:text-white mb-1"
         >
           근무 일정 변경 요청
         </h3>
         <p
           id="change-request-desc"
-          className="text-card-body text-wtext-3 dark:text-rink-300 mb-4"
+          className="text-card-body text-it-ink-500 dark:text-rink-300 mb-4"
         >
           변경 사유를 작성해주세요
         </p>
@@ -271,10 +274,10 @@ function ChangeRequestModal({
           onChange={(e) => setReason(e.target.value)}
           placeholder="변경 사유를 입력해주세요..."
           className={cn(
-            "w-full h-28 p-3 rounded-xl border border-wline dark:border-rink-700",
-            "bg-wbg dark:bg-rink-700 text-wtext-1 dark:text-white",
-            "text-card-body resize-none focus:outline-none focus:ring-2 focus:ring-ice-500/30 focus:border-ice-500",
-            "placeholder:text-wtext-3 dark:placeholder:text-wtext-3",
+            "w-full h-28 p-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700",
+            "bg-it-fill dark:bg-rink-700 text-it-ink-800 dark:text-white",
+            "text-card-body resize-none focus:outline-none focus:ring-2 focus:ring-it-blue-500/30 focus:border-it-blue-500",
+            "placeholder:text-it-ink-400 dark:placeholder:text-rink-300",
           )}
           aria-required="true"
           aria-describedby="change-request-desc"
@@ -284,7 +287,7 @@ function ChangeRequestModal({
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 py-3 rounded-xl border border-wline dark:border-rink-700 text-card-body font-semibold text-wtext-2 dark:text-rink-100 hover:bg-wbg dark:hover:bg-rink-700 transition-colors focus-visible:ring-2 focus-visible:ring-ice-500 focus:outline-none"
+            className="flex-1 py-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 text-card-body font-semibold text-it-ink-600 dark:text-rink-100 hover:bg-it-fill dark:hover:bg-rink-700 transition-colors focus-visible:ring-2 focus-visible:ring-it-blue-500 focus:outline-none"
             aria-label="변경 요청 취소하기"
           >
             취소
@@ -296,10 +299,10 @@ function ChangeRequestModal({
             aria-label={submitting ? '변경 요청 전송 중' : '변경 요청 보내기'}
             aria-busy={submitting}
             className={cn(
-              "flex-1 py-3 rounded-xl text-card-body font-semibold text-white transition-colors focus-visible:ring-2 focus-visible:ring-ice-500 focus:outline-none",
+              "flex-1 py-3 rounded-w-md text-card-body font-semibold text-white transition-colors focus-visible:ring-2 focus-visible:ring-it-blue-500 focus:outline-none",
               reason.trim() && !submitting
-                ? "bg-ice-500 hover:bg-ice-700 active:brightness-95"
-                : "bg-wline dark:bg-rink-500 cursor-not-allowed",
+                ? "bg-it-blue-500 hover:bg-it-blue-600 active:brightness-95"
+                : "bg-it-line-strong dark:bg-rink-500 cursor-not-allowed",
             )}
           >
             {submitting ? "요청 중..." : "요청하기"}
@@ -453,30 +456,32 @@ export default function WorkSchedulePage() {
           기존 "오늘" 액션은 월 네비게이션 행으로 이전하여 사용성 보존 */}
       <BackHeader title="근무 스케줄" />
 
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-rink-900 !pb-8">
+        {/* 캘린더 — flat 흰 섹션 (카드 박스 없음, 그리드 라인만). */}
+        <section className="bg-it-surface px-3 pt-1 dark:bg-rink-800">
         {/* ── 월 네비게이션 (오늘 바로가기 포함) ── */}
-        <div className="flex items-center justify-center gap-2 py-4 px-5">
+        <div className="flex items-center justify-center gap-2 py-4 px-2">
           <button
             onClick={prevMonth}
-            className="flex size-9 items-center justify-center rounded-w-pill hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors"
+            className="flex size-9 items-center justify-center rounded-w-pill hover:bg-it-fill dark:hover:bg-rink-700 transition-colors"
             aria-label="이전 달"
           >
             <Icon
               name="chevron_left"
-              className="text-wtext-2 dark:text-rink-100 text-xl"
+              className="text-it-ink-600 dark:text-rink-100 text-xl"
             />
           </button>
-          <h2 className="text-card-emphasis font-bold text-wtext-1 dark:text-white min-w-[120px] text-center">
+          <h2 className="text-card-emphasis font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white min-w-[120px] text-center">
             {year}년 {month}월
           </h2>
           <button
             onClick={nextMonth}
-            className="flex size-9 items-center justify-center rounded-w-pill hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors"
+            className="flex size-9 items-center justify-center rounded-w-pill hover:bg-it-fill dark:hover:bg-rink-700 transition-colors"
             aria-label="다음 달"
           >
             <Icon
               name="chevron_right"
-              className="text-wtext-2 dark:text-rink-100 text-xl"
+              className="text-it-ink-600 dark:text-rink-100 text-xl"
             />
           </button>
           <button
@@ -486,7 +491,7 @@ export default function WorkSchedulePage() {
               setMonth(t.getMonth() + 1);
               setSelectedDate(null);
             }}
-            className="ml-2 px-3 py-1.5 rounded-w-pill border border-wline dark:border-rink-700 text-card-meta font-semibold text-wtext-2 dark:text-rink-100 hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors focus-visible:ring-2 focus-visible:ring-ice-500 focus:outline-none"
+            className="ml-2 px-3 py-1.5 rounded-w-pill border-[1.5px] border-it-line-strong dark:border-rink-700 text-card-meta font-semibold text-it-ink-600 dark:text-rink-100 hover:bg-it-fill dark:hover:bg-rink-700 transition-colors focus-visible:ring-2 focus-visible:ring-it-blue-500 focus:outline-none"
             aria-label="오늘 날짜로 이동"
           >
             오늘
@@ -494,7 +499,7 @@ export default function WorkSchedulePage() {
         </div>
 
         {/* ── 캘린더 ── */}
-        <div className="px-3">
+        <div>
           {/* 요일 헤더 */}
           <div className="grid grid-cols-7 mb-1" role="row">
             {DAY_LABELS.map((d, i) => {
@@ -507,10 +512,10 @@ export default function WorkSchedulePage() {
                   className={cn(
                     "text-center text-card-meta font-semibold py-2",
                     colIsSunday(i)
-                      ? "text-red-500"
+                      ? "text-it-red-500"
                       : colIsSaturday(i)
-                        ? "text-blue-500"
-                        : "text-wtext-3 dark:text-rink-300",
+                        ? "text-it-blue-500"
+                        : "text-it-ink-400 dark:text-rink-300",
                   )}
                 >
                   <span aria-hidden="true">{d}</span>
@@ -521,7 +526,7 @@ export default function WorkSchedulePage() {
 
           {/* 날짜 그리드 — 캘린더 표 그리드 (RULE-7 합법적 예외: 표/캘린더 셀 보더는 pipe-like 구분선이 아닌 그리드 라인) */}
           <div
-            className="grid grid-cols-7 border-t border-l border-wline dark:border-rink-700"
+            className="grid grid-cols-7 border-t border-l border-it-line dark:border-rink-700"
             role="grid"
             aria-label={`${year}년 ${month}월 근무 일정`}
           >
@@ -544,22 +549,22 @@ export default function WorkSchedulePage() {
                   aria-disabled={!day.isCurrentMonth}
                   aria-label={day.isCurrentMonth ? `${year}년 ${month}월 ${day.date}일 ${dayName}${day.isToday ? ', 오늘' : ''}${hasEvents ? `, 일정 ${events.length}건` : ''}` : undefined}
                   className={cn(
-                    "min-h-[72px] p-1.5 border-r border-b border-wline dark:border-rink-700 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ice-500 focus:outline-none",
+                    "min-h-[72px] p-1.5 border-r border-b border-it-line dark:border-rink-700 text-left transition-colors focus-visible:ring-2 focus-visible:ring-it-blue-500 focus:outline-none",
                     day.isCurrentMonth
-                      ? "bg-white dark:bg-rink-800 hover:bg-wbg dark:hover:bg-rink-700"
-                      : "bg-wbg dark:bg-rink-900/50",
-                    day.isToday && "ring-2 ring-inset ring-ice-500",
-                    isSelected && "bg-blue-50 dark:bg-blue-900/20",
+                      ? "bg-it-surface dark:bg-rink-800 hover:bg-it-fill dark:hover:bg-rink-700"
+                      : "bg-it-fill dark:bg-rink-900/50",
+                    day.isToday && "ring-2 ring-inset ring-it-blue-400",
+                    isSelected && "bg-it-blue-50 dark:bg-it-blue-900/30",
                   )}
                 >
                   <span
                     className={cn(
                       "text-card-meta font-medium block",
                       !day.isCurrentMonth &&
-                        "text-wtext-4 dark:text-rink-500",
+                        "text-it-ink-300 dark:text-rink-500",
                       day.isCurrentMonth &&
-                        "text-wtext-2 dark:text-rink-100",
-                      day.isToday && "text-ice-500 font-bold",
+                        "text-it-ink-600 dark:text-rink-100",
+                      day.isToday && "text-it-blue-500 font-bold",
                     )}
                   >
                     {day.date}
@@ -571,14 +576,14 @@ export default function WorkSchedulePage() {
                           key={ev.id}
                           className={cn(
                             "text-card-meta leading-tight text-white px-1 py-0.5 rounded truncate",
-                            EVENT_COLORS[ev.type] || "bg-ice-500",
+                            EVENT_COLORS[ev.type] || "bg-it-blue-500",
                           )}
                         >
                           {ev.title}
                         </div>
                       ))}
                       {events.length > 2 && (
-                        <span className="text-card-meta text-wtext-3 dark:text-rink-300">
+                        <span className="text-card-meta text-it-ink-500 dark:text-rink-300">
                           +{events.length - 2}
                         </span>
                       )}
@@ -589,13 +594,14 @@ export default function WorkSchedulePage() {
             })}
           </div>
         </div>
+        </section>
 
-        {/* ── 선택 날짜 일정 ── */}
+        {/* ── 선택 날짜 일정 — full-bleed flat 섹션 (카드 박스 제거 → hairline 행) ── */}
         {selectedDate && (
-          <section className="px-5 py-4" aria-labelledby="selected-day-heading">
+          <section className="mt-2 bg-it-surface px-5 py-4 dark:bg-rink-800" aria-labelledby="selected-day-heading">
             <h3
               id="selected-day-heading"
-              className="text-card-body font-bold text-wtext-1 dark:text-white mb-3"
+              className="text-card-body font-bold text-it-ink-800 dark:text-white mb-1"
             >
               {selectedDate.replace(/-/g, ".")} 일정
             </h3>
@@ -604,21 +610,21 @@ export default function WorkSchedulePage() {
             </p>
             {selectedEvents.length === 0 ? (
               <div
-                className="bg-white dark:bg-rink-800 rounded-xl p-6 border border-wline-2 dark:border-rink-700 text-center"
+                className="py-8 text-center"
                 role="status"
               >
                 <Icon
                   name="event_busy"
-                  className="text-3xl text-wtext-4 dark:text-rink-500 mb-2"
+                  className="text-3xl text-it-ink-300 dark:text-rink-500 mb-2"
                   aria-hidden="true"
                 />
-                <p className="text-card-body text-wtext-3 dark:text-rink-300">
+                <p className="text-card-body text-it-ink-500 dark:text-rink-300">
                   등록된 일정이 없습니다
                 </p>
               </div>
             ) : (
               <ul
-                className="space-y-2 list-none"
+                className="list-none divide-y divide-it-line dark:divide-rink-700"
                 role="list"
                 aria-label={`${selectedDate.replace(/-/g, ".")} 일정 목록`}
               >
@@ -626,20 +632,20 @@ export default function WorkSchedulePage() {
                   <li
                     key={ev.id}
                     role="listitem"
-                    className="bg-white dark:bg-rink-800 rounded-lg p-4 border border-wline-2 dark:border-rink-700 flex items-start gap-3"
+                    className="flex items-start gap-3 py-3"
                   >
                     <div
                       className={cn(
                         "w-1 h-full min-h-[40px] rounded-w-pill flex-shrink-0",
-                        EVENT_COLORS[ev.type] || "bg-ice-500",
+                        EVENT_COLORS[ev.type] || "bg-it-blue-500",
                       )}
                     />
                     <div className="flex-1 min-w-0">
-                      <p className="text-card-body font-semibold text-wtext-1 dark:text-white">
+                      <p className="text-card-body font-semibold text-it-ink-800 dark:text-white">
                         {ev.title}
                       </p>
                       <div className="flex items-center gap-3 mt-1">
-                        <span className="flex items-center gap-1 text-card-meta text-wtext-3 dark:text-rink-300">
+                        <span className="flex items-center gap-1 text-card-meta text-it-ink-500 dark:text-rink-300">
                           <Icon
                             name="schedule"
                             className="text-card-body"
@@ -647,7 +653,7 @@ export default function WorkSchedulePage() {
                           />
                           {ev.time} - {ev.endTime}
                         </span>
-                        <span className="flex items-center gap-1 text-card-meta text-wtext-3 dark:text-rink-300">
+                        <span className="flex items-center gap-1 text-card-meta text-it-ink-500 dark:text-rink-300">
                           <Icon
                             name="location_on"
                             className="text-card-body"
@@ -657,7 +663,7 @@ export default function WorkSchedulePage() {
                         </span>
                       </div>
                       {ev.students > 0 && (
-                        <span className="flex items-center gap-1 text-card-meta text-wtext-3 dark:text-rink-300 mt-1">
+                        <span className="flex items-center gap-1 text-card-meta text-it-ink-500 dark:text-rink-300 mt-1">
                           <Icon
                             name="group"
                             className="text-card-body"
@@ -675,36 +681,36 @@ export default function WorkSchedulePage() {
         )}
 
         {/* ── 변경 요청 버튼 ── */}
-        <div className="px-5 py-3">
+        <div className="mt-2 bg-it-surface px-5 py-4 dark:bg-rink-800">
           <button
             onClick={() => setShowModal(true)}
-            className="w-full py-3.5 bg-ice-500 hover:bg-ice-700 text-white font-semibold rounded-xl transition-colors active:brightness-95 flex items-center justify-center gap-2"
+            className="w-full py-3.5 bg-it-blue-500 hover:bg-it-blue-600 text-white font-semibold rounded-w-md transition-colors active:brightness-95 flex items-center justify-center gap-2"
           >
             <Icon name="edit_calendar" className="text-xl" aria-hidden="true" />
             근무 일정 변경 요청
           </button>
         </div>
 
-        {/* ── 다가오는 근무 ── */}
-        <section className="px-5 pb-4" aria-labelledby="upcoming-shifts-heading">
+        {/* ── 다가오는 근무 — full-bleed flat 섹션 (카드 박스 제거 → hairline 행) ── */}
+        <section className="mt-2 bg-it-surface px-5 py-4 dark:bg-rink-800" aria-labelledby="upcoming-shifts-heading">
           <h3
             id="upcoming-shifts-heading"
-            className="text-card-body font-bold text-wtext-1 dark:text-white mb-3"
+            className="text-card-body font-bold text-it-ink-800 dark:text-white mb-1"
           >
             다가오는 근무
           </h3>
-          <ul className="space-y-2 list-none" role="list" aria-label="다가오는 근무 목록">
+          <ul className="list-none divide-y divide-it-line dark:divide-rink-700" role="list" aria-label="다가오는 근무 목록">
             {data.upcomingShifts.map((ev) => (
               <li
                 key={ev.id}
                 role="listitem"
-                className="bg-white dark:bg-rink-800 rounded-lg p-4 shadow-sm border border-gray-100 dark:border-rink-700"
+                className="py-3"
               >
-                <p className="text-card-body font-semibold text-wtext-1 dark:text-white">
+                <p className="text-card-body font-semibold text-it-ink-800 dark:text-white">
                   {ev.title}
                 </p>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5">
-                  <span className="flex items-center gap-1 text-card-meta text-wtext-3 dark:text-rink-300">
+                  <span className="flex items-center gap-1 text-card-meta text-it-ink-500 dark:text-rink-300">
                     <Icon
                       name="schedule"
                       className="text-card-body"
@@ -712,7 +718,7 @@ export default function WorkSchedulePage() {
                     />
                     {ev.time} - {ev.endTime}
                   </span>
-                  <span className="flex items-center gap-1 text-card-meta text-wtext-3 dark:text-rink-300">
+                  <span className="flex items-center gap-1 text-card-meta text-it-ink-500 dark:text-rink-300">
                     <Icon
                       name="location_on"
                       className="text-card-body"
@@ -721,7 +727,7 @@ export default function WorkSchedulePage() {
                     {ev.location}
                   </span>
                   {ev.students > 0 && (
-                    <span className="flex items-center gap-1 text-card-meta text-wtext-3 dark:text-rink-300">
+                    <span className="flex items-center gap-1 text-card-meta text-it-ink-500 dark:text-rink-300">
                       <Icon
                         name="group"
                         className="text-card-body"
@@ -736,39 +742,39 @@ export default function WorkSchedulePage() {
           </ul>
         </section>
 
-        {/* ── 주간 통계 ── */}
-        <section className="px-5 pb-8">
-          <h3 className="text-card-body font-bold text-wtext-1 dark:text-white mb-3">
+        {/* ── 주간 통계 — full-bleed flat 섹션 (요약 stat 셀 it-fill 인셋) ── */}
+        <section className="mt-2 bg-it-surface px-5 py-4 dark:bg-rink-800">
+          <h3 className="text-card-body font-bold text-it-ink-800 dark:text-white mb-3">
             이번 주 근무 현황
           </h3>
           <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white dark:bg-rink-800 rounded-xl p-4 border border-wline-2 dark:border-rink-700 text-center">
+            <div className="bg-it-fill dark:bg-rink-700 rounded-w-md p-4 text-center">
               <div className="flex items-center justify-center gap-1.5 mb-1">
                 <Icon
                   name="timer"
-                  className="text-ice-500 text-card-title"
+                  className="text-it-blue-500 text-card-title"
                   aria-hidden="true"
                 />
-                <span className="text-2xl font-bold text-wtext-1 dark:text-white">
+                <span className="text-2xl font-bold text-it-ink-800 dark:text-white tabular-nums">
                   {data.stats.totalHours}
                 </span>
               </div>
-              <p className="text-card-meta text-wtext-3 dark:text-rink-300">
+              <p className="text-card-meta text-it-ink-500 dark:text-rink-300">
                 총 근무 시간
               </p>
             </div>
-            <div className="bg-white dark:bg-rink-800 rounded-xl p-4 border border-wline-2 dark:border-rink-700 text-center">
+            <div className="bg-it-fill dark:bg-rink-700 rounded-w-md p-4 text-center">
               <div className="flex items-center justify-center gap-1.5 mb-1">
                 <Icon
                   name="event_available"
-                  className="text-ice-500 text-card-title"
+                  className="text-it-blue-500 text-card-title"
                   aria-hidden="true"
                 />
-                <span className="text-2xl font-bold text-wtext-1 dark:text-white">
+                <span className="text-2xl font-bold text-it-ink-800 dark:text-white tabular-nums">
                   {data.stats.totalSessions}
                 </span>
               </div>
-              <p className="text-card-meta text-wtext-3 dark:text-rink-300">
+              <p className="text-card-meta text-it-ink-500 dark:text-rink-300">
                 총 세션 수
               </p>
             </div>

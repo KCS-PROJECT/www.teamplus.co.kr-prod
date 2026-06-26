@@ -21,9 +21,9 @@ import { MESSAGES } from '@/lib/messages';
 import { cn } from '@/lib/utils';
 
 const INPUT_BASE =
-  'w-full h-12 px-4 bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 rounded-xl text-card-body text-wtext-1 dark:text-white placeholder:text-wtext-3 focus:outline-none focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20 transition-colors motion-reduce:transition-none';
+  'w-full h-12 px-4 bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[15px] font-medium text-it-ink-800 dark:text-white placeholder:text-it-ink-400 focus:outline-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 transition-colors duration-150 ease-ios motion-reduce:transition-none';
 const LABEL_BASE =
-  'block text-card-body font-semibold text-wtext-2 dark:text-rink-100 mb-2';
+  'block text-card-body font-semibold text-it-ink-700 dark:text-wtext-4 mb-2';
 
 export default function CreateOverseasTripPage() {
   const { navigate } = useNavigation();
@@ -188,12 +188,13 @@ export default function CreateOverseasTripPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title="원정 등록" showBack forceNative />
 
-      <main className="flex-1 overflow-y-auto px-5 pt-5 pb-8 space-y-6" role="main" aria-label="해외 원정 등록">
+      <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck" role="main" aria-label="해외 원정 등록">
+        <div className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-8 space-y-6">
         {/* 소속 팀 안내 */}
         {clubName && (
-          <div className="flex items-center gap-2 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/40 px-3.5 py-2.5">
-            <Icon name="sports_hockey" className="text-ice-500 dark:text-blue-300 text-card-title shrink-0" aria-hidden="true" />
-            <p className="text-card-meta text-ice-500 dark:text-blue-300">
+          <div className="flex items-center gap-2 rounded-w-md bg-it-blue-50 dark:bg-it-blue-900/30 border-[1.5px] border-it-blue-500/20 dark:border-it-blue-900/40 px-3.5 py-2.5">
+            <Icon name="sports_hockey" className="text-it-blue-500 text-card-title shrink-0" aria-hidden="true" />
+            <p className="text-card-meta text-it-blue-500">
               <span className="font-semibold">{clubName}</span> 소속으로 등록됩니다.
             </p>
           </div>
@@ -202,10 +203,10 @@ export default function CreateOverseasTripPage() {
         {errorMsg && (
           <div
             role="alert"
-            className="flex items-start gap-2.5 p-3.5 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl"
+            className="flex items-start gap-2.5 p-3.5 bg-it-red-500/10 border-[1.5px] border-it-red-500/30 rounded-w-md"
           >
-            <Icon name="error" className="text-red-500 text-card-title shrink-0 mt-0.5" aria-hidden="true" />
-            <p className="text-card-body text-red-700 dark:text-red-300 leading-relaxed">{errorMsg}</p>
+            <Icon name="error" className="text-it-red-500 text-card-title shrink-0 mt-0.5" aria-hidden="true" />
+            <p className="text-card-body text-it-red-500 leading-relaxed">{errorMsg}</p>
           </div>
         )}
 
@@ -213,7 +214,7 @@ export default function CreateOverseasTripPage() {
         <section className="space-y-5">
           <div>
             <label htmlFor={titleId} className={LABEL_BASE}>
-              원정 이름 <span className="text-red-500" aria-hidden="true">*</span>
+              원정 이름 <span className="text-it-red-500" aria-hidden="true">*</span>
             </label>
             <input
               id={titleId}
@@ -231,7 +232,7 @@ export default function CreateOverseasTripPage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor={countryId} className={LABEL_BASE}>
-                국가 <span className="text-red-500" aria-hidden="true">*</span>
+                국가 <span className="text-it-red-500" aria-hidden="true">*</span>
               </label>
               <input
                 id={countryId}
@@ -247,7 +248,7 @@ export default function CreateOverseasTripPage() {
             </div>
             <div>
               <label htmlFor={cityId} className={LABEL_BASE}>
-                도시 <span className="text-red-500" aria-hidden="true">*</span>
+                도시 <span className="text-it-red-500" aria-hidden="true">*</span>
               </label>
               <input
                 id={cityId}
@@ -273,7 +274,7 @@ export default function CreateOverseasTripPage() {
               onChange={(e) => setDescription(e.target.value)}
               placeholder="원정 목적과 주요 일정 요약"
               rows={3}
-              className="w-full px-4 py-3 bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 rounded-xl text-card-body text-wtext-1 dark:text-white placeholder:text-wtext-3 focus:outline-none focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20 resize-none transition-colors motion-reduce:transition-none"
+              className="w-full px-4 py-3 bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[15px] font-medium text-it-ink-800 dark:text-white placeholder:text-it-ink-400 focus:outline-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 resize-none transition-colors duration-150 ease-ios motion-reduce:transition-none"
             />
           </div>
         </section>
@@ -293,7 +294,7 @@ export default function CreateOverseasTripPage() {
           <div className="grid grid-cols-1 gap-3 min-w-0">
             <div className="w-full min-w-0">
               <label htmlFor={startDateId} className={LABEL_BASE}>
-                시작일 <span className="text-red-500" aria-hidden="true">*</span>
+                시작일 <span className="text-it-red-500" aria-hidden="true">*</span>
               </label>
               <input
                 id={startDateId}
@@ -307,7 +308,7 @@ export default function CreateOverseasTripPage() {
             </div>
             <div className="w-full min-w-0">
               <label htmlFor={endDateId} className={LABEL_BASE}>
-                종료일 <span className="text-red-500" aria-hidden="true">*</span>
+                종료일 <span className="text-it-red-500" aria-hidden="true">*</span>
               </label>
               <input
                 id={endDateId}
@@ -322,7 +323,7 @@ export default function CreateOverseasTripPage() {
           </div>
           <div className="w-full min-w-0">
             <label htmlFor={deadlineId} className={LABEL_BASE}>
-              등록 마감일 <span className="text-red-500" aria-hidden="true">*</span>
+              등록 마감일 <span className="text-it-red-500" aria-hidden="true">*</span>
             </label>
             <input
               id={deadlineId}
@@ -343,7 +344,7 @@ export default function CreateOverseasTripPage() {
           <div className="grid grid-cols-2 gap-3 min-w-0">
             <div className="min-w-0">
               <label htmlFor={maxParticipantsId} className={LABEL_BASE}>
-                최대 인원 <span className="text-red-500" aria-hidden="true">*</span>
+                최대 인원 <span className="text-it-red-500" aria-hidden="true">*</span>
               </label>
               <input
                 id={maxParticipantsId}
@@ -450,7 +451,7 @@ export default function CreateOverseasTripPage() {
             type="button"
             onClick={handleCancel}
             disabled={isSubmitting}
-            className="flex-1 h-12 rounded-xl border border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 text-card-body font-semibold hover:bg-wbg dark:hover:bg-rink-800 disabled:opacity-60 transition-colors motion-reduce:transition-none"
+            className="flex-1 h-12 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 text-it-ink-800 dark:text-white text-card-body font-bold hover:bg-it-fill dark:hover:bg-rink-700 disabled:opacity-60 transition-colors motion-reduce:transition-none"
           >
             취소
           </button>
@@ -459,14 +460,15 @@ export default function CreateOverseasTripPage() {
             onClick={handleSubmit}
             disabled={isSubmitting}
             className={cn(
-              'h-12 rounded-xl text-white text-card-body font-semibold transition-colors motion-reduce:transition-none',
+              'h-12 rounded-w-md text-white text-card-body font-bold transition-colors motion-reduce:transition-none',
               isSubmitting
-                ? 'bg-wtext-4 cursor-not-allowed flex-[1.5]'
-                : 'bg-ice-500 hover:bg-ice-700 active:brightness-95 flex-[1.5]',
+                ? 'bg-it-ink-300 cursor-not-allowed flex-[1.5]'
+                : 'bg-it-blue-500 hover:bg-it-blue-600 active:brightness-95 flex-[1.5]',
             )}
           >
             {isSubmitting ? '등록 중...' : '등록하기'}
           </button>
+        </div>
         </div>
       </main>
     </MobileContainer>

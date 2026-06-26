@@ -434,7 +434,7 @@ export default function PhotoViewerPage() {
             >
               <Icon
                 name="chat_bubble"
-                className="text-white text-2xl group-hover:text-ice-500 transition-colors motion-reduce:transition-none"
+                className="text-white text-2xl group-hover:text-it-blue-300 transition-colors motion-reduce:transition-none"
                 aria-hidden="true"
               />
               <span className="text-white/80 text-card-meta font-medium">
@@ -450,7 +450,7 @@ export default function PhotoViewerPage() {
             >
               <Icon
                 name="share"
-                className="text-white text-2xl group-hover:text-ice-500 transition-colors motion-reduce:transition-none"
+                className="text-white text-2xl group-hover:text-it-blue-300 transition-colors motion-reduce:transition-none"
                 aria-hidden="true"
               />
               <span className="text-white/80 text-card-meta font-medium">공유</span>
@@ -464,7 +464,7 @@ export default function PhotoViewerPage() {
             >
               <Icon
                 name="download"
-                className="text-white text-2xl group-hover:text-ice-500 transition-colors motion-reduce:transition-none"
+                className="text-white text-2xl group-hover:text-it-blue-300 transition-colors motion-reduce:transition-none"
                 aria-hidden="true"
               />
               <span className="text-white/80 text-card-meta font-medium">저장</span>
@@ -525,20 +525,20 @@ export default function PhotoViewerPage() {
           aria-label="사진 댓글"
         >
           <div
-            className="absolute bottom-0 left-0 right-0 max-h-[70vh] bg-white dark:bg-rink-900 rounded-t-2xl overflow-hidden"
+            className="absolute bottom-0 left-0 right-0 max-h-[70vh] bg-it-surface dark:bg-rink-900 rounded-t-2xl overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Comments Header */}
-            <div className="sticky top-0 bg-white dark:bg-rink-900 border-b border-wline dark:border-rink-700 px-4 py-3">
+            <div className="sticky top-0 bg-it-surface dark:bg-rink-900 border-b border-it-line dark:border-rink-700 px-4 py-3">
               <div className="flex items-center justify-between">
-                <h3 className="font-bold text-wtext-1 dark:text-white">
+                <h3 className="font-bold text-it-ink-800 dark:text-white">
                   댓글 {currentPhoto.comments.length}
                 </h3>
                 <button
                   type="button"
                   onClick={toggleComments}
                   aria-label="댓글 패널 닫기"
-                  className="p-1 rounded-w-pill hover:bg-wline-2 dark:hover:bg-rink-800 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-[3px] focus-visible:ring-ice-500"
+                  className="p-1 rounded-w-pill hover:bg-it-fill dark:hover:bg-rink-800 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-[3px] focus-visible:ring-it-blue-500"
                 >
                   <Icon name="close" className="text-wtext-2 dark:text-rink-300" aria-hidden="true" />
                 </button>
@@ -551,12 +551,12 @@ export default function PhotoViewerPage() {
                 <div className="text-center py-8">
                   <Icon
                     name="chat_bubble_outline"
-                    className="text-4xl text-wtext-4 dark:text-rink-500 mb-2"
+                    className="text-4xl text-it-ink-300 dark:text-rink-500 mb-2"
                   />
-                  <p className="text-wtext-3 dark:text-rink-300 text-card-body">
+                  <p className="text-it-ink-500 dark:text-rink-300 text-card-body">
                     아직 댓글이 없습니다.
                   </p>
-                  <p className="text-wtext-3 dark:text-rink-300 text-card-meta mt-1">
+                  <p className="text-it-ink-500 dark:text-rink-300 text-card-meta mt-1">
                     첫 번째 댓글을 남겨보세요!
                   </p>
                 </div>
@@ -564,23 +564,23 @@ export default function PhotoViewerPage() {
                 <div className="space-y-4">
                   {currentPhoto.comments.map((comment) => (
                     <div key={comment.id} className="flex gap-3">
-                      <div className="w-8 h-8 rounded-w-pill bg-wline dark:bg-rink-700 flex items-center justify-center flex-shrink-0">
+                      <div className="w-8 h-8 rounded-w-pill bg-it-line dark:bg-rink-700 flex items-center justify-center flex-shrink-0">
                         <Icon
                           name="person"
                           size={18}
-                          className="text-wtext-3 dark:text-rink-300 text-[18px]"
+                          className="text-it-ink-500 dark:text-rink-300 text-[18px]"
                         />
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="font-semibold text-card-body text-wtext-1 dark:text-white">
+                          <span className="font-semibold text-card-body text-it-ink-800 dark:text-white">
                             {comment.author}
                           </span>
-                          <span className="text-card-meta text-wtext-3 dark:text-rink-300">
+                          <span className="text-card-meta text-it-ink-500 dark:text-rink-300">
                             {comment.createdAt}
                           </span>
                         </div>
-                        <p className="text-card-body text-wtext-2 dark:text-rink-100">
+                        <p className="text-card-body text-it-ink-700 dark:text-rink-100">
                           {comment.content}
                         </p>
                       </div>
@@ -591,7 +591,7 @@ export default function PhotoViewerPage() {
             </div>
 
             {/* Comment Input */}
-            <div className="sticky bottom-0 bg-white dark:bg-rink-900 border-t border-wline dark:border-rink-700 p-4">
+            <div className="sticky bottom-0 bg-it-surface dark:bg-rink-900 border-t border-it-line dark:border-rink-700 p-4">
               <form onSubmit={handleSubmitComment} className="flex gap-2">
                 <input
                   type="text"
@@ -600,12 +600,12 @@ export default function PhotoViewerPage() {
                   placeholder={MESSAGES.placeholders.enterComment}
                   aria-label="댓글 입력"
                   maxLength={500}
-                  className="flex-1 px-4 py-2.5 bg-wline-2 dark:bg-rink-800 rounded-w-pill text-card-body text-wtext-1 dark:text-white placeholder-wtext-3 dark:placeholder-wtext-3 focus:outline-none focus:ring-2 focus:ring-ice-500"
+                  className="flex-1 px-4 py-2.5 bg-it-fill dark:bg-rink-800 rounded-w-pill text-card-body text-it-ink-800 dark:text-white placeholder-it-ink-400 dark:placeholder-wtext-3 focus:outline-none focus:ring-2 focus:ring-it-blue-500"
                 />
                 <button
                   type="submit"
                   disabled={!newComment.trim()}
-                  className="p-2.5 bg-ice-500 text-white rounded-w-pill disabled:opacity-50 disabled:cursor-not-allowed hover:bg-ice-500/90 transition-colors motion-reduce:transition-none"
+                  className="p-2.5 bg-it-blue-500 text-white rounded-w-pill disabled:opacity-50 disabled:cursor-not-allowed hover:bg-it-blue-600 transition-colors motion-reduce:transition-none"
                 >
                   <Icon name="send" size={20} className="text-[20px]" />
                 </button>

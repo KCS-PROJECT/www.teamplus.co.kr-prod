@@ -5,6 +5,9 @@
  *
  * 감독·코치가 팀 안에 만든 하위 그룹(예: 선수반 A조)을 보여준다.
  * 같은 페이지에서 "그룹 만들기" 버튼으로 /team/[id]/groups/create 진입.
+ *
+ * [디자인 2026-06-25] ICETIMES flat 재스킨 — 회색 캔버스 + full-bleed 흰 섹션 +
+ *   hairline 행(카드 박스 제거). it-* 토큰. 기능/로직/라우팅 동결, 비주얼만.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -12,10 +15,12 @@ import { useParams, useRouter } from "next/navigation";
 import { useNavigation } from "@/components/ui/NavLink";
 import { MobileContainer } from "@/components/layout/MobileContainer";
 import { PageAppBar } from "@/components/layout/PageAppBar";
+import { Icon } from "@/components/ui/Icon";
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { useToast } from "@/components/ui/Toast";
 import { usePageReady } from '@/hooks/usePageReady';
 import { useSessionAuth } from "@/hooks/useSessionAuth";
+import { cn } from "@/lib/utils";
 import { MESSAGES } from "@/lib/messages";
 import { isTeamManager } from "@/lib/team-roles";
 import {
@@ -78,9 +83,6 @@ export default function TeamGroupsListPage() {
     }
   };
 
-  // [수정 2026-05-14] 컨테이너를 <main> 랜드마크로 변경 → MobileContainer 의
-  //  `[&>main]:pb-30` 자동 BottomNav 여백 규칙 적용 + 시맨틱/A11y 보강.
-  //  flex-1 overflow-y-auto 로 자연 스크롤 보장 (groups/create 와 동일 패턴).
   return (
     <MobileContainer hasBottomNav>
       <PageAppBar
@@ -90,89 +92,124 @@ export default function TeamGroupsListPage() {
       />
 
       <main
-        className="flex-1 overflow-y-auto overscroll-contain px-4 pt-4 space-y-4 hide-scrollbar"
+        className="flex-1 overflow-y-auto overscroll-contain bg-it-canvas dark:bg-puck hide-scrollbar"
         style={{ WebkitOverflowScrolling: "touch" }}
         aria-label={MESSAGES.team.groupListTitle}
       >
-        {/* 액션 — 감독/코치만 그룹 생성 가능 */}
-        {canManage && (
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => navigate(`/team/${teamId}/groups/create`)}
-              className="bg-blue-700 text-white text-w-small font-bold px-4 py-2.5 rounded-lg hover:bg-blue-800 transition-colors"
-            >
-              + {MESSAGES.team.groupCreateButton}
-            </button>
-          </div>
-        )}
-
-        {/* 에러 */}
-        {!isLoading && error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-w-small text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
-            {error}
-          </div>
-        )}
-
-        {/* 비어있음 */}
-        {!isLoading && !error && groups.length === 0 && (
-          <div className="rounded-2xl border border-wline bg-white p-10 text-center dark:border-rink-700 dark:bg-rink-800">
-            <p className="text-w-small text-wtext-3 dark:text-rink-300">
-              {MESSAGES.team.groupListEmpty}
-            </p>
-          </div>
-        )}
-
-        {/* 목록 */}
-        {!isLoading && !error && groups.length > 0 && (
-          <ul className="space-y-3">
-            {groups.map((g) => (
-              <li
-                key={g.id}
-                className="rounded-2xl border border-wline bg-white p-4 dark:border-rink-700 dark:bg-rink-800"
+        {/* 그룹 목록 — flat 흰 섹션 (헤더 + 그룹 생성 버튼 + hairline 행) */}
+        <section
+          className="bg-it-surface dark:bg-it-blue-950 px-5 pt-5 pb-7"
+          aria-label="하위그룹 목록"
+        >
+          {/* 섹션 헤더 — 제목 + 카운트 + 그룹 만들기 */}
+          <div className="flex items-center justify-between pb-1">
+            <div className="flex items-baseline gap-2">
+              <h2 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
+                하위그룹
+              </h2>
+              {!isLoading && (
+                <span className="text-[15px] font-extrabold font-num tabular-nums text-it-blue-500">
+                  {groups.length}
+                </span>
+              )}
+            </div>
+            {/* 감독/코치만 그룹 생성 가능 */}
+            {canManage && (
+              <button
+                type="button"
+                onClick={() => navigate(`/team/${teamId}/groups/create`)}
+                className="inline-flex h-[34px] items-center gap-1 rounded-w-md bg-it-blue-500 px-3 text-[13px] font-bold text-white transition-colors duration-150 ease-ios motion-reduce:transition-none hover:bg-it-blue-600 active:brightness-95"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="text-w-body-lg font-bold text-wtext-1 dark:text-white truncate">
-                        {g.name}
-                      </h3>
-                      {/* [2026-06-05] 출생연도(4자리)만 "년생" 으로 표시. 레거시 U8~U12 배지는 숨김. */}
-                      {g.ageGroup && /^\d{4}$/.test(g.ageGroup) && (
-                        <span className="inline-flex items-center text-w-caption font-bold bg-blue-100 text-ice-500 px-2 py-0.5 rounded dark:bg-blue-900/40 dark:text-blue-300">
-                          {g.ageGroup}년생
-                        </span>
-                      )}
+                <Icon name="add" className="text-[16px]" aria-hidden="true" />
+                <span>{MESSAGES.team.groupCreateButton}</span>
+              </button>
+            )}
+          </div>
+
+          {/* 에러 */}
+          {!isLoading && error && (
+            <div className="mt-4 rounded-w-md border-[1.5px] border-it-red-200 bg-it-red-50 px-4 py-3 text-[14px] font-semibold text-it-red-600 dark:border-it-red-500/40 dark:bg-it-red-500/10 dark:text-it-red-300">
+              {error}
+            </div>
+          )}
+
+          {/* 비어있음 — 1줄 텍스트 */}
+          {!isLoading && !error && groups.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-16">
+              <p className="text-center text-[14px] font-medium text-it-ink-700 dark:text-it-ink-300">
+                {MESSAGES.team.groupListEmpty}
+              </p>
+            </div>
+          )}
+
+          {/* 목록 — hairline 행 */}
+          {!isLoading && !error && groups.length > 0 && (
+            <div className="flex flex-col">
+              {groups.map((g, idx) => {
+                const isLast = idx === groups.length - 1;
+                return (
+                  <div
+                    key={g.id}
+                    className={cn(
+                      "flex w-full items-center gap-3 py-[13px] min-h-[56px]",
+                      !isLast && "border-b border-it-line dark:border-it-blue-900",
+                    )}
+                  >
+                    {/* 그룹 아이콘 타일 */}
+                    <div
+                      className="flex size-11 shrink-0 items-center justify-center rounded-w-md bg-it-blue-50 dark:bg-it-blue-500/15"
+                      aria-hidden="true"
+                    >
+                      <Icon name="groups" className="text-[20px] text-it-blue-500" />
                     </div>
-                    <p className="text-w-caption text-wtext-3 dark:text-rink-300 mt-1">
-                      {MESSAGES.team.groupMemberCountLabel(g._count.members)}
-                    </p>
+
+                    {/* 그룹 정보 */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="truncate text-[15.5px] font-bold tracking-[-0.01em] text-it-ink-800 dark:text-white">
+                          {g.name}
+                        </h3>
+                        {/* [2026-06-05] 출생연도(4자리)만 "년생" 표시. 레거시 U8~U12 배지는 숨김. */}
+                        {g.ageGroup && /^\d{4}$/.test(g.ageGroup) && (
+                          <span className="inline-flex items-center rounded-w-md bg-it-blue-50 px-2 py-0.5 text-[12px] font-bold tabular-nums text-it-blue-500 dark:bg-it-blue-500/15 dark:text-it-blue-300">
+                            {g.ageGroup}년생
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-0.5 text-[13px] font-medium text-it-ink-500 dark:text-it-ink-300">
+                        {MESSAGES.team.groupMemberCountLabel(g._count.members)}
+                      </p>
+                    </div>
+
+                    {/* 관리 버튼 (감독/코치만) */}
+                    {canManage && (
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            navigate(`/team/${teamId}/groups/${g.id}/edit`)
+                          }
+                          className="inline-flex h-8 items-center rounded-w-md border-[1.5px] border-it-line-strong bg-it-surface px-3 text-[12px] font-bold text-it-blue-500 transition-colors motion-reduce:transition-none hover:bg-it-fill active:brightness-95 dark:border-it-blue-900 dark:bg-it-blue-950 dark:text-it-blue-300 dark:hover:bg-it-blue-900"
+                        >
+                          수정하기
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(g.id, g.name)}
+                          className="inline-flex h-8 items-center rounded-w-md border-[1.5px] border-it-red-200 bg-it-surface px-3 text-[12px] font-bold text-it-red-500 transition-colors motion-reduce:transition-none hover:bg-it-red-50 active:brightness-95 dark:border-it-red-500/40 dark:bg-it-blue-950 dark:text-it-red-300 dark:hover:bg-it-red-500/10"
+                        >
+                          삭제하기
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  {canManage && (
-                    <div className="shrink-0 flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          navigate(`/team/${teamId}/groups/${g.id}/edit`)
-                        }
-                        className="text-w-caption font-semibold text-ice-500 hover:text-blue-800 px-3 py-1.5 border border-blue-200 rounded-lg hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/20"
-                      >
-                        수정하기
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(g.id, g.name)}
-                        className="text-w-caption font-semibold text-red-600 hover:text-red-700 px-3 py-1.5 border border-red-200 rounded-lg hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-900/20"
-                      >
-                        삭제하기
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        <div className="h-6" aria-hidden="true" />
       </main>
     </MobileContainer>
   );

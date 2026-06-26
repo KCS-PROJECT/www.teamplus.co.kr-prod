@@ -82,7 +82,7 @@ function mapCoach(c: RawCoachResponse): Coach {
     name,
     title: c.specialization ?? c.specialty ?? '코치',
     avatar: c.avatarUrl ?? c.user?.avatarUrl,
-    badge: { label: 'COACH', color: 'bg-ice-500' },
+    badge: { label: 'COACH', color: 'bg-it-blue-500' },
     tags: c.tags ?? [],
     description: c.bio ?? '',
     isFavorite: false,
@@ -101,7 +101,7 @@ function SearchBar({
     <div className="relative group">
       <label htmlFor={searchId} className="sr-only">코치 이름 검색</label>
       <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-        <Icon name="search" className="text-wtext-3 dark:text-rink-300 text-[22px]" aria-hidden="true" />
+        <Icon name="search" className="text-it-ink-400 dark:text-wtext-4 text-[22px]" aria-hidden="true" />
       </div>
       <input
         id={searchId}
@@ -111,7 +111,7 @@ function SearchBar({
         placeholder={MESSAGES.placeholders.searchCoach}
         aria-label="코치 이름 검색"
         autoComplete="off"
-        className="block w-full pl-11 pr-4 py-3 bg-wbg dark:bg-rink-800 border border-wline-2 dark:border-rink-700 rounded-xl text-w-body-lg text-wtext-1 dark:text-white placeholder-wtext-3 focus:outline-none focus:ring-2 focus:ring-ice-500/20 focus:border-ice-500 transition-all motion-reduce:transition-none duration-200"
+        className="block w-full pl-11 pr-4 h-12 bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[15px] font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-wtext-3 focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 transition-colors motion-reduce:transition-none duration-150 ease-ios"
       />
     </div>
   );
@@ -206,10 +206,10 @@ function FilterChips({
       {chips.map((chip) => (
         <button type="button"           key={chip.id}
           onClick={() => handleChipClick(chip.id)}
-          className={`flex-shrink-0 px-5 h-10 rounded-w-pill text-w-small font-medium flex items-center whitespace-nowrap transition-all motion-reduce:transition-none active:scale-95 ${
+          className={`flex-shrink-0 px-4 h-9 rounded-w-pill text-[14px] font-bold flex items-center whitespace-nowrap transition-colors motion-reduce:transition-none active:scale-95 border-[1.5px] ${
             activeId === chip.id
-              ? 'bg-ice-500 text-white shadow-sm font-semibold'
-              : 'bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100'
+              ? 'bg-it-blue-500 text-white border-it-blue-500'
+              : 'bg-it-surface dark:bg-rink-800 border-it-line-strong dark:border-rink-700 text-it-ink-600 dark:text-rink-100'
           }`}
         >
           {chip.label}
@@ -220,81 +220,86 @@ function FilterChips({
   );
 }
 
-function CoachCard({
+/* 코치 1행 — flat hairline row (아바타 + 이름/전문 + 태그 + 즐겨찾기). 카드 박스 제거. */
+function CoachRow({
   coach,
+  isLast,
   onToggleFavorite,
 }: {
   coach: Coach;
+  isLast: boolean;
   onToggleFavorite: () => void;
 }) {
   return (
-    <NavLink href={`/coaches/${coach.id}`}>
-      <div className="bg-white dark:bg-rink-800 rounded-2xl p-5 shadow-sm border border-wline-2 dark:border-rink-700 flex flex-col gap-4 active:brightness-95 transition-transform motion-reduce:transition-none duration-200 cursor-pointer">
-        <div className="flex items-start gap-4">
-          {/* Avatar with Badge */}
-          <div className="relative shrink-0">
-            <div className="w-[72px] h-[72px] rounded-w-pill bg-wline dark:bg-rink-700 overflow-hidden border-2 border-white dark:border-rink-700 shadow-sm flex items-center justify-center">
-              {resolveImageSrc(coach.avatar) ? (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img
-                  src={resolveImageSrc(coach.avatar)}
-                  alt={coach.name}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <Icon name="person" className="text-3xl text-wtext-3" />
-              )}
-            </div>
-            <div
-              className={`absolute -bottom-1 -right-1 ${coach.badge.color} text-white text-w-caption font-bold px-2 py-0.5 rounded-w-pill border-2 border-white dark:border-rink-800 shadow-sm`}
-            >
-              {coach.badge.label}
-            </div>
+    <div
+      className={cn(
+        'flex w-full items-center gap-3 py-[13px] min-h-[64px]',
+        !isLast && 'border-b border-it-line dark:border-rink-700',
+      )}
+    >
+      <NavLink
+        href={`/coaches/${coach.id}`}
+        className="flex items-center gap-3 flex-1 min-w-0"
+        aria-label={`${coach.name} 코치 상세 보기`}
+      >
+        {/* Avatar */}
+        <div className="relative shrink-0">
+          <div className="size-12 rounded-w-pill bg-it-line dark:bg-rink-700 overflow-hidden flex items-center justify-center">
+            {resolveImageSrc(coach.avatar) ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={resolveImageSrc(coach.avatar)}
+                alt={`${coach.name} 코치`}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <Icon name="person" className="text-[26px] text-it-ink-400 dark:text-wtext-4" aria-hidden="true" />
+            )}
           </div>
+        </div>
 
-          {/* Info */}
-          <div className="flex-1 min-w-0 pt-1">
-            <div className="flex items-center justify-between">
-              <h3 className="text-w-title font-bold text-wtext-1 dark:text-white truncate">
-                {coach.name} 코치
-              </h3>
-              <button type="button"                 onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onToggleFavorite();
-                }}
-                className={`${
-                  coach.isFavorite
-                    ? 'text-red-500'
-                    : 'text-wtext-3 dark:text-rink-300 hover:text-ice-500'
-                } transition-colors motion-reduce:transition-none`}
-              >
-                <Icon name="favorite" filled={coach.isFavorite} className="text-[20px]" />
-              </button>
-            </div>
-            <p className="text-ice-500 font-medium text-w-caption mt-0.5 mb-2">{coach.title}</p>
-            <div className="flex flex-wrap gap-1.5">
-              {coach.tags.map((tag, index) => (
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <h3 className="text-[15.5px] font-bold leading-tight tracking-[-0.01em] truncate text-it-ink-800 dark:text-white">
+              {coach.name} 코치
+            </h3>
+          </div>
+          <p className="mt-0.5 text-[13px] font-semibold text-it-blue-500 truncate">{coach.title}</p>
+          {coach.tags.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {coach.tags.slice(0, 3).map((tag, index) => (
                 <span
                   key={index}
-                  className="inline-flex items-center px-2 py-0.5 rounded-md bg-wbg dark:bg-rink-700 text-wtext-2 dark:text-rink-100 text-w-caption font-medium border border-wline-2 dark:border-rink-700"
+                  className="inline-flex items-center rounded-w-xs border border-it-line-strong dark:border-rink-600 px-1.5 py-0.5 text-card-meta font-bold text-it-ink-600 dark:text-rink-200"
                 >
                   {tag}
                 </span>
               ))}
             </div>
-          </div>
+          )}
         </div>
+      </NavLink>
 
-        {/* Divider */}
-        <div className="h-px w-full bg-wline-2 dark:bg-rink-700" />
-
-        {/* Description */}
-        <p className="text-w-small text-wtext-3 dark:text-rink-300 line-clamp-2 leading-relaxed">
-          {coach.description}
-        </p>
-      </div>
-    </NavLink>
+      {/* 즐겨찾기 */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onToggleFavorite();
+        }}
+        aria-label={coach.isFavorite ? `${coach.name} 즐겨찾기 해제` : `${coach.name} 즐겨찾기`}
+        className={cn(
+          'flex size-9 shrink-0 items-center justify-center rounded-w-md transition-colors motion-reduce:transition-none active:brightness-95 hover:bg-it-line dark:hover:bg-rink-700',
+          coach.isFavorite
+            ? 'text-it-red-500'
+            : 'text-it-ink-400 dark:text-wtext-4 hover:text-it-blue-500 dark:hover:text-it-blue-500',
+        )}
+      >
+        <Icon name="favorite" filled={coach.isFavorite} className="text-[20px]" aria-hidden="true" />
+      </button>
+    </div>
   );
 }
 
@@ -370,59 +375,74 @@ export default function CoachListPage() {
     <MobileContainer hasBottomNav={true}>
       <PageAppBar title="코치진 소개" forceNative />
 
-      {/* Main Content (검색·필터·리스트 모두 함께 스크롤) */}
-      <main className="flex-1 overflow-y-auto pb-30">
-        {/* Search Bar */}
-        <div className="px-5 py-4">
+      {/* Main Content (검색·필터·리스트 모두 함께 스크롤) — flat 흰 섹션 + 회색 캔버스 */}
+      <main className="flex-1 overflow-y-auto pb-30 bg-it-canvas dark:bg-puck">
+        {/* 검색 + 필터 — flat 흰 섹션 (카드 박스 제거) */}
+        <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-4" aria-label="코치 검색">
           <SearchBar value={searchQuery} onChange={setSearchQuery} />
-        </div>
-
-        {/* Filter Chips */}
-        <div className="pb-4 border-b border-wline-2 dark:border-rink-800">
-          <div className="px-5">
+          <div className="mt-3.5">
             <FilterChips
               chips={filterChips}
               activeId={activeFilter}
               onSelect={setActiveFilter}
             />
           </div>
-        </div>
+        </section>
 
-        {/* List Header */}
-        <div className="flex items-center justify-between px-5 py-4">
-          <span className="text-w-small font-semibold text-wtext-1 dark:text-rink-100">
-            총 <span className="text-ice-500">{filteredCoaches.length}</span>명의 코치
-          </span>
-          <button
-            type="button"
-            onClick={() => setIsSortSheetOpen(true)}
-            aria-label={`정렬 기준 변경 (현재: ${currentSortLabel})`}
-            aria-haspopup="dialog"
-            className="flex items-center gap-1 rounded-lg px-2 py-1 text-w-caption font-medium text-wtext-2 dark:text-rink-100 hover:bg-wline-2 dark:hover:bg-rink-800 transition-colors motion-reduce:transition-none"
-          >
-            {currentSortLabel}
-            <Icon name="keyboard_arrow_down" className="text-[16px]" aria-hidden="true" />
-          </button>
-        </div>
+        {/* flat 섹션 사이 8px 회색 갭 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
 
-        {/* Coach List */}
-        <div className="px-5 space-y-4">
-          {!isLoading && filteredCoaches.map((coach) => (
-            <CoachCard
-              key={coach.id}
-              coach={coach}
-              onToggleFavorite={() => toggleFavorite(coach.id)}
-            />
-          ))}
-        </div>
-
-        {/* Empty State */}
-        {!isLoading && filteredCoaches.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-20 text-wtext-3">
-            <Icon name="person_search" className="text-5xl mb-3" />
-            <p className="text-w-small">검색 결과가 없습니다</p>
+        {/* 코치 목록 — flat 흰 섹션 (헤더 + hairline 구분 행) */}
+        <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-7" aria-label="코치 목록">
+          {/* 목록 헤더 — SectionHead 위계 통일 */}
+          <div className="flex items-center justify-between pb-1">
+            <div className="flex items-baseline gap-2">
+              <h2 className="text-it-ink-800 dark:text-white tracking-[-0.02em] font-extrabold text-[17px]">
+                코치 목록
+              </h2>
+              {!isLoading && (
+                <span className="text-[15px] font-extrabold font-num tabular-nums text-it-blue-500">
+                  {filteredCoaches.length}
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsSortSheetOpen(true)}
+              aria-label={`정렬 기준 변경 (현재: ${currentSortLabel})`}
+              aria-haspopup="dialog"
+              className="flex items-center gap-1 rounded-w-md px-2 py-1 text-[13px] font-semibold text-it-ink-600 dark:text-rink-100 hover:bg-it-line dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
+            >
+              {currentSortLabel}
+              <Icon name="keyboard_arrow_down" className="text-[16px]" aria-hidden="true" />
+            </button>
           </div>
-        )}
+
+          {/* Coach List — hairline rows */}
+          {!isLoading && filteredCoaches.length > 0 && (
+            <div className="flex flex-col">
+              {filteredCoaches.map((coach, idx) => (
+                <CoachRow
+                  key={coach.id}
+                  coach={coach}
+                  isLast={idx === filteredCoaches.length - 1}
+                  onToggleFavorite={() => toggleFavorite(coach.id)}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Empty State — 1줄 텍스트 */}
+          {!isLoading && filteredCoaches.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-16">
+              <p className="text-card-body font-medium text-it-ink-700 dark:text-wtext-4 text-center">
+                {searchQuery.trim()
+                  ? `"${searchQuery.trim()}" 검색 결과가 없습니다.`
+                  : MESSAGES.empty('코치')}
+              </p>
+            </div>
+          )}
+        </section>
       </main>
 
       {/* 정렬 옵션 BottomSheet */}
@@ -445,17 +465,17 @@ export default function CoachListPage() {
                     setIsSortSheetOpen(false);
                   }}
                   className={cn(
-                    'w-full flex items-center gap-3 py-3.5 px-2 rounded-xl text-left transition-colors motion-reduce:transition-none',
-                    'hover:bg-wbg dark:hover:bg-rink-700/50',
-                    isSelected && 'bg-ice-500/5 dark:bg-ice-500/10',
+                    'w-full flex items-center gap-3 py-3.5 px-2 rounded-w-md text-left transition-colors motion-reduce:transition-none',
+                    'hover:bg-it-fill dark:hover:bg-rink-700/50',
+                    isSelected && 'bg-it-blue-50 dark:bg-it-blue-500/10',
                   )}
                 >
                   <div
                     className={cn(
-                      'flex items-center justify-center w-10 h-10 rounded-xl shrink-0',
+                      'flex items-center justify-center w-10 h-10 rounded-w-md shrink-0',
                       isSelected
-                        ? 'bg-ice-500/10 text-ice-500 dark:bg-ice-500/20'
-                        : 'bg-wline-2 dark:bg-rink-700 text-wtext-3 dark:text-rink-100',
+                        ? 'bg-it-blue-500/10 text-it-blue-500 dark:bg-it-blue-500/20'
+                        : 'bg-it-line dark:bg-rink-700 text-it-ink-400 dark:text-rink-100',
                     )}
                   >
                     <Icon name={option.icon} className="text-[20px]" aria-hidden="true" />
@@ -463,22 +483,22 @@ export default function CoachListPage() {
                   <div className="flex-1 min-w-0">
                     <p
                       className={cn(
-                        'text-w-small font-semibold',
+                        'text-[14px] font-bold',
                         isSelected
-                          ? 'text-ice-500 dark:text-blue-400'
-                          : 'text-wtext-1 dark:text-white',
+                          ? 'text-it-blue-500'
+                          : 'text-it-ink-800 dark:text-white',
                       )}
                     >
                       {option.label}
                     </p>
-                    <p className="text-w-caption text-wtext-3 dark:text-rink-300 mt-0.5">
+                    <p className="text-card-meta text-it-ink-500 dark:text-rink-300 mt-0.5">
                       {option.description}
                     </p>
                   </div>
                   {isSelected && (
                     <Icon
                       name="check"
-                      className="text-ice-500 dark:text-blue-400 text-[22px] shrink-0"
+                      className="text-it-blue-500 text-[22px] shrink-0"
                       aria-hidden="true"
                     />
                   )}

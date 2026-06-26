@@ -31,7 +31,18 @@ export interface ScoreRadarProps {
   color?: string;
   /** 추가 클래스 */
   className?: string;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 차트 데이터 영역/점 색을 it-blue(#0e5db0)로, 중앙 평균값을 it-blue 강조 +
+   *   라벨을 it-ink 톤으로 스왑. **좌표·정규화·SVG 로직은 전부 동결, 색만 변경.**
+   *   (skill-report 호출처만 전달)
+   */
+  iceTheme?: boolean;
 }
+
+// it-blue-500 (#0e5db0) 의 데이터 영역 채움(0.30 alpha). RadarChart 가 '0.6'→'1' 치환으로
+// 윤곽/점 stroke 를 산출하므로 alpha 표기를 '0.6' 으로 맞춰 동일 산식이 it-blue 를 그대로 쓰게 한다.
+const IT_RADAR_COLOR = 'rgba(14, 93, 176, 0.6)';
 
 /**
  * 긴 라벨을 공백 기준으로 줄바꿈 처리.
@@ -50,9 +61,12 @@ export const ScoreRadar = memo(function ScoreRadar({
   centerValue,
   centerLabel,
   size = 280,
-  color = 'rgba(30, 63, 174, 0.35)', // TEAMPLUS Primary #1E3FAE (alpha)
+  color,
   className = '',
+  iceTheme = false,
 }: ScoreRadarProps) {
+  // iceTheme=true → it-blue 채움. 미지정 시 기존 기본색(#1E3FAE alpha) 1:1 보존.
+  const radarColor = color ?? (iceTheme ? IT_RADAR_COLOR : 'rgba(30, 63, 174, 0.35)');
   // 기존 RadarChart 스펙은 value 0~100, fullMark. 0~max 점수를 0~100으로 정규화.
   const mappedData = scores.map((s) => {
     const max = s.max ?? 5;
@@ -75,18 +89,30 @@ export const ScoreRadar = memo(function ScoreRadar({
       className={`relative flex items-center justify-center ${className}`}
       style={{ width: size, height: size }}
     >
-      <RadarChart data={mappedData} size={size} color={color} />
+      <RadarChart data={mappedData} size={size} color={radarColor} />
 
       {hasCenter && (
         <div
           className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"
           aria-hidden="true"
         >
-          <span className="text-3xl font-bold text-wtext-1 dark:text-white">
+          <span
+            className={
+              iceTheme
+                ? 'text-3xl font-extrabold font-num tabular-nums text-it-blue-600 dark:text-it-blue-300'
+                : 'text-3xl font-bold text-wtext-1 dark:text-white'
+            }
+          >
             {centerValue}
           </span>
           {centerLabel && (
-            <span className="mt-1 text-sm text-wtext-3 dark:text-rink-300">
+            <span
+              className={
+                iceTheme
+                  ? 'mt-1 text-sm font-medium text-it-ink-500 dark:text-rink-300'
+                  : 'mt-1 text-sm text-wtext-3 dark:text-rink-300'
+              }
+            >
               {centerLabel}
             </span>
           )}

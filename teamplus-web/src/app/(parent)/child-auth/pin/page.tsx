@@ -212,35 +212,35 @@ export default function ChildAuthPinPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title="자녀 인증" onBack={back} />
 
-      <div className="flex-1 flex flex-col px-6 pt-8 pb-28 overflow-y-auto hide-scrollbar">
+      <div className="flex-1 flex flex-col px-6 pt-8 pb-28 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck">
         {/* 자녀 선택 모드 */}
         {mode === "select" && (
           <>
             <div className="text-center mb-8">
               <div
-                className="flex items-center justify-center size-16 rounded-2xl bg-blue-50 dark:bg-blue-900/20 mx-auto mb-4"
+                className="flex items-center justify-center size-16 rounded-w-md bg-it-blue-50 dark:bg-it-blue-500/15 mx-auto mb-4"
                 aria-hidden="true"
               >
-                <Icon name="lock_person" className="text-3xl text-ice-500" />
+                <Icon name="lock_person" className="text-3xl text-it-blue-500" />
               </div>
-              <h2 className="text-xl font-bold text-wtext-1 dark:text-white mb-2">
+              <h2 className="text-xl font-bold text-it-ink-800 dark:text-white mb-2">
                 자녀 인증 PIN 관리
               </h2>
-              <p className="text-card-body text-wtext-3 dark:text-rink-300 leading-relaxed">
+              <p className="text-card-body text-it-ink-500 dark:text-wtext-4 leading-relaxed">
                 자녀를 선택하여 PIN을 설정하거나 인증하세요.
               </p>
             </div>
 
             {isLoading ? null : children.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 rounded-2xl bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700">
-                <div className="flex items-center justify-center size-16 rounded-w-pill bg-wline-2 dark:bg-rink-700 mb-4">
+              <div className="flex flex-col items-center justify-center py-16 rounded-w-md bg-it-surface dark:bg-rink-800 border border-it-line dark:border-rink-700">
+                <div className="flex items-center justify-center size-16 rounded-w-pill bg-it-fill dark:bg-rink-700 mb-4">
                   <Icon
                     name="child_care"
-                    className="text-3xl text-wtext-3 dark:text-rink-300"
+                    className="text-3xl text-it-ink-400 dark:text-wtext-4"
                     aria-hidden="true"
                   />
                 </div>
-                <p className="text-card-emphasis font-semibold text-wtext-2 dark:text-rink-100">
+                <p className="text-card-emphasis font-semibold text-it-ink-700 dark:text-wtext-4">
                   {MESSAGES.empty("등록된 자녀")}
                 </p>
               </div>
@@ -257,27 +257,27 @@ export default function ChildAuthPinPage() {
                         setConfirmPin("");
                         setError("");
                       }}
-                      className="flex-1 flex items-center gap-3 min-h-[72px] p-4 bg-white dark:bg-rink-800 rounded-xl border border-wline-2 dark:border-rink-700 shadow-sm hover:border-ice-500/30 dark:hover:border-ice-500/40 hover:shadow-md active:brightness-95 transition-all motion-reduce:transition-none"
+                      className="flex-1 flex items-center gap-3 min-h-[72px] p-4 bg-it-surface dark:bg-rink-800 rounded-w-md border border-it-line dark:border-rink-700 hover:border-it-blue-500/40 dark:hover:border-it-blue-500/40 active:brightness-95 transition-colors motion-reduce:transition-none"
                       aria-label={`${child.name} PIN 설정하기`}
                     >
-                      <div className="flex items-center justify-center size-11 rounded-w-pill bg-blue-50 dark:bg-blue-900/20 shrink-0">
+                      <div className="flex items-center justify-center size-11 rounded-w-pill bg-it-blue-50 dark:bg-it-blue-500/15 shrink-0">
                         <Icon
                           name="child_care"
-                          className="text-xl text-ice-500"
+                          className="text-xl text-it-blue-500"
                           aria-hidden="true"
                         />
                       </div>
                       <div className="flex-1 text-left min-w-0">
-                        <p className="font-bold text-wtext-1 dark:text-white truncate">
+                        <p className="font-bold text-it-ink-800 dark:text-white truncate">
                           {child.name}
                         </p>
-                        <p className="text-card-meta text-wtext-3 dark:text-rink-300 mt-0.5">
+                        <p className="text-card-meta text-it-ink-500 dark:text-wtext-4 mt-0.5">
                           PIN 설정하기
                         </p>
                       </div>
                       <Icon
                         name="chevron_right"
-                        className="text-wtext-4 dark:text-rink-500"
+                        className="text-it-ink-300 dark:text-rink-500"
                         aria-hidden="true"
                       />
                     </button>
@@ -289,12 +289,12 @@ export default function ChildAuthPinPage() {
                         setPin("");
                         setError("");
                       }}
-                      className="flex items-center justify-center size-[72px] bg-wbg dark:bg-rink-800 rounded-xl border border-wline-2 dark:border-rink-700 shadow-sm hover:bg-wline-2 dark:hover:bg-rink-700 active:brightness-95 transition-all motion-reduce:transition-none"
+                      className="flex items-center justify-center size-[72px] bg-it-fill dark:bg-rink-800 rounded-w-md border border-it-line dark:border-rink-700 hover:bg-it-line dark:hover:bg-rink-700 active:brightness-95 transition-colors motion-reduce:transition-none"
                       aria-label={`${child.name} PIN 검증하기`}
                     >
                       <Icon
                         name="key"
-                        className="text-xl text-wtext-2 dark:text-rink-100"
+                        className="text-xl text-it-ink-700 dark:text-wtext-4"
                         aria-hidden="true"
                       />
                     </button>
@@ -310,22 +310,22 @@ export default function ChildAuthPinPage() {
           <>
             <div className="text-center mb-8">
               <div
-                className="flex items-center justify-center size-16 rounded-2xl bg-blue-50 dark:bg-blue-900/20 mx-auto mb-4"
+                className="flex items-center justify-center size-16 rounded-w-md bg-it-blue-50 dark:bg-it-blue-500/15 mx-auto mb-4"
                 aria-hidden="true"
               >
                 <Icon
                   name={modeCopy[mode].icon}
-                  className="text-3xl text-ice-500"
+                  className="text-3xl text-it-blue-500"
                 />
               </div>
-              <h2 className="text-xl font-bold text-wtext-1 dark:text-white mb-2">
+              <h2 className="text-xl font-bold text-it-ink-800 dark:text-white mb-2">
                 {selectedChild?.name}
               </h2>
-              <p className="text-card-body text-wtext-2 dark:text-rink-100 leading-relaxed font-medium">
+              <p className="text-card-body text-it-ink-700 dark:text-wtext-4 leading-relaxed font-medium">
                 {modeCopy[mode].description}
               </p>
               {mode === "set" && (
-                <p className="text-card-meta text-wtext-3 dark:text-rink-300 mt-2">
+                <p className="text-card-meta text-it-ink-500 dark:text-wtext-4 mt-2">
                   연속된 숫자나 동일 숫자는 사용할 수 없습니다.
                 </p>
               )}
@@ -338,6 +338,7 @@ export default function ChildAuthPinPage() {
                 onComplete={handlePinComplete}
                 disabled={isSubmitting}
                 error={error}
+                iceTheme
                 autoFocus
               />
             </div>
@@ -348,7 +349,7 @@ export default function ChildAuthPinPage() {
                   type="button"
                   onClick={handleVerifyPin}
                   disabled={pin.length !== 6 || isSubmitting}
-                  className="w-full min-h-[56px] bg-ice-500 hover:bg-ice-700 text-white font-bold text-card-emphasis rounded-xl shadow-md disabled:bg-wline dark:disabled:bg-rink-500 disabled:shadow-none transition-colors motion-reduce:transition-none active:brightness-95"
+                  className="w-full min-h-[56px] bg-it-blue-500 hover:bg-it-blue-600 text-white font-bold text-card-emphasis rounded-w-md shadow-sm disabled:bg-it-line dark:disabled:bg-rink-500 disabled:shadow-none transition-colors motion-reduce:transition-none active:brightness-95"
                 >
                   {isSubmitting ? MESSAGES.common.processing : "인증하기"}
                 </button>
@@ -362,7 +363,7 @@ export default function ChildAuthPinPage() {
                   setError("");
                   setSelectedChild(null);
                 }}
-                className="w-full min-h-[48px] bg-wline-2 dark:bg-rink-800 text-wtext-2 dark:text-rink-100 font-semibold text-card-body rounded-xl hover:bg-wline dark:hover:bg-rink-700 active:brightness-95 transition-colors motion-reduce:transition-none"
+                className="w-full min-h-[48px] bg-it-fill dark:bg-rink-800 text-it-ink-700 dark:text-wtext-4 font-semibold text-card-body rounded-w-md hover:bg-it-line dark:hover:bg-rink-700 active:brightness-95 transition-colors motion-reduce:transition-none"
               >
                 돌아가기
               </button>

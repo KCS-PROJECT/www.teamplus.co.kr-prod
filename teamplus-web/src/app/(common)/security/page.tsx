@@ -212,49 +212,49 @@ export default function SecuritySettingsPage() {
     <MobileContainer hasBottomNav={false}>
       <PageAppBar title="보안 설정" forceNative />
 
-      <main className="flex-1 overflow-y-auto px-5 py-6 space-y-6">
-        {/* Section 1: 비밀번호 / 계정 */}
-        <section>
-          <h2 className="text-w-small font-bold text-wtext-3 dark:text-rink-300 tracking-wider uppercase mb-3">
+      <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck">
+        {/* Section 1: 비밀번호 / 계정 — full-bleed 흰 섹션 + hairline 행 */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 pt-4 pb-4">
+          <h2 className="text-w-small font-bold text-it-ink-500 dark:text-rink-300 tracking-wider uppercase mb-3">
             계정 보안
           </h2>
           <NavLink
             href="/profile/password"
-            className="flex items-center gap-3 p-4 rounded-xl bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 hover:border-ice-500/40 transition-all motion-reduce:transition-none"
+            className="-mx-5 flex items-center gap-3 px-5 py-4 border-t border-it-line dark:border-rink-700 hover:bg-it-fill dark:hover:bg-rink-800 transition-colors motion-reduce:transition-none"
           >
-            <div className="w-10 h-10 flex items-center justify-center text-ice-500">
+            <div className="w-10 h-10 flex items-center justify-center text-it-blue-500">
               <Icon name="lock_reset" className="text-[26px]" />
             </div>
             <div className="flex-1">
-              <p className="text-w-small font-bold text-wtext-1 dark:text-white">비밀번호 변경</p>
-              <p className="text-w-caption text-wtext-3 dark:text-rink-300">
+              <p className="text-w-small font-bold text-it-ink-800 dark:text-white">비밀번호 변경</p>
+              <p className="text-w-caption text-it-ink-500 dark:text-rink-300">
                 주기적으로 변경하면 보안에 도움이 됩니다
               </p>
             </div>
-            <Icon name="chevron_right" className="text-wtext-4 dark:text-rink-500" />
+            <Icon name="chevron_right" className="text-it-ink-400 dark:text-rink-500" />
           </NavLink>
         </section>
 
-        {/* Section 2: 이중 인증 (2FA) */}
-        <section>
-          <h2 className="text-w-small font-bold text-wtext-3 dark:text-rink-300 tracking-wider uppercase mb-3">
+        {/* Section 2: 이중 인증 (2FA) — full-bleed 흰 섹션 */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 pt-4 pb-4">
+          <h2 className="text-w-small font-bold text-it-ink-500 dark:text-rink-300 tracking-wider uppercase mb-3">
             이중 인증 (2FA)
           </h2>
 
-          {/* 상태 카드 */}
-          <div className="p-4 rounded-xl bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700">
+          {/* 상태 행 — it-fill 인셋 */}
+          <div className="p-4 rounded-w-md bg-it-fill dark:bg-rink-800 border border-it-line-strong dark:border-rink-700">
             <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 flex items-center justify-center rounded-w-pill ${twoFactorStatus?.enabled ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600' : 'bg-wbg dark:bg-rink-700 text-wtext-3'}`}>
+              <div className={`w-10 h-10 flex items-center justify-center rounded-w-pill ${twoFactorStatus?.enabled ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600' : 'bg-it-line-strong dark:bg-rink-700 text-it-ink-500'}`}>
                 <Icon name={twoFactorStatus?.enabled ? 'verified' : 'security'} className="text-[24px]" />
               </div>
               <div className="flex-1">
-                <p className="text-w-small font-bold text-wtext-1 dark:text-white">이중 인증</p>
+                <p className="text-w-small font-bold text-it-ink-800 dark:text-white">이중 인증</p>
                 {twoFactorStatus?.enabled ? (
                   <p className="text-w-caption text-emerald-600 dark:text-emerald-400">
                     사용 중{twoFactorStatus.createdAt ? ` · ${formatDateTime(twoFactorStatus.createdAt)} 설정` : ''}
                   </p>
                 ) : (
-                  <p className="text-w-caption text-wtext-3 dark:text-rink-300">비활성화됨 · TOTP 앱으로 추가 보안</p>
+                  <p className="text-w-caption text-it-ink-500 dark:text-rink-300">비활성화됨 · TOTP 앱으로 추가 보안</p>
                 )}
               </div>
               {twoFactorStatus?.enabled ? (
@@ -282,8 +282,8 @@ export default function SecuritySettingsPage() {
 
             {/* 2FA 비활성화 패널 */}
             {showDisablePanel && twoFactorStatus?.enabled && (
-              <div className="mt-4 pt-4 border-t border-wline-2 dark:border-rink-700 space-y-3">
-                <p className="text-w-caption text-wtext-2 dark:text-rink-100">
+              <div className="mt-4 pt-4 border-t border-it-line dark:border-rink-700 space-y-3">
+                <p className="text-w-caption text-it-ink-700 dark:text-rink-100">
                   Authenticator 앱의 6자리 코드를 입력하여 비활성화를 확인하세요.
                 </p>
                 <div className="flex gap-2">
@@ -294,7 +294,7 @@ export default function SecuritySettingsPage() {
                     placeholder="000000"
                     value={disableToken}
                     onChange={(e) => setDisableToken(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    className="flex-1 px-3 py-2 text-center text-w-title font-mono rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-900 text-wtext-1 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-400"
+                    className="flex-1 px-3 py-2 text-center text-w-title font-mono rounded-lg border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-900 text-it-ink-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-it-red-500"
                   />
                   <Button
                     variant="secondary"
@@ -309,7 +309,7 @@ export default function SecuritySettingsPage() {
                 <button
                   type="button"
                   onClick={() => { setShowDisablePanel(false); setDisableToken(''); }}
-                  className="text-w-caption text-wtext-3 hover:text-wtext-2 dark:hover:text-rink-100 transition-colors motion-reduce:transition-none"
+                  className="text-w-caption text-it-ink-500 hover:text-it-ink-700 dark:hover:text-rink-100 transition-colors motion-reduce:transition-none"
                 >
                   취소
                 </button>
@@ -318,20 +318,20 @@ export default function SecuritySettingsPage() {
 
             {/* 2FA 설정 플로우 (확장 패널) */}
             {is2faExpanded && twoFactorSetup && (
-              <div className="mt-4 pt-4 border-t border-wline-2 dark:border-rink-700 space-y-4">
+              <div className="mt-4 pt-4 border-t border-it-line dark:border-rink-700 space-y-4">
                 {/* Step 1: 앱 안내 */}
                 <div>
-                  <p className="text-w-caption font-bold text-wtext-2 dark:text-rink-100 mb-1">
+                  <p className="text-w-caption font-bold text-it-ink-700 dark:text-rink-100 mb-1">
                     1단계. Authenticator 앱 설치
                   </p>
-                  <p className="text-w-caption text-wtext-3 dark:text-rink-300">
+                  <p className="text-w-caption text-it-ink-500 dark:text-rink-300">
                     Google Authenticator 또는 Microsoft Authenticator 앱을 설치하세요.
                   </p>
                 </div>
 
                 {/* Step 2: QR 코드 */}
                 <div>
-                  <p className="text-w-caption font-bold text-wtext-2 dark:text-rink-100 mb-2">
+                  <p className="text-w-caption font-bold text-it-ink-700 dark:text-rink-100 mb-2">
                     2단계. QR 코드 스캔
                   </p>
                   <div className="flex justify-center">
@@ -341,18 +341,18 @@ export default function SecuritySettingsPage() {
                       alt="2FA QR 코드"
                       width={180}
                       height={180}
-                      className="rounded-lg border border-wline dark:border-rink-700"
+                      className="rounded-lg border border-it-line-strong dark:border-rink-700"
                     />
                   </div>
                 </div>
 
                 {/* Step 2b: 수동 입력 키 */}
                 <div>
-                  <p className="text-w-caption font-bold text-wtext-2 dark:text-rink-100 mb-1">
+                  <p className="text-w-caption font-bold text-it-ink-700 dark:text-rink-100 mb-1">
                     QR 스캔 불가 시 — 수동 입력 키
                   </p>
-                  <div className="flex items-center gap-2 p-2 rounded-lg bg-wbg dark:bg-rink-700">
-                    <code className="flex-1 text-w-caption font-mono text-wtext-2 dark:text-rink-100 break-all select-all">
+                  <div className="flex items-center gap-2 p-2 rounded-lg bg-it-fill dark:bg-rink-700">
+                    <code className="flex-1 text-w-caption font-mono text-it-ink-700 dark:text-rink-100 break-all select-all">
                       {twoFactorSetup.secret}
                     </code>
                     <button
@@ -361,17 +361,17 @@ export default function SecuritySettingsPage() {
                         void navigator.clipboard.writeText(twoFactorSetup.secret);
                         toast.success(MESSAGES.security.copied);
                       }}
-                      className="p-1.5 rounded-md hover:bg-wline dark:hover:bg-rink-500 transition-colors motion-reduce:transition-none"
+                      className="p-1.5 rounded-md hover:bg-it-line-strong dark:hover:bg-rink-500 transition-colors motion-reduce:transition-none"
                       aria-label="복사"
                     >
-                      <Icon name="content_copy" className="text-[16px] text-wtext-3" />
+                      <Icon name="content_copy" className="text-[16px] text-it-ink-500" />
                     </button>
                   </div>
                 </div>
 
                 {/* Step 3: 코드 입력 */}
                 <div>
-                  <p className="text-w-caption font-bold text-wtext-2 dark:text-rink-100 mb-2">
+                  <p className="text-w-caption font-bold text-it-ink-700 dark:text-rink-100 mb-2">
                     3단계. 앱의 6자리 코드 입력
                   </p>
                   <div className="flex gap-2">
@@ -383,7 +383,7 @@ export default function SecuritySettingsPage() {
                       placeholder="000000"
                       value={tfaToken}
                       onChange={(e) => setTfaToken(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      className="flex-1 px-3 py-2 text-center text-w-title font-mono rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-900 text-wtext-1 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="flex-1 px-3 py-2 text-center text-w-title font-mono rounded-lg border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-900 text-it-ink-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-it-blue-500"
                     />
                     <Button
                       variant="primary"
@@ -400,7 +400,7 @@ export default function SecuritySettingsPage() {
                 <button
                   type="button"
                   onClick={() => { setIs2faExpanded(false); setTwoFactorSetup(null); setTfaToken(''); }}
-                  className="text-w-caption text-wtext-3 hover:text-wtext-2 dark:hover:text-rink-100 transition-colors motion-reduce:transition-none"
+                  className="text-w-caption text-it-ink-500 hover:text-it-ink-700 dark:hover:text-rink-100 transition-colors motion-reduce:transition-none"
                 >
                   취소
                 </button>
@@ -409,33 +409,33 @@ export default function SecuritySettingsPage() {
           </div>
         </section>
 
-        {/* Section 3: 로그인 기록 */}
-        <section>
+        {/* Section 3: 로그인 기록 — full-bleed 흰 섹션 + hairline 행 */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 pt-4 pb-4">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-w-small font-bold text-wtext-3 dark:text-rink-300 tracking-wider uppercase">
+            <h2 className="text-w-small font-bold text-it-ink-500 dark:text-rink-300 tracking-wider uppercase">
               최근 로그인 기록
             </h2>
             <button
               onClick={() => void load()}
-              className="text-w-caption font-semibold text-ice-500 hover:underline"
+              className="text-w-caption font-semibold text-it-blue-600 hover:underline"
             >
               새로고침
             </button>
           </div>
           {isLoading ? null : error ? (
-            <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 text-w-small text-red-700 dark:text-red-400">
+            <div className="p-4 rounded-w-md bg-it-red-50 dark:bg-it-red-500/15 text-w-small text-it-red-600 dark:text-it-red-300">
               {error}
             </div>
           ) : history.length === 0 ? (
-            <div className="p-4 rounded-xl border border-dashed border-wline dark:border-rink-700 text-center">
-              <p className="text-w-small text-wtext-3">로그인 기록이 없습니다</p>
+            <div className="p-4 rounded-w-md border border-dashed border-it-line-strong dark:border-rink-700 text-center">
+              <p className="text-w-small text-it-ink-500">로그인 기록이 없습니다</p>
             </div>
           ) : (
-            <ul className="space-y-2">
+            <ul className="-mx-5 divide-y divide-it-line dark:divide-rink-700 border-t border-it-line dark:border-rink-700">
               {history.map((entry) => (
                 <li
                   key={entry.id}
-                  className="p-4 rounded-xl bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700"
+                  className="px-5 py-4"
                 >
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
@@ -444,18 +444,18 @@ export default function SecuritySettingsPage() {
                         className={
                           entry.success
                             ? 'text-emerald-500 text-[18px]'
-                            : 'text-red-500 text-[18px]'
+                            : 'text-it-red-500 text-[18px]'
                         }
                       />
-                      <span className="text-w-small font-semibold text-wtext-1 dark:text-white">
+                      <span className="text-w-small font-semibold text-it-ink-800 dark:text-white">
                         {entry.success ? '로그인 성공' : '로그인 실패'}
                       </span>
                     </div>
-                    <span className="text-w-caption text-wtext-3">
+                    <span className="text-w-caption text-it-ink-500">
                       {formatDateTime(entry.createdAt)}
                     </span>
                   </div>
-                  <p className="text-w-caption text-wtext-3 dark:text-rink-300 ml-6">
+                  <p className="text-w-caption text-it-ink-500 dark:text-rink-300 ml-6">
                     {entry.ipAddress ?? '알 수 없는 IP'} · {shortUserAgent(entry.userAgent)}
                     {!entry.success && entry.reason ? ` · ${entry.reason}` : ''}
                   </p>
@@ -465,24 +465,24 @@ export default function SecuritySettingsPage() {
           )}
         </section>
 
-        {/* Section 4: 연결된 디바이스 */}
-        <section>
-          <h2 className="text-w-small font-bold text-wtext-3 dark:text-rink-300 tracking-wider uppercase mb-3">
+        {/* Section 4: 연결된 디바이스 — full-bleed 흰 섹션 + hairline 행 */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 pt-4 pb-30">
+          <h2 className="text-w-small font-bold text-it-ink-500 dark:text-rink-300 tracking-wider uppercase mb-3">
             연결된 기기
           </h2>
           {isLoading ? null : devices.length === 0 ? (
-            <div className="p-4 rounded-xl border border-dashed border-wline dark:border-rink-700 text-center">
-              <p className="text-w-small text-wtext-3">연결된 기기가 없습니다</p>
+            <div className="p-4 rounded-w-md border border-dashed border-it-line-strong dark:border-rink-700 text-center">
+              <p className="text-w-small text-it-ink-500">연결된 기기가 없습니다</p>
             </div>
           ) : (
-            <ul className="space-y-2">
+            <ul className="-mx-5 divide-y divide-it-line dark:divide-rink-700 border-t border-it-line dark:border-rink-700">
               {devices.map((device) => (
                 <li
                   key={device.id}
-                  className="p-4 rounded-xl bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700"
+                  className="px-5 py-4"
                 >
                   <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 flex items-center justify-center text-wtext-2 dark:text-rink-100">
+                    <div className="w-10 h-10 flex items-center justify-center text-it-ink-700 dark:text-rink-100">
                       <Icon
                         name={
                           device.platform === 'ios' || device.platform === 'android'
@@ -493,14 +493,14 @@ export default function SecuritySettingsPage() {
                       />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-w-small font-bold text-wtext-1 dark:text-white">
+                      <p className="text-w-small font-bold text-it-ink-800 dark:text-white">
                         {device.deviceModel ?? `${device.platform} 디바이스`}
                       </p>
-                      <p className="text-w-caption text-wtext-3 dark:text-rink-300">
+                      <p className="text-w-caption text-it-ink-500 dark:text-rink-300">
                         {device.platform} {device.osVersion ?? ''}
                         {device.appVersion ? ` · 앱 v${device.appVersion}` : ''}
                       </p>
-                      <p className="text-w-caption text-wtext-3 mt-1">
+                      <p className="text-w-caption text-it-ink-500 mt-1">
                         마지막 접속: {formatDateTime(device.lastSeenAt)}
                       </p>
                     </div>

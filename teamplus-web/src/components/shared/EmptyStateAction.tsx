@@ -30,31 +30,41 @@ export interface EmptyStateActionProps {
   variant?: EmptyStateActionVariant;
   /** 추가 클래스 */
   className?: string;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 아이콘/CTA 를 it-blue 토큰으로 교체하고 컬러 그림자 제거.
+   */
+  iceTheme?: boolean;
 }
 
 function renderIcon(
   icon: ReactNode | string | undefined,
   illustrated: boolean,
+  iceTheme: boolean,
 ): ReactNode {
   const size = illustrated ? 'w-32 h-32' : 'w-20 h-20';
   const iconSize = illustrated ? 'text-6xl' : 'text-4xl';
   const fallback = 'inbox';
+  const iconColor = iceTheme
+    ? `${iconSize} text-it-blue-500`
+    : `${iconSize} text-ice-500 dark:text-blue-400`;
 
   const isStringIcon = typeof icon === 'string' || icon === undefined;
   const content = isStringIcon ? (
-    <Icon
-      name={(icon as string) || fallback}
-      className={`${iconSize} text-ice-500 dark:text-blue-400`}
-    />
+    <Icon name={(icon as string) || fallback} className={iconColor} />
   ) : isValidElement(icon) ? (
     icon
   ) : (
-    <Icon name={fallback} className={`${iconSize} text-ice-500 dark:text-blue-400`} />
+    <Icon name={fallback} className={iconColor} />
   );
 
   return (
     <div
-      className={`${size} rounded-full bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center`}
+      className={`${size} rounded-full flex items-center justify-center ${
+        iceTheme
+          ? 'bg-it-blue-50 dark:bg-it-blue-900/40'
+          : 'bg-blue-50 dark:bg-blue-950/40'
+      }`}
     >
       {content}
     </div>
@@ -70,11 +80,13 @@ export function EmptyStateAction({
   actionHref,
   variant = 'default',
   className = '',
+  iceTheme = false,
 }: EmptyStateActionProps) {
   const illustrated = variant === 'illustrated';
 
-  const ctaClasses =
-    'inline-flex items-center justify-center rounded-xl bg-ice-500 px-6 py-4 text-base font-semibold text-white shadow-md hover:bg-ice-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 disabled:opacity-50 transition-colors';
+  const ctaClasses = iceTheme
+    ? 'inline-flex items-center justify-center rounded-w-md bg-it-blue-500 px-6 py-4 text-base font-semibold text-white hover:bg-it-blue-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus-visible:ring-offset-2 disabled:opacity-50 transition-colors motion-reduce:transition-none'
+    : 'inline-flex items-center justify-center rounded-xl bg-ice-500 px-6 py-4 text-base font-semibold text-white shadow-md hover:bg-ice-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 disabled:opacity-50 transition-colors';
 
   const cta = actionLabel
     ? actionHref
@@ -95,12 +107,22 @@ export function EmptyStateAction({
       className={`flex flex-col items-center justify-center px-4 py-12 text-center ${className}`}
       role="status"
     >
-      {renderIcon(icon, illustrated)}
-      <h3 className="mt-5 text-lg font-semibold text-wtext-1 dark:text-white">
+      {renderIcon(icon, illustrated, iceTheme)}
+      <h3
+        className={`mt-5 text-lg font-semibold ${
+          iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white'
+        }`}
+      >
         {title}
       </h3>
       {description && (
-        <p className="mt-2 max-w-xs text-sm text-wtext-3 dark:text-rink-300">
+        <p
+          className={`mt-2 max-w-xs text-sm ${
+            iceTheme
+              ? 'text-it-ink-500 dark:text-it-ink-300'
+              : 'text-wtext-3 dark:text-rink-300'
+          }`}
+        >
           {description}
         </p>
       )}

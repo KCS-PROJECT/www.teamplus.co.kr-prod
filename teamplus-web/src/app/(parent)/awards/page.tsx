@@ -40,15 +40,17 @@ const AWARD_TYPE_ICON: Record<string, string> = {
   special: 'military_tech',
 };
 
+// [ICETIMES] 유형 배지 — 2색(blue+ink) 절제. 모든 유형을 it-blue 톤으로 통일하되
+//  트로피/날짜/제목 hairline 행 구조에서 유형은 it-blue-50 배경 + it-blue-600 글자로 표기.
 const AWARD_TYPE_BADGE_CLASS: Record<string, string> = {
-  mvp: 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400',
-  best_scorer: 'bg-blue-100 text-ice-500 dark:bg-blue-900/20 dark:text-blue-400',
-  best_goalie: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-400',
-  most_improved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400',
-  sportsmanship: 'bg-teal-100 text-teal-700 dark:bg-teal-900/20 dark:text-teal-400',
-  skill: 'bg-purple-100 text-purple-700 dark:bg-purple-900/20 dark:text-purple-400',
-  attendance: 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400',
-  special: 'bg-rose-100 text-rose-700 dark:bg-rose-900/20 dark:text-rose-400',
+  mvp: 'bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-500/15 dark:text-it-blue-300',
+  best_scorer: 'bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-500/15 dark:text-it-blue-300',
+  best_goalie: 'bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-500/15 dark:text-it-blue-300',
+  most_improved: 'bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-500/15 dark:text-it-blue-300',
+  sportsmanship: 'bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-500/15 dark:text-it-blue-300',
+  skill: 'bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-500/15 dark:text-it-blue-300',
+  attendance: 'bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-500/15 dark:text-it-blue-300',
+  special: 'bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-500/15 dark:text-it-blue-300',
 };
 
 function formatDate(dateStr: string): string {
@@ -67,96 +69,109 @@ function getTypeLabel(type: string): string {
 function getTypeBadgeClass(type: string): string {
   return (
     AWARD_TYPE_BADGE_CLASS[type] ??
-    'bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-100'
+    'bg-it-fill text-it-ink-600 dark:bg-rink-700 dark:text-rink-100'
   );
 }
 
 // ────────────────────────────────────────────
-// 수상 카드 (클릭 시 수정 페이지로 이동)
+// 수상 행 (클릭 시 수정 페이지로 이동)
+// [ICETIMES flat] 카드 박스 제거 → hairline 행: 트로피 아이콘 박스 + 제목/유형/날짜.
+//   부모 흰 섹션(bg-it-surface)이 배경을 담당하고, 각 행은 border-b border-it-line 으로 구분.
 // ────────────────────────────────────────────
-function AwardListCard({
+function AwardListRow({
   award,
   onClick,
+  divider,
 }: {
   award: PlayerAward;
   onClick: () => void;
+  divider: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="w-full text-left bg-white dark:bg-rink-800 rounded-xl border border-wline-2 dark:border-rink-700 shadow-sm overflow-hidden hover:border-ice-500/30 dark:hover:border-ice-500/40 hover:shadow-md transition-all motion-reduce:transition-none active:brightness-95"
+      className={`w-full text-left flex items-start gap-3 px-5 py-4 transition-colors motion-reduce:transition-none active:bg-it-fill dark:active:bg-rink-900/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-it-blue-500/40 ${
+        divider ? 'border-b border-it-line dark:border-it-blue-900' : ''
+      }`}
       aria-label={`${award.awardName} 수정`}
     >
-      <div className="p-4">
-        <div className="flex items-start justify-between mb-3">
+      {/* 트로피 아이콘 박스 — [시안] 38×38 r10 / it-fill / border 1px it-line */}
+      <span className="w-[38px] h-[38px] shrink-0 grid place-items-center rounded-[10px] bg-it-fill dark:bg-rink-900 border border-it-line dark:border-it-blue-900 text-it-blue-500">
+        <Icon name={getTypeIcon(award.awardType)} size={18} aria-hidden="true" />
+      </span>
+
+      <span className="flex-1 min-w-0">
+        {/* 유형 배지 + 첨부 표시 */}
+        <span className="flex items-center gap-1.5">
           <span
-            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-w-pill text-card-meta font-semibold ${getTypeBadgeClass(award.awardType)}`}
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-w-pill text-[11px] font-bold ${getTypeBadgeClass(award.awardType)}`}
           >
-            <Icon name={getTypeIcon(award.awardType)} size={14} aria-hidden="true" />
             {getTypeLabel(award.awardType)}
           </span>
-          <div className="flex items-center gap-1">
-            {award.imageUrl && (
-              <span
-                className="inline-flex items-center gap-1 text-card-meta text-wtext-3 dark:text-rink-300"
-                aria-label="수상 사진 포함"
-              >
-                <Icon name="image" size={13} aria-hidden="true" />
-              </span>
-            )}
-            {award.certificateUrl && (
-              <span
-                className="inline-flex items-center gap-1 text-card-meta text-wtext-3 dark:text-rink-300"
-                aria-label="상장 첨부"
-              >
-                <Icon name="description" size={13} aria-hidden="true" />
-              </span>
-            )}
+          {award.imageUrl && (
             <Icon
-              name="chevron_right"
-              size={18}
-              className="text-wtext-4 dark:text-rink-500"
-              aria-hidden="true"
+              name="image"
+              size={13}
+              className="text-it-ink-400 dark:text-rink-300"
+              aria-label="수상 사진 포함"
             />
-          </div>
-        </div>
+          )}
+          {award.certificateUrl && (
+            <Icon
+              name="description"
+              size={13}
+              className="text-it-ink-400 dark:text-rink-300"
+              aria-label="상장 첨부"
+            />
+          )}
+        </span>
 
-        <h3 className="text-card-emphasis font-bold text-wtext-1 dark:text-white mb-1 leading-snug">
+        {/* 제목 — [시안] 15.5/700 */}
+        <span className="block mt-1.5 text-[15.5px] font-bold text-it-ink-900 dark:text-white tracking-[-0.01em] leading-snug">
           {award.awardName}
-        </h3>
+        </span>
 
         {award.description && (
-          <p className="text-card-body text-wtext-3 dark:text-rink-300 mb-3 line-clamp-2">
+          <span className="block mt-0.5 text-[13px] font-medium text-it-ink-500 dark:text-rink-300 line-clamp-1">
             {award.description}
-          </p>
+          </span>
         )}
 
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-card-meta text-wtext-3 dark:text-rink-300">
-          <span className="flex items-center gap-1 tabular-nums">
-            <Icon name="calendar_today" size={13} aria-hidden="true" />
+        {/* 메타 — 날짜/시즌/수여기관/대회 */}
+        <span className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-card-meta text-it-ink-500 dark:text-rink-300">
+          <span className="inline-flex items-center gap-1 tabular-nums">
+            <Icon name="calendar_today" size={12} aria-hidden="true" />
             {formatDate(award.awardedAt)}
           </span>
           {award.season && (
-            <span className="flex items-center gap-1 tabular-nums">
-              <Icon name="date_range" size={13} aria-hidden="true" />
+            <span className="inline-flex items-center gap-1 tabular-nums">
+              <Icon name="date_range" size={12} aria-hidden="true" />
               {award.season}
             </span>
           )}
           {award.awardedBy && (
-            <span className="flex items-center gap-1">
-              <Icon name="person" size={13} aria-hidden="true" />
+            <span className="inline-flex items-center gap-1">
+              <Icon name="person" size={12} aria-hidden="true" />
               {award.awardedBy}
             </span>
           )}
           {award.tournament && (
-            <span className="flex items-center gap-1">
-              <Icon name="emoji_events" size={13} aria-hidden="true" />
+            <span className="inline-flex items-center gap-1">
+              <Icon name="emoji_events" size={12} aria-hidden="true" />
               {award.tournament.tournamentName ?? award.tournament.name ?? ''}
             </span>
           )}
-        </div>
-      </div>
+        </span>
+      </span>
+
+      {/* chevron */}
+      <Icon
+        name="chevron_right"
+        size={18}
+        className="shrink-0 mt-1 text-it-ink-300 dark:text-rink-500"
+        aria-hidden="true"
+      />
     </button>
   );
 }
@@ -234,25 +249,27 @@ export default function ParentAwardsPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title="수상 이력" />
 
-      <div className="flex-1 overflow-y-auto hide-scrollbar p-4 pb-30">
+      {/* [ICETIMES flat] main = 회색 캔버스 · 콘텐츠는 full-bleed 흰 섹션을 8px 회색 갭으로 쌓는다. */}
+      <div className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck pb-30">
+        {/* 타이틀 — 흰 섹션 */}
         <AnimatedSection delay={0}>
-          <div className="mb-5 mt-2">
-            <h1 className="text-2xl font-extrabold text-wtext-1 dark:text-white leading-tight">
-              수상 이력<span className="text-ice-500">.</span>
+          <section className="bg-it-surface dark:bg-it-blue-950 px-5 pt-6 pb-5">
+            <h1 className="text-2xl font-extrabold text-it-ink-900 dark:text-white leading-tight">
+              수상 이력<span className="text-it-blue-500">.</span>
             </h1>
-            <p className="text-wtext-3 dark:text-rink-300 text-card-body mt-1">
+            <p className="text-it-ink-500 dark:text-rink-300 text-card-body mt-1">
               자녀의 대회 수상 기록을 관리해보세요.
             </p>
-          </div>
+          </section>
         </AnimatedSection>
 
-        {/* 자녀 선택 */}
+        {/* 자녀 선택 — 흰 섹션 */}
         {isPageLoading ? null : hasEligibleChildren ? (
           <AnimatedSection delay={100}>
-            <div className="mb-5">
+            <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4">
               <label
                 htmlFor={childSelectId}
-                className="block text-card-body font-medium text-wtext-2 dark:text-rink-100 mb-1.5"
+                className="block text-card-body font-bold text-it-ink-800 dark:text-rink-100 mb-1.5"
               >
                 자녀 선택
               </label>
@@ -262,7 +279,7 @@ export default function ParentAwardsPage() {
                   value={selectedChildId}
                   onChange={(e) => setSelectedChildId(e.target.value)}
                   aria-label="수상 이력을 조회할 자녀 선택"
-                  className="w-full h-12 pl-11 pr-4 rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-wtext-1 dark:text-white text-card-body font-medium focus:outline-none focus:ring-2 focus:ring-ice-500/30 focus:border-ice-500 transition-colors motion-reduce:transition-none appearance-none"
+                  className="w-full h-12 pl-11 pr-10 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 text-it-ink-800 dark:text-white text-card-body font-medium focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 transition-colors motion-reduce:transition-none appearance-none"
                 >
                   {eligibleChildren.map((child) => (
                     <option key={child.id} value={child.id}>
@@ -275,7 +292,7 @@ export default function ParentAwardsPage() {
                   <Icon
                     name="person"
                     size={18}
-                    className="text-wtext-3 dark:text-rink-300"
+                    className="text-it-ink-400 dark:text-rink-300"
                     aria-hidden="true"
                   />
                 </div>
@@ -283,62 +300,63 @@ export default function ParentAwardsPage() {
                   <Icon
                     name="expand_more"
                     size={18}
-                    className="text-wtext-3 dark:text-rink-300"
+                    className="text-it-ink-400 dark:text-rink-300"
                     aria-hidden="true"
                   />
                 </div>
               </div>
-            </div>
+            </section>
           </AnimatedSection>
         ) : hasAnyChildren ? (
-          // 자녀는 있지만 승인된 팀 멤버십이 없는 경우
+          // 자녀는 있지만 승인된 팀 멤버십이 없는 경우 — 흰 섹션 내 빈 상태
           <AnimatedSection delay={100}>
-            <div className="mb-5 flex flex-col items-center justify-center rounded-2xl bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 py-12 px-6">
-              <div className="flex items-center justify-center size-14 rounded-w-pill bg-amber-50 dark:bg-amber-900/20 mb-3">
+            <section className="mt-2 bg-it-surface dark:bg-it-blue-950 flex flex-col items-center justify-center py-12 px-6">
+              <div className="flex items-center justify-center size-14 rounded-w-pill bg-it-blue-50 dark:bg-it-blue-500/15 mb-3">
                 <Icon
                   name="group_off"
-                  className="text-2xl text-amber-500 dark:text-amber-400"
+                  className="text-2xl text-it-blue-500"
                   aria-hidden="true"
                 />
               </div>
-              <p className="text-card-body font-semibold text-wtext-2 dark:text-rink-100 mb-1 text-center">
+              <p className="text-card-body font-semibold text-it-ink-800 dark:text-rink-100 mb-1 text-center">
                 {MESSAGES.awards.needTeamMembership}
               </p>
-              <p className="text-card-meta text-wtext-3 dark:text-rink-300 text-center">
+              <p className="text-card-meta text-it-ink-500 dark:text-rink-300 text-center">
                 팀 가입 승인 후에 수상 이력을 등록할 수 있습니다.
               </p>
-            </div>
+            </section>
           </AnimatedSection>
         ) : (
           <AnimatedSection delay={100}>
-            <EmptySection
-              icon="person_off"
-              message={MESSAGES.dashboard.parentDashboard.noChildData}
-              className="mb-5"
-            />
+            <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-3">
+              <EmptySection
+                icon="person_off"
+                message={MESSAGES.dashboard.parentDashboard.noChildData}
+              />
+            </section>
           </AnimatedSection>
         )}
 
         {/* 에러 */}
         {awardsError && (
           <div
-            className="mb-4 flex items-center gap-3 rounded-xl bg-red-50 dark:bg-red-900/20 p-3 border border-red-100 dark:border-red-900/30"
+            className="mx-5 mt-2 flex items-center gap-3 rounded-w-md bg-it-red-500/10 p-3 border-[1.5px] border-it-red-500/30"
             role="alert"
           >
             <Icon
               name="error"
-              className="text-red-500 dark:text-red-400 text-xl shrink-0"
+              className="text-it-red-500 text-xl shrink-0"
               aria-hidden="true"
             />
             <div className="flex-1 min-w-0">
-              <p className="text-card-body font-medium text-red-700 dark:text-red-300">
+              <p className="text-card-body font-medium text-it-red-500">
                 {awardsError}
               </p>
             </div>
             <button
               type="button"
               onClick={refresh}
-              className="shrink-0 text-card-body font-semibold text-red-600 dark:text-red-400 hover:underline"
+              className="shrink-0 text-card-body font-semibold text-it-red-500 hover:underline"
             >
               {MESSAGES.dashboard.errorRetry}
             </button>
@@ -348,25 +366,25 @@ export default function ParentAwardsPage() {
         {/* 수상 목록 */}
         {hasEligibleChildren && selectedMemberId && (
           <>
-            {/* 통계 요약 */}
+            {/* 통계 요약 — 흰 섹션 (hairline 행) */}
             {!isAwardsLoading && awards.length > 0 && (
               <AnimatedSection delay={150}>
-                <div className="bg-white dark:bg-rink-800 rounded-xl border border-wline-2 dark:border-rink-700 shadow-sm p-4 mb-4">
+                <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="flex items-center justify-center size-9 rounded-w-pill bg-amber-50 dark:bg-amber-900/20">
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex items-center justify-center size-9 rounded-[10px] bg-it-blue-50 dark:bg-it-blue-500/15 border border-it-line dark:border-it-blue-900">
                         <Icon
                           name="emoji_events"
                           size={18}
-                          className="text-amber-500"
+                          className="text-it-blue-500"
                           aria-hidden="true"
                         />
                       </div>
                       <div>
-                        <p className="text-card-meta text-wtext-3 dark:text-rink-300">
+                        <p className="text-card-meta text-it-ink-500 dark:text-rink-300">
                           총 수상 이력
                         </p>
-                        <p className="text-card-title font-bold text-wtext-1 dark:text-white tabular-nums">
+                        <p className="text-card-title font-bold text-it-ink-900 dark:text-white tabular-nums">
                           {MESSAGES.awards.countLabel(awards.length)}
                         </p>
                       </div>
@@ -375,7 +393,7 @@ export default function ParentAwardsPage() {
                       {typeCounts.map(([type, count]) => (
                         <span
                           key={type}
-                          className="inline-flex items-center gap-0.5 px-2 py-1 rounded-w-pill bg-wline-2 dark:bg-rink-700 text-card-meta text-wtext-2 dark:text-rink-100 tabular-nums"
+                          className="inline-flex items-center gap-0.5 px-2 py-1 rounded-w-pill bg-it-fill dark:bg-rink-700 text-card-meta text-it-ink-600 dark:text-rink-100 tabular-nums"
                         >
                           <Icon name={getTypeIcon(type)} size={12} aria-hidden="true" />
                           {count}
@@ -383,41 +401,43 @@ export default function ParentAwardsPage() {
                       ))}
                     </div>
                   </div>
-                </div>
+                </section>
               </AnimatedSection>
             )}
 
-            {/* 카드 리스트 */}
-            <div className="flex flex-col gap-3">
-              {isAwardsLoading ? null : awards.length > 0 ? (
-                awards.map((award, index) => (
-                  <AnimatedSection key={award.id} delay={200 + index * 80}>
-                    <AwardListCard
+            {/* 행 리스트 — 흰 섹션 내 hairline 행 */}
+            {isAwardsLoading ? null : awards.length > 0 ? (
+              <AnimatedSection delay={200}>
+                <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
+                  {awards.map((award, index) => (
+                    <AwardListRow
+                      key={award.id}
                       award={award}
                       onClick={() => handleEdit(award.id)}
+                      divider={index < awards.length - 1}
                     />
-                  </AnimatedSection>
-                ))
-              ) : (
-                <AnimatedSection delay={200}>
-                  <div className="flex flex-col items-center justify-center py-16 rounded-2xl bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700">
-                    <div className="flex items-center justify-center size-16 rounded-w-pill bg-wline-2 dark:bg-rink-700 mb-4">
-                      <Icon
-                        name="emoji_events"
-                        className="text-3xl text-wtext-3 dark:text-rink-300"
-                        aria-hidden="true"
-                      />
-                    </div>
-                    <p className="text-card-emphasis font-semibold text-wtext-2 dark:text-rink-100 mb-1">
-                      {MESSAGES.awards.noAwards}
-                    </p>
-                    <p className="text-card-body text-wtext-3 dark:text-rink-300 text-center px-8">
-                      {MESSAGES.awards.addFirst}
-                    </p>
+                  ))}
+                </section>
+              </AnimatedSection>
+            ) : (
+              <AnimatedSection delay={200}>
+                <section className="mt-2 bg-it-surface dark:bg-it-blue-950 flex flex-col items-center justify-center py-16">
+                  <div className="flex items-center justify-center size-16 rounded-w-pill bg-it-fill dark:bg-rink-700 mb-4">
+                    <Icon
+                      name="emoji_events"
+                      className="text-3xl text-it-ink-400 dark:text-rink-300"
+                      aria-hidden="true"
+                    />
                   </div>
-                </AnimatedSection>
-              )}
-            </div>
+                  <p className="text-card-emphasis font-semibold text-it-ink-800 dark:text-rink-100 mb-1">
+                    {MESSAGES.awards.noAwards}
+                  </p>
+                  <p className="text-card-body text-it-ink-500 dark:text-rink-300 text-center px-8">
+                    {MESSAGES.awards.addFirst}
+                  </p>
+                </section>
+              </AnimatedSection>
+            )}
           </>
         )}
       </div>
@@ -428,7 +448,7 @@ export default function ParentAwardsPage() {
           <button
             type="button"
             onClick={handleCreate}
-            className="w-full min-h-[56px] flex items-center justify-center gap-2 rounded-2xl bg-ice-500 hover:bg-ice-700 text-white font-bold text-card-emphasis shadow-md transition-colors motion-reduce:transition-none active:brightness-95"
+            className="w-full min-h-[56px] flex items-center justify-center gap-2 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white font-bold text-card-emphasis shadow-sh-blue transition-colors motion-reduce:transition-none active:brightness-95"
             aria-label="수상 이력 등록하기"
           >
             <Icon name="add_circle" size={22} aria-hidden="true" />

@@ -33,8 +33,8 @@ export const TRAINING_TYPE_COLORS: Record<string, TrainingTypeColor> = {
   REGULAR: {
     bg: 'bg-emerald-500',
     dot: '#10B981',
-    // [2026-05-18 SoT 통일] 캘린더 컨텍스트 = '정규훈련' (사용자 컨펌 §9.1)
-    label: '정규훈련',
+    // [2026-06-25 용어통일] 일정/캘린더 배지·범례 = '정규' (카드 배지와 통일)
+    label: '정규',
     text: 'text-emerald-700 dark:text-emerald-400',
     darkBg: 'dark:bg-emerald-600',
   },
@@ -43,7 +43,7 @@ export const TRAINING_TYPE_COLORS: Record<string, TrainingTypeColor> = {
   regular: {
     bg: 'bg-emerald-500',
     dot: '#10B981',
-    label: '정규훈련',
+    label: '정규',
     text: 'text-emerald-700 dark:text-emerald-400',
     darkBg: 'dark:bg-emerald-600',
   },
@@ -57,7 +57,7 @@ export const TRAINING_TYPE_COLORS: Record<string, TrainingTypeColor> = {
   OPEN: {
     bg: 'bg-blue-500',
     dot: '#3B82F6',
-    label: '오픈클래스',
+    label: '오픈',
     text: 'text-blue-700 dark:text-blue-400',
     darkBg: 'dark:bg-blue-600',
   },
@@ -93,7 +93,7 @@ export const TRAINING_TYPE_COLORS: Record<string, TrainingTypeColor> = {
   ACADEMY: {
     bg: 'bg-violet-500',
     dot: '#8B5CF6',
-    label: '오픈클래스',
+    label: '오픈',
     text: 'text-violet-700 dark:text-violet-400',
     darkBg: 'dark:bg-violet-600',
   },
@@ -118,7 +118,7 @@ export const TRAINING_SUBTYPE_COLORS: Record<string, TrainingTypeColor> = {
   REGULAR_TRAINING: {
     bg: 'bg-emerald-600',
     dot: '#059669',
-    label: '정규훈련',
+    label: '정규',
     text: 'text-emerald-800 dark:text-emerald-300',
     darkBg: 'dark:bg-emerald-700',
   },
@@ -248,7 +248,7 @@ export const TRAINING_SUBTLE_COLORS: Record<string, TrainingSubtleColor> = {
   FUN:      { bg: 'bg-orange-50 dark:bg-orange-950/30',   accent: 'text-orange-600 dark:text-orange-400',   label: '펀하키',   icon: 'celebration' },
   CAMP:     { bg: 'bg-amber-50 dark:bg-amber-950/30',     accent: 'text-amber-600 dark:text-amber-400',     label: '캠프',     icon: 'local_fire_department' },
   PICKUP:   { bg: 'bg-purple-50 dark:bg-purple-950/30',   accent: 'text-purple-600 dark:text-purple-400',   label: '픽업',     icon: 'group_add' },
-  ACADEMY:  { bg: 'bg-violet-50 dark:bg-violet-950/30',   accent: 'text-violet-600 dark:text-violet-400',   label: '오픈클래스', icon: 'school' },
+  ACADEMY:  { bg: 'bg-violet-50 dark:bg-violet-950/30',   accent: 'text-violet-600 dark:text-violet-400',   label: '오픈', icon: 'school' },
 } as const;
 
 const SUBTLE_FALLBACK: TrainingSubtleColor = {

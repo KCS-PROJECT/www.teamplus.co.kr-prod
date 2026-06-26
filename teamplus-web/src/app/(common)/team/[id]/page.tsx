@@ -83,7 +83,7 @@ const POSITION_COLOR: Record<RosterPosition, { bg: string; text: string }> = {
   },
   defense: {
     bg: "bg-blue-50 dark:bg-blue-900/20",
-    text: "text-ice-500 dark:text-blue-300",
+    text: "text-it-blue-500 dark:text-blue-300",
   },
   forward: {
     bg: "bg-rose-50 dark:bg-rose-900/20",
@@ -460,7 +460,7 @@ export default function TeamDetailPage() {
           titleClassName="text-card-section font-bold"
         />
         <main
-          className="flex flex-1 items-center justify-center bg-wbg px-4 dark:bg-rink-900"
+          className="flex flex-1 items-center justify-center bg-it-canvas px-4 dark:bg-puck"
           role="main"
           aria-label={MESSAGES.team.titleDetail}
         >
@@ -524,86 +524,73 @@ export default function TeamDetailPage() {
       />
 
       <main
-        className="hide-scrollbar flex-1 overflow-y-auto bg-wbg dark:bg-rink-900"
+        className="hide-scrollbar flex-1 overflow-y-auto bg-it-canvas dark:bg-puck"
         role="main"
         aria-label={MESSAGES.team.detailAriaLabel(team.name ?? "")}
       >
-        {/* ─── Hero Card (v2 2026-05-23 휴먼 디자인 재설계) ─────────────────────────
-            8 절대 규칙 준수:
-              · gradient 금지 → solid bg-ice-500 (단일 인디고 #2f5fff)
-              · backdrop-blur 금지
-              · colored shadow 금지 → shadow-sh-rink (디자인 토큰)
-              · 임의 hex 금지 → tailwind 토큰만 사용
-            UX 개선:
-              · 로고 박스 56→72px 확대 + rounded-w-2xl (28px) 라운드 = 휴먼한 풍부함
-              · venue 칩을 카드 내 자연스러운 위치(우측 상단) — 흰 outline + 반투명
-              · 팀명 위계 명확화 (h2 28px) + 약어를 메타 라인에 통합
-              · Since/리그 메타 라인 정돈 (dot separator) ─── */}
-        <div className="px-5 pt-3">
-          <div className="relative overflow-hidden rounded-w-2xl bg-ice-500 px-5 pt-5 pb-6 text-white shadow-sh-rink dark:bg-rink-800">
-            {/* 메인 정보 영역 — 로고 + 텍스트 */}
-            <div className="flex items-center gap-4">
-              {/* 로고 박스 — 72×72, rounded-w-2xl, 흰 배경 + 디자인 토큰 그림자 */}
-              <div className="flex size-[72px] shrink-0 items-center justify-center rounded-w-2xl bg-white shadow-sh-2 dark:bg-wsurface">
-                {resolveImageSrc(team.logoUrl) ? (
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <img
-                    src={resolveImageSrc(team.logoUrl)}
-                    alt=""
-                    className="size-full rounded-w-2xl object-cover"
-                  />
-                ) : (
-                  <Icon
-                    name="sports_hockey"
-                    aria-hidden="true"
-                    className="text-[32px] text-ice-500"
-                  />
+        {/* ─── Hero (ICETIMES navy 히어로 2026-06-25) ─────────────────────────
+            full-bleed navy 밴드 bg-it-blue-800. 카드 박스/외곽 border 제거.
+            8 절대 규칙 준수: gradient/backdrop-blur/colored shadow 0, it-* 토큰만. */}
+        <div className="bg-it-blue-800 dark:bg-it-blue-950 px-5 pt-6 pb-7 text-white">
+          {/* 메인 정보 영역 — 로고 + 텍스트 */}
+          <div className="flex items-center gap-4">
+            {/* 로고 박스 — 72×72, 흰 배경 */}
+            <div className="flex size-[72px] shrink-0 items-center justify-center rounded-w-2xl bg-white dark:bg-it-surface">
+              {resolveImageSrc(team.logoUrl) ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={resolveImageSrc(team.logoUrl)}
+                  alt=""
+                  className="size-full rounded-w-2xl object-cover"
+                />
+              ) : (
+                <Icon
+                  name="sports_hockey"
+                  aria-hidden="true"
+                  className="text-[32px] text-it-blue-500"
+                />
+              )}
+            </div>
+
+            {/* 텍스트 영역 — 위계 3단계 (팀명+위치 / 서브타이틀 / 메타) */}
+            <div className="min-w-0 flex-1 pt-1">
+              <div className="flex items-start gap-2">
+                <h2 className="min-w-0 flex-1 truncate text-w-h2 font-extrabold tracking-[-0.025em] text-white">
+                  {team.name}
+                </h2>
+                {(team.venue?.name || team.homeArena || team.club?.location) && (
+                  <span className="mt-1 inline-flex max-w-[45%] shrink-0 items-center gap-1 rounded-w-pill border border-white/30 bg-white/15 px-2.5 py-1">
+                    <Icon
+                      name="place"
+                      size={13}
+                      className="shrink-0 text-white"
+                      aria-hidden="true"
+                    />
+                    <span className="truncate text-card-meta font-bold tracking-tight text-white">
+                      {team.venue?.name || team.homeArena || team.club?.location}
+                    </span>
+                  </span>
                 )}
               </div>
-
-              {/* 텍스트 영역 — 위계 3단계 (팀명+위치 / 약어 / 메타) */}
-              <div className="min-w-0 flex-1 pt-1">
-                {/* [수정 2026-05-26 B4] 팀명 + 홈 경기장 칩을 같은 flex 행에 배치하여 겹침 제거.
-                    기존: 경기장 칩이 `absolute top-4 right-4` 로 카드 우상단에 떠 있어
-                          경기장명이 길면 팀명(h2) 우측과 겹쳐 보임 (fallback: venue.name →
-                          homeArena → club.location).
-                    변경: 팀명(min-w-0 flex-1 truncate) + 경기장 칩(shrink-0 max-w-[45%] truncate)을
-                          flex 행으로 묶어 두 텍스트가 절대 겹치지 않도록 함. */}
-                <div className="flex items-start gap-2">
-                  <h2 className="min-w-0 flex-1 truncate text-w-h2 font-extrabold tracking-[-0.025em] text-white">
-                    {team.name}
-                  </h2>
-                  {(team.venue?.name || team.homeArena || team.club?.location) && (
-                    <span className="mt-1 inline-flex max-w-[45%] shrink-0 items-center gap-1 rounded-w-pill border border-white/30 bg-white/15 px-2.5 py-1">
-                      <Icon
-                        name="place"
-                        size={13}
-                        className="shrink-0 text-white"
-                        aria-hidden="true"
-                      />
-                      <span className="truncate text-card-meta font-bold tracking-tight text-white">
-                        {team.venue?.name || team.homeArena || team.club?.location}
-                      </span>
-                    </span>
-                  )}
-                </div>
-                <div className="mt-1 truncate text-card-body font-bold tabular-nums tracking-tight text-white/95">
-                  {heroSubtitle}
-                </div>
-                <div className="mt-1 truncate text-card-meta font-medium text-white/75">
-                  {heroTagline}
-                </div>
+              <div className="mt-1 truncate text-card-body font-bold tabular-nums tracking-tight text-white/95">
+                {heroSubtitle}
+              </div>
+              <div className="mt-1 truncate text-card-meta font-medium text-white/75">
+                {heroTagline}
               </div>
             </div>
           </div>
         </div>
 
-        {/* ─── Tabs (04e inline) — 흰색 박스 안에 grid 1/1/1 + primary 활성 + 카운트 배지 ─── */}
+        {/* flat 섹션 사이 8px 회색 갭 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+        {/* ─── Tabs — flat 흰 섹션 안 밑줄형 세그먼트 (카드 박스 제거) ─── */}
         <section
-          className="px-5 pt-4 pb-1"
+          className="bg-it-surface dark:bg-it-blue-950 px-5 pt-2"
           aria-label={MESSAGES.team.ariaTabMenu}
         >
-          <div className="rounded-[14px] bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 p-1 grid grid-cols-3 gap-1">
+          <div className="grid grid-cols-3 border-b border-it-line dark:border-it-blue-900">
             {tabs.map((t) => {
               const on = t.key === activeTab;
               return (
@@ -612,10 +599,10 @@ export default function TeamDetailPage() {
                   type="button"
                   onClick={() => setActiveTab(t.key)}
                   className={cn(
-                    "h-9 rounded-[10px] inline-flex items-center justify-center gap-1.5 text-card-body font-extrabold tracking-tight transition-colors motion-reduce:transition-none",
+                    "relative h-11 inline-flex items-center justify-center gap-1.5 text-[15px] font-extrabold tracking-tight transition-colors motion-reduce:transition-none",
                     on
-                      ? "bg-ice-500 text-white shadow-md"
-                      : "bg-transparent text-wtext-3 dark:text-rink-300 hover:bg-wbg dark:hover:bg-rink-700/50",
+                      ? "text-it-blue-500"
+                      : "text-it-ink-400 dark:text-it-ink-300 hover:text-it-ink-600 dark:hover:text-it-ink-200",
                   )}
                   aria-pressed={on}
                   aria-controls={`tabpanel-${t.key}`}
@@ -626,12 +613,18 @@ export default function TeamDetailPage() {
                       className={cn(
                         "min-w-[18px] h-[18px] px-1.5 rounded-w-pill text-card-meta font-extrabold tabular-nums inline-flex items-center justify-center",
                         on
-                          ? "bg-white/25 text-white"
-                          : "bg-wline-2 dark:bg-rink-700 text-wtext-3 dark:text-rink-300",
+                          ? "bg-it-blue-500 text-white"
+                          : "bg-it-line dark:bg-it-blue-900 text-it-ink-500 dark:text-it-ink-300",
                       )}
                     >
                       {t.count}
                     </span>
+                  )}
+                  {on && (
+                    <span
+                      className="absolute inset-x-3 -bottom-px h-[2.5px] rounded-t-w-pill bg-it-blue-500"
+                      aria-hidden="true"
+                    />
                   )}
                 </button>
               );
@@ -701,7 +694,7 @@ export default function TeamDetailPage() {
               <button
                 type="button"
                 onClick={handleDelete}
-                className="flex h-[50px] flex-1 items-center justify-center gap-1.5 rounded-[14px] border border-red-200 bg-white text-card-body font-extrabold text-red-600 tracking-tight hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40 active:scale-[0.98] dark:border-red-900/50 dark:bg-rink-800 dark:hover:bg-red-900/20"
+                className="flex h-[50px] flex-1 items-center justify-center gap-1.5 rounded-w-md border-[1.5px] border-it-red-200 bg-it-surface text-[15px] font-extrabold text-it-red-500 tracking-tight hover:bg-it-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-red-500/40 active:brightness-95 dark:border-it-red-500/40 dark:bg-it-blue-950 dark:text-it-red-300 dark:hover:bg-it-red-500/10"
                 aria-label={MESSAGES.team.deleteTeamAriaLabel}
               >
                 <Icon name="warning" className="text-[15px]" aria-hidden="true" />
@@ -710,7 +703,7 @@ export default function TeamDetailPage() {
               <button
                 type="button"
                 onClick={handleEdit}
-                className="flex h-[50px] flex-[2] items-center justify-center gap-1.5 rounded-[14px] bg-ice-500 text-card-body font-extrabold text-white tracking-tight hover:bg-ice-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 active:scale-[0.98] shadow-md"
+                className="flex h-[50px] flex-[2] items-center justify-center gap-1.5 rounded-w-md bg-it-blue-500 text-[15px] font-extrabold text-white tracking-tight hover:bg-it-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 active:brightness-95"
                 aria-label={MESSAGES.team.editTeamAriaLabel}
               >
                 <Icon name="edit" className="text-[16px]" aria-hidden="true" />
@@ -720,7 +713,7 @@ export default function TeamDetailPage() {
           ) : (
             <button
               type="button"
-              className="flex h-12 w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-ice-500 text-card-body font-bold text-white opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
+              className="flex h-12 w-full cursor-not-allowed items-center justify-center gap-2 rounded-w-md bg-it-blue-500 text-[15px] font-bold text-white opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40"
               onClick={() => toast.info(MESSAGES.team.inquireJoinUnavailable)}
               aria-label={MESSAGES.team.inquireJoin}
               aria-disabled="true"
@@ -799,41 +792,35 @@ function TeamInfoPanel({
   const slogan = team.slogan?.trim() || "";
 
   return (
-    <div className="flex flex-col gap-0 pb-6">
-      {/* ─── 1) 팀 슬로건 — 좌측 3px primary 액센트 + italic 인용문 + 수정 버튼 (참고자료 04e) ─── */}
+    <div className="flex flex-col gap-0 bg-it-surface dark:bg-it-blue-950 pb-6">
+      {/* ─── 1) 팀 슬로건 — 좌측 3px primary 액센트 + italic 인용문 + 수정 버튼 ─── */}
       <div className="px-5 pt-4">
-        <div
-          className="relative rounded-[14px] py-4 pl-[22px] pr-4"
-          style={{ background: "rgb(47 95 255 / 0.05)", border: "1px solid rgb(47 95 255 / 0.15)" }}
-        >
+        <div className="relative rounded-w-md bg-it-blue-50 dark:bg-it-blue-500/10 border-[1.5px] border-it-blue-100 dark:border-it-blue-500/30 py-4 pl-[22px] pr-4">
           <span
-            className="absolute left-3 top-4 bottom-4 w-[3px] rounded-[2px] bg-ice-500"
+            className="absolute left-3 top-4 bottom-4 w-[3px] rounded-[2px] bg-it-blue-500"
             aria-hidden="true"
           />
           <div className="flex items-center justify-between mb-2">
-            <span className="text-card-meta font-extrabold text-wtext-1 dark:text-white tracking-tight">
+            <span className="text-card-meta font-extrabold text-it-ink-800 dark:text-white tracking-tight">
               {MESSAGES.team.slogan}
             </span>
             <button
               type="button"
               onClick={() => router.push(`/team/${team.id}/edit`)}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-w-pill bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 text-card-meta font-bold hover:border-ice-500/40 transition-colors motion-reduce:transition-none active:brightness-95"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-w-pill bg-it-surface dark:bg-it-blue-950 border-[1.5px] border-it-line-strong dark:border-it-blue-900 text-it-ink-600 dark:text-it-ink-200 text-card-meta font-bold hover:border-it-blue-500/40 transition-colors motion-reduce:transition-none active:brightness-95"
               aria-label={MESSAGES.team.editSloganAriaLabel}
             >
               <Icon name="edit" size={11} aria-hidden="true" />
               {MESSAGES.common.edit}
             </button>
           </div>
-          <p
-            className="text-card-emphasis font-extrabold italic tracking-tight"
-            style={{ color: "#1f47e6", letterSpacing: "-0.02em" }}
-          >
+          <p className="text-card-emphasis font-extrabold italic tracking-tight text-it-blue-600 dark:text-it-blue-300" style={{ letterSpacing: "-0.02em" }}>
             {slogan ? `"${slogan}"` : `"${MESSAGES.teamSlogan.placeholder}"`}
           </p>
         </div>
       </div>
 
-      {/* ─── 2) 창단 + 홈 경기장 — 2-grid 카드 ─── */}
+      {/* ─── 2) 창단 + 홈 경기장 — 2-grid (인셋 fill) ─── */}
       <div className="px-5 pt-3 grid grid-cols-2 gap-2.5">
         {[
           { label: MESSAGES.team.founded, value: foundingLabel, icon: "event" },
@@ -841,20 +828,20 @@ function TeamInfoPanel({
         ].map((it) => (
           <div
             key={it.label}
-            className="rounded-[14px] bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-sm px-3.5 py-3.5"
+            className="rounded-w-md bg-it-fill dark:bg-it-blue-900/40 border-[1.5px] border-it-line dark:border-it-blue-900 px-3.5 py-3.5"
           >
             <div className="flex items-center gap-1.5 mb-1.5">
               <Icon
                 name={it.icon}
                 size={14}
-                className="text-wtext-3 dark:text-rink-300"
+                className="text-it-ink-500 dark:text-it-ink-300"
                 aria-hidden="true"
               />
-              <span className="text-card-meta font-bold text-wtext-3 dark:text-rink-300 tracking-wider">
+              <span className="text-card-meta font-bold text-it-ink-500 dark:text-it-ink-300 tracking-wider">
                 {it.label}
               </span>
             </div>
-            <div className="text-card-title font-extrabold text-wtext-1 dark:text-white tracking-tight truncate">
+            <div className="text-card-title font-extrabold text-it-ink-800 dark:text-white tracking-tight truncate">
               {it.value}
             </div>
           </div>
@@ -865,14 +852,14 @@ function TeamInfoPanel({
       {team.description && (
         <>
           <div className="px-5 pt-5 pb-2 flex items-center gap-2">
-            <span className="inline-block w-[3px] h-[14px] rounded-[2px] bg-ice-500" aria-hidden="true" />
-            <h3 className="text-card-body font-extrabold text-wtext-1 dark:text-white tracking-tight">
+            <span className="inline-block w-[3px] h-[14px] rounded-[2px] bg-it-blue-500" aria-hidden="true" />
+            <h3 className="text-card-body font-extrabold text-it-ink-800 dark:text-white tracking-tight">
               {MESSAGES.team.aboutSection}
             </h3>
           </div>
           <div className="px-5">
-            <div className="rounded-[14px] bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-sm px-4 py-4">
-              <p className="text-card-body leading-relaxed text-wtext-2 dark:text-rink-100 whitespace-pre-wrap">
+            <div className="rounded-w-md bg-it-fill dark:bg-it-blue-900/40 border-[1.5px] border-it-line dark:border-it-blue-900 px-4 py-4">
+              <p className="text-card-body leading-relaxed text-it-ink-700 dark:text-white whitespace-pre-wrap">
                 {team.description}
               </p>
             </div>
@@ -884,14 +871,14 @@ function TeamInfoPanel({
 
       {/* ─── 5) 감독/코치 — 빈 상태 또는 row ─── */}
       <div className="px-5 pt-5 pb-2 flex items-center gap-2">
-        <span className="inline-block w-[3px] h-[14px] rounded-[2px] bg-ice-500" aria-hidden="true" />
-        <h3 className="text-card-body font-extrabold text-wtext-1 dark:text-white tracking-tight">
+        <span className="inline-block w-[3px] h-[14px] rounded-[2px] bg-it-blue-500" aria-hidden="true" />
+        <h3 className="text-card-body font-extrabold text-it-ink-800 dark:text-white tracking-tight">
           {MESSAGES.team.coachStaff}
         </h3>
       </div>
       <div className="px-5">
         {coachStaff && coachStaff.length > 0 ? (
-          <div className="rounded-[14px] bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-sm px-4 py-3 flex flex-col gap-2">
+          <div className="rounded-w-md bg-it-fill dark:bg-it-blue-900/40 border-[1.5px] border-it-line dark:border-it-blue-900 px-4 py-3 flex flex-col gap-2">
             {coachStaff.map((c) => {
               const fullName = `${c.user.lastName ?? ""}${c.user.firstName ?? ""}`.trim() || c.user.email;
               const role = c.isHead ? MESSAGES.team.headCoachBadge : MESSAGES.team.coachBadge;
@@ -900,14 +887,14 @@ function TeamInfoPanel({
                   key={c.id}
                   className="flex items-center gap-3 py-1.5"
                 >
-                  <div className="size-9 rounded-w-pill bg-ice-500/10 text-ice-500 flex items-center justify-center text-card-body font-extrabold">
+                  <div className="size-9 rounded-w-pill bg-it-blue-500/10 text-it-blue-500 flex items-center justify-center text-card-body font-extrabold">
                     {fullName.charAt(0)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-card-body font-bold text-wtext-1 dark:text-white tracking-tight truncate">
+                    <div className="text-card-body font-bold text-it-ink-800 dark:text-white tracking-tight truncate">
                       {fullName}
                     </div>
-                    <div className="text-card-meta text-wtext-3 dark:text-rink-300 truncate">
+                    <div className="text-card-meta text-it-ink-500 dark:text-it-ink-300 truncate">
                       {role}
                     </div>
                   </div>
@@ -916,16 +903,16 @@ function TeamInfoPanel({
             })}
           </div>
         ) : (
-          <div className="rounded-[14px] bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-sm px-5 py-7 flex flex-col items-center gap-2">
-            <div className="size-12 rounded-w-pill bg-wbg dark:bg-rink-900/40 flex items-center justify-center">
+          <div className="rounded-w-md bg-it-fill dark:bg-it-blue-900/40 border-[1.5px] border-it-line dark:border-it-blue-900 px-5 py-7 flex flex-col items-center gap-2">
+            <div className="size-12 rounded-w-pill bg-it-canvas dark:bg-it-blue-900/40 flex items-center justify-center">
               <Icon
                 name="person_off"
                 size={24}
-                className="text-wtext-3 dark:text-rink-300"
+                className="text-it-ink-500 dark:text-it-ink-300"
                 aria-hidden="true"
               />
             </div>
-            <div className="text-card-body font-extrabold text-wtext-1 dark:text-white tracking-tight">
+            <div className="text-card-body font-extrabold text-it-ink-800 dark:text-white tracking-tight">
               {MESSAGES.team.coachStaffEmpty}
             </div>
           </div>
@@ -934,13 +921,13 @@ function TeamInfoPanel({
 
       {/* ─── 6) 팀 정보 — 정의형 리스트 ─── */}
       <div className="px-5 pt-5 pb-2 flex items-center gap-2">
-        <span className="inline-block w-[3px] h-[14px] rounded-[2px] bg-ice-500" aria-hidden="true" />
-        <h3 className="text-card-body font-extrabold text-wtext-1 dark:text-white tracking-tight">
+        <span className="inline-block w-[3px] h-[14px] rounded-[2px] bg-it-blue-500" aria-hidden="true" />
+        <h3 className="text-card-body font-extrabold text-it-ink-800 dark:text-white tracking-tight">
           {MESSAGES.team.metaTeamInfo}
         </h3>
       </div>
       <div className="px-5">
-        <div className="rounded-[14px] bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-sm px-4">
+        <div className="rounded-w-md bg-it-fill dark:bg-it-blue-900/40 border-[1.5px] border-it-line dark:border-it-blue-900 px-4">
           {[
             {
               k: MESSAGES.team.metaDivision,
@@ -974,10 +961,10 @@ function TeamInfoPanel({
               key={row.k}
               className={cn(
                 "flex items-center justify-between py-3",
-                i < arr.length - 1 && "border-b border-wline-2 dark:border-rink-700",
+                i < arr.length - 1 && "border-b border-it-line dark:border-it-blue-900",
               )}
             >
-              <span className="text-card-body font-semibold text-wtext-3 dark:text-rink-300">
+              <span className="text-card-body font-semibold text-it-ink-500 dark:text-it-ink-300">
                 {row.k}
               </span>
               <span className="text-card-body">
@@ -987,7 +974,7 @@ function TeamInfoPanel({
                       "px-2 py-0.5 rounded-md text-card-meta font-extrabold tracking-wider",
                       team.isActive
                         ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400"
-                        : "bg-wline-2 text-wtext-3 dark:bg-rink-700 dark:text-rink-300",
+                        : "bg-it-line text-it-ink-500 dark:bg-it-blue-900 dark:text-it-ink-300",
                     )}
                   >
                     {row.v}
@@ -996,24 +983,21 @@ function TeamInfoPanel({
                   row.v ? (
                     <span className="inline-flex items-center gap-1.5">
                       <span
-                        className="inline-block size-3.5 rounded-w-pill"
-                        style={{
-                          backgroundColor: row.v as string,
-                          boxShadow: `0 2px 6px ${row.v}55`,
-                        }}
+                        className="inline-block size-3.5 rounded-w-pill border border-it-line"
+                        style={{ backgroundColor: row.v as string }}
                         aria-hidden="true"
                       />
-                      <span className="font-extrabold tabular-nums text-wtext-1 dark:text-white tracking-tight">
+                      <span className="font-extrabold tabular-nums text-it-ink-800 dark:text-white tracking-tight">
                         {row.v}
                       </span>
                     </span>
                   ) : (
-                    <span className="font-bold text-wtext-3 dark:text-rink-300">—</span>
+                    <span className="font-bold text-it-ink-500 dark:text-it-ink-300">—</span>
                   )
                 ) : (
                   <span
                     className={cn(
-                      "font-extrabold text-wtext-1 dark:text-white tracking-tight",
+                      "font-extrabold text-it-ink-800 dark:text-white tracking-tight",
                       row.tabular && "tabular-nums",
                     )}
                   >
@@ -1028,13 +1012,13 @@ function TeamInfoPanel({
 
       {/* ─── 7) 운영 현황 — 3 stats ─── */}
       <div className="px-5 pt-5 pb-2 flex items-center gap-2">
-        <span className="inline-block w-[3px] h-[14px] rounded-[2px] bg-ice-500" aria-hidden="true" />
-        <h3 className="text-card-body font-extrabold text-wtext-1 dark:text-white tracking-tight">
+        <span className="inline-block w-[3px] h-[14px] rounded-[2px] bg-it-blue-500" aria-hidden="true" />
+        <h3 className="text-card-body font-extrabold text-it-ink-800 dark:text-white tracking-tight">
           {MESSAGES.team.operationStats}
         </h3>
       </div>
       <div className="px-5">
-        <div className="rounded-[14px] bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-sm px-4 py-5 grid grid-cols-3 gap-2">
+        <div className="rounded-w-md bg-it-fill dark:bg-it-blue-900/40 border-[1.5px] border-it-line dark:border-it-blue-900 px-4 py-5 grid grid-cols-3 gap-2">
           {/* [수정 2026-05-11] 선수/홈경기/원정경기 → 감독·코치/학부모/선수 (역할별 인원) */}
           {[
             { label: MESSAGES.team.statStaff, v: memberCounts.staff, unit: MESSAGES.team.unitPerson, accent: false },
@@ -1042,7 +1026,7 @@ function TeamInfoPanel({
             { label: MESSAGES.team.statPlayer, v: memberCounts.players, unit: MESSAGES.team.unitPerson, accent: true },
           ].map((s) => (
             <div key={s.label} className="text-center">
-              <div className="text-card-meta font-bold text-wtext-3 dark:text-rink-300 tracking-wider mb-1.5">
+              <div className="text-card-meta font-bold text-it-ink-500 dark:text-it-ink-300 tracking-wider mb-1.5">
                 {s.label}
               </div>
               <div className="inline-flex items-baseline gap-[3px]">
@@ -1050,14 +1034,14 @@ function TeamInfoPanel({
                   className={cn(
                     "text-w-h2 font-extrabold tabular-nums leading-none",
                     s.accent
-                      ? "text-ice-500"
-                      : "text-wtext-3 dark:text-rink-300",
+                      ? "text-it-blue-500"
+                      : "text-it-ink-500 dark:text-it-ink-300",
                   )}
                   style={{ letterSpacing: "-0.03em" }}
                 >
                   {s.v}
                 </span>
-                <span className="text-card-meta font-bold text-wtext-3 dark:text-rink-300">
+                <span className="text-card-meta font-bold text-it-ink-500 dark:text-it-ink-300">
                   {s.unit}
                 </span>
               </div>
@@ -1069,11 +1053,11 @@ function TeamInfoPanel({
       {/* ─── 8) 그룹 현황 — chip 리스트 (방패 아이콘 + 이름 + 연령) ─── */}
       <div className="px-5 pt-5 pb-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="inline-block w-[3px] h-[14px] rounded-[2px] bg-ice-500" aria-hidden="true" />
-          <h3 className="text-card-body font-extrabold text-wtext-1 dark:text-white tracking-tight">
+          <span className="inline-block w-[3px] h-[14px] rounded-[2px] bg-it-blue-500" aria-hidden="true" />
+          <h3 className="text-card-body font-extrabold text-it-ink-800 dark:text-white tracking-tight">
             {MESSAGES.team.groupStats}
           </h3>
-          <span className="ml-1 px-1.5 py-px rounded-w-pill bg-wline-2 dark:bg-rink-700 text-card-meta font-extrabold text-wtext-2 dark:text-rink-100 tabular-nums">
+          <span className="ml-1 px-1.5 py-px rounded-w-pill bg-it-line dark:bg-it-blue-900 text-card-meta font-extrabold text-it-ink-700 dark:text-white tabular-nums">
             {team._count?.groups ?? 0}
           </span>
         </div>
@@ -1081,7 +1065,7 @@ function TeamInfoPanel({
           type="button"
           onClick={() => router.push(`/team/${team.id}/groups`, { scroll: false })}
           aria-label={MESSAGES.team.groupsViewMore}
-          className="size-7 flex items-center justify-center text-wtext-3 dark:text-rink-300 hover:text-ice-500"
+          className="size-7 flex items-center justify-center text-it-ink-500 dark:text-it-ink-300 hover:text-it-blue-500"
         >
           <Icon name="chevron_right" size={16} aria-hidden="true" />
         </button>
@@ -1090,7 +1074,7 @@ function TeamInfoPanel({
         <button
           type="button"
           onClick={() => router.push(`/team/${team.id}/groups`, { scroll: false })}
-          className="block w-full text-left rounded-[14px] bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-sm px-3.5 py-3.5 hover:border-ice-500/40 transition-colors motion-reduce:transition-none active:brightness-95"
+          className="block w-full text-left rounded-w-md bg-it-fill dark:bg-it-blue-900/40 border-[1.5px] border-it-line dark:border-it-blue-900 px-3.5 py-3.5 hover:border-it-blue-500/40 transition-colors motion-reduce:transition-none active:brightness-95"
           aria-label={MESSAGES.team.groupsViewMore}
         >
           {team.groups && team.groups.length > 0 ? (
@@ -1098,20 +1082,20 @@ function TeamInfoPanel({
               {team.groups.map((g) => (
                 <li
                   key={g.id}
-                  className="inline-flex items-center gap-1.5 rounded-[10px] bg-wbg dark:bg-rink-900/40 border border-wline-2 dark:border-rink-700 px-3 py-2"
+                  className="inline-flex items-center gap-1.5 rounded-[10px] bg-it-canvas dark:bg-it-blue-900/40 border border-it-line dark:border-it-blue-900 px-3 py-2"
                 >
                   <Icon
                     name="shield"
                     size={13}
-                    className="text-ice-500"
+                    className="text-it-blue-500"
                     aria-hidden="true"
                   />
-                  <span className="text-card-meta font-extrabold text-wtext-1 dark:text-white tracking-tight truncate">
+                  <span className="text-card-meta font-extrabold text-it-ink-800 dark:text-white tracking-tight truncate">
                     {g.name}
                   </span>
                   {/* [2026-06-05] 출생연도(4자리)만 "년생" 표시. 레거시 U8~U12 는 숨김. */}
                   {g.ageGroup && /^\d{4}$/.test(g.ageGroup) && (
-                    <span className="text-card-meta font-bold text-wtext-3 dark:text-rink-300 tabular-nums">
+                    <span className="text-card-meta font-bold text-it-ink-500 dark:text-it-ink-300 tabular-nums">
                       · {g.ageGroup}년생
                     </span>
                   )}
@@ -1119,7 +1103,7 @@ function TeamInfoPanel({
               ))}
             </ul>
           ) : (
-            <p className="text-card-body text-wtext-3 dark:text-rink-300">
+            <p className="text-card-body text-it-ink-500 dark:text-it-ink-300">
               {MESSAGES.team.groupsEmpty}
             </p>
           )}
@@ -1128,18 +1112,18 @@ function TeamInfoPanel({
 
       {/* ─── [재배치 2026-05-12] 주요 약력 — 페이지 맨 아래로 이동 ─── */}
       <div className="px-5 pt-5 pb-2 flex items-center gap-2">
-        <span className="inline-block w-[3px] h-[14px] rounded-[2px] bg-ice-500" aria-hidden="true" />
-        <h3 className="text-card-body font-extrabold text-wtext-1 dark:text-white tracking-tight">
+        <span className="inline-block w-[3px] h-[14px] rounded-[2px] bg-it-blue-500" aria-hidden="true" />
+        <h3 className="text-card-body font-extrabold text-it-ink-800 dark:text-white tracking-tight">
           {MESSAGES.team.history}
         </h3>
       </div>
       <div className="px-5">
-        <div className="rounded-[14px] bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-sm px-5 py-8 flex flex-col items-center gap-2">
-          <div className="size-12 rounded-w-pill bg-wbg dark:bg-rink-900/40 flex items-center justify-center">
+        <div className="rounded-w-md bg-it-fill dark:bg-it-blue-900/40 border-[1.5px] border-it-line dark:border-it-blue-900 px-5 py-8 flex flex-col items-center gap-2">
+          <div className="size-12 rounded-w-pill bg-it-canvas dark:bg-it-blue-900/40 flex items-center justify-center">
             <Icon
               name="emoji_events"
               size={24}
-              className="text-wtext-3 dark:text-rink-300"
+              className="text-it-ink-500 dark:text-it-ink-300"
               aria-hidden="true"
             />
           </div>
@@ -1151,10 +1135,10 @@ function TeamInfoPanel({
                   : null;
                 return (
                   <li key={a.id} className="flex items-start gap-2 text-card-body">
-                    <span className="shrink-0 mt-0.5 size-1.5 rounded-w-pill bg-ice-500" aria-hidden="true" />
-                    <span className="font-bold text-wtext-1 dark:text-white">{a.awardName}</span>
+                    <span className="shrink-0 mt-0.5 size-1.5 rounded-w-pill bg-it-blue-500" aria-hidden="true" />
+                    <span className="font-bold text-it-ink-800 dark:text-white">{a.awardName}</span>
                     {awardYear && (
-                      <span className="text-wtext-3 dark:text-rink-300 tabular-nums">· {awardYear}</span>
+                      <span className="text-it-ink-500 dark:text-it-ink-300 tabular-nums">· {awardYear}</span>
                     )}
                   </li>
                 );
@@ -1162,10 +1146,10 @@ function TeamInfoPanel({
             </ul>
           ) : (
             <>
-              <div className="text-card-body font-extrabold text-wtext-1 dark:text-white tracking-tight">
+              <div className="text-card-body font-extrabold text-it-ink-800 dark:text-white tracking-tight">
                 {MESSAGES.team.historyEmpty}
               </div>
-              <div className="text-card-meta text-wtext-3 dark:text-rink-300 text-center leading-relaxed">
+              <div className="text-card-meta text-it-ink-500 dark:text-it-ink-300 text-center leading-relaxed">
                 {MESSAGES.team.historyEmptyHint}
               </div>
             </>
@@ -1183,10 +1167,10 @@ function SectionTitle({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-2">
       <span
-        className="inline-block w-[3px] h-[14px] rounded-[2px] bg-ice-500"
+        className="inline-block w-[3px] h-[14px] rounded-[2px] bg-it-blue-500"
         aria-hidden="true"
       />
-      <h3 className="text-card-body font-extrabold text-wtext-1 dark:text-white tracking-tight">
+      <h3 className="text-card-body font-extrabold text-it-ink-800 dark:text-white tracking-tight">
         {label}
       </h3>
     </div>
@@ -1204,10 +1188,10 @@ function MetaRow({
 }) {
   return (
     <div className="flex items-center justify-between text-card-body">
-      <dt className="font-medium text-wtext-3 dark:text-rink-300">
+      <dt className="font-medium text-it-ink-500 dark:text-it-ink-300">
         {label}
       </dt>
-      <dd className="font-bold text-wtext-1 dark:text-white">
+      <dd className="font-bold text-it-ink-800 dark:text-white">
         {valueNode ?? value ?? "-"}
       </dd>
     </div>
@@ -1215,15 +1199,15 @@ function MetaRow({
 }
 
 function ColorSwatch({ hex }: { hex: string | null }) {
-  if (!hex) return <span className="text-wtext-3">-</span>;
+  if (!hex) return <span className="text-it-ink-500">-</span>;
   return (
     <div className="flex items-center gap-2">
       <span
-        className="inline-block size-4 rounded-w-pill border border-wline dark:border-rink-700"
+        className="inline-block size-4 rounded-w-pill border border-it-line-strong dark:border-it-blue-900"
         style={{ backgroundColor: hex }}
         aria-hidden="true"
       />
-      <span className="font-mono text-card-meta font-bold text-wtext-2 dark:text-rink-100">
+      <span className="font-mono text-card-meta font-bold text-it-ink-700 dark:text-white">
         {hex}
       </span>
     </div>
@@ -1246,7 +1230,7 @@ function SummaryStat({
   // accent=true 인 경우 primary 색 (운영 현황의 "선수" 항목).
   return (
     <div className="text-center">
-      <dt className="text-card-meta font-bold text-wtext-3 dark:text-rink-300 tracking-wider mb-1.5">
+      <dt className="text-card-meta font-bold text-it-ink-500 dark:text-it-ink-300 tracking-wider mb-1.5">
         {label}
       </dt>
       <dd className="inline-flex items-baseline gap-[3px]">
@@ -1254,14 +1238,14 @@ function SummaryStat({
           className={cn(
             "text-w-h2 font-extrabold tabular-nums leading-none",
             accent
-              ? "text-ice-500"
-              : "text-wtext-3 dark:text-rink-300",
+              ? "text-it-blue-500"
+              : "text-it-ink-500 dark:text-it-ink-300",
           )}
           style={{ letterSpacing: "-0.03em" }}
         >
           {value}
         </span>
-        <span className="text-card-meta font-bold text-wtext-3 dark:text-rink-300">
+        <span className="text-card-meta font-bold text-it-ink-500 dark:text-it-ink-300">
           {unit}
         </span>
       </dd>
@@ -1283,21 +1267,24 @@ function RosterPanel({
 }) {
   if (roster.length === 0) {
     return (
-      <EmptyState
-        icon="group_off"
-        title={MESSAGES.team.rosterEmpty}
-        description={MESSAGES.team.rosterEmptyHint}
-      />
+      <div className="bg-it-surface dark:bg-it-blue-950 pt-2">
+        <EmptyState
+          icon="group_off"
+          title={MESSAGES.team.rosterEmpty}
+          description={MESSAGES.team.rosterEmptyHint}
+        />
+      </div>
     );
   }
 
   return (
-    <div className="space-y-3 px-5">
-      <ul className="space-y-3" aria-label={MESSAGES.team.ariaRosterList}>
-        {roster.map((item) => (
+    <div className="bg-it-surface dark:bg-it-blue-950 px-5 pt-2 pb-7">
+      <ul className="flex flex-col" aria-label={MESSAGES.team.ariaRosterList}>
+        {roster.map((item, idx) => (
           <li key={item.id}>
             <RosterCard
               item={item}
+              isLast={idx === roster.length - 1}
               canManage={canManage}
               onRemove={onRemove}
               onEdit={onEdit}
@@ -1311,6 +1298,7 @@ function RosterPanel({
 
 function RosterCard({
   item,
+  isLast,
   // [수정 2026-05-13] 선수단탭 학생 카드의 수정/삭제 버튼 제거에 따라 props 미사용.
   //  caller 인터페이스 호환을 위해 받기만 하고 사용하지 않음. underscore prefix 로 lint 통과.
   canManage: _canManage,
@@ -1318,6 +1306,7 @@ function RosterCard({
   onEdit: _onEdit,
 }: {
   item: RosterMember;
+  isLast: boolean;
   canManage: boolean;
   onRemove: (item: RosterMember) => void;
   onEdit: (item: RosterMember) => void;
@@ -1333,30 +1322,34 @@ function RosterCard({
   ].filter(Boolean);
 
   return (
-    <article className="rounded-2xl border border-wline-2 bg-white p-4 shadow-card dark:border-rink-700 dark:bg-rink-800">
-      <div className="flex items-start gap-3">
-        {/* Jersey Number / Avatar */}
-        <div
-          className={cn(
-            "flex size-12 shrink-0 items-center justify-center rounded-xl font-extrabold",
-            pos ? pos.bg : "bg-wline-2 dark:bg-rink-700",
-            pos ? pos.text : "text-wtext-3",
-          )}
-          aria-label={MESSAGES.team.jerseyAriaLabel(item.jerseyNumber)}
-        >
-          {item.jerseyNumber != null ? (
-            <span className="text-card-title tabular-nums">{item.jerseyNumber}</span>
-          ) : (
-            <Icon name="person" className="text-2xl" aria-hidden="true" />
-          )}
-        </div>
+    <div
+      className={cn(
+        "flex items-center gap-3 py-[13px] min-h-[56px]",
+        !isLast && "border-b border-it-line dark:border-it-blue-900",
+      )}
+    >
+      {/* Jersey Number / Avatar */}
+      <div
+        className={cn(
+          "flex size-11 shrink-0 items-center justify-center rounded-w-md font-extrabold",
+          pos ? pos.bg : "bg-it-line dark:bg-it-blue-900",
+          pos ? pos.text : "text-it-ink-500",
+        )}
+        aria-label={MESSAGES.team.jerseyAriaLabel(item.jerseyNumber)}
+      >
+        {item.jerseyNumber != null ? (
+          <span className="text-card-title tabular-nums">{item.jerseyNumber}</span>
+        ) : (
+          <Icon name="person" className="text-2xl" aria-hidden="true" />
+        )}
+      </div>
 
-        {/* Info */}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <h4 className="truncate text-card-body font-bold text-wtext-1 dark:text-white">
-              {item.member.playerName}
-            </h4>
+      {/* Info */}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <h4 className="truncate text-[15.5px] font-bold tracking-[-0.01em] text-it-ink-800 dark:text-white">
+            {item.member.playerName}
+          </h4>
             {item.isCaptain && (
               <span
                 className="shrink-0 rounded-md bg-amber-50 px-1.5 py-0.5 text-card-meta font-bold text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
@@ -1367,25 +1360,24 @@ function RosterCard({
             )}
             {item.isAltCaptain && (
               <span
-                className="shrink-0 rounded-md bg-blue-50 px-1.5 py-0.5 text-card-meta font-bold text-ice-500 dark:bg-blue-900/20 dark:text-blue-300"
+                className="shrink-0 rounded-md bg-blue-50 px-1.5 py-0.5 text-card-meta font-bold text-it-blue-500 dark:bg-blue-900/20 dark:text-blue-300"
                 aria-label={MESSAGES.team.altCaptain}
               >
                 A
               </span>
             )}
           </div>
-          {metaParts.length > 0 && (
-            <p className="mt-0.5 text-card-meta text-wtext-3 dark:text-rink-300">
-              {metaParts.join(" · ")}
-            </p>
-          )}
-        </div>
-
-        {/* [수정 2026-05-13] 선수단탭에서 학생 카드 수정/삭제 버튼 제거.
-            학생 정보 수정·삭제는 admin 학생관리(/dashboard/members) 페이지에서만 수행.
-            (canManage/isGrouped 분기 자체 제거 — 화면이 코치/감독에게도 조회 전용.) */}
+        {metaParts.length > 0 && (
+          <p className="mt-0.5 text-[13px] font-medium text-it-ink-500 dark:text-it-ink-300">
+            {metaParts.join(" · ")}
+          </p>
+        )}
       </div>
-    </article>
+
+      {/* [수정 2026-05-13] 선수단탭에서 학생 카드 수정/삭제 버튼 제거.
+          학생 정보 수정·삭제는 admin 학생관리(/dashboard/members) 페이지에서만 수행.
+          (canManage/isGrouped 분기 자체 제거 — 화면이 코치/감독에게도 조회 전용.) */}
+    </div>
   );
 }
 
@@ -1397,7 +1389,7 @@ const MATCH_STATUS_BADGE: Record<
 > = {
   scheduled: {
     label: MESSAGES.match.statusLabel.scheduled,
-    className: "bg-blue-50 text-ice-500 dark:bg-blue-900/20 dark:text-blue-300",
+    className: "bg-blue-50 text-it-blue-500 dark:bg-blue-900/20 dark:text-blue-300",
   },
   warmup: {
     label: MESSAGES.match.statusLabel.warmup,
@@ -1412,12 +1404,12 @@ const MATCH_STATUS_BADGE: Record<
   intermission: {
     label: MESSAGES.match.statusLabel.intermission,
     className:
-      "bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-100",
+      "bg-it-line text-it-ink-700 dark:bg-it-blue-900 dark:text-white",
   },
   completed: {
     label: MESSAGES.match.statusLabel.completed,
     className:
-      "bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-100",
+      "bg-it-line text-it-ink-700 dark:bg-it-blue-900 dark:text-white",
   },
   postponed: {
     label: MESSAGES.match.statusLabel.postponed,
@@ -1462,51 +1454,53 @@ function SchedulePanel({
 
   if (matches.length === 0) {
     return (
-      <EmptyState
-        icon="calendar_today"
-        title={MESSAGES.team.scheduleEmptyTitle}
-        description={MESSAGES.team.scheduleEmptyHint}
-      />
+      <div className="bg-it-surface dark:bg-it-blue-950 pt-2">
+        <EmptyState
+          icon="calendar_today"
+          title={MESSAGES.team.scheduleEmptyTitle}
+          description={MESSAGES.team.scheduleEmptyHint}
+        />
+      </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      {/* 상단 요약 카드 */}
-      <div className="rounded-2xl border border-wline-2 bg-white p-5 shadow-card dark:border-rink-700 dark:bg-rink-800">
+    <div className="bg-it-surface dark:bg-it-blue-950 px-5 pt-4 pb-7 space-y-4">
+      {/* 상단 요약 — flat 인셋 (홈/원정 경기 수) */}
+      <div className="rounded-w-md border-[1.5px] border-it-line dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-900/40 p-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span
-              className="inline-block h-5 w-1 rounded-w-pill bg-ice-500"
+              className="inline-block h-5 w-[3px] rounded-[2px] bg-it-blue-500"
               aria-hidden="true"
             />
-            <h3 className="text-card-body font-bold text-wtext-1 dark:text-white">
+            <h3 className="text-card-body font-extrabold text-it-ink-800 dark:text-white">
               {MESSAGES.team.matchesTotalLabel}
             </h3>
           </div>
-          <span className="text-card-meta font-medium text-wtext-3">
+          <span className="text-card-meta font-medium text-it-ink-500">
             {MESSAGES.team.matchesTotal(matches.length)}
           </span>
         </div>
         <dl className="mt-4 grid grid-cols-2 gap-3">
           <div className="text-center">
-            <dt className="text-card-meta font-medium text-wtext-3 dark:text-rink-300">
+            <dt className="text-card-meta font-medium text-it-ink-500 dark:text-it-ink-300">
               {MESSAGES.team.statHomeMatch}
             </dt>
-            <dd className="mt-1 text-xl font-extrabold tabular-nums text-wtext-1 dark:text-white">
+            <dd className="mt-1 text-xl font-extrabold tabular-nums text-it-ink-800 dark:text-white">
               {team._count?.homeMatches ?? 0}
-              <span className="ml-0.5 text-card-meta font-medium text-wtext-3">
+              <span className="ml-0.5 text-card-meta font-medium text-it-ink-500">
                 {MESSAGES.team.unitCount}
               </span>
             </dd>
           </div>
           <div className="text-center">
-            <dt className="text-card-meta font-medium text-wtext-3 dark:text-rink-300">
+            <dt className="text-card-meta font-medium text-it-ink-500 dark:text-it-ink-300">
               {MESSAGES.team.statAwayMatch}
             </dt>
-            <dd className="mt-1 text-xl font-extrabold tabular-nums text-wtext-1 dark:text-white">
+            <dd className="mt-1 text-xl font-extrabold tabular-nums text-it-ink-800 dark:text-white">
               {team._count?.awayMatches ?? 0}
-              <span className="ml-0.5 text-card-meta font-medium text-wtext-3">
+              <span className="ml-0.5 text-card-meta font-medium text-it-ink-500">
                 {MESSAGES.team.unitCount}
               </span>
             </dd>
@@ -1542,14 +1536,14 @@ function MatchCard({ match, teamId }: { match: TeamMatch; teamId: string }) {
 
   return (
     <article
-      className="rounded-2xl border border-wline-2 bg-white p-4 shadow-card dark:border-rink-700 dark:bg-rink-800"
+      className="rounded-w-md border-[1.5px] border-it-line dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-900/40 p-4"
       aria-label={MESSAGES.team.matchAriaLabel(
         opponent?.name ?? MESSAGES.team.opponentTbdLong,
       )}
     >
       {/* 날짜/상태 헤더 */}
       <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-1.5 text-card-meta text-wtext-3 dark:text-rink-300">
+        <div className="flex items-center gap-1.5 text-card-meta text-it-ink-500 dark:text-it-ink-300">
           <Icon name="event" className="text-[14px]" aria-hidden="true" />
           <time dateTime={match.scheduledAt}>
             {date} ({day}) {time}
@@ -1570,16 +1564,16 @@ function MatchCard({ match, teamId }: { match: TeamMatch; teamId: string }) {
         {/* 우리 팀 */}
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <div
-            className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-ice-500/10 text-ice-500"
+            className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-it-blue-500/10 text-it-blue-500"
             aria-hidden="true"
           >
             <Icon name="sports_hockey" className="text-[20px]" />
           </div>
           <div className="min-w-0">
-            <p className="truncate text-card-meta font-bold text-wtext-1 dark:text-white">
+            <p className="truncate text-card-meta font-bold text-it-ink-800 dark:text-white">
               {myTeam?.name ?? MESSAGES.team.ourTeamFallback}
             </p>
-            <p className="text-card-meta font-medium text-ice-500">
+            <p className="text-card-meta font-medium text-it-blue-500">
               {isHome ? MESSAGES.team.locationHome : MESSAGES.team.locationAway}
             </p>
           </div>
@@ -1595,26 +1589,26 @@ function MatchCard({ match, teamId }: { match: TeamMatch; teamId: string }) {
                   isWin
                     ? "text-emerald-600 dark:text-emerald-400"
                     : isDraw
-                      ? "text-wtext-3"
-                      : "text-wtext-3",
+                      ? "text-it-ink-500"
+                      : "text-it-ink-500",
                 )}
               >
                 {myScore}
               </span>
-              <span className="text-card-body font-bold text-wtext-4">:</span>
+              <span className="text-card-body font-bold text-it-ink-400">:</span>
               <span
                 className={cn(
                   "text-2xl font-extrabold tabular-nums",
                   !isWin && !isDraw && isFinished
-                    ? "text-wtext-2 dark:text-rink-100"
-                    : "text-wtext-3",
+                    ? "text-it-ink-700 dark:text-white"
+                    : "text-it-ink-500",
                 )}
               >
                 {oppScore}
               </span>
             </>
           ) : (
-            <span className="text-card-meta font-bold text-wtext-4">
+            <span className="text-card-meta font-bold text-it-ink-400">
               {MESSAGES.team.vsLabel}
             </span>
           )}
@@ -1623,15 +1617,15 @@ function MatchCard({ match, teamId }: { match: TeamMatch; teamId: string }) {
         {/* 상대 팀 */}
         <div className="flex min-w-0 flex-1 items-center justify-end gap-2 text-right">
           <div className="min-w-0">
-            <p className="truncate text-card-meta font-bold text-wtext-1 dark:text-white">
+            <p className="truncate text-card-meta font-bold text-it-ink-800 dark:text-white">
               {opponent?.name ?? MESSAGES.team.opponentTbd}
             </p>
-            <p className="text-card-meta font-medium text-wtext-3">
+            <p className="text-card-meta font-medium text-it-ink-500">
               {isHome ? MESSAGES.team.locationAway : MESSAGES.team.locationHome}
             </p>
           </div>
           <div
-            className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-wline-2 text-wtext-3 dark:bg-rink-700 dark:text-rink-300"
+            className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-it-line text-it-ink-500 dark:bg-it-blue-900 dark:text-it-ink-300"
             aria-hidden="true"
           >
             <Icon name="sports_hockey" className="text-[20px]" />
@@ -1641,7 +1635,7 @@ function MatchCard({ match, teamId }: { match: TeamMatch; teamId: string }) {
 
       {/* 장소 + 대회 */}
       {(location || match.tournament) && (
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-wline-2 pt-3 text-card-meta text-wtext-3 dark:border-rink-700 dark:text-rink-300">
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-it-line pt-3 text-card-meta text-it-ink-500 dark:border-it-blue-900 dark:text-it-ink-300">
           {location && (
             <div className="flex items-center gap-1">
               <Icon
@@ -1763,7 +1757,7 @@ function AddRosterModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-rink-900/60 sm:items-center"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-it-blue-950/60 sm:items-center"
       role="dialog"
       aria-modal="true"
       aria-labelledby="add-roster-title"
@@ -1782,24 +1776,24 @@ function AddRosterModal({
             변경: max-h = min(720px, calc(100vh - 80px)) 로 절대치 720px 와 viewport 기반
                   하한 동시 만족 → 모든 단말에서 등록 버튼이 항상 노출되도록 보장. */}
       <div
-        className="flex w-full max-w-md flex-col rounded-t-2xl bg-white dark:bg-rink-800 sm:rounded-2xl"
+        className="flex w-full max-w-md flex-col rounded-t-2xl bg-white dark:bg-it-blue-950 sm:rounded-2xl"
         style={{
           maxHeight:
             'min(720px, calc(100vh - 80px - var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))))',
         }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-wline-2 px-5 py-4 dark:border-rink-700">
+        <div className="flex items-center justify-between border-b border-it-line px-5 py-4 dark:border-it-blue-900">
           <h3
             id="add-roster-title"
-            className="text-card-emphasis font-bold text-wtext-1 dark:text-white"
+            className="text-card-emphasis font-bold text-it-ink-800 dark:text-white"
           >
             {MESSAGES.team.addMemberTitle}
           </h3>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-w-pill p-1.5 text-wtext-3 hover:bg-wline-2 dark:hover:bg-rink-700"
+            className="rounded-w-pill p-1.5 text-it-ink-500 hover:bg-it-line dark:hover:bg-it-blue-900"
             aria-label={MESSAGES.common.close}
           >
             <Icon name="close" className="text-[22px]" aria-hidden="true" />
@@ -1811,11 +1805,11 @@ function AddRosterModal({
           onSubmit={handleSubmit}
         >
           {/* Search */}
-          <div className="border-b border-wline-2 px-5 py-3 dark:border-rink-700">
+          <div className="border-b border-it-line px-5 py-3 dark:border-it-blue-900">
             <label className="relative block">
               <Icon
                 name="search"
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-wtext-3"
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-it-ink-500"
                 aria-hidden="true"
               />
               <input
@@ -1823,7 +1817,7 @@ function AddRosterModal({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={MESSAGES.team.memberSearchPlaceholder}
-                className="h-10 w-full rounded-lg bg-wline-2 pl-9 pr-3 text-card-body text-wtext-1 placeholder:text-wtext-3 focus:outline-none focus:ring-2 focus:ring-ice-500/40 dark:bg-rink-700 dark:text-white"
+                className="h-10 w-full rounded-lg bg-it-line pl-9 pr-3 text-card-body text-it-ink-800 placeholder:text-it-ink-500 focus:outline-none focus:ring-2 focus:ring-it-blue-500/40 dark:bg-it-blue-900 dark:text-white"
               />
             </label>
           </div>
@@ -1834,13 +1828,13 @@ function AddRosterModal({
               <div className="px-4 py-10 text-center">
                 <Icon
                   name="group_off"
-                  className="mx-auto text-3xl text-wtext-4 dark:text-rink-500"
+                  className="mx-auto text-3xl text-it-ink-400 dark:text-it-ink-400"
                   aria-hidden="true"
                 />
-                <p className="mt-2 text-card-body font-semibold text-wtext-2 dark:text-rink-100">
+                <p className="mt-2 text-card-body font-semibold text-it-ink-700 dark:text-white">
                   {MESSAGES.team.availableEmpty}
                 </p>
-                <p className="mt-1 text-card-meta text-wtext-3">
+                <p className="mt-1 text-card-meta text-it-ink-500">
                   {MESSAGES.team.availableHint}
                 </p>
               </div>
@@ -1856,28 +1850,28 @@ function AddRosterModal({
                         aria-selected={selected}
                         onClick={() => setSelectedId(m.id)}
                         className={cn(
-                          "flex w-full items-center gap-3 rounded-lg p-3 text-left transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40",
+                          "flex w-full items-center gap-3 rounded-lg p-3 text-left transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40",
                           selected
-                            ? "bg-ice-500/5 dark:bg-ice-500/10"
-                            : "hover:bg-wbg dark:hover:bg-rink-700/50",
+                            ? "bg-it-blue-500/5 dark:bg-it-blue-500/10"
+                            : "hover:bg-it-canvas dark:hover:bg-it-blue-900/50",
                         )}
                       >
                         <div
                           className={cn(
                             "flex size-10 shrink-0 items-center justify-center rounded-w-pill font-bold",
                             selected
-                              ? "bg-ice-500 text-white"
-                              : "bg-wline-2 text-wtext-3 dark:bg-rink-700 dark:text-rink-100",
+                              ? "bg-it-blue-500 text-white"
+                              : "bg-it-line text-it-ink-500 dark:bg-it-blue-900 dark:text-white",
                           )}
                           aria-hidden="true"
                         >
                           <Icon name="person" className="text-[20px]" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-card-body font-bold text-wtext-1 dark:text-white">
+                          <p className="truncate text-card-body font-bold text-it-ink-800 dark:text-white">
                             {m.playerName}
                           </p>
-                          <p className="truncate text-card-meta text-wtext-3 dark:text-rink-300">
+                          <p className="truncate text-card-meta text-it-ink-500 dark:text-it-ink-300">
                             {m.playerAge}세
                             {m.playerLevel && ` · ${m.playerLevel}`}
                           </p>
@@ -1885,7 +1879,7 @@ function AddRosterModal({
                         {selected && (
                           <Icon
                             name="check_circle"
-                            className="shrink-0 text-[20px] text-ice-500"
+                            className="shrink-0 text-[20px] text-it-blue-500"
                             aria-hidden="true"
                           />
                         )}
@@ -1899,10 +1893,10 @@ function AddRosterModal({
 
           {/* Form Fields */}
           {selectedId && (
-            <div className="border-t border-wline-2 px-5 py-3 dark:border-rink-700">
+            <div className="border-t border-it-line px-5 py-3 dark:border-it-blue-900">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-card-meta font-semibold text-wtext-3 dark:text-rink-300">
+                  <label className="mb-1 block text-card-meta font-semibold text-it-ink-500 dark:text-it-ink-300">
                     {MESSAGES.team.rosterFieldPosition}
                   </label>
                   <select
@@ -1910,7 +1904,7 @@ function AddRosterModal({
                     onChange={(e) =>
                       setPosition(e.target.value as RosterPosition | "")
                     }
-                    className="h-10 w-full rounded-lg border border-wline bg-white px-3 text-card-body text-wtext-1 focus:border-ice-500 focus:outline-none focus:ring-2 focus:ring-ice-500/20 dark:border-rink-700 dark:bg-rink-700 dark:text-white"
+                    className="h-10 w-full rounded-lg border border-it-line-strong bg-white px-3 text-card-body text-it-ink-800 focus:border-it-blue-500 focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 dark:border-it-blue-900 dark:bg-it-blue-900 dark:text-white"
                   >
                     <option value="">{MESSAGES.team.rosterPositionNone}</option>
                     <option value="goalie">
@@ -1925,7 +1919,7 @@ function AddRosterModal({
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1 block text-card-meta font-semibold text-wtext-3 dark:text-rink-300">
+                  <label className="mb-1 block text-card-meta font-semibold text-it-ink-500 dark:text-it-ink-300">
                     {MESSAGES.team.rosterFieldJersey}
                   </label>
                   <input
@@ -1935,7 +1929,7 @@ function AddRosterModal({
                     value={jerseyNumber}
                     onChange={(e) => setJerseyNumber(e.target.value)}
                     placeholder={MESSAGES.team.rosterJerseyPlaceholder}
-                    className="h-10 w-full rounded-lg border border-wline bg-white px-3 text-card-body tabular-nums text-wtext-1 focus:border-ice-500 focus:outline-none focus:ring-2 focus:ring-ice-500/20 dark:border-rink-700 dark:bg-rink-700 dark:text-white"
+                    className="h-10 w-full rounded-lg border border-it-line-strong bg-white px-3 text-card-body tabular-nums text-it-ink-800 focus:border-it-blue-500 focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 dark:border-it-blue-900 dark:bg-it-blue-900 dark:text-white"
                   />
                 </div>
               </div>
@@ -1949,7 +1943,7 @@ function AddRosterModal({
               [수정 2026-05-18 W2.B #7] sticky bottom-0 + bg-white 강조 — 후보 리스트가
               많아도 footer 가 항상 화면 하단에 고정되어 등록 버튼이 절대 잘리지 않음. */}
           <div
-            className="sticky bottom-0 border-t border-wline-2 bg-white px-5 pt-4 dark:border-rink-700 dark:bg-rink-800"
+            className="sticky bottom-0 border-t border-it-line bg-white px-5 pt-4 dark:border-it-blue-900 dark:bg-it-blue-950"
             style={{
               paddingBottom:
                 'calc(1rem + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))',
@@ -1958,7 +1952,7 @@ function AddRosterModal({
             <button
               type="submit"
               disabled={!selectedId || submitting}
-              className="flex h-12 w-full items-center justify-center rounded-xl bg-ice-500 text-card-body font-bold text-white hover:bg-ice-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 disabled:opacity-50"
+              className="flex h-12 w-full items-center justify-center rounded-xl bg-it-blue-500 text-card-body font-bold text-white hover:bg-it-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 disabled:opacity-50"
             >
               {submitting ? MESSAGES.team.rosterSubmitting : MESSAGES.team.rosterSubmit}
             </button>
@@ -2036,29 +2030,29 @@ function EditRosterModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-rink-900/60 sm:items-center"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-it-blue-950/60 sm:items-center"
       role="dialog"
       aria-modal="true"
       aria-labelledby="edit-roster-title"
     >
-      <div className="flex w-full max-w-md flex-col rounded-t-2xl bg-white dark:bg-rink-800 sm:rounded-2xl">
+      <div className="flex w-full max-w-md flex-col rounded-t-2xl bg-white dark:bg-it-blue-950 sm:rounded-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-wline-2 px-5 py-4 dark:border-rink-700">
+        <div className="flex items-center justify-between border-b border-it-line px-5 py-4 dark:border-it-blue-900">
           <div className="min-w-0">
             <h3
               id="edit-roster-title"
-              className="truncate text-card-emphasis font-bold text-wtext-1 dark:text-white"
+              className="truncate text-card-emphasis font-bold text-it-ink-800 dark:text-white"
             >
               {MESSAGES.team.rosterEditTitle}
             </h3>
-            <p className="mt-0.5 text-card-meta text-wtext-3 dark:text-rink-300">
+            <p className="mt-0.5 text-card-meta text-it-ink-500 dark:text-it-ink-300">
               {roster.member.playerName} · {MESSAGES.team.rosterEditDescription}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="ml-3 shrink-0 rounded-w-pill p-1.5 text-wtext-3 hover:bg-wline-2 dark:hover:bg-rink-700"
+            className="ml-3 shrink-0 rounded-w-pill p-1.5 text-it-ink-500 hover:bg-it-line dark:hover:bg-it-blue-900"
             aria-label={MESSAGES.common.close}
           >
             <Icon name="close" className="text-[22px]" aria-hidden="true" />
@@ -2077,7 +2071,7 @@ function EditRosterModal({
         >
           {/* Position */}
           <div>
-            <label className="mb-2 block text-card-meta font-bold text-wtext-2 dark:text-rink-100">
+            <label className="mb-2 block text-card-meta font-bold text-it-ink-700 dark:text-white">
               {MESSAGES.team.rosterFieldPosition}
             </label>
             <div
@@ -2106,10 +2100,10 @@ function EditRosterModal({
                     aria-checked={active}
                     onClick={() => setPosition(opt.key)}
                     className={cn(
-                      "flex h-10 items-center justify-center rounded-lg text-card-meta font-bold transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/30",
+                      "flex h-10 items-center justify-center rounded-lg text-card-meta font-bold transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/30",
                       active
-                        ? "bg-ice-500 text-white"
-                        : "border border-wline bg-white text-wtext-2 hover:border-ice-500/30 hover:bg-ice-500/5 dark:border-rink-700 dark:bg-rink-800 dark:text-rink-100 dark:hover:bg-rink-700",
+                        ? "bg-it-blue-500 text-white"
+                        : "border border-it-line-strong bg-white text-it-ink-700 hover:border-it-blue-500/30 hover:bg-it-blue-500/5 dark:border-it-blue-900 dark:bg-it-blue-950 dark:text-white dark:hover:bg-it-blue-900",
                     )}
                   >
                     {opt.label}
@@ -2123,10 +2117,10 @@ function EditRosterModal({
           <div>
             <label
               htmlFor="edit-jersey-number"
-              className="mb-2 block text-card-meta font-bold text-wtext-2 dark:text-rink-100"
+              className="mb-2 block text-card-meta font-bold text-it-ink-700 dark:text-white"
             >
               {MESSAGES.team.rosterFieldJersey}{" "}
-              <span className="text-card-meta font-medium text-wtext-3">
+              <span className="text-card-meta font-medium text-it-ink-500">
                 (1-99)
               </span>
             </label>
@@ -2138,13 +2132,13 @@ function EditRosterModal({
               value={jerseyNumber}
               onChange={(e) => setJerseyNumber(e.target.value)}
               placeholder={MESSAGES.team.jerseyUnassigned}
-              className="h-11 w-full rounded-xl border border-wline bg-white px-4 text-card-body tabular-nums text-wtext-1 placeholder:text-wtext-3 focus:border-ice-500 focus:outline-none focus:ring-2 focus:ring-ice-500/20 dark:border-rink-700 dark:bg-rink-700 dark:text-white"
+              className="h-11 w-full rounded-xl border border-it-line-strong bg-white px-4 text-card-body tabular-nums text-it-ink-800 placeholder:text-it-ink-500 focus:border-it-blue-500 focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 dark:border-it-blue-900 dark:bg-it-blue-900 dark:text-white"
             />
           </div>
 
           {/* Captain Role */}
           <div>
-            <label className="mb-2 block text-card-meta font-bold text-wtext-2 dark:text-rink-100">
+            <label className="mb-2 block text-card-meta font-bold text-it-ink-700 dark:text-white">
               {MESSAGES.team.rosterFieldCaptain}
             </label>
             <div
@@ -2178,10 +2172,10 @@ function EditRosterModal({
                     aria-checked={active}
                     onClick={() => setCaptainRole(opt.key)}
                     className={cn(
-                      "flex h-11 items-center justify-center gap-1 rounded-lg text-card-meta font-bold transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/30",
+                      "flex h-11 items-center justify-center gap-1 rounded-lg text-card-meta font-bold transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/30",
                       active
-                        ? "bg-ice-500 text-white"
-                        : "border border-wline bg-white text-wtext-2 hover:border-ice-500/30 hover:bg-ice-500/5 dark:border-rink-700 dark:bg-rink-800 dark:text-rink-100 dark:hover:bg-rink-700",
+                        ? "bg-it-blue-500 text-white"
+                        : "border border-it-line-strong bg-white text-it-ink-700 hover:border-it-blue-500/30 hover:bg-it-blue-500/5 dark:border-it-blue-900 dark:bg-it-blue-950 dark:text-white dark:hover:bg-it-blue-900",
                     )}
                   >
                     <Icon
@@ -2202,14 +2196,14 @@ function EditRosterModal({
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="flex h-12 flex-1 items-center justify-center rounded-xl bg-wline-2 text-card-body font-bold text-wtext-2 hover:bg-wline disabled:opacity-50 dark:bg-rink-700 dark:text-rink-100 dark:hover:bg-rink-500"
+              className="flex h-12 flex-1 items-center justify-center rounded-xl bg-it-line text-card-body font-bold text-it-ink-700 hover:bg-it-line disabled:opacity-50 dark:bg-it-blue-900 dark:text-white dark:hover:bg-it-blue-900"
             >
               {MESSAGES.team.rosterCancel}
             </button>
             <button
               type="submit"
               disabled={submitting}
-              className="flex h-12 flex-[2] items-center justify-center gap-1.5 rounded-xl bg-ice-500 text-card-body font-bold text-white hover:bg-ice-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 disabled:opacity-60"
+              className="flex h-12 flex-[2] items-center justify-center gap-1.5 rounded-xl bg-it-blue-500 text-card-body font-bold text-white hover:bg-it-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 disabled:opacity-60"
             >
               {submitting ? (
                 <>

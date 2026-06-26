@@ -30,27 +30,40 @@ interface Props {
     homeSaves: number;
     awaySaves: number;
   };
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 카드 박스 → flat, 색만 it-* 치환. 스코어보드 레이아웃·로직 동결.
+   */
+  iceTheme?: boolean;
 }
 
 function TeamColumn({
   side,
   team,
   score,
+  iceTheme = false,
 }: {
   side: 'home' | 'away';
   team: MatchDetail['homeTeam'];
   score: number;
+  iceTheme?: boolean;
 }) {
   const name = team?.name ?? (side === 'home' ? '홈 팀' : '어웨이 팀');
+  // 팀 색은 동적 데이터(primaryColor) — 토큰 강제 대상 아님. 미지정 폴백만 SoT 톤으로.
   const colorHex =
     (side === 'home'
       ? team?.primaryColor
-      : team?.primaryColor) ?? '#1E3FAE';
+      : team?.primaryColor) ?? (iceTheme ? '#0e5db0' : '#1E3FAE');
 
   return (
     <div className="flex flex-1 flex-col items-center gap-3">
       <div
-        className="flex h-20 w-20 items-center justify-center rounded-2xl border border-wline bg-wbg p-3 shadow-inner dark:border-rink-700 dark:bg-rink-900"
+        className={cn(
+          'flex h-20 w-20 items-center justify-center p-3',
+          iceTheme
+            ? 'rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill dark:border-rink-700 dark:bg-rink-900'
+            : 'rounded-2xl border border-wline bg-wbg shadow-inner dark:border-rink-700 dark:bg-rink-900',
+        )}
         style={
           team?.logoUrl
             ? undefined
@@ -76,21 +89,36 @@ function TeamColumn({
         )}
       </div>
       <div className="text-center">
-        <h3 className="text-sm font-bold text-wtext-1 dark:text-white">
+        <h3
+          className={cn(
+            'text-sm font-bold',
+            iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white',
+          )}
+        >
           {name}
         </h3>
-        <p className="text-[10px] uppercase text-wtext-3 dark:text-rink-300">
+        <p
+          className={cn(
+            'text-[10px] uppercase',
+            iceTheme ? 'text-it-ink-400 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300',
+          )}
+        >
           {side === 'home' ? 'HOME' : 'AWAY'}
         </p>
       </div>
-      <div className="text-4xl font-black tabular-nums text-wtext-1 dark:text-white">
+      <div
+        className={cn(
+          'text-4xl font-black tabular-nums',
+          iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white',
+        )}
+      >
         {score}
       </div>
     </div>
   );
 }
 
-export function LiveScoreHeader({ match, stats }: Props) {
+export function LiveScoreHeader({ match, stats, iceTheme = false }: Props) {
   const isLive =
     match.status === 'in_progress' || match.status === 'intermission';
   const periodLabel =
@@ -102,22 +130,38 @@ export function LiveScoreHeader({ match, stats }: Props) {
 
   return (
     <section
-      className="relative overflow-hidden rounded-3xl border border-wline bg-white p-6 shadow-sm dark:border-rink-700 dark:bg-rink-800"
+      className={cn(
+        'relative overflow-hidden p-6',
+        iceTheme
+          ? // ICETIMES flat — 카드 박스(rounded-3xl/shadow) 제거, hairline 경계.
+            'rounded-w-lg border-[1.5px] border-it-line bg-it-surface dark:border-rink-700 dark:bg-it-blue-950'
+          : 'rounded-3xl border border-wline bg-white shadow-sm dark:border-rink-700 dark:bg-rink-800',
+      )}
       aria-label="경기 스코어 헤더"
     >
       {/* LIVE 뱃지 */}
       <div className="absolute right-4 top-4">
-        <LiveIndicator isLive={isLive} statusLabel={statusLabel} />
+        <LiveIndicator isLive={isLive} statusLabel={statusLabel} iceTheme={iceTheme} />
       </div>
 
       {/* 대회/경기 정보 */}
       <div className="mb-6 flex flex-col items-center">
         {match.tournament?.name ? (
-          <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-wtext-3 dark:text-rink-300">
+          <p
+            className={cn(
+              'mb-1 text-[10px] font-bold uppercase tracking-widest',
+              iceTheme ? 'text-it-ink-400 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300',
+            )}
+          >
             {match.tournament.name}
           </p>
         ) : null}
-        <p className="text-xs text-wtext-3 dark:text-rink-300">
+        <p
+          className={cn(
+            'text-xs',
+            iceTheme ? 'text-it-ink-400 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300',
+          )}
+        >
           {match.round ? MESSAGES.match.roundLabel[match.round] : '경기'} ·{' '}
           {match.venue?.name ?? match.rink?.name ?? '경기장 미지정'}
         </p>
@@ -125,38 +169,58 @@ export function LiveScoreHeader({ match, stats }: Props) {
 
       {/* 스코어 그리드 */}
       <div className="flex items-center justify-between gap-4">
-        <TeamColumn side="home" team={match.homeTeam} score={match.homeScore} />
+        <TeamColumn side="home" team={match.homeTeam} score={match.homeScore} iceTheme={iceTheme} />
 
         <div className="flex shrink-0 flex-col items-center justify-center pb-8">
-          <div className="mb-2 text-[10px] font-black italic text-wtext-3">
+          <div
+            className={cn(
+              'mb-2 text-[10px] font-black italic',
+              iceTheme ? 'text-it-ink-400' : 'text-wtext-3',
+            )}
+          >
             VS
           </div>
-          <div className="rounded bg-wline-2 px-2 py-0.5 text-[10px] font-bold text-wtext-2 dark:bg-rink-700 dark:text-rink-100">
+          <div
+            className={cn(
+              'rounded px-2 py-0.5 text-[10px] font-bold',
+              iceTheme
+                ? 'bg-it-fill text-it-ink-600 dark:bg-rink-700 dark:text-rink-100'
+                : 'bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-100',
+            )}
+          >
             {periodLabel}
           </div>
         </div>
 
-        <TeamColumn side="away" team={match.awayTeam} score={match.awayScore} />
+        <TeamColumn side="away" team={match.awayTeam} score={match.awayScore} iceTheme={iceTheme} />
       </div>
 
       {/* 통계 그리드 */}
       {stats && (
-        <div className="mt-8 grid grid-cols-3 gap-2 border-t border-wline pt-6 dark:border-rink-700">
+        <div
+          className={cn(
+            'mt-8 grid grid-cols-3 gap-2 border-t pt-6',
+            iceTheme ? 'border-it-line dark:border-rink-700' : 'border-wline dark:border-rink-700',
+          )}
+        >
           <StatCell
             label="SHOTS"
             home={stats.homeShots}
             away={stats.awayShots}
+            iceTheme={iceTheme}
           />
           <StatCell
             label="PENALTY"
             home={stats.homePenaltyMinutes}
             away={stats.awayPenaltyMinutes}
             borderX
+            iceTheme={iceTheme}
           />
           <StatCell
             label="SAVES"
             home={stats.homeSaves}
             away={stats.awaySaves}
+            iceTheme={iceTheme}
           />
         </div>
       )}
@@ -169,23 +233,38 @@ function StatCell({
   home,
   away,
   borderX,
+  iceTheme = false,
 }: {
   label: string;
   home: number;
   away: number;
   borderX?: boolean;
+  iceTheme?: boolean;
 }) {
   return (
     <div
       className={cn(
         'text-center',
-        borderX && 'border-x border-wline dark:border-rink-700',
+        borderX &&
+          (iceTheme
+            ? 'border-x border-it-line dark:border-rink-700'
+            : 'border-x border-wline dark:border-rink-700'),
       )}
     >
-      <p className="text-[10px] font-bold text-wtext-3 dark:text-rink-300">
+      <p
+        className={cn(
+          'text-[10px] font-bold',
+          iceTheme ? 'text-it-ink-400 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300',
+        )}
+      >
         {label}
       </p>
-      <p className="text-sm font-bold tabular-nums text-wtext-1 dark:text-white">
+      <p
+        className={cn(
+          'text-sm font-bold tabular-nums',
+          iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white',
+        )}
+      >
         {home} - {away}
       </p>
     </div>
@@ -196,15 +275,27 @@ function StatCell({
 export function LiveIndicator({
   isLive,
   statusLabel,
+  iceTheme = false,
 }: {
   isLive: boolean;
   statusLabel: string;
+  iceTheme?: boolean;
 }) {
   if (isLive) {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-[10px] font-bold text-red-600 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300">
+      <span
+        className={cn(
+          'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold',
+          iceTheme
+            ? 'border-it-red-200 bg-it-red-50 text-it-red-500 dark:border-it-red-500/40 dark:bg-it-red-500/15 dark:text-it-red-300'
+            : 'border-red-200 bg-red-50 text-red-600 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300',
+        )}
+      >
         <span
-          className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500"
+          className={cn(
+            'h-1.5 w-1.5 animate-pulse rounded-full',
+            iceTheme ? 'bg-it-red-500 motion-reduce:animate-none' : 'bg-red-500',
+          )}
           aria-hidden="true"
         />
         LIVE
@@ -212,7 +303,14 @@ export function LiveIndicator({
     );
   }
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-wline bg-wline-2 px-2.5 py-1 text-[10px] font-bold text-wtext-2 dark:border-rink-700 dark:bg-rink-700 dark:text-rink-100">
+    <span
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold',
+        iceTheme
+          ? 'border-it-line-strong bg-it-fill text-it-ink-600 dark:border-rink-700 dark:bg-rink-700 dark:text-rink-100'
+          : 'border-wline bg-wline-2 text-wtext-2 dark:border-rink-700 dark:bg-rink-700 dark:text-rink-100',
+      )}
+    >
       {statusLabel}
     </span>
   );

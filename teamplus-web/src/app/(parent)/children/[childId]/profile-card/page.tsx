@@ -827,24 +827,24 @@ export default function PlayerProfileCardPage() {
     return (
       <MobileContainer hasBottomNav>
         <PageAppBar title="선수 이력 카드" forceNative />
-        <main className="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center">
+        <main className="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center bg-it-canvas dark:bg-puck">
           <Icon
             name="person_off"
-            className="text-5xl text-wtext-4 dark:text-rink-500"
+            className="text-5xl text-it-ink-300 dark:text-wtext-4"
             aria-hidden="true"
           />
-          <p className="text-card-emphasis font-semibold text-wtext-2 dark:text-rink-100">
+          <p className="text-card-emphasis font-semibold text-it-ink-700 dark:text-rink-100">
             자녀 정보를 찾을 수 없습니다.
           </p>
           {childDetailError && (
-            <p className="text-card-meta text-wtext-3 dark:text-rink-300">
+            <p className="text-card-meta text-it-ink-500 dark:text-wtext-4">
               {childDetailError}
             </p>
           )}
           <button
             type="button"
             onClick={() => navigate('/children')}
-            className="mt-2 px-4 py-2 rounded-lg bg-ice-500 text-white text-card-body font-semibold hover:bg-blue-800 transition-colors motion-reduce:transition-none"
+            className="mt-2 px-4 py-2 rounded-w-md bg-it-blue-500 text-white text-card-body font-semibold hover:bg-it-blue-600 transition-colors motion-reduce:transition-none active:brightness-95"
           >
             자녀 목록으로
           </button>
@@ -859,22 +859,22 @@ export default function PlayerProfileCardPage() {
     return (
       <MobileContainer hasBottomNav>
         <PageAppBar title="선수 이력 카드" forceNative />
-        <main className="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center">
+        <main className="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center bg-it-canvas dark:bg-puck">
           <Icon
             name="info"
-            className="text-5xl text-wtext-4 dark:text-rink-500"
+            className="text-5xl text-it-ink-300 dark:text-wtext-4"
             aria-hidden="true"
           />
-          <p className="text-card-emphasis font-semibold text-wtext-2 dark:text-rink-100">
+          <p className="text-card-emphasis font-semibold text-it-ink-700 dark:text-rink-100">
             팀 가입이 필요합니다.
           </p>
-          <p className="text-card-body text-wtext-3 dark:text-rink-300">
+          <p className="text-card-body text-it-ink-500 dark:text-wtext-4">
             {name}의 선수 이력 카드를 확인하려면 먼저 팀에 가입해주세요.
           </p>
           <button
             type="button"
             onClick={() => navigate('/team')}
-            className="mt-2 px-4 py-2 rounded-lg bg-ice-500 text-white text-card-body font-semibold hover:bg-blue-800 transition-colors motion-reduce:transition-none"
+            className="mt-2 px-4 py-2 rounded-w-md bg-it-blue-500 text-white text-card-body font-semibold hover:bg-it-blue-600 transition-colors motion-reduce:transition-none active:brightness-95"
           >
             팀 찾아보기
           </button>
@@ -934,7 +934,7 @@ export default function PlayerProfileCardPage() {
         />
       </div>
 
-      <main className="flex-1 overflow-y-auto print:overflow-visible">
+      <main className="flex-1 overflow-y-auto print:overflow-visible bg-it-canvas dark:bg-puck print:bg-white">
         {portfolioError && (
           <div className="mx-5 mt-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 px-4 py-2.5 text-card-meta text-amber-700 dark:text-amber-400 print:hidden">
             <Icon

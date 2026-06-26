@@ -139,13 +139,15 @@ function AcademyCreateInner() {
     <MobileContainer hasBottomNav={false}>
       <PageAppBar title={pageTitle} />
 
-      <main className="flex-1 overflow-y-auto hide-scrollbar px-4 py-5 pb-30 dark:bg-rink-900">
+      <main className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck pb-30">
+        {/* 폼 콘텐츠 — flat 흰 섹션 (mt-2 회색 갭). 탭은 흰 면 위 it-blue 밑줄형. */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 py-5">
         {/* 탭 UI: 신규 등록 모드에서만 노출 */}
         {!isEditMode && (
           <div
             role="tablist"
             aria-label={pageTitle}
-            className="flex gap-2 mb-4 border-b border-wline dark:border-rink-700"
+            className="flex gap-2 mb-4 border-b border-it-line dark:border-rink-700"
           >
             {TAB_LIST.map(({ key, label }) => {
               const active = key === activeTab;
@@ -159,8 +161,8 @@ function AcademyCreateInner() {
                   className={cn(
                     'flex-1 h-10 text-card-body font-semibold transition-colors motion-reduce:transition-none border-b-2 -mb-px',
                     active
-                      ? 'text-ice-500 border-ice-500'
-                      : 'text-wtext-3 dark:text-rink-300 border-transparent hover:text-wtext-2 dark:hover:text-rink-100',
+                      ? 'text-it-blue-500 border-it-blue-500'
+                      : 'text-it-ink-400 dark:text-rink-300 border-transparent hover:text-it-ink-800 dark:hover:text-rink-100',
                   )}
                 >
                   {label}
@@ -178,7 +180,7 @@ function AcademyCreateInner() {
             aria-label="오픈클래스 정보를 불러오는 중"
           >
             <div
-              className="w-8 h-8 border-2 border-ice-500 border-t-transparent rounded-w-pill animate-spin motion-reduce:animate-none"
+              className="w-8 h-8 border-2 border-it-blue-500 border-t-transparent rounded-w-pill animate-spin motion-reduce:animate-none"
               aria-hidden="true"
             />
             <span className="sr-only">오픈클래스 정보를 불러오는 중입니다</span>
@@ -189,6 +191,7 @@ function AcademyCreateInner() {
             initialData={initialData}
             onSubmit={handleAcademySubmit}
             isSubmitting={isSubmitting}
+            iceTheme
           />
         ) : (
           <PromotionForm
@@ -196,8 +199,10 @@ function AcademyCreateInner() {
             academyId={createdAcademyId ?? undefined}
             onSubmit={handlePromotionSubmit}
             isSubmitting={isPromotionSubmitting}
+            iceTheme
           />
         )}
+        </section>
       </main>
     </MobileContainer>
   );
@@ -218,7 +223,7 @@ export default function AcademyCreatePage() {
           aria-live="polite"
         >
           <div
-            className="w-8 h-8 border-2 border-ice-500 border-t-transparent rounded-w-pill animate-spin motion-reduce:animate-none"
+            className="w-8 h-8 border-2 border-it-blue-500 border-t-transparent rounded-w-pill animate-spin motion-reduce:animate-none"
             aria-hidden="true"
           />
           <span className="sr-only">로딩 중</span>

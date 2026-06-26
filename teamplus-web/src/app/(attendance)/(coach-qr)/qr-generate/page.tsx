@@ -116,18 +116,19 @@ export default function QRGeneratePage() {
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // 타이머 색상
+  // 타이머 색상 (ICETIMES flat — 잔여 시간 단계별 강조: 위급=it-red · 주의=amber · 여유=emerald)
   const getTimerColor = () => {
     if (isExpired || timeRemaining <= 0)
-      return "text-red-600 dark:text-red-400";
-    if (timeRemaining < 60) return "text-red-600 dark:text-red-400";
+      return "text-it-red-500 dark:text-it-red-300";
+    if (timeRemaining < 60) return "text-it-red-500 dark:text-it-red-300";
     if (timeRemaining < 120) return "text-amber-600 dark:text-amber-400";
     return "text-emerald-600 dark:text-emerald-400";
   };
 
   const getTimerBg = () => {
-    if (isExpired || timeRemaining <= 0) return "bg-red-50 dark:bg-red-900/20";
-    if (timeRemaining < 60) return "bg-red-50 dark:bg-red-900/20";
+    if (isExpired || timeRemaining <= 0)
+      return "bg-it-red-50 dark:bg-it-red-500/15";
+    if (timeRemaining < 60) return "bg-it-red-50 dark:bg-it-red-500/15";
     if (timeRemaining < 120) return "bg-amber-50 dark:bg-amber-900/20";
     return "bg-emerald-50 dark:bg-emerald-900/20";
   };
@@ -137,75 +138,54 @@ export default function QRGeneratePage() {
       <div className="relative w-full flex flex-col flex-1 min-h-0">
         <PageAppBar title="출석 체크" />
 
-        {/* Main Scrollable Content */}
-        <main className="flex-1 flex flex-col px-6 overflow-y-auto pb-6">
-          {/* 수업 선택 */}
-          <div className="pt-1 pb-3">
+        {/* Main Scrollable Content — ICETIMES flat (회색 캔버스 + full-bleed 흰 섹션) */}
+        <main className="flex-1 flex flex-col overflow-y-auto bg-it-canvas dark:bg-puck !pb-8">
+          {/* Hero — navy 밴드 full-bleed (수업 선택/요약) */}
+          <section className="bg-it-blue-800 dark:bg-it-blue-950 px-5 pt-5 pb-6 text-white">
+            <div className="text-card-meta font-extrabold tracking-[0.08em] text-it-blue-100/90">
+              ATTENDANCE
+            </div>
             {isLoadingSchedules ? null : schedules.length === 0 &&
               !selectedSchedule &&
               !targetScheduleId ? (
-              <div className="flex flex-col items-center justify-center text-center py-10">
-                <div className="w-14 h-14 rounded-2xl bg-wline-2 dark:bg-rink-800 flex items-center justify-center mb-3">
-                  <Icon
-                    name="event_busy"
-                    className="text-3xl text-wtext-4 dark:text-rink-500"
-                    aria-hidden="true"
-                  />
-                </div>
-                <p className="text-card-body text-wtext-3 dark:text-rink-300 font-medium">
+              <div className="mt-3 flex items-center gap-2.5">
+                <Icon
+                  name="event_busy"
+                  className="text-2xl text-it-blue-100/80"
+                  aria-hidden="true"
+                />
+                <p className="text-card-body font-semibold text-it-blue-100">
                   {MESSAGES.attendance.noScheduleToday}
                 </p>
               </div>
             ) : selectedSchedule ? (
-              targetScheduleId ? (
-                // scheduleId 진입(출석확인→QR 생성) — 수업이 이미 확정이므로 수업명·시간 한 줄만.
-                <div className="flex items-baseline gap-2 px-1 pb-1">
-                  <h2 className="text-card-title font-extrabold text-wtext-1 dark:text-white truncate">
+              // 선택된 수업 요약 (수업명 · 시간 · 진행상태 · 바꾸기)
+              <div className="mt-2 flex items-end gap-3">
+                <div className="min-w-0 flex-1">
+                  <h1 className="text-card-section font-extrabold tracking-tight break-keep text-white truncate">
                     {selectedSchedule.className}
-                  </h2>
-                  {formatStartTime(selectedSchedule.startTime) && (
-                    <span className="text-card-body text-wtext-3 dark:text-rink-300 tabular-nums shrink-0">
-                      {formatStartTime(selectedSchedule.startTime)}
-                    </span>
-                  )}
-                </div>
-              ) : (
-              // 선택된 수업 카드 (수업명 · 시간 · 진행상태 · 바꾸기 버튼)
-              <div className="flex items-center gap-3 p-4 rounded-2xl bg-white dark:bg-rink-800 shadow-md border border-wline-2 dark:border-rink-700">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-ice-500 text-white">
-                  <Icon
-                    name="sports_hockey"
-                    className="text-2xl"
-                    aria-hidden="true"
-                  />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline gap-2">
-                    <h2 className="text-card-title font-extrabold text-wtext-1 dark:text-white truncate">
-                      {selectedSchedule.className}
-                    </h2>
+                  </h1>
+                  <div className="mt-1.5 flex items-center gap-2 flex-wrap">
                     {formatStartTime(selectedSchedule.startTime) && (
-                      <span className="text-card-body text-wtext-3 dark:text-rink-300 tabular-nums shrink-0">
+                      <span className="text-card-body font-num text-it-blue-100 tabular-nums">
                         {formatStartTime(selectedSchedule.startTime)}
                       </span>
                     )}
-                  </div>
-                  <div className="mt-1">
                     {(() => {
                       const status = getScheduleStatus(
                         selectedSchedule.startTime,
                       );
                       return (
                         <span
-                          className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-w-pill ${
+                          className={`inline-flex items-center gap-1 text-card-meta font-extrabold px-2 py-0.5 rounded-w-pill ${
                             status === "ongoing"
-                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
-                              : "bg-wline text-wtext-2 dark:bg-rink-700 dark:text-rink-100"
+                              ? "bg-emerald-500/20 text-emerald-100"
+                              : "bg-it-blue-900/50 text-it-blue-100"
                           }`}
                         >
                           {status === "ongoing" && (
                             <span
-                              className="w-1.5 h-1.5 rounded-w-pill bg-emerald-500 animate-pulse motion-reduce:animate-none"
+                              className="w-1.5 h-1.5 rounded-w-pill bg-emerald-400 animate-pulse motion-reduce:animate-none"
                               aria-hidden="true"
                             />
                           )}
@@ -217,228 +197,216 @@ export default function QRGeneratePage() {
                     })()}
                   </div>
                 </div>
-                {schedules.length > 1 && (
+                {!targetScheduleId && schedules.length > 1 && (
                   <button
                     type="button"
                     onClick={() => setIsScheduleSheetOpen(true)}
-                    className="shrink-0 min-h-[44px] px-4 py-2 rounded-xl text-card-body font-semibold bg-wline-2 hover:bg-wline dark:bg-rink-700 dark:hover:bg-rink-500 text-wtext-2 dark:text-rink-100 transition-colors motion-reduce:transition-none active:brightness-95"
+                    className="shrink-0 min-h-[40px] px-4 py-2 rounded-w-md text-card-meta font-bold bg-white/15 hover:bg-white/25 text-white transition-colors motion-reduce:transition-none active:brightness-95"
                     aria-label={MESSAGES.attendance.selectClass}
                   >
                     {MESSAGES.attendance.changeClass}
                   </button>
                 )}
               </div>
-              )
             ) : targetScheduleId ? null : (
               // 수업이 여러 개인데 아직 선택 안 된 경우 (수업 2개+, 자동 선택 전)
               <button
                 type="button"
                 onClick={() => setIsScheduleSheetOpen(true)}
-                className="w-full flex items-center justify-between gap-3 p-4 rounded-2xl bg-white dark:bg-rink-800 shadow-md border border-dashed border-wline dark:border-rink-700 hover:border-ice-500 hover:bg-ice-500/5 transition-colors motion-reduce:transition-none"
+                className="mt-3 w-full flex items-center justify-between gap-3 rounded-w-md bg-white/10 hover:bg-white/15 px-4 py-3.5 transition-colors motion-reduce:transition-none active:brightness-95"
               >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-wline-2 dark:bg-rink-700">
-                    <Icon
-                      name="event"
-                      className="text-2xl text-wtext-3 dark:text-rink-300"
-                      aria-hidden="true"
-                    />
-                  </div>
-                  <span className="font-semibold text-wtext-2 dark:text-rink-100">
+                <div className="flex items-center gap-3 min-w-0">
+                  <Icon
+                    name="event"
+                    className="text-2xl text-it-blue-100 shrink-0"
+                    aria-hidden="true"
+                  />
+                  <span className="font-semibold text-white truncate">
                     {MESSAGES.attendance.selectSchedule}
                   </span>
                 </div>
                 <Icon
-                  name="arrow_forward_ios"
-                  className="text-wtext-3 text-card-emphasis"
+                  name="chevron_right"
+                  className="text-it-blue-100 text-card-title shrink-0"
                   aria-hidden="true"
                 />
               </button>
             )}
-          </div>
+          </section>
 
-          {/* 에러 메시지 */}
+          {/* 에러 메시지 — 흰 섹션 hairline 행 */}
           {error && (
-            <div
-              className="mb-4 p-3.5 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40 flex items-start gap-2"
-              role="alert"
-            >
-              <Icon
-                name="error_outline"
-                className="text-red-600 dark:text-red-400 text-card-title shrink-0 mt-0.5"
-                aria-hidden="true"
-              />
-              <p className="text-card-body text-red-700 dark:text-red-400 font-medium">
-                {error}
-              </p>
-            </div>
+            <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4">
+              <div
+                className="flex items-start gap-2 rounded-w-md bg-it-red-50 dark:bg-it-red-500/15 px-3.5 py-3"
+                role="alert"
+              >
+                <Icon
+                  name="error_outline"
+                  className="text-it-red-500 dark:text-it-red-300 text-card-title shrink-0 mt-0.5"
+                  aria-hidden="true"
+                />
+                <p className="text-card-body text-it-red-600 dark:text-it-red-300 font-medium">
+                  {error}
+                </p>
+              </div>
+            </section>
           )}
 
-          {/* QR 카드 */}
+          {/* QR 코드 섹션 — 흰 섹션(카드 박스 제거). QR 이미지/코너마커/티켓 절취선은 비주얼 결과물이라 골격 유지. */}
           {selectedSchedule && (
-            <div className="flex flex-col mb-4">
-              <div className="bg-white dark:bg-rink-800 rounded-3xl shadow-md overflow-hidden flex flex-col items-center relative">
-                {/* QR 코드 영역 */}
-                <div className="w-full p-8 pb-6 flex flex-col items-center justify-center bg-white dark:bg-rink-800 relative z-0">
-                  <div className="relative w-64 h-64 bg-white dark:bg-rink-700 p-2 rounded-xl border border-wline-2 dark:border-rink-700 shadow-inner flex items-center justify-center">
-                    {isGenerating ? (
+            <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 pt-6 pb-2 flex flex-col items-center">
+              {/* QR 코드 영역 — 흰 박스 + 코너 마커(비주얼 동결, 색만 it-blue 정합) */}
+              <div className="relative w-64 h-64 bg-white dark:bg-rink-700 p-2 rounded-w-md border border-it-line-strong dark:border-rink-700 shadow-inner flex items-center justify-center">
+                {isGenerating ? (
+                  <div
+                    className="flex flex-col items-center gap-3"
+                    role="status"
+                    aria-label="QR 코드 생성 중"
+                  >
+                    <div className="w-8 h-8 border-[3px] border-it-blue-500 border-t-transparent rounded-w-pill animate-spin motion-reduce:animate-none" />
+                    <span className="text-card-body text-it-ink-500 dark:text-rink-300 font-medium">
+                      생성 중...
+                    </span>
+                  </div>
+                ) : qr ? (
+                  <>
+                    <QRCodeSVG
+                      value={qr.qrData}
+                      size={232}
+                      level="M"
+                      bgColor="transparent"
+                      fgColor="currentColor"
+                      className="text-it-ink-900 dark:text-white"
+                      aria-label="출석 체크 QR 코드"
+                    />
+                    {/* 만료 오버레이 */}
+                    {isExpired && (
                       <div
-                        className="flex flex-col items-center gap-3"
-                        role="status"
-                        aria-label="QR 코드 생성 중"
+                        className="absolute inset-0 bg-it-blue-950/75 dark:bg-puck/85 rounded-w-md flex flex-col items-center justify-center gap-3"
+                        role="alert"
                       >
-                        <div className="w-8 h-8 border-[3px] border-ice-500 border-t-transparent rounded-w-pill animate-spin motion-reduce:animate-none" />
-                        <span className="text-card-body text-wtext-3 dark:text-rink-300 font-medium">
-                          생성 중...
-                        </span>
-                      </div>
-                    ) : qr ? (
-                      <>
-                        <QRCodeSVG
-                          value={qr.qrData}
-                          size={232}
-                          level="M"
-                          bgColor="transparent"
-                          fgColor="currentColor"
-                          className="text-wtext-1 dark:text-white"
-                          aria-label="출석 체크 QR 코드"
-                        />
-                        {/* 만료 오버레이 */}
-                        {isExpired && (
-                          <div
-                            className="absolute inset-0 bg-rink-900/70 dark:bg-rink-900/85 rounded-xl flex flex-col items-center justify-center gap-3"
-                            role="alert"
-                          >
-                            <Icon
-                              name="timer_off"
-                              className="text-4xl text-white"
-                              aria-hidden="true"
-                            />
-                            <span className="text-white font-bold text-card-title">
-                              만료됨
-                            </span>
-                            <button
-                              type="button"
-                              onClick={refreshQr}
-                              className="mt-1 min-h-[40px] px-5 py-2 bg-white text-ice-500 rounded-xl font-bold text-card-body hover:bg-wline-2 transition-colors motion-reduce:transition-none active:brightness-95"
-                            >
-                              QR 재생성
-                            </button>
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <div className="flex flex-col items-center gap-2 text-center">
                         <Icon
-                          name="qr_code_2"
-                          className="text-5xl text-wtext-4 dark:text-rink-300"
+                          name="timer_off"
+                          className="text-4xl text-white"
                           aria-hidden="true"
                         />
-                        <span className="text-card-body text-wtext-3 dark:text-rink-300 font-medium">
-                          QR 코드 대기 중
+                        <span className="text-white font-bold text-card-title">
+                          만료됨
                         </span>
+                        <button
+                          type="button"
+                          onClick={refreshQr}
+                          className="mt-1 min-h-[40px] px-5 py-2 bg-white text-it-blue-500 rounded-w-md font-bold text-card-body hover:bg-it-fill transition-colors motion-reduce:transition-none active:brightness-95"
+                        >
+                          QR 재생성
+                        </button>
                       </div>
                     )}
-
-                    {/* 코너 악센트 — RULE-7 합법적 예외: L자 코너 마커는 pipe-like 구분선이 아님 */}
-                    <div
-                      className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-ice-500 rounded-tl-lg"
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center gap-2 text-center">
+                    <Icon
+                      name="qr_code_2"
+                      className="text-5xl text-it-ink-300 dark:text-rink-300"
                       aria-hidden="true"
                     />
-                    <div
-                      className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-ice-500 rounded-tr-lg"
-                      aria-hidden="true"
-                    />
-                    <div
-                      className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-ice-500 rounded-bl-lg"
-                      aria-hidden="true"
-                    />
-                    <div
-                      className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-ice-500 rounded-br-lg"
-                      aria-hidden="true"
-                    />
-                  </div>
-                </div>
-
-                {/* 티켓 구분선 */}
-                <div className="w-full relative flex items-center justify-center bg-white dark:bg-rink-800">
-                  <div className="absolute left-0 w-5 h-5 bg-wbg dark:bg-rink-900 rounded-w-pill -translate-x-1/2" />
-                  <div className="w-[85%] border-t-2 border-dashed border-wline dark:border-rink-700" />
-                  <div className="absolute right-0 w-5 h-5 bg-wbg dark:bg-rink-900 rounded-w-pill translate-x-1/2" />
-                </div>
-
-                {/* 타이머 + 새로고침 */}
-                <div className="w-full p-6 pt-6 flex flex-col gap-3 items-center bg-white dark:bg-rink-800">
-                  {qr && (
-                    <div
-                      className={`flex items-center gap-2 px-5 py-3 rounded-xl w-full justify-center ${getTimerBg()}`}
-                      role="timer"
-                      aria-label={`QR 코드 ${isExpired ? "만료됨" : `${formatTime(timeRemaining)} 남음`}`}
-                    >
-                      <Icon
-                        name={isExpired ? "timer_off" : "timer"}
-                        className={`text-xl ${getTimerColor()} ${!isExpired && timeRemaining > 0 ? "animate-pulse motion-reduce:animate-none" : ""}`}
-                        aria-hidden="true"
-                      />
-                      <span
-                        className={`font-bold text-card-title tabular-nums tracking-wide ${getTimerColor()}`}
-                      >
-                        {formatTime(timeRemaining)}
-                      </span>
-                      <span
-                        className={`text-card-meta font-medium ml-1 opacity-70 ${getTimerColor()}`}
-                      >
-                        {isExpired ? "만료됨" : "남음"}
-                      </span>
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={refreshQr}
-                    disabled={isGenerating}
-                    aria-label="QR 코드 새로 생성"
-                    className="group w-full flex items-center justify-center gap-2 min-h-[52px] h-14 rounded-xl bg-ice-500 hover:bg-ice-700 text-white transition-colors motion-reduce:transition-none active:brightness-95 disabled:opacity-50 shadow-md"
-                  >
-                    {isGenerating ? (
-                      <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-w-pill animate-spin motion-reduce:animate-none" />
-                    ) : (
-                      <Icon
-                        name="refresh"
-                        className="text-white group-hover:rotate-180 transition-transform motion-reduce:transition-none duration-500"
-                        aria-hidden="true"
-                      />
-                    )}
-                    <span className="font-bold text-card-emphasis !text-white">
-                      {isGenerating ? "생성 중..." : "QR 새로 생성"}
+                    <span className="text-card-body text-it-ink-500 dark:text-rink-300 font-medium">
+                      QR 코드 대기 중
                     </span>
-                  </button>
-                </div>
+                  </div>
+                )}
+
+                {/* 코너 악센트 — RULE-7 합법적 예외: L자 코너 마커는 pipe-like 구분선이 아님 */}
+                <div
+                  className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-it-blue-500 rounded-tl-lg"
+                  aria-hidden="true"
+                />
+                <div
+                  className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-it-blue-500 rounded-tr-lg"
+                  aria-hidden="true"
+                />
+                <div
+                  className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-it-blue-500 rounded-bl-lg"
+                  aria-hidden="true"
+                />
+                <div
+                  className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-it-blue-500 rounded-br-lg"
+                  aria-hidden="true"
+                />
               </div>
-            </div>
+
+              {/* 타이머 + 새로고침 */}
+              <div className="w-full mt-6 flex flex-col gap-3 items-center">
+                {qr && (
+                  <div
+                    className={`flex items-center gap-2 px-5 py-3 rounded-w-md w-full justify-center ${getTimerBg()}`}
+                    role="timer"
+                    aria-label={`QR 코드 ${isExpired ? "만료됨" : `${formatTime(timeRemaining)} 남음`}`}
+                  >
+                    <Icon
+                      name={isExpired ? "timer_off" : "timer"}
+                      className={`text-xl ${getTimerColor()} ${!isExpired && timeRemaining > 0 ? "animate-pulse motion-reduce:animate-none" : ""}`}
+                      aria-hidden="true"
+                    />
+                    <span
+                      className={`font-bold text-card-title tabular-nums tracking-wide ${getTimerColor()}`}
+                    >
+                      {formatTime(timeRemaining)}
+                    </span>
+                    <span
+                      className={`text-card-meta font-medium ml-1 opacity-70 ${getTimerColor()}`}
+                    >
+                      {isExpired ? "만료됨" : "남음"}
+                    </span>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={refreshQr}
+                  disabled={isGenerating}
+                  aria-label="QR 코드 새로 생성"
+                  className="group w-full flex items-center justify-center gap-2 min-h-[52px] h-14 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white transition-colors motion-reduce:transition-none active:brightness-95 disabled:opacity-50"
+                >
+                  {isGenerating ? (
+                    <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-w-pill animate-spin motion-reduce:animate-none" />
+                  ) : (
+                    <Icon
+                      name="refresh"
+                      className="text-white group-hover:rotate-180 transition-transform motion-reduce:transition-none duration-500"
+                      aria-hidden="true"
+                    />
+                  )}
+                  <span className="font-bold text-card-emphasis !text-white">
+                    {isGenerating ? "생성 중..." : "QR 새로 생성"}
+                  </span>
+                </button>
+              </div>
+            </section>
           )}
         </main>
 
-        {/* 하단 출석 현황 */}
+        {/* 하단 출석 현황 — 흰 섹션 hairline 상단 구분 */}
         {selectedSchedule && qr && (
-          <footer className="bg-white dark:bg-rink-800 px-6 py-5 pb-5 rounded-t-3xl shadow-md border-t border-wline-2 dark:border-rink-700 shrink-0 z-20">
+          <footer className="bg-it-surface dark:bg-it-blue-950 px-5 py-5 border-t border-it-line dark:border-rink-700 shrink-0 z-20">
             <div className="flex flex-col gap-4">
               <div className="flex justify-between items-end">
                 <div>
-                  <p className="text-wtext-3 dark:text-rink-300 text-[11px] font-bold uppercase tracking-wider mb-1">
+                  <p className="text-it-ink-500 dark:text-rink-300 text-card-meta font-bold uppercase tracking-wider mb-1">
                     출석 현황
                   </p>
                   <div className="flex items-baseline gap-1">
-                    <span className="text-3xl font-extrabold text-wtext-1 dark:text-white tabular-nums">
+                    <span className="text-3xl font-extrabold font-num text-it-ink-800 dark:text-white tabular-nums">
                       {attendance.current}
                     </span>
-                    <span className="text-card-title text-wtext-3 dark:text-rink-300 font-medium">
+                    <span className="text-card-title text-it-ink-500 dark:text-rink-300 font-medium">
                       / {attendance.total}명
                     </span>
                   </div>
                 </div>
                 <div className="text-right">
-                  <span className="inline-flex items-center gap-1 text-card-meta font-bold text-ice-500 dark:text-blue-300 bg-ice-500/10 dark:bg-blue-900/30 px-2.5 py-1 rounded-w-pill">
+                  <span className="inline-flex items-center gap-1 text-card-meta font-bold text-it-blue-500 dark:text-it-blue-200 bg-it-blue-50 dark:bg-it-blue-500/20 px-2.5 py-1 rounded-w-pill">
                     {Math.round(attendance.percentage)}% 완료
                   </span>
                 </div>
@@ -446,7 +414,7 @@ export default function QRGeneratePage() {
 
               {/* 프로그레스 바 */}
               <div
-                className="relative w-full h-3 bg-wline-2 dark:bg-rink-700 rounded-w-pill overflow-hidden"
+                className="relative w-full h-3 bg-it-line dark:bg-rink-700 rounded-w-pill overflow-hidden"
                 role="progressbar"
                 aria-valuenow={Math.round(attendance.percentage)}
                 aria-valuemin={0}
@@ -454,11 +422,11 @@ export default function QRGeneratePage() {
                 aria-label={`출석 완료율 ${Math.round(attendance.percentage)}%`}
               >
                 <div
-                  className="absolute top-0 left-0 h-full bg-ice-500 rounded-w-pill transition-all motion-reduce:transition-none duration-1000 ease-out"
+                  className="absolute top-0 left-0 h-full bg-it-blue-500 rounded-w-pill transition-all motion-reduce:transition-none duration-1000 ease-out"
                   style={{ width: `${Math.min(attendance.percentage, 100)}%` }}
                 />
               </div>
-              <p className="text-center text-card-meta text-wtext-3 dark:text-rink-300">
+              <p className="text-center text-card-meta text-it-ink-500 dark:text-rink-300">
                 10초마다 자동 업데이트됩니다
               </p>
             </div>

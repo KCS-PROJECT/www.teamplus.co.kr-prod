@@ -115,24 +115,25 @@ function getScheduleMode(
   return 'past';
 }
 
+// flat 출석상태 색 (SoT §3): 출석=초록(emerald) · 결석=it-red · 미확인=ink
 const STATUS_META: Record<
   CoachAttendanceStatus,
   { label: string; chip: string; dot: string }
 > = {
   present: {
     label: '출석',
-    chip: 'bg-mint-100 text-rink-800 dark:bg-mint-500/20 dark:text-mint-100',
-    dot: 'bg-mint-500',
+    chip: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200',
+    dot: 'bg-emerald-500',
   },
   absent: {
     label: '결석',
-    chip: 'bg-flame-100 text-flame-500 dark:bg-flame-500/20 dark:text-flame-100',
-    dot: 'bg-flame-500',
+    chip: 'bg-it-red-50 text-it-red-500 dark:bg-it-red-500/20 dark:text-it-red-300',
+    dot: 'bg-it-red-500',
   },
   unchecked: {
     label: '미확인',
-    chip: 'bg-wline-2 text-wtext-3 dark:bg-rink-700 dark:text-rink-300',
-    dot: 'bg-wtext-4',
+    chip: 'bg-it-fill text-it-ink-500 dark:bg-rink-700 dark:text-rink-300',
+    dot: 'bg-it-ink-400',
   },
 };
 
@@ -316,53 +317,49 @@ export default function AttendanceCheckPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title="출석 확인" forceNative />
       <main
-        className="flex-1 min-h-0 overflow-y-auto bg-wbg dark:bg-puck"
+        className="flex-1 min-h-0 overflow-y-auto bg-it-canvas dark:bg-puck"
         role="main"
         aria-label="출석 확인"
       >
-        {/* Hero — 수업/일정 요약 + 시점 모드 배지 */}
-        <section className="px-4 pt-4">
-          <div className="rounded-w-xl bg-rink-800 dark:bg-rink-900 shadow-sh-rink p-5 text-white">
-            <div className="flex items-center gap-2">
-              <div className="text-card-meta font-extrabold tracking-[0.08em] text-ice-100/90">
-                ATTENDANCE
-              </div>
-              {data && !isLoading && (
-                <ModeBadge mode={mode} />
-              )}
+        {/* Hero — navy 밴드 full-bleed (수업/일정 요약 + 시점 모드 배지) */}
+        <section className="bg-it-blue-800 dark:bg-it-blue-950 px-5 pt-5 pb-6 text-white">
+          <div className="flex items-center gap-2">
+            <div className="text-card-meta font-extrabold tracking-[0.08em] text-it-blue-100/90">
+              ATTENDANCE
             </div>
-            {isLoading || !data ? null : (
-              <>
-                <h1 className="mt-2 text-card-section font-extrabold tracking-tight break-keep text-white">
-                  {data.className}
-                </h1>
-                <p className="mt-1 text-card-body font-num text-rink-100 tabular-nums">
-                  {formatDateKR(data.scheduledDate)} ({dayKR(data.scheduledDate)}){' '}
-                  ·{' '}
-                  {data.scheduleStartTime
-                    ? data.scheduleEndTime
-                      ? `${data.scheduleStartTime} - ${data.scheduleEndTime}`
-                      : data.scheduleStartTime
-                    : formatTimeRange(data.classStartTime, data.classEndTime)}
-                </p>
-                <p className="mt-1 text-card-meta font-semibold text-ice-100/80">
-                  {data.teamName}
-                  {data.teamCode ? ` (${data.teamCode})` : ''}
-                </p>
-              </>
+            {data && !isLoading && (
+              <ModeBadge mode={mode} />
             )}
           </div>
+          {isLoading || !data ? null : (
+            <>
+              <h1 className="mt-2 text-card-section font-extrabold tracking-tight break-keep text-white">
+                {data.className}
+              </h1>
+              <p className="mt-1 text-card-body font-num text-it-blue-100 tabular-nums">
+                {formatDateKR(data.scheduledDate)} ({dayKR(data.scheduledDate)}){' '}
+                ·{' '}
+                {data.scheduleStartTime
+                  ? data.scheduleEndTime
+                    ? `${data.scheduleStartTime} - ${data.scheduleEndTime}`
+                    : data.scheduleStartTime
+                  : formatTimeRange(data.classStartTime, data.classEndTime)}
+              </p>
+              <p className="mt-1 text-card-meta font-semibold text-it-blue-100/80">
+                {data.teamName}
+                {data.teamCode ? ` (${data.teamCode})` : ''}
+              </p>
+            </>
+          )}
         </section>
 
-        {/* 카운트 요약 (3-state) */}
+        {/* 카운트 요약 (3-state) — flat 흰 섹션 (카드 박스 제거), 섹션 간 8px 회색 갭 */}
         {data && !isLoading && (
-          <section className="px-4 pt-3">
-            <div className="rounded-w-xl bg-wsurface dark:bg-rink-800 shadow-sh-1 border border-wline dark:border-rink-700 p-4">
-              <div className="grid grid-cols-3 gap-2">
-                <CountBlock label="출석" value={data.counts.present} dotClass="bg-mint-500" />
-                <CountBlock label="결석" value={data.counts.absent} dotClass="bg-flame-500" />
-                <CountBlock label="미확인" value={data.counts.unchecked} dotClass="bg-wtext-4" />
-              </div>
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4">
+            <div className="grid grid-cols-3 gap-2">
+              <CountBlock label="출석" value={data.counts.present} dotClass="bg-emerald-500" />
+              <CountBlock label="결석" value={data.counts.absent} dotClass="bg-it-red-500" />
+              <CountBlock label="미확인" value={data.counts.unchecked} dotClass="bg-it-ink-400" />
             </div>
           </section>
         )}
@@ -370,11 +367,11 @@ export default function AttendanceCheckPage() {
         {/* QR 출석 생성 — 이 회차(scheduleId)를 넘겨 해당 일정 QR 을 바로 생성.
              종료(past)된 수업은 QR 출석이 무의미하므로 숨김. */}
         {data && !isLoading && mode !== 'past' && (
-          <section className="px-4 pt-3">
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4">
             <button
               type="button"
               onClick={() => navigate(`/qr-generate?scheduleId=${scheduleId}`)}
-              className="w-full inline-flex items-center justify-center gap-2 min-h-[52px] rounded-w-xl bg-ice-500 text-white text-card-title font-bold shadow-sm hover:bg-ice-700 active:brightness-95 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900"
+              className="w-full inline-flex items-center justify-center gap-2 min-h-[52px] rounded-w-md bg-it-blue-500 text-white text-card-title font-bold hover:bg-it-blue-600 active:brightness-95 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900"
               aria-label={MESSAGES.attendance.generateQr}
             >
               <Icon name="qr_code_scanner" className="text-xl text-white" aria-hidden="true" />
@@ -383,36 +380,36 @@ export default function AttendanceCheckPage() {
           </section>
         )}
 
-        {/* 학생 명단 — 선택 시 하단 바 높이만큼 추가 여백(pb-28) */}
-        <section className={cn('px-4 pt-3', hasSelection ? 'pb-28' : 'pb-8')}>
+        {/* 학생 명단 — flat 흰 섹션 (카드 박스 제거). 선택 시 하단 바 높이만큼 추가 여백(pb-28) */}
+        <section className={cn('mt-2 bg-it-surface dark:bg-it-blue-950 px-5 pt-4', hasSelection ? 'pb-28' : 'pb-8')}>
           {error ? (
-            <div className="rounded-w-xl bg-wsurface dark:bg-rink-800 shadow-sh-1 border border-wline dark:border-rink-700 p-6 text-center">
-              <Icon name="error_outline" className="text-3xl text-flame-500" aria-hidden="true" />
-              <p className="mt-2 text-card-title text-wtext-1 dark:text-white">{error}</p>
+            <div className="py-10 text-center">
+              <Icon name="error_outline" className="text-3xl text-it-red-500" aria-hidden="true" />
+              <p className="mt-2 text-card-title text-it-ink-800 dark:text-white">{error}</p>
               <button
                 type="button"
                 onClick={() => void load()}
-                className="mt-3 inline-flex items-center gap-1.5 h-10 px-4 rounded-w-md bg-ice-500 text-white text-card-body font-bold hover:bg-ice-600"
+                className="mt-3 inline-flex items-center gap-1.5 h-10 px-4 rounded-w-md bg-it-blue-500 text-white text-card-body font-bold hover:bg-it-blue-600"
               >
                 다시 시도
               </button>
             </div>
           ) : isLoading || !data ? null : data.students.length === 0 ? (
-            <div className="rounded-w-xl bg-wsurface dark:bg-rink-800 shadow-sh-1 border border-wline dark:border-rink-700 p-8 text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-w-pill bg-wline-2 dark:bg-rink-700">
-                <Icon name="group_off" className="text-2xl text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+            <div className="py-12 text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-w-pill bg-it-fill dark:bg-rink-700">
+                <Icon name="group_off" className="text-2xl text-it-ink-500 dark:text-rink-300" aria-hidden="true" />
               </div>
-              <p className="mt-2 text-card-title text-wtext-2 dark:text-rink-100">
+              <p className="mt-2 text-card-title text-it-ink-700 dark:text-rink-100">
                 등록된 학생이 없습니다
               </p>
             </div>
           ) : (
-            <div className="rounded-w-xl bg-wsurface dark:bg-rink-800 shadow-sh-1 border border-wline dark:border-rink-700 overflow-hidden">
+            <div className="overflow-hidden">
               {/* 전체 선택 토글 — 2명 이상일 때만 노출. 일괄 적용 액션은 하단 고정 바가 담당.
                   · 좌측 체크박스: 전체 선택/해제 토글
                   · 좌측 라벨: 선택 없을 때 "전체 선택" / 1명+ 일 때 "N명 선택" */}
               {data.students.length >= 2 && (
-                <div className="flex items-center gap-2 px-3 py-2.5 border-b border-wline-2 dark:border-rink-700">
+                <div className="flex items-center gap-2 px-1 py-2.5 border-b border-it-line dark:border-rink-700">
                   <button
                     type="button"
                     onClick={() => {
@@ -422,7 +419,7 @@ export default function AttendanceCheckPage() {
                       }
                       toggleSelectAll();
                     }}
-                    className="flex-1 min-w-0 flex items-center gap-3 px-1 py-1 rounded-w-sm hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
+                    className="flex-1 min-w-0 flex items-center gap-3 px-1 py-1 rounded-w-sm hover:bg-it-fill dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
                     aria-label={
                       selectedIds.size === data.students.length
                         ? '전체 선택 해제'
@@ -434,10 +431,10 @@ export default function AttendanceCheckPage() {
                       className={cn(
                         'shrink-0 size-7 rounded-w-sm flex items-center justify-center border',
                         selectedIds.size === data.students.length
-                          ? 'bg-ice-500 border-ice-500 text-white'
+                          ? 'bg-it-blue-500 border-it-blue-500 text-white'
                           : selectedIds.size > 0
-                            ? 'bg-ice-500/40 border-ice-500 text-white'
-                            : 'bg-wsurface border-wline dark:bg-rink-800 dark:border-rink-700 text-transparent',
+                            ? 'bg-it-blue-500/40 border-it-blue-500 text-white'
+                            : 'bg-it-surface border-it-line-strong dark:bg-rink-800 dark:border-rink-700 text-transparent',
                       )}
                     >
                       <Icon
@@ -450,8 +447,8 @@ export default function AttendanceCheckPage() {
                       className={cn(
                         'text-card-body font-semibold tabular-nums',
                         selectedIds.size > 0
-                          ? 'text-ice-500'
-                          : 'text-wtext-2 dark:text-rink-100',
+                          ? 'text-it-blue-500'
+                          : 'text-it-ink-700 dark:text-rink-100',
                       )}
                     >
                       {selectedIds.size > 0
@@ -461,7 +458,7 @@ export default function AttendanceCheckPage() {
                   </button>
                 </div>
               )}
-              <ul className="divide-y divide-wline-2 dark:divide-rink-700">
+              <ul className="divide-y divide-it-line dark:divide-rink-700">
                 {data.students.map((s) => {
                   const meta = STATUS_META[s.attendanceStatus] ?? STATUS_META.unchecked;
                   const isLocked = mode === 'upcoming';
@@ -479,7 +476,7 @@ export default function AttendanceCheckPage() {
                           toggleSelect(s.memberId);
                         }}
                         className={cn(
-                          'shrink-0 pl-4 pr-2 flex items-center transition-colors motion-reduce:transition-none',
+                          'shrink-0 pl-1 pr-2 flex items-center transition-colors motion-reduce:transition-none',
                           isLocked && 'cursor-not-allowed opacity-70',
                         )}
                         aria-label={`${s.memberName} ${isSelected ? '선택 해제' : '선택'}`}
@@ -489,8 +486,8 @@ export default function AttendanceCheckPage() {
                           className={cn(
                             'size-7 rounded-w-sm flex items-center justify-center border',
                             isSelected
-                              ? 'bg-ice-500 border-ice-500 text-white'
-                              : 'bg-wsurface border-wline dark:bg-rink-800 dark:border-rink-700 text-transparent',
+                              ? 'bg-it-blue-500 border-it-blue-500 text-white'
+                              : 'bg-it-surface border-it-line-strong dark:bg-rink-800 dark:border-rink-700 text-transparent',
                           )}
                         >
                           <Icon name="check" className="text-card-emphasis" aria-hidden="true" />
@@ -507,22 +504,22 @@ export default function AttendanceCheckPage() {
                           setEditStudent(s);
                         }}
                         className={cn(
-                          'flex-1 min-w-0 flex items-center gap-3 pr-4 py-3 text-left transition-colors duration-150 motion-reduce:transition-none',
+                          'flex-1 min-w-0 flex items-center gap-3 pr-1 py-3 text-left transition-colors duration-150 motion-reduce:transition-none',
                           isLocked
                             ? 'cursor-not-allowed opacity-70'
-                            : 'hover:bg-wline-2 dark:hover:bg-rink-700',
+                            : 'hover:bg-it-fill dark:hover:bg-rink-700',
                         )}
                         aria-label={`${s.memberName} 출석 상태 변경`}
                       >
-                        <div className={cn('h-9 w-9 shrink-0 rounded-w-pill flex items-center justify-center bg-wline-2 dark:bg-rink-700')}>
-                          <Icon name="person" className="text-[18px] text-wtext-2 dark:text-rink-100" aria-hidden="true" />
+                        <div className={cn('h-9 w-9 shrink-0 rounded-w-pill flex items-center justify-center bg-it-fill dark:bg-rink-700')}>
+                          <Icon name="person" className="text-[18px] text-it-ink-700 dark:text-rink-100" aria-hidden="true" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-card-title font-bold text-wtext-1 dark:text-white">
+                          <p className="truncate text-card-title font-bold text-it-ink-800 dark:text-white">
                             {s.memberName}
                           </p>
                           {s.checkedInAt && (
-                            <p className="text-card-meta font-num text-wtext-3 dark:text-rink-300 tabular-nums">
+                            <p className="text-card-meta font-num text-it-ink-500 dark:text-rink-300 tabular-nums">
                               체크인 {new Date(s.checkedInAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
                               {s.checkedInVia ? ` · ${s.checkedInVia === 'qr_scan' ? 'QR' : s.checkedInVia === 'coach_manual' ? '코치' : '학부모'}` : ''}
                             </p>
@@ -552,7 +549,7 @@ export default function AttendanceCheckPage() {
           <div
             role="toolbar"
             aria-label={`${selectedIds.size}명 선택됨 — 일괄 출석 처리`}
-            className="flex w-full min-w-0 items-center gap-2 rounded-w-lg border border-ice-500/40 bg-wsurface dark:bg-rink-800 px-3 py-2.5 shadow-sh-3"
+            className="flex w-full min-w-0 items-center gap-2 rounded-w-lg border border-it-blue-500/40 bg-it-surface dark:bg-rink-800 px-3 py-2.5 shadow-sh-3"
             style={{ maxWidth: 'calc(var(--mobile-shell-width, 448px) - 2rem)' }}
           >
             <button
@@ -560,11 +557,11 @@ export default function AttendanceCheckPage() {
               onClick={() => setSelectedIds(new Set())}
               disabled={submitting}
               aria-label="선택 해제"
-              className="flex size-8 shrink-0 items-center justify-center rounded-w-sm text-wtext-3 transition-colors motion-reduce:transition-none hover:bg-wbg hover:text-wtext-2 focus:outline-none focus:ring-2 focus:ring-ice-500/40 disabled:opacity-50 dark:text-rink-300 dark:hover:bg-rink-700 dark:hover:text-rink-100"
+              className="flex size-8 shrink-0 items-center justify-center rounded-w-sm text-it-ink-500 transition-colors motion-reduce:transition-none hover:bg-it-fill hover:text-it-ink-800 focus:outline-none focus:ring-2 focus:ring-it-blue-500/40 disabled:opacity-50 dark:text-rink-300 dark:hover:bg-rink-700 dark:hover:text-rink-100"
             >
               <Icon name="close" className="text-card-emphasis" aria-hidden="true" />
             </button>
-            <span className="shrink-0 inline-flex items-center gap-1 text-card-body font-bold text-ice-500 tabular-nums">
+            <span className="shrink-0 inline-flex items-center gap-1 text-card-body font-bold text-it-blue-500 tabular-nums">
               {selectedIds.size}명
             </span>
             <button
@@ -572,7 +569,7 @@ export default function AttendanceCheckPage() {
               onClick={() => void handleBulkMark('absent')}
               disabled={submitting}
               aria-label={`선택한 ${selectedIds.size}명 일괄 결석 처리`}
-              className="ml-auto inline-flex h-9 items-center gap-1 rounded-w-md bg-flame-500 px-4 text-card-meta font-bold text-white transition-colors motion-reduce:transition-none hover:brightness-95 active:brightness-95 focus:outline-none focus:ring-2 focus:ring-flame-500/40 disabled:opacity-60"
+              className="ml-auto inline-flex h-9 items-center gap-1 rounded-w-md bg-it-red-500 px-4 text-card-meta font-bold text-white transition-colors motion-reduce:transition-none hover:brightness-95 active:brightness-95 focus:outline-none focus:ring-2 focus:ring-it-red-500/40 disabled:opacity-60"
             >
               <Icon name="cancel" className="text-card-emphasis" aria-hidden="true" />
               일괄 결석
@@ -582,7 +579,7 @@ export default function AttendanceCheckPage() {
               onClick={() => void handleBulkMark('present')}
               disabled={submitting}
               aria-label={`선택한 ${selectedIds.size}명 일괄 출석 처리`}
-              className="inline-flex h-9 items-center gap-1 rounded-w-md bg-mint-500 px-4 text-card-meta font-bold text-white transition-colors motion-reduce:transition-none hover:brightness-95 active:brightness-95 focus:outline-none focus:ring-2 focus:ring-mint-500/40 disabled:opacity-60"
+              className="inline-flex h-9 items-center gap-1 rounded-w-md bg-emerald-500 px-4 text-card-meta font-bold text-white transition-colors motion-reduce:transition-none hover:brightness-95 active:brightness-95 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 disabled:opacity-60"
             >
               <Icon name="check_circle" className="text-card-emphasis" aria-hidden="true" />
               일괄 출석
@@ -616,8 +613,8 @@ const STATUS_OPTIONS: {
   icon: string;
   chip: string;
 }[] = [
-  { value: 'present', label: '출석', desc: '수업 참석', icon: 'check_circle', chip: 'bg-mint-500 text-white' },
-  { value: 'absent',  label: '결석', desc: '수업 미참석', icon: 'cancel',       chip: 'bg-flame-500 text-white' },
+  { value: 'present', label: '출석', desc: '수업 참석', icon: 'check_circle', chip: 'bg-emerald-500 text-white' },
+  { value: 'absent',  label: '결석', desc: '수업 미참석', icon: 'cancel',       chip: 'bg-it-red-500 text-white' },
 ];
 
 function StatusEditSheet({
@@ -640,11 +637,11 @@ function StatusEditSheet({
       {student && (
         <div className="px-5 pt-2 pb-6">
           {/* 컨텍스트 — 수업명 + 학생 + 현재 상태 */}
-          <div className="rounded-w-md bg-wline-2 dark:bg-rink-700 px-3 py-2.5 mb-4">
-            <p className="text-card-meta text-wtext-3 dark:text-rink-300">{className}</p>
-            <p className="text-card-title font-bold text-wtext-1 dark:text-white truncate">
+          <div className="rounded-w-md bg-it-fill dark:bg-rink-700 px-3 py-2.5 mb-4">
+            <p className="text-card-meta text-it-ink-500 dark:text-rink-300">{className}</p>
+            <p className="text-card-title font-bold text-it-ink-800 dark:text-white truncate">
               {student.memberName}{' '}
-              <span className="ml-1 text-card-meta text-wtext-3 dark:text-rink-300">
+              <span className="ml-1 text-card-meta text-it-ink-500 dark:text-rink-300">
                 현재: {STATUS_META[student.attendanceStatus]?.label ?? '미확인'}
               </span>
             </p>
@@ -661,8 +658,8 @@ function StatusEditSheet({
                     disabled={submitting || isCurrent}
                     onClick={() => onSelect(opt.value)}
                     className={cn(
-                      'w-full flex items-center gap-3 rounded-w-md border px-4 py-3 text-left transition-colors duration-150 motion-reduce:transition-none',
-                      'border-wline dark:border-rink-700 bg-wsurface dark:bg-rink-800 hover:bg-wline-2 dark:hover:bg-rink-700',
+                      'w-full flex items-center gap-3 rounded-w-md border-[1.5px] px-4 py-3 text-left transition-colors duration-150 motion-reduce:transition-none',
+                      'border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 hover:bg-it-fill dark:hover:bg-rink-700',
                       isCurrent && 'opacity-50 cursor-not-allowed',
                       submitting && 'cursor-wait',
                     )}
@@ -671,13 +668,13 @@ function StatusEditSheet({
                       <Icon name={opt.icon} className="text-[18px]" aria-hidden="true" />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-card-title font-bold text-wtext-1 dark:text-white">
+                      <span className="block text-card-title font-bold text-it-ink-800 dark:text-white">
                         {opt.label}
                         {isCurrent && (
-                          <span className="ml-2 rounded-w-pill bg-wline-2 dark:bg-rink-700 px-2 py-0.5 text-card-meta font-extrabold text-wtext-3 dark:text-rink-300">현재</span>
+                          <span className="ml-2 rounded-w-pill bg-it-fill dark:bg-rink-700 px-2 py-0.5 text-card-meta font-extrabold text-it-ink-500 dark:text-rink-300">현재</span>
                         )}
                       </span>
-                      <span className="block text-card-meta text-wtext-3 dark:text-rink-300">
+                      <span className="block text-card-meta text-it-ink-500 dark:text-rink-300">
                         {opt.desc}
                       </span>
                     </span>
@@ -693,9 +690,9 @@ function StatusEditSheet({
                   type="button"
                   disabled={submitting}
                   onClick={() => onSelect('unchecked' as CoachAttendanceStatus)}
-                  className="w-full flex items-center gap-3 rounded-w-md border border-dashed border-wline dark:border-rink-700 px-4 py-3 text-left text-card-body font-semibold text-wtext-2 dark:text-rink-100 hover:bg-wline-2 dark:hover:bg-rink-700 disabled:cursor-wait"
+                  className="w-full flex items-center gap-3 rounded-w-md border-[1.5px] border-dashed border-it-line-strong dark:border-rink-700 px-4 py-3 text-left text-card-body font-semibold text-it-ink-700 dark:text-rink-100 hover:bg-it-fill dark:hover:bg-rink-700 disabled:cursor-wait"
                 >
-                  <Icon name="undo" className="text-[18px] text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+                  <Icon name="undo" className="text-[18px] text-it-ink-500 dark:text-rink-300" aria-hidden="true" />
                   처리 취소 (미확인으로)
                 </button>
               </li>
@@ -712,9 +709,9 @@ function CountBlock({ label, value, dotClass }: { label: string; value: number; 
     <div className="flex flex-col items-center gap-1">
       <div className="flex items-center gap-1">
         <span className={cn('h-1.5 w-1.5 rounded-w-pill', dotClass)} aria-hidden="true" />
-        <span className="text-card-meta font-semibold text-wtext-3 dark:text-rink-300">{label}</span>
+        <span className="text-card-meta font-semibold text-it-ink-500 dark:text-rink-300">{label}</span>
       </div>
-      <span className="text-card-section font-extrabold font-num text-wtext-1 dark:text-white tabular-nums">
+      <span className="text-card-section font-extrabold font-num text-it-ink-800 dark:text-white tabular-nums">
         {value}
       </span>
     </div>
@@ -725,21 +722,21 @@ function CountBlock({ label, value, dotClass }: { label: string; value: number; 
 function ModeBadge({ mode }: { mode: ScheduleMode }) {
   if (mode === 'active') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-w-pill bg-mint-500/20 px-2 py-0.5 text-card-meta font-extrabold text-mint-100">
-        <span className="h-1.5 w-1.5 rounded-w-pill bg-mint-500 animate-pulse motion-reduce:animate-none" aria-hidden="true" />
+      <span className="inline-flex items-center gap-1 rounded-w-pill bg-emerald-500/20 px-2 py-0.5 text-card-meta font-extrabold text-emerald-100">
+        <span className="h-1.5 w-1.5 rounded-w-pill bg-emerald-400 animate-pulse motion-reduce:animate-none" aria-hidden="true" />
         진행 중
       </span>
     );
   }
   if (mode === 'upcoming') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-w-pill bg-rink-700/60 px-2 py-0.5 text-card-meta font-extrabold text-rink-100">
+      <span className="inline-flex items-center gap-1 rounded-w-pill bg-it-blue-900/50 px-2 py-0.5 text-card-meta font-extrabold text-it-blue-100">
         예정
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded-w-pill bg-rink-700/60 px-2 py-0.5 text-card-meta font-extrabold text-rink-100">
+    <span className="inline-flex items-center gap-1 rounded-w-pill bg-it-blue-900/50 px-2 py-0.5 text-card-meta font-extrabold text-it-blue-100">
       완료
     </span>
   );

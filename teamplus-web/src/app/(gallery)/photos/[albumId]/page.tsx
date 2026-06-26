@@ -175,12 +175,12 @@ export default function AlbumDetailPage() {
           rightAction={
             <div className="flex items-center gap-1">
               <button type="button" onClick={selectAll}
-                className="px-3 py-1.5 text-card-body font-medium text-ice-500 hover:bg-ice-500/5 rounded-lg transition-colors motion-reduce:transition-none"
+                className="px-3 py-1.5 text-card-body font-bold text-it-blue-500 hover:bg-it-blue-50 dark:hover:bg-it-blue-500/10 rounded-w-md transition-colors motion-reduce:transition-none"
               >
                 {selectedPhotos.size === album.photos.length ? '전체 해제' : '전체 선택'}
               </button>
               <button type="button" onClick={toggleSelectMode}
-                className="px-3 py-1.5 text-card-body font-medium text-wtext-2 dark:text-rink-300 hover:bg-wline-2 dark:hover:bg-rink-800 rounded-lg transition-colors motion-reduce:transition-none"
+                className="px-3 py-1.5 text-card-body font-medium text-it-ink-700 dark:text-rink-300 hover:bg-it-fill dark:hover:bg-rink-800 rounded-w-md transition-colors motion-reduce:transition-none"
               >
                 취소
               </button>
@@ -201,27 +201,27 @@ export default function AlbumDetailPage() {
         />
       )}
 
-      {/* Album Info */}
+      {/* Album Info — flat 흰 섹션 + hairline */}
       {!isSelectMode && (
-        <div className="px-4 py-4 bg-wbg dark:bg-rink-800/50 border-b border-wline-2 dark:border-rink-800">
-          <p className="text-card-body text-wtext-2 dark:text-rink-300 mb-2">
+        <div className="px-4 py-4 bg-it-surface dark:bg-it-blue-950 border-b border-it-line dark:border-rink-800">
+          <p className="text-card-body text-it-ink-700 dark:text-rink-300 mb-2">
             {album.description}
           </p>
-          <div className="flex items-center gap-4 text-card-meta text-wtext-3 dark:text-rink-300">
+          <div className="flex items-center gap-4 text-card-meta text-it-ink-500 dark:text-rink-300">
             <span className="flex items-center gap-1">
-              <Icon name="calendar_today" size={16} className="text-[16px]" />
+              <Icon name="calendar_today" size={16} className="text-[16px] text-it-blue-500" />
               {album.date}
             </span>
             <span className="flex items-center gap-1">
-              <Icon name="photo_library" size={16} className="text-[16px]" />
+              <Icon name="photo_library" size={16} className="text-[16px] text-it-blue-500" />
               {album.photoCount}장
             </span>
           </div>
         </div>
       )}
 
-      {/* Photo Grid */}
-      <main className="flex-1 overflow-y-auto hide-scrollbar">
+      {/* Photo Grid — 사진 이미지는 비주얼 결과물이라 골격 유지, 캔버스만 it-canvas */}
+      <main className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck">
         <div className="grid grid-cols-3 gap-0.5 p-0.5">
           {album.photos.map((photo) => (
             <PhotoGridItem
@@ -242,19 +242,19 @@ export default function AlbumDetailPage() {
 
       {/* Selection Action Bar */}
       {isSelectMode && selectedPhotos.size > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-rink-900 border-t border-wline dark:border-rink-700 px-4 py-3 z-30">
+        <div className="fixed bottom-0 left-0 right-0 bg-it-surface dark:bg-rink-900 border-t border-it-line dark:border-rink-700 px-4 py-3 z-30">
           <div className="max-w-md mx-auto flex items-center justify-around">
             <button type="button"               onClick={handleDownloadSelected}
-              className="flex flex-col items-center gap-1 px-4 py-2 text-wtext-2 dark:text-rink-100 hover:text-ice-500 transition-colors motion-reduce:transition-none"
+              className="flex flex-col items-center gap-1 px-4 py-2 text-it-ink-800 dark:text-rink-100 hover:text-it-blue-500 transition-colors motion-reduce:transition-none"
             >
               <Icon name="download" />
               <span className="text-card-meta font-medium">다운로드</span>
             </button>
-            <button type="button" className="flex flex-col items-center gap-1 px-4 py-2 text-wtext-2 dark:text-rink-100 hover:text-ice-500 transition-colors motion-reduce:transition-none">
+            <button type="button" className="flex flex-col items-center gap-1 px-4 py-2 text-it-ink-800 dark:text-rink-100 hover:text-it-blue-500 transition-colors motion-reduce:transition-none">
               <Icon name="share" />
               <span className="text-card-meta font-medium">공유</span>
             </button>
-            <button type="button" className="flex flex-col items-center gap-1 px-4 py-2 text-wtext-2 dark:text-rink-100 hover:text-red-500 transition-colors motion-reduce:transition-none">
+            <button type="button" className="flex flex-col items-center gap-1 px-4 py-2 text-it-ink-800 dark:text-rink-100 hover:text-it-red-500 transition-colors motion-reduce:transition-none">
               <Icon name="delete" />
               <span className="text-card-meta font-medium">삭제</span>
             </button>
@@ -302,9 +302,9 @@ function PhotoGridItem({
   const content = (
     <div
       className={cn(
-        'relative aspect-square bg-wline dark:bg-rink-700 overflow-hidden group',
+        'relative aspect-square bg-it-line dark:bg-rink-700 overflow-hidden group',
         isSelectMode && 'cursor-pointer',
-        isSelected && 'ring-2 ring-ice-500 ring-inset'
+        isSelected && 'ring-2 ring-it-blue-500 ring-inset'
       )}
       onClick={handleClick}
       role={isSelectMode ? 'checkbox' : undefined}
@@ -340,7 +340,7 @@ function PhotoGridItem({
             className={cn(
               'w-6 h-6 rounded-w-pill border-2 flex items-center justify-center transition-all motion-reduce:transition-none',
               isSelected
-                ? 'bg-ice-500 border-ice-500 text-white'
+                ? 'bg-it-blue-500 border-it-blue-500 text-white'
                 : 'bg-white/80 border-white/80 text-transparent'
             )}
           >
@@ -367,7 +367,7 @@ function PhotoGridItem({
 
       {/* Selection Overlay */}
       {isSelectMode && isSelected && (
-        <div className="absolute inset-0 bg-ice-500/20" />
+        <div className="absolute inset-0 bg-it-blue-500/20" />
       )}
     </div>
   );

@@ -42,6 +42,11 @@ export interface CreditAdjustModalProps {
   userName: string;
   /** 성공 시 호출 (예: 명단 reload) */
   onSuccess?: () => void;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 it-* 토큰(추가=it-blue·차감=it-red·it-fill 입력)으로 교체.
+   */
+  iceTheme?: boolean;
 }
 
 type Sign = 'add' | 'subtract';
@@ -52,6 +57,7 @@ export const CreditAdjustModal = memo(function CreditAdjustModal({
   userId,
   userName,
   onSuccess,
+  iceTheme = false,
 }: CreditAdjustModalProps) {
   const { toast } = useToast();
   const { modal } = useModal();
@@ -195,7 +201,14 @@ export const CreditAdjustModal = memo(function CreditAdjustModal({
       <div className="flex flex-col gap-5">
         {/* ─── 1. +/- 토글 ─── */}
         <div className="flex flex-col gap-2">
-          <span className="text-card-meta font-semibold text-wtext-3 dark:text-rink-300">
+          <span
+            className={cn(
+              'text-card-meta font-semibold',
+              iceTheme
+                ? 'text-it-ink-500 dark:text-rink-300'
+                : 'text-wtext-3 dark:text-rink-300',
+            )}
+          >
             조정 방향
           </span>
           <div
@@ -211,10 +224,14 @@ export const CreditAdjustModal = memo(function CreditAdjustModal({
               disabled={isSubmitting}
               className={cn(
                 'min-h-[52px] rounded-w-md border-2 flex items-center justify-center gap-2 text-card-body font-bold transition-colors motion-reduce:transition-none active:brightness-95',
-                'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40',
-                sign === 'add'
-                  ? 'bg-ice-500 border-ice-500 text-white shadow-sh-1'
-                  : 'bg-wsurface dark:bg-rink-800 border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 hover:bg-wbg dark:hover:bg-rink-700/40',
+                'focus:outline-none focus-visible:ring-2',
+                iceTheme
+                  ? sign === 'add'
+                    ? 'bg-it-blue-500 border-it-blue-500 text-white focus-visible:ring-it-blue-500/40'
+                    : 'bg-it-surface dark:bg-rink-800 border-it-line-strong dark:border-rink-700 text-it-ink-800 dark:text-rink-100 hover:bg-it-fill dark:hover:bg-rink-700/40 focus-visible:ring-it-blue-500/40'
+                  : sign === 'add'
+                    ? 'bg-ice-500 border-ice-500 text-white shadow-sh-1 focus-visible:ring-ice-500/40'
+                    : 'bg-wsurface dark:bg-rink-800 border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 hover:bg-wbg dark:hover:bg-rink-700/40 focus-visible:ring-ice-500/40',
                 isSubmitting && 'opacity-60 cursor-not-allowed',
               )}
             >
@@ -229,10 +246,14 @@ export const CreditAdjustModal = memo(function CreditAdjustModal({
               disabled={isSubmitting}
               className={cn(
                 'min-h-[52px] rounded-w-md border-2 flex items-center justify-center gap-2 text-card-body font-bold transition-colors motion-reduce:transition-none active:brightness-95',
-                'focus:outline-none focus-visible:ring-2 focus-visible:ring-flame-500/40',
-                sign === 'subtract'
-                  ? 'bg-flame-500 border-flame-500 text-white shadow-sh-1'
-                  : 'bg-wsurface dark:bg-rink-800 border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 hover:bg-wbg dark:hover:bg-rink-700/40',
+                'focus:outline-none focus-visible:ring-2',
+                iceTheme
+                  ? sign === 'subtract'
+                    ? 'bg-it-red-500 border-it-red-500 text-white focus-visible:ring-it-red-500/40'
+                    : 'bg-it-surface dark:bg-rink-800 border-it-line-strong dark:border-rink-700 text-it-ink-800 dark:text-rink-100 hover:bg-it-fill dark:hover:bg-rink-700/40 focus-visible:ring-it-red-500/40'
+                  : sign === 'subtract'
+                    ? 'bg-flame-500 border-flame-500 text-white shadow-sh-1 focus-visible:ring-flame-500/40'
+                    : 'bg-wsurface dark:bg-rink-800 border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 hover:bg-wbg dark:hover:bg-rink-700/40 focus-visible:ring-flame-500/40',
                 isSubmitting && 'opacity-60 cursor-not-allowed',
               )}
             >
@@ -246,7 +267,12 @@ export const CreditAdjustModal = memo(function CreditAdjustModal({
         <div className="flex flex-col gap-2">
           <label
             htmlFor="credit-adjust-amount"
-            className="text-card-meta font-semibold text-wtext-3 dark:text-rink-300"
+            className={cn(
+              'text-card-meta font-semibold',
+              iceTheme
+                ? 'text-it-ink-500 dark:text-rink-300'
+                : 'text-wtext-3 dark:text-rink-300',
+            )}
           >
             {MESSAGES.credits.adjust.amountLabel}
           </label>
@@ -264,16 +290,20 @@ export const CreditAdjustModal = memo(function CreditAdjustModal({
               placeholder={MESSAGES.credits.adjust.amountPlaceholder}
               aria-describedby="credit-adjust-amount-hint"
               className={cn(
-                'w-full min-h-[52px] px-4 pr-12 rounded-w-md border bg-wsurface dark:bg-rink-800',
-                'border-wline dark:border-rink-700 text-card-body font-bold tabular-nums text-wtext-1 dark:text-white',
-                'placeholder-wtext-3 dark:placeholder-rink-400',
-                'focus:outline-none focus:border-ice-500 dark:focus:border-ice-500',
-                'focus-visible:ring-2 focus-visible:ring-ice-500/40',
+                'w-full min-h-[52px] px-4 pr-12 rounded-w-md text-card-body font-bold tabular-nums',
                 'disabled:opacity-60 disabled:cursor-not-allowed',
+                iceTheme
+                  ? 'border-[1.5px] bg-it-fill dark:bg-rink-800 border-it-line-strong dark:border-rink-700 text-it-ink-800 dark:text-white placeholder-it-ink-400 dark:placeholder-rink-400 focus:outline-none focus:border-it-blue-500 dark:focus:border-it-blue-500 focus-visible:ring-2 focus-visible:ring-it-blue-500/40'
+                  : 'border bg-wsurface dark:bg-rink-800 border-wline dark:border-rink-700 text-wtext-1 dark:text-white placeholder-wtext-3 dark:placeholder-rink-400 focus:outline-none focus:border-ice-500 dark:focus:border-ice-500 focus-visible:ring-2 focus-visible:ring-ice-500/40',
               )}
             />
             <span
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-card-body font-semibold text-wtext-3 dark:text-rink-300 pointer-events-none"
+              className={cn(
+                'absolute right-4 top-1/2 -translate-y-1/2 text-card-body font-semibold pointer-events-none',
+                iceTheme
+                  ? 'text-it-ink-500 dark:text-rink-300'
+                  : 'text-wtext-3 dark:text-rink-300',
+              )}
               aria-hidden="true"
             >
               회
@@ -281,7 +311,12 @@ export const CreditAdjustModal = memo(function CreditAdjustModal({
           </div>
           <p
             id="credit-adjust-amount-hint"
-            className="text-card-meta text-wtext-4 dark:text-rink-400"
+            className={cn(
+              'text-card-meta',
+              iceTheme
+                ? 'text-it-ink-400 dark:text-rink-400'
+                : 'text-wtext-4 dark:text-rink-400',
+            )}
           >
             {MESSAGES.credits.adjust.amountHint}
           </p>
@@ -291,26 +326,45 @@ export const CreditAdjustModal = memo(function CreditAdjustModal({
         <div
           className={cn(
             'rounded-w-md border px-4 py-3 flex items-center justify-between',
-            numericAmount === 0
-              ? 'bg-wbg dark:bg-rink-900/30 border-wline-2 dark:border-rink-700'
-              : sign === 'add'
-                ? 'bg-ice-500/10 border-ice-500/30 dark:bg-ice-500/15'
-                : 'bg-flame-500/10 border-flame-500/30 dark:bg-flame-500/15',
+            iceTheme
+              ? numericAmount === 0
+                ? 'bg-it-fill dark:bg-rink-900/30 border-it-line dark:border-rink-700'
+                : sign === 'add'
+                  ? 'bg-it-blue-500/10 border-it-blue-500/30 dark:bg-it-blue-500/15'
+                  : 'bg-it-red-500/10 border-it-red-500/30 dark:bg-it-red-500/15'
+              : numericAmount === 0
+                ? 'bg-wbg dark:bg-rink-900/30 border-wline-2 dark:border-rink-700'
+                : sign === 'add'
+                  ? 'bg-ice-500/10 border-ice-500/30 dark:bg-ice-500/15'
+                  : 'bg-flame-500/10 border-flame-500/30 dark:bg-flame-500/15',
           )}
           aria-live="polite"
           aria-atomic="true"
         >
-          <span className="text-card-meta font-semibold text-wtext-3 dark:text-rink-300">
+          <span
+            className={cn(
+              'text-card-meta font-semibold',
+              iceTheme
+                ? 'text-it-ink-500 dark:text-rink-300'
+                : 'text-wtext-3 dark:text-rink-300',
+            )}
+          >
             미리보기
           </span>
           <span
             className={cn(
               'text-card-emphasis font-extrabold tabular-nums',
-              numericAmount === 0
-                ? 'text-wtext-4 dark:text-rink-400'
-                : sign === 'add'
-                  ? 'text-ice-500'
-                  : 'text-flame-500',
+              iceTheme
+                ? numericAmount === 0
+                  ? 'text-it-ink-400 dark:text-rink-400'
+                  : sign === 'add'
+                    ? 'text-it-blue-500'
+                    : 'text-it-red-500'
+                : numericAmount === 0
+                  ? 'text-wtext-4 dark:text-rink-400'
+                  : sign === 'add'
+                    ? 'text-ice-500'
+                    : 'text-flame-500',
             )}
           >
             {previewLabel}
@@ -321,7 +375,12 @@ export const CreditAdjustModal = memo(function CreditAdjustModal({
         <div className="flex flex-col gap-2">
           <label
             htmlFor="credit-adjust-reason"
-            className="text-card-meta font-semibold text-wtext-3 dark:text-rink-300"
+            className={cn(
+              'text-card-meta font-semibold',
+              iceTheme
+                ? 'text-it-ink-500 dark:text-rink-300'
+                : 'text-wtext-3 dark:text-rink-300',
+            )}
           >
             {MESSAGES.credits.adjust.reasonLabel}
           </label>
@@ -335,17 +394,21 @@ export const CreditAdjustModal = memo(function CreditAdjustModal({
             maxLength={MAX_REASON_LEN}
             aria-describedby="credit-adjust-reason-hint"
             className={cn(
-              'w-full px-4 py-3 rounded-w-md border bg-wsurface dark:bg-rink-800',
-              'border-wline dark:border-rink-700 text-card-body text-wtext-1 dark:text-white',
-              'placeholder-wtext-3 dark:placeholder-rink-400',
-              'focus:outline-none focus:border-ice-500 dark:focus:border-ice-500',
-              'focus-visible:ring-2 focus-visible:ring-ice-500/40',
+              'w-full px-4 py-3 rounded-w-md text-card-body',
               'disabled:opacity-60 disabled:cursor-not-allowed resize-none',
+              iceTheme
+                ? 'border-[1.5px] bg-it-fill dark:bg-rink-800 border-it-line-strong dark:border-rink-700 text-it-ink-800 dark:text-white placeholder-it-ink-400 dark:placeholder-rink-400 focus:outline-none focus:border-it-blue-500 dark:focus:border-it-blue-500 focus-visible:ring-2 focus-visible:ring-it-blue-500/40'
+                : 'border bg-wsurface dark:bg-rink-800 border-wline dark:border-rink-700 text-wtext-1 dark:text-white placeholder-wtext-3 dark:placeholder-rink-400 focus:outline-none focus:border-ice-500 dark:focus:border-ice-500 focus-visible:ring-2 focus-visible:ring-ice-500/40',
             )}
           />
           <div
             id="credit-adjust-reason-hint"
-            className="flex items-center justify-between text-card-meta text-wtext-4 dark:text-rink-400"
+            className={cn(
+              'flex items-center justify-between text-card-meta',
+              iceTheme
+                ? 'text-it-ink-400 dark:text-rink-400'
+                : 'text-wtext-4 dark:text-rink-400',
+            )}
           >
             <span>{MESSAGES.credits.adjust.reasonHint}</span>
             <span className="tabular-nums" aria-live="polite">
@@ -361,12 +424,13 @@ export const CreditAdjustModal = memo(function CreditAdjustModal({
             onClick={handleClose}
             disabled={isSubmitting}
             className={cn(
-              'flex-1 min-h-[52px] rounded-w-md border border-wline dark:border-rink-700 bg-wsurface dark:bg-rink-800',
-              'text-card-body font-bold text-wtext-2 dark:text-rink-100',
-              'hover:bg-wbg dark:hover:bg-rink-700/40 active:brightness-95',
-              'transition-colors motion-reduce:transition-none',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40',
+              'flex-1 min-h-[52px] rounded-w-md text-card-body font-bold',
+              'active:brightness-95 transition-colors motion-reduce:transition-none',
+              'focus:outline-none focus-visible:ring-2',
               'disabled:opacity-60 disabled:cursor-not-allowed',
+              iceTheme
+                ? 'border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-it-ink-800 dark:text-rink-100 hover:bg-it-fill dark:hover:bg-rink-700/40 focus-visible:ring-it-blue-500/40'
+                : 'border border-wline dark:border-rink-700 bg-wsurface dark:bg-rink-800 text-wtext-2 dark:text-rink-100 hover:bg-wbg dark:hover:bg-rink-700/40 focus-visible:ring-ice-500/40',
             )}
           >
             {MESSAGES.credits.adjust.cancel}
@@ -379,9 +443,13 @@ export const CreditAdjustModal = memo(function CreditAdjustModal({
               'flex-1 min-h-[52px] rounded-w-md text-card-body font-extrabold text-white',
               'active:brightness-95 transition-colors motion-reduce:transition-none',
               'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
-              sign === 'add'
-                ? 'bg-ice-500 hover:bg-ice-700 shadow-sh-1 focus-visible:ring-ice-500/40'
-                : 'bg-flame-500 hover:bg-flame-600 shadow-sh-1 focus-visible:ring-flame-500/40',
+              iceTheme
+                ? sign === 'add'
+                  ? 'bg-it-blue-500 hover:bg-it-blue-600 focus-visible:ring-it-blue-500/40'
+                  : 'bg-it-red-500 hover:bg-it-red-600 focus-visible:ring-it-red-500/40'
+                : sign === 'add'
+                  ? 'bg-ice-500 hover:bg-ice-700 shadow-sh-1 focus-visible:ring-ice-500/40'
+                  : 'bg-flame-500 hover:bg-flame-600 shadow-sh-1 focus-visible:ring-flame-500/40',
               !isValid && 'opacity-50 cursor-not-allowed',
             )}
           >

@@ -40,10 +40,10 @@ const TAB_ICONS: Record<SearchTab, string> = {
 
 // ─── 배지 색상 클래스 (동적 클래스 금지 → 상수 객체) ────
 const BADGE_CLASSES: Record<string, string> = {
-  primary: 'bg-ice-500 text-white',
-  success: 'bg-green-600 text-white',
-  warning: 'bg-yellow-500 text-white',
-  error: 'bg-red-600 text-white',
+  primary: 'bg-it-blue-500 text-white',
+  success: 'bg-mint-500 text-white',
+  warning: 'bg-sun-500 text-it-ink-800',
+  error: 'bg-it-red-500 text-white',
 };
 
 // ─── 검색 결과 카드 ──────────────────────────────────────
@@ -70,26 +70,26 @@ function ResultCard({ item }: { item: SearchResultItem }) {
   };
 
   const typeBgClasses: Record<string, string> = {
-    수업: 'bg-ice-50 dark:bg-ice-500/20',
+    수업: 'bg-it-blue-50 dark:bg-it-blue-500/20',
     코치: 'bg-green-50 dark:bg-green-900/20',
     팀: 'bg-purple-50 dark:bg-purple-900/20',
     상품: 'bg-orange-50 dark:bg-orange-900/20',
-    공지: 'bg-wbg dark:bg-rink-700',
+    공지: 'bg-it-fill dark:bg-rink-700',
   };
 
   const typeIconClasses: Record<string, string> = {
-    수업: 'text-ice-600 dark:text-ice-400',
+    수업: 'text-it-blue-600 dark:text-it-blue-300',
     코치: 'text-green-600 dark:text-green-400',
     팀: 'text-purple-600 dark:text-purple-400',
     상품: 'text-orange-600 dark:text-orange-400',
-    공지: 'text-wtext-3 dark:text-rink-300',
+    공지: 'text-it-ink-500 dark:text-rink-300',
   };
 
   return (
     <button
       type="button"
       onClick={handleClick}
-      className="w-full flex items-center gap-3 px-4 py-3.5 bg-wsurface dark:bg-rink-800 hover:bg-wbg dark:hover:bg-rink-700/50 border-b border-wline-2 dark:border-rink-700 text-left transition-colors motion-reduce:transition-none active:brightness-95"
+      className="w-full flex items-center gap-3 px-4 py-3.5 bg-it-surface dark:bg-rink-800 hover:bg-it-fill dark:hover:bg-rink-700/50 border-b border-it-line dark:border-rink-700 text-left transition-colors motion-reduce:transition-none active:brightness-95"
     >
       {/* 타입 아이콘 */}
       <div className={cn('w-10 h-10 rounded-w-md flex items-center justify-center shrink-0', typeBgClasses[item.type])}>
@@ -98,8 +98,8 @@ function ResultCard({ item }: { item: SearchResultItem }) {
 
       {/* 텍스트 */}
       <div className="flex-1 min-w-0">
-        <p className="text-w-small font-semibold text-wtext-1 dark:text-white truncate">{item.title}</p>
-        <p className="text-w-caption text-wtext-3 dark:text-rink-300 truncate mt-0.5">{item.subtitle}</p>
+        <p className="text-w-small font-semibold text-it-ink-800 dark:text-white truncate">{item.title}</p>
+        <p className="text-w-caption text-it-ink-500 dark:text-rink-300 truncate mt-0.5">{item.subtitle}</p>
       </div>
 
       {/* 배지 */}
@@ -109,7 +109,7 @@ function ResultCard({ item }: { item: SearchResultItem }) {
         </span>
       )}
 
-      <Icon name="chevron_right" className="shrink-0 text-wtext-4 dark:text-rink-400 text-w-title" aria-hidden="true" />
+      <Icon name="chevron_right" className="shrink-0 text-it-ink-400 dark:text-rink-400 text-w-title" aria-hidden="true" />
     </button>
   );
 }
@@ -118,16 +118,16 @@ function ResultCard({ item }: { item: SearchResultItem }) {
 function EmptyResult({ query }: { query: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
-      <div className="w-16 h-16 bg-wbg dark:bg-rink-800 rounded-w-pill flex items-center justify-center mb-4">
-        <Icon name="search_off" className="text-3xl text-wtext-4" aria-hidden="true" />
+      <div className="w-16 h-16 bg-it-fill dark:bg-rink-800 rounded-w-pill flex items-center justify-center mb-4">
+        <Icon name="search_off" className="text-3xl text-it-ink-400" aria-hidden="true" />
       </div>
-      <h3 className="text-w-body-lg font-bold text-wtext-1 dark:text-white mb-1">
+      <h3 className="text-w-body-lg font-bold text-it-ink-800 dark:text-white mb-1">
         검색 결과가 없습니다
       </h3>
-      <p className="text-w-small text-wtext-3 dark:text-rink-300">
-        <span className="font-semibold text-ice-500">&quot;{query}&quot;</span>에 대한 결과를 찾지 못했습니다.
+      <p className="text-w-small text-it-ink-500 dark:text-rink-300">
+        <span className="font-semibold text-it-blue-600">&quot;{query}&quot;</span>에 대한 결과를 찾지 못했습니다.
       </p>
-      <p className="text-w-caption text-wtext-4 dark:text-rink-400 mt-2">
+      <p className="text-w-caption text-it-ink-400 dark:text-rink-400 mt-2">
         다른 키워드로 검색해 보세요.
       </p>
     </div>
@@ -137,11 +137,11 @@ function EmptyResult({ query }: { query: string }) {
 // ─── 섹션 헤더 ───────────────────────────────────────────
 function SectionHeader({ title, count }: { title: string; count: number }) {
   return (
-    <div className="px-4 py-2.5 bg-wbg dark:bg-puck border-b border-wline-2 dark:border-rink-700">
-      <span className="text-w-caption font-bold text-wtext-3 dark:text-rink-300 uppercase tracking-wider">
+    <div className="px-4 py-2.5 bg-it-fill dark:bg-puck border-b border-it-line dark:border-rink-700">
+      <span className="text-w-caption font-bold text-it-ink-500 dark:text-rink-300 uppercase tracking-wider">
         {title}
       </span>
-      <span className="ml-2 text-w-caption font-bold text-ice-500">{count}</span>
+      <span className="ml-2 text-w-caption font-bold text-it-blue-600">{count}</span>
     </div>
   );
 }
@@ -299,12 +299,12 @@ function SearchResultsContent() {
       <PageAppBar title="검색 결과" forceNative />
 
       {/* ─── 검색바 + 탭 (sticky) ──────────────────────────────── */}
-      <div className="sticky top-14 z-40 bg-wsurface dark:bg-rink-800 border-b border-wline-2 dark:border-rink-700">
+      <div className="sticky top-14 z-40 bg-it-surface dark:bg-it-blue-950 border-b border-it-line dark:border-rink-700">
         <form onSubmit={handleSearchSubmit} className="px-4 py-3">
           <div className="relative">
             <Icon
               name="search"
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-w-title text-wtext-4 pointer-events-none"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-w-title text-it-ink-400 pointer-events-none"
               aria-hidden="true"
             />
             <input
@@ -316,11 +316,11 @@ function SearchResultsContent() {
               placeholder="수업, 코치, 팀, 상품 검색"
               className={cn(
                 'w-full h-10 pl-9 pr-8 rounded-w-pill',
-                'bg-wbg dark:bg-rink-700',
-                'text-w-small text-wtext-1 dark:text-white',
-                'placeholder-wtext-4 dark:placeholder-rink-400',
-                'focus:outline-none focus:ring-2 focus:ring-ice-500/20',
-                'transition-all motion-reduce:transition-none'
+                'bg-it-fill dark:bg-rink-700 border-[1.5px] border-it-line-strong dark:border-rink-700',
+                'text-w-small text-it-ink-800 dark:text-white',
+                'placeholder-it-ink-400 dark:placeholder-rink-400',
+                'focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500',
+                'transition-colors motion-reduce:transition-none'
               )}
               autoComplete="off"
               aria-label="검색어 입력"
@@ -330,7 +330,7 @@ function SearchResultsContent() {
               <button
                 type="button"
                 onClick={() => setQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 rounded-w-pill bg-wtext-4 flex items-center justify-center"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 rounded-w-pill bg-it-ink-400 flex items-center justify-center"
                 aria-label="검색어 지우기"
               >
                 <Icon name="close" className="text-[10px] text-white" aria-hidden="true" />
@@ -343,9 +343,10 @@ function SearchResultsContent() {
             기존 inline 탭 (flex + overflow-x-auto) 의 chip 너비 합이 360dp 초과 시
             오른쪽 마지막 카테고리(공지) 가 가시 영역 밖으로 잘리는 회귀 해결.
             min-w-max + snap-mandatory 패턴으로 chip 합 너비 보장 + touch 친화. */}
-        <div className="border-t border-wline-2 dark:border-rink-700">
+        <div className="border-t border-it-line dark:border-rink-700">
           <CategoryChipsRow
             ariaLabel="검색 카테고리"
+            iceTheme
             chips={
               SEARCH_TABS.map<CategoryChipItem>((tab) => ({
                 key: tab,
@@ -365,37 +366,37 @@ function SearchResultsContent() {
           [BUG FIX 2026-05-19 W3 #7] 카테고리 sticky 영역 끝과 첫 결과 카드 사이 여백 부족 회귀.
             기존: `mt-2` (8px) — 시각적으로 sticky 카테고리 칩 줄과 첫 카드가 붙어 보임.
             변경: main 영역 자체 `pt-3` (12px) + 첫 그룹 카드 `mt-4` (16px) 보강. */}
-      <main className="flex-1 overflow-y-auto hide-scrollbar bg-wbg dark:bg-puck pt-3">
+      <main className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck pt-3">
         {isLoading ? null : !hasSearched || !query.trim() ? (
           // 검색어 없음
           <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
-            <div className="w-16 h-16 bg-wsurface dark:bg-rink-800 rounded-w-pill flex items-center justify-center mb-4">
-              <Icon name="search" className="text-3xl text-wtext-4" aria-hidden="true" />
+            <div className="w-16 h-16 bg-it-fill dark:bg-rink-800 rounded-w-pill flex items-center justify-center mb-4">
+              <Icon name="search" className="text-3xl text-it-ink-400" aria-hidden="true" />
             </div>
-            <p className="text-w-small text-wtext-3 dark:text-rink-300">검색어를 입력해주세요.</p>
+            <p className="text-w-small text-it-ink-500 dark:text-rink-300">검색어를 입력해주세요.</p>
           </div>
         ) : filteredResults.length === 0 ? (
           <EmptyResult query={query} />
         ) : activeTab === '전체' ? (
-          // 전체 탭: 타입별 그룹화
-          <div className="pb-8 space-y-3">
+          // 전체 탭: 타입별 그룹 — full-bleed 흰 섹션 (카드 박스 제거, 8px 회색 갭)
+          <div className="pb-8 space-y-2">
             {Object.entries(groupedResults).map(([type, items]) => (
-              <div key={type} className="bg-wsurface dark:bg-rink-800 rounded-w-xl mx-4 overflow-hidden shadow-sh-1">
+              <div key={type} className="bg-it-surface dark:bg-it-blue-950 overflow-hidden">
                 <SectionHeader title={type} count={items.length} />
                 {items.map((item) => <ResultCard key={item.id} item={item} />)}
               </div>
             ))}
           </div>
         ) : (
-          // 개별 탭
-          <div className="pb-8 mx-4 bg-wsurface dark:bg-rink-800 rounded-w-xl overflow-hidden shadow-sh-1">
+          // 개별 탭 — full-bleed 흰 섹션
+          <div className="pb-8 bg-it-surface dark:bg-it-blue-950 overflow-hidden">
             {filteredResults.map((item) => <ResultCard key={item.id} item={item} />)}
           </div>
         )}
 
         {/* 결과 카운트 */}
         {hasSearched && !isLoading && filteredResults.length > 0 && (
-          <p className="text-center text-w-caption text-wtext-4 dark:text-rink-400 py-4">
+          <p className="text-center text-w-caption text-it-ink-400 dark:text-rink-400 py-4">
             {filteredResults.length}개의 결과
           </p>
         )}

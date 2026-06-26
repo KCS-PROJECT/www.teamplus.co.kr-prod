@@ -20,6 +20,12 @@ interface NotificationItemProps {
   posInSet?: number;
   /** WAI-ARIA feed pattern — total set size */
   setSize?: number;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 카드 박스(rounded/shadow/border) 제거 → hairline 행, unread it-red 배지·it-* 토큰.
+   *   (현재 (common)/notifications 화면만 전달.)
+   */
+  iceTheme?: boolean;
 }
 
 // [2026-05-19 04n Notice List 디자인 적용]
@@ -45,6 +51,7 @@ export const NotificationItem = memo(function NotificationItem({
   enableSwipe = true,
   posInSet,
   setSize,
+  iceTheme = false,
 }: NotificationItemProps) {
   const style = NOTIFICATION_STYLES[notification.type];
   const typeLabel = NOTIFICATION_TYPE_LABEL[notification.type] ?? '알림';
@@ -75,16 +82,31 @@ export const NotificationItem = memo(function NotificationItem({
       aria-posinset={posInSet}
       aria-setsize={setSize}
       className={cn(
-        'group relative flex gap-3 p-3.5 rounded-2xl',
+        'group relative flex gap-3',
         isActionable ? 'cursor-pointer' : 'cursor-default',
-        notification.isRead
-          ? 'bg-wbg dark:bg-rink-900'
-          : 'bg-wsurface dark:bg-rink-800',
-        'border border-wline-2 dark:border-rink-700',
-        'shadow-[0_4px_14px_rgba(20,24,38,0.04)] dark:shadow-none',
-        'transition-shadow motion-reduce:transition-none',
-        'hover:shadow-sh-2',
-        'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500',
+        'focus:outline-none',
+        iceTheme
+          ? cn(
+              // ICETIMES flat — 카드 박스(rounded/shadow/border) 제거. hairline 행 + it-* 토큰.
+              'py-3.5 px-1',
+              notification.isRead
+                ? 'bg-transparent'
+                : 'bg-it-blue-50/40 dark:bg-it-blue-900/20',
+              'transition-colors motion-reduce:transition-none',
+              'active:bg-it-fill dark:active:bg-it-blue-900/30',
+              'focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-it-blue-500/40',
+            )
+          : cn(
+              'p-3.5 rounded-2xl',
+              notification.isRead
+                ? 'bg-wbg dark:bg-rink-900'
+                : 'bg-wsurface dark:bg-rink-800',
+              'border border-wline-2 dark:border-rink-700',
+              'shadow-[0_4px_14px_rgba(20,24,38,0.04)] dark:shadow-none',
+              'transition-shadow motion-reduce:transition-none',
+              'hover:shadow-sh-2',
+              'focus-visible:ring-2 focus-visible:ring-ice-500',
+            ),
       )}
       onClick={handleClick}
       onKeyDown={(e) => {
@@ -97,8 +119,8 @@ export const NotificationItem = memo(function NotificationItem({
       {/* 좌측 아이콘 박스 — 86×86 일러스트 영역과 동일한 패턴, 알림 도메인은 큰 아이콘 */}
       <div
         className={cn(
-          'flex-shrink-0 w-[86px] h-[86px] rounded-xl',
-          'flex items-center justify-center',
+          'flex-shrink-0 flex items-center justify-center',
+          iceTheme ? 'w-[72px] h-[72px] rounded-w-md' : 'w-[86px] h-[86px] rounded-xl',
           style.bgColor,
         )}
         aria-hidden="true"
@@ -119,13 +141,27 @@ export const NotificationItem = memo(function NotificationItem({
           >
             {typeLabel}
           </span>
-          <span aria-hidden="true" className="w-[2px] h-[2px] rounded-full bg-wtext-4 dark:bg-rink-400" />
-          <span className="text-[11px] font-bold text-wtext-3 dark:text-rink-300 tabular-nums">
+          <span
+            aria-hidden="true"
+            className={cn(
+              'w-[2px] h-[2px] rounded-full',
+              iceTheme ? 'bg-it-ink-400 dark:bg-rink-400' : 'bg-wtext-4 dark:bg-rink-400',
+            )}
+          />
+          <span
+            className={cn(
+              'text-[11px] font-bold tabular-nums',
+              iceTheme ? 'text-it-ink-400 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300',
+            )}
+          >
             {notification.time}
           </span>
           {!notification.isRead && (
             <span
-              className="ml-auto flex-shrink-0 w-2 h-2 rounded-full bg-flame-500"
+              className={cn(
+                'ml-auto flex-shrink-0 w-2 h-2 rounded-full',
+                iceTheme ? 'bg-it-red-500' : 'bg-flame-500',
+              )}
               aria-label="미읽음"
               role="status"
             />
@@ -136,7 +172,7 @@ export const NotificationItem = memo(function NotificationItem({
         <h4
           className={cn(
             'mt-2 text-[15px] tracking-[-0.025em] leading-tight line-clamp-1',
-            'text-wtext-1 dark:text-white',
+            iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white',
             notification.isRead ? 'font-bold' : 'font-extrabold',
           )}
         >
@@ -147,7 +183,7 @@ export const NotificationItem = memo(function NotificationItem({
         <p
           className={cn(
             'mt-1.5 text-[12.5px] font-medium leading-[1.55] line-clamp-2',
-            'text-wtext-3 dark:text-rink-300',
+            iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300',
           )}
         >
           {notification.message}
@@ -157,7 +193,13 @@ export const NotificationItem = memo(function NotificationItem({
       {/* 우측 화살표(>) — data.href 있는 actionable 알림(예: 가입 승인 요청)만 노출. 이동 가능 어포던스. */}
       {isActionable && (
         <div className="flex-shrink-0 self-center pr-0.5" aria-hidden="true">
-          <svg width={18} height={18} viewBox="0 0 24 24" fill="none" className="text-wtext-4 dark:text-rink-400">
+          <svg
+            width={18}
+            height={18}
+            viewBox="0 0 24 24"
+            fill="none"
+            className={iceTheme ? 'text-it-ink-300 dark:text-rink-400' : 'text-wtext-4 dark:text-rink-400'}
+          >
             <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </div>

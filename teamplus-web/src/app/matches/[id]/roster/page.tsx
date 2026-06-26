@@ -55,8 +55,8 @@ export default function MatchRosterPage() {
     return (
       <MobileContainer hasBottomNav={false}>
         <PageAppBar title={MESSAGES.match.roster.title} onBack={() => back()} forceNative />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="w-8 h-8 border-2 border-ice-500 border-t-transparent rounded-w-pill animate-spin motion-reduce:animate-none" />
+        <div className="flex-1 flex items-center justify-center bg-it-canvas dark:bg-puck">
+          <div className="w-8 h-8 border-2 border-it-blue-500 border-t-transparent rounded-w-pill animate-spin motion-reduce:animate-none" />
         </div>
       </MobileContainer>
     );
@@ -69,6 +69,7 @@ export default function MatchRosterPage() {
         <MatchErrorState
           message={error ?? MESSAGES.error.general}
           onRetry={() => void loadRoster()}
+          iceTheme
         />
       </MobileContainer>
     );
@@ -95,47 +96,47 @@ export default function MatchRosterPage() {
         }
       />
 
-      <main className="flex-1 overflow-y-auto pb-30">
-        {/* VS 카드 (scheduledAt 있을 때) */}
+      <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck pb-30">
+        {/* VS 히어로 — navy 밴드 full-bleed (공유 MatchVSCard page-local 미수정) */}
         {data.scheduledAt && data.rinkName && (
-          <div className="px-4 pt-4">
+          <section className="bg-it-blue-800 dark:bg-it-blue-950 px-4 pt-5 pb-6">
             <MatchVSCard
               homeTeamName={data.homeTeamName ?? null}
               awayTeamName={data.awayTeamName ?? null}
               scheduledAt={data.scheduledAt}
               rinkName={data.rinkName}
+              iceTheme
             />
-          </div>
+          </section>
         )}
 
-        {/* 참여 현황 + 진행률 */}
-        <section className="p-4">
-          <div className="bg-white dark:bg-rink-800 rounded-2xl p-5 border border-wline-2 dark:border-rink-700">
-            <p className="text-card-meta font-bold text-wtext-3 dark:text-rink-300 uppercase tracking-wider mb-1">
-              {MESSAGES.match.roster.current}
-            </p>
-            <h1 className="text-card-emphasis font-bold text-wtext-1 dark:text-white mb-4">
-              {data.matchTitle}
-            </h1>
-            <MatchProgressBar
-              current={data.currentCount}
-              total={data.totalSlots}
-              showRemaining
-            />
-          </div>
+        {/* 참여 현황 + 진행률 — flat 흰 섹션 */}
+        <section className="mt-2 bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6">
+          <p className="text-card-meta font-bold text-it-ink-500 dark:text-wtext-4 uppercase tracking-wider mb-1">
+            {MESSAGES.match.roster.current}
+          </p>
+          <h1 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white mb-4">
+            {data.matchTitle}
+          </h1>
+          <MatchProgressBar
+            current={data.currentCount}
+            total={data.totalSlots}
+            showRemaining
+            iceTheme
+          />
         </section>
 
-        {/* 확정 섹션 */}
-        <section className="px-4 pb-4">
-          <h2 className="flex items-center gap-2 text-card-body font-bold text-wtext-3 dark:text-rink-300 uppercase tracking-wider mb-3">
+        {/* 확정 섹션 — flat 흰 섹션 */}
+        <section className="mt-2 bg-it-surface dark:bg-rink-800 px-4 pt-5 pb-5">
+          <h2 className="flex items-center gap-2 text-card-body font-bold text-it-ink-500 dark:text-wtext-4 uppercase tracking-wider mb-3">
             {MESSAGES.match.roster.confirmed}
-            <span className="inline-flex items-center px-2 py-0.5 rounded-w-pill bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-[11px] font-bold normal-case tracking-normal">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-w-pill bg-mint-100 dark:bg-mint-500/15 text-mint-500 text-[11px] font-bold normal-case tracking-normal">
               {MESSAGES.match.roster.countLabel(data.confirmedPlayers.length)}
             </span>
           </h2>
           <div className="space-y-3">
             {data.confirmedPlayers.length === 0 && (
-              <div className="bg-white dark:bg-rink-800 rounded-2xl p-5 border border-wline dark:border-rink-700 text-center text-card-body text-wtext-3">
+              <div className="py-8 text-center text-card-body text-it-ink-500 dark:text-wtext-4">
                 {MESSAGES.match.roster.empty}
               </div>
             )}
@@ -150,17 +151,18 @@ export default function MatchRosterPage() {
                   isHost: player.isHost,
                   order: player.order,
                 }}
+                iceTheme
               />
             ))}
           </div>
         </section>
 
-        {/* 대기 섹션 */}
+        {/* 대기 섹션 — flat 흰 섹션 */}
         {data.waitlistPlayers.length > 0 && (
-          <section className="px-4 pb-4">
-            <h2 className="flex items-center gap-2 text-card-body font-bold text-wtext-3 dark:text-rink-300 uppercase tracking-wider mb-3">
+          <section className="mt-2 bg-it-surface dark:bg-rink-800 px-4 pt-5 pb-5">
+            <h2 className="flex items-center gap-2 text-card-body font-bold text-it-ink-500 dark:text-wtext-4 uppercase tracking-wider mb-3">
               {MESSAGES.match.roster.waiting}
-              <span className="inline-flex items-center px-2 py-0.5 rounded-w-pill bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[11px] font-bold normal-case tracking-normal">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-w-pill bg-sun-100 dark:bg-sun-500/15 text-sun-500 text-[11px] font-bold normal-case tracking-normal">
                 {MESSAGES.match.roster.countLabel(data.waitlistPlayers.length)}
               </span>
             </h2>
@@ -176,6 +178,7 @@ export default function MatchRosterPage() {
                     order: player.waitNumber,
                     isWaitlist: true,
                   }}
+                  iceTheme
                 />
               ))}
             </div>

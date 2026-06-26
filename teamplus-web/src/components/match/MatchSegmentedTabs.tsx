@@ -18,6 +18,11 @@ interface MatchSegmentedTabsProps<T extends string> {
   value: T;
   onChange: (value: T) => void;
   className?: string;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 it-* 토큰(it-fill 트랙 · it-surface pill · it-blue 활성 텍스트).
+   */
+  iceTheme?: boolean;
 }
 
 /**
@@ -35,6 +40,7 @@ export function MatchSegmentedTabs<T extends string>({
   value,
   onChange,
   className,
+  iceTheme = false,
 }: MatchSegmentedTabsProps<T>) {
   const { registerTab, containerRef, rect, ready } = useAnimatedTabIndicator({
     activeValue: value,
@@ -55,14 +61,18 @@ export function MatchSegmentedTabs<T extends string>({
       ref={containerRef as React.RefCallback<HTMLDivElement>}
       role="tablist"
       className={cn(
-        'relative flex rounded-xl bg-wline-2 dark:bg-rink-800 p-1',
+        'relative flex rounded-w-md p-1',
+        iceTheme ? 'bg-it-fill dark:bg-rink-800' : 'rounded-xl bg-wline-2 dark:bg-rink-800',
         className
       )}
     >
       <AnimatedTabIndicator
         style={indicatorStyle}
         ready={ready}
-        className="rounded-lg bg-white dark:bg-rink-900 shadow-sm z-0"
+        className={cn(
+          'shadow-sm z-0',
+          iceTheme ? 'rounded-w-md bg-it-surface dark:bg-rink-900' : 'rounded-lg bg-white dark:bg-rink-900'
+        )}
       />
       {tabs.map((tab) => {
         const active = tab.value === value;
@@ -75,20 +85,29 @@ export function MatchSegmentedTabs<T extends string>({
             aria-selected={active}
             onClick={() => onChange(tab.value)}
             className={cn(
-              'relative z-[1] flex-1 inline-flex items-center justify-center gap-1.5 h-10 rounded-lg text-sm font-bold transition-colors duration-200 motion-reduce:transition-none',
+              'relative z-[1] flex-1 inline-flex items-center justify-center gap-1.5 h-10 text-sm font-bold transition-colors duration-200 motion-reduce:transition-none',
+              iceTheme ? 'rounded-w-md' : 'rounded-lg',
               active
-                ? 'text-ice-500'
-                : 'text-wtext-3 dark:text-rink-300 hover:text-wtext-2 dark:hover:text-rink-100'
+                ? iceTheme
+                  ? 'text-it-blue-500'
+                  : 'text-ice-500'
+                : iceTheme
+                  ? 'text-it-ink-500 dark:text-it-ink-300 hover:text-it-ink-800 dark:hover:text-white'
+                  : 'text-wtext-3 dark:text-rink-300 hover:text-wtext-2 dark:hover:text-rink-100'
             )}
           >
             {tab.label}
             {typeof tab.count === 'number' && tab.count > 0 && (
               <span
                 className={cn(
-                  'inline-flex min-w-[18px] h-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold',
+                  'inline-flex min-w-[18px] h-[18px] items-center justify-center rounded-w-pill px-1.5 text-[10px] font-bold',
                   active
-                    ? 'bg-ice-500 text-white'
-                    : 'bg-wline dark:bg-rink-700 text-wtext-2 dark:text-rink-100'
+                    ? iceTheme
+                      ? 'bg-it-blue-500 text-white'
+                      : 'bg-ice-500 text-white'
+                    : iceTheme
+                      ? 'bg-it-line dark:bg-rink-700 text-it-ink-600 dark:text-it-ink-300'
+                      : 'bg-wline dark:bg-rink-700 text-wtext-2 dark:text-rink-100'
                 )}
               >
                 {tab.count}

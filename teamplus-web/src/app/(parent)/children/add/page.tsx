@@ -283,14 +283,15 @@ export default function AddChildPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title="선수 등록" forceNative />
 
-      {/* Main Content — ref Body: padding "14px 20px 110px" / flex col gap 14 */}
-      <div className="flex-1 overflow-y-auto hide-scrollbar bg-wbg dark:bg-puck">
+      {/* [ICETIMES flat] main = 회색 캔버스 · 콘텐츠는 full-bleed 흰 섹션(RefCard)을
+          8px 회색 갭(gap-2)으로 쌓는다. 좌우 패딩은 섹션 내부(px-5)가 담당. */}
+      <div className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck">
         <form
           onSubmit={(e) => {
             e.preventDefault();
             handleSubmit();
           }}
-          className="px-5 pt-3.5 pb-[110px] flex flex-col gap-3.5"
+          className="pt-2 pb-[110px] flex flex-col gap-2"
         >
           {/* ─── Card 1: 기본 정보 ─────────────────────────────────────── */}
           <RefCard
@@ -320,10 +321,10 @@ export default function AddChildPage() {
                   }
                   className={cn(
                     'w-20 h-20 rounded-full grid place-items-center overflow-hidden transition-opacity',
-                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40',
+                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40',
                     formData.imageUrl
-                      ? 'bg-wsurface dark:bg-rink-800 border border-wline dark:border-rink-700'
-                      : 'bg-ice-50 dark:bg-ice-500/15 border-2 border-dashed border-ice-200 dark:border-ice-500/40',
+                      ? 'bg-it-surface dark:bg-rink-800 border border-it-line-strong dark:border-rink-700'
+                      : 'bg-it-blue-50 dark:bg-it-blue-500/15 border-2 border-dashed border-it-blue-200 dark:border-it-blue-500/40',
                     (isSubmitting || isUploadingImage) && 'opacity-60 cursor-not-allowed',
                   )}
                 >
@@ -336,15 +337,15 @@ export default function AddChildPage() {
                     />
                   ) : (
                     <svg width="36" height="36" viewBox="0 0 36 36" fill="none" aria-hidden="true">
-                      <circle cx="18" cy="14" r="5" className="fill-ice-300 dark:fill-ice-400" />
-                      <path d="M6 30c2-5 6-7 12-7s10 2 12 7" className="fill-ice-300 dark:fill-ice-400" />
+                      <circle cx="18" cy="14" r="5" className="fill-it-blue-300 dark:fill-it-blue-400" />
+                      <path d="M6 30c2-5 6-7 12-7s10 2 12 7" className="fill-it-blue-300 dark:fill-it-blue-400" />
                     </svg>
                   )}
                 </button>
                 {/* + 배지 / 업로드 중 스피너 */}
                 {isUploadingImage ? (
                   <div
-                    className="absolute -right-0.5 -bottom-0.5 w-[26px] h-[26px] rounded-full bg-ice-500 text-white grid place-items-center border-[3px] border-white dark:border-rink-800"
+                    className="absolute -right-0.5 -bottom-0.5 w-[26px] h-[26px] rounded-full bg-it-blue-500 text-white grid place-items-center border-[3px] border-white dark:border-rink-800"
                     aria-label="업로드 중"
                     role="status"
                   >
@@ -354,7 +355,7 @@ export default function AddChildPage() {
                   </div>
                 ) : (
                   <div
-                    className="absolute -right-0.5 -bottom-0.5 w-[26px] h-[26px] rounded-full bg-ice-500 text-white grid place-items-center text-base font-bold border-[3px] border-white dark:border-rink-800 pointer-events-none"
+                    className="absolute -right-0.5 -bottom-0.5 w-[26px] h-[26px] rounded-full bg-it-blue-500 text-white grid place-items-center text-base font-bold border-[3px] border-white dark:border-rink-800 pointer-events-none"
                     aria-hidden="true"
                   >
                     +
@@ -367,7 +368,7 @@ export default function AddChildPage() {
                     onClick={handleImageRemove}
                     disabled={isSubmitting}
                     aria-label="자녀 사진 제거"
-                    className="absolute -left-1 -top-1 w-6 h-6 rounded-full bg-wtext-2 dark:bg-rink-700 text-white grid place-items-center border-[2px] border-white dark:border-rink-800 hover:bg-wtext-1 dark:hover:bg-rink-600 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
+                    className="absolute -left-1 -top-1 w-6 h-6 rounded-full bg-it-ink-500 dark:bg-rink-700 text-white grid place-items-center border-[2px] border-white dark:border-rink-800 hover:bg-it-ink-800 dark:hover:bg-rink-600 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40"
                   >
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
                       <path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
@@ -432,33 +433,33 @@ export default function AddChildPage() {
                 aria-haspopup="dialog"
                 aria-expanded={isDatePickerOpen}
                 className={cn(
-                  'w-full h-[46px] px-3.5 rounded-xl bg-wbg dark:bg-rink-900 border flex items-center gap-2.5 text-left',
+                  'w-full h-[46px] px-3.5 rounded-w-md bg-it-fill dark:bg-rink-900 border-[1.5px] flex items-center gap-2.5 text-left',
                   errors.birthDate
-                    ? 'border-red-600'
-                    : 'border-wline-2 dark:border-rink-700',
+                    ? 'border-it-red-500'
+                    : 'border-it-line-strong dark:border-rink-700',
                   isSubmitting && 'opacity-60',
-                  'transition-colors hover:border-ice-500/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/30',
+                  'transition-colors hover:border-it-blue-500/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/30',
                 )}
               >
                 <span
                   className={cn(
                     'flex-1 text-card-body tracking-[-0.01em]',
                     formData.birthDate
-                      ? 'text-wtext-1 dark:text-white font-bold'
-                      : 'text-wtext-4 dark:text-wtext-4/80 font-medium',
+                      ? 'text-it-ink-900 dark:text-white font-bold'
+                      : 'text-it-ink-400 dark:text-wtext-4/80 font-medium',
                   )}
                 >
                   {formData.birthDate ? formatDateLabel(formData.birthDate) : '연도. 월. 일.'}
                 </span>
                 {/* ref trail: 16×16 캘린더 svg */}
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="text-wtext-3 dark:text-wtext-4 shrink-0">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="text-it-ink-400 dark:text-wtext-4 shrink-0">
                   <rect x="2" y="3" width="12" height="11" rx="1.4" stroke="currentColor" strokeWidth="1.4" />
                   <path d="M2 6h12M5 1.5v3M11 1.5v3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
                 </svg>
               </button>
               {errors.birthDate && <RefError>{errors.birthDate}</RefError>}
               {age !== null && !errors.birthDate && (
-                <p className="mt-1.5 text-card-meta font-semibold text-wtext-3 dark:text-wtext-4 font-num tabular-nums">
+                <p className="mt-1.5 text-card-meta font-semibold text-it-ink-500 dark:text-wtext-4 font-num tabular-nums">
                   만 {age}세
                 </p>
               )}
@@ -477,10 +478,10 @@ export default function AddChildPage() {
                       onClick={() => updateField('gender', on ? '' : opt.value)}
                       disabled={isSubmitting}
                       className={cn(
-                        'h-[46px] rounded-xl text-card-body font-extrabold tracking-[-0.02em] transition-colors motion-reduce:transition-none',
+                        'h-[46px] rounded-w-md text-card-body font-extrabold tracking-[-0.02em] transition-colors motion-reduce:transition-none',
                         on
-                          ? 'bg-ice-50 dark:bg-ice-500/15 border-[1.5px] border-ice-500 text-ice-700 dark:text-ice-500'
-                          : 'bg-wbg dark:bg-rink-900 border border-wline-2 dark:border-rink-700 text-wtext-2 dark:text-wtext-4',
+                          ? 'bg-it-blue-50 dark:bg-it-blue-500/15 border-[1.5px] border-it-blue-500 text-it-blue-600 dark:text-it-blue-300'
+                          : 'bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 text-it-ink-800 dark:text-wtext-4',
                         isSubmitting && 'opacity-60 cursor-not-allowed',
                       )}
                       aria-pressed={on}
@@ -514,24 +515,24 @@ export default function AddChildPage() {
               type="button"
               onClick={() => !isSubmitting && setIsTeamPickerOpen(true)}
               disabled={isSubmitting}
-              className="w-full flex items-center justify-between gap-2 px-3.5 py-3 rounded-xl bg-wbg dark:bg-rink-900 border border-wline-2 dark:border-rink-700 text-left transition-colors motion-reduce:transition-none hover:border-ice-300 dark:hover:border-ice-500/40 disabled:opacity-60"
+              className="w-full flex items-center justify-between gap-2 px-3.5 py-3 rounded-w-md bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 text-left transition-colors motion-reduce:transition-none hover:border-it-blue-300 dark:hover:border-it-blue-500/40 disabled:opacity-60"
             >
               <span className="min-w-0">
-                <span className="block text-card-meta font-bold text-wtext-3 dark:text-wtext-4">
+                <span className="block text-card-meta font-bold text-it-ink-500 dark:text-wtext-4">
                   {MESSAGES.team.childrenAddTeamSelectLabel}
                 </span>
                 <span
                   className={cn(
                     'mt-1 block truncate',
                     selectedTeam
-                      ? 'text-card-title font-extrabold text-wtext-1 dark:text-white tracking-[-0.02em]'
-                      : 'text-card-body font-semibold text-wtext-3 dark:text-wtext-4',
+                      ? 'text-card-title font-extrabold text-it-ink-900 dark:text-white tracking-[-0.02em]'
+                      : 'text-card-body font-semibold text-it-ink-500 dark:text-wtext-4',
                   )}
                 >
                   {selectedTeam ? selectedTeam.name : MESSAGES.team.childrenAddTeamNoneOption}
                 </span>
               </span>
-              <span className="shrink-0 inline-flex items-center gap-1 text-card-meta font-bold text-ice-600 dark:text-ice-500">
+              <span className="shrink-0 inline-flex items-center gap-1 text-card-meta font-bold text-it-blue-600 dark:text-it-blue-300">
                 {selectedTeam
                   ? MESSAGES.team.childrenAddTeamChangeAction
                   : MESSAGES.team.childrenAddTeamPickAction}
@@ -543,13 +544,13 @@ export default function AddChildPage() {
                 type="button"
                 onClick={() => setSelectedTeam(null)}
                 disabled={isSubmitting}
-                className="mt-2 inline-flex items-center gap-1 text-card-meta font-semibold text-wtext-3 dark:text-wtext-4 underline disabled:opacity-60"
+                className="mt-2 inline-flex items-center gap-1 text-card-meta font-semibold text-it-ink-500 dark:text-wtext-4 underline disabled:opacity-60"
               >
                 <Icon name="close" className="text-[14px]" aria-hidden="true" />
                 {MESSAGES.team.childrenAddTeamClear}
               </button>
             ) : (
-              <p className="mt-2 text-card-meta text-wtext-3 dark:text-wtext-4">
+              <p className="mt-2 text-card-meta text-it-ink-500 dark:text-wtext-4">
                 {MESSAGES.team.childrenAddTeamNoneHint}
               </p>
             )}
@@ -595,7 +596,7 @@ export default function AddChildPage() {
                 link={
                   <NavLink
                     href="/terms#terms-fallback-child_privacy"
-                    className="text-card-meta font-extrabold text-wtext-2 dark:text-wtext-4 underline whitespace-nowrap leading-tight"
+                    className="text-card-meta font-extrabold text-it-ink-800 dark:text-wtext-4 underline whitespace-nowrap leading-tight"
                   >
                     자세히<br />보기
                   </NavLink>
@@ -604,15 +605,15 @@ export default function AddChildPage() {
             </div>
 
             {consentError && (
-              <p className="mt-2 text-card-meta text-red-600 dark:text-red-400 inline-flex items-center gap-1.5" role="alert">
+              <p className="mt-2 text-card-meta text-it-red-500 dark:text-it-red-300 inline-flex items-center gap-1.5" role="alert">
                 <Icon name="error" className="text-[14px]" aria-hidden="true" />
                 {consentError}
               </p>
             )}
 
-            {/* 참고 박스 — ref: mt 12 padding "12px 14px" rounded 12 bg wbg border 1px line2 */}
-            <div className="mt-3 px-3.5 py-3 rounded-xl bg-wbg dark:bg-rink-900 border border-wline-2 dark:border-rink-700 text-card-meta leading-[1.55] font-medium text-wtext-3 dark:text-wtext-4">
-              <span className="font-extrabold text-wtext-2 dark:text-wtext-4">참고:</span>{' '}
+            {/* 참고 박스 — [ICETIMES] it-fill + 1.5px it-line-strong */}
+            <div className="mt-3 px-3.5 py-3 rounded-w-md bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 text-card-meta leading-[1.55] font-medium text-it-ink-500 dark:text-wtext-4">
+              <span className="font-extrabold text-it-ink-800 dark:text-wtext-4">참고:</span>{' '}
               자녀의 개인정보는 등록한 법정대리인만 조회·수정·삭제할 수 있습니다. 자녀가 만 14세가 되면 본인 동의로 자동 전환됩니다.
             </div>
           </RefCard>
@@ -625,12 +626,12 @@ export default function AddChildPage() {
             onClick={handleSubmit}
             disabled={submitDisabled}
             className={cn(
-              'h-14 rounded-[14px] mt-1 text-card-title font-extrabold tracking-[-0.02em] text-white',
+              'h-14 rounded-w-md mt-1 mx-5 text-card-title font-extrabold tracking-[-0.02em] text-white',
               'transition-all motion-reduce:transition-none',
               submitDisabled
-                ? 'bg-wtext-4 dark:bg-rink-500 cursor-not-allowed'
-                : 'bg-ice-500 hover:bg-ice-600 active:brightness-95 shadow-sh-blue',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40',
+                ? 'bg-it-ink-300 dark:bg-rink-500 cursor-not-allowed'
+                : 'bg-it-blue-500 hover:bg-it-blue-600 active:brightness-95 shadow-sh-blue',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40',
             )}
             aria-label="자녀 등록하기"
           >
@@ -651,11 +652,13 @@ export default function AddChildPage() {
         value={formData.birthDate}
         maxDate={new Date()}
         ariaLabel="생년월일 선택"
+        iceTheme
         onClose={() => setIsDatePickerOpen(false)}
         onSelect={(iso) => updateField('birthDate', iso)}
       />
       <TeamPickerSheet
         isOpen={isTeamPickerOpen}
+        iceTheme
         onClose={() => setIsTeamPickerOpen(false)}
         onSelect={(selection: TeamPickerSelection) => {
           setSelectedTeam({ id: selection.id, name: selection.name });
@@ -684,23 +687,25 @@ function RefCard({
   children: ReactNode;
 }) {
   return (
-    <section className="bg-wsurface dark:bg-rink-800 rounded-[18px] border border-wline-2 dark:border-rink-700 px-[18px] pt-[18px] pb-4">
-      {/* ref 헤더: gap 10 mb 6 / icon box 32×32 rounded 10 bg ice50 */}
+    /* [ICETIMES flat] 카드 박스(rounded-[18px] border) 제거 → full-bleed 흰 섹션.
+       좌우 패딩 px-5 가 섹션 내부 정렬 담당. director-members/create 폼과 동일 언어. */
+    <section className="bg-it-surface dark:bg-rink-800 px-5 pt-[18px] pb-4">
+      {/* ref 헤더: gap 10 mb 6 / icon box 32×32 rounded 10 bg it-blue-50 */}
       <div className="flex items-center gap-2.5 mb-1.5">
-        <div className="w-8 h-8 rounded-[10px] bg-ice-50 dark:bg-ice-500/15 grid place-items-center shrink-0 text-ice-600 dark:text-ice-500">
+        <div className="w-8 h-8 rounded-[10px] bg-it-blue-50 dark:bg-it-blue-500/15 grid place-items-center shrink-0 text-it-blue-600 dark:text-it-blue-300">
           {icon}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
-            <span className="text-card-body font-extrabold text-wtext-1 dark:text-white tracking-[-0.02em]">
+            <span className="text-card-body font-extrabold text-it-ink-900 dark:text-white tracking-[-0.02em]">
               {title}
             </span>
             {badge && (
-              <span className="text-card-meta font-extrabold text-flame-500">{badge}</span>
+              <span className="text-card-meta font-extrabold text-it-red-500">{badge}</span>
             )}
           </div>
           {sub && (
-            <p className="mt-[3px] text-card-meta font-medium text-wtext-3 dark:text-wtext-4">
+            <p className="mt-[3px] text-card-meta font-medium text-it-ink-500 dark:text-wtext-4">
               {sub}
             </p>
           )}
@@ -713,11 +718,11 @@ function RefCard({
 }
 
 function RefLabel({ children, required }: { children: ReactNode; required?: boolean }) {
-  // ref: 12px font-bold(700) text2 mb 8 / required = flame500 *
+  // [ICETIMES] 라벨 it-ink-800 / 필수표시 it-red
   return (
-    <p className="text-card-meta font-bold text-wtext-2 dark:text-wtext-4 mb-2">
+    <p className="text-card-meta font-bold text-it-ink-800 dark:text-wtext-4 mb-2">
       {children}
-      {required && <span className="text-flame-500 ml-[3px]">*</span>}
+      {required && <span className="text-it-red-500 ml-[3px]">*</span>}
     </p>
   );
 }
@@ -749,10 +754,11 @@ function RefInput({
 }) {
   const hasValue = value.length > 0;
   return (
+    /* [ICETIMES] 입력 컨테이너 it-fill + 1.5px it-line-strong, 포커스/에러 it-blue/it-red */
     <div
       className={cn(
-        'h-[46px] px-3.5 rounded-xl bg-wbg dark:bg-rink-900 border flex items-center gap-2.5',
-        error ? 'border-red-600' : 'border-wline-2 dark:border-rink-700',
+        'h-[46px] px-3.5 rounded-w-md bg-it-fill dark:bg-rink-900 border-[1.5px] flex items-center gap-2.5',
+        error ? 'border-it-red-500' : 'border-it-line-strong dark:border-rink-700',
         disabled && 'opacity-60',
       )}
     >
@@ -768,10 +774,10 @@ function RefInput({
         className={cn(
           'flex-1 bg-transparent outline-none border-0 p-0 w-full min-w-0',
           'text-card-body tracking-[-0.01em]',
-          'placeholder:text-wtext-4 placeholder:font-medium dark:placeholder:text-wtext-4/80',
+          'placeholder:text-it-ink-400 placeholder:font-medium dark:placeholder:text-wtext-4/80',
           hasValue
-            ? 'text-wtext-1 dark:text-white font-bold'
-            : 'text-wtext-1 dark:text-white font-medium',
+            ? 'text-it-ink-900 dark:text-white font-bold'
+            : 'text-it-ink-900 dark:text-white font-medium',
           isNumFont && hasValue && 'font-num tabular-nums',
         )}
       />
@@ -782,7 +788,7 @@ function RefInput({
 
 function RefError({ children }: { children: ReactNode }) {
   return (
-    <p className="mt-1.5 text-card-meta text-red-600 dark:text-red-400 inline-flex items-center gap-1.5" role="alert">
+    <p className="mt-1.5 text-card-meta text-it-red-500 dark:text-it-red-300 inline-flex items-center gap-1.5" role="alert">
       <Icon name="error" className="text-[14px]" aria-hidden="true" />
       {children}
     </p>
@@ -811,19 +817,19 @@ function RefCheckbox({
       onClick={onToggle}
       disabled={disabled}
       className={cn(
-        'px-3.5 py-3 rounded-xl bg-wbg dark:bg-rink-900 border border-wline-2 dark:border-rink-700',
+        'px-3.5 py-3 rounded-w-md bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700',
         'flex gap-3 text-left transition-colors motion-reduce:transition-none',
         disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
       )}
       aria-pressed={on}
     >
-      {/* ref 체크박스: 20×20 rounded 5 / on bg ice500 no border / off bg surface border 1.5px line / mt 2 */}
+      {/* [ICETIMES] 체크박스 20×20 / on it-blue-500 / off 흰 표면 + 1.5px it-line-strong */}
       <span
         className={cn(
           'w-5 h-5 rounded-[5px] grid place-items-center shrink-0 mt-0.5',
           on
-            ? 'bg-ice-500'
-            : 'bg-wsurface dark:bg-rink-800 border-[1.5px] border-wline dark:border-rink-700',
+            ? 'bg-it-blue-500'
+            : 'bg-it-surface dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700',
         )}
         aria-hidden="true"
       >
@@ -834,13 +840,13 @@ function RefCheckbox({
         )}
       </span>
       <span className="flex-1 min-w-0">
-        {/* ref 라벨: 12.5px font-bold text1 line-height 1.5 -0.01em / [필수] flame500 */}
-        <span className="block text-card-meta font-bold text-wtext-1 dark:text-white leading-[1.5] tracking-[-0.01em]">
-          <span className="text-flame-500">[필수]</span> {label}
+        {/* 라벨: [필수] it-red */}
+        <span className="block text-card-meta font-bold text-it-ink-900 dark:text-white leading-[1.5] tracking-[-0.01em]">
+          <span className="text-it-red-500">[필수]</span> {label}
         </span>
         {sub && (
           <span className="flex items-end gap-1.5 mt-1">
-            <span className="flex-1 text-card-meta text-wtext-3 dark:text-wtext-4 leading-[1.5]">{sub}</span>
+            <span className="flex-1 text-card-meta text-it-ink-500 dark:text-wtext-4 leading-[1.5]">{sub}</span>
             {link}
           </span>
         )}

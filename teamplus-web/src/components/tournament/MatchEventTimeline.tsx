@@ -28,6 +28,11 @@ interface Props {
   awayTeamName?: string | null;
   isManager?: boolean;
   onDelete?: (eventId: string) => void;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 이벤트 행 박스 → flat, 골=it-blue·페널티=it-red 색만 치환(로직 동결).
+   */
+  iceTheme?: boolean;
 }
 
 const EVENT_ICON_MAP: Record<
@@ -84,6 +89,61 @@ const EVENT_ICON_MAP: Record<
   },
 };
 
+// ICETIMES 톤 — 골=it-blue · 페널티=it-red · 그 외=it-ink/fill (달력 SoT). 아이콘은 동일.
+const EVENT_ICON_MAP_ICE: Record<
+  MatchEventType,
+  { icon: string; color: string; bg: string; border: string }
+> = {
+  goal: {
+    icon: 'sports_hockey',
+    color: 'text-it-blue-500',
+    bg: 'bg-it-blue-50 dark:bg-it-blue-500/15',
+    border: 'border-it-blue-500',
+  },
+  assist: {
+    icon: 'handshake',
+    color: 'text-it-ink-600 dark:text-rink-100',
+    bg: 'bg-it-fill dark:bg-rink-800',
+    border: 'border-it-line',
+  },
+  penalty: {
+    icon: 'gavel',
+    color: 'text-it-red-500 dark:text-it-red-300',
+    bg: 'bg-it-red-50 dark:bg-it-red-500/15',
+    border: 'border-it-red-500',
+  },
+  shot: {
+    icon: 'sports',
+    color: 'text-it-ink-600 dark:text-rink-100',
+    bg: 'bg-it-fill dark:bg-rink-800',
+    border: 'border-it-line',
+  },
+  save: {
+    icon: 'shield',
+    color: 'text-it-blue-600 dark:text-it-blue-300',
+    bg: 'bg-it-blue-50 dark:bg-it-blue-500/15',
+    border: 'border-it-blue-600',
+  },
+  timeout: {
+    icon: 'pause_circle',
+    color: 'text-it-ink-500 dark:text-rink-300',
+    bg: 'bg-it-fill dark:bg-rink-800',
+    border: 'border-it-line',
+  },
+  period_start: {
+    icon: 'play_circle',
+    color: 'text-it-ink-400',
+    bg: 'bg-it-fill dark:bg-rink-800',
+    border: 'border-it-line',
+  },
+  period_end: {
+    icon: 'stop_circle',
+    color: 'text-it-ink-400',
+    bg: 'bg-it-fill dark:bg-rink-800',
+    border: 'border-it-line',
+  },
+};
+
 function formatPlayer(ev: MatchEventRecord): string {
   const main = ev.player
     ? `No. ${ev.player.jerseyNumber ?? '?'} ${ev.player.member?.playerName ?? '-'}`
@@ -108,11 +168,24 @@ export function MatchEventTimeline({
   awayTeamName,
   isManager = false,
   onDelete,
+  iceTheme = false,
 }: Props) {
+  const iconMap = iceTheme ? EVENT_ICON_MAP_ICE : EVENT_ICON_MAP;
+
   if (!events.length) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-wline py-12 text-wtext-3 dark:border-rink-700">
-        <Icon name="schedule" className="mb-2 text-4xl text-wtext-4" />
+      <div
+        className={cn(
+          'flex flex-col items-center justify-center border border-dashed py-12',
+          iceTheme
+            ? 'rounded-w-md border-it-line-strong text-it-ink-400 dark:border-rink-700'
+            : 'rounded-xl border-wline text-wtext-3 dark:border-rink-700',
+        )}
+      >
+        <Icon
+          name="schedule"
+          className={cn('mb-2 text-4xl', iceTheme ? 'text-it-ink-300' : 'text-wtext-4')}
+        />
         <p className="text-sm">아직 기록된 이벤트가 없습니다</p>
       </div>
     );
@@ -121,11 +194,14 @@ export function MatchEventTimeline({
   return (
     <div className="relative flex flex-col gap-3" role="list" aria-label="경기 이벤트 타임라인">
       <div
-        className="absolute bottom-0 left-4 top-0 w-px bg-wline-2 dark:bg-rink-700"
+        className={cn(
+          'absolute bottom-0 left-4 top-0 w-px',
+          iceTheme ? 'bg-it-line dark:bg-rink-700' : 'bg-wline-2 dark:bg-rink-700',
+        )}
         aria-hidden="true"
       />
       {events.map((event) => {
-        const meta = EVENT_ICON_MAP[event.eventType] ?? EVENT_ICON_MAP.shot;
+        const meta = iconMap[event.eventType] ?? iconMap.shot;
         const typeLabel = MESSAGES.matchEvent.typeLabel[event.eventType] ?? event.eventType;
         const teamLabel =
           event.teamId === homeTeamId
@@ -141,7 +217,13 @@ export function MatchEventTimeline({
         return (
           <div
             key={event.id}
-            className="relative flex items-start gap-4 rounded-2xl border border-wline-2 bg-white p-4 shadow-sm dark:border-rink-700 dark:bg-rink-800"
+            className={cn(
+              'relative flex items-start gap-4 p-4',
+              iceTheme
+                ? // ICETIMES flat — 카드 박스(rounded-2xl/shadow) 제거, hairline 경계.
+                  'rounded-w-md border-[1.5px] border-it-line bg-it-surface dark:border-rink-700 dark:bg-it-blue-950'
+                : 'rounded-2xl border border-wline-2 bg-white shadow-sm dark:border-rink-700 dark:bg-rink-800',
+            )}
             role="listitem"
           >
             <div
@@ -158,11 +240,21 @@ export function MatchEventTimeline({
                 <h4 className={cn('text-sm font-bold', meta.color)}>
                   {eventTitle}
                 </h4>
-                <span className="text-xs font-bold tabular-nums text-wtext-3">
+                <span
+                  className={cn(
+                    'text-xs font-bold tabular-nums',
+                    iceTheme ? 'text-it-ink-400' : 'text-wtext-3',
+                  )}
+                >
                   {event.eventTime} ({MESSAGES.match.periodLabel(event.periodNumber)})
                 </span>
               </div>
-              <p className="mt-0.5 text-xs text-wtext-3 dark:text-rink-300">
+              <p
+                className={cn(
+                  'mt-0.5 text-xs',
+                  iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300',
+                )}
+              >
                 {formatPlayer(event)}
                 {event.isGameWinner && ' · 결승골'}
                 {event.isPowerPlay && ' · 파워플레이'}
@@ -173,7 +265,12 @@ export function MatchEventTimeline({
               <button
                 type="button"
                 onClick={() => onDelete?.(event.id)}
-                className="rounded-full p-1.5 text-wtext-3 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                className={cn(
+                  'rounded-full p-1.5',
+                  iceTheme
+                    ? 'text-it-ink-400 hover:bg-it-red-50 hover:text-it-red-500 dark:hover:bg-it-red-500/15 dark:hover:text-it-red-300'
+                    : 'text-wtext-3 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400',
+                )}
                 aria-label="이벤트 삭제하기"
               >
                 <Icon name="delete_outline" className="text-lg" />

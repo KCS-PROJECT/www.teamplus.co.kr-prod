@@ -19,6 +19,7 @@ import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
 import { Icon } from '@/components/ui/Icon';
 import { MESSAGES } from '@/lib/messages';
+import { cn } from '@/lib/utils';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { usePageReady } from '@/hooks/usePageReady';
 import {
@@ -169,23 +170,23 @@ export default function VenueManagePage() {
     <MobileContainer hasBottomNav={true}>
       <PageAppBar title={MESSAGES.venue.manageTitle} />
 
-      <main className="flex-1 overflow-y-auto">
-        {/* 상단 서브타이틀 */}
-        <div className="px-5 pt-5 pb-3">
-          <p className="text-card-body font-semibold text-wtext-3 dark:text-rink-300">
+      <main
+        className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck hide-scrollbar !pb-8"
+        role="main"
+        aria-label={MESSAGES.venue.manageTitle}
+      >
+        {/* 검색 — flat 흰 섹션 (서브타이틀 + 입력) */}
+        <section className="bg-it-surface dark:bg-it-blue-950 px-5 pt-5 pb-4" aria-label="구장 검색">
+          <p className="mb-3 text-card-body font-semibold text-it-ink-500 dark:text-wtext-4">
             {subtitle}
           </p>
-        </div>
-
-        {/* 검색 */}
-        <div className="px-5 pb-5">
           <label htmlFor="venue-manage-search" className="sr-only">
             {MESSAGES.venue.searchPlaceholder}
           </label>
           <div className="relative">
             <Icon
               name="search"
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-wtext-3 text-[20px]"
+              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-it-ink-400 dark:text-wtext-4 text-[20px]"
               aria-hidden="true"
             />
             <input
@@ -194,47 +195,50 @@ export default function VenueManagePage() {
               value={searchTerm}
               onChange={(e) => handleSearchChange(e.target.value)}
               placeholder={MESSAGES.venue.searchPlaceholder}
-              className="w-full bg-white dark:bg-rink-800 rounded-xl pl-10 pr-4 py-3 text-card-body text-wtext-1 dark:text-white placeholder-wtext-3 shadow-sm border border-wline dark:border-rink-700 focus:outline-none focus:ring-2 focus:ring-ice-500"
+              className="w-full h-12 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 pl-11 pr-4 text-[15px] font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-wtext-3 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20"
             />
           </div>
-        </div>
+        </section>
 
         {/* 에러 */}
         {error ? (
-          <div className="mx-5 rounded-xl bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 p-4 mb-4 text-card-body text-red-700 dark:text-red-300 flex items-center justify-between">
-            <span>{error}</span>
-            <button
-              type="button"
-              onClick={refresh}
-              className="text-card-meta font-bold underline"
-            >
-              {MESSAGES.venue.retry}
-            </button>
-          </div>
+          <>
+            <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+            <section className="bg-it-surface dark:bg-it-blue-950 px-5 py-4">
+              <div className="flex items-center justify-between gap-2 rounded-w-md bg-it-red-500/10 border-[1.5px] border-it-red-500/30 p-3.5 text-card-body text-it-red-500">
+                <span>{error}</span>
+                <button
+                  type="button"
+                  onClick={refresh}
+                  className="shrink-0 text-card-meta font-bold underline underline-offset-2"
+                >
+                  {MESSAGES.venue.retry}
+                </button>
+              </div>
+            </section>
+          </>
         ) : null}
 
-        {/* 목록 */}
-        <div className="px-5 pb-6" aria-busy={isLoading}>
-          {isLoading ? (
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+        {/* 목록 — flat 흰 섹션 (hairline 행) */}
+        <section className="bg-it-surface dark:bg-it-blue-950 px-5 pt-2 pb-7" aria-busy={isLoading} aria-label="구장 목록">
+          {isLoading ? null : venues.length === 0 ? (
             <div
-              className="py-16 flex items-center justify-center text-wtext-3 text-card-body"
-              role="status"
-              aria-live="polite"
-            >
-              {MESSAGES.venue.loading}
-            </div>
-          ) : venues.length === 0 ? (
-            <div
-              className="py-16 flex flex-col items-center justify-center text-wtext-3"
+              className="py-16 flex flex-col items-center justify-center"
               role="status"
             >
-              <Icon name="stadium" className="text-[48px] mb-2" aria-hidden="true" />
-              <p className="text-card-body mb-3">{MESSAGES.venue.empty}</p>
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-w-pill bg-it-fill dark:bg-rink-700">
+                <Icon name="stadium" className="text-[28px] text-it-ink-400 dark:text-wtext-4" aria-hidden="true" />
+              </div>
+              <p className="text-card-body font-medium text-it-ink-700 dark:text-wtext-4 mb-3">
+                {MESSAGES.venue.empty}
+              </p>
               {permissions.canCreate ? (
                 <button
                   type="button"
                   onClick={openCreate}
-                  className="text-card-meta font-bold text-ice-500 dark:text-blue-300 underline focus-visible:ring-2 focus-visible:ring-ice-500 focus:outline-none rounded"
+                  className="text-card-meta font-bold text-it-blue-500 transition-colors motion-reduce:transition-none hover:text-it-blue-600 underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-it-blue-500 focus:outline-none rounded"
                 >
                   {MESSAGES.venue.manage.addButton}
                 </button>
@@ -242,48 +246,55 @@ export default function VenueManagePage() {
             </div>
           ) : (
             <ul
-              className="space-y-3 list-none"
+              className="flex flex-col list-none"
               role="list"
               aria-label={`구장 ${venues.length}건`}
             >
-              {venues.map((venue) => (
-              <li key={venue.id} role="listitem">
-              <button
-                type="button"
-                onClick={() => openEdit(venue)}
-                aria-label={`${venue.name} 구장 편집하기, ${venue.address ?? MESSAGES.venue.noAddress}`}
-                className="w-full bg-white dark:bg-rink-800 rounded-xl shadow-md border border-wline-2 dark:border-rink-700 p-4 flex items-center gap-4 text-left hover:shadow-md transition-shadow active:bg-wbg dark:active:bg-rink-700 focus-visible:ring-2 focus-visible:ring-ice-500 focus:outline-none"
-              >
-                <div className="relative h-16 w-16 rounded-lg bg-wline-2 dark:bg-rink-700 shrink-0 overflow-hidden">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={resolveImageSrc(venue.imageUrl) ?? FALLBACK_THUMB}
-                    alt={`${venue.name} 섬네일`}
-                    className="absolute inset-0 size-full object-cover"
-                  />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <h3 className="text-card-emphasis font-bold text-wtext-1 dark:text-white truncate">
-                      {venue.name}
-                    </h3>
-                    <VenueStatusBadge status={venue.status} size="sm" />
-                  </div>
-                  <p className="text-card-body text-wtext-3 dark:text-rink-300 truncate">
-                    {venue.address ?? MESSAGES.venue.noAddress}
-                  </p>
-                </div>
-                <Icon
-                  name="chevron_right"
-                  className="text-wtext-4 dark:text-rink-300 text-[22px]"
-                  aria-hidden="true"
-                />
-              </button>
-              </li>
-              ))}
+              {venues.map((venue, idx) => {
+                const isLast = idx === venues.length - 1;
+                return (
+                  <li key={venue.id} role="listitem">
+                    <button
+                      type="button"
+                      onClick={() => openEdit(venue)}
+                      aria-label={`${venue.name} 구장 편집하기, ${venue.address ?? MESSAGES.venue.noAddress}`}
+                      style={{ animationDelay: `${Math.min(idx * 40, 280)}ms` }}
+                      className={cn(
+                        'w-full py-[14px] flex items-center gap-4 text-left transition-colors duration-150 ease-ios motion-reduce:transition-none active:brightness-95 focus-visible:ring-2 focus-visible:ring-it-blue-500 focus:outline-none',
+                        !isLast && 'border-b border-it-line dark:border-rink-700',
+                      )}
+                    >
+                      <div className="relative h-16 w-16 rounded-w-md bg-it-line dark:bg-rink-700 shrink-0 overflow-hidden">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={resolveImageSrc(venue.imageUrl) ?? FALLBACK_THUMB}
+                          alt={`${venue.name} 섬네일`}
+                          className="absolute inset-0 size-full object-cover"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <h3 className="text-[15.5px] font-bold tracking-[-0.01em] text-it-ink-800 dark:text-white truncate">
+                            {venue.name}
+                          </h3>
+                          <VenueStatusBadge status={venue.status} size="sm" iceTheme />
+                        </div>
+                        <p className="text-card-body text-it-ink-500 dark:text-wtext-4 truncate">
+                          {venue.address ?? MESSAGES.venue.noAddress}
+                        </p>
+                      </div>
+                      <Icon
+                        name="chevron_right"
+                        className="text-it-ink-400 dark:text-wtext-4 text-[22px] shrink-0"
+                        aria-hidden="true"
+                      />
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
-        </div>
+        </section>
       </main>
 
       {/* FAB — 구장 등록 */}
@@ -291,7 +302,7 @@ export default function VenueManagePage() {
         <button
           type="button"
           onClick={openCreate}
-          className="fixed right-5 bottom-24 z-10 flex items-center justify-center w-14 h-14 rounded-w-pill bg-ice-500 text-white shadow-lg hover:bg-ice-700 active:scale-95 transition-all"
+          className="fixed right-5 bottom-24 z-10 flex items-center justify-center w-14 h-14 rounded-w-pill bg-it-blue-500 text-white shadow-lg hover:bg-it-blue-600 active:scale-95 transition-all motion-reduce:transition-none"
           aria-label={MESSAGES.venue.manage.addButton}
         >
           <Icon name="add" className="text-[28px]" aria-hidden="true" />
@@ -310,6 +321,7 @@ export default function VenueManagePage() {
         onDelete={permissions.canDelete ? handleDelete : undefined}
         canDelete={permissions.canDelete}
         onUploadImage={sheetMode === 'edit' ? handleUploadImage : undefined}
+        iceTheme
       />
     </MobileContainer>
   );

@@ -50,7 +50,7 @@ export interface ClassCategoryDef {
 export const CLASS_CATEGORIES: Record<ClassCategoryCode, ClassCategoryDef> = {
   regular: {
     code: 'regular',
-    label: '정규수업',
+    label: '정규훈련',
     shortLabel: '정규',
     icon: 'sports_hockey',
     color: {
@@ -127,11 +127,11 @@ export function getCategoryDef(code: ClassCategoryCode): ClassCategoryDef {
 //   - lesson:  오픈클래스 레슨 (academyId 기반)
 // ※ training 도메인(REGULAR_TRAINING/GAME/FUN/CAMP/PICKUP)은 @/hooks/useTraining 별도 SoT.
 
-// [2026-05-18 SoT 통일] 수업 목록 카테고리 컨텍스트 = '정규수업' (사용자 컨펌 §9.1)
+// [2026-06-25 용어통일] 카테고리 칩 라벨 = '정규훈련' (수업→훈련 통일). 카드 배지는
+// TRAINING_TYPE_LABEL 에서 '정규' 2글자로 별도 통일한다(아래).
 // 이 옵션은 (director/parent) 수업 목록 카테고리 칩에서 사용된다.
-// 캘린더 legend·일정 리스트는 calendar-colors.ts → '정규훈련' 사용.
 export const TRAINING_TYPE_OPTIONS = [
-  { value: 'regular', label: '정규수업' },
+  { value: 'regular', label: '정규훈련' },
   // [2026-06-19] 'lesson' 표기를 '오픈클래스'로 통일 — 카테고리 정의·섹션 헤더·감독 화면과 일치.
   { value: 'lesson', label: '오픈클래스' },
 ] as const;
@@ -141,16 +141,20 @@ export type TrainingType = (typeof TRAINING_TYPE_OPTIONS)[number]['value'];
 // 라벨 매핑 — 신규 3종 + 'tournament'(대회 어댑팅 키) + 하위 호환 (deprecated).
 export const TRAINING_TYPE_LABEL: Record<string, string> = {
   ...Object.fromEntries(TRAINING_TYPE_OPTIONS.map((o) => [o.value, o.label])),
+  // 카드 배지는 분류 라벨을 짧게 통일 — 정규 계열은 '정규', 오픈 계열은 '오픈'으로 override
+  // (칩/상위분류 풀 라벨은 유지). trainingType 코드값과 무관하게 배지 문구를 단일화한다.
+  regular: '정규',
+  lesson: '오픈',
   tournament: '대회',
   // 하위 호환 (deprecated, 2026-05-11) — 과거 데이터/training 도메인 응답 표시용
-  regular_training: '정규훈련',
-  regular_class: '정규훈련',
-  group_class: '정규훈련',
-  game: '정규훈련',
-  fun: '정규훈련',
-  camp: '정규훈련',
-  academy_lesson: '오픈클래스',
-  game_lesson: '오픈클래스',
+  regular_training: '정규',
+  regular_class: '정규',
+  group_class: '정규',
+  game: '정규',
+  fun: '정규',
+  camp: '정규',
+  academy_lesson: '오픈',
+  game_lesson: '오픈',
 };
 
 /**

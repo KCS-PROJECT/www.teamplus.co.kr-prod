@@ -27,6 +27,11 @@ interface MatchApplicantRowProps {
   onApprove?: () => void;
   onReject?: () => void;
   processing?: boolean;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 카드 박스 → flat it-line 타일 + it-* 톤(승인=it-blue, 거절=it-red).
+   */
+  iceTheme?: boolean;
 }
 
 /**
@@ -45,9 +50,109 @@ export function MatchApplicantRow({
   onApprove,
   onReject,
   processing = false,
+  iceTheme = false,
 }: MatchApplicantRowProps) {
   const isPending = data.status === 'pending';
   const isApproved = data.status === 'approved';
+
+  // [ICETIMES] flat — it-line 타일 + it-* 톤. 승인=it-blue 강조, 거절=it-red.
+  if (iceTheme) {
+    return (
+      <div
+        className={cn(
+          'rounded-w-md p-4 border bg-it-surface dark:bg-rink-800 border-it-line dark:border-it-blue-900',
+          !isPending && 'opacity-90'
+        )}
+      >
+        <div className="flex items-start gap-3">
+          {selectable && isPending && !readOnly && (
+            <button
+              type="button"
+              onClick={onToggleSelect}
+              aria-pressed={selected}
+              aria-label={selected ? '선택 해제' : '선택'}
+              className={cn(
+                'w-5 h-5 rounded border-[1.5px] flex items-center justify-center mt-0.5 shrink-0 transition-colors motion-reduce:transition-none',
+                selected
+                  ? 'bg-it-blue-500 border-it-blue-500'
+                  : 'border-it-line-strong dark:border-it-blue-900 hover:border-it-blue-500'
+              )}
+            >
+              {selected && <Icon name="check" className="text-white text-sm" />}
+            </button>
+          )}
+
+          <div
+            className={cn(
+              'w-10 h-10 rounded-w-pill flex items-center justify-center shrink-0',
+              isApproved ? 'bg-it-blue-50 dark:bg-it-blue-900/40' : 'bg-it-line dark:bg-rink-700'
+            )}
+          >
+            <Icon
+              name={isApproved ? 'check_circle' : 'person'}
+              filled={isApproved}
+              className={cn(
+                'text-xl',
+                isApproved ? 'text-it-blue-500 dark:text-it-blue-300' : 'text-it-ink-400'
+              )}
+            />
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-1.5 mb-1">
+              <span className="text-card-title text-it-ink-800 dark:text-white truncate">
+                {data.name}
+              </span>
+              {data.position && <MatchPositionChip position={data.position} size="xs" />}
+              {data.level && (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-it-fill text-it-ink-700 dark:bg-rink-700 dark:text-it-ink-200">
+                  {data.level}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 text-card-meta text-it-ink-500 dark:text-it-ink-300">
+              <span className="font-num tabular-nums">
+                {new Date(data.appliedAt).toLocaleDateString('ko-KR')}
+              </span>
+              {data.paymentStatus && (
+                <span
+                  className={cn(
+                    'font-semibold',
+                    data.paymentStatus === 'paid'
+                      ? 'text-it-blue-600 dark:text-it-blue-300'
+                      : 'text-it-red-500 dark:text-it-red-300'
+                  )}
+                >
+                  {data.paymentStatus === 'paid' ? '결제완료' : '결제대기'}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {isPending && !readOnly && (
+          <div className="flex gap-2 mt-3 ml-8">
+            <button
+              type="button"
+              onClick={onReject}
+              disabled={processing}
+              className="flex-1 h-10 rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 text-it-ink-700 dark:text-it-ink-200 text-sm font-bold hover:bg-it-red-50 hover:text-it-red-500 hover:border-it-red-200 dark:hover:bg-it-red-500/15 dark:hover:text-it-red-300 disabled:opacity-50 transition-colors motion-reduce:transition-none"
+            >
+              거절
+            </button>
+            <button
+              type="button"
+              onClick={onApprove}
+              disabled={processing}
+              className="flex-1 h-10 rounded-w-md bg-it-blue-500 text-white text-sm font-bold disabled:opacity-50 hover:bg-it-blue-600 active:brightness-95 transition-colors motion-reduce:transition-none"
+            >
+              승인
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div

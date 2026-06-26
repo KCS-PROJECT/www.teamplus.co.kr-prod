@@ -119,17 +119,17 @@ export default function WithdrawalPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title={W.pageTitle} forceNative />
 
-      <main className="flex-1 overflow-y-auto pb-30 hide-scrollbar bg-wbg dark:bg-rink-900">
+      <main className="flex-1 overflow-y-auto pb-30 hide-scrollbar bg-it-canvas dark:bg-puck">
         <section className="px-5 pt-6 pb-6 flex flex-col gap-5">
           {/* STEP 1 — 유의사항 + 동의 */}
           {step === "notice" && (
             <>
               <Card>
                 <div className="flex flex-col items-center text-center gap-3 pb-2">
-                  <div className="flex size-14 items-center justify-center rounded-w-pill bg-error/10">
-                    <Icon name="warning" className="text-[26px] text-error" />
+                  <div className="flex size-14 items-center justify-center rounded-w-pill bg-it-red-500/10">
+                    <Icon name="warning" className="text-[26px] text-it-red-500" />
                   </div>
-                  <h2 className="text-w-h3 font-bold text-wtext-1 dark:text-white">
+                  <h2 className="text-w-h3 font-bold text-it-ink-800 dark:text-white">
                     {W.noticeTitle}
                   </h2>
                 </div>
@@ -138,10 +138,10 @@ export default function WithdrawalPage() {
                     <li key={text} className="flex items-start gap-2.5">
                       <Icon
                         name="check_circle"
-                        className="text-[18px] text-ice-500 mt-0.5 shrink-0"
+                        className="text-[18px] text-it-blue-500 mt-0.5 shrink-0"
                         aria-hidden="true"
                       />
-                      <p className="text-w-body text-wtext-2 dark:text-rink-200 leading-relaxed">
+                      <p className="text-w-body text-it-ink-700 dark:text-rink-200 leading-relaxed">
                         {text}
                       </p>
                     </li>
@@ -172,7 +172,7 @@ export default function WithdrawalPage() {
           {step === "reason" && (
             <>
               <Card>
-                <h2 className="text-w-h3 font-bold text-wtext-1 dark:text-white pb-3">
+                <h2 className="text-w-h3 font-bold text-it-ink-800 dark:text-white pb-3">
                   {W.reasonTitle}
                 </h2>
                 <div className="flex flex-col gap-2.5">
@@ -187,14 +187,14 @@ export default function WithdrawalPage() {
                           setError(null);
                         }}
                         className={
-                          "flex items-center justify-between gap-3 rounded-2xl border px-4 py-3.5 text-left transition-colors motion-reduce:transition-none " +
+                          "flex items-center justify-between gap-3 rounded-w-md border-[1.5px] px-4 py-3.5 text-left transition-colors motion-reduce:transition-none " +
                           (selected
-                            ? "border-ice-500 bg-ice-500/5 dark:bg-ice-500/10"
-                            : "border-wline dark:border-rink-700 bg-white dark:bg-rink-800 hover:bg-wbg dark:hover:bg-rink-700/40")
+                            ? "border-it-blue-500 bg-it-blue-50 dark:bg-it-blue-500/10"
+                            : "border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 hover:bg-it-line dark:hover:bg-rink-700/40")
                         }
                         aria-pressed={selected}
                       >
-                        <span className="text-w-body font-medium text-wtext-1 dark:text-white">
+                        <span className="text-w-body font-medium text-it-ink-800 dark:text-white">
                           {W.reasons[key]}
                         </span>
                         <Icon
@@ -202,8 +202,8 @@ export default function WithdrawalPage() {
                           className={
                             "text-[20px] " +
                             (selected
-                              ? "text-ice-500"
-                              : "text-wtext-4 dark:text-rink-300")
+                              ? "text-it-blue-500"
+                              : "text-it-ink-400 dark:text-rink-300")
                           }
                           aria-hidden="true"
                         />
@@ -241,10 +241,10 @@ export default function WithdrawalPage() {
           {step === "confirm" && (
             <>
               <Card>
-                <h2 className="text-w-h3 font-bold text-wtext-1 dark:text-white pb-1">
+                <h2 className="text-w-h3 font-bold text-it-ink-800 dark:text-white pb-1">
                   {phraseMode ? W.socialTitle : W.passwordTitle}
                 </h2>
-                <p className="text-w-small text-wtext-3 dark:text-rink-300 leading-relaxed pb-4">
+                <p className="text-w-small text-it-ink-500 dark:text-rink-300 leading-relaxed pb-4">
                   {phraseMode ? W.socialGuide : W.confirmMessage}
                 </p>
 
@@ -279,7 +279,7 @@ export default function WithdrawalPage() {
                           setUsePhrase(true);
                           setError(null);
                         }}
-                        className="mt-3 text-w-small font-medium text-ice-500 underline-offset-2 hover:underline focus:outline-none focus-visible:underline"
+                        className="mt-3 text-w-small font-medium text-it-blue-600 underline-offset-2 hover:underline focus:outline-none focus-visible:underline"
                       >
                         {W.socialToggle}
                       </button>
@@ -317,13 +317,13 @@ export default function WithdrawalPage() {
             <>
               <Card>
                 <div className="flex flex-col items-center text-center gap-4 py-2">
-                  <div className="flex size-16 items-center justify-center rounded-w-pill bg-ice-500/10">
-                    <Icon name="check_circle" className="text-[30px] text-ice-500" />
+                  <div className="flex size-16 items-center justify-center rounded-w-pill bg-it-blue-50 dark:bg-it-blue-500/15">
+                    <Icon name="check_circle" className="text-[30px] text-it-blue-500" />
                   </div>
-                  <h2 className="text-w-h3 font-bold text-wtext-1 dark:text-white">
+                  <h2 className="text-w-h3 font-bold text-it-ink-800 dark:text-white">
                     {W.completeTitle}
                   </h2>
-                  <p className="text-w-body text-wtext-3 dark:text-rink-200 leading-relaxed">
+                  <p className="text-w-body text-it-ink-500 dark:text-rink-200 leading-relaxed">
                     {W.completeMessage}
                   </p>
                 </div>
@@ -345,8 +345,9 @@ export default function WithdrawalPage() {
 }
 
 function Card({ children }: { children: React.ReactNode }) {
+  // ICETIMES flat: 카드 그림자/외곽 박스 대신 흰 면 + hairline border
   return (
-    <div className="rounded-2xl bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 p-6">
+    <div className="rounded-w-md bg-it-surface dark:bg-it-blue-950 border border-it-line-strong dark:border-rink-700 p-6">
       {children}
     </div>
   );
@@ -355,7 +356,7 @@ function Card({ children }: { children: React.ReactNode }) {
 function ErrorText({ message }: { message: string }) {
   return (
     <p
-      className="flex items-center gap-1.5 text-w-small text-error"
+      className="flex items-center gap-1.5 text-w-small text-it-red-500"
       role="alert"
     >
       <Icon name="error" className="text-[16px]" aria-hidden="true" />

@@ -15,6 +15,11 @@ interface MatchBulkActionBarProps {
   onBulkReject: () => void;
   isProcessing?: boolean;
   className?: string;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 it-* 토큰(it-surface bar · it-blue 승인 · it-red 거절).
+   */
+  iceTheme?: boolean;
 }
 
 /**
@@ -38,6 +43,7 @@ export function MatchBulkActionBar({
   onBulkReject,
   isProcessing = false,
   className,
+  iceTheme = false,
 }: MatchBulkActionBarProps) {
   const allSelected = totalCount > 0 && selectedCount === totalCount;
   const hasSelection = selectedCount > 0;
@@ -52,7 +58,10 @@ export function MatchBulkActionBar({
   return (
     <div
       className={cn(
-        'fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-rink-900 border-t border-wline dark:border-rink-700',
+        'fixed bottom-0 left-0 right-0 z-50 border-t',
+        iceTheme
+          ? 'bg-it-surface dark:bg-rink-900 border-it-line dark:border-it-blue-900'
+          : 'bg-white dark:bg-rink-900 border-wline dark:border-rink-700',
         // safe-area + 12px (홈 인디케이터 보호)
         'pb-[calc(env(safe-area-inset-bottom,0px)+12px)]',
         className,
@@ -64,15 +73,22 @@ export function MatchBulkActionBar({
           type="button"
           onClick={onSelectAll}
           disabled={totalCount === 0 || isProcessing}
-          className="flex items-center gap-2 text-sm font-bold text-wtext-2 dark:text-rink-100 disabled:opacity-40"
+          className={cn(
+            'flex items-center gap-2 text-sm font-bold disabled:opacity-40',
+            iceTheme ? 'text-it-ink-700 dark:text-it-ink-200' : 'text-wtext-2 dark:text-rink-100'
+          )}
           aria-pressed={allSelected}
         >
           <span
             className={cn(
-              'flex h-5 w-5 items-center justify-center rounded border-2 transition-colors',
-              allSelected
-                ? 'bg-ice-500 border-ice-500'
-                : 'border-wline dark:border-rink-700 bg-white dark:bg-rink-800'
+              'flex h-5 w-5 items-center justify-center rounded transition-colors motion-reduce:transition-none',
+              iceTheme
+                ? allSelected
+                  ? 'bg-it-blue-500 border-[1.5px] border-it-blue-500'
+                  : 'border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-surface dark:bg-rink-800'
+                : allSelected
+                  ? 'bg-ice-500 border-2 border-ice-500'
+                  : 'border-2 border-wline dark:border-rink-700 bg-white dark:bg-rink-800'
             )}
           >
             {allSelected && (
@@ -92,7 +108,12 @@ export function MatchBulkActionBar({
             type="button"
             onClick={onBulkReject}
             disabled={!hasSelection || isProcessing}
-            className="inline-flex items-center gap-1 h-10 px-3 rounded-lg border border-red-200 dark:border-red-800/50 text-red-600 dark:text-red-400 text-sm font-bold hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40 disabled:hover:bg-transparent transition-colors"
+            className={cn(
+              'inline-flex items-center gap-1 h-10 px-3 text-sm font-bold disabled:opacity-40 disabled:hover:bg-transparent transition-colors motion-reduce:transition-none',
+              iceTheme
+                ? 'rounded-w-md border-[1.5px] border-it-red-200 dark:border-it-red-700/50 text-it-red-500 dark:text-it-red-300 hover:bg-it-red-50 dark:hover:bg-it-red-500/15'
+                : 'rounded-lg border border-red-200 dark:border-red-800/50 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
+            )}
           >
             <Icon name="close" className="text-base" />
             {MESSAGES.match.applicants.bulkReject}
@@ -101,7 +122,12 @@ export function MatchBulkActionBar({
             type="button"
             onClick={onBulkApprove}
             disabled={!hasSelection || isProcessing}
-            className="inline-flex items-center gap-1 h-10 px-4 rounded-lg bg-ice-500 text-white text-sm font-bold hover:bg-ice-700 disabled:opacity-40 transition-colors"
+            className={cn(
+              'inline-flex items-center gap-1 h-10 px-4 text-white text-sm font-bold disabled:opacity-40 transition-colors motion-reduce:transition-none',
+              iceTheme
+                ? 'rounded-w-md bg-it-blue-500 hover:bg-it-blue-600'
+                : 'rounded-lg bg-ice-500 hover:bg-ice-700'
+            )}
           >
             {isProcessing ? (
               <Icon name="progress_activity" className="animate-spin text-base" />

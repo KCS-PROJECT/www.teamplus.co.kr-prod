@@ -16,6 +16,7 @@
  */
 
 import { Icon } from "@/components/ui/Icon";
+import { cn } from "@/lib/utils";
 import type { TournamentUiStatus } from "@/services/tournament.service";
 import { TournamentStatusBadge } from "./TournamentStatusBadge";
 
@@ -26,6 +27,11 @@ interface Props {
   endDate: string;
   status: TournamentUiStatus;
   dDay?: number;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 navy 히어로(it-blue-800)·it-* 본문 위계로 치환.
+   */
+  iceTheme?: boolean;
 }
 
 function formatRangeLong(start: string, end: string): string {
@@ -41,23 +47,35 @@ export function TournamentHeroSection({
   endDate,
   status,
   dDay,
+  iceTheme = false,
 }: Props) {
   return (
     <section
       // [수정 2026-05-11] absolute 배지 → inline 으로 변경하여 본문과 겹침 해소.
       //  · 배지가 본문(title/subtitle/date) 위에 별도 행으로 배치되도록 flex 구조 단순화.
-      className="relative overflow-hidden bg-rink-800 shadow-sm"
+      className={cn(
+        'relative overflow-hidden',
+        iceTheme
+          ? // ICETIMES navy 히어로 — full-bleed, shadow 제거(flat).
+            'bg-it-blue-800 dark:bg-it-blue-950'
+          : 'bg-rink-800 shadow-sm',
+      )}
       aria-label="대회 히어로"
     >
       <div className="relative z-10 flex flex-col gap-2 p-5 pb-6 pt-6">
         {/* 1행: 상태 배지 (inline, 별도 라인) */}
         <div>
-          <TournamentStatusBadge status={status} dDay={dDay} />
+          <TournamentStatusBadge status={status} dDay={dDay} iceTheme={iceTheme} />
         </div>
 
         {/* 2행: 부제 (palette 톤다운, 작게) */}
         {subtitle ? (
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-wtext-4">
+          <p
+            className={cn(
+              'text-[11px] font-semibold uppercase tracking-wide',
+              iceTheme ? 'text-it-blue-200' : 'text-wtext-4',
+            )}
+          >
             {subtitle}
           </p>
         ) : null}
@@ -71,10 +89,15 @@ export function TournamentHeroSection({
         <div className="mt-1 flex items-center gap-2">
           <Icon
             name="calendar_today"
-            className="text-base text-wtext-4"
+            className={cn('text-base', iceTheme ? 'text-it-blue-200' : 'text-wtext-4')}
             aria-hidden
           />
-          <p className="text-sm text-wtext-3 tabular-nums">
+          <p
+            className={cn(
+              'text-sm tabular-nums',
+              iceTheme ? 'text-it-blue-100' : 'text-wtext-3',
+            )}
+          >
             {formatRangeLong(startDate, endDate)}
           </p>
         </div>

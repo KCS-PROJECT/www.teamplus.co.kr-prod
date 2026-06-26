@@ -75,13 +75,14 @@ export default function CreateMatchPage() {
         forceNative
       />
 
-      <main className="flex-1 overflow-y-auto px-4 pt-5 pb-30">
+      <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck px-4 pt-5 pb-30">
         <MatchCreateForm
           mode="create"
           onSubmit={handleSubmit}
           onCancel={() => back()}
           isSubmitting={isSubmitting}
           error={error}
+          iceTheme
         />
       </main>
     </MobileContainer>

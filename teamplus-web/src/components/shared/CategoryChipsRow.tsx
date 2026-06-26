@@ -47,6 +47,12 @@ export interface CategoryChipsRowProps {
   ariaLabel?: string;
   /** 좌우 패딩 토큰 — 페이지 grid 정합 시 'px-0' override 가능 */
   paddingX?: string;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 active it-blue fill · idle it-surface + it-line-strong 1.5px border + it-* 토큰.
+   *   (현재 (common)/search/results 화면만 전달.)
+   */
+  iceTheme?: boolean;
 }
 
 export function CategoryChipsRow({
@@ -56,6 +62,7 @@ export function CategoryChipsRow({
   className,
   ariaLabel = '카테고리 선택',
   paddingX = 'px-5',
+  iceTheme = false,
 }: CategoryChipsRowProps) {
   return (
     <div
@@ -86,12 +93,18 @@ export function CategoryChipsRow({
                 'snap-start shrink-0 inline-flex items-center gap-1.5',
                 'h-9 px-4 rounded-w-pill text-sm font-bold',
                 'transition-colors duration-150 motion-reduce:transition-none',
-                'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40',
                 'disabled:opacity-40 disabled:cursor-not-allowed',
+                iceTheme
+                  ? 'focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40'
+                  : 'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40',
                 // 활성/비활성 색상
-                isActive
-                  ? 'bg-ice-500 text-white'
-                  : 'bg-wsurface dark:bg-rink-800 text-wtext-2 dark:text-rink-200 border border-wline dark:border-rink-700 hover:bg-wline-2 dark:hover:bg-rink-700',
+                iceTheme
+                  ? isActive
+                    ? 'bg-it-blue-500 text-white'
+                    : 'bg-it-surface dark:bg-it-blue-950 text-it-ink-600 dark:text-rink-200 border-[1.5px] border-it-line-strong dark:border-it-blue-900 hover:bg-it-fill dark:hover:bg-it-blue-900/40'
+                  : isActive
+                    ? 'bg-ice-500 text-white'
+                    : 'bg-wsurface dark:bg-rink-800 text-wtext-2 dark:text-rink-200 border border-wline dark:border-rink-700 hover:bg-wline-2 dark:hover:bg-rink-700',
               )}
             >
               {chip.icon && (
@@ -104,9 +117,13 @@ export function CategoryChipsRow({
                 <span
                   className={cn(
                     'inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-bold',
-                    isActive
-                      ? 'bg-white/20 text-white'
-                      : 'bg-wline-2 dark:bg-rink-700 text-wtext-2 dark:text-rink-200',
+                    iceTheme
+                      ? isActive
+                        ? 'bg-white/20 text-white'
+                        : 'bg-it-line dark:bg-it-blue-900 text-it-ink-600 dark:text-rink-200'
+                      : isActive
+                        ? 'bg-white/20 text-white'
+                        : 'bg-wline-2 dark:bg-rink-700 text-wtext-2 dark:text-rink-200',
                   )}
                   aria-label={`${chip.count}건`}
                 >

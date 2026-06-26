@@ -23,6 +23,11 @@ interface Props {
   /** D-Day 숫자 (접수중/마감임박 상태에서만 표시) */
   dDay?: number;
   className?: string;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 it-* 토큰(blue/red/ink — 달력 SoT 톤)으로 치환.
+   */
+  iceTheme?: boolean;
 }
 
 const STATUS_STYLE: Record<
@@ -61,8 +66,45 @@ const STATUS_STYLE: Record<
   },
 };
 
-export function TournamentStatusBadge({ status, dDay, className }: Props) {
-  const style = STATUS_STYLE[status];
+// ICETIMES flat 톤 — 달력 SoT(정규=초록 미사용 · 진행/접수=blue · 마감/취소=red · 종료=ink).
+const STATUS_STYLE_ICE: Record<
+  TournamentUiStatus,
+  { bg: string; text: string; border: string }
+> = {
+  recruiting: {
+    bg: 'bg-it-blue-50 dark:bg-it-blue-500/15',
+    text: 'text-it-blue-500 dark:text-it-blue-300',
+    border: 'border-it-blue-200 dark:border-it-blue-500/40',
+  },
+  closing_soon: {
+    bg: 'bg-it-red-50 dark:bg-it-red-500/15',
+    text: 'text-it-red-500 dark:text-it-red-300',
+    border: 'border-it-red-200 dark:border-it-red-500/40',
+  },
+  closed: {
+    bg: 'bg-it-fill dark:bg-rink-800',
+    text: 'text-it-ink-600 dark:text-rink-100',
+    border: 'border-it-line-strong dark:border-rink-700',
+  },
+  in_progress: {
+    bg: 'bg-it-blue-50 dark:bg-it-blue-500/15',
+    text: 'text-it-blue-500 dark:text-it-blue-300',
+    border: 'border-it-blue-200 dark:border-it-blue-500/40',
+  },
+  completed: {
+    bg: 'bg-it-fill dark:bg-rink-800',
+    text: 'text-it-ink-500 dark:text-rink-300',
+    border: 'border-it-line-strong dark:border-rink-700',
+  },
+  cancelled: {
+    bg: 'bg-it-red-50 dark:bg-it-red-500/15',
+    text: 'text-it-red-500 dark:text-it-red-300',
+    border: 'border-it-red-200 dark:border-it-red-500/40',
+  },
+};
+
+export function TournamentStatusBadge({ status, dDay, className, iceTheme = false }: Props) {
+  const style = (iceTheme ? STATUS_STYLE_ICE : STATUS_STYLE)[status];
   const label = MESSAGES.tournament.statusLabel[status] ?? status;
   const showDDay =
     (status === 'recruiting' || status === 'closing_soon') &&

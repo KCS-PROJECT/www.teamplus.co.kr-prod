@@ -83,14 +83,15 @@ function ProductCard({ product, onFavorite }: { product: Product; onFavorite: (i
         className="group block"
         aria-label={`${productLabel} 상세 보기`}
       >
-        <div className="relative aspect-[3/4] rounded-xl overflow-hidden bg-wline-2 dark:bg-rink-800 mb-2">
+        <div className="relative aspect-[3/4] rounded-w-md overflow-hidden bg-it-fill dark:bg-rink-800 mb-2 border border-it-line dark:border-rink-700">
           <div className="absolute inset-0 flex items-center justify-center">
-            <Icon name="checkroom" className="text-5xl text-wtext-4 dark:text-rink-500" aria-hidden="true" />
+            <Icon name="checkroom" className="text-5xl text-it-ink-400 dark:text-rink-500" aria-hidden="true" />
           </div>
           {product.badge && (
             <StatusBadge
               variant={PRODUCT_BADGE_VARIANT[product.badge] ?? 'neutral'}
               className="absolute top-2 left-2"
+              iceTheme
             >
               {product.badge}
             </StatusBadge>
@@ -98,23 +99,23 @@ function ProductCard({ product, onFavorite }: { product: Product; onFavorite: (i
           <button
             type="button"
             onClick={(e) => { e.preventDefault(); onFavorite(product.id); }}
-            className="absolute top-2 right-2 p-1.5 bg-white/80 dark:bg-rink-900/80 rounded-w-pill transition-colors motion-reduce:transition-none"
+            className="absolute top-2 right-2 p-1.5 bg-it-surface/90 dark:bg-rink-900/80 rounded-w-pill transition-colors motion-reduce:transition-none"
             aria-label={product.isFavorite ? `${product.name} 찜 해제` : `${product.name} 찜하기`}
             aria-pressed={Boolean(product.isFavorite)}
           >
             <Icon
               name="favorite"
               filled={product.isFavorite}
-              className={`text-card-title ${product.isFavorite ? 'text-red-500' : 'text-wtext-3 hover:text-red-500'}`}
+              className={`text-card-title ${product.isFavorite ? 'text-it-red-500' : 'text-it-ink-400 hover:text-it-red-500'}`}
               aria-hidden="true"
             />
           </button>
         </div>
         <div className="px-1">
-          <p className="text-card-meta text-wtext-3 dark:text-rink-300 mb-0.5">{product.brand}</p>
+          <p className="text-card-meta text-it-ink-400 dark:text-rink-300 mb-0.5">{product.brand}</p>
           <h3
             id={`product-${product.id}-name`}
-            className="text-card-body font-medium text-wtext-1 dark:text-white line-clamp-2 mb-1 group-hover:text-ice-500 transition-colors motion-reduce:transition-none"
+            className="text-card-body font-medium text-it-ink-800 dark:text-white line-clamp-2 mb-1 group-hover:text-it-blue-500 transition-colors motion-reduce:transition-none"
           >
             {product.name}
           </h3>
@@ -123,15 +124,15 @@ function ProductCard({ product, onFavorite }: { product: Product; onFavorite: (i
             className="flex items-baseline gap-2"
           >
             {product.discount && (
-              <span className="text-card-body font-bold text-red-500" aria-label={`할인율 ${product.discount} 퍼센트`}>{product.discount}%</span>
+              <span className="text-card-body font-bold text-it-red-500" aria-label={`할인율 ${product.discount} 퍼센트`}>{product.discount}%</span>
             )}
-            <span className="text-card-body font-bold text-wtext-1 dark:text-white tabular-nums">
+            <span className="text-card-body font-bold text-it-ink-800 dark:text-white tabular-nums">
               {product.price.toLocaleString()}원
             </span>
           </div>
           {product.originalPrice && (
             <span
-              className="text-card-meta text-wtext-3 line-through tabular-nums"
+              className="text-card-meta text-it-ink-400 line-through tabular-nums"
               aria-label={`정가 ${product.originalPrice.toLocaleString()}원`}
             >
               {product.originalPrice.toLocaleString()}원
@@ -247,13 +248,13 @@ export default function ProductListPage() {
           variant='default'(기본) → ← 뒤로가기 + 타이틀 + 우측 액션. showAppBar:false 이므로 forceNative 필수. */}
       <PageAppBar title="상품 목록" forceNative />
 
-      {/* Filter & Category */}
-      <div className="sticky top-14 z-40 bg-white dark:bg-rink-900 border-b border-wline-2 dark:border-rink-800 flex items-center gap-3 px-4 py-3">
+      {/* Filter & Category — flat 흰 섹션 (hairline 하단) */}
+      <div className="sticky top-14 z-40 bg-it-surface dark:bg-rink-900 border-b border-it-line dark:border-rink-800 flex items-center gap-3 px-4 py-3">
         <button
           onClick={() => setShowFilter(!showFilter)}
-          className="shrink-0 flex items-center gap-1 px-3 py-2 bg-wline-2 dark:bg-rink-800 active:bg-wline rounded-lg text-card-body font-medium text-wtext-1 dark:text-white transition-colors motion-reduce:transition-none"
+          className="shrink-0 flex items-center gap-1 px-3 py-2 bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 active:brightness-95 rounded-w-md text-card-body font-medium text-it-ink-800 dark:text-white transition-colors motion-reduce:transition-none"
         >
-          <Icon name="tune" className="text-card-title" aria-hidden="true" />
+          <Icon name="tune" className="text-card-title text-it-ink-600 dark:text-rink-300" aria-hidden="true" />
           필터
         </button>
         <div
@@ -264,10 +265,10 @@ export default function ProductListPage() {
             <button
               key={cat}
               onClick={() => setSelectedCategory(index)}
-              className={`shrink-0 snap-start px-4 py-2 rounded-w-pill text-card-body font-medium transition-all motion-reduce:transition-none ${
+              className={`shrink-0 snap-start h-9 px-4 rounded-w-pill border-[1.5px] text-card-body font-bold transition-all motion-reduce:transition-none ${
                 selectedCategory === index
-                  ? 'bg-ice-500 text-white font-bold'
-                  : 'bg-wline-2 dark:bg-rink-800 text-wtext-2 dark:text-rink-100 active:bg-wline'
+                  ? 'bg-it-blue-500 border-it-blue-500 text-white'
+                  : 'bg-it-surface dark:bg-rink-800 border-it-line-strong dark:border-rink-700 text-it-ink-600 dark:text-rink-100 active:brightness-95'
               }`}
             >
               {cat}
@@ -277,41 +278,43 @@ export default function ProductListPage() {
         </div>
       </div>
 
-      {/* Product Grid */}
-      <main className="flex-1 px-4 py-4 pb-30">
-        {isLoading ? null : productList.length > 0 ? (
-          <div className="grid grid-cols-2 gap-4">
-            {productList.map((product) => (
-              <ProductCard key={product.id} product={product} onFavorite={handleFavorite} />
-            ))}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center py-16">
-            <Icon name="inventory_2" className="text-5xl text-wtext-4 dark:text-rink-500 mb-4" />
-            <p className="text-wtext-3 dark:text-rink-300">{MESSAGES.empty('상품')}</p>
-          </div>
-        )}
+      {/* Product Grid — flat 흰 섹션 */}
+      <main className="flex-1 bg-it-canvas dark:bg-puck pb-30">
+        <section className="bg-it-surface dark:bg-rink-800 mt-2 px-4 py-4">
+          {isLoading ? null : productList.length > 0 ? (
+            <div className="grid grid-cols-2 gap-4">
+              {productList.map((product) => (
+                <ProductCard key={product.id} product={product} onFavorite={handleFavorite} />
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-16">
+              <Icon name="inventory_2" className="text-5xl text-it-ink-400 dark:text-rink-500 mb-4" />
+              <p className="text-it-ink-500 dark:text-rink-300">{MESSAGES.empty('상품')}</p>
+            </div>
+          )}
 
-        {/* Load More */}
-        {!isLoading && hasMore && productList.length > 0 && (
-          <button
-            onClick={handleLoadMore}
-            disabled={isLoadingMore}
-            className="w-full mt-6 py-3 text-card-body text-wtext-3 dark:text-rink-300 font-medium flex items-center justify-center gap-1 hover:text-ice-500 transition-colors motion-reduce:transition-none disabled:opacity-50"
-          >
-            {isLoadingMore ? (
-              <>
-                <div className="w-4 h-4 border-2 border-wline border-t-primary rounded-w-pill animate-spin motion-reduce:animate-none" />
-                <span>{MESSAGES.loading.waitMessage}</span>
-              </>
-            ) : (
-              <>
-                더 많은 상품 보기
-                <Icon name="expand_more" className="text-card-title" aria-hidden="true" />
-              </>
-            )}
-          </button>
-        )}
+          {/* Load More */}
+          {!isLoading && hasMore && productList.length > 0 && (
+            <button
+              onClick={handleLoadMore}
+              disabled={isLoadingMore}
+              className="w-full mt-6 py-3 text-card-body text-it-ink-500 dark:text-rink-300 font-medium flex items-center justify-center gap-1 hover:text-it-blue-500 transition-colors motion-reduce:transition-none disabled:opacity-50"
+            >
+              {isLoadingMore ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-it-line-strong border-t-it-blue-500 rounded-w-pill animate-spin motion-reduce:animate-none" />
+                  <span>{MESSAGES.loading.waitMessage}</span>
+                </>
+              ) : (
+                <>
+                  더 많은 상품 보기
+                  <Icon name="expand_more" className="text-card-title" aria-hidden="true" />
+                </>
+              )}
+            </button>
+          )}
+        </section>
       </main>
 
       {/* Floating Checkout Button */}
@@ -319,7 +322,7 @@ export default function ProductListPage() {
         <div className="fixed bottom-[calc(5rem+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px)))] left-0 right-0 px-4 max-w-md mx-auto z-40">
           <button
             onClick={() => navigate('/cart')}
-            className="w-full bg-ice-500 hover:bg-ice-500/90 text-white py-4 rounded-2xl shadow-md flex items-center justify-center gap-2 transition-all motion-reduce:transition-none active:brightness-95"
+            className="w-full bg-it-blue-500 hover:bg-it-blue-600 text-white py-4 rounded-w-md flex items-center justify-center gap-2 transition-all motion-reduce:transition-none active:brightness-95"
           >
             <Icon name="shopping_bag" className="text-xl" aria-hidden="true" />
             <span className="font-bold">선택상품 {totalSelected}개 담기</span>

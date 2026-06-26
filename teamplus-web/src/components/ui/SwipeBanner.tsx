@@ -38,6 +38,12 @@ interface SwipeBannerProps {
   transitionDuration?: number; // ms, slide transition speed
   height?: string; // Tailwind class (e.g., 'h-48', 'h-56')
   className?: string;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 컨테이너 둘레를 hairline(it-line)으로 정리하고 tag/버튼을 it-* 토큰으로 교체.
+   *   슬라이드 bgColor/overlayColor 는 데이터 구동 골격이라 유지(§3 규칙).
+   */
+  iceTheme?: boolean;
 }
 
 export function SwipeBanner({
@@ -46,6 +52,7 @@ export function SwipeBanner({
   transitionDuration = 500,
   height = 'h-48',
   className = '',
+  iceTheme = false,
 }: SwipeBannerProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isAutoPlaying, setIsAutoPlaying] = useState(autoPlayInterval > 0);
@@ -115,7 +122,11 @@ export function SwipeBanner({
   return (
     <div
       ref={containerRef}
-      className={`relative w-full overflow-hidden rounded-xl ${className}`}
+      className={`relative w-full overflow-hidden ${
+        iceTheme
+          ? 'rounded-w-md border border-it-line dark:border-it-blue-900'
+          : 'rounded-xl'
+      } ${className}`}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
@@ -177,7 +188,9 @@ export function SwipeBanner({
                   href={slide.href}
                   className={`mt-3 inline-flex items-center gap-1 text-sm font-semibold ${
                     slide.textColor === 'dark'
-                      ? 'text-ice-500 hover:text-ice-700'
+                      ? iceTheme
+                        ? 'text-it-blue-500 hover:text-it-blue-600'
+                        : 'text-ice-500 hover:text-ice-700'
                       : 'text-white hover:underline'
                   }`}
                   loadingMessage="로딩중..."

@@ -12,6 +12,7 @@ export default function DirectorNoticesPage() {
       canManage
       canWrite
       activeOnly={false}
+      iceTheme
     />
   );
 }

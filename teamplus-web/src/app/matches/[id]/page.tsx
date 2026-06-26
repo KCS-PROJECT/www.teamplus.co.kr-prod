@@ -91,14 +91,14 @@ function transformMatch(api: ApiMatchDetail): MatchViewData {
   };
 }
 
-// ── 섹션 타이틀 내부 컴포넌트 ───────────────────────────────
+// ── 섹션 타이틀 내부 컴포넌트 (ICETIMES — 17/800 위계) ───────
 function SectionTitle({ icon, title }: { icon: string; title: string }) {
   return (
-    <div className="flex items-center gap-2 mb-3">
-      <span className="text-ice-500 text-card-title">
-        <Icon name={icon} className="text-card-title" />
+    <div className="flex items-center gap-2 mb-4">
+      <span className="flex size-7 items-center justify-center rounded-w-md bg-it-blue-50 dark:bg-it-blue-900/30">
+        <Icon name={icon} className="text-[16px] text-it-blue-500" aria-hidden="true" />
       </span>
-      <h2 className="text-card-emphasis font-bold text-wtext-1 dark:text-white">{title}</h2>
+      <h2 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">{title}</h2>
     </div>
   );
 }
@@ -171,8 +171,8 @@ export default function MatchDetailPage() {
     return (
       <MobileContainer hasBottomNav={false}>
         <PageAppBar title={MESSAGES.match.detail.title} onBack={() => back()} forceNative />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="w-8 h-8 border-2 border-ice-500 border-t-transparent rounded-w-pill animate-spin motion-reduce:animate-none" />
+        <div className="flex-1 flex items-center justify-center bg-it-canvas dark:bg-puck">
+          <div className="w-8 h-8 border-2 border-it-blue-500 border-t-transparent rounded-w-pill animate-spin motion-reduce:animate-none" />
         </div>
       </MobileContainer>
     );
@@ -186,6 +186,7 @@ export default function MatchDetailPage() {
         <MatchErrorState
           message={error ?? MESSAGES.error.general}
           onRetry={() => void loadMatch()}
+          iceTheme
         />
       </MobileContainer>
     );
@@ -212,28 +213,27 @@ export default function MatchDetailPage() {
         ]}
       />
 
-      <main className="flex-1 overflow-y-auto pb-30">
-        {/* 상단 상태 배지 */}
-        <div className="flex justify-center pt-5 px-6">
-          <MatchStatusBadge status={match.status} />
-        </div>
-
-        {/* VS 카드 (MatchVSCard - Phase 2-B) */}
-        <div className="px-4 mt-4 mb-5">
+      <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck pb-30">
+        {/* VS 히어로 — navy 밴드 full-bleed (요약 강조, 공유 MatchVSCard 는 page-local 미수정) */}
+        <section className="bg-it-blue-800 dark:bg-it-blue-950 px-4 pt-5 pb-6">
+          <div className="flex justify-center mb-4">
+            <MatchStatusBadge status={match.status} iceTheme />
+          </div>
           <MatchVSCard
             homeTeamName={match.homeTeam.name}
             awayTeamName={match.awayTeam.name}
             scheduledAt={match.scheduledAt}
             rinkName={match.rinkName}
+            iceTheme
           />
-        </div>
+        </section>
 
-        {/* 탭 네비게이션 */}
-        <div className="px-4 mb-4 sticky top-0 z-10 bg-white dark:bg-rink-900 pt-2 pb-2">
+        {/* 탭 네비게이션 — flat 흰 섹션 sticky */}
+        <div className="sticky top-0 z-10 mt-2 bg-it-surface dark:bg-rink-800 px-4 pt-3 pb-3">
           <div
             role="tablist"
             aria-label={MESSAGES.match.detail.applicantsLabelAria}
-            className="flex items-center bg-wline-2 dark:bg-rink-800 rounded-xl p-1"
+            className="flex items-center bg-it-fill dark:bg-rink-900 rounded-w-md p-1"
           >
             {([
               { value: 'info', label: MESSAGES.match.detail.tabs.info },
@@ -246,10 +246,10 @@ export default function MatchDetailPage() {
                 type="button"
                 aria-selected={activeTab === tab.value}
                 onClick={() => setActiveTab(tab.value)}
-                className={`flex-1 h-10 rounded-lg text-card-body font-bold transition-colors motion-reduce:transition-none ${
+                className={`flex-1 h-10 rounded-w-md text-card-body font-bold transition-colors motion-reduce:transition-none ${
                   activeTab === tab.value
-                    ? 'bg-white dark:bg-rink-900 text-ice-500 shadow-sm'
-                    : 'text-wtext-3 dark:text-rink-300'
+                    ? 'bg-it-surface dark:bg-rink-800 text-it-blue-500 shadow-sm'
+                    : 'text-it-ink-500 dark:text-wtext-4'
                 }`}
               >
                 {tab.label}
@@ -261,18 +261,21 @@ export default function MatchDetailPage() {
         {/* 탭 컨텐츠: 경기 정보 */}
         {activeTab === 'info' && (
           <>
-            <section className="px-6 mb-6">
+            {/* 경기 정보 — flat 흰 섹션 (카드 박스 제거, hairline 행) */}
+            <section className="mt-2 bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6">
               <SectionTitle icon="info" title={MESSAGES.match.detail.tabs.info} />
-              <div className="bg-white dark:bg-rink-800 rounded-2xl border border-wline-2 dark:border-rink-700 overflow-hidden">
+              <div className="overflow-hidden">
                 <MatchInfoRow
                   icon="payments"
                   label={MESSAGES.match.detail.infoLabels.price}
                   value={`${match.price.toLocaleString()}원`}
                   emphasize
+                  iceTheme
                 />
                 <MatchInfoRow
                   icon="group"
                   label={MESSAGES.match.detail.infoLabels.participants}
+                  iceTheme
                   value={
                     <>
                       <span className="font-bold">
@@ -280,7 +283,7 @@ export default function MatchDetailPage() {
                           match.currentParticipants
                         )}
                       </span>
-                      <span className="text-wtext-3 dark:text-rink-300">
+                      <span className="text-it-ink-500 dark:text-wtext-4">
                         {' '}/ {MESSAGES.match.detail.participantCount(
                           match.maxParticipants
                         )}
@@ -293,21 +296,22 @@ export default function MatchDetailPage() {
                   label={MESSAGES.match.detail.infoLabels.levelLimit}
                   value={match.levelRequirement}
                   last
+                  iceTheme
                 />
               </div>
             </section>
 
-            {/* 경기 규칙 */}
+            {/* 경기 규칙 — flat 흰 섹션 */}
             {match.rules.length > 0 && (
-              <section className="px-6 mb-6">
+              <section className="mt-2 bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6">
                 <SectionTitle icon="gavel" title={MESSAGES.match.detail.rules} />
-                <ul className="bg-white dark:bg-rink-800 rounded-2xl border border-wline-2 dark:border-rink-700 p-5 space-y-3">
+                <ul className="space-y-3">
                   {match.rules.map((rule, index) => (
                     <li
                       key={index}
-                      className="flex items-start gap-3 text-card-body text-wtext-2 dark:text-rink-100 leading-relaxed"
+                      className="flex items-start gap-3 text-card-body text-it-ink-700 dark:text-wtext-4 leading-relaxed"
                     >
-                      <span className="w-1.5 h-1.5 rounded-w-pill bg-ice-500 mt-2 shrink-0" />
+                      <span className="w-1.5 h-1.5 rounded-w-pill bg-it-blue-500 mt-2 shrink-0" />
                       {rule}
                     </li>
                   ))}
@@ -315,113 +319,106 @@ export default function MatchDetailPage() {
               </section>
             )}
 
-            {/* 매니저 정보 */}
-            <section className="px-6 mb-6">
+            {/* 매니저 정보 — flat 흰 섹션 */}
+            <section className="mt-2 bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6">
               <SectionTitle icon="person" title={MESSAGES.match.detail.manager} />
-              <div className="bg-white dark:bg-rink-800 rounded-2xl border border-wline-2 dark:border-rink-700 p-5">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-w-pill bg-wline dark:bg-rink-700 flex items-center justify-center">
-                    <Icon name="person" className="text-wtext-3 text-2xl" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-card-body text-wtext-1 dark:text-white">
-                      {match.manager.username ?? MESSAGES.match.detail.managerFallback}
-                    </p>
-                    <p className="text-card-meta text-wtext-3 dark:text-rink-300 truncate">
-                      {MESSAGES.match.detail.inquiry}
-                    </p>
-                  </div>
-                  {permissions.canManage && (
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/matches/${matchId}/edit`)}
-                      aria-label={MESSAGES.match.detail.editAriaLabel}
-                      className="shrink-0 px-3 py-2 text-card-meta font-bold border border-ice-500 rounded-lg text-ice-500 hover:bg-ice-500/5 transition-colors motion-reduce:transition-none"
-                    >
-                      {MESSAGES.match.detail.editBtn}
-                    </button>
-                  )}
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-w-pill bg-it-line dark:bg-rink-700 flex items-center justify-center shrink-0">
+                  <Icon name="person" className="text-it-ink-400 text-2xl" aria-hidden="true" />
                 </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-card-body text-it-ink-800 dark:text-white">
+                    {match.manager.username ?? MESSAGES.match.detail.managerFallback}
+                  </p>
+                  <p className="text-card-meta text-it-ink-500 dark:text-wtext-4 truncate">
+                    {MESSAGES.match.detail.inquiry}
+                  </p>
+                </div>
+                {permissions.canManage && (
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/matches/${matchId}/edit`)}
+                    aria-label={MESSAGES.match.detail.editAriaLabel}
+                    className="shrink-0 px-3 py-2 text-card-meta font-bold border-[1.5px] border-it-line-strong rounded-w-md text-it-blue-500 hover:bg-it-fill transition-colors motion-reduce:transition-none dark:border-rink-700 dark:hover:bg-rink-700"
+                  >
+                    {MESSAGES.match.detail.editBtn}
+                  </button>
+                )}
               </div>
             </section>
           </>
         )}
 
-        {/* 탭 컨텐츠: 참여 명단 */}
+        {/* 탭 컨텐츠: 참여 명단 — flat 흰 섹션 */}
         {activeTab === 'roster' && (
-          <section className="px-6 mb-6">
+          <section className="mt-2 bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6">
             <SectionTitle icon="groups" title={MESSAGES.match.detail.tabs.roster} />
-            <div className="bg-white dark:bg-rink-800 rounded-2xl border border-wline-2 dark:border-rink-700 p-6">
-              <MatchProgressBar
-                current={match.currentParticipants}
-                total={match.maxParticipants}
-                showRemaining
-              />
-              <button
-                type="button"
-                onClick={handleViewRoster}
-                className="mt-4 w-full h-11 rounded-xl border border-wline dark:border-rink-700 text-card-body font-bold text-ice-500 hover:bg-ice-500/5 transition-colors motion-reduce:transition-none"
-              >
-                {MESSAGES.match.detail.viewAll}
-              </button>
-            </div>
+            <MatchProgressBar
+              current={match.currentParticipants}
+              total={match.maxParticipants}
+              showRemaining
+              iceTheme
+            />
+            <button
+              type="button"
+              onClick={handleViewRoster}
+              className="mt-4 w-full h-11 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 text-card-body font-bold text-it-blue-500 hover:bg-it-fill dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
+            >
+              {MESSAGES.match.detail.viewAll}
+            </button>
           </section>
         )}
 
-        {/* 탭 컨텐츠: 장소 안내 */}
+        {/* 탭 컨텐츠: 장소 안내 — flat 흰 섹션 */}
         {activeTab === 'venue' && (
-          <section className="px-6 mb-6">
+          <section className="mt-2 bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6">
             <SectionTitle
               icon="location_on"
               title={MESSAGES.match.detail.tabs.venue}
             />
-            <div className="bg-white dark:bg-rink-800 rounded-2xl border border-wline-2 dark:border-rink-700 overflow-hidden">
-              <div className="w-full h-40 bg-wline-2 dark:bg-rink-700 flex items-center justify-center">
-                <Icon name="map" className="text-wtext-4 dark:text-rink-300 text-6xl" />
-              </div>
-              <div className="p-5">
-                <p className="text-card-emphasis font-bold text-wtext-1 dark:text-white mb-1">
-                  {match.rinkName}
-                </p>
-                {match.rinkAddress && (
-                  <p className="text-card-body text-wtext-3 dark:text-rink-300 mb-4">
-                    {match.rinkAddress}
-                  </p>
-                )}
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-card-body font-medium text-wtext-2 dark:text-rink-100 border border-wline dark:border-rink-700 rounded-lg hover:bg-wbg dark:hover:bg-rink-700 active:brightness-95 transition-colors motion-reduce:transition-none"
-                  >
-                    <Icon name="map" className="text-card-emphasis" />
-                    {MESSAGES.match.detail.openMap}
-                  </button>
-                  <button
-                    type="button"
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-card-body font-medium text-wtext-2 dark:text-rink-100 border border-wline dark:border-rink-700 rounded-lg hover:bg-wbg dark:hover:bg-rink-700 active:brightness-95 transition-colors motion-reduce:transition-none"
-                  >
-                    <Icon name="local_parking" className="text-card-emphasis" />
-                    {MESSAGES.match.detail.parking}
-                  </button>
-                </div>
-              </div>
+            <div className="w-full h-40 bg-it-fill dark:bg-rink-700 rounded-w-md flex items-center justify-center mb-4">
+              <Icon name="map" className="text-it-ink-300 dark:text-wtext-4 text-6xl" aria-hidden="true" />
+            </div>
+            <p className="text-card-emphasis font-bold text-it-ink-800 dark:text-white mb-1">
+              {match.rinkName}
+            </p>
+            {match.rinkAddress && (
+              <p className="text-card-body text-it-ink-500 dark:text-wtext-4 mb-4">
+                {match.rinkAddress}
+              </p>
+            )}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-card-body font-medium text-it-ink-700 dark:text-wtext-4 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md hover:bg-it-fill dark:hover:bg-rink-700 active:brightness-95 transition-colors motion-reduce:transition-none"
+              >
+                <Icon name="map" className="text-card-emphasis" aria-hidden="true" />
+                {MESSAGES.match.detail.openMap}
+              </button>
+              <button
+                type="button"
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-card-body font-medium text-it-ink-700 dark:text-wtext-4 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md hover:bg-it-fill dark:hover:bg-rink-700 active:brightness-95 transition-colors motion-reduce:transition-none"
+              >
+                <Icon name="local_parking" className="text-card-emphasis" aria-hidden="true" />
+                {MESSAGES.match.detail.parking}
+              </button>
             </div>
           </section>
         )}
       </main>
 
       {/* 하단 CTA — 역할 기반 3분기 (manage / apply / view) */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-rink-900 border-t border-wline dark:border-rink-700 z-50">
+      <div className="fixed bottom-0 left-0 right-0 bg-it-surface dark:bg-rink-900 border-t border-it-line dark:border-rink-700 z-50">
         <div className="px-5 py-3 w-full max-w-md mx-auto">
           <div className="flex items-center justify-between mb-2 px-1">
-            <span className="text-card-body text-wtext-3 dark:text-rink-300">
+            <span className="text-card-body text-it-ink-500 dark:text-wtext-4">
               {isClosed
                 ? MESSAGES.match.detail.closedNotice
                 : MESSAGES.match.detail.spotsLeft(remainingSlots)}
             </span>
             <button
               type="button"
-              className="text-card-meta text-wtext-3 dark:text-rink-300 underline"
+              className="text-card-meta text-it-ink-500 dark:text-wtext-4 underline underline-offset-2"
             >
               {MESSAGES.match.detail.refundPolicy}
             </button>
@@ -431,18 +428,18 @@ export default function MatchDetailPage() {
             <button
               type="button"
               onClick={handleManageApplicants}
-              className="w-full h-14 bg-ice-500 hover:bg-ice-700 active:brightness-95 text-white text-card-emphasis font-bold rounded-xl transition-colors motion-reduce:transition-none flex items-center justify-center gap-2"
+              className="w-full h-14 bg-it-blue-500 hover:bg-it-blue-600 active:brightness-95 text-white text-card-emphasis font-bold rounded-w-md transition-colors motion-reduce:transition-none flex items-center justify-center gap-2"
             >
-              <Icon name="manage_accounts" className="text-xl" />
+              <Icon name="manage_accounts" className="text-xl" aria-hidden="true" />
               {MESSAGES.match.detail.manage}
             </button>
           ) : permissions.isViewer && !permissions.canApply ? (
             <button
               type="button"
               onClick={handleViewRoster}
-              className="w-full h-14 bg-ice-500 hover:bg-ice-700 active:brightness-95 text-white text-card-emphasis font-bold rounded-xl transition-colors motion-reduce:transition-none flex items-center justify-center gap-2"
+              className="w-full h-14 bg-it-blue-500 hover:bg-it-blue-600 active:brightness-95 text-white text-card-emphasis font-bold rounded-w-md transition-colors motion-reduce:transition-none flex items-center justify-center gap-2"
             >
-              <Icon name="groups" className="text-xl" />
+              <Icon name="groups" className="text-xl" aria-hidden="true" />
               {MESSAGES.match.detail.view}
             </button>
           ) : (
@@ -450,7 +447,7 @@ export default function MatchDetailPage() {
               type="button"
               onClick={handleApply}
               disabled={isClosed}
-              className="w-full h-14 bg-ice-500 hover:bg-ice-700 active:brightness-95 disabled:bg-wline dark:disabled:bg-rink-700 disabled:text-wtext-3 text-white text-card-emphasis font-bold rounded-xl transition-colors motion-reduce:transition-none"
+              className="w-full h-14 bg-it-blue-500 hover:bg-it-blue-600 active:brightness-95 disabled:bg-it-line dark:disabled:bg-rink-700 disabled:text-it-ink-400 text-white text-card-emphasis font-bold rounded-w-md transition-colors motion-reduce:transition-none"
             >
               {!permissions.isAuthenticated
                 ? MESSAGES.match.detail.loginRequired

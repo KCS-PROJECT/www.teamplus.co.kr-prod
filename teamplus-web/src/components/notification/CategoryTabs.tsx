@@ -9,6 +9,11 @@ interface CategoryTabsProps {
   unreadCounts?: Partial<Record<NotificationCategory, number>>;
   /** [2026-06-18] 역할별 탭 목록 — 감독/코치: 전체/가입/결제/공지, 학부모: 전체/수업/결제/공지. */
   categories?: NotificationCategory[];
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 it-fill 트랙 세그먼티드 + it-blue active. (현재 (common)/notifications 화면만 전달.)
+   */
+  iceTheme?: boolean;
 }
 
 const DEFAULT_CATEGORIES: NotificationCategory[] = ['all', 'class', 'payment', 'notice'];
@@ -29,14 +34,16 @@ export function CategoryTabs({
   onCategoryChange,
   unreadCounts = {},
   categories = DEFAULT_CATEGORIES,
+  iceTheme = false,
 }: CategoryTabsProps) {
   return (
     <div className="px-5 pt-4 pb-1">
       <div
         className={cn(
-          'bg-wsurface dark:bg-rink-800 rounded-2xl p-1',
-          'border border-wline-2 dark:border-rink-700',
-          'grid gap-1',
+          'rounded-2xl p-1 grid gap-1',
+          iceTheme
+            ? 'bg-it-fill dark:bg-it-blue-950 border border-it-line dark:border-it-blue-900'
+            : 'bg-wsurface dark:bg-rink-800 border border-wline-2 dark:border-rink-700',
           GRID_COLS[categories.length] ?? 'grid-cols-4',
         )}
         role="tablist"
@@ -61,9 +68,13 @@ export function CategoryTabs({
                 'inline-flex items-center justify-center gap-1.5',
                 'text-[13px] font-extrabold tracking-tight',
                 'transition-colors motion-reduce:transition-none active:brightness-95',
-                isActive
-                  ? 'bg-ice-500 text-white shadow-sm'
-                  : 'bg-transparent text-wtext-2 dark:text-rink-300 hover:bg-wline-2/40 dark:hover:bg-rink-700/40',
+                iceTheme
+                  ? isActive
+                    ? 'bg-it-blue-500 text-white shadow-sm'
+                    : 'bg-transparent text-it-ink-600 dark:text-rink-300 hover:bg-it-line/60 dark:hover:bg-it-blue-900/40'
+                  : isActive
+                    ? 'bg-ice-500 text-white shadow-sm'
+                    : 'bg-transparent text-wtext-2 dark:text-rink-300 hover:bg-wline-2/40 dark:hover:bg-rink-700/40',
               )}
             >
               <span className="truncate">{label}</span>
@@ -74,9 +85,13 @@ export function CategoryTabs({
                     'min-w-[18px] h-[18px] px-1.5 rounded-full',
                     'inline-flex items-center justify-center',
                     'text-[10px] font-extrabold tabular-nums',
-                    isActive
-                      ? 'bg-white/20 text-white'
-                      : 'bg-wline-2 dark:bg-rink-700 text-wtext-3 dark:text-rink-300',
+                    iceTheme
+                      ? isActive
+                        ? 'bg-white/20 text-white'
+                        : 'bg-it-line dark:bg-it-blue-900 text-it-ink-500 dark:text-rink-300'
+                      : isActive
+                        ? 'bg-white/20 text-white'
+                        : 'bg-wline-2 dark:bg-rink-700 text-wtext-3 dark:text-rink-300',
                   )}
                 >
                   {count > 99 ? '99+' : count}

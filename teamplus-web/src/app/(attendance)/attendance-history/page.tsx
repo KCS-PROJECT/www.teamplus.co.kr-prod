@@ -109,11 +109,11 @@ function ChildSegmentControl({
         ref={containerRef}
         role="radiogroup"
         aria-label="자녀 선택"
-        className="relative flex p-1 bg-wbg dark:bg-rink-800 rounded-w-md"
+        className="relative flex p-1 bg-it-fill dark:bg-rink-800 rounded-w-md"
       >
         {/* 슬라이딩 배경 인디케이터 */}
         <div
-          className="absolute top-1 bottom-1 rounded-w-md bg-wsurface dark:bg-rink-700 shadow-sh-1 transition-all motion-reduce:transition-none duration-300 ease-out"
+          className="absolute top-1 bottom-1 rounded-w-md bg-it-surface dark:bg-rink-700 shadow-sh-1 transition-all motion-reduce:transition-none duration-300 ease-out"
           style={{ left: indicator.left, width: indicator.width }}
         />
         {items.map((child) => {
@@ -128,8 +128,8 @@ function ChildSegmentControl({
               onClick={() => onSelect(child.id)}
               className={`relative z-[1] flex-1 min-h-[44px] py-2.5 px-4 rounded-w-md text-card-body font-semibold transition-colors motion-reduce:transition-none duration-200 ${
                 isSelected
-                  ? 'text-ice-500'
-                  : 'text-wtext-3 dark:text-rink-300 hover:text-wtext-2 dark:hover:text-rink-200'
+                  ? 'text-it-blue-500'
+                  : 'text-it-ink-500 dark:text-rink-300 hover:text-it-ink-800 dark:hover:text-rink-200'
               }`}
             >
               {child.name}
@@ -232,7 +232,7 @@ export default function AttendanceHistoryPage() {
     <MobileContainer hasBottomNav={true}>
       <BackHeader title="출석 내역" onBack={() => back()} />
 
-      <main className="flex-1 overflow-y-auto hide-scrollbar pb-30 bg-wbg dark:bg-puck">
+      <main className="flex-1 overflow-y-auto hide-scrollbar pb-30 bg-it-canvas dark:bg-puck">
         {/* 자녀 선택 세그먼트 컨트롤 (슬라이딩 인디케이터) */}
         {selectableChildren.length > 1 && (
           <ChildSegmentControl
@@ -244,16 +244,16 @@ export default function AttendanceHistoryPage() {
 
         {/* 수업별 필터 진입 버튼 (수업 2종 이상일 때만) */}
         {!isLoading && classOptions.length > 1 && (
-          <div className="px-6 pt-2 pb-1">
+          <div className="px-6 pt-2 pb-2">
             <button
               type="button"
               onClick={() => setIsClassSheetOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-w-md bg-wsurface dark:bg-rink-800 border border-wline-2 dark:border-rink-700 text-card-body font-semibold text-wtext-2 dark:text-rink-200 hover:bg-wbg dark:hover:bg-rink-700/50 transition-colors motion-reduce:transition-none active:brightness-95"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-w-md bg-it-surface dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 text-card-body font-semibold text-it-ink-700 dark:text-rink-200 hover:bg-it-fill dark:hover:bg-rink-700/50 transition-colors motion-reduce:transition-none active:brightness-95"
               aria-label="수업 선택"
             >
-              <Icon name="filter_list" className="text-card-emphasis" aria-hidden="true" />
+              <Icon name="filter_list" className="text-card-emphasis text-it-ink-600 dark:text-rink-300" aria-hidden="true" />
               {selectedClassName}
-              <Icon name="expand_more" className="text-card-emphasis" aria-hidden="true" />
+              <Icon name="expand_more" className="text-card-emphasis text-it-ink-500 dark:text-rink-300" aria-hidden="true" />
             </button>
           </div>
         )}
@@ -261,38 +261,38 @@ export default function AttendanceHistoryPage() {
         {/* 로딩 상태 */}
         {isLoading && (
           <div className="flex justify-center py-12" role="status" aria-label="출석 내역 불러오는 중">
-            <div className="w-8 h-8 border-2 border-ice-500 border-t-transparent rounded-w-pill animate-spin motion-reduce:animate-none" />
+            <div className="w-8 h-8 border-2 border-it-blue-500 border-t-transparent rounded-w-pill animate-spin motion-reduce:animate-none" />
           </div>
         )}
 
         {/* 빈 상태 */}
         {!isLoading && records.length === 0 && (
           <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-            <div className="w-14 h-14 rounded-w-md bg-wsurface dark:bg-rink-800 flex items-center justify-center mb-4">
-              <Icon name="event_busy" className="text-3xl text-wtext-4 dark:text-rink-400" aria-hidden="true" />
+            <div className="w-14 h-14 rounded-w-md bg-it-surface dark:bg-rink-800 flex items-center justify-center mb-4">
+              <Icon name="event_busy" className="text-3xl text-it-ink-400 dark:text-rink-400" aria-hidden="true" />
             </div>
-            <p className="text-wtext-3 dark:text-rink-300 font-medium">
+            <p className="text-it-ink-500 dark:text-rink-300 font-medium">
               {MESSAGES.attendance2.emptyHistory}
             </p>
           </div>
         )}
 
-        {/* 출석 타임라인 (월별 그룹) */}
+        {/* 출석 타임라인 (월별 그룹) — flat: 흰 섹션 + hairline 월헤더, 섹션 간 8px 회색 갭 */}
         {!isLoading && visibleRecords.length > 0 && (
-          <div className="mt-2">
+          <div>
             {Object.entries(groupedRecords).map(([month, monthRecords]) => (
-              <div key={month}>
-                {/* 월 헤더 - sticky */}
-                <div className="flex items-center justify-between px-6 py-3 sticky top-0 bg-wbg dark:bg-puck z-10 border-b border-wline-2 dark:border-rink-700">
-                  <h3 className="text-card-emphasis font-bold text-wtext-1 dark:text-white">
+              <div key={month} className="mt-2 bg-it-surface dark:bg-it-blue-950">
+                {/* 월 헤더 - sticky, hairline */}
+                <div className="flex items-center justify-between px-6 py-3 sticky top-0 bg-it-surface dark:bg-it-blue-950 z-10 border-b border-it-line dark:border-rink-700">
+                  <h3 className="text-card-emphasis font-extrabold tracking-[-0.01em] text-it-ink-800 dark:text-white">
                     {month}
                   </h3>
-                  <span className="text-card-meta font-semibold text-wtext-3 dark:text-rink-300 tabular-nums">
+                  <span className="text-card-meta font-semibold text-it-ink-500 dark:text-rink-300 tabular-nums">
                     {monthRecords.filter((r) => r.status === 'present').length}/{monthRecords.length}회 출석
                   </span>
                 </div>
 
-                {/* TimelineItem 목록 */}
+                {/* TimelineItem 목록 (공유 컴포넌트 — iceTheme 미지원, page-local 래퍼만 it-* 정합) */}
                 <div className="flex flex-col gap-3 px-6 py-4">
                   {monthRecords.map((record, idx) => (
                     <TimelineItem

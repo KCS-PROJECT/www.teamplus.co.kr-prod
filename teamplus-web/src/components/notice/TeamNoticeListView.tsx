@@ -83,6 +83,12 @@ export interface TeamNoticeListViewProps {
   showReadState?: boolean;
   /** 활성 공지만 조회 (관리 화면은 비활성 포함) */
   activeOnly?: boolean;
+  /**
+   * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
+   *   true 시 카드 박스 → full-bleed 흰 섹션 + hairline 행, it-* 토큰 적용.
+   *   (현재 /director-notices 관리 화면만 전달. /team-notices 열람은 미적용.)
+   */
+  iceTheme?: boolean;
 }
 
 // ─── Main Component ──────────────────────────────────
@@ -92,6 +98,7 @@ export function TeamNoticeListView({
   canWrite = false,
   showReadState = false,
   activeOnly = false,
+  iceTheme = false,
 }: TeamNoticeListViewProps) {
   const { toast } = useToast();
   const { navigate } = useNavigation();
@@ -240,6 +247,177 @@ export function TeamNoticeListView({
   );
 
   if (isLoading) return null;
+
+  // ICETIMES flat — 카드 박스 제거. full-bleed 흰 섹션 + hairline 행, it-* 토큰.
+  if (iceTheme) {
+    return (
+      <MobileContainer hasBottomNav>
+        <PageAppBar title={title} forceNative />
+
+        <main
+          className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck !pb-8 relative"
+          role="main"
+          aria-label={title}
+        >
+          {sorted.length > 0 ? (
+            // 공지 목록 — full-bleed 흰 섹션 + hairline 구분 행
+            <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 pt-5 pb-7">
+              <div className="flex items-end justify-between pb-1">
+                <div>
+                  <h2 className="text-it-ink-800 dark:text-white tracking-[-0.02em] font-extrabold text-[17px]">
+                    공지 목록
+                  </h2>
+                  <p className="mt-0.5 text-card-meta text-it-ink-400 dark:text-it-ink-300">
+                    {canManage
+                      ? '우리 팀에 등록된 공지사항이에요'
+                      : '우리 팀 공지사항을 확인해보세요'}
+                  </p>
+                </div>
+                {totalCount > 0 && (
+                  <span
+                    className="text-[15px] font-extrabold font-num tabular-nums text-it-blue-500"
+                    aria-live="polite"
+                  >
+                    {totalCount}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex flex-col divide-y divide-it-line dark:divide-it-blue-900">
+                {sorted.map((notice) => (
+                  <NoticeCard
+                    key={notice.id}
+                    notice={notice}
+                    showReadState={showReadState}
+                    onKebab={canManage ? setActionTarget : undefined}
+                    iceTheme
+                  />
+                ))}
+              </div>
+
+              {/* 더보기 버튼 / 모두 로드 안내 */}
+              {hasMore ? (
+                <button
+                  type="button"
+                  onClick={handleLoadMore}
+                  disabled={isLoadingMore}
+                  aria-label={MESSAGES.notice.list.loadMoreAriaLabel}
+                  aria-busy={isLoadingMore}
+                  className="w-full flex items-center justify-center gap-2 h-12 mt-4 rounded-w-md bg-it-surface dark:bg-it-blue-950 border-[1.5px] border-it-line-strong dark:border-it-blue-900 text-card-body font-semibold text-it-blue-600 dark:text-it-blue-300 hover:bg-it-fill dark:hover:bg-it-blue-900/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 disabled:opacity-60 disabled:cursor-not-allowed transition-colors motion-reduce:transition-none"
+                >
+                  {isLoadingMore ? (
+                    <>
+                      <span
+                        className="w-4 h-4 border-2 border-it-blue-500/30 border-t-it-blue-500 rounded-w-pill animate-spin motion-reduce:animate-none"
+                        aria-hidden="true"
+                      />
+                      <span>{MESSAGES.notice.list.loadingMore}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>
+                        {MESSAGES.notice.list.loadMore(notices.length, totalCount)}
+                      </span>
+                      <Icon name="expand_more" className="text-card-title" aria-hidden="true" />
+                    </>
+                  )}
+                </button>
+              ) : (
+                totalCount > PAGE_SIZE && (
+                  <p
+                    className="text-center text-card-meta text-it-ink-400 dark:text-it-ink-300 py-3"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {MESSAGES.notice.list.allLoaded}
+                  </p>
+                )
+              )}
+            </section>
+          ) : (
+            // 빈 상태 — full-bleed 흰 섹션
+            <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-16">
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-14 h-14 rounded-w-pill bg-it-blue-50 dark:bg-it-blue-900/40 flex items-center justify-center">
+                  <Icon
+                    name="campaign"
+                    className="text-3xl text-it-blue-500"
+                    aria-hidden="true"
+                  />
+                </div>
+                <p className="text-card-body font-semibold text-it-ink-800 dark:text-white">
+                  {MESSAGES.empty('공지')}
+                </p>
+                <p className="text-card-meta text-it-ink-400 dark:text-it-ink-300 text-center">
+                  {canWrite
+                    ? '첫 번째 공지를 작성해 회원들에게 알려보세요'
+                    : '등록된 공지가 올라오면 이곳에서 알려드릴게요'}
+                </p>
+                {canWrite && (
+                  <button
+                    type="button"
+                    onClick={() => navigate('/notices-create')}
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-w-md bg-it-blue-500 px-4 py-2 text-card-meta font-bold text-white transition-colors motion-reduce:transition-none hover:bg-it-blue-600 active:brightness-95"
+                  >
+                    <Icon name="edit" className="text-card-emphasis" aria-hidden="true" />
+                    공지 작성하기
+                  </button>
+                )}
+              </div>
+            </section>
+          )}
+        </main>
+
+        {/* FAB — 우하단 플로팅 작성 버튼 (작성 권한자만) */}
+        {canWrite && notices.length > 0 && (
+          <FloatingActionButton href="/notices-create" icon="add" label="공지 작성하기" />
+        )}
+
+        {/* 케밥(⋮) 액션 시트 + 삭제 확인 (관리 권한자만) */}
+        {canManage && (
+          <>
+            <ActionSheet
+              isOpen={!!actionTarget}
+              onClose={() => setActionTarget(null)}
+              title={MESSAGES.notice.manage}
+              items={
+                actionTarget
+                  ? [
+                      {
+                        icon: 'edit',
+                        label: '수정하기',
+                        onClick: () => handleEdit(actionTarget.id),
+                      },
+                      {
+                        icon: 'delete',
+                        label: '삭제하기',
+                        danger: true,
+                        onClick: () => {
+                          setDeleteTarget(actionTarget);
+                          setActionTarget(null);
+                        },
+                      },
+                    ]
+                  : []
+              }
+            />
+            <ConfirmSheet
+              open={!!deleteTarget}
+              title={MESSAGES.notice.deleteConfirm}
+              description={MESSAGES.notice.deleteConfirmDesc}
+              confirmLabel="삭제하기"
+              cancelLabel="취소"
+              variant="danger"
+              onConfirm={handleDeleteConfirm}
+              onCancel={() => {
+                if (!isDeleting) setDeleteTarget(null);
+              }}
+            />
+          </>
+        )}
+      </MobileContainer>
+    );
+  }
 
   return (
     <MobileContainer hasBottomNav>
@@ -407,10 +585,12 @@ function NoticeCard({
   notice,
   showReadState,
   onKebab,
+  iceTheme = false,
 }: {
   notice: NoticeItem;
   showReadState?: boolean;
   onKebab?: (notice: NoticeItem) => void;
+  iceTheme?: boolean;
 }) {
   const dateStr = new Date(notice.createdAt).toLocaleDateString('ko-KR', {
     year: 'numeric',
@@ -419,6 +599,67 @@ function NoticeCard({
   });
   const preview = stripHtml(notice.content).slice(0, 80);
   const unread = showReadState && notice.isRead === false;
+
+  // ICETIMES flat — 카드 박스(bg/rounded/shadow/border) 제거. 부모 divide-it-line hairline 행.
+  if (iceTheme) {
+    return (
+      <NavLink
+        href={`/notice/${notice.id}`}
+        className="block py-[14px] active:bg-it-fill dark:active:bg-it-blue-900/30 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-it-blue-500/40"
+        aria-label={`${notice.isPinned ? '고정 공지 · ' : ''}${notice.title}${unread ? ' · 미확인' : ''}`}
+      >
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            {/* 고정 배지 + 날짜 */}
+            <div className="mb-1 flex items-center gap-2">
+              {notice.isPinned && (
+                <span className="inline-flex items-center gap-0.5 rounded-w-pill bg-it-red-500/10 px-2 py-0.5 text-[12px] font-bold text-it-red-500">
+                  <Icon name="push_pin" className="text-[12px]" aria-hidden="true" />
+                  고정
+                </span>
+              )}
+              {unread && (
+                <span
+                  className="inline-block h-2 w-2 rounded-w-pill bg-it-red-500"
+                  aria-label="미확인 공지"
+                />
+              )}
+              <span className="text-[12px] font-medium text-it-ink-400 dark:text-it-ink-300 tabular-nums">
+                {dateStr}
+              </span>
+            </div>
+            {/* 제목 */}
+            <h3
+              className={`text-[15.5px] ${unread ? 'font-extrabold' : 'font-bold'} tracking-[-0.01em] text-it-ink-800 dark:text-white leading-snug truncate`}
+            >
+              {notice.title}
+            </h3>
+            {/* 내용 미리보기 */}
+            {preview && (
+              <p className="mt-1 text-[13px] text-it-ink-600 dark:text-it-ink-300 leading-relaxed line-clamp-2">
+                {preview}
+              </p>
+            )}
+          </div>
+          {/* 케밥(⋮) — 수정/삭제 메뉴 (관리 권한자만 · 카드 상세 이동과 분리) */}
+          {onKebab && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onKebab(notice);
+              }}
+              aria-label={MESSAGES.notice.manageMenuOpen}
+              className="-mr-2 -mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-w-md text-it-ink-400 dark:text-it-ink-300 hover:bg-it-fill dark:hover:bg-it-blue-900/40 transition-colors motion-reduce:transition-none active:brightness-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40"
+            >
+              <Icon name="more_vert" className="text-xl" aria-hidden="true" />
+            </button>
+          )}
+        </div>
+      </NavLink>
+    );
+  }
 
   return (
     <NavLink

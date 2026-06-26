@@ -68,12 +68,12 @@ export default function PublicAcademyDetailPage() {
     return (
       <MobileContainer hasBottomNav>
         <PageAppBar title="오픈클래스" />
-        <div className="flex flex-col items-center justify-center px-6 py-20">
+        <div className="flex flex-1 flex-col items-center justify-center px-6 py-20 bg-it-canvas dark:bg-puck">
           <Icon
             name="error_outline"
-            className="text-4xl text-wtext-4 dark:text-rink-500 mb-3"
+            className="text-4xl text-it-ink-400 dark:text-wtext-4 mb-3"
           />
-          <p className="text-card-body text-wtext-3 dark:text-rink-300">
+          <p className="text-[14px] text-it-ink-500 dark:text-wtext-4">
             {MESSAGES.error.general}
           </p>
         </div>
@@ -85,38 +85,38 @@ export default function PublicAcademyDetailPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title={academy.name} />
 
-      <main className="flex-1 overflow-y-auto hide-scrollbar">
-        <div className="px-4 py-5 pb-30 space-y-5">
-          {/* 헤더 영역 */}
+      <main className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck">
+        {/* 헤더 + 통계 — flat 흰 섹션 */}
+        <section className="bg-it-surface dark:bg-rink-800 mt-2 px-5 pt-5 pb-5">
           <div className="flex items-start gap-4">
             {resolveImageSrc(academy.imageUrl) ? (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 src={resolveImageSrc(academy.imageUrl)}
                 alt={`${academy.name} 로고`}
-                className="w-16 h-16 rounded-xl object-cover shrink-0"
+                className="w-16 h-16 rounded-w-md object-cover shrink-0"
               />
             ) : (
-              <div className="w-16 h-16 rounded-xl bg-ice-500/10 dark:bg-ice-500/20 flex items-center justify-center shrink-0">
-                <Icon name="school" className="text-2xl text-ice-500" />
+              <div className="w-16 h-16 rounded-w-md bg-it-blue-50 dark:bg-it-blue-900/40 flex items-center justify-center shrink-0">
+                <Icon name="school" className="text-2xl text-it-blue-500" aria-hidden="true" />
               </div>
             )}
             <div className="min-w-0">
-              <h1 className="text-xl font-bold text-wtext-1 dark:text-white">
+              <h1 className="text-xl font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
                 {academy.name}
               </h1>
               {academy.region && (
-                <p className="text-card-body text-wtext-3 dark:text-rink-300 mt-1 flex items-center gap-1">
-                  <Icon name="location_on" className="text-card-body" />
+                <p className="text-[14px] text-it-ink-500 dark:text-wtext-4 mt-1 flex items-center gap-1">
+                  <Icon name="location_on" className="text-[16px] text-it-blue-500" aria-hidden="true" />
                   {academy.region}
                 </p>
               )}
               <span
                 className={cn(
-                  "inline-block mt-2 px-2 py-0.5 rounded-w-pill text-[11px] font-medium",
+                  "inline-block mt-2 px-2 py-0.5 rounded-w-pill text-[11px] font-bold",
                   academy.isActive
-                    ? "bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400"
-                    : "bg-wline-2 dark:bg-rink-700 text-wtext-3 dark:text-rink-300",
+                    ? "bg-it-blue-50 dark:bg-it-blue-900/40 text-it-blue-500"
+                    : "bg-it-fill dark:bg-rink-700 text-it-ink-500 dark:text-wtext-4",
                 )}
               >
                 {academy.isActive ? "운영중" : "비활성"}
@@ -124,90 +124,97 @@ export default function PublicAcademyDetailPage() {
             </div>
           </div>
 
-          {/* 통계 */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="bg-white dark:bg-rink-800 rounded-xl border border-wline-2 dark:border-rink-700 p-3 text-center">
-              <p className="text-card-title font-bold text-ice-500">
+          {/* 통계 — 인셋 fill 영역 */}
+          <div className="mt-5 grid grid-cols-3 rounded-w-md bg-it-fill dark:bg-puck/30 py-3">
+            <div className="text-center">
+              <p className="text-[17px] font-extrabold font-num tabular-nums text-it-blue-500">
                 {academy._count?.members ?? 0}
               </p>
-              <p className="text-[11px] text-wtext-3 dark:text-rink-300">
-                수강생
-              </p>
+              <p className="text-[11px] text-it-ink-500 dark:text-wtext-4 mt-0.5">수강생</p>
             </div>
-            <div className="bg-white dark:bg-rink-800 rounded-xl border border-wline-2 dark:border-rink-700 p-3 text-center">
-              <p className="text-card-title font-bold text-ice-500">
+            <div className="text-center">
+              <p className="text-[17px] font-extrabold font-num tabular-nums text-it-blue-500">
                 {academy._count?.coaches ?? 0}
               </p>
-              <p className="text-[11px] text-wtext-3 dark:text-rink-300">
-                코치
-              </p>
+              <p className="text-[11px] text-it-ink-500 dark:text-wtext-4 mt-0.5">코치</p>
             </div>
-            <div className="bg-white dark:bg-rink-800 rounded-xl border border-wline-2 dark:border-rink-700 p-3 text-center">
-              <p className="text-card-title font-bold text-ice-500">
+            <div className="text-center">
+              <p className="text-[17px] font-extrabold font-num tabular-nums text-it-blue-500">
                 {academy._count?.classes ?? 0}
               </p>
-              <p className="text-[11px] text-wtext-3 dark:text-rink-300">
-                수업
-              </p>
+              <p className="text-[11px] text-it-ink-500 dark:text-wtext-4 mt-0.5">수업</p>
             </div>
           </div>
+        </section>
 
-          {/* 소개 */}
-          {academy.description && (
-            <div className="bg-white dark:bg-rink-800 rounded-xl border border-wline-2 dark:border-rink-700 p-4">
-              <h2 className="text-card-body font-bold text-wtext-1 dark:text-white mb-2">
+        {/* 소개 — flat 흰 섹션 */}
+        {academy.description && (
+          <>
+            <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+            <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-5">
+              <h2 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white mb-2">
                 소개
               </h2>
-              <p className="text-card-body text-wtext-2 dark:text-rink-100 leading-relaxed whitespace-pre-wrap">
+              <p className="text-[14px] text-it-ink-800 dark:text-wtext-2 leading-relaxed whitespace-pre-wrap">
                 {academy.description}
               </p>
-            </div>
-          )}
+            </section>
+          </>
+        )}
 
-          {/* 연락처 */}
-          {(academy.contactPhone || academy.contactEmail) && (
-            <div className="bg-white dark:bg-rink-800 rounded-xl border border-wline-2 dark:border-rink-700 p-4 space-y-2.5">
-              <h2 className="text-card-body font-bold text-wtext-1 dark:text-white mb-1">
+        {/* 연락처 — flat 흰 섹션 */}
+        {(academy.contactPhone || academy.contactEmail) && (
+          <>
+            <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+            <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-5">
+              <h2 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white mb-3">
                 연락처
               </h2>
-              {academy.contactPhone && (
-                <div className="flex items-center gap-2 text-card-body text-wtext-2 dark:text-rink-100">
-                  <Icon name="call" className="text-card-emphasis text-wtext-3" />
-                  <a
-                    href={`tel:${academy.contactPhone}`}
-                    className="hover:text-ice-500 transition-colors motion-reduce:transition-none"
-                  >
-                    {academy.contactPhone}
-                  </a>
-                </div>
-              )}
-              {academy.contactEmail && (
-                <div className="flex items-center gap-2 text-card-body text-wtext-2 dark:text-rink-100">
-                  <Icon name="mail" className="text-card-emphasis text-wtext-3" />
-                  <a
-                    href={`mailto:${academy.contactEmail}`}
-                    className="hover:text-ice-500 transition-colors motion-reduce:transition-none"
-                  >
-                    {academy.contactEmail}
-                  </a>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+              <div className="flex flex-col">
+                {academy.contactPhone && (
+                  <div className={cn(
+                    "flex items-center gap-2 py-3 text-[14px] text-it-ink-800 dark:text-wtext-2",
+                    academy.contactEmail && "border-b border-it-line dark:border-rink-700",
+                  )}>
+                    <Icon name="call" className="text-card-emphasis text-it-blue-500" aria-hidden="true" />
+                    <a
+                      href={`tel:${academy.contactPhone}`}
+                      className="hover:text-it-blue-500 transition-colors motion-reduce:transition-none"
+                    >
+                      {academy.contactPhone}
+                    </a>
+                  </div>
+                )}
+                {academy.contactEmail && (
+                  <div className="flex items-center gap-2 py-3 text-[14px] text-it-ink-800 dark:text-wtext-2">
+                    <Icon name="mail" className="text-card-emphasis text-it-blue-500" aria-hidden="true" />
+                    <a
+                      href={`mailto:${academy.contactEmail}`}
+                      className="hover:text-it-blue-500 transition-colors motion-reduce:transition-none"
+                    >
+                      {academy.contactEmail}
+                    </a>
+                  </div>
+                )}
+              </div>
+            </section>
+          </>
+        )}
+
+        <div className="h-28" aria-hidden="true" />
 
         {/* 하단 고정 가입 신청 버튼 */}
         <div className="fixed bottom-[72px] left-0 right-0 z-10">
-          <div className="max-w-md mx-auto px-4 pb-4 pt-2 bg-wbg/80 dark:bg-rink-900/80">
+          <div className="max-w-md mx-auto px-4 pb-4 pt-2 bg-it-canvas/90 dark:bg-puck/90">
             <button
               type="button"
               onClick={handleJoinRequest}
               disabled={isJoining}
               className={cn(
-                "w-full py-3.5 rounded-xl text-white font-bold text-[15px]",
-                "bg-ice-500 hover:bg-ice-700 active:bg-ice-700",
+                "w-full h-14 rounded-w-md text-white font-bold text-[16px]",
+                "bg-it-blue-500 hover:bg-it-blue-600 active:brightness-95",
                 "disabled:opacity-50 disabled:cursor-not-allowed",
-                "transition-colors motion-reduce:transition-none focus:outline-none focus:ring-2 focus:ring-ice-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900",
+                "transition-colors motion-reduce:transition-none focus:outline-none focus:ring-2 focus:ring-it-blue-500 focus:ring-offset-2 dark:focus:ring-offset-rink-900",
               )}
             >
               {MESSAGES.academy.joinButton}
@@ -224,19 +231,19 @@ export default function PublicAcademyDetailPage() {
             onClick={() => setShowJoinModal(false)}
             aria-hidden="true"
           />
-          <div className="relative bg-white dark:bg-rink-800 rounded-2xl shadow-md mx-6 w-full max-w-sm p-6">
-            <h3 className="text-card-title font-bold text-wtext-1 dark:text-white mb-2">
+          <div className="relative bg-it-surface dark:bg-rink-800 rounded-w-xl shadow-md mx-6 w-full max-w-sm p-6">
+            <h3 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white mb-2">
               가입 신청
             </h3>
-            <p className="text-card-body text-wtext-2 dark:text-rink-100 mb-6">
-              <strong className="text-ice-500">{academy.name}</strong>에 가입을
+            <p className="text-[14px] text-it-ink-800 dark:text-wtext-2 mb-6">
+              <strong className="text-it-blue-500">{academy.name}</strong>에 가입을
               신청하시겠습니까? 관리자의 승인 후 수강이 가능합니다.
             </p>
             <div className="flex gap-3">
               <button
                 type="button"
                 onClick={() => setShowJoinModal(false)}
-                className="flex-1 py-2.5 rounded-xl text-card-body font-medium bg-wline-2 dark:bg-rink-700 text-wtext-2 dark:text-rink-100 hover:bg-wline dark:hover:bg-rink-500 transition-colors motion-reduce:transition-none focus:outline-none focus:ring-2 focus:ring-ice-500/30"
+                className="flex-1 h-12 rounded-w-md text-[14px] font-bold border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-it-ink-800 dark:text-white hover:bg-it-fill dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none focus:outline-none focus:ring-2 focus:ring-it-blue-500/30"
               >
                 취소
               </button>
@@ -245,10 +252,10 @@ export default function PublicAcademyDetailPage() {
                 onClick={handleConfirmJoin}
                 disabled={isJoining}
                 className={cn(
-                  "flex-1 py-2.5 rounded-xl text-card-body font-bold",
-                  "bg-ice-500 text-white hover:bg-ice-700",
+                  "flex-[2] h-12 rounded-w-md text-[14px] font-bold",
+                  "bg-it-blue-500 text-white hover:bg-it-blue-600 active:brightness-95",
                   "disabled:opacity-50 disabled:cursor-not-allowed",
-                  "transition-colors motion-reduce:transition-none focus:outline-none focus:ring-2 focus:ring-ice-500",
+                  "transition-colors motion-reduce:transition-none focus:outline-none focus:ring-2 focus:ring-it-blue-500",
                 )}
               >
                 {isJoining ? (

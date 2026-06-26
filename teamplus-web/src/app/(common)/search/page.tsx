@@ -77,14 +77,14 @@ function TrendIcon({ trend }: { trend: TrendType }) {
     return (
       <Icon
         name="trending_up"
-        className="text-w-body-lg text-flame-500"
+        className="text-w-body-lg text-it-red-500"
         aria-hidden="true"
       />
     );
   }
   if (trend === "new") {
     return (
-      <span className="text-w-caption font-bold text-ice-700 px-1.5 py-0.5 rounded bg-ice-50 dark:bg-ice-900/20">
+      <span className="text-w-caption font-bold text-it-blue-600 px-1.5 py-0.5 rounded bg-it-blue-50 dark:bg-it-blue-500/15">
         NEW
       </span>
     );
@@ -92,7 +92,7 @@ function TrendIcon({ trend }: { trend: TrendType }) {
   return (
     <Icon
       name="horizontal_rule"
-      className="text-w-body-lg text-wtext-4 dark:text-rink-500"
+      className="text-w-body-lg text-it-ink-400 dark:text-rink-500"
       aria-hidden="true"
     />
   );
@@ -122,13 +122,13 @@ function ProductCard({ product }: { product: RecommendProduct }) {
         }
       }}
       aria-label={`${product.brand} ${product.name}`}
-      className="flex flex-col bg-wsurface dark:bg-rink-800 rounded-2xl border border-wline-2 dark:border-rink-700 overflow-hidden text-left active:brightness-95 shadow-sh-1 transition-all motion-reduce:transition-none cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500"
+      className="flex flex-col bg-it-surface dark:bg-rink-800 rounded-w-md border border-it-line-strong dark:border-rink-700 overflow-hidden text-left active:brightness-95 transition-colors motion-reduce:transition-none cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500"
     >
       {/* 상품 이미지 영역 */}
-      <div className="relative aspect-square bg-wbg dark:bg-rink-700 flex items-center justify-center">
+      <div className="relative aspect-square bg-it-fill dark:bg-rink-700 flex items-center justify-center">
         <Icon
           name="sports_hockey"
-          className="text-4xl text-wtext-4 dark:text-rink-300"
+          className="text-4xl text-it-ink-400 dark:text-rink-300"
           aria-hidden="true"
         />
         {/* 찜 버튼 — 카드 클릭과 분리 (stopPropagation) */}
@@ -137,25 +137,25 @@ function ProductCard({ product }: { product: RecommendProduct }) {
           onClick={(e) => {
             e.stopPropagation();
           }}
-          className="absolute top-2 right-2 w-8 h-8 rounded-w-pill bg-wsurface/80 dark:bg-rink-800/80 flex items-center justify-center"
+          className="absolute top-2 right-2 w-8 h-8 rounded-w-pill bg-it-surface/80 dark:bg-rink-800/80 flex items-center justify-center"
           aria-label="찜하기"
         >
           <Icon
             name="favorite_border"
-            className="text-w-title text-wtext-4 dark:text-rink-300"
+            className="text-w-title text-it-ink-400 dark:text-rink-300"
             aria-hidden="true"
           />
         </button>
       </div>
       {/* 상품 정보 */}
       <div className="p-3">
-        <span className="text-w-caption text-wtext-3 dark:text-rink-300">
+        <span className="text-w-caption text-it-ink-500 dark:text-rink-300">
           {product.brand}
         </span>
-        <h3 className="text-w-small font-bold text-wtext-1 dark:text-white mt-0.5 line-clamp-2 leading-snug">
+        <h3 className="text-w-small font-bold text-it-ink-800 dark:text-white mt-0.5 line-clamp-2 leading-snug">
           {product.name}
         </h3>
-        <p className="text-w-body font-bold text-wtext-1 dark:text-white mt-1.5 tabular-nums">
+        <p className="text-w-body font-bold text-it-ink-800 dark:text-white mt-1.5 tabular-nums">
           {product.price.toLocaleString()}원
         </p>
       </div>
@@ -360,12 +360,12 @@ export default function SearchPage() {
       <PageAppBar title="검색" forceNative />
 
       {/* ─── 검색바 ──────────────────────────────── */}
-      <div className="sticky top-14 z-40 bg-wbg dark:bg-puck px-4 py-3">
+      <div className="sticky top-14 z-40 bg-it-surface dark:bg-it-blue-950 px-4 py-3">
         <form onSubmit={handleSubmit}>
           <div className="relative">
             <Icon
               name="search"
-              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xl text-wtext-4 dark:text-rink-300"
+              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xl text-it-ink-500 dark:text-rink-300"
               aria-hidden="true"
             />
             <input
@@ -382,12 +382,12 @@ export default function SearchPage() {
               placeholder="장비, 매치, 팀 등을 입력하세요"
               className={cn(
                 "w-full h-11 pl-10 pr-10 rounded-w-pill",
-                "bg-wsurface dark:bg-rink-800",
-                "border border-wline dark:border-rink-700",
-                "text-w-small text-wtext-1 dark:text-white",
-                "placeholder-wtext-4 dark:placeholder-rink-300",
-                "focus:outline-none focus:ring-2 focus:ring-ice-500/20 focus:border-ice-500",
-                "transition-all motion-reduce:transition-none",
+                "bg-it-fill dark:bg-rink-800",
+                "border-[1.5px] border-it-line-strong dark:border-rink-700",
+                "text-w-small text-it-ink-800 dark:text-white",
+                "placeholder-it-ink-400 dark:placeholder-rink-300",
+                "focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500",
+                "transition-colors motion-reduce:transition-none",
               )}
               autoComplete="off"
               aria-label="검색어 입력"
@@ -397,12 +397,12 @@ export default function SearchPage() {
               <button
                 type="button"
                 onClick={handleClear}
-                className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-w-pill bg-wline dark:bg-rink-500 flex items-center justify-center"
+                className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-w-pill bg-it-line-strong dark:bg-rink-500 flex items-center justify-center"
                 aria-label="검색어 지우기"
               >
                 <Icon
                   name="close"
-                  className="text-w-caption text-wtext-3 dark:text-rink-100"
+                  className="text-w-caption text-it-ink-500 dark:text-rink-100"
                   aria-hidden="true"
                 />
               </button>
@@ -411,8 +411,8 @@ export default function SearchPage() {
         </form>
       </div>
 
-      {/* ─── 본문 ────────────────────────────────────── */}
-      <main className="flex-1 overflow-y-auto hide-scrollbar">
+      {/* ─── 본문 — 회색 캔버스 ────────────────────────── */}
+      <main className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck">
         <div className="flex flex-col gap-6 px-5 pt-4 pb-30">
           {/* ─── 최근 검색어 ───────────────────────────── */}
           {recentSearches.length > 0 && (
@@ -420,14 +420,14 @@ export default function SearchPage() {
               <div className="flex items-center justify-between mb-3">
                 <h2
                   id="recent-heading"
-                  className="text-w-body-lg font-bold text-wtext-1 dark:text-white"
+                  className="text-w-body-lg font-bold text-it-ink-800 dark:text-white"
                 >
                   최근 검색어
                 </h2>
                 <button
                   type="button"
                   onClick={clearAllRecentSearches}
-                  className="text-w-caption text-ice-500 hover:text-ice-700 transition-colors motion-reduce:transition-none"
+                  className="text-w-caption text-it-blue-600 hover:text-it-blue-700 transition-colors motion-reduce:transition-none"
                 >
                   전체 삭제
                 </button>
@@ -441,24 +441,24 @@ export default function SearchPage() {
                   <div
                     key={keyword}
                     role="listitem"
-                    className="flex items-center gap-1.5 h-8 pl-3 pr-1.5 rounded-w-pill bg-wsurface dark:bg-rink-800 border border-wline dark:border-rink-700"
+                    className="flex items-center gap-1.5 h-8 pl-3 pr-1.5 rounded-w-pill bg-it-surface dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700"
                   >
                     <button
                       type="button"
                       onClick={() => executeSearch(keyword)}
-                      className="text-w-small text-wtext-2 dark:text-rink-100 hover:text-wtext-1 dark:hover:text-white transition-colors motion-reduce:transition-none"
+                      className="text-w-small text-it-ink-700 dark:text-rink-100 hover:text-it-ink-800 dark:hover:text-white transition-colors motion-reduce:transition-none"
                     >
                       {keyword}
                     </button>
                     <button
                       type="button"
                       onClick={() => removeRecentSearch(keyword)}
-                      className="w-5 h-5 rounded-w-pill flex items-center justify-center hover:bg-wbg dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
+                      className="w-5 h-5 rounded-w-pill flex items-center justify-center hover:bg-it-fill dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
                       aria-label={`${keyword} 삭제`}
                     >
                       <Icon
                         name="close"
-                        className="text-w-caption text-wtext-4 dark:text-rink-300"
+                        className="text-w-caption text-it-ink-400 dark:text-rink-300"
                         aria-hidden="true"
                       />
                     </button>
@@ -474,11 +474,11 @@ export default function SearchPage() {
               <div className="flex items-center justify-between mb-3">
                 <h2
                   id="popular-heading"
-                  className="text-w-body-lg font-bold text-wtext-1 dark:text-white"
+                  className="text-w-body-lg font-bold text-it-ink-800 dark:text-white"
                 >
                   인기 검색어
                 </h2>
-                <span className="text-w-caption text-ice-500 tabular-nums">
+                <span className="text-w-caption text-it-blue-600 tabular-nums">
                   {timeLabel}
                 </span>
               </div>
@@ -488,19 +488,19 @@ export default function SearchPage() {
                     key={item.rank}
                     type="button"
                     onClick={() => executeSearch(item.keyword)}
-                    className="flex items-center gap-2.5 py-2.5 hover:bg-wsurface dark:hover:bg-rink-800 rounded-lg px-1 transition-colors motion-reduce:transition-none"
+                    className="flex items-center gap-2.5 py-2.5 hover:bg-it-surface dark:hover:bg-rink-800 rounded-lg px-1 transition-colors motion-reduce:transition-none"
                   >
                     <span
                       className={cn(
                         "w-5 text-center text-w-small font-bold tabular-nums",
                         item.rank <= 3
-                          ? "text-ice-500"
-                          : "text-wtext-4 dark:text-rink-300",
+                          ? "text-it-blue-600"
+                          : "text-it-ink-400 dark:text-rink-300",
                       )}
                     >
                       {item.rank}
                     </span>
-                    <span className="flex-1 text-w-small text-wtext-2 dark:text-rink-100 text-left truncate">
+                    <span className="flex-1 text-w-small text-it-ink-700 dark:text-rink-100 text-left truncate">
                       {item.keyword}
                     </span>
                     <TrendIcon trend={item.trend} />
@@ -511,13 +511,13 @@ export default function SearchPage() {
           )}
 
           {/* ─── 구분선 ──────────────────────────────── */}
-          <div className="h-px bg-wline-2 dark:bg-rink-800" />
+          <div className="h-px bg-it-line dark:bg-rink-800" />
 
           {/* ─── 추천 상품 ───────────────────────────── */}
           <section aria-labelledby="recommend-heading">
             <h2
               id="recommend-heading"
-              className="text-w-body-lg font-bold text-wtext-1 dark:text-white mb-3"
+              className="text-w-body-lg font-bold text-it-ink-800 dark:text-white mb-3"
             >
               플레이어를 위한 추천
             </h2>

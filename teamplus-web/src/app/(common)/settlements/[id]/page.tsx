@@ -69,25 +69,29 @@ function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('ko-KR').format(amount) + '원';
 }
 
-function TransactionCard({ transaction }: { transaction: Transaction }) {
+function TransactionCard({ transaction, isLast }: { transaction: Transaction; isLast?: boolean }) {
   const isCompleted = transaction.status === 'completed';
 
   return (
-    <div className="bg-white dark:bg-rink-800 p-4 rounded-xl border border-wline dark:border-rink-700 shadow-sm transition-all motion-reduce:transition-none active:brightness-95">
+    <div
+      className={`py-4 transition-colors motion-reduce:transition-none ${
+        !isLast ? 'border-b border-it-line dark:border-rink-700' : ''
+      }`}
+    >
       <div className="flex justify-between items-start mb-3">
         <div>
-          <p className="text-card-meta text-wtext-3 font-mono tracking-tight uppercase">
+          <p className="text-card-meta text-it-ink-400 font-mono tracking-tight uppercase">
             {transaction.orderNumber}
           </p>
-          <h3 className="text-card-body font-bold text-wtext-1 dark:text-white mt-0.5">
+          <h3 className="text-card-body font-bold text-it-ink-800 dark:text-white mt-0.5">
             {transaction.productName}
           </h3>
         </div>
         <span
-          className={`px-2.5 py-1 rounded-lg text-card-meta font-semibold ${
+          className={`px-2.5 py-1 rounded-w-pill text-card-meta font-semibold ${
             isCompleted
-              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-              : 'bg-wline-2 dark:bg-rink-700 text-wtext-2 dark:text-rink-100'
+              ? 'bg-mint/10 dark:bg-mint/15 text-mint'
+              : 'bg-it-fill dark:bg-rink-700 text-it-ink-600 dark:text-rink-100'
           }`}
         >
           {isCompleted ? '완료' : '정산대기'}
@@ -96,30 +100,30 @@ function TransactionCard({ transaction }: { transaction: Transaction }) {
 
       <div className="grid grid-cols-2 gap-y-2 text-card-meta">
         <div className="flex flex-col">
-          <span className="text-wtext-3">결제 일시</span>
-          <span className="font-medium text-wtext-2 dark:text-rink-100">
+          <span className="text-it-ink-400">결제 일시</span>
+          <span className="font-medium text-it-ink-600 dark:text-rink-100">
             {transaction.paymentDate}
           </span>
         </div>
         <div className="flex flex-col text-right">
-          <span className="text-wtext-3">결제 수단</span>
-          <span className="font-medium text-wtext-2 dark:text-rink-100">
+          <span className="text-it-ink-400">결제 수단</span>
+          <span className="font-medium text-it-ink-600 dark:text-rink-100">
             {transaction.paymentMethod}
           </span>
         </div>
         <div className="flex flex-col">
-          <span className="text-wtext-3">결제 금액</span>
-          <span className="font-bold text-wtext-1 dark:text-white text-right">
+          <span className="text-it-ink-400">결제 금액</span>
+          <span className="font-bold text-it-ink-800 dark:text-white text-right tabular-nums">
             {formatCurrency(transaction.amount)}
           </span>
         </div>
         <div className="flex flex-col text-right">
-          <span className="text-wtext-3">실지급액</span>
+          <span className="text-it-ink-400">실지급액</span>
           <span
-            className={`font-bold ${
+            className={`font-bold tabular-nums ${
               isCompleted
-                ? 'text-ice-500'
-                : 'text-wtext-3 dark:text-rink-300'
+                ? 'text-it-blue-500'
+                : 'text-it-ink-400 dark:text-rink-300'
             }`}
           >
             {formatCurrency(transaction.netAmount)}
@@ -127,11 +131,11 @@ function TransactionCard({ transaction }: { transaction: Transaction }) {
         </div>
       </div>
 
-      <div className="mt-3 pt-3 border-t border-wline-2 dark:border-rink-700 flex justify-between items-center">
-        <span className="text-card-meta text-wtext-3 italic">
+      <div className="mt-3 pt-3 border-t border-it-line dark:border-rink-700 flex justify-between items-center">
+        <span className="text-card-meta text-it-ink-400 italic">
           수수료 10% 적용: -{formatCurrency(transaction.fee)}
         </span>
-        <button type="button" className="text-ice-500 text-card-meta font-bold flex items-center gap-1">
+        <button type="button" className="text-it-blue-500 text-card-meta font-bold flex items-center gap-1">
           상세 보기
           <Icon name="chevron_right" className="text-[14px]" />
         </button>
@@ -195,124 +199,137 @@ export default function SettlementDetailPage() {
     <MobileContainer hasBottomNav={false}>
       <PageAppBar title={`${periodText} 정산 상세`} />
 
-      <div className="p-4 space-y-6">
-        {/* Period Selector */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div className="flex items-center bg-white dark:bg-rink-800 rounded-lg border border-wline dark:border-rink-700 px-3 py-2 gap-3 shadow-sm">
-            <Icon name="calendar_today" className="text-wtext-3" />
-            <span className="text-card-body font-medium text-wtext-2 dark:text-rink-100">
-              {dateRange || '-'}
-            </span>
+      <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck !pb-8">
+        {/* flat 흰 섹션 — 정산 요약(카드 박스 제거) */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 p-4 flex flex-col gap-4">
+          {/* Period Selector */}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="flex items-center bg-it-fill dark:bg-rink-800 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 px-3 py-2 gap-3">
+              <Icon name="calendar_today" className="text-it-ink-400" />
+              <span className="text-card-body font-medium text-it-ink-600 dark:text-rink-100">
+                {dateRange || '-'}
+              </span>
+            </div>
+            <button type="button" className="w-full sm:w-auto px-4 py-2 bg-it-blue-500 hover:bg-it-blue-600 text-white font-bold rounded-w-md text-card-body flex items-center justify-center gap-2 transition-colors motion-reduce:transition-none">
+              <Icon name="description" className="text-[18px]" />
+              정산 내역 엑셀 다운로드
+            </button>
           </div>
-          <button type="button" className="w-full sm:w-auto px-4 py-2 bg-ice-500 text-white font-bold rounded-lg text-card-body flex items-center justify-center gap-2">
-            <Icon name="description" className="text-[18px]" />
-            정산 내역 엑셀 다운로드
-          </button>
-        </div>
 
-        {/* Stats Summary Grid */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-2 rounded-xl p-4 bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-sm">
-            <p className="text-wtext-3 dark:text-rink-300 text-card-meta font-medium uppercase tracking-wider">
-              총 결제 금액
-            </p>
-            <p className="text-wtext-1 dark:text-white text-card-title font-bold">
-              {formatCurrency(totalPayment)}
-            </p>
-          </div>
-          <div className="flex flex-col gap-2 rounded-xl p-4 bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 shadow-sm">
-            <p className="text-wtext-3 dark:text-rink-300 text-card-meta font-medium uppercase tracking-wider">
-              수수료 합계
-            </p>
-            <p className="text-rose-600 dark:text-rose-400 text-card-title font-bold">
-              -{formatCurrency(totalFee)}
-            </p>
-          </div>
-          <div className="flex flex-col gap-2 rounded-xl p-4 bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 shadow-sm">
-            <p className="text-wtext-3 dark:text-rink-300 text-card-meta font-medium uppercase tracking-wider">
-              최종 정산 예정액
-            </p>
-            <p className="text-ice-500 text-xl font-bold">
-              {formatCurrency(netAmount)}
-            </p>
-          </div>
-          <div
-            className={`flex flex-col gap-2 rounded-xl p-4 shadow-sm ${
-              isCompleted
-                ? 'bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800'
-                : 'bg-wbg dark:bg-rink-800 border border-wline dark:border-rink-700'
-            }`}
-          >
-            <p
-              className={`text-card-meta font-medium uppercase tracking-wider ${
-                isCompleted
-                  ? 'text-green-700 dark:text-green-400'
-                  : 'text-wtext-3 dark:text-rink-300'
-              }`}
-            >
-              정산 상태
-            </p>
-            <div className="flex items-center gap-1.5">
-              <span
-                className={`size-2 rounded-w-pill ${
-                  isCompleted ? 'bg-green-600' : 'bg-wtext-4'
-                }`}
-              ></span>
-              <p
-                className={`text-card-title font-bold ${
-                  isCompleted
-                    ? 'text-green-700 dark:text-green-400'
-                    : 'text-wtext-2 dark:text-rink-100'
-                }`}
-              >
-                {isCompleted ? '정산 완료' : '정산 대기'}
+          {/* Stats Summary Grid — flat 인셋 2x2 */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-col gap-1.5 rounded-w-md p-4 bg-it-fill dark:bg-puck/40">
+              <p className="text-it-ink-500 dark:text-rink-300 text-card-meta font-medium uppercase tracking-wider">
+                총 결제 금액
+              </p>
+              <p className="text-it-ink-800 dark:text-white text-card-title font-bold tabular-nums">
+                {formatCurrency(totalPayment)}
               </p>
             </div>
+            <div className="flex flex-col gap-1.5 rounded-w-md p-4 bg-it-fill dark:bg-puck/40">
+              <p className="text-it-ink-500 dark:text-rink-300 text-card-meta font-medium uppercase tracking-wider">
+                수수료 합계
+              </p>
+              <p className="text-it-red-500 dark:text-it-red-300 text-card-title font-bold tabular-nums">
+                -{formatCurrency(totalFee)}
+              </p>
+            </div>
+            <div className="flex flex-col gap-1.5 rounded-w-md p-4 bg-it-blue-50 dark:bg-it-blue-500/15">
+              <p className="text-it-blue-500 text-card-meta font-medium uppercase tracking-wider">
+                최종 정산 예정액
+              </p>
+              <p className="text-it-blue-500 text-xl font-bold tabular-nums">
+                {formatCurrency(netAmount)}
+              </p>
+            </div>
+            <div
+              className={`flex flex-col gap-1.5 rounded-w-md p-4 ${
+                isCompleted
+                  ? 'bg-mint/10 dark:bg-mint/15'
+                  : 'bg-it-fill dark:bg-puck/40'
+              }`}
+            >
+              <p
+                className={`text-card-meta font-medium uppercase tracking-wider ${
+                  isCompleted
+                    ? 'text-mint'
+                    : 'text-it-ink-500 dark:text-rink-300'
+                }`}
+              >
+                정산 상태
+              </p>
+              <div className="flex items-center gap-1.5">
+                <span
+                  className={`size-2 rounded-w-pill ${
+                    isCompleted ? 'bg-mint' : 'bg-it-ink-300'
+                  }`}
+                ></span>
+                <p
+                  className={`text-card-title font-bold ${
+                    isCompleted
+                      ? 'text-mint'
+                      : 'text-it-ink-600 dark:text-rink-100'
+                  }`}
+                >
+                  {isCompleted ? '정산 완료' : '정산 대기'}
+                </p>
+              </div>
+            </div>
           </div>
-        </div>
+        </section>
 
-        {/* Transaction List Header */}
-        <div className="flex items-center justify-between pt-2">
-          <h2 className="text-wtext-1 dark:text-white text-card-title font-bold tracking-tight">
-            상세 거래 내역
-          </h2>
-          <div className="flex items-center gap-2">
-            <button type="button" className="p-2 text-wtext-3 hover:text-ice-500 transition-colors motion-reduce:transition-none">
-              <Icon name="filter_list" />
+        {/* flat 섹션 사이 8px 회색 갭 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+        {/* flat 흰 섹션 — 거래 내역 */}
+        <section className="bg-it-surface dark:bg-it-blue-950 p-4">
+          {/* Transaction List Header */}
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-it-ink-800 dark:text-white text-card-title font-bold tracking-tight">
+              상세 거래 내역
+            </h2>
+            <div className="flex items-center gap-2">
+              <button type="button" className="p-2 text-it-ink-400 hover:text-it-blue-500 transition-colors motion-reduce:transition-none">
+                <Icon name="filter_list" />
+              </button>
+              <button type="button" className="p-2 text-it-ink-400 hover:text-it-blue-500 transition-colors motion-reduce:transition-none">
+                <Icon name="search" />
+              </button>
+            </div>
+          </div>
+
+          {/* Transaction List */}
+          {isLoading ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="w-8 h-8 rounded-w-pill border-4 border-it-line dark:border-rink-700 border-t-it-blue-500 animate-spin motion-reduce:animate-none"></div>
+            </div>
+          ) : transactions.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-it-ink-400">
+              <Icon name="receipt_long" className="text-5xl mb-3" />
+              <p className="text-card-body">거래 내역이 없습니다.</p>
+            </div>
+          ) : (
+            <div className="flex flex-col">
+              {visibleTransactions.map((transaction, idx) => (
+                <TransactionCard
+                  key={transaction.id}
+                  transaction={transaction}
+                  isLast={idx === visibleTransactions.length - 1}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Load More Button */}
+          {visibleCount < transactions.length && (
+            <button type="button" onClick={() => setVisibleCount((prev) => prev + 3)}
+              className="mt-3 w-full py-4 border border-dashed border-it-line-strong dark:border-rink-700 rounded-w-md text-it-ink-500 text-card-body font-medium hover:bg-it-fill dark:hover:bg-rink-800 transition-colors motion-reduce:transition-none"
+            >
+              거래 내역 더보기 ({visibleCount}/{transactions.length})
             </button>
-            <button type="button" className="p-2 text-wtext-3 hover:text-ice-500 transition-colors motion-reduce:transition-none">
-              <Icon name="search" />
-            </button>
-          </div>
-        </div>
-
-        {/* Transaction List */}
-        {isLoading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="w-8 h-8 rounded-w-pill border-4 border-wline dark:border-rink-700 border-t-primary animate-spin motion-reduce:animate-none"></div>
-          </div>
-        ) : transactions.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-wtext-3">
-            <Icon name="receipt_long" className="text-5xl mb-3" />
-            <p className="text-card-body">거래 내역이 없습니다.</p>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-8">
-            {visibleTransactions.map((transaction) => (
-              <TransactionCard key={transaction.id} transaction={transaction} />
-            ))}
-          </div>
-        )}
-
-        {/* Load More Button */}
-        {visibleCount < transactions.length && (
-          <button type="button"             onClick={() => setVisibleCount((prev) => prev + 3)}
-            className="w-full py-4 border border-dashed border-wline dark:border-rink-700 rounded-xl text-wtext-3 text-card-body font-medium hover:bg-wbg dark:hover:bg-rink-800 transition-colors motion-reduce:transition-none"
-          >
-            거래 내역 더보기 ({visibleCount}/{transactions.length})
-          </button>
-        )}
-      </div>
+          )}
+        </section>
+      </main>
     </MobileContainer>
   );
 }

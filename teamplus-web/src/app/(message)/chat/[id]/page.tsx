@@ -281,7 +281,7 @@ export default function ChatPage() {
           BottomNav(60px) + safe-area-inset-bottom 만큼 컨테이너 높이를 줄여 ChatInput 이 BottomNav
           위에 오지 않도록 보정 (사용자 신고: 상담 메시지 페이지 하단 버튼 위치 낮음 픽스).
           키보드 표시 시 viewport 가 동적으로 축소되어 ChatInput 이 가려지지 않음 (SCREEN_METRICS §5.4) */}
-      <div className="flex flex-col h-[calc(100dvh-60px-env(safe-area-inset-bottom,0px))] bg-wbg dark:bg-rink-900">
+      <div className="flex flex-col h-[calc(100dvh-60px-env(safe-area-inset-bottom,0px))] bg-it-canvas dark:bg-puck">
         {/* [appbar-harness-v3 분류 C → A] ChatHeader → PageAppBar SoT 흡수.
             title=name · subtitle=status · extraActions=[more menu]. 아바타+온라인 인디케이터는
             body 상단 chat-info-strip 으로 분리하여 AppBar 시각 통일성 유지. */}
@@ -308,7 +308,7 @@ export default function ChatPage() {
           forceNative
         />
         {/* Chat profile strip — 아바타+온라인 상태 (AppBar 영역 밖, body 최상단) */}
-        <div className="flex flex-none items-center gap-3 border-b border-wline-2 bg-white px-4 py-2 dark:border-rink-800 dark:bg-rink-900">
+        <div className="flex flex-none items-center gap-3 border-b border-it-line bg-it-surface px-4 py-2 dark:border-rink-700 dark:bg-rink-800">
           <Avatar
             src={chatInfo?.avatar}
             name={chatInfo?.name ?? '채팅'}
@@ -316,10 +316,10 @@ export default function ChatPage() {
             isOnline={isConnected && (chatInfo?.isOnline ?? false)}
           />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-card-body font-medium text-wtext-2 dark:text-rink-200">
+            <p className="truncate text-card-body font-bold text-it-ink-800 dark:text-white">
               {chatInfo?.name ?? '채팅'}
             </p>
-            <p className="truncate text-card-meta text-wtext-3 dark:text-rink-300">
+            <p className="truncate text-card-meta text-it-ink-500 dark:text-wtext-4">
               {isConnected && (chatInfo?.isOnline ?? false)
                 ? MESSAGES.chat.statusOnline
                 : MESSAGES.chat.statusOffline}
@@ -327,9 +327,10 @@ export default function ChatPage() {
           </div>
         </div>
 
-        {/* Chat Messages Area — role="log" + aria-live="polite" 로 SR 새 메시지 알림 */}
+        {/* Chat Messages Area — role="log" + aria-live="polite" 로 SR 새 메시지 알림.
+            ⚠️ 말풍선(MessageBubble · bubble.* 토큰)은 SoT 유지 — 배경만 it-canvas 정합. */}
         <main
-          className="flex-1 overflow-y-auto scroll-smooth hide-scrollbar bg-wbg dark:bg-rink-900"
+          className="flex-1 overflow-y-auto scroll-smooth hide-scrollbar bg-it-canvas dark:bg-puck"
           role="log"
           aria-label={`${chatInfo?.name ?? '채팅'} 대화 내용`}
           aria-live="polite"
@@ -346,7 +347,7 @@ export default function ChatPage() {
             />
 
             {messages.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-16 text-wtext-3 dark:text-rink-300">
+              <div className="flex flex-col items-center justify-center py-16 text-it-ink-400 dark:text-wtext-4">
                 <Icon name="chat_bubble_outline" className="text-4xl mb-2" />
                 <p className="text-card-body">{MESSAGES.chat.startConversation}</p>
               </div>
@@ -369,7 +370,7 @@ export default function ChatPage() {
 
             {isUploading && (
               <div className="flex justify-end">
-                <div className="bg-wline dark:bg-rink-700 rounded-xl px-4 py-2 text-card-body text-wtext-3 dark:text-rink-300">
+                <div className="bg-it-fill dark:bg-rink-700 rounded-w-md px-4 py-2 text-card-body text-it-ink-500 dark:text-wtext-4">
                   {MESSAGES.chat.uploading}
                 </div>
               </div>
@@ -396,19 +397,19 @@ export default function ChatPage() {
           onClick={() => setShowMoreMenu(false)}
         >
           <div
-            className="w-full bg-white dark:bg-rink-800 rounded-t-2xl shadow-md"
+            className="w-full bg-it-surface dark:bg-rink-800 rounded-t-2xl shadow-md"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="w-10 h-1 bg-wline dark:bg-rink-500 rounded-w-pill mx-auto mt-3 mb-4" />
+            <div className="w-10 h-1 bg-it-line-strong dark:bg-rink-500 rounded-w-pill mx-auto mt-3 mb-4" />
             <button
               onClick={handleToggleNotification}
-              className="flex items-center w-full px-6 py-4 text-wtext-1 dark:text-white hover:bg-wbg dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
+              className="flex items-center w-full px-6 py-4 text-it-ink-800 dark:text-white hover:bg-it-fill dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
             >
               <Icon
                 name="notifications"
-                className="text-xl text-wtext-3 dark:text-rink-300 mr-3"
+                className="text-xl text-it-ink-400 dark:text-wtext-4 mr-3"
               />
-              <span className="text-card-emphasis font-medium">
+              <span className="text-card-emphasis font-bold">
                 {MESSAGES.chat.notificationLabel}
               </span>
             </button>
@@ -417,25 +418,25 @@ export default function ChatPage() {
               <>
                 <button
                   onClick={handleReport}
-                  className="flex items-center w-full px-6 py-4 text-wtext-1 dark:text-white hover:bg-wbg dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
+                  className="flex items-center w-full px-6 py-4 text-it-ink-800 dark:text-white hover:bg-it-fill dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
                 >
                   <Icon
                     name="flag"
-                    className="text-xl text-wtext-3 dark:text-rink-300 mr-3"
+                    className="text-xl text-it-ink-400 dark:text-wtext-4 mr-3"
                   />
-                  <span className="text-card-emphasis font-medium">
+                  <span className="text-card-emphasis font-bold">
                     {MESSAGES.chat.report}
                   </span>
                 </button>
                 <button
                   onClick={handleBlock}
-                  className="flex items-center w-full px-6 py-4 text-wtext-1 dark:text-white hover:bg-wbg dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
+                  className="flex items-center w-full px-6 py-4 text-it-ink-800 dark:text-white hover:bg-it-fill dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
                 >
                   <Icon
                     name="block"
-                    className="text-xl text-wtext-3 dark:text-rink-300 mr-3"
+                    className="text-xl text-it-ink-400 dark:text-wtext-4 mr-3"
                   />
-                  <span className="text-card-emphasis font-medium">
+                  <span className="text-card-emphasis font-bold">
                     {MESSAGES.chat.block}
                   </span>
                 </button>
@@ -443,10 +444,10 @@ export default function ChatPage() {
             )}
             <button
               onClick={handleLeaveRoom}
-              className="flex items-center w-full px-6 py-4 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors motion-reduce:transition-none"
+              className="flex items-center w-full px-6 py-4 text-it-red-500 dark:text-it-red-400 hover:bg-it-red-50 dark:hover:bg-it-red-500/15 transition-colors motion-reduce:transition-none"
             >
               <Icon name="exit_to_app" className="text-xl mr-3" />
-              <span className="text-card-emphasis font-medium">
+              <span className="text-card-emphasis font-bold">
                 {MESSAGES.chat.leaveRoom}
               </span>
             </button>

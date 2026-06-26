@@ -31,111 +31,91 @@ function ApprovalStateCard({
 }) {
   if (state === 'approved' && clubName) {
     return (
-      <section
-        className="bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-200 dark:border-emerald-800 shadow-sm p-4"
-        aria-label="팀 가입 승인 완료"
-      >
-        <div className="flex items-start gap-3">
-          <span className="shrink-0 flex size-9 items-center justify-center rounded-w-pill bg-emerald-100 dark:bg-emerald-900/40">
-            <Icon name="check_circle" className="text-[18px] text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-card-body font-bold text-emerald-700 dark:text-emerald-300">
-              {MESSAGES.team.detailApprovedTitle(clubName)}
-            </p>
-            <p className="mt-1 text-card-meta text-emerald-600/80 dark:text-emerald-400/80 leading-relaxed">
-              {MESSAGES.team.detailApprovedDesc}
-            </p>
-          </div>
+      <div className="flex items-start gap-3" aria-label="팀 가입 승인 완료">
+        <span className="shrink-0 flex size-9 items-center justify-center rounded-w-md bg-it-blue-50 dark:bg-it-blue-900/30">
+          <Icon name="check_circle" className="text-[18px] text-it-blue-500" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-card-body font-bold text-it-ink-800 dark:text-white">
+            {MESSAGES.team.detailApprovedTitle(clubName)}
+          </p>
+          <p className="mt-1 text-card-meta text-it-ink-500 dark:text-wtext-4 leading-relaxed">
+            {MESSAGES.team.detailApprovedDesc}
+          </p>
         </div>
-      </section>
+      </div>
     );
   }
 
   if (state === 'pending' && clubName) {
     return (
-      <section
-        className="bg-amber-50 dark:bg-amber-900/20 rounded-2xl border border-amber-200 dark:border-amber-800 shadow-sm p-4"
-        aria-label="팀 가입 승인 대기"
-      >
-        <div className="flex items-start gap-3">
-          <span className="shrink-0 flex size-9 items-center justify-center rounded-w-pill bg-amber-100 dark:bg-amber-900/40">
-            <Icon name="hourglass_top" className="text-[18px] text-amber-600 dark:text-amber-400" aria-hidden="true" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-card-body font-bold text-amber-700 dark:text-amber-300">
-              {MESSAGES.team.detailPendingTitle(clubName)}
-            </p>
-            <p className="mt-1 text-card-meta text-amber-600/80 dark:text-amber-400/80 leading-relaxed">
-              {MESSAGES.team.detailPendingDesc}
-            </p>
-          </div>
+      <div className="flex items-start gap-3" aria-label="팀 가입 승인 대기">
+        <span className="shrink-0 flex size-9 items-center justify-center rounded-w-md bg-sun-100 dark:bg-sun-500/15">
+          <Icon name="hourglass_top" className="text-[18px] text-sun-500" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-card-body font-bold text-it-ink-800 dark:text-white">
+            {MESSAGES.team.detailPendingTitle(clubName)}
+          </p>
+          <p className="mt-1 text-card-meta text-it-ink-500 dark:text-wtext-4 leading-relaxed">
+            {MESSAGES.team.detailPendingDesc}
+          </p>
         </div>
-      </section>
+      </div>
     );
   }
 
   if (state === 'rejected' && clubName) {
     return (
-      <section
-        className="bg-red-50 dark:bg-red-900/20 rounded-2xl border border-red-200 dark:border-red-800 shadow-sm p-4"
-        aria-label="팀 가입 반려"
-      >
-        <div className="flex items-start gap-3">
-          <span className="shrink-0 flex size-9 items-center justify-center rounded-w-pill bg-red-100 dark:bg-red-900/40">
-            <Icon name="block" className="text-[18px] text-red-600 dark:text-red-400" aria-hidden="true" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-card-body font-bold text-red-700 dark:text-red-300">
-              {MESSAGES.team.detailRejectedTitle(clubName)}
-            </p>
-            <p className="mt-1 text-card-meta text-red-600/80 dark:text-red-400/80 leading-relaxed">
-              {MESSAGES.team.detailRejectedDesc}
-            </p>
-            {rejectionReason && (
-              <div className="mt-3 rounded-lg bg-white dark:bg-rink-800 border border-red-200 dark:border-red-800 p-3">
-                <p className="text-card-meta font-semibold text-red-600 dark:text-red-400 mb-1">
-                  {MESSAGES.team.rejectionReasonLabel}
-                </p>
-                <p className="text-card-meta text-wtext-2 dark:text-rink-100 leading-relaxed whitespace-pre-line">
-                  {rejectionReason}
-                </p>
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={onRetry}
-              className="mt-3 inline-flex items-center gap-1.5 min-h-[48px] px-4 rounded-lg bg-red-600 hover:bg-red-700 text-white text-card-body font-semibold transition-colors motion-reduce:transition-none active:brightness-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40"
-            >
-              <Icon name="refresh" className="text-[16px]" aria-hidden="true" />
-              {MESSAGES.team.retrySignupCta}
-            </button>
-          </div>
+      <div className="flex items-start gap-3" aria-label="팀 가입 반려">
+        <span className="shrink-0 flex size-9 items-center justify-center rounded-w-md bg-it-red-500/10 dark:bg-it-red-500/15">
+          <Icon name="block" className="text-[18px] text-it-red-500" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-card-body font-bold text-it-ink-800 dark:text-white">
+            {MESSAGES.team.detailRejectedTitle(clubName)}
+          </p>
+          <p className="mt-1 text-card-meta text-it-ink-500 dark:text-wtext-4 leading-relaxed">
+            {MESSAGES.team.detailRejectedDesc}
+          </p>
+          {rejectionReason && (
+            <div className="mt-3 rounded-w-md bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-red-500/30 dark:border-it-red-500/30 p-3">
+              <p className="text-card-meta font-semibold text-it-red-500 mb-1">
+                {MESSAGES.team.rejectionReasonLabel}
+              </p>
+              <p className="text-card-meta text-it-ink-800 dark:text-rink-100 leading-relaxed whitespace-pre-line">
+                {rejectionReason}
+              </p>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={onRetry}
+            className="mt-3 inline-flex items-center gap-1.5 min-h-[48px] px-4 rounded-w-md bg-it-red-500 hover:bg-it-red-500/90 text-white text-card-body font-semibold transition-colors motion-reduce:transition-none active:brightness-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-red-500/40"
+          >
+            <Icon name="refresh" className="text-[16px]" aria-hidden="true" />
+            {MESSAGES.team.retrySignupCta}
+          </button>
         </div>
-      </section>
+      </div>
     );
   }
 
   // state === 'none'
   return (
-    <section
-      className="bg-wbg dark:bg-rink-800/40 rounded-2xl border border-wline dark:border-rink-700 shadow-sm p-4"
-      aria-label="팀 소속 없음"
-    >
-      <div className="flex items-start gap-3">
-        <span className="shrink-0 flex size-9 items-center justify-center rounded-w-pill bg-wline dark:bg-rink-700">
-          <Icon name="group_off" className="text-[18px] text-wtext-3 dark:text-rink-300" aria-hidden="true" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-card-body font-bold text-wtext-2 dark:text-rink-100">
-            {MESSAGES.team.detailNoMembershipTitle}
-          </p>
-          <p className="mt-1 text-card-meta text-wtext-3 dark:text-rink-300 leading-relaxed">
-            {MESSAGES.team.detailNoMembershipDesc}
-          </p>
-        </div>
+    <div className="flex items-start gap-3" aria-label="팀 소속 없음">
+      <span className="shrink-0 flex size-9 items-center justify-center rounded-w-md bg-it-line dark:bg-rink-700">
+        <Icon name="group_off" className="text-[18px] text-it-ink-400 dark:text-wtext-4" aria-hidden="true" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-card-body font-bold text-it-ink-800 dark:text-rink-100">
+          {MESSAGES.team.detailNoMembershipTitle}
+        </p>
+        <p className="mt-1 text-card-meta text-it-ink-500 dark:text-wtext-4 leading-relaxed">
+          {MESSAGES.team.detailNoMembershipDesc}
+        </p>
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -201,11 +181,11 @@ function InlineField({
   maxLength?: number;
 }) {
   return (
-    <div className="flex items-start justify-between gap-3 py-3 border-b border-wline-2 dark:border-rink-800 last:border-b-0">
+    <div className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
       <div className="flex items-center gap-2 min-w-0 flex-1">
-        <Icon name={icon} className="text-wtext-3 dark:text-rink-300 text-card-title shrink-0" aria-hidden="true" />
+        <Icon name={icon} className="text-it-blue-500 text-card-title shrink-0" aria-hidden="true" />
         <div className="min-w-0 flex-1">
-          <p className="text-card-meta font-medium text-wtext-3 dark:text-rink-300 mb-0.5">{label}</p>
+          <p className="text-card-meta font-semibold text-it-ink-400 dark:text-wtext-4 mb-0.5">{label}</p>
           {isEditing ? (
             <div className="flex items-center gap-2">
               <input
@@ -215,13 +195,13 @@ function InlineField({
                 placeholder={placeholder}
                 maxLength={maxLength}
                 aria-label={label}
-                className="flex-1 min-h-[48px] px-3 bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 rounded-lg text-card-body text-wtext-1 dark:text-white focus:outline-none focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20 transition-all motion-reduce:transition-none"
+                className="flex-1 min-h-[48px] px-3 bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-card-body text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 transition-all motion-reduce:transition-none"
                 autoFocus
               />
               <button
                 type="button"
                 onClick={onSave}
-                className="shrink-0 min-h-[48px] min-w-[48px] flex items-center justify-center rounded-lg bg-ice-500 text-white hover:bg-ice-700 transition-colors motion-reduce:transition-none active:brightness-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
+                className="shrink-0 min-h-[48px] min-w-[48px] flex items-center justify-center rounded-w-md bg-it-blue-500 text-white hover:bg-it-blue-600 transition-colors motion-reduce:transition-none active:brightness-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40"
                 aria-label={`${label} 저장하기`}
               >
                 <Icon name="check" size={18} />
@@ -229,14 +209,14 @@ function InlineField({
               <button
                 type="button"
                 onClick={onCancel}
-                className="shrink-0 min-h-[48px] min-w-[48px] flex items-center justify-center rounded-lg bg-wline-2 dark:bg-rink-700 text-wtext-2 dark:text-rink-100 hover:bg-wline dark:hover:bg-rink-500 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-wtext-3/40"
+                className="shrink-0 min-h-[48px] min-w-[48px] flex items-center justify-center rounded-w-md bg-it-line dark:bg-rink-700 text-it-ink-800 dark:text-rink-100 hover:bg-it-line-strong dark:hover:bg-rink-500 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-ink-400/40"
                 aria-label={`${label} 편집 취소`}
               >
                 <Icon name="close" size={18} />
               </button>
             </div>
           ) : (
-            <p className="text-card-body font-medium text-wtext-1 dark:text-white truncate">
+            <p className="text-card-body font-medium text-it-ink-800 dark:text-white truncate">
               {value || '-'}
             </p>
           )}
@@ -246,10 +226,10 @@ function InlineField({
         <button
           type="button"
           onClick={onEdit}
-          className="shrink-0 min-h-[48px] min-w-[48px] flex items-center justify-center rounded-lg hover:bg-wline-2 dark:hover:bg-rink-800 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
+          className="shrink-0 min-h-[48px] min-w-[48px] flex items-center justify-center rounded-w-md hover:bg-it-fill dark:hover:bg-rink-800 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40"
           aria-label={`${label} 수정하기`}
         >
-          <Icon name="edit" className="text-wtext-3 dark:text-rink-300 text-card-emphasis" aria-hidden="true" />
+          <Icon name="edit" className="text-it-ink-400 dark:text-wtext-4 text-card-emphasis" aria-hidden="true" />
         </button>
       )}
     </div>
@@ -379,11 +359,11 @@ export default function ChildDetailPage() {
     return (
       <MobileContainer hasBottomNav>
         <PageAppBar title="자녀 프로필" forceNative />
-        <main className="flex-1 flex flex-col items-center justify-center px-6">
-          <div className="flex items-center justify-center size-16 rounded-w-pill bg-wline-2 dark:bg-rink-800 mb-4">
-            <Icon name="error_outline" className="text-3xl text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+        <main className="flex-1 flex flex-col items-center justify-center px-6 bg-it-canvas dark:bg-puck">
+          <div className="flex items-center justify-center size-16 rounded-w-pill bg-it-line dark:bg-rink-800 mb-4">
+            <Icon name="error_outline" className="text-3xl text-it-ink-400 dark:text-wtext-4" aria-hidden="true" />
           </div>
-          <p className="text-card-body text-wtext-3 dark:text-rink-300 font-medium text-center mb-4">
+          <p className="text-card-body text-it-ink-500 dark:text-wtext-4 font-medium text-center mb-4">
             {loadError ?? '자녀 정보를 불러올 수 없습니다.'}
           </p>
           <Button variant="outline" onClick={() => back()}>
@@ -402,182 +382,172 @@ export default function ChildDetailPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title="자녀 프로필" forceNative />
 
-      <main className="flex-1 overflow-y-auto hide-scrollbar">
-        <div className="px-4 py-6 space-y-6 pb-6">
+      <main className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck">
 
-          {/* ========== 프로필 헤더 ========== */}
-          <section className="bg-white dark:bg-rink-800 rounded-2xl border border-wline-2 dark:border-rink-700 shadow-sm p-5">
-            <div className="flex items-center gap-4">
-              {/* 프로필 사진 */}
-              <div className="relative shrink-0">
-                <div className="size-[88px] rounded-2xl overflow-hidden bg-ice-500/10 dark:bg-ice-500/20 ring-4 ring-white dark:ring-rink-800 shadow-sm">
-                  {resolveImageSrc(child.imageUrl) ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img
-                      src={resolveImageSrc(child.imageUrl)}
-                      alt={fullName}
-                      width={88}
-                      height={88}
-                      className="object-cover size-full"
-                    />
-                  ) : (
-                    <div className="size-full flex items-center justify-center">
-                      <span className="text-3xl font-extrabold text-ice-500 tracking-tight select-none" aria-hidden="true">
-                        {fullName.charAt(0) || '?'}
-                      </span>
-                    </div>
-                  )}
-                </div>
-                {/* 사진 변경 버튼 — PARENT 강화: 시각 마커는 size-9로 유지하되 invisible padding 으로 48dp 터치 영역 확보 */}
-                <button
-                  type="button"
-                  className="absolute -bottom-2 -right-2 flex min-h-[48px] min-w-[48px] items-center justify-center rounded-w-pill bg-transparent group focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 focus-visible:ring-offset-2"
-                  aria-label="프로필 사진 변경하기"
-                  onClick={() => toast.info(MESSAGES.profile.photoChangeUnavailable)}
-                >
-                  <span
-                    aria-hidden="true"
-                    className="size-9 rounded-w-pill bg-ice-500 text-white flex items-center justify-center shadow-md ring-2 ring-white dark:ring-rink-800 group-hover:bg-ice-700 group-active:brightness-95 transition-colors motion-reduce:transition-none"
-                  >
-                    <Icon name="camera_alt" size={16} />
-                  </span>
-                </button>
-              </div>
-
-              {/* 이름 + 정보 */}
-              <div className="flex-1 min-w-0">
-                <h2 className="text-xl font-bold text-wtext-1 dark:text-white truncate leading-tight">
-                  {fullName}
-                </h2>
-                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                  <span className="text-card-body text-wtext-3 dark:text-rink-300 tabular-nums">{age}세</span>
-                  <span
-                    className={`text-card-meta font-bold px-2 py-0.5 rounded-w-pill ${
-                      isChildAge
-                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                        : 'bg-blue-100 text-ice-500 dark:bg-blue-900/30 dark:text-blue-400'
-                    }`}
-                  >
-                    {isChildAge ? 'CHILD' : 'TEEN'}
-                  </span>
-                  {child.isActive ? (
-                    <span className="inline-flex items-center gap-1 text-card-meta font-semibold px-2 py-0.5 rounded-w-pill bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                      <span className="inline-block size-1.5 rounded-w-pill bg-green-500 dark:bg-green-400" aria-hidden="true" />
-                      활동중
+        {/* ========== 프로필 히어로 — navy 밴드 full-bleed ========== */}
+        <section className="bg-it-blue-800 dark:bg-it-blue-950 px-5 pb-7 pt-7" aria-label="자녀 프로필">
+          <div className="flex flex-col items-center">
+            {/* 프로필 사진 */}
+            <div className="relative mb-4 shrink-0">
+              <div className="size-24 rounded-w-pill overflow-hidden bg-white/15 dark:bg-white/10">
+                {resolveImageSrc(child.imageUrl) ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={resolveImageSrc(child.imageUrl)}
+                    alt={fullName}
+                    width={96}
+                    height={96}
+                    className="object-cover size-full"
+                  />
+                ) : (
+                  <div className="size-full flex items-center justify-center">
+                    <span className="text-3xl font-extrabold text-white tracking-tight select-none" aria-hidden="true">
+                      {fullName.charAt(0) || '?'}
                     </span>
-                  ) : (
-                    <span className="text-card-meta font-semibold px-2 py-0.5 rounded-w-pill bg-wline-2 text-wtext-3 dark:bg-rink-700 dark:text-rink-300">
-                      비활동
-                    </span>
-                  )}
-                </div>
-                {child.clubName && (
-                  <p className="text-card-meta text-wtext-3 dark:text-rink-300 mt-1.5 flex items-center gap-1 truncate">
-                    <Icon name="sports_hockey" className="text-card-body text-ice-500 shrink-0" aria-hidden="true" />
-                    <span className="truncate">{child.clubName}</span>
-                  </p>
+                  </div>
                 )}
               </div>
-            </div>
-
-            {/* 빠른 이동 타일 (2x2) */}
-            <div className="mt-5 pt-5 border-t border-wline-2 dark:border-rink-700 grid grid-cols-4 gap-2">
+              {/* 사진 변경 버튼 — 시각 마커는 size-9, invisible padding 으로 48dp 터치 영역 확보 */}
               <button
                 type="button"
-                onClick={() => navigate(`/children/${childId}/class-history`)}
-                className="flex flex-col items-center gap-1.5 py-2.5 rounded-xl hover:bg-wbg dark:hover:bg-rink-700/50 transition-colors motion-reduce:transition-none active:brightness-95"
-                aria-label="수업 이력 보기"
+                className="absolute -bottom-2 -right-2 flex min-h-[48px] min-w-[48px] items-center justify-center rounded-w-pill bg-transparent group focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-it-blue-800"
+                aria-label="프로필 사진 변경하기"
+                onClick={() => toast.info(MESSAGES.profile.photoChangeUnavailable)}
               >
-                <span className="flex size-10 items-center justify-center rounded-w-pill bg-blue-50 dark:bg-blue-900/20">
-                  <Icon name="event_note" className="text-[20px] text-blue-500" aria-hidden="true" />
+                <span
+                  aria-hidden="true"
+                  className="size-9 rounded-w-pill bg-it-blue-500 text-white flex items-center justify-center ring-2 ring-white dark:ring-it-blue-950 group-hover:bg-it-blue-600 group-active:brightness-95 transition-colors motion-reduce:transition-none"
+                >
+                  <Icon name="camera_alt" size={16} />
                 </span>
-                <span className="text-card-meta font-semibold text-wtext-2 dark:text-rink-100">수업 이력</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate(`/children/${childId}/awards`)}
-                className="flex flex-col items-center gap-1.5 py-2.5 rounded-xl hover:bg-wbg dark:hover:bg-rink-700/50 transition-colors motion-reduce:transition-none active:brightness-95"
-                aria-label="수상 이력 보기"
-              >
-                <span className="flex size-10 items-center justify-center rounded-w-pill bg-amber-50 dark:bg-amber-900/20">
-                  <Icon name="military_tech" className="text-[20px] text-amber-500" aria-hidden="true" />
-                </span>
-                <span className="text-card-meta font-semibold text-wtext-2 dark:text-rink-100">수상 이력</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate(`/children/${childId}/profile-card`)}
-                className="flex flex-col items-center gap-1.5 py-2.5 rounded-xl hover:bg-wbg dark:hover:bg-rink-700/50 transition-colors motion-reduce:transition-none active:brightness-95"
-                aria-label="선수 이력 카드 보기"
-              >
-                <span className="flex size-10 items-center justify-center rounded-w-pill bg-emerald-50 dark:bg-emerald-900/20">
-                  <Icon name="badge" className="text-[20px] text-emerald-500" aria-hidden="true" />
-                </span>
-                <span className="text-card-meta font-semibold text-wtext-2 dark:text-rink-100">선수 카드</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate(`/children/${childId}/edit`)}
-                className="flex flex-col items-center gap-1.5 py-2.5 rounded-xl hover:bg-wbg dark:hover:bg-rink-700/50 transition-colors motion-reduce:transition-none active:brightness-95"
-                aria-label="자녀 정보 수정"
-              >
-                <span className="flex size-10 items-center justify-center rounded-w-pill bg-indigo-50 dark:bg-indigo-900/20">
-                  <Icon name="edit" className="text-[20px] text-indigo-500" aria-hidden="true" />
-                </span>
-                <span className="text-card-meta font-semibold text-wtext-2 dark:text-rink-100">전체 수정</span>
               </button>
             </div>
-          </section>
 
-          {/* ========== 팀 소속 상태 카드 (설계서 §4.5 + BR-12) ========== */}
+            {/* 이름 */}
+            <h2 className="text-[22px] font-extrabold tracking-[-0.01em] text-white">{fullName}</h2>
+
+            {/* 칩들 */}
+            <div className="flex items-center gap-2 mt-3 flex-wrap justify-center">
+              <span className="text-card-meta text-white/70 tabular-nums">{age}세</span>
+              <span className="text-card-meta font-bold px-2.5 py-1 rounded-w-pill bg-white/15 text-white">
+                {isChildAge ? 'CHILD' : 'TEEN'}
+              </span>
+              {child.isActive ? (
+                <span className="inline-flex items-center gap-1 text-card-meta font-semibold px-2.5 py-1 rounded-w-pill bg-mint-500/20 text-white">
+                  <span className="inline-block size-1.5 rounded-w-pill bg-mint-500" aria-hidden="true" />
+                  활동중
+                </span>
+              ) : (
+                <span className="text-card-meta font-semibold px-2.5 py-1 rounded-w-pill bg-white/15 text-white/80">
+                  비활동
+                </span>
+              )}
+            </div>
+            {child.clubName && (
+              <p className="text-card-meta text-white/70 mt-2 flex items-center gap-1 truncate max-w-full">
+                <Icon name="sports_hockey" className="text-card-body text-white/80 shrink-0" aria-hidden="true" />
+                <span className="truncate">{child.clubName}</span>
+              </p>
+            )}
+          </div>
+
+          {/* 빠른 이동 타일 (4열) — navy 위 반투명 타일 */}
+          <div className="mt-6 grid grid-cols-4 gap-2">
+            <button
+              type="button"
+              onClick={() => navigate(`/children/${childId}/class-history`)}
+              className="flex flex-col items-center gap-1.5 py-2.5 rounded-w-md bg-white/10 hover:bg-white/15 transition-colors motion-reduce:transition-none active:brightness-95"
+              aria-label="수업 이력 보기"
+            >
+              <Icon name="event_note" className="text-[20px] text-white" aria-hidden="true" />
+              <span className="text-card-meta font-semibold text-white">수업 이력</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate(`/children/${childId}/awards`)}
+              className="flex flex-col items-center gap-1.5 py-2.5 rounded-w-md bg-white/10 hover:bg-white/15 transition-colors motion-reduce:transition-none active:brightness-95"
+              aria-label="수상 이력 보기"
+            >
+              <Icon name="military_tech" className="text-[20px] text-white" aria-hidden="true" />
+              <span className="text-card-meta font-semibold text-white">수상 이력</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate(`/children/${childId}/profile-card`)}
+              className="flex flex-col items-center gap-1.5 py-2.5 rounded-w-md bg-white/10 hover:bg-white/15 transition-colors motion-reduce:transition-none active:brightness-95"
+              aria-label="선수 이력 카드 보기"
+            >
+              <Icon name="badge" className="text-[20px] text-white" aria-hidden="true" />
+              <span className="text-card-meta font-semibold text-white">선수 카드</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate(`/children/${childId}/edit`)}
+              className="flex flex-col items-center gap-1.5 py-2.5 rounded-w-md bg-white/10 hover:bg-white/15 transition-colors motion-reduce:transition-none active:brightness-95"
+              aria-label="자녀 정보 수정"
+            >
+              <Icon name="edit" className="text-[20px] text-white" aria-hidden="true" />
+              <span className="text-card-meta font-semibold text-white">전체 수정</span>
+            </button>
+          </div>
+        </section>
+
+        {/* 8px 회색 갭 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+        {/* ========== 팀 소속 상태 — flat 흰 섹션 (설계서 §4.5 + BR-12) ========== */}
+        <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6" aria-label="팀 소속 상태">
           <ApprovalStateCard
             state={child.approvalState}
             clubName={child.approvalClubName}
             rejectionReason={child.rejectionReason}
             onRetry={() => navigate(`/children/${childId}/edit`)}
           />
+        </section>
 
-          {/* ========== 기본 정보 섹션 ========== */}
-          <section className="bg-white dark:bg-rink-800 rounded-2xl border border-wline-2 dark:border-rink-700 shadow-sm p-4">
-            <h3 className="text-card-body font-bold text-wtext-1 dark:text-white mb-2 flex items-center gap-2">
-              <span className="flex size-7 items-center justify-center rounded-w-pill bg-ice-500/10 text-ice-500">
-                <Icon name="person" className="text-[16px]" aria-hidden="true" />
-              </span>
-              기본 정보
-            </h3>
+        {/* 8px 회색 갭 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
 
-            <div>
-              <InlineField
-                label="생년월일"
-                value={formatDate(child.birthDate)}
-                isEditing={false}
-                onEdit={() => {}}
-                onSave={() => {}}
-                onCancel={() => {}}
-                editValue=""
-                onEditChange={() => {}}
-                icon="cake"
-              />
+        {/* ========== 기본 정보 — flat 흰 섹션 ========== */}
+        <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6" aria-label="기본 정보">
+          <h3 className="mb-5 flex items-center gap-2 text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
+            <span className="flex size-7 items-center justify-center rounded-w-md bg-it-blue-50 dark:bg-it-blue-900/30">
+              <Icon name="person" className="text-[16px] text-it-blue-500" aria-hidden="true" />
+            </span>
+            기본 정보
+          </h3>
 
-              <div className="flex items-start justify-between gap-3 py-3">
-                <div className="flex items-center gap-2">
-                  <Icon name="wc" className="text-wtext-3 dark:text-rink-300 text-card-title shrink-0" aria-hidden="true" />
-                  <div>
-                    <p className="text-card-meta font-medium text-wtext-3 dark:text-rink-300 mb-0.5">성별</p>
-                    <p className="text-card-body font-medium text-wtext-1 dark:text-white">
-                      {child.gender === 'M' ? '남' : child.gender === 'F' ? '여' : '-'}
-                    </p>
-                  </div>
+          <div className="divide-y divide-it-line dark:divide-rink-700">
+            <InlineField
+              label="생년월일"
+              value={formatDate(child.birthDate)}
+              isEditing={false}
+              onEdit={() => {}}
+              onSave={() => {}}
+              onCancel={() => {}}
+              editValue=""
+              onEditChange={() => {}}
+              icon="cake"
+            />
+
+            <div className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
+              <div className="flex items-center gap-2">
+                <Icon name="wc" className="text-it-blue-500 text-card-title shrink-0" aria-hidden="true" />
+                <div>
+                  <p className="text-card-meta font-semibold text-it-ink-400 dark:text-wtext-4 mb-0.5">성별</p>
+                  <p className="text-card-body font-medium text-it-ink-800 dark:text-white">
+                    {child.gender === 'M' ? '남' : child.gender === 'F' ? '여' : '-'}
+                  </p>
                 </div>
               </div>
             </div>
-          </section>
+          </div>
+        </section>
 
-          {/* [제거 2026-06-17] 특이사항 섹션 삭제 (사용자 직접 지시) */}
+        {/* [제거 2026-06-17] 특이사항 섹션 삭제 (사용자 직접 지시) */}
+        {/* [제거 2026-05-12] 위험 영역(자녀 삭제) — 어드민 전용으로 이관 */}
 
-          {/* [제거 2026-05-12] 위험 영역(자녀 삭제) — 어드민 전용으로 이관 */}
-
-        </div>
+        <div className="h-6 bg-it-canvas dark:bg-puck" aria-hidden="true" />
       </main>
     </MobileContainer>
   );

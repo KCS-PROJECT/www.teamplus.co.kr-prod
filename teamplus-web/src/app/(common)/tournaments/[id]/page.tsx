@@ -340,9 +340,12 @@ export default function CommonTournamentDetailPage() {
     if (!tournament) return "recruiting";
     return mapTournamentUiStatus(
       tournament.status,
-      tournament.registrationDeadline,
+      tournament.endDate,
     );
   }, [tournament]);
+
+  // 종료/취소(또는 종료일 경과) 대회 — 수정 잠금 판정.
+  const isEnded = uiStatus === "completed" || uiStatus === "cancelled";
 
   const dDay = useMemo(
     () =>
@@ -355,13 +358,13 @@ export default function CommonTournamentDetailPage() {
   }
 
   // [수정 2026-05-15 T03 협업] tournament.location (신규 필드) 우선 사용.
-  // rink.location → rink.name → team.name → club.clubName 순으로 폴백.
+  // [2026-06-22] 장소 폴백은 venue/rink 만 사용 — team.name/club.clubName(팀·클럽명)이
+  //   장소 자리에 노출되던 버그 수정. 대회 전체 장소(venue?.name)를 우선 폴백에 포함.
   const location =
     tournament.location ??
+    tournament.venue?.name ??
     tournament.rink?.location ??
     tournament.rink?.name ??
-    tournament.team?.name ??
-    tournament.club?.clubName ??
     "장소 추후 안내";
   // [수정 2026-05-15] 참가비 표시 — 빈칸/0 은 "무료"로 명시.
   //  · feePerGame === null 또는 0 → "무료" (사용자가 참가금액 비워서 등록)
@@ -422,7 +425,7 @@ export default function CommonTournamentDetailPage() {
       {/* [수정 2026-05-30] 페이지 진입 stagger 애니메이션(globals.css 의 slideUp) 비활성화 — 사용자 요청.
           data-no-enter 마커로 `main:not([data-no-enter])` selector 에서 제외 → 상세 정보가
           하단→상단으로 올라오지 않고 즉시 고정 표시(화면 멈춤). 이 페이지에만 적용(전역 영향 0). */}
-      <main data-no-enter className="flex-1 min-h-0 overflow-y-auto bg-wbg dark:bg-puck">
+      <main data-no-enter className="flex-1 min-h-0 overflow-y-auto bg-it-canvas dark:bg-puck">
       {/* Hero */}
       <TournamentHeroSection
         title={tournament.name}
@@ -431,11 +434,13 @@ export default function CommonTournamentDetailPage() {
         endDate={tournament.endDate}
         status={uiStatus}
         dDay={dDay}
+        iceTheme
       />
 
       {/* [2026-06-05 1단계] Quick Action(규정/장소/상금) + 규정/장소/상금 카드 박스 삭제.
-          Info List 에서 모집마감/주최팀/방식/참가인원 행 삭제 — 대회기간/참가연령/장소/참가비만 유지. */}
-      <div className="mb-2 px-4 pt-3">
+          Info List 에서 모집마감/주최팀/방식/참가인원 행 삭제 — 대회기간/참가연령/장소/참가비만 유지.
+          ICETIMES flat — 흰 섹션 래퍼(카드 박스 제거, hairline 행). */}
+      <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 pt-3 pb-4">
         <InfoRow label="대회 기간" value={periodLabel} />
         <ParticipantTargetRow
           isManager={isManager}
@@ -449,39 +454,39 @@ export default function CommonTournamentDetailPage() {
         <InfoRow label="장소" value={location} />
         <InfoRow label="참가비" value={entryFee} />
         {tournament.description && (
-          <div className="mt-3 rounded-xl border border-wline-2 dark:border-rink-700 bg-wbg dark:bg-rink-900/40 px-3 py-3">
-            <p className="text-w-caption font-extrabold uppercase tracking-wider text-wtext-3 dark:text-wtext-4 mb-1.5">
+          <div className="mt-3 rounded-w-md bg-it-fill dark:bg-rink-900/40 px-3 py-3">
+            <p className="text-w-caption font-extrabold uppercase tracking-wider text-it-ink-400 dark:text-wtext-4 mb-1.5">
               대회 설명
             </p>
-            <p className="text-w-small leading-relaxed text-wtext-2 dark:text-rink-100 whitespace-pre-wrap">
+            <p className="text-w-small leading-relaxed text-it-ink-600 dark:text-rink-100 whitespace-pre-wrap">
               {tournament.description}
             </p>
           </div>
         )}
-      </div>
+      </section>
 
       {/* [2026-06-05 1단계] 규정 / 장소 / 상금 카드 박스 섹션 삭제. */}
 
       {/* [2026-06-08] 대진표/순위 탭 제거 — 경기일정(대회일정)만 표시. */}
       {tournament.matches.length > 0 && (
         <>
-          <div className="h-3 border-y border-wline-2 bg-wbg dark:border-rink-800 dark:bg-rink-900/50" />
-          <div className="bg-white dark:bg-rink-900">
+          <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+          <div className="bg-it-surface dark:bg-it-blue-950">
             <div className="flex items-center gap-1.5 px-4 pt-3 pb-2">
               <Icon
                 name="event_note"
-                className="text-w-body text-ice-500"
+                className="text-w-body text-it-blue-500"
                 aria-hidden="true"
               />
-              <h2 className="text-w-small font-bold text-wtext-1 dark:text-white">
+              <h2 className="text-w-small font-bold text-it-ink-800 dark:text-white">
                 {MESSAGES.tournament.tabs.schedule}
               </h2>
             </div>
-            <div className="h-px w-full bg-wline dark:bg-rink-700" />
+            <div className="h-px w-full bg-it-line dark:bg-rink-700" />
           </div>
 
-          <div className="px-0 py-4">
-            <ScheduleTab matches={tournament.matches} />
+          <div className="bg-it-surface dark:bg-it-blue-950 px-0 py-4">
+            <ScheduleTab matches={tournament.matches} hostTeamName={tournament.team?.name} />
           </div>
         </>
       )}
@@ -519,18 +524,18 @@ export default function CommonTournamentDetailPage() {
         const statusBadge = (s: string) => {
           if (s === "PAID")
             return (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 text-w-caption font-bold">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-w-pill bg-mint/10 text-mint dark:bg-mint/15 text-w-caption font-bold">
                 결제완료
               </span>
             );
           if (s === "PENDING")
             return (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-ice-500/15 text-ice-500 text-w-caption font-bold">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-w-pill bg-it-blue-500/15 text-it-blue-500 text-w-caption font-bold">
                 결제 대기
               </span>
             );
           return (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-100 text-w-caption font-bold">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-w-pill bg-it-fill text-it-ink-600 dark:bg-rink-700 dark:text-rink-100 text-w-caption font-bold">
               정산 전
             </span>
           );
@@ -538,26 +543,28 @@ export default function CommonTournamentDetailPage() {
         return (
           <section
             aria-label="참가선수목록"
-            className="border-t border-wline-2 bg-wbg px-4 py-4 dark:border-rink-800 dark:bg-rink-900/40"
+            className="mt-2 bg-it-surface px-4 py-4 dark:bg-it-blue-950"
           >
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="flex items-center gap-1.5 text-card-title font-extrabold text-wtext-1 dark:text-white">
-                <Icon name="groups" className="text-[18px] text-wtext-3" aria-hidden="true" />
+              <h2 className="flex items-center gap-1.5 text-card-title font-extrabold text-it-ink-800 dark:text-white">
+                <Icon name="groups" className="text-[18px] text-it-ink-400" aria-hidden="true" />
                 참가선수목록
               </h2>
-              <span className="text-w-caption font-bold text-wtext-3 dark:text-rink-300">
+              <span className="text-w-caption font-bold text-it-ink-400 dark:text-rink-300">
                 결제 필요 {needPay}명 / 총 {regRows.length}명
               </span>
             </div>
-            <div className="flex flex-col gap-2">
-              {regRows.map((r) => (
+            <div className="flex flex-col">
+              {regRows.map((r, idx) => (
                 <div
                   key={r.id}
-                  className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-wline-2 dark:border-rink-700 bg-white dark:bg-rink-800"
+                  className={`flex items-center justify-between gap-3 py-3.5 ${
+                    idx !== regRows.length - 1 ? "border-b border-it-line dark:border-rink-700" : ""
+                  }`}
                 >
                   <span className="flex items-center gap-2 min-w-0">
-                    <Icon name="person" className="text-[20px] text-wtext-3" aria-hidden="true" />
-                    <span className="font-bold text-wtext-1 dark:text-white truncate">
+                    <Icon name="person" className="text-[20px] text-it-ink-400" aria-hidden="true" />
+                    <span className="font-bold text-it-ink-800 dark:text-white truncate">
                       {nameOf(r)}
                     </span>
                   </span>
@@ -570,7 +577,7 @@ export default function CommonTournamentDetailPage() {
                 variant="outline"
                 size="lg"
                 fullWidth
-                className="col-span-2 border-red-500 text-red-600 hover:border-red-500 hover:bg-red-50 dark:border-red-500 dark:text-red-400 dark:hover:bg-red-950/30"
+                className="col-span-2 border-it-red-500 text-it-red-500 hover:border-it-red-500 hover:bg-it-red-50 dark:border-it-red-500 dark:text-it-red-300 dark:hover:bg-it-red-500/10"
                 disabled={pendingCount === 0}
                 onClick={() => void handleCancelSettlement()}
               >
@@ -605,13 +612,13 @@ export default function CommonTournamentDetailPage() {
         return (
           <section
             aria-label="자녀별 결제내역"
-            className="border-t border-wline-2 bg-wbg px-4 py-4 dark:border-rink-800 dark:bg-rink-900/40"
+            className="mt-2 bg-it-surface px-4 py-4 dark:bg-it-blue-950"
           >
-            <h2 className="mb-3 flex items-center gap-1.5 text-card-title font-extrabold text-wtext-1 dark:text-white">
-              <Icon name="receipt_long" className="text-[18px] text-wtext-3" aria-hidden="true" />
+            <h2 className="mb-3 flex items-center gap-1.5 text-card-title font-extrabold text-it-ink-800 dark:text-white">
+              <Icon name="receipt_long" className="text-[18px] text-it-ink-400" aria-hidden="true" />
               자녀별 결제내역
             </h2>
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col">
               {visibleRows.map((c) => (
                 <ChildPaymentRow
                   key={c.registrationId}
@@ -620,6 +627,7 @@ export default function CommonTournamentDetailPage() {
                   paymentStatus={c.paymentStatus}
                   orderNumber={c.orderNumber}
                   cancelling={cancellingId === c.id}
+                  iceTheme
                   onPay={() => {
                     const params = new URLSearchParams({
                       orderNumber: c.orderNumber!,
@@ -640,7 +648,7 @@ export default function CommonTournamentDetailPage() {
 
       {/* [수정 2026-05-30] 하단 액션 바를 viewport fixed → body(콘텐츠) 흐름 맨 아래로 이동 — 사용자 요청.
           화면에 고정하지 않고 스크롤 끝에서 자연 노출. */}
-      <div className="w-full min-w-0 px-4 pt-2 pb-6">
+      <div className="w-full min-w-0 bg-it-surface px-4 pt-4 pb-6 dark:bg-it-blue-950 mt-2">
         {isManager ? (
           // [수정 2026-05-30] 대회 수정(파랑) : 삭제 = 6 : 4 — 수정 버튼을 더 크게(col-span-3 : col-span-2).
           //   공통 Button 통일 + 아이콘 제거. 위계: 삭제=outline(red) / 수정=primary(ice solid).
@@ -651,7 +659,7 @@ export default function CommonTournamentDetailPage() {
               variant="outline"
               size="lg"
               fullWidth
-              className="col-span-2 border-red-500 text-red-600 hover:border-red-500 hover:bg-red-50 dark:border-red-500 dark:text-red-400 dark:hover:bg-red-950/30"
+              className="col-span-2 border-it-red-500 text-it-red-500 hover:border-it-red-500 hover:bg-it-red-50 dark:border-it-red-500 dark:text-it-red-300 dark:hover:bg-it-red-500/10"
               onClick={async () => {
                 const ok = await modal.confirm({
                   title: "대회 삭제",
@@ -673,15 +681,21 @@ export default function CommonTournamentDetailPage() {
             >
               대회 삭제
             </Button>
-            <Button
-              variant="primary"
-              size="lg"
-              fullWidth
-              className="col-span-3"
-              onClick={() => navigate(`/tournaments/create?edit=${id}`)}
-            >
-              대회 수정
-            </Button>
+            {isEnded ? (
+              <div className="col-span-3 flex items-center justify-center rounded-w-md border border-it-line-strong dark:border-rink-700 px-2 text-center text-w-caption font-semibold text-it-ink-500 dark:text-rink-300">
+                {MESSAGES.tournament.endedNoEdit}
+              </div>
+            ) : (
+              <Button
+                variant="primary"
+                size="lg"
+                fullWidth
+                className="col-span-3"
+                onClick={() => navigate(`/tournaments/create?edit=${id}`)}
+              >
+                대회 수정
+              </Button>
+            )}
             </div>
           </>
         ) : (
@@ -698,7 +712,7 @@ export default function CommonTournamentDetailPage() {
                 );
               }
             }}
-            className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-ice-500 text-w-body-lg font-bold text-white shadow-md hover:bg-ice-700 disabled:opacity-50"
+            className="flex h-14 w-full items-center justify-center gap-2 rounded-w-md bg-it-blue-500 text-w-body-lg font-bold text-white shadow-sh-1 hover:bg-it-blue-600 active:brightness-95 transition-colors motion-reduce:transition-none disabled:opacity-50"
             disabled={uiStatus === "completed" || uiStatus === "cancelled"}
           >
             <span>
@@ -732,7 +746,7 @@ export default function CommonTournamentDetailPage() {
           onClose={() => setPlayersSheetOpen(false)}
           title={MESSAGES.tournament.participantListTitle}
         >
-          <p className="pb-2 pt-1 text-w-small font-bold text-wtext-3 dark:text-rink-300">
+          <p className="pb-2 pt-1 text-w-small font-bold text-it-ink-500 dark:text-rink-300">
             {MESSAGES.tournament.participantTargetCount(
               participantNames.length || participantCount,
             )}
@@ -741,14 +755,14 @@ export default function CommonTournamentDetailPage() {
             {participantNames.map((name, i) => (
               <li
                 key={`${name}-${i}`}
-                className="flex items-center gap-2 rounded-xl border border-wline-2 bg-wbg px-3 py-2.5 dark:border-rink-700 dark:bg-rink-900/40"
+                className="flex items-center gap-2 rounded-w-md bg-it-fill px-3 py-2.5 dark:bg-rink-900/40"
               >
                 <Icon
                   name="person"
-                  className="text-[20px] text-wtext-3"
+                  className="text-[20px] text-it-ink-400"
                   aria-hidden="true"
                 />
-                <span className="text-w-small font-medium text-wtext-1 dark:text-white">
+                <span className="text-w-small font-medium text-it-ink-800 dark:text-white">
                   {name}
                 </span>
               </li>
@@ -819,7 +833,7 @@ function SettlementModal({
       }
     >
       <label className="flex flex-col gap-1.5">
-        <span className="text-w-caption font-bold text-wtext-2 dark:text-rink-100">
+        <span className="text-w-caption font-bold text-it-ink-600 dark:text-rink-100">
           {MESSAGES.tournament.settleFeeLabel}
         </span>
         <input
@@ -831,30 +845,30 @@ function SettlementModal({
           onChange={(e) => onFeeChange(e.target.value.replace(/[^0-9]/g, ""))}
           placeholder={MESSAGES.tournament.settleFeePlaceholder}
           aria-label={MESSAGES.tournament.settleFeeLabel}
-          className="h-11 w-full rounded-xl border-none bg-wline-2 px-3 text-w-body font-num tabular-nums text-wtext-1 placeholder:text-wtext-3 focus:bg-white focus:outline-none focus:ring-2 focus:ring-ice-500/30 dark:bg-rink-800 dark:text-white dark:focus:bg-rink-800"
+          className="h-11 w-full rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill px-3 text-w-body font-num tabular-nums text-it-ink-800 placeholder:text-it-ink-400 focus:border-it-blue-500 focus:bg-it-surface focus:outline-none dark:border-rink-700 dark:bg-rink-800 dark:text-white dark:focus:bg-rink-800"
         />
       </label>
 
-      <div className="mt-4 rounded-xl bg-ice-500/[0.06] px-3.5 py-3 dark:bg-ice-500/10">
+      <div className="mt-4 rounded-w-md bg-it-blue-50 px-3.5 py-3 dark:bg-it-blue-500/10">
         <div className="flex items-center justify-between">
-          <span className="text-w-small font-bold text-wtext-2 dark:text-rink-100">
+          <span className="text-w-small font-bold text-it-ink-600 dark:text-rink-100">
             {targetCount === null
               ? MESSAGES.common.loading
               : MESSAGES.tournament.settleTargetCount(count)}
           </span>
         </div>
         <div className="mt-2 flex items-center justify-between">
-          <span className="text-w-small font-bold text-wtext-2 dark:text-rink-100">
+          <span className="text-w-small font-bold text-it-ink-600 dark:text-rink-100">
             {MESSAGES.tournament.settleTotalLabel}
           </span>
-          <span className="text-w-body font-extrabold text-ice-500 tabular-nums">
+          <span className="text-w-body font-extrabold text-it-blue-500 tabular-nums">
             {new Intl.NumberFormat("ko-KR").format(total)}원
           </span>
         </div>
       </div>
 
       {targetCount !== null && count < 1 && (
-        <p className="mt-3 text-w-caption font-medium text-error">
+        <p className="mt-3 text-w-caption font-medium text-it-red-500">
           {MESSAGES.tournament.settleNoTarget}
         </p>
       )}
@@ -867,11 +881,11 @@ function SettlementModal({
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="grid grid-cols-[25%_1fr] gap-x-4 border-t border-wline py-4 first:border-t-0 dark:border-rink-700">
-      <p className="text-w-small font-medium text-wtext-3 dark:text-rink-300">
+    <div className="grid grid-cols-[25%_1fr] gap-x-4 border-t border-it-line py-4 first:border-t-0 dark:border-rink-700">
+      <p className="text-w-small font-medium text-it-ink-500 dark:text-rink-300">
         {label}
       </p>
-      <p className="text-w-small font-medium text-wtext-1 dark:text-rink-100">
+      <p className="text-w-small font-medium text-it-ink-800 dark:text-rink-100">
         {value}
       </p>
     </div>
@@ -905,7 +919,7 @@ function ParticipantTargetRow({
   onViewList: () => void;
 }) {
   const labelCell = (
-    <p className="text-w-small font-medium text-wtext-3 dark:text-rink-300">
+    <p className="text-w-small font-medium text-it-ink-500 dark:text-rink-300">
       참가 대상
     </p>
   );
@@ -914,22 +928,22 @@ function ParticipantTargetRow({
   if (!isManager) {
     if (names.length === 0) {
       return (
-        <div className="grid grid-cols-[25%_1fr] gap-x-4 border-t border-wline py-4 dark:border-rink-700">
+        <div className="grid grid-cols-[25%_1fr] gap-x-4 border-t border-it-line py-4 dark:border-rink-700">
           {labelCell}
-          <p className="text-w-small font-medium text-wtext-1 dark:text-rink-100">
+          <p className="text-w-small font-medium text-it-ink-800 dark:text-rink-100">
             {fallbackLabel}
           </p>
         </div>
       );
     }
     return (
-      <div className="grid grid-cols-[25%_1fr] gap-x-4 border-t border-wline py-4 dark:border-rink-700">
+      <div className="grid grid-cols-[25%_1fr] gap-x-4 border-t border-it-line py-4 dark:border-rink-700">
         {labelCell}
-        <p className="flex items-center gap-1.5 text-w-small font-bold text-wtext-1 dark:text-rink-100">
+        <p className="flex items-center gap-1.5 text-w-small font-bold text-it-ink-800 dark:text-rink-100">
           <Icon
             name="check_circle"
             filled
-            className="shrink-0 text-[18px] text-ice-500"
+            className="shrink-0 text-[18px] text-it-blue-500"
             aria-hidden="true"
           />
           {MESSAGES.tournament.participantParentNotice(names.join(" · "))}
@@ -945,9 +959,9 @@ function ParticipantTargetRow({
         ? MESSAGES.tournament.participantTargetCount(totalCount)
         : fallbackLabel;
     return (
-      <div className="grid grid-cols-[25%_1fr] gap-x-4 border-t border-wline py-4 dark:border-rink-700">
+      <div className="grid grid-cols-[25%_1fr] gap-x-4 border-t border-it-line py-4 dark:border-rink-700">
         {labelCell}
-        <p className="text-w-small font-medium text-wtext-1 dark:text-rink-100">
+        <p className="text-w-small font-medium text-it-ink-800 dark:text-rink-100">
           {value}
         </p>
       </div>
@@ -958,10 +972,10 @@ function ParticipantTargetRow({
   const overflow = names.length - inline.length;
 
   return (
-    <div className="grid grid-cols-[25%_1fr] gap-x-4 border-t border-wline py-4 dark:border-rink-700">
+    <div className="grid grid-cols-[25%_1fr] gap-x-4 border-t border-it-line py-4 dark:border-rink-700">
       {labelCell}
       <div className="flex flex-col gap-1.5">
-        <p className="text-w-small font-medium text-wtext-1 dark:text-rink-100">
+        <p className="text-w-small font-medium text-it-ink-800 dark:text-rink-100">
           <span>{inline.join(" · ")}</span>
           {overflow > 0 && (
             <>
@@ -969,7 +983,7 @@ function ParticipantTargetRow({
               <button
                 type="button"
                 onClick={onShowAll}
-                className="font-bold text-ice-500 hover:text-ice-700"
+                className="font-bold text-it-blue-500 hover:text-it-blue-600"
               >
                 {MESSAGES.tournament.participantMore(overflow)}
               </button>
@@ -979,7 +993,7 @@ function ParticipantTargetRow({
         <button
           type="button"
           onClick={onViewList}
-          className="inline-flex w-fit items-center gap-0.5 text-w-caption font-bold text-ice-500 hover:text-ice-700"
+          className="inline-flex w-fit items-center gap-0.5 text-w-caption font-bold text-it-blue-500 hover:text-it-blue-600"
         >
           <Icon name="groups" className="text-[16px]" aria-hidden="true" />
           {MESSAGES.tournament.participantViewList}
@@ -991,55 +1005,67 @@ function ParticipantTargetRow({
 
 // [2026-06-08] TabButton / RankingTab 제거 — 대진표/순위 탭 삭제, 경기일정만 표시.
 
-function ScheduleTab({ matches }: { matches: MatchSummary[] }) {
+function ScheduleTab({
+  matches,
+  hostTeamName,
+}: {
+  matches: MatchSummary[];
+  /** 대회 주최 팀명 — 경기에 홈팀이 직접 연결돼 있지 않을 때 홈 자리에 표시(폴백). */
+  hostTeamName?: string | null;
+}) {
   if (matches.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center px-4 py-12 text-wtext-3">
+      <div className="flex flex-col items-center justify-center px-4 py-12 text-it-ink-400">
         <Icon name="event_busy" className="mb-2 text-4xl" />
         <p className="text-w-small">등록된 경기가 없습니다</p>
       </div>
     );
   }
   return (
-    <div className="space-y-3 px-4">
-      {matches.map((m) => {
+    <div className="flex flex-col px-4">
+      {matches.map((m, idx) => {
         const dt = new Date(m.scheduledAt);
         const dateStr = `${dt.getMonth() + 1}.${String(dt.getDate()).padStart(2, "0")}`;
         const timeStr = `${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`;
-        const isCompleted = m.status === "completed";
+        // 경기 시각이 지났는데 아직 scheduled 면 종료로 보정(status 자동 전이가 없음).
+        const isPast = !Number.isNaN(dt.getTime()) && dt.getTime() < Date.now();
+        const effStatus = m.status === "scheduled" && isPast ? "completed" : m.status;
+        const isCompleted = effStatus === "completed";
         return (
           <div
             key={m.id}
-            className="rounded-xl border border-wline bg-white p-4 dark:border-rink-700 dark:bg-rink-800"
+            className={`py-4 ${
+              idx !== matches.length - 1 ? "border-b border-it-line dark:border-rink-700" : ""
+            }`}
           >
             <div className="mb-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Icon name="event" className="text-w-title text-wtext-3" />
-                <span className="text-w-small font-medium text-wtext-1 dark:text-white">
+                <Icon name="event" className="text-w-title text-it-ink-400" />
+                <span className="text-w-small font-medium text-it-ink-800 dark:text-white tabular-nums">
                   {dateStr} {timeStr}
                 </span>
               </div>
               <span
-                className={`rounded px-2 py-1 text-w-caption font-bold ${
+                className={`rounded-w-pill px-2 py-1 text-w-caption font-bold ${
                   isCompleted
-                    ? "bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-100"
-                    : "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300"
+                    ? "bg-it-fill text-it-ink-600 dark:bg-rink-700 dark:text-rink-100"
+                    : "bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-500/15 dark:text-it-blue-500"
                 }`}
               >
-                {MESSAGES.match.statusLabel[m.status] ?? m.status}
+                {MESSAGES.match.statusLabel[effStatus] ?? effStatus}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-w-small font-medium text-wtext-1 dark:text-white">
-                {m.homeTeam?.name ?? "우리 팀"}
+              <span className="text-w-body font-bold text-it-ink-800 dark:text-white">
+                {m.homeTeam?.name ?? hostTeamName ?? "우리 팀"}
               </span>
-              <span className="text-w-small font-bold text-wtext-3">VS</span>
-              <span className="text-w-small font-medium text-wtext-1 dark:text-white">
+              <span className="text-w-small font-bold text-it-ink-400">VS</span>
+              <span className="text-w-small font-medium text-it-ink-800 dark:text-white">
                 {/* [2026-06-05 3단계] 등록 팀(awayTeam) 없으면 상대팀 자유 텍스트(opponentName) 표시. */}
                 {m.awayTeam?.name ?? m.opponentName ?? "TBD"}
               </span>
             </div>
-            <div className="mt-2 flex items-center gap-1 text-w-caption text-wtext-3 dark:text-rink-300">
+            <div className="mt-2 flex items-center gap-1 text-w-caption text-it-ink-400 dark:text-rink-300">
               <Icon name="location_on" className="text-w-small" />
               <span>{m.rink?.name ?? m.venue?.name ?? "-"}</span>
             </div>

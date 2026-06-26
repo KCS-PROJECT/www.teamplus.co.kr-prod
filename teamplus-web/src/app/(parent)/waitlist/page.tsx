@@ -184,15 +184,15 @@ export default function WaitlistPage() {
     return (
       <MobileContainer hasBottomNav>
         <PageAppBar title="대기 현황" forceNative />
-        <main className="flex-1 flex flex-col items-center justify-center px-6 py-12 text-center gap-3">
-          <div className="w-16 h-16 rounded-w-pill bg-wline-2 dark:bg-rink-800 flex items-center justify-center">
+        <main className="flex-1 flex flex-col items-center justify-center bg-it-canvas dark:bg-puck px-6 py-12 text-center gap-3">
+          <div className="w-16 h-16 rounded-w-pill bg-it-fill dark:bg-rink-800 flex items-center justify-center">
             <Icon
               name="playlist_add_check"
-              className="text-3xl text-wtext-3 dark:text-rink-300"
+              className="text-3xl text-it-ink-400 dark:text-rink-300"
               aria-hidden="true"
             />
           </div>
-          <p className="text-card-body text-wtext-3 dark:text-rink-300">
+          <p className="text-card-body text-it-ink-500 dark:text-rink-300">
             {MESSAGES.dashboard.parentDashboard.noChildData}
           </p>
         </main>
@@ -208,11 +208,12 @@ export default function WaitlistPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title="대기 현황" forceNative />
 
-      {/* Child Filter Tabs — radiogroup */}
+      {/* Child Filter Tabs — [ICETIMES flat 2026-06-25] /report 자녀 세그먼트 패턴 정합.
+          회색 캔버스 위 it-fill 세그먼트, active 흰 surface. 대기 배지는 it-blue. */}
       {childrenData.length > 1 && (
-        <div className="px-4 pt-4">
+        <div className="bg-it-canvas dark:bg-puck px-4 pt-4">
           <div
-            className="flex gap-2 p-1 bg-wline-2 dark:bg-rink-800 rounded-lg"
+            className="flex gap-2 p-1 bg-it-fill dark:bg-rink-800 rounded-lg"
             role="tablist"
             aria-label="자녀 선택"
           >
@@ -228,17 +229,17 @@ export default function WaitlistPage() {
                   aria-label={`${child.childName}${activeCount > 0 ? ` 대기 ${activeCount}건` : ''}`}
                   onClick={() => setSelectedChildIndex(index)}
                   className={cn(
-                    'flex-1 relative min-h-[48px] py-2.5 px-3 text-card-body font-semibold rounded-lg transition-all motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40',
+                    'flex-1 relative min-h-[44px] py-2.5 px-3 text-[14.5px] font-bold rounded-[9px] transition-all motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40',
                     selectedChildIndex === index
-                      ? 'bg-white dark:bg-rink-700 shadow-sm text-wtext-1 dark:text-white'
-                      : 'text-wtext-3 dark:text-rink-300 hover:text-wtext-2 dark:hover:text-rink-100'
+                      ? 'bg-it-surface dark:bg-rink-700 shadow-sh-1 text-it-ink-900 dark:text-white'
+                      : 'text-it-ink-500 dark:text-rink-300 hover:text-it-ink-700 dark:hover:text-rink-100'
                   )}
                 >
                   {child.childName}
                   {activeCount > 0 && (
                     <span
                       aria-hidden="true"
-                      className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-w-pill bg-ice-500 text-white text-[10px] font-bold px-1 tabular-nums"
+                      className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-w-pill bg-it-blue-500 text-white text-[10px] font-bold px-1 tabular-nums"
                     >
                       {activeCount}
                     </span>
@@ -250,17 +251,20 @@ export default function WaitlistPage() {
         </div>
       )}
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto px-4 pt-4 pb-30 space-y-6">
-        {/* 대기 요약 Hero */}
+      {/* Main Content
+          [ICETIMES flat 재작업 2026-06-25] /report 와 동일 flat 언어 — main 은 회색 캔버스
+          (bg-it-canvas dark:bg-puck), 콘텐츠 블록은 각자 mt-2 흰 섹션(또는 navy 히어로)으로
+          쌓인다. 이전 px-4 space-y-6 + 카드 박스 → full-bleed flat 섹션 전환. 대기/승격 로직
+          동결, 비주얼만. WaitlistStatus 는 iceTheme variant 로 카드 박스 → flat 타일 정합. */}
+      <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck !pb-8">
+        {/* 대기 요약 navy 히어로 (ROLLOUT §3 히어로 — 요약은 navy 밴드 full-bleed) */}
         {(waitingItems.length > 0 || promotedItems.length > 0) && (
           <section
-            className="rounded-2xl bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 p-5 shadow-sm"
+            className="mt-2 bg-it-blue-800 dark:bg-it-blue-950 px-5 py-6"
             aria-label="대기 현황 요약"
           >
             <div className="flex items-center gap-2 mb-4">
-              <span className="w-1 h-4 bg-ice-500 rounded-w-pill" aria-hidden="true" />
-              <span className="text-[11px] font-bold uppercase tracking-wider text-wtext-3 dark:text-rink-300">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-white/70">
                 {selectedChild.childName} 자녀
               </span>
             </div>
@@ -268,32 +272,32 @@ export default function WaitlistPage() {
               {/* 등록 가능 */}
               <div className="flex items-center gap-3">
                 <div
-                  className="w-11 h-11 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center shrink-0"
+                  className="w-11 h-11 rounded-xl bg-white/10 flex items-center justify-center shrink-0"
                   aria-hidden="true"
                 >
-                  <Icon name="celebration" className="text-emerald-600 dark:text-emerald-400 text-xl" />
+                  <Icon name="celebration" className="text-white text-xl" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[11px] font-medium text-wtext-3 dark:text-rink-300">등록 가능</p>
-                  <p className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 tabular-nums leading-tight">
+                  <p className="text-[11px] font-medium text-white/70">등록 가능</p>
+                  <p className="text-2xl font-extrabold font-num text-white tabular-nums leading-tight">
                     {promotedItems.length}
-                    <span className="text-card-body font-bold text-wtext-3 dark:text-rink-300 ml-0.5">건</span>
+                    <span className="text-card-body font-bold text-white/70 ml-0.5">건</span>
                   </p>
                 </div>
               </div>
               {/* 대기 중 */}
               <div className="flex items-center gap-3">
                 <div
-                  className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center shrink-0"
+                  className="w-11 h-11 rounded-xl bg-white/10 flex items-center justify-center shrink-0"
                   aria-hidden="true"
                 >
-                  <Icon name="hourglass_top" className="text-ice-500 text-xl" />
+                  <Icon name="hourglass_top" className="text-white text-xl" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[11px] font-medium text-wtext-3 dark:text-rink-300">대기 중</p>
-                  <p className="text-2xl font-extrabold text-ice-500 tabular-nums leading-tight">
+                  <p className="text-[11px] font-medium text-white/70">대기 중</p>
+                  <p className="text-2xl font-extrabold font-num text-white tabular-nums leading-tight">
                     {waitingItems.length}
-                    <span className="text-card-body font-bold text-wtext-3 dark:text-rink-300 ml-0.5">건</span>
+                    <span className="text-card-body font-bold text-white/70 ml-0.5">건</span>
                   </p>
                 </div>
               </div>
@@ -301,17 +305,17 @@ export default function WaitlistPage() {
           </section>
         )}
 
-        {/* Promoted (Action Required) Section */}
+        {/* Promoted (Action Required) Section — flat 흰 섹션 */}
         {promotedItems.length > 0 && (
-          <section>
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-5">
             <div className="flex items-center gap-2 mb-3">
-              <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center">
-                <Icon name="celebration" className="text-emerald-600 text-card-emphasis" aria-hidden="true" />
+              <div className="w-8 h-8 rounded-[9px] bg-it-blue-50 dark:bg-it-blue-500/15 flex items-center justify-center">
+                <Icon name="celebration" className="text-it-blue-500 dark:text-it-blue-300 text-card-emphasis" aria-hidden="true" />
               </div>
-              <h2 className="text-card-emphasis font-bold text-wtext-1 dark:text-white">
+              <h2 className="text-[15px] font-extrabold text-it-ink-900 dark:text-white">
                 등록 가능
               </h2>
-              <span className="ml-auto text-card-meta font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1 rounded-w-pill">
+              <span className="ml-auto text-card-meta font-bold text-it-blue-600 dark:text-it-blue-300 bg-it-blue-50 dark:bg-it-blue-500/15 px-2 py-1 rounded-w-pill">
                 {promotedItems.length}건
               </span>
             </div>
@@ -324,23 +328,24 @@ export default function WaitlistPage() {
                   onConfirm={handleConfirm(item.id)}
                   onCancel={handleCancel(item.id)}
                   loading={loadingId === item.id}
+                  iceTheme
                 />
               ))}
             </div>
           </section>
         )}
 
-        {/* Waiting Section */}
-        <section>
+        {/* Waiting Section — flat 흰 섹션 */}
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-5">
           <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
-              <Icon name="hourglass_top" className="text-ice-500 text-card-emphasis" aria-hidden="true" />
+            <div className="w-8 h-8 rounded-[9px] bg-it-blue-50 dark:bg-it-blue-500/15 flex items-center justify-center">
+              <Icon name="hourglass_top" className="text-it-blue-500 dark:text-it-blue-300 text-card-emphasis" aria-hidden="true" />
             </div>
-            <h2 className="text-card-emphasis font-bold text-wtext-1 dark:text-white">
+            <h2 className="text-[15px] font-extrabold text-it-ink-900 dark:text-white">
               대기 중
             </h2>
             {waitingItems.length > 0 && (
-              <span className="ml-auto text-card-meta font-medium text-wtext-3 dark:text-rink-300">
+              <span className="ml-auto text-card-meta font-medium text-it-ink-500 dark:text-rink-300">
                 {waitingItems.length}건
               </span>
             )}
@@ -354,19 +359,20 @@ export default function WaitlistPage() {
                   info={item}
                   onCancel={handleCancel(item.id)}
                   loading={loadingId === item.id}
+                  iceTheme
                 />
               ))}
             </div>
           ) : activeItems.length === 0 ? (
-            <div className="bg-white dark:bg-rink-800 rounded-xl p-8 border border-wline-2 dark:border-rink-700 flex flex-col items-center justify-center gap-2">
-              <div className="w-12 h-12 rounded-w-pill bg-wline-2 dark:bg-rink-700 flex items-center justify-center">
+            <div className="flex flex-col items-center justify-center gap-2 py-8">
+              <div className="w-12 h-12 rounded-w-pill bg-it-fill dark:bg-rink-700 flex items-center justify-center">
                 <Icon
                   name="playlist_add_check"
-                  className="text-2xl text-wtext-3 dark:text-rink-300"
+                  className="text-2xl text-it-ink-400 dark:text-rink-300"
                   aria-hidden="true"
                 />
               </div>
-              <p className="text-card-body text-wtext-3 dark:text-rink-300 text-center">
+              <p className="text-card-body text-it-ink-500 dark:text-rink-300 text-center">
                 {MESSAGES.empty('대기 항목')}
               </p>
             </div>
@@ -381,69 +387,71 @@ export default function WaitlistPage() {
               · 하단: dotted 종료 + 취소 가능 chip 으로 시퀀스 종결감
               · WAITLIST_GUIDE_ITEMS 상수: step·tone·accent·headline·detail 5필드 */}
         <section
-          className="rounded-2xl border border-wline-2 dark:border-rink-700 bg-wsurface dark:bg-rink-800 px-5 pt-5 pb-4 overflow-hidden"
+          className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-5 overflow-hidden"
           aria-labelledby="waitlist-guide-title"
         >
           {/* Eyebrow + 헤드라인 — 박스 헤더 제거하고 본문에 직접 위치 */}
           <div className="flex items-center gap-2 mb-1">
             <span
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-w-pill bg-ice-50 dark:bg-ice-500/15 text-[10.5px] font-bold uppercase tracking-[0.08em] text-ice-600 dark:text-ice-400"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-w-pill bg-it-blue-50 dark:bg-it-blue-500/15 text-[10.5px] font-bold uppercase tracking-[0.08em] text-it-blue-600 dark:text-it-blue-300"
               aria-hidden="true"
             >
-              <span className="w-1 h-1 rounded-full bg-ice-500" />
+              <span className="w-1 h-1 rounded-full bg-it-blue-500" />
               Waitlist Guide
             </span>
           </div>
           <h3
             id="waitlist-guide-title"
-            className="text-card-section font-extrabold text-wtext-1 dark:text-white tracking-[-0.015em]"
+            className="text-card-section font-extrabold text-it-ink-900 dark:text-white tracking-[-0.015em]"
           >
             대기 신청 전 꼭 확인해주세요
           </h3>
-          <p className="mt-1 text-card-meta text-wtext-3 dark:text-rink-300 leading-[1.55]">
+          <p className="mt-1 text-card-meta text-it-ink-500 dark:text-rink-300 leading-[1.55]">
             세 가지 핵심 규칙만 기억하면 됩니다.
           </p>
 
-          {/* Chapter Index Track — 좌측 dotted line + 인덱스 칩, 우측 카드 */}
+          {/* Chapter Index Track — 좌측 dotted line + 인덱스 칩, 우측 인셋 타일.
+              [ICETIMES flat 2026-06-25] spotlight 강조는 ROLLOUT §3 "화면당 1개" red 강조
+              규칙(24시간 룰)으로 it-red, 일반 단계는 it-fill 인셋. */}
           <ol className="relative mt-5 space-y-3">
             {/* 세로 dotted track — 좌측 26px 지점에 위치, 첫 칩 중심 ~ 마지막 칩 중심 */}
             <span
               aria-hidden="true"
-              className="absolute left-[15px] top-6 bottom-6 w-px border-l border-dashed border-wline dark:border-rink-700"
+              className="absolute left-[15px] top-6 bottom-6 w-px border-l border-dashed border-it-line-strong dark:border-it-blue-900"
             />
             {WAITLIST_GUIDE_ITEMS.map((row) => {
               const isSpotlight = row.tone === 'spotlight';
               return (
                 <li key={row.step} className="relative flex gap-3.5 items-stretch">
-                  {/* 인덱스 칩 — 단계 번호 (01·02·03), spotlight 는 ice-500 채움 */}
+                  {/* 인덱스 칩 — 단계 번호 (01·02·03), spotlight 는 it-red 채움 */}
                   <div className="shrink-0 relative z-10 flex justify-center w-[32px]">
                     <span
                       aria-hidden="true"
                       className={cn(
                         'flex items-center justify-center w-8 h-8 rounded-w-pill text-[11px] font-extrabold tabular-nums tracking-tight border transition-colors motion-reduce:transition-none',
                         isSpotlight
-                          ? 'bg-ice-500 border-ice-500 text-white shadow-sh-blue'
-                          : 'bg-wsurface dark:bg-rink-800 border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-200'
+                          ? 'bg-it-red-500 border-it-red-500 text-white'
+                          : 'bg-it-surface dark:bg-it-blue-950 border-it-line-strong dark:border-it-blue-900 text-it-ink-700 dark:text-rink-200'
                       )}
                     >
                       {row.step}
                     </span>
                   </div>
 
-                  {/* 카드 — spotlight 는 ice-50 배경 + 좌측 ice-500 accent bar */}
+                  {/* 인셋 타일 — spotlight 는 it-red 소프트 배경 + 좌측 it-red accent bar */}
                   <div
                     className={cn(
-                      'flex-1 min-w-0 relative rounded-w-lg border transition-colors motion-reduce:transition-none',
+                      'flex-1 min-w-0 relative rounded-w-lg transition-colors motion-reduce:transition-none',
                       isSpotlight
-                        ? 'bg-ice-50 dark:bg-ice-500/10 border-ice-500/30 dark:border-ice-500/40 pl-4 pr-3.5 py-3'
-                        : 'bg-wsurface dark:bg-rink-800 border-wline-2 dark:border-rink-700 px-3.5 py-3'
+                        ? 'bg-it-red-500/8 dark:bg-it-red-500/12 border border-it-red-500/30 dark:border-it-red-500/40 pl-4 pr-3.5 py-3'
+                        : 'bg-it-fill dark:bg-it-blue-900 px-3.5 py-3'
                     )}
                   >
                     {/* spotlight 좌측 accent bar */}
                     {isSpotlight && (
                       <span
                         aria-hidden="true"
-                        className="absolute left-0 top-2 bottom-2 w-1 rounded-r-w-pill bg-ice-500"
+                        className="absolute left-0 top-2 bottom-2 w-1 rounded-r-w-pill bg-it-red-500"
                       />
                     )}
 
@@ -454,8 +462,8 @@ export default function WaitlistPage() {
                         className={cn(
                           'text-[18px]',
                           isSpotlight
-                            ? 'text-ice-600 dark:text-ice-400'
-                            : 'text-wtext-3 dark:text-rink-300'
+                            ? 'text-it-red-500 dark:text-it-red-300'
+                            : 'text-it-ink-500 dark:text-rink-300'
                         )}
                         aria-hidden="true"
                       />
@@ -463,8 +471,8 @@ export default function WaitlistPage() {
                         className={cn(
                           'text-[10.5px] font-bold uppercase tracking-[0.06em]',
                           isSpotlight
-                            ? 'text-ice-600 dark:text-ice-400'
-                            : 'text-wtext-3 dark:text-rink-300'
+                            ? 'text-it-red-500 dark:text-it-red-300'
+                            : 'text-it-ink-500 dark:text-rink-300'
                         )}
                       >
                         {row.accent}
@@ -472,10 +480,10 @@ export default function WaitlistPage() {
                     </div>
 
                     {/* headline + detail */}
-                    <p className="text-card-body font-bold text-wtext-1 dark:text-white tracking-[-0.01em]">
+                    <p className="text-card-body font-bold text-it-ink-900 dark:text-white tracking-[-0.01em]">
                       {row.headline}
                     </p>
-                    <p className="mt-1 text-card-meta text-wtext-3 dark:text-rink-300 leading-[1.6]">
+                    <p className="mt-1 text-card-meta text-it-ink-500 dark:text-rink-300 leading-[1.6]">
                       {row.detail}
                     </p>
                   </div>
@@ -488,9 +496,9 @@ export default function WaitlistPage() {
           <div className="mt-4 pl-[12px] flex items-center gap-2">
             <span
               aria-hidden="true"
-              className="w-[7px] h-[7px] rounded-full bg-wline dark:bg-rink-700 ring-2 ring-wsurface dark:ring-rink-800"
+              className="w-[7px] h-[7px] rounded-full bg-it-line-strong dark:bg-it-blue-900 ring-2 ring-it-surface dark:ring-it-blue-950"
             />
-            <p className="text-card-meta text-wtext-3 dark:text-rink-300">
+            <p className="text-card-meta text-it-ink-500 dark:text-rink-300">
               궁금한 점은 클럽 운영진에게 문의해주세요.
             </p>
           </div>
