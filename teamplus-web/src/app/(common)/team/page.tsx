@@ -320,7 +320,7 @@ export default function TeamListPage() {
         <section
           className={cn(
             canManage && !isParent
-              ? 'bg-it-surface dark:bg-it-blue-950 px-5 pt-4 pb-30'
+              ? 'pt-2 pb-30'
               : 'px-4 pb-30 pt-4',
           )}
           aria-label="팀 목록"
@@ -453,16 +453,15 @@ export default function TeamListPage() {
             </div>
           ) : canManage && !isParent ? (
             // ─── 04c 감독 팀 관리 카드 (코치/감독/관리자 전용) ───
-            <ul className="flex flex-col gap-3" aria-label="팀 카드 목록">
+            <ul className="flex flex-col gap-2" aria-label="팀 카드 목록">
               {filteredTeams.map((team) => (
-                <li key={team.id} className="flex flex-col gap-2">
+                <li key={team.id} className="bg-it-surface dark:bg-it-blue-950">
                   <CoachTeamManageCard
                     team={team}
                     onClick={() => handleCardClick(team.id, team.myApprovalStatus)}
                     onPendingClick={() => handlePendingClick(team.id, team.myApprovalStatus)}
                   />
-                  {/* [추가 2026-05-11] 하위그룹 카드 — 각 팀 아래에 노출.
-                      예) 블리자드 → 블랙 블리자드(U12), 화이트 블리자드(U11) */}
+                  {/* 하위그룹 — 같은 팀 흰 블록 안에 hairline 으로 흡수 */}
                   <TeamSubGroupsCard teamId={team.id} teamName={team.name ?? '팀'} />
                 </li>
               ))}
@@ -541,17 +540,6 @@ function CoachTeamManageCard({
     : '#2f5fff'; // ice-500 폴백
   const logoSrc = resolveImageSrc(team.logoUrl);
   const memberCount = team._count?.roster ?? 0;
-  const division = team.division ?? null;
-
-  // 04c 메타 필드 매핑 (백엔드 합성 → 프론트 표시)
-  // 모든 필드가 실데이터 — 하드코딩 폴백 제거 (2026-05-09 Phase B)
-  const gender = (team.genderType ?? 'MIX') as 'MIX' | 'M' | 'F';
-  const record = {
-    w: team.seasonWins ?? 0,
-    l: team.seasonLosses ?? 0,
-    d: team.seasonDraws ?? 0,
-  };
-  // [제거 2026-06-17] recentAttendanceRate 표시 제거 — 카드 하단 출석률 블록 삭제.
   const pending = team.pendingApplications ?? 0;
 
   // 다음 일정 — 백엔드 nextEvent 응답을 04c 시각 모델로 변환
@@ -567,7 +555,7 @@ function CoachTeamManageCard({
     : null;
 
   return (
-    <article className="relative overflow-hidden rounded-w-md bg-it-surface dark:bg-it-blue-950 border-[1.5px] border-it-line dark:border-it-blue-900">
+    <article className="relative">
       <button
         type="button"
         onClick={onClick}
@@ -595,31 +583,16 @@ function CoachTeamManageCard({
           )}
 
           <div className="flex-1 min-w-0">
-            {/* 팀명 + age + gender — 팀명 17px (참고 동일) */}
-            <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+            {/* 팀명 — 17px (참고 동일) */}
+            <div className="flex items-center gap-1.5 mb-1 min-w-0">
               <h3 className="text-card-emphasis font-extrabold text-it-ink-800 dark:text-white tracking-[-0.03em] truncate">
                 {team.name ?? '팀명 미지정'}
               </h3>
-              {/* [수정 2026-05-11] 팀(상위) 의 division 은 "전체" 로 통일 표기.
-                  연령별 구분(U8~U12)은 TeamGroup(블랙 블리자드 U12 등) 레벨에서 노출 */}
-              <span
-                className="px-1.5 py-0.5 rounded text-card-meta font-extrabold tracking-[0.02em] shrink-0"
-                style={{ color: teamColor, backgroundColor: `${teamColor}18` }}
-              >
-                전체
-              </span>
-              <span className="px-1.5 py-0.5 rounded bg-it-line dark:bg-it-blue-900 text-card-meta font-extrabold tracking-[0.04em] text-it-ink-500 dark:text-it-ink-400 shrink-0">
-                {gender}
-              </span>
             </div>
-            {/* 인원수 + 승무패 record */}
+            {/* 인원수 (실데이터) */}
             <div className="flex items-center gap-1.5 text-card-meta text-it-ink-500 dark:text-it-ink-400 min-w-0">
               <span className="font-bold text-it-ink-700 dark:text-it-ink-400 tabular-nums shrink-0">
                 {memberCount}명
-              </span>
-              <span aria-hidden="true">·</span>
-              <span className="tabular-nums">
-                {record.w}승 {record.l}패 {record.d}무
               </span>
             </div>
             {/* [추가 2026-05-21 시나리오 B] 팀 코드 — 회원가입 시 입력한 식별 코드.
@@ -650,22 +623,12 @@ function CoachTeamManageCard({
         {/* 다음 일정 인라인 배너 — 예정된 일정이 있을 때만 표시.
             [2026-06-17] '예정된 일정 없음' 빈 상태 박스 삭제 (사용자 직접 지시) — next 없으면 배너 자체 미렌더. */}
         {next && (
-          <div
-            className={cn(
-              'mx-4 mb-3 px-3 py-2.5 rounded-xl flex items-center gap-2.5 border',
-              !next.urgent && 'bg-it-fill dark:bg-it-blue-900/40 border-it-line dark:border-it-blue-900',
-            )}
-            style={
-              next.urgent
-                ? { borderColor: `${teamColor}30`, backgroundColor: `${teamColor}10` }
-                : undefined
-            }
-          >
+          <div className="border-t border-it-line dark:border-it-blue-900 px-4 py-3 flex items-center gap-2.5">
             {/* 좌측 8x8 캘린더 박스 */}
             <div
               className={cn(
                 'w-8 h-8 rounded-[10px] flex items-center justify-center shrink-0',
-                !next.urgent && 'bg-it-surface dark:bg-it-blue-950 border border-it-line dark:border-it-blue-900 text-it-ink-700 dark:text-it-ink-400',
+                !next.urgent && 'bg-it-fill dark:bg-it-blue-900/40 text-it-ink-700 dark:text-it-ink-400',
               )}
               style={
                 next.urgent
@@ -720,7 +683,7 @@ function CoachTeamManageCard({
       {/* [수정 2026-05-21 v3] pending coach 에게는 footer 자체 미노출 — 본인 승인되지
           않은 상태에서 다른 가입 신청 정보를 알 필요 없음 (옵션 B 진입 차단 정책과 정렬). */}
       {pending > 0 && team.myApprovalStatus !== 'pending' && (
-        <div className="border-t border-it-line dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-900/40 px-4 py-2.5 flex items-center gap-2">
+        <div className="border-t border-it-line dark:border-it-blue-900 px-4 py-3 flex items-center gap-2">
           <span
             className="w-6 h-6 rounded-w-pill bg-flame-100 dark:bg-flame-500/15 text-flame-500 inline-flex items-center justify-center text-card-meta font-extrabold shrink-0"
             aria-hidden="true"
@@ -793,7 +756,7 @@ function TeamSubGroupsCard({ teamId, teamName }: { teamId: string; teamName: str
   return (
     <section
       aria-label={`${teamName} 하위그룹`}
-      className="rounded-[14px] border border-it-line dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-900/40 px-3 py-2.5"
+      className="border-t border-it-line dark:border-it-blue-900 px-4 pt-3 pb-1"
     >
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-1.5">
@@ -819,20 +782,23 @@ function TeamSubGroupsCard({ teamId, teamName }: { teamId: string; teamName: str
         </button>
       </div>
 
-      <ul className="grid grid-cols-2 gap-1.5" role="list">
-        {groups.map((g) => (
+      <ul className="flex flex-col" role="list">
+        {groups.map((g, gi) => (
           <li key={g.id}>
             <button
               type="button"
               onClick={() => navigate(`/team/${teamId}/groups/${g.id}/edit`)}
-              className="w-full h-full rounded-[10px] border border-it-line dark:border-it-blue-900 bg-it-surface dark:bg-it-blue-950 px-2.5 py-2 text-left flex items-center gap-2 hover:border-it-blue-500 hover:bg-it-blue-500/[0.04] transition-colors motion-reduce:transition-none active:brightness-95"
+              className={cn(
+                'w-full py-2.5 text-left flex items-center gap-2.5 active:brightness-95',
+                gi !== groups.length - 1 && 'border-b border-it-line dark:border-it-blue-900',
+              )}
               aria-label={`${g.name} 그룹 상세`}
             >
               <span
-                className="shrink-0 w-7 h-7 rounded-[8px] bg-it-blue-500/10 text-it-blue-500 inline-flex items-center justify-center"
+                className="shrink-0 w-8 h-8 rounded-w-md bg-it-blue-500/10 text-it-blue-500 inline-flex items-center justify-center"
                 aria-hidden="true"
               >
-                <Icon name="groups" className="text-[14px]" />
+                <Icon name="groups" className="text-[15px]" />
               </span>
               <span className="flex-1 min-w-0">
                 <span className="block text-card-meta font-extrabold text-it-ink-800 dark:text-white tracking-[-0.02em] truncate">
@@ -845,6 +811,11 @@ function TeamSubGroupsCard({ teamId, teamName }: { teamId: string; teamName: str
                   · {g._count?.members ?? 0}명
                 </span>
               </span>
+              <Icon
+                name="chevron_right"
+                className="shrink-0 text-[20px] text-it-ink-400 dark:text-it-ink-400"
+                aria-hidden="true"
+              />
             </button>
           </li>
         ))}

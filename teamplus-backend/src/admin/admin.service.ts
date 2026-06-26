@@ -1921,19 +1921,22 @@ export class AdminService {
    * [신규 2026-05-15] 감독(DIRECTOR) 결제 요약 — director-payments 페이지용.
    *
    * 동작:
-   *  - DIRECTOR/ACADEMY_DIRECTOR 가 운영하는 팀(teams.coachId=self) 만 집계.
+   *  - DIRECTOR/ACADEMY_DIRECTOR 가 운영하는 팀만 집계 (TeamMember 가입 자격 기준 SoT).
    *  - ADMIN/SYSTEM/OPER 는 전체 활성 팀 집계 (admin 화면 호환).
-   *  - 각 팀별 결제완료/미납 금액·인원, 정산 예정(approved 상태 settlements) 합산.
+   *  - 각 팀별 결제완료/미납 금액·인원: 선불(enrollment) + 후불(이번 달 MonthlyPostpaidBillingLine) 합산.
+   *  - 정산 예정(pending/processing settlements) 합산.
+   *  - 미수금 회원 목록(unpaidMembers) 반환 — 선불 미납 + 후불 pending.
    *  - 운영 팀이 0개면 빈 결과 반환 (요청 자체는 정상 200).
    *
-   * 응답 스키마 (프론트엔드 PaymentSummary + TeamPayment[] 호환):
+   * 응답 스키마 (프론트엔드 PaymentSummary + TeamPayment[] + UnpaidMember[] 호환):
    * {
    *   summary: {
    *     totalRevenue, unpaid, pendingSettlement,
    *     completedCount, unpaidCount,
    *   },
    *   teams: [{ id, teamName, totalMembers, paidMembers, unpaidMembers,
-   *              totalAmount, paidAmount, feeType, billingTiming }]
+   *              totalAmount, paidAmount, unpaidAmount, feeType, billingTiming }],
+   *   unpaidMembers: [{ id, name, teamName, amount, billingType }]
    * }
    */
   async getDirectorPaymentSummary(currentUser: {
@@ -1944,17 +1947,38 @@ export class AdminService {
     const isAdmin =
       currentUser.userType === "ADMIN" || isAdminRole(currentUser.userType);
 
-    const teams = isAdmin
-      ? await this.prisma.team.findMany({
-          where: { isActive: true },
-          select: { id: true, name: true, defaultBillingTiming: true },
-          orderBy: { name: "asc" },
-        })
-      : await this.prisma.team.findMany({
-          where: { coachId: currentUser.id, isActive: true },
-          select: { id: true, name: true, defaultBillingTiming: true },
-          orderBy: { name: "asc" },
-        });
+    let teams: {
+      id: string;
+      name: string;
+      defaultBillingTiming: string;
+    }[];
+    if (isAdmin) {
+      teams = await this.prisma.team.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true, defaultBillingTiming: true },
+        orderBy: { name: "asc" },
+      });
+    } else {
+      // SoT: teams.service.getManagedTeams 와 동일 — TeamMember(approved, role∈관리역할)
+      //  만으로 운영 팀 결정. 레거시 Team.coachId(historical FK 오염) 의존 제거.
+      const memberTeams = await this.prisma.teamMember.findMany({
+        where: {
+          userId: currentUser.id,
+          approvalStatus: "approved",
+          leftAt: null,
+          roleInTeam: { in: ["HEAD_COACH", "COACH", "MANAGER"] },
+        },
+        select: { teamId: true },
+      });
+      const managedTeamIds = [...new Set(memberTeams.map((m) => m.teamId))];
+      teams = managedTeamIds.length
+        ? await this.prisma.team.findMany({
+            where: { id: { in: managedTeamIds }, isActive: true },
+            select: { id: true, name: true, defaultBillingTiming: true },
+            orderBy: { name: "asc" },
+          })
+        : [];
+    }
 
     if (teams.length === 0) {
       return {
@@ -1966,6 +1990,7 @@ export class AdminService {
           unpaidCount: 0,
         },
         teams: [],
+        unpaidMembers: [],
       };
     }
 
@@ -1992,6 +2017,7 @@ export class AdminService {
       select: {
         id: true,
         teamId: true,
+        billingMode: true,
         products: {
           select: { price: true, feeType: true, billingTiming: true },
           orderBy: { price: "asc" },
@@ -2021,6 +2047,72 @@ export class AdminService {
           },
         })
       : [];
+
+    // 후불(POSTPAID) — 이번 달(KST) MonthlyPostpaidBillingLine 을 내 팀 수업 기준으로 집계.
+    //  조인 경로: BillingLine.billingId → MonthlyPostpaidBilling.classId → Class.teamId ∈ teamIds.
+    const nowKst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const currentYearMonth = `${nowKst.getUTCFullYear()}-${String(
+      nowKst.getUTCMonth() + 1,
+    ).padStart(2, "0")}`;
+
+    const postpaidLines = await this.prisma.monthlyPostpaidBillingLine.findMany({
+      where: {
+        paymentStatus: { in: ["paid", "pending"] },
+        billing: {
+          yearMonth: currentYearMonth,
+          class: { teamId: { in: teamIds } },
+        },
+      },
+      select: {
+        userId: true,
+        amount: true,
+        paymentStatus: true,
+        billing: { select: { class: { select: { teamId: true } } } },
+      },
+    });
+
+    // 미수금 회원 누적용 — 이름은 이후 user.findMany 1회로 일괄 매핑(N+1 방지).
+    const unpaidMembersRaw: {
+      id: string;
+      teamId: string;
+      amount: number;
+      billingType: "PREPAID" | "POSTPAID";
+    }[] = [];
+
+    const postpaidByTeam = new Map<
+      string,
+      {
+        paidAmount: number;
+        paidMembers: number;
+        unpaidAmount: number;
+        unpaidMembers: number;
+      }
+    >();
+    for (const line of postpaidLines) {
+      const teamId = line.billing?.class?.teamId;
+      if (!teamId) continue;
+      const acc = postpaidByTeam.get(teamId) ?? {
+        paidAmount: 0,
+        paidMembers: 0,
+        unpaidAmount: 0,
+        unpaidMembers: 0,
+      };
+      const amount = Number(line.amount ?? 0);
+      if (line.paymentStatus === "paid") {
+        acc.paidAmount += amount;
+        acc.paidMembers += 1;
+      } else {
+        acc.unpaidAmount += amount;
+        acc.unpaidMembers += 1;
+        unpaidMembersRaw.push({
+          id: line.userId,
+          teamId,
+          amount,
+          billingType: "POSTPAID",
+        });
+      }
+      postpaidByTeam.set(teamId, acc);
+    }
 
     // childId 기반 최신 enrollment 매핑
     const enrollMap = new Map<string, (typeof enrollments)[number]>();
@@ -2066,6 +2158,10 @@ export class AdminService {
         "PREPAID";
 
       for (const c of teamClasses) {
+        // POSTPAID 수업은 후불 루프(MonthlyPostpaidBillingLine)에서만 집계 →
+        //  선불 루프 제외로 이중 카운트 방지. POSTPAID 수업도 ClassRegistration 을
+        //  생성하므로 billingMode 필터 없이는 같은 회원이 양쪽에서 잡힌다.
+        if (c.billingMode === "POSTPAID") continue;
         const fallbackPrice = c.products[0]?.price
           ? Number(c.products[0].price)
           : 0;
@@ -2076,16 +2172,36 @@ export class AdminService {
           if (paid) {
             paidMembers += 1;
             paidAmount +=
-              e?.payment?.amount ??
-              (e?.product?.price ? Number(e.product.price) : fallbackPrice);
+              e?.payment?.amount != null
+                ? Number(e.payment.amount)
+                : e?.product?.price
+                  ? Number(e.product.price)
+                  : fallbackPrice;
           } else {
-            unpaidMembers += 1;
-            unpaidAmount += e?.product?.price
+            const memberUnpaid = e?.product?.price
               ? Number(e.product.price)
               : fallbackPrice;
+            unpaidMembers += 1;
+            unpaidAmount += memberUnpaid;
+            unpaidMembersRaw.push({
+              id: reg.userId,
+              teamId: team.id,
+              amount: memberUnpaid,
+              billingType: "PREPAID",
+            });
           }
         }
       }
+
+      // 후불(POSTPAID) 합산 — 이번 달 청구 라인 기준.
+      const pp = postpaidByTeam.get(team.id);
+      if (pp) {
+        paidMembers += pp.paidMembers;
+        paidAmount += pp.paidAmount;
+        unpaidMembers += pp.unpaidMembers;
+        unpaidAmount += pp.unpaidAmount;
+      }
+
       return {
         id: team.id,
         teamName: team.name,
@@ -2111,6 +2227,30 @@ export class AdminService {
       0,
     );
 
+    // 미수금 회원 이름 일괄 조회 (N+1 방지). id 는 모두 자녀 User.id.
+    const teamNameById = new Map(teams.map((t) => [t.id, t.name]));
+    const unpaidUserIds = [...new Set(unpaidMembersRaw.map((m) => m.id))];
+    const unpaidUsers = unpaidUserIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: unpaidUserIds } },
+          select: { id: true, firstName: true, lastName: true },
+        })
+      : [];
+    const userNameById = new Map(
+      unpaidUsers.map((u) => [
+        u.id,
+        `${u.lastName ?? ""}${u.firstName ?? ""}`.trim(),
+      ]),
+    );
+
+    const unpaidMembers = unpaidMembersRaw.map((m) => ({
+      id: m.id,
+      name: userNameById.get(m.id) || "회원",
+      teamName: teamNameById.get(m.teamId) ?? "",
+      amount: m.amount,
+      billingType: m.billingType,
+    }));
+
     return {
       summary: {
         totalRevenue,
@@ -2120,6 +2260,7 @@ export class AdminService {
         unpaidCount,
       },
       teams: teamResults,
+      unpaidMembers,
     };
   }
 

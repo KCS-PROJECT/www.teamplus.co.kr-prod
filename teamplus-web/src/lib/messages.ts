@@ -448,7 +448,7 @@ export const MESSAGES = {
     formEditTitle: "약력 수정",
     bioLabel: "약력",
     bioPlaceholder:
-      "소속팀을 입력하고 줄바꿈으로 경력·자격·수상 내역을 자유롭게 작성해주세요.",
+      "소속·경력·자격·수상 내역을 자유롭게 작성해주세요.",
     organizationLabel: "소속 기관",
     organizationPlaceholder: "예: 서울 아이스하키 클럽",
     roleLabel: "직책",

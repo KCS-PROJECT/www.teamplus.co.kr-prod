@@ -4,41 +4,18 @@ import { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@/components/ui/Icon';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
-import { NavLink } from '@/components/ui/NavLink';
 import { usePageReady } from '@/hooks/usePageReady';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { cn } from '@/lib/utils';
+import { MESSAGES } from '@/lib/messages';
+import {
+  getDirectorPaymentSummary,
+  type DirectorPaymentSummary as PaymentSummary,
+  type DirectorTeamPayment as TeamPayment,
+  type DirectorUnpaidMember as UnpaidMember,
+} from '@/services/payment';
 
 // ─── Types ──────────────────────────────────────────
-interface PaymentSummary {
-  totalRevenue: number;
-  unpaid: number;
-  pendingSettlement: number;
-  completedCount: number;
-  unpaidCount: number;
-}
-
-interface TeamPayment {
-  id: string;
-  teamName: string;
-  totalMembers: number;
-  paidMembers: number;
-  unpaidMembers: number;
-  totalAmount: number;
-  paidAmount: number;
-  feeType: 'MONTHLY_FIXED' | 'PER_SESSION';
-  billingTiming: 'PREPAID' | 'POSTPAID';
-}
-
-interface UnpaidMember {
-  id: string;
-  name: string;
-  teamName: string;
-  amount: number;
-  dueDate: string;
-  overdueDays: number;
-}
-
 type TabType = 'overview' | 'teams' | 'unpaid';
 
 // [삭제 2026-04-29] FALLBACK_SUMMARY / FALLBACK_TEAMS / FALLBACK_UNPAID — 사용자 요청으로 mock 제거
@@ -77,7 +54,13 @@ export default function DirectorPaymentsPage() {
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
-      // [수정 2026-04-29] mock fallback 제거 — 실제 API 미구현 시 빈 상태.
+      const result = await getDirectorPaymentSummary();
+      setSummary(result.summary);
+      setTeams(result.teams);
+      setUnpaidMembers(result.unpaidMembers);
+    } catch (err) {
+      // 서비스가 실패 시 빈 구조를 반환하므로 여기는 예기치 못한 예외 방어용 — 빈 상태 유지.
+      console.error(MESSAGES.common.loadFailed, err);
       setSummary({ totalRevenue: 0, unpaid: 0, pendingSettlement: 0, completedCount: 0, unpaidCount: 0 });
       setTeams([]);
       setUnpaidMembers([]);
@@ -173,33 +156,6 @@ export default function DirectorPaymentsPage() {
               </strong>
             </span>
           </div>
-        </section>
-
-        {/* flat 섹션 사이 8px 회색 갭 */}
-        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
-
-        {/* ── 결제권 관리 진입 — flat 흰 섹션 (카드 박스 제거) ──────────────────── */}
-        <section className="bg-it-surface px-5 py-4 dark:bg-rink-800">
-          <NavLink
-            href="/director-credits"
-            className="group flex items-center gap-3 transition-colors motion-reduce:transition-none active:brightness-[0.98] focus-visible:outline-none focus-visible:rounded-w-md focus-visible:ring-2 focus-visible:ring-it-blue-500/30"
-            aria-label="결제권 관리 페이지로 이동"
-          >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-w-md bg-it-blue-50 dark:bg-it-blue-900/30">
-              <Icon name="account_balance_wallet" className="text-[20px] text-it-blue-500" aria-hidden="true" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[15px] font-bold text-it-ink-800 dark:text-white">결제권 관리</p>
-              <p className="mt-0.5 text-[13px] font-medium text-it-ink-500 dark:text-wtext-4">
-                회원별 잔액 · 충전 · 차감 내역
-              </p>
-            </div>
-            <Icon
-              name="chevron_right"
-              className="shrink-0 text-it-ink-400 transition-transform motion-reduce:transition-none group-hover:translate-x-0.5"
-              aria-hidden="true"
-            />
-          </NavLink>
         </section>
 
         {/* flat 섹션 사이 8px 회색 갭 */}
@@ -440,6 +396,7 @@ function TeamPaymentCard({ team, index = 0, last }: { team: TeamPayment; index?:
 }
 
 function UnpaidMemberCard({ member, index = 0, last }: { member: UnpaidMember; index?: number; last?: boolean }) {
+  const billingLabel = member.billingType === 'POSTPAID' ? '후결제' : '선결제';
   return (
     <article
       className={cn(
@@ -459,18 +416,11 @@ function UnpaidMemberCard({ member, index = 0, last }: { member: UnpaidMember; i
           <div className="min-w-0 flex-1">
             <h4 className="text-[15px] font-bold text-it-ink-800 truncate dark:text-white">{member.name}</h4>
             <p className="text-[12.5px] text-it-ink-500 truncate dark:text-wtext-4">{member.teamName}</p>
-            <p className="mt-1.5">
-              {member.overdueDays > 0 ? (
-                <span className="inline-flex items-center gap-1 rounded-w-sm bg-it-red-50 px-1.5 py-0.5 text-[11.5px] font-bold text-it-red-600 dark:bg-it-red-500/15">
-                  <Icon name="schedule" className="text-[11px]" aria-hidden="true" />
-                  {member.overdueDays}일 연체
-                </span>
-              ) : (
-                <span className="text-[11.5px] text-it-ink-500 dark:text-wtext-4">
-                  마감 {member.dueDate.slice(5).replace('-', '/')}
-                </span>
-              )}
-            </p>
+            <div className="mt-1.5">
+              <span className="inline-flex items-center rounded-w-sm bg-it-blue-50 px-1.5 py-0.5 text-[11.5px] font-bold text-it-blue-600 dark:bg-it-blue-900/30 dark:text-it-blue-300">
+                {billingLabel}
+              </span>
+            </div>
           </div>
         </div>
         <div className="shrink-0 text-right">
