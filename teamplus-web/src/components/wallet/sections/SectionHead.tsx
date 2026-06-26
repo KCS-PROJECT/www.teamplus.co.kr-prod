@@ -84,7 +84,8 @@ export function SectionHead({
                 : 'font-semibold text-[11px] sm:text-[12px]',
           )}
         >
-          {action}
+          {/* iceTheme 경로는 chevron 아이콘을 별도로 붙이므로, action 텍스트 끝의 꺾쇠(›/>/» 등)는 제거해 중복 표시 방지. */}
+          {iceTheme ? action.replace(/\s*[›>＞»→]\s*$/u, '') : action}
           {iceTheme && (
             <Icon
               name="chevron_right"
