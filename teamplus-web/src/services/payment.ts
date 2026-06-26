@@ -41,6 +41,36 @@ interface BackendCreditStats {
   allCredits: number;
 }
 
+/** 백엔드 /admin/director-payment-summary 원본 응답 (선택 필드·느슨한 타입) */
+interface BackendDirectorPaymentSummary {
+  summary?: {
+    totalRevenue?: number | string;
+    unpaid?: number | string;
+    pendingSettlement?: number | string;
+    completedCount?: number | string;
+    unpaidCount?: number | string;
+  };
+  teams?: Array<{
+    id?: string;
+    teamName?: string;
+    totalMembers?: number | string;
+    paidMembers?: number | string;
+    unpaidMembers?: number | string;
+    totalAmount?: number | string;
+    paidAmount?: number | string;
+    unpaidAmount?: number | string;
+    feeType?: string;
+    billingTiming?: string;
+  }>;
+  unpaidMembers?: Array<{
+    id?: string;
+    name?: string;
+    teamName?: string;
+    amount?: number | string;
+    billingType?: string;
+  }>;
+}
+
 /** 백엔드 /payments/my 응답 아이템 */
 interface BackendPaymentItem {
   id: string;
@@ -229,6 +259,115 @@ export async function getCreditStatus(): Promise<ApiResponse<GetCreditStatusResp
   };
 }
 
+// ============================================
+// 감독 결제 현황 (director-payments)
+// ============================================
+
+/** 감독 결제 요약 — totalRevenue/unpaid 는 선불+후불 합산 금액 */
+export interface DirectorPaymentSummary {
+  totalRevenue: number;
+  unpaid: number;
+  pendingSettlement: number;
+  completedCount: number;
+  unpaidCount: number;
+}
+
+/** 팀별 결제 현황 — unpaidMembers 는 미납 "인원 수"(카운트) */
+export interface DirectorTeamPayment {
+  id: string;
+  teamName: string;
+  totalMembers: number;
+  paidMembers: number;
+  unpaidMembers: number;
+  totalAmount: number;
+  paidAmount: number;
+  unpaidAmount: number;
+  feeType: 'MONTHLY_FIXED' | 'PER_SESSION';
+  billingTiming: 'PREPAID' | 'POSTPAID';
+}
+
+/** 미수금 회원 1건 — 최상위 목록 항목(인원 카운트인 팀별 unpaidMembers 와 의미 다름) */
+export interface DirectorUnpaidMember {
+  id: string;
+  name: string;
+  teamName: string;
+  amount: number;
+  billingType: 'PREPAID' | 'POSTPAID';
+}
+
+export interface DirectorPaymentSummaryResult {
+  summary: DirectorPaymentSummary;
+  teams: DirectorTeamPayment[];
+  unpaidMembers: DirectorUnpaidMember[];
+}
+
+/** unknown 값을 안전하게 숫자로 변환 (null/undefined/NaN → 0) */
+function toNumber(value: unknown): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** 빈 구조 — 응답 실패/빈 데이터 시 반환 (throw 금지) */
+function emptyDirectorPaymentSummary(): DirectorPaymentSummaryResult {
+  return {
+    summary: { totalRevenue: 0, unpaid: 0, pendingSettlement: 0, completedCount: 0, unpaidCount: 0 },
+    teams: [],
+    unpaidMembers: [],
+  };
+}
+
+/**
+ * 감독 결제 현황 조회 (`GET /admin/director-payment-summary`)
+ *
+ * 백엔드 키가 UI 타입과 거의 일치하지만, 안전을 위해 숫자 변환·기본값·유니온 정규화를 수행한다.
+ * 실패/빈 데이터 시 throw 하지 않고 빈 구조를 반환하여 화면이 빈 상태 UI 로 안전 렌더되도록 한다.
+ */
+export async function getDirectorPaymentSummary(): Promise<DirectorPaymentSummaryResult> {
+  const res = await api.get<BackendDirectorPaymentSummary>('/admin/director-payment-summary');
+
+  if (!res.success || !res.data) {
+    return emptyDirectorPaymentSummary();
+  }
+
+  const raw = res.data;
+  const s = raw.summary ?? {};
+
+  const summary: DirectorPaymentSummary = {
+    totalRevenue: toNumber(s.totalRevenue),
+    unpaid: toNumber(s.unpaid),
+    pendingSettlement: toNumber(s.pendingSettlement),
+    completedCount: toNumber(s.completedCount),
+    unpaidCount: toNumber(s.unpaidCount),
+  };
+
+  const teams: DirectorTeamPayment[] = Array.isArray(raw.teams)
+    ? raw.teams.map((t) => ({
+        id: String(t?.id ?? ''),
+        teamName: t?.teamName ?? '',
+        totalMembers: toNumber(t?.totalMembers),
+        paidMembers: toNumber(t?.paidMembers),
+        unpaidMembers: toNumber(t?.unpaidMembers),
+        totalAmount: toNumber(t?.totalAmount),
+        paidAmount: toNumber(t?.paidAmount),
+        unpaidAmount: toNumber(t?.unpaidAmount),
+        feeType: t?.feeType === 'PER_SESSION' ? 'PER_SESSION' : 'MONTHLY_FIXED',
+        billingTiming: t?.billingTiming === 'POSTPAID' ? 'POSTPAID' : 'PREPAID',
+      }))
+    : [];
+
+  const unpaidMembers: DirectorUnpaidMember[] = Array.isArray(raw.unpaidMembers)
+    ? raw.unpaidMembers.map((m) => ({
+        id: String(m?.id ?? ''),
+        name: m?.name ?? '',
+        teamName: m?.teamName ?? '',
+        amount: toNumber(m?.amount),
+        billingType: m?.billingType === 'POSTPAID' ? 'POSTPAID' : 'PREPAID',
+      }))
+    : [];
+
+  return { summary, teams, unpaidMembers };
+}
+
 /**
  * 영수증 상세 조회
  */
@@ -305,6 +444,7 @@ const paymentService = {
   getPaymentHistory,
   getUsageHistory,
   getCreditStatus,
+  getDirectorPaymentSummary,
   getReceipt,
   verifyPaymentCompletion,
   getReceiptDownloadUrl,

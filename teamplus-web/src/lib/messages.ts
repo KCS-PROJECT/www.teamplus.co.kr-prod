@@ -126,6 +126,10 @@ export const MESSAGES = {
     endConfirm: "신청취소",
     ending: "취소 중...",
     endSuccess: "신청이 취소되었습니다.",
+    // [선택형(BOTH)] 상세에서 선·후불 택1 — 후불은 즉시 등록, 선불은 결제 페이지로.
+    bothPrepaidCta: "선불로 결제하기",
+    bothPostpaidCta: "후불로 등록하기",
+    selectPlanRequired: "수강 플랜을 선택해주세요.",
     cancelConfirmMessage: (childName: string, className: string) =>
       `${childName} 의 ${className} 수업 결제가 취소됩니다.`,
     selectedChildHelper: "수강생을 변경하려면 이전 단계로 돌아가세요",
@@ -448,7 +452,7 @@ export const MESSAGES = {
     formEditTitle: "약력 수정",
     bioLabel: "약력",
     bioPlaceholder:
-      "소속팀을 입력하고 줄바꿈으로 경력·자격·수상 내역을 자유롭게 작성해주세요.",
+      "소속·경력·자격·수상 내역을 자유롭게 작성해주세요.",
     organizationLabel: "소속 기관",
     organizationPlaceholder: "예: 서울 아이스하키 클럽",
     roleLabel: "직책",
@@ -3126,6 +3130,13 @@ export const MESSAGES = {
       expired: "기간 만료",
       carriedOver: "전월 이월",
     },
+    // 정액(기간제) 수업권 — 회수 차감 없이 그 달 무제한, 만료일 게이트만.
+    periodPass: {
+      unlimited: "이 달 무제한",
+      expiresLabel: (date: string) => `만료 ${date}`,
+      noExpiry: "이 달 무제한",
+      sessionPassCount: (n: number) => `회차권 ${n}회`,
+    },
   },
   coachDashboard: {
     unpaidMembers: {
@@ -3228,12 +3239,38 @@ export const MESSAGES = {
     billingModeLabel: "결제 방식",
     billingModePrepaid: "선불",
     billingModePostpaid: "후불",
+    // [Phase B-6] 선택형(BOTH) — 학부모가 결제 시 선불/후불을 택1.
+    billingModeBoth: "선택형",
     billingModePrepaidHint: "수업료를 미리 결제합니다. (정기·번들)",
     billingModePostpaidHint: "월말 출석 횟수에 따라 후불 정산합니다.",
+    billingModeBothHint: "학부모가 결제 시 선불·후불 중 선택합니다.",
+    // [Phase B-6] 정액 패키지 강제 — 선불·선택형은 정액 패키지가 1개 이상 있어야 등록 가능.
+    validationMonthlyFixedRequired: "정액 패키지를 1개 이상 등록해주세요.",
+    // [Phase B-6] 감독 정액 직접 수정 안내(A안).
+    monthlyFixedAdjustHint: "매월 정액 금액은 감독이 직접 수정할 수 있어요.",
     // [Phase B-5] 가격 입력 라벨 (결제방식별) + 1회당 참고가
     singlePriceLabel: "1회 수업료",
     feePerSessionLabel: "1회 수업료",
+    // [Phase B-6] 선불 수업의 1회 수업료 — 참고용(판매 안 함) 라벨·안내.
+    singlePriceRefLabel: "1회 수업료 (참고·판매 안 함)",
+    singlePriceRefHint:
+      "선불 수업의 1회 수업료는 참고용이며, 결제는 정액 패키지로 진행됩니다.",
     singlePricePlaceholder: "1회 수업료를 입력하세요.",
+    // [Phase B-6] 선택형(BOTH) 결제 옵션 — 결제 방식 택1 UI.
+    timingSelectTitle: "결제 방식 선택",
+    timingPrepaidTitle: "선불 결제",
+    timingPrepaidDesc: "정액 패키지를 미리 결제해요.",
+    timingPostpaidTitle: "후불 정산",
+    timingPostpaidDesc: "출석한 만큼 매월 정산해요.",
+    selectPrepaidPackageTitle: "정액 패키지 선택",
+    // [선택형(BOTH)] 1회 수업료(참고) 블록 — 선불·후불 공통 노출.
+    singleFeeRefTitle: "1회 수업료",
+    singleFeeRefPrepaidNote: "참고가",
+    singleFeePostpaidNote: "출석 횟수만큼 월말 정산",
+    singleFeeAmount: (won: number) => `${Number(won).toLocaleString()}원`,
+    postpaidEnrollCta: "후불로 신청하기",
+    postpaidEnrolling: "신청 중…",
+    postpaidAmountNote: "결제 금액은 매월 출석 횟수에 따라 정산됩니다.",
     perSessionRef: (won: number) => `1회당 약 ${won.toLocaleString()}원`,
     // 결제일로부터 결제권이 만료되기까지의 유효기간 라벨 (1회권 포함 전 상품 공통).
     validDays: (days: number) => `유효 ${days}일`,

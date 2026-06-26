@@ -27,6 +27,18 @@ export function scheduleEligibleClassFilter(
           some: { childId: { in: childUserIds }, status: "approved" },
         },
       },
+      // BOTH 수업에서 후불 상품(billingTiming=POSTPAID)을 선택한 approved 자녀.
+      //   선불 paid 는 위 1번 branch 가 이미 커버하므로 후불(approved)만 추가.
+      {
+        billingMode: "BOTH",
+        enrollments: {
+          some: {
+            childId: { in: childUserIds },
+            status: "approved",
+            product: { billingTiming: "POSTPAID" },
+          },
+        },
+      },
     ],
   };
 }
@@ -55,10 +67,17 @@ export function scheduleVisibleChildIds(
   );
 }
 
-/** 후불(POSTPAID) 수업은 수업권 없이 출석 가능 → 항상 true. 선불은 유효 수업권 보유 시 true. */
+/**
+ * 후불(POSTPAID) 수업은 수업권 없이 출석 가능 → 항상 true. 선불은 유효 수업권 보유 시 true.
+ *
+ * BOTH 수업은 학생별로 선·후불이 갈리므로 `isStudentPostpaid`(그 학생이 선택한
+ * 상품의 billingTiming=POSTPAID 여부)을 전달한다. true 면 크레딧 없이도 출석 가능.
+ * 전용 PREPAID/POSTPAID 동작은 기본값(false)으로 불변.
+ */
 export function canCheckInForClass(
   billingMode: string | null | undefined,
   hasValidCredit: boolean,
+  isStudentPostpaid = false,
 ): boolean {
-  return billingMode === "POSTPAID" || hasValidCredit;
+  return billingMode === "POSTPAID" || isStudentPostpaid || hasValidCredit;
 }

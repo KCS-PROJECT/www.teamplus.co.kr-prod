@@ -96,6 +96,7 @@ export class PaymentCreateService {
           select: {
             id: true,
             endTime: true,
+            billingMode: true,
           },
         },
       },
@@ -103,6 +104,13 @@ export class PaymentCreateService {
 
     if (!product) {
       throw new NotFoundException("상품을 찾을 수 없습니다.");
+    }
+
+    // [B6] BOTH(선택형) 수업의 enrollment 는 반드시 선택 상품(classProductId)을 가져야 한다.
+    //   결제 경로는 항상 특정 상품(productId)로 진행되어 아래 enrollment 생성 시
+    //   classProductId: productId 로 채워지므로 불변식이 보장된다 — 누락 시 명시 차단.
+    if (product.class?.billingMode === "BOTH" && !productId) {
+      throw new BadRequestException("선불/후불을 선택해주세요.");
     }
 
     // 패키지 가드 — isActive=false(수동 비활성)만 차단. 수업 종료일 기반 차단은 폐기.

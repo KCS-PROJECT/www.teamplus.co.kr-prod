@@ -18,8 +18,8 @@ import {
 } from '@/components/classes/PackageManageSection';
 
 interface FeeEditCardProps {
-  /** 결제 방식 — 읽기전용 표시 + 선불일 때만 정기 패키지 영역 노출. */
-  billingMode: 'PREPAID' | 'POSTPAID';
+  /** 결제 방식 — 읽기전용 표시 + 선불·선택형일 때 정기 패키지 영역 노출. */
+  billingMode: 'PREPAID' | 'POSTPAID' | 'BOTH';
   /** 1회 수강료/수업료 단가(원) — PER_SESSION draft price. */
   perSessionPrice: number | '';
   onPerSessionPriceChange: (price: number | '') => void;
@@ -51,9 +51,22 @@ export function FeeEditCard({
   iceTheme = false,
 }: FeeEditCardProps) {
   const isPostpaid = billingMode === 'POSTPAID';
-  const priceLabel = isPostpaid
-    ? MESSAGES.classProduct.feePerSessionLabel
-    : MESSAGES.classProduct.singlePriceLabel;
+  const isPrepaidOnly = billingMode === 'PREPAID';
+  // [Phase B-6] 선불 전용은 1회 수업료가 참고용(판매 안 함), 후불·선택형은 판매되는 단가.
+  const priceLabel = isPrepaidOnly
+    ? MESSAGES.classProduct.singlePriceRefLabel
+    : MESSAGES.classProduct.feePerSessionLabel;
+  // [Phase B-6] 결제 방식 배지/안내 — 선불·후불·선택형 3종.
+  const billingModeText = isPostpaid
+    ? MESSAGES.classProduct.billingModePostpaid
+    : billingMode === 'BOTH'
+      ? MESSAGES.classProduct.billingModeBoth
+      : MESSAGES.classProduct.billingModePrepaid;
+  const billingModeHintText = isPostpaid
+    ? MESSAGES.classProduct.billingModePostpaidHint
+    : billingMode === 'BOTH'
+      ? MESSAGES.classProduct.billingModeBothHint
+      : MESSAGES.classProduct.billingModePrepaidHint;
 
   if (iceTheme) {
     // [ICETIMES] flat — 카드 박스(rounded/shadow/border) 제거. it-blue 세로바 헤더 + it-fill 입력.
@@ -72,15 +85,11 @@ export function FeeEditCard({
                 {MESSAGES.classProduct.billingModeLabel}
               </span>
               <span className="inline-flex items-center h-7 px-3 rounded-pill text-card-meta font-bold bg-it-blue-500/10 text-it-blue-500 dark:text-it-blue-300">
-                {isPostpaid
-                  ? MESSAGES.classProduct.billingModePostpaid
-                  : MESSAGES.classProduct.billingModePrepaid}
+                {billingModeText}
               </span>
             </div>
             <p className="text-card-caption text-it-ink-500 dark:text-rink-300">
-              {isPostpaid
-                ? MESSAGES.classProduct.billingModePostpaidHint
-                : MESSAGES.classProduct.billingModePrepaidHint}
+              {billingModeHintText}
             </p>
           </div>
 
@@ -157,15 +166,11 @@ export function FeeEditCard({
               {MESSAGES.classProduct.billingModeLabel}
             </span>
             <span className="inline-flex items-center h-7 px-3 rounded-pill text-card-meta font-bold bg-ice-500/10 text-ice-600 dark:text-ice-400">
-              {isPostpaid
-                ? MESSAGES.classProduct.billingModePostpaid
-                : MESSAGES.classProduct.billingModePrepaid}
+              {billingModeText}
             </span>
           </div>
           <p className="text-card-caption text-wtext-3 dark:text-rink-300">
-            {isPostpaid
-              ? MESSAGES.classProduct.billingModePostpaidHint
-              : MESSAGES.classProduct.billingModePrepaidHint}
+            {billingModeHintText}
           </p>
         </div>
 

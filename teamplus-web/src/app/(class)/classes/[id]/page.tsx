@@ -255,6 +255,26 @@ function formatCoachList(
    Info Row — awards 리스트 카드의 메타 패턴
    ──────────────────────────────────────────── */
 
+/** 1회 수업료(참고) 카드 — 라디오·구매 버튼 없는 톤다운 정보 카드.
+ *  BOTH(결제방식 토글 아래)·선불 전용(수업료 목록 위) 공용. */
+function SingleFeeRefCard({ amount, note }: { amount: number; note: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-[14px] border border-wline-2 dark:border-rink-700 bg-it-fill dark:bg-rink-900/40 px-4 py-3">
+      <div className="min-w-0">
+        <p className="text-card-meta font-bold text-wtext-2 dark:text-rink-100">
+          {MESSAGES.classProduct.singleFeeRefTitle}
+        </p>
+        <p className="mt-0.5 text-card-caption text-wtext-3 dark:text-rink-300">
+          {note}
+        </p>
+      </div>
+      <p className="shrink-0 text-card-body font-extrabold text-wtext-1 dark:text-white tabular-nums">
+        {MESSAGES.classProduct.singleFeeAmount(amount)}
+      </p>
+    </div>
+  );
+}
+
 /* ────────────────────────────────────────────
    Main Component
    ──────────────────────────────────────────── */
@@ -376,10 +396,38 @@ export default function ClassDetailPage() {
   //   - [수정 2026-05-18] 'paid' 자녀는 결제취소 진입(자녀 선택) 가능해야 하므로 별도 집합(paidByChildId)
   //     에서만 관리하고 본 잠금 집합에는 포함시키지 않음. 단, ChildSelector 에서 paid 자녀는
   //     "결제완료" 라벨을 표시해 다른 자녀와 구별 (다자녀 시나리오 — 자녀 A paid, 자녀 B 미결제).
-  // [Phase B] 후불(POSTPAID) 수업 판별 — billingMode 또는 products billingTiming(양 fetch 경로 안전).
+  // [Phase B/B-6] 결제 방식 판별 — billingMode 우선, 누락 시 products billingTiming 으로 추론.
+  //   선택형(BOTH)은 후불 상품을 함께 가지므로 isPostpaid 에서 제외하고 결제 옵션 페이지에서 택1.
+  const _billingModeRaw = classData?.billingMode;
+  const _productTimings = (classData?.products ?? []).map((p) => p.billingTiming);
+  const _hasPrepaidProduct = _productTimings.includes("PREPAID");
+  const _hasPostpaidProduct = _productTimings.includes("POSTPAID");
+  const isBoth =
+    _billingModeRaw === "BOTH" ||
+    (!_billingModeRaw && _hasPrepaidProduct && _hasPostpaidProduct);
   const isPostpaid =
-    classData?.billingMode === "POSTPAID" ||
-    (classData?.products ?? []).some((p) => p.billingTiming === "POSTPAID");
+    !isBoth &&
+    (_billingModeRaw === "POSTPAID" ||
+      (!_billingModeRaw && _hasPostpaidProduct));
+
+  // [선택형(BOTH)] 상세에서 선·후불 택1 — 후불은 즉시 등록, 선불은 정액 결제 페이지로.
+  //   후불 상품 = PER_SESSION + billingTiming POSTPAID (B6: classProductId 필수).
+  //   선불 상품 = 정액(MONTHLY_FIXED). 기본은 선불 바이어스.
+  const bothPostpaidProduct = useMemo(
+    () =>
+      (classData?.products ?? []).find(
+        (p) => p.feeType === "PER_SESSION" && p.billingTiming === "POSTPAID",
+      ) ?? null,
+    [classData?.products],
+  );
+  const bothPrepaidProducts = useMemo(
+    () =>
+      (classData?.products ?? []).filter((p) => p.feeType === "MONTHLY_FIXED"),
+    [classData?.products],
+  );
+  const [billingChoice, setBillingChoice] = useState<"PREPAID" | "POSTPAID">(
+    "PREPAID",
+  );
 
   const enrolledChildIds = useMemo(() => {
     const ids = new Set<string>();
@@ -392,11 +440,12 @@ export default function ClassDetailPage() {
       // paid 자녀는 결제취소 진입을 위해 선택 가능해야 함 → 잠금 집합에서 제외.
       if (e.status === "paid") continue;
       // [Phase B] 후불 수강 중(approved)은 "수강 종료" 위해 선택 가능 → 잠금 제외.
-      if (isPostpaid && e.status === "approved") continue;
+      //   선택형(BOTH) 후불 등록도 status='approved' 이므로 동일 처리(선불은 'paid').
+      if ((isPostpaid || isBoth) && e.status === "approved") continue;
       ids.add(e.child.id);
     }
     return ids;
-  }, [myEnrollments, classId, user?.id, isPostpaid]);
+  }, [myEnrollments, classId, user?.id, isPostpaid, isBoth]);
 
   // 자녀 ID → paid Enrollment 매핑 (결제취소 진입 판정용)
   //   - status='paid' 이고 paymentId 가 존재하는 항목만 포함.
@@ -413,9 +462,10 @@ export default function ClassDetailPage() {
   }, [myEnrollments, classId]);
 
   // [Phase B] 자녀 ID → 후불 수강 중(approved) Enrollment 매핑 (수강 종료 진입용).
+  //   선택형(BOTH)도 후불 등록은 status='approved' 라 동일 매핑(선불 'paid'는 paidByChildId 담당).
   const postpaidByChildId = useMemo(() => {
     const map = new Map<string, MyEnrollment>();
-    if (!isPostpaid) return map;
+    if (!isPostpaid && !isBoth) return map;
     for (const e of myEnrollments) {
       if (e.class?.id !== classId) continue;
       if (e.status !== "approved") continue;
@@ -423,7 +473,7 @@ export default function ClassDetailPage() {
       map.set(e.child.id, e);
     }
     return map;
-  }, [myEnrollments, classId, isPostpaid]);
+  }, [myEnrollments, classId, isPostpaid, isBoth]);
 
   // 수업 대상 연령(targetBirthYears 우선, ageMin/ageMax 폴백)에 맞지 않는 자녀 ID 집합.
   //   결제 옵션 페이지와 동일하게 공용 isChildAgeEligibleForClass 사용 (출생연도 비연속 정확 매칭).
@@ -736,6 +786,59 @@ export default function ClassDetailPage() {
       }
       return;
     }
+    // [선택형(BOTH)] 팀 수업 — 상세에서 선·후불 택1.
+    if (isBoth && !isOpenClass) {
+      // 후불 — 선결제 없이 즉시 수강 등록(classProductId 필수). 결제 페이지·횟수 없음.
+      if (billingChoice === "POSTPAID") {
+        if (!bothPostpaidProduct) {
+          toast.error(MESSAGES.class.noProducts);
+          return;
+        }
+        try {
+          const res = await api.post<{ id: string }>("/enrollments", {
+            classId,
+            childId: selectedChildId,
+            classProductId: bothPostpaidProduct.id,
+          });
+          if (!res.success) {
+            throw new Error(res.error?.message ?? MESSAGES.error.general);
+          }
+          setMyEnrollments((prev) => [
+            ...prev,
+            {
+              id: res.data?.id ?? `tmp-${selectedChildId}`,
+              child: { id: selectedChildId },
+              class: { id: classId },
+              status: "approved",
+              requester: { id: user?.id ?? "" },
+              paymentId: null,
+              product: { id: bothPostpaidProduct.id },
+            },
+          ]);
+          toast.success(MESSAGES.enrollment.postpaidEnrolled);
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : MESSAGES.error.general);
+        }
+        return;
+      }
+      // 선불 — 정액(MONTHLY_FIXED) 택1 후 결제 페이지로.
+      const prepaidId =
+        Array.from(selectedProductIds).find((id) =>
+          bothPrepaidProducts.some((p) => p.id === id),
+        ) ?? (bothPrepaidProducts.length === 1 ? bothPrepaidProducts[0].id : "");
+      if (!prepaidId) {
+        await modal.alert({
+          title: "신청할 수 없어요",
+          message: MESSAGES.enrollment.selectPlanRequired,
+          buttonText: "확인",
+        });
+        return;
+      }
+      navigate(
+        `/payment/options?classId=${classId}&childId=${selectedChildId}&productId=${prepaidId}`,
+      );
+      return;
+    }
     // [2026-06-09] 오픈클래스 자녀 복수 × 회차 복수 — (자녀, 회차) 모든 조합을 순차 결제(개별 반복).
     if (isOpenClass) {
       const childIds = Array.from(selectedChildIds).filter((id) =>
@@ -1017,6 +1120,14 @@ export default function ClassDetailPage() {
   // levelLabel 은 순수히 level 만 표시 (typeLabel fallback 제거 — 색상/의미 혼선 방지)
   const levelLabel = translateLevel(classData.levelRequired);
   const hasProducts = (classData.products ?? []).length > 0;
+  // [선택형(BOTH)] 학부모 팀 수업 — 선·후불 택1 UI 노출 대상.
+  const isParentBoth = isParent && isBoth && !isOpenClass;
+  // [선불 전용(PREPAID)] 학부모 팀 수업 — 1회 수업료(참고) 블록 노출 대상.
+  //   BOTH/후불전용/오픈클래스 제외. 참고 단가 상품 = PER_SESSION(선불 1회 수업료).
+  const isParentPrepaidOnly =
+    isParent && !isBoth && !isPostpaid && !isOpenClass;
+  const prepaidRefProduct =
+    (classData.products ?? []).find((p) => p.feeType === "PER_SESSION") ?? null;
   // [2026-06-05] 요일별 시간·장소 — 규칙이 있으면 "수업 정보" 카드에 모두 나열,
   //   없으면 기존 단일 startTime/endTime · venueName 표시로 폴백.
   const daySchedules = classData.daySchedules ?? [];
@@ -1332,10 +1443,10 @@ export default function ClassDetailPage() {
         {/* ── 수업 정보 — 소개·기간·시간·장소·대상·일정 통합 (full-bleed 흰 섹션) ── */}
         <section
           className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4"
-          aria-label="수업 정보"
+          aria-label="훈련 정보"
         >
           <h2 className="text-[15px] font-extrabold text-wtext-1 dark:text-white tracking-tight">
-            수업 정보
+            훈련 정보
           </h2>
           <div className="mt-1">
             {(() => {
@@ -1623,7 +1734,77 @@ export default function ClassDetailPage() {
           );
         })()}
 
-        {/* ── 수강권 선택 — 라디오 행 리스트 (full-bleed 흰 섹션) ── */}
+        {/* ── [선택형(BOTH)] 결제 방식 선택 — 선불/후불 택1 (학부모 팀 수업 전용) ── */}
+        {isParentBoth && (
+          <section
+            className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4"
+            aria-label={MESSAGES.classProduct.timingSelectTitle}
+          >
+            <h2 className="text-[15px] font-extrabold text-wtext-1 dark:text-white tracking-tight mb-3">
+              {MESSAGES.classProduct.timingSelectTitle}
+            </h2>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setBillingChoice("PREPAID")}
+                disabled={bothPrepaidProducts.length === 0}
+                aria-pressed={billingChoice === "PREPAID"}
+                className={cn(
+                  "flex flex-col gap-1 rounded-xl border-[1.5px] px-4 py-3 text-left transition-colors motion-reduce:transition-none active:brightness-95 disabled:opacity-40 disabled:cursor-not-allowed",
+                  billingChoice === "PREPAID"
+                    ? "border-it-blue-500 bg-it-blue-50 dark:bg-rink-700"
+                    : "border-wline-2 dark:border-rink-700 bg-it-fill dark:bg-rink-900/40",
+                )}
+              >
+                <span className="text-card-body font-extrabold text-wtext-1 dark:text-white">
+                  {MESSAGES.classProduct.timingPrepaidTitle}
+                </span>
+                <span className="text-card-caption text-wtext-3 dark:text-rink-300">
+                  {MESSAGES.classProduct.timingPrepaidDesc}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setBillingChoice("POSTPAID")}
+                disabled={!bothPostpaidProduct}
+                aria-pressed={billingChoice === "POSTPAID"}
+                className={cn(
+                  "flex flex-col gap-1 rounded-xl border-[1.5px] px-4 py-3 text-left transition-colors motion-reduce:transition-none active:brightness-95 disabled:opacity-40 disabled:cursor-not-allowed",
+                  billingChoice === "POSTPAID"
+                    ? "border-it-blue-500 bg-it-blue-50 dark:bg-rink-700"
+                    : "border-wline-2 dark:border-rink-700 bg-it-fill dark:bg-rink-900/40",
+                )}
+              >
+                <span className="text-card-body font-extrabold text-wtext-1 dark:text-white">
+                  {MESSAGES.classProduct.timingPostpaidTitle}
+                </span>
+                <span className="text-card-caption text-wtext-3 dark:text-rink-300">
+                  {MESSAGES.classProduct.timingPostpaidDesc}
+                </span>
+              </button>
+            </div>
+            {/* 1회 수업료(참고) — 선불·후불 공통 노출(토글 바로 아래). 정액 목록과 구분된 톤다운 카드.
+                후불 상품(PER_SESSION/POSTPAID)이 있을 때만 표시(null-safe). */}
+            {bothPostpaidProduct && (
+              <div className="mt-3">
+                <SingleFeeRefCard
+                  amount={
+                    bothPostpaidProduct.feePerSession ?? bothPostpaidProduct.price
+                  }
+                  note={
+                    billingChoice === "POSTPAID"
+                      ? MESSAGES.classProduct.singleFeePostpaidNote
+                      : MESSAGES.classProduct.singleFeeRefPrepaidNote
+                  }
+                />
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* ── 수강권 선택 — 라디오 행 리스트 (full-bleed 흰 섹션) ──
+            [선택형(BOTH)] 후불 선택 시에는 정액 플랜 목록을 숨긴다(선불 선택일 때만 노출). */}
+        {!(isParentBoth && billingChoice === "POSTPAID") && (
         <section
           className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4"
           aria-label={isOpenClass ? "훈련비용" : "수업료"}
@@ -1631,12 +1812,39 @@ export default function ClassDetailPage() {
           <h2 className="text-[15px] font-extrabold text-wtext-1 dark:text-white tracking-tight">
             {isOpenClass ? "훈련비용" : "수업료"}
           </h2>
+          {/* [선불 전용] 1회 수업료(참고) — 정액 패키지 목록 위에 톤다운 카드로 표시.
+              PER_SESSION(선불 1회 수업료)이 있을 때만(null-safe). */}
+          {isParentPrepaidOnly && prepaidRefProduct && (
+            <div className="mt-3">
+              <SingleFeeRefCard
+                amount={prepaidRefProduct.feePerSession ?? prepaidRefProduct.price}
+                note={MESSAGES.classProduct.singleFeeRefPrepaidNote}
+              />
+            </div>
+          )}
           {hasProducts ? (
             <div className="mt-1">
               {(() => {
                 // [2026-06-09] 수강 플랜 정렬 — 1회권→N회권(PER_SESSION, sessionsPerMonth 오름차순)
                 //   →전체(MONTHLY_FIXED) 순으로 노출.
-                const products = [...(classData.products ?? [])].sort((a, b) => {
+                // 학부모 목록에서 1회 수업료(PER_SESSION)는 별도 '참고' 블록으로만 표시하고
+                //   목록(정액 패키지)에서는 제외한다.
+                //   · [선택형(BOTH)] 후불 PER_SESSION/POSTPAID 제외(결제방식 토글에서 별도 처리).
+                //   · [선불 전용] 선불 PER_SESSION 제외(수업료 섹션 상단 참고 카드로 표시).
+                //   후불 전용/관리자/오픈클래스는 기존대로 PER_SESSION 목록 노출 유지.
+                const products = [...(classData.products ?? [])]
+                  .filter((p) => {
+                    if (
+                      isParentBoth &&
+                      p.feeType === "PER_SESSION" &&
+                      p.billingTiming === "POSTPAID"
+                    )
+                      return false;
+                    if (isParentPrepaidOnly && p.feeType === "PER_SESSION")
+                      return false;
+                    return true;
+                  })
+                  .sort((a, b) => {
                   const order = (p: ClassProduct) =>
                     p.feeType === 'MONTHLY_FIXED' ? 100000 : (p.sessionsPerMonth ?? 0);
                   return order(a) - order(b);
@@ -1758,6 +1966,7 @@ export default function ClassDetailPage() {
             </div>
           )}
         </section>
+        )}
 
         {/* ── 장소 — full-bleed 흰 섹션 ── */}
         {hasVenue && (
@@ -1918,9 +2127,13 @@ export default function ClassDetailPage() {
                       : paidEnrollment
                         ? "신청완료"
                         : disabledRightLabel ??
-                          (isPostpaid
-                            ? MESSAGES.enrollment.postpaidEnrollCta
-                            : "신청하기")}
+                          (isParentBoth
+                            ? billingChoice === "POSTPAID"
+                              ? MESSAGES.enrollment.bothPostpaidCta
+                              : MESSAGES.enrollment.bothPrepaidCta
+                            : isPostpaid
+                              ? MESSAGES.enrollment.postpaidEnrollCta
+                              : "신청하기")}
                   </button>
                   {/* 우 — 보조: 돌아가기 / 신청취소 / (후불) 수강 종료 */}
                   <button

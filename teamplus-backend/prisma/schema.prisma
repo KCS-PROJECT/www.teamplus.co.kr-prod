@@ -612,8 +612,8 @@ model Class {
   classDays        Json?     @map("class_days") @db.JsonB
   category         String?   @map("category") // KIDS|JUNIOR|ADULT
   requiredCoaches  Int       @default(1) @map("required_coaches") /// 필요 코치 수
-  /// 결제 방식 (감독이 수업 생성 시 지정, Phase B) — PREPAID(모드 B·선불 번들) | POSTPAID(모드 A·후불 정산)
-  billingMode      String    @default("PREPAID") @map("billing_mode")
+  /// 결제 방식 (감독이 수업 생성 시 지정, Phase B) — PREPAID(선불 번들) | POSTPAID(후불 정산) | BOTH(선택형·기본, 학생이 결제 시 택1)
+  billingMode      String    @default("BOTH") @map("billing_mode")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 

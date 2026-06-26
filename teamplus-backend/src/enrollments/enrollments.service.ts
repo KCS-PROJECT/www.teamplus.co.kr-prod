@@ -247,15 +247,24 @@ export class EnrollmentsService {
     //       시스템 차원의 "월 단위 등록 마감"은 의미가 없음.
     //       만료 임박 시 학부모별로 인앱 알림(D-7/D-3/D-Day) 발송 → 추가 결제 유도.
 
-    // 4. 상품 확인 (선택 사항)
+    // 4. 상품 확인 (선택 사항) — 선택 시 billingTiming 을 캡처해 BOTH 선·후불 분기에 사용.
+    let selectedProductTiming: string | null = null;
     if (dto.classProductId) {
       const product = await this.prisma.classProduct.findUnique({
         where: { id: dto.classProductId },
+        select: { classId: true, billingTiming: true },
       });
 
       if (!product || product.classId !== dto.classId) {
         throw new BadRequestException("유효하지 않은 상품입니다.");
       }
+      selectedProductTiming = product.billingTiming;
+    }
+
+    // 4-1. [B6] BOTH(선택형) 수업은 결제방식(선불 정액 / 후불)을 택1해야 하므로 상품 선택 필수.
+    //   전용 PREPAID/POSTPAID 수업은 기존대로 상품 선택이 선택 사항.
+    if (classInfo.billingMode === "BOTH" && !dto.classProductId) {
+      throw new BadRequestException("선불/후불을 선택해주세요.");
     }
 
     // 5~6. 중복 신청 확인 + 정원 체크 + 수강신청 생성을 원자적으로 수행
@@ -274,9 +283,88 @@ export class EnrollmentsService {
             in: ["pending", "pending_approval", "approved", "paid"],
           },
         },
+        select: { id: true, status: true, requestedBy: true, paymentId: true },
       });
 
+      // [Phase B] 후불 여부 — 전용 POSTPAID 또는 BOTH(선택형)+후불 상품 선택.
+      //   [B5c] BOTH+선불(PREPAID 상품)은 일반 결제대기(PENDING)로 흘러간다.
+      //   (재활용 분기·신규 생성 분기 양쪽에서 쓰므로 블록 상단에서 1회 계산)
+      const isPostpaid =
+        classInfo.billingMode === "POSTPAID" ||
+        (classInfo.billingMode === "BOTH" &&
+          selectedProductTiming === "POSTPAID");
+
       if (existingEnrollment) {
+        // 중단된 선불 결제 시도가 남긴 "미결제 pending"(payment-create:enrollment.create)을
+        //   후불 등록으로 재활용한다. 프론트가 본인 pending 을 잠그지 않아 후불 CTA 가 노출되어도
+        //   여기서 막히던 state 불일치를 해소(선불 결제 미완료분 → 후불 전환).
+        const isReusablePending =
+          existingEnrollment.status === EnrollmentStatus.PENDING &&
+          existingEnrollment.requestedBy === userId;
+
+        // 결제 미완료 확인 — paymentId 연결 시 Payment 상태가 completed 면 재활용 금지.
+        let paymentCompleted = false;
+        if (isReusablePending && existingEnrollment.paymentId) {
+          const linkedPayment = await tx.payment.findUnique({
+            where: { id: existingEnrollment.paymentId },
+            select: { paymentStatus: true },
+          });
+          paymentCompleted = linkedPayment?.paymentStatus === "completed";
+        }
+        const reusable = isReusablePending && !paymentCompleted;
+
+        if (isPostpaid && reusable) {
+          // orphan Payment 정리 (미완료만 cancel — completed 는 위에서 이미 배제).
+          if (existingEnrollment.paymentId) {
+            await tx.payment.updateMany({
+              where: {
+                id: existingEnrollment.paymentId,
+                paymentStatus: { not: "completed" },
+              },
+              data: { paymentStatus: "cancelled" },
+            });
+          }
+          // 정원 가드 — 재활용 후불 전환도 새 active 좌석을 만들므로 신규 create 경로와
+          //   동일 기준·동일 메시지로 정원 마감을 차단(본인 prepaid pending 은 active 아님 → 미집계).
+          if (classInfo.capacity && classInfo.capacity > 0) {
+            const activeCount = await tx.classRegistration.count({
+              where: { classId: dto.classId, status: "active" },
+            });
+            if (activeCount >= classInfo.capacity) {
+              throw new ConflictException(
+                "수업 정원이 마감되었습니다. 대기 등록을 이용해주세요.",
+              );
+            }
+          }
+
+          const converted = await tx.enrollment.update({
+            where: { id: existingEnrollment.id },
+            data: {
+              classProductId: dto.classProductId,
+              status: EnrollmentStatus.APPROVED,
+              paymentId: null,
+              requestedBy: userId,
+              requestType,
+              expiresAt,
+              note: dto.note,
+            },
+            select: ENROLLMENT_DETAIL_SELECT,
+          });
+          await tx.classRegistration.upsert({
+            where: {
+              classId_userId: { classId: dto.classId, userId: dto.childId },
+            },
+            update: { status: "active" },
+            create: {
+              classId: dto.classId,
+              userId: dto.childId,
+              status: "active",
+            },
+          });
+          return converted;
+        }
+
+        // 그 외(approved/paid·PENDING_APPROVAL·후불 아님·재활용 불가) → 기존대로 차단.
         throw new ConflictException("이미 신청 중이거나 수강 중인 수업입니다.");
       }
 
@@ -292,9 +380,9 @@ export class EnrollmentsService {
         }
       }
 
-      // [Phase B] 후불(POSTPAID) 수업 — 선결제 없이 즉시 수강 등록(구독형).
+      // [Phase B] 후불 수업 — 선결제 없이 즉시 수강 등록(구독형).
       //   enrollment=approved + ClassRegistration active 로 바로 수강생. 출석분만 월말 정산.
-      const isPostpaid = classInfo.billingMode === "POSTPAID";
+      //   (isPostpaid 는 블록 상단에서 이미 계산됨 — 재활용/신규 생성 공통 사용)
       const created = await tx.enrollment.create({
         data: {
           childId: dto.childId,

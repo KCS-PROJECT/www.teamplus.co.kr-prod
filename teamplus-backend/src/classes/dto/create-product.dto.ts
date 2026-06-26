@@ -26,14 +26,15 @@ export class CreateClassProductDto {
   @Min(0, { message: "가격은 0원 이상이어야 합니다." })
   price!: number;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: 8,
-    description: "월 수업 횟수",
+    description:
+      "월 수업 횟수 — 미전송 시 주수(durationDays/7)×주빈도(sessionsPerWeek)로 파생. 정액(MONTHLY_FIXED)은 무차감 기간제라 표시/정합용으로만 사용하며 출석 회차 게이트에 영향 없음.",
   })
-  @IsNotEmpty({ message: "월 수업 횟수는 필수입니다." })
+  @IsOptional()
   @IsNumber({}, { message: "월 수업 횟수는 숫자여야 합니다." })
   @Min(1, { message: "월 수업 횟수는 1회 이상이어야 합니다." })
-  sessionsPerMonth!: number;
+  sessionsPerMonth?: number;
 
   @ApiProperty({
     example: 30,

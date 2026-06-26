@@ -55,6 +55,8 @@ interface ClassInfo {
   clubId?: string | null;
   /** 오픈클래스 식별 — academyId 있으면 회원/가입 개념 없는 수업 단위 등록 (§4.6) */
   academyId?: string | null;
+  /** [Phase B-6] 결제 방식 — PREPAID/POSTPAID/BOTH(선택형: 학부모가 선·후불 택1). */
+  billingMode?: string | null;
 }
 
 // 수업 나이 범위를 사용자에게 보여줄 레이블로 포맷 (null-safe, 한국나이 기준)
@@ -372,14 +374,22 @@ function PaymentOptionsContent() {
           // PACKAGE_END_GUARD (2026-05-22): URL productId 우선 → 결제 가능한 패키지 우선 →
           // 첫 항목 폴백. URL 지정 패키지가 비활성이면 사용자에게 노출은 하되 선택은 불가
           // 처리되도록 가능한 첫 항목으로 자동 전환.
-          const isUsable = (p: ClassProduct) => p.isPurchasable !== false;
+          //   [Phase B-6] 구매목록 필터(:일관)와 동일하게 isActive 도 함께 검사(방어적).
+          const isUsable = (p: ClassProduct) =>
+            p.isPurchasable !== false && p.isActive !== false;
           const fromUrl = productId
             ? productsData.find((p) => p.id === productId)
             : null;
           const fromUrlUsable = fromUrl && isUsable(fromUrl) ? fromUrl : null;
+          // [Phase B-6] 선택형(BOTH) 선불 우선 노출 — 정액 패키지가 있으면 선불 정액을 기본 선택.
+          //   상품 배열 순서상 후불(PER_SESSION)이 앞서 와도 후불 기본으로 열리지 않도록 한다.
+          const firstPrepaidFixed =
+            productsData.find(
+              (p) => isUsable(p) && p.feeType === "MONTHLY_FIXED",
+            ) ?? null;
           const firstUsable = productsData.find(isUsable) ?? null;
           const selected =
-            fromUrlUsable ?? firstUsable ?? productsData[0] ?? null;
+            fromUrlUsable ?? firstPrepaidFixed ?? firstUsable ?? productsData[0] ?? null;
           setProduct(selected);
           if (selected?.feeType) {
             setSelectedFeeType(selected.feeType as FeeType);
@@ -782,48 +792,50 @@ function PaymentOptionsContent() {
           >
             결제 상세
           </h3>
-          <div className="space-y-3">
-            <div className="flex justify-between items-center text-card-body">
-              <span className="text-it-ink-500 dark:text-rink-300">
-                {selectedFeeType === "MONTHLY_FIXED"
-                  ? "정기권 수업료"
-                  : `${product?.sessionsPerMonth ?? 1}회`}
-              </span>
-              <span className="font-bold text-it-ink-900 dark:text-white tabular-nums">
-                {calculatedPrice.toLocaleString()}원
-              </span>
-            </div>
-            <div className="flex justify-between items-center text-card-body">
-              <span className="text-it-ink-500 dark:text-rink-300 flex items-center gap-1">
-                할인 금액
-                <Icon name="info" className="text-[14px] text-it-ink-400" />
-              </span>
-              {/* discount > 0 일 때만 차감 부호 노출 — 0원 시 "-0원" 어색 표시 제거
-                  (2026-05-11 사용자 피드백). 다른 페이지(cart, shop-checkout,
-                  MatchPaymentSummary) 의 패턴과 일관성 확보. */}
-              <span className="font-bold text-it-blue-600 dark:text-it-blue-300 tabular-nums">
-                {discount > 0 && '-'}{discount.toLocaleString()}원
-              </span>
-            </div>
-          </div>
-          {/* Divider */}
-          <div className="my-5 border-t border-it-line dark:border-rink-700" />
-          <div
-            className="flex justify-between items-end"
-            role="status"
-            aria-live="polite"
-            aria-atomic="true"
-          >
-            <span className="text-card-emphasis font-bold text-it-ink-900 dark:text-white pb-1">
-              최종 결제 금액
-            </span>
-            <span
-              className="text-2xl font-extrabold text-it-blue-600 dark:text-it-blue-300 tracking-tight tabular-nums"
-              aria-label={`${finalPrice.toLocaleString()}원`}
-            >
-              {finalPrice.toLocaleString()}원
-            </span>
-          </div>
+          <>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center text-card-body">
+                  <span className="text-it-ink-500 dark:text-rink-300">
+                    {selectedFeeType === "MONTHLY_FIXED"
+                      ? "정기권 수업료"
+                      : `${product?.sessionsPerMonth ?? 1}회`}
+                  </span>
+                  <span className="font-bold text-it-ink-900 dark:text-white tabular-nums">
+                    {calculatedPrice.toLocaleString()}원
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-card-body">
+                  <span className="text-it-ink-500 dark:text-rink-300 flex items-center gap-1">
+                    할인 금액
+                    <Icon name="info" className="text-[14px] text-it-ink-400" />
+                  </span>
+                  {/* discount > 0 일 때만 차감 부호 노출 — 0원 시 "-0원" 어색 표시 제거
+                      (2026-05-11 사용자 피드백). 다른 페이지(cart, shop-checkout,
+                      MatchPaymentSummary) 의 패턴과 일관성 확보. */}
+                  <span className="font-bold text-it-blue-600 dark:text-it-blue-300 tabular-nums">
+                    {discount > 0 && '-'}{discount.toLocaleString()}원
+                  </span>
+                </div>
+              </div>
+              {/* Divider */}
+              <div className="my-5 border-t border-it-line dark:border-rink-700" />
+              <div
+                className="flex justify-between items-end"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                <span className="text-card-emphasis font-bold text-it-ink-900 dark:text-white pb-1">
+                  최종 결제 금액
+                </span>
+                <span
+                  className="text-2xl font-extrabold text-it-blue-600 dark:text-it-blue-300 tracking-tight tabular-nums"
+                  aria-label={`${finalPrice.toLocaleString()}원`}
+                >
+                  {finalPrice.toLocaleString()}원
+                </span>
+              </div>
+            </>
         </section>
 
         {/* 수업권 이용 안내 박스 (2026-05-22 정책 톤).
@@ -926,6 +938,7 @@ function PaymentOptionsContent() {
               !!selectedChild &&
               product?.isPurchasable !== false &&
               !isAgeBlocked;
+            // options 는 정액(선불) 결제 전용. 후불은 수업 상세에서 즉시 등록되므로 본 페이지 미경유.
             return (
           <NavLink
             href={`/payment/checkout?classId=${classId}&productId=${product?.id ?? productId}&childId=${selectedChild}&amount=${finalPrice}&feeType=${selectedFeeType}${selectedFeeType === "PER_SESSION" ? `&sessionCount=${sessionCount}` : ""}`}

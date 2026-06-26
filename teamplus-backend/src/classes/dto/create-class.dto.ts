@@ -218,10 +218,10 @@ export class CreateClassDto {
 
   @ApiPropertyOptional({
     description:
-      "결제 방식 — PREPAID(선불 번들) | POSTPAID(후불 정산). 미전송 시 PREPAID.",
+      "결제 방식 — PREPAID(선불 번들) | POSTPAID(후불 정산) | BOTH(선택형). 미전송 시 BOTH.",
   })
   @IsOptional()
-  @IsIn(["PREPAID", "POSTPAID"])
+  @IsIn(["PREPAID", "POSTPAID", "BOTH"])
   billingMode?: string;
 
   @ApiPropertyOptional({ description: "1회 수강료" })

@@ -565,20 +565,62 @@ export class CreditsService {
    */
   async getCreditStats(userId: string, requester?: CreditActor) {
     await this.assertCanViewMember(requester, userId);
+    const now = new Date();
     const allCredits = await this.prisma.memberCredit.findMany({
       where: { userId },
+      select: {
+        id: true,
+        classId: true,
+        totalSessions: true,
+        usedSessions: true,
+        expiresAt: true,
+        // 정액(MONTHLY_FIXED) 식별 SoT — deductOne(credit-domain.service.ts) 과 동일하게
+        //   연결 결제 상품의 feeType 으로 판정한다(MemberCredit 자체엔 feeType 컬럼 없음).
+        payment: { select: { product: { select: { feeType: true } } } },
+        class: { select: { className: true } },
+      },
     });
 
-    const availableCredits = allCredits.filter((c) => c.expiresAt > new Date());
-    const expiredCredits = allCredits.filter((c) => c.expiresAt <= new Date());
+    const isPeriodPass = (c: {
+      payment: { product: { feeType: string } | null } | null;
+    }) => c.payment?.product?.feeType === "MONTHLY_FIXED";
 
-    const totalIssued = allCredits.reduce((sum, c) => sum + c.totalSessions, 0);
-    const totalUsed = allCredits.reduce((sum, c) => sum + c.usedSessions, 0);
+    // 회수(세션) 집계는 정액(기간제)을 제외 — 정액은 무차감 무제한이라 "N회"로 합산하면 안 됨.
+    //   회차권(있다면)·관리자 발급분만 회수로 합산한다.
+    const sessionCredits = allCredits.filter((c) => !isPeriodPass(c));
+    const periodPassCredits = allCredits.filter((c) => isPeriodPass(c));
+
+    const availableSessionCredits = sessionCredits.filter(
+      (c) => c.expiresAt > now,
+    );
+    const expiredSessionCredits = sessionCredits.filter(
+      (c) => c.expiresAt <= now,
+    );
+
+    const totalIssued = sessionCredits.reduce(
+      (sum, c) => sum + c.totalSessions,
+      0,
+    );
+    const totalUsed = sessionCredits.reduce((sum, c) => sum + c.usedSessions, 0);
     const totalRemaining = totalIssued - totalUsed;
-    const availableRemaining = availableCredits.reduce(
+    const availableRemaining = availableSessionCredits.reduce(
       (sum, c) => sum + (c.totalSessions - c.usedSessions),
       0,
     );
+
+    // 정액(기간제) — 회수 합산 대신 만료일·식별자로 노출.
+    //   FD1 이 이 키로 "이 달 무제한 · 만료 {그 달 말}" 표기를 분기한다.
+    const periodPasses = periodPassCredits
+      .filter((c) => c.expiresAt > now)
+      .sort((a, b) => a.expiresAt.getTime() - b.expiresAt.getTime())
+      .map((c) => ({
+        id: c.id,
+        classId: c.classId,
+        className: c.class?.className ?? null,
+        feeType: "MONTHLY_FIXED" as const,
+        isPeriodPass: true as const,
+        expiresAt: c.expiresAt,
+      }));
 
     return {
       userId,
@@ -586,9 +628,14 @@ export class CreditsService {
       totalUsed,
       totalRemaining,
       availableRemaining,
-      availableCreditCount: availableCredits.length,
-      expiredCreditCount: expiredCredits.length,
+      availableCreditCount: availableSessionCredits.length,
+      expiredCreditCount: expiredSessionCredits.length,
       allCredits: allCredits.length,
+      // ── BD1: 정액(기간제) 분리 노출 (FD1 계약 — 기존 키 보존, 신규 키만 추가) ──
+      hasActivePeriodPass: periodPasses.length > 0,
+      periodPassExpiresAt: periodPasses[0]?.expiresAt ?? null,
+      periodPassCount: periodPasses.length,
+      periodPasses,
     };
   }
 }

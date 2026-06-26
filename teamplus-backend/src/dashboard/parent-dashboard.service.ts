@@ -249,7 +249,11 @@ export class ParentDashboardService {
                         //   선불 미결제(approved·active 등록 없음)는 자연 제외된다.
                         status: { in: ["paid", "approved"] },
                       },
-                      select: { childId: true },
+                      // [B5b] BOTH 수업에서 후불 상품 선택 자녀를 판별하기 위해 billingTiming 동반.
+                      select: {
+                        childId: true,
+                        product: { select: { billingTiming: true } },
+                      },
                     },
                   },
                 },
@@ -276,7 +280,10 @@ export class ParentDashboardService {
                   academyId: string | null;
                   billingMode: string;
                   registrations: { userId: string }[];
-                  enrollments: { childId: string }[];
+                  enrollments: {
+                    childId: string;
+                    product: { billingTiming: string } | null;
+                  }[];
                 };
                 attendances: {
                   memberId: string;
@@ -570,6 +577,12 @@ export class ParentDashboardService {
           // PR-D Hotfix #4 (v1.0): 자녀별 출석 가능 여부 — 만료 안 된 수업권 중 잔량 > 0 자녀
           //   프론트가 false 면 [출석하기] 대신 [수업권이 필요해요 + 결제하기] 분기 표시.
           //   memberCredits 는 이미 만료 안 된 (expiresAt >= now) 수업권만 조회된 상태.
+          // [B5b] BOTH 수업에서 후불 상품(billingTiming=POSTPAID)을 선택한 자녀 — 크레딧 없이 출석 가능.
+          const postpaidChildIds = new Set(
+            (s.class.enrollments ?? [])
+              .filter((e) => e.product?.billingTiming === "POSTPAID")
+              .map((e) => e.childId),
+          );
           const canCheckInByChild: Record<string, boolean> = {};
           for (const childId of childIds) {
             canCheckInByChild[childId] = canCheckInForClass(
@@ -580,6 +593,7 @@ export class ParentDashboardService {
                   mc.classId === s.class.id &&
                   mc.usedSessions < mc.totalSessions,
               ),
+              postpaidChildIds.has(childId),
             );
           }
           return {

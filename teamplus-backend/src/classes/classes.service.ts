@@ -57,6 +57,7 @@ function buildClassProducts(
   durationDays: number;
   billingTiming?: string;
   feePerSession?: number;
+  isActive?: boolean;
 }> {
   const products: ReturnType<typeof buildClassProducts> = [];
 
@@ -78,12 +79,22 @@ function buildClassProducts(
     return products;
   }
 
+  // BOTH(선택형): 1회 수업료 PER_SESSION 을 "후불 옵션"(billingTiming=POSTPAID·판매)으로 생성.
+  //   학생이 후불을 택1하면 이 상품을 classProductId 로 선택 → feePerSession 으로 월말 정산.
+  //   정액(MONTHLY_FIXED, 선불 옵션)은 monthlyPrice 또는 PackageManageSection 경유로 함께 제공.
+  // PREPAID(선불 전용): 1회 수업료 PER_SESSION 은 비판매(isActive:false)로 보존 —
+  //   단가 참고·표시용이며 구매/발급 경로에 노출되지 않는다.
+  const isBoth = dto.billingMode === "BOTH";
+
   if (dto.singlePrice) {
     products.push({
       classId,
       productName: "1회 수업료",
       feeType: "PER_SESSION",
+      billingTiming: isBoth ? "POSTPAID" : "PREPAID",
+      isActive: isBoth, // BOTH=판매(후불옵션) / PREPAID=비판매(참고용)
       price: dto.singlePrice,
+      feePerSession: isBoth ? dto.singlePrice : undefined,
       sessionsPerMonth: 1,
       durationDays: 30,
     });
@@ -395,8 +406,8 @@ export class ClassesService {
           classDays: dateRepresentative?.classDays ?? representative?.classDays ?? createDto.classDays ?? [],
           category,
           requiredCoaches: createDto.requiredCoaches ?? 1,
-          // [Phase B-5] 결제 방식 — 감독 지정 (PREPAID 선불 / POSTPAID 후불). 미전송 시 PREPAID.
-          billingMode: createDto.billingMode ?? "PREPAID",
+          // 결제 방식 — 감독 지정 (PREPAID 선불 / POSTPAID 후불 / BOTH 선택형). 미전송 시 BOTH(기본).
+          billingMode: createDto.billingMode ?? "BOTH",
           // 2026-05-08: 수업 자동 승인 — 감독/코치가 만든 수업은 즉시 활성화.
           approvalStatus: "APPROVED",
           approvedAt: new Date(),
@@ -420,7 +431,10 @@ export class ClassesService {
       }
 
       if (createDto.singlePrice || createDto.monthlyPrice) {
-        const products = buildClassProducts(created.id, createDto);
+        const products = buildClassProducts(created.id, {
+          ...createDto,
+          billingMode: createDto.billingMode ?? "BOTH",
+        });
         if (products.length > 0) {
           await tx.classProduct.createMany({ data: products });
         }
@@ -645,8 +659,8 @@ export class ClassesService {
           classDays: representativeAcademy?.classDays ?? createDto.classDays ?? [],
           category,
           requiredCoaches: createDto.requiredCoaches ?? 1,
-          // [Phase B-5] 결제 방식 — 감독 지정 (PREPAID 선불 / POSTPAID 후불). 미전송 시 PREPAID.
-          billingMode: createDto.billingMode ?? "PREPAID",
+          // 결제 방식 — 감독 지정 (PREPAID 선불 / POSTPAID 후불 / BOTH 선택형). 미전송 시 BOTH(기본).
+          billingMode: createDto.billingMode ?? "BOTH",
           approvalStatus: "APPROVED",
           approvedAt: new Date(),
           approvedBy: directorUserId,
@@ -685,7 +699,10 @@ export class ClassesService {
       // 오픈클래스도 팀과 동일하게 singlePrice/monthlyPrice → buildClassProducts 경로 사용.
       //   상세 패키지(다중 플랜)는 수업 상세 "수강 플랜" 섹션에서 PackageEditSheet 로 관리.
       if (createDto.singlePrice || createDto.monthlyPrice) {
-        const products = buildClassProducts(created.id, createDto);
+        const products = buildClassProducts(created.id, {
+          ...createDto,
+          billingMode: createDto.billingMode ?? "BOTH",
+        });
         if (products.length > 0) {
           await tx.classProduct.createMany({ data: products });
         }
@@ -2514,14 +2531,14 @@ export class ClassesService {
           packageWeeks: updateDto.packageWeeks,
           packageTotalSessions: updateDto.packageTotalSessions,
           classDays: effectiveClassDays,
+          // 기존 수업의 결제방식 기준으로 PER_SESSION 판매/비판매·billingTiming 결정 (B2).
+          billingMode: classRecord.billingMode,
         },
       );
 
+      // [M-1] id 보존 reconcile — enrollment/payment 참조 ClassProduct 의 FK 단절 방지.
       await this.prisma.$transaction(async (tx) => {
-        await tx.classProduct.deleteMany({ where: { classId } });
-        if (products.length > 0) {
-          await tx.classProduct.createMany({ data: products });
-        }
+        await this.reconcileClassProducts(tx, classId, products);
       });
     }
 
@@ -2841,14 +2858,14 @@ export class ClassesService {
           packageWeeks: updateDto.packageWeeks,
           packageTotalSessions: updateDto.packageTotalSessions,
           classDays: effectiveClassDays,
+          // 기존 수업의 결제방식 기준으로 PER_SESSION 판매/비판매·billingTiming 결정 (B2).
+          billingMode: classRecord.billingMode,
         },
       );
 
+      // [M-1] id 보존 reconcile — enrollment/payment 참조 ClassProduct 의 FK 단절 방지.
       await this.prisma.$transaction(async (tx) => {
-        await tx.classProduct.deleteMany({ where: { classId } });
-        if (products.length > 0) {
-          await tx.classProduct.createMany({ data: products });
-        }
+        await this.reconcileClassProducts(tx, classId, products);
       });
     }
 
@@ -3883,13 +3900,24 @@ export class ClassesService {
       throw new NotFoundException("수업을 찾을 수 없습니다.");
     }
 
+    // 정액(MONTHLY_FIXED) 무차감 기간제 — sessionsPerMonth 미전송 시 주수×주빈도로 파생(표시/정합용).
+    const derivedWeeks = Math.max(
+      1,
+      Math.round((createProductDto.durationDays ?? 30) / 7),
+    );
+    const resolvedSessionsPerMonth =
+      createProductDto.sessionsPerMonth ??
+      (createProductDto.feeType === "MONTHLY_FIXED"
+        ? Math.max(1, (createProductDto.sessionsPerWeek ?? 1) * derivedWeeks)
+        : 1);
+
     const product = await this.prisma.classProduct.create({
       data: {
         classId,
         productName: createProductDto.productName,
         description: createProductDto.description,
         price: createProductDto.price,
-        sessionsPerMonth: createProductDto.sessionsPerMonth,
+        sessionsPerMonth: resolvedSessionsPerMonth,
         durationDays: createProductDto.durationDays || 30,
       },
     });
@@ -4189,13 +4217,23 @@ export class ClassesService {
       );
     }
 
+    // 정액(MONTHLY_FIXED)은 무차감 기간제라 sessionsPerMonth 가 출석 회차를 제한하지 않는다.
+    //   프론트가 "수업 횟수"를 보내지 않아도 주수(durationDays/7)×주빈도(sessionsPerWeek)로
+    //   파생해 표시/정합용 값을 채운다. PER_SESSION 등은 1회권 의미로 1.
+    const derivedWeeks = Math.max(1, Math.round((dto.durationDays ?? 30) / 7));
+    const resolvedSessionsPerMonth =
+      dto.sessionsPerMonth ??
+      (dto.feeType === "MONTHLY_FIXED"
+        ? Math.max(1, (dto.sessionsPerWeek ?? 1) * derivedWeeks)
+        : 1);
+
     const product = await this.prisma.classProduct.create({
       data: {
         classId,
         productName: dto.productName,
         description: dto.description,
         price: dto.price,
-        sessionsPerMonth: dto.sessionsPerMonth,
+        sessionsPerMonth: resolvedSessionsPerMonth,
         durationDays: dto.durationDays || 30,
         // 2026-05-22 옵션 H — PackageEditSheet 가 전달한 feeType/sessionsPerWeek 저장.
         ...(dto.feeType ? { feeType: dto.feeType } : {}),
@@ -4567,5 +4605,72 @@ export class ClassesService {
     const cacheKey = `${keyPrefix}list:${teamId}`;
 
     await this.redisService.del(cacheKey);
+  }
+
+  /**
+   * [M-1] 수강료(ClassProduct) 갱신 — wholesale delete+create 대신 id 보존 reconcile.
+   *
+   *   기존 코드의 deleteMany→createMany 는 enrollment/payment 가 참조하던 ClassProduct 를
+   *   삭제해 FK(Enrollment.product onDelete:SetNull)를 끊었다. 그 결과 BOTH 수업의 후불 수강생
+   *   enrollment.classProductId 가 NULL 이 되어 isStudentPostpaidForBothClass 가 후불을
+   *   선불로 오판정(차감·노출·정산 깨짐)했다.
+   *
+   *   - 기존 행과 (feeType, billingTiming) 매칭 → 가격/회수 등 갱신(id 유지 → FK 보존)
+   *   - 매칭 없는 desired → create
+   *   - 매칭 안 된 잔여 기존 행 → enrollment/payment 미참조 시에만 delete(참조 시 FK 보존 위해 유지)
+   */
+  private async reconcileClassProducts(
+    tx: Prisma.TransactionClient,
+    classId: string,
+    desired: ReturnType<typeof buildClassProducts>,
+  ): Promise<void> {
+    const existing = await tx.classProduct.findMany({
+      where: { classId },
+      select: {
+        id: true,
+        feeType: true,
+        billingTiming: true,
+        _count: { select: { enrollments: true, payments: true } },
+      },
+    });
+
+    const keyOf = (p: {
+      feeType: string;
+      billingTiming?: string | null;
+    }): string => `${p.feeType}::${p.billingTiming ?? "PREPAID"}`;
+
+    const usedExistingIds = new Set<string>();
+    for (const d of desired) {
+      const match = existing.find(
+        (e) => keyOf(e) === keyOf(d) && !usedExistingIds.has(e.id),
+      );
+      if (match) {
+        usedExistingIds.add(match.id);
+        await tx.classProduct.update({
+          where: { id: match.id },
+          data: {
+            productName: d.productName,
+            description: d.description ?? null,
+            price: d.price,
+            sessionsPerMonth: d.sessionsPerMonth,
+            sessionsPerWeek: d.sessionsPerWeek ?? null,
+            durationDays: d.durationDays,
+            feePerSession: d.feePerSession ?? null,
+            isActive: d.isActive ?? true,
+          },
+        });
+      } else {
+        await tx.classProduct.create({ data: d });
+      }
+    }
+
+    // 잔여(매칭 안 된) 기존 행은 참조가 없을 때만 삭제 — 참조 중이면 FK 보존 위해 유지.
+    for (const e of existing) {
+      if (usedExistingIds.has(e.id)) continue;
+      const referenced = e._count.enrollments > 0 || e._count.payments > 0;
+      if (!referenced) {
+        await tx.classProduct.delete({ where: { id: e.id } });
+      }
+    }
   }
 }
