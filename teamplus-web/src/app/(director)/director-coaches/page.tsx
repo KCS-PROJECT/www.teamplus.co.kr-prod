@@ -18,8 +18,6 @@ import { usePageReady } from '@/hooks/usePageReady';
 interface Coach {
   id: string;
   name: string;
-  /** 배정된 수업 수 */
-  weeklyClasses: number;
   avatarUrl?: string | null;
   /** HEAD_COACH(감독) 여부 — 정렬 시 우선 */
   isHead?: boolean;
@@ -77,53 +75,19 @@ export default function DirectorCoachManagePage() {
         total?: number;
         members?: TeamMemberRow[];
       };
-      // 코치별 배정 수업 개수 집계용 — 팀 /classes 응답의 coachId 기준.
-      type ClassRow = {
-        coachId?: string | null;
-        coaches?: Array<{ coachId?: string; userId?: string }>;
-      };
 
       const allCoaches: Coach[] = [];
-      const coachClassCount = new Map<string, number>();
 
       for (const t of teamsRes.data) {
-        const memberPromise = api.get<MembersResponse | TeamMemberRow[]>(
+        const r = await api.get<MembersResponse | TeamMemberRow[]>(
           `/teams/${t.id}/members`,
         );
-        const classesPromise = api
-          .get<ClassRow[] | { data?: ClassRow[]; classes?: ClassRow[] }>(
-            `/teams/${t.id}/classes`,
-          )
-          .catch(() => null);
-        const [r, cr] = await Promise.all([memberPromise, classesPromise]);
         if (!r.success || !r.data) continue;
         const memList: TeamMemberRow[] = Array.isArray(r.data)
           ? r.data
           : Array.isArray((r.data as MembersResponse).members)
             ? (r.data as MembersResponse).members!
             : [];
-
-        // 수업 데이터 → 코치별 배정 개수 집계
-        if (cr?.success && cr.data) {
-          const classList: ClassRow[] = Array.isArray(cr.data)
-            ? cr.data
-            : Array.isArray((cr.data as { classes?: ClassRow[] }).classes)
-              ? (cr.data as { classes: ClassRow[] }).classes
-              : Array.isArray((cr.data as { data?: ClassRow[] }).data)
-                ? (cr.data as { data: ClassRow[] }).data ?? []
-                : [];
-          for (const c of classList) {
-            const assignedCoachIds = new Set<string>();
-            if (c.coachId) assignedCoachIds.add(c.coachId);
-            for (const cc of c.coaches ?? []) {
-              const cid = cc.userId ?? cc.coachId;
-              if (cid) assignedCoachIds.add(cid);
-            }
-            for (const cid of assignedCoachIds) {
-              coachClassCount.set(cid, (coachClassCount.get(cid) ?? 0) + 1);
-            }
-          }
-        }
 
         const teamCoaches = memList
           .filter(
@@ -135,12 +99,11 @@ export default function DirectorCoachManagePage() {
           .filter((row) => (row.approvalStatus ?? 'approved') === 'approved')
           .map((row) => {
             const userId = row.user?.id ?? row.id;
+            // 계정 실명(lastName+firstName) 우선, 비어있을 때만 playerName 폴백 → 상세와 동일 기준
+            const realName = `${row.user?.lastName ?? ''}${row.user?.firstName ?? ''}`.trim();
             return {
               id: userId,
-              name:
-                row.playerName ??
-                `${row.user?.lastName ?? ''}${row.user?.firstName ?? ''}`.trim(),
-              weeklyClasses: coachClassCount.get(userId) ?? 0,
+              name: realName || row.playerName || '',
               avatarUrl: row.user?.avatarUrl ?? null,
               isHead: row.roleInTeam === 'HEAD_COACH',
               isManager: row.roleInTeam === 'MANAGER',
@@ -151,7 +114,7 @@ export default function DirectorCoachManagePage() {
         allCoaches.push(...teamCoaches);
       }
 
-      // 동일 user.id 중복 제거 + 감독 우선 + 수업 수 합산
+      // 동일 user.id 중복 제거 + 감독 우선
       const uniq = new Map<string, Coach>();
       for (const c of allCoaches) {
         const prev = uniq.get(c.id);
@@ -160,7 +123,6 @@ export default function DirectorCoachManagePage() {
             ...prev,
             isHead: prev.isHead || c.isHead,
             isManager: prev.isManager || c.isManager,
-            weeklyClasses: prev.weeklyClasses + c.weeklyClasses,
           });
         } else {
           uniq.set(c.id, c);
@@ -343,15 +305,6 @@ export default function DirectorCoachManagePage() {
                       </div>
                     </NavLink>
 
-                    {/* 배정 수업 개수 */}
-                    <span
-                      className="shrink-0 inline-flex items-center gap-1 text-[13px] font-medium text-it-ink-500 dark:text-wtext-4"
-                      aria-label={`배정 수업 ${coach.weeklyClasses}개`}
-                    >
-                      <Icon name="calendar_month" className="text-[15px] text-it-blue-500" aria-hidden="true" />
-                      <span className="font-num tabular-nums">{coach.weeklyClasses}</span>개
-                    </span>
-
                     {/* 수정/삭제 아이콘 — 코치(COACH) 계정만. 감독 본인 등은 숨김 */}
                     {coach.editable && (
                       <div className="flex shrink-0">
@@ -402,7 +355,7 @@ export default function DirectorCoachManagePage() {
       <ConfirmSheet
         open={!!deleteTarget}
         title={MESSAGES.delete.confirm}
-        description={deleteTarget ? `${deleteTarget.name} 코치를 삭제하면 배정된 수업 정보도 함께 해제됩니다.` : undefined}
+        description={deleteTarget ? `${deleteTarget.name} 코치를 삭제하면 계정과 등록 정보가 함께 삭제됩니다.` : undefined}
         confirmLabel="삭제하기"
         cancelLabel="취소"
         variant="danger"

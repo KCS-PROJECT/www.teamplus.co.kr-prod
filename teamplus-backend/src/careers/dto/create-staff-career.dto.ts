@@ -4,7 +4,6 @@ import {
   IsOptional,
   IsBoolean,
   IsDateString,
-  IsIn,
   IsArray,
   MaxLength,
 } from "class-validator";
@@ -25,22 +24,23 @@ export class CreateStaffCareerDto {
   @IsString()
   userId!: string;
 
-  @ApiProperty({
-    description: "역할",
+  @ApiPropertyOptional({
+    description: "역할 (자유텍스트 전환으로 선택 입력)",
     enum: STAFF_ROLES,
     example: "head_coach",
   })
+  @IsOptional()
   @IsString()
-  @IsIn(STAFF_ROLES)
-  role!: string;
+  role?: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: "소속 기관/클럽명",
     example: "서울 아이스하키 클럽",
   })
+  @IsOptional()
   @IsString()
   @MaxLength(200)
-  organizationName!: string;
+  organizationName?: string;
 
   @ApiPropertyOptional({
     description: "리그명",
@@ -51,9 +51,10 @@ export class CreateStaffCareerDto {
   @MaxLength(200)
   leagueName?: string;
 
-  @ApiProperty({ description: "경력 시작일", example: "2020-03-01" })
+  @ApiPropertyOptional({ description: "경력 시작일", example: "2020-03-01" })
+  @IsOptional()
   @IsDateString()
-  startDate!: string;
+  startDate?: string;
 
   @ApiPropertyOptional({ description: "경력 종료일 (현재 재직이면 생략)" })
   @IsOptional()

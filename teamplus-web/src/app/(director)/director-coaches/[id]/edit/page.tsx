@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, type FormEvent, type ChangeEvent } from 'react';
+import { useState, useEffect, useCallback, type FormEvent, type ChangeEvent } from 'react';
 import { useParams } from 'next/navigation';
 import Image from 'next/image';
 import { MobileContainer } from '@/components/layout/MobileContainer';
@@ -13,28 +13,10 @@ import { MESSAGES } from '@/lib/messages';
 import { resolveImageSrc } from '@/lib/image-url';
 
 import { usePageReady } from '@/hooks/usePageReady';
-interface SpecialtyOption {
-  value: string;
-  label: string;
-}
-
-/** 폴백 옵션 (API 실패 시) */
-const FALLBACK_SPECIALTY: SpecialtyOption[] = [
-  { value: 'ICE_HOCKEY', label: '아이스하키' },
-  { value: 'ICE_HOCKEY_FORWARD', label: '포워드 전문' },
-  { value: 'ICE_HOCKEY_DEFENSE', label: '디펜스 전문' },
-  { value: 'ICE_HOCKEY_GOALIE', label: '골키퍼 전문' },
-  { value: 'ICE_HOCKEY_SKATING', label: '스케이팅 전문' },
-  { value: 'ICE_HOCKEY_GENERAL', label: '종합 코칭' },
-];
 
 /** 입력 필드 공통 스타일 — h-12 (48px) 터치 타겟 · ICETIMES 폼 입력 규격 */
 const INPUT_CLASS =
   'w-full h-12 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-700 px-4 text-card-body font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-wtext-3 outline-none transition-colors motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20';
-
-/** textarea 전용 (h 제한 없음) */
-const TEXTAREA_CLASS =
-  'w-full rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-700 px-4 py-3 text-card-body font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-wtext-3 outline-none transition-colors motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 resize-none';
 
 export default function DirectorCoachEditPage() {
   // 인증/권한 체크는 (director)/layout.tsx 에서 단 한 번 수행됨 (중복 호출 금지)
@@ -43,44 +25,14 @@ export default function DirectorCoachEditPage() {
   const { navigate, back } = useNavigation();
   const { toast } = useToast();
 
-  /* ── 전문분야 코드 (DB에서 가져옴) ── */
-  const [specialtyOptions, setSpecialtyOptions] = useState<SpecialtyOption[]>(FALLBACK_SPECIALTY);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await api.get<Array<{ code: string; name: string }>>('/common-codes?groupCode=COACH_SPECIALTY');
-        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
-          setSpecialtyOptions(res.data.map((c) => ({ value: c.code, label: c.name })));
-        }
-      } catch {
-        // 폴백 사용
-      }
-    })();
-  }, []);
-
   /* ── 폼 상태 ── */
   const [name, setName] = useState('');
-  const [specialty, setSpecialty] = useState('');
   const [phone, setPhone] = useState('');
-  const [career, setCareer] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [showSpecialtySheet, setShowSpecialtySheet] = useState(false);
 
-  /* ── 프로필 사진 ── */
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [profilePreview, setProfilePreview] = useState<string | null>(null);
-
-  const handleProfileImageChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setProfilePreview(reader.result as string);
-    };
-    reader.readAsDataURL(file);
-  }, []);
+  /* ── 프로필 사진 (읽기 전용 표시 — 사진 변경은 코치 본인 마이 프로필에서) ── */
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   /* ── 기존 데이터 로딩 ── */
   const [isLoading, setIsLoading] = useState(true);
@@ -107,14 +59,11 @@ export default function DirectorCoachEditPage() {
       if (res.success && res.data) {
         const d = res.data;
         const user = (d.user ?? d) as Record<string, unknown>;
-        const note = typeof user.note === 'string' ? (() => { try { return JSON.parse(user.note as string); } catch { return {}; } })() : {};
 
         setName((user.name as string) ?? (`${(user.lastName as string) ?? ''}${(user.firstName as string) ?? ''}`.trim() || ''));
-        setSpecialty((d.specialty as string) ?? ((note.specialty as string) ?? ''));
-        setCareer((d.career as string) ?? (note.career as string) ?? '');
 
         const profileImg = (d.avatarUrl as string) ?? (user.avatarUrl as string) ?? null;
-        if (profileImg) setProfilePreview(profileImg);
+        if (profileImg) setAvatarUrl(profileImg);
 
         const rawPhone = (d.phone as string) ?? (user.phone as string) ?? '';
         // 전화번호 포맷 적용
@@ -153,7 +102,7 @@ export default function DirectorCoachEditPage() {
   }, []);
 
   /** 제출 가능 여부 */
-  const isValid = name.trim().length > 0 && specialty !== '' && phone.replace(/-/g, '').length >= 10;
+  const isValid = name.trim().length > 0 && phone.replace(/-/g, '').length >= 10;
 
   /** 폼 제출 */
   const handleSubmit = useCallback(
@@ -167,13 +116,8 @@ export default function DirectorCoachEditPage() {
       try {
         const payload: Record<string, string> = {
           name: name.trim(),
-          specialty,
           phone: phone.replace(/-/g, ''),
-          career: career.trim(),
         };
-        if (profilePreview && profilePreview.startsWith('data:')) {
-          payload.avatarUrl = profilePreview;
-        }
         // [수정 W2.D 2026-05-18 #1/#4] /admin/users/{id} PUT 은 firstName/lastName/phone/age 만
         //  허용 (whitelist + forbidNonWhitelisted 로 422 발생). UpdateCoachDto 와 1:1 매치되는
         //  /admin/coaches/{id} 로 변경. ADMIN/DIRECTOR/ACADEMY_DIRECTOR 모두 허용.
@@ -191,7 +135,7 @@ export default function DirectorCoachEditPage() {
         setIsSubmitting(false);
       }
     },
-    [isValid, isSubmitting, coachId, name, specialty, phone, career, profilePreview, navigate, toast],
+    [isValid, isSubmitting, coachId, name, phone, navigate, toast],
   );
 
   // 로딩 상태
@@ -222,7 +166,6 @@ export default function DirectorCoachEditPage() {
   }
 
   return (
-    <>
     <MobileContainer hasBottomNav>
       <PageAppBar title="코치 수정" onBack={back} forceNative />
 
@@ -250,53 +193,30 @@ export default function DirectorCoachEditPage() {
         <form onSubmit={handleSubmit}>
           <section className="bg-it-surface dark:bg-rink-800 px-6 pt-6 pb-7">
 
-            {/* 프로필 사진 영역 */}
+            {/* 프로필 사진 영역 (읽기 전용 표시 — 사진 변경은 코치 본인 마이 프로필에서) */}
             <div className="flex flex-col items-center mb-8">
-              <div className="relative">
-                <div className="flex h-28 w-28 items-center justify-center rounded-w-pill bg-it-fill dark:bg-rink-700 overflow-hidden border-4 border-it-surface dark:border-rink-700">
-                  {(() => {
-                    // [수정 2026-05-23] /uploads/... 상대 경로가 next/image 에서 도메인 미허용으로
-                    //  404 가 되던 문제 차단. data: URL 은 그대로 통과, 그 외에는 resolveImageSrc 로
-                    //  API_ORIGIN 절대 URL 합성.
-                    const previewSrc = profilePreview?.startsWith('data:')
-                      ? profilePreview
-                      : resolveImageSrc(profilePreview);
-                    return previewSrc ? (
-                      <Image
-                        src={previewSrc}
-                        alt="프로필 미리보기"
-                        width={112}
-                        height={112}
-                        className="h-full w-full object-cover"
-                        unoptimized
-                      />
-                    ) : (
-                      <Icon
-                        name="person"
-                        className="text-5xl text-it-ink-400 dark:text-rink-300"
-                        aria-hidden="true"
-                      />
-                    );
-                  })()}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="absolute bottom-0 right-0 flex h-10 w-10 items-center justify-center rounded-w-pill bg-it-blue-500 text-white hover:bg-it-blue-600 transition-colors motion-reduce:transition-none active:brightness-95"
-                  aria-label="프로필 사진 변경"
-                >
-                  <Icon name="photo_camera" className="text-card-title" aria-hidden="true" />
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleProfileImageChange}
-                  className="hidden"
-                  aria-hidden="true"
-                />
+              <div className="flex h-28 w-28 items-center justify-center rounded-w-pill bg-it-fill dark:bg-rink-700 overflow-hidden border-4 border-it-surface dark:border-rink-700">
+                {(() => {
+                  // /uploads/... 상대 경로는 resolveImageSrc 로 API_ORIGIN 절대 URL 합성.
+                  const src = resolveImageSrc(avatarUrl);
+                  return src ? (
+                    <Image
+                      src={src}
+                      alt={name ? `${name} 코치` : '코치 프로필 사진'}
+                      width={112}
+                      height={112}
+                      className="h-full w-full object-cover"
+                      unoptimized
+                    />
+                  ) : (
+                    <Icon
+                      name="person"
+                      className="text-5xl text-it-ink-400 dark:text-rink-300"
+                      aria-hidden="true"
+                    />
+                  );
+                })()}
               </div>
-              <span className="mt-2 text-card-meta text-it-ink-500 dark:text-rink-300">프로필 사진 변경</span>
             </div>
 
             {/* 이름 */}
@@ -315,31 +235,6 @@ export default function DirectorCoachEditPage() {
                 required
                 aria-required="true"
               />
-            </div>
-
-            {/* 전문 분야 */}
-            <div className="mb-5">
-              <label className="mb-2 block text-card-body font-bold text-it-ink-800 dark:text-white">
-                전문 분야 <span className="text-it-red-500" aria-hidden="true">*</span>
-              </label>
-              <button
-                type="button"
-                aria-expanded={showSpecialtySheet}
-                aria-haspopup="dialog"
-                onClick={() => setShowSpecialtySheet(true)}
-                className={`${INPUT_CLASS} text-left flex items-center justify-between`}
-              >
-                <span className={specialty ? '' : 'text-it-ink-400 dark:text-rink-300'}>
-                  {specialty
-                    ? specialtyOptions.find((o) => o.value === specialty)?.label ?? '분야를 선택하세요'
-                    : '분야를 선택하세요'}
-                </span>
-                <Icon
-                  name="expand_more"
-                  className="text-xl text-it-ink-400 dark:text-rink-300"
-                  aria-hidden="true"
-                />
-              </button>
             </div>
 
             {/* 연락처 */}
@@ -361,20 +256,6 @@ export default function DirectorCoachEditPage() {
               />
             </div>
 
-            {/* 주요 약력 및 수상 */}
-            <div>
-              <label htmlFor="edit-coach-career" className="mb-2 block text-card-body font-bold text-it-ink-800 dark:text-white">
-                주요 약력 및 수상
-              </label>
-              <textarea
-                id="edit-coach-career"
-                value={career}
-                onChange={(e) => setCareer(e.target.value)}
-                placeholder={MESSAGES.placeholders.enterCoachCareer}
-                rows={5}
-                className={TEXTAREA_CLASS}
-              />
-            </div>
           </section>
 
           {/* 액션 버튼 — 취소 / 저장하기 */}
@@ -401,63 +282,6 @@ export default function DirectorCoachEditPage() {
         {/* BottomNav 여백 */}
         <div className="h-32" aria-hidden="true" />
       </main>
-
     </MobileContainer>
-
-    {/* 전문 분야 바텀시트 */}
-    {showSpecialtySheet && (
-      <div className="fixed inset-0 z-[100] flex items-end justify-center" role="dialog" aria-modal="true" aria-label="전문 분야 선택">
-        <div
-          className="absolute inset-0 bg-black/50"
-          onClick={() => setShowSpecialtySheet(false)}
-        />
-        <div className="relative w-full max-w-md bg-it-surface dark:bg-rink-800 rounded-t-3xl shadow-md pb-10">
-          <div className="flex justify-center pt-4 pb-3">
-            <div className="w-12 h-1.5 rounded-w-pill bg-it-line-strong dark:bg-rink-500" />
-          </div>
-          <div className="flex items-center justify-between px-6 pb-4">
-            <h3 className="text-card-title font-bold text-it-ink-800 dark:text-white">전문 분야 선택</h3>
-            <button
-              type="button"
-              onClick={() => setShowSpecialtySheet(false)}
-              className="flex size-11 items-center justify-center rounded-w-pill hover:bg-it-line dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none active:brightness-95"
-              aria-label="닫기"
-            >
-              <Icon name="close" className="text-2xl text-it-ink-500 dark:text-rink-300" aria-hidden="true" />
-            </button>
-          </div>
-          <div className="h-px bg-it-line dark:bg-rink-700 mx-6" />
-          <div className="py-2 px-2">
-            {specialtyOptions.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => {
-                  setSpecialty(opt.value);
-                  setShowSpecialtySheet(false);
-                }}
-                className={`flex min-h-[48px] w-full items-center justify-between px-4 py-4 rounded-w-md text-left transition-colors motion-reduce:transition-none active:bg-it-line dark:active:bg-rink-700 ${
-                  specialty === opt.value
-                    ? 'bg-it-blue-50 dark:bg-it-blue-500/15'
-                    : 'hover:bg-it-fill dark:hover:bg-rink-700/50'
-                }`}
-              >
-                <span className={`text-card-title ${
-                  specialty === opt.value
-                    ? 'text-it-blue-500 font-bold'
-                    : 'text-it-ink-800 dark:text-white font-medium'
-                }`}>
-                  {opt.label}
-                </span>
-                {specialty === opt.value && (
-                  <Icon name="check_circle" className="text-2xl text-it-blue-500" aria-hidden="true" />
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    )}
-    </>
   );
 }

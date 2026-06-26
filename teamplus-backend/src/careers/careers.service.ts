@@ -9,10 +9,42 @@ import { CreatePlayerCareerDto } from "./dto/create-player-career.dto";
 import { UpdatePlayerCareerDto } from "./dto/update-player-career.dto";
 import { CreateStaffCareerDto } from "./dto/create-staff-career.dto";
 import { UpdateStaffCareerDto } from "./dto/update-staff-career.dto";
+import { resolveManagedTeamIds } from "../common/utils/team-scope.util";
 
 @Injectable()
 export class CareersService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * 스태프 약력 수정/삭제 소유권 가드.
+   *   - ADMIN → 전체 허용
+   *   - 본인 약력(targetUserId === requesterId) → 허용
+   *   - 요청자 관리 팀 ∩ 대상 코치 소속 팀 교집합 존재 → 허용
+   *   - 그 외 → 403
+   *
+   * "관리/소속 팀" 판정은 팀 가시성 SoT인 resolveManagedTeamIds 재사용
+   *   (TeamMember(approved) ∪ CoachProfile.teamId ∪ Team.coachId).
+   */
+  private async assertCanManageCareer(
+    requesterId: string,
+    requesterRole: string,
+    targetUserId: string,
+  ): Promise<void> {
+    if (requesterRole === "ADMIN") return;
+    if (targetUserId === requesterId) return;
+
+    const [requesterTeamIds, targetTeamIds] = await Promise.all([
+      resolveManagedTeamIds(this.prisma, requesterId),
+      resolveManagedTeamIds(this.prisma, targetUserId),
+    ]);
+    const targetSet = new Set(targetTeamIds);
+    const hasOverlap = requesterTeamIds.some((id) => targetSet.has(id));
+    if (hasOverlap) return;
+
+    throw new ForbiddenException(
+      "해당 코치의 약력을 수정할 권한이 없습니다.",
+    );
+  }
 
   // ==================== Player Career ====================
 
@@ -278,7 +310,11 @@ export class CareersService {
     return career;
   }
 
-  async createStaffCareer(dto: CreateStaffCareerDto) {
+  async createStaffCareer(
+    dto: CreateStaffCareerDto,
+    requesterId: string,
+    requesterRole: string,
+  ) {
     // 사용자 존재 + 역할 확인 (DIRECTOR, COACH, ADMIN만)
     const user = await this.prisma.user.findUnique({
       where: { id: dto.userId },
@@ -287,12 +323,15 @@ export class CareersService {
     if (!user) {
       throw new NotFoundException("사용자를 찾을 수 없습니다.");
     }
-    const allowedTypes = ["ADMIN", "DIRECTOR", "COACH"];
+    const allowedTypes = ["ADMIN", "DIRECTOR", "ACADEMY_DIRECTOR", "COACH"];
     if (!allowedTypes.includes(user.userType)) {
       throw new ForbiddenException(
         "경력 등록은 감독, 코치, 관리자만 가능합니다.",
       );
     }
+
+    // 소유권 가드 — 본인/관리팀 코치/ADMIN 외 403
+    await this.assertCanManageCareer(requesterId, requesterRole, dto.userId);
 
     // displayOrder 자동 산출
     const maxOrder = await this.prisma.staffCareer.aggregate({
@@ -304,16 +343,17 @@ export class CareersService {
     return this.prisma.staffCareer.create({
       data: {
         userId: dto.userId,
-        role: dto.role,
-        organizationName: dto.organizationName,
-        leagueName: dto.leagueName,
-        startDate: new Date(dto.startDate),
-        endDate: dto.endDate ? new Date(dto.endDate) : undefined,
+        // 자유텍스트 전환(A-1): 누락 시 더미값 없이 NULL 저장
+        role: dto.role ?? null,
+        organizationName: dto.organizationName ?? null,
+        leagueName: dto.leagueName ?? null,
+        startDate: dto.startDate ? new Date(dto.startDate) : null,
+        endDate: dto.endDate ? new Date(dto.endDate) : null,
         isCurrent: dto.isCurrent ?? false,
-        description: dto.description,
+        description: dto.description ?? null,
         certifications: dto.certifications
           ? JSON.stringify(dto.certifications)
-          : undefined,
+          : null,
         displayOrder: nextOrder,
       },
       select: {
@@ -328,14 +368,26 @@ export class CareersService {
     });
   }
 
-  async updateStaffCareer(id: string, dto: UpdateStaffCareerDto) {
+  async updateStaffCareer(
+    id: string,
+    dto: UpdateStaffCareerDto,
+    requesterId: string,
+    requesterRole: string,
+  ) {
     const existing = await this.prisma.staffCareer.findUnique({
       where: { id },
-      select: { id: true },
+      select: { id: true, userId: true },
     });
     if (!existing) {
       throw new NotFoundException("스태프 경력을 찾을 수 없습니다.");
     }
+
+    // 소유권 가드 — 대상 약력의 userId 기준 검증
+    await this.assertCanManageCareer(
+      requesterId,
+      requesterRole,
+      existing.userId,
+    );
 
     const data: any = { ...dto };
     if (dto.startDate) data.startDate = new Date(dto.startDate);
@@ -363,14 +415,26 @@ export class CareersService {
     });
   }
 
-  async deleteStaffCareer(id: string) {
+  async deleteStaffCareer(
+    id: string,
+    requesterId: string,
+    requesterRole: string,
+  ) {
     const existing = await this.prisma.staffCareer.findUnique({
       where: { id },
-      select: { id: true },
+      select: { id: true, userId: true },
     });
     if (!existing) {
       throw new NotFoundException("스태프 경력을 찾을 수 없습니다.");
     }
+
+    // 소유권 가드 — 대상 약력의 userId 기준 검증
+    await this.assertCanManageCareer(
+      requesterId,
+      requesterRole,
+      existing.userId,
+    );
+
     await this.prisma.staffCareer.delete({ where: { id } });
     return { message: "스태프 경력이 삭제되었습니다." };
   }
