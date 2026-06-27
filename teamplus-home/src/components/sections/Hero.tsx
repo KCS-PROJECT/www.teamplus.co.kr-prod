@@ -1,13 +1,11 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import Link from 'next/link';
 import {
   Sparkles,
   QrCode,
   TrendingUp,
   ShieldCheck,
-  ArrowRight,
   type LucideIcon,
 } from 'lucide-react';
 import { HERO, HERO_FEATURES, HERO_PROOF, APP_DOWNLOAD } from '@/lib/content';
@@ -41,7 +39,11 @@ export function Hero() {
             className="max-w-2xl md:max-w-none lg:max-w-2xl"
           >
             <h1 className="text-[clamp(2.15rem,4.9vw,4.25rem)] font-black leading-[1.04] tracking-normal text-rink-900">
-              <span className="block">{HERO.headlineTop}</span>
+              <span className="block">
+                {HERO.headlineTop}
+                <br />
+                {HERO.headlineTopLine2}
+              </span>
               <span className="mt-1.5 block pb-1 text-ice-600">
                 {HERO.headlineAccent}
               </span>
@@ -51,30 +53,8 @@ export function Hero() {
               {HERO.subCopy}
             </p>
 
-            {/* CTA — 작동하는 1차 행동(도입 상담) + 2차(기능 보기). 앱 다운로드는 출시 전이라 하단에 '출시 예정'으로 분리. */}
-            <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <Link
-                href="/contact"
-                className="btn-primary group w-full px-7 py-3.5 text-base sm:w-auto"
-              >
-                도입 상담 신청
-                <ArrowRight
-                  size={18}
-                  strokeWidth={2.4}
-                  className="transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transform-none"
-                  aria-hidden
-                />
-              </Link>
-              <Link
-                href="/features"
-                className="btn-ghost w-full px-7 py-3.5 text-base sm:w-auto"
-              >
-                앱 기능 둘러보기
-              </Link>
-            </div>
-
             {/* 핵심 기능 — 카드 장식 대신 운영 메모처럼 가볍게 노출 */}
-            <div className="mt-10 grid grid-cols-1 border-y border-wline sm:grid-cols-3 md:grid-cols-1 lg:grid-cols-3">
+            <div className="mt-16 grid grid-cols-1 border-y border-wline sm:grid-cols-3 md:grid-cols-1 lg:grid-cols-3">
               {HERO_FEATURES.map((f, i) => {
                 const Icon = FEATURE_ICONS[f.icon] ?? Sparkles;
                 return (
@@ -126,9 +106,6 @@ export function Hero() {
               transition={{ duration: 0.6, delay: 0.6 }}
               className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center"
             >
-              <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-[0.08em] text-wtext-4">
-                <Sparkles size={13} aria-hidden />앱 출시 예정
-              </span>
               <div className="flex gap-2.5">
                 <StoreBadge
                   store="apple"

@@ -15,8 +15,8 @@ export function BackgroundMesh({ variant = 'section', className }: Props) {
     <div aria-hidden className={cn('pointer-events-none absolute inset-0 -z-10 overflow-hidden', className)}>
       {variant === 'hero' && (
         <>
-          <div className="absolute inset-x-0 top-0 h-[520px] bg-ice-50" />
-          <div className="absolute inset-x-0 top-[519px] h-px bg-wline" />
+          <div className="absolute inset-x-0 top-0 h-[440px] bg-ice-50" />
+          <div className="absolute inset-x-0 top-[439px] h-px bg-wline" />
           <RinkLines
             variant="faceoff"
             className="absolute -right-24 top-12 h-[320px] w-[320px] text-ice-100 sm:h-[420px] sm:w-[420px]"

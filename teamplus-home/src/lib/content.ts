@@ -78,7 +78,9 @@ export const APP_DOWNLOAD = {
 };
 
 export const HERO = {
-  headlineTop: "아이의 아이스하키 하루를",
+  // 헤드라인 — "우리 아이의"(1줄) + "아이스하키 하루를"(2줄) + "한눈에 확인하세요"(액센트)
+  headlineTop: "우리 아이의",
+  headlineTopLine2: "아이스하키 하루를",
   headlineAccent: "한눈에 확인하세요",
   subCopy:
     "수업 일정, QR 출석, 성장 기록, 결제와 수업권까지. 팀플러스+는 아이가 빙판 위에서 보내는 시간을 부모와 코치가 놓치지 않도록 연결합니다.",
