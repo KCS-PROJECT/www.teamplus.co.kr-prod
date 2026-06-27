@@ -1,10 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<!-- Debug/Profile 전용 Info.plist (2026-06-10 분리)
-     개발용 ATS HTTP 예외(NSAppTransportSecurity)는 이 파일에만 유지한다.
-     Release 는 Runner/Info.plist 사용 — ATS 예외 0건 (앱 심사 대응).
-     ATS 외 키 변경 시 두 파일 모두 동일하게 수정할 것. -->
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>

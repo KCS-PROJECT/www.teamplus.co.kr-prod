@@ -1,8 +1,6 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import Link from 'next/link';
-import { ArrowRight, Sparkles } from 'lucide-react';
 import { FINAL_CTA, APP_DOWNLOAD } from '@/lib/content';
 import { RinkLines } from '@/components/ui/RinkLines';
 import { StoreBadge } from '@/components/ui/StoreBadge';
@@ -46,33 +44,8 @@ export function FinalCta() {
               {FINAL_CTA.subCopy}
             </p>
 
-            {/* 1차 행동 — 작동하는 도입 상담(/contact) + 2차 기능 보기. 카피·칩과 정합. */}
-            <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
-              <Link
-                href="/contact"
-                className="btn-primary group w-full px-8 py-3.5 text-base sm:w-auto"
-              >
-                도입 상담 신청
-                <ArrowRight
-                  size={18}
-                  strokeWidth={2.4}
-                  className="transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transform-none"
-                  aria-hidden
-                />
-              </Link>
-              <Link
-                href="/features"
-                className="btn-ghost w-full px-8 py-3.5 text-base sm:w-auto"
-              >
-                앱 기능 둘러보기
-              </Link>
-            </div>
-
             {/* 앱 다운로드 — 출시 전 '출시 예정' 비활성 표기 */}
             <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
-              <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-[0.08em] text-wtext-4">
-                <Sparkles size={13} aria-hidden />앱 출시 예정
-              </span>
               <div className="flex gap-2.5">
                 <StoreBadge store="apple" href={APP_DOWNLOAD.appStore} tone="dark" className="scale-90" />
                 <StoreBadge store="google" href={APP_DOWNLOAD.googlePlay} tone="dark" className="scale-90" />

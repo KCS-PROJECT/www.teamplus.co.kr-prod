@@ -41,11 +41,6 @@ export function Footer() {
             <p className="mt-5 max-w-md text-sm leading-relaxed text-wtext-3">
               {BRAND.descriptor}
             </p>
-            <div className="mt-6 flex flex-wrap gap-2">
-              {BRAND.badges.slice(0, 3).map((b) => (
-                <span key={b} className="chip">{b}</span>
-              ))}
-            </div>
           </div>
 
           <div>

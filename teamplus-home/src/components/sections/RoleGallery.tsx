@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowUpRight, X, ChevronLeft, ChevronRight, Maximize2 } from 'lucide-react';
+import { ArrowUpRight, X, ChevronLeft, ChevronRight, Maximize2, Check } from 'lucide-react';
 import { PhoneFrame } from '@/components/ui/PhoneFrame';
 import { RinkLines } from '@/components/ui/RinkLines';
 import { EASE_OUT } from '@/lib/motion';
@@ -133,7 +133,7 @@ export function RoleGallery() {
         <div
           role="tablist"
           aria-label="역할 선택"
-          className="no-scrollbar mt-9 flex gap-1.5 overflow-x-auto rounded-full border border-wline bg-wbg p-1.5"
+          className="no-scrollbar mt-9 inline-flex gap-1 rounded-full border border-wline bg-wbg p-1 shadow-sh-1"
         >
           {ROLES.map((r, i) => {
             const on = i === active;
@@ -148,7 +148,7 @@ export function RoleGallery() {
                 className={[
                   'shrink-0 rounded-full px-5 py-2.5 text-sm font-bold transition-colors',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 focus-visible:ring-offset-wbg',
-                  on ? 'bg-ice-500 text-white shadow-sh-2' : 'text-wtext-2 hover:text-rink-900',
+                  on ? 'bg-ice-500 text-white shadow-sh-2' : 'text-wtext-2 hover:bg-wsurface hover:text-rink-900',
                 ].join(' ')}
               >
                 {r.tab}
@@ -158,30 +158,36 @@ export function RoleGallery() {
         </div>
 
         {/* panel */}
-        <div className="mt-10 grid gap-10 lg:grid-cols-[0.82fr_1.18fr] lg:items-center lg:gap-12">
+        <div className="mt-10 grid gap-10 lg:grid-cols-[0.82fr_1.18fr] lg:items-stretch lg:gap-12">
           {/* left — narrative */}
-          <div id={`panel-${role.id}`} role="tabpanel" aria-label={`${role.tab} 화면`} className="relative min-h-[240px]">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={role.id}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.38, ease: EASE }}
-                className="motion-reduce:transition-none"
-              >
-                <span className="text-sm font-bold text-ice-600">
-                  {role.role}
-                </span>
-                <h3 className="mt-3 text-2xl font-extrabold leading-snug text-rink-900 sm:text-3xl">
+          <div
+            id={`panel-${role.id}`}
+            role="tabpanel"
+            aria-label={`${role.tab} 화면`}
+            className="relative flex min-h-[240px] flex-col"
+          >
+            <motion.div
+              key={role.id}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.38, ease: EASE }}
+              className="motion-reduce:transition-none"
+            >
+                <div className="flex items-center gap-2.5">
+                  <span className="inline-flex h-7 items-center rounded-full bg-ice-50 px-2.5 font-num text-xs font-bold tabular-nums text-ice-700 ring-1 ring-ice-100">
+                    0{active + 1} / 0{ROLES.length}
+                  </span>
+                  <span className="text-sm font-bold text-ice-600">{role.role}</span>
+                </div>
+                <h3 className="mt-5 text-2xl font-extrabold leading-snug text-rink-900 sm:text-3xl">
                   {role.headline}
                 </h3>
                 <p className="mt-4 max-w-md text-sm leading-7 text-wtext-3 sm:text-base">{role.desc}</p>
-                <ul className="mt-6 flex flex-col gap-2.5">
+                <ul className="mt-7 flex flex-col gap-3">
                   {role.bullets.map((b) => (
                     <li key={b} className="flex items-center gap-3 text-sm font-semibold text-rink-900">
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-ice-50 ring-1 ring-ice-100">
-                        <span className="h-1.5 w-1.5 rounded-full bg-ice-500" />
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-ice-50 text-ice-600 ring-1 ring-ice-100">
+                        <Check size={13} strokeWidth={3} aria-hidden />
                       </span>
                       {b}
                     </li>
@@ -189,27 +195,35 @@ export function RoleGallery() {
                 </ul>
                 <Link
                   href="/features"
-                  className="mt-7 inline-flex items-center gap-1.5 text-sm font-bold text-ice-600 transition-colors hover:text-ice-700"
+                  className="group mt-8 inline-flex items-center gap-1.5 text-sm font-bold text-ice-600 transition-colors hover:text-ice-700"
                 >
                   앱 기능 자세히 보기
-                  <ArrowUpRight size={15} strokeWidth={2.4} />
+                  <ArrowUpRight
+                    size={15}
+                    strokeWidth={2.4}
+                    className="transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 motion-reduce:transform-none"
+                  />
                 </Link>
-              </motion.div>
-            </AnimatePresence>
+            </motion.div>
+
+            {/* footer — 좌측 컬럼 높이 균형 + 역할 전환 맥락 (lg 전용) */}
+            <div className="mt-auto hidden border-t border-wline pt-6 lg:block">
+              <p className="text-xs font-medium leading-5 text-wtext-4">
+                같은 클럽 데이터를 역할에 맞춰 다르게 보여줍니다. 위 탭으로 학부모 · 코치 · 감독 화면을 전환해 보세요.
+              </p>
+            </div>
           </div>
 
           {/* right — phone stage */}
           <div className="relative isolate overflow-hidden rounded-[2rem] border border-wline bg-wbg p-6 sm:p-8">
             <RinkLines variant="faceoff" className="absolute -right-16 -top-16 z-0 h-64 w-64 text-ice-200/70" />
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={role.id}
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.42, ease: EASE }}
-                className="relative z-10"
-              >
+            <motion.div
+              key={role.id}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.42, ease: EASE }}
+              className="relative z-10"
+            >
                 {/* featured 3 */}
                 <div className="no-scrollbar flex justify-start gap-4 overflow-x-auto sm:justify-center sm:overflow-visible">
                   {screens.slice(0, 3).map((s, i) => (
@@ -261,8 +275,7 @@ export function RoleGallery() {
                     </div>
                   </div>
                 )}
-              </motion.div>
-            </AnimatePresence>
+            </motion.div>
           </div>
         </div>
       </div>

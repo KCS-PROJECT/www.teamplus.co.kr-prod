@@ -100,8 +100,8 @@ export function StoreBadge({ store, href, tone = 'dark', className }: StoreBadge
       className={cn(
         'relative inline-flex items-center gap-3 rounded-2xl px-5 py-3 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 motion-reduce:transition-none',
         t.badge,
-        // 미출시: 버튼처럼 보이되 동작 안 함 → '출시 예정' 의도된 비활성 상태로 렌더(깨진 링크 인상 방지)
-        !isLinked && 'pointer-events-none opacity-60 shadow-none',
+        // 미출시: 링크만 비활성(동작 안 함). 배지 색상은 원래 톤 그대로 유지(회색빛 제거).
+        !isLinked && 'pointer-events-none',
         className,
       )}
     >
