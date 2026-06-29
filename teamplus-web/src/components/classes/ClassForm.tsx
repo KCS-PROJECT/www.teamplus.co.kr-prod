@@ -1065,10 +1065,9 @@ export function ClassForm({
         </AnimatedSection>
 
         {/* ── SECTION 4.5: 오픈클래스 노출 팀 선택 (academy 컨텍스트 전용) ──
-            [2026-05-15] 오픈클래스 감독은 특정 팀 소속이 아니므로, 이 수업을 어느
-            팀 소속자(감독·코치·학부모·학생)에게 노출할지 직접 선택한다.
-            선택된 팀만 ClassTeamVisibility 로 저장 → 그 팀 사람에게만 수업목록/캘린더 노출. */}
-        {isAcademy && (
+            [2026-06-29] 정책 변경 — 오픈클래스는 전체 학부모(자녀 연령 매칭)에게 노출하므로
+            팀 단위 노출 선택을 폐지하고 UI 를 숨긴다. 상태·핸들러 코드는 보존(되돌림 대비). */}
+        {false && isAcademy && (
           <AnimatedSection delay={325}>
             <section className="space-y-4">
               <h2 className={ic.head}>
