@@ -15,8 +15,9 @@
  * AppBar / BottomNav 불가침 — WalletScreen wrapper 의 Tabs / WalletAppBar 그대로.
  */
 
-import { useState, useCallback, useEffect, type ReactNode } from "react";
+import { useState, useCallback, useEffect, useMemo, type ReactNode } from "react";
 import { api } from "@/services/api-client";
+import { useChildren } from "@/hooks/useChildren";
 import { HeroTeamLogo } from "@/components/dashboard/HeroTeamLogo";
 import nextDynamic from "next/dynamic";
 
@@ -790,20 +791,26 @@ export default function MyPage() {
   const [isLogoutOpen, setIsLogoutOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [teamLogoUrl, setTeamLogoUrl] = useState<string | null>(null);
+  // Hero 보조 한 줄(name 아래) — 역할별 맞춤: 소속 팀명 / 운영 오픈클래스명 / 자녀 요약.
+  const [teamName, setTeamName] = useState<string | null>(null);
+  const [academyName, setAcademyName] = useState<string | null>(null);
+  // 학부모 자녀 요약용 — useChildren 은 parent/admin 외 역할에서는 네트워크 호출을 스킵(내장 가드).
+  const { children: myChildren } = useChildren();
 
   // [2026-05-25] 소속 팀 로고 — 메인화면 Hero 와 동일하게 마이페이지 Hero 우상단 표시.
-  //   /teams/my/list(getUserTeams) 가 모든 역할의 본인 소속 팀(logoUrl 포함)을 반환.
+  //   /teams/my/list(getUserTeams) 가 모든 역할의 본인 소속 팀(logoUrl + name 포함)을 반환.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        type TeamItem = { id?: string; logoUrl?: string | null };
+        type TeamItem = { id?: string; name?: string | null; logoUrl?: string | null };
         const r = await api.get<TeamItem[] | { data?: TeamItem[] }>("/teams/my/list");
         if (cancelled || !r.success || !r.data) return;
         const list: TeamItem[] = Array.isArray(r.data)
           ? r.data
           : ((r.data as { data?: TeamItem[] }).data ?? []);
         setTeamLogoUrl(list.find((t) => t.logoUrl)?.logoUrl ?? null);
+        setTeamName(list.find((t) => t.name)?.name ?? null);
       } catch {
         /* 로고 미조회 시 데코만 노출 */
       }
@@ -812,6 +819,27 @@ export default function MyPage() {
       cancelled = true;
     };
   }, []);
+
+  // 오픈클래스 감독 — 운영 중인 오픈클래스명(싱글턴) 1건 조회. 그 외 역할은 호출 스킵.
+  useEffect(() => {
+    if ((authUser?.userType ?? "").toString().toLowerCase() !== "academy_director") {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await api.get<{ data?: { name?: string }[] }>("/academies/my/list");
+        if (cancelled || !r.success || !r.data) return;
+        const list = (r.data as { data?: { name?: string }[] }).data ?? [];
+        setAcademyName(list[0]?.name ?? null);
+      } catch {
+        /* 미조회 시 보조 줄 숨김 */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser?.userType]);
 
   useNativeUI({
     showStatusBar: true,
@@ -841,6 +869,20 @@ export default function MyPage() {
   const displayEmail = authUser?.email ?? "";
   const roleLabel = ROLE_LABELS[roleKey] ?? "회원";
 
+  // Hero 보조 한 줄 — 역할별 맞춤 정보(없으면 줄 자체 숨김).
+  //   오픈클래스 감독 → 운영 오픈클래스명 / 학부모 → 자녀 요약 / 그 외(감독·코치·선수) → 소속 팀명.
+  const heroInfo = useMemo<string | null>(() => {
+    if (roleKey === "academy_director") return academyName;
+    if (roleKey === "parent") {
+      if (myChildren.length === 0) return null;
+      const firstName = myChildren[0]?.name ?? "";
+      return myChildren.length > 1
+        ? MESSAGES.profile.heroChildSummary(myChildren.length, firstName)
+        : firstName;
+    }
+    return teamName;
+  }, [roleKey, academyName, teamName, myChildren]);
+
   // 설정 항목/푸터 — [2026-06-17] 설정 탭을 프로필 탭으로 통합하면서 프로필 탭에서 사용.
   const S = MESSAGES.settings;
   const versionLabel = appSettings?.appVersion
@@ -854,7 +896,7 @@ export default function MyPage() {
         role={roleLabel}
         email={displayEmail}
         name={displayName ? `${displayName}님` : `${roleLabel}님`}
-        info={`${roleLabel} 계정 · TEAMPLUS`}
+        info={heroInfo ?? undefined}
         logoUrl={teamLogoUrl}
         stats={[]}
       />

@@ -12,7 +12,8 @@ export type AgeGroup = 'U8' | 'U9' | 'U10' | 'U11' | 'U12';
 export interface TeamGroupSummary {
   id: string;
   name: string;
-  ageGroup: AgeGroup | null;
+  /** 대상 설명(자유 텍스트). 레거시 'U8'~'U12'·출생연도 문자열도 그대로 보존. */
+  ageGroup: string | null;
   isActive: boolean;
   createdAt: string;
   _count: { members: number };
@@ -24,6 +25,8 @@ export interface TeamGroupMemberRow {
   playerName: string;
   gender: 'M' | 'F' | string | null;
   playerAge: number;
+  /** 생년월일 ISO (ChildProfile 우선, user 폴백) — 없으면 null. 트리 선수 행 "YYYY.MM.DD" 표시용. */
+  birthDate: string | null;
   joinedAt: string;
 }
 
@@ -32,7 +35,8 @@ export interface TeamGroupDetail {
   teamId: string;
   teamName: string;
   name: string;
-  ageGroup: AgeGroup | null;
+  /** 대상 설명(자유 텍스트). */
+  ageGroup: string | null;
   isActive: boolean;
   createdAt: string;
   members: TeamGroupMemberRow[];

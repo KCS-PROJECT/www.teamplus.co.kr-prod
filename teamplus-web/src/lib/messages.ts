@@ -864,8 +864,11 @@ export const MESSAGES = {
     historyCount: (n: number) => `${n}회`,
     historyPrevYear: "이전 해",
     historyNextYear: "다음 해",
-    historyThisYear: "올해",
+    historyThisYear: "올해로 이동",
     historyYearLabel: (y: number) => `${y}년`,
+    // 총계 타일 라벨 — 올해면 "올해 출석", 과거 연도면 "2025년 출석"
+    historyAttendanceLabel: (y: number, isCurrent: boolean) =>
+      isCurrent ? '올해 출석' : `${y}년 출석`,
     historyMonthEmpty: "이 달에는 수업 이력이 없습니다.",
     historyLoadError: "수업 이력을 불러올 수 없습니다.",
     historyStatus: {
@@ -1666,8 +1669,10 @@ export const MESSAGES = {
     groupNameLabel: "하위그룹 이름",
     groupNamePlaceholder: "예: 선수반 A조",
     groupNameRequired: "하위그룹 이름을 입력해주세요.",
-    groupAgeGroupLabel: "연령",
-    groupAgeGroupPlaceholder: "연령 선택",
+    groupAgeGroupLabel: "대상 설명",
+    groupAgeGroupPlaceholder: "예: 주말반 · 초급 · 2014년생 위주",
+    groupAgeGroupHelper:
+      "선택 입력 — 이 하위그룹의 대상이나 성격을 자유롭게 적어주세요.",
     groupMembersLabel: "회원 선택",
     groupMembersEmpty: "등록 가능한 회원이 없습니다.",
     groupMembersHelper: "하위그룹에 포함할 회원을 선택하세요.",
@@ -2848,6 +2853,9 @@ export const MESSAGES = {
     passwordChanged: "비밀번호가 변경되었습니다.",
     passwordChangeFailed: "비밀번호 변경 중 오류가 발생했습니다.",
     fileSizeOver5MB: "파일 크기는 5MB 이하여야 합니다.",
+    // 마이페이지 Hero 보조 한 줄 — 학부모 다자녀 요약 ("자녀 2명 · 안OO")
+    heroChildSummary: (count: number, firstChildName: string) =>
+      `자녀 ${count}명 · ${firstChildName}`,
   },
 
   // ─── O. 보안 / 2FA / 디바이스 ───────────────────────

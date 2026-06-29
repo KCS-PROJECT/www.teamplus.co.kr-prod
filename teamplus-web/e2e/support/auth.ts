@@ -2,9 +2,9 @@ import { expect, type Page } from "@playwright/test";
 
 export const SEED_USERS = {
   admin: "admin@teamplus.com",
-  director: "director@teamplus.com",
-  coach: "coach@teamplus.com",
-  parent: "parent@teamplus.com",
+  director: "lim12345",
+  coach: "kim_coach",
+  parent: "shin1234",
   teen: "teen@teamplus.com",
   child: "child@teamplus.com",
 } as const;

@@ -256,7 +256,7 @@ export default function TeamGroupCreatePage() {
               )}
             </div>
 
-            {/* 연령대 */}
+            {/* 대상 설명 (선택 · 자유 텍스트) */}
             <div>
               <label
                 htmlFor="group-age"
@@ -264,19 +264,18 @@ export default function TeamGroupCreatePage() {
               >
                 {MESSAGES.team.groupAgeGroupLabel}
               </label>
-              <select
+              <input
                 id="group-age"
+                type="text"
                 value={ageGroup}
                 onChange={(e) => setAgeGroup(e.target.value)}
-                className="h-[50px] w-full rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-950 px-4 text-[15.5px] font-semibold text-it-ink-800 dark:text-white outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20"
-              >
-                <option value="">{MESSAGES.team.groupAgeGroupPlaceholder}</option>
-                {selectableBirthYears.map((y) => (
-                  <option key={y} value={String(y)}>
-                    {y}년생
-                  </option>
-                ))}
-              </select>
+                placeholder={MESSAGES.team.groupAgeGroupPlaceholder}
+                maxLength={30}
+                className="h-[50px] w-full rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-950 px-4 text-[15.5px] font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-it-ink-300 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20"
+              />
+              <p className="mt-1.5 text-[12px] font-medium text-it-ink-500 dark:text-it-ink-300">
+                {MESSAGES.team.groupAgeGroupHelper}
+              </p>
             </div>
           </section>
 
