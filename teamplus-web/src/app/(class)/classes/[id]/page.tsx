@@ -359,14 +359,17 @@ export default function ClassDetailPage() {
    */
   const isOpenClass = !!classData?.academyId;
 
-  // [2026-06-09] 오픈클래스 결제 회차 기본 선택 — 전체(MONTHLY_FIXED) 우선, 없으면 첫 회차.
+  // [2026-06-09] 결제 회차 기본 선택 — 정액(MONTHLY_FIXED) 패키지만 자동 선택.
+  //   [2026-06-29] 1회 수업료(PER_SESSION)는 참고가로만 노출(선불=패키지)하므로 자동 선택 대상에서 제외.
+  //   정액 패키지가 없으면 아무것도 자동 선택하지 않는다 — 과거 products[0](=PER_SESSION) 폴백이
+  //   패키지 없는 오픈클래스를 1회 수업료로 결제 진행시키던 문제를 차단한다.
   useEffect(() => {
     const products = classData?.products ?? [];
     if (products.length === 0) return;
     setSelectedProductIds((prev) => {
       if (prev.size > 0) return prev;
       const fullProduct = products.find((p) => p.feeType === 'MONTHLY_FIXED');
-      return new Set([(fullProduct ?? products[0]).id]);
+      return fullProduct ? new Set([fullProduct.id]) : new Set();
     });
   }, [classData?.products]);
   // [2026-05-15] 수업 수정 폼 경로 — 오픈클래스(academyId)는 academy 전용 라우트로,
@@ -845,6 +848,16 @@ export default function ClassDetailPage() {
         parentChildren.some((c) => c.id === id),
       );
       const productIds = Array.from(selectedProductIds);
+      // 오픈클래스도 선불은 정액 패키지로만 구매 — 1회 수업료는 참고가(상단 카드)로만 노출하므로
+      //   여기서 선택 가능한 상품은 정액 패키지뿐. 미선택 시 안내 후 중단(무반응 방지).
+      if (productIds.length === 0) {
+        await modal.alert({
+          title: "신청할 수 없어요",
+          message: MESSAGES.enrollment.selectPlanRequired,
+          buttonText: "확인",
+        });
+        return;
+      }
       const pairs: { childId: string; productId: string }[] = [];
       for (const cid of childIds) {
         for (const pid of productIds) pairs.push({ childId: cid, productId: pid });
@@ -1126,7 +1139,11 @@ export default function ClassDetailPage() {
   //   BOTH/후불전용/오픈클래스 제외. 참고 단가 상품 = PER_SESSION(선불 1회 수업료).
   const isParentPrepaidOnly =
     isParent && !isBoth && !isPostpaid && !isOpenClass;
-  const prepaidRefProduct =
+  // 1회 수업료(PER_SESSION)를 구매 목록에서 빼고 별도 '참고' 카드로 분리하는 대상.
+  //   · 학부모 선불 전용(기존) · 오픈클래스(선불=패키지 정책, 정규훈련과 동일) · 매니저(감독/코치/관리자 — 보기용)
+  //   오픈클래스·매니저는 1회 수업료를 구매 항목이 아닌 참고가로만 노출하고, 구매는 정액 패키지로 진행한다.
+  const pullOutSingleFee = isParentPrepaidOnly || isOpenClass || isManager;
+  const singleFeeRefProduct =
     (classData.products ?? []).find((p) => p.feeType === "PER_SESSION") ?? null;
   // [2026-06-05] 요일별 시간·장소 — 규칙이 있으면 "수업 정보" 카드에 모두 나열,
   //   없으면 기존 단일 startTime/endTime · venueName 표시로 폴백.
@@ -1812,12 +1829,12 @@ export default function ClassDetailPage() {
           <h2 className="text-[15px] font-extrabold text-wtext-1 dark:text-white tracking-tight">
             {isOpenClass ? "훈련비용" : "수업료"}
           </h2>
-          {/* [선불 전용] 1회 수업료(참고) — 정액 패키지 목록 위에 톤다운 카드로 표시.
-              PER_SESSION(선불 1회 수업료)이 있을 때만(null-safe). */}
-          {isParentPrepaidOnly && prepaidRefProduct && (
+          {/* [선불 전용·오픈클래스·매니저] 1회 수업료(참고) — 정액 패키지 목록 위에 톤다운 카드로 분리 표시.
+              오픈클래스/매니저는 1회 수업료를 구매 항목이 아닌 참고가로만 노출(선불=패키지). PER_SESSION 있을 때만(null-safe). */}
+          {pullOutSingleFee && singleFeeRefProduct && (
             <div className="mt-3">
               <SingleFeeRefCard
-                amount={prepaidRefProduct.feePerSession ?? prepaidRefProduct.price}
+                amount={singleFeeRefProduct.feePerSession ?? singleFeeRefProduct.price}
                 note={MESSAGES.classProduct.singleFeeRefPrepaidNote}
               />
             </div>
@@ -1830,8 +1847,8 @@ export default function ClassDetailPage() {
                 // 학부모 목록에서 1회 수업료(PER_SESSION)는 별도 '참고' 블록으로만 표시하고
                 //   목록(정액 패키지)에서는 제외한다.
                 //   · [선택형(BOTH)] 후불 PER_SESSION/POSTPAID 제외(결제방식 토글에서 별도 처리).
-                //   · [선불 전용] 선불 PER_SESSION 제외(수업료 섹션 상단 참고 카드로 표시).
-                //   후불 전용/관리자/오픈클래스는 기존대로 PER_SESSION 목록 노출 유지.
+                //   · [선불 전용·오픈클래스·매니저] PER_SESSION 제외 — 상단 참고 카드로 분리(선불=패키지).
+                //   후불 전용 학부모만 PER_SESSION 목록 노출 유지(즉시 등록 경로).
                 const products = [...(classData.products ?? [])]
                   .filter((p) => {
                     if (
@@ -1840,7 +1857,7 @@ export default function ClassDetailPage() {
                       p.billingTiming === "POSTPAID"
                     )
                       return false;
-                    if (isParentPrepaidOnly && p.feeType === "PER_SESSION")
+                    if (pullOutSingleFee && p.feeType === "PER_SESSION")
                       return false;
                     return true;
                   })

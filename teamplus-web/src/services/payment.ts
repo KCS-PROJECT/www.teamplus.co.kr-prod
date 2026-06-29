@@ -301,6 +301,29 @@ export interface DirectorPaymentSummaryResult {
   unpaidMembers: DirectorUnpaidMember[];
 }
 
+/** 미납 내역 1줄 — 선불(PREPAID)/후불(POSTPAID) */
+export interface DirectorUnpaidDetailLine {
+  type: 'PREPAID' | 'POSTPAID';
+  className: string;
+  amount: number;
+  yearMonth?: string;
+  attendanceCount?: number;
+}
+
+/** 미수금 회원 상세 — 보호자 연락처 + 미납 내역 */
+export interface DirectorUnpaidMemberDetail {
+  member: { id: string; name: string; totalAmount: number };
+  parents: { id: string; name: string; phone: string | null }[];
+  details: DirectorUnpaidDetailLine[];
+}
+
+/** 미납 안내 발송 결과 */
+export interface DirectorUnpaidReminderResult {
+  sent: boolean;
+  cooldown: boolean;
+  recipientCount: number;
+}
+
 /** unknown 값을 안전하게 숫자로 변환 (null/undefined/NaN → 0) */
 function toNumber(value: unknown): number {
   const n = Number(value ?? 0);
@@ -366,6 +389,31 @@ export async function getDirectorPaymentSummary(): Promise<DirectorPaymentSummar
     : [];
 
   return { summary, teams, unpaidMembers };
+}
+
+/**
+ * 미수금 회원 상세 조회 (`GET /admin/director-payments/unpaid/:memberId`)
+ * 보호자 연락처 + 미납 내역(선불/후불)을 반환한다.
+ */
+export async function getDirectorUnpaidMemberDetail(
+  memberId: string,
+): Promise<ApiResponse<DirectorUnpaidMemberDetail>> {
+  return api.get<DirectorUnpaidMemberDetail>(
+    `/admin/director-payments/unpaid/${memberId}`,
+  );
+}
+
+/**
+ * 미수금 회원 미납 안내 발송 (`POST /admin/director-payments/unpaid/:memberId/remind`)
+ * 미납 자녀의 보호자에게 인앱+푸시 안내를 발송한다. 백엔드 24시간 쿨다운.
+ */
+export async function sendDirectorUnpaidReminder(
+  memberId: string,
+): Promise<ApiResponse<DirectorUnpaidReminderResult>> {
+  return api.post<DirectorUnpaidReminderResult>(
+    `/admin/director-payments/unpaid/${memberId}/remind`,
+    {},
+  );
 }
 
 /**
@@ -445,6 +493,8 @@ const paymentService = {
   getUsageHistory,
   getCreditStatus,
   getDirectorPaymentSummary,
+  getDirectorUnpaidMemberDetail,
+  sendDirectorUnpaidReminder,
   getReceipt,
   verifyPaymentCompletion,
   getReceiptDownloadUrl,

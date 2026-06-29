@@ -362,10 +362,10 @@ export function ClassForm({
     const validationErrors = validateClassForm(formData, {
       skipPriceValidation: mode === 'edit',
       isAcademy,
-      // [Phase B-6] 선불·선택형 등록 시 정액 패키지 ≥1 강제 — draft 의 MONTHLY_FIXED 개수로 검증.
+      // [Phase B-6] 선불·선택형 시 정액 패키지 ≥1 강제 — draft 의 MONTHLY_FIXED 개수로 검증.
+      //   [2026-06-29] 생성뿐 아니라 수정에서도 강제 — 선불/선택형 수업의 정기 패키지 전체 삭제 차단(팀·오픈 공통).
       requireMonthlyFixedPackage:
-        mode === 'create' &&
-        (formData.billingMode === 'PREPAID' || formData.billingMode === 'BOTH'),
+        formData.billingMode === 'PREPAID' || formData.billingMode === 'BOTH',
       monthlyFixedPackageCount: (packageDraftValue ?? []).filter(
         (d) => !d._deleted && d.feeType === 'MONTHLY_FIXED',
       ).length,
@@ -1050,7 +1050,16 @@ export function ClassForm({
               </>
             ) : (
               // edit 모드 — 통합된 수강료/패키지 관리(PackageManageSection 자체 헤더 포함).
-              pricingSection
+              //   [2026-06-29] 선불·선택형 정액 패키지 ≥1 미충족 시 검증 에러 인라인 표시(저장 차단과 짝).
+              <>
+                {errors.packages && (
+                  <p className="text-xs text-red-500 flex items-center gap-1" role="alert">
+                    <Icon name="error" className="text-xs" aria-hidden="true" />
+                    {errors.packages}
+                  </p>
+                )}
+                {pricingSection}
+              </>
             )}
           </section>
         </AnimatedSection>

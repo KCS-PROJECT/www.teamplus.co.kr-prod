@@ -110,20 +110,8 @@ export default function AcademyPage() {
         )}
       </main>
 
-      {/* FAB — 오픈클래스 등록 */}
-      {academies.length > 0 && (
-        <button
-          type="button"
-          onClick={handleCreate}
-          style={{
-            bottom: 'calc(76px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))',
-          }}
-          className="fixed right-6 z-30 inline-flex h-14 w-14 items-center justify-center rounded-w-pill bg-it-blue-500 text-white shadow-sh-2 hover:bg-it-blue-600 active:brightness-90 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900"
-          aria-label="오픈클래스 등록"
-        >
-          <Icon name="add" className="text-2xl" aria-hidden="true" />
-        </button>
-      )}
+      {/* 감독 1인당 오픈클래스 1개 정책 — 보유 시 추가 등록 진입점(FAB) 미노출.
+          최초 1개는 가입 시 자동 생성되며, 0개(복구 상황)일 때만 위 빈 상태에서 등록 허용. */}
     </MobileContainer>
   );
 }

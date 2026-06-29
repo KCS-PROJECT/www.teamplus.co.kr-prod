@@ -773,6 +773,12 @@ export const MESSAGES = {
     sending: "발송 중...",
     sentHistory: "발송 내역",
     composeNotice: "공지 작성하기",
+    // 미수금 탭 — 미납 안내 발송 / 상세 보기
+    remindSuccess: (n: number) => `보호자 ${n}명에게 미납 안내를 발송했습니다.`,
+    remindCooldown: "최근에 이미 발송했습니다. 24시간 후 다시 시도해주세요.",
+    remindNoParent: "연결된 보호자가 없어 발송하지 못했습니다.",
+    remindFailed: "미납 안내 발송에 실패했습니다.",
+    unpaidDetailFailed: "미수금 상세 정보를 불러오지 못했습니다.",
   },
   socialLogin: {
     preparing: (provider: string) => `${provider} 로그인은 준비 중입니다.`,
@@ -3252,7 +3258,7 @@ export const MESSAGES = {
     singlePriceLabel: "1회 수업료",
     feePerSessionLabel: "1회 수업료",
     // [Phase B-6] 선불 수업의 1회 수업료 — 참고용(판매 안 함) 라벨·안내.
-    singlePriceRefLabel: "1회 수업료 (참고·판매 안 함)",
+    singlePriceRefLabel: "1회 수업료 (참고)",
     singlePriceRefHint:
       "선불 수업의 1회 수업료는 참고용이며, 결제는 정액 패키지로 진행됩니다.",
     singlePricePlaceholder: "1회 수업료를 입력하세요.",

@@ -103,7 +103,8 @@ function AcademyCreateInner() {
           }
           back();
         } else {
-          toast.error(MESSAGES.error.general);
+          // 감독 1인당 1개 정책 위반(409) 등 백엔드 사유 메시지를 그대로 노출.
+          toast.error(res.error?.message || MESSAGES.error.general);
         }
       }
     } catch {

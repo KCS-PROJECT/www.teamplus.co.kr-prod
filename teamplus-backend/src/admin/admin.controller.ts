@@ -616,6 +616,49 @@ export class AdminController {
     });
   }
 
+  /**
+   * [신규] 미수금 회원 상세 — 보호자 연락처 + 미납 내역.
+   */
+  @Get("director-payments/unpaid/:memberId")
+  @Roles("ADMIN", "DIRECTOR", "ACADEMY_DIRECTOR")
+  @ApiOperation({
+    summary: "미수금 회원 상세",
+    description:
+      "미납 회원의 보호자 연락처와 미납 내역(선불/후불)을 반환합니다.",
+  })
+  @ApiResponse({ status: 200, description: "미수금 상세 조회 성공" })
+  async getDirectorUnpaidMemberDetail(
+    @Request() req: AuthenticatedRequest,
+    @Param("memberId") memberId: string,
+  ) {
+    return this.adminService.getDirectorUnpaidMemberDetail(
+      { id: req.user.id, userType: req.user.userType },
+      memberId,
+    );
+  }
+
+  /**
+   * [신규] 미수금 회원 미납 안내 발송 (인앱+푸시) — 보호자 대상, 24h 쿨다운.
+   */
+  @Post("director-payments/unpaid/:memberId/remind")
+  @HttpCode(HttpStatus.OK)
+  @Roles("ADMIN", "DIRECTOR", "ACADEMY_DIRECTOR")
+  @ApiOperation({
+    summary: "미수금 회원 미납 안내 발송",
+    description:
+      "미납 회원의 보호자에게 인앱+푸시 미납 안내를 발송합니다. 24시간 쿨다운이 적용됩니다.",
+  })
+  @ApiResponse({ status: 200, description: "발송 결과" })
+  async sendDirectorUnpaidReminder(
+    @Request() req: AuthenticatedRequest,
+    @Param("memberId") memberId: string,
+  ) {
+    return this.adminService.sendDirectorUnpaidReminder(
+      { id: req.user.id, userType: req.user.userType },
+      memberId,
+    );
+  }
+
   // ==================== 벌크 임포트 ====================
 
   @Post("import/members")

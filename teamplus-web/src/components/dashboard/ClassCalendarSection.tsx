@@ -853,7 +853,7 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
                     size="sm"
                     tone={isSelected ? 'selected' : 'default'}
                     iceTheme={iceTheme}
-                    className={cn(iceTheme ? 'mt-0.5' : 'mt-1', isSelected && '[&_span]:bg-white/85')}
+                    className={cn(iceTheme ? 'mt-0.5' : 'mt-1', !iceTheme && isSelected && '[&_span]:bg-white/85')}
                   />
                 </button>
               );

@@ -56,6 +56,15 @@ export class AcademyService {
    * 아카데미 생성
    */
   async createAcademy(userId: string, dto: CreateAcademyDto) {
+    // 감독 1인당 오픈클래스 1개 정책 — 가입 시 1개 자동 생성되므로 추가 생성 차단.
+    const existing = await this.prisma.academy.findFirst({
+      where: { directorId: userId, isActive: true },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new ConflictException("이미 운영 중인 오픈클래스가 있습니다.");
+    }
+
     const code = await this.generateAcademyCode();
 
     const academy = await this.prisma.academy.create({

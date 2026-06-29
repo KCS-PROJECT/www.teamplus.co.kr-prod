@@ -8,8 +8,11 @@ import { usePageReady } from '@/hooks/usePageReady';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { cn } from '@/lib/utils';
 import { MESSAGES } from '@/lib/messages';
+import { useToast } from '@/components/ui/Toast';
+import { UnpaidDetailSheet } from '@/components/director/UnpaidDetailSheet';
 import {
   getDirectorPaymentSummary,
+  sendDirectorUnpaidReminder,
   type DirectorPaymentSummary as PaymentSummary,
   type DirectorTeamPayment as TeamPayment,
   type DirectorUnpaidMember as UnpaidMember,
@@ -39,6 +42,11 @@ export default function DirectorPaymentsPage() {
   const [teams, setTeams] = useState<TeamPayment[]>([]);
   const [unpaidMembers, setUnpaidMembers] = useState<UnpaidMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  const { toast } = useToast();
+  // 미수금 탭 — 상세 시트 대상 회원 / 미납 안내 발송 중 회원
+  const [detailMember, setDetailMember] = useState<UnpaidMember | null>(null);
+  const [remindingId, setRemindingId] = useState<string | null>(null);
 
   // 풀스크린 로더 fast-path (v11) — fetch 완료 시점에 PageTransitionLoader OFF
   usePageReady(!isLoading);
@@ -72,6 +80,32 @@ export default function DirectorPaymentsPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // 미납 안내 발송 — 미납 자녀의 보호자에게 인앱+푸시 (백엔드 24h 쿨다운)
+  const handleRemind = useCallback(
+    async (member: UnpaidMember) => {
+      setRemindingId(member.id);
+      try {
+        const res = await sendDirectorUnpaidReminder(member.id);
+        if (res.success && res.data) {
+          if (res.data.cooldown) {
+            toast.info(MESSAGES.director2.remindCooldown);
+          } else if (res.data.sent) {
+            toast.success(MESSAGES.director2.remindSuccess(res.data.recipientCount));
+          } else {
+            toast.info(MESSAGES.director2.remindNoParent);
+          }
+        } else {
+          toast.error(MESSAGES.director2.remindFailed);
+        }
+      } catch {
+        toast.error(MESSAGES.director2.remindFailed);
+      } finally {
+        setRemindingId(null);
+      }
+    },
+    [toast],
+  );
 
   // [추가 2026-05-15 V04 J-2] 단일 팀(teams.length <= 1) 환경에서 "팀별 결제" 탭은
   //   의미가 없으므로 노출하지 않는다. activeTab 이 'teams' 상태였다면 'overview' 로 복귀.
@@ -258,7 +292,15 @@ export default function DirectorPaymentsPage() {
             >
               {unpaidMembers.length > 0 ? (
                 unpaidMembers.map((member, i) => (
-                  <UnpaidMemberCard key={member.id} member={member} index={i} last={i === unpaidMembers.length - 1} />
+                  <UnpaidMemberCard
+                    key={member.id}
+                    member={member}
+                    index={i}
+                    last={i === unpaidMembers.length - 1}
+                    isReminding={remindingId === member.id}
+                    onRemind={handleRemind}
+                    onDetail={setDetailMember}
+                  />
                 ))
               ) : (
                 <div
@@ -275,6 +317,14 @@ export default function DirectorPaymentsPage() {
           )}
         </div>
       </main>
+
+      <UnpaidDetailSheet
+        isOpen={detailMember !== null}
+        memberId={detailMember?.id ?? null}
+        fallbackName={detailMember?.name}
+        fallbackAmount={detailMember?.amount}
+        onClose={() => setDetailMember(null)}
+      />
     </MobileContainer>
   );
 }
@@ -395,7 +445,21 @@ function TeamPaymentCard({ team, index = 0, last }: { team: TeamPayment; index?:
   );
 }
 
-function UnpaidMemberCard({ member, index = 0, last }: { member: UnpaidMember; index?: number; last?: boolean }) {
+function UnpaidMemberCard({
+  member,
+  index = 0,
+  last,
+  isReminding = false,
+  onRemind,
+  onDetail,
+}: {
+  member: UnpaidMember;
+  index?: number;
+  last?: boolean;
+  isReminding?: boolean;
+  onRemind: (member: UnpaidMember) => void;
+  onDetail: (member: UnpaidMember) => void;
+}) {
   const billingLabel = member.billingType === 'POSTPAID' ? '후결제' : '선결제';
   return (
     <article
@@ -434,12 +498,15 @@ function UnpaidMemberCard({ member, index = 0, last }: { member: UnpaidMember; i
       <div className="mt-3 flex gap-2">
         <button
           type="button"
-          className="inline-flex h-[38px] flex-1 items-center justify-center rounded-w-sm bg-it-blue-500 text-[14px] font-bold text-white transition-colors hover:bg-it-blue-600 active:brightness-[0.98] motion-reduce:transition-none"
+          onClick={() => onRemind(member)}
+          disabled={isReminding}
+          className="inline-flex h-[38px] flex-1 items-center justify-center rounded-w-sm bg-it-blue-500 text-[14px] font-bold text-white transition-colors hover:bg-it-blue-600 active:brightness-[0.98] disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none"
         >
-          알림 발송
+          {isReminding ? '발송 중...' : '알림 발송'}
         </button>
         <button
           type="button"
+          onClick={() => onDetail(member)}
           className="inline-flex h-[38px] flex-1 items-center justify-center rounded-w-sm border-[1.5px] border-it-line-strong text-[14px] font-bold text-it-blue-600 transition-colors hover:bg-it-fill active:brightness-[0.98] motion-reduce:transition-none dark:border-rink-700 dark:text-wtext-4 dark:hover:bg-rink-700"
         >
           상세 보기
