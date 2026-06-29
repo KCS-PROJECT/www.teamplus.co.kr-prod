@@ -6,6 +6,7 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateTeamGroupDto } from "./dto/create-team-group.dto";
 import { UpdateTeamGroupDto } from "./dto/update-team-group.dto";
+import { sanitizeStrict } from "../common/utils/sanitize.util";
 
 @Injectable()
 export class TeamGroupsService {
@@ -55,7 +56,15 @@ export class TeamGroupsService {
                 id: true,
                 playerName: true,
                 playerAge: true,
-                user: { select: { gender: true } },
+                // 생년월일 SoT: 자녀는 ChildProfile.birthDate(updateChild 갱신 대상),
+                //   user.birthDate 는 가입 시 복사본이라 폴백으로만 사용.
+                user: {
+                  select: {
+                    gender: true,
+                    birthDate: true,
+                    childProfile: { select: { birthDate: true } },
+                  },
+                },
               },
             },
           },
@@ -81,6 +90,11 @@ export class TeamGroupsService {
         playerName: gm.member.playerName,
         gender: gm.member.user.gender,
         playerAge: gm.member.playerAge,
+        // ChildProfile 우선(자녀 SoT) → user.birthDate 폴백 → null
+        birthDate:
+          gm.member.user.childProfile?.birthDate ??
+          gm.member.user.birthDate ??
+          null,
         joinedAt: gm.joinedAt,
       })),
     };
@@ -153,7 +167,7 @@ export class TeamGroupsService {
         data: {
           teamId,
           name: dto.name,
-          ageGroup: dto.ageGroup ?? null,
+          ageGroup: dto.ageGroup ? sanitizeStrict(dto.ageGroup) : null,
           createdId,
         },
       });
@@ -187,7 +201,9 @@ export class TeamGroupsService {
         where: { id: groupId },
         data: {
           ...(dto.name !== undefined ? { name: dto.name } : {}),
-          ...(dto.ageGroup !== undefined ? { ageGroup: dto.ageGroup } : {}),
+          ...(dto.ageGroup !== undefined
+            ? { ageGroup: dto.ageGroup ? sanitizeStrict(dto.ageGroup) : null }
+            : {}),
         },
       });
 

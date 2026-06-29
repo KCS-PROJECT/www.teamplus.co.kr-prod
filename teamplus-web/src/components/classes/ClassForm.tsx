@@ -362,10 +362,10 @@ export function ClassForm({
     const validationErrors = validateClassForm(formData, {
       skipPriceValidation: mode === 'edit',
       isAcademy,
-      // [Phase B-6] 선불·선택형 등록 시 정액 패키지 ≥1 강제 — draft 의 MONTHLY_FIXED 개수로 검증.
+      // [Phase B-6] 선불·선택형 시 정액 패키지 ≥1 강제 — draft 의 MONTHLY_FIXED 개수로 검증.
+      //   [2026-06-29] 생성뿐 아니라 수정에서도 강제 — 선불/선택형 수업의 정기 패키지 전체 삭제 차단(팀·오픈 공통).
       requireMonthlyFixedPackage:
-        mode === 'create' &&
-        (formData.billingMode === 'PREPAID' || formData.billingMode === 'BOTH'),
+        formData.billingMode === 'PREPAID' || formData.billingMode === 'BOTH',
       monthlyFixedPackageCount: (packageDraftValue ?? []).filter(
         (d) => !d._deleted && d.feeType === 'MONTHLY_FIXED',
       ).length,
@@ -1050,16 +1050,24 @@ export function ClassForm({
               </>
             ) : (
               // edit 모드 — 통합된 수강료/패키지 관리(PackageManageSection 자체 헤더 포함).
-              pricingSection
+              //   [2026-06-29] 선불·선택형 정액 패키지 ≥1 미충족 시 검증 에러 인라인 표시(저장 차단과 짝).
+              <>
+                {errors.packages && (
+                  <p className="text-xs text-red-500 flex items-center gap-1" role="alert">
+                    <Icon name="error" className="text-xs" aria-hidden="true" />
+                    {errors.packages}
+                  </p>
+                )}
+                {pricingSection}
+              </>
             )}
           </section>
         </AnimatedSection>
 
         {/* ── SECTION 4.5: 오픈클래스 노출 팀 선택 (academy 컨텍스트 전용) ──
-            [2026-05-15] 오픈클래스 감독은 특정 팀 소속이 아니므로, 이 수업을 어느
-            팀 소속자(감독·코치·학부모·학생)에게 노출할지 직접 선택한다.
-            선택된 팀만 ClassTeamVisibility 로 저장 → 그 팀 사람에게만 수업목록/캘린더 노출. */}
-        {isAcademy && (
+            [2026-06-29] 정책 변경 — 오픈클래스는 전체 학부모(자녀 연령 매칭)에게 노출하므로
+            팀 단위 노출 선택을 폐지하고 UI 를 숨긴다. 상태·핸들러 코드는 보존(되돌림 대비). */}
+        {false && isAcademy && (
           <AnimatedSection delay={325}>
             <section className="space-y-4">
               <h2 className={ic.head}>

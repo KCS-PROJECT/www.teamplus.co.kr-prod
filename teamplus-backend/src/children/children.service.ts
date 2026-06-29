@@ -957,16 +957,20 @@ export class ChildrenService {
     const yearStart = new Date(yearNum, 0, 1);
     const yearEnd = new Date(yearNum + 1, 0, 1);
 
+    // 연도 필터는 실제 수업일(scheduledDate) 기준 — 레코드 생성일(createdAt)이 아님.
+    // 월 분류/표시가 checkedInAt ?? scheduledDate 이므로 필터도 수업일로 맞춰야
+    // 작년 수업이 올해로 잡히는 연도 오분류를 막는다.
     const attendances = await this.prisma.classAttendance.findMany({
       where: {
         memberId: childId,
-        createdAt: { gte: yearStart, lt: yearEnd },
+        schedule: {
+          scheduledDate: { gte: yearStart, lt: yearEnd },
+        },
       },
       select: {
         attendanceStatus: true,
         checkedInAt: true,
         creditDeducted: true,
-        createdAt: true,
         schedule: {
           select: {
             scheduledDate: true,
@@ -974,7 +978,7 @@ export class ChildrenService {
           },
         },
       },
-      orderBy: { createdAt: "asc" },
+      orderBy: { schedule: { scheduledDate: "asc" } },
     });
 
     // 월별 그룹핑

@@ -210,8 +210,9 @@ function YearNavigation({
           <button
             type="button"
             onClick={onToday}
-            className="rounded-lg px-2 py-1 text-card-meta font-semibold text-it-blue-500 transition-colors hover:bg-it-blue-50 motion-reduce:transition-none dark:hover:bg-it-blue-900/30"
+            className="inline-flex items-center gap-1 rounded-w-pill bg-it-blue-50 px-2.5 py-1 text-card-meta font-bold text-it-blue-600 transition-colors hover:bg-it-blue-100 active:brightness-95 motion-reduce:transition-none dark:bg-it-blue-500/15 dark:text-it-blue-300 dark:hover:bg-it-blue-500/25"
           >
+            <Icon name="today" className="text-[14px]" aria-hidden="true" />
             {MESSAGES.calendar.historyThisYear}
           </button>
         )}
@@ -365,7 +366,10 @@ export default function ChildClassHistoryPage() {
               </span>
               <div className="flex flex-col">
                 <span className="text-card-meta font-medium text-it-ink-500 dark:text-wtext-4">
-                  {MESSAGES.childAttendance.yearLabel}
+                  {MESSAGES.calendar.historyAttendanceLabel(
+                    currentYear,
+                    currentYear === thisYear,
+                  )}
                 </span>
                 <span className="tabular-nums text-w-h2 font-extrabold text-it-ink-900 dark:text-white">
                   {MESSAGES.calendar.historyCount(yearPresent)}

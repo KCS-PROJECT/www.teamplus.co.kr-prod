@@ -153,7 +153,7 @@ export default function NotificationsPage() {
         {/* [2026-06-19 사용자 직접 지시] 통계 칩(전체/안읽음) + 전체 읽음 버튼 — 모두 동일 크기(h-9) 한 줄 툴바.
             알림이 있으면 항상 노출. 전체 읽음은 미읽음 0개면 비활성. (감독/코치/학부모 공통) */}
         {totalCount > 0 && (
-          <div className="px-5 pt-3 flex items-center justify-between gap-2">
+          <div className="px-5 pt-3 pb-3 flex items-center justify-between gap-2">
             {/* 좌측 — 전체 / 안 읽음 통계 칩 (전체 읽음 배지와 동일 h-9 크기) */}
             <div className="flex items-center gap-2 min-w-0">
               <span className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-w-pill border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-[13px] font-extrabold text-it-ink-700 dark:text-rink-100">

@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsArray,
   ArrayUnique,
+  MaxLength,
 } from "class-validator";
 import { ApiProperty } from "@nestjs/swagger";
 
@@ -18,12 +19,14 @@ export class CreateTeamGroupDto {
   name!: string;
 
   @ApiProperty({
-    description: "참가 대상 출생연도 (예: \"2016\"). 레거시 U8~U12 값도 허용(호환).",
+    description:
+      "대상 설명(자유 텍스트, 최대 30자). 그룹 대상·성격 메모. 레거시 U8~U12·출생연도 값도 보존.",
     required: false,
-    example: "2016",
+    example: "주말반",
   })
   @IsOptional()
   @IsString()
+  @MaxLength(30)
   ageGroup?: string;
 
   @ApiProperty({

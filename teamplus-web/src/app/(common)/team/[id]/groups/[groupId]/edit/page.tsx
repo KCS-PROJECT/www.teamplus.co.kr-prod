@@ -98,9 +98,8 @@ export default function TeamGroupEditPage() {
         teamGroupService.listEligibleMembers(teamId),
       ]);
       setName(detail.name);
-      // [2026-06-05] 레거시 U8~U12 값은 비워서 selectbox 에 노출하지 않음 (출생연도만 표시).
-      const ag = detail.ageGroup ?? "";
-      setAgeGroup(/^\d{4}$/.test(ag) ? ag : "");
+      // 대상 설명(자유 텍스트) — 저장값 그대로 prefill (레거시 U8~U12·출생연도 포함).
+      setAgeGroup(detail.ageGroup ?? "");
       setTeamName(detail.teamName ?? "");
       const groupMemberIds = new Set(detail.members.map((m) => m.memberId));
       setSelectedIds(groupMemberIds);
@@ -268,7 +267,7 @@ export default function TeamGroupEditPage() {
               )}
             </div>
 
-            {/* 연령 */}
+            {/* 대상 설명 (선택 · 자유 텍스트) */}
             <div>
               <label
                 htmlFor="group-age"
@@ -276,25 +275,18 @@ export default function TeamGroupEditPage() {
               >
                 {MESSAGES.team.groupAgeGroupLabel}
               </label>
-              <select
+              <input
                 id="group-age"
+                type="text"
                 value={ageGroup}
                 onChange={(e) => setAgeGroup(e.target.value)}
-                className="h-[50px] w-full rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-950 px-4 text-[15.5px] font-semibold text-it-ink-800 dark:text-white outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20"
-              >
-                <option value="">{MESSAGES.team.groupAgeGroupPlaceholder}</option>
-                {/* [2026-06-05] 범위 밖 출생연도만 함께 노출. 레거시 U8~U12 는 prefill 에서 제외됨. */}
-                {ageGroup &&
-                  /^\d{4}$/.test(ageGroup) &&
-                  !selectableBirthYears.some((y) => String(y) === ageGroup) && (
-                    <option value={ageGroup}>{ageGroup}년생</option>
-                  )}
-                {selectableBirthYears.map((y) => (
-                  <option key={y} value={String(y)}>
-                    {y}년생
-                  </option>
-                ))}
-              </select>
+                placeholder={MESSAGES.team.groupAgeGroupPlaceholder}
+                maxLength={30}
+                className="h-[50px] w-full rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-950 px-4 text-[15.5px] font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-it-ink-300 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20"
+              />
+              <p className="mt-1.5 text-[12px] font-medium text-it-ink-500 dark:text-it-ink-300">
+                {MESSAGES.team.groupAgeGroupHelper}
+              </p>
             </div>
           </section>
 

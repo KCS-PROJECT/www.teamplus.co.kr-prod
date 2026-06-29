@@ -44,6 +44,8 @@ interface ClassDetailApiResponse {
   startTime?: string;
   endTime?: string;
   isActive?: boolean;
+  /** 삭제 가능 여부 — 백엔드 가드(신청자/결제/크레딧/후불/출석 == 0) 기준 */
+  deletable?: boolean;
   /** 승인 상태 — 일정 관리 CTA 가시성 판정에 사용 */
   approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
   category?: string;
@@ -212,6 +214,9 @@ export default function ClassDetailPage() {
   const { deleteClass, isDeleting } = useClassForm({ mode: 'edit', classId });
 
   const [classData, setClassData] = useState<ClassDetailApiResponse | null>(null);
+  // deletable === false 일 때만 삭제 차단(회색+disabled). 로딩 중(undefined)·삭제 가능(true)은 활성 → 깜빡임 방지.
+  //   백엔드 가드(신청자/결제/크레딧/후불/출석 == 0)와 동일 기준 — page 상세 fetch 응답을 단일 출처로 사용.
+  const isDeleteBlocked = classData?.deletable === false;
   const [enrollments, setEnrollments] = useState<EnrollmentStudent[]>([]);
   const [isFetching, setIsFetching] = useState(true);
   const [fetchError, setFetchError] = useState(false);
@@ -806,14 +811,30 @@ export default function ClassDetailPage() {
             </button>
             <button
               type="button"
-              // [수정 2026-05-11] 삭제 버튼 항상 활성화 — 확인 모달이 안전장치 역할.
+              // 신청자·결제·출석 이력이 있으면(deletable === false) 삭제 차단 — 회색+disabled.
+              //   확인 모달과 백엔드 가드(409)가 추가 안전장치 역할.
               onClick={() => setShowDeleteConfirm(true)}
+              disabled={isDeleteBlocked}
               aria-label="수업 삭제"
-              className="w-11 h-11 shrink-0 rounded-w-md border-[1.5px] border-it-red-100 dark:border-it-red-700/40 text-it-red-500 dark:text-it-red-300 hover:bg-it-red-50 dark:hover:bg-it-red-700/10 transition-colors motion-reduce:transition-none active:brightness-95 flex items-center justify-center"
+              aria-describedby={isDeleteBlocked ? 'delete-blocked-reason' : undefined}
+              className={`w-11 h-11 shrink-0 rounded-w-md border-[1.5px] flex items-center justify-center transition-colors motion-reduce:transition-none ${
+                isDeleteBlocked
+                  ? 'border-it-line dark:border-rink-700 text-it-ink-400 dark:text-rink-500 opacity-60 cursor-not-allowed'
+                  : 'border-it-red-100 dark:border-it-red-700/40 text-it-red-500 dark:text-it-red-300 hover:bg-it-red-50 dark:hover:bg-it-red-700/10 active:brightness-95'
+              }`}
             >
               <Icon name="delete_outline" className="text-[20px]" aria-hidden="true" />
             </button>
           </div>
+          {isDeleteBlocked && (
+            <p
+              id="delete-blocked-reason"
+              role="status"
+              className="px-4 pb-2 text-card-caption text-it-ink-400 dark:text-rink-300 text-center leading-snug"
+            >
+              {MESSAGES.class.deleteBlocked}
+            </p>
+          )}
         </div>
       </div>
 

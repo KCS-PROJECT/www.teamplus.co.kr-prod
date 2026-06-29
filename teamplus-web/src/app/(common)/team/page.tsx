@@ -42,7 +42,7 @@ import {
   type ParentChildTeamItem,
   type TeamListItem,
 } from "@/services/team.service";
-import { teamGroupService, type TeamGroupSummary } from "@/services/team-group.service";
+import { teamGroupService, type TeamGroupSummary, type TeamGroupMemberRow } from "@/services/team-group.service";
 
 // ─── 필터 정의 ───────────────────────────────────────────
 // [수정 2026-05-18 W2.B #1] 팀 카테고리 vs 하위그룹 카테고리 혼재 해소.
@@ -718,9 +718,22 @@ function CoachTeamManageCard({
 // 각 팀 카드 아래에 노출 — "하위그룹" 라벨 + 그룹 칩 리스트 (이름, 연령, 인원).
 // 예: 블리자드 팀 아래 → 블랙 블리자드(U12, 2명) · 화이트 블리자드(U11, 2명)
 // 그룹이 0개면 컴포넌트 자체 미렌더 (시각 노이즈 최소화).
+// 생년월일 ISO → "YYYY.MM.DD" (프로젝트 날짜 표기 컨벤션). 없거나 무효면 빈 문자열.
+function formatBirthDate(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}.${m}.${dd}`;
+}
+
 function TeamSubGroupsCard({ teamId, teamName }: { teamId: string; teamName: string }) {
   const { navigate } = useNavigation();
   const [groups, setGroups] = useState<TeamGroupSummary[]>([]);
+  // 그룹별 선수 명단(트리 하위 행) — B 방안: 그룹 로드 직후 일괄(eager) fetch.
+  const [membersByGroup, setMembersByGroup] = useState<Record<string, TeamGroupMemberRow[]>>({});
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -729,16 +742,23 @@ function TeamSubGroupsCard({ teamId, teamName }: { teamId: string; teamName: str
       try {
         const list = await teamGroupService.listByTeam(teamId);
         if (cancelled) return;
-        // [2026-06-05] 출생연도(4자리) 우선 정렬 — 최신 출생연도부터. 레거시 U8~U12 는 뒤로.
-        const ageOrder: Record<string, number> = { U8: 0, U9: 1, U10: 2, U11: 3, U12: 4 };
-        const rank = (ag: string | null | undefined): number => {
-          if (ag && /^\d{4}$/.test(ag)) return 10000 - Number(ag);
-          return ageOrder[ag ?? ''] ?? 99;
-        };
+        // 대상 설명(ageGroup)이 자유 텍스트로 전환되어 연령 정렬이 무의미 → 그룹명 가나다순.
         const active = list
           .filter((g) => g.isActive !== false)
-          .sort((a, b) => rank(a.ageGroup) - rank(b.ageGroup));
+          .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'ko'));
         setGroups(active);
+
+        // 각 그룹의 선수 명단을 일괄 fetch(팀당 그룹 2~3개 규모 → N+1 부담 없음).
+        //   실패한 그룹은 빈 명단으로 폴백(트리 행만 생략, 그룹 행은 유지).
+        const details = await Promise.all(
+          active.map((g) => teamGroupService.findById(g.id).catch(() => null)),
+        );
+        if (cancelled) return;
+        const map: Record<string, TeamGroupMemberRow[]> = {};
+        details.forEach((d, i) => {
+          if (d) map[active[i].id] = d.members;
+        });
+        setMembersByGroup(map);
       } catch {
         if (!cancelled) setGroups([]);
       } finally {
@@ -783,42 +803,75 @@ function TeamSubGroupsCard({ teamId, teamName }: { teamId: string; teamName: str
       </div>
 
       <ul className="flex flex-col" role="list">
-        {groups.map((g, gi) => (
-          <li key={g.id}>
-            <button
-              type="button"
-              onClick={() => navigate(`/team/${teamId}/groups/${g.id}/edit`)}
+        {groups.map((g, gi) => {
+          const members = membersByGroup[g.id] ?? [];
+          return (
+            <li
+              key={g.id}
               className={cn(
-                'w-full py-2.5 text-left flex items-center gap-2.5 active:brightness-95',
                 gi !== groups.length - 1 && 'border-b border-it-line dark:border-it-blue-900',
               )}
-              aria-label={`${g.name} 그룹 상세`}
             >
-              <span
-                className="shrink-0 w-8 h-8 rounded-w-md bg-it-blue-500/10 text-it-blue-500 inline-flex items-center justify-center"
-                aria-hidden="true"
+              {/* 그룹 행 — 탭 시 그룹 편집(기존 동작 유지). */}
+              <button
+                type="button"
+                onClick={() => navigate(`/team/${teamId}/groups/${g.id}/edit`)}
+                className="w-full py-2.5 text-left flex items-center gap-2.5 active:brightness-95"
+                aria-label={`${g.name} 그룹 상세`}
               >
-                <Icon name="groups" className="text-[15px]" />
-              </span>
-              <span className="flex-1 min-w-0">
-                <span className="block text-card-meta font-extrabold text-it-ink-800 dark:text-white tracking-[-0.02em] truncate">
-                  {g.name}
+                <span
+                  className="shrink-0 w-8 h-8 rounded-w-md bg-it-blue-500/10 text-it-blue-500 inline-flex items-center justify-center"
+                  aria-hidden="true"
+                >
+                  <Icon name="groups" className="text-[15px]" />
                 </span>
-                <span className="block mt-0.5 text-card-meta font-semibold text-it-ink-500 dark:text-it-ink-400 tabular-nums">
-                  {g.ageGroup && /^\d{4}$/.test(g.ageGroup)
-                    ? `${g.ageGroup}년생`
-                    : '연령 미지정'}{' '}
-                  · {g._count?.members ?? 0}명
+                <span className="flex-1 min-w-0">
+                  <span className="block text-card-meta font-extrabold text-it-ink-800 dark:text-white tracking-[-0.02em] truncate">
+                    {g.name}
+                  </span>
+                  <span className="block mt-0.5 text-card-meta font-semibold text-it-ink-500 dark:text-it-ink-400">
+                    {g.ageGroup ? `${g.ageGroup} · ` : ''}
+                    <span className="tabular-nums">{g._count?.members ?? 0}명</span>
+                  </span>
                 </span>
-              </span>
-              <Icon
-                name="chevron_right"
-                className="shrink-0 text-[20px] text-it-ink-400 dark:text-it-ink-400"
-                aria-hidden="true"
-              />
-            </button>
-          </li>
-        ))}
+                <Icon
+                  name="chevron_right"
+                  className="shrink-0 text-[20px] text-it-ink-400 dark:text-it-ink-400"
+                  aria-hidden="true"
+                />
+              </button>
+
+              {/* 선수 트리 — 이름 · 생년월일. 들여쓰기 + hairline(세로 구분선 금지 RULE-D04 준수). */}
+              {members.length > 0 && (
+                <ul className="pl-[42px] pb-2" role="list" aria-label={`${g.name} 선수 목록`}>
+                  {members.map((mem) => {
+                    const birth = formatBirthDate(mem.birthDate);
+                    return (
+                      <li
+                        key={mem.groupMemberId}
+                        className="flex items-center gap-2 py-1.5 border-t border-it-line/70 dark:border-it-blue-900/70"
+                      >
+                        <Icon
+                          name="person"
+                          className="shrink-0 text-[14px] text-it-ink-400 dark:text-it-ink-400"
+                          aria-hidden="true"
+                        />
+                        <span className="min-w-0 truncate text-card-meta font-bold text-it-ink-700 dark:text-it-ink-200">
+                          {mem.playerName}
+                        </span>
+                        {birth && (
+                          <span className="ml-auto shrink-0 text-card-meta font-semibold text-it-ink-500 dark:text-it-ink-400 tabular-nums">
+                            {birth}
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

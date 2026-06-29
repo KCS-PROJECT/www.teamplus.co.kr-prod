@@ -20,6 +20,7 @@ import {
   isEncryptedField,
 } from "@/common/utils/field-encryption.util";
 import { resolveManagedTeamIds } from "@/common/utils/team-scope.util";
+import { RedisService } from "@/redis/redis.service";
 import Redis from "ioredis";
 
 @Injectable()
@@ -28,6 +29,7 @@ export class AdminService {
     private prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
     private readonly creditDomain: CreditDomainService, // PR-B (v0.5): 관리자 일괄 발급 단일 진입점
+    private readonly redis: RedisService, // 미납 안내 발송 쿨다운 락
   ) {}
 
   /**
@@ -2262,6 +2264,260 @@ export class AdminService {
       teams: teamResults,
       unpaidMembers,
     };
+  }
+
+  // ============ 미수금 회원 — 상세 / 미납 안내 발송 (감독) ============
+
+  /**
+   * [신규] 감독 운영 팀 ID 집합 — director-payment-summary 와 동일 기준.
+   *  ADMIN/SYSTEM/OPER = 전체 활성 팀, 그 외 = TeamMember(approved, 관리역할) 팀.
+   *  미수금 목록↔상세↔알림의 스코프 일관성을 위해 한 곳에서 산정한다.
+   */
+  private async resolveDirectorScopeTeamIds(currentUser: {
+    id: string;
+    userType: string;
+  }): Promise<string[]> {
+    const isAdmin =
+      currentUser.userType === "ADMIN" || isAdminRole(currentUser.userType);
+    if (isAdmin) {
+      const all = await this.prisma.team.findMany({
+        where: { isActive: true },
+        select: { id: true },
+      });
+      return all.map((t) => t.id);
+    }
+    const memberTeams = await this.prisma.teamMember.findMany({
+      where: {
+        userId: currentUser.id,
+        approvalStatus: "approved",
+        leftAt: null,
+        roleInTeam: { in: ["HEAD_COACH", "COACH", "MANAGER"] },
+      },
+      select: { teamId: true },
+    });
+    return [...new Set(memberTeams.map((m) => m.teamId))];
+  }
+
+  /**
+   * [신규] 특정 회원(자녀)의 미납 내역 계산 — director-payment-summary 와 동일 판정.
+   *
+   *  scope 추상화: classWhere 로 팀(`{ teamId: { in } }`) 또는 추후 오픈클래스
+   *  (`{ academyId: { in } }`) 어느 쪽도 동일 로직으로 집계 가능하게 분리했다.
+   *
+   *  - POSTPAID: 이번 달(KST) MonthlyPostpaidBillingLine(pending)
+   *  - PREPAID : ClassRegistration(status≠inactive) + 최신 Enrollment 미결제
+   *              (POSTPAID 수업은 이중 카운트 방지로 제외)
+   */
+  private async computeMemberUnpaidDetail(
+    memberId: string,
+    classWhere: Prisma.ClassWhereInput,
+  ): Promise<{
+    details: {
+      type: "PREPAID" | "POSTPAID";
+      className: string;
+      amount: number;
+      yearMonth?: string;
+      attendanceCount?: number;
+    }[];
+    totalAmount: number;
+  }> {
+    const details: {
+      type: "PREPAID" | "POSTPAID";
+      className: string;
+      amount: number;
+      yearMonth?: string;
+      attendanceCount?: number;
+    }[] = [];
+
+    // 후불(POSTPAID) — 이번 달(KST) 미납 청구 라인
+    const nowKst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const currentYearMonth = `${nowKst.getUTCFullYear()}-${String(
+      nowKst.getUTCMonth() + 1,
+    ).padStart(2, "0")}`;
+    const postpaidLines = await this.prisma.monthlyPostpaidBillingLine.findMany({
+      where: {
+        userId: memberId,
+        paymentStatus: "pending",
+        billing: { yearMonth: currentYearMonth, class: classWhere },
+      },
+      select: {
+        amount: true,
+        attendanceCount: true,
+        billing: {
+          select: { yearMonth: true, class: { select: { className: true } } },
+        },
+      },
+    });
+    for (const line of postpaidLines) {
+      details.push({
+        type: "POSTPAID",
+        className: line.billing?.class?.className ?? "수업",
+        amount: Number(line.amount ?? 0),
+        yearMonth: line.billing?.yearMonth,
+        attendanceCount: line.attendanceCount ?? undefined,
+      });
+    }
+
+    // 선불(PREPAID) — 내 스코프 수업 중 POSTPAID 가 아닌 수업의 미결제 등록
+    const classes = await this.prisma.class.findMany({
+      where: { ...classWhere, billingMode: { not: "POSTPAID" } },
+      select: {
+        id: true,
+        className: true,
+        products: {
+          select: { price: true },
+          orderBy: { price: "asc" },
+          take: 1,
+        },
+      },
+    });
+    const classIds = classes.map((c) => c.id);
+    if (classIds.length) {
+      const [registrations, enrollments] = await Promise.all([
+        this.prisma.classRegistration.findMany({
+          where: { classId: { in: classIds }, userId: memberId },
+          select: { classId: true, status: true },
+        }),
+        this.prisma.enrollment.findMany({
+          where: { classId: { in: classIds }, childId: memberId },
+          orderBy: { updatedAt: "desc" },
+          select: {
+            classId: true,
+            status: true,
+            product: { select: { price: true } },
+            payment: { select: { amount: true, paymentStatus: true } },
+          },
+        }),
+      ]);
+      // classId 별 최신 enrollment (updatedAt desc → 첫 항목)
+      const enrollMap = new Map<string, (typeof enrollments)[number]>();
+      for (const e of enrollments) {
+        if (!enrollMap.has(e.classId)) enrollMap.set(e.classId, e);
+      }
+      const classById = new Map(classes.map((c) => [c.id, c]));
+      for (const reg of registrations) {
+        if (reg.status === "inactive") continue;
+        const e = enrollMap.get(reg.classId);
+        const paid =
+          e?.payment?.paymentStatus === "completed" || e?.status === "paid";
+        if (paid) continue;
+        const cls = classById.get(reg.classId);
+        const fallbackPrice = cls?.products[0]?.price
+          ? Number(cls.products[0].price)
+          : 0;
+        const amount = e?.product?.price
+          ? Number(e.product.price)
+          : fallbackPrice;
+        details.push({
+          type: "PREPAID",
+          className: cls?.className ?? "수업",
+          amount,
+        });
+      }
+    }
+
+    const totalAmount = details.reduce((acc, d) => acc + d.amount, 0);
+    return { details, totalAmount };
+  }
+
+  /**
+   * [신규] 미수금 회원 상세 — 학부모 연락처 + 미납 내역.
+   *  스코프(내 팀)에 미납이 없으면 NotFound — IDOR 차단 겸용.
+   */
+  async getDirectorUnpaidMemberDetail(
+    currentUser: { id: string; userType: string },
+    memberId: string,
+  ) {
+    const teamIds = await this.resolveDirectorScopeTeamIds(currentUser);
+    if (teamIds.length === 0) {
+      throw new NotFoundException("미수금 내역을 찾을 수 없습니다.");
+    }
+
+    const { details, totalAmount } = await this.computeMemberUnpaidDetail(
+      memberId,
+      { teamId: { in: teamIds } },
+    );
+    if (details.length === 0) {
+      // 내 스코프에 해당 회원의 미납이 없음 → 권한 밖이거나 미납 아님.
+      throw new NotFoundException("미수금 내역을 찾을 수 없습니다.");
+    }
+
+    const member = await this.prisma.user.findUnique({
+      where: { id: memberId },
+      select: { id: true, firstName: true, lastName: true },
+    });
+
+    const parentLinks = await this.prisma.parentChild.findMany({
+      where: { childId: memberId },
+      orderBy: { isPrimary: "desc" },
+      select: {
+        parent: {
+          select: { id: true, firstName: true, lastName: true, phone: true },
+        },
+      },
+    });
+    const parents = parentLinks
+      .map((p) => p.parent)
+      .filter((p): p is NonNullable<typeof p> => Boolean(p))
+      .map((p) => ({
+        id: p.id,
+        name: `${p.lastName ?? ""}${p.firstName ?? ""}`.trim() || "보호자",
+        phone: p.phone ?? null,
+      }));
+
+    return {
+      member: {
+        id: memberId,
+        name: member
+          ? `${member.lastName ?? ""}${member.firstName ?? ""}`.trim() || "회원"
+          : "회원",
+        totalAmount,
+      },
+      parents,
+      details,
+    };
+  }
+
+  /**
+   * [신규] 미수금 회원의 보호자에게 미납 안내 발송 (인앱 + 푸시).
+   *  - 대상: 미납 자녀의 학부모(ParentChild)
+   *  - 24시간 쿨다운(Redis SET NX) — 중복 발송 방지
+   *  - 검증/데이터는 getDirectorUnpaidMemberDetail 재사용 (스코프 일관)
+   */
+  async sendDirectorUnpaidReminder(
+    currentUser: { id: string; userType: string },
+    memberId: string,
+  ): Promise<{ sent: boolean; cooldown: boolean; recipientCount: number }> {
+    const detail = await this.getDirectorUnpaidMemberDetail(
+      currentUser,
+      memberId,
+    );
+    const parentIds = detail.parents.map((p) => p.id);
+    if (parentIds.length === 0) {
+      return { sent: false, cooldown: false, recipientCount: 0 };
+    }
+
+    // 쿨다운 — 같은 회원 반복 독촉 방지. 운영 24h / 개발 60s(반복 테스트 용이).
+    const cooldownSec =
+      process.env.NODE_ENV === "production" ? 24 * 60 * 60 : 60;
+    const lockAcquired = await this.redis.setIfNotExists(
+      `unpaid-remind:${memberId}`,
+      Date.now(),
+      cooldownSec,
+    );
+    if (!lockAcquired) {
+      return { sent: false, cooldown: true, recipientCount: 0 };
+    }
+
+    const won = new Intl.NumberFormat("ko-KR").format(detail.member.totalAmount);
+    await this.notificationsService.notifyUsers(parentIds, {
+      notificationType: "payment_unpaid",
+      title: "미납 결제 안내",
+      message: `${detail.member.name} 회원의 미납 금액 ${won}원이 있습니다. 결제를 완료해 주세요.`,
+      linkUrl: "/credits",
+    });
+
+    return { sent: true, cooldown: false, recipientCount: parentIds.length };
   }
 
   /**

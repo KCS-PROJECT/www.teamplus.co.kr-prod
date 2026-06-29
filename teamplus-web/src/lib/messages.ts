@@ -34,6 +34,7 @@ export const MESSAGES = {
     endTimeRequired: "종료 시간을 입력해주세요.",
     deleteConfirm:
       "이 수업을 삭제하시겠습니까? 관련 일정과 등록 데이터가 함께 삭제됩니다.",
+    deleteBlocked: "신청자 또는 결제·출석 이력이 있어 삭제할 수 없습니다.",
     deleted: "수업이 삭제되었습니다.",
     updated: "수업 정보가 수정되었습니다.",
     scheduleCreated: "수업 일정이 생성되었습니다.",
@@ -773,6 +774,12 @@ export const MESSAGES = {
     sending: "발송 중...",
     sentHistory: "발송 내역",
     composeNotice: "공지 작성하기",
+    // 미수금 탭 — 미납 안내 발송 / 상세 보기
+    remindSuccess: (n: number) => `보호자 ${n}명에게 미납 안내를 발송했습니다.`,
+    remindCooldown: "최근에 이미 발송했습니다. 24시간 후 다시 시도해주세요.",
+    remindNoParent: "연결된 보호자가 없어 발송하지 못했습니다.",
+    remindFailed: "미납 안내 발송에 실패했습니다.",
+    unpaidDetailFailed: "미수금 상세 정보를 불러오지 못했습니다.",
   },
   socialLogin: {
     preparing: (provider: string) => `${provider} 로그인은 준비 중입니다.`,
@@ -858,8 +865,11 @@ export const MESSAGES = {
     historyCount: (n: number) => `${n}회`,
     historyPrevYear: "이전 해",
     historyNextYear: "다음 해",
-    historyThisYear: "올해",
+    historyThisYear: "올해로 이동",
     historyYearLabel: (y: number) => `${y}년`,
+    // 총계 타일 라벨 — 올해면 "올해 출석", 과거 연도면 "2025년 출석"
+    historyAttendanceLabel: (y: number, isCurrent: boolean) =>
+      isCurrent ? '올해 출석' : `${y}년 출석`,
     historyMonthEmpty: "이 달에는 수업 이력이 없습니다.",
     historyLoadError: "수업 이력을 불러올 수 없습니다.",
     historyStatus: {
@@ -1660,8 +1670,10 @@ export const MESSAGES = {
     groupNameLabel: "하위그룹 이름",
     groupNamePlaceholder: "예: 선수반 A조",
     groupNameRequired: "하위그룹 이름을 입력해주세요.",
-    groupAgeGroupLabel: "연령",
-    groupAgeGroupPlaceholder: "연령 선택",
+    groupAgeGroupLabel: "대상 설명",
+    groupAgeGroupPlaceholder: "예: 주말반 · 초급 · 2014년생 위주",
+    groupAgeGroupHelper:
+      "선택 입력 — 이 하위그룹의 대상이나 성격을 자유롭게 적어주세요.",
     groupMembersLabel: "회원 선택",
     groupMembersEmpty: "등록 가능한 회원이 없습니다.",
     groupMembersHelper: "하위그룹에 포함할 회원을 선택하세요.",
@@ -2842,6 +2854,9 @@ export const MESSAGES = {
     passwordChanged: "비밀번호가 변경되었습니다.",
     passwordChangeFailed: "비밀번호 변경 중 오류가 발생했습니다.",
     fileSizeOver5MB: "파일 크기는 5MB 이하여야 합니다.",
+    // 마이페이지 Hero 보조 한 줄 — 학부모 다자녀 요약 ("자녀 2명 · 안OO")
+    heroChildSummary: (count: number, firstChildName: string) =>
+      `자녀 ${count}명 · ${firstChildName}`,
   },
 
   // ─── O. 보안 / 2FA / 디바이스 ───────────────────────
@@ -3252,7 +3267,7 @@ export const MESSAGES = {
     singlePriceLabel: "1회 수업료",
     feePerSessionLabel: "1회 수업료",
     // [Phase B-6] 선불 수업의 1회 수업료 — 참고용(판매 안 함) 라벨·안내.
-    singlePriceRefLabel: "1회 수업료 (참고·판매 안 함)",
+    singlePriceRefLabel: "1회 수업료 (참고)",
     singlePriceRefHint:
       "선불 수업의 1회 수업료는 참고용이며, 결제는 정액 패키지로 진행됩니다.",
     singlePricePlaceholder: "1회 수업료를 입력하세요.",

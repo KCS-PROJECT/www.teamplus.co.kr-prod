@@ -30,6 +30,7 @@ import { Icon } from '@/components/ui/Icon';
 import { useChildren } from '@/hooks/useChildren';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { usePageReady } from '@/hooks/usePageReady';
+import { MESSAGES } from '@/lib/messages';
 
 export default function ChildTeamInfoPage() {
   const params = useParams<{ childId: string }>();
@@ -60,12 +61,12 @@ export default function ChildTeamInfoPage() {
 
   return (
     <MobileContainer hasBottomNav>
-      <PageAppBar title="팀·코치 정보" forceNative />
+      <PageAppBar title={MESSAGES.childAttendance.quickActionTeamLabel} forceNative />
 
       <main
         className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck !pb-8"
         role="main"
-        aria-label="자녀 팀 및 코치 정보"
+        aria-label="자녀 팀 정보"
       >
         {/* 자녀 헤더 — full-bleed 흰 섹션 (요약) */}
         {child && (

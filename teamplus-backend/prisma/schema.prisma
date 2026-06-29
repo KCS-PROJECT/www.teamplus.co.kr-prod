@@ -2254,7 +2254,7 @@ model TeamGroup {
   id        String   @id @default(cuid())
   teamId    String   @map("team_id") /// 상위 팀 (clubs.id 참조 — Phase 2 변경)
   name      String /// 그룹 이름
-  ageGroup  String?  @map("age_group") /// U8|U9|U10|U11|U12
+  ageGroup  String?  @map("age_group") /// 대상 설명(자유 텍스트) — 레거시 U8~U12·출생연도 값 보존
   createdId String?  @map("created_id") /// 생성한 감독/코치 user.id
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")

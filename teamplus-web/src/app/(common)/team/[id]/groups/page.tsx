@@ -169,10 +169,10 @@ export default function TeamGroupsListPage() {
                         <h3 className="truncate text-[15.5px] font-bold tracking-[-0.01em] text-it-ink-800 dark:text-white">
                           {g.name}
                         </h3>
-                        {/* [2026-06-05] 출생연도(4자리)만 "년생" 표시. 레거시 U8~U12 배지는 숨김. */}
-                        {g.ageGroup && /^\d{4}$/.test(g.ageGroup) && (
-                          <span className="inline-flex items-center rounded-w-md bg-it-blue-50 px-2 py-0.5 text-[12px] font-bold tabular-nums text-it-blue-500 dark:bg-it-blue-500/15 dark:text-it-blue-300">
-                            {g.ageGroup}년생
+                        {/* 대상 설명(자유 텍스트) 배지 — 값 있으면 그대로 표시. */}
+                        {g.ageGroup && (
+                          <span className="inline-flex items-center rounded-w-md bg-it-blue-50 px-2 py-0.5 text-[12px] font-bold text-it-blue-500 dark:bg-it-blue-500/15 dark:text-it-blue-300">
+                            {g.ageGroup}
                           </span>
                         )}
                       </div>
