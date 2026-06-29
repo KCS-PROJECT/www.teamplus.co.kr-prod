@@ -923,14 +923,25 @@ export class ClassesService {
    */
   private async resolveViewerBirthYears(
     user: JwtUserPayload,
+    childId?: string,
   ): Promise<number[]> {
     let userIds: string[] = [];
     if (user.userType === "PARENT") {
-      const pcs = await this.prisma.parentChild.findMany({
-        where: { parentId: user.id },
-        select: { childId: true },
-      });
-      userIds = pcs.map((p) => p.childId);
+      if (childId) {
+        // [2026-06-29] 선택 자녀 스코프 — 본인 자녀 검증(IDOR) 후 그 자녀만의 출생연도로
+        //   연령 대상을 판정한다. childId 미지정(자녀 미선택) 시에만 전체 자녀 합집합.
+        const owned = await this.prisma.parentChild.findFirst({
+          where: { parentId: user.id, childId },
+          select: { childId: true },
+        });
+        userIds = owned ? [childId] : [];
+      } else {
+        const pcs = await this.prisma.parentChild.findMany({
+          where: { parentId: user.id },
+          select: { childId: true },
+        });
+        userIds = pcs.map((p) => p.childId);
+      }
     } else if (user.userType === "CHILD" || user.userType === "TEEN") {
       userIds = [user.id];
     }
@@ -988,9 +999,13 @@ export class ClassesService {
           })
         : null;
     // 오픈클래스(academyId) WHERE 조건.
+    //  [2026-06-29] 정책 변경 — 오픈클래스는 "학부모에게만 + 자녀 연령 매칭" 전체 노출.
+    //    팀 단위 ClassTeamVisibility 게이트 폐지. (연령 필터는 아래 where.AND 의 targetBirthYears 가 담당)
     //  · ADMIN — 전체 오픈클래스
-    //  · ACADEMY_DIRECTOR — 본인이 운영하는 academy 의 수업만 (팀 가입/visibility 무관)
-    //  · 그 외 (PARENT/CHILD/TEEN/COACH/DIRECTOR) — 본인 소속 팀이 visibility 등록된 수업
+    //  · ACADEMY_DIRECTOR — 본인이 운영하는 academy 의 수업만
+    //  · PARENT — 전체 오픈클래스(연령 매칭) 노출, 팀 소속 무관
+    //  · COACH/DIRECTOR/CHILD/TEEN — 브라우즈 목록에서 제외(오픈클래스는 학부모 전용·ACADEMY_DIRECTOR 관리).
+    //    신청 자녀의 일정은 enrollment 기반 캘린더가 별도로 노출하므로 영향 없음.
     const openClassWhere: Prisma.ClassWhereInput = isAdmin
       ? { academyId: { not: null } }
       : user?.userType === "ACADEMY_DIRECTOR"
@@ -998,12 +1013,10 @@ export class ClassesService {
             academyId: { not: null },
             academy: { directorId: user.id },
           }
-        : {
-            academyId: { not: null },
-            teamVisibilities: {
-              some: { teamId: { in: viewerTeamIds ?? [] } },
-            },
-          };
+        : user?.userType === "PARENT"
+          ? { academyId: { not: null } }
+          : // never-match: COACH/DIRECTOR/CHILD/TEEN/비로그인 은 오픈클래스 브라우즈 제외
+            { academyId: { not: null }, id: { in: [] } };
 
     // 상위 분류(category) 분기 — FE class-categories SoT 와 정합.
     //  - regular : 클럽 정규 수업 (teamId 있음, academyId 없음)
@@ -1028,19 +1041,22 @@ export class ClassesService {
     //  자녀 0명/팀 0개(또는 타 자녀 childId)면 빈 결과 — 오인 노출 차단.
     if (user?.userType === "PARENT" && query.category !== "open") {
       const teamIds = viewerTeamIds ?? [];
-      if (teamIds.length === 0) {
-        return {
-          data: [],
-          pagination: { total: 0, page, limit, totalPages: 0 },
-        };
-      }
-      // 'regular' 탭이면 정규 수업만, '전체' 탭이면 자녀 소속 팀의 모든 수업 + 노출 오픈클래스.
+      // 'regular' 탭이면 정규 수업만(팀 필요), '전체' 탭이면 자녀 팀 수업 + 전체 오픈클래스.
       if (query.category === "regular") {
+        if (teamIds.length === 0) {
+          return {
+            data: [],
+            pagination: { total: 0, page, limit, totalPages: 0 },
+          };
+        }
         where.teamId = { in: teamIds };
       } else {
-        // 전체 탭 (category 미지정): 자녀 팀의 수업 OR 노출 허용된 오픈클래스
-        //  [2026-05-15] 오픈클래스도 ClassTeamVisibility 매칭된 것만 (openClassWhere).
-        where.OR = [{ teamId: { in: teamIds } }, openClassWhere];
+        // [2026-06-29] 전체 탭 — 자녀 팀의 수업 + 오픈클래스(전체 노출).
+        //   무소속(팀 0)이어도 오픈클래스는 노출되어야 하므로 빈 결과 조기 반환하지 않는다.
+        where.OR =
+          teamIds.length > 0
+            ? [{ teamId: { in: teamIds } }, openClassWhere]
+            : [openClassWhere];
       }
     } else if (
       user &&
@@ -1109,7 +1125,7 @@ export class ClassesService {
         user.userType === "CHILD" ||
         user.userType === "TEEN")
     ) {
-      const viewerBirthYears = await this.resolveViewerBirthYears(user);
+      const viewerBirthYears = await this.resolveViewerBirthYears(user, query.childId);
       if (viewerBirthYears.length > 0) {
         const ageFilter: Prisma.ClassWhereInput = {
           OR: [
@@ -1481,11 +1497,16 @@ export class ClassesService {
       );
     }
 
-    // [추가 2026-05-15] 결제이력(paid Enrollment) 카운트 — 삭제 가드 UI 판정용.
-    //   사용자 명시: "1명이라도 결제이력이 있으면 삭제할수없게".
-    const paidEnrollmentCount = await this.prisma.enrollment.count({
-      where: { classId, status: "paid" },
-    });
+    // [추가 2026-05-15] 결제이력(paid Enrollment) 카운트 — 기존 UI 표시용.
+    // [추가 2026-06-29] deletable — 삭제 가능 여부(B안). countClassBlockingRefs 헬퍼로
+    //   유효 신청/크레딧/후불청구/출석 4종이 모두 0 일 때만 삭제 허용. 가드와 동일 기준.
+    const [paidEnrollmentCount, blockingRefCount] = await Promise.all([
+      this.prisma.enrollment.count({
+        where: { classId, status: "paid" },
+      }),
+      this.countClassBlockingRefs(classId),
+    ]);
+    const deletable = blockingRefCount === 0;
 
     const coachName = classRecord.coach
       ? `${classRecord.coach.lastName ?? ""}${classRecord.coach.firstName ?? ""}`.trim() ||
@@ -1547,6 +1568,8 @@ export class ClassesService {
         : null,
       schedules: classRecord.schedules ?? [],
       paidEnrollmentCount,
+      // [추가 2026-06-29] 삭제 가능 여부 — 프론트(useClassForm) 삭제 버튼 비활성/사유 안내용.
+      deletable,
       // PACKAGE_END_GUARD (v3 · SoT 단일화 2026-05-22):
       //   classes/utils/package-guard.util.ts:computePackageGuardMeta() 호출로 메타 주입.
       //   shouldHideInactiveFor(requester?.userType) — PARENT/CHILD/TEEN 비활성 제외.
@@ -2584,6 +2607,35 @@ export class ClassesService {
   }
 
   /**
+   * 수업 삭제 차단 참조 카운트 — 가드(deleteClass/deleteAcademyClass) + deletable 플래그 공용 헬퍼.
+   *
+   * 유효 신청(취소/만료/거절 제외) · 발급 크레딧 · 후불 청구 라인 · 출석 기록 4종을 병렬 집계해
+   * 합산한다. 합산 0 이면 빈 수업(일정/상품만 존재) → 삭제 허용. 1 이상이면 회계·이력 보존을 위해 삭제 차단.
+   * 관계 경로(schema.prisma 검증): memberCredit.classId(:895) ·
+   *   monthlyPostpaidBillingLine.billing.classId(MonthlyPostpaidBilling.classId :676) ·
+   *   classAttendance.schedule.classId(ClassSchedule.classId :785).
+   */
+  private async countClassBlockingRefs(classId: string): Promise<number> {
+    const [activeEnroll, creditCount, postpaidCount, attendanceCount] =
+      await Promise.all([
+        this.prisma.enrollment.count({
+          where: {
+            classId,
+            status: { notIn: ["cancelled", "expired", "rejected"] },
+          },
+        }),
+        this.prisma.memberCredit.count({ where: { classId } }),
+        this.prisma.monthlyPostpaidBillingLine.count({
+          where: { billing: { classId } },
+        }),
+        this.prisma.classAttendance.count({
+          where: { schedule: { classId } },
+        }),
+      ]);
+    return activeEnroll + creditCount + postpaidCount + attendanceCount;
+  }
+
+  /**
    * 수업 삭제 (감독만)
    */
   async deleteClass(coachUserId: string, teamId: string, classId: string) {
@@ -2603,14 +2655,11 @@ export class ClassesService {
       throw new NotFoundException("수업을 찾을 수 없습니다.");
     }
 
-    // [수정 2026-05-15] 결제이력(paid) 기준 가드 — 한 명이라도 결제한 학부모가
-    //   있으면 삭제 불가. 사용자 명시: "1명이라도 결제이력이 있으면 삭제할수없고".
-    const paidCount = await this.prisma.enrollment.count({
-      where: { classId, status: "paid" },
-    });
-    if (paidCount > 0) {
+    // [수정 2026-06-29] B안 가드 — 유효 신청/크레딧/후불청구/출석 이력 중 하나라도 있으면 삭제 불가.
+    //   countClassBlockingRefs 헬퍼로 4종 참조를 합산(가드+deletable 공용 · DRY).
+    if ((await this.countClassBlockingRefs(classId)) > 0) {
       throw new ConflictException(
-        `결제 이력이 있는 수업은 삭제할 수 없습니다. (결제자 ${paidCount}명)`,
+        "신청자 또는 결제·출석 이력이 있는 수업은 삭제할 수 없습니다.",
       );
     }
 
@@ -2948,14 +2997,11 @@ export class ClassesService {
       throw new NotFoundException("수업을 찾을 수 없습니다.");
     }
 
-    // [수정 2026-05-15] 결제이력(paid) 기준 가드 — 한 명이라도 결제한 학부모가
-    //   있으면 삭제 불가. 사용자 명시: "1명이라도 결제이력이 있으면 삭제할수없고".
-    const paidCount = await this.prisma.enrollment.count({
-      where: { classId, status: "paid" },
-    });
-    if (paidCount > 0) {
+    // [수정 2026-06-29] B안 가드 — 유효 신청/크레딧/후불청구/출석 이력 중 하나라도 있으면 삭제 불가.
+    //   countClassBlockingRefs 헬퍼로 4종 참조를 합산(가드+deletable 공용 · DRY).
+    if ((await this.countClassBlockingRefs(classId)) > 0) {
       throw new ConflictException(
-        `결제 이력이 있는 수업은 삭제할 수 없습니다. (결제자 ${paidCount}명)`,
+        "신청자 또는 결제·출석 이력이 있는 수업은 삭제할 수 없습니다.",
       );
     }
 

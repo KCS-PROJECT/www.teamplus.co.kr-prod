@@ -34,6 +34,7 @@ export const MESSAGES = {
     endTimeRequired: "종료 시간을 입력해주세요.",
     deleteConfirm:
       "이 수업을 삭제하시겠습니까? 관련 일정과 등록 데이터가 함께 삭제됩니다.",
+    deleteBlocked: "신청자 또는 결제·출석 이력이 있어 삭제할 수 없습니다.",
     deleted: "수업이 삭제되었습니다.",
     updated: "수업 정보가 수정되었습니다.",
     scheduleCreated: "수업 일정이 생성되었습니다.",
