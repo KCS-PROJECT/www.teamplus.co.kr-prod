@@ -166,8 +166,9 @@ export class TeamsService {
     // 팀 초대 코드 생성 (예: "ACE-hockey")
     const teamCode = this.generateTeamCode();
 
-    // [추가 2026-05-23 사용자 정책 옵션 C] venueId 지정 시 venue.name 으로 location/homeArena sync.
-    let createLocation: string | null = createTeamDto.location ?? null;
+    // [지역/홈경기장 분리] location 은 '지역'(자유 텍스트)으로 독립 — venueId sync 대상 아님.
+    //  homeArena 만 venueId 지정 시 venue.name 으로 sync (홈 경기장 legacy 텍스트 폴백).
+    const createLocation: string | null = createTeamDto.location ?? null;
     let createHomeArena: string | null = null;
     if (createTeamDto.venueId) {
       const venue = await this.prisma.venue.findUnique({
@@ -175,7 +176,6 @@ export class TeamsService {
         select: { name: true },
       });
       if (venue) {
-        createLocation = venue.name;
         createHomeArena = venue.name;
       }
     }
@@ -758,12 +758,9 @@ export class TeamsService {
       }
     }
 
-    // [추가 2026-05-23 사용자 정책 옵션 C] venueId 명시 변경 시 venue.name 으로 location/homeArena
-    //  자동 sync — legacy 텍스트 컬럼과 venue 마스터 정합성 보장. 스키마 변경 없는 단기 해결.
-    //  · venueId !== undefined && venueId 값 있음 → venue.name 으로 둘 다 갱신
-    //  · venueId === undefined (미변경) → updateData.location 만 그대로 적용 (legacy 호환)
-    //  · venueId 가 빈 값(해제) → location 은 updateData.location 그대로, homeArena 미변경
-    let syncedLocation: string | null | undefined = updateData.location;
+    // [지역/홈경기장 분리] location 은 '지역'(자유 텍스트)으로 독립 — venueId sync 대상 아님.
+    //  homeArena 만 venueId 지정 시 venue.name 으로 sync. location 은 updateData.location 그대로.
+    const syncedLocation: string | null | undefined = updateData.location;
     let syncedHomeArena: string | null | undefined = undefined;
     if (updateData.venueId !== undefined && updateData.venueId) {
       const venue = await this.prisma.venue.findUnique({
@@ -771,7 +768,6 @@ export class TeamsService {
         select: { name: true },
       });
       if (venue) {
-        syncedLocation = venue.name;
         syncedHomeArena = venue.name;
       }
     }

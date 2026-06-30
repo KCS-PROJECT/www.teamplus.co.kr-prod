@@ -445,9 +445,9 @@ export class AuthService {
         } else if (resolvedUserType === UserType.DIRECTOR && clubInfo) {
           // 팀 감독 가입 = User + CoachProfile + Team + ClubMember(HEAD_COACH approved)
           // [2026-06-01] 팀 코드는 가입 시 미설정(null) — 감독이 추후 팀 관리에서 등록.
-          // [추가 2026-05-23 사용자 정책 옵션 C] venueId 가 지정된 경우 venue.name 으로
-          //  location/homeArena 자동 sync — legacy 텍스트 컬럼과 venue 마스터 정합성 보장.
-          let directorLocation: string | null = clubInfo.location ?? null;
+          // [지역/홈경기장 분리] location 은 '지역'(자유 텍스트)으로 독립 — venueId sync 대상 아님.
+          //  homeArena 만 venueId 지정 시 venue.name 으로 sync.
+          const directorLocation: string | null = clubInfo.location ?? null;
           let directorHomeArena: string | null = null;
           if (clubInfo.venueId) {
             const venue = await tx.venue.findUnique({
@@ -455,7 +455,6 @@ export class AuthService {
               select: { name: true },
             });
             if (venue) {
-              directorLocation = venue.name;
               directorHomeArena = venue.name;
             }
           }

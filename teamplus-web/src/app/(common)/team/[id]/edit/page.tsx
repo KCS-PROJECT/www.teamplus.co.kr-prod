@@ -24,7 +24,6 @@ import { MobileContainer } from "@/components/layout/MobileContainer";
 import { PageAppBar } from "@/components/layout/PageAppBar";
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Icon } from "@/components/ui/Icon";
 import { useToast } from "@/components/ui/Toast";
 import { usePageReady } from "@/hooks/usePageReady";
 import { useSessionAuth } from "@/hooks/useSessionAuth";
@@ -33,7 +32,7 @@ import { emitRefresh, REFRESH_KEYS } from "@/lib/refresh-bus";
 import { isTeamManager, isTeamManagerOf } from "@/lib/team-roles";
 import { cn } from "@/lib/utils";
 import { getTeam, updateTeam } from "@/services/team.service";
-import type { TeamDetail, TeamDivision } from "@/services/team.service";
+import type { TeamDetail } from "@/services/team.service";
 import { AvatarUploader } from "@/components/shared/AvatarUploader";
 import { VenuePicker } from "@/components/common/VenuePicker";
 import { resolveImageSrc } from "@/lib/image-url";
@@ -86,11 +85,16 @@ export default function TeamEditPage() {
   const [name, setName] = useState("");
   // [2026-06-01] 팀 코드 — 가입 시 미설정(null)이므로 팀 관리에서 입력·변경. 빈 값이면 해제.
   const [teamCode, setTeamCode] = useState("");
-  const [division, setDivision] = useState<TeamDivision | "">("");
+  // [모집 대상] teams.division 컬럼 재활용 — 자유 텍스트(예: "초등 저학년"). 리그 부문 무관.
+  const [division, setDivision] = useState<string>("");
+  // [지역] teams.location 컬럼 재활용 — 자유 텍스트(예: "서울 강남구"). 홈 경기장(venueId)과 별개.
+  const [region, setRegion] = useState<string>("");
   const [logoUrl, setLogoUrl] = useState("");
   const logoUrlRef = useRef(logoUrl);
-  const [primaryColor, setPrimaryColor] = useState("#2f5fff");
-  const [secondaryColor, setSecondaryColor] = useState("");
+  // [메인/보조 컬러 입력 UI 제거] primaryColor/secondaryColor 는 입력·전송하지 않음.
+  //  데이터 모델(teams.primary_color/secondary_color)·팀 상세 표시·타입은 추후 팀 컬러
+  //  기능 재도입 시 참고용으로 보존. 이 수정 화면에서는 입력을 받지 않으므로 기존 값을
+  //  건드리지 않는다(submit 페이로드에서 제외 → updateTeam undefined → 무변경).
   // [추가 2026-05-15 T04 web-router] 팀 단위 필드 — 슬로건/팀 소개.
   //  슬로건 수정 동선이 이 페이지로 라우팅되므로 필수.
   const [slogan, setSlogan] = useState("");
@@ -136,11 +140,10 @@ export default function TeamEditPage() {
         setTeam(res.data);
         setName(res.data.name ?? "");
         setTeamCode(res.data.teamCode ?? "");
-        setDivision((res.data.division ?? "") as TeamDivision | "");
+        setDivision(res.data.division ?? "");
+        setRegion(res.data.location ?? "");
         setLogoUrl(res.data.logoUrl ?? "");
         logoUrlRef.current = res.data.logoUrl ?? "";
-        setPrimaryColor(res.data.primaryColor ?? "#2f5fff");
-        setSecondaryColor(res.data.secondaryColor ?? "");
         // [추가 2026-05-15 T04 web-router] 팀 단위 필드 로드.
         setSlogan(res.data.slogan ?? "");
         setDescription(res.data.description ?? "");
@@ -190,10 +193,9 @@ export default function TeamEditPage() {
         const res = await updateTeam(teamId, {
           clubName: name.trim(),
           teamCode: trimmedCode,
-          division: (division || undefined) as TeamDivision | undefined,
+          division: division.trim() || undefined,
+          location: region.trim() || undefined,
           logoUrl: logoUrlRef.current.trim() || undefined,
-          primaryColor: primaryColor || undefined,
-          secondaryColor: secondaryColor.trim() || undefined,
           slogan: slogan.trim() || undefined,
           description: description.trim() || undefined,
           venueId,
@@ -220,8 +222,7 @@ export default function TeamEditPage() {
       name,
       teamCode,
       division,
-      primaryColor,
-      secondaryColor,
+      region,
       slogan,
       description,
       venueId,
@@ -295,43 +296,34 @@ export default function TeamEditPage() {
       >
         {/* flat 흰 섹션 — 폼 전체를 흰 배경으로 묶음 (카드 박스 제거) */}
         <form onSubmit={handleSubmit} className="bg-it-surface dark:bg-it-blue-950 px-5 pt-5 pb-6">
-          {/* ── Info 배너 — it-blue 소프트 배경 ── */}
-          <div className="flex items-start gap-2.5 rounded-w-md bg-it-blue-50 dark:bg-it-blue-500/10 border-[1.5px] border-it-blue-100 dark:border-it-blue-500/30 px-3.5 py-3 mb-5">
-            <div className="shrink-0 mt-0.5">
-              <Icon
-                name="info"
-                size={16}
-                className="text-it-blue-500"
-                aria-hidden="true"
+          {/* ── 1) 팀 로고 (첨부파일) ── AvatarUploader (category=IMAGE · refType=team_logo). */}
+          <Field label="팀 로고" hint="이미지 파일 업로드 (최대 10MB)">
+            <div className="flex items-center gap-4">
+              <AvatarUploader
+                currentUrl={resolveImageSrc(logoUrl, team?.updatedAt) ?? null}
+                size={92}
+                label="팀 로고 변경"
+                refType="team_logo"
+                refId={teamId}
+                // 팀 로고는 비-인물 컨텍스트 → 도메인 아이콘(sports_hockey) + 사각형(클럽 엠블럼) 컨벤션.
+                placeholderIcon="sports_hockey"
+                shape="square"
+                onUploaded={(file) => {
+                  setLogoUrl(file.url);
+                  logoUrlRef.current = file.url;
+                }}
               />
+              <div className="flex-1 text-[13px] font-semibold text-it-ink-500 dark:text-it-ink-300">
+                <p>JPG · PNG · WebP</p>
+                <p>정사각형 권장 (예: 512×512)</p>
+              </div>
             </div>
-            <p className="text-[13px] leading-relaxed font-semibold text-it-blue-600 dark:text-it-blue-300">
-              기본 정보만 입력해도 등록할 수 있습니다. 로고/컬러는 나중에 수정 가능합니다.
+            <p className="mt-2 text-[11px] leading-relaxed text-it-ink-500 dark:text-it-ink-300">
+              {MESSAGES.team.logoRightsNotice}
             </p>
-          </div>
-
-          {/* ── 소속 팀 (read-only) ── */}
-          <Field label="소속 팀">
-            <div className="h-12 rounded-w-md bg-it-fill dark:bg-it-blue-900/40 border-[1.5px] border-it-line-strong dark:border-it-blue-900 px-4 flex items-center gap-2.5">
-              <span
-                className="size-[7px] rounded-w-pill bg-it-blue-500"
-                aria-hidden="true"
-              />
-              <span className="text-[15px] font-extrabold text-it-ink-700 dark:text-it-ink-200 tracking-tight">
-                {team.club?.clubName ?? "—"}
-              </span>
-              <span className="ml-auto px-1.5 py-0.5 rounded-w-md bg-it-line dark:bg-it-blue-900 text-it-ink-500 dark:text-it-ink-300 text-[12px] font-extrabold tracking-wider">
-                읽기 전용
-              </span>
-            </div>
           </Field>
 
-          {/* ── 팀 이름 (필수) ──
-              [수정 2026-05-23 v5] VenuePicker(홈 링크장) 의 focus 스타일과 통일.
-                · border 자체를 ice-500 으로 전환(얇은 파란 1px) + 외곽 ring opacity 0.1 (옅게).
-                · 기존 v4 의 0.25 짙은 ring + 회색 border 패턴은 "두 줄" 인상이 남아 단일 얇은
-                  파란선 디자인으로 재정렬.
-                · transition-shadow → transition-colors 함께 등록해 border 색도 부드럽게 전환. */}
+          {/* ── 2) 팀 이름 (필수) ── */}
           <Field label="팀 이름" required>
             <div
               className={cn(
@@ -346,56 +338,16 @@ export default function TeamEditPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="팀 이름"
-                // [수정 2026-05-23 v4] focus-visible-disabled — globals.css 의 전역
-                //  `*:focus-visible { outline: 2px solid #2f5fff; offset:2px }` 규칙이
-                //  input 에 안쪽 파란 outline 을 강제 적용하여, wrapper 의 focus-within
-                //  ring 과 함께 "이중 파란선" 으로 보이는 회귀 → opt-out 으로 제거.
+                // focus-visible-disabled — 전역 a11y outline 과 wrapper ring 의 "이중 파란선" 회귀 방지.
                 className="flex-1 bg-transparent border-0 outline-none focus-visible-disabled text-[16px] font-extrabold text-it-ink-800 dark:text-white tracking-tight placeholder:text-it-ink-400 placeholder:font-medium"
                 maxLength={32}
               />
             </div>
           </Field>
 
-          {/* ── 팀 슬로건 (선택) ── [수정 2026-05-23 v5] VenuePicker focus 스타일 통일. */}
-          <Field label={MESSAGES.team.fieldSlogan} hint="한 줄 인용문 (선택)">
-            <div
-              className={cn(
-                "h-12 rounded-w-md bg-it-fill dark:bg-it-blue-950 px-4 flex items-center",
-                "border-[1.5px] border-it-line-strong dark:border-it-blue-900",
-                "transition-[border-color,box-shadow] duration-150 motion-reduce:transition-none",
-                "focus-within:border-it-blue-500 focus-within:ring-2 focus-within:ring-it-blue-500/20",
-              )}
-            >
-              <input
-                type="text"
-                value={slogan}
-                onChange={(e) => setSlogan(e.target.value)}
-                placeholder={MESSAGES.team.fieldSloganPlaceholder}
-                // [수정 2026-05-23 v4] focus-visible-disabled — 이중 파란선 회귀 방지 (위 팀 이름 동일).
-                className="flex-1 bg-transparent border-0 outline-none focus-visible-disabled text-[15.5px] font-bold italic text-it-ink-800 dark:text-white tracking-tight placeholder:text-it-ink-400 placeholder:font-medium placeholder:not-italic"
-                maxLength={80}
-              />
-            </div>
-          </Field>
-
-          {/* ── 팀 소개 (선택) ── [수정 2026-05-23 v5] VenuePicker focus 스타일 통일. */}
-          <Field label={MESSAGES.team.fieldDescription} hint="팀에 대한 짧은 소개 (선택)">
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder={MESSAGES.team.fieldDescriptionPlaceholder}
-              rows={3}
-              maxLength={500}
-              // [수정 2026-05-23 v5] focus 시 border it-blue + ring 0.2. focus-visible-disabled 로
-              //  전역 a11y outline 차단 (이중 파란선 회귀 방지).
-              className="w-full min-h-[88px] rounded-w-md bg-it-fill dark:bg-it-blue-950 border-[1.5px] border-it-line-strong dark:border-it-blue-900 px-4 py-3 text-[15px] font-semibold text-it-ink-800 dark:text-white tracking-tight outline-none focus-visible-disabled placeholder:text-it-ink-400 placeholder:font-medium resize-none transition-[border-color,box-shadow] duration-150 motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20"
-            />
-          </Field>
-
-          {/* ── 팀 코드 (편집 가능, 선택) ── */}
-          {/* [2026-06-01] 가입 시 미설정(null) 정책 — 감독이 여기서 고유 코드를 입력·변경.
-              영문/숫자/-/_ 3~32자. 미입력 시 미설정 상태로 저장(해제). 코드는 코치/학부모
-              초대 시 식별 보조용이며, 가입 시 팀 선택은 팀 ID 기준으로 동작한다. */}
+          {/* ── 3) 팀 코드 (편집 가능, 선택) ──
+              가입 시 미설정(null) 정책 — 감독이 여기서 고유 코드를 입력·변경. 영문/숫자/-/_ 3~32자.
+              미입력 시 미설정(해제). 코드는 코치/학부모 초대 식별 보조용(가입 시 팀 선택은 팀 ID 기준). */}
           <Field
             label={MESSAGES.team.fieldTeamCode}
             hint={MESSAGES.team.fieldTeamCodeHint}
@@ -422,75 +374,94 @@ export default function TeamEditPage() {
             </div>
           </Field>
 
-          {/* [제거 2026-05-18 W2.B #4] "연령" chip grid 삭제.
-              사유: 팀 자체엔 연령 단일 — 연령별 구분(U8~U12)은 TeamGroup(하위그룹) 레벨에서 관리.
-                    팀 정보 수정 화면에서 연령 필드 노출은 사용자 혼동 유발.
-              이주 경로: 연령 설정은 `/team/[id]/groups/[groupId]/edit` 페이지에서 진행.
-              데이터 호환성: division 필드는 백엔드 schema 에 남아 있으나 폼에서 제외하므로
-                            기존 값을 유지(서버 응답 그대로 division 상태에 저장된 채 submit 시 전송)
-                            → 데이터 손실 없음. */}
-
-          {/* ── 로고 (첨부파일, 2026-05-23) ──
-              기존 외부 URL 직접 입력 → AvatarUploader 로 교체.
-              category=IMAGE · refType=team_logo · refId={teamId} 로 권한 검증 통합. */}
-          <Field label="팀 로고" hint="이미지 파일 업로드 (최대 10MB)">
-            <div className="flex items-center gap-4">
-              <AvatarUploader
-                currentUrl={resolveImageSrc(logoUrl, team?.updatedAt) ?? null}
-                size={92}
-                label="팀 로고 변경"
-                refType="team_logo"
-                refId={teamId}
-                // [추가 2026-05-23] 팀 로고는 비-인물 컨텍스트이므로 사람 아이콘이 의미 부정합.
-                //  TEAMPLUS 도메인 아이콘 sports_hockey 로 분기 (사용자 보고 2026-05-23).
-                placeholderIcon="sports_hockey"
-                // [추가 2026-05-23] 팀 로고는 원형(인물)이 아닌 사각형(클럽 엠블럼) 컨벤션.
-                //  team detail Hero 의 로고 박스(rounded-w-2xl)와 동일 토큰으로 시각 일관성 확보.
-                shape="square"
-                // [수정 2026-05-23] 사용자 보고 — 업로드는 됐는데 teams.logo_url 이 NULL.
-                //   원인: setLogoUrl 후 form "저장하기" 안 누르면 PUT body 에 logoUrl 미포함 → DB 미저장.
-                //   조치: 업로드 직후 즉시 updateTeam({ logoUrl }) 호출 → 사용자가 저장하기 안 눌러도
-                //         logoUrl 만은 즉시 DB 반영. 다른 필드는 기존대로 form submit 으로 일괄 저장.
-                onUploaded={(file) => {
-                  setLogoUrl(file.url);
-                  logoUrlRef.current = file.url;
-                }}
+          {/* ── 4) 팀 슬로건 (선택) ── */}
+          <Field label={MESSAGES.team.fieldSlogan} hint="한 줄 인용문 (선택)">
+            <div
+              className={cn(
+                "h-12 rounded-w-md bg-it-fill dark:bg-it-blue-950 px-4 flex items-center",
+                "border-[1.5px] border-it-line-strong dark:border-it-blue-900",
+                "transition-[border-color,box-shadow] duration-150 motion-reduce:transition-none",
+                "focus-within:border-it-blue-500 focus-within:ring-2 focus-within:ring-it-blue-500/20",
+              )}
+            >
+              <input
+                type="text"
+                value={slogan}
+                onChange={(e) => setSlogan(e.target.value)}
+                placeholder={MESSAGES.team.fieldSloganPlaceholder}
+                className="flex-1 bg-transparent border-0 outline-none focus-visible-disabled text-[15.5px] font-bold italic text-it-ink-800 dark:text-white tracking-tight placeholder:text-it-ink-400 placeholder:font-medium placeholder:not-italic"
+                maxLength={80}
               />
-              <div className="flex-1 text-[13px] font-semibold text-it-ink-500 dark:text-it-ink-300">
-                <p>JPG · PNG · WebP</p>
-                <p>정사각형 권장 (예: 512×512)</p>
-              </div>
             </div>
-            <p className="mt-2 text-[11px] leading-relaxed text-it-ink-500 dark:text-it-ink-300">
-              {MESSAGES.team.logoRightsNotice}
-            </p>
           </Field>
 
-          {/* ── 홈 링크장 (2026-05-23 v2) — VenuePicker 공통 컴포넌트 ──
-              BottomSheet 형태로 바닥에서 슬라이드 업, 목록 많을 때 내부 스크롤. */}
-          <Field label="홈 링크장" hint="링크장 관리에 등록된 목록에서 선택">
+          {/* ── 5) 팀 소개 (선택) ── */}
+          <Field label={MESSAGES.team.fieldDescription} hint="팀에 대한 짧은 소개 (선택)">
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder={MESSAGES.team.fieldDescriptionPlaceholder}
+              rows={6}
+              maxLength={500}
+              className="w-full min-h-[160px] rounded-w-md bg-it-fill dark:bg-it-blue-950 border-[1.5px] border-it-line-strong dark:border-it-blue-900 px-4 py-3 text-[15px] font-semibold text-it-ink-800 dark:text-white tracking-tight outline-none focus-visible-disabled placeholder:text-it-ink-400 placeholder:font-medium resize-none transition-[border-color,box-shadow] duration-150 motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20"
+            />
+          </Field>
+
+          {/* ── 6) 모집 대상 (선택) ── teams.division 컬럼 재활용(자유 텍스트). 리그 부문(TeamDivision)과 무관. */}
+          <Field label={MESSAGES.team.fieldDivision} hint={MESSAGES.team.fieldDivisionHint}>
+            <div
+              className={cn(
+                "h-12 rounded-w-md bg-it-fill dark:bg-it-blue-950 px-4 flex items-center",
+                "border-[1.5px] border-it-line-strong dark:border-it-blue-900",
+                "transition-[border-color,box-shadow] duration-150 motion-reduce:transition-none",
+                "focus-within:border-it-blue-500 focus-within:ring-2 focus-within:ring-it-blue-500/20",
+              )}
+            >
+              <input
+                type="text"
+                value={division}
+                onChange={(e) => setDivision(e.target.value)}
+                placeholder={MESSAGES.team.fieldDivisionPlaceholder}
+                className="flex-1 bg-transparent border-0 outline-none focus-visible-disabled text-[15.5px] font-bold text-it-ink-800 dark:text-white tracking-tight placeholder:text-it-ink-400 placeholder:font-medium"
+                maxLength={40}
+              />
+            </div>
+          </Field>
+
+          {/* ── 7) 지역 (선택) ── teams.location 컬럼 재활용(자유 텍스트). 홈 경기장(venueId)과 별개. */}
+          <Field label={MESSAGES.team.fieldRegion} hint={MESSAGES.team.fieldRegionHint}>
+            <div
+              className={cn(
+                "h-12 rounded-w-md bg-it-fill dark:bg-it-blue-950 px-4 flex items-center",
+                "border-[1.5px] border-it-line-strong dark:border-it-blue-900",
+                "transition-[border-color,box-shadow] duration-150 motion-reduce:transition-none",
+                "focus-within:border-it-blue-500 focus-within:ring-2 focus-within:ring-it-blue-500/20",
+              )}
+            >
+              <input
+                type="text"
+                value={region}
+                onChange={(e) => setRegion(e.target.value)}
+                placeholder={MESSAGES.team.fieldRegionPlaceholder}
+                className="flex-1 bg-transparent border-0 outline-none focus-visible-disabled text-[15.5px] font-bold text-it-ink-800 dark:text-white tracking-tight placeholder:text-it-ink-400 placeholder:font-medium"
+                maxLength={40}
+              />
+            </div>
+          </Field>
+
+          {/* ── 8) 홈 링크장 (선택) ── 공통 VenuePicker(검색형) — 장소명 검색 시 매칭 목록 노출. */}
+          <Field label="홈 링크장" hint="장소명을 검색해 선택">
             <VenuePicker
               value={venueId}
               onChange={setVenueId}
-              placeholder="홈 링크장 선택"
-              sheetTitle="홈 링크장을 선택해주세요."
+              placeholder="홈 링크장 검색"
               ariaLabel="홈 링크장"
             />
           </Field>
 
-          {/* ── 메인/보조 컬러 ── */}
-          <div className="grid grid-cols-2 gap-3 mb-5">
-            <ColorField
-              label="메인 컬러"
-              value={primaryColor || "#2f5fff"}
-              onChange={setPrimaryColor}
-            />
-            <ColorField
-              label="보조 컬러"
-              value={secondaryColor || "#1E3FAE"}
-              onChange={setSecondaryColor}
-            />
-          </div>
+          {/* [메인/보조 컬러 입력 제거] 팀 컬러는 현재 화면 전반에서 활용되지 않아 입력을
+              받지 않는다. 데이터 모델·팀 상세 표시는 보존 — 추후 팀 컬러 기능 도입 시 ColorField
+              입력 위젯을 이 위치에 복원하면 된다(git 이력: ICETIMES 이전 Hero primaryColor 반영). */}
 
           {serverError && (
             <div className="rounded-w-md bg-it-red-50 dark:bg-it-red-500/10 border-[1.5px] border-it-red-200 dark:border-it-red-500/40 px-3.5 py-3 mb-5">
@@ -563,45 +534,6 @@ function Field({
           {hint}
         </div>
       )}
-    </div>
-  );
-}
-
-// ─── Color Field ─────────────────────────────────
-function ColorField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div>
-      <div className="text-[14px] font-extrabold text-it-ink-800 dark:text-white tracking-tight mb-2">
-        {label}
-      </div>
-      <label className="h-14 rounded-w-md bg-it-fill dark:bg-it-blue-950 border-[1.5px] border-it-line-strong dark:border-it-blue-900 px-3 flex items-center gap-2.5 cursor-pointer">
-        <span
-          className="size-8 rounded-w-md shrink-0"
-          style={{ backgroundColor: value }}
-          aria-hidden="true"
-        />
-        <span
-          className="flex-1 text-[15px] font-extrabold text-it-ink-800 dark:text-white tabular-nums tracking-tight uppercase truncate"
-          style={{ letterSpacing: "-0.01em" }}
-        >
-          {value}
-        </span>
-        <input
-          type="color"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="size-7 cursor-pointer rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-transparent"
-          aria-label={`${label} 선택`}
-        />
-      </label>
     </div>
   );
 }
