@@ -835,7 +835,7 @@ function TeamInfoPanel({
       </div>
       <div className="px-5">
         <div className="rounded-w-md bg-it-fill dark:bg-it-blue-900/40 border-[1.5px] border-it-line dark:border-it-blue-900 px-4">
-          {[
+          {([
             {
               // [모집 대상] teams.division 컬럼 재활용 — 자유 텍스트. 리그 부문(TeamDivision)과 무관.
               //  미입력 시 "전체"(대상 제한 없음)로 노출.
@@ -876,7 +876,7 @@ function TeamInfoPanel({
                   },
                 ]
               : []),
-          ].map((row, i, arr) => (
+          ] as Array<{ k: string; v: string | null; tabular?: boolean; isStatus?: boolean; isColor?: boolean }>).map((row, i, arr) => (
             <div
               key={row.k}
               className={cn(
