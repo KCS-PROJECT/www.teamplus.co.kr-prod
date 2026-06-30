@@ -255,6 +255,24 @@ export function dateSchedulesEqual(
   return na.every((v, i) => v === nb[i]);
 }
 
+/** 요일별 기본값(daySchedules) 변경 여부 판정 — 시간 미입력(빈 행)은 무시하고 요일·시간·장소만 비교.
+ *  수정 모드에서 사용자가 요일 기본값 섹션을 건드렸는지(dirty) 판정해, 미변경 시 undefined 전송으로
+ *  기존 템플릿을 보존(빈 배열 전송=명시적 전체 삭제와 구분). */
+export function daySchedulesEqual(
+  a: Pick<DayScheduleItem, 'dayOfWeek' | 'startTime' | 'endTime' | 'venueId'>[],
+  b: Pick<DayScheduleItem, 'dayOfWeek' | 'startTime' | 'endTime' | 'venueId'>[],
+): boolean {
+  const norm = (arr: Pick<DayScheduleItem, 'dayOfWeek' | 'startTime' | 'endTime' | 'venueId'>[]) =>
+    arr
+      .filter((s) => s.startTime && s.endTime)
+      .map((s) => `${s.dayOfWeek}|${s.startTime}|${s.endTime}|${s.venueId ?? ''}`)
+      .sort();
+  const na = norm(a);
+  const nb = norm(b);
+  if (na.length !== nb.length) return false;
+  return na.every((v, i) => v === nb[i]);
+}
+
 export function validateClassForm(
   data: ClassFormData,
   options?: {
@@ -676,6 +694,10 @@ interface UseClassFormOptions {
   // 수정 모드 일정 변경 감지용 — prefill 시점의 dateSchedules 스냅샷.
   //   제출 시 현재 값과 비교해 변경이 없으면 일정 전송·검증을 스킵(기존 일정 보존).
   initialDateSchedules?: DateScheduleItem[];
+  // 수정 모드 요일 기본값 변경 감지용 — prefill 시점의 daySchedules(ClassDaySchedule 템플릿) 스냅샷.
+  //   제출 시 현재 값과 비교해 미변경이면 daySchedules 미전송(undefined)으로 기존 템플릿 보존.
+  //   변경 시에만 전송(빈 배열 포함 → 명시적 전체 삭제). create 모드는 항상 dirty 취급.
+  initialDaySchedules?: DayScheduleItem[];
   // [2026-06-22] 완료 페이지 수강료 목록 빌더 — 폼 1회 수강료 입력값을 받아 전체 항목 배열 반환.
   //   수정: draftProducts(1회권+정기권) 기준 / 등록: 폼 1회권 + 추가 정기권. 미전달 시 기존 표시.
   buildCompleteFeeItems?: (
@@ -689,6 +711,7 @@ export function useClassForm({
   academyId,
   onAfterSubmit,
   initialDateSchedules,
+  initialDaySchedules,
   buildCompleteFeeItems,
 }: UseClassFormOptions) {
   const { toast } = useToast();
@@ -798,15 +821,21 @@ export function useClassForm({
       //   백엔드가 dateSchedules 에서 classDays 를 파생하므로 classDays 강제 전송도 불필요.
       const usesDateSchedules = data.dateSchedules.length > 0;
 
-      // [2026-06-05] 정규/레슨 — 요일별 시간·장소(daySchedules) 전송.
-      //   백엔드가 대표값(가장 이른 요일)으로 Class.startTime/endTime/classDays/venueId 를
-      //   자동 산출하지만, 하위호환을 위해 프론트도 대표값을 함께 채워 전송한다.
-      //   selectedDaySchedules: 현재 선택된 요일(classDays)에 해당하는 행만 추려 정렬.
-      const selectedDaySchedules: DayScheduleItem[] = sortDaySchedules(
-        data.daySchedules.filter((s) => data.classDays.includes(s.dayOfWeek)),
+      // [2026-06-30] 요일별 기본값(daySchedules)을 "수업 속성 템플릿"으로 항상 저장.
+      //   기존엔 classDays 필터 + 날짜일정 미사용 시에만 전송했으나, 이제 날짜일정 사용 여부와
+      //   무관하게 시간이 입력된 모든 요일 행을 템플릿으로 영구 저장한다(요일↔날짜일정 독립).
+      //   validDaySchedules: 시작·종료 시간이 모두 입력된 행만 추려 정렬(빈/미입력 행 제외).
+      const validDaySchedules: DayScheduleItem[] = sortDaySchedules(
+        data.daySchedules.filter((s) => s.startTime && s.endTime),
       );
+      // 요일 기본값 변경 여부 — create 는 항상 dirty, edit 는 prefill 스냅샷과 비교.
+      //   미변경(edit)이면 undefined 전송으로 기존 템플릿 보존, 변경 시에만 전송(빈 배열=전체 삭제).
+      const daySchedulesDirty =
+        mode === 'create' ||
+        !daySchedulesEqual(initialDaySchedules ?? [], data.daySchedules);
       // 대표(가장 이른 요일) 행 — startTimeOnly/endTimeOnly/venueId 파생 기준.
-      const repDay = selectedDaySchedules[0];
+      //   백엔드는 dateSchedules 대표값을 우선하므로, 프론트 대표값은 하위호환·폴백용으로만 채운다.
+      const repDay = validDaySchedules[0];
       const effStartTimeOnly = repDay ? repDay.startTime : data.startTimeOnly;
       const effEndTimeOnly = repDay ? repDay.endTime : data.endTimeOnly;
       const effVenueId = repDay && repDay.venueId
@@ -874,17 +903,29 @@ export function useClassForm({
         classDays: usesDateSchedules
           ? undefined
           : (data.classDays?.length > 0 ? data.classDays : undefined),
-        // [2026-06-05] 요일별 시간·장소. 정규/레슨이고 행이 있을 때만 전송(백엔드 DTO 와 1:1).
-        //   venueName 은 표시 전용이라 전송 제외. dateSchedules 사용·빈 배열이면 undefined.
+        // [2026-06-30] 요일별 기본값 템플릿 — 날짜일정 사용 여부와 무관하게 항상 저장.
+        //   venueName 은 표시 전용이라 전송 제외. 백엔드 DTO(daySchedules)와 1:1.
+        //   create: 행이 있을 때만 전송(없으면 undefined) /
+        //   edit  : 섹션을 건드렸을 때(dirty)만 전송 — 빈 배열도 전송해 "전체 삭제" 의도 반영,
+        //           미변경이면 undefined 로 기존 템플릿 보존(§8-4 빈배열 시맨틱).
         daySchedules:
-          !usesDateSchedules && selectedDaySchedules.length > 0
-            ? selectedDaySchedules.map((s) => ({
-                dayOfWeek: s.dayOfWeek,
-                startTime: s.startTime,
-                endTime: s.endTime,
-                venueId: s.venueId || undefined,
-              }))
-            : undefined,
+          mode === 'create'
+            ? validDaySchedules.length > 0
+              ? validDaySchedules.map((s) => ({
+                  dayOfWeek: s.dayOfWeek,
+                  startTime: s.startTime,
+                  endTime: s.endTime,
+                  venueId: s.venueId || undefined,
+                }))
+              : undefined
+            : daySchedulesDirty
+              ? validDaySchedules.map((s) => ({
+                  dayOfWeek: s.dayOfWeek,
+                  startTime: s.startTime,
+                  endTime: s.endTime,
+                  venueId: s.venueId || undefined,
+                }))
+              : undefined,
         // [2026-06-09] 날짜별 일정 — 팀 정규·레슨·오픈클래스 공통 전송.
         //   백엔드가 각 날짜를 ClassSchedule(scheduledDate + startTime/endTime/venueId)로 생성하고
         //   dateSchedules 에서 classDays 를 파생하므로 요일 기반 자동생성 경로와 병행하지 않는다.
@@ -967,8 +1008,8 @@ export function useClassForm({
           startTimeOnly: effStartTimeOnly,
           endTimeOnly: effEndTimeOnly,
           daySchedules:
-            selectedDaySchedules.length > 0
-              ? selectedDaySchedules.map((s) => ({
+            validDaySchedules.length > 0
+              ? validDaySchedules.map((s) => ({
                   dayOfWeek: s.dayOfWeek,
                   startTime: s.startTime,
                   endTime: s.endTime,
@@ -1023,7 +1064,7 @@ export function useClassForm({
       //   실패(전환 안 함) 시에만 해제해 재시도를 허용한다.
       if (!navigated) submittingRef.current = false;
     }
-  }, [mode, classId, academyId, getClubId, toast, router, onAfterSubmit, initialDateSchedules, buildCompleteFeeItems]);
+  }, [mode, classId, academyId, getClubId, toast, router, onAfterSubmit, initialDateSchedules, initialDaySchedules, buildCompleteFeeItems]);
 
   const deleteClass = useCallback(async () => {
     if (!classId) return;

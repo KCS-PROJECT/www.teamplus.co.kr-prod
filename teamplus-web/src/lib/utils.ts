@@ -1,5 +1,40 @@
 import { type ClassValue, clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import { extendTailwindMerge } from 'tailwind-merge';
+
+/**
+ * 커스텀 fontSize 토큰을 tailwind-merge 의 `font-size` 그룹에 등록.
+ *
+ * tailwind-merge 는 표준 클래스(text-sm 등)만 fontSize 로 인식하고, 우리 토큰
+ * (text-w-*, text-card-*, text-body/caption/heading/muted)은 "텍스트 색상"으로 오인한다.
+ * 그 결과 cn() 안에서 색 클래스(text-wtext-3 등)와 공존하면 크기 토큰이 충돌로 제거되어
+ * 부모 16px 를 상속하는 버그가 발생한다(2026-06-30 발견).
+ *
+ * 아래 등록으로 이 토큰들이 fontSize 그룹으로 인식되어 색 클래스와 공존한다.
+ * tailwind.config.cjs 의 fontSize 키 + globals.css 의 .text-* 크기 클래스가 SoT.
+ */
+const twMerge = extendTailwindMerge({
+  extend: {
+    classGroups: {
+      'font-size': [
+        {
+          text: [
+            // tailwind.config.cjs fontSize 토큰
+            'w-caption', 'w-small', 'w-body', 'w-body-lg', 'w-title',
+            'w-h3', 'w-h2', 'w-h1', 'w-display', 'w-display-lg',
+            'w-caption-fluid', 'w-small-fluid', 'w-body-fluid', 'w-body-lg-fluid',
+            'w-title-fluid', 'w-h3-fluid', 'w-h2-fluid', 'w-h1-fluid',
+            'w-display-fluid', 'w-display-lg-fluid',
+            // globals.css .text-* 크기 클래스
+            'card-meta', 'card-body', 'card-title', 'card-emphasis', 'card-section',
+            'card-meta-child', 'card-body-child', 'card-title-child',
+            'card-emphasis-child', 'card-section-child',
+            'body', 'caption', 'heading', 'muted',
+          ],
+        },
+      ],
+    },
+  },
+});
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));

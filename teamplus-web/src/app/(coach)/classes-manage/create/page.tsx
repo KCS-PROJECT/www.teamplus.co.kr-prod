@@ -208,6 +208,8 @@ function ClassCreatePageInner() {
     onAfterSubmit: handleAfterSubmit,
     // 일정 변경 감지 — prefill 스냅샷과 비교해 미변경 시 일정 전송·검증을 스킵(기존 일정 보존).
     initialDateSchedules: initialData?.dateSchedules,
+    // 요일 기본값 변경 감지 — 미변경 시 daySchedules 미전송으로 기존 템플릿 보존(빈배열=전체삭제 구분).
+    initialDaySchedules: initialData?.daySchedules,
     // 완료 페이지 수강료 목록 — 변경된 패키지 가격·다중 정기권을 정확히 표시.
     buildCompleteFeeItems,
   });

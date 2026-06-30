@@ -14,7 +14,10 @@ import {
   FormErrors,
   validateClassForm,
   DayOfWeek,
+  DAY_OPTIONS,
   DateScheduleItem,
+  DayScheduleItem,
+  sortDaySchedules,
   useSelectableTeams,
   useVenues,
 } from '@/hooks/useClassForm';
@@ -32,7 +35,7 @@ import {
 //   · 선택 가능 출생연도는 useDateTime(서버 Asia/Seoul 기준 연도)로 동적 산출 →
 //     매년 1월 1일 최신 출생연도(currentYear-6)가 자동 추가된다. (예: 2026→2020, 2027→2021)
 import { useDateTime } from '@/hooks/useDateTime';
-import { MultiDatePickerModal, type MultiDateCommon } from '@/components/ui/MultiDatePickerModal';
+import { MultiDatePickerModal, type MultiDateResolved } from '@/components/ui/MultiDatePickerModal';
 
 /* ────────────────────────────────────────────
    TotalClassDays — 교육기간 + 요일로 자동 계산
@@ -227,34 +230,61 @@ export function ClassForm({
     setVenueTargetDateKey(null);
   };
 
-  // [2026-06-09] 복수 날짜 선택 → 선택 날짜들로 일정 재구성. 공통 시간/장소(common)는
-  //   입력된 값만 덮어쓰고, 미입력 값은 기존 행의 시간/장소를 보존.
-  const applyMultiDates = (dates: string[], common: MultiDateCommon) => {
+  // [2026-06-30 §9] 요일 우선 흐름 — 모달이 고른 날짜들로 일정 재구성.
+  //   · 기존 일정(이미 추가된 날짜): 개별 수정값 그대로 보존(요일 기본값 소급 없음).
+  //   · 신규 일정(새로 고른 날짜): resolved(요일 기본값 있으면 그 값, 없으면 빈 시간) 주입 →
+  //     기본값 없는 요일은 일정 목록 아코디언에서 개별 수정.
+  const applyMultiDates = (dates: string[], resolved: MultiDateResolved[]) => {
+    const resolvedMap = new Map(resolved.map(r => [r.date, r] as const));
     setFormData(prev => {
       const existing = new Map(
         prev.dateSchedules.filter(s => s.date).map(s => [s.date, s] as const),
       );
       const next = dates.map(d => {
         const ex = existing.get(d);
-        if (!ex) dateKeySeq.n += 1;
-        const base: DateScheduleItem = ex ?? {
+        if (ex) return ex; // 기존 일정 — 개별 수정값 보존
+        // 신규 일정 — 요일 기본값 주입(없으면 빈 시간).
+        dateKeySeq.n += 1;
+        const r = resolvedMap.get(d);
+        return {
           key: `ds${dateKeySeq.n}`,
           date: d,
-          startTime: '',
-          endTime: '',
-          venueId: '',
-          venueName: '',
-        };
-        return {
-          ...base,
-          startTime: common.startTime || base.startTime,
-          endTime: common.endTime || base.endTime,
-          venueId: common.venueId || base.venueId,
-          venueName: common.venueId ? common.venueName : base.venueName,
+          startTime: r?.startTime ?? '',
+          endTime: r?.endTime ?? '',
+          venueId: r?.venueId ?? '',
+          venueName: r?.venueName ?? '',
         };
       });
       return { ...prev, dateSchedules: next };
     });
+  };
+
+  // [2026-06-30] 요일별 기본값(ClassDaySchedule 템플릿) — 요일 토글 + 시간·장소 입력.
+  //   토글 켜면 빈 행 추가, 끄면 제거. 시간/장소는 updateDaySchedule 로 갱신.
+  //   sortDaySchedules 로 월 시작 정렬해 렌더.
+  const sortedDaySchedules = useMemo(
+    () => sortDaySchedules(formData.daySchedules),
+    [formData.daySchedules],
+  );
+  const toggleDaySchedule = (day: DayOfWeek) => {
+    setFormData(prev => {
+      const exists = prev.daySchedules.some(s => s.dayOfWeek === day);
+      return {
+        ...prev,
+        daySchedules: exists
+          ? prev.daySchedules.filter(s => s.dayOfWeek !== day)
+          : [
+              ...prev.daySchedules,
+              { dayOfWeek: day, startTime: '', endTime: '', venueId: '', venueName: '' },
+            ],
+      };
+    });
+  };
+  const updateDaySchedule = (day: DayOfWeek, patch: Partial<DayScheduleItem>) => {
+    setFormData(prev => ({
+      ...prev,
+      daySchedules: prev.daySchedules.map(s => (s.dayOfWeek === day ? { ...s, ...patch } : s)),
+    }));
   };
   const removeDateSchedule = (key: string) => {
     setFormData(prev => ({ ...prev, dateSchedules: prev.dateSchedules.filter(s => s.key !== key) }));
@@ -306,6 +336,8 @@ export function ClassForm({
     return Number.isFinite(m) && m >= 1 && m <= 12 ? m : new Date().getMonth() + 1;
   }, [serverMonth]);
   const [multiDateOpen, setMultiDateOpen] = useState(false);
+  // [2026-06-30] 일정 목록 — 한 줄 압축 + 아코디언. 탭한 회차만 개별 수정 펼침.
+  const [expandedDateKey, setExpandedDateKey] = useState<string | null>(null);
   // 최신(currentYear-6) → 오래된(currentYear-12) 순. 미취학~초등 6학년 범위.
   const selectableBirthYears = useMemo(() => {
     const years: number[] = [];
@@ -627,6 +659,122 @@ export function ClassForm({
               일정 및 장소 설정
             </h2>
 
+            {/* [2026-06-30] 요일별 기본 시간·장소(ClassDaySchedule 템플릿) — 선택.
+                미리 정해두면 아래 '일정 추가' 시 요일에 맞춰 시간·장소가 자동으로 채워진다. */}
+            <div className={cn(ic.card, 'space-y-3')}>
+              <div>
+                <label className={cn('block text-sm font-bold', iceTheme ? 'text-it-ink-600 dark:text-rink-100' : 'text-wtext-2 dark:text-rink-100')}>
+                  {MESSAGES.class.dayDefaults.title}
+                  <span className={cn('ml-1.5 text-card-meta font-medium', iceTheme ? 'text-it-ink-400 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
+                    ({MESSAGES.class.dayDefaults.optional})
+                  </span>
+                </label>
+                <p className={cn('mt-1 text-xs leading-relaxed', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
+                  {MESSAGES.class.dayDefaults.hint}
+                </p>
+              </div>
+
+              {/* 요일 토글 (월~일) */}
+              <div className="grid grid-cols-7 gap-1.5" role="group" aria-label={MESSAGES.class.dayDefaults.title}>
+                {DAY_OPTIONS.map((day) => {
+                  const selected = formData.daySchedules.some((s) => s.dayOfWeek === day);
+                  return (
+                    <button
+                      key={day}
+                      type="button"
+                      onClick={() => toggleDaySchedule(day)}
+                      aria-pressed={selected}
+                      className={cn(
+                        'h-10 rounded-w-md border-[1.5px] text-sm font-bold transition-colors motion-reduce:transition-none active:brightness-95',
+                        iceTheme
+                          ? selected
+                            ? 'bg-it-blue-50 border-it-blue-500 text-it-blue-500 dark:bg-it-blue-500/15 dark:border-it-blue-300 dark:text-it-blue-300'
+                            : 'bg-it-fill dark:bg-rink-700 border-it-line-strong dark:border-rink-600 text-it-ink-600 dark:text-rink-200'
+                          : selected
+                            ? 'bg-ice-100 border-ice-500 text-ice-700 dark:bg-ice-500/15 dark:border-ice-400 dark:text-ice-300'
+                            : 'bg-wbg dark:bg-rink-700 border-wline-2 dark:border-rink-600 text-wtext-2 dark:text-rink-200',
+                      )}
+                    >
+                      {day}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* 선택된 요일별 시간·장소 입력 */}
+              {sortedDaySchedules.length > 0 && (
+                <ul className="flex flex-col gap-2">
+                  {sortedDaySchedules.map((s) => (
+                    <li
+                      key={s.dayOfWeek}
+                      className={
+                        iceTheme
+                          ? 'rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-900/40 p-3 space-y-2'
+                          : 'rounded-xl border border-wline-2 dark:border-rink-700 bg-wbg dark:bg-rink-900/40 p-3 space-y-2'
+                      }
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className={cn('text-card-meta font-extrabold', iceTheme ? 'text-it-blue-500 dark:text-it-blue-300' : 'text-ice-600 dark:text-ice-400')}>
+                          {MESSAGES.class.dayDefaults.weekdayLabel(s.dayOfWeek)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => toggleDaySchedule(s.dayOfWeek)}
+                          className="rounded-md px-2 py-1 text-card-meta font-bold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
+                          aria-label={MESSAGES.class.dayDefaults.removeDayAria(s.dayOfWeek)}
+                        >
+                          {MESSAGES.class.dayDefaults.removeDay}
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="time"
+                          value={s.startTime}
+                          onChange={(e) => updateDaySchedule(s.dayOfWeek, { startTime: e.target.value })}
+                          className={
+                            iceTheme
+                              ? 'h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500'
+                              : 'h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-wtext-1 dark:text-white focus:outline-none focus:border-ice-500'
+                          }
+                          aria-label={`${s.dayOfWeek}요일 ${MESSAGES.class.dayDefaults.startTime}`}
+                        />
+                        <input
+                          type="time"
+                          value={s.endTime}
+                          onChange={(e) => updateDaySchedule(s.dayOfWeek, { endTime: e.target.value })}
+                          className={
+                            iceTheme
+                              ? 'h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500'
+                              : 'h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-wtext-1 dark:text-white focus:outline-none focus:border-ice-500'
+                          }
+                          aria-label={`${s.dayOfWeek}요일 ${MESSAGES.class.dayDefaults.endTime}`}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVenueTargetDay(s.dayOfWeek);
+                          setVenueSheetOpen(true);
+                        }}
+                        className={
+                          iceTheme
+                            ? 'w-full flex items-center gap-2 h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-left text-it-ink-800 dark:text-white hover:border-it-blue-500/40 transition-colors motion-reduce:transition-none'
+                            : 'w-full flex items-center gap-2 h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-left text-wtext-1 dark:text-white hover:border-ice-500/40 transition-colors'
+                        }
+                        aria-label={`${s.dayOfWeek}요일 ${MESSAGES.class.dayDefaults.venueSelect}`}
+                      >
+                        <Icon name="location_on" className={cn('text-base', iceTheme ? 'text-it-ink-400' : 'text-wtext-3')} aria-hidden="true" />
+                        <span className={s.venueName ? '' : iceTheme ? 'text-it-ink-400' : 'text-wtext-3'}>
+                          {s.venueName || MESSAGES.class.dayDefaults.venueSelect}
+                        </span>
+                        <Icon name="chevron_right" className={cn('text-base ml-auto', iceTheme ? 'text-it-ink-300' : 'text-wtext-4')} aria-hidden="true" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
             {/* [2026-06-09] 미니달력 날짜별 일정(날짜·시간·장소). 요일 토글 대체. */}
             {(
               <div className={cn(ic.card, 'space-y-3')}>
@@ -638,91 +786,123 @@ export function ClassForm({
                     아래 버튼으로 일정을 추가하고 날짜·시간·장소를 지정하세요.
                   </p>
                 ) : (
-                  <ul className="flex flex-col gap-3">
-                    {formData.dateSchedules.map((s, idx) => (
-                      <li
-                        key={s.key}
-                        className={
-                          iceTheme
-                            ? 'rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-900/40 p-3 space-y-2'
-                            : 'rounded-xl border border-wline-2 dark:border-rink-700 bg-wbg dark:bg-rink-900/40 p-3 space-y-2'
-                        }
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1.5">
-                            <span className={cn('text-card-meta font-extrabold', iceTheme ? 'text-it-ink-600 dark:text-rink-100' : 'text-wtext-2 dark:text-rink-100')}>
-                              {idx + 1}회차
-                            </span>
-                            {s.date && (
-                              <span className={cn('text-card-meta font-bold', iceTheme ? 'text-it-blue-500 dark:text-it-blue-300' : 'text-ice-600 dark:text-ice-400')} aria-hidden="true">
-                                ({getKoreanWeekday(s.date)})
-                              </span>
-                            )}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => removeDateSchedule(s.key)}
-                            className="rounded-md px-2 py-1 text-card-meta font-bold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
-                            aria-label={`${idx + 1}회차 삭제`}
-                          >
-                            삭제
-                          </button>
-                        </div>
-                        <input
-                          type="date"
-                          value={s.date}
-                          onChange={(e) => updateDateSchedule(s.key, { date: e.target.value })}
+                  // [2026-06-30] 한 줄 압축 + 아코디언 — 탭하면 해당 회차만 개별 수정 펼침.
+                  <ul className="flex flex-col gap-2">
+                    {formData.dateSchedules.map((s, idx) => {
+                      const expanded = expandedDateKey === s.key;
+                      const timeLabel = s.startTime
+                        ? `${s.startTime}${s.endTime ? `-${s.endTime}` : ''}`
+                        : MESSAGES.class.dayDefaults.timeUndecided;
+                      const dateLabel = s.date
+                        ? `${s.date.slice(5).replace('-', '/')}(${getKoreanWeekday(s.date)})`
+                        : MESSAGES.class.dayDefaults.dateUndecided;
+                      return (
+                        <li
+                          key={s.key}
                           className={
                             iceTheme
-                              ? 'w-full h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500'
-                              : 'w-full h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-wtext-1 dark:text-white focus:outline-none focus:border-ice-500'
-                          }
-                          aria-label={`${idx + 1}회차 날짜`}
-                        />
-                        <div className="grid grid-cols-2 gap-2">
-                          <input
-                            type="time"
-                            value={s.startTime}
-                            onChange={(e) => updateDateSchedule(s.key, { startTime: e.target.value })}
-                            className={
-                              iceTheme
-                                ? 'h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500'
-                                : 'h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-wtext-1 dark:text-white focus:outline-none focus:border-ice-500'
-                            }
-                            aria-label={`${idx + 1}회차 시작 시간`}
-                          />
-                          <input
-                            type="time"
-                            value={s.endTime}
-                            onChange={(e) => updateDateSchedule(s.key, { endTime: e.target.value })}
-                            className={
-                              iceTheme
-                                ? 'h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500'
-                                : 'h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-wtext-1 dark:text-white focus:outline-none focus:border-ice-500'
-                            }
-                            aria-label={`${idx + 1}회차 종료 시간`}
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setVenueTargetDateKey(s.key);
-                            setVenueSheetOpen(true);
-                          }}
-                          className={
-                            iceTheme
-                              ? 'w-full flex items-center gap-2 h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-left text-it-ink-800 dark:text-white hover:border-it-blue-500/40 transition-colors motion-reduce:transition-none'
-                              : 'w-full flex items-center gap-2 h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-left text-wtext-1 dark:text-white hover:border-ice-500/40 transition-colors'
+                              ? 'rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-900/40 overflow-hidden'
+                              : 'rounded-xl border border-wline-2 dark:border-rink-700 bg-wbg dark:bg-rink-900/40 overflow-hidden'
                           }
                         >
-                          <Icon name="location_on" className={cn('text-base', iceTheme ? 'text-it-ink-400' : 'text-wtext-3')} aria-hidden="true" />
-                          <span className={s.venueName ? '' : iceTheme ? 'text-it-ink-400' : 'text-wtext-3'}>
-                            {s.venueName || '장소 선택'}
-                          </span>
-                          <Icon name="chevron_right" className={cn('text-base ml-auto', iceTheme ? 'text-it-ink-300' : 'text-wtext-4')} aria-hidden="true" />
-                        </button>
-                      </li>
-                    ))}
+                          {/* 한 줄 요약 — 탭하면 개별 수정 패널 펼침 */}
+                          <div className="flex items-center gap-2 pl-3 pr-2 py-2.5">
+                            <button
+                              type="button"
+                              onClick={() => setExpandedDateKey(expanded ? null : s.key)}
+                              aria-expanded={expanded}
+                              className="flex flex-1 items-center gap-2 min-w-0 text-left"
+                            >
+                              <span className={cn('text-card-meta font-extrabold shrink-0 tabular-nums', iceTheme ? 'text-it-blue-500 dark:text-it-blue-300' : 'text-ice-600 dark:text-ice-400')}>
+                                {idx + 1}
+                              </span>
+                              <span className={cn('text-sm font-bold tabular-nums shrink-0', iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white')}>
+                                {dateLabel}
+                              </span>
+                              <span className={cn('text-card-meta font-medium tabular-nums truncate', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
+                                {timeLabel}{s.venueName ? ` · ${s.venueName}` : ''}
+                              </span>
+                              <Icon
+                                name="expand_more"
+                                className={cn('text-base ml-auto shrink-0 transition-transform motion-reduce:transition-none', expanded && 'rotate-180', iceTheme ? 'text-it-ink-400' : 'text-wtext-3')}
+                                aria-hidden="true"
+                              />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                removeDateSchedule(s.key);
+                                if (expanded) setExpandedDateKey(null);
+                              }}
+                              className="rounded-md p-1.5 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30 shrink-0"
+                              aria-label={`${idx + 1}회차 삭제`}
+                            >
+                              <Icon name="delete_outline" className="text-lg" aria-hidden="true" />
+                            </button>
+                          </div>
+
+                          {/* 개별 수정 패널 */}
+                          {expanded && (
+                            <div className={cn('px-3 pb-3 space-y-2 border-t', iceTheme ? 'border-it-line dark:border-rink-700' : 'border-wline-2 dark:border-rink-700')}>
+                              <input
+                                type="date"
+                                value={s.date}
+                                onChange={(e) => updateDateSchedule(s.key, { date: e.target.value })}
+                                className={
+                                  iceTheme
+                                    ? 'mt-2 w-full h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500'
+                                    : 'mt-2 w-full h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-wtext-1 dark:text-white focus:outline-none focus:border-ice-500'
+                                }
+                                aria-label={`${idx + 1}회차 날짜`}
+                              />
+                              <div className="grid grid-cols-2 gap-2">
+                                <input
+                                  type="time"
+                                  value={s.startTime}
+                                  onChange={(e) => updateDateSchedule(s.key, { startTime: e.target.value })}
+                                  className={
+                                    iceTheme
+                                      ? 'h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500'
+                                      : 'h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-wtext-1 dark:text-white focus:outline-none focus:border-ice-500'
+                                  }
+                                  aria-label={`${idx + 1}회차 시작 시간`}
+                                />
+                                <input
+                                  type="time"
+                                  value={s.endTime}
+                                  onChange={(e) => updateDateSchedule(s.key, { endTime: e.target.value })}
+                                  className={
+                                    iceTheme
+                                      ? 'h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500'
+                                      : 'h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-wtext-1 dark:text-white focus:outline-none focus:border-ice-500'
+                                  }
+                                  aria-label={`${idx + 1}회차 종료 시간`}
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setVenueTargetDateKey(s.key);
+                                  setVenueSheetOpen(true);
+                                }}
+                                className={
+                                  iceTheme
+                                    ? 'w-full flex items-center gap-2 h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-left text-it-ink-800 dark:text-white hover:border-it-blue-500/40 transition-colors motion-reduce:transition-none'
+                                    : 'w-full flex items-center gap-2 h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-left text-wtext-1 dark:text-white hover:border-ice-500/40 transition-colors'
+                                }
+                                aria-label={`${idx + 1}회차 장소 선택`}
+                              >
+                                <Icon name="location_on" className={cn('text-base', iceTheme ? 'text-it-ink-400' : 'text-wtext-3')} aria-hidden="true" />
+                                <span className={s.venueName ? '' : iceTheme ? 'text-it-ink-400' : 'text-wtext-3'}>
+                                  {s.venueName || '장소 선택'}
+                                </span>
+                                <Icon name="chevron_right" className={cn('text-base ml-auto', iceTheme ? 'text-it-ink-300' : 'text-wtext-4')} aria-hidden="true" />
+                              </button>
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
                 <button
@@ -1286,7 +1466,7 @@ export function ClassForm({
         initialYear={currentYear}
         initialMonth={currentMonth}
         selected={formData.dateSchedules.map(s => s.date).filter(Boolean)}
-        venues={venues.map(v => ({ id: v.id, name: v.name }))}
+        daySchedules={formData.daySchedules}
         onConfirm={applyMultiDates}
         onClose={() => setMultiDateOpen(false)}
         iceTheme={iceTheme}
