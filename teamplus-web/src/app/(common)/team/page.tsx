@@ -319,9 +319,8 @@ export default function TeamListPage() {
         {/* ─── 본문 ────────────────────────────── */}
         <section
           className={cn(
-            canManage && !isParent
-              ? 'pt-2 pb-30'
-              : 'px-4 pb-30 pt-4',
+            // 하단 여백은 MobileContainer 가 main 에 pb-30 자동 부여 → 페이지에서 중복 금지.
+            canManage && !isParent ? 'pt-2' : 'px-4 pt-4',
           )}
           aria-label="팀 목록"
         >
@@ -718,6 +717,9 @@ function CoachTeamManageCard({
 // 각 팀 카드 아래에 노출 — "하위그룹" 라벨 + 그룹 칩 리스트 (이름, 연령, 인원).
 // 예: 블리자드 팀 아래 → 블랙 블리자드(U12, 2명) · 화이트 블리자드(U11, 2명)
 // 그룹이 0개면 컴포넌트 자체 미렌더 (시각 노이즈 최소화).
+// 하위그룹 트리에서 그룹당 기본 노출 선수 수(초과분은 '더보기'로 펼침).
+const MEMBER_PREVIEW_LIMIT = 5;
+
 // 생년월일 ISO → "YYYY.MM.DD" (프로젝트 날짜 표기 컨벤션). 없거나 무효면 빈 문자열.
 function formatBirthDate(iso: string | null): string {
   if (!iso) return '';
@@ -735,6 +737,8 @@ function TeamSubGroupsCard({ teamId, teamName }: { teamId: string; teamName: str
   // 그룹별 선수 명단(트리 하위 행) — B 방안: 그룹 로드 직후 일괄(eager) fetch.
   const [membersByGroup, setMembersByGroup] = useState<Record<string, TeamGroupMemberRow[]>>({});
   const [isLoading, setIsLoading] = useState(true);
+  // 선수 많은 그룹은 기본 미리보기 MEMBER_PREVIEW_LIMIT 명 + '더보기'로 펼침(스크롤 폭주 방지).
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -769,6 +773,15 @@ function TeamSubGroupsCard({ teamId, teamName }: { teamId: string; teamName: str
       cancelled = true;
     };
   }, [teamId]);
+
+  const toggleGroupExpand = useCallback((groupId: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+  }, []);
 
   if (isLoading) return null;
   if (groups.length === 0) return null;
@@ -805,6 +818,11 @@ function TeamSubGroupsCard({ teamId, teamName }: { teamId: string; teamName: str
       <ul className="flex flex-col" role="list">
         {groups.map((g, gi) => {
           const members = membersByGroup[g.id] ?? [];
+          const expanded = expandedGroups.has(g.id);
+          const visibleMembers = expanded
+            ? members
+            : members.slice(0, MEMBER_PREVIEW_LIMIT);
+          const hiddenCount = members.length - visibleMembers.length;
           return (
             <li
               key={g.id}
@@ -841,10 +859,11 @@ function TeamSubGroupsCard({ teamId, teamName }: { teamId: string; teamName: str
                 />
               </button>
 
-              {/* 선수 트리 — 이름 · 생년월일. 들여쓰기 + hairline(세로 구분선 금지 RULE-D04 준수). */}
+              {/* 선수 트리 — 이름 · 생년월일. 들여쓰기 + hairline(세로 구분선 금지 RULE-D04 준수).
+                  선수 많은 그룹은 미리보기 MEMBER_PREVIEW_LIMIT 명 + '더보기'로 펼침(스크롤 폭주 방지). */}
               {members.length > 0 && (
                 <ul className="pl-[42px] pb-2" role="list" aria-label={`${g.name} 선수 목록`}>
-                  {members.map((mem) => {
+                  {visibleMembers.map((mem) => {
                     const birth = formatBirthDate(mem.birthDate);
                     return (
                       <li
@@ -867,6 +886,31 @@ function TeamSubGroupsCard({ teamId, teamName }: { teamId: string; teamName: str
                       </li>
                     );
                   })}
+
+                  {members.length > MEMBER_PREVIEW_LIMIT && (
+                    <li>
+                      <button
+                        type="button"
+                        onClick={() => toggleGroupExpand(g.id)}
+                        aria-expanded={expanded}
+                        aria-label={
+                          expanded
+                            ? `${g.name} 선수 목록 접기`
+                            : `${g.name} 선수 ${hiddenCount}명 더보기`
+                        }
+                        className="w-full flex items-center gap-1.5 py-1.5 border-t border-it-line/70 dark:border-it-blue-900/70 text-card-meta font-bold text-it-blue-500 hover:text-it-blue-600 active:brightness-95 transition-colors motion-reduce:transition-none"
+                      >
+                        <Icon
+                          name={expanded ? 'expand_less' : 'expand_more'}
+                          className="shrink-0 text-[16px]"
+                          aria-hidden="true"
+                        />
+                        {expanded
+                          ? MESSAGES.team.groupMemberCollapse
+                          : MESSAGES.team.groupMemberShowMore(hiddenCount)}
+                      </button>
+                    </li>
+                  )}
                 </ul>
               )}
             </li>

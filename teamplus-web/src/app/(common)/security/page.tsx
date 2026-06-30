@@ -466,7 +466,7 @@ export default function SecuritySettingsPage() {
         </section>
 
         {/* Section 4: 연결된 디바이스 — full-bleed 흰 섹션 + hairline 행 */}
-        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 pt-4 pb-30">
+        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 pt-4">
           <h2 className="text-w-small font-bold text-it-ink-500 dark:text-rink-300 tracking-wider uppercase mb-3">
             연결된 기기
           </h2>

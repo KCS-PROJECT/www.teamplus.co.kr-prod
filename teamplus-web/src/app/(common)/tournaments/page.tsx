@@ -258,7 +258,7 @@ export default function CommonTournamentsPage() {
             <div
               role="tabpanel"
               aria-hidden={tab !== "active"}
-              className="flex w-1/2 shrink-0 flex-col gap-3 px-4 pb-30"
+              className="flex w-1/2 shrink-0 flex-col gap-3 px-4"
             >
               {/* 결과 카운트 — 로딩이 아니고 비어있지 않을 때만 */}
               {!isLoading && activeList.length > 0 && (
@@ -310,7 +310,7 @@ export default function CommonTournamentsPage() {
             <div
               role="tabpanel"
               aria-hidden={tab !== "past"}
-              className="flex w-1/2 shrink-0 flex-col gap-3 px-4 pb-30"
+              className="flex w-1/2 shrink-0 flex-col gap-3 px-4"
             >
               {!isLoading && pastList.length > 0 && (
                 <div

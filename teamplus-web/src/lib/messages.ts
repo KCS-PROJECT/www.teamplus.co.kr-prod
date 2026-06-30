@@ -1674,6 +1674,9 @@ export const MESSAGES = {
     groupAgeGroupPlaceholder: "예: 주말반 · 초급 · 2014년생 위주",
     groupAgeGroupHelper:
       "선택 입력 — 이 하위그룹의 대상이나 성격을 자유롭게 적어주세요.",
+    // 하위그룹 선수 트리 — 미리보기 초과분 더보기/접기 토글
+    groupMemberShowMore: (count: number) => `외 ${count}명 더보기`,
+    groupMemberCollapse: "접기",
     groupMembersLabel: "회원 선택",
     groupMembersEmpty: "등록 가능한 회원이 없습니다.",
     groupMembersHelper: "하위그룹에 포함할 회원을 선택하세요.",
