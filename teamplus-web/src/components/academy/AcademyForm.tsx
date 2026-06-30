@@ -3,6 +3,8 @@
 import { useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { MESSAGES } from '@/lib/messages';
+import { AvatarUploader } from '@/components/shared/AvatarUploader';
+import { resolveImageSrc } from '@/lib/image-url';
 
 export interface AcademyFormData {
   name: string;
@@ -10,6 +12,7 @@ export interface AcademyFormData {
   region: string;
   contactPhone: string;
   contactEmail: string;
+  imageUrl: string;
 }
 
 interface AcademyFormProps {
@@ -17,6 +20,11 @@ interface AcademyFormProps {
   initialData?: Partial<AcademyFormData>;
   onSubmit: (data: AcademyFormData) => Promise<void>;
   isSubmitting?: boolean;
+  /**
+   * 수정 모드의 오픈클래스 id — 로고 업로드 시 refId 로 전달(파일-도메인 연결).
+   * 신규 등록 시에는 아직 id 가 없어 미지정(refId 없이 업로드 → 제출 payload 로 반영).
+   */
+  academyId?: string;
   /**
    * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
    *   true 시 인풋 bg-it-fill + border-[1.5px] border-it-line-strong, 라벨 it-ink,
@@ -34,12 +42,13 @@ interface AcademyFormProps {
  * - AI 스타일 금지
  * - 다크모드 지원
  */
-export function AcademyForm({ mode, initialData, onSubmit, isSubmitting = false, iceTheme = false }: AcademyFormProps) {
+export function AcademyForm({ mode, initialData, onSubmit, isSubmitting = false, iceTheme = false, academyId }: AcademyFormProps) {
   const [name, setName] = useState(initialData?.name ?? '');
   const [description, setDescription] = useState(initialData?.description ?? '');
   const [region, setRegion] = useState(initialData?.region ?? '');
   const [contactPhone, setContactPhone] = useState(initialData?.contactPhone ?? '');
   const [contactEmail, setContactEmail] = useState(initialData?.contactEmail ?? '');
+  const [imageUrl, setImageUrl] = useState(initialData?.imageUrl ?? '');
   const [errors, setErrors] = useState<Partial<Record<keyof AcademyFormData, string>>>({});
 
   const validate = useCallback((): boolean => {
@@ -65,8 +74,9 @@ export function AcademyForm({ mode, initialData, onSubmit, isSubmitting = false,
       region: region.trim(),
       contactPhone: contactPhone.trim(),
       contactEmail: contactEmail.trim(),
+      imageUrl: imageUrl.trim(),
     });
-  }, [name, description, region, contactPhone, contactEmail, validate, onSubmit]);
+  }, [name, description, region, contactPhone, contactEmail, imageUrl, validate, onSubmit]);
 
   const inputClass = iceTheme
     ? cn(
@@ -98,6 +108,27 @@ export function AcademyForm({ mode, initialData, onSubmit, isSubmitting = false,
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
+      {/* 오픈클래스 로고 (선택) — 팀 로고와 동일하게 AvatarUploader 사용 */}
+      <div>
+        <label className={labelClass}>오픈클래스 로고</label>
+        <div className="flex items-center gap-4">
+          <AvatarUploader
+            currentUrl={resolveImageSrc(imageUrl) ?? null}
+            size={92}
+            label="오픈클래스 로고 변경"
+            refType="academy_logo"
+            refId={academyId}
+            placeholderIcon="school"
+            shape="square"
+            onUploaded={(file) => setImageUrl(file.url)}
+          />
+          <div className="flex-1 text-[13px] font-semibold text-it-ink-500 dark:text-it-ink-300">
+            <p>JPG · PNG · WebP</p>
+            <p>정사각형 권장 (예: 512×512)</p>
+          </div>
+        </div>
+      </div>
+
       {/* 오픈클래스명 (필수) */}
       <div>
         <label htmlFor="academy-name" className={labelClass}>
