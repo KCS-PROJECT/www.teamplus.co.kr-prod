@@ -185,7 +185,7 @@ export default function WishlistPage() {
             iceTheme
           />
         ) : (
-          <section className="bg-it-surface dark:bg-rink-800 mt-2 px-4 pt-2 pb-30 flex flex-col divide-y divide-it-line dark:divide-it-blue-900">
+          <section className="bg-it-surface dark:bg-rink-800 mt-2 px-4 pt-2 flex flex-col divide-y divide-it-line dark:divide-it-blue-900">
             {filteredItems.map((item) => (
               <div key={item.id} className="py-4">
                 <WishlistItemCard

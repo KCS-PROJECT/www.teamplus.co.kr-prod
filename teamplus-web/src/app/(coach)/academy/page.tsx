@@ -78,35 +78,20 @@ export default function AcademyPage() {
             </div>
           </section>
         ) : (
-          /* 오픈클래스 목록 — flat 흰 섹션 + 섹션 헤더 */
-          <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
-            {/* 섹션 헤더 — classes-manage ClassSectionHead 와 동일 17px/800 it-ink + 우측 count */}
-            <div className="flex items-center gap-2 px-4 sm:px-5 pt-4 sm:pt-[18px] pb-2">
-              <h2 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
-                {MESSAGES.academy.myAcademies}
-              </h2>
-              <span className="text-[15px] font-extrabold text-it-blue-500 dark:text-it-blue-300 tabular-nums">
-                {academies.length}
-              </span>
-            </div>
-
-            <ul
-              className="px-4 sm:px-5 pb-4 flex flex-col divide-y divide-it-line dark:divide-it-blue-900"
-              role="list"
-              aria-label={`나의 오픈클래스 목록 ${academies.length}개`}
-            >
-              {academies.map((academy, idx) => (
-                <li
-                  key={academy.id}
-                  role="listitem"
-                  className="motion-reduce:animate-none"
-                  style={{ animationDelay: `${Math.min(idx * 40, 280)}ms` }}
-                >
-                  <AcademyCard academy={academy} onPress={handleCardPress} iceTheme />
-                </li>
-              ))}
-            </ul>
-          </section>
+          /* 오픈클래스 관리 — 1인 1개 정책상 단일 리치 카드.
+             팀 관리(/team)와 통일: 섹션 헤더·count 제거 → 흰 블록(bg-it-surface) 카드를
+             gap-2 로 직접 쌓는다(팀의 CoachTeamManageCard 와 동일 골격). */
+          <ul
+            className="mt-2 flex flex-col gap-2"
+            role="list"
+            aria-label={`나의 오픈클래스 ${academies.length}개`}
+          >
+            {academies.map((academy) => (
+              <li key={academy.id} role="listitem" className="bg-it-surface dark:bg-it-blue-950">
+                <AcademyCard academy={academy} onPress={handleCardPress} manage />
+              </li>
+            ))}
+          </ul>
         )}
       </main>
 

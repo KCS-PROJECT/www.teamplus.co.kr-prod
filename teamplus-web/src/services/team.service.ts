@@ -26,7 +26,9 @@ import type { ApiResponse } from '@/types';
 // Types
 // ============================================
 
-export type TeamDivision = 'U8' | 'U9' | 'U10' | 'U11' | 'U12';
+/** 모집 대상 (자유 텍스트). teams.division 컬럼 재활용 — 리그 부문(TeamDivision 테이블)과 무관.
+ *  레거시 U8~U12 값도 그대로 호환. */
+export type TeamDivision = string;
 export type RosterPosition = 'goalie' | 'defense' | 'forward';
 export type RosterStatus = 'active' | 'injured' | 'suspended';
 
@@ -38,6 +40,8 @@ export interface TeamListItem {
   name?: string;
   shortName?: string | null;
   division?: TeamDivision | null;
+  /** 지역 (자유 텍스트, 선택). 홈 경기장(venue/homeArena)과 별개의 활동 지역. */
+  location?: string | null;
   logoUrl?: string | null;
   primaryColor?: string | null;
   secondaryColor?: string | null;
@@ -363,6 +367,8 @@ export interface TeamMatchesResponse {
 export interface CreateTeamPayload {
   clubId: string;
   name: string;
+  /** 지역 (선택, 자유 텍스트) */
+  location?: string;
   // [제거 2026-05-21 시나리오 B] shortName — Phase 2 (2026-04-29) Club↔Team 통합 잔재.
   //   백엔드 createTeam(teams.service.ts:165-175) 이 data 객체에 포함시키지 않아 저장되지 않음.
   //   표시 폴백(BracketMatchCard · team-groups · TeamListCard)을 위해 Team 조회 타입에는 유지되나,
@@ -383,6 +389,8 @@ export interface CreateTeamPayload {
 
 export interface UpdateTeamPayload {
   clubName?: string;
+  /** 지역 (선택, 자유 텍스트). 빈 문자열/미전송이면 변경 없음 */
+  location?: string;
   /** 팀 초대 코드 (선택, 고유). 빈 문자열이면 해제(null) */
   teamCode?: string;
   division?: TeamDivision;

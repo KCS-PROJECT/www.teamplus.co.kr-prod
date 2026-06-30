@@ -40,10 +40,33 @@ export const MESSAGES = {
     scheduleCreated: "수업 일정이 생성되었습니다.",
     scheduleBulkCreated: (count: number) =>
       `${count}개의 수업 일정이 생성되었습니다.`,
+    // 요일별 시간/장소가 달라 그룹별 bulk 호출 시, 일부 그룹만 실패했을 때 병행 경고.
+    scheduleBulkPartialFailed: (ok: number, fail: number) =>
+      `${ok}건 추가, ${fail}건 실패했습니다.`,
     scheduleCancelled: "수업 일정이 취소되었습니다.",
     scheduleManage: "일정 관리",
     // 일정마다 시간/장소가 달라 단일 값으로 요약할 수 없을 때 표기.
     schedulesVary: "회차별 상이",
+    // 요일별 기본 시간·장소(ClassDaySchedule 템플릿) 입력 + 일정 추가 칩 UI 문구.
+    dayDefaults: {
+      title: "수업 기본 일정 (요일별)",
+      optional: "선택",
+      hint: "이 수업의 정규 요일·시간·장소예요. 일정을 추가할 때 이 기본 일정대로 한 번에 만들 수 있어요.",
+      startTime: "시작 시간",
+      endTime: "종료 시간",
+      venueSelect: "장소 선택",
+      // 일정 추가 바텀시트 — 요일 칩 우선 흐름(§9).
+      quickSelect: "요일 빠른 선택",
+      quickSelectHint:
+        "요일을 누르면 이 달의 해당 요일이 한 번에 선택됩니다. 달력에서 개별 날짜를 더하거나 뺄 수 있어요.",
+      // 날짜 선택 제한 안내 — 이미 등록됐거나 지난 날짜는 선택 불가.
+      dateRestrictHint: "이미 등록됐거나 지난 날짜는 선택할 수 없어요.",
+      weekdayLabel: (day: string) => `${day}요일`,
+      removeDay: "삭제",
+      removeDayAria: (day: string) => `${day}요일 기본값 삭제`,
+      timeUndecided: "시간 미정",
+      dateUndecided: "날짜 미정",
+    },
     policyInfo:
       "수업 등록 시 학부모님들께 알림이 발송됩니다. 대관 시간 15분 전 링크장 도착을 원칙으로 합니다.",
     policyInfoCreate:
@@ -1674,6 +1697,9 @@ export const MESSAGES = {
     groupAgeGroupPlaceholder: "예: 주말반 · 초급 · 2014년생 위주",
     groupAgeGroupHelper:
       "선택 입력 — 이 하위그룹의 대상이나 성격을 자유롭게 적어주세요.",
+    // 하위그룹 선수 트리 — 미리보기 초과분 더보기/접기 토글
+    groupMemberShowMore: (count: number) => `외 ${count}명 더보기`,
+    groupMemberCollapse: "접기",
     groupMembersLabel: "회원 선택",
     groupMembersEmpty: "등록 가능한 회원이 없습니다.",
     groupMembersHelper: "하위그룹에 포함할 회원을 선택하세요.",
@@ -1918,7 +1944,12 @@ export const MESSAGES = {
 
     // 폼 필드 레이블
     fieldName: "하위그룹 이름",
-    fieldDivision: "연령",
+    fieldDivision: "모집 대상",
+    fieldDivisionPlaceholder: "예: 초등 저학년 · 2015~2017년생",
+    fieldDivisionHint: "팀이 모집하는 대상 (선택)",
+    fieldRegion: "지역",
+    fieldRegionPlaceholder: "예: 서울 강남구",
+    fieldRegionHint: "팀 활동 지역 (선택)",
     fieldLogoUrl: "로고 URL",
     fieldPrimaryColor: "메인 컬러",
     fieldSecondaryColor: "보조 컬러",
@@ -1962,8 +1993,10 @@ export const MESSAGES = {
     // ─── 2026-04-12 v2: 하드코딩 제거 (FE-4~FE-8) ─────────
     // 메타 정보 테이블
     metaTeamInfo: "팀 정보",
-    metaDivision: "부문",
+    metaDivision: "모집 대상",
+    metaRegion: "지역",
     metaTeamCode: "팀 코드",
+    recruitAll: "전체",
     metaPrimaryColor: "메인 컬러",
     metaSecondaryColor: "보조 컬러",
     metaStatus: "상태",

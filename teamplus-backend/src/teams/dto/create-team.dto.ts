@@ -29,8 +29,10 @@ export class CreateTeamDto {
   @IsPhoneNumber("KR", { message: "올바른 한국 전화번호를 입력해주세요." })
   phoneNumber?: string;
 
-  @IsString()
+  /** 지역 (선택, 자유 텍스트). 예: "서울 강남구". 홈 경기장(venueId/homeArena)과 별개의 활동 지역. */
   @IsOptional()
+  @IsString()
+  @MaxLength(40, { message: "지역은 최대 40자 이내로 입력해 주세요." })
   location?: string;
 
   // 홈 링크장 (Venue FK · 2026-05-22) — 등록/수정 시 DB 링크장 마스터에서 선택.
@@ -70,9 +72,10 @@ export class CreateTeamDto {
   })
   foundingDate?: string;
 
-  /** 부문 (U8/U9/U10/U11/U12 등) */
+  /** 모집 대상 (자유 텍스트). teams.division 컬럼 재활용 — 리그 부문(TeamDivision 테이블)과 무관. 레거시 U8~U12 호환. */
   @IsOptional()
   @IsString()
+  @MaxLength(40, { message: "모집 대상은 최대 40자 이내로 입력해 주세요." })
   division?: string;
 
   /** 메인 컬러 (HEX, #RRGGBB) */

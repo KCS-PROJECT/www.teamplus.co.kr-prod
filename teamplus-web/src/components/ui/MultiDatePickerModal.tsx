@@ -3,25 +3,37 @@
 /**
  * MultiDatePickerModal — 복수 날짜 선택 미니달력 (공통 BottomSheet 기반).
  *
- * [2026-06-09] 오픈클래스 일정 등록 — 여러 날짜를 한 번에 선택 + 공통 시간/장소 입력 → 일정 일괄 생성.
- *  · 날짜 클릭 = 선택 토글(복수). 시작/종료 시간 + 장소(선택)를 공통으로 입력.
- *  · 확인 시 onConfirm(선택 날짜 배열, 공통 시간/장소) 전달.
- *  · new Date()(argless) 금지 환경 — 모든 날짜 계산은 인자 있는 new Date(y, m, d) 사용.
- *
- * [2026-06-10] 자체 오버레이 셸을 공통 BottomSheet 로 교체 — 다른 시트들과 애니메이션·dim·
- *  네이티브 scrim·z-index·ESC·스크롤락을 일치시킨다. 달력/공통입력 로직·외부 인터페이스는 불변.
+ * [2026-06-30 재설계 §9] 요일 우선 흐름 — 상단 "요일 빠른 선택" 칩으로 보고 있는 달(viewMonth)의
+ *  해당 요일 날짜를 일괄 추가/제거(토글)한다. 이미 등록된 날짜·지난 날짜는 제외. 월을 넘기며 누적.
+ *  달력은 미세조정 전용(특정 날짜 개별 해제/추가). 하단 공통 시간/장소 입력·적용 토글은 제거.
+ *  확인 시 각 날짜에 요일 기본값(시간/장소)을 주입(resolved), 기본값 없는 요일은 빈 시간으로 생성
+ *  → 일정 목록 아코디언에서 개별 수정.
+ *  · new Date()(argless) 금지 환경 — 요일/일수 계산은 인자 있는 new Date(y, m, d) 사용.
  */
 
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '@/components/ui/Icon';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { WEEKDAY_HEADERS, weekColumnOf } from '@/lib/calendar-week';
+import { MESSAGES } from '@/lib/messages';
 
-export interface MultiDateCommon {
+/** 확인 시 날짜별로 확정된 시간·장소 — 요일 기본값 있으면 그 값, 없으면 빈 시간(개별 수정 유도). */
+export interface MultiDateResolved {
+  /** YYYY-MM-DD */
+  date: string;
   startTime: string;
   endTime: string;
   venueId: string;
   venueName: string;
+}
+
+/** 요일별 기본값(ClassDaySchedule 템플릿) — 칩 표시·주입에 사용. dayOfWeek 한글 SoT("월"~"일"). */
+export interface MultiDateDayDefault {
+  dayOfWeek: string;
+  startTime: string;
+  endTime: string;
+  venueId?: string | null;
+  venueName?: string | null;
 }
 
 interface MultiDatePickerModalProps {
@@ -34,10 +46,11 @@ interface MultiDatePickerModalProps {
   selected: string[];
   /** 선택 불가(이미 등록됨) 날짜 (YYYY-MM-DD) — 회색·토글 차단 */
   disabledDates?: string[];
-  /** 장소 선택 옵션 */
-  venues: { id: string; name: string }[];
-  /** 확인 시 선택된 날짜 배열(오름차순) + 공통 시간/장소 전달 */
-  onConfirm: (dates: string[], common: MultiDateCommon) => void;
+  /** 수업의 요일별 기본값 — 시간 입력된 요일만 "요일 빠른 선택" 칩으로 노출. */
+  daySchedules?: MultiDateDayDefault[];
+  /** 확인 시 선택 날짜 배열(오름차순) + 날짜별 확정 결과 전달.
+   *  resolved: 각 날짜 요일에 기본값이 있으면 그 시간/장소, 없으면 빈 시간이 주입된 목록(dates 동일 순서). */
+  onConfirm: (dates: string[], resolved: MultiDateResolved[]) => void;
   onClose: () => void;
   /**
    * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
@@ -50,17 +63,15 @@ const pad2 = (n: number) => String(n).padStart(2, '0');
 const toISO = (y: number, m: number, d: number) => `${y}-${pad2(m)}-${pad2(d)}`;
 const WEEKDAYS = WEEKDAY_HEADERS;
 
-// 공통 TimePicker 트리거 버튼과 동일한 시각 토큰 — 시트 중첩 없이 시각만 통일(옵션 A).
-const FIELD_CLASS =
-  'w-full h-12 px-4 rounded-[12px] bg-white dark:bg-rink-800 border border-wline dark:border-rink-700 ' +
-  'text-card-meta font-semibold text-wtext-1 dark:text-white transition-colors motion-reduce:transition-none ' +
-  'hover:border-ice-500 focus:outline-none focus:border-ice-500 focus:shadow-[0_0_0_3px_rgb(47_95_255_/_0.1)] focus-visible-disabled';
-
-// [ICETIMES] flat 입력 — it-fill 배경 + 1.5px it-line-strong + it-blue 포커스.
-const FIELD_CLASS_ICE =
-  'w-full h-12 px-4 rounded-w-md bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 ' +
-  'text-card-meta font-semibold text-it-ink-800 dark:text-white transition-colors motion-reduce:transition-none ' +
-  'focus:outline-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 focus-visible-disabled';
+// 한글 요일 — toISO 결과("YYYY-MM-DD")에서 요일 기본값 매칭에 사용(한글 SoT). TZ 시프트 방지로 로컬 파싱.
+const KO_WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+const weekdayKoOf = (iso: string): string => {
+  const [y, m, d] = iso.split('-').map(Number);
+  if (!y || !m || !d) return '';
+  return KO_WEEKDAYS[new Date(y, m - 1, d).getDay()] ?? '';
+};
+// 칩 정렬용 요일 순서(월 시작).
+const DAY_ORDER: Record<string, number> = { 월: 0, 화: 1, 수: 2, 목: 3, 금: 4, 토: 5, 일: 6 };
 
 export function MultiDatePickerModal({
   isOpen,
@@ -68,36 +79,36 @@ export function MultiDatePickerModal({
   initialMonth,
   selected,
   disabledDates,
-  venues,
+  daySchedules,
   onConfirm,
   onClose,
   iceTheme = false,
 }: MultiDatePickerModalProps) {
-  const fieldClass = iceTheme ? FIELD_CLASS_ICE : FIELD_CLASS;
   const [viewYear, setViewYear] = useState(initialYear);
   const [viewMonth, setViewMonth] = useState(initialMonth); // 1-12
   const [picked, setPicked] = useState<Set<string>>(() => new Set(selected));
   const disabledSet = useMemo(() => new Set(disabledDates ?? []), [disabledDates]);
-  const [startTime, setStartTime] = useState('');
-  const [endTime, setEndTime] = useState('');
-  const [venueId, setVenueId] = useState('');
-  // [2026-06-18] 장소 '찾아보기' — 텍스트 입력 시 저장된 장소를 필터링해 선택(팀 찾아보기 패턴).
-  const [venueQuery, setVenueQuery] = useState('');
-  const filteredVenues = useMemo(() => {
-    const q = venueQuery.trim().toLowerCase();
-    if (!q) return venues;
-    return venues.filter((v) => v.name.toLowerCase().includes(q));
-  }, [venueQuery, venues]);
+
+  // 오늘(로컬) ISO — 지난 날짜 제외 비교용(YYYY-MM-DD 문자열 비교로 충분).
+  const todayISO = useMemo(() => {
+    const now = new Date();
+    return toISO(now.getFullYear(), now.getMonth() + 1, now.getDate());
+  }, []);
+
+  // 요일별 기본값(시간 입력된 행만) — 칩·주입 대상. 요일 순 정렬.
+  const validDayDefaults = useMemo(
+    () =>
+      (daySchedules ?? [])
+        .filter((s) => s.startTime && s.endTime)
+        .sort((a, b) => (DAY_ORDER[a.dayOfWeek] ?? 99) - (DAY_ORDER[b.dayOfWeek] ?? 99)),
+    [daySchedules],
+  );
 
   // 열릴 때 표시 월을 현재 년월로 동기화 — 서버 기준 연/월(initialYear/Month) 우선,
   //   미로딩/무효 시 클라이언트 현재 날짜로 폴백(항상 현재 월 달력이 열리도록 보장).
   useEffect(() => {
     if (isOpen) {
       setPicked(new Set(selected));
-      setStartTime('');
-      setEndTime('');
-      setVenueId('');
-      setVenueQuery('');
       const now = new Date();
       setViewYear(initialYear > 0 ? initialYear : now.getFullYear());
       setViewMonth(
@@ -107,15 +118,31 @@ export function MultiDatePickerModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, initialYear, initialMonth]);
 
-  // 월 그리드 셀 (null = 빈칸).
+  // 월 그리드 셀 (null = 빈칸). 항상 6주(42칸) 고정 — 달마다 주 수가 달라도
+  //   그리드(=시트) 높이가 출렁이지 않도록 뒤를 빈칸으로 채운다.
   const cells = useMemo(() => {
     const firstWeekday = weekColumnOf(new Date(viewYear, viewMonth - 1, 1)); // 0=월
     const daysInMonth = new Date(viewYear, viewMonth, 0).getDate();
     const arr: (number | null)[] = [];
     for (let i = 0; i < firstWeekday; i += 1) arr.push(null);
     for (let d = 1; d <= daysInMonth; d += 1) arr.push(d);
+    while (arr.length < 42) arr.push(null); // 6주 고정(높이 안정화)
     return arr;
   }, [viewYear, viewMonth]);
+
+  // 보고 있는 달에서 특정 요일의 선택 가능 날짜(이미 등록됨·지난 날짜 제외).
+  const chipDatesOfMonth = (dayOfWeek: string): string[] => {
+    const daysInMonth = new Date(viewYear, viewMonth, 0).getDate();
+    const result: string[] = [];
+    for (let d = 1; d <= daysInMonth; d += 1) {
+      const iso = toISO(viewYear, viewMonth, d);
+      if (weekdayKoOf(iso) !== dayOfWeek) continue;
+      if (disabledSet.has(iso)) continue; // 이미 등록된 날짜 제외
+      if (iso < todayISO) continue; // 지난 날짜 제외
+      result.push(iso);
+    }
+    return result;
+  };
 
   const goPrev = () => {
     if (viewMonth === 1) {
@@ -133,9 +160,11 @@ export function MultiDatePickerModal({
       setViewMonth((m) => m + 1);
     }
   };
+
+  // 달력 개별 토글 — 미세조정용. 이미 등록·지난 날짜는 칩과 동일하게 선택 불가.
   const toggle = (d: number) => {
     const key = toISO(viewYear, viewMonth, d);
-    if (disabledSet.has(key)) return; // 이미 등록된 날짜는 토글 불가
+    if (disabledSet.has(key) || key < todayISO) return; // 이미 등록·지난 날짜는 토글 불가
     setPicked((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
@@ -144,13 +173,37 @@ export function MultiDatePickerModal({
     });
   };
 
-  const handleConfirm = () => {
-    onConfirm([...picked].sort(), {
-      startTime,
-      endTime,
-      venueId,
-      venueName: venues.find((v) => v.id === venueId)?.name ?? '',
+  // 요일 칩 탭 — 보고 있는 달의 해당 요일을 일괄 토글(전부 선택돼 있으면 일괄 해제).
+  //   다른 달 선택분·개별 추가분은 picked Set 그대로 보존(월 이동 누적).
+  const toggleChip = (dayOfWeek: string) => {
+    const dates = chipDatesOfMonth(dayOfWeek);
+    if (dates.length === 0) return;
+    setPicked((prev) => {
+      const next = new Set(prev);
+      const allPicked = dates.every((d) => next.has(d));
+      if (allPicked) dates.forEach((d) => next.delete(d));
+      else dates.forEach((d) => next.add(d));
+      return next;
     });
+  };
+
+  const handleConfirm = () => {
+    const sortedDates = [...picked].sort();
+    // 날짜별 확정값 — 요일 기본값이 있으면 그 시간/장소, 없으면 빈 시간(일정 목록 개별 수정 유도).
+    const resolved: MultiDateResolved[] = sortedDates.map((date) => {
+      const def = validDayDefaults.find((s) => s.dayOfWeek === weekdayKoOf(date));
+      if (def) {
+        return {
+          date,
+          startTime: def.startTime,
+          endTime: def.endTime,
+          venueId: def.venueId ?? '',
+          venueName: def.venueName ?? '',
+        };
+      }
+      return { date, startTime: '', endTime: '', venueId: '', venueName: '' };
+    });
+    onConfirm(sortedDates, resolved);
     onClose();
   };
 
@@ -188,6 +241,50 @@ export function MultiDatePickerModal({
         </div>
       }
     >
+      {/* 요일 빠른 선택 칩 — 시간 입력된 요일 기본값이 있을 때만 노출.
+          탭하면 보고 있는 달의 해당 요일 전부 일괄 선택/해제. */}
+      {validDayDefaults.length > 0 && (
+        <div className="pb-3 mb-1 border-b border-wline-2 dark:border-rink-700">
+          <p
+            className={
+              iceTheme
+                ? 'mb-2 text-w-caption font-bold text-it-ink-500 dark:text-rink-300'
+                : 'mb-2 text-w-caption font-bold text-wtext-3 dark:text-rink-300'
+            }
+          >
+            {MESSAGES.class.dayDefaults.quickSelect}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {validDayDefaults.map((s) => {
+              const dates = chipDatesOfMonth(s.dayOfWeek);
+              const active = dates.length > 0 && dates.every((d) => picked.has(d));
+              const disabled = dates.length === 0;
+              return (
+                <button
+                  key={s.dayOfWeek}
+                  type="button"
+                  onClick={() => toggleChip(s.dayOfWeek)}
+                  disabled={disabled}
+                  aria-pressed={active}
+                  className={cnChip(iceTheme, active, disabled)}
+                >
+                  <span className="font-extrabold">{s.dayOfWeek}</span>
+                </button>
+              );
+            })}
+          </div>
+          <p
+            className={
+              iceTheme
+                ? 'mt-2 text-w-caption text-it-ink-500 dark:text-rink-300 leading-relaxed'
+                : 'mt-2 text-w-caption text-wtext-3 dark:text-rink-300 leading-relaxed'
+            }
+          >
+            {MESSAGES.class.dayDefaults.quickSelectHint}
+          </p>
+        </div>
+      )}
+
       {/* 월 네비 */}
       <div className="flex items-center justify-between pb-2">
         <button
@@ -229,7 +326,8 @@ export function MultiDatePickerModal({
           if (d === null) return <span key={`e${i}`} />;
           const iso = toISO(viewYear, viewMonth, d);
           const isPicked = picked.has(iso);
-          const isDisabled = disabledSet.has(iso);
+          const isPast = iso < todayISO;
+          const isDisabled = disabledSet.has(iso) || isPast;
           const cellClass = iceTheme
             ? isDisabled
               ? 'bg-it-fill dark:bg-rink-700 text-it-ink-300 dark:text-rink-500 line-through cursor-not-allowed'
@@ -248,7 +346,7 @@ export function MultiDatePickerModal({
               onClick={() => toggle(d)}
               disabled={isDisabled}
               aria-pressed={isPicked}
-              aria-label={isDisabled ? `${viewMonth}월 ${d}일 이미 등록됨` : undefined}
+              aria-label={isDisabled ? `${viewMonth}월 ${d}일 ${isPast ? '지난 날짜' : '이미 등록됨'}` : undefined}
               className={`h-9 rounded-lg text-w-small font-bold tabular-nums transition-colors motion-reduce:transition-none ${cellClass}`}
             >
               {d}
@@ -256,120 +354,27 @@ export function MultiDatePickerModal({
           );
         })}
       </div>
-      {disabledSet.size > 0 && (
-        <p className="mt-2 text-w-caption text-wtext-3 dark:text-rink-300">
-          회색 날짜는 이미 등록된 일정이라 선택할 수 없습니다.
-        </p>
-      )}
-
-      {/* 공통 시간/장소 */}
-      <div className="mt-4 space-y-3 border-t border-wline-2 dark:border-rink-700 pt-3">
-        <p className="text-w-caption font-bold text-wtext-3 dark:text-rink-300">
-          선택한 날짜에 공통 적용 (개별 수정은 일정 목록에서)
-        </p>
-        <div className="grid grid-cols-2 gap-2">
-          <div className="space-y-1">
-            <label className="block text-w-caption font-bold text-wtext-3 dark:text-rink-300">시작 시간</label>
-            <input
-              type="time"
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-              className={`${fieldClass} tabular-nums`}
-              aria-label="공통 시작 시간"
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="block text-w-caption font-bold text-wtext-3 dark:text-rink-300">종료 시간</label>
-            <input
-              type="time"
-              value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
-              className={`${fieldClass} tabular-nums`}
-              aria-label="공통 종료 시간"
-            />
-          </div>
-        </div>
-        <div className="space-y-1">
-          <label className="block text-w-caption font-bold text-wtext-3 dark:text-rink-300">장소</label>
-          {/* [2026-06-18] 장소 찾아보기 — 텍스트 입력 시 저장된 장소가 필터링되어 표시. 선택 시 확정. */}
-          <input
-            type="text"
-            value={venueQuery}
-            onChange={(e) => {
-              setVenueQuery(e.target.value);
-              if (venueId) setVenueId('');
-            }}
-            placeholder="장소 찾아보기"
-            className={fieldClass}
-            aria-label="공통 장소 검색"
-          />
-          {venueId ? (
-            <button
-              type="button"
-              onClick={() => {
-                setVenueId('');
-                setVenueQuery('');
-              }}
-              className={
-                iceTheme
-                  ? 'mt-1 inline-flex items-center gap-1 text-w-caption font-semibold text-it-ink-500 dark:text-rink-300 underline'
-                  : 'mt-1 inline-flex items-center gap-1 text-w-caption font-semibold text-wtext-3 dark:text-rink-300 underline'
-              }
-            >
-              선택 해제 (장소 미지정)
-            </button>
-          ) : venueQuery.trim() ? (
-            <ul
-              className={
-                iceTheme
-                  ? 'mt-1 max-h-40 overflow-y-auto rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 divide-y divide-it-line dark:divide-rink-700'
-                  : 'mt-1 max-h-40 overflow-y-auto rounded-lg border border-wline-2 dark:border-rink-700 divide-y divide-wline-2 dark:divide-rink-700'
-              }
-            >
-              {filteredVenues.length > 0 ? (
-                filteredVenues.map((v) => (
-                  <li key={v.id}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setVenueId(v.id);
-                        setVenueQuery(v.name);
-                      }}
-                      className={
-                        iceTheme
-                          ? 'w-full px-3 py-2.5 text-left text-w-body font-medium text-it-ink-800 dark:text-white hover:bg-it-fill dark:hover:bg-rink-700/40 transition-colors motion-reduce:transition-none'
-                          : 'w-full px-3 py-2.5 text-left text-w-body font-medium text-wtext-1 dark:text-white hover:bg-wbg dark:hover:bg-rink-700/40 transition-colors motion-reduce:transition-none'
-                      }
-                    >
-                      {v.name}
-                    </button>
-                  </li>
-                ))
-              ) : (
-                <li
-                  className={
-                    iceTheme
-                      ? 'px-3 py-2.5 text-w-caption text-it-ink-500 dark:text-rink-300'
-                      : 'px-3 py-2.5 text-w-caption text-wtext-3 dark:text-rink-300'
-                  }
-                >
-                  &ldquo;{venueQuery.trim()}&rdquo; 검색 결과가 없습니다
-                </li>
-              )}
-            </ul>
-          ) : (
-            <p
-              className={
-                iceTheme
-                  ? 'mt-1 text-w-caption text-it-ink-500 dark:text-rink-300'
-                  : 'mt-1 text-w-caption text-wtext-3 dark:text-rink-300'
-              }
-            >
-              장소명을 입력하면 저장된 장소가 표시됩니다. 비워두면 장소 미지정.
-            </p>
-          )}
-        </div>
-      </div>
+      <p className="mt-2 text-w-caption text-wtext-3 dark:text-rink-300">
+        {MESSAGES.class.dayDefaults.dateRestrictHint}
+      </p>
     </BottomSheet>
   );
+}
+
+// 요일 칩 클래스 — iceTheme/활성/비활성 분기. 솔리드 컬러만(그라디언트·블러 금지).
+function cnChip(iceTheme: boolean, active: boolean, disabled: boolean): string {
+  const base =
+    'inline-flex items-center gap-1.5 px-3 h-9 rounded-w-pill border-[1.5px] text-w-caption font-bold transition-colors motion-reduce:transition-none active:brightness-95 disabled:opacity-40 disabled:cursor-not-allowed';
+  if (iceTheme) {
+    return `${base} ${
+      active
+        ? 'bg-it-blue-500 border-it-blue-500 text-white'
+        : 'bg-it-fill dark:bg-rink-700 border-it-line-strong dark:border-rink-600 text-it-ink-700 dark:text-rink-100'
+    }`;
+  }
+  return `${base} ${
+    active
+      ? 'bg-ice-500 border-ice-500 text-white'
+      : 'bg-wbg dark:bg-rink-700 border-wline-2 dark:border-rink-600 text-wtext-2 dark:text-rink-100'
+  }`;
 }

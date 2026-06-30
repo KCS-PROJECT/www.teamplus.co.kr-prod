@@ -69,6 +69,7 @@ function AcademyCreateInner() {
           region: (d.region ?? '') as string,
           contactPhone: (d.contactPhone ?? '') as string,
           contactEmail: (d.contactEmail ?? '') as string,
+          imageUrl: (d.imageUrl ?? '') as string,
         });
       }
     } catch {
@@ -192,6 +193,7 @@ function AcademyCreateInner() {
             initialData={initialData}
             onSubmit={handleAcademySubmit}
             isSubmitting={isSubmitting}
+            academyId={editAcademyId ?? undefined}
             iceTheme
           />
         ) : (

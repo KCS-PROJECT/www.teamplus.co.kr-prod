@@ -256,7 +256,7 @@ export default function MoreMenuPage() {
         ))}
 
         {/* Footer - Logout and Version — full-bleed 흰 섹션 */}
-        <div className="mt-2 bg-it-surface dark:bg-it-blue-950 px-6 pt-4 pb-30">
+        <div className="mt-2 bg-it-surface dark:bg-it-blue-950 px-6 pt-4">
           <button
             onClick={handleLogout}
             disabled={isLoggingOut}

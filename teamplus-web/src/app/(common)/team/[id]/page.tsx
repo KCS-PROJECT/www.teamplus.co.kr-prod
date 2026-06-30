@@ -49,26 +49,21 @@ import { isTeamManagerOf } from "@/lib/team-roles";
 import { cn } from "@/lib/utils";
 import {
   deleteTeam,
-  divisionLabel,
   getTeam,
   getRoster,
   getAvailableMembers,
   addRosterMember,
   updateRosterMember,
   removeRosterMember,
-  getTeamMatches,
-  formatFoundingDate,
   type TeamDetail,
   type RosterMember,
   type AvailableMember,
   type RosterPosition,
   type UpdateRosterPayload,
-  type TeamMatch,
-  type MatchStatus,
   type TeamCoachStaff,
 } from "@/services/team.service";
 
-type TabKey = "info" | "roster" | "schedule";
+type TabKey = "info" | "roster";
 
 const POSITION_LABEL: Record<RosterPosition, string> = {
   goalie: MESSAGES.team.positionGoalie,
@@ -120,7 +115,6 @@ export default function TeamDetailPage() {
   //  + useEffect 진입 게이트 둘 다 트리거 시 중복 방지).
   const deniedToastShownRef = useRef(false);
   const [roster, setRoster] = useState<RosterMember[]>([]);
-  const [matches, setMatches] = useState<TeamMatch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   // [추가 2026-05-11] 운영 현황 카드 — 감독·코치 / 학부모 / 선수 카운트.
   //  /teams/{id}/members?status=approved 에서 roleInTeam 별 집계.
@@ -153,7 +147,6 @@ export default function TeamDetailPage() {
     isDataLoaded: !isLoading,
   });
 
-  const [isMatchesLoading, setMatchesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("info");
   const [isRosterModalOpen, setRosterModalOpen] = useState(false);
@@ -296,29 +289,6 @@ export default function TeamDetailPage() {
     navigate('/team');
   }, [team, user, canManage, isParentUser, navigate, toast]);
 
-  // 경기 일정 탭을 처음 열 때만 lazy 로드
-  useEffect(() => {
-    if (activeTab !== "schedule") return;
-    if (!teamId) return;
-    if (matches.length > 0 || isMatchesLoading) return;
-
-    let cancelled = false;
-    setMatchesLoading(true);
-    getTeamMatches(teamId)
-      .then((res) => {
-        if (cancelled) return;
-        if (res.success && res.data) {
-          setMatches(res.data.matches);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setMatchesLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeTab, teamId, matches.length, isMatchesLoading]);
 
   // ─── 핸들러 ────────────────────────────────
   // [수정 2026-05-23] 사용자 보고: 수정하기 버튼 클릭 시 fullsize 로더 미표시.
@@ -484,31 +454,22 @@ export default function TeamDetailPage() {
 
   // ─── Render: 성공 ──────────────────────
 
-  // [변경 2026-05-21 시나리오 B] Hero 서브타이틀을 teamCode 중심으로 재구성.
-  //   기존: shortName(약칭) 의존 — Phase 2 잔재 컬럼이라 거의 항상 NULL → division 분기로만 작동.
-  //   변경: teamCode(가입 시 사용자 입력) + division 합성 — 팀 식별성을 명확히 노출.
-  const heroSubtitle = team.teamCode
-    ? team.division
-      ? `${team.teamCode} · ${divisionLabel(team.division)}`
-      : team.teamCode
-    : team.division
-      ? `${team.club.clubName} · ${divisionLabel(team.division)}`
-      : team.club.clubName;
-  // Hero 태그라인: "Since YYYY · 리그명" (foundingDate 우선, 없으면 createdAt)
-  const foundingYear = new Date(
-    team.foundingDate ?? team.createdAt,
-  ).getFullYear();
-  const heroTagline = `Since ${foundingYear} · ${MESSAGES.team.leagueTagFallback}`;
+  // Hero 위치 칩: 지역(location) 우선, 없으면 홈 경기장(venue/homeArena) 폴백.
+  const heroLocation = team.location || team.venue?.name || team.homeArena || null;
+  // Hero 서브타이틀: 팀 코드가 있을 때만 노출 (없으면 팀명과 중복되므로 숨김).
+  const heroSubtitle = team.teamCode || null;
+  // Hero 태그라인: 실제 창단일(foundingDate)이 있을 때만 "Since YYYY". 리그 더미 문구 제거.
+  const heroTagline = team.foundingDate
+    ? `Since ${new Date(team.foundingDate).getFullYear()}`
+    : null;
 
-  // 탭 정의 (재디자인 공통 컴포넌트)
+  // 탭 정의 — 선수단(roster)은 매니저만(학부모 등 조회자에게 전체 명단 비노출).
+  //  경기 일정 탭은 HockeyMatch(운영 미사용)라 제거. 노출 탭이 1개뿐이면 탭바 자체를 숨긴다.
   const tabs: TeamTab<TabKey>[] = [
     { key: "info", label: MESSAGES.team.tabInfo },
-    { key: "roster", label: MESSAGES.team.tabRoster, count: roster.length },
-    {
-      key: "schedule",
-      label: MESSAGES.team.tabSchedule,
-      count: (team._count?.homeMatches ?? 0) + (team._count?.awayMatches ?? 0),
-    },
+    ...(canManage
+      ? [{ key: "roster" as const, label: MESSAGES.team.tabRoster, count: roster.length }]
+      : []),
   ];
 
   // [수정 2026-05-18 W2.B #3] 모바일 셸 너비 720px 오버라이드 제거.
@@ -558,7 +519,7 @@ export default function TeamDetailPage() {
                 <h2 className="min-w-0 flex-1 truncate text-w-h2 font-extrabold tracking-[-0.025em] text-white">
                   {team.name}
                 </h2>
-                {(team.venue?.name || team.homeArena || team.club?.location) && (
+                {heroLocation && (
                   <span className="mt-1 inline-flex max-w-[45%] shrink-0 items-center gap-1 rounded-w-pill border border-white/30 bg-white/15 px-2.5 py-1">
                     <Icon
                       name="place"
@@ -567,17 +528,21 @@ export default function TeamDetailPage() {
                       aria-hidden="true"
                     />
                     <span className="truncate text-card-meta font-bold tracking-tight text-white">
-                      {team.venue?.name || team.homeArena || team.club?.location}
+                      {heroLocation}
                     </span>
                   </span>
                 )}
               </div>
-              <div className="mt-1 truncate text-card-body font-bold tabular-nums tracking-tight text-white/95">
-                {heroSubtitle}
-              </div>
-              <div className="mt-1 truncate text-card-meta font-medium text-white/75">
-                {heroTagline}
-              </div>
+              {heroSubtitle && (
+                <div className="mt-1 truncate text-card-body font-bold tabular-nums tracking-tight text-white/95">
+                  {heroSubtitle}
+                </div>
+              )}
+              {heroTagline && (
+                <div className="mt-1 truncate text-card-meta font-medium text-white/75">
+                  {heroTagline}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -585,12 +550,13 @@ export default function TeamDetailPage() {
         {/* flat 섹션 사이 8px 회색 갭 */}
         <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
 
-        {/* ─── Tabs — flat 흰 섹션 안 밑줄형 세그먼트 (카드 박스 제거) ─── */}
+        {/* ─── Tabs — 노출 탭이 2개 이상일 때만 렌더 (1개면 탭 구분 불필요) ─── */}
+        {tabs.length >= 2 && (
         <section
           className="bg-it-surface dark:bg-it-blue-950 px-5 pt-2"
           aria-label={MESSAGES.team.ariaTabMenu}
         >
-          <div className="grid grid-cols-3 border-b border-it-line dark:border-it-blue-900">
+          <div className="grid grid-cols-2 border-b border-it-line dark:border-it-blue-900">
             {tabs.map((t) => {
               const on = t.key === activeTab;
               return (
@@ -631,9 +597,10 @@ export default function TeamDetailPage() {
             })}
           </div>
         </section>
+        )}
 
-        {/* ─── Tab Content ──────────────── */}
-        <section className="pt-2">
+        {/* ─── Tab Content ── 탭바가 없으면(1개 탭) 탭바↔콘텐츠 간격(pt-2) 불필요 ─── */}
+        <section className={cn(tabs.length >= 2 && "pt-2")}>
           {activeTab === "info" && (
             <div
               role="tabpanel"
@@ -644,7 +611,7 @@ export default function TeamDetailPage() {
               <TeamInfoPanel team={team} memberCounts={memberCounts} coachStaff={coachStaff} />
             </div>
           )}
-          {activeTab === "roster" && (
+          {activeTab === "roster" && canManage && (
             <div
               role="tabpanel"
               id="tabpanel-roster"
@@ -656,20 +623,6 @@ export default function TeamDetailPage() {
                 canManage={canManage}
                 onRemove={handleRosterRemove}
                 onEdit={handleRosterEdit}
-              />
-            </div>
-          )}
-          {activeTab === "schedule" && (
-            <div
-              role="tabpanel"
-              id="tabpanel-schedule"
-              aria-labelledby="tab-schedule"
-              tabIndex={0}
-            >
-              <SchedulePanel
-                team={team}
-                matches={matches}
-                isLoading={isMatchesLoading}
               />
             </div>
           )}
@@ -781,72 +734,28 @@ function TeamInfoPanel({
   // 슬로건/2-grid/약력 빈상태/코치 빈상태/팀 정보 정의형 리스트/운영 현황/그룹 현황을
   // 모두 inline 으로 04e 패턴 직접 구현 (외부 공통 컴포넌트 의존성 제거).
   const router = useRouter();
-  const foundingLabel = formatFoundingDate(team.foundingDate, team.createdAt);
-  // [수정 2026-05-23] fallback 우선순위 — venue 마스터 우선 (legacy homeArena 와 sync 안 될 때
-  //  정확한 venue.name 노출). VenuePicker 로 선택된 이름이 즉시 반영됨.
-  const homeArenaLabel =
-    team.venue?.name ||
-    team.homeArena ||
-    team.club.location ||
-    team.club.clubName;
   const slogan = team.slogan?.trim() || "";
 
   return (
     <div className="flex flex-col gap-0 bg-it-surface dark:bg-it-blue-950 pb-6">
-      {/* ─── 1) 팀 슬로건 — 좌측 3px primary 액센트 + italic 인용문 + 수정 버튼 ─── */}
-      <div className="px-5 pt-4">
-        <div className="relative rounded-w-md bg-it-blue-50 dark:bg-it-blue-500/10 border-[1.5px] border-it-blue-100 dark:border-it-blue-500/30 py-4 pl-[22px] pr-4">
-          <span
-            className="absolute left-3 top-4 bottom-4 w-[3px] rounded-[2px] bg-it-blue-500"
-            aria-hidden="true"
-          />
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-card-meta font-extrabold text-it-ink-800 dark:text-white tracking-tight">
+      {/* ─── 1) 팀 슬로건 — slogan 있을 때만 표시 (수정은 하단 "수정하기"로 통합) ─── */}
+      {slogan && (
+        <div className="px-5 pt-4">
+          <div className="relative rounded-w-md bg-it-blue-50 dark:bg-it-blue-500/10 border-[1.5px] border-it-blue-100 dark:border-it-blue-500/30 py-4 pl-[22px] pr-4">
+            <span
+              className="absolute left-3 top-4 bottom-4 w-[3px] rounded-[2px] bg-it-blue-500"
+              aria-hidden="true"
+            />
+            <span className="block mb-2 text-card-meta font-extrabold text-it-ink-800 dark:text-white tracking-tight">
               {MESSAGES.team.slogan}
             </span>
-            <button
-              type="button"
-              onClick={() => router.push(`/team/${team.id}/edit`)}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-w-pill bg-it-surface dark:bg-it-blue-950 border-[1.5px] border-it-line-strong dark:border-it-blue-900 text-it-ink-600 dark:text-it-ink-200 text-card-meta font-bold hover:border-it-blue-500/40 transition-colors motion-reduce:transition-none active:brightness-95"
-              aria-label={MESSAGES.team.editSloganAriaLabel}
-            >
-              <Icon name="edit" size={11} aria-hidden="true" />
-              {MESSAGES.common.edit}
-            </button>
+            <p className="text-card-emphasis font-extrabold italic tracking-tight text-it-blue-600 dark:text-it-blue-300" style={{ letterSpacing: "-0.02em" }}>
+              {`"${slogan}"`}
+            </p>
           </div>
-          <p className="text-card-emphasis font-extrabold italic tracking-tight text-it-blue-600 dark:text-it-blue-300" style={{ letterSpacing: "-0.02em" }}>
-            {slogan ? `"${slogan}"` : `"${MESSAGES.teamSlogan.placeholder}"`}
-          </p>
         </div>
-      </div>
+      )}
 
-      {/* ─── 2) 창단 + 홈 경기장 — 2-grid (인셋 fill) ─── */}
-      <div className="px-5 pt-3 grid grid-cols-2 gap-2.5">
-        {[
-          { label: MESSAGES.team.founded, value: foundingLabel, icon: "event" },
-          { label: MESSAGES.team.homeArena, value: homeArenaLabel, icon: "stadium" },
-        ].map((it) => (
-          <div
-            key={it.label}
-            className="rounded-w-md bg-it-fill dark:bg-it-blue-900/40 border-[1.5px] border-it-line dark:border-it-blue-900 px-3.5 py-3.5"
-          >
-            <div className="flex items-center gap-1.5 mb-1.5">
-              <Icon
-                name={it.icon}
-                size={14}
-                className="text-it-ink-500 dark:text-it-ink-300"
-                aria-hidden="true"
-              />
-              <span className="text-card-meta font-bold text-it-ink-500 dark:text-it-ink-300 tracking-wider">
-                {it.label}
-              </span>
-            </div>
-            <div className="text-card-title font-extrabold text-it-ink-800 dark:text-white tracking-tight truncate">
-              {it.value}
-            </div>
-          </div>
-        ))}
-      </div>
 
       {/* ─── 3) 팀 소개 (선택) ─── */}
       {team.description && (
@@ -866,8 +775,6 @@ function TeamInfoPanel({
           </div>
         </>
       )}
-
-      {/* [수정 2026-05-12] 주요 약력 섹션 — 위치를 페이지 맨 아래로 이동 (그룹 현황 뒤). */}
 
       {/* ─── 5) 감독/코치 — 빈 상태 또는 row ─── */}
       <div className="px-5 pt-5 pb-2 flex items-center gap-2">
@@ -930,32 +837,45 @@ function TeamInfoPanel({
         <div className="rounded-w-md bg-it-fill dark:bg-it-blue-900/40 border-[1.5px] border-it-line dark:border-it-blue-900 px-4">
           {[
             {
+              // [모집 대상] teams.division 컬럼 재활용 — 자유 텍스트. 리그 부문(TeamDivision)과 무관.
+              //  미입력 시 "전체"(대상 제한 없음)로 노출.
               k: MESSAGES.team.metaDivision,
-              v: team.division ? divisionLabel(team.division) : "-",
-              tabular: true,
+              v: team.division || MESSAGES.team.recruitAll,
             },
             {
-              // [변경 2026-05-21 시나리오 B] shortName(잔재) 행 제거 후 teamCode 노출.
-              //   회원가입 시 입력한 팀 식별 코드를 명확히 표시.
-              k: MESSAGES.team.metaTeamCode,
-              v: team.teamCode || "-",
-              tabular: true,
+              // [지역] teams.location 컬럼 재활용 — 자유 텍스트. 홈 경기장(venue/homeArena)과 별개.
+              k: MESSAGES.team.metaRegion,
+              v: team.location || team.club?.location || "-",
             },
             {
-              k: MESSAGES.team.metaPrimaryColor,
-              v: team.primaryColor ?? null,
-              isColor: true,
+              // [홈 경기장] venue 마스터(venueId) 우선, legacy homeArena 폴백. 없으면 "-".
+              k: MESSAGES.team.homeArena,
+              v: team.venue?.name || team.homeArena || "-",
             },
-            {
-              k: MESSAGES.team.metaSecondaryColor,
-              v: team.secondaryColor ?? null,
-              isColor: true,
-            },
-            {
-              k: MESSAGES.team.metaStatus,
-              v: team.isActive ? MESSAGES.team.metaActive : MESSAGES.team.metaInactive,
-              isStatus: true,
-            },
+            // [팀 코드] 미설정 시 행 자체를 숨김 — 가입 시 미설정 가능, "-" 노출 대신 제거.
+            ...(team.teamCode
+              ? [
+                  {
+                    k: MESSAGES.team.metaTeamCode,
+                    v: team.teamCode,
+                    tabular: true,
+                  },
+                ]
+              : []),
+            // [메인/보조 컬러 행 제거] 수정 화면에서 컬러 입력 UI를 제거함에 따라 항상 빈 값(—)이
+            //  되는 죽은 행이라 숨김. 아래 isColor 렌더 분기는 추후 팀 컬러 기능 재도입 시
+            //  { k: MESSAGES.team.metaPrimaryColor, v: team.primaryColor ?? null, isColor: true }
+            //  형태로 행 객체만 복원하면 즉시 동작하도록 보존. 데이터 모델/타입/스키마도 보존.
+            // [상태] 비활성 팀일 때만 표시 — 활성은 기본값이라 노출 불필요.
+            ...(team.isActive === false
+              ? [
+                  {
+                    k: MESSAGES.team.metaStatus,
+                    v: MESSAGES.team.metaInactive,
+                    isStatus: true,
+                  },
+                ]
+              : []),
           ].map((row, i, arr) => (
             <div
               key={row.k}
@@ -1018,11 +938,10 @@ function TeamInfoPanel({
         </h3>
       </div>
       <div className="px-5">
-        <div className="rounded-w-md bg-it-fill dark:bg-it-blue-900/40 border-[1.5px] border-it-line dark:border-it-blue-900 px-4 py-5 grid grid-cols-3 gap-2">
-          {/* [수정 2026-05-11] 선수/홈경기/원정경기 → 감독·코치/학부모/선수 (역할별 인원) */}
+        <div className="rounded-w-md bg-it-fill dark:bg-it-blue-900/40 border-[1.5px] border-it-line dark:border-it-blue-900 px-4 py-5 grid grid-cols-2 gap-2">
+          {/* 감독·코치 / 선수 (역할별 인원) — 학부모 항목은 운영 현황에서 제외 */}
           {[
             { label: MESSAGES.team.statStaff, v: memberCounts.staff, unit: MESSAGES.team.unitPerson, accent: false },
-            { label: MESSAGES.team.statParent, v: memberCounts.parents, unit: MESSAGES.team.unitPerson, accent: false },
             { label: MESSAGES.team.statPlayer, v: memberCounts.players, unit: MESSAGES.team.unitPerson, accent: true },
           ].map((s) => (
             <div key={s.label} className="text-center">
@@ -1110,52 +1029,6 @@ function TeamInfoPanel({
         </button>
       </div>
 
-      {/* ─── [재배치 2026-05-12] 주요 약력 — 페이지 맨 아래로 이동 ─── */}
-      <div className="px-5 pt-5 pb-2 flex items-center gap-2">
-        <span className="inline-block w-[3px] h-[14px] rounded-[2px] bg-it-blue-500" aria-hidden="true" />
-        <h3 className="text-card-body font-extrabold text-it-ink-800 dark:text-white tracking-tight">
-          {MESSAGES.team.history}
-        </h3>
-      </div>
-      <div className="px-5">
-        <div className="rounded-w-md bg-it-fill dark:bg-it-blue-900/40 border-[1.5px] border-it-line dark:border-it-blue-900 px-5 py-8 flex flex-col items-center gap-2">
-          <div className="size-12 rounded-w-pill bg-it-canvas dark:bg-it-blue-900/40 flex items-center justify-center">
-            <Icon
-              name="emoji_events"
-              size={24}
-              className="text-it-ink-500 dark:text-it-ink-300"
-              aria-hidden="true"
-            />
-          </div>
-          {team.teamAwards && team.teamAwards.length > 0 ? (
-            <ul className="w-full flex flex-col gap-2 mt-2">
-              {team.teamAwards.slice(0, 3).map((a) => {
-                const awardYear = a.awardedAt
-                  ? new Date(a.awardedAt).getFullYear()
-                  : null;
-                return (
-                  <li key={a.id} className="flex items-start gap-2 text-card-body">
-                    <span className="shrink-0 mt-0.5 size-1.5 rounded-w-pill bg-it-blue-500" aria-hidden="true" />
-                    <span className="font-bold text-it-ink-800 dark:text-white">{a.awardName}</span>
-                    {awardYear && (
-                      <span className="text-it-ink-500 dark:text-it-ink-300 tabular-nums">· {awardYear}</span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <>
-              <div className="text-card-body font-extrabold text-it-ink-800 dark:text-white tracking-tight">
-                {MESSAGES.team.historyEmpty}
-              </div>
-              <div className="text-card-meta text-it-ink-500 dark:text-it-ink-300 text-center leading-relaxed">
-                {MESSAGES.team.historyEmptyHint}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
@@ -1378,287 +1251,6 @@ function RosterCard({
           학생 정보 수정·삭제는 admin 학생관리(/dashboard/members) 페이지에서만 수행.
           (canManage/isGrouped 분기 자체 제거 — 화면이 코치/감독에게도 조회 전용.) */}
     </div>
-  );
-}
-
-// ─── Sub: Schedule Panel (실제 경기 데이터) ────────────
-
-const MATCH_STATUS_BADGE: Record<
-  MatchStatus,
-  { label: string; className: string }
-> = {
-  scheduled: {
-    label: MESSAGES.match.statusLabel.scheduled,
-    className: "bg-blue-50 text-it-blue-500 dark:bg-blue-900/20 dark:text-blue-300",
-  },
-  warmup: {
-    label: MESSAGES.match.statusLabel.warmup,
-    className:
-      "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300",
-  },
-  in_progress: {
-    label: MESSAGES.match.statusLabel.in_progress,
-    className:
-      "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300",
-  },
-  intermission: {
-    label: MESSAGES.match.statusLabel.intermission,
-    className:
-      "bg-it-line text-it-ink-700 dark:bg-it-blue-900 dark:text-white",
-  },
-  completed: {
-    label: MESSAGES.match.statusLabel.completed,
-    className:
-      "bg-it-line text-it-ink-700 dark:bg-it-blue-900 dark:text-white",
-  },
-  postponed: {
-    label: MESSAGES.match.statusLabel.postponed,
-    className:
-      "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300",
-  },
-  cancelled: {
-    label: MESSAGES.match.statusLabel.cancelled,
-    className: "bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300",
-  },
-};
-
-function formatMatchDate(iso: string): {
-  date: string;
-  day: string;
-  time: string;
-} {
-  const d = new Date(iso);
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const hours = String(d.getHours()).padStart(2, "0");
-  const minutes = String(d.getMinutes()).padStart(2, "0");
-  return {
-    date: `${d.getFullYear()}.${month}.${day}`,
-    day: MESSAGES.team.dayShort[d.getDay()],
-    time: `${hours}:${minutes}`,
-  };
-}
-
-function SchedulePanel({
-  team,
-  matches,
-  isLoading,
-}: {
-  team: TeamDetail;
-  matches: TeamMatch[];
-  isLoading: boolean;
-}) {
-  if (isLoading) {
-    return null;
-  }
-
-  if (matches.length === 0) {
-    return (
-      <div className="bg-it-surface dark:bg-it-blue-950 pt-2">
-        <EmptyState
-          icon="calendar_today"
-          title={MESSAGES.team.scheduleEmptyTitle}
-          description={MESSAGES.team.scheduleEmptyHint}
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div className="bg-it-surface dark:bg-it-blue-950 px-5 pt-4 pb-7 space-y-4">
-      {/* 상단 요약 — flat 인셋 (홈/원정 경기 수) */}
-      <div className="rounded-w-md border-[1.5px] border-it-line dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-900/40 p-5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span
-              className="inline-block h-5 w-[3px] rounded-[2px] bg-it-blue-500"
-              aria-hidden="true"
-            />
-            <h3 className="text-card-body font-extrabold text-it-ink-800 dark:text-white">
-              {MESSAGES.team.matchesTotalLabel}
-            </h3>
-          </div>
-          <span className="text-card-meta font-medium text-it-ink-500">
-            {MESSAGES.team.matchesTotal(matches.length)}
-          </span>
-        </div>
-        <dl className="mt-4 grid grid-cols-2 gap-3">
-          <div className="text-center">
-            <dt className="text-card-meta font-medium text-it-ink-500 dark:text-it-ink-300">
-              {MESSAGES.team.statHomeMatch}
-            </dt>
-            <dd className="mt-1 text-xl font-extrabold tabular-nums text-it-ink-800 dark:text-white">
-              {team._count?.homeMatches ?? 0}
-              <span className="ml-0.5 text-card-meta font-medium text-it-ink-500">
-                {MESSAGES.team.unitCount}
-              </span>
-            </dd>
-          </div>
-          <div className="text-center">
-            <dt className="text-card-meta font-medium text-it-ink-500 dark:text-it-ink-300">
-              {MESSAGES.team.statAwayMatch}
-            </dt>
-            <dd className="mt-1 text-xl font-extrabold tabular-nums text-it-ink-800 dark:text-white">
-              {team._count?.awayMatches ?? 0}
-              <span className="ml-0.5 text-card-meta font-medium text-it-ink-500">
-                {MESSAGES.team.unitCount}
-              </span>
-            </dd>
-          </div>
-        </dl>
-      </div>
-
-      {/* 경기 목록 */}
-      <ul className="space-y-3" aria-label={MESSAGES.team.ariaMatchList}>
-        {matches.map((match) => (
-          <li key={match.id}>
-            <MatchCard match={match} teamId={team.id} />
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function MatchCard({ match, teamId }: { match: TeamMatch; teamId: string }) {
-  const { date, day, time } = formatMatchDate(match.scheduledAt);
-  const isHome = match.homeTeamId === teamId;
-  const myTeam = isHome ? match.homeTeam : match.awayTeam;
-  const opponent = isHome ? match.awayTeam : match.homeTeam;
-  const myScore = isHome ? match.homeScore : match.awayScore;
-  const oppScore = isHome ? match.awayScore : match.homeScore;
-  const statusBadge = MATCH_STATUS_BADGE[match.status];
-  const isFinished = match.status === "completed";
-  const isWin = isFinished && myScore > oppScore;
-  const isDraw = isFinished && myScore === oppScore;
-
-  const location = match.venue?.name || match.rink?.name || null;
-
-  return (
-    <article
-      className="rounded-w-md border-[1.5px] border-it-line dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-900/40 p-4"
-      aria-label={MESSAGES.team.matchAriaLabel(
-        opponent?.name ?? MESSAGES.team.opponentTbdLong,
-      )}
-    >
-      {/* 날짜/상태 헤더 */}
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-1.5 text-card-meta text-it-ink-500 dark:text-it-ink-300">
-          <Icon name="event" className="text-[14px]" aria-hidden="true" />
-          <time dateTime={match.scheduledAt}>
-            {date} ({day}) {time}
-          </time>
-        </div>
-        <span
-          className={cn(
-            "rounded-w-pill px-2 py-0.5 text-card-meta font-bold",
-            statusBadge.className,
-          )}
-        >
-          {statusBadge.label}
-        </span>
-      </div>
-
-      {/* 대진 + 스코어 */}
-      <div className="flex items-center justify-between gap-3">
-        {/* 우리 팀 */}
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <div
-            className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-it-blue-500/10 text-it-blue-500"
-            aria-hidden="true"
-          >
-            <Icon name="sports_hockey" className="text-[20px]" />
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-card-meta font-bold text-it-ink-800 dark:text-white">
-              {myTeam?.name ?? MESSAGES.team.ourTeamFallback}
-            </p>
-            <p className="text-card-meta font-medium text-it-blue-500">
-              {isHome ? MESSAGES.team.locationHome : MESSAGES.team.locationAway}
-            </p>
-          </div>
-        </div>
-
-        {/* 스코어 */}
-        <div className="flex shrink-0 items-center gap-2">
-          {isFinished ? (
-            <>
-              <span
-                className={cn(
-                  "text-2xl font-extrabold tabular-nums",
-                  isWin
-                    ? "text-emerald-600 dark:text-emerald-400"
-                    : isDraw
-                      ? "text-it-ink-500"
-                      : "text-it-ink-500",
-                )}
-              >
-                {myScore}
-              </span>
-              <span className="text-card-body font-bold text-it-ink-400">:</span>
-              <span
-                className={cn(
-                  "text-2xl font-extrabold tabular-nums",
-                  !isWin && !isDraw && isFinished
-                    ? "text-it-ink-700 dark:text-white"
-                    : "text-it-ink-500",
-                )}
-              >
-                {oppScore}
-              </span>
-            </>
-          ) : (
-            <span className="text-card-meta font-bold text-it-ink-400">
-              {MESSAGES.team.vsLabel}
-            </span>
-          )}
-        </div>
-
-        {/* 상대 팀 */}
-        <div className="flex min-w-0 flex-1 items-center justify-end gap-2 text-right">
-          <div className="min-w-0">
-            <p className="truncate text-card-meta font-bold text-it-ink-800 dark:text-white">
-              {opponent?.name ?? MESSAGES.team.opponentTbd}
-            </p>
-            <p className="text-card-meta font-medium text-it-ink-500">
-              {isHome ? MESSAGES.team.locationAway : MESSAGES.team.locationHome}
-            </p>
-          </div>
-          <div
-            className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-it-line text-it-ink-500 dark:bg-it-blue-900 dark:text-it-ink-300"
-            aria-hidden="true"
-          >
-            <Icon name="sports_hockey" className="text-[20px]" />
-          </div>
-        </div>
-      </div>
-
-      {/* 장소 + 대회 */}
-      {(location || match.tournament) && (
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-it-line pt-3 text-card-meta text-it-ink-500 dark:border-it-blue-900 dark:text-it-ink-300">
-          {location && (
-            <div className="flex items-center gap-1">
-              <Icon
-                name="location_on"
-                className="text-[13px]"
-                aria-hidden="true"
-              />
-              <span className="truncate">{location}</span>
-            </div>
-          )}
-          {match.tournament && (
-            <div className="flex items-center gap-1">
-              <Icon
-                name="emoji_events"
-                className="text-[13px]"
-                aria-hidden="true"
-              />
-              <span className="truncate">{match.tournament.name}</span>
-            </div>
-          )}
-        </div>
-      )}
-    </article>
   );
 }
 

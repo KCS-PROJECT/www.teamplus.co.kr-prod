@@ -13,7 +13,7 @@ interface Academy {
   imageUrl: string | null;
   isActive: boolean;
   createdAt: string;
-  director: { id: string; firstName: string; lastName: string };
+  director: { id: string; firstName: string; lastName: string; avatarUrl?: string | null };
   _count?: { members: number; coaches: number; classes: number };
 }
 

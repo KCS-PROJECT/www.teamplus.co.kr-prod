@@ -235,7 +235,8 @@ export default function DirectorPaymentsPage() {
         </div>
 
         {/* ── 탭 컨텐츠 ─────────────────────────────────────────────────── */}
-        <div className="pb-30">
+        {/* 하단 여백은 MobileContainer 가 main 에 pb-30 자동 부여 → 중복 금지. */}
+        <div>
           {activeTab === 'overview' && (
             <div
               role="tabpanel"

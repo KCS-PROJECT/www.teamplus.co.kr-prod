@@ -10,7 +10,7 @@ import { usePageReady } from '@/hooks/usePageReady';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { useDateTime } from '@/hooks/useDateTime';
 import { useVenues } from '@/hooks/useClassForm';
-import { MultiDatePickerModal, type MultiDateCommon } from '@/components/ui/MultiDatePickerModal';
+import { MultiDatePickerModal, type MultiDateResolved } from '@/components/ui/MultiDatePickerModal';
 import { ScheduleCalendarView } from '@/components/classes/ScheduleCalendarView';
 import { MESSAGES } from '@/lib/messages';
 import { api } from '@/services/api-client';
@@ -31,6 +31,14 @@ interface ClassHeader {
   classDays?: string[];
   startTime?: string;
   endTime?: string;
+  // 요일별 기본값(ClassDaySchedule 템플릿) — getClass 응답 매핑. 미니달력 "요일별 기본값 적용"에 사용.
+  daySchedules?: {
+    dayOfWeek: string;
+    startTime: string;
+    endTime: string;
+    venueId?: string | null;
+    venueName?: string | null;
+  }[];
 }
 
 interface ScheduleItem {
@@ -168,35 +176,73 @@ export default function ClassSchedulesManagePage() {
     [schedules],
   );
 
-  // 미니달력 확인 — 선택 날짜 배열 + 공통 시간·장소를 일괄 일정 추가 API(dates 모드)로 전송.
+  // 미니달력 확인 — 날짜별 확정값(resolved)을 시간·장소가 같은 그룹으로 묶어 bulk 호출.
+  //   요일별 기본값을 적용하면 요일마다 시간/장소가 달라질 수 있어, bulk API(단일 시간/장소)를
+  //   그룹 수만큼 분리 호출한다(보통 1~3회). 미적용 시 전부 공통값이라 1회 호출.
   const handleConfirmDates = useCallback(
-    async (dates: string[], common: MultiDateCommon) => {
+    async (dates: string[], resolved: MultiDateResolved[]) => {
       if (!cls || !isApproved || dates.length === 0) return;
       const basePath = getOwnerPath(cls);
       if (!basePath) {
         toast.error(MESSAGES.common.loadFailed);
         return;
       }
+
+      // 시간/장소 동일 그룹으로 묶기(요일별 기본값 주입으로 그룹이 갈릴 수 있음 — 빈 시간 그룹 포함).
+      const groups = new Map<
+        string,
+        { startTime?: string; endTime?: string; venueId?: string; dates: string[] }
+      >();
+      for (const r of resolved) {
+        const key = `${r.startTime}|${r.endTime}|${r.venueId}`;
+        const g =
+          groups.get(key) ??
+          {
+            startTime: r.startTime || undefined,
+            endTime: r.endTime || undefined,
+            venueId: r.venueId || undefined,
+            dates: [],
+          };
+        g.dates.push(r.date);
+        groups.set(key, g);
+      }
+
       setIsSubmittingDates(true);
       try {
-        const res = await api.post<{
-          created: number;
-          skipped: number;
-          schedules: ScheduleItem[];
-        }>(`${basePath}/schedules/bulk`, {
-          dates,
-          startTime: common.startTime || undefined,
-          endTime: common.endTime || undefined,
-          venueId: common.venueId || undefined,
-        });
-        if (res.success && res.data) {
-          if (res.data.created > 0) {
-            toast.success(MESSAGES.class.scheduleBulkCreated(res.data.created));
+        let totalCreated = 0;
+        // 실패는 "일정(건)" 단위로 합산 — 메시지 ok/fail 단위 일치(그룹 수 아님).
+        let failedDates = 0;
+        let lastError: string | undefined;
+        for (const g of groups.values()) {
+          const res = await api.post<{
+            created: number;
+            skipped: number;
+            schedules: ScheduleItem[];
+          }>(`${basePath}/schedules/bulk`, {
+            dates: g.dates,
+            startTime: g.startTime,
+            endTime: g.endTime,
+            venueId: g.venueId,
+          });
+          if (res.success && res.data) {
+            totalCreated += res.data.created;
+          } else {
+            failedDates += g.dates.length;
+            lastError = res.error?.message ?? MESSAGES.common.loadFailed;
           }
-          await fetchSchedules(cls);
-        } else {
-          toast.error(res.error?.message ?? MESSAGES.common.loadFailed);
         }
+        // 일부 그룹 성공 + 일부 실패 시 성공·경고 토스트 병행 노출(부분 실패 은닉 방지).
+        if (totalCreated > 0) {
+          toast.success(MESSAGES.class.scheduleBulkCreated(totalCreated));
+          if (failedDates > 0) {
+            toast.error(
+              MESSAGES.class.scheduleBulkPartialFailed(totalCreated, failedDates),
+            );
+          }
+        } else if (lastError) {
+          toast.error(lastError);
+        }
+        await fetchSchedules(cls);
       } finally {
         setIsSubmittingDates(false);
       }
@@ -436,7 +482,7 @@ export default function ClassSchedulesManagePage() {
         initialMonth={initialMonth}
         selected={[]}
         disabledDates={registeredDates}
-        venues={venues.map((v) => ({ id: v.id, name: v.name }))}
+        daySchedules={cls.daySchedules ?? []}
         onConfirm={handleConfirmDates}
         onClose={() => setMultiDateOpen(false)}
         iceTheme
