@@ -3,6 +3,7 @@
 import { Icon } from '@/components/ui/Icon';
 import { cn } from '@/lib/utils';
 import { MESSAGES } from '@/lib/messages';
+import { resolveImageSrc } from '@/lib/image-url';
 
 export interface DrawerChildItem {
   id: string;
@@ -10,6 +11,8 @@ export interface DrawerChildItem {
   profileEmoji?: string;
   /** 소속 클럽명 — 무소속이면 비움(부제 "무소속" 표기). */
   clubName?: string | null;
+  /** 승인 대표 팀 로고 URL — 좌측 슬롯에 우선 표시. 없으면 이모지 → 아이콘 폴백. */
+  teamLogoUrl?: string | null;
 }
 
 interface DrawerChildSwitcherProps {
@@ -74,14 +77,21 @@ export function DrawerChildSwitcher({
                 >
                   <span
                     className={cn(
-                      'inline-flex items-center justify-center w-9 h-9 rounded-full text-base shrink-0',
+                      'relative inline-flex items-center justify-center w-9 h-9 rounded-full text-base shrink-0 overflow-hidden',
                       isActive
                         ? 'bg-ice-500 text-white'
                         : 'bg-wline-2 dark:bg-rink-700 text-wtext-3 dark:text-rink-100',
                     )}
                     aria-hidden="true"
                   >
-                    {child.profileEmoji ? (
+                    {child.teamLogoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={resolveImageSrc(child.teamLogoUrl)}
+                        alt=""
+                        className="absolute inset-0 h-full w-full object-cover"
+                      />
+                    ) : child.profileEmoji ? (
                       <span className="text-lg">{child.profileEmoji}</span>
                     ) : (
                       <Icon name="child_care" className="text-[18px]" />

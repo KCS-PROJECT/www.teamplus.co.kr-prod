@@ -307,6 +307,9 @@ interface ProcessedImage {
   thumbUrl?: string;
   thumbAbsolutePath?: string;
   exifJson?: Record<string, unknown>;
+  // 프로필/로고/자녀사진 전용 large 파생본 (1280) — cleanup/rollback 대상
+  largeUrl?: string;
+  largeAbsolutePath?: string;
 }
 
 /**
@@ -319,8 +322,51 @@ interface SavedFile {
   url: string;
   sha256: string;
   absolutePath: string;
+  // 신규 리사이즈 경로에서만 채워짐 — DB size 컬럼에 파생본(display) 크기 반영용.
+  //   기존 경로는 undefined → create 에서 file.size 로 대체.
+  size?: number;
   // sharp 처리 결과 (IMAGE/AVATAR 만 채워짐)
   processed: ProcessedImage;
+}
+
+/**
+ * 프로필/로고/자녀사진 신규 리사이즈 경로 대상 refType 화이트리스트.
+ *
+ * category==='AVATAR' 가 1차 라우팅 기준이지만(4종 대상이 전부 AVATAR),
+ * 향후 IMAGE 카테고리로 대상이 오더라도 방어하기 위한 보조 기준.
+ */
+const PROFILE_LOGO_REF_TYPES = new Set<string>([
+  "user_avatar",
+  "team_logo",
+  "academy_logo",
+  "player_profile",
+]);
+
+/**
+ * 로고류(팀·오픈클래스) 저장 디렉토리 분리 대상 refType.
+ * category=AVATAR 는 유지하되 저장 경로만 uploads/logo/ 로 라우팅(프로필/자녀 avatar/ 와 분리).
+ */
+const LOGO_REF_TYPES = new Set<string>(["team_logo", "academy_logo"]);
+
+/** 리사이즈 fit 정책 — 로고/아바타=정사각 cover, 인물(자녀)사진=비율유지 inside */
+type ResizeFit = "cover" | "inside";
+
+/**
+ * 프로필/로고/자녀사진 파생본 2종 생성 결과.
+ *   - display: 512px webp q82 — 도메인 필드에 저장될 대표본 (응답 url)
+ *   - large:   1280px webp q85 — 확대뷰 + 폐기 원본 대체 보관본
+ */
+interface ProfileLogoDerivatives {
+  displayStoredName: string;
+  displayAbsolutePath: string;
+  displayUrl: string;
+  displaySha256: string;
+  displaySize: number;
+  width: number;
+  height: number;
+  largeStoredName: string;
+  largeAbsolutePath: string;
+  largeUrl: string;
 }
 
 @Injectable()
@@ -359,7 +405,7 @@ export class FilesService {
     );
 
     const uploader = await this.getUploaderNameSafe(uploaderId);
-    const saved = await this.persist(file, dto.category, uploader);
+    const saved = await this.persist(file, dto.category, uploader, dto.refType);
 
     let record;
     try {
@@ -369,8 +415,10 @@ export class FilesService {
           originalName: this.sanitizeOriginalName(file.originalname),
           storedName: saved.storedName,
           extension: saved.extension,
-          mimeType: file.mimetype,
-          size: file.size,
+          mimeType: this.isProfileLogoUpload(dto.category, dto.refType)
+            ? "image/webp"
+            : file.mimetype,
+          size: saved.size ?? file.size,
           path: saved.relativePath,
           url: saved.url,
           sha256: saved.sha256,
@@ -462,7 +510,7 @@ export class FilesService {
     const savedList: SavedFile[] = [];
     try {
       for (const f of files) {
-        const saved = await this.persist(f, dto.category, uploader);
+        const saved = await this.persist(f, dto.category, uploader, dto.refType);
         savedList.push(saved);
       }
 
@@ -475,8 +523,10 @@ export class FilesService {
               originalName: this.sanitizeOriginalName(f.originalname),
               storedName: saved.storedName,
               extension: saved.extension,
-              mimeType: f.mimetype,
-              size: f.size,
+              mimeType: this.isProfileLogoUpload(dto.category, dto.refType)
+                ? "image/webp"
+                : f.mimetype,
+              size: saved.size ?? f.size,
               path: saved.relativePath,
               url: saved.url,
               sha256: saved.sha256,
@@ -546,7 +596,7 @@ export class FilesService {
         this.assertMagicBytes(f.buffer, f.mimetype);
 
         const uploader = await this.getUploaderNameSafe(uploaderId);
-        const saved = await this.persist(f, dto.category, uploader);
+        const saved = await this.persist(f, dto.category, uploader, dto.refType);
 
         let record;
         try {
@@ -556,8 +606,10 @@ export class FilesService {
               originalName: this.sanitizeOriginalName(f.originalname),
               storedName: saved.storedName,
               extension: saved.extension,
-              mimeType: f.mimetype,
-              size: f.size,
+              mimeType: this.isProfileLogoUpload(dto.category, dto.refType)
+                ? "image/webp"
+                : f.mimetype,
+              size: saved.size ?? f.size,
               path: saved.relativePath,
               url: saved.url,
               sha256: saved.sha256,
@@ -665,13 +717,27 @@ export class FilesService {
       );
     }
 
-    // 썸네일 정리 (있을 때만)
-    if (record.thumbUrl) {
+    // 썸네일 정리 (있을 때만) — 신규 경로는 thumbUrl==url(display) 이므로 재삭제 스킵.
+    if (record.thumbUrl && record.thumbUrl !== record.url) {
       const thumbAbsolute = resolveUploadAbsolutePath(record.thumbUrl);
       if (thumbAbsolute) {
         await fsp.unlink(thumbAbsolute).catch((err) => {
           this.logger.warn(
             `디스크 썸네일 삭제 실패: ${thumbAbsolute} - ${err.message}`,
+          );
+        });
+      }
+    }
+
+    // large 파생본 정리 — display url 의 .display.webp → .large.webp 형제 파일.
+    if (record.url?.endsWith(".display.webp")) {
+      const largeAbsolute = resolveUploadAbsolutePath(
+        record.url.replace(/\.display\.webp$/, ".large.webp"),
+      );
+      if (largeAbsolute) {
+        await fsp.unlink(largeAbsolute).catch((err) => {
+          this.logger.warn(
+            `디스크 large 삭제 실패: ${largeAbsolute} - ${err.message}`,
           );
         });
       }
@@ -972,6 +1038,7 @@ export class FilesService {
     file: Express.Multer.File,
     category: UploadCategory,
     uploaderName: string,
+    refType?: string | null,
   ): Promise<SavedFile> {
     const now = this.getKstNow();
     const year = now.getFullYear().toString();
@@ -979,7 +1046,16 @@ export class FilesService {
     const day = String(now.getDate()).padStart(2, "0");
     const hour = String(now.getHours()).padStart(2, "0");
     const minute = String(now.getMinutes()).padStart(2, "0");
-    const categoryDir = category.toLowerCase();
+    // 저장 디렉토리 라우팅 (신규/기존 경로 공통):
+    //   - refType='venue' → uploads/venues/ (seed 대표사진과 동일 루트 공유, 런타임분은 날짜 하위)
+    //   - team_logo/academy_logo → uploads/logo/ (category=AVATAR 유지, 프로필/자녀 avatar/ 와 분리)
+    //   - 그 외 → category 소문자(avatar/image/document/...)
+    const categoryDir =
+      refType === "venue"
+        ? "venues"
+        : LOGO_REF_TYPES.has(refType ?? "")
+          ? "logo"
+          : category.toLowerCase();
 
     const subDir = join(categoryDir, year, month, day);
     const absoluteDir = join(UPLOAD_DIR_BASE, subDir);
@@ -992,7 +1068,50 @@ export class FilesService {
     const safeName = this.sanitizeUsernameForPath(uploaderName);
     const yyyymmddhhmm = `${year}${month}${day}${hour}${minute}`;
     const hash4 = randomBytes(2).toString("hex"); // 4글자
-    const storedName = `${safeName}_${yyyymmddhhmm}_${hash4}${safeExt}`;
+    const baseName = `${safeName}_${yyyymmddhhmm}_${hash4}`;
+
+    // === 신규 경로: 프로필/로고/자녀사진 — 원본 미저장, display+large webp 파생본만 ===
+    if (this.isProfileLogoUpload(category, refType)) {
+      const fit = this.resolveFit(refType);
+      let d: ProfileLogoDerivatives;
+      try {
+        d = await this.processProfileLogoImage(
+          file.buffer,
+          fit,
+          absoluteDir,
+          subDir,
+          baseName,
+        );
+      } catch {
+        // 파생본이 유일 저장본 — best-effort 아님. 잘못된 이미지는 명시적 실패.
+        throw new BadRequestException(
+          "이미지 처리에 실패했습니다. 유효한 이미지 파일인지 확인해주세요.",
+        );
+      }
+
+      const displayRelativePath = `/${subDir.replace(/\\/g, "/")}/${d.displayStoredName}`;
+      return {
+        storedName: d.displayStoredName,
+        extension: "webp",
+        relativePath: displayRelativePath,
+        url: d.displayUrl, // ← FileResponseDto.url = display (프론트 무변경 관건)
+        sha256: d.displaySha256,
+        absolutePath: d.displayAbsolutePath,
+        size: d.displaySize,
+        processed: {
+          width: d.width,
+          height: d.height,
+          thumbUrl: d.displayUrl, // thumbUrl 컬럼도 유효 이미지로 채움
+          thumbAbsolutePath: undefined,
+          largeUrl: d.largeUrl,
+          largeAbsolutePath: d.largeAbsolutePath,
+          exifJson: undefined, // webp 변환으로 EXIF 제거됨
+        },
+      };
+    }
+
+    // === 기존 경로 (IMAGE/DOCUMENT/VIDEO/ATTACHMENT 및 비대상) — 변경 없음 ===
+    const storedName = `${baseName}${safeExt}`;
 
     const absolutePath = join(absoluteDir, storedName);
     await fsp.writeFile(absolutePath, file.buffer, { flag: "wx" });
@@ -1020,6 +1139,116 @@ export class FilesService {
       absolutePath,
       processed,
     };
+  }
+
+  /**
+   * 신규 리사이즈 경로(프로필/로고/자녀사진) 적용 여부.
+   *   - category === 'AVATAR' : 4종 대상은 전부 AVATAR 이므로 refType 누락
+   *     (사이드메뉴 아바타·자녀사진 add)까지 포착. AVATAR 는 이 4종 전용(전역 확인).
+   *   - refType ∈ PROFILE_LOGO_REF_TYPES : 향후 IMAGE 카테고리 대상 방어.
+   *   - 배경/갤러리/쇼핑몰(IMAGE) 등은 둘 다 미해당 → 기존 경로 유지.
+   */
+  private isProfileLogoUpload(
+    category: UploadCategory,
+    refType?: string | null,
+  ): boolean {
+    return (
+      category === "AVATAR" || (!!refType && PROFILE_LOGO_REF_TYPES.has(refType))
+    );
+  }
+
+  /**
+   * refType 기반 fit 선택.
+   *   - player_profile → inside : 인물 사진은 정사각 크롭 시 구도(얼굴) 손실 방지.
+   *   - 그 외(user_avatar · team_logo · academy_logo · refType 없는 아바타) → cover :
+   *     표시단이 전부 object-cover(정사각 크롭)라 저장도 정사각 cover 가 픽셀 낭비 0.
+   */
+  private resolveFit(refType?: string | null): ResizeFit {
+    if (refType === "player_profile") return "inside";
+    return "cover";
+  }
+
+  /**
+   * 프로필/로고/자녀사진 전용 파생본 2종(display 512·large 1280 webp) 생성.
+   * 원본은 저장하지 않는다.
+   *
+   * ⚠️ best-effort 아님 — 실패 시 부분 파일 정리 후 throw (파생본이 유일 저장본).
+   *
+   * 공통 전처리 `.rotate()` : EXIF orientation 굽기 + webp 출력 시 EXIF(GPS 등) 제거.
+   * fit=cover  → resize(N,N,{fit:'cover',position:'center'})
+   * fit=inside → resize(N,N,{fit:'inside',withoutEnlargement:true}) (작은 로고 업스케일 방지)
+   */
+  private async processProfileLogoImage(
+    buffer: Buffer,
+    fit: ResizeFit,
+    absoluteDir: string,
+    relativeSubDir: string,
+    baseName: string,
+  ): Promise<ProfileLogoDerivatives> {
+    const displayStoredName = `${baseName}.display.webp`;
+    const largeStoredName = `${baseName}.large.webp`;
+    const displayAbsolutePath = join(absoluteDir, displayStoredName);
+    const largeAbsolutePath = join(absoluteDir, largeStoredName);
+
+    const written: string[] = [];
+    try {
+      // display (512)
+      const displayPipeline = sharp(buffer).rotate();
+      if (fit === "cover") {
+        displayPipeline.resize(512, 512, { fit: "cover", position: "center" });
+      } else {
+        displayPipeline.resize(512, 512, {
+          fit: "inside",
+          withoutEnlargement: true,
+        });
+      }
+      const displayOut = await displayPipeline
+        .webp({ quality: 82 })
+        .toBuffer({ resolveWithObject: true });
+      await fsp.writeFile(displayAbsolutePath, displayOut.data, { flag: "wx" });
+      written.push(displayAbsolutePath);
+
+      // large (1280)
+      const largePipeline = sharp(buffer).rotate();
+      if (fit === "cover") {
+        largePipeline.resize(1280, 1280, { fit: "cover", position: "center" });
+      } else {
+        largePipeline.resize(1280, 1280, {
+          fit: "inside",
+          withoutEnlargement: true,
+        });
+      }
+      const largeOut = await largePipeline
+        .webp({ quality: 85 })
+        .toBuffer({ resolveWithObject: true });
+      await fsp.writeFile(largeAbsolutePath, largeOut.data, { flag: "wx" });
+      written.push(largeAbsolutePath);
+
+      const displaySha256 = createHash("sha256")
+        .update(displayOut.data)
+        .digest("hex");
+      const displayRelativePath = `/${relativeSubDir.replace(/\\/g, "/")}/${displayStoredName}`;
+      const largeRelativePath = `/${relativeSubDir.replace(/\\/g, "/")}/${largeStoredName}`;
+
+      return {
+        displayStoredName,
+        displayAbsolutePath,
+        displayUrl: `/uploads${displayRelativePath}`,
+        displaySha256,
+        displaySize: displayOut.data.length,
+        width: displayOut.info.width,
+        height: displayOut.info.height,
+        largeStoredName,
+        largeAbsolutePath,
+        largeUrl: `/uploads${largeRelativePath}`,
+      };
+    } catch (err) {
+      // 부분 파일 정리 후 rethrow (orphan 0)
+      await Promise.allSettled(
+        written.map((p) => fsp.unlink(p).catch(() => undefined)),
+      );
+      throw err;
+    }
   }
 
   /**
@@ -1126,6 +1355,9 @@ export class FilesService {
       if (s.processed?.thumbAbsolutePath) {
         targets.push(s.processed.thumbAbsolutePath);
       }
+      if (s.processed?.largeAbsolutePath) {
+        targets.push(s.processed.largeAbsolutePath);
+      }
     }
     await Promise.allSettled(
       targets.map((path) => fsp.unlink(path).catch(() => undefined)),
@@ -1200,6 +1432,9 @@ export class FilesService {
       extension: record.extension ?? undefined,
       url: record.url,
       thumbUrl: record.thumbUrl ?? undefined,
+      largeUrl: record.url?.endsWith(".display.webp")
+        ? record.url.replace(/\.display\.webp$/, ".large.webp")
+        : undefined,
       exifJson:
         record.exifJson && typeof record.exifJson === "object"
           ? (record.exifJson as Record<string, unknown>)

@@ -30,7 +30,7 @@ type ClubMemberWithClub = {
   rejectionReason: string | null;
   playerLevel: string | null;
   joinedAt: Date;
-  team: { id: string; name: string };
+  team: { id: string; name: string; logoUrl: string | null };
 };
 
 /** ParentChild + child + childProfile 타입 (mapParentChildToResponse 파라미터) */
@@ -353,7 +353,7 @@ export class ChildrenService {
               where: { leftAt: null },
               include: {
                 team: {
-                  select: { id: true, name: true },
+                  select: { id: true, name: true, logoUrl: true },
                 },
               },
             },
@@ -395,7 +395,7 @@ export class ChildrenService {
               where: { leftAt: null },
               include: {
                 team: {
-                  select: { id: true, name: true },
+                  select: { id: true, name: true, logoUrl: true },
                 },
               },
             },
@@ -862,6 +862,7 @@ export class ChildrenService {
         id: cm.id,
         teamId: cm.team.id,
         clubName: cm.team.name,
+        teamLogoUrl: cm.team.logoUrl ?? undefined,
         approvalStatus: cm.approvalStatus,
         rejectionReason: cm.rejectionReason ?? undefined,
         playerLevel: cm.playerLevel ?? undefined,
@@ -885,7 +886,7 @@ export class ChildrenService {
         teamMembers: {
           include: {
             team: {
-              select: { id: true, name: true },
+              select: { id: true, name: true, logoUrl: true },
             },
           },
         },
@@ -918,6 +919,7 @@ export class ChildrenService {
         id: cm.id,
         teamId: cm.team.id,
         clubName: cm.team.name,
+        teamLogoUrl: cm.team.logoUrl ?? undefined,
         approvalStatus: cm.approvalStatus,
         rejectionReason: cm.rejectionReason ?? undefined,
         playerLevel: cm.playerLevel ?? undefined,

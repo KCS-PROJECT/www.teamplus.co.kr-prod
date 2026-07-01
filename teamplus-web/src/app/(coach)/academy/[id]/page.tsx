@@ -198,7 +198,9 @@ export default function AcademyDetailPage() {
   //  fetch 실패 시 status bar 영구 숨김 회귀 방지.
   useNativeUI({
     showStatusBar: true,
-    showAppBar: true,
+    // 네이티브 AppBar 끔 — 헤더는 웹 <PageAppBar forceNative /> 가 그림(/team·/classes 상세와 동일 패턴).
+    //   showAppBar:true 로 두면 앱에서 네이티브 AppBar(타이틀만)만 뜨고 웹 버튼이 사라짐.
+    showAppBar: false,
     appBarTitle: academy?.name ?? MESSAGES.academy.manage,
     showBottomNav: true,
   });
@@ -213,7 +215,7 @@ export default function AcademyDetailPage() {
   if (!academy) {
     return (
       <MobileContainer hasBottomNav>
-        <PageAppBar title={MESSAGES.academy.manage} />
+        <PageAppBar title={MESSAGES.academy.manage} forceNative />
         <div className="flex flex-col items-center justify-center px-6 py-20 bg-it-canvas dark:bg-puck">
           <Icon name="error_outline" className="text-4xl text-it-ink-400 dark:text-rink-500 mb-3" />
           <p className="text-card-body text-it-ink-500 dark:text-rink-300">{MESSAGES.error.general}</p>
@@ -224,7 +226,7 @@ export default function AcademyDetailPage() {
 
   return (
     <MobileContainer hasBottomNav>
-      <PageAppBar title={academy.name} />
+      <PageAppBar title={academy.name} forceNative />
 
       <main className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck !pb-8">
         {/* Hero — ICETIMES navy 히어로 (팀 상세 /team/[id] 와 통일).

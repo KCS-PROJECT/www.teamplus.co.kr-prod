@@ -42,6 +42,7 @@ import { useStableLayout } from '@/hooks/useStableLayout';
 import { useImagesReady } from '@/hooks/useImagesReady';
 import { useFontsReady } from '@/hooks/useFontsReady';
 import { MESSAGES } from '@/lib/messages';
+import { resolveImageSrc } from '@/lib/image-url';
 import { getChildInactiveReason } from '@/lib/child-status';
 import { isActiveEnrollment } from '@/lib/enrollment-visibility';
 import { api } from '@/services/api-client';
@@ -105,6 +106,9 @@ export default function ParentDashboardPage() {
   const { upcomingSchedules, checkInChild } = useParentHome();
 
   const [teams, setTeams] = useState<TeamRef[] | null>(null);
+  // 헤더 팀 로고 로드 실패(404/깨짐) 시 해당 URL 기억 → 영역 자체를 미렌더(원래 없던 것처럼).
+  //   URL 값을 저장하므로 자녀 전환으로 다른 팀 로고가 되면 자동으로 다시 표시.
+  const [brokenHeaderLogo, setBrokenHeaderLogo] = useState<string | null>(null);
   const [childClassMap, setChildClassMap] = useState<Map<string, Set<string>>>(
     new Map(),
   );
@@ -303,6 +307,12 @@ export default function ParentDashboardPage() {
         }`
     : undefined;
 
+  // 헤더 좌측 팀 로고 — 선택 자녀의 승인 대표 팀(clubIds[0], 부제 club과 동일 출처) 로고.
+  //   teams(자녀 소속 팀·logoUrl 보유)에서 매칭. 무소속/미로딩/로고없음 → null(로고 미표시).
+  const parentHeaderLogoUrl = focusedChild
+    ? teams?.find((t) => t.id === focusedChild.clubIds?.[0])?.logoUrl ?? null
+    : null;
+
   // ─── Phase 1 (2026-05-11): SelectedDayClassList 출석 prop 빌드 ───
   // upcomingSchedules 는 ParentUpcomingSchedule[] — scheduleId/childIds/attendanceByChild 보유.
   // ClassCalendarSection 이 만드는 CalendarClass.id 가 scheduleId 와 동일하므로 직접 Map 매핑.
@@ -343,6 +353,19 @@ export default function ParentDashboardPage() {
     <MobileContainer hasBottomNav>
       <WalletAppBar
         title={parentHeaderTitle}
+        titleLeading={
+          // URL 없음 또는 로드 실패한 URL → undefined 반환 → PageAppBar 가 leading span 자체를
+          //   렌더하지 않음(잔여 여백 0, 로고 영역이 원래 없던 것처럼).
+          parentHeaderLogoUrl && parentHeaderLogoUrl !== brokenHeaderLogo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={resolveImageSrc(parentHeaderLogoUrl)}
+              alt=""
+              onError={() => setBrokenHeaderLogo(parentHeaderLogoUrl)}
+              className="size-6 rounded-md object-cover"
+            />
+          ) : undefined
+        }
         timelineBadge={unreadCount > 0 ? unreadCount : undefined}
         onSearch={() => navigate('/search')}
         onTimeline={() => navigate('/timeline')}

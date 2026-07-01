@@ -10,6 +10,7 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
 import { NotificationsService } from "@/notifications/notifications.service";
+import { UploadCleanupService } from "@/common/upload-cleanup.service";
 import { CreateTeamDto } from "./dto/create-team.dto";
 import { JoinTeamDto } from "./dto/join-team.dto";
 import {
@@ -144,6 +145,7 @@ export class TeamsService {
     private readonly redisService: RedisService,
     private readonly configService: ConfigService,
     private readonly notificationsService: NotificationsService,
+    private readonly uploadCleanupService: UploadCleanupService,
   ) {}
 
   /**
@@ -772,6 +774,16 @@ export class TeamsService {
       }
     }
 
+    // 로고 교체 시 이전 파일 정리를 위해 기존 logoUrl 확보 (변경 요청이 있을 때만).
+    let previousLogoUrl: string | null = null;
+    if (updateData.logoUrl !== undefined) {
+      const existing = await this.prisma.team.findUnique({
+        where: { id: teamId },
+        select: { logoUrl: true },
+      });
+      previousLogoUrl = existing?.logoUrl ?? null;
+    }
+
     // [추가 2026-05-23] 신규 폼 필드 매핑 — slogan/description/foundingDate/division/colors/homeArena
     //   기존: CreateTeamDto 에 정의되지 않아 prisma data 매핑도 누락 → DB 미저장 (사용자 보고).
     //   조치: 모든 polled 필드를 undefined(미변경) / 빈값(해제) / 유효값(저장) 3분기로 처리.
@@ -841,6 +853,19 @@ export class TeamsService {
 
     // 캐시 무효화
     await this.invalidateTeamCache(teamId);
+
+    // 로고 교체 시 이전 파일 정리 (best-effort — 실패해도 update 성공에 영향 없음).
+    if (updateData.logoUrl !== undefined) {
+      const newLogoUrl = updateData.logoUrl || null;
+      if (previousLogoUrl && previousLogoUrl !== newLogoUrl) {
+        await this.uploadCleanupService
+          .cleanupReplacedUpload(previousLogoUrl, {
+            refType: "team_logo",
+            refId: teamId,
+          })
+          .catch(() => undefined);
+      }
+    }
 
     return updatedClub;
   }

@@ -17,7 +17,15 @@ const securityHeaders = [
         ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
         : "script-src 'self' 'unsafe-inline'",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "img-src 'self' data: https: blob:",
+      // [2026-07-01] 링크장 대표사진 등 백엔드(5003) 정적 이미지(http) 로드 허용.
+      //   connect-src 와 동일한 백엔드 origin 을 img-src 에도 추가 (dev http 직접 접속).
+      [
+        "img-src 'self' data: https: blob:",
+        "http://localhost:5003",
+        "http://127.0.0.1:5003",
+        "http://192.168.0.105:5003",
+        "http://211.236.174.115:5003",
+      ].join(" "),
       "font-src 'self' data: https://fonts.gstatic.com",
       [
         "connect-src 'self'",

@@ -26,6 +26,7 @@ export interface ChildApiItem {
     approvalStatus: string;
     rejectionReason?: string;
     clubName?: string;
+    teamLogoUrl?: string | null;
     playerLevel?: string;
     joinedAt?: string;
   }>;
@@ -71,6 +72,8 @@ function toChild(item: ChildApiItem): Child {
     //    false negative 가 되는 버그(2026-04-29 발견)였음.
     club: item.clubName ?? approvedMembership?.clubName ?? null,
     clubIds,
+    // 표시용 club(승인 대표 팀)과 동일 출처의 로고 — 사이드메뉴 스위처 좌측.
+    teamLogoUrl: approvedMembership?.teamLogoUrl ?? null,
     isActive: item.isActive ?? true,
     imageUrl: item.imageUrl && item.imageUrl.trim() !== '' ? item.imageUrl : null,
     currentLevel: item.currentLevel,

@@ -14,13 +14,26 @@ import { sanitizeStrict } from "@/common/utils/sanitize.util";
 
 /**
  * 구장 관리 권한 체계
+ * - SYSTEM / OPER: 어드민 대시보드 운영자 — 전체 구장 생성/수정/삭제 가능 (2026-07-01 추가)
  * - ADMIN / DIRECTOR / ACADEMY_DIRECTOR: 전체 구장에 대해 생성/수정/삭제 가능
  * - COACH: 본인 소속 클럽의 구장만 생성/수정 가능 (삭제 불가)
  * - PARENT / TEEN / CHILD: 조회 전용
  */
-const FULL_MANAGE_ROLES = new Set(["ADMIN", "DIRECTOR", "ACADEMY_DIRECTOR"]);
+const FULL_MANAGE_ROLES = new Set([
+  "SYSTEM",
+  "OPER",
+  "ADMIN",
+  "DIRECTOR",
+  "ACADEMY_DIRECTOR",
+]);
 const COACH_ROLE = "COACH";
-const DELETE_ALLOWED_ROLES = new Set(["ADMIN", "DIRECTOR", "ACADEMY_DIRECTOR"]);
+const DELETE_ALLOWED_ROLES = new Set([
+  "SYSTEM",
+  "OPER",
+  "ADMIN",
+  "DIRECTOR",
+  "ACADEMY_DIRECTOR",
+]);
 
 const VENUE_PUBLIC_SELECT = {
   id: true,

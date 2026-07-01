@@ -12,6 +12,8 @@ import { MESSAGES } from "@/lib/messages";
  */
 export interface WalletAppBarProps {
   title?: string;
+  /** 타이틀 왼쪽 leading 노드(예: 팀 로고). 미지정 시 기존과 동일(로고 없음). */
+  titleLeading?: ReactNode;
   /** 타임라인 우측상단 N 배지 */
   timelineBadge?: number | string;
   onSearch?: () => void;
@@ -35,6 +37,7 @@ export interface WalletAppBarProps {
 
 export function WalletAppBar({
   title = MESSAGES.wallet.appBar.title,
+  titleLeading,
   timelineBadge,
   onSearch,
   onTimeline,
@@ -57,6 +60,7 @@ export function WalletAppBar({
     <PageAppBar
       variant="main"
       title={title}
+      titleLeading={titleLeading}
       forceNative={forceNative}
       mainActions={{
         onSearch,

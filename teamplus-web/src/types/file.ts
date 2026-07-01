@@ -25,6 +25,8 @@ export interface UploadedFile {
   url: string;
   /** 자동 생성 썸네일 URL (sharp 처리 후 — IMAGE/AVATAR 카테고리) — Phase 2.1 SPEC */
   thumbUrl?: string;
+  /** 확대/원본 대체 보관본 URL (프로필/로고/자녀사진 파생 large 1280) — display url 의 .display.webp→.large.webp */
+  largeUrl?: string;
   /** EXIF 메타데이터 JSON (sharp 추출 후 — IMAGE 카테고리) — Phase 2.1 SPEC */
   exifJson?: Record<string, unknown>;
   mimeType: string;

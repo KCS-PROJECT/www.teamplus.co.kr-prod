@@ -101,6 +101,11 @@ export interface MainActions {
 export interface PageAppBarProps {
   /** 페이지 타이틀. 미지정 시 resolvePageTitle 자동 폴백 */
   title?: string;
+  /**
+   * main/submain variant 타이틀 왼쪽에 표시할 leading 노드(예: 팀 로고 이미지).
+   * 미지정(undefined)이면 렌더 0 — 기존 전 화면 동작 완전 불변(옵트인).
+   */
+  titleLeading?: ReactNode;
   /** 부제 (default variant 에서만 표시) */
   subtitle?: string;
   /**
@@ -195,6 +200,7 @@ export interface PageAppBarProps {
 
 export function PageAppBar({
   title,
+  titleLeading,
   subtitle,
   variant = 'default',
   toneVariant = 'default',
@@ -595,6 +601,14 @@ export function PageAppBar({
                   · letterSpacing -0.03em → -0.04em (한글 자연스러운 압축 강화)
                   · whiteSpace: 'nowrap' (어떤 글리프 폭에도 wrap 절대 차단)
                   · flexShrink: 0 (flex 컨테이너 폭 부족해도 h1 압축 금지) */}
+          {titleLeading && (
+            <span
+              className="shrink-0 flex items-center mr-2"
+              style={{ transform: 'translateX(var(--appbar-content-shift-x))' }}
+            >
+              {titleLeading}
+            </span>
+          )}
           <h1
             className={cn(
               'font-extrabold tracking-tight',

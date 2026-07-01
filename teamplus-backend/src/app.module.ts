@@ -75,6 +75,7 @@ import { GalleryModule } from "./gallery/gallery.module";
 import { MainPopupsModule } from "./main-popups/main-popups.module";
 import { ReminderScheduler } from "./common/schedulers/reminder.scheduler";
 import { ViewCounterModule } from "./common/view-counter/view-counter.module";
+import { UploadCleanupModule } from "./common/upload-cleanup.module";
 import { StickersModule } from "./stickers/stickers.module";
 import { RewardsModule } from "./rewards/rewards.module";
 import { EquipmentChecklistModule } from "./equipment-checklist/equipment-checklist.module";
@@ -106,6 +107,7 @@ import { TransactionLogModule } from "./transaction-log/transaction-log.module";
 
     // 전역 조회수 카운터 (1일 1회 제한, DailyViewLog UNIQUE 기반)
     ViewCounterModule,
+    UploadCleanupModule,
 
     // Redis (Global module for caching and session management)
     RedisModule,

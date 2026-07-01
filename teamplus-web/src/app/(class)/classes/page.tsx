@@ -61,6 +61,8 @@ interface ClassItem {
   club?: { id: string; clubName: string };
   /** 팀 프로필(로고) URL — 카드 좌측 아이콘에 표시. 없으면 기본 trainingType 아이콘 폴백. */
   teamLogoUrl?: string | null;
+  /** 오픈클래스 소속 아카데미명 — 카드 제목 아래 subtitle 노출. 팀 수업은 null(미노출). */
+  academyName?: string | null;
   classDays?: string[];
   /** [2026-06-05] 요일별 시간·장소 규칙 — 백엔드 목록 응답. 규칙 없으면 빈 배열. */
   daySchedules?: DaySchedule[];
@@ -933,6 +935,8 @@ const DefaultClassCard = memo(function DefaultClassCard({
       }
       ariaLabel={`${item.className} 수업 상세 보기`}
       title={item.className}
+      // 오픈클래스만 소속 아카데미명을 제목 아래 subtitle 로 노출(팀 수업은 undefined → 미렌더).
+      metaInline={item.academyName || undefined}
       titleRight={
         /* 등록 상태 칩 — 클릭은 카드 NavLink 가 처리 (시각 표시 전용).
            min-w-[72px] 고정 — 2글자("등록")도 4글자("등록완료")와 동일 폭 유지. */

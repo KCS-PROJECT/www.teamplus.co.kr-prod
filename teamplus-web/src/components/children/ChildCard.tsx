@@ -21,6 +21,8 @@ export interface Child {
   club: string | null;
   /** APPROVED 상태의 TeamMember.clubId 집합 (표시용 club 이름과 별개로 ID 기반 매핑 경로) */
   clubIds?: string[];
+  /** 승인된 대표 팀 로고 URL — 사이드메뉴 자녀 스위처 좌측 표시. 무소속이면 null. */
+  teamLogoUrl?: string | null;
   isActive: boolean;
   imageUrl: string | null;
   /** 학습 레벨 (1-5) - Phase 1 추가 */

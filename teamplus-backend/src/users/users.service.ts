@@ -58,7 +58,7 @@ export class UsersService {
         uploaderId: userId,
         category: { in: ["AVATAR", "IMAGE"] },
       },
-      select: { id: true, path: true, thumbUrl: true },
+      select: { id: true, path: true, url: true, thumbUrl: true },
     });
 
     if (record) {
@@ -83,13 +83,30 @@ export class UsersService {
         });
       }
 
-      if (record.thumbUrl) {
+      if (record.thumbUrl && record.thumbUrl !== record.url) {
         const thumbAbsolute = resolveUploadAbsolutePath(record.thumbUrl);
         if (thumbAbsolute) {
           await fsp.unlink(thumbAbsolute).catch((err) => {
             if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
             this.logger.warn(
               `이전 아바타 썸네일 삭제 실패: ${thumbAbsolute} - ${err.message}`,
+            );
+          });
+        }
+      }
+
+      // large 파생본 정리 — 신규 리사이즈 경로(display+large webp)의 형제 파일.
+      //   files.service.remove() 와 동일 규칙: display url 의 .display.webp → .large.webp.
+      //   구버전 .jpg 원본 레코드는 접미사가 없어 스킵(하위호환).
+      if (record.url?.endsWith(".display.webp")) {
+        const largeAbsolute = resolveUploadAbsolutePath(
+          record.url.replace(/\.display\.webp$/, ".large.webp"),
+        );
+        if (largeAbsolute) {
+          await fsp.unlink(largeAbsolute).catch((err) => {
+            if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+            this.logger.warn(
+              `이전 아바타 large 삭제 실패: ${largeAbsolute} - ${err.message}`,
             );
           });
         }
@@ -105,6 +122,15 @@ export class UsersService {
         await fsp.unlink(absolutePath).catch(() => {
           // 조용히 실패 — 다른 곳에서 사용 중이거나 이미 삭제된 경우
         });
+      }
+      // large 파생본 형제도 함께 정리 (신규 리사이즈 경로 · display url 기준).
+      if (oldUrl.endsWith(".display.webp")) {
+        const largeAbsolute = resolveUploadAbsolutePath(
+          oldUrl.replace(/\.display\.webp$/, ".large.webp"),
+        );
+        if (largeAbsolute) {
+          await fsp.unlink(largeAbsolute).catch(() => undefined);
+        }
       }
     }
   }

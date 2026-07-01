@@ -226,13 +226,18 @@ async function diagnose(): Promise<DiagnosticReport> {
   // 디스크에는 있고 DB 에 없는 파일
   const orphanFiles: DiagnosticReport["orphanFiles"] = [];
   for (const [rel, size] of diskFiles.entries()) {
-    if (!dbRelativePaths.has(rel)) {
-      orphanFiles.push({
-        absolutePath: join(uploadRoot, rel),
-        relativePath: rel,
-        sizeBytes: size,
-      });
+    if (dbRelativePaths.has(rel)) continue;
+    // .large.webp 는 DB 에 display 만 저장되는 프로필/로고 파생본 —
+    //   동일 base 의 .display.webp DB row 가 있으면 동반 파일이므로 orphan 아님.
+    if (rel.endsWith(".large.webp")) {
+      const displaySibling = rel.replace(/\.large\.webp$/, ".display.webp");
+      if (dbRelativePaths.has(displaySibling)) continue;
     }
+    orphanFiles.push({
+      absolutePath: join(uploadRoot, rel),
+      relativePath: rel,
+      sizeBytes: size,
+    });
   }
 
   // 카테고리 통계 (DB 기준 + 디스크 카운트)
@@ -256,6 +261,8 @@ async function diagnose(): Promise<DiagnosticReport> {
     const dirToCategory: Record<string, string> = {
       image: "IMAGE",
       avatar: "AVATAR",
+      // 로고류(team_logo/academy_logo)는 DB category=AVATAR 이나 logo/ 에 저장 — 통계상 AVATAR 로 합산.
+      logo: "AVATAR",
       video: "VIDEO",
       videos: "VIDEO",
       document: "DOCUMENT",

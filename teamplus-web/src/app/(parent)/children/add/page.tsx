@@ -129,7 +129,7 @@ export default function AddChildPage() {
     if (!file) return;
     setIsUploadingImage(true);
     try {
-      const result = await uploadFile(file, { category: 'AVATAR' });
+      const result = await uploadFile(file, { category: 'AVATAR', refType: 'player_profile' });
       updateField('imageUrl', result.url);
     } catch (err) {
       if (err instanceof UploadValidationError) {
@@ -183,6 +183,7 @@ export default function AddChildPage() {
         localPath: pick.path,
         category: 'AVATAR',
         originalName: pick.name,
+        refType: 'player_profile',
       });
       updateField('imageUrl', uploaded.url);
     } catch (err) {

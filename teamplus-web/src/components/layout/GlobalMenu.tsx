@@ -1035,6 +1035,8 @@ export function GlobalMenu({ isOpen, onClose }: GlobalMenuProps) {
               id: child.id,
               name: child.name,
               clubName: child.club,
+              // 승인 대표 팀 로고 — 좌측 슬롯에 표시(무소속이면 null → 이모지/아이콘 폴백).
+              teamLogoUrl: child.teamLogoUrl ?? null,
               // 이모지는 통계용 childrenList(/children 응답 profileEmoji)에서 보강 — 카드 아이콘 표시.
               profileEmoji: childrenList.find((c) => c.id === child.id)
                 ?.profileEmoji,

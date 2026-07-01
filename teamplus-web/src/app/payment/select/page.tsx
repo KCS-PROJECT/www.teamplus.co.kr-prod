@@ -193,7 +193,9 @@ export default function PaymentSelectPage() {
   // Native UI 설정
   useNativeUI({
     showStatusBar: true,
-    showAppBar: true,
+    // 웹 <PageAppBar forceNative /> 가 앱/웹 동일 헤더를 그림(checkout 과 동일 패턴).
+    //   showAppBar:true 로 두면 앱에서 네이티브 AppBar(타이틀만)만 뜨고 웹 헤더 버튼이 사라짐.
+    showAppBar: false,
     appBarTitle: '수업 결제',
     showBottomNav: false,
     showBackButton: true,
@@ -279,7 +281,7 @@ export default function PaymentSelectPage() {
 
   return (
     <MobileContainer hasBottomNav>
-      <PageAppBar title="수업 결제" />
+      <PageAppBar title="수업 결제" forceNative />
 
       {/* Step Indicator */}
       <div className="px-6 py-4 bg-it-canvas dark:bg-puck">

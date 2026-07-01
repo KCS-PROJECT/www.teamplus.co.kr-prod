@@ -42,7 +42,9 @@ export const WORKSPACE_ROOT = resolve(__dirname, "..", "..", "..");
  */
 export const UPLOAD_CATEGORY_DIRS = [
   "image", // FilesModule IMAGE
-  "avatar", // FilesModule AVATAR
+  "venues", // FilesModule refType='venue' (링크장 대표사진) + seed 자산 루트
+  "avatar", // FilesModule AVATAR (프로필/자녀사진 — refType user_avatar/player_profile)
+  "logo", // FilesModule AVATAR 중 refType team_logo/academy_logo — 로고류 저장 분리
   "video", // FilesModule VIDEO (5종 표준)
   "videos", // VideosModule (전용 multer)
   "document", // FilesModule DOCUMENT

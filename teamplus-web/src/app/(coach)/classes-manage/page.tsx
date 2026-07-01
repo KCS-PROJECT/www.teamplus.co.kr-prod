@@ -713,6 +713,8 @@ export default function ClassManagePage() {
             trainingType: (c.trainingType as string) ?? null,
             // [추가 2026-05-15] academy 모드 — 항상 academyId 보유 (오픈클래스).
             academyId: (c.academyId as string) ?? null,
+            // 목록 카드 좌측 로고 — BE getAcademyClasses 가 아카데미 대표 이미지를 teamLogoUrl 로 반환.
+            teamLogoUrl: (c.teamLogoUrl as string) ?? null,
           };
         }));
         return;
