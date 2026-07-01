@@ -33,7 +33,7 @@ class NativeBackGuard extends StatefulWidget {
     super.key,
     required this.child,
     this.title = '팀플러스를\n완전히 종료하시겠습니까?',
-    this.message = '종료하면 알림을 받을 수 없으며,\n다음 수업 일정도 확인할 수 없어요.',
+    this.message = '종료해도 알림은 계속\n받을 수 있어요.',
     this.confirmText = '예',
     this.cancelText = '아니요',
   });
@@ -76,41 +76,12 @@ class _NativeBackGuardState extends State<NativeBackGuard> {
   }
 
   Future<bool?> _showExitConfirmDialog(BuildContext context) {
-    return showGeneralDialog<bool>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-      barrierColor: const Color(0x8C080C18), // rgba(8, 12, 24, 0.55)
-      transitionDuration: const Duration(milliseconds: 280),
-      pageBuilder: (dialogContext, _, __) {
-        return _ExitConfirmDialog(
-          title: widget.title,
-          message: widget.message,
-          confirmText: widget.confirmText,
-          cancelText: widget.cancelText,
-          onCancel: () => Navigator.of(dialogContext).pop(false),
-          onConfirm: () => Navigator.of(dialogContext).pop(true),
-        );
-      },
-      transitionBuilder: (_, animation, __, child) {
-        // 참고 JSX와 정확히 일치: cubic-bezier(0.22, 1.2, 0.36, 1)
-        const exitDialogIn = Cubic(0.22, 1.2, 0.36, 1.0);
-        final scaleCurve = CurvedAnimation(
-          parent: animation,
-          curve: exitDialogIn,
-        );
-        final fadeCurve = CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOut,
-        );
-        return FadeTransition(
-          opacity: fadeCurve,
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.9, end: 1.0).animate(scaleCurve),
-            child: child,
-          ),
-        );
-      },
+    return showAppExitConfirmDialog(
+      context,
+      title: widget.title,
+      message: widget.message,
+      confirmText: widget.confirmText,
+      cancelText: widget.cancelText,
     );
   }
 
@@ -127,6 +98,56 @@ class _NativeBackGuardState extends State<NativeBackGuard> {
       child: widget.child,
     );
   }
+}
+
+/// 앱 종료 확인 다이얼로그 — 하우머치(ICETIMES) 스타일 공통 진입점.
+///
+/// `NativeBackGuard`(페이지 백키 가드)와 `MainShellScreen`(홈 셸 백키 fallback)이
+/// 동일한 종료 컴펌 UI 를 공유하도록 top-level 로 노출한다. 기본 문구·라벨은
+/// `NativeBackGuard` 기본값과 일치(SoT).
+Future<bool?> showAppExitConfirmDialog(
+  BuildContext context, {
+  String title = '팀플러스를\n완전히 종료하시겠습니까?',
+  String message = '종료해도 알림은 계속\n받을 수 있어요.',
+  String confirmText = '예',
+  String cancelText = '아니요',
+}) {
+  return showGeneralDialog<bool>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+    barrierColor: const Color(0x8C080C18), // rgba(8, 12, 24, 0.55)
+    transitionDuration: const Duration(milliseconds: 280),
+    pageBuilder: (dialogContext, _, __) {
+      return _ExitConfirmDialog(
+        title: title,
+        message: message,
+        confirmText: confirmText,
+        cancelText: cancelText,
+        onCancel: () => Navigator.of(dialogContext).pop(false),
+        onConfirm: () => Navigator.of(dialogContext).pop(true),
+      );
+    },
+    transitionBuilder: (_, animation, __, child) {
+      // 참고 JSX와 정확히 일치: cubic-bezier(0.22, 1.2, 0.36, 1)
+      const exitDialogIn = Cubic(0.22, 1.2, 0.36, 1.0);
+      final scaleCurve = CurvedAnimation(
+        parent: animation,
+        curve: exitDialogIn,
+      );
+      final fadeCurve = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOut,
+      );
+      return FadeTransition(
+        opacity: fadeCurve,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.9, end: 1.0).animate(scaleCurve),
+          child: child,
+        ),
+      );
+    },
+  );
 }
 
 /// ExitConfirmDialog — 홈 · 종료 컴펌 디자인 위젯

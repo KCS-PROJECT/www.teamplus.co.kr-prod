@@ -13,6 +13,7 @@ import '../../../../core/constants/app_environment.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/models/menu_model.dart';
 import '../providers/menu_provider.dart';
+import '../../../../shared/widgets/native_back_guard.dart';
 
 class MainShellScreen extends ConsumerStatefulWidget {
   const MainShellScreen({super.key});
@@ -181,30 +182,8 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
     if (_isFallbackDialogOpen) return;
     _isFallbackDialogOpen = true;
     try {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        barrierDismissible: true,
-        builder: (dialogContext) {
-          return AlertDialog(
-            title: const Text('앱을 종료하시겠습니까?'),
-            content: const Text('TEAMPLUS 앱을 완전히 종료합니다.'),
-            actionsAlignment: MainAxisAlignment.spaceBetween,
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(false),
-                child: const Text('취소'),
-              ),
-              TextButton(
-                style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xFFDC2626), // red-600
-                ),
-                onPressed: () => Navigator.of(dialogContext).pop(true),
-                child: const Text('종료하기'),
-              ),
-            ],
-          );
-        },
-      );
+      // 종료 컴펌 UI 는 하우머치 스타일 공통 다이얼로그 사용 (native_back_guard SoT).
+      final confirmed = await showAppExitConfirmDialog(context);
       if (confirmed == true && Platform.isAndroid) {
         await SystemNavigator.pop();
       }
