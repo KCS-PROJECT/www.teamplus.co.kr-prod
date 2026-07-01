@@ -47,6 +47,8 @@ import { FilesService } from "./files.service";
 // [2026-05-13 roles-check] 인증된 모든 사용자 업로드/조회 허용.
 //   파일 크기·MIME 제한은 FileInterceptor 옵션으로 강제.
 @Roles(
+  "SYSTEM",
+  "OPER",
   "ADMIN",
   "DIRECTOR",
   "ACADEMY_DIRECTOR",

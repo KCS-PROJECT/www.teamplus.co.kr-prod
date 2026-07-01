@@ -152,7 +152,7 @@ export default function EditChildPage() {
     if (!file) return;
     setIsUploadingImage(true);
     try {
-      const result = await uploadFile(file, { category: 'AVATAR' });
+      const result = await uploadFile(file, { category: 'AVATAR', refType: 'player_profile', refId: childId });
       updateField('imageUrl', result.url);
       // 즉시 PATCH — 폼 저장 전 손실 차단
       try {

@@ -48,6 +48,9 @@ teamplus-web/.next/
 teamplus-admin/.next/
 teamplus-backend/log/
 teamplus-backend/uploads/
+# /uploads/ 는 런타임 업로드 경로 — 저장소 추적 대상이 아니므로 전체 미추적.
+#   디렉토리는 부팅 시 ensureUploadDirectories() 가 자동 생성. seed 이미지는 서버 UPLOAD_ROOT 에 직접 배포.
+/uploads/
 # IntelliJ related
 *.iml
 *.ipr
@@ -120,3 +123,7 @@ serviceAccountKey.json
 # Apple .p8 private keys (SIWA/APNs) — never commit (load via env)
 *.p8
 keyfiles/*.p8
+
+# 디자이너 핸드오프 패키지 (로컬 전용 — 원본 문서/에셋의 복사본이라 커밋 불필요)
+claudedocs/design-handoff/
+backdata/teamplus_하우머치스타일

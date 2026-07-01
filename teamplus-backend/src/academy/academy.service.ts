@@ -24,10 +24,14 @@ import {
   type ViewerLike,
 } from "@/common/utils/viewer-birth-years.util";
 import { sanitizeStrict } from "@/common/utils/sanitize.util";
+import { UploadCleanupService } from "@/common/upload-cleanup.service";
 
 @Injectable()
 export class AcademyService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly uploadCleanupService: UploadCleanupService,
+  ) {}
 
   /**
    * 아카데미 고유 코드 생성 (ACAD-XXXXXX, 6자리 랜덤 영숫자)
@@ -202,6 +206,20 @@ export class AcademyService {
       where: { id: academyId },
       data: updateData,
     });
+
+    // 이미지 교체 시 이전 파일 정리 (best-effort — 실패해도 update 성공에 영향 없음).
+    if (dto.imageUrl !== undefined) {
+      const previousImageUrl = academy.imageUrl ?? null;
+      const newImageUrl = dto.imageUrl ?? null;
+      if (previousImageUrl && previousImageUrl !== newImageUrl) {
+        await this.uploadCleanupService
+          .cleanupReplacedUpload(previousImageUrl, {
+            refType: "academy_logo",
+            refId: academyId,
+          })
+          .catch(() => undefined);
+      }
+    }
 
     return updated;
   }
@@ -589,6 +607,8 @@ export class AcademyService {
         coachId: true,
         teamId: true,
         academyId: true,
+        // 목록 카드 로고용 — 오픈클래스 대표 이미지.
+        academy: { select: { imageUrl: true } },
         levelRequired: true,
         description: true,
         createdAt: true,
@@ -677,6 +697,9 @@ export class AcademyService {
         trainingType: c.trainingType,
         teamId: c.teamId,
         academyId: c.academyId,
+        // 목록 카드 좌측 로고 — 오픈클래스는 팀이 없으므로 아카데미 대표 이미지 사용.
+        //   (프론트 classes-manage 매퍼가 iconImageUrl 로 소비.)
+        teamLogoUrl: c.academy?.imageUrl ?? null,
         dayOfWeek: days,
         time: scheduleTime || (st && et ? `${st} - ${et}` : ""),
         startTime: c.startTime,
