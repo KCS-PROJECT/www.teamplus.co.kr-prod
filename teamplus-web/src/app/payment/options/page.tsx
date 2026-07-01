@@ -116,7 +116,8 @@ function PaymentOptionsContent() {
   // [appbar-harness-v2] Step 2: 옵션 선택 — Status bar + AppBar 명시.
   useNativeUI({
     showStatusBar: true,
-    showAppBar: true,
+    // 웹 <PageAppBar forceNative /> 가 앱/웹 동일 헤더를 그림(checkout 과 동일 패턴).
+    showAppBar: false,
     appBarTitle: '수업 결제',
     showBottomNav: false,
     showBackButton: true,
@@ -481,7 +482,7 @@ function PaymentOptionsContent() {
 
   return (
     <MobileContainer>
-      <PageAppBar title="수업 결제" />
+      <PageAppBar title="수업 결제" forceNative />
 
       {/* Stepper */}
       <div className="w-full px-6 py-4 bg-it-canvas dark:bg-puck">

@@ -1166,6 +1166,8 @@ export class ClassesService {
           academyId: true,
           createdAt: true,
           team: { select: { id: true, name: true, logoUrl: true } },
+          // 오픈클래스(teamId=null): 로고 폴백용 대표 이미지 + 카드 subtitle 노출용 아카데미명.
+          academy: { select: { imageUrl: true, name: true } },
           coach: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } },
           venue: { select: { id: true, name: true } },
           // PACKAGE_WEEKS_SPEC §6 응답 필드 매핑용 — durationDays/sessionsPerMonth/sessionsPerWeek 필수.
@@ -1245,7 +1247,10 @@ export class ClassesService {
         return {
           ...c,
           // 수업목록 카드 좌측 아이콘에 팀 프로필(로고) 표시용 — 없으면 프론트가 기본 아이콘 폴백.
-          teamLogoUrl: c.team?.logoUrl ?? null,
+          // 오픈클래스는 팀이 없으므로 소속 아카데미 대표 이미지로 폴백.
+          teamLogoUrl: c.team?.logoUrl ?? c.academy?.imageUrl ?? null,
+          // 오픈클래스만 아카데미명 노출(팀 수업은 academy 없어 null) — 학부모 /classes 카드 subtitle.
+          academyName: c.academy?.name ?? null,
           enrolledCount: c.registrations?.length ?? 0,
           coachAssignments: (c.coachAssignments ?? []).map((a) => ({
             id: a.id,
@@ -1394,6 +1399,8 @@ export class ClassesService {
             coach: { select: { firstName: true, lastName: true, avatarUrl: true } },
           },
         },
+        // 오픈클래스(teamId=null) 로고 폴백용 — 소속 아카데미 대표 이미지.
+        academy: { select: { imageUrl: true } },
         coach: {
           select: { id: true, firstName: true, lastName: true, email: true, avatarUrl: true },
         },
@@ -1562,7 +1569,8 @@ export class ClassesService {
           `${r.user?.lastName ?? ""}${r.user?.firstName ?? ""}`.trim() || "",
       })),
       waitlistCount: classRecord.waitlists?.length ?? 0,
-      teamLogoUrl: classRecord.team?.logoUrl ?? null,
+      // 오픈클래스는 팀이 없으므로 소속 아카데미 대표 이미지로 폴백.
+      teamLogoUrl: classRecord.team?.logoUrl ?? classRecord.academy?.imageUrl ?? null,
       club: classRecord.team
         ? { id: classRecord.team.id, name: classRecord.team.name }
         : null,
@@ -1692,6 +1700,8 @@ export class ClassesService {
           select: { id: true, firstName: true, lastName: true, userType: true },
         },
         team: { select: { logoUrl: true } },
+        // 오픈클래스(teamId=null) 로고 폴백용 — 소속 아카데미 대표 이미지.
+        academy: { select: { imageUrl: true } },
         venue: { select: { id: true, name: true, address: true } },
         products: {
           select: {
@@ -1760,7 +1770,8 @@ export class ClassesService {
         className: c.className,
         trainingType: c.trainingType,
         teamId: c.teamId,
-        teamLogoUrl: c.team?.logoUrl ?? null,
+        // 오픈클래스는 팀이 없으므로 소속 아카데미 대표 이미지로 폴백.
+        teamLogoUrl: c.team?.logoUrl ?? c.academy?.imageUrl ?? null,
         academyId: c.academyId,
         dayOfWeek: days,
         time: st && et ? `${st} - ${et}` : "",

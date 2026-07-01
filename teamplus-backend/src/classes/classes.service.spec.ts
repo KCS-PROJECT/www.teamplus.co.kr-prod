@@ -8,6 +8,10 @@ import { ConfigService } from "@nestjs/config";
 import { ClassesService } from "./classes.service";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
+import { TeamsService } from "@/teams/teams.service";
+import { CreditDomainService } from "@/credits/credit-domain.service";
+import { AttendanceAuditLogService } from "@/attendance/attendance-audit-log.service";
+import { NotificationsService } from "@/notifications/notifications.service";
 
 describe("ClassesService", () => {
   let service: ClassesService;
@@ -131,6 +135,11 @@ describe("ClassesService", () => {
           provide: ConfigService,
           useValue: mockConfigService,
         },
+        // 생성자 의존성(구성 전용) — 본 스위트 테스트 경로에서 호출되지 않아 빈 mock 으로 충분.
+        { provide: TeamsService, useValue: {} },
+        { provide: CreditDomainService, useValue: {} },
+        { provide: AttendanceAuditLogService, useValue: {} },
+        { provide: NotificationsService, useValue: {} },
       ],
     }).compile();
 
@@ -275,10 +284,29 @@ describe("ClassesService", () => {
   });
 
   describe("getClubClasses", () => {
+    // getClubClasses 매퍼가 참조하는 관계/집계 필드를 채운 목록용 mock 빌더.
+    //   (_count·products·schedules 등 누락 시 매퍼가 throw.)
+    const buildListClass = (overrides: Record<string, unknown>) => ({
+      ...mockClass,
+      team: null,
+      academy: null,
+      coach: null,
+      venue: null,
+      products: [],
+      schedules: [],
+      classDays: [],
+      targetBirthYears: [],
+      category: null,
+      coachId: null,
+      approvalStatus: "APPROVED",
+      _count: { registrations: 0, waitlists: 0, enrollments: 0 },
+      ...overrides,
+    });
+
     it("should successfully retrieve club classes", async () => {
       const classes = [
-        mockClass,
-        { ...mockClass, id: "class-2", className: "중급반" },
+        buildListClass({}),
+        buildListClass({ id: "class-2", className: "중급반" }),
       ];
 
       jest
@@ -297,6 +325,42 @@ describe("ClassesService", () => {
       const result = await service.getClubClasses(mockClubId);
 
       expect(result).toEqual([]);
+    });
+
+    // 오픈클래스 로고 폴백 (2026-07-01): 팀이 없는 오픈클래스는 소속 아카데미
+    //   대표 이미지(imageUrl)를 teamLogoUrl 로 내려 목록 카드 로고로 노출.
+    it("오픈클래스는 소속 아카데미 대표 이미지를 teamLogoUrl 로 폴백한다", async () => {
+      const openClass = buildListClass({
+        id: "open-class-1",
+        teamId: null,
+        academyId: "academy-001",
+        academy: { imageUrl: "/uploads/academy/logo.png" },
+      });
+
+      jest
+        .spyOn(prismaService.class, "findMany")
+        .mockResolvedValue([openClass] as any);
+
+      const result = await service.getClubClasses(mockClubId);
+
+      expect((result[0] as any).teamLogoUrl).toBe("/uploads/academy/logo.png");
+    });
+
+    it("팀 수업은 팀 로고를 우선 사용한다", async () => {
+      const teamClass = buildListClass({
+        id: "team-class-1",
+        academyId: null,
+        team: { logoUrl: "/uploads/team/logo.png" },
+        academy: { imageUrl: "/uploads/academy/logo.png" },
+      });
+
+      jest
+        .spyOn(prismaService.class, "findMany")
+        .mockResolvedValue([teamClass] as any);
+
+      const result = await service.getClubClasses(mockClubId);
+
+      expect((result[0] as any).teamLogoUrl).toBe("/uploads/team/logo.png");
     });
   });
 

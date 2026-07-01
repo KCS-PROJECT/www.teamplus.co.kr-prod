@@ -565,10 +565,11 @@ function UsageHistoryList({
 export default function PaymentHistoryPage() {
   // [appbar-harness-v2] Status bar + Native AppBar 명시 (v2 회귀 차단).
   //   - PageAppBar 가 Web DOM 헤더를 그리는 동안 Flutter 측은 native AppBar 로 동일 영역 채움.
-  //   - showAppBar:true → 이중 헤더 방지 위해 PageAppBar 가 native 환경에선 null 반환(기존 로직).
+  //   - showAppBar:false + <PageAppBar forceNative /> → 앱/웹 동일 헤더(back·알림·메뉴) 노출.
+  //     (기존 showAppBar:true 는 앱에서 네이티브 타이틀만 남고 버튼이 사라지는 회귀였음.)
   useNativeUI({
     showStatusBar: true,
-    showAppBar: true,
+    showAppBar: false,
     appBarTitle: '결제내역',
     showBottomNav: false,
     showBackButton: true,
@@ -723,7 +724,7 @@ export default function PaymentHistoryPage() {
           대체하여 시계/종/메뉴 접근성을 차단했음. SPEC §3 분류 C 가이드에 따라 제거하고
           default 3 액션(시계/종/메뉴) 자동 노출로 복원. 도움말 진입이 필요하면 별도 entry
           (예: `/help` 링크 카드)를 페이지 body 영역에 추가 권장. */}
-      <PageAppBar title="결제내역" />
+      <PageAppBar title="결제내역" forceNative />
 
       {/* 스크롤 영역 — MobileContainer 직계 자식(overflow-y-auto)만 momentum 스크롤 대상.
           PageAppBar 는 영역 밖(고정 헤더)에 유지하고, 본문 전체를 이 컨테이너가 스크롤. */}

@@ -65,6 +65,9 @@ export class ClubMembershipDto {
   @ApiProperty({ description: "클럽명" })
   clubName!: string;
 
+  @ApiPropertyOptional({ description: "팀 로고 URL (사이드메뉴 자녀 스위처 노출용)" })
+  teamLogoUrl?: string;
+
   @ApiProperty({ description: "승인 상태" })
   approvalStatus!: string;
 
