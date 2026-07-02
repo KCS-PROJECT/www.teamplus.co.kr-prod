@@ -596,7 +596,7 @@ export const MESSAGES = {
   payment2: {
     completed: "결제가 완료되었습니다!",
     // [수정 2026-05-18] 감성 톤 — 결제 완료 화면 분위기. "결제권" 어색함 해소.
-    creditIssued: (n: number) => `이제 수업 ${n}회를 이용하실 수 있어요`,
+    creditIssued: "이제 이번 달 수업에 참여하실 수 있어요",
     processing: "처리 중...",
     securePayment: "안전하게 암호화되어 처리되었습니다",
     classLabel: "수업",
