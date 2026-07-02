@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, type ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { SubmainAppBar } from '@/components/layout/SubmainAppBar';
 import { SectionHead } from '@/components/wallet';
@@ -71,19 +71,14 @@ export default function ChildrenManagementPage() {
   const childCount = children.length;
   const canAdd = !isLoading && childCount < MAX_CHILDREN;
 
-  // [2026-06-22 사용자 직접 지시] 기본 선택을 홈/전체메뉴 선택 자녀(globalSelectedChildId) 기준으로.
-  //   사용자가 이 페이지에서 직접 탭을 누르면(selectedId) 그 선택을 우선한다.
-  const { selectedChildId: globalSelectedChildId, setSelectedChildId } = useSelectedChild();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // 선택 자녀는 전역 SelectedChildContext 단일 기준 — 페이지 탭·사이드메뉴 스위처가
+  // 같은 상태를 읽고 쓰므로 어느 쪽에서 바꿔도 즉시 양방향 동기화된다.
+  // (과거 페이지 로컬 selectedId 우선 구조는 사이드메뉴 변경이 페이지에 반영되지 않는 원인이라 제거)
+  const { selectedChildId, setSelectedChildId } = useSelectedChild();
   const selected: Child | null = useMemo(() => {
     if (children.length === 0) return null;
-    // 1) 페이지 내 직접 선택 → 2) 전역 선택 자녀 → 3) 첫 자녀 폴백.
-    return (
-      children.find((c) => c.id === selectedId) ??
-      children.find((c) => c.id === globalSelectedChildId) ??
-      children[0]
-    );
-  }, [children, selectedId, globalSelectedChildId]);
+    return children.find((c) => c.id === selectedChildId) ?? children[0];
+  }, [children, selectedChildId]);
 
   usePageReady(!isLoading);
 
@@ -179,14 +174,12 @@ export default function ChildrenManagementPage() {
                 id: c.id,
                 name: c.name,
                 init: initialOf(c.name),
+                // 사이드메뉴 자녀 스위처와 동일 컨벤션 — 칩 좌측 슬롯은 소속 팀 로고 (무소속 시 이니셜 폴백)
+                teamLogoUrl: c.teamLogoUrl ?? null,
                 grade: c.birthDate ? new Date(c.birthDate).getFullYear().toString() : '',
                 active: c.id === (selected?.id ?? children[0].id),
               }))}
-              onSelect={(id) => {
-                // 페이지 내 탭 선택을 전역(홈/전체메뉴)에도 반영 — 선택 자녀 일관 유지.
-                setSelectedId(id);
-                setSelectedChildId(id);
-              }}
+              onSelect={setSelectedChildId}
             />
 
             {selected && (
@@ -247,6 +240,8 @@ interface SwitcherTab {
   id: string;
   name: string;
   init: string;
+  /** 승인 대표 팀 로고 — 칩 좌측 슬롯에 우선 표시. 무소속이면 null → 이니셜 폴백. */
+  teamLogoUrl: string | null;
   grade: string;
   active: boolean;
 }
@@ -288,17 +283,37 @@ function ChildSwitcherTabs({
             )}
             aria-pressed={t.active}
           >
-            {/* ref: avatar 24×24 rounded full / active: white/20 bg + white fg / inactive: blue50 bg + blue600 fg */}
-            <span
-              className={cn(
-                'w-7 h-7 rounded-full grid place-items-center text-card-meta font-extrabold',
-                t.active
-                  ? 'bg-white/20 text-white dark:bg-rink-900/20 dark:text-rink-900'
-                  : 'bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-500/15 dark:text-it-blue-300',
-              )}
-            >
-              {t.init}
-            </span>
+            {/* 칩 좌측 슬롯 — 팀 로고 우선 (사이드메뉴 스위처 컨벤션), 무소속은 이니셜 폴백.
+                로고는 활성(파란 칩)에서도 식별되도록 흰 배경 + 얇은 링으로 분리. */}
+            {resolveImageSrc(t.teamLogoUrl) ? (
+              <span
+                className={cn(
+                  'w-7 h-7 rounded-full shrink-0 overflow-hidden bg-white',
+                  t.active
+                    ? 'ring-1 ring-white/50'
+                    : 'ring-1 ring-it-line dark:ring-rink-700',
+                )}
+                aria-hidden="true"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={resolveImageSrc(t.teamLogoUrl)}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              </span>
+            ) : (
+              <span
+                className={cn(
+                  'w-7 h-7 rounded-full grid place-items-center text-card-meta font-extrabold',
+                  t.active
+                    ? 'bg-white/20 text-white dark:bg-rink-900/20 dark:text-rink-900'
+                    : 'bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-500/15 dark:text-it-blue-300',
+                )}
+              >
+                {t.init}
+              </span>
+            )}
             {t.name}
             <span
               className={cn(
