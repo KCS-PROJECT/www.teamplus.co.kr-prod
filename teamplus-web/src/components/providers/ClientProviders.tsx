@@ -30,6 +30,7 @@ import { SessionExpiredGate } from "@/components/auth/SessionExpiredGate";
 import { ActivityTracker } from "@/components/providers/ActivityTracker";
 import { AppBackHandlerSetup } from "@/components/providers/AppBackHandlerSetup";
 import { AppStatusController } from "@/components/providers/AppStatusController";
+import { AndroidScrollGeometryFix } from "@/components/providers/AndroidScrollGeometryFix";
 import { devLog } from "@/lib/logger";
 
 // auth 라우트 패턴 — NotificationProvider 스킵하여 콜드 스타트 부하 감소
@@ -305,6 +306,9 @@ function BridgeErrorHandlerSetup({ children }: { children: ReactNode }) {
           표시를 보장. useNativeUI 미호출 페이지에서 로딩이 끈 상태바가 복원되지 않던
           회귀를 단일 진입점에서 해소. 네이티브 전용(컴포넌트 내부 isNativeApp 가드). */}
       <AppStatusController />
+      {/* Android WebView 스크롤 범위 잔존 버그 워크어라운드 — 라우트 전환 후
+          스크롤 컨테이너 지오메트리 재계산 강제. Android 네이티브 전용(내부 가드). */}
+      <AndroidScrollGeometryFix />
       {children}
     </>
   );
