@@ -303,6 +303,7 @@ export default function TeamEditPage() {
                 currentUrl={resolveImageSrc(logoUrl, team?.updatedAt) ?? null}
                 size={92}
                 label="팀 로고 변경"
+                contextLabel="팀 로고"
                 refType="team_logo"
                 refId={teamId}
                 // 팀 로고는 비-인물 컨텍스트 → 도메인 아이콘(sports_hockey) + 사각형(클럽 엠블럼) 컨벤션.

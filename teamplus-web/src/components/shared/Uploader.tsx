@@ -100,6 +100,11 @@ export interface UploaderProps {
   rightsNotice?: boolean;
   /** 접근성 라벨 / 표시 라벨 */
   label?: string;
+  /**
+   * 검증 에러 메시지에 사용할 문맥 라벨 (예: '팀 로고', '자녀 사진').
+   * 미지정 시 `UPLOAD_LIMITS[category].label` 사용 (avatar 는 기본 '프로필 사진').
+   */
+  contextLabel?: string;
   className?: string;
 
   // ── avatar 전용 ──
@@ -182,6 +187,7 @@ export function Uploader({
   childMode = false,
   rightsNotice = false,
   label,
+  contextLabel,
   className,
   currentUrl,
   size = 96,
@@ -260,9 +266,14 @@ export function Uploader({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // avatar 변형은 새 파일 선택 시 기존 항목을 항상 교체하므로, 이미 채워진
+  // entries 는 잔여 슬롯 계산에서 제외한다 (그렇지 않으면 재선택 시 항상 초과로 판정됨).
   const remaining = useMemo(
-    () => Math.max(0, effectiveMaxFiles - entries.length),
-    [effectiveMaxFiles, entries.length],
+    () =>
+      variant === 'avatar'
+        ? effectiveMaxFiles
+        : Math.max(0, effectiveMaxFiles - entries.length),
+    [variant, effectiveMaxFiles, entries.length],
   );
 
   // ── 진행률 업데이트 (entry id 기반) ──
@@ -409,9 +420,17 @@ export function Uploader({
       const incomingArray = Array.from(incoming);
       if (incomingArray.length === 0) return;
 
+      // avatar 변형은 새 선택이 항상 기존 항목을 교체 — 카운트 검증에 기존 개수를 합산하지 않음
+      const existingCountForValidation = variant === 'avatar' ? 0 : entries.length;
+
       // SoT — 카운트 사전 검증
       try {
-        validateFileCount(incomingArray.length, category, entries.length);
+        validateFileCount(
+          incomingArray.length,
+          category,
+          existingCountForValidation,
+          contextLabel,
+        );
       } catch (err) {
         const message = translateError(err);
         setGlobalError(message);
@@ -428,7 +447,7 @@ export function Uploader({
           break;
         }
         try {
-          validateFile(f, category);
+          validateFile(f, category, contextLabel);
           accepted.push(f);
         } catch (err) {
           rejectedMessages.push(
@@ -483,6 +502,7 @@ export function Uploader({
       effectiveMaxFiles,
       remaining,
       variant,
+      contextLabel,
       uploadEntry,
       onError,
       translateError,
@@ -656,7 +676,7 @@ export function Uploader({
               childMode ? 'text-base' : 'text-xs',
             )}
           >
-            {limit.label} · 최대 {Math.floor(limit.maxSize / 1024 / 1024)}MB · {entries.length}/{effectiveMaxFiles}
+            {contextLabel ?? limit.label} · 최대 {Math.floor(limit.maxSize / 1024 / 1024)}MB · {entries.length}/{effectiveMaxFiles}
           </span>
         </div>
       )}
