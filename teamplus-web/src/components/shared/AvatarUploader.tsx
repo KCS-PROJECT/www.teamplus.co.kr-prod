@@ -26,6 +26,11 @@ export interface AvatarUploaderProps {
   size?: number;
   /** 접근성 라벨 */
   label?: string;
+  /**
+   * 검증 에러 메시지에 사용할 문맥 라벨 (예: '팀 로고', '자녀 사진').
+   * 미지정 시 기본값 '프로필 사진' 사용.
+   */
+  contextLabel?: string;
   /** WCAG AAA 아동 변형 (72×72dp 이상 자동) */
   childMode?: boolean;
   className?: string;
@@ -52,6 +57,7 @@ export function AvatarUploader({
   onUploaded,
   size = 96,
   label,
+  contextLabel,
   childMode,
   className,
   refType,
@@ -67,6 +73,7 @@ export function AvatarUploader({
       currentUrl={currentUrl}
       size={size}
       label={label}
+      contextLabel={contextLabel}
       childMode={childMode}
       className={className}
       refType={refType}

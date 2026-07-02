@@ -2044,7 +2044,7 @@ export class AdminService {
             classId: true,
             childId: true,
             status: true,
-            product: { select: { price: true } },
+            product: { select: { price: true, billingTiming: true } },
             payment: { select: { amount: true, paymentStatus: true } },
           },
         })
@@ -2169,8 +2169,14 @@ export class AdminService {
           : 0;
         const regs = regByClass.get(c.id) ?? [];
         for (const reg of regs) {
+          // 배치 해제(inactive)된 학생은 명단 외 — 완납도 미납도 아니므로 집계 제외.
+          if (reg.status === "inactive") continue;
           const e = enrollMap.get(`${c.id}:${reg.userId}`);
-          const paid = reg.status !== "inactive" && isPaid(e);
+          // BOTH 수업에서 후불 상품을 선택한 학생은 선결제가 없어 여기서 미납으로
+          //  오분류된다 — 이들의 청구/수납은 후불 루프(MonthlyPostpaidBillingLine)가
+          //  담당하므로 선불 루프에서 제외.
+          if (e?.product?.billingTiming === "POSTPAID") continue;
+          const paid = isPaid(e);
           if (paid) {
             paidMembers += 1;
             paidAmount +=

@@ -63,7 +63,7 @@ function SuccessAnimation({
       <p className="text-card-emphasis text-it-blue-600 dark:text-it-blue-300 font-bold bg-it-blue-50 dark:bg-it-blue-500/15 px-4 py-1.5 rounded-w-pill inline-block">
         {isPostpaid
           ? MESSAGES.postpaidPay.completedNote
-          : MESSAGES.payment2.creditIssued(creditsIssued)}
+          : MESSAGES.payment2.creditIssued}
       </p>
     </div>
   );

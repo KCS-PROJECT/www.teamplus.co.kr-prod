@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:permission_handler/permission_handler.dart';
+import '../../../../core/security/biometric_auth_messages.dart';
 import '../providers/signup_flow_provider.dart';
 import '../widgets/signup_button.dart';
 import '../widgets/signup_design_tokens.dart';
@@ -25,26 +26,32 @@ class _SignupPermissionsScreenState
   // 2026-05-26: 위치·캘린더·연락처·신체활동 항목 제거.
   // 실제 사용 기능·플러그인이 없어 미사용 민감 권한 요청은 스토어 리젝 사유(iOS 5.1.1·Google Play 민감권한).
   // 해당 기능 구현 시 항목 + 권한 요청 + 매니페스트/Info.plist 선언을 함께 재추가할 것.
-  static const _items = <_PermItem>[
-    _PermItem(
-        icon: Icons.camera_alt_outlined, name: '카메라', desc: 'QR · 바코드 정보 인식'),
-    _PermItem(
-        icon: Icons.notifications_none_rounded,
-        name: '알림',
-        desc: '수업 시작 · 코치 메모 알림'),
-    _PermItem(
-        icon: Icons.face_outlined,
-        name: 'Face ID',
-        desc: 'Face ID 로그인 · 결제 인증'),
-    _PermItem(
-        icon: Icons.image_outlined, name: '이미지 저장', desc: '영수증 · 진도 리포트 저장'),
-  ];
+  // 생체인증 항목은 플랫폼별 수단명(iOS Face ID / Android 생체인증)을 반영하므로 런타임 getter.
+  List<_PermItem> get _items => <_PermItem>[
+        const _PermItem(
+            icon: Icons.camera_alt_outlined,
+            name: '카메라',
+            desc: 'QR · 바코드 정보 인식'),
+        const _PermItem(
+            icon: Icons.notifications_none_rounded,
+            name: '알림',
+            desc: '수업 시작 · 코치 메모 알림'),
+        _PermItem(
+            icon: Platform.isIOS ? Icons.face_outlined : Icons.fingerprint,
+            name: biometricMethodLabel,
+            desc: '$biometricMethodLabel 로그인 · 결제 인증'),
+        const _PermItem(
+            icon: Icons.image_outlined,
+            name: '이미지 저장',
+            desc: '영수증 · 진도 리포트 저장'),
+      ];
 
   bool _isRequesting = false;
 
   /// 선택적 권한을 OS에 순차 요청 (UI 안내 항목과 1:1 매칭).
   /// - 카메라 / 알림 / 이미지 저장 → `permission_handler`
-  /// - Face ID → `local_auth` (OS 권한 모델이 없어 첫 authenticate 호출 시점에 다이얼로그 노출)
+  /// - 생체인증(iOS Face ID·Touch ID / Android 지문·얼굴) → `local_auth`
+  ///   (OS 권한 모델이 없어 첫 authenticate 호출 시점에 다이얼로그 노출)
   /// - 거부/영구거부 도 silent — A6 약관 동의로 계속 진행 (선택적 권한이므로)
   /// - 2026-05-26: 위치·캘린더·연락처·신체활동 제거 (미구현 기능 → 미사용 민감 권한 리젝 방지).
   Future<void> _requestAllPermissions() async {
@@ -79,8 +86,8 @@ class _SignupPermissionsScreenState
       }
     }
 
-    // 2) Face ID — local_auth 로 사전 인증 호출 → 권한 다이얼로그 + 생체 등록 확인
-    await _requestFaceIdConsent();
+    // 2) 생체인증 — local_auth 로 사전 인증 호출 → 권한 다이얼로그 + 생체 등록 확인
+    await _requestBiometricConsent();
 
     if (!mounted) return;
 
@@ -89,11 +96,11 @@ class _SignupPermissionsScreenState
     context.push('/signup/agreements');
   }
 
-  /// Face ID / Touch ID 사전 동의.
-  /// - `local_auth` 는 `authenticate()` 호출 시점에 iOS Face ID 권한 다이얼로그를
-  ///   띄우므로 가입 단계에서 한 번 실행해 UI 안내(8개)와 실제 동작을 일치시킨다.
+  /// 생체인증(iOS Face ID·Touch ID / Android 지문·얼굴) 사전 동의.
+  /// - `local_auth` 는 `authenticate()` 호출 시점에 OS 생체인증 다이얼로그를
+  ///   띄우므로 가입 단계에서 한 번 실행해 UI 안내 항목과 실제 동작을 일치시킨다.
   /// - 실패/취소 모두 silent — 선택적 권한이므로 가입 흐름 차단 X
-  Future<void> _requestFaceIdConsent() async {
+  Future<void> _requestBiometricConsent() async {
     try {
       final localAuth = LocalAuthentication();
       final isSupported = await localAuth.isDeviceSupported();
@@ -101,20 +108,21 @@ class _SignupPermissionsScreenState
       if (!isSupported || !canCheck) {
         if (kDebugMode) {
           debugPrint(
-              '[A5 Permission] Face ID 미지원 (supported=$isSupported, canCheck=$canCheck) → 스킵');
+              '[A5 Permission] 생체인증 미지원 (supported=$isSupported, canCheck=$canCheck) → 스킵');
         }
         return;
       }
       final ok = await localAuth.authenticate(
-        localizedReason: '팀플러스 로그인·결제에 사용할 Face ID 사용을 허용해 주세요.',
+        localizedReason: biometricReason('팀플러스 로그인·결제에 사용할'),
+        authMessages: kBiometricAuthMessages,
         biometricOnly: true,
         persistAcrossBackgrounding: false,
       );
       if (kDebugMode) {
-        debugPrint('[A5 Permission] Face ID 사전 동의 결과: $ok');
+        debugPrint('[A5 Permission] 생체인증 사전 동의 결과: $ok');
       }
     } catch (e) {
-      debugPrint('[A5 Permission] Face ID 사전 동의 예외 (무시): $e');
+      debugPrint('[A5 Permission] 생체인증 사전 동의 예외 (무시): $e');
     }
   }
 

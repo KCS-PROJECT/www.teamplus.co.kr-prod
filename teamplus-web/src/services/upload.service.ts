@@ -76,6 +76,7 @@ export class UploadCancelledError extends Error {
 export function validateFile(
   file: File,
   category: UploadOptions['category'],
+  labelOverride?: string,
 ): void {
   if (!file) {
     throw new UploadValidationError('EMPTY', '업로드할 파일이 없습니다.');
@@ -87,6 +88,7 @@ export function validateFile(
       '알 수 없는 업로드 카테고리입니다.',
     );
   }
+  const label = labelOverride ?? limit.label;
 
   // 1) 보안 — 위험 확장자 블랙리스트 차단 (전역, 카테고리 무관)
   //    파일명 위변조(MIME 우회) 방지를 위해 확장자 기반 추가 검증.
@@ -109,7 +111,7 @@ export function validateFile(
     const allowed = limit.acceptExtensions.map((e) => `.${e}`).join(', ');
     throw new UploadValidationError(
       'INVALID_TYPE',
-      `${limit.label}은(는) ${allowed} 확장자만 업로드할 수 있습니다.`,
+      `${label} 업로드는 ${allowed} 확장자만 가능합니다.`,
     );
   }
 
@@ -145,6 +147,7 @@ export function validateFileCount(
   count: number,
   category: UploadOptions['category'],
   existingCount = 0,
+  labelOverride?: string,
 ): void {
   const limit = UPLOAD_LIMITS[category];
   if (!limit) {
@@ -155,9 +158,10 @@ export function validateFileCount(
   }
   const total = count + existingCount;
   if (total > limit.maxCount) {
+    const label = labelOverride ?? limit.label;
     throw new UploadValidationError(
       'TOO_MANY',
-      `${limit.label}은(는) 최대 ${limit.maxCount}장까지 업로드할 수 있습니다.`,
+      `${label} 업로드는 최대 ${limit.maxCount}장까지 가능합니다.`,
     );
   }
 }
