@@ -144,7 +144,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>팀플러스가 QR코드 출석 체크인 및 프로필 사진·첨부파일 촬영을 위해 카메라를 사용합니다.</string>
 	<key>NSFaceIDUsageDescription</key>
-	<string>팀플러스 앱 보호를 위해 얼굴인식으로 앱 잠금을 해제합니다.</string>
+	<string>팀플러스 앱 잠금 해제와 로그인·결제 본인 확인을 위해 Face ID를 사용합니다.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>팀플러스가 동영상 촬영·업로드 시 마이크를 사용합니다.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

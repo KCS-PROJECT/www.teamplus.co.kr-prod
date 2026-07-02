@@ -4,6 +4,7 @@ import 'package:local_auth/local_auth.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 import '../logging/app_logger.dart';
+import 'biometric_auth_messages.dart';
 
 /// 생체인증 가용성 상태
 enum BiometricAvailability {
@@ -120,6 +121,7 @@ class BiometricService {
       // - useErrorDialogs 는 3.x 에서 제거 (항상 false 동작)
       final isAuthenticated = await _localAuth.authenticate(
         localizedReason: reason,
+        authMessages: kBiometricAuthMessages,
         persistAcrossBackgrounding: true,
         sensitiveTransaction: true,
       );
