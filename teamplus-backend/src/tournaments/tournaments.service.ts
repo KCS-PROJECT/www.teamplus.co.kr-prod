@@ -61,6 +61,7 @@ export class TournamentsService {
         selectedParticipantIds: true,
         status: true,
         billingMode: true,
+        endDate: true,
       },
     });
     if (!tournament) {
@@ -73,7 +74,15 @@ export class TournamentsService {
         "후불 대회는 대회 종료 후 일괄 청구됩니다.",
       );
     }
-    if (tournament.status === "cancelled" || tournament.status === "finished") {
+    // [2026-06-22] 종료일이 지난 대회도 결제 차단 — status 가 자동으로 finished 로 전이되지
+    //   않으므로 날짜 기준 종료도 인정한다(목록·상세 배지의 종료 보정과 일관).
+    const endByDate =
+      tournament.endDate != null && new Date(tournament.endDate) < new Date();
+    if (
+      tournament.status === "cancelled" ||
+      tournament.status === "finished" ||
+      endByDate
+    ) {
       throw new BadRequestException("이미 종료된 대회는 결제할 수 없습니다.");
     }
 
@@ -532,6 +541,12 @@ export class TournamentsService {
             location: true,
           },
         },
+        venue: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         _count: {
           select: {
             matches: true,
@@ -602,10 +617,17 @@ export class TournamentsService {
         billingMode: true,
         maxParticipants: true,
         registrationDeadline: true,
+        location: true,
         rink: {
           select: {
             name: true,
             location: true,
+          },
+        },
+        venue: {
+          select: {
+            id: true,
+            name: true,
           },
         },
         team: {
@@ -652,11 +674,13 @@ export class TournamentsService {
           name: tournament.name,
           startDate: tournament.startDate,
           endDate: tournament.endDate,
+          // [2026-06-22] venue?.name(대회 전체 장소) 폴백 추가 + team.location/team.name(팀명)
+          //   제거 — 장소를 선택해도 "장소 추후 안내"로 뜨거나 팀명이 장소로 노출되던 버그 수정.
           location:
+            tournament.location ||
+            tournament.venue?.name ||
             tournament.rink?.location ||
             tournament.rink?.name ||
-            tournament.team?.location ||
-            tournament.team?.name ||
             "장소 추후 안내",
           entryFee: Number(tournament.feePerGame ?? 0),
           billingMode: tournament.billingMode,
@@ -967,6 +991,18 @@ export class TournamentsService {
       throw new NotFoundException("대회를 찾을 수 없습니다.");
     }
 
+    // [2026-06-22] 종료/취소된 대회는 구조 수정 차단 — 경기 결과·후불 정산은 별도 경로에서 처리.
+    //   status 자동 전이가 없으므로 종료일(endDate) 경과도 종료로 인정.
+    const endedByDate =
+      tournament.endDate != null && new Date(tournament.endDate) < new Date();
+    if (
+      tournament.status === "finished" ||
+      tournament.status === "cancelled" ||
+      endedByDate
+    ) {
+      throw new BadRequestException("종료된 대회는 수정할 수 없습니다.");
+    }
+
     // 날짜 검증
     const startDate = dto.startDate
       ? new Date(dto.startDate)
@@ -1112,6 +1148,24 @@ export class TournamentsService {
 
     if (!tournament) {
       throw new NotFoundException("대회를 찾을 수 없습니다.");
+    }
+
+    // [2026-06-22] 결제·정산 이력이 있는 대회는 삭제 차단 — 재무·기록 보존.
+    //   실결제(paymentId 연결된 PAID) 또는 정산(GameExpense)이 있으면 삭제 불가.
+    const paidCount = await this.prisma.tournamentRegistration.count({
+      where: {
+        tournamentId: id,
+        paymentStatus: "PAID",
+        paymentId: { not: null },
+      },
+    });
+    const expenseCount = await this.prisma.gameExpense.count({
+      where: { OR: [{ tournamentId: id }, { match: { tournamentId: id } }] },
+    });
+    if (paidCount > 0 || expenseCount > 0) {
+      throw new BadRequestException(
+        "결제 또는 정산 이력이 있는 대회는 삭제할 수 없습니다.",
+      );
     }
 
     // [2026-06-15] 경기가 있어도 대회를 삭제할 수 있도록 연관 데이터를 트랜잭션으로 함께 삭제.
@@ -1606,9 +1660,10 @@ export class TournamentsService {
     //  · 배열 있으면 해당 연도들만 정확 매칭(연도별 1년 범위 OR).
     //  · 비면 기존 from/to 단일 범위(gte~lte).
     //  연도 수가 적어 OR 비용은 무시 가능.
+    // KST 연도 경계 명시(+09:00) — 서버 TZ 의존 제거, 기존 KST 서버 동작과 동일
     const yearRange = (y: number) => ({
-      gte: new Date(`${y}-01-01T00:00:00`),
-      lte: new Date(`${y}-12-31T23:59:59`),
+      gte: new Date(`${y}-01-01T00:00:00+09:00`),
+      lte: new Date(`${y}-12-31T23:59:59+09:00`),
     });
 
     let birthDateFilter: {

@@ -24,6 +24,10 @@ import {
   type ViewerLike,
 } from "@/common/utils/viewer-birth-years.util";
 import { sanitizeStrict } from "@/common/utils/sanitize.util";
+import {
+  resolveScheduleTime,
+  resolveScheduleEndTime,
+} from "@/common/utils/schedule-time.util";
 import { UploadCleanupService } from "@/common/upload-cleanup.service";
 
 @Injectable()
@@ -656,20 +660,9 @@ export class AcademyService {
       const days = Array.isArray(c.classDays)
         ? (c.classDays as string[]).join(", ")
         : "";
-      const st = c.startTime
-        ? new Date(c.startTime).toLocaleTimeString("ko-KR", {
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-          })
-        : "";
-      const et = c.endTime
-        ? new Date(c.endTime).toLocaleTimeString("ko-KR", {
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-          })
-        : "";
+      // Class.startTime(naive 벽시계 저장)은 getUTC 추출이 정답 — toLocale류는 서버 TZ 재변환으로 +9h 오표시
+      const st = resolveScheduleTime(null, c.startTime) ?? "";
+      const et = resolveScheduleEndTime(null, c.endTime) ?? "";
       const coachName = c.coach
         ? `${c.coach.lastName ?? ""}${c.coach.firstName ?? ""}`.trim() ||
           c.instructorName

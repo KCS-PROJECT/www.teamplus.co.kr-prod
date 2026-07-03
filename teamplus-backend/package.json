@@ -7,7 +7,8 @@
   "license": "MIT",
   "scripts": {
     "prisma:generate": "prisma generate",
-    "prebuild": "npm run prisma:generate && rimraf dist tsconfig.tsbuildinfo",
+    "tz:guard": "node tools/tz-guard.mjs",
+    "prebuild": "npm run tz:guard && npm run prisma:generate && rimraf dist tsconfig.tsbuildinfo",
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
