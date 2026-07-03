@@ -1,6 +1,10 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
+import {
+  kstTodayUtcMidnight,
+  addUtcDays,
+} from "@/common/utils/kst-date.util";
 
 /**
  * ChildDashboardService
@@ -44,10 +48,11 @@ export class ChildDashboardService {
     try {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const sevenDaysAgo = new Date(today);
-      sevenDaysAgo.setDate(today.getDate() - 6);
+      // scheduledDate(@db.Date)는 UTC 자정 규약 — 이 컬럼 경계·in-memory 월 버킷은 KST 달력일의
+      // UTC 자정을 쓴다. today(서버-로컬)는 A군 컬럼(createdAt·expiresAt) 계산에 계속 사용.
+      const sdToday = kstTodayUtcMidnight();
+      const tomorrow = addUtcDays(sdToday, 1);
+      const sevenDaysAgo = addUtcDays(sdToday, -6);
 
       // Step 1: 멤버십 + 클럽 + 코치 + 오늘/주간 스케줄 (심층 include, 단일 SQL JOIN)
       const membership = await this.prisma.teamMember.findFirst({
@@ -77,7 +82,7 @@ export class ChildDashboardService {
                   instructorName: true,
                   schedules: {
                     where: {
-                      scheduledDate: { gte: today, lt: tomorrow },
+                      scheduledDate: { gte: sdToday, lt: tomorrow },
                       isCancelled: false,
                     },
                     orderBy: { scheduledDate: "asc" },
@@ -147,18 +152,14 @@ export class ChildDashboardService {
       );
       const thirtyDaysLater = new Date(today);
       thirtyDaysLater.setDate(today.getDate() + 30);
-      // 6개월 출석 추이 시작일
+      // 6개월 출석 추이 시작일 (scheduledDate 필터 — UTC 자정)
       const sixMonthsStart = new Date(
-        today.getFullYear(),
-        today.getMonth() - 5,
-        1,
+        Date.UTC(sdToday.getUTCFullYear(), sdToday.getUTCMonth() - 5, 1),
       );
-      // 다가오는 일정 — 오늘 ~ 30일 후
-      const upcomingEnd = new Date(today);
-      upcomingEnd.setDate(today.getDate() + 30);
-      // 2026-04-29 (3차 보강): 클럽 내 30일 출석 랭킹 산출용
-      const thirtyDaysAgo = new Date(today);
-      thirtyDaysAgo.setDate(today.getDate() - 30);
+      // 다가오는 일정 — 오늘 ~ 30일 후 (scheduledDate 필터 — UTC 자정)
+      const upcomingEnd = addUtcDays(sdToday, 30);
+      // 2026-04-29 (3차 보강): 클럽 내 30일 출석 랭킹 산출용 (scheduledDate 필터 — UTC 자정)
+      const thirtyDaysAgo = addUtcDays(sdToday, -30);
       const teamId = membership.team?.id ?? null;
 
       // Step 2: 지난 7일 출석 + 최신 공지 + (2차 통합) creditSummary/attendanceTrend/upcomingSchedules
@@ -241,7 +242,7 @@ export class ChildDashboardService {
         this.prisma.classSchedule.findMany({
           where: {
             isCancelled: false,
-            scheduledDate: { gte: today, lte: upcomingEnd },
+            scheduledDate: { gte: sdToday, lte: upcomingEnd },
             class: {
               enrollments: {
                 some: { childId: userId, status: "paid" },
@@ -398,23 +399,21 @@ export class ChildDashboardService {
 
       // ② 출석 추이 6개월 (학부모 attendanceTrend 와 동일 구조)
       const attendanceTrend = Array.from({ length: 6 }, (_, i) => {
+        // scheduledDate(UTC 자정) 대상 월 버킷 — 경계·라벨 모두 UTC 기준으로 통일.
         const mStart = new Date(
-          today.getFullYear(),
-          today.getMonth() - (5 - i),
-          1,
+          Date.UTC(sdToday.getUTCFullYear(), sdToday.getUTCMonth() - (5 - i), 1),
         );
-        const mEnd = new Date(
-          today.getFullYear(),
-          today.getMonth() - (5 - i) + 1,
-          0,
-          23,
-          59,
-          59,
+        const mEndNext = new Date(
+          Date.UTC(
+            sdToday.getUTCFullYear(),
+            sdToday.getUTCMonth() - (5 - i) + 1,
+            1,
+          ),
         );
         const monthAtts = sixMonthAttendances.filter(
           (a) =>
             a.schedule.scheduledDate >= mStart &&
-            a.schedule.scheduledDate <= mEnd,
+            a.schedule.scheduledDate < mEndNext,
         );
         const present = monthAtts.filter(
           (a) =>
@@ -422,7 +421,7 @@ export class ChildDashboardService {
         ).length;
         const total = monthAtts.length;
         return {
-          month: `${mStart.getFullYear()}-${String(mStart.getMonth() + 1).padStart(2, "0")}`,
+          month: `${mStart.getUTCFullYear()}-${String(mStart.getUTCMonth() + 1).padStart(2, "0")}`,
           rate: total > 0 ? Math.round((present / total) * 100) : 0,
           present,
           total,

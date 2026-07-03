@@ -61,7 +61,7 @@ function pad2(n: number): string {
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
-/** 일정 1건 라벨 — 회차 시각(startTime)이 있으면 그 시간을, 없으면 scheduledDate 시각을 표시. */
+/** 일정 1건 라벨 — 회차 시각(startTime)이 있으면 그 시간을, 없으면 날짜만 표시. */
 function formatScheduleLabel(s: ScheduleItem): string {
   const d = new Date(s.scheduledDate);
   if (isNaN(d.getTime())) return '-';
@@ -69,7 +69,8 @@ function formatScheduleLabel(s: ScheduleItem): string {
   if (s.startTime) {
     return `${dateStr} ${s.startTime}${s.endTime ? `~${s.endTime}` : ''}`;
   }
-  return `${dateStr} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  // scheduledDate(@db.Date)엔 시각 성분이 없어(항상 UTC 자정) 유도 시 오표시 → 날짜만.
+  return dateStr;
 }
 
 /* ─────────────────────────── Component ─────────────────────────── */

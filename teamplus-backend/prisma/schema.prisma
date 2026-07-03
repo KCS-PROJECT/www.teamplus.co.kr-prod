@@ -25,16 +25,16 @@ model User {
   passwordHash String   @map("password_hash")
   userType     UserType @map("user_type")
   createdId    String?  @map("created_id") /// 생성자 ID
-  createdAt    DateTime @default(now()) @map("created_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedId    String?  @map("updated_id") /// 수정자 ID
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // 본인인증 정보 (CI/DI)
   ci         String?   @unique /// 연계정보 (Connecting Information) - 암호화 저장(랜덤 IV, 복호화 전용)
   ciHash     String?   @unique @map("ci_hash") /// [2026-06-10] CI 결정적 HMAC 인덱스 — 1인1계정 중복가입 차단용 (랜덤 IV 암호문은 동등비교 불가)
   di         String? /// 중복가입확인정보 (Duplicate Information) - 암호화 저장
   isVerified Boolean   @default(false) @map("is_verified") /// 본인인증 완료 여부
-  verifiedAt DateTime? @map("verified_at") /// 본인인증 완료 시간
+  verifiedAt DateTime? @map("verified_at") @db.Timestamptz(3) /// 본인인증 완료 시간
 
   // 생년월일 / 한국 나이
   birthDate DateTime? @map("birth_date") /// 생년월일 (TEEN/CHILD 회원가입 시 저장)
@@ -43,12 +43,12 @@ model User {
   // 회원 탈퇴 / 휴면 관련
   status              String    @default("ACTIVE") /// ACTIVE|WITHDRAW_PENDING|WITHDRAWN|DORMANT
   tokenVersion        Int       @default(1) @map("token_version") /// 모든 기기 로그아웃 시 +1 → 기존 JWT 전체 무효화 (logout-all)
-  withdrawRequestedAt DateTime? @map("withdraw_requested_at") /// 탈퇴 요청 일시
+  withdrawRequestedAt DateTime? @map("withdraw_requested_at") @db.Timestamptz(3) /// 탈퇴 요청 일시
   withdrawReason      String?   @map("withdraw_reason") @db.Text /// 탈퇴 사유
-  withdrawProcessedAt DateTime? @map("withdraw_processed_at") /// 탈퇴 처리(비식별화) 완료 일시
-  lastLoginAt         DateTime? @map("last_login_at") /// 마지막 로그인 일시 (휴면 계산 기준)
-  lastActiveAt        DateTime? @map("last_active_at") /// 마지막 API 활동 시각 (Redis 5분 throttle)
-  dormantAt           DateTime? @map("dormant_at") /// 휴면 전환 일시
+  withdrawProcessedAt DateTime? @map("withdraw_processed_at") @db.Timestamptz(3) /// 탈퇴 처리(비식별화) 완료 일시
+  lastLoginAt         DateTime? @map("last_login_at") @db.Timestamptz(3) /// 마지막 로그인 일시 (휴면 계산 기준)
+  lastActiveAt        DateTime? @map("last_active_at") @db.Timestamptz(3) /// 마지막 API 활동 시각 (Redis 5분 throttle)
+  dormantAt           DateTime? @map("dormant_at") @db.Timestamptz(3) /// 휴면 전환 일시
 
   // 추가 정보
   gender        String? @map("gender") /// 성별 (M: 남, F: 여)
@@ -61,10 +61,10 @@ model User {
   // 약관 동의 버전 (L-02 — 2026-05-21 추가, 약관 변경 시 재동의 강제)
   agreedTermsVersion   String?   @map("agreed_terms_version") /// 마지막 동의한 이용약관 버전 (AppSettings.termsVersion 과 비교)
   agreedPrivacyVersion String?   @map("agreed_privacy_version") /// 마지막 동의한 개인정보처리방침 버전
-  agreedAt             DateTime? @map("agreed_at") /// 마지막 약관 동의 시각
+  agreedAt             DateTime? @map("agreed_at") @db.Timestamptz(3) /// 마지막 약관 동의 시각
 
   // Soft Delete (NEW-06 — 2026-05-21 추가, PIPA 30일 보존)
-  deletedAt DateTime? @map("deleted_at") /// 논리적 삭제 시각 (NULL = active, 값 있음 = soft-deleted)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3) /// 논리적 삭제 시각 (NULL = active, 값 있음 = soft-deleted)
 
   // 면책 동의서 (C-09 — 2026-05-21 추가)
   liabilityWaivers LiabilityWaiver[]
@@ -298,7 +298,7 @@ enum UserType {
 model ParentProfile {
   id        String   @id @default(cuid())
   userId    String   @unique @map("user_id")
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -310,7 +310,7 @@ model CoachProfile {
   id        String   @id @default(cuid())
   userId    String   @unique @map("user_id")
   teamId    String?  @map("team_id")
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   team Team? @relation(fields: [teamId], references: [id], onDelete: SetNull)
@@ -327,7 +327,7 @@ model ChildProfile {
   /// 자녀 프로필 사진 URL — 학부모/자녀가 자녀 등록 또는 수정 시 업로드.
   /// `/uploads/avatar/...` 경로 (UploadedFile.url SoT).
   imageUrl         String?   @map("image_url") @db.Text
-  pinVerifiedUntil DateTime? @map("pin_verified_until")
+  pinVerifiedUntil DateTime? @map("pin_verified_until") @db.Timestamptz(3)
   /// 학습 레벨 (1-5: 1=입문, 2=기초, 3=중급, 4=상급, 5=마스터)
   currentLevel     Int       @default(1) @map("current_level")
   levelLabel       String    @default("입문") @map("level_label")
@@ -336,8 +336,8 @@ model ChildProfile {
   /// 다음 평가 테스트 예정일
   nextTestDate     DateTime? @map("next_test_date")
   /// 마지막 평가일
-  lastEvaluatedAt  DateTime? @map("last_evaluated_at")
-  createdAt        DateTime  @default(now()) @map("created_at")
+  lastEvaluatedAt  DateTime? @map("last_evaluated_at") @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   childPin ChildPin?
@@ -352,11 +352,11 @@ model ChildPin {
   childProfileId String    @unique @map("child_profile_id")
   pinHash        String    @map("pin_hash") // bcrypt salt=10
   failedAttempts Int       @default(0) @map("failed_attempts")
-  lockedUntil    DateTime? @map("locked_until")
+  lockedUntil    DateTime? @map("locked_until") @db.Timestamptz(3)
   lastSetBy      String    @map("last_set_by") // PARENT User.id
-  lastVerifiedAt DateTime? @map("last_verified_at")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
+  lastVerifiedAt DateTime? @map("last_verified_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   childProfile ChildProfile @relation(fields: [childProfileId], references: [id], onDelete: Cascade)
 
@@ -395,10 +395,10 @@ model ChildConsent {
   /// 동의 시 User-Agent.
   userAgent           String?   @map("user_agent") @db.Text
   /// 동의 철회 시각 (NULL=유효, 값 있음=철회됨).
-  revokedAt           DateTime? @map("revoked_at")
-  signedAt            DateTime  @default(now()) @map("signed_at")
-  createdAt           DateTime  @default(now()) @map("created_at")
-  updatedAt           DateTime  @updatedAt @map("updated_at")
+  revokedAt           DateTime? @map("revoked_at") @db.Timestamptz(3)
+  signedAt            DateTime  @default(now()) @map("signed_at") @db.Timestamptz(3)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([guardianUserId])
   @@index([childUserId])
@@ -438,8 +438,8 @@ model Team {
   seasonLosses         Int       @default(0) @map("season_losses") /// 시즌 누적 패
   seasonDraws          Int       @default(0) @map("season_draws") /// 시즌 누적 무
   recentAttendanceRate Int?      @map("recent_attendance_rate") /// 최근 30일 평균 출석률 (%, 0~100, null = 데이터 부족)
-  createdAt            DateTime  @default(now()) @map("created_at")
-  updatedAt            DateTime  @updatedAt @map("updated_at")
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Relationships
   coach   User           @relation("TeamCoach", fields: [coachId], references: [id])
@@ -524,11 +524,11 @@ model TeamMember {
   playerLevel     String?   @map("player_level") // beginner|intermediate|advanced
   approvalStatus  String    @default("pending") @map("approval_status") // pending|approved|rejected
   rejectionReason String?   @map("rejection_reason") @db.Text /// 반려 사유 (approvalStatus=rejected 시)
-  joinedAt        DateTime  @default(now()) @map("joined_at")
-  leftAt          DateTime? @map("left_at") /// 팀 탈퇴/이적 일시 (null이면 현재 활성)
+  joinedAt        DateTime  @default(now()) @map("joined_at") @db.Timestamptz(3)
+  leftAt          DateTime? @map("left_at") @db.Timestamptz(3) /// 팀 탈퇴/이적 일시 (null이면 현재 활성)
   roleInTeam      String?   @map("role_in_team") // COACH|HEAD_COACH|PLAYER|MANAGER|PARENT
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Relationships
   user               User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -604,7 +604,7 @@ model Class {
   endTime          DateTime  @map("end_time")
   isActive         Boolean   @default(true) @map("is_active")
   approvalStatus   String    @default("PENDING") @map("approval_status") // PENDING|APPROVED|REJECTED
-  approvedAt       DateTime? @map("approved_at")
+  approvedAt       DateTime? @map("approved_at") @db.Timestamptz(3)
   approvedBy       String?   @map("approved_by")
   rejectionReason  String?   @map("rejection_reason")
   coachId          String?   @map("coach_id")
@@ -614,8 +614,8 @@ model Class {
   requiredCoaches  Int       @default(1) @map("required_coaches") /// 필요 코치 수
   /// 결제 방식 (감독이 수업 생성 시 지정, Phase B) — PREPAID(선불 번들) | POSTPAID(후불 정산) | BOTH(선택형·기본, 학생이 결제 시 택1)
   billingMode      String    @default("BOTH") @map("billing_mode")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Relationships
   team             Team?                  @relation(fields: [teamId], references: [id], onDelete: Cascade)
@@ -676,10 +676,10 @@ model MonthlyPostpaidBilling {
   classId     String    @map("class_id")
   yearMonth   String    @map("year_month") /// "YYYY-MM"
   status      String    @default("draft") /// draft(초안) | confirmed(확정)
-  confirmedAt DateTime? @map("confirmed_at")
+  confirmedAt DateTime? @map("confirmed_at") @db.Timestamptz(3)
   confirmedBy String?   @map("confirmed_by") /// 확정한 감독 User.id
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   class Class                        @relation(fields: [classId], references: [id], onDelete: Cascade)
   items MonthlyPostpaidBillingLine[]
@@ -699,8 +699,8 @@ model MonthlyPostpaidBillingLine {
   amount          Int /// ₩ KRW (attendanceCount × feePerSession)
   paymentStatus   String   @default("pending") @map("payment_status") /// pending | paid
   paymentId       String?  @map("payment_id") /// 생성된 Payment 연결
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   billing MonthlyPostpaidBilling @relation(fields: [billingId], references: [id], onDelete: Cascade)
   user    User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -721,7 +721,7 @@ model ClassTeamVisibility {
   id        String   @id @default(cuid())
   classId   String   @map("class_id")
   teamId    String   @map("team_id")
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   class Class @relation(fields: [classId], references: [id], onDelete: Cascade)
   team  Team  @relation(fields: [teamId], references: [id], onDelete: Cascade)
@@ -739,12 +739,12 @@ model ClassCoachAssignment {
   coachUserId   String    @map("coach_user_id")
   status        String    @default("INVITED") /// INVITED | ACCEPTED | DECLINED | REMOVED
   invitedBy     String    @map("invited_by")
-  invitedAt     DateTime  @default(now()) @map("invited_at")
-  respondedAt   DateTime? @map("responded_at")
+  invitedAt     DateTime  @default(now()) @map("invited_at") @db.Timestamptz(3)
+  respondedAt   DateTime? @map("responded_at") @db.Timestamptz(3)
   declineReason String?   @map("decline_reason") @db.Text
   role          String    @default("ASSISTANT") /// LEAD | ASSISTANT
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   class   Class @relation(fields: [classId], references: [id], onDelete: Cascade)
   coach   User  @relation("ClassCoachAssignments", fields: [coachUserId], references: [id], onDelete: Cascade)
@@ -767,8 +767,8 @@ model ClassDaySchedule {
   startTime String   @map("start_time") // "HH:mm" 문자열
   endTime   String   @map("end_time") // "HH:mm" 문자열
   venueId   String?  @map("venue_id")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   class Class  @relation(fields: [classId], references: [id], onDelete: Cascade)
   venue Venue? @relation("ClassDayScheduleVenue", fields: [venueId], references: [id], onDelete: SetNull)
@@ -783,16 +783,16 @@ model ClassDaySchedule {
 model ClassSchedule {
   id                 String    @id @default(cuid())
   classId            String    @map("class_id")
-  scheduledDate      DateTime  @map("scheduled_date")
+  scheduledDate      DateTime  @map("scheduled_date") @db.Date
   /// [2026-06-09] 오픈클래스 날짜별 일정 — 일정마다 시간/장소를 직접 지정(미니달력 입력).
   startTime          String?   @map("start_time") /// "HH:mm"
   endTime            String?   @map("end_time") /// "HH:mm"
   venueId            String?   @map("venue_id")
   isCancelled        Boolean   @default(false) @map("is_cancelled")
   cancellationReason String?   @map("cancellation_reason")
-  rsvpDeadline       DateTime? @map("rsvp_deadline") /// RSVP 마감 시간 (null이면 수업 시작 24시간 전 자동 계산)
-  createdAt          DateTime  @default(now()) @map("created_at")
-  updatedAt          DateTime  @updatedAt @map("updated_at")
+  rsvpDeadline       DateTime? @map("rsvp_deadline") @db.Timestamptz(3) /// RSVP 마감 시간 (null이면 수업 시작 24시간 전 자동 계산)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Relationships
   class         Class                @relation(fields: [classId], references: [id], onDelete: Cascade)
@@ -825,8 +825,8 @@ model ClassProduct {
   sessionsPerWeek  Int?     @map("sessions_per_week")
   feePerSession    Decimal? @map("fee_per_session") @db.Decimal(10, 2)
   isActive         Boolean  @default(true) @map("is_active") /// 상품 활성화 여부
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Relationships
   class       Class        @relation(fields: [classId], references: [id], onDelete: Cascade)
@@ -852,10 +852,10 @@ model Payment {
   paymentStatus String    @default("pending") @map("payment_status") // pending|completed|failed|refunded
   paymentMethod String?   @map("payment_method") // card|wallet
   tid           String?   @map("tid") // KG이니시스 거래번호
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
-  completedAt   DateTime? @map("completed_at")
-  deletedAt     DateTime? @map("deleted_at") /// Soft Delete (NEW-06 — 2026-05-21, PIPA 5년 보존 + 회계 감사 대비)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  completedAt   DateTime? @map("completed_at") @db.Timestamptz(3)
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(3) /// Soft Delete (NEW-06 — 2026-05-21, PIPA 5년 보존 + 회계 감사 대비)
 
   // Relationships
   user                    User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -895,10 +895,10 @@ model MemberCredit {
   classId       String   @map("class_id") /// 어느 수업의 수업권인가 (수업 단위 결합)
   totalSessions Int      @map("total_sessions") /// 발급된 총 회차 (구 totalCredits)
   usedSessions  Int      @default(0) @map("used_sessions") /// 사용된 회차 (구 usedCredits)
-  expiresAt     DateTime @map("expires_at")
-  createdAt     DateTime @default(now()) @map("created_at")
-  issuedDate    DateTime @default(now()) @map("issued_date")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  expiresAt     DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  issuedDate    DateTime @default(now()) @map("issued_date") @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
   paymentId     String?  @map("payment_id")
 
   // Relationships
@@ -920,7 +920,7 @@ model RefundLog {
   paymentId    String   @map("payment_id")
   refundAmount Int      @map("refund_amount")
   refundReason String   @map("refund_reason")
-  processedAt  DateTime @default(now()) @map("processed_at")
+  processedAt  DateTime @default(now()) @map("processed_at") @db.Timestamptz(3)
 
   // Relationships
   payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
@@ -939,7 +939,7 @@ model ClassAttendance {
   scheduleId       String    @map("schedule_id")
   memberId         String    @map("member_id") /// User.id (출석 대상자)
   attendanceStatus String    @default("unchecked") @map("attendance_status") // present|absent|unchecked (3-state, 2026-05-12 회의록 결정 — 이전 late/excused/cancelled 제거)
-  checkedInAt      DateTime? @map("checked_in_at")
+  checkedInAt      DateTime? @map("checked_in_at") @db.Timestamptz(3)
   creditDeducted   Boolean   @default(false) @map("credit_deducted")
 
   // 2026-04-27 (D-F + R4): 출석 출처 + 자녀 QR → 학부모 알림 트리거 + 감사 추적
@@ -948,11 +948,11 @@ model ClassAttendance {
 
   // 2026-04-27 (F-2 + N-5): 코치 수정 추적
   modifiedBy     String?   @map("modified_by") /// 수정자 User.id (코치/관리자)
-  modifiedAt     DateTime? @map("modified_at")
+  modifiedAt     DateTime? @map("modified_at") @db.Timestamptz(3)
   modifiedReason String?   @map("modified_reason")
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Relationships
   schedule        ClassSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
@@ -1013,13 +1013,13 @@ model AttendanceAuditLog {
   creditDelta Int             @default(0) @map("credit_delta") /// -1/+1/0/+N(환불)
 
   notifiedParentId String?   @map("notified_parent_id") /// modify 액션 시 알림 대상 학부모
-  notifiedAt       DateTime? @map("notified_at") /// 알림톡 큐 적재 시각
+  notifiedAt       DateTime? @map("notified_at") @db.Timestamptz(3) /// 알림톡 큐 적재 시각
 
   reason    String?  @db.Text /// 사유 (modify 시 의무 입력 — PR-D)
   requestId String?  @map("request_id") /// X-Request-ID (API 요청 추적)
   clientIp  String?  @map("client_ip")
   userAgent String?  @map("user_agent")
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   // Relationships
   schedule       ClassSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
@@ -1043,9 +1043,9 @@ model Notification {
   title            String
   message          String
   isRead           Boolean   @default(false) @map("is_read")
-  readAt           DateTime? @map("read_at") // 읽음 처리 시각
+  readAt           DateTime? @map("read_at") @db.Timestamptz(3) // 읽음 처리 시각
   linkUrl          String?   @map("link_url") // 탭 시 이동 경로
-  createdAt        DateTime  @default(now()) @map("created_at")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   // Relationships
   user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1083,8 +1083,8 @@ model AlimtalkTemplate {
   category     String?
   /// 비고/관리자 메모.
   description  String?
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([category])
   @@index([isActive])
@@ -1098,9 +1098,9 @@ model AlimtalkLog {
   phone          String
   templateCode   String    @map("template_code")
   status         String    @default("pending") // pending|sent|failed
-  sentAt         DateTime? @map("sent_at")
+  sentAt         DateTime? @map("sent_at") @db.Timestamptz(3)
   responseData   Json?     @map("response_data") @db.JsonB
-  createdAt      DateTime  @default(now()) @map("created_at")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   // Relationships
   notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
@@ -1122,7 +1122,7 @@ model AuditLog {
   oldValue  Json?    @map("old_value") @db.JsonB
   newValue  Json?    @map("new_value") @db.JsonB
   ipAddress String?  @map("ip_address")
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   // Relationships - optional relation
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -1148,7 +1148,7 @@ model UserActivityLog {
   ipAddress  String?  @map("ip_address")
   userAgent  String?  @map("user_agent")
   durationMs Int?     @map("duration_ms") /// API 요청 등 작업 소요 시간
-  createdAt  DateTime @default(now()) @map("created_at")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   // Optional relation — userId가 있으면 User로 연결, 탈퇴 시 SetNull
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -1176,8 +1176,8 @@ model ShopCategory {
   isActive     Boolean  @default(true) @map("is_active") // 활성화 여부
   description  String? // 카테고리 설명
   imageUrl     String?  @map("image_url") @db.Text // 카테고리 이미지
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Self-referential relationship (계층 구조)
   parent   ShopCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
@@ -1215,8 +1215,8 @@ model ShopProduct {
   isNew        Boolean  @default(false) @map("is_new") // 신상품
   viewCount    Int      @default(0) @map("view_count") // 조회수
   salesCount   Int      @default(0) @map("sales_count") // 판매량
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Relationships
   category   ShopCategory        @relation(fields: [categoryId], references: [id], onDelete: Cascade)
@@ -1245,7 +1245,7 @@ model ShopProductImage {
   altText      String?  @map("alt_text")
   displayOrder Int      @default(0) @map("display_order")
   isMain       Boolean  @default(false) @map("is_main") // 대표 이미지 여부
-  createdAt    DateTime @default(now()) @map("created_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   // Relationships
   product ShopProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -1264,7 +1264,7 @@ model ShopProductOption {
   additionalPrice Int      @default(0) @map("additional_price") // 추가금액
   stock           Int      @default(0) // 옵션별 재고
   isActive        Boolean  @default(true) @map("is_active")
-  createdAt       DateTime @default(now()) @map("created_at")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   // Relationships
   product    ShopProduct     @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -1280,8 +1280,8 @@ model ShopProductOption {
 model ShopCart {
   id        String   @id @default(cuid())
   userId    String   @unique @map("user_id")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   items ShopCartItem[]
@@ -1296,8 +1296,8 @@ model ShopCartItem {
   productId String   @map("product_id")
   optionId  String?  @map("option_id")
   quantity  Int      @default(1)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   cart    ShopCart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
   product ShopProduct        @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -1332,12 +1332,12 @@ model ShopOrder {
 
   // 배송 추적
   shippingId  String?   @map("shipping_id")
-  shippedAt   DateTime? @map("shipped_at")
-  deliveredAt DateTime? @map("delivered_at")
+  shippedAt   DateTime? @map("shipped_at") @db.Timestamptz(3)
+  deliveredAt DateTime? @map("delivered_at") @db.Timestamptz(3)
 
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  deletedAt DateTime? @map("deleted_at") /// Soft Delete (NEW-06 — 2026-05-21, 전자상거래법 5년 보존)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3) /// Soft Delete (NEW-06 — 2026-05-21, 전자상거래법 5년 보존)
 
   // Relationships
   user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1363,7 +1363,7 @@ model ShopOrderItem {
   quantity    Int
   unitPrice   Int      @map("unit_price") // 주문 시점 단가
   totalPrice  Int      @map("total_price") // 소계
-  createdAt   DateTime @default(now()) @map("created_at")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   // Relationships
   order   ShopOrder          @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -1383,7 +1383,7 @@ model ShopShippingCompany {
   trackingUrl  String?  @map("tracking_url") @db.Text // 배송조회 URL 템플릿
   isActive     Boolean  @default(true) @map("is_active")
   displayOrder Int      @default(0) @map("display_order")
-  createdAt    DateTime @default(now()) @map("created_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   // Relationships
   shippings ShopShipping[]
@@ -1398,10 +1398,10 @@ model ShopShipping {
   companyId      String    @map("company_id")
   trackingNumber String    @map("tracking_number") // 송장번호
   status         String    @default("preparing") // preparing|shipped|in_transit|out_for_delivery|delivered
-  shippedAt      DateTime? @map("shipped_at")
-  deliveredAt    DateTime? @map("delivered_at")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
+  shippedAt      DateTime? @map("shipped_at") @db.Timestamptz(3)
+  deliveredAt    DateTime? @map("delivered_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Relationships
   company ShopShippingCompany @relation(fields: [companyId], references: [id])
@@ -1426,8 +1426,8 @@ model ShippingPolicy {
   surcharge             Int      @default(0) // 지역 조건 충족 시 부과되는 추가 요금 (원)
   isDefault             Boolean  @default(false) @map("is_default") // 기본 정책 여부
   isActive              Boolean  @default(true) @map("is_active")
-  createdAt             DateTime @default(now()) @map("created_at")
-  updatedAt             DateTime @updatedAt @map("updated_at")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([type])
   @@index([isActive])
@@ -1444,10 +1444,10 @@ model ClassRegistration {
   id               String   @id @default(cuid())
   classId          String   @map("class_id")
   userId           String   @map("user_id") /// 출석 주체 (자녀 User.id)
-  registrationDate DateTime @default(now()) @map("registration_date")
+  registrationDate DateTime @default(now()) @map("registration_date") @db.Timestamptz(3)
   status           String   @default("active") // active, inactive, suspended
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Relationships
   class Class @relation(fields: [classId], references: [id], onDelete: Cascade)
@@ -1468,11 +1468,11 @@ model Waitlist {
   childId     String?   @map("child_id")
   position    Int // 대기 순번
   status      String    @default("WAITING") @map("status") // WAITING, CONFIRMED, CANCELLED, EXPIRED
-  notifiedAt  DateTime? @map("notified_at")
-  confirmedAt DateTime? @map("confirmed_at")
-  expiresAt   DateTime? @map("expires_at") // 확인 응답 기한 (승격 후 24시간)
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  notifiedAt  DateTime? @map("notified_at") @db.Timestamptz(3)
+  confirmedAt DateTime? @map("confirmed_at") @db.Timestamptz(3)
+  expiresAt   DateTime? @map("expires_at") @db.Timestamptz(3) // 확인 응답 기한 (승격 후 24시간)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Relationships
   class Class @relation(fields: [classId], references: [id], onDelete: Cascade)
@@ -1497,8 +1497,8 @@ model CreditTransaction {
   refundId       String?  @map("refund_id") // 환불로 복원된 경우
   reason         String? // 변동 사유
   adjustedBy     String?  @map("adjusted_by") // 관리자 크레딧 조정 시 조정자 User.id
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at") /// DB 레거시 NOT NULL 컬럼 호환용 (append-only 로그이므로 실질 갱신 없음)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3) /// DB 레거시 NOT NULL 컬럼 호환용 (append-only 로그이므로 실질 갱신 없음)
 
   // Relationships
   memberCredit MemberCredit @relation(fields: [memberCreditId], references: [id], onDelete: Cascade)
@@ -1522,9 +1522,9 @@ model SystemNotice {
   viewCount            Int       @default(0) @map("view_count") // 조회수
   pinned               Boolean   @default(false) @map("pinned") // 고정 공지 여부
   createdBy            String?   @map("created_by") // 작성자 ID
-  createdAt            DateTime  @default(now()) @map("created_at")
-  expiresAt            DateTime? @map("expires_at") // 만료일
-  startAt              DateTime? @map("start_at")
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt            DateTime? @map("expires_at") @db.Timestamptz(3) // 만료일
+  startAt              DateTime? @map("start_at") @db.Timestamptz(3)
   maintenanceReason    String?   @map("maintenance_reason") // 점검 사유(점검 공지 전용 · M4 화면 표시)
   displayLocationsJson Json      @default("[]") @map("display_locations_json") @db.JsonB
 
@@ -1553,7 +1553,7 @@ model NoticeRead {
   id       String   @id @default(cuid())
   noticeId String   @map("notice_id")
   userId   String   @map("user_id")
-  readAt   DateTime @default(now()) @map("read_at")
+  readAt   DateTime @default(now()) @map("read_at") @db.Timestamptz(3)
 
   notice SystemNotice @relation(fields: [noticeId], references: [id], onDelete: Cascade)
   user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1569,8 +1569,8 @@ model NoticeComment {
   noticeId  String   @map("notice_id")
   userId    String   @map("user_id")
   content   String   @db.Text
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   notice SystemNotice @relation(fields: [noticeId], references: [id], onDelete: Cascade)
   user   User         @relation("UserNoticeComments", fields: [userId], references: [id])
@@ -1591,7 +1591,7 @@ model DailyViewLog {
   entityId   String   @map("entity_id")
   userId     String   @map("user_id")
   viewedDate String   @map("viewed_date") @db.Char(10) // 'YYYY-MM-DD' (KST 기준)
-  createdAt  DateTime @default(now()) @map("created_at")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([entityType, entityId, userId, viewedDate], map: "daily_view_logs_unique")
   @@index([entityType, entityId])
@@ -1620,8 +1620,8 @@ model AcademyPromotion {
   startDate    DateTime? @map("start_date")
   endDate      DateTime? @map("end_date")
   viewCount    Int       @default(0) @map("view_count")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Relationships
   coach   User     @relation("PromotionCoach", fields: [coachId], references: [id])
@@ -1645,8 +1645,8 @@ model NotificationTemplate {
   content      String   @db.Text // {{name}}, {{amount}} 등 플레이스홀더 포함
   channel      String   @default("alimtalk") // alimtalk, push, email
   isActive     Boolean  @default(true) @map("is_active")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Relationships
   notifications Notification[]
@@ -1670,8 +1670,8 @@ model UserNotificationPreference {
   vibrationEnabled  Boolean  @default(true) @map("vibration_enabled")
   /// 카테고리별 수신 여부 JSON: { class: bool, payment: bool, notice: bool, system: bool }
   categories        Json     @default("{\"class\":true,\"payment\":true,\"notice\":true,\"system\":true}") @db.JsonB
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Relationships
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1692,9 +1692,9 @@ model PaymentWebhook {
   maxRetries     Int       @default(3) @map("max_retries") // 최대 재시도 횟수
   lastError      String?   @map("last_error") // 마지막 오류 메시지
   errorMessage   String?   @map("error_message") // 오류 메시지 (레거시)
-  nextRetryAt    DateTime? @map("next_retry_at") // 다음 재시도 시각
-  processedAt    DateTime  @default(now()) @map("processed_at")
-  completedAt    DateTime? @map("completed_at") // 처리 완료 시각
+  nextRetryAt    DateTime? @map("next_retry_at") @db.Timestamptz(3) // 다음 재시도 시각
+  processedAt    DateTime  @default(now()) @map("processed_at") @db.Timestamptz(3)
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz(3) // 처리 완료 시각
 
   @@index([paymentId])
   @@index([webhookType])
@@ -1730,9 +1730,9 @@ model IdentityVerification {
   userAgent String? @map("user_agent") /// 요청 User-Agent
 
   // 타임스탬프
-  requestedAt DateTime  @default(now()) @map("requested_at")
-  verifiedAt  DateTime? @map("verified_at")
-  expiresAt   DateTime  @map("expires_at") /// 인증 요청 만료 시간 (30분)
+  requestedAt DateTime  @default(now()) @map("requested_at") @db.Timestamptz(3)
+  verifiedAt  DateTime? @map("verified_at") @db.Timestamptz(3)
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(3) /// 인증 요청 만료 시간 (30분)
 
   // 에러 정보
   errorCode    String? @map("error_code")
@@ -1762,7 +1762,7 @@ model IdentityWebhookLog {
   verified               Boolean  @default(false) /// 서명 검증 성공 여부
   httpStatus             Int?     @map("http_status") /// HTTP 응답 상태 코드
   errorMessage           String?  @map("error_message")
-  processedAt            DateTime @default(now()) @map("processed_at")
+  processedAt            DateTime @default(now()) @map("processed_at") @db.Timestamptz(3)
 
   // Relationships
   identityVerification IdentityVerification @relation(fields: [identityVerificationId], references: [id], onDelete: Cascade)
@@ -1786,8 +1786,8 @@ model AppMenu {
   parentId  String?  @map("parent_id") /// 상위 메뉴 ID (계층 구조용)
   order     Int      @default(0) /// 정렬 순서
   isActive  Boolean  @default(true) @map("is_active") /// 활성화 여부
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Self-referential relationship for sub-menus
   parent   AppMenu?  @relation("MenuHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
@@ -1810,8 +1810,8 @@ model ParentChild {
   childId      String   @map("child_id") /// 자녀 User ID
   relationship String   @default("parent") /// parent | guardian | grandparent | other
   isPrimary    Boolean  @default(true) @map("is_primary") /// 주 보호자 여부 (결제/승인 권한)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Relationships
   parent User @relation("ParentChildren", fields: [parentId], references: [id], onDelete: Cascade)
@@ -1853,19 +1853,19 @@ model Enrollment {
 
   // 승인 정보 (방식2 전용)
   approvedBy      String?   @map("approved_by") /// 승인한 학부모 User ID
-  approvedAt      DateTime? @map("approved_at")
-  rejectedAt      DateTime? @map("rejected_at")
+  approvedAt      DateTime? @map("approved_at") @db.Timestamptz(3)
+  rejectedAt      DateTime? @map("rejected_at") @db.Timestamptz(3)
   rejectionReason String?   @map("rejection_reason") @db.Text
 
   // 결제 연결 (학부모만 결제 가능)
   paymentId String?   @map("payment_id") /// 결제 완료 시 연결되는 Payment ID
-  paidAt    DateTime? @map("paid_at")
+  paidAt    DateTime? @map("paid_at") @db.Timestamptz(3)
 
   // 타임스탬프
-  createdAt   DateTime @default(now()) @map("created_at")
-  requestedAt DateTime @default(now()) @map("requested_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  expiresAt   DateTime @map("expires_at") /// 승인 대기 만료 시간 (72시간)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  requestedAt DateTime @default(now()) @map("requested_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  expiresAt   DateTime @map("expires_at") @db.Timestamptz(3) /// 승인 대기 만료 시간 (72시간)
 
   // 메모
   note String? @db.Text
@@ -1897,9 +1897,9 @@ model AttendanceQR {
   scheduleId  String    @map("schedule_id") // 수업 일정 ID
   generatedBy String    @map("generated_by") // QR 생성한 코치 User ID
   qrData      String    @unique @map("qr_data") // QR 코드 데이터
-  generatedAt DateTime  @default(now()) @map("generated_at")
-  expiresAt   DateTime  @map("expires_at") // 만료 시간
-  scannedAt   DateTime? @map("scanned_at") // 스캔된 시간
+  generatedAt DateTime  @default(now()) @map("generated_at") @db.Timestamptz(3)
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(3) // 만료 시간
+  scannedAt   DateTime? @map("scanned_at") @db.Timestamptz(3) // 스캔된 시간
   scannedBy   String?   @map("scanned_by") // 스캔한 회원 User ID
 
   // Relationships
@@ -1924,8 +1924,8 @@ model DailyMetrics {
   totalAttendees Int      @default(0) @map("total_attendees") // 총 출석자 수
   attendanceRate Int      @default(0) @map("attendance_rate") // 출석률 (0-100)
   totalRevenue   Int      @default(0) @map("total_revenue") // 총 매출 (KRW)
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([teamId, metricDate])
   @@index([teamId])
@@ -1949,8 +1949,8 @@ model TeamPost {
   likeCount    Int      @default(0) @map("like_count") // 좋아요 수 캐시
   commentCount Int      @default(0) @map("comment_count") // 댓글 수 캐시
   viewCount    Int      @default(0) @map("view_count") // 조회수
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Relationships
   team        Team                 @relation(fields: [teamId], references: [id], onDelete: Cascade)
@@ -1973,8 +1973,8 @@ model TeamPostComment {
   postId    String   @map("post_id")
   authorId  String   @map("author_id")
   content   String   @db.Text
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Relationships
   post   TeamPost @relation(fields: [postId], references: [id], onDelete: Cascade)
@@ -1990,7 +1990,7 @@ model TeamPostLike {
   id        String   @id @default(cuid())
   postId    String   @map("post_id")
   userId    String   @map("user_id")
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   // Relationships
   post TeamPost @relation(fields: [postId], references: [id], onDelete: Cascade)
@@ -2011,7 +2011,7 @@ model TeamPostAttachment {
   fileType     String   @map("file_type") // image/jpeg, image/png, application/pdf
   fileSize     Int      @map("file_size") // bytes
   displayOrder Int      @default(0) @map("display_order")
-  createdAt    DateTime @default(now()) @map("created_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   // Relationships
   post TeamPost @relation(fields: [postId], references: [id], onDelete: Cascade)
@@ -2029,13 +2029,13 @@ model TeamEvent {
   eventType   String   @map("event_type") // clinic|trial|tournament|friendly|meeting
   targetLevel String?  @map("target_level")
   capacity    Int? // 모집 정원 (null 이면 무제한)
-  startAt     DateTime @map("start_at")
-  endAt       DateTime @map("end_at")
+  startAt     DateTime @map("start_at") @db.Timestamptz(3)
+  endAt       DateTime @map("end_at") @db.Timestamptz(3)
   priceMode   String   @default("payment") @map("price_mode") // payment|credit|free
   priceAmount Int?     @map("price_amount") // 결제형 이벤트 금액
   status      String   @default("draft") // draft|published|closed|cancelled
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Relationships
   team          Team                    @relation(fields: [teamId], references: [id], onDelete: Cascade)
@@ -2058,7 +2058,7 @@ model TeamEventRegistration {
   paid      Boolean  @default(false)
   paymentId String?  @map("payment_id")
   memo      String?  @db.Text
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   // Relationships
   event   TeamEvent  @relation(fields: [eventId], references: [id], onDelete: Cascade)
@@ -2081,8 +2081,8 @@ model Rink {
   location  String?
   phone     String?
   memo      String?  @db.Text
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   tournaments Tournament[]
   matches     HockeyMatch[]
@@ -2102,8 +2102,8 @@ model Tournament {
   startDate   DateTime @map("start_date")
   endDate     DateTime @map("end_date")
   status      String   @default("scheduled") // scheduled|ongoing|finished|cancelled
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // 참가 자격 및 비용 설정
   eligibleBirthYearFrom Int?      @map("eligible_birth_year_from") // 참가 자격 출생연도 시작 (예: 2014)
@@ -2117,7 +2117,7 @@ model Tournament {
   /// 결제 모드 — PREPAID | POSTPAID. 기존 Class.billingMode(:616)와 대문자 컨벤션 통일.
   billingMode           String    @default("PREPAID") @map("billing_mode")
   maxParticipants       Int?      @map("max_participants") // 최대 참가 인원 (UI 노출 폐기, 호환용 보존)
-  registrationDeadline  DateTime? @map("registration_deadline") // 등록 마감일
+  registrationDeadline  DateTime? @map("registration_deadline") @db.Timestamptz(3) // 등록 마감일
 
   /// [추가 2026-05-11] 참가 연령 그룹 — "ALL" | "U8" | "U9" | "U10" | "U11" | "U12"
   ///  - "ALL" 은 연령 제한 없음 (전체) 의미. DTO 에서 enum 으로 검증.
@@ -2173,10 +2173,10 @@ model TournamentRegistration {
   calculatedFee Decimal   @map("calculated_fee") @db.Decimal(10, 2) // 자동계산된 참가비
   paymentStatus String    @default("PENDING") @map("payment_status") // PENDING|PAID|CANCELLED|REFUNDED|UNPAID(후불 대회 정산 전 — 종료 후 일괄 청구 시 PENDING 전환)
   paymentId     String?   @map("payment_id")
-  registeredAt  DateTime  @default(now()) @map("registered_at")
-  cancelledAt   DateTime? @map("cancelled_at")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  registeredAt  DateTime  @default(now()) @map("registered_at") @db.Timestamptz(3)
+  cancelledAt   DateTime? @map("cancelled_at") @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   user       User       @relation("TournamentRegUser", fields: [userId], references: [id], onDelete: Cascade)
@@ -2206,9 +2206,9 @@ model HockeyMatch {
   fee           Decimal?  @map("fee") @db.Decimal(10, 2)
   homeClubId    String?   @map("home_club_id")
   awayClubId    String?   @map("away_club_id")
-  scheduledAt   DateTime  @map("scheduled_at")
-  startedAt     DateTime? @map("started_at")
-  endedAt       DateTime? @map("ended_at")
+  scheduledAt   DateTime  @map("scheduled_at") @db.Timestamptz(3)
+  startedAt     DateTime? @map("started_at") @db.Timestamptz(3)
+  endedAt       DateTime? @map("ended_at") @db.Timestamptz(3)
   homeScore     Int       @default(0) @map("home_score")
   awayScore     Int       @default(0) @map("away_score")
   status        String    @default("scheduled") // scheduled|warmup|in_progress|intermission|completed|postponed|cancelled
@@ -2218,8 +2218,8 @@ model HockeyMatch {
   refereeMain   String?   @map("referee_main")
   refereeLines  String?   @map("referee_lines")
   gameSheet     Json?     @map("game_sheet")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   tournament   Tournament?   @relation(fields: [tournamentId], references: [id])
   rink         Rink?         @relation(fields: [rinkId], references: [id])
@@ -2257,8 +2257,8 @@ model TeamGroup {
   ageGroup  String?  @map("age_group") /// 대상 설명(자유 텍스트) — 레거시 U8~U12·출생연도 값 보존
   createdId String?  @map("created_id") /// 생성한 감독/코치 user.id
   isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   team    Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
   members TeamGroupMember[]
@@ -2274,14 +2274,14 @@ model TeamGroupMember {
   id           String    @id @default(cuid())
   groupId      String    @map("group_id")
   memberId     String    @map("member_id") /// TeamMember.id
-  joinedAt     DateTime  @default(now()) @map("joined_at")
+  joinedAt     DateTime  @default(now()) @map("joined_at") @db.Timestamptz(3)
   // Phase 2 (2026-04-29) — TeamRoster 컬럼 흡수
   position     String? /// goalie|defense|forward
   jerseyNumber Int?      @map("jersey_number")
   isCaptain    Boolean   @default(false) @map("is_captain")
   isAltCaptain Boolean   @default(false) @map("is_alt_captain")
   status       String    @default("active") /// active|injured|suspended
-  leftAt       DateTime? @map("left_at")
+  leftAt       DateTime? @map("left_at") @db.Timestamptz(3)
 
   group  TeamGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
   member TeamMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
@@ -2301,8 +2301,8 @@ model MatchPeriod {
   id                 String    @id @default(cuid())
   matchId            String    @map("match_id")
   periodNumber       Int       @map("period_number") // 1|2|3|4(OT)|5(SO)
-  startedAt          DateTime? @map("started_at")
-  endedAt            DateTime? @map("ended_at")
+  startedAt          DateTime? @map("started_at") @db.Timestamptz(3)
+  endedAt            DateTime? @map("ended_at") @db.Timestamptz(3)
   homeScore          Int       @default(0) @map("home_score")
   awayScore          Int       @default(0) @map("away_score")
   homePenaltyMinutes Int       @default(0) @map("home_penalty_minutes")
@@ -2332,7 +2332,7 @@ model MatchEvent {
   isGameWinner    Boolean  @default(false) @map("is_game_winner")
   isPowerPlay     Boolean  @default(false) @map("is_power_play")
   isShortHanded   Boolean  @default(false) @map("is_short_handed")
-  createdAt       DateTime @default(now()) @map("created_at")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   match HockeyMatch @relation(fields: [matchId], references: [id], onDelete: Cascade)
   // Phase 2 (2026-04-29) — TeamRoster 모델 폐기, FK CASCADE 제거됨. 컬럼은 보존 (Phase 4에서 정리)
@@ -2367,8 +2367,8 @@ model Venue {
   hourlyRate     Int?     @map("hourly_rate")
   managerId      String?  @map("manager_id")
   description    String?  @db.Text /// 시설 안내 / 소개 (2026-04-12 추가)
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   team              Team?              @relation("VenueOwningTeam", fields: [teamId], references: [id], onDelete: SetNull)
   homeTeams         Team[]             @relation("TeamHomeVenue") // 이 링크장을 홈으로 쓰는 팀들 (2026-05-22)
@@ -2413,16 +2413,16 @@ model Settlement {
   bankName        String?   @map("bank_name")
   bankAccount     String?   @map("bank_account")
   accountHolder   String?   @map("account_holder")
-  scheduledAt     DateTime? @map("scheduled_at") // 정산 예정일
-  completedAt     DateTime? @map("completed_at") // 정산 완료일
+  scheduledAt     DateTime? @map("scheduled_at") @db.Timestamptz(3) // 정산 예정일
+  completedAt     DateTime? @map("completed_at") @db.Timestamptz(3) // 정산 완료일
   approvedBy      String?   @map("approved_by") /// @deprecated — 관리자 매니저 승인 체계로 이관 (SettlementApprovalStatus 참고)
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // 매니저 승인 (신규 승인 워크플로우)
   managerId             String?                   @map("manager_id") /// 승인 담당 매니저 User.id
   managerApprovalStatus SettlementApprovalStatus? @map("manager_approval_status") /// 매니저 승인 상태
-  managerApprovalAt     DateTime?                 @map("manager_approval_at") /// 매니저 승인 일시
+  managerApprovalAt     DateTime?                 @map("manager_approval_at") @db.Timestamptz(3) /// 매니저 승인 일시
 
   team         Team                    @relation(fields: [teamId], references: [id], onDelete: Cascade)
   transactions SettlementTransaction[]
@@ -2447,7 +2447,7 @@ model SettlementTransaction {
   amount          Int
   description     String?
   transactionDate DateTime @map("transaction_date")
-  createdAt       DateTime @default(now()) @map("created_at")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   settlement Settlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
 
@@ -2471,8 +2471,8 @@ model SkillEvaluation {
   coachComment     String?  @map("coach_comment") @db.Text
   improvementAreas String?  @map("improvement_areas") @db.Text
   status           String   @default("draft") // draft|published
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   member     TeamMember       @relation(fields: [memberId], references: [id], onDelete: Cascade)
   coach      User             @relation("SkillEvaluationCoach", fields: [coachId], references: [id])
@@ -2516,7 +2516,7 @@ model Badge {
   criteria    Json? // 획득 조건 JSON
   pointValue  Int      @default(0) @map("point_value")
   isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   childBadges ChildBadge[]
 
@@ -2531,7 +2531,7 @@ model ChildBadge {
   id           String   @id @default(cuid())
   childId      String   @map("child_id") // User (child) ID
   badgeId      String   @map("badge_id")
-  earnedAt     DateTime @default(now()) @map("earned_at")
+  earnedAt     DateTime @default(now()) @map("earned_at") @db.Timestamptz(3)
   earnedReason String?  @map("earned_reason")
   isDisplayed  Boolean  @default(true) @map("is_displayed") // 프로필 표시 여부
   displayOrder Int      @default(0) @map("display_order")
@@ -2553,7 +2553,7 @@ model ShopWishlist {
   id        String   @id @default(cuid())
   userId    String   @map("user_id")
   productId String   @map("product_id")
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   product ShopProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -2578,9 +2578,9 @@ model ShopReview {
   isVisible    Boolean   @default(true) @map("is_visible") // 공개 여부
   helpfulCount Int       @default(0) @map("helpful_count") // 도움이 됨 수
   adminReply   String?   @map("admin_reply") @db.Text // 관리자 답변
-  repliedAt    DateTime? @map("replied_at") // 답변 시간
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  repliedAt    DateTime? @map("replied_at") @db.Timestamptz(3) // 답변 시간
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user    User        @relation("ShopReviewUser", fields: [userId], references: [id], onDelete: Cascade)
   product ShopProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -2602,8 +2602,8 @@ model ClassReview {
   content   String?  @db.Text // 상세 후기 (선택)
   images    Json     @default("[]") // 첨부 사진 URL 배열
   isVisible Boolean  @default(true) @map("is_visible") // 공개 여부
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   class Class @relation(fields: [classId], references: [id], onDelete: Cascade)
@@ -2634,8 +2634,8 @@ model Coupon {
   isActive          Boolean      @default(true) @map("is_active")
   targetType        CouponTarget @default(ALL) @map("target_type") // 적용 대상
   targetIds         Json         @default("[]") @map("target_ids") // 대상 ID 배열 (카테고리/상품)
-  createdAt         DateTime     @default(now()) @map("created_at")
-  updatedAt         DateTime     @updatedAt @map("updated_at")
+  createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   userCoupons UserCoupon[]
 
@@ -2663,9 +2663,9 @@ model UserCoupon {
   userId   String    @map("user_id")
   couponId String    @map("coupon_id")
   isUsed   Boolean   @default(false) @map("is_used")
-  usedAt   DateTime? @map("used_at")
+  usedAt   DateTime? @map("used_at") @db.Timestamptz(3)
   orderId  String?   @map("order_id") // 사용된 주문
-  issuedAt DateTime  @default(now()) @map("issued_at")
+  issuedAt DateTime  @default(now()) @map("issued_at") @db.Timestamptz(3)
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
@@ -2695,9 +2695,9 @@ model MemberLevel {
   currentPoints  Int      @default(0) @map("current_points") // 현재 사용 가능 포인트
   pointsToNext   Int      @default(1000) @map("points_to_next") // 다음 레벨까지 필요 포인트
   benefits       Json     @default("{}") // 레벨별 혜택 JSON
-  levelUpdatedAt DateTime @default(now()) @map("level_updated_at")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  levelUpdatedAt DateTime @default(now()) @map("level_updated_at") @db.Timestamptz(3)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -2716,7 +2716,7 @@ model MemberLevelHistory {
   status        LevelApprovalStatus @default(PENDING_APPROVAL)
   reason        String?
   season        String?
-  changedAt     DateTime            @default(now()) @map("changed_at")
+  changedAt     DateTime            @default(now()) @map("changed_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -2734,8 +2734,8 @@ model PlayerSkillLevel {
   tier      Int      @default(1) @map("tier") // 1=하위, 2=중위, 3=상위
   tierName  String   @default("하위") @map("tier_name")
   season    String? // 최근 계산 시즌 (예: 2025-2026)
-  updatedAt DateTime @updatedAt @map("updated_at")
-  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -2753,8 +2753,8 @@ model PointTransaction {
   description   String? // 설명
   referenceId   String?         @map("reference_id") // 관련 ID (주문번호 등)
   referenceType String?         @map("reference_type") // 관련 유형 (order/review/event)
-  expiresAt     DateTime?       @map("expires_at") // 만료일
-  createdAt     DateTime        @default(now()) @map("created_at")
+  expiresAt     DateTime?       @map("expires_at") @db.Timestamptz(3) // 만료일
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -2786,9 +2786,9 @@ model ChatRoom {
   classId       String?               @map("class_id") // 수업 관련 채팅방
   isActive      Boolean               @default(true) @map("is_active")
   lastMessage   String?               @map("last_message") @db.Text
-  lastMessageAt DateTime?             @map("last_message_at")
-  createdAt     DateTime              @default(now()) @map("created_at")
-  updatedAt     DateTime              @updatedAt @map("updated_at")
+  lastMessageAt DateTime?             @map("last_message_at") @db.Timestamptz(3)
+  createdAt     DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   members      ChatRoomMember[]
   messages     ChatMessage[]
@@ -2821,10 +2821,10 @@ model ChatRoomMember {
   nickname    String? // 채팅방 내 닉네임
   isActive    Boolean   @default(true) @map("is_active")
   isMuted     Boolean   @default(false) @map("is_muted") // 알림 음소거
-  lastReadAt  DateTime? @map("last_read_at") // 마지막 읽은 시간
+  lastReadAt  DateTime? @map("last_read_at") @db.Timestamptz(3) // 마지막 읽은 시간
   unreadCount Int       @default(0) @map("unread_count")
-  joinedAt    DateTime  @default(now()) @map("joined_at")
-  leftAt      DateTime? @map("left_at")
+  joinedAt    DateTime  @default(now()) @map("joined_at") @db.Timestamptz(3)
+  leftAt      DateTime? @map("left_at") @db.Timestamptz(3)
 
   room ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
   user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -2848,8 +2848,8 @@ model ChatMessage {
   isEdited    Boolean         @default(false) @map("is_edited")
   isDeleted   Boolean         @default(false) @map("is_deleted")
   readBy      Json            @default("[]") @map("read_by") // 읽은 사용자 ID 배열
-  createdAt   DateTime        @default(now()) @map("created_at")
-  updatedAt   DateTime        @updatedAt @map("updated_at")
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   room     ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
   sender   User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
@@ -2889,11 +2889,11 @@ model AppPremiumEvent {
   ctaUrl       String?   @map("cta_url") @db.Text
   imageUrl     String?   @map("image_url") @db.Text
   isActive     Boolean   @default(true) @map("is_active")
-  startAt      DateTime? @map("start_at")
-  endAt        DateTime? @map("end_at")
+  startAt      DateTime? @map("start_at") @db.Timestamptz(3)
+  endAt        DateTime? @map("end_at") @db.Timestamptz(3)
   sortOrder    Int       @default(0) @map("sort_order")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
   createdId    String?   @map("created_id")
   updatedId    String?   @map("updated_id")
 
@@ -2913,10 +2913,10 @@ model AppBanner {
   displayLocationsJson Json      @default("[]") @map("display_locations_json") @db.JsonB // app_home, app_popup, web_home, web_popup 등
   sortOrder            Int       @default(0) @map("sort_order")
   isActive             Boolean   @default(true) @map("is_active")
-  startAt              DateTime? @map("start_at")
-  endAt                DateTime? @map("end_at")
-  createdAt            DateTime  @default(now()) @map("created_at")
-  updatedAt            DateTime  @updatedAt @map("updated_at")
+  startAt              DateTime? @map("start_at") @db.Timestamptz(3)
+  endAt                DateTime? @map("end_at") @db.Timestamptz(3)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([isActive])
   @@index([sortOrder])
@@ -2934,7 +2934,7 @@ model AppVersion {
   releaseNotes String?  @map("release_notes") @db.Text
   storeUrl     String?  @map("store_url") @db.Text
   isActive     Boolean  @default(true) @map("is_active")
-  createdAt    DateTime @default(now()) @map("created_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([platform, version])
   @@index([platform, isActive])
@@ -2949,8 +2949,8 @@ model AppFaq {
   answer    String   @db.Text
   sortOrder Int      @default(0) @map("sort_order")
   isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([category, isActive])
   @@index([sortOrder])
@@ -2969,9 +2969,9 @@ model AppFeedback {
   platform     String? // ios, android, web
   status       String    @default("pending") // pending, reviewed, resolved
   adminNote    String?   @map("admin_note") @db.Text
-  adminReplyAt DateTime? @map("admin_reply_at") /// 어드민 답변 시각 (사용자 알림 트리거용)
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  adminReplyAt DateTime? @map("admin_reply_at") @db.Timestamptz(3) /// 어드민 답변 시각 (사용자 알림 트리거용)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
@@ -2991,9 +2991,9 @@ model AppTerms {
   content     String    @db.Text
   version     String // 예: "1.0.0"
   isActive    Boolean   @default(true) @map("is_active")
-  publishedAt DateTime? @map("published_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([type, isActive])
   @@index([publishedAt])
@@ -3014,9 +3014,9 @@ model UserDevice {
   osVersion   String?  @map("os_version")
   appVersion  String?  @map("app_version")
   isActive    Boolean  @default(true) @map("is_active")
-  lastSeenAt  DateTime @default(now()) @map("last_seen_at")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  lastSeenAt  DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -3036,7 +3036,7 @@ model PickupMatch {
   id              String    @id @default(cuid())
   managerId       String    @map("manager_id") // 주최자 (User ID)
   title           String // 경기명
-  scheduledAt     DateTime  @map("scheduled_at") // 경기 일시
+  scheduledAt     DateTime  @map("scheduled_at") @db.Timestamptz(3) // 경기 일시
   rinkName        String    @map("rink_name") // 링크 이름
   rinkAddress     String?   @map("rink_address") // 링크 주소
   rinkVenueInfo   String?   @map("rink_venue_info") // 상세 구역 (제2링크장 등)
@@ -3052,11 +3052,11 @@ model PickupMatch {
   status          String    @default("recruiting") // recruiting|closing_soon|closed|cancelled
   isFeatured      Boolean   @default(false) @map("is_featured") // 추천 매치
   viewCount       Int       @default(0) @map("view_count") // 조회수 (1일 1회 증가, DailyViewLog UNIQUE 기반)
-  cancelledAt     DateTime? @map("cancelled_at") // 매치 취소 시각
+  cancelledAt     DateTime? @map("cancelled_at") @db.Timestamptz(3) // 매치 취소 시각
   cancelledReason String?   @map("cancelled_reason") // 매치 취소 사유 (관리자 입력)
   updatedByUserId String?   @map("updated_by_user_id") // 마지막 수정자 (감독/코치)
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   manager    User                   @relation("ManagedPickupMatches", fields: [managerId], references: [id], onDelete: Cascade)
   updatedBy  User?                  @relation("MatchUpdater", fields: [updatedByUserId], references: [id])
@@ -3119,8 +3119,8 @@ model AppSettings {
 
   // 메타데이터
   updatedBy String?  @map("updated_by")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("app_settings")
 }
@@ -3131,12 +3131,12 @@ model LiabilityWaiver {
   id           String   @id @default(cuid())
   userId       String   @map("user_id") /// 동의자
   termsVersion String   @map("terms_version") /// 동의 시점 면책 약관 버전
-  signedAt     DateTime @default(now()) @map("signed_at") /// 동의 시각
+  signedAt     DateTime @default(now()) @map("signed_at") @db.Timestamptz(3) /// 동의 시각
   ipAddress    String?  @map("ip_address") /// 동의 시 IP (법적 증거)
   userAgent    String?  @map("user_agent") @db.Text /// 동의 시 User-Agent
   context      String?  @map("context") /// 동의 맥락 (SIGNUP|CLASS_ENROLL|TOURNAMENT_REG 등)
   contextId    String?  @map("context_id") /// 맥락별 ID (수업/대회 등)
-  createdAt    DateTime @default(now()) @map("created_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -3157,12 +3157,12 @@ model PickupMatchApplicant {
   status          String    @default("pending") // pending|approved|rejected
   note            String?   @db.Text // 신청 메모
   rejectionReason String?   @map("rejection_reason") // 거절 사유 (감독/코치가 입력)
-  rejectedAt      DateTime? @map("rejected_at") // 거절 시각
-  refundedAt      DateTime? @map("refunded_at") // 환불 시각 (매치 취소 시 자동 설정)
+  rejectedAt      DateTime? @map("rejected_at") @db.Timestamptz(3) // 거절 시각
+  refundedAt      DateTime? @map("refunded_at") @db.Timestamptz(3) // 환불 시각 (매치 취소 시 자동 설정)
   refundAmount    Int?      @map("refund_amount") // 환불 금액
   paymentId       String?   @map("payment_id") // 결제 완료 시 연결되는 Payment ID (KG이니시스 환불용)
-  appliedAt       DateTime  @default(now()) @map("applied_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  appliedAt       DateTime  @default(now()) @map("applied_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   match   PickupMatch @relation(fields: [matchId], references: [id], onDelete: Cascade)
   user    User        @relation("PickupMatchApplications", fields: [userId], references: [id], onDelete: Cascade)
@@ -3194,8 +3194,8 @@ model PlayerClassHistory {
   coachComment     String?   @map("coach_comment") @db.Text /// 코치 총평
   finalScore       Int?      @map("final_score") /// 최종 평가 점수 (1-100)
   certificateUrl   String?   @map("certificate_url") @db.Text /// 수료증 URL
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   member     TeamMember  @relation(fields: [memberId], references: [id], onDelete: Cascade)
   class      Class       @relation(fields: [classId], references: [id], onDelete: Cascade)
@@ -3217,7 +3217,7 @@ model PlayerAward {
   awardName      String   @map("award_name") /// 수상명
   awardType      String   @map("award_type") /// mvp|best_scorer|best_goalie|most_improved|sportsmanship|skill|attendance|special
   description    String?  @db.Text /// 수상 설명
-  awardedAt      DateTime @map("awarded_at") /// 수상일
+  awardedAt      DateTime @map("awarded_at") @db.Timestamptz(3) /// 수상일
   tournamentId   String?  @map("tournament_id") /// 대회 관련 (optional)
   matchId        String?  @map("match_id") /// 경기 관련 (optional)
   season         String? /// 시즌 (예: "2025-2026")
@@ -3226,7 +3226,7 @@ model PlayerAward {
   imageUrl       String?  @map("image_url") @db.Text /// 수상 사진 URL
   isDisplayed    Boolean  @default(true) @map("is_displayed") /// 프로필 표시 여부
   displayOrder   Int      @default(0) @map("display_order") /// 표시 순서
-  createdAt      DateTime @default(now()) @map("created_at")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   member     TeamMember   @relation(fields: [memberId], references: [id], onDelete: Cascade)
   tournament Tournament?  @relation(fields: [tournamentId], references: [id], onDelete: SetNull)
@@ -3249,13 +3249,13 @@ model TeamAward {
   awardName      String   @map("award_name") /// 수상명
   awardType      String   @map("award_type") /// champion|runner_up|third_place|league_winner|fair_play|best_team|special
   description    String?  @db.Text /// 수상 설명
-  awardedAt      DateTime @map("awarded_at") /// 수상일
+  awardedAt      DateTime @map("awarded_at") @db.Timestamptz(3) /// 수상일
   tournamentId   String?  @map("tournament_id") /// 대회 관련 (optional)
   season         String? /// 시즌 (예: "2025-2026")
   awardedBy      String?  @map("awarded_by") /// 수여 기관/단체명
   certificateUrl String?  @map("certificate_url") @db.Text /// 수상 증서 URL
   imageUrl       String?  @map("image_url") @db.Text /// 수상 사진 URL
-  createdAt      DateTime @default(now()) @map("created_at")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   // Phase 4 rename 완료. teamId 는 teams.id 를 가리킴
   team       Team        @relation("TeamAwardsTeam", fields: [teamId], references: [id], onDelete: Cascade)
@@ -3284,8 +3284,8 @@ model PlayerCareer {
   isCurrent    Boolean   @default(false) @map("is_current") /// 현재 소속 여부
   description  String?   @db.Text /// 활동 내용·특이사항
   displayOrder Int       @default(0) @map("display_order") /// 표시 순서
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   member TeamMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
 
@@ -3309,8 +3309,8 @@ model StaffCareer {
   description      String?   @db.Text /// 주요 업무·성과
   certifications   String?   @db.Text /// 보유 자격증 (JSON 배열)
   displayOrder     Int       @default(0) @map("display_order") /// 표시 순서
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -3332,14 +3332,14 @@ model PushNotificationLog {
   targetType   String   @map("target_type") // all|role|specific
   targetValue  String?  @map("target_value") @db.Text // 역할명 또는 특정 사용자 ID 목록 (JSON)
   sentBy       String   @map("sent_by") // 발송한 관리자 User.id
-  sentAt       DateTime @default(now()) @map("sent_at")
+  sentAt       DateTime @default(now()) @map("sent_at") @db.Timestamptz(3)
   totalCount   Int      @default(0) @map("total_count") // 발송 대상 수
   successCount Int      @default(0) @map("success_count") // 성공 수
   failCount    Int      @default(0) @map("fail_count") // 실패 수
   status       String   @default("pending") // pending|sent|failed|partial
   metadata     String?  @db.Text // 추가 데이터 (JSON)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([targetType])
   @@index([status])
@@ -3373,8 +3373,8 @@ model VenueTimeSlot {
   status    String   @default("available") // available|booked|blocked
   price     Decimal? @db.Decimal(10, 2)
   memo      String?
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   venue    Venue          @relation(fields: [venueId], references: [id], onDelete: Cascade)
   bookings VenueBooking[]
@@ -3404,8 +3404,8 @@ model VenueBooking {
   status       String   @default("pending") // pending|confirmed|cancelled|completed
   cancelReason String?  @map("cancel_reason")
   memo         String?
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   venue    Venue                @relation(fields: [venueId], references: [id], onDelete: Cascade)
   timeSlot VenueTimeSlot?       @relation(fields: [timeSlotId], references: [id], onDelete: SetNull)
@@ -3438,11 +3438,11 @@ model VenueRentalContract {
   totalAmount   Decimal?  @map("total_amount") @db.Decimal(10, 2)
   depositAmount Decimal?  @map("deposit_amount") @db.Decimal(10, 2)
   status        String    @default("draft") // draft|active|expired|cancelled|pending_renewal
-  signedAt      DateTime? @map("signed_at")
+  signedAt      DateTime? @map("signed_at") @db.Timestamptz(3)
   memo          String?
   createdById   String    @map("created_by_id")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   team      Team                  @relation(fields: [teamId], references: [id], onDelete: Cascade)
   venue     Venue                 @relation(fields: [venueId], references: [id], onDelete: Cascade)
@@ -3473,8 +3473,8 @@ model VenueRentalSchedule {
   colorCode       String?      @map("color_code") // "#16A34A" 캘린더 표시 색상
   isActive        Boolean      @default(true) @map("is_active")
   memo            String?
-  createdAt       DateTime     @default(now()) @map("created_at")
-  updatedAt       DateTime     @updatedAt @map("updated_at")
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   contract VenueRentalContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
   venue    Venue               @relation(fields: [venueId], references: [id], onDelete: Cascade)
@@ -3499,8 +3499,8 @@ model VenueHoliday {
   isAllDay  Boolean  @default(true) @map("is_all_day")
   startTime String?  @map("start_time") // 부분 휴무 시
   endTime   String?  @map("end_time")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   venue Venue @relation(fields: [venueId], references: [id], onDelete: Cascade)
 
@@ -3528,8 +3528,8 @@ model Camp {
   address       String? // 캠프 장소 주소
   status        String   @default("planned") // planned|open|full|ongoing|completed|cancelled
   imageUrl      String?  @map("image_url") @db.Text
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   team          Team               @relation(fields: [teamId], references: [id])
   venue         Venue?             @relation(fields: [venueId], references: [id])
@@ -3550,8 +3550,8 @@ model CampRegistration {
   paidAmount  Decimal?  @map("paid_amount") @db.Decimal(10, 2)
   paymentId   String?   @map("payment_id")
   memo        String?
-  appliedAt   DateTime  @default(now()) @map("applied_at")
-  respondedAt DateTime? @map("responded_at")
+  appliedAt   DateTime  @default(now()) @map("applied_at") @db.Timestamptz(3)
+  respondedAt DateTime? @map("responded_at") @db.Timestamptz(3)
 
   camp   Camp       @relation(fields: [campId], references: [id])
   member TeamMember @relation(fields: [memberId], references: [id])
@@ -3583,8 +3583,8 @@ model LessonPackage {
   sessionDates  Json?     @map("session_dates") @db.JsonB // 개별 세션 날짜 배열 [16,23,30]
   maxCapacity   Int?      @map("max_capacity")
   status        String    @default("open") // open|full|closed|completed
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   team        Team?                     @relation(fields: [teamId], references: [id])
   venue       Venue?                    @relation(fields: [venueId], references: [id])
@@ -3605,8 +3605,8 @@ model LessonPackageEnrollment {
   attendedCount Int       @default(0) @map("attended_count")
   paidAmount    Decimal?  @map("paid_amount") @db.Decimal(10, 2)
   paymentId     String?   @map("payment_id")
-  enrolledAt    DateTime  @default(now()) @map("enrolled_at")
-  completedAt   DateTime? @map("completed_at")
+  enrolledAt    DateTime  @default(now()) @map("enrolled_at") @db.Timestamptz(3)
+  completedAt   DateTime? @map("completed_at") @db.Timestamptz(3)
 
   package LessonPackage @relation(fields: [packageId], references: [id])
   member  TeamMember    @relation(fields: [memberId], references: [id])
@@ -3632,8 +3632,8 @@ model GameExpense {
   paidById     String?  @map("paid_by_id") // User ID
   receiptUrl   String?  @map("receipt_url")
   status       String   @default("pending") // pending|approved|paid|rejected
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   match      HockeyMatch? @relation(fields: [matchId], references: [id])
   tournament Tournament?  @relation(fields: [tournamentId], references: [id])
@@ -3659,8 +3659,8 @@ model CommonCodeGroup {
   sortOrder   Int      @default(0) @map("sort_order")
   createdById String   @map("created_by_id")
   updatedById String?  @map("updated_by_id")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   createdBy User         @relation("CodeGroupCreator", fields: [createdById], references: [id])
   updatedBy User?        @relation("CodeGroupUpdater", fields: [updatedById], references: [id])
@@ -3687,8 +3687,8 @@ model CommonCode {
   sortOrder   Int      @default(0) @map("sort_order")
   createdById String   @map("created_by_id")
   updatedById String?  @map("updated_by_id")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   group     CommonCodeGroup @relation(fields: [groupId], references: [id])
   parent    CommonCode?     @relation("CodeHierarchy", fields: [parentId], references: [id])
@@ -3716,10 +3716,10 @@ model ClassRsvp {
   userId      String    @map("user_id") /// 응답자 User ID (학부모 또는 학생 본인)
   childId     String?   @map("child_id") /// 자녀 User ID (학부모가 자녀 대신 응답 시)
   status      String    @default("PENDING") /// PENDING | ATTENDING | DECLINED
-  respondedAt DateTime? @map("responded_at") /// 응답 일시
+  respondedAt DateTime? @map("responded_at") @db.Timestamptz(3) /// 응답 일시
   note        String? /// 불참 사유 등 메모
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Relationships
   schedule ClassSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
@@ -3746,12 +3746,12 @@ model OverseasTrip {
   description          String?   @db.Text /// 원정 상세 설명
   startDate            DateTime  @map("start_date") /// 원정 시작일
   endDate              DateTime  @map("end_date") /// 원정 종료일
-  registrationDeadline DateTime  @map("registration_deadline") /// 참가 등록 마감일
+  registrationDeadline DateTime  @map("registration_deadline") @db.Timestamptz(3) /// 참가 등록 마감일
   maxParticipants      Int       @map("max_participants") /// 최대 참가 인원
   ageGroup             String?   @map("age_group") /// 대상 연령대 (예: "16년생", "15-16년생")
   estimatedCost        Decimal?  @default(0) @map("estimated_cost") @db.Decimal(10, 2) /// 예상 총비용
   depositAmount        Decimal?  @default(0) @map("deposit_amount") @db.Decimal(10, 2) /// 예치금
-  depositDeadline      DateTime? @map("deposit_deadline") /// 예치금 납부 마감일
+  depositDeadline      DateTime? @map("deposit_deadline") @db.Timestamptz(3) /// 예치금 납부 마감일
   flightInfo           String?   @map("flight_info") /// 항공 정보
   hotelInfo            String?   @map("hotel_info") /// 숙소 정보
   transportInfo        String?   @map("transport_info") /// 현지 교통 정보
@@ -3760,8 +3760,8 @@ model OverseasTrip {
   contactPhone         String?   @map("contact_phone") /// 연락처 전화번호
   contactEmail         String?   @map("contact_email") /// 연락처 이메일
   createdById          String    @map("created_by_id")
-  createdAt            DateTime  @default(now()) @map("created_at")
-  updatedAt            DateTime  @updatedAt @map("updated_at")
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Relationships
   team          Team                       @relation(fields: [teamId], references: [id], onDelete: Cascade)
@@ -3784,7 +3784,7 @@ model OverseasTripRegistration {
   childId             String?   @map("child_id") /// 자녀 User ID (학부모가 자녀 대신 등록 시)
   parentId            String    @map("parent_id") /// 학부모 User ID
   status              String    @default("pending") /// pending | confirmed | deposit_paid | cancelled | waitlisted
-  depositPaidAt       DateTime? @map("deposit_paid_at") /// 예치금 납부 일시
+  depositPaidAt       DateTime? @map("deposit_paid_at") @db.Timestamptz(3) /// 예치금 납부 일시
   depositAmount       Decimal?  @map("deposit_amount") @db.Decimal(10, 2) /// 실제 납부 예치금
   passportVerified    Boolean   @default(false) @map("passport_verified") /// 여권 확인 여부
   passportExpiryDate  DateTime? @map("passport_expiry_date") /// 여권 만료일
@@ -3792,9 +3792,9 @@ model OverseasTripRegistration {
   emergencyContact    String?   @map("emergency_contact") /// 비상 연락처 이름
   emergencyPhone      String?   @map("emergency_phone") /// 비상 연락처 번호
   cancelReason        String?   @map("cancel_reason") /// 취소 사유
-  cancelledAt         DateTime? @map("cancelled_at") /// 취소 일시
-  createdAt           DateTime  @default(now()) @map("created_at")
-  updatedAt           DateTime  @updatedAt @map("updated_at")
+  cancelledAt         DateTime? @map("cancelled_at") @db.Timestamptz(3) /// 취소 일시
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Relationships
   trip   OverseasTrip @relation(fields: [tripId], references: [id], onDelete: Cascade)
@@ -3825,8 +3825,8 @@ model League {
   startDate   DateTime? @map("start_date")
   endDate     DateTime? @map("end_date")
   teamId      String?   @map("team_id") /// 주최 팀 (선택)
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   team      Team?      @relation(fields: [teamId], references: [id], onDelete: SetNull)
   divisions Division[]
@@ -3848,8 +3848,8 @@ model Division {
   description String?
   maxTeams    Int?     @map("max_teams") /// 최대 팀 수
   sortOrder   Int      @default(0) @map("sort_order")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   league            League            @relation(fields: [leagueId], references: [id], onDelete: Cascade)
   teamDivisions     TeamDivision[]
@@ -3867,7 +3867,7 @@ model TeamDivision {
   teamId       String   @map("team_id")
   divisionId   String   @map("division_id")
   season       String /// 시즌 (예: "2026")
-  registeredAt DateTime @default(now()) @map("registered_at")
+  registeredAt DateTime @default(now()) @map("registered_at") @db.Timestamptz(3)
   status       String   @default("active") /// active | withdrawn | disqualified
   seed         Int? /// 시드 순위
   wins         Int      @default(0)
@@ -3904,8 +3904,8 @@ model TournamentMatch {
   period       String? /// 기간/카테고리 표시 (예: "U12 DIV 2")
   referee      String? /// 심판
   memo         String?  @db.Text
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   division   Division?  @relation(fields: [divisionId], references: [id], onDelete: SetNull)
@@ -3941,8 +3941,8 @@ model TmsPost {
   dueDate     DateTime? @map("due_date") @db.Date /// 마감일
   viewCount   Int       @default(0) @map("view_count")
   isActive    Boolean   @default(true) @map("is_active")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   attachments TmsAttachment[]
   comments    TmsComment[]
@@ -3965,7 +3965,7 @@ model TmsAttachment {
   fileType     String   @map("file_type") /// image/png, image/jpeg 등
   fileSize     Int      @map("file_size") /// bytes
   displayOrder Int      @default(0) @map("display_order")
-  createdAt    DateTime @default(now()) @map("created_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   post TmsPost? @relation(fields: [postId], references: [id], onDelete: Cascade)
 
@@ -3979,7 +3979,7 @@ model TmsComment {
   postId     String   @map("post_id")
   authorName String   @map("author_name") /// 댓글 작성자 이름
   content    String   @db.Text
-  createdAt  DateTime @default(now()) @map("created_at")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   post TmsPost @relation(fields: [postId], references: [id], onDelete: Cascade)
 
@@ -4000,7 +4000,7 @@ model SocialAccount {
   /// Apple Sign in with Apple refresh token. 계정 삭제(탈퇴) 시 appleid.apple.com/auth/revoke 호출에 사용 (iOS 5.1.1(v) 필수).
   /// authorizationCode 를 /auth/token 으로 교환해 획득. kakao/google 은 사용하지 않음(null).
   appleRefreshToken String?  @map("apple_refresh_token")
-  createdAt         DateTime @default(now()) @map("created_at")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -4030,8 +4030,8 @@ model Video {
   isPublic     Boolean  @default(false) @map("is_public")
   viewCount    Int      @default(0) @map("view_count")
   status       String   @default("processing") /// processing|ready|failed
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   uploader   User        @relation("VideoUploader", fields: [uploaderId], references: [id], onDelete: Cascade)
   team       Team?       @relation(fields: [teamId], references: [id], onDelete: SetNull)
@@ -4061,8 +4061,8 @@ model Academy {
   contactEmail String?  @map("contact_email")
   imageUrl     String?  @map("image_url") @db.Text /// 대표 이미지
   isActive     Boolean  @default(true) @map("is_active")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Relationships
   director   User               @relation("AcademyDirector", fields: [directorId], references: [id])
@@ -4085,10 +4085,10 @@ model AcademyMember {
   userId    String    @map("user_id") /// 학부모 또는 성인 선수
   childId   String?   @map("child_id") /// 자녀 (선택)
   status    String    @default("PENDING") /// PENDING|ACTIVE|INACTIVE|BLOCKED
-  joinedAt  DateTime  @default(now()) @map("joined_at")
-  leftAt    DateTime? @map("left_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  joinedAt  DateTime  @default(now()) @map("joined_at") @db.Timestamptz(3)
+  leftAt    DateTime? @map("left_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Relationships
   academy Academy @relation(fields: [academyId], references: [id], onDelete: Cascade)
@@ -4109,9 +4109,9 @@ model AcademyCoach {
   userId    String   @map("user_id") /// 코치 User ID
   role      String   @default("ASSISTANT_COACH") /// HEAD_COACH|ASSISTANT_COACH
   isActive  Boolean  @default(true) @map("is_active")
-  joinedAt  DateTime @default(now()) @map("joined_at")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  joinedAt  DateTime @default(now()) @map("joined_at") @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Relationships
   academy Academy @relation(fields: [academyId], references: [id], onDelete: Cascade)
@@ -4130,7 +4130,7 @@ model UserBlock {
   blockerId String   @map("blocker_id")
   blockedId String   @map("blocked_id")
   reason    String?  @db.Text
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   blocker User @relation("UserBlockBlocker", fields: [blockerId], references: [id], onDelete: Cascade)
   blocked User @relation("UserBlockBlocked", fields: [blockedId], references: [id], onDelete: Cascade)
@@ -4152,9 +4152,9 @@ model UserReport {
   description String?   @db.Text
   status      String    @default("pending") /// pending | reviewing | resolved | rejected
   adminNote   String?   @map("admin_note") @db.Text
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-  resolvedAt  DateTime? @map("resolved_at")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  resolvedAt  DateTime? @map("resolved_at") @db.Timestamptz(3)
 
   reporter User @relation("UserReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
   reported User @relation("UserReportReported", fields: [reportedId], references: [id], onDelete: Cascade)
@@ -4179,13 +4179,13 @@ model Consultation {
   category ConsultationCategory @default(GENERAL) /// 상담 카테고리
   status   ConsultationStatus   @default(ACTIVE) /// 상담 상태
 
-  lastMessageAt        DateTime? @map("last_message_at") /// 마지막 메시지 일시 (정렬용)
+  lastMessageAt        DateTime? @map("last_message_at") @db.Timestamptz(3) /// 마지막 메시지 일시 (정렬용)
   unreadCountForParent Int       @default(0) @map("unread_count_for_parent") /// 학부모 기준 안읽은 메시지 수
   unreadCountForCoach  Int       @default(0) @map("unread_count_for_coach") /// 코치 기준 안읽은 메시지 수
 
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
-  closedAt  DateTime? @map("closed_at") /// 상담 종료 일시
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  closedAt  DateTime? @map("closed_at") @db.Timestamptz(3) /// 상담 종료 일시
 
   parent   User     @relation("ConsultationParent", fields: [parentId], references: [id], onDelete: Cascade)
   coach    User     @relation("ConsultationCoach", fields: [coachId], references: [id], onDelete: Cascade)
@@ -4235,8 +4235,8 @@ model SettlementDetail {
   actualAmount  Int                    @map("actual_amount") /// 실지급 금액
   status        SettlementDetailStatus @default(PENDING) /// 정산 상세 상태
   memo          String?                @db.Text /// 비고/메모
-  createdAt     DateTime               @default(now()) @map("created_at")
-  updatedAt     DateTime               @updatedAt @map("updated_at")
+  createdAt     DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   settlement Settlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
   payment    Payment    @relation(fields: [paymentId], references: [id], onDelete: Restrict)
@@ -4274,7 +4274,7 @@ model MemberApprovalLog {
   reason    String?              @db.Text /// 반려 사유 등 상세
   actorId   String               @map("actor_id") /// 행위자 (User.id)
   actorRole UserType             @map("actor_role") /// 행위자 역할 스냅샷
-  createdAt DateTime             @default(now()) @map("created_at")
+  createdAt DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
 
   member TeamMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
   actor  User       @relation("MemberApprovalActor", fields: [actorId], references: [id], onDelete: Restrict)
@@ -4301,14 +4301,14 @@ model PaymentReceipt {
   id            String   @id @default(cuid())
   paymentId     String   @unique @map("payment_id") /// 원본 결제 (1:1)
   receiptNumber String   @unique @map("receipt_number") /// 영수증 번호 (시퀀셜/포맷)
-  issuedAt      DateTime @default(now()) @map("issued_at") /// 발행 일시
+  issuedAt      DateTime @default(now()) @map("issued_at") @db.Timestamptz(3) /// 발행 일시
   taxable       Boolean  @default(true) /// 과세 여부
   taxAmount     Int      @default(0) @map("tax_amount") /// 부가세 금액
   receiptUrl    String?  @map("receipt_url") @db.Text /// 영수증 PDF/이미지 URL
   emailSent     Boolean  @default(false) @map("email_sent") /// 이메일 발송 여부
   smsSent       Boolean  @default(false) @map("sms_sent") /// SMS 발송 여부
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
 
@@ -4326,7 +4326,7 @@ model Wishlist {
   userId     String             @map("user_id")
   targetType WishlistTargetType @map("target_type") /// 대상 타입
   targetId   String             @map("target_id") /// 대상 리소스 ID
-  createdAt  DateTime           @default(now()) @map("created_at")
+  createdAt  DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user User @relation("WishlistUser", fields: [userId], references: [id], onDelete: Cascade)
 
@@ -4361,8 +4361,8 @@ model Gallery {
   category      GalleryCategory   @default(OTHER) /// 갤러리 카테고리
   visibility    GalleryVisibility @default(CLUB_ONLY) /// 공개 범위
   sortOrder     Int               @default(0) @map("sort_order") /// 정렬 순서
-  createdAt     DateTime          @default(now()) @map("created_at")
-  updatedAt     DateTime          @updatedAt @map("updated_at")
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   team   Team?          @relation(fields: [teamId], references: [id], onDelete: Cascade)
   coach  User?          @relation("GalleryCoach", fields: [coachId], references: [id], onDelete: SetNull)
@@ -4382,10 +4382,10 @@ model GalleryPhoto {
   photoUrl     String    @map("photo_url") @db.Text /// 원본 사진 URL
   thumbnailUrl String    @map("thumbnail_url") @db.Text /// 썸네일 URL
   caption      String?   @db.Text /// 캡션
-  takenAt      DateTime? @map("taken_at") /// 촬영 일시 (EXIF)
+  takenAt      DateTime? @map("taken_at") @db.Timestamptz(3) /// 촬영 일시 (EXIF)
   sortOrder    Int       @default(0) @map("sort_order")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   gallery  Gallery @relation(fields: [galleryId], references: [id], onDelete: Cascade)
   uploader User    @relation("GalleryPhotoUploader", fields: [uploaderId], references: [id], onDelete: Restrict)
@@ -4427,10 +4427,10 @@ model StickerBoard {
   rewardName  String?   @map("reward_name") /// 보상 이름
   rewardId    String?   @map("reward_id") /// 연결 Coupon ID
   isCompleted Boolean   @default(false) @map("is_completed")
-  completedAt DateTime? @map("completed_at")
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(3)
   isActive    Boolean   @default(true) @map("is_active")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   child User          @relation("ChildStickerBoards", fields: [childId], references: [id], onDelete: Cascade)
   team  Team          @relation("TeamStickerBoards", fields: [teamId], references: [id], onDelete: Cascade)
@@ -4448,10 +4448,10 @@ model StickerSlot {
   slotNumber   Int       @map("slot_number") /// 1부터 시작
   stickerType  String?   @map("sticker_type") /// hockey|helmet|star|heart 등
   isEarned     Boolean   @default(false) @map("is_earned")
-  earnedAt     DateTime? @map("earned_at")
+  earnedAt     DateTime? @map("earned_at") @db.Timestamptz(3)
   earnedReason String?   @map("earned_reason") /// 스티커 획득 사유
   awardedBy    String?   @map("awarded_by") /// 부여한 코치 User ID
-  createdAt    DateTime  @default(now()) @map("created_at")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   board   StickerBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
   awarder User?        @relation("StickerAwarder", fields: [awardedBy], references: [id], onDelete: SetNull)
@@ -4475,8 +4475,8 @@ model TrainingSession {
   focusArea    String?  @map("focus_area") /// skating|shooting|passing|defense|fitness
   notes        String?  @db.Text
   recordedBy   String   @map("recorded_by") /// 기록한 코치 User ID
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   member   TeamMember       @relation("MemberTrainingSessions", fields: [memberId], references: [id], onDelete: Cascade)
   team     Team             @relation("TeamTrainingSessions", fields: [teamId], references: [id], onDelete: Cascade)
@@ -4497,7 +4497,7 @@ model TrainingMetric {
   metricName  String   @map("metric_name") /// speed|accuracy|endurance|agility|strength
   metricValue Float    @map("metric_value") /// 측정값
   unit        String   @default("") /// km/h, %, reps 등
-  createdAt   DateTime @default(now()) @map("created_at")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   session TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
@@ -4523,8 +4523,8 @@ model ClassDiary {
   totalCount     Int      @default(0) @map("total_count") /// 전체 인원
   coachNotes     String?  @map("coach_notes") @db.Text /// 코치 종합 의견
   isPublished    Boolean  @default(false) @map("is_published")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   class Class @relation("ClassDiaries", fields: [classId], references: [id], onDelete: Cascade)
   team  Team  @relation("TeamClassDiaries", fields: [teamId], references: [id], onDelete: Cascade)
@@ -4551,8 +4551,8 @@ model WorkSchedule {
   location     String? /// 장소
   status       String   @default("scheduled") /// scheduled|confirmed|cancelled|swapped
   notes        String?  @db.Text
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   coach        User                  @relation("CoachWorkSchedules", fields: [coachId], references: [id], onDelete: Cascade)
   team         Team                  @relation("TeamWorkSchedules", fields: [teamId], references: [id], onDelete: Cascade)
@@ -4573,10 +4573,10 @@ model ScheduleSwapRequest {
   targetCoachId String?   @map("target_coach_id") /// 대상 코치 User ID (null이면 오픈 요청)
   reason        String?   @db.Text
   status        String    @default("pending") /// pending|approved|rejected|cancelled
-  respondedAt   DateTime? @map("responded_at")
+  respondedAt   DateTime? @map("responded_at") @db.Timestamptz(3)
   respondedBy   String?   @map("responded_by") /// 승인/거부한 감독 User ID
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   schedule    WorkSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
   requester   User         @relation("SwapRequester", fields: [requesterId], references: [id], onDelete: Cascade)
@@ -4601,9 +4601,9 @@ model EquipmentChecklist {
   totalItems   Int       @default(0) @map("total_items")
   checkedItems Int       @default(0) @map("checked_items")
   isCompleted  Boolean   @default(false) @map("is_completed")
-  completedAt  DateTime? @map("completed_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  completedAt  DateTime? @map("completed_at") @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user  User            @relation("UserEquipmentChecklists", fields: [userId], references: [id], onDelete: Cascade)
   class Class?          @relation("ClassEquipmentChecklists", fields: [classId], references: [id], onDelete: SetNull)
@@ -4622,9 +4622,9 @@ model ChecklistItem {
   iconName    String?   @map("icon_name") /// Material icon 이름
   imageUrl    String?   @map("image_url") @db.Text /// 아이템 이미지 URL
   isChecked   Boolean   @default(false) @map("is_checked")
-  checkedAt   DateTime? @map("checked_at")
+  checkedAt   DateTime? @map("checked_at") @db.Timestamptz(3)
   sortOrder   Int       @default(0) @map("sort_order")
-  createdAt   DateTime  @default(now()) @map("created_at")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   checklist EquipmentChecklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
 
@@ -4644,15 +4644,15 @@ model EquipmentInspection {
   teamId      String   @map("team_id")
   inspectorId String   @map("inspector_id") /// 점검자 User ID (COACH/DIRECTOR)
   venueId     String?  @map("venue_id") /// 점검 장소 (Venue 모델)
-  inspectedAt DateTime @default(now()) @map("inspected_at")
+  inspectedAt DateTime @default(now()) @map("inspected_at") @db.Timestamptz(3)
   /// pending(점검 시작) / completed(완료) / issue_found(이상 발견)
   status      String   @default("pending")
   /// 종합 메모 — 자유 텍스트
   notes       String?  @db.Text
   /// 이상 발견 시 알림톡 발송 여부 (중복 발송 방지)
   notified    Boolean  @default(false)
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   team      Team             @relation("TeamEquipmentInspections", fields: [teamId], references: [id], onDelete: Cascade)
   inspector User             @relation("UserEquipmentInspections", fields: [inspectorId], references: [id], onDelete: Restrict)
@@ -4683,7 +4683,7 @@ model InspectionItem {
   /// 책임자 — 수리/교체 담당 User ID (optional)
   assigneeId   String?  @map("assignee_id")
   sortOrder    Int      @default(0) @map("sort_order")
-  createdAt    DateTime @default(now()) @map("created_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   inspection EquipmentInspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
 
@@ -4736,8 +4736,8 @@ model UploadedFile {
   refType String? @map("ref_type") /// 연결 리소스 타입 (예: "notice", "banner", "player_award")
   refId   String? @map("ref_id") /// 연결 리소스 ID
 
-  createdAt DateTime @default(now()) @map("created_at") /// 최초 등록일
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") /// 최종 수정일 (Prisma 자동 갱신)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3) /// 최초 등록일
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3) /// 최종 수정일 (Prisma 자동 갱신)
 
   @@index([uploaderId])
   @@index([modifiedById])
@@ -4762,8 +4762,8 @@ model TwoFactorSecret {
   userId    String   @id @map("user_id")
   secret    String   @db.Text /// AES-256-GCM 암호화된 TOTP secret (hex:iv:authTag)
   enabled   Boolean  @default(false)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -4779,9 +4779,9 @@ model DataExportRequest {
   status       String    @default("pending") /// pending | processing | ready | failed | expired
   fileUrl      String?   @map("file_url") @db.Text /// 서명된 다운로드 URL
   fileSize     Int?      @map("file_size") /// bytes
-  requestedAt  DateTime  @default(now()) @map("requested_at")
-  readyAt      DateTime? @map("ready_at")
-  expiresAt    DateTime? @map("expires_at") /// 7일 후 자동 만료
+  requestedAt  DateTime  @default(now()) @map("requested_at") @db.Timestamptz(3)
+  readyAt      DateTime? @map("ready_at") @db.Timestamptz(3)
+  expiresAt    DateTime? @map("expires_at") @db.Timestamptz(3) /// 7일 후 자동 만료
   errorMessage String?   @map("error_message") @db.Text
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -4804,7 +4804,7 @@ model TransactionLog {
   requestId String @unique @map("request_id")
 
   // ===== 고정 컬럼 =====
-  occurredAt    DateTime @map("occurred_at") /// 요청 수신 시각 (UTC 저장, 조회·표시 시 KST 변환)
+  occurredAt    DateTime @map("occurred_at") @db.Timestamptz(3) /// 요청 수신 시각 (UTC 저장, 조회·표시 시 KST 변환)
   method        String /// GET/POST/PUT/PATCH/DELETE
   path          String /// 쿼리스트링 제외 pathname (쿼리는 requestQuery 에 저장)
   httpStatus    Int      @map("http_status")
@@ -4833,7 +4833,7 @@ model TransactionLog {
   responseHeaders Json? @map("response_headers") @db.JsonB
   responseBody    Json? @map("response_body") @db.JsonB
 
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([occurredAt])
   @@index([platform])
@@ -4872,9 +4872,9 @@ model ContactInquiry {
   source           String               @default("home_contact") // 유입 출처
   ipAddress        String? // 스팸 추적(서버 기록, 선택)
   userAgent        String? // 스팸 추적(서버 기록, 선택)
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
-  deletedAt        DateTime? // soft delete
+  createdAt        DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime             @updatedAt @db.Timestamptz(3)
+  deletedAt        DateTime? @db.Timestamptz(3) // soft delete
 
   @@index([status, deletedAt, createdAt])
   @@index([deletedAt, createdAt])

@@ -11,6 +11,7 @@ import { createHash, randomBytes } from "crypto";
 import { promises as fsp } from "fs";
 import { extname, join } from "path";
 import sharp from "sharp";
+import { nowKstParts } from "@/common/utils/kst-date.util";
 import { PrismaService } from "@/prisma/prisma.service";
 import { TeamsService } from "@/teams/teams.service";
 import { NotificationsGateway } from "@/websocket/notifications.gateway";
@@ -1040,12 +1041,7 @@ export class FilesService {
     uploaderName: string,
     refType?: string | null,
   ): Promise<SavedFile> {
-    const now = this.getKstNow();
-    const year = now.getFullYear().toString();
-    const month = String(now.getMonth() + 1).padStart(2, "0");
-    const day = String(now.getDate()).padStart(2, "0");
-    const hour = String(now.getHours()).padStart(2, "0");
-    const minute = String(now.getMinutes()).padStart(2, "0");
+    const { year, month, day, hour, minute } = nowKstParts();
     // 저장 디렉토리 라우팅 (신규/기존 경로 공통):
     //   - refType='venue' → uploads/venues/ (seed 대표사진과 동일 루트 공유, 런타임분은 날짜 하위)
     //   - team_logo/academy_logo → uploads/logo/ (category=AVATAR 유지, 프로필/자녀 avatar/ 와 분리)
@@ -1362,16 +1358,6 @@ export class FilesService {
     await Promise.allSettled(
       targets.map((path) => fsp.unlink(path).catch(() => undefined)),
     );
-  }
-
-  /**
-   * 현재 시각 (Asia/Seoul 기준 로컬 Date).
-   * 서버 타임존이 UTC인 경우에도 KST로 환산해 YYYYMMDDHHmm을 생성.
-   */
-  private getKstNow(): Date {
-    const utc = new Date();
-    // KST 오프셋 +9시간
-    return new Date(utc.getTime() + 9 * 60 * 60 * 1000);
   }
 
   /**

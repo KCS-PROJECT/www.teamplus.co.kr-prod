@@ -92,7 +92,8 @@ export function useDashboardData() {
           upcomingClasses: (apiData.upcomingSchedules ?? apiData.upcomingClasses ?? []).slice(0, 5).map((s: Record<string, unknown>) => ({
             tag: (s.tag as string) ?? '수업',
             title: (s.className as string) ?? (s.title as string) ?? '수업',
-            time: (s.time as string) ?? (s.scheduledDate ? new Date(s.scheduledDate as string).toLocaleDateString('ko-KR', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '-'),
+            // 시각은 scheduledDate(@db.Date)에서 유도 금지 — 요일만.
+            time: (s.time as string) ?? (s.scheduledDate ? new Date(s.scheduledDate as string).toLocaleDateString('ko-KR', { weekday: 'short' }) : '-'),
             teacher: (s.teacher as string) ?? (s.coachName as string) ?? '-',
             location: (s.location as string) ?? '',
           })),

@@ -98,14 +98,12 @@ export class PostpaidSettlementService {
    * 특정 월 후결제 정산 처리
    */
   async processSettlementForMonth(month: Date): Promise<PostpaidSummaryItem[]> {
-    const monthStart = new Date(month.getFullYear(), month.getMonth(), 1);
+    // scheduledDate(@db.Date) 월 경계 — 대상 월의 UTC 자정 [monthStart, monthEnd).
+    const monthStart = new Date(
+      Date.UTC(month.getFullYear(), month.getMonth(), 1),
+    );
     const monthEnd = new Date(
-      month.getFullYear(),
-      month.getMonth() + 1,
-      0,
-      23,
-      59,
-      59,
+      Date.UTC(month.getFullYear(), month.getMonth() + 1, 1),
     );
     const monthLabel = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, "0")}`;
 
@@ -119,7 +117,7 @@ export class PostpaidSettlementService {
             className: true,
             schedules: {
               where: {
-                scheduledDate: { gte: monthStart, lte: monthEnd },
+                scheduledDate: { gte: monthStart, lt: monthEnd },
               },
               select: {
                 id: true,
@@ -204,12 +202,12 @@ export class PostpaidSettlementService {
   // [Phase B-3] 감독 정산 확정 플로우 (모드 A POSTPAID)
   // ──────────────────────────────────────────────────────────────────
 
-  /** "YYYY-MM" → 해당 월 [start, end] */
+  /** "YYYY-MM" → 해당 월 [start, end) — scheduledDate(@db.Date) UTC 자정 경계. */
   private monthRange(yearMonth: string): { start: Date; end: Date } {
     const [y, m] = yearMonth.split("-").map(Number);
     return {
-      start: new Date(y, m - 1, 1),
-      end: new Date(y, m, 0, 23, 59, 59),
+      start: new Date(Date.UTC(y, m - 1, 1)),
+      end: new Date(Date.UTC(y, m, 1)),
     };
   }
 
@@ -222,7 +220,7 @@ export class PostpaidSettlementService {
     const schedules = await this.prisma.classSchedule.findMany({
       where: {
         classId,
-        scheduledDate: { gte: start, lte: end },
+        scheduledDate: { gte: start, lt: end },
         isCancelled: false,
       },
       select: {

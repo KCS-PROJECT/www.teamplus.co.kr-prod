@@ -14,6 +14,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '@/components/ui/Icon';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { cn } from '@/lib/utils';
+import { MESSAGES } from '@/lib/messages';
 import { WEEKDAY_HEADERS, weekColumnOf, colIsSaturday, colIsSunday } from '@/lib/calendar-week';
 
 export interface ScheduleCalendarItem {
@@ -71,12 +72,11 @@ function dateKeyOf(iso: string): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
-/** 회차 시각(HH:mm) 라벨 — startTime 우선, 없으면 scheduledDate 시각 폴백. */
+/** 회차 시각(HH:mm) 라벨 — startTime 우선, 없으면 "시간 미정". */
 function timeLabel(s: ScheduleCalendarItem): string {
   if (s.startTime) return `${s.startTime}${s.endTime ? `~${s.endTime}` : ''}`;
-  const d = new Date(s.scheduledDate);
-  if (Number.isNaN(d.getTime())) return '-';
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  // scheduledDate(@db.Date)엔 시각 성분이 없어(항상 UTC 자정) 유도 금지.
+  return MESSAGES.class.dayDefaults.timeUndecided;
 }
 
 /** 날짜키("YYYY-MM-DD") → "6월 13일 (금)" 그룹 헤더 라벨. */

@@ -1,6 +1,10 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
+import {
+  kstTodayUtcMidnight,
+  addUtcDays,
+} from "@/common/utils/kst-date.util";
 
 @Injectable()
 export class AdminDashboardService {
@@ -48,10 +52,15 @@ export class AdminDashboardService {
       // 월간 목표 상수
       const MONTHLY_REVENUE_TARGET = 10_000_000;
 
+      // scheduledDate(@db.Date)는 UTC 자정 규약 — today/tomorrow(서버-로컬)는 A군 컬럼
+      // (completedAt·joinedAt 등)에 계속 사용하므로 이 컬럼 경계는 KST 오늘의 UTC 자정으로 별도 계산.
+      const sdToday = kstTodayUtcMidnight();
+      const sdTomorrow = addUtcDays(sdToday, 1);
+
       // 출석 where 조건
       const attendanceWhere = {
         schedule: {
-          scheduledDate: { gte: today, lt: tomorrow },
+          scheduledDate: { gte: sdToday, lt: sdTomorrow },
         },
       };
 

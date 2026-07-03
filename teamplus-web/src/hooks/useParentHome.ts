@@ -464,10 +464,8 @@ export function useParentHome() {
           const y = d.getFullYear();
           const m = String(d.getMonth() + 1).padStart(2, "0");
           const day = String(d.getDate()).padStart(2, "0");
-          const hh = String(d.getHours()).padStart(2, "0");
-          const mm = String(d.getMinutes()).padStart(2, "0");
-          // 표시 시각은 백엔드가 준 startTime(text "HH:mm") 우선 — 입력 그대로.
-          //   scheduledDate.getHours() 폴백은 timestamp 기반이라 부정확(레거시 회귀 방지용).
+          // 표시 시각은 백엔드가 준 startTime(text "HH:mm")만 사용.
+          //   scheduledDate(@db.Date)엔 시각 성분이 없어 유도 시 오표시.
           const startTimeText =
             typeof s.startTime === "string" && s.startTime ? s.startTime : null;
           return {
@@ -476,7 +474,7 @@ export function useParentHome() {
             className: s.className ?? "수업",
             scheduledDate: d.toISOString(),
             dateKey: `${y}-${m}-${day}`,
-            hhmm: startTimeText ?? `${hh}:${mm}`,
+            hhmm: startTimeText ?? "",
             startTime: startTimeText,
             trainingType: s.trainingType ?? null,
             // [Phase B] 후불 여부 — 출석 모달 "결제권 차감" 문구 분기용.
@@ -543,11 +541,8 @@ export function useParentHome() {
               (s.scheduledDate
                 ? new Date(s.scheduledDate as string).toLocaleDateString(
                     "ko-KR",
-                    {
-                      weekday: "short",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    },
+                    // 시각은 scheduledDate(@db.Date)에서 유도 금지 — 요일만.
+                    { weekday: "short" },
                   )
                 : "-"),
             teacher: (s.teacher as string) ?? (s.coachName as string) ?? "-",

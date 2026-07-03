@@ -16,6 +16,10 @@ import {
 } from "./dto/create-training.dto";
 import { UpdateTrainingDto } from "./dto/update-training.dto";
 import { QueryTrainingDto } from "./dto/query-training.dto";
+import {
+  kstTodayUtcMidnight,
+  dateOnlyToUtc,
+} from "@/common/utils/kst-date.util";
 
 /**
  * TrainingService
@@ -120,7 +124,7 @@ export class TrainingService {
           this.prisma.classSchedule.create({
             data: {
               classId: training.id,
-              scheduledDate: new Date(dateStr),
+              scheduledDate: dateOnlyToUtc(dateStr),
             },
           }),
         ),
@@ -467,7 +471,7 @@ export class TrainingService {
         this.prisma.classSchedule.create({
           data: {
             classId: trainingId,
-            scheduledDate: new Date(dateStr),
+            scheduledDate: dateOnlyToUtc(dateStr),
           },
         }),
       ),
@@ -913,14 +917,13 @@ export class TrainingService {
 
     // 이번 달 범위
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    // scheduledDate(@db.Date) 이번 달 경계 — KST 달력 월의 UTC 자정 [monthStart, monthEnd] (lte 로 말일 포함).
+    const kstNow = kstTodayUtcMidnight();
+    const monthStart = new Date(
+      Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth(), 1),
+    );
     const monthEnd = new Date(
-      now.getFullYear(),
-      now.getMonth() + 1,
-      0,
-      23,
-      59,
-      59,
+      Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth() + 1, 0),
     );
 
     // 훈련 세션 수

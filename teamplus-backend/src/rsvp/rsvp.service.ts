@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
+import { composeKstInstant } from "@/common/utils/kst-date.util";
 import { CreateRsvpDto, RsvpStatus } from "./dto/create-rsvp.dto";
 import { RsvpResponseDto } from "./dto/rsvp-response.dto";
 import { RsvpSummaryDto } from "./dto/rsvp-summary.dto";
@@ -31,9 +32,11 @@ export class RsvpService {
     rsvpDeadline?: Date | null,
   ): Date {
     if (rsvpDeadline) return rsvpDeadline;
-    const deadline = new Date(scheduledDate);
-    deadline.setHours(deadline.getHours() - RSVP_DEADLINE_HOURS_BEFORE);
-    return deadline;
+    // scheduledDate 는 @db.Date(UTC 자정) — KST 자정 기준 N시간 전으로 마감 계산(서버 TZ 무관).
+    const kstMidnight = composeKstInstant(scheduledDate, "00:00");
+    return new Date(
+      kstMidnight.getTime() - RSVP_DEADLINE_HOURS_BEFORE * 60 * 60_000,
+    );
   }
 
   /**

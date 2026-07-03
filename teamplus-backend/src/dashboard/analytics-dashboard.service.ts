@@ -1,5 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
+import { kstTodayUtcMidnight } from "@/common/utils/kst-date.util";
+import { resolveScheduleTime } from "@/common/utils/schedule-time.util";
 
 @Injectable()
 export class AnalyticsDashboardService {
@@ -219,8 +221,8 @@ export class AnalyticsDashboardService {
     teamId?: string,
     period: number = 3,
   ) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // 이 메서드의 today·경계는 모두 scheduledDate(@db.Date, UTC 자정) 전용 → UTC 기준 통일.
+    const today = kstTodayUtcMidnight();
 
     const clubIds = await this.resolveClubIds(userId, userType, teamId);
 
@@ -229,9 +231,7 @@ export class AnalyticsDashboardService {
 
     // 월별 출석률 추이 (N+1 방지: 단일 쿼리 후 JS 집계)
     const attendanceRangeStart = new Date(
-      today.getFullYear(),
-      today.getMonth() - (period - 1),
-      1,
+      Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - (period - 1), 1),
     );
     const allPeriodAttendances = await this.prisma.classAttendance.findMany({
       where: {
@@ -278,7 +278,7 @@ export class AnalyticsDashboardService {
 
     // 요일별/시간대별 출석 패턴 — 단일 쿼리 (select 최적화)
     const threeMonthsAgo = new Date(today);
-    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - period);
+    threeMonthsAgo.setUTCMonth(threeMonthsAgo.getUTCMonth() - period);
 
     const allAttendances = await this.prisma.classAttendance.findMany({
       where: {
@@ -289,7 +289,15 @@ export class AnalyticsDashboardService {
       },
       select: {
         attendanceStatus: true,
-        schedule: { select: { scheduledDate: true } },
+        // 시각 SoT = ClassSchedule.startTime(text). @db.Date 전환 후 scheduledDate 에는
+        // 시각 성분이 없으므로 시간대 버킷은 startTime(부재 시 Class.startTime UTC 추출)에서 얻는다.
+        schedule: {
+          select: {
+            scheduledDate: true,
+            startTime: true,
+            class: { select: { startTime: true } },
+          },
+        },
       },
     });
 
@@ -351,12 +359,17 @@ export class AnalyticsDashboardService {
         (a, b) => parseFloat(b.attendanceRate) - parseFloat(a.attendanceRate),
       );
 
-    // 시간대별 출석 패턴
+    // 시간대별 출석 패턴 — 시각 SoT = startTime("HH:mm"). 해석 불가(startTime·Class.startTime 모두 부재)
+    // 행은 09시/00시로 뭉개는 대신 집계에서 제외한다.
     const hourlyPattern: { hour: number; count: number }[] = [];
     for (let hour = 6; hour < 22; hour++) {
       const hourAttendances = allAttendances.filter((a) => {
-        const scheduleHour = new Date(a.schedule.scheduledDate).getHours();
-        return scheduleHour === hour;
+        const hhmm = resolveScheduleTime(
+          a.schedule.startTime,
+          a.schedule.class?.startTime ?? null,
+        );
+        if (!hhmm) return false;
+        return parseInt(hhmm.slice(0, 2), 10) === hour;
       });
       hourlyPattern.push({ hour, count: hourAttendances.length });
     }
@@ -573,8 +586,13 @@ export class AnalyticsDashboardService {
   ) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    // threeMonthsAgo 는 products.payments.createdAt(A군) 필터에도 쓰이므로 서버-로컬 유지.
     const threeMonthsAgo = new Date(today);
     threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+    // scheduledDate(@db.Date) 필터 전용 UTC 자정 경계 (아래 schedules where 에서만 사용).
+    const sdToday = kstTodayUtcMidnight();
+    const sdThreeMonthsAgo = new Date(sdToday);
+    sdThreeMonthsAgo.setUTCMonth(sdThreeMonthsAgo.getUTCMonth() - 3);
 
     const clubIds = await this.resolveClubIds(userId, userType, teamId);
 
@@ -595,7 +613,7 @@ export class AnalyticsDashboardService {
         },
         schedules: {
           where: {
-            scheduledDate: { gte: threeMonthsAgo, lte: today },
+            scheduledDate: { gte: sdThreeMonthsAgo, lte: sdToday },
           },
           select: {
             isCancelled: true,

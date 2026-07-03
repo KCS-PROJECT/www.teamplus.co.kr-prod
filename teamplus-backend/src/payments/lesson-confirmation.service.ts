@@ -2,6 +2,10 @@ import { Injectable, Logger } from "@nestjs/common";
 import { Cron } from "@nestjs/schedule";
 import { PrismaService } from "@/prisma/prisma.service";
 import { NotificationsService } from "@/notifications/notifications.service";
+import {
+  kstTodayUtcMidnight,
+  addUtcDays,
+} from "@/common/utils/kst-date.util";
 
 /**
  * 레슨/수업 확정 배치 서비스
@@ -30,20 +34,16 @@ export class LessonConfirmationService {
     this.logger.log("=== 레슨 확정 배치 시작 ===");
 
     try {
-      // 다음 날 날짜 범위 계산 (KST 기준)
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const startOfDay = new Date(tomorrow);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(tomorrow);
-      endOfDay.setHours(23, 59, 59, 999);
+      // 다음 날(KST) 범위 — scheduledDate(@db.Date) 는 UTC 자정이라 KST 내일의 UTC 자정 [gte, lt).
+      const startOfDay = addUtcDays(kstTodayUtcMidnight(), 1);
+      const endOfDay = addUtcDays(startOfDay, 1);
 
       // 다음 날 수업 일정 조회 (취소되지 않은 일정만)
       const schedules = await this.prisma.classSchedule.findMany({
         where: {
           scheduledDate: {
             gte: startOfDay,
-            lte: endOfDay,
+            lt: endOfDay,
           },
           isCancelled: false,
         },

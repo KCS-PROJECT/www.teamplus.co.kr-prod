@@ -2,6 +2,11 @@ import { Injectable } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
 import { resolveScheduleTime } from "@/common/utils/schedule-time.util";
+import {
+  kstTodayUtcMidnight,
+  addUtcDays,
+  composeKstInstant,
+} from "@/common/utils/kst-date.util";
 
 @Injectable()
 export class CoachDashboardService {
@@ -23,12 +28,20 @@ export class CoachDashboardService {
     const now = new Date();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const weekLater = new Date(today);
-    weekLater.setDate(weekLater.getDate() + 7);
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
     const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+    // scheduledDate(@db.Date)는 UTC 자정 규약 — 이 컬럼 경계·in-memory 비교는 KST 달력일의
+    // UTC 자정을 쓴다. today/monthStart(서버-로컬)는 A군 컬럼(joinedAt·createdAt) 계산에 계속 사용.
+    const sdToday = kstTodayUtcMidnight();
+    const sdTomorrow = addUtcDays(sdToday, 1);
+    const sdWeekLater = addUtcDays(sdToday, 7);
+    const sdMonthStart = new Date(
+      Date.UTC(sdToday.getUTCFullYear(), sdToday.getUTCMonth(), 1),
+    );
+    const sdMonthEnd = new Date(
+      Date.UTC(sdToday.getUTCFullYear(), sdToday.getUTCMonth() + 1, 0),
+    );
 
     // W1: coachUser + clubs 병렬 조회 (Step 1)
     const [coachUser, clubs] = await Promise.all([
@@ -93,7 +106,7 @@ export class CoachDashboardService {
     const attendanceWhere = {
       schedule: {
         class: { teamId: { in: clubIds } },
-        scheduledDate: { gte: monthStart, lte: monthEnd },
+        scheduledDate: { gte: sdMonthStart, lte: sdMonthEnd },
       },
     };
 
@@ -127,7 +140,7 @@ export class CoachDashboardService {
             capacity: true,
             schedules: {
               where: {
-                scheduledDate: { gte: today, lte: weekLater },
+                scheduledDate: { gte: sdToday, lte: sdWeekLater },
                 isCancelled: false,
               },
               select: {
@@ -284,16 +297,25 @@ export class CoachDashboardService {
       // schedule 단위 시각으로 timeStr 을 동적 계산. (이전: cls 기반 timeStr 한 번 계산 후 재사용)
       for (const schedule of cls.schedules) {
         const schedDate = new Date(schedule.scheduledDate);
-        if (schedDate < today || schedDate >= tomorrow) continue;
+        if (schedDate < sdToday || schedDate >= sdTomorrow) continue;
 
-        // 2026-04-28: 시각 추출은 schedule.scheduledDate(정확한 수업 시각)에서.
-        // Class.startTime/endTime 은 시즌 시작/종료 일자(00:00)라 시:분 추출이 불가능 →
-        // 기존 로직은 모든 수업의 scheduledDate 응답을 today 00:00 으로 잘못 반환했고,
-        // 프론트의 출석 윈도우 판정(getAttendanceWindowState)이 항상 closed 로 평가되어
-        // 코치 대시보드에 "예정된 수업이 없습니다" 가 잘못 표시되던 버그 수정.
-        const classStart = schedDate;
-        // 종료 시각은 시작 +120분 가정 (학부모/코치 출석 윈도우 상한과 일치).
-        const classEnd = new Date(schedDate.getTime() + 120 * 60_000);
+        // 시작/종료 시각은 startTime/endTime(text "HH:mm")을 scheduledDate(@db.Date)와 KST
+        // 벽시계로 합성한다. startTime 부재 시 KST 자정("00:00") — scheduledDate.getTime() 직접
+        // 사용은 UTC 자정(=KST 09:00)이라 상태 판정이 9h 밀린다.
+        const startHHmm =
+          schedule.startTime && /^\d{2}:\d{2}$/.test(schedule.startTime)
+            ? schedule.startTime
+            : "00:00";
+        const classStart = composeKstInstant(schedule.scheduledDate, startHHmm);
+        const endComposed =
+          schedule.endTime && /^\d{2}:\d{2}$/.test(schedule.endTime)
+            ? composeKstInstant(schedule.scheduledDate, schedule.endTime)
+            : null;
+        // 종료 시각 없거나 시작보다 빠르면(자정 넘김 등) 시작 +120분 (출석 윈도우 상한과 일치).
+        const classEnd =
+          endComposed && endComposed.getTime() > classStart.getTime()
+            ? endComposed
+            : new Date(classStart.getTime() + 120 * 60_000);
 
         let status: "completed" | "current" | "upcoming" = "upcoming";
         if (now >= classEnd) status = "completed";

@@ -10,6 +10,7 @@ import { useNativeUI } from '@/hooks/useNativeUI';
 import { useIsNative } from '@/hooks/useIsNative';
 import { apiRequest } from '@/services/api-client';
 import { getWeekStart } from '@/lib/calendar-week';
+import { MESSAGES } from '@/lib/messages';
 
 // ── Types ──
 interface ClassItem {
@@ -162,12 +163,13 @@ export default function ChildClassesPage() {
             const raw = s.scheduledAt ?? s.scheduledDate ?? '';
             const date = new Date(raw);
             if (isNaN(date.getTime())) return null;
-            const hh = String(date.getHours()).padStart(2, '0');
-            const mm = String(date.getMinutes()).padStart(2, '0');
             return {
               id: s.id,
               title: s.title ?? '수업',
-              time: `${hh}:${mm}`,
+              // scheduledAt(instant)이면 시각 유효, scheduledDate(@db.Date)면 시각 없음.
+              time: s.scheduledAt
+                ? `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+                : MESSAGES.class.dayDefaults.timeUndecided,
               location: s.location ?? '미정',
               coachName: coachName ?? '코치',
               dayLabel: DAY_NAMES[date.getDay()],
