@@ -16,6 +16,11 @@ import { NotificationsService } from "@/notifications/notifications.service";
 import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
 import { resolveViewerTeamIds } from "@/common/utils/team-scope.util";
 import {
+  dateOnlyToUtc,
+  dateOnlyToString,
+  kstTodayUtcMidnight,
+} from "@/common/utils/kst-date.util";
+import {
   computePackageGuardMeta,
   isClassEnded as isClassEndedUtil,
   shouldHideInactiveFor,
@@ -237,7 +242,7 @@ function deriveRepresentativeFromDateSchedules(
   const KO_DAY_ORDER: Record<string, number> = { 월: 0, 화: 1, 수: 2, 목: 3, 금: 4, 토: 5, 일: 6 };
   const daySet = new Set<string>();
   for (const s of dateSchedules) {
-    const dow = new Date(`${s.date}T00:00:00`).getDay();
+    const dow = dateOnlyToUtc(s.date).getUTCDay();
     const name = KO_DAY_NAMES[dow];
     if (name) daySet.add(name);
   }
@@ -445,7 +450,7 @@ export class ClassesService {
         await tx.classSchedule.createMany({
           data: createDto.dateSchedules.map((s) => ({
             classId: created.id,
-            scheduledDate: new Date(`${s.date}T00:00:00`),
+            scheduledDate: dateOnlyToUtc(s.date),
             startTime: s.startTime,
             endTime: s.endTime,
             venueId: s.venueId ?? null,
@@ -688,7 +693,7 @@ export class ClassesService {
         await tx.classSchedule.createMany({
           data: createDto.dateSchedules.map((s) => ({
             classId: created.id,
-            scheduledDate: new Date(`${s.date}T00:00:00`),
+            scheduledDate: dateOnlyToUtc(s.date),
             startTime: s.startTime,
             endTime: s.endTime,
             venueId: s.venueId ?? null,
@@ -766,22 +771,23 @@ export class ClassesService {
               const fallbackMMAcademy = fallbackDtAcademy?.getUTCMinutes() ?? 0;
 
               const candidateDates: Date[] = [];
-              const cursor = new Date(start);
-              cursor.setHours(0, 0, 0, 0);
-              while (cursor <= end && candidateDates.length <= 200) {
-                const dow = cursor.getDay();
+              // scheduledDate(@db.Date)는 UTC 자정 규약 — UTC 기준으로 순회·저장(시각 성분은 date cast 시 무시).
+              const cursor = dateOnlyToUtc(createDto.startDate!);
+              const cursorEnd = dateOnlyToUtc(createDto.endDate!);
+              while (cursor <= cursorEnd && candidateDates.length <= 200) {
+                const dow = cursor.getUTCDay();
                 if (targetDows.has(dow)) {
                   const dt = new Date(cursor);
                   if (hasDaySchedulesAcademy) {
                     const dayName = dowToNameAcademy[dow];
                     const entry = dayName ? dayTimeMapAcademy.get(dayName) : undefined;
-                    dt.setHours(entry?.startHH ?? fallbackHHAcademy, entry?.startMM ?? fallbackMMAcademy, 0, 0);
+                    dt.setUTCHours(entry?.startHH ?? fallbackHHAcademy, entry?.startMM ?? fallbackMMAcademy, 0, 0);
                   } else {
-                    dt.setHours(fallbackHHAcademy, fallbackMMAcademy, 0, 0);
+                    dt.setUTCHours(fallbackHHAcademy, fallbackMMAcademy, 0, 0);
                   }
                   candidateDates.push(dt);
                 }
-                cursor.setDate(cursor.getDate() + 1);
+                cursor.setUTCDate(cursor.getUTCDate() + 1);
               }
 
               if (candidateDates.length > 200) {
@@ -1385,8 +1391,8 @@ export class ClassesService {
    * 수업 조회
    */
   async getClass(classId: string, requester?: JwtUserPayload) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // scheduledDate(@db.Date) 경계 — KST 오늘의 UTC 자정. 이후 upcoming 일정 필터에만 사용.
+    const today = kstTodayUtcMidnight();
 
     const classRecord = await this.prisma.class.findUnique({
       where: { id: classId },
@@ -2070,21 +2076,18 @@ export class ClassesService {
 
     // [Phase C] 당월(이번 달) 출석 집계 — 선수정보 탭 "출석 N회" 표시용 (기획 D7).
     //   취소(isCancelled) 제외 일정의 present 출석을 회원별로 카운트. 결제 상태와 독립.
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    // scheduledDate(@db.Date) 당월 경계 — KST 이번 달의 UTC 자정 [gte, lt).
+    const sdMonthBase = kstTodayUtcMidnight();
+    const monthStart = new Date(
+      Date.UTC(sdMonthBase.getUTCFullYear(), sdMonthBase.getUTCMonth(), 1),
+    );
     const monthEnd = new Date(
-      now.getFullYear(),
-      now.getMonth() + 1,
-      0,
-      23,
-      59,
-      59,
-      999,
+      Date.UTC(sdMonthBase.getUTCFullYear(), sdMonthBase.getUTCMonth() + 1, 1),
     );
     const attendanceSchedules = await this.prisma.classSchedule.findMany({
       where: {
         classId,
-        scheduledDate: { gte: monthStart, lte: monthEnd },
+        scheduledDate: { gte: monthStart, lt: monthEnd },
         isCancelled: false,
       },
       select: {
@@ -2339,7 +2342,7 @@ export class ClassesService {
           await txUpdate.classSchedule.createMany({
             data: updateDto.dateSchedules.map((s) => ({
               classId,
-              scheduledDate: new Date(`${s.date}T00:00:00`),
+              scheduledDate: dateOnlyToUtc(s.date),
               startTime: s.startTime,
               endTime: s.endTime,
               venueId: s.venueId ?? null,
@@ -3203,7 +3206,7 @@ export class ClassesService {
     if (useDates) {
       // 미니달력으로 선택한 날짜 배열 — 자정 기준 ClassSchedule 생성.
       //   시각·장소는 ClassSchedule.startTime/endTime/venueId 필드로 별도 저장(오픈클래스 방식 통일).
-      candidateDates = dto.dates!.map((d) => new Date(`${d}T00:00:00`));
+      candidateDates = dto.dates!.map((d) => dateOnlyToUtc(d));
       if (candidateDates.some((d) => isNaN(d.getTime()))) {
         throw new ForbiddenException("올바른 날짜 형식을 입력해주세요.");
       }
@@ -3258,25 +3261,25 @@ export class ClassesService {
         : `${String(classRecord.startTime.getUTCHours()).padStart(2, "0")}:${String(classRecord.startTime.getUTCMinutes()).padStart(2, "0")}`;
       const [fallbackHhBulk, fallbackMmBulk] = resolvedTime.split(":").map((n) => parseInt(n, 10));
 
-      // 기간 내 요일 매칭 날짜 수집
+      // 기간 내 요일 매칭 날짜 수집 — scheduledDate(@db.Date)는 UTC 자정 규약이라 UTC 기준 순회.
       const dates: Date[] = [];
-      const cursor = new Date(start);
-      cursor.setHours(0, 0, 0, 0);
-      while (cursor <= end) {
-        const dow = cursor.getDay();
+      const cursor = dateOnlyToUtc(dto.startDate);
+      const cursorEnd = dateOnlyToUtc(dto.endDate);
+      while (cursor <= cursorEnd) {
+        const dow = cursor.getUTCDay();
         if (targetDows.has(dow)) {
           const dt = new Date(cursor);
           if (hasBulkDaySchedules && !dto.startTime) {
             // ClassDaySchedule 요일별 시각 적용 (dto.startTime 미지정 시에만)
             const dayName = dowToNameBulk[dow];
             const entry = dayName ? bulkDayTimeMap.get(dayName) : undefined;
-            dt.setHours(entry?.startHH ?? fallbackHhBulk, entry?.startMM ?? fallbackMmBulk, 0, 0);
+            dt.setUTCHours(entry?.startHH ?? fallbackHhBulk, entry?.startMM ?? fallbackMmBulk, 0, 0);
           } else {
-            dt.setHours(fallbackHhBulk || 0, fallbackMmBulk || 0, 0, 0);
+            dt.setUTCHours(fallbackHhBulk || 0, fallbackMmBulk || 0, 0, 0);
           }
           dates.push(dt);
         }
-        cursor.setDate(cursor.getDate() + 1);
+        cursor.setUTCDate(cursor.getUTCDate() + 1);
       }
       candidateDates = dates;
     }
@@ -3304,9 +3307,12 @@ export class ClassesService {
       },
       select: { scheduledDate: true },
     });
-    const existingSet = new Set(existing.map((e) => e.scheduledDate.getTime()));
+    // scheduledDate(@db.Date) 동등성은 시각 성분 무시 — UTC 날짜 문자열로 중복 판정.
+    const existingSet = new Set(
+      existing.map((e) => dateOnlyToString(e.scheduledDate)),
+    );
     const toCreate = candidateDates.filter(
-      (d) => !existingSet.has(d.getTime()),
+      (d) => !existingSet.has(dateOnlyToString(d)),
     );
 
     if (toCreate.length === 0) {
@@ -3469,7 +3475,7 @@ export class ClassesService {
     const useDates = !!(dto.dates && dto.dates.length > 0);
     let candidateDates: Date[];
     if (useDates) {
-      candidateDates = dto.dates!.map((d) => new Date(`${d}T00:00:00`));
+      candidateDates = dto.dates!.map((d) => dateOnlyToUtc(d));
       if (candidateDates.some((d) => isNaN(d.getTime()))) {
         throw new ForbiddenException("올바른 날짜 형식을 입력해주세요.");
       }
@@ -3522,23 +3528,24 @@ export class ClassesService {
         : `${String(classRecord.startTime.getUTCHours()).padStart(2, "0")}:${String(classRecord.startTime.getUTCMinutes()).padStart(2, "0")}`;
       const [fallbackHhAcademyBulk, fallbackMmAcademyBulk] = resolvedTime.split(":").map((n) => parseInt(n, 10));
 
+      // scheduledDate(@db.Date)는 UTC 자정 규약 — UTC 기준 순회로 날짜만 정확히 저장.
       const dates: Date[] = [];
-      const cursor = new Date(start);
-      cursor.setHours(0, 0, 0, 0);
-      while (cursor <= end) {
-        const dow = cursor.getDay();
+      const cursor = dateOnlyToUtc(dto.startDate);
+      const cursorEnd = dateOnlyToUtc(dto.endDate);
+      while (cursor <= cursorEnd) {
+        const dow = cursor.getUTCDay();
         if (targetDows.has(dow)) {
           const dt = new Date(cursor);
           if (hasBulkAcademyDaySchedules && !dto.startTime) {
             const dayName = dowToNameBulkAcademy[dow];
             const entry = dayName ? bulkAcademyDayTimeMap.get(dayName) : undefined;
-            dt.setHours(entry?.startHH ?? fallbackHhAcademyBulk, entry?.startMM ?? fallbackMmAcademyBulk, 0, 0);
+            dt.setUTCHours(entry?.startHH ?? fallbackHhAcademyBulk, entry?.startMM ?? fallbackMmAcademyBulk, 0, 0);
           } else {
-            dt.setHours(fallbackHhAcademyBulk || 0, fallbackMmAcademyBulk || 0, 0, 0);
+            dt.setUTCHours(fallbackHhAcademyBulk || 0, fallbackMmAcademyBulk || 0, 0, 0);
           }
           dates.push(dt);
         }
-        cursor.setDate(cursor.getDate() + 1);
+        cursor.setUTCDate(cursor.getUTCDate() + 1);
       }
       candidateDates = dates;
     }
@@ -3565,9 +3572,12 @@ export class ClassesService {
       },
       select: { scheduledDate: true },
     });
-    const existingSet = new Set(existing.map((e) => e.scheduledDate.getTime()));
+    // scheduledDate(@db.Date) 동등성은 시각 성분 무시 — UTC 날짜 문자열로 중복 판정.
+    const existingSet = new Set(
+      existing.map((e) => dateOnlyToString(e.scheduledDate)),
+    );
     const toCreate = candidateDates.filter(
-      (d) => !existingSet.has(d.getTime()),
+      (d) => !existingSet.has(dateOnlyToString(d)),
     );
 
     if (toCreate.length === 0) {

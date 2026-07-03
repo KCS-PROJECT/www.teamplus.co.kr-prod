@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { Cron } from "@nestjs/schedule";
 import { PrismaService } from "@/prisma/prisma.service";
+import { kstTodayUtcMidnight } from "@/common/utils/kst-date.util";
 
 const TIER_NAMES: Record<number, string> = {
   1: "하위",
@@ -211,8 +212,15 @@ export class LevelCalculatorService {
   }
 
   private async calcAttendanceRate(userId: string): Promise<number> {
-    const threeMonthsAgo = new Date();
-    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+    // scheduledDate(@db.Date) 경계 — KST 오늘 기준 3개월 전 날짜의 UTC 자정.
+    const kstToday = kstTodayUtcMidnight();
+    const threeMonthsAgo = new Date(
+      Date.UTC(
+        kstToday.getUTCFullYear(),
+        kstToday.getUTCMonth() - 3,
+        kstToday.getUTCDate(),
+      ),
+    );
 
     const [attended, total] = await Promise.all([
       this.prisma.classAttendance.count({

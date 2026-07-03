@@ -76,7 +76,8 @@ export class CalendarDashboardService {
     month: string,
     teamId?: string,
   ): Promise<{ events: CalendarEvent[] }> {
-    const { monthStart, monthEnd } = this.parseMonthRange(month);
+    const { monthStart, monthEnd, sdMonthStart, sdMonthEnd } =
+      this.parseMonthRange(month);
 
     const isStudentSide =
       userType === "PARENT" || userType === "CHILD" || userType === "TEEN";
@@ -114,15 +115,15 @@ export class CalendarDashboardService {
         teamIds,
         academyIds,
         enrollmentUserIds,
-        monthStart,
-        monthEnd,
+        sdMonthStart,
+        sdMonthEnd,
       ),
       this.fetchLessonEvents(
         teamIds,
         academyIds,
         enrollmentUserIds,
-        monthStart,
-        monthEnd,
+        sdMonthStart,
+        sdMonthEnd,
       ),
       this.fetchTournamentEvents(
         teamIds,
@@ -158,8 +159,8 @@ export class CalendarDashboardService {
     teamIds: string[],
     academyIds: string[],
     enrollmentUserIds: string[] | null,
-    monthStart: Date,
-    monthEnd: Date,
+    sdMonthStart: Date,
+    sdMonthEnd: Date,
   ): Promise<CalendarEvent[]> {
     // 2026-05-14: 학부모/학생은 enrollment paid 만으로 격리, 코치/감독은 owner OR 필터.
     const ownerFilters =
@@ -171,7 +172,7 @@ export class CalendarDashboardService {
     const schedules = await this.prisma.classSchedule.findMany({
       where: {
         isCancelled: false,
-        scheduledDate: { gte: monthStart, lte: monthEnd },
+        scheduledDate: { gte: sdMonthStart, lte: sdMonthEnd },
         class: {
           AND: [
             ...(ownerFilters ? [{ OR: ownerFilters }] : []),
@@ -237,8 +238,8 @@ export class CalendarDashboardService {
     teamIds: string[],
     academyIds: string[],
     enrollmentUserIds: string[] | null,
-    monthStart: Date,
-    monthEnd: Date,
+    sdMonthStart: Date,
+    sdMonthEnd: Date,
   ): Promise<CalendarEvent[]> {
     // 2026-05-14: 오픈클래스 'lesson' 핵심 — 학부모/학생은 enrollment paid 만으로 격리.
     const ownerFilters =
@@ -250,7 +251,7 @@ export class CalendarDashboardService {
     const schedules = await this.prisma.classSchedule.findMany({
       where: {
         isCancelled: false,
-        scheduledDate: { gte: monthStart, lte: monthEnd },
+        scheduledDate: { gte: sdMonthStart, lte: sdMonthEnd },
         class: {
           AND: [
             ...(ownerFilters ? [{ OR: ownerFilters }] : []),
@@ -599,16 +600,21 @@ export class CalendarDashboardService {
   private parseMonthRange(month: string): {
     monthStart: Date;
     monthEnd: Date;
+    sdMonthStart: Date;
+    sdMonthEnd: Date;
   } {
     const [yearStr, monthStr] = month.split("-");
     const year = parseInt(yearStr, 10);
     const monthIndex = parseInt(monthStr, 10) - 1;
 
-    // 해당 월 첫날 00:00:00 ~ 마지막날 23:59:59
+    // 해당 월 첫날 00:00:00 ~ 마지막날 23:59:59 (대회 startDate/scheduledAt 등 A군 timestamptz 경계용)
     const monthStart = new Date(year, monthIndex, 1, 0, 0, 0, 0);
     const monthEnd = new Date(year, monthIndex + 1, 0, 23, 59, 59, 999);
+    // scheduledDate(@db.Date) 경계용 — 같은 달의 UTC 자정 [첫날, 마지막날].
+    const sdMonthStart = new Date(Date.UTC(year, monthIndex, 1));
+    const sdMonthEnd = new Date(Date.UTC(year, monthIndex + 1, 0));
 
-    return { monthStart, monthEnd };
+    return { monthStart, monthEnd, sdMonthStart, sdMonthEnd };
   }
 
   private formatDate(date: Date): string {

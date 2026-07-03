@@ -956,8 +956,9 @@ export class ChildrenService {
       throw new ForbiddenException("접근 권한이 없습니다.");
     }
 
-    const yearStart = new Date(yearNum, 0, 1);
-    const yearEnd = new Date(yearNum + 1, 0, 1);
+    // scheduledDate(@db.Date) 연 경계 — UTC 자정 기준.
+    const yearStart = new Date(Date.UTC(yearNum, 0, 1));
+    const yearEnd = new Date(Date.UTC(yearNum + 1, 0, 1));
 
     // 연도 필터는 실제 수업일(scheduledDate) 기준 — 레코드 생성일(createdAt)이 아님.
     // 월 분류/표시가 checkedInAt ?? scheduledDate 이므로 필터도 수업일로 맞춰야

@@ -107,7 +107,17 @@ function getScheduleMode(
       0,
     ).getTime();
   } else {
-    start = base.getTime();
+    // startTime 부재 회차: scheduledDate(@db.Date)=UTC 자정(KST 09:00)이므로
+    // KST 자정으로 고정해 mode 판정 시프트 방지.
+    start = new Date(
+      base.getFullYear(),
+      base.getMonth(),
+      base.getDate(),
+      0,
+      0,
+      0,
+      0,
+    ).getTime();
   }
   const now = Date.now();
   if (now < start - IN_PROGRESS_BEFORE_MS) return 'upcoming';

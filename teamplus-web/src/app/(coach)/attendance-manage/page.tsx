@@ -50,10 +50,9 @@ function formatDateLabel(iso: string): string {
   return `${mm}.${dd}(${DAY_KR[d.getDay()]})`;
 }
 
-function formatTimeLabel(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+// scheduledDate(@db.Date)는 시각을 담지 않으므로 startTime 부재 시 빈 문자열.
+function formatTimeLabel(_iso: string): string {
+  return "";
 }
 
 // ────────────────────────────────────────────────────────────

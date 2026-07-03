@@ -17,6 +17,10 @@ import {
   computeAttendanceWindow,
   resolveScheduleEndTime,
 } from "@/common/utils/schedule-time.util";
+import {
+  kstTodayUtcMidnight,
+  addUtcDays,
+} from "@/common/utils/kst-date.util";
 
 interface AttendanceFilter {
   teamId?: string;
@@ -2639,10 +2643,9 @@ export class AttendanceService {
 
     const isPrivileged = ["ADMIN", "DIRECTOR"].includes(user.userType);
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    // scheduledDate(@db.Date) 오늘 경계 — KST 오늘의 UTC 자정 [today, tomorrow).
+    const today = kstTodayUtcMidnight();
+    const tomorrow = addUtcDays(today, 1);
 
     // 권한 클럽·학원 ID 집합 — ADMIN/DIRECTOR 는 전체, 코치/학원감독은 본인 소속/소유만
     // PR-E2 (2026-05-15): 학원 컨텍스트 호환 — 학원 감독·코치도 본인 학원 수업 일정 조회 가능
@@ -3149,12 +3152,6 @@ export class AttendanceService {
   // ────────────────────────────────────────────────────────────────
 
   /**
-   * 시점 윈도우 상수 — 회의록 22:31 (학부모 도착 직전 출석) 정합.
-   */
-  private readonly IN_PROGRESS_BEFORE_MS = 60 * 60_000; // start - 60min
-  private readonly IN_PROGRESS_AFTER_MS = 120 * 60_000; // start + 120min
-
-  /**
    * 수업별 일정 출석 이력 — 진행 중 / 완료(역순 페이징) / 예정 카운트.
    *
    * 응답:
@@ -3192,8 +3189,10 @@ export class AttendanceService {
       throw new NotFoundException("수업을 찾을 수 없습니다.");
     }
 
-    const now = new Date();
-    const nowMs = now.getTime();
+    // scheduledDate 는 @db.Date(UTC 자정) — Prisma 가 필터 시각 성분을 버려 date-only 비교이므로
+    // 완료/진행/예정을 KST 달력일로 분류: 과거일=완료 · 오늘=진행 · 미래일=예정.
+    const sdToday = kstTodayUtcMidnight();
+    const sdTomorrow = addUtcDays(sdToday, 1);
     const studentCount = cls.registrations.length;
 
     // 1) 전체 통계 집계 (출석 상태별 카운트)
@@ -3211,8 +3210,8 @@ export class AttendanceService {
     const absentTotal = countMap.get("absent") ?? 0;
     const attendanceTotal = presentTotal + absentTotal;
 
-    // 2) 완료된 일정 수 (now > scheduledDate + 120min)
-    const completedDateThreshold = new Date(nowMs - this.IN_PROGRESS_AFTER_MS);
+    // 2) 완료된 일정 수 (오늘 이전 KST 달력일)
+    const completedDateThreshold = sdToday;
     const completedCount = await this.prisma.classSchedule.count({
       where: {
         classId,
@@ -3221,16 +3220,14 @@ export class AttendanceService {
       },
     });
 
-    // 3) 진행 중 일정 (페이징 X, 최대 3건)
-    const inProgressLower = new Date(nowMs - this.IN_PROGRESS_AFTER_MS);
-    const inProgressUpper = new Date(nowMs + this.IN_PROGRESS_BEFORE_MS);
+    // 3) 진행 중 일정 (오늘 KST 달력일, 최대 3건)
     const inProgressRaw = await this.prisma.classSchedule.findMany({
       where: {
         classId,
         isCancelled: false,
         scheduledDate: {
-          gte: inProgressLower,
-          lte: inProgressUpper,
+          gte: sdToday,
+          lt: sdTomorrow,
         },
       },
       orderBy: { scheduledDate: "asc" },
@@ -3282,7 +3279,7 @@ export class AttendanceService {
       where: {
         classId,
         isCancelled: false,
-        scheduledDate: { gt: inProgressUpper },
+        scheduledDate: { gte: sdTomorrow },
       },
     });
 
@@ -3368,16 +3365,16 @@ export class AttendanceService {
       throw new NotFoundException("수업을 찾을 수 없습니다.");
     }
 
-    // "YYYY-MM" → 해당 월 [start, end]
+    // "YYYY-MM" → 해당 월 [start, end) — scheduledDate(@db.Date) UTC 자정 경계.
     const [y, m] = yearMonth.split("-").map(Number);
-    const start = new Date(y, m - 1, 1);
-    const end = new Date(y, m, 0, 23, 59, 59);
+    const start = new Date(Date.UTC(y, m - 1, 1));
+    const end = new Date(Date.UTC(y, m, 1));
 
     // present 출석 회원별 집계 (취소 일정 제외)
     const schedules = await this.prisma.classSchedule.findMany({
       where: {
         classId,
-        scheduledDate: { gte: start, lte: end },
+        scheduledDate: { gte: start, lt: end },
         isCancelled: false,
       },
       select: {
@@ -3454,8 +3451,8 @@ export class AttendanceService {
     }
     const studentCount = cls.registrations.length;
 
-    const now = new Date();
-    const upcomingLower = new Date(now.getTime() + this.IN_PROGRESS_BEFORE_MS);
+    // scheduledDate(@db.Date) 예정 = 오늘 이후 KST 달력일(gt upcomingLower). Prisma date-only 비교.
+    const upcomingLower = kstTodayUtcMidnight();
 
     const upcoming = await this.prisma.classSchedule.findMany({
       where: {

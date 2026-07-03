@@ -1,3 +1,5 @@
+import { composeKstInstant } from "./kst-date.util";
+
 /**
  * 수업 일정 표시 시각 해석 — "입력 그대로의 값" 단일 SoT.
  *
@@ -56,22 +58,16 @@ export interface AttendanceWindow {
   startMs: number;
 }
 
-/** "HH:mm" 을 scheduledDate 의 로컬 날짜와 합성한 epoch(ms). 형식 불량이면 null. */
-function composeLocalTime(
+/**
+ * "HH:mm" 을 scheduledDate(@db.Date, UTC 자정) 의 KST 달력일과 합성한 epoch(ms). 형식 불량이면 null.
+ * `composeKstInstant` 로 `+09:00` 벽시계 합성 — 로컬 생성자(서버 TZ 의존) 대신 TZ 무관.
+ */
+function composeScheduleTime(
   base: Date,
   hhmm: string | null | undefined,
 ): number | null {
   if (!hhmm || !/^\d{2}:\d{2}$/.test(hhmm)) return null;
-  const [h, m] = hhmm.split(":").map(Number);
-  return new Date(
-    base.getFullYear(),
-    base.getMonth(),
-    base.getDate(),
-    h,
-    m,
-    0,
-    0,
-  ).getTime();
+  return composeKstInstant(base, hhmm).getTime();
 }
 
 /**
@@ -88,10 +84,12 @@ export function computeAttendanceWindow(
   endTime: string | null | undefined,
   nowMs: number,
 ): AttendanceWindow {
-  const startComposed = composeLocalTime(scheduledDate, startTime);
-  const startMs = startComposed ?? scheduledDate.getTime();
+  const startComposed = composeScheduleTime(scheduledDate, startTime);
+  // startTime 부재 시 scheduledDate(UTC 자정=KST 09:00) 자체를 쓰면 09h 시프트 →
+  // KST 자정으로 고정(프론트 attendance-window.ts fallback 정책과 동일 SoT).
+  const startMs = startComposed ?? composeKstInstant(scheduledDate, "00:00").getTime();
 
-  const endComposed = composeLocalTime(scheduledDate, endTime);
+  const endComposed = composeScheduleTime(scheduledDate, endTime);
   const closeAtMs =
     endComposed !== null && endComposed > startMs
       ? endComposed

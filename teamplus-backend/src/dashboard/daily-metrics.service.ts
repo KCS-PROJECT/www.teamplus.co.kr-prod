@@ -53,6 +53,18 @@ export class DailyMetricsService {
   ) {
     const metricDate = new Date(startOfDay);
 
+    // scheduledDate(@db.Date)는 UTC 자정 규약 — startOfDay/endOfDay(서버-로컬)는 joinedAt·completedAt
+    // (A군)에 계속 쓰이므로 이 컬럼 하루 경계는 대상일(KST 달력)의 UTC 자정 [start, 다음날)으로 별도 계산.
+    const sdDayStart = new Date(
+      Date.UTC(
+        startOfDay.getFullYear(),
+        startOfDay.getMonth(),
+        startOfDay.getDate(),
+      ),
+    );
+    const sdDayNext = new Date(sdDayStart);
+    sdDayNext.setUTCDate(sdDayNext.getUTCDate() + 1);
+
     // 1. 활성 회원 수 (승인된 회원)
     const activeMembers = await this.prisma.teamMember.count({
       where: {
@@ -78,8 +90,8 @@ export class DailyMetricsService {
       where: {
         class: { teamId },
         scheduledDate: {
-          gte: startOfDay,
-          lte: endOfDay,
+          gte: sdDayStart,
+          lt: sdDayNext,
         },
         isCancelled: false,
       },
@@ -91,8 +103,8 @@ export class DailyMetricsService {
         schedule: {
           class: { teamId },
           scheduledDate: {
-            gte: startOfDay,
-            lte: endOfDay,
+            gte: sdDayStart,
+            lt: sdDayNext,
           },
         },
         attendanceStatus: "present",
@@ -105,8 +117,8 @@ export class DailyMetricsService {
         schedule: {
           class: { teamId },
           scheduledDate: {
-            gte: startOfDay,
-            lte: endOfDay,
+            gte: sdDayStart,
+            lt: sdDayNext,
           },
         },
       },

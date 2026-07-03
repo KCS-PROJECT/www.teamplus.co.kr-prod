@@ -122,6 +122,9 @@ export class CalendarService {
 
     const yearStart = new Date(yearNum, 0, 1);
     const yearEnd = new Date(yearNum + 1, 0, 1);
+    // scheduledDate(@db.Date) 연 경계는 UTC 자정. 아래 대회 startDate/endDate(A군)는 yearStart/yearEnd 유지.
+    const sdYearStart = new Date(Date.UTC(yearNum, 0, 1));
+    const sdYearEnd = new Date(Date.UTC(yearNum + 1, 0, 1));
 
     // 2026-05-14: 학부모/학생은 enrollment paid 격리, 코치/감독은 owner 격리.
     // childId 지정 시(학부모 자녀 선택) 해당 자녀 enrollment 로만 좁힘.
@@ -161,7 +164,7 @@ export class CalendarService {
         ? Promise.resolve([] as { scheduledDate: Date }[])
         : this.prisma.classSchedule.findMany({
             where: {
-              scheduledDate: { gte: yearStart, lt: yearEnd },
+              scheduledDate: { gte: sdYearStart, lt: sdYearEnd },
               isCancelled: false,
               class: {
                 AND: [
@@ -343,9 +346,18 @@ export class CalendarService {
     //   - 코치/감독(registrationUserIds null): owner 필터 적용 — 본인 팀/학원 수업만.
     const useOwnerFilter = registrationUserIds === null;
 
+    // scheduledDate(@db.Date) 경계 — start/end(로컬 월초·익월초)의 달력 Y-M-D 를 UTC 자정으로
+    // 재해석. 대회/경기(A군 instant) 필터는 start/end 원본을 그대로 쓰므로 무영향.
+    const sdStart = new Date(
+      Date.UTC(start.getFullYear(), start.getMonth(), start.getDate()),
+    );
+    const sdEnd = new Date(
+      Date.UTC(end.getFullYear(), end.getMonth(), end.getDate()),
+    );
+
     return this.prisma.classSchedule.findMany({
       where: {
-        scheduledDate: { gte: start, lt: end },
+        scheduledDate: { gte: sdStart, lt: sdEnd },
         isCancelled: false,
         class: {
           AND: [

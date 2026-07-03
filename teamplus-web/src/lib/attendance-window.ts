@@ -62,7 +62,11 @@ export function getAttendanceWindowState(
   if (Number.isNaN(base.getTime())) return 'open';
 
   const startComposed = composeLocalTime(base, startTime);
-  const start = startComposed ?? base.getTime();
+  // startTime 부재 시 scheduledDate instant(@db.Date 전환 후 UTC 자정=KST 09:00) 대신
+  // KST 자정으로 고정해 전환 전 자정-시작 동작 보존.
+  const start =
+    startComposed ??
+    new Date(base.getFullYear(), base.getMonth(), base.getDate(), 0, 0, 0, 0).getTime();
 
   const endComposed = composeLocalTime(base, endTime);
   const upper =

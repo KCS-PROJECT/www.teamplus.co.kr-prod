@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
 import { resolveScheduleTime } from "@/common/utils/schedule-time.util";
+import { kstTodayUtcMidnight } from "@/common/utils/kst-date.util";
 import {
   scheduleEligibleClassFilter,
   scheduleVisibleChildIds,
@@ -32,6 +33,15 @@ export class ParentDashboardService {
       today.setHours(0, 0, 0, 0);
       const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
       const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      // scheduledDate(@db.Date) 필터·in-memory 월 버킷 전용 UTC 자정 경계.
+      // monthStart/monthEnd(payment.createdAt A군 공유)·today(A군 파생 기준)와 분리.
+      const sdToday = kstTodayUtcMidnight();
+      const sdMonthStart = new Date(
+        Date.UTC(sdToday.getUTCFullYear(), sdToday.getUTCMonth(), 1),
+      );
+      const sdMonthEnd = new Date(
+        Date.UTC(sdToday.getUTCFullYear(), sdToday.getUTCMonth() + 1, 0),
+      );
 
       // W1 Step 1: parentUser + parentChildren 병렬
       const [parentUser, parentChildren] = await Promise.all([
@@ -129,16 +139,15 @@ export class ParentDashboardService {
 
       // W1 Step 2 준비: 모든 의존 변수 사전 계산
       const childUserIds = parentChildren.map((pc) => pc.child.id);
+      // prevMonth·sixMonthsAgo 는 scheduledDate(@db.Date) 필터 전용 → UTC 자정.
       const prevMonthStart = new Date(
-        today.getFullYear(),
-        today.getMonth() - 1,
-        1,
+        Date.UTC(sdToday.getUTCFullYear(), sdToday.getUTCMonth() - 1, 1),
       );
-      const prevMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+      const prevMonthEnd = new Date(
+        Date.UTC(sdToday.getUTCFullYear(), sdToday.getUTCMonth(), 0),
+      );
       const sixMonthsAgo = new Date(
-        today.getFullYear(),
-        today.getMonth() - 5,
-        1,
+        Date.UTC(sdToday.getUTCFullYear(), sdToday.getUTCMonth() - 5, 1),
       );
       const thirtyDaysLater = new Date(today);
       thirtyDaysLater.setDate(thirtyDaysLater.getDate() + 30);
@@ -186,7 +195,7 @@ export class ParentDashboardService {
               where: {
                 memberId: { in: childUserIds },
                 schedule: {
-                  scheduledDate: { gte: monthStart, lte: monthEnd },
+                  scheduledDate: { gte: sdMonthStart, lte: sdMonthEnd },
                 },
               },
               select: { attendanceStatus: true },
@@ -212,7 +221,7 @@ export class ParentDashboardService {
                 class: scheduleEligibleClassFilter(childUserIds),
                 // 2026-04-27: 오늘 자정부터 — 이미 시작된 오늘 일정도 카드에 표시되도록.
                 // 이미 끝난 일정은 시간 윈도우 검증으로 출석 버튼만 비활성화됨.
-                scheduledDate: { gte: today, lte: monthEnd },
+                scheduledDate: { gte: sdToday, lte: sdMonthEnd },
                 isCancelled: false,
               },
               select: {
@@ -296,7 +305,7 @@ export class ParentDashboardService {
               where: {
                 memberId: { in: childUserIds },
                 schedule: {
-                  scheduledDate: { gte: monthStart, lte: monthEnd },
+                  scheduledDate: { gte: sdMonthStart, lte: sdMonthEnd },
                 },
               },
               select: { memberId: true, attendanceStatus: true },
@@ -464,26 +473,27 @@ export class ParentDashboardService {
 
       // 2. 출석 추이 최근 6개월
       const attendanceTrend = Array.from({ length: 6 }, (_, i) => {
+        // scheduledDate(UTC 자정) 대상 월 버킷 — 경계·라벨 모두 UTC 기준으로 통일.
         const mStart = new Date(
-          today.getFullYear(),
-          today.getMonth() - (5 - i),
-          1,
+          Date.UTC(sdToday.getUTCFullYear(), sdToday.getUTCMonth() - (5 - i), 1),
         );
-        const mEnd = new Date(
-          today.getFullYear(),
-          today.getMonth() - (5 - i) + 1,
-          0,
+        const mEndNext = new Date(
+          Date.UTC(
+            sdToday.getUTCFullYear(),
+            sdToday.getUTCMonth() - (5 - i) + 1,
+            1,
+          ),
         );
         const data = sixMonthChildAttendances.filter((a) => {
           const d = a.schedule.scheduledDate;
-          return d >= mStart && d <= mEnd;
+          return d >= mStart && d < mEndNext;
         });
         const present = data.filter(
           (a) =>
             a.attendanceStatus === "present" || a.attendanceStatus === "late",
         ).length;
         return {
-          month: `${mStart.getMonth() + 1}월`,
+          month: `${mStart.getUTCMonth() + 1}월`,
           rate: data.length > 0 ? Math.round((present / data.length) * 100) : 0,
         };
       });

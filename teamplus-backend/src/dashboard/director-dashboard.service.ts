@@ -1,6 +1,10 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
+import {
+  kstTodayUtcMidnight,
+  addUtcDays,
+} from "@/common/utils/kst-date.util";
 
 @Injectable()
 export class DirectorDashboardService {
@@ -24,26 +28,29 @@ export class DirectorDashboardService {
     try {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
       const lastWeek = new Date(today);
       lastWeek.setDate(lastWeek.getDate() - 7);
       const thirtyDaysLater = new Date(today);
       thirtyDaysLater.setDate(thirtyDaysLater.getDate() + 30);
-      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-      const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-      const monthEndNext = new Date(monthEnd.getTime() + 86400000);
 
-      // 날짜 변수 초기화 (모든 쿼리 병렬화용)
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-      const weekStart = new Date(today);
-      weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 7);
-      const prevWeekStart = new Date(weekStart);
-      prevWeekStart.setDate(prevWeekStart.getDate() - 7);
-      const prevWeekCutoff = weekStart < today ? weekStart : today;
+      // scheduledDate(@db.Date)는 UTC 자정 규약 — 이 컬럼 경계·in-memory 비교는 KST 달력일의
+      // UTC 자정을 쓴다. today(서버-로컬)는 A군 컬럼(startDate·scheduledAt) 계산에 계속 사용.
+      const sdToday = kstTodayUtcMidnight();
+      const sdTomorrow = addUtcDays(sdToday, 1);
+      const sdYesterday = addUtcDays(sdToday, -1);
+      const sdWeekStart = addUtcDays(sdToday, -sdToday.getUTCDay());
+      const sdWeekEnd = addUtcDays(sdWeekStart, 7);
+      const sdPrevWeekStart = addUtcDays(sdWeekStart, -7);
+      const sdPrevWeekCutoff = sdWeekStart < sdToday ? sdWeekStart : sdToday;
+      const sdMonthStart = new Date(
+        Date.UTC(sdToday.getUTCFullYear(), sdToday.getUTCMonth(), 1),
+      );
+      const sdMonthEnd = new Date(
+        Date.UTC(sdToday.getUTCFullYear(), sdToday.getUTCMonth() + 1, 0),
+      );
+      const sdMonthEndNext = new Date(
+        Date.UTC(sdToday.getUTCFullYear(), sdToday.getUTCMonth() + 1, 1),
+      );
 
       // === W1 Step 1: director + managedTeams + managedClubs 병렬 ===
       // 감독의 관리 팀은 TeamRoster(HEAD_COACH ClubMember) 기반 단일 진실원 (2026-04-29)
@@ -115,59 +122,59 @@ export class DirectorDashboardService {
         // 오늘 출석 count 3개 (findMany + filter 대체)
         this.prisma.classAttendance.count({
           where: {
-            schedule: { scheduledDate: { gte: today, lt: tomorrow } },
+            schedule: { scheduledDate: { gte: sdToday, lt: sdTomorrow } },
             attendanceStatus: { in: ["present", "late"] },
           },
         }),
         this.prisma.classAttendance.count({
           where: {
-            schedule: { scheduledDate: { gte: today, lt: tomorrow } },
+            schedule: { scheduledDate: { gte: sdToday, lt: sdTomorrow } },
             attendanceStatus: "absent",
           },
         }),
         this.prisma.classAttendance.count({
           where: {
-            schedule: { scheduledDate: { gte: today, lt: tomorrow } },
+            schedule: { scheduledDate: { gte: sdToday, lt: sdTomorrow } },
           },
         }),
         this.prisma.classAttendance.count({
           where: {
-            schedule: { scheduledDate: { gte: yesterday, lt: today } },
+            schedule: { scheduledDate: { gte: sdYesterday, lt: sdToday } },
             attendanceStatus: { in: ["present", "late"] },
           },
         }),
         this.prisma.classAttendance.count({
           where: {
-            schedule: { scheduledDate: { gte: yesterday, lt: today } },
+            schedule: { scheduledDate: { gte: sdYesterday, lt: sdToday } },
           },
         }),
         this.prisma.classSchedule.count({
           where: {
-            scheduledDate: { gte: weekStart, lt: weekEnd },
+            scheduledDate: { gte: sdWeekStart, lt: sdWeekEnd },
             isCancelled: false,
           },
         }),
         this.prisma.classSchedule.count({
           where: {
-            scheduledDate: { gte: weekStart, lt: today },
+            scheduledDate: { gte: sdWeekStart, lt: sdToday },
             isCancelled: false,
           },
         }),
         this.prisma.classSchedule.count({
           where: {
-            scheduledDate: { gte: prevWeekStart, lt: weekStart },
+            scheduledDate: { gte: sdPrevWeekStart, lt: sdWeekStart },
             isCancelled: false,
           },
         }),
         this.prisma.classSchedule.count({
           where: {
-            scheduledDate: { gte: prevWeekStart, lt: prevWeekCutoff },
+            scheduledDate: { gte: sdPrevWeekStart, lt: sdPrevWeekCutoff },
             isCancelled: false,
           },
         }),
         this.prisma.classSchedule.findMany({
           where: {
-            scheduledDate: { gte: monthStart, lt: monthEndNext },
+            scheduledDate: { gte: sdMonthStart, lt: sdMonthEndNext },
             isCancelled: false,
           },
           select: { scheduledDate: true },
@@ -340,19 +347,19 @@ export class DirectorDashboardService {
         rate: number;
       }[] = [];
       for (let w = 0; w < 4; w++) {
-        const wStart = new Date(monthStart);
+        const wStart = new Date(sdMonthStart);
         wStart.setDate(wStart.getDate() + w * 7);
         const wEnd = new Date(wStart);
         wEnd.setDate(wEnd.getDate() + 7);
-        if (wStart > monthEnd) break;
+        if (wStart > sdMonthEnd) break;
         const actualEnd =
-          wEnd > monthEnd ? new Date(monthEnd.getTime() + 86400000) : wEnd;
+          wEnd > sdMonthEnd ? new Date(sdMonthEnd.getTime() + 86400000) : wEnd;
 
         const weekData = monthSchedules.filter(
           (s) => s.scheduledDate >= wStart && s.scheduledDate < actualEnd,
         );
         const total = weekData.length;
-        const cutoff = actualEnd > today ? today : actualEnd;
+        const cutoff = actualEnd > sdToday ? sdToday : actualEnd;
         const completed = weekData.filter(
           (s) => s.scheduledDate < cutoff,
         ).length;

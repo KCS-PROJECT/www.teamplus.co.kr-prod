@@ -162,13 +162,25 @@ export class PaymentCalculationService {
       return { sessions: 0, amount: new Decimal(0) };
     }
 
+    // scheduledDate(@db.Date) 경계 — 파라미터의 달력 Y-M-D 를 UTC 자정으로 재해석(KST 서버 의도일).
+    const sdGte = new Date(
+      Date.UTC(
+        startDate.getFullYear(),
+        startDate.getMonth(),
+        startDate.getDate(),
+      ),
+    );
+    const sdLte = new Date(
+      Date.UTC(monthEnd.getFullYear(), monthEnd.getMonth(), monthEnd.getDate()),
+    );
+
     // startDate ~ monthEnd 사이 취소되지 않은 수업 일정 카운트
     const sessions = await this.prisma.classSchedule.count({
       where: {
         classId: product.classId,
         scheduledDate: {
-          gte: startDate,
-          lte: monthEnd,
+          gte: sdGte,
+          lte: sdLte,
         },
         isCancelled: false,
       },
@@ -187,14 +199,12 @@ export class PaymentCalculationService {
     userId: string,
     month: Date,
   ): Promise<{ attendanceCount: number; amount: Decimal }> {
-    const monthStart = new Date(month.getFullYear(), month.getMonth(), 1);
+    // scheduledDate(@db.Date) 당월 경계 — month 로컬 성분(KST 대상월)을 UTC 자정으로 재해석.
+    const monthStart = new Date(
+      Date.UTC(month.getFullYear(), month.getMonth(), 1),
+    );
     const monthEnd = new Date(
-      month.getFullYear(),
-      month.getMonth() + 1,
-      0,
-      23,
-      59,
-      59,
+      Date.UTC(month.getFullYear(), month.getMonth() + 1, 0),
     );
 
     // userId로 ClubMember.id 조회 (ClassAttendance.memberId는 ClubMember.id)

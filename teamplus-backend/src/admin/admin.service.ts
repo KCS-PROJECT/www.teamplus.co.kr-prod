@@ -20,6 +20,7 @@ import {
   isEncryptedField,
 } from "@/common/utils/field-encryption.util";
 import { resolveManagedTeamIds } from "@/common/utils/team-scope.util";
+import { dateOnlyToUtc } from "@/common/utils/kst-date.util";
 import { RedisService } from "@/redis/redis.service";
 import Redis from "ioredis";
 
@@ -3883,7 +3884,8 @@ export class AdminService {
             continue;
           }
 
-          const scheduledDate = new Date(item.scheduledDate);
+          // scheduledDate(@db.Date)는 UTC 자정 규약 — 날짜 성분만 UTC 자정으로 저장.
+          const scheduledDate = dateOnlyToUtc(item.scheduledDate.slice(0, 10));
           if (isNaN(scheduledDate.getTime())) {
             errors.push({
               index: i,

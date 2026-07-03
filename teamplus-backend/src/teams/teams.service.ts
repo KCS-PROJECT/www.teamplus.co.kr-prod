@@ -20,6 +20,10 @@ import {
 import { BulkApproveMembersDto } from "./dto/bulk-approve.dto";
 // Phase 2.5 (2026-04-29) — 옛 TeamsService 흡수: 로스터 관리 DTO
 import { AddRosterMemberDto, UpdateRosterMemberDto } from "./dto/roster.dto";
+import {
+  kstTodayUtcMidnight,
+  addUtcDays,
+} from "@/common/utils/kst-date.util";
 
 /**
  * Phase 4 (2026-04-29) — Team 응답 헬퍼 (Phase 2.5에서 승계)
@@ -1378,11 +1382,10 @@ export class TeamsService {
       "이 팀의 감독/코치만 통계를 볼 수 있습니다.",
     );
 
-    // 기본 날짜 범위 설정 (최근 30일)
-    const now = new Date();
-    const defaultStartDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const actualStartDate = startDate || defaultStartDate;
-    const actualEndDate = endDate || now;
+    // 기본 날짜 범위 (최근 30일). scheduledDate(@db.Date) 경계라 KST 달력일의 UTC 자정 기준.
+    // startDate/endDate 파라미터는 "YYYY-MM-DD" → new Date() 시 이미 UTC 자정이라 그대로 사용.
+    const actualStartDate = startDate || addUtcDays(kstTodayUtcMidnight(), -30);
+    const actualEndDate = endDate || kstTodayUtcMidnight();
 
     // 팀의 수업 목록 조회
     const classes = await this.prisma.class.findMany({
