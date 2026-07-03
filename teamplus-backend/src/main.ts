@@ -12,6 +12,10 @@ import { AllExceptionsFilter } from "./common/filters";
 import { initSentry, SentryExceptionFilter } from "./common/sentry.config";
 import { LoggerService } from "./logger/logger.service";
 
+// TZ 방어선 — pm2 env(TZ=Asia/Seoul)가 주력이고, 미설정 환경(Docker/신규 서버)에서도
+// 레거시 시간 코드의 KST 전제가 깨지지 않도록 보장 (Date 최초 사용 전이어야 유효)
+process.env.TZ ??= "Asia/Seoul";
+
 // Bootstrap 전용 Logger — 구조화 로깅(Pino)과 통합되기 전 시작 단계 로그
 const logger = new Logger("Bootstrap");
 
@@ -285,20 +289,10 @@ async function bootstrap() {
       }
 
       // 화이트리스트에 있거나 와일드카드(개발용) 허용
-      // [2026-06-23] *.<domain> 패턴 매칭 지원 (예: https://*.icetimes.co.kr → 모든 서브도메인 허용)
-      const matchesWildcard = (allowed: string, origin: string): boolean => {
-        // "https://*.icetimes.co.kr" → /^https:\/\/[^./]+\.icetimes\.co\.kr$/
-        const m = allowed.match(/^(https?:\/\/)\*\.(.+)$/);
-        if (!m) return false;
-        const re = new RegExp(`^${m[1]}[^./]+\\.${m[2].replace(/\./g, "\\.")}$`);
-        return re.test(origin);
-      };
-      const isAllowed =
+      if (
         allowedOrigins.includes(origin) ||
-        allowedOrigins.some((a) => matchesWildcard(a, origin)) ||
-        (!isProduction && allowedOrigins.includes("*"));
-
-      if (isAllowed) {
+        (!isProduction && allowedOrigins.includes("*"))
+      ) {
         callback(null, true);
       } else {
         // 개발 환경: 경고 로그 후 허용

@@ -738,8 +738,9 @@ export class ClassesService {
             `[AcademyClass:${created.id}] schedule 자동 생성 SKIP — 누락 필드: ${missingFields.join(", ")}`,
           );
         } else {
-          const start = new Date(`${createDto.startDate}T00:00:00`);
-          const end = new Date(`${createDto.endDate}T23:59:59`);
+          // 검증용 파싱 — 서버 TZ 의존 제거(UTC 자정 기준, 날짜 유효성·역전 비교만 사용)
+          const start = dateOnlyToUtc(createDto.startDate!);
+          const end = dateOnlyToUtc(createDto.endDate!);
           if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) {
             this.logger.warn(
               `[AcademyClass:${created.id}] schedule 자동 생성 SKIP — 잘못된 날짜 범위 (start=${createDto.startDate}, end=${createDto.endDate})`,
@@ -3222,8 +3223,9 @@ export class ClassesService {
         );
       }
       // 날짜 범위 · 요일 · 시간 파싱
-      const start = new Date(`${dto.startDate}T00:00:00`);
-      const end = new Date(`${dto.endDate}T23:59:59`);
+      // 검증용 파싱 — 서버 TZ 의존 제거(UTC 자정 기준, 날짜 유효성·역전 비교만 사용)
+      const start = dateOnlyToUtc(dto.startDate);
+      const end = dateOnlyToUtc(dto.endDate);
       if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) {
         throw new ForbiddenException("시작일이 종료일보다 이후일 수 없습니다.");
       }
@@ -3490,8 +3492,9 @@ export class ClassesService {
           "기간(시작일·종료일)과 요일을 지정하거나 날짜를 선택해주세요.",
         );
       }
-      const start = new Date(`${dto.startDate}T00:00:00`);
-      const end = new Date(`${dto.endDate}T23:59:59`);
+      // 검증용 파싱 — 서버 TZ 의존 제거(UTC 자정 기준, 날짜 유효성·역전 비교만 사용)
+      const start = dateOnlyToUtc(dto.startDate);
+      const end = dateOnlyToUtc(dto.endDate);
       if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) {
         throw new ForbiddenException("시작일이 종료일보다 이후일 수 없습니다.");
       }

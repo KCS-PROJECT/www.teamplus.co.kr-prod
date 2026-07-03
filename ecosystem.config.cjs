@@ -24,7 +24,8 @@ const COMMON = {
   restart_delay: 3000,
   // 메모리 누수 안전망 (각 Next/Nest 앱 base 200MB 내외 → 700MB 면 명백한 leak).
   max_memory_restart: '700M',
-  env: { NODE_ENV: 'production' },
+  // TZ 고정: 시간 동작을 머신 OS 설정과 무관하게 KST 로 — 미전환 레거시 시간 코드의 전제 보존
+  env: { NODE_ENV: 'production', TZ: 'Asia/Seoul' },
 };
 
 module.exports = {

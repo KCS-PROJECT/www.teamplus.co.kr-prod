@@ -97,7 +97,7 @@ export default function AccessibilitySettingsPage() {
 
         {/* 글자 크기 — flat 흰 섹션 (카드 박스 제거) */}
         <section
-          className="bg-it-surface dark:bg-rink-800 mt-2"
+          className="bg-it-surface dark:bg-rink-800 mt-2 pb-5"
           aria-labelledby="a11y-font-size-title"
         >
           <div className="px-5 pt-5 pb-2">
@@ -149,7 +149,7 @@ export default function AccessibilitySettingsPage() {
             </div>
           </div>
 
-          <div className="mx-5 mb-5 p-3 rounded-w-md bg-it-fill dark:bg-rink-900 border border-it-line dark:border-rink-700">
+          <div className="mx-5 p-3 rounded-w-md bg-it-fill dark:bg-rink-900 border border-it-line dark:border-rink-700">
             <p className="text-w-caption font-bold text-it-ink-400 dark:text-rink-400 uppercase mb-1">
               PREVIEW
             </p>

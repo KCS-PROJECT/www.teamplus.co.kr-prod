@@ -8,6 +8,8 @@
  *  달력은 미세조정 전용(특정 날짜 개별 해제/추가). 하단 공통 시간/장소 입력·적용 토글은 제거.
  *  확인 시 각 날짜에 요일 기본값(시간/장소)을 주입(resolved), 기본값 없는 요일은 빈 시간으로 생성
  *  → 일정 목록 아코디언에서 개별 수정.
+ *  requireCommonTime(opt-in): 기본값 없는 날짜 선택 시 공통 시간 입력을 노출·필수화해
+ *  시간 미정 일정 생성을 차단한다(일정 관리 페이지 전용, ClassForm은 기존 동작 유지).
  *  · new Date()(argless) 금지 환경 — 요일/일수 계산은 인자 있는 new Date(y, m, d) 사용.
  */
 
@@ -57,6 +59,12 @@ interface MultiDatePickerModalProps {
    *   true 시 it-* 토큰(파랑 선택칩·it-fill 입력)으로 교체.
    */
   iceTheme?: boolean;
+  /**
+   * 기본값 없는 날짜 공통 시간 폴백(필수). 기본 false = 기존 동작 1:1 보존(ClassForm 회귀 0).
+   *   true 시 선택 날짜 중 요일 기본값이 없는 날짜가 있으면 공통 시간 입력을 노출하고,
+   *   입력 전까지 확인을 비활성화한다(시간 미정 일정 생성 차단). 확정 시 해당 날짜에 일괄 주입.
+   */
+  requireCommonTime?: boolean;
 }
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -83,10 +91,14 @@ export function MultiDatePickerModal({
   onConfirm,
   onClose,
   iceTheme = false,
+  requireCommonTime = false,
 }: MultiDatePickerModalProps) {
   const [viewYear, setViewYear] = useState(initialYear);
   const [viewMonth, setViewMonth] = useState(initialMonth); // 1-12
   const [picked, setPicked] = useState<Set<string>>(() => new Set(selected));
+  // 기본값 없는 날짜에 일괄 적용할 공통 시간 — requireCommonTime일 때만 사용.
+  const [commonStart, setCommonStart] = useState('');
+  const [commonEnd, setCommonEnd] = useState('');
   const disabledSet = useMemo(() => new Set(disabledDates ?? []), [disabledDates]);
 
   // 오늘(로컬) ISO — 지난 날짜 제외 비교용(YYYY-MM-DD 문자열 비교로 충분).
@@ -109,6 +121,8 @@ export function MultiDatePickerModal({
   useEffect(() => {
     if (isOpen) {
       setPicked(new Set(selected));
+      setCommonStart('');
+      setCommonEnd('');
       const now = new Date();
       setViewYear(initialYear > 0 ? initialYear : now.getFullYear());
       setViewMonth(
@@ -117,6 +131,18 @@ export function MultiDatePickerModal({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, initialYear, initialMonth]);
+
+  // 선택 날짜 중 요일 기본값이 없는 날짜 수 — 공통 시간 입력 노출·필수 판정.
+  const uncoveredCount = useMemo(() => {
+    if (!requireCommonTime) return 0;
+    let n = 0;
+    for (const date of picked) {
+      if (!validDayDefaults.some((s) => s.dayOfWeek === weekdayKoOf(date))) n += 1;
+    }
+    return n;
+  }, [requireCommonTime, picked, validDayDefaults]);
+
+  const commonTimeMissing = uncoveredCount > 0 && (!commonStart || !commonEnd);
 
   // 월 그리드 셀 (null = 빈칸). 항상 6주(42칸) 고정 — 달마다 주 수가 달라도
   //   그리드(=시트) 높이가 출렁이지 않도록 뒤를 빈칸으로 채운다.
@@ -188,8 +214,9 @@ export function MultiDatePickerModal({
   };
 
   const handleConfirm = () => {
+    if (requireCommonTime && commonTimeMissing) return;
     const sortedDates = [...picked].sort();
-    // 날짜별 확정값 — 요일 기본값이 있으면 그 시간/장소, 없으면 빈 시간(일정 목록 개별 수정 유도).
+    // 날짜별 확정값 — 요일 기본값 우선, 없으면 공통 시간(requireCommonTime) 또는 빈 시간(기존 동작).
     const resolved: MultiDateResolved[] = sortedDates.map((date) => {
       const def = validDayDefaults.find((s) => s.dayOfWeek === weekdayKoOf(date));
       if (def) {
@@ -201,7 +228,13 @@ export function MultiDatePickerModal({
           venueName: def.venueName ?? '',
         };
       }
-      return { date, startTime: '', endTime: '', venueId: '', venueName: '' };
+      return {
+        date,
+        startTime: requireCommonTime ? commonStart : '',
+        endTime: requireCommonTime ? commonEnd : '',
+        venueId: '',
+        venueName: '',
+      };
     });
     onConfirm(sortedDates, resolved);
     onClose();
@@ -234,9 +267,13 @@ export function MultiDatePickerModal({
                 ? 'flex-1 h-11 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white font-bold disabled:opacity-50 transition-colors motion-reduce:transition-none active:brightness-95'
                 : 'flex-1 h-11 rounded-xl bg-ice-500 text-white font-bold disabled:opacity-50'
             }
-            disabled={picked.size === 0}
+            disabled={picked.size === 0 || commonTimeMissing}
           >
-            {picked.size > 0 ? `${picked.size}개 일정 추가` : '날짜를 선택하세요'}
+            {picked.size === 0
+              ? '날짜를 선택하세요'
+              : commonTimeMissing
+                ? MESSAGES.class.dayDefaults.commonTimeCta
+                : `${picked.size}개 일정 추가`}
           </button>
         </div>
       }
@@ -357,6 +394,47 @@ export function MultiDatePickerModal({
       <p className="mt-2 text-w-caption text-wtext-3 dark:text-rink-300">
         {MESSAGES.class.dayDefaults.dateRestrictHint}
       </p>
+
+      {/* 공통 시간 입력 — requireCommonTime + 기본값 없는 날짜가 선택된 경우에만 노출(필수). */}
+      {requireCommonTime && uncoveredCount > 0 && (
+        <div className="mt-3 pt-3 border-t border-wline-2 dark:border-rink-700">
+          <p
+            className={
+              iceTheme
+                ? 'mb-2 text-w-caption font-bold text-it-ink-500 dark:text-rink-300'
+                : 'mb-2 text-w-caption font-bold text-wtext-3 dark:text-rink-300'
+            }
+          >
+            {MESSAGES.class.dayDefaults.commonTimeLabel(uncoveredCount)}
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              type="time"
+              value={commonStart}
+              onChange={(e) => setCommonStart(e.target.value)}
+              className={
+                iceTheme
+                  ? 'h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500'
+                  : 'h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-wtext-1 dark:text-white focus:outline-none focus:border-ice-500'
+              }
+              aria-label={MESSAGES.class.dayDefaults.startTime}
+              aria-required="true"
+            />
+            <input
+              type="time"
+              value={commonEnd}
+              onChange={(e) => setCommonEnd(e.target.value)}
+              className={
+                iceTheme
+                  ? 'h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500'
+                  : 'h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-wtext-1 dark:text-white focus:outline-none focus:border-ice-500'
+              }
+              aria-label={MESSAGES.class.dayDefaults.endTime}
+              aria-required="true"
+            />
+          </div>
+        </div>
+      )}
     </BottomSheet>
   );
 }

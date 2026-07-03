@@ -45,10 +45,13 @@ module.exports = {
       env: {
         NODE_ENV: "development",
         BACKEND_PORT: "5003",
+        // 시간 동작을 머신 OS 설정과 무관하게 고정 — 미전환 레거시 시간 코드의 KST 전제 보존
+        TZ: "Asia/Seoul",
       },
       env_production: {
         NODE_ENV: "production",
         BACKEND_PORT: "5003",
+        TZ: "Asia/Seoul",
       },
 
       // === PM2 자체 로그 (NestJS 로그와는 별개 — 프로세스 stdout/stderr) ===

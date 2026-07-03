@@ -487,6 +487,7 @@ export default function ClassSchedulesManagePage() {
         onConfirm={handleConfirmDates}
         onClose={() => setMultiDateOpen(false)}
         iceTheme
+        requireCommonTime
       />
     </MobileContainer>
   );

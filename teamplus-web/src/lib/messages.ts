@@ -61,6 +61,10 @@ export const MESSAGES = {
         "요일을 누르면 이 달의 해당 요일이 한 번에 선택됩니다. 달력에서 개별 날짜를 더하거나 뺄 수 있어요.",
       // 날짜 선택 제한 안내 — 이미 등록됐거나 지난 날짜는 선택 불가.
       dateRestrictHint: "이미 등록됐거나 지난 날짜는 선택할 수 없어요.",
+      // 기본값 없는 날짜 공통 시간 폴백 — 일정 관리 바텀시트(requireCommonTime) 전용.
+      commonTimeLabel: (count: number) =>
+        `요일 기본값이 없는 날짜 ${count}건에 적용할 시간을 입력해주세요.`,
+      commonTimeCta: "시간을 입력하세요",
       weekdayLabel: (day: string) => `${day}요일`,
       removeDay: "삭제",
       removeDayAria: (day: string) => `${day}요일 기본값 삭제`,
