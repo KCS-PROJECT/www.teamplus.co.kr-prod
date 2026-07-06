@@ -442,8 +442,9 @@ export class DirectorDashboardService {
           type: "tournament" as const,
           title: t.name,
           location: t.team?.location || t.team?.name || "장소 미정",
-          month: `${t.startDate.getMonth() + 1}월`,
-          day: t.startDate.getDate().toString(),
+          // startDate 는 `@db.Date`(UTC 자정) → 월/일은 getUTC* 로 추출.
+          month: `${t.startDate.getUTCMonth() + 1}월`,
+          day: t.startDate.getUTCDate().toString(),
           dDay,
           isPriority: dDay <= 3,
           createdAt: t.createdAt,

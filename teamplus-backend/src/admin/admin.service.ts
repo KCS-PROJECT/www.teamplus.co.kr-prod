@@ -3107,7 +3107,9 @@ export class AdminService {
             passwordHash: defaultPasswordHash,
             userType: row.userType,
             isVerified: true, // 관리자 등록이므로 자동 인증
-            birthDate: row.birthDate ? new Date(row.birthDate) : undefined,
+            birthDate: row.birthDate
+              ? dateOnlyToUtc(row.birthDate.slice(0, 10))
+              : undefined,
             // gender/note: User 모델 미존재 필드 — 제외
           };
 
@@ -3121,7 +3123,7 @@ export class AdminService {
             if (club) {
               // 한국나이 계산
               const birthYear = row.birthDate
-                ? new Date(row.birthDate).getFullYear()
+                ? dateOnlyToUtc(row.birthDate.slice(0, 10)).getUTCFullYear()
                 : 2000;
               const koreanAge = new Date().getFullYear() - birthYear + 1;
 

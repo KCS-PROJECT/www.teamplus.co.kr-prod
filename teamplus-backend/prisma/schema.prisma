@@ -37,7 +37,7 @@ model User {
   verifiedAt DateTime? @map("verified_at") @db.Timestamptz(3) /// 본인인증 완료 시간
 
   // 생년월일 / 한국 나이
-  birthDate DateTime? @map("birth_date") /// 생년월일 (TEEN/CHILD 회원가입 시 저장)
+  birthDate DateTime? @map("birth_date") @db.Date /// 생년월일 (TEEN/CHILD 회원가입 시 저장)
   koreanAge Int?      @map("korean_age") /// 한국 나이 (회원가입 시 계산)
 
   // 회원 탈퇴 / 휴면 관련
@@ -323,7 +323,7 @@ model CoachProfile {
 model ChildProfile {
   id               String    @id @default(cuid())
   userId           String    @unique @map("user_id")
-  birthDate        DateTime  @map("birth_date")
+  birthDate        DateTime  @map("birth_date") @db.Date
   /// 자녀 프로필 사진 URL — 학부모/자녀가 자녀 등록 또는 수정 시 업로드.
   /// `/uploads/avatar/...` 경로 (UploadedFile.url SoT).
   imageUrl         String?   @map("image_url") @db.Text
@@ -2099,8 +2099,8 @@ model Tournament {
   teamId      String?  @map("team_id") // 주최 팀 (선택)
   rinkId      String?  @map("rink_id")
   venueId     String?  @map("venue_id") // 개최 링크장 (Venue FK · 2026-05-22)
-  startDate   DateTime @map("start_date")
-  endDate     DateTime @map("end_date")
+  startDate   DateTime @map("start_date") @db.Date
+  endDate     DateTime @map("end_date") @db.Date
   status      String   @default("scheduled") // scheduled|ongoing|finished|cancelled
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -2466,7 +2466,7 @@ model SkillEvaluation {
   memberId         String   @map("member_id") // TeamMember ID
   coachId          String   @map("coach_id") // User (coach) ID
   classId          String?  @map("class_id")
-  evaluationDate   DateTime @map("evaluation_date")
+  evaluationDate   DateTime @map("evaluation_date") @db.Date
   overallScore     Int      @map("overall_score") // 1-100
   coachComment     String?  @map("coach_comment") @db.Text
   improvementAreas String?  @map("improvement_areas") @db.Text
@@ -4469,7 +4469,7 @@ model TrainingSession {
   memberId     String   @map("member_id") /// TeamMember ID
   teamId       String   @map("team_id")
   classId      String?  @map("class_id") /// 연결된 수업 (optional)
-  sessionDate  DateTime @map("session_date")
+  sessionDate  DateTime @map("session_date") @db.Date
   durationMin  Int      @map("duration_min") /// 훈련 시간 (분)
   intensityLvl String   @default("medium") @map("intensity_level") /// low|medium|high
   focusArea    String?  @map("focus_area") /// skating|shooting|passing|defense|fitness

@@ -218,7 +218,8 @@ export class EnrollmentsService {
 
       if (hasTargetYears) {
         // 대상 출생연도 개별 목록(SoT) — 비연속 선택까지 정확히 매칭.
-        const birthYear = new Date(childProfile.birthDate).getFullYear();
+        // birthDate 는 `@db.Date`(UTC 자정) — 출생연도는 getUTCFullYear.
+        const birthYear = new Date(childProfile.birthDate).getUTCFullYear();
         if (!targetYears.includes(birthYear)) {
           throw new BadRequestException(
             "이 수업은 대상 출생연도에 해당하는 자녀만 수강 가능합니다.",

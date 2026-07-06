@@ -31,6 +31,7 @@ import { SocialUserInfo } from "./dto/social-login.dto";
 import { AppleTokenService } from "./services/apple-token.service";
 import { UserType, Prisma } from "@prisma/client";
 import { calculateKoreanAge } from "@/common/utils/age.util";
+import { dateOnlyToUtc } from "@/common/utils/kst-date.util";
 import { JwtPayload } from "@/common/interfaces/authenticated-request.interface";
 import {
   CHLDIV,
@@ -368,7 +369,7 @@ export class AuthService {
             lastName,
             passwordHash,
             userType: resolvedUserType,
-            ...(birthDate && { birthDate: new Date(birthDate) }),
+            ...(birthDate && { birthDate: dateOnlyToUtc(birthDate.slice(0, 10)) }),
             ...(koreanAge !== undefined && { koreanAge }),
             ...(gender && { gender }),
             ...(zipCode && { zipCode }),
@@ -1504,7 +1505,7 @@ export class AuthService {
       id: pc.child.id,
       name: this.extractName(pc.child),
       birthYear: pc.child.birthDate
-        ? new Date(pc.child.birthDate).getFullYear()
+        ? new Date(pc.child.birthDate).getUTCFullYear()
         : null,
     }));
 
@@ -1578,7 +1579,7 @@ export class AuthService {
           ...(updateData.firstName && { firstName: updateData.firstName }),
           ...(updateData.lastName && { lastName: updateData.lastName }),
           ...(updateData.birthDate && {
-            birthDate: new Date(updateData.birthDate),
+            birthDate: dateOnlyToUtc(updateData.birthDate.slice(0, 10)),
           }),
           ...(updateData.gender !== undefined && { gender: updateData.gender }),
           ...(updateData.zipCode !== undefined && {

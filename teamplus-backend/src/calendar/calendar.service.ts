@@ -120,9 +120,7 @@ export class CalendarService {
       throw new BadRequestException("유효하지 않은 연도입니다.");
     }
 
-    const yearStart = new Date(yearNum, 0, 1);
-    const yearEnd = new Date(yearNum + 1, 0, 1);
-    // scheduledDate(@db.Date) 연 경계는 UTC 자정. 아래 대회 startDate/endDate(A군)는 yearStart/yearEnd 유지.
+    // scheduledDate·대회 startDate/endDate 모두 `@db.Date`(UTC 자정) — 연 경계도 UTC 자정으로 통일.
     const sdYearStart = new Date(Date.UTC(yearNum, 0, 1));
     const sdYearEnd = new Date(Date.UTC(yearNum + 1, 0, 1));
 
@@ -183,8 +181,8 @@ export class CalendarService {
         ? Promise.resolve([] as { startDate: Date; endDate: Date }[])
         : this.prisma.tournament.findMany({
             where: {
-              startDate: { lt: yearEnd },
-              endDate: { gte: yearStart },
+              startDate: { lt: sdYearEnd },
+              endDate: { gte: sdYearStart },
               teamId: { in: teamIds },
               status: { not: "cancelled" },
             },

@@ -1293,7 +1293,7 @@ export class TeamsService {
         // user.birthDate 도 보정값으로 덮어씀 — director-members 등 user.birthDate 직접 소비처 정합.
         user: safeUser,
         // 출생연도(20XX) — 대회 참가 인원 표기용. birthDate 없으면 null (FE 에서 playerAge 폴백)
-        birthYear: birthDate ? new Date(birthDate).getFullYear() : null,
+        birthYear: birthDate ? new Date(birthDate).getUTCFullYear() : null,
         // 전체 생년월일(ISO) — 회원 승인/거절 내역에서 "YYYY.MM.DD" 표기용. 없으면 null.
         birthDate: birthDate ? new Date(birthDate).toISOString() : null,
         // 소속 하위그룹 id 목록 — 대회 참가대상 선택 UI 의 그룹칩 → 멤버 매핑용.
@@ -1922,7 +1922,9 @@ export class TeamsService {
         const grp = tm.teamGroupMembers[0]; // 가장 최근 그룹 정보 (있으면)
         const birthDate =
           tm.user.childProfile?.birthDate ?? tm.user.birthDate ?? null;
-        const birthYear = birthDate ? new Date(birthDate).getFullYear() : null;
+        const birthYear = birthDate
+          ? new Date(birthDate).getUTCFullYear()
+          : null;
         return {
           // 그룹 배정된 경우 TeamGroupMember.id, 아니면 sentinel ("unassigned:<TeamMember.id>")
           id: grp?.id ?? `unassigned:${tm.id}`,

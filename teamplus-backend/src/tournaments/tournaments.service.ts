@@ -9,6 +9,10 @@ import { PrismaService } from "@/prisma/prisma.service";
 import { NotificationsService } from "@/notifications/notifications.service";
 import { calculateKoreanAgeSafe } from "@/common/utils/age.util";
 import {
+  dateOnlyToUtc,
+  kstTodayUtcMidnight,
+} from "@/common/utils/kst-date.util";
+import {
   resolveManagedTeamIds,
   resolveScopedChildUserIds,
 } from "@/common/utils/team-scope.util";
@@ -76,8 +80,9 @@ export class TournamentsService {
     }
     // [2026-06-22] 종료일이 지난 대회도 결제 차단 — status 가 자동으로 finished 로 전이되지
     //   않으므로 날짜 기준 종료도 인정한다(목록·상세 배지의 종료 보정과 일관).
+    // endDate 는 `@db.Date`(UTC 자정) — day-level 판정: 종료일 당일은 진행 중, 다음날부터 종료.
     const endByDate =
-      tournament.endDate != null && new Date(tournament.endDate) < new Date();
+      tournament.endDate != null && tournament.endDate < kstTodayUtcMidnight();
     if (
       tournament.status === "cancelled" ||
       tournament.status === "finished" ||
@@ -212,7 +217,8 @@ export class TournamentsService {
     const years = new Set<number>();
     for (const u of users) {
       const birthDate = u.childProfile?.birthDate ?? u.birthDate;
-      if (birthDate) years.add(birthDate.getFullYear());
+      // birthDate 는 `@db.Date`(UTC 자정) — 출생연도는 getUTCFullYear.
+      if (birthDate) years.add(birthDate.getUTCFullYear());
     }
     return [...years].sort((a, b) => a - b);
   }
@@ -282,9 +288,10 @@ export class TournamentsService {
     return childUsers.some((cu) => {
       const teamMatch = cu.teamMembers.some((m) => m.teamId === t.teamId);
       if (!teamMatch) return false;
+      // birthDate 는 `@db.Date`(UTC 자정) — 출생연도는 getUTCFullYear.
       const birthYear =
-        cu.childProfile?.birthDate?.getFullYear() ??
-        cu.birthDate?.getFullYear() ??
+        cu.childProfile?.birthDate?.getUTCFullYear() ??
+        cu.birthDate?.getUTCFullYear() ??
         null;
       if (birthYear == null) return true; // 출생연도 불명 → 팀 일치만으로 노출
       return this.isBirthYearEligible(birthYear, t);
@@ -594,9 +601,10 @@ export class TournamentsService {
       },
     });
 
+    // birthDate 는 `@db.Date`(UTC 자정) — 출생연도는 getUTCFullYear.
     const birthYear =
-      currentUser?.childProfile?.birthDate?.getFullYear() ??
-      currentUser?.birthDate?.getFullYear() ??
+      currentUser?.childProfile?.birthDate?.getUTCFullYear() ??
+      currentUser?.birthDate?.getUTCFullYear() ??
       null;
 
     const tournaments = await this.prisma.tournament.findMany({
@@ -937,8 +945,8 @@ export class TournamentsService {
         teamId,
         rinkId: dto.rinkId,
         venueId: dto.venueId,
-        startDate: new Date(dto.startDate),
-        endDate: new Date(dto.endDate),
+        startDate: dateOnlyToUtc(dto.startDate.slice(0, 10)),
+        endDate: dateOnlyToUtc(dto.endDate.slice(0, 10)),
         status: dto.status || "scheduled",
         eligibleBirthYearFrom: derivedBirthYearFrom,
         eligibleBirthYearTo: derivedBirthYearTo,
@@ -993,8 +1001,9 @@ export class TournamentsService {
 
     // [2026-06-22] 종료/취소된 대회는 구조 수정 차단 — 경기 결과·후불 정산은 별도 경로에서 처리.
     //   status 자동 전이가 없으므로 종료일(endDate) 경과도 종료로 인정.
+    // endDate 는 `@db.Date`(UTC 자정) — day-level 판정: 종료일 당일은 진행 중, 다음날부터 종료.
     const endedByDate =
-      tournament.endDate != null && new Date(tournament.endDate) < new Date();
+      tournament.endDate != null && tournament.endDate < kstTodayUtcMidnight();
     if (
       tournament.status === "finished" ||
       tournament.status === "cancelled" ||
@@ -1005,9 +1014,11 @@ export class TournamentsService {
 
     // 날짜 검증
     const startDate = dto.startDate
-      ? new Date(dto.startDate)
+      ? dateOnlyToUtc(dto.startDate.slice(0, 10))
       : tournament.startDate;
-    const endDate = dto.endDate ? new Date(dto.endDate) : tournament.endDate;
+    const endDate = dto.endDate
+      ? dateOnlyToUtc(dto.endDate.slice(0, 10))
+      : tournament.endDate;
 
     if (startDate > endDate) {
       throw new BadRequestException("시작 날짜가 종료 날짜보다 늦을 수 없습니다.");
@@ -1660,16 +1671,16 @@ export class TournamentsService {
     //  · 배열 있으면 해당 연도들만 정확 매칭(연도별 1년 범위 OR).
     //  · 비면 기존 from/to 단일 범위(gte~lte).
     //  연도 수가 적어 OR 비용은 무시 가능.
-    // KST 연도 경계 명시(+09:00) — 서버 TZ 의존 제거, 기존 KST 서버 동작과 동일
+    // birthDate(@db.Date) 연도 경계 = UTC 자정 반개구간 [gte, lt) — §규약 "경계 필터=UTC 자정" 정렬.
     const yearRange = (y: number) => ({
-      gte: new Date(`${y}-01-01T00:00:00+09:00`),
-      lte: new Date(`${y}-12-31T23:59:59+09:00`),
+      gte: new Date(`${y}-01-01T00:00:00Z`),
+      lt: new Date(`${y + 1}-01-01T00:00:00Z`),
     });
 
     let birthDateFilter: {
       gte?: Date;
       lte?: Date;
-      OR?: Array<{ gte: Date; lte: Date }>;
+      OR?: Array<{ gte: Date; lt: Date }>;
     };
     if (hasBirthYears) {
       birthDateFilter = { OR: birthYears.map(yearRange) };
@@ -1829,7 +1840,8 @@ export class TournamentsService {
           );
         }
 
-        const birthYear = birthDate.getFullYear();
+        // birthDate 는 `@db.Date`(UTC 자정) — 출생연도는 getUTCFullYear.
+        const birthYear = birthDate.getUTCFullYear();
 
         if (hasEligibleBirthYears) {
           // 개별 연도 집합 — 정확 매칭. 미포함 시 허용 연도 나열.
@@ -1986,8 +1998,9 @@ export class TournamentsService {
     }
     // [2026-06-17] 종료 판정 — status='finished' 또는 일정(endDate) 경과.
     //   대회 status 가 자동으로 finished 로 전이되지 않으므로 날짜 기준도 함께 인정한다.
+    // endDate 는 `@db.Date`(UTC 자정) — day-level 판정: 종료일 당일은 진행 중, 다음날부터 종료.
     const endByDate =
-      tournament.endDate != null && new Date(tournament.endDate) < new Date();
+      tournament.endDate != null && tournament.endDate < kstTodayUtcMidnight();
     if (tournament.status !== "finished" && !endByDate) {
       throw new BadRequestException("대회 종료 후 정산 가능합니다.");
     }

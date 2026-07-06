@@ -13,6 +13,7 @@ import { RedisService } from "@/redis/redis.service";
 import { NotificationsService } from "@/notifications/notifications.service";
 import { securityConfig } from "@/config/security.config";
 import { calculateKoreanAge } from "@/common/utils/age.util";
+import { dateOnlyToUtc } from "@/common/utils/kst-date.util";
 import { Prisma } from "@prisma/client";
 import {
   CreateChildDto,
@@ -187,7 +188,7 @@ export class ChildrenService {
     // }
 
     // 3. 생년월일 유효성 검사 (한국나이 기준)
-    const birthDate = new Date(dto.birthDate);
+    const birthDate = dateOnlyToUtc(dto.birthDate.slice(0, 10));
     const today = new Date();
     const age = calculateKoreanAge(birthDate);
 
@@ -507,7 +508,7 @@ export class ChildrenService {
           imageUrl?: string | null;
         } = {};
         if (dto.birthDate !== undefined)
-          profileUpdateData.birthDate = new Date(dto.birthDate);
+          profileUpdateData.birthDate = dateOnlyToUtc(dto.birthDate.slice(0, 10));
         if (dto.imageUrl !== undefined)
           profileUpdateData.imageUrl = dto.imageUrl;
         await tx.childProfile.update({
@@ -558,7 +559,7 @@ export class ChildrenService {
           const firstName = dto.firstName ?? parentChild.child.firstName;
           const playerName = `${lastName}${firstName}`;
           const birthDate = dto.birthDate
-            ? new Date(dto.birthDate)
+            ? dateOnlyToUtc(dto.birthDate.slice(0, 10))
             : parentChild.child.childProfile?.birthDate;
           await this.upsertChildTeamMembership(tx, {
             childUserId: childId,
@@ -1073,10 +1074,11 @@ export class ChildrenService {
     // 3) 만나이 계산 (14세 미만 검증)
     const now = new Date();
     const birth = child.childProfile.birthDate;
+    // birth 는 `@db.Date`(UTC 자정) → 성분은 getUTC*, now 는 KST 벽시계 로컬 getter.
     const ageMonths =
-      (now.getFullYear() - birth.getFullYear()) * 12 +
-      (now.getMonth() - birth.getMonth()) -
-      (now.getDate() < birth.getDate() ? 1 : 0);
+      (now.getFullYear() - birth.getUTCFullYear()) * 12 +
+      (now.getMonth() - birth.getUTCMonth()) -
+      (now.getDate() < birth.getUTCDate() ? 1 : 0);
     if (ageMonths >= 14 * 12) {
       throw new BadRequestException(
         "만 14세 이상은 본인이 직접 동의해야 합니다.",
