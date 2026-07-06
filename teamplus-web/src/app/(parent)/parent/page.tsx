@@ -4,13 +4,13 @@
  * 학부모 메인화면 — DESIGN.md Pattern B `wallet-content` (단일 스크롤).
  * 감독/코치 대시보드 동일 구조 (회원 승인 영역 제외) + 자녀 칩 필터.
  *
- * 구성 (배너 → 공지 → 수업목록 → 자녀칩 → 월달력 → 선택일수업):
+ * 구성 (자녀스트립 → 배너 → 공지 → 수업목록 → 월달력 → 선택일수업):
+ *  -1. 자녀 스트립 — 네이비 밴드(로고·이름·팀) + [선택] 버튼 → ChildPickerSheet 자녀 전환
  *  0. 자녀 상태 배너 — pending/rejected/자녀0명일 때만 노출 (최상단 긴급 안내)
  *  1. 공지사항 — RecentNoticesSection (팀 단위 정보)
  *  2. 수업 목록 — TeamClassesSummary (팀 등록 수업 상위 5건 요약 + 전체보기)
- *  3. 자녀 칩 row — 승인된 자녀 2명 이상일 때만 (달력·선택일 수업 필터)
- *  4. 수업 일정 — ClassCalendarSection 월 달력 (자녀 등록 수업으로 필터링)
- *  5. 선택일 수업 — SelectedDayClassList (선택일 자녀 수업 + 출석 버튼)
+ *  3. 수업 일정 — ClassCalendarSection 월 달력 (자녀 등록 수업으로 필터링)
+ *  4. 선택일 수업 — SelectedDayClassList (선택일 자녀 수업 + 출석 버튼)
  *
  * 백업: page.wallet-v1.tsx.bak (이전 Wallet 4탭 구조 보존, 빌드 제외)
  */
@@ -20,7 +20,8 @@ import dynamic from 'next/dynamic';
 
 import { Icon } from '@/components/ui/Icon';
 import { useNavigation } from '@/components/ui/NavLink';
-import { ChildChip } from '@/components/common/ChildChip';
+import { ChildPickerSheet } from '@/components/parent/ChildPickerSheet';
+import { HomeIdentityStrip } from '@/components/common/HomeIdentityStrip';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { SectionHead, WalletAppBar } from '@/components/wallet';
 import {
@@ -42,7 +43,6 @@ import { useStableLayout } from '@/hooks/useStableLayout';
 import { useImagesReady } from '@/hooks/useImagesReady';
 import { useFontsReady } from '@/hooks/useFontsReady';
 import { MESSAGES } from '@/lib/messages';
-import { resolveImageSrc } from '@/lib/image-url';
 import { getChildInactiveReason } from '@/lib/child-status';
 import { isActiveEnrollment } from '@/lib/enrollment-visibility';
 import { api } from '@/services/api-client';
@@ -106,9 +106,8 @@ export default function ParentDashboardPage() {
   const { upcomingSchedules, checkInChild } = useParentHome();
 
   const [teams, setTeams] = useState<TeamRef[] | null>(null);
-  // 헤더 팀 로고 로드 실패(404/깨짐) 시 해당 URL 기억 → 영역 자체를 미렌더(원래 없던 것처럼).
-  //   URL 값을 저장하므로 자녀 전환으로 다른 팀 로고가 되면 자동으로 다시 표시.
-  const [brokenHeaderLogo, setBrokenHeaderLogo] = useState<string | null>(null);
+  // 자녀 선택 바텀시트 — 자녀 스트립 우측 [선택] 버튼으로 열림 (승인 자녀 2명+ 일 때만 노출)
+  const [isChildSheetOpen, setIsChildSheetOpen] = useState(false);
   const [childClassMap, setChildClassMap] = useState<Map<string, Set<string>>>(
     new Map(),
   );
@@ -294,22 +293,22 @@ export default function ParentDashboardPage() {
       ? approvedChildren[0]
       : null;
 
-  // 헤더 타이틀 — 선택 자녀 "자녀명 · 소속팀". 소속(club)이 없으면 상태 라벨 노출:
+  // 자녀 스트립 서브라인 — 소속팀명. 소속(club)이 없으면 상태 라벨 노출:
   //   승인 대기는 "승인 대기", 거절·무소속은 "소속없음" (거절도 소속없음으로 통일 — 사용자 지시).
-  //   자녀 없으면 기본값(팀플러스).
-  const parentHeaderTitle = focusedChild
-    ? focusedChild.club
-      ? `${focusedChild.name} · ${focusedChild.club}`
-      : `${focusedChild.name} · ${
-          getChildInactiveReason(focusedChild) === 'pending'
-            ? MESSAGES.team.childHeaderPendingLabel
-            : MESSAGES.team.childHeaderNoTeamLabel
-        }`
-    : undefined;
+  const stripIsPending =
+    !!focusedChild &&
+    !focusedChild.club &&
+    getChildInactiveReason(focusedChild) === 'pending';
+  const stripSubline = focusedChild
+    ? focusedChild.club ||
+      (stripIsPending
+        ? MESSAGES.team.childHeaderPendingLabel
+        : MESSAGES.team.childHeaderNoTeamLabel)
+    : null;
 
-  // 헤더 좌측 팀 로고 — 선택 자녀의 승인 대표 팀(clubIds[0], 부제 club과 동일 출처) 로고.
-  //   teams(자녀 소속 팀·logoUrl 보유)에서 매칭. 무소속/미로딩/로고없음 → null(로고 미표시).
-  const parentHeaderLogoUrl = focusedChild
+  // 자녀 스트립 팀 로고 — 선택 자녀의 승인 대표 팀(clubIds[0], 서브라인 club과 동일 출처) 로고.
+  //   teams(자녀 소속 팀·logoUrl 보유)에서 매칭. 무소속/미로딩/로고없음 → 이니셜 플레이스홀더.
+  const stripTeamLogoUrl = focusedChild
     ? teams?.find((t) => t.id === focusedChild.clubIds?.[0])?.logoUrl ?? null
     : null;
 
@@ -351,21 +350,10 @@ export default function ParentDashboardPage() {
 
   return (
     <MobileContainer hasBottomNav>
+      {/* 헤더 — 정체성 정보는 HomeIdentityStrip 전담. title="" 로 좌측 완전 비움
+            (브랜드 텍스트/로고 미노출, 우측 액션 아이콘만). */}
       <WalletAppBar
-        title={parentHeaderTitle}
-        titleLeading={
-          // URL 없음 또는 로드 실패한 URL → undefined 반환 → PageAppBar 가 leading span 자체를
-          //   렌더하지 않음(잔여 여백 0, 로고 영역이 원래 없던 것처럼).
-          parentHeaderLogoUrl && parentHeaderLogoUrl !== brokenHeaderLogo ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={resolveImageSrc(parentHeaderLogoUrl)}
-              alt=""
-              onError={() => setBrokenHeaderLogo(parentHeaderLogoUrl)}
-              className="size-6 rounded-md object-cover"
-            />
-          ) : undefined
-        }
+        title=""
         timelineBadge={unreadCount > 0 ? unreadCount : undefined}
         onSearch={() => navigate('/search')}
         onTimeline={() => navigate('/timeline')}
@@ -388,6 +376,33 @@ export default function ParentDashboardPage() {
         role="main"
         aria-label="학부모 홈"
       >
+        {/* 선택 자녀 스트립 — 헤더에서 분리한 자녀 정체성 표시 + [선택] 자녀 전환.
+              공용 HomeIdentityStrip(4개 역할 홈 공유). 자녀 0명이면 미렌더. */}
+        {focusedChild && (
+          <HomeIdentityStrip
+            logoUrl={stripTeamLogoUrl}
+            fallbackInitial={focusedChild.club || focusedChild.name}
+            title={focusedChild.name}
+            subline={stripSubline}
+            sublineTone={stripIsPending ? 'warning' : 'default'}
+            ariaLabel={`선택된 자녀 ${focusedChild.name}`}
+            action={
+              // [선택] — 자녀 전환 바텀시트 열기 (전환 대상이 있는 2명+ 일 때만)
+              approvedChildren.length >= 2 ? (
+                <button
+                  type="button"
+                  onClick={() => setIsChildSheetOpen(true)}
+                  aria-label={MESSAGES.team.childStripSheetTitle}
+                  aria-haspopup="dialog"
+                  className="shrink-0 inline-flex items-center justify-center h-9 px-4 rounded-w-pill bg-white/[0.12] text-[13.5px] font-bold text-white hover:bg-white/[0.18] active:brightness-95 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+                >
+                  {MESSAGES.team.childStripSelectAction}
+                </button>
+              ) : undefined
+            }
+          />
+        )}
+
         {/* 0. 자녀 상태 배너 — 2026-05-16: 섹션 간 gap-6(24px) 통일 (pt-4 → pt-6)
              [2026-05-28] 자녀 0명 등록 유도 배너 추가 — 신규 학부모 진입 시 다음 액션 가이드.
              자녀가 등록되어 있으면 미승인 자녀 배너(pending/rejected)만 노출. */}
@@ -501,27 +516,7 @@ export default function ParentDashboardPage() {
               팀 전체 카탈로그라 자녀 칩 필터와 무관 → 칩보다 위에 배치. */}
         <TeamClassesSummary selectedChildId={selectedChildId} onReady={setSummaryReady} iceTheme />
 
-        {/* ③ 자녀 칩 row — 승인 자녀 2명+ 일 때만.
-              달력 바로 위 = 탭이 아래 일정(달력·선택일 수업)을 제어한다는 시각 단서. */}
-        {approvedChildren.length >= 2 && (
-          <div className="pt-6">
-            <div
-              className="flex items-center gap-2 overflow-x-auto hide-scrollbar px-4 sm:px-5"
-              role="tablist"
-              aria-label={MESSAGES.drawer.selectChild}
-            >
-              {approvedChildren.map((c) => (
-                <ChildChip
-                  key={c.id}
-                  iceTheme
-                  active={selectedChildId === c.id}
-                  label={c.name}
-                  onClick={() => setSelectedChildId(c.id)}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+        {/* (자녀 전환은 상단 자녀 스트립 [선택] 버튼 → ChildPickerSheet 로 이동 — 2026-07-06) */}
 
         {/* ④ 수업 일정 — full-bleed flat 섹션(ICETIMES). 월 달력. 자녀 등록 수업 필터.
               날짜 클릭 → onSelectionChange 로 아래 선택일 수업 갱신(초기값 오늘). */}
@@ -586,6 +581,23 @@ export default function ParentDashboardPage() {
         </section>
 
       </main>
+
+      {/* 자녀 선택 바텀시트 — 스트립 [선택] 버튼. 행 탭 시 전역 전환 + 닫기 */}
+      <ChildPickerSheet
+        isOpen={isChildSheetOpen}
+        onClose={() => setIsChildSheetOpen(false)}
+        items={approvedChildren.map((c) => ({
+          id: c.id,
+          name: c.name,
+          club: c.club || null,
+          logoUrl: teams?.find((t) => t.id === c.clubIds?.[0])?.logoUrl ?? null,
+        }))}
+        selectedChildId={selectedChildId}
+        onSelect={(id) => {
+          setSelectedChildId(id);
+          setIsChildSheetOpen(false);
+        }}
+      />
 
       <GlobalMenu isOpen={isMenuOpen} onClose={closeMenu} />
     </MobileContainer>

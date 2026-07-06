@@ -1844,6 +1844,10 @@ export const MESSAGES = {
     childHeaderPendingLabel: "승인 대기",
     childHeaderNoTeamLabel: "소속없음",
 
+    // 자녀 스트립 (parent 홈 네이비 밴드) — 자녀 전환 버튼 + 바텀시트
+    childStripSelectAction: "선택",
+    childStripSheetTitle: "자녀 선택",
+
     // 자녀 0명 안내 카드 (/parent · ParentChildSelector 자리)
     dashboardEmptyChildrenTitle: "등록된 자녀가 없습니다.",
     dashboardEmptyChildrenHelper:

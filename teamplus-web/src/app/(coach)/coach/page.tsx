@@ -18,6 +18,7 @@ import dynamic from 'next/dynamic';
 import { useNavigation } from '@/components/ui/NavLink';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { SectionHead, WalletAppBar } from '@/components/wallet';
+import { HomeIdentityStrip } from '@/components/common/HomeIdentityStrip';
 import {
   ClassCalendarSection,
   SelectedDayClassList,
@@ -146,7 +147,7 @@ export default function CoachDashboardPage() {
   //  approved 팀이 1개 이상이면 그것을 우선 표시, 아니면 pending 만으로 표시.
   const approvedTeams = teams?.filter((t) => t.myApprovalStatus === 'approved') ?? [];
   const pendingTeams = teams?.filter((t) => t.myApprovalStatus === 'pending') ?? [];
-  // 헤더 타이틀 — "{이름} 코치 / {팀명}" (팀명 끝의 (코드) 표기는 제거). approved 우선, 팀 없으면 직책만.
+  // 정체성 스트립 — "{이름} 코치" + 팀명들(끝의 (코드) 표기는 제거). approved 우선, 팀 없으면 직책만.
   const { user } = useSessionAuth();
   const userName = user?.name?.trim();
   const namePart = userName ? `${userName} 코치` : '코치';
@@ -156,12 +157,13 @@ export default function CoachDashboardPage() {
       : pendingTeams.length > 0
       ? pendingTeams.map((t) => t.name.replace(/\s*\([^()]*\)\s*$/, '').trim()).join(' · ')
       : null;
-  const headerTitle = teamNames ? `${namePart} / ${teamNames}` : namePart;
+  const stripLogoTeam = approvedTeams[0] ?? pendingTeams[0] ?? null;
 
   return (
     <MobileContainer hasBottomNav>
+      {/* 헤더 — 정체성 정보는 HomeIdentityStrip 전담. title="" 로 좌측 완전 비움. */}
       <WalletAppBar
-        title={headerTitle}
+        title=""
         timelineBadge={unreadCount > 0 ? unreadCount : undefined}
         onSearch={() => navigate('/search')}
         onTimeline={() => navigate('/timeline')}
@@ -174,6 +176,13 @@ export default function CoachDashboardPage() {
         role="main"
         aria-label="코치 홈"
       >
+        {/* 정체성 스트립 — 헤더에서 분리한 이름·직책·팀 표시 (공용 HomeIdentityStrip). */}
+        <HomeIdentityStrip
+          logoUrl={stripLogoTeam?.logoUrl ?? null}
+          fallbackInitial={stripLogoTeam?.name || namePart}
+          title={namePart}
+          subline={teamNames}
+        />
         {/* [ICETIMES flat 재작업 2026-06-25] 감독 홈(DirectorHome) 구조로 전환.
             카드 박스 제거 → full-bleed 흰 섹션(bg-it-surface)이 8px 회색 갭(mt-2)으로 쌓임.
             섹션 좌우 패딩은 각 위젯 내부가 담당(px-4 sm:px-5).

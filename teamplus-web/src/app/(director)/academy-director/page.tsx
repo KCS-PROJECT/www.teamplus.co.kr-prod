@@ -21,6 +21,7 @@ import dynamic from 'next/dynamic';
 import { useNavigation } from '@/components/ui/NavLink';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { SectionHead, WalletAppBar } from '@/components/wallet';
+import { HomeIdentityStrip } from '@/components/common/HomeIdentityStrip';
 import {
   ClassCalendarSection,
   SelectedDayClassList,
@@ -125,7 +126,7 @@ export default function AcademyDirectorDashboardPage() {
     };
   }, []);
 
-  // 헤더 타이틀 — "{이름} 감독 / {오픈클래스명}" (끝의 (코드) 표기는 제거). 없으면 직책만.
+  // 정체성 스트립 — "{이름} 감독" + 오픈클래스명(끝의 (코드) 표기는 제거). 없으면 직책만.
   const { user } = useSessionAuth();
   const userName = user?.name?.trim();
   const namePart = userName ? `${userName} 감독` : '감독';
@@ -133,12 +134,12 @@ export default function AcademyDirectorDashboardPage() {
     academies && academies.length > 0
       ? academies.map((a) => a.name.replace(/\s*\([^()]*\)\s*$/, '').trim()).join(' · ')
       : null;
-  const headerTitle = academyNames ? `${namePart} / ${academyNames}` : namePart;
 
   return (
     <MobileContainer hasBottomNav>
+      {/* 헤더 — 정체성 정보는 HomeIdentityStrip 전담. title="" 로 좌측 완전 비움. */}
       <WalletAppBar
-        title={headerTitle}
+        title=""
         timelineBadge={unreadCount > 0 ? unreadCount : undefined}
         onSearch={() => navigate('/search')}
         onTimeline={() => navigate('/timeline')}
@@ -151,6 +152,13 @@ export default function AcademyDirectorDashboardPage() {
         role="main"
         aria-label="오픈클래스 감독 홈"
       >
+        {/* 정체성 스트립 — 헤더에서 분리한 이름·직책·오픈클래스 표시 (공용 HomeIdentityStrip). */}
+        <HomeIdentityStrip
+          logoUrl={academies?.[0]?.imageUrl ?? null}
+          fallbackInitial={academies?.[0]?.name || namePart}
+          title={namePart}
+          subline={academyNames}
+        />
         {/* 캘린더 데이터·풀스크린 로더 신호는 아래 월 달력 섹션이 함께 공급한다. */}
 
         {/* [2026-06-09] 오픈클래스 홈 — 공지사항 숨김 처리 (사용자 요청). */}

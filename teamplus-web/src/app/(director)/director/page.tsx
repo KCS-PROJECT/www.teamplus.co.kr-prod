@@ -19,6 +19,7 @@ import dynamic from 'next/dynamic';
 import { useNavigation } from '@/components/ui/NavLink';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { SectionHead, WalletAppBar } from '@/components/wallet';
+import { HomeIdentityStrip } from '@/components/common/HomeIdentityStrip';
 import {
   ClassCalendarSection,
   SelectedDayClassList,
@@ -146,7 +147,7 @@ export default function DirectorDashboardPage() {
     void loadTeams();
   });
 
-  // 헤더 타이틀 — "{이름} 감독 / {팀명}" (팀명 끝의 (코드) 표기는 제거). 팀 없으면 직책만.
+  // 정체성 스트립 — "{이름} 감독" + 팀명들(끝의 (코드) 표기는 제거). 팀 없으면 직책만.
   const { user } = useSessionAuth();
   const userName = user?.name?.trim();
   const namePart = userName ? `${userName} 감독` : '감독';
@@ -154,12 +155,12 @@ export default function DirectorDashboardPage() {
     teams && teams.length > 0
       ? teams.map((t) => t.name.replace(/\s*\([^()]*\)\s*$/, '').trim()).join(' · ')
       : null;
-  const headerTitle = teamNames ? `${namePart} / ${teamNames}` : namePart;
 
   return (
     <MobileContainer hasBottomNav>
+      {/* 헤더 — 정체성 정보는 HomeIdentityStrip 전담. title="" 로 좌측 완전 비움. */}
       <WalletAppBar
-        title={headerTitle}
+        title=""
         timelineBadge={unreadCount > 0 ? unreadCount : undefined}
         onSearch={() => navigate('/search')}
         onTimeline={() => navigate('/timeline')}
@@ -172,6 +173,13 @@ export default function DirectorDashboardPage() {
         role="main"
         aria-label="감독 홈"
       >
+        {/* 정체성 스트립 — 헤더에서 분리한 이름·직책·팀 표시 (공용 HomeIdentityStrip). */}
+        <HomeIdentityStrip
+          logoUrl={teams?.[0]?.logoUrl ?? null}
+          fallbackInitial={teams?.[0]?.name || namePart}
+          title={namePart}
+          subline={teamNames}
+        />
         {/* [ICETIMES flat 재작업 2026-06-24] 시안(DirectorHome.jsx) 구조로 전환.
             카드 박스(rounded-w-xl border shadow + px 좌우 패딩) 제거 → full-bleed 흰
             섹션(bg-it-surface)이 8px 회색 갭(bg-it-canvas 배경 위 mt-2)으로 쌓임.
