@@ -4,6 +4,7 @@ import {
   ForbiddenException,
 } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
+import { dateOnlyToUtc } from "@/common/utils/kst-date.util";
 import { ViewCounterService } from "@/common/view-counter/view-counter.service";
 import { CreateAcademyPromotionDto } from "./dto/create-academy-promotion.dto";
 import {
@@ -146,8 +147,12 @@ export class AcademyPromotionsService {
         venueInfo: createDto.venueInfo ?? null,
         contactPhone: createDto.contactPhone ?? null,
         isActive: createDto.isActive !== false,
-        startDate: createDto.startDate ? new Date(createDto.startDate) : null,
-        endDate: createDto.endDate ? new Date(createDto.endDate) : null,
+        startDate: createDto.startDate
+          ? dateOnlyToUtc(createDto.startDate.slice(0, 10))
+          : null,
+        endDate: createDto.endDate
+          ? dateOnlyToUtc(createDto.endDate.slice(0, 10))
+          : null,
       },
     });
 
@@ -201,11 +206,11 @@ export class AcademyPromotionsService {
       updateData.isActive = updateDto.isActive;
     if (updateDto.startDate !== undefined)
       updateData.startDate = updateDto.startDate
-        ? new Date(updateDto.startDate)
+        ? dateOnlyToUtc(updateDto.startDate.slice(0, 10))
         : null;
     if (updateDto.endDate !== undefined)
       updateData.endDate = updateDto.endDate
-        ? new Date(updateDto.endDate)
+        ? dateOnlyToUtc(updateDto.endDate.slice(0, 10))
         : null;
 
     const updated = await this.prisma.academyPromotion.update({

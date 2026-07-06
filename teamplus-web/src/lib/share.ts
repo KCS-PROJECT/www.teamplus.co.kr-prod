@@ -23,6 +23,10 @@ export interface SharePayload {
   venue?: string;
   coach?: string;
   price?: string;
+  /** 카카오톡 공유 시 텍스트 템플릿 사용 — Feed 와 달리 본문 전문(최대 200자) 노출 */
+  kakaoType?: 'text';
+  /** kakaoType='text' 일 때 메시지 하단 버튼 라벨 (미지정 시 "자세히 보기") */
+  kakaoButtonTitle?: string;
 }
 
 export type ShareResultKind = "native" | "web-share" | "clipboard" | "failed";

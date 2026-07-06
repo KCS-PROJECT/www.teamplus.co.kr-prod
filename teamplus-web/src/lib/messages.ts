@@ -447,6 +447,7 @@ export const MESSAGES = {
       share: "카카오로 전달하기",
       shareText: (id: string, pw: string) =>
         `[TEAMPLUS 코치 로그인 정보]\n아이디: ${id}\n비밀번호: ${pw}\n\n첫 로그인 후 비밀번호를 변경해주세요.`,
+      shareLinkButton: "로그인하기",
       goList: "코치 목록으로",
     },
     // [추가 2026-05-20 Phase 2] 코치 장비 점검(equipment inspection) 등록 검증 & 사진 업로드.
@@ -1715,7 +1716,7 @@ export const MESSAGES = {
 
     // 팀 코드 (자녀 등록 시 팀 가입 신청 · 설계서 §4.5, 필수 입력)
     codeLabel: "팀 코드",
-    codePlaceholder: "예: RUBY-DUCKS",
+    codePlaceholder: "영문·숫자 팀 코드",
     codeHelper: "소속 팀의 코드를 입력해주세요. 감독님 승인 후 가입됩니다.",
     codeRequired:
       "팀 코드를 입력해주세요. 소속 팀 감독님께 문의하시거나 아래 팀 찾아보기를 이용해주세요.",
@@ -1743,10 +1744,10 @@ export const MESSAGES = {
     signupTeamSectionHelper:
       "가입과 동시에 팀이 생성되며, 감독님이 소유자가 됩니다.",
     signupTeamNameLabel: "팀 이름",
-    signupTeamNamePlaceholder: "예: 루비덕스",
+    signupTeamNamePlaceholder: "생성할 팀 이름을 입력해주세요",
     signupTeamNameRequired: "팀 이름을 입력해주세요.",
     signupTeamCodeLabel: "팀 코드",
-    signupTeamCodePlaceholder: "예: RUBY-DUCKS",
+    signupTeamCodePlaceholder: "영문·숫자 팀 코드",
     signupTeamCodeHelper:
       "학부모가 자녀 등록 시 입력할 코드입니다. 영문·숫자·-·_만 가능.",
     signupTeamCodeRequired: "팀 코드를 입력해주세요.",
@@ -1844,6 +1845,10 @@ export const MESSAGES = {
     childHeaderPendingLabel: "승인 대기",
     childHeaderNoTeamLabel: "소속없음",
 
+    // 자녀 스트립 (parent 홈 네이비 밴드) — 자녀 전환 버튼 + 바텀시트
+    childStripSelectAction: "선택",
+    childStripSheetTitle: "자녀 선택",
+
     // 자녀 0명 안내 카드 (/parent · ParentChildSelector 자리)
     dashboardEmptyChildrenTitle: "등록된 자녀가 없습니다.",
     dashboardEmptyChildrenHelper:
@@ -1909,9 +1914,11 @@ export const MESSAGES = {
     inquireJoin: "팀 가입 문의하기",
     fieldDescription: "팀 소개",
     fieldDescriptionPlaceholder:
-      "예: 2018년 창단된 지역 대표 아이스하키 팀입니다.",
+      "창단 연도, 활동 지역, 팀의 목표 등을 소개해주세요",
     fieldSlogan: "슬로건",
-    fieldSloganPlaceholder: "예: 얼음 위에서 하나되는 열정",
+    fieldSloganPlaceholder: "팀을 나타내는 한 문장을 입력해주세요",
+    // 팀 정보 수정 — 팀 코드 입력 (특정 팀 연상 예시 금지, 형식 안내형 유지)
+    fieldCodePlaceholder: "영문·숫자 팀 코드 (선택)",
     fieldFoundingDate: "창단일",
     fieldHomeArena: "홈 경기장",
     fieldHomeArenaPlaceholder: "예: 고척 아이스링크",
@@ -2982,7 +2989,7 @@ export const MESSAGES = {
       dayScheduleTimeRequired: "시작·종료 시간을 입력해주세요.",
       dayScheduleTimeOrderInvalid: "종료 시간은 시작 시간보다 늦어야 합니다.",
       singlePriceRequired: "1회 수업료를 입력해주세요.",
-      packagePriceRequired: "정기 패키지 가격을 입력해주세요.",
+      packagePriceRequired: "월 결제 가격을 입력해주세요.",
       capacityRequired: "정원(최대 인원)을 입력해주세요.",
       dateScheduleRequired: "일정을 1개 이상 추가해주세요.",
       dateScheduleTimeRequired: "각 일정의 날짜·시작·종료 시간을 올바르게 입력해주세요.",
@@ -3329,7 +3336,7 @@ export const MESSAGES = {
     billingModePostpaidHint: "월말 출석 횟수에 따라 후불 정산합니다.",
     billingModeBothHint: "학부모가 결제 시 선불·후불 중 선택합니다.",
     // [Phase B-6] 정액 패키지 강제 — 선불·선택형은 정액 패키지가 1개 이상 있어야 등록 가능.
-    validationMonthlyFixedRequired: "정액 패키지를 1개 이상 등록해주세요.",
+    validationMonthlyFixedRequired: "월 결제를 1개 이상 등록해주세요.",
     // [Phase B-6] 감독 정액 직접 수정 안내(A안).
     monthlyFixedAdjustHint: "매월 정액 금액은 감독이 직접 수정할 수 있어요.",
     // [Phase B-5] 가격 입력 라벨 (결제방식별) + 1회당 참고가
@@ -3338,7 +3345,7 @@ export const MESSAGES = {
     // [Phase B-6] 선불 수업의 1회 수업료 — 참고용(판매 안 함) 라벨·안내.
     singlePriceRefLabel: "1회 수업료 (참고)",
     singlePriceRefHint:
-      "선불 수업의 1회 수업료는 참고용이며, 결제는 정액 패키지로 진행됩니다.",
+      "선불 수업의 1회 수업료는 참고용이며, 결제는 월 결제 상품으로 진행됩니다.",
     singlePricePlaceholder: "1회 수업료를 입력하세요.",
     // [Phase B-6] 선택형(BOTH) 결제 옵션 — 결제 방식 택1 UI.
     timingSelectTitle: "결제 방식 선택",
@@ -3358,25 +3365,28 @@ export const MESSAGES = {
     perSessionRef: (won: number) => `1회당 약 ${won.toLocaleString()}원`,
     // 결제일로부터 결제권이 만료되기까지의 유효기간 라벨 (1회권 포함 전 상품 공통).
     validDays: (days: number) => `유효 ${days}일`,
-    addPackage: "패키지 추가",
+    addPackage: "월 결제 추가",
     // 등록 화면 수강료 카드 내부에 임베드되는 추가 패키지(정기권) 영역 라벨.
-    embedSectionLabel: "정기 패키지 (선택)",
+    embedSectionLabel: "월 결제 (선택)",
     // 후불(POSTPAID) 수업 — 패키지 추가 차단 안내(출석 기반 정산).
-    postpaidLockTitle: "후불 수업은 패키지를 추가할 수 없어요",
+    postpaidLockTitle: "후불 수업은 월 결제를 추가할 수 없어요",
     postpaidLockHint:
       "후불 수업은 출석 횟수에 따라 1회 수업료로 월말 정산됩니다.",
-    editPackage: "패키지 수정",
-    deletePackage: "패키지 삭제",
-    deleteConfirmTitle: "패키지를 삭제할까요?",
+    editPackage: "월 결제 수정",
+    // 목록 행 액션 버튼 — 행 안에 대상이 명확하므로 축약형(Tone & Manner "~하기" 준수).
+    rowEdit: "수정하기",
+    rowDelete: "삭제하기",
+    deleteConfirmTitle: "월 결제를 삭제할까요?",
     deleteConfirmBody:
       "결제 또는 수강 이력이 있다면 비활성으로 전환되고, 신규 결제만 차단됩니다.",
     softDeletedToast: "결제 이력이 있어 비활성으로 전환되었습니다.",
-    hardDeletedToast: "패키지가 삭제되었습니다.",
-    saveSuccess: "패키지가 저장되었습니다.",
-    fieldProductName: "패키지명",
+    hardDeletedToast: "월 결제가 삭제되었습니다.",
+    saveSuccess: "월 결제가 저장되었습니다.",
+    fieldProductName: "월 결제명",
     fieldProductNamePlaceholder: "예) 주 2회 4주 정기권",
     fieldDescription: "설명",
-    fieldDescriptionPlaceholder: "예) 주 2회 수업 · 4주 유효",
+    fieldDescriptionPlaceholder:
+      "예시) 주 단위 횟수로 결제진행(주 1회 수업 등 설정 가능)",
     fieldPrice: "가격(원)",
     fieldDurationDays: "유효기간(일)",
     fieldSessionsPerMonth: "월 횟수",
@@ -3393,7 +3403,7 @@ export const MESSAGES = {
     unavailableEndDateExceed: "수업 종료일을 초과하는 패키지입니다",
     unavailableClassEnded: "이 수업은 종료되었습니다",
     selectAnotherPackage: "다른 패키지를 선택해주세요",
-    validationProductName: "패키지명을 입력해주세요.",
+    validationProductName: "월 결제명을 입력해주세요.",
     validationPrice: "가격을 올바르게 입력해주세요.",
     validationSessionsPerMonth: "월 횟수는 1 이상이어야 합니다.",
     validationDurationDays: "유효기간은 1일 이상이어야 합니다.",
@@ -3406,7 +3416,7 @@ export const MESSAGES = {
     fieldWeeks: "주 수",
     fieldSessions: "수업 횟수",
     fieldProductNameHint: "(선택, 비우면 자동)",
-    fieldDescriptionHint: "(선택, 비우면 자동)",
+    fieldDescriptionHint: "(선택)",
     validationWeeks: "주 수는 1~52 사이로 입력해주세요.",
     perSessionEditHint:
       "1회 수업료는 가격만 수정할 수 있어요. 다른 정보는 변경되지 않습니다.",
@@ -3427,10 +3437,10 @@ export const MESSAGES = {
       `본 수업 기간 종료 후에도 미사용 회차를 ${extraDays}일간 추가 사용 가능`,
     // 제출 시 일괄 반영 — 부분 성공/이탈 안내.
     bulkSaveFailed:
-      "수업 정보는 저장됐지만 패키지 반영에 실패했습니다. 패키지를 다시 저장해주세요.",
+      "수업 정보는 저장됐지만 월 결제 반영에 실패했습니다. 월 결제를 다시 저장해주세요.",
     deferredDeleteHint:
-      "패키지 추가·수정·삭제는 ‘수정하기’를 눌러야 저장됩니다.",
+      "월 결제 추가·수정·삭제는 ‘수정하기’를 눌러야 저장됩니다.",
     unsavedLeaveConfirm:
-      "저장하지 않은 패키지 변경이 있습니다. 이 페이지를 벗어나면 변경 내용이 사라집니다.",
+      "저장하지 않은 월 결제 변경이 있습니다. 이 페이지를 벗어나면 변경 내용이 사라집니다.",
   },
 } as const;

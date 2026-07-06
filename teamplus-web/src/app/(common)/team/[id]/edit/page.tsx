@@ -365,7 +365,7 @@ export default function TeamEditPage() {
                 type="text"
                 value={teamCode}
                 onChange={(e) => setTeamCode(e.target.value)}
-                placeholder="예: RUBY-DUCKS (선택)"
+                placeholder={MESSAGES.team.fieldCodePlaceholder}
                 className="flex-1 bg-transparent border-0 outline-none focus-visible-disabled text-[15.5px] font-extrabold text-it-ink-800 dark:text-white tracking-tight tabular-nums uppercase placeholder:text-it-ink-400 placeholder:font-medium placeholder:normal-case"
                 maxLength={32}
                 autoCapitalize="characters"

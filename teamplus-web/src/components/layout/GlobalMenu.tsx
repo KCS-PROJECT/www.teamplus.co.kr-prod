@@ -1028,7 +1028,9 @@ export function GlobalMenu({ isOpen, onClose }: GlobalMenuProps) {
         </div>
 
         {/* 자녀 선택 카드 — PARENT · 선택 대상 자녀 2명+ 일 때만. '전체' 카드 없음(단일 자녀 모델).
-            선택 시 메뉴를 닫지 않고 전역 선택만 변경(onClose 미호출). */}
+            선택 시 전역 선택 변경 후 메뉴 닫음 — 홈 자녀 스트립·ChildPickerSheet 의
+            "선택 즉시 닫힘" 문법과 통일, 갱신된 홈이 바로 보여 전환 피드백 확보.
+            (navigate 미호출이므로 handleMenuNavigate race 로직과 무관) */}
         {showChildChips ? (
           <DrawerChildSwitcher
             items={selectableChildren.map((child) => ({
@@ -1042,7 +1044,10 @@ export function GlobalMenu({ isOpen, onClose }: GlobalMenuProps) {
                 ?.profileEmoji,
             }))}
             activeChildId={selectedChildId}
-            onSelect={setSelectedChildId}
+            onSelect={(id) => {
+              setSelectedChildId(id);
+              onClose();
+            }}
           />
         ) : (
           // 자녀 선택 카드가 없을 때(감독·코치·자녀 1명) 프로필-메뉴 구분선 — 학부모 자녀카드와 동일 위치.

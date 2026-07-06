@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { dateOnlyToUtc, addUtcDays } from "@/common/utils/kst-date.util";
 import {
   CreateLeagueDto,
   UpdateLeagueDto,
@@ -80,8 +81,8 @@ export class LeaguesService {
         ageGroup: dto.ageGroup ?? null,
         region: dto.region ?? null,
         status: dto.status ?? "draft",
-        startDate: dto.startDate ? new Date(dto.startDate) : null,
-        endDate: dto.endDate ? new Date(dto.endDate) : null,
+        startDate: dto.startDate ? dateOnlyToUtc(dto.startDate.slice(0, 10)) : null,
+        endDate: dto.endDate ? dateOnlyToUtc(dto.endDate.slice(0, 10)) : null,
         teamId: dto.teamId ?? null,
       },
       include: {
@@ -109,10 +110,10 @@ export class LeaguesService {
         ...(dto.region !== undefined && { region: dto.region || null }),
         ...(dto.status !== undefined && { status: dto.status }),
         ...(dto.startDate !== undefined && {
-          startDate: dto.startDate ? new Date(dto.startDate) : null,
+          startDate: dto.startDate ? dateOnlyToUtc(dto.startDate.slice(0, 10)) : null,
         }),
         ...(dto.endDate !== undefined && {
-          endDate: dto.endDate ? new Date(dto.endDate) : null,
+          endDate: dto.endDate ? dateOnlyToUtc(dto.endDate.slice(0, 10)) : null,
         }),
         ...(dto.teamId !== undefined && { teamId: dto.teamId || null }),
       },
@@ -506,7 +507,7 @@ export class LeaguesService {
         divisionId: dto.divisionId ?? null,
         homeTeamId: dto.homeTeamId,
         awayTeamId: dto.awayTeamId,
-        matchDate: new Date(dto.matchDate),
+        matchDate: dateOnlyToUtc(dto.matchDate.slice(0, 10)),
         startTime: dto.startTime ?? null,
         endTime: dto.endTime ?? null,
         venueId: dto.venueId ?? null,
@@ -527,7 +528,8 @@ export class LeaguesService {
     const match = await this.findOneTournamentMatch(id);
 
     const data: any = {};
-    if (dto.matchDate !== undefined) data.matchDate = new Date(dto.matchDate);
+    if (dto.matchDate !== undefined)
+      data.matchDate = dateOnlyToUtc(dto.matchDate.slice(0, 10));
     if (dto.startTime !== undefined) data.startTime = dto.startTime || null;
     if (dto.endTime !== undefined) data.endTime = dto.endTime || null;
     if (dto.venueId !== undefined) data.venueId = dto.venueId || null;
@@ -613,14 +615,13 @@ export class LeaguesService {
     // 라운드 로빈 대진 생성
     const matchups = this.generateRoundRobinMatchups(teams.map((t) => t.id));
     const matchDuration = dto.matchDurationMinutes ?? 75;
-    const baseDate = new Date(dto.startDate);
+    const baseDate = dateOnlyToUtc(dto.startDate.slice(0, 10));
     const baseTime = dto.startTime ?? "09:00";
 
     const matchData = matchups.map((matchup, index) => {
-      const matchDate = new Date(baseDate);
       // 하루에 최대 6경기 배치 가정
       const dayOffset = Math.floor(index / 6);
-      matchDate.setDate(matchDate.getDate() + dayOffset);
+      const matchDate = addUtcDays(baseDate, dayOffset);
 
       const timeSlotIndex = index % 6;
       const [hours, minutes] = baseTime.split(":").map(Number);

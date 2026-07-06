@@ -15,6 +15,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { useModal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { MESSAGES } from '@/lib/messages';
 import {
@@ -109,6 +110,7 @@ export function PackageManageSection({
   iceTheme = false,
 }: PackageManageSectionProps) {
   const { toast } = useToast();
+  const { modal } = useModal();
   const isDeferred = mode === 'deferred';
   // 후불 수업은 "후불 수업료" 단일 상품으로 출석 기반 월말 정산하므로 패키지 추가를 막는다.
   //   (기존 상품 수정/삭제는 허용 — 추가만 차단.)
@@ -153,10 +155,13 @@ export function PackageManageSection({
 
   // ── immediate: 즉시 DELETE API ──
   const handleDeleteImmediate = async (p: ClassProductDto) => {
-    if (typeof window === 'undefined' || !classId) return;
-    const ok = window.confirm(
-      `${MESSAGES.classProduct.deleteConfirmTitle}\n\n${MESSAGES.classProduct.deleteConfirmBody}`,
-    );
+    if (!classId) return;
+    const ok = await modal.confirm({
+      title: MESSAGES.classProduct.deleteConfirmTitle,
+      message: MESSAGES.classProduct.deleteConfirmBody,
+      confirmText: MESSAGES.classProduct.rowDelete,
+      variant: 'danger',
+    });
     if (!ok) return;
     const res = await deleteClassProduct(classId, p.id);
     if (!res) {
@@ -172,8 +177,15 @@ export function PackageManageSection({
   };
 
   // ── deferred: 로컬 삭제 마킹(기존) / 목록 제거(신규) ──
-  const handleDeleteDeferred = (d: DraftProduct) => {
+  const handleDeleteDeferred = async (d: DraftProduct) => {
     if (!onChange) return;
+    // draft 단계지만 행이 즉시 사라지고 되돌리기가 없으므로 오터치 방지 확인.
+    const ok = await modal.confirm({
+      message: MESSAGES.classProduct.deleteConfirmTitle,
+      confirmText: MESSAGES.classProduct.rowDelete,
+      variant: 'danger',
+    });
+    if (!ok) return;
     const next = (value ?? [])
       .map((item) => {
         if (item.localKey !== d.localKey) return item;
@@ -449,6 +461,7 @@ export function PackageManageSection({
                 <PackageRow
                   key={d.localKey}
                   name={d.productName}
+                  description={d.description}
                   price={d.price}
                   // deferred 로컬 항목은 비활성/구매가능 계산이 없으므로 항상 활성 표시.
                   disabled={false}
@@ -470,6 +483,7 @@ export function PackageManageSection({
                   <PackageRow
                     key={p.id}
                     name={p.productName}
+                    description={p.description ?? undefined}
                     price={p.price}
                     disabled={disabled}
                     badge={badge}
@@ -513,6 +527,7 @@ export function PackageManageSection({
 
 function PackageRow({
   name,
+  description,
   price,
   disabled,
   badge,
@@ -523,6 +538,8 @@ function PackageRow({
   onDelete,
 }: {
   name: string;
+  /** 상품 설명 — 값이 있을 때만 이름 아래 캡션으로 표시. */
+  description?: string;
   price: number;
   disabled: boolean;
   badge: string | null;
@@ -568,11 +585,22 @@ function PackageRow({
               </span>
             )}
           </div>
+          {description && (
+            <p
+              className={
+                iceTheme
+                  ? 'text-card-meta text-it-ink-500 dark:text-rink-300 mt-0.5 line-clamp-2'
+                  : 'text-card-meta text-wtext-3 dark:text-rink-300 mt-0.5 line-clamp-2'
+              }
+            >
+              {description}
+            </p>
+          )}
           <p
             className={
               iceTheme
-                ? 'text-card-meta text-it-ink-600 dark:text-rink-200 mt-1 tabular-nums'
-                : 'text-card-meta text-wtext-2 dark:text-rink-200 mt-1 tabular-nums'
+                ? 'text-card-body font-bold text-it-ink-800 dark:text-rink-100 mt-1 tabular-nums'
+                : 'text-card-body font-bold text-wtext-1 dark:text-rink-100 mt-1 tabular-nums'
             }
           >
             {formatPrice(price)}원
@@ -589,7 +617,7 @@ function PackageRow({
                   : 'h-8 px-3 rounded-w-lg border border-wline-2 dark:border-rink-700 bg-white dark:bg-rink-800 text-card-meta font-semibold text-wtext-1 dark:text-rink-100'
               }
             >
-              {MESSAGES.classProduct.editPackage}
+              {MESSAGES.classProduct.rowEdit}
             </button>
             {canDelete && (
               <button
@@ -601,7 +629,7 @@ function PackageRow({
                     : 'h-8 px-3 rounded-w-lg border border-error-500/30 bg-white dark:bg-rink-800 text-card-meta font-semibold text-error-600 dark:text-error-400'
                 }
               >
-                {MESSAGES.classProduct.deletePackage}
+                {MESSAGES.classProduct.rowDelete}
               </button>
             )}
           </div>

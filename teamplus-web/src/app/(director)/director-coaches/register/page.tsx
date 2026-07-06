@@ -167,9 +167,14 @@ export default function DirectorCoachRegisterPage() {
   /** 카카오 등 공유 시트로 아이디·비밀번호 전달. */
   const handleShare = useCallback(() => {
     if (!createdCreds) return;
+    // 링크는 받는 사람(신규 코치) 기준 — 코치 로그인 페이지로 직결.
+    // 카카오는 텍스트 템플릿으로 전송해 계정 정보 전문이 잘리지 않게 한다.
     openShareSheet({
       title: MESSAGES.coach.created.title,
       text: MESSAGES.coach.created.shareText(createdCreds.loginId, createdCreds.password),
+      url: `${window.location.origin}/login`,
+      kakaoType: 'text',
+      kakaoButtonTitle: MESSAGES.coach.created.shareLinkButton,
     });
   }, [createdCreds]);
 

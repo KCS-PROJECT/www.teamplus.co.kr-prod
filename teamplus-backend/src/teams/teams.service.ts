@@ -23,6 +23,7 @@ import { AddRosterMemberDto, UpdateRosterMemberDto } from "./dto/roster.dto";
 import {
   kstTodayUtcMidnight,
   addUtcDays,
+  dateOnlyToUtc,
 } from "@/common/utils/kst-date.util";
 
 /**
@@ -824,7 +825,7 @@ export class TeamsService {
           updateData.foundingDate === undefined
             ? undefined
             : updateData.foundingDate
-              ? new Date(updateData.foundingDate)
+              ? dateOnlyToUtc(updateData.foundingDate.slice(0, 10))
               : null,
         // 부문 (U8/U9/...)
         division:

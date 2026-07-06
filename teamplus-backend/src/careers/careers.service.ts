@@ -5,6 +5,7 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { dateOnlyToUtc } from "@/common/utils/kst-date.util";
 import { CreatePlayerCareerDto } from "./dto/create-player-career.dto";
 import { UpdatePlayerCareerDto } from "./dto/update-player-career.dto";
 import { CreateStaffCareerDto } from "./dto/create-staff-career.dto";
@@ -139,8 +140,8 @@ export class CareersService {
         position: dto.position,
         jerseyNumber: dto.jerseyNumber,
         leagueName: dto.leagueName,
-        startDate: new Date(dto.startDate),
-        endDate: dto.endDate ? new Date(dto.endDate) : undefined,
+        startDate: dateOnlyToUtc(dto.startDate.slice(0, 10)),
+        endDate: dto.endDate ? dateOnlyToUtc(dto.endDate.slice(0, 10)) : undefined,
         isCurrent: dto.isCurrent ?? false,
         description: dto.description,
         displayOrder: nextOrder,
@@ -167,8 +168,8 @@ export class CareersService {
     }
 
     const data: any = { ...dto };
-    if (dto.startDate) data.startDate = new Date(dto.startDate);
-    if (dto.endDate) data.endDate = new Date(dto.endDate);
+    if (dto.startDate) data.startDate = dateOnlyToUtc(dto.startDate.slice(0, 10));
+    if (dto.endDate) data.endDate = dateOnlyToUtc(dto.endDate.slice(0, 10));
 
     return this.prisma.playerCareer.update({
       where: { id },
@@ -347,8 +348,8 @@ export class CareersService {
         role: dto.role ?? null,
         organizationName: dto.organizationName ?? null,
         leagueName: dto.leagueName ?? null,
-        startDate: dto.startDate ? new Date(dto.startDate) : null,
-        endDate: dto.endDate ? new Date(dto.endDate) : null,
+        startDate: dto.startDate ? dateOnlyToUtc(dto.startDate.slice(0, 10)) : null,
+        endDate: dto.endDate ? dateOnlyToUtc(dto.endDate.slice(0, 10)) : null,
         isCurrent: dto.isCurrent ?? false,
         description: dto.description ?? null,
         certifications: dto.certifications
@@ -390,8 +391,8 @@ export class CareersService {
     );
 
     const data: any = { ...dto };
-    if (dto.startDate) data.startDate = new Date(dto.startDate);
-    if (dto.endDate) data.endDate = new Date(dto.endDate);
+    if (dto.startDate) data.startDate = dateOnlyToUtc(dto.startDate.slice(0, 10));
+    if (dto.endDate) data.endDate = dateOnlyToUtc(dto.endDate.slice(0, 10));
     if (dto.certifications) {
       data.certifications = JSON.stringify(dto.certifications);
     }

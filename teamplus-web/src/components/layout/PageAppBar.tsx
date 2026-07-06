@@ -609,22 +609,26 @@ export function PageAppBar({
               {titleLeading}
             </span>
           )}
-          <h1
-            className={cn(
-              'font-extrabold tracking-tight',
-              isDark ? 'text-white' : 'text-wtext-1 dark:text-white',
-            )}
-            style={{
-              fontSize: 'var(--appbar-title-size)',
-              letterSpacing: '-0.04em',
-              whiteSpace: 'nowrap',
-              flexShrink: 0,
-              lineHeight: 1.15,
-              transform: 'translateX(var(--appbar-content-shift-x))',
-            }}
-          >
-            {effectiveTitle}
-          </h1>
+          {/* title="" 명시 시 h1 미렌더 — 역할 홈처럼 정체성을 HomeIdentityStrip 으로
+              분리한 화면은 헤더 좌측을 완전히 비우고 우측 액션만 유지한다. */}
+          {effectiveTitle && (
+            <h1
+              className={cn(
+                'font-extrabold tracking-tight',
+                isDark ? 'text-white' : 'text-wtext-1 dark:text-white',
+              )}
+              style={{
+                fontSize: 'var(--appbar-title-size)',
+                letterSpacing: '-0.04em',
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
+                lineHeight: 1.15,
+                transform: 'translateX(var(--appbar-content-shift-x))',
+              }}
+            >
+              {effectiveTitle}
+            </h1>
+          )}
 
           <div className="flex-1" />
 

@@ -15,6 +15,9 @@ import { useEffect } from "react";
 
 const ACCESS_KEY = "teamplus_access_token";
 const REFRESH_KEY = "teamplus_refresh_token";
+// 쿠키는 admin 전용 이름 (웹 5001 과 호스트 공유 시 세션 교차 오염 방지 — 쿠키는 포트 미구분)
+const COOKIE_ACCESS_KEY = "teamplus_admin_access_token";
+const COOKIE_REFRESH_KEY = "teamplus_admin_refresh_token";
 
 export default function AuthSeedBootstrap() {
   useEffect(() => {
@@ -30,9 +33,9 @@ export default function AuthSeedBootstrap() {
       localStorage.setItem(ACCESS_KEY, access);
       if (refresh) localStorage.setItem(REFRESH_KEY, refresh);
 
-      document.cookie = `${ACCESS_KEY}=${access}; path=/; max-age=900; SameSite=Lax`;
+      document.cookie = `${COOKIE_ACCESS_KEY}=${access}; path=/; max-age=900; SameSite=Lax`;
       if (refresh) {
-        document.cookie = `${REFRESH_KEY}=${refresh}; path=/; max-age=604800; SameSite=Lax`;
+        document.cookie = `${COOKIE_REFRESH_KEY}=${refresh}; path=/; max-age=604800; SameSite=Lax`;
       }
 
       // 2026-04-21 v3: redirect 쿼리 선제 이동 (login 페이지 체류 방지)

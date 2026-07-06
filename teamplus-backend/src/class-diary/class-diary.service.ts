@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
+import { dateOnlyToUtc } from "@/common/utils/kst-date.util";
 import { CreateClassDiaryDto } from "./dto/create-class-diary.dto";
 import { UpdateClassDiaryDto } from "./dto/update-class-diary.dto";
 
@@ -16,7 +17,7 @@ export class ClassDiaryService {
         classId: dto.classId,
         teamId: dto.teamId,
         coachId,
-        sessionDate: new Date(dto.sessionDate),
+        sessionDate: dateOnlyToUtc(dto.sessionDate.slice(0, 10)),
         mainFocus: dto.mainFocus,
         drillDesc: dto.drillDesc,
         intensityLevel: dto.intensityLevel ?? "medium",
@@ -155,7 +156,8 @@ export class ClassDiaryService {
     }
 
     const data: Record<string, unknown> = {};
-    if (dto.sessionDate) data.sessionDate = new Date(dto.sessionDate);
+    if (dto.sessionDate)
+      data.sessionDate = dateOnlyToUtc(dto.sessionDate.slice(0, 10));
     if (dto.mainFocus !== undefined) data.mainFocus = dto.mainFocus;
     if (dto.drillDesc !== undefined) data.drillDesc = dto.drillDesc;
     if (dto.intensityLevel !== undefined)
