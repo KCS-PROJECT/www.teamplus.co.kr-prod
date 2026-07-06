@@ -10,7 +10,7 @@
  *   1) 운영자 입력 = "주 수 + 가격" 2개로 단순화 (ClassForm 자동 생성과 동일 UX).
  *   2) 주당 수업 횟수는 수업 정보(classSessionsPerWeek = classDays.length)로 자동 결정 —
  *      패키지별로 다르게 두면 학부모·출석 시스템 정합성이 깨지므로 수정 불가.
- *   3) productName / description / sessionsPerMonth / durationDays / feeType 은 자동 변환.
+ *   3) sessionsPerMonth / durationDays / feeType 은 자동 변환. description 은 선택 입력.
  *   4) PER_SESSION(1회권) 수정 시 가격만 수정 가능 (durationDays=30 고정 read-only).
  *
  * 신규 등록(initial=null) → 정기권(MONTHLY_FIXED) 고정.
@@ -67,22 +67,13 @@ interface FormState {
   price: string;
   /** 패키지명 (선택) — 비우면 자동 생성. */
   productName: string;
-  /** 설명 (선택) — 비우면 자동 생성. */
+  /** 설명 (선택) — 비우면 빈 값 그대로 저장(자동 생성 없음). */
   description: string;
 }
 
 function buildAutoProductName(weeks: number, feeType: string): string {
   if (feeType === 'PER_SESSION') return '1회 수업료';
   return `${weeks}주 정기권`;
-}
-
-function buildAutoDescription(
-  weeks: number,
-  perWeek: number,
-  feeType: string,
-): string {
-  if (feeType === 'PER_SESSION') return '1회 수업료';
-  return `${weeks}주 · 주 ${perWeek}회`;
 }
 
 /** ClassProductDto 와 DraftProduct 공통 필드만 본다 (toFormState 입력). */
@@ -185,9 +176,9 @@ export function PackageEditSheet({
     if (submittingRef.current) return;
     submittingRef.current = true;
 
-    const autoDesc = buildAutoDescription(weeksNum, perWeek, feeType);
     const productName = form.productName.trim();
-    const description = form.description.trim() || autoDesc;
+    // 설명은 순수 선택 입력 — 비우면 빈 값 그대로 전달(수정 시 기존 설명도 삭제됨).
+    const description = form.description.trim();
 
     // ── deferred 모드 — API 호출 없이 부모로 편집 결과 전달 ──
     if (isDeferred) {
@@ -315,6 +306,16 @@ export function PackageEditSheet({
           suffix="원"
           format="comma"
           placeholder="180,000"
+        />
+
+        {/* 설명 — 선택 */}
+        <TextField
+          label={MESSAGES.classProduct.fieldDescription}
+          optionalHint={MESSAGES.classProduct.fieldDescriptionHint}
+          value={form.description}
+          onChange={(v) => update('description', v)}
+          placeholder={MESSAGES.classProduct.fieldDescriptionPlaceholder}
+          maxLength={100}
         />
 
         {error && (

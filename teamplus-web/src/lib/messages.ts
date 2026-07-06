@@ -3373,7 +3373,9 @@ export const MESSAGES = {
     postpaidLockHint:
       "후불 수업은 출석 횟수에 따라 1회 수업료로 월말 정산됩니다.",
     editPackage: "월 결제 수정",
-    deletePackage: "월 결제 삭제",
+    // 목록 행 액션 버튼 — 행 안에 대상이 명확하므로 축약형(Tone & Manner "~하기" 준수).
+    rowEdit: "수정하기",
+    rowDelete: "삭제하기",
     deleteConfirmTitle: "월 결제를 삭제할까요?",
     deleteConfirmBody:
       "결제 또는 수강 이력이 있다면 비활성으로 전환되고, 신규 결제만 차단됩니다.",
@@ -3383,7 +3385,8 @@ export const MESSAGES = {
     fieldProductName: "월 결제명",
     fieldProductNamePlaceholder: "예) 주 2회 4주 정기권",
     fieldDescription: "설명",
-    fieldDescriptionPlaceholder: "예) 주 2회 수업 · 4주 유효",
+    fieldDescriptionPlaceholder:
+      "예시) 주 단위 횟수로 결제진행(주 1회 수업 등 설정 가능)",
     fieldPrice: "가격(원)",
     fieldDurationDays: "유효기간(일)",
     fieldSessionsPerMonth: "월 횟수",
@@ -3413,7 +3416,7 @@ export const MESSAGES = {
     fieldWeeks: "주 수",
     fieldSessions: "수업 횟수",
     fieldProductNameHint: "(선택, 비우면 자동)",
-    fieldDescriptionHint: "(선택, 비우면 자동)",
+    fieldDescriptionHint: "(선택)",
     validationWeeks: "주 수는 1~52 사이로 입력해주세요.",
     perSessionEditHint:
       "1회 수업료는 가격만 수정할 수 있어요. 다른 정보는 변경되지 않습니다.",
