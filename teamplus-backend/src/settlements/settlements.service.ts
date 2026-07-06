@@ -6,6 +6,7 @@ import {
   Logger,
 } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
+import { kstTodayUtcMidnight } from "@/common/utils/kst-date.util";
 import { isAdminRole } from "@/auth/constants/chldiv.constants";
 import { QuerySettlementDto } from "./dto/query-settlement.dto";
 import { Prisma } from "@prisma/client";
@@ -464,7 +465,8 @@ export class SettlementsService {
           transactionType: "payout",
           amount: settlement.netAmount,
           description: note ?? "정산 지급 완료",
-          transactionDate: completedAt,
+          // @db.Date — KST 달력일. completedAt(instant)의 UTC 날짜부를 쓰면 KST 심야(00~09시) 완료 건이 전일로 기록됨.
+          transactionDate: kstTodayUtcMidnight(),
         },
       });
 

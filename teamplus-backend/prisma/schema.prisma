@@ -334,7 +334,7 @@ model ChildProfile {
   /// 다음 레벨까지의 진도율 (0-100)
   progressPercent  Int       @default(0) @map("progress_percent")
   /// 다음 평가 테스트 예정일
-  nextTestDate     DateTime? @map("next_test_date")
+  nextTestDate     DateTime? @map("next_test_date") @db.Date
   /// 마지막 평가일
   lastEvaluatedAt  DateTime? @map("last_evaluated_at") @db.Timestamptz(3)
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -428,7 +428,7 @@ model Team {
   secondaryColor       String?   @map("secondary_color")
   description          String?   @db.Text
   slogan               String?   @db.Text
-  foundingDate         DateTime? @map("founding_date")
+  foundingDate         DateTime? @map("founding_date") @db.Date
   homeArena            String?   @map("home_arena")
   venueId              String?   @map("venue_id") /// 홈 링크장 (Venue FK · 2026-05-22, homeArena 텍스트는 하위호환 유지)
   isActive             Boolean   @default(true) @map("is_active")
@@ -1617,8 +1617,8 @@ model AcademyPromotion {
   venueInfo    String?   @map("venue_info") // "IN CHEON 블랙아이스A"
   contactPhone String?   @map("contact_phone")
   isActive     Boolean   @default(true) @map("is_active")
-  startDate    DateTime? @map("start_date")
-  endDate      DateTime? @map("end_date")
+  startDate    DateTime? @map("start_date") @db.Date
+  endDate      DateTime? @map("end_date") @db.Date
   viewCount    Int       @default(0) @map("view_count")
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -2446,7 +2446,7 @@ model SettlementTransaction {
   transactionType String   @map("transaction_type") // class_payment|shop_order|refund|fee
   amount          Int
   description     String?
-  transactionDate DateTime @map("transaction_date")
+  transactionDate DateTime @map("transaction_date") @db.Date
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   settlement Settlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
@@ -2629,8 +2629,8 @@ model Coupon {
   usageLimit        Int?         @map("usage_limit") // 전체 사용 제한
   usagePerUser      Int          @default(1) @map("usage_per_user") // 1인당 사용 제한
   usedCount         Int          @default(0) @map("used_count") // 사용된 횟수
-  startDate         DateTime     @map("start_date") // 사용 시작일
-  endDate           DateTime     @map("end_date") // 사용 종료일
+  startDate         DateTime     @map("start_date") @db.Date // 사용 시작일
+  endDate           DateTime     @map("end_date") @db.Date // 사용 종료일
   isActive          Boolean      @default(true) @map("is_active")
   targetType        CouponTarget @default(ALL) @map("target_type") // 적용 대상
   targetIds         Json         @default("[]") @map("target_ids") // 대상 ID 배열 (카테고리/상품)
@@ -2881,7 +2881,7 @@ model AppPremiumEvent {
   title        String    @db.VarChar(200)
   subtitle     String?   @db.VarChar(200)
   description  String    @db.Text
-  eventDate    DateTime  @map("event_date")
+  eventDate    DateTime  @map("event_date") @db.Timestamptz(3)
   venueName    String    @map("venue_name") @db.VarChar(200)
   venueAddress String?   @map("venue_address") @db.VarChar(400)
   benefitsJson Json      @map("benefits_json") @db.JsonB
@@ -3185,8 +3185,8 @@ model PlayerClassHistory {
   memberId         String    @map("member_id") /// TeamMember ID
   classId          String    @map("class_id")
   enrollmentId     String?   @unique @map("enrollment_id") /// 수강신청 연결 (1:1)
-  startDate        DateTime  @map("start_date") /// 수업 시작일
-  endDate          DateTime? @map("end_date") /// 수업 종료일
+  startDate        DateTime  @map("start_date") @db.Date /// 수업 시작일
+  endDate          DateTime? @map("end_date") @db.Date /// 수업 종료일
   totalSessions    Int       @default(0) @map("total_sessions") /// 총 수업 횟수
   attendedSessions Int       @default(0) @map("attended_sessions") /// 출석 횟수
   attendanceRate   Int       @default(0) @map("attendance_rate") /// 출석률 (0-100%)
@@ -3279,8 +3279,8 @@ model PlayerCareer {
   position     String? /// 포지션 (goalie|center|left_wing|right_wing|defense)
   jerseyNumber Int?      @map("jersey_number") /// 등번호
   leagueName   String?   @map("league_name") /// 리그/대회명
-  startDate    DateTime  @map("start_date") /// 활동 시작일
-  endDate      DateTime? @map("end_date") /// 활동 종료일 (null=현재)
+  startDate    DateTime  @map("start_date") @db.Date /// 활동 시작일
+  endDate      DateTime? @map("end_date") @db.Date /// 활동 종료일 (null=현재)
   isCurrent    Boolean   @default(false) @map("is_current") /// 현재 소속 여부
   description  String?   @db.Text /// 활동 내용·특이사항
   displayOrder Int       @default(0) @map("display_order") /// 표시 순서
@@ -3303,8 +3303,8 @@ model StaffCareer {
   role             String?   /// 역할 (head_coach|assistant_coach|goalie_coach|director|manager|trainer|referee|analyst)
   organizationName String?   @map("organization_name") /// 소속 기관/클럽명
   leagueName       String?   @map("league_name") /// 리그명
-  startDate        DateTime? @map("start_date") /// 경력 시작일
-  endDate          DateTime? @map("end_date") /// 경력 종료일 (null=현재)
+  startDate        DateTime? @map("start_date") @db.Date /// 경력 시작일
+  endDate          DateTime? @map("end_date") @db.Date /// 경력 종료일 (null=현재)
   isCurrent        Boolean   @default(false) @map("is_current") /// 현재 재직 여부
   description      String?   @db.Text /// 주요 업무·성과
   certifications   String?   @db.Text /// 보유 자격증 (JSON 배열)
@@ -3520,8 +3520,8 @@ model Camp {
   name          String // e.g., "2015 루비덕스 여름캠프"
   description   String?  @db.Text
   venueId       String?  @map("venue_id")
-  startDate     DateTime @map("start_date")
-  endDate       DateTime @map("end_date")
+  startDate     DateTime @map("start_date") @db.Date
+  endDate       DateTime @map("end_date") @db.Date
   maxCapacity   Int?     @map("max_capacity")
   price         Decimal? @db.Decimal(10, 2)
   accommodation String? // 숙박 정보 (숙소명, 주소 등)
@@ -3578,8 +3578,8 @@ model LessonPackage {
   dayOfWeek     String?   @map("day_of_week") // MON|TUE|WED|THU|FRI|SAT|SUN
   startTime     String?   @map("start_time")
   endTime       String?   @map("end_time")
-  startDate     DateTime? @map("start_date")
-  endDate       DateTime? @map("end_date")
+  startDate     DateTime? @map("start_date") @db.Date
+  endDate       DateTime? @map("end_date") @db.Date
   sessionDates  Json?     @map("session_dates") @db.JsonB // 개별 세션 날짜 배열 [16,23,30]
   maxCapacity   Int?      @map("max_capacity")
   status        String    @default("open") // open|full|closed|completed
@@ -3744,8 +3744,8 @@ model OverseasTrip {
   country              String /// 국가 (ISO 코드 또는 한글명)
   city                 String /// 도시
   description          String?   @db.Text /// 원정 상세 설명
-  startDate            DateTime  @map("start_date") /// 원정 시작일
-  endDate              DateTime  @map("end_date") /// 원정 종료일
+  startDate            DateTime  @map("start_date") @db.Date /// 원정 시작일
+  endDate              DateTime  @map("end_date") @db.Date /// 원정 종료일
   registrationDeadline DateTime  @map("registration_deadline") @db.Timestamptz(3) /// 참가 등록 마감일
   maxParticipants      Int       @map("max_participants") /// 최대 참가 인원
   ageGroup             String?   @map("age_group") /// 대상 연령대 (예: "16년생", "15-16년생")
@@ -3787,7 +3787,7 @@ model OverseasTripRegistration {
   depositPaidAt       DateTime? @map("deposit_paid_at") @db.Timestamptz(3) /// 예치금 납부 일시
   depositAmount       Decimal?  @map("deposit_amount") @db.Decimal(10, 2) /// 실제 납부 예치금
   passportVerified    Boolean   @default(false) @map("passport_verified") /// 여권 확인 여부
-  passportExpiryDate  DateTime? @map("passport_expiry_date") /// 여권 만료일
+  passportExpiryDate  DateTime? @map("passport_expiry_date") @db.Date /// 여권 만료일
   specialRequirements String?   @map("special_requirements") /// 특이사항 (알레르기, 약물 등)
   emergencyContact    String?   @map("emergency_contact") /// 비상 연락처 이름
   emergencyPhone      String?   @map("emergency_phone") /// 비상 연락처 번호
@@ -3822,8 +3822,8 @@ model League {
   ageGroup    String?   @map("age_group") /// 연령 구분: U9 | U12 | U15 | U18
   region      String? /// 지역: 중부권 | 남부권 | null(전국)
   status      String    @default("draft") /// draft | active | completed
-  startDate   DateTime? @map("start_date")
-  endDate     DateTime? @map("end_date")
+  startDate   DateTime? @map("start_date") @db.Date
+  endDate     DateTime? @map("end_date") @db.Date
   teamId      String?   @map("team_id") /// 주최 팀 (선택)
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -3893,7 +3893,7 @@ model TournamentMatch {
   divisionId   String?  @map("division_id")
   homeTeamId   String   @map("home_team_id")
   awayTeamId   String   @map("away_team_id")
-  matchDate    DateTime @map("match_date")
+  matchDate    DateTime @map("match_date") @db.Date
   startTime    String?  @map("start_time") /// HH:MM 형식 (예: "09:30")
   endTime      String?  @map("end_time") /// HH:MM 형식 (예: "10:45")
   venueId      String?  @map("venue_id")
@@ -4227,7 +4227,7 @@ model SettlementDetail {
   paymentId     String                 @map("payment_id") /// 원본 결제 (FK 보존)
   orderNumber   String                 @unique @map("order_number") /// 결제 주문번호 (멱등성 키)
   productName   String                 @map("product_name")
-  paymentDate   DateTime               @map("payment_date")
+  paymentDate   DateTime               @map("payment_date") @db.Date
   paymentMethod String                 @map("payment_method") /// card | wallet | etc
   paymentAmount Int                    @map("payment_amount") /// 결제 금액
   feeRate       Float                  @map("fee_rate") /// 수수료율 (0.0 ~ 1.0)
@@ -4514,7 +4514,7 @@ model ClassDiary {
   classId        String   @map("class_id")
   teamId         String   @map("team_id")
   coachId        String   @map("coach_id") /// 작성 코치 User ID
-  sessionDate    DateTime @map("session_date") /// 수업 일자
+  sessionDate    DateTime @map("session_date") @db.Date /// 수업 일자
   mainFocus      String?  @map("main_focus") /// 주요 훈련 내용
   drillDesc      String?  @map("drill_description") @db.Text /// 훈련 상세 설명
   intensityLevel String   @default("medium") @map("intensity_level") /// low|medium|high
@@ -4544,7 +4544,7 @@ model WorkSchedule {
   coachId      String   @map("coach_id") /// 코치 User ID
   teamId       String   @map("team_id")
   classId      String?  @map("class_id") /// 연결 수업 (optional)
-  scheduleDate DateTime @map("schedule_date")
+  scheduleDate DateTime @map("schedule_date") @db.Date
   startTime    String   @map("start_time") /// HH:mm 형식
   endTime      String   @map("end_time") /// HH:mm 형식
   title        String? /// 일정 제목

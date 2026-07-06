@@ -25,6 +25,7 @@ import {
   SettlementActionResponseDto,
   SettlementResponseDto,
 } from "../dto/responses/settlement-response.dto";
+import { kstTodayUtcMidnight } from "@/common/utils/kst-date.util";
 
 /**
  * 정산 상세 조회 시 필요한 필드만 select — N+1 방지 및 over-fetching 제거.
@@ -410,7 +411,8 @@ export class PaymentReceiptService {
           transactionType: "rejection",
           amount: 0,
           description: `정산 거절 사유: ${reason}`,
-          transactionDate: new Date(),
+          // @db.Date — KST 달력일. new Date()(instant)의 UTC 날짜부를 쓰면 KST 심야(00~09시) 거절 건이 전일로 기록됨.
+          transactionDate: kstTodayUtcMidnight(),
         },
       });
 

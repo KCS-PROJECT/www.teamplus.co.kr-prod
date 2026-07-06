@@ -71,6 +71,17 @@ export function kstTodayUtcMidnight(): Date {
 }
 
 /**
+ * 임의 instant 를 그 instant 의 KST 달력일 UTC 자정 으로 변환.
+ * instant(@db.Timestamptz)를 `@db.Date` 컬럼에 대입할 때 UTC 날짜부를 취하면
+ * KST 심야(00~09시) 건이 전일로 기록되므로, KST 벽시계 날짜를 취해 UTC 자정으로 고정한다.
+ * getTime/toISOString 만 사용 — 서버 TZ 무관.
+ */
+export function instantToKstDateOnly(at: Date): Date {
+  const k = new Date(at.getTime() + KST_OFFSET_MS);
+  return new Date(`${k.toISOString().slice(0, 10)}T00:00:00Z`);
+}
+
+/**
  * UTC 자정 instant 를 N일 가감한 새 Date (순수 함수, UTC 기준 — DST/TZ 무관).
  * `@db.Date` 경계 파생 전용.
  */

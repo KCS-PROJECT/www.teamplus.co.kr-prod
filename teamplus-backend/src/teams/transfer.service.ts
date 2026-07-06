@@ -7,6 +7,7 @@ import {
   ForbiddenException,
 } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
+import { instantToKstDateOnly } from "@/common/utils/kst-date.util";
 
 export interface TransferRequest {
   userId: string;
@@ -127,8 +128,9 @@ export class TransferService {
         data: {
           memberId: oldMember.id,
           teamName: oldClub.name,
-          startDate: oldMember.joinedAt,
-          endDate: transferredAt,
+          // @db.Date — instant(joinedAt/transferredAt)을 KST 달력일로 고정(UTC 날짜부 사용 시 KST 심야 건이 전일 기록).
+          startDate: instantToKstDateOnly(oldMember.joinedAt),
+          endDate: instantToKstDateOnly(transferredAt),
           isCurrent: false,
           description: reason
             ? `이적 (${newClub.name}으로): ${reason}`

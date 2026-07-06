@@ -5,6 +5,7 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { dateOnlyToUtc } from "@/common/utils/kst-date.util";
 import { CreateClassHistoryDto } from "./dto/create-class-history.dto";
 import { UpdateClassHistoryDto } from "./dto/update-class-history.dto";
 import { CreatePlayerAwardDto } from "./dto/create-player-award.dto";
@@ -147,8 +148,8 @@ export class AwardsService {
         memberId: dto.memberId,
         classId: dto.classId,
         enrollmentId: dto.enrollmentId,
-        startDate: new Date(dto.startDate),
-        endDate: dto.endDate ? new Date(dto.endDate) : undefined,
+        startDate: dateOnlyToUtc(dto.startDate.slice(0, 10)),
+        endDate: dto.endDate ? dateOnlyToUtc(dto.endDate.slice(0, 10)) : undefined,
         totalSessions: dto.totalSessions ?? 0,
         status: dto.status ?? "active",
       },
@@ -177,7 +178,7 @@ export class AwardsService {
     }
 
     const data: any = { ...dto };
-    if (dto.endDate) data.endDate = new Date(dto.endDate);
+    if (dto.endDate) data.endDate = dateOnlyToUtc(dto.endDate.slice(0, 10));
 
     return this.prisma.playerClassHistory.update({
       where: { id },

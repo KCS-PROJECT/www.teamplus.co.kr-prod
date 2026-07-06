@@ -8,6 +8,7 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { dateOnlyToUtc } from "@/common/utils/kst-date.util";
 import { NotificationsService } from "@/notifications/notifications.service";
 import {
   CreateOverseasTripDto,
@@ -224,8 +225,8 @@ export class OverseasTripsService {
     }
 
     // 날짜 유효성 검증
-    const startDate = new Date(dto.startDate);
-    const endDate = new Date(dto.endDate);
+    const startDate = dateOnlyToUtc(dto.startDate.slice(0, 10));
+    const endDate = dateOnlyToUtc(dto.endDate.slice(0, 10));
     const registrationDeadline = new Date(dto.registrationDeadline);
 
     if (endDate <= startDate) {
@@ -295,8 +296,10 @@ export class OverseasTripsService {
     if (dto.city !== undefined) data.city = dto.city;
     if (dto.description !== undefined)
       data.description = dto.description || null;
-    if (dto.startDate !== undefined) data.startDate = new Date(dto.startDate);
-    if (dto.endDate !== undefined) data.endDate = new Date(dto.endDate);
+    if (dto.startDate !== undefined)
+      data.startDate = dateOnlyToUtc(dto.startDate.slice(0, 10));
+    if (dto.endDate !== undefined)
+      data.endDate = dateOnlyToUtc(dto.endDate.slice(0, 10));
     if (dto.registrationDeadline !== undefined)
       data.registrationDeadline = new Date(dto.registrationDeadline);
     if (dto.maxParticipants !== undefined)
@@ -504,7 +507,7 @@ export class OverseasTripsService {
       data.passportVerified = dto.passportVerified;
     if (dto.passportExpiryDate !== undefined)
       data.passportExpiryDate = dto.passportExpiryDate
-        ? new Date(dto.passportExpiryDate)
+        ? dateOnlyToUtc(dto.passportExpiryDate.slice(0, 10))
         : null;
     if (dto.specialRequirements !== undefined)
       data.specialRequirements = dto.specialRequirements || null;

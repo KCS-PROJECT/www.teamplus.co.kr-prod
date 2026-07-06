@@ -4,6 +4,7 @@ import {
   BadRequestException,
 } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
+import { dateOnlyToUtc } from "@/common/utils/kst-date.util";
 import { CreateWorkScheduleDto } from "./dto/create-work-schedule.dto";
 import { CreateSwapRequestDto } from "./dto/create-swap-request.dto";
 import { ReviewSwapRequestDto } from "./dto/review-swap-request.dto";
@@ -21,7 +22,7 @@ export class WorkScheduleService {
         coachId: dto.coachId,
         teamId: dto.teamId,
         classId: dto.classId,
-        scheduleDate: new Date(dto.scheduleDate),
+        scheduleDate: dateOnlyToUtc(dto.scheduleDate.slice(0, 10)),
         startTime: dto.startTime,
         endTime: dto.endTime,
         title: dto.title,
@@ -141,7 +142,8 @@ export class WorkScheduleService {
     const data: Record<string, unknown> = {};
     if (dto.coachId !== undefined) data.coachId = dto.coachId;
     if (dto.classId !== undefined) data.classId = dto.classId;
-    if (dto.scheduleDate) data.scheduleDate = new Date(dto.scheduleDate);
+    if (dto.scheduleDate)
+      data.scheduleDate = dateOnlyToUtc(dto.scheduleDate.slice(0, 10));
     if (dto.startTime !== undefined) data.startTime = dto.startTime;
     if (dto.endTime !== undefined) data.endTime = dto.endTime;
     if (dto.title !== undefined) data.title = dto.title;

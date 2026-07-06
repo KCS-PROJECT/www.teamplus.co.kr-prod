@@ -6,6 +6,10 @@ import {
   BadRequestException,
 } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
+import {
+  dateOnlyToUtc,
+  kstTodayUtcMidnight,
+} from "@/common/utils/kst-date.util";
 import { CreateCouponDto } from "./dto/create-coupon.dto";
 import { ExchangeRewardDto } from "./dto/exchange-reward.dto";
 
@@ -37,8 +41,8 @@ export class RewardsService {
         maxDiscountAmount: dto.maxDiscountAmount,
         usageLimit: dto.usageLimit,
         usagePerUser: dto.usagePerUser ?? 1,
-        startDate: new Date(dto.startDate),
-        endDate: new Date(dto.endDate),
+        startDate: dateOnlyToUtc(dto.startDate.slice(0, 10)),
+        endDate: dateOnlyToUtc(dto.endDate.slice(0, 10)),
         isActive: dto.isActive ?? true,
       },
       select: {
@@ -161,7 +165,7 @@ export class RewardsService {
       );
     }
 
-    if (coupon.endDate < new Date()) {
+    if (coupon.endDate < kstTodayUtcMidnight()) {
       throw new BadRequestException("보상 쿠폰이 만료되었습니다.");
     }
 
@@ -244,7 +248,7 @@ export class RewardsService {
       throw new ConflictException("이미 사용된 쿠폰입니다.");
     }
 
-    if (userCoupon.coupon.endDate < new Date()) {
+    if (userCoupon.coupon.endDate < kstTodayUtcMidnight()) {
       throw new BadRequestException("만료된 쿠폰입니다.");
     }
 
