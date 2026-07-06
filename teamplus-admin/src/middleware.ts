@@ -105,8 +105,10 @@ export function middleware(request: NextRequest) {
   }
 
   // /dashboard 접근 시 토큰 확인
+  // 쿠키 이름은 admin 전용(teamplus_admin_*) — 쿠키는 포트를 구분하지 않아
+  // 웹(5001)과 호스트를 공유할 때 동일 이름이면 세션이 교차 오염된다.
   if (pathname.startsWith("/dashboard")) {
-    const token = request.cookies.get("teamplus_access_token")?.value;
+    const token = request.cookies.get("teamplus_admin_access_token")?.value;
 
     // 토큰이 없으면 로그인 페이지로 리다이렉트
     if (!token) {
@@ -114,8 +116,8 @@ export function middleware(request: NextRequest) {
       loginUrl.searchParams.set("redirect", pathname);
 
       const response = NextResponse.redirect(loginUrl);
-      response.cookies.delete("teamplus_access_token");
-      response.cookies.delete("teamplus_refresh_token");
+      response.cookies.delete("teamplus_admin_access_token");
+      response.cookies.delete("teamplus_admin_refresh_token");
 
       return response;
     }
@@ -130,8 +132,8 @@ export function middleware(request: NextRequest) {
       loginUrl.searchParams.set("reason", "invalid_token");
 
       const response = NextResponse.redirect(loginUrl);
-      response.cookies.delete("teamplus_access_token");
-      response.cookies.delete("teamplus_refresh_token");
+      response.cookies.delete("teamplus_admin_access_token");
+      response.cookies.delete("teamplus_admin_refresh_token");
 
       return response;
     }
@@ -139,7 +141,7 @@ export function middleware(request: NextRequest) {
     // 토큰이 명확히 만료된 경우
     if (validation.isExpired) {
       // 리프레시 토큰이 있으면 통과 (클라이언트에서 갱신 처리)
-      const refreshToken = request.cookies.get("teamplus_refresh_token")?.value;
+      const refreshToken = request.cookies.get("teamplus_admin_refresh_token")?.value;
       if (refreshToken) {
         return NextResponse.next();
       }
@@ -149,8 +151,8 @@ export function middleware(request: NextRequest) {
       loginUrl.searchParams.set("reason", "token_expired");
 
       const response = NextResponse.redirect(loginUrl);
-      response.cookies.delete("teamplus_access_token");
-      response.cookies.delete("teamplus_refresh_token");
+      response.cookies.delete("teamplus_admin_access_token");
+      response.cookies.delete("teamplus_admin_refresh_token");
 
       return response;
     }
@@ -162,8 +164,8 @@ export function middleware(request: NextRequest) {
       loginUrl.searchParams.set("reason", "insufficient_role");
 
       const response = NextResponse.redirect(loginUrl);
-      response.cookies.delete("teamplus_access_token");
-      response.cookies.delete("teamplus_refresh_token");
+      response.cookies.delete("teamplus_admin_access_token");
+      response.cookies.delete("teamplus_admin_refresh_token");
 
       return response;
     }

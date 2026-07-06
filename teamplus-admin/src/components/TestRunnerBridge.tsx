@@ -19,6 +19,9 @@ const TBOT_ORIGINS = [
 const ORIGIN_RE = /^http:\/\/(localhost|127\.0\.0\.1):(7788|5099)$/;
 const TOKEN_KEY = "teamplus_access_token";
 const REFRESH_TOKEN_KEY = "teamplus_refresh_token";
+// 쿠키는 admin 전용 이름 (웹 5001 과 호스트 공유 시 세션 교차 오염 방지 — 쿠키는 포트 미구분)
+const COOKIE_TOKEN_KEY = "teamplus_admin_access_token";
+const COOKIE_REFRESH_TOKEN_KEY = "teamplus_admin_refresh_token";
 
 type RunnerMessage =
   | { type: "runner:ping"; id: string }
@@ -233,11 +236,11 @@ export default function TestRunnerBridge() {
           try {
             if (msg.accessToken) {
               localStorage.setItem(TOKEN_KEY, msg.accessToken);
-              document.cookie = `${TOKEN_KEY}=${msg.accessToken}; path=/; max-age=900; SameSite=Lax`;
+              document.cookie = `${COOKIE_TOKEN_KEY}=${msg.accessToken}; path=/; max-age=900; SameSite=Lax`;
             }
             if (msg.refreshToken) {
               localStorage.setItem(REFRESH_TOKEN_KEY, msg.refreshToken);
-              document.cookie = `${REFRESH_TOKEN_KEY}=${msg.refreshToken}; path=/; max-age=604800; SameSite=Lax`;
+              document.cookie = `${COOKIE_REFRESH_TOKEN_KEY}=${msg.refreshToken}; path=/; max-age=604800; SameSite=Lax`;
             }
             safePostBack(ev.source, ev.origin, {
               type: "runner:auth-refresh-ack",

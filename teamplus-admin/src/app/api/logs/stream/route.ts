@@ -88,7 +88,7 @@ function resolveLogFile(project: Project, category: string): string | null {
 function checkAuth(
   req: NextRequest,
 ): { ok: true } | { ok: false; status: number; reason: string } {
-  const token = req.cookies.get("teamplus_access_token")?.value;
+  const token = req.cookies.get("teamplus_admin_access_token")?.value;
   if (!token) return { ok: false, status: 401, reason: "NO_TOKEN" };
   try {
     const parts = token.split(".");

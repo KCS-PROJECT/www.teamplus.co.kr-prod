@@ -52,6 +52,24 @@ const TOKEN_KEYS = {
   REFRESH_TOKEN: "teamplus_refresh_token",
 } as const;
 
+/**
+ * 쿠키 키 — admin 전용 이름.
+ * 쿠키는 포트를 구분하지 않아(RFC 6265) 웹(5001)과 admin(5002)이 같은 호스트일 때
+ * 동일 이름 쿠키가 두 앱 세션을 교차 오염시킨다(웹 루트가 admin 토큰을 읽고
+ * /admin 으로 강제 리다이렉트). localStorage 는 origin(포트) 단위 격리라
+ * 기존 TOKEN_KEYS 유지, 쿠키 이름만 분리한다.
+ */
+export const COOKIE_KEYS = {
+  ACCESS_TOKEN: "teamplus_admin_access_token",
+  REFRESH_TOKEN: "teamplus_admin_refresh_token",
+} as const;
+
+/** 과거 웹과 공유하던 쿠키 이름 — 로그인/로그아웃 시 잔존 쿠키 정리용 */
+const LEGACY_COOKIE_KEYS = [
+  "teamplus_access_token",
+  "teamplus_refresh_token",
+] as const;
+
 // ==================== JWT Token Utilities ====================
 
 /**
@@ -175,8 +193,14 @@ export const setTokens = (accessToken: string, refreshToken: string): void => {
   // SameSite=Lax: CSRF 보호하면서 일반 네비게이션 허용
   // Secure: HTTPS 환경에서만 부착 — 운영자 토큰 평문 전송 방지
   const secure = location.protocol === "https:" ? "; Secure" : "";
-  document.cookie = `teamplus_access_token=${accessToken}; path=/; max-age=86400; SameSite=Lax${secure}`;
-  document.cookie = `teamplus_refresh_token=${refreshToken}; path=/; max-age=604800; SameSite=Lax${secure}`; // 7일
+  document.cookie = `${COOKIE_KEYS.ACCESS_TOKEN}=${accessToken}; path=/; max-age=86400; SameSite=Lax${secure}`;
+  document.cookie = `${COOKIE_KEYS.REFRESH_TOKEN}=${refreshToken}; path=/; max-age=604800; SameSite=Lax${secure}`; // 7일
+
+  // 레거시 공유 이름 쿠키 정리 — 이전 버전이 심어둔 쿠키가 같은 호스트의
+  // 웹(5001) 역할 리다이렉트를 계속 오염시키는 잔존 차단.
+  LEGACY_COOKIE_KEYS.forEach((key) => {
+    document.cookie = `${key}=; path=/; max-age=0`;
+  });
 };
 
 /**
@@ -189,9 +213,12 @@ export const clearTokens = (): void => {
   localStorage.removeItem(TOKEN_KEYS.ACCESS_TOKEN);
   localStorage.removeItem(TOKEN_KEYS.REFRESH_TOKEN);
 
-  // 쿠키 삭제 (max-age=0으로 즉시 만료)
-  document.cookie = "teamplus_access_token=; path=/; max-age=0";
-  document.cookie = "teamplus_refresh_token=; path=/; max-age=0";
+  // 쿠키 삭제 (max-age=0으로 즉시 만료) — 레거시 공유 이름까지 함께 정리
+  document.cookie = `${COOKIE_KEYS.ACCESS_TOKEN}=; path=/; max-age=0`;
+  document.cookie = `${COOKIE_KEYS.REFRESH_TOKEN}=; path=/; max-age=0`;
+  LEGACY_COOKIE_KEYS.forEach((key) => {
+    document.cookie = `${key}=; path=/; max-age=0`;
+  });
 };
 
 // ==================== Request Interceptor ====================

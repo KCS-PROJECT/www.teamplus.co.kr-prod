@@ -20,6 +20,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { authService } from "@/services/auth.service";
+import { COOKIE_KEYS } from "@/services/api-client";
 import { resetAdminAuthGuardRedirectFlag } from "@/services/api-lifecycle";
 
 // ============================================
@@ -279,7 +280,7 @@ export default function LoginPage() {
           const startTime = Date.now();
           const MAX_WAIT_MS = 3000; // 최대 3초 대기
           const checkCookie = () => {
-            if (document.cookie.includes("teamplus_access_token")) {
+            if (document.cookie.includes(COOKIE_KEYS.ACCESS_TOKEN)) {
               resolve();
             } else if (Date.now() - startTime >= MAX_WAIT_MS) {
               // 타임아웃 시 쿠키 없이 진행 (무한 루프 방지)

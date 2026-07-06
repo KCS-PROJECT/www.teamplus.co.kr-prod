@@ -58,6 +58,7 @@ import {
 } from "lucide-react";
 import { authService } from "@/services/auth.service";
 import {
+  COOKIE_KEYS,
   getAccessToken,
   getRefreshToken,
   setTokens,
@@ -118,8 +119,8 @@ function syncTokenCookies(): boolean {
 
   if (!accessToken) return false;
 
-  // 쿠키에서 토큰 확인
-  const hasCookie = document.cookie.includes("teamplus_access_token");
+  // 쿠키에서 토큰 확인 (admin 전용 쿠키 이름 — 웹과 호스트 공유 충돌 방지)
+  const hasCookie = document.cookie.includes(COOKIE_KEYS.ACCESS_TOKEN);
 
   if (!hasCookie && accessToken && refreshToken) {
     // localStorage에는 있는데 쿠키에 없으면 쿠키 재설정
