@@ -1716,7 +1716,7 @@ export const MESSAGES = {
 
     // 팀 코드 (자녀 등록 시 팀 가입 신청 · 설계서 §4.5, 필수 입력)
     codeLabel: "팀 코드",
-    codePlaceholder: "예: RUBY-DUCKS",
+    codePlaceholder: "영문·숫자 팀 코드",
     codeHelper: "소속 팀의 코드를 입력해주세요. 감독님 승인 후 가입됩니다.",
     codeRequired:
       "팀 코드를 입력해주세요. 소속 팀 감독님께 문의하시거나 아래 팀 찾아보기를 이용해주세요.",
@@ -1744,10 +1744,10 @@ export const MESSAGES = {
     signupTeamSectionHelper:
       "가입과 동시에 팀이 생성되며, 감독님이 소유자가 됩니다.",
     signupTeamNameLabel: "팀 이름",
-    signupTeamNamePlaceholder: "예: 루비덕스",
+    signupTeamNamePlaceholder: "생성할 팀 이름을 입력해주세요",
     signupTeamNameRequired: "팀 이름을 입력해주세요.",
     signupTeamCodeLabel: "팀 코드",
-    signupTeamCodePlaceholder: "예: RUBY-DUCKS",
+    signupTeamCodePlaceholder: "영문·숫자 팀 코드",
     signupTeamCodeHelper:
       "학부모가 자녀 등록 시 입력할 코드입니다. 영문·숫자·-·_만 가능.",
     signupTeamCodeRequired: "팀 코드를 입력해주세요.",
@@ -1914,9 +1914,11 @@ export const MESSAGES = {
     inquireJoin: "팀 가입 문의하기",
     fieldDescription: "팀 소개",
     fieldDescriptionPlaceholder:
-      "예: 2018년 창단된 지역 대표 아이스하키 팀입니다.",
+      "창단 연도, 활동 지역, 팀의 목표 등을 소개해주세요",
     fieldSlogan: "슬로건",
-    fieldSloganPlaceholder: "예: 얼음 위에서 하나되는 열정",
+    fieldSloganPlaceholder: "팀을 나타내는 한 문장을 입력해주세요",
+    // 팀 정보 수정 — 팀 코드 입력 (특정 팀 연상 예시 금지, 형식 안내형 유지)
+    fieldCodePlaceholder: "영문·숫자 팀 코드 (선택)",
     fieldFoundingDate: "창단일",
     fieldHomeArena: "홈 경기장",
     fieldHomeArenaPlaceholder: "예: 고척 아이스링크",
