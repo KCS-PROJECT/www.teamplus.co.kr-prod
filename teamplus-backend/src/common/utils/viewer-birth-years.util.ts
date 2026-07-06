@@ -56,7 +56,8 @@ export async function resolveViewerBirthYears(
 
   const years = new Set<number>();
   found.forEach((d) => {
-    const y = new Date(d).getFullYear();
+    // birthDate 는 `@db.Date`(UTC 자정) — 출생연도는 getUTCFullYear 로 추출.
+    const y = new Date(d).getUTCFullYear();
     if (!Number.isNaN(y)) years.add(y);
   });
   return Array.from(years);

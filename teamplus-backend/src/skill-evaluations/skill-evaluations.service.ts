@@ -8,6 +8,7 @@ import {
 import { PrismaService } from "@/prisma/prisma.service";
 import { isAdminRole } from "@/auth/constants/chldiv.constants";
 import { CreateSkillEvaluationDto } from "./dto/create-skill-evaluation.dto";
+import { dateOnlyToUtc } from "@/common/utils/kst-date.util";
 
 /**
  * 기술평가 조회 요청자 컨텍스트 (소유권/클럽 스코프 검증용).
@@ -324,7 +325,7 @@ export class SkillEvaluationsService {
       );
     }
 
-    const evaluationDate = new Date(dto.evaluationDate);
+    const evaluationDate = dateOnlyToUtc(dto.evaluationDate.slice(0, 10));
     if (isNaN(evaluationDate.getTime())) {
       throw new BadRequestException("유효하지 않은 날짜 형식입니다.");
     }

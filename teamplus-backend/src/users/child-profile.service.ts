@@ -6,17 +6,19 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
 import { calculateKoreanAge } from "@/common/utils/age.util";
+import { dateOnlyToUtc } from "@/common/utils/kst-date.util";
 
 export interface CreateChildProfileDto {
   firstName: string;
   lastName: string;
-  birthDate: Date;
+  // JSON body 로 도착하는 원문 문자열("YYYY-MM-DD" 또는 ISO) — class-transformer 미적용.
+  birthDate: string;
 }
 
 export interface UpdateChildProfileDto {
   firstName?: string;
   lastName?: string;
-  birthDate?: Date;
+  birthDate?: string;
 }
 
 @Injectable()
@@ -50,9 +52,9 @@ export class ChildProfileService {
       );
     }
 
-    const birthDate = new Date(createDto.birthDate);
+    const birthDate = dateOnlyToUtc(createDto.birthDate.slice(0, 10));
     const today = new Date();
-    const age = today.getFullYear() - birthDate.getFullYear();
+    const age = today.getFullYear() - birthDate.getUTCFullYear();
 
     if (age < 0 || age > 20) {
       throw new BadRequestException("자녀 나이는 0~20세여야 합니다.");
@@ -128,9 +130,9 @@ export class ChildProfileService {
     }
 
     if (updateDto.birthDate) {
-      const birthDate = new Date(updateDto.birthDate);
+      const birthDate = dateOnlyToUtc(updateDto.birthDate.slice(0, 10));
       const today = new Date();
-      const age = today.getFullYear() - birthDate.getFullYear();
+      const age = today.getFullYear() - birthDate.getUTCFullYear();
 
       if (age < 0 || age > 20) {
         throw new BadRequestException("자녀 나이는 0~20세여야 합니다.");

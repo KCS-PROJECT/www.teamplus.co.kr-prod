@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
 import { CreateTrainingSessionDto } from "./dto/create-training-session.dto";
 import { QueryTrainingStatsDto } from "./dto/query-training-stats.dto";
+import { dateOnlyToUtc } from "@/common/utils/kst-date.util";
 
 @Injectable()
 export class TrainingStatsService {
@@ -19,7 +20,7 @@ export class TrainingStatsService {
           memberId: sessionData.memberId,
           teamId: sessionData.teamId,
           classId: sessionData.classId,
-          sessionDate: new Date(sessionData.sessionDate),
+          sessionDate: dateOnlyToUtc(sessionData.sessionDate.slice(0, 10)),
           durationMin: sessionData.durationMin,
           intensityLvl: sessionData.intensityLvl ?? "medium",
           focusArea: sessionData.focusArea,
@@ -80,8 +81,12 @@ export class TrainingStatsService {
     const where: Record<string, unknown> = { memberId };
     if (query.startDate || query.endDate) {
       where.sessionDate = {
-        ...(query.startDate ? { gte: new Date(query.startDate) } : {}),
-        ...(query.endDate ? { lte: new Date(query.endDate) } : {}),
+        ...(query.startDate
+          ? { gte: dateOnlyToUtc(query.startDate.slice(0, 10)) }
+          : {}),
+        ...(query.endDate
+          ? { lte: dateOnlyToUtc(query.endDate.slice(0, 10)) }
+          : {}),
       };
     }
     // [추가 2026-05-15 db-keeper] T03/L — teamId 격리 필터.
@@ -183,7 +188,7 @@ export class TrainingStatsService {
     const session = await this.prisma.$transaction(async (tx) => {
       const data: Record<string, unknown> = {};
       if (updateData.sessionDate)
-        data.sessionDate = new Date(updateData.sessionDate);
+        data.sessionDate = dateOnlyToUtc(updateData.sessionDate.slice(0, 10));
       if (updateData.durationMin !== undefined)
         data.durationMin = updateData.durationMin;
       if (updateData.intensityLvl !== undefined)
@@ -317,7 +322,8 @@ export class TrainingStatsService {
     // duration 기준 최대값 계산 (정규화용)
     const dayDurationMap = new Map<number, number>(); // dow → totalDuration
     for (const s of currentSessions) {
-      const dow = s.sessionDate.getDay();
+      // sessionDate 는 `@db.Date`(UTC 자정) → 요일은 getUTCDay 로 추출.
+      const dow = s.sessionDate.getUTCDay();
       dayDurationMap.set(dow, (dayDurationMap.get(dow) ?? 0) + s.durationMin);
     }
     const maxDayDuration = Math.max(1, ...dayDurationMap.values());

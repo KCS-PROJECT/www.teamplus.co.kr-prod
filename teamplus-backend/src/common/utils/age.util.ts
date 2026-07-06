@@ -26,7 +26,9 @@
  * @returns 한국나이(정수). 1월 1일 0시에 모든 사람이 일괄 +1 된다.
  */
 export function calculateKoreanAge(birthDate: Date): number {
-  return new Date().getFullYear() - birthDate.getFullYear() + 1;
+  // birthDate 는 `@db.Date`(UTC 자정) 이므로 성분은 getUTC* 로 추출한다.
+  // 현재 연도(new Date())는 "지금"의 KST 벽시계 연도 — 로컬 getter 유지(1/1 0시 KST 일괄 +1).
+  return new Date().getFullYear() - birthDate.getUTCFullYear() + 1;
 }
 
 /**
@@ -62,12 +64,13 @@ export function calculateKoreanAgeSafe(
  * @returns 만나이(정수)
  */
 export function calculateInternationalAge(birthDate: Date): number {
+  // birthDate 성분은 getUTC*(@db.Date UTC 자정), today 는 "지금"의 KST 벽시계 — 로컬 getter 유지.
   const today = new Date();
-  let age = today.getFullYear() - birthDate.getFullYear();
+  let age = today.getFullYear() - birthDate.getUTCFullYear();
   const hasBirthdayPassed =
-    today.getMonth() > birthDate.getMonth() ||
-    (today.getMonth() === birthDate.getMonth() &&
-      today.getDate() >= birthDate.getDate());
+    today.getMonth() > birthDate.getUTCMonth() ||
+    (today.getMonth() === birthDate.getUTCMonth() &&
+      today.getDate() >= birthDate.getUTCDate());
   if (!hasBirthdayPassed) age -= 1;
   return age;
 }
