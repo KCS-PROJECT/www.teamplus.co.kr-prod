@@ -258,7 +258,7 @@ export default function ClassCompletePage() {
                         <span className="text-card-body text-it-ink-500 dark:text-rink-300">
                           {data.packageWeeks && data.packageTotalSessions && data.packageSessionsPerWeek
                             ? `${data.packageWeeks}주 정기권 (주 ${data.packageSessionsPerWeek}회 · 총 ${data.packageTotalSessions}회)`
-                            : '정기 패키지'}
+                            : '월 결제'}
                         </span>
                         <span className="text-card-title font-extrabold text-it-ink-800 dark:text-white">
                           {formatPrice(data.monthlyPrice)}

@@ -447,6 +447,7 @@ export const MESSAGES = {
       share: "카카오로 전달하기",
       shareText: (id: string, pw: string) =>
         `[TEAMPLUS 코치 로그인 정보]\n아이디: ${id}\n비밀번호: ${pw}\n\n첫 로그인 후 비밀번호를 변경해주세요.`,
+      shareLinkButton: "로그인하기",
       goList: "코치 목록으로",
     },
     // [추가 2026-05-20 Phase 2] 코치 장비 점검(equipment inspection) 등록 검증 & 사진 업로드.
@@ -2986,7 +2987,7 @@ export const MESSAGES = {
       dayScheduleTimeRequired: "시작·종료 시간을 입력해주세요.",
       dayScheduleTimeOrderInvalid: "종료 시간은 시작 시간보다 늦어야 합니다.",
       singlePriceRequired: "1회 수업료를 입력해주세요.",
-      packagePriceRequired: "정기 패키지 가격을 입력해주세요.",
+      packagePriceRequired: "월 결제 가격을 입력해주세요.",
       capacityRequired: "정원(최대 인원)을 입력해주세요.",
       dateScheduleRequired: "일정을 1개 이상 추가해주세요.",
       dateScheduleTimeRequired: "각 일정의 날짜·시작·종료 시간을 올바르게 입력해주세요.",
@@ -3333,7 +3334,7 @@ export const MESSAGES = {
     billingModePostpaidHint: "월말 출석 횟수에 따라 후불 정산합니다.",
     billingModeBothHint: "학부모가 결제 시 선불·후불 중 선택합니다.",
     // [Phase B-6] 정액 패키지 강제 — 선불·선택형은 정액 패키지가 1개 이상 있어야 등록 가능.
-    validationMonthlyFixedRequired: "정액 패키지를 1개 이상 등록해주세요.",
+    validationMonthlyFixedRequired: "월 결제를 1개 이상 등록해주세요.",
     // [Phase B-6] 감독 정액 직접 수정 안내(A안).
     monthlyFixedAdjustHint: "매월 정액 금액은 감독이 직접 수정할 수 있어요.",
     // [Phase B-5] 가격 입력 라벨 (결제방식별) + 1회당 참고가
@@ -3342,7 +3343,7 @@ export const MESSAGES = {
     // [Phase B-6] 선불 수업의 1회 수업료 — 참고용(판매 안 함) 라벨·안내.
     singlePriceRefLabel: "1회 수업료 (참고)",
     singlePriceRefHint:
-      "선불 수업의 1회 수업료는 참고용이며, 결제는 정액 패키지로 진행됩니다.",
+      "선불 수업의 1회 수업료는 참고용이며, 결제는 월 결제 상품으로 진행됩니다.",
     singlePricePlaceholder: "1회 수업료를 입력하세요.",
     // [Phase B-6] 선택형(BOTH) 결제 옵션 — 결제 방식 택1 UI.
     timingSelectTitle: "결제 방식 선택",
@@ -3362,22 +3363,22 @@ export const MESSAGES = {
     perSessionRef: (won: number) => `1회당 약 ${won.toLocaleString()}원`,
     // 결제일로부터 결제권이 만료되기까지의 유효기간 라벨 (1회권 포함 전 상품 공통).
     validDays: (days: number) => `유효 ${days}일`,
-    addPackage: "패키지 추가",
+    addPackage: "월 결제 추가",
     // 등록 화면 수강료 카드 내부에 임베드되는 추가 패키지(정기권) 영역 라벨.
-    embedSectionLabel: "정기 패키지 (선택)",
+    embedSectionLabel: "월 결제 (선택)",
     // 후불(POSTPAID) 수업 — 패키지 추가 차단 안내(출석 기반 정산).
-    postpaidLockTitle: "후불 수업은 패키지를 추가할 수 없어요",
+    postpaidLockTitle: "후불 수업은 월 결제를 추가할 수 없어요",
     postpaidLockHint:
       "후불 수업은 출석 횟수에 따라 1회 수업료로 월말 정산됩니다.",
-    editPackage: "패키지 수정",
-    deletePackage: "패키지 삭제",
-    deleteConfirmTitle: "패키지를 삭제할까요?",
+    editPackage: "월 결제 수정",
+    deletePackage: "월 결제 삭제",
+    deleteConfirmTitle: "월 결제를 삭제할까요?",
     deleteConfirmBody:
       "결제 또는 수강 이력이 있다면 비활성으로 전환되고, 신규 결제만 차단됩니다.",
     softDeletedToast: "결제 이력이 있어 비활성으로 전환되었습니다.",
-    hardDeletedToast: "패키지가 삭제되었습니다.",
-    saveSuccess: "패키지가 저장되었습니다.",
-    fieldProductName: "패키지명",
+    hardDeletedToast: "월 결제가 삭제되었습니다.",
+    saveSuccess: "월 결제가 저장되었습니다.",
+    fieldProductName: "월 결제명",
     fieldProductNamePlaceholder: "예) 주 2회 4주 정기권",
     fieldDescription: "설명",
     fieldDescriptionPlaceholder: "예) 주 2회 수업 · 4주 유효",
@@ -3397,7 +3398,7 @@ export const MESSAGES = {
     unavailableEndDateExceed: "수업 종료일을 초과하는 패키지입니다",
     unavailableClassEnded: "이 수업은 종료되었습니다",
     selectAnotherPackage: "다른 패키지를 선택해주세요",
-    validationProductName: "패키지명을 입력해주세요.",
+    validationProductName: "월 결제명을 입력해주세요.",
     validationPrice: "가격을 올바르게 입력해주세요.",
     validationSessionsPerMonth: "월 횟수는 1 이상이어야 합니다.",
     validationDurationDays: "유효기간은 1일 이상이어야 합니다.",
@@ -3431,10 +3432,10 @@ export const MESSAGES = {
       `본 수업 기간 종료 후에도 미사용 회차를 ${extraDays}일간 추가 사용 가능`,
     // 제출 시 일괄 반영 — 부분 성공/이탈 안내.
     bulkSaveFailed:
-      "수업 정보는 저장됐지만 패키지 반영에 실패했습니다. 패키지를 다시 저장해주세요.",
+      "수업 정보는 저장됐지만 월 결제 반영에 실패했습니다. 월 결제를 다시 저장해주세요.",
     deferredDeleteHint:
-      "패키지 추가·수정·삭제는 ‘수정하기’를 눌러야 저장됩니다.",
+      "월 결제 추가·수정·삭제는 ‘수정하기’를 눌러야 저장됩니다.",
     unsavedLeaveConfirm:
-      "저장하지 않은 패키지 변경이 있습니다. 이 페이지를 벗어나면 변경 내용이 사라집니다.",
+      "저장하지 않은 월 결제 변경이 있습니다. 이 페이지를 벗어나면 변경 내용이 사라집니다.",
   },
 } as const;

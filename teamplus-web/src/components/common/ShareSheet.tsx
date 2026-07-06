@@ -5,7 +5,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { useToast } from "@/components/ui/Toast";
 import { useNativeScrim } from "@/hooks/useNativeScrim";
 import { MESSAGES } from "@/lib/messages";
-import { isKakaoKeyConfigured, shareToKakaoClass, shareToKakaoDefault } from "@/lib/kakao";
+import { isKakaoKeyConfigured, shareToKakaoClass, shareToKakaoDefault, shareToKakaoText } from "@/lib/kakao";
 import type { SharePayload } from "@/lib/share";
 import { SHARE_SHEET_EVENT } from "@/lib/share";
 
@@ -89,6 +89,12 @@ export function ShareSheetMount() {
         venue: payload?.venue,
         coach: payload?.coach,
         price: payload?.price,
+      });
+    } else if (payload?.kakaoType === 'text') {
+      ok = shareToKakaoText({
+        text: resolvedText ? `${resolvedTitle}\n${resolvedText}` : resolvedTitle,
+        url: resolvedUrl,
+        buttonTitle: payload?.kakaoButtonTitle,
       });
     } else {
       ok = shareToKakaoDefault({

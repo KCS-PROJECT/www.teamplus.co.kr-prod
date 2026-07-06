@@ -38,9 +38,16 @@ interface KakaoShareDefault {
   }>;
 }
 
+interface KakaoShareText {
+  objectType: 'text';
+  text: string;
+  link: KakaoLink;
+  buttonTitle?: string;
+}
+
 interface KakaoShareModule {
   sendCustom: (params: KakaoShareCustom) => void;
-  sendDefault: (params: KakaoShareDefault) => void;
+  sendDefault: (params: KakaoShareDefault | KakaoShareText) => void;
 }
 
 // 카카오 JS SDK 전역 타입 (공유 전용 — 소셜 로그인 제거 후 social-auth.ts에서 이관).
@@ -206,6 +213,41 @@ export function shareToKakaoDefault(payload: {
     const msg = e instanceof Error ? e.message : String(e);
     // eslint-disable-next-line no-console
     console.error('[Kakao] Share.sendDefault 실패: ' + msg);
+    return false;
+  }
+}
+
+/**
+ * 텍스트 템플릿으로 카카오톡 공유.
+ * Feed 템플릿과 달리 본문(최대 200자)이 잘리지 않고 전문 노출된다 —
+ * 계정 정보 전달처럼 텍스트 전체가 보여야 하는 경우 사용.
+ */
+export function shareToKakaoText(payload: {
+  text: string;
+  url: string;
+  buttonTitle?: string;
+}): boolean {
+  const share = ensureSdkReady();
+  if (!share?.sendDefault) return false;
+
+  try {
+    const link: KakaoLink = {
+      webUrl: payload.url,
+      mobileWebUrl: payload.url,
+    };
+
+    devLog('[Kakao] sendDefault(text) payload:', JSON.stringify(payload));
+    share.sendDefault({
+      objectType: 'text',
+      text: payload.text,
+      link,
+      ...(payload.buttonTitle ? { buttonTitle: payload.buttonTitle } : {}),
+    });
+    return true;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // eslint-disable-next-line no-console
+    console.error('[Kakao] Share.sendDefault(text) 실패: ' + msg);
     return false;
   }
 }
