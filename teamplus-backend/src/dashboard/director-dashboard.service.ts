@@ -294,6 +294,24 @@ export class DirectorDashboardService {
                 endTime: true,
                 createdAt: true,
                 team: { select: { name: true } },
+                // 요일별 기본 일정 — 카드 요일 패턴 표시용 (대표 startTime 표시 대체)
+                dayScheduleEntries: {
+                  select: { dayOfWeek: true, startTime: true, endTime: true },
+                },
+                // 다음 회차 (비취소·오늘 이후) — 기본 일정 없는 수업의 날짜(+회차 시간) 표시용
+                schedules: {
+                  where: {
+                    isCancelled: false,
+                    scheduledDate: { gte: kstTodayUtcMidnight() },
+                  },
+                  orderBy: { scheduledDate: "asc" },
+                  take: 1,
+                  select: {
+                    scheduledDate: true,
+                    startTime: true,
+                    endTime: true,
+                  },
+                },
               },
             })
           : Promise.resolve([] as Array<never>),
@@ -552,6 +570,16 @@ export class DirectorDashboardService {
             endTime: Date;
             createdAt: Date;
             team: { name: string | null } | null;
+            dayScheduleEntries: Array<{
+              dayOfWeek: string;
+              startTime: string;
+              endTime: string;
+            }>;
+            schedules: Array<{
+              scheduledDate: Date;
+              startTime: string | null;
+              endTime: string | null;
+            }>;
           }>
         ).map((c) => ({
           id: c.id,
@@ -564,6 +592,8 @@ export class DirectorDashboardService {
           endTime: c.endTime,
           createdAt: c.createdAt,
           name: c.team?.name ?? "",
+          daySchedules: c.dayScheduleEntries ?? [],
+          nextSchedule: c.schedules?.[0] ?? null,
         })),
         // W6
         latestNotices,

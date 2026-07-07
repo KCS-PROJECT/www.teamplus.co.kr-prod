@@ -11,6 +11,11 @@ import { api } from '@/services/api-client';
 
 import { usePageReady } from '@/hooks/usePageReady';
 import { useNativeUI } from '@/hooks/useNativeUI';
+import {
+  formatClassScheduleDisplay,
+  type DaySchedule,
+  type NextScheduleInfo,
+} from '@/lib/class-categories';
 // ─── 수업 편성 화면 ──────────────────────────────────────
 // API: GET /teams/managed/list → teamId
 //      GET /teams/:teamId/classes
@@ -20,15 +25,10 @@ interface ClassItem {
   className: string;
   instructorName: string;
   capacity: number;
-  startTime: string;
-  endTime: string;
   isActive: boolean;
   approvalStatus?: string;
-}
-
-function formatTime(iso: string): string {
-  const d = new Date(iso);
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  daySchedules?: DaySchedule[];
+  nextSchedule?: NextScheduleInfo | null;
 }
 
 function formatTodayLabel(): string {
@@ -167,10 +167,18 @@ export default function ClassOrganizePage() {
                             </span>
                           )}
                         </div>
-                        <p className="text-card-meta text-it-ink-500 dark:text-rink-300 tabular-nums">
-                          <span className="sr-only">수업 시간: </span>
-                          {formatTime(cls.startTime)} - {formatTime(cls.endTime)}
-                        </p>
+                        {(() => {
+                          const label = formatClassScheduleDisplay({
+                            daySchedules: cls.daySchedules,
+                            nextSchedule: cls.nextSchedule,
+                          });
+                          return label ? (
+                            <p className="text-card-meta text-it-ink-500 dark:text-rink-300 tabular-nums">
+                              <span className="sr-only">수업 일정: </span>
+                              {label}
+                            </p>
+                          ) : null;
+                        })()}
                         <p className="text-card-meta text-it-ink-500 dark:text-rink-300">
                           <span className="sr-only">담당 코치: </span>
                           {cls.instructorName} · 정원 {cls.capacity}명

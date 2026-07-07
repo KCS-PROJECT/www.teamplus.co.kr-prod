@@ -50,9 +50,18 @@ export interface RecentClassItem {
   category: string | null;
   trainingType: string | null;
   capacity: number;
+  /** 대표값(Class.startTime) — 회차별 실제 시각과 다를 수 있어 표시에 사용하지 않는다. */
   startTime: string;
   endTime: string;
   clubName: string;
+  /** 요일별 기본 일정 — 카드 요일 패턴 표시용. */
+  daySchedules?: { dayOfWeek: string; startTime: string; endTime: string }[];
+  /** 다음 회차 (비취소·오늘 이후 첫 회차). */
+  nextSchedule?: {
+    scheduledDate: string;
+    startTime?: string | null;
+    endTime?: string | null;
+  } | null;
 }
 
 export interface DirectorDashboardData {

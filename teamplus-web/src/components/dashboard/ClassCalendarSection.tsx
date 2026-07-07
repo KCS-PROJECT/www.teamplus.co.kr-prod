@@ -117,24 +117,14 @@ function toHHmm(value?: string | null): string | null {
   return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 }
 
-function formatTimeRange(startTime: string, endTime: string) {
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-  const formatter = new Intl.DateTimeFormat('ko-KR', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
-  return `${formatter.format(start)} - ${formatter.format(end)}`;
-}
-
 /**
  * [2026-06-05] 회차(날짜)의 요일에 맞는 시각 라벨 산출.
  *  - daySchedules 에 그 요일 규칙이 있으면 "HH:mm - HH:mm" (문자열 그대로).
- *  - 없으면 수업 대표 startTime/endTime(ISO) 기반 formatTimeRange 폴백.
+ *  - 없으면 '' (시간 미표시). 대표값(Class.startTime)은 회차별 실제 시각과
+ *    다를 수 있어 표시 폴백으로 사용하지 않는다.
  */
 function resolveScheduleTime(
-  cls: { startTime: string; endTime: string; daySchedules?: DaySchedule[] },
+  cls: { daySchedules?: DaySchedule[] },
   scheduledDate: string,
 ): string {
   const match = getDayScheduleForDate(cls.daySchedules, scheduledDate);
@@ -143,7 +133,7 @@ function resolveScheduleTime(
       ? `${match.startTime} - ${match.endTime}`
       : match.startTime;
   }
-  return formatTimeRange(cls.startTime, cls.endTime);
+  return '';
 }
 
 /**
@@ -1233,17 +1223,19 @@ export function SelectedDayClassList({
                   )}>
                     {typeStyle.label}
                   </span>
-                  {/* [ICETIMES] iceTheme time — 13px/700. */}
-                  <span className={cn(
-                    'tabular-nums',
-                    isChild
-                      ? 'font-num font-semibold text-card-body text-wtext-2 dark:text-rink-100'
-                      : !isChild && iceTheme
-                        ? 'text-[13px] font-bold text-wtext-2 dark:text-rink-100'
-                        : 'text-xs text-wtext-3 dark:text-rink-300',
-                  )}>
-                    {cls.time}
-                  </span>
+                  {/* [ICETIMES] iceTheme time — 13px/700. 시각 미상 회차는 미표시. */}
+                  {cls.time && (
+                    <span className={cn(
+                      'tabular-nums',
+                      isChild
+                        ? 'font-num font-semibold text-card-body text-wtext-2 dark:text-rink-100'
+                        : !isChild && iceTheme
+                          ? 'text-[13px] font-bold text-wtext-2 dark:text-rink-100'
+                          : 'text-xs text-wtext-3 dark:text-rink-300',
+                    )}>
+                      {cls.time}
+                    </span>
+                  )}
                 </div>
                 {/* [ICETIMES] iceTheme title — 15px/700. */}
                 <p className={cn(
@@ -1513,7 +1505,8 @@ export function SelectedDayClassList({
         {pickerSchedule && (
           <>
             <p className="mb-3 text-xs text-wtext-3 dark:text-rink-300">
-              {pickerSchedule.title} · {pickerSchedule.time}
+              {pickerSchedule.title}
+              {pickerSchedule.time ? ` · ${pickerSchedule.time}` : ''}
             </p>
             <ul className="flex flex-col gap-2">
               {(scheduleIdToChildIds?.get(pickerSchedule.id) ?? [])

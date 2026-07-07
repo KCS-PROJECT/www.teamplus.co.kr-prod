@@ -32,6 +32,20 @@ export const TRAINING_TYPE_ICONS: Record<TrainingType, { icon: string; bg: strin
   PICKUP: { icon: 'group_add', bg: 'bg-purple-50 dark:bg-purple-900/20', color: 'text-purple-600 dark:text-purple-400' },
 };
 
+/** 요일별 기본 일정 (ClassDaySchedule) — 카드 요일 패턴 표시용. */
+export interface TrainingDaySchedule {
+  dayOfWeek: string;
+  startTime: string;
+  endTime: string;
+}
+
+/** 다음 회차 (비취소·오늘 이후 첫 회차) — 기본 일정 없는 훈련의 날짜(+회차 시간) 표시용. */
+export interface TrainingNextSchedule {
+  scheduledDate: string;
+  startTime?: string | null;
+  endTime?: string | null;
+}
+
 export interface TrainingSession {
   id: string;
   clubId: string;
@@ -43,11 +57,14 @@ export interface TrainingSession {
   ageMin?: number;
   ageMax?: number;
   levelRequired?: string;
+  /** 대표값(Class.startTime) — 회차별 실제 시각과 다를 수 있어 표시에 사용하지 않는다. */
   startTime: string;
   endTime: string;
   isActive: boolean;
   createdAt: string;
   updatedAt?: string;
+  daySchedules?: TrainingDaySchedule[];
+  nextSchedule?: TrainingNextSchedule | null;
   _count?: {
     schedules: number;
     enrollments: number;
@@ -57,6 +74,9 @@ export interface TrainingSession {
 export interface TrainingSchedule {
   id: string;
   scheduledDate: string;
+  /** 회차별 실제 시각 "HH:mm" — 없으면 시간 미표시. */
+  startTime?: string | null;
+  endTime?: string | null;
   isCancelled: boolean;
   cancellationReason?: string;
   _count?: {
@@ -72,6 +92,7 @@ export interface TrainingDetail extends TrainingSession {
     coach?: { id: string; firstName: string; lastName: string };
   };
   coachName: string;
+  daySchedules?: TrainingDaySchedule[];
   schedules: TrainingSchedule[];
 }
 

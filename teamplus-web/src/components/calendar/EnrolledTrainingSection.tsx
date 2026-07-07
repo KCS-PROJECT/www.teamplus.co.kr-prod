@@ -13,7 +13,9 @@ import { ClassListCard, ClassCardInfoRow } from '@/components/classes/ClassListC
 import {
   TRAINING_TYPE_LABEL,
   formatDaySchedulesShort,
+  formatNextScheduleLabel,
   type DaySchedule,
+  type NextScheduleInfo,
 } from '@/lib/class-categories';
 import { api } from '@/services/api-client';
 import { useChildren } from '@/hooks/useChildren';
@@ -31,8 +33,7 @@ interface EnrolledClassItem {
   daySchedules?: DaySchedule[];
   scheduledDates?: string[];
   scheduleTimeLabel?: string | null;
-  startTime?: string;
-  endTime?: string;
+  nextSchedule?: NextScheduleInfo | null;
 }
 
 interface EnrollmentRow {
@@ -44,16 +45,8 @@ interface EnrollmentRow {
 }
 
 // ── 일정 라벨 포맷 — classes/page.tsx 와 동일 컨벤션 (소형 재현) ──
-function formatClassTime(start?: string, end?: string): string {
-  if (!start || !end) return '';
-  const s = new Date(start);
-  const e = new Date(end);
-  if (isNaN(s.getTime()) || isNaN(e.getTime())) return '';
-  // naive timestamp(UTC 역직렬화) → 입력 벽시계 시각 유지를 위해 UTC 추출.
-  const fmt = (d: Date) =>
-    `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
-  return `${fmt(s)} - ${fmt(e)}`;
-}
+// 시간 표시 SoT: 요일별 기본 일정 패턴 > 첫/다음 회차 실제 시각 > 미표시.
+// 대표값(Class.startTime)은 회차별 실제 시각과 다를 수 있어 표시에 사용하지 않는다.
 
 function formatClassDays(days?: string[]): string | null {
   if (!days || days.length === 0) return null;
@@ -89,7 +82,7 @@ function scheduleLineOf(item: EnrolledClassItem): string | null {
     ? null
     : item.trainingType === 'lesson'
       ? item.scheduleTimeLabel ?? null
-      : formatClassTime(item.startTime, item.endTime);
+      : formatNextScheduleLabel(item.nextSchedule);
   const daysLabel = dayScheduleLabel ?? formatScheduleLabel(item);
   if (!daysLabel && !time) return null;
   return `${daysLabel || time}${daysLabel && time ? ` · ${time}` : ''}`;

@@ -20,6 +20,7 @@ import {
 } from '@/hooks/useTraining';
 import { MESSAGES } from '@/lib/messages';
 import { cn } from '@/lib/utils';
+import { formatClassScheduleDisplay } from '@/lib/class-categories';
 
 // [추가 2026-05-11] 로그인 사용자 역할 → 한글 호칭.
 const ROLE_KO_LABEL: Record<string, string> = {
@@ -41,12 +42,8 @@ const TYPE_CHIPS: { key: TypeFilter; label: string }[] = [
 ];
 
 // ─── Helpers ───────────────────────────────────────
-function formatTime(iso: string): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-}
+// 시간 표시 SoT: 요일별 기본 일정 패턴 > 다음 회차(날짜+회차 시간) > 미표시.
+// 대표값(Class.startTime)은 회차별 실제 시각과 다를 수 있어 표시에 사용하지 않는다.
 
 // ─── Flat 섹션 헤더 (ICETIMES) ───────────────────────
 // classes-manage 의 ClassSectionHead 와 동일 17px/800 it-ink 톤 + 우측 개수 num.
@@ -106,9 +103,13 @@ function TrainingCard({ item }: { item: TrainingSession }) {
           </h3>
           <p className="text-card-meta text-it-ink-500 dark:text-rink-300 mt-0.5 truncate">
             {item.instructorName} {roleLabel}
-            {item.startTime && item.endTime && (
-              <> · {formatTime(item.startTime)}–{formatTime(item.endTime)}</>
-            )}
+            {(() => {
+              const label = formatClassScheduleDisplay({
+                daySchedules: item.daySchedules,
+                nextSchedule: item.nextSchedule,
+              });
+              return label ? <> · {label}</> : null;
+            })()}
           </p>
         </div>
 
