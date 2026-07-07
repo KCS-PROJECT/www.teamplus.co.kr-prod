@@ -15,7 +15,8 @@ import { NotificationsService } from "@/notifications/notifications.service";
 import { UpdateAttendanceDto } from "./dto/update-attendance.dto";
 import {
   computeAttendanceWindow,
-  resolveScheduleEndTime,
+  resolveScheduleTimeByTemplate,
+  resolveScheduleEndTimeByTemplate,
 } from "@/common/utils/schedule-time.util";
 import {
   kstTodayUtcMidnight,
@@ -823,6 +824,10 @@ export class AttendanceService {
             endTime: true,
             teamId: true,
             team: { select: { id: true, name: true, teamCode: true } },
+            // 요일 기본 일정 — 회차 시각 없을 때 표시 시각 해석용 (대표값 폴백 대체)
+            dayScheduleEntries: {
+              select: { dayOfWeek: true, startTime: true, endTime: true },
+            },
           },
         },
       },
@@ -913,9 +918,18 @@ export class AttendanceService {
       teamName: schedule.class.team?.name ?? "",
       teamCode: schedule.class.team?.teamCode ?? "",
       scheduledDate: schedule.scheduledDate,
-      // 회차 시각 text("HH:mm") canonical — 프론트 표시 우선값. Dual: class* 는 폴백 유지.
-      scheduleStartTime: schedule.startTime,
-      scheduleEndTime: schedule.endTime,
+      // 회차 시각 text("HH:mm") canonical — 회차 자체 시각 > 요일 기본 일정 시각.
+      //   대표값(Class.startTime) 폴백 제거. class* 는 하위호환 alias 로만 유지(신규 사용 금지).
+      scheduleStartTime: resolveScheduleTimeByTemplate(
+        schedule.startTime,
+        schedule.scheduledDate,
+        schedule.class.dayScheduleEntries,
+      ),
+      scheduleEndTime: resolveScheduleEndTimeByTemplate(
+        schedule.endTime,
+        schedule.scheduledDate,
+        schedule.class.dayScheduleEntries,
+      ),
       classStartTime: schedule.class.startTime,
       classEndTime: schedule.class.endTime,
       isCancelled: schedule.isCancelled,
@@ -1963,7 +1977,10 @@ export class AttendanceService {
             className: true,
             teamId: true,
             academyId: true,
-            endTime: true,
+            // 요일 기본 일정 — 회차 종료 시각 없을 때 출석 윈도우 마감 폴백 (대표값 대체)
+            dayScheduleEntries: {
+              select: { dayOfWeek: true, startTime: true, endTime: true },
+            },
           }, // P1-5 (v0.5)
         },
       },
@@ -1978,8 +1995,16 @@ export class AttendanceService {
     // 2) 시간 윈도우 검증 (D-A)
     this.validateTimeWindow(
       schedule.scheduledDate,
-      schedule.startTime,
-      resolveScheduleEndTime(schedule.endTime, schedule.class.endTime),
+      resolveScheduleTimeByTemplate(
+        schedule.startTime,
+        schedule.scheduledDate,
+        schedule.class.dayScheduleEntries,
+      ),
+      resolveScheduleEndTimeByTemplate(
+        schedule.endTime,
+        schedule.scheduledDate,
+        schedule.class.dayScheduleEntries,
+      ),
     );
 
     // 3) 학부모-자녀 관계 검증
@@ -2170,7 +2195,10 @@ export class AttendanceService {
             className: true,
             teamId: true,
             academyId: true,
-            endTime: true,
+            // 요일 기본 일정 — 회차 종료 시각 없을 때 출석 윈도우 마감 폴백 (대표값 대체)
+            dayScheduleEntries: {
+              select: { dayOfWeek: true, startTime: true, endTime: true },
+            },
           }, // P1-5 (v0.5)
         },
       },
@@ -2185,8 +2213,16 @@ export class AttendanceService {
     // 2) 시간 윈도우 검증 (D-A · 학부모와 동일)
     this.validateTimeWindow(
       schedule.scheduledDate,
-      schedule.startTime,
-      resolveScheduleEndTime(schedule.endTime, schedule.class.endTime),
+      resolveScheduleTimeByTemplate(
+        schedule.startTime,
+        schedule.scheduledDate,
+        schedule.class.dayScheduleEntries,
+      ),
+      resolveScheduleEndTimeByTemplate(
+        schedule.endTime,
+        schedule.scheduledDate,
+        schedule.class.dayScheduleEntries,
+      ),
     );
 
     const classId = schedule.class.id;

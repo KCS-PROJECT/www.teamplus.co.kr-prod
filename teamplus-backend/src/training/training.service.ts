@@ -222,12 +222,14 @@ export class TrainingService {
           },
           _count: {
             select: {
-              schedules: true,
+              // "총 N회" 표기 정확성 — 취소 회차 제외 카운트
+              schedules: { where: { isCancelled: false } },
               enrollments: true,
             },
           },
         },
-        orderBy: { startTime: "desc" },
+        // 정렬 — 대표값(startTime) 날짜부는 등록일 오염이라 폐기, 등록순(createdAt)으로 대체.
+        orderBy: { createdAt: "desc" },
         skip,
         take: limit,
       }),

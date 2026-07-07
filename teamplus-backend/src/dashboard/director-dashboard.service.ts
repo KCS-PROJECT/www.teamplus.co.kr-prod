@@ -312,6 +312,12 @@ export class DirectorDashboardService {
                     endTime: true,
                   },
                 },
+                // 비취소 총 회차 수 — "총 N회" 표기용
+                _count: {
+                  select: {
+                    schedules: { where: { isCancelled: false } },
+                  },
+                },
               },
             })
           : Promise.resolve([] as Array<never>),
@@ -580,6 +586,7 @@ export class DirectorDashboardService {
               startTime: string | null;
               endTime: string | null;
             }>;
+            _count: { schedules: number };
           }>
         ).map((c) => ({
           id: c.id,
@@ -594,6 +601,7 @@ export class DirectorDashboardService {
           name: c.team?.name ?? "",
           daySchedules: c.dayScheduleEntries ?? [],
           nextSchedule: c.schedules?.[0] ?? null,
+          scheduleCount: c._count?.schedules ?? 0,
         })),
         // W6
         latestNotices,

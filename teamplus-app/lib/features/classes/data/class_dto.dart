@@ -1,4 +1,40 @@
-import 'package:intl/intl.dart';
+/// 요일별 기본 일정(ClassDaySchedule) — "월"~"일" + "HH:mm" 텍스트.
+class ClassDayScheduleDto {
+  final String dayOfWeek;
+  final String startTime;
+  final String endTime;
+
+  ClassDayScheduleDto({
+    required this.dayOfWeek,
+    required this.startTime,
+    required this.endTime,
+  });
+
+  factory ClassDayScheduleDto.fromJson(Map<String, dynamic> json) =>
+      ClassDayScheduleDto(
+        dayOfWeek: json['dayOfWeek'] as String? ?? '',
+        startTime: json['startTime'] as String? ?? '',
+        endTime: json['endTime'] as String? ?? '',
+      );
+}
+
+/// 다음 회차(비취소·오늘 이후 첫 회차) — 날짜 + 회차 실제 시각("HH:mm").
+class ClassNextScheduleDto {
+  final DateTime? scheduledDate;
+  final String? startTime;
+  final String? endTime;
+
+  ClassNextScheduleDto({this.scheduledDate, this.startTime, this.endTime});
+
+  factory ClassNextScheduleDto.fromJson(Map<String, dynamic> json) =>
+      ClassNextScheduleDto(
+        scheduledDate: json['scheduledDate'] != null
+            ? DateTime.tryParse(json['scheduledDate'] as String)
+            : null,
+        startTime: json['startTime'] as String?,
+        endTime: json['endTime'] as String?,
+      );
+}
 
 /// GET /api/v1/classes 응답 단건 모델
 class ClassDto {
@@ -11,10 +47,10 @@ class ClassDto {
   final int? ageMin;
   final int? ageMax;
   final String? levelRequired;
-  final DateTime? startTime;
-  final DateTime? endTime;
   final bool isActive;
   final int enrolledCount;
+  final List<ClassDayScheduleDto> daySchedules;
+  final ClassNextScheduleDto? nextSchedule;
 
   ClassDto({
     required this.id,
@@ -26,10 +62,10 @@ class ClassDto {
     this.ageMin,
     this.ageMax,
     this.levelRequired,
-    this.startTime,
-    this.endTime,
     required this.isActive,
     required this.enrolledCount,
+    this.daySchedules = const [],
+    this.nextSchedule,
   });
 
   factory ClassDto.fromJson(Map<String, dynamic> json) {
@@ -44,26 +80,49 @@ class ClassDto {
       ageMin: (json['ageMin'] as num?)?.toInt(),
       ageMax: (json['ageMax'] as num?)?.toInt(),
       levelRequired: json['levelRequired'] as String?,
-      startTime: json['startTime'] != null
-          ? DateTime.tryParse(json['startTime'] as String)
-          : null,
-      endTime: json['endTime'] != null
-          ? DateTime.tryParse(json['endTime'] as String)
-          : null,
       isActive: json['isActive'] as bool? ?? true,
       enrolledCount: (count?['enrollments'] as num?)?.toInt() ?? 0,
+      daySchedules: (json['daySchedules'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(ClassDayScheduleDto.fromJson)
+          .toList(),
+      nextSchedule: json['nextSchedule'] is Map<String, dynamic>
+          ? ClassNextScheduleDto.fromJson(
+              json['nextSchedule'] as Map<String, dynamic>)
+          : null,
     );
   }
 
-  /// "월요일 19:00 - 20:00" 형태의 일정 문자열
+  /// 일정 라벨 — 요일 기본 일정 패턴 > 다음 회차(날짜+회차 시각) > '일정 미정'.
+  ///  - 요일별 시간이 모두 동일: "월·수 17:00 - 18:00"
+  ///  - 요일별 시간 상이: "매주 월·수" (시간은 상세에서)
+  ///  - 기본 일정 없음: "다음 7/8 (화) 19:00 - 20:00"
+  /// 대표값(Class.startTime)은 요일별 상이 왜곡·등록시각 오염으로 사용하지 않는다.
   String get scheduleLabel {
-    if (startTime == null) return '일정 미정';
-    final weekdays = ['월', '화', '수', '목', '금', '토', '일'];
-    final day = weekdays[(startTime!.weekday - 1) % 7];
-    final startStr = DateFormat('HH:mm').format(startTime!);
-    final endStr =
-        endTime != null ? ' - ${DateFormat('HH:mm').format(endTime!)}' : '';
-    return '$day요일 $startStr$endStr';
+    if (daySchedules.isNotEmpty) {
+      final days = daySchedules.map((d) => d.dayOfWeek).join('·');
+      final first = daySchedules.first;
+      final uniform = daySchedules.every(
+          (d) => d.startTime == first.startTime && d.endTime == first.endTime);
+      if (uniform && first.startTime.isNotEmpty) {
+        final end = first.endTime.isNotEmpty ? ' - ${first.endTime}' : '';
+        return '$days ${first.startTime}$end';
+      }
+      return '매주 $days';
+    }
+    final next = nextSchedule;
+    final date = next?.scheduledDate;
+    if (date != null) {
+      // scheduledDate 는 @db.Date(UTC 자정) — UTC 성분이 KST 달력일과 일치.
+      const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
+      final day = weekdays[(date.weekday - 1) % 7];
+      final start = next?.startTime;
+      final time = (start != null && start.isNotEmpty)
+          ? ' $start${(next?.endTime != null && next!.endTime!.isNotEmpty) ? ' - ${next.endTime}' : ''}'
+          : '';
+      return '다음 ${date.month}/${date.day} ($day)$time';
+    }
+    return '일정 미정';
   }
 
   /// "7-12세" 형태의 나이 범위 문자열
@@ -81,3 +140,4 @@ class ClassDto {
     return '잔여 $remaining자리';
   }
 }
+

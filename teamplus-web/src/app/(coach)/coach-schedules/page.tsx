@@ -30,6 +30,8 @@ interface ClassItem {
   isActive: boolean;
   daySchedules?: DaySchedule[];
   nextSchedule?: NextScheduleInfo | null;
+  /** 비취소 총 회차 수 — "총 N회" 표기용. */
+  scheduleCount?: number;
 }
 
 export default function ScheduleManagePage() {
@@ -122,6 +124,7 @@ export default function ScheduleManagePage() {
                       const label = formatClassScheduleDisplay({
                         daySchedules: cls.daySchedules,
                         nextSchedule: cls.nextSchedule,
+                        totalScheduleCount: cls.scheduleCount ?? null,
                       });
                       return label ? (
                         <p className="text-card-meta text-it-ink-500 dark:text-rink-300">

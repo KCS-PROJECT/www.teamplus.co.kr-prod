@@ -5,6 +5,10 @@ import {
   kstTodayUtcMidnight,
   addUtcDays,
 } from "@/common/utils/kst-date.util";
+import {
+  resolveScheduleTimeByTemplate,
+  resolveScheduleEndTimeByTemplate,
+} from "@/common/utils/schedule-time.util";
 
 /**
  * ChildDashboardService
@@ -77,9 +81,11 @@ export class ChildDashboardService {
                 select: {
                   id: true,
                   className: true,
-                  startTime: true,
-                  endTime: true,
                   instructorName: true,
+                  // 요일 기본 일정 — 회차 시각 없을 때 해석용 (대표값 폴백 대체)
+                  dayScheduleEntries: {
+                    select: { dayOfWeek: true, startTime: true, endTime: true },
+                  },
                   schedules: {
                     where: {
                       scheduledDate: { gte: sdToday, lt: tomorrow },
@@ -90,6 +96,8 @@ export class ChildDashboardService {
                     select: {
                       id: true,
                       scheduledDate: true,
+                      startTime: true,
+                      endTime: true,
                     },
                   },
                 },
@@ -257,8 +265,6 @@ export class ChildDashboardService {
                 id: true,
                 className: true,
                 trainingType: true,
-                startTime: true,
-                endTime: true,
               },
             },
             attendances: {
@@ -323,14 +329,23 @@ export class ChildDashboardService {
       } | null = null;
       for (const cls of membership.team?.classes ?? []) {
         if (cls.schedules.length > 0) {
-          const startH = String(cls.startTime.getHours()).padStart(2, "0");
-          const startM = String(cls.startTime.getMinutes()).padStart(2, "0");
-          const endH = String(cls.endTime.getHours()).padStart(2, "0");
-          const endM = String(cls.endTime.getMinutes()).padStart(2, "0");
+          // 회차 시각(text) > 그 요일의 기본 일정 시각 > "" (미상 — 프론트 미표시).
+          //   대표값(Class.startTime) getHours 파싱 제거 (로컬 TZ 재해석 +9h 리스크 포함).
+          const sched = cls.schedules[0];
           todayClass = {
             title: cls.className,
-            startTime: `${startH}:${startM}`,
-            endTime: `${endH}:${endM}`,
+            startTime:
+              resolveScheduleTimeByTemplate(
+                sched.startTime,
+                sched.scheduledDate,
+                cls.dayScheduleEntries,
+              ) ?? "",
+            endTime:
+              resolveScheduleEndTimeByTemplate(
+                sched.endTime,
+                sched.scheduledDate,
+                cls.dayScheduleEntries,
+              ) ?? "",
             coach: cls.instructorName || coachName || "코치",
           };
           break;

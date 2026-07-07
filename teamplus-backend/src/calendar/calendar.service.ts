@@ -1,6 +1,10 @@
 import { Injectable, BadRequestException } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
-import { resolveScheduleTime } from "@/common/utils/schedule-time.util";
+import {
+  resolveScheduleTimeByTemplate,
+  resolveScheduleEndTimeByTemplate,
+} from "@/common/utils/schedule-time.util";
+import { composeKstInstant } from "@/common/utils/kst-date.util";
 import { scheduleEligibleClassFilter } from "@/common/billing/schedule-eligibility.util";
 import { resolveScopedChildUserIds } from "@/common/utils/team-scope.util";
 
@@ -378,8 +382,10 @@ export class CalendarService {
             id: true,
             className: true,
             trainingType: true,
-            startTime: true,
-            endTime: true,
+            // 요일 기본 일정 — 회차 시각 없을 때 해석용 (대표값 폴백 대체)
+            dayScheduleEntries: {
+              select: { dayOfWeek: true, startTime: true, endTime: true },
+            },
           },
         },
       },
@@ -503,18 +509,36 @@ export class CalendarService {
       const isLesson = LESSON_TRAINING_TYPES.has(s.class.trainingType ?? "");
       const type = isLesson ? "PERSONAL_LESSON" : "TEAM_TRAINING";
 
+      // 표시 시각 — ClassSchedule.start_time(text) 우선, 폴백 요일 기본 일정.
+      //   대표값(Class.startTime) 폴백 제거 — null 이면 프론트가 시간 미표시.
+      const displayStart = resolveScheduleTimeByTemplate(
+        s.startTime,
+        s.scheduledDate,
+        s.class.dayScheduleEntries,
+      );
+      const displayEnd = resolveScheduleEndTimeByTemplate(
+        s.endTime,
+        s.scheduledDate,
+        s.class.dayScheduleEntries,
+      );
       dayMap.get(dateKey)!.push({
         type,
         color: EVENT_COLORS[type],
         title: s.class.className,
         refId: s.id,
         refType: "class_schedule",
-        timeStart: s.class.startTime.toISOString(),
-        timeEnd: s.class.endTime.toISOString(),
-        // 표시 시각 — ClassSchedule.start_time(text) 우선, 폴백 Class.startTime(UTC 추출).
-        //   프론트는 이 값을 그대로 노출(입력값 "HH:mm"과 일치).
-        displayStart: resolveScheduleTime(s.startTime, s.class.startTime),
-        displayEnd: resolveScheduleTime(s.endTime, s.class.endTime),
+        // timeStart/End(ISO, 하위호환) — 해석된 시각을 scheduledDate 와 KST 합성.
+        //   시각 미상이면 scheduledDate(UTC 자정) 그대로 — 시각 성분을 신뢰하지 말 것.
+        timeStart: (displayStart
+          ? composeKstInstant(s.scheduledDate, displayStart)
+          : s.scheduledDate
+        ).toISOString(),
+        timeEnd: (displayEnd
+          ? composeKstInstant(s.scheduledDate, displayEnd)
+          : s.scheduledDate
+        ).toISOString(),
+        displayStart,
+        displayEnd,
       });
     }
 

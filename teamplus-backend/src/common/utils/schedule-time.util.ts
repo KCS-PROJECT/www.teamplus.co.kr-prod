@@ -1,44 +1,66 @@
 import { composeKstInstant } from "./kst-date.util";
 
 /**
- * 수업 일정 표시 시각 해석 — "입력 그대로의 값" 단일 SoT.
+ * 수업 일정 시각 해석 — "입력 그대로의 값" 단일 SoT.
  *
- * TEAMPLUS 시간 저장 정책 (실측 2026-06-11):
+ * TEAMPLUS 시간 저장 정책:
  *  - `ClassSchedule.startTime/endTime` (text "HH:mm"): 입력 그대로 저장 — 타임존 변환 없음. (SoT)
- *  - `Class.startTime/endTime` (timestamp without time zone): 벽시계 시각을 KST 변환 없이
- *    naive 저장됨. Prisma 가 이 컬럼을 UTC 로 역직렬화하므로, 입력 시각과 일치시키려면
- *    반드시 getUTCHours/getUTCMinutes 로 추출해야 한다. (로컬 getHours 사용 시 +9 시프트)
+ *  - `ClassDaySchedule.startTime/endTime` (text "HH:mm"): 요일별 기본 일정 — 회차 시각 부재 시 폴백.
+ *  - `Class.startTime/endTime` (대표값): 표시·해석 소스로 사용 금지 — 요일별 상이 왜곡 +
+ *    등록시각(new Date) 폴백 데이터 오염. (구 resolveScheduleTime/EndTime 은 이 이유로 삭제됨)
  *
- * 우선순위: ClassSchedule.startTime(text) > Class.startTime(timestamp, UTC 추출) > null
+ * 우선순위: ClassSchedule.startTime(text) > ClassDaySchedule[요일](text) > null
  */
-export function resolveScheduleTime(
-  scheduleStartTime: string | null | undefined,
-  classStartTime: Date | null | undefined,
-): string | null {
-  if (scheduleStartTime) return scheduleStartTime;
-  if (classStartTime) {
-    const h = String(classStartTime.getUTCHours()).padStart(2, "0");
-    const m = String(classStartTime.getUTCMinutes()).padStart(2, "0");
-    return `${h}:${m}`;
-  }
-  return null;
+
+// ─── 요일 기본 일정(ClassDaySchedule) 기반 해석 — 대표값(Class.startTime) 미사용 ───
+//
+// 대표값은 "가장 이른 요일 시각 하나"라 요일별 시간이 다른 수업에서 왜곡되고,
+// new Date() 폴백 데이터가 섞여 신뢰할 수 없다. 회차 시각이 없으면 그 회차
+// 날짜의 요일에 해당하는 ClassDaySchedule 시각으로 해석하는 것이 항상 정확하다.
+
+/** ClassDaySchedule 최소 계약 — dayOfWeek "월"~"일" · "HH:mm" 텍스트. */
+export interface DayScheduleTemplate {
+  dayOfWeek: string;
+  startTime: string;
+  endTime: string;
+}
+
+const KO_DAY_BY_UTC_DOW = ["일", "월", "화", "수", "목", "금", "토"] as const;
+
+/**
+ * 회차 날짜(@db.Date, UTC 자정 = KST 달력일)의 요일에 해당하는 템플릿 행 반환.
+ * getUTCDay 사용 — 서버 TZ 무관하게 KST 달력 요일과 일치한다.
+ */
+export function dayTemplateForDate(
+  scheduledDate: Date,
+  templates?: DayScheduleTemplate[] | null,
+): DayScheduleTemplate | null {
+  if (!templates || templates.length === 0) return null;
+  const kr = KO_DAY_BY_UTC_DOW[scheduledDate.getUTCDay()];
+  return templates.find((t) => t.dayOfWeek === kr) ?? null;
 }
 
 /**
- * 종료 시각 해석 — `resolveScheduleTime` 의 endTime 버전.
- * 우선순위: ClassSchedule.endTime(text) > Class.endTime(timestamp, UTC 추출) > null
+ * 시작 시각 해석 v2 — 회차 시각(text) > 그 요일의 기본 일정 시각 > null.
+ * null 이면 호출부가 시간 표기를 생략한다 (대표값 폴백 없음).
  */
-export function resolveScheduleEndTime(
+export function resolveScheduleTimeByTemplate(
+  scheduleStartTime: string | null | undefined,
+  scheduledDate: Date,
+  templates?: DayScheduleTemplate[] | null,
+): string | null {
+  if (scheduleStartTime) return scheduleStartTime;
+  return dayTemplateForDate(scheduledDate, templates)?.startTime ?? null;
+}
+
+/** 종료 시각 해석 v2 — `resolveScheduleTimeByTemplate` 의 endTime 버전. */
+export function resolveScheduleEndTimeByTemplate(
   scheduleEndTime: string | null | undefined,
-  classEndTime: Date | null | undefined,
+  scheduledDate: Date,
+  templates?: DayScheduleTemplate[] | null,
 ): string | null {
   if (scheduleEndTime) return scheduleEndTime;
-  if (classEndTime) {
-    const h = String(classEndTime.getUTCHours()).padStart(2, "0");
-    const m = String(classEndTime.getUTCMinutes()).padStart(2, "0");
-    return `${h}:${m}`;
-  }
-  return null;
+  return dayTemplateForDate(scheduledDate, templates)?.endTime ?? null;
 }
 
 /**

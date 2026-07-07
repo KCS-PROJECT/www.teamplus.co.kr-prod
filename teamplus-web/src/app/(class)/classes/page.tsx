@@ -27,7 +27,7 @@ import {
   getTrainingTypeIcon,
   shouldHideTypeBadge,
   formatDaySchedulesShort,
-  formatNextScheduleLabel,
+  formatNextScheduleSummary,
   type ClassCategoryCode,
   type DaySchedule,
   type NextScheduleInfo,
@@ -74,6 +74,8 @@ interface ClassItem {
   scheduleTimeLabel?: string | null;
   /** 다음 회차 (비취소·오늘 이후) — 요일 규칙 없는 수업 카드 시간 표시 소스. */
   nextSchedule?: NextScheduleInfo | null;
+  /** 비취소 총 회차 수 — "총 N회" 표기용. */
+  scheduleCount?: number;
   /** 정기권 가격 (원) — MONTHLY_FIXED 상품 price · PACKAGE_WEEKS_SPEC §6 응답 BC */
   monthlyPrice?: number | null;
   /** 회당 가격 (원) — PER_SESSION 상품 price · 1회권 가격 SoT */
@@ -557,7 +559,10 @@ const ChildClassCard = memo(function ChildClassCard({
     ? null
     : item.trainingType === "lesson"
       ? (item.scheduleTimeLabel ?? null)
-      : formatNextScheduleLabel(item.nextSchedule);
+      : formatNextScheduleSummary(
+          item.nextSchedule,
+          item.scheduleCount ?? item.scheduledDates?.length ?? null,
+        );
   const daysLabel = dayScheduleLabel ?? formatScheduleLabel(item);
   const rawTypeLabel = TRAINING_TYPE_LABEL[item.trainingType];
   const typeLabel = rawTypeLabel;
@@ -690,7 +695,10 @@ const TeenClassCard = memo(function TeenClassCard({
     ? null
     : item.trainingType === "lesson"
       ? (item.scheduleTimeLabel ?? null)
-      : formatNextScheduleLabel(item.nextSchedule);
+      : formatNextScheduleSummary(
+          item.nextSchedule,
+          item.scheduleCount ?? item.scheduledDates?.length ?? null,
+        );
   const rawTypeLabel = TRAINING_TYPE_LABEL[item.trainingType];
   const typeLabel = rawTypeLabel;
   const daysLabel = dayScheduleLabel ?? formatScheduleLabel(item);
@@ -847,7 +855,10 @@ const DefaultClassCard = memo(function DefaultClassCard({
     ? null
     : item.trainingType === "lesson"
       ? (item.scheduleTimeLabel ?? null)
-      : formatNextScheduleLabel(item.nextSchedule);
+      : formatNextScheduleSummary(
+          item.nextSchedule,
+          item.scheduleCount ?? item.scheduledDates?.length ?? null,
+        );
   const rawTypeLabel = TRAINING_TYPE_LABEL[item.trainingType];
   const typeLabel = rawTypeLabel;
   const daysLabel = dayScheduleLabel ?? formatScheduleLabel(item);

@@ -80,6 +80,7 @@ export function RecentClassesList({
                     const label = formatClassScheduleDisplay({
                       daySchedules: cls.daySchedules,
                       nextSchedule: cls.nextSchedule,
+                      totalScheduleCount: cls.scheduleCount ?? null,
                     });
                     return label ? (
                       <>

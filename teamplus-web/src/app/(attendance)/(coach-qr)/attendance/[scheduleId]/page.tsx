@@ -154,15 +154,6 @@ function formatDateKR(iso?: string | null) {
   return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}`;
 }
 
-function formatTimeRange(start?: string, end?: string) {
-  if (!start) return '';
-  const fmt = (iso: string) => {
-    const d = new Date(iso);
-    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  };
-  return end ? `${fmt(start)} - ${fmt(end)}` : fmt(start);
-}
-
 function dayKR(iso?: string) {
   if (!iso) return '';
   return ['일', '월', '화', '수', '목', '금', '토'][new Date(iso).getDay()];
@@ -346,14 +337,13 @@ export default function AttendanceCheckPage() {
               <h1 className="mt-2 text-card-section font-extrabold tracking-tight break-keep text-white">
                 {data.className}
               </h1>
+              {/* 시각 — 백엔드 scheduleStartTime(회차 > 요일 기본 일정 해석값) SoT.
+                  대표값(classStartTime) 폴백 제거 — 시각 미상이면 날짜만 표시. */}
               <p className="mt-1 text-card-body font-num text-it-blue-100 tabular-nums">
-                {formatDateKR(data.scheduledDate)} ({dayKR(data.scheduledDate)}){' '}
-                ·{' '}
+                {formatDateKR(data.scheduledDate)} ({dayKR(data.scheduledDate)})
                 {data.scheduleStartTime
-                  ? data.scheduleEndTime
-                    ? `${data.scheduleStartTime} - ${data.scheduleEndTime}`
-                    : data.scheduleStartTime
-                  : formatTimeRange(data.classStartTime, data.classEndTime)}
+                  ? ` · ${data.scheduleStartTime}${data.scheduleEndTime ? ` - ${data.scheduleEndTime}` : ''}`
+                  : ''}
               </p>
               <p className="mt-1 text-card-meta font-semibold text-it-blue-100/80">
                 {data.teamName}

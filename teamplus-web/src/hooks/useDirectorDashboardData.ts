@@ -62,6 +62,8 @@ export interface RecentClassItem {
     startTime?: string | null;
     endTime?: string | null;
   } | null;
+  /** 비취소 총 회차 수 — "총 N회" 표기용. */
+  scheduleCount?: number;
 }
 
 export interface DirectorDashboardData {

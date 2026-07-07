@@ -1,7 +1,10 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
-import { resolveScheduleTime } from "@/common/utils/schedule-time.util";
+import {
+  resolveScheduleTimeByTemplate,
+  resolveScheduleEndTimeByTemplate,
+} from "@/common/utils/schedule-time.util";
 import {
   kstTodayUtcMidnight,
   addUtcDays,
@@ -134,10 +137,12 @@ export class CoachDashboardService {
           select: {
             id: true,
             className: true,
-            startTime: true,
-            endTime: true,
             teamId: true,
             capacity: true,
+            // 요일 기본 일정 — 회차 시각 없을 때 해석용 (대표값 폴백 대체)
+            dayScheduleEntries: {
+              select: { dayOfWeek: true, startTime: true, endTime: true },
+            },
             schedules: {
               where: {
                 scheduledDate: { gte: sdToday, lte: sdWeekLater },
@@ -198,8 +203,7 @@ export class CoachDashboardService {
             class: {
               select: {
                 className: true,
-                startTime: true,
-                endTime: true,
+                classDays: true, // 요일 표시 — 대표값 날짜부(등록일) 요일 파생 대체
               },
             },
           },
@@ -299,17 +303,28 @@ export class CoachDashboardService {
         const schedDate = new Date(schedule.scheduledDate);
         if (schedDate < sdToday || schedDate >= sdTomorrow) continue;
 
-        // 시작/종료 시각은 startTime/endTime(text "HH:mm")을 scheduledDate(@db.Date)와 KST
-        // 벽시계로 합성한다. startTime 부재 시 KST 자정("00:00") — scheduledDate.getTime() 직접
-        // 사용은 UTC 자정(=KST 09:00)이라 상태 판정이 9h 밀린다.
+        // 시각 해석 — 회차 시각(text) > 그 요일의 기본 일정 시각 > null.
+        //   대표값(Class.startTime) 폴백 제거.
+        const startLabel = resolveScheduleTimeByTemplate(
+          schedule.startTime,
+          schedule.scheduledDate,
+          cls.dayScheduleEntries,
+        );
+        const endLabel = resolveScheduleEndTimeByTemplate(
+          schedule.endTime,
+          schedule.scheduledDate,
+          cls.dayScheduleEntries,
+        );
+
+        // 시작/종료 시각은 해석된 "HH:mm"을 scheduledDate(@db.Date)와 KST 벽시계로 합성한다.
+        // 시각 미상 시 KST 자정("00:00") — scheduledDate.getTime() 직접 사용은
+        // UTC 자정(=KST 09:00)이라 상태 판정이 9h 밀린다.
         const startHHmm =
-          schedule.startTime && /^\d{2}:\d{2}$/.test(schedule.startTime)
-            ? schedule.startTime
-            : "00:00";
+          startLabel && /^\d{2}:\d{2}$/.test(startLabel) ? startLabel : "00:00";
         const classStart = composeKstInstant(schedule.scheduledDate, startHHmm);
         const endComposed =
-          schedule.endTime && /^\d{2}:\d{2}$/.test(schedule.endTime)
-            ? composeKstInstant(schedule.scheduledDate, schedule.endTime)
+          endLabel && /^\d{2}:\d{2}$/.test(endLabel)
+            ? composeKstInstant(schedule.scheduledDate, endLabel)
             : null;
         // 종료 시각 없거나 시작보다 빠르면(자정 넘김 등) 시작 +120분 (출석 윈도우 상한과 일치).
         const classEnd =
@@ -322,11 +337,6 @@ export class CoachDashboardService {
         else if (now >= classStart) status = "current";
 
         const club = cls.teamId ? clubMap.get(cls.teamId) : undefined;
-
-        // 시각 표시 — class_schedules.start_time(text) 우선, 폴백 Class.startTime(UTC 추출).
-        //   "입력 그대로의 값" SoT. 상태 판정(classStart/classEnd)은 scheduledDate 기반 유지(별도 이슈).
-        const startLabel = resolveScheduleTime(schedule.startTime, cls.startTime);
-        const endLabel = resolveScheduleTime(schedule.endTime, cls.endTime);
         const startHHMM = startLabel ?? "00:00";
         const scheduleTimeStr = startLabel
           ? endLabel
@@ -392,13 +402,15 @@ export class CoachDashboardService {
       const name =
         `${e.child?.lastName ?? ""}${e.child?.firstName ?? ""}`.trim() ||
         "회원";
-      const days = ["일", "월", "화", "수", "목", "금", "토"];
-      const dayOfWeek = days[new Date(e.class.startTime).getDay()];
+      // 수업 요일 집합(classDays) 표시 — 대표값 날짜부는 등록일이라 요일 파생에 부적합.
+      const days = Array.isArray(e.class.classDays)
+        ? (e.class.classDays as string[]).filter((d) => typeof d === "string")
+        : [];
       return {
         id: e.id,
         name,
         className: e.class.className,
-        schedule: dayOfWeek ? `${dayOfWeek}요일` : "미정",
+        schedule: days.length > 0 ? `${days.join("·")}요일` : "미정",
       };
     });
 

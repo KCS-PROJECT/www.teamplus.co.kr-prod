@@ -628,32 +628,17 @@ function PaymentOptionsContent() {
                 const disabledBadge = isCardDisabled
                   ? matched?.disabledReason ?? MESSAGES.classProduct.unavailableEndDateExceed
                   : null;
-                // PACKAGE_WEEKS_SPEC §6 — 신규 응답 필드 우선, 구 필드 폴백.
-                const weeklyCount =
-                  matched?.packageSessionsPerWeek ?? matched?.sessionsPerWeek ?? 1;
-                const weeks =
-                  matched?.packageWeeks ??
-                  (matched?.durationDays ? Math.max(1, Math.round(matched.durationDays / 7)) : 4);
-                const totalSessions =
-                  matched?.packageTotalSessions ?? (weeks * weeklyCount);
+                // "주 N회" 파생(weeklyCount) 폐기 — 정기권 표기는 상품가(monthlyFixedAmount)
+                //   + 감독 설명(description)이 SoT. 회당 환산·주수 곱셈 추정 표기 제거.
                 const pricePerUnit =
                   feeType === "PER_SESSION"
                     ? Number(matched?.feePerSession ?? 0) || matched?.price || 0
-                    : feeType === "MONTHLY_FIXED"
-                      ? Number(matched?.feePerSession ?? 0) ||
-                        (totalSessions > 0
-                          ? Math.round((matched?.price ?? 0) / totalSessions)
-                          : 0)
-                      : (matched?.price ?? 0);
+                    : (matched?.price ?? 0);
                 return (
                   <PaymentOptionCard
                     key={feeType}
                     feeType={feeType}
                     pricePerUnit={pricePerUnit}
-                    weeklyCount={
-                      feeType === "MONTHLY_FIXED" ? weeklyCount : undefined
-                    }
-                    weeks={feeType === "MONTHLY_FIXED" ? weeks : undefined}
                     totalSessions={
                       feeType === "PER_SESSION" ? sessionCount : undefined
                     }

@@ -1,7 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
 import { kstTodayUtcMidnight } from "@/common/utils/kst-date.util";
-import { resolveScheduleTime } from "@/common/utils/schedule-time.util";
+import { resolveScheduleTimeByTemplate } from "@/common/utils/schedule-time.util";
 
 @Injectable()
 export class AnalyticsDashboardService {
@@ -290,12 +290,18 @@ export class AnalyticsDashboardService {
       select: {
         attendanceStatus: true,
         // 시각 SoT = ClassSchedule.startTime(text). @db.Date 전환 후 scheduledDate 에는
-        // 시각 성분이 없으므로 시간대 버킷은 startTime(부재 시 Class.startTime UTC 추출)에서 얻는다.
+        // 시각 성분이 없으므로 시간대 버킷은 startTime(부재 시 요일 기본 일정)에서 얻는다.
         schedule: {
           select: {
             scheduledDate: true,
             startTime: true,
-            class: { select: { startTime: true } },
+            class: {
+              select: {
+                dayScheduleEntries: {
+                  select: { dayOfWeek: true, startTime: true, endTime: true },
+                },
+              },
+            },
           },
         },
       },
@@ -359,14 +365,15 @@ export class AnalyticsDashboardService {
         (a, b) => parseFloat(b.attendanceRate) - parseFloat(a.attendanceRate),
       );
 
-    // 시간대별 출석 패턴 — 시각 SoT = startTime("HH:mm"). 해석 불가(startTime·Class.startTime 모두 부재)
-    // 행은 09시/00시로 뭉개는 대신 집계에서 제외한다.
+    // 시간대별 출석 패턴 — 시각 SoT = startTime("HH:mm"), 부재 시 요일 기본 일정.
+    // 해석 불가 행은 09시/00시로 뭉개는 대신 집계에서 제외한다.
     const hourlyPattern: { hour: number; count: number }[] = [];
     for (let hour = 6; hour < 22; hour++) {
       const hourAttendances = allAttendances.filter((a) => {
-        const hhmm = resolveScheduleTime(
+        const hhmm = resolveScheduleTimeByTemplate(
           a.schedule.startTime,
-          a.schedule.class?.startTime ?? null,
+          a.schedule.scheduledDate,
+          a.schedule.class?.dayScheduleEntries,
         );
         if (!hhmm) return false;
         return parseInt(hhmm.slice(0, 2), 10) === hour;

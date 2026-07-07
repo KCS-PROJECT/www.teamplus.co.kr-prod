@@ -28,7 +28,6 @@ interface FeeEditCardProps {
   packageValue?: DraftProduct[];
   onPackageChange?: (next: DraftProduct[]) => void;
   packageDirty?: boolean;
-  classSessionsPerWeek?: number;
   /** 비매니저(학부모·학생) 진입 시 읽기전용. */
   readonly?: boolean;
   /**
@@ -46,7 +45,6 @@ export function FeeEditCard({
   packageValue,
   onPackageChange,
   packageDirty = false,
-  classSessionsPerWeek,
   readonly = false,
   iceTheme = false,
 }: FeeEditCardProps) {
@@ -138,7 +136,6 @@ export function FeeEditCard({
                 value={packageValue}
                 onChange={onPackageChange}
                 dirty={packageDirty}
-                classSessionsPerWeek={classSessionsPerWeek}
                 billingMode={billingMode}
                 readonly={readonly}
                 iceTheme
@@ -219,7 +216,6 @@ export function FeeEditCard({
               value={packageValue}
               onChange={onPackageChange}
               dirty={packageDirty}
-              classSessionsPerWeek={classSessionsPerWeek}
               billingMode={billingMode}
               readonly={readonly}
             />

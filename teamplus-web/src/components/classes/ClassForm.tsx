@@ -1220,7 +1220,6 @@ export function ClassForm({
                         value={packageDraftValue ?? []}
                         onChange={onPackageDraftChange}
                         dirty={packageDirty}
-                        classSessionsPerWeek={formData.classDays.length}
                         billingMode={formData.billingMode}
                         iceTheme={iceTheme}
                       />

@@ -373,12 +373,11 @@ function resolveStatus(item: ClassItem): CardStatus {
   if (item.approvalStatus === 'PENDING') return 'PENDING';
   if (item.approvalStatus === 'REJECTED') return 'REJECTED';
   // 상태(예정/진행/종료)는 실제 일정(ClassSchedule)의 첫·마지막 날짜를 SoT 로 판단한다.
-  //   입력 기간(Class.startTime/endTime)은 실제 운영 일정과 어긋날 수 있어(특히 오픈클래스·
-  //   일정 누적 운영) 일정이 남았는데도 '종료'로 표시되던 문제를 방지. 일정 메타가 없으면
-  //   기존 startTime/endTime 로 폴백(회귀 방지).
+  //   대표값(Class.startTime/endTime) 폴백 제거 — 날짜부가 등록일로 오염되어 일정 없는
+  //   수업이 등록 직후 '종료'로 오표시되는 원인이었음. 일정 없으면 날짜 미정으로 취급.
   const period = resolvePeriodStatus(
-    item.firstScheduleDate ?? item.startTime,
-    item.lastScheduleDate ?? item.endTime,
+    item.firstScheduleDate ?? null,
+    item.lastScheduleDate ?? null,
   );
   // 기간이 끝난 수업은 DB status 와 무관하게 '종료' (기간이 SoT).
   if (period === 'ENDED') return 'ENDED';

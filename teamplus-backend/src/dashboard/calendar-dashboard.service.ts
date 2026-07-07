@@ -1,6 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
-import { resolveScheduleTime } from "@/common/utils/schedule-time.util";
+import {
+  resolveScheduleTimeByTemplate,
+  resolveScheduleEndTimeByTemplate,
+} from "@/common/utils/schedule-time.util";
 import { scheduleEligibleClassFilter } from "@/common/billing/schedule-eligibility.util";
 
 /**
@@ -196,8 +199,10 @@ export class CalendarDashboardService {
             className: true,
             trainingType: true,
             instructorName: true,
-            startTime: true,
-            endTime: true,
+            // 요일 기본 일정 — 회차 시각 없을 때 해석용 (대표값 폴백 대체)
+            dayScheduleEntries: {
+              select: { dayOfWeek: true, startTime: true, endTime: true },
+            },
             teamId: true,
             academyId: true,
             team: { select: { name: true } },
@@ -217,8 +222,16 @@ export class CalendarDashboardService {
         color: "red" as const,
         title: schedule.class.className,
         date: this.formatDate(schedule.scheduledDate),
-        startTime: resolveScheduleTime(schedule.startTime, schedule.class.startTime),
-        endTime: resolveScheduleTime(schedule.endTime, schedule.class.endTime),
+        startTime: resolveScheduleTimeByTemplate(
+          schedule.startTime,
+          schedule.scheduledDate,
+          schedule.class.dayScheduleEntries,
+        ),
+        endTime: resolveScheduleEndTimeByTemplate(
+          schedule.endTime,
+          schedule.scheduledDate,
+          schedule.class.dayScheduleEntries,
+        ),
         venue: ownerName,
         teamId: schedule.class.teamId,
         name: ownerName,
@@ -275,8 +288,10 @@ export class CalendarDashboardService {
             className: true,
             trainingType: true,
             instructorName: true,
-            startTime: true,
-            endTime: true,
+            // 요일 기본 일정 — 회차 시각 없을 때 해석용 (대표값 폴백 대체)
+            dayScheduleEntries: {
+              select: { dayOfWeek: true, startTime: true, endTime: true },
+            },
             teamId: true,
             academyId: true,
             team: { select: { name: true } },
@@ -296,8 +311,16 @@ export class CalendarDashboardService {
         color: "green" as const,
         title: schedule.class.className,
         date: this.formatDate(schedule.scheduledDate),
-        startTime: resolveScheduleTime(schedule.startTime, schedule.class.startTime),
-        endTime: resolveScheduleTime(schedule.endTime, schedule.class.endTime),
+        startTime: resolveScheduleTimeByTemplate(
+          schedule.startTime,
+          schedule.scheduledDate,
+          schedule.class.dayScheduleEntries,
+        ),
+        endTime: resolveScheduleEndTimeByTemplate(
+          schedule.endTime,
+          schedule.scheduledDate,
+          schedule.class.dayScheduleEntries,
+        ),
         venue: ownerName,
         teamId: schedule.class.teamId,
         name: ownerName,

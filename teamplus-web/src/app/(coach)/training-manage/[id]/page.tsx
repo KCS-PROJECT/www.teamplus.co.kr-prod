@@ -251,6 +251,7 @@ export default function TrainingDetailPage() {
           endTime: upcomingSchedules[0].endTime,
         }
       : null,
+    totalScheduleCount: upcomingSchedules.length + pastSchedules.length,
   });
 
   return (

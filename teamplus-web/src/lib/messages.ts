@@ -97,10 +97,9 @@ export const MESSAGES = {
     package: {
       label: (weeks: number, perSessionPrice: number) =>
         `${weeks}주 정기권 · 회당 ${perSessionPrice.toLocaleString("ko-KR")}원`,
-      detailLabel: (weeks: number, perWeek: number, total: number) =>
-        `${weeks}주 정기권 (주 ${perWeek}회 · 총 ${total}회)`,
       weeksOnly: (weeks: number) => `${weeks}주 정기권`,
-      perWeekOnly: (perWeek: number) => `주 ${perWeek}회`,
+      // "주 N회" 파생 라벨(detailLabel/perWeekOnly/preview)은 자동 파생 폐기와 함께 삭제 —
+      //   classDays 스냅샷 기반이라 오정보 위험. 상품 안내는 감독 설명 입력이 SoT.
       // 등록 폼 옵션 A — 운영자가 패키지 주 수를 명시 선택.
       // 한국어 자연성: "주 단위로 정한다" / "종료일까지 (의 기간으로 정한다)" 동일 차원의 입력 방식.
       mode: {
@@ -112,13 +111,6 @@ export const MESSAGES = {
       },
       endDateAuto: (dateStr: string) => `종료일 자동: ${dateStr}`,
       weeksAuto: (weeks: number) => `${weeks}주 (자동 계산)`,
-      preview: (
-        weeks: number,
-        perWeek: number,
-        total: number,
-        perSession: number,
-      ) =>
-        `${weeks}주 정기권 · 주 ${perWeek}회 · 총 ${total}회 · 회당 ${perSession.toLocaleString("ko-KR")}원`,
     },
     featured: {
       label: "이번 주 추천 수업",
@@ -658,13 +650,8 @@ export const MESSAGES = {
       perGame: "경기당",
     },
     feeDescription: {
-      // PACKAGE_WEEKS_SPEC §3 — 정기권 표기.
-      //   weeks 인자 누락 시 4주 폴백 (구 데이터 호환). 단위는 "X주 정기권 · 주 N회".
-      monthlyFixed: (
-        sessionsPerWeek: number,
-        _feePerSession: number,
-        weeks: number = 4,
-      ) => `${weeks}주 정기권 · 주 ${sessionsPerWeek}회`,
+      // "주 N회" 파생 표기 폐기 — classDays 스냅샷 기반 오정보 위험. 설명 입력이 SoT.
+      monthlyFixed: (weeks: number = 4) => `${weeks}주 정기권`,
       perSession: "실제 출석 횟수 기반 정산",
       perGame: "경기 수 기반 정산",
     },
@@ -696,16 +683,9 @@ export const MESSAGES = {
         perSession: "수업 1회 참여권을 선결제합니다.",
         perGame: "참가 경기 수 기준으로 정산됩니다.",
       },
-      // 계산식 표시 — PACKAGE_WEEKS_SPEC §3 정합.
-      //   학부모 목록 카드와 동일 표기로 통일 (X주 정기권 · 주 N회 · 회당 OO원).
-      //   weeks 미지정 시 4주 폴백 (구 데이터 호환).
+      // 계산식 표시 — 정기권(MONTHLY_FIXED)은 무차감 기간제라 회수 산식 미표기
+      //   ("주 N회" 파생 폐기 — 상품 안내는 설명 입력이 SoT).
       formula: {
-        monthlyFixed: (
-          weeklyCount: number,
-          pricePerUnit: number,
-          weeks: number = 4,
-        ) =>
-          `${weeks}주 정기권 · 주 ${weeklyCount}회 · 회당 ${new Intl.NumberFormat("ko-KR").format(pricePerUnit)}원`,
         perSession: (totalSessions: number, pricePerUnit: number) =>
           `${totalSessions}회 × ${new Intl.NumberFormat("ko-KR").format(pricePerUnit)}원`,
         perGame: (gameCount: number, pricePerUnit: number) =>

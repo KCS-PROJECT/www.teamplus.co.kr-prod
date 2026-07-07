@@ -29,6 +29,8 @@ interface ClassItem {
   approvalStatus?: string;
   daySchedules?: DaySchedule[];
   nextSchedule?: NextScheduleInfo | null;
+  /** 비취소 총 회차 수 — "총 N회" 표기용. */
+  scheduleCount?: number;
 }
 
 function formatTodayLabel(): string {
@@ -171,6 +173,7 @@ export default function ClassOrganizePage() {
                           const label = formatClassScheduleDisplay({
                             daySchedules: cls.daySchedules,
                             nextSchedule: cls.nextSchedule,
+                            totalScheduleCount: cls.scheduleCount ?? null,
                           });
                           return label ? (
                             <p className="text-card-meta text-it-ink-500 dark:text-rink-300 tabular-nums">

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
-import { resolveScheduleTime } from "@/common/utils/schedule-time.util";
+import { resolveScheduleTimeByTemplate } from "@/common/utils/schedule-time.util";
 import { kstTodayUtcMidnight } from "@/common/utils/kst-date.util";
 import {
   scheduleEligibleClassFilter,
@@ -233,7 +233,10 @@ export class ParentDashboardService {
                     id: true, // classId — 출석 가능 여부 판단 + 수업권 매칭
                     className: true,
                     trainingType: true,
-                    startTime: true, // 폴백용 (회차 start_time 미존재 시 UTC 추출)
+                    // 요일 기본 일정 — 회차 시각 없을 때 해석용 (대표값 폴백 대체)
+                    dayScheduleEntries: {
+                      select: { dayOfWeek: true, startTime: true, endTime: true },
+                    },
                     // 2026-05-14: 학부모 홈 대시보드 ClassCalendarSection 이
                     //   학원/팀 owner ID 를 모아 학원 endpoint 호출 분기에 사용.
                     teamId: true,
@@ -284,7 +287,11 @@ export class ParentDashboardService {
                   id: string;
                   className: string;
                   trainingType: string;
-                  startTime: Date | null;
+                  dayScheduleEntries: {
+                    dayOfWeek: string;
+                    startTime: string;
+                    endTime: string;
+                  }[];
                   teamId: string | null;
                   academyId: string | null;
                   billingMode: string;
@@ -611,9 +618,13 @@ export class ParentDashboardService {
             classId: s.class.id, // 수업권 매칭 + 라우팅
             className: s.class.className,
             scheduledDate: s.scheduledDate,
-            // 표시 시각 SoT — class_schedules.start_time(text) 우선, 폴백 Class.startTime(UTC 추출).
-            //   프론트는 이 값을 그대로 노출(입력값 "HH:mm"과 일치). scheduledDate 의 시:분은 신뢰 불가.
-            startTime: resolveScheduleTime(s.startTime, s.class.startTime),
+            // 표시 시각 SoT — class_schedules.start_time(text) 우선, 폴백 요일 기본 일정.
+            //   대표값(Class.startTime) 폴백 제거 — null 이면 프론트가 시간 미표시.
+            startTime: resolveScheduleTimeByTemplate(
+              s.startTime,
+              s.scheduledDate,
+              s.class.dayScheduleEntries,
+            ),
             trainingType: s.class.trainingType,
             // [Phase B] 후불(POSTPAID) 여부 — 출석 모달 "결제권 차감" 문구 분기용.
             billingMode: s.class.billingMode,
