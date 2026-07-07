@@ -329,12 +329,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     const handleApiUnauthorized = (e: Event) => {
       const reason = (e as CustomEvent<{ reason?: string }>).detail?.reason;
-      // 세션 만료(expired)는 SessionExpiredModal(자동 로그아웃 안내)이 소유한다.
+      // 세션 만료(expired)·다른 기기 로그인 강제 종료(replaced)는
+      //   SessionExpiredModal(자동 로그아웃 안내)이 소유한다.
       //   여기서 auth 상태를 비우면 layout 가드(useRequireRole/useRequireAuth)가
       //   isAuthenticated=false 를 감지해 /login 으로 soft navigate → 모달이
       //   한순간 깜빡이고 화면이 튕긴다. 모달의 '재로그인'(하드 이동) 또는
       //   '닫기'(현재 화면 유지)에 판단을 맡기고 상태는 건드리지 않는다.
-      if (reason === "expired") return;
+      if (reason === "expired" || reason === "replaced") return;
       // required(미인증 접근) 등은 기존대로 정리 — lifecycle 훅이 리다이렉트 수행.
       clearAuthState();
     };

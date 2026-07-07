@@ -3,12 +3,13 @@
 /**
  * SessionExpiredModal — 자동 로그아웃 안내 모달
  *
- * 세션 만료(401 expired)로 자동 로그아웃될 때 표시한다.
- * `SessionExpiredGate` 가 `teamplus:api-unauthorized`(reason=expired) 이벤트를
- * 받아 노출 여부를 제어한다.
+ * 세션 만료(401 expired) 또는 다른 기기 로그인에 의한 강제 종료(replaced)로
+ * 자동 로그아웃될 때 표시한다. `SessionExpiredGate` 가
+ * `teamplus:api-unauthorized`(reason=expired|replaced) 이벤트를 받아
+ * 노출 여부와 variant 를 제어한다.
  *
- * - "닫기"   → onClose: 모달만 닫는다 (현재 화면 유지)
- * - "재로그인" → onRelogin: 로그인 페이지로 이동
+ * - "재로그인" 단일 버튼 → onRelogin: 로그인 페이지로 이동 (redirect 로 보던 화면 복귀)
+ *   세션이 죽은 상태로 화면에 잔류하는 함정을 막기 위해 닫기 버튼은 두지 않는다.
  *
  * web 에 마운트되므로 Flutter WebView(app) 안에서도 그대로 표시된다.
  */
@@ -19,15 +20,18 @@ import { lockBodyScroll, unlockBodyScroll } from "@/lib/scroll-lock";
 import { useNativeScrim } from "@/hooks/useNativeScrim";
 import { MESSAGES } from "@/lib/messages";
 
+export type SessionExpiredVariant = "expired" | "replaced";
+
 interface SessionExpiredModalProps {
   isOpen: boolean;
-  onClose: () => void;
+  /** expired = 세션 만료(기본) · replaced = 다른 기기 로그인으로 강제 종료 */
+  variant?: SessionExpiredVariant;
   onRelogin: () => void;
 }
 
 export function SessionExpiredModal({
   isOpen,
-  onClose,
+  variant = "expired",
   onRelogin,
 }: SessionExpiredModalProps) {
   // Native safe-area dim (AlertDialog 와 동일 톤)
@@ -63,22 +67,19 @@ export function SessionExpiredModal({
         {/* 본문 */}
         <div className="px-6 pt-8 pb-7 text-center">
           <h2 className="text-w-title font-bold tracking-tight text-wtext-1 dark:text-white">
-            {MESSAGES.authGuard.autoLogoutTitle}
+            {variant === "replaced"
+              ? MESSAGES.authGuard.sessionReplacedTitle
+              : MESSAGES.authGuard.autoLogoutTitle}
           </h2>
           <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-wtext-3 dark:text-rink-300">
-            {MESSAGES.authGuard.autoLogoutMessage}
+            {variant === "replaced"
+              ? MESSAGES.authGuard.sessionReplacedMessage
+              : MESSAGES.authGuard.autoLogoutMessage}
           </p>
         </div>
 
-        {/* 버튼 — 카드 하단 좌우 분할 */}
+        {/* 버튼 — 재로그인 단일 CTA (닫기 없음: 죽은 세션 잔류 차단) */}
         <div className="flex border-t border-wline dark:border-rink-700">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 py-4 text-[15px] font-medium text-wtext-2 dark:text-rink-100 hover:bg-wbg dark:hover:bg-rink-700/50 transition-colors"
-          >
-            {MESSAGES.common.close}
-          </button>
           <button
             type="button"
             onClick={onRelogin}

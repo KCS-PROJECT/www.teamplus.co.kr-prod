@@ -37,6 +37,7 @@ import {
   isPublicApiPath,
   AuthRequiredError,
   AUTH_REQUIRED_CODE,
+  SESSION_REPLACED_CODE,
   type LifecycleRequestContext,
 } from "./api-lifecycle";
 import { beginLoadingDataRequest } from "./loading-data-tracker";
@@ -250,6 +251,36 @@ async function refreshAccessToken(): Promise<string | null> {
       // 타임아웃·5xx·네트워크 오류는 토큰 유지 → 다음 요청에서 자연 재시도.
       const status = (error as AxiosError)?.response?.status;
       if (status === 401) {
+        // SESSION_REPLACED(다른 기기 로그인으로 강제 종료) — 선제 갱신(4분 타이머)
+        // 경로는 원 요청이 없어 인터셉터 fireOnError 를 타지 않으므로, 여기서 직접
+        // api-unauthorized 이벤트를 발사해 유휴 화면에서도 SessionExpiredGate 안내
+        // 모달이 뜨게 한다. 아래 clearToken 전에 발사해야 원인 정보가 유실되지 않는다.
+        // (재시도가 아니라 이벤트 발사뿐이라 refresh 재귀 위험 없음. 반응형 경로에서
+        //  fireOnError 와 중복 발사될 수 있으나 Gate 는 같은 모달을 다시 열 뿐이다.)
+        const refreshErrorData = (
+          error as AxiosError<{
+            errorCode?: string;
+            code?: string;
+            message?: string;
+          }>
+        )?.response?.data;
+        const refreshErrorCode =
+          refreshErrorData?.errorCode ?? refreshErrorData?.code;
+        if (
+          typeof window !== "undefined" &&
+          refreshErrorCode === SESSION_REPLACED_CODE
+        ) {
+          window.dispatchEvent(
+            new CustomEvent("teamplus:api-unauthorized", {
+              detail: {
+                url: "/auth/refresh",
+                code: SESSION_REPLACED_CODE,
+                reason: "replaced",
+                message: refreshErrorData?.message,
+              },
+            }),
+          );
+        }
         await hybridAuth.clearToken();
         if (typeof document !== "undefined") {
           document.cookie = "teamplus_access_token=; path=/; max-age=0";

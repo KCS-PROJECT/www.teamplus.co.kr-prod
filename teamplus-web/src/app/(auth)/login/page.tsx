@@ -545,6 +545,7 @@ export default function LoginPage() {
    * API 가드 유도로 도착한 경우 `reason` 쿼리 감지 → 안내 메시지 표시.
    * - reason=required → 미인증 상태에서 인증 필요 API 호출
    * - reason=expired  → 세션 만료 (401)
+   * - reason=replaced → 다른 기기 로그인으로 세션 강제 종료 (401 SESSION_REPLACED)
    */
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -555,6 +556,8 @@ export default function LoginPage() {
       setGuardNotice(MESSAGES.authGuard.required);
     } else if (reason === "expired") {
       setGuardNotice(MESSAGES.authGuard.expired);
+    } else if (reason === "replaced") {
+      setGuardNotice(MESSAGES.authGuard.replaced);
     }
   }, []);
 

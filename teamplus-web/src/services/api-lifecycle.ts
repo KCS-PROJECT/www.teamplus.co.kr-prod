@@ -227,6 +227,9 @@ export function isPublicApiPath(url: string): boolean {
 /** 표준 에러 코드 */
 export const AUTH_REQUIRED_CODE = 'AUTH_REQUIRED';
 
+/** 다른 기기 로그인(force)·전체 로그아웃으로 세션이 강제 종료된 401 — 백엔드 errorCode */
+export const SESSION_REPLACED_CODE = 'SESSION_REPLACED';
+
 /** 로그인 필요 에러 — 클라이언트 전처리 단계에서 throw */
 export class AuthRequiredError extends Error {
   readonly code: string = AUTH_REQUIRED_CODE;

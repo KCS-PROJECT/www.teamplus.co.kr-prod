@@ -7,7 +7,11 @@
  * - 요청 ID · 소요 시간 개발 로그
  */
 
-import { apiLifecycle, AUTH_REQUIRED_CODE } from "./api-lifecycle";
+import {
+  apiLifecycle,
+  AUTH_REQUIRED_CODE,
+  SESSION_REPLACED_CODE,
+} from "./api-lifecycle";
 import { devLog, devError, devWarn } from "@/lib/logger";
 import { MESSAGES } from "@/lib/messages";
 
@@ -103,6 +107,15 @@ export function registerDefaultLifecycleHooks(): void {
         ctx.status === 401 || ctx.code === AUTH_REQUIRED_CODE;
       if (!isUnauthorized) return;
 
+      // required = 미인증 접근 · replaced = 다른 기기 로그인/전체 로그아웃으로
+      // 세션 강제 종료 · expired = 그 외 세션 만료
+      const reason =
+        ctx.code === AUTH_REQUIRED_CODE
+          ? "required"
+          : ctx.code === SESSION_REPLACED_CODE
+            ? "replaced"
+            : "expired";
+
       // 글로벌 이벤트 — AuthContext·토스트 시스템이 구독
       window.dispatchEvent(
         new CustomEvent("teamplus:api-unauthorized", {
@@ -110,23 +123,24 @@ export function registerDefaultLifecycleHooks(): void {
             requestId: ctx.requestId,
             url: ctx.url,
             code: ctx.code ?? "HTTP_401",
-            reason: ctx.code === AUTH_REQUIRED_CODE ? "required" : "expired",
+            reason,
             message:
-              ctx.code === AUTH_REQUIRED_CODE
+              reason === "required"
                 ? MESSAGES.authGuard.required
-                : MESSAGES.authGuard.expired,
+                : reason === "replaced"
+                  ? MESSAGES.authGuard.replaced
+                  : MESSAGES.authGuard.expired,
           },
         }),
       );
 
       // 로그인 페이지 자동 유도 — 1회만 + 이미 /login 경로는 건너뛰기
       const { pathname, search } = window.location;
-      const reason = ctx.code === AUTH_REQUIRED_CODE ? "required" : "expired";
 
-      // 세션 만료(expired)는 SessionExpiredGate 의 자동 로그아웃 안내 모달이
+      // 세션 만료(expired)·강제 종료(replaced)는 SessionExpiredGate 의 안내 모달이
       // '재로그인' 버튼으로 이동을 유도하므로 여기서 자동 리다이렉트하지 않는다.
       // (required = 미인증 접근은 아래 기존 자동 유도 로직이 처리)
-      if (reason === "expired") return;
+      if (reason === "expired" || reason === "replaced") return;
 
       if (isRedirectingToLogin) return;
       if (pathname.startsWith("/login")) return;

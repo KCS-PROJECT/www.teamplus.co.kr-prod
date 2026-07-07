@@ -14,8 +14,9 @@ export const MESSAGES = {
   ...SHARED_MESSAGES,
   class: {
     registered: "수업이 등록되었습니다.",
-    nextScheduleLabel: "다음 일정",
+    nextScheduleLabel: "다음",
     noUpcomingSchedule: "예정된 일정 없음",
+    totalSessionsLabel: (n: number) => `총 ${n}회`,
     cancelConfirm: "수업을 취소하시겠습니까?",
     shareAction: "공유",
     shareAriaLabel: (name: string) => `${name} 수업 공유하기`,
@@ -2678,6 +2679,11 @@ export const MESSAGES = {
     autoLogoutMessage:
       "안전한 사용을 위해 일정 시간 후\n자동으로 로그아웃됩니다.\n서비스를 계속 이용하시려면\n재로그인 해주세요.",
     reloginButton: "재로그인",
+    // 다른 기기 로그인으로 세션 강제 종료 (SESSION_REPLACED)
+    replaced: "다른 기기에서 로그인되어 로그아웃되었습니다. 다시 로그인해주세요.",
+    sessionReplacedTitle: "로그아웃 안내",
+    sessionReplacedMessage:
+      "다른 기기에서 같은 계정으로 로그인되어\n이 기기에서는 로그아웃되었습니다.\n계속 이용하시려면 다시 로그인해주세요.",
   },
   // ──────────────────────────────────────────────────────────────────
   //  Wallet (4탭 메인 화면) — 신한pLay풍 핀테크 메인 화면
