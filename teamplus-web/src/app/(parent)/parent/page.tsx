@@ -350,10 +350,8 @@ export default function ParentDashboardPage() {
 
   return (
     <MobileContainer hasBottomNav>
-      {/* 헤더 — 정체성 정보는 HomeIdentityStrip 전담. title="" 로 좌측 완전 비움
-            (브랜드 텍스트/로고 미노출, 우측 액션 아이콘만). */}
+      {/* 헤더 — 좌측 "팀플러스" 워드마크(기본 title). 정체성(이름·자녀)은 HomeIdentityStrip 전담. */}
       <WalletAppBar
-        title=""
         timelineBadge={unreadCount > 0 ? unreadCount : undefined}
         onSearch={() => navigate('/search')}
         onTimeline={() => navigate('/timeline')}

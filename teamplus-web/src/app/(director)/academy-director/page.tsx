@@ -137,9 +137,8 @@ export default function AcademyDirectorDashboardPage() {
 
   return (
     <MobileContainer hasBottomNav>
-      {/* 헤더 — 정체성 정보는 HomeIdentityStrip 전담. title="" 로 좌측 완전 비움. */}
+      {/* 헤더 — 좌측 "팀플러스" 워드마크(기본 title). 정체성(이름·오픈클래스)은 HomeIdentityStrip 전담. */}
       <WalletAppBar
-        title=""
         timelineBadge={unreadCount > 0 ? unreadCount : undefined}
         onSearch={() => navigate('/search')}
         onTimeline={() => navigate('/timeline')}
