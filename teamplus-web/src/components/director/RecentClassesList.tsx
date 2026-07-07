@@ -2,6 +2,7 @@
 
 import { Icon } from '@/components/ui/Icon';
 import { NavLink } from '@/components/ui/NavLink';
+import { formatClassScheduleDisplay } from '@/lib/class-categories';
 import type { RecentClassItem } from '@/hooks/useDirectorDashboardData';
 
 interface RecentClassesListProps {
@@ -75,8 +76,18 @@ export function RecentClassesList({
                 </h4>
                 <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] font-medium text-wtext-3 dark:text-rink-300">
                   <span className="truncate">{cls.instructorName}</span>
-                  <span className="text-wtext-4 dark:text-rink-500">·</span>
-                  <span>{formatTimeRange(cls.startTime, cls.endTime)}</span>
+                  {(() => {
+                    const label = formatClassScheduleDisplay({
+                      daySchedules: cls.daySchedules,
+                      nextSchedule: cls.nextSchedule,
+                    });
+                    return label ? (
+                      <>
+                        <span className="text-wtext-4 dark:text-rink-500">·</span>
+                        <span>{label}</span>
+                      </>
+                    ) : null;
+                  })()}
                   {cls.capacity > 0 && (
                     <>
                       <span className="text-wtext-4 dark:text-rink-500">·</span>
@@ -91,20 +102,4 @@ export function RecentClassesList({
       )}
     </section>
   );
-}
-
-function formatTimeRange(start: string, end: string): string {
-  const fmt = (iso: string) => {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return '';
-    const hh = String(d.getHours()).padStart(2, '0');
-    const mm = String(d.getMinutes()).padStart(2, '0');
-    return `${hh}:${mm}`;
-  };
-  const s = fmt(start);
-  const e = fmt(end);
-  if (!s && !e) return '';
-  if (!s) return e;
-  if (!e) return s;
-  return `${s} ~ ${e}`;
 }

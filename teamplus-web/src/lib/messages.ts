@@ -14,6 +14,8 @@ export const MESSAGES = {
   ...SHARED_MESSAGES,
   class: {
     registered: "수업이 등록되었습니다.",
+    nextScheduleLabel: "다음 일정",
+    noUpcomingSchedule: "예정된 일정 없음",
     cancelConfirm: "수업을 취소하시겠습니까?",
     shareAction: "공유",
     shareAriaLabel: (name: string) => `${name} 수업 공유하기`,

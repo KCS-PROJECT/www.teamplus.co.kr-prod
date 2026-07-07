@@ -206,6 +206,20 @@ export class TrainingService {
           endTime: true,
           isActive: true,
           createdAt: true,
+          // 요일별 기본 일정 — 목록 카드 요일 패턴 표시용 (대표 startTime 대신 사용)
+          dayScheduleEntries: {
+            select: { dayOfWeek: true, startTime: true, endTime: true },
+          },
+          // 다음 회차 (비취소·오늘 이후) — 기본 일정 없는 훈련의 날짜(+회차 시간) 표시용
+          schedules: {
+            where: {
+              isCancelled: false,
+              scheduledDate: { gte: kstTodayUtcMidnight() },
+            },
+            orderBy: { scheduledDate: "asc" },
+            take: 1,
+            select: { scheduledDate: true, startTime: true, endTime: true },
+          },
           _count: {
             select: {
               schedules: true,
@@ -220,8 +234,14 @@ export class TrainingService {
       this.prisma.class.count({ where }),
     ]);
 
+    const items = data.map(({ dayScheduleEntries, schedules, ...rest }) => ({
+      ...rest,
+      daySchedules: dayScheduleEntries,
+      nextSchedule: schedules[0] ?? null,
+    }));
+
     return {
-      data,
+      data: items,
       pagination: {
         total,
         page,
@@ -263,10 +283,15 @@ export class TrainingService {
             },
           },
         },
+        dayScheduleEntries: {
+          select: { dayOfWeek: true, startTime: true, endTime: true },
+        },
         schedules: {
           select: {
             id: true,
             scheduledDate: true,
+            startTime: true,
+            endTime: true,
             isCancelled: true,
             cancellationReason: true,
             _count: {
@@ -300,8 +325,10 @@ export class TrainingService {
       );
     }
 
+    const { dayScheduleEntries, ...rest } = training;
     return {
-      ...training,
+      ...rest,
+      daySchedules: dayScheduleEntries,
       coachName: training.team?.coach
         ? `${training.team.coach.lastName}${training.team.coach.firstName}`.trim()
         : "",

@@ -31,6 +31,7 @@ import { ScheduleCalendarView } from "@/components/classes/ScheduleCalendarView"
 import {
   TRAINING_TYPE_LABEL,
   formatDaySchedulesFull,
+  formatNextScheduleLabel,
   sortDaySchedules,
   type DaySchedule,
 } from "@/lib/class-categories";
@@ -180,12 +181,42 @@ interface ClassScheduleItem {
    Helpers
    ──────────────────────────────────────────── */
 
-function formatTime(iso?: string): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  // Class.startTime/endTime 은 벽시계 시각을 KST 변환 없이 naive 저장(timestamp without tz).
-  //   Prisma 가 UTC 로 역직렬화하므로 getUTCHours/getUTCMinutes 로 추출해야 입력 시각과 일치.
-  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+/**
+ * 다음 회차 선택 — 비취소·오늘(KST) 이후 첫 회차. scheduledDate 는 @db.Date(UTC 자정)
+ * ISO 라 앞 10자리("YYYY-MM-DD")가 KST 달력일과 일치한다. 목록은 날짜 오름차순 전제.
+ */
+function pickUpcomingSchedule(
+  list: ClassScheduleItem[],
+): ClassScheduleItem | null {
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  return (
+    list.find(
+      (s) => !s.isCancelled && s.scheduledDate.slice(0, 10) >= todayStr,
+    ) ?? null
+  );
+}
+
+/** "HH:mm" 두 시각의 차이를 "N시간 M분" 라벨로. 자정 넘김 보정, 형식 불량이면 null. */
+function hhmmDurationLabel(
+  startTime?: string | null,
+  endTime?: string | null,
+): string | null {
+  if (!startTime || !endTime) return null;
+  const re = /^(\d{2}):(\d{2})$/;
+  const ms = startTime.match(re);
+  const me = endTime.match(re);
+  if (!ms || !me) return null;
+  let diffMin =
+    Number(me[1]) * 60 + Number(me[2]) - (Number(ms[1]) * 60 + Number(ms[2]));
+  if (diffMin < 0) diffMin += 24 * 60;
+  if (diffMin <= 0) return null;
+  if (diffMin >= 60) {
+    const hours = Math.floor(diffMin / 60);
+    const mins = diffMin % 60;
+    return mins ? `${hours}시간 ${mins}분` : `${hours}시간`;
+  }
+  return `${diffMin}분`;
 }
 
 function formatDate(iso?: string): string {
@@ -901,15 +932,21 @@ export default function ClassDetailPage() {
   const handleShare = () => {
     if (!classData) return;
     // [2026-06-05] 요일별 규칙이 있으면 공유 텍스트도 "월 17:00 ~ 18:00 / 수 ..." 로 표기.
+    //   규칙 없으면 다음 회차(날짜+회차 시간)로 표기 — 대표값(Class.startTime)은 사용하지 않는다.
     const dayScheduleLabel = formatDaySchedulesFull(classData.daySchedules);
     const schedule = dayScheduleLabel ?? formatClassDays(classData.classDays) ?? '';
     const time = dayScheduleLabel
       ? ''
-      : classData.startTime && classData.endTime
-      ? `${formatTime(classData.startTime)} ~ ${formatTime(classData.endTime)}`
-      : classData.startTime
-        ? formatTime(classData.startTime)
-        : '';
+      : (() => {
+          const next = pickUpcomingSchedule(scheduleList);
+          return next
+            ? (formatNextScheduleLabel({
+                scheduledDate: next.scheduledDate,
+                startTime: next.startTime,
+                endTime: next.endTime,
+              }) ?? '')
+            : '';
+        })();
     const venue = classData.venueName ?? '';
     const coach = classData.coachAssignments && classData.coachAssignments.length > 0
       ? formatCoachList(classData.coachAssignments)
@@ -1179,32 +1216,30 @@ export default function ClassDetailPage() {
   // eyebrow — 분류 · 레벨 (예: "정규 훈련 · 입문")
   const heroEyebrow = [typeLabel, levelLabel].filter(Boolean).join(" · ");
 
-  // 시간 줄 — 요일별 규칙 우선, 없으면 단일 시작~종료.
+  // 다음 회차 (비취소·오늘 이후) — 요일 규칙 없는 수업의 시간 표시 소스.
+  const upcomingSchedule = pickUpcomingSchedule(scheduleList);
+
+  // 시간 줄 — 요일별 규칙 > 다음 회차(날짜+회차 시간) > 미표시.
+  //   대표값(Class.startTime)은 회차별 실제 시각과 다를 수 있어 사용하지 않는다.
   const heroScheduleText = (() => {
     const dayLabel = formatDaySchedulesFull(classData.daySchedules);
     if (dayLabel) return dayLabel;
-    if (classData.startTime && classData.endTime)
-      return `${formatTime(classData.startTime)} ~ ${formatTime(classData.endTime)}`;
-    if (classData.startTime) return formatTime(classData.startTime);
-    return null;
+    return upcomingSchedule
+      ? formatNextScheduleLabel({
+          scheduledDate: upcomingSchedule.scheduledDate,
+          startTime: upcomingSchedule.startTime,
+          endTime: upcomingSchedule.endTime,
+        })
+      : null;
   })();
 
-  // 회당 시간 — 히어로 스탯 표기용 (시:분 차이, 자정 넘김 보정).
+  // 회당 시간 — 요일 규칙 첫 항목 > 다음 회차 시각 기준 (없으면 미표시).
   const sessionDurationLabel = (() => {
-    if (!classData.startTime || !classData.endTime) return null;
-    const start = new Date(classData.startTime);
-    const end = new Date(classData.endTime);
-    const startMin = start.getUTCHours() * 60 + start.getUTCMinutes();
-    const endMin = end.getUTCHours() * 60 + end.getUTCMinutes();
-    let diffMin = endMin - startMin;
-    if (diffMin < 0) diffMin += 24 * 60;
-    if (diffMin <= 0) return null;
-    if (diffMin >= 60) {
-      const hours = Math.floor(diffMin / 60);
-      const mins = diffMin % 60;
-      return mins ? `${hours}시간 ${mins}분` : `${hours}시간`;
-    }
-    return `${diffMin}분`;
+    const firstDay = daySchedules[0];
+    return (
+      hhmmDurationLabel(firstDay?.startTime, firstDay?.endTime) ??
+      hhmmDurationLabel(upcomingSchedule?.startTime, upcomingSchedule?.endTime)
+    );
   })();
 
   // 기간 스탯 — 개별 일정 총 N회 → 주차 → 단일.
@@ -1500,36 +1535,10 @@ export default function ClassDetailPage() {
                     ? `${weekCount}주`
                     : "—";
 
-              const timeValue =
-                classData.startTime && classData.endTime
-                  ? `${formatTime(classData.startTime)} ~ ${formatTime(classData.endTime)}`
-                  : classData.startTime
-                    ? formatTime(classData.startTime)
-                    : "시간 미정";
-
-              /**
-               * 회당 시간 계산 — startTime/endTime 은 수업 전체 기간(N개월)이
-               * 아니라 회차 시간(시:분)을 의미. 시·분만 추출해 일중 차이를 계산.
-               */
-              const timeSub = (() => {
-                if (!classData.startTime || !classData.endTime) return "—";
-                const start = new Date(classData.startTime);
-                const end = new Date(classData.endTime);
-                // naive timestamp → getUTC* 로 추출 (formatTime 과 동일 정책).
-                const startMin = start.getUTCHours() * 60 + start.getUTCMinutes();
-                const endMin = end.getUTCHours() * 60 + end.getUTCMinutes();
-                let diffMin = endMin - startMin;
-                if (diffMin < 0) diffMin += 24 * 60; // 자정 넘김 보정
-                if (diffMin <= 0) return "—";
-                if (diffMin >= 60) {
-                  const hours = Math.floor(diffMin / 60);
-                  const mins = diffMin % 60;
-                  return mins
-                    ? `${hours}시간 ${mins}분/회`
-                    : `${hours}시간/회`;
-                }
-                return `${diffMin}분/회`;
-              })();
+              // 시간 행 — 이 분기는 일정·요일 규칙이 모두 없는 수업(rows 조건)이라
+              //   신뢰 가능한 시간 소스가 없다. 대표값(Class.startTime)은 사용하지 않는다.
+              const timeValue = "시간 미정";
+              const timeSub = "—";
 
               const venueValue = classData.venueName ?? "장소 미정";
               const venueSub = classData.venueAddress

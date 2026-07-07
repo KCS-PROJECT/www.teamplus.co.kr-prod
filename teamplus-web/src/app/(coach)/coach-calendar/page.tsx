@@ -16,7 +16,12 @@ import { api } from '@/services/api-client';
 import { cn } from '@/lib/utils';
 import { usePageReady } from '@/hooks/usePageReady';
 import { useNativeUI } from '@/hooks/useNativeUI';
-import { CLASS_CATEGORIES, classifyClass } from '@/lib/class-categories';
+import {
+  CLASS_CATEGORIES,
+  classifyClass,
+  getDayScheduleForDate,
+  type DaySchedule,
+} from '@/lib/class-categories';
 import { WEEKDAY_HEADERS, weekColumnOf, colIsSaturday, colIsSunday } from '@/lib/calendar-week';
 
 interface CalendarClass {
@@ -55,13 +60,15 @@ interface ClubClass {
   academyId?: string | null;
   teamId?: string | null;
   instructorName: string;
-  startTime: string;
-  endTime: string;
+  daySchedules?: DaySchedule[];
 }
 
 interface ClassSchedule {
   id: string;
   scheduledDate: string;
+  /** 회차별 실제 시각 "HH:mm" — 없으면 요일 기본 일정 시각으로 폴백. */
+  startTime?: string | null;
+  endTime?: string | null;
   isCancelled?: boolean;
 }
 
@@ -83,15 +90,19 @@ function getDateKey(value: Date | string) {
   return `${year}-${month}-${day}`;
 }
 
-function formatTimeRange(startTime: string, endTime: string) {
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-  const formatter = new Intl.DateTimeFormat('ko-KR', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
-  return `${formatter.format(start)} - ${formatter.format(end)}`;
+/**
+ * 회차 시간 라벨 — 회차 자체 시각("HH:mm") > 그 요일의 기본 일정 시각 > 빈 문자열(미표시).
+ * 대표값(Class.startTime)은 회차별 실제 시각과 다를 수 있어 사용하지 않는다.
+ */
+function scheduleTimeLabel(schedule: ClassSchedule, cls: ClubClass): string {
+  if (schedule.startTime) {
+    return schedule.endTime
+      ? `${schedule.startTime} - ${schedule.endTime}`
+      : schedule.startTime;
+  }
+  const ds = getDayScheduleForDate(cls.daySchedules, schedule.scheduledDate);
+  if (ds) return `${ds.startTime} - ${ds.endTime}`;
+  return '';
 }
 
 /**
@@ -144,7 +155,9 @@ function ClassDetail({ cls }: { cls: CalendarClass }) {
           <span className="rounded-w-pill bg-it-fill px-2 py-0.5 text-card-meta font-semibold text-it-ink-600 dark:bg-rink-700 dark:text-rink-100">
             {typeLabels[cls.type] ?? cls.type}
           </span>
-          <span className="text-card-meta text-it-ink-500 dark:text-rink-300">{cls.time}</span>
+          {cls.time && (
+            <span className="text-card-meta text-it-ink-500 dark:text-rink-300">{cls.time}</span>
+          )}
         </div>
         <p className="truncate text-card-body font-bold text-it-ink-800 dark:text-white">{cls.title}</p>
         <div className="mt-1 flex items-center gap-3 text-card-meta text-it-ink-500 dark:text-rink-300">
@@ -256,7 +269,7 @@ export default function CoachCalendarPage() {
         const mappedClass: CalendarClass = {
           id: schedule.id,
           title: cls.className,
-          time: formatTimeRange(cls.startTime, cls.endTime),
+          time: scheduleTimeLabel(schedule, cls),
           coach: cls.instructorName,
           location: cls.clubName,
           type: inferTrainingType(cls),

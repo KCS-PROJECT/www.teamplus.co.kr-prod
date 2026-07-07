@@ -735,18 +735,16 @@ export default function LoginPage() {
       <main data-no-enter className="flex flex-1 flex-col overflow-y-auto scroll-keyboard-safe">
         <MaintenanceBanner />
         <div className="flex-1 flex flex-col px-[26px] pt-10 pb-keyboard-safe-8 max-w-md mx-auto w-full">
-          {/* ─── 로고 (대형 아이콘 단독 중앙 배치) ─────── */}
+          {/* ─── 로고 (대형 아이콘 단독 중앙 배치, 배경 박스 없음) ─────── */}
           <div className="flex justify-center pt-4 pb-2">
-            <div className="w-[112px] h-[112px] bg-ice-500 rounded-w-2xl flex items-center justify-center shadow-md">
-              <Image
-                src="/images/app_icons/splash_logo.png"
-                alt="팀플러스"
-                width={76}
-                height={76}
-                priority
-                className="w-[76px] h-[76px] object-contain"
-              />
-            </div>
+            <Image
+              src="/images/app_icons/splash_logo.png"
+              alt="팀플러스"
+              width={136}
+              height={136}
+              priority
+              className="w-[136px] h-[136px] object-contain"
+            />
           </div>
 
           {/* ─── 알림 영역 ─────────────────────────── */}

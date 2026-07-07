@@ -1310,6 +1310,20 @@ export class ClassesService {
             if (!f?.startTime) return null;
             return f.endTime ? `${f.startTime} - ${f.endTime}` : f.startTime;
           })(),
+          // 다음 회차 (비취소·오늘 이후) — 요일 규칙 없는 수업 카드의 날짜(+회차 시간) 표시용.
+          nextSchedule: (() => {
+            const sdToday = kstTodayUtcMidnight();
+            const n = (c.schedules ?? []).find(
+              (s) => s.scheduledDate >= sdToday,
+            );
+            return n
+              ? {
+                  scheduledDate: n.scheduledDate.toISOString(),
+                  startTime: n.startTime ?? null,
+                  endTime: n.endTime ?? null,
+                }
+              : null;
+          })(),
         };
       }),
       pagination: {
@@ -1727,7 +1741,7 @@ export class ClassesService {
         //  · 화면 카드의 "기간 + N주/단일" 표기를 위해 schedules 의 min/max scheduledDate 필요.
         schedules: {
           where: { isCancelled: false },
-          select: { scheduledDate: true },
+          select: { scheduledDate: true, startTime: true, endTime: true },
           orderBy: { scheduledDate: "asc" },
         },
         // 2026-05-09: 학생 카운트는 ClassRegistration(active 등록) 기준 — 수업상세(currentEnrollment)와
@@ -1813,6 +1827,21 @@ export class ClassesService {
           c.schedules && c.schedules.length > 0
             ? c.schedules[c.schedules.length - 1].scheduledDate.toISOString()
             : null,
+        // 다음 회차 (비취소·오늘 이후) — 기본 일정 없는 수업 카드의 날짜(+회차 시간) 표시용.
+        //   대표 startTime 은 표시 신뢰 불가(요일별 상이·new Date 폴백)라 카드 시간 SoT 에서 제외.
+        nextSchedule: (() => {
+          const sdToday = kstTodayUtcMidnight();
+          const n = (c.schedules ?? []).find(
+            (s) => s.scheduledDate >= sdToday,
+          );
+          return n
+            ? {
+                scheduledDate: n.scheduledDate.toISOString(),
+                startTime: n.startTime ?? null,
+                endTime: n.endTime ?? null,
+              }
+            : null;
+        })(),
         isActive: c.isActive,
         description: c.description,
         // [수정 2026-05-15 db-keeper] 가격 정책 (T03/F1):

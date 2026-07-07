@@ -22,7 +22,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { api } from '@/services/api-client';
-import { classifyClass } from '@/lib/class-categories';
+import {
+  classifyClass,
+  getDayScheduleForDate,
+  type DaySchedule,
+} from '@/lib/class-categories';
 import { WEEKDAY_HEADERS, weekColumnOf, colIsSaturday, colIsSunday } from '@/lib/calendar-week';
 
 interface ApiDataWrapper<T> {
@@ -37,13 +41,16 @@ interface TeamClass {
   academyId?: string | null;
   teamId?: string | null;
   instructorName: string;
-  startTime: string;
-  endTime: string;
+  /** 요일별 기본 일정 — 회차 시각 없는 회차의 요일 시각 폴백. */
+  daySchedules?: DaySchedule[];
 }
 
 interface ClassSchedule {
   id: string;
   scheduledDate: string;
+  /** 회차별 실제 시각 "HH:mm" — 없으면 요일 기본 일정 시각으로 폴백. */
+  startTime?: string | null;
+  endTime?: string | null;
   isCancelled?: boolean;
 }
 
@@ -74,15 +81,19 @@ function getDateKey(value: Date | string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function formatTimeRange(startTime: string, endTime: string): string {
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-  const fmt = new Intl.DateTimeFormat('ko-KR', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
-  return `${fmt.format(start)} - ${fmt.format(end)}`;
+/**
+ * 회차 시간 라벨 — 회차 자체 시각("HH:mm") > 그 요일의 기본 일정 시각 > ''(미표시).
+ * 대표값(Class.startTime)은 회차별 실제 시각과 다를 수 있어 사용하지 않는다.
+ */
+function scheduleTimeLabel(schedule: ClassSchedule, cls: TeamClass): string {
+  if (schedule.startTime) {
+    return schedule.endTime
+      ? `${schedule.startTime} - ${schedule.endTime}`
+      : schedule.startTime;
+  }
+  const ds = getDayScheduleForDate(cls.daySchedules, schedule.scheduledDate);
+  if (ds) return `${ds.startTime} - ${ds.endTime}`;
+  return '';
 }
 
 function unwrap<T>(payload: unknown): T | null {
@@ -167,7 +178,7 @@ export function DirectorClassCalendar({ teamIds, onSelectionChange }: Props) {
           id: schedule.id,
           classId: cls.id,
           title: cls.className,
-          time: formatTimeRange(cls.startTime, cls.endTime),
+          time: scheduleTimeLabel(schedule, cls),
           coach: cls.instructorName,
           location: cls.teamName,
           type: inferType(cls),

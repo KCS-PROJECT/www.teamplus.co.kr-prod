@@ -12,6 +12,10 @@ import { api } from '@/services/api-client';
 import { MESSAGES } from '@/lib/messages';
 import { getTrainingColor } from '@/lib/calendar-colors';
 import { WEEKDAY_HEADERS, weekColumnOf } from '@/lib/calendar-week';
+import {
+  getDayScheduleForDate,
+  type DaySchedule,
+} from '@/lib/class-categories';
 
 // ── 타입 정의 ──
 
@@ -29,15 +33,17 @@ interface ClubClass {
   id: string;
   className: string;
   trainingType?: string | null;
-  time?: string;
   location?: string;
-  startTime?: string;
-  endTime?: string;
+  /** 요일별 기본 일정 — 회차 시각 없는 회차의 요일 시각 폴백. */
+  daySchedules?: DaySchedule[];
 }
 
 interface ClassScheduleItem {
   id: string;
   scheduledDate: string;
+  /** 회차별 실제 시각 "HH:mm" — 없으면 요일 기본 일정 시각으로 폴백. */
+  startTime?: string | null;
+  endTime?: string | null;
   isCancelled?: boolean;
 }
 
@@ -68,13 +74,22 @@ function unwrapData<T>(payload: unknown): T | null {
   return (payload as T) ?? null;
 }
 
-function formatTimeRange(startTime?: string, endTime?: string): string {
-  if (!startTime || !endTime) return '';
-  const fmt = (iso: string) => {
-    const d = new Date(iso);
-    return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
-  };
-  return `${fmt(startTime)} - ${fmt(endTime)}`;
+/**
+ * 회차 시간 라벨 — 회차 자체 시각("HH:mm") > 그 요일의 기본 일정 시각 > ''(미표시).
+ * 대표값(Class.startTime) 파생 time 라벨은 회차별 실제 시각과 다를 수 있어 사용하지 않는다.
+ */
+function scheduleTimeLabel(
+  schedule: ClassScheduleItem,
+  cls: { daySchedules?: DaySchedule[] },
+): string {
+  if (schedule.startTime) {
+    return schedule.endTime
+      ? `${schedule.startTime} - ${schedule.endTime}`
+      : schedule.startTime;
+  }
+  const ds = getDayScheduleForDate(cls.daySchedules, schedule.scheduledDate);
+  if (ds) return `${ds.startTime} - ${ds.endTime}`;
+  return '';
 }
 
 // 색상은 calendar-colors.ts의 getTrainingColor() 사용
@@ -258,7 +273,7 @@ export default function ClassCalendarPage() {
               id: schedule.id,
               title: cls.className,
               location: cls.location ?? '',
-              time: cls.time ?? formatTimeRange(cls.startTime, cls.endTime),
+              time: scheduleTimeLabel(schedule, cls),
               status: schedule.isCancelled ? 'cancelled' : 'confirmed',
               trainingType: cls.trainingType || 'REGULAR_CLASS',
               classId: cls.id,

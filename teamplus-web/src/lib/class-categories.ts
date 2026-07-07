@@ -291,6 +291,43 @@ export function formatDaySchedulesFull(
 // JS Date.getDay() (일=0…토=6) → 한글 요일.
 const JS_DOW_TO_KR = ['일', '월', '화', '수', '목', '금', '토'] as const;
 
+/** 다음 회차 정보 — 백엔드 nextSchedule 응답(비취소·오늘 이후 첫 회차) 계약. */
+export interface NextScheduleInfo {
+  scheduledDate: string;
+  startTime?: string | null;
+  endTime?: string | null;
+}
+
+/**
+ * 다음 회차 라벨 — "7/8 (화) 19:00 ~ 20:00" | 회차 시간 없으면 "7/8 (화)".
+ * scheduledDate 는 @db.Date(UTC 자정) 저장이라 getUTC* 로 추출해야 KST 달력일과 일치.
+ */
+export function formatNextScheduleLabel(
+  next?: NextScheduleInfo | null,
+): string | null {
+  if (!next?.scheduledDate) return null;
+  const d = new Date(next.scheduledDate);
+  if (Number.isNaN(d.getTime())) return null;
+  const dateLabel = `${d.getUTCMonth() + 1}/${d.getUTCDate()} (${JS_DOW_TO_KR[d.getUTCDay()]})`;
+  const time = formatHHmmRange(next.startTime ?? undefined, next.endTime ?? undefined);
+  return time ? `${dateLabel} ${time}` : dateLabel;
+}
+
+/**
+ * 수업/훈련 카드 시간 표시 SoT — 요일별 기본 일정 패턴 > 다음 회차(날짜+회차 시간) > null.
+ * 대표값(Class.startTime)은 회차별 실제 시각과 다를 수 있어(요일별 상이·등록시각 폴백)
+ * 표시 소스로 사용하지 않는다. null 이면 호출부가 시간 표기를 생략한다.
+ */
+export function formatClassScheduleDisplay(opts: {
+  daySchedules?: DaySchedule[] | null;
+  nextSchedule?: NextScheduleInfo | null;
+}): string | null {
+  return (
+    formatDaySchedulesShort(opts.daySchedules) ??
+    formatNextScheduleLabel(opts.nextSchedule)
+  );
+}
+
 /**
  * 특정 날짜의 요일에 해당하는 요일별 규칙을 찾아 반환.
  * 캘린더 회차에서 "그 날짜 요일의 시각"을 표시할 때 사용. 매칭 규칙 없으면 null → 폴백.

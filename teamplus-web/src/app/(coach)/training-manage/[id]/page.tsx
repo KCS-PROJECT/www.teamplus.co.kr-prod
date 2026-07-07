@@ -20,6 +20,7 @@ import {
 } from '@/hooks/useTraining';
 import { MESSAGES } from '@/lib/messages';
 import { cn } from '@/lib/utils';
+import { formatClassScheduleDisplay } from '@/lib/class-categories';
 
 // ─── Helpers ───────────────────────────────────────
 function formatDate(iso: string): string {
@@ -27,13 +28,6 @@ function formatDate(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function formatTime(iso: string): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
@@ -107,6 +101,12 @@ function ScheduleCard({
           <div className="min-w-0">
             <p className="text-card-body font-semibold text-it-ink-800 dark:text-white truncate">
               {formatDate(schedule.scheduledDate)}
+              {schedule.startTime && (
+                <span className="font-normal text-it-ink-500 dark:text-rink-300">
+                  {' '}· {schedule.startTime}
+                  {schedule.endTime ? ` ~ ${schedule.endTime}` : ''}
+                </span>
+              )}
             </p>
             <div className="flex gap-3 mt-1 text-card-meta text-it-ink-500 dark:text-rink-300">
               <span className="inline-flex items-center gap-1">
@@ -236,6 +236,23 @@ export default function TrainingDetailPage() {
   );
   const cancelledSchedules = training.schedules.filter((s) => s.isCancelled);
 
+  // 시간 표시 SoT: 요일별 기본 일정 패턴 > 다음 회차(날짜+회차 시간) > 미표시.
+  // 대표값(Class.startTime)은 회차별 실제 시각과 다를 수 있어 표시에 사용하지 않는다.
+  const scheduleDisplayLabel = formatClassScheduleDisplay({
+    daySchedules: training.daySchedules?.map((d) => ({
+      dayOfWeek: d.dayOfWeek,
+      startTime: d.startTime,
+      endTime: d.endTime,
+    })),
+    nextSchedule: upcomingSchedules[0]
+      ? {
+          scheduledDate: upcomingSchedules[0].scheduledDate,
+          startTime: upcomingSchedules[0].startTime,
+          endTime: upcomingSchedules[0].endTime,
+        }
+      : null,
+  });
+
   return (
     <MobileContainer hasBottomNav>
       <PageAppBar title="훈련 상세" showBack />
@@ -279,10 +296,12 @@ export default function TrainingDetailPage() {
               <Icon name="groups" className="text-card-emphasis text-white/60" aria-hidden="true" />
               <span>정원 {training.capacity}명</span>
             </div>
-            <div className="flex items-center gap-2 text-card-body text-white/90">
-              <Icon name="schedule" className="text-card-emphasis text-white/60" aria-hidden="true" />
-              <span>{formatTime(training.startTime)} - {formatTime(training.endTime)}</span>
-            </div>
+            {scheduleDisplayLabel && (
+              <div className="flex items-center gap-2 text-card-body text-white/90">
+                <Icon name="schedule" className="text-card-emphasis text-white/60" aria-hidden="true" />
+                <span className="truncate">{scheduleDisplayLabel}</span>
+              </div>
+            )}
             <div className="flex items-center gap-2 text-card-body text-white/90">
               <Icon name="business" className="text-card-emphasis text-white/60" aria-hidden="true" />
               <span className="truncate">{training.club.clubName}</span>

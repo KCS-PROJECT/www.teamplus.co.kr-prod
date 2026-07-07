@@ -27,8 +27,10 @@ import {
   getTrainingTypeIcon,
   shouldHideTypeBadge,
   formatDaySchedulesShort,
+  formatNextScheduleLabel,
   type ClassCategoryCode,
   type DaySchedule,
+  type NextScheduleInfo,
 } from "@/lib/class-categories";
 import { api } from "@/services/api-client";
 import {
@@ -70,6 +72,8 @@ interface ClassItem {
   scheduledDates?: string[];
   /** [2026-06-10] 오픈클래스 카드 시간 라벨("HH:mm - HH:mm") — 첫 회차 실제 시각. */
   scheduleTimeLabel?: string | null;
+  /** 다음 회차 (비취소·오늘 이후) — 요일 규칙 없는 수업 카드 시간 표시 소스. */
+  nextSchedule?: NextScheduleInfo | null;
   /** 정기권 가격 (원) — MONTHLY_FIXED 상품 price · PACKAGE_WEEKS_SPEC §6 응답 BC */
   monthlyPrice?: number | null;
   /** 회당 가격 (원) — PER_SESSION 상품 price · 1회권 가격 SoT */
@@ -278,16 +282,8 @@ const TEEN_TYPE_ICON: Record<string, string> = {
   tournament: "emoji_events",
 };
 
-function formatClassTime(start: string, end: string): string {
-  const s = new Date(start);
-  const e = new Date(end);
-  if (isNaN(s.getTime()) || isNaN(e.getTime())) return "";
-  // Class.startTime/endTime 은 벽시계 시각을 KST 변환 없이 naive 저장(timestamp without tz).
-  //   Prisma 가 UTC 로 역직렬화하므로 getUTCHours/getUTCMinutes 로 추출해야 입력 시각과 일치.
-  const fmt = (d: Date) =>
-    `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
-  return `${fmt(s)} - ${fmt(e)}`;
-}
+// 시간 표시 SoT: 요일별 기본 일정 패턴 > 첫/다음 회차 실제 시각 > 미표시.
+// 대표값(Class.startTime)은 회차별 실제 시각과 다를 수 있어 표시에 사용하지 않는다.
 
 function formatClassDays(days?: string[]): string | null {
   if (!days || days.length === 0) return null;
@@ -561,7 +557,7 @@ const ChildClassCard = memo(function ChildClassCard({
     ? null
     : item.trainingType === "lesson"
       ? (item.scheduleTimeLabel ?? null)
-      : formatClassTime(item.startTime, item.endTime);
+      : formatNextScheduleLabel(item.nextSchedule);
   const daysLabel = dayScheduleLabel ?? formatScheduleLabel(item);
   const rawTypeLabel = TRAINING_TYPE_LABEL[item.trainingType];
   const typeLabel = rawTypeLabel;
@@ -694,7 +690,7 @@ const TeenClassCard = memo(function TeenClassCard({
     ? null
     : item.trainingType === "lesson"
       ? (item.scheduleTimeLabel ?? null)
-      : formatClassTime(item.startTime, item.endTime);
+      : formatNextScheduleLabel(item.nextSchedule);
   const rawTypeLabel = TRAINING_TYPE_LABEL[item.trainingType];
   const typeLabel = rawTypeLabel;
   const daysLabel = dayScheduleLabel ?? formatScheduleLabel(item);
@@ -851,7 +847,7 @@ const DefaultClassCard = memo(function DefaultClassCard({
     ? null
     : item.trainingType === "lesson"
       ? (item.scheduleTimeLabel ?? null)
-      : formatClassTime(item.startTime, item.endTime);
+      : formatNextScheduleLabel(item.nextSchedule);
   const rawTypeLabel = TRAINING_TYPE_LABEL[item.trainingType];
   const typeLabel = rawTypeLabel;
   const daysLabel = dayScheduleLabel ?? formatScheduleLabel(item);

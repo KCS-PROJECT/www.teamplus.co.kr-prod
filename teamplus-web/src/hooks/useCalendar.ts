@@ -3,7 +3,11 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { api } from '@/services/api-client';
 import { MESSAGES } from '@/lib/messages';
-import { classifyClass } from '@/lib/class-categories';
+import {
+  classifyClass,
+  getDayScheduleForDate,
+  type DaySchedule,
+} from '@/lib/class-categories';
 import { weekColumnOf } from '@/lib/calendar-week';
 
 // ────────────────────────────────────────────
@@ -49,8 +53,8 @@ interface ClubClass {
   academyId?: string | null;
   teamId?: string | null;
   instructorName: string;
-  startTime: string | null;
-  endTime: string | null;
+  /** 요일별 기본 일정 — 회차 시각 없는 회차의 요일 시각 폴백. */
+  daySchedules?: DaySchedule[];
 }
 
 interface ClassSchedule {
@@ -81,86 +85,6 @@ function unwrapData<T>(payload: unknown): T | null {
     return (payload as ApiDataWrapper<T>).data ?? null;
   }
   return (payload as T) ?? null;
-}
-
-function formatMinutes(totalMinutes: number): string {
-  const normalized = ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
-  const hours = String(Math.floor(normalized / 60)).padStart(2, '0');
-  const minutes = String(normalized % 60).padStart(2, '0');
-  return `${hours}:${minutes}`;
-}
-
-function parseTimeLabel(value: string | null | undefined): number | null {
-  if (!value) return null;
-
-  const trimmed = value.trim();
-  const timeOnlyMatch = trimmed.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
-  if (timeOnlyMatch) {
-    const hours = Number(timeOnlyMatch[1]);
-    const minutes = Number(timeOnlyMatch[2]);
-    if (hours >= 0 && hours < 24 && minutes >= 0 && minutes < 60) {
-      return hours * 60 + minutes;
-    }
-  }
-
-  const date = new Date(trimmed);
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-
-  return date.getHours() * 60 + date.getMinutes();
-}
-
-function getFallbackTiming(
-  cls: { academyId?: string | null },
-  fallbackIndex: number,
-): { startMinutes: number; endMinutes: number } {
-  const inferredType = inferTrainingType(cls);
-
-  // 분류별 시간 폴백 — 시작 시간이 응답에 없을 때 사용.
-  const presets: Record<string, { startMinutes: number; durationMinutes: number; stepMinutes: number }> = {
-    REGULAR: { startMinutes: 18 * 60, durationMinutes: 120, stepMinutes: 45 },
-    OPEN: { startMinutes: 16 * 60 + 30, durationMinutes: 90, stepMinutes: 45 },
-  };
-
-  const preset = presets[inferredType] ?? presets.REGULAR;
-  const startMinutes = preset.startMinutes + fallbackIndex * preset.stepMinutes;
-  return {
-    startMinutes,
-    endMinutes: startMinutes + preset.durationMinutes,
-  };
-}
-
-function formatTimeRange(
-  startTime: string | null | undefined,
-  endTime: string | null | undefined,
-  options: {
-    /** 외래키 기반 분류 (academyId 유무로 시간 폴백 프리셋 결정) */
-    cls: { academyId?: string | null };
-    fallbackIndex?: number;
-  },
-): string {
-  const fallback = getFallbackTiming(options.cls, options.fallbackIndex ?? 0);
-
-  const startMinutes = parseTimeLabel(startTime);
-  const endMinutes = parseTimeLabel(endTime);
-  const hasPlaceholderMidnight = startMinutes === 0 && endMinutes === 0;
-
-  if (startMinutes !== null && endMinutes !== null && endMinutes > startMinutes && !hasPlaceholderMidnight) {
-    return `${formatMinutes(startMinutes)} ~ ${formatMinutes(endMinutes)}`;
-  }
-
-  if (startMinutes !== null && !hasPlaceholderMidnight) {
-    const durationMinutes = fallback.endMinutes - fallback.startMinutes;
-    return `${formatMinutes(startMinutes)} ~ ${formatMinutes(startMinutes + durationMinutes)}`;
-  }
-
-  if (endMinutes !== null && !hasPlaceholderMidnight) {
-    const durationMinutes = fallback.endMinutes - fallback.startMinutes;
-    return `${formatMinutes(endMinutes - durationMinutes)} ~ ${formatMinutes(endMinutes)}`;
-  }
-
-  return `${formatMinutes(fallback.startMinutes)} ~ ${formatMinutes(fallback.endMinutes)}`;
 }
 
 function getTimeSortValue(timeRange: string): number {
@@ -480,23 +404,25 @@ export function useCalendar(options: UseCalendarOptions = {}): UseCalendarReturn
         }
 
         const dateKey = getDateKey(schedule.scheduledDate);
-        const fallbackIndex = nextMap[dateKey]?.length ?? 0;
         const mappedClass: CalendarClass = {
           id: schedule.id,
           classId: cls.id,
           title: cls.className,
           // 회차 시각 SoT — ClassSchedule.start_time(text "HH:mm") 입력 그대로 우선 표시.
-          //   정규/오픈클래스 모두 동일(실측: 정규수업도 회차 start_time 정상 저장).
-          //   회차 시각이 없을 때만 대표 시간(formatTimeRange) 폴백.
-          time:
-            schedule.startTime
-              ? schedule.endTime
+          //   없으면 그 요일의 기본 일정(daySchedules) 시각, 그것도 없으면 미표시('').
+          //   대표값(Class.startTime)·가상 프리셋 시간은 실제 시각과 달라 사용하지 않는다.
+          time: (() => {
+            if (schedule.startTime) {
+              return schedule.endTime
                 ? `${schedule.startTime} - ${schedule.endTime}`
-                : schedule.startTime
-              : formatTimeRange(cls.startTime, cls.endTime, {
-                  cls,
-                  fallbackIndex,
-                }),
+                : schedule.startTime;
+            }
+            const ds = getDayScheduleForDate(
+              cls.daySchedules,
+              schedule.scheduledDate,
+            );
+            return ds ? `${ds.startTime} - ${ds.endTime}` : '';
+          })(),
           coach: cls.instructorName,
           location: cls.clubName,
           type: inferTrainingType(cls),
