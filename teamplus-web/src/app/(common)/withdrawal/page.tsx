@@ -134,7 +134,13 @@ export default function WithdrawalPage() {
                   </h2>
                 </div>
                 <ul className="flex flex-col gap-3 pt-2">
-                  {[W.gracePeriod, W.dataDelete, W.creditExpire].map((text) => (
+                  {[
+                    W.gracePeriod,
+                    W.dataDelete,
+                    W.creditExpire,
+                    W.assetGuard,
+                    W.childCascade,
+                  ].map((text) => (
                     <li key={text} className="flex items-start gap-2.5">
                       <Icon
                         name="check_circle"

@@ -688,6 +688,10 @@ export const MESSAGES = {
         perSession: "수업 1회 참여권을 선결제합니다.",
         perGame: "참가 경기 수 기준으로 정산됩니다.",
       },
+      // 정기권 귀속월 안내 — 달력 월 귀속 정액(약관 §13): 지금 결제하면 이번 달 말일까지.
+      //   월말 결제 시 잔여 일수가 결제 전에 보이도록 하는 안전망 (후불 선택 유도).
+      monthlyPeriodNote: (month: number, endMd: string) =>
+        `${month}월분 · ${endMd}까지 이용`,
       // 계산식 표시 — 정기권(MONTHLY_FIXED)은 무차감 기간제라 회수 산식 미표기
       //   ("주 N회" 파생 폐기 — 상품 안내는 설명 입력이 SoT).
       formula: {
@@ -1580,11 +1584,15 @@ export const MESSAGES = {
     pageTitle: "회원 탈퇴 신청",
     noticeTitle: "회원 탈퇴 시 유의사항",
     gracePeriod:
-      "탈퇴 신청 후 7일간의 유예 기간이 있으며, 유예 기간 내 로그인하면 탈퇴가 취소됩니다.",
+      "탈퇴 신청 후 7일간의 유예 기간을 거쳐 확정 처리되며, 신청 후에는 취소할 수 없습니다.",
     dataDelete:
       "개인정보는 비식별화 처리되며, 결제 기록은 관련 법률에 따라 5년간 보관됩니다.",
     creditExpire:
       "보유 중인 잔여 결제권은 탈퇴 확정 시 전액 소멸되며, 복구할 수 없습니다.",
+    assetGuard:
+      "운영 중인 팀·수업·대회(감독) 또는 자녀의 진행 중인 수강신청(학부모)이 있는 경우 탈퇴 신청이 제한됩니다. 먼저 정리한 후 신청해주세요.",
+    childCascade:
+      "다른 보호자가 연결되어 있지 않은 자녀의 계정과 프로필 정보도 함께 비식별화 처리됩니다.",
     reasonTitle: "탈퇴 사유를 선택해주세요",
     reasons: {
       inconvenient: "서비스 이용이 불편해서",
@@ -1598,12 +1606,12 @@ export const MESSAGES = {
     reasonRequired: "탈퇴 사유를 선택해주세요.",
     confirmTitle: "정말 탈퇴하시겠습니까?",
     confirmMessage:
-      "탈퇴 신청 후 7일 이내에 로그인하지 않으면 계정이 영구 삭제됩니다.",
+      "탈퇴 신청 후 7일이 지나면 계정 정보가 삭제(비식별화)되어 복구할 수 없습니다.",
     confirmButton: "탈퇴하기",
     cancelButton: "취소",
     completeTitle: "탈퇴 신청이 완료되었습니다",
     completeMessage:
-      "7일간의 유예 기간이 적용됩니다. 유예 기간 내 로그인하시면 탈퇴가 취소됩니다.",
+      "7일간의 유예 기간 후 탈퇴가 확정 처리됩니다. 신청 후에는 취소할 수 없습니다.",
     submitError: "탈퇴 처리 중 오류가 발생했습니다. 다시 시도해주세요.",
     submitting: "처리 중...",
     agreeLabel: "위 내용을 모두 확인했으며, 회원 탈퇴에 동의합니다.",
