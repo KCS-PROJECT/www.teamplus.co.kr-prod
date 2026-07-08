@@ -3342,15 +3342,13 @@ export const MESSAGES = {
     singlePricePlaceholder: "1회 수업료를 입력하세요.",
     // [Phase B-6] 선택형(BOTH) 결제 옵션 — 결제 방식 택1 UI.
     timingSelectTitle: "결제 방식 선택",
-    timingPrepaidTitle: "선불 결제",
-    timingPrepaidDesc: "정액 패키지를 미리 결제해요.",
-    timingPostpaidTitle: "후불 정산",
+    timingPrepaidTitle: "선 결제",
+    timingPrepaidDesc: "월 수업횟수로 결제해요.",
+    timingPostpaidTitle: "후 결제",
     timingPostpaidDesc: "출석한 만큼 매월 정산해요.",
     selectPrepaidPackageTitle: "정액 패키지 선택",
     // [선택형(BOTH)] 1회 수업료(참고) 블록 — 선불·후불 공통 노출.
     singleFeeRefTitle: "1회 수업료",
-    singleFeeRefPrepaidNote: "참고가",
-    singleFeePostpaidNote: "출석 횟수만큼 월말 정산",
     singleFeeAmount: (won: number) => `${Number(won).toLocaleString()}원`,
     postpaidEnrollCta: "후불로 신청하기",
     postpaidEnrolling: "신청 중…",
