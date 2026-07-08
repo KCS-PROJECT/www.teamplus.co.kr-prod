@@ -95,7 +95,6 @@ export class PaymentCreateService {
         class: {
           select: {
             id: true,
-            endTime: true,
             billingMode: true,
           },
         },
@@ -114,17 +113,15 @@ export class PaymentCreateService {
     }
 
     // 패키지 가드 — isActive=false(수동 비활성)만 차단. 수업 종료일 기반 차단은 폐기.
+    //   대표값(Class.endTime) 전달 제거 — 가드 로직에서 미사용이었음.
     const blockReason = assertPaymentAllowed({
       feeType: product.feeType,
       durationDays: product.durationDays,
       isActive: product.isActive,
-      class: product.class
-        ? { endTime: product.class.endTime }
-        : null,
     });
     if (blockReason) {
       this.logger.warn(
-        `결제 가드 차단: reason=${blockReason}, productId=${productId}, classId=${product.class?.id ?? "(no-class)"}, feeType=${product.feeType}, durationDays=${product.durationDays}, classEnd=${product.class?.endTime?.toISOString() ?? "(null)"}`,
+        `결제 가드 차단: reason=${blockReason}, productId=${productId}, classId=${product.class?.id ?? "(no-class)"}, feeType=${product.feeType}, durationDays=${product.durationDays}`,
       );
       throw new BadRequestException(
         PACKAGE_PAYMENT_BLOCK_MESSAGES[blockReason],

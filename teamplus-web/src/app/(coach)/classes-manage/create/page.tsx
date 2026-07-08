@@ -602,7 +602,6 @@ function ClassCreatePageInner() {
                     packageValue={draftProducts}
                     onPackageChange={handleProductsChange}
                     packageDirty={productsDirty}
-                    classSessionsPerWeek={initialData?.classDays?.length}
                     iceTheme
                   />
                 ) : undefined

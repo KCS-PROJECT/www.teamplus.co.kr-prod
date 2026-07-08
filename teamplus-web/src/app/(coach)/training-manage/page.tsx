@@ -107,6 +107,9 @@ function TrainingCard({ item }: { item: TrainingSession }) {
               const label = formatClassScheduleDisplay({
                 daySchedules: item.daySchedules,
                 nextSchedule: item.nextSchedule,
+                totalScheduleCount: scheduleCount,
+                firstScheduleDate: item.firstScheduleDate,
+                lastScheduleDate: item.lastScheduleDate,
               });
               return label ? <> · {label}</> : null;
             })()}

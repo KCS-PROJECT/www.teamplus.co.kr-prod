@@ -910,6 +910,17 @@
     -webkit-overflow-scrolling: touch;
   }
 
+  /* auth 폼 푸터 — 터치 기기에서 키보드 노출(=같은 부모의 형제 form 포커스) 동안 숨김.
+     키보드 개폐 시 뷰포트 축소 + pb-keyboard-safe transition 으로 하단 고정 영역이
+     위아래로 출렁이는 현상 차단. 요소에 Tailwind `transition-opacity` 를 함께 부여해
+     페이드 인/아웃. 데스크톱(마우스)·키보드 탭 내비게이션에는 영향 없음. */
+  @media (pointer: coarse) {
+    form:focus-within ~ .auth-footer-keyboard-hide {
+      opacity: 0;
+      pointer-events: none;
+    }
+  }
+
   /* prefers-reduced-motion 사용자: transition 제거 (접근성 — DESIGN.md §모션) */
   @media (prefers-reduced-motion: reduce) {
     .pb-keyboard-safe,

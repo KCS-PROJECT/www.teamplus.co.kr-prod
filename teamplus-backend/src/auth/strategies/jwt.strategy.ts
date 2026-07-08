@@ -72,9 +72,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       user.tokenVersion != null &&
       payload.tokenVersion !== user.tokenVersion
     ) {
-      throw new UnauthorizedException(
-        "다른 기기에서 로그아웃되었습니다. 다시 로그인해주세요.",
-      );
+      // error: "SESSION_REPLACED" — AllExceptionsFilter 가 errorCode 로 전달,
+      // 웹 SessionExpiredModal 이 "다른 기기 로그인" 원인 문구를 구분 표시한다.
+      throw new UnauthorizedException({
+        message: "다른 기기에서 로그인되어 로그아웃되었습니다. 다시 로그인해주세요.",
+        error: "SESSION_REPLACED",
+      });
     }
 
     return { ...user, name: payload.name ?? "" };

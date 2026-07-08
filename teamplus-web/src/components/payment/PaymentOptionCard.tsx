@@ -19,12 +19,8 @@ import type { FeeType } from '@/types/payment';
 export interface PaymentOptionCardProps {
   /** 결제 방식 */
   feeType: FeeType;
-  /** 단위당 금액 — 1회/1경기/주1회 기준 */
+  /** 단위당 금액 — 1회/1경기 기준 (MONTHLY_FIXED 는 monthlyFixedAmount 부재 시 폴백 표기값) */
   pricePerUnit: number;
-  /** MONTHLY_FIXED 전용 — 주 N회 */
-  weeklyCount?: number;
-  /** MONTHLY_FIXED 전용 — 정기권 주 수 (PACKAGE_WEEKS_SPEC §6, 4주 하드코딩 폐기) */
-  weeks?: number;
   /** PER_SESSION 전용 — 총 회수 */
   totalSessions?: number;
   /** PER_GAME 전용 — 총 경기 수 (대회 참가비 계산) */
@@ -97,13 +93,13 @@ const TOTAL_LABEL_KEY: Record<FeeType, keyof typeof MESSAGES.payment2.card.total
 
 /** feeType별 총액 계산 — 서버 값이 있으면 우선, 없으면 단위 × 수량 */
 function computeTotal(props: PaymentOptionCardProps): number {
-  const { feeType, pricePerUnit, weeklyCount, weeks, totalSessions, gameCount, monthlyFixedAmount } = props;
+  const { feeType, pricePerUnit, totalSessions, gameCount, monthlyFixedAmount } = props;
   switch (feeType) {
     case 'MONTHLY_FIXED':
+      // 정기권 총액 = 서버 상품가(SoT). "주N회 × 회당가 × 주수" 추정 곱셈 폐기 —
+      //   classDays 파생(주N회)이 낡으면 틀린 금액을 표기하던 경로.
       if (typeof monthlyFixedAmount === 'number' && monthlyFixedAmount > 0) return monthlyFixedAmount;
-      if (!weeklyCount || weeklyCount <= 0) return pricePerUnit;
-      // PACKAGE_WEEKS_SPEC §7 — durationDays 동적, 4주 하드코딩 폐기. weeks 미지정 시 4주 폴백.
-      return weeklyCount * pricePerUnit * (weeks ?? 4);
+      return pricePerUnit;
     case 'PER_SESSION':
       if (!totalSessions || totalSessions <= 0) return pricePerUnit;
       return totalSessions * pricePerUnit;
@@ -115,13 +111,10 @@ function computeTotal(props: PaymentOptionCardProps): number {
   }
 }
 
-/** feeType별 계산식 문구 */
+/** feeType별 계산식 문구 — 정기권은 무차감 기간제라 회수 산식 미표기(설명 입력이 SoT). */
 function formatFormula(props: PaymentOptionCardProps): string | null {
-  const { feeType, pricePerUnit, weeklyCount, weeks, totalSessions, gameCount } = props;
+  const { feeType, pricePerUnit, totalSessions, gameCount } = props;
   switch (feeType) {
-    case 'MONTHLY_FIXED':
-      if (!weeklyCount || weeklyCount <= 0) return null;
-      return MESSAGES.payment2.card.formula.monthlyFixed(weeklyCount, pricePerUnit, weeks);
     case 'PER_SESSION':
       if (!totalSessions || totalSessions <= 0) return null;
       return MESSAGES.payment2.card.formula.perSession(totalSessions, pricePerUnit);
@@ -135,12 +128,11 @@ function formatFormula(props: PaymentOptionCardProps): string | null {
 
 /** 필수 필드 검증 — 음수·NaN 방어 */
 function hasRequiredFields(props: PaymentOptionCardProps): boolean {
-  const { feeType, pricePerUnit, weeklyCount, totalSessions, gameCount, monthlyFixedAmount } = props;
+  const { feeType, pricePerUnit, totalSessions, gameCount } = props;
   if (!Number.isFinite(pricePerUnit) || pricePerUnit < 0) return false;
   switch (feeType) {
     case 'MONTHLY_FIXED':
-      if (typeof monthlyFixedAmount === 'number' && monthlyFixedAmount >= 0) return true;
-      return typeof weeklyCount === 'number' && weeklyCount > 0;
+      return true; // 가격만 있으면 표시 가능 (주N회 요구 폐기)
     case 'PER_SESSION':
       return typeof totalSessions === 'number' && totalSessions > 0;
     case 'PER_GAME':

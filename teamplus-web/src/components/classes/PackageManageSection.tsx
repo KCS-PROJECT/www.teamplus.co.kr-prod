@@ -77,7 +77,6 @@ interface PackageManageSectionProps {
   /** deferred 전용 — 보류된 변경 존재 여부. true 면 '수정하기' 안내 배너 노출. */
   dirty?: boolean;
   /** 수업 정보의 주당 수업 횟수 (Class.classDays.length). 정기권 자동 계산용. */
-  classSessionsPerWeek?: number;
   /** 수업 결제 방식 — 'POSTPAID'(후불)이면 패키지 추가를 차단(출석 기반 정산). */
   billingMode?: string;
   /** 렌더 형태 — 'card'(기본): 자체 카드+헤더 / 'embed': 카드·제목 없이 목록+추가버튼만(수강료 카드 내부 삽입용). */
@@ -103,7 +102,6 @@ export function PackageManageSection({
   value,
   onChange,
   dirty = false,
-  classSessionsPerWeek,
   billingMode,
   variant = 'card',
   excludePerSession = false,
@@ -510,7 +508,6 @@ export function PackageManageSection({
               : (editTarget as ClassProductDto | null)
           }
           initialDraft={isDeferred ? (editTarget as DraftProduct | null) : null}
-          classSessionsPerWeek={classSessionsPerWeek}
           onSaved={() => {
             void refresh();
           }}

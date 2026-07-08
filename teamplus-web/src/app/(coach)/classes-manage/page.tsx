@@ -21,17 +21,24 @@ import {
   listTournaments,
   type TournamentListItem,
 } from '@/services/tournament.service';
-import { shouldHideTypeBadge } from '@/lib/class-categories';
+import {
+  shouldHideTypeBadge,
+  formatClassScheduleDisplay,
+  type DaySchedule,
+  type NextScheduleInfo,
+} from '@/lib/class-categories';
 
 
 // ─── Types ──────────────────────────────────────────
 interface ClassItem {
   id: string;
   title: string;
-  dayOfWeek: string;
-  time: string;
-  startTime?: string;
-  endTime?: string;
+  /** 요일별 기본 일정(ClassDaySchedule) — 카드 일정 라벨 1순위 (classDays 스냅샷 나열 폐기). */
+  daySchedules?: DaySchedule[];
+  /** 다음 회차 (비취소·오늘 이후) — 기본 일정 없을 때 라벨 소스. */
+  nextSchedule?: NextScheduleInfo | null;
+  /** 비취소 총 회차 수 — "총 N회" 표기용. */
+  scheduleCount?: number | null;
   /** [2026-06-09] 오픈클래스 날짜별 일정(ISO) — 카드 일정 날짜 표시. */
   scheduledDates?: string[];
   /** [추가 2026-05-12] 실제 운영 기간 — schedules first/last (startTime/endTime은 하루 세션 시간만 의미) */
@@ -373,12 +380,11 @@ function resolveStatus(item: ClassItem): CardStatus {
   if (item.approvalStatus === 'PENDING') return 'PENDING';
   if (item.approvalStatus === 'REJECTED') return 'REJECTED';
   // 상태(예정/진행/종료)는 실제 일정(ClassSchedule)의 첫·마지막 날짜를 SoT 로 판단한다.
-  //   입력 기간(Class.startTime/endTime)은 실제 운영 일정과 어긋날 수 있어(특히 오픈클래스·
-  //   일정 누적 운영) 일정이 남았는데도 '종료'로 표시되던 문제를 방지. 일정 메타가 없으면
-  //   기존 startTime/endTime 로 폴백(회귀 방지).
+  //   대표값(Class.startTime/endTime) 폴백 제거 — 날짜부가 등록일로 오염되어 일정 없는
+  //   수업이 등록 직후 '종료'로 오표시되는 원인이었음. 일정 없으면 날짜 미정으로 취급.
   const period = resolvePeriodStatus(
-    item.firstScheduleDate ?? item.startTime,
-    item.lastScheduleDate ?? item.endTime,
+    item.firstScheduleDate ?? null,
+    item.lastScheduleDate ?? null,
   );
   // 기간이 끝난 수업은 DB status 와 무관하게 '종료' (기간이 SoT).
   if (period === 'ENDED') return 'ENDED';
@@ -446,9 +452,15 @@ function ClassCard({ item }: { item: ClassItem }) {
         ) : null;
       })()}
       <ClassCardInfoRow icon="schedule">
-        {item.dayOfWeek
-          ? `${item.dayOfWeek} ${item.time}`.trim()
-          : item.time || '시간 미정'}
+        {/* 일정 라벨 공통 규칙 — 기본 일정 패턴 > "총 N회 · 다음 …" (상세 히어로와 동일).
+            classDays 스냅샷 요일 나열은 회차 변경 시 갱신되지 않아 폐기. */}
+        {formatClassScheduleDisplay({
+          daySchedules: item.daySchedules,
+          nextSchedule: item.nextSchedule,
+          totalScheduleCount: item.scheduleCount ?? null,
+          firstScheduleDate: item.firstScheduleDate,
+          lastScheduleDate: item.lastScheduleDate,
+        }) ?? MESSAGES.class.noUpcomingSchedule}
       </ClassCardInfoRow>
       {/* [2026-06-19] 대상 출생연도 — 입력 없으면 '전체'(전체 대상)로 표기. */}
       <ClassCardInfoRow icon="cake">
@@ -663,7 +675,6 @@ export default function ClassManagePage() {
               ? (c.dayOfWeek as string).split(/[,\s/·]+/).filter(Boolean)
               : [];
           const normalizedDays = normalizeClassDays(rawDaysAny);
-          const dayOfWeekLabel = normalizedDays.join(', ');
           const products = (c.products as Array<{ feeType?: string; price?: number }> | undefined) ?? [];
           const statusRaw = (c.status as string) ?? (c.isActive ? 'ACTIVE' : 'INACTIVE');
           const status: ClassItem['status'] =
@@ -674,11 +685,10 @@ export default function ClassManagePage() {
           return {
             id: c.id as string,
             title: (c.className as string) ?? (c.title as string) ?? '',
-            dayOfWeek: dayOfWeekLabel,
-            time: (c.time as string) ?? '',
-            startTime: (c.startTime as string) ?? '',
+            daySchedules: (c.daySchedules as DaySchedule[] | undefined) ?? [],
+            nextSchedule: (c.nextSchedule as NextScheduleInfo | null | undefined) ?? null,
+            scheduleCount: (c.scheduleCount as number | undefined) ?? null,
             scheduledDates: (c.scheduledDates as string[] | undefined) ?? [],
-            endTime: (c.endTime as string) ?? '',
             classDays: normalizedDays,
             location:
               (c.location as string) ?? (c.venueName as string) ?? ((c.venue as { name?: string })?.name ?? ''),
@@ -787,21 +797,16 @@ export default function ClassManagePage() {
       setClasses(dedup.map((c) => {
         // [수정 2026-05-11] 요일 표기 한글 통일 + 월요일 시작 정렬.
         //  DB 에 EN("MON","WED",...) 또는 KR("월","수") 혼재 → UI 노출은 항상 한글, 정렬 일관.
-        const rawDays = Array.isArray(c.classDays)
-          ? c.classDays
-          : c.dayOfWeek
-            ? c.dayOfWeek.split(/[,\s/·]+/).filter(Boolean)
-            : [];
-        const normalizedDays = normalizeClassDays(rawDays);
-        const dayOfWeekLabel = normalizedDays.join(', ');
+        const normalizedDays = normalizeClassDays(
+          Array.isArray(c.classDays) ? c.classDays : [],
+        );
         return ({
         id: c.id,
         title: c.className ?? c.title ?? '',
-        dayOfWeek: dayOfWeekLabel,
-        time: c.time ?? '',
-        startTime: c.startTime ?? '',
+        daySchedules: (c.daySchedules as DaySchedule[] | undefined) ?? [],
+        nextSchedule: (c.nextSchedule as NextScheduleInfo | null | undefined) ?? null,
+        scheduleCount: (c.scheduleCount as number | undefined) ?? null,
         scheduledDates: (c.scheduledDates as string[] | undefined) ?? [],
-        endTime: c.endTime ?? '',
         classDays: normalizedDays,
         location: c.location ?? c.venueName ?? c.venue?.name ?? '',
         studentCount: c.studentCount ?? 0,

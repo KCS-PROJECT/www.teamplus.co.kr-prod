@@ -23,6 +23,7 @@ import { useNavigation } from "@/components/ui/NavLink";
 import { MESSAGES } from "@/lib/messages";
 import { useSessionAuth } from "@/hooks/useSessionAuth";
 import { useVenues, useVenuePermissions } from "@/hooks/useVenues";
+import { useDebouncedCallback } from "@/hooks/useDebounce";
 import { VenueMapHero, VenueStatusBadge } from "@/components/venue";
 import { FACILITY_META, type Venue, type VenueAmenity } from "@/types/venue";
 import { usePageReady } from '@/hooks/usePageReady';
@@ -200,12 +201,20 @@ export default function VenueListPage() {
     return first?.city ? `${first.city}` : MESSAGES.venue.defaultCity;
   }, [venues]);
 
-  const handleSearchChange = useCallback(
+  // 서버 검색 — 키 입력(한글 조합 중간 단계 포함)마다 API 가 호출되지 않도록 디바운스.
+  const applySearch = useCallback(
     (value: string) => {
-      setSearchTerm(value);
       setParams((prev) => ({ ...prev, search: value || undefined, page: 1 }));
     },
     [setParams],
+  );
+  const [debouncedApplySearch] = useDebouncedCallback(applySearch, 300);
+  const handleSearchChange = useCallback(
+    (value: string) => {
+      setSearchTerm(value);
+      debouncedApplySearch(value);
+    },
+    [debouncedApplySearch],
   );
 
   return (

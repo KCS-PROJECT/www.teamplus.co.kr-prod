@@ -35,9 +35,10 @@ export function UnauthorizedToastListener(): null {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<UnauthorizedEventDetail>).detail ?? {};
 
-      // 세션 만료(expired)는 SessionExpiredModal(자동 로그아웃 안내)이 담당하므로
-      // 토스트를 중복 표시하지 않는다. required(미인증 접근)만 토스트로 안내.
-      if (detail.reason === "expired") return;
+      // 세션 만료(expired)·강제 종료(replaced)는 SessionExpiredModal(자동 로그아웃
+      // 안내)이 담당하므로 토스트를 중복 표시하지 않는다. required(미인증 접근)만
+      // 토스트로 안내.
+      if (detail.reason === "expired" || detail.reason === "replaced") return;
 
       const now = Date.now();
       if (now - lastShownAt < THROTTLE_MS) return;

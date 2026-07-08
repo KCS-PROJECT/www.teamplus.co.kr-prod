@@ -976,9 +976,11 @@ export class AuthService {
         user.tokenVersion != null &&
         decoded.tokenVersion !== user.tokenVersion
       ) {
-        throw new UnauthorizedException(
-          "다른 기기에서 로그인되어 세션이 종료되었습니다. 다시 로그인해주세요.",
-        );
+        throw new UnauthorizedException({
+          message:
+            "다른 기기에서 로그인되어 세션이 종료되었습니다. 다시 로그인해주세요.",
+          error: "SESSION_REPLACED",
+        });
       }
 
       // 멱등 grace — previous 토큰의 동시 갱신 경합. 새로 회전하지 않고

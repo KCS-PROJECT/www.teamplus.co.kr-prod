@@ -14,8 +14,10 @@ export const MESSAGES = {
   ...SHARED_MESSAGES,
   class: {
     registered: "수업이 등록되었습니다.",
-    nextScheduleLabel: "다음 일정",
+    nextScheduleLabel: "다음",
     noUpcomingSchedule: "예정된 일정 없음",
+    totalSessionsLabel: (n: number) => `총 ${n}회`,
+    timeVaries: "시간 상이",
     cancelConfirm: "수업을 취소하시겠습니까?",
     shareAction: "공유",
     shareAriaLabel: (name: string) => `${name} 수업 공유하기`,
@@ -70,9 +72,13 @@ export const MESSAGES = {
       weekdayLabel: (day: string) => `${day}요일`,
       removeDay: "삭제",
       removeDayAria: (day: string) => `${day}요일 기본값 삭제`,
+      applyToAll: "모든 요일에 적용",
+      applyToAllAria: (day: string) => `${day}요일 시간·장소를 선택된 모든 요일에 적용`,
+      appliedToAll: "모든 요일에 적용되었습니다.",
       timeUndecided: "시간 미정",
       dateUndecided: "날짜 미정",
     },
+    venueSearchPrompt: "장소명 또는 주소를 검색해주세요.",
     policyInfo:
       "수업 등록 시 학부모님들께 알림이 발송됩니다. 대관 시간 15분 전 링크장 도착을 원칙으로 합니다.",
     policyInfoCreate:
@@ -96,10 +102,9 @@ export const MESSAGES = {
     package: {
       label: (weeks: number, perSessionPrice: number) =>
         `${weeks}주 정기권 · 회당 ${perSessionPrice.toLocaleString("ko-KR")}원`,
-      detailLabel: (weeks: number, perWeek: number, total: number) =>
-        `${weeks}주 정기권 (주 ${perWeek}회 · 총 ${total}회)`,
       weeksOnly: (weeks: number) => `${weeks}주 정기권`,
-      perWeekOnly: (perWeek: number) => `주 ${perWeek}회`,
+      // "주 N회" 파생 라벨(detailLabel/perWeekOnly/preview)은 자동 파생 폐기와 함께 삭제 —
+      //   classDays 스냅샷 기반이라 오정보 위험. 상품 안내는 감독 설명 입력이 SoT.
       // 등록 폼 옵션 A — 운영자가 패키지 주 수를 명시 선택.
       // 한국어 자연성: "주 단위로 정한다" / "종료일까지 (의 기간으로 정한다)" 동일 차원의 입력 방식.
       mode: {
@@ -111,13 +116,6 @@ export const MESSAGES = {
       },
       endDateAuto: (dateStr: string) => `종료일 자동: ${dateStr}`,
       weeksAuto: (weeks: number) => `${weeks}주 (자동 계산)`,
-      preview: (
-        weeks: number,
-        perWeek: number,
-        total: number,
-        perSession: number,
-      ) =>
-        `${weeks}주 정기권 · 주 ${perWeek}회 · 총 ${total}회 · 회당 ${perSession.toLocaleString("ko-KR")}원`,
     },
     featured: {
       label: "이번 주 추천 수업",
@@ -657,13 +655,8 @@ export const MESSAGES = {
       perGame: "경기당",
     },
     feeDescription: {
-      // PACKAGE_WEEKS_SPEC §3 — 정기권 표기.
-      //   weeks 인자 누락 시 4주 폴백 (구 데이터 호환). 단위는 "X주 정기권 · 주 N회".
-      monthlyFixed: (
-        sessionsPerWeek: number,
-        _feePerSession: number,
-        weeks: number = 4,
-      ) => `${weeks}주 정기권 · 주 ${sessionsPerWeek}회`,
+      // "주 N회" 파생 표기 폐기 — classDays 스냅샷 기반 오정보 위험. 설명 입력이 SoT.
+      monthlyFixed: (weeks: number = 4) => `${weeks}주 정기권`,
       perSession: "실제 출석 횟수 기반 정산",
       perGame: "경기 수 기반 정산",
     },
@@ -695,16 +688,9 @@ export const MESSAGES = {
         perSession: "수업 1회 참여권을 선결제합니다.",
         perGame: "참가 경기 수 기준으로 정산됩니다.",
       },
-      // 계산식 표시 — PACKAGE_WEEKS_SPEC §3 정합.
-      //   학부모 목록 카드와 동일 표기로 통일 (X주 정기권 · 주 N회 · 회당 OO원).
-      //   weeks 미지정 시 4주 폴백 (구 데이터 호환).
+      // 계산식 표시 — 정기권(MONTHLY_FIXED)은 무차감 기간제라 회수 산식 미표기
+      //   ("주 N회" 파생 폐기 — 상품 안내는 설명 입력이 SoT).
       formula: {
-        monthlyFixed: (
-          weeklyCount: number,
-          pricePerUnit: number,
-          weeks: number = 4,
-        ) =>
-          `${weeks}주 정기권 · 주 ${weeklyCount}회 · 회당 ${new Intl.NumberFormat("ko-KR").format(pricePerUnit)}원`,
         perSession: (totalSessions: number, pricePerUnit: number) =>
           `${totalSessions}회 × ${new Intl.NumberFormat("ko-KR").format(pricePerUnit)}원`,
         perGame: (gameCount: number, pricePerUnit: number) =>
@@ -2678,6 +2664,11 @@ export const MESSAGES = {
     autoLogoutMessage:
       "안전한 사용을 위해 일정 시간 후\n자동으로 로그아웃됩니다.\n서비스를 계속 이용하시려면\n재로그인 해주세요.",
     reloginButton: "재로그인",
+    // 다른 기기 로그인으로 세션 강제 종료 (SESSION_REPLACED)
+    replaced: "다른 기기에서 로그인되어 로그아웃되었습니다. 다시 로그인해주세요.",
+    sessionReplacedTitle: "로그아웃 안내",
+    sessionReplacedMessage:
+      "다른 기기에서 같은 계정으로 로그인되어\n이 기기에서는 로그아웃되었습니다.\n계속 이용하시려면 다시 로그인해주세요.",
   },
   // ──────────────────────────────────────────────────────────────────
   //  Wallet (4탭 메인 화면) — 신한pLay풍 핀테크 메인 화면

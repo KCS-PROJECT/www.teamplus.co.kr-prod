@@ -13,7 +13,8 @@ import { ClassListCard, ClassCardInfoRow } from '@/components/classes/ClassListC
 import {
   TRAINING_TYPE_LABEL,
   formatDaySchedulesShort,
-  formatNextScheduleLabel,
+  formatNextScheduleSummary,
+  formatPeriodSummary,
   type DaySchedule,
   type NextScheduleInfo,
 } from '@/lib/class-categories';
@@ -34,6 +35,8 @@ interface EnrolledClassItem {
   scheduledDates?: string[];
   scheduleTimeLabel?: string | null;
   nextSchedule?: NextScheduleInfo | null;
+  /** 비취소 총 회차 수 — "총 N회" 표기용. */
+  scheduleCount?: number;
 }
 
 interface EnrollmentRow {
@@ -82,7 +85,15 @@ function scheduleLineOf(item: EnrolledClassItem): string | null {
     ? null
     : item.trainingType === 'lesson'
       ? item.scheduleTimeLabel ?? null
-      : formatNextScheduleLabel(item.nextSchedule);
+      : (formatNextScheduleSummary(
+          item.nextSchedule,
+          item.scheduleCount ?? item.scheduledDates?.length ?? null,
+        ) ??
+        formatPeriodSummary(
+          item.scheduledDates?.[0],
+          item.scheduledDates?.[item.scheduledDates.length - 1],
+          item.scheduleCount ?? item.scheduledDates?.length ?? null,
+        ));
   const daysLabel = dayScheduleLabel ?? formatScheduleLabel(item);
   if (!daysLabel && !time) return null;
   return `${daysLabel || time}${daysLabel && time ? ` · ${time}` : ''}`;

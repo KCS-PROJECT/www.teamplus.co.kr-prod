@@ -104,20 +104,6 @@ function getDateKey(value: Date | string) {
 }
 
 /**
- * 출석 윈도우 종료 계산용 "HH:mm" 정규화.
- *  - 이미 "HH:mm" 이면 그대로.
- *  - ISO/timestamp(Class.endTime, UTC naive 저장)면 UTC 시:분 추출 — 백엔드
- *    resolveScheduleEndTime 의 getUTCHours/Minutes 와 동일 규칙으로 정합 보장.
- */
-function toHHmm(value?: string | null): string | null {
-  if (!value) return null;
-  if (/^\d{2}:\d{2}$/.test(value)) return value;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return null;
-  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
-}
-
-/**
  * [2026-06-05] 회차(날짜)의 요일에 맞는 시각 라벨 산출.
  *  - daySchedules 에 그 요일 규칙이 있으면 "HH:mm - HH:mm" (문자열 그대로).
  *  - 없으면 '' (시간 미표시). 대표값(Class.startTime)은 회차별 실제 시각과
@@ -505,10 +491,18 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
                   : schedule.startTime
                 : resolveScheduleTime(cls, schedule.scheduledDate),
             scheduledDate: schedule.scheduledDate,
-            startTime: schedule.startTime ?? null,
-            // 출석 윈도우 종료 기준 — schedule.endTime(text) 우선, 없으면 Class.endTime 폴백.
-            //   백엔드 resolveScheduleEndTime(schedule.endTime, class.endTime) 과 동일 규칙.
-            endTime: schedule.endTime ?? toHHmm(cls.endTime),
+            // 출석 윈도우 기준 — 회차 시각(text) 우선, 없으면 그 요일의 기본 일정 시각.
+            //   백엔드 resolveSchedule*ByTemplate 와 동일 규칙 (대표값 폴백 제거).
+            startTime:
+              schedule.startTime ??
+              getDayScheduleForDate(cls.daySchedules, schedule.scheduledDate)
+                ?.startTime ??
+              null,
+            endTime:
+              schedule.endTime ??
+              getDayScheduleForDate(cls.daySchedules, schedule.scheduledDate)
+                ?.endTime ??
+              null,
             coach: cls.instructorName,
             location: resolveScheduleLocation(cls, schedule.scheduledDate),
             type: inferTrainingType(cls),

@@ -8,8 +8,8 @@
  *
  * 디자인 결정:
  *   1) 운영자 입력 = "주 수 + 가격" 2개로 단순화 (ClassForm 자동 생성과 동일 UX).
- *   2) 주당 수업 횟수는 수업 정보(classSessionsPerWeek = classDays.length)로 자동 결정 —
- *      패키지별로 다르게 두면 학부모·출석 시스템 정합성이 깨지므로 수정 불가.
+ *   2) "주 N회" 자동 파생(classDays.length) 폐기 — classDays 는 갱신 안 되는 스냅샷이라
+ *      상품 메타 오염원. 무차감 기간제라 주 빈도 제약도 없음. 상품 안내는 설명(자유 입력)이 SoT.
  *   3) sessionsPerMonth / durationDays / feeType 은 자동 변환. description 은 선택 입력.
  *   4) PER_SESSION(1회권) 수정 시 가격만 수정 가능 (durationDays=30 고정 read-only).
  *
@@ -53,8 +53,6 @@ interface PackageEditSheetProps {
   initialDraft?: DraftProduct | null;
   /** 동작 모드 (기본 immediate). */
   mode?: 'immediate' | 'deferred';
-  /** 수업 정보의 주당 수업 횟수 (Class.classDays.length). 정기권 자동 계산용. */
-  classSessionsPerWeek?: number;
   onSaved: () => void;
   /** deferred 전용 — API 대신 편집 결과를 부모로 전달. */
   onLocalSave?: (draft: LocalProductDraft) => void;
@@ -107,7 +105,6 @@ export function PackageEditSheet({
   initial,
   initialDraft = null,
   mode = 'immediate',
-  classSessionsPerWeek,
   onSaved,
   onLocalSave,
 }: PackageEditSheetProps) {
@@ -120,7 +117,6 @@ export function PackageEditSheet({
     ? (editSource?.feeType ?? 'MONTHLY_FIXED')
     : 'MONTHLY_FIXED';
   const isPerSession = feeType === 'PER_SESSION';
-  const perWeek = Math.max(1, classSessionsPerWeek ?? 1);
 
   const { toast } = useToast();
   const [form, setForm] = useState<FormState>(() => toFormState(editSource));
@@ -145,9 +141,10 @@ export function PackageEditSheet({
   };
 
   // 정액(MONTHLY_FIXED)은 무차감 기간제 — 회차 게이트 없음. sessionsPerMonth 는
-  //   표시/정합용 파생값(주 수 × 주당 횟수)으로만 산출하고 별도 입력받지 않는다.
+  //   정합용 최소값(주 수 = 주 1회 상당)만 기록한다. "주 N회"(classDays 파생) 곱은 폐기 —
+  //   갱신 안 되는 classDays 스냅샷이 상품 메타를 오염시키던 경로. 안내는 설명 입력이 SoT.
   const weeksNum = Math.max(1, Math.min(52, Number(form.weeks) || 0));
-  const previewSessionsPerMonth = isPerSession ? 1 : weeksNum * perWeek;
+  const previewSessionsPerMonth = isPerSession ? 1 : weeksNum;
   const previewDurationDays = isPerSession ? (editSource?.durationDays ?? 30) : 30;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -189,7 +186,6 @@ export function PackageEditSheet({
         price,
         feeType,
         sessionsPerMonth: previewSessionsPerMonth,
-        sessionsPerWeek: isPerSession ? undefined : perWeek,
         durationDays: previewDurationDays,
         description,
       });
@@ -210,7 +206,6 @@ export function PackageEditSheet({
             : {
                 durationDays: previewDurationDays,
                 sessionsPerMonth: previewSessionsPerMonth,
-                sessionsPerWeek: perWeek,
               }),
         };
         const res = await updateClassProduct(classId, initial.id, payload);
@@ -227,7 +222,6 @@ export function PackageEditSheet({
           sessionsPerMonth: previewSessionsPerMonth,
           durationDays: previewDurationDays,
           feeType: 'MONTHLY_FIXED',
-          sessionsPerWeek: perWeek,
         };
         const res = await createClassProduct(classId, payload);
         if (!res) {

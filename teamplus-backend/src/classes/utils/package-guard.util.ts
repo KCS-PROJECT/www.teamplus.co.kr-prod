@@ -117,7 +117,7 @@ export function computePackageGuardMeta(
  * isActive=false 만 차단. 통과 시 null 반환.
  */
 export function assertPaymentAllowed(
-  product: PackageGuardInput & { class?: { endTime: Date | null } | null },
+  product: PackageGuardInput,
 ): PackageBlockReason | null {
   if (product.isActive === false) {
     return "INACTIVE";

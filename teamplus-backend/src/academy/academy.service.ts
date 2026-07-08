@@ -24,10 +24,7 @@ import {
   type ViewerLike,
 } from "@/common/utils/viewer-birth-years.util";
 import { sanitizeStrict } from "@/common/utils/sanitize.util";
-import {
-  resolveScheduleTime,
-  resolveScheduleEndTime,
-} from "@/common/utils/schedule-time.util";
+import { kstTodayUtcMidnight } from "@/common/utils/kst-date.util";
 import { UploadCleanupService } from "@/common/upload-cleanup.service";
 
 @Injectable()
@@ -660,9 +657,6 @@ export class AcademyService {
       const days = Array.isArray(c.classDays)
         ? (c.classDays as string[]).join(", ")
         : "";
-      // Class.startTime(naive 벽시계 저장)은 getUTC 추출이 정답 — toLocale류는 서버 TZ 재변환으로 +9h 오표시
-      const st = resolveScheduleTime(null, c.startTime) ?? "";
-      const et = resolveScheduleEndTime(null, c.endTime) ?? "";
       const coachName = c.coach
         ? `${c.coach.lastName ?? ""}${c.coach.firstName ?? ""}`.trim() ||
           c.instructorName
@@ -694,7 +688,9 @@ export class AcademyService {
         //   (프론트 classes-manage 매퍼가 iconImageUrl 로 소비.)
         teamLogoUrl: c.academy?.imageUrl ?? null,
         dayOfWeek: days,
-        time: scheduleTime || (st && et ? `${st} - ${et}` : ""),
+        // 회차 실제 시각만 사용 — 대표값(Class.startTime) 폴백 제거.
+        //   요일별 규칙은 daySchedules 응답으로 별도 제공되어 프론트가 우선 표시한다.
+        time: scheduleTime,
         startTime: c.startTime,
         endTime: c.endTime,
         location: c.venue?.name ?? "",
@@ -723,6 +719,20 @@ export class AcademyService {
         scheduledDates: (c.schedules ?? []).map((s) =>
           s.scheduledDate.toISOString(),
         ),
+        // 비취소 총 회차 수 — 카드 "총 N회" 표기용 (팀 목록 getClubClasses 와 동일 계약).
+        scheduleCount: (c.schedules ?? []).length,
+        // 다음 회차 (비취소·오늘 이후) — 기본 일정 없는 수업 카드의 날짜(+회차 시간) 표시용.
+        nextSchedule: (() => {
+          const sdToday = kstTodayUtcMidnight();
+          const n = (c.schedules ?? []).find((s) => s.scheduledDate >= sdToday);
+          return n
+            ? {
+                scheduledDate: n.scheduledDate.toISOString(),
+                startTime: n.startTime ?? null,
+                endTime: n.endTime ?? null,
+              }
+            : null;
+        })(),
         isActive: c.isActive,
         description: c.description,
         singlePrice:
@@ -1022,10 +1032,18 @@ export class AcademyService {
           className: true,
           trainingType: true,
           classDays: true,
-          startTime: true,
-          endTime: true,
           isActive: true,
           createdAt: true,
+          // 회당 시간·운영 기간 산출용 — 대표값(Class.startTime) 대신 회차/요일 규칙 사용
+          dayScheduleEntries: {
+            select: { dayOfWeek: true, startTime: true, endTime: true },
+            take: 1,
+          },
+          schedules: {
+            where: { isCancelled: false },
+            orderBy: { scheduledDate: "asc" },
+            select: { scheduledDate: true, startTime: true, endTime: true },
+          },
           _count: {
             select: {
               enrollments: {
@@ -1074,19 +1092,37 @@ export class AcademyService {
       }),
     ]);
 
-    // 수업 카드 데이터 가공
-    let classCards = classes.map((c) => ({
-      id: c.id,
-      className: c.className,
-      trainingType: c.trainingType ?? null,
-      scheduleSummary: this.buildScheduleSummary(c.classDays),
-      durationMinutes: this.calcDurationMinutes(c.startTime, c.endTime),
-      startDate: c.startTime.toISOString().split("T")[0],
-      endDate: c.endTime.toISOString().split("T")[0],
-      status: c.isActive ? "active" : "ended",
-      enrollmentCount: c._count.enrollments,
-      pendingCount: pendingByClassId.get(c.id) ?? 0,
-    }));
+    // 수업 카드 데이터 가공 — 시간/기간은 회차·요일 규칙에서 산출 (대표값 미사용).
+    //   대표값 날짜부는 등록일이 섞여 있어 운영 기간(startDate/endDate)으로 부적합.
+    let classCards = classes.map((c) => {
+      const firstSched = c.schedules[0];
+      const lastSched = c.schedules[c.schedules.length - 1];
+      const fallbackDate = c.createdAt.toISOString().split("T")[0];
+      return {
+        id: c.id,
+        className: c.className,
+        trainingType: c.trainingType ?? null,
+        scheduleSummary: this.buildScheduleSummary(c.classDays),
+        durationMinutes:
+          this.calcHHmmDurationMinutes(
+            c.dayScheduleEntries[0]?.startTime,
+            c.dayScheduleEntries[0]?.endTime,
+          ) ||
+          this.calcHHmmDurationMinutes(
+            firstSched?.startTime,
+            firstSched?.endTime,
+          ),
+        startDate: firstSched
+          ? firstSched.scheduledDate.toISOString().split("T")[0]
+          : fallbackDate,
+        endDate: lastSched
+          ? lastSched.scheduledDate.toISOString().split("T")[0]
+          : fallbackDate,
+        status: c.isActive ? ("active" as const) : ("ended" as const),
+        enrollmentCount: c._count.enrollments,
+        pendingCount: pendingByClassId.get(c.id) ?? 0,
+      };
+    });
 
     // enrollment_count 정렬은 JS 단에서 처리
     if (sort === "enrollment_count") {
@@ -1133,10 +1169,24 @@ export class AcademyService {
   }
 
   /**
-   * startTime ~ endTime 간격을 분으로 반환
+   * "HH:mm" 시각 쌍의 간격(분). 자정 넘김 보정, 형식 불량·미입력이면 0.
+   * (구 calcDurationMinutes 는 대표값 Date 차이 기반이라 날짜부 오염 시 왜곡 — 폐기)
    */
-  private calcDurationMinutes(start: Date, end: Date): number {
-    return Math.round((end.getTime() - start.getTime()) / 60000);
+  private calcHHmmDurationMinutes(
+    start?: string | null,
+    end?: string | null,
+  ): number {
+    if (!start || !end) return 0;
+    const re = /^(\d{2}):(\d{2})$/;
+    const ms = start.match(re);
+    const me = end.match(re);
+    if (!ms || !me) return 0;
+    let diff =
+      Number(me[1]) * 60 +
+      Number(me[2]) -
+      (Number(ms[1]) * 60 + Number(ms[2]));
+    if (diff < 0) diff += 24 * 60;
+    return diff;
   }
 
   /**
@@ -1473,9 +1523,18 @@ export class AcademyService {
         id: true,
         className: true,
         classDays: true,
-        startTime: true,
-        endTime: true,
         academyId: true,
+        // 회당 시간 산출용 — 요일 기본 일정 > 첫 회차 시각 (대표값 미사용)
+        dayScheduleEntries: {
+          select: { dayOfWeek: true, startTime: true, endTime: true },
+          take: 1,
+        },
+        schedules: {
+          where: { isCancelled: false },
+          orderBy: { scheduledDate: "asc" },
+          take: 1,
+          select: { startTime: true, endTime: true },
+        },
         _count: {
           select: {
             enrollments: { where: { status: "paid" } },
@@ -1580,10 +1639,16 @@ export class AcademyService {
           id: classRecord.id,
           className: classRecord.className,
           scheduleSummary: this.buildScheduleSummary(classRecord.classDays),
-          durationMinutes: this.calcDurationMinutes(
-            classRecord.startTime,
-            classRecord.endTime,
-          ),
+          // 회당 시간 — 요일 기본 일정 > 첫 회차 시각 (대표값 미사용).
+          durationMinutes:
+            this.calcHHmmDurationMinutes(
+              classRecord.dayScheduleEntries[0]?.startTime,
+              classRecord.dayScheduleEntries[0]?.endTime,
+            ) ||
+            this.calcHHmmDurationMinutes(
+              classRecord.schedules[0]?.startTime,
+              classRecord.schedules[0]?.endTime,
+            ),
           enrollmentCount: classRecord._count.enrollments,
           pendingCount,
         },

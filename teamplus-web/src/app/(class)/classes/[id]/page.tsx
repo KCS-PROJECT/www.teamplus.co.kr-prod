@@ -32,6 +32,7 @@ import {
   TRAINING_TYPE_LABEL,
   formatDaySchedulesFull,
   formatNextScheduleLabel,
+  formatNextScheduleSummary,
   sortDaySchedules,
   type DaySchedule,
 } from "@/lib/class-categories";
@@ -1189,25 +1190,24 @@ export default function ClassDetailPage() {
   // 정규/오픈 공통 — 등록된 개별 일정(ClassSchedule)이 있으면 달력 + 전체 일정으로 표시한다.
   const hasScheduleList = scheduleList.length > 0;
 
-  /** 수업 주차 — DB 원본 startTime/endTime 우선 (사용자 명시: DB 값과 일치해야 함).
-   *  scheduleRange 는 schedules 응답 기반 폴백. */
+  /** 수업 주차 — 회차 min~max 날짜(scheduleRange) 기준.
+   *  대표값(Class.startTime/endTime)은 날짜부가 등록일로 오염되어 기간 산출에서 제외. */
   const weekCount = (() => {
-    const startISO = classData.startTime ?? scheduleRange?.start;
-    const endISO = classData.endTime ?? scheduleRange?.end;
-    if (!startISO || !endISO) return null;
+    if (!scheduleRange?.start || !scheduleRange?.end) return null;
     const days = Math.ceil(
-      (new Date(endISO).getTime() - new Date(startISO).getTime()) /
+      (new Date(scheduleRange.end).getTime() -
+        new Date(scheduleRange.start).getTime()) /
         (1000 * 60 * 60 * 24),
     );
     if (days <= 0) return null;
     return Math.max(1, Math.ceil(days / 7));
   })();
 
-  /** 단일 회차 여부 — DB 원본 startTime/endTime 비교. */
+  /** 단일 회차 여부 — 회차 min~max 날짜 동일 여부. */
   const isSingleDay = (() => {
-    if (!classData.startTime) return false;
-    if (!classData.endTime) return true;
-    return formatDate(classData.startTime) === formatDate(classData.endTime);
+    if (!scheduleRange?.start) return false;
+    if (!scheduleRange?.end) return true;
+    return formatDate(scheduleRange.start) === formatDate(scheduleRange.end);
   })();
 
   const hasVenue = !!(classData.venueName || classData.venueAddress);
@@ -1219,17 +1219,20 @@ export default function ClassDetailPage() {
   // 다음 회차 (비취소·오늘 이후) — 요일 규칙 없는 수업의 시간 표시 소스.
   const upcomingSchedule = pickUpcomingSchedule(scheduleList);
 
-  // 시간 줄 — 요일별 규칙 > 다음 회차(날짜+회차 시간) > 미표시.
+  // 시간 줄 — 요일별 규칙 > 다음 회차 요약(총 N회 · 다음 …) > 미표시.
   //   대표값(Class.startTime)은 회차별 실제 시각과 다를 수 있어 사용하지 않는다.
   const heroScheduleText = (() => {
     const dayLabel = formatDaySchedulesFull(classData.daySchedules);
     if (dayLabel) return dayLabel;
     return upcomingSchedule
-      ? formatNextScheduleLabel({
-          scheduledDate: upcomingSchedule.scheduledDate,
-          startTime: upcomingSchedule.startTime,
-          endTime: upcomingSchedule.endTime,
-        })
+      ? formatNextScheduleSummary(
+          {
+            scheduledDate: upcomingSchedule.scheduledDate,
+            startTime: upcomingSchedule.startTime,
+            endTime: upcomingSchedule.endTime,
+          },
+          scheduleList.filter((s) => !s.isCancelled).length,
+        )
       : null;
   })();
 
@@ -1512,20 +1515,14 @@ export default function ClassDetailPage() {
               };
               // [수정 2026-05-12] isSingleDay 는 상단(weekCount 옆)에서 한 번 계산해 재사용.
 
-              // [수정 2026-05-15] DB 원본(startTime/endTime) 우선 — 사용자 요청:
-              //  수정 화면 입력값과 동일하게 표시. derived field 미사용.
-              // 개별 일정이 있으면 기간을 일정의 min~max 날짜로 산출(입력값과 일치),
-              //   없으면 DB 단일 대표값(startTime/endTime) 폴백.
+              // 기간 — 회차 min~max 날짜 기준. 대표값(Class.startTime) 폴백 제거
+              //   (날짜부가 등록일로 오염되어 기간 표기로 신뢰 불가).
               const periodValue = hasScheduleList && scheduleRange
                 ? formatDateCompact(scheduleRange.start) ===
                   formatDateCompact(scheduleRange.end)
                   ? formatDateCompact(scheduleRange.start)
                   : `${formatDateCompact(scheduleRange.start)} ~ ${formatDateCompact(scheduleRange.end)}`
-                : classData.startTime
-                  ? isSingleDay
-                    ? formatDateCompact(classData.startTime)
-                    : `${formatDateCompact(classData.startTime)} ~ ${formatDateCompact(classData.endTime!)}`
-                  : "기간 미정";
+                : "기간 미정";
 
               const periodSub = hasScheduleList
                 ? `총 ${scheduleList.length}회`

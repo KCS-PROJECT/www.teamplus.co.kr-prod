@@ -22,7 +22,6 @@ import {
 } from "@/common/utils/kst-date.util";
 import {
   computePackageGuardMeta,
-  isClassEnded as isClassEndedUtil,
   shouldHideInactiveFor,
 } from "./utils/package-guard.util";
 import { CreateClassDto, DayScheduleItemDto } from "./dto/create-class.dto";
@@ -34,12 +33,12 @@ import { TeamsService } from "@/teams/teams.service";
 /**
  * ClassProduct 생성 헬퍼 — 입력 가격 + 정기 패키지 메타로 1~2개 상품 생성.
  *
- * 정기 패키지 단위는 "주 N회 + 주 수 + 총 회수" 정수 단위로 표현 (회의록 2026-04-23 정합).
+ * 정기 패키지 단위는 "주 수 + 총 회수" 정수 단위로 표현.
  *  - durationDays = packageWeeks × 7 (만료일 SoT)
  *  - sessionsPerMonth = packageTotalSessions (발급 크레딧 수량 — 컬럼명 무관 "총 회수" 의미)
- *  - sessionsPerWeek = classDays.length (주 빈도 — 항상 정수)
- *  - 입력 누락 시 안전 폴백: weeks=4, totalSessions=4, perWeek=1 (기존 시드 호환)
- *
+ *  - sessionsPerWeek 자동 파생(classDays.length) 폐기 — 갱신 안 되는 스냅샷 오염원이며
+ *    MONTHLY_FIXED 는 무차감 기간제라 주 빈도 제약 미사용. 상품 설명은 감독 자유 입력이 SoT.
+ *  - 입력 누락 시 안전 폴백: weeks=4, totalSessions=4 (기존 시드 호환)
  */
 function buildClassProducts(
   classId: string,
@@ -48,7 +47,6 @@ function buildClassProducts(
     monthlyPrice?: number;
     packageWeeks?: number;
     packageTotalSessions?: number;
-    classDays?: string[];
     billingMode?: string;
   },
 ): Array<{
@@ -122,18 +120,16 @@ function buildClassProducts(
         `정기 패키지 총 회수(${totalSessions})는 주 수×14(${weeks * 14}) 이하여야 합니다.`,
       );
     }
-    const perWeek = Math.max(
-      1,
-      dto.classDays?.length ?? Math.ceil(totalSessions / weeks),
-    );
+    // "주 N회" 자동 파생 폐기 — classDays 는 갱신 안 되는 스냅샷이라 상품 메타 오염원.
+    //   MONTHLY_FIXED 는 무차감 기간제라 주 빈도 개념 자체가 제약에 미사용.
+    //   설명은 감독 자유 입력(description)이 SoT — 자동 문구는 기간·총회수만.
     products.push({
       classId,
       productName: `${weeks}주 정기권`,
-      description: `${weeks}주간 총 ${totalSessions}회 수강 · 주 ${perWeek}회`,
+      description: `${weeks}주간 총 ${totalSessions}회 수강`,
       feeType: "MONTHLY_FIXED",
       price: dto.monthlyPrice,
       sessionsPerMonth: totalSessions,
-      sessionsPerWeek: perWeek,
       durationDays: weeks * 7,
     });
   }
@@ -766,42 +762,61 @@ export class ClassesService {
                 `[AcademyClass:${created.id}] schedule 자동 생성 SKIP — 유효한 요일 없음 (classDays=${JSON.stringify(effectiveClassDaysAcademy)})`,
               );
             } else {
-              // 단일 startTime 폴백 hh/mm
+              // 회차 시각 — 요일 규칙 > dto 단일 startTime/endTime(naive ISO → UTC 추출).
+              //   회차 row 의 startTime/endTime(text) 필드에 직접 저장해 "시간 없는 회차"
+              //   생성 경로를 차단한다 (대표값 폴백에 기대지 않도록).
+              const pad2 = (n: number) => String(n).padStart(2, "0");
               const fallbackDtAcademy = createDto.startTime ? new Date(createDto.startTime) : null;
-              const fallbackHHAcademy = fallbackDtAcademy?.getUTCHours() ?? 0;
-              const fallbackMMAcademy = fallbackDtAcademy?.getUTCMinutes() ?? 0;
+              const fallbackEndDtAcademy = createDto.endTime ? new Date(createDto.endTime) : null;
+              const fallbackStartHHmm = fallbackDtAcademy
+                ? `${pad2(fallbackDtAcademy.getUTCHours())}:${pad2(fallbackDtAcademy.getUTCMinutes())}`
+                : null;
+              const fallbackEndHHmm = fallbackEndDtAcademy
+                ? `${pad2(fallbackEndDtAcademy.getUTCHours())}:${pad2(fallbackEndDtAcademy.getUTCMinutes())}`
+                : null;
 
-              const candidateDates: Date[] = [];
-              // scheduledDate(@db.Date)는 UTC 자정 규약 — UTC 기준으로 순회·저장(시각 성분은 date cast 시 무시).
+              const candidateRows: {
+                scheduledDate: Date;
+                startTime: string | null;
+                endTime: string | null;
+                venueId: string | null;
+              }[] = [];
+              // scheduledDate(@db.Date)는 UTC 자정 규약 — UTC 기준으로 순회·저장.
               const cursor = dateOnlyToUtc(createDto.startDate!);
               const cursorEnd = dateOnlyToUtc(createDto.endDate!);
-              while (cursor <= cursorEnd && candidateDates.length <= 200) {
+              while (cursor <= cursorEnd && candidateRows.length <= 200) {
                 const dow = cursor.getUTCDay();
                 if (targetDows.has(dow)) {
-                  const dt = new Date(cursor);
-                  if (hasDaySchedulesAcademy) {
-                    const dayName = dowToNameAcademy[dow];
-                    const entry = dayName ? dayTimeMapAcademy.get(dayName) : undefined;
-                    dt.setUTCHours(entry?.startHH ?? fallbackHHAcademy, entry?.startMM ?? fallbackMMAcademy, 0, 0);
-                  } else {
-                    dt.setUTCHours(fallbackHHAcademy, fallbackMMAcademy, 0, 0);
-                  }
-                  candidateDates.push(dt);
+                  const dayName = dowToNameAcademy[dow];
+                  const entry =
+                    hasDaySchedulesAcademy && dayName
+                      ? dayTimeMapAcademy.get(dayName)
+                      : undefined;
+                  candidateRows.push({
+                    scheduledDate: new Date(cursor),
+                    startTime: entry
+                      ? `${pad2(entry.startHH)}:${pad2(entry.startMM)}`
+                      : fallbackStartHHmm,
+                    endTime: entry
+                      ? `${pad2(entry.endHH)}:${pad2(entry.endMM)}`
+                      : fallbackEndHHmm,
+                    venueId: entry?.venueId ?? createDto.venueId ?? null,
+                  });
                 }
                 cursor.setUTCDate(cursor.getUTCDate() + 1);
               }
 
-              if (candidateDates.length > 200) {
+              if (candidateRows.length > 200) {
                 throw new BadRequestException(
                   "한 번에 생성 가능한 일정은 최대 200건입니다.",
                 );
               }
 
-              if (candidateDates.length > 0) {
+              if (candidateRows.length > 0) {
                 const result = await tx.classSchedule.createMany({
-                  data: candidateDates.map((scheduledDate) => ({
+                  data: candidateRows.map((row) => ({
                     classId: created.id,
-                    scheduledDate,
+                    ...row,
                   })),
                 });
                 schedulesCreated = result.count;
@@ -1249,7 +1264,13 @@ export class ClassesService {
             (p) => p.feeType === "PER_SESSION" && p.isActive !== false,
           ) ?? c.products?.find((p) => p.feeType === "PER_SESSION");
 
-        const isClassEnded = isClassEndedUtil(c.endTime);
+        // 수업 종료 판정 — 마지막 비취소 회차 날짜 기준.
+        //   기존 isClassEndedUtil(c.endTime)은 대표값 날짜부(등록일 오염)에 의존해 폐기.
+        //   회차가 없으면 종료로 보지 않는다(진행중 취급).
+        const lastSchedForEnd = c.schedules?.[c.schedules.length - 1];
+        const isClassEnded = lastSchedForEnd
+          ? lastSchedForEnd.scheduledDate < kstTodayUtcMidnight()
+          : false;
 
         return {
           ...c,
@@ -1273,11 +1294,9 @@ export class ClassesService {
             ? Math.max(1, Math.round(monthlyProduct.durationDays / 7))
             : null,
           packageTotalSessions: monthlyProduct?.sessionsPerMonth ?? null,
-          // PACKAGE_WEEKS_SPEC §3 정의 — "주 N회 = classDays.length".
-          // 구 데이터(sessionsPerWeek null) 는 classDays 길이로 파생 표시.
-          packageSessionsPerWeek:
-            monthlyProduct?.sessionsPerWeek ??
-            (Array.isArray(c.classDays) ? c.classDays.length : null),
+          // "주 N회" 자동 파생 폐기 — classDays 폴백 제거(스냅샷 오염원).
+          //   상품에 명시 저장된 값만 전달, 없으면 null(프론트 미표시).
+          packageSessionsPerWeek: monthlyProduct?.sessionsPerWeek ?? null,
           isClassEnded,
           // 2026-06-05: 요일별 시간·장소 규칙 — getClass 와 동일 DOW_ORDER 정렬.
           //   없으면 [] — 기존 단일 startTime/endTime/venueId 경로로 폴백 표시.
@@ -1603,12 +1622,11 @@ export class ClassesService {
       //   classes/utils/package-guard.util.ts:computePackageGuardMeta() 호출로 메타 주입.
       //   shouldHideInactiveFor(requester?.userType) — PARENT/CHILD/TEEN 비활성 제외.
       products: (() => {
-        // [2026-06-09] 오픈클래스(academyId)는 종료일 개념이 날짜별 일정과 맞지 않아
-        //   종료 판정에서 제외(endTime=null) → 전체(MONTHLY_FIXED) 등이 학부모에게 정상 노출.
-        const endTime = classRecord.academyId ? null : (classRecord.endTime ?? null);
+        // classEndDate 메타 — 대표값(Class.endTime)은 날짜부가 등록일로 오염되어 폐기(null 고정).
+        //   차단 로직은 isActive 만 사용(수업 종료일 기반 차단 폐기)·FE 실사용 0건 확인.
         const productsWithMeta = (classRecord.products ?? []).map((p) => ({
           ...p,
-          ...computePackageGuardMeta(p, endTime),
+          ...computePackageGuardMeta(p, null),
         }));
         return shouldHideInactiveFor(requester?.userType)
           ? productsWithMeta.filter((p) => p.isPurchasable !== false)
@@ -1769,23 +1787,20 @@ export class ClassesService {
       orderBy: { createdAt: "desc" },
     });
 
+    const sdTodayList = kstTodayUtcMidnight();
     const result = classes.map((c) => {
       const days = Array.isArray(c.classDays)
         ? (c.classDays as string[]).join(", ")
         : "";
-      // Class.startTime/endTime 은 벽시계 시각을 KST 변환 없이 naive 저장(timestamp without tz).
-      //   Prisma 가 UTC 로 역직렬화하므로 getUTCHours/getUTCMinutes 로 추출해야 입력 시각과 일치한다.
-      //   (toLocaleTimeString 은 서버 로컬 타임존으로 재변환해 학부모 /classes 목록과 시각이 어긋남.)
-      const fmtNaive = (d: Date) =>
-        `${String(d.getUTCHours()).padStart(2, "0")}:${String(
-          d.getUTCMinutes(),
-        ).padStart(2, "0")}`;
-      const st = c.startTime ? fmtNaive(new Date(c.startTime)) : "";
-      const et = c.endTime ? fmtNaive(new Date(c.endTime)) : "";
       const coachName = c.coach
         ? `${c.coach.lastName ?? ""}${c.coach.firstName ?? ""}`.trim() ||
           c.instructorName
         : c.instructorName;
+      // 다음 회차 (비취소·오늘 이후 첫 회차) — time 라벨·nextSchedule 공용 소스.
+      //   대표값(Class.startTime) 기반 time 라벨 폐기 — 요일별 상이/등록시각 폴백 왜곡.
+      const nextSched = (c.schedules ?? []).find(
+        (s) => s.scheduledDate >= sdTodayList,
+      );
       return {
         id: c.id,
         className: c.className,
@@ -1795,7 +1810,12 @@ export class ClassesService {
         teamLogoUrl: c.team?.logoUrl ?? c.academy?.imageUrl ?? null,
         academyId: c.academyId,
         dayOfWeek: days,
-        time: st && et ? `${st} - ${et}` : "",
+        // 다음 회차의 실제 시각 — 없으면 빈 문자열(프론트 미표시).
+        time: nextSched?.startTime
+          ? nextSched.endTime
+            ? `${nextSched.startTime} - ${nextSched.endTime}`
+            : nextSched.startTime
+          : "",
         startTime: c.startTime,
         endTime: c.endTime,
         location: c.venue?.name ?? "",
@@ -1827,21 +1847,17 @@ export class ClassesService {
           c.schedules && c.schedules.length > 0
             ? c.schedules[c.schedules.length - 1].scheduledDate.toISOString()
             : null,
+        // 비취소 총 회차 수 — 카드 "총 N회" 표기용.
+        scheduleCount: c.schedules?.length ?? 0,
         // 다음 회차 (비취소·오늘 이후) — 기본 일정 없는 수업 카드의 날짜(+회차 시간) 표시용.
         //   대표 startTime 은 표시 신뢰 불가(요일별 상이·new Date 폴백)라 카드 시간 SoT 에서 제외.
-        nextSchedule: (() => {
-          const sdToday = kstTodayUtcMidnight();
-          const n = (c.schedules ?? []).find(
-            (s) => s.scheduledDate >= sdToday,
-          );
-          return n
-            ? {
-                scheduledDate: n.scheduledDate.toISOString(),
-                startTime: n.startTime ?? null,
-                endTime: n.endTime ?? null,
-              }
-            : null;
-        })(),
+        nextSchedule: nextSched
+          ? {
+              scheduledDate: nextSched.scheduledDate.toISOString(),
+              startTime: nextSched.startTime ?? null,
+              endTime: nextSched.endTime ?? null,
+            }
+          : null,
         isActive: c.isActive,
         description: c.description,
         // [수정 2026-05-15 db-keeper] 가격 정책 (T03/F1):
@@ -2583,13 +2599,10 @@ export class ClassesService {
 
     // 수강료 업데이트 (ClassProduct)
     //   - delete → create 를 단일 트랜잭션으로 원자화 (중간 실패 시 좀비 상품 0건 방지)
-    //   - classDays 입력이 없으면 기존 Class.classDays 활용 → sessionsPerWeek 계산 정합
     if (
       updateDto.singlePrice !== undefined ||
       updateDto.monthlyPrice !== undefined
     ) {
-      const effectiveClassDays =
-        updateDto.classDays ?? (classRecord.classDays as string[] | undefined);
       const products = buildClassProducts(
         classId,
         {
@@ -2597,7 +2610,6 @@ export class ClassesService {
           monthlyPrice: updateDto.monthlyPrice,
           packageWeeks: updateDto.packageWeeks,
           packageTotalSessions: updateDto.packageTotalSessions,
-          classDays: effectiveClassDays,
           // 기존 수업의 결제방식 기준으로 PER_SESSION 판매/비판매·billingTiming 결정 (B2).
           billingMode: classRecord.billingMode,
         },
@@ -2941,8 +2953,6 @@ export class ClassesService {
       updateDto.singlePrice !== undefined ||
       updateDto.monthlyPrice !== undefined
     ) {
-      const effectiveClassDays =
-        updateDto.classDays ?? (classRecord.classDays as string[] | undefined);
       const products = buildClassProducts(
         classId,
         {
@@ -2950,7 +2960,6 @@ export class ClassesService {
           monthlyPrice: updateDto.monthlyPrice,
           packageWeeks: updateDto.packageWeeks,
           packageTotalSessions: updateDto.packageTotalSessions,
-          classDays: effectiveClassDays,
           // 기존 수업의 결제방식 기준으로 PER_SESSION 판매/비판매·billingTiming 결정 (B2).
           billingMode: classRecord.billingMode,
         },
@@ -3233,6 +3242,11 @@ export class ClassesService {
     // candidateDates 산출 — dates(미니달력 선택) 모드 우선, 없으면 기존 기간+요일 모드.
     const useDates = !!(dto.dates && dto.dates.length > 0);
     let candidateDates: Date[];
+    // 요일 모드 회차별 시각·장소 (날짜 문자열 → 저장값) — 요일 규칙에서 산출.
+    const weekdayTimeByDate = new Map<
+      string,
+      { startTime: string | null; endTime: string | null; venueId: string | null }
+    >();
     if (useDates) {
       // 미니달력으로 선택한 날짜 배열 — 자정 기준 ClassSchedule 생성.
       //   시각·장소는 ClassSchedule.startTime/endTime/venueId 필드로 별도 저장(오픈클래스 방식 통일).
@@ -3285,13 +3299,11 @@ export class ClassesService {
       );
       const hasBulkDaySchedules = bulkDayTimeMap.size > 0;
       const dowToNameBulk: Record<number, string> = { 0: "일", 1: "월", 2: "화", 3: "수", 4: "목", 5: "금", 6: "토" };
+      const pad2Bulk = (n: number) => String(n).padStart(2, "0");
 
-      // startTime (HH:mm) — dto 지정 > 수업 ClassDaySchedule 요일별 > Class.startTime 단일 폴백
-      const resolvedTime = dto.startTime
-        ? dto.startTime
-        : `${String(classRecord.startTime.getUTCHours()).padStart(2, "0")}:${String(classRecord.startTime.getUTCMinutes()).padStart(2, "0")}`;
-      const [fallbackHhBulk, fallbackMmBulk] = resolvedTime.split(":").map((n) => parseInt(n, 10));
-
+      // 회차 시각 — dto 지정 > 수업 ClassDaySchedule 요일별 > 미저장(null).
+      //   대표값(Class.startTime) 폴백 제거. 산출 시각은 회차 row 의 startTime/endTime(text)
+      //   필드에 직접 저장해 "시간 없는 회차" 생성 경로를 차단한다.
       // 기간 내 요일 매칭 날짜 수집 — scheduledDate(@db.Date)는 UTC 자정 규약이라 UTC 기준 순회.
       const dates: Date[] = [];
       const cursor = dateOnlyToUtc(dto.startDate);
@@ -3300,14 +3312,20 @@ export class ClassesService {
         const dow = cursor.getUTCDay();
         if (targetDows.has(dow)) {
           const dt = new Date(cursor);
-          if (hasBulkDaySchedules && !dto.startTime) {
-            // ClassDaySchedule 요일별 시각 적용 (dto.startTime 미지정 시에만)
-            const dayName = dowToNameBulk[dow];
-            const entry = dayName ? bulkDayTimeMap.get(dayName) : undefined;
-            dt.setUTCHours(entry?.startHH ?? fallbackHhBulk, entry?.startMM ?? fallbackMmBulk, 0, 0);
-          } else {
-            dt.setUTCHours(fallbackHhBulk || 0, fallbackMmBulk || 0, 0, 0);
-          }
+          const dayName = dowToNameBulk[dow];
+          const entry =
+            hasBulkDaySchedules && dayName
+              ? bulkDayTimeMap.get(dayName)
+              : undefined;
+          weekdayTimeByDate.set(dateOnlyToString(dt), {
+            startTime:
+              dto.startTime ??
+              (entry ? `${pad2Bulk(entry.startHH)}:${pad2Bulk(entry.startMM)}` : null),
+            endTime:
+              dto.endTime ??
+              (entry ? `${pad2Bulk(entry.endHH)}:${pad2Bulk(entry.endMM)}` : null),
+            venueId: entry?.venueId ?? dto.venueId ?? null,
+          });
           dates.push(dt);
         }
         cursor.setUTCDate(cursor.getUTCDate() + 1);
@@ -3366,21 +3384,27 @@ export class ClassesService {
     // ─── RSVP_DISABLED_2026-05-28 ─── END ───────────────────────────
 
     // 날짜 배열 모드: 선택 날짜들에 공통 시각·장소를 ClassSchedule 필드로 저장 (오픈클래스 방식 통일).
-    //   요일 모드(하위호환)는 기존대로 scheduledDate 시각만 사용(필드 미저장).
+    //   요일 모드: 요일 규칙에서 산출한 회차별 시각·장소(weekdayTimeByDate)를 저장.
     const scheduleExtra = useDates
       ? {
           startTime: dto.startTime ?? null,
           endTime: dto.endTime ?? null,
           venueId: dto.venueId ?? null,
         }
-      : {};
+      : null;
 
     // 트랜잭션 — 일정 일괄 생성 (RSVP 자동 생성 비활성)
     const created = await this.prisma.$transaction(async (tx) => {
       const schedules = await Promise.all(
         toCreate.map((scheduledDate) =>
           tx.classSchedule.create({
-            data: { classId, scheduledDate, ...scheduleExtra },
+            data: {
+              classId,
+              scheduledDate,
+              ...(scheduleExtra ??
+                weekdayTimeByDate.get(dateOnlyToString(scheduledDate)) ??
+                {}),
+            },
           }),
         ),
       );
@@ -3505,6 +3529,11 @@ export class ClassesService {
     // candidateDates 산출 — dates(미니달력 선택) 모드 우선, 없으면 기존 기간+요일 모드.
     const useDates = !!(dto.dates && dto.dates.length > 0);
     let candidateDates: Date[];
+    // 요일 모드 회차별 시각·장소 (날짜 문자열 → 저장값) — 요일 규칙에서 산출.
+    const weekdayTimeByDate = new Map<
+      string,
+      { startTime: string | null; endTime: string | null; venueId: string | null }
+    >();
     if (useDates) {
       candidateDates = dto.dates!.map((d) => dateOnlyToUtc(d));
       if (candidateDates.some((d) => isNaN(d.getTime()))) {
@@ -3554,12 +3583,10 @@ export class ClassesService {
       );
       const hasBulkAcademyDaySchedules = bulkAcademyDayTimeMap.size > 0;
       const dowToNameBulkAcademy: Record<number, string> = { 0: "일", 1: "월", 2: "화", 3: "수", 4: "목", 5: "금", 6: "토" };
+      const pad2AcademyBulk = (n: number) => String(n).padStart(2, "0");
 
-      const resolvedTime = dto.startTime
-        ? dto.startTime
-        : `${String(classRecord.startTime.getUTCHours()).padStart(2, "0")}:${String(classRecord.startTime.getUTCMinutes()).padStart(2, "0")}`;
-      const [fallbackHhAcademyBulk, fallbackMmAcademyBulk] = resolvedTime.split(":").map((n) => parseInt(n, 10));
-
+      // 회차 시각 — dto 지정 > 요일 규칙 > 미저장(null). 대표값(Class.startTime) 폴백 제거.
+      //   산출 시각은 회차 row 의 startTime/endTime(text) 필드에 직접 저장.
       // scheduledDate(@db.Date)는 UTC 자정 규약 — UTC 기준 순회로 날짜만 정확히 저장.
       const dates: Date[] = [];
       const cursor = dateOnlyToUtc(dto.startDate);
@@ -3568,13 +3595,24 @@ export class ClassesService {
         const dow = cursor.getUTCDay();
         if (targetDows.has(dow)) {
           const dt = new Date(cursor);
-          if (hasBulkAcademyDaySchedules && !dto.startTime) {
-            const dayName = dowToNameBulkAcademy[dow];
-            const entry = dayName ? bulkAcademyDayTimeMap.get(dayName) : undefined;
-            dt.setUTCHours(entry?.startHH ?? fallbackHhAcademyBulk, entry?.startMM ?? fallbackMmAcademyBulk, 0, 0);
-          } else {
-            dt.setUTCHours(fallbackHhAcademyBulk || 0, fallbackMmAcademyBulk || 0, 0, 0);
-          }
+          const dayName = dowToNameBulkAcademy[dow];
+          const entry =
+            hasBulkAcademyDaySchedules && dayName
+              ? bulkAcademyDayTimeMap.get(dayName)
+              : undefined;
+          weekdayTimeByDate.set(dateOnlyToString(dt), {
+            startTime:
+              dto.startTime ??
+              (entry
+                ? `${pad2AcademyBulk(entry.startHH)}:${pad2AcademyBulk(entry.startMM)}`
+                : null),
+            endTime:
+              dto.endTime ??
+              (entry
+                ? `${pad2AcademyBulk(entry.endHH)}:${pad2AcademyBulk(entry.endMM)}`
+                : null),
+            venueId: entry?.venueId ?? dto.venueId ?? null,
+          });
           dates.push(dt);
         }
         cursor.setUTCDate(cursor.getUTCDate() + 1);
@@ -3637,13 +3675,19 @@ export class ClassesService {
           endTime: dto.endTime ?? null,
           venueId: dto.venueId ?? null,
         }
-      : {};
+      : null;
 
     const createdSchedules = await this.prisma.$transaction(async (tx) => {
       const schedules = await Promise.all(
         toCreate.map((scheduledDate) =>
           tx.classSchedule.create({
-            data: { classId, scheduledDate, ...scheduleExtra },
+            data: {
+              classId,
+              scheduledDate,
+              ...(scheduleExtra ??
+                weekdayTimeByDate.get(dateOnlyToString(scheduledDate)) ??
+                {}),
+            },
           }),
         ),
       );
@@ -4082,12 +4126,10 @@ export class ClassesService {
     // PACKAGE_END_GUARD (v3 · SoT 단일화 2026-05-22):
     //   classes/utils/package-guard.util.ts:computePackageGuardMeta() 호출로 메타 주입.
     //   shouldHideInactiveFor(requester?.userType) — PARENT/CHILD/TEEN 비활성 제외.
-    // [2026-06-09] 오픈클래스는 종료일 개념이 날짜별 일정과 맞지 않아 종료 판정 제외(endTime=null)
-    //   → 전체(MONTHLY_FIXED) 등이 isPurchasable=true 로 결제 옵션에 정상 노출.
-    const endTime = classRecord.academyId ? null : (classRecord.endTime ?? null);
+    // classEndDate 메타 — 대표값(Class.endTime)은 날짜부가 등록일로 오염되어 폐기(null 고정).
     const productsWithMeta = products.map((p) => ({
       ...p,
-      ...computePackageGuardMeta(p, endTime),
+      ...computePackageGuardMeta(p, null),
     }));
     return shouldHideInactiveFor(requester?.userType)
       ? productsWithMeta.filter((p) => p.isPurchasable !== false)

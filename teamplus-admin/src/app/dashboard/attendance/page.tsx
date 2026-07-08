@@ -52,14 +52,16 @@ interface TeamClass {
   capacity?: number;
   maxStudents?: number;
   studentCount?: number;
-  startTime?: string;
-  endTime?: string;
   classDays?: string[];
   dayOfWeek?: string;
   trainingType?: string | null;
   category?: string | null;
   approvalStatus?: string;
   isActive?: boolean;
+  /** 요일별 기본 일정 — 시간 표시 SoT (대표값 startTime/endTime 은 신뢰 불가라 미사용). */
+  daySchedules?: { dayOfWeek: string; startTime: string; endTime: string }[];
+  /** 다음 회차의 실제 시각("HH:mm - HH:mm") — 백엔드 해석값. */
+  time?: string;
 }
 
 interface ApiWrap<T> { success?: boolean; data?: T }
@@ -72,16 +74,27 @@ function unwrap<T>(payload: unknown): T | null {
   return (payload ?? null) as T | null;
 }
 
-function formatTime(iso?: string) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-}
-
 const DAY_KO: Record<string, string> = {
   MON: '월', TUE: '화', WED: '수', THU: '목', FRI: '금', SAT: '토', SUN: '일',
 };
+
+/**
+ * 수업 시간 라벨 — 요일 기본 일정(모든 요일 시간 동일 시)의 시각 > 다음 회차 시각(time) > ''.
+ * 대표값(Class.startTime ISO)은 요일별 상이 왜곡 + 등록시각 폴백 오염으로 사용하지 않는다.
+ */
+function classTimeLabel(c: TeamClass): string {
+  const ds = c.daySchedules ?? [];
+  if (ds.length > 0) {
+    const uniform = ds.every(
+      (d) => d.startTime === ds[0].startTime && d.endTime === ds[0].endTime,
+    );
+    if (uniform && ds[0].startTime) {
+      return ds[0].endTime ? `${ds[0].startTime}-${ds[0].endTime}` : ds[0].startTime;
+    }
+    return ''; // 요일별 시간 상이 — 요일만 표시 (시간은 상세에서)
+  }
+  return c.time ?? '';
+}
 
 function formatDays(days?: string[] | string) {
   if (!days) return '';
@@ -299,9 +312,7 @@ export default function ClassManagementPage() {
                               </p>
                               <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                                 {days && <span>{days}</span>}
-                                {(c.startTime || c.endTime) && (
-                                  <span>{formatTime(c.startTime)}{c.endTime ? `-${formatTime(c.endTime)}` : ''}</span>
-                                )}
+                                {classTimeLabel(c) && <span>{classTimeLabel(c)}</span>}
                                 {(c.coach || c.instructorName) && <span>· {c.coach ?? c.instructorName}</span>}
                               </div>
                             </div>

@@ -140,9 +140,15 @@ function mapBackendDaysToEvents(days: BackendCalendarDay[]): Record<string, Cale
         refType: be.refType,
         title: be.title,
         date: day.date,
-        // 표시 시각 — 백엔드 displayStart(text "HH:mm") 우선. 없으면 기존 ISO 폴백(extractHM).
-        startTime: be.displayStart ?? extractHM(be.timeStart),
-        endTime: be.displayEnd ?? extractHM(be.timeEnd),
+        // 표시 시각 — 백엔드 displayStart(text "HH:mm") SoT.
+        //   수업 회차는 시각 미상 시 timeStart 가 날짜(UTC 자정)뿐이라 ISO 폴백 파싱 시
+        //   09:00 오표시 → 미표시(null). 대회/경기(instant)는 기존 ISO 폴백 유지.
+        startTime:
+          be.displayStart ??
+          (be.refType === 'class_schedule' ? null : extractHM(be.timeStart)),
+        endTime:
+          be.displayEnd ??
+          (be.refType === 'class_schedule' ? null : extractHM(be.timeEnd)),
         venue: null,
         clubId: null,
         clubName: null,

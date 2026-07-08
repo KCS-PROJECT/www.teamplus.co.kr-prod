@@ -55,11 +55,11 @@ export class CreateClassProductDto {
   @IsString({ message: "결제 방식은 문자열이어야 합니다." })
   feeType?: string;
 
-  // sessionsPerWeek = 수업 classDays.length (PackageEditSheet 가 자동 입력).
-  // 학부모 결제 화면의 "주 N회" 라벨 표시 정합성을 위해 저장.
+  // [폐기 예정] "주 N회" 자동 파생(classDays.length) 제거로 신규 전송 없음 —
+  //   구 클라이언트 하위호환용으로만 수용. 표시·제약 어디에도 미사용.
   @ApiPropertyOptional({
     example: 2,
-    description: "주당 수업 횟수 (수업 일정 classDays 수와 일치)",
+    description: "주당 수업 횟수 (deprecated — 신규 미사용, 하위호환 수용만)",
   })
   @IsOptional()
   @IsNumber({}, { message: "주당 수업 횟수는 숫자여야 합니다." })

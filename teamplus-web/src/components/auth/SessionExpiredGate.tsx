@@ -3,8 +3,9 @@
 /**
  * SessionExpiredGate
  *
- * `teamplus:api-unauthorized`(reason=expired) 이벤트를 구독하여
- * 세션 만료 시 `SessionExpiredModal`(자동 로그아웃 안내)을 표시한다.
+ * `teamplus:api-unauthorized`(reason=expired|replaced) 이벤트를 구독하여
+ * 세션 만료(expired) 또는 다른 기기 로그인에 의한 강제 종료(replaced) 시
+ * `SessionExpiredModal`(자동 로그아웃 안내)을 원인별 문구로 표시한다.
  * - `required`(미인증 접근)는 기존 토스트 + 자동 리다이렉트가 처리한다.
  * - 공개 진입점(splash/onboarding/signup/identity/login)에서는 모달을 띄우지 않는다.
  *
@@ -12,7 +13,10 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { SessionExpiredModal } from "./SessionExpiredModal";
+import {
+  SessionExpiredModal,
+  type SessionExpiredVariant,
+} from "./SessionExpiredModal";
 
 /** 모달을 띄우지 않는 공개 진입점 */
 function isPublicEntryPath(pathname: string): boolean {
@@ -28,6 +32,7 @@ function isPublicEntryPath(pathname: string): boolean {
 
 export function SessionExpiredGate() {
   const [isOpen, setIsOpen] = useState(false);
+  const [variant, setVariant] = useState<SessionExpiredVariant>("expired");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -35,9 +40,10 @@ export function SessionExpiredGate() {
     const handler = (e: Event) => {
       const detail =
         (e as CustomEvent<{ reason?: string }>).detail ?? {};
-      // 세션 만료만 모달로 안내 (required 는 토스트/리다이렉트가 담당)
-      if (detail.reason !== "expired") return;
+      // 세션 만료·강제 종료만 모달로 안내 (required 는 토스트/리다이렉트가 담당)
+      if (detail.reason !== "expired" && detail.reason !== "replaced") return;
       if (isPublicEntryPath(window.location.pathname)) return;
+      setVariant(detail.reason);
       setIsOpen(true);
     };
 
@@ -46,18 +52,16 @@ export function SessionExpiredGate() {
       window.removeEventListener("teamplus:api-unauthorized", handler);
   }, []);
 
-  const handleClose = useCallback(() => setIsOpen(false), []);
-
   const handleRelogin = useCallback(() => {
     const { pathname, search } = window.location;
     const redirect = encodeURIComponent(`${pathname}${search}`);
-    window.location.href = `/login?redirect=${redirect}&reason=expired`;
-  }, []);
+    window.location.href = `/login?redirect=${redirect}&reason=${variant}`;
+  }, [variant]);
 
   return (
     <SessionExpiredModal
       isOpen={isOpen}
-      onClose={handleClose}
+      variant={variant}
       onRelogin={handleRelogin}
     />
   );
