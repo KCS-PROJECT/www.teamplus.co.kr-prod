@@ -24,6 +24,7 @@ import { useLoading } from "@/contexts/LoadingContext";
 import { useLoginRateLimit } from "@/hooks/useLoginRateLimit";
 import { useAuthUI } from "@/hooks/useNativeUI";
 import { MobileContainer } from "@/components/layout/MobileContainer";
+import { BrandWordmark } from "@/components/common/BrandWordmark";
 import { useKeyboardAvoidance } from "@/hooks/useKeyboardAvoidance";
 import { isNativeApp } from "@/lib/environment";
 import MaintenanceBanner from "@/components/common/MaintenanceBanner";
@@ -735,11 +736,17 @@ export default function LoginPage() {
 
   return (
     <MobileContainer hasBottomNav={false} className="bg-it-surface dark:bg-puck">
-      <main data-no-enter className="flex flex-1 flex-col overflow-y-auto scroll-keyboard-safe">
+      {/* !pb-0 — MobileContainer 공용 [&>main]:pb-30(120px, BottomNav 예약)은 BottomNav 없는
+          로그인에선 하단 데드존만 만든다. safe-area·키보드 inset 은 내부 pb-keyboard-safe-8 이 전담. */}
+      <main data-no-enter className="flex flex-1 flex-col overflow-y-auto scroll-keyboard-safe !pb-0">
         <MaintenanceBanner />
         <div className="flex-1 flex flex-col px-[26px] pt-10 pb-keyboard-safe-8 max-w-md mx-auto w-full">
-          {/* ─── 로고 (대형 아이콘 단독 중앙 배치, 배경 박스 없음) ─────── */}
-          <div className="flex justify-center pt-4 pb-2">
+          {/* 상단 스페이서 — 하단 스페이서와 쌍으로 로고~폼 블록을 세로 중앙 정렬.
+              콘텐츠가 뷰포트를 넘으면(키보드 노출 등) 0 으로 수축해 기존 상단 배치와 동일해짐 */}
+          <div className="flex-1" aria-hidden="true" />
+
+          {/* ─── 로고 + 워드마크 (중앙 배치, 배경 박스 없음) ─────── */}
+          <div className="flex flex-col items-center pt-4 pb-2">
             <Image
               src="/images/app_icons/splash_logo.png"
               alt="팀플러스"
@@ -748,6 +755,7 @@ export default function LoginPage() {
               priority
               className="w-[136px] h-[136px] object-contain"
             />
+            <BrandWordmark className="mt-4 h-7" priority />
           </div>
 
           {/* ─── 알림 영역 ─────────────────────────── */}
@@ -1001,9 +1009,13 @@ export default function LoginPage() {
 
           </form>
 
+          {/* 하단 스페이서 — 상단 스페이서와 쌍 (세로 중앙 정렬) */}
+          <div className="flex-1" aria-hidden="true" />
 
-          {/* ─── 푸터: 회원가입 + 약관 (시안 paddingTop 28 · row gap6 mb14) ── */}
-          <div className="mt-auto pt-7">
+          {/* ─── 푸터: 회원가입 + 약관 (시안 paddingTop 28 · row gap6 mb14) ──
+              auth-footer-keyboard-hide: 터치 기기에서 폼 포커스(=키보드 노출) 동안
+              숨겨 키보드 개폐 시 푸터 출렁임 차단 (globals.css) */}
+          <div className="auth-footer-keyboard-hide pt-7 transition-opacity duration-200 motion-reduce:transition-none">
             {isSignupEnabled && (
               <div className="flex items-center justify-center gap-1.5 mb-3.5">
                 <span className="text-[14px] text-it-ink-500 dark:text-rink-300">

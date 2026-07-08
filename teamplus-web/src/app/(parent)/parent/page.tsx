@@ -22,6 +22,7 @@ import { Icon } from '@/components/ui/Icon';
 import { useNavigation } from '@/components/ui/NavLink';
 import { ChildPickerSheet } from '@/components/parent/ChildPickerSheet';
 import { HomeIdentityStrip } from '@/components/common/HomeIdentityStrip';
+import { BrandWordmark } from '@/components/common/BrandWordmark';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { SectionHead, WalletAppBar } from '@/components/wallet';
 import {
@@ -350,8 +351,14 @@ export default function ParentDashboardPage() {
 
   return (
     <MobileContainer hasBottomNav>
-      {/* 헤더 — 좌측 "팀플러스" 워드마크(기본 title). 정체성(이름·자녀)은 HomeIdentityStrip 전담. */}
+      {/* 헤더 — 좌측 '팀플러스+' 이미지 워드마크 (h1 시맨틱 유지). 정체성(이름·자녀)은 HomeIdentityStrip 전담. */}
       <WalletAppBar
+        title=""
+        titleLeading={
+          <h1 className="flex items-center">
+            <BrandWordmark className="h-5" />
+          </h1>
+        }
         timelineBadge={unreadCount > 0 ? unreadCount : undefined}
         onSearch={() => navigate('/search')}
         onTimeline={() => navigate('/timeline')}
