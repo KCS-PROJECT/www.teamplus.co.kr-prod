@@ -66,13 +66,14 @@ type SummaryItem =
       sortKey: number;
     };
 
-/** [2026-06-19] /enrollments 행 — 등록완료(선불 paid/후불 approved) 판정용 최소 필드. */
+/** /enrollments 행 — 등록완료(선불 paid/후불·BOTH 후불상품 approved) 판정용 최소 필드. */
 interface EnrollRow {
   classId?: string;
   childId?: string;
   status?: string;
   child?: { id?: string } | null;
   class?: { id?: string; billingMode?: string } | null;
+  product?: { billingTiming?: string } | null;
 }
 
 interface ApiDataWrapper<T> {
@@ -202,8 +203,15 @@ export function TeamClassesSummary({
           : (enrollRes.data as { data?: unknown[] }).data;
         (Array.isArray(arr) ? arr : []).forEach((e) => {
           const row = e as EnrollRow;
-          // [2026-06-19] 등록완료 판정 — 선불 paid / 후불 approved (isActiveEnrollment SoT).
-          if (!isActiveEnrollment(row.status, row.class?.billingMode)) return;
+          // 등록완료 판정 — 선불 paid / 후불(POSTPAID·BOTH 후불상품) approved (isActiveEnrollment SoT).
+          if (
+            !isActiveEnrollment(
+              row.status,
+              row.class?.billingMode,
+              row.product?.billingTiming,
+            )
+          )
+            return;
           // [2026-06-17] 선택 자녀 기준 필터 — /enrollments 는 부모의 모든 자녀 등록을
           //   반환하므로, 형제 등록이 선택 자녀 카드에 '등록완료'로 잘못 표시되던 버그 수정.
           const cid = row.childId ?? row.child?.id;

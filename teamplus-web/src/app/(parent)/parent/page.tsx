@@ -81,6 +81,7 @@ interface EnrollmentItem {
   status?: string;
   child?: { id?: string } | null;
   class?: { id?: string; billingMode?: string } | null;
+  product?: { billingTiming?: string } | null;
 }
 
 function pickTeamName(team: TeamListItem): string {
@@ -249,8 +250,15 @@ export default function ParentDashboardPage() {
         const childId = e.child?.id ?? e.childId;
         const classId = e.class?.id ?? e.classId;
         if (!childId || !classId) return;
-        // 선불 paid OR 후불(POSTPAID) approved 만 캘린더 노출 (공통 SoT).
-        if (!isActiveEnrollment(e.status, e.class?.billingMode)) return;
+        // 선불 paid OR 후불(POSTPAID·BOTH 후불상품) approved 만 캘린더 노출 (공통 SoT).
+        if (
+          !isActiveEnrollment(
+            e.status,
+            e.class?.billingMode,
+            e.product?.billingTiming,
+          )
+        )
+          return;
         if (!approvedIds.has(childId)) return;
         if (!map.has(childId)) map.set(childId, new Set());
         map.get(childId)!.add(classId);
