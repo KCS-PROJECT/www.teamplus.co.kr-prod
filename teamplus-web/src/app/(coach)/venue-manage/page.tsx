@@ -22,6 +22,7 @@ import { MESSAGES } from '@/lib/messages';
 import { cn } from '@/lib/utils';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { usePageReady } from '@/hooks/usePageReady';
+import { useDebouncedCallback } from '@/hooks/useDebounce';
 import {
   useVenues,
   useVenuePermissions,
@@ -62,12 +63,20 @@ export default function VenueManagePage() {
 
   const totalCount = venues.length;
 
-  const handleSearchChange = useCallback(
+  // 서버 검색 — 키 입력(한글 조합 중간 단계 포함)마다 API 가 호출되지 않도록 디바운스.
+  const applySearch = useCallback(
     (value: string) => {
-      setSearchTerm(value);
       setParams((prev) => ({ ...prev, search: value || undefined, page: 1 }));
     },
     [setParams],
+  );
+  const [debouncedApplySearch] = useDebouncedCallback(applySearch, 300);
+  const handleSearchChange = useCallback(
+    (value: string) => {
+      setSearchTerm(value);
+      debouncedApplySearch(value);
+    },
+    [debouncedApplySearch],
   );
 
   const openCreate = useCallback(() => {

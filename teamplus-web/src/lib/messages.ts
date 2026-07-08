@@ -72,9 +72,13 @@ export const MESSAGES = {
       weekdayLabel: (day: string) => `${day}요일`,
       removeDay: "삭제",
       removeDayAria: (day: string) => `${day}요일 기본값 삭제`,
+      applyToAll: "모든 요일에 적용",
+      applyToAllAria: (day: string) => `${day}요일 시간·장소를 선택된 모든 요일에 적용`,
+      appliedToAll: "모든 요일에 적용되었습니다.",
       timeUndecided: "시간 미정",
       dateUndecided: "날짜 미정",
     },
+    venueSearchPrompt: "장소명 또는 주소를 검색해주세요.",
     policyInfo:
       "수업 등록 시 학부모님들께 알림이 발송됩니다. 대관 시간 15분 전 링크장 도착을 원칙으로 합니다.",
     policyInfoCreate:

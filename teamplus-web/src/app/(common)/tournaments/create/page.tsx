@@ -25,6 +25,7 @@ import { Icon } from "@/components/ui/Icon";
 import { useToast } from "@/components/ui/Toast";
 import { useNativeUI } from "@/hooks/useNativeUI";
 import { useVenues } from "@/hooks/useVenues";
+import { useDebounce } from "@/hooks/useDebounce";
 import { MESSAGES } from "@/lib/messages";
 import { emitRefresh, REFRESH_KEYS } from "@/lib/refresh-bus";
 import { usePageReady } from '@/hooks/usePageReady';
@@ -148,11 +149,14 @@ export default function TournamentCreatePage() {
   const matchKeySeq = useMemo(() => ({ n: 0 }), []);
 
   // [2026-06-19] 대회장소 링크장 검색 — 입력어 이름 부분 일치 필터 (수업 MultiDatePickerModal 패턴).
+  //   한글 IME 조합 중간값마다 재검색되지 않도록 입력 멈춘 뒤에만 필터.
+  const debouncedVenueQuery = useDebounce(venueQuery, 250);
+  const debouncedScheduleMatches = useDebounce(scheduleMatches, 250);
   const filteredVenues = useMemo(() => {
-    const q = venueQuery.trim().toLowerCase();
-    if (!q) return venues;
+    const q = debouncedVenueQuery.trim().toLowerCase();
+    if (!q) return [] as typeof venues;
     return venues.filter((v) => v.name.toLowerCase().includes(q));
-  }, [venueQuery, venues]);
+  }, [debouncedVenueQuery, venues]);
 
   // 경기별 장소 검색 — 행마다 입력값(venueQuery)으로 저장된 링크장을 필터(대회장소 패턴 동일).
   const filterVenuesByQuery = (q: string) => {
@@ -632,7 +636,7 @@ export default function TournamentCreatePage() {
                   aria-label="대회장소 검색"
                   className={pillInput}
                 />
-                {!venueId && venueQuery.trim() && (
+                {!venueId && debouncedVenueQuery.trim() && (
                   <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-40 divide-y divide-it-line overflow-y-auto rounded-w-md border-[1.5px] border-it-line-strong bg-it-surface shadow-sh-2 dark:divide-rink-700 dark:border-rink-700 dark:bg-rink-800">
                     {filteredVenues.length > 0 ? (
                       filteredVenues.map((v) => (
@@ -651,7 +655,7 @@ export default function TournamentCreatePage() {
                       ))
                     ) : (
                       <li className="px-3 py-2.5 text-w-caption text-it-ink-500 dark:text-rink-300">
-                        &ldquo;{venueQuery.trim()}&rdquo; 검색 결과가 없습니다
+                        &ldquo;{debouncedVenueQuery.trim()}&rdquo; 검색 결과가 없습니다
                       </li>
                     )}
                   </ul>
@@ -889,8 +893,11 @@ export default function TournamentCreatePage() {
                         aria-label={`${idx + 1}경기 장소 검색`}
                         className={`${pillInput} disabled:opacity-60`}
                       />
-                      {!m.venueId && m.venueQuery.trim() && (() => {
-                        const list = filterVenuesByQuery(m.venueQuery);
+                      {!m.venueId && (() => {
+                        // 행별 검색어도 디바운스된 스냅샷 기준으로만 결과 노출.
+                        const dq = (debouncedScheduleMatches.find((x) => x.key === m.key)?.venueQuery ?? "").trim();
+                        if (!dq) return null;
+                        const list = filterVenuesByQuery(dq);
                         return (
                           <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-40 divide-y divide-it-line overflow-y-auto rounded-w-md border-[1.5px] border-it-line-strong bg-it-surface shadow-sh-2 dark:divide-rink-700 dark:border-rink-700 dark:bg-rink-800">
                             {list.length > 0 ? (
@@ -912,7 +919,7 @@ export default function TournamentCreatePage() {
                               ))
                             ) : (
                               <li className="px-3 py-2.5 text-w-caption text-it-ink-500 dark:text-rink-300">
-                                &ldquo;{m.venueQuery.trim()}&rdquo; 검색 결과가 없습니다
+                                &ldquo;{dq}&rdquo; 검색 결과가 없습니다
                               </li>
                             )}
                           </ul>

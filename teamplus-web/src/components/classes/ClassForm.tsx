@@ -6,6 +6,7 @@ import { Icon } from '@/components/ui/Icon';
 import { useToast } from '@/components/ui/Toast';
 import { useNavigation } from '@/components/ui/NavLink';
 import { useNativeScrim } from '@/hooks/useNativeScrim';
+import { useDebounce } from '@/hooks/useDebounce';
 import { cn } from '@/lib/utils';
 import { MESSAGES } from '@/lib/messages';
 import {
@@ -141,6 +142,8 @@ export function ClassForm({
   const { back } = useNavigation();
   const formRef = useRef<HTMLFormElement>(null);
   const [venueSearch, setVenueSearch] = useState('');
+  // 한글 IME 조합 중간값('고'→'공'→'고야')마다 재검색되지 않도록 입력 멈춘 뒤에만 필터.
+  const debouncedVenueSearch = useDebounce(venueSearch, 250);
   const [venueSheetOpen, setVenueSheetOpen] = useState(false);
   // [2026-06-05] 장소 선택 BottomSheet 대상 — null: 단일 장소 / DayOfWeek: 해당 요일 행 장소.
   const [venueTargetDay, setVenueTargetDay] = useState<DayOfWeek | null>(null);
@@ -269,14 +272,42 @@ export function ClassForm({
   const toggleDaySchedule = (day: DayOfWeek) => {
     setFormData(prev => {
       const exists = prev.daySchedules.some(s => s.dayOfWeek === day);
+      // 새 요일은 이미 입력된 행의 시간·장소를 상속해 반복 입력을 줄인다.
+      const template = prev.daySchedules.find(s => s.startTime || s.endTime || s.venueId);
       return {
         ...prev,
         daySchedules: exists
           ? prev.daySchedules.filter(s => s.dayOfWeek !== day)
           : [
               ...prev.daySchedules,
-              { dayOfWeek: day, startTime: '', endTime: '', venueId: '', venueName: '' },
+              {
+                dayOfWeek: day,
+                startTime: template?.startTime ?? '',
+                endTime: template?.endTime ?? '',
+                venueId: template?.venueId ?? '',
+                venueName: template?.venueName ?? '',
+              },
             ],
+      };
+    });
+  };
+  const applyDayScheduleToAll = (day: DayOfWeek) => {
+    setFormData(prev => {
+      const source = prev.daySchedules.find(s => s.dayOfWeek === day);
+      if (!source) return prev;
+      return {
+        ...prev,
+        daySchedules: prev.daySchedules.map(s =>
+          s.dayOfWeek === day
+            ? s
+            : {
+                ...s,
+                startTime: source.startTime,
+                endTime: source.endTime,
+                venueId: source.venueId,
+                venueName: source.venueName,
+              },
+        ),
       };
     });
   };
@@ -311,13 +342,14 @@ export function ClassForm({
     });
   };
 
+  // 검색어가 있을 때만 결과 노출 (VenuePicker·대회 생성과 동일한 검색형 패턴).
   const filteredVenues = useMemo(() => {
-    if (!venueSearch.trim()) return venues;
-    const q = venueSearch.toLowerCase();
+    const q = debouncedVenueSearch.trim().toLowerCase();
+    if (!q) return [];
     return venues.filter(v =>
       v.name.toLowerCase().includes(q) || (v.address ?? '').toLowerCase().includes(q)
     );
-  }, [venueSearch, venues]);
+  }, [debouncedVenueSearch, venues]);
 
   // ── 대상 연령(출생연도 체크박스) ──────────────────────────────
   //   · 선택 가능 출생연도는 useDateTime(서버 Asia/Seoul 기준 연도)로 동적 산출.
@@ -717,14 +749,34 @@ export function ClassForm({
                         <span className={cn('text-card-meta font-extrabold', iceTheme ? 'text-it-blue-500 dark:text-it-blue-300' : 'text-ice-600 dark:text-ice-400')}>
                           {MESSAGES.class.dayDefaults.weekdayLabel(s.dayOfWeek)}
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => toggleDaySchedule(s.dayOfWeek)}
-                          className="rounded-md px-2 py-1 text-card-meta font-bold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
-                          aria-label={MESSAGES.class.dayDefaults.removeDayAria(s.dayOfWeek)}
-                        >
-                          {MESSAGES.class.dayDefaults.removeDay}
-                        </button>
+                        <div className="flex items-center gap-1">
+                          {sortedDaySchedules.length > 1 && (s.startTime || s.endTime || s.venueId) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                applyDayScheduleToAll(s.dayOfWeek);
+                                toast.success(MESSAGES.class.dayDefaults.appliedToAll);
+                              }}
+                              className={cn(
+                                'rounded-md px-2 py-1 text-card-meta font-bold',
+                                iceTheme
+                                  ? 'text-it-blue-500 hover:bg-it-blue-50 dark:text-it-blue-300 dark:hover:bg-it-blue-500/10'
+                                  : 'text-ice-600 hover:bg-ice-50 dark:text-ice-400 dark:hover:bg-ice-500/10',
+                              )}
+                              aria-label={MESSAGES.class.dayDefaults.applyToAllAria(s.dayOfWeek)}
+                            >
+                              {MESSAGES.class.dayDefaults.applyToAll}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => toggleDaySchedule(s.dayOfWeek)}
+                            className="rounded-md px-2 py-1 text-card-meta font-bold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
+                            aria-label={MESSAGES.class.dayDefaults.removeDayAria(s.dayOfWeek)}
+                          >
+                            {MESSAGES.class.dayDefaults.removeDay}
+                          </button>
+                        </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <input
@@ -936,7 +988,8 @@ export function ClassForm({
                   onClick={closeVenueSheet}
                 />
                 {/* Sheet */}
-                <div className={cn('absolute bottom-0 left-0 right-0 rounded-t-2xl shadow-md animate-[slideUp_300ms_ease-out] max-h-[75vh] flex flex-col', iceTheme ? 'bg-it-surface dark:bg-rink-800' : 'bg-white dark:bg-rink-800')}>
+                {/* 결과 개수에 따라 시트 크기가 출렁이지 않도록 고정 높이 사용 */}
+                <div className={cn('absolute bottom-0 left-0 right-0 rounded-t-2xl shadow-md animate-[slideUp_300ms_ease-out] h-[75vh] flex flex-col', iceTheme ? 'bg-it-surface dark:bg-rink-800' : 'bg-white dark:bg-rink-800')}>
                   {/* Handle */}
                   <div className="flex justify-center pt-3 pb-1">
                     <div className={cn('w-10 h-1 rounded-full', iceTheme ? 'bg-it-line-strong dark:bg-rink-500' : 'bg-wline dark:bg-rink-500')} />
@@ -982,9 +1035,18 @@ export function ClassForm({
                     </div>
                   </div>
 
-                  {/* Venue List */}
+                  {/* Venue List — 검색어가 있을 때만 결과 노출 */}
                   <div className="flex-1 overflow-y-auto px-5 pb-8">
-                    {filteredVenues.length > 0 ? (
+                    {!debouncedVenueSearch.trim() ? (
+                      <div className="flex flex-col items-center justify-center py-12">
+                        <div className={cn('w-14 h-14 rounded-full flex items-center justify-center mb-3', iceTheme ? 'bg-it-fill dark:bg-rink-700' : 'bg-wline-2 dark:bg-rink-700')}>
+                          <Icon name="search" className={cn('text-2xl', iceTheme ? 'text-it-ink-400' : 'text-wtext-3')} aria-hidden="true" />
+                        </div>
+                        <p className={cn('text-sm font-medium', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
+                          {MESSAGES.class.venueSearchPrompt}
+                        </p>
+                      </div>
+                    ) : filteredVenues.length > 0 ? (
                       <div className="flex flex-col gap-2">
                         {filteredVenues.map(v => {
                           // 날짜 일정 모드: 해당 일정 행 venueId / 요일별 모드: 해당 요일 행 venueId / 단일 모드: 단일 venueId 기준.
@@ -1042,7 +1104,7 @@ export function ClassForm({
                           <Icon name="search_off" className={cn('text-2xl', iceTheme ? 'text-it-ink-400' : 'text-wtext-3')} aria-hidden="true" />
                         </div>
                         <p className={cn('text-sm font-medium', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
-                          {venueSearch ? `"${venueSearch}" 검색 결과가 없습니다` : '등록된 훈련 장소가 없습니다'}
+                          {`"${debouncedVenueSearch}" 검색 결과가 없습니다`}
                         </p>
                       </div>
                     )}

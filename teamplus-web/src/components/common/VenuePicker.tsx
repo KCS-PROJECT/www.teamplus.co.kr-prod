@@ -17,6 +17,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '@/components/ui/Icon';
+import { useDebounce } from '@/hooks/useDebounce';
 import { useVenues } from '@/hooks/useClassForm';
 import { cn } from '@/lib/utils';
 
@@ -56,18 +57,20 @@ export function VenuePicker({
 
   // 검색어(=input 표시값). 선택 시 venue.name 으로 채워지고, 타이핑하면 선택 해제 후 재검색.
   const [query, setQuery] = useState('');
+  // 한글 IME 조합 중간값마다 재검색되지 않도록 입력 멈춘 뒤에만 필터.
+  const debouncedQuery = useDebounce(query, 250);
 
   // value(선택) 변화 / venues 지연 로드 시 input 에 선택된 장소명 반영.
   useEffect(() => {
     setQuery(selectedVenue ? selectedVenue.name : '');
   }, [selectedVenue]);
 
-  // 검색어가 있을 때만 필터. (빈 검색어면 드롭다운 자체를 띄우지 않으므로 전체 반환은 무의미)
+  // 검색어가 있을 때만 필터. (빈 검색어면 드롭다운 자체를 띄우지 않음)
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return venues;
+    const q = debouncedQuery.trim().toLowerCase();
+    if (!q) return [];
     return venues.filter((v) => v.name.toLowerCase().includes(q));
-  }, [query, venues]);
+  }, [debouncedQuery, venues]);
 
   return (
     <div className={cn('relative', className)}>
@@ -121,8 +124,9 @@ export function VenuePicker({
             선택 해제 (장소 미지정)
           </button>
         )
-      ) : query.trim() ? (
-        <ul className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-wline-2 dark:border-rink-700 divide-y divide-wline-2 dark:divide-rink-700 bg-white dark:bg-rink-800">
+      ) : debouncedQuery.trim() ? (
+        /* absolute 오버레이 — 결과 개수에 따라 아래 콘텐츠가 밀리지 않게 한다. */
+        <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-40 overflow-y-auto rounded-lg border border-wline-2 dark:border-rink-700 divide-y divide-wline-2 dark:divide-rink-700 bg-white dark:bg-rink-800 shadow-sh-2">
           {filtered.length > 0 ? (
             filtered.map((v) => (
               <li key={v.id}>
