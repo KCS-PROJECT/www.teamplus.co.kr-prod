@@ -122,11 +122,10 @@ function buildClassProducts(
     }
     // "주 N회" 자동 파생 폐기 — classDays 는 갱신 안 되는 스냅샷이라 상품 메타 오염원.
     //   MONTHLY_FIXED 는 무차감 기간제라 주 빈도 개념 자체가 제약에 미사용.
-    //   설명은 감독 자유 입력(description)이 SoT — 자동 문구는 기간·총회수만.
+    //   설명은 감독 자유 입력(description)이 SoT — 자동 주입 없음(미입력 = null 유지).
     products.push({
       classId,
       productName: `${weeks}주 정기권`,
-      description: `${weeks}주간 총 ${totalSessions}회 수강`,
       feeType: "MONTHLY_FIXED",
       price: dto.monthlyPrice,
       sessionsPerMonth: totalSessions,

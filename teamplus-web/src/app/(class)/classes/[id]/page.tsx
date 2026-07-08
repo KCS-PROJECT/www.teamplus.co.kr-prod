@@ -288,16 +288,14 @@ function formatCoachList(
    ──────────────────────────────────────────── */
 
 /** 1회 수업료(참고) 카드 — 라디오·구매 버튼 없는 톤다운 정보 카드.
- *  BOTH(결제방식 토글 아래)·선불 전용(수업료 목록 위) 공용. */
-function SingleFeeRefCard({ amount, note }: { amount: number; note: string }) {
+ *  BOTH(결제방식 토글 아래)·선불 전용(수업료 목록 위) 공용.
+ *  부가 문구 없이 타이틀+금액만 — 회색 톤 자체가 참고용 뉘앙스를 전달. */
+function SingleFeeRefCard({ amount }: { amount: number }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-[14px] border border-wline-2 dark:border-rink-700 bg-it-fill dark:bg-rink-900/40 px-4 py-3">
       <div className="min-w-0">
-        <p className="text-card-meta font-bold text-wtext-2 dark:text-rink-100">
+        <p className="text-card-body font-bold text-wtext-2 dark:text-rink-100">
           {MESSAGES.classProduct.singleFeeRefTitle}
-        </p>
-        <p className="mt-0.5 text-card-caption text-wtext-3 dark:text-rink-300">
-          {note}
         </p>
       </div>
       <p className="shrink-0 text-card-body font-extrabold text-wtext-1 dark:text-white tabular-nums">
@@ -1814,11 +1812,6 @@ export default function ClassDetailPage() {
                   amount={
                     bothPostpaidProduct.feePerSession ?? bothPostpaidProduct.price
                   }
-                  note={
-                    billingChoice === "POSTPAID"
-                      ? MESSAGES.classProduct.singleFeePostpaidNote
-                      : MESSAGES.classProduct.singleFeeRefPrepaidNote
-                  }
                 />
               </div>
             )}
@@ -1841,7 +1834,6 @@ export default function ClassDetailPage() {
             <div className="mt-3">
               <SingleFeeRefCard
                 amount={singleFeeRefProduct.feePerSession ?? singleFeeRefProduct.price}
-                note={MESSAGES.classProduct.singleFeeRefPrepaidNote}
               />
             </div>
           )}
@@ -1944,6 +1936,16 @@ export default function ClassDetailPage() {
                             </span>
                           )}
                         </div>
+                        {/* 상품 설명 — 구성 안내(총 회수·주당 회수 등)는 감독의 설명 입력이 SoT.
+                            상품명을 그대로 복붙한 데이터는 같은 글자 반복이라 숨김.
+                            ⚠ text-card-caption 은 미정의 유령 클래스(16px 상속)라 사용 금지 — meta(12px) 사용. */}
+                        {p.description &&
+                          p.description.trim() &&
+                          p.description.trim() !== p.productName.trim() && (
+                            <p className="mt-0.5 text-card-meta text-wtext-3 dark:text-rink-300 line-clamp-2">
+                              {p.description}
+                            </p>
+                          )}
                         {/* [수정 2026-05-22 사용자 직접 지시] 비활성 사유는 카드 안쪽 회색 톤으로 표시.
                             학부모/학생은 백엔드에서 비활성 응답 자체 제외되므로 본 라벨은 코치·감독·관리자에게만 노출. */}
                         {isDisabled && disabledBadge && (
@@ -2034,8 +2036,16 @@ export default function ClassDetailPage() {
         */}
         {isParent && (
           <div className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4 flex flex-col gap-5">
-            {/* ChildSelector — 자녀 ≥1명 일 때만 노출. 0명은 handleEnrollClick 의 modal.alert 가 안내. */}
-            {parentChildren.length > 0 && (() => {
+            {/* ChildSelector — 자녀 ≥1명 일 때만 노출. 0명은 handleEnrollClick 의 modal.alert 가 안내.
+                자녀 1명 + 그 자녀가 자동 선택된 상태면 선택지가 없으므로 섹션 숨김.
+                단, 외동 자녀가 잠금(수강 중/승인 대기/연령 부적합)이면 selectedChildId 가 비므로
+                섹션을 유지해 잠금 사유 배지·안내 문구를 보여준다. */}
+            {parentChildren.length > 0 &&
+              !(
+                parentChildren.length === 1 &&
+                selectedChildId === parentChildren[0].id
+              ) &&
+              (() => {
               // "모두 잠금" 판정 (paid 는 잠금 아님 — 결제취소 가능하므로 제외)
               const noneSelectable = parentChildren.every(
                 (c) =>

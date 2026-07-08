@@ -20,6 +20,7 @@ import {
 import { AuthGuard } from "@nestjs/passport";
 import { Throttle, SkipThrottle } from "@nestjs/throttler";
 import { Public } from "./public.decorator";
+import { WithdrawCleanupService } from "./withdraw-cleanup.service";
 import type {
   Request as ExpressRequest,
   Response as ExpressResponse,
@@ -74,6 +75,7 @@ export class AuthController {
     private cryptoService: CryptoService,
     private logger: LoggerService,
     private twoFactorService: TwoFactorService,
+    private withdrawCleanupService: WithdrawCleanupService,
     private emailVerificationService: EmailVerificationService,
   ) {}
 
@@ -418,6 +420,29 @@ export class AuthController {
       chldiv: CHLDIV.APP,
       force: body.force === true,
     });
+  }
+
+  /**
+   * [DEV ONLY] 탈퇴 확정 배치 수동 실행 — 유예 기간(7일) 대기 없이 테스트하기 위한 트리거.
+   * login/dev 와 동일한 화이트리스트 가드 방식(development + 전용 플래그)이며,
+   * withdrawRequestedAt 이 7일 이상 경과한 WITHDRAW_PENDING 사용자만 처리된다
+   * (테스트 시 대상 계정의 신청 시각을 과거로 백데이트해야 함).
+   */
+  @Public()
+  @Post("dev/withdraw-cleanup-run")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "[DEV ONLY] Run withdraw cleanup batch manually",
+  })
+  async runWithdrawCleanupDev() {
+    const isEnabled =
+      process.env.NODE_ENV === "development" &&
+      process.env.ENABLE_DEV_WITHDRAW_CLEANUP === "true";
+    if (!isEnabled) {
+      throw new UnauthorizedException("Not available in this environment");
+    }
+    await this.withdrawCleanupService.handleWithdrawCleanup();
+    return { message: "탈퇴 확정 배치를 실행했습니다. 처리 결과는 서버 로그를 확인하세요." };
   }
 
   /**

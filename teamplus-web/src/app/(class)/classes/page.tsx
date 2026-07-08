@@ -1487,12 +1487,13 @@ export default function ClassesPage() {
         //   [수정] 후불(POSTPAID) 수강 중(approved)도 "등록완료"로 표시해야 하므로
         //   status=paid 로 좁히지 않고 전체를 받아 isActiveEnrollment 공통 SoT 로 판정.
         const enrollPromise = api.get<
-          | { classId?: string; childId?: string; class?: { id?: string; billingMode?: string }; status?: string }[]
+          | { classId?: string; childId?: string; class?: { id?: string; billingMode?: string }; product?: { billingTiming?: string } | null; status?: string }[]
           | {
               data: {
                 classId?: string;
                 childId?: string;
                 class?: { id?: string; billingMode?: string };
+                product?: { billingTiming?: string } | null;
                 status?: string;
               }[];
             }
@@ -1523,8 +1524,15 @@ export default function ClassesPage() {
                 .data;
           const ids = new Set<string>();
           (Array.isArray(arr) ? arr : []).forEach((e) => {
-            // 선불 paid OR 후불(POSTPAID) approved 만 "등록완료"로 간주 (공통 SoT).
-            if (!isActiveEnrollment(e.status, e.class?.billingMode)) return;
+            // 선불 paid OR 후불(POSTPAID·BOTH 후불상품) approved 만 "등록완료"로 간주 (공통 SoT).
+            if (
+              !isActiveEnrollment(
+                e.status,
+                e.class?.billingMode,
+                e.product?.billingTiming,
+              )
+            )
+              return;
             // [2026-06-17] 선택 자녀 기준 필터 — /enrollments 는 부모의 모든 자녀 등록을
             //   반환하므로, 자녀 미구분 시 형제 등록이 다른 자녀 카드에 '등록완료'로 잘못
             //   표시되던 버그 수정. 부모 뷰 + 선택 자녀 있을 때만 해당 자녀 등록으로 한정.

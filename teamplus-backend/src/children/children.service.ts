@@ -14,6 +14,8 @@ import { NotificationsService } from "@/notifications/notifications.service";
 import { securityConfig } from "@/config/security.config";
 import { calculateKoreanAge } from "@/common/utils/age.util";
 import { dateOnlyToUtc } from "@/common/utils/kst-date.util";
+import { anonymizeUserWithinTx } from "@/common/utils/user-anonymize.util";
+import { UploadCleanupService } from "@/common/upload-cleanup.service";
 import { Prisma } from "@prisma/client";
 import {
   CreateChildDto,
@@ -79,6 +81,7 @@ export class ChildrenService {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly notificationsService: NotificationsService,
+    private readonly uploadCleanupService: UploadCleanupService,
   ) {}
 
   /**
@@ -602,14 +605,14 @@ export class ChildrenService {
   async deleteChild(parentId: string, childId: string): Promise<void> {
     this.logger.log(`자녀 삭제: parentId=${parentId}, childId=${childId}`);
 
-    // 1. 관계 확인 (child 정보 포함 — soft delete 시 email/phone 접근 필요)
+    // 1. 관계 확인
     const parentChild = await this.prisma.parentChild.findUnique({
       where: {
         parentId_childId: { parentId, childId },
       },
       include: {
         child: {
-          select: { id: true, email: true, phone: true },
+          select: { id: true },
         },
       },
     });
@@ -625,8 +628,6 @@ export class ChildrenService {
       );
     }
 
-    const child = parentChild.child;
-
     // 3. 다른 보호자 확인
     const otherGuardians = await this.prisma.parentChild.count({
       where: {
@@ -634,6 +635,9 @@ export class ChildrenService {
         parentId: { not: parentId },
       },
     });
+
+    // 커밋 후 실삭제할 파일 URL (avatar/사진) — 트랜잭션 밖에서 정리
+    const collectedFileUrls: string[] = [];
 
     await this.prisma.$transaction(async (tx) => {
       if (otherGuardians > 0) {
@@ -657,7 +661,7 @@ export class ChildrenService {
           });
         }
       } else {
-        // 3.2 다른 보호자가 없으면 자녀를 soft delete (status=WITHDRAWN)
+        // 3.2 다른 보호자가 없으면 자녀 User 를 비식별화 (배치 탈퇴와 동일 수준)
         // 진행 중인 수강신청이 있는지 확인
         const activeEnrollments = await tx.enrollment.count({
           where: {
@@ -677,28 +681,22 @@ export class ChildrenService {
           where: { childId },
         });
 
-        // [2026-06-18] 팀 멤버십도 함께 종료(leftAt) — 자녀 삭제 후 감독 회원 승인 내역·선수 관리에
-        //   '유령' 멤버로 남지 않도록. (getTeamMembers 는 leftAt/WITHDRAWN 이중 필터)
-        await tx.teamMember.updateMany({
-          where: { userId: childId, leftAt: null },
-          data: { leftAt: new Date() },
+        // 공용 유틸로 User + ChildProfile 비식별화 (teamMember.leftAt 종료 포함).
+        // withdrawRequestedAt=now — 신규 익명화 시점(배치와 달리 요청 시각 개념 없음).
+        const now = new Date();
+        const res = await anonymizeUserWithinTx(tx, childId, {
+          reason: "학부모에 의한 자녀 삭제",
+          now,
+          withdrawRequestedAt: now,
         });
-
-        // User soft delete — status 변경 + email/phone 충돌 방지 prefix
-        // ChildProfile은 그대로 유지 (PIPA Phase 2에서 비식별화)
-        await tx.user.update({
-          where: { id: childId },
-          data: {
-            status: "WITHDRAWN",
-            withdrawRequestedAt: new Date(),
-            withdrawProcessedAt: new Date(),
-            withdrawReason: "학부모에 의한 자녀 삭제",
-            email: `deleted_${childId}_${child.email}`,
-            phone: child.phone ? `deleted_${childId}_${child.phone}` : null,
-          },
-        });
+        collectedFileUrls.push(...res.fileUrls);
       }
     });
+
+    // 커밋 후에만 파일 실삭제 (best-effort — 실패해도 비식별화는 유지)
+    for (const url of collectedFileUrls) {
+      await this.uploadCleanupService.cleanupReplacedUpload(url).catch(() => {});
+    }
 
     this.logger.log(`자녀 삭제 완료: childId=${childId}`);
   }

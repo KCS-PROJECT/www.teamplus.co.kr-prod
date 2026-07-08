@@ -45,6 +45,7 @@ interface EnrollmentRow {
   status?: string;
   child?: { id?: string } | null;
   class?: { id?: string; billingMode?: string } | null;
+  product?: { billingTiming?: string } | null;
 }
 
 // ── 일정 라벨 포맷 — classes/page.tsx 와 동일 컨벤션 (소형 재현) ──
@@ -177,8 +178,15 @@ export function EnrolledTrainingSection({ iceTheme = false }: EnrolledTrainingSe
           : (res.data as { data?: EnrollmentRow[] })?.data ?? [];
         const map = new Map<string, Set<string>>();
         (Array.isArray(arr) ? arr : []).forEach((e) => {
-          // 등록완료 = 활성 등록(선불 paid / 후불 approved) — 수업목록과 동일 SoT.
-          if (!isActiveEnrollment(e.status, e.class?.billingMode)) return;
+          // 등록완료 = 활성 등록(선불 paid / 후불·BOTH 후불상품 approved) — 수업목록과 동일 SoT.
+          if (
+            !isActiveEnrollment(
+              e.status,
+              e.class?.billingMode,
+              e.product?.billingTiming,
+            )
+          )
+            return;
           const cid = e.childId ?? e.child?.id;
           const clsId = e.classId ?? e.class?.id;
           if (!cid || !clsId) return;

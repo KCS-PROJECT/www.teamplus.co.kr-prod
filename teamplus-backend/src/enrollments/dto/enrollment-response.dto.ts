@@ -72,6 +72,19 @@ export class ProductInfoDto {
 
   @ApiProperty({ description: "월 수업 횟수" })
   sessionsPerMonth!: number;
+
+  @ApiProperty({
+    description: "요금 유형 (MONTHLY_FIXED 정액 / PER_SESSION 회당)",
+    required: false,
+  })
+  feeType?: string;
+
+  @ApiProperty({
+    description:
+      "청구 시점 (PREPAID 선불 / POSTPAID 후불) — BOTH 수업의 후불 여부 판정용",
+    required: false,
+  })
+  billingTiming?: string;
 }
 
 /**

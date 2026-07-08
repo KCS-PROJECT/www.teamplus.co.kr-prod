@@ -64,6 +64,10 @@ const ENROLLMENT_DETAIL_SELECT = {
       productName: true,
       price: true,
       sessionsPerMonth: true,
+      feeType: true,
+      // BOTH 수업의 후불 여부는 선택 상품 billingTiming 으로만 판정 가능
+      // (프론트 isActiveEnrollment · 백엔드 scheduleEligibleClassFilter 공통 정책).
+      billingTiming: true,
     },
   },
   requester: {
@@ -1086,6 +1090,8 @@ export class EnrollmentsService {
             productName: enrollment.product.productName,
             price: Number(enrollment.product.price),
             sessionsPerMonth: enrollment.product.sessionsPerMonth,
+            feeType: enrollment.product.feeType ?? undefined,
+            billingTiming: enrollment.product.billingTiming ?? undefined,
           }
         : undefined,
       requester: {

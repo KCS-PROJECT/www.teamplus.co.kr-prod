@@ -10,6 +10,7 @@ import { LoggerService } from "@/logger/logger.service";
 import { SmsService } from "@/sms/sms.service";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
+import { MailService } from "@/mail/mail.service";
 import { UserType } from "@prisma/client";
 import { RegisterDto } from "./dto/register.dto";
 import { LoginDto } from "./dto/login.dto";
@@ -32,7 +33,13 @@ describe("AuthService", () => {
       findFirst: jest.fn(),
       findUnique: jest.fn(),
       create: jest.fn(),
+      update: jest.fn(),
     },
+    team: { count: jest.fn() },
+    class: { count: jest.fn() },
+    tournament: { count: jest.fn() },
+    academy: { count: jest.fn() },
+    enrollment: { count: jest.fn() },
   };
 
   const mockJwtService = {
@@ -44,6 +51,7 @@ describe("AuthService", () => {
     set: jest.fn().mockResolvedValue(undefined),
     get: jest.fn().mockResolvedValue(null),
     del: jest.fn().mockResolvedValue(undefined),
+    delByPattern: jest.fn().mockResolvedValue(undefined),
     exists: jest.fn().mockResolvedValue(false),
     getConnectionStatus: jest.fn().mockReturnValue(true),
   };
@@ -117,6 +125,12 @@ describe("AuthService", () => {
           useValue: {
             logAuthEvent: jest.fn(),
             audit: jest.fn(),
+          },
+        },
+        {
+          provide: MailService,
+          useValue: {
+            sendMail: jest.fn().mockResolvedValue(undefined),
           },
         },
       ],
@@ -581,6 +595,222 @@ describe("AuthService", () => {
 
       // Bcrypt hashes follow $2a$ or $2b$ pattern with specific format
       expect(passwordHash).toMatch(/^\$2[aby]\$/);
+    });
+  });
+
+  describe("requestWithdraw - 자산 보유 가드", () => {
+    // 소셜 전용 계정(phone social_*)으로 만들어 비밀번호 검증 대신 확인 문구 경로 사용
+    // (본인 확인은 가드 다음 단계라 가드 검증에는 영향 없음 — bcrypt 회피 목적)
+    const WITHDRAW_CONFIRM = "탈퇴합니다";
+    const buildUser = (overrides: Partial<Record<string, unknown>> = {}) => ({
+      id: "u-1",
+      email: "someone@example.com",
+      phone: "social_u1",
+      passwordHash: "hash",
+      status: "ACTIVE",
+      userType: UserType.PARENT,
+      ...overrides,
+    });
+
+    // 자산 count 기본값 0 (미차단) — 개별 테스트에서 필요한 것만 override
+    const resetCountsToZero = () => {
+      mockPrismaService.team.count.mockResolvedValue(0);
+      mockPrismaService.class.count.mockResolvedValue(0);
+      mockPrismaService.tournament.count.mockResolvedValue(0);
+      mockPrismaService.academy.count.mockResolvedValue(0);
+      mockPrismaService.enrollment.count.mockResolvedValue(0);
+    };
+
+    beforeEach(() => {
+      resetCountsToZero();
+    });
+
+    // 18. DIRECTOR + 활성 팀 → 차단, status 미변경
+    it("DIRECTOR + 운영 중 팀 보유 시 BadRequestException + 탈퇴 미전환", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(
+        buildUser({ userType: UserType.DIRECTOR }),
+      );
+      mockPrismaService.team.count.mockResolvedValue(1);
+
+      await expect(
+        service.requestWithdraw("u-1", undefined, undefined, WITHDRAW_CONFIRM),
+      ).rejects.toThrow("운영 중인 팀");
+      expect(mockPrismaService.user.update).not.toHaveBeenCalled();
+    });
+
+    // 19. DIRECTOR + 활성 수업(팀 경로) → 차단
+    it("DIRECTOR + 활성 수업 보유 시 차단", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(
+        buildUser({ userType: UserType.DIRECTOR }),
+      );
+      mockPrismaService.class.count.mockResolvedValue(2);
+
+      await expect(
+        service.requestWithdraw("u-1", undefined, undefined, WITHDRAW_CONFIRM),
+      ).rejects.toThrow("활성 수업 2개");
+      expect(mockPrismaService.user.update).not.toHaveBeenCalled();
+    });
+
+    // 20. ACADEMY_DIRECTOR + 활성 수업(academy 경로) → 차단
+    it("ACADEMY_DIRECTOR + 활성 수업 보유 시 차단", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(
+        buildUser({ userType: UserType.ACADEMY_DIRECTOR }),
+      );
+      mockPrismaService.class.count.mockResolvedValue(1);
+
+      await expect(
+        service.requestWithdraw("u-1", undefined, undefined, WITHDRAW_CONFIRM),
+      ).rejects.toThrow("활성 수업");
+      expect(mockPrismaService.user.update).not.toHaveBeenCalled();
+    });
+
+    // 21. DIRECTOR + scheduled/ongoing 대회 → 차단 / finished·cancelled 만이면 통과
+    it("DIRECTOR + 진행 중 대회 보유 시 차단", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(
+        buildUser({ userType: UserType.DIRECTOR }),
+      );
+      mockPrismaService.tournament.count.mockResolvedValue(1);
+
+      await expect(
+        service.requestWithdraw("u-1", undefined, undefined, WITHDRAW_CONFIRM),
+      ).rejects.toThrow("진행 중인 대회");
+      // 대회 count 쿼리는 status IN (scheduled, ongoing) 로만 집계
+      expect(mockPrismaService.tournament.count).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            team: { coachId: "u-1" },
+            status: { in: ["scheduled", "ongoing"] },
+          }),
+        }),
+      );
+    });
+
+    it("DIRECTOR + finished/cancelled 대회만이면 통과(대회 count 0)", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(
+        buildUser({ userType: UserType.DIRECTOR }),
+      );
+      // 모든 자산 0 → 정상 전환
+      const result = await service.requestWithdraw(
+        "u-1",
+        undefined,
+        undefined,
+        WITHDRAW_CONFIRM,
+      );
+      expect(result).toHaveProperty("gracePeriodEnd");
+      expect(mockPrismaService.user.update).toHaveBeenCalled();
+    });
+
+    // 22. ACADEMY_DIRECTOR + isActive 오픈클래스 → 차단
+    it("ACADEMY_DIRECTOR + 오픈클래스 보유 시 차단", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(
+        buildUser({ userType: UserType.ACADEMY_DIRECTOR }),
+      );
+      mockPrismaService.academy.count.mockResolvedValue(1);
+
+      await expect(
+        service.requestWithdraw("u-1", undefined, undefined, WITHDRAW_CONFIRM),
+      ).rejects.toThrow("오픈클래스");
+      expect(mockPrismaService.user.update).not.toHaveBeenCalled();
+    });
+
+    // 23. 자산 2종 이상 → 메시지에 ", " 결합
+    it("자산 2종 이상이면 개수 조합이 ', ' 로 결합된 메시지", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(
+        buildUser({ userType: UserType.DIRECTOR }),
+      );
+      mockPrismaService.team.count.mockResolvedValue(1);
+      mockPrismaService.class.count.mockResolvedValue(3);
+
+      await expect(
+        service.requestWithdraw("u-1", undefined, undefined, WITHDRAW_CONFIRM),
+      ).rejects.toThrow("운영 중인 팀 1개, 활성 수업 3개");
+    });
+
+    // 24. PARENT + 자녀 진행 중 수강신청 → 차단 / 그 외 상태만이면 통과
+    it("PARENT + 자녀 진행 중 수강신청 있으면 차단", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(
+        buildUser({ userType: UserType.PARENT }),
+      );
+      mockPrismaService.enrollment.count.mockResolvedValue(1);
+
+      await expect(
+        service.requestWithdraw("u-1", undefined, undefined, WITHDRAW_CONFIRM),
+      ).rejects.toThrow("자녀의 진행 중인 수강신청");
+      expect(mockPrismaService.enrollment.count).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            status: { in: ["pending", "pending_approval", "approved"] },
+            child: { childParents: { some: { parentId: "u-1" } } },
+          }),
+        }),
+      );
+      expect(mockPrismaService.user.update).not.toHaveBeenCalled();
+    });
+
+    it("PARENT + paid/cancelled 수강신청만이면 통과(enrollment count 0)", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(
+        buildUser({ userType: UserType.PARENT }),
+      );
+      const result = await service.requestWithdraw(
+        "u-1",
+        undefined,
+        undefined,
+        WITHDRAW_CONFIRM,
+      );
+      expect(result).toHaveProperty("gracePeriodEnd");
+      expect(mockPrismaService.user.update).toHaveBeenCalled();
+    });
+
+    // 25. 자산 없는 DIRECTOR → 정상 WITHDRAW_PENDING 전환
+    it("자산 없는 DIRECTOR 는 정상 WITHDRAW_PENDING 전환", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(
+        buildUser({ userType: UserType.DIRECTOR }),
+      );
+
+      const result = await service.requestWithdraw(
+        "u-1",
+        undefined,
+        undefined,
+        WITHDRAW_CONFIRM,
+      );
+
+      expect(result).toHaveProperty("gracePeriodEnd");
+      expect(mockPrismaService.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "u-1" },
+          data: expect.objectContaining({ status: "WITHDRAW_PENDING" }),
+        }),
+      );
+    });
+
+    // 26. COACH/TEEN 등 → 가드 미적용(자산 쿼리 자체가 실행되지 않음)
+    it("COACH 는 자산 가드 미적용(count 쿼리 미실행)", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(
+        buildUser({ userType: UserType.COACH }),
+      );
+
+      const result = await service.requestWithdraw(
+        "u-1",
+        undefined,
+        undefined,
+        WITHDRAW_CONFIRM,
+      );
+
+      expect(result).toHaveProperty("gracePeriodEnd");
+      expect(mockPrismaService.team.count).not.toHaveBeenCalled();
+      expect(mockPrismaService.enrollment.count).not.toHaveBeenCalled();
+    });
+
+    // 27. ADMIN → 기존 관리자 차단이 가드보다 먼저(자산 쿼리 미실행)
+    it("ADMIN 은 관리자 차단이 자산 가드보다 먼저 동작", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(
+        buildUser({ userType: UserType.ADMIN }),
+      );
+
+      await expect(
+        service.requestWithdraw("u-1", undefined, undefined, WITHDRAW_CONFIRM),
+      ).rejects.toThrow("관리자 계정은 직접 탈퇴할 수 없습니다.");
+      expect(mockPrismaService.team.count).not.toHaveBeenCalled();
     });
   });
 });

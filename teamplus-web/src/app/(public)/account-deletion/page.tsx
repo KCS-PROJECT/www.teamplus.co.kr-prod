@@ -14,7 +14,7 @@ import { useDefaultUI } from '@/hooks/useNativeUI';
  * Google Play 데이터 보안(Data Safety) "계정·데이터 삭제 요청 URL" 대응.
  *  - 공개 URL: https://teamplusweb.icetimes.co.kr/account-deletion
  *  - 앱 설치/로그인 없이도 접근 가능해야 하므로 (public) 그룹에 배치.
- *  - 앱 내 직접 삭제(설정>개인정보>회원 탈퇴) + 고객센터 요청 2경로 안내.
+ *  - 앱 내 직접 삭제(마이>내 정보>회원 탈퇴) + 고객센터 요청 2경로 안내.
  *
  * 본 페이지는 공개 페이지이므로 비로그인 상태에서도 접근 가능.
  * 콘텐츠는 DB fetch 없이 자체완결(SSR HTML 즉시 포함).
@@ -56,7 +56,7 @@ export default function AccountDeletionPage() {
             <ol className="space-y-2.5">
               {[
                 'TEAMPLUS 앱 실행 후 로그인',
-                '설정 > 개인정보 > 회원 탈퇴 이동',
+                '하단 탭 마이 > 내 정보 > 회원 탈퇴 이동',
                 "본인 확인(비밀번호 입력 · 소셜 로그인 계정은 '탈퇴합니다' 입력)",
                 '탈퇴 신청 완료',
               ].map((step, i) => (
@@ -117,12 +117,17 @@ export default function AccountDeletionPage() {
                   삭제되는 데이터와 처리 절차
                 </h3>
                 <ul className="text-[13px] text-it-ink-500 dark:text-wtext-4 leading-relaxed list-disc pl-4 space-y-1">
-                  <li>계정·프로필·연락처 등 개인정보는 비식별화 처리되어 복구할 수 없습니다.</li>
+                  <li>계정·프로필(사진 포함)·연락처·본인인증 정보 등 개인정보는 비식별화 처리되어 복구할 수 없습니다.</li>
                   <li>
                     탈퇴 신청 후 <strong className="text-it-blue-500">7일의 유예 기간</strong>이 있으며,
-                    유예 기간 경과 시 지체 없이 삭제(비식별화)됩니다.
+                    유예 기간 경과 시 지체 없이 삭제(비식별화)됩니다. 신청 후에는 취소할 수 없습니다.
                   </li>
-                  <li>보유 중인 잔여 결제권은 삭제 확정 시 소멸되며 복구되지 않습니다.</li>
+                  <li>보유 중인 잔여 결제권은 삭제 확정 시 전액 소멸되며 복구되지 않습니다.</li>
+                  <li>
+                    운영 중인 팀·수업·대회(감독) 또는 자녀의 진행 중인 수강신청(학부모)이 있는 경우
+                    먼저 정리한 후 탈퇴를 신청할 수 있습니다.
+                  </li>
+                  <li>다른 보호자가 연결되어 있지 않은 자녀의 계정과 프로필 정보도 함께 비식별화 처리됩니다.</li>
                   <li>
                     단, 결제·전자상거래 기록은 전자상거래법 등 관련 법령에 따라 일정 기간(최대 5년)
                     보관 후 파기됩니다.

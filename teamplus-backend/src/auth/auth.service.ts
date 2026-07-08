@@ -32,6 +32,7 @@ import { AppleTokenService } from "./services/apple-token.service";
 import { UserType, Prisma } from "@prisma/client";
 import { calculateKoreanAge } from "@/common/utils/age.util";
 import { dateOnlyToUtc } from "@/common/utils/kst-date.util";
+import { findBlockingOwnership } from "@/common/utils/withdrawal-guard.util";
 import { JwtPayload } from "@/common/interfaces/authenticated-request.interface";
 import {
   CHLDIV,
@@ -637,7 +638,7 @@ export class AuthService {
 
     if (user.status === "WITHDRAW_PENDING") {
       throw new UnauthorizedException(
-        "탈퇴 대기 중인 계정입니다. 탈퇴를 철회하려면 고객센터에 문의해주세요.",
+        "탈퇴 처리 대기 중인 계정입니다. 신청일로부터 7일 후 탈퇴가 확정됩니다.",
       );
     }
 
@@ -2523,6 +2524,9 @@ export class AuthService {
       );
     }
 
+    // 역할별 자산 가드 — 본인 확인(비밀번호) 이전에 검증하여 불필요한 인증 절차 방지
+    await this.assertNoBlockingOwnership(user.id, user.userType);
+
     // 2. 본인 확인
     //    - 이메일/비밀번호 계정: 현재 비밀번호 재확인
     //    - 소셜 로그인 전용 계정(phone 이 social_ 로 시작): 가입 시 임의 비밀번호가
@@ -2572,10 +2576,36 @@ export class AuthService {
     });
 
     return {
-      message: "탈퇴 요청이 접수되었습니다. 7일 이내에 철회할 수 있습니다.",
+      message: "탈퇴 요청이 접수되었습니다. 7일 후 탈퇴가 확정됩니다.",
       withdrawRequestedAt: now.toISOString(),
       gracePeriodEnd: gracePeriodEnd.toISOString(),
     };
+  }
+
+  /**
+   * 탈퇴를 막는 운영 자산 보유 여부 검증.
+   * - 감독(DIRECTOR/ACADEMY_DIRECTOR): 운영 팀·활성 수업·진행 대회·오픈클래스가 남아 있으면 차단
+   *   (이관/정리 없이 탈퇴 시 소속 회원의 수업/대회가 고아가 되는 것을 방지)
+   * - 학부모(PARENT): 자녀의 진행 중 수강신청이 있으면 차단
+   */
+  private async assertNoBlockingOwnership(
+    userId: string,
+    userType: string,
+  ): Promise<void> {
+    const blockers = await findBlockingOwnership(this.prisma, userId, userType);
+    if (blockers.length === 0) return;
+
+    if (userType === "PARENT") {
+      throw new BadRequestException(
+        `${blockers[0]}이 있어 탈퇴할 수 없습니다. 먼저 수강신청을 취소하거나 완료한 후 다시 시도해주세요.`,
+      );
+    }
+
+    throw new BadRequestException(
+      `${blockers.join(
+        ", ",
+      )}가 있어 탈퇴할 수 없습니다. 팀/수업/대회를 다른 감독에게 이관하거나 정리한 후 다시 시도해주세요.`,
+    );
   }
 
   /**

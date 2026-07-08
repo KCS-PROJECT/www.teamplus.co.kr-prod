@@ -516,6 +516,23 @@ const IconLock = () => (
     <circle cx="10" cy="13" r="1.2" fill={I_FILL} />
   </svg>
 );
+const IconPersonRemove = () => (
+  <svg width={20} height={20} viewBox="0 0 20 20" fill="none">
+    <circle cx="9" cy="7" r="3" stroke={I_STROKE} strokeWidth={1.6} />
+    <path
+      d="M3 17c.9-3.2 3.3-4.8 6-4.8 1 0 1.9.2 2.7.7"
+      stroke={I_STROKE}
+      strokeWidth={1.6}
+      strokeLinecap="round"
+    />
+    <path
+      d="M13.5 15H18"
+      stroke={I_STROKE}
+      strokeWidth={1.6}
+      strokeLinecap="round"
+    />
+  </svg>
+);
 const IconQR = () => (
   <svg width={20} height={20} viewBox="0 0 20 20" fill="none">
     <rect x="3" y="3" width="6" height="6" rx="1" stroke={I_STROKE} strokeWidth={1.5} />
@@ -915,6 +932,15 @@ export default function MyPage() {
           title="비밀번호 변경"
           subtitle="6개월마다 변경 권장"
           onClick={() => navigate("/profile/password")}
+        />
+        {/* 회원 탈퇴 — 앱 내 계정 삭제 진입점 (Apple 5.1.1(v) / Google #9888076).
+              6-17 개편으로 설정 화면 진입 경로가 사라지며 탈퇴 진입점이 소실됐던 것을
+              내 정보 섹션 행으로 복원. 로그아웃 버튼과 분리 배치(오탭 방지). */}
+        <Row
+          icon={<IconPersonRemove />}
+          title={S.items.withdrawal.label}
+          subtitle={S.items.withdrawal.sub}
+          onClick={() => navigate("/withdrawal")}
         />
         {/* QR 출석 미사용 정책(버튼 출석 통일)에 따라 숨김. 재개 시 주석 해제. */}
         {/* <Row
