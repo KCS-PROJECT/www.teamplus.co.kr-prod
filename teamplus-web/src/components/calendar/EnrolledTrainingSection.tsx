@@ -14,6 +14,7 @@ import {
   TRAINING_TYPE_LABEL,
   formatDaySchedulesShort,
   formatNextScheduleSummary,
+  formatPeriodSummary,
   type DaySchedule,
   type NextScheduleInfo,
 } from '@/lib/class-categories';
@@ -84,10 +85,15 @@ function scheduleLineOf(item: EnrolledClassItem): string | null {
     ? null
     : item.trainingType === 'lesson'
       ? item.scheduleTimeLabel ?? null
-      : formatNextScheduleSummary(
+      : (formatNextScheduleSummary(
           item.nextSchedule,
           item.scheduleCount ?? item.scheduledDates?.length ?? null,
-        );
+        ) ??
+        formatPeriodSummary(
+          item.scheduledDates?.[0],
+          item.scheduledDates?.[item.scheduledDates.length - 1],
+          item.scheduleCount ?? item.scheduledDates?.length ?? null,
+        ));
   const daysLabel = dayScheduleLabel ?? formatScheduleLabel(item);
   if (!daysLabel && !time) return null;
   return `${daysLabel || time}${daysLabel && time ? ` · ${time}` : ''}`;

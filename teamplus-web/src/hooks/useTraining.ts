@@ -65,6 +65,9 @@ export interface TrainingSession {
   updatedAt?: string;
   daySchedules?: TrainingDaySchedule[];
   nextSchedule?: TrainingNextSchedule | null;
+  /** 첫/마지막 비취소 회차 날짜(ISO) — 종료 훈련의 기간 표기용. */
+  firstScheduleDate?: string | null;
+  lastScheduleDate?: string | null;
   _count?: {
     schedules: number;
     enrollments: number;

@@ -252,6 +252,13 @@ export default function TrainingDetailPage() {
         }
       : null,
     totalScheduleCount: upcomingSchedules.length + pastSchedules.length,
+    // 종료 훈련(다음 회차 없음) — 비취소 회차 첫~마지막 날짜로 기간 표기.
+    firstScheduleDate:
+      pastSchedules[0]?.scheduledDate ?? upcomingSchedules[0]?.scheduledDate ?? null,
+    lastScheduleDate:
+      upcomingSchedules[upcomingSchedules.length - 1]?.scheduledDate ??
+      pastSchedules[pastSchedules.length - 1]?.scheduledDate ??
+      null,
   });
 
   return (

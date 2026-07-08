@@ -17,6 +17,7 @@ export const MESSAGES = {
     nextScheduleLabel: "다음",
     noUpcomingSchedule: "예정된 일정 없음",
     totalSessionsLabel: (n: number) => `총 ${n}회`,
+    timeVaries: "시간 상이",
     cancelConfirm: "수업을 취소하시겠습니까?",
     shareAction: "공유",
     shareAriaLabel: (name: string) => `${name} 수업 공유하기`,

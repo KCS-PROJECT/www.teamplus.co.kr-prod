@@ -32,6 +32,9 @@ interface ClassItem {
   nextSchedule?: NextScheduleInfo | null;
   /** 비취소 총 회차 수 — "총 N회" 표기용. */
   scheduleCount?: number;
+  /** 첫/마지막 비취소 회차 날짜(ISO) — 종료 수업의 기간 표기용. */
+  firstScheduleDate?: string | null;
+  lastScheduleDate?: string | null;
 }
 
 export default function ScheduleManagePage() {
@@ -125,6 +128,8 @@ export default function ScheduleManagePage() {
                         daySchedules: cls.daySchedules,
                         nextSchedule: cls.nextSchedule,
                         totalScheduleCount: cls.scheduleCount ?? null,
+                        firstScheduleDate: cls.firstScheduleDate,
+                        lastScheduleDate: cls.lastScheduleDate,
                       });
                       return label ? (
                         <p className="text-card-meta text-it-ink-500 dark:text-rink-300">

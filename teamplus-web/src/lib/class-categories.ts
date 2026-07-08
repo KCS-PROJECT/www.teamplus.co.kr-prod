@@ -275,8 +275,9 @@ function compressDayLabel(days: string[]): string {
 /**
  * 목록·요약용 — 카드 1줄에 맞춘 압축 표기.
  *  - 모든 요일의 시간이 동일: "월·수·금 17:00 ~ 18:00" (평일/주말/매일 압축 포함)
- *  - 요일별 시간 상이: "매주 월·수·금" — 전체 나열은 카드에서 잘려 오독을 유발하므로
- *    요일만 표기하고, 정확한 요일별 시간은 상세(formatDaySchedulesFull)가 담당한다.
+ *  - 요일별 시간 상이: "매주 월·수·금 · 시간 상이" — 전체 나열은 카드에서 잘려
+ *    오독을 유발하므로 요일 + 보조 표기만, 정확한 요일별 시간은
+ *    상세(formatDaySchedulesFull)가 담당한다.
  * 빈 배열이면 null → 호출부 폴백.
  */
 export function formatDaySchedulesShort(
@@ -295,7 +296,9 @@ export function formatDaySchedulesShort(
   if (time) return `${dayLabel} ${time}`;
   const isSpecial =
     dayLabel === '매일' || dayLabel === '평일' || dayLabel === '주말';
-  return isSpecial ? dayLabel : `매주 ${dayLabel}`;
+  const base = isSpecial ? dayLabel : `매주 ${dayLabel}`;
+  // 시간 미입력(드묾)과 구분 — 상이한 경우에만 보조 표기.
+  return uniform ? base : `${base} · ${MESSAGES.class.timeVaries}`;
 }
 
 /**
@@ -339,8 +342,15 @@ export function formatNextScheduleLabel(
   return time ? `${dateLabel} ${time}` : dateLabel;
 }
 
+/** "총 N회" 접미부 — totalCount 유효할 때만 " · 총 N회" 반환. */
+function totalSuffix(totalCount?: number | null): string {
+  return typeof totalCount === 'number' && totalCount > 0
+    ? ` · ${MESSAGES.class.totalSessionsLabel(totalCount)}`
+    : '';
+}
+
 /**
- * 다음 회차 요약 — "총 12회 · 다음 7/8 (화) 19:00 ~ 20:00".
+ * 다음 회차 요약 — "다음 7/8 (화) 19:00 ~ 20:00 · 총 12회".
  * "다음" 접두어와 총 회차 수로 이 날짜가 유일한 일정이 아님을 명시한다(단회 오독 방지).
  * totalCount 가 없으면 "다음 …" 만, next 가 없으면 null.
  */
@@ -350,14 +360,41 @@ export function formatNextScheduleSummary(
 ): string | null {
   const label = formatNextScheduleLabel(next);
   if (!label) return null;
-  const nextPart = `${MESSAGES.class.nextScheduleLabel} ${label}`;
-  return typeof totalCount === 'number' && totalCount > 0
-    ? `${MESSAGES.class.totalSessionsLabel(totalCount)} · ${nextPart}`
-    : nextPart;
+  return `${MESSAGES.class.nextScheduleLabel} ${label}${totalSuffix(totalCount)}`;
 }
 
 /**
- * 수업/훈련 카드 시간 표시 SoT — 요일별 기본 일정 패턴 > 다음 회차 요약(총 N회 · 다음 …) > null.
+ * 운영 기간 요약 — "5/7 ~ 7/1 · 총 12회" (단일 날짜면 "5/7 · 총 1회").
+ * 다음 회차가 없는(종료된) 수업의 카드 라벨. 특정 회차 시각 대신 기간으로 요약한다.
+ * 날짜는 @db.Date(UTC 자정) ISO — getUTC* 로 추출해야 KST 달력일과 일치.
+ * 연도가 다르면 "25.12.30 ~ 26.1.5" 형태로 연도를 병기한다.
+ */
+export function formatPeriodSummary(
+  firstIso?: string | null,
+  lastIso?: string | null,
+  totalCount?: number | null,
+): string | null {
+  if (!firstIso) return null;
+  const first = new Date(firstIso);
+  if (Number.isNaN(first.getTime())) return null;
+  const last = lastIso ? new Date(lastIso) : first;
+  const lastValid = Number.isNaN(last.getTime()) ? first : last;
+  const sameYear = first.getUTCFullYear() === lastValid.getUTCFullYear();
+  const md = (d: Date) => `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
+  const ymd = (d: Date) =>
+    `${String(d.getUTCFullYear()).slice(2)}.${d.getUTCMonth() + 1}.${d.getUTCDate()}`;
+  const fmt = sameYear ? md : ymd;
+  const sameDay =
+    first.getUTCFullYear() === lastValid.getUTCFullYear() &&
+    first.getUTCMonth() === lastValid.getUTCMonth() &&
+    first.getUTCDate() === lastValid.getUTCDate();
+  const range = sameDay ? fmt(first) : `${fmt(first)} ~ ${fmt(lastValid)}`;
+  return `${range}${totalSuffix(totalCount)}`;
+}
+
+/**
+ * 수업/훈련 카드 시간 표시 SoT —
+ *   요일별 기본 일정 패턴 > 다음 회차 요약("다음 … · 총 N회") > 운영 기간("첫 ~ 마지막 · 총 N회") > null.
  * 대표값(Class.startTime)은 회차별 실제 시각과 다를 수 있어(요일별 상이·등록시각 폴백)
  * 표시 소스로 사용하지 않는다. null 이면 호출부가 시간 표기를 생략한다.
  */
@@ -366,10 +403,18 @@ export function formatClassScheduleDisplay(opts: {
   nextSchedule?: NextScheduleInfo | null;
   /** 비취소 총 회차 수 — "총 N회" 표기용 (없으면 생략). */
   totalScheduleCount?: number | null;
+  /** 첫/마지막 비취소 회차 날짜(ISO) — 다음 회차가 없는 종료 수업의 기간 표기용. */
+  firstScheduleDate?: string | null;
+  lastScheduleDate?: string | null;
 }): string | null {
   return (
     formatDaySchedulesShort(opts.daySchedules) ??
-    formatNextScheduleSummary(opts.nextSchedule, opts.totalScheduleCount)
+    formatNextScheduleSummary(opts.nextSchedule, opts.totalScheduleCount) ??
+    formatPeriodSummary(
+      opts.firstScheduleDate,
+      opts.lastScheduleDate,
+      opts.totalScheduleCount,
+    )
   );
 }
 

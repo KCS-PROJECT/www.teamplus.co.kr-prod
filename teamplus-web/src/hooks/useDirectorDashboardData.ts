@@ -64,6 +64,9 @@ export interface RecentClassItem {
   } | null;
   /** 비취소 총 회차 수 — "총 N회" 표기용. */
   scheduleCount?: number;
+  /** 첫/마지막 비취소 회차 날짜(ISO) — 종료 수업의 기간 표기용. */
+  firstScheduleDate?: string | null;
+  lastScheduleDate?: string | null;
 }
 
 export interface DirectorDashboardData {

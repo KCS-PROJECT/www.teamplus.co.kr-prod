@@ -24,6 +24,7 @@ import {
   type ViewerLike,
 } from "@/common/utils/viewer-birth-years.util";
 import { sanitizeStrict } from "@/common/utils/sanitize.util";
+import { kstTodayUtcMidnight } from "@/common/utils/kst-date.util";
 import { UploadCleanupService } from "@/common/upload-cleanup.service";
 
 @Injectable()
@@ -718,6 +719,20 @@ export class AcademyService {
         scheduledDates: (c.schedules ?? []).map((s) =>
           s.scheduledDate.toISOString(),
         ),
+        // 비취소 총 회차 수 — 카드 "총 N회" 표기용 (팀 목록 getClubClasses 와 동일 계약).
+        scheduleCount: (c.schedules ?? []).length,
+        // 다음 회차 (비취소·오늘 이후) — 기본 일정 없는 수업 카드의 날짜(+회차 시간) 표시용.
+        nextSchedule: (() => {
+          const sdToday = kstTodayUtcMidnight();
+          const n = (c.schedules ?? []).find((s) => s.scheduledDate >= sdToday);
+          return n
+            ? {
+                scheduledDate: n.scheduledDate.toISOString(),
+                startTime: n.startTime ?? null,
+                endTime: n.endTime ?? null,
+              }
+            : null;
+        })(),
         isActive: c.isActive,
         description: c.description,
         singlePrice:

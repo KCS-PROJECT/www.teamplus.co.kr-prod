@@ -298,24 +298,14 @@ export class DirectorDashboardService {
                 dayScheduleEntries: {
                   select: { dayOfWeek: true, startTime: true, endTime: true },
                 },
-                // 다음 회차 (비취소·오늘 이후) — 기본 일정 없는 수업의 날짜(+회차 시간) 표시용
+                // 비취소 회차 전체 — 다음 회차 + 총 회수 + 운영 기간(first/last) 산출용
                 schedules: {
-                  where: {
-                    isCancelled: false,
-                    scheduledDate: { gte: kstTodayUtcMidnight() },
-                  },
+                  where: { isCancelled: false },
                   orderBy: { scheduledDate: "asc" },
-                  take: 1,
                   select: {
                     scheduledDate: true,
                     startTime: true,
                     endTime: true,
-                  },
-                },
-                // 비취소 총 회차 수 — "총 N회" 표기용
-                _count: {
-                  select: {
-                    schedules: { where: { isCancelled: false } },
                   },
                 },
               },
@@ -586,7 +576,6 @@ export class DirectorDashboardService {
               startTime: string | null;
               endTime: string | null;
             }>;
-            _count: { schedules: number };
           }>
         ).map((c) => ({
           id: c.id,
@@ -600,8 +589,17 @@ export class DirectorDashboardService {
           createdAt: c.createdAt,
           name: c.team?.name ?? "",
           daySchedules: c.dayScheduleEntries ?? [],
-          nextSchedule: c.schedules?.[0] ?? null,
-          scheduleCount: c._count?.schedules ?? 0,
+          // 다음 회차(오늘 이후 첫) — 없으면 null → 프론트가 기간(first/last)으로 폴백 표기.
+          nextSchedule:
+            c.schedules?.find(
+              (s) => s.scheduledDate >= kstTodayUtcMidnight(),
+            ) ?? null,
+          scheduleCount: c.schedules?.length ?? 0,
+          firstScheduleDate:
+            c.schedules?.[0]?.scheduledDate.toISOString() ?? null,
+          lastScheduleDate:
+            c.schedules?.[c.schedules.length - 1]?.scheduledDate.toISOString() ??
+            null,
         })),
         // W6
         latestNotices,

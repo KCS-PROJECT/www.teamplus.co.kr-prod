@@ -108,6 +108,8 @@ function TrainingCard({ item }: { item: TrainingSession }) {
                 daySchedules: item.daySchedules,
                 nextSchedule: item.nextSchedule,
                 totalScheduleCount: scheduleCount,
+                firstScheduleDate: item.firstScheduleDate,
+                lastScheduleDate: item.lastScheduleDate,
               });
               return label ? <> · {label}</> : null;
             })()}

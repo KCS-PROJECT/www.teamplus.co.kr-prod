@@ -210,14 +210,10 @@ export class TrainingService {
           dayScheduleEntries: {
             select: { dayOfWeek: true, startTime: true, endTime: true },
           },
-          // 다음 회차 (비취소·오늘 이후) — 기본 일정 없는 훈련의 날짜(+회차 시간) 표시용
+          // 비취소 회차 전체 — 다음 회차 + 운영 기간(first/last) 산출용
           schedules: {
-            where: {
-              isCancelled: false,
-              scheduledDate: { gte: kstTodayUtcMidnight() },
-            },
+            where: { isCancelled: false },
             orderBy: { scheduledDate: "asc" },
-            take: 1,
             select: { scheduledDate: true, startTime: true, endTime: true },
           },
           _count: {
@@ -236,10 +232,15 @@ export class TrainingService {
       this.prisma.class.count({ where }),
     ]);
 
+    const sdToday = kstTodayUtcMidnight();
     const items = data.map(({ dayScheduleEntries, schedules, ...rest }) => ({
       ...rest,
       daySchedules: dayScheduleEntries,
-      nextSchedule: schedules[0] ?? null,
+      // 다음 회차(오늘 이후 첫) — 없으면 null → 프론트가 기간(first/last)으로 폴백 표기.
+      nextSchedule: schedules.find((s) => s.scheduledDate >= sdToday) ?? null,
+      firstScheduleDate: schedules[0]?.scheduledDate.toISOString() ?? null,
+      lastScheduleDate:
+        schedules[schedules.length - 1]?.scheduledDate.toISOString() ?? null,
     }));
 
     return {

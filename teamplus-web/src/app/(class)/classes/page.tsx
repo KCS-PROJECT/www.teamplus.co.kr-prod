@@ -28,6 +28,7 @@ import {
   shouldHideTypeBadge,
   formatDaySchedulesShort,
   formatNextScheduleSummary,
+  formatPeriodSummary,
   type ClassCategoryCode,
   type DaySchedule,
   type NextScheduleInfo,
@@ -559,10 +560,15 @@ const ChildClassCard = memo(function ChildClassCard({
     ? null
     : item.trainingType === "lesson"
       ? (item.scheduleTimeLabel ?? null)
-      : formatNextScheduleSummary(
+      : (formatNextScheduleSummary(
           item.nextSchedule,
           item.scheduleCount ?? item.scheduledDates?.length ?? null,
-        );
+        ) ??
+        formatPeriodSummary(
+          item.scheduledDates?.[0],
+          item.scheduledDates?.[item.scheduledDates.length - 1],
+          item.scheduleCount ?? item.scheduledDates?.length ?? null,
+        ));
   const daysLabel = dayScheduleLabel ?? formatScheduleLabel(item);
   const rawTypeLabel = TRAINING_TYPE_LABEL[item.trainingType];
   const typeLabel = rawTypeLabel;
@@ -695,10 +701,15 @@ const TeenClassCard = memo(function TeenClassCard({
     ? null
     : item.trainingType === "lesson"
       ? (item.scheduleTimeLabel ?? null)
-      : formatNextScheduleSummary(
+      : (formatNextScheduleSummary(
           item.nextSchedule,
           item.scheduleCount ?? item.scheduledDates?.length ?? null,
-        );
+        ) ??
+        formatPeriodSummary(
+          item.scheduledDates?.[0],
+          item.scheduledDates?.[item.scheduledDates.length - 1],
+          item.scheduleCount ?? item.scheduledDates?.length ?? null,
+        ));
   const rawTypeLabel = TRAINING_TYPE_LABEL[item.trainingType];
   const typeLabel = rawTypeLabel;
   const daysLabel = dayScheduleLabel ?? formatScheduleLabel(item);
@@ -855,10 +866,15 @@ const DefaultClassCard = memo(function DefaultClassCard({
     ? null
     : item.trainingType === "lesson"
       ? (item.scheduleTimeLabel ?? null)
-      : formatNextScheduleSummary(
+      : (formatNextScheduleSummary(
           item.nextSchedule,
           item.scheduleCount ?? item.scheduledDates?.length ?? null,
-        );
+        ) ??
+        formatPeriodSummary(
+          item.scheduledDates?.[0],
+          item.scheduledDates?.[item.scheduledDates.length - 1],
+          item.scheduleCount ?? item.scheduledDates?.length ?? null,
+        ));
   const rawTypeLabel = TRAINING_TYPE_LABEL[item.trainingType];
   const typeLabel = rawTypeLabel;
   const daysLabel = dayScheduleLabel ?? formatScheduleLabel(item);
