@@ -519,10 +519,16 @@ export interface ConfirmTournamentSettlementResult {
 export async function confirmTournamentSettlement(
   tournamentId: string,
   feePerPerson: number,
+  registrationIds?: string[],
 ): Promise<ApiResponse<ConfirmTournamentSettlementResult>> {
   return api.post<ConfirmTournamentSettlementResult>(
     `/tournaments/${encodeURIComponent(tournamentId)}/postpaid/confirm`,
-    { feePerPerson },
+    {
+      feePerPerson,
+      ...(registrationIds && registrationIds.length > 0
+        ? { registrationIds }
+        : {}),
+    },
   );
 }
 
@@ -750,17 +756,58 @@ export type TournamentUiStatus =
   | 'completed'
   | 'cancelled';
 
+/**
+ * 대회 참가 취소 가능 여부 — 시작일 당일(KST)부터 취소 불가, 전날(D-1)까지 가능.
+ *   startDate 는 @db.Date(UTC 자정). now 를 KST 달력일의 UTC 자정으로 환산해 day-level 비교
+ *   (백엔드 cancelRegistration 의 kstTodayUtcMidnight 기준과 일관).
+ */
+export function canCancelTournamentRegistration(
+  startDate?: string | null,
+  now: Date = new Date(),
+): boolean {
+  if (!startDate) return true;
+  const start = new Date(startDate);
+  if (Number.isNaN(start.getTime())) return true;
+  const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+  const kst = new Date(now.getTime() + KST_OFFSET_MS);
+  const kstTodayUtcMidnight = Date.UTC(
+    kst.getUTCFullYear(),
+    kst.getUTCMonth(),
+    kst.getUTCDate(),
+  );
+  return start.getTime() > kstTodayUtcMidnight;
+}
+
 export function mapTournamentUiStatus(
   raw: TournamentStatus,
-  _registrationDeadline: string | null,
-  _now: Date = new Date(),
+  endDate?: string | null,
+  now: Date = new Date(),
 ): TournamentUiStatus {
   if (raw === 'cancelled') return 'cancelled';
   if (raw === 'finished') return 'completed';
   if (raw === 'ongoing') return 'in_progress';
 
-  // [2026-06-08] 모집마감일 폐지 — scheduled 대회는 마감일 유무·과거 여부와 무관하게
-  //   항상 모집중(recruiting). 참가 신청(결제)은 종료(finished)/취소(cancelled) 대회만 차단.
-  //   (기존엔 과거 deadline → closed 판정으로 "조회만 가능합니다" 안내가 떠 결제 불가하던 회귀)
+  // [2026-06-08] 모집마감일 폐지 — scheduled 대회는 마감일 유무와 무관하게 모집중(recruiting).
+  // [2026-06-22] 단, 대회 종료일(endDate)이 지나면 status 가 자동으로 finished 로 전이되지 않으므로
+  //   날짜 기준으로 '종료(completed)'로 보정한다(백엔드 mapStudentTournamentStatus 의 endDate<now 기준과 일관).
+  if (endDate) {
+    const d = new Date(endDate);
+    if (!Number.isNaN(d.getTime())) {
+      // day-level(KST): 종료일 당일까지 모집중, 다음날부터 종료.
+      //   endDate 는 @db.Date(UTC 자정). now 를 KST 달력일의 UTC 자정으로 환산해 비교
+      //   (백엔드 kstTodayUtcMidnight 기준과 일관). 시각 단위 비교 시 당일 대회가
+      //   KST 09:00(UTC 자정)부터 종료로 오판되던 버그 수정.
+      const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+      const kst = new Date(now.getTime() + KST_OFFSET_MS);
+      const kstTodayUtcMidnight = Date.UTC(
+        kst.getUTCFullYear(),
+        kst.getUTCMonth(),
+        kst.getUTCDate(),
+      );
+      if (d.getTime() < kstTodayUtcMidnight) {
+        return 'completed';
+      }
+    }
+  }
   return 'recruiting';
 }

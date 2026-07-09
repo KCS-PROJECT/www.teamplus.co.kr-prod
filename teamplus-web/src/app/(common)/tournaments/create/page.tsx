@@ -241,8 +241,7 @@ export default function TournamentCreatePage() {
         if (Array.isArray(t.selectedParticipantIds)) {
           setSelectedPlayerIds(new Set(t.selectedParticipantIds));
         }
-        // 선불 참가비 복원 — 기존 대회의 feePerGame(대회당 단일 금액)을 단일 입력에 복원.
-        //   (기존 일정 합계가 feePerGame 에 저장돼 있으므로 그대로 표시된다.)
+        // 참가비 복원 — feePerGame(선불 금액 / 후불 참고 예상 금액)을 단일 입력에 복원.
         const feeNum = t.feePerGame != null ? Number(t.feePerGame) : 0;
         setTournamentFee(Number.isFinite(feeNum) && feeNum > 0 ? String(feeNum) : "");
         // [2026-06-08] 대회일정(경기) prefill — scheduledAt → 날짜/시간 행으로 복원.
@@ -485,10 +484,10 @@ export default function TournamentCreatePage() {
       //   validationError 가 1명 이상을 보장하므로 항상 비어있지 않다.
       payload.selectedParticipantIds = [...selectedPlayerIds];
 
-      // 대회 참가비 = 대회당 단일 금액 — 양수일 때만 전송 (무료는 미전송).
-      // [2026-06-16] 후불(POSTPAID)은 종료 후 정산에서 금액 결정 → 요금 미전송.
+      // 대회 참가비 = 대회당 단일 금액(feePerGame) — 양수일 때만 전송 (무료/미입력은 미전송).
+      // 선불: 신청 시 결제 금액. 후불: 참고용 예상 금액 — 실제 청구액은 종료 후 정산에서 확정.
       const feeNum = tournamentFee.trim() === "" ? 0 : Number(tournamentFee);
-      if (!isPostpaid && Number.isFinite(feeNum) && feeNum > 0) {
+      if (Number.isFinite(feeNum) && feeNum > 0) {
         payload.feePerGame = feeNum;
         payload.feeType = "TOTAL_FIXED";
         payload.totalGames = 1;
@@ -777,33 +776,51 @@ export default function TournamentCreatePage() {
             {isEditMode && (
               <Hint>결제 방식은 대회 생성 후 변경할 수 없습니다.</Hint>
             )}
-            {isPostpaid ? (
-              <Hint>{MESSAGES.tournament.postpaidScheduleHint}</Hint>
-            ) : (
-              <Field label={MESSAGES.tournamentForm.feeLabel}>
-                <div className="relative flex items-center">
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    step={1000}
-                    value={tournamentFee}
-                    onChange={(e) =>
-                      setTournamentFee(e.target.value.replace(/[^0-9]/g, ""))
-                    }
-                    placeholder={MESSAGES.tournamentForm.feePlaceholder}
-                    aria-label={MESSAGES.tournamentForm.feeLabel}
-                    className={`${pillInput} min-w-0 box-border pr-8 text-left font-num tabular-nums placeholder:font-light placeholder:italic`}
-                  />
-                  {tournamentFee && (
-                    <span className="pointer-events-none absolute right-3 text-card-meta font-medium text-it-ink-400">
-                      원
-                    </span>
-                  )}
-                </div>
-                <Hint>{MESSAGES.tournamentForm.feeHint}</Hint>
-              </Field>
-            )}
+            {/* 후불도 참가비 입력란 노출 — 참고용 예상 금액(feePerGame). 라벨/힌트만 분기. */}
+            <Field
+              label={
+                isPostpaid
+                  ? MESSAGES.tournamentForm.feePostpaidLabel
+                  : MESSAGES.tournamentForm.feeLabel
+              }
+            >
+              <div className="relative flex items-center">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  // 3자리 콤마 표시 — state 는 숫자만("80000") 유지, 화면만 "80,000".
+                  value={
+                    tournamentFee
+                      ? Number(tournamentFee).toLocaleString("ko-KR")
+                      : ""
+                  }
+                  onChange={(e) =>
+                    setTournamentFee(e.target.value.replace(/[^0-9]/g, ""))
+                  }
+                  placeholder={
+                    isPostpaid
+                      ? MESSAGES.tournamentForm.feePostpaidPlaceholder
+                      : MESSAGES.tournamentForm.feePlaceholder
+                  }
+                  aria-label={
+                    isPostpaid
+                      ? MESSAGES.tournamentForm.feePostpaidLabel
+                      : MESSAGES.tournamentForm.feeLabel
+                  }
+                  className={`${pillInput} min-w-0 box-border pr-8 text-left font-num tabular-nums placeholder:font-light placeholder:italic`}
+                />
+                {tournamentFee && (
+                  <span className="pointer-events-none absolute right-3 text-card-meta font-medium text-it-ink-400">
+                    원
+                  </span>
+                )}
+              </div>
+              <Hint>
+                {isPostpaid
+                  ? MESSAGES.tournamentForm.feePostpaidHint
+                  : MESSAGES.tournamentForm.feeHint}
+              </Hint>
+            </Field>
           </SectionCard>
 
           {/* [2026-06-05 3단계] 대회일정 — 대회기간 밑. 경기별 vs 상대팀(자유 텍스트) + 날짜/시간.
@@ -853,7 +870,7 @@ export default function TournamentCreatePage() {
                         updateScheduleMatch(m.key, { opponentName: e.target.value })
                       }
                       disabled={locked}
-                      placeholder="vs 상대팀 (예: 강남 아이스하키)"
+                      placeholder="(예: 서울 아이스하키팀)"
                       maxLength={50}
                       className={`${pillInput} mb-2 disabled:opacity-60`}
                     />
@@ -889,7 +906,7 @@ export default function TournamentCreatePage() {
                           })
                         }
                         disabled={locked}
-                        placeholder="경기 장소 찾아보기 (비우면 대회 장소)"
+                        placeholder="(선택입력) 대회장소와 동일하면 미기재"
                         aria-label={`${idx + 1}경기 장소 검색`}
                         className={`${pillInput} disabled:opacity-60`}
                       />

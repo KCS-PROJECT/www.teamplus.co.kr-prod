@@ -1776,6 +1776,20 @@ export class TournamentsService {
       throw new NotFoundException("대회를 찾을 수 없습니다.");
     }
 
+    // 0. 종료 대회 검증 — status(cancelled/finished) 또는 종료일(day-level) 경과 시 신청 차단.
+    //   선불 initiateTournamentPayment 와 동일 기준. 후불 대회는 마감일이 대개 없어(null)
+    //   이 가드가 유일한 종료 차단 — /apply 직접 접근으로 종료 대회 신청되던 갭 방지.
+    const endByDate =
+      tournament.endDate != null &&
+      tournament.endDate < kstTodayUtcMidnight();
+    if (
+      tournament.status === "cancelled" ||
+      tournament.status === "finished" ||
+      endByDate
+    ) {
+      throw new BadRequestException("이미 종료된 대회는 참가 신청할 수 없습니다.");
+    }
+
     // 1. 등록 마감일 검증
     if (
       tournament.registrationDeadline &&
@@ -1971,6 +1985,9 @@ export class TournamentsService {
   async confirmTournamentSettlement(
     tournamentId: string,
     feePerPerson: number,
+    // 청구 대상 등록 ID 목록 — 미전송/빈 배열이면 미결제 참가자 전원(하위호환).
+    //   선택 청구: 감독이 참가선수목록에서 고른 선수에게만 결제 요청.
+    registrationIds: string[] | undefined,
     // 정산 수행자 — 대회 후불은 별도 정산 추적 테이블이 없어(설계상 신규 컬럼 0)
     //   현재 기록 대상이 없다. 감사 로깅 도입 시 활용하도록 시그니처에 유지한다.
     _confirmedBy: string,
@@ -2009,13 +2026,20 @@ export class TournamentsService {
     }
 
     // 청구 대상 — 미결제(UNPAID/PENDING)만. CANCELLED·REFUNDED·PAID 제외.
+    //   registrationIds 전달 시 그중 미결제 건만 청구(선택 청구). 미전송이면 전원.
+    const hasSelection = Array.isArray(registrationIds) && registrationIds.length > 0;
     const targets = await this.prisma.tournamentRegistration.findMany({
       where: {
         tournamentId,
         paymentStatus: { in: ["UNPAID", "PENDING"] },
+        ...(hasSelection ? { id: { in: registrationIds } } : {}),
       },
       select: { id: true, userId: true, childId: true },
     });
+
+    if (targets.length === 0) {
+      throw new BadRequestException("청구할 참가자가 없습니다.");
+    }
 
     // 결제자 해석 — 자녀(childId)가 있으면 주 보호자, 없으면 신청자(userId).
     const childIds = targets
@@ -2274,6 +2298,7 @@ export class TournamentsService {
   ) {
     const registration = await this.prisma.tournamentRegistration.findUnique({
       where: { id: registrationId },
+      include: { tournament: { select: { startDate: true } } },
     });
 
     if (!registration) {
@@ -2291,6 +2316,17 @@ export class TournamentsService {
 
     if (registration.paymentStatus === "CANCELLED") {
       throw new BadRequestException("이미 취소된 등록입니다.");
+    }
+
+    // 대회 시작일 당일부터 취소 불가 — startDate(@db.Date UTC자정)가 오늘(KST) 이하면 차단.
+    //   day-level: 시작일 당일부터 불가, 전날(D-1)까지 가능. (프론트 canCancelTournamentRegistration 과 동일 기준)
+    if (
+      registration.tournament?.startDate != null &&
+      registration.tournament.startDate <= kstTodayUtcMidnight()
+    ) {
+      throw new BadRequestException(
+        "대회 당일부터는 참가를 취소할 수 없습니다.",
+      );
     }
 
     // [2026-06-15] 결제 완료(PAID) 건도 취소(환불) 가능하도록 허용.

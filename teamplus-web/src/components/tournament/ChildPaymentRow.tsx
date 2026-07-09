@@ -21,6 +21,8 @@ export interface ChildPaymentRowProps {
   cancelling: boolean;
   onPay: () => void;
   onCancel: () => void;
+  /** 취소 가능 여부. 기본 true. false 면 취소 버튼(결제취소/참가취소)을 숨긴다(대회 당일 이후 등). */
+  canCancel?: boolean;
   /**
    * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
    *   true 시 카드 박스 → flat hairline 행, 색만 it-* 치환(상태 분기 로직 동결).
@@ -36,6 +38,7 @@ export function ChildPaymentRow({
   cancelling,
   onPay,
   onCancel,
+  canCancel = true,
   iceTheme = false,
 }: ChildPaymentRowProps) {
   const isPaid = paymentStatus === 'PAID';
@@ -97,14 +100,16 @@ export function ChildPaymentRow({
             >
               결제완료
             </span>
-            <button
-              type="button"
-              onClick={onCancel}
-              disabled={cancelling}
-              className={cancelBtnCls}
-            >
-              {cancelling ? '취소 중...' : '결제취소'}
-            </button>
+            {canCancel && (
+              <button
+                type="button"
+                onClick={onCancel}
+                disabled={cancelling}
+                className={cancelBtnCls}
+              >
+                {cancelling ? '취소 중...' : '결제취소'}
+              </button>
+            )}
           </>
         ) : canPay ? (
           <button
@@ -121,14 +126,16 @@ export function ChildPaymentRow({
           </button>
         ) : (
           <>
-            <button
-              type="button"
-              onClick={onCancel}
-              disabled={cancelling}
-              className={cancelBtnCls}
-            >
-              {cancelling ? '취소 중...' : '참가취소'}
-            </button>
+            {canCancel && (
+              <button
+                type="button"
+                onClick={onCancel}
+                disabled={cancelling}
+                className={cancelBtnCls}
+              >
+                {cancelling ? '취소 중...' : '참가취소'}
+              </button>
+            )}
             <span
               className={cn(
                 'inline-flex items-center px-2 py-0.5 rounded-full text-w-caption font-bold',
