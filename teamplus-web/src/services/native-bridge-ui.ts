@@ -64,6 +64,11 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+// `data-keyboard-open` 루트 속성 판정 임계값 — 키보드 인셋이 이 값을 넘을 때만
+// "키보드 표시 중" 으로 본다. 브라우저 URL 바 개폐 등 소폭 viewport 차이를
+// 키보드로 오인하지 않기 위한 노이즈 가드 (실제 소프트 키보드는 200px 이상).
+const KEYBOARD_OPEN_MIN_PX = 100;
+
 /**
  * UI 제어 기능 (상태바, AppBar, BottomNav)
  *
@@ -580,6 +585,13 @@ export const ui = {
       "--keyboard-inset-bottom",
       `${info.viewInsets.bottom}px`,
     );
+    // 키보드 표시 상태 속성 — CSS 가 "실제 키보드 노출" 을 selector 로 분기
+    // (예: 로그인 푸터 숨김). 포커스 기반 프록시(focus-within)는 Android 에서
+    // 키보드만 내려도 포커스가 남아 오판하므로 이 속성이 판정 SoT.
+    root.toggleAttribute(
+      "data-keyboard-open",
+      info.viewInsets.bottom > KEYBOARD_OPEN_MIN_PX,
+    );
     root.dataset.nativePlatform = info.platform;
     root.dataset.orientation = info.orientation;
     // Breakpoint 데이터 속성 — CSS attribute selector 로 분기 가능
@@ -791,6 +803,11 @@ function applyWebViewportToCss(): void {
   // eslint-disable-next-line no-restricted-syntax -- web fallback metrics SoT 산출부라 직접 window 접근 정당
   const keyboardBottom = Math.max(0, window.innerHeight - h);
   root.style.setProperty("--keyboard-inset-bottom", `${keyboardBottom}px`);
+  // 키보드 표시 상태 속성 — native 경로(applyDeviceInsetsToCss)와 동일 시맨틱
+  root.toggleAttribute(
+    "data-keyboard-open",
+    keyboardBottom > KEYBOARD_OPEN_MIN_PX,
+  );
   root.dataset.orientation = orientation;
   root.dataset.screenBp = computeScreenBreakpoint(w);
 }

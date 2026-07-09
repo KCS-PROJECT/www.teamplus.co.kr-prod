@@ -1013,7 +1013,7 @@ export default function LoginPage() {
           <div className="flex-1" aria-hidden="true" />
 
           {/* ─── 푸터: 회원가입 + 약관 (시안 paddingTop 28 · row gap6 mb14) ──
-              auth-footer-keyboard-hide: 터치 기기에서 폼 포커스(=키보드 노출) 동안
+              auth-footer-keyboard-hide: 키보드가 실제 표시된 동안(:root[data-keyboard-open])
               숨겨 키보드 개폐 시 푸터 출렁임 차단 (globals.css) */}
           <div className="auth-footer-keyboard-hide pt-7 transition-opacity duration-200 motion-reduce:transition-none">
             {isSignupEnabled && (
