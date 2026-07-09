@@ -30,11 +30,12 @@ const KO_DAY_BY_UTC_DOW = ["일", "월", "화", "수", "목", "금", "토"] as c
 /**
  * 회차 날짜(@db.Date, UTC 자정 = KST 달력일)의 요일에 해당하는 템플릿 행 반환.
  * getUTCDay 사용 — 서버 TZ 무관하게 KST 달력 요일과 일치한다.
+ * 제네릭 — venue 등 부가 필드를 가진 템플릿 행도 타입 손실 없이 반환한다.
  */
-export function dayTemplateForDate(
+export function dayTemplateForDate<T extends DayScheduleTemplate>(
   scheduledDate: Date,
-  templates?: DayScheduleTemplate[] | null,
-): DayScheduleTemplate | null {
+  templates?: T[] | null,
+): T | null {
   if (!templates || templates.length === 0) return null;
   const kr = KO_DAY_BY_UTC_DOW[scheduledDate.getUTCDay()];
   return templates.find((t) => t.dayOfWeek === kr) ?? null;

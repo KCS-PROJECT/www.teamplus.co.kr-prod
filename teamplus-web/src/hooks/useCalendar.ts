@@ -53,8 +53,10 @@ interface ClubClass {
   academyId?: string | null;
   teamId?: string | null;
   instructorName: string;
-  /** 요일별 기본 일정 — 회차 시각 없는 회차의 요일 시각 폴백. */
+  /** 요일별 기본 일정 — 회차 시각·장소 없는 회차의 요일 폴백. */
   daySchedules?: DaySchedule[];
+  /** 수업 대표 장소명(venue.name) — 목록 응답의 location 필드. 회차/요일 장소 없을 때 폴백. */
+  location?: string | null;
 }
 
 interface ClassSchedule {
@@ -64,6 +66,8 @@ interface ClassSchedule {
   // [2026-06-10] 오픈클래스 회차별 실제 시각("HH:mm") — 있으면 대표 시간보다 우선.
   startTime?: string | null;
   endTime?: string | null;
+  /** 회차별 장소 — 있으면 요일 기본일정·대표 장소보다 우선. */
+  venue?: { id: string; name: string } | null;
 }
 
 export type ClubFetchStrategy = 'my' | 'managed-with-fallback' | 'academy-only';
@@ -317,6 +321,9 @@ export function useCalendar(options: UseCalendarOptions = {}): UseCalendarReturn
       trainingType?: string;
       academyId?: string | null;
       academy?: { name?: string } | null;
+      /** 수업 대표 장소 — /classes 응답의 venue 조인. */
+      venue?: { id?: string; name?: string | null } | null;
+      daySchedules?: DaySchedule[];
     }
     // ClassTeamVisibility 매칭 오픈클래스 fetch — 학부모/자녀('my') 시야에만 한정.
     //   코치/감독에는 노출하지 않음 (팀↔오픈 도메인 분리). 'academy-only' 도 viewer
@@ -352,6 +359,8 @@ export function useCalendar(options: UseCalendarOptions = {}): UseCalendarReturn
         endTime: o.endTime,
         trainingType: o.trainingType ?? 'lesson',
         academyId: o.academyId ?? null,
+        daySchedules: o.daySchedules,
+        location: o.venue?.name ?? null,
         // 오픈클래스: clubId=null sentinel, clubName=학원명
         clubId: '__open__',
         clubName: o.academy?.name ?? '오픈클래스',
@@ -404,6 +413,10 @@ export function useCalendar(options: UseCalendarOptions = {}): UseCalendarReturn
         }
 
         const dateKey = getDateKey(schedule.scheduledDate);
+        const daySchedule = getDayScheduleForDate(
+          cls.daySchedules,
+          schedule.scheduledDate,
+        );
         const mappedClass: CalendarClass = {
           id: schedule.id,
           classId: cls.id,
@@ -411,20 +424,18 @@ export function useCalendar(options: UseCalendarOptions = {}): UseCalendarReturn
           // 회차 시각 SoT — ClassSchedule.start_time(text "HH:mm") 입력 그대로 우선 표시.
           //   없으면 그 요일의 기본 일정(daySchedules) 시각, 그것도 없으면 미표시('').
           //   대표값(Class.startTime)·가상 프리셋 시간은 실제 시각과 달라 사용하지 않는다.
-          time: (() => {
-            if (schedule.startTime) {
-              return schedule.endTime
-                ? `${schedule.startTime} - ${schedule.endTime}`
-                : schedule.startTime;
-            }
-            const ds = getDayScheduleForDate(
-              cls.daySchedules,
-              schedule.scheduledDate,
-            );
-            return ds ? `${ds.startTime} - ${ds.endTime}` : '';
-          })(),
+          time: schedule.startTime
+            ? schedule.endTime
+              ? `${schedule.startTime} - ${schedule.endTime}`
+              : schedule.startTime
+            : daySchedule
+              ? `${daySchedule.startTime} - ${daySchedule.endTime}`
+              : '',
           coach: cls.instructorName,
-          location: cls.clubName,
+          // 장소 — 회차 venue > 그 요일 기본일정 venue > 수업 대표 venue. 없으면 미표시.
+          //   팀/학원명(clubName)은 장소가 아니므로 폴백으로 쓰지 않는다.
+          location:
+            schedule.venue?.name ?? daySchedule?.venueName ?? cls.location ?? '',
           type: inferTrainingType(cls),
         };
 
@@ -444,6 +455,10 @@ export function useCalendar(options: UseCalendarOptions = {}): UseCalendarReturn
       startDate: string;
       endDate?: string | null;
       status?: string;
+      /** 장소 폴백 체인 소스 — location(보조 텍스트) > venue.name > rink.location > rink.name. */
+      location?: string | null;
+      venue?: { name?: string | null } | null;
+      rink?: { name?: string | null; location?: string | null } | null;
     }
     interface RawMatch {
       id: string;
@@ -462,6 +477,8 @@ export function useCalendar(options: UseCalendarOptions = {}): UseCalendarReturn
       matchOrder?: number | null;
       awayTeam?: { name?: string | null } | null;
       tournament?: { name?: string | null } | null;
+      venue?: { name?: string | null } | null;
+      rink?: { name?: string | null } | null;
     }
     const rangeStart = monthStart.toISOString();
     const rangeEnd = monthEnd.toISOString();
@@ -514,7 +531,7 @@ export function useCalendar(options: UseCalendarOptions = {}): UseCalendarReturn
           title: `${m.tournament?.name ?? '대회'} ${order}vs ${opponent}`.trim(),
           time: `${hh}:${mm}`,
           coach: '',
-          location: '',
+          location: m.venue?.name ?? m.rink?.name ?? '',
           type: 'GAME',
         });
       }
@@ -532,7 +549,9 @@ export function useCalendar(options: UseCalendarOptions = {}): UseCalendarReturn
         title: t.name,
         time: '종일',
         coach: '',
-        location: '',
+        // getAvailableTournaments 의 장소 해석 체인과 동일 — 팀명 폴백 없음.
+        location:
+          t.location || t.venue?.name || t.rink?.location || t.rink?.name || '',
         type: 'GAME',
       });
     }

@@ -40,9 +40,9 @@ export function ScheduleRow({
     <div
       className={cn(
         'flex items-start gap-3 border-b py-3 last:border-b-0',
-        iceTheme
-          ? 'border-it-line dark:border-rink-700'
-          : 'border-wline-2 dark:border-rink-700',
+        // 행 구분선 — 식별성 요구로 무채 검정 계통. 쿨그레이 토큰(it-line 계열)은 배경과
+        //   같은 톤이라 명도를 낮춰도 묻힘. 강도 조절은 투명도 %로 (부족 시 /25·/20 상향).
+        'border-black/20 dark:border-white/15',
       )}
     >
       <div
@@ -56,11 +56,13 @@ export function ScheduleRow({
         aria-hidden="true"
       />
       <div className="min-w-0 flex-1">
+        {/* 메타 줄 — 칩·시간·장소. flex-wrap: 장소가 폭에 안 맞으면 아랫줄로 내려간다
+            (shrink-0 이라 줄 안에서 말줄임되지 않고 wrap, 내려간 줄에서만 max-w-full 초과분 truncate). */}
         <div
           className={cn(
-            'flex items-center',
+            'flex flex-wrap items-center',
             // 시안: 칩~시간 gap 7px / 칩 아래 마진 3px. 기본: gap-2 / mb-1.
-            iceTheme ? 'mb-[3px] gap-[7px]' : 'mb-1 gap-2',
+            iceTheme ? 'mb-[3px] gap-x-[7px] gap-y-[2px]' : 'mb-1 gap-x-2 gap-y-1',
           )}
         >
           <span
@@ -76,12 +78,24 @@ export function ScheduleRow({
           {time && (
             <span
               className={cn(
-                'tabular-nums',
+                'shrink-0 whitespace-nowrap tabular-nums',
                 // 시안: 13px/700 it-ink-body. 기본: 12px regular.
                 iceTheme ? 'text-[13px] font-bold text-it-ink-600 dark:text-rink-300' : 'text-xs text-wtext-3 dark:text-rink-300',
               )}
             >
               {time}
+            </span>
+          )}
+          {location && (
+            <span
+              className={cn(
+                'flex max-w-full shrink-0 items-center',
+                // 시안: place 아이콘 14 + 12.5px it-ink-500 · gap 3.
+                iceTheme ? 'gap-[3px] text-[12.5px] text-it-ink-500 dark:text-rink-300' : 'gap-1 text-xs text-wtext-3 dark:text-rink-300',
+              )}
+            >
+              <Icon name="location_on" className="shrink-0 text-[14px]" aria-hidden="true" />
+              <span className="min-w-0 truncate">{location}</span>
             </span>
           )}
         </div>
@@ -94,18 +108,6 @@ export function ScheduleRow({
         >
           {title}
         </p>
-        {location && (
-          <div
-            className={cn(
-              'flex items-center',
-              // 시안: place 아이콘 14 + 12.5px it-ink-500 · gap 3 · marginTop 2.
-              iceTheme ? 'mt-[2px] gap-[3px] text-[12.5px] text-it-ink-500 dark:text-rink-300' : 'mt-1 gap-1 text-xs text-wtext-3 dark:text-rink-300',
-            )}
-          >
-            <Icon name="location_on" className="shrink-0 text-[14px]" aria-hidden="true" />
-            <span className="truncate">{location}</span>
-          </div>
-        )}
       </div>
       {detail && (
         <button
