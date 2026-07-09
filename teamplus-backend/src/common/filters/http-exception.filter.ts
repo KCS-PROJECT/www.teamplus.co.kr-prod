@@ -177,10 +177,18 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
         // class-validator 에러 배열 처리
         if (Array.isArray(response.message)) {
+          const messages = response.message as string[];
+          // message 를 첫 필드 에러로 구체화한다. 기존엔 항상 "입력값 검증에 실패했습니다."
+          // 일반 문구만 담아 message 만 보는 클라이언트(앱 Native Bridge 등)가 원인을
+          // 알 수 없었다. 상세는 errors[] 에 그대로 유지.
+          const first = String(messages[0] ?? "입력값 검증에 실패했습니다.");
           return {
             status,
-            message: "입력값 검증에 실패했습니다.",
-            errors: response.message.map((msg: string) => ({
+            message:
+              messages.length > 1
+                ? `${first} (외 ${messages.length - 1}건)`
+                : first,
+            errors: messages.map((msg: string) => ({
               field: this.extractFieldFromMessage(msg),
               message: msg,
             })),

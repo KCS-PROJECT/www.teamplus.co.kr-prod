@@ -1,4 +1,11 @@
-import { IsNotEmpty, IsString, IsNumber, IsOptional, Min } from "class-validator";
+import {
+  IsNotEmpty,
+  IsString,
+  IsNumber,
+  IsOptional,
+  Min,
+  Matches,
+} from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export class CreateClassProductDto {
@@ -54,6 +61,18 @@ export class CreateClassProductDto {
   @IsOptional()
   @IsString({ message: "결제 방식은 문자열이어야 합니다." })
   feeType?: string;
+
+  // [Lifecycle v4.1 §9.2] 월별 패키지 귀속월 — "YYYY-MM". MONTHLY_FIXED 전용.
+  //   판매 승인 사이클의 확인 단계(다음 달 복제 생성)에서 전송된다. 생성 후 불변.
+  @ApiPropertyOptional({
+    example: "2026-08",
+    description: "귀속월 (YYYY-MM) — 월별 패키지. 미전송 시 무월(레거시 폴백)",
+  })
+  @IsOptional()
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, {
+    message: "귀속월은 YYYY-MM 형식이어야 합니다.",
+  })
+  billingMonth?: string;
 
   // [폐기 예정] "주 N회" 자동 파생(classDays.length) 제거로 신규 전송 없음 —
   //   구 클라이언트 하위호환용으로만 수용. 표시·제약 어디에도 미사용.

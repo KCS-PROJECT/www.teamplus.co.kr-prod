@@ -20,11 +20,12 @@ import { isNativeApp } from "@/lib/environment";
 /** 지원 플랫폼 (other 는 PC / 미지원 모바일) */
 export type AppInstallPlatform = "ios" | "android" | "other";
 
-/** Android 패키지명 — env 기본값: kr.co.teamplus.app */
+/** Android 패키지명 — env 기본값: kr.co.teamplus */
 export const ANDROID_PACKAGE = env.NEXT_PUBLIC_ANDROID_PACKAGE_NAME;
 
-/** iOS Bundle ID — AASA appID 의 bundle 부분과 일치 (운영 배포 시 sync 필수) */
-export const IOS_BUNDLE_ID = "com.teamplus.app";
+/** iOS Bundle ID — AASA appID 의 bundle 부분·Xcode PRODUCT_BUNDLE_IDENTIFIER 와 일치 필수 */
+export const IOS_BUNDLE_ID =
+  process.env.NEXT_PUBLIC_IOS_BUNDLE_ID || "kr.co.teamplus";
 
 /**
  * User-Agent 기반 플랫폼 감지.

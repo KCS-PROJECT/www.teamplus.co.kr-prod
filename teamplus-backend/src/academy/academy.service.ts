@@ -25,6 +25,8 @@ import {
 } from "@/common/utils/viewer-birth-years.util";
 import { sanitizeStrict } from "@/common/utils/sanitize.util";
 import { kstTodayUtcMidnight } from "@/common/utils/kst-date.util";
+import { deriveClassLifecycle } from "@/common/utils/class-lifecycle.util";
+import { filterSellableProducts } from "@/common/billing/sales-gate.util";
 import { UploadCleanupService } from "@/common/upload-cleanup.service";
 
 @Injectable()
@@ -602,6 +604,8 @@ export class AcademyService {
         ageMax: true,
         targetBirthYears: true,
         isActive: true,
+        endedAt: true,
+        salesOpenMonth: true,
         approvalStatus: true,
         category: true,
         classDays: true,
@@ -626,6 +630,7 @@ export class AcademyService {
             durationDays: true,
             sessionsPerMonth: true,
             sessionsPerWeek: true,
+            billingMonth: true,
           },
         },
         schedules: {
@@ -671,10 +676,15 @@ export class AcademyService {
           : firstSched.startTime
         : "";
 
-      const singleProduct = c.products?.find(
+      // [Lifecycle v4.1 §9.2] 대표가 산정은 판매 노출분(승인월+무월 레거시)만.
+      const sellable = filterSellableProducts(
+        c.products ?? [],
+        c.salesOpenMonth,
+      );
+      const singleProduct = sellable.find(
         (p) => p.feeType === "PER_SESSION",
       );
-      const monthlyProduct = c.products?.find(
+      const monthlyProduct = sellable.find(
         (p) => p.feeType === "MONTHLY_FIXED",
       );
 
@@ -719,6 +729,16 @@ export class AcademyService {
         scheduledDates: (c.schedules ?? []).map((s) =>
           s.scheduledDate.toISOString(),
         ),
+        // [Lifecycle v4.1] 파생 상태 — 배지 판정 일원화 (class-lifecycle.util SoT).
+        ...(() => {
+          const lc = deriveClassLifecycle({
+            endedAt: c.endedAt,
+            salesOpenMonth: c.salesOpenMonth,
+            trainingType: c.trainingType,
+            schedules: c.schedules ?? [],
+          });
+          return { lifecycleStatus: lc.state, pendingReason: lc.pendingReason };
+        })(),
         // 비취소 총 회차 수 — 카드 "총 N회" 표기용 (팀 목록 getClubClasses 와 동일 계약).
         scheduleCount: (c.schedules ?? []).length,
         // 다음 회차 (비취소·오늘 이후) — 기본 일정 없는 수업 카드의 날짜(+회차 시간) 표시용.

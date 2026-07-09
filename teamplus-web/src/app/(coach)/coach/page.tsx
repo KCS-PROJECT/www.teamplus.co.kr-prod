@@ -214,7 +214,7 @@ export default function CoachDashboardPage() {
 
         {/* 3. 수업 목록 — full-bleed flat 섹션. 내 팀 정규수업 요약 (운영자라 등록완료 배지 미표시).
             classesCategory='regular' → 오픈클래스 제외, '/classes-manage'(정규+대회) 와 동일 기준. */}
-        <TeamClassesSummary showEnrollment={false} classesCategory="regular" targetPath="/classes-manage" onReady={setSummaryReady} iceTheme />
+        <TeamClassesSummary showEnrollment={false} classesCategory="regular" classLimit={7} tournamentLimit={3} targetPath="/classes-manage" onReady={setSummaryReady} iceTheme />
 
         {/* 4. 수업 일정 — full-bleed flat 섹션. 월 달력. 날짜 클릭 시 아래 선택일 일정 갱신(초기값 오늘). */}
         <section className="mt-2 bg-it-surface dark:bg-it-blue-950">

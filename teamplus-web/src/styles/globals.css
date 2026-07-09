@@ -910,15 +910,17 @@
     -webkit-overflow-scrolling: touch;
   }
 
-  /* auth 폼 푸터 — 터치 기기에서 키보드 노출(=같은 부모의 형제 form 포커스) 동안 숨김.
+  /* auth 폼 푸터 — 키보드가 실제로 표시된 동안 숨김.
      키보드 개폐 시 뷰포트 축소 + pb-keyboard-safe transition 으로 하단 고정 영역이
      위아래로 출렁이는 현상 차단. 요소에 Tailwind `transition-opacity` 를 함께 부여해
-     페이드 인/아웃. 데스크톱(마우스)·키보드 탭 내비게이션에는 영향 없음. */
-  @media (pointer: coarse) {
-    form:focus-within ~ .auth-footer-keyboard-hide {
-      opacity: 0;
-      pointer-events: none;
-    }
+     페이드 인/아웃.
+     판정 SoT 는 `data-keyboard-open` 루트 속성 (native-bridge-ui 가 Flutter
+     viewInsets / visualViewport 로 토글). 이전의 form:focus-within 프록시는
+     Android 에서 키보드만 내려도 input 포커스가 남아 푸터가 영구 미복귀했다.
+     데스크톱은 속성이 세팅되지 않으므로 영향 없음. */
+  :root[data-keyboard-open] .auth-footer-keyboard-hide {
+    opacity: 0;
+    pointer-events: none;
   }
 
   /* prefers-reduced-motion 사용자: transition 제거 (접근성 — DESIGN.md §모션) */

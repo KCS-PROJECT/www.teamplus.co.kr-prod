@@ -83,7 +83,8 @@ export class DateScheduleItemDto {
  *   - regular: 팀 정기 수업
  *   - lesson:  오픈클래스 레슨 (academyId 기반)
  */
-const CLASSES_TRAINING_TYPES = ["regular", "lesson"] as const;
+// [Lifecycle v4.1 §7.1] spot = 팀 정규훈련의 하위 옵션(1회용 수업) — 표시상 정규 취급.
+const CLASSES_TRAINING_TYPES = ["regular", "lesson", "spot"] as const;
 
 export class CreateClassDto {
   @ApiProperty({
@@ -189,7 +190,7 @@ export class CreateClassDto {
   @IsOptional()
   @IsString()
   @IsIn(CLASSES_TRAINING_TYPES, {
-    message: "수업 유형은 regular/lesson 중 하나여야 합니다.",
+    message: "수업 유형은 regular/lesson/spot 중 하나여야 합니다.",
   })
   trainingType?: string;
 

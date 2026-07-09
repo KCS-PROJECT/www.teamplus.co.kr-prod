@@ -12,13 +12,17 @@ export interface MonthlyAttendanceCountItem {
   userId: string;
   name: string;
   attendanceCount: number;
+  /** 회원의 활성 수강 상품명 (Enrollment.classProductId 기준). 미연결 시 null. */
+  productName?: string | null;
+  /** 상품 결제 시점 — 'POSTPAID' 면 "후불" 라벨로 표시. */
+  productBillingTiming?: string | null;
 }
 
 export interface MonthlyAttendanceCounts {
   classId: string;
   yearMonth: string;
   billingMode: "PREPAID" | "POSTPAID";
-  /** 정기 패키지 명목 회수(참고 표시용). 없으면 null. */
+  /** @deprecated 표시 중단 — 백엔드가 항상 null 반환 (하위호환 키). */
   nominalSessions: number | null;
   totalPresent: number;
   items: MonthlyAttendanceCountItem[];

@@ -164,7 +164,7 @@ describe("ClassesService.bulkUpsertClassProducts", () => {
 
   it("권한 없는 사용자(팀 매니저 아님)는 거부한다", async () => {
     teamsService.assertTeamManagerPermission.mockRejectedValueOnce(
-      new ForbiddenException("이 수업의 감독/코치만 패키지를 수정할 수 있습니다."),
+      new ForbiddenException("이 수업의 감독/코치만 수강권을 수정할 수 있습니다."),
     );
 
     await expect(

@@ -14,8 +14,17 @@ import { MESSAGES } from '@/lib/messages';
 import { cn } from '@/lib/utils';
 import {
   getMonthlyAttendanceCounts,
+  type MonthlyAttendanceCountItem,
   type MonthlyAttendanceCounts,
 } from '@/services/attendance-count.service';
+
+/** 이름 아래 서브라벨 — 회원의 활성 수강 상품명 (후불 상품은 "후불"). 미연결 시 null. */
+function productLabelOf(it: MonthlyAttendanceCountItem): string | null {
+  if (it.productBillingTiming === 'POSTPAID') {
+    return MESSAGES.monthlyAttendance.postpaidProduct;
+  }
+  return it.productName?.trim() ? it.productName : null;
+}
 
 function currentYearMonth(): string {
   const d = new Date();
@@ -55,7 +64,6 @@ export function MonthlyAttendanceCountSection({
   }, [load]);
 
   const items = data?.items ?? [];
-  const nominal = data?.nominalSessions ?? null;
 
   // ICETIMES flat: 떠있는 rounded 카드 박스 제거 → full-bleed 흰 섹션 + hairline 행.
   //   페이지(attendance-manage)가 bg-it-canvas 회색이라 mt-2 갭으로 쌓이고, 섹션 배경은
@@ -122,9 +130,9 @@ export function MonthlyAttendanceCountSection({
                   <p className="text-card-body font-bold text-it-ink-800 dark:text-white truncate">
                     {it.name}
                   </p>
-                  {nominal !== null && (
-                    <p className="text-card-meta text-it-ink-500 dark:text-rink-300">
-                      {MESSAGES.monthlyAttendance.nominalNote(nominal)}
+                  {productLabelOf(it) && (
+                    <p className="text-card-meta text-it-ink-500 dark:text-rink-300 truncate">
+                      {productLabelOf(it)}
                     </p>
                   )}
                 </div>
@@ -212,9 +220,9 @@ export function MonthlyAttendanceCountSection({
                 <p className="text-card-body font-bold text-wtext-1 dark:text-white truncate">
                   {it.name}
                 </p>
-                {nominal !== null && (
-                  <p className="text-card-meta text-wtext-3 dark:text-rink-300">
-                    {MESSAGES.monthlyAttendance.nominalNote(nominal)}
+                {productLabelOf(it) && (
+                  <p className="text-card-meta text-wtext-3 dark:text-rink-300 truncate">
+                    {productLabelOf(it)}
                   </p>
                 )}
               </div>

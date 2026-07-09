@@ -40,6 +40,8 @@ interface BackendCalendarEvent {
   /** 표시 시각 SoT (text "HH:mm") — ClassSchedule.start_time 입력 그대로. timeStart(ISO)는 호환용. */
   displayStart?: string | null;
   displayEnd?: string | null;
+  /** 장소명 — 수업: 회차 venue > 요일 기본일정 venue > 수업 대표 venue. 대회: location > venue > rink. */
+  venue?: string | null;
 }
 
 interface BackendCalendarDay {
@@ -149,7 +151,7 @@ function mapBackendDaysToEvents(days: BackendCalendarDay[]): Record<string, Cale
         endTime:
           be.displayEnd ??
           (be.refType === 'class_schedule' ? null : extractHM(be.timeEnd)),
-        venue: null,
+        venue: be.venue ?? null,
         clubId: null,
         clubName: null,
       });

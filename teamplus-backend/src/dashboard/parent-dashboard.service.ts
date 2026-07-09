@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
+import { isCreditStarted } from "@/common/billing/fee-type.constants";
 import { RedisService } from "@/redis/redis.service";
 import { resolveScheduleTimeByTemplate } from "@/common/utils/schedule-time.util";
 import { kstTodayUtcMidnight } from "@/common/utils/kst-date.util";
@@ -178,6 +179,7 @@ export class ParentDashboardService {
               select: {
                 userId: true,
                 classId: true,
+                startsAt: true,
                 totalSessions: true,
                 usedSessions: true,
               },
@@ -186,6 +188,7 @@ export class ParentDashboardService {
               [] as {
                 userId: string;
                 classId: string;
+                startsAt: Date | null;
                 totalSessions: number;
                 usedSessions: number;
               }[],
@@ -608,6 +611,7 @@ export class ParentDashboardService {
                 (mc) =>
                   mc.userId === childId &&
                   mc.classId === s.class.id &&
+                  isCreditStarted(mc) &&
                   mc.usedSessions < mc.totalSessions,
               ),
               postpaidChildIds.has(childId),

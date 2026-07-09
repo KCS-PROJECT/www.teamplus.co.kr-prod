@@ -110,6 +110,31 @@ export const bridgeLogger: BridgeLogger = {
 // ─── 에러 변환 (C-1 2026-06-07) ───
 
 /**
+ * 백엔드 validation error 배열에서 사용자에게 표시할 메시지를 추출한다.
+ * 웹 axios 경로(api-client.convertAxiosError)와 동일한 규칙:
+ * - 1건: 그대로 / N건: "첫 메시지 (외 N-1건)" / 없음: null.
+ */
+function extractBridgeValidationMessage(errors: unknown): {
+  message: string;
+  fieldErrors: Array<{ field: string; message: string }>;
+} | null {
+  if (!Array.isArray(errors) || errors.length === 0) return null;
+  const fieldErrors = errors.filter(
+    (e): e is { field: string; message: string } =>
+      typeof e === "object" &&
+      e !== null &&
+      typeof (e as Record<string, unknown>).message === "string",
+  );
+  if (fieldErrors.length === 0) return null;
+  const first = fieldErrors[0].message;
+  const message =
+    fieldErrors.length === 1
+      ? first
+      : `${first} (외 ${fieldErrors.length - 1}건)`;
+  return { message, fieldErrors };
+}
+
+/**
  * Native에서 받은 에러를 표준 ApiError로 변환
  */
 export function parseNativeError(error: unknown): ApiError {
@@ -128,12 +153,18 @@ export function parseNativeError(error: unknown): ApiError {
       message: string;
       statusCode?: number;
       details?: Record<string, unknown>;
+      errors?: unknown;
     };
+    // 검증 실패 시 message 는 일반 문구일 수 있고 실제 필드 에러는 errors[] 에 담긴다.
+    // 웹 경로와 동일하게 첫 필드 메시지를 사용자에게 노출한다.
+    const validation = extractBridgeValidationMessage(err.errors);
     return {
       code: err.code ?? err.errorCode ?? ApiErrorCode.UNKNOWN_ERROR,
-      message: err.message,
+      message: validation ? validation.message : err.message,
       statusCode: err.statusCode,
-      details: err.details,
+      details: validation
+        ? { ...(err.details ?? {}), fieldErrors: validation.fieldErrors }
+        : err.details,
     };
   }
 

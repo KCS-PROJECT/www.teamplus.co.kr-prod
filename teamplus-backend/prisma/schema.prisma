@@ -603,6 +603,12 @@ model Class {
   startTime        DateTime  @map("start_time")
   endTime          DateTime  @map("end_time")
   isActive         Boolean   @default(true) @map("is_active")
+  /// [Lifecycle v4.1] 명시 종료 — null=진행, 값=종료+시점. 종료 가드(일정0+잔여선불0) 통과 시에만 기록,
+  /// [종료 취소]로 null 롤백 허용. SoT: claudedocs/class-softdelete-lifecycle-design.md §8.2
+  endedAt          DateTime? @map("ended_at") @db.Timestamptz(3)
+  /// [Lifecycle v4.1] 판매 승인 월(그 달 1일). 감독의 [판매 시작] 명시 액션으로만 갱신 — 자동 전환 금지.
+  /// 판매 중 = "잔여 일정의 가장 이른 달 == salesOpenMonth". SoT: 동 문서 §9.3
+  salesOpenMonth   DateTime? @map("sales_open_month") @db.Date
   approvalStatus   String    @default("PENDING") @map("approval_status") // PENDING|APPROVED|REJECTED
   approvedAt       DateTime? @map("approved_at") @db.Timestamptz(3)
   approvedBy       String?   @map("approved_by")
@@ -824,6 +830,9 @@ model ClassProduct {
   billingTiming    String   @default("PREPAID") @map("billing_timing")
   sessionsPerWeek  Int?     @map("sessions_per_week")
   feePerSession    Decimal? @map("fee_per_session") @db.Decimal(10, 2)
+  /// [Lifecycle v4.1] 월별 패키지 귀속월(그 달 1일) — MONTHLY_FIXED 전용, 생성 후 불변(월별 row).
+  /// null=무월 레거시(결제일 달 귀속 폴백). SoT: claudedocs/class-softdelete-lifecycle-design.md §9.2
+  billingMonth     DateTime? @map("billing_month") @db.Date
   isActive         Boolean  @default(true) @map("is_active") /// 상품 활성화 여부
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -895,6 +904,9 @@ model MemberCredit {
   classId       String   @map("class_id") /// 어느 수업의 수업권인가 (수업 단위 결합)
   totalSessions Int      @map("total_sessions") /// 발급된 총 회차 (구 totalCredits)
   usedSessions  Int      @default(0) @map("used_sessions") /// 사용된 회차 (구 usedCredits)
+  /// [Lifecycle v4.1] 유효 시작(발급 시점 스냅샷) — null=즉시 유효(기존/이번 달분).
+  /// 다음 달분 선구매의 당월 출석 차단: startsAt ≤ now ≤ expiresAt. SoT: 동 문서 §9.5
+  startsAt      DateTime? @map("starts_at") @db.Timestamptz(3)
   expiresAt     DateTime @map("expires_at") @db.Timestamptz(3)
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   issuedDate    DateTime @default(now()) @map("issued_date") @db.Timestamptz(3)

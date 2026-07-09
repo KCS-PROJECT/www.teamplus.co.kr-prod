@@ -28,11 +28,11 @@ export const HIDE_INACTIVE_USER_TYPES = new Set<string>([
 // ─────────────────────────────────────────────────────────────────────────
 
 export const PACKAGE_DISABLED_REASONS = {
-  INACTIVE: "비활성 패키지",
+  INACTIVE: "판매 중지된 수강권",
 } as const;
 
 export const PACKAGE_PAYMENT_BLOCK_MESSAGES = {
-  INACTIVE: "현재 결제할 수 없는 패키지입니다. 다른 패키지를 선택해주세요.",
+  INACTIVE: "현재 결제할 수 없는 수강권입니다. 다른 수강권을 선택해주세요.",
 } as const;
 
 export type PackageBlockReason = keyof typeof PACKAGE_PAYMENT_BLOCK_MESSAGES;

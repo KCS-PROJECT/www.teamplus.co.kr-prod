@@ -235,10 +235,8 @@ export function ScheduleRangeList<T>({
                 <div
                   key={group.dateKey}
                   className={cn(
-                    index > 0 &&
-                      (iceTheme
-                        ? 'border-t border-it-line dark:border-rink-700'
-                        : 'border-t border-wline-2 dark:border-rink-700'),
+                    // 날짜 그룹 구분선 — 행 구분선(ScheduleRow border-b)과 동일한 무채 검정 계통.
+                    index > 0 && 'border-t border-black/20 dark:border-white/15',
                   )}
                 >
                   {/* 미니 날짜 헤더 — 시안 DayGroup: 라벨 14px/800, 오늘 pill 11px/800 px-2 rounded-pill. */}

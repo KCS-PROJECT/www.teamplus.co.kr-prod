@@ -41,6 +41,7 @@ import {
   initiateTournamentPayment,
   registerTournament,
   cancelTournamentRegistration,
+  canCancelTournamentRegistration,
   type TournamentDetail,
 } from '@/services/tournament.service';
 
@@ -427,6 +428,7 @@ function TournamentApplyContent() {
                           paymentStatus={c.isPaid ? 'PAID' : (c.paymentStatus ?? 'UNPAID')}
                           orderNumber={c.orderNumber ?? null}
                           cancelling={cancellingId === c.id}
+                          canCancel={canCancelTournamentRegistration(tournament.startDate)}
                           iceTheme
                           onPay={() => {
                             const params = new URLSearchParams({
@@ -484,15 +486,29 @@ function TournamentApplyContent() {
               </div>
             )}
 
-            {/* 결제 금액 요약 — flat 흰 섹션. 후불 대회는 금액 미확정이므로 안내 문구로 대체. */}
+            {/* 결제 금액 요약 — flat 흰 섹션. 후불 대회는 감독이 사전 입력한 예상 금액(있으면) 표시. */}
             {isPostpaid ? (
               <section aria-labelledby="amount-label" className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-5">
                 <p id="amount-label" className="text-w-small font-medium text-it-ink-500 dark:text-rink-300 mb-1">
                   참가비
                 </p>
-                <p className="text-w-title font-bold text-it-ink-800 dark:text-white">
-                  {MESSAGES.tournament.postpaidFeeLabel}
-                </p>
+                {amount > 0 ? (
+                  <>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-w-title font-bold text-it-ink-800 dark:text-white tabular-nums font-num">
+                        {amount.toLocaleString('ko-KR')}
+                      </span>
+                      <span className="text-w-body font-medium text-it-ink-800 dark:text-white">원</span>
+                    </div>
+                    <p className="mt-1 text-w-small font-medium text-it-ink-500 dark:text-rink-300">
+                      {MESSAGES.tournament.postpaidEstimateNote}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-w-title font-bold text-it-ink-800 dark:text-white">
+                    {MESSAGES.tournament.postpaidFeeLabel}
+                  </p>
+                )}
               </section>
             ) : (
               <section aria-labelledby="amount-label" className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-5">

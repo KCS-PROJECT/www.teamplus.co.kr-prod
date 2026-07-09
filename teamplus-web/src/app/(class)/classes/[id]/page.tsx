@@ -67,6 +67,13 @@ interface ClassDetail {
   className: string;
   instructorName: string;
   capacity: number;
+  /** [Lifecycle v4.1] 서버 파생 상태 — 신청 CTA 분기(일정 준비 중/종료) + 감독 관리 액션. */
+  lifecycleStatus?: 'ON_SALE' | 'PENDING_SCHEDULE' | 'ENDED';
+  pendingReason?: 'NO_SCHEDULE' | 'UNAPPROVED_MONTH' | null;
+  /** 판매 승인 사이클 대상 달(그 달 1일 ISO) — 확인 플로우 "N월분" 표기·패키지 복제 대상. */
+  earliestRemainingMonth?: string | null;
+  /** 명시 종료 시점 — [종료 취소] 분기 (spot 파생 자동 종료는 null). */
+  endedAt?: string | null;
   startTime?: string;
   endTime?: string;
   clubId?: string;
@@ -691,6 +698,14 @@ export default function ClassDetailPage() {
         cancelReason: "학부모 요청 (수업 상세에서 결제취소)",
       });
       if (!res.success) {
+        // [환불 정책 1단계] 이용 개시(출석) 결제 — 서버 가드(403) 거절 사유를 모달로 안내.
+        if (res.error?.statusCode === 403 && res.error.message) {
+          await modal.alert({
+            title: MESSAGES.enrollment.cancelBlockedTitle,
+            message: res.error.message,
+          });
+          return;
+        }
         toast.error(res.error?.message ?? MESSAGES.payment2.cancelFailed);
         return;
       }
@@ -919,6 +934,190 @@ export default function ClassDetailPage() {
       `/payment/options?classId=${classId}&childId=${selectedChildId}${teamProductId ? `&productId=${teamProductId}` : ''}`,
     );
   };
+
+  /* ── [Lifecycle v4.1] 감독 관리 — 판매 승인 사이클 + 수업 종료/재개 ──
+     orphan 페이지(training-manage/[id])에 선구현했던 UI 를 실사용 상세로 이식.
+     데이터 소스: getClass 응답(lifecycleStatus/pendingReason/earliestRemainingMonth/endedAt). */
+  interface MonthlyPkg {
+    id: string;
+    productName: string;
+    description?: string | null;
+    price: number;
+    feeType?: string;
+    isActive?: boolean;
+    billingMonth?: string | null;
+    durationDays?: number | null;
+    sessionsPerMonth?: number | null;
+    sessionsPerWeek?: number | null;
+  }
+  const [monthlyPkgs, setMonthlyPkgs] = useState<MonthlyPkg[] | null>(null);
+  const [pkgPrices, setPkgPrices] = useState<Record<string, string>>({});
+  const [pkgSubmitting, setPkgSubmitting] = useState<string | null>(null);
+  const [openingSales, setOpeningSales] = useState(false);
+  const [lifecycleActing, setLifecycleActing] = useState(false);
+
+  // 액션 후 상세 재조회 — load 이펙트와 동일 엔드포인트 최소 재호출.
+  const reloadClassDetail = useCallback(async () => {
+    const res = await api.get<ClassDetail>(`/classes/${classId}`);
+    if (res.success && res.data) setClassData(res.data);
+  }, [classId]);
+
+  const isUnapprovedPending =
+    classData?.lifecycleStatus === 'PENDING_SCHEDULE' &&
+    classData?.pendingReason === 'UNAPPROVED_MONTH';
+  const targetMonthIso = classData?.earliestRemainingMonth ?? null;
+  const targetMonthLabel = targetMonthIso
+    ? new Date(targetMonthIso).getUTCMonth() + 1
+    : null;
+  const targetMonthKey = targetMonthIso ? targetMonthIso.slice(0, 7) : null;
+
+  const fetchMonthlyPkgs = useCallback(async () => {
+    if (!classId) return;
+    const res = await api.get<MonthlyPkg[] | { data: MonthlyPkg[] }>(
+      `/classes/${classId}/products`,
+    );
+    if (res.success && res.data) {
+      const list = Array.isArray(res.data)
+        ? res.data
+        : ((res.data as { data?: MonthlyPkg[] }).data ?? []);
+      setMonthlyPkgs(
+        list.filter(
+          (pkg) => pkg.feeType === 'MONTHLY_FIXED' && pkg.isActive !== false,
+        ),
+      );
+    }
+  }, [classId]);
+
+  // isManager(소속 검증 포함)는 렌더 직전에 계산되므로 여기선 역할만 선판정 —
+  //   products GET 자체는 서버가 권한을 재검증한다.
+  const isManagerRoleForPkgs = ["coach", "director", "admin", "academy_director"].includes(
+    (user?.userType ?? "").toLowerCase(),
+  );
+  useEffect(() => {
+    if (isManagerRoleForPkgs && isUnapprovedPending) fetchMonthlyPkgs();
+  }, [isManagerRoleForPkgs, isUnapprovedPending, fetchMonthlyPkgs]);
+
+  // 대상월 row 가 이미 있는 상품명 집합 — 같은 이름의 이전 분은 "갱신 완료" 취급.
+  const updatedNames = new Set(
+    (monthlyPkgs ?? [])
+      .filter(
+        (pkg) =>
+          pkg.billingMonth && pkg.billingMonth.slice(0, 7) === targetMonthKey,
+      )
+      .map((pkg) => pkg.productName),
+  );
+  // 갱신 필요 목록 — 이름별 "최신 분"(billingMonth 내림차순, 무월=가장 오래됨) 1건.
+  const needsUpdate = (() => {
+    const seen = new Set<string>();
+    const byLatestMonth = [...(monthlyPkgs ?? [])].sort((a, b) =>
+      (b.billingMonth ?? '').localeCompare(a.billingMonth ?? ''),
+    );
+    return byLatestMonth.filter((pkg) => {
+      const isTarget = pkg.billingMonth?.slice(0, 7) === targetMonthKey;
+      if (
+        isTarget ||
+        updatedNames.has(pkg.productName) ||
+        seen.has(pkg.productName)
+      ) {
+        return false;
+      }
+      seen.add(pkg.productName);
+      return true;
+    });
+  })();
+
+  const handleCreateMonthPkg = useCallback(
+    async (pkg: MonthlyPkg) => {
+      if (!targetMonthKey) return;
+      const raw = pkgPrices[pkg.id];
+      const price = raw === undefined || raw === '' ? pkg.price : Number(raw);
+      if (!Number.isFinite(price) || price < 0) {
+        toast.error(MESSAGES.error.general);
+        return;
+      }
+      setPkgSubmitting(pkg.id);
+      try {
+        // §9.2 "동일 내용 복제" — 단위 필드 3종 패스스루.
+        const res = await api.post(`/classes/${classId}/products`, {
+          productName: pkg.productName,
+          description: pkg.description ?? undefined,
+          price,
+          feeType: 'MONTHLY_FIXED',
+          durationDays: pkg.durationDays ?? 30,
+          sessionsPerMonth: pkg.sessionsPerMonth ?? undefined,
+          sessionsPerWeek: pkg.sessionsPerWeek ?? undefined,
+          billingMonth: targetMonthKey,
+        });
+        if (res.success) {
+          // 달 미지정(레거시) 원본은 월 필터를 우회해 항상 판매 노출되므로,
+          // 월별 체계 편입 즉시 판매 중단 — 안 하면 새 달 상품과 중복 노출된다.
+          if (!pkg.billingMonth) {
+            await api.patch(`/classes/${classId}/products/${pkg.id}`, {
+              isActive: false,
+            });
+          }
+          toast.success(MESSAGES.class.salesCycle.packageCreated);
+          await fetchMonthlyPkgs();
+        } else if (res.error?.message) {
+          toast.error(res.error.message);
+        }
+      } finally {
+        setPkgSubmitting(null);
+      }
+    },
+    [classId, targetMonthKey, pkgPrices, toast, fetchMonthlyPkgs],
+  );
+
+  const handleOpenSales = useCallback(async () => {
+    setOpeningSales(true);
+    try {
+      const res = await api.post(`/classes/${classId}/open-sales`);
+      if (res.success) {
+        toast.success(MESSAGES.class.salesCycle.openSalesSuccess);
+        await reloadClassDetail();
+      } else if (res.error?.message) {
+        toast.error(res.error.message);
+      }
+    } finally {
+      setOpeningSales(false);
+    }
+  }, [classId, toast, reloadClassDetail]);
+
+  const handleEndClass = useCallback(async () => {
+    if (
+      !confirm(
+        `${MESSAGES.class.endConfirmTitle}\n${MESSAGES.class.endConfirmMessage}`,
+      )
+    )
+      return;
+    setLifecycleActing(true);
+    try {
+      const res = await api.post(`/classes/${classId}/end`);
+      if (res.success) {
+        toast.success(MESSAGES.class.endSuccess);
+        await reloadClassDetail();
+      } else if (res.error?.message) {
+        toast.error(res.error.message);
+      }
+    } finally {
+      setLifecycleActing(false);
+    }
+  }, [classId, toast, reloadClassDetail]);
+
+  const handleReopenClass = useCallback(async () => {
+    setLifecycleActing(true);
+    try {
+      const res = await api.post(`/classes/${classId}/reopen`);
+      if (res.success) {
+        toast.success(MESSAGES.class.reopenSuccess);
+        await reloadClassDetail();
+      } else if (res.error?.message) {
+        toast.error(res.error.message);
+      }
+    } finally {
+      setLifecycleActing(false);
+    }
+  }, [classId, toast, reloadClassDetail]);
 
   /* ── 수업 삭제 (감독/코치 전용) ── */
   const handleDelete = async () => {
@@ -1456,20 +1655,20 @@ export default function ClassDetailPage() {
         {/* ── 매니저 빠른 액션 2종 — 히어로 직하단 흰 영역 ──
             [수정 2026-05-18 SPEC v2] 수강생(/classes/:id/students) 과 결제 확인을 별도 분리. */}
         {isManager && (
-          <div className="mx-5 mt-3 grid grid-cols-2 gap-1.5">
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-3 grid grid-cols-2 gap-2" aria-label="수업 관리 빠른 액션">
             <button
               type="button"
               onClick={() => navigate(`/attendance-manage?classId=${classId}`)}
-              className="h-9 rounded-[10px] bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 flex items-center justify-center gap-1.5 hover:border-it-blue-500/40 transition-colors motion-reduce:transition-none active:brightness-95"
+              className="h-11 rounded-w-md bg-it-fill dark:bg-rink-700 border-[1.5px] border-it-line-strong dark:border-rink-600 flex items-center justify-center gap-1.5 hover:border-it-blue-500/40 transition-colors motion-reduce:transition-none active:brightness-95"
               aria-label="출석 이력 보기"
             >
               <Icon
                 name="checklist"
                 size={14}
-                className="text-wtext-2 dark:text-rink-100"
+                className="text-it-ink-600 dark:text-rink-200"
                 aria-hidden="true"
               />
-              <span className="text-card-meta font-bold text-wtext-2 dark:text-rink-100 tracking-tight">
+              <span className="text-card-meta font-bold text-it-ink-600 dark:text-rink-200 tracking-tight">
                 출석 이력
               </span>
             </button>
@@ -1477,21 +1676,123 @@ export default function ClassDetailPage() {
             <button
               type="button"
               onClick={() => navigate(`/classes/${classId}/students`)}
-              className="h-9 rounded-[10px] bg-white dark:bg-rink-800 border border-wline-2 dark:border-rink-700 flex items-center justify-center gap-1.5 hover:border-it-blue-500/40 transition-colors motion-reduce:transition-none active:brightness-95"
+              className="h-11 rounded-w-md bg-it-fill dark:bg-rink-700 border-[1.5px] border-it-line-strong dark:border-rink-600 flex items-center justify-center gap-1.5 hover:border-it-blue-500/40 transition-colors motion-reduce:transition-none active:brightness-95"
               aria-label={MESSAGES.academy.students.actionPlayersAriaLabel}
             >
               <Icon
                 name="group"
                 size={14}
-                className="text-wtext-2 dark:text-rink-100"
+                className="text-it-ink-600 dark:text-rink-200"
                 aria-hidden="true"
               />
-              <span className="text-card-meta font-bold text-wtext-2 dark:text-rink-100 tracking-tight">
+              <span className="text-card-meta font-bold text-it-ink-600 dark:text-rink-200 tracking-tight">
                 {MESSAGES.academy.students.actionPlayers}
               </span>
             </button>
-          </div>
+          </section>
         )}
+
+        {/* [Lifecycle v4.1 §9.3] 감독 관리 — 판매 승인 배너 + 수업 종료/재개.
+            (orphan 이던 training-manage/[id] 선구현 UI 의 실사용 이식) */}
+        {isManager && classData.lifecycleStatus === 'PENDING_SCHEDULE' && !classData.endedAt && (
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4" aria-label={MESSAGES.class.salesCycle.pendingBannerAria}>
+            {classData.pendingReason === 'NO_SCHEDULE' || !targetMonthLabel ? (
+              <div className="flex items-start gap-3 rounded-w-md bg-amber-50 dark:bg-amber-900/20 px-3.5 py-3">
+                <Icon name="event_busy" className="text-xl text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" aria-hidden="true" />
+                <p className="text-card-body text-amber-800 dark:text-amber-300">
+                  {MESSAGES.class.salesCycle.pendingNoSchedule}
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 mb-1">
+                  <Icon name="storefront" className="text-xl text-it-blue-500" aria-hidden="true" />
+                  <h2 className="text-[15px] font-extrabold text-wtext-1 dark:text-white tracking-tight">
+                    {MESSAGES.class.salesCycle.pendingTitle(targetMonthLabel)}
+                  </h2>
+                </div>
+                <p className="text-card-meta text-wtext-3 dark:text-rink-300 mb-3">
+                  {MESSAGES.class.salesCycle.pendingGuide}
+                </p>
+
+                {monthlyPkgs !== null && monthlyPkgs.length > 0 && (
+                  <div className="mb-3">
+                    <h4 className="text-card-meta font-bold text-wtext-2 dark:text-rink-200 mb-2">
+                      {MESSAGES.class.salesCycle.packageSectionTitle}
+                    </h4>
+                    <ul className="space-y-2">
+                      {Array.from(updatedNames).map((name) => (
+                        <li
+                          key={`done-${name}`}
+                          className="flex items-center justify-between rounded-w-md bg-it-fill dark:bg-rink-800 px-3.5 py-2.5"
+                        >
+                          <span className="text-card-body font-semibold text-wtext-1 dark:text-white truncate">
+                            {name}
+                          </span>
+                          <span className="inline-flex items-center gap-1 text-card-meta font-bold text-emerald-600 dark:text-emerald-400 shrink-0">
+                            <Icon name="check_circle" className="text-base" aria-hidden="true" />
+                            {MESSAGES.class.salesCycle.packageUpToDate}
+                          </span>
+                        </li>
+                      ))}
+                      {needsUpdate.map((pkg) => (
+                        <li
+                          key={pkg.id}
+                          className="rounded-w-md border border-amber-200 dark:border-amber-700/50 px-3.5 py-2.5"
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-card-body font-semibold text-wtext-1 dark:text-white truncate">
+                              {pkg.productName}
+                            </span>
+                            <span className="text-card-meta font-bold text-amber-600 dark:text-amber-400 shrink-0">
+                              {MESSAGES.class.salesCycle.packageNeedsUpdate}
+                            </span>
+                          </div>
+                          <div className="flex gap-2">
+                            <input
+                              type="number"
+                              inputMode="numeric"
+                              min={0}
+                              value={pkgPrices[pkg.id] ?? String(pkg.price)}
+                              onChange={(e) =>
+                                setPkgPrices((prev) => ({ ...prev, [pkg.id]: e.target.value }))
+                              }
+                              aria-label={MESSAGES.class.salesCycle.priceInputAria(pkg.productName, targetMonthLabel)}
+                              className="flex-1 min-w-0 h-11 rounded-w-md bg-it-fill dark:bg-rink-700 border-[1.5px] border-it-line-strong dark:border-rink-600 px-3 text-sm text-it-ink-800 dark:text-white focus:border-it-blue-500"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleCreateMonthPkg(pkg)}
+                              disabled={pkgSubmitting === pkg.id}
+                              className="shrink-0 h-11 px-4 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-meta font-bold disabled:opacity-60 transition-colors motion-reduce:transition-none active:brightness-95"
+                            >
+                              {MESSAGES.class.salesCycle.keepPriceButton}
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleOpenSales}
+                  disabled={openingSales || needsUpdate.length > 0}
+                  title={
+                    needsUpdate.length > 0
+                      ? MESSAGES.class.salesCycle.packageNeedsUpdate
+                      : undefined
+                  }
+                  className="w-full h-12 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-body font-extrabold disabled:bg-it-line disabled:text-it-ink-400 dark:disabled:bg-rink-700 transition-colors motion-reduce:transition-none active:brightness-95"
+                >
+                  {MESSAGES.class.salesCycle.openSalesButton}
+                </button>
+              </>
+            )}
+          </section>
+        )}
+
 
         {/* ── 수업 정보 — 소개·기간·시간·장소·대상·일정 통합 (full-bleed 흰 섹션) ── */}
         <section
@@ -1849,6 +2150,9 @@ export default function ClassDetailPage() {
                 //   후불 전용 학부모만 PER_SESSION 목록 노출 유지(즉시 등록 경로).
                 const products = [...(classData.products ?? [])]
                   .filter((p) => {
+                    // 판매 중단(soft delete·월 갱신 편입 완료)된 상품은 감독 시점에서도 숨김 —
+                    // 월 판매 사이클로 매달 누적되므로 회색 표시 대신 목록에서 제외(2026-07-09).
+                    if (p.isActive === false) return false;
                     if (
                       isParentBoth &&
                       p.feeType === "PER_SESSION" &&
@@ -2119,7 +2423,12 @@ export default function ClassDetailPage() {
 
               // disabled 라벨 — 선택 자녀 사유 우선순위 반영
               let disabledRightLabel: string | null = null;
-              if (!hasProducts) disabledRightLabel = "신청 불가";
+              // [Lifecycle v4.1 §9.4] 대기/종료 수업 — 신청 CTA 차단 (서버 게이트의 1차 표시).
+              if (classData.lifecycleStatus === 'PENDING_SCHEDULE')
+                disabledRightLabel = MESSAGES.class.salesCycle.ctaPreparing;
+              else if (classData.lifecycleStatus === 'ENDED')
+                disabledRightLabel = MESSAGES.class.salesCycle.ctaEnded;
+              else if (!hasProducts) disabledRightLabel = "신청 불가";
               else if (isFull) disabledRightLabel = "정원 마감";
               else if (isSelectedEnrolled)
                 disabledRightLabel = MESSAGES.enrollment.disabledEnrolledLabel;
@@ -2134,6 +2443,8 @@ export default function ClassDetailPage() {
                 disabledRightLabel = MESSAGES.enrollment.disabledAgeLabel;
 
               const rightDisabled =
+                classData.lifecycleStatus === 'PENDING_SCHEDULE' ||
+                classData.lifecycleStatus === 'ENDED' ||
                 !!paidEnrollment ||
                 !hasProducts ||
                 isFull ||
@@ -2201,6 +2512,36 @@ export default function ClassDetailPage() {
               );
             })()}
           </div>
+        )}
+        {/* [Lifecycle v4.1 §8.3·D5] 수업 종료/재개 — 페이지 최하단 (수정하기/일정관리
+            스티키 액션바 바로 위). 빈도 낮은 파괴적 액션이라 관리 퀵액션 옆은 이질적
+            (2026-07-09 사용자 지시로 이동). 판매 중에는 섹션 자체 미노출 — 종료는 일정 등록
+            대기에서만 가능. 종료 취소: 명시 종료(endedAt)만 — spot 자동 종료 제외. */}
+        {isManager &&
+          (classData.endedAt ||
+            classData.lifecycleStatus === 'PENDING_SCHEDULE') && (
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4" aria-label="수업 종료 관리">
+            {classData.endedAt ? (
+              <button
+                type="button"
+                onClick={handleReopenClass}
+                disabled={lifecycleActing}
+                className="w-full h-12 rounded-w-md border-[1.5px] border-it-line dark:border-rink-600 text-it-ink-600 dark:text-rink-200 text-card-body font-bold hover:bg-it-canvas dark:hover:bg-rink-800 disabled:opacity-60 transition-colors motion-reduce:transition-none active:brightness-95"
+              >
+                {MESSAGES.class.reopenClassButton}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleEndClass}
+                disabled={lifecycleActing}
+                aria-label={MESSAGES.class.endClassButton}
+                className="w-full h-12 rounded-w-md border-[1.5px] border-it-line dark:border-rink-600 text-it-ink-600 dark:text-rink-200 text-card-body font-bold hover:bg-it-canvas dark:hover:bg-rink-800 disabled:opacity-60 disabled:cursor-not-allowed transition-colors motion-reduce:transition-none active:brightness-95"
+              >
+                {MESSAGES.class.endClassButton}
+              </button>
+            )}
+          </section>
         )}
       </main>
 

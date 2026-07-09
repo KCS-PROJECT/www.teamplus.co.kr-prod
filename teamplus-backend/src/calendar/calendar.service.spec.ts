@@ -3,14 +3,53 @@ import { BadRequestException } from "@nestjs/common";
 import { CalendarService } from "./calendar.service";
 import { PrismaService } from "@/prisma/prisma.service";
 
+/**
+ * CalendarService 스펙 — 학부모/학생 달력의 대회 노출 정책이 핵심 검증 대상.
+ *
+ * 정책: 일정(달력)에는 "참여한" 대회만 노출한다.
+ *   · 선불(PREPAID) = 결제완료(PAID)만 · 후불(POSTPAID) = 신청(취소/환불 제외)
+ *   · 명단(selectedParticipantIds) 선택만으로는 노출하지 않는다 (훈련 목록 전용).
+ */
 describe("CalendarService", () => {
   let service: CalendarService;
 
   const mockPrismaService = {
-    clubMember: { findMany: jest.fn() },
-    parentChild: { findMany: jest.fn() },
+    parentChild: { findMany: jest.fn(), findFirst: jest.fn() },
+    teamMember: { findMany: jest.fn() },
+    academyMember: { findMany: jest.fn() },
+    academyCoach: { findMany: jest.fn() },
+    academy: { findMany: jest.fn() },
     classSchedule: { findMany: jest.fn() },
     tournament: { findMany: jest.fn() },
+    tournamentRegistration: { findMany: jest.fn() },
+    hockeyMatch: { findMany: jest.fn() },
+  };
+
+  /** 코치/감독 owner 조회(getUserOwnerIds) mock — team-1 소속 */
+  const mockCoachOwner = () => {
+    mockPrismaService.teamMember.findMany.mockResolvedValue([
+      { teamId: "team-1" },
+    ]);
+    mockPrismaService.academyMember.findMany.mockResolvedValue([]);
+    mockPrismaService.academyCoach.findMany.mockResolvedValue([]);
+    mockPrismaService.academy.findMany.mockResolvedValue([]);
+  };
+
+  /** 학부모 자녀 1명(child-1) mock — resolveScopedChildUserIds 경유 */
+  const mockParentWithChild = () => {
+    mockPrismaService.parentChild.findMany.mockResolvedValue([
+      { childId: "child-1" },
+    ]);
+  };
+
+  const TOURNAMENT_ROW = {
+    id: "t-1",
+    name: "테스트 대회",
+    startDate: new Date(Date.UTC(2026, 3, 10)),
+    endDate: new Date(Date.UTC(2026, 3, 11)),
+    location: null,
+    venue: null,
+    rink: null,
   };
 
   beforeEach(async () => {
@@ -23,128 +62,114 @@ describe("CalendarService", () => {
 
     service = module.get<CalendarService>(CalendarService);
     jest.clearAllMocks();
+    // 공통 기본값 — 각 테스트에서 필요한 것만 override
+    mockPrismaService.classSchedule.findMany.mockResolvedValue([]);
+    mockPrismaService.hockeyMatch.findMany.mockResolvedValue([]);
+    mockPrismaService.tournamentRegistration.findMany.mockResolvedValue([]);
   });
 
   // ── getMonthlyCalendar ────────────────────────────────────────────────────
 
   describe("getMonthlyCalendar", () => {
-    it("PARENT 역할이면 자녀의 clubIds도 포함하여 조회한다", async () => {
-      // 부모 본인 클럽
-      mockPrismaService.clubMember.findMany
-        .mockResolvedValueOnce([{ teamId: "club-parent" }]) // own
-        .mockResolvedValueOnce([{ teamId: "club-child" }]); // child
-
-      mockPrismaService.parentChild.findMany.mockResolvedValue([
-        { childId: "child-1" },
-      ]);
-      mockPrismaService.classSchedule.findMany.mockResolvedValue([]);
-      mockPrismaService.tournament.findMany.mockResolvedValue([]);
-
-      await service.getMonthlyCalendar("parent-1", "PARENT", "2026-04");
-
-      // parentChild.findMany 호출 확인
-      expect(mockPrismaService.parentChild.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { parentId: "parent-1" } }),
-      );
-      // 두 번째 clubMember.findMany에 자녀 ID 포함 확인
-      expect(mockPrismaService.clubMember.findMany).toHaveBeenCalledTimes(2);
+    it("month 형식이 잘못되면 BadRequestException을 던진다", async () => {
+      await expect(
+        service.getMonthlyCalendar("user-1", "PARENT", "2026/04"),
+      ).rejects.toThrow(BadRequestException);
     });
 
-    it("PARENT가 아닌 역할이면 자녀 클럽 조회를 수행하지 않는다", async () => {
-      mockPrismaService.clubMember.findMany.mockResolvedValue([
-        { teamId: "club-1" },
-      ]);
-      mockPrismaService.classSchedule.findMany.mockResolvedValue([]);
-      mockPrismaService.tournament.findMany.mockResolvedValue([]);
-
-      await service.getMonthlyCalendar("coach-1", "COACH", "2026-04");
-
-      expect(mockPrismaService.parentChild.findMany).not.toHaveBeenCalled();
-      expect(mockPrismaService.clubMember.findMany).toHaveBeenCalledTimes(1);
-    });
-
-    it("소속 클럽이 없으면 빈 배열을 반환한다", async () => {
-      mockPrismaService.clubMember.findMany.mockResolvedValue([]);
+    it("학부모: 자녀가 없으면 빈 달력을 반환하고 대회를 조회하지 않는다", async () => {
+      mockPrismaService.parentChild.findMany.mockResolvedValue([]);
 
       const result = await service.getMonthlyCalendar(
-        "user-1",
+        "parent-1",
         "PARENT",
         "2026-04",
       );
 
       expect(result).toEqual([]);
-      // 클럽 없으면 classSchedule.findMany는 호출되지 않아야 함
-      expect(mockPrismaService.classSchedule.findMany).not.toHaveBeenCalled();
+      expect(mockPrismaService.tournament.findMany).not.toHaveBeenCalled();
+      expect(
+        mockPrismaService.tournamentRegistration.findMany,
+      ).not.toHaveBeenCalled();
     });
 
-    it("날짜 범위 내의 일정만 반환하고 날짜순으로 정렬한다", async () => {
-      mockPrismaService.clubMember.findMany.mockResolvedValue([
-        { teamId: "club-1" },
+    it("학부모: 선불 미결제(PENDING) 등록만 있으면 대회가 노출되지 않는다", async () => {
+      mockParentWithChild();
+      mockPrismaService.tournamentRegistration.findMany.mockResolvedValue([
+        { tournamentId: "t-1", paymentStatus: "PENDING" },
       ]);
-      mockPrismaService.classSchedule.findMany.mockResolvedValue([
-        {
-          id: "sched-2",
-          scheduledDate: new Date("2026-04-15"),
-          class: {
-            id: "class-1",
-            className: "팀훈련",
-            trainingType: "team_training",
-            startTime: new Date("2026-04-15T09:00:00"),
-            endTime: new Date("2026-04-15T11:00:00"),
-          },
-        },
-        {
-          id: "sched-1",
-          scheduledDate: new Date("2026-04-01"),
-          class: {
-            id: "class-2",
-            className: "개인레슨",
-            trainingType: "lesson",
-            startTime: new Date("2026-04-01T14:00:00"),
-            endTime: new Date("2026-04-01T15:00:00"),
-          },
-        },
-      ]);
-      mockPrismaService.tournament.findMany.mockResolvedValue([]);
+      // 참여 판정 유틸의 후불 확인 쿼리 — PREPAID 대회라 빈 결과
+      mockPrismaService.tournament.findMany.mockResolvedValueOnce([]);
 
       const result = await service.getMonthlyCalendar(
-        "user-1",
+        "parent-1",
+        "PARENT",
+        "2026-04",
+      );
+
+      expect(result).toEqual([]);
+      // billingMode=POSTPAID 확인 1회만 — 대회 본조회는 하지 않는다
+      expect(mockPrismaService.tournament.findMany).toHaveBeenCalledTimes(1);
+    });
+
+    it("학부모: 후불 대회는 신청(UNPAID)만으로 일정에 노출된다", async () => {
+      mockParentWithChild();
+      mockPrismaService.tournamentRegistration.findMany.mockResolvedValue([
+        { tournamentId: "t-1", paymentStatus: "UNPAID" },
+      ]);
+      mockPrismaService.tournament.findMany
+        .mockResolvedValueOnce([{ id: "t-1" }]) // 참여 판정 — POSTPAID 확인
+        .mockResolvedValueOnce([TOURNAMENT_ROW]); // 대회 본조회
+
+      const result = await service.getMonthlyCalendar(
+        "parent-1",
+        "PARENT",
+        "2026-04",
+      );
+
+      const day = result.find((d) => d.date === "2026-04-10");
+      expect(day?.events[0]?.type).toBe("TOURNAMENT");
+      expect(day?.events[0]?.title).toBe("테스트 대회");
+    });
+
+    it("학부모: 결제완료(PAID) 대회는 일정에 노출된다", async () => {
+      mockParentWithChild();
+      mockPrismaService.tournamentRegistration.findMany.mockResolvedValue([
+        { tournamentId: "t-1", paymentStatus: "PAID" },
+      ]);
+      // PAID 는 후불 확인 쿼리 없이 바로 대회 본조회 1회
+      mockPrismaService.tournament.findMany.mockResolvedValueOnce([
+        TOURNAMENT_ROW,
+      ]);
+
+      const result = await service.getMonthlyCalendar(
+        "parent-1",
+        "PARENT",
+        "2026-04",
+      );
+
+      const day = result.find((d) => d.date === "2026-04-10");
+      expect(day?.events[0]?.type).toBe("TOURNAMENT");
+      expect(mockPrismaService.tournament.findMany).toHaveBeenCalledTimes(1);
+    });
+
+    it("코치: 관리 팀의 대회가 노출되고 참여(등록) 조회는 하지 않는다", async () => {
+      mockCoachOwner();
+      mockPrismaService.tournament.findMany.mockResolvedValue([
+        TOURNAMENT_ROW,
+      ]);
+
+      const result = await service.getMonthlyCalendar(
+        "coach-1",
         "COACH",
         "2026-04",
       );
 
-      // 날짜순 정렬 확인
-      expect(result[0].date).toBe("2026-04-01");
-      expect(result[1].date).toBe("2026-04-15");
-    });
-
-    it("lesson 타입 수업은 PERSONAL_LESSON 이벤트 타입으로 매핑된다", async () => {
-      mockPrismaService.clubMember.findMany.mockResolvedValue([
-        { teamId: "club-1" },
-      ]);
-      mockPrismaService.classSchedule.findMany.mockResolvedValue([
-        {
-          id: "sched-1",
-          scheduledDate: new Date("2026-04-10"),
-          class: {
-            id: "class-1",
-            className: "개인레슨",
-            trainingType: "lesson",
-            startTime: new Date("2026-04-10T09:00:00"),
-            endTime: new Date("2026-04-10T10:00:00"),
-          },
-        },
-      ]);
-      mockPrismaService.tournament.findMany.mockResolvedValue([]);
-
-      const result = await service.getMonthlyCalendar(
-        "user-1",
-        "COACH",
-        "2026-04",
-      );
-
-      expect(result[0].events[0].type).toBe("PERSONAL_LESSON");
-      expect(result[0].events[0].color).toBe("#16A34A");
+      const day = result.find((d) => d.date === "2026-04-10");
+      expect(day?.events[0]?.type).toBe("TOURNAMENT");
+      expect(
+        mockPrismaService.tournamentRegistration.findMany,
+      ).not.toHaveBeenCalled();
     });
   });
 
@@ -157,17 +182,15 @@ describe("CalendarService", () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it("12개월 집계 결과를 반환한다", async () => {
-      mockPrismaService.clubMember.findMany.mockResolvedValue([
-        { teamId: "club-1" },
-      ]);
+    it("코치: 12개월 집계 결과를 반환한다", async () => {
+      mockCoachOwner();
       mockPrismaService.classSchedule.findMany.mockResolvedValue([
-        { scheduledDate: new Date("2026-03-10") },
+        { scheduledDate: new Date(Date.UTC(2026, 2, 10)) },
       ]);
       mockPrismaService.tournament.findMany.mockResolvedValue([
         {
-          startDate: new Date("2026-06-01"),
-          endDate: new Date("2026-06-03"),
+          startDate: new Date(Date.UTC(2026, 5, 1)),
+          endDate: new Date(Date.UTC(2026, 5, 3)),
         },
       ]);
 

@@ -104,8 +104,8 @@ const publicEnvSchema: Record<string, EnvSchema> = {
   },
   NEXT_PUBLIC_ANDROID_PACKAGE_NAME: {
     required: false,
-    default: 'kr.co.teamplus.app',
-    description: 'Android Play Store 패키지명 (예: kr.co.teamplus.app). 앱 빌드 applicationId 와 반드시 일치해야 한다.',
+    default: 'kr.co.teamplus',
+    description: 'Android Play Store 패키지명 (예: kr.co.teamplus). 앱 빌드 applicationId 와 반드시 일치해야 한다.',
   },
 } as const;
 
@@ -211,7 +211,7 @@ export const env = {
   NEXT_PUBLIC_IOS_APP_STORE_ID: process.env.NEXT_PUBLIC_IOS_APP_STORE_ID || '',
   // Android Play Store 패키지명. app/build.gradle 의 applicationId 와 동일해야 한다.
   NEXT_PUBLIC_ANDROID_PACKAGE_NAME:
-    process.env.NEXT_PUBLIC_ANDROID_PACKAGE_NAME || 'kr.co.teamplus.app',
+    process.env.NEXT_PUBLIC_ANDROID_PACKAGE_NAME || 'kr.co.teamplus',
 
   // 환경 헬퍼
   isDevelopment: process.env.NODE_ENV === 'development',

@@ -3,10 +3,12 @@ import { PrismaService } from "@/prisma/prisma.service";
 import {
   resolveScheduleTimeByTemplate,
   resolveScheduleEndTimeByTemplate,
+  dayTemplateForDate,
 } from "@/common/utils/schedule-time.util";
 import { composeKstInstant } from "@/common/utils/kst-date.util";
 import { scheduleEligibleClassFilter } from "@/common/billing/schedule-eligibility.util";
 import { resolveScopedChildUserIds } from "@/common/utils/team-scope.util";
+import { resolveParticipatingTournamentIds } from "@/common/utils/tournament-participation.util";
 
 export interface CalendarEvent {
   type: "TEAM_TRAINING" | "PERSONAL_LESSON" | "TOURNAMENT";
@@ -19,6 +21,8 @@ export interface CalendarEvent {
   /** 표시 시각 SoT (text "HH:mm") — ClassSchedule.start_time 우선, 입력 그대로. timeStart(ISO)는 호환 유지. */
   displayStart?: string | null;
   displayEnd?: string | null;
+  /** 장소명 — 수업: 회차 venue > 요일 기본일정 venue > 수업 대표 venue. 대회: location > venue > rink. */
+  venue?: string | null;
 }
 
 export interface CalendarDay {
@@ -50,6 +54,24 @@ const EVENT_COLORS = {
   PERSONAL_LESSON: "#16A34A",
   TOURNAMENT: "#0284C7",
 } as const;
+
+/** 대회 장소 해석용 공통 select — getAvailableTournaments 의 location 폴백 체인과 동일 소스. */
+const TOURNAMENT_VENUE_SELECT = {
+  location: true,
+  venue: { select: { name: true } },
+  rink: { select: { name: true, location: true } },
+} as const;
+
+/** 대회 장소명 해석 — location(보조 텍스트) > venue.name > rink.location > rink.name. 팀명 폴백 없음. */
+function resolveTournamentVenueText(t: {
+  location: string | null;
+  venue: { name: string } | null;
+  rink: { name: string; location: string | null } | null;
+}): string | null {
+  return (
+    t.location || t.venue?.name || t.rink?.location || t.rink?.name || null
+  );
+}
 
 @Injectable()
 export class CalendarService {
@@ -377,14 +399,21 @@ export class CalendarService {
         scheduledDate: true,
         startTime: true, // 표시 시각 SoT (text "HH:mm") — 입력 그대로
         endTime: true,
+        venue: { select: { name: true } },
         class: {
           select: {
             id: true,
             className: true,
             trainingType: true,
-            // 요일 기본 일정 — 회차 시각 없을 때 해석용 (대표값 폴백 대체)
+            venue: { select: { name: true } },
+            // 요일 기본 일정 — 회차 시각·장소 없을 때 해석용 (대표값 폴백 대체)
             dayScheduleEntries: {
-              select: { dayOfWeek: true, startTime: true, endTime: true },
+              select: {
+                dayOfWeek: true,
+                startTime: true,
+                endTime: true,
+                venue: { select: { name: true } },
+              },
             },
           },
         },
@@ -399,25 +428,20 @@ export class CalendarService {
     end: Date,
     registrationUserIds: string[] | null,
   ) {
-    // [2026-06-15] 학부모/학생(registrationUserIds 존재): 자녀/본인이 결제완료(PAID)했거나
-    //   selectedParticipantIds 에 포함된 대회를 노출. 팀 멤버십 무관 — 결제/명시선택 기준.
-    //   (학부모는 본인이 팀 멤버가 아니어서 teamIds 가 비어 대회가 통째 누락되던 버그 수정)
+    // 학부모/학생(registrationUserIds 존재): "참여한" 대회만 일정에 노출.
+    //   명단(selectedParticipantIds) 선택은 훈련 목록/대시보드 수업 목록 노출 근거일
+    //   뿐이며, 달력은 선불=결제완료(PAID) · 후불=신청(취소/환불 제외)만 표시한다.
+    //   판정 SoT: resolveParticipatingTournamentIds (calendar-dashboard 와 공용).
     if (registrationUserIds !== null) {
       if (registrationUserIds.length === 0) return [];
-      const idSet = new Set(registrationUserIds);
-      const paidRegs = await this.prisma.tournamentRegistration.findMany({
-        where: {
-          paymentStatus: "PAID",
-          OR: [
-            { childId: { in: registrationUserIds } },
-            { userId: { in: registrationUserIds } },
-          ],
-        },
-        select: { tournamentId: true },
-      });
-      const paidTids = new Set(paidRegs.map((r) => r.tournamentId));
+      const participatingIds = await resolveParticipatingTournamentIds(
+        this.prisma,
+        registrationUserIds,
+      );
+      if (participatingIds.size === 0) return [];
       const rows = await this.prisma.tournament.findMany({
         where: {
+          id: { in: Array.from(participatingIds) },
           startDate: { lt: end },
           endDate: { gte: start },
           status: { not: "cancelled" },
@@ -427,28 +451,21 @@ export class CalendarService {
           name: true,
           startDate: true,
           endDate: true,
-          selectedParticipantIds: true,
+          ...TOURNAMENT_VENUE_SELECT,
         },
         orderBy: { startDate: "asc" },
       });
-      return rows
-        .filter((t) => {
-          if (paidTids.has(t.id)) return true;
-          const list = Array.isArray(t.selectedParticipantIds)
-            ? (t.selectedParticipantIds as unknown as string[])
-            : [];
-          return list.some((x) => idSet.has(x));
-        })
-        .map(({ id, name, startDate, endDate }) => ({
-          id,
-          name,
-          startDate,
-          endDate,
-        }));
+      return rows.map((t) => ({
+        id: t.id,
+        name: t.name,
+        startDate: t.startDate,
+        endDate: t.endDate,
+        venueText: resolveTournamentVenueText(t),
+      }));
     }
     // 코치/감독: 본인 관리 팀 대회
     if (clubIds.length === 0) return [];
-    return this.prisma.tournament.findMany({
+    const rows = await this.prisma.tournament.findMany({
       where: {
         startDate: { lt: end },
         endDate: { gte: start },
@@ -460,9 +477,17 @@ export class CalendarService {
         name: true,
         startDate: true,
         endDate: true,
+        ...TOURNAMENT_VENUE_SELECT,
       },
       orderBy: { startDate: "asc" },
     });
+    return rows.map((t) => ({
+      id: t.id,
+      name: t.name,
+      startDate: t.startDate,
+      endDate: t.endDate,
+      venueText: resolveTournamentVenueText(t),
+    }));
   }
 
   /**
@@ -488,6 +513,8 @@ export class CalendarService {
         matchOrder: true,
         awayTeam: { select: { name: true } },
         tournament: { select: { name: true } },
+        venue: { select: { name: true } },
+        rink: { select: { name: true } },
       },
       orderBy: { scheduledAt: "asc" },
     });
@@ -521,6 +548,16 @@ export class CalendarService {
         s.scheduledDate,
         s.class.dayScheduleEntries,
       );
+      // 장소 — 회차 venue > 그 요일 기본일정 venue > 수업 대표 venue. 없으면 프론트가 미표시.
+      const dayTemplate = dayTemplateForDate(
+        s.scheduledDate,
+        s.class.dayScheduleEntries,
+      );
+      const venueName =
+        s.venue?.name ??
+        dayTemplate?.venue?.name ??
+        s.class.venue?.name ??
+        null;
       dayMap.get(dateKey)!.push({
         type,
         color: EVENT_COLORS[type],
@@ -539,6 +576,7 @@ export class CalendarService {
         ).toISOString(),
         displayStart,
         displayEnd,
+        venue: venueName,
       });
     }
 
@@ -562,6 +600,7 @@ export class CalendarService {
         timeEnd: m.scheduledAt.toISOString(),
         displayStart: hhmm,
         displayEnd: hhmm,
+        venue: m.venue?.name ?? m.rink?.name ?? null,
       });
     }
 
@@ -581,6 +620,7 @@ export class CalendarService {
         refType: "tournament",
         timeStart: t.startDate.toISOString(),
         timeEnd: t.endDate.toISOString(),
+        venue: t.venueText ?? null,
       });
     }
 

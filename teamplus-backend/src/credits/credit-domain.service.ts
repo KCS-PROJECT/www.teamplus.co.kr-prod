@@ -5,6 +5,10 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import {
+  MONTHLY_PASS_CREDIT_FILTER,
+  creditStartedWhere,
+} from "@/common/billing/fee-type.constants";
 
 /**
  * CreditDomainService — MemberCredit 수정 단일 진입점
@@ -71,7 +75,9 @@ export class CreditDomainService {
         userId: params.userId,
         classId: params.classId,
         expiresAt: { gte: now },
-        payment: { product: { feeType: "MONTHLY_FIXED" } },
+        // [Lifecycle v4.1 §9.5] 선구매(다음 달분) 기간권의 당월 출석 차단 — 시작 게이트.
+        ...creditStartedWhere(now),
+        ...MONTHLY_PASS_CREDIT_FILTER,
       },
       orderBy: { expiresAt: "desc" },
       select: { id: true, totalSessions: true, usedSessions: true },
@@ -88,6 +94,7 @@ export class CreditDomainService {
         userId: params.userId,
         classId: params.classId,
         expiresAt: { gte: now },
+        ...creditStartedWhere(now),
       },
       orderBy: { expiresAt: "asc" },
       select: { id: true, totalSessions: true, usedSessions: true },
@@ -332,6 +339,8 @@ export class CreditDomainService {
       classId: string;
       sessions: number;
       expiresAt: Date;
+      /** [Lifecycle v4.1 §9.5] 유효 시작(귀속월 1일 KST) — 선구매분 게이트. null=즉시 유효. */
+      startsAt?: Date | null;
       sourceLabel: string;
     },
   ): Promise<{ memberCreditId: string }> {
@@ -345,6 +354,7 @@ export class CreditDomainService {
         classId: params.classId,
         totalSessions: params.sessions,
         usedSessions: 0,
+        startsAt: params.startsAt ?? null,
         expiresAt: params.expiresAt,
         paymentId: params.paymentId,
       },

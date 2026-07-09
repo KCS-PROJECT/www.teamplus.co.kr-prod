@@ -416,13 +416,25 @@ export class UpdateTournamentDto {
 
 export class ConfirmTournamentSettlementDto {
   @ApiProperty({
-    description: "후불 대회 1인당 참가비 (원) — 참가자 전원 동일 단가 일괄 청구",
+    description: "후불 대회 1인당 참가비 (원) — 선택 참가자에게 동일 단가 일괄 청구",
     example: 30000,
   })
   @IsNumber()
   @Min(1)
   @Type(() => Number)
   feePerPerson!: number;
+
+  @ApiPropertyOptional({
+    description:
+      "청구 대상 등록(TournamentRegistration) ID 목록. 미전송/빈 배열이면 미결제 참가자 전원.",
+    type: [String],
+    example: ["reg_abc", "reg_def"],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayUnique()
+  registrationIds?: string[];
 }
 
 // ==================== Tournament Status DTO ====================

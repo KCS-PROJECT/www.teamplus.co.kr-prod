@@ -14,7 +14,10 @@ import {
   PaymentStepIndicator,
   StepHeadline,
 } from "@/components/payment/PaymentStepIndicator";
-import { PaymentOptionCard } from "@/components/payment/PaymentOptionCard";
+import {
+  PaymentOptionCard,
+  formatMonthlyPeriodNote,
+} from "@/components/payment/PaymentOptionCard";
 // [수정 2026-05-18] 자녀 선택 readonly 통일 — 인라인 ChildSelector 제거, SelectedChildDisplay 사용.
 //   자녀 선택은 수업 상세 페이지(/classes/[id]) 에서만 가능. URL childId 누락 시 redirect.
 import { SelectedChildDisplay } from "@/components/payment/SelectedChildDisplay";
@@ -80,6 +83,7 @@ interface ClassProduct {
   feePerSession?: number;
   sessionsPerWeek?: number;
   billingTiming?: string;
+  billingMonth?: string | null;
   // PACKAGE_WEEKS_SPEC §6 신규 응답 필드 — 정기권 단위 정합.
   durationDays?: number | null;
   packageWeeks?: number | null;
@@ -425,9 +429,8 @@ function PaymentOptionsContent() {
     return product.price;
   };
 
-  const discount = 0;
   const calculatedPrice = calculatePrice();
-  const finalPrice = calculatedPrice - discount;
+  const finalPrice = calculatedPrice;
 
   // [2026-06-10] 복수선택 전체 내역 — 자녀/플랜 매핑 + 합계 + 현재 진행 인덱스.
   const payItems = paySession
@@ -520,9 +523,7 @@ function PaymentOptionsContent() {
                   {classInfo?.className ?? "-"}
                 </h3>
                 <p className="text-it-ink-500 dark:text-rink-300 text-card-meta mt-1">
-                  {product
-                    ? `${product.productName} (월 ${product.sessionsPerMonth}회)`
-                    : "-"}
+                  {product ? product.productName : "-"}
                 </p>
                 <p className="text-it-ink-900 dark:text-white text-card-body font-extrabold tabular-nums mt-2">
                   {(product?.price ?? 0).toLocaleString()}원
@@ -645,6 +646,7 @@ function PaymentOptionsContent() {
                     monthlyFixedAmount={
                       feeType === "MONTHLY_FIXED" ? matched?.price : undefined
                     }
+                    billingMonth={matched?.billingMonth ?? null}
                     // DB 우선 표시 — class_products.productName / description 을 카드 제목·요약으로 사용.
                     // messages.ts 의 기본 카피는 해당 필드가 비었을 때만 폴백으로 노출된다.
                     productName={matched?.productName}
@@ -783,23 +785,11 @@ function PaymentOptionsContent() {
                 <div className="flex justify-between items-center text-card-body">
                   <span className="text-it-ink-500 dark:text-rink-300">
                     {selectedFeeType === "MONTHLY_FIXED"
-                      ? "정기권 수업료"
+                      ? "수업료"
                       : `${product?.sessionsPerMonth ?? 1}회`}
                   </span>
                   <span className="font-bold text-it-ink-900 dark:text-white tabular-nums">
                     {calculatedPrice.toLocaleString()}원
-                  </span>
-                </div>
-                <div className="flex justify-between items-center text-card-body">
-                  <span className="text-it-ink-500 dark:text-rink-300 flex items-center gap-1">
-                    할인 금액
-                    <Icon name="info" className="text-[14px] text-it-ink-400" />
-                  </span>
-                  {/* discount > 0 일 때만 차감 부호 노출 — 0원 시 "-0원" 어색 표시 제거
-                      (2026-05-11 사용자 피드백). 다른 페이지(cart, shop-checkout,
-                      MatchPaymentSummary) 의 패턴과 일관성 확보. */}
-                  <span className="font-bold text-it-blue-600 dark:text-it-blue-300 tabular-nums">
-                    {discount > 0 && '-'}{discount.toLocaleString()}원
                   </span>
                 </div>
               </div>
@@ -837,13 +827,22 @@ function PaymentOptionsContent() {
                 ℹ {MESSAGES.classProduct.paymentInfoTitle}
               </p>
               <ul className="space-y-1 text-card-meta text-it-ink-500 dark:text-rink-300 leading-relaxed">
-              <li>
-                ·{' '}
-                {MESSAGES.classProduct.paymentInfoUsableDays(
-                  product.durationDays + 30,
-                )}
-              </li>
-              <li>· {MESSAGES.classProduct.paymentInfoExtraDays(30)}</li>
+              {/* [Lifecycle v4.1 §9.2] 정기권 = 달력 월 귀속 — 상품 귀속월(billingMonth) 기준
+                  "N월분 · N/말일까지 이용" 표기. "결제일부터 N+30일" 문구는 정기권에 부적합
+                  (구 rolling 정책 잔재)이라 회차권 계열에만 유지. */}
+              {selectedFeeType === "MONTHLY_FIXED" ? (
+                <li>· {formatMonthlyPeriodNote(product?.billingMonth)}</li>
+              ) : (
+                <>
+                  <li>
+                    ·{' '}
+                    {MESSAGES.classProduct.paymentInfoUsableDays(
+                      product.durationDays + 30,
+                    )}
+                  </li>
+                  <li>· {MESSAGES.classProduct.paymentInfoExtraDays(30)}</li>
+                </>
+              )}
               {/* [2026-06-09 심사 3.1.1] 결제권=오프라인 대면 수업 결제 수단 명시 */}
               <li>· {MESSAGES.payment2.offlineCreditNotice}</li>
               </ul>

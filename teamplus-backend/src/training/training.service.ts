@@ -20,6 +20,11 @@ import {
   kstTodayUtcMidnight,
   dateOnlyToUtc,
 } from "@/common/utils/kst-date.util";
+import {
+  deriveClassLifecycle,
+  utcMonthStart,
+} from "@/common/utils/class-lifecycle.util";
+import { creditStartedWhere } from "@/common/billing/fee-type.constants";
 
 /**
  * TrainingService
@@ -129,6 +134,13 @@ export class TrainingService {
           }),
         ),
       );
+      // [Lifecycle v4.1 §9.3] 첫 수업 생성 = 첫 일정 달 자동 승인 (salesOpenMonth).
+      //   ISO "YYYY-MM-DD" 는 사전순 최솟값 = 가장 이른 날짜.
+      const firstDateStr = [...dto.scheduleDates].sort()[0];
+      await this.prisma.class.update({
+        where: { id: training.id },
+        data: { salesOpenMonth: utcMonthStart(dateOnlyToUtc(firstDateStr)) },
+      });
     }
 
     this.logger.log(
@@ -205,6 +217,8 @@ export class TrainingService {
           startTime: true,
           endTime: true,
           isActive: true,
+          endedAt: true,
+          salesOpenMonth: true,
           createdAt: true,
           // 요일별 기본 일정 — 목록 카드 요일 패턴 표시용 (대표 startTime 대신 사용)
           dayScheduleEntries: {
@@ -233,15 +247,26 @@ export class TrainingService {
     ]);
 
     const sdToday = kstTodayUtcMidnight();
-    const items = data.map(({ dayScheduleEntries, schedules, ...rest }) => ({
-      ...rest,
-      daySchedules: dayScheduleEntries,
-      // 다음 회차(오늘 이후 첫) — 없으면 null → 프론트가 기간(first/last)으로 폴백 표기.
-      nextSchedule: schedules.find((s) => s.scheduledDate >= sdToday) ?? null,
-      firstScheduleDate: schedules[0]?.scheduledDate.toISOString() ?? null,
-      lastScheduleDate:
-        schedules[schedules.length - 1]?.scheduledDate.toISOString() ?? null,
-    }));
+    const items = data.map(({ dayScheduleEntries, schedules, ...rest }) => {
+      // [Lifecycle v4.1] 파생 상태 — 배지 판정 일원화 (class-lifecycle.util SoT).
+      const lifecycle = deriveClassLifecycle({
+        endedAt: rest.endedAt,
+        salesOpenMonth: rest.salesOpenMonth,
+        trainingType: rest.trainingType,
+        schedules,
+      });
+      return {
+        ...rest,
+        lifecycleStatus: lifecycle.state,
+        pendingReason: lifecycle.pendingReason,
+        daySchedules: dayScheduleEntries,
+        // 다음 회차(오늘 이후 첫) — 없으면 null → 프론트가 기간(first/last)으로 폴백 표기.
+        nextSchedule: schedules.find((s) => s.scheduledDate >= sdToday) ?? null,
+        firstScheduleDate: schedules[0]?.scheduledDate.toISOString() ?? null,
+        lastScheduleDate:
+          schedules[schedules.length - 1]?.scheduledDate.toISOString() ?? null,
+      };
+    });
 
     return {
       data: items,
@@ -275,6 +300,8 @@ export class TrainingService {
         startTime: true,
         endTime: true,
         isActive: true,
+        endedAt: true,
+        salesOpenMonth: true,
         createdAt: true,
         updatedAt: true,
         team: {
@@ -329,8 +356,20 @@ export class TrainingService {
     }
 
     const { dayScheduleEntries, ...rest } = training;
+    // [Lifecycle v4.1] 파생 상태 + 종료 가드 프리뷰 — 상세 화면의 [수업 종료] 버튼 활성 판정용.
+    const lifecycle = deriveClassLifecycle({
+      endedAt: training.endedAt,
+      salesOpenMonth: training.salesOpenMonth,
+      trainingType: training.trainingType,
+      schedules: training.schedules.filter((s) => !s.isCancelled),
+    });
     return {
       ...rest,
+      lifecycleStatus: lifecycle.state,
+      pendingReason: lifecycle.pendingReason,
+      // 판매 승인 사이클의 대상 달 (확인 플로우 헤더 "N월분" 표기·패키지 복제 대상월)
+      earliestRemainingMonth:
+        lifecycle.earliestRemainingMonth?.toISOString() ?? null,
       daySchedules: dayScheduleEntries,
       coachName: training.team?.coach
         ? `${training.team.coach.lastName}${training.team.coach.firstName}`.trim()
@@ -813,6 +852,7 @@ export class TrainingService {
               userId: { in: memberIds },
               classId,
               expiresAt: { gte: new Date() },
+              ...creditStartedWhere(),
             },
             orderBy: { expiresAt: "asc" },
             select: {

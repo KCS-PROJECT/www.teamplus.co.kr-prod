@@ -40,6 +40,7 @@ import {
   getTournament,
   listTournamentRegistrations,
   mapTournamentUiStatus,
+  canCancelTournamentRegistration,
   type MatchSummary,
   type TournamentDetail,
   type TournamentRegistrationRow,
@@ -72,6 +73,8 @@ export default function CommonTournamentDetailPage() {
 
   // [2026-06-17] 감독 — 참가선수목록(후불 결제 현황). 경기일정 밑 노출.
   const [regRows, setRegRows] = useState<TournamentRegistrationRow[]>([]);
+  // 선택 결제요청 — 체크한 등록(registrationId)에게만 청구. 청구 가능(UNPAID/PENDING) 전원 기본 선택.
+  const [selectedRegIds, setSelectedRegIds] = useState<Set<string>>(new Set());
 
   // 풀스크린 로더 fast-path (v11) — fetch 완료 시점에 PageTransitionLoader OFF
   usePageReady(!isLoading);
@@ -278,14 +281,34 @@ export default function CommonTournamentDetailPage() {
   // [2026-06-17] 정산 시트 열기 — 이미 로드된 참가선수목록(regRows)에서 정산 대상(UNPAID/PENDING) 카운트.
   //   (기존: getTournamentRegistrations 재조회 → 응답이 배열이 아닌 {registrations} 객체라
   //    .filter 가 터져 카운트가 null 로 남아 "불러오는중"에서 멈추던 버그 수정.)
-  const openSettlement = useCallback(() => {
-    setSettleFee("");
-    const count = regRows.filter(
-      (r) => r.paymentStatus === "UNPAID" || r.paymentStatus === "PENDING",
-    ).length;
-    setSettleTargetCount(count);
-    setSettleOpen(true);
+  // 참가선수목록 로드/갱신 시 청구 가능(UNPAID/PENDING) 대상을 기본 전체 선택.
+  useEffect(() => {
+    const payable = regRows
+      .filter(
+        (r) => r.paymentStatus === "UNPAID" || r.paymentStatus === "PENDING",
+      )
+      .map((r) => r.id);
+    setSelectedRegIds(new Set(payable));
   }, [regRows]);
+
+  const toggleRegSelection = useCallback((regId: string) => {
+    setSelectedRegIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(regId)) next.delete(regId);
+      else next.add(regId);
+      return next;
+    });
+  }, []);
+
+  const openSettlement = useCallback(() => {
+    // 감독이 대회 생성 시 입력한 참고 예상 금액(feePerGame)을 기본값으로 프리필 — 그대로/수정 확정.
+    const prefill =
+      tournament?.feePerGame != null ? Number(tournament.feePerGame) : 0;
+    setSettleFee(Number.isFinite(prefill) && prefill > 0 ? String(prefill) : "");
+    // 정산 대상 = 체크된 등록 수.
+    setSettleTargetCount(selectedRegIds.size);
+    setSettleOpen(true);
+  }, [selectedRegIds, tournament]);
 
   const handleConfirmSettlement = useCallback(async () => {
     const fee = Number(settleFee);
@@ -298,7 +321,7 @@ export default function CommonTournamentDetailPage() {
       return;
     }
     setSettleSubmitting(true);
-    const res = await confirmTournamentSettlement(id, fee);
+    const res = await confirmTournamentSettlement(id, fee, [...selectedRegIds]);
     setSettleSubmitting(false);
     if (res.success && res.data) {
       toast.success(
@@ -312,7 +335,7 @@ export default function CommonTournamentDetailPage() {
     } else {
       toast.error(res.error?.message ?? MESSAGES.error.general);
     }
-  }, [id, settleFee, settleTargetCount, toast, load]);
+  }, [id, settleFee, settleTargetCount, selectedRegIds, toast, load]);
 
   // [2026-06-17] 결제요청 취소 — 정산(결제요청)으로 청구한 미결제 건을 UNPAID 로 환원.
   const handleCancelSettlement = useCallback(async () => {
@@ -371,10 +394,13 @@ export default function CommonTournamentDetailPage() {
   //  · feePerGame > 0 && feeType === "TOTAL_FIXED" → "30,000원" (단일 고정 참가비)
   //  · feePerGame > 0 && PER_GAME → "30,000원 / 경기"
   const feeValue = tournament.feePerGame != null ? Number(tournament.feePerGame) : 0;
-  // [2026-06-16] 후불(POSTPAID) 대회는 금액 미확정 — "후불 정산(종료 후 청구)" 표기.
+  // 후불(POSTPAID): 감독이 입력한 대회 1회당 참고 참가비(feePerGame)가 있으면 "(참고)" 표기와 함께
+  //   금액을 노출, 미입력 시에만 "후불 정산(종료 후 청구)" 문구로 폴백. 확정액은 종료 후 정산에서 결정.
   const isPostpaid = tournament.billingMode === "POSTPAID";
   const entryFee = isPostpaid
-    ? MESSAGES.tournament.postpaidFeeLabel
+    ? feeValue > 0
+      ? `${new Intl.NumberFormat("ko-KR").format(feeValue)}원${MESSAGES.tournament.feeReferenceSuffix}`
+      : MESSAGES.tournament.postpaidFeeLabel
     : feeValue <= 0
       ? "무료"
       : tournament.feeType === "TOTAL_FIXED"
@@ -540,6 +566,21 @@ export default function CommonTournamentDetailPage() {
             </span>
           );
         };
+        // 결제요청취소 — 요청에 따라 임시 숨김. 로직(pendingCount/handleCancelSettlement)은 보존.
+        const SHOW_CANCEL_REQUEST = false;
+        // 청구 가능(UNPAID/PENDING) 등록 — 체크박스 선택 대상.
+        const payableIds = regRows
+          .filter(
+            (r) => r.paymentStatus === "UNPAID" || r.paymentStatus === "PENDING",
+          )
+          .map((r) => r.id);
+        const allPayableSelected =
+          payableIds.length > 0 &&
+          payableIds.every((pid) => selectedRegIds.has(pid));
+        const toggleAllPayable = () =>
+          setSelectedRegIds(
+            allPayableSelected ? new Set() : new Set(payableIds),
+          );
         return (
           <section
             aria-label="참가선수목록"
@@ -554,49 +595,81 @@ export default function CommonTournamentDetailPage() {
                 결제 필요 {needPay}명 / 총 {regRows.length}명
               </span>
             </div>
+            {payableIds.length > 0 && (
+              <label className="mb-1 flex w-fit cursor-pointer items-center gap-2 py-1.5 text-w-small font-bold text-it-ink-600 dark:text-rink-100">
+                <input
+                  type="checkbox"
+                  checked={allPayableSelected}
+                  onChange={toggleAllPayable}
+                  aria-label="청구 대상 전체 선택"
+                  className="h-[18px] w-[18px] shrink-0 cursor-pointer accent-it-blue-500"
+                />
+                <span>
+                  전체 선택 ({selectedRegIds.size}/{payableIds.length})
+                </span>
+              </label>
+            )}
             <div className="flex flex-col">
-              {regRows.map((r, idx) => (
-                <div
-                  key={r.id}
-                  className={`flex items-center justify-between gap-3 py-3.5 ${
-                    idx !== regRows.length - 1 ? "border-b border-it-line dark:border-rink-700" : ""
-                  }`}
-                >
-                  <span className="flex items-center gap-2 min-w-0">
-                    <Icon name="person" className="text-[20px] text-it-ink-400" aria-hidden="true" />
-                    <span className="font-bold text-it-ink-800 dark:text-white truncate">
-                      {nameOf(r)}
+              {regRows.map((r, idx) => {
+                const payable =
+                  r.paymentStatus === "UNPAID" || r.paymentStatus === "PENDING";
+                return (
+                  <div
+                    key={r.id}
+                    className={`flex items-center justify-between gap-3 py-3.5 ${
+                      idx !== regRows.length - 1 ? "border-b border-it-line dark:border-rink-700" : ""
+                    }`}
+                  >
+                    <span className="flex items-center gap-2 min-w-0">
+                      {payable ? (
+                        <input
+                          type="checkbox"
+                          checked={selectedRegIds.has(r.id)}
+                          onChange={() => toggleRegSelection(r.id)}
+                          aria-label={`${nameOf(r)} 결제요청 대상`}
+                          className="h-[18px] w-[18px] shrink-0 cursor-pointer accent-it-blue-500"
+                        />
+                      ) : (
+                        <span className="w-[18px] shrink-0" aria-hidden="true" />
+                      )}
+                      <Icon name="person" className="text-[20px] text-it-ink-400" aria-hidden="true" />
+                      <span className="font-bold text-it-ink-800 dark:text-white truncate">
+                        {nameOf(r)}
+                      </span>
                     </span>
-                  </span>
-                  {statusBadge(r.paymentStatus)}
-                </div>
-              ))}
+                    {statusBadge(r.paymentStatus)}
+                  </div>
+                );
+              })}
             </div>
-            <div className="mt-3 grid grid-cols-5 gap-2">
-              <Button
-                variant="outline"
-                size="lg"
-                fullWidth
-                className="col-span-2 border-it-red-500 text-it-red-500 hover:border-it-red-500 hover:bg-it-red-50 dark:border-it-red-500 dark:text-it-red-300 dark:hover:bg-it-red-500/10"
-                disabled={pendingCount === 0}
-                onClick={() => void handleCancelSettlement()}
-              >
-                결제요청취소
-              </Button>
+            <div className="mt-3 flex flex-col gap-2">
               <Button
                 variant="primary"
                 size="lg"
                 fullWidth
-                className="col-span-3"
-                disabled={!isEnded || needPay === 0}
+                disabled={!isEnded || selectedRegIds.size === 0}
                 onClick={() => void openSettlement()}
               >
-                {needPay === 0
-                  ? "결제 요청 완료"
-                  : isEnded
-                    ? "결제요청"
-                    : "종료 후 결제요청"}
+                {!isEnded
+                  ? "종료 후 결제요청"
+                  : payableIds.length === 0
+                    ? "결제 요청 완료"
+                    : selectedRegIds.size === 0
+                      ? "선수를 선택하세요"
+                      : `결제요청 (${selectedRegIds.size}명)`}
               </Button>
+              {SHOW_CANCEL_REQUEST && (
+                <Button
+                  variant="outline"
+                  size="lg"
+                  fullWidth
+                  className="border-it-red-500 text-it-red-500 hover:border-it-red-500 hover:bg-it-red-50 dark:border-it-red-500 dark:text-it-red-300 dark:hover:bg-it-red-500/10"
+                  disabled={pendingCount === 0}
+                  onClick={() => void handleCancelSettlement()}
+                >
+                  결제요청취소
+                </Button>
+              )}
             </div>
           </section>
         );
@@ -627,6 +700,7 @@ export default function CommonTournamentDetailPage() {
                   paymentStatus={c.paymentStatus}
                   orderNumber={c.orderNumber}
                   cancelling={cancellingId === c.id}
+                  canCancel={canCancelTournamentRegistration(tournament.startDate)}
                   iceTheme
                   onPay={() => {
                     const params = new URLSearchParams({

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useToast } from "@/components/ui/Toast";
 import { MESSAGES } from "@/lib/messages";
+import { PASSWORD_REGEX, describePasswordIssue } from "@/lib/password-policy";
 import { useGuestOnly } from "@/contexts/AuthContext";
 import { usePageReady } from '@/hooks/usePageReady';
 import { useSessionAuth } from "@/hooks/useSessionAuth";
@@ -452,9 +453,10 @@ export default function SignupPage() {
     }
 
     if (!formData.password) {
-      newErrors.password = "비밀번호를 입력해주세요.";
-    } else if (formData.password.length < 8) {
-      newErrors.password = "비밀번호는 8자 이상이어야 합니다.";
+      newErrors.password = MESSAGES.signupValidation.passwordRequired;
+    } else {
+      const issue = describePasswordIssue(formData.password);
+      if (issue) newErrors.password = issue;
     }
 
     if (!formData.passwordConfirm) {
@@ -617,11 +619,17 @@ export default function SignupPage() {
     hasRequiredFields &&
     ID_REGEX.test(formData.email.trim()) &&
     emailDuplicateStatus === "available" &&
-    formData.password.length >= 8 &&
+    PASSWORD_REGEX.test(formData.password) &&
     formData.password === formData.passwordConfirm &&
     agreements.terms &&
     agreements.privacy;
   const canSubmit = hasValidRequiredFields && !isSubmitting;
+
+  // 비밀번호 실시간 검증(방식 2) — 입력란 아래에 상시 규칙 안내 + 위반 시 구체 에러.
+  //  버튼 비활성화만으로는 "왜 안 눌리는지" 알 수 없으므로, 허용되지 않는 문자가 있으면
+  //  그 문자를 콕 집어(describePasswordIssue) 알려준다.
+  const passwordIssue = describePasswordIssue(formData.password);
+  const passwordShowError = Boolean(errors.password) || Boolean(passwordIssue);
 
   return (
     <MobileContainer hasBottomNav={false} className="bg-it-canvas dark:bg-puck">
@@ -1048,7 +1056,7 @@ export default function SignupPage() {
                     id={passwordId}
                     name="new-password"
                     type={showPassword ? "text" : "password"}
-                    placeholder="8자 이상 입력"
+                    placeholder="영문·숫자·특수문자 포함 8자 이상"
                     value={formData.password}
                     onChange={(e) =>
                       handleInputChange("password", e.target.value)
@@ -1056,11 +1064,11 @@ export default function SignupPage() {
                     disabled={isSubmitting}
                     required
                     aria-required="true"
-                    aria-invalid={!!errors.password}
-                    aria-describedby={errors.password ? `${passwordId}-error` : undefined}
+                    aria-invalid={passwordShowError}
+                    aria-describedby={`${passwordId}-help`}
                     autoComplete="new-password"
                     className={`block w-full h-[50px] pl-12 pr-12 bg-it-fill dark:bg-puck border-[1.5px] rounded-w-md text-[15.5px] font-semibold text-it-ink-800 dark:text-white placeholder-it-ink-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 transition-all motion-reduce:transition-none disabled:opacity-50 ${
-                      errors.password
+                      passwordShowError
                         ? "border-flame-500"
                         : "border-it-line-strong dark:border-rink-700"
                     }`}
@@ -1078,11 +1086,20 @@ export default function SignupPage() {
                     />
                   </button>
                 </div>
-                {errors.password && (
-                  <p id={`${passwordId}-error`} role="alert" className="mt-1.5 text-card-body text-flame-500">
-                    {errors.password}
-                  </p>
-                )}
+                {/* 규칙 안내 상시 노출(회색) + 위반 시 빨간 에러로 전환 — 방식 2 */}
+                <p
+                  id={`${passwordId}-help`}
+                  role={passwordShowError ? "alert" : undefined}
+                  className={`mt-1.5 text-card-body ${
+                    passwordShowError
+                      ? "text-flame-500"
+                      : "text-it-ink-400 dark:text-rink-400"
+                  }`}
+                >
+                  {errors.password ??
+                    passwordIssue ??
+                    MESSAGES.signupValidation.passwordRule}
+                </p>
               </div>
 
               {/* Password Confirm */}

@@ -11,6 +11,8 @@ import { PrismaService } from "@/prisma/prisma.service";
 import { NotificationsService } from "@/notifications/notifications.service";
 import { WaitlistService } from "@/waitlist/waitlist.service";
 import { CreditDomainService } from "@/credits/credit-domain.service";
+import { endOfMonthKst, monthlyPassWindow } from "@/common/billing/billing-date.util";
+import { assertClassOnSale } from "@/common/billing/sales-gate.util";
 import { calculateKoreanAge } from "@/common/utils/age.util";
 import {
   CreateEnrollmentDto,
@@ -179,6 +181,10 @@ export class EnrollmentsService {
     if (!classInfo) {
       throw new NotFoundException("수업 정보를 찾을 수 없습니다.");
     }
+
+    // [Lifecycle v4.1 §9.4] 판매 게이트 — 대기(일정 미확정)/종료 수업은 수강신청 차단.
+    //   프론트 숨김과 별개의 최종 집행 지점 (직접 API 호출 우회 방지).
+    await assertClassOnSale(this.prisma, dto.classId);
 
     // 3-0. 팀 소속 승인 검증 (설계서 §4.5 + BR-12)
     //  - 팀 수업 (Class.teamId != null) 은 자녀가 해당 클럽의 approved ClubMember 여야 수강 가능.
@@ -509,7 +515,52 @@ export class EnrollmentsService {
       skip: (pageNum - 1) * pageSize,
     });
 
-    return enrollments.map((e) => this.mapToEnrollmentResponse(e));
+    // [Lifecycle v4.1] 선불 "수강 중" 유효성 일괄 판정 — 만료 안 된 기간권(잔여>0) 보유 여부.
+    //   paid enrollment 는 만료 개념이 없어(환불 전까지 영구) "결제 이력"일 뿐,
+    //   달력 월 체계의 "현재 수강 중"은 크레딧이 SoT.
+    //   ⚠️ 표시 판정은 출석 게이트와 달리 시작일(startsAt) 조건을 걸지 않는다 —
+    //   다음 달분 선구매자(startsAt 미래)도 "결제 완료 = 수강 중(이용 예정)"으로 표시.
+    //   시작 전 출석 차단은 deductOne 게이트가 별도로 집행 (표시/집행 분리).
+    const paidRows = enrollments.filter((e) => e.status === "paid");
+    const validPassSet = new Set<string>();
+    if (paidRows.length > 0) {
+      const now = new Date();
+      const credits = await this.prisma.memberCredit.findMany({
+        where: {
+          userId: { in: [...new Set(paidRows.map((e) => e.childId))] },
+          classId: { in: [...new Set(paidRows.map((e) => e.classId))] },
+          expiresAt: { gte: now },
+        },
+        select: {
+          userId: true,
+          classId: true,
+          totalSessions: true,
+          usedSessions: true,
+        },
+      });
+      for (const c of credits) {
+        // 월권은 무차감(항상 잔여>0), 회차권(레거시)은 소진 시 수강 중 아님.
+        if (c.totalSessions - c.usedSessions > 0) {
+          validPassSet.add(`${c.userId}:${c.classId}`);
+        }
+      }
+    }
+
+    return enrollments.map((e) => {
+      // 후불 축(상품 billingTiming 또는 수업 billingMode = POSTPAID)은 크레딧 미발급이
+      //   정상이라 hasValidPass 판정 비대상(null) — false 를 내면 paid 후불 행(정산
+      //   플로우가 기대하는 상태)의 "등록완료"가 오해제된다 (evaluator N2).
+      const isPostpaidAxis =
+        e.product?.billingTiming === "POSTPAID" ||
+        e.class?.billingMode === "POSTPAID";
+      return {
+        ...this.mapToEnrollmentResponse(e),
+        hasValidPass:
+          e.status === "paid" && !isPostpaidAxis
+            ? validPassSet.has(`${e.childId}:${e.classId}`)
+            : null,
+      };
+    });
   }
 
   /**
@@ -940,27 +991,50 @@ export class EnrollmentsService {
             classId: true,
             durationDays: true,
             sessionsPerMonth: true,
+            feeType: true,
+            billingTiming: true,
+            billingMonth: true,
           },
         });
-        if (product && product.sessionsPerMonth > 0) {
-          // 2026-05-22 정책 — 수업권 사용 기간 = durationDays + 미사용 회차 사용 30일.
-          //   KG이니시스 webhook · 토스 confirm 흐름과 일관.
+        // [B4 정합] 후불 상품(billingTiming=POSTPAID)은 크레딧 미발급 — 출석×단가 월말 정산.
+        //   webhook(isPostpaidClass)·토스(isPostpaidProduct) 가드와 동일. mock 경로만 누락돼
+        //   DEV 에서 후불 선택분이 오발급되던 갭 해소 (Reviewer F-1).
+        const isPostpaidProductMock = product?.billingTiming === "POSTPAID";
+        if (product && product.sessionsPerMonth > 0 && !isPostpaidProductMock) {
+          // [B7 정합] 선불 정액(MONTHLY_FIXED) 만료 = 결제한 그 달 말일 23:59:59 KST (약관 §13).
+          //   KG이니시스 webhook · 토스 confirm 과 동일 분기 — 이 mock 경로만 구식
+          //   (durationDays+30일)으로 남아 달력 월 귀속 정책과 어긋나 있었음.
+          //   그 외 feeType 은 기존 정책 유지 (durationDays + 미사용 회차 사용 30일).
           const MEMBER_CREDIT_EXTRA_USABLE_DAYS = 30;
           const now = new Date();
-          const durationDays = product.durationDays ?? 28;
-          const expiresAt = new Date(now);
-          expiresAt.setDate(
-            expiresAt.getDate() +
-              durationDays +
-              MEMBER_CREDIT_EXTRA_USABLE_DAYS,
-          );
-          expiresAt.setHours(23, 59, 59, 999);
+          // [Lifecycle v4.1 §9.5] 월별 패키지(billingMonth 有)는 귀속월 창 — 실결제 2경로와 동일.
+          const passWindow =
+            product.feeType === "MONTHLY_FIXED" && product.billingMonth
+              ? monthlyPassWindow(product.billingMonth)
+              : null;
+          const mockStartsAt = passWindow?.startsAt ?? null;
+          const expiresAt =
+            passWindow?.expiresAt ??
+            (product.feeType === "MONTHLY_FIXED"
+              ? endOfMonthKst(now)
+              : (() => {
+                  const durationDays = product.durationDays ?? 28;
+                  const e = new Date(now);
+                  e.setDate(
+                    e.getDate() +
+                      durationDays +
+                      MEMBER_CREDIT_EXTRA_USABLE_DAYS,
+                  );
+                  e.setHours(23, 59, 59, 999);
+                  return e;
+                })());
 
           await this.creditDomain.issueFromPayment(tx, {
             paymentId: mockPayment.id,
             userId: childUserId,
             classId: product.classId,
             sessions: product.sessionsPerMonth,
+            startsAt: mockStartsAt,
             expiresAt,
             sourceLabel: `[MOCK PAY] 수업권 발급 (enrollmentId: ${enrollmentId})`,
           });
@@ -970,7 +1044,7 @@ export class EnrollmentsService {
           );
         } else {
           this.logger.warn(
-            `[MOCK PAY] MemberCredit 발급 skip: productId=${productId} 없음 또는 sessionsPerMonth=0`,
+            `[MOCK PAY] MemberCredit 발급 skip: productId=${productId} 없음 · sessionsPerMonth=0 · 또는 후불(POSTPAID) 상품`,
           );
         }
       } else {

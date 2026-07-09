@@ -372,6 +372,7 @@ export class TournamentsController {
     return this.tournamentsService.confirmTournamentSettlement(
       id,
       dto.feePerPerson,
+      dto.registrationIds,
       req.user.id,
     );
   }

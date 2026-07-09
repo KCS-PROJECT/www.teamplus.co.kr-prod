@@ -34,6 +34,18 @@
 				<string>teamplus</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>kakaolink</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<!-- 카카오톡 공유 메시지 버튼의 앱 실행 스킴 (kakao{네이티브앱키}) —
+				     AndroidManifest.xml 의 kakao 스킴 intent-filter 와 쌍 -->
+				<string>kakao3135b23ea4171cc782e24807bcfa9a51</string>
+			</array>
+		</dict>
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
