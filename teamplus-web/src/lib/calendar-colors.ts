@@ -5,6 +5,8 @@
  * Design 7 Principles: 솔리드 컬러만 사용 (gradient 금지)
  */
 
+import { CATEGORY_BADGE_LABEL } from '@/lib/class-categories';
+
 export interface TrainingTypeColor {
   /** Tailwind 배경 클래스 */
   bg: string;
@@ -33,8 +35,8 @@ export const TRAINING_TYPE_COLORS: Record<string, TrainingTypeColor> = {
   REGULAR: {
     bg: 'bg-emerald-500',
     dot: '#10B981',
-    // [2026-06-25 용어통일] 일정/캘린더 배지·범례 = '정규' (카드 배지와 통일)
-    label: '정규',
+    // 일정/캘린더 배지·범례 = 배지 SoT(CATEGORY_BADGE_LABEL) 참조 — 카드 배지와 통일.
+    label: CATEGORY_BADGE_LABEL.regular,
     text: 'text-emerald-700 dark:text-emerald-400',
     darkBg: 'dark:bg-emerald-600',
   },
@@ -43,7 +45,7 @@ export const TRAINING_TYPE_COLORS: Record<string, TrainingTypeColor> = {
   regular: {
     bg: 'bg-emerald-500',
     dot: '#10B981',
-    label: '정규',
+    label: CATEGORY_BADGE_LABEL.regular,
     text: 'text-emerald-700 dark:text-emerald-400',
     darkBg: 'dark:bg-emerald-600',
   },
@@ -118,7 +120,7 @@ export const TRAINING_SUBTYPE_COLORS: Record<string, TrainingTypeColor> = {
   REGULAR_TRAINING: {
     bg: 'bg-emerald-600',
     dot: '#059669',
-    label: '정규',
+    label: CATEGORY_BADGE_LABEL.regular,
     text: 'text-emerald-800 dark:text-emerald-300',
     darkBg: 'dark:bg-emerald-700',
   },

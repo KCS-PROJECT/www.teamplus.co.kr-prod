@@ -49,11 +49,24 @@ export interface ClassCategoryDef {
   description: string;
 }
 
+/**
+ * 배지(짧은 라벨) 단일 SoT — 카드/일정 배지·캘린더 범례가 공유.
+ * 라벨 문구 변경은 여기 한 곳만 수정하면 전 배지·범례에 반영된다.
+ * 탭/섹션 풀 라벨(TRAINING_TYPE_OPTIONS.label='정규훈련', CLASS_CATEGORIES.label 등)과는
+ * 분리 — 그쪽 문구는 그대로 유지한다.
+ */
+export const CATEGORY_BADGE_LABEL = {
+  regular: '훈련',
+  open: '오픈',
+  tournament: '대회',
+  lesson: '레슨',
+} as const;
+
 export const CLASS_CATEGORIES: Record<ClassCategoryCode, ClassCategoryDef> = {
   regular: {
     code: 'regular',
     label: '정규훈련',
-    shortLabel: '정규',
+    shortLabel: CATEGORY_BADGE_LABEL.regular,
     icon: 'sports_hockey',
     color: {
       dot: '#10B981',
@@ -68,7 +81,7 @@ export const CLASS_CATEGORIES: Record<ClassCategoryCode, ClassCategoryDef> = {
   open: {
     code: 'open',
     label: '오픈클래스',
-    shortLabel: '오픈',
+    shortLabel: CATEGORY_BADGE_LABEL.open,
     icon: 'school',
     color: {
       dot: '#3B82F6',
@@ -83,7 +96,7 @@ export const CLASS_CATEGORIES: Record<ClassCategoryCode, ClassCategoryDef> = {
   tournament: {
     code: 'tournament',
     label: '대회',
-    shortLabel: '대회',
+    shortLabel: CATEGORY_BADGE_LABEL.tournament,
     icon: 'emoji_events',
     color: {
       dot: '#EF4444',
@@ -143,20 +156,22 @@ export type TrainingType = (typeof TRAINING_TYPE_OPTIONS)[number]['value'];
 // 라벨 매핑 — 신규 3종 + 'tournament'(대회 어댑팅 키) + 하위 호환 (deprecated).
 export const TRAINING_TYPE_LABEL: Record<string, string> = {
   ...Object.fromEntries(TRAINING_TYPE_OPTIONS.map((o) => [o.value, o.label])),
-  // 카드 배지는 분류 라벨을 짧게 통일 — 정규 계열은 '정규', 오픈 계열은 '오픈'으로 override
-  // (칩/상위분류 풀 라벨은 유지). trainingType 코드값과 무관하게 배지 문구를 단일화한다.
-  regular: '정규',
-  lesson: '오픈',
-  tournament: '대회',
+  // 카드 배지는 분류 라벨을 짧게 통일 — 배지 문구 SoT(CATEGORY_BADGE_LABEL) 참조.
+  //   (칩/상위분류 풀 라벨은 유지). trainingType 코드값과 무관하게 배지 문구를 단일화한다.
+  regular: CATEGORY_BADGE_LABEL.regular,
+  // [Lifecycle v4.1 §7.1] spot(1회용) 은 정규훈련 하위 옵션 — 배지 표기는 정규와 동일.
+  spot: CATEGORY_BADGE_LABEL.regular,
+  lesson: CATEGORY_BADGE_LABEL.open,
+  tournament: CATEGORY_BADGE_LABEL.tournament,
   // 하위 호환 (deprecated, 2026-05-11) — 과거 데이터/training 도메인 응답 표시용
-  regular_training: '정규',
-  regular_class: '정규',
-  group_class: '정규',
-  game: '정규',
-  fun: '정규',
-  camp: '정규',
-  academy_lesson: '오픈',
-  game_lesson: '오픈',
+  regular_training: CATEGORY_BADGE_LABEL.regular,
+  regular_class: CATEGORY_BADGE_LABEL.regular,
+  group_class: CATEGORY_BADGE_LABEL.regular,
+  game: CATEGORY_BADGE_LABEL.regular,
+  fun: CATEGORY_BADGE_LABEL.regular,
+  camp: CATEGORY_BADGE_LABEL.regular,
+  academy_lesson: CATEGORY_BADGE_LABEL.open,
+  game_lesson: CATEGORY_BADGE_LABEL.open,
 };
 
 /**
@@ -164,6 +179,7 @@ export const TRAINING_TYPE_LABEL: Record<string, string> = {
  */
 export const TRAINING_TYPE_ICON: Record<string, string> = {
   regular: 'fitness_center',
+  spot: 'fitness_center',
   lesson: 'sports',
   // 대회 — Tournament 응답을 ClassItem 으로 어댑팅할 때 trainingType='tournament' 부여.
   tournament: 'emoji_events',
@@ -185,6 +201,7 @@ export const TRAINING_TYPE_ICON: Record<string, string> = {
 export const TRAINING_TYPE_BADGE_CLASS: Record<string, string> = {
   regular:
     'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400',
+  spot: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400',
   lesson: 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400',
   tournament:
     'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400',
@@ -215,7 +232,7 @@ export function getTrainingTypeIcon(type?: string | null): string {
  */
 export function shouldHideTypeBadge(type?: string | null): boolean {
   const t = String(type ?? '').toLowerCase();
-  return ['regular', 'lesson', 'academy_lesson', 'game_lesson', 'tournament'].includes(t);
+  return ['regular', 'spot', 'lesson', 'academy_lesson', 'game_lesson', 'tournament'].includes(t);
 }
 
 export function getTrainingTypeBadgeClass(type?: string | null): string {
