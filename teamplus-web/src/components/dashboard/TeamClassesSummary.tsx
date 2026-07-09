@@ -37,6 +37,11 @@ interface ClassSummaryItem {
   startTime?: string;
   endTime?: string;
   classDays?: string[];
+  /**
+   * 수명주기 상태(class-lifecycle SoT) — 'ENDED'(명시 종료·spot 자동종료) 수업은 요약에서 제외.
+   * 필드 부재 시 제외하지 않음(구 엔드포인트 호환). 'PENDING_SCHEDULE'(일정 대기)은 종료 아님.
+   */
+  lifecycleStatus?: string | null;
 }
 
 /**
@@ -68,6 +73,7 @@ type SummaryItem =
 
 /** /enrollments 행 — 등록완료(선불 paid/후불·BOTH 후불상품 approved) 판정용 최소 필드. */
 interface EnrollRow {
+  hasValidPass?: boolean | null;
   classId?: string;
   childId?: string;
   status?: string;
@@ -112,8 +118,12 @@ function toSortMs(iso?: string | null): number {
 interface Props {
   /** 첫 fetch 완료 시 true 발화(에러/빈 응답 포함) → 부모 usePageReady 합성용 */
   onReady?: (ready: boolean) => void;
-  /** 표시할 최대 수업 수 (기본 5) */
+  /** 표시할 최대 항목 수 (기본 5) — classLimit/tournamentLimit 미지정 시 유형별 폴백값. */
   limit?: number;
+  /** 훈련(수업) 최대 노출 수 — 미지정 시 limit. */
+  classLimit?: number;
+  /** 대회 최대 노출 수 — 미지정 시 limit. */
+  tournamentLimit?: number;
   /**
    * 선택 자녀 ID — 학부모만 주입(자녀별 수업·대회·등록 필터).
    * 감독/코치/오픈클래스감독은 미주입(undefined) → viewer(소속 팀) 기준 전체.
@@ -146,6 +156,8 @@ interface Props {
 export function TeamClassesSummary({
   onReady,
   limit = 5,
+  classLimit,
+  tournamentLimit,
   selectedChildId = null,
   showEnrollment = true,
   targetPath = '/classes',
@@ -209,6 +221,7 @@ export function TeamClassesSummary({
               row.status,
               row.class?.billingMode,
               row.product?.billingTiming,
+              row.hasValidPass,
             )
           )
             return;
@@ -226,7 +239,10 @@ export function TeamClassesSummary({
         : null;
       const classItems: SummaryItem[] = (
         Array.isArray(classPayload) ? classPayload : []
-      ).map((c) => ({
+      )
+        // 종료(ENDED) 수업 제외 — 명시 종료·spot 자동종료. 대기(PENDING_SCHEDULE)는 유지.
+        .filter((c) => c.lifecycleStatus !== 'ENDED')
+        .map((c) => ({
         kind: 'class',
         id: c.id,
         title: c.className,
@@ -257,20 +273,30 @@ export function TeamClassesSummary({
           sortKey: toSortMs(t.startDate),
         }));
 
-      // [2026-06-16] 등록완료(결제) 수업·대회를 위로, 그 다음 임박순(시작일시 오름차순).
-      const merged = [...classItems, ...tournamentItems].sort((a, b) => {
+      // 각 그룹 내부 정렬 — 등록완료(결제) 항목을 위로, 그 다음 임박순(시작일시 오름차순).
+      const byPriority = (a: SummaryItem, b: SummaryItem) => {
         const ae = a.enrolled ? 0 : 1;
         const be = b.enrolled ? 0 : 1;
         if (ae !== be) return ae - be;
         return a.sortKey - b.sortKey;
-      });
-      setItems(merged.slice(0, limit));
+      };
+      // 유형별 최대 노출 수 — 훈련(수업)/대회를 각각 캡한 뒤 합쳐 다시 우선순위 정렬.
+      //   classLimit/tournamentLimit 미지정 시 limit 폴백(기존 동작 호환).
+      const maxClasses = classLimit ?? limit;
+      const maxTournaments = tournamentLimit ?? limit;
+      const cappedClasses = [...classItems].sort(byPriority).slice(0, maxClasses);
+      const cappedTournaments = [...tournamentItems]
+        .sort(byPriority)
+        .slice(0, maxTournaments);
+      // 훈련 그룹 위 → 대회 그룹 아래로 나열(통합 재정렬 없음). 각 그룹 내부만 byPriority 정렬.
+      const merged = [...cappedClasses, ...cappedTournaments];
+      setItems(merged);
       setIsLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [limit, selectedChildId, classesCategory, classesEndpoint]);
+  }, [limit, classLimit, tournamentLimit, selectedChildId, classesCategory, classesEndpoint]);
 
   // 첫 로딩 완료 시 onReady(true) 1회 발화 — 에러/빈 응답에도 보장하여 로더 영구표시 방지.
   useEffect(() => {

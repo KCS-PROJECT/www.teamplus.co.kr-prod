@@ -256,6 +256,7 @@ export default function ParentDashboardPage() {
             e.status,
             e.class?.billingMode,
             e.product?.billingTiming,
+            e.hasValidPass,
           )
         )
           return;
@@ -527,7 +528,7 @@ export default function ParentDashboardPage() {
 
         {/* ② 수업 목록 — 팀 등록 수업 상위 5건 요약 + 전체보기.
               팀 전체 카탈로그라 자녀 칩 필터와 무관 → 칩보다 위에 배치. */}
-        <TeamClassesSummary selectedChildId={selectedChildId} onReady={setSummaryReady} iceTheme />
+        <TeamClassesSummary selectedChildId={selectedChildId} classLimit={7} tournamentLimit={3} onReady={setSummaryReady} iceTheme />
 
         {/* (자녀 전환은 상단 자녀 스트립 [선택] 버튼 → ChildPickerSheet 로 이동 — 2026-07-06) */}
 
