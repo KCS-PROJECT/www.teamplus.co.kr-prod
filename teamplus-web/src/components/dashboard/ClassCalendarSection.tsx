@@ -53,6 +53,8 @@ interface ClassSchedule {
   // [2026-06-10] 오픈클래스 회차별 실제 시각("HH:mm") — 있으면 대표 시간보다 우선.
   startTime?: string | null;
   endTime?: string | null;
+  /** 회차별 장소 — 있으면 요일 기본일정·대표 장소보다 우선. */
+  venue?: { id?: string | null; name?: string | null } | null;
 }
 
 export interface CalendarClass {
@@ -123,15 +125,18 @@ function resolveScheduleTime(
 }
 
 /**
- * 회차(날짜)의 요일에 맞는 장소 라벨 산출.
- *  - daySchedules 에 그 요일 규칙이 있으면 그 규칙의 venueName.
- *  - 없으면 수업 대표 장소(venue.name) 폴백.
- *  - 둘 다 없으면 '' (카드에서 장소 줄 미표시).
+ * 회차(날짜)의 장소 라벨 산출 — 일정 페이지(useCalendar) 와 동일 우선순위.
+ *  - ① 회차별 장소(schedule.venue.name) — 특정 날짜만 다른 링크장으로 지정한 경우 우선.
+ *  - ② 그 요일의 기본일정(daySchedules) venueName.
+ *  - ③ 수업 대표 장소(venue.name) 폴백.
+ *  - 셋 다 없으면 '' (카드에서 장소 줄 미표시). 팀/학원명은 장소가 아니므로 폴백 아님.
  */
 function resolveScheduleLocation(
   cls: { venue?: { name?: string | null } | null; daySchedules?: DaySchedule[] },
   scheduledDate: string,
+  scheduleVenue?: { name?: string | null } | null,
 ): string {
+  if (scheduleVenue?.name) return scheduleVenue.name;
   const match = getDayScheduleForDate(cls.daySchedules, scheduledDate);
   if (match?.venueName) return match.venueName;
   return cls.venue?.name ?? '';
@@ -340,7 +345,19 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
       //   변경: 서로 독립인 team/academy/open/tournament 를 동시 발사하고, classes 에
       //   의존하는 schedules 만 그 뒤 1회 실행. 결과 맵은 동일하며 reveal 지배 신호
       //   (calendarReady) 도달을 앞당긴다. (open dedup 은 academy 결과 의존이라 그 후 수행.)
-      type RawTournament = { id: string; name: string; startDate: string; endDate?: string | null; status?: string; paidChildIds?: string[] | null; enrolledChildIds?: string[] | null };
+      type RawTournament = {
+        id: string;
+        name: string;
+        startDate: string;
+        endDate?: string | null;
+        status?: string;
+        paidChildIds?: string[] | null;
+        enrolledChildIds?: string[] | null;
+        // 장소 폴백 체인 — location(보조 텍스트) > venue.name > rink.location > rink.name.
+        location?: string | null;
+        venue?: { name?: string | null } | null;
+        rink?: { name?: string | null; location?: string | null } | null;
+      };
       type TournamentApiList = RawTournament[] | { data?: RawTournament[] };
       // [2026-06-15] 대회 경기일정(HockeyMatch) — 시작일 단일 대신 실제 경기 날짜/시간 표시.
       type RawTMatch = {
@@ -352,6 +369,8 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
         matchOrder?: number | null;
         awayTeam?: { name?: string | null } | null;
         tournament?: { name?: string | null } | null;
+        venue?: { name?: string | null } | null;
+        rink?: { name?: string | null } | null;
       };
       type TMatchApiList = RawTMatch[] | { data?: RawTMatch[] };
 
@@ -504,7 +523,7 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
                 ?.endTime ??
               null,
             coach: cls.instructorName,
-            location: resolveScheduleLocation(cls, schedule.scheduledDate),
+            location: resolveScheduleLocation(cls, schedule.scheduledDate, schedule.venue),
             type: inferTrainingType(cls),
           };
           if (!next[dateKey]) next[dateKey] = [];
@@ -566,7 +585,7 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
             time: `${hh}:${mm}`,
             scheduledDate: at.toISOString(),
             coach: '',
-            location: '',
+            location: m.venue?.name ?? m.rink?.name ?? '',
             type: 'GAME',
             childIds: participantChildByTournament.get(m.tournamentId) ?? [],
             tournamentId: m.tournamentId,
@@ -588,7 +607,9 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
           time: '종일',
           scheduledDate: startDt.toISOString(),
           coach: '',
-          location: '',
+          // getAvailableTournaments 의 장소 해석 체인과 동일 — 팀명 폴백 없음.
+          location:
+            t.location || t.venue?.name || t.rink?.location || t.rink?.name || '',
           type: 'GAME',
           childIds: (t.enrolledChildIds ?? t.paidChildIds) ?? [],
           tournamentId: t.id,
@@ -1213,34 +1234,53 @@ export function SelectedDayClassList({
                 typeStyle.stripe,
               )} />
               <div className="min-w-0 flex-1">
+                {/* 메타 줄 — (칩·시간) 좌측 그룹 + 장소. 비-child 는 justify-between + wrap 으로
+                     폭 되면 장소 우측 끝, 좁으면 아랫줄 좌측(일정페이지 ScheduleRow 와 동일 동작).
+                     child 는 WCAG AAA 레이아웃 유지 — 장소를 아래 coach 줄에 그대로 둔다. */}
                 <div className={cn(
-                  'flex items-center',
-                  isChild ? 'gap-2 mb-2' : !isChild && iceTheme ? 'gap-[7px] mb-[3px]' : 'gap-2 mb-1',
+                  'flex flex-wrap items-center',
+                  !isChild && 'justify-between',
+                  isChild ? 'gap-2 mb-2' : !isChild && iceTheme ? 'gap-x-[7px] gap-y-[2px] mb-[3px]' : 'gap-x-2 gap-y-1 mb-1',
                 )}>
-                  {/* [ICETIMES] iceTheme chip — 11.5px/700 tint14%(pillBg/pillText 토큰 유지). */}
                   <span className={cn(
-                    'rounded-full',
-                    isChild
-                      ? 'px-2.5 py-1 text-card-body font-semibold'
-                      : !isChild && iceTheme
-                        ? 'px-[7px] py-0.5 text-[11.5px] font-bold'
-                        : 'px-2 py-0.5 text-xs font-semibold',
-                    typeStyle.pillBg,
-                    typeStyle.pillText,
+                    'flex shrink-0 items-center',
+                    isChild ? 'gap-2' : iceTheme ? 'gap-[7px]' : 'gap-2',
                   )}>
-                    {typeStyle.label}
-                  </span>
-                  {/* [ICETIMES] iceTheme time — 13px/700. 시각 미상 회차는 미표시. */}
-                  {cls.time && (
+                    {/* [ICETIMES] iceTheme chip — 11.5px/700 tint14%(pillBg/pillText 토큰 유지). */}
                     <span className={cn(
-                      'tabular-nums',
+                      'rounded-full',
                       isChild
-                        ? 'font-num font-semibold text-card-body text-wtext-2 dark:text-rink-100'
+                        ? 'px-2.5 py-1 text-card-body font-semibold'
                         : !isChild && iceTheme
-                          ? 'text-[13px] font-bold text-wtext-2 dark:text-rink-100'
-                          : 'text-xs text-wtext-3 dark:text-rink-300',
+                          ? 'px-[7px] py-0.5 text-[11.5px] font-bold'
+                          : 'px-2 py-0.5 text-xs font-semibold',
+                      typeStyle.pillBg,
+                      typeStyle.pillText,
                     )}>
-                      {cls.time}
+                      {typeStyle.label}
+                    </span>
+                    {/* [ICETIMES] iceTheme time — 13px/700. 시각 미상 회차는 미표시. */}
+                    {cls.time && (
+                      <span className={cn(
+                        'whitespace-nowrap tabular-nums',
+                        isChild
+                          ? 'font-num font-semibold text-card-body text-wtext-2 dark:text-rink-100'
+                          : !isChild && iceTheme
+                            ? 'text-[13px] font-bold text-wtext-2 dark:text-rink-100'
+                            : 'text-xs text-wtext-3 dark:text-rink-300',
+                      )}>
+                        {cls.time}
+                      </span>
+                    )}
+                  </span>
+                  {/* 장소(비-child) — 시간 우측 정렬, 폭 부족 시 아랫줄 좌측. place 아이콘 14 + 12.5px. */}
+                  {!isChild && cls.location && (
+                    <span className={cn(
+                      'flex max-w-full shrink-0 items-center gap-1',
+                      iceTheme ? 'text-[12.5px] text-wtext-3 dark:text-rink-300' : 'text-xs text-wtext-3 dark:text-rink-300',
+                    )}>
+                      <Icon name="location_on" className="shrink-0 text-[14px]" aria-hidden="true" />
+                      <span className="min-w-0 truncate">{cls.location}</span>
                     </span>
                   )}
                 </div>
@@ -1255,28 +1295,30 @@ export function SelectedDayClassList({
                 )}>
                   {cls.title}
                 </p>
-                {/* [ICETIMES] iceTheme location — place icon 14 + 12.5px text. */}
-                <div className={cn(
-                  'flex items-center gap-3',
-                  isChild
-                    ? 'mt-1.5 text-card-body font-medium text-wtext-2 dark:text-rink-100'
-                    : !isChild && iceTheme
-                      ? 'mt-0.5 text-[12.5px] text-wtext-3 dark:text-rink-300'
-                      : 'mt-1 text-xs text-wtext-3 dark:text-rink-300',
-                )}>
-                  {cls.coach && (
-                    <span className="flex items-center gap-1 truncate">
-                      <Icon name="person" className={isChild ? 'text-[18px]' : 'text-[14px]'} aria-hidden="true" />
-                      {cls.coach}
-                    </span>
-                  )}
-                  {cls.location && (
-                    <span className="flex items-center gap-1 truncate">
-                      <Icon name="location_on" className={isChild ? 'text-[18px]' : 'text-[14px]'} aria-hidden="true" />
-                      {cls.location}
-                    </span>
-                  )}
-                </div>
+                {/* coach 줄 (+ child 는 장소도 함께 — WCAG AAA 레이아웃 보존). 비어 있으면 미표시. */}
+                {(cls.coach || (isChild && cls.location)) && (
+                  <div className={cn(
+                    'flex items-center gap-3',
+                    isChild
+                      ? 'mt-1.5 text-card-body font-medium text-wtext-2 dark:text-rink-100'
+                      : !isChild && iceTheme
+                        ? 'mt-0.5 text-[12.5px] text-wtext-3 dark:text-rink-300'
+                        : 'mt-1 text-xs text-wtext-3 dark:text-rink-300',
+                  )}>
+                    {cls.coach && (
+                      <span className="flex items-center gap-1 truncate">
+                        <Icon name="person" className={isChild ? 'text-[18px]' : 'text-[14px]'} aria-hidden="true" />
+                        {cls.coach}
+                      </span>
+                    )}
+                    {isChild && cls.location && (
+                      <span className="flex items-center gap-1 truncate">
+                        <Icon name="location_on" className={isChild ? 'text-[18px]' : 'text-[14px]'} aria-hidden="true" />
+                        {cls.location}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
               {isCardClickable && (
                 <Icon

@@ -56,36 +56,40 @@ export function ScheduleRow({
         aria-hidden="true"
       />
       <div className="min-w-0 flex-1">
-        {/* 메타 줄 — 칩·시간·장소. flex-wrap: 장소가 폭에 안 맞으면 아랫줄로 내려간다
-            (shrink-0 이라 줄 안에서 말줄임되지 않고 wrap, 내려간 줄에서만 max-w-full 초과분 truncate). */}
+        {/* 메타 줄 — (칩·시간) 좌측 그룹 + 장소. justify-between: 같은 줄이면 장소가 우측 끝,
+            폭이 부족해 wrap 되면 그 줄엔 장소 하나뿐이라 자동 좌측 정렬(flex-start).
+            장소는 shrink-0 이라 줄 안에서 말줄임되지 않고 통째로 내려가며,
+            내려간 줄에서만 max-w-full 초과분 truncate. */}
         <div
           className={cn(
-            'flex flex-wrap items-center',
+            'flex flex-wrap items-center justify-between',
             // 시안: 칩~시간 gap 7px / 칩 아래 마진 3px. 기본: gap-2 / mb-1.
             iceTheme ? 'mb-[3px] gap-x-[7px] gap-y-[2px]' : 'mb-1 gap-x-2 gap-y-1',
           )}
         >
-          <span
-            className={cn(
-              'inline-flex shrink-0 items-center rounded-full',
-              // 시안: 11.5px/700 · padding 2px 7px. 기본: 12px/600 · px-2 py-0.5.
-              iceTheme ? 'px-[7px] py-[2px] text-[11.5px] font-bold' : 'px-2 py-0.5 text-xs font-semibold',
-              chip.className,
-            )}
-          >
-            {chip.label}
-          </span>
-          {time && (
+          <span className={cn('flex shrink-0 items-center', iceTheme ? 'gap-[7px]' : 'gap-2')}>
             <span
               className={cn(
-                'shrink-0 whitespace-nowrap tabular-nums',
-                // 시안: 13px/700 it-ink-body. 기본: 12px regular.
-                iceTheme ? 'text-[13px] font-bold text-it-ink-600 dark:text-rink-300' : 'text-xs text-wtext-3 dark:text-rink-300',
+                'inline-flex shrink-0 items-center rounded-full',
+                // 시안: 11.5px/700 · padding 2px 7px. 기본: 12px/600 · px-2 py-0.5.
+                iceTheme ? 'px-[7px] py-[2px] text-[11.5px] font-bold' : 'px-2 py-0.5 text-xs font-semibold',
+                chip.className,
               )}
             >
-              {time}
+              {chip.label}
             </span>
-          )}
+            {time && (
+              <span
+                className={cn(
+                  'shrink-0 whitespace-nowrap tabular-nums',
+                  // 시안: 13px/700 it-ink-body. 기본: 12px regular.
+                  iceTheme ? 'text-[13px] font-bold text-it-ink-600 dark:text-rink-300' : 'text-xs text-wtext-3 dark:text-rink-300',
+                )}
+              >
+                {time}
+              </span>
+            )}
+          </span>
           {location && (
             <span
               className={cn(
