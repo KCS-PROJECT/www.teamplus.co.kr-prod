@@ -340,7 +340,7 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
       //   변경: 서로 독립인 team/academy/open/tournament 를 동시 발사하고, classes 에
       //   의존하는 schedules 만 그 뒤 1회 실행. 결과 맵은 동일하며 reveal 지배 신호
       //   (calendarReady) 도달을 앞당긴다. (open dedup 은 academy 결과 의존이라 그 후 수행.)
-      type RawTournament = { id: string; name: string; startDate: string; endDate?: string | null; status?: string; paidChildIds?: string[] | null };
+      type RawTournament = { id: string; name: string; startDate: string; endDate?: string | null; status?: string; paidChildIds?: string[] | null; enrolledChildIds?: string[] | null };
       type TournamentApiList = RawTournament[] | { data?: RawTournament[] };
       // [2026-06-15] 대회 경기일정(HockeyMatch) — 시작일 단일 대신 실제 경기 날짜/시간 표시.
       type RawTMatch = {
@@ -524,10 +524,23 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
               return Array.isArray(inner) ? inner : (inner?.data ?? []);
             })()
           : [];
-      const visibleTournamentIds = new Set(tournamentList.map((t) => t.id));
-      // [2026-06-16] 대회별 결제 자녀 id — 매치/대회 항목에 부여하여 자녀별 탭 필터에 사용.
-      const paidChildByTournament = new Map<string, string[]>(
-        tournamentList.map((t) => [t.id, t.paidChildIds ?? []]),
+      // 학부모/자녀 시야('team'): "참여" 대회만 달력에 표시 — 선불=결제완료(PAID)·후불=신청.
+      //   판정 근거 = 목록 API 의 enrolledChildIds (백엔드 tournaments.service 산출 SoT).
+      //   명단(selectedParticipantIds) 선택만 된 대회는 훈련 목록 노출 전용 — 달력 제외.
+      //   코치/감독('team-only')은 팀 주최 대회 전체를 유지한다.
+      const calendarTournaments =
+        legendVariant === 'team'
+          ? tournamentList.filter(
+              (t) => ((t.enrolledChildIds ?? t.paidChildIds)?.length ?? 0) > 0,
+            )
+          : tournamentList;
+      const visibleTournamentIds = new Set(calendarTournaments.map((t) => t.id));
+      // 대회별 참여 자녀 id — 매치/대회 항목에 부여하여 자녀별 탭 필터에 사용(후불 신청 자녀 포함).
+      const participantChildByTournament = new Map<string, string[]>(
+        calendarTournaments.map((t) => [
+          t.id,
+          (t.enrolledChildIds ?? t.paidChildIds) ?? [],
+        ]),
       );
       const matchedTournamentIds = new Set<string>();
       if (tMatchesRes && tMatchesRes.success) {
@@ -555,12 +568,12 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
             coach: '',
             location: '',
             type: 'GAME',
-            childIds: paidChildByTournament.get(m.tournamentId) ?? [],
+            childIds: participantChildByTournament.get(m.tournamentId) ?? [],
             tournamentId: m.tournamentId,
           });
         }
       }
-      for (const t of tournamentList) {
+      for (const t of calendarTournaments) {
         if (t.status === 'cancelled') continue;
         if (matchedTournamentIds.has(t.id)) continue;
         const startDt = new Date(t.startDate);
@@ -577,7 +590,7 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
           coach: '',
           location: '',
           type: 'GAME',
-          childIds: t.paidChildIds ?? [],
+          childIds: (t.enrolledChildIds ?? t.paidChildIds) ?? [],
           tournamentId: t.id,
         });
       }

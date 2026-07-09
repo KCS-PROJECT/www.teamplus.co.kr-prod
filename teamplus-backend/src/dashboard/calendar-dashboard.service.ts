@@ -5,6 +5,7 @@ import {
   resolveScheduleEndTimeByTemplate,
 } from "@/common/utils/schedule-time.util";
 import { scheduleEligibleClassFilter } from "@/common/billing/schedule-eligibility.util";
+import { resolveParticipatingTournamentIds } from "@/common/utils/tournament-participation.util";
 
 /**
  * CalendarDashboardService
@@ -131,7 +132,6 @@ export class CalendarDashboardService {
       this.fetchTournamentEvents(
         teamIds,
         enrollmentUserIds,
-        userId,
         monthStart,
         monthEnd,
       ),
@@ -365,14 +365,14 @@ export class CalendarDashboardService {
   private async fetchTournamentEvents(
     teamIds: string[],
     enrollmentUserIds: string[] | null,
-    viewerUserId: string,
     monthStart: Date,
     monthEnd: Date,
   ): Promise<CalendarEvent[]> {
-    // [수정 2026-05-15] 대회 결제 로직 — 수업과 동일.
-    //  · 학부모/학생(enrollmentUserIds 존재): 본인/자녀가 selectedParticipantIds 포함 +
-    //    (a) 무료 대회(feePerGame 없음/0) 또는
-    //    (b) TournamentRegistration.paymentStatus="PAID" 인 대회만 노출.
+    // 대회 노출 — "참여한" 대회만 일정에 표시.
+    //  · 학부모/학생(enrollmentUserIds 존재): 선불=결제완료(PAID) · 후불=신청(취소/환불
+    //    제외)한 대회만 노출. 명단(selectedParticipantIds) 선택·무료 여부는 달력 노출
+    //    근거가 아니다 (훈련 목록/대시보드 수업 목록 노출 전용).
+    //    판정 SoT: resolveParticipatingTournamentIds (calendar.service 와 공용).
     //  · 코치/감독(enrollmentUserIds === null): teamId 매칭 또는 teamId=null 전체 대회 노출.
     const tournaments = await this.prisma.tournament.findMany({
       where: {
@@ -395,8 +395,6 @@ export class CalendarDashboardService {
         endDate: true,
         status: true,
         teamId: true,
-        feePerGame: true,
-        selectedParticipantIds: true,
         team: {
           select: { name: true },
         },
@@ -407,41 +405,19 @@ export class CalendarDashboardService {
       orderBy: { startDate: "asc" },
     });
 
-    // 학부모/학생 필터 — 2차 in-memory (selectedParticipantIds JSON · paid 매칭).
+    // 학부모/학생 필터 — 참여(선불 PAID · 후불 신청) 대회만 노출.
+    //   자녀 선택(childId) 격리를 위해 enrollmentUserIds(범위 자녀)만 매칭한다 —
+    //   viewerUserId(학부모 본인) 매칭은 다른 자녀의 등록까지 끌어와 제외.
     let visibleTournaments = tournaments;
     if (enrollmentUserIds !== null) {
-      const memberSet = new Set(enrollmentUserIds);
-      const paidRegs = await this.prisma.tournamentRegistration.findMany({
-        where: {
-          paymentStatus: "PAID",
-          OR: [
-            { userId: viewerUserId },
-            { userId: { in: enrollmentUserIds } },
-            { childId: { in: enrollmentUserIds } },
-          ],
-          tournamentId: { in: tournaments.map((t) => t.id) },
-        },
-        select: { tournamentId: true },
-      });
-      const paidTournamentIds = new Set(paidRegs.map((r) => r.tournamentId));
-
-      // [재설계 2026-06-16] selectedParticipantIds(선수 명단 스냅샷) 단독 SoT.
-      //   그룹 분기(byGroup/eligibleGroupIds)는 제거 — 명단이 자격을 단독으로 결정한다.
-      visibleTournaments = tournaments.filter((t) => {
-        // [2026-06-15] 결제완료(PAID)한 대회는 자격/선택 무관 무조건 노출.
-        //   selectedParticipantIds 가 비어 결제가 허용된 경우나 출생연도 자격과
-        //   무관하게, 이미 결제한 본인/자녀에게는 일정(달력)에 반드시 보여야 한다.
-        if (paidTournamentIds.has(t.id)) return true;
-        // 미결제 대회: selectedParticipantIds 직접 매칭 + 무료 대회만 노출(유료 미결제는 숨김).
-        const list = Array.isArray(t.selectedParticipantIds)
-          ? (t.selectedParticipantIds as unknown as string[])
-          : [];
-        const byParticipant = list.some((id) => memberSet.has(id));
-        if (!byParticipant) return false;
-        // 무료 대회만 결제 없이 노출 (유료 미결제는 숨김).
-        const fee = t.feePerGame ? Number(t.feePerGame) : 0;
-        return fee <= 0;
-      });
+      const participatingIds = await resolveParticipatingTournamentIds(
+        this.prisma,
+        enrollmentUserIds,
+        { tournamentIds: tournaments.map((t) => t.id) },
+      );
+      visibleTournaments = tournaments.filter((t) =>
+        participatingIds.has(t.id),
+      );
     }
 
     // [수정 2026-05-15] 대회는 시작일에만 단일 이벤트 노출 — 사용자 명시.
