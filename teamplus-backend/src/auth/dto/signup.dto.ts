@@ -130,9 +130,15 @@ export class SignupDto {
   })
   @IsNotEmpty({ message: "비밀번호는 필수입니다." })
   @MinLength(8, { message: "비밀번호는 최소 8자 이상이어야 합니다." })
-  @Matches(/^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/, {
-    message: "비밀번호는 영문, 숫자, 특수문자를 포함해야 합니다.",
-  })
+  // 영문 + 숫자 + 특수문자 각 1개 이상, 8자 이상.
+  // 특수문자 허용 22종: ! @ # $ % ^ & * ( ) - _ + = ~ ? . , [ ] { }
+  // 공백 · < > " ' / \ | : ; · 비ASCII 는 거부. 프론트 SoT: teamplus-web/src/lib/password-policy.ts
+  @Matches(
+    /^(?=.*[A-Za-z])(?=.*\d)(?=.*[!@#$%^&*()_+=~?.,{}[\]-])[A-Za-z0-9!@#$%^&*()_+=~?.,{}[\]-]{8,}$/,
+    {
+      message: "비밀번호는 영문, 숫자, 특수문자를 포함해 8자 이상이어야 합니다.",
+    },
+  )
   password!: string;
 
   @ApiPropertyOptional({

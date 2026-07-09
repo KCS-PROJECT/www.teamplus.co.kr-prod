@@ -3113,6 +3113,10 @@ export const MESSAGES = {
   signupValidation: {
     emailDuplicated: "이미 사용 중인 이메일입니다.",
     phoneDuplicated: "이미 등록된 전화번호입니다.",
+    passwordRequired: "비밀번호를 입력해주세요.",
+    passwordRule: "비밀번호는 영문·숫자·특수문자를 포함해 8자 이상이어야 합니다.",
+    passwordForbiddenChars: (chars: string) =>
+      `사용할 수 없는 문자가 있어요: ${chars}`,
   },
   classDelete: {
     cannotDelete: "등록자가 있는 활성 수업은 삭제할 수 없습니다",

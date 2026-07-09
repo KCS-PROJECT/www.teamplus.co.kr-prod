@@ -8,6 +8,7 @@ import { Icon } from '@/components/ui/Icon';
 import { useNavigation } from '@/components/ui/NavLink';
 import { api } from '@/services/api-client';
 import { MESSAGES } from '@/lib/messages';
+import { describePasswordIssue } from '@/lib/password-policy';
 
 import { usePageReady } from '@/hooks/usePageReady';
 /**
@@ -65,6 +66,10 @@ export default function PasswordChangePage() {
     setShowPasswords((prev) => ({ ...prev, [field]: !prev[field] }));
   };
 
+  // 새 비밀번호 실시간 검증(방식 2) — 허용되지 않는 문자가 있으면 그 문자를 콕 집어 안내.
+  const newPwIssue = describePasswordIssue(formData.newPassword);
+  const newPwShowError = Boolean(errors.newPassword) || Boolean(newPwIssue);
+
   const validate = (): boolean => {
     const newErrors: Partial<PasswordForm> = {};
 
@@ -73,8 +78,9 @@ export default function PasswordChangePage() {
     }
     if (!formData.newPassword) {
       newErrors.newPassword = '새 비밀번호를 입력하세요.';
-    } else if (formData.newPassword.length < 8) {
-      newErrors.newPassword = '비밀번호는 8자 이상이어야 합니다.';
+    } else {
+      const issue = describePasswordIssue(formData.newPassword);
+      if (issue) newErrors.newPassword = issue;
     }
     if (!formData.confirmPassword) {
       newErrors.confirmPassword = '비밀번호 확인을 입력하세요.';
@@ -124,7 +130,7 @@ export default function PasswordChangePage() {
           <div className="flex gap-3 px-4 py-3.5 rounded-w-md bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700">
             <Icon name="info" className="text-it-blue-500 text-xl shrink-0" aria-hidden="true" />
             <p className="text-w-small text-it-ink-500 dark:text-rink-200 leading-relaxed">
-              안전한 비밀번호를 위해 8자 이상의 영문, 숫자, 특수문자를 조합해 주세요.
+              {MESSAGES.signupValidation.passwordRule}
             </p>
           </div>
 
@@ -172,7 +178,7 @@ export default function PasswordChangePage() {
                   value={formData.newPassword}
                   onChange={(e) => handleChange('newPassword', e.target.value)}
                   className={`w-full h-[50px] px-4 pr-12 rounded-w-md border-[1.5px] bg-it-fill dark:bg-rink-900 text-it-ink-800 dark:text-white text-[15.5px] font-semibold tracking-[-0.01em] transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/30 ${
-                    errors.newPassword
+                    newPwShowError
                       ? 'border-it-red-500'
                       : 'border-it-line-strong dark:border-rink-700 focus:border-it-blue-500'
                   }`}
@@ -187,8 +193,12 @@ export default function PasswordChangePage() {
                   <Icon name={showPasswords.new ? 'visibility_off' : 'visibility'} aria-hidden="true" />
                 </button>
               </div>
-              {errors.newPassword && (
-                <p className="mt-2 text-card-body text-it-red-500" role="alert">{errors.newPassword}</p>
+              {newPwShowError && (
+                <p className="mt-2 text-card-body text-it-red-500" role="alert">
+                  {errors.newPassword ??
+                    newPwIssue ??
+                    MESSAGES.signupValidation.passwordRule}
+                </p>
               )}
             </div>
 
