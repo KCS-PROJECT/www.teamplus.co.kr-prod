@@ -142,6 +142,8 @@ export const MESSAGES = {
     //  - disabled 라벨: ChildSelector 비활성 자녀 사유 표기 (이미 수강 중 / 연령 제한)
     //    팀 가입 미승인 라벨은 MESSAGES.team.disabled{Pending|Rejected|NotMember}Label 재사용.
     cancelConfirmTitle: "결제를 취소할까요?",
+    // [환불 정책 1단계] 출석 이력 결제 — 서버 가드(403) 거절 안내 모달 제목
+    cancelBlockedTitle: "결제취소 불가",
     // [Phase B] 후불 수강 신청/취소 (구독형)
     //   [2026-06-18 사용자 직접 지시] 선불과 동일하게 '신청' 문구로 통일
     //   (수강 등록하기→신청하기 · 수강 중→신청완료 · 수강 종료→신청취소).
@@ -688,10 +690,6 @@ export const MESSAGES = {
         perSession: "수업 1회 참여권을 선결제합니다.",
         perGame: "참가 경기 수 기준으로 정산됩니다.",
       },
-      // 정기권 귀속월 안내 — 달력 월 귀속 정액(약관 §13): 지금 결제하면 이번 달 말일까지.
-      //   월말 결제 시 잔여 일수가 결제 전에 보이도록 하는 안전망 (후불 선택 유도).
-      monthlyPeriodNote: (month: number, endMd: string) =>
-        `${month}월분 · ${endMd}까지 이용`,
       // 계산식 표시 — 정기권(MONTHLY_FIXED)은 무차감 기간제라 회수 산식 미표기
       //   ("주 N회" 파생 폐기 — 상품 안내는 설명 입력이 SoT).
       formula: {
@@ -3307,7 +3305,7 @@ export const MESSAGES = {
     prevMonth: "이전 달",
     nextMonth: "다음 달",
     countUnit: (n: number) => `${n}회`,
-    nominalNote: (n: number) => `패키지 ${n}회`,
+    postpaidProduct: "후불",
     total: "총 출석",
     empty: "이번 달 출석 기록이 없어요.",
     hint: "출석 횟수로 수업 참여를 확인할 수 있어요. 선불 수업은 별도 정산이 없습니다.",

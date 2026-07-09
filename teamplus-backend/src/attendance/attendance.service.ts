@@ -3439,26 +3439,60 @@ export class AttendanceService {
       users.map((u) => [u.id, `${u.lastName ?? ""}${u.firstName ?? ""}`]),
     );
 
-    // 명목 회수(참고 표시) — 정기 패키지의 월 포함 회수
-    const product = await this.prisma.classProduct.findFirst({
-      where: { classId, isActive: true, feeType: "MONTHLY_FIXED" },
-      select: { sessionsPerMonth: true },
-      orderBy: { sessionsPerMonth: "desc" },
-    });
+    // 회원별 활성 상품 — 수강 등록(Enrollment)의 선택 상품(classProductId) 기준.
+    //   paid 우선(같으면 최신), 상품 미연결(관리자 수동 등록 등)은 null → 라벨 미표시.
+    const enrollments = userIds.length
+      ? await this.prisma.enrollment.findMany({
+          where: {
+            classId,
+            childId: { in: userIds },
+            status: { in: ["paid", "approved"] },
+            classProductId: { not: null },
+          },
+          select: {
+            childId: true,
+            status: true,
+            product: { select: { productName: true, billingTiming: true } },
+          },
+          orderBy: { updatedAt: "desc" },
+        })
+      : [];
+    const productOf = new Map<
+      string,
+      { productName: string; billingTiming: string | null; status: string }
+    >();
+    for (const e of enrollments) {
+      if (!e.product) continue;
+      const prev = productOf.get(e.childId);
+      // 최신순 순회 — 첫 항목 유지, 단 paid 가 approved(미결제)를 대체한다.
+      if (prev && !(prev.status !== "paid" && e.status === "paid")) continue;
+      productOf.set(e.childId, {
+        productName: e.product.productName,
+        billingTiming: e.product.billingTiming ?? null,
+        status: e.status,
+      });
+    }
 
     const items = [...counts.entries()]
-      .map(([userId, attendanceCount]) => ({
-        userId,
-        name: nameOf.get(userId) ?? "",
-        attendanceCount,
-      }))
+      .map(([userId, attendanceCount]) => {
+        const product = productOf.get(userId);
+        return {
+          userId,
+          name: nameOf.get(userId) ?? "",
+          attendanceCount,
+          productName: product?.productName ?? null,
+          productBillingTiming: product?.billingTiming ?? null,
+        };
+      })
       .sort((a, b) => b.attendanceCount - a.attendanceCount);
 
     return {
       classId,
       yearMonth,
       billingMode: cls.billingMode,
-      nominalSessions: product?.sessionsPerMonth ?? null,
+      // 하위호환 키 — 표시 중단. sessionsPerMonth 는 컬럼명과 달리 "패키지 총 회수"
+      // (발급 크레딧 수량)라 월 화면의 참고치로 부적합해 산출을 제거했다.
+      nominalSessions: null,
       totalPresent: items.reduce((sum, i) => sum + i.attendanceCount, 0),
       items,
     };

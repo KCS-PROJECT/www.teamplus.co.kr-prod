@@ -21,6 +21,7 @@ import {
 import { PrismaService } from "@/prisma/prisma.service";
 import { CreditDomainService } from "@/credits/credit-domain.service";
 import { isAdminRole } from "@/auth/constants/chldiv.constants";
+import { instantToKstDateOnly } from "@/common/utils/kst-date.util";
 import { KgInicisGateway } from "../kg-inicis.gateway";
 import { TossPaymentsGateway } from "../toss-payments.gateway";
 
@@ -70,6 +71,44 @@ export class PaymentRefundService {
   ) {}
 
   /**
+   * [환불 정책 1단계] 결제 사용(출석) 여부 검증 — 사용 이력이 있으면 셀프 취소 거절.
+   *
+   * 판정: 이 결제에 연결된 수강(Enrollment)별로, 해당 자녀가 해당 수업에서
+   *   결제일(KST 달력일) 이후 일정에 present 출석 ≥ 1 이면 "이용 개시"로 본다.
+   *   결제일 이전 일정의 출석(과거 재수강분)은 이 결제의 사용분이 아니므로 제외.
+   * 수강 결제가 아닌 경우(쇼핑몰·대회·픽업매치 등 Enrollment 미연결)는 대상 아님.
+   * 개시 후 환불(사용분 공제 부분환불)은 2단계 — 감독/관리자 승인 경로에서 처리 예정.
+   */
+  private async assertEnrollmentNotUsed(paymentId: string, paidAt: Date) {
+    const enrollments = await this.prisma.enrollment.findMany({
+      where: { paymentId },
+      select: { childId: true, classId: true },
+    });
+    if (enrollments.length === 0) return;
+
+    // 결제 시점의 KST 달력일(UTC 자정) — scheduledDate(@db.Date) 비교 하한.
+    const paidDayUtc = instantToKstDateOnly(paidAt);
+
+    for (const e of enrollments) {
+      const usedCount = await this.prisma.classAttendance.count({
+        where: {
+          memberId: e.childId,
+          attendanceStatus: "present",
+          schedule: {
+            classId: e.classId,
+            scheduledDate: { gte: paidDayUtc },
+          },
+        },
+      });
+      if (usedCount > 0) {
+        throw new ForbiddenException(
+          `이미 ${usedCount}회 출석한 수업의 결제는 앱에서 직접 취소할 수 없습니다. 환불은 감독에게 문의해주세요.`,
+        );
+      }
+    }
+  }
+
+  /**
    * 결제 취소 (KG이니시스 취소 API 호출)
    *
    * 전액 또는 부분 취소를 처리합니다.
@@ -111,6 +150,17 @@ export class PaymentRefundService {
 
     if (payment.paymentStatus !== "completed") {
       throw new BadRequestException("완료된 결제만 취소할 수 있습니다.");
+    }
+
+    // [환불 정책 1단계] 이용 개시(출석) 후 셀프 취소 차단.
+    //   이 결제에 연결된 수강의 자녀가 결제일 이후 일정에 present 출석이 1회라도
+    //   있으면 본인(학부모) 셀프 결제취소를 거절한다 — 환불은 감독/관리자 경로로만.
+    //   ADMIN/SYSTEM/OPER·trusted 내부 호출은 통과 (관리자 환불·시스템 보상 경로).
+    if (!requester?.trusted && !isAdminRole(requester?.userType)) {
+      await this.assertEnrollmentNotUsed(
+        paymentId,
+        payment.completedAt ?? payment.createdAt,
+      );
     }
 
     if (!payment.tid) {

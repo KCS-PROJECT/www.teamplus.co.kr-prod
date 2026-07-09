@@ -691,6 +691,14 @@ export default function ClassDetailPage() {
         cancelReason: "학부모 요청 (수업 상세에서 결제취소)",
       });
       if (!res.success) {
+        // [환불 정책 1단계] 이용 개시(출석) 결제 — 서버 가드(403) 거절 사유를 모달로 안내.
+        if (res.error?.statusCode === 403 && res.error.message) {
+          await modal.alert({
+            title: MESSAGES.enrollment.cancelBlockedTitle,
+            message: res.error.message,
+          });
+          return;
+        }
         toast.error(res.error?.message ?? MESSAGES.payment2.cancelFailed);
         return;
       }
