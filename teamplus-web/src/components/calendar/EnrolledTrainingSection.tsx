@@ -43,6 +43,7 @@ interface EnrollmentRow {
   childId?: string;
   classId?: string;
   status?: string;
+  hasValidPass?: boolean | null;
   child?: { id?: string } | null;
   class?: { id?: string; billingMode?: string } | null;
   product?: { billingTiming?: string } | null;
@@ -114,7 +115,7 @@ function EnrolledClassCard({ item }: { item: EnrolledClassItem }) {
       bodyAction={
         <div className="flex items-center justify-end">
           <span
-            className="inline-flex items-center justify-center min-w-[72px] h-[30px] px-3.5 rounded-full text-[14px] leading-[1.55] font-extrabold tracking-[-0.01em] bg-emerald-500 text-white"
+            className="inline-flex items-center justify-center min-w-[72px] h-[30px] px-3.5 rounded-full text-[14px] leading-[1.55] font-extrabold tracking-[-0.01em] bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400"
             aria-hidden="true"
           >
             등록완료
@@ -184,6 +185,7 @@ export function EnrolledTrainingSection({ iceTheme = false }: EnrolledTrainingSe
               e.status,
               e.class?.billingMode,
               e.product?.billingTiming,
+              e.hasValidPass,
             )
           )
             return;

@@ -16,7 +16,10 @@ import { PaymentReceiptService } from "./services/payment-receipt.service";
 import { TossPaymentsGateway } from "./toss-payments.gateway";
 import { RedisService } from "@/redis/redis.service";
 import { CreditDomainService } from "@/credits/credit-domain.service";
-import { endOfMonthKst } from "@/common/billing/billing-date.util";
+import {
+  endOfMonthKst,
+  monthlyPassWindow,
+} from "@/common/billing/billing-date.util";
 import { NotificationsService } from "@/notifications/notifications.service";
 import { Logger } from "@nestjs/common";
 
@@ -98,6 +101,7 @@ export class PaymentsService {
             sessionsPerMonth: true,
             feeType: true,
             billingTiming: true,
+            billingMonth: true,
           },
         },
       },
@@ -220,8 +224,17 @@ export class PaymentsService {
           //   그 외 feeType 은 기존 정책 — durationDays + 미사용 회차 사용 30일.
           const MEMBER_CREDIT_EXTRA_USABLE_DAYS = 30;
           const approvedAt = new Date(tossResult.approvedAt ?? new Date());
+          // [Lifecycle v4.1 §9.5] 월별 패키지(billingMonth 有)는 귀속월 창(1일 KST~말일),
+          //   무월 레거시는 현행 폴백(결제일 달 말일·startsAt null — §9.2 점진 전환).
+          const passWindow =
+            payment.product.feeType === "MONTHLY_FIXED" &&
+            payment.product.billingMonth
+              ? monthlyPassWindow(payment.product.billingMonth)
+              : null;
+          const startsAt = passWindow?.startsAt ?? null;
           const expiresAt =
-            payment.product.feeType === "MONTHLY_FIXED"
+            passWindow?.expiresAt ??
+            (payment.product.feeType === "MONTHLY_FIXED"
               ? endOfMonthKst(approvedAt)
               : (() => {
                   const durationDays = payment.product.durationDays ?? 28;
@@ -231,7 +244,7 @@ export class PaymentsService {
                   );
                   e.setHours(23, 59, 59, 999);
                   return e;
-                })();
+                })());
 
           const targetUserId = enrollments[0]?.childId ?? payment.userId;
 
@@ -240,6 +253,7 @@ export class PaymentsService {
             userId: targetUserId,
             classId: payment.product.classId,
             sessions: payment.product.sessionsPerMonth,
+            startsAt,
             expiresAt,
             sourceLabel: `토스 결제 완료 - 수업권 발급 (주문번호: ${orderId})`,
           });

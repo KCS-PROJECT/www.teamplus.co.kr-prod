@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
+import { isCreditStarted } from "@/common/billing/fee-type.constants";
 import { RedisService } from "@/redis/redis.service";
 import {
   kstTodayUtcMidnight,
@@ -219,6 +220,7 @@ export class ChildDashboardService {
             classId: true,
             totalSessions: true,
             usedSessions: true,
+            startsAt: true,
             expiresAt: true,
           },
         }),
@@ -458,6 +460,7 @@ export class ChildDashboardService {
         canCheckIn: memberCredits.some(
           (mc) =>
             mc.classId === s.class.id &&
+            isCreditStarted(mc, nowDateForCheck) &&
             mc.expiresAt >= nowDateForCheck &&
             mc.usedSessions < mc.totalSessions,
         ),

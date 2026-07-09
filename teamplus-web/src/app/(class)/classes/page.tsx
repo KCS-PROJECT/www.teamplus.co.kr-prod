@@ -94,6 +94,8 @@ interface ClassItem {
   /** PACKAGE_END_GUARD (2026-05-22) — 수업 종료일 + 7일 초과 시 true.
    * 가격 영역을 "종료된 수업" 배지로 대체. 패키지만 비활성인 경우는 false 유지 */
   isClassEnded?: boolean;
+  /** [Lifecycle v4.1] 서버 파생 상태 — 배지 판정 SoT (역산 폴백보다 우선). */
+  lifecycleStatus?: 'ON_SALE' | 'PENDING_SCHEDULE' | 'ENDED';
   /** 수업 장소 (Venue 모델) */
   venue?: { id: string; name: string } | null;
 }
@@ -344,10 +346,13 @@ function toDateOnly(iso?: string | null): Date | null {
  *  일정 메타가 없으면 백엔드 isClassEnded(Class.endTime 기반) 로 폴백.
  */
 function isClassEndedByLastSchedule(item: {
+  lifecycleStatus?: 'ON_SALE' | 'PENDING_SCHEDULE' | 'ENDED';
   scheduledDates?: string[];
   isClassEnded?: boolean;
 }): boolean {
   const dates = item.scheduledDates;
+  // [Lifecycle v4.1] 서버 파생 상태(endedAt·spot 자동 종료 반영)가 있으면 역산보다 우선.
+  if (item.lifecycleStatus) return item.lifecycleStatus === 'ENDED';
   if (!dates || dates.length === 0) return item.isClassEnded ?? false;
   let last: Date | null = null;
   for (const iso of dates) {
@@ -576,10 +581,21 @@ const ChildClassCard = memo(function ChildClassCard({
   // [2026-05-19] 등록상태 분기 (학생 본인 시점 — 연령 분기는 user.birthDate 미보장으로 skip)
   const isAlreadyEnrolled = enrolledClassIds?.has(item.id) ?? false;
   let registerLabel = "등록";
-  let registerClass = "bg-ice-500 text-white";
+  // [상태 칩 soft 통일] 클릭 불가한 상태 표시(카드 전체가 링크)라 솔리드 버튼 모양은
+  //   오독 유발 + ICETIMES 플랫 톤·배지 관례(연한 배경+진한 글자)와 충돌 → soft 칩.
+  let registerClass =
+    "bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-500/15 dark:text-it-blue-300";
   if (isAlreadyEnrolled) {
     registerLabel = "등록완료";
-    registerClass = "bg-emerald-500 text-white";
+    registerClass =
+      "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400";
+  }
+  // [Lifecycle v4.1 §7.3] 일정 준비 중 — 미등록자의 등록 칩 자리를 상태 칩으로 대체.
+  //   "등록완료"(본인 수강 상태)는 우선 유지.
+  if (!isAlreadyEnrolled && item.lifecycleStatus === 'PENDING_SCHEDULE') {
+    registerLabel = MESSAGES.class.preparingSchedule;
+    registerClass =
+      "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400";
   }
 
   return (
@@ -717,10 +733,21 @@ const TeenClassCard = memo(function TeenClassCard({
   // [2026-05-19] 등록상태 분기 (Teen 본인 시점 — 연령 분기 skip)
   const isAlreadyEnrolled = enrolledClassIds?.has(item.id) ?? false;
   let registerLabel = "등록";
-  let registerClass = "bg-ice-500 text-white";
+  // [상태 칩 soft 통일] 클릭 불가한 상태 표시(카드 전체가 링크)라 솔리드 버튼 모양은
+  //   오독 유발 + ICETIMES 플랫 톤·배지 관례(연한 배경+진한 글자)와 충돌 → soft 칩.
+  let registerClass =
+    "bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-500/15 dark:text-it-blue-300";
   if (isAlreadyEnrolled) {
     registerLabel = "등록완료";
-    registerClass = "bg-emerald-500 text-white";
+    registerClass =
+      "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400";
+  }
+  // [Lifecycle v4.1 §7.3] 일정 준비 중 — 미등록자의 등록 칩 자리를 상태 칩으로 대체.
+  //   "등록완료"(본인 수강 상태)는 우선 유지.
+  if (!isAlreadyEnrolled && item.lifecycleStatus === 'PENDING_SCHEDULE') {
+    registerLabel = MESSAGES.class.preparingSchedule;
+    registerClass =
+      "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400";
   }
 
   return (
@@ -892,13 +919,23 @@ const DefaultClassCard = memo(function DefaultClassCard({
           return true;
         });
   let registerLabel = "등록";
-  let registerClass = "bg-ice-500 text-white";
+  // [상태 칩 soft 통일] 클릭 불가한 상태 표시(카드 전체가 링크)라 솔리드 버튼 모양은
+  //   오독 유발 + ICETIMES 플랫 톤·배지 관례(연한 배경+진한 글자)와 충돌 → soft 칩.
+  let registerClass =
+    "bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-500/15 dark:text-it-blue-300";
+  // 우선순위 단일 체인 — 등록완료(본인 수강) > 일정 준비 중 > 등록불가(연령) > 등록.
   if (isAlreadyEnrolled) {
     registerLabel = "등록완료";
-    registerClass = "bg-emerald-500 text-white";
+    registerClass =
+      "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400";
+  } else if (item.lifecycleStatus === 'PENDING_SCHEDULE') {
+    // [Lifecycle v4.1 §7.3] 일정 준비 중 — 미등록자의 등록 칩 자리를 상태 칩으로 대체.
+    registerLabel = MESSAGES.class.preparingSchedule;
+    registerClass =
+      "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400";
   } else if (!hasAgeEligibleChild) {
     registerLabel = "등록불가";
-    registerClass = "bg-wtext-3 dark:bg-rink-500 text-white";
+    registerClass = "bg-wline-2 text-wtext-3 dark:bg-rink-700 dark:text-rink-300";
   }
 
   const scheduleLine =
@@ -962,7 +999,8 @@ const DefaultClassCard = memo(function DefaultClassCard({
       metaInline={item.academyName || undefined}
       titleRight={
         /* 등록 상태 칩 — 클릭은 카드 NavLink 가 처리 (시각 표시 전용).
-           min-w-[72px] 고정 — 2글자("등록")도 4글자("등록완료")와 동일 폭 유지. */
+           min-w-[72px] 고정. 준비 중 수업은 이 칩 자리가 "일정 준비 중"으로
+           대체된다 (registerLabel 분기 — 별도 하단 배지 없음). */
         <span
           className={cn(
             "inline-flex items-center justify-center min-w-[72px] h-[30px] px-3.5 rounded-full text-[14px] leading-[1.55] font-extrabold tracking-[-0.01em]",
@@ -978,7 +1016,7 @@ const DefaultClassCard = memo(function DefaultClassCard({
       {scheduleLine && <ClassCardInfoRow icon="schedule">{scheduleLine}</ClassCardInfoRow>}
       {/* [2026-06-19] 대상 출생연도 — 입력 없으면 '전체'(전체 대상)로 표기. */}
       <ClassCardInfoRow icon="cake">
-        {formatBirthYears(item.targetBirthYears) ?? '전체'}
+        {`대상: ${formatBirthYears(item.targetBirthYears) ?? '전체'}`}
       </ClassCardInfoRow>
     </ClassListCard>
   );
@@ -1230,7 +1268,7 @@ const DefaultTournamentCard = memo(function DefaultTournamentCard({
       )}
       {/* [2026-06-19] 참가 대상 출생연도 — 입력 없으면 '전체'(전체 대상)로 표기. */}
       <ClassCardInfoRow icon="cake">
-        {formatTournamentTargetYears(item) ?? '전체'}
+        {`대상: ${formatTournamentTargetYears(item) ?? '전체'}`}
       </ClassCardInfoRow>
     </ClassListCard>
   );
@@ -1379,7 +1417,7 @@ export default function ClassesPage() {
     //    'all'·'open' 칩은 trainingType 무시(모두 통과). 'tournament' 는 별 도메인(tournaments 배열).
     const typeFiltered =
       filter === "regular"
-        ? classes.filter((c) => c.trainingType === "regular")
+        ? classes.filter((c) => ['regular', 'spot'].includes(c.trainingType ?? ''))
         : classes;
 
     // 검색·정렬 제거 (사용자 요청) — 카테고리 필터 결과를 백엔드 순서(최신순) 그대로 반환.
@@ -1454,7 +1492,7 @@ export default function ClassesPage() {
         setTournaments(unwrapTournamentList(tournamentsRes));
       } else {
         // 정규/오픈 탭: 분류 SoT 의 category 쿼리 전송. 대회는 별 도메인이라 제외.
-        //   'regular' 탭은 trainingType==='regular' 만 노출(클라이언트 필터에서 분리).
+        //   'regular' 탭은 trainingType regular+spot 노출(§7.1 — spot 은 정규 취급, 클라이언트 필터에서 분리).
         setTournaments([]);
         const res = await api.get<ClassItem[] | { data: ClassItem[] }>(
           `/classes?category=${cat}${selectedChildId ? `&childId=${selectedChildId}` : ""}`,
@@ -1487,7 +1525,7 @@ export default function ClassesPage() {
         //   [수정] 후불(POSTPAID) 수강 중(approved)도 "등록완료"로 표시해야 하므로
         //   status=paid 로 좁히지 않고 전체를 받아 isActiveEnrollment 공통 SoT 로 판정.
         const enrollPromise = api.get<
-          | { classId?: string; childId?: string; class?: { id?: string; billingMode?: string }; product?: { billingTiming?: string } | null; status?: string }[]
+          | { classId?: string; childId?: string; class?: { id?: string; billingMode?: string }; product?: { billingTiming?: string } | null; status?: string; hasValidPass?: boolean | null }[]
           | {
               data: {
                 classId?: string;
@@ -1495,6 +1533,7 @@ export default function ClassesPage() {
                 class?: { id?: string; billingMode?: string };
                 product?: { billingTiming?: string } | null;
                 status?: string;
+                hasValidPass?: boolean | null;
               }[];
             }
         >("/enrollments");
@@ -1530,6 +1569,7 @@ export default function ClassesPage() {
                 e.status,
                 e.class?.billingMode,
                 e.product?.billingTiming,
+                e.hasValidPass,
               )
             )
               return;

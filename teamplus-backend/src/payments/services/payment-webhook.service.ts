@@ -22,7 +22,10 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
 import { CreditDomainService } from "@/credits/credit-domain.service";
-import { endOfMonthKst } from "@/common/billing/billing-date.util";
+import {
+  endOfMonthKst,
+  monthlyPassWindow,
+} from "@/common/billing/billing-date.util";
 import { KgInicisGateway } from "../kg-inicis.gateway";
 
 export interface FinalizePaymentParams {
@@ -92,6 +95,7 @@ export class PaymentWebhookService {
             feePerSession: true,
             feeType: true,
             billingTiming: true,
+            billingMonth: true,
             class: { select: { billingMode: true } },
           },
         },
@@ -149,8 +153,17 @@ export class PaymentWebhookService {
           //   (BOTH/POSTPAID 후불 PER_SESSION 은 위 isPostpaidClass 가드로 애초 미발급.)
           const MEMBER_CREDIT_EXTRA_USABLE_DAYS = 30;
           const now = new Date();
+          // [Lifecycle v4.1 §9.5] 월별 패키지(billingMonth 有)는 귀속월 창(1일 KST~말일),
+          //   무월 레거시는 현행 폴백(결제일 달 말일·startsAt null — §9.2 점진 전환).
+          const passWindow =
+            payment.product.feeType === "MONTHLY_FIXED" &&
+            payment.product.billingMonth
+              ? monthlyPassWindow(payment.product.billingMonth)
+              : null;
+          const startsAt = passWindow?.startsAt ?? null;
           const expiresAt =
-            payment.product.feeType === "MONTHLY_FIXED"
+            passWindow?.expiresAt ??
+            (payment.product.feeType === "MONTHLY_FIXED"
               ? endOfMonthKst(now)
               : (() => {
                   const durationDays = payment.product.durationDays ?? 28;
@@ -160,7 +173,7 @@ export class PaymentWebhookService {
                   );
                   e.setHours(23, 59, 59, 999);
                   return e;
-                })();
+                })());
 
           // 2026-04-27 (N-9): User × Class 단위로 수업권 발급. ClubMember 결합 제거.
           // 발급 대상자: 학부모 결제 → enrollment.childId. enrollment 없으면 결제자 본인.
@@ -182,6 +195,7 @@ export class PaymentWebhookService {
             userId: targetUserId,
             classId: payment.product.classId,
             sessions: issuedSessions,
+            startsAt,
             expiresAt,
             sourceLabel: `결제 완료 - 수업권 발급 (주문번호: ${orderNumber})`,
           });

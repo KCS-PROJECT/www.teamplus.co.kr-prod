@@ -22,3 +22,21 @@ export function endOfMonthKst(at: Date = new Date()): Date {
   const nextMonthFirstKstWallMs = Date.UTC(y, m + 1, 1, 0, 0, 0, 0);
   return new Date(nextMonthFirstKstWallMs - 1 - KST_OFFSET_MS);
 }
+
+/**
+ * [Lifecycle v4.1 §9.5] 귀속월(billingMonth, @db.Date=그 달 1일 UTC 자정) → 기간권 유효 창.
+ *  - startsAt : 그 달 1일 00:00:00.000 KST 순간 (= billingMonth − 9h)
+ *  - expiresAt: 그 달 말일 23:59:59.999 KST 순간 (endOfMonthKst — billingMonth 자체가
+ *    KST 벽시계로 1일 09:00 이라 같은 달로 안전하게 해석된다)
+ * 무월 레거시(billingMonth null) 상품은 이 함수를 쓰지 않고 현행 폴백
+ * (결제일 달 endOfMonthKst · startsAt null)을 유지한다.
+ */
+export function monthlyPassWindow(billingMonth: Date): {
+  startsAt: Date;
+  expiresAt: Date;
+} {
+  return {
+    startsAt: new Date(billingMonth.getTime() - KST_OFFSET_MS),
+    expiresAt: endOfMonthKst(billingMonth),
+  };
+}

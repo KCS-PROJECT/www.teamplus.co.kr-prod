@@ -16,6 +16,40 @@ export const MESSAGES = {
     registered: "수업이 등록되었습니다.",
     nextScheduleLabel: "다음",
     noUpcomingSchedule: "예정된 일정 없음",
+    // [Lifecycle v4.1] 수명주기 라벨 — 학부모=중립 "일정 준비 중"(§7.3), 감독=대기 배지
+    preparingSchedule: "일정 준비 중",
+    pendingScheduleBadge: "일정 등록 대기",
+    endClassButton: "수업 종료하기",
+    reopenClassButton: "종료 취소하기",
+    endSuccess: "수업이 종료되었습니다.",
+    reopenSuccess: "수업이 재개되었습니다. 일정 등록 후 판매 시작이 필요합니다.",
+    spotCheckboxLabel: "1회용 수업 (단일 일정)",
+    spotCheckboxHint: "하루짜리 수업입니다. 일정은 1개만 선택할 수 있고, 일정이 지나면 자동 종료됩니다.",
+    endBlockedBySchedule:
+      "다가오는 일정이 있어 종료할 수 없습니다. 일정을 모두 마치거나 취소한 후 종료할 수 있습니다.",
+    // [Lifecycle v4.1 §9.3] 판매 승인 사이클 — 감독 확인 플로우 · 학부모 CTA
+    salesCycle: {
+      pendingNoSchedule:
+        "다가오는 일정이 없어요. 아래에서 다음 달 일정을 먼저 등록해주세요.",
+      pendingTitle: (month: number) => `${month}월 판매 준비`,
+      pendingGuide:
+        "일정과 월 정기권 금액을 확인한 뒤 판매를 시작할 수 있습니다.",
+      packageSectionTitle: "월 정기권 확인",
+      packageUpToDate: "갱신 완료",
+      packageNeedsUpdate: "금액 확인 필요",
+      keepPriceButton: "이 금액으로 등록하기",
+      packageCreated: "정기권이 등록되었습니다.",
+      openSalesButton: "판매 시작하기",
+      openSalesSuccess: "판매가 시작되었습니다.",
+      ctaPreparing: "일정 준비 중",
+      ctaEnded: "종료된 수업",
+      pendingBannerAria: "판매 준비",
+      priceInputAria: (name: string, month: number) =>
+        `${name} ${month}월 금액`,
+    },
+    endConfirmTitle: "수업을 종료할까요?",
+    endConfirmMessage:
+      "종료하면 새로운 수강 신청과 결제가 차단됩니다. 종료 취소로 되돌릴 수 있습니다.",
     totalSessionsLabel: (n: number) => `총 ${n}회`,
     timeVaries: "시간 상이",
     cancelConfirm: "수업을 취소하시겠습니까?",
@@ -351,7 +385,7 @@ export const MESSAGES = {
     },
     links: {
       classList: "수업 목록",
-      trainingList: "훈련 목록",
+      trainingList: "훈련 및 대회 목록",
       memberList: "학생 목록",
       scheduleManage: "일정 관리",
       coachInfo: "코치 정보",
@@ -690,6 +724,10 @@ export const MESSAGES = {
         perSession: "수업 1회 참여권을 선결제합니다.",
         perGame: "참가 경기 수 기준으로 정산됩니다.",
       },
+      // 정기권 귀속월 안내 — 달력 월 귀속 정액(약관 §13): 지금 결제하면 이번 달 말일까지.
+      //   월말 결제 시 잔여 일수가 결제 전에 보이도록 하는 안전망 (후불 선택 유도).
+      monthlyPeriodNote: (month: number, endMd: string) =>
+        `${month}월 정기권 · ${endMd}까지 이용`,
       // 계산식 표시 — 정기권(MONTHLY_FIXED)은 무차감 기간제라 회수 산식 미표기
       //   ("주 N회" 파생 폐기 — 상품 안내는 설명 입력이 SoT).
       formula: {
@@ -1039,12 +1077,14 @@ export const MESSAGES = {
     postpaidNotice: "후불 대회입니다. 참가비는 대회 종료 후 일괄 청구됩니다.",
     postpaidApplyCta: "참가 신청하기",
     postpaidFeeLabel: "후불 정산 (종료 후 청구)",
+    // [후불 참고 참가비 안내 — 감독이 사전 입력한 예상 금액 표시용]
+    postpaidEstimateNote: "예상 금액 · 종료 후 정산에서 확정",
+    // 대회정보 참가비 행 — 후불 참고 금액에 붙이는 접미(확정 아님 표시).
+    feeReferenceSuffix: " (참고)",
     // [후불 대회 — 결제 방식 선택 / 정산 UI (2026-06-16)]
     billingModeLabel: "결제 방식",
     billingModePrepaid: "선불",
     billingModePostpaid: "후불",
-    postpaidScheduleHint:
-      "후불 대회는 종료 후 1인당 참가비를 입력해 일괄 청구합니다. 일정별 참가비 입력은 생략됩니다.",
     settleCta: "정산하기",
     settleTitle: "후불 정산",
     settleFeeLabel: "1인당 참가비",
@@ -3131,6 +3171,11 @@ export const MESSAGES = {
     feeLabel: "대회 참가비",
     feePlaceholder: "대회 참가비를 입력하세요.",
     feeHint: "대회 전체 참가비를 입력하세요 (무료는 0 또는 비워두기)",
+    // [후불 참고 참가비 — 대회 1회 참여 기준 금액. 종료 후 정산에서 확정, 신청 전 안내용]
+    feePostpaidLabel: "대회 1회당 참가비 (참고용)",
+    feePostpaidPlaceholder: "1회당 참가비를 입력하세요.",
+    feePostpaidHint:
+      "대회 1회 참여 기준 참가비를 참고용으로 입력하세요. 실제 청구액은 대회 종료 후 정산에서 확정됩니다.",
   },
   approvals: {
     emptyApprovalHistory: "승인 대기 이력이 없습니다",
@@ -3325,8 +3370,8 @@ export const MESSAGES = {
     completedNote: "이번 달 출석한 수업료 결제가 완료되었어요",
   },
   classProduct: {
-    sectionTitle: "수업 패키지",
-    sectionDescription: "패키지별로 수업료·유효기간을 다양하게 운영할 수 있어요.",
+    sectionTitle: "수강권",
+    sectionDescription: "수강권별로 수업료·유효기간을 다양하게 운영할 수 있어요.",
     // 후불 수업 수정 — 패키지 대신 노출하는 단순 수강료 카드 제목.
     feeSectionTitle: "수업료",
     // [Phase B-5] 결제 방식 (감독이 수업 생성 시 지정)
@@ -3356,7 +3401,7 @@ export const MESSAGES = {
     timingPrepaidDesc: "월 수업횟수로 결제해요.",
     timingPostpaidTitle: "후 결제",
     timingPostpaidDesc: "출석한 만큼 매월 정산해요.",
-    selectPrepaidPackageTitle: "정액 패키지 선택",
+    selectPrepaidPackageTitle: "정기권 선택",
     // [선택형(BOTH)] 1회 수업료(참고) 블록 — 선불·후불 공통 노출.
     singleFeeRefTitle: "1회 수업료",
     singleFeeAmount: (won: number) => `${Number(won).toLocaleString()}원`,
@@ -3399,11 +3444,11 @@ export const MESSAGES = {
     badgeEndDateExceed: "수업 종료일 초과",
     badgeClassEnded: "수업 종료",
     listBadgeClassEnded: "종료된 수업",
-    emptyTitle: "등록된 패키지가 없어요",
-    emptyDescription: "감독·코치가 패키지를 등록해야 학부모가 결제할 수 있습니다.",
-    unavailableEndDateExceed: "수업 종료일을 초과하는 패키지입니다",
+    emptyTitle: "등록된 수강권이 없어요",
+    emptyDescription: "감독·코치가 수강권을 등록해야 학부모가 결제할 수 있습니다.",
+    unavailableEndDateExceed: "수업 종료일을 초과하는 수강권입니다",
     unavailableClassEnded: "이 수업은 종료되었습니다",
-    selectAnotherPackage: "다른 패키지를 선택해주세요",
+    selectAnotherPackage: "다른 수강권을 선택해주세요",
     validationProductName: "월 결제명을 입력해주세요.",
     validationPrice: "가격을 올바르게 입력해주세요.",
     validationSessionsPerMonth: "월 횟수는 1 이상이어야 합니다.",
@@ -3412,7 +3457,7 @@ export const MESSAGES = {
     saving: "저장 중…",
     // 2026-05-22 옵션 F-2 — 수업 등록 폼 안내 + 수업 상세 관리 진입점.
     formHintCreate:
-      "정기권·다중 패키지는 수업 등록 후 수업 상세의 \"수강 플랜\" 섹션에서 관리해요.",
+      "정기권 등 수강권은 수업 등록 후 수업 상세의 \"수강 플랜\" 섹션에서 관리해요.",
     // 2026-05-22 옵션 H — PackageEditSheet 재설계 라벨.
     fieldWeeks: "주 수",
     fieldSessions: "수업 횟수",

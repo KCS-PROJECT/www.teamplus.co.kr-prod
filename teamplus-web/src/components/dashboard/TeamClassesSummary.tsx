@@ -113,6 +113,29 @@ function toSortMs(iso?: string | null): number {
   return Number.isNaN(ms) ? Number.POSITIVE_INFINITY : ms;
 }
 
+/**
+ * @db.Date(UTC 자정) 저장 날짜 → 'YYYY-MM-DD' 달력일 키.
+ *  대회 startDate 는 @db.Date 라 getUTC* 로 추출해야 KST 달력일과 일치.
+ */
+function toDbDateKey(iso?: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** 현재 KST 달력일 'YYYY-MM-DD' (now + 9h 의 UTC 달력일). */
+function todayKstDateKey(now: Date = new Date()): string {
+  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  const y = kst.getUTCFullYear();
+  const m = String(kst.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(kst.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 // [2026-06-16] 수업명 밑 정보(일정/담당자) 제거로 formatClassDays·formatTournamentDateRange 미사용 → 삭제.
 
 interface Props {
@@ -254,10 +277,17 @@ export function TeamClassesSummary({
       }));
 
       // 대회는 진행 예정/진행 중(scheduled·ongoing)만 — 취소·종료 대회는 요약에서 제외.
+      //  + 첫 일정(startDate)이 오늘 이상인 대회만 노출 — 첫 일정 당일까지는 노출하고
+      //    다음날부터 대시보드 요약에서 제외한다. startDate 는 @db.Date(UTC 자정).
+      const todayKey = todayKstDateKey();
       const tournamentItems: SummaryItem[] = unwrapTournamentList(
         tournamentRes && tournamentRes.success ? tournamentRes.data : null,
       )
         .filter((t) => t.status === 'scheduled' || t.status === 'ongoing')
+        .filter((t) => {
+          const startKey = toDbDateKey(t.startDate);
+          return startKey === null || startKey >= todayKey;
+        })
         .map((t) => ({
           kind: 'tournament',
           id: t.id,

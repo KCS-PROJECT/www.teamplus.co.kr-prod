@@ -38,6 +38,8 @@ export interface PaymentOptionCardProps {
    * 없으면 MESSAGES.payment2.card.title[feeType] 폴백.
    */
   productName?: string | null;
+  /** [Lifecycle v4.1] 월별 패키지 귀속월(ISO) — 정기권 기간 표기 SoT. 무월이면 오늘 기준 폴백. */
+  billingMonth?: string | null;
   /**
    * 상품 설명 (ClassProduct.description) — 있으면 카드 요약에 우선 사용.
    * 없으면 MESSAGES.payment2.card.summary[feeType] 폴백.
@@ -111,10 +113,39 @@ function computeTotal(props: PaymentOptionCardProps): number {
   }
 }
 
-/** feeType별 계산식 문구 — 정기권은 무차감 기간제라 회수 산식 미표기(설명 입력이 SoT). */
+/**
+ * 정기권 귀속월 안내 — "7월분 · 7/31까지 이용".
+ * 달력 월 귀속 정액(약관 §13 — 백엔드 endOfMonthKst 와 동일 규칙): 결제 시점이 속한
+ * KST 달의 말일까지 유효. 월말 결제 시 잔여 일수가 결제 전에 보이도록 하는 안전망.
+ */
+export function formatMonthlyPeriodNote(
+  billingMonth?: string | null,
+): string {
+  return monthlyPeriodNote(billingMonth);
+}
+
+function monthlyPeriodNote(billingMonth?: string | null): string {
+  // [Lifecycle v4.1 §9.2] 월별 패키지는 상품의 귀속월(billingMonth)이 SoT —
+  //   "8월분 · 8/1~8/31". 무월 레거시는 현행 폴백(오늘이 속한 KST 달).
+  const base = billingMonth
+    ? new Date(billingMonth)
+    : new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const year = base.getUTCFullYear();
+  const month = base.getUTCMonth(); // 0-base
+  // Date.UTC(y, m+1, 0) = 그 달 말일 — getUTCDate 로 말일 일자 추출.
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return MESSAGES.payment2.card.monthlyPeriodNote(
+    month + 1,
+    `${month + 1}/${lastDay}`,
+  );
+}
+
+/** feeType별 계산식 슬롯 문구 — 정기권은 회수 산식 대신 귀속월 안내를 표기. */
 function formatFormula(props: PaymentOptionCardProps): string | null {
   const { feeType, pricePerUnit, totalSessions, gameCount } = props;
   switch (feeType) {
+    case 'MONTHLY_FIXED':
+      return monthlyPeriodNote(props.billingMonth);
     case 'PER_SESSION':
       if (!totalSessions || totalSessions <= 0) return null;
       return MESSAGES.payment2.card.formula.perSession(totalSessions, pricePerUnit);

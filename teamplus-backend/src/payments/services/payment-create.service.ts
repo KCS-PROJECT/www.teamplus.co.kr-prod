@@ -27,6 +27,7 @@ import { v4 as uuidv4 } from "uuid";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
 import { calculateKoreanAge } from "@/common/utils/age.util";
+import { assertClassOnSale } from "@/common/billing/sales-gate.util";
 import { KgInicisGateway } from "../kg-inicis.gateway";
 import {
   PaymentCalculationService,
@@ -91,11 +92,13 @@ export class PaymentCreateService {
         feePerSession: true,
         durationDays: true,
         isActive: true,
+        billingMonth: true,
         classId: true,
         class: {
           select: {
             id: true,
             billingMode: true,
+            salesOpenMonth: true,
           },
         },
       },
@@ -103,6 +106,23 @@ export class PaymentCreateService {
 
     if (!product) {
       throw new NotFoundException("상품을 찾을 수 없습니다.");
+    }
+
+    // [Lifecycle v4.1 §9.4] 판매 게이트 — 대기/종료 수업은 결제 생성 차단 (최종 집행 지점).
+    await assertClassOnSale(this.prisma, product.classId);
+
+    // [Lifecycle v4.1 §9.2] 지난 월분 결제 차단 — 결제창을 열어둔 사이 판매 월이 전환되는
+    //   race 방어. 월별 패키지(billingMonth 有)는 현재 승인월 분만 결제 가능.
+    //   무월(NULL) 레거시 상품은 폴백 허용 (결제일 달 귀속 — §9.2 점진 전환).
+    if (
+      product.billingMonth &&
+      (!product.class?.salesOpenMonth ||
+        product.billingMonth.getTime() !==
+          product.class.salesOpenMonth.getTime())
+    ) {
+      throw new BadRequestException(
+        "판매 기간이 지난 상품입니다. 화면을 새로고침한 후 다시 시도해주세요.",
+      );
     }
 
     // [B6] BOTH(선택형) 수업의 enrollment 는 반드시 선택 상품(classProductId)을 가져야 한다.

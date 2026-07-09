@@ -237,7 +237,12 @@ export function ClassForm({
   //   · 기존 일정(이미 추가된 날짜): 개별 수정값 그대로 보존(요일 기본값 소급 없음).
   //   · 신규 일정(새로 고른 날짜): resolved(요일 기본값 있으면 그 값, 없으면 빈 시간) 주입 →
   //     기본값 없는 요일은 일정 목록 아코디언에서 개별 수정.
+  // [Lifecycle v4.1 §7.1] spot(1회용 수업) — 일정을 단일로 제한 (마지막 선택 1개만 유지).
+  const isSpot = formData.trainingType === 'spot';
   const applyMultiDates = (dates: string[], resolved: MultiDateResolved[]) => {
+    if (isSpot && dates.length > 1) {
+      dates = dates.slice(-1);
+    }
     const resolvedMap = new Map(resolved.map(r => [r.date, r] as const));
     setFormData(prev => {
       const existing = new Map(
@@ -512,6 +517,63 @@ export function ClassForm({
                   </p>
                 )}
               </div>
+
+              {/* [Lifecycle v4.1 §7.1] 1회용 수업(spot) — 팀 수업 전용 하위 옵션.
+                  · 체크 시 trainingType='spot' + 일정 단일 제한 · 표시상 정규 취급
+                  · 오픈클래스(isAcademy)는 숨김(lesson 강제) · 수정 모드 읽기 전용(유형 전환 금지) */}
+              {!isAcademy && (
+                <div className="mt-5">
+                  <button
+                    type="button"
+                    role="checkbox"
+                    aria-checked={isSpot}
+                    disabled={isEditMode}
+                    onClick={() =>
+                      setFormData(prev => ({
+                        ...prev,
+                        trainingType: prev.trainingType === 'spot' ? 'regular' : 'spot',
+                        // 단일 제한 규칙 통일 — 항상 "마지막에 선택한 날짜 1개" 유지 (applyMultiDates 와 동일).
+                        dateSchedules:
+                          prev.trainingType === 'spot'
+                            ? prev.dateSchedules
+                            : prev.dateSchedules.slice(-1),
+                      }))
+                    }
+                    className={cn(
+                      'flex items-center gap-2.5 px-3.5 h-12 rounded-w-md border-[1.5px] text-sm font-bold transition-colors motion-reduce:transition-none disabled:opacity-60',
+                      iceTheme
+                        ? isSpot
+                          ? 'bg-it-blue-50 border-it-blue-500 text-it-blue-500 dark:bg-it-blue-500/15 dark:border-it-blue-300 dark:text-it-blue-300'
+                          : 'bg-it-fill dark:bg-rink-700 border-it-line-strong dark:border-rink-600 text-it-ink-600 dark:text-rink-200'
+                        : isSpot
+                          ? 'bg-ice-100 border-ice-500 text-ice-700 dark:bg-ice-500/15 dark:border-ice-400 dark:text-ice-300'
+                          : 'bg-wbg dark:bg-rink-700 border-wline-2 dark:border-rink-600 text-wtext-2 dark:text-rink-200'
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors motion-reduce:transition-none',
+                        isSpot
+                          ? iceTheme
+                            ? 'bg-it-blue-500 border-it-blue-500 text-white'
+                            : 'bg-ice-500 border-ice-500 text-white'
+                          : iceTheme
+                            ? 'bg-it-surface dark:bg-rink-800 border-it-line-strong dark:border-rink-500'
+                            : 'bg-wsurface dark:bg-rink-800 border-wline-2 dark:border-rink-500'
+                      )}
+                      aria-hidden="true"
+                    >
+                      {isSpot && <Icon name="check" className="text-sm" />}
+                    </span>
+                    <span>{MESSAGES.class.spotCheckboxLabel}</span>
+                  </button>
+                  {isSpot && (
+                    <p className="text-xs text-wtext-3 dark:text-rink-300 mt-1.5">
+                      {MESSAGES.class.spotCheckboxHint}
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* 대상 연령 — 전체 연령 대상(기본) 토글. 끄면 출생연도 개별 선택 그리드 노출. */}
               <div className="mt-5">

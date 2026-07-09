@@ -39,6 +39,8 @@ interface ClassItem {
   nextSchedule?: NextScheduleInfo | null;
   /** 비취소 총 회차 수 — "총 N회" 표기용. */
   scheduleCount?: number | null;
+  /** [Lifecycle v4.1] 서버 파생 상태 — 종료 배지 판정 SoT (기간 역산보다 우선). */
+  lifecycleStatus?: 'ON_SALE' | 'PENDING_SCHEDULE' | 'ENDED' | null;
   /** [2026-06-09] 오픈클래스 날짜별 일정(ISO) — 카드 일정 날짜 표시. */
   scheduledDates?: string[];
   /** [추가 2026-05-12] 실제 운영 기간 — schedules first/last (startTime/endTime은 하루 세션 시간만 의미) */
@@ -321,7 +323,7 @@ function resolvePeriodStatus(
 }
 
 // ─── Status Config ───────────────────────────────────
-type CardStatus = 'PENDING' | 'REJECTED' | 'ACTIVE' | 'INACTIVE' | 'UPCOMING' | 'ENDED';
+type CardStatus = 'PENDING' | 'REJECTED' | 'ACTIVE' | 'INACTIVE' | 'UPCOMING' | 'ENDED' | 'WAITING_SCHEDULE';
 
 const STATUS_CONFIG: Record<CardStatus, {
   label: string;
@@ -343,6 +345,14 @@ const STATUS_CONFIG: Record<CardStatus, {
     dotColor: 'bg-red-500',
     pillBg: 'bg-red-50 dark:bg-red-900/20',
     pillText: 'text-red-700 dark:text-red-400',
+  },
+  // [Lifecycle v4.1 §7.3] 일정 등록 대기 — 감독에겐 "다가오는 일정이 없어요" 신호 배지.
+  WAITING_SCHEDULE: {
+    label: MESSAGES.class.pendingScheduleBadge,
+    icon: 'event_busy',
+    dotColor: 'bg-amber-500',
+    pillBg: 'bg-amber-50 dark:bg-amber-900/20',
+    pillText: 'text-amber-700 dark:text-amber-400',
   },
   ACTIVE: {
     label: '진행 중',
@@ -382,14 +392,18 @@ function resolveStatus(item: ClassItem): CardStatus {
   // 상태(예정/진행/종료)는 실제 일정(ClassSchedule)의 첫·마지막 날짜를 SoT 로 판단한다.
   //   대표값(Class.startTime/endTime) 폴백 제거 — 날짜부가 등록일로 오염되어 일정 없는
   //   수업이 등록 직후 '종료'로 오표시되는 원인이었음. 일정 없으면 날짜 미정으로 취급.
+  // [Lifecycle v4.1] 서버 파생 상태(endedAt·spot 자동 종료 반영)가 있으면 역산보다 우선.
+  if (item.lifecycleStatus === 'ENDED') return 'ENDED';
   const period = resolvePeriodStatus(
     item.firstScheduleDate ?? null,
     item.lastScheduleDate ?? null,
   );
-  // 기간이 끝난 수업은 DB status 와 무관하게 '종료' (기간이 SoT).
-  if (period === 'ENDED') return 'ENDED';
+  // 기간이 끝난 수업은 DB status 와 무관하게 '종료' (기간이 SoT — lifecycleStatus 미수신 폴백).
+  if (period === 'ENDED' && item.lifecycleStatus == null) return 'ENDED';
   // 운영자가 명시적으로 비활성/완료 처리한 수업.
   if (item.status === 'INACTIVE' || item.status === 'COMPLETED') return 'INACTIVE';
+  // 일정 등록 대기 — 명시 비활성보다 후순위 (비활성은 감독의 명시 의사가 우선).
+  if (item.lifecycleStatus === 'PENDING_SCHEDULE') return 'WAITING_SCHEDULE';
   // 아직 시작 전이면 '예정'.
   if (period === 'UPCOMING') return 'UPCOMING';
   // 진행 기간 내 또는 날짜 미정 + ACTIVE → '진행 중'.
@@ -464,7 +478,7 @@ function ClassCard({ item }: { item: ClassItem }) {
       </ClassCardInfoRow>
       {/* [2026-06-19] 대상 출생연도 — 입력 없으면 '전체'(전체 대상)로 표기. */}
       <ClassCardInfoRow icon="cake">
-        {formatBirthYears(item.targetBirthYears) ?? '전체'}
+        {`대상: ${formatBirthYears(item.targetBirthYears) ?? '전체'}`}
       </ClassCardInfoRow>
     </ClassListCard>
   );
@@ -540,7 +554,7 @@ function TournamentManageCard({ item }: { item: TournamentListItem }) {
       )}
       {/* [2026-06-19] 참가 대상 출생연도 — 입력 없으면 '전체'(전체 대상)로 표기. */}
       <ClassCardInfoRow icon="cake">
-        {formatTournamentTargetYears(item) ?? '전체'}
+        {`대상: ${formatTournamentTargetYears(item) ?? '전체'}`}
       </ClassCardInfoRow>
     </ClassListCard>
   );
@@ -686,6 +700,8 @@ export default function ClassManagePage() {
             id: c.id as string,
             title: (c.className as string) ?? (c.title as string) ?? '',
             daySchedules: (c.daySchedules as DaySchedule[] | undefined) ?? [],
+            lifecycleStatus:
+              (c.lifecycleStatus as ClassItem['lifecycleStatus']) ?? null,
             nextSchedule: (c.nextSchedule as NextScheduleInfo | null | undefined) ?? null,
             scheduleCount: (c.scheduleCount as number | undefined) ?? null,
             scheduledDates: (c.scheduledDates as string[] | undefined) ?? [],
@@ -804,6 +820,8 @@ export default function ClassManagePage() {
         id: c.id,
         title: c.className ?? c.title ?? '',
         daySchedules: (c.daySchedules as DaySchedule[] | undefined) ?? [],
+        lifecycleStatus:
+          (c.lifecycleStatus as ClassItem['lifecycleStatus']) ?? null,
         nextSchedule: (c.nextSchedule as NextScheduleInfo | null | undefined) ?? null,
         scheduleCount: (c.scheduleCount as number | undefined) ?? null,
         scheduledDates: (c.scheduledDates as string[] | undefined) ?? [],
@@ -956,7 +974,7 @@ export default function ClassManagePage() {
 
   return (
     <MobileContainer hasBottomNav>
-      <SubmainAppBar title="훈련 목록" />
+      <SubmainAppBar title="훈련 및 대회 목록" />
 
       <main
         className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck !pb-8"

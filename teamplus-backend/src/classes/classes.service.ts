@@ -21,6 +21,15 @@ import {
   kstTodayUtcMidnight,
 } from "@/common/utils/kst-date.util";
 import {
+  deriveClassLifecycle,
+  utcMonthStart,
+} from "@/common/utils/class-lifecycle.util";
+import { filterSellableProducts } from "@/common/billing/sales-gate.util";
+import {
+  MONTHLY_PASS_CREDIT_FILTER,
+  creditStartedWhere,
+} from "@/common/billing/fee-type.constants";
+import {
   computePackageGuardMeta,
   shouldHideInactiveFor,
 } from "./utils/package-guard.util";
@@ -112,12 +121,12 @@ function buildClassProducts(
     // SPEC §8 cross 검증: totalSessions ≥ weeks (최소 주 1회) · totalSessions ≤ weeks × 14
     if (totalSessions < weeks) {
       throw new BadRequestException(
-        `정기 패키지 총 회수(${totalSessions})는 주 수(${weeks}) 이상이어야 합니다.`,
+        `정기권 총 회수(${totalSessions})는 주 수(${weeks}) 이상이어야 합니다.`,
       );
     }
     if (totalSessions > weeks * 14) {
       throw new BadRequestException(
-        `정기 패키지 총 회수(${totalSessions})는 주 수×14(${weeks * 14}) 이하여야 합니다.`,
+        `정기권 총 회수(${totalSessions})는 주 수×14(${weeks * 14}) 이하여야 합니다.`,
       );
     }
     // "주 N회" 자동 파생 폐기 — classDays 는 갱신 안 되는 스냅샷이라 상품 메타 오염원.
@@ -473,6 +482,22 @@ export class ClassesService {
             respondedAt: now,
           })),
           skipDuplicates: true,
+        });
+      }
+
+      // [Lifecycle v4.1 §9.3] 첫 수업 생성 = 첫 일정 달 자동 승인.
+      //   일정 생성 경로(dateSchedules 직접 입력·요일 자동 생성)와 무관하게
+      //   tx 안에서 생성된 첫 비취소 일정의 달을 salesOpenMonth 로 기록.
+      //   일정 없이 생성된 수업은 null 유지 → 파생 판정상 "일정 등록 대기".
+      const firstSched = await tx.classSchedule.findFirst({
+        where: { classId: created.id, isCancelled: false },
+        orderBy: { scheduledDate: "asc" },
+        select: { scheduledDate: true },
+      });
+      if (firstSched) {
+        await tx.class.update({
+          where: { id: created.id },
+          data: { salesOpenMonth: utcMonthStart(firstSched.scheduledDate) },
         });
       }
 
@@ -871,6 +896,22 @@ export class ClassesService {
         }
       }
 
+      // [Lifecycle v4.1 §9.3] 첫 수업 생성 = 첫 일정 달 자동 승인.
+      //   일정 생성 경로(dateSchedules 직접 입력·요일 자동 생성)와 무관하게
+      //   tx 안에서 생성된 첫 비취소 일정의 달을 salesOpenMonth 로 기록.
+      //   일정 없이 생성된 수업은 null 유지 → 파생 판정상 "일정 등록 대기".
+      const firstSched = await tx.classSchedule.findFirst({
+        where: { classId: created.id, isCancelled: false },
+        orderBy: { scheduledDate: "asc" },
+        select: { scheduledDate: true },
+      });
+      if (firstSched) {
+        await tx.class.update({
+          where: { id: created.id },
+          data: { salesOpenMonth: utcMonthStart(firstSched.scheduledDate) },
+        });
+      }
+
       return created;
     });
 
@@ -1048,7 +1089,12 @@ export class ClassesService {
       // [추가 2026-05-15] 비활성 수업(isActive=false) 은 수업목록 노출 제외.
       //   감독이 수업 비활성화한 경우(또는 검증용 임시 수업)가 목록에 새지 않도록 가드.
       isActive: true,
-      ...(query.trainingType && { trainingType: query.trainingType }),
+      // [Lifecycle v4.1 §7.1] "정규" 필터 = regular + spot 포함 — spot 은 정규훈련의
+      //   1회용 하위 옵션이라 일치 비교로 두면 목록에서 누락된다 (설계가 지목한 유일 실수 포인트).
+      ...(query.trainingType &&
+        (query.trainingType === "regular"
+          ? { trainingType: { in: ["regular", "spot"] } }
+          : { trainingType: query.trainingType })),
       ...(query.category === "regular" && {
         teamId: { not: null },
         academyId: null,
@@ -1181,6 +1227,8 @@ export class ClassesService {
           startTime: true,
           endTime: true,
           isActive: true,
+          endedAt: true,
+          salesOpenMonth: true,
           category: true,
           classDays: true,
           teamId: true,
@@ -1200,6 +1248,7 @@ export class ClassesService {
               durationDays: true,
               sessionsPerMonth: true,
               sessionsPerWeek: true,
+              billingMonth: true,
               isActive: true,
             },
           },
@@ -1254,14 +1303,19 @@ export class ClassesService {
         // PACKAGE_WEEKS_SPEC §6 정기 패키지 단위 응답 필드 — FE 카드 가격 라벨 SoT.
         // PACKAGE_END_GUARD (v3 SoT): 대표가는 isActive=true 패키지 우선, 없으면 첫 매칭 폴백.
         //   isClassEnded 는 utils/package-guard.util.ts:isClassEnded() 단일화.
+        // [Lifecycle v4.1 §9.2] 대표가 산정도 판매 노출분(승인월+무월)만 — 지난 월분 가격 오염 방지.
+        const sellable = filterSellableProducts(
+          c.products ?? [],
+          c.salesOpenMonth,
+        );
         const monthlyProduct =
-          c.products?.find(
+          sellable.find(
             (p) => p.feeType === "MONTHLY_FIXED" && p.isActive !== false,
-          ) ?? c.products?.find((p) => p.feeType === "MONTHLY_FIXED");
+          ) ?? sellable.find((p) => p.feeType === "MONTHLY_FIXED");
         const singleProduct =
-          c.products?.find(
+          sellable.find(
             (p) => p.feeType === "PER_SESSION" && p.isActive !== false,
-          ) ?? c.products?.find((p) => p.feeType === "PER_SESSION");
+          ) ?? sellable.find((p) => p.feeType === "PER_SESSION");
 
         // 수업 종료 판정 — 마지막 비취소 회차 날짜 기준.
         //   기존 isClassEndedUtil(c.endTime)은 대표값 날짜부(등록일 오염)에 의존해 폐기.
@@ -1271,8 +1325,20 @@ export class ClassesService {
           ? lastSchedForEnd.scheduledDate < kstTodayUtcMidnight()
           : false;
 
+        // [Lifecycle v4.1] 파생 상태 SoT (class-lifecycle.util) — 배지 판정 일원화.
+        //   isClassEnded(역산)는 BC 용으로 유지, 신규 소비처는 lifecycleStatus 사용.
+        const lifecycle = deriveClassLifecycle({
+          endedAt: c.endedAt,
+          salesOpenMonth: c.salesOpenMonth,
+          trainingType: c.trainingType,
+          schedules: c.schedules ?? [],
+        });
+
         return {
           ...c,
+          // [Lifecycle v4.1 §9.2] ...c 가 실어온 raw products 를 판매 노출분으로 덮어쓰기 —
+          //   지난/미래 월분이 응답에 새지 않도록 (대표가 산정과 동일 모집단).
+          products: sellable,
           // 수업목록 카드 좌측 아이콘에 팀 프로필(로고) 표시용 — 없으면 프론트가 기본 아이콘 폴백.
           // 오픈클래스는 팀이 없으므로 소속 아카데미 대표 이미지로 폴백.
           teamLogoUrl: c.team?.logoUrl ?? c.academy?.imageUrl ?? null,
@@ -1297,6 +1363,8 @@ export class ClassesService {
           //   상품에 명시 저장된 값만 전달, 없으면 null(프론트 미표시).
           packageSessionsPerWeek: monthlyProduct?.sessionsPerWeek ?? null,
           isClassEnded,
+          lifecycleStatus: lifecycle.state,
+          pendingReason: lifecycle.pendingReason,
           // 2026-06-05: 요일별 시간·장소 규칙 — getClass 와 동일 DOW_ORDER 정렬.
           //   없으면 [] — 기존 단일 startTime/endTime/venueId 경로로 폴백 표시.
           daySchedules: (() => {
@@ -1471,6 +1539,7 @@ export class ClassesService {
             feePerSession: true,
             sessionsPerWeek: true,
             billingTiming: true,
+            billingMonth: true,
             isActive: true,
           },
         },
@@ -1623,13 +1692,37 @@ export class ClassesService {
       products: (() => {
         // classEndDate 메타 — 대표값(Class.endTime)은 날짜부가 등록일로 오염되어 폐기(null 고정).
         //   차단 로직은 isActive 만 사용(수업 종료일 기반 차단 폐기)·FE 실사용 0건 확인.
-        const productsWithMeta = (classRecord.products ?? []).map((p) => ({
+        // [Lifecycle v4.1 §9.2] 판매 노출 = 현재 승인월 분(+무월 레거시)만 — 지난 월분 자동 숨김.
+        const productsWithMeta = filterSellableProducts(
+          classRecord.products ?? [],
+          classRecord.salesOpenMonth,
+        ).map((p) => ({
           ...p,
           ...computePackageGuardMeta(p, null),
         }));
         return shouldHideInactiveFor(requester?.userType)
           ? productsWithMeta.filter((p) => p.isPurchasable !== false)
           : productsWithMeta;
+      })(),
+      // [Lifecycle v4.1] 파생 상태 — 상세 결제 CTA 분기(학부모 "일정 준비 중")용.
+      ...(() => {
+        const lc = deriveClassLifecycle({
+          endedAt: classRecord.endedAt,
+          salesOpenMonth: classRecord.salesOpenMonth,
+          trainingType: classRecord.trainingType,
+          schedules: (classRecord.schedules ?? []).filter(
+            (sch) => !sch.isCancelled,
+          ),
+        });
+        return {
+          lifecycleStatus: lc.state,
+          pendingReason: lc.pendingReason,
+          earliestRemainingMonth:
+            lc.earliestRemainingMonth?.toISOString() ?? null,
+          // 명시 종료 시점 — [종료 취소] 버튼 분기용 (spot 파생 자동 종료는 endedAt null
+          //   이라 취소 대상 아님 — 버튼 분기는 endedAt 기준이어야 정확).
+          endedAt: classRecord.endedAt?.toISOString() ?? null,
+        };
       })(),
       // 2026-05-12: ClassCoachAssignment 다중 코치 배정 (LEAD/ASSISTANT)
       coachAssignments: (classRecord.coachAssignments ?? []).map((a) => ({
@@ -1715,6 +1808,8 @@ export class ClassesService {
         id: true,
         className: true,
         trainingType: true,
+        endedAt: true,
+        salesOpenMonth: true,
         instructorName: true,
         capacity: true,
         startTime: true,
@@ -1751,6 +1846,7 @@ export class ClassesService {
             durationDays: true,
             sessionsPerMonth: true,
             sessionsPerWeek: true,
+            billingMonth: true,
           },
         },
         // [추가 2026-05-12] 수업 운영 기간 계산용 — schedules 첫/마지막 날짜.
@@ -1800,10 +1896,19 @@ export class ClassesService {
       const nextSched = (c.schedules ?? []).find(
         (s) => s.scheduledDate >= sdTodayList,
       );
+      // [Lifecycle v4.1] 파생 상태 — 배지 판정 일원화 (class-lifecycle.util SoT).
+      const lifecycle = deriveClassLifecycle({
+        endedAt: c.endedAt,
+        salesOpenMonth: c.salesOpenMonth,
+        trainingType: c.trainingType,
+        schedules: c.schedules ?? [],
+      });
       return {
         id: c.id,
         className: c.className,
         trainingType: c.trainingType,
+        lifecycleStatus: lifecycle.state,
+        pendingReason: lifecycle.pendingReason,
         teamId: c.teamId,
         // 오픈클래스는 팀이 없으므로 소속 아카데미 대표 이미지로 폴백.
         teamLogoUrl: c.team?.logoUrl ?? c.academy?.imageUrl ?? null,
@@ -1865,34 +1970,38 @@ export class ClassesService {
         //     - "tbd"   : 별도 책정 (단가 미정) — 단건 미정 클래스
         //     - "krw"   : 정상 금액 표시
         //   · 프론트는 라벨에 따라 "별도 책정"/"₩XXX" 분기 표시.
-        singlePrice:
-          c.products?.find((p) => p.feeType === "PER_SESSION")?.price ?? null,
-        singlePriceLabel: (() => {
-          const p = c.products?.find((pp) => pp.feeType === "PER_SESSION");
-          if (p && typeof p.price === "number" && p.price > 0) return "krw";
-          return "tbd";
+        // [Lifecycle v4.1 §9.2] 대표가 산정은 판매 노출분(승인월+무월 레거시)만 —
+        //   지난 월분 가격 오염 방지 (getAllClasses 와 동일 패턴, Reviewer F1).
+        ...(() => {
+          const sellableList = filterSellableProducts(
+            c.products ?? [],
+            c.salesOpenMonth,
+          );
+          const single = sellableList.find(
+            (p) => p.feeType === "PER_SESSION",
+          );
+          const monthly = sellableList.find(
+            (p) => p.feeType === "MONTHLY_FIXED",
+          );
+          return {
+            singlePrice: single?.price ?? null,
+            singlePriceLabel:
+              single && typeof single.price === "number" && single.price > 0
+                ? ("krw" as const)
+                : ("tbd" as const),
+            monthlyPrice: monthly?.price ?? null,
+            monthlyPriceLabel:
+              monthly && typeof monthly.price === "number" && monthly.price > 0
+                ? ("krw" as const)
+                : ("tbd" as const),
+            // 정기 패키지 단위(주 수 + 총 회수 + 주 빈도) — 회의록 2026-04-23 정합.
+            packageWeeks: monthly?.durationDays
+              ? Math.max(1, Math.round(monthly.durationDays / 7))
+              : null,
+            packageTotalSessions: monthly?.sessionsPerMonth ?? null,
+            packageSessionsPerWeek: monthly?.sessionsPerWeek ?? null,
+          };
         })(),
-        monthlyPrice:
-          c.products?.find((p) => p.feeType === "MONTHLY_FIXED")?.price ?? null,
-        monthlyPriceLabel: (() => {
-          const p = c.products?.find((pp) => pp.feeType === "MONTHLY_FIXED");
-          if (p && typeof p.price === "number" && p.price > 0) return "krw";
-          return "tbd";
-        })(),
-        // 정기 패키지 단위(주 수 + 총 회수 + 주 빈도) — 회의록 2026-04-23 정합.
-        // 기존 시드(durationDays=30) 는 packageWeeks=4 로 자연 표시.
-        packageWeeks: (() => {
-          const p = c.products?.find((pp) => pp.feeType === "MONTHLY_FIXED");
-          return p?.durationDays
-            ? Math.max(1, Math.round(p.durationDays / 7))
-            : null;
-        })(),
-        packageTotalSessions:
-          c.products?.find((p) => p.feeType === "MONTHLY_FIXED")
-            ?.sessionsPerMonth ?? null,
-        packageSessionsPerWeek:
-          c.products?.find((p) => p.feeType === "MONTHLY_FIXED")
-            ?.sessionsPerWeek ?? null,
         waitlistCount: c._count.waitlists,
         createdAt: c.createdAt,
         // 2026-06-05: 요일별 시간·장소 규칙 — getClass 와 동일 DOW_ORDER 정렬.
@@ -3826,6 +3935,7 @@ export class ClassesService {
             userId: { in: userIds },
             classId,
             expiresAt: { gte: now },
+            ...creditStartedWhere(now),
           },
           orderBy: { expiresAt: "asc" },
           select: {
@@ -4093,7 +4203,7 @@ export class ClassesService {
     // 응답에 isPurchasable / expectedExpiresAt / classEndDate / disabledReason 계산 필드 부여.
     const classRecord = await this.prisma.class.findUnique({
       where: { id: classId },
-      select: { id: true, endTime: true, academyId: true },
+      select: { id: true, endTime: true, academyId: true, salesOpenMonth: true },
     });
 
     if (!classRecord) {
@@ -4111,6 +4221,7 @@ export class ClassesService {
         durationDays: true,
         // 결제 플로우(/payment/options)에서 Fee Type Selection / 횟수제 가격 계산에 필수
         feeType: true,
+        billingMonth: true,
         feePerSession: true,
         sessionsPerWeek: true,
         billingTiming: true,
@@ -4126,7 +4237,14 @@ export class ClassesService {
     //   classes/utils/package-guard.util.ts:computePackageGuardMeta() 호출로 메타 주입.
     //   shouldHideInactiveFor(requester?.userType) — PARENT/CHILD/TEEN 비활성 제외.
     // classEndDate 메타 — 대표값(Class.endTime)은 날짜부가 등록일로 오염되어 폐기(null 고정).
-    const productsWithMeta = products.map((p) => ({
+    // [Lifecycle v4.1 §9.2] 학부모행(PARENT/CHILD/TEEN — shouldHideInactiveFor 와 동일 기준)
+    //   요청은 판매 노출분(승인월+무월 레거시)만 — 결제 옵션 1차 소스가 이 API 라서
+    //   미필터 시 지난 월분 카드가 노출됨 (Reviewer F2. 결제는 race 가드로 봉인되나 UX 갭).
+    //   감독/관리자는 이력 확인용 전체 유지 (확인 플로우 needsUpdate 산출에 이전 분 필요).
+    const roleScoped = shouldHideInactiveFor(requester?.userType)
+      ? filterSellableProducts(products, classRecord.salesOpenMonth)
+      : products;
+    const productsWithMeta = roleScoped.map((p) => ({
       ...p,
       ...computePackageGuardMeta(p, null),
     }));
@@ -4151,7 +4269,7 @@ export class ClassesService {
     await this.teamsService.assertTeamManagerPermission(
       coachUserId,
       teamId,
-      "이 클럽의 감독/코치만 패키지를 수정할 수 있습니다.",
+      "이 클럽의 감독/코치만 수강권을 수정할 수 있습니다.",
     );
 
     // 수업 + 패키지 소속 확인 (cross-tenant 차단)
@@ -4164,10 +4282,10 @@ export class ClassesService {
       },
     });
     if (!product || product.classId !== classId) {
-      throw new NotFoundException("패키지를 찾을 수 없습니다.");
+      throw new NotFoundException("수강권을 찾을 수 없습니다.");
     }
     if (product.class.teamId !== teamId) {
-      throw new NotFoundException("패키지를 찾을 수 없습니다.");
+      throw new NotFoundException("수강권을 찾을 수 없습니다.");
     }
 
     const updated = await this.prisma.classProduct.update({
@@ -4231,7 +4349,7 @@ export class ClassesService {
     await this.teamsService.assertTeamManagerPermission(
       coachUserId,
       teamId,
-      "이 클럽의 감독/코치만 패키지를 삭제할 수 있습니다.",
+      "이 클럽의 감독/코치만 수강권을 삭제할 수 있습니다.",
     );
 
     const product = await this.prisma.classProduct.findUnique({
@@ -4249,10 +4367,10 @@ export class ClassesService {
       },
     });
     if (!product || product.classId !== classId) {
-      throw new NotFoundException("패키지를 찾을 수 없습니다.");
+      throw new NotFoundException("수강권을 찾을 수 없습니다.");
     }
     if (product.class.teamId !== teamId) {
-      throw new NotFoundException("패키지를 찾을 수 없습니다.");
+      throw new NotFoundException("수강권을 찾을 수 없습니다.");
     }
 
     const hasHistory =
@@ -4332,6 +4450,204 @@ export class ClassesService {
     throw new BadRequestException("수업 소유자를 확인할 수 없습니다.");
   }
 
+  // ============================================================
+  // [Lifecycle v4.1] 수업 종료/재개 (설계 §8.3~8.5 · D5)
+  // ============================================================
+
+  /**
+   * 유효 잔여 선불 판정 (§8.4) — 종료 가드 입력.
+   *  ① 활성 월권: 연결 상품 feeType=MONTHLY_FIXED && expiresAt > now
+   *     (무차감 기간제라 used/total 무의미 — 기간만이 유효성 기준)
+   *  ② 회차권·관리자 발급 잔여: 비월권(paymentId null 포함) && expiresAt > now
+   *     && (total - used) > 0 — 컬럼 간 비교라 fetch 후 계산 (행 수 소량)
+   */
+  private async countActivePrepaidRemainders(classId: string): Promise<{
+    monthlyPassCount: number;
+    sessionRemainderCount: number;
+  }> {
+    const now = new Date();
+    const [monthlyPassCount, nonMonthly] = await Promise.all([
+      this.prisma.memberCredit.count({
+        where: {
+          classId,
+          expiresAt: { gt: now },
+          ...MONTHLY_PASS_CREDIT_FILTER,
+        },
+      }),
+      this.prisma.memberCredit.findMany({
+        where: {
+          classId,
+          expiresAt: { gt: now },
+          NOT: { ...MONTHLY_PASS_CREDIT_FILTER },
+        },
+        select: { totalSessions: true, usedSessions: true },
+      }),
+    ]);
+    const sessionRemainderCount = nonMonthly.filter(
+      (c) => c.totalSessions - c.usedSessions > 0,
+    ).length;
+    return { monthlyPassCount, sessionRemainderCount };
+  }
+
+  /**
+   * [수업 종료] — 조건부 마무리 액션 (§8.3).
+   * 가드: 다가오는 비취소 일정 0건 && 유효 잔여 선불 0건일 때만 허용.
+   * 시스템은 돈 문제를 자동 처리하지 않는다 — 사람이 정리 완료 후에만 종료.
+   */
+  async endClass(userId: string, userType: string, classId: string) {
+    const { ownerType, ownerId } = await this.assertClassManagerPermission(
+      userId,
+      userType,
+      classId,
+      "이 수업을 종료할 권한이 없습니다.",
+    );
+    const klass = await this.prisma.class.findUniqueOrThrow({
+      where: { id: classId },
+      select: { endedAt: true },
+    });
+    if (klass.endedAt) {
+      throw new BadRequestException("이미 종료된 수업입니다.");
+    }
+    const upcoming = await this.prisma.classSchedule.count({
+      where: {
+        classId,
+        isCancelled: false,
+        scheduledDate: { gte: kstTodayUtcMidnight() },
+      },
+    });
+    const { monthlyPassCount, sessionRemainderCount } =
+      await this.countActivePrepaidRemainders(classId);
+    if (upcoming > 0 || monthlyPassCount > 0 || sessionRemainderCount > 0) {
+      throw new BadRequestException(
+        `남은 일정 ${upcoming}건 · 잔여 결제권(월 정기권 ${monthlyPassCount}건 · 회차권 ${sessionRemainderCount}건)을 정리한 후 종료할 수 있습니다.`,
+      );
+    }
+    const updated = await this.prisma.class.update({
+      where: { id: classId },
+      data: { endedAt: new Date() },
+      select: { id: true, endedAt: true },
+    });
+    this.logger.log(
+      `[AUDIT] 수업 종료: classId=${classId}, by=${userId}(${userType})`,
+    );
+    if (ownerType === "team") {
+      await this.invalidateClassCache(ownerId);
+    }
+    return updated;
+  }
+
+  /**
+   * [종료 취소] — 재개 (D5 확정: 허용).
+   * endedAt=null 롤백. 재개 시 파생 상태는 자연히 "일정 등록 대기"부터 시작 —
+   * 판매 승인 사이클(§9.3)을 통과해야만 판매 재개되므로 위험 상태가 만들어지지 않는다.
+   */
+  async reopenClass(userId: string, userType: string, classId: string) {
+    const { ownerType, ownerId } = await this.assertClassManagerPermission(
+      userId,
+      userType,
+      classId,
+      "이 수업을 재개할 권한이 없습니다.",
+    );
+    const klass = await this.prisma.class.findUniqueOrThrow({
+      where: { id: classId },
+      select: { endedAt: true },
+    });
+    if (!klass.endedAt) {
+      throw new BadRequestException("종료 상태가 아닌 수업입니다.");
+    }
+    const updated = await this.prisma.class.update({
+      where: { id: classId },
+      data: { endedAt: null },
+      select: { id: true, endedAt: true },
+    });
+    // D5 감사 기록 — 누가·언제 재개했는지 (이전 종료 시점 포함)
+    this.logger.warn(
+      `[AUDIT] 수업 종료 취소(재개): classId=${classId}, 이전 endedAt=${klass.endedAt.toISOString()}, by=${userId}(${userType})`,
+    );
+    if (ownerType === "team") {
+      await this.invalidateClassCache(ownerId);
+    }
+    return updated;
+  }
+
+  /**
+   * [Lifecycle v4.1 §9.3] [판매 시작] — 감독의 명시 승인으로만 판매 월 전환 (자동 전환 금지).
+   * 검증: ① 미종료 ② 가장 이른 잔여 달 M 존재 ③ 월권 이력(billingMonth 有)이 있는 수업은
+   *   대상월 분 패키지가 1건 이상 존재 (지난 월분 row 는 §9.2 설계상 "보존"이므로 전부-갱신을
+   *   강제하지 않는다 — 노출 차단은 filterSellableProducts, 갱신 유도는 FE needsUpdate 게이트.
+   *   월 패키지 0개 = 후불 전용·무월 레거시만 있는 수업은 ③ 통과).
+   */
+  async openClassSales(userId: string, userType: string, classId: string) {
+    const { ownerType, ownerId } = await this.assertClassManagerPermission(
+      userId,
+      userType,
+      classId,
+      "이 수업의 판매를 시작할 권한이 없습니다.",
+    );
+    const klass = await this.prisma.class.findUniqueOrThrow({
+      where: { id: classId },
+      select: {
+        endedAt: true,
+        salesOpenMonth: true,
+        trainingType: true,
+        schedules: {
+          where: { isCancelled: false },
+          select: { scheduledDate: true },
+        },
+        products: {
+          where: { isActive: true, feeType: "MONTHLY_FIXED" },
+          select: { id: true, productName: true, billingMonth: true },
+        },
+      },
+    });
+    if (klass.endedAt) {
+      throw new BadRequestException("종료된 수업입니다. 재개 후 진행해주세요.");
+    }
+    const lifecycle = deriveClassLifecycle({
+      endedAt: klass.endedAt,
+      salesOpenMonth: klass.salesOpenMonth,
+      trainingType: klass.trainingType,
+      schedules: klass.schedules,
+    });
+    const targetMonth = lifecycle.earliestRemainingMonth;
+    if (!targetMonth) {
+      throw new BadRequestException(
+        "다가오는 일정이 없습니다. 다음 달 일정을 먼저 등록해주세요.",
+      );
+    }
+    // §9.2 — 지난 월분 row 는 판매 이력으로 "보존"되는 설계이므로 전부-갱신을 강제하지
+    //   않는다 (강제 시 2차 사이클부터 항상 실패 — Reviewer C-1). 검증은 "판매할 물건이
+    //   있는가"만: 월권 이력이 있는 수업은 대상월 분이 1건 이상 있어야 판매 시작 가능.
+    //   지난 월분 노출 차단은 filterSellableProducts(월 필터)가, 빠짐없는 갱신 유도는
+    //   FE 확인 플로우(needsUpdate 게이트)가 담당한다. 무월 레거시만 있는 수업은
+    //   폴백 판매(§9.2 점진 전환)가 유효하므로 통과.
+    const hasTargetMonthPkg = klass.products.some(
+      (prd) =>
+        prd.billingMonth &&
+        prd.billingMonth.getTime() === targetMonth.getTime(),
+    );
+    const hasMonthlyPkgHistory = klass.products.some(
+      (prd) => prd.billingMonth != null,
+    );
+    if (hasMonthlyPkgHistory && !hasTargetMonthPkg) {
+      throw new BadRequestException(
+        "판매 대상 달의 월 정기권이 없습니다. 정기권 확인 후 다시 시도해주세요.",
+      );
+    }
+    const updated = await this.prisma.class.update({
+      where: { id: classId },
+      data: { salesOpenMonth: targetMonth },
+      select: { id: true, salesOpenMonth: true },
+    });
+    this.logger.log(
+      `[AUDIT] 판매 시작: classId=${classId}, salesOpenMonth=${targetMonth.toISOString().slice(0, 10)}, by=${userId}(${userType})`,
+    );
+    if (ownerType === "team") {
+      await this.invalidateClassCache(ownerId);
+    }
+    return updated;
+  }
+
   /**
    * 통합 패키지 생성 — classId 만으로 owner 자동 판별.
    */
@@ -4353,7 +4669,7 @@ export class ClassesService {
     //   사용한다. 추가 패키지(정기권·회차권 등)는 정산 모델과 충돌하므로 신규 생성을 차단.
     if (billingMode === "POSTPAID") {
       throw new BadRequestException(
-        "후불 수업은 출석 기반 정산만 지원하므로 추가 패키지를 등록할 수 없습니다.",
+        "후불 수업은 출석 기반 정산만 지원하므로 추가 수강권을 등록할 수 없습니다.",
       );
     }
 
@@ -4379,6 +4695,10 @@ export class ClassesService {
         ...(dto.feeType ? { feeType: dto.feeType } : {}),
         ...(dto.sessionsPerWeek
           ? { sessionsPerWeek: dto.sessionsPerWeek }
+          : {}),
+        // [Lifecycle v4.1 §9.2] 귀속월 — "YYYY-MM" → 그 달 1일(@db.Date, UTC 자정).
+        ...(dto.billingMonth
+          ? { billingMonth: new Date(`${dto.billingMonth}-01T00:00:00.000Z`) }
           : {}),
       },
       select: {
@@ -4420,7 +4740,7 @@ export class ClassesService {
       userId,
       userType,
       classId,
-      "이 수업의 감독/코치만 패키지를 수정할 수 있습니다.",
+      "이 수업의 감독/코치만 수강권을 수정할 수 있습니다.",
     );
 
     // 패키지 소속 확인 (cross-class 차단)
@@ -4429,7 +4749,7 @@ export class ClassesService {
       select: { id: true, classId: true },
     });
     if (!product || product.classId !== classId) {
-      throw new NotFoundException("패키지를 찾을 수 없습니다.");
+      throw new NotFoundException("수강권을 찾을 수 없습니다.");
     }
 
     const updated = await this.prisma.classProduct.update({
@@ -4493,7 +4813,7 @@ export class ClassesService {
         userId,
         userType,
         classId,
-        "이 수업의 감독/코치만 패키지를 삭제할 수 있습니다.",
+        "이 수업의 감독/코치만 수강권을 삭제할 수 있습니다.",
       );
 
     // 후불 수업은 "1회 수업료" 단일 상품으로 출석 기반 정산하므로 삭제를 차단한다.
@@ -4512,7 +4832,7 @@ export class ClassesService {
       },
     });
     if (!product || product.classId !== classId) {
-      throw new NotFoundException("패키지를 찾을 수 없습니다.");
+      throw new NotFoundException("수강권을 찾을 수 없습니다.");
     }
 
     const hasHistory =
@@ -4553,17 +4873,17 @@ export class ClassesService {
     const weeks = Math.ceil(totalSessions / perWeek);
     if (weeks < 1 || weeks > 52) {
       throw new BadRequestException(
-        `정기 패키지(${productName}) 주 수(${weeks})는 1~52 범위여야 합니다.`,
+        `정기권(${productName}) 주 수(${weeks})는 1~52 범위여야 합니다.`,
       );
     }
     if (totalSessions < weeks) {
       throw new BadRequestException(
-        `정기 패키지(${productName}) 총 회수(${totalSessions})는 주 수(${weeks}) 이상이어야 합니다.`,
+        `정기권(${productName}) 총 회수(${totalSessions})는 주 수(${weeks}) 이상이어야 합니다.`,
       );
     }
     if (totalSessions > weeks * 14) {
       throw new BadRequestException(
-        `정기 패키지(${productName}) 총 회수(${totalSessions})는 주 수×14(${weeks * 14}) 이하여야 합니다.`,
+        `정기권(${productName}) 총 회수(${totalSessions})는 주 수×14(${weeks * 14}) 이하여야 합니다.`,
       );
     }
   }
@@ -4611,7 +4931,7 @@ export class ClassesService {
         userId,
         userType,
         classId,
-        "이 수업의 감독/코치만 패키지를 수정할 수 있습니다.",
+        "이 수업의 감독/코치만 수강권을 수정할 수 있습니다.",
       );
 
     const upserts = dto.upserts ?? [];
@@ -4631,7 +4951,7 @@ export class ClassesService {
     if (billingMode === "POSTPAID") {
       if (upserts.some((item) => !item.id)) {
         throw new BadRequestException(
-          "후불 수업은 출석 기반 정산만 지원하므로 추가 패키지를 등록할 수 없습니다.",
+          "후불 수업은 출석 기반 정산만 지원하므로 추가 수강권을 등록할 수 없습니다.",
         );
       }
       if (deleteIds.length > 0) {
@@ -4664,7 +4984,7 @@ export class ClassesService {
           },
         });
         if (!product || product.classId !== classId) {
-          throw new NotFoundException("패키지를 찾을 수 없습니다.");
+          throw new NotFoundException("수강권을 찾을 수 없습니다.");
         }
         const hasHistory =
           (product._count?.payments ?? 0) > 0 ||
@@ -4702,7 +5022,7 @@ export class ClassesService {
             select: { id: true, classId: true },
           });
           if (!existing || existing.classId !== classId) {
-            throw new NotFoundException("패키지를 찾을 수 없습니다.");
+            throw new NotFoundException("수강권을 찾을 수 없습니다.");
           }
           await tx.classProduct.update({
             where: { id: item.id },

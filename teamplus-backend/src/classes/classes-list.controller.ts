@@ -233,4 +233,79 @@ export class ClassesListController {
       userId,
     );
   }
+
+  /**
+   * [Lifecycle v4.1] 수업 종료 — 조건부 마무리 액션 (설계 §8.3).
+   * 가드: 다가오는 일정 0건 && 유효 잔여 선불 0건일 때만 허용.
+   */
+  @Post(":classId/end")
+  @Roles("COACH", "DIRECTOR", "ACADEMY_DIRECTOR", "ADMIN")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "수업 종료",
+    description:
+      "수업을 명시적으로 종료 처리합니다. 다가오는 일정과 유효 잔여 선불이 모두 0일 때만 허용됩니다.",
+  })
+  @ApiParam({ name: "classId", description: "수업 ID" })
+  @ApiResponse({ status: 200, description: "종료 성공" })
+  @ApiResponse({ status: 400, description: "종료 가드 미충족 (남은 일정/잔여 결제권)" })
+  async endClass(
+    @Request() req: AuthenticatedRequest,
+    @Param("classId") classId: string,
+  ) {
+    return this.classesService.endClass(
+      req.user.id,
+      req.user.userType,
+      classId,
+    );
+  }
+
+  /**
+   * [Lifecycle v4.1] 수업 종료 취소(재개) — D5 확정: 허용.
+   * 재개 시 파생 상태는 "일정 등록 대기"부터 — 판매 승인 사이클 통과 후에만 판매 재개.
+   */
+  @Post(":classId/reopen")
+  @Roles("COACH", "DIRECTOR", "ACADEMY_DIRECTOR", "ADMIN")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "수업 종료 취소(재개)",
+    description: "종료된 수업을 재개합니다. 재개 후 상태는 '일정 등록 대기'부터 시작합니다.",
+  })
+  @ApiParam({ name: "classId", description: "수업 ID" })
+  @ApiResponse({ status: 200, description: "재개 성공" })
+  async reopenClass(
+    @Request() req: AuthenticatedRequest,
+    @Param("classId") classId: string,
+  ) {
+    return this.classesService.reopenClass(
+      req.user.id,
+      req.user.userType,
+      classId,
+    );
+  }
+
+  /**
+   * [Lifecycle v4.1 §9.3] 판매 시작 — 확인 단계(일정·패키지 확인) 후 감독의 명시 승인.
+   */
+  @Post(":classId/open-sales")
+  @Roles("COACH", "DIRECTOR", "ACADEMY_DIRECTOR", "ADMIN")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "판매 시작 (판매 승인 월 전환)",
+    description:
+      "가장 이른 잔여 일정의 달로 판매를 승인합니다. 월 패키지 이력이 있는 수업은 해당 월분 패키지가 1건 이상 있어야 합니다 (지난 월분은 이력으로 보존).",
+  })
+  @ApiParam({ name: "classId", description: "수업 ID" })
+  @ApiResponse({ status: 200, description: "판매 시작 성공" })
+  @ApiResponse({ status: 400, description: "잔여 일정 없음 / 대상월 패키지 없음 / 종료 수업" })
+  async openClassSales(
+    @Request() req: AuthenticatedRequest,
+    @Param("classId") classId: string,
+  ) {
+    return this.classesService.openClassSales(
+      req.user.id,
+      req.user.userType,
+      classId,
+    );
+  }
 }

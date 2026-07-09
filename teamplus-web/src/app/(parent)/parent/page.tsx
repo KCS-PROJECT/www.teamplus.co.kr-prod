@@ -75,6 +75,7 @@ interface Selection {
  *  백엔드 SoT: child/class 는 중첩 객체로 내려옴 (enrollments.service.ts:972 mapToEnrollmentResponse).
  *  flat childId/classId 는 레거시 호환을 위해 둘 다 허용. */
 interface EnrollmentItem {
+  hasValidPass?: boolean | null;
   id: string;
   childId?: string;
   classId?: string;

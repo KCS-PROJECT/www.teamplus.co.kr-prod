@@ -20,8 +20,13 @@ export function isActiveEnrollment(
   status?: string | null,
   billingMode?: string | null,
   productBillingTiming?: string | null,
+  /** [Lifecycle v4.1] 선불 유효 기간권 보유 여부 (백엔드 hasValidPass emit).
+   *  paid 는 만료 개념이 없는 결제 이력이라, 이 값이 명시적으로 false 면
+   *  "현재 수강 중"을 부정한다 — 월말 만료 시 자동 종료·재결제 시 자동 재개.
+   *  undefined/null(구 응답·후불)은 현행 폴백(true 유지, 회귀 0). */
+  hasValidPass?: boolean | null,
 ): boolean {
-  if (status === "paid") return true;
+  if (status === "paid") return hasValidPass !== false;
   if (status === "approved" && billingMode === "POSTPAID") return true;
   if (
     status === "approved" &&

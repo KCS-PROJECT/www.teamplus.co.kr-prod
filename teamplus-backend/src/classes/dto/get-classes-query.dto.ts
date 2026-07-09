@@ -9,7 +9,8 @@ import { ApiPropertyOptional } from "@nestjs/swagger";
  *   - lesson:  오픈클래스 레슨 (academyId 기반)
  * ※ training 도메인(REGULAR_TRAINING/GAME/FUN/CAMP/PICKUP)은 별도 SoT (training/dto/create-training.dto.ts).
  */
-const TRAINING_TYPES = ["regular", "lesson"] as const;
+// [Lifecycle v4.1 §7.1] spot(1회용) 은 정규 취급 — 필터 파라미터로도 수용.
+const TRAINING_TYPES = ["regular", "lesson", "spot"] as const;
 
 // 상위 분류 (FE: src/lib/class-categories.ts SoT 와 정합).
 // 'tournament' 는 별 도메인(Tournament) 이라 이 DTO 대상이 아님.

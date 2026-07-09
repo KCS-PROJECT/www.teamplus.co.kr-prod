@@ -68,6 +68,12 @@ export interface TrainingSession {
   /** 첫/마지막 비취소 회차 날짜(ISO) — 종료 훈련의 기간 표기용. */
   firstScheduleDate?: string | null;
   lastScheduleDate?: string | null;
+  /** [Lifecycle v4.1] 서버 파생 상태 + 명시 종료 시점 — [수업 종료]/[종료 취소] 액션 판정. */
+  lifecycleStatus?: 'ON_SALE' | 'PENDING_SCHEDULE' | 'ENDED';
+  pendingReason?: 'NO_SCHEDULE' | 'UNAPPROVED_MONTH' | null;
+  endedAt?: string | null;
+  /** 판매 승인 사이클 대상 달(그 달 1일 ISO) — 확인 플로우 표기·복제 대상. */
+  earliestRemainingMonth?: string | null;
   _count?: {
     schedules: number;
     enrollments: number;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
@@ -21,6 +21,23 @@ import {
 import { MESSAGES } from '@/lib/messages';
 import { cn } from '@/lib/utils';
 import { formatClassScheduleDisplay } from '@/lib/class-categories';
+import { api } from '@/services/api-client';
+import { useToast } from '@/components/ui/Toast';
+
+// [Lifecycle v4.1] 판매 승인 확인 플로우 — 월 패키지 항목 (감독용 전체 목록 응답).
+interface MonthlyPkg {
+  id: string;
+  productName: string;
+  description?: string | null;
+  price: number;
+  feeType?: string;
+  isActive?: boolean;
+  billingMonth?: string | null;
+  /** 복제 생성 시 동일 내용 패스스루 (§9.2 — 파생식 왜곡 방지) */
+  durationDays?: number | null;
+  sessionsPerMonth?: number | null;
+  sessionsPerWeek?: number | null;
+}
 
 // ─── Helpers ───────────────────────────────────────
 function formatDate(iso: string): string {
@@ -157,6 +174,7 @@ export default function TrainingDetailPage() {
   const { navigate } = useNavigation();
 
   const { data: training, isLoading, error, refresh } = useTrainingDetail(trainingId);
+  const { toast } = useToast();
 
   usePageReady(!isLoading);
 
@@ -190,6 +208,161 @@ export default function TrainingDetailPage() {
       setAddingSchedule(false);
     }
   }, [newScheduleDate, trainingId, refresh]);
+
+  // [Lifecycle v4.1 SS9.3] 판매 승인 사이클 확인 플로우 — 대기(UNAPPROVED_MONTH) 시
+  //   월 패키지 확인(직전 분 복제 프리필 -> 금액 유지/수정 -> 대상월 row 생성) + [판매 시작].
+  const [monthlyPkgs, setMonthlyPkgs] = useState<MonthlyPkg[] | null>(null);
+  const [pkgPrices, setPkgPrices] = useState<Record<string, string>>({});
+  const [pkgSubmitting, setPkgSubmitting] = useState<string | null>(null);
+  const [openingSales, setOpeningSales] = useState(false);
+
+  const isUnapprovedPending =
+    training?.lifecycleStatus === 'PENDING_SCHEDULE' &&
+    training?.pendingReason === 'UNAPPROVED_MONTH';
+  const targetMonthIso = training?.earliestRemainingMonth ?? null;
+  const targetMonthLabel = targetMonthIso
+    ? new Date(targetMonthIso).getUTCMonth() + 1
+    : null;
+  const targetMonthKey = targetMonthIso ? targetMonthIso.slice(0, 7) : null;
+
+  const fetchMonthlyPkgs = useCallback(async () => {
+    if (!trainingId) return;
+    const res = await api.get<MonthlyPkg[] | { data: MonthlyPkg[] }>(
+      `/classes/${trainingId}/products`,
+    );
+    if (res.success && res.data) {
+      const list = Array.isArray(res.data)
+        ? res.data
+        : ((res.data as { data?: MonthlyPkg[] }).data ?? []);
+      setMonthlyPkgs(
+        list.filter(
+          (pkg) => pkg.feeType === 'MONTHLY_FIXED' && pkg.isActive !== false,
+        ),
+      );
+    }
+  }, [trainingId]);
+
+  useEffect(() => {
+    if (isUnapprovedPending) fetchMonthlyPkgs();
+  }, [isUnapprovedPending, fetchMonthlyPkgs]);
+
+  // 대상월 row 가 이미 있는 상품명 집합 — 같은 이름의 이전 분은 "갱신 완료" 취급.
+  const updatedNames = new Set(
+    (monthlyPkgs ?? [])
+      .filter(
+        (pkg) =>
+          pkg.billingMonth && pkg.billingMonth.slice(0, 7) === targetMonthKey,
+      )
+      .map((pkg) => pkg.productName),
+  );
+  // 갱신 필요 목록 — 대상월이 아닌 분(무월 레거시 포함) 중 이름별 "최신 분" 1건.
+  //   GET products 는 가격 오름차순이라 그대로 dedup 하면 옛 달 가격이 프리필될 수 있어
+  //   (evaluator D3 — §9.3 ② 가격 오염 차단 지점 훼손) billingMonth 내림차순으로
+  //   정렬 후 선별한다. 무월(null)은 가장 오래된 분 취급.
+  const needsUpdate = (() => {
+    const seen = new Set<string>();
+    const byLatestMonth = [...(monthlyPkgs ?? [])].sort((a, b) =>
+      (b.billingMonth ?? '').localeCompare(a.billingMonth ?? ''),
+    );
+    return byLatestMonth.filter((pkg) => {
+      const isTarget = pkg.billingMonth?.slice(0, 7) === targetMonthKey;
+      if (
+        isTarget ||
+        updatedNames.has(pkg.productName) ||
+        seen.has(pkg.productName)
+      ) {
+        return false;
+      }
+      seen.add(pkg.productName);
+      return true;
+    });
+  })();
+
+  const handleCreateMonthPkg = useCallback(
+    async (pkg: MonthlyPkg) => {
+      if (!targetMonthKey) return;
+      const raw = pkgPrices[pkg.id];
+      const price = raw === undefined || raw === '' ? pkg.price : Number(raw);
+      if (!Number.isFinite(price) || price < 0) {
+        toast.error(MESSAGES.error.general);
+        return;
+      }
+      setPkgSubmitting(pkg.id);
+      try {
+        // §9.2 "동일 내용 복제" — 단위 필드 3종을 원본에서 패스스루.
+        //   durationDays 하드코딩·sessionsPerMonth 누락 시 백엔드 파생식이
+        //   발급 수량·"주 N회" 라벨을 왜곡한다 (evaluator D2).
+        const res = await api.post(`/classes/${trainingId}/products`, {
+          productName: pkg.productName,
+          description: pkg.description ?? undefined,
+          price,
+          feeType: 'MONTHLY_FIXED',
+          durationDays: pkg.durationDays ?? 30,
+          sessionsPerMonth: pkg.sessionsPerMonth ?? undefined,
+          sessionsPerWeek: pkg.sessionsPerWeek ?? undefined,
+          billingMonth: targetMonthKey,
+        });
+        if (res.success) {
+          toast.success(MESSAGES.class.salesCycle.packageCreated);
+          await fetchMonthlyPkgs();
+        } else if (res.error?.message) {
+          toast.error(res.error.message);
+        }
+      } finally {
+        setPkgSubmitting(null);
+      }
+    },
+    [trainingId, targetMonthKey, pkgPrices, toast, fetchMonthlyPkgs],
+  );
+
+  const handleOpenSales = useCallback(async () => {
+    setOpeningSales(true);
+    try {
+      const res = await api.post(`/classes/${trainingId}/open-sales`);
+      if (res.success) {
+        toast.success(MESSAGES.class.salesCycle.openSalesSuccess);
+        refresh();
+      } else if (res.error?.message) {
+        toast.error(res.error.message);
+      }
+    } finally {
+      setOpeningSales(false);
+    }
+  }, [trainingId, toast, refresh]);
+
+  // [Lifecycle v4.1] 수업 종료/재개 — 가드(일정0+잔여선불0)는 서버 판정, 실패 시 사유 토스트.
+  const [lifecycleActing, setLifecycleActing] = useState(false);
+  const handleEndClass = useCallback(async () => {
+    if (!confirm(`${MESSAGES.class.endConfirmTitle}
+${MESSAGES.class.endConfirmMessage}`)) return;
+    setLifecycleActing(true);
+    try {
+      const response = await api.post(`/classes/${trainingId}/end`);
+      if (response.success) {
+        toast.success(MESSAGES.class.endSuccess);
+        refresh();
+      } else if (response.error?.message) {
+        toast.error(response.error.message);
+      }
+    } finally {
+      setLifecycleActing(false);
+    }
+  }, [trainingId, refresh, toast]);
+
+  const handleReopenClass = useCallback(async () => {
+    setLifecycleActing(true);
+    try {
+      const response = await api.post(`/classes/${trainingId}/reopen`);
+      if (response.success) {
+        toast.success(MESSAGES.class.reopenSuccess);
+        refresh();
+      } else if (response.error?.message) {
+        toast.error(response.error.message);
+      }
+    } finally {
+      setLifecycleActing(false);
+    }
+  }, [trainingId, refresh, toast]);
 
   // 삭제
   const handleDelete = useCallback(async () => {
@@ -317,6 +490,109 @@ export default function TrainingDetailPage() {
           </div>
         </section>
 
+        {/* [Lifecycle v4.1 SS9.3] 판매 승인 배너 — 대기 상태에서만 노출 */}
+        {training.lifecycleStatus === 'PENDING_SCHEDULE' && !training.endedAt && (
+          <section
+            className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 pt-5 pb-5"
+            aria-label={MESSAGES.class.salesCycle.pendingBannerAria}
+          >
+            {training.pendingReason === 'NO_SCHEDULE' || !targetMonthLabel ? (
+              <div className="flex items-start gap-3 rounded-w-md bg-amber-50 dark:bg-amber-900/20 px-4 py-3">
+                <Icon name="event_busy" className="text-xl text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" aria-hidden="true" />
+                <p className="text-card-body text-amber-800 dark:text-amber-300">
+                  {MESSAGES.class.salesCycle.pendingNoSchedule}
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 mb-1">
+                  <Icon name="storefront" className="text-xl text-it-blue-500" aria-hidden="true" />
+                  <h2 className="text-card-emphasis font-bold text-it-ink-900 dark:text-white">
+                    {MESSAGES.class.salesCycle.pendingTitle(targetMonthLabel)}
+                  </h2>
+                </div>
+                <p className="text-card-meta text-it-ink-500 dark:text-rink-300 mb-4">
+                  {MESSAGES.class.salesCycle.pendingGuide}
+                </p>
+
+                {monthlyPkgs !== null && monthlyPkgs.length > 0 && (
+                  <div className="mb-4">
+                    <h3 className="text-card-meta font-bold text-it-ink-600 dark:text-rink-200 mb-2">
+                      {MESSAGES.class.salesCycle.packageSectionTitle}
+                    </h3>
+                    <ul className="space-y-2">
+                      {Array.from(updatedNames).map((name) => (
+                        <li
+                          key={`done-${name}`}
+                          className="flex items-center justify-between rounded-w-md border border-it-line dark:border-rink-700 px-4 py-3"
+                        >
+                          <span className="text-card-body font-semibold text-it-ink-800 dark:text-white truncate">
+                            {name}
+                          </span>
+                          <span className="inline-flex items-center gap-1 text-card-meta font-bold text-emerald-600 dark:text-emerald-400 shrink-0">
+                            <Icon name="check_circle" className="text-base" aria-hidden="true" />
+                            {MESSAGES.class.salesCycle.packageUpToDate}
+                          </span>
+                        </li>
+                      ))}
+                      {needsUpdate.map((pkg) => (
+                        <li
+                          key={pkg.id}
+                          className="rounded-w-md border border-amber-200 dark:border-amber-700/50 px-4 py-3"
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-card-body font-semibold text-it-ink-800 dark:text-white truncate">
+                              {pkg.productName}
+                            </span>
+                            <span className="text-card-meta font-bold text-amber-600 dark:text-amber-400 shrink-0">
+                              {MESSAGES.class.salesCycle.packageNeedsUpdate}
+                            </span>
+                          </div>
+                          <div className="flex gap-2">
+                            <input
+                              type="number"
+                              inputMode="numeric"
+                              min={0}
+                              value={pkgPrices[pkg.id] ?? String(pkg.price)}
+                              onChange={(e) =>
+                                setPkgPrices((prev) => ({ ...prev, [pkg.id]: e.target.value }))
+                              }
+                              aria-label={MESSAGES.class.salesCycle.priceInputAria(pkg.productName, targetMonthLabel)}
+                              className="flex-1 min-w-0 h-11 rounded-w-md bg-it-fill dark:bg-rink-700 border-[1.5px] border-it-line-strong dark:border-rink-600 px-3 text-sm text-it-ink-800 dark:text-white focus:border-it-blue-500"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleCreateMonthPkg(pkg)}
+                              disabled={pkgSubmitting === pkg.id}
+                              className="shrink-0 h-11 px-4 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-meta font-bold disabled:opacity-60 transition-colors motion-reduce:transition-none active:brightness-95"
+                            >
+                              {MESSAGES.class.salesCycle.keepPriceButton}
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleOpenSales}
+                  disabled={openingSales || needsUpdate.length > 0}
+                  title={
+                    needsUpdate.length > 0
+                      ? MESSAGES.class.salesCycle.packageNeedsUpdate
+                      : undefined
+                  }
+                  className="w-full h-12 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-body font-extrabold disabled:bg-it-line disabled:text-it-ink-400 dark:disabled:bg-rink-700 transition-colors motion-reduce:transition-none active:brightness-95"
+                >
+                  {MESSAGES.class.salesCycle.openSalesButton}
+                </button>
+              </>
+            )}
+          </section>
+        )}
+
         {/* 일정 추가 — flat 흰 섹션 */}
         <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 pt-5 pb-5">
           <div className="flex items-center gap-2 mb-3">
@@ -434,13 +710,47 @@ export default function TrainingDetailPage() {
         )}
       </main>
 
-      {/* 하단 Sticky 삭제 액션 */}
-      <div className="sticky bottom-0 left-0 right-0 bg-it-surface dark:bg-rink-900 border-t border-it-line dark:border-rink-700 px-5 py-4">
+      {/* 하단 Sticky 액션 — [수업 종료]/[종료 취소] + 삭제 */}
+      <div className="sticky bottom-0 left-0 right-0 bg-it-surface dark:bg-rink-900 border-t border-it-line dark:border-rink-700 px-5 py-4 flex gap-3">
+        {/* [Lifecycle v4.1] 종료: endedAt 없으면 [수업 종료하기](가드는 서버 — 미충족 시 사유 안내),
+            종료 상태면 [종료 취소하기]. 재개 후엔 '일정 등록 대기'부터 시작. */}
+        {training.endedAt ? (
+          <button
+            type="button"
+            onClick={handleReopenClass}
+            disabled={lifecycleActing}
+            className="flex-1 h-12 rounded-w-md border-[1.5px] border-it-line dark:border-rink-600 text-it-ink-600 dark:text-rink-200 text-card-body font-bold hover:bg-it-canvas dark:hover:bg-rink-800 disabled:opacity-60 transition-colors motion-reduce:transition-none active:brightness-95"
+          >
+            {MESSAGES.class.reopenClassButton}
+          </button>
+        ) : (
+          /* SPEC T4 — 잔여 일정 존재(ON_SALE) 시 비활성 + 사유 캡션 (title/aria).
+             잔여 선불 가드는 서버 판정 → 400 사유 토스트 (이중 구조). */
+          <button
+            type="button"
+            onClick={handleEndClass}
+            disabled={lifecycleActing || training.lifecycleStatus === 'ON_SALE'}
+            title={
+              training.lifecycleStatus === 'ON_SALE'
+                ? MESSAGES.class.endBlockedBySchedule
+                : undefined
+            }
+            aria-disabled={training.lifecycleStatus === 'ON_SALE'}
+            aria-label={
+              training.lifecycleStatus === 'ON_SALE'
+                ? MESSAGES.class.endBlockedBySchedule
+                : MESSAGES.class.endClassButton
+            }
+            className="flex-1 h-12 rounded-w-md border-[1.5px] border-it-line dark:border-rink-600 text-it-ink-600 dark:text-rink-200 text-card-body font-bold hover:bg-it-canvas dark:hover:bg-rink-800 disabled:opacity-60 transition-colors motion-reduce:transition-none active:brightness-95"
+          >
+            {MESSAGES.class.endClassButton}
+          </button>
+        )}
         <button
           type="button"
           onClick={handleDelete}
           disabled={deleting}
-          className="w-full h-12 rounded-w-md border-[1.5px] border-it-red-200 dark:border-it-red-700 text-it-red-500 dark:text-it-red-300 text-card-body font-bold hover:bg-it-red-50 dark:hover:bg-it-red-700/20 disabled:opacity-60 transition-colors motion-reduce:transition-none active:brightness-95"
+          className="flex-1 h-12 rounded-w-md border-[1.5px] border-it-red-200 dark:border-it-red-700 text-it-red-500 dark:text-it-red-300 text-card-body font-bold hover:bg-it-red-50 dark:hover:bg-it-red-700/20 disabled:opacity-60 transition-colors motion-reduce:transition-none active:brightness-95"
         >
           {deleting ? '삭제 중...' : '삭제하기'}
         </button>

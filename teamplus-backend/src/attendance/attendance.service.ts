@@ -8,6 +8,7 @@ import {
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { PrismaService } from "@/prisma/prisma.service";
+import { creditStartedWhere } from "@/common/billing/fee-type.constants";
 import { RedisService } from "@/redis/redis.service";
 import { CreditDomainService } from "@/credits/credit-domain.service";
 import { AttendanceAuditLogService } from "./attendance-audit-log.service";
@@ -313,7 +314,7 @@ export class AttendanceService {
     const isPostpaidClass = await this.isPostpaidClass(classId, targetUserId);
     if (!isPostpaidClass) {
       const allCredits = await this.prisma.memberCredit.findMany({
-        where: { userId: targetUserId, classId, expiresAt: { gte: now } },
+        where: { userId: targetUserId, classId, expiresAt: { gte: now }, ...creditStartedWhere(now) },
         orderBy: { expiresAt: "asc" },
         select: { totalSessions: true, usedSessions: true },
       });
@@ -657,7 +658,7 @@ export class AttendanceService {
         where: {
           userId: memberId,
           classId,
-          expiresAt: { gte: now },
+          expiresAt: { gte: now }, ...creditStartedWhere(now),
         },
         orderBy: { expiresAt: "asc" },
       });
@@ -2080,7 +2081,7 @@ export class AttendanceService {
     const isPostpaidClass = await this.isPostpaidClass(classId, childId);
     if (!isPostpaidClass) {
       const credits = await this.prisma.memberCredit.findMany({
-        where: { userId: childId, classId, expiresAt: { gte: now } },
+        where: { userId: childId, classId, expiresAt: { gte: now }, ...creditStartedWhere(now) },
         orderBy: { expiresAt: "asc" },
       });
       const availableCredit = credits.find(
@@ -2146,7 +2147,7 @@ export class AttendanceService {
 
     // 9) 잔여 회차 조회 (응답용)
     const after = await this.prisma.memberCredit.findMany({
-      where: { userId: childId, classId, expiresAt: { gte: now } },
+      where: { userId: childId, classId, expiresAt: { gte: now }, ...creditStartedWhere(now) },
       select: { totalSessions: true, usedSessions: true },
     });
     const remainingSessions = after.reduce(
@@ -2280,7 +2281,7 @@ export class AttendanceService {
     const isPostpaidClass = await this.isPostpaidClass(classId, studentId);
     if (!isPostpaidClass) {
       const credits = await this.prisma.memberCredit.findMany({
-        where: { userId: studentId, classId, expiresAt: { gte: now } },
+        where: { userId: studentId, classId, expiresAt: { gte: now }, ...creditStartedWhere(now) },
         orderBy: { expiresAt: "asc" },
       });
       const availableCredit = credits.find(
@@ -2346,7 +2347,7 @@ export class AttendanceService {
 
     // 8) 잔여 회차 조회 (응답용)
     const after = await this.prisma.memberCredit.findMany({
-      where: { userId: studentId, classId, expiresAt: { gte: now } },
+      where: { userId: studentId, classId, expiresAt: { gte: now }, ...creditStartedWhere(now) },
       select: { totalSessions: true, usedSessions: true },
     });
     const remainingSessions = after.reduce(
@@ -2510,7 +2511,7 @@ export class AttendanceService {
         // 수업권 잔량 (후불 수업은 게이트 없음 — 사후 정산)
         if (!isPostpaidClass) {
           const credits = await this.prisma.memberCredit.findMany({
-            where: { userId: memberId, classId, expiresAt: { gte: now } },
+            where: { userId: memberId, classId, expiresAt: { gte: now }, ...creditStartedWhere(now) },
             orderBy: { expiresAt: "asc" },
           });
           const avail = credits.find((c) => c.usedSessions < c.totalSessions);
@@ -2960,7 +2961,7 @@ export class AttendanceService {
           where: {
             userId: memberId,
             classId: schedule.class.id,
-            expiresAt: { gte: now },
+            expiresAt: { gte: now }, ...creditStartedWhere(now),
           },
           orderBy: { expiresAt: "asc" },
           select: { id: true, totalSessions: true, usedSessions: true },
