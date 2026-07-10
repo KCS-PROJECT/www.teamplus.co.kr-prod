@@ -500,7 +500,7 @@ ${MESSAGES.class.endConfirmMessage}`)) return;
               <div className="flex items-start gap-3 rounded-w-md bg-amber-50 dark:bg-amber-900/20 px-4 py-3">
                 <Icon name="event_busy" className="text-xl text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" aria-hidden="true" />
                 <p className="text-card-body text-amber-800 dark:text-amber-300">
-                  {MESSAGES.class.salesCycle.pendingNoSchedule}
+                  {MESSAGES.class.salesCycle.pendingNoSchedule('일정 관리')}
                 </p>
               </div>
             ) : (

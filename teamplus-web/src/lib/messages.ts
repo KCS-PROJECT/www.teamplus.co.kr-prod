@@ -25,12 +25,17 @@ export const MESSAGES = {
     reopenSuccess: "수업이 재개되었습니다. 일정 등록 후 판매 시작이 필요합니다.",
     spotCheckboxLabel: "1회용 수업 (단일 일정)",
     spotCheckboxHint: "하루짜리 수업입니다. 일정은 1개만 선택할 수 있고, 일정이 지나면 자동 종료됩니다.",
+    spotSingleScheduleLimit: "1회용 수업은 일정을 1개만 등록할 수 있습니다.",
     endBlockedBySchedule:
       "다가오는 일정이 있어 종료할 수 없습니다. 일정을 모두 마치거나 취소한 후 종료할 수 있습니다.",
     // [Lifecycle v4.1 §9.3] 판매 승인 사이클 — 감독 확인 플로우 · 학부모 CTA
     salesCycle: {
-      pendingNoSchedule:
-        "다가오는 일정이 없어요. 아래에서 다음 달 일정을 먼저 등록해주세요.",
+      // entryLabel: 화면 하단에 실재하는 일정 등록 진입 버튼명 ('일정 관리' | '수업 수정하기')
+      pendingNoSchedule: (entryLabel: string) =>
+        `다가오는 일정이 없어요. 아래 '${entryLabel}'에서 일정을 등록하면 다음 달 판매를 준비할 수 있어요.`,
+      endHint: "이 수업을 더 이상 운영하지 않는다면 종료할 수 있어요.",
+      endedSectionTitle: "종료된 수업",
+      reopenHint: "종료를 취소하면 일정 등록 대기 상태로 되돌아갑니다.",
       pendingTitle: (month: number) => `${month}월 판매 준비`,
       pendingGuide:
         "일정과 월 정기권 금액을 확인한 뒤 판매를 시작할 수 있습니다.",

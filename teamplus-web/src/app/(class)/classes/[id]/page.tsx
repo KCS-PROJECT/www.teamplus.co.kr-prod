@@ -1692,108 +1692,6 @@ export default function ClassDetailPage() {
           </section>
         )}
 
-        {/* [Lifecycle v4.1 §9.3] 감독 관리 — 판매 승인 배너 + 수업 종료/재개.
-            (orphan 이던 training-manage/[id] 선구현 UI 의 실사용 이식) */}
-        {isManager && classData.lifecycleStatus === 'PENDING_SCHEDULE' && !classData.endedAt && (
-          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4" aria-label={MESSAGES.class.salesCycle.pendingBannerAria}>
-            {classData.pendingReason === 'NO_SCHEDULE' || !targetMonthLabel ? (
-              <div className="flex items-start gap-3 rounded-w-md bg-amber-50 dark:bg-amber-900/20 px-3.5 py-3">
-                <Icon name="event_busy" className="text-xl text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" aria-hidden="true" />
-                <p className="text-card-body text-amber-800 dark:text-amber-300">
-                  {MESSAGES.class.salesCycle.pendingNoSchedule}
-                </p>
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center gap-2 mb-1">
-                  <Icon name="storefront" className="text-xl text-it-blue-500" aria-hidden="true" />
-                  <h2 className="text-[15px] font-extrabold text-wtext-1 dark:text-white tracking-tight">
-                    {MESSAGES.class.salesCycle.pendingTitle(targetMonthLabel)}
-                  </h2>
-                </div>
-                <p className="text-card-meta text-wtext-3 dark:text-rink-300 mb-3">
-                  {MESSAGES.class.salesCycle.pendingGuide}
-                </p>
-
-                {monthlyPkgs !== null && monthlyPkgs.length > 0 && (
-                  <div className="mb-3">
-                    <h4 className="text-card-meta font-bold text-wtext-2 dark:text-rink-200 mb-2">
-                      {MESSAGES.class.salesCycle.packageSectionTitle}
-                    </h4>
-                    <ul className="space-y-2">
-                      {Array.from(updatedNames).map((name) => (
-                        <li
-                          key={`done-${name}`}
-                          className="flex items-center justify-between rounded-w-md bg-it-fill dark:bg-rink-800 px-3.5 py-2.5"
-                        >
-                          <span className="text-card-body font-semibold text-wtext-1 dark:text-white truncate">
-                            {name}
-                          </span>
-                          <span className="inline-flex items-center gap-1 text-card-meta font-bold text-emerald-600 dark:text-emerald-400 shrink-0">
-                            <Icon name="check_circle" className="text-base" aria-hidden="true" />
-                            {MESSAGES.class.salesCycle.packageUpToDate}
-                          </span>
-                        </li>
-                      ))}
-                      {needsUpdate.map((pkg) => (
-                        <li
-                          key={pkg.id}
-                          className="rounded-w-md border border-amber-200 dark:border-amber-700/50 px-3.5 py-2.5"
-                        >
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-card-body font-semibold text-wtext-1 dark:text-white truncate">
-                              {pkg.productName}
-                            </span>
-                            <span className="text-card-meta font-bold text-amber-600 dark:text-amber-400 shrink-0">
-                              {MESSAGES.class.salesCycle.packageNeedsUpdate}
-                            </span>
-                          </div>
-                          <div className="flex gap-2">
-                            <input
-                              type="number"
-                              inputMode="numeric"
-                              min={0}
-                              value={pkgPrices[pkg.id] ?? String(pkg.price)}
-                              onChange={(e) =>
-                                setPkgPrices((prev) => ({ ...prev, [pkg.id]: e.target.value }))
-                              }
-                              aria-label={MESSAGES.class.salesCycle.priceInputAria(pkg.productName, targetMonthLabel)}
-                              className="flex-1 min-w-0 h-11 rounded-w-md bg-it-fill dark:bg-rink-700 border-[1.5px] border-it-line-strong dark:border-rink-600 px-3 text-sm text-it-ink-800 dark:text-white focus:border-it-blue-500"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleCreateMonthPkg(pkg)}
-                              disabled={pkgSubmitting === pkg.id}
-                              className="shrink-0 h-11 px-4 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-meta font-bold disabled:opacity-60 transition-colors motion-reduce:transition-none active:brightness-95"
-                            >
-                              {MESSAGES.class.salesCycle.keepPriceButton}
-                            </button>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleOpenSales}
-                  disabled={openingSales || needsUpdate.length > 0}
-                  title={
-                    needsUpdate.length > 0
-                      ? MESSAGES.class.salesCycle.packageNeedsUpdate
-                      : undefined
-                  }
-                  className="w-full h-12 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-body font-extrabold disabled:bg-it-line disabled:text-it-ink-400 dark:disabled:bg-rink-700 transition-colors motion-reduce:transition-none active:brightness-95"
-                >
-                  {MESSAGES.class.salesCycle.openSalesButton}
-                </button>
-              </>
-            )}
-          </section>
-        )}
-
-
         {/* ── 수업 정보 — 소개·기간·시간·장소·대상·일정 통합 (full-bleed 흰 섹션) ── */}
         <section
           className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4"
@@ -2513,34 +2411,149 @@ export default function ClassDetailPage() {
             })()}
           </div>
         )}
-        {/* [Lifecycle v4.1 §8.3·D5] 수업 종료/재개 — 페이지 최하단 (수정하기/일정관리
-            스티키 액션바 바로 위). 빈도 낮은 파괴적 액션이라 관리 퀵액션 옆은 이질적
-            (2026-07-09 사용자 지시로 이동). 판매 중에는 섹션 자체 미노출 — 종료는 일정 등록
-            대기에서만 가능. 종료 취소: 명시 종료(endedAt)만 — spot 자동 종료 제외. */}
-        {isManager &&
-          (classData.endedAt ||
-            classData.lifecycleStatus === 'PENDING_SCHEDULE') && (
-          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4" aria-label="수업 종료 관리">
-            {classData.endedAt ? (
-              <button
-                type="button"
-                onClick={handleReopenClass}
-                disabled={lifecycleActing}
-                className="w-full h-12 rounded-w-md border-[1.5px] border-it-line dark:border-rink-600 text-it-ink-600 dark:text-rink-200 text-card-body font-bold hover:bg-it-canvas dark:hover:bg-rink-800 disabled:opacity-60 transition-colors motion-reduce:transition-none active:brightness-95"
-              >
-                {MESSAGES.class.reopenClassButton}
-              </button>
+        {/* [Lifecycle v4.1 §9.3] 감독 관리 — 판매 승인 배너 + 수업 종료.
+            페이지 최하단(스티키 액션바 위) — 상단 상태칩이 대기 상태를 알리고,
+            일정 등록·판매 시작·종료 등 관리 액션은 하단 관리 영역에 모은다. */}
+        {isManager && classData.lifecycleStatus === 'PENDING_SCHEDULE' && !classData.endedAt && (
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4" aria-label={MESSAGES.class.salesCycle.pendingBannerAria}>
+            {classData.pendingReason === 'NO_SCHEDULE' || !targetMonthLabel ? (
+              /* 일정 없음 — 감독의 결정 지점: 계속 운영(일정 등록) vs 종료.
+                 종료 가드(다가오는 일정 0)가 실제로 통과 가능한 상태도 여기뿐이라
+                 종료 버튼을 이 분기에만 노출한다(판매 승인 대기 중 헛클릭 차단). */
+              <>
+                {/* 등록 CTA 는 두지 않는다 — 바로 아래 스티키 바의 동일 진입점과 중복.
+                    문구가 실재 버튼명을 지목한다 (오픈클래스는 일정 관리 슬롯이 없어 수정 폼). */}
+                <div className="flex items-start gap-3 rounded-w-md bg-amber-50 dark:bg-amber-900/20 px-3.5 py-3">
+                  <Icon name="event_busy" className="text-xl text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" aria-hidden="true" />
+                  <p className="text-card-body text-amber-800 dark:text-amber-300">
+                    {MESSAGES.class.salesCycle.pendingNoSchedule(
+                      isOpenClass ? '수업 수정하기' : '일정 관리',
+                    )}
+                  </p>
+                </div>
+                <div className="mt-4 pt-4 border-t border-it-line dark:border-rink-700">
+                  <p className="text-card-meta text-wtext-3 dark:text-rink-300 mb-2">
+                    {MESSAGES.class.salesCycle.endHint}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleEndClass}
+                    disabled={lifecycleActing}
+                    aria-label={MESSAGES.class.endClassButton}
+                    className="w-full h-12 rounded-w-md border-[1.5px] border-it-line dark:border-rink-600 text-it-ink-600 dark:text-rink-200 text-card-body font-bold hover:bg-it-canvas dark:hover:bg-rink-800 disabled:opacity-60 disabled:cursor-not-allowed transition-colors motion-reduce:transition-none active:brightness-95"
+                  >
+                    {MESSAGES.class.endClassButton}
+                  </button>
+                </div>
+              </>
             ) : (
-              <button
-                type="button"
-                onClick={handleEndClass}
-                disabled={lifecycleActing}
-                aria-label={MESSAGES.class.endClassButton}
-                className="w-full h-12 rounded-w-md border-[1.5px] border-it-line dark:border-rink-600 text-it-ink-600 dark:text-rink-200 text-card-body font-bold hover:bg-it-canvas dark:hover:bg-rink-800 disabled:opacity-60 disabled:cursor-not-allowed transition-colors motion-reduce:transition-none active:brightness-95"
-              >
-                {MESSAGES.class.endClassButton}
-              </button>
+              <>
+                <div className="flex items-center gap-2 mb-1">
+                  <Icon name="storefront" className="text-xl text-it-blue-500" aria-hidden="true" />
+                  <h2 className="text-[15px] font-extrabold text-wtext-1 dark:text-white tracking-tight">
+                    {MESSAGES.class.salesCycle.pendingTitle(targetMonthLabel)}
+                  </h2>
+                </div>
+                <p className="text-card-meta text-wtext-3 dark:text-rink-300 mb-3">
+                  {MESSAGES.class.salesCycle.pendingGuide}
+                </p>
+
+                {monthlyPkgs !== null && monthlyPkgs.length > 0 && (
+                  <div className="mb-3">
+                    <h4 className="text-card-meta font-bold text-wtext-2 dark:text-rink-200 mb-2">
+                      {MESSAGES.class.salesCycle.packageSectionTitle}
+                    </h4>
+                    <ul className="space-y-2">
+                      {Array.from(updatedNames).map((name) => (
+                        <li
+                          key={`done-${name}`}
+                          className="flex items-center justify-between rounded-w-md bg-it-fill dark:bg-rink-800 px-3.5 py-2.5"
+                        >
+                          <span className="text-card-body font-semibold text-wtext-1 dark:text-white truncate">
+                            {name}
+                          </span>
+                          <span className="inline-flex items-center gap-1 text-card-meta font-bold text-emerald-600 dark:text-emerald-400 shrink-0">
+                            <Icon name="check_circle" className="text-base" aria-hidden="true" />
+                            {MESSAGES.class.salesCycle.packageUpToDate}
+                          </span>
+                        </li>
+                      ))}
+                      {needsUpdate.map((pkg) => (
+                        <li
+                          key={pkg.id}
+                          className="rounded-w-md border border-amber-200 dark:border-amber-700/50 px-3.5 py-2.5"
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-card-body font-semibold text-wtext-1 dark:text-white truncate">
+                              {pkg.productName}
+                            </span>
+                            <span className="text-card-meta font-bold text-amber-600 dark:text-amber-400 shrink-0">
+                              {MESSAGES.class.salesCycle.packageNeedsUpdate}
+                            </span>
+                          </div>
+                          <div className="flex gap-2">
+                            <input
+                              type="number"
+                              inputMode="numeric"
+                              min={0}
+                              value={pkgPrices[pkg.id] ?? String(pkg.price)}
+                              onChange={(e) =>
+                                setPkgPrices((prev) => ({ ...prev, [pkg.id]: e.target.value }))
+                              }
+                              aria-label={MESSAGES.class.salesCycle.priceInputAria(pkg.productName, targetMonthLabel)}
+                              className="flex-1 min-w-0 h-11 rounded-w-md bg-it-fill dark:bg-rink-700 border-[1.5px] border-it-line-strong dark:border-rink-600 px-3 text-sm text-it-ink-800 dark:text-white focus:border-it-blue-500"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleCreateMonthPkg(pkg)}
+                              disabled={pkgSubmitting === pkg.id}
+                              className="shrink-0 h-11 px-4 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-meta font-bold disabled:opacity-60 transition-colors motion-reduce:transition-none active:brightness-95"
+                            >
+                              {MESSAGES.class.salesCycle.keepPriceButton}
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleOpenSales}
+                  disabled={openingSales || needsUpdate.length > 0}
+                  title={
+                    needsUpdate.length > 0
+                      ? MESSAGES.class.salesCycle.packageNeedsUpdate
+                      : undefined
+                  }
+                  className="w-full h-12 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-body font-extrabold disabled:bg-it-line disabled:text-it-ink-400 dark:disabled:bg-rink-700 transition-colors motion-reduce:transition-none active:brightness-95"
+                >
+                  {MESSAGES.class.salesCycle.openSalesButton}
+                </button>
+              </>
             )}
+          </section>
+        )}
+        {/* [Lifecycle v4.1 §8.3·D5] 종료 취소 — 명시 종료(endedAt)된 수업 전용 섹션.
+            수업 종료하기 버튼은 판매 준비 배너의 '일정 없음' 분기로 통합(같은 결정 지점).
+            종료 취소: 명시 종료(endedAt)만 — spot 자동 종료 제외. */}
+        {isManager && classData.endedAt && (
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4" aria-label="수업 종료 관리">
+            <h2 className="text-[15px] font-extrabold text-wtext-1 dark:text-white tracking-tight">
+              {MESSAGES.class.salesCycle.endedSectionTitle}
+            </h2>
+            <p className="text-card-meta text-wtext-3 dark:text-rink-300 mt-1 mb-3">
+              {MESSAGES.class.salesCycle.reopenHint}
+            </p>
+            <button
+              type="button"
+              onClick={handleReopenClass}
+              disabled={lifecycleActing}
+              className="w-full h-12 rounded-w-md border-[1.5px] border-it-line dark:border-rink-600 text-it-ink-600 dark:text-rink-200 text-card-body font-bold hover:bg-it-canvas dark:hover:bg-rink-800 disabled:opacity-60 transition-colors motion-reduce:transition-none active:brightness-95"
+            >
+              {MESSAGES.class.reopenClassButton}
+            </button>
           </section>
         )}
       </main>
