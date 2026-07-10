@@ -22,30 +22,35 @@ describe("ClassesService", () => {
   const mockClassId = "class-789";
   const mockScheduleId = "schedule-101";
 
-  const mockCoachProfile = {
-    id: "coach-profile-1",
-    userId: mockCoachUserId,
-    teamId: mockClubId,
-  };
-
   const mockClub = {
     id: mockClubId,
     teamCode: "ACE-hockey",
     name: "서울 아이스 클럽",
+    coachId: mockCoachUserId,
   };
 
   const mockClass = {
     id: mockClassId,
     teamId: mockClubId,
+    academyId: null,
     className: "신규 수강생반",
     description: "초보자용 수업",
     instructorName: "김철수",
     capacity: 15,
     ageMin: 4,
     ageMax: 7,
+    targetBirthYears: [],
     levelRequired: "beginner",
     startTime: new Date("2026-01-04T16:00:00Z"),
     endTime: new Date("2026-01-04T17:00:00Z"),
+    trainingType: "regular",
+    billingMode: "BOTH",
+    category: null,
+    classDays: [],
+    coachId: null,
+    approvalStatus: "APPROVED",
+    endedAt: null,
+    salesOpenMonth: null,
     isActive: true,
     createdAt: new Date("2026-01-04T10:00:00Z"),
   };
@@ -81,7 +86,57 @@ describe("ClassesService", () => {
     }),
   };
 
+  // 팀 매니저 권한 가드 — 성공 경로 기본값(resolve)은 beforeEach 에서 세팅,
+  //   거부 케이스는 각 테스트에서 mockRejectedValueOnce 로 1회 한정 오버라이드.
+  const mockTeamsService = {
+    assertTeamManagerPermission: jest.fn(),
+  };
+
+  const mockNotificationsService = {
+    notifyTeamParents: jest.fn(),
+  };
+
+  // $transaction 콜백에 주입되는 tx — 교차 오염 방지를 위해 매 테스트 새로 생성.
+  let mockTx: {
+    class: { create: jest.Mock; update: jest.Mock };
+    classDaySchedule: { deleteMany: jest.Mock; createMany: jest.Mock };
+    classSchedule: {
+      create: jest.Mock;
+      createMany: jest.Mock;
+      findFirst: jest.Mock;
+      deleteMany: jest.Mock;
+      update: jest.Mock;
+    };
+    classProduct: { createMany: jest.Mock };
+    classCoachAssignment: { createMany: jest.Mock };
+    classAttendance: { findMany: jest.Mock; updateMany: jest.Mock };
+    classRsvp: { createMany: jest.Mock };
+  };
+
   beforeEach(async () => {
+    mockTx = {
+      class: { create: jest.fn(), update: jest.fn() },
+      classDaySchedule: { deleteMany: jest.fn(), createMany: jest.fn() },
+      classSchedule: {
+        create: jest.fn(),
+        createMany: jest.fn(),
+        findFirst: jest.fn().mockResolvedValue(null),
+        deleteMany: jest.fn(),
+        update: jest.fn(),
+      },
+      classProduct: { createMany: jest.fn() },
+      classCoachAssignment: { createMany: jest.fn() },
+      classAttendance: {
+        findMany: jest.fn().mockResolvedValue([]),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      classRsvp: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    };
+
+    mockTeamsService.assertTeamManagerPermission
+      .mockReset()
+      .mockResolvedValue(undefined);
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ClassesService,
@@ -92,6 +147,9 @@ describe("ClassesService", () => {
               findFirst: jest.fn(),
             },
             team: {
+              findUnique: jest.fn(),
+            },
+            user: {
               findUnique: jest.fn(),
             },
             class: {
@@ -107,9 +165,11 @@ describe("ClassesService", () => {
               findMany: jest.fn(),
               update: jest.fn(),
               createMany: jest.fn(),
+              count: jest.fn(),
             },
             classAttendance: {
               updateMany: jest.fn(),
+              count: jest.fn(),
             },
             academy: {
               findUnique: jest.fn(),
@@ -119,12 +179,32 @@ describe("ClassesService", () => {
             },
             enrollment: {
               findMany: jest.fn(),
+              count: jest.fn(),
+            },
+            memberCredit: {
+              count: jest.fn(),
+            },
+            monthlyPostpaidBillingLine: {
+              count: jest.fn(),
+            },
+            classCoachAssignment: {
+              findMany: jest.fn(),
+              createMany: jest.fn(),
+              updateMany: jest.fn(),
+            },
+            notification: {
+              createMany: jest.fn(),
             },
             classRsvp: {
               findMany: jest.fn(),
               createMany: jest.fn(),
             },
-            $transaction: jest.fn(),
+            // 콜백 형태만 본 스위트에서 사용 — tx 로 mockTx 주입. 배열 형태는 방어적 처리.
+            $transaction: jest.fn((arg: unknown) =>
+              typeof arg === "function"
+                ? (arg as (tx: typeof mockTx) => unknown)(mockTx)
+                : Promise.all(arg as Promise<unknown>[]),
+            ),
           },
         },
         {
@@ -135,11 +215,11 @@ describe("ClassesService", () => {
           provide: ConfigService,
           useValue: mockConfigService,
         },
-        // 생성자 의존성(구성 전용) — 본 스위트 테스트 경로에서 호출되지 않아 빈 mock 으로 충분.
-        { provide: TeamsService, useValue: {} },
-        { provide: CreditDomainService, useValue: {} },
-        { provide: AttendanceAuditLogService, useValue: {} },
-        { provide: NotificationsService, useValue: {} },
+        { provide: TeamsService, useValue: mockTeamsService },
+        // 성공 경로에서 호출되지 않는 협력 서비스 — 시그니처만 유지.
+        { provide: CreditDomainService, useValue: { bulkRestoreOne: jest.fn() } },
+        { provide: AttendanceAuditLogService, useValue: { record: jest.fn() } },
+        { provide: NotificationsService, useValue: mockNotificationsService },
       ],
     }).compile();
 
@@ -166,14 +246,9 @@ describe("ClassesService", () => {
       };
 
       jest
-        .spyOn(prismaService.coachProfile, "findFirst")
-        .mockResolvedValue(mockCoachProfile as any);
-      jest
         .spyOn(prismaService.team, "findUnique")
         .mockResolvedValue(mockClub as any);
-      jest
-        .spyOn(prismaService.class, "create")
-        .mockResolvedValue(mockClass as any);
+      mockTx.class.create.mockResolvedValue(mockClass as any);
 
       const result = await service.createClass(
         mockCoachUserId,
@@ -185,9 +260,12 @@ describe("ClassesService", () => {
       expect(result.instructorName).toBe("김철수");
       expect(result.isActive).toBe(true);
 
-      expect(prismaService.coachProfile.findFirst).toHaveBeenCalledWith({
-        where: { userId: mockCoachUserId, teamId: mockClubId },
-      });
+      expect(mockTeamsService.assertTeamManagerPermission).toHaveBeenCalledWith(
+        mockCoachUserId,
+        mockClubId,
+        expect.any(String),
+      );
+      expect(mockTx.class.create).toHaveBeenCalledTimes(1);
     });
 
     it("should throw ForbiddenException if user is not coach of club", async () => {
@@ -199,9 +277,9 @@ describe("ClassesService", () => {
         endTime: new Date("2026-01-04T17:00:00Z"),
       };
 
-      jest
-        .spyOn(prismaService.coachProfile, "findFirst")
-        .mockResolvedValue(null);
+      mockTeamsService.assertTeamManagerPermission.mockRejectedValueOnce(
+        new ForbiddenException("이 클럽의 감독/코치만 수업을 생성할 수 있습니다."),
+      );
 
       await expect(
         service.createClass(mockCoachUserId, mockClubId, createDto),
@@ -217,9 +295,6 @@ describe("ClassesService", () => {
         endTime: new Date("2026-01-04T17:00:00Z"),
       };
 
-      jest
-        .spyOn(prismaService.coachProfile, "findFirst")
-        .mockResolvedValue(mockCoachProfile as any);
       jest.spyOn(prismaService.team, "findUnique").mockResolvedValue(null);
 
       await expect(
@@ -237,15 +312,33 @@ describe("ClassesService", () => {
       };
 
       jest
-        .spyOn(prismaService.coachProfile, "findFirst")
-        .mockResolvedValue(mockCoachProfile as any);
-      jest
         .spyOn(prismaService.team, "findUnique")
         .mockResolvedValue(mockClub as any);
 
       await expect(
         service.createClass(mockCoachUserId, mockClubId, createDto),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    // [Lifecycle v4.1 §7.1] spot(1회용) 단일 일정 서버 가드
+    it("spot(1회용) 수업에 일정을 2개 이상 담으면 BadRequestException", async () => {
+      const createDto = {
+        className: "1회 특강",
+        trainingType: "spot",
+        dateSchedules: [
+          { date: "2099-01-05", startTime: "10:00", endTime: "11:00" },
+          { date: "2099-01-06", startTime: "10:00", endTime: "11:00" },
+        ],
+      };
+
+      jest
+        .spyOn(prismaService.team, "findUnique")
+        .mockResolvedValue(mockClub as any);
+
+      await expect(
+        service.createClass(mockCoachUserId, mockClubId, createDto as any),
+      ).rejects.toThrow("1회용 수업은 일정을 1개만 등록할 수 있습니다.");
+      expect(mockTx.class.create).not.toHaveBeenCalled();
     });
   });
 
@@ -256,22 +349,38 @@ describe("ClassesService", () => {
         team: {
           id: mockClubId,
           name: "서울 아이스 클럽",
-          coachName: "감독",
+          logoUrl: null,
+          coach: { firstName: "독", lastName: "감", avatarUrl: null },
         },
+        academy: null,
+        coach: null,
+        venue: null,
         schedules: [],
         products: [],
+        registrations: [],
+        waitlists: [],
+        coachAssignments: [],
+        teamVisibilities: [],
+        dayScheduleEntries: [],
       };
 
       jest
         .spyOn(prismaService.class, "findUnique")
         .mockResolvedValue(classWithRelations as any);
+      // deletable 판정(countClassBlockingRefs 4종) + 결제이력 카운트 — 참조 0 = 삭제 가능.
+      jest.spyOn(prismaService.enrollment, "count").mockResolvedValue(0);
+      jest.spyOn(prismaService.memberCredit, "count").mockResolvedValue(0);
+      jest
+        .spyOn(prismaService.monthlyPostpaidBillingLine, "count")
+        .mockResolvedValue(0);
+      jest.spyOn(prismaService.classAttendance, "count").mockResolvedValue(0);
 
       const result = await service.getClass(mockClassId);
 
       expect(result.className).toBe("신규 수강생반");
-      // 2026-05-14: getClass() 반환 타입에 team 필드가 정의되지 않아 TS2339.
-      //   기존 결함 — 본 PR 범위 외이나 spec 컴파일 통과를 위해 캐스팅. 별도 PR 필요.
-      expect((result as any).team).toBeDefined();
+      expect(result.club).toEqual({ id: mockClubId, name: "서울 아이스 클럽" });
+      expect(result.trainingType).toBe("regular");
+      expect(result.deletable).toBe(true);
     });
 
     it("should throw NotFoundException if class does not exist", async () => {
@@ -372,12 +481,9 @@ describe("ClassesService", () => {
       };
 
       jest
-        .spyOn(prismaService.coachProfile, "findFirst")
-        .mockResolvedValue(mockCoachProfile as any);
-      jest
         .spyOn(prismaService.class, "findUnique")
         .mockResolvedValue(mockClass as any);
-      jest.spyOn(prismaService.class, "update").mockResolvedValue({
+      mockTx.class.update.mockResolvedValue({
         ...mockClass,
         className: "중급반",
         capacity: 20,
@@ -392,14 +498,19 @@ describe("ClassesService", () => {
       );
 
       expect(result.className).toBe("중급반");
+      expect(mockTeamsService.assertTeamManagerPermission).toHaveBeenCalledWith(
+        mockCoachUserId,
+        mockClubId,
+        expect.any(String),
+      );
     });
 
     it("should throw ForbiddenException if user is not coach", async () => {
       const updateDto = { className: "중급반" };
 
-      jest
-        .spyOn(prismaService.coachProfile, "findFirst")
-        .mockResolvedValue(null);
+      mockTeamsService.assertTeamManagerPermission.mockRejectedValueOnce(
+        new ForbiddenException("이 클럽의 감독/코치만 수업을 수정할 수 있습니다."),
+      );
 
       await expect(
         service.updateClass(
@@ -414,9 +525,6 @@ describe("ClassesService", () => {
     it("should throw NotFoundException if class does not exist", async () => {
       const updateDto = { className: "중급반" };
 
-      jest
-        .spyOn(prismaService.coachProfile, "findFirst")
-        .mockResolvedValue(mockCoachProfile as any);
       jest.spyOn(prismaService.class, "findUnique").mockResolvedValue(null);
 
       await expect(
@@ -436,9 +544,6 @@ describe("ClassesService", () => {
       };
 
       jest
-        .spyOn(prismaService.coachProfile, "findFirst")
-        .mockResolvedValue(mockCoachProfile as any);
-      jest
         .spyOn(prismaService.class, "findUnique")
         .mockResolvedValue(mockClass as any);
 
@@ -451,16 +556,44 @@ describe("ClassesService", () => {
         ),
       ).rejects.toThrow(BadRequestException);
     });
+
+    // [Lifecycle v4.1 §7.1] spot(1회용) 단일 일정 서버 가드 — 기존 저장값 기준 판정.
+    it("spot(1회용) 수업 수정에 일정을 2개 이상 담으면 BadRequestException", async () => {
+      const updateDto = {
+        dateSchedules: [
+          { date: "2099-01-05", startTime: "10:00", endTime: "11:00" },
+          { date: "2099-01-06", startTime: "10:00", endTime: "11:00" },
+        ],
+      };
+
+      jest
+        .spyOn(prismaService.class, "findUnique")
+        .mockResolvedValue({ ...mockClass, trainingType: "spot" } as any);
+
+      await expect(
+        service.updateClass(
+          mockCoachUserId,
+          mockClubId,
+          mockClassId,
+          updateDto as any,
+        ),
+      ).rejects.toThrow("1회용 수업은 일정을 1개만 등록할 수 있습니다.");
+      expect(mockTx.class.update).not.toHaveBeenCalled();
+    });
   });
 
   describe("deleteClass", () => {
     it("should successfully delete class", async () => {
       jest
-        .spyOn(prismaService.coachProfile, "findFirst")
-        .mockResolvedValue(mockCoachProfile as any);
-      jest
         .spyOn(prismaService.class, "findUnique")
         .mockResolvedValue(mockClass as any);
+      // 삭제 가드(countClassBlockingRefs) — 참조 0 = 삭제 허용.
+      jest.spyOn(prismaService.enrollment, "count").mockResolvedValue(0);
+      jest.spyOn(prismaService.memberCredit, "count").mockResolvedValue(0);
+      jest
+        .spyOn(prismaService.monthlyPostpaidBillingLine, "count")
+        .mockResolvedValue(0);
+      jest.spyOn(prismaService.classAttendance, "count").mockResolvedValue(0);
       jest
         .spyOn(prismaService.class, "delete")
         .mockResolvedValue(mockClass as any);
@@ -472,12 +605,15 @@ describe("ClassesService", () => {
       );
 
       expect(result.id).toBe(mockClassId);
+      expect(prismaService.class.delete).toHaveBeenCalledWith({
+        where: { id: mockClassId },
+      });
     });
 
     it("should throw ForbiddenException if user is not coach", async () => {
-      jest
-        .spyOn(prismaService.coachProfile, "findFirst")
-        .mockResolvedValue(null);
+      mockTeamsService.assertTeamManagerPermission.mockRejectedValueOnce(
+        new ForbiddenException("이 클럽의 감독/코치만 수업을 삭제할 수 있습니다."),
+      );
 
       await expect(
         service.deleteClass(mockCoachUserId, mockClubId, mockClassId),
@@ -485,14 +621,34 @@ describe("ClassesService", () => {
     });
 
     it("should throw NotFoundException if class does not exist", async () => {
-      jest
-        .spyOn(prismaService.coachProfile, "findFirst")
-        .mockResolvedValue(mockCoachProfile as any);
       jest.spyOn(prismaService.class, "findUnique").mockResolvedValue(null);
 
       await expect(
         service.deleteClass(mockCoachUserId, mockClubId, mockClassId),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe("createBulkClassSchedules (팀 수업 일정 일괄 생성)", () => {
+    // [Lifecycle v4.1 §7.1] spot(1회용) — 기존 활성 일정 + 신규 합계 1개 초과 차단.
+    it("spot(1회용) 수업에 활성 일정이 이미 있으면 추가 생성 시 BadRequestException", async () => {
+      jest.spyOn(prismaService.class, "findUnique").mockResolvedValue({
+        ...mockClass,
+        trainingType: "spot",
+        dayScheduleEntries: [],
+      } as any);
+      // candidate 날짜 범위 내 중복 없음 → toCreate 1건.
+      jest
+        .spyOn(prismaService.classSchedule, "findMany")
+        .mockResolvedValue([] as any);
+      // 전체 활성 일정 1건 존재 → 1 + 1 > 1 차단.
+      jest.spyOn(prismaService.classSchedule, "count").mockResolvedValue(1);
+
+      await expect(
+        service.createBulkClassSchedules(mockCoachUserId, mockClubId, mockClassId, {
+          dates: ["2099-01-05"],
+        }),
+      ).rejects.toThrow("1회용 수업은 일정을 1개만 등록할 수 있습니다.");
     });
   });
 
@@ -511,7 +667,8 @@ describe("ClassesService", () => {
       startTime: new Date("2026-05-15T18:00:00Z"),
     };
 
-    it("기간·요일·시간 기반 일괄 생성 — 결제 학생 RSVP 자동 생성", async () => {
+    // RSVP 자동 생성은 비활성 상태(RSVP_DISABLED_2026-05-28) — 재활성화 시 이 테스트를 갱신할 것.
+    it("기간·요일·시간 기반 일괄 생성 — RSVP 자동 생성은 호출되지 않는다", async () => {
       jest
         .spyOn(prismaService.academy, "findUnique")
         .mockResolvedValue(mockAcademy as any);
@@ -521,11 +678,6 @@ describe("ClassesService", () => {
       jest
         .spyOn(prismaService.classSchedule, "findMany")
         .mockResolvedValue([] as any);
-      jest
-        .spyOn(prismaService.enrollment, "findMany")
-        .mockResolvedValue([
-          { childId: "child-1", requestedBy: "parent-1" },
-        ] as any);
 
       // $transaction mock — 콜백 호출 시 tx 객체 주입
       const txClassScheduleCreate = jest.fn().mockImplementation((args) =>
@@ -561,7 +713,7 @@ describe("ClassesService", () => {
       expect(result.created).toBe(2);
       expect(result.skipped).toBe(0);
       expect(txClassScheduleCreate).toHaveBeenCalledTimes(2);
-      expect(txRsvpCreateMany).toHaveBeenCalledTimes(1); // schedules x enrollments = 2 rows
+      expect(txRsvpCreateMany).not.toHaveBeenCalled();
     });
 
     it("기간 내 요일 매칭 0건이면 created=0", async () => {
@@ -619,17 +771,14 @@ describe("ClassesService", () => {
         ...mockSchedule,
         class: mockClass,
       } as any);
-      jest
-        .spyOn(prismaService.coachProfile, "findFirst")
-        .mockResolvedValue(mockCoachProfile as any);
-      jest.spyOn(prismaService.classSchedule, "update").mockResolvedValue({
+      mockTx.classSchedule.update.mockResolvedValue({
         ...mockSchedule,
         isCancelled: true,
         cancellationReason: "강사 부재",
       } as any);
-      jest
-        .spyOn(prismaService.classAttendance, "updateMany")
-        .mockResolvedValue({ count: 5 } as any);
+      // 크레딧 차감 출석 없음 → 복원 경로 미진입.
+      mockTx.classAttendance.findMany.mockResolvedValue([] as any);
+      mockTx.classAttendance.updateMany.mockResolvedValue({ count: 5 } as any);
 
       const result = await service.cancelClassSchedule(
         mockCoachUserId,
@@ -639,6 +788,11 @@ describe("ClassesService", () => {
 
       expect(result.isCancelled).toBe(true);
       expect(result.cancellationReason).toBe("강사 부재");
+      expect(mockTeamsService.assertTeamManagerPermission).toHaveBeenCalledWith(
+        mockCoachUserId,
+        mockClubId,
+        expect.any(String),
+      );
     });
 
     it("should throw NotFoundException if schedule does not exist", async () => {
@@ -656,9 +810,9 @@ describe("ClassesService", () => {
         ...mockSchedule,
         class: mockClass,
       } as any);
-      jest
-        .spyOn(prismaService.coachProfile, "findFirst")
-        .mockResolvedValue(null);
+      mockTeamsService.assertTeamManagerPermission.mockRejectedValueOnce(
+        new ForbiddenException("이 일정을 취소할 권한이 없습니다."),
+      );
 
       await expect(
         service.cancelClassSchedule(mockCoachUserId, mockScheduleId),
@@ -697,6 +851,12 @@ describe("ClassesService", () => {
               id: true,
               memberId: true,
               attendanceStatus: true,
+            },
+          },
+          venue: {
+            select: {
+              id: true,
+              name: true,
             },
           },
         },
