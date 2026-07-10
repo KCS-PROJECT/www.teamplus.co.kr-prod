@@ -37,13 +37,13 @@ describe("transaction-log.util", () => {
     });
     it("401 예외 → FAIL + errorCode HTTP_401 + 메시지 추출", () => {
       const err = {
-        response: { statusCode: 401, message: "이메일 또는 비밀번호가 일치하지 않습니다." },
+        response: { statusCode: 401, message: "아이디 또는 비밀번호가 일치하지 않습니다." },
         getStatus: () => 401,
       };
       const r = decideResult(401, err, undefined);
       expect(r.result).toBe("FAIL");
       expect(r.errorCode).toBe("HTTP_401");
-      expect(r.errorMessage).toBe("이메일 또는 비밀번호가 일치하지 않습니다.");
+      expect(r.errorMessage).toBe("아이디 또는 비밀번호가 일치하지 않습니다.");
     });
     it("5xx 예외 → ERROR", () => {
       expect(decideResult(500, new Error("boom"), undefined).result).toBe(
