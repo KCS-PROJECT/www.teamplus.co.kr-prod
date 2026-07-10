@@ -42,6 +42,8 @@ import {
   registerTournament,
   cancelTournamentRegistration,
   canCancelTournamentRegistration,
+  buildTournamentChildOptions,
+  isTournamentChildApplicable,
   type TournamentDetail,
 } from '@/services/tournament.service';
 
@@ -142,65 +144,11 @@ function TournamentApplyContent() {
           ? cRes.data
           : ((cRes.data as { children?: Array<{ id: string; firstName?: string; lastName?: string; birthDate?: string | null }> }).children ?? [])
         : [];
-      const participantIds = Array.isArray(tRes.data?.selectedParticipantIds)
-        ? (tRes.data?.selectedParticipantIds as unknown as string[])
-        : [];
-      // [2026-06-15] 이미 결제 완료(PAID)한 선수 — 선택 비활성화.
-      const paidIds = Array.isArray(tRes.data?.paidParticipantIds)
-        ? tRes.data.paidParticipantIds
-        : [];
-      // [2026-06-17] 내 자녀별 등록 상태(미결제 신청 포함) — 자녀별 결제내역과 동일하게 표시.
-      const myRegs = Array.isArray(tRes.data?.myRegistrations)
-        ? tRes.data.myRegistrations
-        : [];
-      const regByParticipant = new Map(
-        myRegs.map((r) => [r.participantId, r]),
-      );
-      // [2026-06-15] 대회 대상 출생연도 자격 — 미달 선수는 선택 비활성화.
-      //   감독이 명시 선택(selectedParticipantIds)한 선수는 자격 무관 허용.
-      // [2026-06-16] 개별 연도 집합(eligibleBirthYears) 우선 — 정확 매칭(birthYear ∈ 배열).
-      //   배열 없으면 기존 from/to 범위 폴백. 개별연도 대회에서 사이 연도 오허용 방지.
-      const eligYears = Array.isArray(tRes.data?.eligibleBirthYears)
-        ? tRes.data.eligibleBirthYears
-        : null;
-      const eligFrom = tRes.data?.eligibleBirthYearFrom ?? null;
-      const eligTo = tRes.data?.eligibleBirthYearTo ?? null;
-      const isChildEligible = (c: { id: string; birthDate?: string | null }) => {
-        if (participantIds.includes(c.id)) return true; // 감독 명시 선택
-        const by = c.birthDate ? new Date(c.birthDate).getFullYear() : null;
-        if (by == null) return true; // 출생연도 불명 → 막지 않음(회귀 방지)
-        if (eligYears && eligYears.length > 0) return eligYears.includes(by);
-        if (eligFrom != null && by < eligFrom) return false;
-        if (eligTo != null && by > eligTo) return false;
-        return true;
-      };
-      const filtered: ChildOption[] = childrenList
-        .map((c) => {
-          const reg = regByParticipant.get(c.id);
-          return {
-            id: c.id,
-            name: `${c.lastName ?? ''}${c.firstName ?? ''}`.trim() || '자녀',
-            birthDate: c.birthDate ?? null,
-            isPaid: paidIds.includes(c.id),
-            // 결제완료(PAID)는 isPaid 로 별도 처리 → isRegistered 는 후불(POSTPAID) 미결제 신청만.
-            //   선불의 결제 중단(PENDING)은 신청완료로 보지 않음(다시 결제 진행 가능해야 함).
-            isRegistered:
-              !!reg &&
-              reg.paymentStatus !== 'PAID' &&
-              tRes.data?.billingMode === 'POSTPAID',
-            paymentStatus: reg?.paymentStatus,
-            amount: reg?.amount ?? 0,
-            orderNumber: reg?.orderNumber ?? null,
-            registrationId: reg?.registrationId,
-            isEligible: isChildEligible(c),
-          };
-        })
-        .filter((c) => participantIds.length === 0 || participantIds.includes(c.id));
+      // 자녀별 신청 가능 판정 — 상세 CTA 와 공유하는 공용 규칙(tournament.service).
+      const filtered = buildTournamentChildOptions(tRes.data, childrenList);
       setChildOptions(filtered);
       // 기본 선택은 신청 가능한(미신청 + 미결제 + 자격 충족) 첫 선수로.
-      const firstSelectable = filtered.find(
-        (c) => !c.isPaid && !c.isRegistered && c.isEligible,
-      );
+      const firstSelectable = filtered.find(isTournamentChildApplicable);
       if (firstSelectable) setSelectedChildId(firstSelectable.id);
     } finally {
       setIsLoading(false);

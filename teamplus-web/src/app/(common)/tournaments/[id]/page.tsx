@@ -41,6 +41,8 @@ import {
   listTournamentRegistrations,
   mapTournamentUiStatus,
   canCancelTournamentRegistration,
+  buildTournamentChildOptions,
+  isTournamentChildApplicable,
   type MatchSummary,
   type TournamentDetail,
   type TournamentRegistrationRow,
@@ -130,6 +132,31 @@ export default function CommonTournamentDetailPage() {
   const [participantNames, setParticipantNames] = useState<string[]>([]);
   const [playersSheetOpen, setPlayersSheetOpen] = useState(false);
 
+  // 내 자녀 목록 — 학부모 시점 1회 조회 후 결제내역 이름 매핑·참가대상 이름·신청 가능 판정이 공유.
+  //   (기존: 결제내역/참가대상이 각자 /children 을 중복 호출 → 단일 state 로 통합)
+  const [myChildren, setMyChildren] = useState<Array<{
+    id: string;
+    firstName?: string;
+    lastName?: string;
+    birthDate?: string | null;
+  }> | null>(null);
+
+  useEffect(() => {
+    if (isManager || !user?.id) return;
+    void (async () => {
+      const cRes = await api.get<
+        | { children: Array<{ id: string; firstName?: string; lastName?: string; birthDate?: string | null }> }
+        | Array<{ id: string; firstName?: string; lastName?: string; birthDate?: string | null }>
+      >("/children");
+      const list = cRes.success && cRes.data
+        ? Array.isArray(cRes.data)
+          ? cRes.data
+          : (cRes.data.children ?? [])
+        : [];
+      setMyChildren(list);
+    })();
+  }, [isManager, user?.id]);
+
   const loadMyRegistrations = useCallback(async () => {
     if (isManager || !tournament) {
       setMyRegRows([]);
@@ -140,15 +167,8 @@ export default function CommonTournamentDetailPage() {
       setMyRegRows([]);
       return;
     }
-    const cRes = await api.get<
-      | { children: Array<{ id: string; firstName?: string; lastName?: string }> }
-      | Array<{ id: string; firstName?: string; lastName?: string }>
-    >("/children");
-    const childrenList = cRes.success && cRes.data
-      ? Array.isArray(cRes.data)
-        ? cRes.data
-        : (cRes.data.children ?? [])
-      : [];
+    if (myChildren === null) return; // 자녀 목록 로딩 전 — 이름 미상("본인") 플래시 방지
+    const childrenList = myChildren;
     const nameMap = new Map(
       childrenList.map((c) => [
         c.id,
@@ -165,7 +185,7 @@ export default function CommonTournamentDetailPage() {
         orderNumber: r.orderNumber,
       })),
     );
-  }, [isManager, tournament]);
+  }, [isManager, tournament, myChildren]);
 
   useEffect(() => {
     void loadMyRegistrations();
@@ -232,16 +252,8 @@ export default function CommonTournamentDetailPage() {
     }
 
     // 학부모/학생: 본인 자녀 중 대상 자녀 이름만(타 자녀 노출 금지).
-    const cRes = await api.get<
-      | { children: Array<{ id: string; firstName?: string; lastName?: string }> }
-      | Array<{ id: string; firstName?: string; lastName?: string }>
-    >("/children");
-    const childrenList = cRes.success && cRes.data
-      ? Array.isArray(cRes.data)
-        ? cRes.data
-        : (cRes.data.children ?? [])
-      : [];
-    const names = childrenList
+    if (myChildren === null) return; // 자녀 목록 로딩 전
+    const names = myChildren
       .filter((c) => idSet.has(c.id))
       .map(
         (c) =>
@@ -249,11 +261,28 @@ export default function CommonTournamentDetailPage() {
           MESSAGES.tournament.participantNameUnknown,
       );
     setParticipantNames(names);
-  }, [isManager, tournament]);
+  }, [isManager, tournament, myChildren]);
 
   useEffect(() => {
     void loadParticipantNames();
   }, [loadParticipantNames]);
+
+  // [신청 가능 자녀 판정] 신청 페이지와 동일 규칙(공용 util) — 남은 자녀가 없으면 CTA 비활성.
+  const applyOptions = useMemo(
+    () =>
+      !isManager && tournament && myChildren
+        ? buildTournamentChildOptions(tournament, myChildren)
+        : null,
+    [isManager, tournament, myChildren],
+  );
+  const applyDisabledReason = useMemo(() => {
+    if (!applyOptions) return null; // 자녀 목록 로딩 전 — 기존 동작 유지
+    if (applyOptions.some(isTournamentChildApplicable)) return null;
+    // 자격 충족 자녀가 있는데 전원 신청·결제 완료 vs 대상 자녀 자체가 없음.
+    return applyOptions.some((o) => o.isEligible)
+      ? MESSAGES.tournament.applyAllChildrenDone
+      : MESSAGES.tournament.applyNoEligibleChildren;
+  }, [applyOptions]);
 
   const handleCancelPayment = useCallback(
     async (childId: string, childName: string, registrationId: string) => {
@@ -642,27 +671,22 @@ export default function CommonTournamentDetailPage() {
                 );
               })}
             </div>
-            <div className="mt-3 flex flex-col gap-2">
+            {/* 결제요청 — 저빈도 관리 액션이라 소형 버튼으로 우측 하단 배치.
+                종료 전/선택 0명은 disabled 로만 표현(문구는 '결제요청' 고정). */}
+            <div className="mt-3 flex flex-col items-end gap-2">
               <Button
                 variant="primary"
-                size="lg"
-                fullWidth
+                size="sm"
                 disabled={!isEnded || selectedRegIds.size === 0}
+                title={!isEnded ? "대회 종료 후 결제요청이 가능합니다" : undefined}
                 onClick={() => void openSettlement()}
               >
-                {!isEnded
-                  ? "종료 후 결제요청"
-                  : payableIds.length === 0
-                    ? "결제 요청 완료"
-                    : selectedRegIds.size === 0
-                      ? "선수를 선택하세요"
-                      : `결제요청 (${selectedRegIds.size}명)`}
+                결제요청
               </Button>
               {SHOW_CANCEL_REQUEST && (
                 <Button
                   variant="outline"
-                  size="lg"
-                  fullWidth
+                  size="sm"
                   className="border-it-red-500 text-it-red-500 hover:border-it-red-500 hover:bg-it-red-50 dark:border-it-red-500 dark:text-it-red-300 dark:hover:bg-it-red-500/10"
                   disabled={pendingCount === 0}
                   onClick={() => void handleCancelSettlement()}
@@ -776,6 +800,7 @@ export default function CommonTournamentDetailPage() {
           <button
             type="button"
             onClick={() => {
+              if (applyDisabledReason) return;
               if (uiStatus === "recruiting" || uiStatus === "closing_soon") {
                 navigate(`/tournaments/${id}/apply`);
               } else {
@@ -787,14 +812,21 @@ export default function CommonTournamentDetailPage() {
               }
             }}
             className="flex h-14 w-full items-center justify-center gap-2 rounded-w-md bg-it-blue-500 text-w-body-lg font-bold text-white shadow-sh-1 hover:bg-it-blue-600 active:brightness-95 transition-colors motion-reduce:transition-none disabled:opacity-50"
-            disabled={uiStatus === "completed" || uiStatus === "cancelled"}
+            disabled={
+              uiStatus === "completed" ||
+              uiStatus === "cancelled" ||
+              !!applyDisabledReason
+            }
           >
             <span>
-              {isPostpaid
-                ? MESSAGES.tournament.postpaidApplyCta
-                : MESSAGES.tournament.applyCta}
+              {applyDisabledReason ??
+                (isPostpaid
+                  ? MESSAGES.tournament.postpaidApplyCta
+                  : MESSAGES.tournament.applyCta)}
             </span>
-            <Icon name="arrow_forward" className="text-xl" />
+            {!applyDisabledReason && (
+              <Icon name="arrow_forward" className="text-xl" />
+            )}
           </button>
         )}
       </div>

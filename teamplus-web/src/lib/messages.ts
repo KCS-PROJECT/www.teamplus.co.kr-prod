@@ -1081,6 +1081,9 @@ export const MESSAGES = {
     postpaidRegistered: "대회 참가 신청이 완료되었습니다. 참가비는 대회 종료 후 청구됩니다.",
     postpaidNotice: "후불 대회입니다. 참가비는 대회 종료 후 일괄 청구됩니다.",
     postpaidApplyCta: "참가 신청하기",
+    // 참가 신청 CTA 비활성 사유 — 신청 가능한 자녀가 남아 있지 않을 때.
+    applyAllChildrenDone: "모든 자녀 신청 완료",
+    applyNoEligibleChildren: "참가 대상 자녀가 없어요",
     postpaidFeeLabel: "후불 정산 (종료 후 청구)",
     // [후불 참고 참가비 안내 — 감독이 사전 입력한 예상 금액 표시용]
     postpaidEstimateNote: "예상 금액 · 종료 후 정산에서 확정",
