@@ -1,6 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
-import { isCreditStarted } from "@/common/billing/fee-type.constants";
+import {
+  isCreditStarted,
+  ISSUING_PRODUCT_WHERE,
+} from "@/common/billing/fee-type.constants";
 import { RedisService } from "@/redis/redis.service";
 import { resolveScheduleTimeByTemplate } from "@/common/utils/schedule-time.util";
 import { kstTodayUtcMidnight } from "@/common/utils/kst-date.util";
@@ -270,6 +273,13 @@ export class ParentDashboardService {
                         product: { select: { billingTiming: true } },
                       },
                     },
+                    // 발급형 상품 유무 — canCheckIn 판정이 출석 API 게이트
+                    // (shouldSkipCreditFlow)와 동일 파생을 쓰기 위한 존재 확인용 (take 1).
+                    products: {
+                      where: ISSUING_PRODUCT_WHERE,
+                      select: { id: true },
+                      take: 1,
+                    },
                   },
                 },
                 // 2026-04-27 (Phase 2): 자녀별 출석 상태 — 카드 버튼 분기용
@@ -303,6 +313,7 @@ export class ParentDashboardService {
                     childId: string;
                     product: { billingTiming: string } | null;
                   }[];
+                  products: { id: string }[];
                 };
                 attendances: {
                   memberId: string;
@@ -604,6 +615,8 @@ export class ParentDashboardService {
               .map((e) => e.childId),
           );
           const canCheckInByChild: Record<string, boolean> = {};
+          // 발급형 상품 없는 수업(크레딧 미사용)은 크레딧 보유와 무관하게 출석 가능.
+          const classRequiresCredit = s.class.products.length > 0;
           for (const childId of childIds) {
             canCheckInByChild[childId] = canCheckInForClass(
               s.class.billingMode,
@@ -615,6 +628,7 @@ export class ParentDashboardService {
                   mc.usedSessions < mc.totalSessions,
               ),
               postpaidChildIds.has(childId),
+              classRequiresCredit,
             );
           }
           return {

@@ -56,7 +56,7 @@ export function productToDraft(p: ClassProductDto): DraftProduct {
     productName: p.productName,
     price: p.price,
     feeType: p.feeType ?? 'MONTHLY_FIXED',
-    sessionsPerMonth: p.sessionsPerMonth ?? 1,
+    sessionsPerMonth: p.sessionsPerMonth ?? 0,
     sessionsPerWeek: p.sessionsPerWeek ?? undefined,
     durationDays: p.durationDays ?? undefined,
     description: p.description ?? undefined,

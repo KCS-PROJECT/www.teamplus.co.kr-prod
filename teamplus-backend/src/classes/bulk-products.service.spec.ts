@@ -140,6 +140,28 @@ describe("ClassesService.bulkUpsertClassProducts", () => {
     ).toBe(false);
   });
 
+  it("발급 수량 0 정기권(미발급 기본)은 회차 검증을 통과하고 전송된 durationDays 를 보존한다", async () => {
+    await service.bulkUpsertClassProducts(userId, "COACH", classId, {
+      upserts: [
+        {
+          productName: "크레딧 미사용 정기권",
+          price: 200000,
+          feeType: "MONTHLY_FIXED",
+          sessionsPerMonth: 0,
+          durationDays: 28,
+        },
+      ],
+      deleteIds: [],
+    });
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(tx.classProduct.create).toHaveBeenCalledTimes(1);
+    const createData = tx.classProduct.create.mock.calls[0][0].data;
+    expect(createData.sessionsPerMonth).toBe(0);
+    // 0 은 회차 역산 대상이 아니므로 전송된 durationDays(28) 를 그대로 사용(주수 1로 오도출 금지).
+    expect(createData.durationDays).toBe(28);
+  });
+
   it("정기권 회수 검증 위반 시 트랜잭션 진입 전 예외(롤백)", async () => {
     // perWeek=20 → weeks=ceil(20/20)=1, totalSessions(20) > weeks×14(14) → 위반
     await expect(

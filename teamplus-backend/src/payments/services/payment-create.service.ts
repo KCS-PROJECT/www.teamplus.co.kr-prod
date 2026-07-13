@@ -651,9 +651,13 @@ export class PaymentCreateService {
         const weeks = product.durationDays
           ? Math.max(1, Math.round(product.durationDays / 7))
           : 4;
+        const totalSessionsLabel =
+          product.sessionsPerMonth && product.sessionsPerMonth > 0
+            ? ` · 총 ${product.sessionsPerMonth}회`
+            : "";
         const description = hasBreakdown
           ? `${weeks}주 정기권 (주 ${product.sessionsPerWeek}회 × ${product.feePerSession}원)`
-          : `${weeks}주 정기권 · 총 ${product.sessionsPerMonth}회 (${Number(product.price).toLocaleString()}원)`;
+          : `${weeks}주 정기권${totalSessionsLabel} (${Number(product.price).toLocaleString()}원)`;
         return {
           amount: amount.toNumber(),
           description,

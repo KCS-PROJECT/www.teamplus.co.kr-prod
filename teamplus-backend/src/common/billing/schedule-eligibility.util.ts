@@ -73,11 +73,21 @@ export function scheduleVisibleChildIds(
  * BOTH 수업은 학생별로 선·후불이 갈리므로 `isStudentPostpaid`(그 학생이 선택한
  * 상품의 billingTiming=POSTPAID 여부)을 전달한다. true 면 크레딧 없이도 출석 가능.
  * 전용 PREPAID/POSTPAID 동작은 기본값(false)으로 불변.
+ *
+ * `classRequiresCredit`: 수업에 발급형 상품(ISSUING_PRODUCT_WHERE)이 있는지 —
+ * false 면 크레딧 미사용 수업이라 무조건 출석 가능. 출석 API 의
+ * shouldSkipCreditFlow(attendance.service)와 동일 파생을 전달해야 버튼과 API 가 일치한다.
  */
 export function canCheckInForClass(
   billingMode: string | null | undefined,
   hasValidCredit: boolean,
   isStudentPostpaid = false,
+  classRequiresCredit = true,
 ): boolean {
-  return billingMode === "POSTPAID" || isStudentPostpaid || hasValidCredit;
+  return (
+    !classRequiresCredit ||
+    billingMode === "POSTPAID" ||
+    isStudentPostpaid ||
+    hasValidCredit
+  );
 }
