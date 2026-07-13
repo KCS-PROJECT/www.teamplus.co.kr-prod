@@ -2392,6 +2392,14 @@ export const MESSAGES = {
     statusInactive: "비공개",
   },
   venue: {
+    // 장소 검색 바텀시트 (VenueSearchSheet 공용)
+    searchSheet: {
+      apply: "적용",
+      searchPrompt: "장소명 또는 주소를 검색해주세요.",
+      noResult: (q: string) => `"${q}" 검색 결과가 없습니다`,
+      freeTextNotice: "적용을 누르면 입력한 내용 그대로 장소로 저장됩니다",
+      clearQuery: "검색어 지우기",
+    },
     // 목록/상태
     listTitle: "구장 정보",
     manageTitle: "구장 관리",

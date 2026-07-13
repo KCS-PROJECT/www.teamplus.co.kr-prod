@@ -39,7 +39,9 @@ import {
 import type { TeamDetail } from "@/services/team.service";
 import { useDebounce } from "@/hooks/useDebounce";
 import { AvatarUploader } from "@/components/shared/AvatarUploader";
-import { VenuePicker } from "@/components/common/VenuePicker";
+import { Icon } from "@/components/ui/Icon";
+import { VenueSearchSheet } from "@/components/venue/VenueSearchSheet";
+import { useVenues } from "@/hooks/useClassForm";
 import { resolveImageSrc } from "@/lib/image-url";
 
 // [제거 2026-05-18 W2.B #4] AGE_OPTIONS 상수 삭제 — 연령 필드 제거에 따른 cleanup.
@@ -110,8 +112,12 @@ export default function TeamEditPage() {
   //  슬로건 수정 동선이 이 페이지로 라우팅되므로 필수.
   const [slogan, setSlogan] = useState("");
   const [description, setDescription] = useState("");
-  // [추가 2026-05-22] 홈 링크장 — DB 등록 Venue 마스터에서 선택 (VenuePicker 공통 컴포넌트).
+  // 홈 링크장 — DB 등록 Venue 마스터에서 선택 (공용 VenueSearchSheet 바텀시트).
   const [venueId, setVenueId] = useState("");
+  const [venueSheetOpen, setVenueSheetOpen] = useState(false);
+  const { venues: venueOptions } = useVenues();
+  const selectedVenueName =
+    venueOptions.find((v) => v.id === venueId)?.name ?? "";
 
   // ── 권한 체크 (1단계: 글로벌 역할) ────────────────────────────
   //  학부모/학생 등 글로벌 관리 역할이 없는 사용자 즉시 차단.
@@ -510,15 +516,56 @@ export default function TeamEditPage() {
             </div>
           </Field>
 
-          {/* ── 8) 홈 링크장 (선택) ── 공통 VenuePicker(검색형) — 장소명 검색 시 매칭 목록 노출. */}
+          {/* ── 8) 홈 링크장 (선택) ── 공용 VenueSearchSheet(바텀시트) 트리거. */}
           <Field label="홈 링크장" hint="장소명을 검색해 선택">
-            <VenuePicker
-              value={venueId}
-              onChange={setVenueId}
-              placeholder="홈 링크장 검색"
-              ariaLabel="홈 링크장"
-            />
+            <button
+              type="button"
+              onClick={() => setVenueSheetOpen(true)}
+              aria-label="홈 링크장 선택"
+              className="flex h-12 w-full items-center gap-2 rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill px-4 text-left transition-colors motion-reduce:transition-none focus-visible:border-it-blue-500 focus-visible:outline-none dark:border-rink-700 dark:bg-rink-800"
+            >
+              <Icon
+                name="location_on"
+                className="shrink-0 text-base text-it-ink-400"
+                aria-hidden="true"
+              />
+              <span
+                className={cn(
+                  "min-w-0 flex-1 truncate text-[15.5px] tracking-tight",
+                  selectedVenueName
+                    ? "font-bold text-it-ink-800 dark:text-white"
+                    : "font-medium text-it-ink-400",
+                )}
+              >
+                {selectedVenueName || "홈 링크장 검색"}
+              </span>
+              <Icon
+                name="chevron_right"
+                className="ml-auto shrink-0 text-base text-it-ink-300"
+                aria-hidden="true"
+              />
+            </button>
+            {venueId && (
+              <button
+                type="button"
+                onClick={() => setVenueId("")}
+                className="mt-1 inline-flex items-center gap-1 text-w-caption font-semibold text-it-ink-500 underline dark:text-rink-300"
+              >
+                선택 해제 (장소 미지정)
+              </button>
+            )}
           </Field>
+
+          {/* 홈 링크장 선택 바텀시트 — FK 전용(자유 텍스트 [적용] 미노출) */}
+          <VenueSearchSheet
+            isOpen={venueSheetOpen}
+            onClose={() => setVenueSheetOpen(false)}
+            title="홈 링크장 선택"
+            selectedVenueId={venueId}
+            initialQuery={selectedVenueName}
+            iceTheme
+            onSelectVenue={(v) => setVenueId(v.id)}
+          />
 
           {/* [메인/보조 컬러 입력 제거] 팀 컬러는 현재 화면 전반에서 활용되지 않아 입력을
               받지 않는다. 데이터 모델·팀 상세 표시는 보존 — 추후 팀 컬러 기능 도입 시 ColorField

@@ -10,7 +10,9 @@ import { usePageReady } from '@/hooks/usePageReady';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { api } from '@/services/api-client';
 import { MESSAGES } from '@/lib/messages';
-import { VenuePicker } from '@/components/common/VenuePicker';
+import { cn } from '@/lib/utils';
+import { VenueSearchSheet } from '@/components/venue/VenueSearchSheet';
+import { useVenues } from '@/hooks/useClassForm';
 import { DatePickerModal, formatDateLabel } from '@/components/ui/DatePickerModal';
 import { TimePicker, formatTimeLabel } from '@/components/ui/TimePicker';
 import { MatchApplicantsSheet } from '@/components/match/MatchApplicantsSheet';
@@ -306,6 +308,11 @@ function MatchCard({
 function NewMatchForm() {
   const [selectedLevel, setSelectedLevel] = useState<string>('intermediate');
   const [venueId, setVenueId] = useState<string>('');
+  // 구장 선택 — 공용 VenueSearchSheet. 표시명은 Venue 마스터에서 id 로 해석.
+  const [venueSheetOpen, setVenueSheetOpen] = useState(false);
+  const { venues: venueOptions } = useVenues();
+  const selectedVenueName =
+    venueOptions.find((v) => v.id === venueId)?.name ?? '';
   const [matchDate, setMatchDate] = useState<string>('');
   const [matchTime, setMatchTime] = useState<string>('');
   const [isDateOpen, setIsDateOpen] = useState(false);
@@ -394,22 +401,62 @@ function NewMatchForm() {
             </div>
           </div>
 
-          {/* Stadium Selector — 공통 VenuePicker (BottomSheet 팝업 + GET /venues 실데이터) */}
+          {/* Stadium Selector — 공용 VenueSearchSheet(바텀시트) 트리거 */}
           <div className="flex flex-col gap-2">
             <span className="text-card-body font-medium text-wtext-3 dark:text-rink-300">
               구장 선택
             </span>
-            <VenuePicker
-              value={venueId}
-              onChange={setVenueId}
-              placeholder="구장을 선택하세요"
-              sheetTitle="구장을 선택해주세요."
-              ariaLabel="구장 선택 열기"
-              className="bg-wbg dark:bg-rink-700"
-            />
+            <button
+              type="button"
+              onClick={() => setVenueSheetOpen(true)}
+              aria-label="구장 선택 열기"
+              className="flex h-12 w-full items-center gap-2 rounded-[12px] border border-wline bg-wbg px-4 text-left text-sm font-medium transition-colors motion-reduce:transition-none hover:border-ice-500 focus-visible:border-ice-500 focus-visible:outline-none dark:border-rink-700 dark:bg-rink-700"
+            >
+              <Icon
+                name="location_on"
+                size={18}
+                className="shrink-0 text-wtext-3"
+                aria-hidden="true"
+              />
+              <span
+                className={cn(
+                  'min-w-0 flex-1 truncate',
+                  selectedVenueName
+                    ? 'text-wtext-1 dark:text-white'
+                    : 'text-wtext-3',
+                )}
+              >
+                {selectedVenueName || '구장을 선택하세요'}
+              </span>
+              <Icon
+                name="chevron_right"
+                size={18}
+                className="ml-auto shrink-0 text-wtext-4"
+                aria-hidden="true"
+              />
+            </button>
+            {venueId && (
+              <button
+                type="button"
+                onClick={() => setVenueId('')}
+                className="inline-flex items-center gap-1 self-start text-xs font-semibold text-wtext-3 underline dark:text-rink-300"
+              >
+                선택 해제 (구장 미지정)
+              </button>
+            )}
           </div>
         </div>
       </section>
+
+      {/* 구장 선택 바텀시트 — FK 전용(자유 텍스트 [적용] 미노출) */}
+      <VenueSearchSheet
+        isOpen={venueSheetOpen}
+        onClose={() => setVenueSheetOpen(false)}
+        title="구장 선택"
+        selectedVenueId={venueId}
+        initialQuery={selectedVenueName}
+        onSelectVenue={(v) => setVenueId(v.id)}
+      />
 
       {/* Section: Requirements */}
       <section className="flex flex-col gap-4">
