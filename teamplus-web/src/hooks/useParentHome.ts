@@ -71,6 +71,12 @@ export interface ParentUpcomingSchedule {
    * 백엔드 응답에 없는 경우 기본 true (하위 호환).
    */
   canCheckInByChild?: Record<string, boolean>;
+  /**
+   * 발급형(크레딧 부여) 상품이 있는 수업인지. false 면 크레딧 미사용 수업 —
+   * "결제권 차감" 모달 안내·"잔여 결제권" 토스트 표기를 생략한다.
+   * 백엔드 응답에 없으면 undefined (하위 호환 — 기존 문구 유지).
+   */
+  classRequiresCredit?: boolean;
 }
 
 export interface AttendanceDay {
@@ -198,6 +204,8 @@ interface ParentDashboardResponse {
     attendanceByChild?: Record<string, string>;
     /** PR-D Hotfix #4 (v1.1): 자녀별 출석 가능 여부 */
     canCheckInByChild?: Record<string, boolean>;
+    /** 발급형 상품 유무 — false = 크레딧 미사용 수업 (차감 안내 생략) */
+    classRequiresCredit?: boolean;
     [key: string]: unknown;
   }>;
   upcomingClasses?: Array<Record<string, unknown>>;
@@ -495,6 +503,10 @@ export function useParentHome() {
               s.canCheckInByChild !== null
                 ? (s.canCheckInByChild as Record<string, boolean>)
                 : undefined,
+            classRequiresCredit:
+              typeof s.classRequiresCredit === "boolean"
+                ? s.classRequiresCredit
+                : undefined,
           };
         })
         .filter((s): s is ParentUpcomingSchedule => s !== null);
@@ -639,7 +651,13 @@ export function useParentHome() {
       scheduleId: string,
       childId: string,
     ): Promise<
-      | { ok: true; remainingSessions: number; className: string }
+      | {
+          ok: true;
+          remainingSessions: number;
+          className: string;
+          /** 실제 결제권 차감 여부 — false/undefined 면 토스트에 잔여 표기 생략 */
+          creditDeducted?: boolean;
+        }
       | { ok: false; message: string }
     > => {
       const res = await apiRequest<{
@@ -648,6 +666,7 @@ export function useParentHome() {
         childId: string;
         className: string;
         remainingSessions: number;
+        creditDeducted?: boolean;
       }>({
         method: "POST",
         url: "/attendance/parent-check-in",
@@ -661,6 +680,7 @@ export function useParentHome() {
           ok: true,
           remainingSessions: res.data.remainingSessions,
           className: res.data.className,
+          creditDeducted: res.data.creditDeducted,
         };
       }
       return {

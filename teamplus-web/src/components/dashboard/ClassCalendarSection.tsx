@@ -938,7 +938,12 @@ interface SelectedDayClassListProps {
     scheduleId: string,
     childId: string,
   ) => Promise<
-    | { ok: true; remainingSessions: number; className: string }
+    | {
+        ok: true;
+        remainingSessions: number;
+        className: string;
+        creditDeducted?: boolean;
+      }
     | { ok: false; message: string }
   >;
   /**
@@ -956,10 +961,11 @@ interface SelectedDayClassListProps {
    */
   iceTheme?: boolean;
   /**
-   * [Phase B] 후불(POSTPAID) 일정의 scheduleId 집합 — 출석 모달 "결제권 차감" 문구 분기용.
-   * 포함된 scheduleId(=CalendarClass.id)는 차감 안내·잔여 결제권 표기를 생략한다(사후 정산).
+   * "결제권 차감" 안내 표시 대상 scheduleId 집합(opt-in) — 발급형 상품이 확인된
+   * 크레딧 수업만 포함시킨다. 미포함/미전달이면 차감 안내를 생략하는 쪽으로
+   * 실패한다(크레딧 미사용 운영 기본과 일치). scheduleId = CalendarClass.id.
    */
-  postpaidScheduleIds?: Set<string>;
+  creditNoticeScheduleIds?: Set<string>;
 }
 
 function getTodayKey(): string {
@@ -978,7 +984,7 @@ export function SelectedDayClassList({
   onCheckIn,
   variant = 'default',
   bare = false,
-  postpaidScheduleIds,
+  creditNoticeScheduleIds,
   iceTheme = false,
 }: SelectedDayClassListProps) {
   const { navigate } = useNavigation();
@@ -1003,17 +1009,17 @@ export function SelectedDayClassList({
       const submitKey = `${scheduleId}:${targetChildId}`;
       if (submittingKey) return;
 
-      // [Phase B] 후불(POSTPAID) 수업은 출석 시 결제권 차감이 없으므로(사후 정산)
-      //   "결제권 차감" 안내·"잔여 결제권" 표기를 생략한다.
-      const isPostpaid = postpaidScheduleIds?.has(scheduleId) ?? false;
+      // "결제권 차감" 안내는 발급형 상품이 확인된 크레딧 수업에서만(opt-in).
+      const showCreditNotice =
+        creditNoticeScheduleIds?.has(scheduleId) ?? false;
       const subject = childName
         ? `${childName}의 '${className}'`
         : `'${className}'`;
       const ok = await modal.confirm({
         title: '출석 처리',
-        message: isPostpaid
-          ? `${subject} 출석을 처리할까요?`
-          : `${subject} 출석을 처리할까요?\n결제권 1회가 차감됩니다.`,
+        message: showCreditNotice
+          ? `${subject} 출석을 처리할까요?\n결제권 1회가 차감됩니다.`
+          : `${subject} 출석을 처리할까요?`,
         confirmText: '출석하기',
         cancelText: '취소',
         variant: 'default',
@@ -1024,10 +1030,11 @@ export function SelectedDayClassList({
       try {
         const result = await onCheckIn(scheduleId, targetChildId);
         if (result.ok) {
+          // 잔여 표기는 실제 차감이 일어난 경우에만 — 응답 creditDeducted 가 SoT.
           toast.success(
-            isPostpaid
-              ? '출석 완료'
-              : `출석 완료 · 잔여 결제권 ${result.remainingSessions}회`,
+            result.creditDeducted
+              ? `출석 완료 · 잔여 결제권 ${result.remainingSessions}회`
+              : '출석 완료',
           );
         } else {
           toast.error(result.message);
@@ -1036,7 +1043,7 @@ export function SelectedDayClassList({
         setSubmittingKey(null);
       }
     },
-    [onCheckIn, submittingKey, modal, toast, postpaidScheduleIds],
+    [onCheckIn, submittingKey, modal, toast, creditNoticeScheduleIds],
   );
 
   const handleCheckInClick = useCallback(

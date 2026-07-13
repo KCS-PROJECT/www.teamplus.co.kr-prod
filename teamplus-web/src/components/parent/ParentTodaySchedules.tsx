@@ -68,7 +68,12 @@ interface ParentTodaySchedulesProps {
     scheduleId: string,
     childId: string,
   ) => Promise<
-    | { ok: true; remainingSessions: number; className: string }
+    | {
+        ok: true;
+        remainingSessions: number;
+        className: string;
+        creditDeducted?: boolean;
+      }
     | { ok: false; message: string }
   >;
 }
@@ -179,9 +184,9 @@ export function ParentTodaySchedules({
     targetChildId: string,
     childName: string | null,
     className: string,
-    // [Phase B] 후불(POSTPAID) 수업은 출석 시 결제권을 차감하지 않으므로(사후 정산)
-    //   "결제권 1회 차감" 안내·"잔여 결제권" 표기를 노출하지 않는다.
-    isPostpaid = false,
+    // "결제권 1회 차감" 안내는 발급형 상품이 확인된 크레딧 수업에서만(opt-in).
+    //   응답에 필드가 없거나(구 캐시) 후불이면 안내를 생략하는 쪽으로 실패한다.
+    showCreditNotice = false,
   ) => {
     if (!onCheckInChild) return;
     const submitKey = `${scheduleId}:${targetChildId}`;
@@ -192,9 +197,9 @@ export function ParentTodaySchedules({
       : `'${className}'`;
     const ok = await modal.confirm({
       title: '출석 처리',
-      message: isPostpaid
-        ? `${subject} 출석을 처리할까요?`
-        : `${subject} 출석을 처리할까요?\n결제권 1회가 차감됩니다.`,
+      message: showCreditNotice
+        ? `${subject} 출석을 처리할까요?\n결제권 1회가 차감됩니다.`
+        : `${subject} 출석을 처리할까요?`,
       confirmText: '출석하기',
       cancelText: '취소',
       variant: 'default',
@@ -205,10 +210,11 @@ export function ParentTodaySchedules({
     try {
       const result = await onCheckInChild(scheduleId, targetChildId);
       if (result.ok) {
+        // 잔여 표기는 실제 차감이 일어난 경우에만 — 응답 creditDeducted 가 SoT.
         toast.success(
-          isPostpaid
-            ? '출석 완료'
-            : `출석 완료 · 잔여 결제권 ${result.remainingSessions}회`,
+          result.creditDeducted
+            ? `출석 완료 · 잔여 결제권 ${result.remainingSessions}회`
+            : '출석 완료',
         );
       } else {
         toast.error(result.message);
@@ -228,7 +234,7 @@ export function ParentTodaySchedules({
         childId,
         name,
         s.className,
-        s.billingMode === 'POSTPAID',
+        s.classRequiresCredit === true && s.billingMode !== 'POSTPAID',
       );
       return;
     }
@@ -249,7 +255,7 @@ export function ParentTodaySchedules({
         onlyChildId,
         name,
         s.className,
-        s.billingMode === 'POSTPAID',
+        s.classRequiresCredit === true && s.billingMode !== 'POSTPAID',
       );
       return;
     }
@@ -503,7 +509,8 @@ export function ParentTodaySchedules({
                             cid,
                             name,
                             s.className,
-                            s.billingMode === 'POSTPAID',
+                            s.classRequiresCredit === true &&
+                              s.billingMode !== 'POSTPAID',
                           );
                         }}
                         className="flex w-full items-center justify-between rounded-xl border border-wline px-4 py-3 text-left text-sm font-semibold text-wtext-1 hover:border-ice-500 hover:bg-ice-500/5 dark:border-rink-700 dark:text-white"

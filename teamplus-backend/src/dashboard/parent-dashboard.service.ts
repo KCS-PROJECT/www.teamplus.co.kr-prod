@@ -646,6 +646,9 @@ export class ParentDashboardService {
             trainingType: s.class.trainingType,
             // [Phase B] 후불(POSTPAID) 여부 — 출석 모달 "결제권 차감" 문구 분기용.
             billingMode: s.class.billingMode,
+            // 발급형 상품 유무 — false 면 크레딧 미사용 수업이라 프론트가
+            // "결제권 차감" 안내·"잔여 결제권" 표기를 생략한다 (canCheckIn 판정과 동일 파생).
+            classRequiresCredit,
             // 2026-05-14: 학부모 홈 대시보드 ClassCalendarSection 이
             //   학원/팀 owner ID 를 모아 endpoint 분기에 사용.
             teamId: s.class.teamId,

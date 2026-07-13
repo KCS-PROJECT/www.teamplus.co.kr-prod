@@ -376,12 +376,15 @@ export default function ParentDashboardPage() {
     return m;
   }, [upcomingSchedules]);
 
-  // [Phase B] 후불(POSTPAID) 일정의 scheduleId 집합 — SelectedDayClassList 출석 모달
-  //   "결제권 차감" 문구 분기용. CalendarClass.id 가 scheduleId 와 동일하므로 직접 매칭.
-  const postpaidScheduleIds = useMemo(() => {
+  // "결제권 차감" 안내 표시 대상 scheduleId 집합(opt-in) — 발급형 상품이 확인된
+  //   크레딧 수업만. 미포함이면 SelectedDayClassList 가 차감 안내를 생략한다.
+  //   CalendarClass.id 가 scheduleId 와 동일하므로 직접 매칭.
+  const creditNoticeScheduleIds = useMemo(() => {
     const s = new Set<string>();
     upcomingSchedules.forEach((u) => {
-      if (u.billingMode === 'POSTPAID') s.add(u.scheduleId);
+      if (u.classRequiresCredit === true && u.billingMode !== 'POSTPAID') {
+        s.add(u.scheduleId);
+      }
     });
     return s;
   }, [upcomingSchedules]);
@@ -645,7 +648,7 @@ export default function ParentDashboardPage() {
               selectedChildId={selectedChildId}
               todayKey={todayKey}
               onCheckIn={checkInChild}
-              postpaidScheduleIds={postpaidScheduleIds}
+              creditNoticeScheduleIds={creditNoticeScheduleIds}
               iceTheme
             />
           ) : (
@@ -662,7 +665,7 @@ export default function ParentDashboardPage() {
                   selectedChildId={selectedChildId}
                   todayKey={todayKey}
                   onCheckIn={checkInChild}
-                  postpaidScheduleIds={postpaidScheduleIds}
+                  creditNoticeScheduleIds={creditNoticeScheduleIds}
                   bare
                   iceTheme
                 />
