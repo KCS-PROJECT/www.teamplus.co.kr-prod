@@ -2091,7 +2091,14 @@ export class TournamentsService {
         paymentStatus: { in: ["UNPAID", "PENDING"] },
         ...(hasSelection ? { id: { in: registrationIds } } : {}),
       },
-      select: { id: true, userId: true, childId: true },
+      // paymentStatus·calculatedFee — 알림 분기(신규 청구/금액 변경/동일 금액 생략)용.
+      select: {
+        id: true,
+        userId: true,
+        childId: true,
+        paymentStatus: true,
+        calculatedFee: true,
+      },
     });
 
     if (targets.length === 0) {
@@ -2128,15 +2135,20 @@ export class TournamentsService {
         data: { feePerGame: fee, feeType: "TOTAL_FIXED" },
       });
 
-      const results: { registrationId: string; payerId: string }[] = [];
+      const results: {
+        registrationId: string;
+        payerId: string;
+        priorStatus: string;
+        priorFee: number;
+      }[] = [];
       for (const reg of targets) {
         const payerId = resolvePayer(reg);
         const orderNumber = `TRN-POSTPAID-${tournamentId}-${reg.id}`;
 
-        // 2. 결제 행 upsert (멱등) — 재정산 시 금액만 갱신.
+        // 2. 결제 행 upsert (멱등) — 갱신은 아래 조건부 updateMany 로만 수행.
         const payment = await tx.payment.upsert({
           where: { orderNumber },
-          update: { amount: feePerPerson, paymentStatus: "pending" },
+          update: {},
           create: {
             orderNumber,
             userId: payerId,
@@ -2148,24 +2160,47 @@ export class TournamentsService {
           select: { id: true },
         });
 
-        // 3. 참가자 확정 청구액·상태·결제 연결.
-        await tx.tournamentRegistration.update({
-          where: { id: reg.id },
+        // 동시 결제 방어 — 대상 조회~커밋 사이 결제 완료(completed)된 건은 되돌리지
+        //   않고 건너뛴다. userId 도 갱신해 주 보호자 변경 시 결제 권한 불일치 방지.
+        const payUpd = await tx.payment.updateMany({
+          where: { id: payment.id, paymentStatus: { not: "completed" } },
+          data: {
+            amount: feePerPerson,
+            paymentStatus: "pending",
+            userId: payerId,
+          },
+        });
+        if (payUpd.count === 0) continue;
+
+        // 3. 참가자 확정 청구액·상태·결제 연결 — 미결제 상태일 때만(동시 PAID 방어).
+        const regUpd = await tx.tournamentRegistration.updateMany({
+          where: { id: reg.id, paymentStatus: { in: ["UNPAID", "PENDING"] } },
           data: {
             calculatedFee: fee,
             paymentStatus: "PENDING",
             paymentId: payment.id,
           },
         });
+        if (regUpd.count === 0) continue;
 
-        results.push({ registrationId: reg.id, payerId });
+        results.push({
+          registrationId: reg.id,
+          payerId,
+          priorStatus: reg.paymentStatus,
+          priorFee: reg.calculatedFee != null ? Number(reg.calculatedFee) : 0,
+        });
       }
 
       return results;
     });
 
     // 결제요청 알림 (트랜잭션 밖 — 실패해도 정산 롤백 없음).
+    //   신규(UNPAID→PENDING) = 결제 요청 / 재청구 금액 변경 = 변경 안내 /
+    //   동일 금액 재확정 = 발송 생략(중복 알림 방지).
     for (const b of billed) {
+      const isNew = b.priorStatus === "UNPAID";
+      const isChanged = !isNew && b.priorFee !== feePerPerson;
+      if (!isNew && !isChanged) continue;
       const orderNumber = `TRN-POSTPAID-${tournamentId}-${b.registrationId}`;
       const link = `/payment/postpaid?orderNumber=${encodeURIComponent(
         orderNumber,
@@ -2176,8 +2211,10 @@ export class TournamentsService {
         await this.notificationsService.createNotification({
           userId: b.payerId,
           notificationType: "tournament_postpaid_billing",
-          title: "대회 참가비 결제 요청",
-          message: `${tournament.name} 참가비 ${feePerPerson.toLocaleString()}원 결제를 진행해주세요.`,
+          title: isNew ? "대회 참가비 결제 요청" : "대회 참가비 금액 변경",
+          message: isNew
+            ? `${tournament.name} 참가비 ${feePerPerson.toLocaleString()}원 결제를 진행해주세요.`
+            : `${tournament.name} 참가비가 ${feePerPerson.toLocaleString()}원으로 변경되었습니다. 결제를 진행해주세요.`,
           linkUrl: link,
         });
       } catch (e) {

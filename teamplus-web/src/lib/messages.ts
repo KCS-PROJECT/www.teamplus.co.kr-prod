@@ -1099,6 +1099,13 @@ export const MESSAGES = {
     applyClosedAfterStart: "대회가 시작되어 참가 신청이 마감되었습니다.",
     // 후불 결제요청 버튼 비활성 안내 — 마지막 경기 시작 +1시간부터 활성.
     settleAvailableAfterHour: "경기 시작 1시간 후 결제요청 가능합니다.",
+    // 결제 대기(PENDING) 행 단건 재청구 액션 — 청구 금액 정정.
+    settleEditAmount: "금액 수정",
+    // 참가선수목록 행 금액 표시 — 결제 대기=청구액 / 결제완료=결제액.
+    settleBilledAmount: (amount: number) =>
+      `청구 금액 ${amount.toLocaleString()}원`,
+    settlePaidAmount: (amount: number) =>
+      `결제 금액 ${amount.toLocaleString()}원`,
     postpaidFeeLabel: "후불 정산 (종료 후 청구)",
     // [후불 참고 참가비 안내 — 감독이 사전 입력한 예상 금액 표시용]
     postpaidEstimateNote: "예상 금액 · 종료 후 정산에서 확정",
@@ -3389,6 +3396,9 @@ export const MESSAGES = {
   postpaidPay: {
     title: "수업료 결제",
     invalid: "잘못된 결제 요청입니다. 알림에서 다시 시도해주세요.",
+    // 주문 서버 조회 결과 상태별 안내 — 결제 위젯 미표시.
+    alreadyCompleted: "이미 결제가 완료된 요청입니다.",
+    requestCancelled: "취소된 결제 요청입니다. 최신 결제 요청을 확인해주세요.",
     paying: "결제 진행 중...",
     payCta: (won: number) => `${won.toLocaleString()}원 결제하기`,
     // [Phase B] 후불 결제 완료 문구 — 이미 출석한 수업에 대한 사후 정산이므로

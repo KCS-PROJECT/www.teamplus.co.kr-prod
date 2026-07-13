@@ -119,6 +119,14 @@ export class PaymentsService {
       );
       return { success: true, paymentId: payment.id, idempotent: true };
     }
+    // 취소된 결제 요청 승인 차단 — 취소(예: 후불 결제요청 취소) 후 옛 알림 링크로
+    //   결제가 진행되면 등록 연결이 끊긴 채 돈만 나가는 상태가 되므로 서버가 최종 거부.
+    //   재시도 흐름은 항상 새 orderNumber 발급이라 정상 결제에는 영향 없다.
+    if (payment.paymentStatus === "cancelled") {
+      throw new BadRequestException(
+        "취소된 결제 요청입니다. 최신 결제 요청을 확인해주세요.",
+      );
+    }
     if (Math.abs(payment.amount - amount) > 0) {
       throw new BadRequestException(
         `결제 금액 불일치 — 주문 ${payment.amount}원, 요청 ${amount}원`,

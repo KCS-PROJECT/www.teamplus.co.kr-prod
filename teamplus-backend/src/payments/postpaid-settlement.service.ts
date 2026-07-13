@@ -3,6 +3,7 @@ import {
   Logger,
   BadRequestException,
   ConflictException,
+  NotFoundException,
 } from "@nestjs/common";
 import { Cron } from "@nestjs/schedule";
 import { PrismaService } from "@/prisma/prisma.service";
@@ -526,5 +527,49 @@ export class PostpaidSettlementService {
     return [...classItems, ...tournamentItems].sort(
       (a, b) => b.requestedAt.getTime() - a.requestedAt.getTime(),
     );
+  }
+
+  /**
+   * 후불 결제 링크 주문 조회 — 결제 페이지가 금액·상태를 서버 기준으로 확정한다.
+   *  알림 링크의 쿼리스트링 금액은 발송 시점 스냅샷이라 재정산(금액 변경)·요청 취소를
+   *  반영하지 못하므로, 페이지 진입 시 이 조회 결과가 SoT 다.
+   */
+  async getPostpaidOrder(
+    orderNumber: string,
+    userId: string,
+    userType: string,
+  ) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { orderNumber },
+      select: { id: true, userId: true, amount: true, paymentStatus: true },
+    });
+    // 타인 결제는 미존재와 동일 응답 — 주문번호로 존재 여부를 노출하지 않는다.
+    if (!payment || (payment.userId !== userId && userType !== "ADMIN")) {
+      throw new NotFoundException("결제 요청을 찾을 수 없습니다.");
+    }
+
+    // 결제명 파생 — my-pending 과 동일 규칙. 연결이 끊긴 경우(요청 취소 등) null.
+    const [line, tReg] = await Promise.all([
+      this.prisma.monthlyPostpaidBillingLine.findFirst({
+        where: { paymentId: payment.id },
+        select: { billing: { select: { yearMonth: true } } },
+      }),
+      this.prisma.tournamentRegistration.findFirst({
+        where: { paymentId: payment.id },
+        select: { tournament: { select: { name: true } } },
+      }),
+    ]);
+    const paymentName = line
+      ? `${line.billing.yearMonth} 수업료`
+      : tReg
+        ? `${tReg.tournament.name} 참가비`
+        : null;
+
+    return {
+      orderNumber,
+      amount: payment.amount,
+      paymentStatus: payment.paymentStatus,
+      paymentName,
+    };
   }
 }

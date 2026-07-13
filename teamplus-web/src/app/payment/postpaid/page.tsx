@@ -3,12 +3,16 @@
 export const dynamic = 'force-dynamic';
 
 /**
- * 후불(POSTPAID) 수업료 결제 화면 (Phase B-5-4)
+ * 후불(POSTPAID) 수업료·대회 참가비 결제 화면 (Phase B-5-4)
  *
- * 감독이 정산 확정 시 학부모에게 발송한 "수업료 결제 요청" 알림의 deep-link 진입점.
+ * 감독이 정산 확정 시 학부모에게 발송한 "결제 요청" 알림의 deep-link 진입점.
  *   /payment/postpaid?orderNumber=POSTPAID-...&amount=...&name=...
  * 이미 생성된 pending Payment(orderNumber)를 토스 위젯으로 결제 → /payment/complete → confirm.
  * (별도 미납 목록 화면 없이 알림→결제 단일 흐름)
+ *
+ * 금액·상태 SoT = 서버 주문 조회(GET /payments/postpaid/order/:orderNumber).
+ *   쿼리스트링 amount 는 발송 시점 스냅샷이라 재정산(금액 변경)·요청 취소를 반영하지
+ *   못하므로 무시한다. completed/cancelled 주문은 위젯 없이 안내만 표시.
  */
 
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
@@ -29,6 +33,12 @@ type TossWidgets = any;
 interface ClientKeyResponse {
   clientKey: string;
 }
+interface PostpaidOrder {
+  orderNumber: string;
+  amount: number;
+  paymentStatus: string;
+  paymentName: string | null;
+}
 
 function PostpaidPayContent() {
   useNativeUI({
@@ -41,8 +51,7 @@ function PostpaidPayContent() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
   const orderNumber = searchParams?.get('orderNumber') ?? '';
-  const amount = Number(searchParams?.get('amount') ?? '0');
-  const orderName = searchParams?.get('name') || MESSAGES.postpaidPay.title;
+  const queryName = searchParams?.get('name') || MESSAGES.postpaidPay.title;
 
   const [widgets, setWidgets] = useState<TossWidgets | null>(null);
   const [isReady, setIsReady] = useState(false);
@@ -51,12 +60,44 @@ function PostpaidPayContent() {
   const initRef = useRef(false);
   const renderedRef = useRef(false);
 
-  const invalid = !orderNumber || !Number.isFinite(amount) || amount <= 0;
+  // 서버 주문 조회 — 금액·상태 SoT (쿼리스트링 amount 불신).
+  const [order, setOrder] = useState<PostpaidOrder | null>(null);
+  const [orderNotFound, setOrderNotFound] = useState(false);
 
-  usePageReady(isReady || !!error || invalid);
+  useEffect(() => {
+    if (!orderNumber || !user?.id) return;
+    void (async () => {
+      const res = await api.get<PostpaidOrder>(
+        `/payments/postpaid/order/${encodeURIComponent(orderNumber)}`,
+      );
+      if (res.success && res.data) {
+        setOrder(res.data);
+      } else {
+        setOrderNotFound(true);
+      }
+    })();
+  }, [orderNumber, user?.id]);
+
+  const amount = order?.amount ?? 0;
+  const orderName = order?.paymentName ?? queryName;
+  const payable = order?.paymentStatus === 'pending' && amount > 0;
+  // 결제 불가 사유 — 위젯 없이 안내만 표시.
+  const blockedMessage = !orderNumber
+    ? MESSAGES.postpaidPay.invalid
+    : orderNotFound
+      ? MESSAGES.postpaidPay.invalid
+      : order && order.paymentStatus === 'completed'
+        ? MESSAGES.postpaidPay.alreadyCompleted
+        : order && order.paymentStatus === 'cancelled'
+          ? MESSAGES.postpaidPay.requestCancelled
+          : order && !payable
+            ? MESSAGES.postpaidPay.invalid
+            : null;
+
+  usePageReady(isReady || !!error || !!blockedMessage);
 
   const init = useCallback(async () => {
-    if (initRef.current || invalid || !user?.id) return;
+    if (initRef.current || !payable || !user?.id) return;
     initRef.current = true;
     try {
       const ckRes = await api.get<ClientKeyResponse>('/payments/toss/client-key');
@@ -86,7 +127,7 @@ function PostpaidPayContent() {
       setError(msg);
       toast.error(msg);
     }
-  }, [invalid, amount, user?.id, toast]);
+  }, [payable, amount, user?.id, toast]);
 
   useEffect(() => {
     void init();
@@ -97,7 +138,8 @@ function PostpaidPayContent() {
     setIsPaying(true);
     try {
       const successUrl = `${window.location.origin}/payment/complete?provider=toss`;
-      const failUrl = `${window.location.origin}/payment/postpaid?orderNumber=${encodeURIComponent(orderNumber)}&amount=${amount}&error=fail`;
+      // 금액은 재진입 시 서버 조회로 확정되므로 실패 복귀 링크에 싣지 않는다.
+      const failUrl = `${window.location.origin}/payment/postpaid?orderNumber=${encodeURIComponent(orderNumber)}&error=fail`;
       await widgets.requestPayment({
         orderId: orderNumber,
         orderName,
@@ -113,16 +155,21 @@ function PostpaidPayContent() {
       toast.error(msg);
       setIsPaying(false);
     }
-  }, [widgets, orderNumber, amount, isPaying, orderName, user?.email, user?.name, toast]);
+  }, [widgets, orderNumber, isPaying, orderName, user?.email, user?.name, toast]);
 
   return (
     <MobileContainer hasBottomNav={false}>
       <PageAppBar title={MESSAGES.postpaidPay.title} forceNative />
       <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck">
-        {invalid ? (
+        {blockedMessage ? (
           <p className="py-10 text-center text-card-body text-it-ink-500 dark:text-rink-300">
-            {MESSAGES.postpaidPay.invalid}
+            {blockedMessage}
           </p>
+        ) : !order ? (
+          // 주문 조회 중 — 서버 금액 확정 전에는 위젯/금액을 렌더하지 않는다.
+          <div className="flex items-center justify-center py-16">
+            <Spinner size="lg" />
+          </div>
         ) : (
           <>
             {/* 청구 요약 — ICETIMES navy 히어로 밴드 (full-bleed, 카드 박스 제거) */}

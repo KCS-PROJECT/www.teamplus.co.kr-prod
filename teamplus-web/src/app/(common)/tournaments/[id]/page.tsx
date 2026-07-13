@@ -78,8 +78,11 @@ export default function CommonTournamentDetailPage() {
 
   // [2026-06-17] 감독 — 참가선수목록(후불 결제 현황). 경기일정 밑 노출.
   const [regRows, setRegRows] = useState<TournamentRegistrationRow[]>([]);
-  // 선택 결제요청 — 체크한 등록(registrationId)에게만 청구. 청구 가능(UNPAID/PENDING) 전원 기본 선택.
+  // 선택 결제요청 — 체크한 등록(registrationId)에게만 청구. 정산 전(UNPAID)만 체크 대상
+  //   (PENDING 재청구는 행 단위 "금액 수정"으로 분리 — 반복 결제요청 방지).
   const [selectedRegIds, setSelectedRegIds] = useState<Set<string>>(new Set());
+  // 정산 모달의 실제 청구 대상 — 결제요청(선택 목록) / 금액 수정(단건) 공용.
+  const [settleTargetIds, setSettleTargetIds] = useState<string[]>([]);
 
   // 풀스크린 로더 fast-path (v11) — fetch 완료 시점에 PageTransitionLoader OFF
   usePageReady(!isLoading);
@@ -321,12 +324,11 @@ export default function CommonTournamentDetailPage() {
   // [2026-06-17] 정산 시트 열기 — 이미 로드된 참가선수목록(regRows)에서 정산 대상(UNPAID/PENDING) 카운트.
   //   (기존: getTournamentRegistrations 재조회 → 응답이 배열이 아닌 {registrations} 객체라
   //    .filter 가 터져 카운트가 null 로 남아 "불러오는중"에서 멈추던 버그 수정.)
-  // 참가선수목록 로드/갱신 시 청구 가능(UNPAID/PENDING) 대상을 기본 전체 선택.
+  // 참가선수목록 로드/갱신 시 정산 전(UNPAID) 대상만 기본 전체 선택.
+  //   PENDING(결제 대기)은 기본 제외 — 이미 요청된 건의 반복 발송 방지.
   useEffect(() => {
     const payable = regRows
-      .filter(
-        (r) => r.paymentStatus === "UNPAID" || r.paymentStatus === "PENDING",
-      )
+      .filter((r) => r.paymentStatus === "UNPAID")
       .map((r) => r.id);
     setSelectedRegIds(new Set(payable));
   }, [regRows]);
@@ -345,10 +347,29 @@ export default function CommonTournamentDetailPage() {
     const prefill =
       tournament?.feePerGame != null ? Number(tournament.feePerGame) : 0;
     setSettleFee(Number.isFinite(prefill) && prefill > 0 ? String(prefill) : "");
-    // 정산 대상 = 체크된 등록 수.
+    // 정산 대상 = 체크된 등록(UNPAID) 목록.
+    setSettleTargetIds([...selectedRegIds]);
     setSettleTargetCount(selectedRegIds.size);
     setSettleOpen(true);
   }, [selectedRegIds, tournament]);
+
+  // PENDING(결제 대기) 단건 금액 수정 — 현재 청구액 프리필, 해당 등록 1건만 재청구.
+  const openAmountEdit = useCallback(
+    (row: TournamentRegistrationRow) => {
+      const current = row.calculatedFee != null ? Number(row.calculatedFee) : 0;
+      const prefill =
+        Number.isFinite(current) && current > 0
+          ? current
+          : tournament?.feePerGame != null
+            ? Number(tournament.feePerGame)
+            : 0;
+      setSettleFee(prefill > 0 ? String(prefill) : "");
+      setSettleTargetIds([row.id]);
+      setSettleTargetCount(1);
+      setSettleOpen(true);
+    },
+    [tournament],
+  );
 
   const handleConfirmSettlement = useCallback(async () => {
     const fee = Number(settleFee);
@@ -361,7 +382,7 @@ export default function CommonTournamentDetailPage() {
       return;
     }
     setSettleSubmitting(true);
-    const res = await confirmTournamentSettlement(id, fee, [...selectedRegIds]);
+    const res = await confirmTournamentSettlement(id, fee, settleTargetIds);
     setSettleSubmitting(false);
     if (res.success && res.data) {
       toast.success(
@@ -375,7 +396,7 @@ export default function CommonTournamentDetailPage() {
     } else {
       toast.error(res.error?.message ?? MESSAGES.error.general);
     }
-  }, [id, settleFee, settleTargetCount, selectedRegIds, toast, load]);
+  }, [id, settleFee, settleTargetCount, settleTargetIds, toast, load]);
 
   // [2026-06-17] 결제요청 취소 — 정산(결제요청)으로 청구한 미결제 건을 UNPAID 로 환원.
   const handleCancelSettlement = useCallback(async () => {
@@ -621,11 +642,10 @@ export default function CommonTournamentDetailPage() {
         };
         // 결제요청취소 — 요청에 따라 임시 숨김. 로직(pendingCount/handleCancelSettlement)은 보존.
         const SHOW_CANCEL_REQUEST = false;
-        // 청구 가능(UNPAID/PENDING) 등록 — 체크박스 선택 대상.
+        // 체크박스 선택 대상 = 정산 전(UNPAID)만.
+        //   PENDING 은 행 단위 "금액 수정"으로 재청구 — 반복 결제요청 방지.
         const payableIds = regRows
-          .filter(
-            (r) => r.paymentStatus === "UNPAID" || r.paymentStatus === "PENDING",
-          )
+          .filter((r) => r.paymentStatus === "UNPAID")
           .map((r) => r.id);
         const allPayableSelected =
           payableIds.length > 0 &&
@@ -664,8 +684,17 @@ export default function CommonTournamentDetailPage() {
             )}
             <div className="flex flex-col">
               {regRows.map((r, idx) => {
-                const payable =
-                  r.paymentStatus === "UNPAID" || r.paymentStatus === "PENDING";
+                const checkable = r.paymentStatus === "UNPAID";
+                const editable = r.paymentStatus === "PENDING";
+                // 청구/결제 금액 — 감독이 보고 "금액 수정" 여부를 판단하는 근거.
+                const rowFee =
+                  r.calculatedFee != null ? Number(r.calculatedFee) : 0;
+                const amountLabel =
+                  rowFee > 0 && r.paymentStatus === "PENDING"
+                    ? MESSAGES.tournament.settleBilledAmount(rowFee)
+                    : rowFee > 0 && r.paymentStatus === "PAID"
+                      ? MESSAGES.tournament.settlePaidAmount(rowFee)
+                      : null;
                 return (
                   <div
                     key={r.id}
@@ -674,7 +703,7 @@ export default function CommonTournamentDetailPage() {
                     }`}
                   >
                     <span className="flex items-center gap-2 min-w-0">
-                      {payable ? (
+                      {checkable ? (
                         <input
                           type="checkbox"
                           checked={selectedRegIds.has(r.id)}
@@ -686,11 +715,35 @@ export default function CommonTournamentDetailPage() {
                         <span className="w-[18px] shrink-0" aria-hidden="true" />
                       )}
                       <Icon name="person" className="text-[20px] text-it-ink-400" aria-hidden="true" />
-                      <span className="font-bold text-it-ink-800 dark:text-white truncate">
-                        {nameOf(r)}
+                      <span className="min-w-0">
+                        <span className="block truncate font-bold text-it-ink-800 dark:text-white">
+                          {nameOf(r)}
+                        </span>
+                        {amountLabel && (
+                          <span className="block text-w-caption text-it-ink-400 dark:text-rink-300 tabular-nums">
+                            {amountLabel}
+                          </span>
+                        )}
                       </span>
                     </span>
-                    {statusBadge(r.paymentStatus)}
+                    <span className="flex shrink-0 items-center gap-2">
+                      {statusBadge(r.paymentStatus)}
+                      {editable && (
+                        <button
+                          type="button"
+                          disabled={!isEnded}
+                          title={
+                            !isEnded
+                              ? MESSAGES.tournament.settleAvailableAfterHour
+                              : undefined
+                          }
+                          onClick={() => openAmountEdit(r)}
+                          className="rounded-w-pill border border-it-line px-2.5 py-1 text-w-caption font-bold text-it-ink-600 hover:bg-it-fill disabled:opacity-40 dark:border-rink-700 dark:text-rink-100 dark:hover:bg-rink-700"
+                        >
+                          {MESSAGES.tournament.settleEditAmount}
+                        </button>
+                      )}
+                    </span>
                   </div>
                 );
               })}
