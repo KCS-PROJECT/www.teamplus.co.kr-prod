@@ -460,10 +460,22 @@ export class AuthService {
               directorHomeArena = venue.name;
             }
           }
+          // 활성 팀 기준 동명 차단 — admin importTeams 중복 검증과 동일 시맨틱
+          //  (비활성 팀명은 재사용 허용). 최종 방어선 — 프론트 사전 확인과 별개로 필수.
+          const trimmedClubName = clubInfo.name.trim();
+          const duplicateTeamName = await tx.team.findFirst({
+            where: { name: trimmedClubName, isActive: true },
+            select: { id: true },
+          });
+          if (duplicateTeamName) {
+            throw new ConflictException(
+              "이미 사용 중인 팀명입니다. 다른 이름을 입력해주세요.",
+            );
+          }
           const club = await tx.team.create({
             data: {
               // teamCode 미설정 (null) — 감독이 추후 팀 관리에서 등록·변경
-              name: clubInfo.name,
+              name: trimmedClubName,
               coachId: newUser.id,
               phone,
               location: directorLocation,

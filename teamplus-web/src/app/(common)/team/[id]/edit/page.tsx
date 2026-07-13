@@ -31,8 +31,13 @@ import { MESSAGES } from "@/lib/messages";
 import { emitRefresh, REFRESH_KEYS } from "@/lib/refresh-bus";
 import { isTeamManager, isTeamManagerOf } from "@/lib/team-roles";
 import { cn } from "@/lib/utils";
-import { getTeam, updateTeam } from "@/services/team.service";
+import {
+  getTeam,
+  updateTeam,
+  checkTeamNameAvailable,
+} from "@/services/team.service";
 import type { TeamDetail } from "@/services/team.service";
+import { useDebounce } from "@/hooks/useDebounce";
 import { AvatarUploader } from "@/components/shared/AvatarUploader";
 import { VenuePicker } from "@/components/common/VenuePicker";
 import { resolveImageSrc } from "@/lib/image-url";
@@ -83,6 +88,12 @@ export default function TeamEditPage() {
   // [제거 2026-05-21 시나리오 B] shortName state — Phase 2 잔재 컬럼.
   //   백엔드 updateTeam 이 저장하지 않는 죽은 입력 UI 였음. teamCode read-only 로 대체.
   const [name, setName] = useState("");
+  // 팀명 중복 사전 확인 — 가입 폼과 동일 UX. 원래 이름과 같으면 확인 생략(자기 자신 제외).
+  //  확인 실패(네트워크 등)는 차단하지 않음 — 최종 방어선은 백엔드 409.
+  const [nameStatus, setNameStatus] = useState<
+    "unchecked" | "checking" | "available" | "duplicate"
+  >("unchecked");
+  const debouncedName = useDebounce(name, 400);
   // [2026-06-01] 팀 코드 — 가입 시 미설정(null)이므로 팀 관리에서 입력·변경. 빈 값이면 해제.
   const [teamCode, setTeamCode] = useState("");
   // [모집 대상] teams.division 컬럼 재활용 — 자유 텍스트(예: "초등 저학년"). 리그 부문 무관.
@@ -168,11 +179,43 @@ export default function TeamEditPage() {
     };
   }, [teamId, canManageGlobal]);
 
+  // ── 팀명 중복 사전 확인 ─────────────────────
+  //  원래 이름 그대로면 생략(변경 없음 = 항상 허용). 다른 이름이면 활성 팀 기준 동명 검사.
+  useEffect(() => {
+    if (!team) return;
+    const trimmed = debouncedName.trim();
+    if (trimmed.length < 2 || trimmed === (team.name ?? "").trim()) {
+      setNameStatus("unchecked");
+      return;
+    }
+    let cancelled = false;
+    setNameStatus("checking");
+    checkTeamNameAvailable(trimmed)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.success && res.data) {
+          setNameStatus(res.data.available ? "available" : "duplicate");
+        } else {
+          setNameStatus("unchecked");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setNameStatus("unchecked");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedName, team]);
+
   const handleSubmit = useCallback(
     async (e?: React.FormEvent) => {
       e?.preventDefault();
       if (!name.trim()) {
         toast.error(MESSAGES.team.nameRequired);
+        return;
+      }
+      if (nameStatus === "duplicate") {
+        toast.error(MESSAGES.team.signupTeamNameDuplicate);
         return;
       }
       // 팀 코드는 선택 — 입력했으면 형식 검증(영문/숫자/-/_ · 3~32자). 빈 값이면 해제(null).
@@ -220,6 +263,7 @@ export default function TeamEditPage() {
     [
       teamId,
       name,
+      nameStatus,
       teamCode,
       division,
       region,
@@ -329,21 +373,37 @@ export default function TeamEditPage() {
             <div
               className={cn(
                 "h-12 rounded-w-md bg-it-fill dark:bg-it-blue-950 px-4 flex items-center",
-                "border-[1.5px] border-it-line-strong dark:border-it-blue-900",
-                "transition-[border-color,box-shadow] duration-150 motion-reduce:transition-none",
-                "focus-within:border-it-blue-500 focus-within:ring-2 focus-within:ring-it-blue-500/20",
+                "border-[1.5px] transition-[border-color,box-shadow] duration-150 motion-reduce:transition-none",
+                nameStatus === "duplicate"
+                  ? "border-it-red-500 focus-within:border-it-red-500 focus-within:ring-2 focus-within:ring-it-red-500/20"
+                  : "border-it-line-strong dark:border-it-blue-900 focus-within:border-it-blue-500 focus-within:ring-2 focus-within:ring-it-blue-500/20",
               )}
             >
               <input
                 type="text"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  if (nameStatus !== "unchecked") setNameStatus("unchecked");
+                }}
                 placeholder="팀 이름"
                 // focus-visible-disabled — 전역 a11y outline 과 wrapper ring 의 "이중 파란선" 회귀 방지.
                 className="flex-1 bg-transparent border-0 outline-none focus-visible-disabled text-[16px] font-extrabold text-it-ink-800 dark:text-white tracking-tight placeholder:text-it-ink-400 placeholder:font-medium"
                 maxLength={32}
+                aria-invalid={nameStatus === "duplicate"}
               />
             </div>
+            {/* 중복/사용가능 실시간 안내 — 가입 폼과 동일 UX */}
+            {nameStatus === "duplicate" && (
+              <p role="alert" className="mt-1.5 text-card-body text-it-red-500">
+                {MESSAGES.team.signupTeamNameDuplicate}
+              </p>
+            )}
+            {nameStatus === "available" && (
+              <p className="mt-1.5 text-card-body text-it-ink-400 dark:text-rink-400">
+                {MESSAGES.team.signupTeamNameAvailable}
+              </p>
+            )}
           </Field>
 
           {/* ── 3) 팀 코드 (편집 가능, 선택) ──

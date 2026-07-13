@@ -170,6 +170,18 @@ export class TeamsService {
       throw new ForbiddenException("감독 프로필이 필요합니다.");
     }
 
+    // 활성 팀 기준 동명 차단 — admin importTeams 중복 검증과 동일 시맨틱 (비활성 팀명은 재사용 허용)
+    const trimmedName = createTeamDto.clubName.trim();
+    const duplicateName = await this.prisma.team.findFirst({
+      where: { name: trimmedName, isActive: true },
+      select: { id: true },
+    });
+    if (duplicateName) {
+      throw new ConflictException(
+        "이미 사용 중인 팀명입니다. 다른 이름을 입력해주세요.",
+      );
+    }
+
     // 팀 초대 코드 생성 (예: "ACE-hockey")
     const teamCode = this.generateTeamCode();
 
@@ -190,7 +202,7 @@ export class TeamsService {
     const club = await this.prisma.team.create({
       data: {
         teamCode,
-        name: createTeamDto.clubName,
+        name: trimmedName,
         coachId: userId,
         phone: createTeamDto.phoneNumber,
         location: createLocation,
@@ -765,6 +777,22 @@ export class TeamsService {
       }
     }
 
+    // 팀명 변경 시 활성 팀 기준 동명 차단 (자기 자신 제외) — createTeam 과 동일 시맨틱
+    if (updateData.clubName !== undefined) {
+      const trimmedName = updateData.clubName.trim();
+      if (trimmedName) {
+        const duplicateName = await this.prisma.team.findFirst({
+          where: { name: trimmedName, isActive: true, id: { not: teamId } },
+          select: { id: true },
+        });
+        if (duplicateName) {
+          throw new ConflictException(
+            "이미 사용 중인 팀명입니다. 다른 이름을 입력해주세요.",
+          );
+        }
+      }
+    }
+
     // [지역/홈경기장 분리] location 은 '지역'(자유 텍스트)으로 독립 — venueId sync 대상 아님.
     //  homeArena 만 venueId 지정 시 venue.name 으로 sync. location 은 updateData.location 그대로.
     const syncedLocation: string | null | undefined = updateData.location;
@@ -796,7 +824,11 @@ export class TeamsService {
     const updatedClub = await this.prisma.team.update({
       where: { id: teamId },
       data: {
-        name: updateData.clubName,
+        // 팀명 — undefined 면 미변경, 값이면 trim 후 저장 (중복은 위에서 검증)
+        name:
+          updateData.clubName === undefined
+            ? undefined
+            : updateData.clubName.trim(),
         // 팀 코드 — undefined 면 미변경, 빈 값이면 해제(null), 값이면 trim 후 설정 (중복은 위에서 검증)
         teamCode:
           updateData.teamCode === undefined
@@ -1712,6 +1744,22 @@ export class TeamsService {
   /**
    * 공개 팀 목록 조회 (비로그인 사용자 포함 누구나 접근 가능)
    */
+  /**
+   * 팀명 사용 가능 여부 (활성 팀 기준) — 감독 가입 폼 사전 중복 확인용.
+   * 생성/수정 경로의 409 차단과 동일 시맨틱 (비활성 팀명은 재사용 허용).
+   */
+  async checkTeamNameAvailable(name: string) {
+    const trimmed = (name ?? "").trim();
+    if (!trimmed) {
+      return { available: false };
+    }
+    const duplicate = await this.prisma.team.findFirst({
+      where: { name: trimmed, isActive: true },
+      select: { id: true },
+    });
+    return { available: !duplicate };
+  }
+
   async getPublicTeams(search?: string, limit = 20, offset = 0) {
     const where: Prisma.TeamWhereInput = {};
     if (search) {

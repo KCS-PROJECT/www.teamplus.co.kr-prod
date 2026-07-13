@@ -17,7 +17,7 @@ import { emitRefresh, REFRESH_KEYS } from '@/lib/refresh-bus';
 // 아이디 규칙 — 백엔드 create-coach DTO @Matches 와 동일. 영문 소문자 시작, 영소문자·숫자·_, 4~20자.
 const ID_REGEX = /^[a-z][a-z0-9_]{3,19}$/;
 const ID_RULE_MESSAGE =
-  '아이디는 영문 소문자로 시작하고, 영문 소문자·숫자·언더스코어(_)를 사용해 4~20자로 입력해주세요.';
+  '아이디는 영문 소문자로 시작하는 4~20자로 입력해주세요. 숫자와 언더스코어(_)도 사용할 수 있습니다.';
 
 /** 입력 필드 공통 스타일 — h-12 (48px) 터치 타겟 · ICETIMES 폼 입력 규격 */
 const INPUT_CLASS =

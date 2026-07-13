@@ -24,6 +24,8 @@ import {
   TeamPickerSheet,
   type TeamPickerSelection,
 } from "@/components/team/TeamPickerSheet";
+import { checkTeamNameAvailable } from "@/services/team.service";
+import { useDebounce } from "@/hooks/useDebounce";
 // [수정 2026-05-21] 팀 코드 텍스트 입력 + checkTeamCode 검증 → TeamPickerSheet 선택 방식으로 전환.
 //  기존 GET /teams/check-code 호출은 제거하고, 모달이 백엔드 검증된 목록만 노출하므로
 //  선택 즉시 teamCodeStatus='valid' 로 간주한다. 가입 페이로드의 teamCode 는 그대로 유지.
@@ -40,7 +42,7 @@ type TermsModalKey = "service" | "privacy" | "marketing";
 // [2026-06-04] 아이디 길이 정책 4~20 → 8~20자 (첫글자 + 7~19).
 const ID_REGEX = /^[a-z][a-z0-9_]{7,19}$/;
 const ID_RULE_MESSAGE =
-  "아이디는 영문 소문자로 시작하고, 영문 소문자·숫자·언더스코어(_)를 사용해 8~20자로 입력해주세요.";
+  "아이디는 영문 소문자로 시작하는 8~20자로 입력해주세요. 숫자와 언더스코어(_)도 사용할 수 있습니다.";
 
 // ========== 역할 타입 ==========
 interface RoleOption {
@@ -273,6 +275,12 @@ export default function SignupPage() {
   const [verifiedTeamName, setVerifiedTeamName] = useState<string>("");
   const [isTeamPickerOpen, setIsTeamPickerOpen] = useState(false);
 
+  // 팀명 중복 사전 확인 (팀 감독 가입 전용) — 입력 디바운스 후 자동 확인.
+  //  확인 실패(네트워크 등)는 차단하지 않음 — 최종 방어선은 백엔드 409.
+  const [clubNameStatus, setClubNameStatus] = useState<
+    "unchecked" | "checking" | "available" | "duplicate"
+  >("unchecked");
+
   const [formData, setFormData] = useState<FormData>({
     lastName: "",
     firstName: "",
@@ -291,6 +299,44 @@ export default function SignupPage() {
     marketing: false,
   });
   const [errors, setErrors] = useState<FormErrors>({});
+
+  // 팀명 입력 디바운스 값 — 400ms 정지 후 중복 확인 API 호출
+  const debouncedClubName = useDebounce(formData.clubName, 400);
+
+  useEffect(() => {
+    if (selectedRole !== "director" || directorType !== "team") return;
+    const name = debouncedClubName.trim();
+    if (name.length < 2) {
+      setClubNameStatus("unchecked");
+      return;
+    }
+    let cancelled = false;
+    setClubNameStatus("checking");
+    checkTeamNameAvailable(name)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.success && res.data) {
+          if (res.data.available) {
+            setClubNameStatus("available");
+            setErrors((prev) => ({ ...prev, clubName: undefined }));
+          } else {
+            setClubNameStatus("duplicate");
+            setErrors((prev) => ({
+              ...prev,
+              clubName: MESSAGES.team.signupTeamNameDuplicate,
+            }));
+          }
+        } else {
+          setClubNameStatus("unchecked");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setClubNameStatus("unchecked");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedClubName, selectedRole, directorType]);
 
   // [추가 2026-05-23] 약관 동의 row 의 chevron(>) 클릭 시 약관 본문 노출 모달 상태.
   //  기존: chevron 은 단순 장식이라 클릭해도 아무 일도 안 일어남 → 사용자 회귀.
@@ -314,6 +360,12 @@ export default function SignupPage() {
       if (teamCodeStatus !== "unchecked") {
         setTeamCodeStatus("unchecked");
         setVerifiedTeamName("");
+      }
+    }
+    // 팀명 변경 시 중복 확인 상태 리셋 — 디바운스 후 재확인.
+    if (field === "clubName") {
+      if (clubNameStatus !== "unchecked") {
+        setClubNameStatus("unchecked");
       }
     }
   };
@@ -407,6 +459,8 @@ export default function SignupPage() {
           newErrors.clubName = MESSAGES.team.signupTeamNameRequired;
         } else if (formData.clubName.trim().length < 2) {
           newErrors.clubName = MESSAGES.team.signupTeamNameRequired;
+        } else if (clubNameStatus === "duplicate") {
+          newErrors.clubName = MESSAGES.team.signupTeamNameDuplicate;
         }
         // 팀 코드는 가입 시 받지 않음 — 추후 팀 관리에서 등록.
       } else if (directorType === "academy") {
@@ -564,6 +618,10 @@ export default function SignupPage() {
         // 팀 선택 관련 서버 에러는 해당 필드에도 매핑해 사용자가 어느 필드인지 즉시 인지하도록 한다.
         if (msg.includes("팀을 찾을 수 없") && selectedRole === "coach") {
           setErrors({ coachTeamId: msg });
+        } else if (msg.includes("이미 사용 중인 팀명")) {
+          // 백엔드 409 (동시 가입 등 사전 확인을 통과한 케이스) — 팀명 필드에 매핑
+          setErrors({ clubName: msg });
+          setClubNameStatus("duplicate");
         } else {
           setErrors({ general: msg });
         }
@@ -584,7 +642,7 @@ export default function SignupPage() {
     selectedRole !== "director"
       ? true
       : directorType === "team"
-        ? Boolean(formData.clubName.trim())
+        ? Boolean(formData.clubName.trim()) && clubNameStatus !== "duplicate"
         : directorType === "academy"
           ? Boolean(formData.academyName.trim())
           : false;
@@ -776,6 +834,11 @@ export default function SignupPage() {
                         handleInputChange("clubName", e.target.value)
                       }
                       error={errors.clubName}
+                      helperText={
+                        clubNameStatus === "available"
+                          ? MESSAGES.team.signupTeamNameAvailable
+                          : undefined
+                      }
                       maxLength={50}
                       required
                       disabled={isSubmitting}

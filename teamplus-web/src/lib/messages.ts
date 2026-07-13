@@ -1792,6 +1792,9 @@ export const MESSAGES = {
     signupTeamNameLabel: "팀 이름",
     signupTeamNamePlaceholder: "생성할 팀 이름을 입력해주세요",
     signupTeamNameRequired: "팀 이름을 입력해주세요.",
+    signupTeamNameDuplicate:
+      "이미 사용 중인 팀명입니다. 다른 이름을 입력해주세요.",
+    signupTeamNameAvailable: "사용 가능한 팀명입니다.",
     signupTeamCodeLabel: "팀 코드",
     signupTeamCodePlaceholder: "영문·숫자 팀 코드",
     signupTeamCodeHelper:
