@@ -28,6 +28,8 @@ interface ClassHeader {
   className: string;
   approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED';
   rejectionReason?: string | null;
+  /** regular | lesson | spot — spot(1회용)은 일정 1개 제한. */
+  trainingType?: string | null;
   classDays?: string[];
   startTime?: string;
   endTime?: string;
@@ -165,6 +167,10 @@ export default function ClassSchedulesManagePage() {
 
   const isApproved = cls?.approvalStatus === 'APPROVED';
 
+  // [Lifecycle v4.1 §7.1] spot(1회용) — 활성 일정 1개 제한 (schedules 는 취소 제외 상태).
+  const isSpot = cls?.trainingType === 'spot';
+  const spotLimitReached = isSpot && schedules.length >= 1;
+
   // 이미 등록된(취소 제외) 날짜 — 미니달력에 선택 표시.
   const registeredDates = useMemo(
     () =>
@@ -183,6 +189,11 @@ export default function ClassSchedulesManagePage() {
   const handleConfirmDates = useCallback(
     async (dates: string[], resolved: MultiDateResolved[]) => {
       if (!cls || !isApproved || dates.length === 0) return;
+      // spot(1회용) — 기존 활성 일정 + 신규 합계 1개 초과 차단 (백엔드 가드와 동일 정책, 이중 방어).
+      if (isSpot && schedules.length + dates.length > 1) {
+        toast.error(MESSAGES.class.spotSingleScheduleLimit);
+        return;
+      }
       const basePath = getOwnerPath(cls);
       if (!basePath) {
         toast.error(MESSAGES.common.loadFailed);
@@ -248,7 +259,7 @@ export default function ClassSchedulesManagePage() {
         setIsSubmittingDates(false);
       }
     },
-    [cls, isApproved, getOwnerPath, toast, fetchSchedules],
+    [cls, isApproved, isSpot, schedules.length, getOwnerPath, toast, fetchSchedules],
   );
 
   const handleUpdateSchedule = useCallback(
@@ -336,12 +347,17 @@ export default function ClassSchedulesManagePage() {
             <button
               type="button"
               onClick={() => setMultiDateOpen(true)}
-              disabled={!isApproved || isSubmittingDates}
+              disabled={!isApproved || isSubmittingDates || spotLimitReached}
               className="w-full flex items-center justify-center gap-1.5 py-3 bg-it-blue-500 hover:bg-it-blue-600 disabled:bg-it-line dark:disabled:bg-rink-700 disabled:cursor-not-allowed text-white font-bold rounded-w-md transition-colors motion-reduce:transition-none active:brightness-95"
             >
               <Icon name="calendar_month" className="text-base" aria-hidden="true" />
               {isSubmittingDates ? '추가 중…' : '일정 추가'}
             </button>
+            {spotLimitReached && (
+              <p className="text-card-meta text-it-ink-500 dark:text-rink-300" role="status">
+                {MESSAGES.class.spotSingleScheduleLimit}
+              </p>
+            )}
           </div>
         </section>
 
@@ -483,7 +499,9 @@ export default function ClassSchedulesManagePage() {
         initialMonth={initialMonth}
         selected={[]}
         disabledDates={registeredDates}
-        daySchedules={cls.daySchedules ?? []}
+        // spot(1회용) — 요일 빠른 선택 칩 차단 + 단일 선택 모드 (ClassForm 동일 패턴).
+        daySchedules={isSpot ? [] : cls.daySchedules ?? []}
+        singleSelect={isSpot}
         onConfirm={handleConfirmDates}
         onClose={() => setMultiDateOpen(false)}
         iceTheme

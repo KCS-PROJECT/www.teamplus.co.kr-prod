@@ -175,7 +175,7 @@ export class AuthController {
   @ApiResponse({
     status: 401,
     description:
-      "이메일 또는 비밀번호가 올바르지 않습니다. 또는 해당 화면에서는 로그인할 수 없는 계정입니다.",
+      "아이디 또는 비밀번호가 올바르지 않습니다. 또는 해당 화면에서는 로그인할 수 없는 계정입니다.",
   })
   async login(
     @Body() encryptedDto: EncryptedLoginDto,
@@ -350,7 +350,7 @@ export class AuthController {
         context: `auth.controller.login[${chldiv}]`,
       });
       throw new UnauthorizedException(
-        "이메일 또는 비밀번호가 올바르지 않습니다.",
+        "아이디 또는 비밀번호가 올바르지 않습니다.",
       );
     }
 
@@ -362,7 +362,7 @@ export class AuthController {
         chldiv,
       });
       throw new UnauthorizedException(
-        "이메일 또는 비밀번호가 올바르지 않습니다.",
+        "아이디 또는 비밀번호가 올바르지 않습니다.",
       );
     }
 

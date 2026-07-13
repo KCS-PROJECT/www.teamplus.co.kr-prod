@@ -518,63 +518,6 @@ export function ClassForm({
                 )}
               </div>
 
-              {/* [Lifecycle v4.1 §7.1] 1회용 수업(spot) — 팀 수업 전용 하위 옵션.
-                  · 체크 시 trainingType='spot' + 일정 단일 제한 · 표시상 정규 취급
-                  · 오픈클래스(isAcademy)는 숨김(lesson 강제) · 수정 모드 읽기 전용(유형 전환 금지) */}
-              {!isAcademy && (
-                <div className="mt-5">
-                  <button
-                    type="button"
-                    role="checkbox"
-                    aria-checked={isSpot}
-                    disabled={isEditMode}
-                    onClick={() =>
-                      setFormData(prev => ({
-                        ...prev,
-                        trainingType: prev.trainingType === 'spot' ? 'regular' : 'spot',
-                        // 단일 제한 규칙 통일 — 항상 "마지막에 선택한 날짜 1개" 유지 (applyMultiDates 와 동일).
-                        dateSchedules:
-                          prev.trainingType === 'spot'
-                            ? prev.dateSchedules
-                            : prev.dateSchedules.slice(-1),
-                      }))
-                    }
-                    className={cn(
-                      'flex items-center gap-2.5 px-3.5 h-12 rounded-w-md border-[1.5px] text-sm font-bold transition-colors motion-reduce:transition-none disabled:opacity-60',
-                      iceTheme
-                        ? isSpot
-                          ? 'bg-it-blue-50 border-it-blue-500 text-it-blue-500 dark:bg-it-blue-500/15 dark:border-it-blue-300 dark:text-it-blue-300'
-                          : 'bg-it-fill dark:bg-rink-700 border-it-line-strong dark:border-rink-600 text-it-ink-600 dark:text-rink-200'
-                        : isSpot
-                          ? 'bg-ice-100 border-ice-500 text-ice-700 dark:bg-ice-500/15 dark:border-ice-400 dark:text-ice-300'
-                          : 'bg-wbg dark:bg-rink-700 border-wline-2 dark:border-rink-600 text-wtext-2 dark:text-rink-200'
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors motion-reduce:transition-none',
-                        isSpot
-                          ? iceTheme
-                            ? 'bg-it-blue-500 border-it-blue-500 text-white'
-                            : 'bg-ice-500 border-ice-500 text-white'
-                          : iceTheme
-                            ? 'bg-it-surface dark:bg-rink-800 border-it-line-strong dark:border-rink-500'
-                            : 'bg-wsurface dark:bg-rink-800 border-wline-2 dark:border-rink-500'
-                      )}
-                      aria-hidden="true"
-                    >
-                      {isSpot && <Icon name="check" className="text-sm" />}
-                    </span>
-                    <span>{MESSAGES.class.spotCheckboxLabel}</span>
-                  </button>
-                  {isSpot && (
-                    <p className="text-xs text-wtext-3 dark:text-rink-300 mt-1.5">
-                      {MESSAGES.class.spotCheckboxHint}
-                    </p>
-                  )}
-                </div>
-              )}
-
               {/* 대상 연령 — 전체 연령 대상(기본) 토글. 끄면 출생연도 개별 선택 그리드 노출. */}
               <div className="mt-5">
                 <label className={ic.label}>
@@ -753,8 +696,67 @@ export function ClassForm({
               일정 및 장소 설정
             </h2>
 
+            {/* [Lifecycle v4.1 §7.1] 1회용 수업(spot) — 팀 수업 전용 하위 옵션.
+                · 체크 시 trainingType='spot' + 일정 단일 제한 · 표시상 정규 취급
+                · 오픈클래스(isAcademy)는 숨김(lesson 강제) · 수정 모드 읽기 전용(유형 전환 금지) */}
+            {!isAcademy && (
+              <div>
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={isSpot}
+                  disabled={isEditMode}
+                  onClick={() =>
+                    setFormData(prev => ({
+                      ...prev,
+                      trainingType: prev.trainingType === 'spot' ? 'regular' : 'spot',
+                      // 단일 제한 규칙 통일 — 항상 "마지막에 선택한 날짜 1개" 유지 (applyMultiDates 와 동일).
+                      dateSchedules:
+                        prev.trainingType === 'spot'
+                          ? prev.dateSchedules
+                          : prev.dateSchedules.slice(-1),
+                    }))
+                  }
+                  className={cn(
+                    'flex items-center gap-2.5 px-3.5 h-12 rounded-w-md border-[1.5px] text-sm font-bold transition-colors motion-reduce:transition-none disabled:opacity-60',
+                    iceTheme
+                      ? isSpot
+                        ? 'bg-it-blue-50 border-it-blue-500 text-it-blue-500 dark:bg-it-blue-500/15 dark:border-it-blue-300 dark:text-it-blue-300'
+                        : 'bg-it-fill dark:bg-rink-700 border-it-line-strong dark:border-rink-600 text-it-ink-600 dark:text-rink-200'
+                      : isSpot
+                        ? 'bg-ice-100 border-ice-500 text-ice-700 dark:bg-ice-500/15 dark:border-ice-400 dark:text-ice-300'
+                        : 'bg-wbg dark:bg-rink-700 border-wline-2 dark:border-rink-600 text-wtext-2 dark:text-rink-200'
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors motion-reduce:transition-none',
+                      isSpot
+                        ? iceTheme
+                          ? 'bg-it-blue-500 border-it-blue-500 text-white'
+                          : 'bg-ice-500 border-ice-500 text-white'
+                        : iceTheme
+                          ? 'bg-it-surface dark:bg-rink-800 border-it-line-strong dark:border-rink-500'
+                          : 'bg-wsurface dark:bg-rink-800 border-wline-2 dark:border-rink-500'
+                    )}
+                    aria-hidden="true"
+                  >
+                    {isSpot && <Icon name="check" className="text-sm" />}
+                  </span>
+                  <span>{MESSAGES.class.spotCheckboxLabel}</span>
+                </button>
+                {isSpot && (
+                  <p className="text-xs text-wtext-3 dark:text-rink-300 mt-1.5">
+                    {MESSAGES.class.spotCheckboxHint}
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* [2026-06-30] 요일별 기본 시간·장소(ClassDaySchedule 템플릿) — 선택.
-                미리 정해두면 아래 '일정 추가' 시 요일에 맞춰 시간·장소가 자동으로 채워진다. */}
+                미리 정해두면 아래 '일정 추가' 시 요일에 맞춰 시간·장소가 자동으로 채워진다.
+                단일 일정(spot)은 회차가 1개뿐이라 요일 템플릿이 무의미하므로 숨긴다. */}
+            {!isSpot && (
             <div className={cn(ic.card, 'space-y-3')}>
               <div>
                 <label className={cn('block text-sm font-bold', iceTheme ? 'text-it-ink-600 dark:text-rink-100' : 'text-wtext-2 dark:text-rink-100')}>
@@ -888,6 +890,7 @@ export function ClassForm({
                 </ul>
               )}
             </div>
+            )}
 
             {/* [2026-06-09] 미니달력 날짜별 일정(날짜·시간·장소). 요일 토글 대체. */}
             {(
@@ -1589,7 +1592,9 @@ export function ClassForm({
         initialYear={currentYear}
         initialMonth={currentMonth}
         selected={formData.dateSchedules.map(s => s.date).filter(Boolean)}
-        daySchedules={formData.daySchedules}
+        // 1회용 수업(spot) — 잔존 요일 템플릿의 빠른 선택 칩 차단 + 단일 선택 모드.
+        daySchedules={isSpot ? [] : formData.daySchedules}
+        singleSelect={isSpot}
         onConfirm={applyMultiDates}
         onClose={() => setMultiDateOpen(false)}
         iceTheme={iceTheme}

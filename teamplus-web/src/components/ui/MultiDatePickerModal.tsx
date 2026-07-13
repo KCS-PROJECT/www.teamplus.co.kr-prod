@@ -65,6 +65,12 @@ interface MultiDatePickerModalProps {
    *   입력 전까지 확인을 비활성화한다(시간 미정 일정 생성 차단). 확정 시 해당 날짜에 일괄 주입.
    */
   requireCommonTime?: boolean;
+  /**
+   * 단일 선택 모드. 기본 false = 기존 복수 선택 1:1 보존(타 화면 회귀 0).
+   *   true 시 달력 탭이 라디오처럼 동작 — 새 날짜 선택 시 기존 선택을 대체(항상 1개 유지),
+   *   같은 날짜 재탭 시 해제. 요일 빠른 선택 칩 일괄 토글도 차단(1회용 수업 등 단일 일정 전용).
+   */
+  singleSelect?: boolean;
 }
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -92,6 +98,7 @@ export function MultiDatePickerModal({
   onClose,
   iceTheme = false,
   requireCommonTime = false,
+  singleSelect = false,
 }: MultiDatePickerModalProps) {
   const [viewYear, setViewYear] = useState(initialYear);
   const [viewMonth, setViewMonth] = useState(initialMonth); // 1-12
@@ -188,10 +195,14 @@ export function MultiDatePickerModal({
   };
 
   // 달력 개별 토글 — 미세조정용. 이미 등록·지난 날짜는 칩과 동일하게 선택 불가.
+  //   singleSelect: 라디오 동작 — 새 날짜는 기존 선택 대체, 같은 날짜 재탭은 해제.
   const toggle = (d: number) => {
     const key = toISO(viewYear, viewMonth, d);
     if (disabledSet.has(key) || key < todayISO) return; // 이미 등록·지난 날짜는 토글 불가
     setPicked((prev) => {
+      if (singleSelect) {
+        return prev.has(key) ? new Set<string>() : new Set([key]);
+      }
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
@@ -202,6 +213,7 @@ export function MultiDatePickerModal({
   // 요일 칩 탭 — 보고 있는 달의 해당 요일을 일괄 토글(전부 선택돼 있으면 일괄 해제).
   //   다른 달 선택분·개별 추가분은 picked Set 그대로 보존(월 이동 누적).
   const toggleChip = (dayOfWeek: string) => {
+    if (singleSelect) return; // 단일 선택 모드 — 일괄 선택 차단(칩은 호출부에서 이미 숨김, 이중 방어)
     const dates = chipDatesOfMonth(dayOfWeek);
     if (dates.length === 0) return;
     setPicked((prev) => {

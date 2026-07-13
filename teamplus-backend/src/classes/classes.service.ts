@@ -330,6 +330,16 @@ export class ClassesService {
     // 회차(요일/날짜별) 시간 순서 검증
     assertScheduleTimeRanges(createDto.daySchedules, createDto.dateSchedules);
 
+    // [Lifecycle v4.1 §7.1] spot(1회용) — 일정 1개 초과 차단 (프론트 단일 선택 제한의 서버 방어선)
+    if (
+      createDto.trainingType === "spot" &&
+      (createDto.dateSchedules?.length ?? 0) > 1
+    ) {
+      throw new BadRequestException(
+        "1회용 수업은 일정을 1개만 등록할 수 있습니다.",
+      );
+    }
+
     // 카테고리 자동 계산
     let category = createDto.category;
     if (!category && (createDto.ageMin || createDto.ageMax)) {
@@ -2398,6 +2408,17 @@ export class ClassesService {
     // 회차(요일/날짜별) 시간 순서 검증
     assertScheduleTimeRanges(updateDto.daySchedules, updateDto.dateSchedules);
 
+    // [Lifecycle v4.1 §7.1] spot(1회용) — 일정 1개 초과 차단.
+    //   trainingType 은 수정 시 변경 불가 정책이므로 기존 저장값 기준으로 판정.
+    if (
+      classRecord.trainingType === "spot" &&
+      (updateDto.dateSchedules?.length ?? 0) > 1
+    ) {
+      throw new BadRequestException(
+        "1회용 수업은 일정을 1개만 등록할 수 있습니다.",
+      );
+    }
+
     // 2026-05-12: 배정 코치 동기화 사전 검증 — 회의록 정합 (Team owner + CoachProfile 통합).
     //   - DIRECTOR/감독: Team.coachId 매핑 — CoachProfile 없을 수 있음
     //   - COACH/학원 감독: CoachProfile.teamId 매핑
@@ -3474,6 +3495,19 @@ export class ClassesService {
 
     if (toCreate.length === 0) {
       return { created: 0, skipped: candidateDates.length, schedules: [] };
+    }
+
+    // [Lifecycle v4.1 §7.1] spot(1회용) — 기존 활성 일정 + 신규 생성 합계가 1개를 넘으면 차단.
+    //   위 existing 조회는 candidate 날짜 범위 한정이라 전체 활성 일정을 별도 집계한다.
+    if (classRecord.trainingType === "spot") {
+      const activeCount = await this.prisma.classSchedule.count({
+        where: { classId, isCancelled: false },
+      });
+      if (activeCount + toCreate.length > 1) {
+        throw new BadRequestException(
+          "1회용 수업은 일정을 1개만 등록할 수 있습니다.",
+        );
+      }
     }
 
     // ─── RSVP_DISABLED_2026-05-28 ─── BEGIN ─────────────────────────

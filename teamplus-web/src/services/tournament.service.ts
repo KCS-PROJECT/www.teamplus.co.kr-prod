@@ -778,6 +778,101 @@ export function canCancelTournamentRegistration(
   return start.getTime() > kstTodayUtcMidnight;
 }
 
+/** 참가 신청 자녀 옵션 — 신청(apply) 페이지와 상세 CTA 판정이 공유하는 단일 규칙.
+ *  · 지정 명단(selectedParticipantIds) 대회면 명단 자녀만 남긴다.
+ *  · isPaid: 결제완료(PAID) — 중복 결제 방지.
+ *  · isRegistered: 후불(POSTPAID) 미결제 신청 — 신청완료 취급.
+ *    (선불 결제중단 PENDING 은 재결제 가능해야 하므로 신청 가능으로 본다)
+ *  · isEligible: 출생연도 자격 — 개별 연도 집합 우선, 없으면 from/to 범위 폴백.
+ *    명단 지정 자녀는 자격 무관 허용, 출생연도 불명은 막지 않는다. */
+export interface TournamentChildOption {
+  id: string;
+  name: string;
+  birthDate: string | null;
+  isPaid: boolean;
+  isRegistered: boolean;
+  paymentStatus?: string;
+  amount: number;
+  orderNumber: string | null;
+  registrationId?: string;
+  isEligible: boolean;
+}
+
+export function buildTournamentChildOptions(
+  tournament: Pick<
+    TournamentDetail,
+    | 'selectedParticipantIds'
+    | 'paidParticipantIds'
+    | 'myRegistrations'
+    | 'eligibleBirthYears'
+    | 'eligibleBirthYearFrom'
+    | 'eligibleBirthYearTo'
+    | 'billingMode'
+  >,
+  childrenList: Array<{
+    id: string;
+    firstName?: string;
+    lastName?: string;
+    birthDate?: string | null;
+  }>,
+): TournamentChildOption[] {
+  const participantIds = Array.isArray(tournament.selectedParticipantIds)
+    ? tournament.selectedParticipantIds
+    : [];
+  const paidIds = Array.isArray(tournament.paidParticipantIds)
+    ? tournament.paidParticipantIds
+    : [];
+  const myRegs = Array.isArray(tournament.myRegistrations)
+    ? tournament.myRegistrations
+    : [];
+  const regByParticipant = new Map(myRegs.map((r) => [r.participantId, r]));
+  const eligYears =
+    Array.isArray(tournament.eligibleBirthYears) &&
+    tournament.eligibleBirthYears.length > 0
+      ? tournament.eligibleBirthYears
+      : null;
+  const eligFrom = tournament.eligibleBirthYearFrom ?? null;
+  const eligTo = tournament.eligibleBirthYearTo ?? null;
+  const isChildEligible = (c: { id: string; birthDate?: string | null }) => {
+    if (participantIds.includes(c.id)) return true;
+    const by = c.birthDate ? new Date(c.birthDate).getFullYear() : null;
+    if (by == null) return true;
+    if (eligYears) return eligYears.includes(by);
+    if (eligFrom != null && by < eligFrom) return false;
+    if (eligTo != null && by > eligTo) return false;
+    return true;
+  };
+  return childrenList
+    .map((c) => {
+      const reg = regByParticipant.get(c.id);
+      return {
+        id: c.id,
+        name: `${c.lastName ?? ''}${c.firstName ?? ''}`.trim() || '자녀',
+        birthDate: c.birthDate ?? null,
+        isPaid: paidIds.includes(c.id),
+        isRegistered:
+          !!reg &&
+          reg.paymentStatus !== 'PAID' &&
+          tournament.billingMode === 'POSTPAID',
+        paymentStatus: reg?.paymentStatus,
+        amount: reg?.amount ?? 0,
+        orderNumber: reg?.orderNumber ?? null,
+        registrationId: reg?.registrationId,
+        isEligible: isChildEligible(c),
+      };
+    })
+    .filter(
+      (c) => participantIds.length === 0 || participantIds.includes(c.id),
+    );
+}
+
+/** 이 자녀로 지금 신청을 진행할 수 있는가 (미결제 · 미신청 · 자격 충족) */
+export function isTournamentChildApplicable(
+  o: TournamentChildOption,
+): boolean {
+  return !o.isPaid && !o.isRegistered && o.isEligible;
+}
+
 export function mapTournamentUiStatus(
   raw: TournamentStatus,
   endDate?: string | null,

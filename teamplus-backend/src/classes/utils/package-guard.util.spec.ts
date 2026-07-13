@@ -126,15 +126,13 @@ describe("package-guard.util", () => {
   });
 
   describe("assertPaymentAllowed()", () => {
-    const endTime = daysFromNow(11);
-
+    // endTime 가드 폐기(2026-06-09) — 입력에서 class 필드 제거, isActive 만 판정.
     it("isActive=true → null (통과)", () => {
       expect(
         assertPaymentAllowed({
           feeType: "PER_SESSION",
           durationDays: 30,
           isActive: true,
-          class: { endTime },
         }),
       ).toBeNull();
     });
@@ -144,22 +142,9 @@ describe("package-guard.util", () => {
         feeType: "PER_SESSION",
         durationDays: 30,
         isActive: false,
-        class: { endTime },
       });
       expect(result).toBe("INACTIVE");
       expect(PACKAGE_PAYMENT_BLOCK_MESSAGES[result!]).toContain("결제할 수 없는");
-    });
-
-    it("수업 종료 후에도 isActive=true → null (endTime 가드 폐기)", () => {
-      const endedAt = daysFromNow(-10);
-      expect(
-        assertPaymentAllowed({
-          feeType: "PER_SESSION",
-          durationDays: 30,
-          isActive: true,
-          class: { endTime: endedAt },
-        }),
-      ).toBeNull();
     });
 
     it("MONTHLY_FIXED + durationDays 초과 + isActive=true → null (endTime 가드 폐기)", () => {
@@ -168,18 +153,6 @@ describe("package-guard.util", () => {
           feeType: "MONTHLY_FIXED",
           durationDays: 56,
           isActive: true,
-          class: { endTime },
-        }),
-      ).toBeNull();
-    });
-
-    it("class 정보 없음 + isActive=true → null", () => {
-      expect(
-        assertPaymentAllowed({
-          feeType: "MONTHLY_FIXED",
-          durationDays: 56,
-          isActive: true,
-          class: null,
         }),
       ).toBeNull();
     });

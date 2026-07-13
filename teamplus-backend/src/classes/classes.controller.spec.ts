@@ -148,16 +148,22 @@ describe("ClassesController", () => {
   });
 
   describe("GET /api/v1/teams/:teamId/classes/:classId", () => {
+    // 매니저 비소속 수업 접근 차단용 requester 전달 — getClass(classId, req.user).
+    const mockRequest = { user: { id: "coach-uuid" } } as any;
+
     it("should return class details", async () => {
       // Arrange
       mockClassesService.getClass.mockResolvedValue(mockClass);
 
       // Act
-      const result = await controller.getClass("class-uuid");
+      const result = await controller.getClass(mockRequest, "class-uuid");
 
       // Assert
       expect(result).toEqual(mockClass);
-      expect(mockClassesService.getClass).toHaveBeenCalledWith("class-uuid");
+      expect(mockClassesService.getClass).toHaveBeenCalledWith(
+        "class-uuid",
+        mockRequest.user,
+      );
     });
 
     it("should handle class not found", async () => {
@@ -167,30 +173,36 @@ describe("ClassesController", () => {
       );
 
       // Act & Assert
-      await expect(controller.getClass("invalid-id")).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        controller.getClass(mockRequest, "invalid-id"),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
   describe("GET /api/v1/teams/:teamId/classes", () => {
     it("should return club classes list", async () => {
-      // Arrange
-      mockClassesService.getTeamClasses.mockResolvedValue([mockClass]);
+      // Arrange — 컨트롤러는 내부에서 getClubClasses(teamId, 필터) 로 위임한다.
+      mockClassesService.getClubClasses.mockResolvedValue([mockClass]);
 
       // Act
       const result = await controller.getTeamClasses("team-uuid");
 
       // Assert
       expect(result).toEqual([mockClass]);
-      expect(mockClassesService.getTeamClasses).toHaveBeenCalledWith(
+      expect(mockClassesService.getClubClasses).toHaveBeenCalledWith(
         "team-uuid",
+        {
+          search: undefined,
+          category: undefined,
+          status: undefined,
+          coachId: undefined,
+        },
       );
     });
 
     it("should return empty array if no classes", async () => {
       // Arrange
-      mockClassesService.getTeamClasses.mockResolvedValue([]);
+      mockClassesService.getClubClasses.mockResolvedValue([]);
 
       // Act
       const result = await controller.getTeamClasses("team-uuid");
@@ -448,17 +460,24 @@ describe("ClassesController", () => {
   });
 
   describe("GET /api/v1/teams/:teamId/classes/:classId/products", () => {
+    // 역할별 비활성 패키지 숨김용 requester 전달 — getClassProducts(classId, req.user).
+    const mockRequest = { user: { id: "coach-uuid" } } as any;
+
     it("should return class products", async () => {
       // Arrange
       mockClassesService.getClassProducts.mockResolvedValue([mockProduct]);
 
       // Act
-      const result = await controller.getClassProducts("class-uuid");
+      const result = await controller.getClassProducts(
+        mockRequest,
+        "class-uuid",
+      );
 
       // Assert
       expect(result).toEqual([mockProduct]);
       expect(mockClassesService.getClassProducts).toHaveBeenCalledWith(
         "class-uuid",
+        mockRequest.user,
       );
     });
 
@@ -467,7 +486,10 @@ describe("ClassesController", () => {
       mockClassesService.getClassProducts.mockResolvedValue([]);
 
       // Act
-      const result = await controller.getClassProducts("class-uuid");
+      const result = await controller.getClassProducts(
+        mockRequest,
+        "class-uuid",
+      );
 
       // Assert
       expect(result).toEqual([]);
