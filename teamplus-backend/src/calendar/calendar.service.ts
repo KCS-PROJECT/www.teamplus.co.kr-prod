@@ -510,9 +510,10 @@ export class CalendarService {
         tournamentId: true,
         scheduledAt: true,
         opponentName: true,
+        venueName: true,
         matchOrder: true,
         awayTeam: { select: { name: true } },
-        tournament: { select: { name: true } },
+        tournament: { select: { name: true, ...TOURNAMENT_VENUE_SELECT } },
         venue: { select: { name: true } },
         rink: { select: { name: true } },
       },
@@ -600,7 +601,12 @@ export class CalendarService {
         timeEnd: m.scheduledAt.toISOString(),
         displayStart: hhmm,
         displayEnd: hhmm,
-        venue: m.venue?.name ?? m.rink?.name ?? null,
+        // 경기 직접 입력(venueName) > 경기 링크장 > 대회 장소(location > venue > rink) 폴백.
+        venue:
+          m.venueName ??
+          m.venue?.name ??
+          m.rink?.name ??
+          (m.tournament ? resolveTournamentVenueText(m.tournament) : null),
       });
     }
 

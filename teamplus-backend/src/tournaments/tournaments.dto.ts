@@ -535,6 +535,15 @@ export class CreateMatchDto {
   @IsString()
   opponentName?: string;
 
+  @ApiPropertyOptional({
+    description:
+      "경기 장소 자유 텍스트 — 링크장(venueId) 미선택 시 직접 입력. 미입력 시 대회 장소 폴백 표시",
+    example: "목동 아이스링크 보조링크",
+  })
+  @IsOptional()
+  @IsString()
+  venueName?: string;
+
   @ApiProperty({
     description: "경기 예정 시간",
     example: "2026-04-01T14:00:00Z",
@@ -585,6 +594,13 @@ export class UpdateMatchDto {
   @IsOptional()
   @IsString()
   venueId?: string;
+
+  @ApiPropertyOptional({
+    description: "경기 장소 자유 텍스트 — 빈 문자열 전송 시 클리어(null)",
+  })
+  @IsOptional()
+  @IsString()
+  venueName?: string;
 
   @ApiPropertyOptional({ description: "홈 클럽 ID" })
   @IsOptional()

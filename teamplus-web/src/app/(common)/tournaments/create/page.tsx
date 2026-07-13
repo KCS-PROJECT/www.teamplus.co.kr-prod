@@ -230,10 +230,10 @@ export default function TournamentCreatePage() {
         setName(t.name ?? "");
         setDescription(t.description ?? "");
         // [2026-06-16] start/end 는 경기 일정에서 파생 — 수정 시 matches prefill 로 자동 재계산.
-        // [2026-06-19] 링크장 복원 — venue 관계 우선. 입력칸(venueQuery)에 선택 장소명 표시.
-        //   레거시 자유텍스트(location)는 링크장 매핑이 없어 재선택 유도(빈 입력칸).
+        // 링크장 복원 — venue 관계 우선, 없으면 자유 텍스트(location)를 입력칸에 복원.
+        //   복원하지 않으면 수정 저장 시 기존 텍스트 장소가 유실된다.
         setVenueId(t.venue?.id ?? t.venueId ?? "");
-        setVenueQuery(t.venue?.name ?? "");
+        setVenueQuery(t.venue?.name ?? t.location ?? "");
         // [2026-06-16] 결제 방식 복원 — 미지정 시 선불(PREPAID).
         setBillingMode(t.billingMode ?? "PREPAID");
         // [2026-06-16] 참가 대상 복원 — 선택 선수 명단(userId) 단일 SoT.
@@ -256,7 +256,8 @@ export default function TournamentCreatePage() {
               date: toDateInputValue(m.scheduledAt),
               time: `${hh}:${mm}`,
               venueId: m.venue?.id ?? "",
-              venueQuery: m.venue?.name ?? "",
+              // 링크장 미선택 경기는 자유 텍스트(venueName) 복원 — 전체 교체 저장이라 미복원 시 유실.
+              venueQuery: m.venue?.name ?? m.venueName ?? "",
             };
           });
           setScheduleMatches(rows);
@@ -477,8 +478,10 @@ export default function TournamentCreatePage() {
         billingMode,
       };
       if (description.trim()) payload.description = description.trim();
-      // [2026-06-19] 대회장소 — 선택한 링크장 venueId 전송 (선택 시에만).
+      // 대회장소 — 링크장 선택 시 venueId, 미선택 시 입력 텍스트를 location(자유 텍스트)으로 저장.
+      //   location 은 항상 전송 — 링크장 선택 전환 시 빈 문자열로 스테일 텍스트를 클리어(백엔드 null 정규화).
       if (venueId) payload.venueId = venueId;
+      payload.location = venueId ? "" : venueQuery.trim();
       // [2026-06-16] 참가 대상 — 선택한 선수 명단(userId) 전송. SoT 단일.
       //   eligibleBirthYears/eligibleGroupIds 는 전송하지 않는다(백엔드가 명단에서 파생/클리어).
       //   validationError 가 1명 이상을 보장하므로 항상 비어있지 않다.
@@ -514,13 +517,18 @@ export default function TournamentCreatePage() {
         for (let i = 0; i < validMatches.length; i += 1) {
           const m = validMatches[i];
           // 일정별 참가비 입력 제거 — 경기 일정은 안내용. 금액은 대회 단일 참가비로만 관리.
+          // 경기별 장소 — 링크장 선택 시 venueId, 미선택+텍스트 입력 시 venueName(자유 텍스트).
+          //   둘 다 없으면 대회 링크장 venueId 폴백 저장(레거시 유지), 텍스트 장소는 복사하지
+          //   않고 null 로 두어 표시 시점에 대회 장소로 폴백(참조 방식).
+          const rowVenueText = m.venueQuery.trim();
           await createMatch({
             tournamentId,
             opponentName: m.opponentName.trim() || undefined,
             scheduledAt: `${m.date}T${m.time}:00`,
             matchOrder: i + 1,
-            // 경기별 장소 우선, 미입력 시 대회 전체 장소로 폴백 저장.
-            venueId: m.venueId || venueId || undefined,
+            venueId:
+              m.venueId || (rowVenueText ? undefined : venueId || undefined),
+            venueName: !m.venueId && rowVenueText ? rowVenueText : undefined,
           });
         }
         toast.success(
@@ -655,6 +663,7 @@ export default function TournamentCreatePage() {
                     ) : (
                       <li className="px-3 py-2.5 text-w-caption text-it-ink-500 dark:text-rink-300">
                         &ldquo;{debouncedVenueQuery.trim()}&rdquo; 검색 결과가 없습니다
+                        — 입력한 내용 그대로 장소로 저장됩니다
                       </li>
                     )}
                   </ul>
@@ -672,7 +681,10 @@ export default function TournamentCreatePage() {
                   선택 해제 (장소 미지정)
                 </button>
               ) : (
-                <Hint>장소명을 입력하면 저장된 링크장이 표시됩니다. 비워두면 장소 미지정.</Hint>
+                <Hint>
+                  장소명을 입력하면 저장된 링크장이 표시됩니다. 목록에서 선택하지
+                  않으면 입력한 내용 그대로 장소로 저장됩니다.
+                </Hint>
               )}
             </Field>
           </SectionCard>
@@ -936,7 +948,8 @@ export default function TournamentCreatePage() {
                               ))
                             ) : (
                               <li className="px-3 py-2.5 text-w-caption text-it-ink-500 dark:text-rink-300">
-                                &ldquo;{dq}&rdquo; 검색 결과가 없습니다
+                                &ldquo;{dq}&rdquo; 검색 결과가 없습니다 — 입력한
+                                내용 그대로 장소로 저장됩니다
                               </li>
                             )}
                           </ul>

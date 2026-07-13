@@ -395,7 +395,11 @@ export class CalendarDashboardService {
         endDate: true,
         status: true,
         teamId: true,
+        location: true,
         team: {
+          select: { name: true },
+        },
+        venue: {
           select: { name: true },
         },
         rink: {
@@ -437,7 +441,13 @@ export class CalendarDashboardService {
         date: this.formatDate(startDt),
         startTime: null,
         endTime: null,
-        venue: tournament.rink?.name ?? tournament.rink?.location ?? null,
+        // location(직접 입력 텍스트) > venue > rink — 상세/캘린더의 대회 장소 폴백 체인과 통일.
+        venue:
+          tournament.location ??
+          tournament.venue?.name ??
+          tournament.rink?.name ??
+          tournament.rink?.location ??
+          null,
         teamId: tournament.teamId,
         name: tournament.team?.name ?? null,
         meta: {
@@ -464,6 +474,7 @@ export class CalendarDashboardService {
           tournamentId: true,
           scheduledAt: true,
           opponentName: true,
+          venueName: true,
           matchOrder: true,
           awayTeam: { select: { name: true } },
           venue: { select: { name: true } },
@@ -485,7 +496,15 @@ export class CalendarDashboardService {
           date: this.formatDate(m.scheduledAt),
           startTime: this.formatTime(m.scheduledAt),
           endTime: null,
-          venue: m.venue?.name ?? m.rink?.name ?? null,
+          // 경기 직접 입력(venueName) > 경기 링크장 > 대회 장소(location > venue > rink) 폴백.
+          venue:
+            m.venueName ??
+            m.venue?.name ??
+            m.rink?.name ??
+            t.location ??
+            t.venue?.name ??
+            t.rink?.name ??
+            null,
           teamId: t.teamId,
           name: t.team?.name ?? null,
           meta: {
