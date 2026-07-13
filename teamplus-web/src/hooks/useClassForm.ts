@@ -242,6 +242,18 @@ export interface FormErrors {
   packages?: string;
 }
 
+/** 로컬 기준 오늘(YYYY-MM-DD) — 지난 회차 판정 경계(MultiDatePickerModal 과 동일 기준).
+ *  지난 회차는 이미 진행된 사실 기록(출석·정산 근거)이라 폼에서 읽기 전용 잠금·검증 제외·미전송. */
+export function localTodayISO(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+/** 지난 회차 여부 — 날짜가 있고 오늘(로컬) 이전이면 잠금 대상. */
+export function isPastScheduleDate(date: string, todayISO: string): boolean {
+  return Boolean(date) && date < todayISO;
+}
+
 /** 날짜별 일정 변경 여부 판정 — 키/표시필드(venueName) 제외, date·시간·장소만 순서 무관 비교. */
 export function dateSchedulesEqual(
   a: Pick<DateScheduleItem, 'date' | 'startTime' | 'endTime' | 'venueId'>[],
@@ -315,9 +327,13 @@ export function validateClassForm(
     if (!options?.skipPriceValidation && data.dateSchedules.length === 0) {
       errors.dateSchedules = MESSAGES.classesEdit.validation.dateScheduleRequired;
     } else if (data.dateSchedules.length > 0) {
-      const invalid = data.dateSchedules.some(
-        (s) => !s.date || !s.startTime || !s.endTime || s.startTime >= s.endTime,
-      );
+      // 지난 회차는 읽기 전용 잠금(수정 불가)이라 검증 제외 — 시간 미저장 지난 회차가
+      //   사용자가 고칠 수 없는 상태로 제출을 막는 것을 방지.
+      const todayISO = localTodayISO();
+      const invalid = data.dateSchedules.some((s) => {
+        if (isPastScheduleDate(s.date, todayISO)) return false;
+        return !s.date || !s.startTime || !s.endTime || s.startTime >= s.endTime;
+      });
       if (invalid) {
         errors.dateSchedules =
           MESSAGES.classesEdit.validation.dateScheduleTimeRequired;
@@ -930,10 +946,13 @@ export function useClassForm({
         //   백엔드가 각 날짜를 ClassSchedule(scheduledDate + startTime/endTime/venueId)로 생성하고
         //   dateSchedules 에서 classDays 를 파생하므로 요일 기반 자동생성 경로와 병행하지 않는다.
         // 일정 미변경(schedulesDirty=false) 시 미전송(undefined) → 백엔드가 기존 ClassSchedule 보존.
-        //   변경 시에만 전송 — 빈 배열도 전송해 "전부 삭제" 의도를 반영(백엔드 전체 교체).
+        //   변경 시에만 전송 — 빈 배열도 전송해 "미래 일정 전부 삭제" 의도를 반영.
+        // 지난 회차는 폼에서 읽기 전용 잠금이라 미전송 — 백엔드 diff 도 지난·취소·출석 보유
+        //   회차를 불가침으로 보존하므로(이중 방어) 전송 목록은 편집 가능한 미래 회차만 담는다.
         dateSchedules: schedulesDirty
           ? data.dateSchedules
               .filter((s) => s.date && s.startTime && s.endTime)
+              .filter((s) => !isPastScheduleDate(s.date, localTodayISO()))
               .map((s) => ({
                 date: s.date,
                 startTime: s.startTime,

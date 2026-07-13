@@ -2510,18 +2510,90 @@ export class ClassesService {
         }
       }
 
-      // dateSchedules 전송 시: ClassSchedule 전체 교체 (미전송 시 기존 보존)
+      // dateSchedules 전송 시: 날짜 기준 diff 동기화 (미전송 시 기존 보존).
+      //   전체 삭제·재생성은 출석/RSVP/감사로그(onDelete: Cascade)와 취소 이력을 연쇄 삭제하므로 금지.
+      //   불가침(payload 와 무관하게 보존): 지난 회차(오늘 KST 이전) · 취소 회차 · 출석 기록 보유 회차.
+      //   같은 날짜 유지 = ID 보존 update(RSVP 유지) / 빠진 미래 날짜 = 삭제 / 새 날짜 = 생성.
       if (hasDateSchedulesUpdate) {
-        await txUpdate.classSchedule.deleteMany({ where: { classId } });
-        if (updateDto.dateSchedules && updateDto.dateSchedules.length > 0) {
-          await txUpdate.classSchedule.createMany({
-            data: updateDto.dateSchedules.map((s) => ({
+        const todayUtcMidnight = kstTodayUtcMidnight();
+        const existingSchedules = await txUpdate.classSchedule.findMany({
+          where: { classId },
+          select: {
+            id: true,
+            scheduledDate: true,
+            isCancelled: true,
+            _count: { select: { attendances: true } },
+          },
+        });
+        const isImmutable = (s: (typeof existingSchedules)[number]) =>
+          s.isCancelled ||
+          s.scheduledDate < todayUtcMidnight ||
+          s._count.attendances > 0;
+        // 편집 가능한 기존 회차 — 날짜(YYYY-MM-DD)당 활성 1개 정책이라 날짜 키 Map 으로 매칭.
+        const editableByDate = new Map<string, string>();
+        // 불가침 "활성" 회차가 점유한 날짜 — 같은 날짜 신규 생성 시 중복이 되므로 생성 스킵.
+        //   (취소 회차는 재등록 허용 정책이라 점유로 치지 않는다)
+        const immutableActiveDates = new Set<string>();
+        for (const s of existingSchedules) {
+          const dateKey = dateOnlyToString(s.scheduledDate);
+          if (!isImmutable(s)) editableByDate.set(dateKey, s.id);
+          else if (!s.isCancelled) immutableActiveDates.add(dateKey);
+        }
+        // 수신 회차 — 지난 날짜는 무시(구버전 payload 하위호환: 지난 회차는 항상 보존).
+        const incoming = (updateDto.dateSchedules ?? []).filter(
+          (s) => dateOnlyToUtc(s.date) >= todayUtcMidnight,
+        );
+        const incomingDates = new Set(incoming.map((s) => s.date));
+
+        // spot(1회용) — 보존되는 불가침 활성 회차 + 수신 회차 합계 1개 초과 차단
+        //   (payload 단독 검증(위 2420)은 보존분을 못 보므로 diff 확정 시점에 재검증).
+        if (
+          classRecord.trainingType === "spot" &&
+          immutableActiveDates.size + incomingDates.size > 1
+        ) {
+          throw new BadRequestException(
+            "1회용 수업은 일정을 1개만 등록할 수 있습니다.",
+          );
+        }
+
+        const toCreate: {
+          classId: string;
+          scheduledDate: Date;
+          startTime: string;
+          endTime: string;
+          venueId: string | null;
+        }[] = [];
+        for (const s of incoming) {
+          const editableId = editableByDate.get(s.date);
+          if (editableId) {
+            await txUpdate.classSchedule.update({
+              where: { id: editableId },
+              data: {
+                startTime: s.startTime,
+                endTime: s.endTime,
+                venueId: s.venueId ?? null,
+              },
+            });
+          } else if (!immutableActiveDates.has(s.date)) {
+            toCreate.push({
               classId,
               scheduledDate: dateOnlyToUtc(s.date),
               startTime: s.startTime,
               endTime: s.endTime,
               venueId: s.venueId ?? null,
-            })),
+            });
+          }
+        }
+        if (toCreate.length > 0) {
+          await txUpdate.classSchedule.createMany({ data: toCreate });
+        }
+        // 편집 가능한 기존 회차 중 수신 목록에서 빠진 날짜만 삭제.
+        const toDeleteIds = [...editableByDate.entries()]
+          .filter(([dateKey]) => !incomingDates.has(dateKey))
+          .map(([, id]) => id);
+        if (toDeleteIds.length > 0) {
+          await txUpdate.classSchedule.deleteMany({
+            where: { id: { in: toDeleteIds } },
           });
         }
       }

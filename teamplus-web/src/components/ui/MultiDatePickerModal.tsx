@@ -8,8 +8,9 @@
  *  달력은 미세조정 전용(특정 날짜 개별 해제/추가). 하단 공통 시간/장소 입력·적용 토글은 제거.
  *  확인 시 각 날짜에 요일 기본값(시간/장소)을 주입(resolved), 기본값 없는 요일은 빈 시간으로 생성
  *  → 일정 목록 아코디언에서 개별 수정.
- *  requireCommonTime(opt-in): 기본값 없는 날짜 선택 시 공통 시간 입력을 노출·필수화해
- *  시간 미정 일정 생성을 차단한다(일정 관리 페이지 전용, ClassForm은 기존 동작 유지).
+ *  requireCommonTime(opt-in): 기본값 없는 "신규 선택" 날짜가 있으면 공통 시간 입력을 노출·필수화해
+ *  시간 미정 일정 생성을 차단한다(일정 관리 페이지·ClassForm 공용). 열릴 때 이미 선택돼 있던
+ *  날짜(selected)는 호출부가 기존 회차 값을 보존하므로 공통 시간 적용·필수 판정에서 제외한다.
  *  · new Date()(argless) 금지 환경 — 요일/일수 계산은 인자 있는 new Date(y, m, d) 사용.
  */
 
@@ -103,6 +104,9 @@ export function MultiDatePickerModal({
   const [viewYear, setViewYear] = useState(initialYear);
   const [viewMonth, setViewMonth] = useState(initialMonth); // 1-12
   const [picked, setPicked] = useState<Set<string>>(() => new Set(selected));
+  // 열릴 때 이미 선택돼 있던 날짜 — 호출부(ClassForm)가 기존 회차 값을 보존하므로
+  //   공통 시간 필수 판정(uncovered)에서 제외한다(신규 선택 날짜만 대상).
+  const [initialSelected, setInitialSelected] = useState<Set<string>>(() => new Set(selected));
   // 기본값 없는 날짜에 일괄 적용할 공통 시간 — requireCommonTime일 때만 사용.
   const [commonStart, setCommonStart] = useState('');
   const [commonEnd, setCommonEnd] = useState('');
@@ -127,7 +131,11 @@ export function MultiDatePickerModal({
   //   미로딩/무효 시 클라이언트 현재 날짜로 폴백(항상 현재 월 달력이 열리도록 보장).
   useEffect(() => {
     if (isOpen) {
-      setPicked(new Set(selected));
+      // 지난 날짜는 시트에서 편집(해제) 불가 — 초기 선택·카운트에서 제외.
+      //   지난 회차 행 자체는 호출부(applyMultiDates)가 시트 결과와 무관하게 보존한다.
+      const editable = selected.filter((d) => d >= todayISO);
+      setPicked(new Set(editable));
+      setInitialSelected(new Set(editable));
       setCommonStart('');
       setCommonEnd('');
       const now = new Date();
@@ -139,15 +147,17 @@ export function MultiDatePickerModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, initialYear, initialMonth]);
 
-  // 선택 날짜 중 요일 기본값이 없는 날짜 수 — 공통 시간 입력 노출·필수 판정.
+  // 신규 선택 날짜 중 요일 기본값이 없는 날짜 수 — 공통 시간 입력 노출·필수 판정.
+  //   열릴 때부터 선택돼 있던 날짜는 호출부가 기존 값을 보존하므로 집계에서 제외.
   const uncoveredCount = useMemo(() => {
     if (!requireCommonTime) return 0;
     let n = 0;
     for (const date of picked) {
+      if (initialSelected.has(date)) continue;
       if (!validDayDefaults.some((s) => s.dayOfWeek === weekdayKoOf(date))) n += 1;
     }
     return n;
-  }, [requireCommonTime, picked, validDayDefaults]);
+  }, [requireCommonTime, picked, initialSelected, validDayDefaults]);
 
   const commonTimeMissing = uncoveredCount > 0 && (!commonStart || !commonEnd);
 

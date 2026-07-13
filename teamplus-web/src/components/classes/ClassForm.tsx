@@ -21,6 +21,8 @@ import {
   sortDaySchedules,
   useSelectableTeams,
   useVenues,
+  localTodayISO,
+  isPastScheduleDate,
 } from '@/hooks/useClassForm';
 import { AnimatedSection } from '@/components/ui/AnimatedSection';
 import { Toggle } from '@/components/ui/Toggle';
@@ -244,26 +246,37 @@ export function ClassForm({
       dates = dates.slice(-1);
     }
     const resolvedMap = new Map(resolved.map(r => [r.date, r] as const));
+    // 시트와 동일 기준(로컬 오늘)의 지난 날짜 판정 — 시트는 지난 날짜를 선택 대상에서 제외하므로,
+    //   지난 회차 행은 확인 결과로 재구성하지 않고 그대로 보존한다(미보존 시 확인할 때마다 유실).
+    const now = new Date();
+    const todayISO = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     setFormData(prev => {
       const existing = new Map(
         prev.dateSchedules.filter(s => s.date).map(s => [s.date, s] as const),
       );
-      const next = dates.map(d => {
-        const ex = existing.get(d);
-        if (ex) return ex; // 기존 일정 — 개별 수정값 보존
-        // 신규 일정 — 요일 기본값 주입(없으면 빈 시간).
-        dateKeySeq.n += 1;
-        const r = resolvedMap.get(d);
-        return {
-          key: `ds${dateKeySeq.n}`,
-          date: d,
-          startTime: r?.startTime ?? '',
-          endTime: r?.endTime ?? '',
-          venueId: r?.venueId ?? '',
-          venueName: r?.venueName ?? '',
-        };
-      });
-      return { ...prev, dateSchedules: next };
+      // spot 은 단일 일정 유지 정책상 보존 없이 교체(마지막 선택 1개만 남긴다).
+      const past = isSpot
+        ? []
+        : prev.dateSchedules.filter(s => s.date && s.date < todayISO);
+      const pastDates = new Set(past.map(s => s.date));
+      const next = dates
+        .filter(d => !pastDates.has(d))
+        .map(d => {
+          const ex = existing.get(d);
+          if (ex) return ex; // 기존 일정 — 개별 수정값 보존
+          // 신규 일정 — 요일 기본값 주입(없으면 빈 시간).
+          dateKeySeq.n += 1;
+          const r = resolvedMap.get(d);
+          return {
+            key: `ds${dateKeySeq.n}`,
+            date: d,
+            startTime: r?.startTime ?? '',
+            endTime: r?.endTime ?? '',
+            venueId: r?.venueId ?? '',
+            venueName: r?.venueName ?? '',
+          };
+        });
+      return { ...prev, dateSchedules: [...past, ...next] };
     });
   };
 
@@ -375,6 +388,16 @@ export function ClassForm({
   const [multiDateOpen, setMultiDateOpen] = useState(false);
   // [2026-06-30] 일정 목록 — 한 줄 압축 + 아코디언. 탭한 회차만 개별 수정 펼침.
   const [expandedDateKey, setExpandedDateKey] = useState<string | null>(null);
+  // 지난 회차 — 출석·정산이 물린 사실 기록이라 읽기 전용 잠금(기본 접힘·수정/삭제 불가).
+  //   제출 payload·시간 검증에서도 제외되며(useClassForm), 백엔드 diff 가 불가침으로 보존한다.
+  const [showPastSchedules, setShowPastSchedules] = useState(false);
+  const todayISO = localTodayISO();
+  const pastSchedules = formData.dateSchedules.filter((s) =>
+    isPastScheduleDate(s.date, todayISO),
+  );
+  const editableSchedules = formData.dateSchedules.filter(
+    (s) => !isPastScheduleDate(s.date, todayISO),
+  );
   // 최신(currentYear-6) → 오래된(currentYear-12) 순. 미취학~초등 6학년 범위.
   const selectableBirthYears = useMemo(() => {
     const years: number[] = [];
@@ -898,14 +921,73 @@ export function ClassForm({
                 <label className={cn('block text-sm font-bold', iceTheme ? 'text-it-ink-600 dark:text-rink-100' : 'text-wtext-2 dark:text-rink-100')}>
                   수업 일정
                 </label>
-                {formData.dateSchedules.length === 0 ? (
+                {/* 지난 회차 — 읽기 전용 잠금(기본 접힘). 수정·삭제 버튼 미노출. */}
+                {pastSchedules.length > 0 && (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setShowPastSchedules((v) => !v)}
+                      aria-expanded={showPastSchedules}
+                      className={cn(
+                        'flex items-center gap-1.5 text-xs font-bold px-1 py-1',
+                        iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300',
+                      )}
+                    >
+                      <Icon
+                        name="expand_more"
+                        className={cn('text-base transition-transform motion-reduce:transition-none', showPastSchedules && 'rotate-180')}
+                        aria-hidden="true"
+                      />
+                      {showPastSchedules
+                        ? MESSAGES.class.pastSchedulesHide
+                        : MESSAGES.class.pastSchedulesShow(pastSchedules.length)}
+                    </button>
+                    {showPastSchedules && (
+                      <>
+                        <ul
+                          className="mt-1 flex flex-col gap-2"
+                          aria-label={`지난 일정 ${pastSchedules.length}건 (읽기 전용)`}
+                        >
+                          {pastSchedules.map((s) => {
+                            const timeLabel = s.startTime
+                              ? `${s.startTime}${s.endTime ? `-${s.endTime}` : ''}`
+                              : MESSAGES.class.dayDefaults.timeUndecided;
+                            const dateLabel = `${s.date.slice(5).replace('-', '/')}(${getKoreanWeekday(s.date)})`;
+                            return (
+                              <li
+                                key={s.key}
+                                className={cn(
+                                  'flex items-center gap-2 px-3 py-2.5 opacity-55',
+                                  iceTheme
+                                    ? 'rounded-w-md border-[1.5px] border-it-line dark:border-rink-700 bg-it-fill dark:bg-rink-900/40'
+                                    : 'rounded-xl border border-wline-2 dark:border-rink-700 bg-wbg dark:bg-rink-900/40',
+                                )}
+                              >
+                                <span className={cn('text-sm font-bold tabular-nums shrink-0', iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white')}>
+                                  {dateLabel}
+                                </span>
+                                <span className={cn('text-card-meta font-medium tabular-nums truncate', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
+                                  {timeLabel}{s.venueName ? ` · ${s.venueName}` : ''}
+                                </span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                        <p className={cn('mt-1 text-xs px-1', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
+                          {MESSAGES.class.pastSchedulesLockedHint}
+                        </p>
+                      </>
+                    )}
+                  </div>
+                )}
+                {editableSchedules.length === 0 ? (
                   <p className={cn('text-xs px-1 py-1', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                     아래 버튼으로 일정을 추가하고 날짜·시간·장소를 지정하세요.
                   </p>
                 ) : (
                   // [2026-06-30] 한 줄 압축 + 아코디언 — 탭하면 해당 회차만 개별 수정 펼침.
                   <ul className="flex flex-col gap-2">
-                    {formData.dateSchedules.map((s, idx) => {
+                    {editableSchedules.map((s, idx) => {
                       const expanded = expandedDateKey === s.key;
                       const timeLabel = s.startTime
                         ? `${s.startTime}${s.endTime ? `-${s.endTime}` : ''}`
@@ -964,6 +1046,8 @@ export function ClassForm({
                               <input
                                 type="date"
                                 value={s.date}
+                                // 지난 날짜로 변경 금지 — 잠금 그룹으로 빠져 수정 불가·payload 제외되는 것 방지.
+                                min={todayISO}
                                 onChange={(e) => updateDateSchedule(s.key, { date: e.target.value })}
                                 className={
                                   iceTheme
@@ -1025,15 +1109,22 @@ export function ClassForm({
                 <button
                   type="button"
                   onClick={() => setMultiDateOpen(true)}
+                  // spot(1회용) — 지난 회차가 있으면 이미 1개 제한 소진(지난 회차는 교체 불가) → 추가 차단.
+                  disabled={isSpot && pastSchedules.length > 0}
                   className={
                     iceTheme
-                      ? 'mt-1 flex h-10 w-full items-center justify-center gap-1.5 rounded-w-md border border-dashed border-it-blue-500/50 text-sm font-bold text-it-blue-500 hover:bg-it-blue-500/[0.06] transition-colors motion-reduce:transition-none'
-                      : 'mt-1 flex h-10 w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-ice-500/50 text-sm font-bold text-ice-500 hover:bg-ice-500/[0.06] transition-colors'
+                      ? 'mt-1 flex h-10 w-full items-center justify-center gap-1.5 rounded-w-md border border-dashed border-it-blue-500/50 text-sm font-bold text-it-blue-500 hover:bg-it-blue-500/[0.06] transition-colors motion-reduce:transition-none disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent'
+                      : 'mt-1 flex h-10 w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-ice-500/50 text-sm font-bold text-ice-500 hover:bg-ice-500/[0.06] transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent'
                   }
                 >
                   <Icon name="calendar_month" className="text-base" aria-hidden="true" />
                   일정 추가
                 </button>
+                {isSpot && pastSchedules.length > 0 && (
+                  <p className={cn('text-xs px-1', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')} role="status">
+                    {MESSAGES.class.spotSingleScheduleLimit}
+                  </p>
+                )}
                 {errors.dateSchedules && (
                   <p className="text-xs text-red-500 flex items-center gap-1" role="alert">
                     <Icon name="error_outline" className="text-xs" aria-hidden="true" />
@@ -1598,6 +1689,9 @@ export function ClassForm({
         onConfirm={applyMultiDates}
         onClose={() => setMultiDateOpen(false)}
         iceTheme={iceTheme}
+        // 요일 기본값 없는 신규 날짜는 시트에서 공통 시간을 받아 주입 — 회차별 반복 입력 제거.
+        //   기존 회차 날짜는 applyMultiDates 가 기존 값을 보존하므로 필수 판정에서 제외됨.
+        requireCommonTime
       />
 
       {/* ── 삭제 확인 모달 (Portal) ── */}

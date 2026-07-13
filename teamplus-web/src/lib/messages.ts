@@ -90,6 +90,10 @@ export const MESSAGES = {
     scheduleManage: "일정 관리",
     // 일정마다 시간/장소가 달라 단일 값으로 요약할 수 없을 때 표기.
     schedulesVary: "회차별 상이",
+    // 수정 폼 회차 목록 — 지난 회차는 출석·정산이 물린 사실 기록이라 읽기 전용 잠금.
+    pastSchedulesShow: (count: number) => `지난 일정 ${count}개 보기`,
+    pastSchedulesHide: "지난 일정 접기",
+    pastSchedulesLockedHint: "지난 일정은 수정하거나 삭제할 수 없습니다.",
     // 요일별 기본 시간·장소(ClassDaySchedule 템플릿) 입력 + 일정 추가 칩 UI 문구.
     dayDefaults: {
       title: "수업 기본 일정 (요일별)",
@@ -104,7 +108,7 @@ export const MESSAGES = {
         "요일을 누르면 이 달의 해당 요일이 한 번에 선택됩니다. 달력에서 개별 날짜를 더하거나 뺄 수 있어요.",
       // 날짜 선택 제한 안내 — 이미 등록됐거나 지난 날짜는 선택 불가.
       dateRestrictHint: "이미 등록됐거나 지난 날짜는 선택할 수 없어요.",
-      // 기본값 없는 날짜 공통 시간 폴백 — 일정 관리 바텀시트(requireCommonTime) 전용.
+      // 기본값 없는 날짜 공통 시간 폴백 — 일정 관리·수업 등록 바텀시트(requireCommonTime) 공용.
       commonTimeLabel: (count: number) =>
         `요일 기본값이 없는 날짜 ${count}건에 적용할 시간을 입력해주세요.`,
       commonTimeCta: "시간을 입력하세요",
