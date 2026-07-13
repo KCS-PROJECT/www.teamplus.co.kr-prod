@@ -1178,7 +1178,9 @@ export function SelectedDayClassList({
     >
       <ul className={cn(
         'divide-y',
-        iceTheme ? 'divide-it-line dark:divide-it-blue-900' : 'divide-wline-2 dark:divide-rink-700',
+        // 행 구분선 — 일정 페이지(ScheduleRow)와 동일한 무채 검정 계통. 쿨그레이 토큰은
+        //   배경과 같은 톤이라 묻힘. 강도 조절은 투명도 %로 (부족 시 /25·/20 상향).
+        'divide-black/20 dark:divide-white/15',
       )}>
         {classes.map((cls) => {
           // ─── Phase 1: 출석 상태 4-state 분기 ───

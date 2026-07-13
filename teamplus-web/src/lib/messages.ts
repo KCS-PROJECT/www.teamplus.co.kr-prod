@@ -1738,6 +1738,8 @@ export const MESSAGES = {
 
     // 팀 하위 그룹 (감독·코치가 팀 안에서 만드는 단위)
     groupListTitle: "하위그룹",
+    groupListDescription:
+      "팀 회원을 연령·수준 등 기준으로 나눠 관리하는 그룹입니다. 선수단 분류와 대회 참가 명단 선택에 활용됩니다.",
     groupListEmpty: "아직 등록된 하위그룹이 없습니다.",
     groupCreateTitle: "하위그룹 등록",
     groupCreateButton: "하위그룹 등록하기",
