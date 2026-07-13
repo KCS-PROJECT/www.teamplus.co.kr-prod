@@ -92,15 +92,30 @@ interface CalendarLegendProps {
   variant?: 'team' | 'team-only' | 'academy';
   /** ICETIMES flat variant. 기본 false. true 일 때 라벨 텍스트를 it-ink 톤으로. */
   iceTheme?: boolean;
+  /**
+   * '오픈' 항목 노출 여부 (기본 true — 미전달 사용처 회귀 0).
+   * 표시 중인 달에 오픈클래스 일정이 없을 때 false 로 넘겨 범례에서 숨긴다.
+   * 'team' 변형에만 적용 — 'academy'(오픈 단일 범례)는 범례가 통째로 비지 않도록 무시.
+   */
+  showOpen?: boolean;
 }
 
-export function CalendarLegend({ className, variant = 'team', iceTheme = false }: CalendarLegendProps) {
-  const legend =
+export function CalendarLegend({
+  className,
+  variant = 'team',
+  iceTheme = false,
+  showOpen = true,
+}: CalendarLegendProps) {
+  const baseLegend =
     variant === 'academy'
       ? ACADEMY_CALENDAR_LEGEND
       : variant === 'team-only'
         ? TEAM_ONLY_CALENDAR_LEGEND
         : CALENDAR_LEGEND;
+  const legend =
+    variant === 'team' && !showOpen
+      ? baseLegend.filter((item) => item.key !== 'OPEN')
+      : baseLegend;
   return (
     <div className={cn('flex flex-wrap items-center gap-3', className)}>
       {legend.map((item) => (

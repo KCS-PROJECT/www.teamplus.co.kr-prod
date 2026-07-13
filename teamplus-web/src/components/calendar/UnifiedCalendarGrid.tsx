@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { Icon } from '@/components/ui/Icon';
 import { MESSAGES } from '@/lib/messages';
 import { cn } from '@/lib/utils';
@@ -173,13 +173,19 @@ export function EventDetail({
 function UnifiedCalendarLegend({
   className,
   iceTheme = false,
+  showOpen = true,
 }: {
   className?: string;
   iceTheme?: boolean;
+  /** '오픈' 항목 노출 여부 — 표시 중인 달에 오픈클래스(LESSON) 일정이 없으면 false. */
+  showOpen?: boolean;
 }) {
+  const legend = showOpen
+    ? CALENDAR_EVENT_LEGEND
+    : CALENDAR_EVENT_LEGEND.filter((item) => item.key !== 'OPEN');
   return (
     <div className={cn('flex flex-wrap items-center gap-3', className)}>
-      {CALENDAR_EVENT_LEGEND.map((item) => (
+      {legend.map((item) => (
         <div key={item.key} className="flex items-center gap-1.5">
           <span
             className={cn(
@@ -259,6 +265,18 @@ export function UnifiedCalendarGrid({
   //   첫 로딩만 풀스크린 로더에 양보, 이후 월 변경은 transition-opacity 로 부드럽게 갱신.
   const hasLoadedOnceRef = useRef(false);
   if (!isLoading) hasLoadedOnceRef.current = true;
+
+  // 표시 중인 달에 오픈클래스 일정이 있는지 — 없으면 범례 '오픈' 숨김.
+  //   이 화면 이벤트 타입에는 'OPEN' 키가 없고 오픈클래스 레슨이 'LESSON'(파랑)으로
+  //   내려와 범례 '오픈'(파랑)에 대응하므로 LESSON 포함 여부로 판정한다.
+  //   isCurrentMonth 셀만 검사 (이전/다음 달 일정의 판정 오염 방지).
+  const hasOpenEvents = useMemo(
+    () =>
+      calendarGrid.some(
+        (day) => day.isCurrentMonth && day.eventTypes.includes('LESSON'),
+      ),
+    [calendarGrid],
+  );
 
   return (
     <>
@@ -436,6 +454,7 @@ export function UnifiedCalendarGrid({
 
         <UnifiedCalendarLegend
           iceTheme={iceTheme}
+          showOpen={hasOpenEvents}
           className={cn(
             'mt-2.5 justify-center border-t py-2.5',
             iceTheme ? 'border-it-line dark:border-rink-700' : 'border-wline-2 dark:border-rink-700',

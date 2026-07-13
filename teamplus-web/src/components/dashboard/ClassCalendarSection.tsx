@@ -707,6 +707,16 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
     });
   }, [classesMap, currentMonth, currentYear, today]);
 
+  // 표시 중인 달에 오픈클래스 일정이 있는지 — 없으면 범례 '오픈' 숨김.
+  //   isCurrentMonth 셀만 검사 (그리드에 낀 이전/다음 달 일정이 판정을 오염시키지 않도록).
+  const hasOpenEvents = useMemo(
+    () =>
+      calendarGrid.some(
+        (day) => day.isCurrentMonth && day.trainingTypes.includes('OPEN'),
+      ),
+    [calendarGrid],
+  );
+
   // [BUG FIX 2026-05-19 W3 #2] React StrictMode 더블 invoke 버그 — setState updater
   //   함수 내부에서 또 다른 setState (setCurrentYear) 를 호출하면, StrictMode dev 모드에서
   //   updater 가 두 번 실행되어 setCurrentYear((y) => y + 1) 가 2회 호출 → year 가 2번 증가.
@@ -887,6 +897,7 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
           iceTheme ? 'border-it-line dark:border-it-blue-900' : 'px-4 border-wline-2 dark:border-rink-700',
         )}
         variant={legendVariant}
+        showOpen={hasOpenEvents}
       />
     </div>
   );
