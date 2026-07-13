@@ -140,11 +140,15 @@ export function PackageEditSheet({
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  // 정액(MONTHLY_FIXED)은 무차감 기간제 — 회차 게이트 없음. sessionsPerMonth 는
-  //   정합용 최소값(주 수 = 주 1회 상당)만 기록한다. "주 N회"(classDays 파생) 곱은 폐기 —
-  //   갱신 안 되는 classDays 스냅샷이 상품 메타를 오염시키던 경로. 안내는 설명 입력이 SoT.
+  // 크레딧 발급 수량 SoT = class_products.sessions_per_month, 0 = 미발급(기본).
+  //   신규 생성은 자동 파생값을 만들지 않고 항상 0 을 전송한다.
+  //   수정 시 기존 값 보존 — 되살린 발급형 패키지(>0)를 가격 수정이 0으로 덮지 않도록.
+  //   weeks 는 입력 검증·상품명 표기("N주 정기권")용으로만 유지 — durationDays 는 기존
+  //   정책(flat 30) 유지, 월권 만료 SoT 는 서버 endOfMonthKst.
   const weeksNum = Math.max(1, Math.min(52, Number(form.weeks) || 0));
-  const previewSessionsPerMonth = isPerSession ? 1 : weeksNum;
+  const previewSessionsPerMonth = editSource
+    ? (editSource.sessionsPerMonth ?? 0)
+    : 0;
   const previewDurationDays = isPerSession ? (editSource?.durationDays ?? 30) : 30;
 
   const handleSubmit = async (e: React.FormEvent) => {

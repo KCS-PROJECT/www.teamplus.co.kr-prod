@@ -24,10 +24,13 @@ export class UpdateClassProductDto {
   @Min(0, { message: "가격은 0원 이상이어야 합니다." })
   price?: number;
 
-  @ApiPropertyOptional({ example: 8, description: "월 수업 횟수" })
+  @ApiPropertyOptional({
+    example: 0,
+    description: "발급 크레딧 수량(월 수업 횟수) — 0 = 크레딧 미발급, >0 일 때만 발급·차감",
+  })
   @IsOptional()
-  @IsNumber({}, { message: "월 수업 횟수는 숫자여야 합니다." })
-  @Min(1, { message: "월 수업 횟수는 1회 이상이어야 합니다." })
+  @IsNumber({}, { message: "발급 크레딧 수량은 숫자여야 합니다." })
+  @Min(0, { message: "발급 크레딧 수량은 0회 이상이어야 합니다." })
   sessionsPerMonth?: number;
 
   @ApiPropertyOptional({ example: 28, description: "유효 기간 (일)" })

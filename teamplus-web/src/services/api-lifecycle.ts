@@ -211,6 +211,9 @@ export const PUBLIC_API_PATTERNS: readonly RegExp[] = [
   /(^|\/)academies\/public(\/|\?|$)/,
   // 회원가입 화면 팀 선택 목록 (비로그인 호출).
   /(^|\/)teams\/public(\/|\?|$)/,
+  // 회원가입 화면 팀명 중복 사전 확인 (비로그인 호출) — 백엔드 @Public.
+  //   누락 시 클라이언트 전처리 가드가 AUTH_REQUIRED(401)로 차단해 확인이 동작하지 않음.
+  /(^|\/)teams\/check-name(\/|\?|$)/,
   // [추가 2026-05-22] 링크장 조회 — GET /venues 목록·상세는 @Public.
   //   회원가입(감독 훈련장소 선택) 등 비로그인 화면에서 호출되므로 화이트리스트 필수.
   /(^|\/)venues(\/|\?|$)/,

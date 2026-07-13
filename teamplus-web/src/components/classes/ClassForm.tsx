@@ -5,8 +5,6 @@ import { createPortal } from 'react-dom';
 import { Icon } from '@/components/ui/Icon';
 import { useToast } from '@/components/ui/Toast';
 import { useNavigation } from '@/components/ui/NavLink';
-import { useNativeScrim } from '@/hooks/useNativeScrim';
-import { useDebounce } from '@/hooks/useDebounce';
 import { cn } from '@/lib/utils';
 import { MESSAGES } from '@/lib/messages';
 import {
@@ -20,8 +18,10 @@ import {
   DayScheduleItem,
   sortDaySchedules,
   useSelectableTeams,
-  useVenues,
+  localTodayISO,
+  isPastScheduleDate,
 } from '@/hooks/useClassForm';
+import { VenueSearchSheet } from '@/components/venue/VenueSearchSheet';
 import { AnimatedSection } from '@/components/ui/AnimatedSection';
 import { Toggle } from '@/components/ui/Toggle';
 import {
@@ -141,9 +141,6 @@ export function ClassForm({
   const { toast } = useToast();
   const { back } = useNavigation();
   const formRef = useRef<HTMLFormElement>(null);
-  const [venueSearch, setVenueSearch] = useState('');
-  // 한글 IME 조합 중간값('고'→'공'→'고야')마다 재검색되지 않도록 입력 멈춘 뒤에만 필터.
-  const debouncedVenueSearch = useDebounce(venueSearch, 250);
   const [venueSheetOpen, setVenueSheetOpen] = useState(false);
   // [2026-06-05] 장소 선택 BottomSheet 대상 — null: 단일 장소 / DayOfWeek: 해당 요일 행 장소.
   const [venueTargetDay, setVenueTargetDay] = useState<DayOfWeek | null>(null);
@@ -156,8 +153,6 @@ export function ClassForm({
   // [2026-06-04] 코치 배정 UI 제거 — useClubCoaches/useAcademyCoaches 코치 조회 훅 삭제.
   // [2026-05-15] 오픈클래스 노출 팀 후보 — academy 컨텍스트에서만 조회.
   const { teams: selectableTeams, isLoading: isTeamsLoading } = useSelectableTeams(isAcademy);
-  // [2026-06-04] coaches — 코치 배정 UI 제거로 미사용.
-  const { venues } = useVenues();
 
   // 수정 모드: initialData 변경 시 반영
   useEffect(() => {
@@ -173,17 +168,7 @@ export function ClassForm({
   // createPortal 준비 (SSR 방지)
   useEffect(() => { setPortalReady(true); }, []);
 
-  // BottomSheet(장소 선택) 열릴 때 body 스크롤 잠금
-  useEffect(() => {
-    if (venueSheetOpen) {
-      document.body.style.overflow = 'hidden';
-      return () => { document.body.style.overflow = ''; };
-    }
-  }, [venueSheetOpen]);
-
-  // [2026-05-12 → 2026-05-16 v2] 네이티브 status bar 영역만 dim — Sheet 패턴.
-  //   장소 선택 BottomSheet (코치 선택 시트는 2026-06-04 제거). SoT: docs/Design/MODAL_DIM_POLICY.md
-  useNativeScrim(venueSheetOpen, undefined, { bottom: false });
+  // 장소 선택은 공용 VenueSearchSheet — scroll lock/scrim/ESC 는 BottomSheet 쉘이 내장 처리.
 
   const handleChange = (field: keyof ClassFormData, value: string | number | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -219,16 +204,14 @@ export function ClassForm({
       // 단일 장소 — 기존 동작 유지.
       setFormData(prev => ({ ...prev, venueId, venue: venueName, venueAddress: address }));
     }
-    setVenueSearch('');
     setVenueSheetOpen(false);
     setVenueTargetDay(null);
     setVenueTargetDateKey(null);
   };
 
-  // [2026-06-05] 장소 BottomSheet 닫기 — 검색어·대상요일·대상일정 리셋 공통 처리.
+  // [2026-06-05] 장소 BottomSheet 닫기 — 대상요일·대상일정 리셋 공통 처리.
   const closeVenueSheet = () => {
     setVenueSheetOpen(false);
-    setVenueSearch('');
     setVenueTargetDay(null);
     setVenueTargetDateKey(null);
   };
@@ -244,26 +227,37 @@ export function ClassForm({
       dates = dates.slice(-1);
     }
     const resolvedMap = new Map(resolved.map(r => [r.date, r] as const));
+    // 시트와 동일 기준(로컬 오늘)의 지난 날짜 판정 — 시트는 지난 날짜를 선택 대상에서 제외하므로,
+    //   지난 회차 행은 확인 결과로 재구성하지 않고 그대로 보존한다(미보존 시 확인할 때마다 유실).
+    const now = new Date();
+    const todayISO = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     setFormData(prev => {
       const existing = new Map(
         prev.dateSchedules.filter(s => s.date).map(s => [s.date, s] as const),
       );
-      const next = dates.map(d => {
-        const ex = existing.get(d);
-        if (ex) return ex; // 기존 일정 — 개별 수정값 보존
-        // 신규 일정 — 요일 기본값 주입(없으면 빈 시간).
-        dateKeySeq.n += 1;
-        const r = resolvedMap.get(d);
-        return {
-          key: `ds${dateKeySeq.n}`,
-          date: d,
-          startTime: r?.startTime ?? '',
-          endTime: r?.endTime ?? '',
-          venueId: r?.venueId ?? '',
-          venueName: r?.venueName ?? '',
-        };
-      });
-      return { ...prev, dateSchedules: next };
+      // spot 은 단일 일정 유지 정책상 보존 없이 교체(마지막 선택 1개만 남긴다).
+      const past = isSpot
+        ? []
+        : prev.dateSchedules.filter(s => s.date && s.date < todayISO);
+      const pastDates = new Set(past.map(s => s.date));
+      const next = dates
+        .filter(d => !pastDates.has(d))
+        .map(d => {
+          const ex = existing.get(d);
+          if (ex) return ex; // 기존 일정 — 개별 수정값 보존
+          // 신규 일정 — 요일 기본값 주입(없으면 빈 시간).
+          dateKeySeq.n += 1;
+          const r = resolvedMap.get(d);
+          return {
+            key: `ds${dateKeySeq.n}`,
+            date: d,
+            startTime: r?.startTime ?? '',
+            endTime: r?.endTime ?? '',
+            venueId: r?.venueId ?? '',
+            venueName: r?.venueName ?? '',
+          };
+        });
+      return { ...prev, dateSchedules: [...past, ...next] };
     });
   };
 
@@ -347,15 +341,6 @@ export function ClassForm({
     });
   };
 
-  // 검색어가 있을 때만 결과 노출 (VenuePicker·대회 생성과 동일한 검색형 패턴).
-  const filteredVenues = useMemo(() => {
-    const q = debouncedVenueSearch.trim().toLowerCase();
-    if (!q) return [];
-    return venues.filter(v =>
-      v.name.toLowerCase().includes(q) || (v.address ?? '').toLowerCase().includes(q)
-    );
-  }, [debouncedVenueSearch, venues]);
-
   // ── 대상 연령(출생연도 체크박스) ──────────────────────────────
   //   · 선택 가능 출생연도는 useDateTime(서버 Asia/Seoul 기준 연도)로 동적 산출.
   //     매년 1월 1일 최신 출생연도(currentYear-6)가 자동 추가된다. (2026→2020, 2027→2021)
@@ -375,6 +360,16 @@ export function ClassForm({
   const [multiDateOpen, setMultiDateOpen] = useState(false);
   // [2026-06-30] 일정 목록 — 한 줄 압축 + 아코디언. 탭한 회차만 개별 수정 펼침.
   const [expandedDateKey, setExpandedDateKey] = useState<string | null>(null);
+  // 지난 회차 — 출석·정산이 물린 사실 기록이라 읽기 전용 잠금(기본 접힘·수정/삭제 불가).
+  //   제출 payload·시간 검증에서도 제외되며(useClassForm), 백엔드 diff 가 불가침으로 보존한다.
+  const [showPastSchedules, setShowPastSchedules] = useState(false);
+  const todayISO = localTodayISO();
+  const pastSchedules = formData.dateSchedules.filter((s) =>
+    isPastScheduleDate(s.date, todayISO),
+  );
+  const editableSchedules = formData.dateSchedules.filter(
+    (s) => !isPastScheduleDate(s.date, todayISO),
+  );
   // 최신(currentYear-6) → 오래된(currentYear-12) 순. 미취학~초등 6학년 범위.
   const selectableBirthYears = useMemo(() => {
     const years: number[] = [];
@@ -898,14 +893,73 @@ export function ClassForm({
                 <label className={cn('block text-sm font-bold', iceTheme ? 'text-it-ink-600 dark:text-rink-100' : 'text-wtext-2 dark:text-rink-100')}>
                   수업 일정
                 </label>
-                {formData.dateSchedules.length === 0 ? (
+                {/* 지난 회차 — 읽기 전용 잠금(기본 접힘). 수정·삭제 버튼 미노출. */}
+                {pastSchedules.length > 0 && (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setShowPastSchedules((v) => !v)}
+                      aria-expanded={showPastSchedules}
+                      className={cn(
+                        'flex items-center gap-1.5 text-xs font-bold px-1 py-1',
+                        iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300',
+                      )}
+                    >
+                      <Icon
+                        name="expand_more"
+                        className={cn('text-base transition-transform motion-reduce:transition-none', showPastSchedules && 'rotate-180')}
+                        aria-hidden="true"
+                      />
+                      {showPastSchedules
+                        ? MESSAGES.class.pastSchedulesHide
+                        : MESSAGES.class.pastSchedulesShow(pastSchedules.length)}
+                    </button>
+                    {showPastSchedules && (
+                      <>
+                        <ul
+                          className="mt-1 flex flex-col gap-2"
+                          aria-label={`지난 일정 ${pastSchedules.length}건 (읽기 전용)`}
+                        >
+                          {pastSchedules.map((s) => {
+                            const timeLabel = s.startTime
+                              ? `${s.startTime}${s.endTime ? `-${s.endTime}` : ''}`
+                              : MESSAGES.class.dayDefaults.timeUndecided;
+                            const dateLabel = `${s.date.slice(5).replace('-', '/')}(${getKoreanWeekday(s.date)})`;
+                            return (
+                              <li
+                                key={s.key}
+                                className={cn(
+                                  'flex items-center gap-2 px-3 py-2.5 opacity-55',
+                                  iceTheme
+                                    ? 'rounded-w-md border-[1.5px] border-it-line dark:border-rink-700 bg-it-fill dark:bg-rink-900/40'
+                                    : 'rounded-xl border border-wline-2 dark:border-rink-700 bg-wbg dark:bg-rink-900/40',
+                                )}
+                              >
+                                <span className={cn('text-sm font-bold tabular-nums shrink-0', iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white')}>
+                                  {dateLabel}
+                                </span>
+                                <span className={cn('text-card-meta font-medium tabular-nums truncate', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
+                                  {timeLabel}{s.venueName ? ` · ${s.venueName}` : ''}
+                                </span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                        <p className={cn('mt-1 text-xs px-1', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
+                          {MESSAGES.class.pastSchedulesLockedHint}
+                        </p>
+                      </>
+                    )}
+                  </div>
+                )}
+                {editableSchedules.length === 0 ? (
                   <p className={cn('text-xs px-1 py-1', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                     아래 버튼으로 일정을 추가하고 날짜·시간·장소를 지정하세요.
                   </p>
                 ) : (
                   // [2026-06-30] 한 줄 압축 + 아코디언 — 탭하면 해당 회차만 개별 수정 펼침.
                   <ul className="flex flex-col gap-2">
-                    {formData.dateSchedules.map((s, idx) => {
+                    {editableSchedules.map((s, idx) => {
                       const expanded = expandedDateKey === s.key;
                       const timeLabel = s.startTime
                         ? `${s.startTime}${s.endTime ? `-${s.endTime}` : ''}`
@@ -964,6 +1018,8 @@ export function ClassForm({
                               <input
                                 type="date"
                                 value={s.date}
+                                // 지난 날짜로 변경 금지 — 잠금 그룹으로 빠져 수정 불가·payload 제외되는 것 방지.
+                                min={todayISO}
                                 onChange={(e) => updateDateSchedule(s.key, { date: e.target.value })}
                                 className={
                                   iceTheme
@@ -1025,15 +1081,22 @@ export function ClassForm({
                 <button
                   type="button"
                   onClick={() => setMultiDateOpen(true)}
+                  // spot(1회용) — 지난 회차가 있으면 이미 1개 제한 소진(지난 회차는 교체 불가) → 추가 차단.
+                  disabled={isSpot && pastSchedules.length > 0}
                   className={
                     iceTheme
-                      ? 'mt-1 flex h-10 w-full items-center justify-center gap-1.5 rounded-w-md border border-dashed border-it-blue-500/50 text-sm font-bold text-it-blue-500 hover:bg-it-blue-500/[0.06] transition-colors motion-reduce:transition-none'
-                      : 'mt-1 flex h-10 w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-ice-500/50 text-sm font-bold text-ice-500 hover:bg-ice-500/[0.06] transition-colors'
+                      ? 'mt-1 flex h-10 w-full items-center justify-center gap-1.5 rounded-w-md border border-dashed border-it-blue-500/50 text-sm font-bold text-it-blue-500 hover:bg-it-blue-500/[0.06] transition-colors motion-reduce:transition-none disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent'
+                      : 'mt-1 flex h-10 w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-ice-500/50 text-sm font-bold text-ice-500 hover:bg-ice-500/[0.06] transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent'
                   }
                 >
                   <Icon name="calendar_month" className="text-base" aria-hidden="true" />
                   일정 추가
                 </button>
+                {isSpot && pastSchedules.length > 0 && (
+                  <p className={cn('text-xs px-1', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')} role="status">
+                    {MESSAGES.class.spotSingleScheduleLimit}
+                  </p>
+                )}
                 {errors.dateSchedules && (
                   <p className="text-xs text-red-500 flex items-center gap-1" role="alert">
                     <Icon name="error_outline" className="text-xs" aria-hidden="true" />
@@ -1045,139 +1108,28 @@ export function ClassForm({
 
 
             {/* 훈련 장소 BottomSheet */}
-            {portalReady && venueSheetOpen && createPortal(
-              <div className="fixed inset-0 z-[9999]" role="dialog" aria-modal="true" aria-label="훈련 장소 선택">
-                {/* Overlay */}
-                <div
-                  className="absolute inset-0 bg-black/40 animate-[fadeIn_200ms_ease-out]"
-                  onClick={closeVenueSheet}
-                />
-                {/* Sheet */}
-                {/* 결과 개수에 따라 시트 크기가 출렁이지 않도록 고정 높이 사용 */}
-                <div className={cn('absolute bottom-0 left-0 right-0 rounded-t-2xl shadow-md animate-[slideUp_300ms_ease-out] h-[75vh] flex flex-col', iceTheme ? 'bg-it-surface dark:bg-rink-800' : 'bg-white dark:bg-rink-800')}>
-                  {/* Handle */}
-                  <div className="flex justify-center pt-3 pb-1">
-                    <div className={cn('w-10 h-1 rounded-full', iceTheme ? 'bg-it-line-strong dark:bg-rink-500' : 'bg-wline dark:bg-rink-500')} />
-                  </div>
-
-                  {/* Header */}
-                  <div className={cn('flex items-center justify-between px-5 py-3 border-b', iceTheme ? 'border-it-line dark:border-rink-700' : 'border-wline-2 dark:border-rink-700')}>
-                    <h3 className={cn('text-base font-bold', iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white')}>
-                      {venueTargetDay ? `${venueTargetDay}요일 장소 선택` : '훈련 장소 선택'}
-                    </h3>
-                    <button
-                      type="button"
-                      onClick={closeVenueSheet}
-                      className={cn('w-8 h-8 flex items-center justify-center rounded-full transition-colors motion-reduce:transition-none', iceTheme ? 'hover:bg-it-fill dark:hover:bg-rink-700' : 'hover:bg-wline-2 dark:hover:bg-rink-700')}
-                      aria-label="닫기"
-                    >
-                      <Icon name="close" className={cn('text-lg', iceTheme ? 'text-it-ink-500' : 'text-wtext-3')} />
-                    </button>
-                  </div>
-
-                  {/* Search */}
-                  <div className="px-5 py-3">
-                    <div className={cn('flex items-center gap-3 px-4 py-3 rounded-w-md transition-colors motion-reduce:transition-none', iceTheme ? 'bg-it-fill dark:bg-rink-700 border-[1.5px] border-it-line-strong dark:border-rink-600' : 'bg-wsurface dark:bg-rink-700 border border-wline-2 dark:border-rink-600')}>
-                      <Icon name="search" className={cn('text-xl shrink-0', iceTheme ? 'text-it-ink-400' : 'text-wtext-3')} aria-hidden="true" />
-                      <input
-                        type="text"
-                        value={venueSearch}
-                        onChange={(e) => setVenueSearch(e.target.value)}
-                        placeholder="장소명 또는 주소 검색"
-                        className={cn('bg-transparent border-0 p-0 text-sm w-full focus:ring-0 focus:outline-none', iceTheme ? 'text-it-ink-800 dark:text-white placeholder:text-it-ink-400' : 'text-wtext-1 dark:text-white placeholder:text-wtext-3')}
-                        autoFocus
-                      />
-                      {venueSearch && (
-                        <button
-                          type="button"
-                          onClick={() => setVenueSearch('')}
-                          className={cn('transition-colors motion-reduce:transition-none shrink-0', iceTheme ? 'text-it-ink-400 hover:text-it-ink-600' : 'text-wtext-3 hover:text-wtext-2')}
-                          aria-label="검색어 지우기"
-                        >
-                          <Icon name="close" className="text-base" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Venue List — 검색어가 있을 때만 결과 노출 */}
-                  <div className="flex-1 overflow-y-auto px-5 pb-8">
-                    {!debouncedVenueSearch.trim() ? (
-                      <div className="flex flex-col items-center justify-center py-12">
-                        <div className={cn('w-14 h-14 rounded-full flex items-center justify-center mb-3', iceTheme ? 'bg-it-fill dark:bg-rink-700' : 'bg-wline-2 dark:bg-rink-700')}>
-                          <Icon name="search" className={cn('text-2xl', iceTheme ? 'text-it-ink-400' : 'text-wtext-3')} aria-hidden="true" />
-                        </div>
-                        <p className={cn('text-sm font-medium', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
-                          {MESSAGES.class.venueSearchPrompt}
-                        </p>
-                      </div>
-                    ) : filteredVenues.length > 0 ? (
-                      <div className="flex flex-col gap-2">
-                        {filteredVenues.map(v => {
-                          // 날짜 일정 모드: 해당 일정 행 venueId / 요일별 모드: 해당 요일 행 venueId / 단일 모드: 단일 venueId 기준.
-                          const isSelected = venueTargetDateKey
-                            ? formData.dateSchedules.find((s) => s.key === venueTargetDateKey)?.venueId === v.id
-                            : venueTargetDay
-                              ? formData.daySchedules.find((s) => s.dayOfWeek === venueTargetDay)?.venueId === v.id
-                              : formData.venueId === v.id;
-                          return (
-                            <button
-                              key={v.id}
-                              type="button"
-                              onClick={() => handleVenueSelect(v.id, v.name, v.address ?? '')}
-                              className={cn(
-                                'w-full flex items-center gap-4 p-4 rounded-w-md text-left transition-colors motion-reduce:transition-none active:brightness-95',
-                                iceTheme
-                                  ? isSelected
-                                    ? 'bg-it-blue-500/5 border-2 border-it-blue-500'
-                                    : 'bg-it-fill dark:bg-rink-900/50 border-[1.5px] border-it-line-strong dark:border-rink-700 hover:border-it-blue-500/30'
-                                  : isSelected
-                                    ? 'bg-ice-500/5 border-2 border-ice-500'
-                                    : 'bg-wbg dark:bg-rink-900/50 border border-wline-2 dark:border-rink-700 hover:border-ice-500/30',
-                              )}
-                            >
-                              <div className={cn(
-                                'w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border',
-                                iceTheme
-                                  ? isSelected
-                                    ? 'bg-it-blue-500/10 border-it-blue-500/20'
-                                    : 'bg-it-surface dark:bg-rink-700 border-it-line dark:border-rink-700'
-                                  : isSelected
-                                    ? 'bg-ice-500/10 border-ice-500/20'
-                                    : 'bg-white dark:bg-rink-700 border-wline dark:border-rink-700',
-                              )}>
-                                <Icon name="location_on" className={cn('text-xl', iceTheme ? (isSelected ? 'text-it-blue-500' : 'text-it-ink-400') : (isSelected ? 'text-ice-500' : 'text-wtext-3'))} aria-hidden="true" />
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <p className={cn('text-sm font-bold', iceTheme ? (isSelected ? 'text-it-blue-500' : 'text-it-ink-800 dark:text-rink-100') : (isSelected ? 'text-ice-500' : 'text-wtext-1 dark:text-rink-100'))}>
-                                  {v.name}
-                                </p>
-                                {v.address && (
-                                  <p className={cn('text-card-meta mt-0.5 truncate', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>{v.address}</p>
-                                )}
-                              </div>
-                              {isSelected && (
-                                <Icon name="check_circle" className={cn('text-xl shrink-0', iceTheme ? 'text-it-blue-500' : 'text-ice-500')} aria-hidden="true" />
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center py-12">
-                        <div className={cn('w-14 h-14 rounded-full flex items-center justify-center mb-3', iceTheme ? 'bg-it-fill dark:bg-rink-700' : 'bg-wline-2 dark:bg-rink-700')}>
-                          <Icon name="search_off" className={cn('text-2xl', iceTheme ? 'text-it-ink-400' : 'text-wtext-3')} aria-hidden="true" />
-                        </div>
-                        <p className={cn('text-sm font-medium', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
-                          {`"${debouncedVenueSearch}" 검색 결과가 없습니다`}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>,
-              document.body,
-            )}
+            {/* 훈련 장소 선택 — 공용 VenueSearchSheet (FK 전용: 자유 텍스트 [적용] 미노출) */}
+            <VenueSearchSheet
+              isOpen={venueSheetOpen}
+              onClose={closeVenueSheet}
+              title={venueTargetDay ? `${venueTargetDay}요일 장소 선택` : '훈련 장소 선택'}
+              selectedVenueId={
+                venueTargetDateKey
+                  ? formData.dateSchedules.find((s) => s.key === venueTargetDateKey)?.venueId
+                  : venueTargetDay
+                    ? formData.daySchedules.find((s) => s.dayOfWeek === venueTargetDay)?.venueId
+                    : formData.venueId
+              }
+              initialQuery={
+                (venueTargetDateKey
+                  ? formData.dateSchedules.find((s) => s.key === venueTargetDateKey)?.venueName
+                  : venueTargetDay
+                    ? formData.daySchedules.find((s) => s.dayOfWeek === venueTargetDay)?.venueName
+                    : formData.venue) ?? ''
+              }
+              iceTheme={iceTheme}
+              onSelectVenue={(v) => handleVenueSelect(v.id, v.name, v.address ?? '')}
+            />
           </section>
         </AnimatedSection>
 
@@ -1598,6 +1550,9 @@ export function ClassForm({
         onConfirm={applyMultiDates}
         onClose={() => setMultiDateOpen(false)}
         iceTheme={iceTheme}
+        // 요일 기본값 없는 신규 날짜는 시트에서 공통 시간을 받아 주입 — 회차별 반복 입력 제거.
+        //   기존 회차 날짜는 applyMultiDates 가 기존 값을 보존하므로 필수 판정에서 제외됨.
+        requireCommonTime
       />
 
       {/* ── 삭제 확인 모달 (Portal) ── */}

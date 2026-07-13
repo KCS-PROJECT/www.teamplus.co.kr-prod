@@ -24,8 +24,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Icon } from "@/components/ui/Icon";
 import { useToast } from "@/components/ui/Toast";
 import { useNativeUI } from "@/hooks/useNativeUI";
-import { useVenues } from "@/hooks/useVenues";
-import { useDebounce } from "@/hooks/useDebounce";
+import { VenueSearchSheet } from "@/components/venue/VenueSearchSheet";
 import { MESSAGES } from "@/lib/messages";
 import { emitRefresh, REFRESH_KEYS } from "@/lib/refresh-bus";
 import { usePageReady } from '@/hooks/usePageReady';
@@ -117,11 +116,12 @@ export default function TournamentCreatePage() {
   // [2026-06-16] 대회 기간(start/end)은 경기 일정에서 자동 파생 — 수동 입력 state 제거.
   // [2026-06-05] openPicker: "schedule-{key}"(대회일정 경기 날짜)만 사용.
   const [openPicker, setOpenPicker] = useState<string | null>(null);
-  // [2026-06-19] 대회장소 — 장소명 입력 시에만 저장된 링크장이 목록으로 표시되는 '찾아보기' 방식
-  //   (수업 MultiDatePickerModal 패턴 동일). venueId 를 SoT 로 전송, venueQuery 는 입력칸 값 겸 선택 장소명.
+  // 대회장소 — VenueSearchSheet(바텀시트)에서 선택/입력. venueId = 선택 링크장(SoT),
+  //   venueQuery = 표시 텍스트(선택 링크장명 또는 자유 텍스트 → location 전송).
   const [venueId, setVenueId] = useState("");
   const [venueQuery, setVenueQuery] = useState("");
-  const { venues } = useVenues();
+  // 장소 시트 대상 — "tournament"(대회장소) | 경기 행 key. null = 닫힘.
+  const [venueSheetTarget, setVenueSheetTarget] = useState<string | null>(null);
   // [2026-06-16] 결제 방식 — PREPAID(선불) | POSTPAID(후불). 후불은 종료 후 1인당 금액 일괄 청구.
   const [billingMode, setBillingMode] = useState<TournamentBillingMode>("PREPAID");
   const isPostpaid = billingMode === "POSTPAID";
@@ -147,23 +147,6 @@ export default function TournamentCreatePage() {
   const [existingMatchIds, setExistingMatchIds] = useState<string[]>([]);
   // 신규 경기 행 key 생성용 카운터 (Math.random 금지 환경 → 단조 증가 인덱스).
   const matchKeySeq = useMemo(() => ({ n: 0 }), []);
-
-  // [2026-06-19] 대회장소 링크장 검색 — 입력어 이름 부분 일치 필터 (수업 MultiDatePickerModal 패턴).
-  //   한글 IME 조합 중간값마다 재검색되지 않도록 입력 멈춘 뒤에만 필터.
-  const debouncedVenueQuery = useDebounce(venueQuery, 250);
-  const debouncedScheduleMatches = useDebounce(scheduleMatches, 250);
-  const filteredVenues = useMemo(() => {
-    const q = debouncedVenueQuery.trim().toLowerCase();
-    if (!q) return [] as typeof venues;
-    return venues.filter((v) => v.name.toLowerCase().includes(q));
-  }, [debouncedVenueQuery, venues]);
-
-  // 경기별 장소 검색 — 행마다 입력값(venueQuery)으로 저장된 링크장을 필터(대회장소 패턴 동일).
-  const filterVenuesByQuery = (q: string) => {
-    const t = q.trim().toLowerCase();
-    if (!t) return [] as typeof venues;
-    return venues.filter((v) => v.name.toLowerCase().includes(t));
-  };
 
   const [submitting, setSubmitting] = useState(false);
   // 연타 가드 — submitting state 는 비동기라 빠른 연타에 두 번째 제출이 통과할 수 있어
@@ -230,10 +213,10 @@ export default function TournamentCreatePage() {
         setName(t.name ?? "");
         setDescription(t.description ?? "");
         // [2026-06-16] start/end 는 경기 일정에서 파생 — 수정 시 matches prefill 로 자동 재계산.
-        // [2026-06-19] 링크장 복원 — venue 관계 우선. 입력칸(venueQuery)에 선택 장소명 표시.
-        //   레거시 자유텍스트(location)는 링크장 매핑이 없어 재선택 유도(빈 입력칸).
+        // 링크장 복원 — venue 관계 우선, 없으면 자유 텍스트(location)를 입력칸에 복원.
+        //   복원하지 않으면 수정 저장 시 기존 텍스트 장소가 유실된다.
         setVenueId(t.venue?.id ?? t.venueId ?? "");
-        setVenueQuery(t.venue?.name ?? "");
+        setVenueQuery(t.venue?.name ?? t.location ?? "");
         // [2026-06-16] 결제 방식 복원 — 미지정 시 선불(PREPAID).
         setBillingMode(t.billingMode ?? "PREPAID");
         // [2026-06-16] 참가 대상 복원 — 선택 선수 명단(userId) 단일 SoT.
@@ -256,7 +239,8 @@ export default function TournamentCreatePage() {
               date: toDateInputValue(m.scheduledAt),
               time: `${hh}:${mm}`,
               venueId: m.venue?.id ?? "",
-              venueQuery: m.venue?.name ?? "",
+              // 링크장 미선택 경기는 자유 텍스트(venueName) 복원 — 전체 교체 저장이라 미복원 시 유실.
+              venueQuery: m.venue?.name ?? m.venueName ?? "",
             };
           });
           setScheduleMatches(rows);
@@ -477,8 +461,10 @@ export default function TournamentCreatePage() {
         billingMode,
       };
       if (description.trim()) payload.description = description.trim();
-      // [2026-06-19] 대회장소 — 선택한 링크장 venueId 전송 (선택 시에만).
+      // 대회장소 — 링크장 선택 시 venueId, 미선택 시 입력 텍스트를 location(자유 텍스트)으로 저장.
+      //   location 은 항상 전송 — 링크장 선택 전환 시 빈 문자열로 스테일 텍스트를 클리어(백엔드 null 정규화).
       if (venueId) payload.venueId = venueId;
+      payload.location = venueId ? "" : venueQuery.trim();
       // [2026-06-16] 참가 대상 — 선택한 선수 명단(userId) 전송. SoT 단일.
       //   eligibleBirthYears/eligibleGroupIds 는 전송하지 않는다(백엔드가 명단에서 파생/클리어).
       //   validationError 가 1명 이상을 보장하므로 항상 비어있지 않다.
@@ -514,13 +500,18 @@ export default function TournamentCreatePage() {
         for (let i = 0; i < validMatches.length; i += 1) {
           const m = validMatches[i];
           // 일정별 참가비 입력 제거 — 경기 일정은 안내용. 금액은 대회 단일 참가비로만 관리.
+          // 경기별 장소 — 링크장 선택 시 venueId, 미선택+텍스트 입력 시 venueName(자유 텍스트).
+          //   둘 다 없으면 대회 링크장 venueId 폴백 저장(레거시 유지), 텍스트 장소는 복사하지
+          //   않고 null 로 두어 표시 시점에 대회 장소로 폴백(참조 방식).
+          const rowVenueText = m.venueQuery.trim();
           await createMatch({
             tournamentId,
             opponentName: m.opponentName.trim() || undefined,
             scheduledAt: `${m.date}T${m.time}:00`,
             matchOrder: i + 1,
-            // 경기별 장소 우선, 미입력 시 대회 전체 장소로 폴백 저장.
-            venueId: m.venueId || venueId || undefined,
+            venueId:
+              m.venueId || (rowVenueText ? undefined : venueId || undefined),
+            venueName: !m.venueId && rowVenueText ? rowVenueText : undefined,
           });
         }
         toast.success(
@@ -619,48 +610,32 @@ export default function TournamentCreatePage() {
               />
               <Hint align="right">{description.length}/500자</Hint>
             </Field>
-            {/* [2026-06-19] 대회장소 — 장소명 입력 시에만 저장된 링크장 목록 표시 (수업 MultiDatePickerModal 패턴).
-                목록은 absolute 드롭다운(오버레이)으로 띄워 폼 레이아웃이 밀리지 않게 한다 — 흐름 영역은
-                항상 1줄(안내문구 또는 선택 해제 버튼)로 고정. */}
+            {/* 대회장소 — VenueSearchSheet(바텀시트) 트리거. 목록 탭=링크장 선택,
+                [적용]/Enter=입력 텍스트 그대로 저장, 닫기=취소. */}
             <Field label="대회장소">
-              <div className="relative">
-                <input
-                  type="text"
-                  value={venueQuery}
-                  onChange={(e) => {
-                    setVenueQuery(e.target.value);
-                    if (venueId) setVenueId("");
-                  }}
-                  placeholder="장소 찾아보기"
-                  aria-label="대회장소 검색"
-                  className={pillInput}
+              <button
+                type="button"
+                onClick={() => setVenueSheetTarget("tournament")}
+                aria-label="대회장소 선택"
+                className={`${pillInput} flex items-center gap-2 text-left`}
+              >
+                <Icon
+                  name="location_on"
+                  className="shrink-0 text-base text-it-ink-400"
+                  aria-hidden="true"
                 />
-                {!venueId && debouncedVenueQuery.trim() && (
-                  <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-40 divide-y divide-it-line overflow-y-auto rounded-w-md border-[1.5px] border-it-line-strong bg-it-surface shadow-sh-2 dark:divide-rink-700 dark:border-rink-700 dark:bg-rink-800">
-                    {filteredVenues.length > 0 ? (
-                      filteredVenues.map((v) => (
-                        <li key={v.id}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setVenueId(v.id);
-                              setVenueQuery(v.name);
-                            }}
-                            className="w-full px-3 py-2.5 text-left text-w-body font-medium text-it-ink-800 transition-colors motion-reduce:transition-none hover:bg-it-fill dark:text-white dark:hover:bg-rink-700/40"
-                          >
-                            {v.name}
-                          </button>
-                        </li>
-                      ))
-                    ) : (
-                      <li className="px-3 py-2.5 text-w-caption text-it-ink-500 dark:text-rink-300">
-                        &ldquo;{debouncedVenueQuery.trim()}&rdquo; 검색 결과가 없습니다
-                      </li>
-                    )}
-                  </ul>
-                )}
-              </div>
-              {venueId ? (
+                <span
+                  className={`min-w-0 flex-1 truncate ${venueQuery ? "" : "text-it-ink-400"}`}
+                >
+                  {venueQuery || "장소 찾아보기"}
+                </span>
+                <Icon
+                  name="chevron_right"
+                  className="ml-auto shrink-0 text-base text-it-ink-300"
+                  aria-hidden="true"
+                />
+              </button>
+              {venueQuery ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -669,10 +644,13 @@ export default function TournamentCreatePage() {
                   }}
                   className="mt-1 inline-flex items-center gap-1 text-w-caption font-semibold text-it-ink-500 underline dark:text-rink-300"
                 >
-                  선택 해제 (장소 미지정)
+                  {venueId ? "선택 해제 (장소 미지정)" : "입력 해제 (장소 미지정)"}
                 </button>
               ) : (
-                <Hint>장소명을 입력하면 저장된 링크장이 표시됩니다. 비워두면 장소 미지정.</Hint>
+                <Hint>
+                  저장된 링크장을 선택하거나, 목록에 없으면 입력한 내용 그대로
+                  장소로 저장할 수 있습니다.
+                </Hint>
               )}
             </Field>
           </SectionCard>
@@ -894,54 +872,46 @@ export default function TournamentCreatePage() {
                         className={`${pillInput} min-w-0 box-border font-num tabular-nums disabled:opacity-60`}
                       />
                     </div>
-                    {/* 경기별 장소 — 입력 문구로 저장된 링크장 검색(대회장소 패턴). 비우면 대회 장소 사용. */}
-                    <div className="relative mt-2">
-                      <input
-                        type="text"
-                        value={m.venueQuery}
-                        onChange={(e) =>
-                          updateScheduleMatch(m.key, {
-                            venueQuery: e.target.value,
-                            ...(m.venueId ? { venueId: "" } : {}),
-                          })
-                        }
+                    {/* 경기별 장소 — VenueSearchSheet(바텀시트) 트리거. 비우면 대회 장소 사용. */}
+                    <div className="mt-2 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setVenueSheetTarget(m.key)}
                         disabled={locked}
-                        placeholder="(선택입력) 대회장소와 동일하면 미기재"
-                        aria-label={`${idx + 1}경기 장소 검색`}
-                        className={`${pillInput} disabled:opacity-60`}
-                      />
-                      {!m.venueId && (() => {
-                        // 행별 검색어도 디바운스된 스냅샷 기준으로만 결과 노출.
-                        const dq = (debouncedScheduleMatches.find((x) => x.key === m.key)?.venueQuery ?? "").trim();
-                        if (!dq) return null;
-                        const list = filterVenuesByQuery(dq);
-                        return (
-                          <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-40 divide-y divide-it-line overflow-y-auto rounded-w-md border-[1.5px] border-it-line-strong bg-it-surface shadow-sh-2 dark:divide-rink-700 dark:border-rink-700 dark:bg-rink-800">
-                            {list.length > 0 ? (
-                              list.map((v) => (
-                                <li key={v.id}>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      updateScheduleMatch(m.key, {
-                                        venueId: v.id,
-                                        venueQuery: v.name,
-                                      })
-                                    }
-                                    className="w-full px-3 py-2.5 text-left text-w-body font-medium text-it-ink-800 transition-colors motion-reduce:transition-none hover:bg-it-fill dark:text-white dark:hover:bg-rink-700/40"
-                                  >
-                                    {v.name}
-                                  </button>
-                                </li>
-                              ))
-                            ) : (
-                              <li className="px-3 py-2.5 text-w-caption text-it-ink-500 dark:text-rink-300">
-                                &ldquo;{dq}&rdquo; 검색 결과가 없습니다
-                              </li>
-                            )}
-                          </ul>
-                        );
-                      })()}
+                        aria-label={`${idx + 1}경기 장소 선택`}
+                        className={`${pillInput} flex min-w-0 flex-1 items-center gap-2 text-left disabled:opacity-60`}
+                      >
+                        <Icon
+                          name="location_on"
+                          className="shrink-0 text-base text-it-ink-400"
+                          aria-hidden="true"
+                        />
+                        <span
+                          className={`min-w-0 flex-1 truncate ${m.venueQuery ? "" : "text-it-ink-400"}`}
+                        >
+                          {m.venueQuery || "(선택입력) 대회장소와 동일하면 미기재"}
+                        </span>
+                        <Icon
+                          name="chevron_right"
+                          className="ml-auto shrink-0 text-base text-it-ink-300"
+                          aria-hidden="true"
+                        />
+                      </button>
+                      {m.venueQuery && !locked && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateScheduleMatch(m.key, {
+                              venueId: "",
+                              venueQuery: "",
+                            })
+                          }
+                          aria-label={`${idx + 1}경기 장소 해제`}
+                          className="shrink-0 text-it-ink-400 transition-colors motion-reduce:transition-none hover:text-it-ink-600"
+                        >
+                          <Icon name="close" className="text-base" aria-hidden="true" />
+                        </button>
+                      )}
                     </div>
                   </li>
                   );
@@ -1025,6 +995,52 @@ export default function TournamentCreatePage() {
         selectedPlayerIds={selectedPlayerIds}
         onToggle={togglePlayer}
         onToggleAll={toggleAllPlayers}
+      />
+
+      {/* 장소 선택 바텀시트 — 대회장소("tournament")·경기별 행(key) 공용 단일 인스턴스.
+          목록 탭=링크장 선택, [적용]/Enter/액션 키=입력 텍스트 그대로 저장, 닫기=취소. */}
+      <VenueSearchSheet
+        isOpen={venueSheetTarget !== null}
+        onClose={() => setVenueSheetTarget(null)}
+        title={
+          venueSheetTarget === "tournament"
+            ? "대회장소 선택"
+            : `${Math.max(scheduleMatches.findIndex((x) => x.key === venueSheetTarget), 0) + 1}경기 장소 선택`
+        }
+        selectedVenueId={
+          venueSheetTarget === "tournament"
+            ? venueId
+            : scheduleMatches.find((x) => x.key === venueSheetTarget)?.venueId
+        }
+        initialQuery={
+          venueSheetTarget === "tournament"
+            ? venueQuery
+            : (scheduleMatches.find((x) => x.key === venueSheetTarget)?.venueQuery ?? "")
+        }
+        allowFreeText
+        iceTheme
+        onSelectVenue={(v) => {
+          if (venueSheetTarget === "tournament") {
+            setVenueId(v.id);
+            setVenueQuery(v.name);
+          } else if (venueSheetTarget) {
+            updateScheduleMatch(venueSheetTarget, {
+              venueId: v.id,
+              venueQuery: v.name,
+            });
+          }
+        }}
+        onApplyText={(text) => {
+          if (venueSheetTarget === "tournament") {
+            setVenueId("");
+            setVenueQuery(text);
+          } else if (venueSheetTarget) {
+            updateScheduleMatch(venueSheetTarget, {
+              venueId: "",
+              venueQuery: text,
+            });
+          }
+        }}
       />
 
       {/* [추가 2026-05-30] 날짜 선택 공통 모달 — 경기 일정(schedule-{key}) 날짜 단일 인스턴스.

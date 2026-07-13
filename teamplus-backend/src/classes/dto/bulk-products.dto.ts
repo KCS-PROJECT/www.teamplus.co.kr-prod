@@ -49,12 +49,13 @@ export class BulkClassProductItemDto {
   feeType!: string;
 
   @ApiProperty({
-    example: 8,
-    description: "월 수업 횟수(정기권의 총 회수). 횟수제는 보통 1.",
+    example: 0,
+    description:
+      "발급 크레딧 수량(정기권의 총 회수). 0 = 크레딧 미발급(기본), >0 일 때만 발급·차감.",
   })
-  @IsNotEmpty({ message: "월 수업 횟수는 필수입니다." })
-  @IsNumber({}, { message: "월 수업 횟수는 숫자여야 합니다." })
-  @Min(1, { message: "월 수업 횟수는 1회 이상이어야 합니다." })
+  @IsNotEmpty({ message: "발급 크레딧 수량은 필수입니다." })
+  @IsNumber({}, { message: "발급 크레딧 수량은 숫자여야 합니다." })
+  @Min(0, { message: "발급 크레딧 수량은 0회 이상이어야 합니다." })
   sessionsPerMonth!: number;
 
   @ApiPropertyOptional({

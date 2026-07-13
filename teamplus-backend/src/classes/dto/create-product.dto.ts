@@ -34,13 +34,13 @@ export class CreateClassProductDto {
   price!: number;
 
   @ApiPropertyOptional({
-    example: 8,
+    example: 0,
     description:
-      "월 수업 횟수 — 미전송 시 주수(durationDays/7)×주빈도(sessionsPerWeek)로 파생. 정액(MONTHLY_FIXED)은 무차감 기간제라 표시/정합용으로만 사용하며 출석 회차 게이트에 영향 없음.",
+      "발급 크레딧 수량(월 수업 횟수) — 0(기본) = 크레딧 미발급. >0 일 때만 결제 시 발급·출석 차감. 정액(MONTHLY_FIXED)은 무차감 기간제라 표시/정합용으로만 사용하며 출석 회차 게이트에 영향 없음.",
   })
   @IsOptional()
-  @IsNumber({}, { message: "월 수업 횟수는 숫자여야 합니다." })
-  @Min(1, { message: "월 수업 횟수는 1회 이상이어야 합니다." })
+  @IsNumber({}, { message: "발급 크레딧 수량은 숫자여야 합니다." })
+  @Min(0, { message: "발급 크레딧 수량은 0회 이상이어야 합니다." })
   sessionsPerMonth?: number;
 
   @ApiProperty({

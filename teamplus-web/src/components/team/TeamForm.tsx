@@ -14,7 +14,8 @@ import { Icon } from '@/components/ui/Icon';
 import { MESSAGES } from '@/lib/messages';
 import { cn } from '@/lib/utils';
 import type { TeamDivision } from '@/services/team.service';
-import { VenuePicker } from '@/components/common/VenuePicker';
+import { VenueSearchSheet } from '@/components/venue/VenueSearchSheet';
+import { useVenues } from '@/hooks/useClassForm';
 
 export interface TeamFormValues {
   clubId: string;
@@ -133,7 +134,11 @@ export function TeamForm({
   const [values, setValues] = useState<TeamFormValues>(initialValues);
   const [errors, setErrors] = useState<TeamFormErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
-  // [추가 2026-05-22] 홈 링크장 선택 — DB 등록 Venue 마스터 목록.
+  // 홈 링크장 선택 — 공용 VenueSearchSheet. 표시명은 Venue 마스터에서 id 로 해석.
+  const [venueSheetOpen, setVenueSheetOpen] = useState(false);
+  const { venues: venueOptions } = useVenues();
+  const selectedVenueName =
+    venueOptions.find((v) => v.id === values.venueId)?.name ?? '';
 
   const setField = <K extends keyof TeamFormValues>(
     key: K,
@@ -272,15 +277,44 @@ export function TeamForm({
         />
       </FormField>
 
-      {/* ─── 홈 링크장 (2026-05-22 · v2 2026-05-23 VenuePicker BottomSheet) ─── */}
+      {/* ─── 홈 링크장 — 공용 VenueSearchSheet(바텀시트) 트리거 ─── */}
       <FormField label="홈 링크장" hint="링크장 관리에 등록된 목록에서 선택">
-        <VenuePicker
-          value={values.venueId}
-          onChange={(id) => setField('venueId', id)}
-          placeholder="홈 링크장 선택"
-          sheetTitle="홈 링크장을 선택해주세요."
-          ariaLabel="홈 링크장"
-        />
+        <button
+          type="button"
+          onClick={() => setVenueSheetOpen(true)}
+          aria-label="홈 링크장 선택"
+          className="flex h-12 w-full items-center gap-2 rounded-xl border border-wline bg-white px-4 text-left text-sm font-medium transition-colors motion-reduce:transition-none focus:border-ice-500 focus:outline-none focus:ring-2 focus:ring-ice-500/20 dark:border-rink-700 dark:bg-rink-800"
+        >
+          <Icon
+            name="location_on"
+            className="shrink-0 text-base text-wtext-3"
+            aria-hidden="true"
+          />
+          <span
+            className={cn(
+              'min-w-0 flex-1 truncate',
+              selectedVenueName
+                ? 'text-wtext-1 dark:text-white'
+                : 'text-wtext-3',
+            )}
+          >
+            {selectedVenueName || '홈 링크장 선택'}
+          </span>
+          <Icon
+            name="chevron_right"
+            className="ml-auto shrink-0 text-base text-wtext-4"
+            aria-hidden="true"
+          />
+        </button>
+        {values.venueId && (
+          <button
+            type="button"
+            onClick={() => setField('venueId', '')}
+            className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-wtext-3 underline dark:text-rink-300"
+          >
+            선택 해제 (장소 미지정)
+          </button>
+        )}
       </FormField>
 
       {/* ─── 컬러 ─── */}
@@ -363,6 +397,16 @@ export function TeamForm({
           </button>
         </div>
       </div>
+
+      {/* 홈 링크장 선택 바텀시트 — FK 전용(자유 텍스트 [적용] 미노출) */}
+      <VenueSearchSheet
+        isOpen={venueSheetOpen}
+        onClose={() => setVenueSheetOpen(false)}
+        title="홈 링크장 선택"
+        selectedVenueId={values.venueId}
+        initialQuery={selectedVenueName}
+        onSelectVenue={(v) => setField('venueId', v.id)}
+      />
     </form>
   );
 }

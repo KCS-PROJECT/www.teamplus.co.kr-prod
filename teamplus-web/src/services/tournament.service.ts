@@ -182,6 +182,8 @@ export interface MatchSummary {
   awayTeam: TeamBadge | null;
   /** [추가 2026-06-05] 상대팀 자유 텍스트 (awayTeam 미등록 시 직접 입력값) */
   opponentName?: string | null;
+  /** 경기 장소 자유 텍스트 — venue(링크장) 미선택 시 직접 입력값. null=대회 장소 폴백 */
+  venueName?: string | null;
   rink: { id: string; name: string } | null;
   venue: { id: string; name: string } | null;
 }
@@ -284,6 +286,8 @@ export interface CreateMatchInput {
   awayTeamId?: string;
   /** [추가 2026-06-05] 상대팀 자유 텍스트 — 등록 팀 없이 직접 입력 */
   opponentName?: string;
+  /** 경기 장소 자유 텍스트 — 링크장(venueId) 미선택 시 직접 입력 */
+  venueName?: string;
   scheduledAt: string;
   round?: MatchRound;
   matchOrder?: number;

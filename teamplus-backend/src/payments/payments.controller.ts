@@ -22,6 +22,7 @@ import {
   ApiResponse,
   ApiOkResponse,
   ApiBearerAuth,
+  ApiParam,
   ApiQuery,
 } from "@nestjs/swagger";
 import {
@@ -166,10 +167,38 @@ export class PaymentsController {
   @Roles("PARENT")
   @ApiOperation({
     summary: "내 미납 후불 청구 목록",
-    description: "확정된 후불 정산 중 결제 대기(pending) 항목을 반환합니다.",
+    description:
+      "확정된 후불 정산 중 결제 대기(pending) 항목을 반환합니다. 수업 후불(kind=CLASS)과 후불 대회 참가비(kind=TOURNAMENT)를 통합해 최신 청구 순으로 정렬합니다.",
   })
   async getMyPendingPostpaid(@Request() req: AuthenticatedRequest) {
     return this.postpaidSettlementService.getMyPendingBillings(req.user.id);
+  }
+
+  /**
+   * 후불 결제 링크 주문 조회 — 결제 페이지(/payment/postpaid)가 진입 시 금액·상태를
+   * 서버 기준으로 확정한다(알림 링크 쿼리 금액 불신 — 재정산·요청 취소 반영).
+   */
+  @Get("postpaid/order/:orderNumber")
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @ApiBearerAuth()
+  @Roles("PARENT", "COACH", "DIRECTOR", "ACADEMY_DIRECTOR", "ADMIN")
+  @ApiOperation({
+    summary: "후불 결제 주문 조회",
+    description:
+      "orderNumber 로 본인 결제 요청의 금액·상태·결제명을 조회합니다. 타인 결제는 404 를 반환합니다.",
+  })
+  @ApiParam({ name: "orderNumber", description: "결제 주문번호" })
+  @ApiResponse({ status: 200, description: "주문 조회 성공" })
+  @ApiResponse({ status: 404, description: "결제 요청을 찾을 수 없습니다." })
+  async getPostpaidOrder(
+    @Request() req: AuthenticatedRequest,
+    @Param("orderNumber") orderNumber: string,
+  ) {
+    return this.postpaidSettlementService.getPostpaidOrder(
+      orderNumber,
+      req.user.id,
+      req.user.userType,
+    );
   }
 
   /**

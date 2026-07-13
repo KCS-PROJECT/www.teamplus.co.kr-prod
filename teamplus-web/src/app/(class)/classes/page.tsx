@@ -918,13 +918,19 @@ const DefaultClassCard = memo(function DefaultClassCard({
           if (item.ageMax != null && age > item.ageMax) return false;
           return true;
         });
+  const classEnded = isClassEndedByLastSchedule(item);
   let registerLabel = "등록";
   // [상태 칩 soft 통일] 클릭 불가한 상태 표시(카드 전체가 링크)라 솔리드 버튼 모양은
   //   오독 유발 + ICETIMES 플랫 톤·배지 관례(연한 배경+진한 글자)와 충돌 → soft 칩.
   let registerClass =
     "bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-500/15 dark:text-it-blue-300";
-  // 우선순위 단일 체인 — 등록완료(본인 수강) > 일정 준비 중 > 등록불가(연령) > 등록.
-  if (isAlreadyEnrolled) {
+  // 우선순위 단일 체인 — 종료(회색·등록 유도 차단) > 등록완료(본인 수강) > 일정 준비 중
+  //   > 등록불가(연령) > 등록. 종료 수업은 등록 칩이 무의미해 상태 칩으로 대체한다
+  //   (classes-manage 상태 배지 위치와 통일 — 하단 중복 종료 배지는 제거).
+  if (classEnded) {
+    registerLabel = "종료";
+    registerClass = "bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-200";
+  } else if (isAlreadyEnrolled) {
     registerLabel = "등록완료";
     registerClass =
       "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400";
@@ -943,42 +949,34 @@ const DefaultClassCard = memo(function DefaultClassCard({
       ? `${daysLabel || time}${daysLabel && time ? ` · ${time}` : ''}`
       : null;
 
-  const classEnded = isClassEndedByLastSchedule(item);
-  // 출석확인 + 수업종료 배지만 우하단에 유지 (등록 상태 칩은 우상단 titleRight 로 이동).
+  // 출석확인 버튼만 우하단에 유지 — 등록했던 수업 식별 + 이력 진입(종료 후에도 유효).
   const bodyAction =
-    classEnded || isAlreadyEnrolled ? (
+    isAlreadyEnrolled ? (
       <div className="flex items-center justify-end gap-2">
-        {classEnded && (
-          <span className="mr-auto inline-flex items-center px-2.5 py-1 rounded-full bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-200 text-card-meta font-bold">
-            {MESSAGES.classProduct.listBadgeClassEnded}
-          </span>
-        )}
         {/* 출석확인 — 등록(선불 paid/후불 approved)한 수업에만 본문 우하단에 노출.
             카드 전체가 상세 링크이므로 role=button + preventDefault/stopPropagation 으로
             상세 이동을 막고 출석내역으로 이동. 자녀는 전역 SelectedChildContext 공유라 childId 불필요. */}
-        {isAlreadyEnrolled && (
-          <span
-            role="button"
-            tabIndex={0}
-            onClick={(e) => {
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            navigate(`/attendance-history?classId=${item.id}`);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
               e.stopPropagation();
               navigate(`/attendance-history?classId=${item.id}`);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                e.stopPropagation();
-                navigate(`/attendance-history?classId=${item.id}`);
-              }
-            }}
-            className="inline-flex items-center justify-center gap-1 h-[30px] px-3 rounded-full text-[14px] leading-[1.55] font-extrabold tracking-[-0.01em] border border-ice-500 text-ice-500 bg-transparent hover:bg-ice-500/10 active:brightness-95 transition-colors motion-reduce:transition-none cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
-            aria-label={`${item.className} 출석 내역 보기`}
-          >
-            <Icon name="fact_check" className="text-[16px]" aria-hidden="true" />
-            출석확인
-          </span>
-        )}
+            }
+          }}
+          className="inline-flex items-center justify-center gap-1 h-[30px] px-3 rounded-full text-[14px] leading-[1.55] font-extrabold tracking-[-0.01em] border border-ice-500 text-ice-500 bg-transparent hover:bg-ice-500/10 active:brightness-95 transition-colors motion-reduce:transition-none cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
+          aria-label={`${item.className} 출석 내역 보기`}
+        >
+          <Icon name="fact_check" className="text-[16px]" aria-hidden="true" />
+          출석확인
+        </span>
       </div>
     ) : undefined;
 
@@ -1241,26 +1239,27 @@ const DefaultTournamentCard = memo(function DefaultTournamentCard({
       ariaLabel={`${item.name} 대회 상세 보기`}
       title={item.name}
       titleRight={
-        // [2026-06-19] 등록 상태 칩(등록/등록완료)을 제목 줄 우측 상단으로 이동.
+        // 상태 칩 — 정규훈련 카드와 동일한 soft 톤·우선순위(종료/취소 > 등록완료 > 등록).
+        //   종료된 대회는 등록 칩이 무의미해 상태 칩으로 대체 (하단 중복 종료 배지 제거).
         <span
           className={cn(
-            "inline-flex items-center justify-center min-w-[72px] h-[30px] px-3.5 rounded-full text-[14px] leading-[1.55] font-extrabold tracking-[-0.01em] text-white",
-            isEnrolled ? "bg-emerald-500" : "bg-ice-500",
+            "inline-flex items-center justify-center min-w-[72px] h-[30px] px-3.5 rounded-full text-[14px] leading-[1.55] font-extrabold tracking-[-0.01em]",
+            isClosed
+              ? "bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-200"
+              : isEnrolled
+                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400"
+                : "bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-500/15 dark:text-it-blue-300",
           )}
           aria-hidden="true"
         >
-          {isEnrolled ? "등록완료" : "등록"}
+          {isClosed
+            ? isCancelled
+              ? "취소"
+              : "종료"
+            : isEnrolled
+              ? "등록완료"
+              : "등록"}
         </span>
-      }
-      bodyAction={
-        // 종료/취소된 대회 배지만 우하단에 유지.
-        isClosed ? (
-          <div className="flex justify-start">
-            <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-200 text-card-meta font-bold">
-              {isCancelled ? "취소된 대회" : "종료된 대회"}
-            </span>
-          </div>
-        ) : undefined
       }
     >
       {dateLabel && (

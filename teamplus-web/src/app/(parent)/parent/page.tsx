@@ -20,6 +20,7 @@ import dynamic from 'next/dynamic';
 
 import { Icon } from '@/components/ui/Icon';
 import { useNavigation } from '@/components/ui/NavLink';
+import { BottomSheet } from '@/components/ui/BottomSheet';
 import { ChildPickerSheet } from '@/components/parent/ChildPickerSheet';
 import { HomeIdentityStrip } from '@/components/common/HomeIdentityStrip';
 import { BrandWordmark } from '@/components/common/BrandWordmark';
@@ -85,6 +86,21 @@ interface EnrollmentItem {
   product?: { billingTiming?: string } | null;
 }
 
+/** GET /payments/postpaid/my-pending 응답 항목 — 결제 요청 배너용.
+ *  수업 후불 정산(CLASS) + 후불 대회 참가비(TOURNAMENT) 통합. paymentName 은
+ *  결제 페이지(/payment/postpaid) name 파라미터 값(백엔드가 알림 링크와 동일 포맷으로 생성). */
+interface PendingBilling {
+  kind: 'CLASS' | 'TOURNAMENT';
+  title: string;
+  amount: number;
+  orderNumber: string | null;
+  paymentName: string;
+}
+
+function postpaidPayLink(b: PendingBilling): string {
+  return `/payment/postpaid?orderNumber=${encodeURIComponent(b.orderNumber ?? '')}&amount=${b.amount}&name=${encodeURIComponent(b.paymentName)}`;
+}
+
 function pickTeamName(team: TeamListItem): string {
   const base =
     team.name?.trim() ||
@@ -111,6 +127,9 @@ export default function ParentDashboardPage() {
   const [teams, setTeams] = useState<TeamRef[] | null>(null);
   // 자녀 선택 바텀시트 — 자녀 스트립 우측 [선택] 버튼으로 열림 (승인 자녀 2명+ 일 때만 노출)
   const [isChildSheetOpen, setIsChildSheetOpen] = useState(false);
+  // 미납 후불 청구(수업 정산 + 후불 대회 참가비) — 결제 요청 배너. null=로딩(배너·페이지 ready 보류).
+  const [pendingBillings, setPendingBillings] = useState<PendingBilling[] | null>(null);
+  const [isBillingSheetOpen, setIsBillingSheetOpen] = useState(false);
   const [childClassMap, setChildClassMap] = useState<Map<string, Set<string>>>(
     new Map(),
   );
@@ -136,9 +155,12 @@ export default function ParentDashboardPage() {
   // SoT: docs/Design/LOADING_TIMING_POLICY.md §11 (사용자 직접 지시 — 데이터+셋팅 완료 전 hide 금지)
   const imagesReady = useImagesReady([allChildren, teams, isLayoutStable]);
   const fontsReady = useFontsReady();
+  // ⑧ 결제 요청 배너 데이터(pendingBillings) — 최상단 배너가 로더 해제 후 늦게 붙으면
+  //    레이아웃 점프가 생기므로 ready 게이트에 포함 (LOADING_TIMING_POLICY §11).
   usePageReady(
     !isChildrenLoading &&
       teams !== null &&
+      pendingBillings !== null &&
       calendarReady &&
       summaryReady &&
       isLayoutStable &&
@@ -223,6 +245,22 @@ export default function ParentDashboardPage() {
   useRefreshSubscription(REFRESH_KEYS.TEAM, () => {
     void loadParentTeams();
   });
+
+  // 미납 후불 청구 fetch — 결제 완료 시 pending 이 사라져 배너가 자동 소멸한다.
+  //   비학부모(ADMIN 시뮬레이션 등) 403 은 빈 배열 처리 → 배너 미노출.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const res = await api.get<PendingBilling[]>('/payments/postpaid/my-pending');
+      if (cancelled) return;
+      const list = res.success && Array.isArray(res.data) ? res.data : [];
+      // orderNumber 없는 항목은 결제 페이지로 연결할 수 없어 제외.
+      setPendingBillings(list.filter((b) => !!b.orderNumber));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // 자녀별 등록 수업 매핑 fetch (승인된 자녀만 대상)
   useEffect(() => {
@@ -338,12 +376,15 @@ export default function ParentDashboardPage() {
     return m;
   }, [upcomingSchedules]);
 
-  // [Phase B] 후불(POSTPAID) 일정의 scheduleId 집합 — SelectedDayClassList 출석 모달
-  //   "결제권 차감" 문구 분기용. CalendarClass.id 가 scheduleId 와 동일하므로 직접 매칭.
-  const postpaidScheduleIds = useMemo(() => {
+  // "결제권 차감" 안내 표시 대상 scheduleId 집합(opt-in) — 발급형 상품이 확인된
+  //   크레딧 수업만. 미포함이면 SelectedDayClassList 가 차감 안내를 생략한다.
+  //   CalendarClass.id 가 scheduleId 와 동일하므로 직접 매칭.
+  const creditNoticeScheduleIds = useMemo(() => {
     const s = new Set<string>();
     upcomingSchedules.forEach((u) => {
-      if (u.billingMode === 'POSTPAID') s.add(u.scheduleId);
+      if (u.classRequiresCredit === true && u.billingMode !== 'POSTPAID') {
+        s.add(u.scheduleId);
+      }
     });
     return s;
   }, [upcomingSchedules]);
@@ -523,6 +564,45 @@ export default function ParentDashboardPage() {
           </section>
         )}
 
+        {/* 0-1. 결제 요청 배너 — 미납 후불 청구(수업 정산·후불 대회 참가비)가 있을 때만.
+              결제 완료 시 pending 이 사라져 자동 소멸(닫기 상태 관리 불필요).
+              1건=결제 페이지 직행 · 2건+=건별 목록 바텀시트. */}
+        {pendingBillings !== null && pendingBillings.length > 0 && (
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
+            <button
+              type="button"
+              onClick={() =>
+                pendingBillings.length === 1
+                  ? navigate(postpaidPayLink(pendingBillings[0]))
+                  : setIsBillingSheetOpen(true)
+              }
+              className="w-full flex items-center gap-2.5 px-4 sm:px-5 py-3.5 text-left bg-amber-500/[0.08] dark:bg-amber-500/[0.12] hover:bg-amber-500/[0.13] transition-colors duration-150 motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-500"
+            >
+              <Icon
+                name="payments"
+                className="text-[20px] shrink-0 text-amber-600 dark:text-amber-400"
+                aria-hidden="true"
+              />
+              <span className="flex-1 min-w-0 text-card-body font-semibold text-wtext-1 dark:text-white break-keep">
+                {pendingBillings.length === 1
+                  ? MESSAGES.payment2.pendingBannerSingle(
+                      pendingBillings[0].title,
+                      pendingBillings[0].amount,
+                    )
+                  : MESSAGES.payment2.pendingBannerMulti(
+                      pendingBillings.length,
+                      pendingBillings.reduce((sum, b) => sum + b.amount, 0),
+                    )}
+              </span>
+              <Icon
+                name="chevron_right"
+                className="text-[20px] shrink-0 text-amber-600 dark:text-amber-400"
+                aria-hidden="true"
+              />
+            </button>
+          </section>
+        )}
+
         {/* ① 공지사항 — 팀 단위 정보 (최상단 배너 다음). 자녀 칩 필터와 무관.
               학부모는 "공지사항" 타이틀(타 역할은 기본 "팀 공지사항"). */}
         <RecentNoticesSection title={MESSAGES.dashboard.notices} iceTheme />
@@ -568,7 +648,7 @@ export default function ParentDashboardPage() {
               selectedChildId={selectedChildId}
               todayKey={todayKey}
               onCheckIn={checkInChild}
-              postpaidScheduleIds={postpaidScheduleIds}
+              creditNoticeScheduleIds={creditNoticeScheduleIds}
               iceTheme
             />
           ) : (
@@ -585,7 +665,7 @@ export default function ParentDashboardPage() {
                   selectedChildId={selectedChildId}
                   todayKey={todayKey}
                   onCheckIn={checkInChild}
-                  postpaidScheduleIds={postpaidScheduleIds}
+                  creditNoticeScheduleIds={creditNoticeScheduleIds}
                   bare
                   iceTheme
                 />
@@ -613,6 +693,49 @@ export default function ParentDashboardPage() {
           setIsChildSheetOpen(false);
         }}
       />
+
+      {/* 결제 요청 목록 바텀시트 — 미납 청구 2건+ 일 때 건별 결제 진입 */}
+      <BottomSheet
+        isOpen={isBillingSheetOpen}
+        onClose={() => setIsBillingSheetOpen(false)}
+        title={MESSAGES.payment2.pendingSheetTitle}
+      >
+        <ul className="flex flex-col" role="list">
+          {(pendingBillings ?? []).map((b) => (
+            <li
+              key={b.orderNumber}
+              className="border-b border-wline-2 dark:border-rink-700 last:border-b-0"
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setIsBillingSheetOpen(false);
+                  navigate(postpaidPayLink(b));
+                }}
+                className="w-full flex items-center gap-3 py-3.5 text-left active:brightness-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-it-blue-500"
+                aria-label={`${b.paymentName} ${b.amount.toLocaleString()}원 ${MESSAGES.payment2.pendingPayCta}`}
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-card-body font-semibold text-wtext-1 dark:text-white truncate">
+                    {b.title}
+                  </p>
+                  <p className="text-card-meta text-wtext-3 dark:text-rink-300 truncate">
+                    {b.paymentName}
+                  </p>
+                </div>
+                <span className="shrink-0 text-card-body font-extrabold text-wtext-1 dark:text-white tabular-nums">
+                  {b.amount.toLocaleString()}원
+                </span>
+                <Icon
+                  name="chevron_right"
+                  className="text-[18px] shrink-0 text-wtext-3 dark:text-rink-300"
+                  aria-hidden="true"
+                />
+              </button>
+            </li>
+          ))}
+        </ul>
+      </BottomSheet>
 
       <GlobalMenu isOpen={isMenuOpen} onClose={closeMenu} />
     </MobileContainer>

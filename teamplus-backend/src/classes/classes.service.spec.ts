@@ -104,6 +104,7 @@ describe("ClassesService", () => {
       create: jest.Mock;
       createMany: jest.Mock;
       findFirst: jest.Mock;
+      findMany: jest.Mock;
       deleteMany: jest.Mock;
       update: jest.Mock;
     };
@@ -121,6 +122,7 @@ describe("ClassesService", () => {
         create: jest.fn(),
         createMany: jest.fn(),
         findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
         deleteMany: jest.fn(),
         update: jest.fn(),
       },

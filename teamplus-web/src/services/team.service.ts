@@ -546,6 +546,20 @@ export async function listPublicTeams(params?: {
 }
 
 /**
+ * 팀명 사용 가능 여부 확인 (비로그인 가능).
+ * 감독 회원가입 폼의 팀명 사전 중복 확인용 — 활성 팀 기준 동명 검사.
+ */
+export function checkTeamNameAvailable(
+  name: string,
+): Promise<ApiResponse<{ available: boolean }>> {
+  return apiRequest<{ available: boolean }>({
+    method: 'GET',
+    url: `${BASE}/check-name`,
+    params: { name },
+  });
+}
+
+/**
  * 내가 관리 가능한 팀 목록 (대시보드/홈 진입점용)
  *
  * @param options.includePending  true 면 본인 멤버십이 'pending' 인 팀도 함께 반환.

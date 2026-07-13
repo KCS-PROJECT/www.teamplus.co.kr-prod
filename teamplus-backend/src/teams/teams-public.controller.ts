@@ -74,4 +74,29 @@ export class TeamsPublicController {
       offset ? parseInt(offset, 10) : 0,
     );
   }
+
+  /**
+   * 팀명 사용 가능 여부 확인 (인증 불필요)
+   * 감독 회원가입 폼의 팀명 사전 중복 확인용 — 활성 팀 기준 동명 검사
+   */
+  @Get("check-name")
+  @Public()
+  @ApiOperation({
+    summary: "팀명 사용 가능 여부 확인 (비로그인 가능)",
+    description:
+      "활성 팀 기준으로 동일한 팀명이 이미 존재하는지 확인합니다. 감독 회원가입 폼에서 사용합니다.",
+  })
+  @ApiQuery({
+    name: "name",
+    required: true,
+    description: "확인할 팀명",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "확인 성공",
+    schema: { example: { available: true } },
+  })
+  async checkTeamName(@Query("name") name?: string) {
+    return this.teamsService.checkTeamNameAvailable(name ?? "");
+  }
 }

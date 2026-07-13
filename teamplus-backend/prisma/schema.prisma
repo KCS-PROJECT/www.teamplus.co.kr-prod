@@ -2213,6 +2213,9 @@ model HockeyMatch {
   /// [추가 2026-06-05] 상대팀 자유 텍스트 — awayTeamId(등록 팀) 없이 외부/미등록 팀명 표기.
   ///  대회일정의 "vs 상대팀"을 직접 입력할 때 사용.
   opponentName  String?   @map("opponent_name")
+  /// 경기 장소 자유 텍스트 — venueId(링크장 마스터) 없이 직접 입력.
+  ///  null = 대회 장소(Tournament.location > venue > rink)로 폴백 표시(참조 방식, 복사 저장 금지).
+  venueName     String?   @map("venue_name")
   /// [추가 2026-06-15] 대회일정(경기)별 참가비 — 감독이 일정마다 개별 금액 입력.
   ///  null/0 = 무료. 학부모는 일정들을 선택해 합산 결제하거나 전체 결제한다.
   fee           Decimal?  @map("fee") @db.Decimal(10, 2)

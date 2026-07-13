@@ -90,11 +90,13 @@ export function WeekScheduleList({ groups, todayKey: todayKeyProp, renderDayClas
   return (
     <div className={cn(
       'divide-y',
+      // 날짜 그룹 구분선 — 일정 페이지(ScheduleRangeList)와 동일한 무채 검정 계통.
+      //   쿨그레이 토큰은 배경과 같은 톤이라 묻힘. 강도 조절은 투명도 %로.
+      'divide-black/20 dark:divide-white/15',
       // ICETIMES flat: 카드 박스(rounded/border/shadow) 제거 → 상위 full-bleed 섹션의
-      //   흰 배경을 그대로 사용. 행 사이 hairline(it-line)만 유지. 기본 테마는 기존 카드 유지.
-      iceTheme
-        ? 'divide-it-line dark:divide-it-blue-900'
-        : 'overflow-hidden rounded-w-xl border border-wline bg-wsurface shadow-sh-1 divide-wline-2 dark:border-rink-700 dark:bg-rink-800 dark:divide-rink-700',
+      //   흰 배경을 그대로 사용. 기본 테마는 기존 카드 박스 유지.
+      !iceTheme &&
+        'overflow-hidden rounded-w-xl border border-wline bg-wsurface shadow-sh-1 dark:border-rink-700 dark:bg-rink-800',
     )}>
       {pastGroups.length > 0 && (
         <button

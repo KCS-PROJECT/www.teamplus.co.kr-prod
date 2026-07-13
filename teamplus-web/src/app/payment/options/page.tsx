@@ -784,9 +784,10 @@ function PaymentOptionsContent() {
               <div className="space-y-3">
                 <div className="flex justify-between items-center text-card-body">
                   <span className="text-it-ink-500 dark:text-rink-300">
-                    {selectedFeeType === "MONTHLY_FIXED"
+                    {selectedFeeType === "MONTHLY_FIXED" ||
+                    !product?.sessionsPerMonth
                       ? "수업료"
-                      : `${product?.sessionsPerMonth ?? 1}회`}
+                      : `${product.sessionsPerMonth}회`}
                   </span>
                   <span className="font-bold text-it-ink-900 dark:text-white tabular-nums">
                     {calculatedPrice.toLocaleString()}원
@@ -970,7 +971,10 @@ function PaymentOptionsContent() {
         title="패키지를 선택해주세요."
         items={matchingProducts.map((p) => {
           const isPurchasable = p.isPurchasable !== false;
-          const baseSub = `${p.price.toLocaleString()}원 · 월 ${p.sessionsPerMonth}회`;
+          const baseSub =
+            p.sessionsPerMonth > 0
+              ? `${p.price.toLocaleString()}원 · 월 ${p.sessionsPerMonth}회`
+              : `${p.price.toLocaleString()}원`;
           const sub = isPurchasable
             ? baseSub
             : `${baseSub} · ${p.disabledReason ?? MESSAGES.classProduct.unavailableEndDateExceed}`;

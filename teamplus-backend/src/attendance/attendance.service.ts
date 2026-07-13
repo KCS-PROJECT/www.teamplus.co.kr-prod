@@ -8,7 +8,10 @@ import {
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { PrismaService } from "@/prisma/prisma.service";
-import { creditStartedWhere } from "@/common/billing/fee-type.constants";
+import {
+  creditStartedWhere,
+  ISSUING_PRODUCT_WHERE,
+} from "@/common/billing/fee-type.constants";
 import { RedisService } from "@/redis/redis.service";
 import { CreditDomainService } from "@/credits/credit-domain.service";
 import { AttendanceAuditLogService } from "./attendance-audit-log.service";
@@ -98,6 +101,31 @@ export class AttendanceService {
       enrollment.payment?.product?.billingTiming ??
       null;
     return timing === "POSTPAID";
+  }
+
+  /**
+   * 발급형(크레딧을 발급·차감하는) 상품이 이 수업에 하나라도 있는지.
+   *   발급 수량 SoT = ClassProduct.sessionsPerMonth. 0(미발급 기본) 또는 후불 상품만
+   *   있으면 false → 크레딧 사전검증/차감 전체를 건너뛴다.
+   */
+  private async classHasIssuingProduct(classId: string): Promise<boolean> {
+    const count = await this.prisma.classProduct.count({
+      where: { classId, ...ISSUING_PRODUCT_WHERE },
+    });
+    return count > 0;
+  }
+
+  /**
+   * 크레딧 사전검증·차감을 건너뛸지 판정.
+   *   후불(그 학생 기준)이거나, 발급형 상품이 없는 수업이면 스킵 → 출석만 기록.
+   *   isPostpaidClass 의 의미는 그대로 두고, 발급 게이트만 추가로 합성한다.
+   */
+  private async shouldSkipCreditFlow(
+    classId: string,
+    userId?: string,
+  ): Promise<boolean> {
+    if (await this.isPostpaidClass(classId, userId)) return true;
+    return !(await this.classHasIssuingProduct(classId));
   }
 
   /**
@@ -311,8 +339,11 @@ export class AttendanceService {
     // PR-B (v0.5): 사전 검증은 빠른 실패용. 실제 차감은 단일 진입점(CreditDomainService) 경유.
     // [Phase B-3] POSTPAID(모드 A) 수업은 선결제·게이트 없음 — 출석만 기록(사후 정산).
     //   BOTH 수업은 그 학생(targetUserId)이 선택한 상품 기준으로 후불 여부 판정.
-    const isPostpaidClass = await this.isPostpaidClass(classId, targetUserId);
-    if (!isPostpaidClass) {
+    const skipCreditFlow = await this.shouldSkipCreditFlow(
+      classId,
+      targetUserId,
+    );
+    if (!skipCreditFlow) {
       const allCredits = await this.prisma.memberCredit.findMany({
         where: { userId: targetUserId, classId, expiresAt: { gte: now }, ...creditStartedWhere(now) },
         orderBy: { expiresAt: "asc" },
@@ -355,7 +386,7 @@ export class AttendanceService {
       // 6-b) 수업권 차감 (처음 출석 체크인일 때만) — CreditDomainService 경유
       //   [Phase B-3] POSTPAID 수업은 차감 없음(사후 정산).
       const shouldDeductCredit =
-        !isPostpaidClass &&
+        !skipCreditFlow &&
         (!existingAttendance || !existingAttendance.creditDeducted);
 
       if (shouldDeductCredit) {
@@ -652,8 +683,8 @@ export class AttendanceService {
     const now = new Date();
     // [Phase B-3] POSTPAID(모드 A) 수업은 선결제·게이트 없음 — 출석만 기록(사후 정산).
     //   BOTH 수업은 그 학생(memberId)이 선택한 상품 기준으로 후불 여부 판정.
-    const isPostpaidClass = await this.isPostpaidClass(classId, memberId);
-    if (!isPostpaidClass) {
+    const skipCreditFlow = await this.shouldSkipCreditFlow(classId, memberId);
+    if (!skipCreditFlow) {
       const memberCredit = await this.prisma.memberCredit.findFirst({
         where: {
           userId: memberId,
@@ -670,6 +701,9 @@ export class AttendanceService {
         throw new BadRequestException("해당 학생은 이번 달 결제가 필요합니다.");
       }
     }
+
+    // 발급형 상품이 없거나 후불이면 차감 스킵 — 처음 출석일 때만 차감.
+    const shouldDeductCredit = !skipCreditFlow && !existingAttendance;
 
     // 출석 기록 생성 및 수업권 차감 - 원자적 트랜잭션 처리
     const result = await this.prisma.$transaction(async (tx) => {
@@ -697,7 +731,7 @@ export class AttendanceService {
       });
 
       // 수업권 차감 (처음 출석할 때만) — PR-B: CreditDomainService 경유
-      if (!existingAttendance) {
+      if (shouldDeductCredit) {
         await this.creditDomain.deductOne(tx, {
           userId: memberId,
           classId,
@@ -720,7 +754,7 @@ export class AttendanceService {
         actionType: "check_in",
         fromStatus: existingAttendance?.attendanceStatus ?? null,
         toStatus: "present",
-        creditDelta: existingAttendance ? 0 : -1,
+        creditDelta: shouldDeductCredit ? -1 : 0,
       });
 
       return attendance;
@@ -735,7 +769,7 @@ export class AttendanceService {
       scheduleId: result.scheduleId,
       attendanceStatus: "present",
       checkedInAt: now,
-      creditDeducted: true,
+      creditDeducted: shouldDeductCredit,
     };
   }
 
@@ -1412,7 +1446,7 @@ export class AttendanceService {
         !wasPresent &&
         willBePresent &&
         !attendance.creditDeducted &&
-        !(await this.isPostpaidClass(
+        !(await this.shouldSkipCreditFlow(
           attendance.schedule!.class!.id,
           attendance.memberId,
         ))
@@ -2078,8 +2112,8 @@ export class AttendanceService {
     //   [Phase B-3] POSTPAID(후불) 수업은 선결제·게이트 없음 — 출석만 기록(사후 정산).
     const now = new Date();
     // BOTH 수업은 그 자녀(childId)가 선택한 상품 기준으로 후불 여부 판정.
-    const isPostpaidClass = await this.isPostpaidClass(classId, childId);
-    if (!isPostpaidClass) {
+    const skipCreditFlow = await this.shouldSkipCreditFlow(classId, childId);
+    if (!skipCreditFlow) {
       const credits = await this.prisma.memberCredit.findMany({
         where: { userId: childId, classId, expiresAt: { gte: now }, ...creditStartedWhere(now) },
         orderBy: { expiresAt: "asc" },
@@ -2114,7 +2148,7 @@ export class AttendanceService {
 
       //   [Phase B-3] POSTPAID 수업은 차감 없음(사후 정산).
       const shouldDeduct =
-        !isPostpaidClass &&
+        !skipCreditFlow &&
         (!existingAttendance || !existingAttendance.creditDeducted);
       if (shouldDeduct) {
         await this.creditDomain.deductOne(tx, {
@@ -2278,8 +2312,8 @@ export class AttendanceService {
     //   [Phase B-3] POSTPAID(후불) 수업은 선결제·게이트 없음 — 출석만 기록(사후 정산).
     const now = new Date();
     // BOTH 수업은 그 학생(studentId)이 선택한 상품 기준으로 후불 여부 판정.
-    const isPostpaidClass = await this.isPostpaidClass(classId, studentId);
-    if (!isPostpaidClass) {
+    const skipCreditFlow = await this.shouldSkipCreditFlow(classId, studentId);
+    if (!skipCreditFlow) {
       const credits = await this.prisma.memberCredit.findMany({
         where: { userId: studentId, classId, expiresAt: { gte: now }, ...creditStartedWhere(now) },
         orderBy: { expiresAt: "asc" },
@@ -2314,7 +2348,7 @@ export class AttendanceService {
 
       //   [Phase B-3] POSTPAID 수업은 차감 없음(사후 정산).
       const shouldDeduct =
-        !isPostpaidClass &&
+        !skipCreditFlow &&
         (!existingAttendance || !existingAttendance.creditDeducted);
       if (shouldDeduct) {
         await this.creditDomain.deductOne(tx, {
@@ -2466,6 +2500,9 @@ export class AttendanceService {
         )
       : new Set<string>();
 
+    // 발급형 상품이 없으면(발급 수량 0 또는 후불만) 전 학생 크레딧 흐름 스킵 — 수업 단위 1회 조회.
+    const hasIssuingProduct = await this.classHasIssuingProduct(classId);
+
     type CoachResult = {
       memberId: string;
       status:
@@ -2504,12 +2541,15 @@ export class AttendanceService {
         }
 
         // BOTH 수업은 학생별로 후불 여부를 판정(혼재 학생 정확 분기) — 사전조회 Set 사용.
-        const isPostpaidClass = isBothClass
-          ? bothPostpaidMemberIds.has(memberId)
-          : classLevelPostpaid;
+        //   발급형 상품이 없는 수업은 학생 무관 전원 스킵.
+        const skipCreditFlow =
+          !hasIssuingProduct ||
+          (isBothClass
+            ? bothPostpaidMemberIds.has(memberId)
+            : classLevelPostpaid);
 
-        // 수업권 잔량 (후불 수업은 게이트 없음 — 사후 정산)
-        if (!isPostpaidClass) {
+        // 수업권 잔량 (후불·미발급 수업은 게이트 없음 — 사후 정산/미사용)
+        if (!skipCreditFlow) {
           const credits = await this.prisma.memberCredit.findMany({
             where: { userId: memberId, classId, expiresAt: { gte: now }, ...creditStartedWhere(now) },
             orderBy: { expiresAt: "asc" },
@@ -2540,9 +2580,9 @@ export class AttendanceService {
               checkedInBy: coachUserId,
             },
           });
-          //   [Phase B-3] POSTPAID 수업은 차감 없음(사후 정산).
+          //   [Phase B-3] POSTPAID·미발급 수업은 차감 없음(사후 정산/미사용).
           const shouldDeduct =
-            !isPostpaidClass && (!existing || !existing.creditDeducted);
+            !skipCreditFlow && (!existing || !existing.creditDeducted);
           if (shouldDeduct) {
             // PR-B: CreditDomainService 경유 — race 시 BadRequestException throw → catch 에서 처리
             await this.creditDomain.deductOne(tx, {
@@ -2938,12 +2978,12 @@ export class AttendanceService {
     //   [Phase B-3] POSTPAID(후불) 수업은 선결제·차감 없음 — 출석만 기록(사후 정산).
     //   present 표기(checkedInAt)는 유지하되 수업권 조회/차감만 건너뛴다.
     //   BOTH 수업은 그 학생(memberId)이 선택한 상품 기준으로 후불 여부 판정.
-    const isPostpaidClass = await this.isPostpaidClass(
+    const skipCreditFlow = await this.shouldSkipCreditFlow(
       schedule.class.id,
       memberId,
     );
     const isPresent = attendanceStatus === "present";
-    const willDeduct = isPresent && !isPostpaidClass;
+    const willDeduct = isPresent && !skipCreditFlow;
     const now = new Date();
 
     // 출석 정정 FCM 푸시는 tx 커밋 후 발송(롤백 시 false 푸시 방지). tx 내부에서 페이로드만 채운다.

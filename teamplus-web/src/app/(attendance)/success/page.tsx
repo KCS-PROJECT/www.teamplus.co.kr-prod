@@ -197,12 +197,14 @@ function AttendanceSuccessContent() {
                       체크인: {info.checkInTime}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 px-3 py-1.5 bg-ice-500/10 rounded-w-pill">
-                    <Icon name="token" className="text-ice-500 text-card-title" aria-hidden="true" />
-                    <span className="text-card-body font-bold text-ice-500">
-                      {info.creditsRemaining}회 남음
-                    </span>
-                  </div>
+                  {info.creditsRemaining > 0 && (
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-ice-500/10 rounded-w-pill">
+                      <Icon name="token" className="text-ice-500 text-card-title" aria-hidden="true" />
+                      <span className="text-card-body font-bold text-ice-500">
+                        {info.creditsRemaining}회 남음
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

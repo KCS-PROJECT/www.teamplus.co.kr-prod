@@ -31,10 +31,17 @@ import { MESSAGES } from "@/lib/messages";
 import { emitRefresh, REFRESH_KEYS } from "@/lib/refresh-bus";
 import { isTeamManager, isTeamManagerOf } from "@/lib/team-roles";
 import { cn } from "@/lib/utils";
-import { getTeam, updateTeam } from "@/services/team.service";
+import {
+  getTeam,
+  updateTeam,
+  checkTeamNameAvailable,
+} from "@/services/team.service";
 import type { TeamDetail } from "@/services/team.service";
+import { useDebounce } from "@/hooks/useDebounce";
 import { AvatarUploader } from "@/components/shared/AvatarUploader";
-import { VenuePicker } from "@/components/common/VenuePicker";
+import { Icon } from "@/components/ui/Icon";
+import { VenueSearchSheet } from "@/components/venue/VenueSearchSheet";
+import { useVenues } from "@/hooks/useClassForm";
 import { resolveImageSrc } from "@/lib/image-url";
 
 // [제거 2026-05-18 W2.B #4] AGE_OPTIONS 상수 삭제 — 연령 필드 제거에 따른 cleanup.
@@ -83,6 +90,12 @@ export default function TeamEditPage() {
   // [제거 2026-05-21 시나리오 B] shortName state — Phase 2 잔재 컬럼.
   //   백엔드 updateTeam 이 저장하지 않는 죽은 입력 UI 였음. teamCode read-only 로 대체.
   const [name, setName] = useState("");
+  // 팀명 중복 사전 확인 — 가입 폼과 동일 UX. 원래 이름과 같으면 확인 생략(자기 자신 제외).
+  //  확인 실패(네트워크 등)는 차단하지 않음 — 최종 방어선은 백엔드 409.
+  const [nameStatus, setNameStatus] = useState<
+    "unchecked" | "checking" | "available" | "duplicate"
+  >("unchecked");
+  const debouncedName = useDebounce(name, 400);
   // [2026-06-01] 팀 코드 — 가입 시 미설정(null)이므로 팀 관리에서 입력·변경. 빈 값이면 해제.
   const [teamCode, setTeamCode] = useState("");
   // [모집 대상] teams.division 컬럼 재활용 — 자유 텍스트(예: "초등 저학년"). 리그 부문 무관.
@@ -99,8 +112,12 @@ export default function TeamEditPage() {
   //  슬로건 수정 동선이 이 페이지로 라우팅되므로 필수.
   const [slogan, setSlogan] = useState("");
   const [description, setDescription] = useState("");
-  // [추가 2026-05-22] 홈 링크장 — DB 등록 Venue 마스터에서 선택 (VenuePicker 공통 컴포넌트).
+  // 홈 링크장 — DB 등록 Venue 마스터에서 선택 (공용 VenueSearchSheet 바텀시트).
   const [venueId, setVenueId] = useState("");
+  const [venueSheetOpen, setVenueSheetOpen] = useState(false);
+  const { venues: venueOptions } = useVenues();
+  const selectedVenueName =
+    venueOptions.find((v) => v.id === venueId)?.name ?? "";
 
   // ── 권한 체크 (1단계: 글로벌 역할) ────────────────────────────
   //  학부모/학생 등 글로벌 관리 역할이 없는 사용자 즉시 차단.
@@ -168,11 +185,43 @@ export default function TeamEditPage() {
     };
   }, [teamId, canManageGlobal]);
 
+  // ── 팀명 중복 사전 확인 ─────────────────────
+  //  원래 이름 그대로면 생략(변경 없음 = 항상 허용). 다른 이름이면 활성 팀 기준 동명 검사.
+  useEffect(() => {
+    if (!team) return;
+    const trimmed = debouncedName.trim();
+    if (trimmed.length < 2 || trimmed === (team.name ?? "").trim()) {
+      setNameStatus("unchecked");
+      return;
+    }
+    let cancelled = false;
+    setNameStatus("checking");
+    checkTeamNameAvailable(trimmed)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.success && res.data) {
+          setNameStatus(res.data.available ? "available" : "duplicate");
+        } else {
+          setNameStatus("unchecked");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setNameStatus("unchecked");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedName, team]);
+
   const handleSubmit = useCallback(
     async (e?: React.FormEvent) => {
       e?.preventDefault();
       if (!name.trim()) {
         toast.error(MESSAGES.team.nameRequired);
+        return;
+      }
+      if (nameStatus === "duplicate") {
+        toast.error(MESSAGES.team.signupTeamNameDuplicate);
         return;
       }
       // 팀 코드는 선택 — 입력했으면 형식 검증(영문/숫자/-/_ · 3~32자). 빈 값이면 해제(null).
@@ -220,6 +269,7 @@ export default function TeamEditPage() {
     [
       teamId,
       name,
+      nameStatus,
       teamCode,
       division,
       region,
@@ -329,21 +379,37 @@ export default function TeamEditPage() {
             <div
               className={cn(
                 "h-12 rounded-w-md bg-it-fill dark:bg-it-blue-950 px-4 flex items-center",
-                "border-[1.5px] border-it-line-strong dark:border-it-blue-900",
-                "transition-[border-color,box-shadow] duration-150 motion-reduce:transition-none",
-                "focus-within:border-it-blue-500 focus-within:ring-2 focus-within:ring-it-blue-500/20",
+                "border-[1.5px] transition-[border-color,box-shadow] duration-150 motion-reduce:transition-none",
+                nameStatus === "duplicate"
+                  ? "border-it-red-500 focus-within:border-it-red-500 focus-within:ring-2 focus-within:ring-it-red-500/20"
+                  : "border-it-line-strong dark:border-it-blue-900 focus-within:border-it-blue-500 focus-within:ring-2 focus-within:ring-it-blue-500/20",
               )}
             >
               <input
                 type="text"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  if (nameStatus !== "unchecked") setNameStatus("unchecked");
+                }}
                 placeholder="팀 이름"
                 // focus-visible-disabled — 전역 a11y outline 과 wrapper ring 의 "이중 파란선" 회귀 방지.
                 className="flex-1 bg-transparent border-0 outline-none focus-visible-disabled text-[16px] font-extrabold text-it-ink-800 dark:text-white tracking-tight placeholder:text-it-ink-400 placeholder:font-medium"
                 maxLength={32}
+                aria-invalid={nameStatus === "duplicate"}
               />
             </div>
+            {/* 중복/사용가능 실시간 안내 — 가입 폼과 동일 UX */}
+            {nameStatus === "duplicate" && (
+              <p role="alert" className="mt-1.5 text-card-body text-it-red-500">
+                {MESSAGES.team.signupTeamNameDuplicate}
+              </p>
+            )}
+            {nameStatus === "available" && (
+              <p className="mt-1.5 text-card-body text-it-ink-400 dark:text-rink-400">
+                {MESSAGES.team.signupTeamNameAvailable}
+              </p>
+            )}
           </Field>
 
           {/* ── 3) 팀 코드 (편집 가능, 선택) ──
@@ -450,15 +516,56 @@ export default function TeamEditPage() {
             </div>
           </Field>
 
-          {/* ── 8) 홈 링크장 (선택) ── 공통 VenuePicker(검색형) — 장소명 검색 시 매칭 목록 노출. */}
+          {/* ── 8) 홈 링크장 (선택) ── 공용 VenueSearchSheet(바텀시트) 트리거. */}
           <Field label="홈 링크장" hint="장소명을 검색해 선택">
-            <VenuePicker
-              value={venueId}
-              onChange={setVenueId}
-              placeholder="홈 링크장 검색"
-              ariaLabel="홈 링크장"
-            />
+            <button
+              type="button"
+              onClick={() => setVenueSheetOpen(true)}
+              aria-label="홈 링크장 선택"
+              className="flex h-12 w-full items-center gap-2 rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill px-4 text-left transition-colors motion-reduce:transition-none focus-visible:border-it-blue-500 focus-visible:outline-none dark:border-rink-700 dark:bg-rink-800"
+            >
+              <Icon
+                name="location_on"
+                className="shrink-0 text-base text-it-ink-400"
+                aria-hidden="true"
+              />
+              <span
+                className={cn(
+                  "min-w-0 flex-1 truncate text-[15.5px] tracking-tight",
+                  selectedVenueName
+                    ? "font-bold text-it-ink-800 dark:text-white"
+                    : "font-medium text-it-ink-400",
+                )}
+              >
+                {selectedVenueName || "홈 링크장 검색"}
+              </span>
+              <Icon
+                name="chevron_right"
+                className="ml-auto shrink-0 text-base text-it-ink-300"
+                aria-hidden="true"
+              />
+            </button>
+            {venueId && (
+              <button
+                type="button"
+                onClick={() => setVenueId("")}
+                className="mt-1 inline-flex items-center gap-1 text-w-caption font-semibold text-it-ink-500 underline dark:text-rink-300"
+              >
+                선택 해제 (장소 미지정)
+              </button>
+            )}
           </Field>
+
+          {/* 홈 링크장 선택 바텀시트 — FK 전용(자유 텍스트 [적용] 미노출) */}
+          <VenueSearchSheet
+            isOpen={venueSheetOpen}
+            onClose={() => setVenueSheetOpen(false)}
+            title="홈 링크장 선택"
+            selectedVenueId={venueId}
+            initialQuery={selectedVenueName}
+            iceTheme
+            onSelectVenue={(v) => setVenueId(v.id)}
+          />
 
           {/* [메인/보조 컬러 입력 제거] 팀 컬러는 현재 화면 전반에서 활용되지 않아 입력을
               받지 않는다. 데이터 모델·팀 상세 표시는 보존 — 추후 팀 컬러 기능 도입 시 ColorField

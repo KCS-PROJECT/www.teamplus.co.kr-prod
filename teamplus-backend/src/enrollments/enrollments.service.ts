@@ -553,10 +553,13 @@ export class EnrollmentsService {
       const isPostpaidAxis =
         e.product?.billingTiming === "POSTPAID" ||
         e.class?.billingMode === "POSTPAID";
+      // 발급형이 아닌 상품(sessionsPerMonth=0)도 크레딧 미발급이 정상 → 비대상(null).
+      //   false 를 내면 "등록 만료"로 오표시된다.
+      const isNonIssuingProduct = e.product?.sessionsPerMonth === 0;
       return {
         ...this.mapToEnrollmentResponse(e),
         hasValidPass:
-          e.status === "paid" && !isPostpaidAxis
+          e.status === "paid" && !isPostpaidAxis && !isNonIssuingProduct
             ? validPassSet.has(`${e.childId}:${e.classId}`)
             : null,
       };

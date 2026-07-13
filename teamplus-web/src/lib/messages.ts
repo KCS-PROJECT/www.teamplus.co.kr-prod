@@ -90,6 +90,10 @@ export const MESSAGES = {
     scheduleManage: "일정 관리",
     // 일정마다 시간/장소가 달라 단일 값으로 요약할 수 없을 때 표기.
     schedulesVary: "회차별 상이",
+    // 수정 폼 회차 목록 — 지난 회차는 출석·정산이 물린 사실 기록이라 읽기 전용 잠금.
+    pastSchedulesShow: (count: number) => `지난 일정 ${count}개 보기`,
+    pastSchedulesHide: "지난 일정 접기",
+    pastSchedulesLockedHint: "지난 일정은 수정하거나 삭제할 수 없습니다.",
     // 요일별 기본 시간·장소(ClassDaySchedule 템플릿) 입력 + 일정 추가 칩 UI 문구.
     dayDefaults: {
       title: "수업 기본 일정 (요일별)",
@@ -104,7 +108,7 @@ export const MESSAGES = {
         "요일을 누르면 이 달의 해당 요일이 한 번에 선택됩니다. 달력에서 개별 날짜를 더하거나 뺄 수 있어요.",
       // 날짜 선택 제한 안내 — 이미 등록됐거나 지난 날짜는 선택 불가.
       dateRestrictHint: "이미 등록됐거나 지난 날짜는 선택할 수 없어요.",
-      // 기본값 없는 날짜 공통 시간 폴백 — 일정 관리 바텀시트(requireCommonTime) 전용.
+      // 기본값 없는 날짜 공통 시간 폴백 — 일정 관리·수업 등록 바텀시트(requireCommonTime) 공용.
       commonTimeLabel: (count: number) =>
         `요일 기본값이 없는 날짜 ${count}건에 적용할 시간을 입력해주세요.`,
       commonTimeCta: "시간을 입력하세요",
@@ -640,6 +644,13 @@ export const MESSAGES = {
     outOfStock: "품절",
   },
   payment2: {
+    // 학부모 대시보드 결제 요청 배너 (/parent) — 미납 후불 청구(수업 정산 + 후불 대회 참가비).
+    pendingBannerSingle: (title: string, amount: number) =>
+      `${title} ${amount.toLocaleString()}원 결제가 필요해요`,
+    pendingBannerMulti: (count: number, total: number) =>
+      `결제 요청 ${count}건 · 총 ${total.toLocaleString()}원`,
+    pendingSheetTitle: "결제 요청",
+    pendingPayCta: "결제하기",
     completed: "결제가 완료되었습니다!",
     // [수정 2026-05-18] 감성 톤 — 결제 완료 화면 분위기. "결제권" 어색함 해소.
     creditIssued: "이제 이번 달 수업에 참여하실 수 있어요",
@@ -1084,11 +1095,20 @@ export const MESSAGES = {
     // 참가 신청 CTA 비활성 사유 — 신청 가능한 자녀가 남아 있지 않을 때.
     applyAllChildrenDone: "모든 자녀 신청 완료",
     applyNoEligibleChildren: "참가 대상 자녀가 없어요",
+    // 참가 신청 CTA 비활성 사유 — 첫 경기 시작 후 신청 마감.
+    applyClosedAfterStart: "대회가 시작되어 참가 신청이 마감되었습니다.",
+    // 후불 결제요청 버튼 비활성 안내 — 마지막 경기 시작 +1시간부터 활성.
+    settleAvailableAfterHour: "경기 시작 1시간 후 결제요청 가능합니다.",
+    // 결제 대기(PENDING) 행 단건 재청구 액션 — 청구 금액 정정.
+    settleEditAmount: "금액 수정",
+    // 참가선수목록 행 금액 표시 — 결제 대기=청구액 / 결제완료=결제액.
+    settleBilledAmount: (amount: number) =>
+      `청구 금액 ${amount.toLocaleString()}원`,
+    settlePaidAmount: (amount: number) =>
+      `결제 금액 ${amount.toLocaleString()}원`,
     postpaidFeeLabel: "후불 정산 (종료 후 청구)",
     // [후불 참고 참가비 안내 — 감독이 사전 입력한 예상 금액 표시용]
     postpaidEstimateNote: "예상 금액 · 종료 후 정산에서 확정",
-    // 대회정보 참가비 행 — 후불 참고 금액에 붙이는 접미(확정 아님 표시).
-    feeReferenceSuffix: " (참고)",
     // [후불 대회 — 결제 방식 선택 / 정산 UI (2026-06-16)]
     billingModeLabel: "결제 방식",
     billingModePrepaid: "선불",
@@ -1734,6 +1754,8 @@ export const MESSAGES = {
 
     // 팀 하위 그룹 (감독·코치가 팀 안에서 만드는 단위)
     groupListTitle: "하위그룹",
+    groupListDescription:
+      "팀 회원을 연령·수준 등 기준으로 나눠 관리하는 그룹입니다. 선수단 분류와 대회 참가 명단 선택에 활용됩니다.",
     groupListEmpty: "아직 등록된 하위그룹이 없습니다.",
     groupCreateTitle: "하위그룹 등록",
     groupCreateButton: "하위그룹 등록하기",
@@ -1788,6 +1810,9 @@ export const MESSAGES = {
     signupTeamNameLabel: "팀 이름",
     signupTeamNamePlaceholder: "생성할 팀 이름을 입력해주세요",
     signupTeamNameRequired: "팀 이름을 입력해주세요.",
+    signupTeamNameDuplicate:
+      "이미 사용 중인 팀명입니다. 다른 이름을 입력해주세요.",
+    signupTeamNameAvailable: "사용 가능한 팀명입니다.",
     signupTeamCodeLabel: "팀 코드",
     signupTeamCodePlaceholder: "영문·숫자 팀 코드",
     signupTeamCodeHelper:
@@ -2367,6 +2392,14 @@ export const MESSAGES = {
     statusInactive: "비공개",
   },
   venue: {
+    // 장소 검색 바텀시트 (VenueSearchSheet 공용)
+    searchSheet: {
+      apply: "적용",
+      searchPrompt: "장소명 또는 주소를 검색해주세요.",
+      noResult: (q: string) => `"${q}" 검색 결과가 없습니다`,
+      freeTextNotice: "적용을 누르면 입력한 내용 그대로 장소로 저장됩니다",
+      clearQuery: "검색어 지우기",
+    },
     // 목록/상태
     listTitle: "구장 정보",
     manageTitle: "구장 관리",
@@ -3180,10 +3213,10 @@ export const MESSAGES = {
     feePlaceholder: "대회 참가비를 입력하세요.",
     feeHint: "대회 전체 참가비를 입력하세요 (무료는 0 또는 비워두기)",
     // [후불 참고 참가비 — 대회 1회 참여 기준 금액. 종료 후 정산에서 확정, 신청 전 안내용]
-    feePostpaidLabel: "대회 1회당 참가비 (참고용)",
+    feePostpaidLabel: "경기당 참가비",
     feePostpaidPlaceholder: "1회당 참가비를 입력하세요.",
     feePostpaidHint:
-      "대회 1회 참여 기준 참가비를 참고용으로 입력하세요. 실제 청구액은 대회 종료 후 정산에서 확정됩니다.",
+      "대회 1회 참여 기준 참가비를 입력하세요. 실제 청구액은 대회 종료 후 정산에서 확정됩니다.",
   },
   approvals: {
     emptyApprovalHistory: "승인 대기 이력이 없습니다",
@@ -3371,6 +3404,9 @@ export const MESSAGES = {
   postpaidPay: {
     title: "수업료 결제",
     invalid: "잘못된 결제 요청입니다. 알림에서 다시 시도해주세요.",
+    // 주문 서버 조회 결과 상태별 안내 — 결제 위젯 미표시.
+    alreadyCompleted: "이미 결제가 완료된 요청입니다.",
+    requestCancelled: "취소된 결제 요청입니다. 최신 결제 요청을 확인해주세요.",
     paying: "결제 진행 중...",
     payCta: (won: number) => `${won.toLocaleString()}원 결제하기`,
     // [Phase B] 후불 결제 완료 문구 — 이미 출석한 수업에 대한 사후 정산이므로

@@ -47,7 +47,8 @@ import { TeamsService } from "@/teams/teams.service";
  *  - sessionsPerMonth = packageTotalSessions (발급 크레딧 수량 — 컬럼명 무관 "총 회수" 의미)
  *  - sessionsPerWeek 자동 파생(classDays.length) 폐기 — 갱신 안 되는 스냅샷 오염원이며
  *    MONTHLY_FIXED 는 무차감 기간제라 주 빈도 제약 미사용. 상품 설명은 감독 자유 입력이 SoT.
- *  - 입력 누락 시 안전 폴백: weeks=4, totalSessions=4 (기존 시드 호환)
+ *  - 발급 수량 SoT = sessionsPerMonth. 미입력 = 0(크레딧 미발급). 크레딧을 되살리려면
+ *    감독이 패키지에 실제 회수를 입력한다. weeks(만료일용)만 미입력 시 4주로 폴백.
  */
 function buildClassProducts(
   classId: string,
@@ -84,7 +85,7 @@ function buildClassProducts(
         billingTiming: "POSTPAID",
         price: dto.singlePrice,
         feePerSession: dto.singlePrice,
-        sessionsPerMonth: 1,
+        sessionsPerMonth: 0,
         durationDays: 30,
       });
     }
@@ -107,24 +108,22 @@ function buildClassProducts(
       isActive: isBoth, // BOTH=판매(후불옵션) / PREPAID=비판매(참고용)
       price: dto.singlePrice,
       feePerSession: isBoth ? dto.singlePrice : undefined,
-      sessionsPerMonth: 1,
+      sessionsPerMonth: 0,
       durationDays: 30,
     });
   }
 
   if (dto.monthlyPrice) {
     const weeks = Math.max(1, Math.min(52, dto.packageWeeks ?? 4));
-    const totalSessions = Math.max(
-      1,
-      Math.min(728, dto.packageTotalSessions ?? 4),
-    );
-    // SPEC §8 cross 검증: totalSessions ≥ weeks (최소 주 1회) · totalSessions ≤ weeks × 14
-    if (totalSessions < weeks) {
+    // 발급 수량 미입력 = 0(크레딧 미발급). 상한 728만 유지, 하한(1) 제거.
+    const totalSessions = Math.min(728, dto.packageTotalSessions ?? 0);
+    // SPEC §8 cross 검증은 발급 수량이 있을 때만(>0): totalSessions ≥ weeks · ≤ weeks × 14
+    if (totalSessions > 0 && totalSessions < weeks) {
       throw new BadRequestException(
         `정기권 총 회수(${totalSessions})는 주 수(${weeks}) 이상이어야 합니다.`,
       );
     }
-    if (totalSessions > weeks * 14) {
+    if (totalSessions > 0 && totalSessions > weeks * 14) {
       throw new BadRequestException(
         `정기권 총 회수(${totalSessions})는 주 수×14(${weeks * 14}) 이하여야 합니다.`,
       );
@@ -1368,7 +1367,10 @@ export class ClassesService {
           packageWeeks: monthlyProduct?.durationDays
             ? Math.max(1, Math.round(monthlyProduct.durationDays / 7))
             : null,
-          packageTotalSessions: monthlyProduct?.sessionsPerMonth ?? null,
+          packageTotalSessions:
+            monthlyProduct?.sessionsPerMonth && monthlyProduct.sessionsPerMonth > 0
+              ? monthlyProduct.sessionsPerMonth
+              : null,
           // "주 N회" 자동 파생 폐기 — classDays 폴백 제거(스냅샷 오염원).
           //   상품에 명시 저장된 값만 전달, 없으면 null(프론트 미표시).
           packageSessionsPerWeek: monthlyProduct?.sessionsPerWeek ?? null,
@@ -2008,7 +2010,10 @@ export class ClassesService {
             packageWeeks: monthly?.durationDays
               ? Math.max(1, Math.round(monthly.durationDays / 7))
               : null,
-            packageTotalSessions: monthly?.sessionsPerMonth ?? null,
+            packageTotalSessions:
+              monthly?.sessionsPerMonth && monthly.sessionsPerMonth > 0
+                ? monthly.sessionsPerMonth
+                : null,
             packageSessionsPerWeek: monthly?.sessionsPerWeek ?? null,
           };
         })(),
@@ -2510,18 +2515,90 @@ export class ClassesService {
         }
       }
 
-      // dateSchedules 전송 시: ClassSchedule 전체 교체 (미전송 시 기존 보존)
+      // dateSchedules 전송 시: 날짜 기준 diff 동기화 (미전송 시 기존 보존).
+      //   전체 삭제·재생성은 출석/RSVP/감사로그(onDelete: Cascade)와 취소 이력을 연쇄 삭제하므로 금지.
+      //   불가침(payload 와 무관하게 보존): 지난 회차(오늘 KST 이전) · 취소 회차 · 출석 기록 보유 회차.
+      //   같은 날짜 유지 = ID 보존 update(RSVP 유지) / 빠진 미래 날짜 = 삭제 / 새 날짜 = 생성.
       if (hasDateSchedulesUpdate) {
-        await txUpdate.classSchedule.deleteMany({ where: { classId } });
-        if (updateDto.dateSchedules && updateDto.dateSchedules.length > 0) {
-          await txUpdate.classSchedule.createMany({
-            data: updateDto.dateSchedules.map((s) => ({
+        const todayUtcMidnight = kstTodayUtcMidnight();
+        const existingSchedules = await txUpdate.classSchedule.findMany({
+          where: { classId },
+          select: {
+            id: true,
+            scheduledDate: true,
+            isCancelled: true,
+            _count: { select: { attendances: true } },
+          },
+        });
+        const isImmutable = (s: (typeof existingSchedules)[number]) =>
+          s.isCancelled ||
+          s.scheduledDate < todayUtcMidnight ||
+          s._count.attendances > 0;
+        // 편집 가능한 기존 회차 — 날짜(YYYY-MM-DD)당 활성 1개 정책이라 날짜 키 Map 으로 매칭.
+        const editableByDate = new Map<string, string>();
+        // 불가침 "활성" 회차가 점유한 날짜 — 같은 날짜 신규 생성 시 중복이 되므로 생성 스킵.
+        //   (취소 회차는 재등록 허용 정책이라 점유로 치지 않는다)
+        const immutableActiveDates = new Set<string>();
+        for (const s of existingSchedules) {
+          const dateKey = dateOnlyToString(s.scheduledDate);
+          if (!isImmutable(s)) editableByDate.set(dateKey, s.id);
+          else if (!s.isCancelled) immutableActiveDates.add(dateKey);
+        }
+        // 수신 회차 — 지난 날짜는 무시(구버전 payload 하위호환: 지난 회차는 항상 보존).
+        const incoming = (updateDto.dateSchedules ?? []).filter(
+          (s) => dateOnlyToUtc(s.date) >= todayUtcMidnight,
+        );
+        const incomingDates = new Set(incoming.map((s) => s.date));
+
+        // spot(1회용) — 보존되는 불가침 활성 회차 + 수신 회차 합계 1개 초과 차단
+        //   (payload 단독 검증(위 2420)은 보존분을 못 보므로 diff 확정 시점에 재검증).
+        if (
+          classRecord.trainingType === "spot" &&
+          immutableActiveDates.size + incomingDates.size > 1
+        ) {
+          throw new BadRequestException(
+            "1회용 수업은 일정을 1개만 등록할 수 있습니다.",
+          );
+        }
+
+        const toCreate: {
+          classId: string;
+          scheduledDate: Date;
+          startTime: string;
+          endTime: string;
+          venueId: string | null;
+        }[] = [];
+        for (const s of incoming) {
+          const editableId = editableByDate.get(s.date);
+          if (editableId) {
+            await txUpdate.classSchedule.update({
+              where: { id: editableId },
+              data: {
+                startTime: s.startTime,
+                endTime: s.endTime,
+                venueId: s.venueId ?? null,
+              },
+            });
+          } else if (!immutableActiveDates.has(s.date)) {
+            toCreate.push({
               classId,
               scheduledDate: dateOnlyToUtc(s.date),
               startTime: s.startTime,
               endTime: s.endTime,
               venueId: s.venueId ?? null,
-            })),
+            });
+          }
+        }
+        if (toCreate.length > 0) {
+          await txUpdate.classSchedule.createMany({ data: toCreate });
+        }
+        // 편집 가능한 기존 회차 중 수신 목록에서 빠진 날짜만 삭제.
+        const toDeleteIds = [...editableByDate.entries()]
+          .filter(([dateKey]) => !incomingDates.has(dateKey))
+          .map(([, id]) => id);
+        if (toDeleteIds.length > 0) {
+          await txUpdate.classSchedule.deleteMany({
+            where: { id: { in: toDeleteIds } },
           });
         }
       }
@@ -4186,16 +4263,8 @@ export class ClassesService {
       throw new NotFoundException("수업을 찾을 수 없습니다.");
     }
 
-    // 정액(MONTHLY_FIXED) 무차감 기간제 — sessionsPerMonth 미전송 시 주수×주빈도로 파생(표시/정합용).
-    const derivedWeeks = Math.max(
-      1,
-      Math.round((createProductDto.durationDays ?? 30) / 7),
-    );
-    const resolvedSessionsPerMonth =
-      createProductDto.sessionsPerMonth ??
-      (createProductDto.feeType === "MONTHLY_FIXED"
-        ? Math.max(1, (createProductDto.sessionsPerWeek ?? 1) * derivedWeeks)
-        : 1);
+    // 발급 수량 SoT = sessionsPerMonth. 미전송 = 0(크레딧 미발급 기본).
+    const resolvedSessionsPerMonth = createProductDto.sessionsPerMonth ?? 0;
 
     const product = await this.prisma.classProduct.create({
       data: {
@@ -4707,15 +4776,9 @@ export class ClassesService {
       );
     }
 
-    // 정액(MONTHLY_FIXED)은 무차감 기간제라 sessionsPerMonth 가 출석 회차를 제한하지 않는다.
-    //   프론트가 "수업 횟수"를 보내지 않아도 주수(durationDays/7)×주빈도(sessionsPerWeek)로
-    //   파생해 표시/정합용 값을 채운다. PER_SESSION 등은 1회권 의미로 1.
-    const derivedWeeks = Math.max(1, Math.round((dto.durationDays ?? 30) / 7));
-    const resolvedSessionsPerMonth =
-      dto.sessionsPerMonth ??
-      (dto.feeType === "MONTHLY_FIXED"
-        ? Math.max(1, (dto.sessionsPerWeek ?? 1) * derivedWeeks)
-        : 1);
+    // 발급 수량 SoT = sessionsPerMonth. 미전송 = 0(크레딧 미발급 기본).
+    //   정액(MONTHLY_FIXED)은 무차감 기간제라 이 값이 출석 회차를 제한하지 않는다.
+    const resolvedSessionsPerMonth = dto.sessionsPerMonth ?? 0;
 
     const product = await this.prisma.classProduct.create({
       data: {
@@ -4903,6 +4966,8 @@ export class ClassesService {
     totalSessions: number,
     sessionsPerWeek?: number,
   ): void {
+    // 발급 수량 0(미발급 기본)은 회차 cross 검증 비대상 — buildClassProducts 정책과 동일.
+    if (!totalSessions || totalSessions <= 0) return;
     const perWeek = Math.max(1, sessionsPerWeek ?? 1);
     const weeks = Math.ceil(totalSessions / perWeek);
     if (weeks < 1 || weeks > 52) {
@@ -4934,7 +4999,8 @@ export class ClassesService {
     sessionsPerWeek?: number;
     durationDays?: number;
   }): number {
-    if (item.feeType === "MONTHLY_FIXED") {
+    // 발급 수량>0 정기권만 회차로 주수 역산(레거시 호환). 0(미발급)은 전송된 durationDays 사용.
+    if (item.feeType === "MONTHLY_FIXED" && item.sessionsPerMonth > 0) {
       const perWeek = Math.max(1, item.sessionsPerWeek ?? 1);
       const weeks = Math.max(
         1,

@@ -7,6 +7,7 @@ import {
 import { PaymentWebhookService } from "./payment-webhook.service";
 import { PrismaService } from "@/prisma/prisma.service";
 import { KgInicisGateway } from "../kg-inicis.gateway";
+import { CreditDomainService } from "@/credits/credit-domain.service";
 
 describe("PaymentWebhookService", () => {
   let service: PaymentWebhookService;
@@ -27,12 +28,18 @@ describe("PaymentWebhookService", () => {
     verifyAmount: jest.fn(),
   };
 
+  // PR-B: MemberCredit 발급 단일 진입점 — 발급 위임만 검증(내부는 credits 도메인 spec 담당).
+  const mockCreditDomain = {
+    issueFromPayment: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PaymentWebhookService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: KgInicisGateway, useValue: mockKgGateway },
+        { provide: CreditDomainService, useValue: mockCreditDomain },
       ],
     }).compile();
 
@@ -204,6 +211,58 @@ describe("PaymentWebhookService", () => {
       expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
       expect(result.creditsIssued).toBe(8);
       expect(result.paymentStatus).toBe("completed");
+      expect(mockCreditDomain.issueFromPayment).toHaveBeenCalledTimes(1);
+    });
+
+    it("발급 수량 0 상품은 크레딧 미발급 — issueFromPayment 미호출 + 결제는 정상 완료", async () => {
+      mockPrisma.payment.findUnique.mockResolvedValue({
+        id: "p1",
+        orderNumber: "ORD-002",
+        userId: "u1",
+        amount: 10000,
+        paymentStatus: "pending",
+        productId: "prod1",
+        // 발급 수량 0(신규 기본) — 크레딧 미발급 상품.
+        product: { classId: "c1", durationDays: 90, sessionsPerMonth: 0 },
+      });
+
+      mockPrisma.$transaction.mockImplementation(async (fn: any) => {
+        const tx = {
+          payment: {
+            update: jest.fn().mockResolvedValue({
+              id: "p1",
+              orderNumber: "ORD-002",
+              userId: "u1",
+              amount: 10000,
+              paymentStatus: "completed",
+              tid: "T002",
+              completedAt: new Date(),
+            }),
+          },
+          enrollment: {
+            findFirst: jest.fn().mockResolvedValue(null),
+            update: jest.fn(),
+          },
+          memberCredit: { create: jest.fn() },
+          creditTransaction: { create: jest.fn() },
+          clubMember: { findFirst: jest.fn(), create: jest.fn() },
+          classRegistration: { findUnique: jest.fn(), create: jest.fn() },
+          user: { findUnique: jest.fn() },
+        };
+        return fn(tx);
+      });
+
+      const result = await service.finalizePayment({
+        orderNumber: "ORD-002",
+        tid: "T002",
+        amount: 10000,
+        paymentStatus: "completed",
+      });
+
+      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(result.creditsIssued).toBe(0);
+      expect(result.paymentStatus).toBe("completed");
+      expect(mockCreditDomain.issueFromPayment).not.toHaveBeenCalled();
     });
   });
 });

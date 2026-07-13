@@ -141,10 +141,13 @@ export class PaymentWebhookService {
         const isPostpaidClass =
           payment.product?.billingTiming === "POSTPAID";
 
+        // 발급 수량 0(크레딧 미사용 상품)은 발급 스킵 — issueFromPayment throw 로 웹훅이
+        //   실패하는 것을 선차단(토스 confirm·mockPay 경로와 정합).
         if (
           paymentStatus === "completed" &&
           payment.product &&
-          !isPostpaidClass
+          !isPostpaidClass &&
+          (payment.product.sessionsPerMonth ?? 0) > 0
         ) {
           this.logger.log(`수업권 발급 시작: orderNumber=${orderNumber}`);
 

@@ -1,6 +1,10 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
-import { isCreditStarted } from "@/common/billing/fee-type.constants";
+import {
+  isCreditStarted,
+  ISSUING_PRODUCT_WHERE,
+} from "@/common/billing/fee-type.constants";
+import { canCheckInForClass } from "@/common/billing/schedule-eligibility.util";
 import { RedisService } from "@/redis/redis.service";
 import {
   kstTodayUtcMidnight,
@@ -267,6 +271,13 @@ export class ChildDashboardService {
                 id: true,
                 className: true,
                 trainingType: true,
+                billingMode: true,
+                // 발급형 상품 유무 — canCheckIn 판정을 출석 API 게이트와 동일 파생으로.
+                products: {
+                  where: ISSUING_PRODUCT_WHERE,
+                  select: { id: true },
+                  take: 1,
+                },
               },
             },
             attendances: {
@@ -456,13 +467,21 @@ export class ChildDashboardService {
         trainingType: s.class.trainingType,
         // 본인 출석 상태 (없으면 null = 미체크)
         attendanceStatus: s.attendances[0]?.attendanceStatus ?? null,
-        // PR-D Hotfix #4: 본인 출석 가능 여부 — false 면 프론트가 "결제 필요" 분기 표시
-        canCheckIn: memberCredits.some(
-          (mc) =>
-            mc.classId === s.class.id &&
-            isCreditStarted(mc, nowDateForCheck) &&
-            mc.expiresAt >= nowDateForCheck &&
-            mc.usedSessions < mc.totalSessions,
+        // PR-D Hotfix #4: 본인 출석 가능 여부 — false 면 프론트가 "결제 필요" 분기 표시.
+        // 크레딧 미사용(발급형 상품 없음)·후불 수업은 크레딧 보유와 무관하게 true —
+        // 출석 API 게이트(shouldSkipCreditFlow)와 동일 파생. BOTH 후불 선택 학생 판정은
+        // 이 화면(admin 시뮬레이션 전용)에선 미적용(기본 false) — 크레딧 부활 수업 한정 한계.
+        canCheckIn: canCheckInForClass(
+          s.class.billingMode,
+          memberCredits.some(
+            (mc) =>
+              mc.classId === s.class.id &&
+              isCreditStarted(mc, nowDateForCheck) &&
+              mc.expiresAt >= nowDateForCheck &&
+              mc.usedSessions < mc.totalSessions,
+          ),
+          false,
+          s.class.products.length > 0,
         ),
       }));
 

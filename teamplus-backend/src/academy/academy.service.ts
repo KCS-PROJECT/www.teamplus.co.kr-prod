@@ -784,7 +784,10 @@ export class AcademyService {
         packageWeeks: monthlyProduct?.durationDays
           ? Math.max(1, Math.round(monthlyProduct.durationDays / 7))
           : null,
-        packageTotalSessions: monthlyProduct?.sessionsPerMonth ?? null,
+        packageTotalSessions:
+          monthlyProduct?.sessionsPerMonth && monthlyProduct.sessionsPerMonth > 0
+            ? monthlyProduct.sessionsPerMonth
+            : null,
         packageSessionsPerWeek: monthlyProduct?.sessionsPerWeek ?? null,
         waitlistCount: c._count.waitlists,
         createdAt: c.createdAt,

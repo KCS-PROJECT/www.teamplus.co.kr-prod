@@ -13,6 +13,18 @@ export const MONTHLY_PASS_CREDIT_FILTER = {
 } as const;
 
 /**
+ * 발급형(크레딧 부여) 판매 상품 판정 공용 where — sessionsPerMonth 0 = 미발급이 SoT.
+ * 출석 크레딧 게이트(attendance.classHasIssuingProduct)와 홈 출석 버튼 판정
+ * (parent/child dashboard canCheckIn)이 공유한다 — 조건이 어긋나면 버튼은 막히는데
+ * API 는 통과하는(또는 그 반대) 불일치가 생기므로 리터럴 복제 금지.
+ */
+export const ISSUING_PRODUCT_WHERE = {
+  isActive: true,
+  sessionsPerMonth: { gt: 0 },
+  billingTiming: { not: "POSTPAID" },
+} as const;
+
+/**
  * [Lifecycle v4.1 §9.5] 기간권 유효 "시작" 게이트 조건 — startsAt null(즉시 유효·레거시)
  * 또는 startsAt ≤ now. 출석 가능 판정(deductOne·홈 버튼·사전 검증)에 expiresAt 필터와
  * 반드시 병행한다. 다음 달분 선구매 크레딧이 당월에 유효로 오판되는 것을 막는 장치.

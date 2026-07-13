@@ -126,6 +126,11 @@ export default function TeamGroupsListPage() {
             )}
           </div>
 
+          {/* 하위그룹 설명 — 용도 안내 (빈 상태 포함 항상 노출) */}
+          <p className="pt-1 text-[13px] font-medium leading-relaxed text-it-ink-500 dark:text-it-ink-300">
+            {MESSAGES.team.groupListDescription}
+          </p>
+
           {/* 에러 */}
           {!isLoading && error && (
             <div className="mt-4 rounded-w-md border-[1.5px] border-it-red-200 bg-it-red-50 px-4 py-3 text-[14px] font-semibold text-it-red-600 dark:border-it-red-500/40 dark:bg-it-red-500/10 dark:text-it-red-300">
