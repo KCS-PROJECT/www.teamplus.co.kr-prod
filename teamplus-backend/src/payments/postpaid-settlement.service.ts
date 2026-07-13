@@ -455,35 +455,76 @@ export class PostpaidSettlementService {
     return { billingId: billing.id, lineCount: lines.length, totalAmount };
   }
 
-  /** 학부모(결제자)의 미납 후불 청구 목록 — 확정된 라인 중 paymentStatus=pending. */
+  /**
+   * 학부모(결제자)의 미납 후불 청구 목록 — 수업 정산 라인 + 후불 대회 참가비 통합.
+   * 대시보드 결제 요청 배너용. kind 로 구분하고, paymentName 은 결제 페이지
+   * (/payment/postpaid) name 파라미터 값(정산 알림 linkUrl 과 동일 포맷)이다.
+   */
   async getMyPendingBillings(payerUserId: string) {
-    const lines = await this.prisma.monthlyPostpaidBillingLine.findMany({
-      where: {
-        paymentStatus: "pending",
-        payment: { userId: payerUserId, paymentStatus: "pending" },
-      },
-      select: {
-        id: true,
-        attendanceCount: true,
-        amount: true,
-        billing: {
-          select: {
-            yearMonth: true,
-            class: { select: { id: true, className: true } },
-          },
+    const [lines, tournamentRegs] = await Promise.all([
+      this.prisma.monthlyPostpaidBillingLine.findMany({
+        where: {
+          paymentStatus: "pending",
+          payment: { userId: payerUserId, paymentStatus: "pending" },
         },
-        payment: { select: { orderNumber: true } },
-      },
-      orderBy: { createdAt: "desc" },
-    });
-    return lines.map((l) => ({
+        select: {
+          id: true,
+          attendanceCount: true,
+          amount: true,
+          createdAt: true,
+          billing: {
+            select: {
+              yearMonth: true,
+              class: { select: { id: true, className: true } },
+            },
+          },
+          payment: { select: { orderNumber: true } },
+        },
+      }),
+      // 후불 대회 정산 청구 — billingMode 한정 필수: 선불 대회의 미완료 결제(PENDING 신청)가
+      //   미납 청구로 잘못 집계되는 것을 차단한다 (후불은 감독 정산 시에만 PENDING 전환).
+      this.prisma.tournamentRegistration.findMany({
+        where: {
+          paymentStatus: "PENDING",
+          payment: { userId: payerUserId, paymentStatus: "pending" },
+          tournament: { billingMode: "POSTPAID" },
+        },
+        select: {
+          id: true,
+          calculatedFee: true,
+          updatedAt: true,
+          tournament: { select: { id: true, name: true } },
+          payment: { select: { orderNumber: true } },
+        },
+      }),
+    ]);
+
+    const classItems = lines.map((l) => ({
+      kind: "CLASS" as const,
       lineId: l.id,
       classId: l.billing.class.id,
       className: l.billing.class.className,
+      title: l.billing.class.className,
       yearMonth: l.billing.yearMonth,
       attendanceCount: l.attendanceCount,
       amount: l.amount,
       orderNumber: l.payment?.orderNumber ?? null,
+      paymentName: `${l.billing.yearMonth} 수업료`,
+      requestedAt: l.createdAt,
     }));
+    const tournamentItems = tournamentRegs.map((r) => ({
+      kind: "TOURNAMENT" as const,
+      registrationId: r.id,
+      tournamentId: r.tournament.id,
+      title: r.tournament.name,
+      amount: Number(r.calculatedFee),
+      orderNumber: r.payment?.orderNumber ?? null,
+      paymentName: `${r.tournament.name} 참가비`,
+      // 재정산 시 updatedAt 갱신 — 최신 청구가 앞에 오도록 정렬 기준으로 사용.
+      requestedAt: r.updatedAt,
+    }));
+    return [...classItems, ...tournamentItems].sort(
+      (a, b) => b.requestedAt.getTime() - a.requestedAt.getTime(),
+    );
   }
 }

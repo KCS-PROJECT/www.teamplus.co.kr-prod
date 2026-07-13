@@ -166,7 +166,8 @@ export class PaymentsController {
   @Roles("PARENT")
   @ApiOperation({
     summary: "내 미납 후불 청구 목록",
-    description: "확정된 후불 정산 중 결제 대기(pending) 항목을 반환합니다.",
+    description:
+      "확정된 후불 정산 중 결제 대기(pending) 항목을 반환합니다. 수업 후불(kind=CLASS)과 후불 대회 참가비(kind=TOURNAMENT)를 통합해 최신 청구 순으로 정렬합니다.",
   })
   async getMyPendingPostpaid(@Request() req: AuthenticatedRequest) {
     return this.postpaidSettlementService.getMyPendingBillings(req.user.id);
