@@ -54,6 +54,9 @@ import { getTeamMembers } from "@/services/team.service";
 
 // [2026-06-08] 대진표/순위 탭 제거 — 경기일정만 표시(Tab 타입 불필요).
 
+// 후불 결제요청 활성화 대기 — 경기 시간이 30분~1시간이라 마지막 경기 시작 +1시간부터 종료로 본다.
+const SETTLE_OPEN_DELAY_MS = 60 * 60 * 1000;
+
 export default function CommonTournamentDetailPage() {
   const { user } = useSessionAuth();
   const params = useParams();
@@ -275,14 +278,22 @@ export default function CommonTournamentDetailPage() {
         : null,
     [isManager, tournament, myChildren],
   );
+  // 참가 신청 마감 — 첫 경기 시작 후에는 신청 불가(백엔드 registerTournament 가드와 동일 기준).
+  const firstMatchStarted = useMemo(() => {
+    const times = (tournament?.matches ?? [])
+      .map((m) => new Date(m.scheduledAt).getTime())
+      .filter((t) => !Number.isNaN(t));
+    return times.length > 0 && Math.min(...times) <= Date.now();
+  }, [tournament]);
   const applyDisabledReason = useMemo(() => {
+    if (firstMatchStarted) return MESSAGES.tournament.applyClosedAfterStart;
     if (!applyOptions) return null; // 자녀 목록 로딩 전 — 기존 동작 유지
     if (applyOptions.some(isTournamentChildApplicable)) return null;
     // 자격 충족 자녀가 있는데 전원 신청·결제 완료 vs 대상 자녀 자체가 없음.
     return applyOptions.some((o) => o.isEligible)
       ? MESSAGES.tournament.applyAllChildrenDone
       : MESSAGES.tournament.applyNoEligibleChildren;
-  }, [applyOptions]);
+  }, [applyOptions, firstMatchStarted]);
 
   const handleCancelPayment = useCallback(
     async (childId: string, childName: string, registrationId: string) => {
@@ -423,12 +434,12 @@ export default function CommonTournamentDetailPage() {
   //  · feePerGame > 0 && feeType === "TOTAL_FIXED" → "30,000원" (단일 고정 참가비)
   //  · feePerGame > 0 && PER_GAME → "30,000원 / 경기"
   const feeValue = tournament.feePerGame != null ? Number(tournament.feePerGame) : 0;
-  // 후불(POSTPAID): 감독이 입력한 대회 1회당 참고 참가비(feePerGame)가 있으면 "(참고)" 표기와 함께
-  //   금액을 노출, 미입력 시에만 "후불 정산(종료 후 청구)" 문구로 폴백. 확정액은 종료 후 정산에서 결정.
+  // 후불(POSTPAID): 감독이 입력한 경기당 참가비(feePerGame)가 있으면 금액을 노출,
+  //   미입력 시에만 "후불 정산(종료 후 청구)" 문구로 폴백. 확정액은 종료 후 정산에서 결정.
   const isPostpaid = tournament.billingMode === "POSTPAID";
   const entryFee = isPostpaid
     ? feeValue > 0
-      ? `${new Intl.NumberFormat("ko-KR").format(feeValue)}원${MESSAGES.tournament.feeReferenceSuffix}`
+      ? `${new Intl.NumberFormat("ko-KR").format(feeValue)}원`
       : MESSAGES.tournament.postpaidFeeLabel
     : feeValue <= 0
       ? "무료"
@@ -541,7 +552,17 @@ export default function CommonTournamentDetailPage() {
           </div>
 
           <div className="bg-it-surface dark:bg-it-blue-950 px-0 py-4">
-            <ScheduleTab matches={tournament.matches} hostTeamName={tournament.team?.name} />
+            <ScheduleTab
+              matches={tournament.matches}
+              hostTeamName={tournament.team?.name}
+              fallbackVenueText={
+                tournament.location ??
+                tournament.venue?.name ??
+                tournament.rink?.location ??
+                tournament.rink?.name ??
+                null
+              }
+            />
           </div>
         </>
       )}
@@ -555,22 +576,25 @@ export default function CommonTournamentDetailPage() {
         const pendingCount = regRows.filter(
           (r) => r.paymentStatus === "PENDING",
         ).length;
-        // [2026-06-17] 종료 판정 — status='finished' 또는 일정(endDate/경기일정) 경과.
-        //   status 가 자동 전이되지 않으므로 날짜 경과도 종료로 인정(결제요청 활성화).
+        // 종료 판정 — status='finished' 또는 마지막 경기 시작 +1시간 경과(결제요청 활성화).
+        //   status 가 자동 전이되지 않으므로 시각 경과도 종료로 인정. 백엔드
+        //   confirmTournamentSettlement 가드와 동일 기준.
         const isEnded = (() => {
           if (tournament.status === "finished") return true;
           if (tournament.status === "cancelled") return false;
-          const times = [
-            tournament.endDate,
-            ...(tournament.matches?.map((m) => m.scheduledAt) ?? []),
-          ]
-            .filter(Boolean)
-            .map((d) => new Date(d as string).getTime())
+          const matchTimes = (tournament.matches ?? [])
+            .map((m) => new Date(m.scheduledAt).getTime())
             .filter((t) => !Number.isNaN(t));
-          if (times.length === 0) return false;
+          if (matchTimes.length > 0) {
+            return Math.max(...matchTimes) + SETTLE_OPEN_DELAY_MS <= Date.now();
+          }
+          // 경기 미등록 폴백 — endDate 는 @db.Date(시각 없음)라 다음날 0시부터 종료.
+          if (!tournament.endDate) return false;
+          const end = new Date(tournament.endDate).getTime();
+          if (Number.isNaN(end)) return false;
           const today = new Date();
           today.setHours(0, 0, 0, 0);
-          return Math.max(...times) < today.getTime();
+          return end < today.getTime();
         })();
         const nameOf = (r: TournamentRegistrationRow) =>
           r.child
@@ -678,11 +702,20 @@ export default function CommonTournamentDetailPage() {
                 variant="primary"
                 size="sm"
                 disabled={!isEnded || selectedRegIds.size === 0}
-                title={!isEnded ? "대회 종료 후 결제요청이 가능합니다" : undefined}
+                title={
+                  !isEnded
+                    ? MESSAGES.tournament.settleAvailableAfterHour
+                    : undefined
+                }
                 onClick={() => void openSettlement()}
               >
                 결제요청
               </Button>
+              {!isEnded && (
+                <p className="text-w-caption text-it-ink-400 dark:text-rink-300">
+                  {MESSAGES.tournament.settleAvailableAfterHour}
+                </p>
+              )}
               {SHOW_CANCEL_REQUEST && (
                 <Button
                   variant="outline"
@@ -1114,10 +1147,13 @@ function ParticipantTargetRow({
 function ScheduleTab({
   matches,
   hostTeamName,
+  fallbackVenueText,
 }: {
   matches: MatchSummary[];
   /** 대회 주최 팀명 — 경기에 홈팀이 직접 연결돼 있지 않을 때 홈 자리에 표시(폴백). */
   hostTeamName?: string | null;
+  /** 대회 장소(location > venue > rink) — 경기에 장소가 없을 때 폴백 표시. */
+  fallbackVenueText?: string | null;
 }) {
   if (matches.length === 0) {
     return (
@@ -1173,7 +1209,14 @@ function ScheduleTab({
             </div>
             <div className="mt-2 flex items-center gap-1 text-w-caption text-it-ink-400 dark:text-rink-300">
               <Icon name="location_on" className="text-w-small" />
-              <span>{m.rink?.name ?? m.venue?.name ?? "-"}</span>
+              {/* 경기 직접 입력(venueName) > 경기 링크장 > 대회 장소 폴백. */}
+              <span>
+                {m.venueName ??
+                  m.rink?.name ??
+                  m.venue?.name ??
+                  fallbackVenueText ??
+                  "-"}
+              </span>
             </div>
           </div>
         );

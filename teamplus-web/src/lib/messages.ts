@@ -644,6 +644,13 @@ export const MESSAGES = {
     outOfStock: "품절",
   },
   payment2: {
+    // 학부모 대시보드 결제 요청 배너 (/parent) — 미납 후불 청구(수업 정산 + 후불 대회 참가비).
+    pendingBannerSingle: (title: string, amount: number) =>
+      `${title} ${amount.toLocaleString()}원 결제가 필요해요`,
+    pendingBannerMulti: (count: number, total: number) =>
+      `결제 요청 ${count}건 · 총 ${total.toLocaleString()}원`,
+    pendingSheetTitle: "결제 요청",
+    pendingPayCta: "결제하기",
     completed: "결제가 완료되었습니다!",
     // [수정 2026-05-18] 감성 톤 — 결제 완료 화면 분위기. "결제권" 어색함 해소.
     creditIssued: "이제 이번 달 수업에 참여하실 수 있어요",
@@ -1088,11 +1095,13 @@ export const MESSAGES = {
     // 참가 신청 CTA 비활성 사유 — 신청 가능한 자녀가 남아 있지 않을 때.
     applyAllChildrenDone: "모든 자녀 신청 완료",
     applyNoEligibleChildren: "참가 대상 자녀가 없어요",
+    // 참가 신청 CTA 비활성 사유 — 첫 경기 시작 후 신청 마감.
+    applyClosedAfterStart: "대회가 시작되어 참가 신청이 마감되었습니다.",
+    // 후불 결제요청 버튼 비활성 안내 — 마지막 경기 시작 +1시간부터 활성.
+    settleAvailableAfterHour: "경기 시작 1시간 후 결제요청 가능합니다.",
     postpaidFeeLabel: "후불 정산 (종료 후 청구)",
     // [후불 참고 참가비 안내 — 감독이 사전 입력한 예상 금액 표시용]
     postpaidEstimateNote: "예상 금액 · 종료 후 정산에서 확정",
-    // 대회정보 참가비 행 — 후불 참고 금액에 붙이는 접미(확정 아님 표시).
-    feeReferenceSuffix: " (참고)",
     // [후불 대회 — 결제 방식 선택 / 정산 UI (2026-06-16)]
     billingModeLabel: "결제 방식",
     billingModePrepaid: "선불",
@@ -3189,10 +3198,10 @@ export const MESSAGES = {
     feePlaceholder: "대회 참가비를 입력하세요.",
     feeHint: "대회 전체 참가비를 입력하세요 (무료는 0 또는 비워두기)",
     // [후불 참고 참가비 — 대회 1회 참여 기준 금액. 종료 후 정산에서 확정, 신청 전 안내용]
-    feePostpaidLabel: "대회 1회당 참가비 (참고용)",
+    feePostpaidLabel: "경기당 참가비",
     feePostpaidPlaceholder: "1회당 참가비를 입력하세요.",
     feePostpaidHint:
-      "대회 1회 참여 기준 참가비를 참고용으로 입력하세요. 실제 청구액은 대회 종료 후 정산에서 확정됩니다.",
+      "대회 1회 참여 기준 참가비를 입력하세요. 실제 청구액은 대회 종료 후 정산에서 확정됩니다.",
   },
   approvals: {
     emptyApprovalHistory: "승인 대기 이력이 없습니다",

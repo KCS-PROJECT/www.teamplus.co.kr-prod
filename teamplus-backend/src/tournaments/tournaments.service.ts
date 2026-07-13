@@ -30,6 +30,9 @@ import {
   MATCH_STATUSES,
 } from "./tournaments.dto";
 
+/** 후불 정산 활성화 대기 — 경기 시간이 30분~1시간이라 마지막 경기 시작 +1시간부터 종료로 본다. */
+const SETTLE_OPEN_DELAY_MS = 60 * 60 * 1000;
+
 @Injectable()
 export class TournamentsService {
   constructor(
@@ -78,18 +81,18 @@ export class TournamentsService {
         "후불 대회는 대회 종료 후 일괄 청구됩니다.",
       );
     }
-    // [2026-06-22] 종료일이 지난 대회도 결제 차단 — status 가 자동으로 finished 로 전이되지
-    //   않으므로 날짜 기준 종료도 인정한다(목록·상세 배지의 종료 보정과 일관).
-    // endDate 는 `@db.Date`(UTC 자정) — day-level 판정: 종료일 당일은 진행 중, 다음날부터 종료.
-    const endByDate =
-      tournament.endDate != null && tournament.endDate < kstTodayUtcMidnight();
+    // 종료/시작 대회 결제 차단 — status(cancelled/finished) 외에 첫 경기 시작 후에도
+    //   신청 마감(registerTournament 와 동일 기준). 경기 미등록 대회는 종료일 폴백.
     if (
       tournament.status === "cancelled" ||
-      tournament.status === "finished" ||
-      endByDate
+      tournament.status === "finished"
     ) {
       throw new BadRequestException("이미 종료된 대회는 결제할 수 없습니다.");
     }
+    await this.assertTournamentRegistrationOpen(
+      tournamentId,
+      tournament.endDate,
+    );
 
     // 자녀 검증 — 본인 자녀이며 대회 참가 대상에 포함되어야 한다.
     const parentChild = await this.prisma.parentChild.findUnique({
@@ -761,6 +764,7 @@ export class TournamentsService {
             homeTeamId: true,
             awayTeamId: true,
             opponentName: true,
+            venueName: true,
             rink: {
               select: { id: true, name: true },
             },
@@ -964,7 +968,8 @@ export class TournamentsService {
         eligibleGroupIds: [],
         // [추가 2026-05-15 db-keeper] T03/H2 — 대회 정보 페이지 신규 필드.
         rules: dto.rules,
-        location: dto.location,
+        // 빈 문자열은 null 정규화 — 표시 폴백이 ??/|| 혼재라 "" 저장 시 장소가 공란으로 뜬다.
+        location: dto.location?.trim() || null,
         prizeAmount:
           dto.prizeAmount !== undefined
             ? new Decimal(dto.prizeAmount)
@@ -1134,8 +1139,12 @@ export class TournamentsService {
                 .eligibleGroupIds ?? undefined),
         // [추가 2026-05-15 db-keeper] T03/H2 — 대회 정보 페이지 신규 필드.
         rules: dto.rules !== undefined ? dto.rules : tournament.rules,
+        // 빈 문자열 전송 = 클리어(null) — 링크장 선택 전환 시 스테일 텍스트가 폴백 최우선으로
+        //   새 링크장 이름을 가리는 것을 방지.
         location:
-          dto.location !== undefined ? dto.location : tournament.location,
+          dto.location !== undefined
+            ? dto.location.trim() || null
+            : tournament.location,
         prizeAmount:
           dto.prizeAmount !== undefined
             ? new Decimal(dto.prizeAmount)
@@ -1345,6 +1354,8 @@ export class TournamentsService {
         homeTeamId: dto.homeTeamId,
         awayTeamId: dto.awayTeamId,
         opponentName: dto.opponentName,
+        // null = 대회 장소 폴백(참조) — 대회 장소 텍스트를 복사 저장하지 않는다.
+        venueName: dto.venueName?.trim() || null,
         scheduledAt: new Date(dto.scheduledAt),
         round: dto.round,
         matchOrder: dto.matchOrder,
@@ -1382,6 +1393,11 @@ export class TournamentsService {
       data: {
         rinkId: dto.rinkId ?? match.rinkId,
         venueId: dto.venueId ?? match.venueId,
+        // 빈 문자열 전송 = 클리어(null → 대회 장소 폴백), 미전송 = 기존 유지.
+        venueName:
+          dto.venueName !== undefined
+            ? dto.venueName.trim() || null
+            : match.venueName,
         homeClubId: dto.homeClubId ?? match.homeClubId,
         awayClubId: dto.awayClubId ?? match.awayClubId,
         homeTeamId: dto.homeTeamId ?? match.homeTeamId,
@@ -1756,6 +1772,34 @@ export class TournamentsService {
   }
 
   /**
+   * 참가 신청 가능 검증 — 첫 경기 시작 후에는 신청 마감.
+   *  경기 미등록 대회는 종료일(@db.Date, day-level) 경과 시 차단 폴백.
+   */
+  private async assertTournamentRegistrationOpen(
+    tournamentId: string,
+    endDate: Date | null,
+  ): Promise<void> {
+    const firstMatch = await this.prisma.hockeyMatch.aggregate({
+      where: { tournamentId },
+      _min: { scheduledAt: true },
+    });
+    const firstStart = firstMatch._min.scheduledAt;
+    if (firstStart != null) {
+      if (firstStart.getTime() <= Date.now()) {
+        throw new BadRequestException(
+          "대회가 시작되어 참가 신청할 수 없습니다.",
+        );
+      }
+      return;
+    }
+    if (endDate != null && endDate < kstTodayUtcMidnight()) {
+      throw new BadRequestException(
+        "이미 종료된 대회는 참가 신청할 수 없습니다.",
+      );
+    }
+  }
+
+  /**
    * 대회 참가 등록
    */
   async registerTournament(
@@ -1776,19 +1820,19 @@ export class TournamentsService {
       throw new NotFoundException("대회를 찾을 수 없습니다.");
     }
 
-    // 0. 종료 대회 검증 — status(cancelled/finished) 또는 종료일(day-level) 경과 시 신청 차단.
+    // 0. 신청 가능 검증 — status(cancelled/finished) 종료 차단 + 첫 경기 시작 후 신청 마감.
     //   선불 initiateTournamentPayment 와 동일 기준. 후불 대회는 마감일이 대개 없어(null)
-    //   이 가드가 유일한 종료 차단 — /apply 직접 접근으로 종료 대회 신청되던 갭 방지.
-    const endByDate =
-      tournament.endDate != null &&
-      tournament.endDate < kstTodayUtcMidnight();
+    //   이 가드가 유일한 차단 — /apply 직접 접근으로 종료 대회 신청되던 갭 방지.
     if (
       tournament.status === "cancelled" ||
-      tournament.status === "finished" ||
-      endByDate
+      tournament.status === "finished"
     ) {
       throw new BadRequestException("이미 종료된 대회는 참가 신청할 수 없습니다.");
     }
+    await this.assertTournamentRegistrationOpen(
+      tournamentId,
+      tournament.endDate,
+    );
 
     // 1. 등록 마감일 검증
     if (
@@ -2013,16 +2057,29 @@ export class TournamentsService {
     if (tournament.billingMode !== "POSTPAID") {
       throw new BadRequestException("후불(POSTPAID) 대회만 정산할 수 있습니다.");
     }
-    // [2026-06-17] 종료 판정 — status='finished' 또는 일정(endDate) 경과.
-    //   대회 status 가 자동으로 finished 로 전이되지 않으므로 날짜 기준도 함께 인정한다.
-    // endDate 는 `@db.Date`(UTC 자정) — day-level 판정: 종료일 당일은 진행 중, 다음날부터 종료.
-    const endByDate =
-      tournament.endDate != null && tournament.endDate < kstTodayUtcMidnight();
-    if (tournament.status !== "finished" && !endByDate) {
-      throw new BadRequestException("대회 종료 후 정산 가능합니다.");
-    }
     if (tournament.status === "cancelled") {
       throw new BadRequestException("취소된 대회는 정산할 수 없습니다.");
+    }
+    // 종료 판정 — status='finished' 또는 '마지막 경기 시작 +1시간' 경과.
+    //   status 가 자동으로 finished 로 전이되지 않으므로 시각 기준도 함께 인정한다.
+    //   프론트 대회 상세의 결제요청 버튼 isEnded 와 동일 기준.
+    if (tournament.status !== "finished") {
+      const lastMatch = await this.prisma.hockeyMatch.aggregate({
+        where: { tournamentId },
+        _max: { scheduledAt: true },
+      });
+      const lastStart = lastMatch._max.scheduledAt;
+      // 경기 미등록 폴백 — endDate 는 `@db.Date`(UTC 자정)라 day-level 판정(다음날부터 종료).
+      const ended =
+        lastStart != null
+          ? lastStart.getTime() + SETTLE_OPEN_DELAY_MS <= Date.now()
+          : tournament.endDate != null &&
+            tournament.endDate < kstTodayUtcMidnight();
+      if (!ended) {
+        throw new BadRequestException(
+          "마지막 경기 시작 1시간 후 정산 가능합니다.",
+        );
+      }
     }
 
     // 청구 대상 — 미결제(UNPAID/PENDING)만. CANCELLED·REFUNDED·PAID 제외.
