@@ -12,6 +12,7 @@ import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
 import { CreditDomainService } from "@/credits/credit-domain.service";
 import { AttendanceAuditLogService } from "@/attendance/attendance-audit-log.service";
+import { ResourceAccessService } from "@/common/access/resource-access.service";
 import { NotificationsService } from "@/notifications/notifications.service";
 import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
 import { resolveViewerTeamIds } from "@/common/utils/team-scope.util";
@@ -291,6 +292,7 @@ export class ClassesService {
     private readonly teamsService: TeamsService,
     private readonly creditDomain: CreditDomainService, // PR-B (v0.5): 수업 일정 취소 시 일괄 복원
     private readonly auditLog: AttendanceAuditLogService, // PR-C (v0.6): AuditLog
+    private readonly resourceAccess: ResourceAccessService, // 관리자 전용 API 리소스 소속 검증 (IDOR 가드)
     private readonly notificationsService: NotificationsService,
   ) {}
 
@@ -2063,13 +2065,19 @@ export class ClassesService {
    * 학생 리스트는 ClassRegistration(active) 전체. 각 학생의 결제 상태는 가장 최근
    * Enrollment(class+child) 1건의 status 와 연결된 Payment 정보로 표시한다.
    */
-  async getClassPayments(classId: string) {
+  async getClassPayments(
+    classId: string,
+    requester: JwtUserPayload,
+    // URL 스코프 검증 — 팀/아카데미 경로로 진입 시 수업 소속과 URL 파라미터 일치 확인.
+    expectedScope?: { teamId?: string; academyId?: string },
+  ) {
     const cls = await this.prisma.class.findUnique({
       where: { id: classId },
       select: {
         id: true,
         className: true,
         teamId: true,
+        academyId: true,
         // [Phase B 연동] 결제 방식 — PREPAID(선불) / POSTPAID(후불). 선수정보 결제 탭 모드 분기용.
         billingMode: true,
         startTime: true,
@@ -2090,6 +2098,16 @@ export class ClassesService {
     });
     if (!cls) {
       throw new NotFoundException("수업을 찾을 수 없습니다.");
+    }
+    // 관리자 소속 검증 — 학생 명단·결제금액·결제자(학부모) 정보가 담기는 응답이라
+    // 역할 검사만으로는 타 팀/오픈클래스 조회(IDOR)가 가능했다.
+    await this.resourceAccess.assertManageableClassRecord(cls, requester);
+    // 스코프 경로(/teams/:teamId/... , /academies/:academyId/...)는 URL 과 수업 소속 일치도 검증.
+    if (expectedScope?.teamId && cls.teamId !== expectedScope.teamId) {
+      throw new NotFoundException("해당 팀의 수업이 아닙니다.");
+    }
+    if (expectedScope?.academyId && cls.academyId !== expectedScope.academyId) {
+      throw new NotFoundException("해당 아카데미의 수업이 아닙니다.");
     }
 
     // [수정 2026-05-13] status='active' 필터 제거 — inactive(미납) 학생도 명단에 노출.

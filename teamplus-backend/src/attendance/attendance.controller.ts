@@ -447,6 +447,7 @@ export class AttendanceController {
   @ApiResponse({ status: 404, description: "수업을 찾을 수 없습니다." })
   async getClassMonthlyAttendanceCounts(
     @Param("classId") classId: string,
+    @Request() req: AuthenticatedRequest,
     @Query("yearMonth") yearMonth?: string,
   ) {
     const ym =
@@ -455,7 +456,11 @@ export class AttendanceController {
         : new Date(Date.now() + 9 * 60 * 60 * 1000)
             .toISOString()
             .slice(0, 7);
-    return this.attendanceService.getClassMonthlyAttendanceCounts(classId, ym);
+    return this.attendanceService.getClassMonthlyAttendanceCounts(
+      classId,
+      ym,
+      req.user,
+    );
   }
 
   /**

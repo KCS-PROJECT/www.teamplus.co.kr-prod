@@ -16,6 +16,8 @@ import { RedisService } from "@/redis/redis.service";
 import { CreditDomainService } from "@/credits/credit-domain.service";
 import { AttendanceAuditLogService } from "./attendance-audit-log.service";
 import { NotificationsService } from "@/notifications/notifications.service";
+import { ResourceAccessService } from "@/common/access/resource-access.service";
+import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
 import { UpdateAttendanceDto } from "./dto/update-attendance.dto";
 import {
   computeAttendanceWindow,
@@ -46,6 +48,7 @@ export class AttendanceService {
     private readonly creditDomain: CreditDomainService, // PR-B (v0.5): MemberCredit 단일 진입점
     private readonly auditLog: AttendanceAuditLogService, // PR-C (v0.6): 출석 변경 감사 로그
     private readonly notifications: NotificationsService, // FCM 푸시 발송(pushOnlyToUsers)
+    private readonly resourceAccess: ResourceAccessService, // 관리자 전용 API 리소스 소속 검증 (IDOR 가드)
   ) {}
 
   /**
@@ -3433,14 +3436,26 @@ export class AttendanceService {
    * 단가 곱셈 없이 "출석 횟수"만 반환한다. 선불 수업 출석관리 화면의
    * 회원별 참여 확인용(읽기 전용) — 신규 모델 불필요.
    */
-  async getClassMonthlyAttendanceCounts(classId: string, yearMonth: string) {
+  async getClassMonthlyAttendanceCounts(
+    classId: string,
+    yearMonth: string,
+    requester: JwtUserPayload,
+  ) {
     const cls = await this.prisma.class.findUnique({
       where: { id: classId },
-      select: { id: true, className: true, billingMode: true },
+      select: {
+        id: true,
+        className: true,
+        billingMode: true,
+        teamId: true,
+        academyId: true,
+      },
     });
     if (!cls) {
       throw new NotFoundException("수업을 찾을 수 없습니다.");
     }
+    // 회원별 이름·월 출석 횟수가 담기는 응답 — 수업 관리자만 조회 가능 (IDOR 가드)
+    await this.resourceAccess.assertManageableClassRecord(cls, requester);
 
     // "YYYY-MM" → 해당 월 [start, end) — scheduledDate(@db.Date) UTC 자정 경계.
     const [y, m] = yearMonth.split("-").map(Number);

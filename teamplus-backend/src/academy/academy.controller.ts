@@ -468,10 +468,13 @@ export class AcademyController {
   @ApiResponse({ status: 200, description: "결제 현황 조회 성공" })
   @ApiResponse({ status: 404, description: "수업을 찾을 수 없습니다." })
   async getAcademyClassPayments(
-    @Param("academyId") _academyId: string,
+    @Param("academyId") academyId: string,
     @Param("classId") classId: string,
+    @Request() req: AuthenticatedRequest,
   ) {
-    return this.classesService.getClassPayments(classId);
+    return this.classesService.getClassPayments(classId, req.user, {
+      academyId,
+    });
   }
 
   /**

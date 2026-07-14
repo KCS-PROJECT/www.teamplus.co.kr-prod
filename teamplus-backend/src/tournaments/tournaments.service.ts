@@ -7,6 +7,9 @@ import {
 import { Decimal } from "@prisma/client/runtime/library";
 import { PrismaService } from "@/prisma/prisma.service";
 import { NotificationsService } from "@/notifications/notifications.service";
+import { ResourceAccessService } from "@/common/access/resource-access.service";
+import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
+import { isAdminRole } from "@/auth/constants/chldiv.constants";
 import { calculateKoreanAgeSafe } from "@/common/utils/age.util";
 import {
   dateOnlyToUtc,
@@ -38,6 +41,7 @@ export class TournamentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
+    private readonly resourceAccess: ResourceAccessService, // 관리자 전용 API 리소스 소속 검증 (IDOR 가드)
   ) {}
 
   /**
@@ -362,7 +366,14 @@ export class TournamentsService {
         const teamIds = await resolveManagedTeamIds(this.prisma, userId);
         // 본인 팀이 0개면 빈 결과 반환
         if (teamIds.length === 0) return [];
-        baseWhere.teamId = teamId ? teamId : { in: teamIds };
+        // 명시 teamId 는 관리 팀 목록과 교집합으로 제한 — 임의 teamId 로 타 팀 대회 목록을
+        // 조회하는 IDOR 차단. 비관리 팀 지정 시 403 대신 빈 결과(데이터 유출 없이 조용히 차단).
+        if (teamId) {
+          if (!teamIds.includes(teamId)) return [];
+          baseWhere.teamId = teamId;
+        } else {
+          baseWhere.teamId = { in: teamIds };
+        }
       } else if (role === "PARENT") {
         // [2026-06-11] 노출 기준 통일 — 기존엔 selectedParticipantIds(감독이
         //   생성 시 직접 고른 명단)에 자녀가 포함된 대회만 노출했으나,
@@ -866,35 +877,53 @@ export class TournamentsService {
    *  · teamId 가 비어 있으면 호출자(coach/director) 의 첫 번째 관리 팀으로 자동 세팅.
    *  · ageGroup / selectedParticipantIds 신규 필드 저장.
    */
-  async createTournament(dto: CreateTournamentDto, userId?: string) {
+  async createTournament(dto: CreateTournamentDto, requester: JwtUserPayload) {
     // 날짜 검증
     if (new Date(dto.startDate) > new Date(dto.endDate)) {
       throw new BadRequestException("시작 날짜가 종료 날짜보다 늦을 수 없습니다.");
     }
 
     // teamId 자동 보강 — DIRECTOR/COACH 가 본인 팀 생략 시 첫 관리 팀 사용.
+    //  기준은 assertTeamManager 와 동일(owner=Team.coachId OR 승인 TeamMember).
+    //  CoachProfile 은 의도적으로 제외 — 가입 시 pending 과 함께 자동 생성되어
+    //  가드 기준(2026-05-21 보안 수정)에서 배제된 경로라, 여기서 채우면 바로 아래
+    //  assertTeamManager 에서 403 이 나는 자기모순이 생긴다.
     let teamId = dto.teamId;
-    if (!teamId && userId) {
-      const mgr = await this.prisma.teamMember.findFirst({
-        where: {
-          userId,
-          approvalStatus: "approved",
-          leftAt: null,
-          roleInTeam: { in: ["HEAD_COACH", "COACH", "MANAGER"] },
-        },
-        select: { teamId: true },
-      });
-      if (mgr?.teamId) teamId = mgr.teamId;
+    if (!teamId) {
+      const [ownedTeam, mgr] = await Promise.all([
+        this.prisma.team.findFirst({
+          where: { coachId: requester.id },
+          select: { id: true },
+        }),
+        this.prisma.teamMember.findFirst({
+          where: {
+            userId: requester.id,
+            approvalStatus: "approved",
+            leftAt: null,
+            roleInTeam: { in: ["HEAD_COACH", "COACH", "MANAGER"] },
+          },
+          select: { teamId: true },
+        }),
+      ]);
+      teamId = ownedTeam?.id ?? mgr?.teamId ?? undefined;
     }
 
-    // 클럽 존재 확인 (선택적)
     if (teamId) {
+      // 클럽 존재 확인
       const club = await this.prisma.team.findUnique({
         where: { id: teamId },
       });
       if (!club) {
         throw new NotFoundException("클럽을 찾을 수 없습니다.");
       }
+      // 전달된 teamId 의 관리 권한 검증 — 존재 확인만으로는 타 팀 명의 대회 생성이 가능했다.
+      await this.resourceAccess.assertTeamManager(teamId, requester);
+    } else if (!isAdminRole(requester.userType)) {
+      // teamId=null 대회는 관리 주체가 없어 관리자급(ADMIN/SYSTEM/OPER) 전용 (설계 v4.0 확정).
+      // isAdminRole — RolesGuard 자동 통과·assertManageableTournamentRecord 와 동일 기준.
+      throw new BadRequestException(
+        "주최 팀을 지정해야 합니다. 관리 중인 팀이 없으면 대회를 생성할 수 없습니다.",
+      );
     }
 
     // 링크 존재 확인 (선택적)
@@ -995,13 +1024,26 @@ export class TournamentsService {
   /**
    * 토너먼트 수정
    */
-  async updateTournament(id: string, dto: UpdateTournamentDto) {
+  async updateTournament(
+    id: string,
+    dto: UpdateTournamentDto,
+    requester: JwtUserPayload,
+  ) {
     const tournament = await this.prisma.tournament.findUnique({
       where: { id },
     });
 
     if (!tournament) {
       throw new NotFoundException("대회를 찾을 수 없습니다.");
+    }
+    // 기존 대회의 관리 권한 검증 (teamId=null 대회는 ADMIN 전용)
+    await this.resourceAccess.assertManageableTournamentRecord(
+      tournament,
+      requester,
+    );
+    // 주최 팀 변경 시 변경 대상 팀의 관리 권한도 검증 — 타 팀 명의로 이관 차단.
+    if (dto.teamId && dto.teamId !== tournament.teamId) {
+      await this.resourceAccess.assertTeamManager(dto.teamId, requester);
     }
 
     // [2026-06-22] 종료/취소된 대회는 구조 수정 차단 — 경기 결과·후불 정산은 별도 경로에서 처리.
@@ -1160,7 +1202,9 @@ export class TournamentsService {
   /**
    * 토너먼트 삭제
    */
-  async deleteTournament(id: string) {
+  async deleteTournament(id: string, requester: JwtUserPayload) {
+    // 주최 팀 관리자만 삭제 가능 (IDOR 가드)
+    await this.resourceAccess.assertManageableTournament(id, requester);
     const tournament = await this.prisma.tournament.findUnique({
       where: { id },
       select: { id: true },
@@ -1328,16 +1372,31 @@ export class TournamentsService {
   /**
    * 매치 생성
    */
-  async createMatch(dto: CreateMatchDto) {
+  async createMatch(dto: CreateMatchDto, requester: JwtUserPayload) {
     // 토너먼트 존재 확인 (선택적)
+    let tournamentTeamId: string | null = null;
     if (dto.tournamentId) {
       const tournament = await this.prisma.tournament.findUnique({
         where: { id: dto.tournamentId },
+        select: { id: true, teamId: true },
       });
       if (!tournament) {
         throw new NotFoundException("대회를 찾을 수 없습니다.");
       }
+      tournamentTeamId = tournament.teamId;
     }
+    // 생성 권한 — 대회 소속이면 주최 팀 관리자, 독립 경기면 home/away 팀 관리자 (IDOR 가드)
+    await this.resourceAccess.assertManageableMatchRecord(
+      {
+        tournamentId: dto.tournamentId ?? null,
+        tournament: { teamId: tournamentTeamId },
+        homeTeamId: dto.homeTeamId ?? null,
+        awayTeamId: dto.awayTeamId ?? null,
+        homeClubId: dto.homeClubId ?? null,
+        awayClubId: dto.awayClubId ?? null,
+      },
+      requester,
+    );
 
     // 홈/어웨이 팀 동일 검증
     if (dto.homeTeamId && dto.awayTeamId && dto.homeTeamId === dto.awayTeamId) {
@@ -1372,7 +1431,12 @@ export class TournamentsService {
   /**
    * 매치 수정
    */
-  async updateMatch(id: string, dto: UpdateMatchDto) {
+  async updateMatch(
+    id: string,
+    dto: UpdateMatchDto,
+    requester: JwtUserPayload,
+  ) {
+    await this.resourceAccess.assertManageableMatch(id, requester);
     const match = await this.prisma.hockeyMatch.findUnique({
       where: { id },
     });
@@ -1426,7 +1490,8 @@ export class TournamentsService {
   /**
    * 매치 삭제
    */
-  async deleteMatch(id: string) {
+  async deleteMatch(id: string, requester: JwtUserPayload) {
+    await this.resourceAccess.assertManageableMatch(id, requester);
     const match = await this.prisma.hockeyMatch.findUnique({
       where: { id },
     });
@@ -1478,7 +1543,9 @@ export class TournamentsService {
     matchId: string,
     teamId: string,
     side: "home" | "away",
+    requester: JwtUserPayload,
   ) {
+    await this.resourceAccess.assertManageableMatch(matchId, requester);
     const match = await this.prisma.hockeyMatch.findUnique({
       where: { id: matchId },
     });
@@ -1651,7 +1718,12 @@ export class TournamentsService {
   /**
    * 연도 자격 해당 선수 목록 조회
    */
-  async getEligiblePlayers(tournamentId: string) {
+  async getEligiblePlayers(
+    tournamentId: string,
+    requester: JwtUserPayload,
+  ) {
+    // 선수 이름·보호자 정보가 담기는 응답 — 주최 팀 관리자만 조회 가능 (IDOR 가드)
+    await this.resourceAccess.assertManageableTournament(tournamentId, requester);
     const tournament = await this.prisma.tournament.findUnique({
       where: { id: tournamentId },
       select: {
@@ -2032,9 +2104,8 @@ export class TournamentsService {
     // 청구 대상 등록 ID 목록 — 미전송/빈 배열이면 미결제 참가자 전원(하위호환).
     //   선택 청구: 감독이 참가선수목록에서 고른 선수에게만 결제 요청.
     registrationIds: string[] | undefined,
-    // 정산 수행자 — 대회 후불은 별도 정산 추적 테이블이 없어(설계상 신규 컬럼 0)
-    //   현재 기록 대상이 없다. 감사 로깅 도입 시 활용하도록 시그니처에 유지한다.
-    _confirmedBy: string,
+    // 정산 수행자 — 주최 팀 관리 권한 검증에 사용. 감사 기록 컬럼은 별도 미도입(설계상 신규 컬럼 0).
+    requester: JwtUserPayload,
   ) {
     // 서버측 금액 검증 — 클라이언트 금액 불신.
     if (!Number.isFinite(feePerPerson) || feePerPerson <= 0) {
@@ -2049,11 +2120,17 @@ export class TournamentsService {
         billingMode: true,
         status: true,
         endDate: true,
+        teamId: true,
       },
     });
     if (!tournament) {
       throw new NotFoundException("대회를 찾을 수 없습니다.");
     }
+    // 참가자 전원에게 실제 청구(pending Payment+알림)를 만드는 쓰기 경로 — 주최 팀 관리자만 확정 가능 (IDOR 가드)
+    await this.resourceAccess.assertManageableTournamentRecord(
+      tournament,
+      requester,
+    );
     if (tournament.billingMode !== "POSTPAID") {
       throw new BadRequestException("후불(POSTPAID) 대회만 정산할 수 있습니다.");
     }
@@ -2238,14 +2315,22 @@ export class TournamentsService {
    *  · 동작: registration → UNPAID(calculatedFee=0, paymentId 해제), Payment → cancelled.
    *    멱등(재정산 시 동일 orderNumber upsert 가 update 로 재사용).
    */
-  async cancelTournamentSettlement(tournamentId: string) {
+  async cancelTournamentSettlement(
+    tournamentId: string,
+    requester: JwtUserPayload,
+  ) {
     const tournament = await this.prisma.tournament.findUnique({
       where: { id: tournamentId },
-      select: { id: true, name: true, billingMode: true },
+      select: { id: true, name: true, billingMode: true, teamId: true },
     });
     if (!tournament) {
       throw new NotFoundException("대회를 찾을 수 없습니다.");
     }
+    // 발행된 결제요청을 회수하는 쓰기 경로 — 주최 팀 관리자만 취소 가능 (IDOR 가드)
+    await this.resourceAccess.assertManageableTournamentRecord(
+      tournament,
+      requester,
+    );
     if (tournament.billingMode !== "POSTPAID") {
       throw new BadRequestException(
         "후불(POSTPAID) 대회만 결제요청을 취소할 수 있습니다.",
@@ -2327,7 +2412,10 @@ export class TournamentsService {
   /**
    * 대회 참가자 목록 조회
    */
-  async getTournamentRegistrations(tournamentId: string) {
+  async getTournamentRegistrations(
+    tournamentId: string,
+    requester: JwtUserPayload,
+  ) {
     const tournament = await this.prisma.tournament.findUnique({
       where: { id: tournamentId },
     });
@@ -2335,6 +2423,11 @@ export class TournamentsService {
     if (!tournament) {
       throw new NotFoundException("대회를 찾을 수 없습니다.");
     }
+    // 참가자 이름·자녀 생년월일·결제상태·금액이 담기는 응답 — 주최 팀 관리자만 조회 가능 (IDOR 가드)
+    await this.resourceAccess.assertManageableTournamentRecord(
+      tournament,
+      requester,
+    );
 
     const registrations = await this.prisma.tournamentRegistration.findMany({
       where: { tournamentId, paymentStatus: { not: "CANCELLED" } },
@@ -2451,7 +2544,13 @@ export class TournamentsService {
   /**
    * 대회 상태 변경 (유효한 전환만 허용)
    */
-  async changeTournamentStatus(id: string, newStatus: string) {
+  async changeTournamentStatus(
+    id: string,
+    newStatus: string,
+    requester: JwtUserPayload,
+  ) {
+    // 주최 팀 관리자만 상태 변경 가능 (IDOR 가드)
+    await this.resourceAccess.assertManageableTournament(id, requester);
     const tournament = await this.prisma.tournament.findUnique({
       where: { id },
     });
@@ -2485,7 +2584,9 @@ export class TournamentsService {
   /**
    * 대회 요약 통계
    */
-  async getTournamentSummary(id: string) {
+  async getTournamentSummary(id: string, requester: JwtUserPayload) {
+    // 참가자 수·결제 현황이 담기는 관리자용 요약 — 주최 팀 관리자만 조회 가능 (IDOR 가드)
+    await this.resourceAccess.assertManageableTournament(id, requester);
     const tournament = await this.prisma.tournament.findUnique({
       where: { id },
       select: {
@@ -2609,7 +2710,12 @@ export class TournamentsService {
   /**
    * 매치에서 팀 제거
    */
-  async removeMatchParticipant(matchId: string, teamId: string) {
+  async removeMatchParticipant(
+    matchId: string,
+    teamId: string,
+    requester: JwtUserPayload,
+  ) {
+    await this.resourceAccess.assertManageableMatch(matchId, requester);
     const match = await this.prisma.hockeyMatch.findUnique({
       where: { id: matchId },
     });
@@ -2646,7 +2752,12 @@ export class TournamentsService {
    * 현재 피리어드 기준 홈/어웨이 스코어 즉시 업데이트
    * - 해당 피리어드의 MatchPeriod 레코드가 있으면 동기화
    */
-  async updateMatchScore(matchId: string, dto: UpdateMatchScoreDto) {
+  async updateMatchScore(
+    matchId: string,
+    dto: UpdateMatchScoreDto,
+    requester: JwtUserPayload,
+  ) {
+    await this.resourceAccess.assertManageableMatch(matchId, requester);
     const match = await this.prisma.hockeyMatch.findUnique({
       where: { id: matchId },
       select: { id: true, currentPeriod: true, status: true },
@@ -2686,7 +2797,12 @@ export class TournamentsService {
   /**
    * 경기 라이프사이클 상태 전환 (scheduled → warmup → in_progress → intermission → completed)
    */
-  async updateMatchLiveState(matchId: string, dto: UpdateMatchLiveStateDto) {
+  async updateMatchLiveState(
+    matchId: string,
+    dto: UpdateMatchLiveStateDto,
+    requester: JwtUserPayload,
+  ) {
+    await this.resourceAccess.assertManageableMatch(matchId, requester);
     const match = await this.prisma.hockeyMatch.findUnique({
       where: { id: matchId },
       select: { id: true, status: true, startedAt: true, endedAt: true },
@@ -2761,7 +2877,12 @@ export class TournamentsService {
    * 피리어드 upsert (있으면 수정, 없으면 생성)
    * - 같은 periodNumber 로 중복 생성되지 않도록 unique([matchId, periodNumber]) 활용
    */
-  async upsertMatchPeriod(matchId: string, dto: UpsertMatchPeriodDto) {
+  async upsertMatchPeriod(
+    matchId: string,
+    dto: UpsertMatchPeriodDto,
+    requester: JwtUserPayload,
+  ) {
+    await this.resourceAccess.assertManageableMatch(matchId, requester);
     const match = await this.prisma.hockeyMatch.findUnique({
       where: { id: matchId },
       select: { id: true },
@@ -2841,7 +2962,12 @@ export class TournamentsService {
    * 경기 이벤트 생성 (골/페널티 등)
    * - goal 타입이면 자동으로 해당 팀 스코어 +1
    */
-  async createMatchEvent(matchId: string, dto: CreateMatchEventDto) {
+  async createMatchEvent(
+    matchId: string,
+    dto: CreateMatchEventDto,
+    requester: JwtUserPayload,
+  ) {
+    await this.resourceAccess.assertManageableMatch(matchId, requester);
     const match = await this.prisma.hockeyMatch.findUnique({
       where: { id: matchId },
       select: {
@@ -2975,7 +3101,9 @@ export class TournamentsService {
     matchId: string,
     eventId: string,
     dto: UpdateMatchEventDto,
+    requester: JwtUserPayload,
   ) {
+    await this.resourceAccess.assertManageableMatch(matchId, requester);
     const event = await this.prisma.matchEvent.findUnique({
       where: { id: eventId },
       select: { id: true, matchId: true },
@@ -3014,7 +3142,12 @@ export class TournamentsService {
   /**
    * 경기 이벤트 삭제 (goal 이벤트 삭제 시 스코어 -1 롤백)
    */
-  async deleteMatchEvent(matchId: string, eventId: string) {
+  async deleteMatchEvent(
+    matchId: string,
+    eventId: string,
+    requester: JwtUserPayload,
+  ) {
+    await this.resourceAccess.assertManageableMatch(matchId, requester);
     const event = await this.prisma.matchEvent.findUnique({
       where: { id: eventId },
       select: {

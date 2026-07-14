@@ -83,6 +83,7 @@ describe("ClassesService.bulkUpsertClassProducts", () => {
       {} as any,
       {} as any,
       {} as any,
+      {} as any, // ResourceAccessService — bulkUpsert 경로 미사용
     );
   });
 

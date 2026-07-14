@@ -12,6 +12,17 @@ import { TeamsService } from "@/teams/teams.service";
 import { CreditDomainService } from "@/credits/credit-domain.service";
 import { AttendanceAuditLogService } from "@/attendance/attendance-audit-log.service";
 import { NotificationsService } from "@/notifications/notifications.service";
+import { ResourceAccessService } from "@/common/access/resource-access.service";
+
+// IDOR 가드 mock — 기본 전부 통과. 차단 케이스는 개별 테스트에서 mockRejectedValue 로 지정.
+const mockResourceAccessService = {
+  assertManageableClass: jest.fn().mockResolvedValue(undefined),
+  assertManageableClassRecord: jest.fn().mockResolvedValue(undefined),
+  assertTeamManager: jest.fn().mockResolvedValue(undefined),
+  assertAcademyManager: jest.fn().mockResolvedValue(undefined),
+  assertManageableTournament: jest.fn().mockResolvedValue(undefined),
+  assertManageableTournamentRecord: jest.fn().mockResolvedValue(undefined),
+};
 
 describe("ClassesService", () => {
   let service: ClassesService;
@@ -222,6 +233,10 @@ describe("ClassesService", () => {
         { provide: CreditDomainService, useValue: { bulkRestoreOne: jest.fn() } },
         { provide: AttendanceAuditLogService, useValue: { record: jest.fn() } },
         { provide: NotificationsService, useValue: mockNotificationsService },
+        {
+          provide: ResourceAccessService,
+          useValue: mockResourceAccessService,
+        },
       ],
     }).compile();
 
