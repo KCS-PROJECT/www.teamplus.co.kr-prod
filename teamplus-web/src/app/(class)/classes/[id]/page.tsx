@@ -2422,13 +2422,11 @@ export default function ClassDetailPage() {
                  종료 버튼을 이 분기에만 노출한다(판매 승인 대기 중 헛클릭 차단). */
               <>
                 {/* 등록 CTA 는 두지 않는다 — 바로 아래 스티키 바의 동일 진입점과 중복.
-                    문구가 실재 버튼명을 지목한다 (오픈클래스는 일정 관리 슬롯이 없어 수정 폼). */}
+                    문구가 실재 버튼명을 지목한다 (일정 편집은 수정 폼으로 단일화). */}
                 <div className="flex items-start gap-3 rounded-w-md bg-amber-50 dark:bg-amber-900/20 px-3.5 py-3">
                   <Icon name="event_busy" className="text-xl text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" aria-hidden="true" />
                   <p className="text-card-body text-amber-800 dark:text-amber-300">
-                    {MESSAGES.class.salesCycle.pendingNoSchedule(
-                      isOpenClass ? '수업 수정하기' : '일정 관리',
-                    )}
+                    {MESSAGES.class.salesCycle.pendingNoSchedule('수업 수정하기')}
                   </p>
                 </div>
                 <div className="mt-4 pt-4 border-t border-it-line dark:border-rink-700">
@@ -2558,26 +2556,20 @@ export default function ClassDetailPage() {
         )}
       </main>
 
-      {/* ── manager 스티키 액션바 — 휴지통 + 일정 관리 + 수업 수정하기 ── */}
+      {/* ── manager 스티키 액션바 — 휴지통 + 수업 수정하기 ── */}
       {/* [수정 2026-05-13 D20] bottom 하드코딩 (64px) 제거 — iOS 노치/홈인디케이터,
          Android navigation bar 디바이스에서 액션바가 BottomNav 와 겹쳐 잘림 보고.
          BottomNav 기본 높이(60px) + safe-area-inset-bottom 폴백으로 전 디바이스 대응.
 
-         [수정 2026-05-14 D2] flex-1/flex-[1.4] 기반 폭 분배가 좁은 폭(xs ≤359px)에서
-         "수업 수정하기" / "일정 관리" 라벨이 부모 박스를 침범하던 회귀 수정.
-         → grid grid-cols-[auto_1fr_1.4fr] gap-2 w-full + 각 텍스트 버튼 min-w-0 + label truncate.
-         delete 아이콘 버튼은 size-11 고정 폭 유지(아이콘이 늘어나지 않도록).
-
          [수정 2026-05-15] 오픈클래스 액션바는 팀 감독/코치에게 권한 없음 →
          canEditClass(=isManager && (!isOpenClass || academy_director/admin)) 가드로
-         삭제·일정관리·수업수정 3개 버튼 모두 통째로 숨김. */}
+         버튼 전체를 통째로 숨김.
+
+         일정 편집(추가·변경·삭제)은 수정 폼(dateSchedules diff)으로 단일화 —
+         별도 '일정 관리' 슬롯 없음 (일정 관리 페이지는 orphan 보존, P5 휴강 알림 때 재검토). */}
       {canEditClass && (
         <div
-          className={cn(
-            "absolute left-0 right-0 z-30 bg-white dark:bg-rink-800 border-t border-wline-2 dark:border-rink-700 px-4 py-3 grid gap-2 w-full items-center",
-            // [2026-06-09] 오픈클래스는 일정 관리 슬롯이 없어 2열(삭제+수정) — 간격 제거.
-            isOpenClass ? "grid-cols-[auto_1fr]" : "grid-cols-[auto_1fr_1.4fr]",
-          )}
+          className="absolute left-0 right-0 z-30 bg-white dark:bg-rink-800 border-t border-wline-2 dark:border-rink-700 px-4 py-3 grid grid-cols-[auto_1fr] gap-2 w-full items-center"
           style={{ bottom: 'calc(60px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))' }}
           aria-label="수업 관리 액션바"
         >
@@ -2611,24 +2603,6 @@ export default function ClassDetailPage() {
               aria-hidden="true"
             />
           </button>
-          {/* [수정 2026-05-15] 일정 관리/수업 수정하기 — 오픈클래스는 팀 감독/코치가
-              권한 없으므로 숨김. ACADEMY_DIRECTOR/ADMIN 만 표시. canEditClass 가
-              가드 (팀 수업이면 무조건 표시, 오픈클래스면 academy_director/admin 만). */}
-          {/* [2026-06-09] 오픈클래스는 일정 관리 슬롯 자체를 제거 — 2열 grid 로 간격 해소.
-              일정 추가/삭제는 수업 수정 화면에서 한다. */}
-          {!isOpenClass &&
-            (classData.approvalStatus === "APPROVED" && canEditClass ? (
-              <button
-                type="button"
-                onClick={() => navigate(`/classes-manage/${classId}/schedules`)}
-                aria-label="수업 일정 관리"
-                className="min-w-0 h-11 rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-wtext-1 dark:text-white text-card-body font-extrabold tracking-tight hover:bg-wbg dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none active:brightness-95 truncate"
-              >
-                일정 관리
-              </button>
-            ) : (
-              <div className="min-w-0" aria-hidden="true" />
-            ))}
           {canEditClass && (
             <button
               type="button"

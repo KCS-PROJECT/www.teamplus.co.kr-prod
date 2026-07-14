@@ -30,7 +30,7 @@ export const MESSAGES = {
       "다가오는 일정이 있어 종료할 수 없습니다. 일정을 모두 마치거나 취소한 후 종료할 수 있습니다.",
     // [Lifecycle v4.1 §9.3] 판매 승인 사이클 — 감독 확인 플로우 · 학부모 CTA
     salesCycle: {
-      // entryLabel: 화면 하단에 실재하는 일정 등록 진입 버튼명 ('일정 관리' | '수업 수정하기')
+      // entryLabel: 화면 하단에 실재하는 일정 등록 진입 버튼명 (일정 편집 수정 폼 단일화 후 '수업 수정하기')
       pendingNoSchedule: (entryLabel: string) =>
         `다가오는 일정이 없어요. 아래 '${entryLabel}'에서 일정을 등록하면 다음 달 판매를 준비할 수 있어요.`,
       endHint: "이 수업을 더 이상 운영하지 않는다면 종료할 수 있어요.",

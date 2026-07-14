@@ -768,9 +768,15 @@ describe("ClassesService", () => {
   });
 
   describe("cancelClassSchedule", () => {
+    // 지난 회차 취소 가드(kstTodayUtcMidnight 경계) — 성공 경로는 미래 회차여야 통과.
+    const futureSchedule = {
+      ...mockSchedule,
+      scheduledDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    };
+
     it("should successfully cancel schedule and update attendances", async () => {
       jest.spyOn(prismaService.classSchedule, "findUnique").mockResolvedValue({
-        ...mockSchedule,
+        ...futureSchedule,
         class: mockClass,
       } as any);
       mockTx.classSchedule.update.mockResolvedValue({
@@ -795,6 +801,20 @@ describe("ClassesService", () => {
         mockClubId,
         expect.any(String),
       );
+    });
+
+    it("should throw ForbiddenException when cancelling a past schedule", async () => {
+      jest.spyOn(prismaService.classSchedule, "findUnique").mockResolvedValue({
+        ...mockSchedule,
+        scheduledDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+        class: mockClass,
+      } as any);
+
+      await expect(
+        service.cancelClassSchedule(mockCoachUserId, mockScheduleId, "사유"),
+      ).rejects.toThrow(ForbiddenException);
+      // 가드가 트랜잭션 진입 전에 차단 — 출석 변경·크레딧 복원 미실행 확인.
+      expect(mockTx.classSchedule.update).not.toHaveBeenCalled();
     });
 
     it("should throw NotFoundException if schedule does not exist", async () => {

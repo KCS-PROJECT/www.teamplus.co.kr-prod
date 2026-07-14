@@ -1538,6 +1538,11 @@ export class ClassesService {
           orderBy: { scheduledDate: "asc" },
           take: 10,
         },
+        // spot 자동 종료 파생용 — 위 schedules(오늘 이후만)로는 과거 일정 유무를 알 수 없어
+        //   비취소 전체 카운트를 별도 제공 (목록 API 와 lifecycleStatus 판정 일치 보장).
+        _count: {
+          select: { schedules: { where: { isCancelled: false } } },
+        },
         products: {
           select: {
             id: true,
@@ -1725,6 +1730,7 @@ export class ClassesService {
           schedules: (classRecord.schedules ?? []).filter(
             (sch) => !sch.isCancelled,
           ),
+          hadAnySchedule: (classRecord._count?.schedules ?? 0) > 0,
         });
         return {
           lifecycleStatus: lc.state,
@@ -4011,6 +4017,14 @@ export class ClassesService {
       throw new ForbiddenException("이 일정을 취소할 권한이 없습니다.");
     }
 
+    // 지난 회차(오늘 KST 이전)는 이미 진행된 사실 기록(출석·정산 근거) — 소급 취소 금지.
+    //   취소 트랜잭션이 출석 상태 변경·크레딧 복원을 동반하므로 과거에 실행하면
+    //   후불 정산(출석×단가)·선불 차감 근거가 왜곡된다.
+    //   경계는 dateSchedules diff 불가침과 동일(오늘 회차는 당일 취소 허용).
+    if (schedule.scheduledDate < kstTodayUtcMidnight()) {
+      throw new ForbiddenException("지난 일정은 취소할 수 없습니다.");
+    }
+
     // 일정 취소 + 출석 상태 변경 + 크레딧 복원 — 원자적 트랜잭션
     const cancelledSchedule = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.classSchedule.update({
@@ -4170,6 +4184,11 @@ export class ClassesService {
 
     if (schedule.isCancelled) {
       throw new ForbiddenException("취소된 일정은 수정할 수 없습니다.");
+    }
+
+    // 지난 회차는 읽기 전용(사실 기록) — 수업 수정 폼 diff 불가침과 동일 경계.
+    if (schedule.scheduledDate < kstTodayUtcMidnight()) {
+      throw new ForbiddenException("지난 일정은 수정할 수 없습니다.");
     }
 
     const data: { startTime?: string | null; endTime?: string | null; venueId?: string | null } = {};

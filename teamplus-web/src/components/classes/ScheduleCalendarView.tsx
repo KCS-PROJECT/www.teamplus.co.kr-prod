@@ -13,6 +13,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '@/components/ui/Icon';
 import { BottomSheet } from '@/components/ui/BottomSheet';
+import { VenuePicker } from '@/components/common/VenuePicker';
 import { cn } from '@/lib/utils';
 import { MESSAGES } from '@/lib/messages';
 import { WEEKDAY_HEADERS, weekColumnOf, colIsSaturday, colIsSunday } from '@/lib/calendar-week';
@@ -107,17 +108,17 @@ export function ScheduleCalendarView({
   const [viewMonth, setViewMonth] = useState(now.getMonth()); // 0-based
   // 선택 날짜 — 달력 셀 강조 + 하단 목록 스크롤 타겟. 진입 시엔 미선택(전체 목록 위부터).
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  // 읽기 전용(수업 상세) — 과거 일정 접기. 기본 false(다가오는 일정만), 토글로 펼침.
+  // 과거 일정 접기 — 관리·읽기 전용 공통. 기본 false(다가오는 일정만), 토글로 펼침.
   const [showPast, setShowPast] = useState(false);
 
   // 날짜 그룹 ref — 달력 셀 탭 시 해당 날짜 그룹으로 스크롤.
   const groupRefs = useRef<Record<string, HTMLLIElement | null>>({});
 
-  // 달력 셀 탭 → 날짜 선택. 과거 날짜면 접힌 지난 일정을 자동 펼친다(readOnly).
+  // 달력 셀 탭 → 날짜 선택. 과거 날짜면 접힌 지난 일정을 자동 펼친다.
   //   스크롤은 아래 effect 에서 — 펼침 직후 그룹 ref 생성 타이밍을 보장.
   const handleSelectDate = (key: string) => {
     setSelectedKey(key);
-    if (readOnly && key < todayKey) setShowPast(true);
+    if (key < todayKey) setShowPast(true);
   };
 
   // 선택 날짜(또는 펼침 상태) 변경 시 해당 그룹으로 스크롤.
@@ -188,14 +189,14 @@ export function ScheduleCalendarView({
   );
   const totalCount = schedules.length;
 
-  // 읽기 전용 — 과거(오늘 이전) 그룹 접기용 분리. (key 는 YYYY-MM-DD 라 문자열 비교=날짜순)
+  // 과거(오늘 이전) 그룹 접기용 분리 — 관리·읽기 전용 공통. (key 는 YYYY-MM-DD 라 문자열 비교=날짜순)
   const pastGroups = dateGroups.filter((g) => g.key < todayKey);
   const upcomingGroups = dateGroups.filter((g) => g.key >= todayKey);
   const pastCount = pastGroups.reduce((sum, g) => sum + g.items.length, 0);
   const hasUpcoming = upcomingGroups.length > 0;
   // 전부 지난 일정인 수업도 다른 수업과 동일하게 기본 접고 토글로 펼친다.
   //   (다가오는 일정이 없을 때만 전체를 펼치던 예외 제거 — 동작 일관성)
-  const readOnlyVisibleGroups = showPast ? dateGroups : upcomingGroups;
+  const visibleGroups = showPast ? dateGroups : upcomingGroups;
   const showPastToggle = pastCount > 0;
 
   // 개별 회차 수정 시트.
@@ -403,7 +404,7 @@ export function ScheduleCalendarView({
                 </button>
               </li>
             )}
-            {readOnlyVisibleGroups.map(({ key, items }) => {
+            {visibleGroups.map(({ key, items }) => {
               const isSelected = key === selectedKey;
               const isToday = key === todayKey;
               const isPast = key < todayKey;
@@ -479,9 +480,31 @@ export function ScheduleCalendarView({
             role="list"
             aria-label={`등록된 일정 ${totalCount}건`}
           >
-            {dateGroups.map(({ key, items }) => {
+            {showPastToggle && (
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setShowPast((v) => !v)}
+                  aria-expanded={showPast}
+                  className={cn(
+                    'flex w-full items-center justify-center gap-1 px-3 py-2 text-card-meta font-bold transition-colors motion-reduce:transition-none',
+                    iceTheme ? 'text-it-blue-500 hover:bg-it-blue-500/[0.05]' : 'text-ice-500 hover:bg-ice-500/[0.05]',
+                  )}
+                >
+                  <Icon
+                    name={showPast ? 'expand_less' : 'expand_more'}
+                    className="text-base"
+                    aria-hidden="true"
+                  />
+                  {showPast ? '지난 일정 접기' : `지난 일정 ${pastCount}개 보기`}
+                </button>
+              </li>
+            )}
+            {visibleGroups.map(({ key, items }) => {
               const isSelected = key === selectedKey;
               const isToday = key === todayKey;
+              // 지난 회차는 사실 기록 — 수정/취소 버튼 미노출 (백엔드 가드와 이중 방어).
+              const isPast = key < todayKey;
               const dateLabel = groupLabelOf(key);
               return (
                 <li
@@ -491,7 +514,8 @@ export function ScheduleCalendarView({
                   }}
                   className={cn(
                     'transition-colors motion-reduce:transition-none',
-                    isSelected && (iceTheme ? 'bg-it-blue-500/[0.06]' : 'bg-ice-500/[0.06]'),
+                    isPast && 'opacity-55',
+                    isSelected && (iceTheme ? 'bg-it-blue-500/[0.06] opacity-100' : 'bg-ice-500/[0.06] opacity-100'),
                   )}
                 >
                   <div
@@ -528,7 +552,7 @@ export function ScheduleCalendarView({
                             </span>
                           )}
                         </div>
-                        {!readOnly && isApproved && (
+                        {!readOnly && isApproved && !isPast && (
                           <div className="flex items-center gap-1 shrink-0">
                             <button
                               type="button"
@@ -627,19 +651,15 @@ export function ScheduleCalendarView({
           </div>
           <div className="space-y-1">
             <label className={cn('block text-w-caption font-bold', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>장소</label>
-            <select
+            {/* 검색형 VenuePicker — 전체 목록 노출 금지 요구사항(select 대체).
+                시트 안이라 바텀시트(VenueSearchSheet) 중첩 불가 → 인라인 검색형 사용. */}
+            <VenuePicker
               value={editVenue}
-              onChange={(e) => setEditVenue(e.target.value)}
-              className={fieldClass}
-              aria-label="장소"
-            >
-              <option value="">장소 선택 안 함</option>
-              {venues.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name}
-                </option>
-              ))}
-            </select>
+              onChange={setEditVenue}
+              venues={venues}
+              iceTheme={iceTheme}
+              ariaLabel="장소"
+            />
           </div>
         </div>
       </BottomSheet>
