@@ -9,10 +9,19 @@ import { cn } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
+const PAGE_TITLE = '공지 · 소식';
+const PAGE_DESC =
+  'TEAMPLUS 의 최신 업데이트 · 신규 기능 · 공지사항을 게시판 형태로 확인하세요.';
+
 export const metadata: Metadata = {
-  title: '공지 · 소식',
-  description:
-    'TEAMPLUS 의 최신 업데이트 · 신규 기능 · 공지사항을 게시판 형태로 확인하세요.',
+  title: PAGE_TITLE,
+  description: PAGE_DESC,
+  alternates: { canonical: '/news' },
+  openGraph: {
+    url: '/news',
+    title: PAGE_TITLE,
+    description: PAGE_DESC,
+  },
 };
 
 // 카테고리별 절제된 accent 1:1 매핑 — 흰 카드 위 분류 식별성 확보 (light bg-50 + text-700 + ring-200)

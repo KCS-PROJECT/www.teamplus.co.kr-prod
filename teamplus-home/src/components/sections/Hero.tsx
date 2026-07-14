@@ -99,7 +99,7 @@ export function Hero() {
               ))}
             </motion.ul>
 
-            {/* 앱 다운로드 — 출시 전이라 '출시 예정' 비활성 상태로 정직하게 표기(깨진 버튼 인상 방지) */}
+            {/* 앱 다운로드 — App Store / Google Play 실제 앱 페이지로 연결 (링크 SoT: content.ts APP_DOWNLOAD) */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}

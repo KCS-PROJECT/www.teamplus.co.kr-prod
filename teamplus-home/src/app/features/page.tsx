@@ -6,11 +6,22 @@ import { FeatureLedger } from '@/components/sections/FeatureLedger';
 import { RoleGallery } from '@/components/sections/RoleGallery';
 import { StoreBadge } from '@/components/ui/StoreBadge';
 import { APP_DOWNLOAD } from '@/lib/content';
+import { KEYWORDS } from '@/lib/seo';
+
+const PAGE_TITLE = '주요 기능';
+const PAGE_DESC =
+  '아이스하키 클럽 운영에 필요한 회원 · 수업·강습 · QR 출석 관리 · 수업권 결제 · 카카오 알림톡 · 쇼핑 · 대회 · 채팅을 8개 모듈로 묶어 하나의 운영으로 이어줍니다.';
 
 export const metadata: Metadata = {
-  title: '주요 기능',
-  description:
-    '회원 · 수업 · QR 출석 · 결제 · 알림 · 쇼핑 · 대회 · 채팅 — TEAMPLUS 8개 기능 모듈을 4개의 일로 묶어 하나의 운영으로 이어줍니다.',
+  title: PAGE_TITLE,
+  description: PAGE_DESC,
+  keywords: [...KEYWORDS.sport, ...KEYWORDS.solution],
+  alternates: { canonical: '/features' },
+  openGraph: {
+    url: '/features',
+    title: PAGE_TITLE,
+    description: PAGE_DESC,
+  },
 };
 
 const HERO_TRUST = ['QR 출석·결제권 자동 차감', '수업·회원·알림 통합 관리', '대회·쇼핑 확장 모듈 포함'];

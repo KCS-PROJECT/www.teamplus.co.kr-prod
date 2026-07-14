@@ -44,7 +44,7 @@ export function FinalCta() {
               {FINAL_CTA.subCopy}
             </p>
 
-            {/* 앱 다운로드 — 출시 전 '출시 예정' 비활성 표기 */}
+            {/* 앱 다운로드 — App Store / Google Play 실제 앱 페이지로 연결 (링크 SoT: content.ts APP_DOWNLOAD) */}
             <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
               <div className="flex gap-2.5">
                 <StoreBadge store="apple" href={APP_DOWNLOAD.appStore} tone="dark" className="scale-90" />
