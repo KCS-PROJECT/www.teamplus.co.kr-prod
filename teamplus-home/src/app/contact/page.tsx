@@ -5,10 +5,19 @@ import { ContactForm } from '@/components/sections/ContactForm';
 import { StoreBadge } from '@/components/ui/StoreBadge';
 import { BRAND, APP_DOWNLOAD } from '@/lib/content';
 
+const PAGE_TITLE = '문의·상담';
+const PAGE_DESC =
+  '14일 무료 체험 · 데모 신청 · 맞춤 견적 · 파트너십 문의까지. TEAMPLUS 팀이 영업일 1일 이내에 연락드립니다.';
+
 export const metadata: Metadata = {
-  title: '문의·상담',
-  description:
-    '14일 무료 체험 · 데모 신청 · 맞춤 견적 · 파트너십 문의까지. TEAMPLUS 팀이 영업일 1일 이내에 연락드립니다.',
+  title: PAGE_TITLE,
+  description: PAGE_DESC,
+  alternates: { canonical: '/contact' },
+  openGraph: {
+    url: '/contact',
+    title: PAGE_TITLE,
+    description: PAGE_DESC,
+  },
 };
 
 const CONTACT_ITEMS = [

@@ -9,6 +9,20 @@ import { Stats } from '@/components/sections/Stats';
 import { TrustBar } from '@/components/sections/TrustBar';
 import { Faq } from '@/components/sections/Faq';
 import { FinalCta } from '@/components/sections/FinalCta';
+import type { Metadata } from 'next';
+import { BRAND } from '@/lib/content';
+import { JsonLd } from '@/components/seo/JsonLd';
+import { softwareApplicationSchema, faqSchema } from '@/lib/seo';
+
+export const metadata: Metadata = {
+  // 홈은 사이트 루트 — 기본 타이틀(템플릿 미적용) 유지.
+  title: {
+    absolute: `${BRAND.name} · 아이스하키 클럽 통합 운영 플랫폼`,
+  },
+  description:
+    '유소년 아이스하키 클럽을 위한 통합 운영 앱. 수업·강습 일정, QR 출석 관리, 성장 기록, 수업권 결제, 카카오 알림톡까지 감독·코치·학부모가 하나의 앱에서 확인합니다.',
+  alternates: { canonical: '/' },
+};
 
 /**
  * 홈(랜딩) — 설득 깔때기 순서로 조립.
@@ -20,6 +34,8 @@ import { FinalCta } from '@/components/sections/FinalCta';
 export default function HomePage() {
   return (
     <>
+      {/* 제품(앱)·FAQ 구조화 데이터 — 답변 엔진/리치 결과 공급 */}
+      <JsonLd data={[softwareApplicationSchema(), faqSchema()]} />
       <Hero />
       <ProblemSolution />
       <WhyTeamplus />

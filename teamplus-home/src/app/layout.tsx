@@ -6,47 +6,66 @@ import { Footer } from "@/components/layout/Footer";
 import { MotionProvider } from "@/components/providers/MotionProvider";
 import { ActivityTracker } from "@/components/providers/ActivityTracker";
 import { BRAND } from "@/lib/content";
+import { JsonLd } from "@/components/seo/JsonLd";
+import {
+  SITE_URL,
+  NAVER_SITE_VERIFICATION,
+  SEO_KEYWORDS,
+  organizationSchema,
+  websiteSchema,
+} from "@/lib/seo";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://teamplus.kr"),
+  metadataBase: new URL(SITE_URL),
   title: {
     default: `${BRAND.name} · 아이스하키 클럽 통합 운영 플랫폼`,
     template: `%s | ${BRAND.name}`,
   },
   description: BRAND.descriptor,
-  keywords: [
-    "아이스하키",
-    "클럽 관리",
-    "회원 관리",
-    "QR 출석",
-    "결제 결제권",
-    "알림톡",
-    "KG이니시스",
-    "SaaS",
-    "팀플러스+",
-    "팀플러스",
-    "TEAMPLUS",
-  ],
-  authors: [{ name: "팀플러스+" }],
-  creator: "팀플러스+",
-  publisher: "팀플러스+",
+  applicationName: BRAND.name,
+  keywords: SEO_KEYWORDS,
+  authors: [{ name: BRAND.name, url: SITE_URL }],
+  creator: BRAND.legal.companyName,
+  publisher: BRAND.legal.companyName,
+  alternates: {
+    canonical: "/",
+  },
+  formatDetection: {
+    telephone: true,
+    email: true,
+    address: true,
+  },
   openGraph: {
     type: "website",
     locale: "ko_KR",
-    url: "https://teamplus.kr",
+    url: SITE_URL,
     siteName: BRAND.name,
-    title: `${BRAND.name} · ${BRAND.tagline}`,
+    title: `${BRAND.name} · 아이스하키 클럽 통합 운영 플랫폼`,
     description: BRAND.descriptor,
   },
   twitter: {
     card: "summary_large_image",
-    title: `${BRAND.name} · ${BRAND.tagline}`,
+    title: `${BRAND.name} · 아이스하키 클럽 통합 운영 플랫폼`,
     description: BRAND.descriptor,
   },
   robots: {
     index: true,
     follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
   },
+  ...(NAVER_SITE_VERIFICATION
+    ? {
+        verification: {
+          other: { "naver-site-verification": NAVER_SITE_VERIFICATION },
+        },
+      }
+    : {}),
 };
 
 export const viewport: Viewport = {
@@ -64,6 +83,8 @@ export default function RootLayout({
   return (
     <html lang="ko" className="dark scroll-smooth">
       <body>
+        {/* 전역 구조화 데이터 — 조직·사이트 정체성(GEO/AEO) */}
+        <JsonLd data={[organizationSchema(), websiteSchema()]} />
         <a
           href="#main"
           className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50
