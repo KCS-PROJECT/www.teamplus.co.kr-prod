@@ -71,10 +71,15 @@ export const HERO_PROOF = [
   "역할별 맞춤 화면",
 ];
 
-/** 앱 스토어 다운로드 링크 — 출시 후 연결 (현재 빈 값). Hero · Final CTA 공용 SoT */
+/**
+ * 앱 스토어 다운로드 링크 — Hero · Final CTA 공용 SoT.
+ * 실제 앱 식별자: Android package `kr.co.teamplus` · iOS App Store ID `6775934949`
+ * (teamplus-web `app-install.ts` · env `NEXT_PUBLIC_IOS_APP_STORE_ID` 와 동일 값).
+ * 아이콘 클릭 시 각 스토어(iPhone→App Store, Android→Google Play)의 실제 앱 페이지로 이동한다.
+ */
 export const APP_DOWNLOAD = {
-  appStore: "", // TODO: App Store 링크 추가
-  googlePlay: "", // TODO: Google Play 링크 추가
+  appStore: "https://apps.apple.com/app/id6775934949",
+  googlePlay: "https://play.google.com/store/apps/details?id=kr.co.teamplus",
 };
 
 export const HERO = {

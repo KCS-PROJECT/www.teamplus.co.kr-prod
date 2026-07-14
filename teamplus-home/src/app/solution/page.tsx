@@ -5,11 +5,22 @@ import { Stats } from '@/components/sections/Stats';
 import { RoleGallery } from '@/components/sections/RoleGallery';
 import { StoreBadge } from '@/components/ui/StoreBadge';
 import { APP_DOWNLOAD } from '@/lib/content';
+import { KEYWORDS } from '@/lib/seo';
+
+const PAGE_TITLE = '솔루션 소개';
+const PAGE_DESC =
+  '유소년 아이스하키 클럽·아카데미 운영을 위한 솔루션. 하이브리드 아키텍처, 엔터프라이즈 보안, 1초 SLA 성능, 운영 자동화 — 팀플러스+ 가 왜 아이스하키 클럽에 최적의 선택인지 알려드립니다.';
 
 export const metadata: Metadata = {
-  title: '솔루션 소개',
-  description:
-    'Flutter + Next.js 하이브리드 아키텍처, 엔터프라이즈 보안, 1초 SLA 성능, 운영 자동화 — TEAMPLUS 이 왜 아이스하키 클럽에 최적의 선택인지 자세히 알려드립니다.',
+  title: PAGE_TITLE,
+  description: PAGE_DESC,
+  keywords: [...KEYWORDS.audience, ...KEYWORDS.kids, ...KEYWORDS.solution],
+  alternates: { canonical: '/solution' },
+  openGraph: {
+    url: '/solution',
+    title: PAGE_TITLE,
+    description: PAGE_DESC,
+  },
 };
 
 const TIMELINE = [

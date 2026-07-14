@@ -6,11 +6,22 @@ import { Pricing } from '@/components/sections/Pricing';
 import { Faq } from '@/components/sections/Faq';
 import { FinalCta } from '@/components/sections/FinalCta';
 import { cn } from '@/lib/utils';
+import { KEYWORDS } from '@/lib/seo';
+
+const PAGE_TITLE = '요금제';
+const PAGE_DESC =
+  'Starter · Business · Enterprise 3가지 플랜으로 제공됩니다. 모든 플랜은 14일 무료 체험 · 온보딩 무상 지원 · 데이터 이관 대행을 포함합니다.';
 
 export const metadata: Metadata = {
-  title: '요금제',
-  description:
-    'Starter · Business · Enterprise 3가지 플랜으로 제공됩니다. 모든 플랜은 14일 무료 체험 · 온보딩 무상 지원 · 데이터 이관 대행을 포함합니다.',
+  title: PAGE_TITLE,
+  description: PAGE_DESC,
+  keywords: [...KEYWORDS.brand, ...KEYWORDS.audience],
+  alternates: { canonical: '/pricing' },
+  openGraph: {
+    url: '/pricing',
+    title: PAGE_TITLE,
+    description: PAGE_DESC,
+  },
 };
 
 const COMPARE = [

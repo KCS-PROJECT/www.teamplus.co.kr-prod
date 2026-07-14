@@ -6,10 +6,19 @@ import { Stats } from '@/components/sections/Stats';
 import { RoleGallery } from '@/components/sections/RoleGallery';
 import { FinalCta } from '@/components/sections/FinalCta';
 
+const PAGE_TITLE = '도입 사례';
+const PAGE_DESC =
+  '안양 ACE · 서울 Glacier · 부산 Polar Kids · i-League 연합까지 — 규모와 성격이 다른 클럽이 어떻게 TEAMPLUS 으로 운영을 바꿨는지 확인해 보세요.';
+
 export const metadata: Metadata = {
-  title: '도입 사례',
-  description:
-    '안양 ACE · 서울 Glacier · 부산 Polar Kids · i-League 연합까지 — 규모와 성격이 다른 클럽이 어떻게 TEAMPLUS 으로 운영을 바꿨는지 확인해 보세요.',
+  title: PAGE_TITLE,
+  description: PAGE_DESC,
+  alternates: { canonical: '/cases' },
+  openGraph: {
+    url: '/cases',
+    title: PAGE_TITLE,
+    description: PAGE_DESC,
+  },
 };
 
 export default function CasesPage() {
