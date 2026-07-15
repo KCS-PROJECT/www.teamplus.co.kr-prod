@@ -1,26 +1,21 @@
 /**
- * 결제 시스템 종합 통합 테스트
+ * 결제 시스템 종합 통합 테스트 (Facade + Controller 경계)
  *
- * 테스트 범위:
- * 1. 정상적인 결제 흐름 (결제 초기화 → 웹훅 콜백 → 크레딧 발급)
- * 2. 금액 불일치 탐지
- * 3. 중복 결제 방지 (30초 내 동일 요청)
- * 4. 웹훅 서명 검증 실패
- * 5. IP 화이트리스트 검증
- * 6. 멱등성 보장 (동일 웹훅 재전송)
- * 7. 암호화된 로그인과 결제 통합
+ * Phase B 재편으로 결제 도메인 로직은 sub-service 로 이관되었다:
+ *   - 결제 생성/멱등/금액검증  → PaymentCreateService  (payment-create.service.spec)
+ *   - 웹훅 서명/금액/멱등/발급  → PaymentWebhookService (payment-webhook.service.spec)
+ *   - 환불/취소               → PaymentRefundService  (payment-refund.service.spec)
+ * 따라서 본 통합 스펙은 "Facade(PaymentsService) 와 Controller 가 sub-service·게이트웨이로
+ * 올바르게 위임·전파하는지" 와, 컨트롤러 고유의 웹훅 IP/서명 게이트를 검증한다.
+ * 각 sub-service 내부의 심층 보안 로직(서명 실패 시 트랜잭션 미실행 등)은 해당 sub-service
+ * spec 이 단독 커버한다.
  *
- * 보안 검증 체크리스트:
- * ✓ 서버사이드 금액 검증 (클라이언트 금액 신뢰 금지)
- * ✓ 웹훅 서명 검증 (KG이니시스)
- * ✓ IP 화이트리스트 (KG이니시스 서버만 허용)
- * ✓ 중복 결제 방지 (Redis idempotency)
- * ✓ 멱등성 보장 (동일 요청 재처리 방지)
- * ✓ 암호화된 로그인 (클라이언트 AES-256-GCM)
- * ✓ 감사 로그 (모든 복호화 작업 기록)
- * ✓ 에러 메시지 (민감한 정보 노출 금지)
- * ✓ JWT 인증 (결제 초기화)
- * ✓ RBAC (PARENT 역할만 결제 가능)
+ * 보안 검증 체크리스트 (경계 위임 관점):
+ * ✓ 서버사이드 금액 검증 위임 (PaymentCreateService/PaymentWebhookService)
+ * ✓ 웹훅 서명 검증 (Controller 2차 게이트 + PaymentWebhookService)
+ * ✓ IP 화이트리스트 (Controller 1차 게이트)
+ * ✓ 중복/멱등 예외 전파
+ * ✓ 암호화된 로그인 (CryptoService)
  */
 
 import { Test, TestingModule } from "@nestjs/testing";
@@ -32,9 +27,18 @@ import {
 import { PaymentsService } from "./payments.service";
 import { PaymentsController } from "./payments.controller";
 import { KgInicisGateway } from "./kg-inicis.gateway";
+import { TossPaymentsGateway } from "./toss-payments.gateway";
+import { PaymentCalculationService } from "./payment-calculation.service";
+import { PostpaidSettlementService } from "./postpaid-settlement.service";
+import { WebhookRetryService } from "./webhook-retry.service";
+import { PaymentCreateService } from "./services/payment-create.service";
+import { PaymentWebhookService } from "./services/payment-webhook.service";
+import { PaymentRefundService } from "./services/payment-refund.service";
+import { PaymentReceiptService } from "./services/payment-receipt.service";
+import { CreditDomainService } from "@/credits/credit-domain.service";
+import { NotificationsService } from "@/notifications/notifications.service";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
-import { ConfigService } from "@nestjs/config";
 import { CryptoService } from "@/auth/services/crypto.service";
 import { AuthService } from "@/auth/auth.service";
 
@@ -57,8 +61,8 @@ describe("Payment System Integration Tests (7 Scenarios)", () => {
     id: mockProductId,
     classId: "class-uuid-001",
     productName: "신규 수강생반 - 월 8회 패키지",
-    price: 240000, // ₩240,000
-    sessionsPerMonth: 8, // 월 2회 수업 × 4주
+    price: 240000,
+    sessionsPerMonth: 8,
     durationDays: 30,
     createdAt: new Date(),
     class: {
@@ -71,7 +75,7 @@ describe("Payment System Integration Tests (7 Scenarios)", () => {
   const mockUser = {
     id: mockUserId,
     email: "parent@teamplus.com",
-    userType: "parent", // RBAC: PARENT만 결제 가능
+    userType: "parent",
     createdAt: new Date(),
   };
 
@@ -95,46 +99,61 @@ describe("Payment System Integration Tests (7 Scenarios)", () => {
     completedAt: new Date(),
   };
 
-  const mockWebhookPayload = {
+  // 결제 시작 결과(Facade 가 PaymentCreateService 로부터 받는 형태).
+  const mockInitiateResult = {
+    id: mockPayment.id,
     orderNumber: mockOrderNumber,
     amount: mockProduct.price,
-    resultCode: "0000", // KG이니시스 성공 코드
+    paymentStatus: "pending",
+    productId: mockProductId,
+    paymentPageUrl:
+      "https://stdpay.inicis.com/stdpay/INIpayMobile.php?mid=test&oid=ORD-1234",
+  };
+
+  // 웹훅 완료 결과(Facade 가 PaymentWebhookService 로부터 받는 형태).
+  const mockCompleteResult = {
+    id: mockPayment.id,
+    orderNumber: mockOrderNumber,
+    amount: mockProduct.price,
+    paymentStatus: "completed",
     tid: mockTid,
-    paymentDatetime: new Date().toISOString(),
+    completedAt: new Date(),
+    creditsIssued: 8,
+  };
+
+  const mockWebhookPayload = {
+    orderNumber: mockOrderNumber,
+    tid: mockTid,
+    resultCode: "0000",
+    amount: mockProduct.price,
     signature: "valid-signature-hash",
   };
 
-  const maliciousIp = "192.168.1.100"; // 허용되지 않은 IP
+  const maliciousIp = "192.168.1.100";
 
   // ═══════════════════════════════════════════════════════════════════════════════
-  // Mock 서비스 설정
+  // Mock 설정
   // ═══════════════════════════════════════════════════════════════════════════════
 
   const mockPrismaService = {
-    classProduct: {
-      findUnique: jest.fn(),
-    },
+    classProduct: { findUnique: jest.fn() },
     payment: {
       create: jest.fn(),
       findUnique: jest.fn(),
       findMany: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
+      groupBy: jest.fn(),
     },
-    memberCredit: {
-      create: jest.fn(),
-      findUnique: jest.fn(),
-      update: jest.fn(),
-    },
-    user: {
-      findUnique: jest.fn(),
-    },
-    clubMember: {
-      findMany: jest.fn(),
-    },
-    auditLog: {
-      create: jest.fn(),
-    },
+    memberCredit: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+    user: { findUnique: jest.fn() },
+    clubMember: { findMany: jest.fn() },
+    auditLog: { create: jest.fn() },
+    enrollment: { findMany: jest.fn().mockResolvedValue([]) },
+    monthlyPostpaidBillingLine: { findMany: jest.fn().mockResolvedValue([]) },
+    tournamentRegistration: { findMany: jest.fn().mockResolvedValue([]) },
+    academy: { findUnique: jest.fn().mockResolvedValue(null) },
+    $transaction: jest.fn(),
   };
 
   const mockRedisService = {
@@ -142,6 +161,7 @@ describe("Payment System Integration Tests (7 Scenarios)", () => {
     get: jest.fn().mockResolvedValue(null),
     del: jest.fn().mockResolvedValue(undefined),
     exists: jest.fn().mockResolvedValue(false),
+    setIfNotExists: jest.fn().mockResolvedValue(true),
     getConnectionStatus: jest.fn().mockReturnValue(true),
   };
 
@@ -153,20 +173,38 @@ describe("Payment System Integration Tests (7 Scenarios)", () => {
     cancelPayment: jest.fn(),
   };
 
-  const mockConfigService = {
-    get: jest.fn((key: string) => {
-      if (key === "redis") {
-        return {
-          keyPrefix: { payment: "payment:" },
-          cacheTTL: { paymentIdempotency: 86400 },
-        };
-      }
-      if (key === "payment") {
-        return { kgInicis: { webhookSecret: "secret-key" } };
-      }
-      return undefined;
-    }),
+  // Facade 가 위임하는 sub-service 들 — 통합 관점에서 위임/전파만 검증.
+  const mockCreateService = {
+    initiatePayment: jest.fn(),
+    verifyPayment: jest.fn(),
+    getClassProduct: jest.fn(),
+    calculateFee: jest.fn(),
   };
+  const mockWebhookService = { completePayment: jest.fn() };
+  const mockRefundService = {
+    cancelPayment: jest.fn(),
+    requestRefund: jest.fn(),
+    getRefundLogs: jest.fn(),
+  };
+  const mockReceiptService = {
+    getReceipt: jest.fn(),
+    createReceipt: jest.fn(),
+    getSettlementList: jest.fn(),
+  };
+  const mockTossGateway = { confirm: jest.fn(), getPayment: jest.fn() };
+  const mockCreditDomain = { issueFromPayment: jest.fn() };
+  const mockNotificationsService = {
+    notifyTeamManagers: jest.fn().mockResolvedValue(undefined),
+    notifyUsers: jest.fn().mockResolvedValue(undefined),
+  };
+
+  // 컨트롤러 웹훅 파이프라인(IP·서명 통과 후 위임).
+  const mockWebhookRetryService = {
+    logWebhook: jest.fn().mockResolvedValue("webhook-id"),
+    processWebhook: jest.fn(),
+  };
+  const mockPostpaidSettlementService = {};
+  const mockCalculationService = {};
 
   const mockCryptoService = {
     decryptCredentialsWithAudit: jest.fn(),
@@ -187,30 +225,21 @@ describe("Payment System Integration Tests (7 Scenarios)", () => {
       controllers: [PaymentsController],
       providers: [
         PaymentsService,
-        {
-          provide: PrismaService,
-          useValue: mockPrismaService,
-        },
-        {
-          provide: RedisService,
-          useValue: mockRedisService,
-        },
-        {
-          provide: KgInicisGateway,
-          useValue: mockKgInicisGateway,
-        },
-        {
-          provide: ConfigService,
-          useValue: mockConfigService,
-        },
-        {
-          provide: CryptoService,
-          useValue: mockCryptoService,
-        },
-        {
-          provide: AuthService,
-          useValue: mockAuthService,
-        },
+        { provide: PrismaService, useValue: mockPrismaService },
+        { provide: RedisService, useValue: mockRedisService },
+        { provide: KgInicisGateway, useValue: mockKgInicisGateway },
+        { provide: TossPaymentsGateway, useValue: mockTossGateway },
+        { provide: PaymentCalculationService, useValue: mockCalculationService },
+        { provide: PostpaidSettlementService, useValue: mockPostpaidSettlementService },
+        { provide: WebhookRetryService, useValue: mockWebhookRetryService },
+        { provide: PaymentCreateService, useValue: mockCreateService },
+        { provide: PaymentWebhookService, useValue: mockWebhookService },
+        { provide: PaymentRefundService, useValue: mockRefundService },
+        { provide: PaymentReceiptService, useValue: mockReceiptService },
+        { provide: CreditDomainService, useValue: mockCreditDomain },
+        { provide: NotificationsService, useValue: mockNotificationsService },
+        { provide: CryptoService, useValue: mockCryptoService },
+        { provide: AuthService, useValue: mockAuthService },
       ],
     }).compile();
 
@@ -230,95 +259,57 @@ describe("Payment System Integration Tests (7 Scenarios)", () => {
 
   describe("Scenario 1: 정상적인 결제 흐름 (정상 완료)", () => {
     it("Step 1: 부모 사용자가 수업 상품 조회", async () => {
-      // Arrange
       mockPrismaService.classProduct.findUnique.mockResolvedValue(mockProduct);
 
-      // Act
       const product = await prismaService.classProduct.findUnique({
         where: { id: mockProductId },
       });
 
-      // Assert
       expect(product).toBeDefined();
       expect(product?.price).toBe(240000);
       expect(product?.sessionsPerMonth).toBe(8);
     });
 
-    it("Step 2: 결제 초기화 요청 - 상품ID, 금액 전송 후 KG이니시스 URL 수신", async () => {
-      // Arrange
-      mockPrismaService.classProduct.findUnique.mockResolvedValue(mockProduct);
-      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
-      mockKgInicisGateway.verifyAmount.mockReturnValue(true);
-      mockRedisService.exists.mockResolvedValue(false);
-      mockRedisService.set.mockResolvedValue(undefined);
-      mockPrismaService.payment.create.mockResolvedValue(mockPayment);
-      // createPaymentRequest는 문자열(URL)을 직접 반환합니다
-      mockKgInicisGateway.createPaymentRequest.mockResolvedValue(
-        "https://stdpay.inicis.com/stdpay/INIpayMobile.php?mid=test&oid=ORD-1234",
-      );
+    it("Step 2: 결제 초기화 — Facade 가 PaymentCreateService 로 위임하고 결제 URL 반환", async () => {
+      mockCreateService.initiatePayment.mockResolvedValue(mockInitiateResult);
 
-      // Act
       const result = await service.initiatePayment(
         mockUserId,
         mockProductId,
         mockProduct.price,
       );
 
-      // Assert
       expect(result).toBeDefined();
       expect(result?.orderNumber).toBe(mockOrderNumber);
       expect(result?.amount).toBe(240000);
-      expect(result?.paymentPageUrl).toBeTruthy();
       expect(String(result?.paymentPageUrl)).toContain("inicis.com");
-      expect(mockKgInicisGateway.verifyAmount).toHaveBeenCalledWith(
+      expect(mockCreateService.initiatePayment).toHaveBeenCalledWith(
+        mockUserId,
+        mockProductId,
         mockProduct.price,
-        mockProduct.price,
+        undefined,
       );
     });
 
     it("Step 3: 사용자가 KG이니시스 결제 페이지에서 결제 완료", async () => {
-      // 이것은 외부 시스템이므로, 웹훅 콜백으로 검증됨 (Step 4)
+      // 외부 시스템 — 웹훅 콜백(Step 4)으로 검증됨.
       expect(true).toBe(true);
     });
 
-    it("Step 4: KG이니시스 웹훅 콜백 - 결제 완료 신호 (resultCode=0000)", async () => {
-      // Arrange
-      mockPrismaService.payment.findUnique.mockResolvedValue(mockPayment);
-      mockKgInicisGateway.verifyWebhookSignature.mockReturnValue(true);
-      mockKgInicisGateway.verifyAmount.mockReturnValue(true);
-      // payment.update는 product를 include해야 memberCredit.create 호출됨
-      mockPrismaService.payment.update.mockResolvedValue({
-        ...mockCompletedPayment,
-        product: {
-          id: mockProductId,
-          classId: "class-uuid-001",
-          price: mockProduct.price,
-          sessionsPerMonth: 8,
-          durationDays: 90,
-          productName: mockProduct.productName,
-        },
-      });
-      mockPrismaService.auditLog.create.mockResolvedValue({});
-      mockPrismaService.memberCredit.create.mockResolvedValue({
-        id: "credit-uuid-001",
-        userId: mockUserId,
-        memberId: mockUserId,
-        totalCredits: 8,
-        usedCredits: 0,
-        expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90일
-      });
+    it("Step 4: 웹훅 완료 — Facade 가 PaymentWebhookService 로 위임하고 completed 반환", async () => {
+      mockWebhookService.completePayment.mockResolvedValue(mockCompleteResult);
 
-      // Act
       const result = await service.completePayment(mockWebhookPayload);
 
-      // Assert
       expect(result?.paymentStatus).toBe("completed");
       expect(result?.tid).toBe(mockTid);
-      expect(mockPrismaService.memberCredit.create).toHaveBeenCalled();
+      expect(result?.creditsIssued).toBe(8);
+      expect(mockWebhookService.completePayment).toHaveBeenCalledWith(
+        mockWebhookPayload,
+      );
     });
 
     it("Step 5: 결제 조회 - 상태 및 크레딧 확인", async () => {
-      // Arrange
       mockPrismaService.payment.findUnique.mockResolvedValue(
         mockCompletedPayment,
       );
@@ -328,121 +319,67 @@ describe("Payment System Integration Tests (7 Scenarios)", () => {
         totalCredits: 8,
         usedCredits: 0,
         expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
-      });
+      } as any);
 
-      // Act
       const payment = await prismaService.payment.findUnique({
         where: { id: mockPayment.id },
       });
-      const credit = await prismaService.memberCredit.findUnique({
-        where: { id: "credit-uuid-001" }, // Prisma requires id field
-      });
+      const credit = (await prismaService.memberCredit.findUnique({
+        where: { id: "credit-uuid-001" },
+      })) as any;
 
-      // Assert
       expect(payment?.paymentStatus).toBe("completed");
-      expect(credit?.totalCredits).toBe(8); // 월 2회 수업 × 4주
+      expect(credit?.totalCredits).toBe(8);
     });
   });
 
   // ═══════════════════════════════════════════════════════════════════════════════
-  // Scenario 2: 금액 불일치 탐지
+  // Scenario 2: 금액 불일치 탐지 (PaymentWebhookService 위임 → 예외 전파)
   // ═══════════════════════════════════════════════════════════════════════════════
 
   describe("Scenario 2: 금액 불일치 탐지", () => {
-    it("should throw BadRequestException when webhook amount does not match product price", async () => {
-      // Arrange
-      const mismatchedWebhookPayload = {
-        ...mockWebhookPayload,
-        amount: 230000, // ₩240,000 → ₩230,000 (차이)
-      };
-      mockPrismaService.payment.findUnique.mockResolvedValue(mockPayment);
-      mockKgInicisGateway.verifyWebhookSignature.mockReturnValue(true);
-      mockKgInicisGateway.verifyAmount.mockReturnValue(false); // 금액 검증 실패
+    it("웹훅 금액 불일치 시 BadRequestException 전파", async () => {
+      mockWebhookService.completePayment.mockRejectedValue(
+        new BadRequestException("결제 금액이 일치하지 않습니다."),
+      );
 
-      // Act & Assert
+      const mismatchedWebhookPayload = { ...mockWebhookPayload, amount: 230000 };
+
       await expect(
         service.completePayment(mismatchedWebhookPayload),
       ).rejects.toThrow(BadRequestException);
-
-      expect(mockKgInicisGateway.verifyAmount).toHaveBeenCalledWith(
-        230000,
-        240000,
+      expect(mockWebhookService.completePayment).toHaveBeenCalledWith(
+        mismatchedWebhookPayload,
       );
-    });
-
-    it("should log audit event for amount mismatch attempt", async () => {
-      // Arrange
-      const mismatchedWebhookPayload = {
-        ...mockWebhookPayload,
-        amount: 200000, // 큰 차이
-      };
-      mockPrismaService.payment.findUnique.mockResolvedValue(mockPayment);
-      mockKgInicisGateway.verifyWebhookSignature.mockReturnValue(true);
-      mockKgInicisGateway.verifyAmount.mockReturnValue(false);
-      mockPrismaService.auditLog.create.mockResolvedValue({
-        id: "audit-uuid",
-        userId: mockUserId,
-        action: "payment_amount_mismatch",
-        resource: mockOrderNumber,
-        createdAt: new Date(),
-      });
-
-      // Act & Assert
-      await expect(
-        service.completePayment(mismatchedWebhookPayload),
-      ).rejects.toThrow();
-
-      // 금액 불일치 감지는 감시 로그로 기록되어야 함
-      expect(mockKgInicisGateway.verifyAmount).toHaveBeenCalled();
     });
   });
 
   // ═══════════════════════════════════════════════════════════════════════════════
-  // Scenario 3: 중복 결제 방지 (30초 내 동일 요청)
+  // Scenario 3: 중복 결제 방지 (PaymentCreateService 위임 → 예외 전파)
   // ═══════════════════════════════════════════════════════════════════════════════
 
-  describe("Scenario 3: 중복 결제 방지 (30초 내 동일 요청)", () => {
-    it("should prevent duplicate payment request within 30 seconds", async () => {
-      // Arrange
-      mockPrismaService.classProduct.findUnique.mockResolvedValue(mockProduct);
-      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
-      mockKgInicisGateway.verifyAmount.mockReturnValue(true);
-      mockRedisService.exists.mockResolvedValueOnce(true); // 이미 존재함
-      mockRedisService.get.mockResolvedValue(mockPayment.id);
+  describe("Scenario 3: 중복 결제 방지 (동일 요청)", () => {
+    it("동일 상품 결제 진행 중이면 ConflictException 전파", async () => {
+      mockCreateService.initiatePayment.mockRejectedValue(
+        new ConflictException("이미 처리 중인 결제 요청입니다."),
+      );
 
-      // Act & Assert
       await expect(
         service.initiatePayment(mockUserId, mockProductId, mockProduct.price),
       ).rejects.toThrow(ConflictException);
-
-      // 예상 메시지: "이미 처리 중인 결제 요청입니다"
     });
 
-    it("should set idempotency key in Redis with 30-second TTL", async () => {
-      // Arrange
-      mockPrismaService.classProduct.findUnique.mockResolvedValue(mockProduct);
-      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
-      mockKgInicisGateway.verifyAmount.mockReturnValue(true);
-      mockRedisService.exists.mockResolvedValue(false);
-      mockRedisService.set.mockResolvedValue(undefined);
-      mockPrismaService.payment.create.mockResolvedValue(mockPayment);
-      mockKgInicisGateway.createPaymentRequest.mockResolvedValue({
-        orderNumber: mockOrderNumber,
-        amount: mockProduct.price,
-        paymentPageUrl: "https://stdpay.inicis.com/...",
-      });
+    it("정상 요청은 PaymentCreateService 로 위임되어 결제가 생성된다", async () => {
+      mockCreateService.initiatePayment.mockResolvedValue(mockInitiateResult);
 
-      // Act
-      await service.initiatePayment(
+      const result = await service.initiatePayment(
         mockUserId,
         mockProductId,
         mockProduct.price,
       );
 
-      // Assert
-      // Redis.set은 service 구현에 따라 호출되어야 함
-      expect(mockRedisService.set).toHaveBeenCalled();
-      // TTL 파라미터는 service 구현 스타일에 따라 다름 (기본값으로 테스트)
+      expect(result?.orderNumber).toBe(mockOrderNumber);
+      expect(mockCreateService.initiatePayment).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -451,159 +388,105 @@ describe("Payment System Integration Tests (7 Scenarios)", () => {
   // ═══════════════════════════════════════════════════════════════════════════════
 
   describe("Scenario 4: 웹훅 서명 검증 실패", () => {
-    it("should reject webhook with invalid signature", async () => {
-      // Arrange
+    it("서명 검증 실패 시 BadRequestException 전파 (PaymentWebhookService)", async () => {
+      mockWebhookService.completePayment.mockRejectedValue(
+        new BadRequestException("웹훅 서명이 유효하지 않습니다."),
+      );
+
       const invalidSignaturePayload = {
         ...mockWebhookPayload,
         signature: "invalid-signature-hash",
       };
-      mockKgInicisGateway.verifyWebhookSignature.mockReturnValue(false);
-      mockPrismaService.auditLog.create.mockResolvedValue({});
 
-      // Act & Assert
       await expect(
         service.completePayment(invalidSignaturePayload),
       ).rejects.toThrow(BadRequestException);
-
-      expect(mockKgInicisGateway.verifyWebhookSignature).toHaveBeenCalled();
     });
 
-    it("should log security event for failed signature verification", async () => {
-      // Arrange
-      const invalidSignaturePayload = {
-        ...mockWebhookPayload,
-        signature: "invalid-signature-hash",
-      };
+    it("Controller 2차 게이트: 서명 검증 실패 시 BadRequestException", async () => {
+      mockKgInicisGateway.verifyIpWhitelist.mockReturnValue(true);
       mockKgInicisGateway.verifyWebhookSignature.mockReturnValue(false);
-      mockPrismaService.auditLog.create.mockResolvedValue({
-        id: "audit-uuid",
-        userId: "unknown",
-        action: "webhook_signature_verification_failed",
-        resource: mockOrderNumber,
-        createdAt: new Date(),
-      });
 
-      // Act & Assert
       await expect(
-        service.completePayment(invalidSignaturePayload),
+        controller.completePayment(mockWebhookPayload, "127.0.0.1"),
       ).rejects.toThrow(BadRequestException);
-
-      // 보안 이벤트 로깅 확인
-      expect(mockKgInicisGateway.verifyWebhookSignature).toHaveBeenCalled();
+      expect(mockWebhookRetryService.processWebhook).not.toHaveBeenCalled();
     });
   });
 
   // ═══════════════════════════════════════════════════════════════════════════════
-  // Scenario 5: IP 화이트리스트 검증
+  // Scenario 5: IP 화이트리스트 검증 (Controller 1차 게이트)
   // ═══════════════════════════════════════════════════════════════════════════════
 
   describe("Scenario 5: IP 화이트리스트 검증", () => {
-    it("should accept webhook from whitelisted KG이니시스 IP", async () => {
-      // Arrange
+    it("화이트리스트 IP + 서명 통과 시 웹훅 처리 파이프라인으로 위임", async () => {
       mockKgInicisGateway.verifyIpWhitelist.mockReturnValue(true);
       mockKgInicisGateway.verifyWebhookSignature.mockReturnValue(true);
-      mockPrismaService.payment.findUnique.mockResolvedValue(mockPayment);
-      mockKgInicisGateway.verifyAmount.mockReturnValue(true);
-      mockPrismaService.payment.update.mockResolvedValue(mockCompletedPayment);
-      mockPrismaService.memberCredit.create.mockResolvedValue({});
-      mockPrismaService.auditLog.create.mockResolvedValue({});
-
-      // Act
-      const result = await service.completePayment(mockWebhookPayload);
-
-      // Assert
-      expect(result).toBeDefined();
-      // IP whitelist is typically checked in controller before calling service
-      expect(mockKgInicisGateway.verifyWebhookSignature).toHaveBeenCalled();
-    });
-
-    it("should reject webhook from non-whitelisted IP", async () => {
-      // Arrange
-      mockKgInicisGateway.verifyIpWhitelist.mockReturnValue(false);
-      mockPrismaService.auditLog.create.mockResolvedValue({});
-
-      // Act & Assert
-      await expect(
-        controller.completePayment(mockWebhookPayload, maliciousIp),
-      ).rejects.toThrow(BadRequestException);
-
-      expect(mockKgInicisGateway.verifyIpWhitelist).toHaveBeenCalled();
-    });
-
-    it("should log attempt from unauthorized IP address", async () => {
-      // Arrange
-      mockKgInicisGateway.verifyIpWhitelist.mockReturnValue(false);
-      mockPrismaService.auditLog.create.mockResolvedValue({
-        id: "audit-uuid",
-        userId: "unknown",
-        action: "webhook_unauthorized_ip",
-        resource: maliciousIp,
-        createdAt: new Date(),
+      mockRedisService.setIfNotExists.mockResolvedValue(true);
+      mockWebhookRetryService.logWebhook.mockResolvedValue("webhook-id");
+      mockWebhookRetryService.processWebhook.mockResolvedValue({
+        success: true,
+        result: mockCompleteResult,
       });
 
-      // Act & Assert
+      const result = await controller.completePayment(
+        mockWebhookPayload,
+        "203.238.37.10",
+      );
+
+      expect(result).toBeDefined();
+      expect(mockKgInicisGateway.verifyIpWhitelist).toHaveBeenCalledWith(
+        "203.238.37.10",
+      );
+      expect(mockWebhookRetryService.processWebhook).toHaveBeenCalledTimes(1);
+    });
+
+    it("비허용 IP 웹훅은 BadRequestException 으로 차단", async () => {
+      mockKgInicisGateway.verifyIpWhitelist.mockReturnValue(false);
+
       await expect(
         controller.completePayment(mockWebhookPayload, maliciousIp),
       ).rejects.toThrow(BadRequestException);
+      expect(mockKgInicisGateway.verifyIpWhitelist).toHaveBeenCalledWith(
+        maliciousIp,
+      );
+    });
 
-      // IP 거부 로깅 확인 - 실제 구현에서 controller가 호출할 때 감시
-      expect(mockKgInicisGateway.verifyIpWhitelist).toHaveBeenCalled();
+    it("비허용 IP 차단 시 웹훅 처리로 진입하지 않는다", async () => {
+      mockKgInicisGateway.verifyIpWhitelist.mockReturnValue(false);
+
+      await expect(
+        controller.completePayment(mockWebhookPayload, maliciousIp),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockWebhookRetryService.processWebhook).not.toHaveBeenCalled();
     });
   });
 
   // ═══════════════════════════════════════════════════════════════════════════════
-  // Scenario 6: 멱등성 보장 (동일 웹훅 재전송)
+  // Scenario 6: 멱등성 보장 (이미 처리된 결제 재호출 → ConflictException 전파)
   // ═══════════════════════════════════════════════════════════════════════════════
 
   describe("Scenario 6: 멱등성 보장 (동일 웹훅 재전송)", () => {
-    it("should return existing payment on duplicate webhook completion", async () => {
-      // Arrange - 이미 완료된 결제 상태
-      mockPrismaService.payment.findUnique.mockResolvedValue(
-        mockCompletedPayment,
+    it("이미 처리된 결제 재호출 시 ConflictException 전파", async () => {
+      mockWebhookService.completePayment.mockRejectedValue(
+        new ConflictException("이미 처리된 결제입니다."),
       );
-      mockPrismaService.auditLog.create.mockResolvedValue({});
 
-      // Act & Assert - ConflictException 기대 (서비스: 중복 시도 시 exception throw)
       await expect(service.completePayment(mockWebhookPayload)).rejects.toThrow(
         ConflictException,
       );
-
-      // 이미 완료된 결제에 대한 재처리 방지 확인
-      expect(mockPrismaService.payment.update).not.toHaveBeenCalled();
     });
 
-    it("should not create duplicate credits on idempotent webhook", async () => {
-      // Arrange - 이미 완료된 결제 상태
-      mockPrismaService.payment.findUnique.mockResolvedValue(
-        mockCompletedPayment,
-      );
-      mockPrismaService.auditLog.create.mockResolvedValue({});
-
-      // Act & Assert - ConflictException 기대
-      await expect(service.completePayment(mockWebhookPayload)).rejects.toThrow(
-        ConflictException,
+    it("멱등 예외 전파 시에도 Facade 는 sub-service 로 정확히 위임한다", async () => {
+      mockWebhookService.completePayment.mockRejectedValue(
+        new ConflictException("이미 처리된 결제입니다."),
       );
 
-      // memberCredit.create은 호출되면 안 됨 (이미 완료됨)
-      expect(mockPrismaService.memberCredit.create).not.toHaveBeenCalled();
-    });
-
-    it("should log idempotent webhook processing", async () => {
-      // Arrange - 이미 완료된 결제 상태
-      mockPrismaService.payment.findUnique.mockResolvedValue(
-        mockCompletedPayment,
-      );
-      mockPrismaService.auditLog.create.mockResolvedValue({
-        id: "audit-uuid",
-        userId: mockUserId,
-        action: "webhook_duplicate_detected",
-        resource: mockOrderNumber,
-        createdAt: new Date(),
-      });
-
-      // Act & Assert - ConflictException 기대
-      await expect(service.completePayment(mockWebhookPayload)).rejects.toThrow(
-        ConflictException,
+      await expect(
+        service.completePayment(mockWebhookPayload),
+      ).rejects.toThrow(ConflictException);
+      expect(mockWebhookService.completePayment).toHaveBeenCalledWith(
+        mockWebhookPayload,
       );
     });
   });
@@ -614,7 +497,6 @@ describe("Payment System Integration Tests (7 Scenarios)", () => {
 
   describe("Scenario 7: 암호화된 로그인과 결제 통합 (AES-256-GCM)", () => {
     it("Step 1-2: 클라이언트에서 암호화된 페이로드로 로그인 요청", async () => {
-      // Arrange
       const encryptedPayload = {
         encryptedData: "base64-encrypted-credentials",
         iv: "base64-iv-16-bytes",
@@ -633,21 +515,16 @@ describe("Payment System Integration Tests (7 Scenarios)", () => {
         refreshToken: "jwt-refresh-token",
       });
 
-      // Act
       const decrypted =
         await cryptoService.decryptCredentialsWithAudit(encryptedPayload);
-      const tokens = await mockAuthService.generateTokens(
-        JSON.parse(decrypted),
-      );
+      const tokens = await mockAuthService.generateTokens(JSON.parse(decrypted));
 
-      // Assert
       expect(decrypted).toContain("parent@teamplus.com");
       expect(tokens.accessToken).toBeDefined();
       expect(mockCryptoService.decryptCredentialsWithAudit).toHaveBeenCalled();
     });
 
     it("Step 3-4: 백엔드에서 복호화 및 JWT 토큰 발급", async () => {
-      // Arrange
       const encryptedPayload = {
         encryptedData: "base64-encrypted-credentials",
         iv: "base64-iv-16-bytes",
@@ -660,85 +537,37 @@ describe("Payment System Integration Tests (7 Scenarios)", () => {
           password: "password123",
         }),
       );
-      mockPrismaService.auditLog.create.mockResolvedValue({
-        id: "audit-uuid",
-        userId: mockUserId,
-        action: "credential_decryption_success",
-        resource: "parent@teamplus.com",
-        createdAt: new Date(),
-      });
 
-      // Act
       const result =
         await cryptoService.decryptCredentialsWithAudit(encryptedPayload);
 
-      // Assert
       expect(result).toBeTruthy();
       expect(result).toContain("parent@teamplus.com");
     });
 
-    it("Step 5: JWT로 결제 초기화 요청", async () => {
-      // Arrange
-      mockPrismaService.classProduct.findUnique.mockResolvedValue(mockProduct);
-      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
-      mockKgInicisGateway.verifyAmount.mockReturnValue(true);
-      mockRedisService.exists.mockResolvedValue(false);
-      mockRedisService.set.mockResolvedValue(undefined);
-      mockPrismaService.payment.create.mockResolvedValue(mockPayment);
-      // createPaymentRequest는 문자열(URL)을 직접 반환합니다
-      mockKgInicisGateway.createPaymentRequest.mockResolvedValue(
-        "https://stdpay.inicis.com/stdpay/INIpayMobile.php?mid=test&oid=ORD-1234",
-      );
+    it("Step 5: JWT로 결제 초기화 요청 (Facade 위임)", async () => {
+      mockCreateService.initiatePayment.mockResolvedValue(mockInitiateResult);
 
-      // Act - JWT 토큰으로 인증된 결제 요청
       const result = await service.initiatePayment(
         mockUserId,
         mockProductId,
         mockProduct.price,
       );
 
-      // Assert
       expect(result).toBeDefined();
       expect(String(result?.paymentPageUrl)).toContain("inicis.com");
     });
 
-    it("Step 6: 결제 성공", async () => {
-      // Arrange
-      mockPrismaService.payment.findUnique.mockResolvedValue(mockPayment);
-      mockKgInicisGateway.verifyWebhookSignature.mockReturnValue(true);
-      mockKgInicisGateway.verifyAmount.mockReturnValue(true);
-      // payment.update는 product를 include해야 memberCredit.create 호출됨
-      mockPrismaService.payment.update.mockResolvedValue({
-        ...mockCompletedPayment,
-        product: {
-          id: mockProductId,
-          classId: "class-uuid-001",
-          price: mockProduct.price,
-          sessionsPerMonth: 8,
-          durationDays: 90,
-          productName: mockProduct.productName,
-        },
-      });
-      mockPrismaService.auditLog.create.mockResolvedValue({});
-      mockPrismaService.memberCredit.create.mockResolvedValue({
-        id: "credit-uuid",
-        userId: mockUserId,
-        memberId: mockUserId,
-        totalCredits: 8,
-        usedCredits: 0,
-        expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
-      });
+    it("Step 6: 결제 성공 (Facade 위임)", async () => {
+      mockWebhookService.completePayment.mockResolvedValue(mockCompleteResult);
 
-      // Act
       const result = await service.completePayment(mockWebhookPayload);
 
-      // Assert
       expect(result?.paymentStatus).toBe("completed");
-      expect(mockPrismaService.memberCredit.create).toHaveBeenCalled();
+      expect(result?.creditsIssued).toBe(8);
     });
 
     it("should log full audit trail for encryption/decryption operations", async () => {
-      // Arrange
       const encryptedPayload = {
         encryptedData: "base64-encrypted",
         iv: "base64-iv",
@@ -749,11 +578,9 @@ describe("Payment System Integration Tests (7 Scenarios)", () => {
         JSON.stringify({ email: "parent@teamplus.com", password: "pass" }),
       );
 
-      // Act
       const result =
         await cryptoService.decryptCredentialsWithAudit(encryptedPayload);
 
-      // Assert - 복호화 결과 확인
       expect(result).toBeTruthy();
       expect(
         mockCryptoService.decryptCredentialsWithAudit,
@@ -762,203 +589,124 @@ describe("Payment System Integration Tests (7 Scenarios)", () => {
   });
 
   // ═══════════════════════════════════════════════════════════════════════════════
-  // 보안 검증 체크리스트
+  // 보안 검증 체크리스트 (경계 위임 관점)
   // ═══════════════════════════════════════════════════════════════════════════════
 
   describe("Security Validation Checklist", () => {
-    it("✓ 서버사이드 금액 검증 - 클라이언트 금액 신뢰 금지", () => {
+    it("✓ 서버사이드 금액 검증 - KG 게이트웨이 제공", () => {
       expect(mockKgInicisGateway.verifyAmount).toBeDefined();
     });
 
-    it("✓ 웹훅 서명 검증 - KG이니시스", () => {
+    it("✓ 웹훅 서명 검증 - KG 게이트웨이 제공", () => {
       expect(mockKgInicisGateway.verifyWebhookSignature).toBeDefined();
     });
 
-    it("✓ IP 화이트리스트 - KG이니시스 서버만 허용", () => {
+    it("✓ IP 화이트리스트 - Controller 1차 게이트", () => {
       expect(mockKgInicisGateway.verifyIpWhitelist).toBeDefined();
     });
 
-    it("✓ 중복 결제 방지 - Redis idempotency", () => {
-      expect(mockRedisService.set).toBeDefined();
-      expect(mockRedisService.exists).toBeDefined();
+    it("✓ 결제 생성/웹훅 위임 - sub-service 존재", () => {
+      expect(mockCreateService.initiatePayment).toBeDefined();
+      expect(mockWebhookService.completePayment).toBeDefined();
     });
 
-    it("✓ 멱등성 보장 - 동일 요청 재처리 방지", () => {
-      expect(mockPrismaService.payment.findUnique).toBeDefined();
-    });
-
-    it("✓ 암호화된 로그인 - 클라이언트 AES-256-GCM", () => {
+    it("✓ 암호화된 로그인 - CryptoService 제공", () => {
       expect(mockCryptoService.decryptCredentialsWithAudit).toBeDefined();
     });
 
-    it("✓ 감사 로그 - 모든 복호화 작업 기록", () => {
+    it("✓ 감사 로그 - auditLog.create 제공", () => {
       expect(mockPrismaService.auditLog.create).toBeDefined();
     });
 
-    it("✓ 에러 메시지 - 민감한 정보 노출 금지", () => {
-      // 실제 구현에서 에러 메시지는 민감한 정보를 노출하지 않음
-      expect(true).toBe(true);
-    });
-
-    it("✓ JWT 인증 - 결제 초기화", () => {
+    it("✓ JWT 인증 - AuthService 제공", () => {
       expect(mockAuthService.generateTokens).toBeDefined();
     });
 
-    it("✓ RBAC - PARENT 역할만 결제 가능", () => {
+    it("✓ RBAC - PARENT 역할만 결제 가능 (테스트 데이터)", () => {
       expect(mockUser.userType).toBe("parent");
     });
   });
 
   // ═══════════════════════════════════════════════════════════════════════════════
-  // 성능 테스트
+  // 성능 (위임 오버헤드)
   // ═══════════════════════════════════════════════════════════════════════════════
 
   describe("Performance Targets", () => {
-    it("결제 초기화: <200ms", async () => {
-      // Arrange
-      mockPrismaService.classProduct.findUnique.mockResolvedValue(mockProduct);
-      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
-      mockKgInicisGateway.verifyAmount.mockReturnValue(true);
-      mockRedisService.exists.mockResolvedValue(false);
-      mockPrismaService.payment.create.mockResolvedValue(mockPayment);
-      mockKgInicisGateway.createPaymentRequest.mockResolvedValue({
-        orderNumber: mockOrderNumber,
-        amount: mockProduct.price,
-        paymentPageUrl: "https://stdpay.inicis.com/...",
-      });
+    it("결제 초기화 위임: <200ms", async () => {
+      mockCreateService.initiatePayment.mockResolvedValue(mockInitiateResult);
 
-      // Act
       const startTime = Date.now();
-      await service.initiatePayment(
-        mockUserId,
-        mockProductId,
-        mockProduct.price,
-      );
+      await service.initiatePayment(mockUserId, mockProductId, mockProduct.price);
       const duration = Date.now() - startTime;
 
-      // Assert
       expect(duration).toBeLessThan(200);
     });
 
-    it("웹훅 처리: <500ms (크레딧 발급 포함)", async () => {
-      // Arrange
-      mockPrismaService.payment.findUnique.mockResolvedValue(mockPayment);
-      mockKgInicisGateway.verifyWebhookSignature.mockReturnValue(true);
-      mockKgInicisGateway.verifyAmount.mockReturnValue(true);
-      mockPrismaService.payment.update.mockResolvedValue(mockCompletedPayment);
-      mockPrismaService.memberCredit.create.mockResolvedValue({});
+    it("웹훅 처리 위임: <500ms", async () => {
+      mockWebhookService.completePayment.mockResolvedValue(mockCompleteResult);
 
-      // Act
       const startTime = Date.now();
       await service.completePayment(mockWebhookPayload);
       const duration = Date.now() - startTime;
 
-      // Assert
       expect(duration).toBeLessThan(500);
-    });
-
-    it("금액 검증: <50ms", () => {
-      // Act
-      const startTime = Date.now();
-      mockKgInicisGateway.verifyAmount(240000, 240000);
-      const duration = Date.now() - startTime;
-
-      // Assert
-      expect(duration).toBeLessThan(50);
-    });
-
-    it("서명 검증: <100ms", () => {
-      // Act
-      const startTime = Date.now();
-      mockKgInicisGateway.verifyWebhookSignature(mockWebhookPayload);
-      const duration = Date.now() - startTime;
-
-      // Assert
-      expect(duration).toBeLessThan(100);
-    });
-
-    it("복호화: <100ms", async () => {
-      // Act
-      const encryptedPayload = {
-        encryptedData: "base64-encrypted",
-        iv: "base64-iv",
-        authTag: "base64-tag",
-      };
-
-      mockCryptoService.decryptCredentialsWithAudit.mockResolvedValue(
-        JSON.stringify({ email: "parent@teamplus.com", password: "pass" }),
-      );
-
-      const startTime = Date.now();
-      await cryptoService.decryptCredentialsWithAudit(encryptedPayload);
-      const duration = Date.now() - startTime;
-
-      // Assert
-      expect(duration).toBeLessThan(100);
     });
   });
 
   // ═══════════════════════════════════════════════════════════════════════════════
-  // 에러 처리 테스트
+  // 에러 처리 (위임 예외 전파)
   // ═══════════════════════════════════════════════════════════════════════════════
 
   describe("Error Handling Tests", () => {
-    it("NotFoundException - 잘못된 상품ID", async () => {
-      // Arrange
-      mockPrismaService.classProduct.findUnique.mockResolvedValue(null);
+    it("NotFoundException - 잘못된 상품ID (PaymentCreateService 전파)", async () => {
+      mockCreateService.initiatePayment.mockRejectedValue(
+        new NotFoundException("상품을 찾을 수 없습니다."),
+      );
 
-      // Act & Assert
       await expect(
         service.initiatePayment(mockUserId, "invalid-product-id", 240000),
       ).rejects.toThrow(NotFoundException);
     });
 
-    it("BadRequestException - 잘못된 금액", async () => {
-      // Arrange
-      mockPrismaService.classProduct.findUnique.mockResolvedValue(mockProduct);
-      mockKgInicisGateway.verifyAmount.mockReturnValue(false);
+    it("BadRequestException - 잘못된 금액 (PaymentCreateService 전파)", async () => {
+      mockCreateService.initiatePayment.mockRejectedValue(
+        new BadRequestException("결제 금액이 상품 가격과 일치하지 않습니다."),
+      );
 
-      // Act & Assert
       await expect(
         service.initiatePayment(mockUserId, mockProductId, 999999),
       ).rejects.toThrow(BadRequestException);
     });
 
-    it("BadRequestException - 서명 검증 실패", async () => {
-      // Arrange
-      mockKgInicisGateway.verifyWebhookSignature.mockReturnValue(false);
+    it("BadRequestException - 서명 검증 실패 (PaymentWebhookService 전파)", async () => {
+      mockWebhookService.completePayment.mockRejectedValue(
+        new BadRequestException("웹훅 서명이 유효하지 않습니다."),
+      );
 
-      // Act & Assert
       await expect(service.completePayment(mockWebhookPayload)).rejects.toThrow(
         BadRequestException,
       );
     });
 
-    it("BadRequestException - IP 미승인", async () => {
-      // Arrange
+    it("BadRequestException - IP 미승인 (Controller 1차 게이트)", async () => {
       mockKgInicisGateway.verifyIpWhitelist.mockReturnValue(false);
 
-      // Act & Assert
       await expect(
         controller.completePayment(mockWebhookPayload, maliciousIp),
       ).rejects.toThrow(BadRequestException);
     });
 
-    it("ConflictException - 멱등성 위반 (이미 처리됨)", async () => {
-      // Arrange
-      mockPrismaService.payment.findUnique.mockResolvedValue(
-        mockCompletedPayment,
+    it("ConflictException - 멱등성 위반 (PaymentWebhookService 전파)", async () => {
+      mockWebhookService.completePayment.mockRejectedValue(
+        new ConflictException("이미 처리된 결제입니다."),
       );
 
-      // Act & Assert
-      // 이미 완료된 결제의 중복 완료 요청
       await expect(service.completePayment(mockWebhookPayload)).rejects.toThrow(
         ConflictException,
       );
     });
 
     it('Error - 복호화 실패 ("Decryption failed")', async () => {
-      // Arrange
       const invalidPayload = {
         encryptedData: "invalid-base64-encrypted",
         iv: "invalid-base64-iv",
@@ -969,15 +717,9 @@ describe("Payment System Integration Tests (7 Scenarios)", () => {
         new Error("Decryption failed"),
       );
 
-      // Act & Assert
       await expect(
         cryptoService.decryptCredentialsWithAudit(invalidPayload),
       ).rejects.toThrow("Decryption failed");
-    });
-
-    it("Error - 환경 변수 미설정 (CRYPTO_SECRET_KEY)", () => {
-      // 이것은 애플리케이션 시작 시 확인되어야 함
-      expect(process.env.CRYPTO_SECRET_KEY || "not-set").toBeTruthy();
     });
   });
 });

@@ -43,6 +43,29 @@ export interface RefundDto {
   refundReason: string;
 }
 
+/**
+ * 승인 후처리(applyApprovedPayment) 입력 — confirm/mock 이 동일 select 로 조회하는 Payment 형태.
+ */
+type ConfirmPaymentRow = import("@prisma/client").Prisma.PaymentGetPayload<{
+  select: {
+    id: true;
+    userId: true;
+    amount: true;
+    paymentStatus: true;
+    productId: true;
+    product: {
+      select: {
+        classId: true;
+        durationDays: true;
+        sessionsPerMonth: true;
+        feeType: true;
+        billingTiming: true;
+        billingMonth: true;
+      };
+    };
+  };
+}>;
+
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
@@ -167,127 +190,13 @@ export class PaymentsService {
         );
       }
 
-      // 4) DB 갱신 — Payment 완료 + Enrollment paid + ClassRegistration active
-      await this.prisma.$transaction(async (tx) => {
-        await tx.payment.update({
-          where: { id: payment.id },
-          data: {
-            paymentStatus: "completed",
-            tid: paymentKey,
-            // [수정 2026-05-14] paymentMethod 는 PG 판별용 'toss' 로 유지 — cancel 시
-            //   isTossPayment() 가 true 로 분기되어 KG 404 에러를 회피한다.
-            //   토스 응답의 method detail(card/간편결제 등) 은 별도 컬럼이 필요해지면 분리 도입.
-            paymentMethod: "toss",
-            completedAt: new Date(tossResult.approvedAt ?? new Date()),
-          },
-        });
-        // [Phase B-5-4] POSTPAID 후불 청구 라인 paid 처리 (해당 결제가 후불 청구면 — 아니면 no-op).
-        await tx.monthlyPostpaidBillingLine.updateMany({
-          where: { paymentId: payment.id },
-          data: { paymentStatus: "paid" },
-        });
-        // Payment 와 연결된 enrollment 모두 paid 처리
-        const enrollments = await tx.enrollment.findMany({
-          where: { paymentId: payment.id },
-          select: { id: true, classId: true, childId: true },
-        });
-        for (const e of enrollments) {
-          await tx.enrollment.update({
-            where: { id: e.id },
-            data: {
-              status: "paid",
-              paidAt: new Date(tossResult.approvedAt ?? new Date()),
-            },
-          });
-          // ClassRegistration active 보장 (코치가 미리 inactive 로 둔 경우 active 로 복구)
-          await tx.classRegistration.upsert({
-            where: {
-              classId_userId: { classId: e.classId, userId: e.childId },
-            },
-            update: { status: "active" },
-            create: {
-              classId: e.classId,
-              userId: e.childId,
-              status: "active",
-            },
-          });
-        }
-
-        // PR-D 후속 (v0.8): MemberCredit 발급 — 토스 confirm 흐름 버그 수정
-        //   - KG이니시스 webhook (payment-webhook.service.ts) 의 발급 로직과 정합
-        //   - product 정보 (sessionsPerMonth/durationDays/classId) 가 있을 때만 발급
-        //   - 발급 대상자: 첫 enrollment.childId 우선, 없으면 payment.userId (결제자 본인)
-        //   - 토스 응답의 approvedAt 을 기준으로 expiresAt 계산
-        // [B4 정합] 후불 상품(billingTiming=POSTPAID)은 크레딧 미발급 — 출석 횟수 × feePerSession
-        //   으로 월말 정산. BOTH 수업의 후불 선택분이 토스 confirm 으로 오발급되지 않도록 차단.
-        const isPostpaidProduct =
-          payment.product?.billingTiming === "POSTPAID";
-
-        if (
-          payment.product &&
-          payment.product.sessionsPerMonth > 0 &&
-          !isPostpaidProduct
-        ) {
-          // [B7] 선불 정액(MONTHLY_FIXED) 수업권 만료 = 결제한 그 달 말일 23:59:59 (약관 §13).
-          //   그 외 feeType 은 기존 정책 — durationDays + 미사용 회차 사용 30일.
-          const MEMBER_CREDIT_EXTRA_USABLE_DAYS = 30;
-          const approvedAt = new Date(tossResult.approvedAt ?? new Date());
-          // [Lifecycle v4.1 §9.5] 월별 패키지(billingMonth 有)는 귀속월 창(1일 KST~말일),
-          //   무월 레거시는 현행 폴백(결제일 달 말일·startsAt null — §9.2 점진 전환).
-          const passWindow =
-            payment.product.feeType === "MONTHLY_FIXED" &&
-            payment.product.billingMonth
-              ? monthlyPassWindow(payment.product.billingMonth)
-              : null;
-          const startsAt = passWindow?.startsAt ?? null;
-          const expiresAt =
-            passWindow?.expiresAt ??
-            (payment.product.feeType === "MONTHLY_FIXED"
-              ? endOfMonthKst(approvedAt)
-              : (() => {
-                  const durationDays = payment.product.durationDays ?? 28;
-                  const e = new Date(approvedAt);
-                  e.setDate(
-                    e.getDate() + durationDays + MEMBER_CREDIT_EXTRA_USABLE_DAYS,
-                  );
-                  e.setHours(23, 59, 59, 999);
-                  return e;
-                })());
-
-          const targetUserId = enrollments[0]?.childId ?? payment.userId;
-
-          await this.creditDomain.issueFromPayment(tx, {
-            paymentId: payment.id,
-            userId: targetUserId,
-            classId: payment.product.classId,
-            sessions: payment.product.sessionsPerMonth,
-            startsAt,
-            expiresAt,
-            sourceLabel: `토스 결제 완료 - 수업권 발급 (주문번호: ${orderId})`,
-          });
-
-          this.logger.log(
-            `토스 결제 수업권 발급 완료: targetUserId=${targetUserId}, classId=${payment.product.classId}, sessions=${payment.product.sessionsPerMonth}, expiresAt=${expiresAt.toISOString()}`,
-          );
-        } else if (payment.productId) {
-          // product 가 있지만 sessionsPerMonth=0 — 대회 참가비 등 (정상)
-          this.logger.log(
-            `토스 결제 수업권 발급 skip: productId=${payment.productId} sessionsPerMonth=0 또는 product 없음 (대회 참가비 등)`,
-          );
-        }
-        // [추가 2026-05-15] Payment 와 연결된 TournamentRegistration 모두 PAID 처리.
-        //  · 대회 참가 결제 흐름: /tournaments/:id/payment/initiate → 토스 위젯 → confirm.
-        //  · 결제 완료 시 학부모 자녀 캘린더에 대회가 자동 노출되도록 PAID 갱신.
-        const tRegs = await tx.tournamentRegistration.findMany({
-          where: { paymentId: payment.id },
-          select: { id: true },
-        });
-        for (const r of tRegs) {
-          await tx.tournamentRegistration.update({
-            where: { id: r.id },
-            data: { paymentStatus: "PAID" },
-          });
-        }
+      // 4) DB 갱신 — Payment 완료 + Enrollment paid + ClassRegistration active + MemberCredit 발급.
+      //    실결제·mock 공용 후처리(applyApprovedPayment)로 위임 — 토스 승인만 confirm 고유.
+      await this.applyApprovedPayment(payment, {
+        paymentMethod: "toss",
+        tid: paymentKey,
+        approvedAt: new Date(tossResult.approvedAt ?? new Date()),
+        orderId,
       });
 
       // [2026-06-19 사용자 직접 지시] 결제 완료 → 팀 감독/코치에게 결제 알림 (수업/대회).
@@ -326,6 +235,251 @@ export class PaymentsService {
       };
     } catch (e) {
       // 승인 실패 시 락 해제 — 사용자 재시도 가능
+      await this.redisService.del(lockKey);
+      throw e;
+    }
+  }
+
+  /**
+   * 결제 승인 후처리 — Payment 완료 + 후불 라인 paid + Enrollment paid +
+   *   ClassRegistration active + MemberCredit 발급 + TournamentRegistration PAID.
+   *  실결제(토스 confirm)와 mock 결제가 공유하는 유일한 후처리 경로다. PG 승인 단계만
+   *  호출부 고유이며, 크레딧 정책 분기(B4 후불 미발급·B7 월말 만료·billingMonth 귀속월 창)는
+   *  이 메서드에 단일 존재하여 두 경로에 자동 상속된다(복사본 없음).
+   */
+  private async applyApprovedPayment(
+    payment: ConfirmPaymentRow,
+    opts: {
+      paymentMethod: string;
+      tid: string;
+      approvedAt: Date;
+      orderId: string;
+    },
+  ): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.payment.update({
+        where: { id: payment.id },
+        data: {
+          paymentStatus: "completed",
+          tid: opts.tid,
+          // [수정 2026-05-14] paymentMethod 는 PG 판별용 'toss' 로 유지 — cancel 시
+          //   isTossPayment() 가 true 로 분기되어 KG 404 에러를 회피한다.
+          //   토스 응답의 method detail(card/간편결제 등) 은 별도 컬럼이 필요해지면 분리 도입.
+          paymentMethod: opts.paymentMethod,
+          completedAt: opts.approvedAt,
+        },
+      });
+      // [Phase B-5-4] POSTPAID 후불 청구 라인 paid 처리 (해당 결제가 후불 청구면 — 아니면 no-op).
+      await tx.monthlyPostpaidBillingLine.updateMany({
+        where: { paymentId: payment.id },
+        data: { paymentStatus: "paid" },
+      });
+      // Payment 와 연결된 enrollment 모두 paid 처리
+      const enrollments = await tx.enrollment.findMany({
+        where: { paymentId: payment.id },
+        select: { id: true, classId: true, childId: true },
+      });
+      for (const e of enrollments) {
+        await tx.enrollment.update({
+          where: { id: e.id },
+          data: {
+            status: "paid",
+            paidAt: opts.approvedAt,
+          },
+        });
+        // ClassRegistration active 보장 (코치가 미리 inactive 로 둔 경우 active 로 복구)
+        await tx.classRegistration.upsert({
+          where: {
+            classId_userId: { classId: e.classId, userId: e.childId },
+          },
+          update: { status: "active" },
+          create: {
+            classId: e.classId,
+            userId: e.childId,
+            status: "active",
+          },
+        });
+      }
+
+      // PR-D 후속 (v0.8): MemberCredit 발급 — 토스 confirm 흐름 버그 수정
+      //   - KG이니시스 webhook (payment-webhook.service.ts) 의 발급 로직과 정합
+      //   - product 정보 (sessionsPerMonth/durationDays/classId) 가 있을 때만 발급
+      //   - 발급 대상자: 첫 enrollment.childId 우선, 없으면 payment.userId (결제자 본인)
+      //   - 토스 응답의 approvedAt 을 기준으로 expiresAt 계산
+      // [B4 정합] 후불 상품(billingTiming=POSTPAID)은 크레딧 미발급 — 출석 횟수 × feePerSession
+      //   으로 월말 정산. BOTH 수업의 후불 선택분이 토스 confirm 으로 오발급되지 않도록 차단.
+      const isPostpaidProduct = payment.product?.billingTiming === "POSTPAID";
+
+      if (
+        payment.product &&
+        payment.product.sessionsPerMonth > 0 &&
+        !isPostpaidProduct
+      ) {
+        // [B7] 선불 정액(MONTHLY_FIXED) 수업권 만료 = 결제한 그 달 말일 23:59:59 (약관 §13).
+        //   그 외 feeType 은 기존 정책 — durationDays + 미사용 회차 사용 30일.
+        const MEMBER_CREDIT_EXTRA_USABLE_DAYS = 30;
+        const approvedAt = opts.approvedAt;
+        // [Lifecycle v4.1 §9.5] 월별 패키지(billingMonth 有)는 귀속월 창(1일 KST~말일),
+        //   무월 레거시는 현행 폴백(결제일 달 말일·startsAt null — §9.2 점진 전환).
+        const passWindow =
+          payment.product.feeType === "MONTHLY_FIXED" &&
+          payment.product.billingMonth
+            ? monthlyPassWindow(payment.product.billingMonth)
+            : null;
+        const startsAt = passWindow?.startsAt ?? null;
+        const expiresAt =
+          passWindow?.expiresAt ??
+          (payment.product.feeType === "MONTHLY_FIXED"
+            ? endOfMonthKst(approvedAt)
+            : (() => {
+                const durationDays = payment.product.durationDays ?? 28;
+                const e = new Date(approvedAt);
+                e.setDate(
+                  e.getDate() + durationDays + MEMBER_CREDIT_EXTRA_USABLE_DAYS,
+                );
+                e.setHours(23, 59, 59, 999);
+                return e;
+              })());
+
+        const targetUserId = enrollments[0]?.childId ?? payment.userId;
+
+        await this.creditDomain.issueFromPayment(tx, {
+          paymentId: payment.id,
+          userId: targetUserId,
+          classId: payment.product.classId,
+          sessions: payment.product.sessionsPerMonth,
+          startsAt,
+          expiresAt,
+          sourceLabel: `토스 결제 완료 - 수업권 발급 (주문번호: ${opts.orderId})`,
+        });
+
+        this.logger.log(
+          `토스 결제 수업권 발급 완료: targetUserId=${targetUserId}, classId=${payment.product.classId}, sessions=${payment.product.sessionsPerMonth}, expiresAt=${expiresAt.toISOString()}`,
+        );
+      } else if (payment.productId) {
+        // product 가 있지만 sessionsPerMonth=0 — 대회 참가비 등 (정상)
+        this.logger.log(
+          `토스 결제 수업권 발급 skip: productId=${payment.productId} sessionsPerMonth=0 또는 product 없음 (대회 참가비 등)`,
+        );
+      }
+      // [추가 2026-05-15] Payment 와 연결된 TournamentRegistration 모두 PAID 처리.
+      //  · 대회 참가 결제 흐름: /tournaments/:id/payment/initiate → 토스 위젯 → confirm.
+      //  · 결제 완료 시 학부모 자녀 캘린더에 대회가 자동 노출되도록 PAID 갱신.
+      const tRegs = await tx.tournamentRegistration.findMany({
+        where: { paymentId: payment.id },
+        select: { id: true },
+      });
+      for (const r of tRegs) {
+        await tx.tournamentRegistration.update({
+          where: { id: r.id },
+          data: { paymentStatus: "PAID" },
+        });
+      }
+    });
+  }
+
+  /**
+   * [DEV 전용] 토스 승인 API 를 건너뛴 테스트 결제 완료 처리.
+   *  결제창에 테스터의 실카드/실계좌가 노출되지 않도록 토스 위젯 없이 결제를 완료한다.
+   *  검증·멱등 락·후처리(applyApprovedPayment)는 confirmTossPayment 와 완전히 동일하며,
+   *  토스 승인 단계만 생략한다. 운영(NODE_ENV=production)에서는 ForbiddenException.
+   */
+  async mockConfirmPayment(userId: string, orderId: string) {
+    if (process.env.NODE_ENV === "production") {
+      throw new ForbiddenException("개발 환경 전용 기능입니다.");
+    }
+    if (!orderId) {
+      throw new BadRequestException("orderId 값이 유효하지 않습니다.");
+    }
+
+    // 1) Payment row 조회 — confirm 과 동일 select (공용 후처리 입력 형태 일치).
+    const payment = await this.prisma.payment.findUnique({
+      where: { orderNumber: orderId },
+      select: {
+        id: true,
+        userId: true,
+        amount: true,
+        paymentStatus: true,
+        productId: true,
+        product: {
+          select: {
+            classId: true,
+            durationDays: true,
+            sessionsPerMonth: true,
+            feeType: true,
+            billingTiming: true,
+            billingMonth: true,
+          },
+        },
+      },
+    });
+    if (!payment) {
+      throw new NotFoundException("주문 정보를 찾을 수 없습니다.");
+    }
+    if (payment.userId !== userId) {
+      throw new ForbiddenException("본인 결제만 승인할 수 있습니다.");
+    }
+    if (payment.paymentStatus === "completed") {
+      this.logger.log(
+        `mock confirm 멱등 응답 — orderId=${orderId} already completed`,
+      );
+      return { success: true, paymentId: payment.id, idempotent: true };
+    }
+    if (payment.paymentStatus === "cancelled") {
+      throw new BadRequestException(
+        "취소된 결제 요청입니다. 최신 결제 요청을 확인해주세요.",
+      );
+    }
+
+    // 2) 멱등성 락 — 실결제와 동일 키(toss:confirm:{orderId})로 실결제·mock 동시 승인 방지.
+    const lockKey = `toss:confirm:${orderId}`;
+    const lockTtl = 86400;
+    const acquired = await this.redisService.setIfNotExists(
+      lockKey,
+      "1",
+      lockTtl,
+    );
+    if (!acquired) {
+      this.logger.warn(`mock confirm 동시 호출 차단: orderId=${orderId}`);
+      throw new BadRequestException(
+        "결제 승인이 이미 진행 중입니다. 잠시 후 다시 시도해주세요.",
+      );
+    }
+
+    try {
+      // 3) 토스 승인 없이 공용 후처리 호출 — 금액은 DB payment.amount 신뢰(클라이언트 금액 미수신).
+      const approvedAt = new Date();
+      await this.applyApprovedPayment(payment, {
+        paymentMethod: "mock",
+        tid: `MOCK-${Date.now()}`,
+        approvedAt,
+        orderId,
+      });
+
+      // 실결제와 동일하게 감독/코치 결제 알림 (best-effort — 실패해도 승인 흐름 유지).
+      void this.notifyManagersOfCompletedPayment(
+        payment.id,
+        Number(payment.amount),
+      ).catch((err) =>
+        this.logger.warn(
+          `결제 완료 감독/코치 알림 실패: paymentId=${payment.id} ${(err as Error).message}`,
+        ),
+      );
+
+      this.logger.log(
+        `mock 결제 승인 완료: orderId=${orderId} amount=${payment.amount}`,
+      );
+      return {
+        success: true,
+        paymentId: payment.id,
+        orderId,
+        amount: payment.amount,
+        method: "mock",
+        receiptUrl: null,
+        approvedAt: approvedAt.toISOString(),
+      };
+    } catch (e) {
+      // 후처리 실패 시 락 해제 — 사용자 재시도 가능
       await this.redisService.del(lockKey);
       throw e;
     }

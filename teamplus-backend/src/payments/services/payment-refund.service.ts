@@ -176,8 +176,13 @@ export class PaymentRefundService {
       );
     }
 
-    // PG 분기: 토스 / KG이니시스
-    if (isTossPayment(payment)) {
+    // PG 분기: mock(DEV) / 토스 / KG이니시스
+    if ((payment.paymentMethod || "").toLowerCase() === "mock") {
+      // [DEV] mock 결제는 실제 PG 승인이 없으므로 취소 시 PG 호출을 건너뛰고
+      //   아래 DB 취소/복원 트랜잭션만 진행한다. 기존 mockPay(MOCK- orderNumber,
+      //   amount 0) 결제도 이 분기로 통과한다.
+      this.logger.log(`mock 결제 취소 — PG 호출 생략: paymentId=${paymentId}`);
+    } else if (isTossPayment(payment)) {
       // 토스는 paymentKey(=Payment.tid) 와 reason 만 필요. cancelAmount 미지정 시 전액 취소.
       const isFullCancel = finalCancelAmount === Number(payment.amount);
       const tossRes = await this.tossPaymentsGateway.cancel({

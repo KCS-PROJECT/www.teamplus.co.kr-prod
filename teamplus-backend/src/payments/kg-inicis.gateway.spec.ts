@@ -121,7 +121,9 @@ describe("KgInicisGateway", () => {
 
       expect(paymentUrl).toContain("oid=ORD-2026-002");
       expect(paymentUrl).toContain("price=100000");
-      expect(paymentUrl).toContain("paymethod=card");
+      // getKgPaymethod("card") → KG 공식 값 "Card" (payment-method.constant.ts).
+      //   UI 코드 "card" 는 KG paymethod 파라미터로 대문자 "Card" 로 변환된다.
+      expect(paymentUrl).toContain("paymethod=Card");
     });
 
     it("should support quota parameter for installments", async () => {
@@ -480,11 +482,20 @@ describe("KgInicisGateway", () => {
 
       const prodGateway = module.get<KgInicisGateway>(KgInicisGateway);
 
-      const blockedResult = prodGateway.verifyIpWhitelist("192.168.1.100");
-      expect(blockedResult).toBe(false);
+      // [현행 구현] 화이트리스트 검증 활성화 조건은 config.inicis.mode 가 아니라
+      //   process.env.NODE_ENV ∈ {production, staging} 이다(kg-inicis.gateway.ts:464).
+      //   운영 분기를 실제로 태우려면 NODE_ENV 를 production 으로 설정 후 복원한다.
+      const originalNodeEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = "production";
+      try {
+        const blockedResult = prodGateway.verifyIpWhitelist("192.168.1.100");
+        expect(blockedResult).toBe(false);
 
-      const allowedResult = prodGateway.verifyIpWhitelist("203.238.37.0/24");
-      expect(allowedResult).toBe(true);
+        const allowedResult = prodGateway.verifyIpWhitelist("203.238.37.0/24");
+        expect(allowedResult).toBe(true);
+      } finally {
+        process.env.NODE_ENV = originalNodeEnv;
+      }
     });
 
     it("should allow all IPs when whitelist is empty", async () => {

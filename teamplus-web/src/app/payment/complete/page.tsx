@@ -296,6 +296,23 @@ function PaymentCompleteContent() {
       void confirmToss();
       return;
     }
+    // ── mock 분기(DEV 전용): provider=mock + orderId → 토스 승인 없이 백엔드가 완료 처리한 뒤
+    //    verify 로 영수증/결제권만 조회 (confirm 호출 없음).
+    if (provider === 'mock' && tossOrderId) {
+      if (confirmCalledRef.current) return; // strict mode 더블 마운트 방지
+      confirmCalledRef.current = true;
+      const loadMock = async () => {
+        const detail = await verifyPaymentCompletion({ orderNumber: tossOrderId });
+        if (detail.success && detail.data) {
+          setReceipt(detail.data.receipt);
+          setCreditsIssued(detail.data.creditsIssued);
+        } else {
+          setConfirmError(detail.error?.message ?? MESSAGES.payment2.confirmFailed);
+        }
+      };
+      void loadMock();
+      return;
+    }
     // ── 기존 KG이니시스 분기
     if (!orderNumber) return;
     const load = async () => {

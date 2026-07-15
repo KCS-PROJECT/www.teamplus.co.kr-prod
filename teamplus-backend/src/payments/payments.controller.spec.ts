@@ -2,6 +2,11 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { PaymentsController } from "./payments.controller";
 import { PaymentsService } from "./payments.service";
 import { KgInicisGateway } from "./kg-inicis.gateway";
+import { TossPaymentsGateway } from "./toss-payments.gateway";
+import { PaymentCalculationService } from "./payment-calculation.service";
+import { PostpaidSettlementService } from "./postpaid-settlement.service";
+import { WebhookRetryService } from "./webhook-retry.service";
+import { RedisService } from "@/redis/redis.service";
 import {
   BadRequestException,
   NotFoundException,
@@ -73,6 +78,23 @@ describe("PaymentsController", () => {
     verifyWebhookSignature: jest.fn(),
   };
 
+  // 웹훅 컨트롤러는 IP·서명 검증 통과 후 orderNumber 멱등 락(setIfNotExists) →
+  //   webhookRetryService.logWebhook/processWebhook 로 위임한다(직접 completePayment 미호출).
+  const mockRedisService = {
+    setIfNotExists: jest.fn().mockResolvedValue(true),
+    del: jest.fn().mockResolvedValue(undefined),
+  };
+
+  const mockWebhookRetryService = {
+    logWebhook: jest.fn(),
+    processWebhook: jest.fn(),
+  };
+
+  // 컨트롤러 생성자 DI 그래프 유지용 — 테스트 대상 엔드포인트에서 직접 사용하지 않음.
+  const mockTossGateway = {};
+  const mockCalculationService = {};
+  const mockPostpaidSettlementService = {};
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [PaymentsController],
@@ -82,8 +104,28 @@ describe("PaymentsController", () => {
           useValue: mockPaymentsService,
         },
         {
+          provide: WebhookRetryService,
+          useValue: mockWebhookRetryService,
+        },
+        {
           provide: KgInicisGateway,
           useValue: mockKgInicisGateway,
+        },
+        {
+          provide: TossPaymentsGateway,
+          useValue: mockTossGateway,
+        },
+        {
+          provide: PaymentCalculationService,
+          useValue: mockCalculationService,
+        },
+        {
+          provide: PostpaidSettlementService,
+          useValue: mockPostpaidSettlementService,
+        },
+        {
+          provide: RedisService,
+          useValue: mockRedisService,
         },
       ],
     }).compile();
@@ -199,29 +241,45 @@ describe("PaymentsController", () => {
     };
 
     it("should complete payment successfully with valid webhook", async () => {
-      // Arrange
+      // Arrange — IP·서명 통과 → 멱등 락 획득 → webhookRetryService 처리 성공.
       mockKgInicisGateway.verifyIpWhitelist.mockReturnValue(true);
-      mockPaymentsService.completePayment.mockResolvedValue({
-        ...mockPayment,
-        paymentStatus: "completed",
+      mockKgInicisGateway.verifyWebhookSignature.mockReturnValue(true);
+      mockRedisService.setIfNotExists.mockResolvedValue(true);
+      mockWebhookRetryService.logWebhook.mockResolvedValue("webhook-id-1");
+      mockWebhookRetryService.processWebhook.mockResolvedValue({
+        success: true,
+        result: {
+          id: mockPayment.id,
+          orderNumber: webhookDto.orderNumber,
+          amount: webhookDto.amount,
+          paymentStatus: "completed",
+          tid: mockPayment.tid,
+          completedAt: mockPayment.completedAt,
+        },
       });
 
       // Act
       const result = await controller.completePayment(webhookDto, "127.0.0.1");
 
-      // Assert
+      // Assert — 처리 결과(processResult.result)를 그대로 반환.
       expect(result.id).toBe(mockPayment.id);
+      expect(result.paymentStatus).toBe("completed");
       expect(mockKgInicisGateway.verifyIpWhitelist).toHaveBeenCalledWith(
         "127.0.0.1",
       );
-      expect(mockPaymentsService.completePayment).toHaveBeenCalledWith({
-        orderNumber: webhookDto.orderNumber,
-        tid: webhookDto.tid,
-        resultCode: webhookDto.resultCode,
-        amount: webhookDto.amount,
-        authCode: webhookDto.authCode,
-        signature: webhookDto.signature,
-      });
+      expect(mockKgInicisGateway.verifyWebhookSignature).toHaveBeenCalledWith(
+        {
+          orderNumber: webhookDto.orderNumber,
+          tid: webhookDto.tid,
+          amount: webhookDto.amount,
+          resultCode: webhookDto.resultCode,
+        },
+        webhookDto.signature,
+      );
+      expect(mockWebhookRetryService.logWebhook).toHaveBeenCalledTimes(1);
+      expect(mockWebhookRetryService.processWebhook).toHaveBeenCalledWith(
+        "webhook-id-1",
+      );
     });
 
     it("should reject webhook from non-whitelisted IP", async () => {
@@ -237,17 +295,51 @@ describe("PaymentsController", () => {
       );
     });
 
-    it("should handle payment processing error", async () => {
-      // Arrange
+    it("should reject webhook with invalid signature", async () => {
+      // Arrange — IP 통과했으나 서명 검증 실패(2차 방어).
       mockKgInicisGateway.verifyIpWhitelist.mockReturnValue(true);
-      mockPaymentsService.completePayment.mockRejectedValue(
-        new BadRequestException("결제 처리 중 오류가 발생했습니다."),
-      );
+      mockKgInicisGateway.verifyWebhookSignature.mockReturnValue(false);
 
       // Act & Assert
       await expect(
         controller.completePayment(webhookDto, "127.0.0.1"),
       ).rejects.toThrow(BadRequestException);
+      expect(mockWebhookRetryService.processWebhook).not.toHaveBeenCalled();
+    });
+
+    it("should return duplicate response on idempotency lock miss", async () => {
+      // Arrange — IP·서명 통과했으나 orderNumber 멱등 락 이미 점유(중복 웹훅).
+      mockKgInicisGateway.verifyIpWhitelist.mockReturnValue(true);
+      mockKgInicisGateway.verifyWebhookSignature.mockReturnValue(true);
+      mockRedisService.setIfNotExists.mockResolvedValue(false);
+
+      // Act
+      const result = await controller.completePayment(webhookDto, "127.0.0.1");
+
+      // Assert — 200 즉시 반환, 내부 처리는 미수행.
+      expect(result.id).toBe("duplicate");
+      expect(result.paymentStatus).toBe("completed");
+      expect(mockWebhookRetryService.logWebhook).not.toHaveBeenCalled();
+      expect(mockWebhookRetryService.processWebhook).not.toHaveBeenCalled();
+    });
+
+    it("should return pending when immediate processing fails (retry scheduled)", async () => {
+      // Arrange — 처리 즉시 실패 시에도 KG 재시도 방지를 위해 200(pending) 반환(throw 아님).
+      mockKgInicisGateway.verifyIpWhitelist.mockReturnValue(true);
+      mockKgInicisGateway.verifyWebhookSignature.mockReturnValue(true);
+      mockRedisService.setIfNotExists.mockResolvedValue(true);
+      mockWebhookRetryService.logWebhook.mockResolvedValue("webhook-id-2");
+      mockWebhookRetryService.processWebhook.mockResolvedValue({
+        success: false,
+        error: "결제 기록을 찾을 수 없습니다.",
+      });
+
+      // Act
+      const result = await controller.completePayment(webhookDto, "127.0.0.1");
+
+      // Assert
+      expect(result.id).toBe("webhook-id-2");
+      expect(result.paymentStatus).toBe("pending");
     });
   });
 
@@ -276,6 +368,7 @@ describe("PaymentsController", () => {
         undefined,
         undefined,
         undefined,
+        { id: "user-uuid", userType: "ADMIN" },
       );
     });
 
@@ -316,6 +409,8 @@ describe("PaymentsController", () => {
       expect(result.paymentStatus).toBe("completed");
       expect(mockPaymentsService.getPayment).toHaveBeenCalledWith(
         "payment-uuid",
+        "user-uuid",
+        "ADMIN",
       );
     });
 
@@ -344,6 +439,8 @@ describe("PaymentsController", () => {
       expect(result).toEqual(mockPayment);
       expect(mockPaymentsService.getPayment).toHaveBeenCalledWith(
         "payment-uuid",
+        "user-uuid",
+        "ADMIN",
       );
     });
   });
@@ -413,6 +510,7 @@ describe("PaymentsController", () => {
         "payment-uuid",
         refundDto.refundReason,
         refundDto.refundAmount,
+        { id: "user-uuid", userType: "ADMIN" },
       );
     });
 
@@ -453,6 +551,7 @@ describe("PaymentsController", () => {
       expect(result).toEqual([mockRefund]);
       expect(mockPaymentsService.getRefundLogs).toHaveBeenCalledWith(
         "payment-uuid",
+        { id: "user-uuid", userType: "ADMIN" },
       );
     });
 
