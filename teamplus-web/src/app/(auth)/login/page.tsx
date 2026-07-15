@@ -71,6 +71,12 @@ function prefetchDashboardData(userType?: string) {
 // 아이디 저장 — localStorage 키 (모듈 스코프 상수, SSR 안전)
 const REMEMBER_EMAIL_FLAG_KEY = "teamplus_remember_email_enabled";
 const SAVED_EMAIL_KEY = "teamplus_saved_email";
+// 로그인 성공 후 라우트 전환 미완료 시 폼/로더 복구 타임아웃.
+// [2026-07-15] 8초 → 12초: scheduleNavWatchdog 가 4초 시점에 하드 네비게이션
+// (window.location.replace) 폴백을 발사하므로, 그 커밋에 8초 여유를 준 뒤에만
+// 복구를 발화한다. 8초 그대로면 하드 네비게이션이 진행 중(문서 커밋 전)인데
+// 허위 "이동 실패" 안내가 표시되는 race 가 생긴다 (적대적 리뷰 확정 finding).
+const LOGIN_NAVIGATION_TIMEOUT_MS = 12_000;
 
 
 // ========== 한글 입력 차단 (2026-05-23 추가) ==========
@@ -224,6 +230,14 @@ export default function LoginPage() {
   // 단일 세션 정책 — SESSION_EXISTS 확인 모달에서 "기존 접속 종료" 선택 후
   // 재시도할 때 true. RHF handleSubmit 시그니처(data, event) 때문에 ref 로 전달.
   const forceLoginRef = useRef(false);
+  // [2026-07-15 로그인 개선 ②] 이동 실패 복구 워치독 타이머 — 언마운트 시 정리.
+  const navWatchdogTimers = useRef<number[]>([]);
+  useEffect(() => {
+    const timers = navWatchdogTimers.current;
+    return () => {
+      timers.forEach((id) => window.clearTimeout(id));
+    };
+  }, []);
   // 키보드 회피 — 아이디/비밀번호 input focus 시 system 키보드가 화면을 가리지
   // 않도록 활성 input 을 viewport 안쪽으로 자동 스크롤. CSS-only 클래스
   // (`pb-keyboard-safe-8`) 와 함께 동작하여 폼이 키보드 위로 자연스럽게 올라옴.
@@ -291,29 +305,66 @@ export default function LoginPage() {
 
   /**
    * 클라이언트 사이드 네비게이션 (무한 루프 방지)
-   * - Native 앱: window.teamplusNavigate 사용 (Flutter 클라이언트 네비게이션)
-   * - Web: router.push 사용 (Next.js 클라이언트 네비게이션)
    * - window.location.href는 전체 페이지 새로고침을 유발하여 무한 루프 원인
+   * - 쿠키는 saveTokens()에서 동기적으로 설정되므로 즉시 이동 가능
    *
-   * 쿠키는 saveTokens()에서 동기적으로 설정되므로 즉시 이동 가능
+   * [2026-07-15 로그인 개선 ③] 모든 환경에서 **replace** 사용.
+   *   기존엔 native 분기가 __NEXT_ROUTER_PUSH__/teamplusNavigate(둘 다 router.push)
+   *   를 우선해 /login 이 WebView history 에 남았고, 대시보드에서 Android 하드웨어
+   *   백키 → canGoBack()=true → goBack() 으로 로그인 화면에 재진입하는 회귀가 있었다.
+   *   web 전용이던 replace 정책("로그인 화면을 history 에서 제거")을 native 에도
+   *   동일 적용한다.
    */
   const navigateToDashboard = (path: string) => {
-    // Native 앱 환경: Flutter의 클라이언트 사이드 네비게이션 사용
-    if (isNativeApp() && typeof window !== "undefined") {
-      // 우선순위: window.__NEXT_ROUTER_PUSH__ > window.teamplusNavigate > router.push
-      if (window.__NEXT_ROUTER_PUSH__) {
-        window.__NEXT_ROUTER_PUSH__(path);
-        return;
-      }
-      if (window.teamplusNavigate) {
-        window.teamplusNavigate(path);
-        return;
-      }
+    // Native 앱 환경: ClientProviders 가 노출한 replace 글로벌 우선 사용
+    if (
+      isNativeApp() &&
+      typeof window !== "undefined" &&
+      window.__NEXT_ROUTER_REPLACE__
+    ) {
+      window.__NEXT_ROUTER_REPLACE__(path);
+      return;
     }
 
     // Web 환경 또는 fallback: Next.js router 사용
     // ※ replace 사용 — 로그인 화면을 history 에서 제거해 "홈에서 백버튼 → 로그인 재진입" 차단.
     router.replace(path, { scroll: false });
+  };
+
+  /**
+   * [2026-07-15 로그인 개선 ②] 로그인 성공 후 이동 실패 — 하드 네비게이션 폴백.
+   *
+   * handleLogin 성공 경로가 navigateToDashboard 를 fire-and-forget 호출하고
+   * 로더 해제를 RouteChangeHandler(라우트 변경 감지)에만 의존하므로, SPA 이동이
+   * 완료되지 않으면(미들웨어 재바운스, router 미준비 등) 사용자가 비활성 로그인
+   * 화면에 갇혔다. 4초 후에도 /login 에 머물러 있으면 하드 네비게이션으로 강제
+   * 진입한다 — 토큰·쿠키는 이미 저장 완료 상태라 미들웨어를 정상 통과하고,
+   * replace 라 /login 이 history 에 남지 않는다(개선 ③ 정합).
+   *
+   * 역할 분담 (merge 615dcc83 이후 이중 복구 통합 — ab90524b 와 조합):
+   *   · 본 워치독(4초)  = 하드 네비게이션 폴백 **전용**
+   *   · loginSuccess useEffect(12초, LOGIN_NAVIGATION_TIMEOUT_MS) = 로더 해제 +
+   *     제출 잠금 복구 + 안내 — 하드 네비게이션에 8초 커밋 여유를 준 뒤 발화해,
+   *     진행 중인 정상 이동에 허위 에러가 표시되는 race 를 차단한다.
+   *   실제 실패(네트워크 에러/재바운스)는 새 문서가 커밋되며 타이머가 문서와
+   *   함께 파괴되므로 복구 useEffect 의 현실적 발화는 "커밋 12초+ 지연" 뿐이다.
+   */
+  const scheduleNavWatchdog = (targetPath: string) => {
+    if (typeof window === "undefined") return;
+    const t1 = window.setTimeout(() => {
+      // 라우트가 이미 바뀌었으면 이동 성공 — 복구 불필요
+      if (!window.location.pathname.startsWith("/login")) return;
+      try {
+        // trailingSlash: true 정합 — /parent → /parent/ (308 리다이렉트 왕복 제거)
+        const normalized = targetPath.endsWith("/")
+          ? targetPath
+          : `${targetPath}/`;
+        window.location.replace(normalized);
+      } catch {
+        /* 하드 네비게이션 실패 — loginSuccess useEffect(12초) 가 폼 복구 담당 */
+      }
+    }, 4000);
+    navWatchdogTimers.current.push(t1);
   };
 
   // 이미 로그인된 경우 역할별 대시보드로 리다이렉트
@@ -542,6 +593,21 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [guardNotice, setGuardNotice] = useState<string | null>(null);
 
+  // 로그인 성공 후 라우트 전환이 완료되지 않으면 로더와 제출 잠금을 함께 복구한다.
+  useEffect(() => {
+    if (!loginSuccess) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setLoading(false);
+      setLoginSuccess(false);
+      isRedirecting.current = false;
+      stopLoading();
+      setError(MESSAGES.auth.navigationTimeout);
+    }, LOGIN_NAVIGATION_TIMEOUT_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [loginSuccess, stopLoading]);
+
   /**
    * API 가드 유도로 도착한 경우 `reason` 쿼리 감지 → 안내 메시지 표시.
    * - reason=required → 미인증 상태에서 인증 필요 API 호출
@@ -690,6 +756,8 @@ export default function LoginPage() {
         // 페이지 전환 → LoadingContext 의 RouteChangeHandler 가 stopLoading 을 자동 호출
         // (대시보드 자체 LoadingPuck 도 동일 톤이라 사용자 인지상 단일 로더로 이어짐)
         navigateToDashboard(dashboardPath);
+        // [2026-07-15 로그인 개선 ②] SPA 이동 실패 시 하드 폴백 + 폼 복원 워치독
+        scheduleNavWatchdog(dashboardPath);
       } else if (
         response.error?.code === "SESSION_EXISTS" ||
         // WebView(Native Bridge) 경로 폴백 — 구버전 앱이 errorCode 를 code 로

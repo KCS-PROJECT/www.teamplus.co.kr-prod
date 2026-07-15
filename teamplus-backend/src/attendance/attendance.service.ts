@@ -503,6 +503,13 @@ export class AttendanceService {
       })),
     });
 
+    // unread 캐시 무효화 — createMany 직접 경로는 30s TTL 동안 뱃지가 stale 해지므로 필수
+    await Promise.allSettled(
+      parents.map((p) =>
+        this.notifications.invalidateUnreadCountCache(p.parentId),
+      ),
+    );
+
     // FCM 푸시 — 인앱 알림(위 createMany)은 전체 보호자 유지, 푸시는 수신거부자 제외 후 추가 발송
     await this.notifications.pushOnlyToUsers(
       parents.map((p) => p.parentId),
@@ -1532,6 +1539,12 @@ export class AttendanceService {
       message: string;
     } | null;
     if (modPush && modPush.parentIds.length > 0) {
+      // unread 캐시 무효화 — tx 내부 createMany 경로는 30s TTL 동안 뱃지가 stale
+      void Promise.allSettled(
+        modPush.parentIds.map((pid) =>
+          this.notifications.invalidateUnreadCountCache(pid),
+        ),
+      );
       void this.notifications.pushOnlyToUsers(modPush.parentIds, {
         notificationType: "attendance_modified",
         title: "자녀 출석 정정 안내",
@@ -3103,6 +3116,12 @@ export class AttendanceService {
       message: string;
     } | null;
     if (modPush && modPush.parentIds.length > 0) {
+      // unread 캐시 무효화 — tx 내부 createMany 경로는 30s TTL 동안 뱃지가 stale
+      void Promise.allSettled(
+        modPush.parentIds.map((pid) =>
+          this.notifications.invalidateUnreadCountCache(pid),
+        ),
+      );
       void this.notifications.pushOnlyToUsers(modPush.parentIds, {
         notificationType: "attendance_modified",
         title: "자녀 출석 정정 안내",

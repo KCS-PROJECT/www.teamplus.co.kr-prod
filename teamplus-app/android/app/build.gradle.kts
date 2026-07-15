@@ -52,12 +52,40 @@ android {
 
     buildTypes {
         release {
+            // key.properties 가 있으면 release 키로 서명한다.
+            // 없으면 예전엔 조용히 debug 키로 서명했는데(아래 주석), 그 결과 debug 서명된
+            // AAB 가 Play Console 에 업로드되어 "디버그 모드로 서명" 거부를 유발했다.
+            // → silent fallback 대신 명시적으로 실패시킨다(fail-loud).
+            //   (이전: signingConfig = signingConfigs.getByName("debug"))
+            //
+            // [2026-07-15 FIX] 단, 이 블록은 Gradle **configuration 단계**에 평가되므로
+            // 여기서 직접 throw 하면 assembleDebug 까지 전부 차단된다 — keystore 가
+            // 없는 개발 PC(집 PC 등)에서 debug 빌드/에뮬레이터 실행이 불가능해지는
+            // 회귀. fail-loud 는 release 태스크가 실제 실행 그래프에 오른 경우에만
+            // 발동하도록 아래 `gradle.taskGraph.whenReady` 가드로 이동했다.
             signingConfig = if (keystorePropertiesFile.exists()) {
                 signingConfigs.getByName("release")
             } else {
-                signingConfigs.getByName("debug")
+                null // 서명 미설정 — release 실행 시 아래 가드가 명시적으로 실패시킴
             }
         }
+    }
+}
+
+// === release fail-loud 가드 (2026-07-15) ===
+// key.properties 없이 release 계열 태스크(assembleRelease/bundleRelease/
+// packageRelease 등)가 실행 그래프에 오르면 명시적으로 빌드를 실패시킨다.
+// debug 빌드(assembleDebug)는 영향받지 않는다.
+gradle.taskGraph.whenReady {
+    val releaseRequested = allTasks.any {
+        it.project.path == project.path && it.name.endsWith("Release")
+    }
+    if (releaseRequested && !keystorePropertiesFile.exists()) {
+        throw GradleException(
+            "release 빌드에 필요한 android/key.properties 가 없습니다. " +
+            "키스토어 설정 파일을 배치한 뒤 다시 빌드하세요. " +
+            "(debug 키로 서명된 AAB 는 Google Play 가 거부합니다)"
+        )
     }
 }
 

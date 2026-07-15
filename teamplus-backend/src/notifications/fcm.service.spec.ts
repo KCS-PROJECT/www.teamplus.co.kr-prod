@@ -220,6 +220,27 @@ describe("FcmService", () => {
     });
   });
 
+  // ── (d-2) 뱃지 집계 실패 격리 (배치 유실 방지) ──────────────────────────────
+  describe("sendPushToUsers 뱃지 groupBy 실패 격리", () => {
+    it("groupBy 가 throw 하면 배치를 드랍하지 않고 badge omit 으로 전원 발송", async () => {
+      prismaMock.userDevice.findMany.mockResolvedValue([
+        { userId: "A", fcmToken: "tA" },
+        { userId: "B", fcmToken: "tB" },
+      ]);
+      prismaMock.notification.groupBy.mockRejectedValue(new Error("DB down"));
+
+      const result = await service.sendPushToUsers(["A", "B"], "제목", "본문");
+
+      // 배치가 유실되지 않고 1회 발송됨
+      expect(mockSendEachForMulticast).toHaveBeenCalledTimes(1);
+      const msg = mockSendEachForMulticast.mock.calls[0][0];
+      expect(msg.tokens.sort()).toEqual(["tA", "tB"]);
+      // badge 는 0(클리어) 이 아니라 omit — 기존 뱃지 유지
+      expect(msg.apns.payload.aps).not.toHaveProperty("badge");
+      expect(result.successCount).toBe(2);
+    });
+  });
+
   // ── (d) setBadge:false ──────────────────────────────────────────────────────
   describe("sendPushToUsers options.setBadge=false (chat)", () => {
     it("groupBy 미호출 + badge omit 으로 전 토큰 1회 발송", async () => {
@@ -268,6 +289,159 @@ describe("FcmService", () => {
         defaultVibrateTimings: true,
       });
       expect(msg.apns.payload.aps.sound).toBe("default");
+    });
+  });
+
+  // ── (f) B2: FCM 에러 분류 안전화 ───────────────────────────────────────────
+  describe("FCM 에러 분류 안전화 (B2)", () => {
+    /** userId=A 소유 디바이스 n대 + unread 0 세팅 (badge 그룹 1개 → 발송 1회) */
+    function seedDevices(n: number) {
+      prismaMock.userDevice.findMany.mockResolvedValue(
+        Array.from({ length: n }, (_, i) => ({
+          userId: "A",
+          fcmToken: `tok-${i}`,
+        })),
+      );
+      prismaMock.notification.groupBy.mockResolvedValue([]);
+    }
+
+    it("청크 전원 invalid-argument(페이로드 결함) → 비활성화 0건 + 재시도 없음", async () => {
+      seedDevices(5);
+      mockSendEachForMulticast.mockImplementation((msg: any) =>
+        Promise.resolve({
+          successCount: 0,
+          failureCount: msg.tokens.length,
+          responses: msg.tokens.map(() => ({
+            success: false,
+            error: { code: "messaging/invalid-argument" },
+          })),
+        }),
+      );
+
+      const result = await service.sendPushToUsers(["A"], "제목", "본문");
+
+      expect(result.invalidTokens).toEqual([]);
+      expect(prismaMock.userDevice.updateMany).not.toHaveBeenCalled();
+      expect(mockSendEachForMulticast).toHaveBeenCalledTimes(1);
+      expect(result.failureCount).toBe(5);
+    });
+
+    it("not-registered 2건 + invalid-argument 1건 + 성공 혼재 → 정확히 2건만 비활성화", async () => {
+      seedDevices(5);
+      const codes = [
+        "messaging/registration-token-not-registered",
+        "messaging/registration-token-not-registered",
+        "messaging/invalid-argument",
+        null,
+        null,
+      ];
+      mockSendEachForMulticast.mockImplementation((msg: any) =>
+        Promise.resolve({
+          successCount: 2,
+          failureCount: 3,
+          responses: msg.tokens.map((_: string, idx: number) =>
+            codes[idx]
+              ? { success: false, error: { code: codes[idx] } }
+              : { success: true },
+          ),
+        }),
+      );
+
+      const result = await service.sendPushToUsers(["A"], "제목", "본문");
+
+      expect(result.invalidTokens.sort()).toEqual(["tok-0", "tok-1"]);
+      expect(prismaMock.userDevice.updateMany).toHaveBeenCalledTimes(1);
+      expect(
+        prismaMock.userDevice.updateMany.mock.calls[0][0].where.fcmToken.in.sort(),
+      ).toEqual(["tok-0", "tok-1"]);
+    });
+
+    it("invalid-argument 는 더 이상 무효 토큰으로 분류하지 않는다", () => {
+      expect(
+        (service as any).isTokenInvalidError("messaging/invalid-argument"),
+      ).toBe(false);
+      expect(
+        (service as any).isTokenInvalidError(
+          "messaging/registration-token-not-registered",
+        ),
+      ).toBe(true);
+      expect(
+        (service as any).isTokenInvalidError(
+          "messaging/invalid-registration-token",
+        ),
+      ).toBe(true);
+    });
+
+    it("대량 비활성화 회로차단기: 무효 비율 상한 초과 시 비활성화 차단", async () => {
+      seedDevices(30);
+      mockSendEachForMulticast.mockImplementation((msg: any) =>
+        Promise.resolve({
+          successCount: 0,
+          failureCount: msg.tokens.length,
+          responses: msg.tokens.map(() => ({
+            success: false,
+            error: { code: "messaging/registration-token-not-registered" },
+          })),
+        }),
+      );
+
+      const result = await service.sendPushToUsers(["A"], "제목", "본문");
+
+      // 30/30 = 100% > 상한 → 비활성화 차단 (무효 토큰 자체는 보고)
+      expect(result.invalidTokens).toHaveLength(30);
+      expect(prismaMock.userDevice.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("소량(임계 미만)은 비율 100% 여도 기존대로 비활성화 (1기기 만료 케이스 보존)", async () => {
+      prismaMock.userDevice.findMany.mockResolvedValue([
+        { id: "d1", fcmToken: "dead-tok", platform: "ios" },
+      ]);
+      prismaMock.notification.count.mockResolvedValue(0);
+      mockSendEachForMulticast.mockImplementation((msg: any) =>
+        Promise.resolve({
+          successCount: 0,
+          failureCount: msg.tokens.length,
+          responses: msg.tokens.map(() => ({
+            success: false,
+            error: { code: "messaging/registration-token-not-registered" },
+          })),
+        }),
+      );
+
+      await service.sendPushNotification("user-1", "제목", "본문");
+
+      expect(prismaMock.userDevice.updateMany).toHaveBeenCalledTimes(1);
+      expect(
+        prismaMock.userDevice.updateMany.mock.calls[0][0].where.fcmToken.in,
+      ).toEqual(["dead-tok"]);
+    });
+  });
+
+  // ── (g) 발송 전 payload 정규화 ─────────────────────────────────────────────
+  describe("발송 전 data payload 정규화", () => {
+    it("non-string 값은 문자열로 강제, null/undefined 키는 제거", async () => {
+      await service.sendToTokens(["tok"], "제목", "본문", {
+        count: 5,
+        flag: true,
+        nullKey: null,
+        undefKey: undefined,
+        ok: "x",
+      } as any);
+
+      const msg = mockSendEachForMulticast.mock.calls[0][0];
+      expect(msg.data).toEqual({ count: "5", flag: "true", ok: "x" });
+      for (const v of Object.values(msg.data)) {
+        expect(typeof v).toBe("string");
+      }
+    });
+
+    it("정규화 후 빈 객체면 data 필드 자체를 생략", async () => {
+      await service.sendToTokens(["tok"], "제목", "본문", {
+        nullKey: null,
+      } as any);
+
+      const msg = mockSendEachForMulticast.mock.calls[0][0];
+      expect(msg).not.toHaveProperty("data");
     });
   });
 });
