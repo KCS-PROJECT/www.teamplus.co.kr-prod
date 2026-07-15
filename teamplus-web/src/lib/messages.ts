@@ -662,6 +662,9 @@ export const MESSAGES = {
     creditIssued: "이제 이번 달 수업에 참여하실 수 있어요",
     processing: "처리 중...",
     securePayment: "안전하게 암호화되어 처리되었습니다",
+    // DEV 전용 테스트 결제 경로 — 실카드 노출 없이 결제 플로우 검증 (운영 빌드 미노출).
+    mockPayButton: "테스트 결제 (개발용)",
+    mockPayFailed: "테스트 결제 처리에 실패했습니다.",
     classLabel: "수업",
     // [추가 2026-06-09] App Store 3.1.1 — 결제권은 디지털 콘텐츠/화폐가 아닌 '오프라인 대면 수업 수강료 결제 수단'임을 명시(심사 오인 방지)
     offlineCreditNotice:

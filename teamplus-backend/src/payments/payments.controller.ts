@@ -117,6 +117,28 @@ export class PaymentsController {
   }
 
   /**
+   * [DEV 전용] 토스 승인 API 를 우회한 테스트 결제 승인.
+   *  결제창에 테스터의 실카드/실계좌가 노출되지 않도록 위젯 없이 결제를 완료 처리한다.
+   *  confirmTossPayment 와 동일 검증·멱등 락·후처리를 공유하며 토스 승인만 생략한다.
+   */
+  @Post("mock-confirm")
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @ApiBearerAuth()
+  @Roles("PARENT")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "[DEV] 테스트 결제 승인 (토스 우회)",
+    description:
+      "개발 환경 전용. 토스 위젯/승인 API 없이 orderId 로 결제를 완료 처리합니다. 운영 환경(NODE_ENV=production)에서는 403 을 반환합니다.",
+  })
+  async mockConfirmPayment(
+    @Request() req: AuthenticatedRequest,
+    @Body() body: { orderId: string },
+  ) {
+    return this.paymentsService.mockConfirmPayment(req.user.id, body.orderId);
+  }
+
+  /**
    * [Phase B-3] 후불(모드 A POSTPAID) 정산 초안 조회 — 수업×월 회원별 출석×단가 미리보기(미저장).
    */
   @Get("postpaid/draft")

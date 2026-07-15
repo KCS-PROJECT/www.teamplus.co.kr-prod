@@ -5,6 +5,7 @@ import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
 import { KgInicisGateway } from "../kg-inicis.gateway";
 import { PaymentCalculationService } from "../payment-calculation.service";
+import { PaymentWebhookService } from "./payment-webhook.service";
 
 describe("PaymentCreateService", () => {
   let service: PaymentCreateService;
@@ -40,6 +41,13 @@ describe("PaymentCreateService", () => {
     calculateFee: jest.fn(),
   };
 
+  // 생성자 DI 그래프 유지용 — PaymentCreateService 는 _webhookService 를 보관만 하고
+  //   직접 호출하지 않으므로(참조 hold) 빈 mock 으로 충분.
+  const mockWebhookService = {
+    completePayment: jest.fn(),
+    finalizePayment: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -49,6 +57,7 @@ describe("PaymentCreateService", () => {
         { provide: ConfigService, useValue: mockConfig },
         { provide: KgInicisGateway, useValue: mockKgGateway },
         { provide: PaymentCalculationService, useValue: mockCalculation },
+        { provide: PaymentWebhookService, useValue: mockWebhookService },
       ],
     }).compile();
 

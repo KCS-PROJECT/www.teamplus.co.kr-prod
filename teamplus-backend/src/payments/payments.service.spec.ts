@@ -1,16 +1,27 @@
 import { Test, TestingModule } from "@nestjs/testing";
-import { ConfigService } from "@nestjs/config";
 import {
   BadRequestException,
-  ConflictException,
+  ForbiddenException,
   NotFoundException,
 } from "@nestjs/common";
 import { PaymentsService } from "./payments.service";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
-import { KgInicisGateway } from "./kg-inicis.gateway";
-import { PaymentCalculationService } from "./payment-calculation.service";
+import { TossPaymentsGateway } from "./toss-payments.gateway";
+import { CreditDomainService } from "@/credits/credit-domain.service";
+import { NotificationsService } from "@/notifications/notifications.service";
+import { PaymentWebhookService } from "./services/payment-webhook.service";
+import { PaymentCreateService } from "./services/payment-create.service";
+import { PaymentRefundService } from "./services/payment-refund.service";
+import { PaymentReceiptService } from "./services/payment-receipt.service";
 
+/**
+ * PaymentsService 는 Phase B 이후 Facade 로 재편되어, 결제 생성/웹훅/환불/영수증은
+ * 각 sub-service 로 위임하고, 조회·통계·토스 confirm/mock confirm 만 직접 보유한다.
+ *   - 위임 메서드: sub-service 를 mock 하여 "정확한 인자로 위임 + 결과 그대로 반환" 을 검증.
+ *     (위임 대상 sub-service 의 내부 로직/예외는 각 sub-service spec 이 담당.)
+ *   - 직접 메서드(getPayment·getUserPayments·통계·mockConfirmPayment): 실제 로직 검증.
+ */
 describe("PaymentsService", () => {
   let service: PaymentsService;
   let prismaService: PrismaService;
@@ -21,84 +32,57 @@ describe("PaymentsService", () => {
   const mockOrderNumber = "ORD-1234567890-abcdef";
 
   const mockProduct = {
-    id: mockProductId,
-    classId: "class-123",
     productName: "신규 수강생반 - 월 8회",
-    description: "초보자용 프로그램",
     price: 240000,
     sessionsPerMonth: 8,
-    durationDays: 30,
-    createdAt: new Date(),
-    class: {
-      id: "class-123",
-      teamId: "club-123",
-      className: "신규 수강생반",
-    },
   };
 
-  const mockPayment = {
+  const mockCompletedPayment = {
     id: mockPaymentId,
     orderNumber: mockOrderNumber,
     userId: mockUserId,
     productId: mockProductId,
     amount: 240000,
-    paymentStatus: "pending",
-    paymentMethod: "card",
-    tid: null,
-    createdAt: new Date("2026-01-04T10:00:00Z"),
-    completedAt: null,
-  };
-
-  const mockCompletedPayment = {
-    ...mockPayment,
     paymentStatus: "completed",
+    paymentMethod: "card",
     tid: "TID-12345678",
+    createdAt: new Date("2026-01-04T10:00:00Z"),
     completedAt: new Date("2026-01-04T10:05:00Z"),
   };
 
-  const mockKgInicisGateway = {
-    verifyAmount: jest.fn(),
-    createPaymentRequest: jest.fn(),
-    verifyWebhookSignature: jest.fn(),
+  const mockWebhookService = {
+    completePayment: jest.fn(),
+  };
+  const mockCreateService = {
+    initiatePayment: jest.fn(),
+    verifyPayment: jest.fn(),
+    getClassProduct: jest.fn(),
+    calculateFee: jest.fn(),
+  };
+  const mockRefundService = {
     cancelPayment: jest.fn(),
+    requestRefund: jest.fn(),
+    getRefundLogs: jest.fn(),
   };
-
+  const mockReceiptService = {
+    getReceipt: jest.fn(),
+    createReceipt: jest.fn(),
+    getSettlementList: jest.fn(),
+  };
+  const mockTossGateway = {
+    confirm: jest.fn(),
+    getPayment: jest.fn(),
+  };
   const mockRedisService = {
-    set: jest.fn().mockResolvedValue(undefined),
-    get: jest.fn().mockResolvedValue(null),
-    del: jest.fn().mockResolvedValue(undefined),
-    exists: jest.fn().mockResolvedValue(false),
-    getConnectionStatus: jest.fn().mockReturnValue(true),
     setIfNotExists: jest.fn().mockResolvedValue(true),
+    del: jest.fn().mockResolvedValue(undefined),
   };
-
-  const mockConfigService = {
-    get: jest.fn((key: string) => {
-      if (key === "redis") {
-        return {
-          keyPrefix: {
-            payment: "payment:",
-          },
-          cacheTTL: {
-            paymentIdempotency: 86400,
-          },
-        };
-      }
-      return undefined;
-    }),
+  const mockCreditDomain = {
+    issueFromPayment: jest.fn(),
   };
-
-  const mockPaymentCalculationService = {
-    calculatePrepaidFee: jest.fn().mockReturnValue({
-      baseAmount: { toNumber: () => 240000 },
-      feeType: "MONTHLY_FIXED",
-      billingTiming: "PREPAID",
-      description: "월정액 (240,000원)",
-    }),
-    calculateMonthlyFee: jest.fn(),
-    calculatePerSessionFee: jest.fn(),
-    calculatePerGameFee: jest.fn(),
-    calculatePostpaidFee: jest.fn(),
+  const mockNotificationsService = {
+    notifyTeamManagers: jest.fn().mockResolvedValue(undefined),
+    notifyUsers: jest.fn().mockResolvedValue(undefined),
   };
 
   beforeEach(async () => {
@@ -108,63 +92,35 @@ describe("PaymentsService", () => {
         {
           provide: PrismaService,
           useValue: {
-            classProduct: {
-              findUnique: jest.fn(),
-              findFirst: jest.fn(),
-            },
-            user: {
-              findUnique: jest.fn(),
-            },
             payment: {
-              create: jest.fn(),
               findUnique: jest.fn(),
               findMany: jest.fn(),
               update: jest.fn(),
               groupBy: jest.fn(),
             },
-            memberCredit: {
-              create: jest.fn(),
-            },
-            refundLog: {
-              create: jest.fn(),
-              findMany: jest.fn(),
-            },
             enrollment: {
-              findFirst: jest.fn(),
-              create: jest.fn(),
-              update: jest.fn(),
+              findMany: jest.fn().mockResolvedValue([]),
             },
-            parentChild: {
-              findUnique: jest.fn(),
+            monthlyPostpaidBillingLine: {
+              findMany: jest.fn().mockResolvedValue([]),
             },
-            class: {
-              findUnique: jest.fn(),
+            tournamentRegistration: {
+              findMany: jest.fn().mockResolvedValue([]),
             },
-            classRegistration: {
-              count: jest.fn(),
-            },
-            childProfile: {
-              findUnique: jest.fn(),
+            academy: {
+              findUnique: jest.fn().mockResolvedValue(null),
             },
             $transaction: jest.fn(),
           },
         },
-        {
-          provide: KgInicisGateway,
-          useValue: mockKgInicisGateway,
-        },
-        {
-          provide: RedisService,
-          useValue: mockRedisService,
-        },
-        {
-          provide: ConfigService,
-          useValue: mockConfigService,
-        },
-        {
-          provide: PaymentCalculationService,
-          useValue: mockPaymentCalculationService,
-        },
+        { provide: PaymentWebhookService, useValue: mockWebhookService },
+        { provide: PaymentCreateService, useValue: mockCreateService },
+        { provide: PaymentRefundService, useValue: mockRefundService },
+        { provide: PaymentReceiptService, useValue: mockReceiptService },
+        { provide: TossPaymentsGateway, useValue: mockTossGateway },
+        { provide: RedisService, useValue: mockRedisService },
+        { provide: CreditDomainService, useValue: mockCreditDomain },
+        { provide: NotificationsService, useValue: mockNotificationsService },
       ],
     }).compile();
 
@@ -176,281 +132,131 @@ describe("PaymentsService", () => {
     jest.clearAllMocks();
   });
 
-  // 서비스의 classProduct.findUnique는 다른 select 구조를 사용하므로 맞춤
-  const mockProductForService = {
-    id: mockProductId,
-    productName: "신규 수강생반 - 월 8회",
-    feeType: "MONTHLY_FIXED",
-    price: 240000,
-    sessionsPerWeek: null,
-    feePerSession: null,
-  };
+  // ────────────────────────────────────────────────────────────────────
+  //  Facade 위임 검증 (sub-service 로 정확히 forward + 결과 반환)
+  // ────────────────────────────────────────────────────────────────────
+  describe("Facade 위임", () => {
+    it("initiatePayment → PaymentCreateService.initiatePayment 위임", async () => {
+      const expected = { orderNumber: mockOrderNumber, paymentStatus: "pending" };
+      mockCreateService.initiatePayment.mockResolvedValue(expected);
 
-  describe("initiatePayment", () => {
-    it("should successfully initiate payment (dev mock path)", async () => {
-      // 서비스는 NODE_ENV !== production 이면 mockCompletePayment를 호출하는 dev-only 경로를 탄다.
-      // mockCompletePayment → _finalizePayment → payment.findUnique(orderNumber) 를 거치므로
-      // payment.findUnique 를 두 번 호출하는 것을 고려해 mock을 설정한다.
-      jest
-        .spyOn(prismaService.classProduct, "findUnique")
-        .mockResolvedValue(mockProductForService as any);
-      mockKgInicisGateway.verifyAmount.mockReturnValue(true);
-      mockRedisService.setIfNotExists.mockResolvedValue(true);
-      mockRedisService.get.mockResolvedValue(null);
-      mockRedisService.exists.mockResolvedValue(false);
-      jest.spyOn(prismaService.user, "findUnique").mockResolvedValue({
-        email: "test@example.com",
-        phone: "010-1234-5678",
-      } as any);
-
-      const mockCreatedPayment = { ...mockPayment, id: mockPaymentId };
-      jest
-        .spyOn(prismaService, "$transaction")
-        .mockResolvedValue(mockCreatedPayment as any);
-
-      // dev 경로: initiatePayment → $transaction(payment.create) → mockCompletePayment
-      //           → payment.findUnique(orderNumber) → _finalizePayment
-      // mockCompletePayment 내 payment.findUnique(orderNumber, select:{amount}) mock
-      jest
-        .spyOn(prismaService.payment, "findUnique")
-        .mockResolvedValue({ amount: 240000 } as any);
-
-      // _finalizePayment를 mock하여 복잡한 내부 체인을 우회
-      jest.spyOn(service as any, "_finalizePayment").mockResolvedValue({
-        id: mockPaymentId,
-        orderNumber: mockCreatedPayment.orderNumber,
-        amount: 240000,
-        paymentStatus: "completed",
-        tid: "MOCK-TID",
-        completedAt: new Date(),
-        creditsIssued: 8,
-      });
-
+      const options = { paymentMethod: "card", buyerName: "홍길동" };
       const result = await service.initiatePayment(
         mockUserId,
         mockProductId,
         240000,
+        options,
       );
 
-      expect(result.orderNumber).toBeDefined();
-      expect(result.orderNumber).toMatch(/^ORD-/);
-      // dev 경로에서는 paymentStatus: "completed" 반환
-      expect(result.paymentStatus).toBe("completed");
+      expect(result).toBe(expected);
+      expect(mockCreateService.initiatePayment).toHaveBeenCalledWith(
+        mockUserId,
+        mockProductId,
+        240000,
+        options,
+      );
     });
 
-    it("should throw NotFoundException if product does not exist", async () => {
-      jest
-        .spyOn(prismaService.classProduct, "findUnique")
-        .mockResolvedValue(null);
+    it("verifyPayment → PaymentCreateService.verifyPayment 위임", async () => {
+      const expected = { creditsIssued: 8 };
+      mockCreateService.verifyPayment.mockResolvedValue(expected);
 
-      await expect(
-        service.initiatePayment(mockUserId, mockProductId, 240000),
-      ).rejects.toThrow(NotFoundException);
+      const result = await service.verifyPayment(mockUserId, mockOrderNumber);
+
+      expect(result).toBe(expected);
+      expect(mockCreateService.verifyPayment).toHaveBeenCalledWith(
+        mockUserId,
+        mockOrderNumber,
+      );
     });
 
-    it("should throw BadRequestException if amount does not match product price", async () => {
-      jest
-        .spyOn(prismaService.classProduct, "findUnique")
-        .mockResolvedValue(mockProductForService as any);
-      mockKgInicisGateway.verifyAmount.mockReturnValue(false);
-
-      await expect(
-        service.initiatePayment(mockUserId, mockProductId, 100000),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it("should throw ConflictException if payment lock already acquired", async () => {
-      jest
-        .spyOn(prismaService.classProduct, "findUnique")
-        .mockResolvedValue(mockProductForService as any);
-      mockKgInicisGateway.verifyAmount.mockReturnValue(true);
-      mockRedisService.setIfNotExists.mockResolvedValue(false); // 락 이미 존재
-
-      await expect(
-        service.initiatePayment(mockUserId, mockProductId, 240000),
-      ).rejects.toThrow(ConflictException);
-    });
-  });
-
-  describe("completePayment", () => {
-    // completePayment는 먼저 payment.findUnique(orderNumber)로 amount·status를 조회,
-    // 서명 검증 후 _finalizePayment를 호출하며 그 안에서도 payment.findUnique(orderNumber)를 한 번 더 호출.
-    const pendingPaymentByOrderNumber = {
-      amount: 240000,
-      paymentStatus: "pending",
-    };
-
-    it("should throw NotFoundException if payment does not exist", async () => {
-      jest.spyOn(prismaService.payment, "findUnique").mockResolvedValue(null);
-
-      await expect(
-        service.completePayment({
-          orderNumber: mockOrderNumber,
-          tid: "TID-12345678",
-          resultCode: "0000",
-          amount: 240000,
-        }),
-      ).rejects.toThrow(NotFoundException);
-    });
-
-    it("should throw ConflictException if payment already processed", async () => {
-      jest.spyOn(prismaService.payment, "findUnique").mockResolvedValue({
-        amount: 240000,
-        paymentStatus: "completed",
-      } as any);
-
-      await expect(
-        service.completePayment({
-          orderNumber: mockOrderNumber,
-          tid: "TID-12345678",
-          resultCode: "0000",
-          amount: 240000,
-        }),
-      ).rejects.toThrow(ConflictException);
-    });
-
-    it("should throw BadRequestException if signature is missing", async () => {
-      jest
-        .spyOn(prismaService.payment, "findUnique")
-        .mockResolvedValue(pendingPaymentByOrderNumber as any);
-
-      await expect(
-        service.completePayment({
-          orderNumber: mockOrderNumber,
-          tid: "TID-12345678",
-          resultCode: "0000",
-          amount: 240000,
-          // signature 없음
-        }),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it("should throw BadRequestException for invalid webhook signature", async () => {
-      jest
-        .spyOn(prismaService.payment, "findUnique")
-        .mockResolvedValue(pendingPaymentByOrderNumber as any);
-      mockKgInicisGateway.verifyWebhookSignature.mockReturnValue(false);
-
-      await expect(
-        service.completePayment({
-          orderNumber: mockOrderNumber,
-          tid: "TID-12345678",
-          resultCode: "0000",
-          amount: 240000,
-          signature: "invalid-signature",
-        }),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it("should throw BadRequestException if amount does not match", async () => {
-      jest
-        .spyOn(prismaService.payment, "findUnique")
-        .mockResolvedValue(pendingPaymentByOrderNumber as any);
-      mockKgInicisGateway.verifyWebhookSignature.mockReturnValue(true);
-      mockKgInicisGateway.verifyAmount.mockReturnValue(false);
-
-      await expect(
-        service.completePayment({
-          orderNumber: mockOrderNumber,
-          tid: "TID-12345678",
-          resultCode: "0000",
-          amount: 100000,
-          signature: "valid-signature",
-        }),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it("should successfully complete payment and issue credits", async () => {
-      // 첫 번째 findUnique: completePayment 내 amount·status 조회
-      // 두 번째 findUnique: _finalizePayment 내 전체 조회
-      jest
-        .spyOn(prismaService.payment, "findUnique")
-        .mockResolvedValueOnce(pendingPaymentByOrderNumber as any)
-        .mockResolvedValueOnce({
-          id: mockPaymentId,
-          orderNumber: mockOrderNumber,
-          userId: mockUserId,
-          amount: 240000,
-          paymentStatus: "pending",
-          productId: mockProductId,
-          product: { durationDays: 30, sessionsPerMonth: 8 },
-        } as any);
-
-      mockKgInicisGateway.verifyWebhookSignature.mockReturnValue(true);
-      mockKgInicisGateway.verifyAmount.mockReturnValue(true);
-
-      const finalizedResult = {
-        id: mockPaymentId,
-        orderNumber: mockOrderNumber,
-        amount: 240000,
-        paymentStatus: "completed",
-        tid: "TID-12345678",
-        completedAt: new Date(),
-        creditsIssued: 8,
-      };
-      jest.spyOn(prismaService, "$transaction").mockResolvedValue({
-        updatedPayment: {
-          id: mockPaymentId,
-          orderNumber: mockOrderNumber,
-          userId: mockUserId,
-          amount: 240000,
-          paymentStatus: "completed",
-          tid: "TID-12345678",
-          completedAt: new Date(),
-        },
-        creditsIssued: 8,
-      } as any);
-
-      // $transaction mock이 내부 로직을 건너뛰므로 반환값을 직접 조합
-      jest
-        .spyOn(service as any, "_finalizePayment")
-        .mockResolvedValue(finalizedResult);
-
-      const result = await service.completePayment({
+    it("completePayment → PaymentWebhookService.completePayment 위임", async () => {
+      const webhookData = {
         orderNumber: mockOrderNumber,
         tid: "TID-12345678",
         resultCode: "0000",
         amount: 240000,
         signature: "valid-signature",
-      });
+      };
+      const expected = { paymentStatus: "completed", creditsIssued: 8 };
+      mockWebhookService.completePayment.mockResolvedValue(expected);
 
-      expect(result.paymentStatus).toBe("completed");
-      expect(result.creditsIssued).toBe(8);
+      const result = await service.completePayment(webhookData);
+
+      expect(result).toBe(expected);
+      expect(mockWebhookService.completePayment).toHaveBeenCalledWith(
+        webhookData,
+      );
     });
 
-    it("should handle failed payment without issuing credits", async () => {
-      jest
-        .spyOn(prismaService.payment, "findUnique")
-        .mockResolvedValueOnce(pendingPaymentByOrderNumber as any);
+    it("requestRefund → PaymentRefundService.requestRefund 위임", async () => {
+      const requester = { id: mockUserId, userType: "ADMIN" };
+      const expected = { refundAmount: 240000, paymentStatus: "refunded" };
+      mockRefundService.requestRefund.mockResolvedValue(expected);
 
-      mockKgInicisGateway.verifyWebhookSignature.mockReturnValue(true);
-      mockKgInicisGateway.verifyAmount.mockReturnValue(true);
+      const result = await service.requestRefund(
+        mockPaymentId,
+        "고객 요청",
+        240000,
+        requester,
+      );
 
-      jest.spyOn(service as any, "_finalizePayment").mockResolvedValue({
-        id: mockPaymentId,
-        orderNumber: mockOrderNumber,
-        amount: 240000,
-        paymentStatus: "failed",
-        tid: null,
-        completedAt: null,
-        creditsIssued: 0,
-      });
+      expect(result).toBe(expected);
+      expect(mockRefundService.requestRefund).toHaveBeenCalledWith(
+        mockPaymentId,
+        "고객 요청",
+        240000,
+        requester,
+      );
+    });
 
-      const result = await service.completePayment({
-        orderNumber: mockOrderNumber,
-        tid: "",
-        resultCode: "9999",
-        amount: 240000,
-        signature: "valid-signature",
-      });
+    it("cancelPayment → PaymentRefundService.cancelPayment 위임", async () => {
+      const requester = { id: mockUserId, userType: "ADMIN" };
+      const expected = { paymentStatus: "cancelled" };
+      mockRefundService.cancelPayment.mockResolvedValue(expected);
 
-      expect(result.paymentStatus).toBe("failed");
-      expect(result.creditsIssued).toBe(0);
+      const result = await service.cancelPayment(
+        mockPaymentId,
+        "고객 요청",
+        240000,
+        undefined,
+        undefined,
+        undefined,
+        requester,
+      );
+
+      expect(result).toBe(expected);
+      expect(mockRefundService.cancelPayment).toHaveBeenCalledWith(
+        mockPaymentId,
+        "고객 요청",
+        240000,
+        undefined,
+        undefined,
+        undefined,
+        requester,
+      );
+    });
+
+    it("getRefundLogs → PaymentRefundService.getRefundLogs 위임", async () => {
+      const requester = { id: mockUserId, userType: "ADMIN" };
+      const expected = [{ id: "refund-1", refundAmount: 240000 }];
+      mockRefundService.getRefundLogs.mockResolvedValue(expected);
+
+      const result = await service.getRefundLogs(mockPaymentId, requester);
+
+      expect(result).toBe(expected);
+      expect(mockRefundService.getRefundLogs).toHaveBeenCalledWith(
+        mockPaymentId,
+        requester,
+      );
     });
   });
 
+  // ────────────────────────────────────────────────────────────────────
+  //  직접 보유 메서드 — 결제 조회
+  // ────────────────────────────────────────────────────────────────────
   describe("getPayment", () => {
-    it("should retrieve payment details successfully", async () => {
+    it("결제 상세를 조회한다", async () => {
       jest.spyOn(prismaService.payment, "findUnique").mockResolvedValue({
         ...mockCompletedPayment,
         product: {
@@ -467,28 +273,34 @@ describe("PaymentsService", () => {
       expect(result.product?.productName).toBe(mockProduct.productName);
     });
 
-    it("should throw NotFoundException if payment does not exist", async () => {
+    it("결제 기록이 없으면 NotFoundException", async () => {
       jest.spyOn(prismaService.payment, "findUnique").mockResolvedValue(null);
 
       await expect(service.getPayment(mockPaymentId)).rejects.toThrow(
         NotFoundException,
       );
     });
+
+    it("본인이 아닌 비-ADMIN 접근 시 ForbiddenException (IDOR 차단)", async () => {
+      jest.spyOn(prismaService.payment, "findUnique").mockResolvedValue({
+        ...mockCompletedPayment,
+        userId: "other-user",
+        product: null,
+      } as any);
+
+      await expect(
+        service.getPayment(mockPaymentId, mockUserId, "PARENT"),
+      ).rejects.toThrow(ForbiddenException);
+    });
   });
 
   describe("getUserPayments", () => {
-    it("should retrieve user payment history", async () => {
+    it("사용자 결제 이력을 매핑해 반환한다", async () => {
       const mockPayments = [
         {
           ...mockCompletedPayment,
-          product: {
-            productName: mockProduct.productName,
-            price: mockProduct.price,
-          },
-        },
-        {
-          ...mockPayment,
-          product: { productName: "고급반", price: 300000 },
+          product: { productName: mockProduct.productName, price: 240000 },
+          enrollments: [{ class: { className: "신규 수강생반" } }],
         },
       ];
       jest
@@ -498,11 +310,12 @@ describe("PaymentsService", () => {
       const result = await service.getUserPayments(mockUserId);
 
       expect(Array.isArray(result)).toBe(true);
-      expect(result.length).toBe(2);
+      expect(result.length).toBe(1);
       expect(result[0].paymentStatus).toBe("completed");
+      expect(result[0].className).toBe("신규 수강생반");
     });
 
-    it("should return empty array if user has no payments", async () => {
+    it("결제가 없으면 빈 배열 반환", async () => {
       jest.spyOn(prismaService.payment, "findMany").mockResolvedValue([]);
 
       const result = await service.getUserPayments(mockUserId);
@@ -510,7 +323,7 @@ describe("PaymentsService", () => {
       expect(result).toEqual([]);
     });
 
-    it("should respect limit parameter", async () => {
+    it("limit·상태 필터·include 를 반영한 findMany 호출", async () => {
       jest
         .spyOn(prismaService.payment, "findMany")
         .mockResolvedValue([] as any);
@@ -518,13 +331,24 @@ describe("PaymentsService", () => {
       await service.getUserPayments(mockUserId, 5);
 
       expect(prismaService.payment.findMany).toHaveBeenCalledWith({
-        where: { userId: mockUserId },
+        where: {
+          userId: mockUserId,
+          paymentStatus: {
+            in: ["completed", "refunded", "partially_refunded", "cancelled"],
+          },
+        },
         include: {
           product: {
             select: {
               productName: true,
               price: true,
             },
+          },
+          enrollments: {
+            select: {
+              class: { select: { className: true } },
+            },
+            take: 1,
           },
         },
         orderBy: { createdAt: "desc" },
@@ -533,159 +357,15 @@ describe("PaymentsService", () => {
     });
   });
 
-  describe("requestRefund", () => {
-    // requestRefund는 cancelPayment를 위임하고,
-    // cancelPayment는 payment.findUnique(id) → KG이니시스 취소 → $transaction 순으로 처리
-
-    it("should throw NotFoundException if payment does not exist", async () => {
-      jest.spyOn(prismaService.payment, "findUnique").mockResolvedValue(null);
-
-      await expect(
-        service.requestRefund(mockPaymentId, "고객 요청"),
-      ).rejects.toThrow(NotFoundException);
-    });
-
-    it("should throw BadRequestException if payment is not completed", async () => {
-      jest
-        .spyOn(prismaService.payment, "findUnique")
-        .mockResolvedValue(mockPayment as any); // paymentStatus: "pending"
-
-      await expect(
-        service.requestRefund(mockPaymentId, "고객 요청"),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it("should throw BadRequestException if refund amount exceeds payment amount", async () => {
-      jest
-        .spyOn(prismaService.payment, "findUnique")
-        .mockResolvedValue(mockCompletedPayment as any);
-
-      await expect(
-        service.requestRefund(mockPaymentId, "고객 요청", 500000),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it("should successfully request full refund", async () => {
-      jest.spyOn(prismaService.payment, "findUnique").mockResolvedValue({
-        ...mockCompletedPayment,
-        tid: "TID-12345678",
-      } as any);
-      mockKgInicisGateway.cancelPayment.mockResolvedValue({
-        success: true,
-        message: "Cancelled",
-      });
-
-      const refundLogMock = {
-        id: "refund-123",
-        paymentId: mockPaymentId,
-        refundAmount: 240000,
-        refundReason: "고객 요청",
-        processedAt: new Date(),
-      };
-      const updatedPaymentMock = {
-        ...mockCompletedPayment,
-        paymentStatus: "refunded",
-      };
-
-      jest.spyOn(prismaService, "$transaction").mockResolvedValue({
-        refundLog: refundLogMock,
-        updatedPayment: updatedPaymentMock,
-      } as any);
-
-      const result = await service.requestRefund(mockPaymentId, "고객 요청");
-
-      expect(result.refundAmount).toBe(240000);
-      expect(result.paymentStatus).toBe("refunded");
-    });
-
-    it("should handle partial refund", async () => {
-      jest.spyOn(prismaService.payment, "findUnique").mockResolvedValue({
-        ...mockCompletedPayment,
-        tid: "TID-12345678",
-      } as any);
-      mockKgInicisGateway.cancelPayment.mockResolvedValue({
-        success: true,
-        message: "Partially cancelled",
-      });
-
-      const refundLogMock = {
-        id: "refund-123",
-        paymentId: mockPaymentId,
-        refundAmount: 120000,
-        refundReason: "부분 환불",
-        processedAt: new Date(),
-      };
-      const updatedPaymentMock = {
-        ...mockCompletedPayment,
-        paymentStatus: "partially_refunded",
-      };
-
-      jest.spyOn(prismaService, "$transaction").mockResolvedValue({
-        refundLog: refundLogMock,
-        updatedPayment: updatedPaymentMock,
-      } as any);
-
-      const result = await service.requestRefund(
-        mockPaymentId,
-        "부분 환불",
-        120000,
-      );
-
-      expect(result.refundAmount).toBe(120000);
-      expect(result.paymentStatus).toBe("partially_refunded");
-    });
-  });
-
-  describe("getRefundLogs", () => {
-    it("should retrieve refund logs for payment", async () => {
-      const mockRefundLogs = [
-        {
-          id: "refund-1",
-          paymentId: mockPaymentId,
-          refundAmount: 240000,
-          refundReason: "고객 요청",
-          processedAt: new Date(),
-        },
-      ];
-      jest
-        .spyOn(prismaService.refundLog, "findMany")
-        .mockResolvedValue(mockRefundLogs as any);
-
-      const result = await service.getRefundLogs(mockPaymentId);
-
-      expect(Array.isArray(result)).toBe(true);
-      expect(result.length).toBe(1);
-      expect(result[0].refundAmount).toBe(240000);
-    });
-
-    it("should throw NotFoundException if no refund logs exist", async () => {
-      jest.spyOn(prismaService.refundLog, "findMany").mockResolvedValue([]);
-
-      await expect(service.getRefundLogs(mockPaymentId)).rejects.toThrow(
-        NotFoundException,
-      );
-    });
-  });
-
+  // ────────────────────────────────────────────────────────────────────
+  //  직접 보유 메서드 — 통계 (groupBy 기반)
+  // ────────────────────────────────────────────────────────────────────
   describe("getPaymentStats", () => {
-    // getPaymentStats는 payment.groupBy를 사용
-    it("should calculate payment statistics", async () => {
+    it("상태별 통계를 계산한다", async () => {
       jest.spyOn(prismaService.payment as any, "groupBy").mockResolvedValue([
-        {
-          paymentStatus: "completed",
-          _count: { id: 2 },
-          _sum: { amount: 540000 },
-        },
-        {
-          paymentStatus: "failed",
-          _count: { id: 1 },
-          _sum: { amount: 120000 },
-        },
-        {
-          paymentStatus: "refunded",
-          _count: { id: 1 },
-          _sum: { amount: 120000 },
-        },
+        { paymentStatus: "completed", _count: { id: 2 }, _sum: { amount: 540000 } },
+        { paymentStatus: "failed", _count: { id: 1 }, _sum: { amount: 120000 } },
+        { paymentStatus: "refunded", _count: { id: 1 }, _sum: { amount: 120000 } },
       ] as any);
 
       const result = await service.getPaymentStats();
@@ -699,7 +379,7 @@ describe("PaymentsService", () => {
       expect(result.netRevenue).toBe(420000);
     });
 
-    it("should return zero statistics for user with no payments", async () => {
+    it("결제가 없으면 0 통계 반환", async () => {
       jest.spyOn(prismaService.payment as any, "groupBy").mockResolvedValue([]);
 
       const result = await service.getPaymentStats(mockUserId);
@@ -709,18 +389,10 @@ describe("PaymentsService", () => {
       expect(result.successRate).toBe("0");
     });
 
-    it("should calculate success rate correctly", async () => {
+    it("성공률을 정확히 계산한다", async () => {
       jest.spyOn(prismaService.payment as any, "groupBy").mockResolvedValue([
-        {
-          paymentStatus: "completed",
-          _count: { id: 2 },
-          _sum: { amount: 540000 },
-        },
-        {
-          paymentStatus: "failed",
-          _count: { id: 2 },
-          _sum: { amount: 220000 },
-        },
+        { paymentStatus: "completed", _count: { id: 2 }, _sum: { amount: 540000 } },
+        { paymentStatus: "failed", _count: { id: 2 }, _sum: { amount: 220000 } },
       ] as any);
 
       const result = await service.getPaymentStats();
@@ -730,22 +402,13 @@ describe("PaymentsService", () => {
   });
 
   describe("getPaymentStatsByDateRange", () => {
-    // getPaymentStatsByDateRange도 payment.groupBy를 사용
-    it("should calculate stats for date range", async () => {
+    it("기간별 통계를 계산한다", async () => {
       const startDate = new Date("2026-01-01");
       const endDate = new Date("2026-01-31");
 
       jest.spyOn(prismaService.payment as any, "groupBy").mockResolvedValue([
-        {
-          paymentStatus: "completed",
-          _count: { id: 2 },
-          _sum: { amount: 540000 },
-        },
-        {
-          paymentStatus: "failed",
-          _count: { id: 1 },
-          _sum: { amount: 120000 },
-        },
+        { paymentStatus: "completed", _count: { id: 2 }, _sum: { amount: 540000 } },
+        { paymentStatus: "failed", _count: { id: 1 }, _sum: { amount: 120000 } },
       ] as any);
 
       const result = await service.getPaymentStatsByDateRange(
@@ -760,19 +423,169 @@ describe("PaymentsService", () => {
       expect(result.totalRevenue).toBe(540000);
     });
 
-    it("should return zero stats if no payments in range", async () => {
-      const startDate = new Date("2026-01-01");
-      const endDate = new Date("2026-01-31");
+    it("기간 내 결제가 없으면 0 통계 반환", async () => {
       jest.spyOn(prismaService.payment as any, "groupBy").mockResolvedValue([]);
 
       const result = await service.getPaymentStatsByDateRange(
-        startDate,
-        endDate,
+        new Date("2026-01-01"),
+        new Date("2026-01-31"),
       );
 
       expect(result.totalPayments).toBe(0);
       expect(result.totalRevenue).toBe(0);
       expect(result.averageOrderValue).toBe("0");
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────────────
+  //  mockConfirmPayment (DEV 전용 토스 승인 우회 결제 완료)
+  // ────────────────────────────────────────────────────────────────────
+  describe("mockConfirmPayment", () => {
+    const pendingPayment = {
+      id: mockPaymentId,
+      userId: mockUserId,
+      amount: 240000,
+      paymentStatus: "pending",
+      productId: mockProductId,
+      // sessionsPerMonth 0 → 크레딧 미발급 상품(대회 참가비 등) — 발급 분기 스킵.
+      product: {
+        classId: "class-123",
+        durationDays: 30,
+        sessionsPerMonth: 0,
+        feeType: "PER_GAME",
+        billingTiming: "PREPAID",
+        billingMonth: null,
+      },
+    };
+
+    it("운영(NODE_ENV=production) 에서는 ForbiddenException", async () => {
+      const originalNodeEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = "production";
+      try {
+        await expect(
+          service.mockConfirmPayment(mockUserId, mockOrderNumber),
+        ).rejects.toThrow(ForbiddenException);
+      } finally {
+        process.env.NODE_ENV = originalNodeEnv;
+      }
+    });
+
+    it("타인 결제 승인 시도 시 ForbiddenException", async () => {
+      jest.spyOn(prismaService.payment, "findUnique").mockResolvedValue({
+        ...pendingPayment,
+        userId: "other-user",
+      } as any);
+
+      await expect(
+        service.mockConfirmPayment(mockUserId, mockOrderNumber),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it("이미 완료된 결제는 멱등 응답({ idempotent: true }) 반환", async () => {
+      jest.spyOn(prismaService.payment, "findUnique").mockResolvedValue({
+        ...pendingPayment,
+        paymentStatus: "completed",
+      } as any);
+
+      const result = await service.mockConfirmPayment(
+        mockUserId,
+        mockOrderNumber,
+      );
+
+      expect(result).toEqual({
+        success: true,
+        paymentId: mockPaymentId,
+        idempotent: true,
+      });
+      // 멱등 응답은 상태 전환/락 획득을 수행하지 않는다.
+      expect(prismaService.$transaction).not.toHaveBeenCalled();
+      expect(mockRedisService.setIfNotExists).not.toHaveBeenCalled();
+    });
+
+    it("취소된 결제 승인 시도 시 BadRequestException", async () => {
+      jest.spyOn(prismaService.payment, "findUnique").mockResolvedValue({
+        ...pendingPayment,
+        paymentStatus: "cancelled",
+      } as any);
+
+      await expect(
+        service.mockConfirmPayment(mockUserId, mockOrderNumber),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it("정상 경로: paymentMethod 'mock'·tid 'MOCK-' prefix 로 완료 처리 + 응답 shape", async () => {
+      jest
+        .spyOn(prismaService.payment, "findUnique")
+        .mockResolvedValue(pendingPayment as any);
+      mockRedisService.setIfNotExists.mockResolvedValue(true);
+
+      const txPaymentUpdate = jest.fn().mockResolvedValue({});
+      const tx = {
+        payment: { update: txPaymentUpdate },
+        monthlyPostpaidBillingLine: {
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+        enrollment: {
+          findMany: jest.fn().mockResolvedValue([]),
+          update: jest.fn(),
+        },
+        classRegistration: { upsert: jest.fn() },
+        tournamentRegistration: {
+          findMany: jest.fn().mockResolvedValue([]),
+          update: jest.fn(),
+        },
+      };
+      jest
+        .spyOn(prismaService, "$transaction")
+        .mockImplementation(async (fn: any) => fn(tx));
+
+      const result = await service.mockConfirmPayment(
+        mockUserId,
+        mockOrderNumber,
+      );
+
+      // 응답 shape 검증.
+      expect(result).toEqual(
+        expect.objectContaining({
+          success: true,
+          paymentId: mockPaymentId,
+          orderId: mockOrderNumber,
+          amount: 240000,
+          method: "mock",
+          receiptUrl: null,
+        }),
+      );
+      expect(typeof result.approvedAt).toBe("string");
+
+      // 멱등 락 획득(실결제와 동일 키).
+      expect(mockRedisService.setIfNotExists).toHaveBeenCalledWith(
+        `toss:confirm:${mockOrderNumber}`,
+        "1",
+        86400,
+      );
+
+      // 공용 후처리(applyApprovedPayment) 가 mock 결제 표식으로 완료 갱신.
+      expect(txPaymentUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: mockPaymentId },
+          data: expect.objectContaining({
+            paymentStatus: "completed",
+            paymentMethod: "mock",
+            tid: expect.stringMatching(/^MOCK-/),
+          }),
+        }),
+      );
+    });
+
+    it("동시 승인(락 획득 실패) 시 BadRequestException", async () => {
+      jest
+        .spyOn(prismaService.payment, "findUnique")
+        .mockResolvedValue(pendingPayment as any);
+      mockRedisService.setIfNotExists.mockResolvedValue(false);
+
+      await expect(
+        service.mockConfirmPayment(mockUserId, mockOrderNumber),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

@@ -77,7 +77,7 @@ function PaymentCheckoutContent() {
     showBackButton: true,
   });
 
-  const { back } = useNavigation();
+  const { back, navigate } = useNavigation();
   const searchParams = useSearchParams();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -175,6 +175,26 @@ function PaymentCheckoutContent() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : MESSAGES.payment2.requestFailed;
       setError(msg);
+      toast.error(msg);
+      setIsPaying(false);
+    }
+  };
+
+  // DEV 전용 테스트 결제 — 빌드타임 플래그로 운영 빌드에서는 렌더 자체가 제거됨.
+  const mockPayEnabled = process.env.NEXT_PUBLIC_ENABLE_MOCK_PAY === 'true';
+
+  // 토스 위젯을 열지 않고 백엔드가 결제 완료 처리(mock). orderId 만 있으면 동작(위젯 isReady 무관).
+  const handleMockPayment = async () => {
+    if (!orderId || isPaying) return;
+    setIsPaying(true);
+    try {
+      const res = await api.post('/payments/mock-confirm', { orderId });
+      if (!res.success) {
+        throw new Error(res.error?.message ?? MESSAGES.payment2.mockPayFailed);
+      }
+      navigate(`/payment/complete?provider=mock&orderId=${encodeURIComponent(orderId)}`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : MESSAGES.payment2.mockPayFailed;
       toast.error(msg);
       setIsPaying(false);
     }
@@ -288,6 +308,16 @@ function PaymentCheckoutContent() {
               `${amount.toLocaleString()}원 결제하기`
             )}
           </button>
+          {mockPayEnabled && (
+            <button
+              type="button"
+              onClick={handleMockPayment}
+              disabled={!orderId || isPaying}
+              className="w-full rounded-w-md border border-dashed border-it-line-strong dark:border-rink-600 bg-it-fill dark:bg-rink-800 text-it-ink-500 dark:text-rink-200 py-3 font-semibold text-card-body transition-colors motion-reduce:transition-none hover:bg-it-line dark:hover:bg-rink-700 active:brightness-95 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {MESSAGES.payment2.mockPayButton}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => back()}
