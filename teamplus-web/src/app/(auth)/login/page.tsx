@@ -71,7 +71,6 @@ function prefetchDashboardData(userType?: string) {
 // 아이디 저장 — localStorage 키 (모듈 스코프 상수, SSR 안전)
 const REMEMBER_EMAIL_FLAG_KEY = "teamplus_remember_email_enabled";
 const SAVED_EMAIL_KEY = "teamplus_saved_email";
-const LOGIN_NAVIGATION_TIMEOUT_MS = 8_000;
 
 
 // ========== 한글 입력 차단 (2026-05-23 추가) ==========
@@ -291,13 +290,29 @@ export default function LoginPage() {
   }, []);
 
   /**
-   * 로그인 성공 후 클라이언트 사이드 네비게이션
-   * - Web/Native 모두 replace를 사용해 /login을 history에서 제거
-   * - 일반 Native 화면 이동의 push 계약은 ClientProviders에 그대로 유지
-   * - window.location.href는 전체 페이지 새로고침을 유발하므로 사용하지 않음
+   * 클라이언트 사이드 네비게이션 (무한 루프 방지)
+   * - Native 앱: window.teamplusNavigate 사용 (Flutter 클라이언트 네비게이션)
+   * - Web: router.push 사용 (Next.js 클라이언트 네비게이션)
+   * - window.location.href는 전체 페이지 새로고침을 유발하여 무한 루프 원인
+   *
+   * 쿠키는 saveTokens()에서 동기적으로 설정되므로 즉시 이동 가능
    */
   const navigateToDashboard = (path: string) => {
-    // 로그인 완료 이동은 replace 전용이다. 일반 Native 화면 이동의 push 계약은 유지한다.
+    // Native 앱 환경: Flutter의 클라이언트 사이드 네비게이션 사용
+    if (isNativeApp() && typeof window !== "undefined") {
+      // 우선순위: window.__NEXT_ROUTER_PUSH__ > window.teamplusNavigate > router.push
+      if (window.__NEXT_ROUTER_PUSH__) {
+        window.__NEXT_ROUTER_PUSH__(path);
+        return;
+      }
+      if (window.teamplusNavigate) {
+        window.teamplusNavigate(path);
+        return;
+      }
+    }
+
+    // Web 환경 또는 fallback: Next.js router 사용
+    // ※ replace 사용 — 로그인 화면을 history 에서 제거해 "홈에서 백버튼 → 로그인 재진입" 차단.
     router.replace(path, { scroll: false });
   };
 
@@ -526,21 +541,6 @@ export default function LoginPage() {
   const [loginSuccess, setLoginSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [guardNotice, setGuardNotice] = useState<string | null>(null);
-
-  // 로그인 성공 후 라우트 전환이 완료되지 않으면 로더와 제출 잠금을 함께 복구한다.
-  useEffect(() => {
-    if (!loginSuccess) return;
-
-    const timeoutId = window.setTimeout(() => {
-      setLoading(false);
-      setLoginSuccess(false);
-      isRedirecting.current = false;
-      stopLoading();
-      setError(MESSAGES.auth.navigationTimeout);
-    }, LOGIN_NAVIGATION_TIMEOUT_MS);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [loginSuccess, stopLoading]);
 
   /**
    * API 가드 유도로 도착한 경우 `reason` 쿼리 감지 → 안내 메시지 표시.
