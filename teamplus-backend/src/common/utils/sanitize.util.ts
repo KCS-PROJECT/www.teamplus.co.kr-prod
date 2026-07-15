@@ -128,15 +128,6 @@ export function sanitizeExtendedHtml(input: string): string {
 }
 
 /**
- * 블로그 본문 HTML 살균 (에디터 리치 콘텐츠)
- * 사용: 블로그 게시글 content (RichTextEditor 출력)
- */
-export function sanitizeBlogHtml(input: string): string {
-  if (!input) return input;
-  return sanitizeHtml(input, blogHtmlOptions).trim();
-}
-
-/**
  * 객체의 문자열 필드들을 새니타이즈
  */
 export function sanitizeObject<T extends Record<string, any>>(
