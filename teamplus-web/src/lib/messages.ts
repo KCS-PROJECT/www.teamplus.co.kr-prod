@@ -291,6 +291,8 @@ export const MESSAGES = {
   //   대신 명확하게 "로그인 중 오류가 발생했어요"는 유지하되 "다시 시도해주세요"로 회복 경로 제시.
   auth: {
     loginError: "로그인 중 오류가 발생했어요. 다시 시도해주세요.",
+    navigationTimeout:
+      "화면 이동이 완료되지 않았어요. 잠시 후 다시 시도해주세요.",
     // ICETIMES 브랜드 카피 — 스플래시/로그인 비주얼 전용 (2026-06-24 ICETIMES 롤아웃)
     brand: {
       wordmark: "TEAMPLUS",
