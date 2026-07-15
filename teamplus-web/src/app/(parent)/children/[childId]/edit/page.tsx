@@ -38,7 +38,6 @@ const GENDER_OPTIONS = [
 
 const MIN_AGE = 3;
 const MAX_AGE = 18;
-const CHILD_TEEN_BOUNDARY = 10;
 
 // 나이 계산은 @/lib/utils 의 calculateKoreanAge 로 통합 (중복 제거)
 
@@ -58,28 +57,6 @@ interface FormErrors {
   lastName?: string;
   firstName?: string;
   birthDate?: string;
-}
-
-// ========== 연령 배지 ==========
-
-function AgeBadge({ age }: { age: number }) {
-  const isChild = age < CHILD_TEEN_BOUNDARY;
-  return (
-    <div className="flex items-center gap-2 mt-2">
-      <span className="text-card-body text-it-ink-500 dark:text-rink-300">
-        {age}세
-      </span>
-      <span
-        className={`text-card-meta font-bold px-2 py-0.5 rounded-w-pill ${
-          isChild
-            ? 'bg-sun-100 text-sun-500 dark:bg-sun-500/15 dark:text-sun-500'
-            : 'bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-900/30 dark:text-it-blue-500'
-        }`}
-      >
-        {isChild ? 'CHILD' : 'TEEN'}
-      </span>
-    </div>
-  );
 }
 
 // ========== 메인 컴포넌트 ==========
@@ -568,7 +545,6 @@ export default function EditChildPage() {
                     {errors.birthDate}
                   </p>
                 )}
-                {age !== null && !errors.birthDate && <AgeBadge age={age} />}
               </div>
 
             </div>

@@ -10,12 +10,13 @@ import { cn } from '@/lib/utils';
 import { usePageReady } from '@/hooks/usePageReady';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { MESSAGES } from '@/lib/messages';
+import { formatBirthDateLabel } from '@/components/shared';
 
 // ─── Types ──────────────────────────────────────────
 interface MemberInfo {
   id: string;
   name: string;
-  age: number;
+  birthDate: string;
   position: string;
   level: string;
   attendanceRate: number;
@@ -60,7 +61,7 @@ const MemberRow = memo(function MemberRow({ member, isLast }: { member: MemberIn
           <span className="text-[15.5px] font-bold tracking-[-0.01em] text-it-ink-800 dark:text-white truncate">
             {member.name}
           </span>
-          <span className="shrink-0 text-card-meta font-medium text-it-ink-500 dark:text-wtext-4">{member.age}세</span>
+          <span className="shrink-0 text-card-meta font-medium text-it-ink-500 dark:text-wtext-4 tabular-nums">{formatBirthDateLabel(member.birthDate)}</span>
         </div>
         <div className="flex items-center gap-2 text-card-meta text-it-ink-500 dark:text-wtext-4">
           <span className="font-medium">{member.position}</span>
@@ -194,14 +195,14 @@ export default function CoachMembersPage() {
     try {
       await new Promise(resolve => setTimeout(resolve, 500));
       setMembers([
-        { id: '1', name: '김민준', age: 11, position: '센터', level: '초급반', attendanceRate: 95, isActive: true, joinedAt: '2025-09' },
-        { id: '2', name: '이서연', age: 12, position: '라이트윙', level: '중급반', attendanceRate: 88, isActive: true, joinedAt: '2025-06' },
-        { id: '3', name: '박지호', age: 10, position: '디펜스', level: '초급반', attendanceRate: 72, isActive: true, joinedAt: '2025-11' },
-        { id: '4', name: '최예은', age: 13, position: '골키퍼', level: '고급반', attendanceRate: 98, isActive: true, joinedAt: '2025-03' },
-        { id: '5', name: '정현우', age: 11, position: '레프트윙', level: '중급반', attendanceRate: 65, isActive: false, joinedAt: '2025-08' },
-        { id: '6', name: '강서윤', age: 9, position: '센터', level: '초급반', attendanceRate: 82, isActive: true, joinedAt: '2025-12' },
-        { id: '7', name: '조민서', age: 14, position: '디펜스', level: '고급반', attendanceRate: 91, isActive: true, joinedAt: '2025-01' },
-        { id: '8', name: '윤하준', age: 10, position: '라이트윙', level: '중급반', attendanceRate: 78, isActive: false, joinedAt: '2025-10' },
+        { id: '1', name: '김민준', birthDate: '2016-03-14', position: '센터', level: '초급반', attendanceRate: 95, isActive: true, joinedAt: '2025-09' },
+        { id: '2', name: '이서연', birthDate: '2015-07-22', position: '라이트윙', level: '중급반', attendanceRate: 88, isActive: true, joinedAt: '2025-06' },
+        { id: '3', name: '박지호', birthDate: '2017-01-09', position: '디펜스', level: '초급반', attendanceRate: 72, isActive: true, joinedAt: '2025-11' },
+        { id: '4', name: '최예은', birthDate: '2014-11-30', position: '골키퍼', level: '고급반', attendanceRate: 98, isActive: true, joinedAt: '2025-03' },
+        { id: '5', name: '정현우', birthDate: '2016-05-18', position: '레프트윙', level: '중급반', attendanceRate: 65, isActive: false, joinedAt: '2025-08' },
+        { id: '6', name: '강서윤', birthDate: '2018-02-25', position: '센터', level: '초급반', attendanceRate: 82, isActive: true, joinedAt: '2025-12' },
+        { id: '7', name: '조민서', birthDate: '2013-08-07', position: '디펜스', level: '고급반', attendanceRate: 91, isActive: true, joinedAt: '2025-01' },
+        { id: '8', name: '윤하준', birthDate: '2017-10-03', position: '라이트윙', level: '중급반', attendanceRate: 78, isActive: false, joinedAt: '2025-10' },
       ]);
       setPendingMembers([
         { id: 'p1', name: '한소희', className: '기초 스케이팅', requestedAt: '3일 전' },

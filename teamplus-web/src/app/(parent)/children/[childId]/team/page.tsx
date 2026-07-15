@@ -28,6 +28,7 @@ import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
 import { Icon } from '@/components/ui/Icon';
 import { useChildren } from '@/hooks/useChildren';
+import { formatBirthDateLabel } from '@/components/shared';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { usePageReady } from '@/hooks/usePageReady';
 import { MESSAGES } from '@/lib/messages';
@@ -79,8 +80,8 @@ export default function ChildTeamInfoPage() {
                 <p className="text-w-h3 font-extrabold text-it-ink-900 dark:text-white tracking-[-0.03em] leading-tight truncate">
                   {child.name}
                 </p>
-                <p className="mt-0.5 text-card-meta text-it-ink-500 dark:text-wtext-4">
-                  {child.age ? `${child.age}세` : ''}
+                <p className="mt-0.5 text-card-meta text-it-ink-500 dark:text-wtext-4 tabular-nums">
+                  {formatBirthDateLabel(child.birthDate) ?? ''}
                 </p>
               </div>
             </div>

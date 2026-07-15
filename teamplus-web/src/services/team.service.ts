@@ -11,7 +11,6 @@
  *   GET    /teams/:id                           - 팀 상세
  *   POST   /teams                               - 팀 생성
  *   PUT    /teams/:id                           - 팀 수정
- *   DELETE /teams/:id                           - 팀 삭제 (soft)
  *   GET    /teams/:id/roster                    - 선수 명단
  *   GET    /teams/:id/available-members         - 추가 가능한 팀 회원
  *   POST   /teams/:id/roster                    - 선수 추가
@@ -643,18 +642,8 @@ export function updateTeam(
   });
 }
 
-/**
- * 팀 삭제 (soft delete)
- */
-export function deleteTeam(
-  id: string,
-): Promise<ApiResponse<{ success: boolean; deletedTeamId: string }>> {
-  return apiRequest({
-    method: 'DELETE',
-    url: `${BASE}/${id}`,
-    retry: false,
-  });
-}
+// 팀 삭제 API 는 제공하지 않는다 — 팀은 수업·결제·출석·정산 데이터의 허브라
+// 삭제를 허용하지 않는 정책이며, 백엔드에도 DELETE /teams/:id 라우트가 없다.
 
 // ============================================
 // Roster API

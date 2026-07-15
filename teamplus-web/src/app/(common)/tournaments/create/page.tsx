@@ -1161,9 +1161,9 @@ function PlayerRow({
       <span className="flex-1 min-w-0 truncate text-w-small font-extrabold text-it-ink-800 dark:text-white">
         {playerLabel(member)}
       </span>
-      {typeof member.playerAge === "number" && (
+      {typeof member.birthYear === "number" && (
         <span className="shrink-0 text-w-caption tabular-nums text-it-ink-400 dark:text-rink-300">
-          {member.playerAge}세
+          {member.birthYear}년생
         </span>
       )}
     </label>

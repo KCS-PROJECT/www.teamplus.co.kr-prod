@@ -459,11 +459,6 @@ export default function AddChildPage() {
                 </svg>
               </button>
               {errors.birthDate && <RefError>{errors.birthDate}</RefError>}
-              {age !== null && !errors.birthDate && (
-                <p className="mt-1.5 text-card-meta font-semibold text-it-ink-500 dark:text-wtext-4 font-num tabular-nums">
-                  만 {age}세
-                </p>
-              )}
             </div>
 
             {/* 성별 — ref: mt 14 / 2-col grid / 46 height button / active bg ice50 border ice500 color ice700 */}

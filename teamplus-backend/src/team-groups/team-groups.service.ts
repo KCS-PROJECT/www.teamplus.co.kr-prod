@@ -123,7 +123,14 @@ export class TeamGroupsService {
         playerName: true,
         playerAge: true,
         roleInTeam: true,
-        user: { select: { gender: true, userType: true } },
+        user: {
+          select: {
+            gender: true,
+            userType: true,
+            birthDate: true,
+            childProfile: { select: { birthDate: true } },
+          },
+        },
       },
     });
 
@@ -134,6 +141,9 @@ export class TeamGroupsService {
       playerAge: m.playerAge,
       roleInTeam: m.roleInTeam ?? null,
       userType: m.user?.userType ?? null,
+      // ChildProfile 우선(자녀 SoT) → user.birthDate 폴백 → null (findById 와 동일 규칙)
+      birthDate:
+        m.user?.childProfile?.birthDate ?? m.user?.birthDate ?? null,
     }));
   }
 
