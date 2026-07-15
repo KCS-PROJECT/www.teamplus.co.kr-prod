@@ -190,6 +190,8 @@ const generalNavItems = [
     label: "상담 신청",
     icon: Headset,
   },
+  // [추가 2026-07-14] 랜딩 블로그 관리 — teamplus-home /blog 공개 노출.
+  { href: "/dashboard/blog", label: "블로그 관리", icon: FileText },
 ];
 
 // ============ 앱관리 ============

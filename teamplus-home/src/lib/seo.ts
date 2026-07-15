@@ -244,6 +244,37 @@ export function faqSchema() {
   };
 }
 
+/**
+ * BlogPosting 스키마 — 블로그 상세글을 검색·답변 엔진에 기사로 명시(Article 리치 결과 후보).
+ * publisher 는 Organization(#organization) 재사용. 날조 금지 — 실제 값(제목/요약/발행일)만.
+ */
+export function blogPostingSchema(post: {
+  slug: string;
+  title: string;
+  summary: string;
+  coverImageUrl?: string | null;
+  publishedAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}) {
+  const url = absoluteUrl(`/blog/${post.slug}`);
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'BlogPosting',
+    '@id': `${url}#article`,
+    mainEntityOfPage: url,
+    url,
+    headline: post.title,
+    description: post.summary,
+    inLanguage: 'ko-KR',
+    ...(post.coverImageUrl ? { image: post.coverImageUrl } : {}),
+    datePublished: post.publishedAt ?? post.createdAt,
+    dateModified: post.updatedAt,
+    author: { '@id': `${SITE_URL}/#organization` },
+    publisher: { '@id': `${SITE_URL}/#organization` },
+  };
+}
+
 /** BreadcrumbList 스키마 — 페이지 위계를 검색엔진에 제공(빵부스러기 리치 결과). */
 export function breadcrumbSchema(
   trail: Array<{ name: string; path: string }>,

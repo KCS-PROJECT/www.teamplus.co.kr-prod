@@ -34,6 +34,7 @@ import { ShopModule } from "./shop/shop.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { NoticesModule } from "./notices/notices.module";
 import { ContactInquiriesModule } from "./contact-inquiries/contact-inquiries.module";
+import { BlogModule } from "./blog/blog.module";
 import { CommunityModule } from "./community/community.module";
 import { WebsocketModule } from "./websocket/websocket.module";
 import { ChildrenModule } from "./children/children.module";
@@ -161,6 +162,7 @@ import { TransactionLogModule } from "./transaction-log/transaction-log.module";
     DashboardModule,
     NoticesModule,
     ContactInquiriesModule,
+    BlogModule,
     CommunityModule,
     WebsocketModule,
     ChildrenModule,
