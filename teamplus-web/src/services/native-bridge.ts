@@ -116,6 +116,7 @@ export type { ScreenBreakpoint } from "./native-bridge-screens";
 // [C-1 2026-06-07] auth/identity/qr/biometric/navigation 모듈은 native-bridge-handlers 로 분리.
 import { auth, identity, qr, biometric, navigation } from "./native-bridge-handlers";
 export { auth, identity, qr, biometric, navigation };
+export type { OpenExternalOptions } from "./native-bridge-handlers";
 export { ApiRequestError };
 // [C-1 2026-06-07] 공유 헬퍼 callNativeApi/callUIBridge 는 native-bridge-core 로 분리.
 import { callNativeApi, callUIBridge } from "./native-bridge-core";

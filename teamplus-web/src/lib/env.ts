@@ -210,6 +210,7 @@ export const env = {
   // iOS App Store 숫자 ID. 미설정 시 검색 페이지로 fallback.
   NEXT_PUBLIC_IOS_APP_STORE_ID: process.env.NEXT_PUBLIC_IOS_APP_STORE_ID || '',
   // Android Play Store 패키지명. app/build.gradle 의 applicationId 와 동일해야 한다.
+  // 실제 앱: android/app/build.gradle.kts applicationId = "kr.co.teamplus" (2026-07-01 정정).
   NEXT_PUBLIC_ANDROID_PACKAGE_NAME:
     process.env.NEXT_PUBLIC_ANDROID_PACKAGE_NAME || 'kr.co.teamplus',
 

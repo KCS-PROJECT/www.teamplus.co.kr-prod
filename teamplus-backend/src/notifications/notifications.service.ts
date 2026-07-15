@@ -8,10 +8,14 @@ import {
   forwardRef,
   Optional,
 } from "@nestjs/common";
+import { InjectQueue } from "@nestjs/bull";
+import { Queue } from "bull";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
 import { NotificationQueue } from "./notification.queue";
 import { FcmService, FcmDataPayload } from "./fcm.service";
+import { PushPolicyService } from "./push-policy.service";
+import { buildPushData } from "./push-payload";
 import { ConfigService } from "@nestjs/config";
 import { NotificationsGateway } from "@/websocket/notifications.gateway";
 
@@ -55,6 +59,17 @@ export interface AlimtalkTemplateData {
   [key: string]: string;
 }
 
+/** 관리자 광역(all/role) Push 브로드캐스트 큐 잡 데이터 */
+export interface AdminPushJobData {
+  pushLogId: string;
+  title: string;
+  body: string;
+  targetType: "all" | "role";
+  role?: string;
+  isMarketing: boolean;
+  data: FcmDataPayload;
+}
+
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
@@ -64,7 +79,9 @@ export class NotificationsService {
     private readonly redis: RedisService,
     private readonly notificationQueue: NotificationQueue,
     private readonly fcmService: FcmService,
+    private readonly pushPolicy: PushPolicyService,
     private readonly configService: ConfigService,
+    @InjectQueue("push") private readonly pushQueue: Queue,
     @Optional()
     @Inject(forwardRef(() => NotificationsGateway))
     private readonly notificationsGateway?: NotificationsGateway,
@@ -166,14 +183,17 @@ export class NotificationsService {
     }
 
     // FCM 푸시 발송 (비동기 — 실패해도 알림 생성에 영향 없음)
+    // linkUrl 포함(계약 v1) — 알림함 클릭과 푸시 탭이 같은 목적지로 이동한다.
     this.sendFcmPushAsync(
       dto.userId,
       notification.title,
       notification.message,
-      {
-        notificationId: notification.id,
+      buildPushData({
         type: notification.notificationType,
-      },
+        linkUrl: notification.linkUrl,
+        notificationId: notification.id,
+      }),
+      notification.notificationType,
     );
 
     return result;
@@ -197,17 +217,18 @@ export class NotificationsService {
     return Array.from(new Set(links.map((l) => l.parentId)));
   }
 
-  /** 푸시 수신거부(pushEnabled=false) 사용자를 제외한 대상 반환 */
-  private async filterPushEnabled(userIds: string[]): Promise<string[]> {
-    if (userIds.length === 0) return [];
-    const disabledPrefs = await this.prisma.userNotificationPreference.findMany(
-      {
-        where: { userId: { in: userIds }, pushEnabled: false },
-        select: { userId: true },
-      },
-    );
-    const disabled = new Set(disabledPrefs.map((p) => p.userId));
-    return userIds.filter((id) => !disabled.has(id));
+  /**
+   * 푸시 정책(수신거부·카테고리·방해금지)을 통과한 FCM 발송 대상 반환.
+   * 정책 로직은 PushPolicyService(단일 SoT)로 이관 — 여기는 위임 래퍼.
+   */
+  private async filterPushEnabled(
+    userIds: string[],
+    notificationType?: string,
+  ): Promise<string[]> {
+    const { allowed } = await this.pushPolicy.filterRecipients(userIds, {
+      notificationType,
+    });
+    return allowed;
   }
 
   /**
@@ -226,12 +247,12 @@ export class NotificationsService {
     },
   ): Promise<void> {
     const unique = Array.from(new Set(userIds)).filter(Boolean);
-    const targets = await this.filterPushEnabled(unique);
-    if (targets.length === 0) return;
+    if (unique.length === 0) return;
 
-    // DB 알림 일괄 생성
+    // 인앱 알림은 전원 적재 — 수신거부/방해금지는 '푸시' 억제이지 알림함 차단이
+    // 아니다. FCM 만 아래 정책 게이트를 통과한 대상에게 발송한다.
     await this.prisma.notification.createMany({
-      data: targets.map((userId) => ({
+      data: unique.map((userId) => ({
         userId,
         notificationType: payload.notificationType,
         title: payload.title,
@@ -243,13 +264,13 @@ export class NotificationsService {
 
     // unread 캐시 무효화
     await Promise.allSettled(
-      targets.map((userId) => this.invalidateUnreadCountCache(userId)),
+      unique.map((userId) => this.invalidateUnreadCountCache(userId)),
     );
 
     // WebSocket 실시간 (best-effort)
     if (this.notificationsGateway) {
       try {
-        await this.notificationsGateway.sendToUsers(targets, {
+        await this.notificationsGateway.sendToUsers(unique, {
           id: "",
           type: payload.notificationType,
           title: payload.title,
@@ -261,16 +282,23 @@ export class NotificationsService {
       }
     }
 
-    // FCM 배치 발송
+    // FCM 배치 발송 — 정책 게이트(수신거부·카테고리·방해금지) 통과 대상만.
+    // 정책 조회까지 try 로 감싸 FCM 발송 실패가 알림 생성(이미 완료)에 영향 없게 격리.
     try {
+      const targets = await this.filterPushEnabled(
+        unique,
+        payload.notificationType,
+      );
+      if (targets.length === 0) return;
+
       await this.fcmService.sendPushToUsers(
         targets,
         payload.title,
         payload.message,
-        {
+        buildPushData({
           type: payload.notificationType,
-          ...(payload.linkUrl ? { linkUrl: payload.linkUrl } : {}),
-        },
+          linkUrl: payload.linkUrl,
+        }),
       );
     } catch (error) {
       this.logger.warn(`FCM 일괄 발송 실패: ${error}`);
@@ -299,18 +327,26 @@ export class NotificationsService {
     options?: { setBadge?: boolean },
   ): Promise<void> {
     const unique = Array.from(new Set(userIds)).filter(Boolean);
-    const targets = await this.filterPushEnabled(unique);
-    if (targets.length === 0) return;
+    if (unique.length === 0) return;
 
+    // 정책 조회(filterPushEnabled → prisma)까지 포함해 통째로 격리한다. 이 메서드는
+    // 호출부에서 `void`(fire-and-forget)로 쓰이므로(예: attendance 정정/수동마킹),
+    // 정책 DB 조회가 throw 하면 unhandled promise rejection 이 된다 — 절대 reject 하지 않는다.
     try {
+      const targets = await this.filterPushEnabled(
+        unique,
+        payload.notificationType,
+      );
+      if (targets.length === 0) return;
+
       await this.fcmService.sendPushToUsers(
         targets,
         payload.title,
         payload.message,
-        {
+        buildPushData({
           type: payload.notificationType,
-          ...(payload.linkUrl ? { linkUrl: payload.linkUrl } : {}),
-        },
+          linkUrl: payload.linkUrl,
+        }),
         options,
       );
     } catch (error) {
@@ -1452,6 +1488,7 @@ export class NotificationsService {
     adminId?: string,
     isMarketing: boolean = false,
     userIds?: string[],
+    linkUrl?: string,
   ) {
     // 야간 마케팅 발송 제한 (정보통신망법 제50조)
     if (isMarketing && this.isNightTimeKST()) {
@@ -1471,29 +1508,106 @@ export class NotificationsService {
       throw new BadRequestException("역할 발송 대상(role)이 필요합니다.");
     }
 
-    // ── 대상 userId 산출 (인앱 알림 적재 + 광고성 수신거부 필터에 사용) ──
-    // all 은 전체 디바이스를 직접 조회하므로 개별 userId 목록을 산출하지 않는다(대량 회피).
-    let recipientUserIds: string[] = [];
-    if (targetType === "specific") {
-      recipientUserIds = Array.from(new Set((userIds ?? []).filter(Boolean)));
-    } else if (targetType === "role") {
-      const users = await this.prisma.user.findMany({
-        where: { userType: role as import("@prisma/client").UserType },
-        select: { id: true },
-      });
-      recipientUserIds = users.map((u) => u.id);
+    // 계약 v1 payload + dual-emit — 구 payload 키(targetType/role/source)는
+    // 기존 소비처 호환을 위해 당분간 병행 emit (구앱 소멸 후 제거 예정).
+    const pushData: FcmDataPayload = {
+      ...buildPushData({
+        type: isMarketing ? "admin_push_marketing" : "admin_push",
+        linkUrl,
+      }),
+      targetType,
+      role: role ?? "",
+      source: "admin_push",
+    };
+
+    // ── all/role 광역 발송은 큐로 분리 (B5) ──
+    // 500청크 순차 발송 + 백오프 sleep 이 HTTP 요청 스레드를 점유해 타임아웃을
+    // 유발하고, 관리자가 실패로 오인해 재발송(중복 푸시)하는 사고를 막는다.
+    // 대상 산출·수신거부 필터는 발송 시점(executeAdminPushJob)에 재해석하고,
+    // 결과는 PushNotificationLog(queued → sent/partial/failed) 폴링으로 추적.
+    if (targetType === "all" || targetType === "role") {
+      const [pushLog] = await this.prisma.$transaction([
+        this.prisma.pushNotificationLog.create({
+          data: {
+            title,
+            body: bodyText,
+            targetType,
+            targetValue: role ?? null,
+            sentBy: adminId ?? "",
+            totalCount: 0,
+            successCount: 0,
+            failCount: 0,
+            status: "queued",
+          },
+        }),
+        this.prisma.auditLog.create({
+          data: {
+            userId: adminId ?? null,
+            action: "ADMIN_PUSH_SENT",
+            resource: "notifications",
+            newValue: {
+              title,
+              body: bodyText,
+              targetType,
+              role: role ?? null,
+              queued: true,
+            },
+          },
+        }),
+      ]);
+
+      const jobData: AdminPushJobData = {
+        pushLogId: pushLog.id,
+        title,
+        body: bodyText,
+        targetType,
+        role,
+        isMarketing,
+        data: pushData,
+      };
+      try {
+        await this.pushQueue.add("send-admin-push", jobData, {
+          attempts: 1,
+          removeOnComplete: true,
+          removeOnFail: false,
+        });
+      } catch (error) {
+        // 큐 등록 실패 시 로그를 failed 로 종결 — 'queued' 영구 잔존 방지
+        const err = error as Error;
+        await this.markAdminPushJobFailed(
+          pushLog.id,
+          `큐 등록 실패: ${err.message}`,
+        );
+        throw error;
+      }
+
+      return {
+        success: true,
+        queued: true,
+        sentCount: 0,
+        failedCount: 0,
+        totalDevices: 0,
+        pushLogId: pushLog.id,
+        message:
+          "발송이 접수되었습니다. 발송 이력에서 처리 결과를 확인해주세요.",
+      };
     }
 
-    // 광고성 발송 시 수신거부(pushEnabled=false) 제외 (정보성/시스템 공지는 전체 발송 유지).
-    // all + 광고성은 디바이스 직접 조회라 user 단위 필터가 어려우므로, 광고성 전체 발송은
-    // role/specific 경로 사용을 권장한다.
+    // ── specific: 소량 개인 발송은 동기 처리 (관리자 즉시 피드백 유지) ──
+    let recipientUserIds = Array.from(new Set((userIds ?? []).filter(Boolean)));
+
+    // 광고성 발송 시 수신거부(pushEnabled=false) 제외 (정보성/시스템 공지는 전체 발송 유지
+    // — 관리자 긴급 공지의 의도적 우회 경로, PUSH_NOTIFICATION_GUIDE §4 참조).
     if (isMarketing && recipientUserIds.length > 0) {
-      recipientUserIds = await this.filterPushEnabled(recipientUserIds);
+      recipientUserIds = await this.filterPushEnabled(
+        recipientUserIds,
+        "admin_push_marketing",
+      );
     }
 
     // 인앱 알림 적재 — 관리자가 명시적으로 고른 specific 대상만 알림함에 남긴다.
     // (all/role 광역 발송은 알림함 대량 적재를 피하고 푸시 + PushNotificationLog 로만 추적.)
-    if (targetType === "specific" && recipientUserIds.length > 0) {
+    if (recipientUserIds.length > 0) {
       const inAppType = isMarketing ? "admin_push_marketing" : "admin_push";
       await this.prisma.notification.createMany({
         data: recipientUserIds.map((uid) => ({
@@ -1523,26 +1637,8 @@ export class NotificationsService {
       }
     }
 
-    // ── FCM 발송 대상 디바이스 조회 ──
-    // role+정보성은 relation 필터(효율적), role+광고성/specific 은 수신거부가 반영된
-    // recipientUserIds 로 IN 조회, all 은 전체 활성 디바이스.
-    const deviceWhere: import("@prisma/client").Prisma.UserDeviceWhereInput = {
-      isActive: true,
-    };
-    if (targetType === "specific") {
-      deviceWhere.userId = { in: recipientUserIds };
-    } else if (targetType === "role") {
-      if (isMarketing) {
-        deviceWhere.userId = { in: recipientUserIds };
-      } else {
-        deviceWhere.user = {
-          is: { userType: role as import("@prisma/client").UserType },
-        };
-      }
-    }
-
     const devices = await this.prisma.userDevice.findMany({
-      where: deviceWhere,
+      where: { isActive: true, userId: { in: recipientUserIds } },
       select: { fcmToken: true, userId: true },
     });
 
@@ -1565,11 +1661,7 @@ export class NotificationsService {
         tokens,
         title,
         bodyText,
-        {
-          targetType,
-          role: role ?? "",
-          source: "admin_push",
-        },
+        pushData,
       );
 
       successCount = fcmResult.successCount;
@@ -1586,48 +1678,58 @@ export class NotificationsService {
       status = "failed";
     }
 
-    // PushNotificationLog + AuditLog 동시 기록
-    const [pushLog] = await this.prisma.$transaction([
-      this.prisma.pushNotificationLog.create({
-        data: {
-          title,
-          body: bodyText,
-          targetType,
-          targetValue:
-            targetType === "specific"
-              ? JSON.stringify(userIds ?? [])
-              : (role ?? null),
-          sentBy: adminId ?? "",
-          totalCount: tokens.length,
-          successCount,
-          failCount,
-          status,
-        },
-      }),
-      this.prisma.auditLog.create({
-        data: {
-          userId: adminId ?? null,
-          action: "ADMIN_PUSH_SENT",
-          resource: "notifications",
-          newValue: {
+    // PushNotificationLog + AuditLog 기록 — FCM 는 이미 전송됨(부수효과 확정).
+    // 로그 기록 실패로 요청을 500 시키면 관리자가 '발송 실패'로 오인해 재발송 →
+    // 대상자에게 중복 푸시. 로그 실패는 격리하고 발송 성공 응답을 유지한다.
+    let pushLogId: string | null = null;
+    try {
+      const [pushLog] = await this.prisma.$transaction([
+        this.prisma.pushNotificationLog.create({
+          data: {
             title,
             body: bodyText,
             targetType,
-            role: role ?? null,
-            deviceCount: tokens.length,
+            targetValue:
+              targetType === "specific"
+                ? JSON.stringify(userIds ?? [])
+                : (role ?? null),
+            sentBy: adminId ?? "",
+            totalCount: tokens.length,
             successCount,
             failCount,
+            status,
           },
-        },
-      }),
-    ]);
+        }),
+        this.prisma.auditLog.create({
+          data: {
+            userId: adminId ?? null,
+            action: "ADMIN_PUSH_SENT",
+            resource: "notifications",
+            newValue: {
+              title,
+              body: bodyText,
+              targetType,
+              role: role ?? null,
+              deviceCount: tokens.length,
+              successCount,
+              failCount,
+            },
+          },
+        }),
+      ]);
+      pushLogId = pushLog.id;
+    } catch (error) {
+      this.logger.error(
+        `Admin Push 이력 기록 실패(발송은 완료됨 — 재발송 금지): ${error}`,
+      );
+    }
 
     return {
       success: successCount > 0 || tokens.length === 0,
       sentCount: successCount,
       failedCount: failCount,
       totalDevices: tokens.length,
-      pushLogId: pushLog.id,
+      pushLogId,
       message:
         tokens.length === 0
           ? "발송 대상 기기가 없습니다."
@@ -1636,36 +1738,171 @@ export class NotificationsService {
   }
 
   /**
+   * 큐 프로세서(PushProcessor)가 호출하는 광역 브로드캐스트 실행부.
+   *
+   * 대상은 발송 시점에 재해석한다(큐 대기 중 변경된 디바이스/수신거부 반영).
+   * 완료 시 PushNotificationLog 를 최종 상태로 갱신한다.
+   */
+  async executeAdminPushJob(job: AdminPushJobData): Promise<void> {
+    // 야간×마케팅 재검사 — 접수는 주간이었으나 처리 시점이 야간으로 넘어간 경우
+    // 법적 게이트(정보통신망법 §50)를 우회하지 않도록 큐에서도 차단한다.
+    if (job.isMarketing && this.isNightTimeKST()) {
+      this.logger.warn(
+        `야간 광고성 Push 큐 처리 차단: pushLogId=${job.pushLogId}`,
+      );
+      await this.prisma.pushNotificationLog.update({
+        where: { id: job.pushLogId },
+        data: { status: "blocked", sentAt: new Date() },
+      });
+      return;
+    }
+
+    // ── 발송 대상 디바이스 재해석 ──
+    const deviceWhere: import("@prisma/client").Prisma.UserDeviceWhereInput = {
+      isActive: true,
+    };
+    let recipientUserIds: string[] | null = null;
+    if (job.targetType === "role") {
+      const users = await this.prisma.user.findMany({
+        where: {
+          userType: job.role as import("@prisma/client").UserType,
+        },
+        select: { id: true },
+      });
+      recipientUserIds = users.map((u) => u.id);
+      if (job.isMarketing) {
+        recipientUserIds = await this.filterPushEnabled(
+          recipientUserIds,
+          "admin_push_marketing",
+        );
+      }
+      deviceWhere.userId = { in: recipientUserIds };
+    } else if (job.isMarketing) {
+      // all + 광고성: 전체 디바이스를 userId 목록 없이 조회하므로, 옵트아웃
+      // (pushEnabled=false) 사용자를 relation 필터로 제외한다(정보통신망법 §50).
+      // preference 행이 없거나 pushEnabled=true 인 사용자는 그대로 포함된다.
+      deviceWhere.NOT = {
+        user: { is: { notificationPreference: { is: { pushEnabled: false } } } },
+      };
+    }
+
+    const devices = await this.prisma.userDevice.findMany({
+      where: deviceWhere,
+      select: { fcmToken: true },
+    });
+    const tokens = Array.from(
+      new Set(devices.map((d) => d.fcmToken).filter(Boolean) as string[]),
+    );
+
+    this.logger.log(
+      `Admin Push 큐 발송: pushLogId=${job.pushLogId}, ${tokens.length}개 기기`,
+    );
+
+    let successCount = 0;
+    let failCount = 0;
+    // 대상 0건은 '실패'가 아니라 '보낼 대상 없음' — 동기 specific 경로와 동일하게
+    // 성공 계열로 처리한다. status="failed" 로 두면 관리자가 실패로 오인해 재발송
+    // (큐 분리가 막으려던 중복 푸시)한다.
+    let status = "sent";
+
+    if (tokens.length > 0) {
+      const fcmResult = await this.fcmService.sendToTokens(
+        tokens,
+        job.title,
+        job.body,
+        job.data,
+      );
+      successCount = fcmResult.successCount;
+      failCount = fcmResult.failureCount;
+      status =
+        successCount === tokens.length
+          ? "sent"
+          : successCount === 0
+            ? "failed"
+            : "partial";
+    }
+
+    await this.prisma.pushNotificationLog.update({
+      where: { id: job.pushLogId },
+      data: {
+        totalCount: tokens.length,
+        successCount,
+        failCount,
+        status,
+        sentAt: new Date(),
+      },
+    });
+  }
+
+  /** 큐 처리 자체가 실패했을 때 로그 행을 실패로 종결 (queued 잔존 방지) */
+  async markAdminPushJobFailed(
+    pushLogId: string,
+    errorMessage: string,
+  ): Promise<void> {
+    try {
+      await this.prisma.pushNotificationLog.update({
+        where: { id: pushLogId },
+        data: {
+          status: "failed",
+          metadata: JSON.stringify({ error: errorMessage }),
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        `PushNotificationLog 실패 기록 불가: pushLogId=${pushLogId} — ${error}`,
+      );
+    }
+  }
+
+  /**
    * FCM 푸시 비동기 발송 (fire-and-forget)
    *
    * createNotification에서 호출됩니다. 발송 실패해도 알림 생성에 영향을 주지 않으며
    * 에러는 로그로만 기록됩니다.
    *
+   * 단건 경로도 발송 직전 푸시 정책 게이트를 통과한다(B1) — 인앱 알림·WebSocket 은
+   * 이미 처리된 뒤라 영향 없고, FCM 만 수신거부 설정을 존중한다.
+   *
    * @param userId 대상 사용자 ID
    * @param title 알림 제목
    * @param message 알림 본문
-   * @param data 추가 데이터 페이로드
+   * @param data 추가 데이터 페이로드 (buildPushData 로 조립된 계약 v1)
+   * @param notificationType 정책 판정용 알림 타입
    */
   private sendFcmPushAsync(
     userId: string,
     title: string,
     message: string,
     data?: FcmDataPayload,
+    notificationType?: string,
   ): void {
-    this.fcmService
-      .sendPushNotification(userId, title, message, data)
-      .then((result) => {
-        if (result.successCount > 0) {
-          this.logger.debug(
-            `FCM 푸시 발송 완료: userId=${userId}, 성공=${result.successCount}`,
-          );
-        }
-      })
-      .catch((error) => {
-        this.logger.warn(
-          `FCM 푸시 발송 실패 (userId=${userId}): ${error.message}`,
-        );
+    void (async () => {
+      const { allowed } = await this.pushPolicy.filterRecipients([userId], {
+        notificationType,
       });
+      if (allowed.length === 0) {
+        this.logger.debug(
+          `FCM 푸시 정책 억제: userId=${userId}, type=${notificationType ?? "-"}`,
+        );
+        return;
+      }
+
+      const result = await this.fcmService.sendPushNotification(
+        userId,
+        title,
+        message,
+        data,
+      );
+      if (result.successCount > 0) {
+        this.logger.debug(
+          `FCM 푸시 발송 완료: userId=${userId}, 성공=${result.successCount}`,
+        );
+      }
+    })().catch((error) => {
+      this.logger.warn(
+        `FCM 푸시 발송 실패 (userId=${userId}): ${error.message}`,
+      );
+    });
   }
 
   /**

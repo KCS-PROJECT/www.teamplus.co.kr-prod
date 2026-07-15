@@ -291,6 +291,12 @@ export const MESSAGES = {
   //   대신 명확하게 "로그인 중 오류가 발생했어요"는 유지하되 "다시 시도해주세요"로 회복 경로 제시.
   auth: {
     loginError: "로그인 중 오류가 발생했어요. 다시 시도해주세요.",
+    // [2026-07-15] 로그인 성공 후 화면 이동이 완료되지 않을 때의 복구 안내.
+    //   ab90524b(WebView 로그인 전환 실패 복구)가 추가한 키 — merge 615dcc83 에서
+    //   같은 위치에 추가된 loginNavigationDelayed 와 충돌해 유실됐던 것을 복원.
+    //   (동일 의미 중복이던 loginNavigationDelayed 는 이 키로 통합·제거)
+    navigationTimeout:
+      "화면 이동이 완료되지 않았어요. 잠시 후 다시 시도해주세요.",
     // ICETIMES 브랜드 카피 — 스플래시/로그인 비주얼 전용 (2026-06-24 ICETIMES 롤아웃)
     brand: {
       wordmark: "TEAMPLUS",

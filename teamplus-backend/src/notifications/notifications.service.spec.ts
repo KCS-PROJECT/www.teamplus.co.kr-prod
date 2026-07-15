@@ -1,11 +1,13 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { getQueueToken } from "@nestjs/bull";
 import { NotificationsService } from "./notifications.service";
 import { PrismaService } from "@/prisma/prisma.service";
 import { NotificationQueue } from "./notification.queue";
 import { RedisService } from "@/redis/redis.service";
 import { FcmService } from "./fcm.service";
+import { PushPolicyService } from "./push-policy.service";
 
 describe("NotificationsService", () => {
   let service: NotificationsService;
@@ -49,6 +51,19 @@ describe("NotificationsService", () => {
       .mockResolvedValue({ successCount: 0, failureCount: 0, invalidTokens: [] }),
   };
 
+  // 정책 게이트 — 기본은 전원 허용
+  const mockPushPolicy = {
+    filterRecipients: jest.fn(async (userIds: string[]) => ({
+      allowed: Array.from(new Set(userIds)).filter(Boolean),
+      suppressed: [] as Array<{ userId: string; reason: string }>,
+    })),
+  };
+
+  // 광역 브로드캐스트 큐
+  const mockPushQueue = {
+    add: jest.fn().mockResolvedValue({ id: "job-1" }),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -77,6 +92,19 @@ describe("NotificationsService", () => {
             teamMember: {
               findMany: jest.fn(),
             },
+            pushNotificationLog: {
+              create: jest.fn().mockResolvedValue({ id: "push-log-1" }),
+              update: jest.fn(),
+            },
+            auditLog: {
+              create: jest.fn().mockResolvedValue({ id: "audit-1" }),
+            },
+            userDevice: {
+              findMany: jest.fn().mockResolvedValue([]),
+            },
+            $transaction: jest.fn((ops: Promise<unknown>[]) =>
+              Promise.all(ops),
+            ),
           },
         },
         {
@@ -94,6 +122,14 @@ describe("NotificationsService", () => {
         {
           provide: FcmService,
           useValue: mockFcmService,
+        },
+        {
+          provide: PushPolicyService,
+          useValue: mockPushPolicy,
+        },
+        {
+          provide: getQueueToken("push"),
+          useValue: mockPushQueue,
         },
       ],
     }).compile();
@@ -891,6 +927,237 @@ describe("NotificationsService", () => {
       expect(result).toBe(
         "₩240,000를 결제하셨습니다. (주문번호: ORD-1234567890-abc123)",
       );
+    });
+  });
+
+  describe("푸시 정책 게이트(B1) + payload 계약 v1 + 브로드캐스트 큐(B5)", () => {
+    /** fire-and-forget 푸시 발송의 microtask 체인을 소진 */
+    const flushAsync = () => new Promise((resolve) => setImmediate(resolve));
+
+    it("createNotification: 수신거부 사용자는 인앱은 적재되고 FCM 만 억제 (B1)", async () => {
+      mockPushPolicy.filterRecipients.mockResolvedValueOnce({
+        allowed: [],
+        suppressed: [{ userId: "user-1", reason: "push_disabled" }],
+      });
+      (prismaService.notification.create as jest.Mock).mockResolvedValue({
+        id: "n1",
+        userId: "user-1",
+        notificationType: "payment_success",
+        title: "결제 완료",
+        message: "본문",
+        isRead: false,
+        createdAt: new Date(),
+        linkUrl: null,
+      });
+
+      const result = await service.createNotification({
+        userId: "user-1",
+        notificationType: "payment_success",
+        title: "결제 완료",
+        message: "본문",
+      });
+      await flushAsync();
+
+      // 인앱 알림은 정상 적재 — 수신거부는 '푸시' 거부이지 알림함 차단이 아님
+      expect(result.id).toBe("n1");
+      expect(prismaService.notification.create).toHaveBeenCalledTimes(1);
+      // FCM 만 억제
+      expect(mockFcmService.sendPushNotification).not.toHaveBeenCalled();
+    });
+
+    it("createNotification: 허용 사용자는 계약 v1 payload 로 FCM 발송 (linkUrl 포함)", async () => {
+      (prismaService.notification.create as jest.Mock).mockResolvedValue({
+        id: "n2",
+        userId: "user-1",
+        notificationType: "enrollment_approved",
+        title: "수강 승인",
+        message: "본문",
+        isRead: false,
+        createdAt: new Date(),
+        linkUrl: "/classes/abc",
+      });
+
+      await service.createNotification({
+        userId: "user-1",
+        notificationType: "enrollment_approved",
+        title: "수강 승인",
+        message: "본문",
+        linkUrl: "/classes/abc",
+      });
+      await flushAsync();
+
+      expect(mockFcmService.sendPushNotification).toHaveBeenCalledWith(
+        "user-1",
+        "수강 승인",
+        "본문",
+        {
+          v: "1",
+          type: "enrollment_approved",
+          linkUrl: "/classes/abc",
+          notificationId: "n2",
+        },
+      );
+    });
+
+    it("sendAdminPush(all): 동기 발송 없이 큐 접수 + PushNotificationLog queued", async () => {
+      const result = await service.sendAdminPush(
+        "공지",
+        "본문",
+        "all",
+        undefined,
+        "admin-1",
+        false,
+      );
+
+      expect(result.queued).toBe(true);
+      expect(result.pushLogId).toBe("push-log-1");
+      // 요청 스레드에서 FCM 직접 발송 없음 (B5)
+      expect(mockFcmService.sendToTokens).not.toHaveBeenCalled();
+      // queued 로그 선기록
+      expect(
+        (prismaService as any).pushNotificationLog.create.mock.calls[0][0].data,
+      ).toMatchObject({ targetType: "all", status: "queued" });
+      // 큐 잡 등록 — 재시도 금지(attempts:1, 중복 푸시 방지)
+      expect(mockPushQueue.add).toHaveBeenCalledWith(
+        "send-admin-push",
+        expect.objectContaining({
+          pushLogId: "push-log-1",
+          targetType: "all",
+          data: expect.objectContaining({
+            v: "1",
+            type: "admin_push",
+            source: "admin_push",
+          }),
+        }),
+        expect.objectContaining({ attempts: 1 }),
+      );
+    });
+
+    it("sendAdminPush(specific): 기존 동기 발송 유지 + 계약 v1 dual-emit payload", async () => {
+      (prismaService as any).userDevice.findMany.mockResolvedValue([
+        { fcmToken: "tok-1", userId: "user-1" },
+      ]);
+      mockFcmService.sendToTokens.mockResolvedValueOnce({
+        successCount: 1,
+        failureCount: 0,
+        invalidTokens: [],
+      });
+      (prismaService.notification as any).createMany = jest
+        .fn()
+        .mockResolvedValue({ count: 1 });
+
+      const result = await service.sendAdminPush(
+        "개인 공지",
+        "본문",
+        "specific",
+        undefined,
+        "admin-1",
+        false,
+        ["user-1"],
+      );
+
+      expect(result.queued).toBeUndefined();
+      expect(result.sentCount).toBe(1);
+      expect(mockPushQueue.add).not.toHaveBeenCalled();
+      // 계약 v1 키 + 구 키(dual-emit) 동시 포함
+      expect(mockFcmService.sendToTokens).toHaveBeenCalledWith(
+        ["tok-1"],
+        "개인 공지",
+        "본문",
+        expect.objectContaining({
+          v: "1",
+          type: "admin_push",
+          targetType: "specific",
+          source: "admin_push",
+        }),
+      );
+    });
+
+    it("executeAdminPushJob: 발송 후 로그를 최종 상태로 갱신", async () => {
+      (prismaService as any).userDevice.findMany.mockResolvedValue([
+        { fcmToken: "tok-1" },
+        { fcmToken: "tok-2" },
+      ]);
+      mockFcmService.sendToTokens.mockResolvedValueOnce({
+        successCount: 2,
+        failureCount: 0,
+        invalidTokens: [],
+      });
+
+      await service.executeAdminPushJob({
+        pushLogId: "push-log-1",
+        title: "공지",
+        body: "본문",
+        targetType: "all",
+        isMarketing: false,
+        data: { v: "1", type: "admin_push" },
+      });
+
+      expect(
+        (prismaService as any).pushNotificationLog.update,
+      ).toHaveBeenCalledWith({
+        where: { id: "push-log-1" },
+        data: expect.objectContaining({
+          totalCount: 2,
+          successCount: 2,
+          failCount: 0,
+          status: "sent",
+        }),
+      });
+    });
+
+    it("executeAdminPushJob(all+marketing): 옵트아웃 제외 relation 필터 적용 (§50)", async () => {
+      (prismaService as any).userDevice.findMany.mockResolvedValue([
+        { fcmToken: "tok-1" },
+      ]);
+      mockFcmService.sendToTokens.mockResolvedValueOnce({
+        successCount: 1,
+        failureCount: 0,
+        invalidTokens: [],
+      });
+
+      await service.executeAdminPushJob({
+        pushLogId: "push-log-1",
+        title: "이벤트",
+        body: "본문",
+        targetType: "all",
+        isMarketing: true,
+        data: { v: "1", type: "admin_push_marketing" },
+      });
+
+      // all + 광고성은 pushEnabled=false 사용자를 relation NOT 필터로 제외
+      const where = (prismaService as any).userDevice.findMany.mock.calls[0][0]
+        .where;
+      expect(where.isActive).toBe(true);
+      expect(where.NOT).toEqual({
+        user: {
+          is: { notificationPreference: { is: { pushEnabled: false } } },
+        },
+      });
+    });
+
+    it("executeAdminPushJob: 대상 0건은 실패가 아니라 sent(대상없음) 로 종결", async () => {
+      (prismaService as any).userDevice.findMany.mockResolvedValue([]);
+
+      await service.executeAdminPushJob({
+        pushLogId: "push-log-1",
+        title: "공지",
+        body: "본문",
+        targetType: "all",
+        isMarketing: false,
+        data: { v: "1", type: "admin_push" },
+      });
+
+      expect(mockFcmService.sendToTokens).not.toHaveBeenCalled();
+      expect(
+        (prismaService as any).pushNotificationLog.update,
+      ).toHaveBeenCalledWith({
+        where: { id: "push-log-1" },
+        data: expect.objectContaining({
+          totalCount: 0,
+          status: "sent",
+        }),
+      });
     });
   });
 });

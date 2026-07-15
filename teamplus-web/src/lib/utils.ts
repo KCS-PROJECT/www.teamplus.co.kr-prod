@@ -129,3 +129,88 @@ export function formatBirthYearRange(
   if (minBy) return `${minBy}년생 이후`;
   return '';
 }
+
+/**
+ * 외부 브라우저로 열 URL 의 스킴을 정규화한다.
+ *
+ * `www.naver.com` 처럼 스킴이 없는 bare-host 를 넘기면 그대로는 외부로 열리지 않는다
+ * (웹 `window.open` 은 앱 도메인 기준 상대경로로 해석, 네이티브 `launchUrl` 은 실패).
+ * 이런 경우 `https://` 를 부여해 열리는 절대 URL 로 만든다.
+ *
+ * - 이미 스킴이 있으면(`https:`, `http:`, `mailto:`, `tel:`, `teamplus:` 등) 그대로 둔다.
+ * - 프로토콜-상대(`//host`)는 `https:` 를 부여한다.
+ * - 앱 내부 상대경로(`/`, `./`, `../`, `#`, `?` 로 시작)는 그대로 둔다.
+ * - 그 외(bare host)는 `https://` 를 앞에 붙인다.
+ *
+ * @example
+ * normalizeExternalUrl('www.naver.com')      // https://www.naver.com
+ * normalizeExternalUrl('https://naver.com')  // https://naver.com (그대로)
+ * normalizeExternalUrl('//cdn.x.com/a.png')  // https://cdn.x.com/a.png
+ * normalizeExternalUrl('/mypage')            // /mypage (그대로)
+ */
+export function normalizeExternalUrl(url: string): string {
+  if (!url) return url;
+  const trimmed = url.trim();
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return trimmed; // 이미 스킴 존재
+  if (trimmed.startsWith('//')) return `https:${trimmed}`; // 프로토콜-상대
+  if (/^[/#?.]/.test(trimmed)) return trimmed; // 앱 내부 상대경로
+  return `https://${trimmed}`; // bare host
+}
+
+/**
+ * 외부 URL 에 쿼리 파라미터를 병합한다.
+ *
+ * `navigation.openExternal(url, parameter)` 처럼 외부 브라우저로 열 URL 을
+ * 조립할 때 사용한다. object·string 두 형태를 모두 받아 동일 규칙으로 처리한다.
+ *
+ * - **object**: `{ tab: 'info', name: '김철수' }` → `String(v)` 후 인코딩.
+ *   `null`/`undefined` 값은 스킵한다.
+ * - **string**: `'tab=info&name=김철수'` (앞의 `?`/`&` 는 자동 제거) → `URLSearchParams`
+ *   로 파싱 후 값 자동 인코딩. 이미 인코딩된 값도 idempotent 하게 정규화된다.
+ * - 파라미터는 기존 쿼리에 **append**(동일 키가 있으면 양쪽 모두 보존).
+ * - hash(`#`)가 있으면 쿼리는 hash 앞에 삽입된다(`URL` 표준 처리).
+ * - 절대 URL 이 아니면(상대 경로 등) `URL` 생성 실패 → 수동 병합으로 폴백한다.
+ *
+ * @param url 기준 URL (외부 오픈은 보통 절대 URL)
+ * @param parameter 붙일 쿼리 파라미터 (object 또는 쿼리스트링). 생략 시 url 그대로 반환.
+ * @returns 파라미터가 병합된 최종 URL
+ *
+ * @example
+ * buildUrlWithParams('https://a.com', { tab: 'info', id: 1 }) // https://a.com/?tab=info&id=1
+ * buildUrlWithParams('https://a.com?x=1', 'y=2')              // https://a.com/?x=1&y=2
+ * buildUrlWithParams('https://a.com/p#sec', { y: 2 })         // https://a.com/p?y=2#sec
+ */
+export function buildUrlWithParams(
+  url: string,
+  parameter?: Record<string, unknown> | string,
+): string {
+  if (!parameter) return url;
+
+  const extra = new URLSearchParams();
+  if (typeof parameter === 'string') {
+    const raw = parameter.replace(/^[?&]+/, '');
+    if (!raw) return url;
+    new URLSearchParams(raw).forEach((v, k) => extra.append(k, v));
+  } else {
+    for (const [k, v] of Object.entries(parameter)) {
+      if (v === undefined || v === null) continue;
+      extra.append(k, String(v));
+    }
+  }
+
+  const extraStr = extra.toString();
+  if (!extraStr) return url;
+
+  try {
+    const u = new URL(url); // 절대 URL 정상 경로
+    extra.forEach((v, k) => u.searchParams.append(k, v));
+    return u.toString();
+  } catch {
+    // 상대/비표준 URL 폴백 — hash 앞에 쿼리 삽입
+    const hashIdx = url.indexOf('#');
+    const hash = hashIdx >= 0 ? url.slice(hashIdx) : '';
+    const base = hashIdx >= 0 ? url.slice(0, hashIdx) : url;
+    const sep = base.includes('?') ? '&' : '?';
+    return `${base}${sep}${extraStr}${hash}`;
+  }
+}

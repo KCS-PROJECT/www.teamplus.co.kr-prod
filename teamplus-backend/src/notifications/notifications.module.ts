@@ -9,7 +9,9 @@ import { AlimtalkTemplateController } from "./alimtalk-template.controller";
 import { AlimtalkTemplateService } from "./alimtalk-template.service";
 import { NotificationQueue } from "./notification.queue";
 import { FcmService } from "./fcm.service";
-import { FcmGateway } from "./fcm.gateway";
+import { PushPolicyService } from "./push-policy.service";
+import { PushProcessor } from "./push.processor";
+import { DeviceCleanupScheduler } from "./device-cleanup.scheduler";
 import { PrismaModule } from "@/prisma/prisma.module";
 import { WebsocketModule } from "@/websocket/websocket.module";
 import { SmsModule } from "@/sms/sms.module";
@@ -24,6 +26,7 @@ import firebaseConfig from "@/config/firebase.config";
     forwardRef(() => WebsocketModule),
     SmsModule,
     BullModule.registerQueue({ name: "alimtalk" }),
+    BullModule.registerQueue({ name: "push" }),
   ],
   controllers: [NotificationsController, AlimtalkTemplateController],
   providers: [
@@ -32,14 +35,11 @@ import firebaseConfig from "@/config/firebase.config";
     AlimtalkProcessor,
     NotificationQueue,
     FcmService,
-    FcmGateway,
+    PushPolicyService,
+    PushProcessor,
+    DeviceCleanupScheduler,
     AlimtalkTemplateService,
   ],
-  exports: [
-    NotificationsService,
-    FcmService,
-    FcmGateway,
-    AlimtalkTemplateService,
-  ],
+  exports: [NotificationsService, FcmService, AlimtalkTemplateService],
 })
 export class NotificationsModule {}

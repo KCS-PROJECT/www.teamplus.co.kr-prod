@@ -4,6 +4,7 @@
 import { getBridge, bridgeLogger, addMessageListener } from "./native-bridge-core";
 import { isAndroid } from "./native-bridge-screens";
 import { isFlutterBridgeAvailable } from "@/lib/environment";
+import { buildUrlWithParams, normalizeExternalUrl } from "@/lib/utils";
 import type { IdentityProvider, IdentityPurpose, IdentityVerificationResult, UserIdentityStatus } from "@/types";
 import { handleBridgeError } from "./bridge-error-handler";
 
@@ -402,6 +403,19 @@ export const biometric = {
 };
 
 /**
+ * `navigation.openExternal` 단일 config 객체 호출 형태.
+ *
+ * `url` 을 파라미터(필드)로 받는 형태 — 위치 인자 `openExternal(url, parameter)` 와
+ * 동등하게 동작하며, url 과 쿼리 파라미터를 한 객체로 묶어 넘길 수 있다.
+ */
+export interface OpenExternalOptions {
+  /** 외부 URL (절대 URL 권장) */
+  url: string;
+  /** 붙일 쿼리 파라미터 — object 또는 쿼리스트링 */
+  parameter?: Record<string, unknown> | string;
+}
+
+/**
  * 네비게이션 관련 기능
  */
 export const navigation = {
@@ -528,12 +542,37 @@ export const navigation = {
    * http/https 를 메인 WebView 에 loadUrl 하여 TEAMPLUS 화면을 덮어쓴다.
    * 영수증·외부 링크처럼 "잠깐 보고 돌아올" URL 은 외부 브라우저로 위임해야
    * WebView 세션이 유지된다. 브릿지 호출 실패 시 새 탭으로 폴백한다.
+   *
+   * `parameter` 를 넘기면 `buildUrlWithParams` 로 쿼리를 병합한 뒤 연다.
+   * object·string 두 형태를 모두 받으며 값은 자동 인코딩된다(한글·특수문자 안전).
+   * 최종 URL 은 웹에서 조립되어 넘어가므로 Flutter 네이티브는 수정할 필요가 없다.
+   *
+   * 첫 인자는 **url 문자열** 또는 **`{ url, parameter }` config 객체** 둘 다 받는다.
+   * 즉 url 을 위치 인자로도, 파라미터(필드)로도 넘길 수 있다.
+   *
+   * @param target 외부 URL 문자열 또는 `{ url, parameter }` config 객체
+   * @param parameter (target 이 문자열일 때) 붙일 쿼리 파라미터 — object 또는 쿼리스트링
+   *
+   * @example
+   * navigation.openExternal('https://www.naver.com');
+   * navigation.openExternal('https://www.naver.com', { q: 'test' });          // ?q=test
+   * navigation.openExternal('https://www.naver.com', 'q=test&t=news');        // ?q=test&t=news
+   * navigation.openExternal({ url: 'https://www.naver.com' });                // url 을 파라미터로
+   * navigation.openExternal({ url: 'https://www.naver.com', parameter: { q: 'test' } });
+   * navigation.openExternal({ url: 'https://www.naver.com', parameter: 'q=test&t=news' });
    */
-  async openExternal(url: string): Promise<void> {
-    if (!url) return;
+  async openExternal(
+    target: string | OpenExternalOptions,
+    parameter?: Record<string, unknown> | string,
+  ): Promise<void> {
+    const rawUrl = typeof target === "string" ? target : target?.url;
+    const param = typeof target === "string" ? parameter : target?.parameter;
+    if (!rawUrl) return;
+    // 스킴 없는 bare-host(www.naver.com)는 https:// 부여 → 외부 브라우저에서 정상 오픈
+    const finalUrl = buildUrlWithParams(normalizeExternalUrl(rawUrl), param);
     const openInNewTab = () => {
       if (typeof window !== "undefined") {
-        window.open(url, "_blank", "noopener,noreferrer");
+        window.open(finalUrl, "_blank", "noopener,noreferrer");
       }
     };
     if (
@@ -547,10 +586,13 @@ export const navigation = {
     try {
       await window.flutter_inappwebview.callHandler("navigation", {
         action: "openExternal",
-        url,
+        url: finalUrl,
       });
     } catch (error) {
-      handleBridgeError("navigation", error, { operation: "openExternal", url });
+      handleBridgeError("navigation", error, {
+        operation: "openExternal",
+        url: finalUrl,
+      });
       openInNewTab(); // 브릿지 실패 시 새 탭 폴백
     }
   },
