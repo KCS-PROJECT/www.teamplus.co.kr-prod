@@ -602,7 +602,9 @@ export class AdminController {
    * 응답: { summary: PaymentSummary, teams: TeamPayment[] }
    */
   @Get("director-payment-summary")
-  @Roles("ADMIN", "DIRECTOR", "ACADEMY_DIRECTOR")
+  // [Phase 0] ACADEMY_DIRECTOR 제거 — 팀 단위 집계 API 라 아카데미 원장은 항상 빈 결과였고,
+  //   정산 센터 재구성(v4.0)에서 /director-payments 는 팀 전용으로 확정. Academy 정산은 별도 API 예정.
+  @Roles("ADMIN", "DIRECTOR")
   @ApiOperation({
     summary: "감독 결제 요약",
     description:
@@ -620,7 +622,8 @@ export class AdminController {
    * [신규] 미수금 회원 상세 — 보호자 연락처 + 미납 내역.
    */
   @Get("director-payments/unpaid/:memberId")
-  @Roles("ADMIN", "DIRECTOR", "ACADEMY_DIRECTOR")
+  // [Phase 0] ACADEMY_DIRECTOR 제거 — 팀 미수금 상세는 팀 도메인 전용 (director-payment-summary 와 동일 기준)
+  @Roles("ADMIN", "DIRECTOR")
   @ApiOperation({
     summary: "미수금 회원 상세",
     description:
@@ -642,7 +645,8 @@ export class AdminController {
    */
   @Post("director-payments/unpaid/:memberId/remind")
   @HttpCode(HttpStatus.OK)
-  @Roles("ADMIN", "DIRECTOR", "ACADEMY_DIRECTOR")
+  // [Phase 0] ACADEMY_DIRECTOR 제거 — 팀 미수금 알림은 팀 도메인 전용 (director-payment-summary 와 동일 기준)
+  @Roles("ADMIN", "DIRECTOR")
   @ApiOperation({
     summary: "미수금 회원 미납 안내 발송",
     description:

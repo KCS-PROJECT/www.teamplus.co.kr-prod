@@ -82,14 +82,12 @@ function MemberApprovalCard({
   const appliedDateTime = formatDateTimeCompact(record.appliedAt);
   const processedDateTime = formatDateTimeCompact(record.processedAt);
 
-  // 생년월일 우선("2015.03.21"), 없으면 출생연도("2015년생"), 그래도 없으면 나이("8세").
+  // 생년월일 우선("2015.03.21"), 없으면 출생연도("2015년생"). 나이(N세) 표기는 하지 않는다.
   const ageLabel =
     formatBirthDateLabel(record.birthDate) ??
     (typeof record.birthYear === 'number'
       ? `${record.birthYear}년생`
-      : typeof record.age === 'number'
-        ? `${record.age}세`
-        : undefined);
+      : undefined);
 
   const isApproved = record.status === 'approved';
   const isRejected = record.status === 'rejected';

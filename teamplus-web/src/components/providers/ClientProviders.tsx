@@ -31,6 +31,7 @@ import { ActivityTracker } from "@/components/providers/ActivityTracker";
 import { AppBackHandlerSetup } from "@/components/providers/AppBackHandlerSetup";
 import { AppStatusController } from "@/components/providers/AppStatusController";
 import { AndroidScrollGeometryFix } from "@/components/providers/AndroidScrollGeometryFix";
+import { DeeplinkRouterMount } from "@/components/providers/DeeplinkRouterMount";
 import { devLog } from "@/lib/logger";
 
 // auth 라우트 패턴 — NotificationProvider 스킵하여 콜드 스타트 부하 감소
@@ -58,6 +59,16 @@ if (typeof window !== "undefined") {
 declare global {
   interface Window {
     __NEXT_ROUTER_PUSH__?: (
+      path: string,
+      options?: { scroll?: boolean },
+    ) => void;
+    /**
+     * [2026-07-15 로그인 개선 ③] router.replace 글로벌 노출.
+     * 로그인 → 대시보드처럼 현재 화면을 history 에서 **제거**해야 하는 전환용.
+     * push 를 쓰면 /login 이 WebView history 에 남아 Android 하드웨어 백키로
+     * 로그인 화면에 재진입하는 회귀가 발생한다.
+     */
+    __NEXT_ROUTER_REPLACE__?: (
       path: string,
       options?: { scroll?: boolean },
     ) => void;
@@ -245,6 +256,17 @@ function BridgeErrorHandlerSetup({ children }: { children: ReactNode }) {
       router.push(path, options ?? { scroll: false });
     };
 
+    // [2026-07-15 로그인 개선 ③] replace 버전 — 로그인 등 history 제거가 필요한 전환용
+    window.__NEXT_ROUTER_REPLACE__ = (
+      path: string,
+      options?: { scroll?: boolean },
+    ) => {
+      if (process.env.NODE_ENV === "development") {
+        devLog("[ClientProviders] __NEXT_ROUTER_REPLACE__ called:", path);
+      }
+      router.replace(path, options ?? { scroll: false });
+    };
+
     // 기존 teamplusNavigate 함수가 있으면 업데이트
     // (FlutterBridge에서 AT_DOCUMENT_START에 기본 버전을 주입하므로)
     const originalteamplusNavigate = window.teamplusNavigate;
@@ -262,6 +284,7 @@ function BridgeErrorHandlerSetup({ children }: { children: ReactNode }) {
     return () => {
       // 정리 시 기존 함수 복원
       window.__NEXT_ROUTER_PUSH__ = undefined;
+      window.__NEXT_ROUTER_REPLACE__ = undefined;
       window.teamplusNavigate = originalteamplusNavigate;
     };
   }, [router]);
@@ -355,6 +378,7 @@ export function ClientProviders({ children }: ClientProvidersProps) {
                   <Suspense fallback={<PageLoader message="로딩중..." />}>
                     <AuthProvider>
                       <AppBackHandlerSetup>
+                        <DeeplinkRouterMount />
                         {isAuthRoute ? (
                           children
                         ) : (

@@ -32,6 +32,7 @@ import { getDashboardPathByUserType } from '@/lib/auth-routing';
 import { emitRefresh, REFRESH_KEYS, useRefreshSubscription } from '@/lib/refresh-bus';
 // [2026-05-19 Step 6] 감독/코치 회차 조정 모달 — 배치 학생 행에서 직접 조정.
 import { CreditAdjustModal } from '@/components/credit/CreditAdjustModal';
+import { formatBirthDateLabel } from '@/components/shared';
 
 interface ClassDetail {
   id: string;
@@ -71,6 +72,7 @@ interface TeamMember {
     email?: string | null;
     userType?: string | null;
     koreanAge?: number | null;
+    birthDate?: string | null;
   } | null;
 }
 
@@ -482,7 +484,7 @@ export default function RosterPage() {
                   (m.playerName ??
                     `${m.user?.lastName ?? ''}${m.user?.firstName ?? ''}`.trim()) ||
                   '-';
-                const age = m.playerAge ?? m.user?.koreanAge ?? null;
+                const birthLabel = formatBirthDateLabel(m.user?.birthDate);
                 return (
                   <li
                     key={m.id}
@@ -503,9 +505,9 @@ export default function RosterPage() {
                       <p className="text-card-body font-semibold text-it-ink-800 dark:text-rink-100 truncate">
                         {name}
                       </p>
-                      {age != null && (
-                        <p className="text-card-meta text-it-ink-500 dark:text-rink-300">
-                          {age}세
+                      {birthLabel && (
+                        <p className="text-card-meta text-it-ink-500 dark:text-rink-300 tabular-nums">
+                          {birthLabel}
                         </p>
                       )}
                     </div>

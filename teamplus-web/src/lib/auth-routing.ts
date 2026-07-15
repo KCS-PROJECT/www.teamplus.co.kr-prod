@@ -164,7 +164,9 @@ const PROTECTED_PATHS_BY_ROLE: Record<UserType, string[]> = {
     '/director-approvals',
     '/director-schedules',
     '/director-credits',
-    '/director-payments',
+    // [Phase 0 · 정산 센터 v4.0 §5-3] ACADEMY_DIRECTOR 의 팀·대회 도메인 차단 —
+    //  '/director-payments'(팀 전용 정산), '/tournaments', '/matches', '/match-manage',
+    //  '/scoreboard' 제거. 서버측 @Roles 차단이 본체이고 이 목록은 미들웨어 보조 차단.
     '/director-notices',
     '/director-overseas-trips',
     '/director-members',
@@ -182,11 +184,6 @@ const PROTECTED_PATHS_BY_ROLE: Record<UserType, string[]> = {
     '/qr-generate',
     '/work-schedule',
     '/profile-edit',
-    '/tournaments',
-    '/matches',
-    // [추가 2026-05-15 T04 web-router] ACADEMY_DIRECTOR 메뉴에서 "매치 관리" · "실시간 스코어보드" · "코치 관리" · "그룹 관리" 접근.
-    '/match-manage',
-    '/scoreboard',
     '/coach-manage',
     '/team-groups',
     // [추가 2026-05-12] 홈 캘린더 액션 동선 보강 (출석 확인 / 결제 확인)

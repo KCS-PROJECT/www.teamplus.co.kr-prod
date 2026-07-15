@@ -45,17 +45,11 @@ import { RolesGuard } from "@/auth/roles.guard";
 @Controller("api/v1/tournaments")
 @UseGuards(AuthGuard("jwt"), RolesGuard)
 @ApiBearerAuth()
-// [2026-05-13 roles-check] 기본 권한 — 인증된 모든 사용자 조회 허용.
+// [2026-05-13 roles-check] 기본 권한 — 인증 사용자 조회 허용.
 //   mutation/admin-only 메서드는 메서드 레벨 @Roles 로 더 좁게 명시 (위 우선).
-@Roles(
-  "ADMIN",
-  "DIRECTOR",
-  "ACADEMY_DIRECTOR",
-  "COACH",
-  "PARENT",
-  "TEEN",
-  "CHILD",
-)
+// [Phase 0] ACADEMY_DIRECTOR 제외 — 대회는 팀 도메인 전용, 오픈클래스 감독은
+//   팀 대회 데이터에 접근하지 않는다 (정산 센터 재구성 설계 v4.0 §5-3 확정).
+@Roles("ADMIN", "DIRECTOR", "COACH", "PARENT", "TEEN", "CHILD")
 export class TournamentsController {
   constructor(private readonly tournamentsService: TournamentsService) {}
 
@@ -159,7 +153,7 @@ export class TournamentsController {
     @Request() req: AuthenticatedRequest,
   ) {
     // [수정 2026-05-11] teamId 비어 있을 때 호출자의 첫 관리 팀으로 자동 보강.
-    return this.tournamentsService.createTournament(dto, req.user.id);
+    return this.tournamentsService.createTournament(dto, req.user);
   }
 
   /**
@@ -177,8 +171,9 @@ export class TournamentsController {
   async updateTournament(
     @Param("id") id: string,
     @Body() dto: UpdateTournamentDto,
+    @Request() req: AuthenticatedRequest,
   ) {
-    return this.tournamentsService.updateTournament(id, dto);
+    return this.tournamentsService.updateTournament(id, dto, req.user);
   }
 
   /**
@@ -198,8 +193,11 @@ export class TournamentsController {
     description: "경기가 등록된 대회는 삭제할 수 없습니다.",
   })
   @ApiResponse({ status: 404, description: "대회를 찾을 수 없습니다." })
-  async deleteTournament(@Param("id") id: string) {
-    return this.tournamentsService.deleteTournament(id);
+  async deleteTournament(
+    @Param("id") id: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.tournamentsService.deleteTournament(id, req.user);
   }
 
   /**
@@ -219,8 +217,13 @@ export class TournamentsController {
   async changeTournamentStatus(
     @Param("id") id: string,
     @Body() dto: ChangeTournamentStatusDto,
+    @Request() req: AuthenticatedRequest,
   ) {
-    return this.tournamentsService.changeTournamentStatus(id, dto.status);
+    return this.tournamentsService.changeTournamentStatus(
+      id,
+      dto.status,
+      req.user,
+    );
   }
 
   /**
@@ -236,8 +239,11 @@ export class TournamentsController {
   @ApiParam({ name: "id", description: "대회 ID" })
   @ApiResponse({ status: 200, description: "대회 요약 통계 조회 성공" })
   @ApiResponse({ status: 404, description: "대회를 찾을 수 없습니다." })
-  async getTournamentSummary(@Param("id") id: string) {
-    return this.tournamentsService.getTournamentSummary(id);
+  async getTournamentSummary(
+    @Param("id") id: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.tournamentsService.getTournamentSummary(id, req.user);
   }
 
   // ==================== Tournament Registration Endpoints ====================
@@ -277,8 +283,11 @@ export class TournamentsController {
   @ApiParam({ name: "id", description: "대회 ID" })
   @ApiResponse({ status: 200, description: "선수 목록 조회 성공" })
   @ApiResponse({ status: 404, description: "대회를 찾을 수 없습니다." })
-  async getEligiblePlayers(@Param("id") id: string) {
-    return this.tournamentsService.getEligiblePlayers(id);
+  async getEligiblePlayers(
+    @Param("id") id: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.tournamentsService.getEligiblePlayers(id, req.user);
   }
 
   /**
@@ -291,7 +300,8 @@ export class TournamentsController {
     "CHILD",
     "COACH",
     "DIRECTOR",
-    "ACADEMY_DIRECTOR",
+    // [Phase 0] ACADEMY_DIRECTOR 제거 — 메서드 @Roles 는 클래스 레벨을 덮어쓰므로
+    //   여기 남으면 클래스 레벨 차단이 무력화된다 (roles.guard getAllAndOverride).
     "ADMIN",
   )
   @HttpCode(HttpStatus.CREATED)
@@ -373,7 +383,7 @@ export class TournamentsController {
       id,
       dto.feePerPerson,
       dto.registrationIds,
-      req.user.id,
+      req.user,
     );
   }
 
@@ -392,8 +402,11 @@ export class TournamentsController {
   @ApiResponse({ status: 200, description: "결제요청 취소 성공" })
   @ApiResponse({ status: 400, description: "후불 대회 아님 / 취소할 결제요청 없음" })
   @ApiResponse({ status: 404, description: "대회를 찾을 수 없습니다." })
-  async cancelTournamentSettlement(@Param("id") id: string) {
-    return this.tournamentsService.cancelTournamentSettlement(id);
+  async cancelTournamentSettlement(
+    @Param("id") id: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.tournamentsService.cancelTournamentSettlement(id, req.user);
   }
 
   /**
@@ -408,8 +421,11 @@ export class TournamentsController {
   @ApiParam({ name: "id", description: "대회 ID" })
   @ApiResponse({ status: 200, description: "참가자 목록 조회 성공" })
   @ApiResponse({ status: 404, description: "대회를 찾을 수 없습니다." })
-  async getTournamentRegistrations(@Param("id") id: string) {
-    return this.tournamentsService.getTournamentRegistrations(id);
+  async getTournamentRegistrations(
+    @Param("id") id: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.tournamentsService.getTournamentRegistrations(id, req.user);
   }
 
   /**
@@ -422,7 +438,8 @@ export class TournamentsController {
     "CHILD",
     "COACH",
     "DIRECTOR",
-    "ACADEMY_DIRECTOR",
+    // [Phase 0] ACADEMY_DIRECTOR 제거 — 메서드 @Roles 는 클래스 레벨을 덮어쓰므로
+    //   여기 남으면 클래스 레벨 차단이 무력화된다 (roles.guard getAllAndOverride).
     "ADMIN",
   )
   @ApiOperation({
@@ -490,8 +507,11 @@ export class TournamentsController {
   })
   @ApiResponse({ status: 201, description: "경기가 생성되었습니다." })
   @ApiResponse({ status: 400, description: "유효하지 않은 입력입니다." })
-  async createMatch(@Body() dto: CreateMatchDto) {
-    return this.tournamentsService.createMatch(dto);
+  async createMatch(
+    @Body() dto: CreateMatchDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.tournamentsService.createMatch(dto, req.user);
   }
 
   /**
@@ -506,8 +526,12 @@ export class TournamentsController {
   @ApiParam({ name: "id", description: "경기 ID" })
   @ApiResponse({ status: 200, description: "경기 정보가 수정되었습니다." })
   @ApiResponse({ status: 404, description: "경기를 찾을 수 없습니다." })
-  async updateMatch(@Param("id") id: string, @Body() dto: UpdateMatchDto) {
-    return this.tournamentsService.updateMatch(id, dto);
+  async updateMatch(
+    @Param("id") id: string,
+    @Body() dto: UpdateMatchDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.tournamentsService.updateMatch(id, dto, req.user);
   }
 
   /**
@@ -522,8 +546,11 @@ export class TournamentsController {
   @ApiParam({ name: "id", description: "경기 ID" })
   @ApiResponse({ status: 200, description: "경기가 삭제되었습니다." })
   @ApiResponse({ status: 404, description: "경기를 찾을 수 없습니다." })
-  async deleteMatch(@Param("id") id: string) {
-    return this.tournamentsService.deleteMatch(id);
+  async deleteMatch(
+    @Param("id") id: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.tournamentsService.deleteMatch(id, req.user);
   }
 
   // ==================== Match Participants Endpoints ====================
@@ -568,13 +595,19 @@ export class TournamentsController {
     @Param("matchId") matchId: string,
     @Param("teamId") teamId: string,
     @Query("side") side: "home" | "away",
+    @Request() req: AuthenticatedRequest,
   ) {
     if (!side || !["home", "away"].includes(side)) {
       throw new BadRequestException(
         "side 파라미터는 'home' 또는 'away'여야 합니다.",
       );
     }
-    return this.tournamentsService.addMatchParticipant(matchId, teamId, side);
+    return this.tournamentsService.addMatchParticipant(
+      matchId,
+      teamId,
+      side,
+      req.user,
+    );
   }
 
   /**
@@ -597,8 +630,13 @@ export class TournamentsController {
   async removeMatchParticipant(
     @Param("matchId") matchId: string,
     @Param("teamId") teamId: string,
+    @Request() req: AuthenticatedRequest,
   ) {
-    return this.tournamentsService.removeMatchParticipant(matchId, teamId);
+    return this.tournamentsService.removeMatchParticipant(
+      matchId,
+      teamId,
+      req.user,
+    );
   }
 
   // ==================== Match Score & Live State ====================
@@ -620,8 +658,9 @@ export class TournamentsController {
   async updateMatchScore(
     @Param("id") id: string,
     @Body() dto: UpdateMatchScoreDto,
+    @Request() req: AuthenticatedRequest,
   ) {
-    return this.tournamentsService.updateMatchScore(id, dto);
+    return this.tournamentsService.updateMatchScore(id, dto, req.user);
   }
 
   /**
@@ -640,8 +679,9 @@ export class TournamentsController {
   async updateMatchLiveState(
     @Param("id") id: string,
     @Body() dto: UpdateMatchLiveStateDto,
+    @Request() req: AuthenticatedRequest,
   ) {
-    return this.tournamentsService.updateMatchLiveState(id, dto);
+    return this.tournamentsService.updateMatchLiveState(id, dto, req.user);
   }
 
   // ==================== Match Periods ====================
@@ -678,8 +718,9 @@ export class TournamentsController {
   async upsertMatchPeriod(
     @Param("id") id: string,
     @Body() dto: UpsertMatchPeriodDto,
+    @Request() req: AuthenticatedRequest,
   ) {
-    return this.tournamentsService.upsertMatchPeriod(id, dto);
+    return this.tournamentsService.upsertMatchPeriod(id, dto, req.user);
   }
 
   // ==================== Match Events ====================
@@ -724,8 +765,9 @@ export class TournamentsController {
   async createMatchEvent(
     @Param("id") id: string,
     @Body() dto: CreateMatchEventDto,
+    @Request() req: AuthenticatedRequest,
   ) {
-    return this.tournamentsService.createMatchEvent(id, dto);
+    return this.tournamentsService.createMatchEvent(id, dto, req.user);
   }
 
   /**
@@ -746,8 +788,9 @@ export class TournamentsController {
     @Param("id") id: string,
     @Param("eventId") eventId: string,
     @Body() dto: UpdateMatchEventDto,
+    @Request() req: AuthenticatedRequest,
   ) {
-    return this.tournamentsService.updateMatchEvent(id, eventId, dto);
+    return this.tournamentsService.updateMatchEvent(id, eventId, dto, req.user);
   }
 
   /**
@@ -767,7 +810,8 @@ export class TournamentsController {
   async deleteMatchEvent(
     @Param("id") id: string,
     @Param("eventId") eventId: string,
+    @Request() req: AuthenticatedRequest,
   ) {
-    return this.tournamentsService.deleteMatchEvent(id, eventId);
+    return this.tournamentsService.deleteMatchEvent(id, eventId, req.user);
   }
 }

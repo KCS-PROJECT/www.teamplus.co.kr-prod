@@ -121,8 +121,11 @@ export default function TeamGroupCreatePage() {
     })();
   }, [teamId]);
 
-  // [2026-06-05] playerAge(한국나이) → 출생연도. 한국나이 = currentYear - birthYear + 1.
+  // 출생연도 — birthDate(ChildProfile 우선 SoT)가 있으면 그 연도, 없으면 레거시
+  // playerAge(가입 시점 스냅샷) 역산 폴백. 한국나이 = currentYear - birthYear + 1.
   const birthYearOf = (m: EligibleMemberRow): number | null => {
+    const y = m.birthDate ? Number(m.birthDate.slice(0, 4)) : NaN;
+    if (Number.isInteger(y) && y > 1900) return y;
     const age = m.playerAge;
     if (typeof age !== "number" || age < 0 || !currentYear) return null;
     return currentYear - age + 1;
@@ -404,20 +407,17 @@ export default function TeamGroupCreatePage() {
                           <p className="truncate text-[15px] font-bold text-it-ink-800 dark:text-white">
                             {m.playerName}
                           </p>
-                          {/* [추가 2026-05-18 W2.B #9] 연령 칩 — 하위그룹 수정 페이지와 동일 패턴 */}
                           {ageLabel(m) && (
                             <span className="shrink-0 rounded-w-md bg-it-blue-50 px-1.5 py-0.5 text-[12px] font-bold tabular-nums text-it-blue-500 dark:bg-it-blue-500/15 dark:text-it-blue-300">
                               {ageLabel(m)}
                             </span>
                           )}
+                          {genderLabel(m.gender) !== '-' && (
+                            <span className="shrink-0 text-[13px] font-medium text-it-ink-500 dark:text-it-ink-300">
+                              {genderLabel(m.gender)}
+                            </span>
+                          )}
                         </div>
-                        <p className="mt-0.5 text-[13px] font-medium text-it-ink-500 dark:text-it-ink-300">
-                          <span className="inline-block min-w-[24px]">
-                            {genderLabel(m.gender)}
-                          </span>
-                          <span className="mx-2 text-it-ink-300 dark:text-it-ink-400">·</span>
-                          <span className="tabular-nums">{m.playerAge}세</span>
-                        </p>
                       </div>
                     </label>
                   );

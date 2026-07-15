@@ -5,12 +5,15 @@ import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import {
   parseDeeplink,
   resolveInternalPath,
+  buildDeeplink,
   DEEPLINK_SCHEME,
   type DeeplinkTarget,
 } from '@/lib/deeplink';
 import { useNavigation } from '@/hooks/useNavigation';
 import {
   detectPlatform,
+  detectInAppBrowser,
+  planAppOpen,
   tryOpenAppWithFallback,
 } from '@/lib/app-install';
 import { isNativeApp } from '@/lib/environment';
@@ -110,31 +113,46 @@ export function useDeeplinkRouter(
 
       const internalPath = resolveInternalPath(target);
 
-      // 이미 네이티브 앱 안 → 그냥 내부 라우팅 (스킴 시도 불필요)
-      if (typeof window === 'undefined' || isNativeApp()) {
+      // SSR → 내부 라우팅으로 안전 폴백
+      if (typeof window === 'undefined') {
         void navigate(internalPath);
         return true;
       }
 
-      // PC / 미지원 모바일 → 그냥 웹 내부 라우팅 (스토어 이동은 무의미)
-      const platform = detectPlatform();
-      if (platform === 'other') {
-        void navigate(internalPath);
-        return true;
-      }
-
-      // 모바일 웹 → `teamplus://` 시도 + 실패 시 /get-app 으로 이동
-      // (스토어 직행이 아니라 /get-app 으로 보내 사용자에게 한 단계 선택 여지 제공)
-      const schemeUrl = `${DEEPLINK_SCHEME}://${target.path.replace(/^\//, '')}`;
-      const fallbackUrl = `/get-app?redirect=${encodeURIComponent(internalPath)}`;
-
-      tryOpenAppWithFallback(schemeUrl, {
-        timeoutMs: 1500,
-        // 절대 URL 이 아니어도 Next.js router 가 처리 가능하지만,
-        // tryOpenAppWithFallback 은 window.location.href 를 직접 변경하므로
-        // 동일 origin 상대 경로면 그대로 동작.
-        fallbackUrl,
+      // 순수 함수 planAppOpen 으로 전략 결정 (플랫폼 × 인앱브라우저 조합) →
+      // 결정된 전략에 따라 부수효과만 여기서 수행.
+      const { https: universalUrl } = buildDeeplink({
+        path: target.path,
+        query: target.query,
       });
+      const schemeUrl = `${DEEPLINK_SCHEME}://${target.path.replace(/^\//, '')}`;
+      const plan = planAppOpen({
+        internalPath,
+        universalUrl,
+        schemeUrl,
+        platform: detectPlatform(),
+        inApp: detectInAppBrowser(),
+        isNative: isNativeApp(),
+      });
+
+      switch (plan.strategy) {
+        case 'internal':
+        case 'ios-inapp-guide':
+          void navigate(plan.path as string);
+          break;
+        case 'android-intent':
+        case 'ios-kakao-escape':
+          window.location.href = plan.href as string;
+          break;
+        case 'scheme-timeout':
+          tryOpenAppWithFallback(plan.schemeUrl as string, {
+            timeoutMs: 1500,
+            // tryOpenAppWithFallback 은 window.location.href 를 직접 변경하므로
+            // 동일 origin 상대 경로면 그대로 동작.
+            fallbackUrl: plan.fallbackPath as string,
+          });
+          break;
+      }
       return true;
     },
     [navigate, onDeeplink],

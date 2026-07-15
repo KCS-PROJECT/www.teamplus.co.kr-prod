@@ -95,20 +95,48 @@ export default function ClassCompletePage() {
     : '';
   const timeVaries = uniformTime === MESSAGES.class.schedulesVary;
   const venueVaries = uniformVenue === MESSAGES.class.schedulesVary;
-  // 일정 나열 — 시간·장소가 동일하면 위 단독 행에서 보여주므로 날짜만, 다르면 회차별 시간·장소 포함.
-  const dateScheduleSummary = sortedDateSchedules
-    .map((s) => {
+  // 일정 나열 — 월 1차 그룹 → (요일+시간+장소) 2차 그룹으로 요일 헤더 + 일자 인라인 나열.
+  //   월이 바뀌며 요일 구성이 달라져도(예: 6월 화·목 → 7월 월·수) 시간순으로 읽히도록
+  //   월 단위로 먼저 나눈다. 요일별 동일 시간·장소가 기본이지만 회차 개별 수정이
+  //   가능하므로, 예외 회차는 같은 요일의 별도 소그룹으로 분리된다.
+  const scheduleMonths = (() => {
+    type Group = { weekday: string; monIdx: number; time: string; venue: string; days: number[] };
+    // sortedDateSchedules 가 시간순이므로 Map 삽입 순서 = 월 시간순.
+    const monthMap = new Map<string, { year: number; month: number; groups: Map<string, Group> }>();
+    for (const s of sortedDateSchedules) {
       const dt = new Date(`${s.date}T00:00:00`);
+      const year = dt.getFullYear();
+      const month = dt.getMonth() + 1;
+      const monthKey = `${year}-${month}`;
+      const monthEntry =
+        monthMap.get(monthKey) ?? { year, month, groups: new Map<string, Group>() };
       const wd = ['일', '월', '화', '수', '목', '금', '토'][dt.getDay()];
-      const dateLabel = `${dt.getMonth() + 1}/${dt.getDate()}(${wd})`;
-      const time =
-        timeVaries && s.startTime
-          ? `${s.startTime}${s.endTime ? `~${s.endTime}` : ''}`
-          : '';
-      const venue = venueVaries ? s.venueName : '';
-      return [dateLabel, time, venue].filter(Boolean).join(' ');
-    })
-    .join('\n');
+      const time = s.startTime
+        ? `${s.startTime}${s.endTime ? `~${s.endTime}` : ''}`
+        : '';
+      const venue = s.venueName ?? '';
+      const groupKey = `${wd}|${time}|${venue}`;
+      const group =
+        monthEntry.groups.get(groupKey) ??
+        { weekday: wd, monIdx: (dt.getDay() + 6) % 7, time, venue, days: [] };
+      group.days.push(dt.getDate());
+      monthEntry.groups.set(groupKey, group);
+      monthMap.set(monthKey, monthEntry);
+    }
+    return [...monthMap.values()].map((m) => ({
+      year: m.year,
+      month: m.month,
+      // 월 안에서는 월→일 요일 순, 같은 요일은 시간 순.
+      groups: [...m.groups.values()].sort(
+        (a, b) =>
+          a.monIdx - b.monIdx ||
+          a.time.localeCompare(b.time) ||
+          a.venue.localeCompare(b.venue),
+      ),
+    }));
+  })();
+  // 연도를 넘나드는 수업(12월~1월 등)만 월 헤더에 연도 병기.
+  const scheduleSpansYears = new Set(scheduleMonths.map((m) => m.year)).size > 1;
 
   // 수업 대상 — targetBirthYears(SoT) 우선, 없으면 ageMin/ageMax 한국나이 폴백 (상세 페이지와 동일 규칙).
   const targetLabel = (() => {
@@ -190,13 +218,20 @@ export default function ClassCompletePage() {
                       label="수업 기간"
                       value={`${dateScheduleRange} · 총 ${sortedDateSchedules.length}회`}
                     />
-                    {uniformTime && (
+                    {/* 시간·장소가 회차별로 다르면 그룹 헤더에서 표기하므로 "회차별 상이" 단독 행은 숨긴다. */}
+                    {uniformTime && !timeVaries && (
                       <InfoRow label="수업 시간" value={uniformTime} />
                     )}
-                    {uniformVenue && (
+                    {uniformVenue && !venueVaries && (
                       <InfoRow label="훈련 장소" value={uniformVenue} />
                     )}
-                    <InfoRow label="수업 일정" value={dateScheduleSummary} multiline />
+                    <ScheduleGroupRows
+                      label="수업 일정"
+                      months={scheduleMonths}
+                      showTime={timeVaries}
+                      showVenue={venueVaries}
+                      showYear={scheduleSpansYears}
+                    />
                   </>
                 ) : (
                   <>
@@ -218,9 +253,6 @@ export default function ClassCompletePage() {
                   </>
                 )}
 
-                {data.instructorName && (
-                  <InfoRow label="담당 코치" value={data.instructorName} />
-                )}
               </div>
 
               {/* 구분선 — hairline */}
@@ -316,6 +348,69 @@ export default function ClassCompletePage() {
 /* ────────────────────────────────────────────
    InfoRow
    ──────────────────────────────────────────── */
+
+/** 월 헤더 → (요일+시간+장소) 그룹별 요일 헤더 + 일자 인라인 나열. 같은 요일 내 개별 수정 회차는 별도 그룹. */
+function ScheduleGroupRows({
+  label,
+  months,
+  showTime,
+  showVenue,
+  showYear,
+}: {
+  label: string;
+  months: {
+    year: number;
+    month: number;
+    groups: { weekday: string; time: string; venue: string; days: number[] }[];
+  }[];
+  /** 시간이 회차별로 상이해 그룹 헤더에 표기가 필요한 경우 true (동일하면 상단 단독 행에서 표시). */
+  showTime: boolean;
+  showVenue: boolean;
+  /** 수업이 연도를 넘나들 때만 월 헤더에 연도 병기. */
+  showYear: boolean;
+}) {
+  const totalCount = months.reduce(
+    (sum, m) => sum + m.groups.reduce((s, g) => s + g.days.length, 0),
+    0,
+  );
+  return (
+    <div className="flex items-start justify-between gap-4" role="group" aria-label={`${label}: 총 ${totalCount}회`}>
+      <span className="text-card-body text-it-ink-500 dark:text-rink-300 shrink-0">{label}</span>
+      <div className="min-w-0 flex flex-col items-end gap-3.5">
+        {months.map((m) => (
+          <div key={`${m.year}-${m.month}`} className="flex flex-col items-end gap-1">
+            {/* 월 헤더 — 날짜 텍스트 줄과 형태로 구분되도록 옅은 배경 칩. */}
+            <span className="text-card-meta font-bold text-it-ink-800 dark:text-rink-100 bg-it-fill dark:bg-rink-900/40 rounded-w-pill px-2.5 py-0.5">
+              {showYear ? `${m.year}년 ${m.month}월` : `${m.month}월`}
+            </span>
+            {m.groups.map((g) => {
+              const header = [
+                g.weekday,
+                showTime ? g.time : '',
+                showVenue ? g.venue : '',
+              ]
+                .filter(Boolean)
+                .join(' · ');
+              return (
+                <div
+                  key={`${g.weekday}-${g.time}-${g.venue}`}
+                  className="flex flex-col items-end"
+                >
+                  <span className="text-card-meta text-it-ink-500 dark:text-rink-300">
+                    {header}
+                  </span>
+                  <span className="text-card-body font-semibold text-it-ink-800 dark:text-rink-100 text-right break-keep leading-relaxed tabular-nums">
+                    {g.days.join(' · ')}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function InfoRow({
   label,

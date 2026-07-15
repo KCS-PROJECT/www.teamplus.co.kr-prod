@@ -75,6 +75,7 @@ import { GalleryModule } from "./gallery/gallery.module";
 import { MainPopupsModule } from "./main-popups/main-popups.module";
 import { ReminderScheduler } from "./common/schedulers/reminder.scheduler";
 import { ViewCounterModule } from "./common/view-counter/view-counter.module";
+import { ResourceAccessModule } from "./common/access/resource-access.module";
 import { UploadCleanupModule } from "./common/upload-cleanup.module";
 import { StickersModule } from "./stickers/stickers.module";
 import { RewardsModule } from "./rewards/rewards.module";
@@ -107,6 +108,9 @@ import { TransactionLogModule } from "./transaction-log/transaction-log.module";
 
     // 전역 조회수 카운터 (1일 1회 제한, DailyViewLog UNIQUE 기반)
     ViewCounterModule,
+
+    // 관리자 전용 API 리소스 소속 검증 (IDOR 가드) — 정산·출석·수업·대회 공용
+    ResourceAccessModule,
     UploadCleanupModule,
 
     // Redis (Global module for caching and session management)

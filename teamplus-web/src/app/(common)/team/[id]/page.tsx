@@ -48,7 +48,6 @@ import { useRefreshSubscription, REFRESH_KEYS } from "@/lib/refresh-bus";
 import { isTeamManagerOf } from "@/lib/team-roles";
 import { cn } from "@/lib/utils";
 import {
-  deleteTeam,
   getTeam,
   getRoster,
   getAvailableMembers,
@@ -301,51 +300,6 @@ export default function TeamDetailPage() {
     startLoading("navigation");
     navigate(`/team/${teamId}/edit`);
   }, [navigate, startLoading, teamId]);
-
-  // ─── 팀 자체 삭제 (2단계 확인, 위험 작업) ───────────────────
-  //  V01 (2026-05-15): 선수단 탭 하단 "삭제하기" 버튼이 팀 자체를 삭제하는 동작 →
-  //   오클릭(선수 제거로 오해) 방지를 위해 2단계 confirm + 라벨 명확화 적용.
-  //
-  //   Step 1: 영향 범위 경고 (선수단·경기·운영 데이터 접근 불가)
-  //   Step 2: 팀명 표기 + 영구 삭제 명시 + danger variant
-  //
-  //   각 단계는 modal.confirm danger variant 사용. 텍스트 입력 방식은 ModalContext
-  //   schema 변경이 필요하므로 본 task 에서는 2-step confirm 으로 안전성 확보.
-  const handleDelete = useCallback(async () => {
-    // 1단계 — 영향 범위 경고
-    const firstOk = await modal.confirm({
-      title: MESSAGES.team.deleteTeamWarningTitle,
-      message: MESSAGES.team.deleteTeamWarningFirst,
-      confirmText: MESSAGES.team.deleteTeamFirstConfirmText,
-      cancelText: MESSAGES.common.cancel,
-      variant: "danger",
-      icon: "warning",
-    });
-    if (!firstOk) return;
-
-    // 2단계 — 팀명 표기 + 영구 삭제 최종 확인
-    const finalOk = await modal.confirm({
-      title: MESSAGES.team.deleteTeamFinalTitle,
-      message: MESSAGES.team.deleteTeamFinalWarning(team?.name ?? ""),
-      confirmText: MESSAGES.team.deleteTeamFinalConfirmText,
-      cancelText: MESSAGES.common.cancel,
-      variant: "danger",
-      icon: "delete_forever",
-    });
-    if (!finalOk) return;
-
-    try {
-      const res = await deleteTeam(teamId);
-      if (res.success) {
-        toast.success(MESSAGES.team.deleteSuccess);
-        navigate("/team");
-      } else {
-        toast.error(res.error?.message || MESSAGES.error.general);
-      }
-    } catch {
-      toast.error(MESSAGES.error.network);
-    }
-  }, [modal, team?.name, teamId, toast, navigate]);
 
   const handleRosterAdded = useCallback(async () => {
     setRosterModalOpen(false);
@@ -639,30 +593,16 @@ export default function TeamDetailPage() {
           aria-label={MESSAGES.team.ariaActions}
         >
           {canManage ? (
-            // V01 (2026-05-15): 버튼 라벨을 "삭제하기" → "팀 자체 삭제" 로 명확화.
-            //  사용자가 선수단 탭에 있을 때 "선수 제거"로 오해할 수 있어 스코프를
-            //  명시. handleDelete 는 2단계 confirm (영향 경고 → 팀명 최종 확인) 적용.
-            //  warning 아이콘으로 위험 작업 시각 신호 강화.
-            <div className="flex gap-2.5">
-              <button
-                type="button"
-                onClick={handleDelete}
-                className="flex h-[50px] flex-1 items-center justify-center gap-1.5 rounded-w-md border-[1.5px] border-it-red-200 bg-it-surface text-[15px] font-extrabold text-it-red-500 tracking-tight hover:bg-it-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-red-500/40 active:brightness-95 dark:border-it-red-500/40 dark:bg-it-blue-950 dark:text-it-red-300 dark:hover:bg-it-red-500/10"
-                aria-label={MESSAGES.team.deleteTeamAriaLabel}
-              >
-                <Icon name="warning" className="text-[15px]" aria-hidden="true" />
-                {MESSAGES.team.deleteTeamButtonLabel}
-              </button>
-              <button
-                type="button"
-                onClick={handleEdit}
-                className="flex h-[50px] flex-[2] items-center justify-center gap-1.5 rounded-w-md bg-it-blue-500 text-[15px] font-extrabold text-white tracking-tight hover:bg-it-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 active:brightness-95"
-                aria-label={MESSAGES.team.editTeamAriaLabel}
-              >
-                <Icon name="edit" className="text-[16px]" aria-hidden="true" />
-                {MESSAGES.common.edit}
-              </button>
-            </div>
+            // 팀 삭제는 미지원 (팀은 수업·결제·출석 데이터의 허브 — BE 도 미구현).
+            <button
+              type="button"
+              onClick={handleEdit}
+              className="flex h-[50px] w-full items-center justify-center gap-1.5 rounded-w-md bg-it-blue-500 text-[15px] font-extrabold text-white tracking-tight hover:bg-it-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 active:brightness-95"
+              aria-label={MESSAGES.team.editTeamAriaLabel}
+            >
+              <Icon name="edit" className="text-[16px]" aria-hidden="true" />
+              {MESSAGES.common.edit}
+            </button>
           ) : (
             <button
               type="button"

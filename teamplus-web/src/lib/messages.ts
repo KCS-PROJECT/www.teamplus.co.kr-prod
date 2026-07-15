@@ -30,7 +30,7 @@ export const MESSAGES = {
       "다가오는 일정이 있어 종료할 수 없습니다. 일정을 모두 마치거나 취소한 후 종료할 수 있습니다.",
     // [Lifecycle v4.1 §9.3] 판매 승인 사이클 — 감독 확인 플로우 · 학부모 CTA
     salesCycle: {
-      // entryLabel: 화면 하단에 실재하는 일정 등록 진입 버튼명 ('일정 관리' | '수업 수정하기')
+      // entryLabel: 화면 하단에 실재하는 일정 등록 진입 버튼명 (일정 편집 수정 폼 단일화 후 '수업 수정하기')
       pendingNoSchedule: (entryLabel: string) =>
         `다가오는 일정이 없어요. 아래 '${entryLabel}'에서 일정을 등록하면 다음 달 판매를 준비할 수 있어요.`,
       endHint: "이 수업을 더 이상 운영하지 않는다면 종료할 수 있어요.",
@@ -291,6 +291,12 @@ export const MESSAGES = {
   //   대신 명확하게 "로그인 중 오류가 발생했어요"는 유지하되 "다시 시도해주세요"로 회복 경로 제시.
   auth: {
     loginError: "로그인 중 오류가 발생했어요. 다시 시도해주세요.",
+    // [2026-07-15] 로그인 성공 후 화면 이동이 완료되지 않을 때의 복구 안내.
+    //   ab90524b(WebView 로그인 전환 실패 복구)가 추가한 키 — merge 615dcc83 에서
+    //   같은 위치에 추가된 loginNavigationDelayed 와 충돌해 유실됐던 것을 복원.
+    //   (동일 의미 중복이던 loginNavigationDelayed 는 이 키로 통합·제거)
+    navigationTimeout:
+      "화면 이동이 완료되지 않았어요. 잠시 후 다시 시도해주세요.",
     // ICETIMES 브랜드 카피 — 스플래시/로그인 비주얼 전용 (2026-06-24 ICETIMES 롤아웃)
     brand: {
       wordmark: "TEAMPLUS",
@@ -1721,14 +1727,9 @@ export const MESSAGES = {
     // 로고 권리 고지 (iOS 5.2 / AOS #9888072 — 약관 제19조5항 보조 인앱 고지)
     logoRightsNotice:
       "등록하는 팀 로고·엠블럼은 타인의 상표·저작권을 침해하지 않으며 사용 권리를 보유한 이미지여야 합니다.",
-    // 기본 CRUD
+    // 기본 CRUD — 팀 삭제는 미지원 정책 (팀은 수업·결제·출석 데이터의 허브)
     createSuccess: "팀이 등록되었습니다.",
     updateSuccess: "팀 정보가 수정되었습니다.",
-    deleteSuccess: "팀이 삭제되었습니다.",
-    // [참고 2026-05-20 Phase 2] `nameRequired: "팀 이름을 입력해주세요."` 는 본 블록 폼 검증 섹션에
-    //   이미 존재 (line ~1455) — 신규 추가 없이 기존 키 그대로 사용.
-    deleteConfirm:
-      "이 팀을 삭제하시겠습니까? 팀 로스터와 경기 이력은 보존됩니다.",
     loadError: "팀 정보를 불러올 수 없습니다.",
     notFound: "팀을 찾을 수 없습니다.",
     permissionDenied: "이 팀을 관리할 권한이 없습니다.",
@@ -1737,20 +1738,6 @@ export const MESSAGES = {
     listEmptyForCoach: "가입한 팀이 없습니다. 회원가입 시 선택한 팀을 확인하거나 감독님께 문의해주세요.",
     // [추가 2026-05-21] pending 팀 카드 클릭 시 안내 — 조회는 허용하되 수정 권한 없음 명시.
     pendingClickHelperToast: "감독님 승인 후 팀 관리가 가능합니다. 정보 확인만 가능해요.",
-
-    // ─── 팀 자체 삭제 (위험 작업, 2단계 확인) ───────────────────
-    //  V01 (2026-05-15): 선수단 탭 하단 "삭제하기" 버튼이 팀 자체 삭제로 동작 →
-    //   라벨 명확화("팀 자체 삭제") + 2단계 confirm 으로 오클릭 방지.
-    deleteTeamButtonLabel: "팀 삭제하기",
-    deleteTeamAriaLabel: "팀 삭제하기 (위험 작업)",
-    deleteTeamWarningTitle: "팀 삭제",
-    deleteTeamWarningFirst:
-      "정말로 이 팀을 삭제하시겠습니까?\n팀 운영이 종료되며, 선수단 명단·경기 일정·운영 데이터에 더 이상 접근할 수 없게 됩니다.",
-    deleteTeamFirstConfirmText: "계속",
-    deleteTeamFinalTitle: "마지막 확인",
-    deleteTeamFinalWarning: (teamName: string) =>
-      `팀 "${teamName}" 을(를) 영구 삭제합니다.\n이 작업은 되돌릴 수 없습니다.`,
-    deleteTeamFinalConfirmText: "영구 삭제",
 
     // 팀 하위 그룹 (감독·코치가 팀 안에서 만드는 단위)
     groupListTitle: "하위그룹",

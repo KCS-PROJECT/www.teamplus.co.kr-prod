@@ -17,7 +17,6 @@ export interface ClassCompletePayload {
    *  complete 페이지에서 PackageManageSection 호출에 필요 (2026-05-22 옵션 A). */
   classId: string;
   className: string;
-  instructorName: string;
   venue: string;
   venueAddress: string;
   classDays: string[];
@@ -1017,7 +1016,6 @@ export function useClassForm({
           mode,
           classId: createdClassId,
           className: data.className,
-          instructorName: data.instructorName,
           venue: data.venue,
           venueAddress: data.venueAddress,
           classDays: data.classDays,

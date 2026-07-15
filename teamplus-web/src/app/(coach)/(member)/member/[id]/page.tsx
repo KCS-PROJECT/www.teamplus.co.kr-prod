@@ -11,10 +11,11 @@ import { api } from '@/services/api-client';
 
 import { usePageReady } from '@/hooks/usePageReady';
 import { useNativeUI } from '@/hooks/useNativeUI';
+import { formatBirthDateLabel } from '@/components/shared';
 interface MemberInfo {
   id: string;
   name: string;
-  age: number;
+  birthDate: string | null;
   classLevel: string;
   avatar?: string;
 }
@@ -57,10 +58,15 @@ function ProfileHero({ member }: { member: MemberInfo }) {
       </div>
       <div className="flex flex-col items-center justify-center gap-2">
         <h1 className="text-white text-2xl font-extrabold tracking-[-0.01em]">
-          {member.name}{' '}
-          <span className="text-card-title font-medium text-white/70">
-            ({member.age}세)
-          </span>
+          {member.name}
+          {formatBirthDateLabel(member.birthDate) && (
+            <>
+              {' '}
+              <span className="text-card-title font-medium text-white/70 tabular-nums">
+                ({formatBirthDateLabel(member.birthDate)})
+              </span>
+            </>
+          )}
         </h1>
         <div className="inline-flex items-center rounded-w-pill bg-white/15 px-3 py-1 text-card-body font-bold text-white">
           {member.classLevel}
@@ -314,15 +320,10 @@ export default function MemberDetailPage() {
     const d = res.data;
     const rawName = d.name ?? `${d.lastName ?? ''}${d.firstName ?? ''}`.trim();
     const name = rawName || '이름 미등록';
-    let age = d.age ?? 0;
-    if (!age && d.birthDate) {
-      const birth = new Date(d.birthDate);
-      age = new Date().getFullYear() - birth.getFullYear();
-    }
     setMember({
       id: d.id,
       name,
-      age,
+      birthDate: d.birthDate ?? null,
       classLevel: d.classLevel ?? d.level ?? '수강생',
       avatar: d.avatarUrl ?? undefined,
     });

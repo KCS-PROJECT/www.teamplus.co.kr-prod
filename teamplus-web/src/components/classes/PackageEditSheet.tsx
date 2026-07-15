@@ -69,9 +69,9 @@ interface FormState {
   description: string;
 }
 
-function buildAutoProductName(weeks: number, feeType: string): string {
+function buildAutoProductName(feeType: string): string {
   if (feeType === 'PER_SESSION') return '1회 수업료';
-  return `${weeks}주 정기권`;
+  return '주 N회 수업';
 }
 
 /** ClassProductDto 와 DraftProduct 공통 필드만 본다 (toFormState 입력). */
@@ -143,7 +143,7 @@ export function PackageEditSheet({
   // 크레딧 발급 수량 SoT = class_products.sessions_per_month, 0 = 미발급(기본).
   //   신규 생성은 자동 파생값을 만들지 않고 항상 0 을 전송한다.
   //   수정 시 기존 값 보존 — 되살린 발급형 패키지(>0)를 가격 수정이 0으로 덮지 않도록.
-  //   weeks 는 입력 검증·상품명 표기("N주 정기권")용으로만 유지 — durationDays 는 기존
+  //   weeks 는 입력 검증용으로만 유지 — durationDays 는 기존
   //   정책(flat 30) 유지, 월권 만료 SoT 는 서버 endOfMonthKst.
   const weeksNum = Math.max(1, Math.min(52, Number(form.weeks) || 0));
   const previewSessionsPerMonth = editSource
@@ -289,7 +289,7 @@ export function PackageEditSheet({
           required
           value={form.productName}
           onChange={(v) => update('productName', v)}
-          placeholder={buildAutoProductName(weeksNum, feeType)}
+          placeholder={buildAutoProductName(feeType)}
           maxLength={50}
         />
 

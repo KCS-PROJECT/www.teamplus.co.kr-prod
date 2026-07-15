@@ -104,6 +104,163 @@ export function getAllStoreUrls(options: { referrer?: string } = {}): {
 }
 
 /* ─────────────────────────────────────────────────────────────
+ * SNS 인앱브라우저 감지 & 앱 오픈 전략 URL 빌더
+ *
+ * 카카오톡·인스타그램·페이스북·네이버·X·라인 등의 "인앱 브라우저"는 iOS Universal
+ * Links / 커스텀 스킴을 자주 차단한다. 플랫폼별로 다른 탈출 전략이 필요하다:
+ *   - Android 인앱: `intent://` (S.browser_fallback_url=스토어) 로 앱/스토어 자동 처리
+ *   - iOS 카카오톡: `kakaotalk://web/openExternal?url=` 로 Safari 탈출 → Universal Link 재시도
+ *   - iOS 인스타/페북 등: 자동 실행 불가 → 스토어 안내(/get-app)가 최선
+ * ─────────────────────────────────────────────────────────── */
+
+/** 감지된 SNS 인앱브라우저 종류 (null = 일반 브라우저) */
+export type InAppBrowser =
+  | "kakaotalk"
+  | "instagram"
+  | "facebook"
+  | "naver"
+  | "twitter"
+  | "line"
+  | "other-webview"
+  | null;
+
+/**
+ * User-Agent 로 SNS 인앱브라우저를 감지.
+ *
+ * ⚠️ 호출 전 `isNativeApp()` 로 TEAMPLUS 자체 WebView 를 먼저 걸러내야 한다
+ *    (TEAMPLUS Android WebView 도 `; wv)` 를 포함해 'other-webview' 로 잡힐 수 있음).
+ *
+ * @param ua 테스트용 UA 주입 (미지정 시 navigator.userAgent)
+ */
+export function detectInAppBrowser(ua?: string): InAppBrowser {
+  const uaStr =
+    ua ?? (typeof navigator !== "undefined" ? navigator.userAgent : "");
+  if (!uaStr) return null;
+
+  if (/KAKAOTALK/i.test(uaStr)) return "kakaotalk";
+  if (/Instagram/i.test(uaStr)) return "instagram";
+  if (/FBAN|FBAV|FB_IAB/i.test(uaStr)) return "facebook";
+  if (/NAVER\(inapp/i.test(uaStr)) return "naver";
+  if (/\bLine\//i.test(uaStr)) return "line";
+  if (/Twitter/i.test(uaStr)) return "twitter";
+  if (/; wv\)/.test(uaStr)) return "other-webview"; // generic Android WebView
+  return null;
+}
+
+/**
+ * Android `intent://` URL 생성 — 앱이 있으면 앱으로, 없으면
+ * `S.browser_fallback_url`(스토어)로 자동 이동. 카카오톡·크롬 계열 인앱에서 동작.
+ *
+ * @param httpsUrl 앱이 처리할 Universal Link (예: `https://teamplusweb.icetimes.co.kr/classes/123`)
+ * @param options.fallbackUrl 미설치 시 이동할 스토어 URL (필수)
+ * @param options.packageName Android 패키지명 (기본 ANDROID_PACKAGE)
+ * @returns intent:// URL. httpsUrl 파싱 실패 시 fallbackUrl 그대로 반환.
+ */
+export function buildAndroidIntentUrl(
+  httpsUrl: string,
+  options: { fallbackUrl: string; packageName?: string },
+): string {
+  const { fallbackUrl, packageName = ANDROID_PACKAGE } = options;
+  let u: URL;
+  try {
+    u = new URL(httpsUrl);
+  } catch {
+    return fallbackUrl;
+  }
+  const scheme = u.protocol.replace(/:$/, ""); // "https"
+  const hostPathQuery = `${u.host}${u.pathname}${u.search}`;
+  return (
+    `intent://${hostPathQuery}#Intent;` +
+    `scheme=${scheme};` +
+    `package=${packageName};` +
+    `S.browser_fallback_url=${encodeURIComponent(fallbackUrl)};` +
+    `end`
+  );
+}
+
+/**
+ * iOS 카카오톡 인앱 → Safari 탈출 URL.
+ * Safari 에서 Universal Link 가 재평가되어 앱 설치 시 앱으로, 미설치 시 웹으로 열린다.
+ *
+ * @param targetUrl Safari 로 넘길 최종 URL (Universal Link 또는 /get-app)
+ */
+export function buildKakaoInAppEscapeUrl(targetUrl: string): string {
+  return `kakaotalk://web/openExternal?url=${encodeURIComponent(targetUrl)}`;
+}
+
+/**
+ * "앱 열기 or 스토어 유도" 전략 결정 (순수 함수).
+ *
+ * 플랫폼 × 인앱브라우저 조합으로 취해야 할 액션을 계산한다. 부수효과(window.location /
+ * navigate / timeout)는 호출자(`useDeeplinkRouter.openInAppOrInstall`)가 수행한다.
+ * 순수 함수라 모든 진입 시나리오(카톡/인스타/네이버/일반)를 단위 테스트로 검증 가능.
+ */
+export type AppOpenStrategy =
+  | "internal" // 네이티브 앱 안 / PC → 그냥 내부 라우팅
+  | "android-intent" // Android 인앱 → intent:// (스토어 fallback 내장)
+  | "ios-kakao-escape" // iOS 카카오톡 → Safari 탈출
+  | "ios-inapp-guide" // iOS 기타 인앱(인스타/페북 등) → /get-app 안내
+  | "scheme-timeout"; // 일반 모바일 브라우저 → teamplus:// + 미설치 시 /get-app
+
+export interface AppOpenPlan {
+  strategy: AppOpenStrategy;
+  /** `window.location.href` 로 이동할 URL (android-intent / ios-kakao-escape) */
+  href?: string;
+  /** `navigate()` 로 이동할 내부 경로 (internal / ios-inapp-guide) */
+  path?: string;
+  /** scheme-timeout 전략: 시도할 스킴 URL */
+  schemeUrl?: string;
+  /** scheme-timeout 전략: 미설치 시 fallback 내부 경로 */
+  fallbackPath?: string;
+}
+
+export function planAppOpen(params: {
+  /** 정규화된 내부 경로 (`/classes/123`) */
+  internalPath: string;
+  /** 앱이 처리할 Universal Link (`https://teamplusweb.icetimes.co.kr/classes/123`) */
+  universalUrl: string;
+  /** 커스텀 스킴 URL (`teamplus://classes/123`) */
+  schemeUrl: string;
+  platform: AppInstallPlatform;
+  inApp: InAppBrowser;
+  isNative: boolean;
+}): AppOpenPlan {
+  const { internalPath, universalUrl, schemeUrl, platform, inApp, isNative } =
+    params;
+  const getAppPath = `/get-app?redirect=${encodeURIComponent(internalPath)}`;
+
+  // 이미 앱 안 / PC·미지원 모바일 → 스토어 유도 무의미, 내부 라우팅
+  if (isNative || platform === "other") {
+    return { strategy: "internal", path: internalPath };
+  }
+
+  // Android 인앱브라우저(카톡/인스타/페북/네이버/…) → intent://
+  if (platform === "android" && inApp) {
+    const storeUrl = getStoreUrl("android", { referrer: internalPath });
+    return {
+      strategy: "android-intent",
+      href: buildAndroidIntentUrl(universalUrl, { fallbackUrl: storeUrl }),
+    };
+  }
+
+  // iOS 카카오톡 → Safari 탈출(Universal Link 재평가)
+  if (platform === "ios" && inApp === "kakaotalk") {
+    return {
+      strategy: "ios-kakao-escape",
+      href: buildKakaoInAppEscapeUrl(universalUrl),
+    };
+  }
+
+  // iOS 인스타/페북/네이버 등 → 자동 실행 불가 → /get-app 안내
+  if (platform === "ios" && inApp && inApp !== "kakaotalk") {
+    return { strategy: "ios-inapp-guide", path: `${getAppPath}&inapp=${inApp}` };
+  }
+
+  // 일반 모바일 브라우저 → teamplus:// 시도 후 미설치 시 /get-app
+  return { strategy: "scheme-timeout", schemeUrl, fallbackPath: getAppPath };
+}
+
+/* ─────────────────────────────────────────────────────────────
  * AppInstallBanner dismiss 추적
  * ─────────────────────────────────────────────────────────── */
 

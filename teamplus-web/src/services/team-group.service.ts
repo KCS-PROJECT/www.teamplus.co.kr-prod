@@ -47,6 +47,8 @@ export interface EligibleMemberRow {
   playerName: string;
   gender: 'M' | 'F' | string | null;
   playerAge: number;
+  /** 생년월일 ISO (ChildProfile 우선, user 폴백) — 없으면 null. 출생연도 파생의 SoT. */
+  birthDate?: string | null;
   /** [추가 2026-04-30] 역할 필터 탭 — HEAD_COACH / COACH / MANAGER / PLAYER */
   roleInTeam?: string | null;
   /** ADMIN / DIRECTOR / COACH / PARENT / TEEN / CHILD / STUDENT 등 */

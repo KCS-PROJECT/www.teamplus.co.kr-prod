@@ -25,6 +25,9 @@ export interface ClassLifecycleInput {
   trainingType?: string | null;
   /** 비취소 일정 전체 (정렬 무관 — 내부에서 판단) */
   schedules: Array<{ scheduledDate: Date }>;
+  /** 비취소 일정 존재 여부(과거 포함) — schedules 를 미래분만 조회한 호출부가
+   *  spot 자동 종료 판정(과거 일정 유무)을 잃지 않도록 전달. 미전달 시 schedules 로 판단. */
+  hadAnySchedule?: boolean;
 }
 
 export interface ClassLifecycleResult {
@@ -73,7 +76,7 @@ export function deriveClassLifecycle(
     if (remaining.length > 0) {
       return { state: "ON_SALE", pendingReason: null, earliestRemainingMonth: earliest };
     }
-    return input.schedules.length > 0
+    return (input.hadAnySchedule ?? input.schedules.length > 0)
       ? { state: "ENDED", pendingReason: null, earliestRemainingMonth: null }
       : {
           state: "PENDING_SCHEDULE",

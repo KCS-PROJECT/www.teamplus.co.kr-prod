@@ -12,6 +12,17 @@ import { TeamsService } from "@/teams/teams.service";
 import { CreditDomainService } from "@/credits/credit-domain.service";
 import { AttendanceAuditLogService } from "@/attendance/attendance-audit-log.service";
 import { NotificationsService } from "@/notifications/notifications.service";
+import { ResourceAccessService } from "@/common/access/resource-access.service";
+
+// IDOR 가드 mock — 기본 전부 통과. 차단 케이스는 개별 테스트에서 mockRejectedValue 로 지정.
+const mockResourceAccessService = {
+  assertManageableClass: jest.fn().mockResolvedValue(undefined),
+  assertManageableClassRecord: jest.fn().mockResolvedValue(undefined),
+  assertTeamManager: jest.fn().mockResolvedValue(undefined),
+  assertAcademyManager: jest.fn().mockResolvedValue(undefined),
+  assertManageableTournament: jest.fn().mockResolvedValue(undefined),
+  assertManageableTournamentRecord: jest.fn().mockResolvedValue(undefined),
+};
 
 describe("ClassesService", () => {
   let service: ClassesService;
@@ -222,6 +233,10 @@ describe("ClassesService", () => {
         { provide: CreditDomainService, useValue: { bulkRestoreOne: jest.fn() } },
         { provide: AttendanceAuditLogService, useValue: { record: jest.fn() } },
         { provide: NotificationsService, useValue: mockNotificationsService },
+        {
+          provide: ResourceAccessService,
+          useValue: mockResourceAccessService,
+        },
       ],
     }).compile();
 
@@ -768,9 +783,15 @@ describe("ClassesService", () => {
   });
 
   describe("cancelClassSchedule", () => {
+    // 지난 회차 취소 가드(kstTodayUtcMidnight 경계) — 성공 경로는 미래 회차여야 통과.
+    const futureSchedule = {
+      ...mockSchedule,
+      scheduledDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    };
+
     it("should successfully cancel schedule and update attendances", async () => {
       jest.spyOn(prismaService.classSchedule, "findUnique").mockResolvedValue({
-        ...mockSchedule,
+        ...futureSchedule,
         class: mockClass,
       } as any);
       mockTx.classSchedule.update.mockResolvedValue({
@@ -795,6 +816,20 @@ describe("ClassesService", () => {
         mockClubId,
         expect.any(String),
       );
+    });
+
+    it("should throw ForbiddenException when cancelling a past schedule", async () => {
+      jest.spyOn(prismaService.classSchedule, "findUnique").mockResolvedValue({
+        ...mockSchedule,
+        scheduledDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+        class: mockClass,
+      } as any);
+
+      await expect(
+        service.cancelClassSchedule(mockCoachUserId, mockScheduleId, "사유"),
+      ).rejects.toThrow(ForbiddenException);
+      // 가드가 트랜잭션 진입 전에 차단 — 출석 변경·크레딧 복원 미실행 확인.
+      expect(mockTx.classSchedule.update).not.toHaveBeenCalled();
     });
 
     it("should throw NotFoundException if schedule does not exist", async () => {

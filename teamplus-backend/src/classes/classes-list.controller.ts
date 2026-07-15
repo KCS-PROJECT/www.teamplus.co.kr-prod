@@ -178,8 +178,11 @@ export class ClassesListController {
       "수업에 활성 등록된 학생 전원과 각 학생의 가장 최근 Enrollment/Payment 상태를 반환합니다. 미결제 학생은 paymentStatus='unpaid' 로 표기.",
   })
   @ApiParam({ name: "classId", description: "수업 ID" })
-  async getClassPaymentsById(@Param("classId") classId: string) {
-    return this.classesService.getClassPayments(classId);
+  async getClassPaymentsById(
+    @Param("classId") classId: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.classesService.getClassPayments(classId, req.user);
   }
 
   /**

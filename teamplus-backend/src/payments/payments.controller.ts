@@ -127,10 +127,14 @@ export class PaymentsController {
     summary: "후불 정산 초안 조회",
     description: "수업×월 회원별 출석×단가 미리보기 (감독 검수용, 미저장).",
   })
-  async getPostpaidDraft(@Query() query: ConfirmPostpaidBillingDto) {
+  async getPostpaidDraft(
+    @Query() query: ConfirmPostpaidBillingDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
     return this.postpaidSettlementService.getDraft(
       query.classId,
       query.yearMonth,
+      req.user,
     );
   }
 
@@ -154,7 +158,7 @@ export class PaymentsController {
     return this.postpaidSettlementService.confirmSettlement(
       body.classId,
       body.yearMonth,
-      req.user.id,
+      req.user,
     );
   }
 
@@ -1201,7 +1205,9 @@ export class PaymentsController {
   @Get("postpaid/summary")
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @ApiBearerAuth()
-  @Roles("COACH", "ADMIN")
+  // 전 수업(전 팀) 정산 미리보기를 반환하는 시스템 전역 조회 — 팀 스코프 필터가 없어
+  // COACH 허용 시 타 팀 정산 정보가 노출된다. ADMIN 전용으로 제한.
+  @Roles("ADMIN")
   @ApiOperation({
     summary: "후결제 정산 내역 조회",
     description: "특정 월의 후결제 정산 대상 및 금액 내역을 조회합니다.",

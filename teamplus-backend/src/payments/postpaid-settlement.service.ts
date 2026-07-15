@@ -8,6 +8,8 @@ import {
 import { Cron } from "@nestjs/schedule";
 import { PrismaService } from "@/prisma/prisma.service";
 import { NotificationsService } from "@/notifications/notifications.service";
+import { ResourceAccessService } from "@/common/access/resource-access.service";
+import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
 import {
   PaymentCalculationService,
   BillingTiming,
@@ -32,6 +34,7 @@ export class PostpaidSettlementService {
     private readonly prisma: PrismaService,
     private readonly calculationService: PaymentCalculationService,
     private readonly notifications: NotificationsService,
+    private readonly resourceAccess: ResourceAccessService, // 관리자 전용 API 리소스 소속 검증 (IDOR 가드)
   ) {}
 
   /**
@@ -269,7 +272,14 @@ export class PostpaidSettlementService {
   }
 
   /** 수업×월 POSTPAID 정산 초안 — 회원별 출석×단가 미리보기 (미저장). */
-  async getDraft(classId: string, yearMonth: string) {
+  async getDraft(
+    classId: string,
+    yearMonth: string,
+    requester: JwtUserPayload,
+  ) {
+    // 회원별 출석·금액이 담기는 정산 초안 — 수업 관리자만 조회 가능 (IDOR 가드)
+    await this.resourceAccess.assertManageableClass(classId, requester);
+
     const { start, end } = this.monthRange(yearMonth);
 
     const product = await this.prisma.classProduct.findFirst({
@@ -325,8 +335,11 @@ export class PostpaidSettlementService {
   async confirmSettlement(
     classId: string,
     yearMonth: string,
-    confirmedBy: string,
+    requester: JwtUserPayload,
   ): Promise<{ billingId: string; lineCount: number; totalAmount: number }> {
+    // 실제 청구(pending Payment+알림)를 생성하는 쓰기 경로 — 수업 관리자만 확정 가능 (IDOR 가드)
+    await this.resourceAccess.assertManageableClass(classId, requester);
+    const confirmedBy = requester.id;
     // [A안] 월 마감 전 확정 금지 — 당월/미래월은 출석이 더 쌓일 수 있어 청구가 미완성.
     //   draft(미리보기)는 당월에도 허용하되, 실제 청구를 만드는 confirm 만 과거월로 제한한다.
     const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);

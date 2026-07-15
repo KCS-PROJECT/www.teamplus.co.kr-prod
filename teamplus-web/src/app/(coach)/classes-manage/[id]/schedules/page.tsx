@@ -96,6 +96,8 @@ export default function ClassSchedulesManagePage() {
   const [isLoading, setIsLoading] = useState(true);
   // 등록된 일정 표시 방식 — 달력(기본) ⇄ 목록 토글.
   const [scheduleView, setScheduleView] = useState<'calendar' | 'list'>('calendar');
+  // 목록 뷰 지난 일정 접기 — 달력 뷰(ScheduleCalendarView)와 동일 UX.
+  const [showPastList, setShowPastList] = useState(false);
 
   // 풀스크린 로더 fast-path — fetch 완료 시점에 PageTransitionLoader OFF
   usePageReady(!isLoading);
@@ -182,6 +184,24 @@ export default function ClassSchedulesManagePage() {
         }),
     [schedules],
   );
+
+  // 지난 회차(오늘 이전) 분리 — 목록 뷰 접기 + 취소 버튼 숨김 판정.
+  //   지난 회차는 사실 기록이라 취소 불가(백엔드 가드와 이중 방어). 로컬 날짜 기준
+  //   판정은 수업 수정 폼의 지난 회차 잠금과 동일 경계.
+  const todayKey = useMemo(() => {
+    const n = new Date();
+    return `${n.getFullYear()}-${pad2(n.getMonth() + 1)}-${pad2(n.getDate())}`;
+  }, []);
+  const { listUpcoming, listPast } = useMemo(() => {
+    const keyOf = (s: ScheduleItem) => {
+      const d = new Date(s.scheduledDate);
+      return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    };
+    return {
+      listUpcoming: schedules.filter((s) => keyOf(s) >= todayKey),
+      listPast: schedules.filter((s) => keyOf(s) < todayKey),
+    };
+  }, [schedules, todayKey]);
 
   // 미니달력 확인 — 날짜별 확정값(resolved)을 시간·장소가 같은 그룹으로 묶어 bulk 호출.
   //   요일별 기본값을 적용하면 요일마다 시간/장소가 달라질 수 있어, bulk API(단일 시간/장소)를
@@ -305,6 +325,63 @@ export default function ClassSchedulesManagePage() {
   }
 
   /* ─────────────────────────── Render ─────────────────────────── */
+
+  // 목록 뷰 회차 행 — 지난 회차(isPast)는 흐림 처리 + 취소 버튼 미노출.
+  const renderScheduleRow = (s: ScheduleItem, isPast: boolean) => (
+    <li
+      key={s.id}
+      role="listitem"
+      className={cn(
+        'flex items-center justify-between px-5 py-3 gap-3 border-b border-it-line dark:border-it-blue-900 last:border-b-0',
+        (s.isCancelled || isPast) && 'opacity-50',
+      )}
+      aria-label={`${formatScheduleLabel(s)}${s.venue?.name ? `, ${s.venue.name}` : ''}${s.isCancelled ? ', 취소됨' : ''}`}
+    >
+      <div className="flex items-center gap-2 min-w-0">
+        <Icon
+          name={s.isCancelled ? 'event_busy' : 'event_available'}
+          className={cn(
+            'text-card-title shrink-0',
+            s.isCancelled ? 'text-it-ink-400 dark:text-rink-300' : 'text-it-blue-500',
+          )}
+          aria-hidden="true"
+        />
+        <div className="min-w-0">
+          <span
+            className={cn(
+              'block text-card-body text-it-ink-800 dark:text-white tabular-nums truncate',
+              s.isCancelled && 'line-through',
+            )}
+          >
+            {formatScheduleLabel(s)}
+          </span>
+          {s.venue?.name && (
+            <span className="block text-card-meta text-it-ink-500 dark:text-rink-300 truncate">
+              {s.venue.name}
+            </span>
+          )}
+        </div>
+        {s.isCancelled && (
+          <span
+            className="text-card-meta font-bold px-2 py-0.5 rounded bg-it-line dark:bg-rink-700 text-it-ink-500 dark:text-rink-300 shrink-0"
+            role="status"
+          >
+            취소됨
+          </span>
+        )}
+      </div>
+      {!s.isCancelled && isApproved && !isPast && (
+        <button
+          type="button"
+          onClick={() => handleCancel(s.id)}
+          className="text-card-meta font-bold text-it-red-500 hover:text-it-red-600 dark:text-it-red-300 px-2 py-1 rounded transition-colors motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-it-red-500 focus:outline-none shrink-0"
+          aria-label={`${formatScheduleLabel(s)} 회차 취소하기`}
+        >
+          취소하기
+        </button>
+      )}
+    </li>
+  );
 
   if (isLoading) return null;
 
@@ -432,61 +509,25 @@ export default function ClassSchedulesManagePage() {
               role="list"
               aria-label={`등록된 일정 ${schedules.length}건`}
             >
-              {schedules.map((s) => (
-                <li
-                  key={s.id}
-                  role="listitem"
-                  className={cn(
-                    'flex items-center justify-between px-5 py-3 gap-3 border-b border-it-line dark:border-it-blue-900 last:border-b-0',
-                    s.isCancelled && 'opacity-50',
-                  )}
-                  aria-label={`${formatScheduleLabel(s)}${s.venue?.name ? `, ${s.venue.name}` : ''}${s.isCancelled ? ', 취소됨' : ''}`}
-                >
-                  <div className="flex items-center gap-2 min-w-0">
+              {listUpcoming.map((s) => renderScheduleRow(s, false))}
+              {listPast.length > 0 && (
+                <li className="border-b border-it-line dark:border-it-blue-900 last:border-b-0">
+                  <button
+                    type="button"
+                    onClick={() => setShowPastList((v) => !v)}
+                    aria-expanded={showPastList}
+                    className="flex w-full items-center justify-center gap-1 px-5 py-2.5 text-card-meta font-bold text-it-blue-500 hover:bg-it-blue-500/[0.05] transition-colors motion-reduce:transition-none"
+                  >
                     <Icon
-                      name={s.isCancelled ? 'event_busy' : 'event_available'}
-                      className={cn(
-                        'text-card-title shrink-0',
-                        s.isCancelled ? 'text-it-ink-400 dark:text-rink-300' : 'text-it-blue-500',
-                      )}
+                      name={showPastList ? 'expand_less' : 'expand_more'}
+                      className="text-base"
                       aria-hidden="true"
                     />
-                    <div className="min-w-0">
-                      <span
-                        className={cn(
-                          'block text-card-body text-it-ink-800 dark:text-white tabular-nums truncate',
-                          s.isCancelled && 'line-through',
-                        )}
-                      >
-                        {formatScheduleLabel(s)}
-                      </span>
-                      {s.venue?.name && (
-                        <span className="block text-card-meta text-it-ink-500 dark:text-rink-300 truncate">
-                          {s.venue.name}
-                        </span>
-                      )}
-                    </div>
-                    {s.isCancelled && (
-                      <span
-                        className="text-card-meta font-bold px-2 py-0.5 rounded bg-it-line dark:bg-rink-700 text-it-ink-500 dark:text-rink-300 shrink-0"
-                        role="status"
-                      >
-                        취소됨
-                      </span>
-                    )}
-                  </div>
-                  {!s.isCancelled && isApproved && (
-                    <button
-                      type="button"
-                      onClick={() => handleCancel(s.id)}
-                      className="text-card-meta font-bold text-it-red-500 hover:text-it-red-600 dark:text-it-red-300 px-2 py-1 rounded transition-colors motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-it-red-500 focus:outline-none shrink-0"
-                      aria-label={`${formatScheduleLabel(s)} 회차 취소하기`}
-                    >
-                      취소하기
-                    </button>
-                  )}
+                    {showPastList ? '지난 일정 접기' : `지난 일정 ${listPast.length}개 보기`}
+                  </button>
                 </li>
-              ))}
+              )}
+              {showPastList && listPast.map((s) => renderScheduleRow(s, true))}
             </ul>
           )}
         </section>

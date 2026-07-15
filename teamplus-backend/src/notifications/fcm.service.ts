@@ -39,6 +39,28 @@ export class FcmService implements OnModuleInit {
   private static readonly MAX_RETRY_ATTEMPTS = 3;
   private static readonly INITIAL_RETRY_DELAY_MS = 1000;
   private static readonly FCM_BATCH_SIZE = 500;
+  /**
+   * 대량 비활성화 회로차단기 — 단일 발송에서 무효 판정 토큰이
+   * (대상의 RATIO_CAP 초과 && MIN_COUNT 이상)이면 오분류로 간주하고 비활성화를 차단.
+   * 소량 발송(1기기 토큰 만료 등)은 MIN_COUNT 미만이라 영향 없음.
+   */
+  private static readonly DEACTIVATION_RATIO_CAP = 0.5;
+  private static readonly DEACTIVATION_CAP_MIN_COUNT = 20;
+  /** FCM data payload 권장 상한(전체 메시지 4KB 제한 대비 여유분) */
+  private static readonly DATA_PAYLOAD_WARN_BYTES = 3800;
+
+  // iOS 앱 아이콘 뱃지 = 웹 알림함(벨/목록)이 '표시하는' 미읽음 수와 일치해야 한다.
+  // 웹 notification-mapper.isNotificationVisible 이 숨기는 유형/나이를 뱃지 집계에서도
+  // 제외하지 않으면, 열어도 볼 수 없는 유령 뱃지가 남아 클리어되지 않는다.
+  // SoT: teamplus-web/src/lib/notification-mapper.ts
+  //   (HIDDEN_NOTIFICATION_TYPES · NOTIFICATION_RECENCY_DAYS=21). 값 변경 시 동기화 필요.
+  private static readonly BADGE_HIDDEN_TYPES = [
+    "trip_waitlist_promoted",
+    "account_dormant",
+    "rsvp_reminder",
+    "tournament_created",
+  ];
+  private static readonly BADGE_RECENCY_DAYS = 21;
 
   constructor(
     private readonly configService: ConfigService,
@@ -72,11 +94,8 @@ export class FcmService implements OnModuleInit {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const admin = require("firebase-admin");
 
-      // default 앱이 없을 때만 생성한다.
-      // FcmGateway가 named 앱('teamplus-fcm-gateway')을 먼저 초기화하면
-      // admin.apps.length > 0 이 되는데, 이때 default 앱 생성을 건너뛰면
-      // 아래 admin.messaging()(=default 앱 조회)이 "default app does not exist"로
-      // 실패한다. 반드시 default 앱 존재 여부로 판단해야 초기화 순서와 무관해진다.
+      // default 앱이 없을 때만 생성 — named 앱이 존재해도 admin.messaging()
+      // (=default 앱 조회)이 실패하지 않도록 default 앱 존재 여부로 판단한다.
       const hasDefaultApp = admin.apps.some(
         (a: { name?: string } | null) => a?.name === "[DEFAULT]",
       );
@@ -183,7 +202,7 @@ export class FcmService implements OnModuleInit {
 
     // 무효 토큰 비활성화
     if (result.invalidTokens.length > 0) {
-      await this.deactivateInvalidTokens(result.invalidTokens);
+      await this.deactivateInvalidTokens(result.invalidTokens, tokens.length);
     }
 
     return result;
@@ -250,43 +269,73 @@ export class FcmService implements OnModuleInit {
         // badge 인자 생략 → aps.badge omit
       );
       if (result.invalidTokens.length > 0) {
-        await this.deactivateInvalidTokens(result.invalidTokens);
+        await this.deactivateInvalidTokens(result.invalidTokens, tokens.length);
       }
       return result;
     }
 
-    // 대상 사용자들의 미확인 알림 수를 단 1회 groupBy 로 일괄 계산.
-    // 결과에 없는 사용자(미확인 0건)는 0 으로 간주.
-    const grouped = await this.prisma.notification.groupBy({
-      by: ["userId"],
-      where: { userId: { in: userIds }, isRead: false },
-      _count: { _all: true },
-    });
-    const unreadByUser = new Map<string, number>();
-    for (const g of grouped) {
-      unreadByUser.set(g.userId, g._count._all);
-    }
-
-    // 토큰을 소유자의 뱃지 값별로 그룹핑(Map<badge, token[]>).
     // 동일 토큰이 여러 active row 에 걸쳐 있어도 한 기기에 1회만 발송하도록 dedupe.
     const seenTokens = new Set<string>();
-    const tokensByBadge = new Map<number, string[]>();
+    const dedupedDevices: Array<{ userId: string; fcmToken: string }> = [];
     for (const d of devices) {
       const token = d.fcmToken;
       if (!token || seenTokens.has(token)) continue;
       seenTokens.add(token);
-
-      const badge = unreadByUser.get(d.userId) ?? 0;
-      const list = tokensByBadge.get(badge);
-      if (list) {
-        list.push(token);
-      } else {
-        tokensByBadge.set(badge, [token]);
-      }
+      dedupedDevices.push({ userId: d.userId, fcmToken: token });
     }
 
     if (seenTokens.size === 0) {
       return { successCount: 0, failureCount: 0, invalidTokens: [] };
+    }
+
+    // 대상 사용자들의 미확인(표시되는) 알림 수를 단 1회 groupBy 로 일괄 계산.
+    // 뱃지 계산은 '장식'이므로 실패해도 배치 전체를 드랍하지 않는다 — 집계 실패 시
+    // 전원 badge omit(0 으로 클리어하지 않음) 으로 1회 발송해 전달을 보장한다
+    // (단건 countUnread 의 NaN→omit 과 동일한 격리 정책).
+    const unreadByUser = new Map<string, number>();
+    let badgeComputed = true;
+    try {
+      const grouped = await this.prisma.notification.groupBy({
+        by: ["userId"],
+        where: { userId: { in: userIds }, ...this.visibleUnreadWhere() },
+        _count: { _all: true },
+      });
+      for (const g of grouped) {
+        unreadByUser.set(g.userId, g._count._all);
+      }
+    } catch (error) {
+      const err = error as Error;
+      badgeComputed = false;
+      this.logger.warn(
+        `뱃지 집계 실패 — badge omit 으로 발송 계속 (${err.message})`,
+      );
+    }
+
+    if (!badgeComputed) {
+      const tokens = Array.from(seenTokens);
+      const result = await this.sendToTokensWithRetry(
+        tokens,
+        title,
+        message,
+        data,
+        // badge 인자 생략 → aps.badge omit (기존 뱃지 유지, 0 클리어 방지)
+      );
+      if (result.invalidTokens.length > 0) {
+        await this.deactivateInvalidTokens(result.invalidTokens, tokens.length);
+      }
+      return result;
+    }
+
+    // 토큰을 소유자의 뱃지 값별로 그룹핑(Map<badge, token[]>).
+    const tokensByBadge = new Map<number, string[]>();
+    for (const d of dedupedDevices) {
+      const badge = unreadByUser.get(d.userId) ?? 0;
+      const list = tokensByBadge.get(badge);
+      if (list) {
+        list.push(d.fcmToken);
+      } else {
+        tokensByBadge.set(badge, [d.fcmToken]);
+      }
     }
 
     // 뱃지 값별로 1회씩 발송 → FCM 호출 수 = distinct 뱃지 수(최소화),
@@ -310,7 +359,10 @@ export class FcmService implements OnModuleInit {
     }
 
     if (totalResult.invalidTokens.length > 0) {
-      await this.deactivateInvalidTokens(totalResult.invalidTokens);
+      await this.deactivateInvalidTokens(
+        totalResult.invalidTokens,
+        seenTokens.size,
+      );
     }
 
     return totalResult;
@@ -345,16 +397,32 @@ export class FcmService implements OnModuleInit {
     return this.sendToTokensWithRetry(tokens, title, body, data);
   }
 
+  /** 뱃지 집계용 '표시되는 미읽음' where 절 — 숨김 유형·21일 초과 제외(웹 정합). */
+  private visibleUnreadWhere(): {
+    isRead: false;
+    notificationType: { notIn: string[] };
+    createdAt: { gte: Date };
+  } {
+    return {
+      isRead: false,
+      notificationType: { notIn: FcmService.BADGE_HIDDEN_TYPES },
+      createdAt: {
+        gte: new Date(
+          Date.now() - FcmService.BADGE_RECENCY_DAYS * 24 * 60 * 60 * 1000,
+        ),
+      },
+    };
+  }
+
   /**
-   * 특정 사용자의 미확인(isRead=false) 알림 수.
-   * iOS 앱 아이콘 뱃지 카운트 산정에 사용한다.
-   * (notifications.service.getUnreadCount 과 동일 쿼리 — 여기서는 Redis 캐시 의존을
-   *  피하고 push 직전 최신값을 직접 집계해 정확성을 우선한다)
+   * 특정 사용자의 미확인(isRead=false) 알림 수 — 웹 알림함이 '표시하는' 것만 집계.
+   * iOS 앱 아이콘 뱃지 카운트 산정에 사용한다. (Redis 캐시 의존을 피하고 push 직전
+   * 최신값을 직접 집계해 정확성을 우선한다)
    */
   private async countUnread(userId: string): Promise<number> {
     try {
       return await this.prisma.notification.count({
-        where: { userId, isRead: false },
+        where: { userId, ...this.visibleUnreadWhere() },
       });
     } catch (error) {
       const err = error as Error;
@@ -379,6 +447,10 @@ export class FcmService implements OnModuleInit {
     data?: FcmDataPayload,
     badge?: number,
   ): Promise<FcmSendResult> {
+    // 발송 전 정규화 — 호출부가 계약(전부 string)을 어겨도 invalid-argument
+    // 자체가 발생하지 않도록 근원 차단.
+    const normalizedData = this.normalizeDataPayload(data);
+
     const totalResult: FcmSendResult = {
       successCount: 0,
       failureCount: 0,
@@ -393,7 +465,7 @@ export class FcmService implements OnModuleInit {
         chunk,
         title,
         body,
-        data,
+        normalizedData,
         badge,
       );
       totalResult.successCount += chunkResult.successCount;
@@ -469,6 +541,38 @@ export class FcmService implements OnModuleInit {
         failureCount: response.failureCount || 0,
         invalidTokens: [],
       };
+
+      // 페이로드 결함 판정: 전원 실패 + 전원 invalid-argument.
+      // 이 조합은 토큰이 아니라 메시지 자체(제목/본문/data 크기·형식) 결함이
+      // 확실하므로 토큰 비활성화 0건, 재시도 0회(결정적 실패)로 즉시 중단한다.
+      if (response.responses) {
+        const invalidArgCount = response.responses.filter(
+          (resp: any) =>
+            !resp.success &&
+            resp.error?.code === "messaging/invalid-argument",
+        ).length;
+
+        if (
+          result.successCount === 0 &&
+          invalidArgCount === tokens.length &&
+          tokens.length > 0
+        ) {
+          this.logger.error(
+            `[CRITICAL] FCM 페이로드 결함 의심 — 청크 전원(${tokens.length}건) invalid-argument. ` +
+              `title=${title.length}자, dataKeys=[${data ? Object.keys(data).join(",") : ""}], ` +
+              `dataSize=${data ? JSON.stringify(data).length : 0}B. ` +
+              `토큰 비활성화·재시도 없이 중단합니다.`,
+          );
+          return result;
+        }
+
+        if (invalidArgCount > 0) {
+          this.logger.warn(
+            `FCM invalid-argument ${invalidArgCount}건(부분 실패) — ` +
+              `토큰 비활성화 없이 실패로만 집계 (페이로드/토큰 원인 미확정)`,
+          );
+        }
+      }
 
       // 실패 응답에서 무효 토큰 추출
       if (response.responses) {
@@ -549,16 +653,20 @@ export class FcmService implements OnModuleInit {
   }
 
   /**
-   * 무효/만료 토큰인지 판별
+   * 무효/만료 토큰인지 판별 — 토큰 단위로 확정적인 코드만 포함한다.
    *
    * messaging/registration-token-not-registered: 토큰이 더 이상 유효하지 않음
    * messaging/invalid-registration-token: 토큰 형식이 잘못됨
+   *
+   * `messaging/invalid-argument` 는 제외 — 이 코드는 payload 결함(값 non-string,
+   * 4KB 초과 등)에도 배치 전체에 반환되므로 무효 토큰으로 분류하면 정상 기기가
+   * 대량 비활성화된다. 죽은 토큰은 결국 not-registered 로 수렴하므로 정리 기능은
+   * 유지된다.
    */
   private isTokenInvalidError(errorCode: string): boolean {
     return [
       "messaging/registration-token-not-registered",
       "messaging/invalid-registration-token",
-      "messaging/invalid-argument",
     ].includes(errorCode);
   }
 
@@ -581,9 +689,32 @@ export class FcmService implements OnModuleInit {
    * 무효 토큰 비활성화
    *
    * UserDevice 테이블에서 해당 FCM 토큰을 isActive=false로 업데이트합니다.
+   *
+   * @param totalTargeted 이번 발송의 전체 대상 토큰 수 — 회로차단기 판정 기준.
+   *   무효 판정이 대상의 50%를 넘고 20건 이상이면 분류 오류로 간주하고
+   *   비활성화를 차단한다(어떤 분류 버그가 재발해도 대량 구독해지를 물리 차단).
    */
-  private async deactivateInvalidTokens(tokens: string[]): Promise<void> {
+  private async deactivateInvalidTokens(
+    tokens: string[],
+    totalTargeted?: number,
+  ): Promise<void> {
     if (tokens.length === 0) return;
+
+    if (
+      typeof totalTargeted === "number" &&
+      totalTargeted > 0 &&
+      tokens.length >= FcmService.DEACTIVATION_CAP_MIN_COUNT &&
+      tokens.length / totalTargeted > FcmService.DEACTIVATION_RATIO_CAP
+    ) {
+      this.logger.error(
+        `[CRITICAL] FCM 토큰 대량 비활성화 차단(회로차단기): ` +
+          `무효 판정 ${tokens.length}/${totalTargeted}건 ` +
+          `(${Math.round((tokens.length / totalTargeted) * 100)}% > ` +
+          `상한 ${FcmService.DEACTIVATION_RATIO_CAP * 100}%). ` +
+          `에러 분류 오류 가능성 — 비활성화를 수행하지 않습니다. 수동 확인 필요.`,
+      );
+      return;
+    }
 
     try {
       const result = await this.prisma.userDevice.updateMany({
@@ -636,6 +767,49 @@ export class FcmService implements OnModuleInit {
     });
 
     return log.id;
+  }
+
+  /**
+   * 발송 전 data payload 정규화 — FCM data 는 값이 전부 string 이어야 한다.
+   * 호출부가 계약을 어겨(non-string/null 값) invalid-argument 를 유발하는 것을
+   * 근원에서 차단한다. null/undefined 키는 제거, 그 외 값은 문자열로 강제.
+   */
+  private normalizeDataPayload(
+    data?: Record<string, unknown>,
+  ): FcmDataPayload | undefined {
+    if (!data) return undefined;
+
+    const normalized: FcmDataPayload = {};
+    let coerced = false;
+    for (const [key, value] of Object.entries(data)) {
+      if (value === null || value === undefined) {
+        coerced = true;
+        continue;
+      }
+      if (typeof value === "string") {
+        normalized[key] = value;
+      } else {
+        normalized[key] = String(value);
+        coerced = true;
+      }
+    }
+
+    if (coerced) {
+      this.logger.warn(
+        `FCM data payload 정규화 수행(비문자열/null 값 감지) — ` +
+          `keys=[${Object.keys(data).join(",")}]`,
+      );
+    }
+
+    const size = JSON.stringify(normalized).length;
+    if (size > FcmService.DATA_PAYLOAD_WARN_BYTES) {
+      this.logger.error(
+        `FCM data payload 크기 초과 위험: ${size}B ` +
+          `(권장 상한 ${FcmService.DATA_PAYLOAD_WARN_BYTES}B, FCM 전체 4KB 제한)`,
+      );
+    }
+
+    return Object.keys(normalized).length > 0 ? normalized : undefined;
   }
 
   /**

@@ -12,6 +12,7 @@ import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
 import { CreditDomainService } from "@/credits/credit-domain.service";
 import { AttendanceAuditLogService } from "@/attendance/attendance-audit-log.service";
+import { ResourceAccessService } from "@/common/access/resource-access.service";
 import { NotificationsService } from "@/notifications/notifications.service";
 import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
 import { resolveViewerTeamIds } from "@/common/utils/team-scope.util";
@@ -291,6 +292,7 @@ export class ClassesService {
     private readonly teamsService: TeamsService,
     private readonly creditDomain: CreditDomainService, // PR-B (v0.5): 수업 일정 취소 시 일괄 복원
     private readonly auditLog: AttendanceAuditLogService, // PR-C (v0.6): AuditLog
+    private readonly resourceAccess: ResourceAccessService, // 관리자 전용 API 리소스 소속 검증 (IDOR 가드)
     private readonly notificationsService: NotificationsService,
   ) {}
 
@@ -1538,6 +1540,11 @@ export class ClassesService {
           orderBy: { scheduledDate: "asc" },
           take: 10,
         },
+        // spot 자동 종료 파생용 — 위 schedules(오늘 이후만)로는 과거 일정 유무를 알 수 없어
+        //   비취소 전체 카운트를 별도 제공 (목록 API 와 lifecycleStatus 판정 일치 보장).
+        _count: {
+          select: { schedules: { where: { isCancelled: false } } },
+        },
         products: {
           select: {
             id: true,
@@ -1725,6 +1732,7 @@ export class ClassesService {
           schedules: (classRecord.schedules ?? []).filter(
             (sch) => !sch.isCancelled,
           ),
+          hadAnySchedule: (classRecord._count?.schedules ?? 0) > 0,
         });
         return {
           lifecycleStatus: lc.state,
@@ -2057,13 +2065,19 @@ export class ClassesService {
    * 학생 리스트는 ClassRegistration(active) 전체. 각 학생의 결제 상태는 가장 최근
    * Enrollment(class+child) 1건의 status 와 연결된 Payment 정보로 표시한다.
    */
-  async getClassPayments(classId: string) {
+  async getClassPayments(
+    classId: string,
+    requester: JwtUserPayload,
+    // URL 스코프 검증 — 팀/아카데미 경로로 진입 시 수업 소속과 URL 파라미터 일치 확인.
+    expectedScope?: { teamId?: string; academyId?: string },
+  ) {
     const cls = await this.prisma.class.findUnique({
       where: { id: classId },
       select: {
         id: true,
         className: true,
         teamId: true,
+        academyId: true,
         // [Phase B 연동] 결제 방식 — PREPAID(선불) / POSTPAID(후불). 선수정보 결제 탭 모드 분기용.
         billingMode: true,
         startTime: true,
@@ -2084,6 +2098,16 @@ export class ClassesService {
     });
     if (!cls) {
       throw new NotFoundException("수업을 찾을 수 없습니다.");
+    }
+    // 관리자 소속 검증 — 학생 명단·결제금액·결제자(학부모) 정보가 담기는 응답이라
+    // 역할 검사만으로는 타 팀/오픈클래스 조회(IDOR)가 가능했다.
+    await this.resourceAccess.assertManageableClassRecord(cls, requester);
+    // 스코프 경로(/teams/:teamId/... , /academies/:academyId/...)는 URL 과 수업 소속 일치도 검증.
+    if (expectedScope?.teamId && cls.teamId !== expectedScope.teamId) {
+      throw new NotFoundException("해당 팀의 수업이 아닙니다.");
+    }
+    if (expectedScope?.academyId && cls.academyId !== expectedScope.academyId) {
+      throw new NotFoundException("해당 아카데미의 수업이 아닙니다.");
     }
 
     // [수정 2026-05-13] status='active' 필터 제거 — inactive(미납) 학생도 명단에 노출.
@@ -4011,6 +4035,14 @@ export class ClassesService {
       throw new ForbiddenException("이 일정을 취소할 권한이 없습니다.");
     }
 
+    // 지난 회차(오늘 KST 이전)는 이미 진행된 사실 기록(출석·정산 근거) — 소급 취소 금지.
+    //   취소 트랜잭션이 출석 상태 변경·크레딧 복원을 동반하므로 과거에 실행하면
+    //   후불 정산(출석×단가)·선불 차감 근거가 왜곡된다.
+    //   경계는 dateSchedules diff 불가침과 동일(오늘 회차는 당일 취소 허용).
+    if (schedule.scheduledDate < kstTodayUtcMidnight()) {
+      throw new ForbiddenException("지난 일정은 취소할 수 없습니다.");
+    }
+
     // 일정 취소 + 출석 상태 변경 + 크레딧 복원 — 원자적 트랜잭션
     const cancelledSchedule = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.classSchedule.update({
@@ -4170,6 +4202,11 @@ export class ClassesService {
 
     if (schedule.isCancelled) {
       throw new ForbiddenException("취소된 일정은 수정할 수 없습니다.");
+    }
+
+    // 지난 회차는 읽기 전용(사실 기록) — 수업 수정 폼 diff 불가침과 동일 경계.
+    if (schedule.scheduledDate < kstTodayUtcMidnight()) {
+      throw new ForbiddenException("지난 일정은 수정할 수 없습니다.");
     }
 
     const data: { startTime?: string | null; endTime?: string | null; venueId?: string | null } = {};

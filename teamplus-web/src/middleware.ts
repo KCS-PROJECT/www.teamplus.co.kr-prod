@@ -129,8 +129,7 @@ function withSecurityHeaders(
     const devImg = devConnect;
     response.headers.set(
       "Content-Security-Policy",
-      // [2026-06-23] 카카오 JS SDK / KG이니시스 / Sentry / Daum CDN 보강
-      `default-src 'self'; script-src 'self' 'unsafe-inline' https://pg.inicis.com https://*.sentry.io https://*.daumcdn.net https://t1.kakaocdn.net https://developers.kakao.com https://*.tosspayments.com https://cdn.portone.io https://*.portone.io https://*.iamport.co https://*.iamport.kr; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https: blob:${devImg}; font-src 'self' data: https://fonts.gstatic.com; media-src 'self' data: blob:; connect-src 'self'${devConnect} https://*.teamplus.com https://*.icetimes.co.kr https://*.sentry.io https://*.ingest.sentry.io https://*.kakao.com https://t1.kakaocdn.net https://*.tosspayments.com https://api.portone.io https://*.portone.io https://*.iamport.co https://*.iamport.kr https://*.inicis.com wss: ws:; frame-src 'self' https://*.tosspayments.com https://pg.inicis.com https://*.inicis.com https://*.portone.io https://*.iamport.co https://*.iamport.kr https://*.kakao.com https://*.kakaopay.com https://*.naver.com https://*.nice.co.kr https://*.passauth.co.kr https://nice.checkplus.co.kr;`,
+      `default-src 'self'; script-src 'self' 'unsafe-inline' https://*.tosspayments.com https://cdn.portone.io https://*.portone.io https://*.iamport.co https://*.iamport.kr; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:${devImg}; font-src 'self' data:; media-src 'self' data: blob:; connect-src 'self'${devConnect} https://*.teamplus.com https://*.tosspayments.com https://api.portone.io https://*.portone.io https://*.iamport.co https://*.iamport.kr https://*.inicis.com wss: ws:; frame-src 'self' https://*.tosspayments.com https://pg.inicis.com https://*.inicis.com https://*.portone.io https://*.iamport.co https://*.iamport.kr https://*.kakao.com https://*.kakaopay.com https://*.naver.com https://*.nice.co.kr https://*.passauth.co.kr https://nice.checkplus.co.kr;`,
     );
   }
 
@@ -206,10 +205,29 @@ export function middleware(request: NextRequest) {
   const refreshToken = request.cookies.get("teamplus_refresh_token")?.value;
   const { isValid, isAuthorized, role } = checkAuth(accessToken, pathname);
 
+  // [2026-07-15 로그인 개선 ①] Native WebView(teamplusApp UA) 폴백.
+  //   네이티브에서는 로그인/refresh 가 Flutter Dio 경유라 백엔드 httpOnly refresh
+  //   쿠키가 WebView 에 도달하지 않아 아래 refresh 유예가 무력화되던 회귀가 있었다.
+  //   앱은 WebViewCookieSync 로 쿠키를 직접 심도록 수정됐지만(정확 판정 경로),
+  //   스토어 업데이트 전 구버전 앱을 위해 UA 기반으로도 유예한다 — 네이티브는
+  //   Bridge refresh(secure storage 7일) 능력이 있어 클라이언트가 갱신한다.
+  //
+  //   ⚠️ access 쿠키 존재를 함께 요구한다(세션 흔적 조건). UA 만으로 유예하면
+  //   진짜 미인증(로그아웃/최초 설치) native 딥링크·푸시가 미들웨어의
+  //   /login?redirect={pathname} 을 건너뛰어 클라이언트 가드의 파라미터 없는
+  //   replace('/login') 으로 흘러 "로그인 후 원래 목적지 복귀" 연속성이 깨진다.
+  //   로그인했던 WebView 에는 web saveTokens 가 항상 access 쿠키를 남기므로,
+  //   (만료 JWT 라도) 쿠키 존재 = 세션 흔적으로 판정해 유예 대상을 한정한다.
+  const isNativeWebViewWithSession =
+    (request.headers.get("user-agent") ?? "").includes("teamplusApp") &&
+    Boolean(accessToken);
+
   // [2026-06-04] access 만료(또는 무효) 인데 refresh 가 아직 유효하면 통과 — 클라이언트
   //   선제 갱신에 위임. "활동 없으면 자동 로그아웃" 회귀(access 15분=사실상 세션) 차단.
   //   refresh 도 만료/없으면 기존대로 /login.
-  const canDeferToClientRefresh = !isValid && isRefreshTokenFresh(refreshToken);
+  const canDeferToClientRefresh =
+    !isValid &&
+    (isRefreshTokenFresh(refreshToken) || isNativeWebViewWithSession);
 
   // 1. 보호된 경로 접근 제어
   const isProtected = ALL_PROTECTED_PATHS.some((path) =>
