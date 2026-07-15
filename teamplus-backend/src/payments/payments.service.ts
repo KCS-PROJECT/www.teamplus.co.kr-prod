@@ -379,15 +379,14 @@ export class PaymentsService {
   }
 
   /**
-   * [DEV 전용] 토스 승인 API 를 건너뛴 테스트 결제 완료 처리.
+   * [오픈 전 임시] 토스 승인 API 를 건너뛴 테스트 결제 완료 처리.
    *  결제창에 테스터의 실카드/실계좌가 노출되지 않도록 토스 위젯 없이 결제를 완료한다.
    *  검증·멱등 락·후처리(applyApprovedPayment)는 confirmTossPayment 와 완전히 동일하며,
-   *  토스 승인 단계만 생략한다. 운영(NODE_ENV=production)에서는 ForbiddenException.
+   *  토스 승인 단계만 생략한다.
+   *  ⚠️ 0원으로 결제가 완료되는 경로 — 정식 서비스 오픈 시 이 메서드·엔드포인트·체크아웃
+   *  "테스트 결제" 버튼을 반드시 제거(또는 차단 가드 복원)해야 한다.
    */
   async mockConfirmPayment(userId: string, orderId: string) {
-    if (process.env.NODE_ENV === "production") {
-      throw new ForbiddenException("개발 환경 전용 기능입니다.");
-    }
     if (!orderId) {
       throw new BadRequestException("orderId 값이 유효하지 않습니다.");
     }

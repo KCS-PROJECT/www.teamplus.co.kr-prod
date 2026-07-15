@@ -117,9 +117,10 @@ export class PaymentsController {
   }
 
   /**
-   * [DEV 전용] 토스 승인 API 를 우회한 테스트 결제 승인.
+   * [오픈 전 임시] 토스 승인 API 를 우회한 테스트 결제 승인.
    *  결제창에 테스터의 실카드/실계좌가 노출되지 않도록 위젯 없이 결제를 완료 처리한다.
    *  confirmTossPayment 와 동일 검증·멱등 락·후처리를 공유하며 토스 승인만 생략한다.
+   *  ⚠️ 정식 서비스 오픈 시 제거 대상 (0원 결제 경로).
    */
   @Post("mock-confirm")
   @UseGuards(AuthGuard("jwt"), RolesGuard)
@@ -127,9 +128,9 @@ export class PaymentsController {
   @Roles("PARENT")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: "[DEV] 테스트 결제 승인 (토스 우회)",
+    summary: "[오픈 전 임시] 테스트 결제 승인 (토스 우회)",
     description:
-      "개발 환경 전용. 토스 위젯/승인 API 없이 orderId 로 결제를 완료 처리합니다. 운영 환경(NODE_ENV=production)에서는 403 을 반환합니다.",
+      "토스 위젯/승인 API 없이 orderId 로 결제를 완료 처리합니다. 정식 서비스 오픈 전 테스트 용도 — 오픈 시 제거 대상입니다.",
   })
   async mockConfirmPayment(
     @Request() req: AuthenticatedRequest,

@@ -458,18 +458,6 @@ describe("PaymentsService", () => {
       },
     };
 
-    it("운영(NODE_ENV=production) 에서는 ForbiddenException", async () => {
-      const originalNodeEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = "production";
-      try {
-        await expect(
-          service.mockConfirmPayment(mockUserId, mockOrderNumber),
-        ).rejects.toThrow(ForbiddenException);
-      } finally {
-        process.env.NODE_ENV = originalNodeEnv;
-      }
-    });
-
     it("타인 결제 승인 시도 시 ForbiddenException", async () => {
       jest.spyOn(prismaService.payment, "findUnique").mockResolvedValue({
         ...pendingPayment,
