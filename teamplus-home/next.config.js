@@ -1,3 +1,19 @@
+// [블로그 2026-07-14] 블로그 커버·본문 이미지는 backend(/uploads)에서 절대 URL 로 서빙된다.
+//   CSP img-src·next/image remotePatterns 에 backend origin 을 허용해야 브라우저가 로드한다.
+//   origin 은 API base 와 동일 env 에서 유도(운영/개발 자동 대응).
+function backendImageOrigin() {
+  const raw =
+    process.env.NEXT_PUBLIC_API_URL ??
+    process.env.BACKEND_URL ??
+    'http://localhost:5003/api/v1';
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return 'http://localhost:5003';
+  }
+}
+const BACKEND_ORIGIN = backendImageOrigin();
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -13,6 +29,14 @@ const nextConfig = {
     formats: ['image/avif', 'image/webp'],
     remotePatterns: [
       { protocol: 'https', hostname: 'images.unsplash.com' },
+      // 블로그 이미지(backend /uploads) — origin 을 protocol/hostname/port 로 분해 허용.
+      {
+        protocol: BACKEND_ORIGIN.startsWith('https') ? 'https' : 'http',
+        hostname: new URL(BACKEND_ORIGIN).hostname,
+        ...(new URL(BACKEND_ORIGIN).port
+          ? { port: new URL(BACKEND_ORIGIN).port }
+          : {}),
+      },
     ],
   },
   // [보안 2026-06-07] 보안 응답 헤더 — 클릭재킹/MIME 스니핑/다운그레이드 방어.
@@ -38,7 +62,7 @@ const nextConfig = {
           },
           {
             key: 'Content-Security-Policy',
-            value: `default-src 'self'; img-src 'self' https://images.unsplash.com data: blob:; style-src 'self' 'unsafe-inline'; ${scriptSrc}; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`,
+            value: `default-src 'self'; img-src 'self' https://images.unsplash.com ${BACKEND_ORIGIN} data: blob:; style-src 'self' 'unsafe-inline'; ${scriptSrc}; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`,
           },
         ],
       },

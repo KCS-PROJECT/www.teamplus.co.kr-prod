@@ -54,6 +54,7 @@ export const NAV_ITEMS = [
   { href: "/features", label: "앱 기능" },
   { href: "/solution", label: "클럽 도입" },
   { href: "/pricing", label: "요금제" },
+  { href: "/blog", label: "블로그" },
   { href: "/news", label: "공지·소식" },
   { href: "/contact", label: "문의·상담" },
 ] as const;

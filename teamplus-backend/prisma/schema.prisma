@@ -4895,3 +4895,42 @@ model ContactInquiry {
   @@index([deletedAt, createdAt])
   @@map("contact_inquiries")
 }
+
+// ==================== Blog (랜딩 블로그) ====================
+// teamplus-admin(일반관리)에서 등록 → teamplus-home 랜딩 /blog 공개 노출.
+// content 는 리치텍스트(HTML) — 저장 시 백엔드에서 sanitizeBlogHtml 로 살균한다.
+// 원격 공유 DEV DB(drift) 정책: prisma migrate dev 금지 → manual-migrations SQL 수동 적용 + prisma generate.
+
+enum BlogCategory {
+  NEWS // 소식
+  GUIDE // 가이드
+  EVENT // 이벤트
+  PRESS // 보도자료
+}
+
+enum BlogStatus {
+  DRAFT // 임시저장(비공개)
+  PUBLISHED // 발행(공개)
+}
+
+model BlogPost {
+  id            String       @id @default(cuid())
+  slug          String       @unique // URL 식별자 (서버 자동 생성)
+  title         String // 제목 (필수)
+  summary       String // 목록 카드 요약 (필수)
+  content       String // 본문 — 살균된 리치텍스트 HTML
+  category      BlogCategory @default(NEWS)
+  coverImageUrl String? // 커버(썸네일) — /files/upload 반환 url
+  status        BlogStatus   @default(DRAFT)
+  pinned        Boolean      @default(false) // 상단 고정
+  viewCount     Int          @default(0) // 조회수
+  publishedAt   DateTime?    @db.Timestamptz(3) // 최초 발행 시각
+  authorId      String? // 작성 관리자 (선택)
+  createdAt     DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime     @updatedAt @db.Timestamptz(3)
+  deletedAt     DateTime?    @db.Timestamptz(3) // soft delete
+
+  @@index([status, deletedAt, pinned, publishedAt])
+  @@index([category, status, deletedAt, publishedAt])
+  @@map("blog_posts")
+}
