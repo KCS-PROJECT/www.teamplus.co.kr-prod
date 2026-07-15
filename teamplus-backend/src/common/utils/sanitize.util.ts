@@ -46,6 +46,51 @@ const extendedHtmlOptions: sanitizeHtml.IOptions = {
   disallowedTagsMode: "discard",
 };
 
+// 블로그 리치텍스트(WYSIWYG) 허용 옵션 — Tiptap 출력(제목/서식/링크/이미지/리스트/코드)을 보존.
+// 저장 시점 XSS 1차 방어선: script/iframe/on* 핸들러/style 등은 전부 제거된다.
+const blogHtmlOptions: sanitizeHtml.IOptions = {
+  allowedTags: [
+    "p",
+    "br",
+    "hr",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "strong",
+    "b",
+    "em",
+    "i",
+    "u",
+    "s",
+    "strike",
+    "a",
+    "img",
+    "ul",
+    "ol",
+    "li",
+    "blockquote",
+    "pre",
+    "code",
+  ],
+  allowedAttributes: {
+    a: ["href", "title", "target", "rel"],
+    img: ["src", "alt", "title", "width", "height"],
+  },
+  allowedSchemes: ["http", "https", "mailto"],
+  // 외부 링크는 새 탭 + noopener 강제(탭내빙 방지)
+  transformTags: {
+    a: (tagName, attribs) => {
+      const next: Record<string, string> = { ...attribs };
+      if (next.target === "_blank") {
+        next.rel = "noopener noreferrer";
+      }
+      return { tagName, attribs: next };
+    },
+  },
+  disallowedTagsMode: "discard",
+};
+
 /**
  * 모든 HTML 태그를 제거하고 순수 텍스트만 반환
  * 사용: 제목, 이름 등 HTML이 필요 없는 필드
@@ -53,6 +98,15 @@ const extendedHtmlOptions: sanitizeHtml.IOptions = {
 export function sanitizeStrict(input: string): string {
   if (!input) return input;
   return sanitizeHtml(input, strictOptions).trim();
+}
+
+/**
+ * 블로그 리치텍스트 본문 살균 (Tiptap WYSIWYG HTML 허용)
+ * 사용: 랜딩 블로그(BlogPost.content) 본문 — 저장 시점 XSS 방어.
+ */
+export function sanitizeBlogHtml(input: string): string {
+  if (!input) return input;
+  return sanitizeHtml(input, blogHtmlOptions).trim();
 }
 
 /**
