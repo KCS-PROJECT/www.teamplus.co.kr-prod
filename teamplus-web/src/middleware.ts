@@ -129,7 +129,9 @@ function withSecurityHeaders(
     const devImg = devConnect;
     response.headers.set(
       "Content-Security-Policy",
-      `default-src 'self'; script-src 'self' 'unsafe-inline' https://*.tosspayments.com https://cdn.portone.io https://*.portone.io https://*.iamport.co https://*.iamport.kr; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:${devImg}; font-src 'self' data:; media-src 'self' data: blob:; connect-src 'self'${devConnect} https://*.teamplus.com https://*.tosspayments.com https://api.portone.io https://*.portone.io https://*.iamport.co https://*.iamport.kr https://*.inicis.com wss: ws:; frame-src 'self' https://*.tosspayments.com https://pg.inicis.com https://*.inicis.com https://*.portone.io https://*.iamport.co https://*.iamport.kr https://*.kakao.com https://*.kakaopay.com https://*.naver.com https://*.nice.co.kr https://*.passauth.co.kr https://nice.checkplus.co.kr;`,
+      // 운영에서는 이 매-요청 CSP가 next.config.js headers()의 CSP를 덮어쓰므로,
+      // 외부 도메인(카카오 SDK·이니시스·Sentry·Daum CDN·폰트) 허용 목록을 여기에도 유지해야 한다.
+      `default-src 'self'; script-src 'self' 'unsafe-inline' https://pg.inicis.com https://*.sentry.io https://*.daumcdn.net https://t1.kakaocdn.net https://developers.kakao.com https://*.tosspayments.com https://cdn.portone.io https://*.portone.io https://*.iamport.co https://*.iamport.kr; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https: blob:${devImg}; font-src 'self' data: https://fonts.gstatic.com; media-src 'self' data: blob:; connect-src 'self'${devConnect} https://*.teamplus.com https://*.icetimes.co.kr https://*.sentry.io https://*.ingest.sentry.io https://*.kakao.com https://t1.kakaocdn.net https://*.tosspayments.com https://api.portone.io https://*.portone.io https://*.iamport.co https://*.iamport.kr https://*.inicis.com wss: ws:; frame-src 'self' https://*.tosspayments.com https://pg.inicis.com https://*.inicis.com https://*.portone.io https://*.iamport.co https://*.iamport.kr https://*.kakao.com https://*.kakaopay.com https://*.naver.com https://*.nice.co.kr https://*.passauth.co.kr https://nice.checkplus.co.kr;`,
     );
   }
 
