@@ -392,9 +392,11 @@ function NewMatchForm() {
               <TimePicker
                 value={matchTime}
                 onChange={setMatchTime}
-                placeholder="시간"
-                sheetTitle="시작 시간을 선택해주세요."
-                ariaLabel="매치 시작 시간 선택"
+                startHour={0}
+                stepMinutes={10}
+                placeholder={MESSAGES.common.timePicker.matchTime}
+                sheetTitle={MESSAGES.common.timePicker.matchTime}
+                ariaLabel={MESSAGES.common.timePicker.matchTime}
                 showChevron={false}
                 className="px-3 gap-2 bg-wbg dark:bg-rink-700"
               />

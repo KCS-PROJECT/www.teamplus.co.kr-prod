@@ -20,6 +20,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNod
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import { Icon } from '@/components/ui/Icon';
+import { TimePicker } from '@/components/ui/TimePicker';
 import { useNativeScrim } from '@/hooks/useNativeScrim';
 import { MESSAGES } from '@/lib/messages';
 import { cn } from '@/lib/utils';
@@ -678,11 +679,16 @@ export function VenueFormSheet({
                   <label htmlFor={openId} className="text-xs text-wtext-3 dark:text-rink-300">
                     {MESSAGES.venue.form.openLabel}
                   </label>
-                  <input
+                  <TimePicker
                     id={openId}
-                    type="time"
                     value={openTime}
-                    onChange={(e) => setOpenTime(e.target.value || '00:00')}
+                    onChange={setOpenTime}
+                    startHour={0}
+                    stepMinutes={10}
+                    placeholder={MESSAGES.venue.form.openLabel}
+                    sheetTitle={MESSAGES.venue.form.openLabel}
+                    ariaLabel={MESSAGES.venue.form.openLabel}
+                    nested
                     className={cn(
                       'w-full rounded-lg px-3 py-2 text-sm focus:outline-none',
                       inputCls,
@@ -693,11 +699,16 @@ export function VenueFormSheet({
                   <label htmlFor={closeId} className="text-xs text-wtext-3 dark:text-rink-300">
                     {MESSAGES.venue.form.closeLabel}
                   </label>
-                  <input
+                  <TimePicker
                     id={closeId}
-                    type="time"
                     value={closeTime}
-                    onChange={(e) => setCloseTime(e.target.value || '00:00')}
+                    onChange={setCloseTime}
+                    startHour={0}
+                    stepMinutes={10}
+                    placeholder={MESSAGES.venue.form.closeLabel}
+                    sheetTitle={MESSAGES.venue.form.closeLabel}
+                    ariaLabel={MESSAGES.venue.form.closeLabel}
+                    nested
                     className={cn(
                       'w-full rounded-lg px-3 py-2 text-sm focus:outline-none',
                       inputCls,

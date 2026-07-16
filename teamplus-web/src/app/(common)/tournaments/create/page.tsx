@@ -21,6 +21,7 @@ import { useNavigation } from "@/components/ui/NavLink";
 import { MobileContainer } from "@/components/layout/MobileContainer";
 import { PageAppBar } from "@/components/layout/PageAppBar";
 import { BottomSheet } from "@/components/ui/BottomSheet";
+import { TimePicker } from "@/components/ui/TimePicker";
 import { Icon } from "@/components/ui/Icon";
 import { useToast } from "@/components/ui/Toast";
 import { useNativeUI } from "@/hooks/useNativeUI";
@@ -861,14 +862,15 @@ export default function TournamentCreatePage() {
                         onOpen={() => setOpenPicker(`schedule-${m.key}`)}
                         disabled={locked}
                       />
-                      <input
-                        type="time"
+                      <TimePicker
                         value={m.time}
-                        onChange={(e) =>
-                          updateScheduleMatch(m.key, { time: e.target.value })
-                        }
+                        onChange={(time) => updateScheduleMatch(m.key, { time })}
+                        startHour={0}
+                        stepMinutes={10}
+                        placeholder={MESSAGES.common.timePicker.matchTime}
+                        sheetTitle={MESSAGES.common.timePicker.indexedMatchTime(idx + 1)}
                         disabled={locked}
-                        aria-label={`${idx + 1}경기 시간`}
+                        ariaLabel={MESSAGES.common.timePicker.indexedMatchTime(idx + 1)}
                         className={`${pillInput} min-w-0 box-border font-num tabular-nums disabled:opacity-60`}
                       />
                     </div>

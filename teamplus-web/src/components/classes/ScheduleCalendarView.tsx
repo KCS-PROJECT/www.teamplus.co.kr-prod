@@ -13,6 +13,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '@/components/ui/Icon';
 import { BottomSheet } from '@/components/ui/BottomSheet';
+import { TimePicker } from '@/components/ui/TimePicker';
 import { VenuePicker } from '@/components/common/VenuePicker';
 import { cn } from '@/lib/utils';
 import { MESSAGES } from '@/lib/messages';
@@ -630,20 +631,28 @@ export function ScheduleCalendarView({
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
               <label className={cn('block text-w-caption font-bold', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>시작 시간</label>
-              <input
-                type="time"
+              <TimePicker
                 value={editStart}
-                onChange={(e) => setEditStart(e.target.value)}
+                onChange={setEditStart}
+                startHour={0}
+                stepMinutes={10}
+                placeholder={MESSAGES.class.dayDefaults.startTime}
+                sheetTitle={MESSAGES.class.dayDefaults.startTime}
+                nested
                 className={`${fieldClass} tabular-nums`}
                 aria-label="시작 시간"
               />
             </div>
             <div className="space-y-1">
               <label className={cn('block text-w-caption font-bold', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>종료 시간</label>
-              <input
-                type="time"
+              <TimePicker
                 value={editEnd}
-                onChange={(e) => setEditEnd(e.target.value)}
+                onChange={setEditEnd}
+                startHour={0}
+                stepMinutes={10}
+                placeholder={MESSAGES.class.dayDefaults.endTime}
+                sheetTitle={MESSAGES.class.dayDefaults.endTime}
+                nested
                 className={`${fieldClass} tabular-nums`}
                 aria-label="종료 시간"
               />

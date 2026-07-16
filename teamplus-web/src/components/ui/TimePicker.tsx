@@ -5,7 +5,7 @@
  *
  * 매치/수업 시작 시간 등 시각 선택의 단일 진입점. (일자 선택 DatePickerModal 과 짝)
  * - 트리거: 현재 선택 시간(오전/오후 한국어 표기)을 표시하는 버튼 → 직접 텍스트 입력 불가
- * - 시트: BottomSheetSelector — 바닥에서 슬라이드 업, 목록 많으면 내부 스크롤
+ * - 시트: BottomSheet — 시/분을 분리해 OS 선택기 없이 지정된 간격으로 선택
  * - 값: 'HH:MM' (24시간) 문자열 (빈 문자열이면 미선택)
  *
  * @example
@@ -14,11 +14,9 @@
 
 import { useMemo, useState } from 'react';
 import { Icon } from '@/components/ui/Icon';
-import {
-  BottomSheetSelector,
-  type BottomSheetSelectorItem,
-} from '@/components/ui/BottomSheetSelector';
+import { BottomSheet } from '@/components/ui/BottomSheet';
 import { cn } from '@/lib/utils';
+import { MESSAGES } from '@/lib/messages';
 
 function pad2(n: number): string {
   return n.toString().padStart(2, '0');
@@ -29,6 +27,10 @@ export function formatTimeLabel(time: string): string {
   const m = /^(\d{1,2}):(\d{2})$/.exec(time);
   if (!m) return time;
   const h = Number(m[1]);
+  const minute = Number(m[2]);
+  if (!Number.isInteger(h) || h < 0 || h > 23 || minute < 0 || minute > 59) {
+    return time;
+  }
   const period = h < 12 ? '오전' : '오후';
   const h12 = h % 12 === 0 ? 12 : h % 12;
   return `${period} ${h12}:${m[2]}`;
@@ -57,13 +59,17 @@ export interface TimePickerProps {
   showChevron?: boolean;
   /** 추가 className (트리거 버튼) */
   className?: string;
+  /** 부모 모달/바텀시트 안에서 사용할 때 native scrim 중첩 제어를 생략 */
+  nested?: boolean;
+  /** label 과 연결할 트리거 버튼 ID */
+  id?: string;
 }
 
 export function TimePicker({
   value,
   onChange,
-  placeholder = '시간 선택',
-  sheetTitle = '시간을 선택해주세요.',
+  placeholder = MESSAGES.common.timePicker.placeholder,
+  sheetTitle = MESSAGES.common.timePicker.title,
   ariaLabel,
   startHour = 6,
   endHour = 23,
@@ -71,29 +77,60 @@ export function TimePicker({
   disabled = false,
   showChevron = true,
   className,
+  id,
+  nested = false,
 }: TimePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [draftHour, setDraftHour] = useState(startHour);
+  const [draftMinute, setDraftMinute] = useState(0);
 
-  const items = useMemo<BottomSheetSelectorItem<string>[]>(() => {
-    const result: BottomSheetSelectorItem<string>[] = [];
-    const step = stepMinutes > 0 ? stepMinutes : 30;
-    for (let h = startHour; h <= endHour; h++) {
-      for (let m = 0; m < 60; m += step) {
-        const t = `${pad2(h)}:${pad2(m)}`;
-        result.push({
-          id: t,
-          name: formatTimeLabel(t),
-          sub: t,
-          icon: 'schedule',
-          selected: t === value,
-        });
-      }
-    }
-    return result;
-  }, [startHour, endHour, stepMinutes, value]);
+  const safeStartHour = Math.max(0, Math.min(23, startHour));
+  const safeEndHour = Math.max(safeStartHour, Math.min(23, endHour));
+  const safeStepMinutes =
+    Number.isInteger(stepMinutes) && stepMinutes > 0 && 60 % stepMinutes === 0
+      ? stepMinutes
+      : 30;
 
-  const handleSelect = (id: string) => {
-    onChange(id);
+  const hours = useMemo(
+    () =>
+      Array.from(
+        { length: safeEndHour - safeStartHour + 1 },
+        (_, index) => safeStartHour + index,
+      ),
+    [safeEndHour, safeStartHour],
+  );
+
+  const minutes = useMemo(
+    () =>
+      Array.from(
+        { length: 60 / safeStepMinutes },
+        (_, index) => index * safeStepMinutes,
+      ),
+    [safeStepMinutes],
+  );
+
+  const handleOpen = () => {
+    if (disabled) return;
+
+    const match = /^(\d{1,2}):(\d{2})$/.exec(value);
+    const parsedHour = match ? Number(match[1]) : safeStartHour;
+    const parsedMinute = match ? Number(match[2]) : 0;
+    const nextHour = Math.max(
+      safeStartHour,
+      Math.min(safeEndHour, Number.isFinite(parsedHour) ? parsedHour : safeStartHour),
+    );
+    const nextMinute = Math.min(
+      60 - safeStepMinutes,
+      Math.max(0, Math.floor(parsedMinute / safeStepMinutes) * safeStepMinutes),
+    );
+
+    setDraftHour(nextHour);
+    setDraftMinute(nextMinute);
+    setIsOpen(true);
+  };
+
+  const handleConfirm = () => {
+    onChange(`${pad2(draftHour)}:${pad2(draftMinute)}`);
     setIsOpen(false);
   };
 
@@ -103,8 +140,9 @@ export function TimePicker({
   return (
     <>
       <button
+        id={id}
         type="button"
-        onClick={() => !disabled && setIsOpen(true)}
+        onClick={handleOpen}
         disabled={disabled}
         aria-label={ariaLabel ?? sheetTitle}
         aria-haspopup="dialog"
@@ -113,8 +151,7 @@ export function TimePicker({
           'h-12 w-full rounded-[12px] bg-white dark:bg-rink-800 border border-wline dark:border-rink-700',
           'px-4 flex items-center gap-2.5 text-left transition-colors',
           'motion-reduce:transition-none',
-          'hover:border-ice-500 focus-visible:outline-none focus-visible:border-ice-500',
-          'focus-visible:shadow-[0_0_0_3px_rgb(47_95_255_/_0.1)]',
+          'hover:border-ice-500 focus-visible:outline-none focus-visible:border-ice-500 focus-visible:ring-2 focus-visible:ring-ice-500',
           disabled && 'opacity-50 cursor-not-allowed',
           className,
         )}
@@ -145,13 +182,88 @@ export function TimePicker({
         )}
       </button>
 
-      <BottomSheetSelector
+      <BottomSheet
         isOpen={isOpen}
         title={sheetTitle}
-        items={items}
-        onSelect={handleSelect}
         onClose={() => setIsOpen(false)}
-      />
+        maxHeight="70vh"
+        manageNativeScrim={!nested}
+        footer={
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="h-12 rounded-w-md border border-wline bg-wsurface text-card-body font-bold text-wtext-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 dark:border-rink-700 dark:bg-rink-800 dark:text-rink-100"
+            >
+              {MESSAGES.common.cancel}
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirm}
+              className="h-12 rounded-w-md bg-ice-500 text-card-body font-bold text-white hover:bg-ice-600 active:bg-ice-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-800"
+            >
+              {MESSAGES.common.confirm}
+            </button>
+          </div>
+        }
+      >
+        <div className="grid grid-cols-2 gap-3 pb-2">
+          <div>
+            <p className="mb-2 text-center text-card-meta font-bold text-wtext-3 dark:text-rink-300">
+              {MESSAGES.common.timePicker.hour}
+            </p>
+            <div
+              className="hide-scrollbar max-h-64 overflow-y-auto rounded-w-md border border-wline bg-wbg p-1 dark:border-rink-700 dark:bg-rink-900/40"
+              role="group"
+              aria-label={MESSAGES.common.timePicker.hour}
+            >
+              {hours.map((hour) => (
+                <button
+                  key={hour}
+                  type="button"
+                  aria-pressed={draftHour === hour}
+                  onClick={() => setDraftHour(hour)}
+                  className={cn(
+                    'flex h-11 w-full items-center justify-center rounded-w-md font-num text-card-body font-bold tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ice-500',
+                    draftHour === hour
+                      ? 'bg-ice-500 text-white'
+                      : 'text-wtext-1 hover:bg-wline-2 dark:text-white dark:hover:bg-rink-700/60',
+                  )}
+                >
+                  {pad2(hour)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="mb-2 text-center text-card-meta font-bold text-wtext-3 dark:text-rink-300">
+              {MESSAGES.common.timePicker.minute}
+            </p>
+            <div
+              className="rounded-w-md border border-wline bg-wbg p-1 dark:border-rink-700 dark:bg-rink-900/40"
+              role="group"
+              aria-label={MESSAGES.common.timePicker.minute}
+            >
+              {minutes.map((minute) => (
+                <button
+                  key={minute}
+                  type="button"
+                  aria-pressed={draftMinute === minute}
+                  onClick={() => setDraftMinute(minute)}
+                  className={cn(
+                    'flex h-11 w-full items-center justify-center rounded-w-md font-num text-card-body font-bold tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ice-500',
+                    draftMinute === minute
+                      ? 'bg-ice-500 text-white'
+                      : 'text-wtext-1 hover:bg-wline-2 dark:text-white dark:hover:bg-rink-700/60',
+                  )}
+                >
+                  {pad2(minute)}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </BottomSheet>
     </>
   );
 }

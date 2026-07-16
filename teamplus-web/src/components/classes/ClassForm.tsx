@@ -37,6 +37,7 @@ import {
 //     매년 1월 1일 최신 출생연도(currentYear-6)가 자동 추가된다. (예: 2026→2020, 2027→2021)
 import { useDateTime } from '@/hooks/useDateTime';
 import { MultiDatePickerModal, type MultiDateResolved } from '@/components/ui/MultiDatePickerModal';
+import { TimePicker } from '@/components/ui/TimePicker';
 
 /* ────────────────────────────────────────────
    TotalClassDays — 교육기간 + 요일로 자동 계산
@@ -838,10 +839,13 @@ export function ClassForm({
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
-                        <input
-                          type="time"
+                        <TimePicker
                           value={s.startTime}
-                          onChange={(e) => updateDaySchedule(s.dayOfWeek, { startTime: e.target.value })}
+                          onChange={(time) => updateDaySchedule(s.dayOfWeek, { startTime: time })}
+                          startHour={0}
+                          stepMinutes={10}
+                          placeholder={MESSAGES.class.dayDefaults.startTime}
+                          sheetTitle={`${s.dayOfWeek}요일 ${MESSAGES.class.dayDefaults.startTime}`}
                           className={
                             iceTheme
                               ? 'h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500'
@@ -849,10 +853,13 @@ export function ClassForm({
                           }
                           aria-label={`${s.dayOfWeek}요일 ${MESSAGES.class.dayDefaults.startTime}`}
                         />
-                        <input
-                          type="time"
+                        <TimePicker
                           value={s.endTime}
-                          onChange={(e) => updateDaySchedule(s.dayOfWeek, { endTime: e.target.value })}
+                          onChange={(time) => updateDaySchedule(s.dayOfWeek, { endTime: time })}
+                          startHour={0}
+                          stepMinutes={10}
+                          placeholder={MESSAGES.class.dayDefaults.endTime}
+                          sheetTitle={`${s.dayOfWeek}요일 ${MESSAGES.class.dayDefaults.endTime}`}
                           className={
                             iceTheme
                               ? 'h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500'
@@ -1029,10 +1036,13 @@ export function ClassForm({
                                 aria-label={`${idx + 1}회차 날짜`}
                               />
                               <div className="grid grid-cols-2 gap-2">
-                                <input
-                                  type="time"
+                                <TimePicker
                                   value={s.startTime}
-                                  onChange={(e) => updateDateSchedule(s.key, { startTime: e.target.value })}
+                                  onChange={(time) => updateDateSchedule(s.key, { startTime: time })}
+                                  startHour={0}
+                                  stepMinutes={10}
+                                  placeholder={MESSAGES.class.dayDefaults.startTime}
+                                  sheetTitle={`${idx + 1}회차 시작 시간`}
                                   className={
                                     iceTheme
                                       ? 'h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500'
@@ -1040,10 +1050,13 @@ export function ClassForm({
                                   }
                                   aria-label={`${idx + 1}회차 시작 시간`}
                                 />
-                                <input
-                                  type="time"
+                                <TimePicker
                                   value={s.endTime}
-                                  onChange={(e) => updateDateSchedule(s.key, { endTime: e.target.value })}
+                                  onChange={(time) => updateDateSchedule(s.key, { endTime: time })}
+                                  startHour={0}
+                                  stepMinutes={10}
+                                  placeholder={MESSAGES.class.dayDefaults.endTime}
+                                  sheetTitle={`${idx + 1}회차 종료 시간`}
                                   className={
                                     iceTheme
                                       ? 'h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500'

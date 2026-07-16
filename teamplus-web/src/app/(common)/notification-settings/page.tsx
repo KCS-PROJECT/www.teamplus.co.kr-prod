@@ -1,12 +1,14 @@
 'use client';
 
 import { Icon } from '@/components/ui/Icon';
+import { TimePicker } from '@/components/ui/TimePicker';
 import { Toggle } from '@/components/ui/Toggle';
 import { useModal } from '@/components/ui/Modal';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { useNotificationSettings } from '@/hooks/useNotificationSettings';
+import { MESSAGES } from '@/lib/messages';
 import { cn } from '@/lib/utils';
 import { usePageReady } from '@/hooks/usePageReady';
 
@@ -171,10 +173,14 @@ export default function NotificationSettingsPage() {
                     <label className="block text-card-meta text-it-ink-500 dark:text-rink-300 mb-1">
                       시작 시간
                     </label>
-                    <input
-                      type="time"
+                    <TimePicker
                       value={settings.quietHours.startTime}
-                      onChange={(e) => setQuietHoursStart(e.target.value)}
+                      onChange={setQuietHoursStart}
+                      startHour={0}
+                      stepMinutes={10}
+                      placeholder={MESSAGES.class.dayDefaults.startTime}
+                      sheetTitle={MESSAGES.common.timePicker.quietHoursStart}
+                      ariaLabel={MESSAGES.common.timePicker.quietHoursStart}
                       className={cn(
                         'w-full min-w-0 px-3 py-2 rounded-w-md text-card-body',
                         'bg-it-fill dark:bg-rink-700',
@@ -193,10 +199,14 @@ export default function NotificationSettingsPage() {
                     <label className="block text-card-meta text-it-ink-500 dark:text-rink-300 mb-1">
                       종료 시간
                     </label>
-                    <input
-                      type="time"
+                    <TimePicker
                       value={settings.quietHours.endTime}
-                      onChange={(e) => setQuietHoursEnd(e.target.value)}
+                      onChange={setQuietHoursEnd}
+                      startHour={0}
+                      stepMinutes={10}
+                      placeholder={MESSAGES.class.dayDefaults.endTime}
+                      sheetTitle={MESSAGES.common.timePicker.quietHoursEnd}
+                      ariaLabel={MESSAGES.common.timePicker.quietHoursEnd}
                       className={cn(
                         'w-full min-w-0 px-3 py-2 rounded-w-md text-card-body',
                         'bg-it-fill dark:bg-rink-700',

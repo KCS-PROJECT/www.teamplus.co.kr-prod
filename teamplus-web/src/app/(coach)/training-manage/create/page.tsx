@@ -4,6 +4,7 @@ import { useState, useCallback, useId } from 'react';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
 import { Icon } from '@/components/ui/Icon';
+import { TimePicker } from '@/components/ui/TimePicker';
 import { useNavigation } from '@/components/ui/NavLink';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { usePageReady } from '@/hooks/usePageReady';
@@ -351,14 +352,15 @@ export default function CreateTrainingPage() {
               <label htmlFor={startTimeId} className={LABEL_BASE}>
                 시작 시간 <span className="text-it-red-500" aria-hidden="true">*</span>
               </label>
-              <input
+              <TimePicker
                 id={startTimeId}
-                type="time"
                 value={startTimeStr}
-                onChange={(e) => setStartTimeStr(e.target.value)}
-                required
-                aria-required="true"
-                aria-label="훈련 시작 시간 선택"
+                onChange={setStartTimeStr}
+                startHour={0}
+                stepMinutes={10}
+                placeholder={MESSAGES.class.dayDefaults.startTime}
+                sheetTitle={MESSAGES.common.timePicker.trainingStart}
+                ariaLabel={MESSAGES.common.timePicker.trainingStart}
                 className={cn(INPUT_BASE, 'px-3')}
               />
             </div>
@@ -366,14 +368,15 @@ export default function CreateTrainingPage() {
               <label htmlFor={endTimeId} className={LABEL_BASE}>
                 종료 시간 <span className="text-it-red-500" aria-hidden="true">*</span>
               </label>
-              <input
+              <TimePicker
                 id={endTimeId}
-                type="time"
                 value={endTimeStr}
-                onChange={(e) => setEndTimeStr(e.target.value)}
-                required
-                aria-required="true"
-                aria-label="훈련 종료 시간 선택"
+                onChange={setEndTimeStr}
+                startHour={0}
+                stepMinutes={10}
+                placeholder={MESSAGES.class.dayDefaults.endTime}
+                sheetTitle={MESSAGES.common.timePicker.trainingEnd}
+                ariaLabel={MESSAGES.common.timePicker.trainingEnd}
                 className={cn(INPUT_BASE, 'px-3')}
               />
             </div>
