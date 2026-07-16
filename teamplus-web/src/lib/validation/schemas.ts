@@ -149,6 +149,16 @@ export type PasswordResetInput = z.infer<typeof passwordResetSchema>;
 
 /** 피드백 작성. */
 export const feedbackSchema = z.object({
+  authorName: z
+    .string({ message: '이름을 입력해주세요.' })
+    .trim()
+    .min(1, '이름을 입력해주세요.')
+    .max(40, '이름은 40자 이하로 입력해주세요.'),
+  teamName: z
+    .string()
+    .trim()
+    .max(60, '팀명은 60자 이하로 입력해주세요.')
+    .optional(),
   category: z.enum(['bug', 'improvement', 'question', 'other'], {
     message: '카테고리를 선택해주세요.',
   }),

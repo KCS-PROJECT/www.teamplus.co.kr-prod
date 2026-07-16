@@ -95,14 +95,13 @@ type MenuLevel = 1 | 2 | 3;
  */
 type MenuTabValue = AppMenuUserType | 'STUDENT';
 
-// [수정 2026-04-30] 사용자 요청 — 앱관리자(ADMIN)을 마지막으로 배치
+// [수정 2026-07-16] 사용자 요청 — 탭 순서 감독/학부모/오픈클래스감독/코치,
+//   학생(STUDENT)·앱관리자(ADMIN) 탭은 화면에서만 제거(DB 메뉴는 유지).
 const userTypes: { value: MenuTabValue; label: string; color: string }[] = [
   { value: 'DIRECTOR',         label: '감독',           color: 'bg-orange-500' },
+  { value: 'PARENT',           label: '학부모',         color: 'bg-green-500' },
   { value: 'ACADEMY_DIRECTOR', label: '오픈클래스 감독',  color: 'bg-amber-500' },
   { value: 'COACH',            label: '코치',           color: 'bg-yellow-500' },
-  { value: 'PARENT',           label: '학부모',         color: 'bg-green-500' },
-  { value: 'STUDENT',          label: '학생',           color: 'bg-blue-500' },
-  { value: 'ADMIN',            label: '앱관리자',       color: 'bg-red-500' },
 ];
 
 void APP_MENU_USER_TYPES;

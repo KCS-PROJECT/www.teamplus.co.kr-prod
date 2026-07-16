@@ -16,8 +16,18 @@ import { api } from '@/services/api-client';
 import { MESSAGES } from '@/lib/messages';
 import { cn } from '@/lib/utils';
 import { feedbackSchema, type FeedbackInput } from '@/lib/validation/schemas';
+import { useAuth } from '@/contexts/AuthContext';
+import { uploadFile } from '@/services/upload.service';
 
 import { usePageReady } from '@/hooks/usePageReady';
+
+// 첨부 미리보기 — 서버 fileId + 로컬 blob 미리보기(origin 조립 불필요)
+interface Attachment {
+  id: string;
+  name: string;
+  previewUrl: string;
+}
+const MAX_ATTACHMENTS = 5;
 /**
  * FeedbackPage — 피드백 보내기 + 내 피드백 내역 (탭 구성)
  *
@@ -93,12 +103,18 @@ function WriteTab({
   onCancel: () => void;
 }) {
   const contentId = useId();
+  const nameId = useId();
+  const teamId = useId();
+  const { user } = useAuth();
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [serverError, setServerError] = useState('');
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // RHF + Zod 통합 (2026-05-14 D-2 마이그레이션)
-  // feedbackSchema: category(enum) + content(10~2000자)
-  // schema 의 minLength 10 보다 짧으면 RHF 가 차단 → 기존 "contentRequired" 동작과 유사
+  // feedbackSchema: authorName + teamName + category(enum) + content(10~2000자)
   const {
     register,
     handleSubmit: handleFormSubmit,
@@ -108,17 +124,93 @@ function WriteTab({
     formState: { errors: formErrors, isSubmitting },
   } = useForm<FeedbackInput>({
     resolver: zodResolver(feedbackSchema),
-    defaultValues: { category: 'improvement', content: '' },
+    defaultValues: { authorName: '', teamName: '', category: 'improvement', content: '' },
     mode: 'onSubmit',
   });
   const category = watch('category');
   const content = watch('content') ?? '';
 
+  // 마운트 시 로그인 정보로 이름/팀 자동 채움 (사용자가 수정 가능)
+  useEffect(() => {
+    let alive = true;
+    // 1) useAuth 의 name 으로 즉시 채움 (빠른 표시)
+    if (user?.name) setValue('authorName', user.name);
+    // 2) 서버 prefill 로 이름/팀 보정 (소속 팀명 포함)
+    void (async () => {
+      const res = await api.get<{ authorName: string; teamName: string }>(
+        '/app/feedback/prefill',
+      );
+      if (!alive || !res.success || !res.data) return;
+      if (res.data.authorName) setValue('authorName', res.data.authorName);
+      if (res.data.teamName) setValue('teamName', res.data.teamName);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [user?.name, setValue]);
+
+  // 마운트 해제 시 blob 미리보기 URL 정리 (메모리 누수 방지)
+  useEffect(() => {
+    return () => {
+      attachments.forEach((a) => URL.revokeObjectURL(a.previewUrl));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(e.target.files ?? []);
+    e.target.value = ''; // 같은 파일 재선택 허용
+    if (picked.length === 0) return;
+    setUploadError('');
+
+    const room = MAX_ATTACHMENTS - attachments.length;
+    if (room <= 0) {
+      setUploadError(`사진은 최대 ${MAX_ATTACHMENTS}장까지 첨부할 수 있어요.`);
+      return;
+    }
+    const toUpload = picked.slice(0, room);
+
+    setIsUploading(true);
+    try {
+      for (const file of toUpload) {
+        const uploaded = await uploadFile(file, {
+          category: 'IMAGE',
+          refType: 'app_feedback',
+        });
+        setAttachments((prev) => [
+          ...prev,
+          {
+            id: uploaded.id,
+            name: file.name,
+            previewUrl: URL.createObjectURL(file),
+          },
+        ]);
+      }
+    } catch (err) {
+      setUploadError(
+        err instanceof Error ? err.message : '사진 업로드에 실패했습니다.',
+      );
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const removeAttachment = (id: string) => {
+    setAttachments((prev) => {
+      const target = prev.find((a) => a.id === id);
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((a) => a.id !== id);
+    });
+  };
+
   const onSubmit = async (data: FeedbackInput) => {
     setServerError('');
     const res = await api.post('/app/feedback', {
+      authorName: data.authorName,
+      teamName: data.teamName,
       category: data.category,
       content: data.content,
+      attachmentFileIds: attachments.map((a) => a.id),
     });
     if (res.success) {
       setIsSubmitted(true);
@@ -145,7 +237,9 @@ function WriteTab({
           variant="secondary"
           onClick={() => {
             setIsSubmitted(false);
-            reset({ category: 'improvement', content: '' });
+            attachments.forEach((a) => URL.revokeObjectURL(a.previewUrl));
+            setAttachments([]);
+            reset({ authorName: '', teamName: '', category: 'improvement', content: '' });
           }}
         >
           {MESSAGES.feedback.newFeedback}
@@ -156,7 +250,15 @@ function WriteTab({
 
   // RHF errors → 단일 inline 메시지로 표출 (UX 동등성)
   const inlineError =
-    formErrors.content?.message ?? formErrors.category?.message ?? serverError;
+    formErrors.authorName?.message ??
+    formErrors.teamName?.message ??
+    formErrors.content?.message ??
+    formErrors.category?.message ??
+    serverError;
+
+  // 입력란 공통 클래스
+  const inputCls =
+    'w-full px-4 py-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 text-it-ink-800 dark:text-white text-card-body focus:outline-none focus:ring-2 focus:ring-it-blue-500/30 focus:border-it-blue-500 transition-colors motion-reduce:transition-none';
 
   return (
     <form onSubmit={handleFormSubmit(onSubmit)} className="space-y-6" noValidate>
@@ -168,6 +270,45 @@ function WriteTab({
         <p className="text-card-meta text-it-ink-500 dark:text-wtext-4 leading-relaxed">
           서비스 개선을 위한 여러분의 소중한 의견을 기다리고 있어요.
         </p>
+      </div>
+
+      {/* 이름 / 팀 */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label
+            htmlFor={nameId}
+            className="block text-card-body font-semibold text-it-ink-800 dark:text-white mb-2"
+          >
+            이름 <span className="text-it-red-500" aria-hidden="true">*</span>
+          </label>
+          <input
+            id={nameId}
+            type="text"
+            {...register('authorName')}
+            placeholder="이름"
+            aria-required="true"
+            aria-invalid={!!formErrors.authorName}
+            className={inputCls}
+            maxLength={40}
+          />
+        </div>
+        <div>
+          <label
+            htmlFor={teamId}
+            className="block text-card-body font-semibold text-it-ink-800 dark:text-white mb-2"
+          >
+            팀
+          </label>
+          <input
+            id={teamId}
+            type="text"
+            {...register('teamName')}
+            placeholder="소속 팀 (선택)"
+            aria-invalid={!!formErrors.teamName}
+            className={inputCls}
+            maxLength={60}
+          />
+        </div>
       </div>
 
       {/* 유형 */}
@@ -228,6 +369,69 @@ function WriteTab({
         </div>
       </div>
 
+      {/* 사진 첨부 */}
+      <div>
+        <span className="block text-card-body font-semibold text-it-ink-800 dark:text-white mb-2">
+          사진 첨부{' '}
+          <span className="text-it-ink-500 font-normal">
+            (선택 · 최대 {MAX_ATTACHMENTS}장)
+          </span>
+        </span>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={handleFilePick}
+        />
+        <div className="flex flex-wrap gap-2">
+          {attachments.map((a) => (
+            <div
+              key={a.id}
+              className="relative w-20 h-20 rounded-w-md overflow-hidden border border-it-line-strong dark:border-rink-700"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={a.previewUrl}
+                alt={a.name}
+                className="w-full h-full object-cover"
+              />
+              <button
+                type="button"
+                onClick={() => removeAttachment(a.id)}
+                aria-label={`${a.name} 첨부 삭제`}
+                className="absolute top-0.5 right-0.5 w-5 h-5 rounded-w-pill bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition-colors motion-reduce:transition-none"
+              >
+                <Icon name="close" className="text-[14px]" aria-hidden="true" />
+              </button>
+            </div>
+          ))}
+          {attachments.length < MAX_ATTACHMENTS && (
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+              className="w-20 h-20 rounded-w-md border-[1.5px] border-dashed border-it-line-strong dark:border-rink-700 flex flex-col items-center justify-center gap-1 text-it-ink-500 hover:border-it-blue-500 hover:text-it-blue-600 transition-colors motion-reduce:transition-none disabled:opacity-50"
+            >
+              <Icon
+                name={isUploading ? 'hourglass_empty' : 'add_a_photo'}
+                className="text-[22px]"
+                aria-hidden="true"
+              />
+              <span className="text-card-meta font-medium">
+                {isUploading ? '업로드 중' : '사진 추가'}
+              </span>
+            </button>
+          )}
+        </div>
+        {uploadError && (
+          <p className="mt-2 text-card-meta text-it-red-600 dark:text-it-red-300" role="alert">
+            {uploadError}
+          </p>
+        )}
+      </div>
+
       {inlineError && (
         <p className="text-card-body text-it-red-600 dark:text-it-red-300 flex items-center gap-1.5 p-3 rounded-lg bg-it-red-50 dark:bg-it-red-500/15 border border-it-red-100 dark:border-it-red-500/30" role="alert">
           <Icon name="error" className="text-card-emphasis" aria-hidden="true" />
@@ -257,7 +461,7 @@ function WriteTab({
           type="submit"
           variant="primary"
           className="flex-[1.5]"
-          disabled={isSubmitting}
+          disabled={isSubmitting || isUploading}
         >
           {isSubmitting ? MESSAGES.feedback.submitting : MESSAGES.feedback.sendFeedback}
         </Button>

@@ -387,8 +387,14 @@ export class AppManagementService implements OnModuleInit {
       this.prisma.appFeedback.count({ where }),
     ]);
 
+    // 첨부파일 배치 조회 후 각 피드백에 부착 (작성자 이름/팀은 스칼라 필드로 이미 포함)
+    const attMap = await this.attachmentsByFeedback(feedbacks.map((f) => f.id));
+
     return {
-      data: feedbacks,
+      data: feedbacks.map((f) => ({
+        ...f,
+        attachments: attMap.get(f.id) ?? [],
+      })),
       pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
   }
@@ -453,6 +459,8 @@ export class AppManagementService implements OnModuleInit {
           content: true,
           rating: true,
           status: true,
+          authorName: true,
+          teamName: true,
           adminNote: true,
           adminReplyAt: true,
           createdAt: true,
@@ -462,8 +470,13 @@ export class AppManagementService implements OnModuleInit {
       this.prisma.appFeedback.count({ where }),
     ]);
 
+    const attMap = await this.attachmentsByFeedback(feedbacks.map((f) => f.id));
+
     return {
-      data: feedbacks,
+      data: feedbacks.map((f) => ({
+        ...f,
+        attachments: attMap.get(f.id) ?? [],
+      })),
       pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
   }
@@ -481,6 +494,8 @@ export class AppManagementService implements OnModuleInit {
         content: true,
         rating: true,
         status: true,
+        authorName: true,
+        teamName: true,
         adminNote: true,
         adminReplyAt: true,
         createdAt: true,
@@ -490,9 +505,10 @@ export class AppManagementService implements OnModuleInit {
     if (!feedback || feedback.userId !== userId) {
       throw new NotFoundException("피드백을 찾을 수 없습니다.");
     }
+    const attMap = await this.attachmentsByFeedback([feedback.id]);
     // userId는 응답에서 제외 (정보 노출 최소화)
     const { userId: _ignore, ...rest } = feedback;
-    return rest;
+    return { ...rest, attachments: attMap.get(feedback.id) ?? [] };
   }
 
   async createUserFeedback(
@@ -500,12 +516,26 @@ export class AppManagementService implements OnModuleInit {
     content: string,
     category: string,
     rating?: number,
+    authorName?: string,
+    teamName?: string,
+    attachmentFileIds?: string[],
   ) {
-    return this.prisma.appFeedback.create({
+    // 이름/팀 미제공(또는 공백) 시 로그인 정보로 자동 채움
+    let finalAuthorName = authorName?.trim() || null;
+    let finalTeamName = teamName?.trim() || null;
+    if (!finalAuthorName || !finalTeamName) {
+      const prefill = await this.getFeedbackPrefill(userId);
+      if (!finalAuthorName) finalAuthorName = prefill.authorName || null;
+      if (!finalTeamName) finalTeamName = prefill.teamName || null;
+    }
+
+    const created = await this.prisma.appFeedback.create({
       data: {
         userId,
         content,
         category,
+        authorName: finalAuthorName,
+        teamName: finalTeamName,
         ...(rating !== undefined ? { rating } : {}),
       },
       select: {
@@ -514,9 +544,85 @@ export class AppManagementService implements OnModuleInit {
         content: true,
         rating: true,
         status: true,
+        authorName: true,
+        teamName: true,
         createdAt: true,
       },
     });
+
+    // 첨부 파일 연결 — 통합 files 모듈의 refType/refId 방식 재사용
+    //   (프론트가 먼저 업로드해 받은 fileId 들을 이 피드백에 귀속시킨다)
+    if (attachmentFileIds && attachmentFileIds.length > 0) {
+      await this.prisma.uploadedFile.updateMany({
+        where: { id: { in: attachmentFileIds } },
+        data: { refType: "app_feedback", refId: created.id },
+      });
+    }
+
+    const attMap = await this.attachmentsByFeedback([created.id]);
+    return { ...created, attachments: attMap.get(created.id) ?? [] };
+  }
+
+  /**
+   * 피드백 작성 폼 자동 채움용 — 로그인 사용자의 이름/소속 팀명
+   */
+  async getFeedbackPrefill(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { firstName: true, lastName: true },
+    });
+    const authorName = user
+      ? `${user.lastName ?? ""}${user.firstName ?? ""}`.trim()
+      : "";
+
+    const membership = await this.prisma.teamMember.findFirst({
+      where: { userId, approvalStatus: "approved" },
+      orderBy: { joinedAt: "desc" },
+      select: { team: { select: { name: true } } },
+    });
+
+    return { authorName, teamName: membership?.team?.name ?? "" };
+  }
+
+  /**
+   * 피드백 첨부파일 배치 조회 (N+1 방지) — refType="app_feedback" 로 연결된 파일
+   */
+  private async attachmentsByFeedback(feedbackIds: string[]) {
+    const map = new Map<
+      string,
+      Array<{
+        id: string;
+        url: string;
+        thumbUrl: string | null;
+        originalName: string;
+      }>
+    >();
+    if (feedbackIds.length === 0) return map;
+
+    const files = await this.prisma.uploadedFile.findMany({
+      where: { refType: "app_feedback", refId: { in: feedbackIds } },
+      select: {
+        id: true,
+        url: true,
+        thumbUrl: true,
+        originalName: true,
+        refId: true,
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    for (const f of files) {
+      if (!f.refId) continue;
+      const arr = map.get(f.refId) ?? [];
+      arr.push({
+        id: f.id,
+        url: f.url,
+        thumbUrl: f.thumbUrl,
+        originalName: f.originalName,
+      });
+      map.set(f.refId, arr);
+    }
+    return map;
   }
 
   // ==================== 약관 ====================

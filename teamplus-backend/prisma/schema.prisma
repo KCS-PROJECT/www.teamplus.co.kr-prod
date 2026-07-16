@@ -2977,6 +2977,8 @@ model AppFaq {
 model AppFeedback {
   id           String    @id @default(cuid())
   userId       String?   @map("user_id") // 비로그인 허용
+  authorName   String?   @map("author_name") // 작성자 이름 (폼 입력값 · 로그인 정보 자동채움 후 수정 가능)
+  teamName     String?   @map("team_name") // 작성자 소속 팀명 (폼 입력값 · 로그인 정보 자동채움 후 수정 가능)
   category     String // bug, improvement, question, etc.
   content      String    @db.Text
   rating       Int? // 1-5 별점

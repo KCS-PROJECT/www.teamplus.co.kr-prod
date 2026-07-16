@@ -310,7 +310,7 @@ export default function FAQPage() {
             className="inline-flex items-center justify-center gap-1.5 h-12 px-6 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-[15px] font-bold active:brightness-95 transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40"
           >
             <Icon name="feedback" className="text-[18px]" aria-hidden="true" />
-            피드백 보내기
+            피드백 작성
           </NavLink>
         </section>
       </main>

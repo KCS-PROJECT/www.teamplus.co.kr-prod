@@ -49,7 +49,7 @@ export const PAGE_TITLES: Record<string, string> = {
   '/security': '보안 설정',
   '/notification-settings': '알림 설정',
   '/my-qr': '내 QR 코드',
-  '/feedback': '고객센터',
+  '/feedback': '피드백',
   '/search': '검색',
   '/withdrawal': '회원 탈퇴',
   '/help': '도움말',
