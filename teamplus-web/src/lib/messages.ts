@@ -964,6 +964,8 @@ export const MESSAGES = {
     quickActionLabel: "출석 현황",
     quickActionSub: "이번 달 출석 · 연간 이력",
     quickActionTeamLabel: "팀 정보",
+    // /children 하단 리스트 섹션 헤더 — 조회성 행(팀 정보·출석 현황)과 맞는 상위어
+    quickActionSectionTitle: "활동 정보",
     pageTitle: (name: string) => `${name} 출석 현황`,
     yearTotal: (n: number) => `올해 ${n}회`,
     monthTotal: (n: number) => `이번 달 ${n}회`,
@@ -3015,6 +3017,9 @@ export const MESSAGES = {
   // (childAuth.pinSet · childAuth.verified 는 위쪽 블록 재사용)
   childProfile: {
     nameAndPhoneRequired: "이름과 전화번호를 입력해주세요.",
+    // /children Hero 성별 표시 (orphan 자녀 상세에서 흡수)
+    genderMale: "남",
+    genderFemale: "여",
   },
 
   // ─── V. 감독 (회원/공지/승인) ──────────────────────

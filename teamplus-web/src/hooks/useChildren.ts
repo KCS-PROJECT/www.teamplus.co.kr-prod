@@ -66,6 +66,7 @@ function toChild(item: ChildApiItem): Child {
     birthDate: item.birthDate ?? null,
     // [추가 2026-05-13] 자녀 본인 이메일/ID — 학부모 홈 hero · 메뉴 상단에 노출.
     email: item.email ?? null,
+    gender: item.gender ?? null,
     // approved 멤버십만 club 으로 노출. pending/rejected 는 pendingClubName/rejectedClubName 로 분리.
     //  - 이전 폴백 `clubMemberships?.[0]?.clubName` 은 정렬 보장 없이 첫 멤버십을 채워
     //    pending only 자녀에서도 club 이 채워져 학부모 대시보드 대기 배너의 `!c.club` 조건이

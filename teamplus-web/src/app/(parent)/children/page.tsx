@@ -168,19 +168,22 @@ export default function ChildrenManagementPage() {
               ref 칩: height 38 / padding "0 14px 0 8px" / borderRadius 999
               활성: background T.text1, color #fff, no border
               비활성: background surface, border 1px T.line, color T.text2
+              자녀 1명이면 전환할 대상이 없으므로 탭 스위처 자체를 렌더링하지 않는다.
             */}
-            <ChildSwitcherTabs
-              tabs={children.map((c) => ({
-                id: c.id,
-                name: c.name,
-                init: initialOf(c.name),
-                // 사이드메뉴 자녀 스위처와 동일 컨벤션 — 칩 좌측 슬롯은 소속 팀 로고 (무소속 시 이니셜 폴백)
-                teamLogoUrl: c.teamLogoUrl ?? null,
-                grade: c.birthDate ? new Date(c.birthDate).getFullYear().toString() : '',
-                active: c.id === (selected?.id ?? children[0].id),
-              }))}
-              onSelect={setSelectedChildId}
-            />
+            {childCount >= 2 && (
+              <ChildSwitcherTabs
+                tabs={children.map((c) => ({
+                  id: c.id,
+                  name: c.name,
+                  init: initialOf(c.name),
+                  // 자녀 스위처이므로 칩 좌측 슬롯은 자녀 본인 사진 (없으면 이니셜 폴백).
+                  // 팀 로고는 Hero 팀명 줄과 중복 + 같은 팀 형제 식별 불가로 교체.
+                  imageUrl: c.imageUrl ?? null,
+                  active: c.id === (selected?.id ?? children[0].id),
+                }))}
+                onSelect={setSelectedChildId}
+              />
+            )}
 
             {selected && (
               <>
@@ -198,8 +201,17 @@ export default function ChildrenManagementPage() {
                     PATHS SoT 사용으로 향후 회귀 차단. */}
                 <QuickActionsList
                   team={approvedTeam(selected).teamName ?? selected.pendingClubName ?? selected.rejectedClubName ?? null}
+                  // 팀 정보 → 실제 팀 상세(/team/[id], 로스터·경기 일정 보유)로 직결.
+                  // clubIds = approved 멤버십의 teamId 집합 (useChildren SoT).
+                  // 승인 팀이 없으면(무소속/대기/반려) 행 비활성 — 선택 자녀와 무관한
+                  // /team 목록으로 보내는 폴백은 맥락이 어긋나 제거.
+                  // 기존 /children/[childId]/team 요약 페이지는 진입점만 해제하고 보존.
+                  approvedTeamId={selected.clubIds?.[0] ?? null}
                   onNav={(target) => {
-                    if (target === 'team') navigate(PATHS.children.team(selected.id));
+                    const approvedTeamId = selected.clubIds?.[0];
+                    if (target === 'team' && approvedTeamId) {
+                      navigate(PATHS.team.detail(approvedTeamId));
+                    }
                     // 출석 현황 → 1차 요약 페이지(attendance)
                     if (target === 'attendance') navigate(PATHS.children.attendance(selected.id));
                   }}
@@ -240,9 +252,8 @@ interface SwitcherTab {
   id: string;
   name: string;
   init: string;
-  /** 승인 대표 팀 로고 — 칩 좌측 슬롯에 우선 표시. 무소속이면 null → 이니셜 폴백. */
-  teamLogoUrl: string | null;
-  grade: string;
+  /** 자녀 프로필 사진 — 칩 좌측 슬롯에 우선 표시. 없으면 이니셜 폴백. */
+  imageUrl: string | null;
   active: boolean;
 }
 
@@ -276,16 +287,16 @@ function ChildSwitcherTabs({
               /* [시안] 칩 h42, pl8/pr14, fs14.5/800, border 1.5px line-strong */
               'inline-flex items-center gap-2 h-[42px] pl-2 pr-3.5 rounded-w-pill whitespace-nowrap shrink-0 transition-colors motion-reduce:transition-none',
               'text-[14.5px] font-extrabold tracking-[-0.02em]',
-              // ICETIMES: 활성 칩 it-blue-500 브랜드 파란색, 비활성 흰 표면 + line-strong 테두리.
+              // 활성 칩은 아래 navy Hero(it-blue-800)와 동일 채움 — 선택 칩이 Hero 로 이어지는 연결감.
+              // 다크는 배경(puck)과의 구분을 위해 it-blue-500 유지.
               t.active
-                ? 'bg-it-blue-500 text-white border-[1.5px] border-it-blue-500 dark:bg-it-blue-500 dark:text-white'
+                ? 'bg-it-blue-800 text-white border-[1.5px] border-it-blue-800 dark:bg-it-blue-500 dark:border-it-blue-500 dark:text-white'
                 : 'bg-it-surface text-it-ink-700 border-[1.5px] border-it-line-strong dark:bg-rink-800 dark:text-rink-100 dark:border-rink-700',
             )}
-            aria-pressed={t.active}
           >
-            {/* 칩 좌측 슬롯 — 팀 로고 우선 (사이드메뉴 스위처 컨벤션), 무소속은 이니셜 폴백.
-                로고는 활성(파란 칩)에서도 식별되도록 흰 배경 + 얇은 링으로 분리. */}
-            {resolveImageSrc(t.teamLogoUrl) ? (
+            {/* 칩 좌측 슬롯 — 자녀 프로필 사진 우선, 없으면 이니셜 폴백.
+                사진은 활성(navy 칩)에서도 식별되도록 흰 배경 + 얇은 링으로 분리. */}
+            {resolveImageSrc(t.imageUrl) ? (
               <span
                 className={cn(
                   'w-7 h-7 rounded-full shrink-0 overflow-hidden bg-white',
@@ -297,7 +308,7 @@ function ChildSwitcherTabs({
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={resolveImageSrc(t.teamLogoUrl)}
+                  src={resolveImageSrc(t.imageUrl)}
                   alt=""
                   className="h-full w-full object-cover"
                 />
@@ -307,7 +318,7 @@ function ChildSwitcherTabs({
                 className={cn(
                   'w-7 h-7 rounded-full grid place-items-center text-card-meta font-extrabold',
                   t.active
-                    ? 'bg-white/20 text-white dark:bg-rink-900/20 dark:text-rink-900'
+                    ? 'bg-white/20 text-white'
                     : 'bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-500/15 dark:text-it-blue-300',
                 )}
               >
@@ -315,16 +326,6 @@ function ChildSwitcherTabs({
               </span>
             )}
             {t.name}
-            <span
-              className={cn(
-                'text-[12.5px] font-bold',
-                t.active
-                  ? 'text-white/70 dark:text-rink-900/70'
-                  : 'text-it-ink-400 dark:text-rink-300',
-              )}
-            >
-              {t.grade}
-            </span>
           </button>
         ))}
         {/* trailing spacer — 마지막 칩 우측에 20px 의 가시 여백 확보 (잘림 방지) */}
@@ -350,104 +351,102 @@ function HeroChildCard({
   const isApproved = !!team;
   const isWaiting = isPending || isRejected;
   const statusLabel = isWaiting ? '승인 대기' : isApproved ? '활동 중' : '미소속';
+  // navy 밴드 위 배지 — 흰 표면용 컬러 톤 대신 반투명 화이트/액센트 계열
   const statusStyle = isWaiting
-    ? { badge: 'bg-warning-500/10 text-warning-600 dark:bg-warning-500/15 dark:text-warning-500', dot: 'bg-warning-500' }
+    ? { badge: 'bg-sun-500/25 text-white', dot: 'bg-sun-500' }
     : isApproved
-      ? { badge: 'bg-success-500/10 text-success-700 dark:bg-success-500/15 dark:text-success-500', dot: 'bg-success-500' }
-      : { badge: 'bg-it-fill text-it-ink-500 dark:bg-rink-700 dark:text-wtext-4', dot: 'bg-it-ink-400 dark:bg-rink-300' };
+      ? { badge: 'bg-mint-500/20 text-white', dot: 'bg-mint-500' }
+      : { badge: 'bg-white/15 text-white/80', dot: 'bg-white/50' };
   const birthLabel = child.birthDate
     ? new Date(child.birthDate).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\. /g, '.').replace(/\.$/, '')
     : DASH;
-  const teamLabel = team ?? child.pendingClubName ?? child.rejectedClubName ?? DASH;
+  const genderLabel =
+    child.gender === 'M'
+      ? MESSAGES.childProfile.genderMale
+      : child.gender === 'F'
+        ? MESSAGES.childProfile.genderFemale
+        : null;
+  const teamLabel = team ?? child.pendingClubName ?? child.rejectedClubName ?? null;
   const init = initialOf(child.name);
 
   return (
-    /* [ICETIMES flat 재작업 2026-06-24] 시안(ParentChildren.jsx) 구조로 전환.
-       카드 박스(rounded-[18px] border) 제거 → full-bleed 흰 섹션(bg-it-surface)이
-       8px 회색 갭(상위 bg-it-canvas 위 mt-2)으로 쌓인다. 좌우 패딩은 섹션 내부(px-5)가 담당.
-       /director Hero 와 동일한 flat 언어. 이름/배지/메타/아바타 레이아웃은 불변. */
-    <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
-      <div className="px-5 pt-4 pb-4">
-        <div className="flex items-center gap-3.5">
-          {/* ① Avatar 슬롯 — [시안 ParentChildren.jsx] 88×88 r18 */}
-          <div className="w-[88px] h-[88px] shrink-0 rounded-[18px] bg-it-blue-50 dark:bg-it-blue-500/15 flex flex-col items-center justify-center relative">
-            {resolveImageSrc(child.imageUrl) ? (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img
-                src={resolveImageSrc(child.imageUrl)}
-                alt={`${child.name} 프로필`}
-                className="w-full h-full object-cover rounded-[18px]"
-              />
-            ) : (
-              <>
-                <span className="text-[32px] font-black text-it-blue-600 dark:text-it-blue-300 tracking-[-0.04em] leading-none">
-                  {init}
-                </span>
-                <span className="mt-1 inline-flex items-center gap-[3px] text-card-meta font-bold text-it-blue-600 dark:text-it-blue-300">
-                  <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                    <rect
-                      x="1.5"
-                      y="3"
-                      width="9"
-                      height="7"
-                      rx="1"
-                      stroke="currentColor"
-                      strokeWidth="1.2"
-                    />
-                    <circle cx="6" cy="6.5" r="1.7" stroke="currentColor" strokeWidth="1.2" />
-                  </svg>
-                  사진 미등록
-                </span>
-              </>
-            )}
-          </div>
+    /* orphan 자녀 상세(/children/[childId])의 navy Hero 흡수 — full-bleed navy 밴드 +
+       중앙 아바타/이름. 칩 내용은 기존 /children 방식(상태 배지 + 생년월일)에 성별 추가.
+       빠른 이동 4타일(수업이력/수상이력/선수카드/전체수정)은 미이식 — 수정 진입은 우상단 버튼. */
+    <section className="mt-2 bg-it-blue-800 dark:bg-it-blue-950 relative" aria-label="자녀 프로필">
+      <div className="px-5 pt-7 pb-7 flex flex-col items-center">
+        {/* 프로필 사진 — 96px 원형 */}
+        <div className="size-24 rounded-w-pill overflow-hidden bg-white/15 dark:bg-white/10 mb-4 shrink-0">
+          {resolveImageSrc(child.imageUrl) ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={resolveImageSrc(child.imageUrl)}
+              alt={`${child.name} 프로필`}
+              width={96}
+              height={96}
+              className="object-cover size-full"
+            />
+          ) : (
+            <div className="size-full flex items-center justify-center">
+              <span
+                className="text-3xl font-extrabold text-white tracking-tight select-none"
+                aria-hidden="true"
+              >
+                {init}
+              </span>
+            </div>
+          )}
+        </div>
 
-          {/* ② 텍스트 정보 영역 — 배지 / 이름 / 메타 */}
-          <div className="flex-1 min-w-0">
-            {/* 승인 상태 배지 */}
-            {/* [시안] 배지 px9 py3 r7 fs12/800, dot 6×6 */}
-            <span
-              className={cn(
-                'inline-flex items-center gap-[5px] px-[9px] py-[3px] rounded-[7px] text-[12px] font-extrabold tracking-[0.02em]',
-                statusStyle.badge,
-              )}
-            >
-              <span className={cn('w-1.5 h-1.5 rounded-full', statusStyle.dot)} />
-              {statusLabel}
-            </span>
+        {/* 이름 */}
+        <h2 className="text-[22px] font-extrabold tracking-[-0.01em] text-white">
+          {child.name}
+        </h2>
 
-            {/* 이름 — text-w-h3(22px) 로 축소 */}
-            <p className="mt-1.5 text-w-h3 font-extrabold text-it-ink-900 dark:text-white tracking-[-0.03em] leading-tight truncate">
-              {child.name}
-            </p>
+        {/* 메타 — 생년월일 · 성별 (텍스트만) */}
+        <p className="mt-3 text-card-meta text-white/70 tabular-nums">
+          {birthLabel}
+          {genderLabel && (
+            <>
+              <span className="opacity-50"> · </span>
+              {genderLabel}
+            </>
+          )}
+        </p>
 
-            {/* 메타 — 생년월일 · 팀명 */}
-            <p className="mt-1 flex items-center gap-1.5 text-card-meta text-it-ink-500 dark:text-wtext-4">
-              <span className="font-bold text-it-ink-700 dark:text-wtext-4 tabular-nums">{birthLabel}</span>
-              <span className="opacity-40">·</span>
+        {/* 팀 소속 — 상태 배지는 팀 소속 상태이므로 팀명과 같은 줄에 배치.
+            무소속은 팀명 없이 배지만 표시. */}
+        <div className="mt-2 flex items-center gap-2 max-w-full">
+          {teamLabel && (
+            <span className="flex items-center gap-1 min-w-0 text-card-meta text-white/70">
+              <Icon name="sports_hockey" className="text-card-body text-white/80 shrink-0" aria-hidden="true" />
               <span className="truncate">{teamLabel}</span>
-            </p>
-          </div>
-
-          {/* ③ 정보 수정 진입 chevron — 단순 `>` 아이콘. QuickActionsList chevron 과 동일 패턴 */}
-          <button
-            type="button"
-            onClick={onEditInfo}
-            aria-label="정보 수정"
-            className="shrink-0 w-9 h-9 -mr-1 grid place-items-center rounded-full text-it-ink-300 dark:text-wtext-4 transition-colors motion-reduce:transition-none hover:bg-it-fill dark:hover:bg-rink-900/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40"
+            </span>
+          )}
+          <span
+            className={cn(
+              'inline-flex items-center gap-1 shrink-0 text-card-meta font-semibold px-2.5 py-1 rounded-w-pill',
+              statusStyle.badge,
+            )}
           >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-              <path
-                d="M5 3l4 4-4 4"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
+            <span
+              className={cn('inline-block size-1.5 rounded-w-pill', statusStyle.dot)}
+              aria-hidden="true"
+            />
+            {statusLabel}
+          </span>
         </div>
       </div>
+
+      {/* 정보 수정 진입 — 기존 chevron 역할 유지 (navy 위 우상단) */}
+      <button
+        type="button"
+        onClick={onEditInfo}
+        aria-label="정보 수정"
+        className="absolute top-2 right-2 flex size-12 items-center justify-center rounded-w-pill text-white/80 transition-colors motion-reduce:transition-none hover:bg-white/10 active:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+      >
+        <Icon name="edit" className="text-[18px]" aria-hidden="true" />
+      </button>
     </section>
   );
 }
@@ -459,16 +458,20 @@ type QuickActionKey = 'team' | 'attendance';
 
 function QuickActionsList({
   team,
+  approvedTeamId,
   onNav,
 }: {
   team: string | null;
+  /** 선택 자녀의 승인 대표 팀 ID — 없으면 팀 정보 행 비활성 (이동 대상 없음) */
+  approvedTeamId: string | null;
   onNav: (target: QuickActionKey) => void;
 }) {
-  const rows: { key: QuickActionKey; label: string; sub: string; icon: ReactNode; warn?: boolean }[] = [
+  const rows: { key: QuickActionKey; label: string; sub: string; icon: ReactNode; warn?: boolean; disabled?: boolean }[] = [
     {
       key: 'team',
       label: MESSAGES.childAttendance.quickActionTeamLabel,
-      sub: team ?? DASH,
+      sub: team ?? MESSAGES.team.childHeaderNoTeamLabel,
+      disabled: !approvedTeamId,
       icon: (
         <>
           <circle cx="6" cy="7" r="2.5" stroke="currentColor" strokeWidth="1.4" />
@@ -507,18 +510,20 @@ function QuickActionsList({
        구분되며 마지막 행 구분선 제거. 시안(ParentChildren.jsx) ListRow + /director 와 동일. */
     <section className="mt-2 bg-it-surface dark:bg-it-blue-950 pb-2">
       {/* 헤더 — SectionHead(iceTheme) 동일 위계 (17px/800) */}
-      <SectionHead title="관리" iceTheme />
+      <SectionHead title={MESSAGES.childAttendance.quickActionSectionTitle} iceTheme />
       <div className="px-4 sm:px-5">
         {rows.map((r, i) => (
           <button
             key={r.key}
             type="button"
             onClick={() => onNav(r.key)}
+            disabled={r.disabled}
             className={cn(
               'w-full flex items-center gap-3 py-3.5 text-left',
               i < rows.length - 1 && 'border-b border-it-line dark:border-it-blue-900',
               'transition-colors motion-reduce:transition-none active:bg-it-fill dark:active:bg-rink-900/40',
               'focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-it-blue-500/40',
+              'disabled:opacity-50 disabled:cursor-not-allowed disabled:active:bg-transparent dark:disabled:active:bg-transparent',
             )}
           >
             {/* icon box — [시안] 38×38 r10 / bg fill / border 1px line */}
@@ -541,23 +546,25 @@ function QuickActionsList({
                 {r.sub}
               </span>
             </span>
-            {/* chevron — ref: 14×14 path M5 3l4 4-4 4 / text3 */}
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 14 14"
-              fill="none"
-              aria-hidden="true"
-              className="shrink-0 text-it-ink-300 dark:text-wtext-4"
-            >
-              <path
-                d="M5 3l4 4-4 4"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+            {/* chevron — ref: 14×14 path M5 3l4 4-4 4 / text3. 비활성 행은 이동이 없으므로 미표시 */}
+            {!r.disabled && (
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 14 14"
+                fill="none"
+                aria-hidden="true"
+                className="shrink-0 text-it-ink-300 dark:text-wtext-4"
+              >
+                <path
+                  d="M5 3l4 4-4 4"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )}
           </button>
         ))}
       </div>
