@@ -18,6 +18,8 @@ export interface Child {
   birthDate?: string | null;
   /** [추가 2026-05-13] 학생 본인 계정 이메일/ID — 학부모 홈 hero · 메뉴 상단에 노출 */
   email?: string | null;
+  /** 성별 ('M' | 'F') — /children 기본 정보 섹션 표시용 */
+  gender?: string | null;
   club: string | null;
   /** APPROVED 상태의 TeamMember.clubId 집합 (표시용 club 이름과 별개로 ID 기반 매핑 경로) */
   clubIds?: string[];

@@ -369,10 +369,13 @@ export const MESSAGES = {
     noSchedule: "오늘 예정된 수업이 없습니다.",
     weekSchedule: {
       title: "이번주 일정",
+      selectedTitle: "선택한 일정",
       pastToggleShow: (count: number) => `지난 일정 ${count}일 보기`,
       pastToggleHide: "지난 일정 접기",
       todayBadge: "오늘",
       noRemaining: "이번주 남은 일정이 없습니다.",
+      goToToday: "오늘",
+      goToTodayLabel: "오늘 일정으로 이동",
     },
     // 캘린더 일정 카드 코치/감독 액션 — 출석 확인 / 선수정보(팀·학원 공용 명단+결제)
     calendarAction: {
@@ -964,6 +967,8 @@ export const MESSAGES = {
     quickActionLabel: "출석 현황",
     quickActionSub: "이번 달 출석 · 연간 이력",
     quickActionTeamLabel: "팀 정보",
+    // /children 하단 리스트 섹션 헤더 — 조회성 행(팀 정보·출석 현황)과 맞는 상위어
+    quickActionSectionTitle: "활동 정보",
     pageTitle: (name: string) => `${name} 출석 현황`,
     yearTotal: (n: number) => `올해 ${n}회`,
     monthTotal: (n: number) => `이번 달 ${n}회`,
@@ -1752,10 +1757,19 @@ export const MESSAGES = {
     groupNameLabel: "하위그룹 이름",
     groupNamePlaceholder: "예: 선수반 A조",
     groupNameRequired: "하위그룹 이름을 입력해주세요.",
+    // 백엔드 ConflictException/BadRequestException 메시지와 동일 문자열 — 409 폴백 매핑에 사용.
+    groupNameDuplicate: "이미 같은 이름의 하위그룹이 있습니다.",
+    groupNameReserved: "'기본'은 시스템 예약 이름이라 사용할 수 없습니다.",
+    groupCoachLabel: "담당코치",
+    groupCoachNone: "지정 안 함",
+    groupCoachRoleHead: "감독",
+    groupCoachMetaLabel: (name: string) => `담당코치 ${name}`,
+    groupCoachEmpty: "지정 가능한 코치가 없습니다.",
+    groupCoachHelper: "이 하위그룹을 담당할 코치를 지정합니다.",
     groupAgeGroupLabel: "대상 설명",
     groupAgeGroupPlaceholder: "예: 주말반 · 초급 · 2014년생 위주",
     groupAgeGroupHelper:
-      "선택 입력 — 이 하위그룹의 대상이나 성격을 자유롭게 적어주세요.",
+      "이 하위그룹의 대상이나 성격을 자유롭게 적어주세요.",
     // 하위그룹 선수 트리 — 미리보기 초과분 더보기/접기 토글
     groupMemberShowMore: (count: number) => `외 ${count}명 더보기`,
     groupMemberCollapse: "접기",
@@ -3015,6 +3029,9 @@ export const MESSAGES = {
   // (childAuth.pinSet · childAuth.verified 는 위쪽 블록 재사용)
   childProfile: {
     nameAndPhoneRequired: "이름과 전화번호를 입력해주세요.",
+    // /children Hero 성별 표시 (orphan 자녀 상세에서 흡수)
+    genderMale: "남",
+    genderFemale: "여",
   },
 
   // ─── V. 감독 (회원/공지/승인) ──────────────────────
@@ -3051,6 +3068,20 @@ export const MESSAGES = {
     addressCopied: "주소가 복사되었습니다.",
     addressCopyFailed: "주소 복사에 실패했습니다.",
     episodeCancelConfirm: "이 회차를 취소하시겠습니까?",
+    // 복사하여 등록 — 기존 수업 기반 신규 등록(create) prefill 피드백.
+    copyLoadFailed: "수업 정보를 불러오지 못했습니다. 빈 양식으로 시작합니다.",
+    copyPrefilled: "기존 수업 내용을 불러왔습니다. 일정은 새로 선택해주세요.",
+    // 기존 수업 불러오기 — 등록 화면 상단 진입 버튼 + 원본 선택 바텀시트.
+    copySheet: {
+      loadButton: "기존 수업 불러오기",
+      title: "불러올 수업 선택",
+      loading: "수업 목록을 불러오는 중입니다.",
+      empty: "불러올 수업이 없습니다.",
+      loadFailed: "수업 목록을 불러오지 못했습니다.",
+      typeRegular: "정규훈련",
+      typeOpen: "오픈클래스",
+      noSchedule: "일정 미정",
+    },
     // 등록/수정 폼 검증 — useClassForm.validateClassForm / handleSubmit 에서 참조 (2026-05-14 추가).
     validation: {
       classDaysRequired: "수업 요일을 1개 이상 선택해주세요.",

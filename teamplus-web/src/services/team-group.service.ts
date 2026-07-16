@@ -9,11 +9,18 @@ import { api } from '@/services/api-client';
 
 export type AgeGroup = 'U8' | 'U9' | 'U10' | 'U11' | 'U12';
 
+/** 로스터 자동 편성이 이름으로 찾는 시스템 예약 그룹명 — 수동 생성/변경 금지. */
+export const RESERVED_TEAM_GROUP_NAME = '기본';
+
 export interface TeamGroupSummary {
   id: string;
   name: string;
   /** 대상 설명(자유 텍스트). 레거시 'U8'~'U12'·출생연도 문자열도 그대로 보존. */
   ageGroup: string | null;
+  /** 담당코치 TeamMember.id — 미지정이면 null. */
+  coachMemberId: string | null;
+  /** 담당코치 이름 — 미지정이면 null. */
+  coachName: string | null;
   isActive: boolean;
   createdAt: string;
   _count: { members: number };
@@ -37,9 +44,20 @@ export interface TeamGroupDetail {
   name: string;
   /** 대상 설명(자유 텍스트). */
   ageGroup: string | null;
+  /** 담당코치 TeamMember.id — 미지정이면 null. */
+  coachMemberId: string | null;
+  /** 담당코치 이름 — 미지정이면 null. */
+  coachName: string | null;
   isActive: boolean;
   createdAt: string;
   members: TeamGroupMemberRow[];
+}
+
+/** 담당코치 후보 — 팀 소속 approved HEAD_COACH/COACH. */
+export interface TeamCoachCandidate {
+  memberId: string;
+  name: string;
+  roleInTeam: string | null;
 }
 
 export interface EligibleMemberRow {
@@ -60,6 +78,8 @@ export interface CreateTeamGroupPayload {
   /** [2026-06-05] 연령대(U8~U12) → 참가 대상 출생연도 문자열(예: "2016"). 레거시 값도 허용. */
   ageGroup?: string;
   memberIds?: string[];
+  /** 담당코치 TeamMember.id — 빈 문자열 = 지정 해제, 생략 = 미변경. */
+  coachMemberId?: string;
 }
 
 export const teamGroupService = {
@@ -74,6 +94,14 @@ export const teamGroupService = {
       `/teams/${teamId}/eligible-members`,
     );
     if (!res.success) throw new Error(res.error?.message ?? '회원 목록을 불러오지 못했습니다.');
+    return res.data ?? [];
+  },
+
+  async listCoachCandidates(teamId: string) {
+    const res = await api.get<TeamCoachCandidate[]>(
+      `/teams/${teamId}/coach-candidates`,
+    );
+    if (!res.success) throw new Error(res.error?.message ?? '코치 목록을 불러오지 못했습니다.');
     return res.data ?? [];
   },
 

@@ -28,8 +28,9 @@ import { MobileContainer } from '@/components/layout/MobileContainer';
 import { SectionHead, WalletAppBar } from '@/components/wallet';
 import {
   ClassCalendarSection,
+  getDashboardScheduleView,
   SelectedDayClassList,
-  type CalendarClass,
+  type SelectedClassesPayload,
 } from '@/components/dashboard/ClassCalendarSection';
 import { WeekScheduleList } from '@/components/dashboard/WeekScheduleList';
 import { RecentNoticesSection } from '@/components/dashboard/RecentNoticesSection';
@@ -63,13 +64,6 @@ interface TeamRef {
   name: string;
   /** 팀 로고 URL — Hero 카드 우측 표시 (2026-05-25) */
   logoUrl?: string | null;
-}
-
-interface Selection {
-  dateKey: string | null;
-  classes: CalendarClass[];
-  // [2026-06-10] 이번주 수업 있는 날 그룹 — 홈 '이번주 일정' 표시용.
-  weekGroups: { dateKey: string; classes: CalendarClass[] }[];
 }
 
 /** GET /enrollments 응답 항목 — 자녀별 등록 수업 매핑용.
@@ -167,7 +161,8 @@ export default function ParentDashboardPage() {
       imagesReady &&
       fontsReady,
   );
-  const [selection, setSelection] = useState<Selection>({ dateKey: null, classes: [], weekGroups: [] });
+  const [selection, setSelection] = useState<SelectedClassesPayload>({ dateKey: null, classes: [], weekGroups: [] });
+  const scheduleView = getDashboardScheduleView(selection);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   // 선택 대상 자녀를 칩에 노출 — 무소속 포함, pending/rejected(관계 미확정)만 제외.
@@ -613,8 +608,7 @@ export default function ParentDashboardPage() {
 
         {/* (자녀 전환은 상단 자녀 스트립 [선택] 버튼 → ChildPickerSheet 로 이동 — 2026-07-06) */}
 
-        {/* ④ 수업 일정 — full-bleed flat 섹션(ICETIMES). 월 달력. 자녀 등록 수업 필터.
-              날짜 클릭 → onSelectionChange 로 아래 선택일 수업 갱신(초기값 오늘). */}
+        {/* ④ 수업 일정 — 기본은 이번 주, 날짜 선택 중에는 해당 날짜 일정으로 하단 목록 동기화. */}
         <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
           <SectionHead title={MESSAGES.dashboard.classSchedule} iceTheme />
           <div className="px-4 sm:px-5 pb-3">
@@ -624,54 +618,58 @@ export default function ParentDashboardPage() {
               enabledClassIds={enabledClassIds}
               enabledChildId={selectedChildId}
               onSelectionChange={setSelection}
+              selectionMode="week-default"
               onReady={setCalendarReady}
               iceTheme
             />
           </div>
         </section>
 
-        {/* ⑤ [2026-06-10] 이번주 일정 — full-bleed flat 섹션(ICETIMES). 수업 있는 날만 그룹 + 출석 버튼. */}
+        {/* ⑤ 선택 없음=이번 주, 선택 있음=해당 날짜 일정. 출석·자녀 매핑은 동일하게 유지. */}
         <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
           <SectionHead
-            title="이번주 일정"
+            title={scheduleView.title}
             action="전체 일정 보기 ›"
             onActionClick={() => navigate('/parent-calendar')}
             iceTheme
           />
           <div className="px-4 sm:px-5 pb-3">
-            {selection.weekGroups.length === 0 ? (
-            <SelectedDayClassList
-              classes={[]}
-              scheduleIdToChildIds={scheduleIdToChildIds}
-              attendanceMap={attendanceMap}
-              childIdToName={childIdToName}
-              selectedChildId={selectedChildId}
-              todayKey={todayKey}
-              onCheckIn={checkInChild}
-              creditNoticeScheduleIds={creditNoticeScheduleIds}
-              iceTheme
-            />
-          ) : (
-            <WeekScheduleList
-              groups={selection.weekGroups}
-              todayKey={todayKey}
-              iceTheme
-              renderDayClasses={(classes) => (
-                <SelectedDayClassList
-                  classes={classes}
-                  scheduleIdToChildIds={scheduleIdToChildIds}
-                  attendanceMap={attendanceMap}
-                  childIdToName={childIdToName}
-                  selectedChildId={selectedChildId}
-                  todayKey={todayKey}
-                  onCheckIn={checkInChild}
-                  creditNoticeScheduleIds={creditNoticeScheduleIds}
-                  bare
-                  iceTheme
-                />
-              )}
-            />
-          )}
+            {scheduleView.groups.length === 0 ? (
+              <SelectedDayClassList
+                classes={[]}
+                scheduleIdToChildIds={scheduleIdToChildIds}
+                attendanceMap={attendanceMap}
+                childIdToName={childIdToName}
+                selectedChildId={selectedChildId}
+                todayKey={todayKey}
+                onCheckIn={checkInChild}
+                creditNoticeScheduleIds={creditNoticeScheduleIds}
+                emptyMessage={MESSAGES.dashboard.weekSchedule.noRemaining}
+                iceTheme
+              />
+            ) : (
+              <WeekScheduleList
+                groups={scheduleView.groups}
+                collapsePast={!scheduleView.isDateSelected}
+                todayKey={todayKey}
+                iceTheme
+                renderDayClasses={(classes) => (
+                  <SelectedDayClassList
+                    classes={classes}
+                    scheduleIdToChildIds={scheduleIdToChildIds}
+                    attendanceMap={attendanceMap}
+                    childIdToName={childIdToName}
+                    selectedChildId={selectedChildId}
+                    todayKey={todayKey}
+                    onCheckIn={checkInChild}
+                    creditNoticeScheduleIds={creditNoticeScheduleIds}
+                    emptyMessage={scheduleView.isDateSelected ? MESSAGES.calendar.noEvents : undefined}
+                    bare
+                    iceTheme
+                  />
+                )}
+              />
+            )}
           </div>
         </section>
 

@@ -181,8 +181,14 @@ export class ClassesListController {
   async getClassPaymentsById(
     @Param("classId") classId: string,
     @Request() req: AuthenticatedRequest,
+    @Query("yearMonth") yearMonth?: string,
   ) {
-    return this.classesService.getClassPayments(classId, req.user);
+    return this.classesService.getClassPayments(
+      classId,
+      req.user,
+      undefined,
+      yearMonth,
+    );
   }
 
   /**

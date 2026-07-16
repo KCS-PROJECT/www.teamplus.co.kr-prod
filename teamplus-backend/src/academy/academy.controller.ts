@@ -471,10 +471,14 @@ export class AcademyController {
     @Param("academyId") academyId: string,
     @Param("classId") classId: string,
     @Request() req: AuthenticatedRequest,
+    @Query("yearMonth") yearMonth?: string,
   ) {
-    return this.classesService.getClassPayments(classId, req.user, {
-      academyId,
-    });
+    return this.classesService.getClassPayments(
+      classId,
+      req.user,
+      { academyId },
+      yearMonth,
+    );
   }
 
   /**

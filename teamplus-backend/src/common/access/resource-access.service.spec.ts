@@ -239,6 +239,87 @@ describe("ResourceAccessService", () => {
     });
   });
 
+  // ─── 정산 확정(쓰기) 권한 — 조회보다 엄격 ──────────────────────
+  describe("assertClassSettlementWriter", () => {
+    it("수업 미존재 시 NotFound", async () => {
+      prismaMock.class.findUnique.mockResolvedValue(null);
+      await expect(
+        service.assertClassSettlementWriter("nope", teamCoach),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it("팀 수업은 팀 관리자(owner)면 정산 확정 통과", async () => {
+      prismaMock.class.findUnique.mockResolvedValue({
+        id: "class-1",
+        teamId: "team-1",
+        academyId: null,
+      });
+      prismaMock.team.findFirst.mockResolvedValue({ id: "team-1" });
+      prismaMock.teamMember.findFirst.mockResolvedValue(null);
+      await expect(
+        service.assertClassSettlementWriter("class-1", teamCoach),
+      ).resolves.toEqual({ id: "class-1", teamId: "team-1", academyId: null });
+    });
+
+    it("오픈클래스 수업 — Academy.directorId 감독은 정산 확정 통과", async () => {
+      prismaMock.class.findUnique.mockResolvedValue({
+        id: "class-2",
+        teamId: null,
+        academyId: "aca-1",
+      });
+      prismaMock.academy.findUnique.mockResolvedValue({
+        directorId: academyDirector.id,
+      });
+      await expect(
+        service.assertClassSettlementWriter("class-2", academyDirector),
+      ).resolves.toEqual({ id: "class-2", teamId: null, academyId: "aca-1" });
+    });
+
+    it("[쓰기 제한 §5-5-4] 오픈클래스 active 보조 코치는 정산 확정 차단(조회는 가능)", async () => {
+      prismaMock.class.findUnique.mockResolvedValue({
+        id: "class-2",
+        teamId: null,
+        academyId: "aca-1",
+      });
+      // 감독이 아닌 타인 — active AcademyCoach 여도 directorId 불일치.
+      prismaMock.academy.findUnique.mockResolvedValue({
+        directorId: "someone-else",
+      });
+      prismaMock.academyCoach.findUnique.mockResolvedValue({ isActive: true });
+      await expect(
+        service.assertClassSettlementWriter("class-2", teamCoach),
+      ).rejects.toThrow(ForbiddenException);
+      // 정산 쓰기 경로는 AcademyCoach 소속을 아예 조회하지 않는다(감독만 판정).
+      expect(prismaMock.academyCoach.findUnique).not.toHaveBeenCalled();
+    });
+
+    it("[역할 게이트] 오픈클래스 정산 확정 — DIRECTOR(팀 역할)는 차단", async () => {
+      const director = asUser("dir-1", "DIRECTOR");
+      prismaMock.class.findUnique.mockResolvedValue({
+        id: "class-2",
+        teamId: null,
+        academyId: "aca-1",
+      });
+      await expect(
+        service.assertClassSettlementWriter("class-2", director),
+      ).rejects.toThrow(ForbiddenException);
+      // 역할 게이트 선행 — Academy 소속 조회 자체가 실행되지 않는다.
+      expect(prismaMock.academy.findUnique).not.toHaveBeenCalled();
+    });
+
+    it("[관리자급] ADMIN 은 소속 조회 없이 정산 확정 통과", async () => {
+      prismaMock.class.findUnique.mockResolvedValue({
+        id: "class-2",
+        teamId: null,
+        academyId: "aca-1",
+      });
+      await expect(
+        service.assertClassSettlementWriter("class-2", admin),
+      ).resolves.toBeTruthy();
+      expect(prismaMock.academy.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
   // ─── 대회 관리 범위 ────────────────────────────────────────────
   describe("assertManageableTournament / Record", () => {
     it("대회 미존재 시 NotFound", async () => {

@@ -587,13 +587,15 @@ export default function TeamDetailPage() {
             본문 스크롤 흐름의 맨 아래로 이동. MobileContainer 의 [&>main]:pb-30 (120px)
             이 BottomNav 영역(60px+safe-area)을 자동 보전하므로 별도 보정 불필요.
             (50px h, rounded 14, 1fr 2fr — 참고자료 04e 비율 유지) */}
-        <div
-          className="px-5 mt-2"
-          role="toolbar"
-          aria-label={MESSAGES.team.ariaActions}
-        >
-          {canManage ? (
-            // 팀 삭제는 미지원 (팀은 수업·결제·출석 데이터의 허브 — BE 도 미구현).
+        {/* 비관리자(학부모·학생)는 이미 소속 관점의 조회자라 '팀 가입 문의하기'가
+            무의미 + 실제 문의 플로우 부재(dead link placeholder) — CTA 미노출. */}
+        {canManage && (
+          <div
+            className="px-5 mt-2"
+            role="toolbar"
+            aria-label={MESSAGES.team.ariaActions}
+          >
+            {/* 팀 삭제는 미지원 (팀은 수업·결제·출석 데이터의 허브 — BE 도 미구현). */}
             <button
               type="button"
               onClick={handleEdit}
@@ -603,23 +605,8 @@ export default function TeamDetailPage() {
               <Icon name="edit" className="text-[16px]" aria-hidden="true" />
               {MESSAGES.common.edit}
             </button>
-          ) : (
-            <button
-              type="button"
-              className="flex h-12 w-full cursor-not-allowed items-center justify-center gap-2 rounded-w-md bg-it-blue-500 text-[15px] font-bold text-white opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40"
-              onClick={() => toast.info(MESSAGES.team.inquireJoinUnavailable)}
-              aria-label={MESSAGES.team.inquireJoin}
-              aria-disabled="true"
-            >
-              <Icon
-                name="person_add"
-                className="text-[18px]"
-                aria-hidden="true"
-              />
-              {MESSAGES.team.inquireJoin}
-            </button>
-          )}
-        </div>
+          </div>
+        )}
       </main>
 
       {/* ─── Add Roster Modal ────────────────

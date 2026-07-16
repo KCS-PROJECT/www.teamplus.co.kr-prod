@@ -26,6 +26,7 @@ export interface ClassProductDto {
   feePerSession?: number | null;
   sessionsPerWeek?: number | null;
   billingTiming?: string;
+  billingMonth?: string | null; // ISO 문자열(그 달 1일 자정, @db.Date → 풀 ISO 직렬화) — MONTHLY_FIXED 월분 귀속, null=무월
   isActive: boolean;
   createdAt?: string;
   // PACKAGE_END_GUARD 계산 필드 (백엔드 주입)

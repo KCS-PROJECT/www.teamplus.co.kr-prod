@@ -23,8 +23,9 @@ import { HomeIdentityStrip } from '@/components/common/HomeIdentityStrip';
 import { BrandWordmark } from '@/components/common/BrandWordmark';
 import {
   ClassCalendarSection,
+  getDashboardScheduleView,
   SelectedDayClassList,
-  type CalendarClass,
+  type SelectedClassesPayload,
 } from '@/components/dashboard/ClassCalendarSection';
 import { WeekScheduleList } from '@/components/dashboard/WeekScheduleList';
 import { RecentNoticesSection } from '@/components/dashboard/RecentNoticesSection';
@@ -64,18 +65,12 @@ function pickTeamName(team: TeamListItem): string {
   return code ? `${base}(${code})` : base;
 }
 
-interface Selection {
-  dateKey: string | null;
-  classes: CalendarClass[];
-  // [2026-06-10] 이번주 수업 있는 날 그룹 — 홈 '이번주 일정' 표시용.
-  weekGroups: { dateKey: string; classes: CalendarClass[] }[];
-}
-
 export default function DirectorDashboardPage() {
   const { navigate } = useNavigation();
   const { unreadCount } = useNotificationContext();
   const [teams, setTeams] = useState<TeamRef[] | null>(null);
-  const [selection, setSelection] = useState<Selection>({ dateKey: null, classes: [], weekGroups: [] });
+  const [selection, setSelection] = useState<SelectedClassesPayload>({ dateKey: null, classes: [], weekGroups: [] });
+  const scheduleView = getDashboardScheduleView(selection);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [calendarReady, setCalendarReady] = useState(false);
   const [summaryReady, setSummaryReady] = useState(false);
@@ -210,14 +205,14 @@ export default function DirectorDashboardPage() {
             classesCategory='regular' → 오픈클래스 제외, '/classes-manage'(정규+대회) 와 동일 기준. */}
         <TeamClassesSummary showEnrollment={false} classesCategory="regular" classLimit={7} tournamentLimit={3} targetPath="/classes-manage" onReady={setSummaryReady} iceTheme />
 
-        {/* 4. 수업 일정 — full-bleed flat 섹션. 월 달력(섹션 헤더 + 내부 달력).
-            날짜 클릭 시 아래 선택일 일정 갱신(초기값 오늘). */}
+        {/* 4. 수업 일정 — 기본은 이번 주, 날짜 선택 중에는 해당 날짜 일정으로 하단 목록 동기화. */}
         <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
           <SectionHead title={MESSAGES.dashboard.classSchedule} iceTheme />
           <div className="px-4 sm:px-5 pb-3">
             <ClassCalendarSection
               teamIds={teams ?? []}
               onSelectionChange={setSelection}
+              selectionMode="week-default"
               onReady={setCalendarReady}
               legendVariant="team-only"
               iceTheme
@@ -225,23 +220,34 @@ export default function DirectorDashboardPage() {
           </div>
         </section>
 
-        {/* 5. [2026-06-10] 이번주 일정 — full-bleed flat 섹션. 수업 있는 날만 그룹 표시. */}
+        {/* 5. 선택 없음=이번 주, 선택 있음=해당 날짜 일정. 관리 액션은 동일하게 유지. */}
         <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
           <SectionHead
-            title="이번주 일정"
+            title={scheduleView.title}
             action="전체 일정 보기 ›"
             onActionClick={() => navigate('/director-schedules')}
             iceTheme
           />
           <div className="px-4 sm:px-5 pb-3">
-            {selection.weekGroups.length === 0 ? (
-              <DirectorEmptyCard variant="today-class" iceTheme />
+            {scheduleView.groups.length === 0 ? (
+              <DirectorEmptyCard
+                variant="today-class"
+                message={MESSAGES.dashboard.weekSchedule.noRemaining}
+                iceTheme
+              />
             ) : (
               <WeekScheduleList
-                groups={selection.weekGroups}
+                groups={scheduleView.groups}
+                collapsePast={!scheduleView.isDateSelected}
                 iceTheme
                 renderDayClasses={(classes) => (
-                  <SelectedDayClassList classes={classes} canManage bare iceTheme />
+                  <SelectedDayClassList
+                    classes={classes}
+                    canManage
+                    bare
+                    emptyMessage={scheduleView.isDateSelected ? MESSAGES.calendar.noEvents : undefined}
+                    iceTheme
+                  />
                 )}
               />
             )}

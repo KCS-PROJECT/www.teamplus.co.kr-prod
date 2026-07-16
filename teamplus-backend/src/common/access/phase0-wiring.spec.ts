@@ -76,15 +76,18 @@ describe("Phase 0 controller wiring — attendance/payments/classes", () => {
     expect(classesService.getClassPayments).toHaveBeenCalledWith(
       "class-1",
       requester,
+      undefined,
+      undefined,
     );
 
-    // 팀 스코프 경로 — expectedScope.teamId
+    // 팀 스코프 경로 — expectedScope.teamId + 선택월(yearMonth) 전달
     const teamController = new ClassesController(classesService as any);
-    await teamController.getClassPayments("team-1", "class-1", req);
+    await teamController.getClassPayments("team-1", "class-1", req, "2026-06");
     expect(classesService.getClassPayments).toHaveBeenCalledWith(
       "class-1",
       requester,
       { teamId: "team-1" },
+      "2026-06",
     );
 
     // 아카데미 미러 경로 — expectedScope.academyId
@@ -97,6 +100,7 @@ describe("Phase 0 controller wiring — attendance/payments/classes", () => {
       "class-1",
       requester,
       { academyId: "aca-1" },
+      undefined,
     );
   });
 });

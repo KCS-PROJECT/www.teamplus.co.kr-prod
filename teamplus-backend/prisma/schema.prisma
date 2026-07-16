@@ -542,6 +542,8 @@ model TeamMember {
   // Phase 2 (2026-04-29) — TeamRoster 폐기, TeamGroupMember 단일화
   teamGroupMembers TeamGroupMember[]
   skillEvaluations SkillEvaluation[]
+  // 담당코치로 지정된 하위그룹 (TeamGroup.coachMemberId)
+  coachingGroups   TeamGroup[]       @relation("TeamGroupCoach")
 
   // 수업 이력 & 수상
   classHistories PlayerClassHistory[]
@@ -2266,21 +2268,25 @@ model HockeyMatch {
 /// 팀 그룹 - 팀(Club) 안의 하위 그룹 (예: 선수반 A조, U10 평일반)
 /// 감독·코치가 팀 관리 화면에서 직접 생성하는 단위.
 model TeamGroup {
-  id        String   @id @default(cuid())
-  teamId    String   @map("team_id") /// 상위 팀 (clubs.id 참조 — Phase 2 변경)
-  name      String /// 그룹 이름
-  ageGroup  String?  @map("age_group") /// 대상 설명(자유 텍스트) — 레거시 U8~U12·출생연도 값 보존
-  createdId String?  @map("created_id") /// 생성한 감독/코치 user.id
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id            String   @id @default(cuid())
+  teamId        String   @map("team_id") /// 상위 팀 (clubs.id 참조 — Phase 2 변경)
+  name          String /// 그룹 이름
+  ageGroup      String?  @map("age_group") /// 대상 설명(자유 텍스트) — 레거시 U8~U12·출생연도 값 보존
+  createdId     String?  @map("created_id") /// 생성한 감독/코치 user.id
+  /// 담당코치 (TeamMember.id, roleInTeam ∈ HEAD_COACH/COACH). 팀 탈퇴 시 SetNull → 미지정 복귀.
+  coachMemberId String?  @map("coach_member_id")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  team    Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  members TeamGroupMember[]
+  team        Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  coachMember TeamMember?       @relation("TeamGroupCoach", fields: [coachMemberId], references: [id], onDelete: SetNull)
+  members     TeamGroupMember[]
 
   @@index([teamId])
   @@index([ageGroup])
   @@index([teamId, isActive])
+  @@index([coachMemberId])
   @@map("team_groups")
 }
 

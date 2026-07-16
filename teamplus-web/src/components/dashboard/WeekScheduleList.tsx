@@ -24,6 +24,8 @@ interface WeekGroup {
 
 interface Props {
   groups: WeekGroup[];
+  /** false면 선택한 과거 날짜도 접지 않고 즉시 표시한다. */
+  collapsePast?: boolean;
   /** YYYY-MM-DD. 미지정 시 내부에서 오늘로 계산. */
   todayKey?: string;
   /** 날짜 그룹 하나의 수업 리스트 렌더 (SelectedDayClassList ... bare) */
@@ -46,13 +48,19 @@ function formatDayHeading(dateKey: string): string {
   return `${d.getMonth() + 1}월 ${d.getDate()}일 (${wd})`;
 }
 
-export function WeekScheduleList({ groups, todayKey: todayKeyProp, renderDayClasses, iceTheme = false }: Props) {
+export function WeekScheduleList({
+  groups,
+  collapsePast = true,
+  todayKey: todayKeyProp,
+  renderDayClasses,
+  iceTheme = false,
+}: Props) {
   const [showPast, setShowPast] = useState(false);
   const todayKey = todayKeyProp ?? getTodayKey();
 
   // dateKey 는 YYYY-MM-DD 고정 포맷 — 문자열 비교로 날짜 순서 판별 가능.
-  const pastGroups = groups.filter((g) => g.dateKey < todayKey);
-  const upcomingGroups = groups.filter((g) => g.dateKey >= todayKey);
+  const pastGroups = collapsePast ? groups.filter((g) => g.dateKey < todayKey) : [];
+  const upcomingGroups = collapsePast ? groups.filter((g) => g.dateKey >= todayKey) : groups;
 
   const renderGroup = (g: WeekGroup) => {
     const isToday = g.dateKey === todayKey;

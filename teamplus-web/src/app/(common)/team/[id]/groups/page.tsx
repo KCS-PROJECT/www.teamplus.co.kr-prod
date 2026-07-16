@@ -183,6 +183,8 @@ export default function TeamGroupsListPage() {
                       </div>
                       <p className="mt-0.5 text-[13px] font-medium text-it-ink-500 dark:text-it-ink-300">
                         {MESSAGES.team.groupMemberCountLabel(g._count.members)}
+                        {g.coachName &&
+                          ` · ${MESSAGES.team.groupCoachMetaLabel(g.coachName)}`}
                       </p>
                     </div>
 
