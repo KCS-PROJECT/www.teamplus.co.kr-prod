@@ -369,10 +369,13 @@ export const MESSAGES = {
     noSchedule: "오늘 예정된 수업이 없습니다.",
     weekSchedule: {
       title: "이번주 일정",
+      selectedTitle: "선택한 일정",
       pastToggleShow: (count: number) => `지난 일정 ${count}일 보기`,
       pastToggleHide: "지난 일정 접기",
       todayBadge: "오늘",
       noRemaining: "이번주 남은 일정이 없습니다.",
+      goToToday: "오늘",
+      goToTodayLabel: "오늘 일정으로 이동",
     },
     // 캘린더 일정 카드 코치/감독 액션 — 출석 확인 / 선수정보(팀·학원 공용 명단+결제)
     calendarAction: {

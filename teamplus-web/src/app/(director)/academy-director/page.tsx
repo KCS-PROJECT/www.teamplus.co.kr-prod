@@ -25,8 +25,9 @@ import { HomeIdentityStrip } from '@/components/common/HomeIdentityStrip';
 import { BrandWordmark } from '@/components/common/BrandWordmark';
 import {
   ClassCalendarSection,
+  getDashboardScheduleView,
   SelectedDayClassList,
-  type CalendarClass,
+  type SelectedClassesPayload,
 } from '@/components/dashboard/ClassCalendarSection';
 import { WeekScheduleList } from '@/components/dashboard/WeekScheduleList';
 import { RecentNoticesSection } from '@/components/dashboard/RecentNoticesSection';
@@ -62,18 +63,12 @@ function pickAcademyName(a: AcademyListItem): string {
   return code ? `${base}(${code})` : base;
 }
 
-interface Selection {
-  dateKey: string | null;
-  classes: CalendarClass[];
-  // [2026-06-09] 이번주 수업 있는 날 그룹 — 홈 '이번주 일정' 표시용.
-  weekGroups: { dateKey: string; classes: CalendarClass[] }[];
-}
-
 export default function AcademyDirectorDashboardPage() {
   const { navigate } = useNavigation();
   const { unreadCount } = useNotificationContext();
   const [academies, setAcademies] = useState<AcademyRef[] | null>(null);
-  const [selection, setSelection] = useState<Selection>({ dateKey: null, classes: [], weekGroups: [] });
+  const [selection, setSelection] = useState<SelectedClassesPayload>({ dateKey: null, classes: [], weekGroups: [] });
+  const scheduleView = getDashboardScheduleView(selection);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [calendarReady, setCalendarReady] = useState(false);
   const [summaryReady, setSummaryReady] = useState(false);
@@ -185,8 +180,7 @@ export default function AcademyDirectorDashboardPage() {
           />
         )}
 
-        {/* 2. 수업 일정 — full-bleed flat 섹션(ICETIMES). 월 달력.
-              날짜 클릭 시 아래 오늘 수업 갱신(초기값 오늘). */}
+        {/* 2. 수업 일정 — 기본은 이번 주, 날짜 선택 중에는 해당 날짜 일정으로 하단 목록 동기화. */}
         <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
           <SectionHead title={MESSAGES.dashboard.classSchedule} iceTheme />
           <div className="px-4 sm:px-5 pb-3">
@@ -194,6 +188,7 @@ export default function AcademyDirectorDashboardPage() {
               teamIds={[]}
               academies={academies ?? []}
               onSelectionChange={setSelection}
+              selectionMode="week-default"
               onReady={setCalendarReady}
               legendVariant="academy"
               iceTheme
@@ -201,22 +196,33 @@ export default function AcademyDirectorDashboardPage() {
           </div>
         </section>
 
-        {/* 3. [2026-06-09] 이번주 일정 — full-bleed flat 섹션(ICETIMES). 수업 있는 날만 그룹 표시. */}
+        {/* 3. 선택 없음=이번 주, 선택 있음=해당 날짜 일정. 오픈클래스 관리 액션 유지. */}
         <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
           <SectionHead
-            title="이번주 일정"
+            title={scheduleView.title}
             action="전체 일정 보기 ›"
             onActionClick={() => navigate('/academy-schedules')}
             iceTheme
           />
           <div className="px-4 sm:px-5 pb-3">
-            {selection.weekGroups.length === 0 ? (
-              <DirectorEmptyCard variant="today-class" iceTheme />
+            {scheduleView.groups.length === 0 ? (
+              <DirectorEmptyCard
+                variant="today-class"
+                message={MESSAGES.dashboard.weekSchedule.noRemaining}
+                iceTheme
+              />
             ) : (
               <WeekScheduleList
-                groups={selection.weekGroups}
+                groups={scheduleView.groups}
+                collapsePast={!scheduleView.isDateSelected}
                 renderDayClasses={(classes) => (
-                  <SelectedDayClassList classes={classes} canManage bare iceTheme />
+                  <SelectedDayClassList
+                    classes={classes}
+                    canManage
+                    bare
+                    emptyMessage={scheduleView.isDateSelected ? MESSAGES.calendar.noEvents : undefined}
+                    iceTheme
+                  />
                 )}
                 iceTheme
               />

@@ -174,11 +174,78 @@ function buildCalendarGrid(year: number, month: number, today: Date): CalendarDa
   return days;
 }
 
-interface SelectedClassesPayload {
+export interface SelectedClassesPayload {
   dateKey: string | null;
   classes: CalendarClass[];
   // [2026-06-09] 이번주(일~토) 수업 있는 날 그룹 — 홈 '이번주 일정' 표시용.
   weekGroups: { dateKey: string; classes: CalendarClass[] }[];
+}
+
+export interface DashboardScheduleView {
+  title: string;
+  groups: { dateKey: string; classes: CalendarClass[] }[];
+  isDateSelected: boolean;
+}
+
+/** 대시보드 하단 일정을 선택일 1일 또는 이번 주 그룹으로 정규화한다. */
+export function getDashboardScheduleView(
+  selection: SelectedClassesPayload,
+): DashboardScheduleView {
+  if (!selection.dateKey) {
+    return {
+      title: MESSAGES.dashboard.weekSchedule.title,
+      groups: selection.weekGroups,
+      isDateSelected: false,
+    };
+  }
+
+  return {
+    title: MESSAGES.dashboard.weekSchedule.selectedTitle,
+    groups: [{ dateKey: selection.dateKey, classes: selection.classes }],
+    isDateSelected: true,
+  };
+}
+
+export function resolveSelectedDateKey(
+  current: string | null,
+  next: string,
+  selectionMode: 'today-default' | 'week-default',
+): string | null {
+  return selectionMode === 'week-default' && current === next ? null : next;
+}
+
+export function getDashboardCalendarQueryRange(
+  currentYear: number,
+  currentMonth: number,
+  today: Date,
+): { start: Date; end: Date } {
+  const start = new Date(currentYear, currentMonth, 1);
+  const end = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59, 999);
+
+  if (currentYear === today.getFullYear() && currentMonth === today.getMonth()) {
+    const currentWeekStart = getWeekStart(today);
+    const currentWeekEnd = new Date(currentWeekStart);
+    currentWeekEnd.setDate(currentWeekStart.getDate() + 6);
+    currentWeekEnd.setHours(23, 59, 59, 999);
+    if (currentWeekStart < start) start.setTime(currentWeekStart.getTime());
+    if (currentWeekEnd > end) end.setTime(currentWeekEnd.getTime());
+  }
+
+  return { start, end };
+}
+
+export function replaceScheduleRange(
+  current: Record<string, CalendarClass[]>,
+  next: Record<string, CalendarClass[]>,
+  rangeStartKey: string,
+  rangeEndKey: string,
+): Record<string, CalendarClass[]> {
+  const retained = Object.fromEntries(
+    Object.entries(current).filter(
+      ([dateKey]) => dateKey < rangeStartKey || dateKey > rangeEndKey,
+    ),
+  );
+  return { ...retained, ...next };
 }
 
 interface Props {
@@ -192,6 +259,12 @@ interface Props {
   academies?: { id: string; name: string }[];
   /** 선택일/수업 변경 콜백 (페이지에서 별도 섹션 렌더용) */
   onSelectionChange?: (payload: SelectedClassesPayload) => void;
+  /**
+   * 날짜 선택 정책.
+   * - `today-default`: 오늘을 기본 선택하고 같은 날짜를 다시 눌러도 유지한다.
+   * - `week-default`: 기본 선택 없이 이번 주를 표시하고, 같은 날짜 재선택 시 해제한다.
+   */
+  selectionMode?: 'today-default' | 'week-default';
   /**
    * 지정 시 이 Set 에 포함되는 classId 의 schedule 만 캘린더/선택일 목록에 노출.
    * 미지정(undefined) 시 팀 전체 수업 표시 (감독/coach/director 패턴).
@@ -240,12 +313,25 @@ interface Props {
   iceTheme?: boolean;
 }
 
-export function ClassCalendarSection({ teamIds, academies, onSelectionChange, enabledClassIds, enabledChildId, onReady, legendVariant = 'team', headless = false, iceTheme = false }: Props) {
+export function ClassCalendarSection({
+  teamIds,
+  academies,
+  onSelectionChange,
+  selectionMode = 'today-default',
+  enabledClassIds,
+  enabledChildId,
+  onReady,
+  legendVariant = 'team',
+  headless = false,
+  iceTheme = false,
+}: Props) {
   const today = useMemo(() => new Date(), []);
   const todayKey = useMemo(() => getDateKey(today), [today]);
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
-  const [selectedDateKey, setSelectedDateKey] = useState<string | null>(todayKey);
+  const [selectedDateKey, setSelectedDateKey] = useState<string | null>(
+    selectionMode === 'week-default' ? null : todayKey,
+  );
   const [rawClassesMap, setRawClassesMap] = useState<Record<string, CalendarClass[]>>({});
   const [isLoading, setIsLoading] = useState(true);
   // 첫 fetch 완료 추적 — 월 변경 시 그리드를 unmount 하지 않고 stale 데이터 유지(깜빡임 방지).
@@ -305,6 +391,18 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
   const academiesRef = useRef(academies ?? []);
   academiesRef.current = academies ?? [];
 
+  const dataScopeKey = `${teamIdsKey}|${academiesKey}|${enabledChildId ?? 'all'}|${legendVariant}`;
+  const activeScopeKeyRef = useRef(dataScopeKey);
+  activeScopeKeyRef.current = dataScopeKey;
+  const previousScopeKeyRef = useRef(dataScopeKey);
+
+  useEffect(() => {
+    if (previousScopeKeyRef.current === dataScopeKey) return;
+    previousScopeKeyRef.current = dataScopeKey;
+    setRawClassesMap({});
+    setSelectedDateKey(selectionMode === 'week-default' ? null : todayKey);
+  }, [dataScopeKey, selectionMode, todayKey]);
+
   // [2026-05-14] 같은 (teamIdsKey, year, month) 조합 in-flight 가드.
   //   React StrictMode 가 development 에서 effect 를 두 번 실행하는 동작 +
   //   부모 리렌더에 의해 동일 fetchData 가 짧은 시간 안에 다시 호출되는 경우,
@@ -320,6 +418,7 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
     // 2026-05-18: legendVariant 도 fetchKey 에 포함 — academy 모드 전환 시 tournament
     //   fetch 분기가 바뀌므로 in-flight 가드가 동일 키로 stale 데이터를 유지하지 않도록 보장.
     const fetchKey = `${teamIdsKey}|${academiesKey}|${currentYear}|${currentMonth}|${ids.length}|${academyIds.length}|${legendVariant}|${enabledChildId ?? 'all'}`;
+    const requestScopeKey = dataScopeKey;
     if (inFlightKeyRef.current === fetchKey) {
       // 같은 fetch 가 이미 진행 중 — 중복 발사 차단 (StrictMode double-invoke 대응).
       return;
@@ -337,8 +436,12 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
     setIsLoading(true);
 
     try {
-      const monthStart = new Date(currentYear, currentMonth, 1);
-      const monthEnd = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59, 999);
+      // 현재 주가 전월/익월에 걸린 경우에도 기본 주간 일정이 빠지지 않도록 범위를 확장한다.
+      const { start: queryStart, end: queryEnd } = getDashboardCalendarQueryRange(
+        currentYear,
+        currentMonth,
+        today,
+      );
 
       // [성능 2026-05-28 P0-B] 직렬 워터폴 → 독립 fetch 병렬화.
       //   기존: teamClasses → academyClasses → openClasses → schedules → tournaments (5단계 직렬).
@@ -462,8 +565,10 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
 
       const allClasses = [...teamClassResults.flat(), ...academyClassResults.flat(), ...visibilityOpenClasses];
       if (allClasses.length === 0) {
-        setRawClassesMap((prev) => (Object.keys(prev).length === 0 ? prev : {}));
-        setIsLoading(false);
+        if (activeScopeKeyRef.current === requestScopeKey) {
+          setRawClassesMap((prev) => (Object.keys(prev).length === 0 ? prev : {}));
+          setIsLoading(false);
+        }
         // 부유 promise 방지 — 이미 .catch 가 달려 있어 reject 위험은 없으나 명시적으로 소비.
         void tournamentPromise;
         return;
@@ -482,7 +587,7 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
           const res = await api.get<ClassSchedule[] | ApiDataWrapper<ClassSchedule[]>>(
             basePath,
             {
-              params: { startDate: monthStart.toISOString(), endDate: monthEnd.toISOString() },
+              params: { startDate: queryStart.toISOString(), endDate: queryEnd.toISOString() },
               retry: false,
             },
           );
@@ -570,7 +675,7 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
           if (m.status === 'cancelled') continue;
           const at = new Date(m.scheduledAt);
           if (Number.isNaN(at.getTime())) continue;
-          if (at < monthStart || at > monthEnd) continue;
+          if (at < queryStart || at > queryEnd) continue;
           matchedTournamentIds.add(m.tournamentId);
           const hh = String(at.getHours()).padStart(2, '0');
           const mm = String(at.getMinutes()).padStart(2, '0');
@@ -597,7 +702,7 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
         if (matchedTournamentIds.has(t.id)) continue;
         const startDt = new Date(t.startDate);
         if (Number.isNaN(startDt.getTime())) continue;
-        if (startDt < monthStart || startDt > monthEnd) continue;
+        if (startDt < queryStart || startDt > queryEnd) continue;
         const dateKey = getDateKey(startDt);
         if (!next[dateKey]) next[dateKey] = [];
         next[dateKey].push({
@@ -620,7 +725,13 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
         next[k] = [...next[k]].sort((a, b) => a.time.localeCompare(b.time));
       });
 
-      setRawClassesMap(next);
+      if (activeScopeKeyRef.current !== requestScopeKey) return;
+
+      const rangeStartKey = getDateKey(queryStart);
+      const rangeEndKey = getDateKey(queryEnd);
+      setRawClassesMap((prev) =>
+        replaceScheduleRange(prev, next, rangeStartKey, rangeEndKey),
+      );
       setIsLoading(false);
       hasLoadedOnceRef.current = true;
     } finally {
@@ -629,7 +740,7 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
         inFlightKeyRef.current = null;
       }
     }
-  }, [teamIdsKey, academiesKey, currentMonth, currentYear, legendVariant, enabledChildId]);
+  }, [teamIdsKey, academiesKey, currentMonth, currentYear, legendVariant, enabledChildId, dataScopeKey, today]);
 
   useEffect(() => {
     fetchData();
@@ -743,6 +854,21 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
     setSelectedDateKey(null);
   }, [currentMonth]);
 
+  const goToToday = useCallback(() => {
+    setCurrentYear(today.getFullYear());
+    setCurrentMonth(today.getMonth());
+    setSelectedDateKey(todayKey);
+  }, [today, todayKey]);
+
+  const handleDateSelect = useCallback(
+    (dateKey: string) => {
+      setSelectedDateKey((current) =>
+        resolveSelectedDateKey(current, dateKey, selectionMode),
+      );
+    },
+    [selectionMode],
+  );
+
   const monthLabel = `${currentYear}년 ${currentMonth + 1}월`;
 
   // 헤드리스 모드 — 위 hook(데이터 fetch·onReady·onSelectionChange)은 모두 실행된 뒤
@@ -774,9 +900,21 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
         >
           <Icon name="chevron_left" className="text-xl" />
         </button>
-        <h2 className="text-card-title font-extrabold text-wtext-1 dark:text-white tabular-nums tracking-tight">
-          {monthLabel}
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-card-title font-extrabold text-wtext-1 dark:text-white tabular-nums tracking-tight">
+            {monthLabel}
+          </h2>
+          {selectionMode === 'week-default' && (
+            <button
+              type="button"
+              onClick={goToToday}
+              className="rounded-w-pill border border-it-line px-2 py-1 text-card-meta font-semibold text-it-blue-600 transition-colors duration-150 hover:bg-it-fill focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 motion-reduce:transition-none dark:border-it-blue-900 dark:text-it-blue-300 dark:hover:bg-it-blue-900"
+              aria-label={MESSAGES.dashboard.weekSchedule.goToTodayLabel}
+            >
+              {MESSAGES.dashboard.weekSchedule.goToToday}
+            </button>
+          )}
+        </div>
         <button
           type="button"
           onClick={goToNextMonth}
@@ -831,7 +969,7 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
                 <button
                   type="button"
                   key={`cell-${index}`}
-                  onClick={() => day.isCurrentMonth && setSelectedDateKey(day.dateKey)}
+                  onClick={() => day.isCurrentMonth && handleDateSelect(day.dateKey)}
                   disabled={!day.isCurrentMonth}
                   className={cn(
                     // [2026-05-16] 키보드 포커스 가시성 — focus-visible:ring-2 추가
@@ -848,7 +986,6 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
                   )}
                   aria-label={`${currentMonth + 1}월 ${day.date}일${day.isToday ? ' 오늘' : ''}${hasClasses ? ` 수업 ${day.classes.length}개` : ''}`}
                   aria-selected={isSelected}
-                  aria-pressed={isSelected}
                   role="gridcell"
                 >
                   <span
@@ -919,6 +1056,8 @@ export function ClassCalendarSection({ teamIds, academies, onSelectionChange, en
  */
 interface SelectedDayClassListProps {
   classes: CalendarClass[];
+  /** 일정이 없을 때 표시할 문구. 미지정 시 기존 오늘 일정 빈 상태를 사용한다. */
+  emptyMessage?: string;
   /** 출석/결제 관리 버튼 노출 여부 (코치/감독/관리자만 true 권장) */
   canManage?: boolean;
 
@@ -975,6 +1114,7 @@ function getTodayKey(): string {
 
 export function SelectedDayClassList({
   classes,
+  emptyMessage = MESSAGES.dashboard.noSchedule,
   canManage = false,
   scheduleIdToChildIds,
   attendanceMap,
@@ -1103,7 +1243,7 @@ export function SelectedDayClassList({
         )}>
           <Icon name="event_busy" className="text-xl text-wtext-3 dark:text-rink-300" aria-hidden="true" />
         </div>
-        <p className="text-card-title text-wtext-3 dark:text-rink-300">{MESSAGES.dashboard.noSchedule}</p>
+        <p className="text-card-title text-wtext-3 dark:text-rink-300">{emptyMessage}</p>
       </div>
     );
   }
