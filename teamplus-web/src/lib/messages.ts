@@ -3068,6 +3068,20 @@ export const MESSAGES = {
     addressCopied: "주소가 복사되었습니다.",
     addressCopyFailed: "주소 복사에 실패했습니다.",
     episodeCancelConfirm: "이 회차를 취소하시겠습니까?",
+    // 복사하여 등록 — 기존 수업 기반 신규 등록(create) prefill 피드백.
+    copyLoadFailed: "수업 정보를 불러오지 못했습니다. 빈 양식으로 시작합니다.",
+    copyPrefilled: "기존 수업 내용을 불러왔습니다. 일정은 새로 선택해주세요.",
+    // 기존 수업 불러오기 — 등록 화면 상단 진입 버튼 + 원본 선택 바텀시트.
+    copySheet: {
+      loadButton: "기존 수업 불러오기",
+      title: "불러올 수업 선택",
+      loading: "수업 목록을 불러오는 중입니다.",
+      empty: "불러올 수업이 없습니다.",
+      loadFailed: "수업 목록을 불러오지 못했습니다.",
+      typeRegular: "정규훈련",
+      typeOpen: "오픈클래스",
+      noSchedule: "일정 미정",
+    },
     // 등록/수정 폼 검증 — useClassForm.validateClassForm / handleSubmit 에서 참조 (2026-05-14 추가).
     validation: {
       classDaysRequired: "수업 요일을 1개 이상 선택해주세요.",

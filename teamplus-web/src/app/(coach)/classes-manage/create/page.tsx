@@ -21,6 +21,7 @@ import {
   type BulkUpsertItem,
 } from '@/services/class-product.service';
 import type { DraftProduct } from '@/components/classes/PackageManageSection';
+import { ClassCopySourceSheet } from '@/components/classes/ClassCopySourceSheet';
 
 // [추가 2026-05-11] 요일 표기 한글 통일 + 월요일 시작 정렬 — DB EN/KR 혼재 정정.
 const DAY_NORMALIZE_MAP: Record<string, string> = {
@@ -81,6 +82,11 @@ function ClassCreatePageInner() {
     searchParams?.get('edit') ?? (routeParams?.id as string | undefined) ?? null;
   const isEditMode = !!editClassId;
 
+  // [복사하여 등록] ?copyFrom={classId} — 원본을 신규 등록 폼에 prefill (mode='create' 유지).
+  //   edit 우선: edit+copyFrom 동시 진입 시 edit 승리.
+  const copyFromId = searchParams?.get('copyFrom') ?? null;
+  const isCopyMode = !isEditMode && !!copyFromId;
+
   // [수정 2026-05-13 P2] 분기 결정 기준을 userType → URL 로 변경.
   //  /classes-manage/create → 팀 모드, /academy-classes/create → 오픈클래스 모드.
   //  오픈클래스 감독이 /classes-manage/create 직접 진입 시 안전망 redirect 로 표준 URL 동선 유도.
@@ -100,9 +106,12 @@ function ClassCreatePageInner() {
     ) {
       // [2026-06-09] replace 로 교체 — 안전망 redirect 가 history 에 classes-manage/create 를
       //   남겨, 오픈클래스 등록 화면에서 뒤로가기 시 팀 수업등록 화면이 보이던 회귀 수정.
-      replace('/academy-classes/create');
+      //   copyFrom 쿼리 보존 — 유실 시 오픈클래스 복사 진입이 빈 폼으로 떨어진다.
+      replace(
+        `/academy-classes/create${copyFromId ? `?copyFrom=${copyFromId}` : ''}`,
+      );
     }
-  }, [user, isAcademyMode, replace]);
+  }, [user, isAcademyMode, replace, copyFromId]);
 
   const pageTitle = isEditMode ? '수업 수정' : '수업 등록';
 
@@ -125,6 +134,18 @@ function ClassCreatePageInner() {
   //   bulk 엔드포인트로 일괄 반영한다. (기존: 시트 저장 시 즉시 단건 API → 저장 시점 이원화 문제)
   const [draftProducts, setDraftProducts] = useState<DraftProduct[]>([]);
   const [productsDirty, setProductsDirty] = useState(false);
+
+  // [기존 수업 불러오기] 신규 등록 모드 원본 선택 시트 — 선택 시 현재 경로에 ?copyFrom 부여.
+  const [copySourceOpen, setCopySourceOpen] = useState(false);
+  const handleCopySourceSelect = useCallback(
+    (sourceId: string) => {
+      setCopySourceOpen(false);
+      // 현재 pathname 유지(팀=/classes-manage/create, 오픈클래스=/academy-classes/create) →
+      //   기존 copyFrom prefill 배관 그대로 실행. replace 로 뒤로가기 루프 차단.
+      replace(`${pathname}?copyFrom=${sourceId}`);
+    },
+    [pathname, replace],
+  );
 
   // 폼 PUT 성공 후 호출 — draft diff 를 bulk 로 반영. 실패 시 false 반환(완료 이동 차단).
   const handleAfterSubmit = useCallback(
@@ -213,14 +234,16 @@ function ClassCreatePageInner() {
     // 완료 페이지 수강료 목록 — 변경된 패키지 가격·다중 정기권을 정확히 표시.
     buildCompleteFeeItems,
   });
-  const [isLoadingData, setIsLoadingData] = useState(isEditMode);
+  const [isLoadingData, setIsLoadingData] = useState(isEditMode || isCopyMode);
   const [enrollmentCount, setEnrollmentCount] = useState(0);
   const [clubId, setClubId] = useState('');
 
   usePageReady(!isLoadingData && !(isAcademyMode && isLoadingAcademies));
 
   const fetchClassData = useCallback(async () => {
-    if (!editClassId) return;
+    // 소스 ID — edit 은 editClassId, copy 는 copyFromId. 조회 로직은 동일 재사용.
+    const sourceClassId = editClassId ?? copyFromId;
+    if (!sourceClassId) return;
     setIsLoadingData(true);
     try {
       // [수정 2026-05-11] 본인 관리 팀 중 첫 번째를 무조건 사용하던 버그 수정.
@@ -235,8 +258,9 @@ function ClassCreatePageInner() {
         team?: { id?: string };
         [k: string]: unknown;
       };
-      const baseRes = await api.get<ClassWithTeam>(`/classes/${editClassId}`);
+      const baseRes = await api.get<ClassWithTeam>(`/classes/${sourceClassId}`);
       if (!baseRes.success || !baseRes.data) {
+        if (isCopyMode) toast.error(MESSAGES.classesEdit.copyLoadFailed);
         setIsLoadingData(false);
         return;
       }
@@ -256,14 +280,16 @@ function ClassCreatePageInner() {
           baseRes.data.club?.id ??
           '';
         if (!fetchedClubId) {
+          if (isCopyMode) toast.error(MESSAGES.classesEdit.copyLoadFailed);
           setIsLoadingData(false);
           return;
         }
-        setClubId(fetchedClubId);
+        if (!isCopyMode) setClubId(fetchedClubId);
         const res = await api.get<Record<string, unknown>>(
-          `/teams/${fetchedClubId}/classes/${editClassId}`,
+          `/teams/${fetchedClubId}/classes/${sourceClassId}`,
         );
         d = res.success && res.data ? res.data : null;
+        if (!d && isCopyMode) toast.error(MESSAGES.classesEdit.copyLoadFailed);
       }
 
       if (d) {
@@ -273,26 +299,31 @@ function ClassCreatePageInner() {
         let startTimeOnly = '';
         let endTimeOnly = '';
 
-        if (d.startTime) {
-          const st = new Date(d.startTime as string);
-          if (!isNaN(st.getTime())) {
-            startDate = st.toISOString().slice(0, 10);
-            startTimeOnly = `${String(st.getHours()).padStart(2, '0')}:${String(st.getMinutes()).padStart(2, '0')}`;
+        // copy 모드는 낡은 기간/시각 이월 방지 — 날짜·시각 미복사(daySchedules 템플릿이 시각 담당).
+        if (!isCopyMode) {
+          if (d.startTime) {
+            const st = new Date(d.startTime as string);
+            if (!isNaN(st.getTime())) {
+              startDate = st.toISOString().slice(0, 10);
+              startTimeOnly = `${String(st.getHours()).padStart(2, '0')}:${String(st.getMinutes()).padStart(2, '0')}`;
+            }
           }
-        }
-        if (d.endTime) {
-          const et = new Date(d.endTime as string);
-          if (!isNaN(et.getTime())) {
-            endDate = et.toISOString().slice(0, 10);
-            endTimeOnly = `${String(et.getHours()).padStart(2, '0')}:${String(et.getMinutes()).padStart(2, '0')}`;
+          if (d.endTime) {
+            const et = new Date(d.endTime as string);
+            if (!isNaN(et.getTime())) {
+              endDate = et.toISOString().slice(0, 10);
+              endTimeOnly = `${String(et.getHours()).padStart(2, '0')}:${String(et.getMinutes()).padStart(2, '0')}`;
+            }
           }
         }
 
-        // 수강생 수 저장
-        setEnrollmentCount(
-          (d.currentEnrollment as number) ??
-          (Array.isArray(d.enrollments) ? (d.enrollments as unknown[]).length : 0)
-        );
+        // 수강생 수 저장 — copy 모드는 신규 수업이므로 0 유지.
+        if (!isCopyMode) {
+          setEnrollmentCount(
+            (d.currentEnrollment as number) ??
+            (Array.isArray(d.enrollments) ? (d.enrollments as unknown[]).length : 0)
+          );
+        }
 
         // 날짜별 일정(ClassSchedule) prefill — 수정 화면에 등록 일정 복원.
         let dateSchedulesPrefill: Array<{
@@ -304,7 +335,8 @@ function ClassCreatePageInner() {
           venueName?: string;
         }> = [];
         // 모든 수업(팀 정규·레슨·오픈)이 등록 일정을 복원한다.
-        {
+        //   copy 모드는 일정을 비워 새로 선택하게 하므로 조회 자체 생략(dateSchedules: []).
+        if (!isCopyMode) {
           const schedRes = await api.get<
             Array<{
               scheduledDate: string;
@@ -314,7 +346,7 @@ function ClassCreatePageInner() {
               venue?: { name?: string } | null;
               isCancelled?: boolean;
             }>
-          >(`/classes/${editClassId}/schedules`);
+          >(`/classes/${sourceClassId}/schedules`);
           if (schedRes.success && Array.isArray(schedRes.data)) {
             dateSchedulesPrefill = schedRes.data
               .filter((s) => !s.isCancelled)
@@ -352,9 +384,9 @@ function ClassCreatePageInner() {
           endTimeOnly,
           // [수정 2026-05-11] 영어/한글 혼재 정규화 + 월요일 시작 정렬.
           classDays: normalizeDaysKR(d.classDays),
-          startTime: (d.startTime ?? '') as string,
-          endTime: (d.endTime ?? '') as string,
-          isActive: d.isActive !== false,
+          startTime: isCopyMode ? '' : ((d.startTime ?? '') as string),
+          endTime: isCopyMode ? '' : ((d.endTime ?? '') as string),
+          isActive: isCopyMode ? true : d.isActive !== false,
           coachId: (d.coachId ?? '') as string,
           // [2026-05-12] 다중 코치 배정 복원 — coachAssignments 우선, fallback 으로 coachId 단일.
           selectedCoaches: Array.isArray(d.coachAssignments) &&
@@ -432,20 +464,30 @@ function ClassCreatePageInner() {
                   (s): s is NonNullable<typeof s> => s !== null,
                 )
             : [],
-          // [2026-06-09] 오픈클래스 날짜별 일정 prefill.
+          // [2026-06-09] 오픈클래스 날짜별 일정 prefill. copy 모드는 항상 빈 배열.
           dateSchedules: dateSchedulesPrefill,
         });
+        // copy prefill 성공 — 일정 재선택 유도(원본 일정은 이월되지 않음).
+        if (isCopyMode) toast.success(MESSAGES.classesEdit.copyPrefilled);
       }
     } catch {
-      // 에러 시 빈 폼으로 유지
+      // 에러 시 빈 폼으로 유지 — copy 모드는 실패를 안내한다.
+      if (isCopyMode) toast.error(MESSAGES.classesEdit.copyLoadFailed);
     } finally {
       setIsLoadingData(false);
     }
-  }, [editClassId]);
+  }, [editClassId, copyFromId, isCopyMode, toast]);
+
+  // academy_director 가 팀 모드로 진입하면 오픈클래스로 redirect 예정 — redirect 전 마운트에서
+  //   fetch/토스트가 중복 실행되지 않도록 가드(도착 후 단일 실행). 정상 경로(팀 감독·코치,
+  //   오픈클래스 직결)는 이 조건이 거짓이라 무영향.
+  const pendingAcademyRedirect =
+    user?.userType?.toLowerCase() === 'academy_director' && !isAcademyMode;
 
   useEffect(() => {
-    if (isEditMode) fetchClassData();
-  }, [isEditMode, fetchClassData]);
+    if (pendingAcademyRedirect) return;
+    if (isEditMode || isCopyMode) fetchClassData();
+  }, [isEditMode, isCopyMode, fetchClassData, pendingAcademyRedirect]);
 
   // [패키지 일괄 반영] 수정 모드 진입 시 기존 패키지를 draft 로 로딩(serverId 채움).
   useEffect(() => {
@@ -473,6 +515,49 @@ function ClassCreatePageInner() {
       mounted = false;
     };
   }, [isEditMode, editClassId]);
+
+  // [복사하여 등록] copy 모드 — 원본 패키지를 신규 생성용 draft 로 적재(serverId 없음 → bulk 가 전부 create).
+  //   필터: PER_SESSION 제외(폼 singlePrice + BE 자동 생성), isActive=false 제외,
+  //   월분(billingMonth) row 는 최신 월 세트만(+무월 정기권). billingMonth 는 draft 에 미전달.
+  useEffect(() => {
+    // redirect 예정(academy_director 팀 모드)은 fetch effect 와 동일하게 건너뛴다 —
+    //   도착 후 단일 실행으로 listClassProducts 2회 호출 방지.
+    if (pendingAcademyRedirect) return;
+    if (!isCopyMode || !copyFromId) return;
+    let mounted = true;
+    (async () => {
+      const list = await listClassProducts(copyFromId);
+      if (!mounted) return;
+      const active = list.filter(
+        (p) => p.isActive && p.feeType !== 'PER_SESSION',
+      );
+      const monthKeys = active
+        .map((p) => p.billingMonth)
+        .filter((m): m is string => Boolean(m)); // ISO 문자열 — 사전순 = 시간순
+      const latestMonth = monthKeys.length
+        ? monthKeys.sort().at(-1) ?? null
+        : null;
+      const copied = active.filter(
+        (p) => p.billingMonth == null || p.billingMonth === latestMonth,
+      );
+      setDraftProducts(
+        copied.map((p, i) => ({
+          localKey: `copy-${i}`,
+          productName: p.productName,
+          price: p.price,
+          feeType: p.feeType ?? 'MONTHLY_FIXED',
+          sessionsPerMonth: p.sessionsPerMonth ?? 1,
+          sessionsPerWeek: p.sessionsPerWeek ?? undefined,
+          durationDays: p.durationDays ?? undefined,
+          description: p.description ?? undefined,
+        })),
+      );
+      setProductsDirty(copied.length > 0);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [isCopyMode, copyFromId, pendingAcademyRedirect]);
 
   const handleProductsChange = useCallback((next: DraftProduct[]) => {
     setDraftProducts(next);
@@ -567,6 +652,21 @@ function ClassCreatePageInner() {
           </section>
         ) : (
           <>
+            {/* 신규 등록 전용 — 기존 수업을 원본으로 불러와 폼을 prefill(copyFrom).
+                edit/copy 진입 시에는 숨김(이미 데이터가 채워진 상태). */}
+            {!isEditMode && !isCopyMode && (
+              <div className="mb-4">
+                <button
+                  type="button"
+                  onClick={() => setCopySourceOpen(true)}
+                  aria-label={MESSAGES.classesEdit.copySheet.loadButton}
+                  className="w-full h-12 rounded-w-md border-[1.5px] border-it-blue-500 text-card-body font-semibold text-it-blue-500 dark:text-it-blue-300 hover:bg-it-blue-500/5 dark:hover:bg-it-blue-500/10 transition-colors motion-reduce:transition-none active:brightness-95 flex items-center justify-center gap-2"
+                >
+                  <Icon name="content_copy" className="text-[18px]" aria-hidden="true" />
+                  {MESSAGES.classesEdit.copySheet.loadButton}
+                </button>
+              </div>
+            )}
             {/* [2026-06] 수강료 통합 — 수정 모드의 패키지 관리(PackageManageSection)를 ClassForm
                 'SECTION 4: 수강료' 자리에 임베드한다. create 모드는 ClassForm 내부 1회권 입력 사용.
                 동일 ClassProduct 도메인을 한 자리에서 관리(기존 '디렉터 전용 설정' + 별도 패키지 영역 통합). */}
@@ -608,6 +708,12 @@ function ClassCreatePageInner() {
               }
             />
             {/* 코치 배정은 /coach-assignments 페이지에서 관리 */}
+            <ClassCopySourceSheet
+              isOpen={copySourceOpen}
+              onClose={() => setCopySourceOpen(false)}
+              isAcademyMode={isAcademyMode}
+              onSelect={handleCopySourceSelect}
+            />
           </>
         )}
       </main>
