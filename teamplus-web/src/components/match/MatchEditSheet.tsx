@@ -180,9 +180,13 @@ export function MatchEditSheet({
             <TimePicker
               value={time}
               onChange={setTime}
-              placeholder="시간"
-              sheetTitle="시작 시간을 선택해주세요."
+              startHour={0}
+              stepMinutes={10}
+              placeholder={MESSAGES.common.timePicker.matchTime}
+              sheetTitle={MESSAGES.common.timePicker.matchTime}
+              ariaLabel={MESSAGES.common.timePicker.matchTime}
               showChevron={false}
+              nested
               className="px-3 gap-2 bg-wbg dark:bg-rink-700"
             />
           </div>

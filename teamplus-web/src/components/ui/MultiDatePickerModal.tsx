@@ -17,6 +17,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '@/components/ui/Icon';
 import { BottomSheet } from '@/components/ui/BottomSheet';
+import { TimePicker } from '@/components/ui/TimePicker';
 import { WEEKDAY_HEADERS, weekColumnOf } from '@/lib/calendar-week';
 import { MESSAGES } from '@/lib/messages';
 
@@ -430,29 +431,35 @@ export function MultiDatePickerModal({
             {MESSAGES.class.dayDefaults.commonTimeLabel(uncoveredCount)}
           </p>
           <div className="grid grid-cols-2 gap-2">
-            <input
-              type="time"
+            <TimePicker
               value={commonStart}
-              onChange={(e) => setCommonStart(e.target.value)}
+              onChange={setCommonStart}
+              startHour={0}
+              stepMinutes={10}
+              placeholder={MESSAGES.class.dayDefaults.startTime}
+              sheetTitle={MESSAGES.class.dayDefaults.startTime}
+              nested
               className={
                 iceTheme
                   ? 'h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500'
                   : 'h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-wtext-1 dark:text-white focus:outline-none focus:border-ice-500'
               }
               aria-label={MESSAGES.class.dayDefaults.startTime}
-              aria-required="true"
             />
-            <input
-              type="time"
+            <TimePicker
               value={commonEnd}
-              onChange={(e) => setCommonEnd(e.target.value)}
+              onChange={setCommonEnd}
+              startHour={0}
+              stepMinutes={10}
+              placeholder={MESSAGES.class.dayDefaults.endTime}
+              sheetTitle={MESSAGES.class.dayDefaults.endTime}
+              nested
               className={
                 iceTheme
                   ? 'h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500'
                   : 'h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-wtext-1 dark:text-white focus:outline-none focus:border-ice-500'
               }
               aria-label={MESSAGES.class.dayDefaults.endTime}
-              aria-required="true"
             />
           </div>
         </div>

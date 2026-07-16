@@ -4,6 +4,7 @@ import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '@/components/ui/Icon';
 import { cn } from '@/lib/utils';
+import { lockBodyScroll, unlockBodyScroll } from '@/lib/scroll-lock';
 import { useNativeScrim } from '@/hooks/useNativeScrim';
 
 /**
@@ -48,6 +49,8 @@ interface BottomSheetProps {
   maxHeight?: string;
   /** 추가 클래스명 (시트 컨테이너) */
   className?: string;
+  /** 부모 오버레이 안에서 여는 중첩 시트면 false — 부모 native scrim 상태 보존 */
+  manageNativeScrim?: boolean;
 }
 
 const CLOSE_ANIMATION_MS = 300;
@@ -60,12 +63,14 @@ export function BottomSheet({
   footer,
   maxHeight = '85vh',
   className,
+  manageNativeScrim = true,
 }: BottomSheetProps) {
   // Portal 마운트 여부 (SSR 대응)
   const [mounted, setMounted] = useState(false);
   const [isRendered, setIsRendered] = useState(isOpen);
   const [isClosing, setIsClosing] = useState(false);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -114,13 +119,19 @@ export function BottomSheet({
   // 2026-05-16: BottomSheet 는 화면 하단까지 시트 카드가 차지하므로 하단 native scrim
   // 비활성(`bottom: false`) — 하단 dim 이 시트 카드 위에 덮이는 시각 버그 회피.
   // SoT: docs/Design/MODAL_DIM_POLICY.md
-  useNativeScrim(isRendered, '#73141826', { bottom: false });
+  useNativeScrim(manageNativeScrim && isRendered, '#73141826', { bottom: false });
 
   // ESC 키로 닫기
   useEffect(() => {
     if (!isRendered || isClosing) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') requestClose();
+      if (e.key !== 'Escape') return;
+
+      const renderedSheets = document.querySelectorAll<HTMLElement>(
+        '[data-bottom-sheet-root]',
+      );
+      const topmostSheet = renderedSheets.item(renderedSheets.length - 1);
+      if (topmostSheet === rootRef.current) requestClose();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -129,11 +140,8 @@ export function BottomSheet({
   // body scroll lock (시트 열릴 때 배경 스크롤 방지)
   useEffect(() => {
     if (!isRendered) return;
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = originalOverflow;
-    };
+    lockBodyScroll();
+    return unlockBodyScroll;
   }, [isRendered]);
 
   const handleOverlayClick = useCallback(
@@ -147,6 +155,8 @@ export function BottomSheet({
 
   return createPortal(
     <div
+      ref={rootRef}
+      data-bottom-sheet-root
       className="overlay-fullscreen-wrapper items-end justify-center"
       role="dialog"
       aria-modal="true"

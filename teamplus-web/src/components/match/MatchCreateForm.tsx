@@ -2,6 +2,7 @@
 
 import { FormEvent, useState, useEffect, useMemo } from 'react';
 import { Icon } from '@/components/ui/Icon';
+import { TimePicker } from '@/components/ui/TimePicker';
 import { MESSAGES } from '@/lib/messages';
 import { cn } from '@/lib/utils';
 
@@ -185,10 +186,14 @@ export function MatchCreateForm({
             />
           </Field>
           <Field label={MESSAGES.match.form.time.label} required iceTheme={iceTheme}>
-            <input
-              type="time"
+            <TimePicker
               value={values.time}
-              onChange={(e) => update('time', e.target.value)}
+              onChange={(time) => update('time', time)}
+              startHour={0}
+              stepMinutes={10}
+              placeholder={MESSAGES.common.timePicker.matchTime}
+              sheetTitle={MESSAGES.common.timePicker.matchTime}
+              ariaLabel={MESSAGES.common.timePicker.matchTime}
               className={cn(fieldInputClass, 'min-w-0 box-border')}
             />
           </Field>
