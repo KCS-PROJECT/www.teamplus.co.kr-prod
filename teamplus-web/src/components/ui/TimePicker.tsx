@@ -12,7 +12,7 @@
  *   <TimePicker value={time} onChange={setTime} placeholder="시작 시간" />
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '@/components/ui/Icon';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { cn } from '@/lib/utils';
@@ -83,6 +83,8 @@ export function TimePicker({
   const [isOpen, setIsOpen] = useState(false);
   const [draftHour, setDraftHour] = useState(startHour);
   const [draftMinute, setDraftMinute] = useState(0);
+  const hourListRef = useRef<HTMLDivElement>(null);
+  const selectedHourRef = useRef<HTMLButtonElement>(null);
 
   const safeStartHour = Math.max(0, Math.min(23, startHour));
   const safeEndHour = Math.max(safeStartHour, Math.min(23, endHour));
@@ -133,6 +135,36 @@ export function TimePicker({
     onChange(`${pad2(draftHour)}:${pad2(draftMinute)}`);
     setIsOpen(false);
   };
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let frameId = 0;
+    let attempts = 0;
+    const positionSelectedHour = () => {
+      const list = hourListRef.current;
+      const selectedHour = selectedHourRef.current;
+
+      if (!list || !selectedHour) {
+        attempts += 1;
+        if (attempts < 5) frameId = requestAnimationFrame(positionSelectedHour);
+        return;
+      }
+
+      const listRect = list.getBoundingClientRect();
+      const selectedRect = selectedHour.getBoundingClientRect();
+      const centeredScrollTop =
+        list.scrollTop +
+        selectedRect.top -
+        listRect.top -
+        (list.clientHeight - selectedRect.height) / 2;
+
+      list.scrollTop = Math.max(0, centeredScrollTop);
+    };
+
+    frameId = requestAnimationFrame(positionSelectedHour);
+    return () => cancelAnimationFrame(frameId);
+  }, [isOpen]);
 
   const displayText = value || placeholder;
   const isPlaceholder = !value;
@@ -204,13 +236,15 @@ export function TimePicker({
               {MESSAGES.common.timePicker.hour}
             </p>
             <div
-              className="hide-scrollbar max-h-64 overflow-y-auto rounded-w-md border border-wline bg-wbg p-1 dark:border-rink-700 dark:bg-rink-900/40"
+              ref={hourListRef}
+              className="hide-scrollbar h-72 overflow-y-auto rounded-w-md border border-wline bg-wbg p-1 dark:border-rink-700 dark:bg-rink-900/40"
               role="group"
               aria-label={MESSAGES.common.timePicker.hour}
             >
               {hours.map((hour) => (
                 <button
                   key={hour}
+                  ref={draftHour === hour ? selectedHourRef : undefined}
                   type="button"
                   aria-pressed={draftHour === hour}
                   onClick={() => setDraftHour(hour)}
@@ -231,7 +265,7 @@ export function TimePicker({
               {MESSAGES.common.timePicker.minute}
             </p>
             <div
-              className="rounded-w-md border border-wline bg-wbg p-1 dark:border-rink-700 dark:bg-rink-900/40"
+              className="hide-scrollbar h-72 overflow-y-auto rounded-w-md border border-wline bg-wbg p-1 dark:border-rink-700 dark:bg-rink-900/40"
               role="group"
               aria-label={MESSAGES.common.timePicker.minute}
             >
