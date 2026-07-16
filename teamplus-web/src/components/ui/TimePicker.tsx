@@ -4,7 +4,7 @@
  * TimePicker — 공통 시간 선택 컴포넌트
  *
  * 매치/수업 시작 시간 등 시각 선택의 단일 진입점. (일자 선택 DatePickerModal 과 짝)
- * - 트리거: 현재 선택 시간(오전/오후 한국어 표기)을 표시하는 버튼 → 직접 텍스트 입력 불가
+ * - 트리거: 좁은 2열 폼에서도 잘리지 않는 24시간 `HH:mm` 표시 → 직접 텍스트 입력 불가
  * - 시트: BottomSheet — 시/분을 분리해 OS 선택기 없이 지정된 간격으로 선택
  * - 값: 'HH:MM' (24시간) 문자열 (빈 문자열이면 미선택)
  *
@@ -134,7 +134,7 @@ export function TimePicker({
     setIsOpen(false);
   };
 
-  const displayText = value ? formatTimeLabel(value) : placeholder;
+  const displayText = value || placeholder;
   const isPlaceholder = !value;
 
   return (
@@ -148,8 +148,8 @@ export function TimePicker({
         aria-haspopup="dialog"
         aria-expanded={isOpen}
         className={cn(
-          'h-12 w-full rounded-[12px] bg-white dark:bg-rink-800 border border-wline dark:border-rink-700',
-          'px-4 flex items-center gap-2.5 text-left transition-colors',
+          'h-12 w-full min-w-0 rounded-[12px] bg-white dark:bg-rink-800 border border-wline dark:border-rink-700',
+          'px-3 flex items-center gap-2 text-left transition-colors',
           'motion-reduce:transition-none',
           'hover:border-ice-500 focus-visible:outline-none focus-visible:border-ice-500 focus-visible:ring-2 focus-visible:ring-ice-500',
           disabled && 'opacity-50 cursor-not-allowed',
@@ -158,13 +158,13 @@ export function TimePicker({
       >
         <Icon
           name="schedule"
-          size={18}
+          size={16}
           className="text-wtext-3 dark:text-rink-300 shrink-0"
           aria-hidden="true"
         />
         <span
           className={cn(
-            'flex-1 min-w-0 text-card-meta font-semibold tabular-nums truncate',
+            'flex-1 min-w-0 truncate whitespace-nowrap text-card-meta font-num font-semibold tabular-nums',
             isPlaceholder
               ? 'text-wtext-3 dark:text-rink-300'
               : 'text-wtext-1 dark:text-white',
@@ -175,7 +175,7 @@ export function TimePicker({
         {showChevron && (
           <Icon
             name="expand_more"
-            size={18}
+            size={16}
             className="text-wtext-3 dark:text-rink-300 shrink-0"
             aria-hidden="true"
           />
@@ -189,22 +189,13 @@ export function TimePicker({
         maxHeight="70vh"
         manageNativeScrim={!nested}
         footer={
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setIsOpen(false)}
-              className="h-12 rounded-w-md border border-wline bg-wsurface text-card-body font-bold text-wtext-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 dark:border-rink-700 dark:bg-rink-800 dark:text-rink-100"
-            >
-              {MESSAGES.common.cancel}
-            </button>
-            <button
-              type="button"
-              onClick={handleConfirm}
-              className="h-12 rounded-w-md bg-ice-500 text-card-body font-bold text-white hover:bg-ice-600 active:bg-ice-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-800"
-            >
-              {MESSAGES.common.confirm}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            className="h-12 w-full rounded-w-md bg-ice-500 text-card-body font-bold text-white hover:bg-ice-600 active:bg-ice-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-800"
+          >
+            {MESSAGES.common.confirm}
+          </button>
         }
       >
         <div className="grid grid-cols-2 gap-3 pb-2">
