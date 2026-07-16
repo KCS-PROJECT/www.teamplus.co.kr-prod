@@ -23,7 +23,9 @@ import { isTeamManager } from "@/lib/team-roles";
 import {
   genderLabel,
   teamGroupService,
+  RESERVED_TEAM_GROUP_NAME,
   type EligibleMemberRow,
+  type TeamCoachCandidate,
 } from "@/services/team-group.service";
 import { useDateTime } from "@/hooks/useDateTime";
 
@@ -45,6 +47,15 @@ export default function TeamGroupEditPage() {
   const canManage = isTeamManager(user);
 
   const [name, setName] = useState("");
+  // 진입 시점 그룹 이름 — 자기 이름 그대로 저장은 검증 통과.
+  const [originalName, setOriginalName] = useState("");
+  // 같은 팀의 다른 하위그룹 이름 — 입력 중 실시간 중복 안내용 (서버 검증이 최종 방어).
+  const [otherNames, setOtherNames] = useState<string[]>([]);
+  // 담당코치 (선택 입력) — "" = 지정 안 함.
+  const [coachMemberId, setCoachMemberId] = useState("");
+  const [coachCandidates, setCoachCandidates] = useState<TeamCoachCandidate[]>([]);
+  // 진입 시점 담당코치 이름 — 후보 목록에 없는 기존 지정(역할 변경 등) 표시 폴백.
+  const [prefillCoachName, setPrefillCoachName] = useState<string | null>(null);
   // [2026-06-05] 연령대(U8~U12) → 참가 대상 출생연도 문자열(예: "2016").
   const [ageGroup, setAgeGroup] = useState<string>("");
   const [members, setMembers] = useState<EligibleMemberRow[]>([]);
@@ -98,6 +109,9 @@ export default function TeamGroupEditPage() {
         teamGroupService.listEligibleMembers(teamId),
       ]);
       setName(detail.name);
+      setOriginalName(detail.name);
+      setCoachMemberId(detail.coachMemberId ?? "");
+      setPrefillCoachName(detail.coachName ?? null);
       // 대상 설명(자유 텍스트) — 저장값 그대로 prefill (레거시 U8~U12·출생연도 포함).
       setAgeGroup(detail.ageGroup ?? "");
       setTeamName(detail.teamName ?? "");
@@ -130,6 +144,36 @@ export default function TeamGroupEditPage() {
   useEffect(() => {
     if (canManage) void loadAll();
   }, [canManage, loadAll]);
+
+  // ─── 같은 팀의 다른 그룹 이름(실시간 중복 안내) + 담당코치 후보 로드 — 실패해도 무시, 서버 검증 폴백
+  useEffect(() => {
+    if (!teamId || !groupId || !canManage) return;
+    let cancelled = false;
+    void (async () => {
+      const [list, coaches] = await Promise.all([
+        teamGroupService.listByTeam(teamId).catch(() => null),
+        teamGroupService.listCoachCandidates(teamId).catch(() => null),
+      ]);
+      if (cancelled) return;
+      if (list)
+        setOtherNames(list.filter((g) => g.id !== groupId).map((g) => g.name));
+      if (coaches) setCoachCandidates(coaches);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [teamId, groupId, canManage]);
+
+  // 입력 중 실시간 이름 검증 — 자기 이름 유지(no-op)는 통과.
+  const liveNameError = useMemo(() => {
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === originalName.trim()) return undefined;
+    if (trimmed === RESERVED_TEAM_GROUP_NAME)
+      return MESSAGES.team.groupNameReserved;
+    if (otherNames.some((n) => n.trim() === trimmed))
+      return MESSAGES.team.groupNameDuplicate;
+    return undefined;
+  }, [name, originalName, otherNames]);
 
   // 출생연도 — birthDate(ChildProfile 우선 SoT)가 있으면 그 연도, 없으면 레거시
   // playerAge(가입 시점 스냅샷) 역산 폴백. 한국나이 = currentYear - birthYear + 1.
@@ -191,6 +235,10 @@ export default function TeamGroupEditPage() {
       setErrors({ name: MESSAGES.team.groupNameRequired });
       return;
     }
+    if (liveNameError) {
+      setErrors({ name: liveNameError });
+      return;
+    }
 
     setErrors({});
     setSubmitting(true);
@@ -199,12 +247,22 @@ export default function TeamGroupEditPage() {
         name: trimmed,
         ageGroup: ageGroup || undefined,
         memberIds: Array.from(selectedIds),
+        // 항상 전송 — "" 는 지정 해제(백엔드에서 null 처리)
+        coachMemberId,
       });
       toast.success(MESSAGES.save.success);
       router.replace(`/team/${teamId}/groups`);
     } catch (err) {
       const message = err instanceof Error ? err.message : MESSAGES.save.fail;
-      setErrors({ server: message });
+      // 서버 중복/예약어 응답(로컬 목록 stale·동시 수정 race)은 input 아래 인라인으로 표시.
+      if (
+        message === MESSAGES.team.groupNameDuplicate ||
+        message === MESSAGES.team.groupNameReserved
+      ) {
+        setErrors({ name: message });
+      } else {
+        setErrors({ server: message });
+      }
       toast.error(message);
     } finally {
       setSubmitting(false);
@@ -262,13 +320,58 @@ export default function TeamGroupEditPage() {
                 id="group-name"
                 type="text"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setErrors((prev) =>
+                    prev.name ? { ...prev, name: undefined } : prev,
+                  );
+                }}
                 placeholder={MESSAGES.team.groupNamePlaceholder}
                 className="h-[50px] w-full rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-950 px-4 text-[15.5px] font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-it-ink-300 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20"
               />
-              {errors.name && (
-                <p className="mt-1.5 text-[12px] font-semibold text-it-red-500">{errors.name}</p>
+              {(errors.name ?? liveNameError) && (
+                <p className="mt-1.5 text-[12px] font-semibold text-it-red-500">
+                  {errors.name ?? liveNameError}
+                </p>
               )}
+            </div>
+
+            {/* 담당코치 (선택) */}
+            <div>
+              <label
+                htmlFor="group-coach"
+                className="mb-2 block text-[14px] font-extrabold tracking-[-0.01em] text-it-ink-800 dark:text-white"
+              >
+                {MESSAGES.team.groupCoachLabel}
+              </label>
+              <select
+                id="group-coach"
+                value={coachMemberId}
+                onChange={(e) => setCoachMemberId(e.target.value)}
+                disabled={coachCandidates.length === 0 && !coachMemberId}
+                className="h-[50px] w-full appearance-none rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-950 px-4 text-[15.5px] font-semibold text-it-ink-800 dark:text-white outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 disabled:opacity-60"
+              >
+                <option value="">{MESSAGES.team.groupCoachNone}</option>
+                {coachCandidates.map((c) => (
+                  <option key={c.memberId} value={c.memberId}>
+                    {c.roleInTeam === "HEAD_COACH"
+                      ? `${c.name} (${MESSAGES.team.groupCoachRoleHead})`
+                      : c.name}
+                  </option>
+                ))}
+                {/* 기존 지정 코치가 후보에 없으면(역할 변경 등) 현재 값 표시 유지 */}
+                {coachMemberId &&
+                  !coachCandidates.some((c) => c.memberId === coachMemberId) && (
+                    <option value={coachMemberId}>
+                      {prefillCoachName ?? MESSAGES.team.groupCoachLabel}
+                    </option>
+                  )}
+              </select>
+              <p className="mt-1.5 text-[12px] font-medium text-it-ink-500 dark:text-it-ink-300">
+                {coachCandidates.length === 0
+                  ? MESSAGES.team.groupCoachEmpty
+                  : MESSAGES.team.groupCoachHelper}
+              </p>
             </div>
 
             {/* 대상 설명 (선택 · 자유 텍스트) */}
@@ -445,7 +548,7 @@ export default function TeamGroupEditPage() {
             </button>
             <button
               type="submit"
-              disabled={submitting || !name.trim()}
+              disabled={submitting || !name.trim() || !!liveNameError}
               className="h-[50px] flex-[2] rounded-w-md bg-it-blue-500 text-[15px] font-extrabold text-white transition-colors duration-150 ease-ios motion-reduce:transition-none hover:bg-it-blue-600 active:brightness-95 disabled:bg-it-line-strong dark:disabled:bg-it-blue-900 disabled:cursor-not-allowed"
             >
               {submitting ? MESSAGES.common.saving : MESSAGES.common.save}

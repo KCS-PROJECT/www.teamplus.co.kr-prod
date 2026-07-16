@@ -1754,10 +1754,19 @@ export const MESSAGES = {
     groupNameLabel: "하위그룹 이름",
     groupNamePlaceholder: "예: 선수반 A조",
     groupNameRequired: "하위그룹 이름을 입력해주세요.",
+    // 백엔드 ConflictException/BadRequestException 메시지와 동일 문자열 — 409 폴백 매핑에 사용.
+    groupNameDuplicate: "이미 같은 이름의 하위그룹이 있습니다.",
+    groupNameReserved: "'기본'은 시스템 예약 이름이라 사용할 수 없습니다.",
+    groupCoachLabel: "담당코치",
+    groupCoachNone: "지정 안 함",
+    groupCoachRoleHead: "감독",
+    groupCoachMetaLabel: (name: string) => `담당코치 ${name}`,
+    groupCoachEmpty: "지정 가능한 코치가 없습니다.",
+    groupCoachHelper: "이 하위그룹을 담당할 코치를 지정합니다.",
     groupAgeGroupLabel: "대상 설명",
     groupAgeGroupPlaceholder: "예: 주말반 · 초급 · 2014년생 위주",
     groupAgeGroupHelper:
-      "선택 입력 — 이 하위그룹의 대상이나 성격을 자유롭게 적어주세요.",
+      "이 하위그룹의 대상이나 성격을 자유롭게 적어주세요.",
     // 하위그룹 선수 트리 — 미리보기 초과분 더보기/접기 토글
     groupMemberShowMore: (count: number) => `외 ${count}명 더보기`,
     groupMemberCollapse: "접기",

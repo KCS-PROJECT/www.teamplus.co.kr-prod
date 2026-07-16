@@ -40,4 +40,14 @@ export class CreateTeamGroupDto {
   @ArrayUnique()
   @IsString({ each: true })
   memberIds?: string[];
+
+  @ApiProperty({
+    description:
+      "담당코치 TeamMember.id (roleInTeam ∈ HEAD_COACH/COACH). 빈 문자열 = 지정 해제.",
+    required: false,
+    example: "cmxxx3",
+  })
+  @IsOptional()
+  @IsString()
+  coachMemberId?: string;
 }

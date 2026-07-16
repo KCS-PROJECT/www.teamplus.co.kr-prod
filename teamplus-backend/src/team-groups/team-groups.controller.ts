@@ -50,6 +50,14 @@ export class TeamGroupsController {
     return this.teamGroupsService.listEligibleMembers(teamId);
   }
 
+  @Get("teams/:teamId/coach-candidates")
+  @ApiOperation({
+    summary: "하위그룹 담당코치 후보 목록 — 팀 소속 HEAD_COACH/COACH",
+  })
+  async listCoachCandidates(@Param("teamId") teamId: string) {
+    return this.teamGroupsService.listCoachCandidates(teamId);
+  }
+
   @Get("team-groups/:id")
   @ApiOperation({ summary: "그룹 상세 + 멤버 목록" })
   async findOne(@Param("id") id: string) {

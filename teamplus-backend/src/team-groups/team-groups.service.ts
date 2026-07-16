@@ -2,6 +2,8 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  ConflictException,
+  BadRequestException,
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateTeamGroupDto } from "./dto/create-team-group.dto";
@@ -18,18 +20,25 @@ export class TeamGroupsService {
   async listByTeam(teamId: string) {
     await this.assertTeamExists(teamId);
 
-    return this.prisma.teamGroup.findMany({
+    const groups = await this.prisma.teamGroup.findMany({
       where: { teamId, isActive: true },
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
         name: true,
         ageGroup: true,
+        coachMemberId: true,
+        coachMember: { select: { playerName: true } },
         isActive: true,
         createdAt: true,
         _count: { select: { members: true } },
       },
     });
+
+    return groups.map(({ coachMember, ...g }) => ({
+      ...g,
+      coachName: coachMember?.playerName ?? null,
+    }));
   }
 
   /**
@@ -43,6 +52,8 @@ export class TeamGroupsService {
         teamId: true,
         name: true,
         ageGroup: true,
+        coachMemberId: true,
+        coachMember: { select: { playerName: true } },
         isActive: true,
         createdAt: true,
         team: { select: { id: true, name: true } },
@@ -82,6 +93,8 @@ export class TeamGroupsService {
       teamName: group.team.name,
       name: group.name,
       ageGroup: group.ageGroup,
+      coachMemberId: group.coachMemberId,
+      coachName: group.coachMember?.playerName ?? null,
       isActive: group.isActive,
       createdAt: group.createdAt,
       members: group.members.map((gm) => ({
@@ -148,11 +161,47 @@ export class TeamGroupsService {
   }
 
   /**
+   * 담당코치 후보 목록 — 팀 소속 approved 코치 (HEAD_COACH/COACH).
+   */
+  async listCoachCandidates(teamId: string) {
+    await this.assertTeamExists(teamId);
+
+    const coaches = await this.prisma.teamMember.findMany({
+      where: {
+        teamId,
+        approvalStatus: "approved",
+        leftAt: null,
+        roleInTeam: { in: ["HEAD_COACH", "COACH"] },
+      },
+      orderBy: { joinedAt: "asc" },
+      select: { id: true, playerName: true, roleInTeam: true },
+    });
+
+    return coaches.map((c) => ({
+      memberId: c.id,
+      name: c.playerName,
+      roleInTeam: c.roleInTeam,
+    }));
+  }
+
+  /**
    * 그룹 생성 — 감독/코치만 호출.
    * memberIds 가 있으면 한 트랜잭션으로 멤버 함께 등록.
    */
   async create(teamId: string, createdId: string, dto: CreateTeamGroupDto) {
     const team = await this.assertTeamExists(teamId);
+
+    const name = dto.name.trim();
+    if (!name) {
+      throw new BadRequestException("하위그룹 이름을 입력해주세요.");
+    }
+    this.assertNameNotReserved(name);
+    await this.assertGroupNameAvailable(teamId, name);
+
+    const coachMemberId = await this.resolveCoachMemberId(
+      teamId,
+      dto.coachMemberId,
+    );
 
     // memberIds 검증 — 모두 같은 club 소속이어야 함
     if (dto.memberIds && dto.memberIds.length > 0) {
@@ -176,8 +225,9 @@ export class TeamGroupsService {
       const group = await tx.teamGroup.create({
         data: {
           teamId,
-          name: dto.name,
+          name,
           ageGroup: dto.ageGroup ? sanitizeStrict(dto.ageGroup) : null,
+          coachMemberId: coachMemberId ?? null,
           createdId,
         },
       });
@@ -204,13 +254,36 @@ export class TeamGroupsService {
    * 그룹 수정 — name/ageGroup. memberIds 는 별도 endpoint 권장 (현재는 대체 reset).
    */
   async update(groupId: string, dto: UpdateTeamGroupDto) {
-    await this.assertGroupExists(groupId);
+    const current = await this.assertGroupExists(groupId);
+
+    // 이름 변경 시에만 검증 — 자기 이름 그대로 저장(no-op)은 통과.
+    let nextName: string | undefined;
+    if (dto.name !== undefined) {
+      nextName = dto.name.trim();
+      if (!nextName) {
+        throw new BadRequestException("하위그룹 이름을 입력해주세요.");
+      }
+      if (nextName !== current.name) {
+        this.assertNameNotReserved(nextName);
+        await this.assertGroupNameAvailable(current.teamId, nextName, groupId);
+      }
+    }
+
+    // 변경 없음(현재 값 그대로 재전송)은 검증 생략 — 역할 변경 등으로 후보에서
+    // 빠진 기존 지정을 유지한 채 다른 필드만 수정하는 경우를 막지 않는다.
+    const coachUnchanged =
+      dto.coachMemberId !== undefined &&
+      dto.coachMemberId.trim() === (current.coachMemberId ?? "");
+    const coachMemberId = coachUnchanged
+      ? undefined
+      : await this.resolveCoachMemberId(current.teamId, dto.coachMemberId);
 
     return this.prisma.$transaction(async (tx) => {
       const group = await tx.teamGroup.update({
         where: { id: groupId },
         data: {
-          ...(dto.name !== undefined ? { name: dto.name } : {}),
+          ...(nextName !== undefined ? { name: nextName } : {}),
+          ...(coachMemberId !== undefined ? { coachMemberId } : {}),
           ...(dto.ageGroup !== undefined
             ? { ageGroup: dto.ageGroup ? sanitizeStrict(dto.ageGroup) : null }
             : {}),
@@ -260,11 +333,66 @@ export class TeamGroupsService {
   private async assertGroupExists(groupId: string) {
     const group = await this.prisma.teamGroup.findUnique({
       where: { id: groupId },
-      select: { id: true },
+      select: { id: true, teamId: true, name: true, coachMemberId: true },
     });
     if (!group) {
       throw new NotFoundException("그룹을 찾을 수 없습니다.");
     }
     return group;
+  }
+
+  /** coachMemberId 정규화 — undefined=미변경, ""=지정 해제(null), 그 외=팀 코치 검증 통과 값. */
+  private async resolveCoachMemberId(
+    teamId: string,
+    coachMemberId: string | undefined,
+  ): Promise<string | null | undefined> {
+    if (coachMemberId === undefined) return undefined;
+    const trimmed = coachMemberId.trim();
+    if (!trimmed) return null;
+
+    const coach = await this.prisma.teamMember.findFirst({
+      where: {
+        id: trimmed,
+        teamId,
+        approvalStatus: "approved",
+        leftAt: null,
+        roleInTeam: { in: ["HEAD_COACH", "COACH"] },
+      },
+      select: { id: true },
+    });
+    if (!coach) {
+      throw new BadRequestException(
+        "담당코치는 해당 팀의 코치만 지정할 수 있습니다.",
+      );
+    }
+    return trimmed;
+  }
+
+  /// "기본" 은 로스터 자동 편성이 이름으로 찾는 시스템 예약 그룹 (teams.service · admin.service).
+  private assertNameNotReserved(name: string) {
+    if (name === "기본") {
+      throw new BadRequestException(
+        "'기본'은 시스템 예약 이름이라 사용할 수 없습니다.",
+      );
+    }
+  }
+
+  private async assertGroupNameAvailable(
+    teamId: string,
+    name: string,
+    excludeGroupId?: string,
+  ) {
+    const dup = await this.prisma.teamGroup.findFirst({
+      where: {
+        teamId,
+        name,
+        isActive: true,
+        ...(excludeGroupId ? { id: { not: excludeGroupId } } : {}),
+      },
+      select: { id: true },
+    });
+    if (dup) {
+      throw new ConflictException("이미 같은 이름의 하위그룹이 있습니다.");
+    }
   }
 }

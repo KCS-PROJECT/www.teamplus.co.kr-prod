@@ -28,7 +28,9 @@ import { usePageReady } from '@/hooks/usePageReady';
 import {
   genderLabel,
   teamGroupService,
+  RESERVED_TEAM_GROUP_NAME,
   type EligibleMemberRow,
+  type TeamCoachCandidate,
 } from "@/services/team-group.service";
 import { useDateTime } from "@/hooks/useDateTime";
 
@@ -49,6 +51,11 @@ export default function TeamGroupCreatePage() {
   const canManage = isTeamManager(user);
 
   const [name, setName] = useState("");
+  // 기존 하위그룹 이름 — 입력 중 실시간 중복 안내용 (서버 검증이 최종 방어).
+  const [existingNames, setExistingNames] = useState<string[]>([]);
+  // 담당코치 (선택 입력) — "" = 지정 안 함.
+  const [coachMemberId, setCoachMemberId] = useState("");
+  const [coachCandidates, setCoachCandidates] = useState<TeamCoachCandidate[]>([]);
   // [2026-06-05] 연령대(U8~U12) → 참가 대상 출생연도 문자열(예: "2016").
   const [ageGroup, setAgeGroup] = useState<string>("");
   const [members, setMembers] = useState<EligibleMemberRow[]>([]);
@@ -107,6 +114,35 @@ export default function TeamGroupCreatePage() {
   useEffect(() => {
     if (canManage) void loadMembers();
   }, [canManage, loadMembers]);
+
+  // ─── 기존 그룹 이름(실시간 중복 안내) + 담당코치 후보 로드 — 실패해도 무시, 서버 검증 폴백
+  useEffect(() => {
+    if (!teamId || !canManage) return;
+    let cancelled = false;
+    void (async () => {
+      const [list, coaches] = await Promise.all([
+        teamGroupService.listByTeam(teamId).catch(() => null),
+        teamGroupService.listCoachCandidates(teamId).catch(() => null),
+      ]);
+      if (cancelled) return;
+      if (list) setExistingNames(list.map((g) => g.name));
+      if (coaches) setCoachCandidates(coaches);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [teamId, canManage]);
+
+  // 입력 중 실시간 이름 검증 — 중복/예약어면 input 아래 빨간 문구 + 등록 버튼 비활성.
+  const liveNameError = useMemo(() => {
+    const trimmed = name.trim();
+    if (!trimmed) return undefined;
+    if (trimmed === RESERVED_TEAM_GROUP_NAME)
+      return MESSAGES.team.groupNameReserved;
+    if (existingNames.some((n) => n.trim() === trimmed))
+      return MESSAGES.team.groupNameDuplicate;
+    return undefined;
+  }, [name, existingNames]);
 
   // ─── 소속 팀 이름 (readonly 표시용)
   useEffect(() => {
@@ -171,10 +207,12 @@ export default function TeamGroupCreatePage() {
 
     // ─── 검증
     const trimmed = name.trim();
-    const newErrors: { name?: string; server?: string } = {};
-    if (!trimmed) newErrors.name = MESSAGES.team.groupNameRequired;
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
+    if (!trimmed) {
+      setErrors({ name: MESSAGES.team.groupNameRequired });
+      return;
+    }
+    if (liveNameError) {
+      setErrors({ name: liveNameError });
       return;
     }
 
@@ -185,13 +223,22 @@ export default function TeamGroupCreatePage() {
         name: trimmed,
         ageGroup: ageGroup || undefined,
         memberIds: Array.from(selectedIds),
+        coachMemberId: coachMemberId || undefined,
       });
       toast.success(MESSAGES.team.groupCreateSuccess);
       router.replace(`/team/${teamId}/groups`);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : MESSAGES.team.groupCreateFailure;
-      setErrors({ server: message });
+      // 서버 중복/예약어 응답(로컬 목록 stale·동시 생성 race)은 input 아래 인라인으로 표시.
+      if (
+        message === MESSAGES.team.groupNameDuplicate ||
+        message === MESSAGES.team.groupNameReserved
+      ) {
+        setErrors({ name: message });
+      } else {
+        setErrors({ server: message });
+      }
       toast.error(message);
     } finally {
       setSubmitting(false);
@@ -250,13 +297,51 @@ export default function TeamGroupCreatePage() {
                 id="group-name"
                 type="text"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setErrors((prev) =>
+                    prev.name ? { ...prev, name: undefined } : prev,
+                  );
+                }}
                 placeholder={MESSAGES.team.groupNamePlaceholder}
                 className="h-[50px] w-full rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-950 px-4 text-[15.5px] font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-it-ink-300 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20"
               />
-              {errors.name && (
-                <p className="mt-1.5 text-[12px] font-semibold text-it-red-500">{errors.name}</p>
+              {(errors.name ?? liveNameError) && (
+                <p className="mt-1.5 text-[12px] font-semibold text-it-red-500">
+                  {errors.name ?? liveNameError}
+                </p>
               )}
+            </div>
+
+            {/* 담당코치 (선택) */}
+            <div>
+              <label
+                htmlFor="group-coach"
+                className="mb-2 block text-[14px] font-extrabold tracking-[-0.01em] text-it-ink-800 dark:text-white"
+              >
+                {MESSAGES.team.groupCoachLabel}
+              </label>
+              <select
+                id="group-coach"
+                value={coachMemberId}
+                onChange={(e) => setCoachMemberId(e.target.value)}
+                disabled={coachCandidates.length === 0}
+                className="h-[50px] w-full appearance-none rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-950 px-4 text-[15.5px] font-semibold text-it-ink-800 dark:text-white outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 disabled:opacity-60"
+              >
+                <option value="">{MESSAGES.team.groupCoachNone}</option>
+                {coachCandidates.map((c) => (
+                  <option key={c.memberId} value={c.memberId}>
+                    {c.roleInTeam === "HEAD_COACH"
+                      ? `${c.name} (${MESSAGES.team.groupCoachRoleHead})`
+                      : c.name}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1.5 text-[12px] font-medium text-it-ink-500 dark:text-it-ink-300">
+                {coachCandidates.length === 0
+                  ? MESSAGES.team.groupCoachEmpty
+                  : MESSAGES.team.groupCoachHelper}
+              </p>
             </div>
 
             {/* 대상 설명 (선택 · 자유 텍스트) */}
@@ -448,7 +533,7 @@ export default function TeamGroupCreatePage() {
             </button>
             <button
               type="submit"
-              disabled={submitting || !name.trim()}
+              disabled={submitting || !name.trim() || !!liveNameError}
               className="h-[50px] flex-[2] rounded-w-md bg-it-blue-500 text-[15px] font-extrabold text-white transition-colors duration-150 ease-ios motion-reduce:transition-none hover:bg-it-blue-600 active:brightness-95 disabled:bg-it-line-strong dark:disabled:bg-it-blue-900 disabled:cursor-not-allowed"
             >
               {submitting ? "생성 중…" : MESSAGES.team.groupCreateButton}
