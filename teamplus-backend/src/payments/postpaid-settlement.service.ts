@@ -337,8 +337,9 @@ export class PostpaidSettlementService {
     yearMonth: string,
     requester: JwtUserPayload,
   ): Promise<{ billingId: string; lineCount: number; totalAmount: number }> {
-    // 실제 청구(pending Payment+알림)를 생성하는 쓰기 경로 — 수업 관리자만 확정 가능 (IDOR 가드)
-    await this.resourceAccess.assertManageableClass(classId, requester);
+    // 실제 청구(pending Payment+알림)를 생성하는 쓰기 경로 — 정산 확정 권한 단언.
+    //   오픈클래스는 감독(directorId)만 통과하고 보조 코치는 차단한다(조회 getDraft 는 허용).
+    await this.resourceAccess.assertClassSettlementWriter(classId, requester);
     const confirmedBy = requester.id;
     // [A안] 월 마감 전 확정 금지 — 당월/미래월은 출석이 더 쌓일 수 있어 청구가 미완성.
     //   draft(미리보기)는 당월에도 허용하되, 실제 청구를 만드는 confirm 만 과거월로 제한한다.

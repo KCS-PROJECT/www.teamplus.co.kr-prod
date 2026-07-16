@@ -548,9 +548,13 @@ export class ClassesController {
     @Param("teamId") teamId: string,
     @Param("classId") classId: string,
     @Request() req: AuthenticatedRequest,
+    @Query("yearMonth") yearMonth?: string,
   ) {
-    return this.classesService.getClassPayments(classId, req.user, {
-      teamId,
-    });
+    return this.classesService.getClassPayments(
+      classId,
+      req.user,
+      { teamId },
+      yearMonth,
+    );
   }
 }

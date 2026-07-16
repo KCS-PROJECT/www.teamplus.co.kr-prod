@@ -2070,6 +2070,9 @@ export class ClassesService {
     requester: JwtUserPayload,
     // URL 스코프 검증 — 팀/아카데미 경로로 진입 시 수업 소속과 URL 파라미터 일치 확인.
     expectedScope?: { teamId?: string; academyId?: string },
+    // [Phase 2a] 정산 기준 월(YYYY-MM). 미전송 시 현재 KST 월. 출석 집계·후불 BillingLine
+    //   선택·후불 예상액의 단일 기준. 형식 오류는 방어적으로 현재 월 폴백.
+    yearMonth?: string,
   ) {
     const cls = await this.prisma.class.findUnique({
       where: { id: classId },
@@ -2110,10 +2113,10 @@ export class ClassesService {
       throw new NotFoundException("해당 아카데미의 수업이 아닙니다.");
     }
 
-    // [수정 2026-05-13] status='active' 필터 제거 — inactive(미납) 학생도 명단에 노출.
-    //  inactive 면 resolveState 가 'unpaid' 로 분류하여 frontend 가 "미납" 으로 표시.
-    //  이렇게 해야 5월 정규수업 신학생/권학생 처럼 ClassRegistration.status=inactive 인
-    //  학생이 결제확인 명단에 보임. 다른 수업의 미납 학생도 동일하게 보임.
+    // [수정 2026-05-13] status='active' 필터 제거 — inactive(배치 해제) 학생도 명단에 노출.
+    //  inactive 는 **명단 포함 여부**에만 쓰고 결제 상태(billingStatus)는 덮어쓰지 않는다
+    //  (아래 5-state 판정 참조) — 완납 후 크레딧 만료로 inactive 된 학생이 명단에 남되
+    //  결제 상태는 PAID 로 정확히 표시된다. 다른 수업의 미납 학생도 동일하게 보임.
     const registrations = await this.prisma.classRegistration.findMany({
       where: { classId },
       select: {
@@ -2151,6 +2154,10 @@ export class ClassesService {
                 productName: true,
                 price: true,
                 feeType: true,
+                // [Phase 2a] BOTH 수업 선수별 결제방식 판정(resolveRowBillingTiming)·
+                //   후불 미확정 월 예상액(출석 × feePerSession) 산출용.
+                billingTiming: true,
+                feePerSession: true,
               },
             },
             payment: {
@@ -2160,6 +2167,8 @@ export class ClassesService {
                 paymentStatus: true,
                 paymentMethod: true,
                 completedAt: true,
+                // 선불 환불 순수납액 계산용 — Payment terminal 상태가 SoT.
+                refundLogs: { select: { refundAmount: true } },
                 // [추가 2026-05-14] 결제자(보통 학부모) 정보 — admin 결제관리에서 "결제한 부모" 노출용
                 user: {
                   select: {
@@ -2184,78 +2193,99 @@ export class ClassesService {
       }
     }
 
-    // [수정 2026-05-14] 수업 결제 상태는 "미납 / 결제완료" 2-state 만 (+취소/환불).
-    //  '승인대기(pending)' 라는 결제 상태는 없음 — 결제 완료가 아니면 모두 'unpaid'(미납).
-    //  pending/approved/pending_approval enrollment 도 결제 전이므로 미납으로 통합.
+    // [수정 2026-05-14] 레거시 결제 상태 2-state(+취소/환불). 신규 5-state(billingStatus)에서
+    //   파생하여 하위호환 유지 — paymentState·counts 키/의미 불변(프론트 무수정 보장).
     type PaymentState = "paid" | "unpaid" | "cancelled" | "refunded";
-    const resolveState = (
-      enrollment: (typeof enrollments)[number] | undefined,
-    ): PaymentState => {
-      if (!enrollment) return "unpaid";
-      const ps = enrollment.payment?.paymentStatus;
-      if (ps === "completed" || enrollment.status === "paid") return "paid";
-      if (ps === "refunded") return "refunded";
-      if (
-        enrollment.status === "cancelled" ||
-        enrollment.status === "rejected" ||
-        enrollment.status === "expired"
-      )
-        return "cancelled";
-      // 그 외(pending/approved 등 결제 전 상태) 전부 미납.
-      return "unpaid";
-    };
+    // [Phase 2a] 선수별 5-state 정산 상태.
+    type BillingStatus =
+      | "UNSETTLED"
+      | "BILLED"
+      | "PAID"
+      | "CANCELLED"
+      | "REFUNDED";
+    // billingStatus → 레거시 paymentState 파생 (R3 하위호환 매핑).
+    const toPaymentState = (bs: BillingStatus): PaymentState =>
+      bs === "PAID"
+        ? "paid"
+        : bs === "CANCELLED"
+          ? "cancelled"
+          : bs === "REFUNDED"
+            ? "refunded"
+            : "unpaid";
 
-    // [Phase B] 후불(POSTPAID) 결제 상태 — enrollment 가 아닌 "가장 최근 확정 정산월"의
-    //   MonthlyPostpaidBillingLine 으로 판정한다. 후불 enrollment 는 approved 에 머물고
-    //   Payment 와 무연결이라 enrollment 기준으로는 결제 완료여도 영원히 미납으로 보임.
-    //   (선수정보 결제 탭 미납 오표시의 직접 원인 — BillingLine.payment 로 정확히 판정.)
-    const isPostpaid = (cls.billingMode ?? "PREPAID") === "POSTPAID";
+    // [Phase 2a R1] 정산 기준 월 확정 — 미전송/형식오류 시 현재 KST 월 폴백.
+    const selectedYearMonth = this.resolveSettlementYearMonth(yearMonth);
+    const [selY, selM] = selectedYearMonth.split("-").map(Number);
+    // scheduledDate(@db.Date) 선택월 경계 — KST 해당 월의 UTC 자정 [gte, lt).
+    const monthStart = new Date(Date.UTC(selY, selM - 1, 1));
+    const monthEnd = new Date(Date.UTC(selY, selM, 1));
+
+    // [Phase 2a R4] 후불 판정 = 선택월 BillingLine (기존 "최근 확정월" 폐기).
+    //   후불 enrollment 는 approved 에 머물고 Payment 무연결이라, 확정 정산 라인으로만
+    //   정확히 판정된다(선수정보 결제 탭 미납 오표시의 직접 원인 해소).
     type PostpaidLineInfo = {
-      isPaid: boolean;
-      amount: number;
+      // 연결 Payment 의 terminal 상태 우선 판정 (라인 stale 방지).
+      status: "PAID" | "BILLED" | "REFUNDED";
+      amount: number; // 청구액(라인 amount)
+      refundedAmount: number; // 환불 총액
       paymentMethod: string | null;
       paidAt: Date | null;
       payerId: string | null;
       payerName: string | null;
     };
     const postpaidLineByUser = new Map<string, PostpaidLineInfo>();
-    if (isPostpaid) {
-      const latestBilling = await this.prisma.monthlyPostpaidBilling.findFirst({
-        where: { classId, status: "confirmed" },
-        orderBy: { yearMonth: "desc" },
-        select: {
-          items: {
-            select: {
-              userId: true,
-              amount: true,
-              paymentStatus: true,
-              payment: {
-                select: {
-                  paymentStatus: true,
-                  paymentMethod: true,
-                  completedAt: true,
-                  user: {
-                    select: {
-                      id: true,
-                      firstName: true,
-                      lastName: true,
-                      email: true,
-                    },
+    const monthlyBilling = await this.prisma.monthlyPostpaidBilling.findUnique({
+      where: { classId_yearMonth: { classId, yearMonth: selectedYearMonth } },
+      select: {
+        status: true,
+        items: {
+          select: {
+            userId: true,
+            amount: true,
+            paymentStatus: true,
+            payment: {
+              select: {
+                paymentStatus: true,
+                paymentMethod: true,
+                completedAt: true,
+                // 순수납액 계산용 — 환불 로그 합산(라인 paymentStatus 는 환불 시 되돌지 않아 stale).
+                refundLogs: { select: { refundAmount: true } },
+                user: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true,
+                    email: true,
                   },
                 },
               },
             },
           },
         },
-      });
-      for (const ln of latestBilling?.items ?? []) {
+      },
+    });
+    const billingConfirmed = monthlyBilling?.status === "confirmed";
+    if (billingConfirmed) {
+      for (const ln of monthlyBilling?.items ?? []) {
         const payer = ln.payment?.user;
+        const payStatus = ln.payment?.paymentStatus ?? null;
+        const refundedAmount = (ln.payment?.refundLogs ?? []).reduce(
+          (sum, r) => sum + (r.refundAmount ?? 0),
+          0,
+        );
+        // 연결 Payment terminal 상태를 stale 라인보다 우선:
+        //   환불(부분 포함) → REFUNDED / 완료 → PAID / 그 외 → BILLED(청구·미결제).
+        const isRefunded =
+          payStatus === "refunded" || payStatus === "partially_refunded";
+        const status: PostpaidLineInfo["status"] = isRefunded
+          ? "REFUNDED"
+          : ln.paymentStatus === "paid" || payStatus === "completed"
+            ? "PAID"
+            : "BILLED";
         postpaidLineByUser.set(ln.userId, {
-          // BillingLine.paymentStatus 가 stale 이어도 Payment 관계로 정확히 판정.
-          isPaid:
-            ln.paymentStatus === "paid" ||
-            ln.payment?.paymentStatus === "completed",
+          status,
           amount: ln.amount,
+          refundedAmount,
           paymentMethod: ln.payment?.paymentMethod ?? null,
           paidAt: ln.payment?.completedAt ?? null,
           payerId: payer?.id ?? null,
@@ -2267,16 +2297,20 @@ export class ClassesService {
       }
     }
 
-    // [Phase C] 당월(이번 달) 출석 집계 — 선수정보 탭 "출석 N회" 표시용 (기획 D7).
+    // 후불 미확정 월 예상액용 수업 단위 단가 폴백 — **전체 POSTPAID 상품이 정확히 1개**이고
+    //   그 상품에 단가가 있을 때만 허용. `feePerSession != null` 로 먼저 거르면
+    //   A(단가 null) + B(단가 有) 조합에서 필터 결과가 B 하나가 되어 학생 A 에게 B 단가가
+    //   폴백되는 결함이 남는다(§ Codex 사이클2 지적2). 전체 후불 상품 수로 판정해야 안전.
+    const postpaidProducts = cls.products.filter(
+      (p) => p.billingTiming === "POSTPAID",
+    );
+    const classPostpaidUnit =
+      postpaidProducts.length === 1 && postpaidProducts[0].feePerSession != null
+        ? Number(postpaidProducts[0].feePerSession)
+        : null;
+
+    // [Phase C] 선택월 출석 집계 — "출석 N회"(기존 키) + 후불 예상액 산출 공용.
     //   취소(isCancelled) 제외 일정의 present 출석을 회원별로 카운트. 결제 상태와 독립.
-    // scheduledDate(@db.Date) 당월 경계 — KST 이번 달의 UTC 자정 [gte, lt).
-    const sdMonthBase = kstTodayUtcMidnight();
-    const monthStart = new Date(
-      Date.UTC(sdMonthBase.getUTCFullYear(), sdMonthBase.getUTCMonth(), 1),
-    );
-    const monthEnd = new Date(
-      Date.UTC(sdMonthBase.getUTCFullYear(), sdMonthBase.getUTCMonth() + 1, 1),
-    );
     const attendanceSchedules = await this.prisma.classSchedule.findMany({
       where: {
         classId,
@@ -2307,10 +2341,62 @@ export class ClassesService {
         reg.user.email;
       const attendanceCount = attendanceByUser.get(reg.userId) ?? 0;
 
-      // [Phase B] 후불: 최근 확정 정산월 BillingLine 기준으로 상태/금액/결제자를 채운다.
-      //   응답 필드 구조는 선불과 동일하게 유지(프론트 결제 탭 무수정).
-      if (isPostpaid) {
+      // [Phase 2a R2] 클래스 모드 판정 폐기 — 학생별 유효 결제방식 결정.
+      //   BOTH 수업은 학생 enrollment 상품의 billingTiming 을 사용한다.
+      const billingTiming = this.resolveRowBillingTiming(
+        cls.billingMode,
+        en?.product?.billingTiming,
+      );
+
+      // ── 후불(POSTPAID) 행: 선택월 확정 BillingLine 기준 ──────────────
+      if (billingTiming === "POSTPAID") {
         const ln = postpaidLineByUser.get(reg.userId);
+        if (billingConfirmed && ln) {
+          const billingStatus: BillingStatus = ln.status;
+          // 환불 건은 유효 청구/미수에서 제외(§4-2): billedAmount=null·outstanding=0.
+          //   순수납액 = 청구액 − 환불총액(부분 환불이면 잔여 유지, 전액이면 0).
+          const isRefunded = billingStatus === "REFUNDED";
+          const billedAmount = isRefunded ? null : ln.amount;
+          const paidAmount =
+            billingStatus === "PAID"
+              ? ln.amount
+              : isRefunded
+                ? Math.max(0, ln.amount - ln.refundedAmount)
+                : 0;
+          const outstandingAmount =
+            billedAmount != null ? Math.max(0, billedAmount - paidAmount) : 0;
+          return {
+            registrationId: reg.id,
+            memberId: reg.userId,
+            memberName: fullName,
+            memberType: reg.user.userType,
+            registrationDate: reg.registrationDate,
+            enrollmentId: en?.id ?? null,
+            enrollmentStatus: en?.status ?? null,
+            productName: en?.product?.productName ?? null,
+            amount: ln.amount,
+            paymentMethod: ln.paymentMethod,
+            paidAt: ln.paidAt,
+            paymentState: toPaymentState(billingStatus),
+            payerId: ln.payerId,
+            payerName: ln.payerName,
+            attendanceCount,
+            // 신규 5-state 계약 (Dual Emit)
+            billingTiming,
+            billingStatus,
+            billedAmount,
+            estimatedAmount: null,
+            paidAmount,
+            outstandingAmount,
+          };
+        }
+        // 미확정 월(UNSETTLED) — 예상액 = 선택월 출석 × 후불 단가.
+        const rowUnit =
+          en?.product?.feePerSession != null
+            ? Number(en.product.feePerSession)
+            : classPostpaidUnit;
+        const estimatedAmount =
+          rowUnit != null ? attendanceCount * rowUnit : null;
         return {
           registrationId: reg.id,
           memberId: reg.userId,
@@ -2320,26 +2406,90 @@ export class ClassesService {
           enrollmentId: en?.id ?? null,
           enrollmentStatus: en?.status ?? null,
           productName: en?.product?.productName ?? null,
-          amount: ln?.amount ?? null,
-          paymentMethod: ln?.paymentMethod ?? null,
-          paidAt: ln?.paidAt ?? null,
-          paymentState: (ln?.isPaid ? "paid" : "unpaid") as PaymentState,
-          payerId: ln?.payerId ?? null,
-          payerName: ln?.payerName ?? null,
+          amount: null,
+          paymentMethod: null,
+          paidAt: null,
+          paymentState: "unpaid" as PaymentState,
+          payerId: null,
+          payerName: null,
           attendanceCount,
+          billingTiming,
+          billingStatus: "UNSETTLED" as BillingStatus,
+          billedAmount: null,
+          estimatedAmount,
+          paidAmount: 0,
+          outstandingAmount: 0,
         };
       }
 
-      // 선불(PREPAID): 기존 enrollment 기준.
-      // [수정 2026-05-13] ClassRegistration.status='inactive' → 'unpaid'(미납) 강제.
-      //  (코치가 명단 해제했거나 결제 취소된 상태)
-      const state = reg.status === "inactive" ? "unpaid" : resolveState(en);
-      // [추가 2026-05-14] 결제자(학부모) 표시명 — payment.user 우선, 없으면 null.
+      // ── 선불(PREPAID)·미배정(UNASSIGNED) 행: enrollment 기준 ──────────
       const payer = en?.payment?.user;
       const payerName = payer
         ? `${payer.lastName ?? ""}${payer.firstName ?? ""}`.trim() ||
           payer.email
         : null;
+      const legacyAmount = en?.payment?.amount ?? en?.product?.price ?? null;
+      const payStatus = en?.payment?.paymentStatus ?? null;
+      const refundedAmount = (en?.payment?.refundLogs ?? []).reduce(
+        (sum, r) => sum + (r.refundAmount ?? 0),
+        0,
+      );
+
+      // 5-state 판정 — **연결 Payment terminal 상태를 Enrollment 상태보다 우선**한다.
+      //   환불/취소는 Payment 만 갱신되고 Enrollment 는 paid 로 남기 때문(부분 환불이 PAID 로
+      //   오분류되던 사이클1/2 잔여 결함 해소).
+      //   · UNASSIGNED(BOTH 유효상품 없음) → 정산 제외(UNSETTLED, 금액 0)
+      //   · 환불(전액/부분) → REFUNDED, 순수납 = 청구 − 환불총액
+      //   · 취소(Payment cancelled OR enrollment cancelled/rejected/expired) → CANCELLED
+      //   · 결제완료(Payment completed OR enrollment paid/completed) → PAID
+      //     ('completed' enrollment = 크레딧 만료 후 상태로, 결제 완료 사실이 유지된다)
+      //   · pending 결제(실청구) → BILLED / 그 외 → UNSETTLED
+      //   ※ ClassRegistration.status='inactive'(배치 해제)는 **명단 포함 여부**에만 쓰고
+      //     결제 상태를 덮어쓰지 않는다 — 수동 배치 해제·크레딧 만료 배치는 registration 만
+      //     inactive 로 바꾸고 Payment/Enrollment 는 유지하므로, 완납 학생이 UNSETTLED 로
+      //     사라지던 결함(Codex 사이클3)을 방지한다.
+      let billingStatus: BillingStatus;
+      if (billingTiming === "UNASSIGNED") {
+        billingStatus = "UNSETTLED";
+      } else if (
+        payStatus === "refunded" ||
+        payStatus === "partially_refunded"
+      ) {
+        billingStatus = "REFUNDED";
+      } else if (
+        payStatus === "cancelled" ||
+        en?.status === "cancelled" ||
+        en?.status === "rejected" ||
+        en?.status === "expired"
+      ) {
+        billingStatus = "CANCELLED";
+      } else if (
+        payStatus === "completed" ||
+        en?.status === "paid" ||
+        en?.status === "completed"
+      ) {
+        billingStatus = "PAID";
+      } else if (payStatus === "pending") {
+        billingStatus = "BILLED";
+      } else {
+        billingStatus = "UNSETTLED";
+      }
+
+      // billedAmount 는 확정 청구(PAID/BILLED)에만. UNSETTLED/CANCELLED/REFUNDED/UNASSIGNED 는
+      //   null → outstanding 0. 환불은 순수납(청구−환불총액) 유지, 미수 재분류 금지.
+      const billedAmount =
+        billingStatus === "PAID" || billingStatus === "BILLED"
+          ? legacyAmount
+          : null;
+      const paidAmount =
+        billingStatus === "PAID"
+          ? (legacyAmount ?? 0)
+          : billingStatus === "REFUNDED"
+            ? Math.max(0, (legacyAmount ?? 0) - refundedAmount)
+            : 0;
+      const outstandingAmount =
+        billedAmount != null ? Math.max(0, billedAmount - paidAmount) : 0;
+
       return {
         registrationId: reg.id,
         memberId: reg.userId,
@@ -2349,14 +2499,20 @@ export class ClassesService {
         enrollmentId: en?.id ?? null,
         enrollmentStatus: en?.status ?? null,
         productName: en?.product?.productName ?? null,
-        amount: en?.payment?.amount ?? en?.product?.price ?? null,
+        amount: legacyAmount,
         paymentMethod: en?.payment?.paymentMethod ?? null,
         paidAt: en?.paidAt ?? en?.payment?.completedAt ?? null,
-        paymentState: state,
-        // 결제자(학부모) — 미결제 학생은 null
+        // 레거시 paymentState 는 billingStatus 에서 파생(R3) — counts/totalPaidAmount 정합.
+        paymentState: toPaymentState(billingStatus),
         payerId: payer?.id ?? null,
         payerName,
         attendanceCount,
+        billingTiming,
+        billingStatus,
+        billedAmount,
+        estimatedAmount: null,
+        paidAmount,
+        outstandingAmount,
       };
     });
 
@@ -2371,26 +2527,70 @@ export class ClassesService {
       >,
     );
 
-    const totalPaidAmount = students.reduce(
-      (sum, s) =>
-        s.paymentState === "paid" && s.amount ? sum + s.amount : sum,
-      0,
+    // [Phase 2a R6] 5-state 카운트 — 레거시 counts 4키와 병행 emit.
+    const billingStatusCounts = students.reduce(
+      (acc, s) => {
+        acc[s.billingStatus] = (acc[s.billingStatus] ?? 0) + 1;
+        return acc;
+      },
+      {
+        UNSETTLED: 0,
+        BILLED: 0,
+        PAID: 0,
+        CANCELLED: 0,
+        REFUNDED: 0,
+      } as Record<BillingStatus, number>,
     );
+
+    // [Phase 2a] 총수금 = 행별 순수납액(paidAmount) 합. 부분 환불의 순수납(청구−환불)을
+    //   포함하고, 레거시 "paymentState=paid 행의 amount 합" 과 정상 케이스는 동일값이라
+    //   Dual Emit 호환(환불 건만 정확히 순수납으로 반영 — 행/상단 합계 불일치 해소).
+    const totalPaidAmount = students.reduce((sum, s) => sum + s.paidAmount, 0);
 
     return {
       classId: cls.id,
       className: cls.className,
       // [Phase B 연동] 결제 방식 — 프론트 결제 탭 모드 분기 (선불/후불). 기본 PREPAID.
       billingMode: cls.billingMode ?? "PREPAID",
+      // [Phase 2a] 정산 기준 월 — 프론트 월 선택 UI 반영용(신규 키).
+      yearMonth: selectedYearMonth,
       teamId: cls.team?.id ?? cls.teamId,
       teamName: cls.team?.name ?? "",
       teamCode: cls.team?.teamCode ?? "",
       products: cls.products,
       total: students.length,
       counts,
+      billingStatusCounts,
       totalPaidAmount,
       students,
     };
+  }
+
+  /** [Phase 2a R1] 정산 기준 월 확정 — "YYYY-MM" 유효 시 그대로, 아니면 현재 KST 월. */
+  private resolveSettlementYearMonth(yearMonth?: string): string {
+    // 월 범위(01-12)까지 검증 — 형식만 맞는 2026-13/2026-00 이 Date.UTC 에서 조용히
+    //   인접 월로 롤오버되는 오월 폴백을 차단(형식 통과 ≠ 의미 유효). 무효 시 당월 폴백.
+    if (yearMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(yearMonth)) return yearMonth;
+    const base = kstTodayUtcMidnight();
+    return `${base.getUTCFullYear()}-${String(base.getUTCMonth() + 1).padStart(2, "0")}`;
+  }
+
+  /**
+   * [Phase 2a R2] 선수별 유효 결제방식 판정 — 클래스 모드 하드코딩 폐기.
+   *  - PREPAID/POSTPAID 수업: 전원 해당 방식
+   *  - BOTH 수업: 학생 enrollment 상품의 billingTiming(없으면 UNASSIGNED)
+   */
+  private resolveRowBillingTiming(
+    classBillingMode: string | null,
+    enrollmentProductBillingTiming?: string | null,
+  ): "PREPAID" | "POSTPAID" | "UNASSIGNED" {
+    const mode = classBillingMode ?? "PREPAID";
+    if (mode === "PREPAID") return "PREPAID";
+    if (mode === "POSTPAID") return "POSTPAID";
+    // BOTH — 학생 상품 결제방식 사용.
+    if (enrollmentProductBillingTiming === "POSTPAID") return "POSTPAID";
+    if (enrollmentProductBillingTiming === "PREPAID") return "PREPAID";
+    return "UNASSIGNED";
   }
 
   async updateClass(

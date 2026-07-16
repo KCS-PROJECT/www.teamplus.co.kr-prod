@@ -132,6 +132,58 @@ export class ResourceAccessService {
     throw new ForbiddenException("이 오픈클래스를 관리할 권한이 없습니다.");
   }
 
+  /**
+   * 정산 확정(쓰기) 권한 단언 — 조회용 assertManageableClass 보다 엄격하다.
+   * 오픈클래스는 Academy.directorId(감독)만 통과하고, 조회는 가능한 active AcademyCoach(보조
+   * 코치)는 실제 청구·결제를 만드는 쓰기 경로에서 차단한다(설계 v4 §5-5 결정 4).
+   * 팀 수업은 조회와 동일한 팀 관리자 기준. 관리자급은 무조건 통과.
+   */
+  async assertClassSettlementWriter(
+    classId: string,
+    requester: JwtUserPayload,
+  ): Promise<{ id: string; teamId: string | null; academyId: string | null }> {
+    const cls = await this.prisma.class.findUnique({
+      where: { id: classId },
+      select: { id: true, teamId: true, academyId: true },
+    });
+    if (!cls) {
+      throw new NotFoundException("수업을 찾을 수 없습니다.");
+    }
+    if (isAdminRole(requester.userType)) return cls;
+    if (cls.teamId) {
+      await this.assertTeamManager(cls.teamId, requester);
+      return cls;
+    }
+    if (cls.academyId) {
+      await this.assertAcademyDirector(cls.academyId, requester);
+      return cls;
+    }
+    // 팀도 오픈클래스도 아닌 수업 — 관리 주체 불명, ADMIN 외 차단
+    throw new ForbiddenException("이 수업의 정산을 확정할 권한이 없습니다.");
+  }
+
+  /** 오픈클래스 정산 확정 전용 — Academy.directorId 만 통과(보조 코치 차단).
+   *  조회용 assertAcademyManager(active 코치 허용)와 의도적으로 분리한다. */
+  private async assertAcademyDirector(
+    academyId: string,
+    requester: JwtUserPayload,
+  ): Promise<void> {
+    if (isAdminRole(requester.userType)) return;
+    if (!ACADEMY_DOMAIN_USER_TYPES.includes(requester.userType)) {
+      throw new ForbiddenException(
+        "이 오픈클래스의 정산을 확정할 권한이 없습니다.",
+      );
+    }
+    const academy = await this.prisma.academy.findUnique({
+      where: { id: academyId },
+      select: { directorId: true },
+    });
+    if (academy?.directorId === requester.id) return;
+    throw new ForbiddenException(
+      "이 오픈클래스의 정산을 확정할 권한이 없습니다.",
+    );
+  }
+
   /** 경기(HockeyMatch) 관리 권한 단언 — 경기 미존재 시 404, 권한 없음 403.
    *  - 대회 소속 경기: 대회 관리 규칙 재사용 (주최 팀 관리자, teamId=null 대회는 관리자급)
    *  - 독립 경기(tournamentId=null): home/away(레거시 club 필드 포함) 팀 중 하나의 관리자
