@@ -20,7 +20,17 @@ type Params = Promise<{ slug: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { slug } = await params;
-  const post = await getBlogBySlug(slug);
+
+  // generateMetadata 는 error boundary(error.tsx) 밖에서 실행된다 — 여기서 백엔드 장애가
+  // throw 되면 boundary 가 잡지 못해 원시 오류 화면이 뜬다. 메타데이터는 부가 정보이므로
+  // 장애 시 비워 두고, 오류 표면화는 아래 페이지 렌더의 getBlogBySlug 에 맡긴다.
+  let post: Awaited<ReturnType<typeof getBlogBySlug>> = null;
+  try {
+    post = await getBlogBySlug(slug);
+  } catch {
+    return {};
+  }
+
   if (!post) return { title: '찾을 수 없음' };
   return {
     title: post.title,

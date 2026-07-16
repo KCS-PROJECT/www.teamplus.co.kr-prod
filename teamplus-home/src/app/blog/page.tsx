@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowRight, Pin, Eye, Newspaper } from 'lucide-react';
-import { PageHeader } from '@/components/layout/PageHeader';
+import { PageHero } from '@/components/layout/PageHero';
+import { StoreBadge } from '@/components/ui/StoreBadge';
 import {
   getBlogList,
   BLOG_CATEGORY_META,
@@ -9,6 +10,7 @@ import {
   type BlogListItem,
   type BlogCategory,
 } from '@/lib/blog-api';
+import { APP_DOWNLOAD } from '@/lib/content';
 import { cn } from '@/lib/utils';
 
 // 발행 글을 재배포 없이 반영 — ISR(5분).
@@ -18,6 +20,9 @@ const PAGE_TITLE = '블로그';
 const PAGE_DESC =
   '아이스하키 클럽 운영 노하우, 팀플러스 소식·가이드·이벤트·보도자료를 확인하세요.';
 const PAGE_SIZE = 12;
+
+/** 히어로 신뢰 신호 — /news·/features·/solution·/contact 와 동일 패턴. 실제 카테고리(소식·가이드·이벤트·보도자료) 기반. */
+const HERO_TRUST = ['클럽 운영 노하우 가이드', '신규 기능·업데이트 소식', '이벤트·보도자료 아카이브'];
 
 export const metadata: Metadata = {
   title: PAGE_TITLE,
@@ -180,7 +185,7 @@ export default async function BlogListPage({ searchParams }: { searchParams: Sea
 
   return (
     <>
-      <PageHeader
+      <PageHero
         eyebrow="블로그"
         title={
           <>
@@ -189,7 +194,33 @@ export default async function BlogListPage({ searchParams }: { searchParams: Sea
           </>
         }
         description="클럽 운영 노하우와 팀플러스의 소식·가이드·이벤트·보도자료를 한곳에서. 현장에 바로 쓰는 실무 인사이트를 정리합니다."
-      />
+        primary={{
+          src: '/images/app-home.png',
+          alt: '팀플러스 홈 대시보드 · 팀 공지사항 앱 화면',
+        }}
+      >
+        {/* 히어로 도입 CTA */}
+        <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+          <StoreBadge
+            store="apple"
+            href={APP_DOWNLOAD.appStore}
+            className="w-full justify-center sm:w-auto sm:justify-start"
+          />
+          <StoreBadge
+            store="google"
+            href={APP_DOWNLOAD.googlePlay}
+            className="w-full justify-center sm:w-auto sm:justify-start"
+          />
+        </div>
+        <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-wtext-4">
+          {HERO_TRUST.map((t) => (
+            <span key={t} className="inline-flex items-center gap-1.5">
+              <span className="h-1 w-1 rounded-full bg-ice-500" />
+              {t}
+            </span>
+          ))}
+        </div>
+      </PageHero>
 
       <section className="section relative !pt-0">
         <div className="container-site">

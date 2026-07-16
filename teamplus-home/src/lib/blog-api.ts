@@ -62,14 +62,49 @@ function apiBase(): string {
   return base.endsWith('/api/v1') ? base : `${base}/api/v1`;
 }
 
-async function fetchJson<T>(url: string): Promise<T | null> {
+/**
+ * 백엔드 장애(네트워크 단절 · 5xx · 파싱 실패) — "글 없음(404)" 과 반드시 구분한다.
+ *
+ * 구분하지 않으면 백엔드가 잠깐 흔들릴 때 살아있는 발행글이 404 로 응답되어
+ * (a) 검색엔진이 실제 글을 색인에서 제거하고 (b) 목록은 ISR stale 캐시로 정상 렌더되는데
+ * 상세만 "없는 글" 로 보여 원인 파악이 불가능해진다. (2026-07-16 실측 재현)
+ */
+export class BlogBackendError extends Error {
+  constructor(url: string, detail: string, options?: { cause?: unknown }) {
+    super(`블로그 백엔드 조회 실패 (${detail}): ${url}`, options);
+    this.name = 'BlogBackendError';
+  }
+}
+
+/**
+ * 조회 결과 3-상태:
+ *   { ok: true, data: T }    정상
+ *   { ok: true, data: null } 백엔드가 404 로 확인해 준 "미존재"(미발행 DRAFT 포함)
+ *   { ok: false, error }     백엔드 장애 — 호출부가 정책을 결정한다(상세=표면화 / 목록=graceful)
+ */
+type FetchOutcome<T> =
+  | { ok: true; data: T | null }
+  | { ok: false; error: BlogBackendError };
+
+async function fetchJson<T>(url: string): Promise<FetchOutcome<T>> {
+  let res: Response;
   try {
-    const res = await fetch(url, { next: { revalidate: REVALIDATE_SECONDS } });
-    if (!res.ok) return null;
+    res = await fetch(url, { next: { revalidate: REVALIDATE_SECONDS } });
+  } catch (cause) {
+    return { ok: false, error: new BlogBackendError(url, '연결 실패', { cause }) };
+  }
+
+  // 백엔드가 명시적으로 "없음" 이라고 답한 경우만 미존재로 취급한다.
+  if (res.status === 404) return { ok: true, data: null };
+  if (!res.ok) {
+    return { ok: false, error: new BlogBackendError(url, `HTTP ${res.status}`) };
+  }
+
+  try {
     const body = (await res.json()) as { data?: T } & Record<string, unknown>;
-    return (body?.data ?? (body as unknown as T)) ?? null;
-  } catch {
-    return null;
+    return { ok: true, data: (body?.data ?? (body as unknown as T)) ?? null };
+  } catch (cause) {
+    return { ok: false, error: new BlogBackendError(url, '응답 파싱 실패', { cause }) };
   }
 }
 
@@ -85,18 +120,41 @@ export async function getBlogList(params: {
   usp.set('pageSize', String(pageSize));
   if (params.category) usp.set('category', params.category);
 
-  const data = await fetchJson<BlogListResult>(`${apiBase()}/blog?${usp.toString()}`);
-  return data ?? { items: [], total: 0, page, pageSize };
+  const empty: BlogListResult = { items: [], total: 0, page, pageSize };
+  const r = await fetchJson<BlogListResult>(`${apiBase()}/blog?${usp.toString()}`);
+  // 목록은 랜딩 표면이라 장애 시에도 페이지 자체는 살린다(빈 목록 = "글이 없습니다").
+  if (!r.ok) {
+    console.error('[blog] 목록 조회 실패 — 빈 목록으로 응답합니다.', r.error.message);
+    return empty;
+  }
+  return r.data ?? empty;
 }
 
+/**
+ * 상세 조회. `null` 은 **백엔드가 404 로 확인해 준 미존재** 일 때만 반환한다(호출부에서 notFound()).
+ * 백엔드 장애는 `BlogBackendError` 를 throw 해 error boundary(5xx)로 표면화한다 —
+ * 살아있는 글을 404 로 오표기해 색인에서 지워지는 것을 막기 위함이다.
+ */
 export async function getBlogBySlug(slug: string): Promise<BlogDetail | null> {
-  return fetchJson<BlogDetail>(`${apiBase()}/blog/${encodeURIComponent(slug)}`);
+  const r = await fetchJson<BlogDetail>(`${apiBase()}/blog/${encodeURIComponent(slug)}`);
+  if (!r.ok) {
+    console.error('[blog] 상세 조회 실패 — 404 대신 오류로 표면화합니다.', r.error.message);
+    throw r.error;
+  }
+  return r.data;
 }
 
-/** sitemap 용 — 발행글 slug + 갱신일(최대 100건). */
+/**
+ * sitemap 용 — 발행글 slug + 갱신일(최대 100건).
+ * 장애 시 throw 하면 sitemap 생성(및 빌드)이 깨지므로 빈 배열로 degrade 한다.
+ */
 export async function getPublishedBlogSlugs(): Promise<
   Array<{ slug: string; updatedAt: string }>
 > {
-  const data = await fetchJson<BlogListResult>(`${apiBase()}/blog?pageSize=100`);
-  return (data?.items ?? []).map((i) => ({ slug: i.slug, updatedAt: i.updatedAt }));
+  const r = await fetchJson<BlogListResult>(`${apiBase()}/blog?pageSize=100`);
+  if (!r.ok) {
+    console.error('[blog] sitemap slug 조회 실패 — 블로그 항목을 생략합니다.', r.error.message);
+    return [];
+  }
+  return (r.data?.items ?? []).map((i) => ({ slug: i.slug, updatedAt: i.updatedAt }));
 }
