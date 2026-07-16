@@ -175,18 +175,8 @@ const MENU_LABEL_OVERRIDES: Record<string, string> = {
 const overrideMenuLabel = (label: string): string =>
   MENU_LABEL_OVERRIDES[label] ?? label;
 
-/** [추가 2026-05-25] 고객지원 그룹에 부착할 약관/정책 항목 (footer 에서 이동 — 사용자 요청).
- *  이용약관·개인정보·환불은 /terms deep-link(?section), 커뮤니티 규칙은 전용 페이지,
- *  접근성은 설정 페이지로 연결. 약관 본문은 어드민(AppTerms)에서 수정 시 즉시 반영. */
-const SUPPORT_GROUP_LABEL = "고객지원";
-const LEGAL_SUPPORT_ITEMS: SubMenuItem[] = [
-  { href: "/terms?section=terms_of_service", icon: "description", label: "이용약관" },
-  { href: "/terms?section=privacy_policy", icon: "privacy_tip", label: "개인정보 처리방침" },
-  { href: "/terms?section=refund", icon: "payments", label: "환불 규정" },
-  { href: "/community-guideline", icon: "forum", label: "커뮤니티 운영 규칙" },
-  { href: "/account-deletion", icon: "person_remove", label: "계정·데이터 삭제" },
-  { href: "/settings/accessibility", icon: "accessibility_new", label: "접근성" },
-];
+// [2026-07-16] 약관/정책·접근성 항목은 메뉴 SoT(app-menu-spec.ts COMMON_SUPPORT_GROUP)로
+//   이관되어 서버 DB/spec 응답에 포함된다. (기존 SUPPORT_GROUP_LABEL·LEGAL_SUPPORT_ITEMS 하드코딩 제거)
 
 function specGroupToMenuItem(
   group: AppMenuGroupSpec,
@@ -507,29 +497,9 @@ export function GlobalMenu({ isOpen, onClose }: GlobalMenuProps) {
     }));
   }, [menuItems, noticeUnreadCount]);
 
-  // [2026-05-25] 약관/정책을 "고객지원" 그룹 하위로 이동 (사용자 요청 — footer 별도 나열 → 그룹 내 항목).
-  //   기존 "약관 및 정책"(/terms) 단일 항목은 세분화된 5개(이용약관·개인정보·환불·커뮤니티·접근성)로 대체.
-  //   고객지원 그룹이 없으면 안전망으로 새 그룹을 추가한다 (spec/DB 모두 끝에 부착되므로 통상 존재).
-  const finalMenuItems = useMemo<MainMenuItem[]>(() => {
-    let injected = false;
-    const next = displayMenuItems.map((group) => {
-      if (group.label !== SUPPORT_GROUP_LABEL) return group;
-      injected = true;
-      const base = group.subItems.filter(
-        (s) => s.href !== "/terms" && !s.href.startsWith("/terms?"),
-      );
-      return { ...group, subItems: [...base, ...LEGAL_SUPPORT_ITEMS] };
-    });
-    if (!injected) {
-      next.push({
-        id: "support-legal",
-        icon: "help-circle",
-        label: SUPPORT_GROUP_LABEL,
-        subItems: [...LEGAL_SUPPORT_ITEMS],
-      });
-    }
-    return next;
-  }, [displayMenuItems]);
+  // [2026-07-16] 약관/정책·접근성 항목을 메뉴 SoT(app-menu-spec.ts COMMON_SUPPORT_GROUP)로
+  //   이관 → 서버 DB/spec 응답에 이미 포함되므로 코드 하드코딩 주입 제거. web/admin(앱메뉴관리)
+  //   동일 표시. (기존 finalMenuItems + LEGAL_SUPPORT_ITEMS 삭제)
 
   // 학부모: 자녀 목록 조회 (id · 이름 · 프로필 이모지 · 팀명)
   useEffect(() => {
@@ -1108,7 +1078,7 @@ export function GlobalMenu({ isOpen, onClose }: GlobalMenuProps) {
               4박스 스켈레톤이 "계속 로딩" 처럼 보이는 UX 문제 해소. 서버 응답 도착 시 자연 교체. */}
 
           {/* 빈 상태 — spec 폴백도 비어있을 때만 (이론상 발생 안 하지만 안전망 유지) */}
-          {finalMenuItems.length === 0 && (
+          {displayMenuItems.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 gap-2">
               <Icon
                 name="menu_open"
@@ -1122,7 +1092,7 @@ export function GlobalMenu({ isOpen, onClose }: GlobalMenuProps) {
           )}
 
           {/* 메뉴 섹션 — 아코디언 (그룹 헤더 클릭으로 펼침/접힘, max-height+opacity transition) */}
-          {finalMenuItems.map((group) => {
+          {displayMenuItems.map((group) => {
             const isExpanded = expandedGroup === group.id;
             return (
               <div

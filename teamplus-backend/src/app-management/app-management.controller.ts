@@ -223,14 +223,37 @@ export class AppManagementController {
   @ApiOperation({ summary: "앱 피드백 제출 (사용자)" })
   submitUserFeedback(
     @Request() req: { user: { id: string } },
-    @Body() body: { content: string; category: string; rating?: number },
+    @Body()
+    body: {
+      content: string;
+      category: string;
+      rating?: number;
+      authorName?: string;
+      teamName?: string;
+      attachmentFileIds?: string[];
+    },
   ) {
     return this.service.createUserFeedback(
       req.user.id,
       body.content,
       body.category,
       body.rating,
+      body.authorName,
+      body.teamName,
+      body.attachmentFileIds,
     );
+  }
+
+  /**
+   * 피드백 작성 폼 자동 채움 — 로그인 사용자의 이름/소속 팀명
+   * 정적 경로 → feedback/:id 보다 먼저 선언
+   */
+  @Get("feedback/prefill")
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("ADMIN", "DIRECTOR", "COACH", "PARENT", "TEEN", "CHILD")
+  @ApiOperation({ summary: "피드백 작성 폼 자동 채움 정보 (이름/팀)" })
+  getFeedbackPrefill(@Request() req: { user: { id: string } }) {
+    return this.service.getFeedbackPrefill(req.user.id);
   }
 
   /**

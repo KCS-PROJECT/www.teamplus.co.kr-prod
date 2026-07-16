@@ -39,18 +39,26 @@ export interface AppMenuGroupSpec {
 
 /**
  * 모든 역할 메뉴 끝에 자동 부착되는 공통 지원 그룹.
- * - 도움말 / FAQ / 공지사항 / 피드백 / 약관
- * - 라벨은 PAGE_TITLES 와 동일.
+ * - 도움말 / 피드백 / FAQ / 공지사항 / 이용약관 / 개인정보 처리방침 / 환불 규정 /
+ *   커뮤니티 운영 규칙 / 계정·데이터 삭제 / 접근성
+ * - 라벨은 PAGE_TITLES 와 동일(약관/정책·접근성 등 deep-link 항목은 자체 라벨).
+ * - [2026-07-16] 기존 web GlobalMenu 에 하드코딩돼 있던 약관/정책·접근성 항목을
+ *   메뉴 SoT(spec)로 이관 → web/admin(앱메뉴관리) 동일 표시. (사용자 요청)
  */
 export const COMMON_SUPPORT_GROUP: AppMenuGroupSpec = {
   label: "고객지원",
   icon: "help-circle",
   children: [
     { label: "도움말", icon: "help-circle", href: "/help" },
+    { label: "피드백", icon: "support-agent", href: "/feedback" },
     { label: "자주 묻는 질문", icon: "message-circle", href: "/faq" },
     { label: "공지사항", icon: "megaphone", href: "/notices" },
-    { label: "고객센터", icon: "support-agent", href: "/feedback" },
-    { label: "약관 및 정책", icon: "file-text", href: "/terms" },
+    { label: "이용약관", icon: "description", href: "/terms?section=terms_of_service" },
+    { label: "개인정보 처리방침", icon: "privacy_tip", href: "/terms?section=privacy_policy" },
+    { label: "환불 규정", icon: "payments", href: "/terms?section=refund" },
+    { label: "커뮤니티 운영 규칙", icon: "forum", href: "/community-guideline" },
+    { label: "계정·데이터 삭제", icon: "person_remove", href: "/account-deletion" },
+    { label: "접근성", icon: "accessibility_new", href: "/settings/accessibility" },
   ],
 };
 
