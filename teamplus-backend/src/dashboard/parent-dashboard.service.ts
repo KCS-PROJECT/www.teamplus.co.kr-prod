@@ -212,13 +212,14 @@ export class ParentDashboardService {
           orderBy: { createdAt: "desc" },
           select: { id: true, amount: true, createdAt: true },
         }),
-        this.prisma.payment.findMany({
+        // [2026-07-18 perf] findMany+reduce → DB aggregate 합계 (행 전송 제거)
+        this.prisma.payment.aggregate({
           where: {
             userId: parentId,
             paymentStatus: "completed",
             createdAt: { gte: monthStart, lte: monthEnd },
           },
-          select: { amount: true },
+          _sum: { amount: true },
         }),
         childUserIds.length > 0
           ? this.prisma.classSchedule.findMany({
@@ -443,10 +444,7 @@ export class ParentDashboardService {
           ? ((monthPresent / monthAttendances.length) * 100).toFixed(1)
           : "0";
 
-      const totalPaidThisMonth = monthPayments.reduce(
-        (sum, p) => sum + Number(p.amount),
-        0,
-      );
+      const totalPaidThisMonth = Number(monthPayments._sum.amount ?? 0);
 
       // 1. 자녀별 월간 성과
       const monthlyChildPerformance = childrenWithCredits.map((child) => {

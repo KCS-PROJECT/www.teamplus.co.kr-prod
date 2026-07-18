@@ -84,41 +84,6 @@ export class ResourceAccessService {
     throw new ForbiddenException("이 팀을 관리할 권한이 없습니다.");
   }
 
-  /**
-   * 요청자가 **관리자로서** 관리하는 팀 ID 집합 — `assertTeamManager`와 **동일 정책**.
-   *
-   * team-scope.util 의 `resolveManagedTeamIds`(승인 TeamMember 전체 roleInTeam 무관 + CoachProfile
-   * 단독 포함)보다 좁다. 정산·결제 등 관리자 전용 소계의 대상 팀은 이 엄격 정책을 써야
-   * `assertTeamManager` 상세 가드와 경계가 일치한다(일반 멤버·CoachProfile-only 유출 차단).
-   *
-   *  - 역할 게이트: DIRECTOR/COACH(TEAM_DOMAIN_USER_TYPES) 외는 빈 집합
-   *  - 포함: owner(Team.coachId) OR 승인 관리 멤버(roleInTeam ∈ HEAD_COACH/COACH/MANAGER)
-   *  - **CoachProfile 단독 불인정**(assertTeamManager 와 동일)
-   *  - 관리자급(ADMIN/SYSTEM/OPER)은 호출측에서 전체 팀으로 별도 해석(여기선 빈 집합).
-   */
-  async resolveManageableTeamIds(requester: JwtUserPayload): Promise<string[]> {
-    if (!TEAM_DOMAIN_USER_TYPES.includes(requester.userType)) return [];
-    const [ownedTeams, managerMemberships] = await Promise.all([
-      this.prisma.team.findMany({
-        where: { coachId: requester.id },
-        select: { id: true },
-      }),
-      this.prisma.teamMember.findMany({
-        where: {
-          userId: requester.id,
-          approvalStatus: "approved",
-          leftAt: null,
-          roleInTeam: { in: TEAM_MANAGER_ROLES },
-        },
-        select: { teamId: true },
-      }),
-    ]);
-    const set = new Set<string>();
-    for (const t of ownedTeams) set.add(t.id);
-    for (const m of managerMemberships) if (m.teamId) set.add(m.teamId);
-    return Array.from(set);
-  }
-
   /** 소속(멤버십) 판정만 수행 — 역할 게이트·관리자급 통과는 호출측 책임 */
   private async isTeamManagerMember(
     teamId: string,

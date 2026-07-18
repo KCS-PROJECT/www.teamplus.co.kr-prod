@@ -52,7 +52,9 @@ export function SwipeStatCards({
   const lastTime = useRef(0);
   const velocity = useRef(0);
 
-  const cardWidth = 200;
+  // [ICETIMES 시안 2026-07-18] default(teen) 카드 폭 132px — 올드버전 프로토타입 "내 현황" 스탯 카드.
+  //  child variant 는 기존 200px 유지 (WCAG AAA 큰 카드).
+  const cardWidth = variant === 'child' ? 200 : 132;
   const gap = 12;
 
   // 드래그 여부 추적 — 클릭 이벤트와 스와이프 충돌 방지
@@ -87,7 +89,7 @@ export function SwipeStatCards({
         trackRef.current.style.transform = `translateX(${offset}px)`;
       }
     },
-    [cards.length],
+    [cards.length, cardWidth],
   );
 
   const setPosition = useCallback((x: number) => {
@@ -154,7 +156,7 @@ export function SwipeStatCards({
     }
 
     snapToIndex(nextIndex);
-  }, [currentIndex, snapToIndex]);
+  }, [currentIndex, snapToIndex, cardWidth]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -261,7 +263,7 @@ export function SwipeStatCards({
             ) : (
               <article
                 key={card.label}
-                className={`flex-shrink-0 bg-white dark:bg-rink-800 rounded-xl p-4 shadow-sm border border-wline-2 dark:border-rink-700 active:brightness-95 transition-colors ${(card.href || card.onClick) ? 'cursor-pointer' : ''}`}
+                className={`flex-shrink-0 bg-white dark:bg-rink-800 rounded-2xl p-3.5 shadow-sh-1 border border-wline dark:border-rink-700 active:brightness-95 transition-colors ${(card.href || card.onClick) ? 'cursor-pointer' : ''}`}
                 style={{ width: `${cardWidth}px` }}
                 aria-label={`${card.label}: ${card.value}${card.suffix}`}
                 role={card.href || card.onClick ? 'button' : undefined}
@@ -274,29 +276,32 @@ export function SwipeStatCards({
                   }
                 }}
               >
-                <div className="flex items-center justify-between mb-3">
-                  <Icon
-                    name={card.icon}
-                    className={`text-[23px] ${card.iconColor}`}
-                    aria-hidden="true"
-                  />
+                {/* [ICETIMES 시안] 아이콘 박스(40×40 r-12) → 값(24/800) → 라벨(12) 세로 구성 */}
+                <div className="flex items-center justify-between">
+                  <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${card.iconBg}`}>
+                    <Icon
+                      name={card.icon}
+                      className={`text-[22px] ${card.iconColor}`}
+                      aria-hidden="true"
+                    />
+                  </span>
                   {card.alert && (
                     <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded">
                       확인 필요
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-wtext-3 dark:text-rink-300 font-medium mb-1">
-                  {card.label}
-                </p>
-                <div className="flex items-baseline gap-0.5">
-                  <span className="text-2xl font-extrabold text-wtext-1 dark:text-white tracking-tight tabular-nums">
+                <p className="mt-2.5 flex items-baseline gap-0.5 leading-none">
+                  <span className="text-[24px] font-extrabold leading-none text-wtext-1 dark:text-white tabular-nums">
                     {isAnimated ? <CountUp end={card.value} duration={1800} /> : 0}
                   </span>
-                  <span className="text-sm font-bold text-wtext-3 dark:text-rink-300">
+                  <span className="text-[13px] font-semibold text-wtext-3 dark:text-rink-300">
                     {card.suffix}
                   </span>
-                </div>
+                </p>
+                <p className="mt-1 text-xs text-wtext-3 dark:text-rink-300">
+                  {card.label}
+                </p>
               </article>
             ),
           )}

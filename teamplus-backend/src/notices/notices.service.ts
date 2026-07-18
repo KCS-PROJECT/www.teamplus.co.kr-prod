@@ -28,7 +28,7 @@ interface NoticeFilter {
   teamId?: string; // 클럽 ID (클럽별 필터)
   /**
    * [2026-05-21] 공지 범위 구분.
-   *  - 'service' : 서비스 공지만 (targetTeamId = null) — 고객지원 > 서비스 공지사항
+   *  - 'service' : 공지만 (targetTeamId = null) — 고객지원 > 공지사항
    *  - 'team'    : 팀 공지만 (targetTeamId ∈ 내 소속/관리 팀) — 팀 공지(관리/열람)
    *  - 미지정    : 기존 동작 (teamId 필터 또는 전체)
    */
@@ -287,7 +287,7 @@ export class NoticesService {
   /**
    * 내 미확인 활성 '서비스 공지' 개수
    * 현재 시각 기준 활성 공지(isActive, startAt, expiresAt) 중 내 NoticeRead가 없는 개수.
-   * [2026-06-19 사용자 직접 지시] 전체메뉴 '서비스 공지사항' 배지와 일치하도록 서비스 공지(targetTeamId=null)
+   * [2026-06-19 사용자 직접 지시] 전체메뉴 '공지사항' 배지와 일치하도록 서비스 공지(targetTeamId=null)
    *   만 집계 — 팀 공지가 섞여 15/18 등으로 부풀던 문제 해소.
    */
   async getUnreadNoticeCount(userId: string) {

@@ -357,7 +357,7 @@ function PaymentTypeBar({
         aria-valuemin={0}
         aria-valuemax={100}
         aria-label={`${label} ${pct}퍼센트`}
-        className="h-1.5 overflow-hidden rounded-w-pill bg-it-line dark:bg-rink-700"
+        className="h-2 overflow-hidden rounded-w-pill bg-it-line dark:bg-rink-700"
       >
         <div
           className={cn(
@@ -424,7 +424,7 @@ function TeamPaymentCard({ team, index = 0, last }: { team: TeamPayment; index?:
         aria-valuemin={0}
         aria-valuemax={100}
         aria-label={`${team.teamName} 납부율 ${pct}퍼센트`}
-        className="h-1.5 overflow-hidden rounded-w-pill bg-it-line dark:bg-rink-700"
+        className="h-2 overflow-hidden rounded-w-pill bg-it-line dark:bg-rink-700"
       >
         <div
           className={cn(
@@ -474,13 +474,13 @@ function UnpaidMemberCard({
         <div className="flex min-w-0 flex-1 items-center gap-3">
           {/* 시안 Avatar(red tone, 이니셜) — 44px */}
           <div className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-w-pill bg-it-red-50 dark:bg-it-red-500/15">
-            <span className="text-[18px] font-bold text-it-red-600 dark:text-it-red-300">
+            <span className="text-[16px] font-extrabold text-it-red-500 dark:text-it-red-300">
               {member.name?.charAt(0) || '?'}
             </span>
           </div>
           <div className="min-w-0 flex-1">
             <h4 className="text-[15px] font-bold text-it-ink-800 truncate dark:text-white">{member.name}</h4>
-            <p className="text-[12.5px] text-it-ink-500 truncate dark:text-wtext-4">{member.teamName}</p>
+            <p className="text-[13px] text-it-ink-500 truncate dark:text-wtext-4">{member.teamName}</p>
             <div className="mt-1.5">
               <span className="inline-flex items-center rounded-w-sm bg-it-blue-50 px-1.5 py-0.5 text-[11.5px] font-bold text-it-blue-600 dark:bg-it-blue-900/30 dark:text-it-blue-300">
                 {billingLabel}
@@ -490,7 +490,7 @@ function UnpaidMemberCard({
         </div>
         <div className="shrink-0 text-right">
           <p className="text-[11.5px] font-medium text-it-ink-400 dark:text-wtext-4">미납액</p>
-          <p className="mt-0.5 text-[16px] font-extrabold text-it-red-600 tabular-nums">
+          <p className="mt-0.5 text-[15px] font-extrabold text-it-red-500 tabular-nums">
             {formatCurrency(member.amount)}
             <span className="ml-0.5 text-[12px] font-medium">원</span>
           </p>
@@ -501,14 +501,14 @@ function UnpaidMemberCard({
           type="button"
           onClick={() => onRemind(member)}
           disabled={isReminding}
-          className="inline-flex h-[38px] flex-1 items-center justify-center rounded-w-sm bg-it-blue-500 text-[14px] font-bold text-white transition-colors hover:bg-it-blue-600 active:brightness-[0.98] disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none"
+          className="inline-flex h-10 flex-1 items-center justify-center rounded-w-md bg-it-blue-500 text-[13.5px] font-semibold text-white transition-colors hover:bg-it-blue-600 active:brightness-[0.98] disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none"
         >
           {isReminding ? '발송 중...' : '알림 발송'}
         </button>
         <button
           type="button"
           onClick={() => onDetail(member)}
-          className="inline-flex h-[38px] flex-1 items-center justify-center rounded-w-sm border-[1.5px] border-it-line-strong text-[14px] font-bold text-it-blue-600 transition-colors hover:bg-it-fill active:brightness-[0.98] motion-reduce:transition-none dark:border-rink-700 dark:text-wtext-4 dark:hover:bg-rink-700"
+          className="inline-flex h-10 flex-1 items-center justify-center rounded-w-md border-[1.5px] border-it-line-strong text-[13.5px] font-semibold text-it-blue-600 transition-colors hover:bg-it-fill active:brightness-[0.98] motion-reduce:transition-none dark:border-rink-700 dark:text-wtext-4 dark:hover:bg-rink-700"
         >
           상세 보기
         </button>

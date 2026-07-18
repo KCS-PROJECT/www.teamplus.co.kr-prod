@@ -243,13 +243,14 @@ export class ChildDashboardService {
         }),
         // 2-A.3 이번 달 사용 수업권 차감 트랜잭션
         // CreditTransaction.memberCredit relation + type 값 'deducted' (스키마 enum 정확 일치)
-        this.prisma.creditTransaction.findMany({
+        // [2026-07-18 perf] findMany+reduce → DB aggregate 합계 (행 전송 제거)
+        this.prisma.creditTransaction.aggregate({
           where: {
             memberCredit: { userId },
             type: "deducted",
             createdAt: { gte: monthStart, lte: monthEnd },
           },
-          select: { amount: true },
+          _sum: { amount: true },
         }),
         // 2-A.4 본인 등록 수업의 다가오는 일정 (오늘 ~ 30일).
         //  [수정 2026-05-13] Enrollment paid 기준 — 결제 완료한 수업만 캘린더에 노출.
@@ -419,10 +420,7 @@ export class ChildDashboardService {
             (sum, mc) => sum + Math.max(0, mc.totalSessions - mc.usedSessions),
             0,
           ),
-        usedThisMonth: monthCreditDeductions.reduce(
-          (sum, t) => sum + t.amount,
-          0,
-        ),
+        usedThisMonth: Number(monthCreditDeductions._sum.amount ?? 0),
       };
 
       // ② 출석 추이 6개월 (학부모 attendanceTrend 와 동일 구조)

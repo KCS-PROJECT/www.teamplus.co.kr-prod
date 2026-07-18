@@ -833,7 +833,7 @@ export default function LoginPage() {
                 <div className="flex items-center gap-2">
                   <Icon
                     name="lock_clock"
-                    className="text-sun-500 text-card-title"
+                    className="text-sun-500 text-[18px]"
                   />
                   <p className="text-wtext-2 dark:text-sun-100 text-card-body">
                     {lockoutMessage}
@@ -844,7 +844,7 @@ export default function LoginPage() {
             {guardNotice && !error && (
               <div className="p-3 bg-ice-100 dark:bg-ice-500/15 border border-ice-500/40 rounded-w-md">
                 <div className="flex items-center gap-2">
-                  <Icon name="info" className="text-ice-500 text-card-title" />
+                  <Icon name="info" className="text-ice-500 text-[18px]" />
                   <p className="text-wtext-2 dark:text-ice-100 text-card-body">
                     {guardNotice}
                   </p>
@@ -856,7 +856,7 @@ export default function LoginPage() {
                 <div className="flex items-center gap-2">
                   <Icon
                     name="warning"
-                    className="text-sun-500 text-card-title"
+                    className="text-sun-500 text-[18px]"
                   />
                   <p className="text-wtext-2 dark:text-sun-100 text-card-body">
                     {lockoutMessage}
@@ -874,7 +874,7 @@ export default function LoginPage() {
                 <div className="flex items-center gap-2">
                   <Icon
                     name="error"
-                    className="text-flame-500 text-card-title"
+                    className="text-flame-500 text-[18px]"
                     aria-hidden="true"
                   />
                   <p className="text-wtext-2 dark:text-flame-100 text-card-body">

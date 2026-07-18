@@ -6,6 +6,7 @@ import {
   useState,
   useCallback,
   useEffect,
+  useMemo,
   ReactNode,
 } from 'react';
 import { Notification } from '@/types/notification';
@@ -206,20 +207,36 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
     await loadNotifications();
   }, [loadNotifications]);
 
+  // [2026-07-18 perf] Provider 가 전 라우트를 감싸므로 value 인라인 객체는 렌더마다
+  //   새 참조가 되어 모든 consumer 를 리렌더시킨다 — useMemo 로 참조 안정화.
+  //   (핸들러들은 전부 useCallback 이라 deps 는 상태 3개만 실질 변동)
+  const value = useMemo(
+    () => ({
+      notifications,
+      unreadCount,
+      isLoading,
+      addNotification,
+      markAsRead,
+      markAllAsRead,
+      deleteNotification,
+      clearAll,
+      refresh,
+    }),
+    [
+      notifications,
+      unreadCount,
+      isLoading,
+      addNotification,
+      markAsRead,
+      markAllAsRead,
+      deleteNotification,
+      clearAll,
+      refresh,
+    ],
+  );
+
   return (
-    <NotificationContext.Provider
-      value={{
-        notifications,
-        unreadCount,
-        isLoading,
-        addNotification,
-        markAsRead,
-        markAllAsRead,
-        deleteNotification,
-        clearAll,
-        refresh,
-      }}
-    >
+    <NotificationContext.Provider value={value}>
       {children}
     </NotificationContext.Provider>
   );

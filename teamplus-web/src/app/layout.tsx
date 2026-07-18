@@ -11,6 +11,9 @@ import { env } from '@/lib/env';
 export const metadata: Metadata = {
   title: 'TEAMPLUS - 아이스하키 팀 관리',
   description: '아이스하키 팀을 위한 통합 관리 시스템',
+  // 앱 전용 WebView 프론트엔드 — 검색엔진 색인 차단 (마케팅 랜딩은 teamplus-home 별도).
+  // 로그인 페이지가 검색 노출되면 구글 도킹 기반 공격 대상 목록에 오르기 쉬워 noindex 처리.
+  robots: { index: false, follow: false },
 };
 
 export const viewport: Viewport = {

@@ -690,7 +690,8 @@ export default function SignupPage() {
   const passwordShowError = Boolean(errors.password) || Boolean(passwordIssue);
 
   return (
-    <MobileContainer hasBottomNav={false} className="bg-it-canvas dark:bg-puck">
+    // [ICETIMES 시안 2026-07-18] 회원가입 — 흰 단일면 플랫(시안 background:#fff · main 20/26/40)
+    <MobileContainer hasBottomNav={false} className="bg-white dark:bg-puck">
       {/* [수정 2026-06-15 사용자 직접 지시] 회원가입 헤더:
             · title='회원가입' + centerTitle → 화면 정중앙 타이틀
             · onBack=() => /login            → ← back 동작
@@ -716,7 +717,7 @@ export default function SignupPage() {
       {/* Content */}
       <main
         data-no-enter
-        className="flex-1 overflow-y-auto scroll-keyboard-safe px-5 py-6 max-w-lg w-full mx-auto pb-keyboard-safe-8"
+        className="flex-1 overflow-y-auto scroll-keyboard-safe px-[26px] pt-5 pb-10 max-w-lg w-full mx-auto pb-keyboard-safe-8"
       >
         {/* Error Message */}
         {(errors.general || errors.role) && (
@@ -734,7 +735,7 @@ export default function SignupPage() {
         )}
 
         {/* Signup Form */}
-        <form ref={formRef} onSubmit={handleSignup} className="space-y-6">
+        <form ref={formRef} onSubmit={handleSignup} className="space-y-7">
           {/* Role Selection */}
           <section>
             <h2 className="text-[16px] font-extrabold tracking-[-0.01em] text-it-ink-800 dark:text-rink-100 mb-1.5 flex items-center gap-1">
@@ -778,8 +779,8 @@ export default function SignupPage() {
               아래의 모든 입력 섹션(감독 유형/팀 선택/기본 정보/휴대폰/비밀번호/약관/가입 버튼)은
               selectedRole 선택 후에야 표시된다 (2026-05-26 사용자 요청). */}
           {!selectedRole && (
-            <div className="rounded-w-md border border-dashed border-it-line-strong dark:border-rink-700 px-5 py-8 text-center text-it-ink-500 dark:text-rink-300">
-              <p className="text-card-body">
+            <div className="pt-1 text-center text-it-ink-400 dark:text-rink-300">
+              <p className="text-[13.5px] leading-[1.7]">
                 위에서 가입 유형을 선택하면<br />
                 회원 정보 입력 화면이 나타납니다.
               </p>
@@ -788,13 +789,13 @@ export default function SignupPage() {
 
           {/* selectedRole 선택 후에만 입력 섹션 + 가입 버튼 노출 */}
           {selectedRole && (
-          <div className="space-y-6">
+          <div className="space-y-7">
           {/* 감독 정보 입력 — selectedRole === 'director' 일 때만 노출.
               감독 유형 선택 카드는 제거: 일반 가입은 '팀 감독'(team) 고정이며,
               오픈클래스 감독(academy)은 별도 공유 URL(`?director=academy`)로 진입한
               경우(isAcademyMode)에만 directorType='academy' 가 되어 폼이 노출된다. */}
           {selectedRole === "director" && (
-            <section className="bg-it-surface dark:bg-rink-800 rounded-w-md p-5 border border-it-line-strong dark:border-rink-700">
+            <section>
               {/* 모드별 헤더 — 팀 감독 / 오픈클래스 감독 */}
               <div className="mb-5 flex items-center gap-3">
                 <span className="flex size-10 shrink-0 items-center justify-center rounded-w-pill bg-it-blue-500 text-white">
@@ -877,7 +878,7 @@ export default function SignupPage() {
           {/* 코치 가입 시 팀 선택 (필수) — 감독이 만든 팀에 가입 신청 (설계서 §4.5).
               학부모는 가입 시 팀을 선택하지 않고, 자녀 등록 시점에 자녀별로 팀을 고른다. */}
           {selectedRole === "coach" && (
-            <section className="bg-it-surface dark:bg-rink-800 rounded-w-md p-5 border border-it-line-strong dark:border-rink-700">
+            <section>
               {(() => {
                 const currentCode = formData.coachTeamId;
                 const errorMsg = errors.coachTeamId;
@@ -943,7 +944,7 @@ export default function SignupPage() {
           )}
 
           {/* 기본 정보 */}
-          <section className="bg-it-surface dark:bg-rink-800 rounded-w-md p-5 border border-it-line-strong dark:border-rink-700">
+          <section>
             <h2 className="text-[16px] font-extrabold tracking-[-0.01em] text-it-ink-800 dark:text-rink-100 mb-4">
               기본 정보
             </h2>
@@ -1048,7 +1049,7 @@ export default function SignupPage() {
           {/* B안 (2026-05-26) — 본인인증 강제 대상은 이름 영역에서 휴대폰까지 함께 인증되므로
               별도 휴대폰 섹션 숨김. (자동 채움된 휴대폰은 가입 완료 화면에서 마스킹 표시) */}
           {!isIdentityRequiredRole && (
-          <section className="bg-it-surface dark:bg-rink-800 rounded-w-md p-5 border border-it-line-strong dark:border-rink-700">
+          <section>
             <h2 className="text-[16px] font-extrabold tracking-[-0.01em] text-it-ink-800 dark:text-rink-100 mb-4">
               휴대폰 번호
             </h2>
@@ -1094,7 +1095,7 @@ export default function SignupPage() {
           )}
 
           {/* 비밀번호 설정 */}
-          <section className="bg-it-surface dark:bg-rink-800 rounded-w-md p-5 border border-it-line-strong dark:border-rink-700">
+          <section>
             <h2 className="text-[16px] font-extrabold tracking-[-0.01em] text-it-ink-800 dark:text-rink-100 mb-4">
               비밀번호 설정
             </h2>
@@ -1228,38 +1229,38 @@ export default function SignupPage() {
           </section>
 
           {/* Agreements */}
-          <section className="bg-it-surface dark:bg-rink-800 rounded-w-md p-5 border border-it-line-strong dark:border-rink-700">
+          <section>
             <h2 className="text-[16px] font-extrabold tracking-[-0.01em] text-it-ink-800 dark:text-rink-100 mb-4">
               약관 동의
             </h2>
 
-            {/* All Agree */}
-            <label className="flex items-center gap-3 pb-3 border-b border-it-line dark:border-rink-700 cursor-pointer">
+            {/* All Agree — [ICETIMES 시안 2026-07-18] it-fill 박스 버튼(p-3.5 · r-12 · 1.5px it-line-strong) */}
+            <label className="flex w-full items-center gap-2.5 p-3.5 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 cursor-pointer">
               <button
                 type="button"
                 onClick={handleAllAgree}
-                className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all motion-reduce:transition-none ${
+                className={`w-[19px] h-[19px] rounded-[5px] border-[1.5px] flex items-center justify-center transition-all motion-reduce:transition-none flex-shrink-0 ${
                   agreements.all
                     ? "bg-it-blue-500 border-it-blue-500"
                     : "border-it-line-strong dark:border-rink-700 hover:border-it-blue-300"
                 }`}
               >
                 {agreements.all && (
-                  <Icon name="check" className="text-white text-card-body" />
+                  <Icon name="check" className="text-white text-card-meta" />
                 )}
               </button>
-              <span className="text-it-ink-900 dark:text-white font-bold text-[15px]">
+              <span className="text-it-ink-800 dark:text-white font-bold text-[14.5px]">
                 전체 약관에 동의합니다
               </span>
             </label>
 
-            <div className="pt-3 space-y-1">
+            <div className="pt-2.5 space-y-1">
               {/* Terms */}
-              <label className="flex items-center gap-3 py-2.5 cursor-pointer">
+              <label className="flex items-center gap-2.5 px-3.5 py-2.5 cursor-pointer">
                 <button
                   type="button"
                   onClick={() => handleAgreementChange("terms")}
-                  className={`w-5 h-5 rounded-[5px] border-[1.5px] flex items-center justify-center transition-all motion-reduce:transition-none flex-shrink-0 ${
+                  className={`w-[19px] h-[19px] rounded-[5px] border-[1.5px] flex items-center justify-center transition-all motion-reduce:transition-none flex-shrink-0 ${
                     agreements.terms
                       ? "bg-it-blue-500 border-it-blue-500"
                       : "border-it-line-strong dark:border-rink-700"
@@ -1269,7 +1270,7 @@ export default function SignupPage() {
                     <Icon name="check" className="text-white text-card-meta" />
                   )}
                 </button>
-                <span className="text-it-ink-700 dark:text-rink-300 text-[14.5px] flex-1">
+                <span className="text-it-ink-700 dark:text-rink-300 text-[13.5px] font-medium flex-1">
                   <span className="text-it-red-500 font-bold">[필수]</span>{" "}
                   서비스 이용약관
                 </span>
@@ -1284,16 +1285,16 @@ export default function SignupPage() {
                   className="p-1 -m-1 rounded-w-pill hover:bg-wbg dark:hover:bg-rink-700/40 transition-colors motion-reduce:transition-none"
                   aria-label="서비스 이용약관 보기"
                 >
-                  <Icon name="chevron_right" className="text-it-ink-300 text-[20px]" />
+                  <Icon name="chevron_right" className="text-it-ink-300 text-[18px]" />
                 </button>
               </label>
 
               {/* Privacy */}
-              <label className="flex items-center gap-3 py-2.5 cursor-pointer">
+              <label className="flex items-center gap-2.5 px-3.5 py-2.5 cursor-pointer">
                 <button
                   type="button"
                   onClick={() => handleAgreementChange("privacy")}
-                  className={`w-5 h-5 rounded-[5px] border-[1.5px] flex items-center justify-center transition-all motion-reduce:transition-none flex-shrink-0 ${
+                  className={`w-[19px] h-[19px] rounded-[5px] border-[1.5px] flex items-center justify-center transition-all motion-reduce:transition-none flex-shrink-0 ${
                     agreements.privacy
                       ? "bg-it-blue-500 border-it-blue-500"
                       : "border-it-line-strong dark:border-rink-700"
@@ -1303,7 +1304,7 @@ export default function SignupPage() {
                     <Icon name="check" className="text-white text-card-meta" />
                   )}
                 </button>
-                <span className="text-it-ink-700 dark:text-rink-300 text-[14.5px] flex-1">
+                <span className="text-it-ink-700 dark:text-rink-300 text-[13.5px] font-medium flex-1">
                   <span className="text-it-red-500 font-bold">[필수]</span>{" "}
                   개인정보 처리방침
                 </span>
@@ -1317,16 +1318,16 @@ export default function SignupPage() {
                   className="p-1 -m-1 rounded-w-pill hover:bg-wbg dark:hover:bg-rink-700/40 transition-colors motion-reduce:transition-none"
                   aria-label="개인정보 처리방침 보기"
                 >
-                  <Icon name="chevron_right" className="text-it-ink-300 text-[20px]" />
+                  <Icon name="chevron_right" className="text-it-ink-300 text-[18px]" />
                 </button>
               </label>
 
               {/* Marketing */}
-              <label className="flex items-center gap-3 py-2.5 cursor-pointer">
+              <label className="flex items-center gap-2.5 px-3.5 py-2.5 cursor-pointer">
                 <button
                   type="button"
                   onClick={() => handleAgreementChange("marketing")}
-                  className={`w-5 h-5 rounded-[5px] border-[1.5px] flex items-center justify-center transition-all motion-reduce:transition-none flex-shrink-0 ${
+                  className={`w-[19px] h-[19px] rounded-[5px] border-[1.5px] flex items-center justify-center transition-all motion-reduce:transition-none flex-shrink-0 ${
                     agreements.marketing
                       ? "bg-it-blue-500 border-it-blue-500"
                       : "border-it-line-strong dark:border-rink-700"
@@ -1336,7 +1337,7 @@ export default function SignupPage() {
                     <Icon name="check" className="text-white text-card-meta" />
                   )}
                 </button>
-                <span className="text-it-ink-700 dark:text-rink-300 text-[14.5px] flex-1">
+                <span className="text-it-ink-700 dark:text-rink-300 text-[13.5px] font-medium flex-1">
                   <span className="text-it-ink-400">[선택]</span> 마케팅 정보 수신
                 </span>
                 <button
@@ -1349,7 +1350,7 @@ export default function SignupPage() {
                   className="p-1 -m-1 rounded-w-pill hover:bg-wbg dark:hover:bg-rink-700/40 transition-colors motion-reduce:transition-none"
                   aria-label="마케팅 정보 수신 약관 보기"
                 >
-                  <Icon name="chevron_right" className="text-it-ink-300 text-[20px]" />
+                  <Icon name="chevron_right" className="text-it-ink-300 text-[18px]" />
                 </button>
               </label>
             </div>

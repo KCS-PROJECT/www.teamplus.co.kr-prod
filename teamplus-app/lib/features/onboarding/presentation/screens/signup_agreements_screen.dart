@@ -316,8 +316,13 @@ class _AgreementDetailSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final viewHeight = MediaQuery.of(context).size.height;
+    // [2026-07-18] 하단 시스템 내비게이션 바(제스처/버튼) 높이. 시트는 화면 바닥에
+    //   붙어 올라오므로 이 값을 확보하지 않으면 '닫기/동의하기' 버튼이 내비게이션 바에
+    //   가려진다(사용자 보고). 버튼 아래 여백에 가산해 항상 보이도록 한다.
+    final bottomInset = MediaQuery.of(context).viewPadding.bottom;
     return Container(
-      height: viewHeight * 0.9,
+      // 시트 높이도 하단 내비 바 높이만큼 키워 본문 스크롤 영역이 눌리지 않게 한다.
+      height: viewHeight * 0.9 + bottomInset,
       decoration: const BoxDecoration(
         color: ST.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -381,9 +386,9 @@ class _AgreementDetailSheet extends StatelessWidget {
               ),
             ),
           ),
-          // 동의 / 닫기 버튼
+          // 동의 / 닫기 버튼 — 하단 내비게이션 바 높이(bottomInset)만큼 여백 확보.
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+            padding: EdgeInsets.fromLTRB(20, 12, 20, 24 + bottomInset),
             child: Row(
               children: [
                 Expanded(

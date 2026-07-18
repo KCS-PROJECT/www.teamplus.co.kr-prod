@@ -14,6 +14,7 @@
 import { memo, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { lockBodyScroll, unlockBodyScroll } from "@/lib/scroll-lock";
+import { acquireSpinnerNativeChrome } from "@/services/spinner-native-chrome";
 
 export interface LoadingRingProps {
   /** 메인 타이틀 — 기본: "결제 처리 중" */
@@ -40,6 +41,14 @@ export const LoadingRing = memo(function LoadingRing({
       unlockBodyScroll();
     };
   }, []);
+
+  // v22 (2026-07-18) 사용자 직접 지시 — 풀사이즈 스피너 표시 중 appstatus 숨김.
+  // 잔여 safe-area 스트립은 LoadingRing 자체 배경색(bg-wbg / #0e1726)과 통일한다
+  // (spinner-native-chrome.ts SoT — skip 경로/비-native 는 내부에서 no-op).
+  useEffect(
+    () => acquireSpinnerNativeChrome({ light: "#f6f8fc", dark: DARK_BG }),
+    [],
+  );
 
   return (
     <>

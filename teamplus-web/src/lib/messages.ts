@@ -333,6 +333,18 @@ export const MESSAGES = {
     classSchedule: "수업 일정",
     teamNotices: "공지사항",
     notices: "공지사항",
+    // [2026-07-18] 대시보드 공지 영역 2탭 분리 — 공지사항(service, 전역)/팀공지(team, 소속·자녀 경유).
+    //  탭 라벨(UI 상수 — 공통코드 아님)·탭별 빈 상태 문구.
+    noticeTabs: {
+      service: "공지사항",
+      team: "팀공지",
+    },
+    // 탭 그룹 스크린리더 구조 라벨(role="tablist" aria-label).
+    noticeTabsAria: "공지 구분",
+    noticeEmpty: {
+      service: "등록된 공지사항이 없습니다",
+      team: "등록된 팀 공지가 없습니다",
+    },
     // [수정 2026-05-12] 요일 포함 — "5월 12일(월) 수업".
     //  Date 객체 1개로 단일 진입점. 호출처 3곳(parent/coach/director home) 동시 동기화.
     dayClasses: (date: Date) => {
@@ -1243,7 +1255,8 @@ export const MESSAGES = {
     logoutConfirmButton: "로그아웃",
     // 앱 종료 확인 (Android 하드웨어 백키 → 홈 화면 — 2026-05-16)
     exitConfirmTitle: "앱을 종료하시겠습니까?",
-    exitConfirmMessage: "팀플러스 앱을 완전히 종료합니다.",
+    // [2026-07-16] 종료 확인 시 세션(토큰) 클리어 후 종료 — 재실행 시 로그인 필요 (useAppBack.requestAppExit)
+    exitConfirmMessage: "종료하면 로그아웃되며\n다시 실행할 때 로그인이 필요합니다.",
     exitConfirmButton: "종료하기",
     // 기능 준비 중 안내 (attendance2.featureComingSoon 의 공통화 — 2026-05-14)
     featureComingSoon: (name: string) => `${name} 기능 준비 중입니다.`,
@@ -1288,6 +1301,18 @@ export const MESSAGES = {
       brand: "TEAMPLUS",
       versionPrefix: "v",
     },
+  },
+  /**
+   * 앱 업데이트 유도 팝업 (2026-07-16 신설 — AppUpdatePrompt).
+   * 네이티브 설치 버전 < 서버 공지 버전(appSettings.appVersion)일 때 노출되는
+   * 소프트 업데이트 컨펌 팝업 문구. 확인 시 플랫폼별 스토어로 이동.
+   */
+  appUpdate: {
+    title: "업데이트 안내",
+    message: (current: string, latest: string) =>
+      `새 버전 v${latest}이 나왔어요.\n지금 버전 v${current}을 최신 버전으로 업데이트해 주세요.`,
+    confirmText: "업데이트",
+    cancelText: "나중에",
   },
   /**
    * UI 상호작용 메시지 — Pull-to-Refresh · 빈 상태 · 기타 UX 문구.

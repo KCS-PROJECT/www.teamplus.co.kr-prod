@@ -111,7 +111,7 @@ function MemberApprovalCard({
           </span>
         )}
         <span
-          className={`ml-auto inline-flex items-center rounded-w-pill px-2 py-0.5 text-[12px] font-bold ${badge.className}`}
+          className={`ml-auto inline-flex items-center rounded-w-pill px-2.5 py-1 text-[12px] font-bold ${badge.className}`}
         >
           {badge.label}
         </span>
@@ -149,7 +149,7 @@ function MemberApprovalCard({
               <p className="text-[12px] font-bold uppercase tracking-wider text-it-red-600 dark:text-it-red-400">
                 반려 사유
               </p>
-              <p className="mt-0.5 text-[13px] leading-relaxed text-it-ink-700 dark:text-it-ink-200">
+              <p className="mt-0.5 text-[12.5px] leading-relaxed text-it-red-700 dark:text-it-red-200">
                 {record.rejectReason}
               </p>
             </div>

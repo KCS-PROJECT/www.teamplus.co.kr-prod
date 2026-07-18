@@ -44,18 +44,6 @@ post_install do |installer|
       # 빌드 설정되어 경고/Swift 컴파일 에러를 유발하는 것을 방지.
       # 2026-05-12 상향: firebase_core 4.x / file_picker 12 가 iOS 14+/15+ API 사용.
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
-
-      # 📊 [2026-06-25] dSYM 생성 강제 — App Store 업로드 시 "Upload Symbols Failed
-      # (dSYM 누락)" 경고 예방. Release/Profile 빌드에서 DWARF + dSYM 을 함께 생성하여
-      # Pod framework 들의 크래시 심볼화를 보장한다.
-      # ⚠️ 단, objective_c.framework 는 CocoaPods Pod 가 아니라 Flutter 가 빌드하는
-      #    FFI framework 이므로 이 설정의 영향을 받지 않는다(해당 dSYM 은 archive 후처리
-      #    스크립트 scripts/fix_archive_dsyms.sh 로 보완). 이 설정은 그 외 Pod framework
-      #    들의 dSYM 누락 경고를 예방하는 모범 설정이다.
-      if config.name == 'Release' || config.name == 'Profile'
-        config.build_settings['DEBUG_INFORMATION_FORMAT'] = 'dwarf-with-dsym'
-      end
-
       # BoringSSL-GRPC 등 일부 Pod의 `-G` 플래그 경고 억제 (Xcode 15+)
       if config.build_settings['OTHER_CFLAGS'].is_a?(Array)
         config.build_settings['OTHER_CFLAGS'] = config.build_settings['OTHER_CFLAGS'].reject { |f| f == '-G' }
@@ -95,14 +83,20 @@ post_install do |installer|
       # 미정의 시 매크로 분기 실패로 build error 또는 미사용 코드까지 컴파일되어
       # framework header 누락 에러 발생 가능. teamplus 앱 실사용 권한:
       #   notifications(푸시), camera(QR), photos(프로필 업로드),
-      #   microphone(추후 채팅 음성), location(추후 매치 위치).
+      #   microphone(추후 채팅 음성).
+      # ⚠️ location 은 현재 미사용 → 0. PERMISSION_LOCATION=1 이면 CLLocationManager
+      #   코드가 바이너리에 컴파일되어 Apple 정적 분석이 위치 API 참조를 감지,
+      #   Info.plist 의 NSLocation*UsageDescription 목적 문자열을 요구한다
+      #   (ITMS-90683 경고, 2026-06-25 Build 6 발생). 위치 기능 미사용이므로 0 으로
+      #   꺼서 경고를 근본 제거. 추후 '매치 위치' 기능 실제 구현 시 1 로 되돌리고
+      #   Info.plist 에 NSLocationWhenInUseUsageDescription 목적 문자열을 함께 추가할 것.
       config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
       config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] += [
         'PERMISSION_NOTIFICATIONS=1',
         'PERMISSION_CAMERA=1',
         'PERMISSION_PHOTOS=1',
         'PERMISSION_MICROPHONE=1',
-        'PERMISSION_LOCATION=1',
+        'PERMISSION_LOCATION=0',
         'PERMISSION_EVENTS=0',
         'PERMISSION_EVENTS_FULL_ACCESS=0',
         'PERMISSION_REMINDERS=0',

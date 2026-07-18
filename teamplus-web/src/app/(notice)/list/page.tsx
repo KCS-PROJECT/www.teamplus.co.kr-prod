@@ -151,7 +151,7 @@ export default function NoticeListPage() {
   const pathname = usePathname();
   const isTeamScope = (pathname ?? "").includes("team-notices");
   const noticeScope: "service" | "team" = isTeamScope ? "team" : "service";
-  const pageTitle = isTeamScope ? "팀 공지사항" : "서비스 공지사항";
+  const pageTitle = isTeamScope ? "팀공지" : "공지사항";
   // 서비스 공지(`/notices`)는 admin 만 작성. 팀 공지(`/team-notices`)는 감독/코치/원장이 작성 가능.
   const userType = user?.userType;
   const canWrite =

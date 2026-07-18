@@ -4,8 +4,10 @@ import 'package:dio/dio.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../logging/app_logger.dart';
 import '../network/api_client.dart';
 import '../storage/secure_storage_service.dart';
 import '../webview/js_bridge.dart';
@@ -372,8 +374,17 @@ class PushNotificationService implements PushNotificationApi {
       }
 
       debugPrint('[PushNotification] FCM 토큰 서버 등록 성공');
+      _pendingRegistrationRetry = false;
     } catch (e) {
       debugPrint('[PushNotification] 토큰 등록 오류: $e');
+      // [A7] 무음 실패 방지 — 통합 로거로 승격(서버 수집·관측) + resume 재시도 예약.
+      //   등록 실패 = 해당 사용자는 푸시를 전혀 못 받는 상태이므로 관측이 필수다.
+      AppLogger.instance.error(
+        'FCM 토큰 서버 등록 실패',
+        error: e,
+        context: {'stage': 'registerTokenToServer'},
+      );
+      _scheduleResumeRetry('서버 등록 실패');
     }
   }
 
@@ -397,11 +408,54 @@ class PushNotificationService implements PushNotificationApi {
             '(status=${settings.authorizationStatus})');
         return;
       }
+
+      // [A3] iOS: 권한 허용 직후에는 APNS 토큰이 아직 세팅 전일 수 있고, 이때
+      //   getToken() 은 null/apns-token-not-set 으로 끝나 최초 세션이 영구 미등록된다.
+      //   짧은 백오프로 최대 2회 대기하고, 그래도 미준비면 앱 재개(resume) 시 1회
+      //   재시도로 넘긴다.
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        String? apnsToken = await messaging.getAPNSToken();
+        for (var attempt = 1; apnsToken == null && attempt <= 2; attempt++) {
+          await Future<void>.delayed(Duration(milliseconds: 700 * attempt));
+          apnsToken = await messaging.getAPNSToken();
+        }
+        if (apnsToken == null) {
+          _scheduleResumeRetry('APNS 토큰 미준비');
+          return;
+        }
+      }
+
       _fcmToken ??= await messaging.getToken();
+      if (_fcmToken == null) {
+        _scheduleResumeRetry('FCM 토큰 null');
+        return;
+      }
       await registerTokenToServer();
     } catch (e) {
       debugPrint('[PushNotification] ensureTokenRegistered 오류: $e');
+      _scheduleResumeRetry('ensureTokenRegistered 예외');
     }
+  }
+
+  // === [A3/A7] 토큰 등록 재시도 — 앱 재개(resume) 시 1회 ===
+  //   타이머 폴링 없이 lifecycle 이벤트만 사용한다. 실패가 반복되면 매 resume 마다
+  //   최대 1회씩만 재시도되므로 폭주하지 않는다. 등록 성공 시 플래그가 해제된다.
+  bool _pendingRegistrationRetry = false;
+  _ResumeRetryObserver? _resumeObserver;
+
+  void _scheduleResumeRetry(String reason) {
+    if (_pendingRegistrationRetry) return;
+    _pendingRegistrationRetry = true;
+    if (_resumeObserver == null) {
+      _resumeObserver = _ResumeRetryObserver(onResume: () {
+        if (!_pendingRegistrationRetry) return;
+        _pendingRegistrationRetry = false;
+        debugPrint('[PushNotification] 앱 재개 — 토큰 등록 재시도');
+        ensureTokenRegistered();
+      });
+      WidgetsBinding.instance.addObserver(_resumeObserver!);
+    }
+    debugPrint('[PushNotification] 토큰 등록 재시도 예약(resume 시): $reason');
   }
 
   /// 로그아웃 직전 호출 — 현재 기기 토큰을 서버에서 비활성화한다.
@@ -638,8 +692,19 @@ class PushNotificationService implements PushNotificationApi {
     if (payloadString == null) return;
 
     try {
-      final payload = jsonDecode(payloadString) as Map<String, dynamic>;
-      final notificationPayload = NotificationPayload.fromJson(payload);
+      final decoded = jsonDecode(payloadString) as Map<String, dynamic>;
+      // showNotification 에 전달된 payload 는 그 자체가 알림 data 맵이다
+      //   · FCM 포그라운드(Android): message.data 평탄맵 {v,type,linkUrl,notificationId}
+      //   · 브릿지 show: web 이 보낸 data 맵
+      // NotificationPayload.fromJson 은 중첩 'data' 키를 기대하므로 평탄 구조에서
+      // linkUrl/type 이 유실된다. decoded 를 통째로 data 로 실어 배경/종료 탭
+      // (_handleMessageOpenedApp)과 목적지를 일치시킨다(resolvePushPath(payload.data)).
+      final notificationPayload = NotificationPayload(
+        type: decoded['type'] as String? ?? 'general',
+        title: decoded['title'] as String?,
+        body: decoded['body'] as String?,
+        data: decoded,
+      );
       _notificationController.add(notificationPayload);
     } catch (e) {
       debugPrint('[PushNotification] 페이로드 파싱 오류: $e');
@@ -684,23 +749,19 @@ class NotificationPayload {
     };
   }
 
-  /// 알림 타입에 따른 라우트 결정
-  String? getRoute() {
-    switch (type) {
-      case 'payment_success':
-      case 'payment_failed':
-        return '/payments/history';
-      case 'class_reminder':
-      case 'class_cancelled':
-        return '/classes';
-      case 'attendance_checked':
-        return '/attendance';
-      case 'membership_approved':
-        return '/club/members';
-      case 'notice':
-        return '/notices';
-      default:
-        return null;
-    }
+  // getRoute() 삭제됨 (2026-07-11) — 호출처 0건 dead code 였고 매핑된 라우트도
+  // 실제 GoRoute 와 불일치했다. 푸시 탭 라우팅은 push_route_resolver.dart 의
+  // resolvePushPath()(linkUrl 계약 v1 + 웹 경로 폴백)가 담당한다.
+}
+
+/// [A3/A7] 앱 재개 시 토큰 등록 재시도용 lifecycle observer.
+class _ResumeRetryObserver with WidgetsBindingObserver {
+  _ResumeRetryObserver({required this.onResume});
+
+  final VoidCallback onResume;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) onResume();
   }
 }

@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -13,6 +12,7 @@ import '../../../../core/constants/app_environment.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/models/menu_model.dart';
 import '../providers/menu_provider.dart';
+import '../../../../core/system/app_exit.dart';
 import '../../../../shared/widgets/native_back_guard.dart';
 
 class MainShellScreen extends ConsumerStatefulWidget {
@@ -185,7 +185,9 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
       // 종료 컴펌 UI 는 하우머치 스타일 공통 다이얼로그 사용 (native_back_guard SoT).
       final confirmed = await showAppExitConfirmDialog(context);
       if (confirmed == true && Platform.isAndroid) {
-        await SystemNavigator.pop();
+        // [2026-07-16] 종료 확인 → 세션(토큰) 클리어 후 finishAndRemoveTask 실제 종료.
+        //   Web 위임 ACK 타임아웃 폴백 경로에서도 클리어가 우회되지 않도록 보장.
+        await AppExit.terminateWithSessionClear();
       }
     } finally {
       _isFallbackDialogOpen = false;

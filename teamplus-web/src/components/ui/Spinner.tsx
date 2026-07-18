@@ -3,6 +3,7 @@
 import { memo, useEffect, useRef, useState, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { lockBodyScroll, unlockBodyScroll } from "@/lib/scroll-lock";
+import { acquireSpinnerNativeChrome } from "@/services/spinner-native-chrome";
 
 /**
  * Spinner Component - TEAMPLUS Design System
@@ -123,6 +124,14 @@ interface FullScreenLoaderProps {
   message?: string;
   showMessage?: boolean;
   className?: string;
+  /**
+   * [ICETIMES DS 2026-07-18] 올드버전 디자인 시스템 "Fullsize 팝업 로더" 2형.
+   * - 'page' (기본): 순백 풀스크린 + 스피너 — 기존 동작 그대로 (회귀 0).
+   * - 'dim':  뒤 화면 위 딤(rink-900/55 = --dim-modal) + 흰 카드(r-16 · sh-dialog ·
+   *           py-7 px-9) 안에 Spinner lg + 메시지(14/500) — 결제 처리 등 팝업형 로딩.
+   *           dim 은 뒤 화면이 보여야 하므로 헤더 숨김/네이티브 크롬 숨김을 하지 않는다.
+   */
+  variant?: "page" | "dim";
 }
 
 /**
@@ -148,13 +157,57 @@ export const FullScreenLoader = memo(function FullScreenLoader({
   message,
   showMessage = true,
   className,
+  variant = "page",
 }: FullScreenLoaderProps) {
+  const isDim = variant === "dim";
+
   useEffect(() => {
     lockBodyScroll();
     return () => {
       unlockBodyScroll();
     };
   }, []);
+
+  // v22 (2026-07-18) 사용자 직접 지시 — 풀사이즈 스피너 표시 중 appstatus 숨김.
+  // ClientProviders Suspense fallback(PageLoader) 등 LoadingContext 미경유 표면 커버
+  // (spinner-native-chrome.ts SoT — skip 경로/비-native 는 내부에서 no-op).
+  // dim variant 는 뒤 화면이 비쳐야 하므로 네이티브 크롬을 건드리지 않는다.
+  useEffect(() => {
+    if (isDim) return;
+    return acquireSpinnerNativeChrome();
+  }, [isDim]);
+
+  if (isDim) {
+    // [ICETIMES DS] 딤 팝업 스피너 — dim-modal(rink-900/55) + 흰 카드 + Spinner lg.
+    //   카드: r-16 · sh-dialog · padding 28×36 · gap 14 · modal-card-in(0.28s ios-spring).
+    //   오버레이: overlay-in(0.25s ease-out). 헤더/BottomNav 는 딤 아래 그대로 노출.
+    return (
+      <div
+        className={cn(
+          "fixed inset-0 z-[9999]",
+          "flex items-center justify-center overflow-hidden",
+          "bg-rink-900/55 animate-overlay-in motion-reduce:animate-none",
+          className,
+        )}
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+        role="alert"
+        aria-busy="true"
+        aria-live="assertive"
+        aria-label={message ?? "로딩 중"}
+      >
+        <div className="flex flex-col items-center gap-3.5 rounded-2xl bg-white dark:bg-rink-800 shadow-sh-dialog px-9 py-7 animate-modal-card-in motion-reduce:animate-none">
+          <Spinner size="lg" color="primary" />
+          {showMessage && message && (
+            <p className="text-[14px] font-medium tracking-tight text-wtext-3 dark:text-rink-300">
+              {message}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>

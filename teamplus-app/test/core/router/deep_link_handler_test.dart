@@ -36,12 +36,12 @@ void main() {
   });
 
   group('resolveWebPath — Universal Link / App Link (운영 도메인)', () {
-    test('공지 상세 /notice/123 → /notices/123', () {
+    test('공지 상세 /notice/123 → /notice/123 (웹 실존 단수 라우트)', () {
       expect(
         DeepLinkHandler.resolveWebPath(
           Uri.parse('https://teamplusweb.icetimes.co.kr/notice/123'),
         ),
-        '/notices/123',
+        '/notice/123',
       );
     });
 
@@ -108,10 +108,10 @@ void main() {
       );
     });
 
-    test('teamplus://notice/5 → /notices/5', () {
+    test('teamplus://notice/5 → /notice/5 (웹 실존 단수 라우트)', () {
       expect(
         DeepLinkHandler.resolveWebPath(Uri.parse('teamplus://notice/5')),
-        '/notices/5',
+        '/notice/5',
       );
     });
   });

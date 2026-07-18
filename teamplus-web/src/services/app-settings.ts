@@ -54,3 +54,32 @@ export function invalidateAppSettingsCache() {
   cachedSettings = null;
   cacheTimestamp = 0;
 }
+
+// ─── 최신 앱 버전 정보 (2026-07-16 신규 — 업데이트 유도 팝업용) ───
+
+/**
+ * GET /app/versions/latest 응답 계약.
+ * 백엔드 AppVersion 모델(플랫폼별 활성 레코드) 기반 — app-management.service.ts getLatestVersion().
+ * 레코드 미존재 시 서버가 "0.0.0" 안전 기본값으로 응답한다 (404 없음).
+ */
+export interface LatestAppVersionInfo {
+  currentVersion: string;
+  minimumVersion: string;
+  latestVersion: string;
+  forceUpdate: boolean;
+  updateMessage: string | null;
+  iosStoreUrl: string | null;
+  androidStoreUrl: string | null;
+}
+
+/**
+ * 플랫폼별 스토어 URL 포함 최신 버전 정보 조회.
+ * 업데이트 유도 팝업(AppUpdatePrompt)이 발동 조건 충족 시에만 1회 호출하므로 캐시 불필요.
+ */
+export async function fetchLatestAppVersion(): Promise<LatestAppVersionInfo | null> {
+  const res = await api.get<LatestAppVersionInfo>('/app/versions/latest');
+  if (res.success && res.data) {
+    return res.data;
+  }
+  return null;
+}

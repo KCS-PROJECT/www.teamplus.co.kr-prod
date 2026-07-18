@@ -30,7 +30,6 @@ import { KgInicisGateway } from "./kg-inicis.gateway";
 import { TossPaymentsGateway } from "./toss-payments.gateway";
 import { PaymentCalculationService } from "./payment-calculation.service";
 import { PostpaidSettlementService } from "./postpaid-settlement.service";
-import { SettlementSummaryService } from "./settlement/settlement-summary.service";
 import { WebhookRetryService } from "./webhook-retry.service";
 import { PaymentCreateService } from "./services/payment-create.service";
 import { PaymentWebhookService } from "./services/payment-webhook.service";
@@ -232,7 +231,6 @@ describe("Payment System Integration Tests (7 Scenarios)", () => {
         { provide: TossPaymentsGateway, useValue: mockTossGateway },
         { provide: PaymentCalculationService, useValue: mockCalculationService },
         { provide: PostpaidSettlementService, useValue: mockPostpaidSettlementService },
-        { provide: SettlementSummaryService, useValue: {} },
         { provide: WebhookRetryService, useValue: mockWebhookRetryService },
         { provide: PaymentCreateService, useValue: mockCreateService },
         { provide: PaymentWebhookService, useValue: mockWebhookService },

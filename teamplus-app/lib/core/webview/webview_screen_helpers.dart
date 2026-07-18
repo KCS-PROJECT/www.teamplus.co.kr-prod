@@ -80,6 +80,41 @@ bool _isSignupRootUrl(String? url) {
   return path == '/signup';
 }
 
+/// 현재 URL 이 **역할 메인(홈) 화면**인지 판별.
+///
+/// [2026-07-17 BACKKEY FIX] 하드웨어 백키가 메인 화면에서 종료 확인 팝업을
+/// 띄우도록 하기 위한 판별. 앱은 로그인 → 역할 홈 리다이렉트로 진입하므로 홈에서도
+/// WebView 내부 history(`canGoBack()==true`)가 남아, 기존 `_onHardwareBack` 의
+/// canGoBack→goBack 분기가 종료 확인에 **영영 도달하지 못하는** 회귀가 있었다
+/// (로그인 화면으로 goBack → 인증됨이라 다시 홈으로 리다이렉트 → 홈에 갇힘).
+/// 로그인 루트 특례(`_isLoginRootUrl`)와 동일하게, 홈이면 canGoBack 을 무시하고
+/// 곧장 종료 확인(세션 클리어 후 종료)으로 보낸다.
+///
+/// 경로 집합은 web `ROLE_HOME_PATHS`(nav-home-paths.ts) 와 동기화한다.
+bool _isRoleHomeUrl(String? url) {
+  if (url == null || url.isEmpty) return false;
+  String path;
+  try {
+    path = Uri.parse(url).path;
+  } catch (_) {
+    path = url.split('?').first.split('#').first;
+  }
+  if (path.length > 1 && path.endsWith('/')) {
+    path = path.substring(0, path.length - 1);
+  }
+  const roleHomePaths = <String>[
+    '/admin',
+    '/director',
+    '/academy-director',
+    '/coach',
+    '/parent',
+    '/student',
+    '/child',
+    '/teen',
+  ];
+  return roleHomePaths.contains(path);
+}
+
 /// 색상이 밝은지 어두운지 판단
 /// 밝으면 true (어두운 아이콘 사용), 어두우면 false (밝은 아이콘 사용)
 bool _isColorBright(Color color) {

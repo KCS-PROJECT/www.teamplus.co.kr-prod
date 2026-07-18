@@ -19,6 +19,7 @@ import { LoadingPuck } from '@/components/ui/LoadingPuck';
 // 자체 LoadingPuck 과 시각 통일 → BottomNav 탭 전환도 동일 시각 (사용자 요청).
 import { ui, isNativeApp } from '@/services/native-bridge';
 import { getCurrentUIConfig } from '@/hooks/useNativeUI';
+import { sendSpinnerNativeChrome } from '@/services/spinner-native-chrome';
 import {
   getPendingLoadingDataRequestCount,
   subscribeLoadingDataRequests,
@@ -195,21 +196,14 @@ export function LoadingProvider({
   //   제거했으나, 2026-07-18 사용자 직접 지시("스피너 화면 appstatus 숨김 + body 색
   //   통일")가 트레이드오프에 우선한다. raw ui.setConfig 는 lastAppliedConfig 를
   //   건드리지 않으므로 로더 종료 시 getCurrentUIConfig() 복원이 페이지 의도로 돌아간다.
+  // v22 (2026-07-18) — 전송부는 spinner-native-chrome.ts SoT 로 추출. LoadingContext 를
+  //   거치지 않는 풀사이즈 스피너(페이지 자체 LoadingPuck/PageLoader/LoadingRing)도
+  //   동일 모듈로 appstatus 를 숨긴다. 여기서는 클릭 시점 즉시 숨김 + 로더 종료 시
+  //   복원 bookkeeping(nativeSpinnerChromeRef)만 유지한다.
   const nativeSpinnerChromeRef = useRef(false);
   const enterNativeSpinnerChrome = useCallback(() => {
     if (!isNativeApp()) return;
-    const isDark =
-      typeof document !== 'undefined' &&
-      document.documentElement.classList.contains('dark');
-    const bg = isDark ? '#0a0d14' : '#ffffff';
-    ui.enterFullscreen().catch(() => {});
-    ui.setConfig({
-      showStatusBar: false,
-      scaffoldBackgroundColor: bg,
-      statusBarColor: bg,
-      navigationBarColor: bg,
-      statusBarLight: isDark,
-    }).catch(() => {});
+    sendSpinnerNativeChrome();
     nativeSpinnerChromeRef.current = true;
   }, []);
   // Phase 1 갭 차단 (2026-05-08 v10) — 페이지 자체 데이터 fetch 완료 시

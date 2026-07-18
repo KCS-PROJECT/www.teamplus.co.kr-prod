@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'dart:collection';
 
+import '../constants/app_environment.dart';
+
 /// 브릿지 통신 방향
 enum BridgeDirection {
   /// Web → Native (JavaScript 핸들러 호출)
@@ -94,11 +96,26 @@ class BridgeLogger {
   /// 로그 스트림 리스너
   final List<void Function(BridgeLogEntry)> _listeners = [];
 
-  /// 로그 활성화 여부
-  bool enabled = true;
+  /// 로그 활성화 여부 — 기본값은 환경 정책(`appEnv.enableLogging`)을 따른다.
+  /// local/home/dev = 출력, prod(운영 release 자동 감지) = 침묵.
+  bool get enabled => _enabledOverride ?? _envLoggingEnabled;
+  set enabled(bool value) => _enabledOverride = value;
+  bool? _enabledOverride;
 
-  /// 상세 로그 출력 여부
-  bool verbose = true;
+  /// 상세(박스) 로그 출력 여부 — enabled 와 동일한 환경 정책 기본값.
+  bool get verbose => _verboseOverride ?? _envLoggingEnabled;
+  set verbose(bool value) => _verboseOverride = value;
+  bool? _verboseOverride;
+
+  /// AppEnvironment 초기화 전 접근(부팅 극초반·단위 테스트)은 late 에러가 나므로
+  /// release = 침묵, debug = 출력 이라는 안전 기본값으로 폴백한다.
+  static bool get _envLoggingEnabled {
+    try {
+      return appEnv.enableLogging;
+    } catch (_) {
+      return kDebugMode;
+    }
+  }
 
   /// 모든 로그 항목 (읽기 전용)
   List<BridgeLogEntry> get logs => _logs.toList();
@@ -187,7 +204,7 @@ class BridgeLogger {
         debugPrint('║ Error: $errorMessage');
       }
       if (response != null) {
-        debugPrint('║ Response: ${_truncateString(response, 200)}');
+        debugPrint('║ Response: ${_truncateString(_maskSensitive(response), 200)}');
       }
       debugPrint(
           '╚═══════════════════════════════════════════════════════════');
@@ -295,6 +312,24 @@ class BridgeLogger {
   String _truncateString(String str, int maxLength) {
     if (str.length <= maxLength) return str;
     return '${str.substring(0, maxLength)}...';
+  }
+
+  /// 직렬화된 응답 문자열 내 민감 값 마스킹.
+  /// 요청 Data 는 `_truncateData` 가 키 기반으로 가리지만, 응답은 이미 직렬화된
+  /// 문자열로 들어오므로 패턴 기반으로 처리한다 (JWT 전체 + token/password 류 값).
+  String _maskSensitive(String str) {
+    var masked = str.replaceAll(
+      RegExp(r'eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]*)?'),
+      '***JWT***',
+    );
+    masked = masked.replaceAllMapped(
+      RegExp(
+        r'([\w-]*(?:token|password|secret|credential|otp)[\w-]*\s*[:=]\s*)([^,}\]\s]+)',
+        caseSensitive: false,
+      ),
+      (m) => '${m[1]}***MASKED***',
+    );
+    return masked;
   }
 
   /// 민감한 키 확인

@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../system/app_exit.dart';
 import '../ui/dim_dialog.dart';
 import 'app_version_service.dart';
 
@@ -209,8 +209,10 @@ class AppUpdateDialog extends StatelessWidget {
                 child: TextButton(
                   onPressed: () {
                     if (_isForceUpdate) {
-                      // 강제 업데이트: 앱 종료
-                      SystemNavigator.pop();
+                      // 강제 업데이트: 앱 실제 종료 (finishAndRemoveTask).
+                      // [2026-07-15 BACKKEY FIX] SystemNavigator.pop 은
+                      //   moveTaskToBack(백그라운드)로 동작해 종료되지 않음.
+                      AppExit.terminate();
                     } else {
                       // 선택적 업데이트: 다이얼로그 닫기
                       Navigator.of(context).pop();

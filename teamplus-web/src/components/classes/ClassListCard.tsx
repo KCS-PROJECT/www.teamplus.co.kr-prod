@@ -251,20 +251,27 @@ export function ClassCardInfoRow({
   return (
     <div
       className={cn(
-        'flex items-center gap-2 min-w-0',
-        // ICETIMES(true): 시안 subtitle/InfoRow 13px/500/it-ink-500. 기본(false): 기존 그대로.
+        'flex items-center min-w-0',
+        // ICETIMES(true): 시안 subtitle/InfoRow 13px/500/it-ink-500 · 아이콘 15px · gap 6px.
+        //   기본(false): 기존 그대로.
         iceTheme
-          ? 'text-[13px] font-medium text-it-ink-500 dark:text-it-ink-300'
-          : 'text-card-meta font-semibold text-wtext-3 dark:text-wtext-4',
+          ? 'gap-1.5 text-[13px] font-medium text-it-ink-500 dark:text-it-ink-300'
+          : 'gap-2 text-card-meta font-semibold text-wtext-3 dark:text-wtext-4',
       )}
     >
-      {icon && <Icon name={icon} className={cn('text-[14px] shrink-0', iconClassName)} aria-hidden="true" />}
+      {icon && (
+        <Icon
+          name={icon}
+          className={cn(iceTheme ? 'text-[15px]' : 'text-[14px]', 'shrink-0', iconClassName)}
+          aria-hidden="true"
+        />
+      )}
       <span
         className={cn(
           'truncate min-w-0',
           strong &&
             (iceTheme
-              ? 'text-[13.5px] font-semibold text-it-ink-700 dark:text-white tabular-nums'
+              ? 'text-[13px] font-semibold text-wtext-2 dark:text-white tabular-nums'
               : 'text-card-body font-bold text-wtext-1 dark:text-white tabular-nums'),
         )}
       >

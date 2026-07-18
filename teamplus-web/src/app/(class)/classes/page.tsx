@@ -1001,7 +1001,8 @@ const DefaultClassCard = memo(function DefaultClassCard({
            대체된다 (registerLabel 분기 — 별도 하단 배지 없음). */
         <span
           className={cn(
-            "inline-flex items-center justify-center min-w-[72px] h-[30px] px-3.5 rounded-full text-[14px] leading-[1.55] font-extrabold tracking-[-0.01em]",
+            // [ICETIMES 시안 2026-07-18] 상태 pill — 4px 10px · 12px/700 (min-w-[72px] 슬롯 유지)
+            "inline-flex items-center justify-center min-w-[72px] px-2.5 py-1 rounded-full text-[12px] leading-[1.55] font-bold tracking-[-0.01em]",
             registerClass,
           )}
           aria-hidden="true"
@@ -1243,7 +1244,8 @@ const DefaultTournamentCard = memo(function DefaultTournamentCard({
         //   종료된 대회는 등록 칩이 무의미해 상태 칩으로 대체 (하단 중복 종료 배지 제거).
         <span
           className={cn(
-            "inline-flex items-center justify-center min-w-[72px] h-[30px] px-3.5 rounded-full text-[14px] leading-[1.55] font-extrabold tracking-[-0.01em]",
+            // [ICETIMES 시안 2026-07-18] 상태 pill — 4px 10px · 12px/700 (min-w-[72px] 슬롯 유지)
+            "inline-flex items-center justify-center min-w-[72px] px-2.5 py-1 rounded-full text-[12px] leading-[1.55] font-bold tracking-[-0.01em]",
             isClosed
               ? "bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-200"
               : isEnrolled

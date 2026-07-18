@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../../../core/security/biometric_auth_messages.dart';
+import '../../../auth/presentation/providers/biometric_provider.dart';
 import '../providers/signup_flow_provider.dart';
 import '../widgets/signup_button.dart';
 import '../widgets/signup_design_tokens.dart';
@@ -26,7 +27,8 @@ class _SignupPermissionsScreenState
   // 2026-05-26: 위치·캘린더·연락처·신체활동 항목 제거.
   // 실제 사용 기능·플러그인이 없어 미사용 민감 권한 요청은 스토어 리젝 사유(iOS 5.1.1·Google Play 민감권한).
   // 해당 기능 구현 시 항목 + 권한 요청 + 매니페스트/Info.plist 선언을 함께 재추가할 것.
-  // 생체인증 항목은 플랫폼별 수단명(iOS Face ID / Android 생체인증)을 반영하므로 런타임 getter.
+  // 생체인증 항목은 플랫폼별 수단명(iOS "Face ID" / Android "지문인식 인증" —
+  // 2026-07-15 사용자 직접 지시)을 반영하므로 런타임 getter.
   List<_PermItem> get _items => <_PermItem>[
         const _PermItem(
             icon: Icons.camera_alt_outlined,
@@ -39,7 +41,9 @@ class _SignupPermissionsScreenState
         _PermItem(
             icon: Platform.isIOS ? Icons.face_outlined : Icons.fingerprint,
             name: biometricMethodLabel,
-            desc: '$biometricMethodLabel 로그인 · 결제 인증'),
+            // 짧은 라벨 사용 — Android 에서 "지문인식 인증 로그인" 겹말 방지
+            // (iOS "Face ID 로그인 · 결제 인증" / Android "지문인식 로그인 · 결제 인증")
+            desc: '$biometricMethodShortLabel 로그인 · 결제 인증'),
         const _PermItem(
             icon: Icons.image_outlined,
             name: '이미지 저장',
@@ -58,36 +62,29 @@ class _SignupPermissionsScreenState
     if (_isRequesting) return;
     setState(() => _isRequesting = true);
 
-    final permissions = <Permission>[
-      Permission.camera,
-      Permission.notification,
-      // 이미지 저장 — iOS 는 photosAddOnly, Android 는 photos (또는 storage)
-      Platform.isIOS ? Permission.photosAddOnly : Permission.photos,
-    ];
+    // [2026-07-18 권한 순서 수정] 요청 순서: 카메라 → 알림 → 생체인증 → 이미지 저장.
+    //   기존엔 이미지 저장을 생체인증보다 먼저 요청해서, 사용자가 생체인증 다이얼로그를
+    //   취소('미선택')하면 그 앞에서 이미 조용히 지나간 이미지 저장이 안 물어본 것처럼
+    //   보였다(사용자 보고). 생체인증을 먼저 처리하고, 그 결과(허용/취소)와 무관하게
+    //   마지막에 이미지 저장 권한까지 반드시 요청·설정한 뒤 다음 화면으로 이동한다.
 
-    // 1) 순차 요청 — 이미 결정된 권한은 스킵해 OS 다이얼로그 누락 진단 가능
-    for (final permission in permissions) {
-      try {
-        final before = await permission.status;
-        if (before.isGranted ||
-            before.isPermanentlyDenied ||
-            before.isRestricted) {
-          if (kDebugMode) {
-            debugPrint('[A5 Permission] $permission 이미 결정됨: $before → 스킵');
-          }
-          continue;
-        }
-        final after = await permission.request();
-        if (kDebugMode) {
-          debugPrint('[A5 Permission] $permission: $before → $after');
-        }
-      } catch (e) {
-        debugPrint('[A5 Permission] $permission 요청 중 예외 (무시): $e');
-      }
-    }
+    // 1) 카메라 · 알림 — permission_handler 순차 요청.
+    await _requestPermission(Permission.camera);
+    await _requestPermission(Permission.notification);
 
-    // 2) 생체인증 — local_auth 로 사전 인증 호출 → 권한 다이얼로그 + 생체 등록 확인
+    // 2) 생체인증(iOS Face ID·Touch ID / Android 지문·얼굴) — local_auth.
+    //    취소/미지원/미등록 모두 silent (선택적 권한). 결과와 무관하게 아래 3)로 진행.
     await _requestBiometricConsent();
+
+    // 3) 이미지 저장 — 생체인증 이후에도 반드시 요청한다.
+    //    iOS: photosAddOnly(저장 전용) 다이얼로그 노출.
+    //    Android 13+: 갤러리 저장은 Scoped Storage(MediaStore)라 런타임 권한이
+    //      필요 없어 OS 다이얼로그가 없다(READ_MEDIA_* 는 Play 정책상 매니페스트에서
+    //      의도적으로 제거됨). 그래도 상태를 조회·기록해 흐름이 건너뛴 것처럼 보이지
+    //      않게 하고, 구형(API 28 이하)에서는 storage 권한 다이얼로그가 노출된다.
+    await _requestPermission(
+      Platform.isIOS ? Permission.photosAddOnly : Permission.photos,
+    );
 
     if (!mounted) return;
 
@@ -96,11 +93,49 @@ class _SignupPermissionsScreenState
     context.push('/signup/agreements');
   }
 
+  /// 단일 권한 요청 헬퍼. 미결정(denied) 상태면 OS 다이얼로그를 띄우고, 이미 확정된
+  /// (granted/permanentlyDenied/restricted) 상태면 조용히 통과한다. 예외는 무시하고
+  /// 흐름을 계속한다(선택적 권한).
+  Future<void> _requestPermission(Permission permission) async {
+    try {
+      final before = await permission.status;
+      if (before.isGranted ||
+          before.isPermanentlyDenied ||
+          before.isRestricted) {
+        if (kDebugMode) {
+          debugPrint('[A5 Permission] $permission 이미 결정됨: $before → 스킵');
+        }
+        return;
+      }
+      final after = await permission.request();
+      if (kDebugMode) {
+        debugPrint('[A5 Permission] $permission: $before → $after');
+      }
+    } catch (e) {
+      debugPrint('[A5 Permission] $permission 요청 중 예외 (무시): $e');
+    }
+  }
+
   /// 생체인증(iOS Face ID·Touch ID / Android 지문·얼굴) 사전 동의.
-  /// - `local_auth` 는 `authenticate()` 호출 시점에 OS 생체인증 다이얼로그를
-  ///   띄우므로 가입 단계에서 한 번 실행해 UI 안내 항목과 실제 동작을 일치시킨다.
-  /// - 실패/취소 모두 silent — 선택적 권한이므로 가입 흐름 차단 X
+  ///
+  /// [2026-07-18 생체인증 수정] 기존엔 프롬프트만 띄우고 결과(성공/취소)를 버려서
+  ///   생체인증 설정에 아무 영향이 없는 "빈 껍데기"였다(사용자 보고: 인증을 취소해도
+  ///   그냥 넘어감). 이제 인증 결과를 생체인증 로그인 설정에 확정적으로 반영한다.
+  ///   - 성공 → `enableBiometric()` (로그인 후 생체 로그인 활성) 저장.
+  ///   - 취소/실패/미지원/미등록 → `disableBiometric()` 로 명시적 off (결정적 상태).
+  ///   두 경우 모두 가입 흐름은 계속 진행한다(선택적 권한이므로 차단 X).
+  ///
+  /// 플랫폼 분기(직접 분석·검증):
+  ///   - iOS: `canCheckBiometrics` + `getAvailableBiometrics()` 로 Face ID/Touch ID
+  ///     등록 여부 확인. 미등록이면 프롬프트를 띄우지 않고 off (OS 설정 유도 다이얼로그
+  ///     회피). 인증 취소는 `LocalAuthException(code: UserCancel/UserFallback)`.
+  ///   - Android: `canCheckBiometrics` 는 하드웨어 존재만 보장하므로
+  ///     `getAvailableBiometrics()` 로 지문·얼굴 실제 등록 여부를 반드시 재확인한다.
+  ///     미등록 기기에서 `authenticate(biometricOnly: true)` 호출 시 뜨는
+  ///     "등록된 지문 없음" OEM 다이얼로그를 이 게이트로 차단. 취소는 code: userCanceled.
   Future<void> _requestBiometricConsent() async {
+    // 성공/취소 어느 쪽이든 생체 로그인 설정을 확정 저장하기 위한 notifier.
+    final biometricNotifier = ref.read(biometricEnabledProvider.notifier);
     try {
       final localAuth = LocalAuthentication();
       final isSupported = await localAuth.isDeviceSupported();
@@ -108,21 +143,46 @@ class _SignupPermissionsScreenState
       if (!isSupported || !canCheck) {
         if (kDebugMode) {
           debugPrint(
-              '[A5 Permission] 생체인증 미지원 (supported=$isSupported, canCheck=$canCheck) → 스킵');
+              '[A5 Permission] 생체인증 미지원 (supported=$isSupported, canCheck=$canCheck) → off');
         }
+        await biometricNotifier.disableBiometric();
         return;
       }
+      // 등록된 생체 수단 게이트 (iOS Face ID/Touch ID · Android 지문/얼굴 등록 확인).
+      final enrolled = await localAuth.getAvailableBiometrics();
+      if (enrolled.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('[A5 Permission] 등록된 생체 수단 없음 → off');
+        }
+        await biometricNotifier.disableBiometric();
+        return;
+      }
+      // 실제 OS 생체인증 프롬프트 (iOS Face ID/Touch ID · Android BiometricPrompt).
       final ok = await localAuth.authenticate(
         localizedReason: biometricReason('팀플러스 로그인·결제에 사용할'),
         authMessages: kBiometricAuthMessages,
         biometricOnly: true,
         persistAcrossBackgrounding: false,
       );
-      if (kDebugMode) {
-        debugPrint('[A5 Permission] 생체인증 사전 동의 결과: $ok');
+      if (ok) {
+        if (kDebugMode) {
+          debugPrint('[A5 Permission] 생체인증 성공 → 생체 로그인 on');
+        }
+        await biometricNotifier.enableBiometric();
+      } else {
+        if (kDebugMode) {
+          debugPrint('[A5 Permission] 생체인증 미완료(취소/실패) → off');
+        }
+        await biometricNotifier.disableBiometric();
       }
     } catch (e) {
-      debugPrint('[A5 Permission] 생체인증 사전 동의 예외 (무시): $e');
+      // 취소(userCanceled/UserCancel) 및 기타 예외 → off 로 확정, 흐름 계속.
+      debugPrint('[A5 Permission] 생체인증 예외 → off: $e');
+      try {
+        await biometricNotifier.disableBiometric();
+      } catch (_) {
+        /* 설정 저장 실패도 무시 — 선택적 권한 */
+      }
     }
   }
 

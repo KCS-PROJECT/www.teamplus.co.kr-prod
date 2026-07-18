@@ -137,6 +137,11 @@ class WebSocketService with WidgetsBindingObserver {
   // 마지막 connect 호출 시 사용한 namespace (resume 시 재연결용)
   String? _lastNamespace;
 
+  // 마지막 connect 대상 URL — 에러 로그에 destination 명시용.
+  // (Dart SocketException 은 로컬 ephemeral source port 를 표시해 목적지 포트로
+  //  오인하기 쉬움 — APP-WS-001 진단 참조)
+  String? _lastUrl;
+
   // 라이프사이클 옵저버 등록 여부
   bool _lifecycleObserverRegistered = false;
 
@@ -236,6 +241,7 @@ class WebSocketService with WidgetsBindingObserver {
           .replaceFirst('http', 'ws')
           .replaceAll(RegExp(r'/api/v\d+/?$'), '');
       final url = namespace != null ? '$origin/$namespace' : origin;
+      _lastUrl = url;
 
       // Socket.IO 클라이언트 생성 (v3, 2026-05-14 P0 패치)
       //  · transports: WebSocket 우선 + polling fallback (일시적 WS 거부 시 회복)
@@ -386,7 +392,12 @@ class WebSocketService with WidgetsBindingObserver {
     });
 
     // 에러 이벤트
+    // [APP-WS-001 후속 2026-07-18] 재연결 사이클 중에는 onConnectError 와 동일한
+    // SocketException 이 중복 전달됨 → 이중 로그 억제 + 상태를 error 로 덮지 않음
+    // (reconnecting 유지 — 구독 UI 가 시도마다 error↔reconnecting 플래핑하지 않도록).
+    // error 확정 전환은 onReconnectFailed(50회 소진)·connect() 예외 경로만 담당.
     socket.onError((error) {
+      if (_status == WebSocketStatus.reconnecting) return;
       if (kDebugMode) {
         debugPrint('❌ WebSocket error: $error');
       }
@@ -394,11 +405,18 @@ class WebSocketService with WidgetsBindingObserver {
     });
 
     // 연결 에러
+    // 대상 URL 을 함께 남긴다 — SocketException 의 `port` 는 로컬 소스 포트라
+    // 목적지 포트(5003)로 오인하기 쉬움 (서버 재시작 중 refused 는 정상 회복 사이클).
     socket.onConnectError((error) {
       if (kDebugMode) {
-        debugPrint('❌ WebSocket connection error: $error');
+        debugPrint(
+          '❌ WebSocket connection error → 대상 ${_lastUrl ?? '(unknown)'} '
+          '(로그의 port 는 로컬 소스 포트): $error',
+        );
       }
-      _updateStatus(WebSocketStatus.error);
+      if (_status != WebSocketStatus.reconnecting) {
+        _updateStatus(WebSocketStatus.error);
+      }
     });
 
     // 기본 이벤트 리스너 등록

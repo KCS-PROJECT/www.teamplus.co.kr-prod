@@ -34,7 +34,6 @@ import {
   SelectedDayClassList,
   type CalendarClass,
 } from '@/components/dashboard/ClassCalendarSection';
-import { SectionHead } from '@/components/wallet';
 
 // ─── Error State ──────────────────────────────────────
 function ErrorState({ onRetry }: { onRetry: () => void }) {
@@ -392,11 +391,13 @@ export default function TeenDashboardPage() {
             [페르소나 톤 카피 강화] 시간대별 인사 + flame-500 액센트 (열정·도전 톤). */}
         <AnimatedSection delay={0}>
           <section className="px-4 sm:px-5 pt-3">
+            {/* [ICETIMES 시안 2026-07-18] 올드버전 프로토타입 "학생 대시보드" 히어로 스타일 적용 —
+                flame 텍스트 drop-shadow 미사용(시안 무). 화면 구성(팀 로고 등)은 불변(사용자 지시). */}
             <div className="relative overflow-hidden rounded-w-xl bg-rink-800 dark:bg-rink-900 shadow-sh-rink p-5 sm:p-6 text-white">
               <HeroTeamLogo logoUrl={managedTeamLogoUrl} />
               <div className="relative pr-24">
                 <div className="flex items-center gap-2">
-                  <span className="text-card-meta font-extrabold tracking-[0.08em] text-flame-500 drop-shadow-lg">
+                  <span className="text-card-meta font-extrabold tracking-[0.08em] text-flame-500">
                     STUDENT
                   </span>
                   <span className="text-card-meta font-bold text-ice-100/80">
@@ -405,9 +406,9 @@ export default function TeenDashboardPage() {
                 </div>
                 <h1 className="mt-2 text-w-h2 font-extrabold text-white tracking-tight break-keep leading-tight">
                   {user?.name ?? '학생'}
-                  <span className="ml-1 text-flame-500 drop-shadow-lg">!</span>
+                  <span className="ml-1 text-flame-500">!</span>
                 </h1>
-                <p className="mt-1 text-card-meta font-bold text-flame-500 drop-shadow-lg tracking-wide">
+                <p className="mt-1 text-card-meta font-bold text-flame-500 tracking-wide">
                   오늘도 한 번 더 도전해볼까요? 🔥
                 </p>
                 {user?.email && (
@@ -430,8 +431,8 @@ export default function TeenDashboardPage() {
                 )}
                 {managedTeamName && (
                   <div className="mt-4 pt-3.5 border-t border-flame-500/30 flex items-center gap-2">
-                    <Icon name="groups" className="text-[16px] text-flame-500 drop-shadow-lg" aria-hidden="true" />
-                    <span className="text-card-meta font-semibold uppercase tracking-wider text-flame-500 drop-shadow-lg">
+                    <Icon name="groups" className="text-[16px] text-flame-500" aria-hidden="true" />
+                    <span className="text-card-meta font-semibold uppercase tracking-wider text-flame-500">
                       소속 팀
                     </span>
                     <span className="text-card-body font-bold text-white truncate">
@@ -477,33 +478,48 @@ export default function TeenDashboardPage() {
         {/* [2026-05-11 Phase 2] 학부모 패턴 마이그레이션 — 월 캘린더 + 선택일 수업 목록
             ParentMiniCalendar/ParentTodaySchedules → ClassCalendarSection/SelectedDayClassList.
             출석 체크는 selfCheckIn 으로 위임 — POST /attendance/self-check-in. */}
+        {/* [ICETIMES 시안 2026-07-18] 올드버전 프로토타입 "학생 대시보드" —
+            섹션 제목 15px/800 page-local + 흰 카드(r-20 · wline · sh-1) 안에 iceTheme 캘린더.
+            시안 카드 내부 좌우 패딩 16px(px-4) — iceTheme 컴포넌트는 패딩을 상위에 위임. */}
         <AnimatedSection delay={230} className="px-5">
-          <SectionHead title="수업 일정" />
-          <ClassCalendarSection
-            teamIds={teams}
-            enabledClassIds={enabledClassIds}
-            onSelectionChange={setSelection}
-            onReady={setCalendarReady}
-          />
+          <div className="pt-1 pb-2">
+            <div className="text-[15px] font-extrabold tracking-[-0.02em] text-wtext-1 dark:text-white">
+              수업 일정
+            </div>
+          </div>
+          <div className="overflow-hidden rounded-w-xl border border-wline dark:border-rink-700 bg-wsurface dark:bg-rink-800 shadow-sh-1 px-4">
+            <ClassCalendarSection
+              teamIds={teams}
+              enabledClassIds={enabledClassIds}
+              onSelectionChange={setSelection}
+              onReady={setCalendarReady}
+              iceTheme
+            />
+          </div>
         </AnimatedSection>
 
         {selection.dateKey && (
           <AnimatedSection delay={250} className="px-5">
-            <SectionHead
-              title={(() => {
-                const d = new Date(selection.dateKey);
-                return `${d.getMonth() + 1}월 ${d.getDate()}일 수업`;
-              })()}
-            />
-            <SelectedDayClassList
-              classes={selection.classes}
-              scheduleIdToChildIds={scheduleIdToChildIds}
-              attendanceMap={attendanceMap}
-              childIdToName={childIdToName}
-              selectedChildId={user?.id ?? null}
-              todayKey={todayKey}
-              onCheckIn={selfCheckIn}
-            />
+            <div className="pt-1 pb-2">
+              <div className="text-[15px] font-extrabold tracking-[-0.02em] text-wtext-1 dark:text-white">
+                {(() => {
+                  const d = new Date(selection.dateKey);
+                  return `${d.getMonth() + 1}월 ${d.getDate()}일 수업`;
+                })()}
+              </div>
+            </div>
+            <div className="overflow-hidden rounded-w-xl border border-wline dark:border-rink-700 bg-wsurface dark:bg-rink-800 shadow-sh-1">
+              <SelectedDayClassList
+                classes={selection.classes}
+                scheduleIdToChildIds={scheduleIdToChildIds}
+                attendanceMap={attendanceMap}
+                childIdToName={childIdToName}
+                selectedChildId={user?.id ?? null}
+                todayKey={todayKey}
+                onCheckIn={selfCheckIn}
+                iceTheme
+              />
+            </div>
           </AnimatedSection>
         )}
 

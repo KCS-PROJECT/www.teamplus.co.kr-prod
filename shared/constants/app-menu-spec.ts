@@ -300,8 +300,8 @@ const STUDENT_MENU: AppMenuGroupSpec[] = [
     label: "기타",
     icon: "more-horizontal",
     children: [
-      // [2026-05-21] 팀 공지사항(소속 팀 공지 열람) + 서비스 공지사항 분리.
-      { label: "팀 공지사항", icon: "megaphone", href: "/team-notices" },
+      // [2026-05-21] 팀 공지사항(소속 팀 공지 열람) + 공지사항 분리.
+      { label: "팀공지", icon: "megaphone", href: "/team-notices" },
       { label: "공지사항", icon: "megaphone", href: "/notices" },
       { label: "마이페이지", icon: "user", href: "/mypage" },
     ],

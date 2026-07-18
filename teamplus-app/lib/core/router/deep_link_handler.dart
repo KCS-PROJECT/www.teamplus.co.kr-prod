@@ -39,6 +39,12 @@ class DeepLinkHandler {
     return path;
   }
 
+  /// WebView 내부 라우팅 콜백이 컨트롤러 미준비로 즉시 처리하지 못할 때, 경로를
+  /// pending 버퍼에 저장해 onLoadStop 이 소비하도록 넘긴다(탭 유실 방지).
+  static void stashPendingPath(String path) {
+    _pendingDeepLinkPath = path;
+  }
+
   DeepLinkHandler._();
 
   factory DeepLinkHandler() {
@@ -90,6 +96,23 @@ class DeepLinkHandler {
       return;
     }
 
+    navigateToWebPath(webPath, navigatorKey: navigatorKey);
+  }
+
+  /// 웹 상대경로로 이동하는 공용 진입점 — 딥링크와 FCM 푸시 탭이 공유한다.
+  ///
+  /// 전달 메커니즘(우선순위):
+  ///  1) WebView 활성(onNavigateInWebView 등록됨) → Next.js 내부 라우팅 즉시 수행
+  ///  2) WebView 미준비 → `_pendingDeepLinkPath` 버퍼 저장
+  ///     (WebViewScreen onLoadStop 이 consumePendingPath() 로 소비 — cold start 유실 방지)
+  ///  3) context 확보 시 GoRouter 'webview' fallback 으로 화면 자체를 연다
+  ///
+  /// 푸시 전용 버퍼를 따로 두지 않고 딥링크와 단일 버퍼를 공유한다 — 동시 발생 시
+  /// last-wins (사용자의 마지막 의도가 우선).
+  static void navigateToWebPath(
+    String webPath, {
+    required GlobalKey<NavigatorState> navigatorKey,
+  }) {
     final targetUrl = '${ApiConstants.webAppUrl}$webPath';
     debugPrint('[DeepLink] WebView 이동: $targetUrl');
 
@@ -107,7 +130,7 @@ class DeepLinkHandler {
     // WebView 미활성 시 GoRouter fallback
     final context = navigatorKey.currentContext;
     if (context == null) {
-      debugPrint('[DeepLink] context 없음 - 네비게이션 불가');
+      debugPrint('[DeepLink] context 없음 - pending 만 저장 (부팅 후 소비)');
       return;
     }
 
@@ -229,7 +252,8 @@ class DeepLinkHandler {
             ? pathSegments.first
             : queryParams['noticeId'];
         if (noticeId == null || noticeId.isEmpty) return null;
-        return '/notices/$noticeId';
+        // 웹 실존 라우트는 단수 /notice/[id] (복수 /notices/[id] 는 없어 404)
+        return '/notice/$noticeId';
 
       // ── 2026-04-23: tbot 테스트 하네스 seed URL ──────────────────────────
       // `flutter build ios --simulator` 로 공통 빌드 후 각 시뮬에
@@ -304,8 +328,9 @@ class DeepLinkHandler {
 
       case 'notice':
       case 'notices':
+        // 목록은 /notices(실존), 상세는 단수 /notice/[id](복수는 없어 404)
         if (id == null) return '/notices';
-        return '/notices/$id';
+        return '/notice/$id';
 
       default:
         // 매핑 불가한 경로는 그대로 전달 (WebView에서 처리)

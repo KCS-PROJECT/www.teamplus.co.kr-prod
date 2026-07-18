@@ -246,6 +246,8 @@ module.exports = {
         'sh-4': '0 16px 40px rgba(20, 24, 38, 0.12), 0 4px 12px rgba(20, 24, 38, 0.06)',
         'sh-blue': '0 8px 24px rgba(47, 95, 255, 0.28)',
         'sh-rink': '0 8px 24px rgba(20, 24, 38, 0.32)',
+        // [ICETIMES DS 2026-07-18] --sh-dialog — 딤 팝업 스피너/다이얼로그 카드 전용
+        'sh-dialog': '0 18px 48px rgba(15, 18, 30, 0.25)',
       },
       animation: {
         'spin': 'spin 1s linear infinite',
@@ -420,14 +422,19 @@ module.exports = {
         // 퍽 떠오름 (2026-05-08 v2): -10px → -8px 미세 조정 + sine-wave easing 적용
         //   (left:50% 위치 보정 위해 translateX(-50%) 포함 — 키프레임이 baseline transform 를 덮어쓰기 때문)
         //   3-step 으로 변경 (25%/50%/75% 보간점 추가) → 정점 머무름 완전 제거 + 부드러운 호 곡선
+        // [ICETIMES DS 2026-07-18] 올드버전 디자인 시스템 tp-puck-bob 1:1 —
+        //   squash & stretch (착지 시 눌림 1.14×0.86 → 정점 늘어남 0.95×1.06) + 18/82% 중간 스텝.
+        //   퍽 요소 transformOrigin 은 '50% 100%' (바닥 피벗) 필수.
         puckBob: {
-          '0%, 100%': { transform: 'translateX(-50%) translateY(0)' },
-          '50%':      { transform: 'translateX(-50%) translateY(-8px)' },
+          '0%, 100%': { transform: 'translateX(-50%) translateY(0) scale(1.14, 0.86)' },
+          '18%':      { transform: 'translateX(-50%) translateY(-4px) scale(0.99, 1.03)' },
+          '50%':      { transform: 'translateX(-50%) translateY(-14px) scale(0.95, 1.06)' },
+          '82%':      { transform: 'translateX(-50%) translateY(-4px) scale(1.02, 0.98)' },
         },
-        // 퍽 그림자 — 퍽이 떠오를 때 작아지고 옅어져 깊이감 강화 (v2: 0.55 → 0.65 자연스러움)
+        // 퍽 그림자 — [ICETIMES DS] tp-puck-shadow 1:1 (scaleX 1→0.5 · opacity 0.8→0.3)
         puckShadow: {
-          '0%, 100%': { transform: 'translateX(-50%) scaleX(1)',    opacity: '0.85' },
-          '50%':      { transform: 'translateX(-50%) scaleX(0.65)', opacity: '0.45' },
+          '0%, 100%': { transform: 'translateX(-50%) scaleX(1)',   opacity: '0.8' },
+          '50%':      { transform: 'translateX(-50%) scaleX(0.5)', opacity: '0.3' },
         },
         // 2026-05-09 v5: 회전 호 길이/오프셋 동기 변동 (Material indeterminate 패턴)
         // r=40 원 둘레 = 2π × 40 ≈ 251.33
@@ -452,9 +459,10 @@ module.exports = {
         //   PageTransitionLoader 에서 제거되었음.
         //   v17 anti-flicker (2026-05-16) — loadingOverlayIn/Out keyframe 도 제거.
         //   SoT: SPEC_ANTI_FLICKER.md §2.1
+        // [ICETIMES DS 2026-07-18] tp-halo-pulse 1:1 (scale .94→1.08 · opacity .35→.6)
         loadingHaloPulse: {
-          '0%, 100%': { transform: 'scale(0.96)', opacity: '0.30' },
-          '50%':      { transform: 'scale(1.06)', opacity: '0.55' },
+          '0%, 100%': { transform: 'scale(0.94)', opacity: '0.35' },
+          '50%':      { transform: 'scale(1.08)', opacity: '0.6' },
         },
       },
       // iOS 네이티브 느낌의 transition 커브 (Drawer/Sheet/Modal 공용)

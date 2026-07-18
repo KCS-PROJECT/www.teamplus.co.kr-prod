@@ -113,7 +113,13 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
+	<!-- [2026-07-17 appstatus FIX] CustomFlutterViewController.prefersStatusBarHidden
+	     오버라이드(상태바 동적 제어 SoT)는 VC-based appearance=true 가 전제.
+	     false 였던 동안 UIScene 앱에서 UIStatusBarHidden=true 가 영구 적용되어
+	     iOS 상태바가 어떤 화면에서도 노출되지 않는 회귀가 있었다.
+	     UIStatusBarHidden=true 는 launch 초기 상태로만 쓰이고, VC 로드 후에는
+	     prefersStatusBarHidden(초기 true → 웹 setHidden(false) 시 표시)이 제어한다. -->
 	<key>UIViewControllerBasedStatusBarAppearance</key>
-	<false/>
+	<true/>
 </dict>
 </plist>

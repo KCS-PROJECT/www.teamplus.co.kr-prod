@@ -28,93 +28,23 @@
    Professional Sports Club Management
    ======================================== */
 
-/* Pretendard 폰트 — Full Weight Family (Thin 100 ~ Black 900)
+/* Pretendard 폰트 — Variable 단일 파일 (weight 45~920 전 범위)
  *
- * v18 (2026-05-22): WOFF2 우선 적용 + OTF fallback.
- *   iOS WKWebView 가 OTF 13.5MB 동시 요청 시 로드 실패하던 회귀(`?` tofu) 해결.
- *   WOFF2 (50% 크기 · Apple 공식 권장 포맷)를 1순위로 두고, OTF 는 WOFF2 미지원 환경 폴백.
- *   출처: orioncactus/pretendard 공식 release (`packages/pretendard/dist/web/static/woff2`)
+ * v19 (2026-07-18): 정적 9-weight @font-face → Variable 단일 선언 전환 (v18 주석의 예고 이행).
+ *   근거 실측 (benchmark, dev 서버 /login): 페이지당 정적 weight 4~7개 × 700~790KB 동시 다운로드
+ *   → Pretendard 전송량 최대 5.4MB. Variable 단일 파일 2.0MB 로 교체 시 요청 1개·전송 -58%
+ *   (worst-case 기준). 글리프 커버리지 동일(공식 배포본)이라 희귀 한글 음절 이름도 안전.
+ *   출처: pretendard@1.3.9 npm (`dist/web/variable/woff2/PretendardVariable.woff2`)
+ *   구형 정적 woff2/otf 파일은 회귀 대비 public/fonts/ 에 유지 — CSS 미참조라 다운로드 안 됨.
  *
  * 정책: font-display: swap → FOIT 방지, FOUT 허용 (Tailwind 'font-sans' 적용 시 fallback 우선 표시)
- * 향후 Variable 전환 시 단일 @font-face 로 교체 가능 (font-weight: 100 900 + format('woff2-variations'))
+ * format('woff2-variations') 는 iOS 15 WKWebView 포함 전 타깃 브라우저 지원 (공식 배포 CSS 동일 문법)
  */
 @font-face {
   font-family: "Pretendard";
-  src: url("/fonts/Pretendard-Thin.woff2") format("woff2"),
-       url("/fonts/Pretendard-Thin.otf") format("opentype");
-  font-weight: 100;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Pretendard";
-  src: url("/fonts/Pretendard-ExtraLight.woff2") format("woff2"),
-       url("/fonts/Pretendard-ExtraLight.otf") format("opentype");
-  font-weight: 200;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Pretendard";
-  src: url("/fonts/Pretendard-Light.woff2") format("woff2"),
-       url("/fonts/Pretendard-Light.otf") format("opentype");
-  font-weight: 300;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Pretendard";
-  src: url("/fonts/Pretendard-Regular.woff2") format("woff2"),
-       url("/fonts/Pretendard-Regular.otf") format("opentype");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Pretendard";
-  src: url("/fonts/Pretendard-Medium.woff2") format("woff2"),
-       url("/fonts/Pretendard-Medium.otf") format("opentype");
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Pretendard";
-  src: url("/fonts/Pretendard-SemiBold.woff2") format("woff2"),
-       url("/fonts/Pretendard-SemiBold.otf") format("opentype");
-  font-weight: 600;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Pretendard";
-  src: url("/fonts/Pretendard-Bold.woff2") format("woff2"),
-       url("/fonts/Pretendard-Bold.otf") format("opentype");
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Pretendard";
-  src: url("/fonts/Pretendard-ExtraBold.woff2") format("woff2"),
-       url("/fonts/Pretendard-ExtraBold.otf") format("opentype");
-  font-weight: 800;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Pretendard";
-  src: url("/fonts/Pretendard-Black.woff2") format("woff2"),
-       url("/fonts/Pretendard-Black.otf") format("opentype");
-  font-weight: 900;
+  src: local("Pretendard Variable"),
+       url("/fonts/PretendardVariable.woff2") format("woff2-variations");
+  font-weight: 45 920;
   font-style: normal;
   font-display: swap;
 }

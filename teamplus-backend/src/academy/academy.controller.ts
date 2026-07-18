@@ -23,7 +23,6 @@ import {
 } from "@nestjs/swagger";
 import { AcademyService } from "./academy.service";
 import { ClassesService } from "@/classes/classes.service";
-import { SettlementSummaryService } from "@/payments/settlement/settlement-summary.service";
 import { CreateAcademyDto } from "./dto/create-academy.dto";
 import { UpdateAcademyDto } from "./dto/update-academy.dto";
 import { JoinAcademyDto } from "./dto/join-academy.dto";
@@ -54,7 +53,6 @@ export class AcademyController {
   constructor(
     private readonly academyService: AcademyService,
     private readonly classesService: ClassesService,
-    private readonly settlementSummaryService: SettlementSummaryService,
   ) {}
 
   /**
@@ -694,36 +692,6 @@ export class AcademyController {
     @Body() dto: BroadcastNoticeDto,
   ) {
     return this.academyService.broadcastNotice(req.user.id, academyId, dto);
-  }
-
-  /**
-   * [정산 센터 Phase 2b] 오픈클래스(Academy) 정산 소계 — 대회 제외.
-   *   assertAcademyManager(director 또는 active AcademyCoach)로 인가. 정산 확정은 감독 전용(별도).
-   */
-  @Get(":academyId/settlement-summary")
-  @Roles("ACADEMY_DIRECTOR", "COACH", "ADMIN")
-  @ApiOperation({
-    summary: "오픈클래스 정산 소계",
-    description:
-      "선택 월 기준 학원 수업의 정산 소계를 반환합니다(대회 제외). 학원 감독 또는 활성 코치만 조회 가능.",
-  })
-  @ApiQuery({
-    name: "yearMonth",
-    required: false,
-    description: "정산 기준 월 (YYYY-MM). 미전송 시 현재 KST 월.",
-  })
-  @ApiResponse({ status: 200, description: "학원 정산 소계 조회 성공" })
-  @ApiResponse({ status: 403, description: "이 오픈클래스를 관리할 권한이 없습니다." })
-  async getAcademySettlementSummary(
-    @Request() req: AuthenticatedRequest,
-    @Param("academyId") academyId: string,
-    @Query("yearMonth") yearMonth?: string,
-  ) {
-    return this.settlementSummaryService.getAcademySettlementSummary(
-      academyId,
-      req.user,
-      yearMonth,
-    );
   }
 
   // ─────────────────────────────────────────────────────────────────────────────

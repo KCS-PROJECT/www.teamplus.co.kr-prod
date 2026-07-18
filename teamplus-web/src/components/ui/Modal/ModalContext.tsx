@@ -73,6 +73,20 @@ export function useModal() {
   return context;
 }
 
+// ============ 하드웨어 백 브리지 (2026-07-16) ============
+//   provider-level 모달(modal.confirm/alert/open)은 ModalProvider 상단 포탈에서
+//   렌더되어 페이지 네비게이션(router.replace)으로 닫히지 않는다. 따라서 2단 백
+//   모델에서 모달이 열린 채 하드웨어 백을 누르면 홈으로 이동해도 모달이 잔존한다.
+//   useAppBack 이 provider 밖(모듈 레벨)에서 "열린 모달 우선 닫기"를 판단할 수 있도록
+//   ModalProvider 가 최신 열린 개수/닫기 함수를 아래 컨트롤러에 동기화한다.
+export const modalBackController: {
+  getOpenCount: () => number;
+  closeTop: () => void;
+} = {
+  getOpenCount: () => 0,
+  closeTop: () => {},
+};
+
 // ============ Provider ============
 
 interface ModalProviderProps {
@@ -248,6 +262,13 @@ export function ModalProvider({ children }: ModalProviderProps) {
       return prev.filter((m) => m.id !== id);
     });
   }, []);
+
+  // 하드웨어 백 브리지 동기화 — 최신 열린 개수/닫기 함수를 모듈 레벨 컨트롤러에 반영.
+  //   useAppBack.back() 이 네비게이션보다 먼저 열린 모달을 닫도록 한다.
+  useEffect(() => {
+    modalBackController.getOpenCount = () => modals.length;
+    modalBackController.closeTop = () => close();
+  }, [modals, close]);
 
   const value: ModalContextType = {
     modals,

@@ -210,8 +210,9 @@ export class CoachDashboardService {
           take: 5,
           orderBy: { requestedAt: "desc" },
         }),
-        // 월간 결제
-        this.prisma.payment.findMany({
+        // 월간 결제 — [2026-07-18 perf] 행 전송 findMany+reduce → DB aggregate 합계
+        //   (팀 성장 시 행 수 선형 증가 방지, @@index([paymentStatus, completedAt]) 커버)
+        this.prisma.payment.aggregate({
           where: {
             user: {
               teamMembers: { some: { teamId: { in: clubIds } } },
@@ -219,7 +220,8 @@ export class CoachDashboardService {
             paymentStatus: "completed",
             createdAt: { gte: monthStart, lte: monthEnd },
           },
-          select: { amount: true },
+          _sum: { amount: true },
+          _count: true,
         }),
         // 대기 결제
         this.prisma.payment.count({
@@ -269,10 +271,7 @@ export class CoachDashboardService {
 
     const monthlyAttendance =
       monthTotal > 0 ? Math.round((monthPresent / monthTotal) * 100) : 0;
-    const monthRevenue = monthPayments.reduce(
-      (sum, p) => sum + Number(p.amount),
-      0,
-    );
+    const monthRevenue = Number(monthPayments._sum.amount ?? 0);
 
     // 클럽 이름 매핑
     const clubMap = new Map(clubs.map((c) => [c.id, c]));
@@ -451,7 +450,7 @@ export class CoachDashboardService {
       },
       payments: {
         monthRevenue,
-        monthPayments: monthPayments.length,
+        monthPayments: monthPayments._count,
         pendingPayments,
       },
       recentActivities,

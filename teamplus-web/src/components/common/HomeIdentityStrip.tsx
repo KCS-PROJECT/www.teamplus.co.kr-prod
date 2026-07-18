@@ -47,7 +47,7 @@ export const HomeIdentityStrip = memo(function HomeIdentityStrip({
 
   return (
     <section
-      className="bg-it-blue-800 dark:bg-it-blue-900 flex items-center gap-3 px-4 sm:px-5 py-[18px]"
+      className="bg-it-blue-800 dark:bg-it-blue-900 flex items-center gap-3 px-5 py-[18px]"
       aria-label={ariaLabel ?? title}
     >
       {showLogo ? (
