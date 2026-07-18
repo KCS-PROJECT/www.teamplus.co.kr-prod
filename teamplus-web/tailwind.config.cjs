@@ -130,12 +130,14 @@ module.exports = {
           'kakao-pay':   '#FAE100', // 카카오페이 (살짝 톤 다름)
           'kakao-text':  '#371D1E', // 카카오 라벨 텍스트
           'kakao-text-2':'#191919', // 카카오 보조 텍스트(쇼핑몰 결제)
-          'kakao-text-3':'#181600', // 카카오 다크 텍스트(ShareSheet)
+          'kakao-text-3':'#181600', // 카카오 다크 텍스트(구 ShareSheet — 미사용)
+          'kakao-share': '#FAE100', // 카카오톡 공유 버튼 공식 컨테이너 (developers.kakao.com 공유 버튼 에셋 실측)
+          'kakao-share-symbol': '#3C1E1E', // 카카오톡 공유 버튼 공식 말풍선 심볼 (동일 에셋 실측)
           naver:         '#03C75A',
           'naver-hover': '#02B350',
           samsung:       '#1428A0',
           line:          '#06C755',
-          facebook:      '#1877F2',
+          facebook:      '#0866FF', // Facebook 공식 블루 (2023 Meta 리브랜딩 — Meta Brand Center/공식 아이콘 SVG 실측)
         },
         // ─── QR 카메라 UI 전용 색 (Native Camera Scanner) ──────────────
         // 카메라 풀스크린/스캐닝 UI 는 검정 배경 + 그린 강조가 표준 (Android Camera2 가이드).
