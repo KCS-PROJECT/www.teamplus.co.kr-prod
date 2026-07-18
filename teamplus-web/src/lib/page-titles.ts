@@ -58,9 +58,9 @@ export const PAGE_TITLES: Record<string, string> = {
 
   // ── 공지·소식 ────────────────────────────────────────
   '/timeline': '타임라인',
-  '/notices': '서비스 공지사항',
-  '/list': '서비스 공지사항',
-  '/team-notices': '팀 공지사항',
+  '/notices': '공지사항',
+  '/list': '공지사항',
+  '/team-notices': '팀공지',
   '/events': '이벤트',
   '/club/news': '팀 소식',
   '/event/premium': '프리미엄 이벤트',

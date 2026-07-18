@@ -14,12 +14,14 @@ import 'core/security/ssl_pinning_service.dart';
 import 'core/security/jailbreak_detection_service.dart';
 import 'core/constants/app_environment.dart';
 import 'core/notification/push_notification_service.dart';
+import 'core/notification/push_route_resolver.dart';
 import 'core/storage/offline_cache_service.dart';
 import 'core/storage/database/local_db_service.dart';
 import 'core/diagnostics/boot_timeline.dart';
 import 'core/auth/token_storage.dart';
 import 'core/constants/api_constants.dart';
 import 'core/network/api_client.dart';
+import 'core/webview/webview_cookie_sync.dart';
 import 'core/webview/webview_preloader.dart';
 import 'core/navigation/navigator_key.dart';
 import 'core/logging/app_logger.dart';
@@ -237,6 +239,12 @@ void main() {
     );
   }
   AppEnvironment.instance.initialize(forceEnvironment: forced);
+  // [보안 2026-07-18] 운영 로그 전면 차단 — prod(enableLogging=false) 환경에서는 앱 전체
+  // debugPrint 를 no-op 으로 교체해 BRIDGE 박스/JS Console 등 잔여 로그가 logcat/Console
+  // 에 남지 않게 한다. local/home/dev(release 포함)는 기존대로 출력된다.
+  if (!appEnv.enableLogging) {
+    debugPrint = (String? message, {int? wrapWidth}) {};
+  }
   // [보안 2026-06-07] release 로그에 백엔드 인프라(api/web URL) 노출 방지 — 디버그에서만 출력
   if (kDebugMode) {
     debugPrint(
@@ -290,6 +298,14 @@ void main() {
   //    앱 부팅 시 1회 등록 (싱글톤 ApiClient 기준).
   ApiClient().onAuthRequired = _redirectToLoginFromApi;
 
+  // [2026-07-15 로그인 개선 ①] Flutter Dio 401 자동 갱신으로 refresh 토큰이
+  //    회전되면 WebView httpOnly refresh 쿠키도 최신으로 동기화 —
+  //    Next.js 미들웨어의 "refresh 유효 → 클라이언트 갱신 위임" 판정 정합 유지.
+  ApiClient().onRefreshTokenRotated = (refreshToken) {
+    // fire-and-forget — 쿠키 동기화 실패는 미들웨어 UA 폴백이 커버.
+    WebViewCookieSync.syncRefreshToken(refreshToken);
+  };
+
   BootTimeline.instance.mark('run_app');
   debugPrint('[Boot] runApp 호출 직전');
 
@@ -339,13 +355,15 @@ void main() {
   }
   debugPrint('[Boot] runApp 호출 완료');
 
-  // 🔔 푸시 알림 탭 → 알림함 이동 (foreground 로컬알림 탭 + background/terminated FCM 탭이
-  //   모두 notificationStream 으로 합류). navigatorKey 미준비(콜드스타트 극초기) 시 무시.
-  PushNotificationService().notificationStream.listen((_) {
-    final ctx = navigatorKey.currentContext;
-    if (ctx == null) return;
+  // 🔔 푸시 알림 탭 → payload 기반 딥라우팅 (foreground 로컬알림 탭 + background/terminated
+  //   FCM 탭이 모두 notificationStream 으로 합류).
+  //   resolvePushPath: linkUrl(계약 v1) → type 폴백 → /notifications(웹 알림함).
+  //   DeepLinkHandler.navigateToWebPath: WebView 내 라우팅 또는 pending 버퍼 저장 —
+  //   콜드스타트에서 context 미준비여도 버퍼에 남아 WebView 로드 후 소비된다(유실 방지).
+  PushNotificationService().notificationStream.listen((payload) {
     try {
-      GoRouter.of(ctx).go('/notifications');
+      final path = resolvePushPath(payload.data ?? const {});
+      DeepLinkHandler.navigateToWebPath(path, navigatorKey: navigatorKey);
     } catch (e) {
       debugPrint('[PushNotification] 알림 라우팅 실패: $e');
     }

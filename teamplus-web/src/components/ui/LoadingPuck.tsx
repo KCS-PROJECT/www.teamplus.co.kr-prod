@@ -15,6 +15,7 @@
 import { memo, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { lockBodyScroll, unlockBodyScroll } from "@/lib/scroll-lock";
+import { acquireSpinnerNativeChrome } from "@/services/spinner-native-chrome";
 
 export interface LoadingPuckProps {
   /**
@@ -39,6 +40,12 @@ export const LoadingPuck = memo(function LoadingPuck({
       unlockBodyScroll();
     };
   }, []);
+
+  // v22 (2026-07-18) 사용자 직접 지시 — 풀사이즈 스피너 표시 중 appstatus 숨김.
+  // LoadingContext 미경유 표면(페이지/레이아웃 자체 LoadingPuck — 콜드 부트 인증 체크,
+  // suppressNextLoad 탭 전환 등)도 컴포넌트 mount 로 일원 커버. unmount 시 페이지 의도
+  // config 복원 (spinner-native-chrome.ts SoT — skip 경로/비-native 는 내부에서 no-op).
+  useEffect(() => acquireSpinnerNativeChrome(), []);
 
   return (
     <>
@@ -166,13 +173,18 @@ function PuckBody({ dark = false }: PuckBodyProps) {
 
 // ─── 내부: 퍽 로더 아트워크 ──────────────────────────────────────────
 /**
- * PuckLoaderArt — 회전 링 + 떠오르는 퍽 + 빙판 표면
- * 96x96 컨테이너, 다층 구성으로 깊이감 강화:
- * 1. 빙판 베이스: 단색 토큰 표면
- * 2. 빙판 표면 라인 3개 (퍽 아래 미세 점선)
- * 3. 동기화된 그림자 (puckShadow keyframe — 퍽 떠오름에 맞춰 축소·페이드)
- * 4. 퍽 본체 (48x16, puckBob keyframe)
- * 5. 회전 링 (4px stroke + 12시 강조점)
+ * PuckLoaderArt — [ICETIMES DS 2026-07-18] 올드버전 디자인 시스템
+ * `components/feedback/LoadingPuck.jsx` 1:1 적용 (96×96 기준):
+ * 1. 아이스 halo: inset 10 · ice-50 원 · tp-halo-pulse 2.8s sine (호흡)
+ * 2. 회전 arc 링: r-40 · ice-500 4px round cap — 트랙 없음(arc 단독) · 회전 1s
+ * 3. 퍽 본체: 30×13 · r-7 · rink-900 + 화이트 인셋 하이라이트 ·
+ *    tp-puck-bob 2.2s (squash & stretch — origin 50% 100% 바닥 피벗)
+ * 4. 그림자: 32×6 · rgba(20,24,38,.3) · tp-puck-shadow 2.2s (축소·페이드 동기화)
+ *
+ * 유지되는 구현 디테일 (DS 는 시각 스펙, 아래는 안정성 레이어):
+ * - SMIL <animateTransform> 회전 (iOS Low Power/GPUProcess IdleExit 에서도 지속)
+ * - 인라인 base transform translate3d(-50%,0,0) fallback (keyframe 정지 시 정렬 보존)
+ * - 다크 모드 변형 (DS 는 라이트 전용 — halo rink-800 · arc ice-300 매핑)
  */
 function PuckLoaderArt({ dark = false }: { dark?: boolean }) {
   return (
@@ -182,111 +194,25 @@ function PuckLoaderArt({ dark = false }: { dark?: boolean }) {
         width: 96,
         height: 96,
         transform: 'translate3d(0, 0, 0)',
-        // v16 (2026-05-16 T9): will-change 제거 — 컨테이너 자체는 transform 변경 없음.
-        //   내부 puck-bob/shadow 자식 요소가 개별 transform 애니메이션 보유 →
-        //   해당 자식에만 will-change: transform 명시 (이미 적용됨).
         transformOrigin: '50% 50%',
       }}
     >
-      {/* 빙판 베이스 */}
+      {/* 아이스 halo — DS: inset 10 · ice-50 · tp-halo-pulse */}
       <div
         aria-hidden
         className={cn(
-          "absolute inset-0 rounded-full",
-          dark ? "bg-rink-800" : "bg-wline-2",
+          "absolute rounded-full animate-loading-halo-pulse",
+          dark ? "bg-rink-800" : "bg-ice-50",
         )}
-      />
-      {/* 빙판 표면 라인 (점선 3개) */}
-      <svg
-        viewBox="0 0 96 96"
-        width={96}
-        height={96}
-        className="absolute inset-0"
-        aria-hidden
-      >
-        <line
-          x1={20}
-          y1={62}
-          x2={76}
-          y2={62}
-          stroke={dark ? "#3a4358" : "#cfd9ee"}
-          strokeWidth={0.6}
-          strokeDasharray="2 3"
-          opacity={0.65}
-        />
-        <line
-          x1={24}
-          y1={68}
-          x2={72}
-          y2={68}
-          stroke={dark ? "#3a4358" : "#cfd9ee"}
-          strokeWidth={0.6}
-          strokeDasharray="2 3"
-          opacity={0.5}
-        />
-        <line
-          x1={28}
-          y1={74}
-          x2={68}
-          y2={74}
-          stroke={dark ? "#3a4358" : "#cfd9ee"}
-          strokeWidth={0.6}
-          strokeDasharray="2 3"
-          opacity={0.35}
-        />
-      </svg>
-      {/* 빙판 셰도우 (퍽 떠오름에 동기화)
-          2026-05-11: iOS Low Power Mode / GPUProcess IdleExit / prefers-reduced-motion 환경
-          에서 CSS keyframe 이 일시 정지될 때, keyframe 의 transform 안에 base 정렬값
-          `translateX(-50%)` 가 포함되어 있어 정렬이 깨졌다. 인라인 base transform 으로
-          fallback 보장 (keyframe 이 작동하면 인라인 transform 을 자동 override). */}
-      <div
-        aria-hidden
-        className="absolute animate-puck-shadow"
         style={{
-          left: "50%",
-          bottom: 8,
-          width: 60,
-          height: 8,
-          borderRadius: 999,
-          background: dark ? "#1a2030" : "#cdd9ee",
-          filter: "blur(1px)",
-          transform: "translate3d(-50%, 0, 0)",
-          transformOrigin: "50% 50%",
+          inset: 10,
           willChange: "transform, opacity",
           backfaceVisibility: "hidden",
         }}
       />
-      {/* 퍽 (떠오름) — 동일 fallback 적용 */}
-      <div
-        aria-hidden
-        className="absolute animate-puck-bob"
-        style={{
-          left: "50%",
-          bottom: 8,
-          width: 48,
-          height: 16,
-          borderRadius: 999,
-          background: "#141826",
-          boxShadow: dark
-            ? "0 3px 6px rgba(0,0,0,0.65), inset 0 1px 0 #475569"
-            : "0 3px 6px rgba(15,23,42,0.22), inset 0 1px 0 #475569",
-          transform: "translate3d(-50%, 0, 0)",
-          transformOrigin: "50% 50%",
-          willChange: "transform",
-          backfaceVisibility: "hidden",
-        }}
-      />
-      {/* 회전 링 — v6 (2026-05-11): SMIL <animateTransform> 으로 회전 강제 보장.
-            v5 의 `animate-spin` (CSS transform rotate) 은 다음 iOS 환경에서 일시
-            정지되는 케이스가 보고됨:
-              - Low Power Mode 활성 시 WebKit 이 일부 CSS animation 을 정지
-              - GPUProcess IdleExit 직후 (메모리 압박 회복)
-              - 시스템 "동작 줄임(Reduce Motion)" 활성
-            → SMIL `<animateTransform>` 은 SVG native 라 위 상황에서도 항상 작동.
-            CSS `animate-puck-arc` (호 길이 변화) 는 보너스로 유지하되, 인라인 fallback
-            `strokeDasharray="60 252"` 를 두어 CSS animation 정지 시에도 호 형태 보존.
-            WCAG 2.2.2 의 "필수 활동(로딩)" 예외에 따라 SMIL 은 reduce-motion 무관 회전. */}
+      {/* 회전 arc 링 — DS: 트랙 없음 · ice-500 · 회전 1s(tp-spin) + tp-puck-arc 2.8s.
+          SMIL <animateTransform> 은 iOS Low Power Mode 에서도 회전이 지속되는
+          기존 안정성 레이어 — DS 의 tp-spin 1s linear 를 SMIL dur 로 반영. */}
       <svg
         viewBox="0 0 96 96"
         width={96}
@@ -294,19 +220,6 @@ function PuckLoaderArt({ dark = false }: { dark?: boolean }) {
         className="absolute inset-0"
         aria-hidden
       >
-        {/* 트랙 */}
-        <circle
-          cx={48}
-          cy={48}
-          r={40}
-          fill="none"
-          stroke={dark ? "#2a3247" : "#dbe6ff"}
-          strokeWidth={4}
-        />
-        {/* 회전 그룹 — SMIL <animateTransform> 으로 group 단위 등속 회전.
-            v16 (2026-05-16 T9): dur 1.8s → 1.4s.
-              60fps 환경에서 1.2~1.5s 범위가 시각적 부드러움 최적 (rotation 1°당 ≈ 6.5ms).
-              SMIL 의 기본 calcMode 는 linear 라 회전이 일정 속도 — 등속 보장. */}
         <g>
           <animateTransform
             attributeName="transform"
@@ -314,17 +227,17 @@ function PuckLoaderArt({ dark = false }: { dark?: boolean }) {
             type="rotate"
             from="0 48 48"
             to="360 48 48"
-            dur="1.4s"
+            dur="1s"
             repeatCount="indefinite"
           />
           {/* 활성 호 — strokeDasharray 인라인 fallback (CSS 멈춰도 호 형태 유지) +
-              animate-puck-arc 작동 시 길이 변화 보너스 */}
+              animate-puck-arc (20 251→120 251→20 251 — DS tp-puck-arc 동일값) */}
           <circle
             cx={48}
             cy={48}
             r={40}
             fill="none"
-            stroke={dark ? "#85a8ff" : "#1E3FAE"}
+            stroke={dark ? "#85a8ff" : "#2f5fff"}
             strokeWidth={4}
             strokeLinecap="round"
             strokeDasharray="60 252"
@@ -335,6 +248,44 @@ function PuckLoaderArt({ dark = false }: { dark?: boolean }) {
           />
         </g>
       </svg>
+      {/* 퍽 (떠오름) — DS: 30×13 · r-7 · bottom 26 · rink-900 + 화이트 인셋.
+          origin 50% 100% (바닥 피벗) 로 squash & stretch 가 빙판에 붙어 보임.
+          인라인 base transform 은 keyframe 정지 시 정렬 fallback (2026-05-11 교훈). */}
+      <div
+        aria-hidden
+        className="absolute animate-puck-bob"
+        style={{
+          left: "50%",
+          bottom: 26,
+          width: 30,
+          height: 13,
+          borderRadius: 7,
+          background: "#141826",
+          boxShadow:
+            "inset 0 -3px 0 rgba(255,255,255,0.14), inset 0 2px 0 rgba(255,255,255,0.06)",
+          transform: "translate3d(-50%, 0, 0)",
+          transformOrigin: "50% 100%",
+          willChange: "transform",
+          backfaceVisibility: "hidden",
+        }}
+      />
+      {/* 그림자 — DS: 32×6 · bottom 21 · rgba(20,24,38,.3) · tp-puck-shadow 동기화 */}
+      <div
+        aria-hidden
+        className="absolute animate-puck-shadow"
+        style={{
+          left: "50%",
+          bottom: 21,
+          width: 32,
+          height: 6,
+          borderRadius: "50%",
+          background: dark ? "rgba(0,0,0,0.5)" : "rgba(20,24,38,0.3)",
+          transform: "translate3d(-50%, 0, 0)",
+          transformOrigin: "50% 50%",
+          willChange: "transform, opacity",
+          backfaceVisibility: "hidden",
+        }}
+      />
     </div>
   );
 }

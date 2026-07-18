@@ -12,6 +12,7 @@ import 'core/security/ssl_pinning_service.dart';
 import 'core/constants/app_environment.dart';
 import 'core/navigation/navigator_key.dart';
 import 'core/storage/secure_storage_service.dart';
+import 'core/system/app_exit.dart';
 import 'core/websocket/websocket_service.dart';
 import 'core/maintenance/maintenance_service.dart';
 
@@ -189,12 +190,43 @@ class _TeamplusAppState extends ConsumerState<TeamplusApp>
       return;
     }
 
+    // [2026-07-16 재실행 로그인 버그 FIX] 종료 시도 후 부활한 resume → 로그인 게이트 재진입.
+    //   앱 종료(백키 → 종료 확인 → 로그아웃 → exitApp)는 세션을 지우고
+    //   finishAndRemoveTask() 로 태스크를 종료하지만, OS 가 프로세스/엔진을 살려두고
+    //   앱을 resume 으로 되살리면 InitialDestinationGate 가 재실행되지 않아 WebView 가
+    //   직전 메인화면 상태로 남는다("종료 후 재실행 시 메인화면" 회귀).
+    //   → AppExit.terminate() 가 세운 `exitAttempted` 플래그를 보고, 종료 시도 뒤
+    //     프로세스가 살아남아 돌아온 경우에만 `/webview` 게이트를 새 key 로 재진입시켜
+    //     InitialDestinationGate 가 세션 부재를 감지해 Next.js /login/ 을 로드하게 한다.
+    //   ⚠️ raw 토큰 부재로 판정하지 않는다 — 로그인/회원가입/OTP 등 정상 미인증
+    //     화면(토큰 없는 게 정상)의 resume 에서는 재게이트가 발동하면 안 되기 때문.
+    //     (프로세스가 실제 죽으면 static 리셋 → 콜드스타트가 로그인 처리)
+    if (AppExit.exitAttempted) {
+      AppExit.exitAttempted = false;
+      debugPrint('[teamplusApp] 종료 후 재개 감지 — 로그인 게이트로 재진입');
+      if (!mounted) return;
+      try {
+        final router = ref.read(goRouterProvider);
+        router.go('/webview', extra: {'gateKey': UniqueKey()});
+      } catch (_) {
+        // router 접근 불가 등 예외 — 다음 콜드스타트에서 InitialDestinationGate 가 처리.
+      }
+      return; // WebSocket 재연결·생체인증 스킵.
+    }
+
     // WebSocket 재연결 (토큰 유효성 확인 후)
     final wsService = WebSocketService();
     if (!wsService.isConnected) {
       debugPrint('[teamplusApp] WebSocket 재연결 — 토큰 유효성 확인');
       final storage = SecureStorageService();
-      final token = await storage.getAccessToken();
+      // Keychain hang/오류가 resume 흐름을 막지 않도록 방어 (token_storage 의 timeout 정책과 정합).
+      String? token;
+      try {
+        token = await storage.getAccessToken().timeout(const Duration(milliseconds: 1500));
+      } catch (e) {
+        debugPrint('[teamplusApp] 토큰 read 실패/타임아웃 — WebSocket 재연결 스킵: $e');
+        token = null;
+      }
       if (token != null) {
         // 토큰이 있으면 재연결 (만료 시 서버에서 token_expired 이벤트 수신 → 자동 갱신)
         wsService.connect(namespace: 'notifications');

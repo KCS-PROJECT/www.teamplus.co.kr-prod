@@ -425,15 +425,21 @@ export default function ChildDashboardPage() {
             큰 "오늘 수업" 카드 + 미니캘린더 + 오늘 일정 (학부모 임시 코드) 모두 제거.
             ClassCalendarSection + SelectedDayClassList(variant='child') 가 WCAG AAA 자동 적용.
             환영 Hero (아이스하키 스틱 + 퍽 슈팅) 는 어린이 친화 UX 핵심 시각 요소 — 유지. */}
+        {/* [ICETIMES 시안 2026-07-18] 올드버전 프로토타입 "어린이 대시보드" —
+            제목 "수업 일정"(18/900) + 흰 카드(r-20 · wline · sh-1 · 내부 px-4) 안 iceTheme 캘린더.
+            출석 버튼 등 WCAG AAA 규격은 SelectedDayClassList variant='child' 가 그대로 담당. */}
         <AnimatedSection delay={100}>
-          <SectionHead title="내 수업 일정" variant="child" />
+          <SectionHead title={MESSAGES.dashboard.classSchedule} variant="child" />
           <div className="px-4 sm:px-5">
-            <ClassCalendarSection
-              teamIds={teams}
-              enabledClassIds={enabledClassIds}
-              onSelectionChange={setSelection}
-              onReady={setCalendarReady}
-            />
+            <div className="overflow-hidden rounded-w-xl border border-wline dark:border-rink-700 bg-wsurface dark:bg-rink-800 shadow-sh-1 px-4">
+              <ClassCalendarSection
+                teamIds={teams}
+                enabledClassIds={enabledClassIds}
+                onSelectionChange={setSelection}
+                onReady={setCalendarReady}
+                iceTheme
+              />
+            </div>
           </div>
         </AnimatedSection>
 

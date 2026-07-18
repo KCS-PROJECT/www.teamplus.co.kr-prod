@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../auth/token_storage.dart';
 import '../constants/api_constants.dart';
 import '../maintenance/maintenance_service.dart';
+import '../webview/webview_cookie_sync.dart';
 import '../webview/webview_screen.dart';
 import '../../features/maintenance/presentation/screens/system_maintenance_screen.dart';
 import '../../shared/widgets/teamplus_bottom_nav.dart'
@@ -75,6 +76,20 @@ Future<({String url, UserType? userType})> resolveInitialDestination() async {
   final fullUrl = '${ApiConstants.webAppUrl}$targetPath';
   final userType =
       userTypeStr != null ? TeamplusBottomNav.fromString(userTypeStr) : null;
+
+  // [2026-07-15 로그인 개선 ①] WebView 첫 문서 요청 **이전에** refresh 쿠키 동기화.
+  //   콜드 스타트 시 WebView 쿠키 저장소에는 (영속화된) access 쿠키만 있고
+  //   refresh 쿠키가 없어, access JWT(15분)가 만료된 채 대시보드 URL 을 로드하면
+  //   Next.js 미들웨어가 /login?redirect= 로 튕기는 회귀가 있었다.
+  //   인증 상태면 secure storage 의 refresh 토큰을 심고, 미인증이면 stale 쿠키를
+  //   지워 미들웨어 오판을 차단한다. (수 ms 수준 — cold start 영향 미미)
+  if (bundle.isAuthenticated) {
+    final refreshToken = await TokenStorage().getRefreshToken();
+    await WebViewCookieSync.syncRefreshToken(refreshToken);
+  } else {
+    await WebViewCookieSync.syncRefreshToken(null);
+  }
+
   return (url: fullUrl, userType: userType);
 }
 

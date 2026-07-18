@@ -40,6 +40,12 @@ class ApiClient {
   /// 앱 부팅 시 `ApiClient().onAuthRequired = (path) => goRouter.go('/login?redirect=$path');` 형태로 등록.
   void Function(String requestUrl)? onAuthRequired;
 
+  /// [2026-07-15 로그인 개선 ①] 401 자동 갱신으로 refresh 토큰이 회전됐을 때 호출.
+  /// main.dart 가 `WebViewCookieSync.syncRefreshToken` 을 등록하여 WebView 쿠키
+  /// 저장소의 httpOnly refresh 쿠키를 최신 토큰으로 유지한다 (미들웨어 판정 정합).
+  /// core/network → core/webview 직접 의존을 피하기 위한 콜백 주입 (onAuthRequired 패턴).
+  void Function(String refreshToken)? onRefreshTokenRotated;
+
   /// ETag 기반 GET 응답 캐시 — 로그아웃 시 외부에서 invalidate() 호출 가능
   late final EtagCacheInterceptor etagCache = EtagCacheInterceptor();
 
@@ -430,6 +436,15 @@ class _AuthInterceptor extends Interceptor {
           // ⚡ TokenStorage 캐시 무효화 — 갱신된 토큰이
           // readAuthBundle() 캐시를 오염시키지 않도록 강제 무효화
           TokenStorage().invalidateAuthBundleCache();
+
+          // [2026-07-15 로그인 개선 ①] 회전된 refresh 토큰을 WebView 쿠키에도 반영.
+          //   _AuthInterceptor 는 ApiClient 싱글톤에 소속되므로 싱글톤 콜백을 사용.
+          //   콜백 예외는 무시 — 토큰 갱신 자체는 이미 성공한 상태.
+          try {
+            ApiClient().onRefreshTokenRotated?.call(newRefreshToken);
+          } catch (_) {
+            /* 쿠키 동기화 실패는 미들웨어 UA 폴백이 커버 */
+          }
 
           return newAccessToken;
         }

@@ -59,7 +59,6 @@ import { Req, Headers } from "@nestjs/common";
 import type { Request as ExpressRequest } from "express";
 import { PaymentCalculationService } from "./payment-calculation.service";
 import { PostpaidSettlementService } from "./postpaid-settlement.service";
-import { SettlementSummaryService } from "./settlement/settlement-summary.service";
 import { Roles } from "@/auth/roles.decorator";
 import { RolesGuard } from "@/auth/roles.guard";
 
@@ -75,7 +74,6 @@ export class PaymentsController {
     private readonly tossGateway: TossPaymentsGateway,
     private readonly calculationService: PaymentCalculationService,
     private readonly postpaidSettlementService: PostpaidSettlementService,
-    private readonly settlementSummaryService: SettlementSummaryService,
     private readonly redisService: RedisService,
   ) {}
 
@@ -618,43 +616,6 @@ export class PaymentsController {
   })
   async getWebhookStats() {
     return this.webhookRetryService.getWebhookStats();
-  }
-
-  /**
-   * [정산 센터 Phase 2b] 팀 정산 소계 — 감독이 자기 수업·대회를 목록으로 훑는 소계 레이어.
-   *   대회(선불·후불) 포함. teamId 지정 시 관리 팀 교집합(비관리 → 빈 결과).
-   *   static path 라 `:paymentId` 라우트보다 위에 위치(동적 매칭 회피).
-   */
-  @Get("team-settlement-center/summary")
-  @UseGuards(AuthGuard("jwt"), RolesGuard)
-  @ApiBearerAuth()
-  @Roles("COACH", "DIRECTOR", "ADMIN")
-  @ApiOperation({
-    summary: "팀 정산 소계 (수업 + 대회)",
-    description:
-      "선택 월 기준 관리 팀의 수업·대회(선불·후불) 정산 소계를 반환합니다. teamId 지정 시 관리 팀 교집합만 조회합니다.",
-  })
-  @ApiQuery({
-    name: "yearMonth",
-    required: false,
-    description: "정산 기준 월 (YYYY-MM). 미전송 시 현재 KST 월.",
-  })
-  @ApiQuery({
-    name: "teamId",
-    required: false,
-    description: "특정 팀으로 필터 (관리 팀만 유효, 비관리 팀은 빈 결과).",
-  })
-  @ApiResponse({ status: 200, description: "팀 정산 소계 조회 성공" })
-  async getTeamSettlementSummary(
-    @Request() req: AuthenticatedRequest,
-    @Query("yearMonth") yearMonth?: string,
-    @Query("teamId") teamId?: string,
-  ) {
-    return this.settlementSummaryService.getTeamSettlementSummary(
-      req.user,
-      yearMonth,
-      teamId,
-    );
   }
 
   /**

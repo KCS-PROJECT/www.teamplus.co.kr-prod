@@ -50,6 +50,15 @@ extension WebViewBridgeHandlers on WebViewBridge {
             userName: tokenData['userName'] as String?,
             userEmail: tokenData['userEmail'] as String?,
           );
+          // [2026-07-15 로그인 개선 ①] refresh 쿠키를 WebView 쿠키 저장소에 동기화.
+          //   웹 브라우저에서는 백엔드 Set-Cookie 가 담당하지만, 네이티브에서는
+          //   로그인이 Flutter Dio 경유라 쿠키가 유실되므로 여기서 직접 심는다.
+          //   웹의 navigate 가 이 핸들러 응답을 await 한 뒤 발생하므로,
+          //   미들웨어 판정 전에 쿠키가 준비되도록 반드시 await 한다.
+          final refreshTokenValue = tokenData['refreshToken'] as String?;
+          if (refreshTokenValue != null && refreshTokenValue.isNotEmpty) {
+            await WebViewCookieSync.syncRefreshToken(refreshTokenValue);
+          }
           // 로그인/회원가입 성공 → FCM 토큰을 해당 계정에 등록 (fire-and-forget)
           unawaited(_notificationService.ensureTokenRegistered());
           return BridgeResponse.success(
@@ -60,6 +69,9 @@ extension WebViewBridgeHandlers on WebViewBridge {
           // 토큰 삭제 (로그아웃) — 인증이 유효한 동안 FCM 디바이스 비활성화 후 토큰 제거
           await _notificationService.unregisterTokenFromServer();
           await _tokenStorage.clearAll();
+          // [2026-07-15 로그인 개선 ①] WebView refresh 쿠키도 함께 삭제 —
+          //   로그아웃 후 미들웨어가 stale 쿠키로 "세션 있음" 오판하지 않도록.
+          await WebViewCookieSync.syncRefreshToken(null);
           return BridgeResponse.success(
             data: {'message': '토큰이 삭제되었습니다.'},
           ).toJson();
@@ -950,8 +962,15 @@ extension WebViewBridgeHandlers on WebViewBridge {
 
         case 'exitApp':
           // Android 만 실제 종료. iOS 는 Apple 정책상 종료 금지 (리젝 사유) → silent no-op.
+          // [2026-07-15 BACKKEY FIX] SystemNavigator.pop() 은 OnBackPressedDispatcher
+          //   위임 → moveTaskToBack(백그라운드)로 동작해 종료되지 않으므로,
+          //   AppExit(finishAndRemoveTask) 로 실제 종료한다.
+          // [2026-07-16] 종료 확인 프로세스 요구사항: 종료 전 세션(토큰) 클리어 —
+          //   Web(useAppBack.requestAppExit)이 logout 을 마치고 호출하는 것이 정상
+          //   경로지만, 네트워크 hang 으로 웹 측 클리어가 타임아웃된 경우에도 재실행 시
+          //   로그인이 강제되도록 여기서 세션 클리어를 한 번 더 보장한다 (멱등).
           if (Platform.isAndroid) {
-            await SystemNavigator.pop();
+            await AppExit.terminateWithSessionClear();
           }
           return BridgeResponse.success(
             data: {'exited': Platform.isAndroid},

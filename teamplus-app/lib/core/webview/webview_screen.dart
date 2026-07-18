@@ -12,6 +12,7 @@ import '../router/deep_link_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../constants/api_constants.dart';
 import '../auth/token_storage.dart';
+import '../system/app_exit.dart';
 import '../diagnostics/boot_timeline.dart';
 import '../theme/colors.dart';
 import 'webview_bridge.dart';
@@ -122,6 +123,17 @@ class WebViewScreenState extends ConsumerState<WebViewScreen>
   //   `_state = loaded`/`error` 진입 시 timer 취소.
   Timer? _loadingFailsafeTimer;
   String _lastLoadedPath = 'unknown';
+
+  /// [2026-07-15 BACKKEY FIX] 하드웨어 백키 처리용 최신 로드 URL 동기 캐시.
+  ///
+  /// 기존 `_onHardwareBack()` 은 매 백키마다 `await webViewController.getUrl()`
+  /// (타임아웃 없는 플랫폼 채널 왕복) 로 현재 URL 을 조회했다. 로그인 순간처럼
+  /// WebView 스레드가 바쁠 때(E2E 암호화·API·router.replace·풀스크린 로더) 이
+  /// await 가 stall 되면 `PopScope(canPop:false)` 가 OS 백키를 이미 삼킨 상태라
+  /// 백키가 완전히 죽어 "멈춤"으로 보였다. onLoadStart / onUpdateVisitedHistory
+  /// (SPA pushState 포함) 에서 항상 최신 URL 을 여기에 저장해두고, 백키 처리 시
+  /// 이 값을 **동기적으로** 사용해 hang 을 근본 차단한다.
+  String? _currentLoadedUrl;
 
   /// 메인 프레임 에러를 사용자에게 노출하기 전 디바운스 (2026-05-11).
   ///
@@ -553,9 +565,19 @@ class WebViewScreenState extends ConsumerState<WebViewScreen>
         );
         return;
       }
-      // 표시 모드: edge-to-edge 유지 — Bottom Safe Area / Home Indicator 영역이
-      // 콘텐츠와 함께 같은 위치에 머물러 페인팅 안정.
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      // 표시 모드: manual + [top, bottom].
+      //
+      // [2026-07-17 appstatus FIX] 기존 edgeToEdge 호출은 Flutter 3.41 엔진에서
+      //   enableEdgeToEdge()(decorFits(false)) 후 조기 return 하여, 직전
+      //   manual+[bottom](숨김)이 데코뷰에 남긴 SYSTEM_UI_FLAG_FULLSCREEN 을
+      //   해제하지 않는다 → show 가 영구 무효 = 상태바 미노출 회귀(Android 전 단말).
+      //   manual+[top,bottom] 은 엔진에서 LAYOUT_STABLE|LAYOUT_FULLSCREEN 을
+      //   유지한 채 FULLSCREEN 만 걷어내므로(콘텐츠는 계속 상태바 뒤로 그려짐)
+      //   viewport 변동 없이 상태바만 복원된다.
+      SystemChrome.setEnabledSystemUIMode(
+        SystemUiMode.manual,
+        overlays: const [SystemUiOverlay.top, SystemUiOverlay.bottom],
+      );
       _applyStatusBarStyle();
       return;
     }
@@ -599,10 +621,14 @@ class WebViewScreenState extends ConsumerState<WebViewScreen>
   void _applyStatusBarStyle() {
     final isDarkMode = _resolveIsDarkMode();
 
-    // 기본 배경색 결정
-    final defaultBgColor = isDarkMode
-        ? AppColors.contentBackgroundDark
-        : AppColors.contentBackground;
+    // 기본 배경색 결정.
+    // [2026-07-18 appstatus 색상 제거] 라이트 모드 기본값을 slate-50(#F8FAFC)에서
+    //   순백(#FFFFFF)으로 변경 — 상태바/내비게이션 바에 옅은 회청색 tint 가 남아
+    //   body 와 구분되어 보이던 문제 해결(사용자 직접 지시). Web 이 statusBarColor 를
+    //   push 하지 않는 화면에서 이 기본값이 적용되므로, 순백으로 두면 상태바~앱바~body
+    //   가 이음매 없이 흰 배경으로 이어진다. 다크 모드는 기존 유지.
+    final defaultBgColor =
+        isDarkMode ? AppColors.contentBackgroundDark : AppColors.white;
 
     // 커스텀 StatusBar 색상이 설정되어 있으면 사용
     final statusBarBgColor = _statusBarColor ?? defaultBgColor;
@@ -918,7 +944,14 @@ class WebViewScreenState extends ConsumerState<WebViewScreen>
 
   void _handleDeepLinkNavigation(String webPath) {
     final controller = webViewController;
-    if (controller == null) return;
+    if (controller == null) {
+      // initState 가 콜백을 등록한 뒤 onWebViewCreated 가 컨트롤러를 할당하기 전의
+      // async gap 에 푸시 탭이 도착하면 여기로 온다 — 조용히 버리지 말고 버퍼에
+      // 저장해 onLoadStop 이 소비하도록 넘긴다(탭 유실 방지).
+      DeepLinkHandler.stashPendingPath(webPath);
+      debugPrint('[WebView] 컨트롤러 미준비 → pending 저장: $webPath');
+      return;
+    }
     final safePath = webPath.replaceAll("'", "\\'");
     controller.evaluateJavascript(
       source: "if(window.teamplusNavigate){window.teamplusNavigate('$safePath')}else if(window.__NEXT_ROUTER_PUSH__){window.__NEXT_ROUTER_PUSH__('$safePath')}",
@@ -962,10 +995,15 @@ class WebViewScreenState extends ConsumerState<WebViewScreen>
     pullToRefreshController = null;
 
     // 상태바 복원
-    // Android: edge-to-edge 유지 (시스템 bar 위치 변동 방지 — 다음 화면 진입 시 밀림 현상 차단)
+    // Android: manual+[top,bottom] — edgeToEdge 는 Flutter 3.41 엔진에서 이전
+    //   숨김(FULLSCREEN) 플래그를 해제하지 않아 상태바 복원이 무효가 된다
+    //   (2026-07-17 appstatus FIX — _updateStatusBar show 경로와 동일 사유).
     // iOS: manual 모드 + native channel 로 status bar 가시성 복원
     if (Platform.isAndroid) {
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      SystemChrome.setEnabledSystemUIMode(
+        SystemUiMode.manual,
+        overlays: const [SystemUiOverlay.top, SystemUiOverlay.bottom],
+      );
     } else {
       SystemChrome.setEnabledSystemUIMode(
         SystemUiMode.manual,
@@ -984,10 +1022,13 @@ class WebViewScreenState extends ConsumerState<WebViewScreen>
   Widget build(BuildContext context) {
     // 다크모드 감지
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    // 배경색: 콘텐츠 영역(body)과 동일한 색상 (UI 통일)
-    final defaultBackgroundColor = isDarkMode
-        ? AppColors.contentBackgroundDark
-        : AppColors.contentBackground;
+    // 배경색: 콘텐츠 영역(body)과 동일한 색상 (UI 통일).
+    // [2026-07-18 appstatus 색상 제거] 라이트 모드 기본 배경을 slate-50(#F8FAFC)에서
+    //   순백(#FFFFFF)으로 변경 — 이 색이 상단 status bar safe-area 스트립과 하단
+    //   내비게이션 바 영역을 채우므로, 순백으로 두면 옅은 tint 밴드가 사라지고 상태바~
+    //   앱바~body 가 이음매 없이 흰 배경으로 이어진다(사용자 직접 지시). 다크 모드 유지.
+    final defaultBackgroundColor =
+        isDarkMode ? AppColors.contentBackgroundDark : AppColors.white;
     final backgroundColor = _scaffoldBackgroundColor ?? defaultBackgroundColor;
 
     // 키보드 열림 상태 감지 — input focus 시 iOS/Android 모두 viewInsets.bottom > 0
@@ -1308,6 +1349,8 @@ class WebViewScreenState extends ConsumerState<WebViewScreen>
                         },
                         onLoadStart: (controller, url) {
                           if (_isDisposed) return; // dispose 상태 체크
+                          // [2026-07-15 BACKKEY FIX] 백키 동기 판정용 URL 캐시 갱신.
+                          _currentLoadedUrl = url?.toString();
                           BootTimeline.instance.mark('webview_load_start');
                           _bootFallbackTimer?.cancel();
                           _bootFallbackTimer = null;
@@ -1340,6 +1383,10 @@ class WebViewScreenState extends ConsumerState<WebViewScreen>
                         onUpdateVisitedHistory:
                             (controller, url, androidIsReload) {
                           if (_isDisposed) return;
+                          // [2026-07-15 BACKKEY FIX] SPA pushState/replaceState
+                          // (router.push/replace) 로 URL 이 바뀔 때도 백키 동기
+                          // 판정용 캐시를 갱신한다.
+                          _currentLoadedUrl = url?.toString();
                           // SPA pushState/replaceState 시에도 PTR 상태 재동기화.
                           // (예: /parent → /login 으로 router.replace 했을 때)
                           _syncPullToRefreshEnabled(url?.toString());
@@ -1413,13 +1460,23 @@ class WebViewScreenState extends ConsumerState<WebViewScreen>
                           // URL에서 현재 네비게이션 인덱스 업데이트
                           _updateNavIndexFromUrl(url);
 
-                          // Cold start 딥링크: WebView 준비 전에 수신된 경로 소비
-                          final pendingPath = DeepLinkHandler.consumePendingPath();
-                          if (pendingPath != null && !isAuthPage) {
-                            debugPrint('[WebView] pending 딥링크 소비: $pendingPath');
-                            Future.delayed(const Duration(milliseconds: 300), () {
-                              if (!_isDisposed) _handleDeepLinkNavigation(pendingPath);
-                            });
+                          // Cold start 딥링크: WebView 준비 전에 수신된 경로 소비.
+                          // ⚠️ 로그인/인증 페이지가 첫 로드면 소비하지 '않는다' — 무조건
+                          // consume 하면 버퍼가 비워져 로그인 완료 후 목적지가 영구 유실된다.
+                          // 인증 페이지에선 버퍼를 남겨, 로그인 후 비인증 페이지 onLoadStop 이 소비.
+                          if (!isAuthPage) {
+                            final pendingPath =
+                                DeepLinkHandler.consumePendingPath();
+                            if (pendingPath != null) {
+                              debugPrint(
+                                  '[WebView] pending 딥링크 소비: $pendingPath');
+                              Future.delayed(
+                                  const Duration(milliseconds: 300), () {
+                                if (!_isDisposed) {
+                                  _handleDeepLinkNavigation(pendingPath);
+                                }
+                              });
+                            }
                           }
 
                           // 🔐 인증 상태 확인 후 미로그인 시 로그인 페이지로 이동
@@ -1674,10 +1731,12 @@ Content Type: ${errorResponse.contentType}
                           return NavigationActionPolicy.ALLOW;
                         },
                         onConsoleMessage: (controller, consoleMessage) {
-                          // JavaScript 콘솔 로그 출력 (개발 모드)
-                          debugPrint(
-                            'JS Console [${consoleMessage.messageLevel}]: ${consoleMessage.message}',
-                          );
+                          // JavaScript 콘솔 로그 출력 — prod(enableLogging=false)는 침묵
+                          if (ApiConstants.enableLogging) {
+                            debugPrint(
+                              'JS Console [${consoleMessage.messageLevel}]: ${consoleMessage.message}',
+                            );
+                          }
                         },
                       ),
                     ), // ♿ Semantics 닫기
@@ -1742,15 +1801,14 @@ Content Type: ${errorResponse.contentType}
     //   SystemChrome.setSystemUIOverlayStyle 한 번 호출보다 견고하다.
     //   배경 luminance 기반 자동 brightness 결정은 _applyStatusBarStyle 과 동일 정책.
     final isAppDarkMode = _resolveIsDarkMode();
+    // [2026-07-18 appstatus 색상 제거] 라이트 모드 기본 상태바/내비 바 배경을
+    //   순백(#FFFFFF)으로 통일 — 옅은 tint 제거로 상태바~앱바~body 이음매 제거.
+    //   (_applyStatusBarStyle 과 동일 정책. Web 이 색을 push 하면 그 값이 우선.)
     final statusBarBgColor = _statusBarColor ??
-        (isAppDarkMode
-            ? AppColors.contentBackgroundDark
-            : AppColors.contentBackground);
+        (isAppDarkMode ? AppColors.contentBackgroundDark : AppColors.white);
     final isStatusBarBright = _isColorBright(statusBarBgColor);
     final navBarBgColor = _navigationBarColor ??
-        (isAppDarkMode
-            ? AppColors.contentBackgroundDark
-            : AppColors.contentBackground);
+        (isAppDarkMode ? AppColors.contentBackgroundDark : AppColors.white);
     final isNavBarBright = _isColorBright(navBarBgColor);
     final annotatedStyle = SystemUiOverlayStyle(
       statusBarColor: statusBarBgColor,
@@ -1799,23 +1857,45 @@ Content Type: ${errorResponse.contentType}
   static const Duration _kDoubleBackWindow = Duration(seconds: 2);
 
   /// 안드로이드 하드웨어 백키 처리 (PopScope onPopInvokedWithResult 에서 호출).
+  ///
+  /// [2026-07-15 BACKKEY FIX] 현재 URL 을 `_currentLoadedUrl`(onLoadStart /
+  /// onUpdateVisitedHistory 에서 동기 갱신) 로 **즉시 판정**한다. 기존엔
+  /// `await webViewController.getUrl()` 로 시작해, 로그인처럼 WebView 스레드가
+  /// 바쁜 순간 이 await 가 stall 되면 `PopScope(canPop:false)` 가 OS 백키를 이미
+  /// 삼킨 채 아무 동작도 못 해 "멈춤"으로 보였다. 인증(로그인/회원가입) 화면은
+  /// await 없이 즉시 분기하고, WebView history 조회(canGoBack)에는 타임아웃을
+  /// 걸어 백키가 어떤 상황에서도 hang 되지 않도록 한다.
   Future<void> _onHardwareBack() async {
     if (!mounted) return;
 
-    // [2026-05-26 사용자 직접 지시] 로그인 화면 백키 연타 시 이전 화면으로 되돌아가던
-    //   회귀 차단. 네이티브 '/login' 라우트 폐기(2026-05-19) 후 로그인 화면은
-    //   WebView 의 Next.js '/login/' 페이지이며, splash/preload/로그아웃 직전 페이지가
-    //   WebView history 에 남아 canGoBack()==true → goBack() 으로 이전 화면 복귀가
-    //   발생했다. 현재 URL 이 인증 진입 경로(_isAuthPathUrl)면 history back / native pop
-    //   을 모두 건너뛰고 "한 번 더 누르면 종료" 흐름으로 보낸다.
-    WebUri? currentUri;
-    try {
-      currentUri = await webViewController?.getUrl();
-    } catch (_) {
-      // getUrl 실패 시 초기 URL 로 폴백
+    // 현재 URL 판정 — 정확도 우선.
+    //   [2026-07-17 BACKKEY FIX] 웹 BottomNav 의 SPA 탭 전환(pushState)이 InAppWebView
+    //   onUpdateVisitedHistory 를 항상 발화시키지는 않아, 동기 캐시 `_currentLoadedUrl`
+    //   이 stale(예: 마이 탭인데 /parent/ 로 남음) → 홈 오판으로 종료 확인이 잘못 뜬다.
+    //   따라서 백키 시점에 `getUrl()` 로 실제 URL 을 조회한다. 단 getUrl() 은 플랫폼 채널
+    //   왕복이라 busy(로그인 등) 시 stall 가능 → 300ms 타임아웃 후 동기 캐시로 폴백해
+    //   백키가 어떤 상황에서도 hang 되지 않도록 한다.
+    String? currentUrl = _currentLoadedUrl ?? widget.initialUrl;
+    final urlController = webViewController;
+    if (urlController != null) {
+      try {
+        final live = await urlController.getUrl().timeout(
+              const Duration(milliseconds: 300),
+              onTimeout: () => null,
+            );
+        if (live != null) currentUrl = live.toString();
+      } catch (e) {
+        debugPrint('[WebViewScreen] getUrl 조회 실패/타임아웃 — 캐시 사용: $e');
+      }
     }
     if (!mounted) return;
-    final currentUrl = currentUri?.toString() ?? widget.initialUrl;
+
+    // 1) 로그인 화면(루트) → "한 번 더 누르면 종료".
+    //   [2026-05-26 사용자 직접 지시] 백키 연타 시 이전 화면 복귀 회귀 차단.
+    //   네이티브 '/login' 폐기(2026-05-19) 후 로그인은 WebView '/login/' 페이지라
+    //   splash/preload/로그아웃 직전 페이지가 history 에 남아 canGoBack()==true 로
+    //   이전 화면 복귀가 발생했다. 로그인 루트면 history back / native pop 을 모두
+    //   건너뛰고 double-back 종료 흐름으로 보낸다.
     if (_isLoginRootUrl(currentUrl)) {
       debugPrint(
         '[WebViewScreen] hardware back on login screen ($currentUrl) → double-back to exit',
@@ -1824,10 +1904,8 @@ Content Type: ${errorResponse.contentType}
       return;
     }
 
-    // [2026-05-28 사용자 직접 지시] 회원가입 화면(/signup) 백키 → 로그인(/login/)으로 이동.
-    //   가입 완료 환영(A13) '둘러보기' 로 webview /signup/ 진입 후 soft/hardware 백키 시
-    //   WebView history back / native pop 을 타고 인트로(/onboarding)로 회귀하던 문제 차단.
-    //   회원가입에서 뒤로가기는 로그인 화면으로 돌아가는 것이 자연스러우므로 명시적으로 이동.
+    // 2) 회원가입 화면(/signup) → 로그인(/login/)으로 이동.
+    //   [2026-05-28 사용자 직접 지시] history back 으로 인트로(/onboarding) 회귀 차단.
     if (_isSignupRootUrl(currentUrl)) {
       debugPrint(
         '[WebViewScreen] hardware back on signup screen ($currentUrl) → navigate to /login/',
@@ -1836,17 +1914,259 @@ Content Type: ${errorResponse.contentType}
       return;
     }
 
-    // 1) WebView 가 이전 페이지를 보유 → 그쪽으로 복귀 (서브 페이지 → 메인 복귀 등)
-    final canBack = await webViewController?.canGoBack() ?? false;
-    debugPrint(
-      '[WebViewScreen] hardware back pressed, webView.canGoBack=$canBack, url=$currentUrl',
-    );
-    if (canBack) {
-      await webViewController?.goBack();
+    // 2.5) 역할 메인(홈) 화면 → canGoBack 여부와 무관하게 종료 확인.
+    //   [2026-07-17 BACKKEY FIX] 로그인 → 홈 리다이렉트로 진입하므로 홈에서도 WebView
+    //   내부 history 가 남아 canGoBack()==true 다. 아래 3) 분기가 그대로면 홈에서
+    //   goBack → 로그인 → (인증됨) 홈 재리다이렉트로 갇혀 종료 확인에 도달하지 못한다.
+    //   요구사항("메인 화면에서 하드웨어 백키 → 바로 종료 확인 팝업")대로, 홈이면
+    //   canGoBack 을 건너뛰고 곧장 종료 확인(예 → 세션 클리어 후 종료)으로 보낸다.
+    if (_isRoleHomeUrl(currentUrl)) {
+      debugPrint(
+        '[WebViewScreen] hardware back on role home ($currentUrl) → exit confirm',
+      );
+      await _showExitDialog();
       return;
     }
 
-    // 2) Native Navigator stack 상위 페이지 → router pop
+    // 3) 홈이 아닌 인증 화면 → history -1 (직전 화면 복귀).
+    //   [2026-07-17 BACKKEY FIX v2 — 사용자 재지시] 백키는 히스토리를 한 단계씩 되짚는다
+    //   (history -1). 구 v1("submain → 무조건 역할 홈 직행")은 상세/서브 페이지에서도
+    //   홈으로 점프해 "back = 직전 화면 복귀" 기대를 깨는 회귀였다 — 폐기.
+    //   `_safeHistoryBackSteps` 가 back-forward 목록에서:
+    //     · 같은 경로 중복 엔트리(trailing-slash 308 재적재 등)는 건너뛰고 (제자리 back 방지)
+    //     · 직전 엔트리가 로그인/스플래시/온보딩 등 인증 진입 화면이면 0 반환
+    //       (그쪽으로 goBack 하면 인증 리다이렉트 루프 — 2.5 주석의 기존 회귀)
+    //   을 판정한다. 되짚을 안전한 엔트리가 있으면 그리로 이동한다.
+    final backSteps = await _safeHistoryBackSteps();
+    if (!mounted) return;
+    if (backSteps > 0) {
+      debugPrint(
+        '[WebViewScreen] hardware back ($currentUrl) → history -$backSteps',
+      );
+      try {
+        await webViewController?.goBackOrForward(steps: -backSteps);
+        return;
+      } catch (e) {
+        debugPrint('[WebViewScreen] goBackOrForward 실패: $e');
+        // 실패 시 아래 역할 홈/native 폴백으로 진행
+      }
+    }
+
+    // 3.5) 되짚을 안전한 엔트리 없음(히스토리 소진·직전이 인증 진입 화면) → 역할 홈.
+    //   2단 백 폴백 — BottomNav 탭 전환은 router.replace 라 히스토리에 홈이 없을 수 있다.
+    //   홈 이동 후 다음 백키는 위 2.5)가 종료 확인을 띄운다.
+    //   ⚠️ 홈 경로를 못 구하면(미인증·역할 미로드) 아래 native 흐름으로 안전 폴백.
+    final roleHome = await _roleHomePathOrNull();
+    if (!mounted) return;
+    if (roleHome != null) {
+      debugPrint(
+        '[WebViewScreen] hardware back ($currentUrl) → 히스토리 소진, 역할 홈 $roleHome 이동',
+      );
+      _goToRoleHomeInWebView(roleHome);
+      return;
+    }
+
+    // 4) 역할 홈을 못 구한 경우 native fallback (canGoBack/pop/종료).
+    await _onHardwareBackNative(currentUrl);
+  }
+
+  /// 현재 인증 사용자의 역할 홈(메인 탭) 경로. 미인증/역할 미확정이면 null.
+  ///
+  /// 역할 홈은 `TeamplusBottomNav.homeHref`(BottomNav 홈 탭 경로 SoT — 예: /parent,
+  /// /teen)를 단일 출처로 쓴다. `_getDashboardPathByUserType` 는 teen→/child 로 매핑해
+  /// teen 홈(/teen)과 어긋나므로 사용하지 않는다.
+  ///
+  /// [2026-07-17 BACKKEY FIX] `_userType` 은 WebViewScreen init(`_initUserType`) 시 1회만
+  /// 세팅된다. 세션 만료 후 **웹 안에서** 재로그인하면(같은 WebView 인스턴스) init 이 다시
+  /// 돌지 않아 `_userType` 이 null 로 남는다 → submain→홈 이동이 안 되고 종료로 오폴백.
+  /// 따라서 `_userType` 이 없으면 백키 시점에 AuthBundle 을 재조회한다(500ms 타임아웃 —
+  /// hang 방지). 저장된 `userType` 필드가 비어 있을 수 있으므로(웹 saveToken payload 가
+  /// userType 을 안 실어보내는 경우), 최종적으로 **accessToken(JWT)의 userType claim** 을
+  /// 디코딩해 확정한다(항상 존재). trailingSlash:true 대응으로 끝에 '/' 보정(308 회피).
+  Future<String?> _roleHomePathOrNull() async {
+    UserType? type = _userType;
+    if (type == null) {
+      try {
+        final bundle = await _tokenStorage
+            .readAuthBundle(force: true)
+            .timeout(const Duration(milliseconds: 500));
+        type = TeamplusBottomNav.fromString(bundle.userType);
+        // 저장 userType 이 비면 JWT claim 으로 폴백 (authoritative).
+        type ??= TeamplusBottomNav.fromString(_userTypeFromJwt(bundle.accessToken));
+      } catch (e) {
+        debugPrint('[WebViewScreen] 역할 조회용 AuthBundle 읽기 실패/타임아웃: $e');
+      }
+    }
+    if (type == null) return null;
+    final home = TeamplusBottomNav(
+      userType: type,
+      currentIndex: 0,
+      onTap: (_, __) {},
+    ).homeHref;
+    return home.endsWith('/') ? home : '$home/';
+  }
+
+  /// accessToken(JWT)의 `userType` claim 추출. 실패 시 null.
+  /// SecureStorageService.saveTokenExpiryFromJwt 와 동일한 URL-safe base64 디코딩.
+  String? _userTypeFromJwt(String? token) {
+    if (token == null || token.isEmpty) return null;
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return null;
+      String payload = parts[1];
+      switch (payload.length % 4) {
+        case 2:
+          payload += '==';
+          break;
+        case 3:
+          payload += '=';
+          break;
+      }
+      payload = payload.replaceAll('-', '+').replaceAll('_', '/');
+      final decoded = String.fromCharCodes(
+        Uri.parse('data:text/plain;base64,$payload').data!.contentAsBytes(),
+      );
+      final m = RegExp(r'"userType"\s*:\s*"([^"]+)"').firstMatch(decoded);
+      return m?.group(1);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 백키 → 역할 홈(메인 탭) 이동. `_navigateInWebView` 의 `_currentPath==href` 가드를
+  /// 우회한다 — BottomNav 탭 전환은 SPA(pushState)라 `_currentPath` 가 onLoadStop 에서만
+  /// 갱신되어 stale(예: 홈에서 탭 전환 후에도 '/parent/' 로 남음)일 수 있고, 그러면 가드가
+  /// 홈 이동을 잘못 스킵한다. 여기서는 무조건 client-side 네비게이션을 실행하고,
+  /// 다음 백키 판정이 즉시 정확하도록 `_currentLoadedUrl` 을 홈으로 낙관적 갱신한다.
+  void _goToRoleHomeInWebView(String homePath) {
+    _currentLoadedUrl = '${ApiConstants.webAppUrl}$homePath';
+    // [2026-07-17] router.REPLACE 로 홈 이동 (push 아님).
+    //   Web 2단 백 모델(useAppBack)의 `router.replace(roleHomePath())` 와 일치시킨다.
+    //   기존 teamplusNavigate/__NEXT_ROUTER_PUSH__ 는 router.push 라 매 submain→홈 백키마다
+    //   history 에 홈 엔트리가 쌓여, 이후 상세 등에서 soft back 시 "메인을 거쳐가는" 오염이
+    //   생겼다. replace 는 현재 submain 엔트리를 홈으로 대체해 히스토리를 오염시키지 않는다.
+    //
+    // [2026-07-17 BACKKEY v3] replace 직전에 state 없는 합성 popstate 를 먼저 발화한다.
+    //   __NEXT_ROUTER_REPLACE__ 는 로더 없는 순수 router.replace 라, 백키로 홈 복귀 시
+    //   전환 로더(LoadingPuck) 없이 반쯤 그려진 홈이 그대로 노출되는 "화면 뜀" 증상이
+    //   있었다 (실기기 녹화로 확인). Web LoadingContext 의 popstate 리스너가 navigation
+    //   variant 로더를 켜므로 BottomNav 탭 클릭(forward)과 동일한 전환 시각을 얻는다.
+    //   state 를 싣지 않는 이유: Next.js App Router 의 onPopState 는 event.state 가
+    //   null 이면 즉시 return 하므로 라우터 상태에는 영향 없이 로더 리스너만 반응한다.
+    //   (마지막 raw replaceState 폴백의 state:{} popstate 는 기존 동작 그대로 유지.)
+    webViewController?.evaluateJavascript(source: '''
+      (function() {
+        var replaceFn = window.__NEXT_ROUTER_REPLACE__ || window.teamplusNavigate;
+        if (replaceFn) {
+          try { window.dispatchEvent(new PopStateEvent('popstate')); } catch (e) {}
+          replaceFn('$homePath');
+          return;
+        }
+        window.history.replaceState({}, '', '$homePath');
+        window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
+      })();
+    ''');
+  }
+
+  /// WebView back history 에서 "안전하게 되돌아갈" 직전 엔트리까지의 step 수 (0 = 없음).
+  ///
+  /// [2026-07-17 BACKKEY FIX v2] history -1 백키 판정:
+  /// - 현재와 같은 경로의 중복 엔트리(trailing-slash 308 재적재·쿼리만 다른 SPA 상태)는
+  ///   건너뛴다 — goBack 이 "제자리"에 머무는 문제 방지.
+  /// - 처음 만나는 다른 경로가 인증 진입 화면(`_isAuthPathUrl`: login/signup/onboarding/
+  ///   splash 등)이면 0 반환 → 호출부가 역할 홈으로 폴백 (인증 리다이렉트 루프 차단).
+  /// - 목록 조회는 플랫폼 채널 왕복이라 300ms 타임아웃 — 실패/지연 시 0 (안전 폴백).
+  Future<int> _safeHistoryBackSteps() async {
+    final controller = webViewController;
+    if (controller == null) return 0;
+
+    WebHistory? history;
+    // [2026-07-17 BACKKEY v3.1] 히스토리 조회 실패/타임아웃 시 1회 재시도.
+    //   상세 진입 직후처럼 WebView 플랫폼 채널이 바쁜 순간 첫 조회가 300ms 를 넘기면
+    //   기존엔 곧바로 0을 반환해 직전 화면(예: 공지 목록)이 아니라 역할 홈(메인)으로
+    //   점프하는 간헐 증상이 생길 수 있었다 (사용자 보고: 공지 상세에서 하드웨어 백
+    //   → 메인 직행). 순간 혼잡은 대부분 수십 ms 안에 풀리므로 한 번 더 조회해
+    //   정확한 "직전 화면 복귀"를 우선하고, 재시도까지 실패하면 기존과 동일하게
+    //   0(역할 홈 폴백)으로 안전하게 처리한다 — 백키 hang 없음(최대 600ms).
+    for (var attempt = 1; attempt <= 2 && history == null; attempt++) {
+      try {
+        history = await controller.getCopyBackForwardList().timeout(
+              const Duration(milliseconds: 300),
+              onTimeout: () => null,
+            );
+        if (history == null) {
+          debugPrint('[WebViewScreen] back history 조회 타임아웃 ($attempt차)');
+        }
+      } catch (e) {
+        debugPrint('[WebViewScreen] back history 조회 실패 ($attempt차): $e');
+      }
+    }
+    if (history == null) return 0;
+
+    final items = history.list;
+    final currentIndex = history.currentIndex;
+    if (items == null ||
+        currentIndex == null ||
+        currentIndex <= 0 ||
+        currentIndex >= items.length) {
+      return 0;
+    }
+
+    String normalizePath(Uri? url) {
+      var path = url?.path ?? '';
+      if (path.length > 1 && path.endsWith('/')) {
+        path = path.substring(0, path.length - 1);
+      }
+      return path;
+    }
+
+    final currentPath = normalizePath(items[currentIndex].url);
+    for (var i = currentIndex - 1; i >= 0; i--) {
+      final entryUrl = items[i].url;
+      final path = normalizePath(entryUrl);
+      if (path == currentPath) continue; // 같은 경로 중복 엔트리 스킵
+      if (path.isEmpty || _isAuthPathUrl(entryUrl?.toString())) return 0;
+      return currentIndex - i;
+    }
+    return 0;
+  }
+
+  /// 하드웨어 백키 native fallback (역할 홈 미확정 시).
+  ///
+  /// 3) WebView 이전 페이지 보유 → goBack / 4) Navigator pop / 5) 루트 → 종료 확인.
+  Future<void> _onHardwareBackNative(String? currentUrl) async {
+    if (!mounted) return;
+
+    // 3) WebView 가 이전 페이지를 보유 → 그쪽으로 복귀 (서브 → 메인 등).
+    //   canGoBack 은 플랫폼 채널 왕복 → 타임아웃(250ms)으로 감싸 hang 을 차단.
+    //   조회 실패/지연 시 false 로 간주해 아래 종료 흐름으로 안전 진행.
+    bool canBack = false;
+    final controller = webViewController;
+    if (controller != null) {
+      try {
+        canBack = await controller.canGoBack().timeout(
+              const Duration(milliseconds: 250),
+              onTimeout: () => false,
+            );
+      } catch (e) {
+        debugPrint('[WebViewScreen] canGoBack 조회 실패/타임아웃: $e');
+        canBack = false;
+      }
+    }
+    if (!mounted) return;
+    debugPrint(
+      '[WebViewScreen] hardware back (native) canGoBack=$canBack, url=$currentUrl',
+    );
+    if (canBack) {
+      try {
+        await controller?.goBack();
+      } catch (e) {
+        debugPrint('[WebViewScreen] goBack 실패: $e');
+      }
+      return;
+    }
+
+    // 4) Native Navigator stack 상위 페이지 → router pop.
     if (!mounted) return;
     final navigator = Navigator.maybeOf(context);
     if (navigator != null && navigator.canPop()) {
@@ -1854,7 +2174,7 @@ Content Type: ${errorResponse.contentType}
       return;
     }
 
-    // 3) Stack 루트 (메인) → 종료 confirm 다이얼로그
+    // 5) Stack 루트 (메인, history 없음) → 종료 confirm 다이얼로그 → 실제 앱 종료.
     await _showExitDialog();
   }
 
@@ -1867,9 +2187,9 @@ Content Type: ${errorResponse.contentType}
     final now = DateTime.now();
     final last = _lastBackPressedAt;
     if (last != null && now.difference(last) <= _kDoubleBackWindow) {
-      // 윈도우 내 두 번째 백키 → 앱 종료
+      // 윈도우 내 두 번째 백키 → 앱 실제 종료 (finishAndRemoveTask).
       ScaffoldMessenger.maybeOf(context)?.clearSnackBars();
-      SystemNavigator.pop();
+      AppExit.terminate();
       return;
     }
 
@@ -1894,7 +2214,8 @@ Content Type: ${errorResponse.contentType}
       // 종료 컴펌 UI 는 하우머치 스타일 공통 다이얼로그 사용 (native_back_guard SoT).
       final confirmed = await showAppExitConfirmDialog(context);
       if (confirmed == true && Platform.isAndroid) {
-        await SystemNavigator.pop();
+        // [2026-07-16] 종료 확인 → 세션(토큰) 클리어 후 실제 종료 (재실행 시 로그인 필요).
+        await AppExit.terminateWithSessionClear();
       }
     } finally {
       _exitDialogOpen = false;

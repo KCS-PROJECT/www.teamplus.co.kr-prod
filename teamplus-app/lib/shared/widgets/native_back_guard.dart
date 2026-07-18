@@ -1,7 +1,8 @@
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+
+import '../../core/system/app_exit.dart';
 
 /// NativeBackGuard — 페이지 단위 안드로이드 하드웨어 백키 가드.
 ///
@@ -15,7 +16,8 @@ import 'package:flutter/services.dart';
 ///   - Android 만 활성. iOS / 기타 → child 그대로 반환.
 ///   - Navigator stack pop 가능 → Navigator.pop() (이전 화면 복귀) 후 종결.
 ///   - stack 루트 → 종료 confirm 다이얼로그.
-///     "예" → `SystemNavigator.pop()` (Activity finish).
+///     "예" → `AppExit.terminateWithSessionClear()` (세션 클리어 후 finishAndRemoveTask
+///           실제 종료 — 재실행 시 로그인 필요).
 ///     "아니요" → 다이얼로그만 닫힘.
 ///   - 다이얼로그 중복 표시 방지 (백키 연타 가드).
 ///
@@ -33,7 +35,9 @@ class NativeBackGuard extends StatefulWidget {
     super.key,
     required this.child,
     this.title = '팀플러스를\n완전히 종료하시겠습니까?',
-    this.message = '종료해도 알림은 계속\n받을 수 있어요.',
+    // [2026-07-16] 종료 확인 시 세션(토큰) 클리어 후 종료 — 문구를 실제 동작과 일치시킴.
+    //   web MESSAGES.common.exitConfirmMessage 와 어미 통일("…필요합니다").
+    this.message = '종료하면 로그아웃되며\n다시 실행할 때 로그인이 필요합니다.',
     this.confirmText = '예',
     this.cancelText = '아니요',
   });
@@ -68,7 +72,9 @@ class _NativeBackGuardState extends State<NativeBackGuard> {
     try {
       final confirmed = await _showExitConfirmDialog(context);
       if (confirmed == true && Platform.isAndroid) {
-        await SystemNavigator.pop();
+        // [2026-07-16] 종료 확인 → 세션(토큰) 클리어 후 finishAndRemoveTask 실제 종료.
+        //   재실행 시 반드시 로그인 화면을 거친다 (백버튼 앱 종료 프로세스 요구사항).
+        await AppExit.terminateWithSessionClear();
       }
     } finally {
       _isDialogOpen = false;
@@ -108,7 +114,8 @@ class _NativeBackGuardState extends State<NativeBackGuard> {
 Future<bool?> showAppExitConfirmDialog(
   BuildContext context, {
   String title = '팀플러스를\n완전히 종료하시겠습니까?',
-  String message = '종료해도 알림은 계속\n받을 수 있어요.',
+  // [2026-07-16] 종료 확인 시 세션(토큰) 클리어 후 종료 — 문구를 실제 동작과 일치시킴.
+  String message = '종료하면 로그아웃되며\n다시 실행할 때 로그인이 필요합니다.',
   String confirmText = '예',
   String cancelText = '아니요',
 }) {

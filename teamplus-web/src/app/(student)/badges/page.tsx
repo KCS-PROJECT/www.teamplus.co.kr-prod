@@ -62,7 +62,7 @@ function BadgeCard({ badge }: { badge: Badge }) {
           <span className="text-6xl" aria-hidden="true">{emoji}</span>
         )}
       </div>
-      <span className="mt-4 text-xl font-black text-ice-500 tracking-tight text-center">{badge.name}</span>
+      <span className="mt-4 text-[19px] font-black text-ice-500 tracking-[-0.02em] text-center">{badge.name}</span>
       {badge.description && (
         <span className="mt-1 text-card-title font-semibold text-wtext-2 dark:text-rink-100 text-center line-clamp-2">{badge.description}</span>
       )}
@@ -134,7 +134,8 @@ export default function BadgesPage() {
           <div className="w-28 h-28 bg-yellow-400 rounded-3xl flex items-center justify-center mb-5 shadow-md rotate-6">
             <Icon name="star" filled className="text-6xl text-white" aria-hidden="true" />
           </div>
-          <h1 className="text-4xl font-black text-wtext-1 dark:text-white mb-3 tracking-tight">내가 모은 뱃지</h1>
+          {/* [ICETIMES 시안 2026-07-18] 올드버전 프로토타입 "뱃지 컬렉션" — 타이틀 34px/900 · -0.02em */}
+          <h1 className="text-w-h1 font-black text-wtext-1 dark:text-white mb-3 tracking-[-0.02em]">내가 모은 뱃지</h1>
           <div
             className="inline-flex items-center px-6 py-3 bg-white dark:bg-rink-800 border-2 border-ice-500 rounded-w-pill min-h-[48px]"
             role="status"

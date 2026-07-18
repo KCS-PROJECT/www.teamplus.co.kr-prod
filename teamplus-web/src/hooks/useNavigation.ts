@@ -51,6 +51,12 @@ import {
   pushNavEntry,
   setPendingBackward,
 } from "@/lib/typed-navigation";
+import {
+  APP_BACK_EXHAUSTED_EVENT,
+  isBackHistoryExhausted,
+  isBackTargetAuthEntry,
+} from "@/lib/nav-stack";
+import { isNativeApp } from "@/lib/environment";
 import { devWarn } from "@/lib/logger";
 
 /**
@@ -281,6 +287,17 @@ export function useNavigation(): UseNavigationReturn {
 
   const back = useCallback(
     <B = unknown>(options?: BackOptions<B>) => {
+      // [2026-07-16] 히스토리 소진 — 뒤로 갈 곳이 없으면 native 앱에서는 종료 확인
+      // 팝업 플로우로 위임한다 (하드웨어 백과 동일 UX). 전역 useAppBack 이 이 이벤트를
+      // 수신해 confirm → 세션 클리어 → 앱 종료를 처리한다. 웹 브라우저는 기존 동작 유지.
+      // [2026-07-17 v2] back 목적지가 인증 진입 화면(로그인/온보딩 등)인 경우도 위임 —
+      // router.back() 으로 인증 화면에 되돌아가면 가드 리다이렉트 루프(로그인 플래시)가
+      // 생기므로 useAppBack 의 2단 백 폴백(역할 메인 replace / 홈이면 종료 확인)을 태운다.
+      if (isNativeApp() && (isBackHistoryExhausted() || isBackTargetAuthEntry())) {
+        window.dispatchEvent(new CustomEvent(APP_BACK_EXHAUSTED_EVENT));
+        return;
+      }
+
       const { showSpinner } = { ...DEFAULT_OPTIONS, ...options };
 
       // 결과 데이터가 있으면 현재 nav 엔트리에 큐잉 — popstate 핸들러가 onBack 발화 시 사용.

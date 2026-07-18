@@ -680,7 +680,7 @@ export default function CreditsPage() {
               className="mt-[18px] flex w-full items-center justify-center gap-2 rounded-w-md bg-it-red-500 py-3.5 text-white shadow-sh-1 transition-colors motion-reduce:transition-none active:brightness-95 hover:bg-it-red-600"
             >
               <Icon name="add_card" className="text-[20px]" aria-hidden="true" />
-              <span className="text-card-body font-bold tracking-wide">
+              <span className="text-card-body font-bold tracking-[0.02em]">
                 결제권 충전하기
               </span>
             </button>
@@ -783,7 +783,7 @@ export default function CreditsPage() {
                             <div className="flex min-w-0 flex-col justify-center gap-0.5">
                               <h4
                                 className={cn(
-                                  'truncate text-[15px] font-bold leading-tight',
+                                  'truncate text-[15px] font-bold leading-[1.3]',
                                   item.status === 'cancelled'
                                     ? 'text-it-ink-500 line-through decoration-it-ink-400/50 dark:text-wtext-3'
                                     : 'text-it-ink-900 dark:text-white',
@@ -801,7 +801,7 @@ export default function CreditsPage() {
                         <div className="shrink-0 text-right">
                           <div
                             className={cn(
-                              'text-[15px] font-extrabold tabular-nums tracking-tight',
+                              'text-[15px] font-extrabold tabular-nums tracking-[-0.02em]',
                               item.status === 'cancelled'
                                 ? 'text-it-ink-400 line-through decoration-it-ink-300/50 dark:text-wtext-3'
                                 : 'text-it-ink-900 dark:text-white',
@@ -874,7 +874,7 @@ export default function CreditsPage() {
 
                           {/* 정보 */}
                           <div className="flex-1 min-w-0">
-                            <h4 className="text-[15px] font-bold text-it-ink-900 leading-tight truncate dark:text-white">
+                            <h4 className="text-[15px] font-bold text-it-ink-900 leading-[1.3] truncate dark:text-white">
                               {item.className}
                             </h4>
                             <div className="flex items-center gap-1 mt-0.5">

@@ -43,7 +43,6 @@ describe("Phase 0 controller wiring — attendance/payments/classes", () => {
       {} as any, // tossGateway
       {} as any, // calculationService
       postpaid as any,
-      {} as any, // settlementSummaryService (Phase 2b)
       {} as any, // redisService
     );
 
@@ -95,7 +94,6 @@ describe("Phase 0 controller wiring — attendance/payments/classes", () => {
     const academyController = new AcademyController(
       {} as any, // academyService
       classesService as any,
-      {} as any, // settlementSummaryService (Phase 2b)
     );
     await academyController.getAcademyClassPayments("aca-1", "class-1", req);
     expect(classesService.getClassPayments).toHaveBeenCalledWith(

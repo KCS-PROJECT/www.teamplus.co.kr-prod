@@ -27,7 +27,8 @@ const AppSettingsContext = createContext<AppSettingsContextValue>({
 });
 
 // 버전 체크 제외 경로 (force-update 페이지 자체 + 진입 화면)
-const VERSION_CHECK_EXEMPT_PATHS = [
+// AppUpdatePrompt(소프트 업데이트 팝업)도 동일 제외 목록을 공유한다.
+export const VERSION_CHECK_EXEMPT_PATHS = [
   '/force-update',
   '/splash',
   '/onboarding',
@@ -82,8 +83,10 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     const checkVersion = async () => {
       try {
         if (isNativeApp()) {
-          // ⚡ native 앱 Splash(_checkAppVersion in splash_screen.dart:117)에서 force-update 체크 완료.
-          //    Bridge RPC(ui.getAppVersion) 중복 호출 방지 — 첫 진입 50-100ms 단축.
+          // native 앱은 여기서 강제 업데이트 게이트를 걸지 않는다 (Bridge RPC 중복 호출 방지).
+          // ⚠️ 2026-07-16 실측: Flutter 쪽 버전 체크(AppVersionService/AppUpdateDialog)는 정의만
+          //    있고 어디서도 호출되지 않아 native 강제 업데이트 게이트는 현재 미배선 상태다.
+          //    소프트 업데이트 유도는 AppUpdatePrompt(전역 컨펌 팝업)가 담당한다.
           return;
         }
 

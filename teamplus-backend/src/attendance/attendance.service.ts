@@ -2531,22 +2531,67 @@ export class AttendanceService {
     };
     const results: CoachResult[] = [];
 
+    // [2026-07-18 perf] 코치 일괄 경로 N+1 해소 — training.service.ts(:838) 검증 패턴 이식.
+    //   회원당 3 read(등록/기존출석/크레딧) × N → 사전 벌크 3 쿼리 + Set/Map O(1) 조회.
+    //   쓰기 트랜잭션은 기존 그대로 회원별 개별 유지(N-4: 한 명 실패가 다른 명 차단 안 함).
+    //   크레딧은 게이트(잔량 확인)용 사전조회일 뿐, 실제 차감은 트랜잭션 내
+    //   creditDomain.deductOne 이 race-safe 하게 재검증한다 — 기존 의미 불변.
+    const activeRegistrationIds = new Set(
+      (
+        await this.prisma.classRegistration.findMany({
+          where: { classId, userId: { in: memberIds }, status: "active" },
+          select: { userId: true },
+        })
+      ).map((r) => r.userId),
+    );
+
+    const existingAttendanceMap = new Map(
+      (
+        await this.prisma.classAttendance.findMany({
+          where: { scheduleId, memberId: { in: memberIds } },
+          select: {
+            id: true,
+            memberId: true,
+            attendanceStatus: true,
+            creditDeducted: true,
+          },
+        })
+      ).map((a) => [a.memberId, a] as const),
+    );
+
+    // 크레딧 게이트가 실제로 돌 수 있는 수업(발급형 + 수업 단위 후불 아님)만 벌크 조회.
+    const creditsByMember = new Map<
+      string,
+      { usedSessions: number; totalSessions: number }[]
+    >();
+    if (hasIssuingProduct && !classLevelPostpaid) {
+      const candidateCredits = await this.prisma.memberCredit.findMany({
+        where: {
+          userId: { in: memberIds },
+          classId,
+          expiresAt: { gte: now },
+          ...creditStartedWhere(now),
+        },
+        orderBy: { expiresAt: "asc" },
+        select: { userId: true, usedSessions: true, totalSessions: true },
+      });
+      for (const c of candidateCredits) {
+        const list = creditsByMember.get(c.userId);
+        if (list) list.push(c);
+        else creditsByMember.set(c.userId, [c]);
+      }
+    }
+
     for (const memberId of memberIds) {
       try {
-        // 등록 자격 검증
-        const registration = await this.prisma.classRegistration.findFirst({
-          where: { classId, userId: memberId, status: "active" },
-          select: { id: true },
-        });
-        if (!registration) {
+        // 등록 자격 검증 (사전 벌크조회 Set)
+        if (!activeRegistrationIds.has(memberId)) {
           results.push({ memberId, status: "no_registration" });
           continue;
         }
 
-        // 중복 출석
-        const existing = await this.prisma.classAttendance.findUnique({
-          where: { scheduleId_memberId: { scheduleId, memberId } },
-        });
+        // 중복 출석 (사전 벌크조회 Map)
+        const existing = existingAttendanceMap.get(memberId);
         if (existing && existing.attendanceStatus === "present") {
           results.push({
             memberId,
@@ -2566,10 +2611,7 @@ export class AttendanceService {
 
         // 수업권 잔량 (후불·미발급 수업은 게이트 없음 — 사후 정산/미사용)
         if (!skipCreditFlow) {
-          const credits = await this.prisma.memberCredit.findMany({
-            where: { userId: memberId, classId, expiresAt: { gte: now }, ...creditStartedWhere(now) },
-            orderBy: { expiresAt: "asc" },
-          });
+          const credits = creditsByMember.get(memberId) ?? [];
           const avail = credits.find((c) => c.usedSessions < c.totalSessions);
           if (!avail) {
             results.push({ memberId, status: "credit_insufficient" });
@@ -3502,36 +3544,37 @@ export class AttendanceService {
       }
     }
 
-    // 회원 이름 조회
+    // 회원 이름 + 회원별 활성 상품 — 상호 무관 쿼리라 병렬 실행 (2026-07-18 perf, 1 RTT 절감)
+    //   상품은 수강 등록(Enrollment)의 선택 상품(classProductId) 기준.
+    //   paid 우선(같으면 최신), 상품 미연결(관리자 수동 등록 등)은 null → 라벨 미표시.
     const userIds = [...counts.keys()];
-    const users = userIds.length
-      ? await this.prisma.user.findMany({
-          where: { id: { in: userIds } },
-          select: { id: true, firstName: true, lastName: true },
-        })
-      : [];
+    const [users, enrollments] = await Promise.all([
+      userIds.length
+        ? this.prisma.user.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, firstName: true, lastName: true },
+          })
+        : Promise.resolve([]),
+      userIds.length
+        ? this.prisma.enrollment.findMany({
+            where: {
+              classId,
+              childId: { in: userIds },
+              status: { in: ["paid", "approved"] },
+              classProductId: { not: null },
+            },
+            select: {
+              childId: true,
+              status: true,
+              product: { select: { productName: true, billingTiming: true } },
+            },
+            orderBy: { updatedAt: "desc" },
+          })
+        : Promise.resolve([]),
+    ]);
     const nameOf = new Map(
       users.map((u) => [u.id, `${u.lastName ?? ""}${u.firstName ?? ""}`]),
     );
-
-    // 회원별 활성 상품 — 수강 등록(Enrollment)의 선택 상품(classProductId) 기준.
-    //   paid 우선(같으면 최신), 상품 미연결(관리자 수동 등록 등)은 null → 라벨 미표시.
-    const enrollments = userIds.length
-      ? await this.prisma.enrollment.findMany({
-          where: {
-            classId,
-            childId: { in: userIds },
-            status: { in: ["paid", "approved"] },
-            classProductId: { not: null },
-          },
-          select: {
-            childId: true,
-            status: true,
-            product: { select: { productName: true, billingTiming: true } },
-          },
-          orderBy: { updatedAt: "desc" },
-        })
-      : [];
     const productOf = new Map<
       string,
       { productName: string; billingTiming: string | null; status: string }

@@ -569,11 +569,11 @@ function CoachTeamManageCard({
             <img
               src={logoSrc}
               alt={`${team.name ?? '팀'} 로고`}
-              className="w-14 h-14 rounded-w-md object-cover shrink-0 border border-it-line dark:border-it-blue-900"
+              className="w-14 h-14 rounded-2xl object-cover shrink-0 border border-it-line dark:border-it-blue-900"
             />
           ) : (
             <div
-              className="w-14 h-14 rounded-w-md flex items-center justify-center shrink-0 text-white"
+              className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 text-white"
               style={{ backgroundColor: teamColor }}
               aria-hidden="true"
             >
@@ -584,7 +584,7 @@ function CoachTeamManageCard({
           <div className="flex-1 min-w-0">
             {/* 팀명 — 17px (참고 동일) */}
             <div className="flex items-center gap-1.5 mb-1 min-w-0">
-              <h3 className="text-card-emphasis font-extrabold text-it-ink-800 dark:text-white tracking-[-0.03em] truncate">
+              <h3 className="text-[16px] font-extrabold text-it-ink-800 dark:text-white tracking-[-0.02em] truncate">
                 {team.name ?? '팀명 미지정'}
               </h3>
             </div>
@@ -612,10 +612,10 @@ function CoachTeamManageCard({
 
           {/* 상세 이동 표시 */}
           <span
-            className="w-8 h-8 inline-flex items-center justify-center text-it-ink-500 dark:text-it-ink-400 shrink-0"
+            className="w-8 h-8 inline-flex items-center justify-center text-it-ink-300 dark:text-it-ink-400 shrink-0"
             aria-hidden="true"
           >
-            <Icon name="chevron_right" className="text-[28px]" aria-hidden="true" />
+            <Icon name="chevron_right" className="text-[20px]" aria-hidden="true" />
           </span>
         </div>
 
@@ -977,11 +977,12 @@ function SectionHeader({
       </div>
       <div className="flex-1">
         <div className="flex items-center gap-2">
-          <h2 className="text-card-emphasis font-bold text-it-ink-800 dark:text-white">
+          {/* [ICETIMES 시안 2026-07-18] 섹션 제목 17/800 + 카운트 plain 15/800 it-blue-500 */}
+          <h2 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
             {title}
           </h2>
           <span
-            className="inline-flex items-center justify-center rounded-w-pill bg-it-line px-2 py-0.5 text-card-meta font-bold font-num tabular-nums text-it-ink-700 dark:bg-it-blue-900 dark:text-it-ink-400"
+            className="text-[15px] font-extrabold font-num tabular-nums text-it-blue-500 dark:text-it-blue-300"
             aria-label={MESSAGES.team.teamCountLabel(count)}
           >
             {count}

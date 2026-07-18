@@ -345,12 +345,13 @@ export default function QRScanPage() {
                 role="img"
                 aria-label="QR 코드를 카메라에 비추세요"
               >
-                <div className="relative w-[260px] h-[260px] max-w-[80vw] max-h-[80vw] aspect-square bg-white/[0.02]">
+                {/* [ICETIMES 시안 2026-07-18] 프레임 240×240 · white/4% · r-16 · 브래킷 3px/r-8 */}
+                <div className="relative w-[240px] h-[240px] max-w-[80vw] max-h-[80vw] aspect-square bg-white/[0.04] rounded-2xl">
                   {/* 4 코너 브래킷 — qr-scan 그린 (RULE-7 합법적 예외: L자 코너 마커는 pipe-like 구분선이 아닌 카메라 가이드 시각 장치) */}
-                  <div className="absolute top-0 left-0 w-9 h-9 border-t-4 border-l-4 border-qr-scan rounded-tl" />
-                  <div className="absolute top-0 right-0 w-9 h-9 border-t-4 border-r-4 border-qr-scan rounded-tr" />
-                  <div className="absolute bottom-0 left-0 w-9 h-9 border-b-4 border-l-4 border-qr-scan rounded-bl" />
-                  <div className="absolute bottom-0 right-0 w-9 h-9 border-b-4 border-r-4 border-qr-scan rounded-br" />
+                  <div className="absolute top-0 left-0 w-9 h-9 border-t-[3px] border-l-[3px] border-qr-scan rounded-tl-lg" />
+                  <div className="absolute top-0 right-0 w-9 h-9 border-t-[3px] border-r-[3px] border-qr-scan rounded-tr-lg" />
+                  <div className="absolute bottom-0 left-0 w-9 h-9 border-b-[3px] border-l-[3px] border-qr-scan rounded-bl-lg" />
+                  <div className="absolute bottom-0 right-0 w-9 h-9 border-b-[3px] border-r-[3px] border-qr-scan rounded-br-lg" />
 
                   {/* 가운데 + */}
                   <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
@@ -369,12 +370,10 @@ export default function QRScanPage() {
                     </svg>
                   </div>
 
-                  {/* 스캔 라인 — 솔리드 그린 + glow shadow */}
+                  {/* 스캔 라인 — [ICETIMES 시안 2026-07-18] 솔리드 그린 · inset 16px · opacity .8 */}
                   <div
-                    className="absolute left-2 right-2 h-[2px] motion-reduce:hidden"
+                    className="absolute left-4 right-4 h-[2px] bg-qr-scan opacity-80 motion-reduce:hidden"
                     style={{
-                      background: "linear-gradient(90deg, transparent, #3DDC84, transparent)",
-                      boxShadow: "0 0 8px #3DDC84",
                       animation: "qrscan 2.4s ease-in-out infinite",
                     }}
                   />

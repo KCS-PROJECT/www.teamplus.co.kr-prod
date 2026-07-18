@@ -438,6 +438,13 @@ class FlutterBridge {
     stopLoading: async () => bridge.ui._single("stopLoading"),
 
     /**
+     * 네이티브 앱 버전/빌드 번호 조회 (pubspec.yaml 기반 PackageInfo).
+     * Web 측 `getAppVersionInfo()` (native-bridge-ui.ts) 가 이 액션을 사용한다.
+     * @returns {Promise<{version: string, build: string, platform: 'ios'|'android'}>}
+     */
+    getAppVersion: async () => bridge.ui._single("getAppVersion"),
+
+    /**
      * AppBar 버튼(back / menu / refresh) 네이티브 이벤트 구독.
      * @param {(eventType: 'back'|'menu'|'refresh') => void} handler
      * @returns {() => void} unsubscribe

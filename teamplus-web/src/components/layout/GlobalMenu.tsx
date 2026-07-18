@@ -26,7 +26,7 @@ import { getCurrentUIConfig, syncLastAppliedConfig } from "@/hooks/useNativeUI";
 import { cn } from "@/lib/utils";
 import { resolveImageSrc } from "@/lib/image-url";
 import { PageAppBar } from "@/components/layout/PageAppBar";
-import { type DrawerStatItem, DrawerChildSwitcher } from "@/components/drawer";
+import { DrawerChildSwitcher } from "@/components/drawer";
 import { useRoleSwitch, type ViewAsRole } from "@/hooks/useRoleSwitch";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useAppMenus, type AppMenuTreeNode } from "@/hooks/useAppMenus";
@@ -53,45 +53,10 @@ const ROLE_LABEL: Record<UserRole, string> = {
   academy_director: "감독",
 };
 
-const ROLE_STATS: Record<UserRole, DrawerStatItem[]> = {
-  admin: [
-    { icon: "payments", label: "오늘 매출", value: "0원", tone: "primary" },
-    { icon: "person_add", label: "승인 대기", value: "0 건", tone: "warning" },
-  ],
-  director: [
-    { icon: "sports", label: "소속 코치", value: "0 명", tone: "info" },
-  ],
-  coach: [
-    {
-      icon: "calendar_today",
-      label: "이번 달 수업",
-      value: "0 회",
-      tone: "primary",
-    },
-    { icon: "group", label: "담당 학생", value: "0 명", tone: "success" },
-  ],
-  parent: [
-    { icon: "child_care", label: "자녀", value: "0 명", tone: "primary" },
-    { icon: "credit_card", label: "결제권", value: "0 회", tone: "success" },
-  ],
-  teen: [
-    {
-      icon: "event_available",
-      label: "이번 달 출석",
-      value: "0 회",
-      tone: "primary",
-    },
-    { icon: "military_tech", label: "뱃지", value: "0 개", tone: "warning" },
-  ],
-  child: [
-    { icon: "stars", label: "스티커", value: "0 개", tone: "warning" },
-    { icon: "military_tech", label: "뱃지", value: "0 개", tone: "primary" },
-  ],
-  academy_director: [
-    { icon: "school", label: "수업", value: "0 회", tone: "primary" },
-    { icon: "groups", label: "학생", value: "0 명", tone: "info" },
-  ],
-};
+// [ICETIMES 2026-07-18] 빠른 통계 카드(ROLE_STATS) 전면 제거 — 올드버전 프로토타입
+//   전체메뉴(§드로어 1688-1744)에 통계 박스가 없고, 값도 하드코딩 "0" 플레이스홀더였음.
+//   (director/parent/coach/academy_director 는 2026-06-18 사용자 지시로 선제 제거된 상태 —
+//    teen/child/admin 잔여분을 시안 정합으로 일괄 정리)
 
 /**
  * GlobalMenu Component - TEAMPLUS Design System
@@ -251,11 +216,13 @@ function DrawerRowM1({
 }: DrawerRowM1Props) {
   return (
     <>
+      {/* [ICETIMES 2026-07-18] 올드버전 프로토타입 전체메뉴 행 스펙(§드로어 1725-1729) —
+          padding 12px 24px · gap 12px · 라벨 15px/600 text-2 · chevron 16px text-4 */}
       <button
         type="button"
         onClick={onClick}
         className={cn(
-          "w-full flex items-center gap-2 px-6 py-2.5 text-left",
+          "w-full flex items-center gap-3 px-6 py-3 text-left",
           "transition-colors motion-reduce:transition-none",
           "hover:bg-wbg dark:hover:bg-rink-800/50 active:brightness-95",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40",
@@ -269,16 +236,15 @@ function DrawerRowM1({
               : "text-wtext-2 dark:text-rink-100",
           )}
         >
-          {/* 18×18 아이콘 · 배경 제거 후 빈 정사각형 박스(w-9) 폭을 아이콘 크기(w-5)로 축소 → 라벨과의 시각 간격 축소 */}
           <Icon name={icon} className="text-[18px]" aria-hidden="true" />
         </span>
         <span className="flex-1 min-w-0 flex flex-col gap-0.5">
           <span
             className={cn(
-              "text-card-meta font-semibold tracking-[-0.02em] truncate",
+              "text-[15px] leading-[1.45] font-semibold tracking-[-0.01em] truncate",
               danger
                 ? "text-rose-600 dark:text-rose-400"
-                : "text-wtext-1 dark:text-white",
+                : "text-wtext-2 dark:text-rink-100",
             )}
           >
             {label}
@@ -297,10 +263,10 @@ function DrawerRowM1({
             {typeof badge === "number" && badge > 99 ? "99+" : badge}
           </span>
         )}
-        {/* ref DrawerRow chevron: 16×16 — text-card-title 로 정확 매칭 (이전 18px → 16px) · 색상 진하게(wtext-4→wtext-2) */}
+        {/* 프로토타입 행 chevron: 16px · text-4 톤 */}
         <Icon
           name="chevron_right"
-          className="shrink-0 text-[16px] text-wtext-2 dark:text-rink-100"
+          className="shrink-0 text-[16px] text-wtext-4 dark:text-rink-300"
           aria-hidden="true"
         />
       </button>
@@ -761,16 +727,6 @@ export function GlobalMenu({ isOpen, onClose }: GlobalMenuProps) {
   // the previous render" 에러 유발. mounted 분기는 createPortal 호출 시점에서만 적용한다.
 
   const roleLabel = ROLE_LABEL[userRole] ?? ROLE_LABEL.parent;
-  const roleStats: DrawerStatItem[] =
-    userRole === "director"
-      ? [] // 소속 코치 통계 제거
-      : userRole === "parent"
-        ? [] // 자녀 수 통계 제거 — 자녀 선택 카드가 자녀를 직접 나열하므로 중복.
-        : userRole === "coach"
-          ? [] // 이번 달 수업/담당 학생 통계 제거
-          : userRole === "academy_director"
-            ? [] // [2026-06-18] 오픈클래스 감독 '수업 0회 / 학생 0명' 통계 박스 제거 (사용자 직접 지시)
-            : (ROLE_STATS[userRole] ?? ROLE_STATS.parent);
   // [수정 2026-05-13] 학부모도 본인(부모) 이름 우선 표시.
   //  · displayName = 본인 이름(예: "신부모")
   //  · displaySub  = 학부모일 때 "자녀: 신학생(2015년생)" 형태, 그 외 역할은 email/연락처
@@ -784,13 +740,6 @@ export function GlobalMenu({ isOpen, onClose }: GlobalMenuProps) {
 
   // SSR 보호 — 호출 사이트는 모두 ssr:false 이지만 안전장치로 한 번 더 확인.
   if (typeof document === "undefined") return null;
-
-  // ─── M1 Drawer Helpers (claude-design / SeedDesign) ──────────────
-  // 풀스크린 사이드 드로어 — 신한플레이 패턴 + ice/rink 토큰
-  // reference: /claude-design/_ _ _offline_.html § "M1 · 드로어 완전 열림 (풀스크린)"
-
-  const stat0 = roleStats[0];
-  const stat1 = roleStats[1];
 
   return createPortal(
     // [수정 2026-05-16 SPEC_POPUP_FULLSCREEN_DIM] viewport 전체 dim 표준 적용.
@@ -1025,48 +974,6 @@ export function GlobalMenu({ isOpen, onClose }: GlobalMenuProps) {
             className="border-b border-wline-2 dark:border-rink-800"
             aria-hidden="true"
           />
-        )}
-
-        {/* ── M1 빠른 통계 카드 (2칸) — ice-50 surface, ice-100 border ── */}
-        {(stat0 || stat1) && (
-          <div
-            className="mx-6 mb-4 px-4 py-3.5 rounded-[14px] flex items-center bg-ice-50 dark:bg-rink-800"
-            style={{
-              border: "1px solid var(--c-ice-100)",
-            }}
-          >
-            {stat0 && (
-              <div className="flex-1 flex flex-col gap-0.5">
-                <div
-                  className="text-card-meta font-bold tracking-[0.04em]"
-                  style={{ color: "var(--c-ice-700)" }}
-                >
-                  {stat0.label}
-                </div>
-                {/* ref stat 값: 15px 800 text1 -0.02em — letterSpacing 정확 매칭 */}
-                <div className="text-card-title font-extrabold text-wtext-1 dark:text-white tracking-[-0.02em]">
-                  {stat0.value}
-                </div>
-              </div>
-            )}
-            {stat0 && stat1 && (
-              /* ref separator: width 1, height 28, bg ice100 (no border-radius) */
-              <div className="mx-3.5 h-7 w-px shrink-0 bg-ice-100 dark:bg-rink-700" />
-            )}
-            {stat1 && (
-              <div className="flex-1 flex flex-col gap-0.5">
-                <div
-                  className="text-card-meta font-bold tracking-[0.04em]"
-                  style={{ color: "var(--c-ice-700)" }}
-                >
-                  {stat1.label}
-                </div>
-                <div className="text-card-title font-extrabold text-wtext-1 dark:text-white tracking-[-0.02em]">
-                  {stat1.value}
-                </div>
-              </div>
-            )}
-          </div>
         )}
 
         {/* ── Scrollable nav (M1 패턴: 섹션 + DrawerRow) ── */}

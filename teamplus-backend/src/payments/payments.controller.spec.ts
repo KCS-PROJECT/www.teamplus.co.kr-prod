@@ -5,7 +5,6 @@ import { KgInicisGateway } from "./kg-inicis.gateway";
 import { TossPaymentsGateway } from "./toss-payments.gateway";
 import { PaymentCalculationService } from "./payment-calculation.service";
 import { PostpaidSettlementService } from "./postpaid-settlement.service";
-import { SettlementSummaryService } from "./settlement/settlement-summary.service";
 import { WebhookRetryService } from "./webhook-retry.service";
 import { RedisService } from "@/redis/redis.service";
 import {
@@ -123,10 +122,6 @@ describe("PaymentsController", () => {
         {
           provide: PostpaidSettlementService,
           useValue: mockPostpaidSettlementService,
-        },
-        {
-          provide: SettlementSummaryService,
-          useValue: {},
         },
         {
           provide: RedisService,

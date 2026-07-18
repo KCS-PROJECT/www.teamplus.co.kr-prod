@@ -10,8 +10,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **아키텍처**: Flutter Native Shell (15-20%) + Next.js WebView (80-85%)
 - **Flutter SDK**: >=3.4.0 <4.0.0
-- **164개 .dart 파일** (`lib/`, 2026-04-19 실측), `.g.dart` 코드 생성 파일 3개 포함
-- **24개 feature 모듈**, **30개 GoRoute**, **10개 JS Bridge 핸들러**
+- **215개 .dart 파일** (`lib/`, 2026-06-24 실측), `.g.dart` 코드 생성 파일 9개 포함
+- **26개 feature 모듈**, **37개 GoRoute**, **16개 JS Bridge 핸들러** (`addJavaScriptHandler` 등록 기준 — 아래 WebView Bridge 표는 web-facing 핵심 핸들러 위주)
 
 Next.js 웹앱(`teamplus-web`)을 `flutter_inappwebview`로 로드하고, JavaScript Bridge를 통해 네이티브 기능(생체인증, QR, 푸시, 보안 저장소, 결제) 제공.
 
@@ -27,7 +27,7 @@ flutter build appbundle --release # Android AAB 릴리스
 flutter analyze                  # 린트
 dart format lib/                 # 포맷
 
-# @JsonSerializable 모델 수정 후 (3개 .g.dart 파일 재생성)
+# @JsonSerializable 모델 수정 후 (9개 .g.dart 파일 재생성)
 flutter pub run build_runner build --delete-conflicting-outputs
 
 flutter clean && flutter pub get # 클린 리빌드
@@ -43,7 +43,7 @@ flutter test                     # 테스트
 
 ```
 Flutter Native Shell
-  ├── Native screens (30개 GoRoute: login, QR, dashboard, profile 등)
+  ├── Native screens (37개 GoRoute: login, QR, dashboard, profile 등)
   ├── WebViewScreen (Next.js teamplus-web 로드)
   │     └── WebViewBridge (10개 JS 핸들러)
   └── MainShellScreen (멀티탭 WebView + 동적 헤더/하단 네비)
@@ -118,7 +118,7 @@ class MyWidget extends ConsumerWidget {
 
 ---
 
-## 네비게이션: GoRouter (30개 라우트)
+## 네비게이션: GoRouter (37개 라우트)
 
 `lib/core/router/app_router.dart` — Riverpod `Provider<GoRouter>`.
 
@@ -232,8 +232,8 @@ AppEnvironment.instance.initialize(forceEnvironment: EnvironmentType.local);
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **토큰 저장**      | `flutter_secure_storage` (iOS Keychain `first_unlock`). accessToken, refreshToken, expiry, userId, userType, userName, userEmail, biometric 설정 |
 | **생체인증**       | `local_auth` + `AppLockManager` 비활성 추적. 앱 재개 시 잠금 확인 → `BiometricPromptScreen`                                                      |
-| **SSL Pinning**    | `assets/certificates/dev/` · `prod/` (Phase 7 — 미배포)                                                                                          |
-| **루팅/탈옥 감지** | `flutter_jailbreak_detection`                                                                                                                    |
+| **SSL Pinning**    | `assets/certificates/dev/` · `prod/` — release 빌드 **fail-closed**(인증서 불일치 시 연결 거부). 인증서 provisioning 은 ops 담당                  |
+| **루팅/탈옥 감지** | `flutter_jailbreak_detection` — `JailbreakDetectionService` 로 **실제 연동됨**(release 전용, 감지 시 SEVERE 로그 + Sentry 리포트, 앱 차단 안 함)  |
 | **암호화**         | `encrypt` + `pointycastle` (AES, 본인인증용)                                                                                                     |
 
 ---
@@ -247,7 +247,7 @@ AppEnvironment.instance.initialize(forceEnvironment: EnvironmentType.local);
 | **상태관리**   | `flutter_riverpod` 2.6, `riverpod`                                                                  |
 | **네비게이션** | `go_router` 17, `app_links` (딥링크)                                                                |
 | **보안**       | `flutter_secure_storage` 10, `local_auth`, `flutter_jailbreak_detection`, `encrypt`, `pointycastle` |
-| **알림**       | `firebase_messaging` 15, `flutter_local_notifications` 18                                           |
+| **알림**       | `firebase_messaging` 16, `flutter_local_notifications` 21                                           |
 | **QR**         | `mobile_scanner` 7, `qr_flutter` 4                                                                  |
 | **저장**       | `shared_preferences`, `hive` + `hive_flutter` (오프라인 캐시)                                       |
 | **UI**         | `flutter_svg`, `flutter_native_splash`, `flutter_launcher_icons`                                    |
@@ -259,7 +259,7 @@ AppEnvironment.instance.initialize(forceEnvironment: EnvironmentType.local);
 
 ## 코드 생성
 
-`@JsonSerializable()` 사용 모델 (`.g.dart` 3개):
+`@JsonSerializable()` 사용 모델 (`.g.dart` 9개):
 
 수정 후 반드시 실행:
 
@@ -317,5 +317,5 @@ flutter pub run build_runner build --delete-conflicting-outputs
 
 ---
 
-**Last Updated**: 2026-05-12 | **Version**: 2.2 (Major deps upgrade — Flutter 3.41.6 + Dart 3.11 · 14 direct deps 메이저 업: Riverpod 2→3 (legacy.dart 사용) · flutter_local_notifications 18→21 (named-only API) · local_auth 2→3 (`persistAcrossBackgrounding`) · file_picker 8→12-beta (iOS 14+) · google_sign_in 6→7 (`GoogleSignIn.instance` + `authenticate(scopeHint:)`) · share_plus 10→13 (`SharePlus.instance.share(ShareParams)`) · firebase_core 3→4 · firebase_messaging 15→16 · connectivity_plus 6→7 · app_links 6→7 · package_info_plus 8→10 · mime 1→2 · flutter_lints 4→6 · **iOS 13 → 15 deployment target 상향** · 41 컴파일 에러 해결 · flutter analyze 0 · flutter test 6/6 · android debug build 191MB)
-**Version History** — v2.0(초기) → v2.1(API Lifecycle v8.5 — Dio 4-interceptor + 1초 SLA) → **v2.2(Flutter 3.41 메이저 업그레이드)**
+**Last Updated**: 2026-06-24 | **Version**: 2.3 (보안 하드닝 + 실측 동기화 — 루팅/탈옥 감지 `JailbreakDetectionService` 실제 연동(release 전용 surface&monitor) · SSL Pinning release fail-closed 명시 · main.dart 부팅 `print()`→`debugPrint()` 8건 정리 · 실측 스냅샷 갱신: 210 .dart · 9 .g.dart · 26 feature · 37 GoRoute · 16 JS Bridge 등록 · deps 표 firebase_messaging 16 / flutter_local_notifications 21)
+**Version History** — v2.0(초기) → v2.1(API Lifecycle v8.5 — Dio 4-interceptor + 1초 SLA) → v2.2(Flutter 3.41 메이저 업그레이드) → **v2.3(보안 하드닝 + 실측 동기화)**

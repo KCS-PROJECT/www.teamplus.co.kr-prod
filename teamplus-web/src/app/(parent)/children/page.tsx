@@ -13,6 +13,7 @@ import { MESSAGES } from '@/lib/messages';
 import { PATHS } from '@/lib/paths';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { usePageReady } from '@/hooks/usePageReady';
+import { useImagesReady } from '@/hooks/useImagesReady';
 import { cn } from '@/lib/utils';
 import { resolveImageSrc } from '@/lib/image-url';
 
@@ -80,7 +81,11 @@ export default function ChildrenManagementPage() {
     return children.find((c) => c.id === selectedChildId) ?? children[0];
   }, [children, selectedChildId]);
 
-  usePageReady(!isLoading);
+  // [v20 2026-07-17] 자녀 아바타 img decode 완료까지 ready 신호에 합산 —
+  //   로더 hide 직후 아바타가 뒤늦게 그려지는 "랜딩 시 화면 그려짐" 팝인 차단
+  //   (LOADING_TIMING_POLICY v18 useImagesReady 합성 패턴).
+  const imagesReady = useImagesReady([children]);
+  usePageReady(!isLoading && imagesReady);
 
   // 데이터 fetch 완료 전까지 LoadingContext (풀스크린) 유지 — usePageReady 가 signaling.
   if (isLoading && childCount === 0) {
@@ -389,7 +394,7 @@ function HeroChildCard({
           ) : (
             <div className="size-full flex items-center justify-center">
               <span
-                className="text-3xl font-extrabold text-white tracking-tight select-none"
+                className="text-3xl font-extrabold text-white tracking-[-0.02em] select-none"
                 aria-hidden="true"
               >
                 {init}
@@ -419,7 +424,7 @@ function HeroChildCard({
         <div className="mt-2 flex items-center gap-2 max-w-full">
           {teamLabel && (
             <span className="flex items-center gap-1 min-w-0 text-card-meta text-white/70">
-              <Icon name="sports_hockey" className="text-card-body text-white/80 shrink-0" aria-hidden="true" />
+              <Icon name="sports_hockey" className="text-[16px] text-white/80 shrink-0" aria-hidden="true" />
               <span className="truncate">{teamLabel}</span>
             </span>
           )}

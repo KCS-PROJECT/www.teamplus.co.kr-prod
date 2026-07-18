@@ -17,6 +17,7 @@
 
 import { useState, useCallback, useEffect, useMemo, type ReactNode } from "react";
 import { api } from "@/services/api-client";
+import { getAppVersionInfo } from "@/services/native-bridge";
 import { useChildren } from "@/hooks/useChildren";
 import { HeroTeamLogo } from "@/components/dashboard/HeroTeamLogo";
 import nextDynamic from "next/dynamic";
@@ -28,9 +29,6 @@ import { useNativeUI } from "@/hooks/useNativeUI";
 import { useNotificationSettings } from "@/hooks/useNotificationSettings";
 import { useNotificationCount } from "@/hooks/useNotificationCount";
 import { useAppSettings } from "@/hooks/useAppSettings";
-import { ConfirmDialog } from "@/components/ui/Modal/ConfirmDialog";
-import { useToast } from "@/components/ui/Toast";
-import { Icon } from "@/components/ui/Icon";
 import { MESSAGES } from "@/lib/messages";
 import { PATHS } from "@/lib/paths";
 
@@ -797,16 +795,13 @@ export default function MyPage() {
   //   defaults(0/null) 로 즉시 렌더 가능. 데이터 도착 전에도 마이페이지 본문이 표시.
   //   audit 권장: "usePageReady(true) 유지". 자동 도구 휴리스틱 C 오탐 회피.
   usePageReady(true);
-  const { user: authUser, logout } = useSessionAuth();
+  const { user: authUser } = useSessionAuth();
   const { settings: notifSettings, togglePush } = useNotificationSettings();
   const { unreadCount } = useNotificationCount();
   const { settings: appSettings } = useAppSettings();
-  const { toast } = useToast();
   const { navigate } = useNavigation();
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isLogoutOpen, setIsLogoutOpen] = useState(false);
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [teamLogoUrl, setTeamLogoUrl] = useState<string | null>(null);
   // Hero 보조 한 줄(name 아래) — 역할별 맞춤: 소속 팀명 / 운영 오픈클래스명 / 자녀 요약.
   const [teamName, setTeamName] = useState<string | null>(null);
@@ -870,17 +865,6 @@ export default function MyPage() {
   const openMenu = useCallback(() => setIsMenuOpen(true), []);
   const closeMenu = useCallback(() => setIsMenuOpen(false), []);
 
-  const handleLogout = useCallback(async () => {
-    if (isLoggingOut) return;
-    setIsLoggingOut(true);
-    try {
-      await logout();
-    } catch {
-      toast.error(MESSAGES.common.unknown);
-      setIsLoggingOut(false);
-    }
-  }, [isLoggingOut, logout, toast]);
-
   const roleKey = (authUser?.userType ?? "").toString().toLowerCase();
   const displayName = authUser?.name ?? "";
   const displayEmail = authUser?.email ?? "";
@@ -902,11 +886,26 @@ export default function MyPage() {
 
   // 설정 항목/푸터 — [2026-06-17] 설정 탭을 프로필 탭으로 통합하면서 프로필 탭에서 사용.
   const S = MESSAGES.settings;
-  const versionLabel = appSettings?.appVersion
-    ? `${S.footer.brand} ${S.footer.versionPrefix}${appSettings.appVersion}`
+  // [2026-07-16] footer 버전은 네이티브 앱 실측 버전(Bridge getAppVersionInfo → PackageInfo) 우선.
+  //   조회 전/웹 브라우저/구버전 앱은 서버 설정값(appSettings.appVersion) 폴백.
+  const [nativeAppVersion, setNativeAppVersion] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void getAppVersionInfo().then((info) => {
+      if (cancelled || info.source !== "native" || !info.version) return;
+      setNativeAppVersion(info.version);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const appVersion = nativeAppVersion ?? appSettings?.appVersion;
+  const versionLabel = appVersion
+    ? `${S.footer.brand} ${S.footer.versionPrefix}${appVersion}`
     : S.footer.brand;
 
-  // ─── 프로필 탭 (설정 통합: 내 정보 + 알림 + 화면 + 로그아웃) ───
+  // ─── 프로필 탭 (설정 통합: 내 정보 + 알림 + 화면 + 앱 버전 footer) ───
+  //   [2026-07-18] 로그아웃 버튼 제거 (사용자 지시) — 로그아웃은 전체메뉴 드로어 경로만 유지.
   const profileTab = (
     <div className="flex flex-col bg-it-canvas dark:bg-puck">
       <HeroCard
@@ -995,7 +994,9 @@ export default function MyPage() {
 
       {/* [제거 2026-06-17] '보안'(보안 설정·차단 목록) · '개인정보'(개인정보 관리) 섹션 삭제 (사용자 직접 지시) */}
 
-      {/* Footer — 로그아웃 + 앱 버전 (settings 페이지에서 통합) */}
+      {/* Footer — 앱 버전만 노출.
+          [2026-07-18 사용자 지시] 로그아웃 버튼 제거 (로그아웃 경로는 전체메뉴 드로어 유지).
+          버전 값은 Bridge getAppVersionInfo(Flutter PackageInfo 실측) 우선, 폴백 서버 설정값. */}
       <div
         style={{
           padding: "24px 20px 32px",
@@ -1004,18 +1005,6 @@ export default function MyPage() {
           gap: 14,
         }}
       >
-        <button
-          type="button"
-          onClick={() => setIsLogoutOpen(true)}
-          disabled={isLoggingOut}
-          aria-label={MESSAGES.common.logoutConfirmButton}
-          className="h-12 w-full inline-flex items-center justify-center gap-1.5 rounded-w-md bg-it-surface dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 text-card-body font-semibold text-it-ink-800 dark:text-rink-100 hover:bg-it-fill dark:hover:bg-rink-700/50 active:brightness-95 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-puck disabled:opacity-50"
-        >
-          <Icon name="logout" className="text-[16px]" aria-hidden="true" />
-          {isLoggingOut
-            ? S.footer.logoutInProgress
-            : MESSAGES.common.logoutConfirmTitle}
-        </button>
         <p className="text-center text-card-meta tabular-nums text-it-ink-400 dark:text-rink-300 font-num">
           {versionLabel}
         </p>
@@ -1045,22 +1034,6 @@ export default function MyPage() {
         floating={false}
       />
       <GlobalMenu isOpen={isMenuOpen} onClose={closeMenu} />
-      <ConfirmDialog
-        isOpen={isLogoutOpen}
-        options={{
-          title: MESSAGES.common.logoutConfirmTitle,
-          message: MESSAGES.common.logoutConfirmMessage,
-          confirmText: MESSAGES.common.logoutConfirmButton,
-          cancelText: MESSAGES.common.cancel,
-          variant: "warning",
-          icon: "logout",
-        }}
-        onConfirm={() => {
-          setIsLogoutOpen(false);
-          void handleLogout();
-        }}
-        onCancel={() => setIsLogoutOpen(false)}
-      />
     </MobileContainer>
   );
 }

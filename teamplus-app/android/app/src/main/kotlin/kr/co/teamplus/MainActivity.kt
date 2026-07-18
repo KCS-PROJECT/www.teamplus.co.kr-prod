@@ -10,6 +10,15 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterFragmentActivity() {
     private val  CHANNEL = "com.kr.www.teamplus/screen_capture"
 
+    // [2026-07-15 BACKKEY FIX] 앱 완전 종료 채널.
+    //   FlutterFragmentActivity 는 OnBackPressedDispatcherOwner 이므로
+    //   Flutter 의 SystemNavigator.pop() 이 finish() 가 아니라
+    //   onBackPressedDispatcher.onBackPressed() 로 위임되고, Android 12+ 루트
+    //   태스크에서는 등록 콜백이 없으면 moveTaskToBack(백그라운드)로 동작해
+    //   앱이 종료되지 않는다. Dart AppExit.terminate() 가 이 채널을 호출해
+    //   finishAndRemoveTask() 로 태스크를 실제 종료·recents 제거한다.
+    private val APP_CONTROL_CHANNEL = "com.kr.www.teamplus/app_control"
+
     // [2026-06-06 BUG FIX] status bar(appstatus) 영역 붕괴 방어.
     //   LaunchTheme 의 windowFullscreen=true 가 남긴 FLAG_FULLSCREEN 이 일부
     //   실기기/OS 버전에서 NormalTheme 전환 후에도 잔존해 status bar 가 숨겨지고
@@ -37,6 +46,21 @@ class MainActivity : FlutterFragmentActivity() {
                     }
                     "disableSecureMode" -> {
                         window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                        result.success(true)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // [2026-07-15 BACKKEY FIX] 앱 완전 종료 채널.
+        //   finishAndRemoveTask() 는 이 태스크의 모든 activity 를 finish 하고
+        //   recents 목록에서도 제거해 사용자 관점에서 앱을 완전히 종료한다.
+        //   (SystemNavigator.pop() 의 moveTaskToBack 백그라운드 전환 회귀 차단)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, APP_CONTROL_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "exitApp" -> {
+                        finishAndRemoveTask()
                         result.success(true)
                     }
                     else -> result.notImplemented()

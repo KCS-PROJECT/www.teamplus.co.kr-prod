@@ -158,7 +158,7 @@ export class NoticesController {
 
   /**
    * 내 서비스 공지 전체 읽음 처리 (JWT 필수)
-   * [2026-06-19 사용자 직접 지시] 서비스 공지사항 '전체 읽음' 버튼용.
+   * [2026-06-19 사용자 직접 지시] 공지사항 '전체 읽음' 버튼용.
    */
   @Post("mine/read-all")
   @UseGuards(AuthGuard("jwt"), RolesGuard)

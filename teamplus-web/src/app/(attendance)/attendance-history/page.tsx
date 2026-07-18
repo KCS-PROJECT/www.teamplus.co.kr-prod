@@ -284,7 +284,7 @@ export default function AttendanceHistoryPage() {
               <div key={month} className="mt-2 bg-it-surface dark:bg-it-blue-950">
                 {/* 월 헤더 - sticky, hairline */}
                 <div className="flex items-center justify-between px-6 py-3 sticky top-0 bg-it-surface dark:bg-it-blue-950 z-10 border-b border-it-line dark:border-rink-700">
-                  <h3 className="text-card-emphasis font-extrabold tracking-[-0.01em] text-it-ink-800 dark:text-white">
+                  <h3 className="text-[12px] font-extrabold tracking-[0.08em] text-it-ink-500 dark:text-rink-300">
                     {month}
                   </h3>
                   <span className="text-card-meta font-semibold text-it-ink-500 dark:text-rink-300 tabular-nums">

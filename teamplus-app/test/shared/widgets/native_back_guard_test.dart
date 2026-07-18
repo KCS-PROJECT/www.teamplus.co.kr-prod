@@ -19,9 +19,11 @@ void main() {
       expect(widget.title, '팀플러스를\n완전히 종료하시겠습니까?');
     });
 
-    test('기본 message 는 리뉴얼 v6 텍스트', () {
+    test('기본 message 는 종료=로그아웃 안내 텍스트 (2026-07-16 세션 클리어 SoT)', () {
+      // [2026-07-16] 종료 확인 시 세션(토큰) 클리어 후 종료로 동작이 바뀌면서
+      // 문구를 실제 동작과 일치시킴 — web MESSAGES.common.exitConfirmMessage 와 동일.
       const widget = NativeBackGuard(child: SizedBox.shrink());
-      expect(widget.message, '종료하면 알림을 받을 수 없으며,\n다음 수업 일정도 확인할 수 없어요.');
+      expect(widget.message, '종료하면 로그아웃되며\n다시 실행할 때 로그인이 필요합니다.');
     });
 
     test('기본 confirmText 는 "예"', () {
