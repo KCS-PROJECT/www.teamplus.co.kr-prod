@@ -904,3 +904,64 @@ export const theme = {
     }
   },
 };
+
+// ============================================
+// 앱 버전 정보 통합 조회 (2026-07-16 신규)
+// ============================================
+
+/**
+ * getAppVersionInfo() 반환 계약 — 화면 footer "TEAMPLUS vX.Y.Z" 등 버전 표기에 사용.
+ */
+export interface AppVersionInfo {
+  /** semver 버전 문자열 (예: "1.0.3"). 조회 실패 시 null */
+  version: string | null;
+  /** 빌드 번호 (예: "12"). native 전용 — web 은 null */
+  build: string | null;
+  platform: "ios" | "android" | "web";
+  /** 값 출처 — native: Flutter PackageInfo(pubspec.yaml), web: NEXT_PUBLIC_APP_VERSION env */
+  source: "native" | "web";
+}
+
+// 앱 버전은 세션 중 불변 — 모듈 레벨 promise 캐시로 Bridge RPC 중복 호출을 방지한다
+// (AppSettingsContext 의 ui.getAppVersion 중복 호출 회피 정책과 동일 취지).
+let appVersionInfoPromise: Promise<AppVersionInfo> | null = null;
+
+/**
+ * 현재 실행 중인 앱의 버전 정보를 조회한다.
+ *
+ * - Native(WebView): Bridge `ui.getAppVersion` → Flutter PackageInfo 실측값 (version/build/platform)
+ * - Web(브라우저) 또는 구버전 앱(핸들러 미탑재): `NEXT_PUBLIC_APP_VERSION` env 폴백
+ *
+ * 어떤 환경에서도 reject 하지 않는다 — 실패 시 web 폴백 객체를 반환하므로
+ * 호출부는 `info.version ?? 서버설정값` 수준의 최종 폴백만 처리하면 된다.
+ *
+ * @example
+ * const info = await getAppVersionInfo();
+ * const label = info.version ? `TEAMPLUS v${info.version}` : "TEAMPLUS";
+ */
+export function getAppVersionInfo(): Promise<AppVersionInfo> {
+  if (appVersionInfoPromise) return appVersionInfoPromise;
+  appVersionInfoPromise = (async (): Promise<AppVersionInfo> => {
+    const webFallback: AppVersionInfo = {
+      version: process.env.NEXT_PUBLIC_APP_VERSION ?? null,
+      build: null,
+      platform: "web",
+      source: "web",
+    };
+    try {
+      if (!isNativeApp()) return webFallback;
+      // ui.getAppVersion 은 핸들러 미탑재/Bridge 실패 시 내부에서 null 로 폴백한다.
+      const native = await ui.getAppVersion();
+      if (!native?.version) return webFallback;
+      return {
+        version: native.version,
+        build: native.build ?? null,
+        platform: native.platform,
+        source: "native",
+      };
+    } catch {
+      return webFallback;
+    }
+  })();
+  return appVersionInfoPromise;
+}
