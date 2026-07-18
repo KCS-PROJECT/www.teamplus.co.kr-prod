@@ -2,7 +2,6 @@
 
 // 상품 등록/수정 공유 상세설명 탭 (C-4 JSX 중복 제거 · 2026-06-07)
 import { useId, type Dispatch, type SetStateAction } from "react";
-import { Input } from "@/components/ui/input";
 import { sanitizeHtml } from "@/lib/sanitize";
 
 interface ProductDetailTabProps {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import type { ProductImage, ProductOption } from "@/types/shop-product-form";
+import type { ProductImage } from "@/types/shop-product-form";
 import { useProductFormState } from "@/hooks/useProductFormState";
 import { ProductOptionsTab } from "@/components/shop/ProductOptionsTab";
 import { ProductDetailTab } from "@/components/shop/ProductDetailTab";
@@ -11,13 +11,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { sanitizeHtml } from "@/lib/sanitize";
 import {
   ArrowLeft,
   Save,
   Image as ImageIcon,
   Plus,
-  Trash2,
   GripVertical,
   X,
   Upload,

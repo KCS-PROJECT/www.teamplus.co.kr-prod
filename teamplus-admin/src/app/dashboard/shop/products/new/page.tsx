@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useId } from "react";
-import type { ProductImage, ProductOption } from "@/types/shop-product-form";
+import type { ProductImage } from "@/types/shop-product-form";
 import { useProductFormState } from "@/hooks/useProductFormState";
 import { ProductOptionsTab } from "@/components/shop/ProductOptionsTab";
 import { ProductDetailTab } from "@/components/shop/ProductDetailTab";
@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { sanitizeHtml } from "@/lib/sanitize";
 import { env } from "@/lib/env";
 import { shopService } from "@/services";
 import type { CreateProductRequest } from "@/types";
@@ -21,7 +20,6 @@ import {
   Save,
   Image as ImageIcon,
   Plus,
-  Trash2,
   GripVertical,
   X,
   Upload,
@@ -85,14 +83,7 @@ export default function NewProductPage() {
   const weightId = useId();
   const isFeaturedId = useId();
   const isNewId = useId();
-  const useOptionsId = useId();
   const urlInputId = useId();
-  const shortDescriptionId = useId();
-  const detailDescriptionId = useId();
-  const optionNameId = useId();
-  const optionValueId = useId();
-  const optionAdditionalPriceId = useId();
-  const optionStockId = useId();
   const metaTitleId = useId();
   const metaDescriptionId = useId();
   const keywordsId = useId();
@@ -127,7 +118,7 @@ export default function NewProductPage() {
 
   // 이미지
   const {
-    images, setImages, options, setOptions, newOption, setNewOption,
+    images, setImages, options, newOption, setNewOption,
     setMainImage, removeImage, addOption, removeOption,
   } = useProductFormState();
 

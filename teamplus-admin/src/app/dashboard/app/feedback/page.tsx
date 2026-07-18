@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal';
 import {
-  MessageSquare, User, Users, Paperclip, AlertCircle, CheckCircle2, Clock, Eye,
+  MessageSquare, User, Users, Paperclip, CheckCircle2, Clock, Eye,
 } from 'lucide-react';
 
 interface FeedbackAttachment {

@@ -15,13 +15,11 @@ import { Input } from '@/components/ui/input';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import {
   Calendar,
-  Clock,
   Handshake,
   MapPin,
   Plus,
   Search,
   UserPlus,
-  Users,
   AlertCircle,
 } from 'lucide-react';
 import { api } from '@/services/api-client';
@@ -359,30 +357,3 @@ export default function MatchesPage() {
   );
 }
 
-function Stat({
-  label,
-  value,
-  tone = 'primary',
-  icon,
-}: {
-  label: string;
-  value: number;
-  tone?: 'primary' | 'emerald' | 'amber' | 'slate';
-  icon?: React.ReactNode;
-}) {
-  const toneCls: Record<string, string> = {
-    primary: 'text-primary',
-    emerald: 'text-emerald-600 dark:text-emerald-400',
-    amber: 'text-amber-600 dark:text-amber-400',
-    slate: 'text-slate-500 dark:text-slate-400',
-  };
-  return (
-    <div className="rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4">
-      <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
-        {icon}
-        {label}
-      </div>
-      <p className={`mt-1.5 text-2xl font-bold tabular-nums ${toneCls[tone]}`}>{value}</p>
-    </div>
-  );
-}
