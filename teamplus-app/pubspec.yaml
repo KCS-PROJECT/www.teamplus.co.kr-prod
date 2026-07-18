@@ -2,7 +2,7 @@ name: teamplus_app
 description: "TEAMPLUS - Ice Hockey Club Management System"
 publish_to: "none"
 
-version: 1.0.0+9
+version: 1.0.1+10
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
@@ -142,6 +142,11 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # Sentry SPM 프리빌트 xcframework는 dSYM이 아카이브에 포함되지 않아
+  # App Store 업로드 시 dSYM 누락 경고 발생 → CocoaPods 소스 빌드로 강제
+  config:
+    enable-swift-package-manager: false
 
   # Assets
   assets:
