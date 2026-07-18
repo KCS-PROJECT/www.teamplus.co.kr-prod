@@ -13,6 +13,7 @@ import { ModalProvider } from "@/components/ui/Modal";
 import { useBridgeErrorHandler } from "@/hooks/useBridgeErrorHandler";
 import { OfflineIndicator } from "@/components/ui/OfflineIndicator";
 import { GlobalEventPopup } from "@/components/common/GlobalEventPopup";
+import { AppUpdatePrompt } from "@/components/common/AppUpdatePrompt";
 import { GlobalPullToRefresh } from "@/components/common/GlobalPullToRefresh";
 import { ShareSheetMount } from "@/components/common/ShareSheet";
 import { AppInstallBanner } from "@/components/common/AppInstallBanner";
@@ -386,6 +387,7 @@ export function ClientProviders({ children }: ClientProvidersProps) {
                             <SelectedChildProvider>
                               {children}
                               <GlobalEventPopup />
+                              <AppUpdatePrompt />
                             </SelectedChildProvider>
                           </NotificationProvider>
                         )}

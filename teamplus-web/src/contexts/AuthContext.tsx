@@ -37,6 +37,8 @@ import { resetAuthGuardRedirectFlag } from "@/services/api-lifecycle-defaults";
 import { TOKEN_EXPIRED_EVENT } from "@/services/web-token-storage";
 import { invalidateAppMenusCache } from "@/hooks/useAppMenus";
 import { clearSelectedChildStorage } from "@/lib/selected-child-storage";
+import { VIEW_AS_STORAGE_KEY } from "@/hooks/useRoleSwitch";
+import { clearRecentMenu } from "@/lib/recent-menu";
 import type { ApiResponse, UserType } from "@/types";
 import { devError, devLog, devWarn } from "@/lib/logger";
 
@@ -76,6 +78,13 @@ interface AuthContextValue extends AuthState {
   login: (data: LoginRequest) => Promise<ApiResponse<LoginResponse>>;
   signup: (data: SignupRequest) => Promise<ApiResponse<SignupResponse>>;
   logout: () => Promise<void>;
+  /**
+   * 로컬·세션(토큰 포함) 클리어만 수행 — 네비게이션·서버 로그아웃 없음 (2026-07-16).
+   * 앱 종료 직전(useAppBack.requestAppExit)처럼 /login 이동이 불필요하고, 서버 응답
+   * 대기가 종료를 지연시키면 안 되는 경우에 사용한다. hybridAuth.clearToken() 을
+   * await 하므로 native 에서도 종료 전에 secure storage 토큰이 확실히 비워진다.
+   */
+  clearSession: () => Promise<void>;
   refreshUser: () => Promise<void>;
   clearError: () => void;
 }
@@ -468,12 +477,26 @@ export function AuthProvider({ children }: AuthProviderProps) {
    *     서버 세션 정리는 best-effort 이며, 클라이언트 로컬 토큰은 authService.logout 내부에서
    *     hybridAuth.clearToken() 으로 이미 처리된다.
    */
-  const logout = useCallback(async () => {
-    // 1) 로컬 캐시·React state 정리 (네비게이션 보다 먼저 — useGuestOnly race 방지)
-    sessionStorage.removeItem(AUTH_CACHE_KEY);
+  // 로컬 캐시·영속값·React state 정리 (네비게이션·서버 호출 없음).
+  //   logout 과 clearSession 이 공유하는 로컬 클리어 SoT. 모든 스토리지 접근은
+  //   try/catch 로 감싸 프라이빗 모드/스토리지 차단 WebView 에서도 throw 하지 않는다
+  //   (2026-07-16: 종료 경로에서 throw 시 exitApp 이 스킵되던 문제 근본 차단).
+  const clearLocalState = useCallback(() => {
+    try {
+      sessionStorage.removeItem(AUTH_CACHE_KEY);
+    } catch {
+      // sessionStorage 접근 불가 — 무시
+    }
     invalidateAppMenusCache();
     // 학부모 선택 자녀 영속값 정리 — userId 스코프 키 제거(다음 로그인 사용자와 분리).
     clearSelectedChildStorage(state.user?.id);
+    // 역할 전환 뷰·최근 메뉴 흔적 정리 — 다음 로그인 사용자와 분리 (2026-07-16).
+    try {
+      localStorage.removeItem(VIEW_AS_STORAGE_KEY);
+      clearRecentMenu();
+    } catch {
+      // localStorage 접근 불가 환경(프라이빗 모드 등) — 무시
+    }
     globalLoadAttempted = false;
     hasAttemptedLoad.current = false;
     setState({
@@ -482,6 +505,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       isAuthenticated: false,
       error: null,
     });
+  }, [state.user?.id]);
+
+  const logout = useCallback(async () => {
+    // 1) 로컬 캐시·React state 정리 (네비게이션 보다 먼저 — useGuestOnly race 방지)
+    clearLocalState();
 
     // 2) /login 으로 즉시 이동 — useNavigation 의 startLoading 이 풀스크린 로더 표시
     replace("/login");
@@ -494,7 +522,24 @@ export function AuthProvider({ children }: AuthProviderProps) {
         devWarn("[AuthContext] Server logout failed (ignored):", error);
       }
     }
-  }, [replace, state.user?.id]);
+  }, [replace, clearLocalState]);
+
+  const clearSession = useCallback(async () => {
+    // 로컬·세션 클리어 (네비게이션·서버 호출 없음) — 앱 종료 직전 사용.
+    //   /login 이동을 생략해 종료 직전 로그인 화면 플래시를 없애고, 서버 응답을
+    //   기다리지 않아 네트워크 hang 이 종료를 지연시키지 않는다.
+    clearLocalState();
+    // 토큰 저장소 클리어 — native: 브릿지 clearToken(FCM 해제 + secure storage 전체
+    //   삭제 + refresh 쿠키 삭제) / web: localStorage 토큰 삭제. await 하므로 종료
+    //   전에 토큰이 확실히 비워져 재실행 시 로그인 화면이 보장된다(iOS 포함).
+    try {
+      await hybridAuth.clearToken();
+    } catch (error) {
+      if (process.env.NODE_ENV === "development") {
+        devWarn("[AuthContext] clearSession clearToken failed (ignored):", error);
+      }
+    }
+  }, [clearLocalState]);
 
   /**
    * 사용자 정보 새로고침 — 역할/권한 변경 가능성이 있으므로 메뉴 캐시도 함께 무효화.
@@ -514,8 +559,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ ...state, login, signup, logout, refreshUser, clearError }),
-    [state, login, signup, logout, refreshUser, clearError],
+    () => ({ ...state, login, signup, logout, clearSession, refreshUser, clearError }),
+    [state, login, signup, logout, clearSession, refreshUser, clearError],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
