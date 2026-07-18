@@ -17,8 +17,13 @@ import { AppBarActionButton } from '@/components/layout/AppBarActions';
 // (이전 './appbar-constants' 파일을 inline 함 — wrapper 통합 시 단일 SoT 로 흡수)
 const APP_BAR_HEIGHT_CLASS = 'h-14'; // 56px — isKid 분기에서만 사용
 const APP_BAR_PADDING_X_CLASS = 'px-5'; // 20px — isKid 분기에서만 사용
+// [2026-07-18 appstatus 색상 제거] 앱바 기본 배경을 bg-wbg(#f6f8fc 옅은 회청색)에서
+//   bg-white(순백)로 변경 — 하단 BottomNav(bg-white)와 동일하게 맞춰, 상태바~앱바가
+//   순백으로 이어지고 옅은 tint 밴드가 사라지도록 한다(사용자 직접 지시: "appbar 흰색,
+//   bottomnavi 영역처럼"). 하단 1px border(border-wline-2)는 BottomNav 의 상단 border 와
+//   동일하게 유지해 body(#f6f8fc)와 자연스럽게 구분한다. 다크/스크롤 variant 는 기존 유지.
 const APP_BAR_BASE_CLASS =
-  'sticky top-0 z-20 bg-wbg dark:bg-rink-900 border-b border-wline-2 dark:border-rink-800';
+  'sticky top-0 z-20 bg-white dark:bg-rink-900 border-b border-wline-2 dark:border-rink-800';
 
 const GlobalMenu = dynamic(
   () => import('@/components/layout/GlobalMenu').then((mod) => ({ default: mod.GlobalMenu })),
