@@ -68,10 +68,10 @@ class ActivityCollector {
     if (typeof window === "undefined") return;
 
     const enriched: ActivityEvent = {
+      ...event,
       ts: event.ts ?? new Date().toISOString(),
       sessionId: event.sessionId ?? this.getSessionId(),
       url: event.url ?? window.location.pathname + window.location.search,
-      ...event,
     };
 
     // 큐 오버플로 방지 — 가장 오래된 것 제거

@@ -18,9 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
-import { PageHeader, StatsGrid } from '@/components/ui/page-header';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { AdminTabs, FilterTabs } from '@/components/ui/admin-tabs';
 import { Modal, ModalHeader, ModalBody, ModalFooter, ConfirmModal } from '@/components/ui/modal';
 import {
   useTournaments,
@@ -39,8 +37,8 @@ import type {
 } from '@/services/tournament.service';
 import { MESSAGES } from '@/lib/messages';
 import {
-  Trophy, Search, Plus, Calendar, MapPin, Users,
-  Medal, Edit2, Trash2, Clock, ListChecks, AlertCircle, Wallet,
+  Trophy, Search, Plus, Calendar, Users,
+  Edit2, Trash2, ListChecks, AlertCircle, Wallet,
 } from 'lucide-react';
 
 interface TournamentFormState {

@@ -9,6 +9,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { serverLogger } from "@/lib/server-log/server-logger";
+import type { LogLevel } from "@/lib/server-log/file-path.util";
 import {
   checkRateLimit,
   extractClientIp,
@@ -103,14 +104,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       } else if (ev.action === "API_CALL") {
         // API 호출은 access 카테고리
         serverLogger.access(
-          (ev.level as any) ?? "info",
+          (ev.level as LogLevel) ?? "info",
           ev.message ?? `${ev.action} ${ev.resource ?? ev.url ?? ""}`,
           ctx,
         );
       } else {
         // 그 외 활동은 activity 카테고리
         serverLogger.activity(
-          (ev.level as any) ?? "info",
+          (ev.level as LogLevel) ?? "info",
           ev.message ?? `${ev.action ?? "EVENT"} ${ev.resource ?? ev.url ?? ""}`,
           ctx,
         );

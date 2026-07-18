@@ -14,14 +14,11 @@
 
 import * as fs from "fs";
 import {
-  ALL_ERROR_CATEGORIES,
-  ALL_NORMAL_CATEGORIES,
   classifyError,
   ensureAllCategoryFiles,
   ensureFile,
   ErrorCategory,
   FILE_MODE,
-  formatDate,
   getAllErrorsPath,
   getGlobalIndexPath,
   getLogPath,
@@ -123,7 +120,7 @@ function writeLogLine(
       env: process.env.NODE_ENV || "development",
       pid: process.pid,
       project: process.env.LOG_PROJECT || "web",
-      ...sanitize(payload),
+      ...(sanitize(payload) as Record<string, unknown>),
     };
 
     fs.appendFileSync(filePath, JSON.stringify(entry) + "\n", {
