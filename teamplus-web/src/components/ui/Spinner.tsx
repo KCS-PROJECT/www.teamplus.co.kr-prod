@@ -170,7 +170,8 @@ export const FullScreenLoader = memo(function FullScreenLoader({
         className={cn(
           "fixed inset-0 z-[9999]",
           "flex flex-col items-center justify-center gap-4 overflow-hidden",
-          "bg-wbg dark:bg-puck",
+          // 2026-07-18 사용자 지시: appstatus·BottomNav(순백)와 통일 — bg-wbg → bg-white
+          "bg-white dark:bg-puck",
           className,
         )}
         style={{
