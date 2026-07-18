@@ -132,6 +132,9 @@ export type { ThemeMode } from "./native-bridge-ui";
 // [C-1 2026-06-07] theme 모듈은 native-bridge-ui 로 분리.
 import { theme } from "./native-bridge-ui";
 export { theme } from "./native-bridge-ui";
+// [2026-07-16] 앱 버전 정보 통합 조회 — native PackageInfo 우선 + web env 폴백.
+export { getAppVersionInfo } from "./native-bridge-ui";
+export type { AppVersionInfo } from "./native-bridge-ui";
 
 /**
  * Native 앱 환경인지 확인
