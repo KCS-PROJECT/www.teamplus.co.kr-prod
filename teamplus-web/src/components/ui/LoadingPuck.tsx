@@ -65,7 +65,8 @@ export const LoadingPuck = memo(function LoadingPuck({
           "fixed inset-0 z-[9999]",
           "flex flex-col items-center justify-center overflow-hidden",
           "opacity-100",
-          "dark:hidden bg-wbg",
+          // 2026-07-18 사용자 지시: 스피너 배경 순백 통일 (appstatus 스트립과 한 색)
+          "dark:hidden bg-white",
           className,
         )}
         style={fullScreenSurfaceStyle}
@@ -120,7 +121,7 @@ export const LoadingPuck = memo(function LoadingPuck({
 //   · Bridge 응답 후: paddingTop=0 (Flutter Scaffold 가 status bar 예약),
 //       paddingBottom=24~34px (실제 디바이스)
 //   · 차이만큼 flex center 가 위로 이동 → 사용자 인지 jank.
-// 수정: padding 제거. 배경은 inset:0 + bg-wbg/bg-puck 가 풀스크린 커버,
+// 수정: padding 제거. 배경은 inset:0 + bg-white/bg-puck 가 풀스크린 커버,
 //       콘텐츠(PuckBody ≈ 250×196px)는 viewport 정중앙 → 노치·홈 인디케이터
 //       어느 것과도 겹치지 않음 (콘텐츠 크기 작음). safe-area 변수 변화에
 //       콘텐츠 위치 무관 → 시프트 0.

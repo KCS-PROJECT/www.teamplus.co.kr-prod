@@ -187,6 +187,31 @@ export function LoadingProvider({
   // 발생하지 않거나 호출부가 stopLoading() 을 누락한 경우에도 MAX_WAIT 후 강제 OFF.
   // handleRouteChange 의 finish() 가 먼저 실행되면 cleanup 됨.
   const startLoadingFailsafeRef = useRef<NodeJS.Timeout | null>(null);
+
+  // v21 (2026-07-18) — 사용자 직접 지시: 스피너(전환 로더 포함) 동안 appstatus 를
+  //   숨기고, 잔여 safe-area 스트립을 스피너 body 색(라이트 #ffffff = PageLoader
+  //   bg-white · 다크 #0a0d14 = dark:bg-puck)으로 통일한다. v20(2026-07-17)이 전환
+  //   깜박임(상태바 hide→show 왕복 리플로우) 때문에 navigation 의 enterFullscreen 을
+  //   제거했으나, 2026-07-18 사용자 직접 지시("스피너 화면 appstatus 숨김 + body 색
+  //   통일")가 트레이드오프에 우선한다. raw ui.setConfig 는 lastAppliedConfig 를
+  //   건드리지 않으므로 로더 종료 시 getCurrentUIConfig() 복원이 페이지 의도로 돌아간다.
+  const nativeSpinnerChromeRef = useRef(false);
+  const enterNativeSpinnerChrome = useCallback(() => {
+    if (!isNativeApp()) return;
+    const isDark =
+      typeof document !== 'undefined' &&
+      document.documentElement.classList.contains('dark');
+    const bg = isDark ? '#0a0d14' : '#ffffff';
+    ui.enterFullscreen().catch(() => {});
+    ui.setConfig({
+      showStatusBar: false,
+      scaffoldBackgroundColor: bg,
+      statusBarColor: bg,
+      navigationBarColor: bg,
+      statusBarLight: isDark,
+    }).catch(() => {});
+    nativeSpinnerChromeRef.current = true;
+  }, []);
   // Phase 1 갭 차단 (2026-05-08 v10) — 페이지 자체 데이터 fetch 완료 시
   // signalPageReady() 가 호출되면 true. handleRouteChange.finish() 의 fast-path
   // 트리거. handleRouteChange 진입 시 false 리셋. finish 도달하면 다시 false.
@@ -236,7 +261,15 @@ export function LoadingProvider({
             // Native 앱의 라우트 전환 로딩은 페이지 useNativeUI(isDataLoaded)가
             // 데이터 준비 시점에 직접 종료한다. DOM 안정화만으로 종료하면 status bar가
             // 콘텐츠보다 먼저 노출될 수 있으므로 명시 stopLoading 호출에서만 동기화한다.
-            if (isNativeApp() && options?.syncNative !== false) {
+            // v21 예외: 스피너가 enterFullscreen 으로 native 크롬을 바꿨다면
+            // (nativeSpinnerChromeRef) syncNative:false 경로에서도 반드시 해제·복원한다
+            // — 미해제 시 _isFullscreenActive 가드가 페이지 showStatusBar 를 계속
+            // 다운그레이드해 상태바가 TTL/force-show(7s)까지 늦게 복원되는 회귀 발생.
+            if (
+              isNativeApp() &&
+              (options?.syncNative !== false || nativeSpinnerChromeRef.current)
+            ) {
+              nativeSpinnerChromeRef.current = false;
               ui.stopLoading().catch(() => {
                 // 무시 - Native Bridge 실패해도 계속
               });
@@ -646,17 +679,16 @@ export function LoadingProvider({
       // v18 (2026-05-22): 메시지 분기 제거 — LoadingPuck 은 텍스트를 표시하지
       //   않으므로 "이동 중....." / "로딩중" 단계 변화가 시각적으로 발생하지 않게
       //   message 갱신을 하지 않는다. 단일 fullsize 팝업 유지.
-      // 🖥️ popstate 도 navigation 흐름과 동일하게 Native 풀스크린 진입.
-      if (isNativeApp()) {
-        ui.enterFullscreen().catch(() => {});
-      }
+      // v21 (2026-07-18): 사용자 직접 지시로 popstate 스피너에도 appstatus 숨김 +
+      //   색 통일 재도입 (v20 은 리플로우 사유로 제거했었음 — startLoading 주석 참조).
+      enterNativeSpinnerChrome();
     };
 
     window.addEventListener('popstate', handlePopstate);
     return () => {
       window.removeEventListener('popstate', handlePopstate);
     };
-  }, []);
+  }, [enterNativeSpinnerChrome]);
 
   const startLoading = useCallback(
     (variant: LoadingVariant = defaultVariant, message = '로딩 중...') => {
@@ -721,23 +753,23 @@ export function LoadingProvider({
         });
       }
 
-      // 🖥️ Native 풀스크린 진입 (2026-05-07 v7) — Web 풀스크린 로더가 떠 있는
-      //    동안 Flutter native StatusBar/AppBar/BottomNav 를 모두 숨겨 사용자가
-      //    "상단 appstatus 영역 / 하단 navi status 영역이 보인다" 는 보고를 해소.
-      //    enterFullscreen 은 webview_bridge.dart 의 UIConfig(showStatusBar:false,
-      //    showAppBar:false, showBottomNav:false) 를 한 번에 적용한다.
-      //    navigation/fullscreen 두 variant 모두에 적용 — Web 풀스크린 로더가
-      //    렌더되는 모든 케이스와 짝맞춤.
-      if (
-        (variant === 'navigation' || variant === 'fullscreen') &&
-        isNativeApp()
-      ) {
-        ui.enterFullscreen().catch(() => {
-          // 무시 - Native Bridge 실패해도 Web 풀스크린은 계속
-        });
+      // 🖥️ Native 풀스크린 진입 — fullscreen + navigation 모든 스피너.
+      //
+      // 이력: v20 (2026-07-17) 은 hide→show 왕복 리플로우(전환 깜박임) 때문에
+      //   navigation 의 enterFullscreen 을 제거했으나, v21 (2026-07-18) 사용자 직접
+      //   지시("스피너 화면 appstatus 숨김 + 잔여 영역 body 색 통일")로 재도입했다.
+      //   색 통일(setConfig scaffold/statusBar/navigationBar = 스피너 body 색)도
+      //   함께 전송해 숨김 전 잔여 스트립까지 스피너와 한 색으로 보이게 한다.
+      if (variant === 'fullscreen' || variant === 'navigation') {
+        enterNativeSpinnerChrome();
       }
     },
-    [defaultVariant, clearPageReadyWaiters, hideLoadingAfterNextPaint],
+    [
+      defaultVariant,
+      clearPageReadyWaiters,
+      hideLoadingAfterNextPaint,
+      enterNativeSpinnerChrome,
+    ],
   );
 
   const suppressNextLoad = useCallback(() => {
