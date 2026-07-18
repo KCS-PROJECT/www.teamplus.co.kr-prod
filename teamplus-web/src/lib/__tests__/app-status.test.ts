@@ -80,12 +80,18 @@ describe('resolveAppStatusVisibility — 풀스크린 화이트리스트 4종은
   });
 });
 
-describe('숨김(hide) 정책 — 현재 숨김 prefix 없음(2026-06-15 전 인증화면 표시 전환)', () => {
-  it('APP_STATUS_HIDDEN_PREFIXES 가 비어 있으면 어떤 라우트도 hide 아님', () => {
-    // 정책 SoT: 현재 숨김 대상 없음. 숨김 prefix 추가 시 본 가드를 함께 갱신할 것.
-    expect(APP_STATUS_HIDDEN_PREFIXES.length).toBe(0);
-    expect(resolveAppStatusVisibility('/login')).toBe('show');
+describe('숨김(hide) 정책 — 로그인만 숨김(2026-07-18 사용자 지시)', () => {
+  it('로그인(역할별 포함)은 hide, 그 외 인증 화면은 show 유지', () => {
+    // 정책 SoT: /login 만 숨김(2026-07-18 — appstatus 숨김 + body 색 통일).
+    // 숨김 prefix 변경 시 본 가드를 함께 갱신할 것.
+    expect(APP_STATUS_HIDDEN_PREFIXES).toEqual(['/login']);
+    expect(resolveAppStatusVisibility('/login')).toBe('hide');
+    expect(resolveAppStatusVisibility('/login/parent')).toBe('hide');
     expect(resolveAppStatusVisibility('/signup')).toBe('show');
-    expect(isAppStatusHiddenPath('/login')).toBe(false);
+    expect(resolveAppStatusVisibility('/find-id')).toBe('show');
+    // prefix 일치 오탐 가드 — /login 으로 시작하는 별개 경로는 hide 아님.
+    expect(resolveAppStatusVisibility('/login-help')).toBe('show');
+    expect(isAppStatusHiddenPath('/login')).toBe(true);
+    expect(isAppStatusHiddenPath('/signup')).toBe(false);
   });
 });

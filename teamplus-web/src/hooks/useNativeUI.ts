@@ -431,25 +431,14 @@ export function useNativeUI(options: NativeUIOptions = {}): void {
       isNativeLoadingStopScheduled = false;
       nativeLoadingStartedAt ??= Date.now();
 
-      // 🛡️ isDataLoaded=false (데이터 fetch 중) — status bar 강제 숨김.
-      //   BottomNav 탭 전환 시 LoadingProvider 가 ui.enterFullscreen() 으로 status
-      //   bar 를 숨기지만, 페이지 마운트 → InAppWebView onLoadStop 또는 Flutter
-      //   side 의 다른 이벤트로 status bar 가 복원되어 사용자가 빈 페이지 + status
-      //   bar 보임 현상을 보고. fetch 완료 (isDataLoaded=true) 까지 명시적 숨김.
-      //
-      // [2026-05-14] `ui.startLoading()` 호출 제거 — Flutter 측 풀스크린 파란색
-      //   오버레이(`_buildLoadingScreen` · `AppColors.primary #1E40AF`)가 Web
-      //   `<LoadingPuck>`(회색/검정 풀스크린) 직후에 한 번 더 깜빡이는 "이중 로더"
-      //   UX 회귀를 차단. LoadingContext 의 navigation variant 가 이미 풀스크린
-      //   LoadingPuck 을 표시하므로 native 파란 오버레이는 중복이다. status bar
-      //   숨김 의도는 `ui.enterFullscreen()` + `ui.hideStatusBar()` 가 그대로
-      //   담당하여 시각적 유지 동일.
-      ui.enterFullscreen().catch(() => {
-        // 무시 — Native Bridge 미가용(웹 브라우저) 환경에선 no-op
-      });
-      ui.hideStatusBar().catch(() => {
-        // 무시 — Native Bridge 미가용(웹 브라우저) 환경에선 no-op
-      });
+      // v20 (2026-07-17): isDataLoaded=false 시점의 status bar 강제 숨김
+      //   (`ui.enterFullscreen()` + `ui.hideStatusBar()`) 제거.
+      //   (구 2026-05-14) fetch 중 상태바를 숨겼다가 완료 시 복원했는데, 이
+      //   hide→show 왕복이 viewport resize + safe-area CSS 변수 변동 → 랜딩 시점
+      //   전체 리플로우("화면이 다시 그려짐")의 근본 원인이었다. LoadingContext
+      //   v19 와 동일 정책 — 페이지 전환/fetch 중에도 상태바는 그대로 유지하고
+      //   풀스크린 LoadingPuck 이 WebView 콘텐츠 영역을 덮는다.
+      //   (LoadingContext.tsx startLoading 의 v19 주석 참조)
 
       // 🛡️ [appstatus-fix F3] isDataLoaded 실패안전.
       //   fetch 가 끝내 완료되지 않으면(요청 행/실패 등 isDataLoaded 가 영영 false)
@@ -697,18 +686,28 @@ export function useModalUI(title: string): void {
 }
 
 /**
- * 인증 페이지 UI 프리셋 Hook (로그인 등)
- * - 상태바: 표시 (2026-06-15 사용자 직접 지시 — 인증 화면도 AppStatus 표시로 통일.
- *   상단 안전영역(노치/inset)은 APP 이 viewPadding.top 으로 상태바 가시성과 무관하게
- *   항상 예약하므로 splash→로그인 전환 깜빡임이 없다. 노출 정책 SoT: @/lib/app-status.)
- * - AppBar: 숨김
- * - BottomNav: 숨김
+ * 인증 페이지 UI 프리셋 Hook (로그인 전용 — 현재 사용처는 /login 하나)
+ * - 상태바: **숨김** (2026-07-18 사용자 직접 지시 — appstatus 영역을 숨기고, 잔여
+ *   안전영역 스트립은 로그인 body 색으로 통일해 보이지 않게 한다. 노출 정책 SoT:
+ *   @/lib/app-status 의 APP_STATUS_HIDDEN_PREFIXES=["/login"] 과 동기.)
+ * - 배경 통일: scaffold/statusBar/navigationBar 를 로그인 body 색과 동일하게 전송
+ *   (라이트 bg-it-surface #ffffff · 다크 bg-puck #0a0d14 — login/page.tsx MobileContainer).
+ * - AppBar: 숨김 · BottomNav: 숨김
  */
 export function useAuthUI(): void {
+  // ThemeProvider 가 <html class="dark"> 를 스탬프하므로 mount 시점 테마로 판별.
+  const isDark =
+    typeof document !== 'undefined' &&
+    document.documentElement.classList.contains('dark');
+  const bodyColor = isDark ? '#0a0d14' : '#ffffff';
   useNativeUI({
-    showStatusBar: true,
+    showStatusBar: false,
     showAppBar: false,
     showBottomNav: false,
+    scaffoldBackgroundColor: bodyColor,
+    statusBarColor: bodyColor,
+    navigationBarColor: bodyColor,
+    statusBarLight: isDark,
   });
 }
 
