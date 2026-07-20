@@ -15,6 +15,7 @@ import { useNativeUI } from "@/hooks/useNativeUI";
 import { useSessionAuth } from "@/hooks/useSessionAuth";
 import { useToast } from "@/components/ui/Toast";
 import { useNoticeUnreadCount } from "@/hooks/useNoticeUnreadCount";
+import { useNotificationContext } from "@/contexts/NotificationContext";
 import {
   NOTICE_CATEGORY_LABEL,
   type NoticeCategoryVariant,
@@ -237,6 +238,7 @@ export default function NoticeListPage() {
   const { toast } = useToast();
   const { unreadCount: noticeUnread, refresh: refreshNoticeUnread } =
     useNoticeUnreadCount();
+  const { refresh: refreshBellNotifications } = useNotificationContext();
   const [isMarkingAll, setIsMarkingAll] = useState(false);
   const handleMarkAllNoticesRead = useCallback(async () => {
     if (noticeUnread === 0 || isMarkingAll) return;
@@ -247,11 +249,21 @@ export default function NoticeListPage() {
       setHasMore(true);
       await fetchNotices(1, false);
       void refreshNoticeUnread();
+      // [2026-07-20 읽음 동기화] 백엔드가 공지 일괄읽음 시 대응 알림함 행도 읽음
+      //   처리하므로, 벨 미읽음·앱 아이콘 배지도 재조회로 반영.
+      void refreshBellNotifications();
       toast.success(MESSAGES.notifications.markAllReadSuccess);
     } finally {
       setIsMarkingAll(false);
     }
-  }, [noticeUnread, isMarkingAll, fetchNotices, refreshNoticeUnread, toast]);
+  }, [
+    noticeUnread,
+    isMarkingAll,
+    fetchNotices,
+    refreshNoticeUnread,
+    refreshBellNotifications,
+    toast,
+  ]);
 
   // 카테고리 필터
   const filteredNotices = notices.filter((n) => {

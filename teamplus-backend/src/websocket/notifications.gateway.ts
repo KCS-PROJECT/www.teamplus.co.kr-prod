@@ -12,6 +12,9 @@ import { Server, Socket } from "socket.io";
 import { Logger, UsePipes, ValidationPipe } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { PrismaService } from "@/prisma/prisma.service";
+import { RedisService } from "@/redis/redis.service";
+import { visibleUnreadNotificationWhere } from "@/notifications/fcm.service";
+import { UNREAD_COUNT_CACHE_KEY } from "@/notifications/notification-cache";
 import { FileResponseDto } from "@/files/dto/upload-file.dto";
 import {
   WsMarkAsReadDto,
@@ -99,7 +102,18 @@ export class NotificationsGateway
   constructor(
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
+    // RedisModule 은 @Global — unread 캐시 무효화용 (REST 읽음 경로와 정합)
+    private readonly redis: RedisService,
   ) {}
+
+  /** REST(notifications.service)와 공유하는 unread 캐시 무효화 — 실패 무시. */
+  private async invalidateUnreadCache(userId: string): Promise<void> {
+    try {
+      await this.redis.del(UNREAD_COUNT_CACHE_KEY(userId));
+    } catch {
+      /* noop — TTL 30초 자연 만료 */
+    }
+  }
 
   afterInit() {
     this.logger.log("WebSocket Notifications Gateway initialized");
@@ -495,6 +509,8 @@ export class NotificationsGateway
     if (!userId) return { success: false, error: "Unauthorized" };
 
     try {
+      // [2026-07-20] REST markAsRead 와 정합 — readAt 기록 + unread 캐시 무효화.
+      //   (기존: isRead 만 세팅 → REST 카운트가 30초 캐시로 옛 값 반환)
       await this.prisma.notification.updateMany({
         where: {
           id: data.notificationId,
@@ -502,8 +518,10 @@ export class NotificationsGateway
         },
         data: {
           isRead: true,
+          readAt: new Date(),
         },
       });
+      await this.invalidateUnreadCache(userId);
 
       // Send updated unread count
       const unreadCount = await this.getUnreadNotificationsCount(userId);
@@ -526,6 +544,7 @@ export class NotificationsGateway
     if (!userId) return { success: false, error: "Unauthorized" };
 
     try {
+      // [2026-07-20] REST markAllAsRead 와 정합 — readAt 기록 + unread 캐시 무효화.
       await this.prisma.notification.updateMany({
         where: {
           userId,
@@ -533,8 +552,10 @@ export class NotificationsGateway
         },
         data: {
           isRead: true,
+          readAt: new Date(),
         },
       });
+      await this.invalidateUnreadCache(userId);
 
       client.emit("unreadCount", { count: 0 });
       return { success: true };
@@ -561,10 +582,11 @@ export class NotificationsGateway
    * Helper method to get unread notifications count
    */
   private async getUnreadNotificationsCount(userId: string): Promise<number> {
+    // [2026-07-20] REST getUnreadCount·iOS 뱃지와 동일한 '표시되는 미읽음' 기준.
     return this.prisma.notification.count({
       where: {
         userId,
-        isRead: false,
+        ...visibleUnreadNotificationWhere(),
       },
     });
   }

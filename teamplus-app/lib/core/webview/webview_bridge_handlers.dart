@@ -72,6 +72,9 @@ extension WebViewBridgeHandlers on WebViewBridge {
           // [2026-07-15 로그인 개선 ①] WebView refresh 쿠키도 함께 삭제 —
           //   로그아웃 후 미들웨어가 stale 쿠키로 "세션 있음" 오판하지 않도록.
           await WebViewCookieSync.syncRefreshToken(null);
+          // [2026-07-20 배지 미제거 대응] 로그아웃 시 iOS 앱 아이콘 배지 클리어 —
+          //   푸시 대상에서 빠진 계정의 잔존 배지를 정리한다 (fire-and-forget).
+          unawaited(_notificationService.clearBadge());
           return BridgeResponse.success(
             data: {'message': '토큰이 삭제되었습니다.'},
           ).toJson();

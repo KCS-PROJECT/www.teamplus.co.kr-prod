@@ -277,7 +277,7 @@ describe("FcmService", () => {
 
   // ── (e) 진동/우선순위 페이로드 보존 ─────────────────────────────────────────
   describe("진동 수정 페이로드 보존", () => {
-    it("android.notification 채널 v2·priority max·defaultVibrateTimings·sound 와 apns sound 유지", async () => {
+    it("android.notification 채널 v2·priority max·명시 진동 패턴·sound 와 apns sound 유지", async () => {
       await service.sendToTokens(["tok"], "제목", "본문");
 
       const msg = mockSendEachForMulticast.mock.calls[0][0];
@@ -286,7 +286,9 @@ describe("FcmService", () => {
         sound: "default",
         channelId: "teamplus_default_v2",
         priority: "max",
-        defaultVibrateTimings: true,
+        // [2026-07-20] 앱 채널(kNotificationVibrationPattern)과 동일한 명시 패턴 —
+        //   pre-O 기기·v2 채널 미존재(구버전 앱) 폴백에서도 진동 보장.
+        vibrateTimingsMillis: [0, 500, 250, 500],
       });
       expect(msg.apns.payload.aps.sound).toBe("default");
     });

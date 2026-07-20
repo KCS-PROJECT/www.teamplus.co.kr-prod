@@ -18,6 +18,7 @@ import { MESSAGES } from '@/lib/messages';
 import { safeNavigate } from '@/lib/safe-navigate';
 import { useSessionAuth } from '@/hooks/useSessionAuth';
 import { ReportModal } from '@/components/moderation/ReportModal';
+import { useNotificationContext } from '@/contexts/NotificationContext';
 
 /**
  * 공지/이벤트 상세 페이지 (참고자료 04n · 공지사항 상세 디자인 적용)
@@ -187,6 +188,9 @@ export default function NoticeDetailPage() {
   const [notice, setNotice] = useState<NoticeDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   usePageReady(!isLoading);
+  // [2026-07-20 읽음 동기화] 공지 열람이 백엔드에서 대응 알림함 행까지 읽음 처리
+  //   하므로, 벨 미읽음·앱 아이콘 배지를 재조회로 즉시 반영한다.
+  const { refresh: refreshBellNotifications } = useNotificationContext();
   const [notFound, setNotFound] = useState(false);
   const [comments, setComments] = useState<CommentData[]>([]);
   const [prevNotice, setPrevNotice] = useState<AdjacentNotice | null>(null);
@@ -226,6 +230,8 @@ export default function NoticeDetailPage() {
           attachments: d.attachments,
         });
         setNotFound(false);
+        // 열람 = 읽음(백엔드 NoticeRead + 알림함 동기화 완료) → 벨/앱 배지 갱신
+        void refreshBellNotifications();
       } finally {
         if (mounted) setIsLoading(false);
       }
@@ -233,7 +239,7 @@ export default function NoticeDetailPage() {
     return () => {
       mounted = false;
     };
-  }, [noticeId]);
+  }, [noticeId, refreshBellNotifications]);
 
   // 댓글 로드
   useEffect(() => {

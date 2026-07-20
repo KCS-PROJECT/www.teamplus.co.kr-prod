@@ -22,7 +22,14 @@ export default function NotificationsPage() {
   const { modal } = useModal();
   const [showActions, setShowActions] = useState(false);
   // [2026-06-19] 전체 읽음 시 상단 벨 미읽음 배지도 즉시 동기화 (Context 갱신).
-  const { markAllAsRead: ctxMarkAllAsRead } = useNotificationContext();
+  // [2026-07-20] 개별 읽음·삭제도 벨/앱 배지와 동기화 — markAsReadLocal(중복 PATCH
+  //   없이 로컬만) · refresh(삭제 후 재조회). Context unreadCount 변화가 네이티브
+  //   앱 아이콘 배지(syncAppBadge)까지 전파된다.
+  const {
+    markAllAsRead: ctxMarkAllAsRead,
+    markAsReadLocal: ctxMarkAsReadLocal,
+    refresh: ctxRefresh,
+  } = useNotificationContext();
 
   // Native 앱에서 BottomNav 표시 (기본 UI 설정)
   useDefaultUI();
@@ -98,6 +105,24 @@ export default function NotificationsPage() {
     [navigate],
   );
 
+  // 개별 읽음 — 서버 PATCH(useNotifications) 후 벨 Context 로컬 동기화.
+  const handleRead = useCallback(
+    async (id: string) => {
+      await markAsRead(id);
+      ctxMarkAsReadLocal(id);
+    },
+    [markAsRead, ctxMarkAsReadLocal],
+  );
+
+  // 개별 삭제 — 서버 삭제 후 벨 Context 재조회 (미읽음 삭제 시 배지 하향).
+  const handleDelete = useCallback(
+    async (id: string) => {
+      await deleteNotification(id);
+      void ctxRefresh();
+    },
+    [deleteNotification, ctxRefresh],
+  );
+
   // [2026-06-19 사용자 직접 지시] 전체 읽음 — 목록(서버) + 상단 벨 배지 동기 처리.
   const handleMarkAllRead = useCallback(async () => {
     if (unreadCount === 0) {
@@ -114,11 +139,12 @@ export default function NotificationsPage() {
     const count = await deleteOldNotifications();
     if (count > 0) {
       toast.success(`${count}개의 오래된 알림이 삭제되었습니다.`);
+      void ctxRefresh();
     } else {
       toast.info(MESSAGES.notifications.noOldToDelete);
     }
     setShowActions(false);
-  }, [deleteOldNotifications, toast]);
+  }, [deleteOldNotifications, toast, ctxRefresh]);
 
   // 전체 삭제
   const handleDeleteAll = useCallback(async () => {
@@ -131,9 +157,10 @@ export default function NotificationsPage() {
     });
     if (confirmed) {
       await deleteAll();
+      void ctxRefresh();
     }
     setShowActions(false);
-  }, [deleteAll, modal]);
+  }, [deleteAll, modal, ctxRefresh]);
 
   return (
     <MobileContainer hasBottomNav={true} className="flex flex-col h-full">
@@ -202,8 +229,8 @@ export default function NotificationsPage() {
           isLoading={isLoading}
           hasMore={hasMore}
           onLoadMore={loadMore}
-          onRead={markAsRead}
-          onDelete={deleteNotification}
+          onRead={handleRead}
+          onDelete={handleDelete}
           onItemClick={handleItemClick}
           enableSwipe={true}
           emptyVariant={filter.category && filter.category !== 'all' ? 'filter' : 'notifications'}

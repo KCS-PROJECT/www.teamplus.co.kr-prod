@@ -18,6 +18,38 @@ export interface FcmDataPayload {
   [key: string]: string;
 }
 
+// iOS 앱 아이콘 뱃지 = 웹 알림함(벨/목록)이 '표시하는' 미읽음 수와 일치해야 한다.
+// 웹 notification-mapper.isNotificationVisible 이 숨기는 유형/나이를 뱃지 집계에서도
+// 제외하지 않으면, 열어도 볼 수 없는 유령 뱃지가 남아 클리어되지 않는다.
+// SoT: teamplus-web/src/lib/notification-mapper.ts
+//   (HIDDEN_NOTIFICATION_TYPES · NOTIFICATION_RECENCY_DAYS=21). 값 변경 시 동기화 필요.
+// [2026-07-20] 벨 카운트(notifications.service.getUnreadCount)도 같은 기준을 쓰도록
+//   모듈 레벨로 승격 — 뱃지/벨/알림함 3자 정합의 단일 SoT.
+export const VISIBLE_UNREAD_HIDDEN_TYPES = [
+  "trip_waitlist_promoted",
+  "account_dormant",
+  "rsvp_reminder",
+  "tournament_created",
+];
+export const VISIBLE_UNREAD_RECENCY_DAYS = 21;
+
+/** 뱃지·벨 집계용 '표시되는 미읽음' where 절 — 숨김 유형·21일 초과 제외(웹 정합). */
+export function visibleUnreadNotificationWhere(): {
+  isRead: false;
+  notificationType: { notIn: string[] };
+  createdAt: { gte: Date };
+} {
+  return {
+    isRead: false,
+    notificationType: { notIn: VISIBLE_UNREAD_HIDDEN_TYPES },
+    createdAt: {
+      gte: new Date(
+        Date.now() - VISIBLE_UNREAD_RECENCY_DAYS * 24 * 60 * 60 * 1000,
+      ),
+    },
+  };
+}
+
 /**
  * Firebase Cloud Messaging 서비스
  *
@@ -49,18 +81,7 @@ export class FcmService implements OnModuleInit {
   /** FCM data payload 권장 상한(전체 메시지 4KB 제한 대비 여유분) */
   private static readonly DATA_PAYLOAD_WARN_BYTES = 3800;
 
-  // iOS 앱 아이콘 뱃지 = 웹 알림함(벨/목록)이 '표시하는' 미읽음 수와 일치해야 한다.
-  // 웹 notification-mapper.isNotificationVisible 이 숨기는 유형/나이를 뱃지 집계에서도
-  // 제외하지 않으면, 열어도 볼 수 없는 유령 뱃지가 남아 클리어되지 않는다.
-  // SoT: teamplus-web/src/lib/notification-mapper.ts
-  //   (HIDDEN_NOTIFICATION_TYPES · NOTIFICATION_RECENCY_DAYS=21). 값 변경 시 동기화 필요.
-  private static readonly BADGE_HIDDEN_TYPES = [
-    "trip_waitlist_promoted",
-    "account_dormant",
-    "rsvp_reminder",
-    "tournament_created",
-  ];
-  private static readonly BADGE_RECENCY_DAYS = 21;
+  // 뱃지 숨김 유형·21일 기준은 모듈 레벨 VISIBLE_UNREAD_* (파일 상단) 로 승격됨.
 
   constructor(
     private readonly configService: ConfigService,
@@ -397,21 +418,13 @@ export class FcmService implements OnModuleInit {
     return this.sendToTokensWithRetry(tokens, title, body, data);
   }
 
-  /** 뱃지 집계용 '표시되는 미읽음' where 절 — 숨김 유형·21일 초과 제외(웹 정합). */
+  /** 뱃지 집계용 '표시되는 미읽음' where 절 — 모듈 레벨 SoT 위임. */
   private visibleUnreadWhere(): {
     isRead: false;
     notificationType: { notIn: string[] };
     createdAt: { gte: Date };
   } {
-    return {
-      isRead: false,
-      notificationType: { notIn: FcmService.BADGE_HIDDEN_TYPES },
-      createdAt: {
-        gte: new Date(
-          Date.now() - FcmService.BADGE_RECENCY_DAYS * 24 * 60 * 60 * 1000,
-        ),
-      },
-    };
+    return visibleUnreadNotificationWhere();
   }
 
   /**
@@ -431,6 +444,57 @@ export class FcmService implements OnModuleInit {
       );
       // 집계 실패 시 NaN 반환 → sendChunkWithRetry 가 뱃지를 omit(잘못된 값 강제 금지)
       return NaN;
+    }
+  }
+
+  /**
+   * 읽음 처리 직후 iOS 앱 아이콘 뱃지를 현재 미읽음 수로 무음 동기화.
+   *
+   * iOS 뱃지는 `aps.badge` 가 도착할 때만 갱신되므로, 읽음/삭제로 unread 가
+   * 줄어도 다음 푸시가 오기 전까지 아이콘 숫자가 그대로 남는다. 이 메서드는
+   * 배너·소리 없는 badge-only APNs 메시지로 뱃지만 내린다.
+   * - notification 블록 없음 → 화면 표시 0 (Android 는 data-only 로 수신되어 무시)
+   * - 실패는 격리 — 읽음 처리(호출부) 흐름에 절대 영향 없음
+   */
+  async sendBadgeSync(userId: string): Promise<void> {
+    if (!this.isReady()) return;
+    try {
+      const devices = await this.prisma.userDevice.findMany({
+        where: { userId, isActive: true, fcmToken: { not: "" } },
+        select: { fcmToken: true, platform: true },
+      });
+      // 뱃지는 iOS 전용 — platform 미기록(레거시) 행은 안전하게 포함.
+      const tokens = Array.from(
+        new Set(
+          devices
+            .filter((d) => {
+              const p = (d.platform ?? "").toLowerCase();
+              return p === "" || p === "ios";
+            })
+            .map((d) => d.fcmToken)
+            .filter((t): t is string => !!t),
+        ),
+      );
+      if (tokens.length === 0) return;
+
+      const badge = await this.countUnread(userId);
+      if (!Number.isFinite(badge) || badge < 0) return;
+
+      const response = await this.messaging.sendEachForMulticast({
+        tokens,
+        apns: {
+          headers: { "apns-priority": "10", "apns-push-type": "alert" },
+          payload: { aps: { badge } },
+        },
+        data: { v: "1", type: "badge_sync" },
+      });
+      this.logger.debug(
+        `뱃지 동기화 발송: userId=${userId}, badge=${badge}, ` +
+          `성공=${response.successCount}, 실패=${response.failureCount}`,
+      );
+    } catch (error) {
+      const err = error as Error;
+      this.logger.warn(`뱃지 동기화 실패 (userId=${userId}): ${err.message}`);
     }
   }
 
@@ -520,7 +584,12 @@ export class FcmService implements OnModuleInit {
             // 진동/우선순위 명시 — pre-O 기기 및 heads-up 보장.
             // (AndroidNotification.priority: 'min'|'low'|'default'|'high'|'max')
             priority: "max" as const,
-            defaultVibrateTimings: true,
+            // [2026-07-20 진동 미작동 대응] 기기 기본값 위임(defaultVibrateTimings)
+            //   대신 앱 채널과 동일한 패턴을 명시 — pre-O(API<26) 기기와 v2 채널
+            //   미존재(구버전 앱) 폴백 채널에서도 메시지 레벨 진동이 적용된다.
+            //   (Android 8+ 는 채널 설정 우선 — v2 채널은 동일 패턴으로 생성됨:
+            //    teamplus-app notification_channels.dart kNotificationVibrationPattern)
+            vibrateTimingsMillis: [0, 500, 250, 500],
           },
         },
         apns: {
