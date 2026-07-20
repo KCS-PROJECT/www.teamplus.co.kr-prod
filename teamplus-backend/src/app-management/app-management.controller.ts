@@ -228,18 +228,15 @@ export class AppManagementController {
       content: string;
       category: string;
       rating?: number;
-      authorName?: string;
-      teamName?: string;
       attachmentFileIds?: string[];
     },
   ) {
+    // 이름/팀은 서버가 로그인 신원(userId)으로 강제 귀속 — 클라이언트 값 미수신(위조 차단)
     return this.service.createUserFeedback(
       req.user.id,
       body.content,
       body.category,
       body.rating,
-      body.authorName,
-      body.teamName,
       body.attachmentFileIds,
     );
   }

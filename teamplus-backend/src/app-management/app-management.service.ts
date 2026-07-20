@@ -429,6 +429,7 @@ export class AppManagementService implements OnModuleInit {
             message:
               "보내주신 피드백에 관리자가 답변을 남겼어요. 내 피드백에서 확인해보세요.",
             isRead: false,
+            linkUrl: "/feedback?tab=history",
           },
         });
       } catch {
@@ -516,18 +517,12 @@ export class AppManagementService implements OnModuleInit {
     content: string,
     category: string,
     rating?: number,
-    authorName?: string,
-    teamName?: string,
     attachmentFileIds?: string[],
   ) {
-    // 이름/팀 미제공(또는 공백) 시 로그인 정보로 자동 채움
-    let finalAuthorName = authorName?.trim() || null;
-    let finalTeamName = teamName?.trim() || null;
-    if (!finalAuthorName || !finalTeamName) {
-      const prefill = await this.getFeedbackPrefill(userId);
-      if (!finalAuthorName) finalAuthorName = prefill.authorName || null;
-      if (!finalTeamName) finalTeamName = prefill.teamName || null;
-    }
+    // 이름/팀은 클라이언트 입력을 받지 않고 로그인 신원으로 강제 귀속(위조 차단)
+    const prefill = await this.getFeedbackPrefill(userId);
+    const finalAuthorName = prefill.authorName || null;
+    const finalTeamName = prefill.teamName || null;
 
     const created = await this.prisma.appFeedback.create({
       data: {
