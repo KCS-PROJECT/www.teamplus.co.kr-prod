@@ -98,7 +98,7 @@ export const MESSAGES = {
     dayDefaults: {
       title: "정규 수업 요일",
       optional: "선택",
-      hint: "이 수업이 진행되는 요일이에요. 수업 정보에 '월·수·금'처럼 표시되고, 아래 '실제 진행 날짜'를 추가할 때 이 요일의 시간·장소로 자동 채워져요.",
+      hint: "이 수업이 진행되는 요일이에요. 수업 정보에 '월·수·금'처럼 표시되고, 아래 '일정 생성'을 누르면 이 요일·시간·장소로 실제 날짜가 만들어져요.",
       startTime: "시작 시간",
       endTime: "종료 시간",
       venueSelect: "장소 선택",
@@ -125,6 +125,20 @@ export const MESSAGES = {
     scheduleListTitle: "실제 진행 날짜",
     scheduleListHint:
       "위 정규 요일로 만든 실제 수업 날짜예요. 빠지거나 바뀐 날짜만 여기서 조정하세요.",
+    // 정규 요일 기반 기간 자동 생성 — 로컬 draft만 갱신(실제 저장은 등록/수정 시).
+    rangeGen: {
+      title: "정규 요일로 날짜 만들기",
+      hint: "위에서 정한 정규 요일로 기간 내 실제 날짜를 한 번에 만들어요. 저장은 등록·수정할 때 반영돼요.",
+      start: "시작일",
+      end: "종료일",
+      generate: "일정 생성",
+      preview: (count: number) => `이 기간에 ${count}개 날짜가 새로 만들어져요.`,
+      rangeInvalid: "종료일이 시작일보다 빠릅니다.",
+      emptyResult: "해당 기간에 새로 만들 날짜가 없습니다.",
+      success: (count: number) => `${count}개 날짜를 만들었어요. 등록·수정할 때 저장됩니다.`,
+    },
+    // ② 목록의 예외 날짜(패턴 외) 직접 추가 — 미니달력 모달 진입 버튼.
+    scheduleAddSingle: "날짜 직접 추가",
     venueSearchPrompt: "장소명 또는 주소를 검색해주세요.",
     policyInfo:
       "수업 등록 시 학부모님들께 알림이 발송됩니다. 대관 시간 15분 전 링크장 도착을 원칙으로 합니다.",
@@ -888,6 +902,7 @@ export const MESSAGES = {
     tabTraining: "훈련",
     tabTournament: "대회",
     tabUnpaid: "미수금",
+    tabSettlement: "정산",
     // Hero 요약
     heroLabel: "정산 요약",
     totalCollected: "총 수납",

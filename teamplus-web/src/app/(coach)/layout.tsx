@@ -7,9 +7,10 @@ import { useRequireRole } from '@/contexts/AuthContext';
 // (수업/일정/홈/팀/마이) 가 표시되도록 하기 위해.
 import { RoleBottomNav } from '@/components/layout/RoleBottomNav';
 import { LoadingPuck } from '@/components/ui/LoadingPuck';
+import { RouteUserProvider } from './route-auth-context';
 
 export default function CoachLayout({ children }: { children: ReactNode }) {
-  const { isLoading, isAllowed } = useRequireRole(['coach', 'director', 'admin', 'academy_director']);
+  const { user, isLoading, isAllowed } = useRequireRole(['coach', 'director', 'admin', 'academy_director']);
 
   if (isLoading) return <LoadingPuck />;
 
@@ -24,7 +25,10 @@ export default function CoachLayout({ children }: { children: ReactNode }) {
       >
         본문 바로가기
       </a>
-      <div className="flex-1 min-h-0" id="main-content">{children}</div>
+      {/* layout-owned auth 훅에서 해석한 user 를 하위 page 로 파생 전달(page 의 useAuth 중복 방지). */}
+      <RouteUserProvider user={user}>
+        <div className="flex-1 min-h-0" id="main-content">{children}</div>
+      </RouteUserProvider>
       <RoleBottomNav />
     </div>
   );

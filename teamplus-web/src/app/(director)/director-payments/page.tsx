@@ -20,116 +20,28 @@ import {
   type DirectorPaymentSummary as PaymentSummary,
   type DirectorUnpaidMember as UnpaidMember,
   type TeamSettlementSummaryResponse,
-  type ClassSettlementSummary,
   type TournamentSettlementSummary,
-  type SettlementSubtotalStatus,
-  type SettlementBlockedReasonCode,
 } from '@/services/payment';
+import {
+  formatCurrency,
+  staggerDelay,
+  shiftMonth,
+} from '@/components/settlement/settlement-format';
+import {
+  SettlementItemCard,
+  classToCardData,
+  type SettlementCardData,
+} from '@/components/settlement/SettlementItemCard';
+import { InlineRetryError } from '@/components/settlement/InlineRetryError';
 
 // ─── Types ──────────────────────────────────────────
 type TabType = 'training' | 'tournament' | 'unpaid';
 
-/** 훈련/대회 카드 공통 정규화 형태 — 두 소계 타입을 하나의 카드 컴포넌트로 렌더. */
-interface SettlementCardData {
-  title: string;
-  subtitle: string | null;
-  settlementStatus: SettlementSubtotalStatus;
-  total: number;
-  paidCount: number;
-  billedAmount: number;
-  paidAmount: number;
-  outstandingAmount: number;
-  estimatedAmount: number;
-  mixedBilling: boolean;
-  /** 선불/후불/미설정 인원 요약 텍스트 조각(대회는 빈 배열). */
-  timingParts: string[];
-  blockedReasonCode: SettlementBlockedReasonCode;
-  detailPath: string;
-}
+// formatCurrency · staggerDelay · shiftMonth 는 공유 모듈(components/settlement/settlement-format)로 이동.
+// SettlementCardData · SETTLEMENT_STATUS_BADGE · BLOCKED_REASON_LABEL · classToCardData ·
+// SettlementItemCard · InlineRetryError 는 공유 모듈(components/settlement)로 이동해 academy 정산 탭과 공유.
 
-// ─── Helpers ────────────────────────────────────────
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('ko-KR').format(amount);
-}
-
-// stagger 진입 (DESIGN §6.5 — interval 40ms / cap 280ms)
-function staggerDelay(i: number): string {
-  return `${Math.min(i * 40, 280)}ms`;
-}
-
-/** 'YYYY-MM' 을 delta 개월 이동. */
-function shiftMonth(ym: string, delta: number): string {
-  const [y, m] = ym.split('-').map(Number);
-  const d = new Date(y, m - 1 + delta, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
-
-// ─── 5-state 정산 상태 배지 (it-* 토큰) ──────────────
-const SETTLEMENT_STATUS_BADGE: Record<
-  SettlementSubtotalStatus,
-  { label: string; className: string }
-> = {
-  CONFIRMED: {
-    label: MESSAGES.settlement.statusConfirmed,
-    className: 'bg-mint-100 text-mint-700 dark:bg-mint-500/15 dark:text-mint-500',
-  },
-  NOT_READY: {
-    label: MESSAGES.settlement.statusNotReady,
-    className:
-      'bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-900/30 dark:text-it-blue-300',
-  },
-  DRAFT: {
-    label: MESSAGES.settlement.statusDraft,
-    className: 'bg-sun-100 text-it-ink-800 dark:bg-sun-500/15 dark:text-sun-500',
-  },
-  PARTIAL_BILLED: {
-    label: MESSAGES.settlement.statusPartialBilled,
-    className:
-      'bg-it-red-50 text-it-red-600 dark:bg-it-red-500/15 dark:text-it-red-300',
-  },
-  NOT_REQUIRED: {
-    label: MESSAGES.settlement.statusNotRequired,
-    className: 'bg-it-ink-100 text-it-ink-500 dark:bg-rink-700 dark:text-wtext-4',
-  },
-};
-
-const BLOCKED_REASON_LABEL: Record<
-  Exclude<SettlementBlockedReasonCode, null>,
-  string
-> = {
-  MONTH_NOT_ENDED: MESSAGES.settlement.blockedMonthNotEnded,
-  NO_ATTENDANCE: MESSAGES.settlement.blockedNoAttendance,
-  UNIT_PRICE_MISSING: MESSAGES.settlement.blockedUnitPriceMissing,
-  TOURNAMENT_NOT_ENDED: MESSAGES.settlement.blockedTournamentNotEnded,
-  BILLING_TIMING_UNASSIGNED: MESSAGES.settlement.blockedBillingTimingUnassigned,
-};
-
-/** 수업 소계 → 카드 데이터(선불/후불/미설정 인원 요약 포함). */
-function classToCardData(item: ClassSettlementSummary): SettlementCardData {
-  const timingParts: string[] = [];
-  const { prepaid, postpaid, unassigned, person } = MESSAGES.settlement;
-  if (item.prepaidCount > 0) timingParts.push(`${prepaid} ${item.prepaidCount}${person}`);
-  if (item.postpaidCount > 0) timingParts.push(`${postpaid} ${item.postpaidCount}${person}`);
-  if (item.unassignedCount > 0)
-    timingParts.push(`${unassigned} ${item.unassignedCount}${person}`);
-  return {
-    title: item.className,
-    subtitle: item.teamName,
-    settlementStatus: item.settlementStatus,
-    total: item.total,
-    paidCount: item.paidCount,
-    billedAmount: item.billedAmount,
-    paidAmount: item.paidAmount,
-    outstandingAmount: item.outstandingAmount,
-    estimatedAmount: item.estimatedAmount,
-    mixedBilling: item.mixedBilling,
-    timingParts,
-    blockedReasonCode: item.blockedReasonCode,
-    detailPath: item.detailPath,
-  };
-}
-
-/** 대회 소계 → 카드 데이터(결제방식 인원 축 없음). */
+/** 대회 소계 → 카드 데이터(결제방식 인원 축 없음). 팀 전용 — 공유 SettlementCardData 타입 사용. */
 function tournamentToCardData(item: TournamentSettlementSummary): SettlementCardData {
   return {
     title: item.tournamentName,
@@ -681,37 +593,6 @@ function InitialErrorState({
   );
 }
 
-/**
- * 패널 인라인 로드 실패 — 에러 + 재시도.
- * 월 새로고침 실패(stale 카드 렌더 금지)와 미수금(레거시) 실패("미수금 없음" 위장 금지)에 공용.
- */
-function InlineRetryError({
-  message,
-  onRetry,
-  retrying,
-}: {
-  message: string;
-  onRetry: () => void;
-  retrying: boolean;
-}) {
-  return (
-    <div className="flex flex-col items-center gap-3 py-12 text-center" role="alert">
-      <div className="flex h-11 w-11 items-center justify-center rounded-w-pill bg-it-red-50 dark:bg-it-red-500/15">
-        <Icon name="error" className="text-xl text-it-red-500" aria-hidden="true" />
-      </div>
-      <p className="text-[13.5px] text-it-ink-700 dark:text-wtext-4">{message}</p>
-      <button
-        type="button"
-        onClick={onRetry}
-        disabled={retrying}
-        className="inline-flex h-10 items-center justify-center rounded-w-md border-[1.5px] border-it-line-strong px-5 text-[13.5px] font-semibold text-it-blue-600 transition-colors hover:bg-it-fill active:brightness-[0.98] disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none dark:border-rink-700 dark:text-wtext-4 dark:hover:bg-rink-700"
-      >
-        {MESSAGES.settlement.retry}
-      </button>
-    </div>
-  );
-}
-
 /** 월 전환 로딩 — 응답 대기 중 stale 카드 대신 스피너 표기. */
 function MonthLoadingState() {
   return (
@@ -728,126 +609,6 @@ function MonthLoadingState() {
         {MESSAGES.settlement.monthLoading}
       </p>
     </div>
-  );
-}
-
-/** 5-state 정산 상태 배지. */
-function SettlementStatusBadge({ status }: { status: SettlementSubtotalStatus }) {
-  const cfg = SETTLEMENT_STATUS_BADGE[status];
-  return (
-    <span
-      className={cn(
-        'inline-flex shrink-0 items-center rounded-w-sm px-2 py-0.5 text-[11.5px] font-bold',
-        cfg.className,
-      )}
-    >
-      {cfg.label}
-    </span>
-  );
-}
-
-/** 훈련/대회 소계 카드 — 클릭 시 detailPath 드릴다운. */
-function SettlementItemCard({
-  data,
-  index = 0,
-  last,
-  onOpen,
-}: {
-  data: SettlementCardData;
-  index?: number;
-  last?: boolean;
-  onOpen: (path: string) => void;
-}) {
-  const showEstimated =
-    data.settlementStatus !== 'CONFIRMED' && data.estimatedAmount > 0;
-  const hasOutstanding = data.outstandingAmount > 0;
-  const { won, billed, paid, outstanding, estimated, mixed, paidRatio } =
-    MESSAGES.settlement;
-
-  return (
-    <button
-      type="button"
-      onClick={() => onOpen(data.detailPath)}
-      className={cn(
-        'animate-slide-up block w-full py-[14px] text-left active:brightness-[0.98] motion-reduce:animate-none',
-        !last && 'border-b border-it-line dark:border-rink-700',
-      )}
-      style={{ animationDelay: staggerDelay(index) }}
-    >
-      {/* 제목 + 상태 배지 */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <h3 className="truncate text-[15px] font-bold text-it-ink-800 dark:text-white">
-            {data.title}
-          </h3>
-          {data.subtitle && (
-            <p className="mt-0.5 truncate text-[13px] text-it-ink-500 dark:text-wtext-4">
-              {data.subtitle}
-            </p>
-          )}
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <SettlementStatusBadge status={data.settlementStatus} />
-          <Icon
-            name="chevron_right"
-            className="text-[18px] text-it-ink-300 dark:text-rink-500"
-            aria-hidden="true"
-          />
-        </div>
-      </div>
-
-      {/* 결제방식 인원 요약 (수업 전용) + 혼합 태그 */}
-      {(data.timingParts.length > 0 || data.mixedBilling) && (
-        <p className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-it-ink-500 dark:text-wtext-4">
-          {data.timingParts.length > 0 && <span>{data.timingParts.join(' · ')}</span>}
-          {data.mixedBilling && (
-            <span className="inline-flex items-center rounded-w-sm bg-it-blue-50 px-1.5 py-0.5 text-[11px] font-bold text-it-blue-600 dark:bg-it-blue-900/30 dark:text-it-blue-300">
-              {mixed}
-            </span>
-          )}
-        </p>
-      )}
-
-      {/* 완납 인원 + 예상 배지 */}
-      <div className="mt-3 flex items-center justify-between gap-3">
-        <span className="text-[12.5px] text-it-ink-500 dark:text-wtext-4">
-          {paidRatio(data.paidCount, data.total)}
-        </span>
-        {showEstimated && (
-          <span className="inline-flex items-center gap-1 rounded-w-sm bg-it-blue-50 px-1.5 py-0.5 text-[11.5px] font-bold text-it-blue-600 tabular-nums dark:bg-it-blue-900/30 dark:text-it-blue-300">
-            {estimated} {formatCurrency(data.estimatedAmount)}
-            {won}
-          </span>
-        )}
-      </div>
-
-      {/* 청구 · 수납 · 미수 */}
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12.5px] tabular-nums">
-        <span className="text-it-ink-500 dark:text-wtext-4">
-          {billed}{' '}
-          <strong className="font-bold text-it-ink-800 dark:text-white">
-            {formatCurrency(data.billedAmount)}
-          </strong>
-        </span>
-        <span className="text-it-ink-500 dark:text-wtext-4">
-          {paid}{' '}
-          <strong className="font-bold text-it-ink-800 dark:text-white">
-            {formatCurrency(data.paidAmount)}
-          </strong>
-        </span>
-        <span className={cn(hasOutstanding ? 'text-it-red-500' : 'text-it-ink-500 dark:text-wtext-4')}>
-          {outstanding} <strong className="font-bold">{formatCurrency(data.outstandingAmount)}</strong>
-        </span>
-      </div>
-
-      {/* 차단 사유 칩 */}
-      {data.blockedReasonCode && (
-        <p className="mt-2.5 inline-flex items-center gap-1 rounded-w-sm bg-sun-100 px-2 py-1 text-[12px] font-medium text-it-ink-700 dark:bg-sun-500/12 dark:text-wtext-3">
-          <Icon name="info" className="text-[14px] text-sun-500" aria-hidden="true" />
-          {BLOCKED_REASON_LABEL[data.blockedReasonCode]}
-        </p>
-      )}
-    </button>
   );
 }
 

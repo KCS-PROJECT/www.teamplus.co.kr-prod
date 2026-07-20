@@ -507,6 +507,20 @@ export interface TeamSettlementSummaryResponse {
 export type TeamSettlementSummaryResult = TeamSettlementSummaryResponse;
 
 /**
+ * 오픈클래스(academy) 정산 센터 소계 응답(백엔드 AcademySettlementSummaryResponse 미러).
+ * 팀 허브와 달리 대회 축이 없다(오픈클래스 scope) — classes + unpaid 만.
+ */
+export interface AcademySettlementSummaryResponse {
+  yearMonth: string;
+  academyId: string;
+  classes: ClassSettlementSummary[];
+  unpaid: SettlementUnpaidSummary;
+}
+
+/** 서비스 반환 별칭 — 탭 컴포넌트에서 결과 타입으로 참조. */
+export type AcademySettlementSummaryResult = AcademySettlementSummaryResponse;
+
+/**
  * 팀 정산 센터 소계 조회 (`GET /payments/team-settlement-center/summary`)
  *
  * 선택 월 기준으로 훈련(수업)/대회 소계 + 미납 요약을 반환한다.
@@ -535,6 +549,42 @@ export async function getTeamSettlementSummary(params?: {
     yearMonth: raw.yearMonth || fallbackYm,
     classes: Array.isArray(raw.classes) ? raw.classes : [],
     tournaments: Array.isArray(raw.tournaments) ? raw.tournaments : [],
+    unpaid: {
+      amount: toNumber(raw.unpaid?.amount),
+      count: toNumber(raw.unpaid?.count),
+    },
+  };
+}
+
+/**
+ * 오픈클래스 정산 센터 소계 조회 (`GET /academies/:academyId/settlement-summary`)
+ *
+ * 선택 월 기준으로 오픈클래스 수업 소계 + 미납 요약을 반환한다(대회 없음).
+ *
+ * ⚠️ 금융 화면 — 실패(403/500/timeout/네트워크)를 정상 0/빈 결과로 위장하지 않는다.
+ * 응답이 실패이거나 data 가 없으면 **throw** 하여, 호출부(정산 탭)가 "미수금 없음"과
+ * "불러오지 못함"을 구분해 에러+재시도 UI 로 처리하도록 한다. 성공 시에만 정규화 구조를 반환.
+ */
+export async function getAcademySettlementSummary(params: {
+  academyId: string;
+  yearMonth?: string;
+}): Promise<AcademySettlementSummaryResult> {
+  const { academyId, yearMonth } = params;
+  const fallbackYm = yearMonth ?? '';
+  const res = await api.get<AcademySettlementSummaryResponse>(
+    `/academies/${academyId}/settlement-summary`,
+    { params: { yearMonth } },
+  );
+
+  if (!res.success || !res.data) {
+    throw new Error(res.error?.message ?? 'academy settlement summary load failed');
+  }
+
+  const raw = res.data;
+  return {
+    yearMonth: raw.yearMonth || fallbackYm,
+    academyId: raw.academyId || academyId,
+    classes: Array.isArray(raw.classes) ? raw.classes : [],
     unpaid: {
       amount: toNumber(raw.unpaid?.amount),
       count: toNumber(raw.unpaid?.count),
@@ -622,6 +672,7 @@ const paymentService = {
   getDirectorUnpaidMemberDetail,
   sendDirectorUnpaidReminder,
   getTeamSettlementSummary,
+  getAcademySettlementSummary,
   getReceipt,
   verifyPaymentCompletion,
   getReceiptDownloadUrl,

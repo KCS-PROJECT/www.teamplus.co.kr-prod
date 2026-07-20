@@ -12,7 +12,11 @@ jest.mock('@/services/api-client', () => ({
 }));
 
 import { api } from '@/services/api-client';
-import { getTeamSettlementSummary, getDirectorPaymentSummary } from '@/services/payment';
+import {
+  getTeamSettlementSummary,
+  getDirectorPaymentSummary,
+  getAcademySettlementSummary,
+} from '@/services/payment';
 
 const mockGet = api.get as jest.Mock;
 
@@ -133,5 +137,83 @@ describe('getDirectorPaymentSummary — 실패 시 throw', () => {
     expect(result.unpaidMembers).toHaveLength(1);
     expect(result.unpaidMembers[0].amount).toBe(5000);
     expect(result.unpaidMembers[0].billingType).toBe('POSTPAID');
+  });
+});
+
+// 오픈클래스 정산 — 팀 허브와 동일 계약(성공 정규화 + 실패 throw). 대회 축 없음.
+describe('getAcademySettlementSummary — 성공 정규화', () => {
+  beforeEach(() => mockGet.mockReset());
+
+  it('정상 응답 시 필드를 정규화하여 반환하고 academyId·yearMonth 를 보존', async () => {
+    mockGet.mockResolvedValue({
+      success: true,
+      data: {
+        yearMonth: '2026-07',
+        academyId: 'a1',
+        classes: [{ classId: 'c1' }],
+        unpaid: { amount: 8000, count: 2 },
+      },
+    });
+
+    const result = await getAcademySettlementSummary({ academyId: 'a1', yearMonth: '2026-07' });
+
+    expect(result.yearMonth).toBe('2026-07');
+    expect(result.academyId).toBe('a1');
+    expect(result.classes).toHaveLength(1);
+    expect(result.unpaid).toEqual({ amount: 8000, count: 2 });
+    // 엔드포인트 · yearMonth 파라미터 전달 확인
+    expect(mockGet).toHaveBeenCalledWith('/academies/a1/settlement-summary', {
+      params: { yearMonth: '2026-07' },
+    });
+  });
+
+  it('classes 누락·unpaid 누락 → 빈 배열/0 정규화, yearMonth·academyId 는 요청값 폴백', async () => {
+    mockGet.mockResolvedValue({
+      success: true,
+      data: {
+        yearMonth: '',
+        academyId: '',
+        classes: undefined,
+        unpaid: undefined,
+      },
+    });
+
+    const result = await getAcademySettlementSummary({ academyId: 'a9', yearMonth: '2026-06' });
+
+    expect(result.yearMonth).toBe('2026-06'); // raw 빈 문자열 → 폴백
+    expect(result.academyId).toBe('a9'); // raw 빈 문자열 → 요청 academyId 폴백
+    expect(result.classes).toEqual([]);
+    expect(result.unpaid).toEqual({ amount: 0, count: 0 });
+  });
+});
+
+describe('getAcademySettlementSummary — 실패 시 throw', () => {
+  beforeEach(() => mockGet.mockReset());
+
+  it('res.success=false 면 error.message 로 throw', async () => {
+    mockGet.mockResolvedValue({
+      success: false,
+      error: { code: 'FORBIDDEN', message: '권한이 없습니다.' },
+    });
+
+    await expect(
+      getAcademySettlementSummary({ academyId: 'a1', yearMonth: '2026-07' }),
+    ).rejects.toThrow('권한이 없습니다.');
+  });
+
+  it('data 가 없으면 기본 메시지로 throw', async () => {
+    mockGet.mockResolvedValue({ success: true, data: null });
+
+    await expect(
+      getAcademySettlementSummary({ academyId: 'a1', yearMonth: '2026-07' }),
+    ).rejects.toThrow('academy settlement summary load failed');
+  });
+
+  it('API 자체가 reject 하면 그대로 전파', async () => {
+    mockGet.mockRejectedValue(new Error('network down'));
+
+    await expect(
+      getAcademySettlementSummary({ academyId: 'a1', yearMonth: '2026-07' }),
+    ).rejects.toThrow('network down');
   });
 });
