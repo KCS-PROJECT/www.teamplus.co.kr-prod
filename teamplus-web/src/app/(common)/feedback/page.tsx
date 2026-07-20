@@ -16,7 +16,6 @@ import { api } from '@/services/api-client';
 import { MESSAGES } from '@/lib/messages';
 import { cn } from '@/lib/utils';
 import { feedbackSchema, type FeedbackInput } from '@/lib/validation/schemas';
-import { useAuth } from '@/contexts/AuthContext';
 import { uploadFile } from '@/services/upload.service';
 
 import { usePageReady } from '@/hooks/usePageReady';
@@ -103,9 +102,6 @@ function WriteTab({
   onCancel: () => void;
 }) {
   const contentId = useId();
-  const nameId = useId();
-  const teamId = useId();
-  const { user } = useAuth();
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [serverError, setServerError] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -113,8 +109,7 @@ function WriteTab({
   const [uploadError, setUploadError] = useState('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // RHF + Zod 통합 (2026-05-14 D-2 마이그레이션)
-  // feedbackSchema: authorName + teamName + category(enum) + content(10~2000자)
+  // RHF + Zod 통합. 이름/팀은 서버가 로그인 신원으로 귀속하므로 폼에서 입력받지 않음
   const {
     register,
     handleSubmit: handleFormSubmit,
@@ -124,30 +119,11 @@ function WriteTab({
     formState: { errors: formErrors, isSubmitting },
   } = useForm<FeedbackInput>({
     resolver: zodResolver(feedbackSchema),
-    defaultValues: { authorName: '', teamName: '', category: 'improvement', content: '' },
+    defaultValues: { category: 'improvement', content: '' },
     mode: 'onSubmit',
   });
   const category = watch('category');
   const content = watch('content') ?? '';
-
-  // 마운트 시 로그인 정보로 이름/팀 자동 채움 (사용자가 수정 가능)
-  useEffect(() => {
-    let alive = true;
-    // 1) useAuth 의 name 으로 즉시 채움 (빠른 표시)
-    if (user?.name) setValue('authorName', user.name);
-    // 2) 서버 prefill 로 이름/팀 보정 (소속 팀명 포함)
-    void (async () => {
-      const res = await api.get<{ authorName: string; teamName: string }>(
-        '/app/feedback/prefill',
-      );
-      if (!alive || !res.success || !res.data) return;
-      if (res.data.authorName) setValue('authorName', res.data.authorName);
-      if (res.data.teamName) setValue('teamName', res.data.teamName);
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [user?.name, setValue]);
 
   // 마운트 해제 시 blob 미리보기 URL 정리 (메모리 누수 방지)
   useEffect(() => {
@@ -206,8 +182,6 @@ function WriteTab({
   const onSubmit = async (data: FeedbackInput) => {
     setServerError('');
     const res = await api.post('/app/feedback', {
-      authorName: data.authorName,
-      teamName: data.teamName,
       category: data.category,
       content: data.content,
       attachmentFileIds: attachments.map((a) => a.id),
@@ -239,7 +213,7 @@ function WriteTab({
             setIsSubmitted(false);
             attachments.forEach((a) => URL.revokeObjectURL(a.previewUrl));
             setAttachments([]);
-            reset({ authorName: '', teamName: '', category: 'improvement', content: '' });
+            reset({ category: 'improvement', content: '' });
           }}
         >
           {MESSAGES.feedback.newFeedback}
@@ -250,15 +224,9 @@ function WriteTab({
 
   // RHF errors → 단일 inline 메시지로 표출 (UX 동등성)
   const inlineError =
-    formErrors.authorName?.message ??
-    formErrors.teamName?.message ??
     formErrors.content?.message ??
     formErrors.category?.message ??
     serverError;
-
-  // 입력란 공통 클래스
-  const inputCls =
-    'w-full px-4 py-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 text-it-ink-800 dark:text-white text-card-body focus:outline-none focus:ring-2 focus:ring-it-blue-500/30 focus:border-it-blue-500 transition-colors motion-reduce:transition-none';
 
   return (
     <form onSubmit={handleFormSubmit(onSubmit)} className="space-y-6" noValidate>
@@ -270,45 +238,6 @@ function WriteTab({
         <p className="text-card-meta text-it-ink-500 dark:text-wtext-4 leading-relaxed">
           서비스 개선을 위한 여러분의 소중한 의견을 기다리고 있어요.
         </p>
-      </div>
-
-      {/* 이름 / 팀 */}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label
-            htmlFor={nameId}
-            className="block text-card-body font-semibold text-it-ink-800 dark:text-white mb-2"
-          >
-            이름 <span className="text-it-red-500" aria-hidden="true">*</span>
-          </label>
-          <input
-            id={nameId}
-            type="text"
-            {...register('authorName')}
-            placeholder="이름"
-            aria-required="true"
-            aria-invalid={!!formErrors.authorName}
-            className={inputCls}
-            maxLength={40}
-          />
-        </div>
-        <div>
-          <label
-            htmlFor={teamId}
-            className="block text-card-body font-semibold text-it-ink-800 dark:text-white mb-2"
-          >
-            팀
-          </label>
-          <input
-            id={teamId}
-            type="text"
-            {...register('teamName')}
-            placeholder="소속 팀 (선택)"
-            aria-invalid={!!formErrors.teamName}
-            className={inputCls}
-            maxLength={60}
-          />
-        </div>
       </div>
 
       {/* 유형 */}

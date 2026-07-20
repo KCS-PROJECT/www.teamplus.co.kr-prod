@@ -330,26 +330,20 @@ function toNumber(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** 빈 구조 — 응답 실패/빈 데이터 시 반환 (throw 금지) */
-function emptyDirectorPaymentSummary(): DirectorPaymentSummaryResult {
-  return {
-    summary: { totalRevenue: 0, unpaid: 0, pendingSettlement: 0, completedCount: 0, unpaidCount: 0 },
-    teams: [],
-    unpaidMembers: [],
-  };
-}
-
 /**
  * 감독 결제 현황 조회 (`GET /admin/director-payment-summary`)
  *
  * 백엔드 키가 UI 타입과 거의 일치하지만, 안전을 위해 숫자 변환·기본값·유니온 정규화를 수행한다.
- * 실패/빈 데이터 시 throw 하지 않고 빈 구조를 반환하여 화면이 빈 상태 UI 로 안전 렌더되도록 한다.
+ *
+ * ⚠️ 금융 화면 — 실패(403/500/timeout/네트워크)를 정상 0/빈 결과로 위장하지 않는다.
+ * 응답이 실패이거나 data 가 없으면 **throw** 하여, 미수금 탭이 "미수금 없음"과
+ * "불러오지 못함"을 구분해 에러+재시도 UI 로 처리하도록 한다. 성공 시에만 정규화 구조를 반환.
  */
 export async function getDirectorPaymentSummary(): Promise<DirectorPaymentSummaryResult> {
   const res = await api.get<BackendDirectorPaymentSummary>('/admin/director-payment-summary');
 
   if (!res.success || !res.data) {
-    return emptyDirectorPaymentSummary();
+    throw new Error(res.error?.message ?? 'director payment summary load failed');
   }
 
   const raw = res.data;
@@ -414,6 +408,188 @@ export async function sendDirectorUnpaidReminder(
     `/admin/director-payments/unpaid/${memberId}/remind`,
     {},
   );
+}
+
+// ============================================
+// 팀 정산 센터 (team-settlement-center) — 월 인식 훈련/대회 소계
+// ============================================
+
+/** 소계 정산 상태(5-state). 백엔드 SubtotalSettlementStatus 미러. */
+export type SettlementSubtotalStatus =
+  | 'NOT_REQUIRED'
+  | 'NOT_READY'
+  | 'DRAFT'
+  | 'CONFIRMED'
+  | 'PARTIAL_BILLED';
+
+/** 소계 결제 상태. 백엔드 SubtotalPaymentStatus 미러. */
+export type SettlementSubtotalPaymentStatus =
+  | 'NONE'
+  | 'UNPAID_ALL'
+  | 'PARTIAL_PAID'
+  | 'PAID_ALL';
+
+/** 정산 차단 사유 코드(화면 문구는 messages.ts). 백엔드 BlockedReasonCode 미러. */
+export type SettlementBlockedReasonCode =
+  | 'MONTH_NOT_ENDED'
+  | 'NO_ATTENDANCE'
+  | 'UNIT_PRICE_MISSING'
+  | 'TOURNAMENT_NOT_ENDED'
+  | 'BILLING_TIMING_UNASSIGNED'
+  | null;
+
+/** 수업 소계 응답 계약(백엔드 ClassSettlementSummary 미러). */
+export interface ClassSettlementSummary {
+  classId: string;
+  className: string;
+  teamId: string | null;
+  teamName: string | null;
+  billingMode: string;
+  settlementStatus: SettlementSubtotalStatus;
+  paymentStatus: SettlementSubtotalPaymentStatus;
+  total: number;
+  paidCount: number;
+  billedAmount: number;
+  paidAmount: number;
+  outstandingAmount: number;
+  estimatedAmount: number;
+  cancelledCount: number;
+  refundedCount: number;
+  refundedAmount: number;
+  mixedBilling: boolean;
+  prepaidCount: number;
+  postpaidCount: number;
+  unassignedCount: number;
+  blockedReasonCode: SettlementBlockedReasonCode;
+  /** 드릴다운 경로 — "/classes/{id}/students?yearMonth=YYYY-MM". */
+  detailPath: string;
+}
+
+/** 대회 소계 응답 계약(백엔드 TournamentSettlementSummary 미러 — 선불/후불 인원 축 없음). */
+export interface TournamentSettlementSummary {
+  tournamentId: string;
+  tournamentName: string;
+  teamId: string | null;
+  teamName: string | null;
+  billingMode: string;
+  settlementStatus: SettlementSubtotalStatus;
+  paymentStatus: SettlementSubtotalPaymentStatus;
+  total: number;
+  paidCount: number;
+  billedAmount: number;
+  paidAmount: number;
+  outstandingAmount: number;
+  estimatedAmount: number;
+  cancelledCount: number;
+  refundedCount: number;
+  refundedAmount: number;
+  mixedBilling: boolean;
+  blockedReasonCode: SettlementBlockedReasonCode;
+  /** 드릴다운 경로 — "/tournaments/{id}#settlement". */
+  detailPath: string;
+}
+
+/** 미납 요약 — amount=미수금 총액, count=미납 발생 항목(수업/대회) 수. */
+export interface SettlementUnpaidSummary {
+  amount: number;
+  count: number;
+}
+
+/** 팀 정산 센터 소계 응답(백엔드 TeamSettlementSummaryResponse 미러). */
+export interface TeamSettlementSummaryResponse {
+  yearMonth: string;
+  classes: ClassSettlementSummary[];
+  tournaments: TournamentSettlementSummary[];
+  unpaid: SettlementUnpaidSummary;
+}
+
+/** 서비스 반환 별칭 — 페이지/훅에서 결과 타입으로 참조. */
+export type TeamSettlementSummaryResult = TeamSettlementSummaryResponse;
+
+/**
+ * 오픈클래스(academy) 정산 센터 소계 응답(백엔드 AcademySettlementSummaryResponse 미러).
+ * 팀 허브와 달리 대회 축이 없다(오픈클래스 scope) — classes + unpaid 만.
+ */
+export interface AcademySettlementSummaryResponse {
+  yearMonth: string;
+  academyId: string;
+  classes: ClassSettlementSummary[];
+  unpaid: SettlementUnpaidSummary;
+}
+
+/** 서비스 반환 별칭 — 탭 컴포넌트에서 결과 타입으로 참조. */
+export type AcademySettlementSummaryResult = AcademySettlementSummaryResponse;
+
+/**
+ * 팀 정산 센터 소계 조회 (`GET /payments/team-settlement-center/summary`)
+ *
+ * 선택 월 기준으로 훈련(수업)/대회 소계 + 미납 요약을 반환한다.
+ *
+ * ⚠️ 금융 화면 — 실패(403/500/timeout/네트워크)를 정상 0/빈 결과로 위장하지 않는다.
+ * 응답이 실패이거나 data 가 없으면 **throw** 하여, 호출부(페이지)가 "미수금 없음"과
+ * "불러오지 못함"을 구분해 에러+재시도 UI 로 처리하도록 한다.
+ * 성공 시에만 정규화된 구조를 반환한다.
+ */
+export async function getTeamSettlementSummary(params?: {
+  yearMonth?: string;
+  teamId?: string;
+}): Promise<TeamSettlementSummaryResult> {
+  const fallbackYm = params?.yearMonth ?? '';
+  const res = await api.get<TeamSettlementSummaryResponse>(
+    '/payments/team-settlement-center/summary',
+    { params },
+  );
+
+  if (!res.success || !res.data) {
+    throw new Error(res.error?.message ?? 'settlement summary load failed');
+  }
+
+  const raw = res.data;
+  return {
+    yearMonth: raw.yearMonth || fallbackYm,
+    classes: Array.isArray(raw.classes) ? raw.classes : [],
+    tournaments: Array.isArray(raw.tournaments) ? raw.tournaments : [],
+    unpaid: {
+      amount: toNumber(raw.unpaid?.amount),
+      count: toNumber(raw.unpaid?.count),
+    },
+  };
+}
+
+/**
+ * 오픈클래스 정산 센터 소계 조회 (`GET /academies/:academyId/settlement-summary`)
+ *
+ * 선택 월 기준으로 오픈클래스 수업 소계 + 미납 요약을 반환한다(대회 없음).
+ *
+ * ⚠️ 금융 화면 — 실패(403/500/timeout/네트워크)를 정상 0/빈 결과로 위장하지 않는다.
+ * 응답이 실패이거나 data 가 없으면 **throw** 하여, 호출부(정산 탭)가 "미수금 없음"과
+ * "불러오지 못함"을 구분해 에러+재시도 UI 로 처리하도록 한다. 성공 시에만 정규화 구조를 반환.
+ */
+export async function getAcademySettlementSummary(params: {
+  academyId: string;
+  yearMonth?: string;
+}): Promise<AcademySettlementSummaryResult> {
+  const { academyId, yearMonth } = params;
+  const fallbackYm = yearMonth ?? '';
+  const res = await api.get<AcademySettlementSummaryResponse>(
+    `/academies/${academyId}/settlement-summary`,
+    { params: { yearMonth } },
+  );
+
+  if (!res.success || !res.data) {
+    throw new Error(res.error?.message ?? 'academy settlement summary load failed');
+  }
+
+  const raw = res.data;
+  return {
+    yearMonth: raw.yearMonth || fallbackYm,
+    academyId: raw.academyId || academyId,
+    classes: Array.isArray(raw.classes) ? raw.classes : [],
+    unpaid: {
+      amount: toNumber(raw.unpaid?.amount),
+      count: toNumber(raw.unpaid?.count),
+    },
+  };
 }
 
 /**
@@ -495,6 +671,8 @@ const paymentService = {
   getDirectorPaymentSummary,
   getDirectorUnpaidMemberDetail,
   sendDirectorUnpaidReminder,
+  getTeamSettlementSummary,
+  getAcademySettlementSummary,
   getReceipt,
   verifyPaymentCompletion,
   getReceiptDownloadUrl,

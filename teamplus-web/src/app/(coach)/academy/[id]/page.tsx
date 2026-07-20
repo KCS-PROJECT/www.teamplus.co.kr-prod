@@ -11,12 +11,14 @@ import { useNativeUI } from '@/hooks/useNativeUI';
 import { usePageReady } from '@/hooks/usePageReady';
 import { useAcademyDetail } from '@/hooks/useAcademy';
 import { AcademyStudentsTab } from '@/components/academy/AcademyStudentsTab';
+import { AcademySettlementTab } from '@/components/academy/AcademySettlementTab';
 import { api } from '@/services/api-client';
+import { useRouteUser } from '../../route-auth-context';
 import { MESSAGES } from '@/lib/messages';
 import { cn } from '@/lib/utils';
 import { resolveImageSrc } from '@/lib/image-url';
 
-type TabKey = 'overview' | 'students' | 'notice';
+type TabKey = 'overview' | 'students' | 'notice' | 'settlement';
 
 const TABS: { key: TabKey; label: string; icon: string }[] = [
   { key: 'overview', label: '개요', icon: 'info' },
@@ -24,11 +26,23 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
   { key: 'notice', label: '공지', icon: 'campaign' },
 ];
 
+// 정산 탭 — 오픈클래스 감독(academy.director) + admin 만 노출(아래 isManager 게이트).
+const SETTLEMENT_TAB: { key: TabKey; label: string; icon: string } = {
+  key: 'settlement',
+  label: MESSAGES.settlement.tabSettlement,
+  icon: 'account_balance_wallet',
+};
+
 function normalizeTabKey(raw: string | null): TabKey | null {
   if (!raw) return null;
   // backward-compat: 'members' → 'students'
   if (raw === 'members') return 'students';
-  if (raw === 'overview' || raw === 'students' || raw === 'notice') {
+  if (
+    raw === 'overview' ||
+    raw === 'students' ||
+    raw === 'notice' ||
+    raw === 'settlement'
+  ) {
     return raw;
   }
   return null;
@@ -172,7 +186,7 @@ export default function AcademyDetailPage() {
 
   const { academy, isLoading: isDetailLoading } = useAcademyDetail(academyId);
   const { navigate } = useNavigation();
-  const { toast } = useToast();
+  const user = useRouteUser();
 
   const initialTab = normalizeTabKey(searchParams?.get('tab') ?? null) ?? 'overview';
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
@@ -187,12 +201,26 @@ export default function AcademyDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
+  // 정산 탭 매니저 게이트 — 오픈클래스 감독(academy.director) 또는 admin 만.
+  const isManager =
+    !!academy && (academy.director?.id === user?.id || user?.userType === 'admin');
+
+  // 비매니저가 ?tab=settlement 로 진입해도 노출 금지 → overview 로 폴백(렌더 시점 파생 게이트).
+  //  상태가 아닌 파생값으로 게이트해 academy 로딩 완료 후 isManager 확정 시 settlement 승격이
+  //  자연스럽게 반영되도록 한다(deep-link race 방지).
+  const effectiveTab: TabKey =
+    activeTab === 'settlement' && !isManager ? 'overview' : activeTab;
+
+  const visibleTabs = isManager ? [...TABS, SETTLEMENT_TAB] : TABS;
+
   // [수정 2026-05-18 SPEC v3] 'students' 탭일 때는 AcademyStudentsTab 이 자체적으로
   //   usePageReady(검색 모드별 데이터 + layout stable 합성) 호출함. 본 page 의 신호가
   //   먼저 fire 되면 LoadingContext 가 첫 신호로 사이클 종료해 Tab 의 보수적 신호를
   //   덮어쓸 수 있어 LOADING_TIMING_POLICY v16 §11 위반 가능. activeTab='students'
   //   일 때만 page 신호 발화를 보류하고, Tab 에 위임.
-  usePageReady(!isDetailLoading && activeTab !== 'students');
+  usePageReady(
+    !isDetailLoading && effectiveTab !== 'students' && effectiveTab !== 'settlement',
+  );
 
   // 상세 뷰 — SPEC §5 Step D 권고에 따라 isDataLoaded 가드 제거.
   //  fetch 실패 시 status bar 영구 숨김 회귀 방지.
@@ -279,9 +307,14 @@ export default function AcademyDetailPage() {
           role="tablist"
           aria-label="오픈클래스 섹션"
         >
-          <div className="grid grid-cols-3 border-b border-it-line dark:border-it-blue-900">
-            {TABS.map((tab) => {
-              const on = activeTab === tab.key;
+          <div
+            className={cn(
+              'grid border-b border-it-line dark:border-it-blue-900',
+              isManager ? 'grid-cols-4' : 'grid-cols-3',
+            )}
+          >
+            {visibleTabs.map((tab) => {
+              const on = effectiveTab === tab.key;
               return (
                 <button
                   key={tab.key}
@@ -312,7 +345,7 @@ export default function AcademyDetailPage() {
 
         <div className="px-5 py-6">
           {/* ── 개요 탭 ── 팀 정보 탭과 통일: 막대형 섹션 제목 + it-fill 인셋 박스 */}
-          {activeTab === 'overview' && (
+          {effectiveTab === 'overview' && (
             <div className="space-y-6" role="tabpanel">
               {/* 1) 운영 감독 — 개요 탭 최상단. 감독 프로필 사진(User.avatarUrl) 또는 이니셜 + 이름 */}
               {academy.director && (
@@ -438,13 +471,18 @@ export default function AcademyDetailPage() {
           )}
 
           {/* ── 수강생 탭 (Master-Detail Drill-down) ── */}
-          {activeTab === 'students' && academyId && (
+          {effectiveTab === 'students' && academyId && (
             <AcademyStudentsTab academyId={academyId} iceTheme />
           )}
 
           {/* 공지 발송 탭 */}
-          {activeTab === 'notice' && academyId && (
+          {effectiveTab === 'notice' && academyId && (
             <NoticeForm academyId={academyId} />
+          )}
+
+          {/* ── 정산 탭 (오픈클래스 감독/admin 전용) ── */}
+          {effectiveTab === 'settlement' && isManager && academyId && (
+            <AcademySettlementTab academyId={academyId} />
           )}
         </div>
       </main>

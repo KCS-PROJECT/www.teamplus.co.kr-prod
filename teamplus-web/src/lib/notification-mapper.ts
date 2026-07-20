@@ -371,6 +371,12 @@ export function mapBackendNotification(b: BackendNotification): Notification {
   const createdAt = b.createdAt ?? new Date().toISOString();
   const isReadValue = b.isRead ?? b.read ?? false;
 
+  // 피드백 답변 알림은 linkUrl 이 비어도 '내 피드백 내역'으로 연결(과거 알림 소급)
+  const fallbackHref = rawType?.startsWith('feedback')
+    ? '/feedback?tab=history'
+    : undefined;
+  const href = b.linkUrl ?? fallbackHref;
+
   return {
     id: b.id,
     type,
@@ -380,7 +386,7 @@ export function mapBackendNotification(b: BackendNotification): Notification {
     time: formatNotificationTime(createdAt),
     createdAt,
     isRead: isReadValue,
-    data: b.data ?? (b.linkUrl ? { href: b.linkUrl } : undefined),
+    data: b.data ?? (href ? { href } : undefined),
   };
 }
 

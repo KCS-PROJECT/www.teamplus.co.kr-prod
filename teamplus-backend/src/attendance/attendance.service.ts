@@ -1068,6 +1068,13 @@ export class AttendanceService {
         schedule: {
           select: {
             scheduledDate: true,
+            startTime: true,
+            endTime: true,
+            venue: {
+              select: {
+                name: true,
+              },
+            },
             class: {
               select: {
                 id: true,
@@ -1077,9 +1084,12 @@ export class AttendanceService {
           },
         },
       },
-      orderBy: {
-        createdAt: "desc",
-      },
+      // 출석 내역은 수업 실제 일정 날짜 기준 내림차순(같은 날은 시작시각 내림차순).
+      //   createdAt(체크인 기록 생성 시각)은 수업 날짜와 무관해 정렬이 뒤섞였다.
+      orderBy: [
+        { schedule: { scheduledDate: "desc" } },
+        { schedule: { startTime: "desc" } },
+      ],
       take: limit,
     });
 
@@ -1089,6 +1099,10 @@ export class AttendanceService {
       classId: a.schedule.class.id,
       className: a.schedule.class.className,
       scheduledDate: a.schedule.scheduledDate,
+      // 수업 일정의 시작/종료 시각("HH:mm")·장소 — 프론트 타임라인 시간/장소 표시용.
+      startTime: a.schedule.startTime,
+      endTime: a.schedule.endTime,
+      location: a.schedule.venue?.name ?? null,
       attendanceStatus: a.attendanceStatus,
       checkedInAt: a.checkedInAt,
       creditDeducted: a.creditDeducted,

@@ -76,6 +76,32 @@ function toTimelineStatus(status: 'present' | 'absent'): TimelineStatus {
   return status === 'present' ? 'attended' : 'absent';
 }
 
+interface DayGroup {
+  key: string;
+  dayNum: number;
+  dayOfWeek: string;
+  items: AttendanceRecord[];
+}
+
+/** 월 레코드를 '일' 단위로 재그룹 (이미 rawDate desc 정렬 → 같은 날 인접). 날짜는 헤더로 1회 표기. */
+function groupByDay(records: AttendanceRecord[]): DayGroup[] {
+  const groups: DayGroup[] = [];
+  for (const r of records) {
+    const last = groups[groups.length - 1];
+    if (last && last.dayNum === r.dayNumber) {
+      last.items.push(r);
+    } else {
+      groups.push({
+        key: `${r.month}-${r.dayNumber}`,
+        dayNum: r.dayNumber,
+        dayOfWeek: r.dayOfWeek,
+        items: [r],
+      });
+    }
+  }
+  return groups;
+}
+
 /** 슬라이딩 인디케이터 세그먼트 컨트롤 */
 function ChildSegmentControl({
   items,
@@ -181,7 +207,11 @@ export default function AttendanceHistoryPage() {
         `/attendance/member/${selectedChildId}?limit=50`
       );
       if (attRes.success && attRes.data) {
-        const parsed = attRes.data.map(parseRecord);
+        // 수업 일정 날짜 내림차순(최신 우선). 같은 날짜는 백엔드의 시작시각 정렬을
+        //   stable sort 로 보존 → 동일 날짜가 인접해 groupByDay 로 하루 단위 그룹핑 가능.
+        const parsed = attRes.data
+          .map(parseRecord)
+          .sort((a, b) => b.rawDate.getTime() - a.rawDate.getTime());
         setRecords(parsed);
         // ?classId= 가 이 자녀 레코드에 존재하면 그 수업으로, 아니면 전체로 초기화 (자녀 전환 시에도 리셋)
         setSelectedClass(
@@ -292,19 +322,34 @@ export default function AttendanceHistoryPage() {
                   </span>
                 </div>
 
-                {/* TimelineItem 목록 (공유 컴포넌트 — iceTheme 미지원, page-local 래퍼만 it-* 정합) */}
-                <div className="flex flex-col gap-3 px-6 py-4">
-                  {monthRecords.map((record, idx) => (
-                    <TimelineItem
-                      key={record.id}
-                      date={record.rawDate}
-                      dayOfWeek={record.dayOfWeek}
-                      title={record.className}
-                      time={record.time || '-'}
-                      location={record.location || undefined}
-                      status={toTimelineStatus(record.status)}
-                      isLast={idx === monthRecords.length - 1}
-                    />
+                {/* 일자별 그룹 — 날짜 라벨은 아래 카드 묶음에 밀착(간격↓), 그룹간 여백↑ 로 귀속 명확 */}
+                <div className="pb-4">
+                  {groupByDay(monthRecords).map((g) => (
+                    <div key={g.key} className="px-6 pt-6 first:pt-2">
+                      {/* 날짜 라벨(요일 포함) — 구분선 없이 좌측 정렬, 바로 아래 카드에 밀착 */}
+                      <div className="pb-2">
+                        <span className="text-[13px] font-bold text-it-ink-700 dark:text-rink-200 tabular-nums">
+                          {g.dayNum}일{' '}
+                          <span className="font-semibold text-it-ink-400 dark:text-rink-400">
+                            ({g.dayOfWeek})
+                          </span>
+                        </span>
+                      </div>
+                      {/* 카드 목록 — 같은 날 항목은 dot+세로선으로 연결 */}
+                      <div className="flex flex-col gap-3">
+                        {g.items.map((record, idx) => (
+                          <TimelineItem
+                            key={record.id}
+                            title={record.className}
+                            time={record.time || '-'}
+                            location={record.location || undefined}
+                            status={toTimelineStatus(record.status)}
+                            connectUp={idx > 0}
+                            connectDown={idx < g.items.length - 1}
+                          />
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>

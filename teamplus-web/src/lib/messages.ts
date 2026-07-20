@@ -96,9 +96,9 @@ export const MESSAGES = {
     pastSchedulesLockedHint: "지난 일정은 수정하거나 삭제할 수 없습니다.",
     // 요일별 기본 시간·장소(ClassDaySchedule 템플릿) 입력 + 일정 추가 칩 UI 문구.
     dayDefaults: {
-      title: "수업 기본 일정 (요일별)",
+      title: "정규 수업 요일",
       optional: "선택",
-      hint: "이 수업의 정규 요일·시간·장소예요. 일정을 추가할 때 이 기본 일정대로 한 번에 만들 수 있어요.",
+      hint: "이 수업이 진행되는 요일이에요. 수업 정보에 '월·수·금'처럼 표시되고, 아래 '일정 생성'을 누르면 이 요일·시간·장소로 실제 날짜가 만들어져요.",
       startTime: "시작 시간",
       endTime: "종료 시간",
       venueSelect: "장소 선택",
@@ -121,6 +121,24 @@ export const MESSAGES = {
       timeUndecided: "시간 미정",
       dateUndecided: "날짜 미정",
     },
+    // 실제 진행 날짜(dateSchedules) 섹션 — 정규 요일로 만든 회차 목록.
+    scheduleListTitle: "실제 진행 날짜",
+    scheduleListHint:
+      "위 정규 요일로 만든 실제 수업 날짜예요. 빠지거나 바뀐 날짜만 여기서 조정하세요.",
+    // 정규 요일 기반 기간 자동 생성 — 로컬 draft만 갱신(실제 저장은 등록/수정 시).
+    rangeGen: {
+      title: "정규 요일로 날짜 만들기",
+      hint: "위에서 정한 정규 요일로 기간 내 실제 날짜를 한 번에 만들어요. 저장은 등록·수정할 때 반영돼요.",
+      start: "시작일",
+      end: "종료일",
+      generate: "일정 생성",
+      preview: (count: number) => `이 기간에 ${count}개 날짜가 새로 만들어져요.`,
+      rangeInvalid: "종료일이 시작일보다 빠릅니다.",
+      emptyResult: "해당 기간에 새로 만들 날짜가 없습니다.",
+      success: (count: number) => `${count}개 날짜를 만들었어요. 등록·수정할 때 저장됩니다.`,
+    },
+    // ② 목록의 예외 날짜(패턴 외) 직접 추가 — 미니달력 모달 진입 버튼.
+    scheduleAddSingle: "날짜 직접 추가",
     venueSearchPrompt: "장소명 또는 주소를 검색해주세요.",
     policyInfo:
       "수업 등록 시 학부모님들께 알림이 발송됩니다. 대관 시간 15분 전 링크장 도착을 원칙으로 합니다.",
@@ -877,6 +895,78 @@ export const MESSAGES = {
     remindNoParent: "연결된 보호자가 없어 발송하지 못했습니다.",
     remindFailed: "미납 안내 발송에 실패했습니다.",
     unpaidDetailFailed: "미수금 상세 정보를 불러오지 못했습니다.",
+  },
+  // 팀 정산 센터 (/director-payments) — 월 인식 훈련/대회/미수금
+  settlement: {
+    // 탭
+    tabTraining: "훈련",
+    tabTournament: "대회",
+    tabUnpaid: "미수금",
+    tabSettlement: "정산",
+    // Hero 요약
+    heroLabel: "정산 요약",
+    totalCollected: "총 수납",
+    unpaidAmount: "미수금",
+    pendingSettlement: "정산 예정",
+    unpaidCountBadge: (n: number) => `미납 ${n}건`,
+    won: "원",
+    person: "명",
+    // 월 선택
+    monthLabel: (y: number, m: number) => `${y}년 ${m}월`,
+    prevMonth: "이전 달",
+    nextMonth: "다음 달",
+    // 5-state 정산 상태
+    statusNotRequired: "정산 불필요",
+    statusNotReady: "정산 대기",
+    statusDraft: "작성 중",
+    statusConfirmed: "정산 완료",
+    statusPartialBilled: "부분 청구",
+    // 결제방식 인원
+    prepaid: "선불",
+    postpaid: "후불",
+    unassigned: "미설정",
+    mixed: "혼합",
+    // 금액 라벨
+    billed: "청구",
+    paid: "수납",
+    outstanding: "미수",
+    paidRatio: (paid: number, total: number) => `완납 ${paid}/${total}명`,
+    // 예상 배지
+    estimated: "예상",
+    // 차단 사유
+    blockedMonthNotEnded: "이번 달이 끝나면 정산할 수 있어요.",
+    blockedNoAttendance: "출석 내역이 없어 정산할 금액이 없어요.",
+    blockedUnitPriceMissing: "수업 단가가 없어 금액을 계산할 수 없어요.",
+    blockedTournamentNotEnded: "대회가 끝나면 정산할 수 있어요.",
+    blockedBillingTimingUnassigned:
+      "결제 방식이 정해지지 않은 인원이 있어요.",
+    // 미수금 탭 안내
+    unpaidCurrentMonthOnly: "미납 안내는 당월 기준으로 표시됩니다.",
+    // 빈 상태
+    emptyTraining: "해당 월에 정산할 훈련이 없습니다.",
+    emptyTournament: "해당 월에 정산할 대회가 없습니다.",
+    // 접근성 라벨 (하드코딩 금지 — aria-label)
+    ariaCenter: "감독 정산 센터",
+    ariaFilter: "정산 현황 필터",
+    // 로드 실패 / 재시도 (금융 화면 — 실패를 0/빈 결과로 위장 금지)
+    loadFailedTitle: "정산 정보를 불러오지 못했습니다.",
+    loadFailedDesc: "잠시 후 다시 시도해주세요.",
+    monthLoadFailed: "이 달 정산 정보를 불러오지 못했습니다.",
+    monthLoading: "정산 정보를 불러오는 중입니다.",
+    retry: "다시 시도하기",
+    // AppBar 타이틀
+    pageTitle: "결제 관리",
+    appBarTitle: "결제 현황",
+    // 미수금 탭 — 빈 상태 / 로드 실패
+    emptyUnpaid: "미수금이 없습니다.",
+    unpaidLoadFailed: "미수금 정보를 불러오지 못했습니다.",
+    tabErrorMark: "!", // 탭 카운트 실패 대체 표식(실패를 "미수금 0"으로 오표시 금지)
+    // 미수금 카드 — 결제 방식 / 미납액 / 액션
+    billingPrepaid: "선결제",
+    billingPostpaid: "후결제",
+    unpaidLabel: "미납액",
+    sendReminder: "알림 발송",
+    viewDetail: "상세 보기",
   },
   socialLogin: {
     preparing: (provider: string) => `${provider} 로그인은 준비 중입니다.`,
