@@ -265,6 +265,8 @@ class PushNotificationService implements PushNotificationApi {
       // (onTokenRefresh 가 갱신 시에만 발화하는 한계를 보완)
       if (await SecureStorageService().isAuthenticated()) {
         await registerTokenToServer();
+        // [2026-07-20] 콜드 스타트 시 서버 미읽음 기준으로 배지 보정 (fire-and-forget)
+        unawaited(syncBadgeFromServer());
       }
     } else {
       debugPrint(
@@ -431,6 +433,8 @@ class PushNotificationService implements PushNotificationApi {
         return;
       }
       await registerTokenToServer();
+      // [2026-07-20] 로그인 직후 새 계정의 서버 미읽음 기준으로 배지 보정
+      unawaited(syncBadgeFromServer());
     } catch (e) {
       debugPrint('[PushNotification] ensureTokenRegistered 오류: $e');
       _scheduleResumeRetry('ensureTokenRegistered 예외');
@@ -601,6 +605,48 @@ class PushNotificationService implements PushNotificationApi {
   /// 알림센터 진입 · '모두 읽음' 등 사용자가 알림을 확인한 시점에 호출한다.
   @override
   Future<void> clearBadge() => updateBadgeCount(0);
+
+  /// [2026-07-20 배지 미제거 대응] 서버 미읽음 수로 iOS 배지를 동기화하는 안전망.
+  ///
+  /// 배지 하향은 ① 웹 `notification.syncBadge` 브릿지, ② 백엔드 읽음 처리 시
+  /// 무음 badge push(sendBadgeSync) 두 경로가 담당하지만, 둘 다 놓친 경우
+  /// (오프라인 중 읽음, 브릿지 미로드, 21일 경과로 목록에서 사라진 알림 등)를
+  /// 위해 앱 시작·재개(resume) 시 서버 카운트를 직접 조회해 맞춘다.
+  ///
+  /// 서버 `GET /notifications/stats/unread` 는 FCM 뱃지 계산과 동일한
+  /// '표시되는 미읽음' 기준(fcm.service visibleUnreadNotificationWhere)이다.
+  /// 실패는 로그만 — 다음 동기화 기회(푸시 수신·재개)에서 자연 보정된다.
+  Future<void> syncBadgeFromServer() async {
+    if (defaultTargetPlatform != TargetPlatform.iOS) return;
+    try {
+      final secureStorage = SecureStorageService();
+      if (!await secureStorage.isAuthenticated()) return;
+      final accessToken = await secureStorage.getAccessToken();
+      if (accessToken == null || accessToken.isEmpty) return;
+
+      final response = await ApiClient().get(
+        '/notifications/stats/unread',
+        options: Options(
+          headers: {'Authorization': 'Bearer $accessToken'},
+          sendTimeout: const Duration(seconds: 10),
+          receiveTimeout: const Duration(seconds: 10),
+        ),
+      );
+
+      // 응답 래퍼 유무 모두 대응: { unreadCount } 또는 { data: { unreadCount } }
+      final dynamic body = response.data;
+      final dynamic raw = body is Map
+          ? (body['unreadCount'] ??
+              (body['data'] is Map ? body['data']['unreadCount'] : null))
+          : null;
+      if (raw is num) {
+        await updateBadgeCount(raw.toInt());
+        debugPrint('[PushNotification] 서버 기준 배지 동기화: ${raw.toInt()}');
+      }
+    } catch (e) {
+      debugPrint('[PushNotification] 서버 배지 동기화 실패: $e');
+    }
+  }
 
   /// 무음 로컬 알림으로 iOS 배지를 [count] 로 설정(0 → 클리어)하는 내부 헬퍼.
   /// id: -1 슬롯을 재사용해 배지 전용 알림을 띄운 즉시 취소한다 — 배지 값만 잔존.

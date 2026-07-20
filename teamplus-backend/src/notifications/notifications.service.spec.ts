@@ -49,6 +49,8 @@ describe("NotificationsService", () => {
     sendPushNotification: jest
       .fn()
       .mockResolvedValue({ successCount: 0, failureCount: 0, invalidTokens: [] }),
+    // [2026-07-20] 읽음/삭제 시 iOS 뱃지 무음 하향 동기화 (fire-and-forget)
+    sendBadgeSync: jest.fn().mockResolvedValue(undefined),
   };
 
   // 정책 게이트 — 기본은 전원 허용
@@ -473,10 +475,21 @@ describe("NotificationsService", () => {
       const result = await service.getUnreadCount("user-1");
 
       expect(result.unreadCount).toBe(5);
+      // [2026-07-20] iOS 뱃지·웹 목록과 동일한 '표시되는 미읽음' 기준으로 통일 —
+      //   숨김 유형 제외 + 21일 이내 (fcm.service visibleUnreadNotificationWhere SoT).
       expect(prismaService.notification.count).toHaveBeenCalledWith({
         where: {
           userId: "user-1",
           isRead: false,
+          notificationType: {
+            notIn: [
+              "trip_waitlist_promoted",
+              "account_dormant",
+              "rsvp_reminder",
+              "tournament_created",
+            ],
+          },
+          createdAt: { gte: expect.any(Date) },
         },
       });
     });

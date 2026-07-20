@@ -11,6 +11,7 @@ import 'core/security/app_lock_manager.dart';
 import 'core/security/ssl_pinning_service.dart';
 import 'core/constants/app_environment.dart';
 import 'core/navigation/navigator_key.dart';
+import 'core/notification/push_notification_service.dart';
 import 'core/storage/secure_storage_service.dart';
 import 'core/system/app_exit.dart';
 import 'core/websocket/websocket_service.dart';
@@ -234,6 +235,11 @@ class _TeamplusAppState extends ConsumerState<TeamplusApp>
         debugPrint('[teamplusApp] 토큰 없음 — WebSocket 재연결 스킵');
       }
     }
+
+    // [2026-07-20 배지 미제거 대응] 앱 재개 시 서버 미읽음 수로 iOS 앱 아이콘 배지
+    //   보정 — 웹 브릿지/무음 push 동기화를 놓친 잔존 배지를 resume 시점에 정리한다.
+    //   (미인증이면 내부에서 no-op · 실패 격리 — resume 흐름에 영향 없음)
+    unawaited(PushNotificationService().syncBadgeFromServer());
 
     // 생체인증 잠금이 필요한지 확인
     final shouldLock = await appLockManager.shouldShowBiometricLock();

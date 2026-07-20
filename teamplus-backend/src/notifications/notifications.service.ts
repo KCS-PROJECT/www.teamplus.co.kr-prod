@@ -13,15 +13,21 @@ import { Queue } from "bull";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
 import { NotificationQueue } from "./notification.queue";
-import { FcmService, FcmDataPayload } from "./fcm.service";
+import {
+  FcmService,
+  FcmDataPayload,
+  visibleUnreadNotificationWhere,
+} from "./fcm.service";
 import { PushPolicyService } from "./push-policy.service";
 import { buildPushData } from "./push-payload";
 import { ConfigService } from "@nestjs/config";
 import { NotificationsGateway } from "@/websocket/notifications.gateway";
 
-// 🔥 unread-count 캐시 키 (고빈도 — 모든 페이지에서 뱃지 호출)
-const UNREAD_COUNT_CACHE_KEY = (userId: string) => `notif:unread:${userId}`;
-const UNREAD_COUNT_CACHE_TTL = 30; // 30초 — 실시간성과 DB 부담 균형
+// 🔥 unread-count 캐시 키 (고빈도 — 모든 페이지에서 뱃지 호출) — gateway 와 공유
+import {
+  UNREAD_COUNT_CACHE_KEY,
+  UNREAD_COUNT_CACHE_TTL,
+} from "./notification-cache";
 import {
   SendPaymentConfirmationDto,
   SendMembershipApprovalDto,
@@ -423,6 +429,104 @@ export class NotificationsService {
     }
   }
 
+  /**
+   * [2026-07-20 팀공지 수신자 확대] 팀 전체 수신 풀(직접 멤버 ∪ 학부모 ∪ 감독/코치)에게
+   * 일괄 알림 — 팀 공지 등 "팀 구성원 전원" 대상 이벤트용.
+   *
+   * 기존 notifyTeamParents 는 ParentChild 링크가 있는 학부모만 대상이라, 폰을 가진
+   * 선수 본인(TEEN)·감독/코치·링크 미연결 팀은 팀 공지 푸시를 전혀 받지 못했다
+   * (링크 0건이면 조용히 0명 발송). 수신 풀 기준은 수동 팀 Push(sendTeamPush)의
+   * IDOR 검증 풀과 동일하다 (PUSH_NOTIFICATION_GUIDE §2).
+   */
+  async notifyTeamAudience(
+    teamId: string,
+    payload: {
+      notificationType: string;
+      title: string;
+      message: string;
+      linkUrl?: string;
+    },
+    options?: { excludeUserIds?: string[] },
+  ): Promise<void> {
+    try {
+      const [memberRows, parentIds, managerIds] = await Promise.all([
+        this.prisma.teamMember.findMany({
+          where: {
+            teamId,
+            approvalStatus: "approved",
+            leftAt: null,
+            user: { status: { not: "WITHDRAWN" } },
+          },
+          select: { userId: true },
+        }),
+        this.getTeamParentUserIds(teamId),
+        this.getTeamManagerUserIds(teamId),
+      ]);
+      const exclude = new Set(options?.excludeUserIds ?? []);
+      const audience = Array.from(
+        new Set([
+          ...memberRows.map((m) => m.userId),
+          ...parentIds,
+          ...managerIds,
+        ]),
+      ).filter((id) => !!id && !exclude.has(id));
+      if (audience.length === 0) {
+        this.logger.warn(
+          `notifyTeamAudience: 발송 대상 0명 (team=${teamId}) — ` +
+            `승인 멤버/학부모 링크/매니저 구성을 확인하세요.`,
+        );
+        return;
+      }
+      await this.notifyUsers(audience, payload);
+    } catch (error) {
+      this.logger.warn(`notifyTeamAudience 실패: team=${teamId}, ${error}`);
+    }
+  }
+
+  /**
+   * [2026-07-20 시스템 공지 푸시] 전체 활성 앱 사용자에게 일괄 알림+푸시.
+   * 시스템 공지(targetTeamId=null) 생성처럼 "서비스 전체 공지" 이벤트용.
+   * - 대상: 탈퇴/휴면 제외(ACTIVE) + soft-delete 제외 + 앱 로그인 가능 역할만
+   *   (SYSTEM/OPER 어드민 콘솔 계정 제외 — chldiv=ADM)
+   * - 인앱 적재/수신거부 필터/FCM 배치는 notifyUsers 가 처리.
+   */
+  async notifyAllAppUsers(
+    payload: {
+      notificationType: string;
+      title: string;
+      message: string;
+      linkUrl?: string;
+    },
+    options?: { excludeUserIds?: string[] },
+  ): Promise<void> {
+    try {
+      const users = await this.prisma.user.findMany({
+        where: {
+          status: "ACTIVE",
+          deletedAt: null,
+          userType: {
+            in: [
+              "ADMIN",
+              "DIRECTOR",
+              "ACADEMY_DIRECTOR",
+              "COACH",
+              "PARENT",
+              "TEEN",
+              "CHILD",
+            ],
+          },
+        },
+        select: { id: true },
+      });
+      const exclude = new Set(options?.excludeUserIds ?? []);
+      const audience = users.map((u) => u.id).filter((id) => !exclude.has(id));
+      if (audience.length === 0) return;
+      await this.notifyUsers(audience, payload);
+    } catch (error) {
+      this.logger.warn(`notifyAllAppUsers 실패: ${error}`);
+    }
+  }
+
   // ──────────────────────────────────────────────────────────────
   // 코치/감독 팀 Push 발송 (시나리오2)
   // ──────────────────────────────────────────────────────────────
@@ -710,12 +814,79 @@ export class NotificationsService {
 
     // 🔥 unread-count 캐시 무효화
     void this.invalidateUnreadCountCache(updated.userId);
+    // iOS 앱 아이콘 뱃지 하향 동기화 — 읽어도 뱃지가 남던 문제의 서버측 해소.
+    void this.fcmService.sendBadgeSync(updated.userId);
+    // 공지 알림이면 공지 읽음(NoticeRead)도 함께 마킹 — 이중 읽음 시스템 동기화.
+    void this.syncNoticeReadFromLinkUrl(updated.userId, updated.linkUrl);
 
     return {
       id: updated.id,
       isRead: updated.isRead,
       readAt: updated.readAt,
     };
+  }
+
+  /**
+   * [2026-07-20 읽음 동기화 A→B] 알림함 읽음 → 공지 읽음(NoticeRead) 동기화.
+   * linkUrl 이 `/notice/{id}` 인 알림을 읽으면 대응 SystemNotice 의 NoticeRead 를
+   * upsert 한다. 실패는 격리(읽음 처리 본 흐름에 영향 없음).
+   */
+  private async syncNoticeReadFromLinkUrl(
+    userId: string,
+    linkUrl?: string | null,
+  ): Promise<void> {
+    try {
+      const noticeId = this.parseNoticeIdFromLinkUrl(linkUrl);
+      if (!noticeId) return;
+      // FK 보호 — 삭제된 공지의 잔존 알림이면 skip.
+      const exists = await this.prisma.systemNotice.findUnique({
+        where: { id: noticeId },
+        select: { id: true },
+      });
+      if (!exists) return;
+      await this.prisma.noticeRead.upsert({
+        where: { noticeId_userId: { noticeId, userId } },
+        create: { noticeId, userId },
+        update: { readAt: new Date() },
+      });
+    } catch (error) {
+      this.logger.warn(`공지 읽음 동기화 실패 (userId=${userId}): ${error}`);
+    }
+  }
+
+  /** `/notice/{id}` 형태의 linkUrl 에서 noticeId 추출 (그 외 형태는 null). */
+  private parseNoticeIdFromLinkUrl(linkUrl?: string | null): string | null {
+    if (!linkUrl) return null;
+    const match = /^\/notice\/([^/?#]+)$/.exec(linkUrl);
+    return match ? match[1] : null;
+  }
+
+  /**
+   * [2026-07-20 읽음 동기화 B→A] 공지 읽음 → 알림함(Notification) 동기화.
+   * 공지 상세 열람/공지 읽음 처리 시, 같은 공지를 가리키는(linkUrl 일치) 미읽음
+   * 알림 행을 읽음 처리해 벨 카운트·iOS 뱃지가 함께 내려가게 한다.
+   */
+  async markNotificationsReadByLinkUrls(
+    userId: string,
+    linkUrls: string[],
+  ): Promise<number> {
+    if (linkUrls.length === 0) return 0;
+    try {
+      const result = await this.prisma.notification.updateMany({
+        where: { userId, isRead: false, linkUrl: { in: linkUrls } },
+        data: { isRead: true, readAt: new Date() },
+      });
+      if (result.count > 0) {
+        void this.invalidateUnreadCountCache(userId);
+        void this.fcmService.sendBadgeSync(userId);
+      }
+      return result.count;
+    } catch (error) {
+      this.logger.warn(
+        `linkUrl 기반 알림 읽음 동기화 실패 (userId=${userId}): ${error}`,
+      );
+      return 0;
+    }
   }
 
   /**
@@ -741,8 +912,11 @@ export class NotificationsService {
       );
     }
 
+    // [2026-07-20] iOS 뱃지(fcm.service countUnread)·웹 목록(isNotificationVisible)과
+    //   동일한 '표시되는 미읽음' 기준으로 통일 — 숨김 유형·21일 초과 알림이 벨/뱃지
+    //   카운트에 유령으로 남아 클리어되지 않던 문제 해소.
     const count = await this.prisma.notification.count({
-      where: { userId, isRead: false },
+      where: { userId, ...visibleUnreadNotificationWhere() },
     });
 
     try {
@@ -824,6 +998,10 @@ export class NotificationsService {
     });
 
     void this.invalidateUnreadCountCache(notification.userId);
+    // 미읽음 삭제 시 iOS 뱃지도 함께 하향.
+    if (!notification.isRead) {
+      void this.fcmService.sendBadgeSync(notification.userId);
+    }
 
     return { id: notificationId };
   }
@@ -832,6 +1010,17 @@ export class NotificationsService {
    * 내 알림 전체 읽음 처리
    */
   async markAllAsRead(userId: string) {
+    // 공지 알림(linkUrl=/notice/{id})은 읽음 처리 전에 수집 — 공지 읽음(NoticeRead)
+    // 동기화 대상 (이중 읽음 시스템 정합).
+    const noticeLinked = await this.prisma.notification.findMany({
+      where: {
+        userId,
+        isRead: false,
+        linkUrl: { startsWith: "/notice/" },
+      },
+      select: { linkUrl: true },
+    });
+
     const result = await this.prisma.notification.updateMany({
       where: { userId, isRead: false },
       data: { isRead: true, readAt: new Date() },
@@ -839,8 +1028,41 @@ export class NotificationsService {
 
     // 🔥 unread-count 캐시 무효화
     void this.invalidateUnreadCountCache(userId);
+    // iOS 앱 아이콘 뱃지 0 동기화 — '전체 읽음' 후에도 뱃지가 남던 문제 해소.
+    void this.fcmService.sendBadgeSync(userId);
+    // 공지 읽음(NoticeRead) 일괄 동기화 (best-effort, 실패 격리)
+    void this.syncNoticeReadsBulk(userId, noticeLinked);
 
     return { updated: result.count };
+  }
+
+  /** markAllAsRead 보조 — 공지 알림들의 NoticeRead 일괄 upsert (실패 격리). */
+  private async syncNoticeReadsBulk(
+    userId: string,
+    rows: Array<{ linkUrl: string | null }>,
+  ): Promise<void> {
+    try {
+      const noticeIds = Array.from(
+        new Set(
+          rows
+            .map((r) => this.parseNoticeIdFromLinkUrl(r.linkUrl))
+            .filter((id): id is string => !!id),
+        ),
+      );
+      if (noticeIds.length === 0) return;
+      // FK 보호 — 실존 공지만 createMany.
+      const existing = await this.prisma.systemNotice.findMany({
+        where: { id: { in: noticeIds } },
+        select: { id: true },
+      });
+      if (existing.length === 0) return;
+      await this.prisma.noticeRead.createMany({
+        data: existing.map((n) => ({ noticeId: n.id, userId })),
+        skipDuplicates: true,
+      });
+    } catch (error) {
+      this.logger.warn(`공지 읽음 일괄 동기화 실패 (userId=${userId}): ${error}`);
+    }
   }
 
   /**
@@ -852,6 +1074,7 @@ export class NotificationsService {
     });
 
     void this.invalidateUnreadCountCache(userId);
+    void this.fcmService.sendBadgeSync(userId);
 
     return { deleted: result.count };
   }
@@ -872,6 +1095,7 @@ export class NotificationsService {
     });
 
     void this.invalidateUnreadCountCache(userId);
+    void this.fcmService.sendBadgeSync(userId);
 
     return { deleted: result.count, days: clampedDays };
   }

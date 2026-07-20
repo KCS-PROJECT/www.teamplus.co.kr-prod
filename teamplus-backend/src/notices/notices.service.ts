@@ -281,6 +281,12 @@ export class NoticesService {
       update: { readAt: new Date() },
     });
 
+    // [2026-07-20 읽음 동기화 B→A] 이 공지를 가리키는 알림함 미읽음 행도 읽음 처리
+    //   (벨 카운트·iOS 뱃지 동반 하향). 실패는 격리.
+    void this.notificationsService.markNotificationsReadByLinkUrls(userId, [
+      `/notice/${noticeId}`,
+    ]);
+
     return { success: true, noticeId };
   }
 
@@ -333,6 +339,11 @@ export class NoticesService {
       data: unread.map((n) => ({ noticeId: n.id, userId })),
       skipDuplicates: true,
     });
+    // [2026-07-20 읽음 동기화 B→A] 일괄 읽음한 공지들의 알림함 행도 함께 읽음 처리.
+    void this.notificationsService.markNotificationsReadByLinkUrls(
+      userId,
+      unread.map((n) => `/notice/${n.id}`),
+    );
     return { marked: unread.length };
   }
 
@@ -363,6 +374,11 @@ export class NoticesService {
           create: { noticeId, userId },
           update: { readAt: new Date() },
         });
+        // [2026-07-20 읽음 동기화 B→A] 공지 상세 열람 = 대응 알림함 행도 읽음 처리.
+        //   "공지 내용을 읽었는데 알림/뱃지 미읽음이 그대로" 문제의 근본 해소.
+        void this.notificationsService.markNotificationsReadByLinkUrls(userId, [
+          `/notice/${noticeId}`,
+        ]);
       } catch {
         // NoticeRead upsert 실패 시 조회는 계속 진행
       }
@@ -490,14 +506,41 @@ export class NoticesService {
     // [2026-05-14] 공지 생성 → 공개 목록 캐시 무효화
     await this.invalidateNoticesListCache();
 
-    // 팀 지정 공지면 해당 팀 소속 학생의 학부모에게 푸시 (실패는 공지 저장에 영향 없음)
+    // 게시 상태(공개 + 게시 시작 시각 도래)에서만 생성 시점 푸시.
+    //   - isActive=false(임시저장) 또는 startAt 미래(예약 공지)는 발송하지 않는다.
+    //     (예약 공지의 도래 시점 발송은 미지원 — 게시 시각에 맞춰 생성할 것)
+    const isPushablePublication =
+      notice.isActive && (!notice.startAt || notice.startAt <= new Date());
+
     if (resolvedTeamId) {
-      void this.notificationsService.notifyTeamParents(resolvedTeamId, {
-        notificationType: "team_notice_created",
-        title: "팀 공지",
-        message: notice.title,
-        linkUrl: `/notice/${notice.id}`,
-      });
+      // [2026-07-20 수신자 확대] 팀 공지 → 팀 전체 풀(멤버 ∪ 학부모 ∪ 감독/코치).
+      //   기존 notifyTeamParents(학부모 한정)는 선수 본인·코치가 푸시를 못 받고,
+      //   ParentChild 링크 0건 팀은 조용히 미발송되던 원인 — 작성자 본인만 제외.
+      if (isPushablePublication) {
+        void this.notificationsService.notifyTeamAudience(
+          resolvedTeamId,
+          {
+            notificationType: "team_notice_created",
+            title: "팀 공지",
+            message: notice.title,
+            linkUrl: `/notice/${notice.id}`,
+          },
+          { excludeUserIds: [userId] },
+        );
+      }
+    } else if (isPushablePublication) {
+      // [2026-07-20 신규] 시스템/서비스 공지(targetTeamId=null) → 전체 활성 사용자 푸시.
+      //   기존에는 `if (resolvedTeamId)` 가드에 막혀 시스템 공지가 인앱 알림·FCM 을
+      //   전혀 발송하지 않았다("시스템 공지 push 미수신"의 근본 원인).
+      void this.notificationsService.notifyAllAppUsers(
+        {
+          notificationType: "system_notice_created",
+          title: notice.targetType === "maintenance" ? "시스템 점검 안내" : "공지사항",
+          message: notice.title,
+          linkUrl: `/notice/${notice.id}`,
+        },
+        { excludeUserIds: [userId] },
+      );
     }
 
     return this.mapNotice(notice);

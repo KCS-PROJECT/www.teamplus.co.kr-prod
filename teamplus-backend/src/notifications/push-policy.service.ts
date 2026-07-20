@@ -61,6 +61,7 @@ export function categoryOfNotificationType(
     t.startsWith("club_") ||
     t === "academy_notice" ||
     t.startsWith("team_notice") ||
+    t.startsWith("system_notice") || // [2026-07-20] 시스템 공지 생성 푸시 — '공지' 토글 대상
     t === "notice" ||
     t.startsWith("notice_") ||
     t.startsWith("tournament") ||
