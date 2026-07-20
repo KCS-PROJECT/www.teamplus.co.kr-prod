@@ -26,19 +26,13 @@ const PERIOD_LABEL: Record<PeriodFilter, string> = {
 const GlobalMenu = dynamic(() => import('@/components/layout/GlobalMenu').then(mod => ({ default: mod.GlobalMenu })), { ssr: false });
 import {
   getPaymentHistory,
-  getUsageHistory,
   groupPaymentsByMonth,
-  groupUsagesByMonth,
 } from '@/services/payment';
 import { usePageReady } from '@/hooks/usePageReady';
 import type {
   PaymentHistoryItem,
-  UsageHistoryItem,
   GroupedPaymentHistory,
-  GroupedUsageHistory,
 } from '@/types/payment';
-
-type TabType = 'payment' | 'usage';
 
 /** "YYYY.MM.DD" → Date (월 1일 기준, 시각 0) */
 function parseYmd(date: string): Date | null {
@@ -97,80 +91,22 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   );
 }
 
-function EmptyState({ type, filtered }: { type: 'payment' | 'usage'; filtered?: boolean }) {
+function EmptyState({ filtered }: { filtered?: boolean }) {
   return (
     <div className="bg-it-surface dark:bg-rink-800 flex flex-col items-center justify-center py-16 px-6 text-center">
       <div className="flex size-14 items-center justify-center rounded-w-pill bg-it-fill dark:bg-rink-700 mb-3">
         <Icon
-          name={type === 'payment' ? 'receipt_long' : 'history'}
+          name="receipt_long"
           className="text-it-ink-400 dark:text-wtext-3 text-[28px]"
         />
       </div>
       <h2 className="text-card-section text-it-ink-900 dark:text-white mb-2">
-        {filtered
-          ? '해당 기간 내역이 없습니다'
-          : type === 'payment'
-            ? '결제 내역이 없습니다'
-            : '사용 내역이 없습니다'}
+        {filtered ? '해당 기간 내역이 없습니다' : '결제 내역이 없습니다'}
       </h2>
       <p className="text-card-body text-it-ink-500 dark:text-rink-300">
-        {filtered
-          ? '다른 기간을 선택해보세요.'
-          : type === 'payment'
-            ? '아직 결제 내역이 없어요. 결제권을 충전해보세요!'
-            : '아직 사용 내역이 없어요. 수업에 출석해보세요!'}
+        {filtered ? '다른 기간을 선택해보세요.' : MESSAGES.payment2.emptyDesc}
       </p>
     </div>
-  );
-}
-
-function TabNavigation({
-  activeTab,
-  onTabChange,
-}: {
-  activeTab: TabType;
-  onTabChange: (tab: TabType) => void;
-}) {
-  // [ICETIMES SegmentedTabs 1:1] full-width 흰 세그먼트 + blue 밑줄 (pill 토글 제거).
-  return (
-    <section className="sticky top-0 z-40" aria-label="내역 탭">
-      <div
-        className="flex border-b border-it-line bg-it-surface dark:border-rink-700 dark:bg-rink-800"
-        role="tablist"
-        aria-label="결제/사용 내역"
-      >
-        {([
-          { key: 'payment' as const, label: '결제 내역' },
-          { key: 'usage' as const, label: '사용 내역' },
-        ]).map((t) => {
-          const active = activeTab === t.key;
-          return (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => onTabChange(t.key)}
-              role="tab"
-              aria-selected={active}
-              className={cn(
-                'relative flex-1 min-h-[48px] px-1 pb-[13px] pt-[14px] text-[15px] tracking-[-0.01em] transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-it-blue-500/40',
-                active
-                  ? 'font-extrabold text-it-blue-600 dark:text-it-blue-300'
-                  : 'font-semibold text-it-ink-500 dark:text-wtext-3',
-              )}
-            >
-              {t.label}
-              <span
-                aria-hidden="true"
-                className={cn(
-                  'absolute inset-x-0 -bottom-px h-[2.5px] rounded-[2px]',
-                  active ? 'bg-it-blue-500' : 'bg-transparent',
-                )}
-              />
-            </button>
-          );
-        })}
-      </div>
-    </section>
   );
 }
 
@@ -191,55 +127,23 @@ interface PaymentSummary {
   cancelledCount: number;
   totalAmount: number;
 }
-interface UsageSummary {
-  count: number;
-  attended: number;
-  absent: number;
-  cancelled: number;
-  creditsUsed: number;
-}
 
-/** 활성 탭 기준 기간 요약 카드 — 결제: 총 결제 금액 / 사용: 사용한 결제권 */
-function SummaryCard({
-  activeTab,
-  payment,
-  usage,
-}: {
-  activeTab: TabType;
-  payment: PaymentSummary;
-  usage: UsageSummary;
-}) {
-  const isPayment = activeTab === 'payment';
+/** 기간 요약 카드 — 총 결제 금액 + 완료/취소 건수 */
+function SummaryCard({ payment }: { payment: PaymentSummary }) {
   return (
     <section className="bg-it-blue-800 dark:bg-it-blue-950 px-5 pt-[22px] pb-6">
       <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-white/60">
-        <Icon name={isPayment ? 'payments' : 'confirmation_number'} className="text-[14px]" aria-hidden="true" />
-        {isPayment ? '기간 내 총 결제 금액' : '기간 내 사용한 결제권'}
+        <Icon name="payments" className="text-[14px]" aria-hidden="true" />
+        기간 내 총 결제 금액
       </div>
       <p className="mt-2 truncate whitespace-nowrap text-[38px] font-extrabold leading-[1.05] tracking-[-0.02em] tabular-nums text-white">
-        {isPayment
-          ? `${payment.totalAmount.toLocaleString()}원`
-          : `${usage.creditsUsed}회`}
+        {`${payment.totalAmount.toLocaleString()}원`}
       </p>
 
       <div className="mt-[18px] flex items-center gap-x-4 overflow-x-auto border-t border-white/[0.14] pt-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {isPayment ? (
-          <>
-            <SummaryStat dot="bg-mint" label="결제 완료" value={`${payment.completedCount}건`} />
-            {payment.cancelledCount > 0 && (
-              <SummaryStat dot="bg-it-red-500" label="결제 취소" value={`${payment.cancelledCount}건`} />
-            )}
-          </>
-        ) : (
-          <>
-            <SummaryStat dot="bg-mint" label="출석" value={`${usage.attended}회`} />
-            {usage.absent > 0 && (
-              <SummaryStat dot="bg-it-red-500" label="결석" value={`${usage.absent}회`} />
-            )}
-            {usage.cancelled > 0 && (
-              <SummaryStat dot="bg-white/40" label="수업 취소" value={`${usage.cancelled}회`} />
-            )}
-          </>
+        <SummaryStat dot="bg-mint" label="결제 완료" value={`${payment.completedCount}건`} />
+        {payment.cancelledCount > 0 && (
+          <SummaryStat dot="bg-it-red-500" label="결제 취소" value={`${payment.cancelledCount}건`} />
         )}
       </div>
     </section>
@@ -377,71 +281,6 @@ function PaymentHistoryCard({
   );
 }
 
-function UsageHistoryCard({ item }: { item: UsageHistoryItem }) {
-  const isCancelled = item.status === 'cancelled';
-
-  const getStatusText = () => {
-    if (item.status === 'attended') return '출석';
-    if (item.status === 'absent') return '결석';
-    return '수업 취소';
-  };
-
-  const getStatusColor = () => {
-    if (item.status === 'attended') return 'bg-mint';
-    if (item.status === 'absent') return 'bg-it-red-500';
-    return 'bg-it-ink-300';
-  };
-
-  return (
-    <div
-      className={cn(
-        'flex flex-col gap-3 border-b border-it-line dark:border-rink-700 py-3.5 last:border-b-0',
-        isCancelled && 'opacity-70'
-      )}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 gap-3">
-          <div className="flex size-11 shrink-0 items-center justify-center rounded-w-md bg-it-fill dark:bg-rink-700 text-it-ink-500 dark:text-rink-200">
-            <Icon name="school" className="text-[22px]" />
-          </div>
-          <div className="flex min-w-0 flex-col justify-center gap-0.5">
-            <h4 className="truncate text-[15px] font-bold text-it-ink-900 dark:text-white leading-tight">
-              {item.className}
-            </h4>
-            <span className="truncate whitespace-nowrap text-[12.5px] text-it-ink-500 dark:text-rink-300 tabular-nums">
-              {item.date} {'·'} {item.time}
-            </span>
-          </div>
-        </div>
-        <div className="shrink-0 text-right">
-          <p className="text-[15px] font-extrabold tabular-nums text-it-blue-600 dark:text-it-blue-300">
-            {isCancelled ? '0회' : `-${item.creditsUsed}회`}
-          </p>
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <span className={cn('flex h-2 w-2 rounded-w-pill', getStatusColor())} />
-          <span
-            className={cn(
-              'text-card-meta font-semibold',
-              item.status === 'attended' && 'text-success',
-              item.status === 'absent' && 'text-it-red-500',
-              item.status === 'cancelled' && 'text-it-ink-500'
-            )}
-          >
-            {getStatusText()}
-          </span>
-        </div>
-        {isCancelled && (
-          <span className="text-card-meta text-it-ink-400">결제권 복구됨</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function MonthGroupHeader({ month }: { month: string; count?: number }) {
   // [ICETIMES] 월 헤더 — fs12.5/800/faint (총N건 pill 제거)
   return (
@@ -479,7 +318,7 @@ function PaymentHistoryList({
   const entries = Object.entries(groupedPayments);
 
   if (entries.length === 0) {
-    return <EmptyState type="payment" filtered={isFiltered} />;
+    return <EmptyState filtered={isFiltered} />;
   }
 
   return (
@@ -511,57 +350,6 @@ function PaymentHistoryList({
   );
 }
 
-function UsageHistoryList({
-  groupedUsages,
-  isLoading,
-  error,
-  isFiltered,
-  onRetry,
-}: {
-  groupedUsages: GroupedUsageHistory;
-  isLoading: boolean;
-  error: string | null;
-  isFiltered: boolean;
-  onRetry: () => void;
-}) {
-  if (isLoading) {
-    return <LoadingState />;
-  }
-
-  if (error) {
-    return <ErrorState message={error} onRetry={onRetry} />;
-  }
-
-  const entries = Object.entries(groupedUsages);
-
-  if (entries.length === 0) {
-    return <EmptyState type="usage" filtered={isFiltered} />;
-  }
-
-  return (
-    <main className="flex flex-col gap-2 py-2">
-      {entries.map(([month, items]) => (
-        <section key={month} className="bg-it-surface dark:bg-rink-800 px-4 pt-3.5 pb-1.5">
-          <MonthGroupHeader month={month} />
-
-          {items.map((item) => (
-            <UsageHistoryCard key={item.id} item={item} />
-          ))}
-        </section>
-      ))}
-
-      {/* Footer Note */}
-      <div className="mt-2 px-4 text-center">
-        <p className="text-w-caption leading-relaxed text-it-ink-400 dark:text-rink-300">
-          사용 내역은 최근 1년까지 조회 가능합니다.
-          <br />
-          수업 취소 시 결제권이 자동으로 복구됩니다.
-        </p>
-      </div>
-    </main>
-  );
-}
-
 export default function PaymentHistoryPage() {
   // [appbar-harness-v2] Status bar + Native AppBar 명시 (v2 회귀 차단).
   //   - PageAppBar 가 Web DOM 헤더를 그리는 동안 Flutter 측은 native AppBar 로 동일 영역 채움.
@@ -576,7 +364,6 @@ export default function PaymentHistoryPage() {
   });
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabType>('payment');
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('all');
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
 
@@ -585,13 +372,8 @@ export default function PaymentHistoryPage() {
   const [isPaymentLoading, setIsPaymentLoading] = useState(true);
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
-  // Usage history state
-  const [usages, setUsages] = useState<UsageHistoryItem[]>([]);
-  const [isUsageLoading, setIsUsageLoading] = useState(true);
-  const [usageError, setUsageError] = useState<string | null>(null);
-
-  // v16 — 활성 탭의 데이터 로드 완료 시 풀스크린 로더 hide 신호
-  usePageReady(activeTab === 'payment' ? !isPaymentLoading : !isUsageLoading);
+  // v16 — 데이터 로드 완료 시 풀스크린 로더 hide 신호
+  usePageReady(!isPaymentLoading);
 
   // [추가 2026-05-13] 결제취소 처리
   const [cancellingId, setCancellingId] = useState<string | null>(null);
@@ -606,14 +388,6 @@ export default function PaymentHistoryPage() {
   const groupedPayments = useMemo(
     () => groupPaymentsByMonth(filteredPayments),
     [filteredPayments],
-  );
-  const filteredUsages = useMemo(
-    () => filterByPeriod(usages, periodFilter),
-    [usages, periodFilter],
-  );
-  const groupedUsages = useMemo(
-    () => groupUsagesByMonth(filteredUsages),
-    [filteredUsages],
   );
 
   // ── 요약 통계 (기간 필터 반영) ──────────────────────────────────
@@ -632,20 +406,6 @@ export default function PaymentHistoryPage() {
     return { count: filteredPayments.length, completedCount, cancelledCount, totalAmount };
   }, [filteredPayments]);
 
-  const usageSummary = useMemo<UsageSummary>(() => {
-    let attended = 0;
-    let absent = 0;
-    let cancelled = 0;
-    let creditsUsed = 0;
-    for (const u of filteredUsages) {
-      if (u.status === 'attended') attended += 1;
-      else if (u.status === 'absent') absent += 1;
-      else cancelled += 1;
-      if (u.status !== 'cancelled') creditsUsed += u.creditsUsed;
-    }
-    return { count: filteredUsages.length, attended, absent, cancelled, creditsUsed };
-  }, [filteredUsages]);
-
   const fetchPaymentHistory = async () => {
     setIsPaymentLoading(true);
     setPaymentError(null);
@@ -661,28 +421,12 @@ export default function PaymentHistoryPage() {
     setIsPaymentLoading(false);
   };
 
-  const fetchUsageHistory = async () => {
-    setIsUsageLoading(true);
-    setUsageError(null);
-
-    const response = await getUsageHistory();
-
-    if (response.success && response.data) {
-      setUsages(response.data.usages ?? []);
-    } else {
-      setUsageError(response.error?.message || MESSAGES.payment2.usageLoadError);
-    }
-
-    setIsUsageLoading(false);
-  };
-
   useEffect(() => {
     fetchPaymentHistory();
-    fetchUsageHistory();
   }, []);
 
   /** [추가 2026-05-13] 결제취소 — 토스/KG 분기는 backend PaymentRefundService 가 처리.
-   *  성공 시 결제 내역 + 결제권 잔액 동시 재조회 (refund 시 결제권 복원되므로).
+   *  성공 시 결제 내역 재조회.
    */
   const handleCancelPayment = async (paymentId: string, productName: string) => {
     const ok = await modal.confirm({
@@ -702,7 +446,7 @@ export default function PaymentHistoryPage() {
         return;
       }
       toast.success(MESSAGES.payment2.cancelSuccess);
-      await Promise.all([fetchPaymentHistory(), fetchUsageHistory()]);
+      await fetchPaymentHistory();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : MESSAGES.payment2.cancelFailed);
     } finally {
@@ -710,12 +454,8 @@ export default function PaymentHistoryPage() {
     }
   };
 
-  // 활성 탭 기준 상태 (필터 바 / 요약 카드 노출 제어)
-  const isActiveLoading = activeTab === 'payment' ? isPaymentLoading : isUsageLoading;
-  const activeError = activeTab === 'payment' ? paymentError : usageError;
-  const activeCount = activeTab === 'payment' ? paymentSummary.count : usageSummary.count;
   const isFiltered = periodFilter !== 'all';
-  const showSummary = !isActiveLoading && !activeError && activeCount > 0;
+  const showSummary = !isPaymentLoading && !paymentError && paymentSummary.count > 0;
 
   return (
     <MobileContainer hasBottomNav={false}>
@@ -729,13 +469,10 @@ export default function PaymentHistoryPage() {
       {/* 스크롤 영역 — MobileContainer 직계 자식(overflow-y-auto)만 momentum 스크롤 대상.
           PageAppBar 는 영역 밖(고정 헤더)에 유지하고, 본문 전체를 이 컨테이너가 스크롤. */}
       <div className="flex-1 min-h-0 overflow-y-auto bg-it-canvas dark:bg-puck [&>*]:shrink-0">
-        {/* Tabs Navigation — 스크롤 영역 상단 sticky */}
-        <TabNavigation activeTab={activeTab} onTabChange={setActiveTab} />
-
         {/* Filter Bar — 조회 건수 + 기간 선택 칩 (항상 노출, 빈 결과에서도 기간 변경 가능) */}
         <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-2">
           <span className="shrink-0 whitespace-nowrap text-card-meta text-it-ink-500 dark:text-rink-300 tabular-nums">
-            {isActiveLoading || activeError ? PERIOD_LABEL[periodFilter] : `${activeCount}건 조회`}
+            {isPaymentLoading || paymentError ? PERIOD_LABEL[periodFilter] : `${paymentSummary.count}건 조회`}
           </span>
           <button
             type="button"
@@ -749,34 +486,24 @@ export default function PaymentHistoryPage() {
           </button>
         </div>
 
-        {/* Summary Card — 기간 내 결제 금액 / 사용 결제권 요약 (navy 히어로, 8px 갭) */}
+        {/* Summary Card — 기간 내 총 결제 금액 요약 (navy 히어로) */}
         {showSummary && (
           <div className="mt-2">
-            <SummaryCard activeTab={activeTab} payment={paymentSummary} usage={usageSummary} />
+            <SummaryCard payment={paymentSummary} />
           </div>
         )}
 
         {/* History List — hasBottomNav=false 이므로 safe-area-inset-bottom 반영 유틸로 하단 여백 처리 */}
         <div className="pb-safe-8">
-          {activeTab === 'payment' ? (
-            <PaymentHistoryList
-              groupedPayments={groupedPayments}
-              isLoading={isPaymentLoading}
-              error={paymentError}
-              isFiltered={isFiltered}
-              onRetry={fetchPaymentHistory}
-              onCancel={handleCancelPayment}
-              cancellingId={cancellingId}
-            />
-          ) : (
-            <UsageHistoryList
-              groupedUsages={groupedUsages}
-              isLoading={isUsageLoading}
-              error={usageError}
-              isFiltered={isFiltered}
-              onRetry={fetchUsageHistory}
-            />
-          )}
+          <PaymentHistoryList
+            groupedPayments={groupedPayments}
+            isLoading={isPaymentLoading}
+            error={paymentError}
+            isFiltered={isFiltered}
+            onRetry={fetchPaymentHistory}
+            onCancel={handleCancelPayment}
+            cancellingId={cancellingId}
+          />
         </div>
       </div>
 

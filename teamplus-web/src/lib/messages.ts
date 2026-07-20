@@ -803,6 +803,7 @@ export const MESSAGES = {
     cancelFailed:
       "결제 취소에 실패했어요. 잠시 후 다시 시도해주세요.",
     cancelSuccess: "결제가 취소되었습니다.",
+    emptyDesc: "아직 결제 내역이 없어요.",
   },
   notification: {
     settingsReset: "알림 설정을 초기화하시겠습니까?",

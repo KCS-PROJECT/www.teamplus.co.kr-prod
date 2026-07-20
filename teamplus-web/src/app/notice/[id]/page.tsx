@@ -16,6 +16,7 @@ import { useSessionAuth } from '@/hooks/useSessionAuth';
 import { useToast } from '@/components/ui/Toast';
 import { useModal } from '@/components/ui/Modal';
 import { emitRefresh, REFRESH_KEYS } from '@/lib/refresh-bus';
+import { useNotificationContext } from '@/contexts/NotificationContext';
 
 import { usePageReady } from '@/hooks/usePageReady';
 const GlobalMenu = dynamic(() => import('@/components/layout/GlobalMenu').then(mod => ({ default: mod.GlobalMenu })), { ssr: false });
@@ -134,6 +135,9 @@ export default function NoticeDetailPage() {
   //   팀 공지는 감독(DIRECTOR)만 수정/삭제 가능.
   const { navigate, back } = useNavigation();
   const { toast } = useToast();
+  // [2026-07-20 읽음 동기화] 공지 열람(GET /notices/:id)이 백엔드에서 대응 알림함
+  //   행까지 읽음 처리하므로, 벨 미읽음·앱 아이콘 배지를 즉시 재조회로 반영한다.
+  const { refresh: refreshBellNotifications } = useNotificationContext();
   const { modal } = useModal();
   const noticeRole = (user?.userType ?? '').toUpperCase();
   const isDirector = noticeRole === 'DIRECTOR';
@@ -199,6 +203,8 @@ export default function NoticeDetailPage() {
           isPinned: d.isPinned,
           targetTeamId: d.targetTeamId ?? null,
         });
+        // 열람 = 읽음(백엔드 NoticeRead + 알림함 동기화 완료) → 벨/앱 배지 갱신
+        void refreshBellNotifications();
       } else {
         setHasError(true);
       }
@@ -207,7 +213,7 @@ export default function NoticeDetailPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [noticeId]);
+  }, [noticeId, refreshBellNotifications]);
 
   useEffect(() => {
     void loadNotice();

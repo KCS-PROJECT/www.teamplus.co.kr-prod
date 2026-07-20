@@ -197,6 +197,11 @@ const displayLocationOptions = [
   { value: 'web_dashboard', label: '웹 대시보드', description: '관리자 대시보드' },
 ];
 
+// 표시 위치(displayLocations)는 저장·응답되지만 웹/앱에 이 값으로 노출하는 소비단이 아직 없어
+// 운영자 오해를 막기 위해 관리 UI(입력 체크박스·목록 필터·배지)를 숨긴다. 저장/타입/배관은 그대로 보존하며,
+// 팝업 등 위치 소비단 구현 시 이 플래그만 true 로 되돌리면 UI가 그대로 복원된다.
+const SHOW_DISPLAY_LOCATIONS = false;
+
 const EMPTY_FORM = {
   type: 'notice' as 'notice' | 'maintenance',
   title: '',
@@ -269,6 +274,8 @@ export default function NoticeManagementPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newNotice, setNewNotice] = useState({ ...EMPTY_FORM });
   const [actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  // 폼 내부(등록/수정) 검증·서버 오류 — 등록 버튼 옆에 표시하며 자동 소멸하지 않음(값을 고치거나 재제출 전까지 유지)
+  const [formError, setFormError] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ id: string; action: string } | null>(null);
 
   const loadNotices = useCallback(async () => {
@@ -305,10 +312,10 @@ export default function NoticeManagementPage() {
   };
 
   const handleCreate = async () => {
+    setFormError(null);
     const validationError = validateNoticeForm(newNotice);
     if (validationError) {
-      setActionMsg({ type: 'error', text: validationError });
-      setTimeout(() => setActionMsg(null), 4000);
+      setFormError(validationError);
       return;
     }
     setIsSaving(true);
@@ -333,14 +340,14 @@ export default function NoticeManagementPage() {
       await loadNotices();
     } catch (error) {
       console.error('[NoticeManagementPage] 공지사항 등록 실패:', error);
-      setActionMsg({ type: 'error', text: extractServerErrorMessage(error, MESSAGES.adminNotice.createError) });
-      setTimeout(() => setActionMsg(null), 4000);
+      setFormError(extractServerErrorMessage(error, MESSAGES.adminNotice.createError));
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleEditStart = (notice: Notice) => {
+    setFormError(null);
     setEditingId(notice.id);
     setNewNotice({
       type: notice.type,
@@ -357,10 +364,10 @@ export default function NoticeManagementPage() {
 
   const handleUpdate = async () => {
     if (!editingId) return;
+    setFormError(null);
     const validationError = validateNoticeForm(newNotice);
     if (validationError) {
-      setActionMsg({ type: 'error', text: validationError });
-      setTimeout(() => setActionMsg(null), 4000);
+      setFormError(validationError);
       return;
     }
     setIsSaving(true);
@@ -386,8 +393,7 @@ export default function NoticeManagementPage() {
       await loadNotices();
     } catch (error) {
       console.error('[NoticeManagementPage] 공지사항 수정 실패:', error);
-      setActionMsg({ type: 'error', text: extractServerErrorMessage(error, MESSAGES.adminNotice.updateError) });
-      setTimeout(() => setActionMsg(null), 4000);
+      setFormError(extractServerErrorMessage(error, MESSAGES.adminNotice.updateError));
     } finally {
       setIsSaving(false);
     }
@@ -408,6 +414,7 @@ export default function NoticeManagementPage() {
     setShowAddModal(false);
     setEditingId(null);
     setNewNotice({ ...EMPTY_FORM });
+    setFormError(null);
   };
 
   const getLocationBadges = (locations: string[]) => {
@@ -575,7 +582,8 @@ export default function NoticeManagementPage() {
               </p>
             </div>
 
-            {/* 표시 위치 선택 - 체크박스 그룹 */}
+            {/* 표시 위치 선택 - 체크박스 그룹 (소비단 미구현 → SHOW_DISPLAY_LOCATIONS 로 숨김) */}
+            {SHOW_DISPLAY_LOCATIONS && (
             <div className="space-y-3">
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">표시 위치 선택</label>
               <p className="text-xs text-slate-500 dark:text-slate-400">공지사항이 표시될 위치를 선택하세요 (복수 선택 가능)</p>
@@ -603,6 +611,7 @@ export default function NoticeManagementPage() {
                 ))}
               </div>
             </div>
+            )}
 
             {/* 기간 설정 — 점검 공지는 분 단위(datetime-local), 일반 공지는 날짜만 */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -664,6 +673,13 @@ export default function NoticeManagementPage() {
               </div>
             </label>
 
+            {/* 등록 버튼 옆(위) 오류 — 스크롤 위치와 무관하게 보이며, 값을 고치거나 재제출 전까지 유지 */}
+            {formError && (
+              <div role="alert" className="p-3 rounded-lg text-sm bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400">
+                {formError}
+              </div>
+            )}
+
             {/* 버튼 */}
             <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
               <Button type="button" variant="outline" onClick={handleCloseModal} disabled={isSaving} className="h-12 px-5 text-base font-bold dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700">
@@ -700,7 +716,7 @@ export default function NoticeManagementPage() {
               </div>
               <Button
                 type="button"
-                onClick={() => setShowAddModal(true)}
+                onClick={() => { setFormError(null); setShowAddModal(true); }}
                 className="bg-primary hover:bg-primary-dark gap-2 h-9 px-4 text-sm"
               >
                 <Plus className="w-4 h-4" aria-hidden="true" />
@@ -734,6 +750,8 @@ export default function NoticeManagementPage() {
               ))}
             </div>
 
+            {SHOW_DISPLAY_LOCATIONS && (
+            <>
             <div className="hidden sm:block w-px h-5 bg-slate-200 dark:bg-slate-600" />
 
             {/* 표시 위치 필터 */}
@@ -765,6 +783,8 @@ export default function NoticeManagementPage() {
                 </button>
               ))}
             </div>
+            </>
+            )}
           </div>
         </div>
 
@@ -801,7 +821,8 @@ export default function NoticeManagementPage() {
 
                     <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 line-clamp-1">{notice.content}</p>
 
-                    {/* 표시 위치 배지 */}
+                    {/* 표시 위치 배지 (SHOW_DISPLAY_LOCATIONS 로 숨김) */}
+                    {SHOW_DISPLAY_LOCATIONS && (
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       {getLocationBadges(notice.displayLocations).map((label, idx) => (
                         <span
@@ -812,6 +833,7 @@ export default function NoticeManagementPage() {
                         </span>
                       ))}
                     </div>
+                    )}
 
                     {/* 메타 정보 */}
                     <div className="flex items-center gap-4 mt-3 text-sm text-slate-500 dark:text-slate-400">

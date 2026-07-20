@@ -19,6 +19,7 @@ import {
   isNotificationVisible,
   type BackendNotification,
 } from '@/lib/notification-mapper';
+import { syncAppBadge } from '@/lib/app-badge';
 
 interface NotificationContextType {
   notifications: Notification[];
@@ -26,6 +27,8 @@ interface NotificationContextType {
   isLoading: boolean;
   addNotification: (notification: Omit<Notification, 'id' | 'createdAt'>) => void;
   markAsRead: (id: string) => void;
+  /** 로컬 상태만 읽음 처리 — 서버 PATCH 를 다른 훅(useNotifications)이 이미 수행한 경우 벨 동기화용 */
+  markAsReadLocal: (id: string) => void;
   markAllAsRead: () => void;
   deleteNotification: (id: string) => void;
   clearAll: () => void;
@@ -44,6 +47,9 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
   // ⚡ 서버에서 받은 unread 카운트 (목록 로드 전 배지 즉시 표시용).
   //    notifications 가 비어 있을 때만 사용되며, 목록 도착 후에는 클라이언트 파생값 우선.
   const [serverUnreadCount, setServerUnreadCount] = useState<number | null>(null);
+  // 앱 아이콘 배지 동기화 게이트 — 목록/서버 카운트 중 하나라도 확보되기 전에는
+  // 초기값 0 으로 네이티브 배지를 잘못 클리어하지 않도록 막는다.
+  const [listLoaded, setListLoaded] = useState(false);
 
   // 알림 목록 로드
   const loadNotifications = useCallback(async () => {
@@ -69,6 +75,7 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
         );
         const mapped = raw.map(mapBackendNotification);
         setNotifications(mapped);
+        setListLoaded(true);
       } else {
         console.warn(
           '[NotificationContext] 알림 응답 success=false',
@@ -152,6 +159,17 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
       ? clientUnreadCount
       : (serverUnreadCount ?? 0);
 
+  // [2026-07-20 배지 미제거 수정] 미읽음 카운트 확보 후 변할 때마다 네이티브
+  //   앱 아이콘 배지를 동기화. 기존에는 웹 어디에서도 syncBadge 브릿지를 호출하지
+  //   않아, FCM aps.badge 로 올라간 배지를 내릴 경로가 전무했다(케이스 1 근본 원인).
+  //   신뢰 가능한 카운트(목록 로드 완료 또는 서버 카운트 수신) 전에는 호출하지
+  //   않아 초기 0 으로 오클리어하지 않는다.
+  const badgeCountReady = listLoaded || serverUnreadCount !== null;
+  useEffect(() => {
+    if (!badgeCountReady) return;
+    void syncAppBadge(unreadCount);
+  }, [badgeCountReady, unreadCount]);
+
   // 알림 추가 (로컬 state만 업데이트 - WebSocket 수신용)
   const addNotification = useCallback(
     (notification: Omit<Notification, 'id' | 'createdAt'>) => {
@@ -179,6 +197,14 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
         prev.map((n) => (n.id === id ? { ...n, isRead: false } : n))
       );
     }
+  }, []);
+
+  // 로컬 상태만 읽음 처리 — 알림 페이지(useNotifications)가 서버 PATCH 를 이미
+  // 수행한 개별 읽음을 벨 배지·앱 배지에 즉시 반영한다 (중복 PATCH 방지).
+  const markAsReadLocal = useCallback((id: string) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+    );
   }, []);
 
   // 전체 읽음 처리 (로컬 state 업데이트)
@@ -217,6 +243,7 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
       isLoading,
       addNotification,
       markAsRead,
+      markAsReadLocal,
       markAllAsRead,
       deleteNotification,
       clearAll,
@@ -228,6 +255,7 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
       isLoading,
       addNotification,
       markAsRead,
+      markAsReadLocal,
       markAllAsRead,
       deleteNotification,
       clearAll,
