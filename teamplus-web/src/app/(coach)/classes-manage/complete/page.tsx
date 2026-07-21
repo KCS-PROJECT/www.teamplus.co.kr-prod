@@ -19,7 +19,9 @@ import { formatDaySchedulesFull } from '@/lib/class-categories';
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return '';
-  const d = new Date(dateStr);
+  // TZ 시프트 방지 — 'YYYY-MM-DD' 접두부를 로컬 기준으로 파싱(ScheduleGroupRows 와 동일 방식).
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr);
+  const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(dateStr);
   if (isNaN(d.getTime())) return dateStr;
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
 }
@@ -210,12 +212,18 @@ export default function ClassCompletePage() {
                   <InfoRow label="수업 대상" value={targetLabel} />
                 )}
 
+                {/* 정원 — 오픈클래스에서만 사용(팀 수업은 0=무제한). 실제 제한이 있을 때만 노출.
+                    capacity는 상세 응답에 포함(classes.service getClass)되어 편집 prefill도 정확. */}
+                {data.capacity > 0 && (
+                  <InfoRow label="정원" value={`${data.capacity}명`} />
+                )}
+
                 {/* 개별 날짜 일정이 있으면 기간(min~max·총 N회) + 일정별 시간·장소 나열,
                     없으면 기존 요일/기간/단일 시간·장소 폴백. */}
                 {hasDateSchedules ? (
                   <>
                     <InfoRow
-                      label="수업 기간"
+                      label={isEdit ? '수업 기간(남은 일정)' : '수업 기간'}
                       value={`${dateScheduleRange} · 총 ${sortedDateSchedules.length}회`}
                     />
                     {/* 시간·장소가 회차별로 다르면 그룹 헤더에서 표기하므로 "회차별 상이" 단독 행은 숨긴다. */}

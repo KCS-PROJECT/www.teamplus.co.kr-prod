@@ -51,6 +51,8 @@ export interface TimePickerProps {
   startHour?: number;
   /** 옵션 종료 시(0~23, 기본 23) */
   endHour?: number;
+  /** 빈 값일 때 처음 열리는 기준 시(0~23) — 바텀시트가 이 시각에 중앙 정렬로 열림. 미지정 시 startHour. */
+  defaultHour?: number;
   /** 분 간격(기본 30) */
   stepMinutes?: number;
   /** disabled 상태 */
@@ -73,6 +75,7 @@ export function TimePicker({
   ariaLabel,
   startHour = 6,
   endHour = 23,
+  defaultHour,
   stepMinutes = 30,
   disabled = false,
   showChevron = true,
@@ -81,7 +84,7 @@ export function TimePicker({
   nested = false,
 }: TimePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [draftHour, setDraftHour] = useState(startHour);
+  const [draftHour, setDraftHour] = useState(defaultHour ?? startHour);
   const [draftMinute, setDraftMinute] = useState(0);
   const hourListRef = useRef<HTMLDivElement>(null);
   const selectedHourRef = useRef<HTMLButtonElement>(null);
@@ -115,7 +118,7 @@ export function TimePicker({
     if (disabled) return;
 
     const match = /^(\d{1,2}):(\d{2})$/.exec(value);
-    const parsedHour = match ? Number(match[1]) : safeStartHour;
+    const parsedHour = match ? Number(match[1]) : (defaultHour ?? safeStartHour);
     const parsedMinute = match ? Number(match[2]) : 0;
     const nextHour = Math.max(
       safeStartHour,

@@ -435,6 +435,7 @@ export function MultiDatePickerModal({
               value={commonStart}
               onChange={setCommonStart}
               startHour={0}
+              defaultHour={9}
               stepMinutes={10}
               placeholder={MESSAGES.class.dayDefaults.startTime}
               sheetTitle={MESSAGES.class.dayDefaults.startTime}
@@ -450,6 +451,7 @@ export function MultiDatePickerModal({
               value={commonEnd}
               onChange={setCommonEnd}
               startHour={0}
+              defaultHour={9}
               stepMinutes={10}
               placeholder={MESSAGES.class.dayDefaults.endTime}
               sheetTitle={MESSAGES.class.dayDefaults.endTime}
