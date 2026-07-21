@@ -41,36 +41,6 @@ interface BackendCreditStats {
   allCredits: number;
 }
 
-/** 백엔드 /admin/director-payment-summary 원본 응답 (선택 필드·느슨한 타입) */
-interface BackendDirectorPaymentSummary {
-  summary?: {
-    totalRevenue?: number | string;
-    unpaid?: number | string;
-    pendingSettlement?: number | string;
-    completedCount?: number | string;
-    unpaidCount?: number | string;
-  };
-  teams?: Array<{
-    id?: string;
-    teamName?: string;
-    totalMembers?: number | string;
-    paidMembers?: number | string;
-    unpaidMembers?: number | string;
-    totalAmount?: number | string;
-    paidAmount?: number | string;
-    unpaidAmount?: number | string;
-    feeType?: string;
-    billingTiming?: string;
-  }>;
-  unpaidMembers?: Array<{
-    id?: string;
-    name?: string;
-    teamName?: string;
-    amount?: number | string;
-    billingType?: string;
-  }>;
-}
-
 /** 백엔드 /payments/my 응답 아이템 */
 interface BackendPaymentItem {
   id: string;
@@ -260,68 +230,66 @@ export async function getCreditStatus(): Promise<ApiResponse<GetCreditStatusResp
 }
 
 // ============================================
-// 감독 결제 현황 (director-payments)
+// 팀 정산 센터 — 인별 미수금 (unpaid-members)
 // ============================================
 
-/** 감독 결제 요약 — totalRevenue/unpaid 는 선불+후불 합산 금액 */
-export interface DirectorPaymentSummary {
-  totalRevenue: number;
-  unpaid: number;
-  pendingSettlement: number;
-  completedCount: number;
-  unpaidCount: number;
-}
+/** 미납 출처 종류 — 수업 / 대회. */
+export type UnpaidSourceKind = 'CLASS' | 'TOURNAMENT';
 
-/** 팀별 결제 현황 — unpaidMembers 는 미납 "인원 수"(카운트) */
-export interface DirectorTeamPayment {
-  id: string;
-  teamName: string;
-  totalMembers: number;
-  paidMembers: number;
-  unpaidMembers: number;
-  totalAmount: number;
-  paidAmount: number;
-  unpaidAmount: number;
-  feeType: 'MONTHLY_FIXED' | 'PER_SESSION';
-  billingTiming: 'PREPAID' | 'POSTPAID';
-}
-
-/** 미수금 회원 1건 — 최상위 목록 항목(인원 카운트인 팀별 unpaidMembers 와 의미 다름) */
-export interface DirectorUnpaidMember {
-  id: string;
+/** 인별 미수금 1행 — 그룹핑 키는 회원(자녀/선수) User.id. */
+export interface UnpaidMemberRow {
+  memberId: string;
   name: string;
-  teamName: string;
-  amount: number;
-  billingType: 'PREPAID' | 'POSTPAID';
+  teamName: string | null;
+  outstandingAmount: number;
+  sources: UnpaidSourceKind[];
+  classCount: number;
+  tournamentCount: number;
 }
 
-export interface DirectorPaymentSummaryResult {
-  summary: DirectorPaymentSummary;
-  teams: DirectorTeamPayment[];
-  unpaidMembers: DirectorUnpaidMember[];
+/** 팀 인별 미수금 목록 응답(백엔드 TeamUnpaidMembersResponse 미러). */
+export interface TeamUnpaidMembersResponse {
+  yearMonth: string;
+  members: UnpaidMemberRow[];
+  totalOutstanding: number;
+  totalCount: number;
 }
 
-/** 미납 내역 1줄 — 선불(PREPAID)/후불(POSTPAID) */
-export interface DirectorUnpaidDetailLine {
-  type: 'PREPAID' | 'POSTPAID';
-  className: string;
+/** 인별 미수금 상세 1줄 — source(수업/대회) 단위. */
+export interface UnpaidDetailLine {
+  sourceType: UnpaidSourceKind;
+  sourceId: string;
+  sourceName: string;
+  teamName: string | null;
+  billingTiming: 'PREPAID' | 'POSTPAID';
+  yearMonth: string;
   amount: number;
-  yearMonth?: string;
+  /** 후불 확정 라인일 때만 존재(선불/대회는 생략). */
   attendanceCount?: number;
 }
 
-/** 미수금 회원 상세 — 보호자 연락처 + 미납 내역 */
-export interface DirectorUnpaidMemberDetail {
-  member: { id: string; name: string; totalAmount: number };
+/** 인별 미수금 상세 응답(백엔드 UnpaidMemberDetailResponse 미러). */
+export interface UnpaidMemberDetailResponse {
+  member: { id: string; name: string; totalOutstanding: number };
   parents: { id: string; name: string; phone: string | null }[];
-  details: DirectorUnpaidDetailLine[];
+  details: UnpaidDetailLine[];
 }
 
-/** 미납 안내 발송 결과 */
-export interface DirectorUnpaidReminderResult {
+/** 미납 안내 발송 결과. */
+export interface UnpaidReminderResult {
   sent: boolean;
   cooldown: boolean;
   recipientCount: number;
+}
+
+/** 백엔드 출처 값 → 프론트 UnpaidSourceKind 정규화. */
+function toUnpaidSourceKind(value: unknown): UnpaidSourceKind {
+  return value === 'TOURNAMENT' ? 'TOURNAMENT' : 'CLASS';
+}
+
+/** 백엔드 결제방식 값 → 프론트 유니온 정규화. */
+function toBillingTiming(value: unknown): 'PREPAID' | 'POSTPAID' {
+  return value === 'POSTPAID' ? 'POSTPAID' : 'PREPAID';
 }
 
 /** unknown 값을 안전하게 숫자로 변환 (null/undefined/NaN → 0) */
@@ -331,83 +299,130 @@ function toNumber(value: unknown): number {
 }
 
 /**
- * 감독 결제 현황 조회 (`GET /admin/director-payment-summary`)
+ * 팀 인별 미수금 목록 조회 (`GET /payments/team-settlement-center/unpaid-members`)
  *
- * 백엔드 키가 UI 타입과 거의 일치하지만, 안전을 위해 숫자 변환·기본값·유니온 정규화를 수행한다.
+ * 선택 월 기준으로 수업+대회 후불/선불 미납을 회원별로 통합해 반환한다.
+ * 인별 합계(totalOutstanding)는 훈련/대회 탭의 미수금 총액(summary.unpaid.amount)과 정합.
  *
  * ⚠️ 금융 화면 — 실패(403/500/timeout/네트워크)를 정상 0/빈 결과로 위장하지 않는다.
  * 응답이 실패이거나 data 가 없으면 **throw** 하여, 미수금 탭이 "미수금 없음"과
  * "불러오지 못함"을 구분해 에러+재시도 UI 로 처리하도록 한다. 성공 시에만 정규화 구조를 반환.
  */
-export async function getDirectorPaymentSummary(): Promise<DirectorPaymentSummaryResult> {
-  const res = await api.get<BackendDirectorPaymentSummary>('/admin/director-payment-summary');
+export async function getTeamUnpaidMembers(params: {
+  yearMonth: string;
+  teamId?: string;
+}): Promise<TeamUnpaidMembersResponse> {
+  const { yearMonth, teamId } = params;
+  const res = await api.get<TeamUnpaidMembersResponse>(
+    '/payments/team-settlement-center/unpaid-members',
+    { params: { yearMonth, teamId } },
+  );
 
   if (!res.success || !res.data) {
-    throw new Error(res.error?.message ?? 'director payment summary load failed');
+    throw new Error(res.error?.message ?? 'team unpaid members load failed');
   }
 
   const raw = res.data;
-  const s = raw.summary ?? {};
-
-  const summary: DirectorPaymentSummary = {
-    totalRevenue: toNumber(s.totalRevenue),
-    unpaid: toNumber(s.unpaid),
-    pendingSettlement: toNumber(s.pendingSettlement),
-    completedCount: toNumber(s.completedCount),
-    unpaidCount: toNumber(s.unpaidCount),
-  };
-
-  const teams: DirectorTeamPayment[] = Array.isArray(raw.teams)
-    ? raw.teams.map((t) => ({
-        id: String(t?.id ?? ''),
-        teamName: t?.teamName ?? '',
-        totalMembers: toNumber(t?.totalMembers),
-        paidMembers: toNumber(t?.paidMembers),
-        unpaidMembers: toNumber(t?.unpaidMembers),
-        totalAmount: toNumber(t?.totalAmount),
-        paidAmount: toNumber(t?.paidAmount),
-        unpaidAmount: toNumber(t?.unpaidAmount),
-        feeType: t?.feeType === 'PER_SESSION' ? 'PER_SESSION' : 'MONTHLY_FIXED',
-        billingTiming: t?.billingTiming === 'POSTPAID' ? 'POSTPAID' : 'PREPAID',
-      }))
-    : [];
-
-  const unpaidMembers: DirectorUnpaidMember[] = Array.isArray(raw.unpaidMembers)
-    ? raw.unpaidMembers.map((m) => ({
-        id: String(m?.id ?? ''),
+  const members: UnpaidMemberRow[] = Array.isArray(raw.members)
+    ? raw.members.map((m) => ({
+        memberId: String(m?.memberId ?? ''),
         name: m?.name ?? '',
-        teamName: m?.teamName ?? '',
-        amount: toNumber(m?.amount),
-        billingType: m?.billingType === 'POSTPAID' ? 'POSTPAID' : 'PREPAID',
+        teamName: m?.teamName ?? null,
+        outstandingAmount: toNumber(m?.outstandingAmount),
+        sources: Array.isArray(m?.sources) ? m.sources.map(toUnpaidSourceKind) : [],
+        classCount: toNumber(m?.classCount),
+        tournamentCount: toNumber(m?.tournamentCount),
       }))
     : [];
 
-  return { summary, teams, unpaidMembers };
+  return {
+    yearMonth: raw.yearMonth || yearMonth,
+    members,
+    totalOutstanding: toNumber(raw.totalOutstanding),
+    totalCount: toNumber(raw.totalCount),
+  };
 }
 
 /**
- * 미수금 회원 상세 조회 (`GET /admin/director-payments/unpaid/:memberId`)
- * 보호자 연락처 + 미납 내역(선불/후불)을 반환한다.
+ * 팀 인별 미수금 상세 조회 (`GET /payments/team-settlement-center/unpaid-members/:memberId`)
+ *
+ * 보호자 연락처 + source(수업/대회)별 미납 라인을 반환한다.
+ * scope 밖 회원·미납 0건이면 백엔드 404 → **throw**(IDOR 가드).
  */
-export async function getDirectorUnpaidMemberDetail(
-  memberId: string,
-): Promise<ApiResponse<DirectorUnpaidMemberDetail>> {
-  return api.get<DirectorUnpaidMemberDetail>(
-    `/admin/director-payments/unpaid/${memberId}`,
+export async function getTeamUnpaidMemberDetail(params: {
+  memberId: string;
+  yearMonth: string;
+  teamId?: string;
+}): Promise<UnpaidMemberDetailResponse> {
+  const { memberId, yearMonth, teamId } = params;
+  const res = await api.get<UnpaidMemberDetailResponse>(
+    `/payments/team-settlement-center/unpaid-members/${memberId}`,
+    { params: { yearMonth, teamId } },
   );
+
+  if (!res.success || !res.data) {
+    throw new Error(res.error?.message ?? 'unpaid member detail load failed');
+  }
+
+  const raw = res.data;
+  const details: UnpaidDetailLine[] = Array.isArray(raw.details)
+    ? raw.details.map((d) => ({
+        sourceType: toUnpaidSourceKind(d?.sourceType),
+        sourceId: String(d?.sourceId ?? ''),
+        sourceName: d?.sourceName ?? '',
+        teamName: d?.teamName ?? null,
+        billingTiming: toBillingTiming(d?.billingTiming),
+        yearMonth: d?.yearMonth ?? yearMonth,
+        amount: toNumber(d?.amount),
+        ...(typeof d?.attendanceCount === 'number'
+          ? { attendanceCount: d.attendanceCount }
+          : {}),
+      }))
+    : [];
+
+  return {
+    member: {
+      id: String(raw.member?.id ?? memberId),
+      name: raw.member?.name ?? '',
+      totalOutstanding: toNumber(raw.member?.totalOutstanding),
+    },
+    parents: Array.isArray(raw.parents)
+      ? raw.parents.map((p) => ({
+          id: String(p?.id ?? ''),
+          name: p?.name ?? '',
+          phone: p?.phone ?? null,
+        }))
+      : [],
+    details,
+  };
 }
 
 /**
- * 미수금 회원 미납 안내 발송 (`POST /admin/director-payments/unpaid/:memberId/remind`)
- * 미납 자녀의 보호자에게 인앱+푸시 안내를 발송한다. 백엔드 24시간 쿨다운.
+ * 팀 인별 미납 안내 발송 (`POST /payments/team-settlement-center/unpaid-members/:memberId/remind`)
+ *
+ * 미납 자녀의 보호자에게 인앱+푸시 안내를 발송한다(수업+대회 미납 합산). 월별 쿨다운.
+ *
+ * ⚠️ 금융 화면 — 실패(403/500/timeout/네트워크)를 정상 결과로 위장하지 않는다. 실패 시 **throw**.
  */
-export async function sendDirectorUnpaidReminder(
-  memberId: string,
-): Promise<ApiResponse<DirectorUnpaidReminderResult>> {
-  return api.post<DirectorUnpaidReminderResult>(
-    `/admin/director-payments/unpaid/${memberId}/remind`,
-    {},
+export async function sendTeamUnpaidReminder(params: {
+  memberId: string;
+  yearMonth: string;
+}): Promise<UnpaidReminderResult> {
+  const { memberId, yearMonth } = params;
+  const res = await api.post<UnpaidReminderResult>(
+    `/payments/team-settlement-center/unpaid-members/${memberId}/remind`,
+    { yearMonth },
   );
+
+  if (!res.success || !res.data) {
+    throw new Error(res.error?.message ?? 'unpaid reminder send failed');
+  }
+
+  return {
+    sent: Boolean(res.data.sent),
+    cooldown: Boolean(res.data.cooldown),
+    recipientCount: toNumber(res.data.recipientCount),
+  };
 }
 
 // ============================================
@@ -668,9 +683,9 @@ const paymentService = {
   getPaymentHistory,
   getUsageHistory,
   getCreditStatus,
-  getDirectorPaymentSummary,
-  getDirectorUnpaidMemberDetail,
-  sendDirectorUnpaidReminder,
+  getTeamUnpaidMembers,
+  getTeamUnpaidMemberDetail,
+  sendTeamUnpaidReminder,
   getTeamSettlementSummary,
   getAcademySettlementSummary,
   getReceipt,

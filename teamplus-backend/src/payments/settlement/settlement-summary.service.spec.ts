@@ -1,7 +1,10 @@
 import { Test, TestingModule } from "@nestjs/testing";
+import { NotFoundException } from "@nestjs/common";
 import { SettlementSummaryService } from "./settlement-summary.service";
 import { PrismaService } from "@/prisma/prisma.service";
 import { ResourceAccessService } from "@/common/access/resource-access.service";
+import { NotificationsService } from "@/notifications/notifications.service";
+import { RedisService } from "@/redis/redis.service";
 import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
 
 /**
@@ -43,11 +46,21 @@ describe("SettlementSummaryService", () => {
     team: { findMany: jest.fn() },
     teamMember: { findMany: jest.fn() },
     coachProfile: { findMany: jest.fn() },
+    user: { findMany: jest.fn(), findUnique: jest.fn() },
+    parentChild: { findMany: jest.fn() },
   };
 
   const resourceAccessMock = {
     assertAcademyManager: jest.fn(),
     resolveManageableTeamIds: jest.fn(),
+  };
+
+  const notificationsMock = {
+    notifyUsers: jest.fn(),
+  };
+
+  const redisMock = {
+    setIfNotExists: jest.fn(),
   };
 
   const coach: JwtUserPayload = {
@@ -99,13 +112,20 @@ describe("SettlementSummaryService", () => {
     prismaMock.teamMember.findMany.mockResolvedValue([]);
     prismaMock.coachProfile.findMany.mockResolvedValue([]);
     prismaMock.tournament.findMany.mockResolvedValue([]);
+    prismaMock.user.findMany.mockResolvedValue([]);
+    prismaMock.user.findUnique.mockResolvedValue(null);
+    prismaMock.parentChild.findMany.mockResolvedValue([]);
     resourceAccessMock.resolveManageableTeamIds.mockResolvedValue([]);
+    notificationsMock.notifyUsers.mockResolvedValue(undefined);
+    redisMock.setIfNotExists.mockResolvedValue(true);
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [
         SettlementSummaryService,
         { provide: PrismaService, useValue: prismaMock },
         { provide: ResourceAccessService, useValue: resourceAccessMock },
+        { provide: NotificationsService, useValue: notificationsMock },
+        { provide: RedisService, useValue: redisMock },
       ],
     }).compile();
     service = moduleRef.get(SettlementSummaryService);
@@ -1291,6 +1311,406 @@ describe("SettlementSummaryService", () => {
       expect(c.prepaidCount).toBe(1);
       expect(c.billedAmount).toBe(0); // 8월 미구매 → 유효 청구 없음
       expect(c.paymentStatus).toBe("NONE");
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  // 정산 센터 ② — 인별 미수금(목록/상세/remind) · 인별↔집계 정합(§2-0)
+  // ══════════════════════════════════════════════════════════════
+  describe("인별 미수금 (unpaid-members)", () => {
+    // 선불 BILLED(pending) + 후불 확정 BILLED + 대회 후불 BILLED + 완납/환불 혼합 fixture.
+    //  기대 미수금: c1 u1 선불 50000 + c2 u1 후불 40000 + t1 u5 대회 20000 = 110000.
+    const setupMixedFixture = () => {
+      resourceAccessMock.resolveManageableTeamIds.mockResolvedValue(["team-1"]);
+      prismaMock.class.findMany.mockImplementation((args: any) => {
+        if (args?.select?.className) {
+          return Promise.resolve([
+            classDetail("c1", "PREPAID", {
+              teamId: "team-1",
+              team: { name: "팀1" },
+            }),
+            classDetail("c2", "POSTPAID", {
+              className: "후불수업",
+              teamId: "team-1",
+              team: { name: "팀1" },
+            }),
+          ]);
+        }
+        return Promise.resolve([{ id: "c1" }, { id: "c2" }]);
+      });
+      prismaMock.enrollment.findMany.mockResolvedValue([
+        // u1 선불 pending → BILLED 50000(미납)
+        prepaidEnrollment("u1", 50000, {
+          status: "approved",
+          payment: {
+            paymentStatus: "pending",
+            completedAt: null,
+            createdAt: JULY,
+            amount: 50000,
+            refundLogs: [],
+          },
+        }),
+        // u2 선불 완납 → 미수 없음
+        prepaidEnrollment("u2", 30000),
+        // u3 부분환불 → billed null, 미수 없음(교차 상쇄 대상 아님)
+        prepaidEnrollment("u3", 100000, {
+          payment: {
+            paymentStatus: "partially_refunded",
+            completedAt: JULY,
+            createdAt: JULY,
+            amount: 100000,
+            refundLogs: [{ refundAmount: 30000 }],
+          },
+        }),
+      ]);
+      prismaMock.monthlyPostpaidBilling.findMany.mockResolvedValue([
+        {
+          classId: "c2",
+          status: "confirmed",
+          items: [
+            {
+              userId: "u1",
+              amount: 40000,
+              paymentStatus: "pending",
+              attendanceCount: 3,
+              payment: null,
+            }, // BILLED 40000(미납)
+            {
+              userId: "u4",
+              amount: 40000,
+              paymentStatus: "paid",
+              attendanceCount: 4,
+              payment: { paymentStatus: "completed", refundLogs: [] },
+            }, // 완납
+          ],
+        },
+      ]);
+      prismaMock.tournament.findMany.mockImplementation((args: any) => {
+        if (args?.select?.registrations) {
+          return Promise.resolve([
+            {
+              id: "t1",
+              name: "여름컵",
+              billingMode: "POSTPAID",
+              endDate: new Date("2026-07-01T00:00:00Z"),
+              teamId: "team-1",
+              team: { name: "팀1" },
+              registrations: [
+                {
+                  userId: "p5",
+                  childId: "u5",
+                  paymentStatus: "PENDING",
+                  calculatedFee: 20000,
+                  payment: null,
+                }, // BILLED 20000(미납)
+                {
+                  userId: "p1",
+                  childId: "u1",
+                  paymentStatus: "PAID",
+                  calculatedFee: 15000,
+                  payment: {
+                    paymentStatus: "completed",
+                    completedAt: JULY,
+                    createdAt: JULY,
+                    refundLogs: [],
+                  },
+                }, // 완납 — u1 미수 상쇄 안 됨
+              ],
+            },
+          ]);
+        }
+        return Promise.resolve([{ id: "t1" }]);
+      });
+      prismaMock.user.findMany.mockResolvedValue([
+        { id: "u1", firstName: "길동", lastName: "홍" },
+        { id: "u5", firstName: "영희", lastName: "김" },
+      ]);
+    };
+
+    it("[정합] totalOutstanding == summary.unpaid.amount == Σ members (선불+후불+대회+환불 혼합)", async () => {
+      setupMixedFixture();
+      const summary = await service.getTeamSettlementSummary(
+        coach,
+        YM,
+        "team-1",
+      );
+      const unpaid = await service.getTeamUnpaidMembers(coach, YM, "team-1");
+
+      expect(unpaid.totalOutstanding).toBe(110000);
+      expect(unpaid.totalOutstanding).toBe(summary.unpaid.amount); // 불변식
+      expect(
+        unpaid.members.reduce((s, m) => s + m.outstandingAmount, 0),
+      ).toBe(unpaid.totalOutstanding); // 회원별 합 = 총액
+      expect(unpaid.totalCount).toBe(2);
+      expect(unpaid.yearMonth).toBe(YM);
+    });
+
+    it("[행별 max] 완납 대회가 같은 회원 미수를 상쇄하지 않음 · 대표 팀 보존", async () => {
+      setupMixedFixture();
+      const unpaid = await service.getTeamUnpaidMembers(coach, YM, "team-1");
+      const byId = Object.fromEntries(
+        unpaid.members.map((m) => [m.memberId, m]),
+      );
+      // u1 = 선불 50000 + 후불 40000 = 90000 (대회 완납 15000 상쇄 없음)
+      expect(byId["u1"].outstandingAmount).toBe(90000);
+      expect(byId["u1"].sources).toEqual(["CLASS"]);
+      expect(byId["u1"].classCount).toBe(2);
+      expect(byId["u1"].tournamentCount).toBe(0);
+      expect(byId["u1"].teamName).toBe("팀1");
+      expect(byId["u5"].outstandingAmount).toBe(20000);
+      expect(byId["u5"].sources).toEqual(["TOURNAMENT"]);
+      // outstanding desc 정렬 — u1(90000) 이 먼저.
+      expect(unpaid.members[0].memberId).toBe("u1");
+    });
+
+    it("[대회 포함] 수업+대회 동시 미납 회원 = 1행, sources 둘 다", async () => {
+      resourceAccessMock.resolveManageableTeamIds.mockResolvedValue(["team-1"]);
+      prismaMock.class.findMany.mockImplementation((args: any) =>
+        args?.select?.className
+          ? Promise.resolve([
+              classDetail("c1", "PREPAID", {
+                teamId: "team-1",
+                team: { name: "팀1" },
+              }),
+            ])
+          : Promise.resolve([{ id: "c1" }]),
+      );
+      prismaMock.enrollment.findMany.mockResolvedValue([
+        prepaidEnrollment("u1", 50000, {
+          status: "approved",
+          payment: {
+            paymentStatus: "pending",
+            completedAt: null,
+            createdAt: JULY,
+            amount: 50000,
+            refundLogs: [],
+          },
+        }),
+      ]);
+      prismaMock.tournament.findMany.mockImplementation((args: any) =>
+        args?.select?.registrations
+          ? Promise.resolve([
+              {
+                id: "t1",
+                name: "컵",
+                billingMode: "POSTPAID",
+                endDate: new Date("2026-07-01T00:00:00Z"),
+                teamId: "team-1",
+                team: { name: "팀1" },
+                registrations: [
+                  {
+                    userId: "p1",
+                    childId: "u1",
+                    paymentStatus: "PENDING",
+                    calculatedFee: 20000,
+                    payment: null,
+                  },
+                ],
+              },
+            ])
+          : Promise.resolve([{ id: "t1" }]),
+      );
+      prismaMock.user.findMany.mockResolvedValue([
+        { id: "u1", firstName: "길동", lastName: "홍" },
+      ]);
+
+      const unpaid = await service.getTeamUnpaidMembers(coach, YM, "team-1");
+      expect(unpaid.members).toHaveLength(1);
+      const m = unpaid.members[0];
+      expect(m.outstandingAmount).toBe(70000);
+      expect([...m.sources].sort()).toEqual(["CLASS", "TOURNAMENT"]);
+      expect(m.classCount).toBe(1);
+      expect(m.tournamentCount).toBe(1);
+      const summary = await service.getTeamSettlementSummary(
+        coach,
+        YM,
+        "team-1",
+      );
+      expect(unpaid.totalOutstanding).toBe(summary.unpaid.amount);
+    });
+
+    it("[빈 결과] 관리 팀 0 → 빈 목록(403 아님)", async () => {
+      resourceAccessMock.resolveManageableTeamIds.mockResolvedValue([]);
+      const res = await service.getTeamUnpaidMembers(coach, YM);
+      expect(res).toEqual({
+        yearMonth: YM,
+        members: [],
+        totalOutstanding: 0,
+        totalCount: 0,
+      });
+      expect(prismaMock.class.findMany).not.toHaveBeenCalled();
+    });
+
+    it("[상세] source별 라인·대회 포함·후불 attendanceCount·보호자 isPrimary", async () => {
+      setupMixedFixture();
+      prismaMock.user.findUnique.mockResolvedValue({
+        id: "u1",
+        firstName: "길동",
+        lastName: "홍",
+      });
+      prismaMock.parentChild.findMany.mockResolvedValue([
+        { parent: { id: "p1", firstName: "부", lastName: "홍", phone: "010" } },
+      ]);
+
+      const detail = await service.getTeamUnpaidMemberDetail(
+        coach,
+        "u1",
+        YM,
+        "team-1",
+      );
+      expect(detail.member).toEqual({
+        id: "u1",
+        name: "홍길동",
+        totalOutstanding: 90000,
+      });
+      expect(detail.parents).toEqual([
+        { id: "p1", name: "홍부", phone: "010" },
+      ]);
+      expect(prismaMock.parentChild.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { childId: "u1" },
+          orderBy: { isPrimary: "desc" },
+        }),
+      );
+      const bySrc = Object.fromEntries(
+        detail.details.map((d) => [d.sourceId, d]),
+      );
+      expect(bySrc["c1"].amount).toBe(50000);
+      expect(bySrc["c1"].billingTiming).toBe("PREPAID");
+      expect(bySrc["c1"].sourceType).toBe("CLASS");
+      expect(bySrc["c2"].amount).toBe(40000);
+      expect(bySrc["c2"].billingTiming).toBe("POSTPAID");
+      expect(bySrc["c2"].attendanceCount).toBe(3); // 후불 확정 라인 출석수
+      // u1 대회는 완납 → 상세에 없음
+      expect(bySrc["t1"]).toBeUndefined();
+    });
+
+    it("[상세] 대회만 미납인 회원", async () => {
+      setupMixedFixture();
+      prismaMock.user.findUnique.mockResolvedValue({
+        id: "u5",
+        firstName: "영희",
+        lastName: "김",
+      });
+      const detail = await service.getTeamUnpaidMemberDetail(
+        coach,
+        "u5",
+        YM,
+        "team-1",
+      );
+      expect(detail.details).toHaveLength(1);
+      expect(detail.details[0].sourceType).toBe("TOURNAMENT");
+      expect(detail.details[0].sourceId).toBe("t1");
+      expect(detail.details[0].amount).toBe(20000);
+      expect(detail.details[0].billingTiming).toBe("POSTPAID");
+      expect(detail.details[0].attendanceCount).toBeUndefined();
+    });
+
+    it("[상세 404] scope 내 미납 없는 memberId → NotFound(IDOR)", async () => {
+      setupMixedFixture();
+      await expect(
+        service.getTeamUnpaidMemberDetail(coach, "uZZZ", YM, "team-1"),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it("[상세 404] 관리 팀 없는 코치 → NotFound(IDOR)", async () => {
+      resourceAccessMock.resolveManageableTeamIds.mockResolvedValue([]);
+      await expect(
+        service.getTeamUnpaidMemberDetail(coach, "u1", YM),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    describe("remind", () => {
+      const withParent = () => {
+        prismaMock.user.findUnique.mockResolvedValue({
+          id: "u1",
+          firstName: "길동",
+          lastName: "홍",
+        });
+        prismaMock.parentChild.findMany.mockResolvedValue([
+          {
+            parent: { id: "p1", firstName: "부", lastName: "홍", phone: "010" },
+          },
+        ]);
+      };
+
+      it("보호자 0명 → sent:false, notifyUsers 미호출", async () => {
+        setupMixedFixture();
+        prismaMock.user.findUnique.mockResolvedValue({
+          id: "u1",
+          firstName: "길동",
+          lastName: "홍",
+        });
+        prismaMock.parentChild.findMany.mockResolvedValue([]);
+        const r = await service.sendTeamUnpaidReminder(coach, "u1", YM);
+        expect(r).toEqual({
+          sent: false,
+          cooldown: false,
+          recipientCount: 0,
+        });
+        expect(notificationsMock.notifyUsers).not.toHaveBeenCalled();
+      });
+
+      it("정상 발송 → notifyUsers 호출·월키 쿨다운(unpaid-remind:{id}:{ym})", async () => {
+        setupMixedFixture();
+        withParent();
+        redisMock.setIfNotExists.mockResolvedValue(true);
+        const r = await service.sendTeamUnpaidReminder(coach, "u1", YM);
+        expect(r).toEqual({ sent: true, cooldown: false, recipientCount: 1 });
+        expect(redisMock.setIfNotExists).toHaveBeenCalledWith(
+          `unpaid-remind:u1:${YM}`,
+          expect.anything(),
+          expect.any(Number),
+        );
+        expect(notificationsMock.notifyUsers).toHaveBeenCalledWith(
+          ["p1"],
+          expect.objectContaining({
+            notificationType: "payment_unpaid",
+            linkUrl: "/credits",
+          }),
+        );
+        // 총액(수업+대회 합=90000) 문구 포함
+        const payload = notificationsMock.notifyUsers.mock.calls[0][1];
+        expect(payload.message).toContain("90,000");
+      });
+
+      it("쿨다운 2회차 → cooldown:true, 발송 안 함", async () => {
+        setupMixedFixture();
+        withParent();
+        redisMock.setIfNotExists.mockResolvedValue(false);
+        const r = await service.sendTeamUnpaidReminder(coach, "u1", YM);
+        expect(r).toEqual({ sent: false, cooldown: true, recipientCount: 0 });
+        expect(notificationsMock.notifyUsers).not.toHaveBeenCalled();
+      });
+
+      it("월별 키 분리 — 서로 다른 월은 독립 쿨다운 키", async () => {
+        setupMixedFixture();
+        withParent();
+        redisMock.setIfNotExists.mockResolvedValue(true);
+        await service.sendTeamUnpaidReminder(coach, "u1", "2026-07");
+        await service.sendTeamUnpaidReminder(coach, "u1", "2026-06");
+        const keys = redisMock.setIfNotExists.mock.calls.map((c) => c[0]);
+        expect(keys).toContain("unpaid-remind:u1:2026-07");
+        expect(keys).toContain("unpaid-remind:u1:2026-06");
+      });
+
+      it("대회만 미납인 회원도 발송 성공", async () => {
+        setupMixedFixture();
+        prismaMock.user.findUnique.mockResolvedValue({
+          id: "u5",
+          firstName: "영희",
+          lastName: "김",
+        });
+        prismaMock.parentChild.findMany.mockResolvedValue([
+          {
+            parent: { id: "p5", firstName: "부", lastName: "김", phone: "011" },
+          },
+        ]);
+        redisMock.setIfNotExists.mockResolvedValue(true);
+        const r = await service.sendTeamUnpaidReminder(coach, "u5", YM);
+        expect(r.sent).toBe(true);
+        expect(r.recipientCount).toBe(1);
+      });
     });
   });
 });
