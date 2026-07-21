@@ -98,7 +98,7 @@ export const MESSAGES = {
     dayDefaults: {
       title: "정규 수업 요일",
       optional: "선택",
-      hint: "이 수업이 진행되는 요일이에요. 수업 정보에 '월·수·금'처럼 표시되고, 아래 '이번 달 채우기'를 누르면 이 요일·시간·장소로 이달 날짜가 만들어져요.",
+      hint: "이 수업이 진행되는 요일이에요. 수업 정보에 '월·수·금'처럼 표시되고, 아래 '이번 달 일정 일괄 생성'을 누르면 이 요일·시간·장소로 이달 날짜가 만들어져요.",
       startTime: "시작 시간",
       endTime: "종료 시간",
       venueSelect: "장소 선택",
@@ -123,8 +123,8 @@ export const MESSAGES = {
     },
     // 정규 요일 기반 이번 달 일괄 생성 — 로컬 draft만 갱신(실제 저장은 등록/수정 시). 월 단위 운영.
     rangeGen: {
-      fillThisMonth: "정규 요일로 이번 달 채우기",
-      fillThisMonthCount: (count: number) => `정규 요일로 이번 달 채우기 (${count}일)`,
+      fillThisMonth: "이번 달 일정 일괄 생성",
+      fillThisMonthCount: (count: number) => `이번 달 일정 일괄 생성 (${count}일)`,
       emptyResult: "이번 달에 새로 만들 날짜가 없습니다.",
       success: (count: number) => `${count}개 날짜를 만들었어요. 등록·수정할 때 저장됩니다.`,
     },
@@ -1222,6 +1222,15 @@ export const MESSAGES = {
       `청구 금액 ${amount.toLocaleString()}원`,
     settlePaidAmount: (amount: number) =>
       `결제 금액 ${amount.toLocaleString()}원`,
+    // [2026-07-21] 참가선수목록 섹션 — 대회 축 정합(선불=읽기전용 현황 / 후불=정산 확정).
+    rosterSectionTitle: "참가선수목록",
+    rosterPayNeeded: (need: number, total: number) =>
+      `결제 필요 ${need}명 / 총 ${total}명`,
+    rosterParticipantCount: (n: number) => `참가 ${n}명`,
+    rosterSelectAllAria: "청구 대상 전체 선택",
+    rosterRowCheckAria: (name: string) => `${name} 결제요청 대상`,
+    settleRequestCta: "결제요청",
+    settleRequestCancelCta: "결제요청취소",
     postpaidFeeLabel: "후불 정산 (종료 후 청구)",
     // [후불 참고 참가비 안내 — 감독이 사전 입력한 예상 금액 표시용]
     postpaidEstimateNote: "예상 금액 · 종료 후 정산에서 확정",

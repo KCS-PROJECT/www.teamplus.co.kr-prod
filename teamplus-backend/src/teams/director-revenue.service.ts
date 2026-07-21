@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
 import { isAdminRole } from "@/auth/constants/chldiv.constants";
+import { resolveTournamentAttribution } from "@/payments/settlement/attribution.util";
 import { RevenueScope } from "./dto/director-revenue-query.dto";
 
 type BillingMode = "PREPAID" | "POSTPAID" | "BOTH";
@@ -118,7 +119,7 @@ export class DirectorRevenueService {
         },
       ]),
     );
-    const hasPostpaid = classes.some(
+    let hasPostpaid = classes.some(
       (c) => c.billingMode === "POSTPAID" || c.billingMode === "BOTH",
     );
 
@@ -232,6 +233,85 @@ export class DirectorRevenueService {
       // 'YYYY-MM' 문자열 비교는 시간순과 일치
       if (r.billing.yearMonth < periodStartBucket) outstandingPrevious += amt;
     }
+
+    // ── 대회 매출(선불 수납 · 후불 청구/수납/미수) ──
+    // 팀 대회 참가(payment 존재)를 단일 배치 조회 후 팀 허브(computeTournamentSummaries)와
+    // 동일한 resolveTournamentAttribution 순수함수로 월귀속·상태·순수납을 산출한다(수치 정합 SoT).
+    // 귀속 규칙 중복 구현 금지 — 유틸 재사용으로 팀 허브와 billed/paid/outstanding 1:1 일치.
+    const tournamentRegs = await this.prisma.tournamentRegistration.findMany({
+      where: {
+        tournament: { teamId: { in: teamIds } },
+        payment: { isNot: null },
+      },
+      select: {
+        paymentStatus: true,
+        calculatedFee: true,
+        tournament: { select: { billingMode: true, endDate: true } },
+        payment: {
+          select: {
+            paymentStatus: true,
+            completedAt: true,
+            createdAt: true,
+            refundLogs: { select: { refundAmount: true } },
+          },
+        },
+      },
+    });
+    for (const reg of tournamentRegs) {
+      const mode = reg.tournament.billingMode;
+      const att = resolveTournamentAttribution({
+        registrationPaymentStatus: reg.paymentStatus,
+        amount: Number(reg.calculatedFee),
+        endDate: reg.tournament.endDate,
+        payment: reg.payment,
+      });
+      const ym = att.yearMonth;
+      if (ym === null) continue; // 월귀속 근거 없음 — 집계 제외(팀 허브와 동일).
+
+      if (mode === "PREPAID") {
+        // 선불 대회 순수납 — 수업 선불과 동일 버킷 맵에 가산(hero.prepaid·series.prepaid).
+        if (att.paidAmount !== 0) {
+          prepaidByBucket.set(
+            ym,
+            (prepaidByBucket.get(ym) ?? 0) + att.paidAmount,
+          );
+        }
+        continue;
+      }
+
+      // ── 후불 대회 — 수업 후불(summarizeRows)과 동일 규칙 ──
+      // series.postpaid·hero.postpaidRevenue: 순수납(net) 가산.
+      if (att.paidAmount !== 0) {
+        postpaidPaidByBucket.set(
+          ym,
+          (postpaidPaidByBucket.get(ym) ?? 0) + att.paidAmount,
+        );
+      }
+      // 기간 청구/수납/미수 — 팀 허브 summarizeRows(billed=Σbilled, collected=Σpaid,
+      //  outstanding=Σmax(0,billed−paid))와 1:1 동일하게 집계.
+      if (periodBucketSet.has(ym)) {
+        ppBilledPeriod += att.billedAmount ?? 0;
+        ppCollectedPeriod += att.paidAmount;
+        if (att.billedAmount != null) {
+          ppOutstandingPeriod += Math.max(0, att.billedAmount - att.paidAmount);
+        }
+      }
+      // 현재 미수(기간 무관) — BILLED(pending) 잔액. 과거분(정산월<기간 시작) 분리.
+      if (att.billedAmount != null) {
+        const due = Math.max(0, att.billedAmount - att.paidAmount);
+        if (due > 0) {
+          outstanding += due;
+          if (ym < periodStartBucket) outstandingPrevious += due;
+        }
+      }
+    }
+    // 후불 대회 존재 여부는 매출 집계(payment 존재 행)와 분리해 payment 무관 단일 count 로
+    //  판정한다 — 참가자 0명·전원 UNPAID(payment null) 여도 수납관리 섹션이 노출돼야 한다.
+    const postpaidTournamentExists =
+      (await this.prisma.tournament.count({
+        where: { teamId: { in: teamIds }, billingMode: "POSTPAID" },
+      })) > 0;
+    hasPostpaid = hasPostpaid || postpaidTournamentExists;
 
     // ── series ──
     const series: RevenueSeriesPoint[] = seriesBuckets.map((bucket) => ({

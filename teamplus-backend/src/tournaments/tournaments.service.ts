@@ -19,6 +19,7 @@ import {
   resolveManagedTeamIds,
   resolveScopedChildUserIds,
 } from "@/common/utils/team-scope.util";
+import { resolveTournamentAttribution } from "@/payments/settlement/attribution.util";
 import {
   CreateTournamentDto,
   UpdateTournamentDto,
@@ -2429,8 +2430,9 @@ export class TournamentsService {
       requester,
     );
 
+    // 명단 보존 — CANCELLED/REFUNDED 포함 전 상태 로드(§2-3.1). 파생 billingStatus 로 상태 구분.
     const registrations = await this.prisma.tournamentRegistration.findMany({
-      where: { tournamentId, paymentStatus: { not: "CANCELLED" } },
+      where: { tournamentId },
       select: {
         id: true,
         userId: true,
@@ -2462,16 +2464,48 @@ export class TournamentsService {
             orderNumber: true,
             paymentStatus: true,
             amount: true,
+            completedAt: true,
+            createdAt: true,
+            refundLogs: { select: { refundAmount: true } },
           },
         },
       },
       orderBy: { registeredAt: "asc" },
     });
 
+    // 대회는 단일 결제방식(billingMode) 상속 — BOTH·UNASSIGNED 없음(SPEC §82).
+    const billingTiming: "PREPAID" | "POSTPAID" =
+      tournament.billingMode === "POSTPAID" ? "POSTPAID" : "PREPAID";
+
+    // 팀 허브(computeTournamentSummaries)와 동일한 순수함수로 5-state·금액 파생 → 계약 단일 SoT.
+    // Dual Emit: 레거시 필드(paymentStatus/orderNumber/amount 등) 전부 보존 + 파생 필드 추가.
+    const enrichedRegistrations = registrations.map((reg) => {
+      const att = resolveTournamentAttribution({
+        registrationPaymentStatus: reg.paymentStatus,
+        amount: Number(reg.calculatedFee),
+        endDate: tournament.endDate,
+        payment: reg.payment,
+      });
+      return {
+        ...reg,
+        billingStatus: att.billingStatus,
+        billingTiming,
+        billedAmount: att.billedAmount,
+        paidAmount: att.paidAmount,
+        refundedAmount: att.refundedAmount,
+        estimatedAmount: att.estimatedAmount,
+        paidAt:
+          att.billingStatus === "PAID"
+            ? reg.payment?.completedAt ?? null
+            : null,
+      };
+    });
+
     return {
       tournamentId,
-      total: registrations.length,
-      registrations,
+      total: enrichedRegistrations.length,
+      billingMode: tournament.billingMode,
+      registrations: enrichedRegistrations,
     };
   }
 

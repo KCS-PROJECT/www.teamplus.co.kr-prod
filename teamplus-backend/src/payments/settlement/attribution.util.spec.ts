@@ -277,5 +277,71 @@ describe("attribution.util", () => {
       expect(r.yearMonth).toBe("2026-07"); // createdAt 월
       expect(r.billedAmount).toBe(30000);
     });
+
+    it("실제 취소 형태(cancelRegistration: registration=CANCELLED·payment=refunded·refundLogs=[]) → REFUNDED · 전액 환불 · 순수납 0", () => {
+      // cancelRegistration 은 RefundLog 를 생성하지 않는다(로그 부재 = 전액 환불).
+      const r = resolveTournamentAttribution({
+        registrationPaymentStatus: "CANCELLED",
+        amount: 50000,
+        endDate: new Date("2026-06-30T00:00:00Z"),
+        payment: {
+          paymentStatus: "refunded",
+          completedAt: JULY_INSTANT,
+          refundLogs: [],
+        },
+      });
+      expect(r.billingStatus).toBe("REFUNDED");
+      expect(r.refundedAmount).toBe(50000); // 로그 부재여도 전액 환불로 해석
+      expect(r.billedAmount).toBeNull(); // 유효 청구 제외
+      expect(r.paidAmount).toBe(0); // 매출/순수납 0 — 취소가 매출에 잔존하지 않음
+    });
+
+    it("부분 환불(partially_refunded + 로그) → 로그 합 그대로 · 순수납 = 청구−환불", () => {
+      const r = resolveTournamentAttribution({
+        registrationPaymentStatus: "REFUNDED",
+        amount: 50000,
+        endDate: new Date("2026-06-30T00:00:00Z"),
+        payment: {
+          paymentStatus: "partially_refunded",
+          completedAt: JULY_INSTANT,
+          refundLogs: [{ refundAmount: 20000 }],
+        },
+      });
+      expect(r.billingStatus).toBe("REFUNDED");
+      expect(r.refundedAmount).toBe(20000); // 부분 환불 = 로그 합
+      expect(r.paidAmount).toBe(30000); // 순수납 = 50000 − 20000
+    });
+
+    it("전액 환불 + 로그 존재(회귀) → 로그 합 사용 · 순수납 0", () => {
+      const r = resolveTournamentAttribution({
+        registrationPaymentStatus: "REFUNDED",
+        amount: 50000,
+        endDate: new Date("2026-06-30T00:00:00Z"),
+        payment: {
+          paymentStatus: "refunded",
+          completedAt: JULY_INSTANT,
+          refundLogs: [{ refundAmount: 50000 }],
+        },
+      });
+      expect(r.billingStatus).toBe("REFUNDED");
+      expect(r.refundedAmount).toBe(50000); // 로그 있으면 로그 합 사용(전액 폴백 아님)
+      expect(r.paidAmount).toBe(0);
+    });
+
+    it("PAID 정상(회귀) → 순수납 = 청구액", () => {
+      const r = resolveTournamentAttribution({
+        registrationPaymentStatus: "PAID",
+        amount: 30000,
+        endDate: new Date("2026-06-30T00:00:00Z"),
+        payment: {
+          paymentStatus: "completed",
+          completedAt: JULY_INSTANT,
+          refundLogs: [],
+        },
+      });
+      expect(r.billingStatus).toBe("PAID");
+      expect(r.paidAmount).toBe(30000);
+      expect(r.refundedAmount).toBe(0);
+    });
   });
 });
