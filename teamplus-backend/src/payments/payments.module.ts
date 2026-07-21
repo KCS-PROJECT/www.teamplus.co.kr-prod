@@ -18,6 +18,7 @@ import { PrismaModule } from "@/prisma/prisma.module";
 import { RedisModule } from "@/redis/redis.module";
 import { EnrollmentsModule } from "@/enrollments/enrollments.module";
 import { NotificationsModule } from "@/notifications/notifications.module";
+import { SettlementModule } from "./settlement/settlement.module";
 import paymentConfig from "@/config/payment.config";
 
 @Module({
@@ -28,6 +29,7 @@ import paymentConfig from "@/config/payment.config";
     EnrollmentsModule,
     NotificationsModule,
     ScheduleModule.forRoot(),
+    SettlementModule,
   ],
   controllers: [PaymentsController],
   providers: [
