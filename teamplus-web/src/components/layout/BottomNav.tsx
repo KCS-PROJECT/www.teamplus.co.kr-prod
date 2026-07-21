@@ -298,7 +298,7 @@ const TabButton = memo(function TabButton({
       {/* 라벨 — 활성/비활성 색·굵기 동기 전환 */}
       <span
         className={cn(
-          "text-[12px] tracking-tight leading-none",
+          "text-[12px] tracking-tight leading-none whitespace-nowrap",
           "transition-[color,font-weight] duration-[280ms] ease-ios-spring",
           "motion-reduce:transition-none",
           colorClass,
@@ -317,7 +317,7 @@ const TabButton = memo(function TabButton({
  */
 
 export const parentNavItems: NavItem[] = [
-  { href: "/classes", icon: "sports_hockey", label: "훈련" },
+  { href: "/classes", icon: "sports_hockey", label: "훈련/대회" },
   { href: "/parent-calendar", icon: "calendar_today", label: "일정" },
   { href: "/parent", icon: "home", label: "홈" },
   { href: "/children", icon: "face", label: "자녀", matchPaths: ["/children"] },
@@ -330,7 +330,7 @@ export const coachNavItems: NavItem[] = [
   {
     href: "/classes-manage",
     icon: "sports_hockey",
-    label: "훈련",
+    label: "훈련/대회",
     matchPaths: ["/classes-manage", "/classes-organize"],
   },
   { href: "/director-schedules", icon: "calendar_today", label: "일정" },
@@ -382,7 +382,7 @@ export const directorNavItems: NavItem[] = [
   {
     href: "/classes-manage",
     icon: "sports_hockey",
-    label: "훈련",
+    label: "훈련/대회",
     matchPaths: ["/classes-manage", "/classes-organize"],
   },
   { href: "/director-schedules", icon: "calendar_today", label: "일정" },
@@ -419,7 +419,7 @@ export const academyDirectorNavItems: NavItem[] = [
   {
     href: "/academy-classes",
     icon: "edit_note",
-    label: "훈련",
+    label: "훈련/대회",
     matchPaths: ["/academy-classes"],
   },
   {
