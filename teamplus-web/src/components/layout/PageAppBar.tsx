@@ -397,7 +397,7 @@ export function PageAppBar({
           icon="notifications"
           label="알림"
           onClick={a4.onMy}
-          badge={unreadCount > 0}
+          badgeCount={unreadCount}
           isDark={isDark}
           isActive={isNotificationsActive}
         />

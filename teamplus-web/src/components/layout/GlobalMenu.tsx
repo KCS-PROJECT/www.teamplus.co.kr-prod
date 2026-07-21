@@ -20,7 +20,7 @@ import { useModal } from "@/components/ui/Modal";
 import { MESSAGES } from "@/lib/messages";
 import { api } from "@/services/api-client";
 import { uploadFile } from "@/services/upload.service";
-import { ui, type UIConfig } from "@/services/native-bridge";
+import { ui, getAppVersionInfo, type UIConfig } from "@/services/native-bridge";
 import { isNativeApp } from "@/lib/environment";
 import { getCurrentUIConfig, syncLastAppliedConfig } from "@/hooks/useNativeUI";
 import { cn } from "@/lib/utils";
@@ -357,8 +357,24 @@ export function GlobalMenu({ isOpen, onClose }: GlobalMenuProps) {
   const { settings: appSettings } = useAppSettingsContext();
   const { modal } = useModal();
   const { unreadCount: noticeUnreadCount } = useNoticeUnreadCount();
-  const appVersionLabel = appSettings?.appVersion
-    ? `${appSettings.appName ?? "TEAMPLUS"} v${appSettings.appVersion}`
+  // [2026-07-21] 전체메뉴 footer 버전 — 네이티브 앱 실측 버전(Bridge getAppVersionInfo →
+  //   Flutter PackageInfo) 우선. 조회 전/웹 브라우저/구버전 앱(핸들러 미탑재)은
+  //   서버 설정값(appSettings.appVersion) 으로 폴백한다. (mypage footer 와 동일 패턴 —
+  //   native-bridge-ui getAppVersionInfo 가 SoT, 세션 중 promise 캐시로 RPC 1회)
+  const [nativeAppVersion, setNativeAppVersion] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void getAppVersionInfo().then((info) => {
+      if (cancelled || info.source !== "native" || !info.version) return;
+      setNativeAppVersion(info.version);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const resolvedAppVersion = nativeAppVersion ?? appSettings?.appVersion;
+  const appVersionLabel = resolvedAppVersion
+    ? `${appSettings?.appName ?? "TEAMPLUS"} v${resolvedAppVersion}`
     : "TEAMPLUS";
   const [childrenList, setChildrenList] = useState<DrawerChildItem[]>([]);
   // 자녀 선택 칩 — 전역 선택 상태(SelectedChildContext) + 선택 대상 자녀 SoT(useChildren.selectableChildren,
