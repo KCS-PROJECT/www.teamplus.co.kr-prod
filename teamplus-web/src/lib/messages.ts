@@ -98,7 +98,7 @@ export const MESSAGES = {
     dayDefaults: {
       title: "정규 수업 요일",
       optional: "선택",
-      hint: "이 수업이 진행되는 요일이에요. 수업 정보에 '월·수·금'처럼 표시되고, 아래 '일정 생성'을 누르면 이 요일·시간·장소로 실제 날짜가 만들어져요.",
+      hint: "이 수업이 진행되는 요일이에요. 수업 정보에 '월·수·금'처럼 표시되고, 아래 '이번 달 일정 일괄 생성'을 누르면 이 요일·시간·장소로 이달 날짜가 만들어져요.",
       startTime: "시작 시간",
       endTime: "종료 시간",
       venueSelect: "장소 선택",
@@ -121,20 +121,11 @@ export const MESSAGES = {
       timeUndecided: "시간 미정",
       dateUndecided: "날짜 미정",
     },
-    // 실제 진행 날짜(dateSchedules) 섹션 — 정규 요일로 만든 회차 목록.
-    scheduleListTitle: "실제 진행 날짜",
-    scheduleListHint:
-      "위 정규 요일로 만든 실제 수업 날짜예요. 빠지거나 바뀐 날짜만 여기서 조정하세요.",
-    // 정규 요일 기반 기간 자동 생성 — 로컬 draft만 갱신(실제 저장은 등록/수정 시).
+    // 정규 요일 기반 이번 달 일괄 생성 — 로컬 draft만 갱신(실제 저장은 등록/수정 시). 월 단위 운영.
     rangeGen: {
-      title: "정규 요일로 날짜 만들기",
-      hint: "위에서 정한 정규 요일로 기간 내 실제 날짜를 한 번에 만들어요. 저장은 등록·수정할 때 반영돼요.",
-      start: "시작일",
-      end: "종료일",
-      generate: "일정 생성",
-      preview: (count: number) => `이 기간에 ${count}개 날짜가 새로 만들어져요.`,
-      rangeInvalid: "종료일이 시작일보다 빠릅니다.",
-      emptyResult: "해당 기간에 새로 만들 날짜가 없습니다.",
+      fillThisMonth: "이번 달 일정 일괄 생성",
+      fillThisMonthCount: (count: number) => `이번 달 일정 일괄 생성 (${count}일)`,
+      emptyResult: "이번 달에 새로 만들 날짜가 없습니다.",
       success: (count: number) => `${count}개 날짜를 만들었어요. 등록·수정할 때 저장됩니다.`,
     },
     // ② 목록의 예외 날짜(패턴 외) 직접 추가 — 미니달력 모달 진입 버튼.
@@ -933,6 +924,14 @@ export const MESSAGES = {
     paidRatio: (paid: number, total: number) => `완납 ${paid}/${total}명`,
     // 예상 배지
     estimated: "예상",
+    // 행별 5-state 상태 라벨 (students 결제 탭 행 칩)
+    rowStatusPaid: "완납",
+    rowStatusBilled: "청구",
+    rowStatusUnsettled: "미정산",
+    rowStatusCancelled: "취소",
+    rowStatusRefunded: "환불",
+    // 정산 보기 링크 (attendance-manage → students 결제 탭)
+    viewSettlement: "정산 보기",
     // 차단 사유
     blockedMonthNotEnded: "이번 달이 끝나면 정산할 수 있어요.",
     blockedNoAttendance: "출석 내역이 없어 정산할 금액이 없어요.",
@@ -1223,6 +1222,15 @@ export const MESSAGES = {
       `청구 금액 ${amount.toLocaleString()}원`,
     settlePaidAmount: (amount: number) =>
       `결제 금액 ${amount.toLocaleString()}원`,
+    // [2026-07-21] 참가선수목록 섹션 — 대회 축 정합(선불=읽기전용 현황 / 후불=정산 확정).
+    rosterSectionTitle: "참가선수목록",
+    rosterPayNeeded: (need: number, total: number) =>
+      `결제 필요 ${need}명 / 총 ${total}명`,
+    rosterParticipantCount: (n: number) => `참가 ${n}명`,
+    rosterSelectAllAria: "청구 대상 전체 선택",
+    rosterRowCheckAria: (name: string) => `${name} 결제요청 대상`,
+    settleRequestCta: "결제요청",
+    settleRequestCancelCta: "결제요청취소",
     postpaidFeeLabel: "후불 정산 (종료 후 청구)",
     // [후불 참고 참가비 안내 — 감독이 사전 입력한 예상 금액 표시용]
     postpaidEstimateNote: "예상 금액 · 종료 후 정산에서 확정",
@@ -3533,6 +3541,10 @@ export const MESSAGES = {
       "확정하면 회원에게 결제 요청 알림이 발송되고, 해당 월 출석은 수정할 수 없습니다.",
     monthNotEndedHint: "이번 달이 끝난 뒤 정산을 확정할 수 있어요.",
     confirmedToast: "정산이 확정되어 결제 요청이 발송되었습니다.",
+    // 확정 권한 없음(오픈클래스 보조 코치) — view-only 안내
+    viewOnly: "확정 권한이 없어요. 감독만 정산을 확정할 수 있어요.",
+    // 확정 실패 서버 메시지 폴백(권한 403)
+    confirmForbidden: "정산을 확정할 권한이 없습니다.",
   },
   // [Phase C] 선불 수업 회원별 출석 횟수 가시화 (출석관리 화면 임베드, 읽기 전용)
   monthlyAttendance: {

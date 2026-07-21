@@ -250,7 +250,7 @@ export function resolveTournamentAttribution(
   const { registrationPaymentStatus, amount, endDate, payment } = input;
   const regStatus = (registrationPaymentStatus ?? "UNPAID").toUpperCase();
   const payStatus = payment?.paymentStatus ?? null;
-  const refundedAmount = sumRefund(payment?.refundLogs);
+  const refundLogSum = sumRefund(payment?.refundLogs);
 
   let billingStatus: SettlementBillingStatus;
   if (
@@ -269,6 +269,18 @@ export function resolveTournamentAttribution(
     // UNPAID — 정산 전.
     billingStatus = "UNSETTLED";
   }
+
+  // 환불액 — partially_refunded 는 실제 로그 합(부분 환불 정확). 그 외 전액 환불 terminal
+  //  (REFUNDED)은 로그가 있으면 로그 합, 없으면 전액으로 해석한다.
+  //  cancelRegistration(tournaments.service) 은 PAID 취소 시 Payment 만 refunded 로 바꾸고
+  //  RefundLog 를 생성하지 않으므로(등록=CANCELLED·refundLogs=[]) 로그 부재 = 전액 환불이다.
+  //  이 보정으로 실제 취소 흐름의 순수납(paidAmount)이 0 이 되어 매출에 잔존하지 않는다.
+  const refundedAmount =
+    billingStatus === "REFUNDED" && payStatus !== "partially_refunded"
+      ? refundLogSum > 0
+        ? refundLogSum
+        : amount
+      : refundLogSum;
 
   // 귀속월 — 확정 Payment 우선, 없으면 대회 종료월. 둘 다 없으면 근거 불명.
   let yearMonth: string | null;

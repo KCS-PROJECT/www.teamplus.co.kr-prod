@@ -7,6 +7,7 @@ import { useNavigation } from '@/components/ui/NavLink';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { BackHeader } from '@/components/layout/Header';
 import { Button } from '@/components/ui/Button';
+import { useToast } from '@/components/ui/Toast';
 import { ReceiptCard } from '@/components/shared/ReceiptCard';
 import { usePageReady } from '@/hooks/usePageReady';
 import { useNativeUI } from '@/hooks/useNativeUI';
@@ -20,7 +21,7 @@ import type { ReceiptStatus } from '@/components/shared/ReceiptCard';
  * 영수증 상세 페이지
  * - 상단 성공/실패 상태 아이콘
  * - ReceiptCard 공통 컴포넌트 사용
- * - 하단: 이미지 저장 + 목록 돌아가기
+ * - 하단: 영수증 보기(외부 브라우저) + 목록 돌아가기
  */
 
 function mapReceiptStatus(status: string): ReceiptStatus {
@@ -65,6 +66,7 @@ function StatusHeader({ status }: { status: string }) {
 
 export default function ReceiptDetailPage() {
   const { back } = useNavigation();
+  const { toast } = useToast();
   const params = useParams();
   const receiptId = (params?.id ?? '') as string;
 
@@ -121,6 +123,8 @@ export default function ReceiptDetailPage() {
 
     if (response.success && response.data?.downloadUrl) {
       await navigation.openExternal(response.data.downloadUrl);
+    } else {
+      toast.error(response.error?.message ?? MESSAGES.error.general);
     }
     setIsDownloading(false);
   };
@@ -201,9 +205,9 @@ export default function ReceiptDetailPage() {
               {isDownloading ? (
                 <div className="w-5 h-5 rounded-w-pill border-2 border-white/30 border-t-white animate-spin motion-reduce:animate-none" />
               ) : (
-                <Icon name="download" className="text-xl" />
+                <Icon name="open_in_new" className="text-xl" />
               )}
-              이미지로 저장하기
+              영수증 보기
             </Button>
 
             <Button

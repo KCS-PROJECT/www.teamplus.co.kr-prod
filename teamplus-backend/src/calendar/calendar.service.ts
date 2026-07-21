@@ -16,6 +16,8 @@ export interface CalendarEvent {
   title: string;
   refId: string;
   refType: "class_schedule" | "tournament" | "hockey_match";
+  /** 수업(class_schedule) 이벤트의 Class.id — 프론트 수업 상세(/classes/:id) 라우팅용. 대회/경기는 미포함. */
+  classId?: string | null;
   timeStart: string;
   timeEnd: string;
   /** 표시 시각 SoT (text "HH:mm") — ClassSchedule.start_time 우선, 입력 그대로. timeStart(ISO)는 호환 유지. */
@@ -565,6 +567,7 @@ export class CalendarService {
         title: s.class.className,
         refId: s.id,
         refType: "class_schedule",
+        classId: s.class.id,
         // timeStart/End(ISO, 하위호환) — 해석된 시각을 scheduledDate 와 KST 합성.
         //   시각 미상이면 scheduledDate(UTC 자정) 그대로 — 시각 성분을 신뢰하지 말 것.
         timeStart: (displayStart

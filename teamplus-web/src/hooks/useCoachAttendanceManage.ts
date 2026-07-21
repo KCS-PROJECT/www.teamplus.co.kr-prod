@@ -64,8 +64,8 @@ export interface ClassScheduleHistoryResponse {
     studentCount: number;
     completedCount: number;
     totalScheduleCount: number;
-    /** [Phase C] 선불/후불 — 출석관리 화면이 정산/출석횟수 섹션을 택일 노출. */
-    billingMode: "PREPAID" | "POSTPAID";
+    /** [Phase C] 결제방식 — 출석관리 화면이 정산 진입 링크 노출을 판정. 백엔드 raw 값(BOTH 포함). */
+    billingMode: "PREPAID" | "POSTPAID" | "BOTH";
   };
   stats: {
     totalSchedules: number;

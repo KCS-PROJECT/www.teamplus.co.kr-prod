@@ -1034,10 +1034,13 @@ export function useClassForm({
                 }))
               : undefined,
           // 개별 날짜 일정(미니달력) — complete 화면에서 일정별 시간·장소 나열·기간 산출.
+          //   지난 회차 제외(제출부와 동일) — 완료 화면은 현재·미래 일정만 확인하는 용도라
+          //   과거 회차가 기간·총 N회·일정 나열에 섞이지 않게 한다.
           dateSchedules:
             data.dateSchedules.length > 0
               ? data.dateSchedules
                   .filter((s) => s.date)
+                  .filter((s) => !isPastScheduleDate(s.date, localTodayISO()))
                   .map((s) => ({
                     date: s.date,
                     startTime: s.startTime,

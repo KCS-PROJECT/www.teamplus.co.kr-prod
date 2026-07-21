@@ -1,40 +1,41 @@
 'use client';
 
 /**
- * /classes/[id]/students — 코치/감독/오픈클래스감독 선수정보 페이지
+ * /classes/[id]/students — 코치/감독/오픈클래스감독 선수정보 + 정산 확정 페이지
  *
- * 팀·학원 공용 단일 진입점 — 도메인 무관 `GET /classes/:classId/payments` 단일 호출.
- * 학원 전용 수강생 페이지(AcademyClassStudentList)를 흡수 통합.
+ * 팀·학원 공용 단일 진입점 — 도메인 무관 `GET /classes/:classId/payments?yearMonth=` 단일 호출.
  * RBAC: 상위 (coach-access) layout 단일 가드 — coach/director/academy_director/admin.
+ *   page 는 useRouteUser() 로 파생 user 를 소비만 하고 인증 훅을 재호출하지 않는다(#6).
  *
  * 2탭 구조 (DESIGN.md Pattern A wallet-tabs):
- *   ① 선수정보(roster, 기본): 이름·등록일·학부모 + 결제상태 칩 — "이 수업 누가 있나"
- *   ② 결제 현황(payment): 총수금·완납/미납 요약 + 미납 필터·우선 정렬 — "누가 냈나"
+ *   ① 선수정보(roster): 이름·등록일·학부모·이번 달 출석 + 상태 칩
+ *   ② 결제 현황(payment): 선택 월 축 + 행별 5-state·결제방식·금액·출석수 + 후불 정산 확정
  *
- * 결제는 현재 완납/미납 2-state. 모드 분기(선불/후불)·정산 확정·출석 횟수는
- * 결제 재설계 Phase A~C 산출물에 의존 — 자리만 예약(미구현).
+ * [정산 확정 통합] 결제 탭 하단에 후불 정산 확정 영역(PostpaidSettlementSection, controlled)을 이식.
+ *   월(yearMonth)은 페이지가 소유(스텝퍼) → 섹션은 controlled. 확정 성공 시 재조회로 5-state 즉시 반영.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
 
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
+import { PostpaidSettlementSection } from '@/components/attendance/PostpaidSettlementSection';
+import { InlineRetryError } from '@/components/settlement/InlineRetryError';
 import { Icon } from '@/components/ui/Icon';
-// RBAC: (coach-access) layout 단일 가드 — useRequireRole 호출 제거.
+// RBAC: (coach-access) layout 단일 가드 — useRequireRole 호출 제거. user 는 useRouteUser 소비.
+import { useRouteUser } from '@/app/(class)/route-user-context';
 import { usePageReady } from '@/hooks/usePageReady';
 import { useNativeUI } from '@/hooks/useNativeUI';
+import { kstYearMonth } from '@/lib/kst-month';
+import { shiftMonth } from '@/components/settlement/settlement-format';
 import { cn } from '@/lib/utils';
 import { MESSAGES } from '@/lib/messages';
 import { api } from '@/services/api-client';
 
-/** 결제 표시 — paid / unpaid 2-state. backend 의 pending/cancelled/refunded 도 모두 "미납". */
-type PaymentState = 'paid' | 'unpaid';
-type RawPaymentState = 'paid' | 'pending' | 'unpaid' | 'cancelled' | 'refunded';
-
-function normalizePaymentState(raw: string | null | undefined): PaymentState {
-  return raw === 'paid' ? 'paid' : 'unpaid';
-}
+// ── 5-state / 결제방식 계약 (getClassPayments Dual Emit) ──
+type BillingTiming = 'PREPAID' | 'POSTPAID' | 'UNASSIGNED';
+type BillingStatus = 'UNSETTLED' | 'BILLED' | 'PAID' | 'CANCELLED' | 'REFUNDED';
 
 interface PaymentStudent {
   registrationId: string;
@@ -48,21 +49,30 @@ interface PaymentStudent {
   amount: number | null;
   paymentMethod: string | null;
   paidAt: string | null;
-  paymentState: RawPaymentState;
   /** 결제자(학부모) 표시명 — 미결제 학생은 null */
   payerName?: string | null;
-  /** [Phase C] 당월(이번 달) present 출석 횟수 */
+  /** 선택월 present 출석 횟수 */
   attendanceCount?: number;
+  // ── 5-state 계약 ──
+  billingTiming: BillingTiming;
+  billingStatus: BillingStatus;
+  billedAmount: number | null;
+  estimatedAmount: number | null;
+  paidAmount: number;
+  outstandingAmount: number;
 }
 
 interface PaymentsResponse {
   classId: string;
   className: string;
-  teamId: string;
+  billingMode?: 'PREPAID' | 'POSTPAID' | 'BOTH' | string | null;
+  /** 선택월 SoT(YYYY-MM) — 서버가 확정. 월 전환 race 가드 기준값. */
+  yearMonth: string;
+  /** 오픈클래스는 null. 팀 수업이면 teamId 존재. */
+  teamId: string | null;
   teamName: string;
   teamCode: string;
   total: number;
-  counts: Record<RawPaymentState, number>;
   totalPaidAmount: number;
   students: PaymentStudent[];
   products?: {
@@ -73,21 +83,67 @@ interface PaymentsResponse {
     billingTiming?: string | null;
     feePerSession?: number | null;
   }[];
-  /** [Phase B 연동] 결제 방식 — PREPAID(선불) / POSTPAID(후불). 미지정 시 선불 폴백. */
-  billingMode?: 'PREPAID' | 'POSTPAID' | string | null;
 }
 
 type TabKey = 'roster' | 'payment';
-type PayFilter = 'all' | 'paid' | 'unpaid';
+type PayFilter = 'all' | 'outstanding' | 'paid';
+type RowBucket = 'paid' | 'outstanding' | 'neutral';
 
-const STATE_META: Record<PaymentState, { label: string; chip: string; dot: string }> = {
-  paid: { label: '완납', chip: 'bg-mint-100 text-rink-800 dark:bg-mint-500/20 dark:text-mint-100', dot: 'bg-mint-500' },
-  unpaid: { label: '미납', chip: 'bg-flame-100 text-flame-500 dark:bg-flame-500/20 dark:text-flame-100', dot: 'bg-flame-500' },
+const ROW_STATUS_META: Record<
+  BillingStatus,
+  { label: string; chip: string; dot: string }
+> = {
+  PAID: {
+    label: MESSAGES.settlement.rowStatusPaid,
+    chip: 'bg-mint-100 text-rink-800 dark:bg-mint-500/20 dark:text-mint-100',
+    dot: 'bg-mint-500',
+  },
+  BILLED: {
+    label: MESSAGES.settlement.rowStatusBilled,
+    chip: 'bg-ice-500/10 text-ice-500 dark:bg-ice-500/20 dark:text-ice-100',
+    dot: 'bg-ice-500',
+  },
+  UNSETTLED: {
+    label: MESSAGES.settlement.rowStatusUnsettled,
+    chip: 'bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-100',
+    dot: 'bg-wtext-3',
+  },
+  CANCELLED: {
+    label: MESSAGES.settlement.rowStatusCancelled,
+    chip: 'bg-wline-2 text-wtext-3 dark:bg-rink-700 dark:text-rink-300',
+    dot: 'bg-wtext-4',
+  },
+  REFUNDED: {
+    label: MESSAGES.settlement.rowStatusRefunded,
+    chip: 'bg-wline-2 text-wtext-3 dark:bg-rink-700 dark:text-rink-300',
+    dot: 'bg-wtext-4',
+  },
 };
+
+const TIMING_META: Record<BillingTiming, { label: string; cls: string }> = {
+  PREPAID: {
+    label: MESSAGES.settlement.prepaid,
+    cls: 'bg-ice-500/10 text-ice-500 dark:bg-ice-500/15 dark:text-ice-100',
+  },
+  POSTPAID: {
+    label: MESSAGES.settlement.postpaid,
+    cls: 'bg-sun-500/15 text-rink-800 dark:bg-sun-500/20 dark:text-sun-100',
+  },
+  UNASSIGNED: {
+    label: MESSAGES.settlement.unassigned,
+    cls: 'bg-wline-2 text-wtext-3 dark:bg-rink-700 dark:text-rink-300',
+  },
+};
+
+function rowBucket(s: PaymentStudent): RowBucket {
+  if (s.billingStatus === 'PAID') return 'paid';
+  if (s.billingStatus === 'UNSETTLED' || s.billingStatus === 'BILLED') return 'outstanding';
+  return 'neutral';
+}
 
 function formatPrice(n?: number | null) {
   if (n == null) return '-';
-  return `${n.toLocaleString('ko-KR')}원`;
+  return `${n.toLocaleString('ko-KR')}${MESSAGES.settlement.won}`;
 }
 
 function formatDateKR(iso?: string | null) {
@@ -98,10 +154,13 @@ function formatDateKR(iso?: string | null) {
 
 export default function ClassStudentsPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const classId = useMemo(() => {
     const raw = params?.id;
     return Array.isArray(raw) ? raw[0] : (raw ?? '');
   }, [params]);
+
+  const user = useRouteUser();
 
   useNativeUI({
     showStatusBar: true,
@@ -110,61 +169,172 @@ export default function ClassStudentsPage() {
     showBackButton: true,
   });
 
-  const [data, setData] = useState<PaymentsResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // ── 초기값 (드릴다운 소비) ──
+  const initialYm = useMemo(() => {
+    const q = searchParams.get('yearMonth');
+    return q && /^\d{4}-\d{2}$/.test(q) ? q : kstYearMonth();
+  }, [searchParams]);
+  const initialTab = useMemo<TabKey>(() => {
+    const t = searchParams.get('tab');
+    if (t === 'payment' || t === 'roster') return t;
+    // ?yearMonth 만 있고 tab 없음 = 정산 허브 드릴다운 → payment 로 오픈.
+    if (searchParams.get('yearMonth')) return 'payment';
+    return 'roster';
+  }, [searchParams]);
 
-  const [tab, setTab] = useState<TabKey>('roster');
+  const [yearMonth, setYearMonth] = useState<string>(initialYm);
+  const [tab, setTab] = useState<TabKey>(initialTab);
   const [payFilter, setPayFilter] = useState<PayFilter>('all');
 
-  // 풀스크린 로더 fast-path — fetch 완료 시점에 PageTransitionLoader OFF
+  const [data, setData] = useState<PaymentsResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true); // 초기 로드 게이트
+  const [isMonthLoading, setIsMonthLoading] = useState(false); // 월 전환 인라인 로딩
+  const [error, setError] = useState<string | null>(null); // 초기 실패(풀 에러)
+  const [monthError, setMonthError] = useState(false); // 월 새로고침 실패(직전월 보존)
+  const [isRetrying, setIsRetrying] = useState(false);
+
+  // 풀스크린 로더 fast-path — 초기 로드 시도 완료(성공/실패) 시 ready.
   usePageReady(!isLoading);
 
-  const load = useCallback(async () => {
+  // 요청 시퀀스 — 늦게 도착한 이전 월 응답이 최신 선택 월을 덮는 race 차단.
+  const requestSeq = useRef(0);
+
+  const loadData = useCallback(
+    async (ym: string, mode: 'initial' | 'month') => {
+      if (!classId) return;
+      const seq = ++requestSeq.current;
+      if (mode === 'initial') setError(null);
+      const res = await api.get<PaymentsResponse>(
+        `/classes/${classId}/payments?yearMonth=${encodeURIComponent(ym)}`,
+      );
+      if (seq !== requestSeq.current) return; // 폐기 — 더 최신 요청 진행 중
+      if (res.success && res.data) {
+        if (res.data.yearMonth !== ym) {
+          // 서버 확정월 ≠ 요청월 → stale echo. 직전 데이터 보존.
+          if (mode === 'month') setMonthError(true);
+          else setError(MESSAGES.settlement.loadFailedTitle);
+          return;
+        }
+        setData(res.data);
+        if (mode === 'month') setMonthError(false);
+      } else if (mode === 'month') {
+        // 직전 유효월 데이터를 빈 데이터로 덮지 않는다 — 인라인 에러로만 표기.
+        setMonthError(true);
+      } else {
+        setError(res.error?.message ?? MESSAGES.settlement.loadFailedTitle);
+      }
+    },
+    [classId],
+  );
+
+  // 최초 로드 — 1회.
+  useEffect(() => {
     if (!classId) return;
-    setIsLoading(true);
-    setError(null);
-    // 도메인-무관 단일 엔드포인트 — owner(팀/학원) 분기 불필요. 가드는 (coach-access) layout.
-    const res = await api.get<PaymentsResponse>(`/classes/${classId}/payments`);
-    if (res.success && res.data) {
-      setData(res.data);
-    } else {
-      setError(res.error?.message ?? '선수 정보를 불러올 수 없습니다.');
-    }
-    setIsLoading(false);
+    let cancelled = false;
+    (async () => {
+      setIsLoading(true);
+      await loadData(initialYm, 'initial');
+      if (!cancelled) setIsLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // 최초 1회만 — 이후 월 변경은 아래 effect. initialYm 은 마운트 시 고정.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classId]);
 
+  // 월 변경 — 최초 로드는 건너뜀.
+  const isFirstMonthEffect = useRef(true);
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (isFirstMonthEffect.current) {
+      isFirstMonthEffect.current = false;
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setIsMonthLoading(true);
+      await loadData(yearMonth, 'month');
+      if (!cancelled) setIsMonthLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [yearMonth, loadData]);
 
-  // 미납 합산 (paid 외 전부)
-  const unpaidCount = useMemo(() => {
-    if (!data) return 0;
-    const c = data.counts;
-    return (c.pending ?? 0) + (c.unpaid ?? 0) + (c.cancelled ?? 0) + (c.refunded ?? 0);
+  const handleInitialRetry = useCallback(async () => {
+    setIsRetrying(true);
+    await loadData(yearMonth, 'initial');
+    setIsRetrying(false);
+  }, [loadData, yearMonth]);
+
+  // 확정 성공 후 현재 월 재조회(행 5-state 즉시 반영).
+  const reloadCurrentMonth = useCallback(async () => {
+    setIsMonthLoading(true);
+    await loadData(yearMonth, 'month');
+    setIsMonthLoading(false);
+  }, [loadData, yearMonth]);
+
+  // ── 월 스텝퍼 ──
+  const nextMonthDisabled = yearMonth >= kstYearMonth();
+  const goPrevMonth = useCallback(() => setYearMonth((ym) => shiftMonth(ym, -1)), []);
+  const goNextMonth = useCallback(() => {
+    setYearMonth((ym) => (ym >= kstYearMonth() ? ym : shiftMonth(ym, 1)));
+  }, []);
+  const [ymY, ymM] = useMemo(() => yearMonth.split('-').map(Number), [yearMonth]);
+
+  // ── 파생 집계 ──
+  const timingCounts = useMemo(() => {
+    const c: Record<BillingTiming, number> = { PREPAID: 0, POSTPAID: 0, UNASSIGNED: 0 };
+    data?.students.forEach((s) => {
+      c[s.billingTiming] = (c[s.billingTiming] ?? 0) + 1;
+    });
+    return c;
   }, [data]);
 
-  // [Phase B] 결제 방식 — 후불(POSTPAID) 여부 + 회당 단가 (출석 × 단가 정산 안내용)
-  const isPostpaid = data?.billingMode === 'POSTPAID';
-  const postpaidFee = useMemo(() => {
-    if (!data?.products) return null;
-    const byTiming = data.products.find((p) => p.billingTiming === 'POSTPAID' && p.feePerSession != null);
-    if (byTiming?.feePerSession != null) return byTiming.feePerSession;
-    const anyFee = data.products.find((p) => p.feePerSession != null);
-    return anyFee?.feePerSession ?? null;
+  const bucketCounts = useMemo(() => {
+    const c: Record<RowBucket, number> = { paid: 0, outstanding: 0, neutral: 0 };
+    data?.students.forEach((s) => {
+      c[rowBucket(s)] += 1;
+    });
+    return c;
   }, [data]);
 
-  // 결제 탭 — 미납 우선 정렬 후 필터
+  const outstandingTotal = useMemo(
+    () => data?.students.reduce((a, s) => a + (s.outstandingAmount ?? 0), 0) ?? 0,
+    [data],
+  );
+  const estimatedTotal = useMemo(
+    () => data?.students.reduce((a, s) => a + (s.estimatedAmount ?? 0), 0) ?? 0,
+    [data],
+  );
+
+  const hasPostpaidTarget = useMemo(
+    () => data?.students.some((s) => s.billingTiming === 'POSTPAID') ?? false,
+    [data],
+  );
+
+  // 응답 월 ↔ 선택 월 일치 여부 — 불일치(월 전환 중/실패)면 결제 탭 금융 데이터 stale 렌더 금지.
+  // roster 탭은 월 종속이 아니므로 게이트 대상 아님.
+  const monthMatches = data != null && data.yearMonth === yearMonth;
+
+  // FE 쓰기 게이트 — 팀=팀관리자 / 오픈클래스=감독·admin (보조코치 view-only).
+  const isTeamClass = !!data?.teamId;
+  const canWrite = data
+    ? isTeamClass
+      ? true
+      : user?.userType === 'academy_director' || user?.userType === 'admin'
+    : false;
+
+  // 결제 탭 — 미납·미정산 우선 정렬 후 필터.
   const paymentList = useMemo(() => {
     if (!data) return [];
     const sorted = [...data.students].sort((a, b) => {
-      const ra = normalizePaymentState(a.paymentState) === 'unpaid' ? 0 : 1;
-      const rb = normalizePaymentState(b.paymentState) === 'unpaid' ? 0 : 1;
+      const ra = rowBucket(a) === 'outstanding' ? 0 : 1;
+      const rb = rowBucket(b) === 'outstanding' ? 0 : 1;
       return ra - rb;
     });
     if (payFilter === 'all') return sorted;
-    return sorted.filter((s) => normalizePaymentState(s.paymentState) === payFilter);
+    return sorted.filter((s) => rowBucket(s) === payFilter);
   }, [data, payFilter]);
 
   const M = MESSAGES.academy.students;
@@ -183,7 +353,7 @@ export default function ClassStudentsPage() {
             <div className="text-w-caption font-extrabold tracking-[0.08em] text-mint-100">
               PLAYERS
             </div>
-            {isLoading || !data ? null : (
+            {!data ? null : (
               <>
                 <h1 className="mt-2 text-w-h3 font-extrabold tracking-tight break-keep">
                   {data.className}
@@ -199,7 +369,7 @@ export default function ClassStudentsPage() {
         </section>
 
         {/* 탭 — DESIGN Pattern A wallet-tabs */}
-        {data && !isLoading && (
+        {data && (
           <section className="px-4 pt-3">
             <div
               role="tablist"
@@ -231,7 +401,7 @@ export default function ClassStudentsPage() {
           </section>
         )}
 
-        {/* 에러 */}
+        {/* 에러 (초기 로드 실패) */}
         {error ? (
           <section className="px-4 pt-3 pb-8">
             <div className="rounded-w-xl bg-wsurface dark:bg-rink-800 shadow-sh-1 border border-wline dark:border-rink-700 p-6 text-center">
@@ -239,14 +409,15 @@ export default function ClassStudentsPage() {
               <p className="mt-2 text-w-body font-semibold text-wtext-1 dark:text-white">{error}</p>
               <button
                 type="button"
-                onClick={() => void load()}
-                className="mt-3 inline-flex items-center gap-1.5 h-10 px-4 rounded-w-md bg-ice-500 text-white text-w-small font-bold hover:bg-ice-600"
+                onClick={() => void handleInitialRetry()}
+                disabled={isRetrying}
+                className="mt-3 inline-flex items-center gap-1.5 h-10 px-4 rounded-w-md bg-ice-500 text-white text-w-small font-bold hover:bg-ice-600 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {M.retry}
               </button>
             </div>
           </section>
-        ) : isLoading || !data ? null : tab === 'roster' ? (
+        ) : !data ? null : tab === 'roster' ? (
           /* ── 탭 ① 선수정보 ── */
           <section className="px-4 pt-3 pb-8">
             {data.students.length === 0 ? (
@@ -263,92 +434,170 @@ export default function ClassStudentsPage() {
           </section>
         ) : (
           /* ── 탭 ② 결제 현황 ── */
-          <section className="px-4 pt-3 pb-8 flex flex-col gap-3">
-            {/* 요약 — 선불: 총수금 / 후불: 후불 정산 배지 + 회당 단가 */}
-            <div className="rounded-w-xl bg-wsurface dark:bg-rink-800 shadow-sh-1 border border-wline dark:border-rink-700 p-4">
-              {isPostpaid ? (
-                <div className="flex items-center justify-between gap-2">
-                  <span className="inline-flex items-center gap-1 rounded-w-pill bg-ice-500/10 dark:bg-ice-500/15 px-2.5 py-1 text-w-caption font-extrabold text-ice-500">
-                    <Icon name="schedule" className="text-[15px]" aria-hidden="true" />
-                    {M.billingPostpaid}
-                  </span>
-                  {postpaidFee != null && (
-                    <span className="text-w-caption font-semibold text-wtext-2 dark:text-rink-100 font-num tabular-nums text-right break-keep">
-                      {M.postpaidPerSessionNote(postpaidFee)}
-                    </span>
-                  )}
-                </div>
-              ) : (
-                <div className="flex items-baseline justify-between">
-                  <span className="text-w-caption font-semibold text-wtext-3 dark:text-rink-300">
-                    {M.paymentSummaryTotal}
-                  </span>
-                  <span className="text-w-h3 font-extrabold font-num text-wtext-1 dark:text-white tabular-nums">
-                    {data.totalPaidAmount.toLocaleString('ko-KR')}
-                    <span className="ml-0.5 text-w-body">원</span>
-                  </span>
-                </div>
-              )}
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <CountBlock label={STATE_META.paid.label} value={data.counts.paid ?? 0} dotClass="bg-mint-500" />
-                <CountBlock label={STATE_META.unpaid.label} value={unpaidCount} dotClass="bg-flame-500" />
-              </div>
-              {isPostpaid && (
-                <p className="mt-3 text-w-caption text-wtext-3 dark:text-rink-300 break-keep">
-                  {M.postpaidNotice}
-                </p>
-              )}
-            </div>
-
-            {/* 미납 필터 칩 */}
-            <div className="flex gap-1.5" role="group" aria-label={M.tabPayment}>
-              {([
-                { key: 'all' as const, label: M.filterAllPay, count: data.total },
-                { key: 'paid' as const, label: STATE_META.paid.label, count: data.counts.paid ?? 0 },
-                { key: 'unpaid' as const, label: STATE_META.unpaid.label, count: unpaidCount },
-              ]).map((f) => (
+          <>
+            <section className="px-4 pt-3 pb-4 flex flex-col gap-3">
+              {/* 월 스텝퍼 */}
+              <div className="flex items-center justify-between rounded-w-xl bg-wsurface dark:bg-rink-800 shadow-sh-1 border border-wline dark:border-rink-700 px-2 py-2">
                 <button
-                  key={f.key}
                   type="button"
-                  aria-pressed={payFilter === f.key}
-                  onClick={() => setPayFilter(f.key)}
-                  className={cn(
-                    'inline-flex items-center gap-1 h-8 px-3 rounded-w-pill text-card-meta font-bold transition-colors duration-150 motion-reduce:transition-none',
-                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500',
-                    payFilter === f.key
-                      ? 'bg-ice-500 text-white'
-                      : 'bg-wsurface dark:bg-rink-800 border border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 hover:bg-wline-2 dark:hover:bg-rink-700',
-                  )}
+                  onClick={goPrevMonth}
+                  aria-label={MESSAGES.settlement.prevMonth}
+                  className="flex size-9 items-center justify-center rounded-w-md text-wtext-2 dark:text-rink-100 hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
                 >
-                  {f.label}
-                  <span className="font-num tabular-nums opacity-80">{f.count}</span>
+                  <Icon name="chevron_left" aria-hidden="true" />
                 </button>
-              ))}
-            </div>
-
-            {/* 결제 리스트 (미납 우선 정렬) */}
-            {paymentList.length === 0 ? (
-              <EmptyCard icon="receipt_long" text={M.emptyPaymentFilter} />
-            ) : (
-              <div className="rounded-w-xl bg-wsurface dark:bg-rink-800 shadow-sh-1 border border-wline dark:border-rink-700 overflow-hidden">
-                <ul className="divide-y divide-wline-2 dark:divide-rink-700">
-                  {paymentList.map((s) => (
-                    <StudentRow key={s.registrationId} student={s} variant="payment" />
-                  ))}
-                </ul>
+                <span className="flex items-center gap-2 text-w-body font-bold text-wtext-1 dark:text-white tabular-nums">
+                  {MESSAGES.settlement.monthLabel(ymY, ymM)}
+                  {isMonthLoading && (
+                    <span
+                      className="h-3.5 w-3.5 rounded-w-pill border-2 border-ice-500 border-t-transparent animate-spin motion-reduce:animate-none"
+                      role="status"
+                      aria-label={MESSAGES.settlement.monthLoading}
+                    />
+                  )}
+                </span>
+                <button
+                  type="button"
+                  onClick={goNextMonth}
+                  disabled={nextMonthDisabled}
+                  aria-label={MESSAGES.settlement.nextMonth}
+                  className="flex size-9 items-center justify-center rounded-w-md text-wtext-2 dark:text-rink-100 hover:bg-wline-2 dark:hover:bg-rink-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors motion-reduce:transition-none"
+                >
+                  <Icon name="chevron_right" aria-hidden="true" />
+                </button>
               </div>
+
+              {/*
+                월 종속 본문(요약·5-state 행·정산 확정) 게이트.
+                금융 화면 원칙 — 선택 월과 응답 월 불일치/전환 중에는 이전 월 데이터를 표시하지 않는다.
+                  · monthError    → InlineRetryError (stale 데이터 미표시)
+                  · 전환 중/불일치 → 월 로딩 스켈레톤 (빈0/스테일 위장 금지)
+                  · monthMatches  → 실데이터
+              */}
+              {monthError ? (
+                <InlineRetryError
+                  message={MESSAGES.settlement.monthLoadFailed}
+                  onRetry={() => void reloadCurrentMonth()}
+                  retrying={isMonthLoading}
+                />
+              ) : !monthMatches || isMonthLoading ? (
+                <PaymentMonthSkeleton />
+              ) : (
+                <>
+                  {/* 요약 압축 — 총 수납 + 선불/후불/미설정 인원 + 미수·정산예정 */}
+                  <div className="rounded-w-xl bg-wsurface dark:bg-rink-800 shadow-sh-1 border border-wline dark:border-rink-700 p-4">
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-w-caption font-semibold text-wtext-3 dark:text-rink-300">
+                        {MESSAGES.settlement.totalCollected}
+                      </span>
+                      <span className="text-w-h3 font-extrabold font-num text-wtext-1 dark:text-white tabular-nums">
+                        {data.totalPaidAmount.toLocaleString('ko-KR')}
+                        <span className="ml-0.5 text-w-body">{MESSAGES.settlement.won}</span>
+                      </span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <CountBlock label={MESSAGES.settlement.prepaid} value={timingCounts.PREPAID} dotClass="bg-ice-500" />
+                      <CountBlock label={MESSAGES.settlement.postpaid} value={timingCounts.POSTPAID} dotClass="bg-sun-500" />
+                      <CountBlock label={MESSAGES.settlement.unassigned} value={timingCounts.UNASSIGNED} dotClass="bg-wtext-3" />
+                    </div>
+                    {(outstandingTotal > 0 || estimatedTotal > 0) && (
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-wline-2 dark:border-rink-700 pt-3">
+                        {outstandingTotal > 0 && (
+                          <span className="text-w-caption text-wtext-2 dark:text-rink-100">
+                            {MESSAGES.settlement.outstanding}{' '}
+                            <span className="font-num tabular-nums font-bold text-flame-500">
+                              {outstandingTotal.toLocaleString('ko-KR')}
+                              {MESSAGES.settlement.won}
+                            </span>
+                          </span>
+                        )}
+                        {estimatedTotal > 0 && (
+                          <span className="text-w-caption text-wtext-2 dark:text-rink-100">
+                            {MESSAGES.settlement.pendingSettlement}{' '}
+                            <span className="font-num tabular-nums font-bold text-ice-500">
+                              {estimatedTotal.toLocaleString('ko-KR')}
+                              {MESSAGES.settlement.won}
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 필터 칩 (5-state 기준) */}
+                  <div className="flex gap-1.5" role="group" aria-label={M.tabPayment}>
+                    {([
+                      { key: 'all' as const, label: M.filterAllPay, count: data.total },
+                      { key: 'outstanding' as const, label: MESSAGES.settlement.outstanding, count: bucketCounts.outstanding },
+                      { key: 'paid' as const, label: MESSAGES.settlement.rowStatusPaid, count: bucketCounts.paid },
+                    ]).map((f) => (
+                      <button
+                        key={f.key}
+                        type="button"
+                        aria-pressed={payFilter === f.key}
+                        onClick={() => setPayFilter(f.key)}
+                        className={cn(
+                          'inline-flex items-center gap-1 h-8 px-3 rounded-w-pill text-card-meta font-bold transition-colors duration-150 motion-reduce:transition-none',
+                          'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500',
+                          payFilter === f.key
+                            ? 'bg-ice-500 text-white'
+                            : 'bg-wsurface dark:bg-rink-800 border border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 hover:bg-wline-2 dark:hover:bg-rink-700',
+                        )}
+                      >
+                        {f.label}
+                        <span className="font-num tabular-nums opacity-80">{f.count}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* 결제 리스트 (미납·미정산 우선 정렬) */}
+                  {paymentList.length === 0 ? (
+                    <EmptyCard icon="receipt_long" text={M.emptyPaymentFilter} />
+                  ) : (
+                    <div className="rounded-w-xl bg-wsurface dark:bg-rink-800 shadow-sh-1 border border-wline dark:border-rink-700 overflow-hidden">
+                      <ul className="divide-y divide-wline-2 dark:divide-rink-700">
+                        {paymentList.map((s) => (
+                          <StudentRow key={s.registrationId} student={s} variant="payment" />
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              )}
+            </section>
+
+            {/*
+              후불 정산 확정 영역 — 후불 대상 ≥1 + 월 일치 + 전환 중 아님일 때만 (full-bleed, controlled).
+              섹션 자체도 HIGH-1 월 게이트를 갖지만, 페이지도 monthMatches 아닐 때 렌더 보류로 일관.
+            */}
+            {monthMatches && !isMonthLoading && hasPostpaidTarget && (
+              <PostpaidSettlementSection
+                classId={classId}
+                yearMonth={yearMonth}
+                canWrite={canWrite}
+                onConfirmed={reloadCurrentMonth}
+                iceTheme
+              />
             )}
-          </section>
+
+            <div className="h-8" aria-hidden="true" />
+          </>
         )}
       </main>
     </MobileContainer>
   );
 }
 
-/** 학생 행 — variant 로 메타만 분기 (roster: 등록일·학부모 / payment: 금액·상품·결제일). */
-function StudentRow({ student, variant }: { student: PaymentStudent; variant: 'roster' | 'payment' }) {
-  const state = normalizePaymentState(student.paymentState);
-  const meta = STATE_META[state];
+/** 학생 행 — variant 로 메타 분기. roster: 등록일·학부모·출석 / payment: 결제방식·금액·출석·상태. */
+function StudentRow({
+  student,
+  variant,
+}: {
+  student: PaymentStudent;
+  variant: 'roster' | 'payment';
+}) {
+  const status = ROW_STATUS_META[student.billingStatus] ?? ROW_STATUS_META.UNSETTLED;
+  const timing = TIMING_META[student.billingTiming] ?? TIMING_META.UNASSIGNED;
   const M = MESSAGES.academy.students;
   return (
     <li className="px-4 py-3 flex items-center gap-3">
@@ -356,9 +605,21 @@ function StudentRow({ student, variant }: { student: PaymentStudent; variant: 'r
         <Icon name="person" className="text-[18px] text-wtext-2 dark:text-rink-100" aria-hidden="true" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-w-body font-bold text-wtext-1 dark:text-white">
-          {student.memberName}
-        </p>
+        <div className="flex items-center gap-1.5">
+          <p className="truncate text-w-body font-bold text-wtext-1 dark:text-white">
+            {student.memberName}
+          </p>
+          {variant === 'payment' && (
+            <span
+              className={cn(
+                'shrink-0 inline-flex items-center rounded-w-pill px-1.5 py-0.5 text-w-caption font-extrabold',
+                timing.cls,
+              )}
+            >
+              {timing.label}
+            </span>
+          )}
+        </div>
         <div className="mt-0.5 flex items-center gap-2 text-w-caption text-wtext-3 dark:text-rink-300">
           {variant === 'roster' ? (
             <>
@@ -376,25 +637,77 @@ function StudentRow({ student, variant }: { student: PaymentStudent; variant: 'r
             </>
           ) : (
             <>
-              <span className="font-num tabular-nums">{formatPrice(student.amount)}</span>
-              {student.productName && <span className="truncate">· {student.productName}</span>}
-              {student.paidAt && (
+              <span className="font-num tabular-nums">
+                {M.attendanceThisMonth(student.attendanceCount ?? 0)}
+              </span>
+              {student.billingStatus === 'PAID' && student.paidAt && (
                 <span className="font-num tabular-nums">· {formatDateKR(student.paidAt)}</span>
               )}
+              {student.productName && <span className="truncate">· {student.productName}</span>}
             </>
           )}
         </div>
       </div>
-      <span
-        className={cn(
-          'shrink-0 inline-flex items-center gap-1 rounded-w-pill px-2 py-1 text-w-caption font-extrabold',
-          meta.chip,
-        )}
-      >
-        <span className={cn('h-1.5 w-1.5 rounded-w-pill', meta.dot)} />
-        {meta.label}
-      </span>
+      <div className="shrink-0 flex flex-col items-end gap-1">
+        {variant === 'payment' && <AmountCell student={student} />}
+        <span
+          className={cn(
+            'inline-flex items-center gap-1 rounded-w-pill px-2 py-0.5 text-w-caption font-extrabold',
+            status.chip,
+          )}
+        >
+          <span className={cn('h-1.5 w-1.5 rounded-w-pill', status.dot)} aria-hidden="true" />
+          {status.label}
+        </span>
+      </div>
     </li>
+  );
+}
+
+/** 결제 탭 금액 셀 — 확정=billedAmount / 후불 미확정=estimatedAmount+"예상" / UNASSIGNED=미표기. */
+function AmountCell({ student }: { student: PaymentStudent }) {
+  if (
+    (student.billingStatus === 'PAID' ||
+      student.billingStatus === 'BILLED' ||
+      student.billingStatus === 'REFUNDED') &&
+    student.billedAmount != null
+  ) {
+    return (
+      <span className="text-w-body font-bold font-num text-wtext-1 dark:text-white tabular-nums">
+        {formatPrice(student.billedAmount)}
+      </span>
+    );
+  }
+  if (
+    student.billingTiming === 'POSTPAID' &&
+    student.billingStatus === 'UNSETTLED' &&
+    student.estimatedAmount != null
+  ) {
+    return (
+      <span className="inline-flex items-center gap-1">
+        <span className="text-w-body font-bold font-num text-wtext-2 dark:text-rink-100 tabular-nums">
+          {formatPrice(student.estimatedAmount)}
+        </span>
+        <span className="rounded-w-pill bg-ice-500/10 px-1.5 py-0.5 text-w-caption font-extrabold text-ice-500 dark:bg-ice-500/15 dark:text-ice-100">
+          {MESSAGES.settlement.estimated}
+        </span>
+      </span>
+    );
+  }
+  return (
+    <span className="text-w-caption font-num text-wtext-3 dark:text-rink-300 tabular-nums">-</span>
+  );
+}
+
+/** 월 전환/불일치 중 결제 탭 본문 자리 — 스테일 데이터 대신 노출하는 로딩 스켈레톤. */
+function PaymentMonthSkeleton() {
+  return (
+    <div className="flex flex-col gap-3" aria-busy="true" aria-live="polite">
+      <span className="sr-only">{MESSAGES.settlement.monthLoading}</span>
+      <div className="h-28 rounded-w-xl bg-wline-2 dark:bg-rink-800 animate-pulse motion-reduce:animate-none" />
+      <div className="h-8 w-1/2 rounded-w-pill bg-wline-2 dark:bg-rink-800 animate-pulse motion-reduce:animate-none" />
+      <div className="h-40 rounded-w-xl bg-wline-2 dark:bg-rink-800 animate-pulse motion-reduce:animate-none" />
+    </div>
   );
 }
 

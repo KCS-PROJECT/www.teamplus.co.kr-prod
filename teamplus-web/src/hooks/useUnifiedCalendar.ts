@@ -35,6 +35,8 @@ interface BackendCalendarEvent {
   title: string;
   refId: string;
   refType: 'class_schedule' | 'tournament';
+  /** 수업(class_schedule) 이벤트의 Class.id — 수업 상세(/classes/:id) 라우팅용. 대회/경기는 미포함. */
+  classId?: string | null;
   timeStart: string;
   timeEnd: string;
   /** 표시 시각 SoT (text "HH:mm") — ClassSchedule.start_time 입력 그대로. timeStart(ISO)는 호환용. */
@@ -56,6 +58,8 @@ export interface CalendarEvent {
   type: WebEventType;
   /** 참조 종류 — 상세 라우팅에 사용 */
   refType: 'class_schedule' | 'tournament';
+  /** 수업(class_schedule) 이벤트의 Class.id — 수업 상세(/classes/:id) 라우팅용. 대회/경기는 null. */
+  classId: string | null;
   title: string;
   date: string;
   startTime: string | null;
@@ -140,6 +144,7 @@ function mapBackendDaysToEvents(days: BackendCalendarDay[]): Record<string, Cale
         id: `${be.refType}:${be.refId}`,
         type: BE_TO_WEB_TYPE[be.type],
         refType: be.refType,
+        classId: be.classId ?? null,
         title: be.title,
         date: day.date,
         // 표시 시각 — 백엔드 displayStart(text "HH:mm") SoT.

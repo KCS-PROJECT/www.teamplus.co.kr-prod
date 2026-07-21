@@ -359,7 +359,7 @@ export default function PaymentHistoryPage() {
     showStatusBar: true,
     showAppBar: false,
     appBarTitle: '결제내역',
-    showBottomNav: false,
+    showBottomNav: true,
     showBackButton: true,
   });
 
@@ -458,7 +458,7 @@ export default function PaymentHistoryPage() {
   const showSummary = !isPaymentLoading && !paymentError && paymentSummary.count > 0;
 
   return (
-    <MobileContainer hasBottomNav={false}>
+    <MobileContainer hasBottomNav>
       {/* [appbar-harness-v4 · parent-agent · 2026-05-12] rightAction 제거 —
           기존 "도움말" 아이콘은 onClick 핸들러가 비어 있는 죽은 버튼이었으며 우측 3 액션을 통째로
           대체하여 시계/종/메뉴 접근성을 차단했음. SPEC §3 분류 C 가이드에 따라 제거하고
@@ -493,8 +493,8 @@ export default function PaymentHistoryPage() {
           </div>
         )}
 
-        {/* History List — hasBottomNav=false 이므로 safe-area-inset-bottom 반영 유틸로 하단 여백 처리 */}
-        <div className="pb-safe-8">
+        {/* History List — 하단 여백은 MobileContainer hasBottomNav(60px+safe-area 예약)가 담당 */}
+        <div>
           <PaymentHistoryList
             groupedPayments={groupedPayments}
             isLoading={isPaymentLoading}

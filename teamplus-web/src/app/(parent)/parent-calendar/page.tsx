@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { SubmainAppBar } from '@/components/layout/SubmainAppBar';
 import { Icon } from '@/components/ui/Icon';
+import { useNavigation } from '@/components/ui/NavLink';
 import { UnifiedCalendarGrid } from '@/components/calendar/UnifiedCalendarGrid';
 import { ScheduleRow } from '@/components/calendar/ScheduleRow';
 import { ScheduleRangeList } from '@/components/calendar/ScheduleRangeList';
@@ -56,6 +57,7 @@ function formatShortDate(dateKey: string): string {
 // ────────────────────────────────────────────
 
 export default function ParentCalendarPage() {
+  const { navigate } = useNavigation();
   const { selectedChildId } = useSelectedChild();
   const calendar = useUnifiedCalendar({
     defaultSelectToday: false,
@@ -125,6 +127,15 @@ export default function ParentCalendarPage() {
         : event.type === 'LESSON'
           ? MESSAGES.calendar.lesson
           : MESSAGES.calendar.tournament;
+    // 상세 이동 — 감독 일정(director-schedules)과 동일 패턴.
+    //   수업(REGULAR/LESSON, classId 있음) → /classes/:id · 대회/경기(GAME) → /tournaments 목록.
+    //   classId 없는 수업(구 응답 호환)은 버튼 미표시.
+    const isTournamentLike = event.type === 'GAME';
+    const detailHref = isTournamentLike
+      ? '/tournaments'
+      : event.classId
+        ? `/classes/${event.classId}`
+        : null;
     return (
       <ScheduleRow
         iceTheme
@@ -133,9 +144,18 @@ export default function ParentCalendarPage() {
         time={timeDisplay}
         title={event.title}
         location={event.venue}
+        detail={
+          detailHref
+            ? {
+                label: isTournamentLike ? '대회 및 경기 목록' : '상세보기',
+                onClick: () => navigate(detailHref),
+                ariaLabel: `${event.title} ${isTournamentLike ? '대회 및 경기 목록 보기' : '상세보기'}`,
+              }
+            : null
+        }
       />
     );
-  }, []);
+  }, [navigate]);
 
   /* [ICETIMES flat 재작업 2026-06-24] 빈 상태 카드 박스(rounded-2xl border-dashed) 제거 →
      flat 면 위 아이콘+문구만. ScheduleRangeList 가 흰 섹션 안에서 렌더하므로 박스 불필요. */

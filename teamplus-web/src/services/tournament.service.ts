@@ -431,6 +431,17 @@ export interface TournamentRegistrationRow {
     paymentStatus: string;
     amount: number | null;
   } | null;
+  // [2026-07-21 대회 축 정합] getTournamentRegistrations Dual Emit 파생 필드.
+  //   레거시 필드(paymentStatus 등)는 전부 보존되며, 아래는 옵셔널(하위호환).
+  //   resolveTournamentAttribution 단일 SoT 산출 — 수업 축(getClassPayments)과 동형.
+  billingStatus?: 'UNSETTLED' | 'BILLED' | 'PAID' | 'CANCELLED' | 'REFUNDED';
+  /** 대회 billingMode 상속 — 대회는 BOTH/UNASSIGNED 없음(고정 모드). */
+  billingTiming?: 'PREPAID' | 'POSTPAID';
+  billedAmount?: number | null;
+  paidAmount?: number;
+  refundedAmount?: number;
+  estimatedAmount?: number | null;
+  paidAt?: string | null;
 }
 
 /** [2026-06-16] 대회 참가자 목록 조회 (감독/코치) — GET /tournaments/:id/registrations */
@@ -440,6 +451,8 @@ export async function listTournamentRegistrations(
   ApiResponse<{
     tournamentId: string;
     total: number;
+    /** [2026-07-21] 응답 최상단 대회 결제 방식(선불/후불) — 행 계약 판단용(선택). */
+    billingMode?: 'PREPAID' | 'POSTPAID';
     registrations: TournamentRegistrationRow[];
   }>
 > {

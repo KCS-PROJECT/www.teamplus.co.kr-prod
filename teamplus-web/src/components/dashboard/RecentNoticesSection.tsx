@@ -79,8 +79,8 @@ const TYPE_BADGE: Record<string, { label: string; cls: string }> = {
   INFO: { label: '안내', cls: 'bg-ice-50 text-ice-700' },
 };
 
-/** 탭 순서 — 원문 나열 순 "공지사항, 팀공지". 키보드 이동/roving tabindex 기준. */
-const SCOPES: readonly NoticeScope[] = ['service', 'team'] as const;
+/** 탭 순서 — "팀공지, 공지사항". 키보드 이동/roving tabindex 기준. */
+const SCOPES: readonly NoticeScope[] = ['team', 'service'] as const;
 
 interface RecentNoticesSectionProps {
   /**
@@ -113,7 +113,7 @@ interface RecentNoticesSectionProps {
    *   true 시 카드 shadow 제거 + flat it-surface/it-line, 밑줄형 탭·행 강조 it 톤 적용.
    */
   iceTheme?: boolean;
-  /** 초기 활성 탭. 기본 'service'(원문 나열 순 "공지사항, 팀공지"). */
+  /** 초기 활성 탭. 기본 'team'(탭 순서 "팀공지, 공지사항"). */
   defaultTab?: NoticeScope;
 }
 
@@ -123,7 +123,7 @@ export function RecentNoticesSection({
   variant = 'default',
   onCreateNotice,
   iceTheme = false,
-  defaultTab = 'service',
+  defaultTab = 'team',
 }: RecentNoticesSectionProps = {}) {
   const { navigate } = useNavigation();
   const { selectedChildId } = useSelectedChild();

@@ -396,7 +396,7 @@ export function TeamClassesSummary({
                       type="button"
                       onClick={() => navigate(href)}
                       className={cn(
-                        'w-full px-4 py-3 flex items-start gap-3 text-left transition-colors duration-150 motion-reduce:transition-none',
+                        'w-full px-4 py-2 flex items-start gap-3 text-left transition-colors duration-150 motion-reduce:transition-none',
                         iceTheme ? 'hover:bg-it-fill dark:hover:bg-it-blue-900' : 'hover:bg-wline-2 dark:hover:bg-rink-700',
                       )}
                       aria-label={ariaLabel}

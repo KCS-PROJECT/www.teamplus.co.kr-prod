@@ -1379,7 +1379,10 @@ export function SelectedDayClassList({
           const normType = String(cls.type ?? '').toUpperCase();
           const isTournamentLike =
             normType === 'TOURNAMENT' || normType === 'GAME' || normType === 'EVENT';
-          const isCardClickable = !onCheckIn || isTournamentLike;
+          // 일정 행 클릭 → 상세 이동을 4개 역할(감독/코치/오픈클래스감독/학부모) 공통 허용.
+          //   학부모(onCheckIn 컨텍스트)도 수업 상세로 진입 — 상세가 등록완료 상태를 구분 표시하므로
+          //   과거의 "등록하기 오진입" 우려는 해소됨. 출석/관리 버튼은 카드 본체의 형제라 클릭 미충돌.
+          const isCardClickable = true;
           // 캘린더 dot 색상 = 리스트 stripe/pill 색상 통일 (SoT).
           //   resolveTypeStyle 헬퍼 (위 정의) 가 모든 type 을 calendar-colors SoT 와 정합시킨다.
           const typeStyle = resolveTypeStyle(cls.type);
@@ -1676,9 +1679,10 @@ export function SelectedDayClassList({
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      // [2026-06-16] 대회/경기는 classId 가 없으므로 대회 선수정보 페이지로 분기.
+                      // [2026-06-16] 대회/경기는 classId 가 없으므로 대회 상세 참가자 섹션으로 분기.
+                      //   [2026-07-21] students 중복 페이지 통합 — 상세 #participants 앵커로 이동.
                       if (isTournamentLike && cls.tournamentId) {
-                        navigate(`/tournaments/${cls.tournamentId}/students`);
+                        navigate(`/tournaments/${cls.tournamentId}#participants`);
                       } else {
                         navigate(`/classes/${cls.classId}/students`);
                       }
