@@ -1,7 +1,9 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
 import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
 import { ResourceAccessService } from "@/common/access/resource-access.service";
+import { NotificationsService } from "@/notifications/notifications.service";
+import { RedisService } from "@/redis/redis.service";
 import { isAdminRole } from "@/auth/constants/chldiv.constants";
 import { kstTodayUtcMidnight } from "@/common/utils/kst-date.util";
 import {
@@ -135,6 +137,104 @@ interface SettlementRow {
   timing: "PREPAID" | "POSTPAID" | "UNASSIGNED";
 }
 
+/** 미수금 출처 종류 — 수업 또는 대회. */
+export type UnpaidSourceKind = "CLASS" | "TOURNAMENT";
+
+/**
+ * 소스 귀속 정보를 얹은 행 — 소계(summarizeRows)와 인별 미수금이 **동일 배열을 공유**하기 위한 SoT.
+ *  SettlementRow(금액·상태·순수납) 위에 출처(source)/귀속월/출석수를 덧붙인다. 금액·상태 재계산 금지.
+ */
+interface EnrichedRow extends SettlementRow {
+  sourceType: UnpaidSourceKind;
+  sourceId: string;
+  sourceName: string;
+  teamName: string | null;
+  /** 미수 발생 행의 결제방식(표시용). UNASSIGNED 행은 PREPAID 로 폴백하나 미수 기여 없음. */
+  billingTiming: "PREPAID" | "POSTPAID";
+  /** 귀속월("YYYY-MM") — 선택월과 동일(행 attribution 결과). */
+  yearMonth: string;
+  /** 후불 확정 라인일 때만 출석수(선불/대회는 undefined). */
+  attendanceCount?: number;
+}
+
+/** 수업 소스 행 묶음 — 소계 래핑용 메타 + 공유 행 배열(정합 SoT). */
+interface ClassSourceRows {
+  sourceType: "CLASS";
+  sourceId: string;
+  sourceName: string;
+  teamId: string | null;
+  teamName: string | null;
+  billingMode: string;
+  rows: EnrichedRow[];
+  /** 소계 상태 산정용 메타(동작 보존). */
+  hasUnassigned: boolean;
+  anyUnitMissing: boolean;
+  billingStatus: string | null;
+  hasSelectedMonthBilling: boolean;
+}
+
+/** 대회 소스 행 묶음 — 소계 래핑용 메타 + 공유 행 배열(정합 SoT). */
+interface TournamentSourceRows {
+  sourceType: "TOURNAMENT";
+  sourceId: string;
+  sourceName: string;
+  teamId: string | null;
+  teamName: string | null;
+  billingMode: string;
+  rows: EnrichedRow[];
+  isPostpaid: boolean;
+  tournamentEnded: boolean;
+}
+
+/** 팀 인별 미수금 — 회원 1행(자녀/선수 축). */
+export interface UnpaidMemberRow {
+  /** 그룹핑 키 = row.userId(자녀/선수 User.id). */
+  memberId: string;
+  name: string;
+  /** 대표 팀 = 미수 최대 source 의 teamName(다팀 회원 대응). */
+  teamName: string | null;
+  /** Σ_{row of member} max(0, billed − paid) — §2-0 불변식. */
+  outstandingAmount: number;
+  /** 이 회원 미납 출처 집합(distinct). */
+  sources: UnpaidSourceKind[];
+  classCount: number;
+  tournamentCount: number;
+}
+
+export interface TeamUnpaidMembersResponse {
+  yearMonth: string;
+  members: UnpaidMemberRow[];
+  /** Σ members[].outstandingAmount = summary.unpaid.amount(정합 검증용). */
+  totalOutstanding: number;
+  totalCount: number;
+}
+
+/** 인별 미수금 상세 — source 단위 1행. */
+export interface UnpaidDetailLine {
+  sourceType: UnpaidSourceKind;
+  sourceId: string;
+  sourceName: string;
+  teamName: string | null;
+  billingTiming: "PREPAID" | "POSTPAID";
+  yearMonth: string;
+  /** 이 source 의 이 회원 outstanding = Σ max(0, billed − paid). */
+  amount: number;
+  /** 후불 확정 라인일 때만. */
+  attendanceCount?: number;
+}
+
+export interface UnpaidMemberDetailResponse {
+  member: { id: string; name: string; totalOutstanding: number };
+  parents: { id: string; name: string; phone: string | null }[];
+  details: UnpaidDetailLine[];
+}
+
+export interface UnpaidReminderResult {
+  sent: boolean;
+  cooldown: boolean;
+  recipientCount: number;
+}
+
 interface AggregatedAmounts {
   total: number;
   paidCount: number;
@@ -177,6 +277,8 @@ export class SettlementSummaryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly resourceAccess: ResourceAccessService,
+    private readonly notificationsService: NotificationsService,
+    private readonly redis: RedisService,
   ) {}
 
   /** [R4] 팀 소계 — 대회 포함. teamId 지정 시 관리 팀 교집합, 비관리는 빈 결과. */
@@ -187,30 +289,7 @@ export class SettlementSummaryService {
   ): Promise<TeamSettlementSummaryResponse> {
     const yearMonth = resolveSettlementYearMonth(yearMonthRaw);
 
-    // scope — 관리 팀 집합.
-    //   · 관리자급(ADMIN/SYSTEM/OPER): teamId 지정 시 해당 팀, 미지정 시 **전체 팀**(옵셔널
-    //     파라미터가 조용히 "데이터 없음" 이 되지 않도록 — Codex MED-5).
-    //   · 일반 관리자(DIRECTOR/COACH): assertTeamManager 와 동일 엄격 정책으로 관리 팀 해석
-    //     (일반 멤버·CoachProfile-only 유출 차단 — Codex HIGH-1). teamId 지정 시 교집합만.
-    let scopeTeamIds: string[];
-    if (isAdminRole(requester.userType)) {
-      if (teamId) {
-        scopeTeamIds = [teamId];
-      } else {
-        const allTeams = await this.prisma.team.findMany({
-          select: { id: true },
-        });
-        scopeTeamIds = allTeams.map((t) => t.id);
-      }
-    } else {
-      const managed =
-        await this.resourceAccess.resolveManageableTeamIds(requester);
-      scopeTeamIds = teamId
-        ? managed.includes(teamId)
-          ? [teamId]
-          : []
-        : managed;
-    }
+    const scopeTeamIds = await this.resolveTeamScope(requester, teamId);
 
     if (scopeTeamIds.length === 0) {
       return {
@@ -252,6 +331,29 @@ export class SettlementSummaryService {
     };
   }
 
+  /**
+   * 팀 정산 scope resolver — summary·미수금 목록·상세·remind 4메서드 단일 SoT(IDOR).
+   *   · 관리자급(ADMIN/SYSTEM/OPER): teamId 지정 시 해당 팀, 미지정 시 **전체 팀**(옵셔널
+   *     파라미터가 조용히 "데이터 없음" 이 되지 않도록 — Codex MED-5).
+   *   · 일반 관리자(DIRECTOR/COACH): resolveManageableTeamIds 로 관리 팀 해석(일반 멤버·
+   *     CoachProfile-only 유출 차단 — Codex HIGH-1). teamId 지정 시 교집합만(비관리 → 빈 결과).
+   */
+  private async resolveTeamScope(
+    requester: JwtUserPayload,
+    teamId?: string,
+  ): Promise<string[]> {
+    if (isAdminRole(requester.userType)) {
+      if (teamId) return [teamId];
+      const allTeams = await this.prisma.team.findMany({
+        select: { id: true },
+      });
+      return allTeams.map((t) => t.id);
+    }
+    const managed =
+      await this.resourceAccess.resolveManageableTeamIds(requester);
+    return teamId ? (managed.includes(teamId) ? [teamId] : []) : managed;
+  }
+
   /** [R5] Academy 소계 — 대회 제외. assertAcademyManager 로 인가(비관리 403). */
   async getAcademySettlementSummary(
     academyId: string,
@@ -280,26 +382,27 @@ export class SettlementSummaryService {
   }
 
   /**
-   * 수업 목록 소계 배치 집계.
+   * [핵심 SoT] 수업 목록 → 소스별 귀속 행(EnrichedRow) 배치 빌더.
    *  배치 5쿼리: 수업+상품 / 등록 로스터 / 전체 enrollment+payment / 선택월 후불 확정 라인 / 선택월 출석.
    *  이후 순수 함수로 메모리 집계 — 수업 수와 무관하게 쿼리 수 고정(N+1 없음).
    *
    *  정산 대상자는 **ClassRegistration 로스터**가 SoT다(Phase 2a getClassPayments 동일).
    *  enrollment 만 훑으면 등록만 하고 미구매(선불)·상품 미배정(BOTH)한 선수가 대상에서 통째로
    *  빠진다(Codex HIGH-4) — 로스터를 배치 로드해 선수 1행으로 정규화한 뒤 구매/결제를 레이어링한다.
+   *
+   *  ⚠️ 소계(computeClassSummaries)와 인별 미수금(getTeamUnpaidMembers)이 **이 빌더 결과를 공유**한다.
+   *   → 금액·상태 재계산 금지. §2-0 불변식(인별 합 = 소계 미수금 총액)이 코드 구조로 보장된다.
    */
-  private async computeClassSummaries(
+  private async buildClassSourceRows(
     classIds: string[],
     yearMonth: string,
-  ): Promise<ClassSettlementSummary[]> {
+  ): Promise<ClassSourceRows[]> {
     if (classIds.length === 0) return [];
 
     const [selY, selM] = yearMonth.split("-").map(Number);
     // scheduledDate(@db.Date) 선택월 경계 — KST 해당 월의 UTC 자정 [gte, lt).
     const monthStart = new Date(Date.UTC(selY, selM - 1, 1));
     const monthEnd = new Date(Date.UTC(selY, selM, 1));
-    const currentYm = resolveSettlementYearMonth();
-    const monthEnded = yearMonth < currentYm; // "YYYY-MM" 문자열 비교 = 월 순서.
 
     const [classes, registrations, enrollments, billings, schedules] =
       await Promise.all([
@@ -371,6 +474,8 @@ export class SettlementSummaryService {
                 userId: true,
                 amount: true,
                 paymentStatus: true,
+                // 인별 미수금 상세의 출석수 표기용(선택월 확정 후불 라인 한정).
+                attendanceCount: true,
                 payment: {
                   select: {
                     paymentStatus: true,
@@ -434,7 +539,7 @@ export class SettlementSummaryService {
     }
 
     let attributionUnknownCount = 0;
-    const result: ClassSettlementSummary[] = [];
+    const sources: ClassSourceRows[] = [];
 
     for (const cls of classes) {
       const clsEnrollments = enrollmentsByClass.get(cls.id) ?? [];
@@ -443,6 +548,8 @@ export class SettlementSummaryService {
       const attByUser = attendanceByClass.get(cls.id) ?? new Map<string, number>();
       const billing = billingByClass.get(cls.id);
       const rows: SettlementRow[] = [];
+      // 확정 후불 라인의 userId → 출석수(인별 상세 표기용). BILLED/PAID 라인만 채워짐.
+      const postpaidLineAttendanceByUser = new Map<string, number>();
       let hasUnassigned = false;
       let anyUnitMissing = false;
 
@@ -558,6 +665,7 @@ export class SettlementSummaryService {
             estimatedAmount: null,
             timing: "POSTPAID",
           });
+          postpaidLineAttendanceByUser.set(ln.userId, ln.attendanceCount ?? 0);
           covered.add(ln.userId);
         }
       }
@@ -656,14 +764,67 @@ export class SettlementSummaryService {
         covered.add(userId);
       }
 
-      const agg = this.summarizeRows(rows);
+      // 소스 귀속 정보를 얹은 공유 행(EnrichedRow) — 소계·인별 미수금이 이 배열을 공유한다.
+      //   금액·상태 재계산 없이 source/귀속월/출석수만 덧붙인다.
+      const enrichedRows: EnrichedRow[] = rows.map((r) => ({
+        ...r,
+        sourceType: "CLASS" as const,
+        sourceId: cls.id,
+        sourceName: cls.className,
+        teamName: cls.team?.name ?? null,
+        billingTiming:
+          r.timing === "POSTPAID" ? ("POSTPAID" as const) : ("PREPAID" as const),
+        yearMonth,
+        attendanceCount:
+          r.timing === "POSTPAID"
+            ? postpaidLineAttendanceByUser.get(r.userId)
+            : undefined,
+      }));
+
+      sources.push({
+        sourceType: "CLASS",
+        sourceId: cls.id,
+        sourceName: cls.className,
+        teamId: cls.teamId ?? null,
+        teamName: cls.team?.name ?? null,
+        billingMode: cls.billingMode ?? "PREPAID",
+        rows: enrichedRows,
+        hasUnassigned,
+        anyUnitMissing,
+        billingStatus: billing?.status ?? null,
+        hasSelectedMonthBilling: billing != null,
+      });
+    }
+
+    if (attributionUnknownCount > 0) {
+      this.logger.warn(
+        `[정산 소계] 월귀속 근거 없는 결제 ${attributionUnknownCount}건 — 집계 제외(현재월 임의 귀속 안 함). yearMonth=${yearMonth}`,
+      );
+    }
+
+    return sources;
+  }
+
+  /**
+   * 수업 소계 — 공통 빌더(buildClassSourceRows) 결과에 summarizeRows + status 래핑.
+   *  동작 100% 불변(팀 허브·Academy 소계 회귀 0) — 빌더가 만든 공유 행에서 집계만 수행.
+   */
+  private async computeClassSummaries(
+    classIds: string[],
+    yearMonth: string,
+  ): Promise<ClassSettlementSummary[]> {
+    const sources = await this.buildClassSourceRows(classIds, yearMonth);
+    const currentYm = resolveSettlementYearMonth();
+    const monthEnded = yearMonth < currentYm; // "YYYY-MM" 문자열 비교 = 월 순서.
+    const result: ClassSettlementSummary[] = [];
+
+    for (const src of sources) {
+      const agg = this.summarizeRows(src.rows);
 
       // 선택월 후불 성분 = 후불 수업 OR 선택월 청구(확정/작성) 존재 OR 선택월 후불 행 존재.
-      //   전체 이력 POSTPAID enrollment 아님(Codex HIGH-2) — 선택월 확정 Billing 은 후불 성분·
-      //   CONFIRMED 의 결정적 근거(현/최신 enrollment 가 바뀌어도).
-      const hasSelectedMonthBilling = billing != null;
+      const hasSelectedMonthBilling = src.hasSelectedMonthBilling;
       const hasPostpaidComponent =
-        cls.billingMode === "POSTPAID" ||
+        src.billingMode === "POSTPAID" ||
         hasSelectedMonthBilling ||
         agg.hasPostpaid;
 
@@ -674,11 +835,11 @@ export class SettlementSummaryService {
       let settlementStatus: SubtotalSettlementStatus;
       if (!hasPostpaidComponent) {
         settlementStatus = "NOT_REQUIRED";
-      } else if (billing?.status === "confirmed") {
+      } else if (src.billingStatus === "confirmed") {
         // 혼합(BOTH) 이어도 후불 부분집합이 확정이면 CONFIRMED — PARTIAL_BILLED 는
         //   대회 선택 청구 전용(설계 §202,219). 혼합 신호는 mixedBilling 이 전달(Codex MED-7).
         settlementStatus = "CONFIRMED";
-      } else if (billing?.status === "draft") {
+      } else if (src.billingStatus === "draft") {
         settlementStatus = "DRAFT";
       } else {
         settlementStatus = "NOT_READY";
@@ -686,12 +847,12 @@ export class SettlementSummaryService {
 
       // blockedReasonCode — 미배정 설정 문제를 최우선 노출(Codex MED-3), 그 다음 후불 미확정 사유.
       let blockedReasonCode: BlockedReasonCode = null;
-      if (hasUnassigned) {
+      if (src.hasUnassigned) {
         blockedReasonCode = "BILLING_TIMING_UNASSIGNED";
-      } else if (hasPostpaidComponent && billing?.status !== "confirmed") {
+      } else if (hasPostpaidComponent && src.billingStatus !== "confirmed") {
         if (!monthEnded) {
           blockedReasonCode = "MONTH_NOT_ENDED";
-        } else if (anyUnitMissing) {
+        } else if (src.anyUnitMissing) {
           blockedReasonCode = "UNIT_PRICE_MISSING";
         } else if (agg.estimatedAmount === 0) {
           blockedReasonCode = "NO_ATTENDANCE";
@@ -699,11 +860,11 @@ export class SettlementSummaryService {
       }
 
       result.push({
-        classId: cls.id,
-        className: cls.className,
-        teamId: cls.teamId ?? null,
-        teamName: cls.team?.name ?? null,
-        billingMode: cls.billingMode ?? "PREPAID",
+        classId: src.sourceId,
+        className: src.sourceName,
+        teamId: src.teamId,
+        teamName: src.teamName,
+        billingMode: src.billingMode,
         settlementStatus,
         paymentStatus: agg.paymentStatus,
         total: agg.total,
@@ -720,28 +881,22 @@ export class SettlementSummaryService {
         postpaidCount: agg.postpaidCount,
         unassignedCount: agg.unassignedCount,
         blockedReasonCode,
-        detailPath: `/classes/${cls.id}/students?yearMonth=${yearMonth}`,
+        detailPath: `/classes/${src.sourceId}/students?yearMonth=${yearMonth}`,
       });
-    }
-
-    if (attributionUnknownCount > 0) {
-      this.logger.warn(
-        `[정산 소계] 월귀속 근거 없는 결제 ${attributionUnknownCount}건 — 집계 제외(현재월 임의 귀속 안 함). yearMonth=${yearMonth}`,
-      );
     }
 
     return result;
   }
 
   /**
-   * 대회 소계 배치 집계(팀 API 전용).
-   *  배치 1쿼리(대회+참가+연결 Payment). **선불·후불 대회 모두 포함**(Codex HIGH-2):
-   *  후불=정산 확정 상태(NOT_READY/CONFIRMED/PARTIAL_BILLED), 선불=정산 확정 없음(NOT_REQUIRED).
+   * [핵심 SoT] 대회 목록 → 소스별 귀속 행(EnrichedRow) 배치 빌더(팀 API 전용).
+   *  배치 1쿼리(대회+참가+연결 Payment). **선불·후불 대회 모두 포함**(Codex HIGH-2).
+   *  소계·인별 미수금이 이 결과를 공유(§2-0 불변식). 당월 활동 없는 대회(rows 0)는 제외.
    */
-  private async computeTournamentSummaries(
+  private async buildTournamentSourceRows(
     tournamentIds: string[],
     yearMonth: string,
-  ): Promise<TournamentSettlementSummary[]> {
+  ): Promise<TournamentSourceRows[]> {
     if (tournamentIds.length === 0) return [];
 
     const todayUtcMidnight = kstTodayUtcMidnight();
@@ -775,11 +930,14 @@ export class SettlementSummaryService {
     });
 
     let attributionUnknownCount = 0;
-    const result: TournamentSettlementSummary[] = [];
+    const sources: TournamentSourceRows[] = [];
 
     for (const t of tournaments) {
       const isPostpaid = t.billingMode === "POSTPAID";
-      const rows: SettlementRow[] = [];
+      const billingTiming = isPostpaid
+        ? ("POSTPAID" as const)
+        : ("PREPAID" as const);
+      const rows: EnrichedRow[] = [];
       for (const reg of t.registrations) {
         const att = resolveTournamentAttribution({
           registrationPaymentStatus: reg.paymentStatus,
@@ -801,41 +959,85 @@ export class SettlementSummaryService {
           refundedAmount: att.refundedAmount,
           estimatedAmount: att.estimatedAmount,
           timing: "POSTPAID",
+          sourceType: "TOURNAMENT",
+          sourceId: t.id,
+          sourceName: t.name,
+          teamName: t.team?.name ?? null,
+          billingTiming,
+          yearMonth,
         });
       }
 
       if (rows.length === 0) continue; // 당월 활동 없는 대회 제외
 
-      const agg = this.summarizeRows(rows);
+      const tournamentEnded =
+        t.endDate != null && t.endDate.getTime() < todayUtcMidnight.getTime();
+
+      sources.push({
+        sourceType: "TOURNAMENT",
+        sourceId: t.id,
+        sourceName: t.name,
+        teamId: t.teamId ?? null,
+        teamName: t.team?.name ?? null,
+        billingMode: t.billingMode,
+        rows,
+        isPostpaid,
+        tournamentEnded,
+      });
+    }
+
+    if (attributionUnknownCount > 0) {
+      this.logger.warn(
+        `[정산 소계] 대회 월귀속 근거 없는 참가 ${attributionUnknownCount}건 — 집계 제외. yearMonth=${yearMonth}`,
+      );
+    }
+
+    return sources;
+  }
+
+  /**
+   * 대회 소계 — 공통 빌더(buildTournamentSourceRows) 결과에 summarizeRows + status 래핑.
+   *  동작 100% 불변(팀 허브 회귀 0): 후불=정산 확정 상태, 선불=NOT_REQUIRED.
+   */
+  private async computeTournamentSummaries(
+    tournamentIds: string[],
+    yearMonth: string,
+  ): Promise<TournamentSettlementSummary[]> {
+    const sources = await this.buildTournamentSourceRows(
+      tournamentIds,
+      yearMonth,
+    );
+    const result: TournamentSettlementSummary[] = [];
+
+    for (const src of sources) {
+      const agg = this.summarizeRows(src.rows);
 
       let settlementStatus: SubtotalSettlementStatus;
       let blockedReasonCode: BlockedReasonCode = null;
-      if (!isPostpaid) {
+      if (!src.isPostpaid) {
         // 선불 대회 — 정산 확정 단계 없음.
         settlementStatus = "NOT_REQUIRED";
       } else {
-        const settledCount = rows.filter(
+        const settledCount = src.rows.filter(
           (r) => r.billingStatus !== "UNSETTLED",
         ).length;
         if (settledCount === 0) settlementStatus = "NOT_READY";
-        else if (settledCount === rows.length) settlementStatus = "CONFIRMED";
+        else if (settledCount === src.rows.length)
+          settlementStatus = "CONFIRMED";
         else settlementStatus = "PARTIAL_BILLED";
 
         // 종료 전 후불 대회는 정산 불가 — 대회 전용 사유 코드(Codex MED-9).
-        const tournamentEnded =
-          t.endDate != null &&
-          t.endDate.getTime() < todayUtcMidnight.getTime();
-        if (settledCount === 0 && !tournamentEnded) {
+        if (settledCount === 0 && !src.tournamentEnded) {
           blockedReasonCode = "TOURNAMENT_NOT_ENDED";
         }
       }
 
       result.push({
-        tournamentId: t.id,
-        tournamentName: t.name,
-        teamId: t.teamId ?? null,
-        teamName: t.team?.name ?? null,
-        billingMode: t.billingMode,
+        tournamentId: src.sourceId,
+        tournamentName: src.sourceName,
+        teamId: src.teamId,
+        teamName: src.teamName,
+        billingMode: src.billingMode,
         settlementStatus,
         paymentStatus: agg.paymentStatus,
         total: agg.total,
@@ -849,14 +1051,8 @@ export class SettlementSummaryService {
         refundedAmount: agg.refundedAmount,
         mixedBilling: false, // 대회는 단일 결제방식
         blockedReasonCode,
-        detailPath: `/tournaments/${t.id}#settlement`,
+        detailPath: `/tournaments/${src.sourceId}#settlement`,
       });
-    }
-
-    if (attributionUnknownCount > 0) {
-      this.logger.warn(
-        `[정산 소계] 대회 월귀속 근거 없는 참가 ${attributionUnknownCount}건 — 집계 제외. yearMonth=${yearMonth}`,
-      );
     }
 
     return result;
@@ -1056,5 +1252,297 @@ export class SettlementSummaryService {
       }
     }
     return { amount, count };
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //   인별 미수금 (팀) — 소계와 동일 행(row) SoT 공유 → §2-0 불변식 보장
+  // ════════════════════════════════════════════════════════════════
+
+  /**
+   * 팀 scope 의 **미수(outstanding>0) 행만** 평탄화 반환 — 목록·상세·remind 공유 코어.
+   *  소계와 동일한 buildClass/TournamentSourceRows 를 소비하므로 인별 합 = 소계 미수금 총액(정합).
+   *  outstanding = 행별 max(0, billed − paid)(교차 상쇄 금지). scope 0팀이면 빈 행.
+   */
+  private async buildTeamUnpaidRows(
+    requester: JwtUserPayload,
+    yearMonthRaw: string | undefined,
+    teamId: string | undefined,
+  ): Promise<{ yearMonth: string; rows: EnrichedRow[] }> {
+    const yearMonth = resolveSettlementYearMonth(yearMonthRaw);
+    const scopeTeamIds = await this.resolveTeamScope(requester, teamId);
+    if (scopeTeamIds.length === 0) return { yearMonth, rows: [] };
+
+    const [classRows, tournamentRows] = await Promise.all([
+      this.prisma.class.findMany({
+        where: { teamId: { in: scopeTeamIds } },
+        select: { id: true },
+      }),
+      this.prisma.tournament.findMany({
+        where: { teamId: { in: scopeTeamIds } },
+        select: { id: true },
+      }),
+    ]);
+
+    const [classSources, tournamentSources] = await Promise.all([
+      this.buildClassSourceRows(
+        classRows.map((c) => c.id),
+        yearMonth,
+      ),
+      this.buildTournamentSourceRows(
+        tournamentRows.map((t) => t.id),
+        yearMonth,
+      ),
+    ]);
+
+    const rows: EnrichedRow[] = [];
+    for (const src of [...classSources, ...tournamentSources]) {
+      for (const r of src.rows) {
+        // BILLED 행만(billedAmount != null) 미수 대상. 행별 잔액 > 0.
+        if (r.billedAmount != null && r.billedAmount - r.paidAmount > 0) {
+          rows.push(r);
+        }
+      }
+    }
+    return { yearMonth, rows };
+  }
+
+  /**
+   * [신규] 팀 인별 미수금 목록 — outstanding>0 행을 회원(userId) 그룹핑.
+   *  §2-1 계약. totalOutstanding = getTeamSettlementSummary.unpaid.amount(정합 검증용).
+   */
+  async getTeamUnpaidMembers(
+    requester: JwtUserPayload,
+    yearMonthRaw?: string,
+    teamId?: string,
+  ): Promise<TeamUnpaidMembersResponse> {
+    const { yearMonth, rows } = await this.buildTeamUnpaidRows(
+      requester,
+      yearMonthRaw,
+      teamId,
+    );
+
+    // 회원(userId) → source 단위 미수 합계(대표 팀·건수 산정용).
+    const memberAgg = new Map<
+      string,
+      Map<
+        string,
+        {
+          amount: number;
+          teamName: string | null;
+          type: UnpaidSourceKind;
+        }
+      >
+    >();
+    for (const r of rows) {
+      const out = (r.billedAmount as number) - r.paidAmount;
+      let bySource = memberAgg.get(r.userId);
+      if (!bySource) {
+        bySource = new Map();
+        memberAgg.set(r.userId, bySource);
+      }
+      const key = `${r.sourceType}:${r.sourceId}`;
+      const cur = bySource.get(key) ?? {
+        amount: 0,
+        teamName: r.teamName,
+        type: r.sourceType,
+      };
+      cur.amount += out;
+      bySource.set(key, cur);
+    }
+
+    const userIds = [...memberAgg.keys()];
+    const users = userIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, firstName: true, lastName: true },
+        })
+      : [];
+    const nameById = new Map(
+      users.map((u) => [
+        u.id,
+        `${u.lastName ?? ""}${u.firstName ?? ""}`.trim() || "회원",
+      ]),
+    );
+
+    const members: UnpaidMemberRow[] = [];
+    for (const [userId, bySource] of memberAgg) {
+      let outstandingAmount = 0;
+      const sourcesSet = new Set<UnpaidSourceKind>();
+      let classCount = 0;
+      let tournamentCount = 0;
+      let topAmount = -1;
+      let topTeamName: string | null = null;
+      for (const s of bySource.values()) {
+        outstandingAmount += s.amount;
+        sourcesSet.add(s.type);
+        if (s.type === "CLASS") classCount++;
+        else tournamentCount++;
+        // 대표 팀 = 미수 최대 source 의 teamName(다팀 회원 대응).
+        if (s.amount > topAmount) {
+          topAmount = s.amount;
+          topTeamName = s.teamName;
+        }
+      }
+      if (outstandingAmount <= 0) continue;
+      members.push({
+        memberId: userId,
+        name: nameById.get(userId) ?? "회원",
+        teamName: topTeamName,
+        outstandingAmount,
+        sources: [...sourcesSet],
+        classCount,
+        tournamentCount,
+      });
+    }
+
+    // outstanding desc, 동액은 name asc.
+    members.sort(
+      (a, b) =>
+        b.outstandingAmount - a.outstandingAmount ||
+        a.name.localeCompare(b.name),
+    );
+
+    const totalOutstanding = members.reduce(
+      (s, m) => s + m.outstandingAmount,
+      0,
+    );
+
+    return {
+      yearMonth,
+      members,
+      totalOutstanding,
+      totalCount: members.length,
+    };
+  }
+
+  /**
+   * [신규] 팀 인별 미수금 상세 — 보호자 연락처 + source 단위 미납 라인.
+   *  §2-2 계약. scope 재계산 후 미납 0건이면 404(IDOR 차단, 레거시 계약 보존).
+   */
+  async getTeamUnpaidMemberDetail(
+    requester: JwtUserPayload,
+    memberId: string,
+    yearMonthRaw?: string,
+    teamId?: string,
+  ): Promise<UnpaidMemberDetailResponse> {
+    const { rows } = await this.buildTeamUnpaidRows(
+      requester,
+      yearMonthRaw,
+      teamId,
+    );
+    const memberRows = rows.filter((r) => r.userId === memberId);
+    if (memberRows.length === 0) {
+      // 내 스코프에 해당 회원 미납 없음 → 권한 밖이거나 미납 아님.
+      throw new NotFoundException("미수금 내역을 찾을 수 없습니다.");
+    }
+
+    // source 단위 1행(동일 회원 한 수업 복수 미납은 합산).
+    const bySource = new Map<string, UnpaidDetailLine>();
+    for (const r of memberRows) {
+      const out = (r.billedAmount as number) - r.paidAmount;
+      const key = `${r.sourceType}:${r.sourceId}`;
+      const cur = bySource.get(key);
+      if (cur) {
+        cur.amount += out;
+        if (r.attendanceCount != null) {
+          cur.attendanceCount = (cur.attendanceCount ?? 0) + r.attendanceCount;
+        }
+      } else {
+        bySource.set(key, {
+          sourceType: r.sourceType,
+          sourceId: r.sourceId,
+          sourceName: r.sourceName,
+          teamName: r.teamName,
+          billingTiming: r.billingTiming,
+          yearMonth: r.yearMonth,
+          amount: out,
+          attendanceCount: r.attendanceCount,
+        });
+      }
+    }
+    const details = [...bySource.values()].filter((d) => d.amount > 0);
+    const totalOutstanding = details.reduce((s, d) => s + d.amount, 0);
+
+    const [member, parentLinks] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: memberId },
+        select: { id: true, firstName: true, lastName: true },
+      }),
+      this.prisma.parentChild.findMany({
+        where: { childId: memberId },
+        orderBy: { isPrimary: "desc" },
+        select: {
+          parent: {
+            select: { id: true, firstName: true, lastName: true, phone: true },
+          },
+        },
+      }),
+    ]);
+
+    const parents = parentLinks
+      .map((p) => p.parent)
+      .filter((p): p is NonNullable<typeof p> => Boolean(p))
+      .map((p) => ({
+        id: p.id,
+        name: `${p.lastName ?? ""}${p.firstName ?? ""}`.trim() || "보호자",
+        phone: p.phone ?? null,
+      }));
+
+    return {
+      member: {
+        id: memberId,
+        name: member
+          ? `${member.lastName ?? ""}${member.firstName ?? ""}`.trim() || "회원"
+          : "회원",
+        totalOutstanding,
+      },
+      parents,
+      details,
+    };
+  }
+
+  /**
+   * [신규] 미납 안내 발송 — 상세 재사용(scope·404) → 보호자에게 인앱+푸시. §2-3 계약.
+   *  쿨다운 키를 월 분리(`unpaid-remind:{memberId}:{yearMonth}`) — 월별 독촉 허용.
+   *  운영 24h / 개발 60s. 총액은 수업+대회 미납 합.
+   */
+  async sendTeamUnpaidReminder(
+    requester: JwtUserPayload,
+    memberId: string,
+    yearMonthRaw?: string,
+  ): Promise<UnpaidReminderResult> {
+    const yearMonth = resolveSettlementYearMonth(yearMonthRaw);
+    const detail = await this.getTeamUnpaidMemberDetail(
+      requester,
+      memberId,
+      yearMonth,
+    );
+    const parentIds = detail.parents.map((p) => p.id);
+    if (parentIds.length === 0) {
+      return { sent: false, cooldown: false, recipientCount: 0 };
+    }
+
+    const cooldownSec =
+      process.env.NODE_ENV === "production" ? 24 * 60 * 60 : 60;
+    const lockAcquired = await this.redis.setIfNotExists(
+      `unpaid-remind:${memberId}:${yearMonth}`,
+      Date.now(),
+      cooldownSec,
+    );
+    if (!lockAcquired) {
+      return { sent: false, cooldown: true, recipientCount: 0 };
+    }
+
+    const won = new Intl.NumberFormat("ko-KR").format(
+      detail.member.totalOutstanding,
+    );
+    await this.notificationsService.notifyUsers(parentIds, {
+      notificationType: "payment_unpaid",
+      title: "미납 결제 안내",
+      message: `${detail.member.name} 회원의 미납 금액 ${won}원이 있습니다. 결제를 완료해 주세요.`,
+      linkUrl: "/credits",
+    });
+
+    return { sent: true, cooldown: false, recipientCount: parentIds.length };
   }
 }

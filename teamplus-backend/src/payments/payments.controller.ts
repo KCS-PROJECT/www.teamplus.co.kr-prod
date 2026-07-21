@@ -59,6 +59,7 @@ import { Req, Headers } from "@nestjs/common";
 import type { Request as ExpressRequest } from "express";
 import { PaymentCalculationService } from "./payment-calculation.service";
 import { PostpaidSettlementService } from "./postpaid-settlement.service";
+import { SettlementSummaryService } from "./settlement/settlement-summary.service";
 import { Roles } from "@/auth/roles.decorator";
 import { RolesGuard } from "@/auth/roles.guard";
 
@@ -74,6 +75,7 @@ export class PaymentsController {
     private readonly tossGateway: TossPaymentsGateway,
     private readonly calculationService: PaymentCalculationService,
     private readonly postpaidSettlementService: PostpaidSettlementService,
+    private readonly settlementSummaryService: SettlementSummaryService,
     private readonly redisService: RedisService,
   ) {}
 
@@ -616,6 +618,144 @@ export class PaymentsController {
   })
   async getWebhookStats() {
     return this.webhookRetryService.getWebhookStats();
+  }
+
+  /**
+   * [정산 센터 Phase 2b] 팀 정산 소계 — 감독이 자기 수업·대회를 목록으로 훑는 소계 레이어.
+   *   대회(선불·후불) 포함. teamId 지정 시 관리 팀 교집합(비관리 → 빈 결과).
+   *   static path 라 `:paymentId` 라우트보다 위에 위치(동적 매칭 회피).
+   */
+  @Get("team-settlement-center/summary")
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @ApiBearerAuth()
+  @Roles("COACH", "DIRECTOR", "ADMIN")
+  @ApiOperation({
+    summary: "팀 정산 소계 (수업 + 대회)",
+    description:
+      "선택 월 기준 관리 팀의 수업·대회(선불·후불) 정산 소계를 반환합니다. teamId 지정 시 관리 팀 교집합만 조회합니다.",
+  })
+  @ApiQuery({
+    name: "yearMonth",
+    required: false,
+    description: "정산 기준 월 (YYYY-MM). 미전송 시 현재 KST 월.",
+  })
+  @ApiQuery({
+    name: "teamId",
+    required: false,
+    description: "특정 팀으로 필터 (관리 팀만 유효, 비관리 팀은 빈 결과).",
+  })
+  @ApiResponse({ status: 200, description: "팀 정산 소계 조회 성공" })
+  async getTeamSettlementSummary(
+    @Request() req: AuthenticatedRequest,
+    @Query("yearMonth") yearMonth?: string,
+    @Query("teamId") teamId?: string,
+  ) {
+    return this.settlementSummaryService.getTeamSettlementSummary(
+      req.user,
+      yearMonth,
+      teamId,
+    );
+  }
+
+  /**
+   * [정산 센터 ②] 팀 인별 미수금 목록 — 소계(summary)와 동일 행 SoT 공유(정합).
+   *   수업+대회 후불 미납을 회원별로 통합, 선택월 인식. static 경로라 `:paymentId` 위에 위치.
+   */
+  @Get("team-settlement-center/unpaid-members")
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @ApiBearerAuth()
+  @Roles("COACH", "DIRECTOR", "ADMIN")
+  @ApiOperation({
+    summary: "팀 인별 미수금 목록",
+    description:
+      "선택 월 기준 관리 팀의 미수금을 회원(자녀/선수)별로 그룹핑해 반환합니다. 합계는 팀 정산 소계의 미수금 총액과 일치합니다.",
+  })
+  @ApiQuery({
+    name: "yearMonth",
+    required: false,
+    description: "정산 기준 월 (YYYY-MM). 미전송 시 현재 KST 월.",
+  })
+  @ApiQuery({
+    name: "teamId",
+    required: false,
+    description: "특정 팀으로 필터 (관리 팀만 유효, 비관리 팀은 빈 결과).",
+  })
+  @ApiResponse({ status: 200, description: "팀 인별 미수금 목록 조회 성공" })
+  async getTeamUnpaidMembers(
+    @Request() req: AuthenticatedRequest,
+    @Query("yearMonth") yearMonth?: string,
+    @Query("teamId") teamId?: string,
+  ) {
+    return this.settlementSummaryService.getTeamUnpaidMembers(
+      req.user,
+      yearMonth,
+      teamId,
+    );
+  }
+
+  /**
+   * [정산 센터 ②] 팀 인별 미수금 상세 — 보호자 연락처 + source 단위 미납 라인.
+   *   scope 재계산 후 미납 0건이면 404(IDOR 차단).
+   */
+  @Get("team-settlement-center/unpaid-members/:memberId")
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @ApiBearerAuth()
+  @Roles("COACH", "DIRECTOR", "ADMIN")
+  @ApiOperation({
+    summary: "팀 인별 미수금 상세",
+    description:
+      "미납 회원(자녀)의 보호자 연락처와 수업/대회 미납 내역을 반환합니다. 관리 스코프에 미납이 없으면 404.",
+  })
+  @ApiParam({ name: "memberId", description: "미납 회원(자녀) User ID" })
+  @ApiQuery({
+    name: "yearMonth",
+    required: false,
+    description: "정산 기준 월 (YYYY-MM). 미전송 시 현재 KST 월.",
+  })
+  @ApiQuery({ name: "teamId", required: false })
+  @ApiResponse({ status: 200, description: "미수금 상세 조회 성공" })
+  @ApiResponse({ status: 404, description: "미수금 내역을 찾을 수 없습니다." })
+  async getTeamUnpaidMemberDetail(
+    @Request() req: AuthenticatedRequest,
+    @Param("memberId") memberId: string,
+    @Query("yearMonth") yearMonth?: string,
+    @Query("teamId") teamId?: string,
+  ) {
+    return this.settlementSummaryService.getTeamUnpaidMemberDetail(
+      req.user,
+      memberId,
+      yearMonth,
+      teamId,
+    );
+  }
+
+  /**
+   * [정산 센터 ②] 미납 안내 발송 — 보호자 대상 인앱+푸시. 월별 쿨다운(운영 24h/개발 60s).
+   *   수업+대회 미납 총액 안내. 상세와 동일 scope·404 재사용.
+   */
+  @Post("team-settlement-center/unpaid-members/:memberId/remind")
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @ApiBearerAuth()
+  @Roles("COACH", "DIRECTOR", "ADMIN")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "팀 인별 미납 안내 발송",
+    description:
+      "미납 회원의 보호자에게 인앱+푸시 미납 안내를 발송합니다. 월별 쿨다운이 적용됩니다.",
+  })
+  @ApiParam({ name: "memberId", description: "미납 회원(자녀) User ID" })
+  @ApiResponse({ status: 200, description: "발송 결과" })
+  @ApiResponse({ status: 404, description: "미수금 내역을 찾을 수 없습니다." })
+  async sendTeamUnpaidReminder(
+    @Request() req: AuthenticatedRequest,
+    @Param("memberId") memberId: string,
+    @Body() body: { yearMonth?: string },
+  ) {
+    return this.settlementSummaryService.sendTeamUnpaidReminder(
+      req.user,
+      memberId,
+      body?.yearMonth,
+    );
   }
 
   /**

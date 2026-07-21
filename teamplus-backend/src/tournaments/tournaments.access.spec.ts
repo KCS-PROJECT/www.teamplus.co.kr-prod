@@ -1,7 +1,7 @@
 import { ForbiddenException, BadRequestException } from "@nestjs/common";
 import { TournamentsService } from "./tournaments.service";
 import { TournamentsController } from "./tournaments.controller";
-import { AdminController } from "@/admin/admin.controller";
+import { PaymentsController } from "@/payments/payments.controller";
 import { ROLES_KEY } from "@/auth/roles.decorator";
 import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
 
@@ -398,15 +398,16 @@ describe("Tournaments Phase 0 access", () => {
       }
     });
 
-    it("admin 미수금 상세·알림 발송에 ACADEMY_DIRECTOR 가 없다", () => {
-      const proto = AdminController.prototype as Record<string, any>;
-      expect(rolesOf(proto.getDirectorUnpaidMemberDetail)).not.toContain(
+    it("팀 인별 미수금 목록·상세·알림 발송에 ACADEMY_DIRECTOR 가 없다", () => {
+      // 레거시 admin/director-payment-summary 3핸들러 → payments/team-settlement-center/unpaid-members 이관.
+      const proto = PaymentsController.prototype as Record<string, any>;
+      expect(rolesOf(proto.getTeamUnpaidMembers)).not.toContain(
         "ACADEMY_DIRECTOR",
       );
-      expect(rolesOf(proto.sendDirectorUnpaidReminder)).not.toContain(
+      expect(rolesOf(proto.getTeamUnpaidMemberDetail)).not.toContain(
         "ACADEMY_DIRECTOR",
       );
-      expect(rolesOf(proto.getDirectorPaymentSummary)).not.toContain(
+      expect(rolesOf(proto.sendTeamUnpaidReminder)).not.toContain(
         "ACADEMY_DIRECTOR",
       );
     });

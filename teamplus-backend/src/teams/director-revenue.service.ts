@@ -433,8 +433,8 @@ export class DirectorRevenueService {
       return teams.map((t) => t.id);
     }
 
-    // SoT: getDirectorPaymentSummary 와 동일 — TeamMember(approved, 관리역할)로만
-    //  운영 팀 결정. 레거시 Team.coachId FK 오염 의존 제거.
+    // SoT: 운영 팀 = TeamMember(approved, 관리역할)로만 결정.
+    //  레거시 Team.coachId FK 오염 의존 제거.
     const memberTeams = await this.prisma.teamMember.findMany({
       where: {
         userId: user.id,

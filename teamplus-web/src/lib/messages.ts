@@ -939,8 +939,6 @@ export const MESSAGES = {
     blockedTournamentNotEnded: "대회가 끝나면 정산할 수 있어요.",
     blockedBillingTimingUnassigned:
       "결제 방식이 정해지지 않은 인원이 있어요.",
-    // 미수금 탭 안내
-    unpaidCurrentMonthOnly: "미납 안내는 당월 기준으로 표시됩니다.",
     // 빈 상태
     emptyTraining: "해당 월에 정산할 훈련이 없습니다.",
     emptyTournament: "해당 월에 정산할 대회가 없습니다.",
@@ -966,6 +964,22 @@ export const MESSAGES = {
     unpaidLabel: "미납액",
     sendReminder: "알림 발송",
     viewDetail: "상세 보기",
+    // 미수금 출처 배지 (회원이 수업·대회 동시 미납 가능)
+    sourceClass: "수업",
+    sourceTournament: "대회",
+    unpaidMemberCount: (n: number) => `미납 ${n}명`,
+    // 미수금 상세 시트
+    detailSheetTitle: "미수금 상세",
+    detailMemberLabel: "회원",
+    detailTotalUnpaid: "총 미납액",
+    detailParentsTitle: "보호자 연락처",
+    detailNoPhone: "연락처 없음",
+    detailNoParents: "연결된 보호자가 없습니다.",
+    detailUnpaidTitle: "미납 내역",
+    detailAttendanceCount: (n: number) => `출석 ${n}회`,
+    detailCallAria: (name: string) => `${name} 전화 걸기`,
+    detailSmsAria: (name: string) => `${name} 문자 보내기`,
+    detailRetry: "다시 시도",
   },
   socialLogin: {
     preparing: (provider: string) => `${provider} 로그인은 준비 중입니다.`,
