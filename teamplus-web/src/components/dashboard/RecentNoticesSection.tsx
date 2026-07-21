@@ -63,14 +63,16 @@ function toNoticeList(payload: NoticeItem[] | { notices?: NoticeItem[] } | null)
   return sorted.slice(0, 5);
 }
 
+// [2026-07-21] 시안 정합 — 공지 목록 날짜는 항상 절대 표기 `YYYY.MM.DD` (예: 2026.07.08).
+//   기존 ko-KR 로케일은 같은 해 "07. 15."(연도 생략·점공백)/타 해 "2026. 07. 15." 로 갈렸음.
+//   팀공지·공지사항 두 탭 공통 적용(단일 formatDate SoT).
 function formatDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
-  const now = new Date();
-  const sameYear = d.getFullYear() === now.getFullYear();
-  return sameYear
-    ? d.toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' })
-    : d.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}.${m}.${day}`;
 }
 
 const TYPE_BADGE: Record<string, { label: string; cls: string }> = {

@@ -396,7 +396,9 @@ export function TeamClassesSummary({
                       type="button"
                       onClick={() => navigate(href)}
                       className={cn(
-                        'w-full px-4 py-2 flex items-start gap-3 text-left transition-colors duration-150 motion-reduce:transition-none',
+                        // [2026-07-21] 시안 정합 — 좁은 px-4 py-2 → 공지 섹션과 동일한 편안한
+                        //   px-5 py-3 간격 + items-center(단일행 세로 중앙정렬, chevron mt 오프셋 제거).
+                        'w-full px-5 py-3 flex items-center gap-3 text-left transition-colors duration-150 motion-reduce:transition-none',
                         iceTheme ? 'hover:bg-it-fill dark:hover:bg-it-blue-900' : 'hover:bg-wline-2 dark:hover:bg-rink-700',
                       )}
                       aria-label={ariaLabel}
@@ -406,7 +408,9 @@ export function TeamClassesSummary({
                         <div className="flex items-center gap-2">
                           <span
                             className={cn(
-                              'shrink-0 rounded-w-pill px-1.5 py-0.5 text-card-meta font-bold',
+                              // [2026-07-21] 시안 정합 — 유형 배지 pill 좌우 패딩 px-1.5 → px-2 로
+                              //   살짝 넓혀 라운드 pill 형태를 또렷하게(훈련=초록/대회=빨강 토큰 유지).
+                              'shrink-0 rounded-w-pill px-2 py-0.5 text-card-meta font-bold',
                               badgeClass,
                             )}
                           >
@@ -433,10 +437,11 @@ export function TeamClassesSummary({
                       <Icon
                         name="chevron_right"
                         className={cn(
+                          // items-center 로 세로 중앙정렬되므로 mt 오프셋 제거(시안의 중앙 chevron).
                           'shrink-0 text-[18px]',
                           iceTheme
-                            ? 'mt-3 text-it-ink-300 dark:text-it-ink-400'
-                            : 'mt-2 text-wtext-4 dark:text-rink-500',
+                            ? 'text-it-ink-300 dark:text-it-ink-400'
+                            : 'text-wtext-4 dark:text-rink-500',
                         )}
                         aria-hidden="true"
                       />

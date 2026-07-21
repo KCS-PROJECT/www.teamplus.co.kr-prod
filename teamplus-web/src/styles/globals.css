@@ -324,6 +324,11 @@
     font-feature-settings:
       "ss01" on,
       "ss02" on;
+    /* [2026-07-21] 전역 자간 축소 — 사용자 지시(공통 letter-spacing:-1px).
+       · 아이콘 폰트(.material-symbols-outlined)는 letter-spacing:normal 로 별도 고정되어
+         ligature 렌더링에 영향 없음(파일 상단 규칙).
+       · tracking-* 유틸을 명시한 요소는 @layer utilities 우선순위로 해당 값을 유지한다. */
+    letter-spacing: -1px;
     /* Dark mode 전환 시 부드러운 애니메이션 (깜박임 방지) */
     transition:
       background-color 0.2s ease,

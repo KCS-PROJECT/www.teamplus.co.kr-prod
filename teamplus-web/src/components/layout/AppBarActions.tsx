@@ -56,8 +56,13 @@ export interface AppBarActionButtonProps {
   label: string;
   /** 클릭 핸들러 */
   onClick?: () => void;
-  /** 점 배지 표시 여부 — true 면 우상단 6×6 분홍 점 노출 */
+  /** 점 배지 표시 여부 — true 면 우상단 6×6 분홍 점 노출 (badgeCount 미지정 시에만 적용) */
   badge?: boolean;
+  /**
+   * 수치 배지 — 미읽음 개수. 1 이상이면 우상단에 개수 pill(빨강)을 노출한다.
+   * 99 초과는 "99+" 로 축약. 지정 시 badge(점)보다 우선하며, 0/미지정이면 badge 로 폴백.
+   */
+  badgeCount?: number;
   /** 다크 톤 (헤더 자체가 다크 배경일 때) */
   isDark?: boolean;
   /**
@@ -76,15 +81,23 @@ export function AppBarActionButton({
   label,
   onClick,
   badge,
+  badgeCount,
   isDark,
   isActive,
   className,
 }: AppBarActionButtonProps) {
+  // 수치 배지 우선 — 1 이상일 때만 개수 pill 노출, 99 초과는 "99+" 로 축약.
+  const hasCount = typeof badgeCount === 'number' && badgeCount > 0;
+  const countText = hasCount
+    ? badgeCount > 99
+      ? '99+'
+      : String(badgeCount)
+    : '';
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label={`${label}${isActive ? ' (현재 페이지)' : ''}`}
+      aria-label={`${label}${hasCount ? ` (읽지 않음 ${countText}개)` : ''}${isActive ? ' (현재 페이지)' : ''}`}
       aria-current={isActive ? 'page' : undefined}
       className={cn(
         'flex items-center justify-center border-0 relative p-0 rounded-full size-10',
@@ -110,12 +123,34 @@ export function AppBarActionButton({
           className="text-[24px]"
           aria-hidden="true"
         />
-        {badge && (
+        {hasCount ? (
+          // 개수 배지 — 24px 아이콘 우상단 코너에 겹치는 빨강 pill (min 16×16, 좌우 4px 패딩).
+          //   reference: AppBar 알림 벨 "2" 배지 시안 (2026-07-21).
           <span
-            className="absolute rounded-full bg-pink-500"
-            style={{ top: 0, right: 0, width: 6, height: 6 }}
+            className="absolute inline-flex items-center justify-center rounded-full bg-red-500 text-white font-bold tabular-nums"
+            style={{
+              top: -5,
+              right: -6,
+              minWidth: 16,
+              height: 16,
+              padding: '0 4px',
+              fontSize: 10,
+              lineHeight: '16px',
+              boxSizing: 'border-box',
+              letterSpacing: 'normal',
+            }}
             aria-hidden="true"
-          />
+          >
+            {countText}
+          </span>
+        ) : (
+          badge && (
+            <span
+              className="absolute rounded-full bg-pink-500"
+              style={{ top: 0, right: 0, width: 6, height: 6 }}
+              aria-hidden="true"
+            />
+          )
         )}
       </span>
     </button>
@@ -156,8 +191,10 @@ export function AppBarTimelineButton({
 
 export interface AppBarNotificationButtonProps {
   onClick?: () => void;
-  /** 미읽음 알림 점 배지 표시 (true → 6×6 분홍 점) */
+  /** 미읽음 알림 점 배지 표시 (true → 6×6 분홍 점, badgeCount 미지정 시) */
   badge?: boolean;
+  /** 미읽음 알림 개수 — 1 이상이면 개수 pill(빨강) 표시 (점 배지보다 우선) */
+  badgeCount?: number;
   isDark?: boolean;
   /** 현재 /notifications 진입 시 true — 아이콘 ice-500 활성 톤 */
   isActive?: boolean;
@@ -167,6 +204,7 @@ export interface AppBarNotificationButtonProps {
 export function AppBarNotificationButton({
   onClick,
   badge,
+  badgeCount,
   isDark,
   isActive,
 }: AppBarNotificationButtonProps) {
@@ -176,6 +214,7 @@ export function AppBarNotificationButton({
       label="알림"
       onClick={onClick}
       badge={badge}
+      badgeCount={badgeCount}
       isDark={isDark}
       isActive={isActive}
     />
@@ -211,6 +250,8 @@ export interface AppBarRight3ActionsProps {
   timelineBadge?: boolean;
   /** 알림 점 배지 */
   notificationBadge?: boolean;
+  /** 알림 개수 배지 — 1 이상이면 개수 pill(빨강) 표시 (notificationBadge 점보다 우선) */
+  notificationBadgeCount?: number;
   /** 개별 액션 숨김 옵션 */
   showTimeline?: boolean;
   showNotification?: boolean;
@@ -233,6 +274,7 @@ export function AppBarRight3Actions({
   onMenu,
   timelineBadge,
   notificationBadge,
+  notificationBadgeCount,
   showTimeline = true,
   showNotification = true,
   showMenu = true,
@@ -255,6 +297,7 @@ export function AppBarRight3Actions({
         <AppBarNotificationButton
           onClick={onNotification}
           badge={notificationBadge}
+          badgeCount={notificationBadgeCount}
           isDark={isDark}
           isActive={notificationActive}
         />
