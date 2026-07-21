@@ -52,3 +52,48 @@ export async function confirmPostpaidSettlement(
   );
   return res.success && res.data ? res.data : null;
 }
+
+// ────────────────────────────────────────────────────────────
+// 결과형 API (금융 화면 계약 — 실패를 null 로 위장하지 않고 구별)
+// ────────────────────────────────────────────────────────────
+
+/** draft 조회 결과 — 실패(ok:false)와 정상-null 구분 불가 문제를 제거한 결과형. */
+export type PostpaidDraftResult =
+  | { ok: true; data: PostpaidDraft }
+  | { ok: false };
+
+/**
+ * 후불 정산 초안 조회(결과형). 로드 실패를 명시적으로 구별한다.
+ * 기존 `getPostpaidDraft`(null 위장)와 병존 — 신규 소비자는 이 함수를 사용한다.
+ */
+export async function fetchPostpaidDraft(
+  classId: string,
+  yearMonth: string,
+): Promise<PostpaidDraftResult> {
+  const res = await api.get<PostpaidDraft>(
+    `/payments/postpaid/draft?classId=${encodeURIComponent(classId)}&yearMonth=${encodeURIComponent(yearMonth)}`,
+  );
+  return res.success && res.data ? { ok: true, data: res.data } : { ok: false };
+}
+
+/** 정산 확정 결과 — 실패 시 서버 메시지(권한/과거월/이미확정)를 노출용으로 전달. */
+export type ConfirmPostpaidResultResponse =
+  | { ok: true; data: ConfirmPostpaidResult }
+  | { ok: false; error?: string };
+
+/**
+ * 후불 정산 확정(결과형). 실패 시 서버 에러 메시지를 담아 반환하여
+ * 호출부가 일반 에러 대신 서버 문구(과거월/권한/이미확정)를 우선 노출할 수 있게 한다.
+ */
+export async function confirmPostpaidSettlementResult(
+  classId: string,
+  yearMonth: string,
+): Promise<ConfirmPostpaidResultResponse> {
+  const res = await api.post<ConfirmPostpaidResult>(
+    `/payments/postpaid/confirm`,
+    { classId, yearMonth },
+  );
+  return res.success && res.data
+    ? { ok: true, data: res.data }
+    : { ok: false, error: res.error?.message };
+}

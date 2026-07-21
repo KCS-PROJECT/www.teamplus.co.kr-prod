@@ -21,7 +21,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { MobileContainer } from "@/components/layout/MobileContainer";
-import { PostpaidSettlementSection } from "@/components/attendance/PostpaidSettlementSection";
 import { MonthlyAttendanceCountSection } from "@/components/attendance/MonthlyAttendanceCountSection";
 import { PageAppBar } from "@/components/layout/PageAppBar";
 import { Icon } from "@/components/ui/Icon";
@@ -34,6 +33,7 @@ import {
   type ClassScheduleUpcomingItem,
 } from "@/hooks/useCoachAttendanceManage";
 import { MESSAGES } from "@/lib/messages";
+import { kstYearMonth } from "@/lib/kst-month";
 import { cn } from "@/lib/utils";
 
 // ────────────────────────────────────────────────────────────
@@ -41,6 +41,12 @@ import { cn } from "@/lib/utils";
 // ────────────────────────────────────────────────────────────
 
 const DAY_KR = ["일", "월", "화", "수", "목", "금", "토"];
+
+// 후불 정산 가능 수업 판정 — POSTPAID 전용 + BOTH(선수별 후불 가능)까지 정산 진입 링크 노출.
+// 하드코딩 문자열 비교 반복을 막기 위한 단일 판정 헬퍼.
+function isSettlementLinkClass(billingMode: string): boolean {
+  return billingMode === "POSTPAID" || billingMode === "BOTH";
+}
 
 function formatDateLabel(iso: string): string {
   const d = new Date(iso);
@@ -215,13 +221,33 @@ export default function AttendanceManagePage() {
           </section>
         )}
 
-        {/* [B-5-3 / Phase C] 결제방식별 섹션 택일 — 후불=정산, 선불=회원별 출석 횟수 */}
-        {data &&
-          (data.classInfo.billingMode === "POSTPAID" ? (
-            <PostpaidSettlementSection classId={classId} iceTheme />
-          ) : (
-            <MonthlyAttendanceCountSection classId={classId} iceTheme />
-          ))}
+        {/* [정산 확정 이전] 출석 전용화 — 항상 회원별 출석 횟수. 후불 정산 확정은 선수정보 결제 탭으로 이전. */}
+        {data && <MonthlyAttendanceCountSection classId={classId} iceTheme />}
+
+        {/* 후불 정산 가능 수업(POSTPAID·BOTH) — 정산 보기 링크(선수정보 결제 탭으로 이동) */}
+        {data && isSettlementLinkClass(data.classInfo.billingMode) && (
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-4">
+            <button
+              type="button"
+              onClick={() =>
+                router.push(
+                  `/classes/${classId}/students?tab=payment&yearMonth=${kstYearMonth()}`,
+                )
+              }
+              className="w-full flex items-center justify-between px-4 py-3 rounded-w-md bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 hover:bg-it-line dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
+            >
+              <span className="flex items-center gap-2 text-card-body font-bold text-it-ink-800 dark:text-white">
+                <Icon name="receipt_long" className="text-lg text-it-blue-500" aria-hidden="true" />
+                {MESSAGES.settlement.viewSettlement}
+              </span>
+              <Icon
+                name="chevron_right"
+                className="text-xl text-it-ink-400 dark:text-rink-300"
+                aria-hidden="true"
+              />
+            </button>
+          </section>
+        )}
 
         {/* 에러 */}
         {error && (

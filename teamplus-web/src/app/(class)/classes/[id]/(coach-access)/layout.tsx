@@ -17,10 +17,11 @@ import { useRouter } from 'next/navigation';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { Icon } from '@/components/ui/Icon';
 import { useRequireRole } from '@/contexts/AuthContext';
+import { RouteUserProvider } from '@/app/(class)/route-user-context';
 
 export default function CoachAccessLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
-  const { isLoading, isAllowed } = useRequireRole([
+  const { user, isLoading, isAllowed } = useRequireRole([
     'coach',
     'director',
     'academy_director',
@@ -76,5 +77,7 @@ export default function CoachAccessLayout({ children }: { children: ReactNode })
     );
   }
 
-  return <>{children}</>;
+  // 인증 훅 단일 호출(#6) — layout 에서 해석한 user 를 하위 page 로 파생 전달.
+  //   page 는 useRouteUser() 로 소비만 하고 useAuth/useRequireRole 을 재호출하지 않는다.
+  return <RouteUserProvider user={user}>{children}</RouteUserProvider>;
 }
