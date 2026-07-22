@@ -270,7 +270,7 @@ export class ClassesListController {
   }
 
   /**
-   * [Lifecycle v4.1] 수업 종료 취소(재개) — D5 확정: 허용.
+   * [Lifecycle v4.1] 수업 종료 취소(재개) — D5: 유예기간(7일) 내 허용.
    * 재개 시 파생 상태는 "일정 등록 대기"부터 — 판매 승인 사이클 통과 후에만 판매 재개.
    */
   @Post(":classId/reopen")
@@ -278,7 +278,8 @@ export class ClassesListController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: "수업 종료 취소(재개)",
-    description: "종료된 수업을 재개합니다. 재개 후 상태는 '일정 등록 대기'부터 시작합니다.",
+    description:
+      "종료된 수업을 재개합니다. 종료 후 7일 이내만 가능하며, 재개 후 상태는 '일정 등록 대기'부터 시작합니다.",
   })
   @ApiParam({ name: "classId", description: "수업 ID" })
   @ApiResponse({ status: 200, description: "재개 성공" })

@@ -1084,12 +1084,13 @@ export default function ClassDetailPage() {
   }, [classId, toast, reloadClassDetail]);
 
   const handleEndClass = useCallback(async () => {
-    if (
-      !confirm(
-        `${MESSAGES.class.endConfirmTitle}\n${MESSAGES.class.endConfirmMessage}`,
-      )
-    )
-      return;
+    const ok = await modal.confirm({
+      title: MESSAGES.class.endConfirmTitle,
+      message: MESSAGES.class.endConfirmMessage,
+      confirmText: MESSAGES.class.endClassButton,
+      variant: 'danger',
+    });
+    if (!ok) return;
     setLifecycleActing(true);
     try {
       const res = await api.post(`/classes/${classId}/end`);
@@ -1102,7 +1103,7 @@ export default function ClassDetailPage() {
     } finally {
       setLifecycleActing(false);
     }
-  }, [classId, toast, reloadClassDetail]);
+  }, [classId, toast, reloadClassDetail, modal]);
 
   const handleReopenClass = useCallback(async () => {
     setLifecycleActing(true);
@@ -2535,25 +2536,44 @@ export default function ClassDetailPage() {
         )}
         {/* [Lifecycle v4.1 §8.3·D5] 종료 취소 — 명시 종료(endedAt)된 수업 전용 섹션.
             수업 종료하기 버튼은 판매 준비 배너의 '일정 없음' 분기로 통합(같은 결정 지점).
-            종료 취소: 명시 종료(endedAt)만 — spot 자동 종료 제외. */}
-        {isManager && classData.endedAt && (
-          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4" aria-label="수업 종료 관리">
-            <h2 className="text-[15px] font-extrabold text-wtext-1 dark:text-white tracking-tight">
-              {MESSAGES.class.salesCycle.endedSectionTitle}
-            </h2>
-            <p className="text-card-meta text-wtext-3 dark:text-rink-300 mt-1 mb-3">
-              {MESSAGES.class.salesCycle.reopenHint}
-            </p>
-            <button
-              type="button"
-              onClick={handleReopenClass}
-              disabled={lifecycleActing}
-              className="w-full h-12 rounded-w-md border-[1.5px] border-it-line dark:border-rink-600 text-it-ink-600 dark:text-rink-200 text-card-body font-bold hover:bg-it-canvas dark:hover:bg-rink-800 disabled:opacity-60 transition-colors motion-reduce:transition-none active:brightness-95"
-            >
-              {MESSAGES.class.reopenClassButton}
-            </button>
-          </section>
-        )}
+            종료 취소: 명시 종료(endedAt)만 — spot 파생 자동 종료 제외.
+            유예기간(7일) 경과 시 버튼 대신 복사 등록 안내 — 집행 가드는 서버(reopenClass). */}
+        {isManager && classData.endedAt && (() => {
+          // BE reopenClass 의 REOPEN_GRACE_DAYS 와 동일 값 — 표시용 미러(집행은 서버)
+          const REOPEN_GRACE_DAYS = 7;
+          const reopenDeadline = new Date(
+            new Date(classData.endedAt).getTime() +
+              REOPEN_GRACE_DAYS * 24 * 60 * 60 * 1000,
+          );
+          const reopenExpired = Date.now() > reopenDeadline.getTime();
+          const reopenDeadlineLabel = `${reopenDeadline.getMonth() + 1}월 ${reopenDeadline.getDate()}일`;
+          return (
+            <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4" aria-label="수업 종료 관리">
+              <h2 className="text-[15px] font-extrabold text-wtext-1 dark:text-white tracking-tight">
+                {MESSAGES.class.salesCycle.endedSectionTitle}
+              </h2>
+              {reopenExpired ? (
+                <p className="text-card-meta text-wtext-3 dark:text-rink-300 mt-1">
+                  {MESSAGES.class.salesCycle.reopenExpiredHint(REOPEN_GRACE_DAYS)}
+                </p>
+              ) : (
+                <>
+                  <p className="text-card-meta text-wtext-3 dark:text-rink-300 mt-1 mb-3">
+                    {MESSAGES.class.salesCycle.reopenHint(reopenDeadlineLabel)}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleReopenClass}
+                    disabled={lifecycleActing}
+                    className="w-full h-12 rounded-w-md border-[1.5px] border-it-line dark:border-rink-600 text-it-ink-600 dark:text-rink-200 text-card-body font-bold hover:bg-it-canvas dark:hover:bg-rink-800 disabled:opacity-60 transition-colors motion-reduce:transition-none active:brightness-95"
+                  >
+                    {MESSAGES.class.reopenClassButton}
+                  </button>
+                </>
+              )}
+            </section>
+          );
+        })()}
       </main>
 
       {/* ── manager 스티키 액션바 — 휴지통 + 수업 수정하기 ── */}

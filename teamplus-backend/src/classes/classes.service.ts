@@ -4876,10 +4876,14 @@ export class ClassesService {
     return updated;
   }
 
+  /** [종료 취소] 유예기간 — 실수 구제 창. 초과 시 '기존 수업 불러오기'(복사 등록)로 유도. */
+  private static readonly REOPEN_GRACE_DAYS = 7;
+
   /**
-   * [종료 취소] — 재개 (D5 확정: 허용).
+   * [종료 취소] — 재개 (D5: 유예기간 내 허용).
    * endedAt=null 롤백. 재개 시 파생 상태는 자연히 "일정 등록 대기"부터 시작 —
    * 판매 승인 사이클(§9.3)을 통과해야만 판매 재개되므로 위험 상태가 만들어지지 않는다.
+   * 유예기간(REOPEN_GRACE_DAYS) 초과 시 재개 불가 — 장기 재개는 복사 등록이 담당.
    */
   async reopenClass(userId: string, userType: string, classId: string) {
     const { ownerType, ownerId } = await this.assertClassManagerPermission(
@@ -4894,6 +4898,16 @@ export class ClassesService {
     });
     if (!klass.endedAt) {
       throw new BadRequestException("종료 상태가 아닌 수업입니다.");
+    }
+    // endedAt 은 timestamptz instant — 유예 창은 duration 산술로 비교 (KST 변환 불필요)
+    const graceLimit = new Date(
+      klass.endedAt.getTime() +
+        ClassesService.REOPEN_GRACE_DAYS * 24 * 60 * 60 * 1000,
+    );
+    if (new Date() > graceLimit) {
+      throw new BadRequestException(
+        `종료 후 ${ClassesService.REOPEN_GRACE_DAYS}일이 지나 재개할 수 없습니다. 새 수업 등록의 '기존 수업 불러오기'를 이용해주세요.`,
+      );
     }
     const updated = await this.prisma.class.update({
       where: { id: classId },

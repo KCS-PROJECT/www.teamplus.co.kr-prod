@@ -28,6 +28,10 @@ export const MESSAGES = {
     spotSingleScheduleLimit: "1회용 수업은 일정을 1개만 등록할 수 있습니다.",
     endBlockedBySchedule:
       "다가오는 일정이 있어 종료할 수 없습니다. 일정을 모두 마치거나 취소한 후 종료할 수 있습니다.",
+    noActiveClasses: "진행 중인 훈련이 없습니다.",
+    noActiveTournaments: "진행 중인 대회가 없습니다.",
+    endedTrainingSection: "종료된 훈련",
+    endedTournamentSection: "종료된 대회",
     // [Lifecycle v4.1 §9.3] 판매 승인 사이클 — 감독 확인 플로우 · 학부모 CTA
     salesCycle: {
       // entryLabel: 화면 하단에 실재하는 일정 등록 진입 버튼명 (일정 편집 수정 폼 단일화 후 '수업 수정하기')
@@ -35,7 +39,10 @@ export const MESSAGES = {
         `다가오는 일정이 없어요. 아래 '${entryLabel}'에서 일정을 등록하면 다음 달 판매를 준비할 수 있어요.`,
       endHint: "이 수업을 더 이상 운영하지 않는다면 종료할 수 있어요.",
       endedSectionTitle: "종료된 수업",
-      reopenHint: "종료를 취소하면 일정 등록 대기 상태로 되돌아갑니다.",
+      reopenHint: (deadline: string) =>
+        `종료를 취소하면 일정 등록 대기 상태로 되돌아갑니다. ${deadline}까지만 취소할 수 있어요.`,
+      reopenExpiredHint: (days: number) =>
+        `종료 후 ${days}일이 지나 재개할 수 없습니다. 새 수업 등록 화면의 '기존 수업 불러오기'로 이어서 등록할 수 있어요.`,
       pendingTitle: (month: number) => `${month}월 판매 준비`,
       pendingGuide:
         "일정과 월 정기권 금액을 확인한 뒤 판매를 시작할 수 있습니다.",
@@ -697,6 +704,10 @@ export const MESSAGES = {
     sourceTournament: "대회",
     prepaid: "선불",
     postpaid: "후불",
+    // 후불 산정 근거 라인 — 결제내역 카드에 정산월·출석횟수·회당 단가 표시.
+    settlementMonth: (year: number, month: number) => `${year}년 ${month}월 정산`,
+    attendanceTimes: (count: number) => `출석 ${count}회`,
+    perSessionPrice: (price: number) => `회당 ${price.toLocaleString()}원`,
     // [추가 2026-06-09] App Store 3.1.1 — 결제권은 디지털 콘텐츠/화폐가 아닌 '오프라인 대면 수업 수강료 결제 수단'임을 명시(심사 오인 방지)
     offlineCreditNotice:
       "본 결제권은 오프라인 빙상 아이스하키 수업의 수업료 결제 수단이며, 수업 당일 현장 QR 출석 시 차감됩니다.",
