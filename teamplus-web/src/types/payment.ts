@@ -76,6 +76,16 @@ export interface PaymentHistoryItem {
   sourceType?: PaymentSourceType;
   /** 선불/후불 — 백엔드 파생 append. 무관계 결제는 미제공. */
   billingTiming?: PaymentBillingTiming;
+  /** 결제 대상명 — 대회명(Tournament.name) 또는 후불 수업명(BillingLine→Billing→Class). 선불 수업명은 className 담당. */
+  subjectName?: string;
+  /** 수강생(자녀) 표시명 — 후불: BillingLine.user / 선불: Enrollment.child, lastName+firstName 조합. */
+  childName?: string;
+  /** 후불 정산월 "YYYY-MM" (MonthlyPostpaidBilling.yearMonth). 후불 결제만 존재. */
+  billingYearMonth?: string;
+  /** 후불 청구 근거 출석 횟수 (BillingLine.attendanceCount 확정값). 후불 결제만 존재. */
+  attendanceCount?: number;
+  /** 후불 회당 단가 — 청구 총액÷출석횟수 파생값 (출석 0회면 미제공). */
+  unitPrice?: number;
 }
 
 /** 결제권 사용 내역 아이템 */

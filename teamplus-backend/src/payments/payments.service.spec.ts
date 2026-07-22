@@ -333,9 +333,15 @@ describe("PaymentsService", () => {
       expect(prismaService.payment.findMany).toHaveBeenCalledWith({
         where: {
           userId: mockUserId,
-          paymentStatus: {
-            in: ["completed", "refunded", "partially_refunded", "cancelled"],
-          },
+          OR: [
+            {
+              paymentStatus: {
+                in: ["completed", "refunded", "partially_refunded"],
+              },
+            },
+            // 실결제 후 취소만 — 재시도 고아(cancelled + completedAt null) 숨김
+            { paymentStatus: "cancelled", completedAt: { not: null } },
+          ],
         },
         include: {
           product: {
@@ -348,6 +354,7 @@ describe("PaymentsService", () => {
           enrollments: {
             select: {
               class: { select: { className: true } },
+              child: { select: { firstName: true, lastName: true } },
             },
             take: 1,
           },
@@ -358,7 +365,18 @@ describe("PaymentsService", () => {
             take: 1,
           },
           monthlyBillingLines: {
-            select: { id: true },
+            select: {
+              id: true,
+              attendanceCount: true,
+              amount: true,
+              billing: {
+                select: {
+                  yearMonth: true,
+                  class: { select: { className: true } },
+                },
+              },
+              user: { select: { firstName: true, lastName: true } },
+            },
             take: 1,
           },
         },
@@ -414,6 +432,131 @@ describe("PaymentsService", () => {
 
       expect(result[0].sourceType).toBeNull();
       expect(result[0].billingTiming).toBeNull();
+      // 후불 상세 필드도 전부 null (additive 계약)
+      expect(result[0].subjectName).toBeNull();
+      expect(result[0].childName).toBeNull();
+      expect(result[0].billingYearMonth).toBeNull();
+      expect(result[0].attendanceCount).toBeNull();
+      expect(result[0].unitPrice).toBeNull();
+    });
+
+    it("후불 결제는 billing 체인에서 산정 근거 5필드를 emit 한다", async () => {
+      const mockPayments = [
+        {
+          ...mockCompletedPayment,
+          amount: 240000,
+          product: null,
+          enrollments: [],
+          tournamentRegistrations: [],
+          monthlyBillingLines: [
+            {
+              id: "line-1",
+              attendanceCount: 8,
+              amount: 240000,
+              billing: {
+                yearMonth: "2026-06",
+                class: { className: "주니어 정규반" },
+              },
+              user: { firstName: "하늘", lastName: "김" },
+            },
+          ],
+        },
+      ];
+      jest
+        .spyOn(prismaService.payment, "findMany")
+        .mockResolvedValue(mockPayments as any);
+
+      const result = await service.getUserPayments(mockUserId);
+
+      expect(result[0].sourceType).toBe("CLASS");
+      expect(result[0].billingTiming).toBe("POSTPAID");
+      expect(result[0].subjectName).toBe("주니어 정규반");
+      expect(result[0].childName).toBe("김하늘");
+      expect(result[0].billingYearMonth).toBe("2026-06");
+      expect(result[0].attendanceCount).toBe(8);
+      expect(result[0].unitPrice).toBe(30000);
+    });
+
+    it("후불 라인 출석 0회면 unitPrice null (0 나눗셈 가드)", async () => {
+      const mockPayments = [
+        {
+          ...mockCompletedPayment,
+          product: null,
+          enrollments: [],
+          tournamentRegistrations: [],
+          monthlyBillingLines: [
+            {
+              id: "line-1",
+              attendanceCount: 0,
+              amount: 0,
+              billing: { yearMonth: "2026-06", class: { className: "주니어 정규반" } },
+              user: { firstName: "하늘", lastName: "김" },
+            },
+          ],
+        },
+      ];
+      jest
+        .spyOn(prismaService.payment, "findMany")
+        .mockResolvedValue(mockPayments as any);
+
+      const result = await service.getUserPayments(mockUserId);
+
+      expect(result[0].attendanceCount).toBe(0);
+      expect(result[0].unitPrice).toBeNull();
+    });
+
+    it("대회 결제는 subjectName 에 대회명을 emit 한다", async () => {
+      const mockPayments = [
+        {
+          ...mockCompletedPayment,
+          product: null,
+          enrollments: [],
+          tournamentRegistrations: [
+            { tournament: { billingMode: "POSTPAID", name: "여름 챔피언십" } },
+          ],
+          monthlyBillingLines: [],
+        },
+      ];
+      jest
+        .spyOn(prismaService.payment, "findMany")
+        .mockResolvedValue(mockPayments as any);
+
+      const result = await service.getUserPayments(mockUserId);
+
+      expect(result[0].sourceType).toBe("TOURNAMENT");
+      expect(result[0].subjectName).toBe("여름 챔피언십");
+    });
+
+    it("선불 수업 결제는 Enrollment.child 로 childName 을 emit 한다", async () => {
+      const mockPayments = [
+        {
+          ...mockCompletedPayment,
+          product: {
+            productName: mockProduct.productName,
+            price: 240000,
+            billingTiming: "PREPAID",
+          },
+          enrollments: [
+            {
+              class: { className: "신규 수강생반" },
+              child: { firstName: "바다", lastName: "이" },
+            },
+          ],
+          tournamentRegistrations: [],
+          monthlyBillingLines: [],
+        },
+      ];
+      jest
+        .spyOn(prismaService.payment, "findMany")
+        .mockResolvedValue(mockPayments as any);
+
+      const result = await service.getUserPayments(mockUserId);
+
+      expect(result[0].childName).toBe("이바다");
+      // 선불 수업명은 기존 className 이 담당 — subjectName 은 null
+      expect(result[0].className).toBe("신규 수강생반");
+      expect(result[0].subjectName).toBeNull();
+      expect(result[0].billingYearMonth).toBeNull();
     });
   });
 

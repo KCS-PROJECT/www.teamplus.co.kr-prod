@@ -724,13 +724,20 @@ export class PaymentsService {
   async getUserPayments(userId: string, limit: number = 10) {
     // [수정 2026-05-13] pending/failed 제외 — 결제 시도만 하고 미완료된 row 가 다수 누적되어
     //   결제 내역 페이지에 동일 상품이 중복 노출되던 문제 차단.
-    //   completed / refunded / partially_refunded / cancelled 만 사용자에게 의미 있음.
+    // cancelled 는 실결제 후 취소(completedAt 존재)만 노출 — 재시도 시 Enrollment 재활용이
+    //   이전 pending Payment 를 cancelled 로 마킹하는 고아(completedAt null)는 사용자가
+    //   결제한 적 없는 건이라 숨긴다 (payment-create.service "이전 고아 Payment cancelled 처리").
     const payments = await this.prisma.payment.findMany({
       where: {
         userId,
-        paymentStatus: {
-          in: ["completed", "refunded", "partially_refunded", "cancelled"],
-        },
+        OR: [
+          {
+            paymentStatus: {
+              in: ["completed", "refunded", "partially_refunded"],
+            },
+          },
+          { paymentStatus: "cancelled", completedAt: { not: null } },
+        ],
       },
       include: {
         product: {
@@ -745,6 +752,7 @@ export class PaymentsService {
         enrollments: {
           select: {
             class: { select: { className: true } },
+            child: { select: { firstName: true, lastName: true } },
           },
           take: 1,
         },
@@ -753,8 +761,20 @@ export class PaymentsService {
           select: { tournament: { select: { billingMode: true, name: true } } },
           take: 1,
         },
+        // 후불 산정 근거 표시용 — 라인 확정값 + billing 체인(정산월·수업명·자녀)
         monthlyBillingLines: {
-          select: { id: true },
+          select: {
+            id: true,
+            attendanceCount: true,
+            amount: true,
+            billing: {
+              select: {
+                yearMonth: true,
+                class: { select: { className: true } },
+              },
+            },
+            user: { select: { firstName: true, lastName: true } },
+          },
           take: 1,
         },
       },
@@ -762,10 +782,16 @@ export class PaymentsService {
       take: limit,
     });
 
+    // User 에 name 필드 없음 — 표시명은 lastName+firstName 조합, 둘 다 비면 null
+    const toDisplayName = (
+      u?: { firstName: string | null; lastName: string | null } | null,
+    ) => (u ? `${u.lastName ?? ""}${u.firstName ?? ""}`.trim() || null : null);
+
     return payments.map((payment) => {
+      const line = payment.monthlyBillingLines?.[0] ?? null;
       const src = deriveSource({
         productBillingTiming: payment.product?.billingTiming,
-        hasMonthlyBillingLine: (payment.monthlyBillingLines?.length ?? 0) > 0,
+        hasMonthlyBillingLine: line != null,
         tournamentBillingMode:
           payment.tournamentRegistrations?.[0]?.tournament?.billingMode ?? null,
       });
@@ -781,6 +807,22 @@ export class PaymentsService {
         // 파생 append (Dual Emit) — 무관계 결제는 null
         sourceType: src.sourceType,
         billingTiming: src.billingTiming,
+        // 후불 산정 근거 append (additive) — 대회명 또는 후불 billing 체인 수업명.
+        //   선불 수업명은 기존 className 이 담당(Enrollment 경유), 무관계 결제는 전부 null.
+        subjectName:
+          payment.tournamentRegistrations?.[0]?.tournament?.name ??
+          line?.billing?.class?.className ??
+          null,
+        childName:
+          toDisplayName(line?.user) ??
+          toDisplayName(payment.enrollments?.[0]?.child),
+        billingYearMonth: line?.billing?.yearMonth ?? null,
+        attendanceCount: line?.attendanceCount ?? null,
+        // 단가는 저장 컬럼 없음 — 라인 확정 총액÷출석횟수 파생 (0 나눗셈은 null)
+        unitPrice:
+          line && line.attendanceCount > 0
+            ? Math.round(line.amount / line.attendanceCount)
+            : null,
       };
     });
   }

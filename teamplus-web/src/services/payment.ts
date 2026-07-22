@@ -58,6 +58,16 @@ interface BackendPaymentItem {
   sourceType?: string | null;
   /** 선후불 파생 append — "PREPAID" | "POSTPAID". 무관계 결제는 미제공/무효 → undefined. */
   billingTiming?: string | null;
+  /** 결제 대상명 — 대회명 또는 후불 수업명(BillingLine→Billing→Class 체인). */
+  subjectName?: string | null;
+  /** 수강생(자녀) 표시명 — 후불: BillingLine.user / 선불: Enrollment.child. */
+  childName?: string | null;
+  /** 후불 정산월 "YYYY-MM". */
+  billingYearMonth?: string | null;
+  /** 후불 청구 근거 출석 횟수 (라인 확정값). */
+  attendanceCount?: number | null;
+  /** 후불 회당 단가 — 총액÷출석횟수 파생 (출석 0회면 null). */
+  unitPrice?: number | null;
 }
 
 // ============================================
@@ -126,6 +136,18 @@ function normalizePaymentBillingTiming(value: unknown): PaymentBillingTiming | u
   return undefined;
 }
 
+/** null/빈 문자열은 undefined 로 정규화 (배지·라벨 미표시). */
+function normalizeOptionalText(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+/** 양수 정수만 통과, 그 외(null/0/NaN)는 undefined. */
+function normalizePositiveInt(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? Math.round(value)
+    : undefined;
+}
+
 function toPaymentHistoryItem(item: BackendPaymentItem): PaymentHistoryItem {
   const status = mapPaymentStatus(item.paymentStatus);
   const productName = item.productName || '이용권';
@@ -144,6 +166,11 @@ function toPaymentHistoryItem(item: BackendPaymentItem): PaymentHistoryItem {
     orderNumber: item.orderNumber,
     sourceType: normalizePaymentSourceType(item.sourceType),
     billingTiming: normalizePaymentBillingTiming(item.billingTiming),
+    subjectName: normalizeOptionalText(item.subjectName),
+    childName: normalizeOptionalText(item.childName),
+    billingYearMonth: normalizeOptionalText(item.billingYearMonth),
+    attendanceCount: normalizePositiveInt(item.attendanceCount),
+    unitPrice: normalizePositiveInt(item.unitPrice),
   };
 }
 

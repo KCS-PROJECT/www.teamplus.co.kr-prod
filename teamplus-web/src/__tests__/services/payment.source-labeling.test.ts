@@ -130,4 +130,60 @@ describe('getPaymentHistory — 출처·선후불 정규화', () => {
     expect(item.sourceType).toBeUndefined();
     expect(item.billingTiming).toBeUndefined();
   });
+
+  it('후불 산정 근거 5필드를 정규화해 전달한다', async () => {
+    mockGet.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          id: 'p6',
+          orderNumber: 'ORD-6',
+          amount: 240000,
+          paymentStatus: 'completed',
+          createdAt: '2026-07-06T00:00:00.000Z',
+          sourceType: 'CLASS',
+          billingTiming: 'POSTPAID',
+          subjectName: '주니어 정규반',
+          childName: '김하늘',
+          billingYearMonth: '2026-06',
+          attendanceCount: 8,
+          unitPrice: 30000,
+        },
+      ],
+    });
+
+    const item = (await getPaymentHistory()).data!.payments[0];
+    expect(item.subjectName).toBe('주니어 정규반');
+    expect(item.childName).toBe('김하늘');
+    expect(item.billingYearMonth).toBe('2026-06');
+    expect(item.attendanceCount).toBe(8);
+    expect(item.unitPrice).toBe(30000);
+  });
+
+  it('후불 상세 미제공/null/0 값은 undefined 로 정규화한다', async () => {
+    mockGet.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          id: 'p7',
+          orderNumber: 'ORD-7',
+          amount: 10000,
+          paymentStatus: 'completed',
+          createdAt: '2026-07-07T00:00:00.000Z',
+          subjectName: null,
+          childName: '',
+          billingYearMonth: null,
+          attendanceCount: 0,
+          unitPrice: null,
+        },
+      ],
+    });
+
+    const item = (await getPaymentHistory()).data!.payments[0];
+    expect(item.subjectName).toBeUndefined();
+    expect(item.childName).toBeUndefined();
+    expect(item.billingYearMonth).toBeUndefined();
+    expect(item.attendanceCount).toBeUndefined();
+    expect(item.unitPrice).toBeUndefined();
+  });
 });
