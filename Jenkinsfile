@@ -245,14 +245,38 @@ REMOTE
 
         stage('Health Check') {
             steps {
+                // [2026-07-22] backend 는 필수 게이트 — 최대 150s 재시도 후 실패 시 stage FAIL.
+                //   기존 `|| echo "STARTING..."` 는 실패를 삼켜 crash-loop 배포도 SUCCESS 로 표시됐음
+                //   (2026-07-21 8,735회 재기동 미탐지). Web/Admin/Home 은 Next SSR lazy compile 로
+                //   초회 curl 지연이 흔해 정보성 로그로 유지 (false-positive 방지).
                 sh '''
                     sleep 15
                     ssh $SSH_OPTS $PROD_USER@$PROD_HOST bash -s <<'REMOTE'
+set -o pipefail
 echo "Checking services on prod..."
-curl -sf http://localhost:5003/health > /dev/null && echo "Backend (5003): OK"  || echo "Backend (5003): STARTING..."
-curl -sf http://localhost:5001          > /dev/null && echo "Web     (5001): OK" || echo "Web     (5001): STARTING..."
-curl -sf http://localhost:5002          > /dev/null && echo "Admin   (5002): OK" || echo "Admin   (5002): STARTING..."
-curl -sf http://localhost:5010          > /dev/null && echo "Home    (5010): OK" || echo "Home    (5010): STARTING..."
+
+# Backend — 필수 게이트 (최대 30회 * 5s = 150s 재시도)
+BACKEND_OK=0
+for i in $(seq 1 30); do
+    if curl -sf http://localhost:5003/health > /dev/null 2>&1; then
+        echo "Backend (5003): OK (attempt $i)"
+        BACKEND_OK=1
+        break
+    fi
+    sleep 5
+done
+if [ "$BACKEND_OK" != "1" ]; then
+    echo "Backend (5003): FAILED — /health not reachable in 150s. Deploy is UNHEALTHY."
+    echo "--- backend pm2 tail ---"
+    pm2 describe teamplus-backend | grep -E "status|restarts|pid|uptime" || true
+    tail -40 /root/.pm2/logs/teamplus-backend-error.log || true
+    exit 1
+fi
+
+# Web/Admin/Home — 정보성 로그만 (SSR lazy compile 로 false-positive 흔함)
+curl -sf http://localhost:5001 > /dev/null 2>&1 && echo "Web     (5001): OK" || echo "Web     (5001): STARTING..."
+curl -sf http://localhost:5002 > /dev/null 2>&1 && echo "Admin   (5002): OK" || echo "Admin   (5002): STARTING..."
+curl -sf http://localhost:5010 > /dev/null 2>&1 && echo "Home    (5010): OK" || echo "Home    (5010): STARTING..."
 REMOTE
                 '''
             }
