@@ -252,7 +252,6 @@ REMOTE
                 sh '''
                     sleep 15
                     ssh $SSH_OPTS $PROD_USER@$PROD_HOST bash -s <<'REMOTE'
-set -o pipefail
 echo "Checking services on prod..."
 
 # Backend — 필수 게이트 (최대 30회 * 5s = 150s 재시도)
