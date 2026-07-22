@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { SubmainAppBar } from '@/components/layout/SubmainAppBar';
 import { Icon } from '@/components/ui/Icon';
+import { EndedCollapseToggle } from '@/components/classes/EndedCollapseToggle';
 import { ClassListCard, ClassCardInfoRow } from '@/components/classes/ClassListCard';
 import { useNavigation } from '@/components/ui/NavLink';
 import { BottomSheet } from '@/components/ui/BottomSheet';
@@ -576,7 +577,6 @@ function ClassSectionHead({ title, count }: { title: string; count: number }) {
     </div>
   );
 }
-
 // ─── Main Page ───────────────────────────────────────
 export default function ClassManagePage() {
   const { back } = useNavigation();
@@ -922,7 +922,34 @@ export default function ClassManagePage() {
   }, [classes, activeCategory]);
 
   // 정렬 기능 제거 (사용자 요청) — 백엔드 응답 순서(최근 등록순) 그대로 표시.
-  const sortedAndFiltered = filtered;
+  // 종료 수업 분리 — 기본은 진행 중만 노출하고, 종료는 섹션 내 하단 접힘으로 내린다.
+  //   판정은 카드 배지와 동일한 resolveStatus SoT (서버 lifecycleStatus 우선 + 기간 역산 폴백).
+  const { activeClasses, endedClasses } = useMemo(() => {
+    const active: ClassItem[] = [];
+    const ended: ClassItem[] = [];
+    for (const c of filtered) {
+      (resolveStatus(c) === 'ENDED' ? ended : active).push(c);
+    }
+    return { activeClasses: active, endedClasses: ended };
+  }, [filtered]);
+  // 대회 종료/취소 분리 — 카드 배지와 동일 판정(기간 역산 우선 + status 폴백).
+  //   취소 대회도 휴면 상태라 접힘에 포함 (기본 목록은 진행·예정만).
+  const { activeTournaments, endedTournaments } = useMemo(() => {
+    const isInactive = (t: TournamentListItem) => {
+      if (t.status === 'cancelled') return true;
+      const period = resolvePeriodStatus(t.startDate, t.endDate);
+      if (period != null) return period === 'ENDED';
+      return t.status === 'finished';
+    };
+    const active: TournamentListItem[] = [];
+    const ended: TournamentListItem[] = [];
+    for (const t of tournaments) {
+      (isInactive(t) ? ended : active).push(t);
+    }
+    return { activeTournaments: active, endedTournaments: ended };
+  }, [tournaments]);
+  const [showEndedClasses, setShowEndedClasses] = useState(false);
+  const [showEndedTournaments, setShowEndedTournaments] = useState(false);
 
   // 카테고리별 수업 수 — 정규/대회.
   //   tournament 는 외부 라우팅이 아니므로 클라이언트 count 산출 (어댑팅 클래스 기준).
@@ -1034,11 +1061,11 @@ export default function ClassManagePage() {
             >
               <ClassSectionHead
                 title={isAcademyMode ? '오픈클래스' : '정규훈련'}
-                count={sortedAndFiltered.length}
+                count={activeClasses.length}
               />
-              {sortedAndFiltered.length > 0 ? (
+              {activeClasses.length > 0 ? (
                 <div role="list">
-                  {sortedAndFiltered.map((item, idx) => (
+                  {activeClasses.map((item, idx) => (
                     <div
                       key={`cls-${item.id}`}
                       role="listitem"
@@ -1051,8 +1078,34 @@ export default function ClassManagePage() {
                 </div>
               ) : (
                 <p className="px-4 sm:px-5 py-6 text-card-body text-wtext-3 dark:text-wtext-4 text-center">
-                  등록된 훈련이 없습니다.
+                  {endedClasses.length > 0
+                    ? MESSAGES.class.noActiveClasses
+                    : '등록된 훈련이 없습니다.'}
                 </p>
+              )}
+              {/* 종료된 훈련 — 섹션 내 하단 접힘(기본 접힘). 이력(출석·정산) 접근용. */}
+              {endedClasses.length > 0 && (
+                <>
+                  <EndedCollapseToggle
+                    title={
+                      isAcademyMode
+                        ? MESSAGES.class.salesCycle.endedSectionTitle
+                        : MESSAGES.class.endedTrainingSection
+                    }
+                    count={endedClasses.length}
+                    expanded={showEndedClasses}
+                    onToggle={() => setShowEndedClasses((v) => !v)}
+                  />
+                  {showEndedClasses && (
+                    <div role="list">
+                      {endedClasses.map((item) => (
+                        <div key={`ended-${item.id}`} role="listitem">
+                          <ClassCard item={item} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </section>
 
@@ -1062,10 +1115,10 @@ export default function ClassManagePage() {
                 className="mt-2 bg-it-surface dark:bg-it-blue-950"
                 aria-label="대회"
               >
-                <ClassSectionHead title="대회" count={tournaments.length} />
-                {tournaments.length > 0 ? (
+                <ClassSectionHead title="대회" count={activeTournaments.length} />
+                {activeTournaments.length > 0 ? (
                   <div role="list">
-                    {tournaments.map((t, idx) => (
+                    {activeTournaments.map((t, idx) => (
                       <div
                         key={`tnmt-${t.id}`}
                         role="listitem"
@@ -1078,8 +1131,30 @@ export default function ClassManagePage() {
                   </div>
                 ) : (
                   <p className="px-4 sm:px-5 py-6 text-card-body text-wtext-3 dark:text-wtext-4 text-center">
-                    등록된 대회가 없습니다.
+                    {endedTournaments.length > 0
+                      ? MESSAGES.class.noActiveTournaments
+                      : '등록된 대회가 없습니다.'}
                   </p>
+                )}
+                {/* 종료된 대회 — 섹션 내 하단 접힘(기본 접힘). 취소 대회 포함. */}
+                {endedTournaments.length > 0 && (
+                  <>
+                    <EndedCollapseToggle
+                      title={MESSAGES.class.endedTournamentSection}
+                      count={endedTournaments.length}
+                      expanded={showEndedTournaments}
+                      onToggle={() => setShowEndedTournaments((v) => !v)}
+                    />
+                    {showEndedTournaments && (
+                      <div role="list">
+                        {endedTournaments.map((t) => (
+                          <div key={`ended-tnmt-${t.id}`} role="listitem">
+                            <TournamentManageCard item={t} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
               </section>
             )}

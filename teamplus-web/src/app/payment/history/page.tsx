@@ -43,6 +43,27 @@ function parseYmd(date: string): Date | null {
   return new Date(y, m - 1, d);
 }
 
+/** "YYYY-MM" 정산월 → 후불 산정 근거 문구. 파싱 실패 시 null(라인 미표시). */
+function formatBillingMonth(ym?: string): string | null {
+  if (!ym) return null;
+  const [y, m] = ym.split('-').map((n) => parseInt(n, 10));
+  if (!y || !m) return null;
+  return MESSAGES.payment2.settlementMonth(y, m);
+}
+
+/** 후불 산정 근거 세그먼트 — 자녀명 · 정산월 · 출석횟수 · 회당 단가 (있는 값만).
+ *  잘림 방지를 위해 문자열 join 대신 배열로 반환 — 렌더에서 flex-wrap 으로
+ *  세그먼트 경계 줄바꿈을 허용해 좁은 화면에서도 전체 값 표시를 보장한다. */
+function buildPostpaidDetailSegments(item: PaymentHistoryItem): string[] {
+  if (item.billingTiming !== 'POSTPAID') return [];
+  return [
+    item.childName,
+    formatBillingMonth(item.billingYearMonth),
+    item.attendanceCount ? MESSAGES.payment2.attendanceTimes(item.attendanceCount) : null,
+    item.unitPrice ? MESSAGES.payment2.perSessionPrice(item.unitPrice) : null,
+  ].filter((seg): seg is string => Boolean(seg));
+}
+
 /** 선택된 기간으로 내역을 클라이언트 필터링 (date 필드 'YYYY.MM.DD' 기준) */
 function filterByPeriod<T extends { date: string }>(items: T[], period: PeriodFilter): T[] {
   if (period === 'all') return items;
@@ -142,7 +163,7 @@ function SummaryCard({ payment }: { payment: PaymentSummary }) {
       </p>
 
       <div className="mt-[18px] flex items-center gap-x-4 overflow-x-auto border-t border-white/[0.14] pt-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <SummaryStat dot="bg-mint" label="결제 완료" value={`${payment.completedCount}건`} />
+        <SummaryStat dot="bg-mint-500" label="결제 완료" value={`${payment.completedCount}건`} />
         {payment.cancelledCount > 0 && (
           <SummaryStat dot="bg-it-red-500" label="결제 취소" value={`${payment.cancelledCount}건`} />
         )}
@@ -163,6 +184,9 @@ function PaymentHistoryCard({
   // [수정 2026-05-13] 'cancelled' 또는 'refunded' 모두 환불 처리 — 토스 cancel 응답은 'refunded' 로 갱신됨.
   const isCancelled = item.status === 'cancelled' || item.status === 'refunded';
   const isCompleted = item.status === 'completed';
+  // 카드 상단 라벨 — 선불 수업명(className) 우선, 없으면 대회명/후불 수업명(subjectName)
+  const subjectLabel = item.className ?? item.subjectName;
+  const postpaidSegments = buildPostpaidDetailSegments(item);
 
   const getIcon = () => {
     if (isCancelled) return 'remove_shopping_cart';
@@ -195,8 +219,8 @@ function PaymentHistoryCard({
             <Icon name={getIcon()} className="text-[22px]" />
           </div>
           <div className="flex min-w-0 flex-col justify-center gap-0.5">
-            {/* [추가 2026-05-13] 수업명 (className) → 상품명 위에 작은 라벨로 노출 */}
-            {item.className && (
+            {/* [추가 2026-05-13] 수업명/대회명 → 상품명 위에 작은 라벨로 노출 (후불·대회는 subjectName 폴백) */}
+            {subjectLabel && (
               <span
                 className={cn(
                   'truncate text-card-meta leading-tight',
@@ -205,7 +229,7 @@ function PaymentHistoryCard({
                     : 'text-it-blue-500 dark:text-it-blue-300',
                 )}
               >
-                {item.className}
+                {subjectLabel}
               </span>
             )}
             <h4
@@ -221,6 +245,17 @@ function PaymentHistoryCard({
             <span className="truncate whitespace-nowrap text-[12.5px] text-it-ink-500 dark:text-rink-300 tabular-nums">
               {item.date} {'·'} {item.time}
             </span>
+            {/* 후불 산정 근거 — 자녀명 · 정산월 · 출석횟수 · 회당 단가 (있는 값만).
+                truncate 금지 — 좁은 폭에서는 세그먼트 경계로 줄바꿈해 핵심 값이 잘리지 않게 한다. */}
+            {postpaidSegments.length > 0 && (
+              <span className="flex flex-wrap gap-x-1 gap-y-0.5 text-card-meta text-it-ink-500 dark:text-rink-300 tabular-nums">
+                {postpaidSegments.map((seg, i) => (
+                  <span key={`${i}-${seg}`} className="whitespace-nowrap">
+                    {i < postpaidSegments.length - 1 ? `${seg} ·` : seg}
+                  </span>
+                ))}
+              </span>
+            )}
             {/* 출처·선후불 배지 — sourceType·billingTiming 둘 다 있을 때만(무관계 결제 미표시). */}
             <PaymentSourceBadge
               sourceType={item.sourceType}
@@ -246,7 +281,7 @@ function PaymentHistoryCard({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <span
-            className={cn('flex h-2 w-2 rounded-w-pill', isCancelled ? 'bg-it-red-500' : 'bg-mint')}
+            className={cn('flex h-2 w-2 rounded-w-pill', isCancelled ? 'bg-it-red-500' : 'bg-mint-500')}
           />
           <span
             className={cn(

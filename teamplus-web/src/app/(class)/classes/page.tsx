@@ -15,6 +15,7 @@ import { NavLink, useNavigation } from "@/components/ui/NavLink";
 import { Icon } from "@/components/ui/Icon";
 import { ChildCard } from "@/components/child/ChildCard";
 import { ClassListCard, ClassCardInfoRow } from "@/components/classes/ClassListCard";
+import { EndedCollapseToggle } from "@/components/classes/EndedCollapseToggle";
 import { useSessionAuth } from "@/hooks/useSessionAuth";
 import { useSelectedChild } from "@/contexts/SelectedChildContext";
 import { useNativeUI } from "@/hooks/useNativeUI";
@@ -363,6 +364,20 @@ function isClassEndedByLastSchedule(item: {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return last.getTime() < today.getTime();
+}
+
+/** 대회 종료/취소 판정 — DefaultTournamentCard 상태 칩과 동일 규칙(SoT 공유).
+ *  status='finished'/'cancelled' 또는 endDate 경과(날짜 단위). status 는 자동 전이되지 않는다. */
+function isTournamentClosed(item: {
+  status?: string;
+  endDate?: string | null;
+}): boolean {
+  if (item.status === "finished" || item.status === "cancelled") return true;
+  const t = item.endDate ? new Date(item.endDate).getTime() : NaN;
+  if (Number.isNaN(t)) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return t < today.getTime();
 }
 
 /** [2026-06-19] 오픈클래스 일정 — 시작~종료 기간만 표기 ("26.06.06 ~ 07.04").
@@ -1216,17 +1231,9 @@ const DefaultTournamentCard = memo(function DefaultTournamentCard({
   item: TournamentListItem;
 }) {
   const dateLabel = formatTournamentDateRange(item.startDate, item.endDate);
-  // [2026-06-17] 종료 판정 — status='finished'/'cancelled' 또는 일정(endDate) 경과.
-  //   status 가 자동 전이되지 않으므로 날짜가 지난 대회도 "종료" 배지로 표기.
+  // [2026-06-17] 종료 판정 — 공용 isTournamentClosed (섹션 필터와 동일 SoT).
   const isCancelled = item.status === "cancelled";
-  const isEndedByDate = (() => {
-    const t = item.endDate ? new Date(item.endDate).getTime() : NaN;
-    if (Number.isNaN(t)) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return t < today.getTime();
-  })();
-  const isClosed = item.status === "finished" || isCancelled || isEndedByDate;
+  const isClosed = isTournamentClosed(item);
   // [2026-06-17] 자녀 1명이라도 등록(후불=신청, 선불=결제완료)이면 등록완료 표기.
   //   enrolledChildIds: 백엔드가 billingMode 별로 산출(후불 신청 포함 · 폴백 paidChildIds).
   const isEnrolled =
@@ -1335,12 +1342,18 @@ function ClassSection({
   title,
   count,
   children,
+  footer,
+  emptyText,
 }: {
   title: string;
   count: number;
   children: ReactNode;
+  /** 섹션 하단 부가 영역 — 종료 항목 접힘 토글 등. 있으면 count 0 이어도 섹션 유지. */
+  footer?: ReactNode;
+  /** count 0 인데 섹션이 유지될 때(footer 존재) 표시할 빈 상태 문구. */
+  emptyText?: string;
 }) {
-  if (count === 0) return null;
+  if (count === 0 && !footer) return null;
   return (
     <section
       aria-label={`${title} 목록`}
@@ -1355,7 +1368,14 @@ function ClassSection({
           {count}
         </span>
       </header>
-      <div role="list">{children}</div>
+      {count === 0 && emptyText ? (
+        <p className="px-4 sm:px-5 py-6 text-card-body text-wtext-3 dark:text-wtext-4 text-center">
+          {emptyText}
+        </p>
+      ) : (
+        <div role="list">{children}</div>
+      )}
+      {footer}
     </section>
   );
 }
@@ -1437,13 +1457,29 @@ export default function ClassesPage() {
     const isEnrolled = (c: ClassItem) => enrolledClassIds.has(c.id);
     // [2026-06-18] '등록 훈련' — 선택 자녀가 등록(선불 paid/후불 approved)한 수업(정규+오픈)을
     //   맨 위 별도 섹션으로 분리. 정규/오픈 섹션에서는 제외(중복 방지) → 두 섹션은 '등록 가능' 카탈로그.
+    // 종료 항목은 일반 목록에서 전부 내리고, 자녀가 참여했던 것만 섹션 하단
+    //   '종료된 훈련/대회' 접힘 영역으로 분리한다 (미참여 종료분은 이력 가치가 없어 숨김).
+    const isEnded = (c: ClassItem) => isClassEndedByLastSchedule(c);
+    // 대회 참가 판정 — 카드 등록완료 표기와 동일 기준(enrolledChildIds ?? paidChildIds).
+    const isTournamentEnrolled = (t: TournamentListItem) =>
+      ((t.enrolledChildIds ?? t.paidChildIds)?.length ?? 0) > 0;
     return {
-      enrolled: classes.filter(isEnrolled),
-      regular: classes.filter((c) => !isOpen(c) && !isEnrolled(c)),
-      open: classes.filter((c) => isOpen(c) && !isEnrolled(c)),
-      tournaments,
+      enrolled: classes.filter((c) => isEnrolled(c) && !isEnded(c)),
+      // 참여했던 종료 훈련 — '등록 훈련' 섹션 하단 접힘 (이력 확인용).
+      endedEnrolled: classes.filter((c) => isEnrolled(c) && isEnded(c)),
+      regular: classes.filter((c) => !isOpen(c) && !isEnrolled(c) && !isEnded(c)),
+      open: classes.filter((c) => isOpen(c) && !isEnrolled(c) && !isEnded(c)),
+      tournaments: tournaments.filter((t) => !isTournamentClosed(t)),
+      // 참가했던 종료/취소 대회 — '대회' 섹션 하단 접힘.
+      endedTournaments: tournaments.filter(
+        (t) => isTournamentClosed(t) && isTournamentEnrolled(t),
+      ),
     };
   }, [viewMode, classes, tournaments, enrolledClassIds]);
+
+  // 종료 접힘 영역 펼침 상태 — 섹션별 독립 (기본 접힘).
+  const [showEndedClasses, setShowEndedClasses] = useState(false);
+  const [showEndedTournaments, setShowEndedTournaments] = useState(false);
 
   // [2026-05-12 fix] 학부모 수업목록 status bar 누락 회귀 해결.
   //   `isDataLoaded: !isLoading` 가드 제거 — fetch 중 ui.hideStatusBar() 가 호출되고
@@ -1757,6 +1793,29 @@ export default function ClassesPage() {
               <ClassSection
                 title="등록 훈련"
                 count={sections.enrolled.length}
+                emptyText={MESSAGES.class.noActiveClasses}
+                footer={
+                  // 참여했던 종료 훈련 — 기본 접힘, 펼치면 '종료' 칩 카드로 이력 확인.
+                  sections.endedEnrolled.length > 0 ? (
+                    <>
+                      <EndedCollapseToggle
+                        title={MESSAGES.class.endedTrainingSection}
+                        count={sections.endedEnrolled.length}
+                        expanded={showEndedClasses}
+                        onToggle={() => setShowEndedClasses((v) => !v)}
+                      />
+                      {showEndedClasses && (
+                        <div role="list">
+                          {sections.endedEnrolled.map((item) => (
+                            <div key={`ended-${item.id}`} role="listitem">
+                              {renderClassCard(item, { forceShowTypeBadge: true })}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : undefined
+                }
               >
                 {sections.enrolled.map((item) => (
                   <div key={item.id} role="listitem">
@@ -1777,6 +1836,29 @@ export default function ClassesPage() {
               <ClassSection
                 title="대회"
                 count={sections.tournaments.length}
+                emptyText={MESSAGES.class.noActiveTournaments}
+                footer={
+                  // 참가했던 종료/취소 대회 — 기본 접힘, 펼치면 '종료'/'취소' 칩 카드로 이력 확인.
+                  sections.endedTournaments.length > 0 ? (
+                    <>
+                      <EndedCollapseToggle
+                        title={MESSAGES.class.endedTournamentSection}
+                        count={sections.endedTournaments.length}
+                        expanded={showEndedTournaments}
+                        onToggle={() => setShowEndedTournaments((v) => !v)}
+                      />
+                      {showEndedTournaments && (
+                        <div role="list">
+                          {sections.endedTournaments.map((item) => (
+                            <div key={`ended-tnmt-${item.id}`} role="listitem">
+                              {renderTournamentCard(item)}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : undefined
+                }
               >
                 {sections.tournaments.map((item) => (
                   <div key={item.id} role="listitem">

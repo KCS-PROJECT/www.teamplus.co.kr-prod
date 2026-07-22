@@ -90,3 +90,13 @@ export function addUtcDays(base: Date, days: number): Date {
   next.setUTCDate(next.getUTCDate() + days);
   return next;
 }
+
+/**
+ * 임의 instant 가 속한 KST 달력일의 '그 날 끝' exclusive 상한 instant (다음날 KST 자정).
+ * "N월 N일까지" 같은 날짜 단위 마감 판정에 사용 — `now < 반환값` 이면 아직 그 날 안.
+ * KST 날짜 D 의 끝 = D+1 00:00 KST = D 15:00 UTC (KST=UTC+9).
+ */
+export function kstDayEndExclusive(at: Date): Date {
+  const dayUtcMidnight = instantToKstDateOnly(at);
+  return new Date(dayUtcMidnight.getTime() + 15 * 60 * 60 * 1000);
+}
