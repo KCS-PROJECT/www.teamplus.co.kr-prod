@@ -80,9 +80,10 @@ export default function ReceiptDetailPage() {
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
 
+  // showAppBar:false — BackHeader(forceNative 기본)가 앱/웹 공통 단일 헤더 담당 (한 페이지 한 헤더).
   useNativeUI({
     showStatusBar: true,
-    showAppBar: true,
+    showAppBar: false,
     appBarTitle: '영수증 상세',
     showBottomNav: false,
     showBackButton: true,
