@@ -7,6 +7,8 @@
  */
 
 import { cn } from '@/lib/utils';
+import { PaymentSourceBadge } from '@/components/payment/PaymentSourceBadge';
+import type { PaymentSourceType, PaymentBillingTiming } from '@/types/payment';
 
 export type ReceiptStatus = 'paid' | 'cancelled' | 'refunded' | 'pending';
 
@@ -25,6 +27,13 @@ export interface ReceiptCardProps {
   totalAmount: number;
   /** 영수증 상태 */
   status?: ReceiptStatus;
+  /**
+   * 결제 출처 (수업/대회) — 선택. billingTiming 과 함께 넘어올 때만 출처·선후불 배지 렌더.
+   * 미전달 시 기존 호출부와 동일(배지 없음, 하위호환).
+   */
+  sourceType?: PaymentSourceType | null;
+  /** 선불/후불 — 선택. sourceType 과 함께 넘어올 때만 배지 렌더. */
+  billingTiming?: PaymentBillingTiming | null;
   /** 추가 className */
   className?: string;
   /**
@@ -65,6 +74,8 @@ export function ReceiptCard({
   productName,
   totalAmount,
   status = 'paid',
+  sourceType,
+  billingTiming,
   className,
   iceTheme = false,
 }: ReceiptCardProps) {
@@ -93,6 +104,12 @@ export function ReceiptCard({
           <p className={cn('mt-1 text-xs truncate', labelText)}>
             주문번호 {orderNumber}
           </p>
+          {/* 출처·선후불 배지 — sourceType·billingTiming 둘 다 있을 때만(무관계 결제 미표시). */}
+          <PaymentSourceBadge
+            sourceType={sourceType}
+            billingTiming={billingTiming}
+            className="mt-2"
+          />
         </div>
         <span
           className={cn(

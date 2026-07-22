@@ -89,6 +89,8 @@ interface PendingBilling {
   amount: number;
   orderNumber: string | null;
   paymentName: string;
+  /** 청구 대상 자녀 이름 — 백엔드 append(child null 이면 미제공). */
+  childName?: string | null;
 }
 
 function postpaidPayLink(b: PendingBilling): string {
@@ -717,6 +719,19 @@ export default function ParentDashboardPage() {
                   <p className="text-card-body font-semibold text-wtext-1 dark:text-white truncate">
                     {b.title}
                   </p>
+                  {/* 출처(수업/대회) 배지 + 청구 대상 자녀명 — 후불 전용 배너라 선후불 배지는 생략. */}
+                  <div className="mt-0.5 flex items-center gap-1.5">
+                    <span className="inline-flex shrink-0 items-center rounded-w-pill bg-wline-2 dark:bg-rink-700 px-2 py-0.5 text-card-meta font-semibold text-wtext-2 dark:text-rink-100">
+                      {b.kind === 'TOURNAMENT'
+                        ? MESSAGES.payment2.sourceTournament
+                        : MESSAGES.payment2.sourceClass}
+                    </span>
+                    {b.childName && (
+                      <span className="text-card-meta text-wtext-3 dark:text-rink-300 truncate">
+                        {b.childName}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-card-meta text-wtext-3 dark:text-rink-300 truncate">
                     {b.paymentName}
                   </p>

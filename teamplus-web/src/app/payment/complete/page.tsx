@@ -17,6 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getDashboardPathByUserType } from '@/lib/auth-routing';
 import { MESSAGES } from '@/lib/messages';
 import { usePageReady } from '@/hooks/usePageReady';
+import { PaymentSourceBadge } from '@/components/payment/PaymentSourceBadge';
 
 /**
  * Step 4: 결제 완료 페이지
@@ -108,6 +109,15 @@ function ReceiptCard({ receipt }: { receipt: Receipt }) {
     <div className="w-full" role="region" aria-label="결제 영수증">
       {/* ICETIMES flat — 흰 섹션 + hairline 행 (카드 박스·notch 제거) */}
       <section className="w-full bg-it-surface dark:bg-it-blue-950 px-5 py-2">
+        {/* 출처·선후불 배지 — sourceType·billingTiming 둘 다 있을 때만(무관계 결제 미표시). */}
+        {receipt.sourceType && receipt.billingTiming && (
+          <div className="pt-2">
+            <PaymentSourceBadge
+              sourceType={receipt.sourceType}
+              billingTiming={receipt.billingTiming}
+            />
+          </div>
+        )}
         {/*
           정의 목록(dl/dt/dd) — 영수증 항목의 시맨틱 구조.
           [수정 2026-05-18] 항목 순서 변경: 수업명 → 수강생 → 결제 수단 → 결제 일시 → 할부유무.
@@ -255,7 +265,12 @@ function PaymentCompleteContent() {
   useBlockBackNavigation({
     getRedirectTarget: () => {
       if (payQueue && payQueue.pairs.length > 0) return null;
-      if ((receipt?.orderNumber ?? '').startsWith('POSTPAID-')) return null;
+      // 서버 파생 billingTiming 우선 + 접두사 폴백 병행 — receipt 로드 전(null) 구간 대비.
+      if (
+        receipt?.billingTiming === 'POSTPAID' ||
+        (receipt?.orderNumber ?? '').startsWith('POSTPAID-')
+      )
+        return null;
       return homePath;
     },
   });
@@ -355,7 +370,7 @@ function PaymentCompleteContent() {
             <section className="bg-it-surface dark:bg-it-blue-950 px-6 pt-[calc(var(--safe-area-inset-top,0px)+32px)] pb-6">
               <SuccessAnimation
                 creditsIssued={creditsIssued}
-                isPostpaid={(receipt.orderNumber ?? '').startsWith('POSTPAID-')}
+                isPostpaid={receipt.billingTiming === 'POSTPAID'}
               />
             </section>
 

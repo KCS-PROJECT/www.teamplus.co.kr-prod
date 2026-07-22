@@ -13,6 +13,7 @@ import {
   RefundRequester,
 } from "./services/payment-refund.service";
 import { PaymentReceiptService } from "./services/payment-receipt.service";
+import { deriveSource } from "./payment-source.util";
 import { TossPaymentsGateway } from "./toss-payments.gateway";
 import { RedisService } from "@/redis/redis.service";
 import { CreditDomainService } from "@/credits/credit-domain.service";
@@ -736,6 +737,7 @@ export class PaymentsService {
           select: {
             productName: true,
             price: true,
+            billingTiming: true,
           },
         },
         // [추가 2026-05-13] 본 결제와 연결된 Enrollment 의 class.className 노출 —
@@ -746,21 +748,41 @@ export class PaymentsService {
           },
           take: 1,
         },
+        // 출처 라벨링 파생용 관계 — N+1 방지 take:1 select
+        tournamentRegistrations: {
+          select: { tournament: { select: { billingMode: true, name: true } } },
+          take: 1,
+        },
+        monthlyBillingLines: {
+          select: { id: true },
+          take: 1,
+        },
       },
       orderBy: { createdAt: "desc" },
       take: limit,
     });
 
-    return payments.map((payment) => ({
-      id: payment.id,
-      orderNumber: payment.orderNumber,
-      amount: payment.amount,
-      paymentStatus: payment.paymentStatus,
-      productName: payment.product?.productName,
-      className: payment.enrollments?.[0]?.class?.className ?? null,
-      createdAt: payment.createdAt,
-      completedAt: payment.completedAt,
-    }));
+    return payments.map((payment) => {
+      const src = deriveSource({
+        productBillingTiming: payment.product?.billingTiming,
+        hasMonthlyBillingLine: (payment.monthlyBillingLines?.length ?? 0) > 0,
+        tournamentBillingMode:
+          payment.tournamentRegistrations?.[0]?.tournament?.billingMode ?? null,
+      });
+      return {
+        id: payment.id,
+        orderNumber: payment.orderNumber,
+        amount: payment.amount,
+        paymentStatus: payment.paymentStatus,
+        productName: payment.product?.productName,
+        className: payment.enrollments?.[0]?.class?.className ?? null,
+        createdAt: payment.createdAt,
+        completedAt: payment.completedAt,
+        // 파생 append (Dual Emit) — 무관계 결제는 null
+        sourceType: src.sourceType,
+        billingTiming: src.billingTiming,
+      };
+    });
   }
 
   /**

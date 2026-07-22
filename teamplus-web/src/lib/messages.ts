@@ -690,6 +690,12 @@ export const MESSAGES = {
     mockPayButton: "테스트 결제 (개발용)",
     mockPayFailed: "테스트 결제 처리에 실패했습니다.",
     classLabel: "수업",
+    // 결제 출처·선후불 배지 문구 — 결제 5화면(history/receipt/complete/postpaid/parent) 공용.
+    //   director settlement 네임스페이스 키(크로스참조 금지)와 분리해 payment2 에 독립 생성.
+    sourceClass: "수업",
+    sourceTournament: "대회",
+    prepaid: "선불",
+    postpaid: "후불",
     // [추가 2026-06-09] App Store 3.1.1 — 결제권은 디지털 콘텐츠/화폐가 아닌 '오프라인 대면 수업 수강료 결제 수단'임을 명시(심사 오인 방지)
     offlineCreditNotice:
       "본 결제권은 오프라인 빙상 아이스하키 수업의 수업료 결제 수단이며, 수업 당일 현장 QR 출석 시 차감됩니다.",

@@ -23,6 +23,8 @@ import type {
   PaymentCompletionParams,
   VerifyPaymentResponse,
   PaymentType,
+  PaymentSourceType,
+  PaymentBillingTiming,
 } from '@/types/payment';
 
 // ============================================
@@ -52,6 +54,10 @@ interface BackendPaymentItem {
   className?: string | null;
   createdAt: string;
   completedAt?: string | null;
+  /** 결제 출처 파생 append — "CLASS" | "TOURNAMENT". 무관계 결제는 미제공/무효 → undefined. */
+  sourceType?: string | null;
+  /** 선후불 파생 append — "PREPAID" | "POSTPAID". 무관계 결제는 미제공/무효 → undefined. */
+  billingTiming?: string | null;
 }
 
 // ============================================
@@ -106,6 +112,20 @@ function inferPaymentType(status: PaymentStatus, productName: string): PaymentTy
   return 'regular';
 }
 
+/** 백엔드 sourceType → 프론트 유니온 정규화. 미제공/무효값은 undefined(배지 미표시). */
+function normalizePaymentSourceType(value: unknown): PaymentSourceType | undefined {
+  if (value === 'CLASS') return 'CLASS';
+  if (value === 'TOURNAMENT') return 'TOURNAMENT';
+  return undefined;
+}
+
+/** 백엔드 billingTiming → 프론트 유니온 정규화. 미제공/무효값은 undefined(배지 미표시). */
+function normalizePaymentBillingTiming(value: unknown): PaymentBillingTiming | undefined {
+  if (value === 'PREPAID') return 'PREPAID';
+  if (value === 'POSTPAID') return 'POSTPAID';
+  return undefined;
+}
+
 function toPaymentHistoryItem(item: BackendPaymentItem): PaymentHistoryItem {
   const status = mapPaymentStatus(item.paymentStatus);
   const productName = item.productName || '이용권';
@@ -122,6 +142,8 @@ function toPaymentHistoryItem(item: BackendPaymentItem): PaymentHistoryItem {
     amount: Number.isFinite(amount) ? amount : 0,
     status,
     orderNumber: item.orderNumber,
+    sourceType: normalizePaymentSourceType(item.sourceType),
+    billingTiming: normalizePaymentBillingTiming(item.billingTiming),
   };
 }
 

@@ -14,6 +14,16 @@ import { PaymentStatus } from './api';
 export type PaymentType = 'regular' | 'trial' | 'cancelled';
 
 // ============================================
+// 결제 출처 · 선후불 (백엔드 파생 필드 미러 — DB 컬럼 아님)
+// ============================================
+
+/** 결제 출처 — 수업 / 대회 (백엔드 deriveSource 파생값 미러). */
+export type PaymentSourceType = 'CLASS' | 'TOURNAMENT';
+
+/** 선불 / 후불 (백엔드 deriveSource 파생값 미러). */
+export type PaymentBillingTiming = 'PREPAID' | 'POSTPAID';
+
+// ============================================
 // 결제 방식 (feeType) — Backend ClassProduct.feeType / Tournament.feeType
 // ============================================
 
@@ -62,6 +72,10 @@ export interface PaymentHistoryItem {
   refundStatus?: string;
   creditsIssued?: number;
   orderNumber?: string;
+  /** 결제 출처 (수업/대회) — 백엔드 파생 append. 무관계 결제(매치·쇼핑)는 미제공. */
+  sourceType?: PaymentSourceType;
+  /** 선불/후불 — 백엔드 파생 append. 무관계 결제는 미제공. */
+  billingTiming?: PaymentBillingTiming;
 }
 
 /** 결제권 사용 내역 아이템 */
@@ -105,6 +119,10 @@ export interface Receipt {
   className?: string;
   /** 수강생(자녀) 이름 (Enrollment → Child.name). 수업 결제인 경우에만 존재. */
   childName?: string;
+  /** 결제 출처 (수업/대회) — 백엔드 파생 append. 무관계 결제는 미제공. */
+  sourceType?: PaymentSourceType;
+  /** 선불/후불 — 백엔드 파생 append. 무관계 결제는 미제공. */
+  billingTiming?: PaymentBillingTiming;
 }
 
 // ============================================

@@ -34,6 +34,7 @@ import {
   FeeType,
 } from "../payment-calculation.service";
 import { PaymentWebhookService } from "./payment-webhook.service";
+import { deriveSource } from "../payment-source.util";
 
 export interface InitiatePaymentOptions {
   paymentMethod?: string;
@@ -497,6 +498,7 @@ export class PaymentCreateService {
           select: {
             productName: true,
             sessionsPerMonth: true,
+            billingTiming: true,
           },
         },
         credits: {
@@ -523,6 +525,15 @@ export class PaymentCreateService {
               select: { firstName: true, lastName: true },
             },
           },
+          take: 1,
+        },
+        // 출처 라벨링 파생용 관계 — N+1 방지 take:1 select
+        tournamentRegistrations: {
+          select: { tournament: { select: { billingMode: true } } },
+          take: 1,
+        },
+        monthlyBillingLines: {
+          select: { id: true },
           take: 1,
         },
       },
@@ -565,6 +576,13 @@ export class PaymentCreateService {
       ? `${enrollment.child.lastName}${enrollment.child.firstName}`
       : undefined;
 
+    const src = deriveSource({
+      productBillingTiming: payment.product?.billingTiming,
+      hasMonthlyBillingLine: (payment.monthlyBillingLines?.length ?? 0) > 0,
+      tournamentBillingMode:
+        payment.tournamentRegistrations?.[0]?.tournament?.billingMode ?? null,
+    });
+
     return {
       receipt: {
         id: payment.receipt?.id ?? payment.id,
@@ -579,6 +597,9 @@ export class PaymentCreateService {
         // enrollment 있을 때만 수업명·자녀명 반환 (없으면 undefined → 프론트 조건부 렌더)
         className: enrollment?.class?.className ?? undefined,
         childName: childFullName,
+        // 파생 append (Dual Emit) — 무관계 결제는 null
+        sourceType: src.sourceType,
+        billingTiming: src.billingTiming,
       },
       creditsIssued,
       message:

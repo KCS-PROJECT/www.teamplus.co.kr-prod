@@ -62,6 +62,16 @@ export class VerifyPaymentResponseDto {
      * @example "김민준"
      */
     childName?: string;
+    /**
+     * 결제 출처 (파생) — CLASS(수업) | TOURNAMENT(대회).
+     * 관계 신호 전무(매치·쇼핑·기타)면 미포함/null → 프론트 배지 미표시.
+     */
+    sourceType?: "CLASS" | "TOURNAMENT" | null;
+    /**
+     * 선후불 (파생) — PREPAID(선불) | POSTPAID(후불).
+     * sourceType 과 함께 파생. 무관계 결제면 미포함/null.
+     */
+    billingTiming?: "PREPAID" | "POSTPAID" | null;
   };
 
   @ApiProperty({ description: "발급된 크레딧 수", example: 8 })

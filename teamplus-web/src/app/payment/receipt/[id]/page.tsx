@@ -165,6 +165,8 @@ export default function ReceiptDetailPage() {
                 productName={receipt.productName}
                 totalAmount={receipt.totalAmount}
                 status={mapReceiptStatus(receipt.status)}
+                sourceType={receipt.sourceType}
+                billingTiming={receipt.billingTiming}
                 iceTheme
               />
 

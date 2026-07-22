@@ -14,6 +14,7 @@ import { useModal } from '@/components/ui/Modal/ModalContext';
 import { api } from '@/services/api-client';
 import { cn } from '@/lib/utils';
 import { MESSAGES } from '@/lib/messages';
+import { PaymentSourceBadge } from '@/components/payment/PaymentSourceBadge';
 
 type PeriodFilter = 'all' | 'thisMonth' | 'lastMonth' | 'last3Months';
 const PERIOD_LABEL: Record<PeriodFilter, string> = {
@@ -220,6 +221,12 @@ function PaymentHistoryCard({
             <span className="truncate whitespace-nowrap text-[12.5px] text-it-ink-500 dark:text-rink-300 tabular-nums">
               {item.date} {'·'} {item.time}
             </span>
+            {/* 출처·선후불 배지 — sourceType·billingTiming 둘 다 있을 때만(무관계 결제 미표시). */}
+            <PaymentSourceBadge
+              sourceType={item.sourceType}
+              billingTiming={item.billingTiming}
+              className="mt-1 self-start"
+            />
           </div>
         </div>
         <div className="shrink-0 text-right">
