@@ -165,21 +165,10 @@ export default function ReceiptDetailPage() {
                 productName={receipt.productName}
                 totalAmount={receipt.totalAmount}
                 status={mapReceiptStatus(receipt.status)}
+                sourceType={receipt.sourceType}
+                billingTiming={receipt.billingTiming}
                 iceTheme
               />
-
-              {/* 결제권 발급 정보 */}
-              {receipt.creditsIssued > 0 && (
-                <div className="mt-4 flex items-center gap-3 bg-it-blue-50 dark:bg-it-blue-500/15 rounded-w-md p-4">
-                  <div className="w-10 h-10 rounded-w-pill bg-it-blue-500/10 flex items-center justify-center shrink-0">
-                    <Icon name="toll" className="text-xl text-it-blue-500 dark:text-it-blue-300" />
-                  </div>
-                  <div>
-                    <p className="text-card-body font-bold text-it-ink-900 dark:text-white">결제권 발급</p>
-                    <p className="text-card-body text-it-blue-600 dark:text-it-blue-300 font-semibold">{receipt.creditsIssued}회</p>
-                  </div>
-                </div>
-              )}
             </section>
 
             {/* 안내 텍스트 */}

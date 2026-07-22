@@ -7,7 +7,6 @@ import Link from "next/link";
 import {
   LogOut,
   Users,
-  CalendarDays,
   CreditCard,
   Bell,
   LayoutDashboard,
@@ -41,7 +40,6 @@ import {
   LucideIcon,
   Ticket,
   Star,
-  UserCheck,
   GraduationCap,
   Activity,
   ScrollText,
@@ -171,28 +169,30 @@ const businessNavItems = [
 // ============ 일반관리 ============
 // [수정 2026-04-30] '출석관리' → '수업관리'
 const generalNavItems = [
-  { href: "/dashboard/directors", label: "감독관리", icon: UserCog },
-  { href: "/dashboard/coaches", label: "코치관리", icon: Shield },
+  // [통합 2026-07-22] 감독관리 + 코치관리 → "감독/코치관리" 한 화면(팀별 감독·코치 표시).
+  { href: "/dashboard/directors", label: "감독/코치관리", icon: UserCog },
   { href: "/dashboard/teams", label: "팀관리", icon: Building2 },
   {
     href: "/dashboard/academies",
     label: "오픈클래스관리",
     icon: GraduationCap,
   },
-  { href: "/dashboard/parents", label: "학부모관리", icon: Users },
-  { href: "/dashboard/members", label: "학생관리", icon: UserCheck },
-  { href: "/dashboard/attendance", label: "수업관리", icon: ClipboardCheck },
+  // [통합 2026-07-22] 학부모관리 + 학생관리 → "학부모/선수관리" 한 화면
+  //   (학부모는 자녀 소속 팀에 자동 매핑, 부모 클릭 시 자녀 펼침).
+  { href: "/dashboard/members", label: "학부모/선수관리", icon: Users },
+  // [수정 2026-07-22] '수업관리' → '훈련관리'
+  { href: "/dashboard/attendance", label: "훈련관리", icon: ClipboardCheck },
   { href: "/dashboard/tournaments", label: "대회/경기관리", icon: Trophy },
   { href: "/dashboard/rinks", label: "링크장관리", icon: MapPin },
-  { href: "/dashboard/venues", label: "대관관리", icon: CalendarDays },
+  // [삭제 2026-07-22] 사용자 요청 — 대관관리(/dashboard/venues) 메뉴 제거.
   // [이동 2026-06-18] 사용자 요청 — '상담 신청'을 업무관리 → 일반관리 그룹 맨 아래로 배치.
   {
     href: "/dashboard/contact-inquiries",
-    label: "상담 신청",
+    label: "도입상담관리",
     icon: Headset,
   },
   // [추가 2026-07-14] 랜딩 블로그 관리 — teamplus-home /blog 공개 노출.
-  { href: "/dashboard/blog", label: "블로그 관리", icon: FileText },
+  { href: "/dashboard/blog", label: "블로그관리", icon: FileText },
 ];
 
 // ============ 앱관리 ============
@@ -358,7 +358,8 @@ const getGroupFromPath = (pathname: string | null): MenuGroupId | null => {
     pathname.startsWith("/dashboard/tournaments") ||
     pathname.startsWith("/dashboard/rinks") ||
     pathname.startsWith("/dashboard/venues") ||
-    pathname.startsWith("/dashboard/contact-inquiries")
+    pathname.startsWith("/dashboard/contact-inquiries") ||
+    pathname.startsWith("/dashboard/blog")
   )
     return "general";
   if (pathname.startsWith("/dashboard/app")) return "app";

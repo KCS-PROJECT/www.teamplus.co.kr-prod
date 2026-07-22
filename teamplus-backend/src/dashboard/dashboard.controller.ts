@@ -274,7 +274,8 @@ export class DashboardController {
    * 관리자 대시보드 통계
    */
   @Get("admin")
-  @Roles("ADMIN")
+  // [수정 2026-07-22] admin 웹은 SYSTEM/OPER(ADM 분기) 로그인 — 관리자 대시보드 통계 허용.
+  @Roles("ADMIN", "SYSTEM", "OPER")
   @ApiOperation({
     summary: "관리자 대시보드 통계",
     description: "관리자용 대시보드 통계를 조회합니다.",

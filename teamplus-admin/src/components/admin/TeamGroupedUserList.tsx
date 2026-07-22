@@ -15,7 +15,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Search, Users, AlertCircle, Pencil, Trash2 } from 'lucide-react';
+import { Search, Users, AlertCircle, Pencil, Trash2, ChevronDown } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { ConfirmModal, Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
@@ -29,6 +29,8 @@ export interface AdminUser {
   lastName?: string;
   email?: string;
   phone?: string;
+  /** 사용자 역할 — 통합 목록(감독/코치)에서 행별 뱃지 구분용 (backend getUsers 응답) */
+  userType?: string;
   /** 단일 팀 ID (legacy) */
   teamId?: string;
   /** 다중 팀 ID — 백엔드 admin.service.getUsers 응답 (2026-05-12) */
@@ -40,6 +42,15 @@ export interface AdminUser {
   academyName?: string;
   /** [추가 2026-05-13] 학부모일 때 등록된 자녀 수 (backend admin.service.getUsers 응답) */
   childrenCount?: number;
+  /** [추가 2026-07-22] 학부모일 때 실제 자녀(선수) 목록 — 부모 행 클릭 시 펼침용 */
+  children?: Array<{
+    id: string;
+    name: string;
+    koreanAge?: number | null;
+    /** 자녀가 소속된 팀 ID들 — 팀 카드별로 그 팀 소속 자녀만 펼치기 위함 */
+    teamIds?: string[];
+    teamNames?: string[];
+  }>;
   /** [추가 2026-05-13] 학생일 때 한국 나이 — 학생관리에서 ID 뒤에 노출 */
   koreanAge?: number | null;
   createdAt?: string;
@@ -87,6 +98,65 @@ function pickName(u: AdminUser): string {
   return (u.name ?? `${u.lastName ?? ''}${u.firstName ?? ''}`.trim()) || '-';
 }
 
+/** 행 정렬 우선순위 — 감독 먼저, 그다음 오픈클래스 감독, 코치 순 (그 외는 뒤). */
+const ROLE_ORDER: Record<string, number> = {
+  DIRECTOR: 0,
+  ACADEMY_DIRECTOR: 1,
+  COACH: 2,
+};
+const sortByRole = (a: AdminUser, b: AdminUser): number => {
+  const roleDiff =
+    (ROLE_ORDER[a.userType ?? ''] ?? 9) - (ROLE_ORDER[b.userType ?? ''] ?? 9);
+  if (roleDiff !== 0) return roleDiff;
+  // 같은 역할 내에서는 가입일 오래된 순(createdAt 오름차순) — 학부모/선수 정렬 기준.
+  const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+  const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+  return ta - tb;
+};
+
+/** 역할별 뱃지 라벨·색상·좌측 라인 — 감독/코치 통합 목록에서 행별 구분용. */
+const USERTYPE_META: Record<
+  string,
+  { label: string; badge: string; accent: string }
+> = {
+  DIRECTOR: {
+    label: '감독',
+    badge:
+      'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-300 dark:border-rose-900/40',
+    accent: 'border-l-rose-500/70',
+  },
+  ACADEMY_DIRECTOR: {
+    label: '오픈클래스 감독',
+    badge:
+      'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-900/40',
+    accent: 'border-l-amber-500/70',
+  },
+  COACH: {
+    label: '코치',
+    badge:
+      'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-900/40',
+    accent: 'border-l-blue-500/70',
+  },
+  PARENT: {
+    label: '학부모',
+    badge:
+      'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-900/40',
+    accent: 'border-l-emerald-500/70',
+  },
+  TEEN: {
+    label: '선수',
+    badge:
+      'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-900/40',
+    accent: 'border-l-amber-500/70',
+  },
+  CHILD: {
+    label: '선수',
+    badge:
+      'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-900/40',
+    accent: 'border-l-amber-500/70',
+  },
+};
+
 export function TeamGroupedUserList({
   title,
   subtitleSuffix,
@@ -100,6 +170,10 @@ export function TeamGroupedUserList({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  // 부모 행 펼침 — 클릭한 학부모의 실제 자녀(선수) 목록 인라인 표시
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const toggleExpand = (id: string) =>
+    setExpandedId((cur) => (cur === id ? null : id));
 
   // 수정/삭제 modal 상태
   const [editing, setEditing] = useState<AdminUser | null>(null);
@@ -199,6 +273,32 @@ export function TeamGroupedUserList({
         arr.push(u);
         m.set(key, arr);
       }
+    }
+    // [학부모/선수 통합] 부모 펼침으로 보이는 자녀(선수)는 최상위 목록에서 제외 — 팀 카드별로.
+    //   (그 카드에 부모가 함께 있는 선수만 숨김. 부모가 없는 선수는 그대로 표시해 누락 방지.)
+    // 이어서 각 그룹 내 역할 우선 정렬(감독 → 오픈클래스 감독 → 코치).
+    for (const [key, arr] of m.entries()) {
+      const teamId =
+        key === '__none__' || key.startsWith('academy:') ? null : key;
+      const parentChildIds = new Set<string>();
+      for (const u of arr) {
+        if (u.userType !== 'PARENT') continue;
+        for (const k of u.children ?? []) {
+          // 이 카드(팀)에 소속된 자녀만 — 자녀가 여러 팀이어도 카드별로 분리.
+          if (!teamId || (k.teamIds ?? []).includes(teamId)) {
+            parentChildIds.add(k.id);
+          }
+        }
+      }
+      const filtered = arr.filter(
+        (u) =>
+          !(
+            (u.userType === 'TEEN' || u.userType === 'CHILD') &&
+            parentChildIds.has(u.id)
+          ),
+      );
+      filtered.sort(sortByRole);
+      m.set(key, filtered);
     }
     return m;
   }, [filteredUsers, teams, academies]);
@@ -374,6 +474,9 @@ export function TeamGroupedUserList({
                         user={u}
                         roleLabel={roleLabel}
                         accentClass={accentClass}
+                        groupTeamId={team.id}
+                        isExpanded={expandedId === u.id}
+                        onToggleExpand={() => toggleExpand(u.id)}
                         onEdit={() => handleEdit(u)}
                         onDelete={() => setDeleting(u)}
                       />
@@ -420,6 +523,8 @@ export function TeamGroupedUserList({
                       user={u}
                       roleLabel={roleLabel}
                       accentClass={accentClass}
+                      isExpanded={expandedId === u.id}
+                      onToggleExpand={() => toggleExpand(u.id)}
                       onEdit={() => handleEdit(u)}
                       onDelete={() => setDeleting(u)}
                     />
@@ -437,7 +542,7 @@ export function TeamGroupedUserList({
                   <Users className="w-5 h-5" aria-hidden="true" />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-slate-900 dark:text-white">팀 미지정</h2>
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white">소속 팀 없음</h2>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     {roleLabel} {(groupedByTeam.get('__none__') ?? []).length}명
                   </p>
@@ -450,6 +555,8 @@ export function TeamGroupedUserList({
                     user={u}
                     roleLabel={roleLabel}
                     accentClass={accentClass}
+                    isExpanded={expandedId === u.id}
+                    onToggleExpand={() => toggleExpand(u.id)}
                     onEdit={() => handleEdit(u)}
                     onDelete={() => setDeleting(u)}
                   />
@@ -527,68 +634,144 @@ interface UserRowProps {
   user: AdminUser;
   roleLabel: string;
   accentClass: string;
+  /** 현재 팀 카드 ID — 부모 펼침 시 이 팀에 소속된 자녀만 표시 (미지정/오픈클래스는 undefined) */
+  groupTeamId?: string;
+  isExpanded?: boolean;
+  onToggleExpand?: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }
 
-function UserRow({ user, roleLabel, accentClass, onEdit, onDelete }: UserRowProps) {
-  // 역할별 부가 표기:
-  //  · 학부모 → 이름 옆에 "자녀 N명" 칩
-  //  · 학생   → 로그인 미사용(내부 식별자)이라 email 숨기고 나이만 노출
-  const isParent = roleLabel === '학부모';
-  const isStudent = roleLabel === '학생';
-  const childrenCount = user.childrenCount ?? 0;
+function UserRow({
+  user,
+  roleLabel,
+  accentClass,
+  groupTeamId,
+  isExpanded,
+  onToggleExpand,
+  onEdit,
+  onDelete,
+}: UserRowProps) {
+  // 역할별 부가 표기 (통합 목록에서는 userType 우선):
+  //  · 학부모 → "자녀 N명" 칩 + 행 클릭 시 이 팀 소속 자녀(선수) 펼침
+  //  · 선수   → 로그인 미사용(내부 식별자)이라 email 숨기고 나이만 노출
+  const isParentRow = user.userType === 'PARENT' || roleLabel === '학부모';
+  const isStudent =
+    user.userType === 'TEEN' || user.userType === 'CHILD' || roleLabel === '학생';
+  const kids = user.children ?? [];
+  // 이 팀 카드에 소속된 자녀만 (미지정/오픈클래스 그룹은 전체)
+  const visibleKids = groupTeamId
+    ? kids.filter((k) => (k.teamIds ?? []).includes(groupTeamId))
+    : kids;
+  const childrenCount = visibleKids.length;
+  const canExpand = isParentRow && visibleKids.length > 0;
   const age = user.koreanAge ?? null;
+  // 사용자 실제 역할(userType) 기반 뱃지·라인 — 없으면 페이지 기본값 폴백.
+  const meta = user.userType ? USERTYPE_META[user.userType] : undefined;
+  const badgeLabel = meta?.label ?? roleLabel;
+  const badgeCls =
+    meta?.badge ??
+    'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-600';
+  const lineCls = meta?.accent ?? accentClass;
   return (
-    <li className={`flex items-center gap-3 px-5 py-3 border-l-[3px] ${accentClass} hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors motion-reduce:transition-none`}>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-bold text-slate-900 dark:text-white">{pickName(user)}</span>
-          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600">
-            {roleLabel}
-          </span>
-          {isParent && (
-            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/40">
-              자녀 {childrenCount}명
+    <>
+      <li className={`flex items-center gap-3 px-5 py-3 border-l-[3px] ${lineCls} hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors motion-reduce:transition-none`}>
+        <div
+          className={`min-w-0 flex-1 ${canExpand ? 'cursor-pointer' : ''}`}
+          onClick={canExpand ? onToggleExpand : undefined}
+          role={canExpand ? 'button' : undefined}
+          tabIndex={canExpand ? 0 : undefined}
+          aria-expanded={canExpand ? !!isExpanded : undefined}
+          onKeyDown={
+            canExpand
+              ? (e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onToggleExpand?.();
+                  }
+                }
+              : undefined
+          }
+        >
+          <div className="flex items-center gap-2 flex-wrap">
+            {canExpand && (
+              <ChevronDown
+                className={`w-4 h-4 text-slate-400 transition-transform motion-reduce:transition-none ${isExpanded ? '' : '-rotate-90'}`}
+                aria-hidden="true"
+              />
+            )}
+            <span className="text-sm font-bold text-slate-900 dark:text-white">{pickName(user)}</span>
+            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border ${badgeCls}`}>
+              {badgeLabel}
             </span>
-          )}
-        </div>
-        <div className="mt-0.5 flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 flex-wrap">
-          {isStudent ? (
-            age != null && (
-              <span className="text-amber-700 dark:text-amber-400 font-semibold tabular-nums">
-                {age}세
+            {isParentRow && (
+              <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/40">
+                자녀 {childrenCount}명
               </span>
-            )
-          ) : (
-            user.email && <span className="truncate">{user.email}</span>
-          )}
-          {user.phone && <span>· {user.phone}</span>}
-          {user.createdAt && (
-            <span>· 가입 {new Date(user.createdAt).toLocaleDateString('ko-KR')}</span>
-          )}
+            )}
+          </div>
+          <div className="mt-0.5 flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 flex-wrap">
+            {isStudent ? (
+              age != null && (
+                <span className="text-amber-700 dark:text-amber-400 font-semibold tabular-nums">
+                  {age}세
+                </span>
+              )
+            ) : (
+              user.email && <span className="truncate">{user.email}</span>
+            )}
+            {user.phone && <span>· {user.phone}</span>}
+            {user.createdAt && (
+              <span>· 가입 {new Date(user.createdAt).toLocaleDateString('ko-KR')}</span>
+            )}
+          </div>
         </div>
-      </div>
-      <div className="flex items-center gap-1 shrink-0">
-        <button
-          type="button"
-          onClick={onEdit}
-          className="inline-flex items-center justify-center w-8 h-8 rounded-md text-slate-500 hover:text-primary hover:bg-primary/10 transition-colors motion-reduce:transition-none"
-          aria-label={`${pickName(user)} 수정`}
-          title="수정"
-        >
-          <Pencil className="w-4 h-4" />
-        </button>
-        <button
-          type="button"
-          onClick={onDelete}
-          className="inline-flex items-center justify-center w-8 h-8 rounded-md text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors motion-reduce:transition-none"
-          aria-label={`${pickName(user)} 삭제`}
-          title="삭제"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
-      </div>
-    </li>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={onEdit}
+            className="inline-flex items-center justify-center w-8 h-8 rounded-md text-slate-500 hover:text-primary hover:bg-primary/10 transition-colors motion-reduce:transition-none"
+            aria-label={`${pickName(user)} 수정`}
+            title="수정"
+          >
+            <Pencil className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            className="inline-flex items-center justify-center w-8 h-8 rounded-md text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors motion-reduce:transition-none"
+            aria-label={`${pickName(user)} 삭제`}
+            title="삭제"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      </li>
+
+      {/* 부모 펼침 — 이 팀 카드에 소속된 자녀(선수) 목록 */}
+      {canExpand && isExpanded && (
+        <li className="border-l-[3px] border-l-emerald-500/40 bg-slate-50/70 dark:bg-slate-900/30 px-5 py-2.5">
+          <p className="mb-1.5 pl-6 text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+            소속 선수 {visibleKids.length}명
+          </p>
+          <ul className="space-y-1 pl-6">
+            {visibleKids.map((k) => (
+              <li key={k.id} className="flex items-center gap-2 flex-wrap text-xs">
+                <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold border bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-900/40">
+                  선수
+                </span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">{k.name || '-'}</span>
+                {k.koreanAge != null && (
+                  <span className="text-slate-500 dark:text-slate-400 tabular-nums">{k.koreanAge}세</span>
+                )}
+                {k.teamNames && k.teamNames.length > 0 && (
+                  <span className="text-slate-400 dark:text-slate-500">· {k.teamNames.join(', ')}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </li>
+      )}
+    </>
   );
 }

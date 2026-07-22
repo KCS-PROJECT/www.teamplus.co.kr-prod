@@ -26,6 +26,7 @@ import {
   SettlementResponseDto,
 } from "../dto/responses/settlement-response.dto";
 import { kstTodayUtcMidnight } from "@/common/utils/kst-date.util";
+import { deriveSource } from "../payment-source.util";
 
 /**
  * 정산 상세 조회 시 필요한 필드만 select — N+1 방지 및 over-fetching 제거.
@@ -458,7 +459,7 @@ export class PaymentReceiptService {
         completedAt: true,
         createdAt: true,
         receipt: { select: { id: true } },
-        product: { select: { productName: true } },
+        product: { select: { productName: true, billingTiming: true } },
         credits: { select: { totalSessions: true } },
         enrollments: {
           select: {
@@ -466,6 +467,15 @@ export class PaymentReceiptService {
             // User 모델은 firstName/lastName 분리 구조 — 표시명은 lastName+firstName 조합
             child: { select: { firstName: true, lastName: true } },
           },
+          take: 1,
+        },
+        // 출처 라벨링 파생용 관계 — N+1 방지 take:1 select
+        tournamentRegistrations: {
+          select: { tournament: { select: { billingMode: true } } },
+          take: 1,
+        },
+        monthlyBillingLines: {
+          select: { id: true },
           take: 1,
         },
       },
@@ -510,9 +520,17 @@ export class PaymentReceiptService {
       ? `${enrollment.child.lastName}${enrollment.child.firstName}`
       : undefined;
 
+    const src = deriveSource({
+      productBillingTiming: payment.product?.billingTiming,
+      hasMonthlyBillingLine: (payment.monthlyBillingLines?.length ?? 0) > 0,
+      tournamentBillingMode:
+        payment.tournamentRegistrations?.[0]?.tournament?.billingMode ?? null,
+    });
+
     return {
       receipt: {
-        id: payment.receipt?.id ?? payment.id,
+        // 다운로드/조회 엔드포인트가 Payment.id 로 조회하므로 receipt.id 는 항상 결제 ID.
+        id: payment.id,
         orderNumber: payment.orderNumber,
         status: payment.paymentStatus,
         storeName: "TEAMPLUS",
@@ -524,6 +542,9 @@ export class PaymentReceiptService {
         // enrollment 있을 때만 수업명·자녀명 반환 (없으면 undefined → 프론트 조건부 렌더)
         className: enrollment?.class?.className ?? undefined,
         childName: childFullName,
+        // 파생 append (Dual Emit) — 무관계 결제는 null
+        sourceType: src.sourceType,
+        billingTiming: src.billingTiming,
       },
     };
   }

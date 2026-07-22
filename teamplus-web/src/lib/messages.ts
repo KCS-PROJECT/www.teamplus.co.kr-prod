@@ -684,12 +684,19 @@ export const MESSAGES = {
     completed: "결제가 완료되었습니다!",
     // [수정 2026-05-18] 감성 톤 — 결제 완료 화면 분위기. "결제권" 어색함 해소.
     creditIssued: "이제 이번 달 수업에 참여하실 수 있어요",
+    viewReceipt: "영수증 보기",
     processing: "처리 중...",
     securePayment: "안전하게 암호화되어 처리되었습니다",
     // DEV 전용 테스트 결제 경로 — 실카드 노출 없이 결제 플로우 검증 (운영 빌드 미노출).
     mockPayButton: "테스트 결제 (개발용)",
     mockPayFailed: "테스트 결제 처리에 실패했습니다.",
     classLabel: "수업",
+    // 결제 출처·선후불 배지 문구 — 결제 5화면(history/receipt/complete/postpaid/parent) 공용.
+    //   director settlement 네임스페이스 키(크로스참조 금지)와 분리해 payment2 에 독립 생성.
+    sourceClass: "훈련",
+    sourceTournament: "대회",
+    prepaid: "선불",
+    postpaid: "후불",
     // [추가 2026-06-09] App Store 3.1.1 — 결제권은 디지털 콘텐츠/화폐가 아닌 '오프라인 대면 수업 수강료 결제 수단'임을 명시(심사 오인 방지)
     offlineCreditNotice:
       "본 결제권은 오프라인 빙상 아이스하키 수업의 수업료 결제 수단이며, 수업 당일 현장 QR 출석 시 차감됩니다.",
@@ -965,7 +972,7 @@ export const MESSAGES = {
     sendReminder: "알림 발송",
     viewDetail: "상세 보기",
     // 미수금 출처 배지 (회원이 수업·대회 동시 미납 가능)
-    sourceClass: "수업",
+    sourceClass: "훈련",
     sourceTournament: "대회",
     unpaidMemberCount: (n: number) => `미납 ${n}명`,
     // 미수금 상세 시트

@@ -27,6 +27,8 @@ import { usePageReady } from '@/hooks/usePageReady';
 import { useAuth } from '@/contexts/AuthContext';
 import { MESSAGES } from '@/lib/messages';
 import { api } from '@/services/api-client';
+import { PaymentSourceBadge } from '@/components/payment/PaymentSourceBadge';
+import type { PaymentSourceType, PaymentBillingTiming } from '@/types/payment';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TossWidgets = any;
@@ -38,6 +40,10 @@ interface PostpaidOrder {
   amount: number;
   paymentStatus: string;
   paymentName: string | null;
+  /** 결제 출처 파생 append — 연결 끊김 시 null. */
+  sourceType?: PaymentSourceType | null;
+  /** 선후불 파생 append — 연결 끊김 시 null. */
+  billingTiming?: PaymentBillingTiming | null;
 }
 
 function PostpaidPayContent() {
@@ -178,6 +184,12 @@ function PostpaidPayContent() {
                 <Icon name="receipt_long" className="text-[14px]" aria-hidden="true" />
                 <span className="truncate">{orderName}</span>
               </div>
+              {/* 출처·선후불 배지 — 파생 필드 둘 다 있을 때만(연결 끊김 시 미표시). */}
+              <PaymentSourceBadge
+                sourceType={order.sourceType}
+                billingTiming={order.billingTiming}
+                className="mt-2"
+              />
               <div className="mt-2 flex items-baseline gap-[3px]">
                 <span className="text-[38px] font-extrabold leading-[1.05] tracking-[-0.02em] text-white tabular-nums">
                   {amount.toLocaleString()}

@@ -342,6 +342,7 @@ describe("PaymentsService", () => {
             select: {
               productName: true,
               price: true,
+              billingTiming: true,
             },
           },
           enrollments: {
@@ -350,10 +351,69 @@ describe("PaymentsService", () => {
             },
             take: 1,
           },
+          tournamentRegistrations: {
+            select: {
+              tournament: { select: { billingMode: true, name: true } },
+            },
+            take: 1,
+          },
+          monthlyBillingLines: {
+            select: { id: true },
+            take: 1,
+          },
         },
         orderBy: { createdAt: "desc" },
         take: 5,
       });
+    });
+
+    it("출처·선후불 파생을 append 하고 기존 키를 보존한다 (Dual Emit)", async () => {
+      const mockPayments = [
+        {
+          ...mockCompletedPayment,
+          product: {
+            productName: mockProduct.productName,
+            price: 240000,
+            billingTiming: "PREPAID",
+          },
+          enrollments: [{ class: { className: "신규 수강생반" } }],
+          tournamentRegistrations: [],
+          monthlyBillingLines: [],
+        },
+      ];
+      jest
+        .spyOn(prismaService.payment, "findMany")
+        .mockResolvedValue(mockPayments as any);
+
+      const result = await service.getUserPayments(mockUserId);
+
+      // 파생 append
+      expect(result[0].sourceType).toBe("CLASS");
+      expect(result[0].billingTiming).toBe("PREPAID");
+      // 기존 키 보존
+      expect(result[0].id).toBe(mockCompletedPayment.id);
+      expect(result[0].orderNumber).toBe(mockCompletedPayment.orderNumber);
+      expect(result[0].className).toBe("신규 수강생반");
+    });
+
+    it("관계 전무(매치·쇼핑) 결제는 sourceType/billingTiming null", async () => {
+      const mockPayments = [
+        {
+          ...mockCompletedPayment,
+          product: null,
+          enrollments: [],
+          tournamentRegistrations: [],
+          monthlyBillingLines: [],
+        },
+      ];
+      jest
+        .spyOn(prismaService.payment, "findMany")
+        .mockResolvedValue(mockPayments as any);
+
+      const result = await service.getUserPayments(mockUserId);
+
+      expect(result[0].sourceType).toBeNull();
+      expect(result[0].billingTiming).toBeNull();
     });
   });
 

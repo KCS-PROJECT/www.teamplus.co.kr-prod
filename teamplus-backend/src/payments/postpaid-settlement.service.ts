@@ -14,6 +14,7 @@ import {
   PaymentCalculationService,
   BillingTiming,
 } from "./payment-calculation.service";
+import { deriveSource } from "./payment-source.util";
 
 export interface PostpaidSummaryItem {
   classId: string;
@@ -494,6 +495,8 @@ export class PostpaidSettlementService {
             },
           },
           payment: { select: { orderNumber: true } },
+          // 청구 대상(자녀 User) 표시명 파생용 — lastName+firstName
+          user: { select: { firstName: true, lastName: true } },
         },
       }),
       // 후불 대회 정산 청구 — billingMode 한정 필수: 선불 대회의 미완료 결제(PENDING 신청)가
@@ -510,6 +513,8 @@ export class PostpaidSettlementService {
           updatedAt: true,
           tournament: { select: { id: true, name: true } },
           payment: { select: { orderNumber: true } },
+          // 자녀(child) 표시명 파생용 — nullable(SetNull)
+          child: { select: { firstName: true, lastName: true } },
         },
       }),
     ]);
@@ -525,6 +530,8 @@ export class PostpaidSettlementService {
       amount: l.amount,
       orderNumber: l.payment?.orderNumber ?? null,
       paymentName: `${l.billing.yearMonth} 수업료`,
+      // 자녀 표시명 append (Dual Emit) — lastName+firstName, 없으면 null
+      childName: l.user ? `${l.user.lastName}${l.user.firstName}` : null,
       requestedAt: l.createdAt,
     }));
     const tournamentItems = tournamentRegs.map((r) => ({
@@ -535,6 +542,8 @@ export class PostpaidSettlementService {
       amount: Number(r.calculatedFee),
       orderNumber: r.payment?.orderNumber ?? null,
       paymentName: `${r.tournament.name} 참가비`,
+      // 자녀 표시명 append (Dual Emit) — child nullable(SetNull) → null 폴백
+      childName: r.child ? `${r.child.lastName}${r.child.firstName}` : null,
       // 재정산 시 updatedAt 갱신 — 최신 청구가 앞에 오도록 정렬 기준으로 사용.
       requestedAt: r.updatedAt,
     }));
@@ -570,7 +579,7 @@ export class PostpaidSettlementService {
       }),
       this.prisma.tournamentRegistration.findFirst({
         where: { paymentId: payment.id },
-        select: { tournament: { select: { name: true } } },
+        select: { tournament: { select: { name: true, billingMode: true } } },
       }),
     ]);
     const paymentName = line
@@ -579,11 +588,21 @@ export class PostpaidSettlementService {
         ? `${tReg.tournament.name} 참가비`
         : null;
 
+    // 출처·선후불 파생 — 연결 끊김(line·tReg 모두 없음)이면 null (paymentName 과 동일 처리)
+    const src = deriveSource({
+      productBillingTiming: null,
+      hasMonthlyBillingLine: !!line,
+      tournamentBillingMode: tReg?.tournament?.billingMode ?? null,
+    });
+
     return {
       orderNumber,
       amount: payment.amount,
       paymentStatus: payment.paymentStatus,
       paymentName,
+      // 파생 append (Dual Emit) — 연결 끊김 시 null
+      sourceType: src.sourceType,
+      billingTiming: src.billingTiming,
     };
   }
 }

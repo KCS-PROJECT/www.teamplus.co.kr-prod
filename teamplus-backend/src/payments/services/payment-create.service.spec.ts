@@ -93,4 +93,54 @@ describe("PaymentCreateService", () => {
     // when: verifyPayment(userId, orderNumber)
     // then: prisma.payment.findUnique 호출 없음
   });
+
+  describe("verifyPayment: 출처 라벨링 append", () => {
+    const basePayment = {
+      id: "pay-1",
+      orderNumber: "ORD-1",
+      userId: "user-1",
+      amount: 240000,
+      paymentStatus: "completed",
+      paymentMethod: "card",
+      tid: "tid-1",
+      completedAt: new Date("2026-07-10T00:00:00Z"),
+      createdAt: new Date("2026-07-10T00:00:00Z"),
+      productId: "prod-1",
+      credits: [{ totalSessions: 8 }],
+      receipt: { id: "rcpt-1", receiptNumber: "R-1", issuedAt: new Date() },
+      enrollments: [],
+    };
+
+    it("선불 수업 결제 → CLASS/PREPAID append + 기존 키 보존(Dual Emit)", async () => {
+      mockPrisma.payment.findUnique.mockResolvedValue({
+        ...basePayment,
+        product: { productName: "입문반", sessionsPerMonth: 8, billingTiming: "PREPAID" },
+        tournamentRegistrations: [],
+        monthlyBillingLines: [],
+      });
+
+      const result = await service.verifyPayment("user-1", "ORD-1");
+
+      expect(result.receipt.sourceType).toBe("CLASS");
+      expect(result.receipt.billingTiming).toBe("PREPAID");
+      // 기존 키 보존
+      expect(result.receipt.orderNumber).toBe("ORD-1");
+      expect(result.creditsIssued).toBe(8);
+      expect(result.message).toBe("결제가 완료되었습니다.");
+    });
+
+    it("관계 전무(매치 결제) → sourceType/billingTiming null", async () => {
+      mockPrisma.payment.findUnique.mockResolvedValue({
+        ...basePayment,
+        product: null,
+        tournamentRegistrations: [],
+        monthlyBillingLines: [],
+      });
+
+      const result = await service.verifyPayment("user-1", "ORD-1");
+
+      expect(result.receipt.sourceType).toBeNull();
+      expect(result.receipt.billingTiming).toBeNull();
+    });
+  });
 });
