@@ -394,9 +394,9 @@ function PaymentCompleteContent() {
                 {isDownloading ? (
                   <div className="w-5 h-5 rounded-w-pill border-2 border-it-line-strong border-t-it-ink-500 animate-spin motion-reduce:animate-none"></div>
                 ) : (
-                  <Icon name="download" className="text-xl" />
+                  <Icon name="open_in_new" className="text-xl" />
                 )}
-                영수증
+                {MESSAGES.payment2.viewReceipt}
               </button>
               {payQueue && payQueue.pairs.length > 0 ? (
                 <button

@@ -585,7 +585,9 @@ export class PaymentCreateService {
 
     return {
       receipt: {
-        id: payment.receipt?.id ?? payment.id,
+        // 다운로드/조회 엔드포인트가 Payment.id 로 조회하므로 receipt.id 는 항상 결제 ID.
+        //   (Receipt 엔티티 id 를 내보내면 /receipts/:paymentId/download 가 404 — 소비처 없음)
+        id: payment.id,
         orderNumber: payment.orderNumber,
         status: payment.paymentStatus,
         storeName: "TEAMPLUS",
