@@ -2545,7 +2545,14 @@ export default function ClassDetailPage() {
             new Date(classData.endedAt).getTime() +
               REOPEN_GRACE_DAYS * 24 * 60 * 60 * 1000,
           );
-          const reopenExpired = Date.now() > reopenDeadline.getTime();
+          // 마감일 '그 날 끝'까지 허용 — BE kstDayEndExclusive 미러 (브라우저 로컬=KST 컨벤션).
+          //   "N월 N일까지" 문구의 관행적 읽힘(그 날 자정까지)과 판정 일치.
+          const reopenDayEnd = new Date(
+            reopenDeadline.getFullYear(),
+            reopenDeadline.getMonth(),
+            reopenDeadline.getDate() + 1,
+          );
+          const reopenExpired = Date.now() >= reopenDayEnd.getTime();
           const reopenDeadlineLabel = `${reopenDeadline.getMonth() + 1}월 ${reopenDeadline.getDate()}일`;
           return (
             <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4" aria-label="수업 종료 관리">

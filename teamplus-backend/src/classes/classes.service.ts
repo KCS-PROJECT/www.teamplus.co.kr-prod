@@ -20,6 +20,7 @@ import {
   dateOnlyToUtc,
   dateOnlyToString,
   kstTodayUtcMidnight,
+  kstDayEndExclusive,
 } from "@/common/utils/kst-date.util";
 import {
   deriveClassLifecycle,
@@ -4899,12 +4900,16 @@ export class ClassesService {
     if (!klass.endedAt) {
       throw new BadRequestException("종료 상태가 아닌 수업입니다.");
     }
-    // endedAt 은 timestamptz instant — 유예 창은 duration 산술로 비교 (KST 변환 불필요)
-    const graceLimit = new Date(
-      klass.endedAt.getTime() +
-        ClassesService.REOPEN_GRACE_DAYS * 24 * 60 * 60 * 1000,
+    // 유예 마감 = (endedAt + 7일)이 속한 KST 달력일의 '그 날 끝'까지 —
+    //   화면 문구("N월 N일까지 취소할 수 있어요")의 관행적 읽힘(그 날 자정까지)과 판정 일치.
+    //   시각 단위(+7×24h)로 자르면 종료 시각에 따라 마감일 당일 낮에 만료되는 불일치 발생.
+    const graceLimit = kstDayEndExclusive(
+      new Date(
+        klass.endedAt.getTime() +
+          ClassesService.REOPEN_GRACE_DAYS * 24 * 60 * 60 * 1000,
+      ),
     );
-    if (new Date() > graceLimit) {
+    if (new Date() >= graceLimit) {
       throw new BadRequestException(
         `종료 후 ${ClassesService.REOPEN_GRACE_DAYS}일이 지나 재개할 수 없습니다. 새 수업 등록의 '기존 수업 불러오기'를 이용해주세요.`,
       );
