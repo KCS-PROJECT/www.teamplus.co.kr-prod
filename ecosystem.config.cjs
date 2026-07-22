@@ -20,6 +20,11 @@ const COMMON = {
   exec_mode: 'fork',
   autorestart: true,
   // 무한 재시작 루프 차단 — 좀비/잘못된 빌드 검출 시 즉시 정지 (Jenkins/사람이 인지하도록).
+  // [2026-07-22] min_uptime 10s 신설 — 이하 만에 죽으면 "unstable" 로 카운트되어 max_restarts 트리거.
+  //   pm2 기본 min_uptime=1s 는 Nest 부팅(~4s) 이후 발생하는 DI 크래시를 "정상 실행 후 죽음"으로
+  //   오판해 unstable 카운터가 리셋 → max_restarts=10 이 절대 안 걸리는 무한 루프 발생 (실측 8,735회).
+  //   min_uptime 을 부팅 시간 초과 값(10s)으로 올려 DI/import 오류가 실제로 배포 실패로 인식되게 함.
+  min_uptime: 10000,
   max_restarts: 10,
   restart_delay: 3000,
   // 메모리 누수 안전망 (각 Next/Nest 앱 base 200MB 내외 → 700MB 면 명백한 leak).
