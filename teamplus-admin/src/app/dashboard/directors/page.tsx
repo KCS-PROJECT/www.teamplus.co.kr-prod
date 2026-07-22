@@ -1,25 +1,24 @@
 'use client';
 
 /**
- * /dashboard/directors — 감독 관리 (2026-05-12 재구성)
+ * /dashboard/directors — 감독/코치 관리 (2026-07-22 통합)
  *
  * 변경:
- *  - 단일 테이블 → 팀별 그룹 카드 (수업관리 페이지와 동일 형태)
- *  - 수정/삭제 버튼 추가 (admin)
- *  - 삭제 시 산하 팀에 코치/학부모/학생이 있으면 백엔드가 차단 (메시지 토스트)
+ *  - 기존 감독관리(/directors) + 코치관리(/coaches)를 한 화면으로 통합.
+ *  - 한 화면에서 각 팀별로 소속된 감독/코치를 함께 표시.
+ *  - 행별 뱃지·색상으로 역할 구분 (감독=로즈 · 오픈클래스 감독=앰버 · 코치=블루).
+ *  - /dashboard/coaches 는 이 페이지로 리다이렉트, 사이드바 "코치관리" 메뉴 제거.
  */
 
 import { TeamGroupedUserList } from '@/components/admin/TeamGroupedUserList';
 
-export default function DirectorsPage() {
-  // [수정 2026-05-13] ACADEMY_DIRECTOR(오픈클래스 감독)도 감독관리에 포함.
-  //  이전엔 코치관리에 표시되어 페르소나 미스매치. 감독 그룹으로 통합.
+export default function DirectorsCoachesPage() {
   return (
     <TeamGroupedUserList
-      title="감독 관리"
-      userType="DIRECTOR,ACADEMY_DIRECTOR"
-      roleLabel="감독"
-      accentClass="border-l-rose-500/70"
+      title="감독/코치 관리"
+      userType="DIRECTOR,ACADEMY_DIRECTOR,COACH"
+      roleLabel="감독/코치"
+      accentClass="border-l-slate-400"
     />
   );
 }

@@ -25,7 +25,8 @@ import { MiniStatsCard } from '@/components/ui/mini-stats-card';
 import {
   Users,
   CreditCard,
-  Bell,
+  Image,
+  MessageSquare,
   CheckCircle,
   AlertCircle,
   ArrowRight,
@@ -67,6 +68,21 @@ interface AdminDashboardData {
     revenueByMonth: { month: string; revenue: number }[];
     membersByMonth: { month: string; count: number }[];
   };
+  // [추가 2026-07-22] 대시보드 최근 공지 5개 (systemNotice, pinned+최신순)
+  latestNotices?: {
+    id: string;
+    title: string;
+    targetType: string | null;
+    createdAt: string;
+    pinned: boolean;
+  }[];
+}
+
+interface DashboardNotice {
+  id: string;
+  title: string;
+  createdAt: string;
+  pinned: boolean;
 }
 
 // 승인 대기 회원
@@ -104,7 +120,7 @@ export default function DashboardPage() {
     settlementCount: 0,
     settlementAmount: 0,
   });
-  const [activities, setActivities] = useState<DashboardActivity[]>([]);
+  const [notices, setNotices] = useState<DashboardNotice[]>([]);
   const [pendingMembers, setPendingMembers] = useState<PendingMember[]>([]);
   const [_actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -126,25 +142,65 @@ export default function DashboardPage() {
       const currentUser = authService.getCurrentUser();
       setUser(currentUser);
 
-      if (currentUser?.userType === 'admin') {
+      // [수정 2026-07-22] admin 웹 로그인 계정은 SYSTEM/OPER/ADMIN(관리자) — 대소문자·표기 무관하게
+      //   관리자면 admin 대시보드 통계를 호출한다. (기존 'admin' 정확일치는 SYSTEM/OPER 를 놓쳐 0 표시)
+      const roleKey = (currentUser?.userType ?? '').toString().toLowerCase();
+      const isAdminRole =
+        roleKey === 'admin' || roleKey === 'system' || roleKey === 'oper';
+
+      if (isAdminRole) {
         // [추가 2026-04-30] 팀 / 오픈클래스 / 정산 현황 fetch
         type TeamItem = { id: string; isActive?: boolean };
         type AcademyItem = { id: string; memberCount?: number };
         type SettlementItem = { id: string; status?: string; netAmount?: number; totalAmount?: number };
-        const [dashData, activitiesData, pendingData, teamsData, academyData, settlementsData] = await Promise.all([
+        // [수정 2026-07-22] 현황 카드 데이터 소스 정정:
+        //   · 팀: '/team'(단수) → 404 였음 → 실제 경로 '/teams'
+        //   · 오픈클래스: '/admin/clubs?type=academy'(0 반환) → academies 페이지와 동일한 '/academies/public'
+        //   · 응답이 배열이 아닌 { data, meta } 페이지네이션 형태여도 배열로 정규화
+        const [dashData, pendingData, teamsData, academyData, settlementsData, noticesData] = await Promise.all([
           api.get<AdminDashboardData>('/dashboard/admin').catch(() => null),
-          api.get<DashboardActivity[]>('/dashboard/activities', { params: { limit: 5 } }).catch(() => []),
           api.get<{ data?: PendingMember[] }>('/admin/members/pending').catch(() => ({ data: [] })),
-          api.get<TeamItem[]>('/team').catch(() => [] as TeamItem[]),
-          api.get<AcademyItem[]>('/admin/clubs', { params: { type: 'academy' } }).catch(() => [] as AcademyItem[]),
-          api.get<SettlementItem[]>('/settlements').catch(() => [] as SettlementItem[]),
+          api.get<unknown>('/teams', { params: { limit: 200 } }).catch(() => []),
+          api.get<unknown>('/academies/public', { params: { limit: 200 } }).catch(() => []),
+          api.get<unknown>('/settlements').catch(() => []),
+          // [수정 2026-07-22] 대시보드 공지 = 시스템(서비스) 공지만. 팀 공지(scope=team) 제외.
+          //   admin 앱 공지사항(/dashboard/app/notices)과 동일한 소스(scope=service).
+          api.get<unknown>('/notices/admin/list', { params: { scope: 'service', limit: 5 } }).catch(() => []),
         ]);
         setPendingMembers(Array.isArray(pendingData?.data) ? pendingData.data : Array.isArray(pendingData) ? pendingData as unknown as PendingMember[] : []);
-        const teams = Array.isArray(teamsData) ? teamsData : [];
-        const academies = Array.isArray(academyData) ? academyData : [];
-        const settlements = Array.isArray(settlementsData) ? settlementsData : [];
+        // 배열 또는 { data: [...] } / { academies: [...] } 응답을 모두 배열로 정규화
+        const toArray = <T,>(v: unknown): T[] => {
+          if (Array.isArray(v)) return v as T[];
+          if (v && typeof v === 'object') {
+            const o = v as { data?: unknown; academies?: unknown };
+            if (Array.isArray(o.data)) return o.data as T[];
+            if (Array.isArray(o.academies)) return o.academies as T[];
+          }
+          return [];
+        };
+        const teams = toArray<TeamItem>(teamsData);
+        const academies = toArray<AcademyItem>(academyData);
+        const settlements = toArray<SettlementItem>(settlementsData);
+        // [수정 2026-07-22] 총 회원 = 실제 회원(감독·코치·학부모·선수 = 비관리자 User) 합.
+        //   기존 clubs.totalMembers 는 '승인된 팀멤버' 라 학부모가 빠져 부정확했음.
+        //   users.byType(userType별 count)로 관리자(ADMIN/SYSTEM/OPER) 제외하고 집계.
+        const byType = dashData?.users?.byType ?? {};
+        const MEMBER_ROLE_KEYS = [
+          'DIRECTOR',
+          'ACADEMY_DIRECTOR',
+          'COACH',
+          'PARENT',
+          'TEEN',
+          'CHILD',
+        ];
+        const realMemberTotal = MEMBER_ROLE_KEYS.reduce(
+          (sum, key) => sum + (byType[key] ?? 0),
+          0,
+        );
+        // 신규 가입도 관리자 제외한 실제 회원 기준으로만 세고 싶으나, 백엔드 newThisMonth 는
+        //   전체 User 기준(관리자 신규는 사실상 0). 그대로 사용해도 실측과 일치.
         setStats({
-          totalMembers: dashData?.clubs?.totalMembers ?? 0,
+          totalMembers: realMemberTotal,
           memberGrowth: dashData?.users?.newThisMonth ?? 0,
           activeClubs: dashData?.clubs?.activeClubs ?? 0,
           upcomingClasses: 0,
@@ -165,8 +221,22 @@ export default function DashboardPage() {
             0,
           ),
         });
-        // [수정 2026-04-30] mock 활동 데이터(가짜 이름 김감독/박지은/루비덕스 등) 제거 — 실제 API 응답만 사용
-        setActivities(Array.isArray(activitiesData) ? activitiesData : []);
+        // [수정 2026-07-22] 최근 시스템 공지 5개 — /notices/admin/list?scope=service
+        const noticeRows = toArray<{
+          id: string;
+          title: string;
+          createdAt: string;
+          pinned?: boolean;
+          isPinned?: boolean;
+        }>(noticesData);
+        setNotices(
+          noticeRows.map((n) => ({
+            id: n.id,
+            title: n.title,
+            createdAt: n.createdAt,
+            pinned: Boolean(n.pinned ?? n.isPinned),
+          })),
+        );
       } else {
         const dashData = await api.get<CoachDashboardData>('/dashboard/coach');
         setStats({
@@ -188,7 +258,8 @@ export default function DashboardPage() {
           settlementCount: 0,
           settlementAmount: 0,
         });
-        setActivities(dashData.recentActivities ?? []);
+        // 코치 계정은 공지 표시 없음(관리자 대시보드 전용)
+        setNotices([]);
       }
     } catch (error) {
       console.error('대시보드 로드 실패:', error);
@@ -269,8 +340,8 @@ export default function DashboardPage() {
           trend={{ value: stats.memberGrowth, label: '전월 대비' }}
         />
         <MiniStatsCard
-          title="활성 클럽"
-          value={`${stats.activeClubs}개`}
+          title="활성 팀"
+          value={`${stats.activeTeams}개`}
           icon={<Building2 className="w-5 h-5" />}
           variant="info"
           description="운영 중"
@@ -432,45 +503,46 @@ export default function DashboardPage() {
             </div>
           </Card>
 
-          {/* [이동 2026-04-30] 사용자 요청 — 최근 활동 카드를 우측에서 좌측 신규 가입 승인대기 아래로 배치 */}
+          {/* [변경 2026-07-22] 사용자 요청 — '최근 활동' → '공지사항'(최근 공지 5개) */}
           <Card className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm overflow-hidden">
             <div className="p-5 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white">최근 활동</h2>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white">공지사항</h2>
               <Link
-                href="/dashboard/notifications"
+                href="/dashboard/app/notices"
                 className="text-sm text-primary hover:text-primary-dark dark:text-blue-400 dark:hover:text-blue-300"
               >
                 모두 보기
               </Link>
             </div>
             <div className="divide-y divide-slate-100 dark:divide-slate-700">
-              {activities.length > 0 ? activities.map((activity, idx) => {
-                const dotColor =
-                  activity.type === 'member' ? 'bg-blue-500' :
-                  activity.type === 'payment' ? 'bg-green-500' :
-                  activity.type === 'class' ? 'bg-amber-500' : 'bg-cyan-500';
-                const relativeTime = (() => {
-                  const diff = Date.now() - new Date(activity.createdAt).getTime();
-                  const hours = Math.floor(diff / 3600000);
-                  if (hours < 1) return '방금 전';
-                  if (hours < 24) return `${hours}시간 전`;
-                  return `${Math.floor(hours / 24)}일 전`;
+              {notices.length > 0 ? notices.map((notice) => {
+                const dateStr = (() => {
+                  const d = new Date(notice.createdAt);
+                  if (Number.isNaN(d.getTime())) return '';
+                  return d.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
                 })();
                 return (
-                  <div
-                    key={idx}
-                    className="p-4 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                  <Link
+                    key={notice.id}
+                    href="/dashboard/app/notices"
+                    className="p-4 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors motion-reduce:transition-none"
                   >
-                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
+                    {notice.pinned ? (
+                      <span className="flex-shrink-0 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                        고정
+                      </span>
+                    ) : (
+                      <span className="w-2 h-2 rounded-full flex-shrink-0 bg-primary/60" aria-hidden="true" />
+                    )}
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-slate-900 dark:text-white truncate">{activity.message}</p>
-                      <p className="text-xs text-slate-400 dark:text-slate-500">{relativeTime}</p>
+                      <p className="text-sm font-medium text-slate-900 dark:text-white truncate">{notice.title}</p>
                     </div>
-                  </div>
+                    <span className="text-xs text-slate-400 dark:text-slate-500 shrink-0 tabular-nums">{dateStr}</span>
+                  </Link>
                 );
               }) : (
                 <div className="p-6 text-center text-sm text-slate-400 dark:text-slate-500">
-                  최근 활동 내역이 없습니다.
+                  등록된 공지사항이 없습니다.
                 </div>
               )}
             </div>
@@ -493,7 +565,7 @@ export default function DashboardPage() {
                 <div className="w-10 h-10 bg-primary/10 dark:bg-primary/20 rounded-lg flex items-center justify-center group-hover:bg-primary/20 dark:group-hover:bg-primary/30">
                   <Users className="w-5 h-5 text-primary dark:text-primary-light" aria-hidden="true" />
                 </div>
-                <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">회원 관리</span>
+                <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">학부모/선수 관리</span>
               </button>
               {/* [삭제 2026-04-30] 수업 승인 빠른 작업 버튼 — 승인 메뉴 폐기 */}
               <button
@@ -508,19 +580,25 @@ export default function DashboardPage() {
               </button>
               <button
                 type="button"
-                onClick={() => router.push('/dashboard/app/push')}
-                className="flex flex-col items-center gap-2 p-4 rounded-xl border border-slate-200 dark:border-slate-600 hover:border-amber-500 dark:hover:border-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors motion-reduce:transition-none group relative"
-                aria-label={`알림 관리 ${stats.unreadNotifications > 0 ? `(읽지 않은 알림 ${stats.unreadNotifications}건)` : ''}`}
+                onClick={() => router.push('/dashboard/app/banners')}
+                className="flex flex-col items-center gap-2 p-4 rounded-xl border border-slate-200 dark:border-slate-600 hover:border-amber-500 dark:hover:border-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors motion-reduce:transition-none group"
+                aria-label="배너 관리"
               >
                 <div className="w-10 h-10 bg-amber-100 dark:bg-amber-900/30 rounded-lg flex items-center justify-center group-hover:bg-amber-200 dark:group-hover:bg-amber-900/50">
-                  <Bell className="w-5 h-5 text-amber-700 dark:text-amber-400" aria-hidden="true" />
+                  <Image className="w-5 h-5 text-amber-700 dark:text-amber-400" aria-hidden="true" />
                 </div>
-                <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">알림 관리</span>
-                {stats.unreadNotifications > 0 && (
-                  <span className="absolute top-3 right-3 min-w-[20px] h-5 px-1 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-semibold tabular-nums" aria-hidden="true">
-                    {stats.unreadNotifications}
-                  </span>
-                )}
+                <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">배너 관리</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push('/dashboard/app/feedback')}
+                className="flex flex-col items-center gap-2 p-4 rounded-xl border border-slate-200 dark:border-slate-600 hover:border-blue-500 dark:hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors motion-reduce:transition-none group"
+                aria-label="피드백 관리"
+              >
+                <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center group-hover:bg-blue-200 dark:group-hover:bg-blue-900/50">
+                  <MessageSquare className="w-5 h-5 text-blue-700 dark:text-blue-400" aria-hidden="true" />
+                </div>
+                <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">피드백 관리</span>
               </button>
             </div>
           </Card>

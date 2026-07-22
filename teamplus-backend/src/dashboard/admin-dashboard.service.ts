@@ -482,7 +482,7 @@ export class AdminDashboardService {
         TO_CHAR(months.m, 'YYYY-MM') AS month,
         COUNT(cm.id)::int AS count
       FROM months
-      LEFT JOIN "club_members" cm
+      LEFT JOIN "team_members" cm
         ON cm.approval_status = 'approved'
         AND cm.joined_at < (months.m + INTERVAL '1 month')
       GROUP BY months.m

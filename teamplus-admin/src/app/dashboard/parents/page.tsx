@@ -1,23 +1,18 @@
 'use client';
 
 /**
- * /dashboard/parents — 학부모 관리 (2026-05-12 재구성)
- *
- * 변경:
- *  - 단일 테이블 → 팀별 그룹 카드 (수업관리 페이지와 동일 형태)
- *  - 수정/삭제 버튼 추가 (admin)
- *  - 삭제 시 등록된 자녀가 있으면 백엔드가 차단 (메시지 토스트)
+ * /dashboard/parents — "학부모/선수 관리"로 통합(2026-07-22).
+ *  학부모관리 단독 메뉴는 제거되고, 학부모/선수를 한 화면에서 관리한다.
+ *  북마크·직접 접근 대응으로 통합 페이지(/dashboard/members)로 리다이렉트.
  */
 
-import { TeamGroupedUserList } from '@/components/admin/TeamGroupedUserList';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
-export default function ParentsPage() {
-  return (
-    <TeamGroupedUserList
-      title="학부모 관리"
-      userType="PARENT"
-      roleLabel="학부모"
-      accentClass="border-l-emerald-500/70"
-    />
-  );
+export default function ParentsRedirectPage() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace('/dashboard/members');
+  }, [router]);
+  return null;
 }

@@ -150,6 +150,11 @@ export class AdminService {
             select: {
               child: {
                 select: {
+                  // [추가 2026-07-22] 학부모/선수 통합 관리 — 부모 클릭 시 자녀(선수) 펼침용.
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  koreanAge: true,
                   teamMembers: {
                     where: { leftAt: null },
                     select: {
@@ -270,6 +275,26 @@ export class AdminService {
           academyNames,
           approvalStatus, // [신규] 학생 본인 TeamMember 의 approval_status
           childrenCount: u.parentChildren?.length ?? 0,
+          // [추가 2026-07-22] 학부모/선수 통합 관리 — 부모 행 클릭 시 실제 자녀(선수) 목록 펼침용.
+          children: (u.parentChildren ?? [])
+            .map((pc) => {
+              const c = pc.child;
+              if (!c) return null;
+              const cTeams = (c.teamMembers ?? [])
+                .map((tm) => tm.team)
+                .filter((t): t is { id: string; name: string } =>
+                  Boolean(t?.id && t?.name),
+                );
+              return {
+                id: c.id,
+                name: `${c.lastName ?? ""}${c.firstName ?? ""}`.trim(),
+                koreanAge: c.koreanAge ?? null,
+                // 팀 카드별 자녀 필터용 teamIds + 표시용 teamNames
+                teamIds: Array.from(new Set(cTeams.map((t) => t.id))),
+                teamNames: Array.from(new Set(cTeams.map((t) => t.name))),
+              };
+            })
+            .filter((c): c is NonNullable<typeof c> => c !== null),
           parentName: u.childParents?.[0]?.parent
             ? `${u.childParents[0].parent.lastName ?? ""}${u.childParents[0].parent.firstName ?? ""}`.trim()
             : "",
