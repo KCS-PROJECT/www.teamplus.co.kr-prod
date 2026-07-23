@@ -875,6 +875,20 @@
     padding-bottom: 0;
   }
 
+  /* 키보드 노출 중 bottom-fab-safe 보정 — BottomNav(60px) 위에 뜨도록 offset 된
+     fixed CTA 가, BottomNav 가 숨겨진 상태에서는 키보드 위 60px 공중에 뜨게 되므로
+     offset 을 safe-area+12px 로 낮춰 키보드 바로 위(폼 CTA 표준 위치)에 붙인다. */
+  :root[data-keyboard-open] .bottom-fab-safe {
+    bottom: calc(
+      var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) + 0.75rem
+    );
+  }
+
+  /* 키보드 노출 중 숨김 공용 유틸 — 입력 중 쓸 일 없는 FAB 등 fixed 요소에 부여. */
+  :root[data-keyboard-open] .keyboard-hide {
+    display: none;
+  }
+
   /* prefers-reduced-motion 사용자: transition 제거 (접근성 — DESIGN.md §모션) */
   @media (prefers-reduced-motion: reduce) {
     .pb-keyboard-safe,

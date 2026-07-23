@@ -317,7 +317,7 @@ export default function VenueListPage() {
           type="button"
           onClick={() => navigate("/venue-manage")}
           aria-label={MESSAGES.venue.manageTitle}
-          className="fixed bottom-24 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-w-pill bg-it-blue-500 hover:bg-it-blue-600 text-white shadow-md hover:shadow-lg active:brightness-95 transition-all motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900"
+          className="keyboard-hide fixed bottom-24 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-w-pill bg-it-blue-500 hover:bg-it-blue-600 text-white shadow-md hover:shadow-lg active:brightness-95 transition-all motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900"
         >
           <Icon name="add" className="text-2xl" aria-hidden="true" />
         </button>
