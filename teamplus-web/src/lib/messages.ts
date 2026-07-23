@@ -1380,6 +1380,7 @@ export const MESSAGES = {
     unknown: "알 수 없음",
     processing: "처리 중...",
     goBack: "돌아가기",
+    delete: "삭제하기",
     loading: "불러오는 중...",
     loadFailed: "정보를 불러오지 못했습니다.",
     requiredField: "필수 항목을 모두 입력해주세요.",
@@ -3744,7 +3745,9 @@ export const MESSAGES = {
       "수업 정보는 저장됐지만 월 결제 반영에 실패했습니다. 월 결제를 다시 저장해주세요.",
     deferredDeleteHint:
       "월 결제 추가·수정·삭제는 ‘수정하기’를 눌러야 저장됩니다.",
+    unsavedLeaveTitle: "저장하지 않고 나갈까요?",
     unsavedLeaveConfirm:
       "저장하지 않은 월 결제 변경이 있습니다. 이 페이지를 벗어나면 변경 내용이 사라집니다.",
+    unsavedLeaveButton: "나가기",
   },
 } as const;

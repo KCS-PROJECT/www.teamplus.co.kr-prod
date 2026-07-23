@@ -5,7 +5,7 @@ import { MESSAGES } from '@/lib/messages';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal';
+import { Modal, ModalHeader, ModalBody, ModalFooter, ConfirmModal } from '@/components/ui/modal';
 import { cn } from '@/lib/utils';
 import { menuService, AppMenu } from '@/services/menu.service';
 import {
@@ -785,11 +785,12 @@ export default function AppMenusPage() {
     }
   }, [selectedUserType, loadMenus]);
 
-  // ── 탭 전환 시 미저장 변경 경고 ──────────────────────
+  // ── 탭 전환 시 미저장 변경 경고 — 공통 ConfirmModal (window.confirm 금지) ──
+  const [pendingTab, setPendingTab] = useState<MenuTabValue | null>(null);
   const handleTabChange = (tab: MenuTabValue) => {
     if (isDirty) {
-      const ok = window.confirm('저장하지 않은 변경 사항이 있습니다. 다른 탭으로 이동하면 변경 사항이 사라집니다. 계속하시겠습니까?');
-      if (!ok) return;
+      setPendingTab(tab);
+      return;
     }
     setSelectedUserType(tab);
   };
@@ -801,6 +802,19 @@ export default function AppMenusPage() {
 
   return (
     <div className="space-y-6 pb-10">
+      {/* 탭 전환 미저장 확인 */}
+      <ConfirmModal
+        isOpen={pendingTab !== null}
+        onClose={() => setPendingTab(null)}
+        onConfirm={() => {
+          if (pendingTab) setSelectedUserType(pendingTab);
+          setPendingTab(null);
+        }}
+        title={MESSAGES.menu.unsavedTabChangeTitle}
+        description={MESSAGES.menu.unsavedTabChangeBody}
+        confirmText={MESSAGES.menu.unsavedTabChangeConfirm}
+        variant="warning"
+      />
       {actionMsg && (
         <div className={`p-3 rounded-lg text-sm ${
           actionMsg.type === 'success'

@@ -19,6 +19,7 @@ import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
 import { Icon } from '@/components/ui/Icon';
 import { MESSAGES } from '@/lib/messages';
+import { useToast } from '@/components/ui/Toast';
 import { cn } from '@/lib/utils';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { usePageReady } from '@/hooks/usePageReady';
@@ -93,6 +94,8 @@ export default function VenueManagePage() {
     setSheetOpen(true);
   }, []);
 
+  const { toast } = useToast();
+
   const closeSheet = useCallback(() => {
     setSheetOpen(false);
     setEditingVenue(null);
@@ -105,9 +108,7 @@ export default function VenueManagePage() {
       if (sheetMode === 'create') {
         const result = await mutations.createVenue(payload);
         if (result.ok) {
-          if (typeof window !== 'undefined') {
-            window.alert(MESSAGES.venue.result.created);
-          }
+          toast.success(MESSAGES.venue.result.created);
           closeSheet();
         } else {
           setSaveError(result.message);
@@ -115,30 +116,26 @@ export default function VenueManagePage() {
       } else if (editingVenue) {
         const result = await mutations.updateVenue(editingVenue.id, payload);
         if (result.ok) {
-          if (typeof window !== 'undefined') {
-            window.alert(MESSAGES.venue.result.updated);
-          }
+          toast.success(MESSAGES.venue.result.updated);
           closeSheet();
         } else {
           setSaveError(result.message);
         }
       }
     },
-    [sheetMode, editingVenue, mutations, closeSheet],
+    [sheetMode, editingVenue, mutations, closeSheet, toast],
   );
 
   const handleDelete = useCallback(async () => {
     if (!editingVenue) return;
     const result = await mutations.deleteVenue(editingVenue.id);
     if (result.ok) {
-      if (typeof window !== 'undefined') {
-        window.alert(MESSAGES.venue.result.deleted);
-      }
+      toast.success(MESSAGES.venue.result.deleted);
       closeSheet();
     } else {
       setSaveError(result.message);
     }
-  }, [editingVenue, mutations, closeSheet]);
+  }, [editingVenue, mutations, closeSheet, toast]);
 
   /**
    * 이미지 업로드 핸들러 (edit 모드 전용)

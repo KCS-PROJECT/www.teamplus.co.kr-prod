@@ -20,6 +20,7 @@ import { PageAppBar } from "@/components/layout/PageAppBar";
 import { Icon } from "@/components/ui/Icon";
 import { useNavigation } from "@/components/ui/NavLink";
 import { MESSAGES } from "@/lib/messages";
+import { useToast } from "@/components/ui/Toast";
 import { useSessionAuth } from "@/hooks/useSessionAuth";
 import { useVenueDetail, useVenuePermissions } from "@/hooks/useVenues";
 import {
@@ -47,6 +48,7 @@ const DEFAULT_GRID_AMENITIES: VenueAmenity[] = [
 export default function VenueDetailPage({ params }: VenueDetailPageProps) {
   const { id } = use(params);
   const { navigate } = useNavigation();
+  const { toast } = useToast();
   const { user } = useSessionAuth();
   const permissions = useVenuePermissions();
   const { venue, isLoading, error, refresh } = useVenueDetail(id);
@@ -76,14 +78,12 @@ export default function VenueDetailPage({ params }: VenueDetailPageProps) {
     try {
       if (typeof navigator !== "undefined" && navigator.clipboard) {
         await navigator.clipboard.writeText(venue.address);
-        if (typeof window !== "undefined") {
-          window.alert(MESSAGES.venue.info.copiedAddress);
-        }
+        toast.success(MESSAGES.venue.info.copiedAddress);
       }
     } catch {
       // noop — 무시 (권한/http 환경 등)
     }
-  }, [venue?.address]);
+  }, [venue?.address, toast]);
 
   return (
     <MobileContainer hasBottomNav={false}>

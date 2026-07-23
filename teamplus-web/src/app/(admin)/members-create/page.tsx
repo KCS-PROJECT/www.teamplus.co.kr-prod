@@ -7,6 +7,7 @@ import { Icon } from '@/components/ui/Icon';
 import { Button } from '@/components/ui/Button';
 import { useNavigation } from '@/components/ui/NavLink';
 import { useToast } from '@/components/ui/Toast';
+import { useModal } from '@/components/ui/Modal';
 import { usePageReady } from '@/hooks/usePageReady';
 import { MESSAGES } from '@/lib/messages';
 
@@ -41,6 +42,7 @@ const ROLE_OPTIONS: Array<{
 export default function MemberCreatePage() {
   const { back } = useNavigation();
   const { toast } = useToast();
+  const { modal } = useModal();
   const nameId = useId();
   const phoneId = useId();
   const emailId = useId();
@@ -89,9 +91,12 @@ export default function MemberCreatePage() {
     }
   };
 
-  const handleCancel = () => {
+  const handleCancel = async () => {
     if (name || phone || email) {
-      const ok = window.confirm(MESSAGES.formCancel.confirmDiscard);
+      const ok = await modal.confirm({
+        message: MESSAGES.formCancel.confirmDiscard,
+        variant: 'danger',
+      });
       if (!ok) return;
     }
     back();

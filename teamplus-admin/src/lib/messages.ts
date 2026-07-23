@@ -95,6 +95,10 @@ export const MESSAGES = {
     cancelled: '변경 사항이 취소되었습니다.',
     resetSuccess: '기본 메뉴로 초기화했습니다.',
     resetError: '초기화에 실패했습니다.',
+    unsavedTabChangeTitle: '저장하지 않고 이동할까요?',
+    unsavedTabChangeBody:
+      '저장하지 않은 변경 사항이 있습니다. 다른 탭으로 이동하면 변경 사항이 사라집니다.',
+    unsavedTabChangeConfirm: '이동하기',
   },
   shopProduct: {
     deleted: '상품이 삭제되었습니다.',

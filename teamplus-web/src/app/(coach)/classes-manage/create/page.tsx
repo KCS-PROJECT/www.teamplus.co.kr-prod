@@ -13,6 +13,7 @@ import { useMyAcademies } from '@/hooks/useAcademy';
 import { NavLink, useNavigation } from '@/components/ui/NavLink';
 import { Icon } from '@/components/ui/Icon';
 import { useToast } from '@/components/ui/Toast';
+import { useModal } from '@/components/ui/Modal';
 import { MESSAGES } from '@/lib/messages';
 import { api } from '@/services/api-client';
 import {
@@ -129,6 +130,7 @@ function ClassCreatePageInner() {
   });
 
   const { toast } = useToast();
+  const { modal } = useModal();
 
   // [패키지 일괄 반영] 수정 모드 — 패키지(ClassProduct)를 로컬 보류했다가 '수정하기'에
   //   bulk 엔드포인트로 일괄 반영한다. (기존: 시트 저장 시 즉시 단건 API → 저장 시점 이원화 문제)
@@ -633,17 +635,24 @@ function ClassCreatePageInner() {
     return () => window.removeEventListener('beforeunload', handler);
   }, [productsDirty]);
 
-  // [이탈 가드 2/2] 앱 내 명시적 이탈(AppBar 뒤로가기) — dirty 면 확인 후 진행.
+  // [이탈 가드 2/2] 앱 내 명시적 이탈(AppBar 뒤로가기) — dirty 면 공통 ConfirmDialog 로
+  //   확인 후 진행 (window.confirm 은 OS 기본 다이얼로그라 디자인 가이드 위반 — useAppBack 규약).
   //   ※ Flutter 네이티브 하드웨어 뒤로가기는 DOM AppBar 를 거치지 않아 가로채지 못한다
-  //     (전역 route-change 인터셉트는 과도하여 미적용). beforeunload + 본 가드 + dirty 배너로
-  //     명시적 이탈 경로를 커버한다.
-  const handleBack = useCallback(() => {
-    if (productsDirty && typeof window !== 'undefined') {
-      const ok = window.confirm(MESSAGES.classProduct.unsavedLeaveConfirm);
+  //     (페이지 레벨 useAppBack 중복 등록은 signup 에서 확인된 시스템 백 회귀라 금지).
+  //     beforeunload + 본 가드 + dirty 배너로 명시적 이탈 경로를 커버한다.
+  const handleBack = useCallback(async () => {
+    if (productsDirty) {
+      const ok = await modal.confirm({
+        title: MESSAGES.classProduct.unsavedLeaveTitle,
+        message: MESSAGES.classProduct.unsavedLeaveConfirm,
+        confirmText: MESSAGES.classProduct.unsavedLeaveButton,
+        cancelText: MESSAGES.common.cancel,
+        variant: 'danger',
+      });
       if (!ok) return;
     }
     back();
-  }, [productsDirty, back]);
+  }, [productsDirty, modal, back]);
 
 
   return (

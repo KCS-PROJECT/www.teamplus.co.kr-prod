@@ -18,6 +18,7 @@ import { PageAppBar } from "@/components/layout/PageAppBar";
 import { Icon } from "@/components/ui/Icon";
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { useToast } from "@/components/ui/Toast";
+import { useModal } from "@/components/ui/Modal";
 import { usePageReady } from '@/hooks/usePageReady';
 import { useSessionAuth } from "@/hooks/useSessionAuth";
 import { cn } from "@/lib/utils";
@@ -42,6 +43,7 @@ export default function TeamGroupsListPage() {
   const router = useRouter();
   const { navigate } = useNavigation();
   const { toast } = useToast();
+  const { modal } = useModal();
   const { user } = useSessionAuth();
   const canManage = isTeamManager(user);
 
@@ -71,9 +73,12 @@ export default function TeamGroupsListPage() {
   }, [loadGroups]);
 
   const handleDelete = async (groupId: string, groupName: string) => {
-    if (!window.confirm(`'${groupName}' ${MESSAGES.team.groupDeleteConfirm}`)) {
-      return;
-    }
+    const ok = await modal.confirm({
+      message: `'${groupName}' ${MESSAGES.team.groupDeleteConfirm}`,
+      confirmText: MESSAGES.common.delete,
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
       await teamGroupService.delete(groupId);
       toast.success(MESSAGES.team.groupDeleteSuccess);
