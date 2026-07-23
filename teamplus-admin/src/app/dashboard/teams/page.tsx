@@ -125,12 +125,10 @@ export default function TeamsPage() {
                     <h3 className="text-lg font-bold text-slate-900 dark:text-white truncate">
                       {team.name}
                     </h3>
-                    {/* [수정 2026-05-12] 팀명 밑에 항상 팀코드 노출 — shortName(과거) 대신 teamCode 우선. */}
-                    {(team.teamCode || team.shortName || team.division) && (
+                    {/* [수정 2026-07-23] 팀명 밑에 팀코드만 노출 (division '2015-2021년생' 등 제거). */}
+                    {(team.teamCode || team.shortName) && (
                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                         {team.teamCode ?? team.shortName ?? ''}
-                        {(team.teamCode || team.shortName) && team.division ? ' · ' : ''}
-                        {team.division ?? ''}
                       </p>
                     )}
                   </div>

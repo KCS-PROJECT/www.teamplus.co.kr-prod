@@ -11,7 +11,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Users, Shield, Layers } from 'lucide-react';
+import { ArrowLeft, Users, Shield, Layers, ChevronDown, ChevronRight } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { api } from '@/services/api-client';
@@ -28,7 +28,18 @@ interface MemberItem {
     gender?: string | null;
     userType?: string | null;
     email?: string | null;
+    // [추가 2026-07-23] 학생(TEEN/CHILD)의 주 보호자(학부모) — 팀 상세 학부모/학생 표시용.
+    //   백엔드 getTeamMembers 가 매니저/ADMIN 조회 시 함께 내려줌(childParents, isPrimary).
+    childParents?: Array<{
+      parent?: {
+        id?: string | null;
+        firstName?: string | null;
+        lastName?: string | null;
+      } | null;
+    }> | null;
   } | null;
+  // [추가 2026-07-23] 소속 하위그룹 — 하위그룹명 클릭 시 매칭 선수 목록 펼침용.
+  teamGroupMembers?: Array<{ group?: { id?: string | null } | null }> | null;
 }
 
 interface TeamDetail {
@@ -57,6 +68,7 @@ export default function TeamDetailPage() {
 
   const [team, setTeam] = useState<TeamDetail | null>(null);
   const [members, setMembers] = useState<MemberItem[]>([]);
+  const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
   const [groups, setGroups] = useState<TeamGroupRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -141,6 +153,40 @@ export default function TeamDetailPage() {
   const parents = members.filter((m) => categorize(m) === 'parent').sort(sortByName);
   const students = members.filter((m) => categorize(m) === 'student').sort(sortByName);
 
+  // [추가 2026-07-23] 학생(자녀)의 주 보호자(학부모) 이름.
+  const parentNameOf = (m: MemberItem): string => {
+    const p = m.user?.childParents?.[0]?.parent;
+    if (!p) return '';
+    return `${p.lastName ?? ''}${p.firstName ?? ''}`.trim();
+  };
+  // 학부모 목록 = 팀멤버 학부모 + 팀 소속 학생들의 보호자(자녀 소속 따라 편입).
+  //   이름 기준으로 묶고, 각 학부모의 이 팀 소속 자녀 이름들을 함께 담는다.
+  const parentList = (() => {
+    const map = new Map<string, { id: string; name: string; children: string[] }>();
+    for (const m of parents) {
+      const name = (m.playerName ?? '').trim() || '이름 없음';
+      if (!map.has(name)) map.set(name, { id: m.id, name, children: [] });
+    }
+    for (const m of students) {
+      const name = parentNameOf(m);
+      if (!name) continue;
+      if (!map.has(name)) map.set(name, { id: `parent-${name}`, name, children: [] });
+      const child = (m.playerName ?? '').trim();
+      if (child) map.get(name)!.children.push(child);
+    }
+    return Array.from(map.values()).sort((a, b) =>
+      a.name.localeCompare(b.name, 'ko-KR'),
+    );
+  })();
+
+  // [추가 2026-07-23] 하위그룹에 매칭된 선수 목록 (teamGroupMembers 로 그룹 id 매칭).
+  const membersOfGroup = (groupId: string): MemberItem[] =>
+    students.filter((m) =>
+      (m.teamGroupMembers ?? []).some((gm) => gm.group?.id === groupId),
+    );
+  const toggleGroup = (id: string) =>
+    setExpandedGroupId((cur) => (cur === id ? null : id));
+
   return (
     <div className="space-y-6 pb-10">
       <Link href="/dashboard/teams" className="inline-flex items-center text-sm text-slate-500 hover:text-primary">
@@ -206,16 +252,18 @@ export default function TeamDetailPage() {
       <Card className="p-5">
         <div className="flex items-center gap-2 mb-3">
           <Users className="w-5 h-5 text-slate-500" />
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white">학부모 ({parents.length})</h2>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">학부모 ({parentList.length})</h2>
         </div>
-        {parents.length === 0 ? (
+        {parentList.length === 0 ? (
           <p className="text-sm text-slate-500 dark:text-slate-400">등록된 학부모가 없습니다.</p>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-            {parents.map((m) => (
-              <div key={m.id} className="rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs">
-                <p className="font-semibold text-slate-900 dark:text-white truncate">{m.playerName}</p>
-                <p className="text-slate-500 dark:text-slate-400 mt-0.5">학부모</p>
+            {parentList.map((p) => (
+              <div key={p.id} className="rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs">
+                <p className="font-semibold text-slate-900 dark:text-white truncate">{p.name}</p>
+                <p className="text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                  {p.children.length > 0 ? p.children.join(', ') : '학부모'}
+                </p>
               </div>
             ))}
           </div>
@@ -225,20 +273,23 @@ export default function TeamDetailPage() {
       <Card className="p-5">
         <div className="flex items-center gap-2 mb-3">
           <Users className="w-5 h-5 text-slate-500" />
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white">학생 ({students.length})</h2>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">선수 ({students.length})</h2>
         </div>
         {students.length === 0 ? (
-          <p className="text-sm text-slate-500 dark:text-slate-400">등록된 학생이 없습니다.</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">등록된 선수가 없습니다.</p>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-            {students.map((m) => (
-              <div key={m.id} className="rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs">
-                <p className="font-semibold text-slate-900 dark:text-white truncate">{m.playerName}</p>
-                <p className="text-slate-500 dark:text-slate-400 mt-0.5">
-                  {m.user?.gender === 'M' ? '남' : m.user?.gender === 'F' ? '여' : '-'} · {m.playerAge}세
-                </p>
-              </div>
-            ))}
+            {students.map((m) => {
+              const parentName = parentNameOf(m);
+              return (
+                <div key={m.id} className="rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs">
+                  <p className="font-semibold text-slate-900 dark:text-white truncate">{m.playerName}</p>
+                  <p className="text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                    {parentName ? `${parentName} · ` : ''}{m.playerAge}세
+                  </p>
+                </div>
+              );
+            })}
           </div>
         )}
       </Card>
@@ -253,19 +304,58 @@ export default function TeamDetailPage() {
           <p className="text-sm text-slate-500 dark:text-slate-400">등록된 하위 그룹이 없습니다.</p>
         ) : (
           <ul className="space-y-2">
-            {groups.map((g) => (
-              <li key={g.id} className="rounded-lg border border-slate-200 dark:border-slate-700 px-4 py-3 flex items-center justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-slate-900 dark:text-white">{g.name}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    {g.ageGroup ?? '-'} · 회원 {g._count?.members ?? 0}명
-                  </p>
-                </div>
-                <span className={`inline-flex items-center text-xs font-semibold px-2 py-1 rounded ${g.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                  {g.isActive ? '활성' : '비활성'}
-                </span>
-              </li>
-            ))}
+            {groups.map((g) => {
+              const groupMembers = membersOfGroup(g.id);
+              const isExpanded = expandedGroupId === g.id;
+              return (
+                <li key={g.id} className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(g.id)}
+                    aria-expanded={isExpanded}
+                    className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors motion-reduce:transition-none"
+                  >
+                    <div className="min-w-0 flex-1 flex items-center gap-2">
+                      {isExpanded ? (
+                        <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" aria-hidden="true" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" aria-hidden="true" />
+                      )}
+                      <div className="min-w-0">
+                        <p className="font-semibold text-slate-900 dark:text-white truncate">{g.name}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          선수 {groupMembers.length}명
+                        </p>
+                      </div>
+                    </div>
+                    <span className={`inline-flex items-center text-xs font-semibold px-2 py-1 rounded shrink-0 ${g.isActive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}>
+                      {g.isActive ? '활성' : '비활성'}
+                    </span>
+                  </button>
+                  {isExpanded && (
+                    <div className="px-4 pb-3 pt-2 border-t border-slate-100 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-900/20">
+                      {groupMembers.length === 0 ? (
+                        <p className="text-xs text-slate-400 dark:text-slate-500 py-1">매칭된 선수가 없습니다.</p>
+                      ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                          {groupMembers.map((m) => {
+                            const pn = parentNameOf(m);
+                            return (
+                              <div key={m.id} className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs">
+                                <p className="font-semibold text-slate-900 dark:text-white truncate">{m.playerName}</p>
+                                <p className="text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                                  {pn ? `${pn} · ` : ''}{m.playerAge}세
+                                </p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </Card>
