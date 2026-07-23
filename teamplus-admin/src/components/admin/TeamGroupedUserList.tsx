@@ -274,27 +274,24 @@ export function TeamGroupedUserList({
         m.set(key, arr);
       }
     }
-    // [학부모/선수 통합] 부모 펼침으로 보이는 자녀(선수)는 최상위 목록에서 제외 — 팀 카드별로.
-    //   (그 카드에 부모가 함께 있는 선수만 숨김. 부모가 없는 선수는 그대로 표시해 누락 방지.)
-    // 이어서 각 그룹 내 역할 우선 정렬(감독 → 오픈클래스 감독 → 코치).
+    // [학부모/선수 통합 · 2026-07-23] "학부모만 리스트에 표시, 클릭 시에만 자녀 노출".
+    //   목록에 로드된 PARENT 의 모든 자녀 id 를 전역 집합으로 모아, 어느 그룹에서든
+    //   top-level TEEN/CHILD 행을 숨긴다. (이전 로직은 같은 팀 카드에 부모가 함께 있는
+    //   자녀만 숨겨서, 팀 미배정 자녀 · 부모가 다른 팀 카드로 흩어진 자녀가 최상위로
+    //   새어나오는 문제가 있었음 — 블랭크테스트팀 스트테, 김자녀2/3 케이스.)
+    //   부모가 목록에 없는 orphan child 는 그대로 표시해 누락 방지.
+    const mappedChildIds = new Set<string>();
+    for (const u of filteredUsers) {
+      if (u.userType !== 'PARENT') continue;
+      for (const k of u.children ?? []) mappedChildIds.add(k.id);
+    }
+    // 각 그룹 내 역할 우선 정렬(감독 → 오픈클래스 감독 → 코치).
     for (const [key, arr] of m.entries()) {
-      const teamId =
-        key === '__none__' || key.startsWith('academy:') ? null : key;
-      const parentChildIds = new Set<string>();
-      for (const u of arr) {
-        if (u.userType !== 'PARENT') continue;
-        for (const k of u.children ?? []) {
-          // 이 카드(팀)에 소속된 자녀만 — 자녀가 여러 팀이어도 카드별로 분리.
-          if (!teamId || (k.teamIds ?? []).includes(teamId)) {
-            parentChildIds.add(k.id);
-          }
-        }
-      }
       const filtered = arr.filter(
         (u) =>
           !(
             (u.userType === 'TEEN' || u.userType === 'CHILD') &&
-            parentChildIds.has(u.id)
+            mappedChildIds.has(u.id)
           ),
       );
       filtered.sort(sortByRole);
@@ -659,7 +656,10 @@ function UserRow({
   const isStudent =
     user.userType === 'TEEN' || user.userType === 'CHILD' || roleLabel === '학생';
   const kids = user.children ?? [];
-  // 이 팀 카드에 소속된 자녀만 (미지정/오픈클래스 그룹은 전체)
+  // [2026-07-23] 부모 펼침 = 이 카드(팀) 소속 자녀만 노출.
+  //   원칙: 부모는 자녀 소속 팀마다 중복 표시되어도, 자녀는 각자의 팀에만 노출.
+  //   예) 신부모 → 블리자드테스트팀 카드에는 [신선수·임선수·신학생], 블랭크테스트팀 카드에는 [스트테].
+  //   미지정·오픈클래스(academy) 카드에서는 groupTeamId 가 없어 전체 자녀 표시(폴백).
   const visibleKids = groupTeamId
     ? kids.filter((k) => (k.teamIds ?? []).includes(groupTeamId))
     : kids;

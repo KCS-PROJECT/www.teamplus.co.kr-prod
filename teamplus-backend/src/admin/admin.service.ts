@@ -226,12 +226,18 @@ export class AdminService {
           );
 
         // 우선순위: 본인 팀(직접 가입) + 운영 팀(감독) > 부모 팀(학생) > 자녀 팀(학부모)
+        // [수정 2026-07-23] PARENT 는 본인 팀(레거시 role_in_team='PARENT' 매핑) + 자녀 팀 을 항상 UNION.
+        //   레거시 데이터로 부모가 특정 팀에 team_member 로 남아 있으면 폴백이 걸리지 않아, 자녀가 다른
+        //   팀에 있는 케이스에서 부모 카드가 그 팀에 안 나오는 버그가 발생(예: 신부모 → 블리자드 own +
+        //   스트테 블랭크, 이전엔 블리자드만 노출). 부모는 자녀 소속 팀 모두에 함께 표시되어야 함.
         const primaryTeams =
-          ownTeams.length || managedTeamsList.length
-            ? [...ownTeams, ...managedTeamsList]
-            : parentTeams.length
-              ? parentTeams
-              : childTeams;
+          u.userType === "PARENT"
+            ? [...ownTeams, ...managedTeamsList, ...childTeams]
+            : ownTeams.length || managedTeamsList.length
+              ? [...ownTeams, ...managedTeamsList]
+              : parentTeams.length
+                ? parentTeams
+                : childTeams;
         // 중복 제거 (같은 팀 ID 한 번만)
         const teamMap = new Map<string, string>();
         for (const t of primaryTeams) teamMap.set(t.id, t.name);
