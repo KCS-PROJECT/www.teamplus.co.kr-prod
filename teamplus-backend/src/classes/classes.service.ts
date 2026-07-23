@@ -4619,6 +4619,7 @@ export class ClassesService {
       select: {
         id: true,
         classId: true,
+        billingMonth: true,
         class: { select: { id: true, teamId: true } },
       },
     });
@@ -4628,6 +4629,7 @@ export class ClassesService {
     if (product.class.teamId !== teamId) {
       throw new NotFoundException("수강권을 찾을 수 없습니다.");
     }
+    this.assertProductMonthMutable(product.billingMonth, "수정");
 
     const updated = await this.prisma.classProduct.update({
       where: { id: productId },
@@ -4698,6 +4700,7 @@ export class ClassesService {
       select: {
         id: true,
         classId: true,
+        billingMonth: true,
         class: { select: { teamId: true } },
         _count: {
           select: {
@@ -4713,6 +4716,7 @@ export class ClassesService {
     if (product.class.teamId !== teamId) {
       throw new NotFoundException("수강권을 찾을 수 없습니다.");
     }
+    this.assertProductMonthMutable(product.billingMonth, "삭제");
 
     const hasHistory =
       (product._count?.payments ?? 0) > 0 ||
@@ -4993,13 +4997,35 @@ export class ClassesService {
         "판매 대상 달의 월 정기권이 없습니다. 정기권 확인 후 다시 시도해주세요.",
       );
     }
-    const updated = await this.prisma.class.update({
-      where: { id: classId },
-      data: { salesOpenMonth: targetMonth },
-      select: { id: true, salesOpenMonth: true },
-    });
+    // 판매 시작 = 그 달 상품 확정. 대상월 갱신분이 있는 수업(월별 체계 도입)은
+    //   미갱신 무월(레거시) 정기권을 같은 트랜잭션에서 판매 중단한다 — 무월은 월 필터를
+    //   우회해 상시 노출되므로, 안 하면 "갱신 안 함 = 이번 달 판매 안 함" 선택이 무시되고
+    //   새 월분과 중복 노출된다. 무월만 있는 수업은 폴백 판매(§9.2 점진 전환) 유지.
+    const { updated, retiredLegacyCount } = await this.prisma.$transaction(
+      async (tx) => {
+        const cls = await tx.class.update({
+          where: { id: classId },
+          data: { salesOpenMonth: targetMonth },
+          select: { id: true, salesOpenMonth: true },
+        });
+        let retired = 0;
+        if (hasTargetMonthPkg) {
+          const res = await tx.classProduct.updateMany({
+            where: {
+              classId,
+              feeType: "MONTHLY_FIXED",
+              isActive: true,
+              billingMonth: null,
+            },
+            data: { isActive: false },
+          });
+          retired = res.count;
+        }
+        return { updated: cls, retiredLegacyCount: retired };
+      },
+    );
     this.logger.log(
-      `[AUDIT] 판매 시작: classId=${classId}, salesOpenMonth=${targetMonth.toISOString().slice(0, 10)}, by=${userId}(${userType})`,
+      `[AUDIT] 판매 시작: classId=${classId}, salesOpenMonth=${targetMonth.toISOString().slice(0, 10)}, 무월 레거시 판매중단=${retiredLegacyCount}건, by=${userId}(${userType})`,
     );
     if (ownerType === "team") {
       await this.invalidateClassCache(ownerId);
@@ -5099,11 +5125,12 @@ export class ClassesService {
     // 패키지 소속 확인 (cross-class 차단)
     const product = await this.prisma.classProduct.findUnique({
       where: { id: productId },
-      select: { id: true, classId: true },
+      select: { id: true, classId: true, billingMonth: true },
     });
     if (!product || product.classId !== classId) {
       throw new NotFoundException("수강권을 찾을 수 없습니다.");
     }
+    this.assertProductMonthMutable(product.billingMonth, "수정");
 
     const updated = await this.prisma.classProduct.update({
       where: { id: productId },
@@ -5181,12 +5208,14 @@ export class ClassesService {
       select: {
         id: true,
         classId: true,
+        billingMonth: true,
         _count: { select: { payments: true, enrollments: true } },
       },
     });
     if (!product || product.classId !== classId) {
       throw new NotFoundException("수강권을 찾을 수 없습니다.");
     }
+    this.assertProductMonthMutable(product.billingMonth, "삭제");
 
     const hasHistory =
       (product._count?.payments ?? 0) > 0 ||
@@ -5217,6 +5246,27 @@ export class ClassesService {
    *   - totalSessions ≥ weeks (최소 주 1회)
    *   - totalSessions ≤ weeks × 14
    */
+  /**
+   * [Lifecycle v4.1 §9.2 이력 불가침] 지난 월분 패키지 mutation 가드.
+   *   billingMonth 가 이번 KST 달 이전인 row 는 그 달의 판매 기록이므로 수정/삭제를 거부한다
+   *   (지난 회차 일정 잠금과 동일 원칙). 무월(레거시)·이번 달·미래 달은 대상 아님.
+   */
+  private assertProductMonthMutable(
+    billingMonth: Date | null | undefined,
+    action: "수정" | "삭제",
+  ): void {
+    if (!billingMonth) return;
+    const today = kstTodayUtcMidnight();
+    const currentMonthStart = new Date(
+      Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1),
+    );
+    if (billingMonth.getTime() < currentMonthStart.getTime()) {
+      throw new BadRequestException(
+        `지난 월분 수강권은 ${action}할 수 없습니다. 판매 이력 보존을 위해 잠겨 있어요.`,
+      );
+    }
+  }
+
   private assertMonthlyFixedSessions(
     productName: string,
     totalSessions: number,
@@ -5336,12 +5386,14 @@ export class ClassesService {
           select: {
             id: true,
             classId: true,
+            billingMonth: true,
             _count: { select: { payments: true, enrollments: true } },
           },
         });
         if (!product || product.classId !== classId) {
           throw new NotFoundException("수강권을 찾을 수 없습니다.");
         }
+        this.assertProductMonthMutable(product.billingMonth, "삭제");
         const hasHistory =
           (product._count?.payments ?? 0) > 0 ||
           (product._count?.enrollments ?? 0) > 0;
@@ -5370,16 +5422,26 @@ export class ClassesService {
               ...(item.sessionsPerWeek !== undefined && {
                 sessionsPerWeek: item.sessionsPerWeek,
               }),
+              // [Lifecycle v4.1 §9.2] 귀속월 — "YYYY-MM" → 그 달 1일(@db.Date, UTC 자정).
+              //   단건 createClassProductByClassId 와 동일 규칙. 생성 후 불변이라 create 에만 적용.
+              ...(item.billingMonth
+                ? {
+                    billingMonth: new Date(
+                      `${item.billingMonth}-01T00:00:00.000Z`,
+                    ),
+                  }
+                : {}),
             },
           });
         } else {
           const existing = await tx.classProduct.findUnique({
             where: { id: item.id },
-            select: { id: true, classId: true },
+            select: { id: true, classId: true, billingMonth: true },
           });
           if (!existing || existing.classId !== classId) {
             throw new NotFoundException("수강권을 찾을 수 없습니다.");
           }
+          this.assertProductMonthMutable(existing.billingMonth, "수정");
           await tx.classProduct.update({
             where: { id: item.id },
             data: {
@@ -5392,6 +5454,9 @@ export class ClassesService {
               ...(item.sessionsPerWeek !== undefined && {
                 sessionsPerWeek: item.sessionsPerWeek,
               }),
+              // 무월(레거시) 원본 비활성 전환 — 월분 갱신과 같은 트랜잭션에서 처리해
+              //   부분 실패(새 월분만 생성·무월 중복 노출) 상태를 차단한다.
+              ...(item.isActive !== undefined && { isActive: item.isActive }),
             },
           });
         }

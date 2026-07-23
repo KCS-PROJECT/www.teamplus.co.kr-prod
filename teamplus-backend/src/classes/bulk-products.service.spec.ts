@@ -233,6 +233,90 @@ describe("ClassesService.bulkUpsertClassProducts", () => {
       }),
     ).rejects.toThrow(NotFoundException);
   });
+
+  it("지난 월분 row 는 update/delete 모두 거부한다 (이력 불가침)", async () => {
+    const pastMonth = new Date("2020-01-01T00:00:00.000Z");
+
+    // update 시도 — 지난 월분
+    tx.classProduct.findUnique.mockResolvedValueOnce({
+      id: "past-1",
+      classId,
+      billingMonth: pastMonth,
+    });
+    await expect(
+      service.bulkUpsertClassProducts(userId, "COACH", classId, {
+        upserts: [
+          {
+            id: "past-1",
+            productName: "지난 월분",
+            price: 100000,
+            feeType: "MONTHLY_FIXED",
+            sessionsPerMonth: 0,
+          },
+        ],
+        deleteIds: [],
+      }),
+    ).rejects.toThrow(BadRequestException);
+    expect(tx.classProduct.update).not.toHaveBeenCalled();
+
+    // delete 시도 — 지난 월분
+    tx.classProduct.findUnique.mockResolvedValueOnce({
+      id: "past-2",
+      classId,
+      billingMonth: pastMonth,
+      _count: { payments: 0, enrollments: 0 },
+    });
+    await expect(
+      service.bulkUpsertClassProducts(userId, "COACH", classId, {
+        upserts: [],
+        deleteIds: ["past-2"],
+      }),
+    ).rejects.toThrow(BadRequestException);
+    expect(tx.classProduct.delete).not.toHaveBeenCalled();
+  });
+
+  it("월분 갱신 — billingMonth 는 create 에 UTC 자정으로 매핑, isActive 는 update 에만 반영", async () => {
+    // 무월(레거시) 원본 update 대상 소속 확인
+    tx.classProduct.findUnique.mockResolvedValueOnce({
+      id: "legacy-1",
+      classId,
+    });
+
+    await service.bulkUpsertClassProducts(userId, "COACH", classId, {
+      upserts: [
+        {
+          productName: "월 결제",
+          price: 200000,
+          feeType: "MONTHLY_FIXED",
+          sessionsPerMonth: 0,
+          durationDays: 30,
+          billingMonth: "2026-08",
+        },
+        {
+          id: "legacy-1",
+          productName: "월 결제",
+          price: 200000,
+          feeType: "MONTHLY_FIXED",
+          sessionsPerMonth: 0,
+          durationDays: 30,
+          isActive: false,
+        },
+      ],
+      deleteIds: [],
+    });
+
+    // create — "YYYY-MM" → 그 달 1일 UTC 자정 (@db.Date 규약, 단건 생성과 동일).
+    const createData = tx.classProduct.create.mock.calls[0][0].data;
+    expect(createData.billingMonth).toEqual(
+      new Date("2026-08-01T00:00:00.000Z"),
+    );
+    // update — 무월 레거시 비활성 전환. billingMonth 는 생성 후 불변이라 update 에 미전송.
+    const updCall = tx.classProduct.update.mock.calls.find(
+      ([arg]) => arg?.where?.id === "legacy-1",
+    );
+    expect(updCall?.[0].data.isActive).toBe(false);
+    expect(updCall?.[0].data.billingMonth).toBeUndefined();
+  });
 });
 
 /**
@@ -267,5 +351,20 @@ describe("BulkClassProductsDto feeType 검증", () => {
       const errors = await validate(dto, { whitelist: true });
       expect(errors).toHaveLength(0);
     }
+  });
+
+  it("billingMonth 는 YYYY-MM 형식만 허용한다", async () => {
+    const bad = plainToInstance(BulkClassProductsDto, {
+      upserts: [{ ...base, feeType: "MONTHLY_FIXED", billingMonth: "2026-8" }],
+      deleteIds: [],
+    });
+    const badErrors = await validate(bad, { whitelist: true });
+    expect(JSON.stringify(badErrors)).toContain("billingMonth");
+
+    const ok = plainToInstance(BulkClassProductsDto, {
+      upserts: [{ ...base, feeType: "MONTHLY_FIXED", billingMonth: "2026-08" }],
+      deleteIds: [],
+    });
+    expect(await validate(ok, { whitelist: true })).toHaveLength(0);
   });
 });

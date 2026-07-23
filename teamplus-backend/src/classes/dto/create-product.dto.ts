@@ -17,10 +17,11 @@ export class CreateClassProductDto {
   @IsString({ message: "상품 이름은 문자열이어야 합니다." })
   productName!: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: "주 2회 수업 (1개월)",
     description: "상품 설명",
   })
+  @IsOptional()
   @IsString({ message: "상품 설명은 문자열이어야 합니다." })
   description?: string;
 

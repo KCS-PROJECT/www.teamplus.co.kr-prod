@@ -58,6 +58,27 @@ export const MESSAGES = {
       pendingBannerAria: "판매 준비",
       priceInputAria: (name: string, month: number) =>
         `${name} ${month}월 금액`,
+      // 수정 폼 월 결제 월분 갱신 — 구 월분/무월 row 를 대상월 신규 row 로 저장 시 생성.
+      monthTag: (month: number) => `${month}월분`,
+      renewButton: (month: number) => `${month}월분으로 갱신하기`,
+      renewScheduledBadge: (month: number) => `${month}월분 갱신 예정`,
+      renewCancelButton: "갱신 취소",
+      renewSectionHint: (month: number) =>
+        `${month}월 일정이 등록되었어요. 월 결제를 ${month}월분으로 갱신한 뒤 저장하면 판매를 준비할 수 있어요.`,
+      // 수정 완료 페이지 — 판매 승인 대기 수업의 즉시 판매 시작.
+      completeOpenSalesTitle: (month: number) => `${month}월 판매 시작`,
+      completeOpenSalesGuide:
+        "일정과 월 결제가 준비되었습니다. 지금 바로 판매를 시작할 수 있어요. 새 달분으로 갱신하지 않은 이전 월 결제는 판매가 중단됩니다.",
+      completeOpenSalesDone:
+        "판매가 시작되었습니다. 이제 학부모가 이 수업을 신청할 수 있어요.",
+      // 이력 잠금(지난 월분·판매 중지분) — 수정/삭제 불가, 기본 접힘.
+      pastLockedShow: (n: number) => `판매가 끝난 월 결제 ${n}건 보기`,
+      pastLockedHide: "판매가 끝난 월 결제 접기",
+      pastLockedHint:
+        "판매가 끝난 월 결제는 이력 보존을 위해 수정하거나 삭제할 수 없어요.",
+      pastLockedListAria: "판매가 끝난 월 결제 (읽기 전용)",
+      renewNeedScheduleHint:
+        "다음 달 일정을 등록하면 월 결제를 새 달분으로 갱신할 수 있어요.",
     },
     endConfirmTitle: "수업을 종료할까요?",
     endConfirmMessage:

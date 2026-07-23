@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useModal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
+import { localTodayISO } from '@/hooks/useClassForm';
 import { MESSAGES } from '@/lib/messages';
 import {
   listClassProducts,
@@ -38,6 +39,12 @@ export interface DraftProduct {
   sessionsPerWeek?: number;
   durationDays?: number;
   description?: string;
+  /** 귀속월 "YYYY-MM" (서버 로드 값) — null/undefined = 무월(레거시). */
+  billingMonth?: string | null;
+  /** 활성 여부 (서버 로드 값) — false = 판매 중지(soft delete·월별 편입 중단된 무월 레거시). */
+  isActive?: boolean;
+  /** 월분 갱신 마킹 "YYYY-MM" — 저장 시 이 달의 신규 row 로 생성(원본은 이력 보존). */
+  renewToMonth?: string;
   /** 삭제 마킹 (기존 항목) — 목록에서 시각적으로 제거. */
   _deleted?: boolean;
 }
@@ -60,6 +67,9 @@ export function productToDraft(p: ClassProductDto): DraftProduct {
     sessionsPerWeek: p.sessionsPerWeek ?? undefined,
     durationDays: p.durationDays ?? undefined,
     description: p.description ?? undefined,
+    // 서버 billingMonth 는 풀 ISO 직렬화 — 월분 비교용 "YYYY-MM" 로 정규화.
+    billingMonth: p.billingMonth ? p.billingMonth.slice(0, 7) : null,
+    isActive: p.isActive,
   };
 }
 
@@ -89,6 +99,17 @@ interface PackageManageSectionProps {
    *   true 시 it-* 토큰(추가 버튼·행·안내 배너)으로 교체.
    */
   iceTheme?: boolean;
+  /**
+   * [Lifecycle v4.1 §9.2] 판매 승인 대기 수업의 대상월 "YYYY-MM" (deferred 전용).
+   *   전달 시 대상월분이 없는 정액(MONTHLY_FIXED) 상품에 "N월분으로 갱신하기" 를 노출하고,
+   *   신규 추가 정액 상품에도 대상월을 자동 마킹한다. null/미전달 = 갱신 UI 없음(기존 동작).
+   */
+  renewalTargetMonth?: string | null;
+  /**
+   * 판매 승인 대기 여부 — 대상월이 아직 없어도(잔여 일정 0) 구 정기권(무월·지난 월분)의
+   * 수정/삭제를 잠근다. 일정 등록 후 renewalTargetMonth 가 생기면 갱신 버튼이 나타난다.
+   */
+  salesPendingLock?: boolean;
 }
 
 function formatPrice(n: number): string {
@@ -106,6 +127,8 @@ export function PackageManageSection({
   variant = 'card',
   excludePerSession = false,
   iceTheme = false,
+  renewalTargetMonth = null,
+  salesPendingLock = false,
 }: PackageManageSectionProps) {
   const { toast } = useToast();
   const { modal } = useModal();
@@ -125,6 +148,8 @@ export function PackageManageSection({
     null,
   );
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+  // [이력 불가침] 지난 월분(이번 달 이전 billingMonth) — 기본 접힘, 펼침 토글.
+  const [showPastPkgs, setShowPastPkgs] = useState(false);
 
   const refresh = useCallback(async () => {
     if (isDeferred || !classId) return;
@@ -217,7 +242,8 @@ export function PackageManageSection({
         ),
       );
     } else {
-      // 신규 추가.
+      // 신규 추가 — 판매 승인 대기(대상월 有) 중 추가되는 정액 상품은 대상월을 자동 마킹해
+      //   무월(레거시) row 로 생성되는 것을 막는다(무월은 월 필터를 우회해 상시 노출됨).
       onChange([
         ...list,
         {
@@ -230,9 +256,64 @@ export function PackageManageSection({
           sessionsPerWeek: draft.sessionsPerWeek,
           durationDays: draft.durationDays,
           description: draft.description,
+          ...(renewalTargetMonth && draft.feeType === 'MONTHLY_FIXED'
+            ? { renewToMonth: renewalTargetMonth }
+            : {}),
         },
       ]);
     }
+  };
+
+  // ── [Lifecycle v4.1 §9.2] 월분 갱신 (deferred + renewalTargetMonth 전용) ──
+  //   대상월 row 가 이미 확보된 상품명(기존 대상월 row·갱신 마킹·신규 draft)은 제외하고,
+  //   이름별 "최신 분"(월 내림차순, 무월=가장 오래됨) 1건에만 갱신 버튼을 노출한다
+  //   — 수업 상세 판매 준비 배너의 needsUpdate 게이트와 동일 규칙.
+  const renewedNames = new Set(
+    renewalTargetMonth
+      ? (value ?? [])
+          .filter(
+            (d) =>
+              !d._deleted &&
+              d.isActive !== false &&
+              d.feeType === 'MONTHLY_FIXED' &&
+              (d.renewToMonth === renewalTargetMonth ||
+                d.billingMonth === renewalTargetMonth),
+          )
+          .map((d) => d.productName)
+      : [],
+  );
+  const renewableKeys = (() => {
+    const keys = new Set<string>();
+    if (!isDeferred || !renewalTargetMonth) return keys;
+    const seen = new Set<string>();
+    const byLatestMonth = [...(value ?? [])]
+      .filter(
+        (d) =>
+          !d._deleted &&
+          d.isActive !== false &&
+          d.feeType === 'MONTHLY_FIXED' &&
+          d.serverId,
+      )
+      .sort((a, b) =>
+        (b.billingMonth ?? '').localeCompare(a.billingMonth ?? ''),
+      );
+    for (const d of byLatestMonth) {
+      if (renewedNames.has(d.productName) || seen.has(d.productName)) continue;
+      seen.add(d.productName);
+      keys.add(d.localKey);
+    }
+    return keys;
+  })();
+
+  const handleRenewToggle = (d: DraftProduct, on: boolean) => {
+    if (!onChange || !renewalTargetMonth) return;
+    onChange(
+      (value ?? []).map((item) =>
+        item.localKey === d.localKey
+          ? { ...item, renewToMonth: on ? renewalTargetMonth : undefined }
+          : item,
+      ),
+    );
   };
 
   // ── 렌더용 정규화 목록 (모드별) ──
@@ -257,6 +338,36 @@ export function PackageManageSection({
         )
     : [];
 
+  // [이력 불가침] 이력 판정 — ① 이번 달(로컬 KST) 이전 귀속월 ② 비활성(soft delete·
+  //   월별 편입으로 판매 중단된 무월 레거시). 갱신 대상(이름별 최신 분)·갱신 마킹 row 는
+  //   액션이 남아 있으므로 본 목록에 유지하고, 그 외 순수 이력만 접힘 그룹으로 분리한다.
+  //   수정/삭제는 FE 숨김 + (지난 월분은) BE 가드 이중 차단.
+  const nowMonthKey = localTodayISO().slice(0, 7);
+  const isPastLocked = (d: DraftProduct): boolean =>
+    Boolean(d.serverId && d.billingMonth && d.billingMonth < nowMonthKey);
+  const isRetired = (d: DraftProduct): boolean =>
+    Boolean(d.serverId && d.isActive === false);
+  // 판매 승인 대기 중에는 무월(레거시) 기존 정기권도 "갱신만" 허용 — 수정/삭제 숨김.
+  //   구 상품 가격 변경은 갱신하기(대상월 신규 row)로 반영하는 것이 월별 체계 정합.
+  //   이번 달 이후 월분 row 만 직접 수정 가능(판매 중 가격 조정). 대상월이 아직 없으면
+  //   (잔여 일정 0) 갱신 버튼 없이 잠금만 — 일정 등록 시 갱신 버튼이 나타난다.
+  const isRenewOnly = (d: DraftProduct): boolean =>
+    Boolean(
+      (renewalTargetMonth || salesPendingLock) &&
+        d.serverId &&
+        d.feeType === 'MONTHLY_FIXED' &&
+        !(d.billingMonth && d.billingMonth >= nowMonthKey),
+    );
+  const hideMutationsFor = (d: DraftProduct): boolean =>
+    isPastLocked(d) || isRetired(d) || isRenewOnly(d);
+  const mainDrafts = visibleDrafts.filter(
+    (d) =>
+      !(isPastLocked(d) || isRetired(d)) ||
+      renewableKeys.has(d.localKey) ||
+      Boolean(d.renewToMonth),
+  );
+  const historyDrafts = visibleDrafts.filter((d) => !mainDrafts.includes(d));
+
   const visibleProducts: ClassProductDto[] = !isDeferred
     ? [...products]
         .filter((p) => !excludePerSession || p.feeType !== 'PER_SESSION')
@@ -271,7 +382,7 @@ export function PackageManageSection({
     : [];
 
   const isEmpty = isDeferred
-    ? visibleDrafts.length === 0
+    ? mainDrafts.length === 0
     : visibleProducts.length === 0;
 
   // [Phase B-6 / F5] 정액(MONTHLY_FIXED) 패키지 존재 여부 — 감독 정액 수정 안내 노출 조건.
@@ -415,6 +526,49 @@ export function PackageManageSection({
         </div>
       )}
 
+      {/* 판매 대기 + 일정 미등록 — 구 정기권은 잠겨 있고 갱신은 일정 등록 후 가능함을 안내. */}
+      {isDeferred &&
+        !renewalTargetMonth &&
+        salesPendingLock &&
+        mainDrafts.some((d) => isRenewOnly(d)) && (
+          <div
+            role="note"
+            className={
+              iceTheme
+                ? 'mb-3 rounded-w-md bg-it-fill dark:bg-rink-700/50 px-3 py-2.5'
+                : 'mb-3 rounded-w-lg bg-wbg dark:bg-rink-700/50 px-3 py-2.5'
+            }
+          >
+            <p
+              className={
+                iceTheme
+                  ? 'text-card-meta text-it-ink-500 dark:text-rink-300'
+                  : 'text-card-meta text-wtext-3 dark:text-rink-300'
+              }
+            >
+              {MESSAGES.class.salesCycle.renewNeedScheduleHint}
+            </p>
+          </div>
+        )}
+
+      {/* [Lifecycle v4.1 §9.2] 월분 갱신 안내 — 대상월분 없는 정액 상품이 남아 있을 때. */}
+      {isDeferred && renewalTargetMonth && renewableKeys.size > 0 && (
+        <div
+          role="note"
+          className={
+            iceTheme
+              ? 'mb-3 rounded-w-md bg-amber-50 dark:bg-amber-900/20 px-3 py-2.5'
+              : 'mb-3 rounded-w-lg bg-amber-50 dark:bg-amber-900/20 px-3 py-2.5'
+          }
+        >
+          <p className="text-card-meta text-amber-800 dark:text-amber-300">
+            {MESSAGES.class.salesCycle.renewSectionHint(
+              Number(renewalTargetMonth.slice(5, 7)),
+            )}
+          </p>
+        </div>
+      )}
+
       {!isDeferred && isLoading ? (
         <ul className="space-y-2" aria-busy="true">
           {[0, 1].map((i) => (
@@ -455,22 +609,65 @@ export function PackageManageSection({
       ) : (
         <ul className="space-y-2" role="list">
           {isDeferred
-            ? visibleDrafts.map((d) => (
-                <PackageRow
-                  key={d.localKey}
-                  name={d.productName}
-                  description={d.description}
-                  price={d.price}
-                  // deferred 로컬 항목은 비활성/구매가능 계산이 없으므로 항상 활성 표시.
-                  disabled={false}
-                  badge={null}
-                  readonly={readonly}
-                  canDelete={!isPostpaid}
-                  iceTheme={iceTheme}
-                  onEdit={() => handleEdit(d)}
-                  onDelete={() => handleDeleteDeferred(d)}
-                />
-              ))
+            ? mainDrafts.map((d) => {
+                const renewMonthNum = renewalTargetMonth
+                  ? Number(renewalTargetMonth.slice(5, 7))
+                  : null;
+                return (
+                  <PackageRow
+                    key={d.localKey}
+                    name={d.productName}
+                    description={d.description}
+                    price={d.price}
+                    // deferred 로컬 항목은 비활성/구매가능 계산이 없으므로 항상 활성 표시.
+                    disabled={false}
+                    badge={null}
+                    // 월분 표기 — 갱신 마킹 시 예정 배지, 아니면 귀속월 칩(무월은 표기 없음).
+                    monthBadge={
+                      !d.renewToMonth && d.billingMonth
+                        ? MESSAGES.class.salesCycle.monthTag(
+                            Number(d.billingMonth.slice(5, 7)),
+                          )
+                        : null
+                    }
+                    renewBadge={
+                      d.renewToMonth
+                        ? MESSAGES.class.salesCycle.renewScheduledBadge(
+                            Number(d.renewToMonth.slice(5, 7)),
+                          )
+                        : null
+                    }
+                    renewAction={
+                      !readonly &&
+                      renewMonthNum !== null &&
+                      renewableKeys.has(d.localKey)
+                        ? {
+                            label: MESSAGES.class.salesCycle.renewButton(
+                              renewMonthNum,
+                            ),
+                            onClick: () => handleRenewToggle(d, true),
+                          }
+                        : null
+                    }
+                    // 갱신 취소 — 기존 row 마킹만 해제 가능(신규 draft 는 취소 시 무월 생성이라 미노출).
+                    renewCancel={
+                      !readonly && d.renewToMonth && d.serverId
+                        ? {
+                            label: MESSAGES.class.salesCycle.renewCancelButton,
+                            onClick: () => handleRenewToggle(d, false),
+                          }
+                        : null
+                    }
+                    readonly={readonly}
+                    // 이력·갱신 전용 row(지난 월분·비활성·갱신 모드의 무월 레거시) — 수정/삭제 숨김.
+                    hideMutations={hideMutationsFor(d)}
+                    canDelete={!isPostpaid}
+                    iceTheme={iceTheme}
+                    onEdit={() => handleEdit(d)}
+                    onDelete={() => handleDeleteDeferred(d)}
+                  />
+                );
+              })
             : visibleProducts.map((p) => {
                 const disabled = !p.isPurchasable;
                 const badge =
@@ -494,6 +691,70 @@ export function PackageManageSection({
                 );
               })}
         </ul>
+      )}
+
+      {/* [이력 불가침] 지난 월분 이력 — 기본 접힘, 읽기 전용(수정/삭제 없음). */}
+      {isDeferred && historyDrafts.length > 0 && (
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={() => setShowPastPkgs((prev) => !prev)}
+            aria-expanded={showPastPkgs}
+            className={
+              iceTheme
+                ? 'text-card-meta font-semibold text-it-ink-500 dark:text-rink-300 underline underline-offset-2'
+                : 'text-card-meta font-semibold text-wtext-3 dark:text-rink-300 underline underline-offset-2'
+            }
+          >
+            {showPastPkgs
+              ? MESSAGES.class.salesCycle.pastLockedHide
+              : MESSAGES.class.salesCycle.pastLockedShow(historyDrafts.length)}
+          </button>
+          {showPastPkgs && (
+            <>
+              <p
+                className={
+                  iceTheme
+                    ? 'mt-2 text-card-caption text-it-ink-500 dark:text-rink-300'
+                    : 'mt-2 text-card-caption text-wtext-3 dark:text-rink-300'
+                }
+              >
+                {MESSAGES.class.salesCycle.pastLockedHint}
+              </p>
+              <ul
+                className="space-y-2 mt-2"
+                role="list"
+                aria-label={MESSAGES.class.salesCycle.pastLockedListAria}
+              >
+                {historyDrafts.map((d) => (
+                  <PackageRow
+                    key={d.localKey}
+                    name={d.productName}
+                    description={d.description}
+                    price={d.price}
+                    disabled
+                    badge={
+                      d.isActive === false
+                        ? MESSAGES.classProduct.badgeInactive
+                        : null
+                    }
+                    monthBadge={
+                      d.billingMonth
+                        ? MESSAGES.class.salesCycle.monthTag(
+                            Number(d.billingMonth.slice(5, 7)),
+                          )
+                        : null
+                    }
+                    readonly
+                    iceTheme={iceTheme}
+                    onEdit={() => undefined}
+                    onDelete={() => undefined}
+                  />
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
       )}
 
       {!readonly && (
@@ -528,6 +789,11 @@ function PackageRow({
   price,
   disabled,
   badge,
+  monthBadge = null,
+  renewBadge = null,
+  renewAction = null,
+  renewCancel = null,
+  hideMutations = false,
   readonly,
   canDelete = true,
   iceTheme = false,
@@ -540,6 +806,16 @@ function PackageRow({
   price: number;
   disabled: boolean;
   badge: string | null;
+  /** 귀속월 칩 (중성) — 예: "7월분". */
+  monthBadge?: string | null;
+  /** 월분 갱신 예정 칩 (강조) — 예: "8월분 갱신 예정". */
+  renewBadge?: string | null;
+  /** 월분 갱신 CTA — 행 하단 전폭 버튼. */
+  renewAction?: { label: string; onClick: () => void } | null;
+  /** 갱신 취소 — 액션 열 소형 버튼. */
+  renewCancel?: { label: string; onClick: () => void } | null;
+  /** [이력 불가침] 지난 월분 — 수정/삭제 버튼만 숨김(갱신 취소는 유지). */
+  hideMutations?: boolean;
   readonly: boolean;
   /** 삭제 버튼 노출 여부 — 후불 수업은 false(1회 수업료 상품 삭제 불가). */
   canDelete?: boolean;
@@ -581,6 +857,26 @@ function PackageRow({
                 {badge}
               </span>
             )}
+            {monthBadge && (
+              <span
+                className={
+                  iceTheme
+                    ? 'shrink-0 inline-flex items-center h-5 px-2 rounded-pill text-card-caption font-bold bg-it-fill text-it-ink-500 dark:bg-rink-700 dark:text-rink-200'
+                    : 'shrink-0 inline-flex items-center h-5 px-2 rounded-pill text-card-caption font-bold bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-200'
+                }
+                aria-label={monthBadge}
+              >
+                {monthBadge}
+              </span>
+            )}
+            {renewBadge && (
+              <span
+                className="shrink-0 inline-flex items-center h-5 px-2 rounded-pill text-card-caption font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                aria-label={renewBadge}
+              >
+                {renewBadge}
+              </span>
+            )}
           </div>
           {description && (
             <p
@@ -603,8 +899,9 @@ function PackageRow({
             {formatPrice(price)}원
           </p>
         </div>
-        {!readonly && (
+        {!readonly && (!hideMutations || renewCancel) && (
           <div className="shrink-0 flex flex-col gap-1.5">
+            {!hideMutations && (
             <button
               type="button"
               onClick={onEdit}
@@ -616,7 +913,8 @@ function PackageRow({
             >
               {MESSAGES.classProduct.rowEdit}
             </button>
-            {canDelete && (
+            )}
+            {!hideMutations && canDelete && (
               <button
                 type="button"
                 onClick={onDelete}
@@ -629,9 +927,36 @@ function PackageRow({
                 {MESSAGES.classProduct.rowDelete}
               </button>
             )}
+            {renewCancel && (
+              <button
+                type="button"
+                onClick={renewCancel.onClick}
+                className={
+                  iceTheme
+                    ? 'h-8 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-card-meta font-semibold text-it-ink-500 dark:text-rink-300 transition-colors motion-reduce:transition-none active:brightness-95'
+                    : 'h-8 px-3 rounded-w-lg border border-wline-2 dark:border-rink-700 bg-white dark:bg-rink-800 text-card-meta font-semibold text-wtext-3 dark:text-rink-300'
+                }
+              >
+                {renewCancel.label}
+              </button>
+            )}
           </div>
         )}
       </div>
+      {/* [Lifecycle v4.1 §9.2] 월분 갱신 CTA — 저장 시 대상월 신규 row 생성(draft 마킹). */}
+      {renewAction && (
+        <button
+          type="button"
+          onClick={renewAction.onClick}
+          className={
+            iceTheme
+              ? 'mt-2.5 w-full h-9 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-meta font-bold transition-colors motion-reduce:transition-none active:brightness-95'
+              : 'mt-2.5 w-full h-9 rounded-w-lg bg-ice-500 text-white text-card-meta font-bold'
+          }
+        >
+          {renewAction.label}
+        </button>
+      )}
     </li>
   );
 }

@@ -75,8 +75,17 @@ interface ClassFormProps {
   context?: 'team' | 'academy';
   // academy 컨텍스트일 때 코치 목록 조회용 오픈클래스 ID (team 모드에서는 무시).
   academyId?: string;
-  /** 수강료 섹션(수정 모드)에 렌더할 패키지 관리 노드. create 모드는 ClassForm 내부 1회권 입력을 사용. */
-  pricingSection?: React.ReactNode;
+  /** 수강료 섹션(수정 모드)에 렌더할 패키지 관리 노드. create 모드는 ClassForm 내부 1회권 입력을 사용.
+   *  함수형이면 폼 draft 일정에서 계산한 대상월(renewalTargetMonth)을 받아 렌더한다 —
+   *  판매 승인 대기 수업의 월 결제 월분 갱신 UI 용. */
+  pricingSection?:
+    | React.ReactNode
+    | ((ctx: {
+        renewalTargetMonth: string | null;
+        salesPending: boolean;
+      }) => React.ReactNode);
+  /** [Lifecycle v4.1 §9.2] 판매 승인 대기(PENDING_SCHEDULE) 수업 여부 — 대상월 계산 게이트. */
+  salesPending?: boolean;
   /** [등록 모드] 추가 패키지(정기권 등) deferred draft 목록. 선불일 때만 노출. */
   packageDraftValue?: DraftProduct[];
   /** [등록 모드] 추가 패키지 draft 변경 콜백. 미전달 시 등록 패키지 섹션 미노출. */
@@ -101,6 +110,7 @@ export function ClassForm({
   context = 'team',
   // [2026-06-04] academyId — 코치 조회 훅 제거로 현재 미사용 (prop 인터페이스는 호출처 호환 위해 유지).
   pricingSection,
+  salesPending = false,
   packageDraftValue,
   onPackageDraftChange,
   packageDirty = false,
@@ -428,6 +438,17 @@ export function ClassForm({
   const editableSchedules = formData.dateSchedules.filter(
     (s) => !isPastScheduleDate(s.date, todayISO),
   );
+  // [Lifecycle v4.1 §9.2] 판매 대상월 — draft 잔여 일정(지난 회차 제외)의 가장 이른 달.
+  //   서버 earliestRemainingMonth 파생과 동일 규칙(비취소·미래 일정 기준)을 draft 로 선계산해,
+  //   판매 승인 대기 수업의 수강료 섹션에 "N월분으로 갱신하기"를 즉시 노출한다.
+  const renewalTargetMonth = (() => {
+    if (mode !== 'edit' || !salesPending) return null;
+    const dates = editableSchedules
+      .map((s) => s.date)
+      .filter(Boolean)
+      .sort();
+    return dates.length > 0 ? dates[0].slice(0, 7) : null;
+  })();
   // 최신(currentYear-6) → 오래된(currentYear-12) 순. 미취학~초등 6학년 범위.
   const selectableBirthYears = useMemo(() => {
     const years: number[] = [];
@@ -1426,7 +1447,9 @@ export function ClassForm({
                     {errors.packages}
                   </p>
                 )}
-                {pricingSection}
+                {typeof pricingSection === 'function'
+                  ? pricingSection({ renewalTargetMonth, salesPending })
+                  : pricingSection}
               </>
             )}
           </section>
