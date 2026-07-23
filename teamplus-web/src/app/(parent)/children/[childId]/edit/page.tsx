@@ -666,8 +666,49 @@ export default function EditChildPage() {
             )}
           </section>
 
-          {/* [제거 2026-05-12] 위험 영역(자녀 삭제) — 어드민 전용으로 이관 */}
         </form>
+
+        {/* 8px 회색 갭 */}
+        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+
+        {/* 선수 삭제 섹션 — flat 흰 섹션 (다른 섹션과 동일 문법, 액센트만 red).
+            삭제는 주 액션(수정하기)과 분리해 스크롤 최하단 배치 — 하단 고정 바에
+            두면 키보드 위에 상주해 오탭 위험 (mypage 회원 탈퇴 분리 배치와 동일 취지). */}
+        <section
+          aria-labelledby="child-delete-heading"
+          className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6"
+        >
+          <h3
+            id="child-delete-heading"
+            className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white mb-1 flex items-center gap-2"
+          >
+            <span className="flex size-7 items-center justify-center rounded-w-md bg-it-red-50 dark:bg-it-red-500/15">
+              <Icon name="delete" className="text-[16px] text-it-red-500" aria-hidden="true" />
+            </span>
+            선수 삭제
+          </h3>
+          <p className="text-[13px] leading-relaxed text-it-ink-500 dark:text-rink-300">
+            삭제한 선수 정보는 복구할 수 없으며, 팀 소속과 기록도 함께
+            정리됩니다.
+          </p>
+          <Button
+            size="lg"
+            fullWidth
+            variant="outline"
+            onClick={handleDelete}
+            disabled={isSubmitting || isDeleting}
+            className="mt-4 border-it-red-500 text-it-red-500 hover:border-it-red-500 hover:bg-it-red-500/10 dark:border-it-red-500 dark:text-it-red-500 dark:hover:bg-it-red-500/15"
+          >
+            {isDeleting ? (
+              <span className="flex items-center justify-center gap-2">
+                <Icon name="progress_activity" className="animate-spin text-card-title motion-reduce:animate-none" aria-hidden="true" />
+                삭제 중...
+              </span>
+            ) : (
+              '선수 삭제하기'
+            )}
+          </Button>
+        </section>
       </div>
 
       {/* [2026-06-17] 하단 버튼 바 — fixed → flex 푸터 전환.
@@ -675,35 +716,17 @@ export default function EditChildPage() {
           MobileContainer(flex flex-col) 의 정상 흐름 푸터(shrink-0)로 변경해 스크롤 영역(flex-1)
           아래에 확실히 고정. safe-area 는 paddingBottom 으로 직접 보정. */}
       <div
-        className="shrink-0 grid grid-cols-5 gap-2 px-4 pt-3 w-full min-w-0 border-t border-it-line dark:border-rink-700 bg-it-surface dark:bg-puck"
+        className="shrink-0 px-4 pt-3 w-full min-w-0 border-t border-it-line dark:border-rink-700 bg-it-surface dark:bg-puck"
         style={{
           paddingBottom:
             'calc(12px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))',
         }}
       >
-        {/* [2026-06-17] 선수삭제 — 위험 동작(빨강 outline), 2:3 비율로 수정하기 옆 배치. */}
-        <Button
-          size="lg"
-          variant="outline"
-          onClick={handleDelete}
-          disabled={isSubmitting || isDeleting}
-          className="col-span-2 border-it-red-500 text-it-red-500 hover:border-it-red-500 hover:bg-it-red-500/10 dark:border-it-red-500 dark:text-it-red-500 dark:hover:bg-it-red-500/15"
-        >
-          {isDeleting ? (
-            <span className="flex items-center justify-center gap-2">
-              <Icon name="progress_activity" className="animate-spin text-card-title motion-reduce:animate-none" aria-hidden="true" />
-              삭제 중...
-            </span>
-          ) : (
-            '선수삭제'
-          )}
-        </Button>
         <Button
           size="lg"
           fullWidth
           onClick={handleSubmit}
           disabled={isSubmitting || isDeleting}
-          className="col-span-3"
         >
           {isSubmitting ? (
             <span className="flex items-center justify-center gap-2">
