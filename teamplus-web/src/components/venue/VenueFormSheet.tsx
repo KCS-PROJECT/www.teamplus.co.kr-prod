@@ -21,6 +21,7 @@ import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import { Icon } from '@/components/ui/Icon';
 import { TimePicker } from '@/components/ui/TimePicker';
+import { useModal } from '@/components/ui/Modal';
 import { useNativeScrim } from '@/hooks/useNativeScrim';
 import { MESSAGES } from '@/lib/messages';
 import { cn } from '@/lib/utils';
@@ -111,6 +112,7 @@ export function VenueFormSheet({
   //   BottomSheet 류는 `bottom: false` — 시트 카드가 화면 하단까지 차지.
   //   SoT: docs/Design/MODAL_DIM_POLICY.md
   useNativeScrim(open, undefined, { bottom: false });
+  const { modal } = useModal();
 
   // ids for a11y
   const nameId = useId();
@@ -394,10 +396,15 @@ export function VenueFormSheet({
   );
 
   const handleDelete = useCallback(async () => {
-    if (typeof window === 'undefined') return;
-    if (!window.confirm(MESSAGES.venue.result.deleteConfirm)) return;
+    const ok = await modal.confirm({
+      message: MESSAGES.venue.result.deleteConfirm,
+      confirmText: MESSAGES.venue.actions.delete,
+      cancelText: MESSAGES.venue.actions.cancel,
+      variant: 'danger',
+    });
+    if (!ok) return;
     await onDelete?.();
-  }, [onDelete]);
+  }, [onDelete, modal]);
 
   if (!shouldRender || !mounted) return null;
 

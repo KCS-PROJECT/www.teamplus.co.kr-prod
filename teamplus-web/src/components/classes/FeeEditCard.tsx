@@ -30,6 +30,10 @@ interface FeeEditCardProps {
   packageDirty?: boolean;
   /** 비매니저(학부모·학생) 진입 시 읽기전용. */
   readonly?: boolean;
+  /** [Lifecycle v4.1 §9.2] 판매 승인 대기 수업의 대상월 "YYYY-MM" — 월분 갱신 UI 게이트. */
+  renewalTargetMonth?: string | null;
+  /** 판매 승인 대기 여부 — 대상월 없어도(잔여 일정 0) 구 정기권 수정/삭제를 잠근다. */
+  salesPendingLock?: boolean;
   /**
    * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
    *   true 시 카드 박스 제거(flat) + it-* 토큰(it-fill 입력·hairline 구분)으로 교체.
@@ -46,6 +50,8 @@ export function FeeEditCard({
   onPackageChange,
   packageDirty = false,
   readonly = false,
+  renewalTargetMonth = null,
+  salesPendingLock = false,
   iceTheme = false,
 }: FeeEditCardProps) {
   const isPostpaid = billingMode === 'POSTPAID';
@@ -138,6 +144,8 @@ export function FeeEditCard({
                 dirty={packageDirty}
                 billingMode={billingMode}
                 readonly={readonly}
+                renewalTargetMonth={renewalTargetMonth}
+                salesPendingLock={salesPendingLock}
                 iceTheme
               />
             </div>
@@ -218,6 +226,8 @@ export function FeeEditCard({
               dirty={packageDirty}
               billingMode={billingMode}
               readonly={readonly}
+              renewalTargetMonth={renewalTargetMonth}
+              salesPendingLock={salesPendingLock}
             />
           </div>
         )}

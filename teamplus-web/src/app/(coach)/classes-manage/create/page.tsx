@@ -7,12 +7,13 @@ import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { usePageReady } from '@/hooks/usePageReady';
-import { useClassForm, ClassFormData } from '@/hooks/useClassForm';
+import { useClassForm, ClassFormData, localTodayISO } from '@/hooks/useClassForm';
 import { useAuth } from '@/contexts/AuthContext';
 import { useMyAcademies } from '@/hooks/useAcademy';
 import { NavLink, useNavigation } from '@/components/ui/NavLink';
 import { Icon } from '@/components/ui/Icon';
 import { useToast } from '@/components/ui/Toast';
+import { useModal } from '@/components/ui/Modal';
 import { MESSAGES } from '@/lib/messages';
 import { api } from '@/services/api-client';
 import {
@@ -129,11 +130,14 @@ function ClassCreatePageInner() {
   });
 
   const { toast } = useToast();
+  const { modal } = useModal();
 
   // [패키지 일괄 반영] 수정 모드 — 패키지(ClassProduct)를 로컬 보류했다가 '수정하기'에
   //   bulk 엔드포인트로 일괄 반영한다. (기존: 시트 저장 시 즉시 단건 API → 저장 시점 이원화 문제)
   const [draftProducts, setDraftProducts] = useState<DraftProduct[]>([]);
   const [productsDirty, setProductsDirty] = useState(false);
+  // [Lifecycle v4.1 §9.2] 판매 승인 대기 여부 — 수강료 섹션 월분 갱신 UI 게이트(수정 모드 전용).
+  const [salesPending, setSalesPending] = useState(false);
 
   // [기존 수업 불러오기] 신규 등록 모드 원본 선택 시트 — 선택 시 현재 경로에 ?copyFrom 부여.
   const [copySourceOpen, setCopySourceOpen] = useState(false);
@@ -152,10 +156,16 @@ function ClassCreatePageInner() {
     async (cid: string): Promise<boolean> => {
       // 변경이 없으면 호출 자체를 생략(no-op).
       if (!productsDirty) return true;
-      const upserts: BulkUpsertItem[] = draftProducts
-        .filter((d) => !d._deleted)
-        .map((d) => ({
-          ...(d.serverId ? { id: d.serverId } : {}),
+      // [이력 불가침] 지난 월분(이번 달 이전 billingMonth) 기존 row 는 서버 미접촉 보존 —
+      //   BE 가드(400)와 짝. 미제외 시 미변경 row 재전송(update)만으로 저장 전체가 실패한다.
+      const nowMonthKey = localTodayISO().slice(0, 7);
+      const isPastLocked = (item: DraftProduct): boolean =>
+        Boolean(
+          item.serverId && item.billingMonth && item.billingMonth < nowMonthKey,
+        );
+      const upserts: BulkUpsertItem[] = [];
+      for (const d of draftProducts.filter((item) => !item._deleted)) {
+        const base = {
           productName: d.productName,
           price: d.price,
           feeType: d.feeType,
@@ -165,9 +175,26 @@ function ClassCreatePageInner() {
             : {}),
           ...(d.durationDays != null ? { durationDays: d.durationDays } : {}),
           ...(d.description ? { description: d.description } : {}),
-        }));
+        };
+        if (d.renewToMonth) {
+          // [Lifecycle v4.1 §9.2] 월분 갱신 — 대상월 신규 row 생성.
+          //   기존 달 row 는 id 미전송으로 서버 미접촉(판매 이력 보존).
+          upserts.push({ ...base, billingMonth: d.renewToMonth });
+          if (d.serverId && d.billingMonth == null) {
+            // 무월(레거시) 원본은 월 필터를 우회해 새 월분과 중복 노출되므로
+            //   같은 bulk 트랜잭션에서 비활성 전환(수업 상세 배너의 갱신 로직과 동일 정책).
+            upserts.push({ ...base, id: d.serverId, isActive: false });
+          }
+        } else if (isPastLocked(d) || (d.serverId && d.isActive === false)) {
+          // 이력 row(지난 월분·판매 중지분) — 변경 대상 아님(전송 생략 = 보존).
+          continue;
+        } else {
+          upserts.push({ ...(d.serverId ? { id: d.serverId } : {}), ...base });
+        }
+      }
+      // 지난 월분은 UI 에서 삭제 버튼이 숨겨지지만, 잔존 마킹이 섞여도 전송하지 않는다(방어).
       const deleteIds = draftProducts
-        .filter((d) => d._deleted && d.serverId)
+        .filter((d) => d._deleted && d.serverId && !isPastLocked(d))
         .map((d) => d.serverId as string);
 
       if (upserts.length === 0 && deleteIds.length === 0) return true;
@@ -256,6 +283,8 @@ function ClassCreatePageInner() {
         teamId?: string;
         club?: { id?: string };
         team?: { id?: string };
+        lifecycleStatus?: string;
+        endedAt?: string | null;
         [k: string]: unknown;
       };
       const baseRes = await api.get<ClassWithTeam>(`/classes/${sourceClassId}`);
@@ -263,6 +292,13 @@ function ClassCreatePageInner() {
         if (isCopyMode) toast.error(MESSAGES.classesEdit.copyLoadFailed);
         setIsLoadingData(false);
         return;
+      }
+      // [Lifecycle v4.1 §9.2] 판매 승인 대기 캡처 — 수정 폼에서 월 결제 월분 갱신 UI 노출 게이트.
+      if (!isCopyMode) {
+        setSalesPending(
+          baseRes.data.lifecycleStatus === 'PENDING_SCHEDULE' &&
+            !baseRes.data.endedAt,
+        );
       }
       // [수정 2026-05-15] 오픈클래스(academyId, teamId 없음) 분기.
       //   /classes/{id} (getClass) 응답이 이미 전체 필드 + visibleTeams 를 포함하므로
@@ -507,6 +543,10 @@ function ClassCreatePageInner() {
           sessionsPerWeek: p.sessionsPerWeek ?? undefined,
           durationDays: p.durationDays ?? undefined,
           description: p.description ?? undefined,
+          // 귀속월 보존("YYYY-MM") — 월분 갱신 대상 판정(구 월분/무월 구분)에 사용.
+          billingMonth: p.billingMonth ? p.billingMonth.slice(0, 7) : null,
+          // 활성 여부 보존 — 판매 중지 이력 row 잠금·제출 제외 판정에 사용.
+          isActive: p.isActive,
         })),
       );
       setProductsDirty(false);
@@ -595,17 +635,24 @@ function ClassCreatePageInner() {
     return () => window.removeEventListener('beforeunload', handler);
   }, [productsDirty]);
 
-  // [이탈 가드 2/2] 앱 내 명시적 이탈(AppBar 뒤로가기) — dirty 면 확인 후 진행.
+  // [이탈 가드 2/2] 앱 내 명시적 이탈(AppBar 뒤로가기) — dirty 면 공통 ConfirmDialog 로
+  //   확인 후 진행 (window.confirm 은 OS 기본 다이얼로그라 디자인 가이드 위반 — useAppBack 규약).
   //   ※ Flutter 네이티브 하드웨어 뒤로가기는 DOM AppBar 를 거치지 않아 가로채지 못한다
-  //     (전역 route-change 인터셉트는 과도하여 미적용). beforeunload + 본 가드 + dirty 배너로
-  //     명시적 이탈 경로를 커버한다.
-  const handleBack = useCallback(() => {
-    if (productsDirty && typeof window !== 'undefined') {
-      const ok = window.confirm(MESSAGES.classProduct.unsavedLeaveConfirm);
+  //     (페이지 레벨 useAppBack 중복 등록은 signup 에서 확인된 시스템 백 회귀라 금지).
+  //     beforeunload + 본 가드 + dirty 배너로 명시적 이탈 경로를 커버한다.
+  const handleBack = useCallback(async () => {
+    if (productsDirty) {
+      const ok = await modal.confirm({
+        title: MESSAGES.classProduct.unsavedLeaveTitle,
+        message: MESSAGES.classProduct.unsavedLeaveConfirm,
+        confirmText: MESSAGES.classProduct.unsavedLeaveButton,
+        cancelText: MESSAGES.common.cancel,
+        variant: 'danger',
+      });
       if (!ok) return;
     }
     back();
-  }, [productsDirty, back]);
+  }, [productsDirty, modal, back]);
 
 
   return (
@@ -685,26 +732,38 @@ function ClassCreatePageInner() {
               packageDraftValue={draftProducts}
               onPackageDraftChange={handleProductsChange}
               packageDirty={productsDirty}
+              salesPending={salesPending}
               pricingSection={
-                isEditMode && editClassId ? (
-                  // 선불/후불 공통 수강료 카드 — 1회 단가 입력 + (선불) 정기 패키지 embed.
-                  <FeeEditCard
-                    billingMode={
-                      initialData?.billingMode === 'POSTPAID'
-                        ? 'POSTPAID'
-                        : initialData?.billingMode === 'BOTH'
-                          ? 'BOTH'
-                          : 'PREPAID'
-                    }
-                    perSessionPrice={perSessionPrice}
-                    onPerSessionPriceChange={handlePerSessionPriceChange}
-                    classId={editClassId}
-                    packageValue={draftProducts}
-                    onPackageChange={handleProductsChange}
-                    packageDirty={productsDirty}
-                    iceTheme
-                  />
-                ) : undefined
+                isEditMode && editClassId
+                  ? // 선불/후불 공통 수강료 카드 — 1회 단가 입력 + (선불) 정기 패키지 embed.
+                    //   함수형 — ClassForm 이 draft 일정에서 계산한 대상월을 받아 월분 갱신 UI 게이트.
+                    ({
+                      renewalTargetMonth,
+                      salesPending: pendingLock,
+                    }: {
+                      renewalTargetMonth: string | null;
+                      salesPending: boolean;
+                    }) => (
+                      <FeeEditCard
+                        billingMode={
+                          initialData?.billingMode === 'POSTPAID'
+                            ? 'POSTPAID'
+                            : initialData?.billingMode === 'BOTH'
+                              ? 'BOTH'
+                              : 'PREPAID'
+                        }
+                        perSessionPrice={perSessionPrice}
+                        onPerSessionPriceChange={handlePerSessionPriceChange}
+                        classId={editClassId}
+                        packageValue={draftProducts}
+                        onPackageChange={handleProductsChange}
+                        packageDirty={productsDirty}
+                        renewalTargetMonth={renewalTargetMonth}
+                        salesPendingLock={pendingLock}
+                        iceTheme
+                      />
+                    )
+                  : undefined
               }
             />
             {/* 코치 배정은 /coach-assignments 페이지에서 관리 */}

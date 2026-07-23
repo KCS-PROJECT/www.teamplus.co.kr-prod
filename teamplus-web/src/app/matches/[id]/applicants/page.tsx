@@ -12,6 +12,7 @@ import {
   bulkRejectApplicants,
 } from "@/services/matches-api";
 import { MESSAGES } from "@/lib/messages";
+import { useToast } from "@/components/ui/Toast";
 import {
   MatchApplicantRow,
   MatchProgressBar,
@@ -43,6 +44,7 @@ export default function MatchApplicantsPage() {
   const params = useParams();
   const matchId = (params?.id as string) ?? "";
   const { back } = useNavigation();
+  const { toast } = useToast();
 
   const [data, setData] = useState<MatchApplicantsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -100,16 +102,14 @@ export default function MatchApplicantsPage() {
       } catch (e) {
         // eslint-disable-next-line no-console
         devError("[applicants] changeStatus failed", e);
-        if (typeof window !== "undefined") {
-          window.alert(
-            e instanceof Error ? e.message : MESSAGES.match.error.actionFailed,
-          );
-        }
+        toast.error(
+          e instanceof Error ? e.message : MESSAGES.match.error.actionFailed,
+        );
       } finally {
         setProcessingId(null);
       }
     },
-    [matchId],
+    [matchId, toast],
   );
 
   const toggleSelect = (id: string) =>
@@ -206,11 +206,9 @@ export default function MatchApplicantsPage() {
     } catch (e) {
       // eslint-disable-next-line no-console
       devError("[applicants] reject failed", e);
-      if (typeof window !== "undefined") {
-        window.alert(
-          e instanceof Error ? e.message : MESSAGES.match.error.rejectFailed,
-        );
-      }
+      toast.error(
+        e instanceof Error ? e.message : MESSAGES.match.error.rejectFailed,
+      );
     } finally {
       setRejectSubmitting(false);
     }

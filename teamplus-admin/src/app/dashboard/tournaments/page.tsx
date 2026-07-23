@@ -122,6 +122,7 @@ function TournamentsPageContent() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showRegistrationsModal, setShowRegistrationsModal] = useState(false);
   const [showSettlementModal, setShowSettlementModal] = useState(false);
+  const [showSettlementConfirm, setShowSettlementConfirm] = useState(false);
   const [settlementFee, setSettlementFee] = useState('');
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
   const [form, setForm] = useState<TournamentFormState>(emptyForm);
@@ -317,7 +318,7 @@ function TournamentsPageContent() {
     }
   };
 
-  const handleConfirmSettlement = async () => {
+  const handleConfirmSettlement = () => {
     if (!selectedTournament) return;
     if (settlementFeeNum < 1) {
       alert(MESSAGES.tournamentSettlement.feeRequired);
@@ -331,21 +332,18 @@ function TournamentsPageContent() {
       alert(MESSAGES.tournamentSettlement.noTarget);
       return;
     }
-    if (
-      !window.confirm(
-        MESSAGES.tournamentSettlement.confirm(
-          settlementTargets.length,
-          settlementTotal,
-        ),
-      )
-    ) {
-      return;
-    }
+    // 청구 확정은 공통 ConfirmModal 로 확인 (window.confirm 금지 — 삭제 모달과 동일 패턴).
+    setShowSettlementConfirm(true);
+  };
+
+  const executeSettlement = async () => {
+    if (!selectedTournament) return;
     try {
       const result = await settlementMutation.mutateAsync({
         tournamentId: selectedTournament.id,
         feePerPerson: settlementFeeNum,
       });
+      setShowSettlementConfirm(false);
       alert(
         MESSAGES.tournamentSettlement.success(
           result.billedCount,
@@ -356,6 +354,7 @@ function TournamentsPageContent() {
       setSettlementFee('');
       setSelectedTournament(null);
     } catch (err) {
+      setShowSettlementConfirm(false);
       alert(
         err instanceof Error
           ? err.message
@@ -837,6 +836,21 @@ function TournamentsPageContent() {
         confirmText="삭제하기"
         variant="danger"
         isLoading={deleteMutation.isPending}
+      />
+
+      {/* Settlement Confirm Modal — 청구 확정(금액·인원 최종 확인) */}
+      <ConfirmModal
+        isOpen={showSettlementConfirm}
+        onClose={() => setShowSettlementConfirm(false)}
+        onConfirm={executeSettlement}
+        title="대회 정산"
+        description={MESSAGES.tournamentSettlement.confirm(
+          settlementTargets.length,
+          settlementTotal,
+        )}
+        confirmText="정산하기"
+        variant="warning"
+        isLoading={settlementMutation.isPending}
       />
 
       {/* Registrations Modal */}

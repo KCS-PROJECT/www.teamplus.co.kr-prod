@@ -493,13 +493,24 @@ export const ui = {
       // getBridge() 는 이 경우 throw 하므로, 사전 가드로 조용히 null 반환하여
       // bridge-error 로그(UI_GET_DEVICE_INFO_ERROR)가 찍히지 않게 한다.
       // 호출부(applyDeviceInsetsToCss)는 null 시 env(safe-area-inset-*) 로 폴백.
-      if (!isFlutterBridgeAvailable()) return null;
-      const bridge = getBridge();
-      if (typeof bridge.ui.getDeviceInfo !== "function") {
+      if (isFlutterBridgeAvailable()) {
+        const bridge = getBridge();
+        if (typeof bridge.ui.getDeviceInfo === "function") {
+          const info = await bridge.ui.getDeviceInfo();
+          return info ?? null;
+        }
+      }
+      // 래퍼(native_bridge.js) 가 getDeviceInfo 를 노출하지 않는 앱 빌드 호환 폴백 —
+      // signalFirstPaint 와 동일한 callHandler 직접 호출 패턴. Flutter 측 핸들러
+      // (webview_bridge_handlers.dart 'getDeviceInfo')는 구현되어 있으므로 raw 호출로
+      // 동일 데이터를 얻는다. 래퍼가 정식 구현되면 위 정식 경로가 우선한다.
+      if (typeof window.flutter_inappwebview?.callHandler !== "function") {
         return null;
       }
-      const info = await bridge.ui.getDeviceInfo();
-      return info ?? null;
+      const result = (await window.flutter_inappwebview!.callHandler("ui", {
+        action: "getDeviceInfo",
+      })) as { success?: boolean; data?: DeviceInfo | null } | null;
+      return result?.success && result.data ? result.data : null;
     } catch (error) {
       handleBridgeError(
         "ui",
@@ -580,11 +591,13 @@ export const ui = {
     );
     root.style.setProperty("--device-orientation", `"${info.orientation}"`);
     root.style.setProperty("--device-platform", `"${info.platform}"`);
-    // 키보드 등 가변 inset (visualViewport 폴백과 정합)
-    root.style.setProperty(
-      "--keyboard-inset-bottom",
-      `${info.viewInsets.bottom}px`,
-    );
+    // 키보드 인셋 "길이" 는 Native 에서 항상 0 — Flutter `resizeToAvoidBottomInset`
+    // 이 WebView 자체를 키보드만큼 축소하므로 웹 레이아웃이 추가로 피할 거리가 없다.
+    // 실제 viewInsets.bottom(키보드 높이)을 그대로 주입하면 pb-keyboard-safe 계열이
+    // 이중 보정되어 컨텐츠가 밀려 올라간다. 키보드 표시 여부는 아래
+    // data-keyboard-open "신호" 로만 전달한다. (브라우저 폴백 applyWebViewportToCss
+    // 는 뷰포트 축소가 없어 실제 겹침 길이를 주입한다.)
+    root.style.setProperty("--keyboard-inset-bottom", "0px");
     // 키보드 표시 상태 속성 — CSS 가 "실제 키보드 노출" 을 selector 로 분기
     // (예: 로그인 푸터 숨김). 포커스 기반 프록시(focus-within)는 Android 에서
     // 키보드만 내려도 포커스가 남아 오판하므로 이 속성이 판정 SoT.

@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
 import { Icon } from '@/components/ui/Icon';
 import { NavLink } from '@/components/ui/NavLink';
+import { useToast } from '@/components/ui/Toast';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { usePageReady } from '@/hooks/usePageReady';
+import { api } from '@/services/api-client';
 import { cn } from '@/lib/utils';
 import { MESSAGES } from '@/lib/messages';
 import { getClassCompleteData, type ClassCompletePayload } from '@/hooks/useClassForm';
@@ -39,6 +41,59 @@ export default function ClassCompletePage() {
   // 모듈 스코프에서 동기적으로 읽기 (Strict Mode 영향 없음, 1회만 실행)
   const [data] = useState<ClassCompletePayload | null>(() => getClassCompleteData());
   const [animate, setAnimate] = useState(false);
+  const { toast } = useToast();
+
+  // [Lifecycle v4.1 §9.3] 판매 승인 대기 수업의 즉시 판매 시작 — 수정 저장 직후
+  //   상세 페이지 재진입 없이 이 화면에서 감독이 명시 승인한다. 저장 후 서버 파생
+  //   상태를 재조회해 조건(잔여 일정 有 + 미승인 월) 충족 시에만 노출.
+  const [salesOfferMonth, setSalesOfferMonth] = useState<number | null>(null);
+  const [openingSales, setOpeningSales] = useState(false);
+  const [salesDone, setSalesDone] = useState(false);
+
+  const classId = data?.mode === 'edit' ? data.classId : '';
+  useEffect(() => {
+    if (!classId) return;
+    let mounted = true;
+    (async () => {
+      const res = await api.get<{
+        lifecycleStatus?: string;
+        pendingReason?: string | null;
+        earliestRemainingMonth?: string | null;
+        endedAt?: string | null;
+      }>(`/classes/${classId}`);
+      if (!mounted || !res.success || !res.data) return;
+      const { lifecycleStatus, pendingReason, earliestRemainingMonth, endedAt } =
+        res.data;
+      if (
+        lifecycleStatus === 'PENDING_SCHEDULE' &&
+        pendingReason === 'UNAPPROVED_MONTH' &&
+        earliestRemainingMonth &&
+        !endedAt
+      ) {
+        // 상세 페이지와 동일 규칙 — @db.Date ISO 직렬화는 UTC 기준으로 월 추출.
+        setSalesOfferMonth(new Date(earliestRemainingMonth).getUTCMonth() + 1);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [classId]);
+
+  const handleOpenSales = useCallback(async () => {
+    if (!classId) return;
+    setOpeningSales(true);
+    try {
+      const res = await api.post(`/classes/${classId}/open-sales`);
+      if (res.success) {
+        setSalesDone(true);
+        toast.success(MESSAGES.class.salesCycle.openSalesSuccess);
+      } else if (res.error?.message) {
+        toast.error(res.error.message);
+      }
+    } finally {
+      setOpeningSales(false);
+    }
+  }, [classId, toast]);
 
   usePageReady(true);
 
@@ -333,6 +388,48 @@ export default function ClassCompletePage() {
           )}
 
         </div>
+
+        {/* [Lifecycle v4.1 §9.3] 판매 시작 — 판매 승인 대기(미승인 월) 수업 한정 노출.
+            일정·월 결제가 폼 저장으로 준비된 직후이므로 여기서 바로 승인해 재진입을 없앤다. */}
+        {salesOfferMonth !== null && (
+          <section
+            className="-mx-5 w-[calc(100%+2.5rem)] mt-6 bg-it-surface dark:bg-it-blue-950 px-6 py-5"
+            aria-label={MESSAGES.class.salesCycle.pendingBannerAria}
+          >
+            {salesDone ? (
+              <div className="flex items-start gap-2.5" role="status" aria-live="polite">
+                <Icon
+                  name="check_circle"
+                  className="text-xl text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5"
+                  aria-hidden="true"
+                />
+                <p className="text-card-body font-semibold text-it-ink-800 dark:text-rink-100">
+                  {MESSAGES.class.salesCycle.completeOpenSalesDone}
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 mb-1">
+                  <Icon name="storefront" className="text-xl text-it-blue-500" aria-hidden="true" />
+                  <h2 className="text-[15px] font-extrabold text-it-ink-800 dark:text-white tracking-tight">
+                    {MESSAGES.class.salesCycle.completeOpenSalesTitle(salesOfferMonth)}
+                  </h2>
+                </div>
+                <p className="text-card-meta text-it-ink-500 dark:text-rink-300 mb-3">
+                  {MESSAGES.class.salesCycle.completeOpenSalesGuide}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleOpenSales}
+                  disabled={openingSales}
+                  className="w-full h-12 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-body font-extrabold disabled:opacity-60 disabled:cursor-not-allowed transition-colors motion-reduce:transition-none active:brightness-95"
+                >
+                  {MESSAGES.class.salesCycle.openSalesButton}
+                </button>
+              </>
+            )}
+          </section>
+        )}
 
         {/* 버튼 — 수업 목록으로 가기 (단일 강조 버튼). */}
         <div className="w-full mt-10">

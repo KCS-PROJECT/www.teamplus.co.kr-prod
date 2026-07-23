@@ -8,6 +8,7 @@ import { Icon } from '@/components/ui/Icon';
 import { useNavigation } from '@/components/ui/NavLink';
 import { api } from '@/services/api-client';
 import { MESSAGES } from '@/lib/messages';
+import { useToast } from '@/components/ui/Toast';
 import { describePasswordIssue } from '@/lib/password-policy';
 
 import { usePageReady } from '@/hooks/usePageReady';
@@ -30,6 +31,7 @@ interface PasswordForm {
 }
 
 export default function PasswordChangePage() {
+  const { toast } = useToast();
   // 공통 AppBar 사용 — Flutter 네이티브 AppBar 비활성화 (중복 헤더 방지)
   useNativeUI({
     showStatusBar: true,
@@ -102,18 +104,18 @@ export default function PasswordChangePage() {
         newPassword: formData.newPassword,
       });
       if (response.success) {
-        alert(MESSAGES.profile.passwordChanged);
+        toast.success(MESSAGES.profile.passwordChanged);
         back();
       } else {
         const msg = response.error?.message ?? '비밀번호 변경 중 오류가 발생했습니다.';
         if (response.error?.code === 'INVALID_PASSWORD') {
           setErrors({ currentPassword: '현재 비밀번호가 올바르지 않습니다.' });
         } else {
-          alert(msg);
+          toast.error(msg);
         }
       }
     } catch {
-      alert(MESSAGES.profile.passwordChangeFailed);
+      toast.error(MESSAGES.profile.passwordChangeFailed);
     } finally {
       setIsLoading(false);
     }

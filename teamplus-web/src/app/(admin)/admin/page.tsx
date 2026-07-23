@@ -21,6 +21,7 @@ import { useStableLayout } from "@/hooks/useStableLayout";
 import { useImagesReady } from "@/hooks/useImagesReady";
 import { useFontsReady } from "@/hooks/useFontsReady";
 import { MESSAGES } from "@/lib/messages";
+import { useToast } from "@/components/ui/Toast";
 import { api } from "@/services/api-client";
 
 import {
@@ -70,6 +71,7 @@ const FALLBACK: AdminDashboardLite = {
 
 export default function AdminDashboardPage() {
   const { navigate } = useNavigation();
+  const { toast } = useToast();
   const { user } = useSessionAuth();
   const { unreadCount } = useNotificationCount();
 
@@ -423,7 +425,7 @@ export default function AdminDashboardPage() {
           }}
           floating={{
             // 관리자 화면에서는 좌측 QR 버튼 영역 비표시 (onQrClick 미전달)
-            onPlusClick: () => alert(MESSAGES.wallet.floating.plusComing),
+            onPlusClick: () => toast.info(MESSAGES.wallet.floating.plusComing),
           }}
         />
       </div>

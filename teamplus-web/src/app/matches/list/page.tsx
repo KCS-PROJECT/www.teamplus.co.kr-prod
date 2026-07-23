@@ -374,7 +374,7 @@ export default function MatchListPage() {
           + safe-area-inset-bottom 폴백 패턴으로 정렬. */}
       {permissions.canCreate && (
         <div
-          className="fixed inset-x-0 z-30 pointer-events-none flex justify-center"
+          className="keyboard-hide fixed inset-x-0 z-30 pointer-events-none flex justify-center"
           style={{
             bottom:
               'calc(80px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) + 16px)',

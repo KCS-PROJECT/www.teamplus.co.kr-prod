@@ -1,10 +1,12 @@
 import {
   IsArray,
+  IsBoolean,
   IsIn,
   IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
+  Matches,
   Min,
   ValidateNested,
 } from "class-validator";
@@ -73,10 +75,37 @@ export class BulkClassProductItemDto {
   @Min(1, { message: "유효 기간은 1일 이상이어야 합니다." })
   durationDays?: number;
 
-  @ApiPropertyOptional({ example: "주 2회 수업, 4주 유효", description: "상품 설명" })
+  @ApiPropertyOptional({
+    example: "주 2회 수업, 4주 유효",
+    description: "상품 설명",
+  })
   @IsOptional()
   @IsString({ message: "상품 설명은 문자열이어야 합니다." })
   description?: string;
+
+  // [Lifecycle v4.1 §9.2] 월별 패키지 귀속월 — 신규 생성(id 없음)에만 적용, 생성 후 불변.
+  //   수업 수정 폼의 "N월분으로 갱신" draft 가 대상월 row 를 bulk 트랜잭션 안에서 생성한다.
+  @ApiPropertyOptional({
+    example: "2026-08",
+    description:
+      "귀속월 (YYYY-MM) — 신규 생성에만 적용. 기존 패키지(id 있음)는 무시.",
+  })
+  @IsOptional()
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, {
+    message: "귀속월은 YYYY-MM 형식이어야 합니다.",
+  })
+  billingMonth?: string;
+
+  // 무월(레거시) 원본 비활성 전환용 — 월분 갱신 시 무월 row 는 월 필터를 우회해
+  //   새 월분과 중복 노출되므로 같은 트랜잭션에서 판매를 중단한다. 기존 패키지(id 있음)에만 적용.
+  @ApiPropertyOptional({
+    example: false,
+    description:
+      "활성 여부 — 기존 패키지 수정에만 적용 (false = 판매 노출 차단)",
+  })
+  @IsOptional()
+  @IsBoolean({ message: "활성 여부는 boolean 이어야 합니다." })
+  isActive?: boolean;
 }
 
 /**

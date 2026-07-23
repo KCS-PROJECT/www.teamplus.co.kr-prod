@@ -74,6 +74,10 @@ export interface BulkUpsertItem {
   sessionsPerWeek?: number;
   durationDays?: number;
   description?: string;
+  /** 귀속월 "YYYY-MM" — 신규 생성(id 없음)에만 적용. 월분 갱신 row 생성용. */
+  billingMonth?: string;
+  /** 기존 패키지(id 있음) 활성 여부 — 무월 레거시 원본 비활성 전환용. */
+  isActive?: boolean;
 }
 
 export interface BulkUpsertClassProductsBody {
