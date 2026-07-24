@@ -645,9 +645,18 @@ function UnpaidMemberCard({
   onRemind: (member: UnpaidMemberRow) => void;
   onDetail: (member: UnpaidMemberRow) => void;
 }) {
-  // 회원이 수업·대회를 동시에 미납할 수 있어 단일 결제방식 배지 대신 출처 배지로 표기.
+  // 회원이 수업·대회를 동시에 미납할 수 있어 출처별 건수 메타로 표기 — 미납액이
+  //   여러 건의 합산임을 카드에서 바로 읽히게 한다.
   const hasClass = member.sources.includes('CLASS');
   const hasTournament = member.sources.includes('TOURNAMENT');
+  const sourceCountText = [
+    hasClass ? MESSAGES.settlement.sourceClassCount(member.classCount) : null,
+    hasTournament
+      ? MESSAGES.settlement.sourceTournamentCount(member.tournamentCount)
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
   return (
     <article
       className={cn(
@@ -669,19 +678,10 @@ function UnpaidMemberCard({
             {member.teamName && (
               <p className="text-[13px] text-it-ink-500 truncate dark:text-wtext-4">{member.teamName}</p>
             )}
-            {(hasClass || hasTournament) && (
-              <div className="mt-1.5 flex flex-wrap gap-1">
-                {hasClass && (
-                  <span className="inline-flex items-center rounded-w-sm bg-it-blue-50 px-1.5 py-0.5 text-[11.5px] font-bold text-it-blue-600 dark:bg-it-blue-900/30 dark:text-it-blue-300">
-                    {MESSAGES.settlement.sourceClass}
-                  </span>
-                )}
-                {hasTournament && (
-                  <span className="inline-flex items-center rounded-w-sm bg-sun-100 px-1.5 py-0.5 text-[11.5px] font-bold text-it-ink-800 dark:bg-sun-500/15 dark:text-sun-500">
-                    {MESSAGES.settlement.sourceTournament}
-                  </span>
-                )}
-              </div>
+            {sourceCountText && (
+              <p className="mt-1 text-[13px] text-it-ink-500 truncate dark:text-wtext-4">
+                {sourceCountText}
+              </p>
             )}
           </div>
         </div>

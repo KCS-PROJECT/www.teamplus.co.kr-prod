@@ -6,6 +6,14 @@ import { instantToKstDateOnly, kstTodayUtcMidnight } from "@/common/utils/kst-da
  * classes.service.getClassPayments(Phase 2a)의 5-state·terminal 우선·순수납 계약을
  * 목록 소계 레이어(팀/Academy 정산 요약)에서 재사용하기 위해 순수 함수로 추출한다.
  * DB 접근·부수효과 없음 — 배치 조회 결과를 인자로 받아 메모리 집계에 쓰인다.
+ *
+ * ── 미수금 집계 정책 (판정 SoT) ─────────────────────────────────────────
+ * 미수금(BILLED 잔액) = **확정 청구 − 수납**. 확정 청구는 두 가지뿐이다:
+ *   · 후불 수업: 감독 정산 확정 라인(MonthlyPostpaidBillingLine)
+ *   · 후불 대회: 감독 일괄 청구된 등록(PENDING + Payment)
+ * 선불의 pending(결제 진행 중/이탈)은 아무도 청구한 적 없는 미완 트랜잭션이므로
+ * 채권(미수금)·매출 어디에도 집계하지 않는다(UNSETTLED). 완료(completed)만 수납이다.
+ * 이 정책은 결제 관리(/director-payments)와 매출 리포트(/statistics)가 공유한다.
  */
 
 /** Phase 2a와 동일한 5-state 정산 상태. */
@@ -103,9 +111,10 @@ export interface PrepaidAttributionInput {
  * [R1] 선불 월귀속·상태·순수납 — Phase 2a 선불(PREPAID)/미배정(UNASSIGNED) 로직과 동일 계약.
  *
  * 월귀속(순서대로): MONTHLY_FIXED+billingMonth → billingMonth 월 / 완료 선불 → completedAt 월 /
- *   pending 선불 → createdAt 월(BILLED) / 레거시 paid(completedAt 없음) → paidAt 월 /
+ *   pending 선불 → createdAt 월(UNSETTLED — 귀속만 유지, 집계 제외) / 레거시 paid(completedAt 없음) → paidAt 월 /
  *   환불·취소 → 위 규칙으로 산출한 원결제 월 유지(상태·환불액만 반영) / 근거 없음 → null + attributionUnknown.
- * 상태: terminal(Payment) 우선 — 환불→REFUNDED / 취소→CANCELLED / 완료→PAID / pending→BILLED / else UNSETTLED.
+ * 상태: terminal(Payment) 우선 — 환불→REFUNDED / 취소→CANCELLED / 완료→PAID / else UNSETTLED.
+ *   선불 pending(결제 진행 중/이탈)은 확정 청구가 아니므로 BILLED 로 치지 않는다(파일 헤더 정책).
  */
 export function resolvePrepaidAttribution(
   input: PrepaidAttributionInput,
@@ -134,9 +143,8 @@ export function resolvePrepaidAttribution(
     enrollmentStatus === "completed"
   ) {
     billingStatus = "PAID";
-  } else if (payStatus === "pending") {
-    billingStatus = "BILLED";
   } else {
+    // pending(결제 진행 중/이탈) 포함 — 확정 청구가 아니므로 집계 제외.
     billingStatus = "UNSETTLED";
   }
 
@@ -154,8 +162,8 @@ export function resolvePrepaidAttribution(
     yearMonth = null;
   }
 
-  const billedAmount =
-    billingStatus === "PAID" || billingStatus === "BILLED" ? legacyAmount : null;
+  // 선불은 BILLED 를 산출하지 않으므로(정책 — pending 은 UNSETTLED) 청구액 = 완료 결제만.
+  const billedAmount = billingStatus === "PAID" ? legacyAmount : null;
   const paidAmount =
     billingStatus === "PAID"
       ? legacyAmount ?? 0
@@ -231,6 +239,12 @@ export interface TournamentAttributionInput {
   amount: number;
   /** 대회 종료월 폴백(@db.Date). */
   endDate?: Date | null;
+  /**
+   * Tournament.billingMode (PREPAID|POSTPAID). PENDING 은 두 의미가 겹친다 —
+   *  후불=감독 확정 청구 후 미결제(진짜 미수, BILLED) / 선불=결제 진행 중·이탈(집계 제외).
+   *  미전달 시 POSTPAID 로 간주해 확정 청구를 보존한다(선불 제외는 명시 전달 시에만).
+   */
+  tournamentBillingMode?: string | null;
   payment?: {
     paymentStatus?: string | null;
     completedAt?: Date | null;
@@ -247,10 +261,11 @@ export interface TournamentAttributionInput {
 export function resolveTournamentAttribution(
   input: TournamentAttributionInput,
 ): AttributionResult {
-  const { registrationPaymentStatus, amount, endDate, payment } = input;
+  const { registrationPaymentStatus, amount, endDate, payment, tournamentBillingMode } = input;
   const regStatus = (registrationPaymentStatus ?? "UNPAID").toUpperCase();
   const payStatus = payment?.paymentStatus ?? null;
   const refundLogSum = sumRefund(payment?.refundLogs);
+  const isPrepaid = (tournamentBillingMode ?? "").toUpperCase() === "PREPAID";
 
   let billingStatus: SettlementBillingStatus;
   if (
@@ -264,7 +279,8 @@ export function resolveTournamentAttribution(
   } else if (regStatus === "PAID" || payStatus === "completed") {
     billingStatus = "PAID";
   } else if (regStatus === "PENDING") {
-    billingStatus = "BILLED";
+    // 후불 PENDING = 확정 청구 미결제(BILLED) / 선불 PENDING = 결제 진행 중·이탈(집계 제외).
+    billingStatus = isPrepaid ? "UNSETTLED" : "BILLED";
   } else {
     // UNPAID — 정산 전.
     billingStatus = "UNSETTLED";
@@ -302,8 +318,10 @@ export function resolveTournamentAttribution(
       : billingStatus === "REFUNDED"
         ? Math.max(0, amount - refundedAmount)
         : 0;
-  // UNSETTLED(정산 전) 는 예상액으로 표기(대회는 종료 후 단가 확정 전 0).
-  const estimatedAmount = billingStatus === "UNSETTLED" ? amount : null;
+  // UNSETTLED(정산 전 UNPAID) 는 예상액으로 표기(대회는 종료 후 단가 확정 전 0).
+  //  선불 PENDING(결제 이탈)의 UNSETTLED 는 "곧 청구할 돈"이 아니므로 예상액에서도 제외.
+  const estimatedAmount =
+    billingStatus === "UNSETTLED" && regStatus !== "PENDING" ? amount : null;
 
   return {
     yearMonth,

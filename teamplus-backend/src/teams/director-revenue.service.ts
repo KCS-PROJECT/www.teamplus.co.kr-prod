@@ -264,6 +264,7 @@ export class DirectorRevenueService {
         amount: Number(reg.calculatedFee),
         endDate: reg.tournament.endDate,
         payment: reg.payment,
+        tournamentBillingMode: mode,
       });
       const ym = att.yearMonth;
       if (ym === null) continue; // 월귀속 근거 없음 — 집계 제외(팀 허브와 동일).

@@ -709,6 +709,17 @@ export const MESSAGES = {
       `결제 요청 ${count}건 · 총 ${total.toLocaleString()}원`,
     pendingSheetTitle: "결제 요청",
     pendingPayCta: "결제하기",
+    // 결제내역 미납 탭 (/payment/history?tab=pending) — 미납 후불 목록 + 합계 히어로.
+    tabsAria: "결제 구분",
+    tabHistory: "결제 내역",
+    tabPending: "미납 결제",
+    pendingSummaryLabel: "미납 결제 합계",
+    pendingSummaryCount: (n: number) => `${n}건`,
+    pendingListTitle: "결제 대기 내역",
+    pendingEmpty: "미납된 결제가 없습니다.",
+    pendingEmptyDesc: "모든 결제가 완료되었습니다.",
+    pendingLoadFailed: "미납 결제 정보를 불러오지 못했습니다.",
+    pendingRetry: "다시 시도하기",
     completed: "결제가 완료되었습니다!",
     // [수정 2026-05-18] 감성 톤 — 결제 완료 화면 분위기. "결제권" 어색함 해소.
     creditIssued: "이제 이번 달 수업에 참여하실 수 있어요",
@@ -1002,12 +1013,14 @@ export const MESSAGES = {
     // 미수금 카드 — 결제 방식 / 미납액 / 액션
     billingPrepaid: "선결제",
     billingPostpaid: "후결제",
-    unpaidLabel: "미납액",
-    sendReminder: "알림 발송",
+    unpaidLabel: "미납액 합계",
+    sendReminder: "미납 안내 발송",
     viewDetail: "상세 보기",
-    // 미수금 출처 배지 (회원이 수업·대회 동시 미납 가능)
+    // 미수금 출처 (회원이 수업·대회 동시 미납 가능) — 카드는 건수 메타, 상세 시트는 라벨
     sourceClass: "훈련",
     sourceTournament: "대회",
+    sourceClassCount: (n: number) => `훈련 ${n}건`,
+    sourceTournamentCount: (n: number) => `대회 ${n}건`,
     unpaidMemberCount: (n: number) => `미납 ${n}명`,
     // 미수금 상세 시트
     detailSheetTitle: "미수금 상세",

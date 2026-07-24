@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { Suspense, useState, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
+import { useSearchParams } from 'next/navigation';
 import { NavLink } from '@/components/ui/NavLink';
 import { Spinner } from '@/components/ui/Spinner';
 import { Icon } from '@/components/ui/Icon';
@@ -30,10 +31,16 @@ import {
   groupPaymentsByMonth,
 } from '@/services/payment';
 import { usePageReady } from '@/hooks/usePageReady';
+import {
+  PendingPaymentsPanel,
+  type PendingBilling,
+} from '@/components/payment/PendingPaymentsPanel';
 import type {
   PaymentHistoryItem,
   GroupedPaymentHistory,
 } from '@/types/payment';
+
+type PaymentTab = 'history' | 'pending';
 
 /** "YYYY.MM.DD" → Date (월 1일 기준, 시각 0) */
 function parseYmd(date: string): Date | null {
@@ -392,7 +399,7 @@ function PaymentHistoryList({
   );
 }
 
-export default function PaymentHistoryPage() {
+function PaymentHistoryContent() {
   // [appbar-harness-v2] Status bar + Native AppBar 명시 (v2 회귀 차단).
   //   - PageAppBar 가 Web DOM 헤더를 그리는 동안 Flutter 측은 native AppBar 로 동일 영역 채움.
   //   - showAppBar:false + <PageAppBar forceNative /> → 앱/웹 동일 헤더(back·알림·메뉴) 노출.
@@ -409,13 +416,25 @@ export default function PaymentHistoryPage() {
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('all');
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
 
+  // 탭 — 결제 내역(기본) / 미납 결제. 미납 안내 알림 딥링크(?tab=pending) 초기 탭 지원.
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState<PaymentTab>(
+    searchParams?.get('tab') === 'pending' ? 'pending' : 'history',
+  );
+
   // Payment history state — raw 배열 보관 후 기간 필터/그룹화는 파생으로 계산
   const [payments, setPayments] = useState<PaymentHistoryItem[]>([]);
   const [isPaymentLoading, setIsPaymentLoading] = useState(true);
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
-  // v16 — 데이터 로드 완료 시 풀스크린 로더 hide 신호
-  usePageReady(!isPaymentLoading);
+  // 미납 후불 청구 — 탭 배지 건수 + 미납 탭 목록 공용. 대시보드 배너와 동일 규약
+  // (orderNumber 없는 항목 제외 · 비학부모 403 은 빈 목록 처리).
+  const [pendingBillings, setPendingBillings] = useState<PendingBilling[] | null>(null);
+  const [pendingError, setPendingError] = useState(false);
+  const isPendingLoading = pendingBillings === null && !pendingError;
+
+  // v16 — 두 데이터(내역 + 미납) 로드 완료 시 풀스크린 로더 hide 신호
+  usePageReady(!isPaymentLoading && !isPendingLoading);
 
   // [추가 2026-05-13] 결제취소 처리
   const [cancellingId, setCancellingId] = useState<string | null>(null);
@@ -463,8 +482,23 @@ export default function PaymentHistoryPage() {
     setIsPaymentLoading(false);
   };
 
+  const fetchPendingBillings = async () => {
+    setPendingError(false);
+    const res = await api.get<PendingBilling[]>('/payments/postpaid/my-pending');
+    if (res.success) {
+      const list = Array.isArray(res.data) ? res.data : [];
+      setPendingBillings(list.filter((b) => !!b.orderNumber));
+    } else if (res.error?.statusCode === 403) {
+      setPendingBillings([]);
+    } else {
+      setPendingBillings(null);
+      setPendingError(true);
+    }
+  };
+
   useEffect(() => {
     fetchPaymentHistory();
+    void fetchPendingBillings();
   }, []);
 
   /** [추가 2026-05-13] 결제취소 — 토스/KG 분기는 backend PaymentRefundService 가 처리.
@@ -499,6 +533,18 @@ export default function PaymentHistoryPage() {
   const isFiltered = periodFilter !== 'all';
   const showSummary = !isPaymentLoading && !paymentError && paymentSummary.count > 0;
 
+  const pendingCount = pendingBillings?.length ?? 0;
+  const tabs: { key: PaymentTab; label: string }[] = [
+    { key: 'history', label: MESSAGES.payment2.tabHistory },
+    {
+      key: 'pending',
+      label:
+        pendingCount > 0
+          ? `${MESSAGES.payment2.tabPending} ${pendingCount}`
+          : MESSAGES.payment2.tabPending,
+    },
+  ];
+
   return (
     <MobileContainer hasBottomNav>
       {/* [appbar-harness-v4 · parent-agent · 2026-05-12] rightAction 제거 —
@@ -511,42 +557,102 @@ export default function PaymentHistoryPage() {
       {/* 스크롤 영역 — MobileContainer 직계 자식(overflow-y-auto)만 momentum 스크롤 대상.
           PageAppBar 는 영역 밖(고정 헤더)에 유지하고, 본문 전체를 이 컨테이너가 스크롤. */}
       <div className="flex-1 min-h-0 overflow-y-auto bg-it-canvas dark:bg-puck [&>*]:shrink-0">
-        {/* Filter Bar — 조회 건수 + 기간 선택 칩 (항상 노출, 빈 결과에서도 기간 변경 가능) */}
-        <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-2">
-          <span className="shrink-0 whitespace-nowrap text-card-meta text-it-ink-500 dark:text-rink-300 tabular-nums">
-            {isPaymentLoading || paymentError ? PERIOD_LABEL[periodFilter] : `${paymentSummary.count}건 조회`}
-          </span>
-          <button
-            type="button"
-            onClick={() => setIsFilterSheetOpen(true)}
-            className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-w-pill bg-it-surface dark:bg-rink-800 border border-it-line-strong dark:border-rink-700 px-3 py-1.5 text-card-meta font-semibold text-it-ink-600 dark:text-rink-100 hover:bg-it-fill dark:hover:bg-rink-700/50 transition-colors motion-reduce:transition-none active:brightness-95"
-            aria-label="기간 필터 변경"
-          >
-            <Icon name="calendar_month" className="text-base" aria-hidden="true" />
-            {PERIOD_LABEL[periodFilter]}
-            <Icon name="expand_more" className="text-base" aria-hidden="true" />
-          </button>
+        {/* 탭 — 결제 내역 / 미납 결제 (정산 센터와 동일 패턴). 미납 탭은 건수 배지 표기 */}
+        <div
+          role="tablist"
+          aria-label={MESSAGES.payment2.tabsAria}
+          className="flex border-b border-it-line bg-it-surface dark:border-rink-700 dark:bg-rink-800"
+        >
+          {tabs.map((tab) => {
+            const isActive = activeTab === tab.key;
+            return (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                aria-controls={`payment-history-panel-${tab.key}`}
+                id={`payment-history-tab-${tab.key}`}
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={cn(
+                  'relative flex-1 px-1 pb-[13px] pt-[14px] text-[15px] transition-colors duration-200 motion-reduce:transition-none',
+                  isActive
+                    ? 'font-extrabold text-it-blue-600 dark:text-white'
+                    : 'font-semibold text-it-ink-500 hover:text-it-ink-800 dark:text-wtext-4 dark:hover:text-white',
+                )}
+              >
+                {tab.label}
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    'absolute inset-x-0 -bottom-px h-[2.5px] rounded-sm',
+                    isActive ? 'bg-it-blue-500' : 'bg-transparent',
+                  )}
+                />
+              </button>
+            );
+          })}
         </div>
 
-        {/* Summary Card — 기간 내 총 결제 금액 요약 (navy 히어로) */}
-        {showSummary && (
-          <div className="mt-2">
-            <SummaryCard payment={paymentSummary} />
+        {activeTab === 'history' ? (
+          <div
+            role="tabpanel"
+            id="payment-history-panel-history"
+            aria-labelledby="payment-history-tab-history"
+            className="[&>*]:shrink-0"
+          >
+            {/* Filter Bar — 조회 건수 + 기간 선택 칩 (항상 노출, 빈 결과에서도 기간 변경 가능) */}
+            <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-2">
+              <span className="shrink-0 whitespace-nowrap text-card-meta text-it-ink-500 dark:text-rink-300 tabular-nums">
+                {isPaymentLoading || paymentError ? PERIOD_LABEL[periodFilter] : `${paymentSummary.count}건 조회`}
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsFilterSheetOpen(true)}
+                className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-w-pill bg-it-surface dark:bg-rink-800 border border-it-line-strong dark:border-rink-700 px-3 py-1.5 text-card-meta font-semibold text-it-ink-600 dark:text-rink-100 hover:bg-it-fill dark:hover:bg-rink-700/50 transition-colors motion-reduce:transition-none active:brightness-95"
+                aria-label="기간 필터 변경"
+              >
+                <Icon name="calendar_month" className="text-base" aria-hidden="true" />
+                {PERIOD_LABEL[periodFilter]}
+                <Icon name="expand_more" className="text-base" aria-hidden="true" />
+              </button>
+            </div>
+
+            {/* Summary Card — 기간 내 총 결제 금액 요약 (navy 히어로) */}
+            {showSummary && (
+              <div className="mt-2">
+                <SummaryCard payment={paymentSummary} />
+              </div>
+            )}
+
+            {/* History List — 하단 여백은 MobileContainer hasBottomNav(60px+safe-area 예약)가 담당 */}
+            <div>
+              <PaymentHistoryList
+                groupedPayments={groupedPayments}
+                isLoading={isPaymentLoading}
+                error={paymentError}
+                isFiltered={isFiltered}
+                onRetry={fetchPaymentHistory}
+                onCancel={handleCancelPayment}
+                cancellingId={cancellingId}
+              />
+            </div>
+          </div>
+        ) : (
+          <div
+            role="tabpanel"
+            id="payment-history-panel-pending"
+            aria-labelledby="payment-history-tab-pending"
+            className="[&>*]:shrink-0"
+          >
+            <PendingPaymentsPanel
+              items={pendingBillings ?? []}
+              isLoading={isPendingLoading}
+              hasError={pendingError}
+              onRetry={() => void fetchPendingBillings()}
+            />
           </div>
         )}
-
-        {/* History List — 하단 여백은 MobileContainer hasBottomNav(60px+safe-area 예약)가 담당 */}
-        <div>
-          <PaymentHistoryList
-            groupedPayments={groupedPayments}
-            isLoading={isPaymentLoading}
-            error={paymentError}
-            isFiltered={isFiltered}
-            onRetry={fetchPaymentHistory}
-            onCancel={handleCancelPayment}
-            cancellingId={cancellingId}
-          />
-        </div>
       </div>
 
       <BottomSheetSelector<PeriodFilter>
@@ -567,5 +673,14 @@ export default function PaymentHistoryPage() {
 
       <GlobalMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </MobileContainer>
+  );
+}
+
+export default function PaymentHistoryPage() {
+  // useSearchParams(?tab=pending 딥링크)는 Suspense 경계 내에서만 사용 가능.
+  return (
+    <Suspense fallback={null}>
+      <PaymentHistoryContent />
+    </Suspense>
   );
 }

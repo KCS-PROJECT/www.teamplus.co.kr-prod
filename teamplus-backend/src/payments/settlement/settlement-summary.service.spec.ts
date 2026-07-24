@@ -174,8 +174,8 @@ describe("SettlementSummaryService", () => {
     });
   });
 
-  describe("pending BILLED 임시귀속", () => {
-    it("pending 결제는 createdAt 월에 BILLED 로 청구 반영", async () => {
+  describe("선불 pending 집계 제외 (결제 진행 중/이탈)", () => {
+    it("pending 결제는 확정 청구가 아니므로 청구·미수에 반영되지 않는다", async () => {
       mockClassQueries([classDetail("c1", "PREPAID")]);
       prismaMock.enrollment.findMany.mockResolvedValue([
         prepaidEnrollment("u1", 40000, {
@@ -193,10 +193,9 @@ describe("SettlementSummaryService", () => {
 
       const res = await service.getAcademySettlementSummary("a1", coach, YM);
       const c = res.classes[0];
-      expect(c.billedAmount).toBe(40000);
+      expect(c.billedAmount).toBe(0); // 이탈 건 — 청구 아님
       expect(c.paidAmount).toBe(0);
-      expect(c.outstandingAmount).toBe(40000);
-      expect(c.paymentStatus).toBe("UNPAID_ALL");
+      expect(c.outstandingAmount).toBe(0); // 미수금 미집계
     });
   });
 
@@ -404,9 +403,9 @@ describe("SettlementSummaryService", () => {
     });
   });
 
-  // ── 회귀 5: 환불 교차 상쇄 방지 (HIGH-3) ───────────────────────
-  describe("[HIGH-3] 타 선수 부분환불이 다른 선수 미수 보존", () => {
-    it("미납 50000 + 다른 선수 부분환불 순수납 70000 → outstanding=50000", async () => {
+  // ── 회귀 5: 선불 pending 제외 + 부분환불 순수납 공존 (구 HIGH-3 개정) ──
+  describe("[HIGH-3] 선불 pending 은 부분환불 순수납과 교차해도 미수 0", () => {
+    it("결제 이탈 50000 + 다른 선수 부분환불 순수납 70000 → outstanding=0", async () => {
       mockClassQueries([classDetail("c1", "PREPAID")]);
       prismaMock.enrollment.findMany.mockResolvedValue([
         prepaidEnrollment("u1", 50000, {
@@ -433,9 +432,9 @@ describe("SettlementSummaryService", () => {
 
       const res = await service.getAcademySettlementSummary("a1", coach, YM);
       const c = res.classes[0];
-      expect(c.billedAmount).toBe(50000); // u1 청구만(u2 환불 제외)
-      expect(c.paidAmount).toBe(70000); // u2 순수납
-      expect(c.outstandingAmount).toBe(50000); // 교차 상쇄 없이 u1 미납 보존
+      expect(c.billedAmount).toBe(0); // u1 이탈 건 청구 제외 · u2 환불 청구 제외
+      expect(c.paidAmount).toBe(70000); // u2 순수납은 그대로
+      expect(c.outstandingAmount).toBe(0); // 이탈 건이 미수금을 만들지 않음
     });
   });
 
@@ -950,8 +949,8 @@ describe("SettlementSummaryService", () => {
   });
 
   // ── C6: PAID+BILLED 는 완납 아님 (MED-4) ──
-  describe("[C6/MED-4] 한 선수 PAID+BILLED 는 완납 아님", () => {
-    it("동일 선수 완료 1건 + 미결제 1건 → paidCount=0·PARTIAL_PAID", async () => {
+  describe("[C6/MED-4 개정] 한 선수 PAID + 선불 pending 은 완납 (이탈 건 무영향)", () => {
+    it("동일 선수 완료 1건 + 결제 이탈 1건 → 이탈 건이 완납 판정을 더럽히지 않음", async () => {
       mockClassQueries([classDetail("c1", "PREPAID")]);
       prismaMock.enrollment.findMany.mockResolvedValue([
         prepaidEnrollment("u1", 30000), // PAID
@@ -964,16 +963,15 @@ describe("SettlementSummaryService", () => {
             amount: 20000,
             refundLogs: [],
           },
-        }), // BILLED
+        }), // 결제 이탈 — 집계 제외
       ]);
       resourceAccessMock.assertAcademyManager.mockResolvedValue(undefined);
 
       const res = await service.getAcademySettlementSummary("a1", coach, YM);
       const c = res.classes[0];
       expect(c.total).toBe(1);
-      expect(c.paidCount).toBe(0); // 완납 아님(미결제 청구 잔존)
-      expect(c.paymentStatus).toBe("PARTIAL_PAID");
-      expect(c.outstandingAmount).toBe(20000);
+      expect(c.paidCount).toBe(1); // 완납 — 이탈 건은 청구가 아니므로 잔존 미수 없음
+      expect(c.outstandingAmount).toBe(0);
     });
   });
 
@@ -1318,8 +1316,9 @@ describe("SettlementSummaryService", () => {
   // 정산 센터 ② — 인별 미수금(목록/상세/remind) · 인별↔집계 정합(§2-0)
   // ══════════════════════════════════════════════════════════════
   describe("인별 미수금 (unpaid-members)", () => {
-    // 선불 BILLED(pending) + 후불 확정 BILLED + 대회 후불 BILLED + 완납/환불 혼합 fixture.
-    //  기대 미수금: c1 u1 선불 50000 + c2 u1 후불 40000 + t1 u5 대회 20000 = 110000.
+    // 선불 pending(집계 제외) + 후불 확정 BILLED + 대회 후불 BILLED + 완납/환불 혼합 fixture.
+    //  기대 미수금: c2 u1 후불 40000 + t1 u5 대회 20000 = 60000
+    //  (c1 u1 선불 pending 50000 은 결제 이탈 — 확정 청구가 아니므로 제외).
     const setupMixedFixture = () => {
       resourceAccessMock.resolveManageableTeamIds.mockResolvedValue(["team-1"]);
       prismaMock.class.findMany.mockImplementation((args: any) => {
@@ -1339,7 +1338,7 @@ describe("SettlementSummaryService", () => {
         return Promise.resolve([{ id: "c1" }, { id: "c2" }]);
       });
       prismaMock.enrollment.findMany.mockResolvedValue([
-        // u1 선불 pending → BILLED 50000(미납)
+        // u1 선불 pending → 결제 이탈, 집계 제외 (미납 아님)
         prepaidEnrollment("u1", 50000, {
           status: "approved",
           payment: {
@@ -1427,7 +1426,7 @@ describe("SettlementSummaryService", () => {
       ]);
     };
 
-    it("[정합] totalOutstanding == summary.unpaid.amount == Σ members (선불+후불+대회+환불 혼합)", async () => {
+    it("[정합] totalOutstanding == summary.unpaid.amount == Σ members (선불 이탈 제외·후불+대회+환불 혼합)", async () => {
       setupMixedFixture();
       const summary = await service.getTeamSettlementSummary(
         coach,
@@ -1436,7 +1435,7 @@ describe("SettlementSummaryService", () => {
       );
       const unpaid = await service.getTeamUnpaidMembers(coach, YM, "team-1");
 
-      expect(unpaid.totalOutstanding).toBe(110000);
+      expect(unpaid.totalOutstanding).toBe(60000);
       expect(unpaid.totalOutstanding).toBe(summary.unpaid.amount); // 불변식
       expect(
         unpaid.members.reduce((s, m) => s + m.outstandingAmount, 0),
@@ -1451,15 +1450,15 @@ describe("SettlementSummaryService", () => {
       const byId = Object.fromEntries(
         unpaid.members.map((m) => [m.memberId, m]),
       );
-      // u1 = 선불 50000 + 후불 40000 = 90000 (대회 완납 15000 상쇄 없음)
-      expect(byId["u1"].outstandingAmount).toBe(90000);
+      // u1 = 후불 40000 (선불 pending 50000 은 이탈로 제외 · 대회 완납 15000 상쇄 없음)
+      expect(byId["u1"].outstandingAmount).toBe(40000);
       expect(byId["u1"].sources).toEqual(["CLASS"]);
-      expect(byId["u1"].classCount).toBe(2);
+      expect(byId["u1"].classCount).toBe(1);
       expect(byId["u1"].tournamentCount).toBe(0);
       expect(byId["u1"].teamName).toBe("팀1");
       expect(byId["u5"].outstandingAmount).toBe(20000);
       expect(byId["u5"].sources).toEqual(["TOURNAMENT"]);
-      // outstanding desc 정렬 — u1(90000) 이 먼저.
+      // outstanding desc 정렬 — u1(40000) 이 먼저.
       expect(unpaid.members[0].memberId).toBe("u1");
     });
 
@@ -1468,24 +1467,29 @@ describe("SettlementSummaryService", () => {
       prismaMock.class.findMany.mockImplementation((args: any) =>
         args?.select?.className
           ? Promise.resolve([
-              classDetail("c1", "PREPAID", {
+              classDetail("c1", "POSTPAID", {
                 teamId: "team-1",
                 team: { name: "팀1" },
               }),
             ])
           : Promise.resolve([{ id: "c1" }]),
       );
-      prismaMock.enrollment.findMany.mockResolvedValue([
-        prepaidEnrollment("u1", 50000, {
-          status: "approved",
-          payment: {
-            paymentStatus: "pending",
-            completedAt: null,
-            createdAt: JULY,
-            amount: 50000,
-            refundLogs: [],
-          },
-        }),
+      // 수업 미납 = 후불 확정 라인(선불 pending 은 집계 제외 계약이라 미납 소스가 될 수 없음).
+      prismaMock.enrollment.findMany.mockResolvedValue([]);
+      prismaMock.monthlyPostpaidBilling.findMany.mockResolvedValue([
+        {
+          classId: "c1",
+          status: "confirmed",
+          items: [
+            {
+              userId: "u1",
+              amount: 50000,
+              paymentStatus: "pending",
+              attendanceCount: 5,
+              payment: null,
+            },
+          ],
+        },
       ]);
       prismaMock.tournament.findMany.mockImplementation((args: any) =>
         args?.select?.registrations
@@ -1561,7 +1565,7 @@ describe("SettlementSummaryService", () => {
       expect(detail.member).toEqual({
         id: "u1",
         name: "홍길동",
-        totalOutstanding: 90000,
+        totalOutstanding: 40000,
       });
       expect(detail.parents).toEqual([
         { id: "p1", name: "홍부", phone: "010" },
@@ -1575,9 +1579,8 @@ describe("SettlementSummaryService", () => {
       const bySrc = Object.fromEntries(
         detail.details.map((d) => [d.sourceId, d]),
       );
-      expect(bySrc["c1"].amount).toBe(50000);
-      expect(bySrc["c1"].billingTiming).toBe("PREPAID");
-      expect(bySrc["c1"].sourceType).toBe("CLASS");
+      // c1 선불 pending 은 결제 이탈 — 상세 라인에 나타나지 않음
+      expect(bySrc["c1"]).toBeUndefined();
       expect(bySrc["c2"].amount).toBe(40000);
       expect(bySrc["c2"].billingTiming).toBe("POSTPAID");
       expect(bySrc["c2"].attendanceCount).toBe(3); // 후불 확정 라인 출석수
@@ -1666,12 +1669,12 @@ describe("SettlementSummaryService", () => {
           ["p1"],
           expect.objectContaining({
             notificationType: "payment_unpaid",
-            linkUrl: "/credits",
+            linkUrl: "/payment/history?tab=pending",
           }),
         );
-        // 총액(수업+대회 합=90000) 문구 포함
+        // 총액(후불 확정 청구만=40000 — 선불 이탈 50000 제외) 문구 포함
         const payload = notificationsMock.notifyUsers.mock.calls[0][1];
-        expect(payload.message).toContain("90,000");
+        expect(payload.message).toContain("40,000");
       });
 
       it("쿨다운 2회차 → cooldown:true, 발송 안 함", async () => {

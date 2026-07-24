@@ -2485,6 +2485,7 @@ export class TournamentsService {
         amount: Number(reg.calculatedFee),
         endDate: tournament.endDate,
         payment: reg.payment,
+        tournamentBillingMode: tournament.billingMode,
       });
       return {
         ...reg,

@@ -373,8 +373,8 @@ describe('DirectorPaymentsPage — 미수금 로드 실패 (금융 위장 금지
   });
 });
 
-describe('DirectorPaymentsPage — 미수금 탭 출처 배지 · 선택월 연동', () => {
-  it('미수금 탭에 출처 배지(수업·대회)와 미납액을 표시한다', async () => {
+describe('DirectorPaymentsPage — 미수금 탭 출처 건수 · 선택월 연동', () => {
+  it('미수금 탭에 출처별 건수(훈련·대회)와 미납액 합계를 표시한다', async () => {
     getTeamSettlementSummaryMock.mockResolvedValue(makeSettlement('2026-07', 'JULY_CLASS'));
     getTeamUnpaidMembersMock.mockImplementation((params: { yearMonth?: string }) =>
       Promise.resolve(
@@ -400,10 +400,15 @@ describe('DirectorPaymentsPage — 미수금 탭 출처 배지 · 선택월 연�
     });
 
     expect(await screen.findByText('홍길동')).toBeInTheDocument();
-    // 탭 라벨 "대회" 와 충돌하지 않도록 활성 패널 스코프로 배지를 조회.
+    // 탭 라벨 "대회" 와 충돌하지 않도록 활성 패널 스코프로 조회.
+    //   출처 건수는 단일 메타 라인("훈련 1건 · 대회 1건")으로 합쳐 렌더된다.
     const panel = screen.getByRole('tabpanel');
-    expect(within(panel).getByText(MESSAGES.settlement.sourceClass)).toBeInTheDocument();
-    expect(within(panel).getByText(MESSAGES.settlement.sourceTournament)).toBeInTheDocument();
+    const sourceCountText = `${MESSAGES.settlement.sourceClassCount(1)} · ${MESSAGES.settlement.sourceTournamentCount(1)}`;
+    expect(within(panel).getByText(sourceCountText)).toBeInTheDocument();
+    expect(within(panel).getByText(MESSAGES.settlement.unpaidLabel)).toBeInTheDocument();
+    expect(
+      within(panel).getByRole('button', { name: MESSAGES.settlement.sendReminder }),
+    ).toBeInTheDocument();
   });
 
   it('월 변경 시 미수금을 선택월로 재조회한다', async () => {

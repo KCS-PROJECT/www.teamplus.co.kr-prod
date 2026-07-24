@@ -92,7 +92,7 @@ describe("attribution.util", () => {
       expect(r.paidAmount).toBe(80000);
     });
 
-    it("③ pending 선불 → createdAt 월 · BILLED", () => {
+    it("③ pending 선불(결제 진행 중/이탈) → createdAt 월 귀속 유지 · UNSETTLED 집계 제외", () => {
       const r = resolvePrepaidAttribution({
         billingTiming: "PREPAID",
         feeType: "PER_SESSION",
@@ -103,9 +103,9 @@ describe("attribution.util", () => {
           refundLogs: [],
         },
       });
-      expect(r.yearMonth).toBe("2026-07");
-      expect(r.billingStatus).toBe("BILLED");
-      expect(r.billedAmount).toBe(50000); // 실청구
+      expect(r.yearMonth).toBe("2026-07"); // 귀속만 유지(attributionUnknown 방지)
+      expect(r.billingStatus).toBe("UNSETTLED");
+      expect(r.billedAmount).toBeNull(); // 확정 청구 아님 — 미수금·매출 미집계
       expect(r.paidAmount).toBe(0);
     });
 
@@ -262,7 +262,7 @@ describe("attribution.util", () => {
       expect(r.paidAmount).toBe(30000);
     });
 
-    it("PENDING(정산 후 미결제) → BILLED · Payment createdAt 월", () => {
+    it("PENDING(정산 후 미결제·mode 미전달=후불 간주) → BILLED · Payment createdAt 월", () => {
       const r = resolveTournamentAttribution({
         registrationPaymentStatus: "PENDING",
         amount: 30000,
@@ -276,6 +276,56 @@ describe("attribution.util", () => {
       expect(r.billingStatus).toBe("BILLED");
       expect(r.yearMonth).toBe("2026-07"); // createdAt 월
       expect(r.billedAmount).toBe(30000);
+    });
+
+    it("후불 명시 + PENDING → BILLED (확정 청구 미수)", () => {
+      const r = resolveTournamentAttribution({
+        registrationPaymentStatus: "PENDING",
+        amount: 30000,
+        endDate: new Date("2026-06-30T00:00:00Z"),
+        tournamentBillingMode: "POSTPAID",
+        payment: {
+          paymentStatus: "pending",
+          createdAt: JULY_INSTANT,
+          refundLogs: [],
+        },
+      });
+      expect(r.billingStatus).toBe("BILLED");
+      expect(r.billedAmount).toBe(30000);
+    });
+
+    it("선불 + PENDING(결제 진행 중/이탈) → UNSETTLED · 청구/예상 모두 제외", () => {
+      const r = resolveTournamentAttribution({
+        registrationPaymentStatus: "PENDING",
+        amount: 30000,
+        endDate: new Date("2026-06-30T00:00:00Z"),
+        tournamentBillingMode: "PREPAID",
+        payment: {
+          paymentStatus: "pending",
+          createdAt: JULY_INSTANT,
+          refundLogs: [],
+        },
+      });
+      expect(r.billingStatus).toBe("UNSETTLED");
+      expect(r.billedAmount).toBeNull(); // 확정 청구 아님 — 미수금 미집계
+      expect(r.estimatedAmount).toBeNull(); // "곧 청구할 돈"도 아님 — 정산 예정 미집계
+      expect(r.yearMonth).toBe("2026-07"); // 귀속만 유지
+    });
+
+    it("선불 + PAID → 완료 결제는 정상 수납(선불 제외는 PENDING 한정)", () => {
+      const r = resolveTournamentAttribution({
+        registrationPaymentStatus: "PAID",
+        amount: 30000,
+        endDate: new Date("2026-06-30T00:00:00Z"),
+        tournamentBillingMode: "PREPAID",
+        payment: {
+          paymentStatus: "completed",
+          completedAt: JULY_INSTANT,
+          refundLogs: [],
+        },
+      });
+      expect(r.billingStatus).toBe("PAID");
+      expect(r.paidAmount).toBe(30000);
     });
 
     it("실제 취소 형태(cancelRegistration: registration=CANCELLED·payment=refunded·refundLogs=[]) → REFUNDED · 전액 환불 · 순수납 0", () => {
