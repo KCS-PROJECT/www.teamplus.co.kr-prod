@@ -1007,11 +1007,21 @@ export default function CommonTournamentDetailPage() {
             )}
             </div>
           </>
+        ) : applyDisabledReason ? (
+          // 비활성 사유(신청 마감·대상 자녀 없음 등)는 행동이 아닌 상태 안내 — apply 후불 안내 배너와 동일 패턴.
+          <div className="flex items-start gap-2.5 rounded-w-md border-[1.5px] border-it-blue-500/30 bg-it-blue-50 p-4 text-w-small text-it-ink-600 dark:bg-it-blue-500/10 dark:text-rink-100">
+            <Icon
+              name="info"
+              className="text-[18px] text-it-blue-500 shrink-0 mt-0.5"
+              aria-hidden="true"
+              filled
+            />
+            <span>{applyDisabledReason}</span>
+          </div>
         ) : (
           <button
             type="button"
             onClick={() => {
-              if (applyDisabledReason) return;
               if (uiStatus === "recruiting" || uiStatus === "closing_soon") {
                 navigate(`/tournaments/${id}/apply`);
               } else {
@@ -1023,21 +1033,14 @@ export default function CommonTournamentDetailPage() {
               }
             }}
             className="flex h-14 w-full items-center justify-center gap-2 rounded-w-md bg-it-blue-500 text-w-body-lg font-bold text-white shadow-sh-1 hover:bg-it-blue-600 active:brightness-95 transition-colors motion-reduce:transition-none disabled:opacity-50"
-            disabled={
-              uiStatus === "completed" ||
-              uiStatus === "cancelled" ||
-              !!applyDisabledReason
-            }
+            disabled={uiStatus === "completed" || uiStatus === "cancelled"}
           >
             <span>
-              {applyDisabledReason ??
-                (isPostpaid
-                  ? MESSAGES.tournament.postpaidApplyCta
-                  : MESSAGES.tournament.applyCta)}
+              {isPostpaid
+                ? MESSAGES.tournament.postpaidApplyCta
+                : MESSAGES.tournament.applyCta}
             </span>
-            {!applyDisabledReason && (
-              <Icon name="arrow_forward" className="text-xl" />
-            )}
+            <Icon name="arrow_forward" className="text-xl" />
           </button>
         )}
       </div>
