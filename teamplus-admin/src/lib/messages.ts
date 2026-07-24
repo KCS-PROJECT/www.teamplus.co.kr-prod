@@ -72,8 +72,9 @@ export const MESSAGES = {
     createError: '약관 등록에 실패했습니다.',
   },
   version: {
-    requiredFields: '버전 번호와 최소 요구 버전은 필수 입력 항목입니다.',
+    requiredFields: '버전 번호는 필수 입력 항목입니다.',
     createError: '버전 등록에 실패했습니다.',
+    invalidMinVersion: '최소 지원 버전은 버전 번호보다 높을 수 없습니다.',
   },
   faq: {
     requiredFields: '질문과 답변은 필수 입력 항목입니다.',
