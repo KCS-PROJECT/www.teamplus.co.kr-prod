@@ -2125,6 +2125,7 @@ export const MESSAGES = {
     groupCoachRoleHead: "감독",
     groupCoachMetaLabel: (name: string) => `담당코치 ${name}`,
     groupCoachEmpty: "지정 가능한 코치가 없습니다.",
+    groupCoachSheetTitle: "담당코치를 선택해주세요.",
     groupCoachHelper: "이 하위그룹을 담당할 코치를 지정합니다.",
     groupAgeGroupLabel: "대상 설명",
     groupAgeGroupPlaceholder: "예: 주말반 · 초급 · 2014년생 위주",
@@ -2493,6 +2494,7 @@ export const MESSAGES = {
 
     // [추가 2026-05-18 W2.B] 회원 선택 카테고리 (하위그룹 등록/수정 — 연령별 필터)
     groupMembersFilterAll: "전체",
+    groupMembersFilterTitle: "출생연도를 선택해주세요.",
     groupMembersFilterEmpty:
       "해당 연령의 회원이 없습니다. 다른 카테고리를 선택해 주세요.",
 
