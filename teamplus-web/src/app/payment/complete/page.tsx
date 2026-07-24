@@ -229,6 +229,12 @@ function PaymentCompleteContent() {
   const tossAmount = Number(searchParams?.get('amount') ?? '0');
 
   const [confirmError, setConfirmError] = useState<string | null>(null);
+  // 결제 확인에 필요한 파라미터가 하나라도 있는지 — 세션 만료 재로그인 복귀 등으로
+  // 쿼리가 소실된 채 진입하면 어떤 분기도 타지 못해 무한 스피너가 되므로 안내로 대체.
+  const hasPaymentParams =
+    Boolean(orderNumber) ||
+    (provider === 'toss' && Boolean(tossPaymentKey) && Boolean(tossOrderId) && tossAmount > 0) ||
+    (provider === 'mock' && Boolean(tossOrderId));
   // [2026-06-09] 오픈클래스 자녀 복수 결제 — 다음 자녀 순차 큐.
   const { navigate } = useNavigation();
   const { user } = useAuth();
@@ -306,6 +312,9 @@ function PaymentCompleteContent() {
         if (detail.success && detail.data) {
           setReceipt(detail.data.receipt);
           setCreditsIssued(detail.data.creditsIssued);
+        } else {
+          // 승인은 끝났고 영수증 조회만 실패한 상태 — 무한 스피너 대신 에러 표면화.
+          setConfirmError(detail.error?.message ?? MESSAGES.payment2.loadError);
         }
       };
       void confirmToss();
@@ -335,6 +344,8 @@ function PaymentCompleteContent() {
       if (res.success && res.data) {
         setReceipt(res.data.receipt);
         setCreditsIssued(res.data.creditsIssued);
+      } else {
+        setConfirmError(res.error?.message ?? MESSAGES.payment2.loadError);
       }
     };
     void load();
@@ -433,6 +444,22 @@ function PaymentCompleteContent() {
               )}
             </section>
           </>
+        ) : confirmError || !hasPaymentParams ? (
+          // 에러 또는 파라미터 소실 진입 — 무한 스피너 대신 안내 + 홈 복귀 동선 제공.
+          //   confirmError 는 상단 배너로 이미 표시되므로 여기서는 중복 출력하지 않는다.
+          <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
+            {!confirmError && (
+              <p className="mb-6 text-it-ink-500 dark:text-rink-300 text-card-body">
+                {MESSAGES.payment2.completeNoInfo}
+              </p>
+            )}
+            <NavLink
+              href={homePath}
+              className="flex items-center justify-center h-14 px-10 rounded-w-md bg-it-blue-500 text-white font-bold text-card-emphasis shadow-sh-1 hover:bg-it-blue-600 transition-colors motion-reduce:transition-none active:brightness-95"
+            >
+              홈으로 이동
+            </NavLink>
+          </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-20">
             <div className="w-12 h-12 rounded-w-pill border-4 border-it-line-strong dark:border-rink-700 border-t-it-blue-500 animate-spin mb-4 motion-reduce:animate-none"></div>

@@ -244,7 +244,9 @@ export function middleware(request: NextRequest) {
         return withSecurityHeaders(NextResponse.next(), pathname);
       }
       const loginUrl = new URL("/login", request.url);
-      loginUrl.searchParams.set("redirect", pathname);
+      // 쿼리스트링 포함 보존 — 토스 successUrl(/payment/complete?paymentKey=...) 등
+      // 파라미터가 본체인 경로에서 재로그인 후 복귀 시 파라미터 소실을 막는다.
+      loginUrl.searchParams.set("redirect", pathname + request.nextUrl.search);
       return NextResponse.redirect(loginUrl);
     }
     if (!isAuthorized) {
