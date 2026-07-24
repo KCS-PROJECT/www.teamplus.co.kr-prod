@@ -1,12 +1,16 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Cron, CronExpression } from "@nestjs/schedule";
 import { PrismaService } from "../../prisma/prisma.service";
+import { SystemLogService } from "../../logger/system-log.service";
 
 @Injectable()
 export class ReminderScheduler {
   private readonly logger = new Logger(ReminderScheduler.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly systemLog: SystemLogService,
+  ) {}
 
   /**
    * 1시간마다: 미응답 RSVP 리마인드
@@ -161,8 +165,15 @@ export class ReminderScheduler {
       if (result.count > 0) {
         this.logger.log(`만료 Enrollment ${result.count}건 자동 처리 완료`);
       }
+      this.systemLog.cron(
+        "ENROLLMENT_EXPIRY",
+        `만료 Enrollment 자동 처리 완료: ${result.count}건`,
+      );
     } catch (error) {
       this.logger.error("만료 Enrollment 처리 실패", error);
+      this.systemLog.cron("ENROLLMENT_EXPIRY", "만료 Enrollment 처리 실패", {
+        level: "ERROR",
+      });
     }
   }
 }

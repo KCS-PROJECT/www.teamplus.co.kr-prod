@@ -16,6 +16,7 @@ import {
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "@/prisma/prisma.service";
 import { extractClientIp } from "../utils/extract-client-ip.util";
+import { normalizeAuditPlatform } from "../utils/client-platform.util";
 import {
   REQUEST_CONTEXT_KEY,
   type ApiLifecycleContext,
@@ -78,6 +79,9 @@ export class AuditInterceptor implements NestInterceptor {
           action: opts.action,
           resource: opts.resource,
           ipAddress,
+          platform: normalizeAuditPlatform(
+            req.headers["x-client-platform"] as string | undefined,
+          ),
           user: { connect: { id: userId } },
         };
         if (newValue) data.newValue = newValue as Prisma.InputJsonValue;

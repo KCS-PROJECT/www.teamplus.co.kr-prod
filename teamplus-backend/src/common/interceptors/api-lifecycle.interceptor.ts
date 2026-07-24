@@ -22,6 +22,7 @@ import { extractClientIp } from "../utils/extract-client-ip.util";
 import { LoggerService } from "../../logger/logger.service";
 import { truncateForLog } from "../utils/truncate-for-log.util";
 import { TransactionLogService } from "../../transaction-log/transaction-log.service";
+import { SystemLogService } from "../../logger/system-log.service";
 
 /**
  * ApiLifecycleInterceptor
@@ -75,6 +76,7 @@ export class ApiLifecycleInterceptor implements NestInterceptor {
     private readonly userActivity: UserActivityService,
     private readonly appLogger: LoggerService,
     private readonly txLog: TransactionLogService,
+    private readonly systemLog: SystemLogService,
   ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
@@ -147,6 +149,17 @@ export class ApiLifecycleInterceptor implements NestInterceptor {
               `userId=${req.user?.id ?? "-"} ` +
               `role=${req.user?.userType ?? "-"} ` +
               `ip=${ctx.clientIp ?? "-"}`,
+          );
+          // 성능 경고(SLA 초과)를 시스템로그(DB)에 기록
+          this.systemLog.perf(
+            `${req.method} ${req.url} ${durationMs}ms (>${this.SLA_THRESHOLD_MS}ms)`,
+            `${req.method} ${req.url}`,
+            durationMs,
+            {
+              requestId: ctx.requestId,
+              userId: req.user?.id ?? null,
+              role: req.user?.userType ?? null,
+            },
           );
           // [2026-05-13 Phase D-5] Sentry SLA 알림 — SENTRY_DSN 활성 시에만 전송.
           //   3초 초과는 'error' 레벨, 1초~3초는 'warning' 레벨.

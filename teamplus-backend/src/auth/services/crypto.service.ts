@@ -9,6 +9,7 @@ import { Injectable } from "@nestjs/common";
 import { Request } from "express";
 import { LoggerService } from "@/logger/logger.service";
 import { AuditService, DecryptionEventType } from "./audit.service";
+import { normalizeAuditPlatform } from "@/common/utils/client-platform.util";
 import {
   decryptCredentials,
   isFallbackPayload,
@@ -54,6 +55,7 @@ export class CryptoService {
       request?.socket?.remoteAddress ||
       "unknown") as string;
     const userAgent = request?.get("user-agent");
+    const platform = normalizeAuditPlatform(request?.get("x-client-platform"));
 
     try {
       // 1. 복호화 시작
@@ -105,6 +107,7 @@ export class CryptoService {
           email,
           ipAddress,
           userAgent,
+          platform,
           payloadHash,
           payloadSize,
           encryptedDataLength: payload.encryptedData?.length || 0,
@@ -155,6 +158,7 @@ export class CryptoService {
         email,
         ipAddress,
         userAgent,
+        platform,
         payloadHash,
         payloadSize,
         encryptedDataLength: payload.encryptedData?.length || 0,

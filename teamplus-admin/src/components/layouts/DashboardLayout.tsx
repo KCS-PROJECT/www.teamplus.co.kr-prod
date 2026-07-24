@@ -43,6 +43,8 @@ import {
   GraduationCap,
   Activity,
   ScrollText,
+  History,
+  Server,
   FileBarChart,
   UserCog,
   HelpCircle,
@@ -216,10 +218,12 @@ const systemNavItems = [
   { href: "/dashboard/system/admins", label: "관리자계정관리", icon: KeyRound },
   { href: "/dashboard/common-codes", label: "공통코드관리", icon: Database },
   { href: "/dashboard/system/monitoring", label: "모니터링", icon: Activity },
-  { href: "/dashboard/system/logs", label: "로그", icon: ScrollText },
+  { href: "/dashboard/system/logs", label: "서비스로그", icon: ScrollText },
+  { href: "/dashboard/system/os-logs", label: "시스템로그", icon: Server },
+  { href: "/dashboard/system/audit-logs", label: "감사로그", icon: History },
   {
     href: "/dashboard/system/transaction-logs",
-    label: "거래로그",
+    label: "API거래로그",
     icon: ReceiptText,
   },
 ];

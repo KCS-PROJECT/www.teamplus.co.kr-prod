@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 앱 설정 저장 서비스 (SharedPreferences 사용)
@@ -16,6 +18,7 @@ class AppPreferencesService {
   static const String _onboardingCompletedKey = 'onboarding_completed';
   static const String _splashViewedKey = 'splash_viewed';
   static const String _currentClubIdKey = 'current_club_id';
+  static const String _logSessionIdKey = 'teamplus_log_session_id';
 
   /// SharedPreferences 초기화
   Future<void> init() async {
@@ -65,6 +68,23 @@ class AppPreferencesService {
   Future<String?> getCurrentClubId() async {
     final prefs = await _getPrefs();
     return prefs.getString(_currentClubIdKey);
+  }
+
+  /// 익명 로그 세션 ID — 앱 사용 통계(DAU/MAU)용.
+  ///   개인정보 아님(익명 난수). 앱 삭제 전까지 유지되어 재방문을 동일 세션으로 집계.
+  ///   백엔드 UserActivityLog.sessionId 로 전송되어 platform='app' 활성 사용자 집계에 사용.
+  Future<String> getOrCreateLogSessionId() async {
+    final prefs = await _getPrefs();
+    var id = prefs.getString(_logSessionIdKey);
+    if (id == null || id.isEmpty) {
+      final ts = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
+      final rand = Random();
+      final suffix =
+          List.generate(8, (_) => rand.nextInt(36).toRadixString(36)).join();
+      id = 'app-$ts-$suffix';
+      await prefs.setString(_logSessionIdKey, id);
+    }
+    return id;
   }
 
   /// 모든 설정 초기화

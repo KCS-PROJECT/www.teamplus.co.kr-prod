@@ -20,6 +20,7 @@ import 'core/storage/database/local_db_service.dart';
 import 'core/diagnostics/boot_timeline.dart';
 import 'core/auth/token_storage.dart';
 import 'core/constants/api_constants.dart';
+import 'core/storage/app_preferences_service.dart';
 import 'core/network/api_client.dart';
 import 'core/webview/webview_cookie_sync.dart';
 import 'core/webview/webview_preloader.dart';
@@ -372,9 +373,14 @@ void main() {
   // v8.6 (2026-05-20) — 통합 로깅 시스템 비동기 초기화 (runApp 차단 안 함)
   () async {
     try {
+      // 익명 로그 세션 ID 주입 — app 이벤트의 sessionId 로 전송되어
+      //   DAU/MAU(활성 세션) 통계 집계가 가능해진다. (이전엔 null → 앱 사용자 미집계)
+      final logSessionId =
+          await AppPreferencesService().getOrCreateLogSessionId();
       await AppLogger.instance.initialize(
         backendBaseUrl: ApiConstants.baseUrl,
         platform: kIsWeb ? 'web' : 'app',
+        sessionId: logSessionId,
       );
     } catch (e) {
       debugPrint('[Boot] AppLogger 초기화 실패 (무시): $e');

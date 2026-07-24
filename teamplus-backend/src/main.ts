@@ -11,6 +11,7 @@ import { AppModule } from "./app.module";
 import { AllExceptionsFilter } from "./common/filters";
 import { initSentry, SentryExceptionFilter } from "./common/sentry.config";
 import { LoggerService } from "./logger/logger.service";
+import { SystemLogService } from "./logger/system-log.service";
 
 // TZ 방어선 — pm2 env(TZ=Asia/Seoul)가 주력이고, 미설정 환경(Docker/신규 서버)에서도
 // 레거시 시간 코드의 KST 전제가 깨지지 않도록 보장 (Date 최초 사용 전이어야 유효)
@@ -211,13 +212,15 @@ async function bootstrap() {
   // AllExceptionsFilter가 최종 응답 포맷팅 담당
   // v8.6 (2026-05-20): LoggerService 주입 — 404 등 라우터 미매칭 에러도 errors/{category}.log 분류 기록
   const appLogger = app.get(LoggerService);
+  // 서버 운영 로그(에러·기동·cron·성능)를 DB에 기록하는 서비스 — 5xx 에러도 시스템로그로 적재
+  const systemLog = app.get(SystemLogService);
   if (process.env.SENTRY_DSN) {
     app.useGlobalFilters(
       new SentryExceptionFilter(),
-      new AllExceptionsFilter(appLogger),
+      new AllExceptionsFilter(appLogger, systemLog),
     );
   } else {
-    app.useGlobalFilters(new AllExceptionsFilter(appLogger));
+    app.useGlobalFilters(new AllExceptionsFilter(appLogger, systemLog));
   }
 
   // CORS Configuration - 환경별 보안 설정
@@ -387,6 +390,12 @@ async function bootstrap() {
   const port = process.env.BACKEND_PORT || 5003;
   const host = process.env.BACKEND_HOST || "0.0.0.0"; // 모든 네트워크 인터페이스에서 수신
   await app.listen(port, host);
+
+  // 서버 기동 완료 — 시스템로그(DB)에 기록
+  systemLog.boot(`서버 기동 완료 (port ${port}, env=${process.env.NODE_ENV ?? "development"})`, {
+    port: Number(port),
+    nodeEnv: process.env.NODE_ENV ?? "development",
+  });
 
   logger.log(`================================`);
   logger.log(`TEAMPLUS Backend is running!`);

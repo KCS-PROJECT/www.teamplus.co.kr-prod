@@ -29,6 +29,7 @@ import {
 } from "@nestjs/swagger";
 import { Response } from "express";
 import { AdminService } from "./admin.service";
+import { OsMonitorService } from "./os-monitor.service";
 import { AuthenticatedRequest } from "@/common/interfaces/authenticated-request.interface";
 import { PrismaService } from "../prisma/prisma.service";
 import { RolesGuard } from "../auth/roles.guard";
@@ -61,6 +62,7 @@ import {
 export class AdminController {
   constructor(
     private readonly adminService: AdminService,
+    private readonly osMonitor: OsMonitorService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -301,6 +303,8 @@ export class AdminController {
   @ApiQuery({ name: "userId", required: false, type: String })
   @ApiQuery({ name: "action", required: false, type: String })
   @ApiQuery({ name: "resource", required: false, type: String })
+  @ApiQuery({ name: "search", required: false, type: String })
+  @ApiQuery({ name: "platform", required: false, type: String, description: "web | admin | app" })
   @ApiQuery({ name: "startDate", required: false, type: String })
   @ApiQuery({ name: "endDate", required: false, type: String })
   async getAuditLogs(
@@ -309,6 +313,8 @@ export class AdminController {
     @Query("userId") userId?: string,
     @Query("action") action?: string,
     @Query("resource") resource?: string,
+    @Query("search") search?: string,
+    @Query("platform") platform?: string,
     @Query("startDate") startDate?: string,
     @Query("endDate") endDate?: string,
   ) {
@@ -318,6 +324,8 @@ export class AdminController {
       userId,
       action,
       resource,
+      search,
+      platform,
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
     });
@@ -845,6 +853,32 @@ export class AdminController {
       search,
       page: page ? parseInt(page) : 1,
       limit: limit ? parseInt(limit) : 50,
+    });
+  }
+
+  // ==================== 서버(OS) 모니터링 ====================
+
+  @Get("system/os-resources")
+  @ApiOperation({ summary: "서버(OS) 리소스 현황 (CPU·메모리·디스크·업타임)" })
+  getOsResources() {
+    return this.osMonitor.getResources();
+  }
+
+  @Get("system/os-logs")
+  @ApiOperation({
+    summary: "서버(OS) 시스템 로그 (journalctl 우선, syslog 폴백)",
+  })
+  @ApiQuery({ name: "lines", required: false, type: Number })
+  @ApiQuery({
+    name: "level",
+    required: false,
+    type: String,
+    description: "ERROR | WARN | ALL",
+  })
+  getOsLogs(@Query("lines") lines?: string, @Query("level") level?: string) {
+    return this.osMonitor.getLogs({
+      lines: lines ? parseInt(lines) : undefined,
+      level,
     });
   }
 

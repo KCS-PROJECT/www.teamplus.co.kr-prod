@@ -727,6 +727,143 @@ export class AppManagementService implements OnModuleInit {
     return this.prisma.appVersion.create({ data });
   }
 
+  // ==================== 앱 사용 통계 (UserActivityLog 집계) ====================
+  /**
+   * 실제 사용자 앱/웹 사용 통계. `platform IN ('web','app')` 로 **admin(운영자) 트래픽은 항상 제외**.
+   *   - DAU/MAU: sessionId distinct 기반 (userId 는 현재 익명 추적이라 미사용)
+   *   - 세션시간/앱버전 분포: 원천 데이터(durationMs·버전) 미수집 → 제공하지 않음
+   * @param params.days 7 | 30 | 90 (기본 7)
+   * @param params.platform all | web | app (기본 all, admin 제외)
+   */
+  async getAppStatistics(params: { days?: number; platform?: string }) {
+    const days = [7, 30, 90].includes(params.days ?? 7) ? (params.days ?? 7) : 7;
+    const platform =
+      params.platform === "web" || params.platform === "app"
+        ? params.platform
+        : "all";
+
+    // admin 은 항상 제외. 플랫폼 필터는 web/app 범위 내에서만 좁힘.
+    const platformCond =
+      platform === "all"
+        ? Prisma.sql`platform IN ('web','app')`
+        : Prisma.sql`platform = ${platform}`;
+
+    const since = new Date();
+    since.setHours(0, 0, 0, 0);
+    since.setDate(since.getDate() - (days - 1));
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const ydayStart = new Date(todayStart);
+    ydayStart.setDate(ydayStart.getDate() - 1);
+    const mauStart = new Date(todayStart);
+    mauStart.setDate(mauStart.getDate() - 30);
+    const monthStart = new Date(
+      todayStart.getFullYear(),
+      todayStart.getMonth(),
+      1,
+    );
+
+    const n = (v: bigint | number | null | undefined): number => Number(v ?? 0);
+
+    const [
+      dailyRaw,
+      platRaw,
+      pagesRaw,
+      actionRaw,
+      todayR,
+      ydayR,
+      mauR,
+      newSignups,
+    ] = await Promise.all([
+      // 1) 일별 DAU (distinct session) + 이벤트 수
+      this.prisma.$queryRaw<
+        Array<{ d: Date; dau: bigint; events: bigint }>
+      >`SELECT date_trunc('day', created_at) AS d,
+               count(distinct session_id) AS dau,
+               count(*) AS events
+          FROM user_activity_logs
+         WHERE created_at >= ${since} AND ${platformCond}
+         GROUP BY 1 ORDER BY 1`,
+      // 2) 플랫폼 분포 (web vs app) — 항상 web/app 둘 다
+      this.prisma.$queryRaw<
+        Array<{ platform: string; sessions: bigint; events: bigint }>
+      >`SELECT platform,
+               count(distinct session_id) AS sessions,
+               count(*) AS events
+          FROM user_activity_logs
+         WHERE created_at >= ${since} AND platform IN ('web','app')
+         GROUP BY platform`,
+      // 3) 인기 페이지 (PAGE_VIEW resource 상위 8)
+      this.prisma.$queryRaw<
+        Array<{ resource: string; views: bigint }>
+      >`SELECT resource, count(*) AS views
+          FROM user_activity_logs
+         WHERE created_at >= ${since} AND ${platformCond}
+           AND action = 'PAGE_VIEW' AND resource IS NOT NULL
+         GROUP BY resource ORDER BY views DESC LIMIT 8`,
+      // 4) 액션 분포
+      this.prisma.$queryRaw<
+        Array<{ action: string; cnt: bigint }>
+      >`SELECT action, count(*) AS cnt
+          FROM user_activity_logs
+         WHERE created_at >= ${since} AND ${platformCond}
+         GROUP BY action ORDER BY cnt DESC`,
+      // 5) 오늘 DAU
+      this.prisma.$queryRaw<
+        Array<{ c: bigint }>
+      >`SELECT count(distinct session_id) AS c FROM user_activity_logs
+         WHERE created_at >= ${todayStart} AND ${platformCond}`,
+      // 6) 어제 DAU (증감 계산용)
+      this.prisma.$queryRaw<
+        Array<{ c: bigint }>
+      >`SELECT count(distinct session_id) AS c FROM user_activity_logs
+         WHERE created_at >= ${ydayStart} AND created_at < ${todayStart} AND ${platformCond}`,
+      // 7) MAU (최근 30일 distinct session)
+      this.prisma.$queryRaw<
+        Array<{ c: bigint }>
+      >`SELECT count(distinct session_id) AS c FROM user_activity_logs
+         WHERE created_at >= ${mauStart} AND ${platformCond}`,
+      // 8) 이번 달 신규 가입 (회원 DB 기준)
+      this.prisma.user.count({ where: { createdAt: { gte: monthStart } } }),
+    ]);
+
+    const dau = n(todayR[0]?.c);
+    const dauYday = n(ydayR[0]?.c);
+    const dauChange =
+      dauYday > 0 ? Math.round(((dau - dauYday) / dauYday) * 100) : null;
+
+    const totalSessions = platRaw.reduce((s, r) => s + n(r.sessions), 0);
+    const platformStats = platRaw.map((r) => ({
+      platform: r.platform,
+      sessions: n(r.sessions),
+      events: n(r.events),
+      percentage:
+        totalSessions > 0 ? Math.round((n(r.sessions) / totalSessions) * 100) : 0,
+    }));
+
+    return {
+      range: { days, platform },
+      summary: {
+        dau,
+        dauChange,
+        mau: n(mauR[0]?.c),
+        newSignupsThisMonth: newSignups,
+      },
+      dailyStats: dailyRaw.map((r) => ({
+        date: r.d,
+        dau: n(r.dau),
+        events: n(r.events),
+      })),
+      platformStats,
+      topPages: pagesRaw.map((r) => ({ path: r.resource, views: n(r.views) })),
+      actionStats: actionRaw.map((r) => ({
+        action: r.action,
+        count: n(r.cnt),
+      })),
+    };
+  }
+
   // ==================== 프리미엄 이벤트 ====================
 
   async getPremiumEvents(isActive?: string) {

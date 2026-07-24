@@ -3,6 +3,7 @@ import { Cron, CronExpression } from "@nestjs/schedule";
 import { PrismaService } from "@/prisma/prisma.service";
 import { NotificationsService } from "@/notifications/notifications.service";
 import { CreditDomainService } from "./credit-domain.service";
+import { SystemLogService } from "@/logger/system-log.service";
 
 /** SYSTEM 사용자 id 캐시 — cron actorUserId 매핑용 (lazy load) */
 let cachedSystemUserId: string | null = null;
@@ -15,6 +16,7 @@ export class CreditExpiryService {
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
     private readonly creditDomain: CreditDomainService, // PR-B (v0.5): 만료 + 이월 단일 진입점
+    private readonly systemLog: SystemLogService,
   ) {}
 
   /** SYSTEM 사용자 id 를 lazy load + 캐시. cron actorUserId 매핑용 */
@@ -143,6 +145,10 @@ export class CreditExpiryService {
       }
 
       this.logger.log(
+        `만료 크레딧 소멸 배치 완료: ${processedCount}/${creditsToExpire.length}건 처리`,
+      );
+      this.systemLog.cron(
+        "CREDIT_EXPIRY",
         `만료 크레딧 소멸 배치 완료: ${processedCount}/${creditsToExpire.length}건 처리`,
       );
 

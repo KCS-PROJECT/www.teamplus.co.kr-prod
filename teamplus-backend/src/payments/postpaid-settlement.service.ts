@@ -9,6 +9,7 @@ import { Cron } from "@nestjs/schedule";
 import { PrismaService } from "@/prisma/prisma.service";
 import { NotificationsService } from "@/notifications/notifications.service";
 import { ResourceAccessService } from "@/common/access/resource-access.service";
+import { SystemLogService } from "@/logger/system-log.service";
 import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
 import {
   PaymentCalculationService,
@@ -36,6 +37,7 @@ export class PostpaidSettlementService {
     private readonly calculationService: PaymentCalculationService,
     private readonly notifications: NotificationsService,
     private readonly resourceAccess: ResourceAccessService, // 관리자 전용 API 리소스 소속 검증 (IDOR 가드)
+    private readonly systemLog: SystemLogService,
   ) {}
 
   /**
@@ -84,11 +86,15 @@ export class PostpaidSettlementService {
     try {
       await this.processSettlementForMonth(targetMonth);
       this.logger.log(`후결제 정산 배치 완료 [${reason}]`);
+      this.systemLog.cron("SETTLEMENT", `후결제 정산 배치 완료 [${reason}]`);
     } catch (error) {
       this.logger.error(
         `후결제 정산 배치 실패 [${reason}]`,
         (error as Error).stack,
       );
+      this.systemLog.cron("SETTLEMENT", `후결제 정산 배치 실패 [${reason}]`, {
+        level: "ERROR",
+      });
     }
   }
 

@@ -72,6 +72,28 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
     }
 
+    // 백엔드 DB(UserActivityLog)로 forward — source:"web"로 플랫폼 라벨 고정.
+    //   실패해도 로컬 파일은 이미 기록됐으므로 swallow.
+    //   web 의 NEXT_PUBLIC_API_URL 은 /api/v1 미포함이므로 보정한다.
+    if (events.length > 0) {
+      const base = (
+        process.env.NEXT_PUBLIC_API_URL ??
+        process.env.BACKEND_URL ??
+        "http://localhost:5003"
+      ).replace(/\/$/, "");
+      const forwardUrl = base.endsWith("/api/v1")
+        ? `${base}/logs/activity`
+        : `${base}/api/v1/logs/activity`;
+      const userAgent = req.headers.get("user-agent") ?? undefined;
+      void fetch(forwardUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ events, source: "web", userAgent }),
+      }).catch(() => {
+        /* swallow — 로컬 파일은 안전망 */
+      });
+    }
+
     return NextResponse.json({ ok: true, count: events.length });
   } catch {
     return NextResponse.json({ ok: false }, { status: 400 });

@@ -77,9 +77,13 @@ export default function LogsPage() {
       if (params.search) queryParams.search = params.search;
 
       const res = await api.get<LogsResponse | { data: LogsResponse }>('/admin/system/logs', { params: queryParams });
-      const data = (res as { data: LogsResponse })?.data ?? res;
-      setLogs(data.data || []);
-      setTotal(data.total || 0);
+      // 응답 형태: { data: LogEntry[], total } (envelope 미적용) 또는 { data: { data, total } }
+      // res.data 가 배열이면 res 자체가 LogsResponse.
+      const body = (Array.isArray((res as LogsResponse)?.data)
+        ? res
+        : ((res as { data: LogsResponse })?.data ?? res)) as LogsResponse;
+      setLogs(body?.data || []);
+      setTotal(body?.total || 0);
     } catch (err) {
       console.error('로그 조회 실패:', err);
       setLogs([]);
@@ -117,9 +121,9 @@ export default function LogsPage() {
       {/* 헤더 */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black tracking-tight text-slate-900 dark:text-white">시스템 로그</h1>
+          <h1 className="text-3xl font-black tracking-tight text-slate-900 dark:text-white">서비스 로그</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            서비스별 로그를 확인하고 검색합니다
+            애플리케이션(백엔드) 로그 — 기동·오류·스케줄러·성능 경고를 확인합니다
           </p>
         </div>
         <Button

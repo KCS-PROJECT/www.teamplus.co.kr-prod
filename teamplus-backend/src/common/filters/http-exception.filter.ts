@@ -9,6 +9,7 @@ import {
 import { Request, Response } from "express";
 import { Prisma } from "@prisma/client";
 import { LoggerService } from "../../logger/logger.service";
+import { SystemLogService } from "../../logger/system-log.service";
 import { classifyError, ErrorCategory } from "../../logger/file-path.util";
 import {
   ApiLifecycleContext,
@@ -61,7 +62,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
    * - 모든 4xx/5xx 응답을 errors/{category}.log + errors/_all.jsonl에 분류 기록
    * - 응답 헤더 X-Error-Log-File·X-Error-Log-Category·X-Error-Log-All 자동 주입
    */
-  constructor(private readonly appLogger?: LoggerService) {}
+  constructor(
+    private readonly appLogger?: LoggerService,
+    private readonly systemLog?: SystemLogService,
+  ) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
@@ -368,6 +372,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
         exception instanceof Error ? exception.stack : String(exception),
         JSON.stringify(logContext),
       );
+      // 서버 오류(5xx)를 시스템로그(DB)에 기록
+      this.systemLog?.serverError(`[${status}] ${message}`, sanitizedUrl, {
+        method: request.method,
+        statusCode: status,
+      });
     } else if (status >= 400) {
       this.logger.warn(`[${status}] ${message}`, JSON.stringify(logContext));
     }

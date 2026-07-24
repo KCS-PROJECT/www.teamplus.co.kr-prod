@@ -135,7 +135,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     void fetch(`${forwardUrl.replace(/\/$/, "")}/logs/activity`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ events, source: "web", ip, userAgent }),
+      body: JSON.stringify({ events, source: "admin", ip, userAgent }),
     }).catch(() => {
       /* swallow — 로컬 파일은 안전망 */
     });

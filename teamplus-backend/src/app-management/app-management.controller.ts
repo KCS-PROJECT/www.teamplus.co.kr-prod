@@ -411,6 +411,26 @@ export class AppManagementController {
     return this.service.createVersion(body);
   }
 
+  // ==================== 앱 사용 통계 ====================
+
+  @Get("statistics")
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("ADMIN", "SYSTEM", "OPER")
+  @ApiOperation({
+    summary: "앱 사용 통계 (UserActivityLog 집계 · admin 트래픽 제외)",
+  })
+  @ApiQuery({ name: "days", required: false, description: "7 | 30 | 90" })
+  @ApiQuery({ name: "platform", required: false, description: "all | web | app" })
+  getAppStatistics(
+    @Query("days") days?: string,
+    @Query("platform") platform?: string,
+  ) {
+    return this.service.getAppStatistics({
+      days: days ? parseInt(days, 10) : undefined,
+      platform,
+    });
+  }
+
   // ==================== 프리미엄 이벤트 ====================
 
   @Get("premium-events")
