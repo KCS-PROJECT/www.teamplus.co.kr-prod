@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { forwardRef, Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { ScheduleModule } from "@nestjs/schedule";
 import { PaymentsService } from "./payments.service";
@@ -19,6 +19,7 @@ import { RedisModule } from "@/redis/redis.module";
 import { EnrollmentsModule } from "@/enrollments/enrollments.module";
 import { NotificationsModule } from "@/notifications/notifications.module";
 import { SettlementModule } from "./settlement/settlement.module";
+import { RefundRequestModule } from "./refund-requests/refund-request.module";
 import paymentConfig from "@/config/payment.config";
 
 @Module({
@@ -28,8 +29,9 @@ import paymentConfig from "@/config/payment.config";
     ConfigModule.forFeature(paymentConfig),
     EnrollmentsModule,
     NotificationsModule,
-    ScheduleModule.forRoot(),
     SettlementModule,
+    forwardRef(() => RefundRequestModule),
+    ScheduleModule.forRoot(),
   ],
   controllers: [PaymentsController],
   providers: [
@@ -53,6 +55,7 @@ import paymentConfig from "@/config/payment.config";
     PaymentCalculationService,
     WebhookRetryService,
     LessonConfirmationService,
+    PaymentRefundService, // RefundRequestModule 이 환불 실행 엔진으로 주입
   ],
 })
 export class PaymentsModule {}

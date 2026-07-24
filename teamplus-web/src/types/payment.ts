@@ -67,6 +67,8 @@ export interface PaymentHistoryItem {
   className?: string;
   date: string;
   time: string;
+  /** 결제(완료) 시각 원본 ISO — 환불 요청 가능 기간(14일) 판정용. 표시용 date/time과 별개. */
+  paidAtIso?: string;
   amount: number;
   status: PaymentStatus;
   refundStatus?: string;

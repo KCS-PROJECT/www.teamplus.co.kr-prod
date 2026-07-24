@@ -5,6 +5,7 @@ import { KgInicisGateway } from "./kg-inicis.gateway";
 import { TossPaymentsGateway } from "./toss-payments.gateway";
 import { PaymentCalculationService } from "./payment-calculation.service";
 import { PostpaidSettlementService } from "./postpaid-settlement.service";
+import { SettlementSummaryService } from "./settlement/settlement-summary.service";
 import { WebhookRetryService } from "./webhook-retry.service";
 import { RedisService } from "@/redis/redis.service";
 import {
@@ -122,6 +123,10 @@ describe("PaymentsController", () => {
         {
           provide: PostpaidSettlementService,
           useValue: mockPostpaidSettlementService,
+        },
+        {
+          provide: SettlementSummaryService,
+          useValue: {},
         },
         {
           provide: RedisService,
@@ -369,6 +374,7 @@ describe("PaymentsController", () => {
         undefined,
         undefined,
         { id: "user-uuid", userType: "ADMIN" },
+        { actorId: "user-uuid" }, // 감사 — ADMIN 직접 환불 실행 주체(RefundLog.actorId)
       );
     });
 
@@ -511,6 +517,7 @@ describe("PaymentsController", () => {
         refundDto.refundReason,
         refundDto.refundAmount,
         { id: "user-uuid", userType: "ADMIN" },
+        { actorId: "user-uuid" }, // 감사 — ADMIN 직접 환불 실행 주체(RefundLog.actorId)
       );
     });
 

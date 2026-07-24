@@ -9,10 +9,9 @@ import { Icon } from '@/components/ui/Icon';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
 import { BottomSheetSelector } from '@/components/ui/BottomSheetSelector';
+import { BottomSheet } from '@/components/ui/BottomSheet';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { useToast } from '@/components/ui/Toast';
-import { useModal } from '@/components/ui/Modal/ModalContext';
-import { api } from '@/services/api-client';
 import { cn } from '@/lib/utils';
 import { MESSAGES } from '@/lib/messages';
 import { PaymentSourceBadge } from '@/components/payment/PaymentSourceBadge';
@@ -29,8 +28,12 @@ const GlobalMenu = dynamic(() => import('@/components/layout/GlobalMenu').then(m
 import {
   getPaymentHistory,
   groupPaymentsByMonth,
+  createRefundRequest,
+  getMyRefundRequests,
+  type RefundRequestStatus,
 } from '@/services/payment';
 import { usePageReady } from '@/hooks/usePageReady';
+import { api } from '@/services/api-client';
 import {
   PendingPaymentsPanel,
   type PendingBilling,
@@ -179,18 +182,42 @@ function SummaryCard({ payment }: { payment: PaymentSummary }) {
   );
 }
 
+/** 활성 환불 요청 상태(승인 대기/처리 중/실행 실패) — 버튼 대신 "환불 요청 중" 배지. */
+const ACTIVE_REFUND_STATUSES: RefundRequestStatus[] = [
+  'pending',
+  'executing',
+  'execution_failed',
+];
+
+/** 환불 요청 가능 기간(결제일 기준, 일) — 백엔드 create 가드와 동일 값. */
+const REFUND_REQUEST_WINDOW_DAYS = 14;
+
+/** 결제 시각이 요청 가능 기간 이내인지 — 원시 시각 부재/무효는 fail-closed(버튼 미노출, 백엔드 가드가 최종 판정). */
+function isWithinRefundWindow(paidAtIso?: string): boolean {
+  if (!paidAtIso) return false;
+  const paidAt = new Date(paidAtIso).getTime();
+  if (Number.isNaN(paidAt)) return false;
+  return Date.now() - paidAt <= REFUND_REQUEST_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+}
+
 function PaymentHistoryCard({
   item,
-  onCancel,
-  isCancelling,
+  onRequestRefund,
+  isRequesting,
+  refundStatus,
 }: {
   item: PaymentHistoryItem;
-  onCancel?: (paymentId: string, productName: string) => void;
-  isCancelling?: boolean;
+  onRequestRefund?: (paymentId: string, productName: string) => void;
+  isRequesting?: boolean;
+  /** 이 결제의 최신 환불 요청 상태(있으면). 활성=배지, 거절=배지+재요청 허용. */
+  refundStatus?: RefundRequestStatus;
 }) {
   // [수정 2026-05-13] 'cancelled' 또는 'refunded' 모두 환불 처리 — 토스 cancel 응답은 'refunded' 로 갱신됨.
   const isCancelled = item.status === 'cancelled' || item.status === 'refunded';
   const isCompleted = item.status === 'completed';
+  // 환불 요청 상태 파생 — 활성(대기/처리중/실패)=요청 중 배지, 거절=배지+재요청 허용.
+  const refundActive = refundStatus ? ACTIVE_REFUND_STATUSES.includes(refundStatus) : false;
+  const refundRejected = refundStatus === 'rejected';
   // 카드 상단 라벨 — 선불 수업명(className) 우선, 없으면 대회명/후불 수업명(subjectName)
   const subjectLabel = item.className ?? item.subjectName;
   const postpaidSegments = buildPostpaidDetailSegments(item);
@@ -301,7 +328,7 @@ function PaymentHistoryCard({
         </div>
 
         {isCancelled ? (
-          <span className="text-card-meta text-it-ink-400">{item.refundStatus ?? '환불 완료'}</span>
+          <span className="text-card-meta text-it-ink-400">{item.refundStatus ?? MESSAGES.refund.status.executed}</span>
         ) : (
           <div className="flex items-center gap-3">
             <NavLink
@@ -310,18 +337,38 @@ function PaymentHistoryCard({
             >
               영수증 보기
             </NavLink>
-            {/* [추가 2026-05-13] 결제완료 상태일 때만 결제취소 버튼 노출.
-                onCancel 핸들러 → 토스/KG 분기 처리는 backend PaymentRefundService 가 담당. */}
-            {isCompleted && onCancel && (
-              <button
-                type="button"
-                onClick={() => onCancel(item.id, item.productName)}
-                disabled={isCancelling}
-                className="px-3 py-1 rounded-w-md border border-it-red-500 text-it-red-600 dark:text-it-red-200 text-card-meta font-semibold hover:bg-it-red-50 dark:hover:bg-it-red-500/15 active:brightness-95 transition-colors motion-reduce:transition-none disabled:opacity-60 disabled:cursor-not-allowed"
-                aria-label="결제취소"
+            {/* 환불 승인제 — 즉시 취소 폐기. 활성 요청은 배지, 거절은 배지+재요청, 그 외 결제완료는 요청 버튼. */}
+            {refundActive ? (
+              <span
+                className="inline-flex items-center gap-1 rounded-w-pill bg-sun-100 px-2.5 py-1 text-card-meta font-bold text-it-ink-800 dark:bg-sun-500/15 dark:text-sun-500"
+                aria-label={MESSAGES.refund.requestPendingBadge}
               >
-                {isCancelling ? '취소 중...' : '결제취소'}
-              </button>
+                <Icon name="schedule" className="text-[13px]" aria-hidden="true" />
+                {MESSAGES.refund.requestPendingBadge}
+              </span>
+            ) : (
+              <div className="flex items-center gap-2">
+                {refundRejected && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-w-pill bg-it-red-50 px-2.5 py-1 text-card-meta font-bold text-it-red-600 dark:bg-it-red-500/15 dark:text-it-red-400"
+                    aria-label={MESSAGES.refund.requestRejectedBadge}
+                  >
+                    <Icon name="block" className="text-[13px]" aria-hidden="true" />
+                    {MESSAGES.refund.requestRejectedBadge}
+                  </span>
+                )}
+                {isCompleted && isWithinRefundWindow(item.paidAtIso) && onRequestRefund && (
+                  <button
+                    type="button"
+                    onClick={() => onRequestRefund(item.id, item.productName)}
+                    disabled={isRequesting}
+                    className="px-3 py-1 rounded-w-md border border-it-red-500 text-it-red-600 dark:text-it-red-200 text-card-meta font-semibold hover:bg-it-red-50 dark:hover:bg-it-red-500/15 active:brightness-95 transition-colors motion-reduce:transition-none disabled:opacity-60 disabled:cursor-not-allowed"
+                    aria-label={MESSAGES.refund.requestButton}
+                  >
+                    {isRequesting ? MESSAGES.refund.requestProcessing : MESSAGES.refund.requestButton}
+                  </button>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -345,16 +392,19 @@ function PaymentHistoryList({
   error,
   isFiltered,
   onRetry,
-  onCancel,
-  cancellingId,
+  onRequestRefund,
+  requestingId,
+  refundMap,
 }: {
   groupedPayments: GroupedPaymentHistory;
   isLoading: boolean;
   error: string | null;
   isFiltered: boolean;
   onRetry: () => void;
-  onCancel?: (paymentId: string, productName: string) => void;
-  cancellingId?: string | null;
+  onRequestRefund?: (paymentId: string, productName: string) => void;
+  requestingId?: string | null;
+  /** paymentId → 최신 환불 요청 상태. */
+  refundMap?: Record<string, RefundRequestStatus>;
 }) {
   if (isLoading) {
     return <LoadingState />;
@@ -380,8 +430,9 @@ function PaymentHistoryList({
             <PaymentHistoryCard
               key={item.id}
               item={item}
-              onCancel={onCancel}
-              isCancelling={cancellingId === item.id}
+              onRequestRefund={onRequestRefund}
+              isRequesting={requestingId === item.id}
+              refundStatus={refundMap?.[item.id]}
             />
           ))}
         </section>
@@ -436,10 +487,13 @@ function PaymentHistoryContent() {
   // v16 — 두 데이터(내역 + 미납) 로드 완료 시 풀스크린 로더 hide 신호
   usePageReady(!isPaymentLoading && !isPendingLoading);
 
-  // [추가 2026-05-13] 결제취소 처리
-  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  // 환불 요청 처리 + 내 환불 요청 상태 맵(버튼→배지 대체용)
+  const [requestingId, setRequestingId] = useState<string | null>(null);
+  const [refundMap, setRefundMap] = useState<Record<string, RefundRequestStatus>>({});
+  // 환불 요청 사유 입력 시트 — 대상 결제 + 사유(필수).
+  const [refundTarget, setRefundTarget] = useState<{ paymentId: string; productName: string } | null>(null);
+  const [refundReason, setRefundReason] = useState('');
   const { toast } = useToast();
-  const { modal } = useModal();
 
   // ── 기간 필터 적용 + 월별 그룹화 (파생) ─────────────────────────
   const filteredPayments = useMemo(
@@ -482,6 +536,23 @@ function PaymentHistoryContent() {
     setIsPaymentLoading(false);
   };
 
+  /** 내 환불 요청 조회 → paymentId 별 최신 상태 맵. 활성 우선, 그다음 거절(재요청 안내). */
+  const loadMyRefunds = async () => {
+    const res = await getMyRefundRequests();
+    if (!res.success || !res.data) return;
+    const map: Record<string, RefundRequestStatus> = {};
+    for (const r of res.data) {
+      if (r.status === 'unknown') continue; // 미지 상태는 배지 미표시(fail-closed)
+      if (ACTIVE_REFUND_STATUSES.includes(r.status)) {
+        map[r.paymentId] = r.status; // 활성은 항상 우선
+      } else if (r.status === 'rejected' && !map[r.paymentId]) {
+        map[r.paymentId] = 'rejected';
+      }
+      // executed/canceled 는 결제 자체가 refunded 표기 → 배지 불필요.
+    }
+    setRefundMap(map);
+  };
+
   const fetchPendingBillings = async () => {
     setPendingError(false);
     const res = await api.get<PendingBilling[]>('/payments/postpaid/my-pending');
@@ -498,35 +569,49 @@ function PaymentHistoryContent() {
 
   useEffect(() => {
     fetchPaymentHistory();
+    void loadMyRefunds();
     void fetchPendingBillings();
   }, []);
 
-  /** [추가 2026-05-13] 결제취소 — 토스/KG 분기는 backend PaymentRefundService 가 처리.
-   *  성공 시 결제 내역 재조회.
+  /** 환불 요청 버튼 → 사유 입력 시트 오픈(사유는 감독 승인 판단 자료의 핵심이라 필수). */
+  const openRefundSheet = (paymentId: string, productName: string) => {
+    setRefundReason('');
+    setRefundTarget({ paymentId, productName });
+  };
+
+  /** 환불 요청 제출 — 즉시 취소 폐기. RefundRequest(pending) 생성 후 감독/운영자 승인 대기.
+   *  성공 시 결제 내역 + 내 환불 요청 상태 재조회(버튼→"환불 요청 중" 배지 전환).
    */
-  const handleCancelPayment = async (paymentId: string, productName: string) => {
-    const ok = await modal.confirm({
-      title: '결제를 취소할까요?',
-      message: `${productName} 결제를 취소합니다. 진행하시겠어요?`,
-      confirmText: '결제취소',
-      cancelText: '돌아가기',
-    });
-    if (!ok) return;
-    setCancellingId(paymentId);
+  const submitRefundRequest = async () => {
+    if (!refundTarget) return;
+    const reason = refundReason.trim();
+    if (!reason) {
+      toast.error(MESSAGES.refund.requestReasonRequired);
+      return;
+    }
+    setRequestingId(refundTarget.paymentId);
     try {
-      const res = await api.post(`/payments/${paymentId}/cancel`, {
-        cancelReason: '학부모 요청 (결제내역에서 결제취소)',
-      });
+      const res = await createRefundRequest({ paymentId: refundTarget.paymentId, reason });
       if (!res.success) {
-        toast.error(res.error?.message ?? MESSAGES.payment2.cancelFailed);
+        const code = res.error?.statusCode;
+        if (code === 409) {
+          toast.error(MESSAGES.refund.duplicateActive);
+        } else if (code === 422) {
+          toast.error(MESSAGES.refund.unsupportedPayment);
+        } else {
+          toast.error(res.error?.message ?? MESSAGES.refund.requestFailed);
+        }
+        await loadMyRefunds(); // 서버 상태와 재동기화(경쟁으로 이미 요청됨 등)
         return;
       }
-      toast.success(MESSAGES.payment2.cancelSuccess);
-      await fetchPaymentHistory();
+      toast.success(MESSAGES.refund.requestSuccess);
+      setRefundTarget(null);
+      setRefundReason('');
+      await Promise.all([fetchPaymentHistory(), loadMyRefunds()]);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : MESSAGES.payment2.cancelFailed);
+      toast.error(e instanceof Error ? e.message : MESSAGES.refund.requestFailed);
     } finally {
-      setCancellingId(null);
+      setRequestingId(null);
     }
   };
 
@@ -633,8 +718,9 @@ function PaymentHistoryContent() {
                 error={paymentError}
                 isFiltered={isFiltered}
                 onRetry={fetchPaymentHistory}
-                onCancel={handleCancelPayment}
-                cancellingId={cancellingId}
+                onRequestRefund={openRefundSheet}
+                requestingId={requestingId}
+                refundMap={refundMap}
               />
             </div>
           </div>
@@ -670,6 +756,71 @@ function PaymentHistoryContent() {
         }}
         onClose={() => setIsFilterSheetOpen(false)}
       />
+
+      {/* 환불 요청 사유 입력 시트 — 사유 필수(1~500자). 즉시 취소 폐기 → 승인제. */}
+      <BottomSheet
+        isOpen={refundTarget !== null}
+        onClose={() => {
+          if (requestingId) return; // 제출 처리 중 닫기 방지
+          setRefundTarget(null);
+          setRefundReason('');
+        }}
+        title={MESSAGES.refund.requestModalTitle}
+        footer={
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setRefundTarget(null);
+                setRefundReason('');
+              }}
+              disabled={requestingId !== null}
+              className="h-12 flex-1 rounded-w-md bg-it-fill text-card-title font-semibold text-it-ink-700 transition-colors motion-reduce:transition-none hover:bg-it-line active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-it-blue-900/40 dark:text-it-ink-200 dark:hover:bg-it-blue-900/60"
+            >
+              {MESSAGES.refund.requestModalCancel}
+            </button>
+            <button
+              type="button"
+              onClick={() => void submitRefundRequest()}
+              disabled={!refundReason.trim() || requestingId !== null}
+              className="h-12 flex-1 rounded-w-md bg-it-red-500 text-card-title font-semibold text-white transition-colors motion-reduce:transition-none hover:bg-it-red-600 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {requestingId !== null ? MESSAGES.refund.requestProcessing : MESSAGES.refund.requestSubmit}
+            </button>
+          </div>
+        }
+      >
+        <div className="mt-2 space-y-3 pb-2">
+          <p className="text-card-body leading-relaxed text-it-ink-600 dark:text-rink-300">
+            {MESSAGES.refund.requestModalBody}
+          </p>
+          <div>
+            <label
+              htmlFor="refund-request-reason"
+              className="mb-1.5 block text-card-meta font-bold text-it-ink-500 dark:text-it-ink-300"
+            >
+              {MESSAGES.refund.requestReasonLabel}{' '}
+              <span className="text-it-red-500 dark:text-it-red-400">*</span>
+            </label>
+            <textarea
+              id="refund-request-reason"
+              value={refundReason}
+              onChange={(e) => setRefundReason(e.target.value)}
+              placeholder={MESSAGES.refund.requestReasonPlaceholder}
+              rows={3}
+              maxLength={500}
+              disabled={requestingId !== null}
+              className="w-full resize-none rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill px-4 py-3 text-card-body text-it-ink-800 transition-colors placeholder:text-it-ink-400 focus:border-it-blue-500 focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 motion-reduce:transition-none disabled:opacity-60 dark:border-it-blue-900 dark:bg-it-blue-900/40 dark:text-white dark:placeholder:text-it-ink-300"
+            />
+            {/* 필수 안내 — 항상 자리 예약(min-h)으로 시트 높이 점프 방지 */}
+            <p
+              className={`mt-1 min-h-[18px] text-card-meta text-it-red-500 dark:text-it-red-400${refundReason.trim() ? ' invisible' : ''}`}
+            >
+              {MESSAGES.refund.requestReasonRequired}
+            </p>
+          </div>
+        </div>
+      </BottomSheet>
 
       <GlobalMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </MobileContainer>

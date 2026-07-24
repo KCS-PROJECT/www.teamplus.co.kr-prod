@@ -508,18 +508,77 @@ export class CreditDomainService {
       throw new NotFoundException("MemberCredit을 찾을 수 없습니다.");
     }
 
-    const sessionsRestored = params.isFullRefund
-      ? credit.usedSessions
-      : Math.min(params.sessionsToRestore, credit.usedSessions);
-
-    if (sessionsRestored > 0) {
-      const newUsedSessions = params.isFullRefund
-        ? 0
-        : credit.usedSessions - sessionsRestored;
-      await tx.memberCredit.update({
-        where: { id: params.memberCreditId },
-        data: { usedSessions: newUsedSessions },
-      });
+    // [Major 5] 원자 증감 — 동시 출석 차감/관리자 조정과의 read-modify-write 경쟁 제거.
+    let sessionsRestored: number;
+    if (params.isFullRefund) {
+      // [Major 2] 전액: 관찰값 기반 CAS — 읽은 usedSessions=X 에 대해 where{usedSessions:X}→0.
+      //   count 0(사이에 동시 변경) 이면 재조회 후 재시도(최대 3회). 원장 delta 는 실제 회수량(X).
+      sessionsRestored = 0;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const observed =
+          attempt === 0
+            ? credit.usedSessions
+            : (
+                await tx.memberCredit.findUniqueOrThrow({
+                  where: { id: params.memberCreditId },
+                  select: { usedSessions: true },
+                })
+              ).usedSessions;
+        if (observed === 0) {
+          sessionsRestored = 0;
+          break;
+        }
+        const cas = await tx.memberCredit.updateMany({
+          where: { id: params.memberCreditId, usedSessions: observed },
+          data: { usedSessions: 0 },
+        });
+        if (cas.count === 1) {
+          sessionsRestored = observed;
+          break;
+        }
+        if (attempt === 2) {
+          throw new Error(
+            `CREDIT_REFUND_CONTENTION: memberCreditId=${params.memberCreditId} 전액 복원 경쟁으로 3회 실패.`,
+          );
+        }
+      }
+    } else {
+      // 부분: guarded 원자 감소(decrement + where usedSessions>=safe) 재시도 루프.
+      //   [Major 1] 경쟁 시 현재값 재조회 후 safe 재산정 — 매 시도 가드로 음수·CHECK 위반 차단.
+      //   최대 3회 후 typed error(무한루프 금지). unguarded decrement 제거.
+      sessionsRestored = 0;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const curUsed =
+          attempt === 0
+            ? credit.usedSessions
+            : (
+                await tx.memberCredit.findUniqueOrThrow({
+                  where: { id: params.memberCreditId },
+                  select: { usedSessions: true },
+                })
+              ).usedSessions;
+        const safe = Math.min(params.sessionsToRestore, curUsed);
+        if (safe <= 0) {
+          sessionsRestored = 0;
+          break;
+        }
+        const dec = await tx.memberCredit.updateMany({
+          where: {
+            id: params.memberCreditId,
+            usedSessions: { gte: safe },
+          },
+          data: { usedSessions: { decrement: safe } },
+        });
+        if (dec.count === 1) {
+          sessionsRestored = safe;
+          break;
+        }
+        if (attempt === 2) {
+          throw new Error(
+            `CREDIT_REFUND_CONTENTION: memberCreditId=${params.memberCreditId} 크레딧 복원 경쟁으로 3회 실패.`,
+          );
+        }
+      }
     }
 
     const updated = await tx.memberCredit.findUniqueOrThrow({
@@ -532,9 +591,8 @@ export class CreditDomainService {
       data: {
         memberCreditId: params.memberCreditId,
         type: params.isFullRefund ? "refund" : "refund_partial",
-        amount: params.isFullRefund
-          ? params.sessionsToRestore
-          : sessionsRestored,
+        // [Major 2] 원장 수량 = 실제 회수 delta(입력값 아님) — 전액/부분 모두 sessionsRestored.
+        amount: sessionsRestored,
         balanceAfter,
         reason: params.reason,
       },

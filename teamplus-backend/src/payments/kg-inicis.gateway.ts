@@ -6,8 +6,20 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import * as crypto from "crypto";
-import axios, { AxiosInstance } from "axios";
+import axios, { AxiosError, AxiosInstance } from "axios";
 import { getKgPaymethod } from "./constants/payment-method.constant";
+
+/**
+ * KG 취소 결과 미확정(transport 모호성) — timeout·응답 유실·network·5xx.
+ * KG 가 취소를 처리했으나 응답만 유실됐을 수 있어 **재호출 금지·격리** 대상이다.
+ * (정상 수신된 실패 resultCode 는 이 에러가 아니라 { success:false } 로 반환한다.)
+ */
+export class KgCancelAmbiguousError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "KgCancelAmbiguousError";
+  }
+}
 
 /**
  * KG이니시스 결제 게이트웨이 클라이언트
@@ -316,38 +328,81 @@ export class KgInicisGateway {
 
       const result = response.data;
 
+      // [Major 3] 2xx 라도 응답 schema 검증 — 필수 필드(resultCode) 누락/null/비문자열은
+      //   취소 처리 여부 불명이므로 KgCancelAmbiguousError 로 격리(Payment 복원 금지).
+      const resultCode =
+        result && typeof result.resultCode === "string"
+          ? result.resultCode
+          : null;
+      if (!resultCode) {
+        this.logger.error(
+          `[KG_UNCONFIRMED] 취소 응답 형식 오류(resultCode 누락/비문자열): TID=${tid}, body=${JSON.stringify(
+            result,
+          )?.slice(0, 200)}`,
+        );
+        throw new KgCancelAmbiguousError(
+          "KG 취소 응답 형식이 올바르지 않습니다(필수 필드 누락).",
+        );
+      }
+
       // 응답 코드 확인 (0000: 성공)
-      if (result.resultCode === "0000") {
+      if (resultCode === "0000") {
         this.logger.log(
           `결제 취소 성공: TID=${tid}, 취소금액=${finalCancelAmount}`,
         );
 
         return {
           success: true,
-          tid: result.tid,
+          tid: typeof result.tid === "string" ? result.tid : tid,
           cancelledAmount: finalCancelAmount,
           remainingAmount: totalAmount - finalCancelAmount,
-          message: result.resultMsg || "정상처리",
-        };
-      } else {
-        this.logger.warn(
-          `결제 취소 실패: TID=${tid}, 코드=${result.resultCode}, 메시지=${result.resultMsg}`,
-        );
-
-        return {
-          success: false,
-          tid: result.tid,
-          cancelledAmount: 0,
-          remainingAmount: totalAmount,
-          message: result.resultMsg || "취소 실패",
+          message:
+            typeof result.resultMsg === "string" ? result.resultMsg : "정상처리",
         };
       }
+
+      // 명시적 실패 — well-formed code + resultMsg 문자열이어야 '명확한 실패'로 인정(복원 대상).
+      //   resultMsg 마저 없으면(형식 불완전) 미확정으로 격리.
+      if (typeof result.resultMsg !== "string" || result.resultMsg.length === 0) {
+        this.logger.error(
+          `[KG_UNCONFIRMED] 취소 실패 응답이 불완전(resultMsg 없음): TID=${tid}, code=${resultCode}`,
+        );
+        throw new KgCancelAmbiguousError(
+          "KG 취소 실패 응답이 불완전합니다(사유 없음).",
+        );
+      }
+      this.logger.warn(
+        `결제 취소 실패: TID=${tid}, 코드=${resultCode}, 메시지=${result.resultMsg}`,
+      );
+      return {
+        success: false,
+        tid: typeof result.tid === "string" ? result.tid : tid,
+        cancelledAmount: 0,
+        remainingAmount: totalAmount,
+        message: result.resultMsg,
+      };
     } catch (error) {
+      // KgCancelAmbiguousError(2xx schema 격리)는 그대로 전파.
+      if (error instanceof KgCancelAmbiguousError) throw error;
+      // [Critical 2] transport 모호성(취소 처리 여부 불명)은 typed 로 구분해 격리.
+      const ax = error as AxiosError;
+      const status = ax.response?.status;
+      const isTimeout = ax.code === "ECONNABORTED" || ax.code === "ETIMEDOUT";
+      const isConnErr = ax.code === "ECONNRESET" || ax.code === "ECONNREFUSED";
+      const noResponse = !!ax.request && !ax.response;
+      const is5xx = typeof status === "number" && status >= 500;
+      if (isTimeout || isConnErr || noResponse || is5xx) {
+        this.logger.error(
+          `[KG_UNCONFIRMED] 취소 결과 미확정(transport): tid=${tid}, code=${ax.code}, status=${status ?? "none"}`,
+        );
+        throw new KgCancelAmbiguousError(
+          "KG 취소 결과가 확인되지 않았습니다(응답 유실/타임아웃).",
+        );
+      }
       this.logger.error(
         `결제 취소 중 오류 발생: ${error.message}`,
         error.stack,
       );
-
       throw new InternalServerErrorException(
         "결제 취소 처리 중 오류가 발생했습니다.",
       );

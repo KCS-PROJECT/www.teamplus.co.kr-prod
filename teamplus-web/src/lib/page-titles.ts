@@ -120,6 +120,7 @@ export const PAGE_TITLES: Record<string, string> = {
   '/director-schedules': '전체 일정',
   '/director-notices': '공지사항 관리',
   '/director-payments': '결제 관리',
+  '/director-payments/refunds': '환불 요청',
   '/director-approvals': '승인 내역',
   '/director-coaches': '코치 관리',
   '/director-credits': '결제권 관리',

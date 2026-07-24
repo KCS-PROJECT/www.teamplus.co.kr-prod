@@ -33,6 +33,7 @@ import {
   type SettlementCardData,
 } from '@/components/settlement/SettlementItemCard';
 import { InlineRetryError } from '@/components/settlement/InlineRetryError';
+import { RefundPendingBanner } from '@/components/refunds/RefundPendingBanner';
 
 // ─── Types ──────────────────────────────────────────
 type TabType = 'training' | 'tournament' | 'unpaid';
@@ -310,6 +311,9 @@ export default function DirectorPaymentsPage() {
         role="main"
         aria-label={MESSAGES.settlement.ariaCenter}
       >
+        {/* 환불 대기 조건부 배너 — pending > 0 일 때만 노출(0건이면 wrapper 째 미렌더). */}
+        <RefundPendingBanner scope="team" className="px-5 pt-3" />
+
         {/* ── 정산 요약 — navy 밴드 Hero (ICETIMES flat) + 월 선택기 ──────── */}
         <section className="animate-fade-in bg-it-blue-800 px-5 pb-[22px] pt-5 motion-reduce:animate-none dark:bg-it-blue-900">
           {/* 상단 라벨 + 월 스텝퍼 */}

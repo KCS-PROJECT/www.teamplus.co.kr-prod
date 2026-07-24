@@ -649,6 +649,7 @@ describe("PickupMatchesService", () => {
         undefined,
         undefined,
         { trusted: true },
+        { actorId: otherUserId }, // 감사 — 매치 취소 실행 주체(호스트/ADMIN)
       );
       expect(notifications.createNotification).toHaveBeenCalledTimes(3);
     });

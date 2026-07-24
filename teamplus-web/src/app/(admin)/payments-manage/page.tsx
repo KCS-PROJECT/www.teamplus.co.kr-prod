@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
 import { Icon } from '@/components/ui/Icon';
+import { NavLink } from '@/components/ui/NavLink';
 import { api } from '@/services/api-client';
+import { MESSAGES } from '@/lib/messages';
 
 import { usePageReady } from '@/hooks/usePageReady';
 interface Payment {
@@ -128,6 +130,28 @@ export default function PaymentsManagePage() {
           </div>
         </section>
 
+        {/* [환불 승인제 Phase 1] 승인제 안내 — 결제 관리에서 직접 환불하지 않는다. */}
+        <div className="mb-6 flex items-start gap-2.5 rounded-xl border border-ice-500/20 bg-ice-500/10 p-4">
+          <Icon name="info" className="mt-0.5 shrink-0 text-[18px] text-ice-500" aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="text-card-emphasis font-bold text-wtext-1 dark:text-white">
+              {MESSAGES.refund.adminHandoffTitle}
+            </p>
+            <p className="mt-1 text-card-body font-medium text-wtext-3 dark:text-rink-300">
+              {MESSAGES.refund.adminHandoffBody}
+            </p>
+            {/* 승인 목록 링크 — admin 전역 조회는 감독 환불 요청 목록으로 진입. */}
+            <NavLink
+              href="/director-payments/refunds"
+              className="mt-2.5 inline-flex items-center gap-1 text-card-body font-bold text-ice-500 hover:text-ice-700 active:brightness-95 transition-colors motion-reduce:transition-none"
+            >
+              <Icon name="list_alt" className="text-[16px]" aria-hidden="true" />
+              {MESSAGES.refund.menuLabel}
+              <Icon name="chevron_right" className="text-[16px]" aria-hidden="true" />
+            </NavLink>
+          </div>
+        </div>
+
         {/* Payment list */}
         <section aria-labelledby="payments-heading">
           <div className="mb-3 flex items-end justify-between">
@@ -168,9 +192,6 @@ export default function PaymentsManagePage() {
                   badge: 'bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-100',
                   dot: 'bg-wtext-4 dark:bg-wbg0',
                 };
-                const isRefundRequested = payment.status === 'refund_requested';
-                const isCompleted = payment.status === 'completed';
-                const isPending = payment.status === 'pending';
 
                 return (
                   <li
@@ -211,33 +232,9 @@ export default function PaymentsManagePage() {
                         <Icon name="description" className="text-[16px]" aria-hidden="true" />
                         상세 보기
                       </button>
-                      {isRefundRequested && (
-                        <button
-                          type="button"
-                          className="flex-1 h-11 inline-flex items-center justify-center gap-1 rounded-xl bg-ice-500 px-4 text-card-body font-bold text-white shadow-sm hover:bg-ice-700 active:brightness-95 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900"
-                        >
-                          <Icon name="task_alt" className="text-[16px]" aria-hidden="true" />
-                          환불 승인
-                        </button>
-                      )}
-                      {isCompleted && (
-                        <button
-                          type="button"
-                          className="flex-1 h-11 inline-flex items-center justify-center gap-1 rounded-xl border border-red-200 dark:border-red-900/40 bg-white dark:bg-rink-800 px-4 text-card-body font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 active:brightness-95 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900"
-                        >
-                          <Icon name="currency_exchange" className="text-[16px]" aria-hidden="true" />
-                          환불하기
-                        </button>
-                      )}
-                      {isPending && (
-                        <button
-                          type="button"
-                          className="flex-1 h-11 inline-flex items-center justify-center gap-1 rounded-xl border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 px-4 text-card-body font-bold text-wtext-2 dark:text-rink-100 hover:bg-wbg dark:hover:bg-rink-700 active:brightness-95 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900"
-                        >
-                          <Icon name="close" className="text-[16px]" aria-hidden="true" />
-                          취소하기
-                        </button>
-                      )}
+                      {/* [환불 승인제 Phase 1] 결제 관리의 직접 실행 환불(환불 승인/환불하기)과
+                          동작 없는 취소 버튼 제거. 환불은 학부모 요청 → 소속 감독(운영자)
+                          승인=실행 흐름(상단 안내 링크)으로만 처리한다. */}
                     </div>
                   </li>
                 );

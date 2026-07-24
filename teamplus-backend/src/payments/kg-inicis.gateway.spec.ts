@@ -5,7 +5,7 @@ import {
   InternalServerErrorException,
 } from "@nestjs/common";
 import * as crypto from "crypto";
-import { KgInicisGateway } from "./kg-inicis.gateway";
+import { KgInicisGateway, KgCancelAmbiguousError } from "./kg-inicis.gateway";
 
 // Mock axios
 jest.mock("axios", () => {
@@ -607,10 +607,11 @@ describe("KgInicisGateway", () => {
       expect(result.message).toBe("승인 실패");
     });
 
-    it("should handle cancel with empty response", async () => {
+    it("명확한 실패(코드 + resultMsg) → success:false", async () => {
       mockPost.mockResolvedValueOnce({
         data: {
           resultCode: "9999",
+          resultMsg: "취소 거절",
           tid: "INICIS_TID_ERROR",
         },
       });
@@ -622,7 +623,32 @@ describe("KgInicisGateway", () => {
       });
 
       expect(result.success).toBe(false);
-      expect(result.message).toBe("취소 실패");
+      expect(result.message).toBe("취소 거절");
+    });
+
+    // [Major 3] 2xx malformed 응답 격리
+    it("resultCode 누락/비문자열 → KgCancelAmbiguousError(격리)", async () => {
+      mockPost.mockResolvedValueOnce({ data: { tid: "T", resultMsg: "x" } });
+      await expect(
+        gateway.cancelPayment({
+          tid: "T",
+          cancelReason: "c",
+          totalAmount: 100000,
+        }),
+      ).rejects.toBeInstanceOf(KgCancelAmbiguousError);
+    });
+
+    it("실패 코드인데 resultMsg 없음(불완전) → KgCancelAmbiguousError(격리)", async () => {
+      mockPost.mockResolvedValueOnce({
+        data: { resultCode: "9999", tid: "T" },
+      });
+      await expect(
+        gateway.cancelPayment({
+          tid: "T",
+          cancelReason: "c",
+          totalAmount: 100000,
+        }),
+      ).rejects.toBeInstanceOf(KgCancelAmbiguousError);
     });
   });
 });

@@ -838,6 +838,7 @@ export class PickupMatchesService {
           // [2026-06-10 SECURITY] 매치 호스트 권한은 assertCanManage 에서 이미 검증됨.
           //   참가자(타인) 결제를 일괄 환불하는 신뢰된 내부 호출이므로 trusted 로 소유권 검증 우회.
           { trusted: true },
+          { actorId: actor.id }, // 감사 — 매치 취소를 실행한 호스트/관리자 기록(RefundLog.actorId)
         );
 
         // PG 환불 성공 → DB 상태 업데이트
