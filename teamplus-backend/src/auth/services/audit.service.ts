@@ -48,6 +48,7 @@ export interface DecryptionAuditEvent {
   email?: string;
   ipAddress: string;
   userAgent?: string;
+  platform?: string; // 감사 주체 클라이언트 (web|admin|app)
 
   // 페이로드 정보
   payloadHash: string;
@@ -98,6 +99,7 @@ export class AuditService {
         action: event.eventType,
         resource: `crypto:decryption:${event.payloadHash}`,
         ipAddress: event.ipAddress,
+        platform: event.platform ?? null,
         oldValue: {
           timestamp: event.timestamp,
           payloadHash: event.payloadHash,

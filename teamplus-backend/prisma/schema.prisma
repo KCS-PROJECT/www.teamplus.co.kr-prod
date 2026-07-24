@@ -1133,6 +1133,7 @@ model AuditLog {
   userId    String?  @map("user_id") /// nullable - 인증 전 이벤트 기록용
   action    String
   resource  String
+  platform  String? /// 감사 주체 클라이언트 — web | admin | app (X-Client-Platform 기반)
   oldValue  Json?    @map("old_value") @db.JsonB
   newValue  Json?    @map("new_value") @db.JsonB
   ipAddress String?  @map("ip_address")
@@ -1143,6 +1144,7 @@ model AuditLog {
 
   @@index([userId])
   @@index([action])
+  @@index([platform])
   @@index([createdAt])
   @@map("audit_logs")
 }

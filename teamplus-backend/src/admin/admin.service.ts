@@ -988,6 +988,8 @@ export class AdminService {
     userId?: string;
     action?: string;
     resource?: string;
+    search?: string;
+    platform?: string;
     startDate?: Date;
     endDate?: Date;
   }) {
@@ -997,12 +999,25 @@ export class AdminService {
       userId,
       action,
       resource,
+      search,
+      platform,
       startDate,
       endDate,
     } = params;
     const skip = (page - 1) * limit;
 
     const where: Prisma.AuditLogWhereInput = {};
+
+    if (search) {
+      where.OR = [
+        { action: { contains: search, mode: "insensitive" } },
+        { resource: { contains: search, mode: "insensitive" } },
+      ];
+    }
+
+    if (platform && platform !== "all") {
+      where.platform = platform;
+    }
 
     if (userId) {
       where.userId = userId;
@@ -2955,7 +2970,9 @@ export class AdminService {
     const { level, search, page = 1, limit = 50 } = params;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.AuditLogWhereInput = {};
+    // 서버 운영 로그 = UserActivityLog 의 platform='backend' (에러·기동·cron·성능 경고)
+    //   SystemLogService 가 적재. (감사 로그는 getAuditLogs 가 AuditLog 를 별도 조회)
+    const where: Prisma.UserActivityLogWhereInput = { platform: "backend" };
 
     if (search) {
       where.OR = [
@@ -2964,20 +2981,13 @@ export class AdminService {
       ];
     }
 
-    // level 필터: action 기반 매핑
+    // level 필터: metadata.level(JsonB) 기준
     if (level && level !== "ALL") {
-      if (level === "ERROR") {
-        where.action = { contains: "ERROR", mode: "insensitive" };
-      } else if (level === "WARN") {
-        where.action = { in: ["DELETE", "REJECT", "BLOCK", "LOCK"] };
-      } else if (level === "DEBUG") {
-        where.action = { in: ["READ", "VIEW", "GET", "LIST"] };
-      }
-      // INFO = 나머지 (CREATE, UPDATE, APPROVE 등) — 필터 없이 전체에서 매핑
+      where.metadata = { path: ["level"], equals: level };
     }
 
     const [logs, total] = await Promise.all([
-      this.prisma.auditLog.findMany({
+      this.prisma.userActivityLog.findMany({
         where,
         orderBy: { createdAt: "desc" },
         skip,
@@ -2985,36 +2995,32 @@ export class AdminService {
         select: {
           id: true,
           action: true,
+          category: true,
           resource: true,
-          oldValue: true,
-          newValue: true,
-          ipAddress: true,
+          durationMs: true,
+          metadata: true,
           createdAt: true,
-          userId: true,
         },
       }),
-      this.prisma.auditLog.count({ where }),
+      this.prisma.userActivityLog.count({ where }),
     ]);
 
-    const mapLevel = (action: string): string => {
-      const upper = action.toUpperCase();
-      if (upper.includes("ERROR") || upper.includes("FAIL")) return "ERROR";
-      if (["DELETE", "REJECT", "BLOCK", "LOCK"].some((k) => upper.includes(k)))
-        return "WARN";
-      if (["READ", "VIEW", "GET", "LIST"].some((k) => upper.includes(k)))
-        return "DEBUG";
-      return "INFO";
-    };
-
     return {
-      data: logs.map((log) => ({
-        id: log.id,
-        timestamp: log.createdAt.toISOString(),
-        level: mapLevel(log.action),
-        module: log.resource || log.action,
-        message: `[${log.action}] ${log.resource || ""}${log.ipAddress ? ` (IP: ${log.ipAddress})` : ""}`,
-        userId: log.userId,
-      })),
+      data: logs.map((log) => {
+        const meta = (log.metadata ?? {}) as Record<string, unknown>;
+        const logLevel = (meta.level as string) ?? "INFO";
+        const baseMsg = (meta.message as string) ?? log.action;
+        return {
+          id: log.id,
+          timestamp: log.createdAt.toISOString(),
+          level: logLevel,
+          module: log.resource || log.action || log.category || "system",
+          message:
+            log.durationMs != null
+              ? `${baseMsg} (${log.durationMs}ms)`
+              : baseMsg,
+        };
+      }),
       total,
       page,
       limit,

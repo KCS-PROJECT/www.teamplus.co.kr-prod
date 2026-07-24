@@ -54,6 +54,7 @@ import { AuthenticatedRequest } from "@/common/interfaces/authenticated-request.
 import { Roles } from "./roles.decorator";
 import { AuditAction } from "@/common/decorators";
 import { extractClientIp } from "@/common/utils/extract-client-ip.util";
+import { normalizeAuditPlatform } from "@/common/utils/client-platform.util";
 
 @ApiTags("Authentication")
 @Controller("api/v1/auth")
@@ -265,11 +266,18 @@ export class AuthController {
   private extractClientInfo(req: ExpressRequest): {
     ipAddress: string | undefined;
     userAgent: string | undefined;
+    platform: string | undefined;
   } {
     const ipAddress = extractClientIp(req);
     const userAgent =
       (req.headers?.["user-agent"] as string | undefined) ?? undefined;
-    return { ipAddress, userAgent };
+    // 감사 로그용 클라이언트 구분 — unknown 은 undefined 로 반환해
+    //   auth.service 의 chldiv=ADM → admin 보정이 동작하게 한다.
+    const p = normalizeAuditPlatform(
+      req.headers?.["x-client-platform"] as string | undefined,
+    );
+    const platform = p === "unknown" ? undefined : p;
+    return { ipAddress, userAgent, platform };
   }
 
   /**
@@ -368,11 +376,12 @@ export class AuthController {
 
     try {
       // 3. 기존 인증 로직 호출 (IP/UA/chldiv 전달 → AuditLog + chldiv 게이트)
-      const { ipAddress, userAgent } = this.extractClientInfo(req);
+      const { ipAddress, userAgent, platform } = this.extractClientInfo(req);
       return this.authService.login({ email, password } as LoginDto, {
         ipAddress,
         userAgent,
         chldiv,
+        platform,
         force,
       });
     } catch (error) {
@@ -411,13 +420,14 @@ export class AuthController {
     if (!isDevLoginEnabled) {
       throw new UnauthorizedException("Not available in this environment");
     }
-    const { ipAddress, userAgent } = this.extractClientInfo(req);
+    const { ipAddress, userAgent, platform } = this.extractClientInfo(req);
     // APP 분기 dev 로그인 — tbot 테스트 전용.
     // ADM(chldiv=ADM) dev 엔드포인트는 의도적으로 제공하지 않는다 (관리자 평문 로그인 금지).
     return this.authService.login(body, {
       ipAddress,
       userAgent,
       chldiv: CHLDIV.APP,
+      platform,
       force: body.force === true,
     });
   }

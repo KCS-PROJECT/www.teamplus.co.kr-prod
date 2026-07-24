@@ -22,6 +22,9 @@ function pad2(n: number): string {
   return n.toString().padStart(2, '0');
 }
 
+/** 빈 값 픽커가 처음 열리는 기준 시 — 업무 시작 시각(9시) 앵커로 스크롤 최소화 */
+const DEFAULT_OPEN_HOUR = 9;
+
 /** 'HH:MM' (24h) → '오전/오후 h:MM' 한국어 표기. 페이지 UI 에서 재사용 가능. */
 export function formatTimeLabel(time: string): string {
   const m = /^(\d{1,2}):(\d{2})$/.exec(time);
@@ -51,7 +54,7 @@ export interface TimePickerProps {
   startHour?: number;
   /** 옵션 종료 시(0~23, 기본 23) */
   endHour?: number;
-  /** 빈 값일 때 처음 열리는 기준 시(0~23) — 바텀시트가 이 시각에 중앙 정렬로 열림. 미지정 시 startHour. */
+  /** 빈 값일 때 처음 열리는 기준 시(0~23) — 바텀시트가 이 시각에 중앙 정렬로 열림. 미지정 시 9시(범위 밖이면 startHour~endHour 로 클램프). */
   defaultHour?: number;
   /** 분 간격(기본 30) */
   stepMinutes?: number;
@@ -84,7 +87,7 @@ export function TimePicker({
   nested = false,
 }: TimePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [draftHour, setDraftHour] = useState(defaultHour ?? startHour);
+  const [draftHour, setDraftHour] = useState(defaultHour ?? DEFAULT_OPEN_HOUR);
   const [draftMinute, setDraftMinute] = useState(0);
   const hourListRef = useRef<HTMLDivElement>(null);
   const selectedHourRef = useRef<HTMLButtonElement>(null);
@@ -118,7 +121,9 @@ export function TimePicker({
     if (disabled) return;
 
     const match = /^(\d{1,2}):(\d{2})$/.exec(value);
-    const parsedHour = match ? Number(match[1]) : (defaultHour ?? safeStartHour);
+    const parsedHour = match
+      ? Number(match[1])
+      : (defaultHour ?? DEFAULT_OPEN_HOUR);
     const parsedMinute = match ? Number(match[2]) : 0;
     const nextHour = Math.max(
       safeStartHour,

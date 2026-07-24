@@ -40,6 +40,7 @@
     "uploads:doctor:json": "tsx scripts/uploads-doctor.ts --json",
     "uploads:cleanup-orphans": "tsx scripts/uploads-doctor.ts --cleanup-orphans",
     "apple:siwa": "tsx scripts/setup-apple-siwa.ts",
+    "backfill:platform": "tsx scripts/backfill-activity-platform.ts",
     "seed:alimtalk": "tsx prisma/seeds/run-alimtalk-templates.ts",
     "swagger": "nest-swagger-gen",
     "build:web": "cd ../teamplus-web && npm install && npm run build",

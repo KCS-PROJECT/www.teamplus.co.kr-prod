@@ -17,6 +17,7 @@ import { useParams, useRouter } from "next/navigation";
 import { MobileContainer } from "@/components/layout/MobileContainer";
 import { PageAppBar } from "@/components/layout/PageAppBar";
 import { Icon } from "@/components/ui/Icon";
+import { BottomSheetSelector } from "@/components/ui/BottomSheetSelector";
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { useToast } from "@/components/ui/Toast";
 import { useSessionAuth } from "@/hooks/useSessionAuth";
@@ -64,19 +65,17 @@ export default function TeamGroupCreatePage() {
   const [teamName, setTeamName] = useState<string>("");
   // [2026-06-05] 회원 선택 연령 필터 — U8~U12 칩 → 출생연도 칩.
   const [ageFilter, setAgeFilter] = useState<"all" | number>("all");
+  // 출생연도 필터 선택 바텀시트 열림 상태.
+  const [ageSheetOpen, setAgeSheetOpen] = useState(false);
+  // 담당코치 선택 바텀시트 열림 상태.
+  const [coachSheetOpen, setCoachSheetOpen] = useState(false);
 
-  // 출생연도 산출 기준 연도 (서버 Asia/Seoul) + 선택 가능 출생연도(최신~12세).
+  // 출생연도 산출 기준 연도 (서버 Asia/Seoul).
   const { year: serverYear } = useDateTime();
   const currentYear = useMemo(() => {
     const y = Number(serverYear);
     return Number.isFinite(y) && y > 1900 ? y : 0;
   }, [serverYear]);
-  const selectableBirthYears = useMemo(() => {
-    if (!currentYear) return [];
-    const ys: number[] = [];
-    for (let y = currentYear - 6; y >= currentYear - 12; y -= 1) ys.push(y);
-    return ys;
-  }, [currentYear]);
 
   const [membersLoading, setMembersLoading] = useState(true);
 
@@ -176,6 +175,22 @@ export default function TeamGroupCreatePage() {
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [members, currentYear]);
+
+  // 필터 옵션 — 실제 회원이 있는 출생연도만 (최신 연도 우선).
+  const birthYearOptions = useMemo(
+    () => Array.from(counts.keys()).sort((a, b) => b - a),
+    [counts],
+  );
+
+  // 담당코치 트리거 표시명.
+  const selectedCoach = coachCandidates.find(
+    (c) => c.memberId === coachMemberId,
+  );
+  const coachDisplayName = selectedCoach
+    ? selectedCoach.roleInTeam === "HEAD_COACH"
+      ? `${selectedCoach.name} (${MESSAGES.team.groupCoachRoleHead})`
+      : selectedCoach.name
+    : MESSAGES.team.groupCoachNone;
 
   const filteredMembers = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -321,22 +336,46 @@ export default function TeamGroupCreatePage() {
               >
                 {MESSAGES.team.groupCoachLabel}
               </label>
-              <select
+              <button
+                type="button"
                 id="group-coach"
-                value={coachMemberId}
-                onChange={(e) => setCoachMemberId(e.target.value)}
+                onClick={() => setCoachSheetOpen(true)}
                 disabled={coachCandidates.length === 0}
-                className="h-[50px] w-full appearance-none rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-950 px-4 text-[15.5px] font-semibold text-it-ink-800 dark:text-white outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 disabled:opacity-60"
+                aria-haspopup="dialog"
+                className="flex h-[50px] w-full items-center justify-between rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-950 px-4 text-[15.5px] font-semibold text-it-ink-800 dark:text-white outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 disabled:opacity-60 active:brightness-95"
               >
-                <option value="">{MESSAGES.team.groupCoachNone}</option>
-                {coachCandidates.map((c) => (
-                  <option key={c.memberId} value={c.memberId}>
-                    {c.roleInTeam === "HEAD_COACH"
-                      ? `${c.name} (${MESSAGES.team.groupCoachRoleHead})`
-                      : c.name}
-                  </option>
-                ))}
-              </select>
+                <span className="truncate">{coachDisplayName}</span>
+                <Icon
+                  name="expand_more"
+                  className="shrink-0 text-[22px] text-it-ink-400 dark:text-it-ink-300"
+                  aria-hidden="true"
+                />
+              </button>
+              <BottomSheetSelector
+                isOpen={coachSheetOpen}
+                title={MESSAGES.team.groupCoachSheetTitle}
+                items={[
+                  {
+                    id: "",
+                    name: MESSAGES.team.groupCoachNone,
+                    selected: coachMemberId === "",
+                  },
+                  ...coachCandidates.map((c) => ({
+                    id: c.memberId,
+                    name: c.name,
+                    sub:
+                      c.roleInTeam === "HEAD_COACH"
+                        ? MESSAGES.team.groupCoachRoleHead
+                        : undefined,
+                    selected: c.memberId === coachMemberId,
+                  })),
+                ]}
+                onSelect={(id) => {
+                  setCoachMemberId(id);
+                  setCoachSheetOpen(false);
+                }}
+                onClose={() => setCoachSheetOpen(false)}
+              />
               <p className="mt-1.5 text-[12px] font-medium text-it-ink-500 dark:text-it-ink-300">
                 {coachCandidates.length === 0
                   ? MESSAGES.team.groupCoachEmpty
@@ -384,52 +423,52 @@ export default function TeamGroupCreatePage() {
               {MESSAGES.team.groupMembersHelper}
             </p>
 
-            {/* [2026-06-05] 회원 선택 연령 필터 칩 — U8~U12 → 출생연도(년생) 동적 칩. */}
-            <div
-              className="mb-3 flex flex-wrap gap-2"
-              role="tablist"
-              aria-label="출생연도 필터"
-            >
-              {[
-                {
-                  key: "all" as const,
-                  label: MESSAGES.team.groupMembersFilterAll,
-                  count: members.length,
-                },
-                ...selectableBirthYears.map((y) => ({
-                  key: y,
-                  label: `${y}년생`,
-                  count: counts.get(y) ?? 0,
-                })),
-              ].map((tab) => {
-                const active = ageFilter === tab.key;
-                return (
-                  <button
-                    key={tab.key}
-                    type="button"
-                    role="tab"
-                    aria-selected={active}
-                    onClick={() => setAgeFilter(tab.key)}
-                    className={cn(
-                      "inline-flex h-9 items-center gap-1 rounded-w-pill border-[1.5px] px-4 text-[14px] font-bold transition-colors duration-150 ease-ios motion-reduce:transition-none active:brightness-95",
-                      active
-                        ? "border-it-blue-500 bg-it-blue-500 text-white"
-                        : "border-it-line-strong bg-it-surface text-it-ink-600 hover:bg-it-fill dark:border-it-blue-900 dark:bg-it-blue-950 dark:text-it-ink-200 dark:hover:bg-it-blue-900",
-                    )}
-                  >
-                    {tab.label}
-                    <span
-                      className={cn(
-                        "tabular-nums",
-                        active ? "text-white/80" : "text-it-ink-400 dark:text-it-ink-300",
-                      )}
-                    >
-                      {tab.count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+            {/* 회원 선택 출생연도 필터 — 인원이 있는 연도만 공통 바텀시트로 선택 (회원 0명이면 숨김) */}
+            {members.length > 0 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setAgeSheetOpen(true)}
+                  aria-haspopup="dialog"
+                  aria-label="출생연도 필터"
+                  className="mb-3 flex h-12 w-full items-center justify-between rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-950 px-4 text-[15px] font-semibold text-it-ink-800 dark:text-white outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 active:brightness-95"
+                >
+                  <span>
+                    {ageFilter === "all"
+                      ? `${MESSAGES.team.groupMembersFilterAll} (${members.length}명)`
+                      : `${ageFilter}년생 (${counts.get(ageFilter) ?? 0}명)`}
+                  </span>
+                  <Icon
+                    name="expand_more"
+                    className="shrink-0 text-[22px] text-it-ink-400 dark:text-it-ink-300"
+                    aria-hidden="true"
+                  />
+                </button>
+                <BottomSheetSelector
+                  isOpen={ageSheetOpen}
+                  title={MESSAGES.team.groupMembersFilterTitle}
+                  items={[
+                    {
+                      id: "all",
+                      name: MESSAGES.team.groupMembersFilterAll,
+                      sub: `${members.length}명`,
+                      selected: ageFilter === "all",
+                    },
+                    ...birthYearOptions.map((y) => ({
+                      id: String(y),
+                      name: `${y}년생`,
+                      sub: `${counts.get(y) ?? 0}명`,
+                      selected: ageFilter === y,
+                    })),
+                  ]}
+                  onSelect={(id) => {
+                    setAgeFilter(id === "all" ? "all" : Number(id));
+                    setAgeSheetOpen(false);
+                  }}
+                  onClose={() => setAgeSheetOpen(false)}
+                />
+              </>
+            )}
 
             {/* 검색 */}
             <div className="relative mb-3">

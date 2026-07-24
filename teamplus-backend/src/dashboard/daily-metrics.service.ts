@@ -1,12 +1,16 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Cron, CronExpression } from "@nestjs/schedule";
 import { PrismaService } from "@/prisma/prisma.service";
+import { SystemLogService } from "@/logger/system-log.service";
 
 @Injectable()
 export class DailyMetricsService {
   private readonly logger = new Logger(DailyMetricsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly systemLog: SystemLogService,
+  ) {}
 
   /**
    * 매일 자정(00:00)에 전날 일간 통계 자동 집계
@@ -38,8 +42,15 @@ export class DailyMetricsService {
       await this.rollupRecentAttendanceRate(clubs.map((c) => c.id));
 
       this.logger.log(`일간 통계 집계 완료: ${clubs.length}개 클럽 처리`);
+      this.systemLog.cron(
+        "DAILY_METRICS",
+        `일간 통계 집계 완료: ${clubs.length}개 클럽 처리`,
+      );
     } catch (error) {
       this.logger.error(`일간 통계 집계 실패: ${error.message}`, error.stack);
+      this.systemLog.cron("DAILY_METRICS", `일간 통계 집계 실패: ${error.message}`, {
+        level: "ERROR",
+      });
     }
   }
 

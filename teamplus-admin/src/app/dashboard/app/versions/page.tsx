@@ -19,7 +19,7 @@ import { Input } from '@/components/ui/input';
 import { StatusFilter } from '@/components/ui/admin-tabs';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal';
-import { GitBranch, Plus, Apple, Smartphone, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { GitBranch, Plus, Apple, Smartphone, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -27,11 +27,8 @@ interface VersionItem {
   id: string;
   platform: string;
   version: string;
-  minVersion: string;
-  forceUpdate: boolean;
   releaseNotes?: string;
   storeUrl?: string;
-  isActive: boolean;
   createdAt: string;
 }
 
@@ -44,11 +41,8 @@ export default function AppVersionsPage() {
   const [formData, setFormData] = useState({
     platform: 'ios' as 'ios' | 'android',
     version: '',
-    minVersion: '',
-    forceUpdate: false,
     releaseNotes: '',
     storeUrl: '',
-    isActive: true,
   });
   const [actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -93,38 +87,18 @@ export default function AppVersionsPage() {
     return pages;
   };
 
-  const getStatusBadge = (item: VersionItem) => {
-    if (item.isActive) {
-      return (
-        <span className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 rounded-full text-xs font-medium">
-          <CheckCircle2 className="w-3 h-3" aria-hidden="true" />
-          활성
-        </span>
-      );
-    }
-    return (
-      <span className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full text-xs font-medium">
-        <AlertCircle className="w-3 h-3" aria-hidden="true" />
-        비활성
-      </span>
-    );
-  };
-
   const handleOpenAddModal = () => {
     setFormData({
       platform: 'ios',
       version: '',
-      minVersion: '',
-      forceUpdate: false,
       releaseNotes: '',
       storeUrl: '',
-      isActive: true,
     });
     setShowModal(true);
   };
 
   const handleSaveVersion = async () => {
-    if (!formData.version || !formData.minVersion) {
+    if (!formData.version) {
       setActionMsg({ type: 'error', text: MESSAGES.version.requiredFields });
       setTimeout(() => setActionMsg(null), 3000);
       return;
@@ -134,11 +108,12 @@ export default function AppVersionsPage() {
       await api.post('/app/versions', {
         platform: formData.platform,
         version: formData.version,
-        minVersion: formData.minVersion,
-        forceUpdate: formData.forceUpdate,
+        // 백엔드 필수 컬럼 호환: 최소요구버전/강제업데이트/활성화는 미사용(현재 버전 정보 표시 전용)
+        minVersion: formData.version,
+        forceUpdate: false,
         releaseNotes: formData.releaseNotes || undefined,
         storeUrl: formData.storeUrl || undefined,
-        isActive: formData.isActive,
+        isActive: true,
       });
       setShowModal(false);
       await loadVersions();
@@ -183,21 +158,10 @@ export default function AppVersionsPage() {
                   <p className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums">{latestIos ? `v${latestIos.version}` : '-'}</p>
                 </div>
               </div>
-              {latestIos && (
-                <span className={`px-3 py-1 rounded-full text-sm font-medium ${latestIos.isActive ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
-                  {latestIos.isActive ? '활성' : '비활성'}
-                </span>
-              )}
             </div>
-            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-200 dark:border-slate-700">
-              <div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">최소 버전</p>
-                <p className="font-semibold text-slate-900 dark:text-white tabular-nums">{latestIos?.minVersion || '-'}</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">강제 업데이트</p>
-                <p className="font-semibold text-slate-900 dark:text-white">{latestIos?.forceUpdate ? '예' : '아니오'}</p>
-              </div>
+            <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
+              <p className="text-xs text-slate-500 dark:text-slate-400">최근 등록일</p>
+              <p className="font-semibold text-slate-900 dark:text-white tabular-nums">{latestIos?.createdAt ? new Date(latestIos.createdAt).toLocaleDateString('ko-KR') : '-'}</p>
             </div>
           </div>
 
@@ -212,21 +176,10 @@ export default function AppVersionsPage() {
                   <p className="text-2xl font-bold text-slate-900 dark:text-white">{latestAndroid ? `v${latestAndroid.version}` : '-'}</p>
                 </div>
               </div>
-              {latestAndroid && (
-                <span className={`px-3 py-1 rounded-full text-sm font-medium ${latestAndroid.isActive ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
-                  {latestAndroid.isActive ? '활성' : '비활성'}
-                </span>
-              )}
             </div>
-            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-200 dark:border-slate-700">
-              <div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">최소 버전</p>
-                <p className="font-semibold text-slate-900 dark:text-white tabular-nums">{latestAndroid?.minVersion || '-'}</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">강제 업데이트</p>
-                <p className="font-semibold text-slate-900 dark:text-white">{latestAndroid?.forceUpdate ? '예' : '아니오'}</p>
-              </div>
+            <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
+              <p className="text-xs text-slate-500 dark:text-slate-400">최근 등록일</p>
+              <p className="font-semibold text-slate-900 dark:text-white tabular-nums">{latestAndroid?.createdAt ? new Date(latestAndroid.createdAt).toLocaleDateString('ko-KR') : '-'}</p>
             </div>
           </div>
         </div>
@@ -261,10 +214,7 @@ export default function AppVersionsPage() {
                   <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">번호</th>
                   <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">플랫폼</th>
                   <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">버전</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">최소 버전</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">강제 업데이트</th>
                   <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">등록일</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">상태</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
@@ -286,18 +236,9 @@ export default function AppVersionsPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-center font-semibold text-slate-900 dark:text-white tabular-nums">v{version.version}</td>
-                    <td className="px-6 py-4 text-center text-sm text-slate-600 dark:text-slate-300 tabular-nums">v{version.minVersion}</td>
-                    <td className="px-6 py-4 text-center text-sm">
-                      {version.forceUpdate ? (
-                        <span className="text-amber-600 dark:text-amber-400 font-medium">예</span>
-                      ) : (
-                        <span className="text-slate-400">아니오</span>
-                      )}
-                    </td>
                     <td className="px-6 py-4 text-center text-sm text-slate-600 dark:text-slate-300 tabular-nums">
                       {version.createdAt ? new Date(version.createdAt).toLocaleDateString('ko-KR') : '-'}
                     </td>
-                    <td className="px-6 py-4 text-center">{getStatusBadge(version)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -465,25 +406,14 @@ export default function AppVersionsPage() {
             </div>
 
             {/* 버전 정보 */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">버전 번호 *</label>
-                <Input
-                  value={formData.version}
-                  onChange={(e) => setFormData({ ...formData, version: e.target.value })}
-                  placeholder="예: 2.2.0"
-                  className="h-11 bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 dark:text-white"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">최소 요구 버전 *</label>
-                <Input
-                  value={formData.minVersion}
-                  onChange={(e) => setFormData({ ...formData, minVersion: e.target.value })}
-                  placeholder="예: 2.1.0"
-                  className="h-11 bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 dark:text-white"
-                />
-              </div>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">버전 번호 *</label>
+              <Input
+                value={formData.version}
+                onChange={(e) => setFormData({ ...formData, version: e.target.value })}
+                placeholder="예: 2.2.0"
+                className="h-11 bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 dark:text-white"
+              />
             </div>
 
             {/* 스토어 URL */}
@@ -508,34 +438,6 @@ export default function AppVersionsPage() {
                 className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm dark:text-white resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
               />
             </div>
-
-            {/* 강제 업데이트 */}
-            <label className="flex items-center gap-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg cursor-pointer">
-              <input
-                type="checkbox"
-                checked={formData.forceUpdate}
-                onChange={(e) => setFormData({ ...formData, forceUpdate: e.target.checked })}
-                className="w-4 h-4 text-amber-600 rounded border-slate-300 dark:border-slate-500 focus:ring-amber-500"
-              />
-              <div>
-                <p className="text-sm font-medium text-amber-900 dark:text-amber-100">강제 업데이트</p>
-                <p className="text-xs text-amber-700 dark:text-amber-300">이전 버전 사용자에게 업데이트를 강제합니다</p>
-              </div>
-            </label>
-
-            {/* 활성화 */}
-            <label className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-700 rounded-lg cursor-pointer">
-              <input
-                type="checkbox"
-                checked={formData.isActive}
-                onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                className="w-4 h-4 text-primary rounded border-slate-300 dark:border-slate-500 focus:ring-primary"
-              />
-              <div>
-                <p className="text-sm font-medium text-slate-900 dark:text-white">활성화</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">즉시 배포 상태로 설정합니다</p>
-              </div>
-            </label>
           </div>
         </ModalBody>
         <ModalFooter>

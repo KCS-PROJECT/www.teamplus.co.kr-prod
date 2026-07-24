@@ -560,6 +560,8 @@ export class AuthService {
       ipAddress?: string;
       userAgent?: string;
       chldiv?: Chldiv;
+      /** 감사 로그용 클라이언트 구분 (web|admin|app) — X-Client-Platform 기반 */
+      platform?: string;
       /** 단일 세션 정책 — 사용자가 "기존 접속 종료" 확인 후 재요청 시 true */
       force?: boolean;
     },
@@ -568,6 +570,9 @@ export class AuthService {
     const ipAddress = context?.ipAddress ?? null;
     const userAgent = context?.userAgent ?? null;
     const chldiv = context?.chldiv;
+    // platform 미지정 시 chldiv=ADM(관리자 화면)이면 admin 으로 보정
+    const auditPlatform =
+      context?.platform ?? (chldiv === "ADM" ? "admin" : null);
 
     this.logger.debug(`🔐 로그인 시도: ${email} (chldiv=${chldiv ?? "NONE"})`);
 
@@ -628,6 +633,7 @@ export class AuthService {
             action: "login_failed",
             resource: "auth:login",
             ipAddress,
+            platform: auditPlatform,
             newValue: { reason: "user_not_found", email, userAgent },
           },
         });
@@ -692,6 +698,7 @@ export class AuthService {
             action: "login_failed",
             resource: "auth:login",
             ipAddress,
+            platform: auditPlatform,
             newValue: {
               reason: "invalid_password",
               email,
@@ -728,6 +735,7 @@ export class AuthService {
             action: "login_failed",
             resource: "auth:login",
             ipAddress,
+            platform: auditPlatform,
             newValue: {
               reason: "chldiv_mismatch",
               email,
@@ -871,6 +879,7 @@ export class AuthService {
           action: "login_success",
           resource: "auth:login",
           ipAddress,
+          platform: auditPlatform,
           newValue: {
             email: user.email,
             userType: user.userType,
