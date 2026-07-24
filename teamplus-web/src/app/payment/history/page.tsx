@@ -1,17 +1,17 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { Suspense, useState, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
+import { useSearchParams } from 'next/navigation';
 import { NavLink } from '@/components/ui/NavLink';
 import { Spinner } from '@/components/ui/Spinner';
 import { Icon } from '@/components/ui/Icon';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
 import { BottomSheetSelector } from '@/components/ui/BottomSheetSelector';
+import { BottomSheet } from '@/components/ui/BottomSheet';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { useToast } from '@/components/ui/Toast';
-import { useModal } from '@/components/ui/Modal/ModalContext';
-import { api } from '@/services/api-client';
 import { cn } from '@/lib/utils';
 import { MESSAGES } from '@/lib/messages';
 import { PaymentSourceBadge } from '@/components/payment/PaymentSourceBadge';
@@ -28,12 +28,22 @@ const GlobalMenu = dynamic(() => import('@/components/layout/GlobalMenu').then(m
 import {
   getPaymentHistory,
   groupPaymentsByMonth,
+  createRefundRequest,
+  getMyRefundRequests,
+  type RefundRequestStatus,
 } from '@/services/payment';
 import { usePageReady } from '@/hooks/usePageReady';
+import { api } from '@/services/api-client';
+import {
+  PendingPaymentsPanel,
+  type PendingBilling,
+} from '@/components/payment/PendingPaymentsPanel';
 import type {
   PaymentHistoryItem,
   GroupedPaymentHistory,
 } from '@/types/payment';
+
+type PaymentTab = 'history' | 'pending';
 
 /** "YYYY.MM.DD" → Date (월 1일 기준, 시각 0) */
 function parseYmd(date: string): Date | null {
@@ -172,18 +182,42 @@ function SummaryCard({ payment }: { payment: PaymentSummary }) {
   );
 }
 
+/** 활성 환불 요청 상태(승인 대기/처리 중/실행 실패) — 버튼 대신 "환불 요청 중" 배지. */
+const ACTIVE_REFUND_STATUSES: RefundRequestStatus[] = [
+  'pending',
+  'executing',
+  'execution_failed',
+];
+
+/** 환불 요청 가능 기간(결제일 기준, 일) — 백엔드 create 가드와 동일 값. */
+const REFUND_REQUEST_WINDOW_DAYS = 14;
+
+/** 결제 시각이 요청 가능 기간 이내인지 — 원시 시각 부재/무효는 fail-closed(버튼 미노출, 백엔드 가드가 최종 판정). */
+function isWithinRefundWindow(paidAtIso?: string): boolean {
+  if (!paidAtIso) return false;
+  const paidAt = new Date(paidAtIso).getTime();
+  if (Number.isNaN(paidAt)) return false;
+  return Date.now() - paidAt <= REFUND_REQUEST_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+}
+
 function PaymentHistoryCard({
   item,
-  onCancel,
-  isCancelling,
+  onRequestRefund,
+  isRequesting,
+  refundStatus,
 }: {
   item: PaymentHistoryItem;
-  onCancel?: (paymentId: string, productName: string) => void;
-  isCancelling?: boolean;
+  onRequestRefund?: (paymentId: string, productName: string) => void;
+  isRequesting?: boolean;
+  /** 이 결제의 최신 환불 요청 상태(있으면). 활성=배지, 거절=배지+재요청 허용. */
+  refundStatus?: RefundRequestStatus;
 }) {
   // [수정 2026-05-13] 'cancelled' 또는 'refunded' 모두 환불 처리 — 토스 cancel 응답은 'refunded' 로 갱신됨.
   const isCancelled = item.status === 'cancelled' || item.status === 'refunded';
   const isCompleted = item.status === 'completed';
+  // 환불 요청 상태 파생 — 활성(대기/처리중/실패)=요청 중 배지, 거절=배지+재요청 허용.
+  const refundActive = refundStatus ? ACTIVE_REFUND_STATUSES.includes(refundStatus) : false;
+  const refundRejected = refundStatus === 'rejected';
   // 카드 상단 라벨 — 선불 수업명(className) 우선, 없으면 대회명/후불 수업명(subjectName)
   const subjectLabel = item.className ?? item.subjectName;
   const postpaidSegments = buildPostpaidDetailSegments(item);
@@ -294,7 +328,7 @@ function PaymentHistoryCard({
         </div>
 
         {isCancelled ? (
-          <span className="text-card-meta text-it-ink-400">{item.refundStatus ?? '환불 완료'}</span>
+          <span className="text-card-meta text-it-ink-400">{item.refundStatus ?? MESSAGES.refund.status.executed}</span>
         ) : (
           <div className="flex items-center gap-3">
             <NavLink
@@ -303,18 +337,38 @@ function PaymentHistoryCard({
             >
               영수증 보기
             </NavLink>
-            {/* [추가 2026-05-13] 결제완료 상태일 때만 결제취소 버튼 노출.
-                onCancel 핸들러 → 토스/KG 분기 처리는 backend PaymentRefundService 가 담당. */}
-            {isCompleted && onCancel && (
-              <button
-                type="button"
-                onClick={() => onCancel(item.id, item.productName)}
-                disabled={isCancelling}
-                className="px-3 py-1 rounded-w-md border border-it-red-500 text-it-red-600 dark:text-it-red-200 text-card-meta font-semibold hover:bg-it-red-50 dark:hover:bg-it-red-500/15 active:brightness-95 transition-colors motion-reduce:transition-none disabled:opacity-60 disabled:cursor-not-allowed"
-                aria-label="결제취소"
+            {/* 환불 승인제 — 즉시 취소 폐기. 활성 요청은 배지, 거절은 배지+재요청, 그 외 결제완료는 요청 버튼. */}
+            {refundActive ? (
+              <span
+                className="inline-flex items-center gap-1 rounded-w-pill bg-sun-100 px-2.5 py-1 text-card-meta font-bold text-it-ink-800 dark:bg-sun-500/15 dark:text-sun-500"
+                aria-label={MESSAGES.refund.requestPendingBadge}
               >
-                {isCancelling ? '취소 중...' : '결제취소'}
-              </button>
+                <Icon name="schedule" className="text-[13px]" aria-hidden="true" />
+                {MESSAGES.refund.requestPendingBadge}
+              </span>
+            ) : (
+              <div className="flex items-center gap-2">
+                {refundRejected && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-w-pill bg-it-red-50 px-2.5 py-1 text-card-meta font-bold text-it-red-600 dark:bg-it-red-500/15 dark:text-it-red-400"
+                    aria-label={MESSAGES.refund.requestRejectedBadge}
+                  >
+                    <Icon name="block" className="text-[13px]" aria-hidden="true" />
+                    {MESSAGES.refund.requestRejectedBadge}
+                  </span>
+                )}
+                {isCompleted && isWithinRefundWindow(item.paidAtIso) && onRequestRefund && (
+                  <button
+                    type="button"
+                    onClick={() => onRequestRefund(item.id, item.productName)}
+                    disabled={isRequesting}
+                    className="px-3 py-1 rounded-w-md border border-it-red-500 text-it-red-600 dark:text-it-red-200 text-card-meta font-semibold hover:bg-it-red-50 dark:hover:bg-it-red-500/15 active:brightness-95 transition-colors motion-reduce:transition-none disabled:opacity-60 disabled:cursor-not-allowed"
+                    aria-label={MESSAGES.refund.requestButton}
+                  >
+                    {isRequesting ? MESSAGES.refund.requestProcessing : MESSAGES.refund.requestButton}
+                  </button>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -338,16 +392,19 @@ function PaymentHistoryList({
   error,
   isFiltered,
   onRetry,
-  onCancel,
-  cancellingId,
+  onRequestRefund,
+  requestingId,
+  refundMap,
 }: {
   groupedPayments: GroupedPaymentHistory;
   isLoading: boolean;
   error: string | null;
   isFiltered: boolean;
   onRetry: () => void;
-  onCancel?: (paymentId: string, productName: string) => void;
-  cancellingId?: string | null;
+  onRequestRefund?: (paymentId: string, productName: string) => void;
+  requestingId?: string | null;
+  /** paymentId → 최신 환불 요청 상태. */
+  refundMap?: Record<string, RefundRequestStatus>;
 }) {
   if (isLoading) {
     return <LoadingState />;
@@ -373,8 +430,9 @@ function PaymentHistoryList({
             <PaymentHistoryCard
               key={item.id}
               item={item}
-              onCancel={onCancel}
-              isCancelling={cancellingId === item.id}
+              onRequestRefund={onRequestRefund}
+              isRequesting={requestingId === item.id}
+              refundStatus={refundMap?.[item.id]}
             />
           ))}
         </section>
@@ -392,7 +450,7 @@ function PaymentHistoryList({
   );
 }
 
-export default function PaymentHistoryPage() {
+function PaymentHistoryContent() {
   // [appbar-harness-v2] Status bar + Native AppBar 명시 (v2 회귀 차단).
   //   - PageAppBar 가 Web DOM 헤더를 그리는 동안 Flutter 측은 native AppBar 로 동일 영역 채움.
   //   - showAppBar:false + <PageAppBar forceNative /> → 앱/웹 동일 헤더(back·알림·메뉴) 노출.
@@ -409,18 +467,33 @@ export default function PaymentHistoryPage() {
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('all');
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
 
+  // 탭 — 결제 내역(기본) / 미납 결제. 미납 안내 알림 딥링크(?tab=pending) 초기 탭 지원.
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState<PaymentTab>(
+    searchParams?.get('tab') === 'pending' ? 'pending' : 'history',
+  );
+
   // Payment history state — raw 배열 보관 후 기간 필터/그룹화는 파생으로 계산
   const [payments, setPayments] = useState<PaymentHistoryItem[]>([]);
   const [isPaymentLoading, setIsPaymentLoading] = useState(true);
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
-  // v16 — 데이터 로드 완료 시 풀스크린 로더 hide 신호
-  usePageReady(!isPaymentLoading);
+  // 미납 후불 청구 — 탭 배지 건수 + 미납 탭 목록 공용. 대시보드 배너와 동일 규약
+  // (orderNumber 없는 항목 제외 · 비학부모 403 은 빈 목록 처리).
+  const [pendingBillings, setPendingBillings] = useState<PendingBilling[] | null>(null);
+  const [pendingError, setPendingError] = useState(false);
+  const isPendingLoading = pendingBillings === null && !pendingError;
 
-  // [추가 2026-05-13] 결제취소 처리
-  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  // v16 — 두 데이터(내역 + 미납) 로드 완료 시 풀스크린 로더 hide 신호
+  usePageReady(!isPaymentLoading && !isPendingLoading);
+
+  // 환불 요청 처리 + 내 환불 요청 상태 맵(버튼→배지 대체용)
+  const [requestingId, setRequestingId] = useState<string | null>(null);
+  const [refundMap, setRefundMap] = useState<Record<string, RefundRequestStatus>>({});
+  // 환불 요청 사유 입력 시트 — 대상 결제 + 사유(필수).
+  const [refundTarget, setRefundTarget] = useState<{ paymentId: string; productName: string } | null>(null);
+  const [refundReason, setRefundReason] = useState('');
   const { toast } = useToast();
-  const { modal } = useModal();
 
   // ── 기간 필터 적용 + 월별 그룹화 (파생) ─────────────────────────
   const filteredPayments = useMemo(
@@ -463,41 +536,99 @@ export default function PaymentHistoryPage() {
     setIsPaymentLoading(false);
   };
 
+  /** 내 환불 요청 조회 → paymentId 별 최신 상태 맵. 활성 우선, 그다음 거절(재요청 안내). */
+  const loadMyRefunds = async () => {
+    const res = await getMyRefundRequests();
+    if (!res.success || !res.data) return;
+    const map: Record<string, RefundRequestStatus> = {};
+    for (const r of res.data) {
+      if (r.status === 'unknown') continue; // 미지 상태는 배지 미표시(fail-closed)
+      if (ACTIVE_REFUND_STATUSES.includes(r.status)) {
+        map[r.paymentId] = r.status; // 활성은 항상 우선
+      } else if (r.status === 'rejected' && !map[r.paymentId]) {
+        map[r.paymentId] = 'rejected';
+      }
+      // executed/canceled 는 결제 자체가 refunded 표기 → 배지 불필요.
+    }
+    setRefundMap(map);
+  };
+
+  const fetchPendingBillings = async () => {
+    setPendingError(false);
+    const res = await api.get<PendingBilling[]>('/payments/postpaid/my-pending');
+    if (res.success) {
+      const list = Array.isArray(res.data) ? res.data : [];
+      setPendingBillings(list.filter((b) => !!b.orderNumber));
+    } else if (res.error?.statusCode === 403) {
+      setPendingBillings([]);
+    } else {
+      setPendingBillings(null);
+      setPendingError(true);
+    }
+  };
+
   useEffect(() => {
     fetchPaymentHistory();
+    void loadMyRefunds();
+    void fetchPendingBillings();
   }, []);
 
-  /** [추가 2026-05-13] 결제취소 — 토스/KG 분기는 backend PaymentRefundService 가 처리.
-   *  성공 시 결제 내역 재조회.
+  /** 환불 요청 버튼 → 사유 입력 시트 오픈(사유는 감독 승인 판단 자료의 핵심이라 필수). */
+  const openRefundSheet = (paymentId: string, productName: string) => {
+    setRefundReason('');
+    setRefundTarget({ paymentId, productName });
+  };
+
+  /** 환불 요청 제출 — 즉시 취소 폐기. RefundRequest(pending) 생성 후 감독/운영자 승인 대기.
+   *  성공 시 결제 내역 + 내 환불 요청 상태 재조회(버튼→"환불 요청 중" 배지 전환).
    */
-  const handleCancelPayment = async (paymentId: string, productName: string) => {
-    const ok = await modal.confirm({
-      title: '결제를 취소할까요?',
-      message: `${productName} 결제를 취소합니다. 진행하시겠어요?`,
-      confirmText: '결제취소',
-      cancelText: '돌아가기',
-    });
-    if (!ok) return;
-    setCancellingId(paymentId);
+  const submitRefundRequest = async () => {
+    if (!refundTarget) return;
+    const reason = refundReason.trim();
+    if (!reason) {
+      toast.error(MESSAGES.refund.requestReasonRequired);
+      return;
+    }
+    setRequestingId(refundTarget.paymentId);
     try {
-      const res = await api.post(`/payments/${paymentId}/cancel`, {
-        cancelReason: '학부모 요청 (결제내역에서 결제취소)',
-      });
+      const res = await createRefundRequest({ paymentId: refundTarget.paymentId, reason });
       if (!res.success) {
-        toast.error(res.error?.message ?? MESSAGES.payment2.cancelFailed);
+        const code = res.error?.statusCode;
+        if (code === 409) {
+          toast.error(MESSAGES.refund.duplicateActive);
+        } else if (code === 422) {
+          toast.error(MESSAGES.refund.unsupportedPayment);
+        } else {
+          toast.error(res.error?.message ?? MESSAGES.refund.requestFailed);
+        }
+        await loadMyRefunds(); // 서버 상태와 재동기화(경쟁으로 이미 요청됨 등)
         return;
       }
-      toast.success(MESSAGES.payment2.cancelSuccess);
-      await fetchPaymentHistory();
+      toast.success(MESSAGES.refund.requestSuccess);
+      setRefundTarget(null);
+      setRefundReason('');
+      await Promise.all([fetchPaymentHistory(), loadMyRefunds()]);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : MESSAGES.payment2.cancelFailed);
+      toast.error(e instanceof Error ? e.message : MESSAGES.refund.requestFailed);
     } finally {
-      setCancellingId(null);
+      setRequestingId(null);
     }
   };
 
   const isFiltered = periodFilter !== 'all';
   const showSummary = !isPaymentLoading && !paymentError && paymentSummary.count > 0;
+
+  const pendingCount = pendingBillings?.length ?? 0;
+  const tabs: { key: PaymentTab; label: string }[] = [
+    { key: 'history', label: MESSAGES.payment2.tabHistory },
+    {
+      key: 'pending',
+      label:
+        pendingCount > 0
+          ? `${MESSAGES.payment2.tabPending} ${pendingCount}`
+          : MESSAGES.payment2.tabPending,
+    },
+  ];
 
   return (
     <MobileContainer hasBottomNav>
@@ -511,42 +642,103 @@ export default function PaymentHistoryPage() {
       {/* 스크롤 영역 — MobileContainer 직계 자식(overflow-y-auto)만 momentum 스크롤 대상.
           PageAppBar 는 영역 밖(고정 헤더)에 유지하고, 본문 전체를 이 컨테이너가 스크롤. */}
       <div className="flex-1 min-h-0 overflow-y-auto bg-it-canvas dark:bg-puck [&>*]:shrink-0">
-        {/* Filter Bar — 조회 건수 + 기간 선택 칩 (항상 노출, 빈 결과에서도 기간 변경 가능) */}
-        <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-2">
-          <span className="shrink-0 whitespace-nowrap text-card-meta text-it-ink-500 dark:text-rink-300 tabular-nums">
-            {isPaymentLoading || paymentError ? PERIOD_LABEL[periodFilter] : `${paymentSummary.count}건 조회`}
-          </span>
-          <button
-            type="button"
-            onClick={() => setIsFilterSheetOpen(true)}
-            className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-w-pill bg-it-surface dark:bg-rink-800 border border-it-line-strong dark:border-rink-700 px-3 py-1.5 text-card-meta font-semibold text-it-ink-600 dark:text-rink-100 hover:bg-it-fill dark:hover:bg-rink-700/50 transition-colors motion-reduce:transition-none active:brightness-95"
-            aria-label="기간 필터 변경"
-          >
-            <Icon name="calendar_month" className="text-base" aria-hidden="true" />
-            {PERIOD_LABEL[periodFilter]}
-            <Icon name="expand_more" className="text-base" aria-hidden="true" />
-          </button>
+        {/* 탭 — 결제 내역 / 미납 결제 (정산 센터와 동일 패턴). 미납 탭은 건수 배지 표기 */}
+        <div
+          role="tablist"
+          aria-label={MESSAGES.payment2.tabsAria}
+          className="flex border-b border-it-line bg-it-surface dark:border-rink-700 dark:bg-rink-800"
+        >
+          {tabs.map((tab) => {
+            const isActive = activeTab === tab.key;
+            return (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                aria-controls={`payment-history-panel-${tab.key}`}
+                id={`payment-history-tab-${tab.key}`}
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={cn(
+                  'relative flex-1 px-1 pb-[13px] pt-[14px] text-[15px] transition-colors duration-200 motion-reduce:transition-none',
+                  isActive
+                    ? 'font-extrabold text-it-blue-600 dark:text-white'
+                    : 'font-semibold text-it-ink-500 hover:text-it-ink-800 dark:text-wtext-4 dark:hover:text-white',
+                )}
+              >
+                {tab.label}
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    'absolute inset-x-0 -bottom-px h-[2.5px] rounded-sm',
+                    isActive ? 'bg-it-blue-500' : 'bg-transparent',
+                  )}
+                />
+              </button>
+            );
+          })}
         </div>
 
-        {/* Summary Card — 기간 내 총 결제 금액 요약 (navy 히어로) */}
-        {showSummary && (
-          <div className="mt-2">
-            <SummaryCard payment={paymentSummary} />
+        {activeTab === 'history' ? (
+          <div
+            role="tabpanel"
+            id="payment-history-panel-history"
+            aria-labelledby="payment-history-tab-history"
+            className="[&>*]:shrink-0"
+          >
+            {/* Filter Bar — 조회 건수 + 기간 선택 칩 (항상 노출, 빈 결과에서도 기간 변경 가능) */}
+            <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-2">
+              <span className="shrink-0 whitespace-nowrap text-card-meta text-it-ink-500 dark:text-rink-300 tabular-nums">
+                {isPaymentLoading || paymentError ? PERIOD_LABEL[periodFilter] : `${paymentSummary.count}건 조회`}
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsFilterSheetOpen(true)}
+                className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-w-pill bg-it-surface dark:bg-rink-800 border border-it-line-strong dark:border-rink-700 px-3 py-1.5 text-card-meta font-semibold text-it-ink-600 dark:text-rink-100 hover:bg-it-fill dark:hover:bg-rink-700/50 transition-colors motion-reduce:transition-none active:brightness-95"
+                aria-label="기간 필터 변경"
+              >
+                <Icon name="calendar_month" className="text-base" aria-hidden="true" />
+                {PERIOD_LABEL[periodFilter]}
+                <Icon name="expand_more" className="text-base" aria-hidden="true" />
+              </button>
+            </div>
+
+            {/* Summary Card — 기간 내 총 결제 금액 요약 (navy 히어로) */}
+            {showSummary && (
+              <div className="mt-2">
+                <SummaryCard payment={paymentSummary} />
+              </div>
+            )}
+
+            {/* History List — 하단 여백은 MobileContainer hasBottomNav(60px+safe-area 예약)가 담당 */}
+            <div>
+              <PaymentHistoryList
+                groupedPayments={groupedPayments}
+                isLoading={isPaymentLoading}
+                error={paymentError}
+                isFiltered={isFiltered}
+                onRetry={fetchPaymentHistory}
+                onRequestRefund={openRefundSheet}
+                requestingId={requestingId}
+                refundMap={refundMap}
+              />
+            </div>
+          </div>
+        ) : (
+          <div
+            role="tabpanel"
+            id="payment-history-panel-pending"
+            aria-labelledby="payment-history-tab-pending"
+            className="[&>*]:shrink-0"
+          >
+            <PendingPaymentsPanel
+              items={pendingBillings ?? []}
+              isLoading={isPendingLoading}
+              hasError={pendingError}
+              onRetry={() => void fetchPendingBillings()}
+            />
           </div>
         )}
-
-        {/* History List — 하단 여백은 MobileContainer hasBottomNav(60px+safe-area 예약)가 담당 */}
-        <div>
-          <PaymentHistoryList
-            groupedPayments={groupedPayments}
-            isLoading={isPaymentLoading}
-            error={paymentError}
-            isFiltered={isFiltered}
-            onRetry={fetchPaymentHistory}
-            onCancel={handleCancelPayment}
-            cancellingId={cancellingId}
-          />
-        </div>
       </div>
 
       <BottomSheetSelector<PeriodFilter>
@@ -565,7 +757,81 @@ export default function PaymentHistoryPage() {
         onClose={() => setIsFilterSheetOpen(false)}
       />
 
+      {/* 환불 요청 사유 입력 시트 — 사유 필수(1~500자). 즉시 취소 폐기 → 승인제. */}
+      <BottomSheet
+        isOpen={refundTarget !== null}
+        onClose={() => {
+          if (requestingId) return; // 제출 처리 중 닫기 방지
+          setRefundTarget(null);
+          setRefundReason('');
+        }}
+        title={MESSAGES.refund.requestModalTitle}
+        footer={
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setRefundTarget(null);
+                setRefundReason('');
+              }}
+              disabled={requestingId !== null}
+              className="h-12 flex-1 rounded-w-md bg-it-fill text-card-title font-semibold text-it-ink-700 transition-colors motion-reduce:transition-none hover:bg-it-line active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-it-blue-900/40 dark:text-it-ink-200 dark:hover:bg-it-blue-900/60"
+            >
+              {MESSAGES.refund.requestModalCancel}
+            </button>
+            <button
+              type="button"
+              onClick={() => void submitRefundRequest()}
+              disabled={!refundReason.trim() || requestingId !== null}
+              className="h-12 flex-1 rounded-w-md bg-it-red-500 text-card-title font-semibold text-white transition-colors motion-reduce:transition-none hover:bg-it-red-600 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {requestingId !== null ? MESSAGES.refund.requestProcessing : MESSAGES.refund.requestSubmit}
+            </button>
+          </div>
+        }
+      >
+        <div className="mt-2 space-y-3 pb-2">
+          <p className="text-card-body leading-relaxed text-it-ink-600 dark:text-rink-300">
+            {MESSAGES.refund.requestModalBody}
+          </p>
+          <div>
+            <label
+              htmlFor="refund-request-reason"
+              className="mb-1.5 block text-card-meta font-bold text-it-ink-500 dark:text-it-ink-300"
+            >
+              {MESSAGES.refund.requestReasonLabel}{' '}
+              <span className="text-it-red-500 dark:text-it-red-400">*</span>
+            </label>
+            <textarea
+              id="refund-request-reason"
+              value={refundReason}
+              onChange={(e) => setRefundReason(e.target.value)}
+              placeholder={MESSAGES.refund.requestReasonPlaceholder}
+              rows={3}
+              maxLength={500}
+              disabled={requestingId !== null}
+              className="w-full resize-none rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill px-4 py-3 text-card-body text-it-ink-800 transition-colors placeholder:text-it-ink-400 focus:border-it-blue-500 focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 motion-reduce:transition-none disabled:opacity-60 dark:border-it-blue-900 dark:bg-it-blue-900/40 dark:text-white dark:placeholder:text-it-ink-300"
+            />
+            {/* 필수 안내 — 항상 자리 예약(min-h)으로 시트 높이 점프 방지 */}
+            <p
+              className={`mt-1 min-h-[18px] text-card-meta text-it-red-500 dark:text-it-red-400${refundReason.trim() ? ' invisible' : ''}`}
+            >
+              {MESSAGES.refund.requestReasonRequired}
+            </p>
+          </div>
+        </div>
+      </BottomSheet>
+
       <GlobalMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </MobileContainer>
+  );
+}
+
+export default function PaymentHistoryPage() {
+  // useSearchParams(?tab=pending 딥링크)는 Suspense 경계 내에서만 사용 가능.
+  return (
+    <Suspense fallback={null}>
+      <PaymentHistoryContent />
+    </Suspense>
   );
 }

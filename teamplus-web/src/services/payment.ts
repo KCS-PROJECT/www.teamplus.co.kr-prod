@@ -161,6 +161,7 @@ function toPaymentHistoryItem(item: BackendPaymentItem): PaymentHistoryItem {
     className: item.className ?? undefined,
     date: formatDate(baseDate),
     time: formatTime(baseDate),
+    paidAtIso: baseDate || undefined,
     amount: Number.isFinite(amount) ? amount : 0,
     status,
     orderNumber: item.orderNumber,
@@ -693,6 +694,767 @@ export async function requestPaymentCancel(
   });
 }
 
+// ============================================
+// 환불 승인제 (Phase 1) — RefundRequest
+// ============================================
+// 학부모 요청(pending) → 소속 감독(팀=DIRECTOR / 오픈클래스=ACADEMY_DIRECTOR)·ADMIN
+// 승인=실행(단일 액션) 전건 승인제. 백엔드 계약(SPEC ③)을 미러링한다.
+// 상태 전이: pending → rejected|canceled|executing → executed|execution_failed.
+
+/** 환불 요청 상태(도메인 6종). approved 없음 — 승인=실행. */
+export type RefundRequestStatus =
+  | 'pending'
+  | 'executing'
+  | 'executed'
+  | 'execution_failed'
+  | 'rejected'
+  | 'canceled';
+
+/**
+ * 결제 출처 — 요청 생성 시 fail-closed 판별.
+ * DIRECT = 관리자 직접 환불(원장). scope.teamId/academyId 가 모두 null 일 수 있고
+ * 승인/거절 없이 admin 만 재처리 가능(팀/아카데미 감독 읽기 전용).
+ */
+export type RefundSourceType =
+  | 'CLASS_PREPAID'
+  | 'CLASS_POSTPAID'
+  | 'TOURNAMENT'
+  | 'DIRECT';
+
+/**
+ * 표시용 상태/출처 — 미지 값은 'unknown'으로 유지(fail-closed).
+ * pending/CLASS_PREPAID 로의 임의 승격을 금지해, 잘못된 서버값이 조작 가능한 상태로
+ * 렌더되지 않도록 한다. 'unknown'은 뷰에서 중립 표기 + mutate CTA 미노출로 처리한다.
+ */
+export type RefundDisplayStatus = RefundRequestStatus | 'unknown';
+export type RefundDisplaySource = RefundSourceType | 'unknown';
+
+/** 실패 단계 — PG(무이체, 전체 재실행 안전) / DB_AFTER_PG(PG 성공, 재처리 시 PG 재호출 금지). */
+export type RefundFailureStage = 'PG' | 'DB_AFTER_PG';
+
+/** 관리 목록 스코프 — 팀(director-payments) / 오픈클래스(academy). */
+export type RefundScope = 'team' | 'academy';
+
+/** 위험 표식 — 승인 판단 보조(이용 내역/후불/대회). */
+export interface RefundRiskFlags {
+  used: boolean;
+  postpaid: boolean;
+  tournament: boolean;
+}
+
+/** 승인/거절/재처리/생성 공통 응답(백엔드 RefundRequestResponseDto 미러). */
+export interface RefundRequestResponse {
+  id: string;
+  paymentId: string;
+  status: RefundRequestStatus;
+  sourceType: RefundSourceType;
+  requestedAmount: number;
+  approvedAmount?: number | null;
+  decidedAt?: string | null;
+  executedAt?: string | null;
+  failureStage?: RefundFailureStage | null;
+  version: number;
+}
+
+/** 관리 목록 1행(백엔드 RefundRequestListItemDto 미러). */
+export interface RefundRequestListItem {
+  id: string;
+  status: RefundDisplayStatus;
+  sourceType: RefundDisplaySource;
+  subjectLabel: string;
+  requesterName: string;
+  childName?: string | null;
+  amount: number;
+  createdAt: string;
+  waitingMinutes: number;
+  riskFlags: RefundRiskFlags;
+}
+
+/** 목록 페이지네이션(이력 기준). */
+export interface RefundListPagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+/**
+ * 목록 응답(백엔드 계약 — 서버가 활성/이력을 분리 반환).
+ * activeItems = 승인 대기(전량, 페이지네이션 없음). historyItems = 처리 이력(pagination 기준 더 보기).
+ */
+export interface RefundRequestListResponse {
+  activeItems: RefundRequestListItem[];
+  historyItems: RefundRequestListItem[];
+  pendingCount: number;
+  pagination: RefundListPagination;
+}
+
+/** 상세 사용 현황(판단 자료) — 백엔드 태그드 유니언(kind별). null=판별 불가/미해당. */
+export interface RefundUsagePrepaid {
+  kind: 'CLASS_PREPAID';
+  /** 결제일 이후 사용(출석) 횟수. */
+  usedCount: number;
+  /** 수업별 사용 횟수. */
+  perClass: { classId: string; count: number }[];
+}
+export interface RefundUsagePostpaid {
+  kind: 'CLASS_POSTPAID';
+  /** 산정 근거 출석 횟수. */
+  attendanceCount: number;
+  /** 청구액(출석수×단가). 회당 단가는 amount/attendanceCount 로 파생. */
+  amount: number;
+}
+export interface RefundUsageTournament {
+  kind: 'TOURNAMENT';
+  gamesCount: number;
+  calculatedFee: number;
+}
+export type RefundUsage =
+  | RefundUsagePrepaid
+  | RefundUsagePostpaid
+  | RefundUsageTournament
+  | null;
+
+/** 상세 이력 1건(RefundLog join). */
+export interface RefundHistoryItem {
+  id: string;
+  refundAmount: number;
+  refundReason: string | null;
+  processedAt: string | null;
+  actorId: string | null;
+}
+
+/** 상세 응답(백엔드 RefundRequestDetailDto 미러 — 중첩 구조 SoT). */
+export interface RefundRequestDetail {
+  id: string;
+  status: RefundDisplayStatus;
+  sourceType: RefundDisplaySource;
+  subjectLabel: string;
+  version: number;
+  /**
+   * 소속 컨텍스트 스냅샷(백엔드 추가 중) — URL 컨텍스트 대조용.
+   * 부재(undefined) 시 대조 스킵(백엔드 배포 전 호환).
+   */
+  scope?: {
+    sourceType?: string | null;
+    teamId?: string | null;
+    academyId?: string | null;
+  } | null;
+  payment: {
+    orderNumber: string | null;
+    amount: number;
+    paymentMethod: string | null;
+    /** 마스킹된 PG 승인번호. */
+    tid: string | null;
+    /** 현재 결제 상태(원본). */
+    currentStatus: string;
+    completedAt: string | null;
+    /** 상품/대상명. */
+    product: string | null;
+  };
+  request: {
+    requesterName: string;
+    requesterPhone: string | null;
+    childName: string | null;
+    requestReason: string;
+    requestedAmount: number;
+    createdAt: string;
+  };
+  usage: RefundUsage;
+  /** fail-closed — 사용현황 조회 일부 실패 시 false(승인 CTA 비활성). */
+  judgmentDataOk: boolean;
+  snapshotVsCurrent: {
+    /** 요청 생성 시점 결제 상태(예: 'completed'). RefundRequestStatus 아님. */
+    requestedStatusAtCreate: string;
+    requestedAmount: number;
+    /** 현재 결제 상태(예: 'completed' | 'refunded'). */
+    currentPaymentStatus: string;
+  };
+  decision: {
+    decidedBy: string | null;
+    decidedByName: string | null;
+    decidedAt: string | null;
+    decisionReason: string | null;
+    failureStage: RefundFailureStage | null;
+    failureCode: string | null;
+    failureReason: string | null;
+  };
+  history: RefundHistoryItem[];
+}
+
+/** 학부모 내 요청 1건 — /payment/history 배지용. */
+export interface RefundMyRequestItem {
+  id: string;
+  paymentId: string;
+  status: RefundDisplayStatus;
+}
+
+/** 목록/카운트 스코프 쿼리 — team(감독 소속 자동 해석) / academy(scopeId 필요). */
+function buildScopeParams(
+  scope: RefundScope,
+  scopeId?: string,
+): Record<string, string> {
+  if (scope === 'academy') {
+    return scopeId ? { scope: 'academy', academyId: scopeId } : { scope: 'academy' };
+  }
+  return { scope: 'team' };
+}
+
+/** 상태 정규화 — 미지 값은 'unknown'(fail-closed). pending 승격 금지. */
+function normalizeRefundStatus(value: unknown): RefundDisplayStatus {
+  return value === 'pending' ||
+    value === 'executing' ||
+    value === 'executed' ||
+    value === 'execution_failed' ||
+    value === 'rejected' ||
+    value === 'canceled'
+    ? value
+    : 'unknown';
+}
+
+/** 출처 정규화 — 미지 값은 'unknown'(fail-closed). CLASS_PREPAID 승격 금지. */
+function normalizeRefundSource(value: unknown): RefundDisplaySource {
+  return value === 'CLASS_PREPAID' ||
+    value === 'CLASS_POSTPAID' ||
+    value === 'TOURNAMENT' ||
+    value === 'DIRECT'
+    ? value
+    : 'unknown';
+}
+
+function normalizeRiskFlags(value: unknown): RefundRiskFlags {
+  const v = (value ?? {}) as Partial<RefundRiskFlags>;
+  return {
+    used: Boolean(v.used),
+    postpaid: Boolean(v.postpaid),
+    tournament: Boolean(v.tournament),
+  };
+}
+
+function normalizeFailureStage(value: unknown): RefundFailureStage | null {
+  return value === 'PG' || value === 'DB_AFTER_PG' ? value : null;
+}
+
+/** 상세 사용현황(판단 자료) 태그드 유니언 정규화. kind 미해당/null → null. */
+function normalizeUsage(value: unknown): RefundUsage {
+  if (!value || typeof value !== 'object') return null;
+  const kind = (value as { kind?: unknown }).kind;
+  if (kind === 'CLASS_PREPAID') {
+    const v = value as Partial<RefundUsagePrepaid>;
+    return {
+      kind: 'CLASS_PREPAID',
+      usedCount: toNumber(v.usedCount),
+      perClass: Array.isArray(v.perClass)
+        ? v.perClass.map((pc) => ({
+            classId: String(pc?.classId ?? ''),
+            count: toNumber(pc?.count),
+          }))
+        : [],
+    };
+  }
+  if (kind === 'CLASS_POSTPAID') {
+    const v = value as Partial<RefundUsagePostpaid>;
+    return {
+      kind: 'CLASS_POSTPAID',
+      attendanceCount: toNumber(v.attendanceCount),
+      amount: toNumber(v.amount),
+    };
+  }
+  if (kind === 'TOURNAMENT') {
+    const v = value as Partial<RefundUsageTournament>;
+    return {
+      kind: 'TOURNAMENT',
+      gamesCount: toNumber(v.gamesCount),
+      calculatedFee: toNumber(v.calculatedFee),
+    };
+  }
+  return null;
+}
+
+/**
+ * 환불 요청 생성 (`POST /refund-requests`) — 학부모.
+ * 성공 시 pending 요청 생성(PG 미호출). 실패 시 error.statusCode 로 분기:
+ * 403(소유권) · 400(미완료) · 422(미지원 결제) · 409(활성 중복).
+ */
+export async function createRefundRequest(params: {
+  paymentId: string;
+  reason: string;
+}): Promise<ApiResponse<RefundRequestResponse>> {
+  return api.post<RefundRequestResponse>('/refund-requests', {
+    paymentId: params.paymentId,
+    reason: params.reason,
+  });
+}
+
+/**
+ * 내 환불 요청 조회 (`GET /refund-requests/my`) — 학부모.
+ * 활성/거절 요청이 있는 결제의 버튼을 배지로 대체하기 위한 최소 목록.
+ */
+export async function getMyRefundRequests(): Promise<
+  ApiResponse<RefundMyRequestItem[]>
+> {
+  const res = await api.get<RefundMyRequestItem[] | { items: RefundMyRequestItem[] }>(
+    '/refund-requests/my',
+  );
+  if (!res.success || !res.data) return res as ApiResponse<RefundMyRequestItem[]>;
+  const raw = Array.isArray(res.data) ? res.data : (res.data.items ?? []);
+  const items: RefundMyRequestItem[] = raw.map((r) => ({
+    id: String(r?.id ?? ''),
+    paymentId: String(r?.paymentId ?? ''),
+    status: normalizeRefundStatus(r?.status),
+  }));
+  return { success: true, data: items };
+}
+
+// ── 런타임 스키마 검증(수동 — 프로젝트에 zod 미도입) ─────────────
+const REFUND_STATUS_SET = new Set([
+  'pending',
+  'executing',
+  'executed',
+  'execution_failed',
+  'rejected',
+  'canceled',
+]);
+// 목록 배열별 허용 상태 — activeItems=처리 필요, historyItems=종결. 교차 혼입은 오염(전체 실패).
+const REFUND_ACTIVE_STATUS_SET = new Set(['pending', 'executing', 'execution_failed']);
+const REFUND_HISTORY_STATUS_SET = new Set(['executed', 'rejected', 'canceled']);
+// sourceType 허용값(DIRECT 포함). usage.kind 는 DIRECT 없음(별도 Set).
+const REFUND_SOURCE_SET = new Set(['CLASS_PREPAID', 'CLASS_POSTPAID', 'TOURNAMENT', 'DIRECT']);
+const REFUND_USAGE_KIND_SET = new Set(['CLASS_PREPAID', 'CLASS_POSTPAID', 'TOURNAMENT']);
+const REFUND_FAILURE_STAGE_SET = new Set(['PG', 'DB_AFTER_PG']);
+
+function isNonEmptyStr(v: unknown): boolean {
+  return typeof v === 'string' && v.length > 0;
+}
+/** nullable 문자열 필드 — string | null | undefined 만 허용(그 외 타입 오염 거부). */
+function isStrOrNull(v: unknown): boolean {
+  return v === null || v === undefined || typeof v === 'string';
+}
+/** failureStage — 'PG'|'DB_AFTER_PG'|null|undefined 만 허용(그 외 값 오염 거부). */
+function isFailureStageOrNull(v: unknown): boolean {
+  return v === null || v === undefined || REFUND_FAILURE_STAGE_SET.has(v as string);
+}
+/** 비음수 정수 필드(금액·카운트). */
+function isNonNegInt(v: unknown): boolean {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 0;
+}
+/** 양의 정수 필드(page·limit). */
+function isPosInt(v: unknown): boolean {
+  return typeof v === 'number' && Number.isInteger(v) && v > 0;
+}
+
+/**
+ * pagination 검증(numeric 불변조건) — page/limit/totalPages 양의 정수(>=1) · total 0 이상 정수 ·
+ * totalPages === max(1, ceil(total/limit)) · 1 <= page <= totalPages. (백엔드 계약상 totalPages>=1.)
+ */
+function isValidPagination(p: unknown): boolean {
+  if (!p || typeof p !== 'object') return false;
+  const q = p as Record<string, unknown>;
+  if (!isPosInt(q.page) || !isPosInt(q.limit) || !isPosInt(q.totalPages)) return false;
+  if (!isNonNegInt(q.total)) return false;
+  const page = q.page as number;
+  const limit = q.limit as number;
+  const total = q.total as number;
+  const totalPages = q.totalPages as number;
+  if (totalPages !== Math.max(1, Math.ceil(total / limit))) return false;
+  if (page > totalPages) return false; // page>=1 은 isPosInt 로 보장
+  return true;
+}
+
+/**
+ * scope 객체 검증 — sourceType(허용값) 필수 + 소속키 규칙.
+ * 수업/대회: teamId·academyId 중 **정확히 하나만**(둘 다 없음/혼합 거부). DIRECT: 둘 다 null 허용.
+ */
+function isValidRefundScope(scope: unknown): boolean {
+  if (!scope || typeof scope !== 'object') return false;
+  const s = scope as Record<string, unknown>;
+  if (!REFUND_SOURCE_SET.has(s.sourceType as string)) return false;
+  if (!isStrOrNull(s.teamId) || !isStrOrNull(s.academyId)) return false;
+  if (s.sourceType !== 'DIRECT') {
+    const hasTeam = isNonEmptyStr(s.teamId);
+    const hasAcademy = isNonEmptyStr(s.academyId);
+    // 정확히 하나 — 둘 다 없거나(빈 객체) 둘 다 있으면(혼합) 무효.
+    if (hasTeam === hasAcademy) return false;
+  }
+  // DIRECT: teamId/academyId 둘 다 null 허용.
+  return true;
+}
+
+/**
+ * history 각 item 구조 검증 — {id, refundAmount number, processedAt, refundReason, actorId}.
+ * 무효 item 하나라도 있으면 false.
+ */
+function isValidRefundHistory(history: unknown[]): boolean {
+  for (const h of history) {
+    if (!h || typeof h !== 'object') return false;
+    const hi = h as Record<string, unknown>;
+    if (!isNonEmptyStr(hi.id)) return false;
+    if (!isNonNegInt(hi.refundAmount)) return false;
+    if (!isStrOrNull(hi.processedAt)) return false;
+    if (!isStrOrNull(hi.refundReason)) return false;
+    if (!isStrOrNull(hi.actorId)) return false;
+  }
+  return true;
+}
+
+/**
+ * 상세 응답 런타임 검증(fail-open 제거) — 중첩 계약 전수화.
+ * 금전 판단 필드/중첩 구조 하나라도 누락/타입 오염 시 false. 기본값 폴백 변환 금지 →
+ * 호출부가 success:false 로 상세 전체를 fail-closed 처리한다.
+ */
+function isValidRefundDetailPayload(raw: unknown): boolean {
+  if (!raw || typeof raw !== 'object') return false;
+  const r = raw as Record<string, unknown>;
+  if (!isNonEmptyStr(r.id)) return false;
+  if (!isNonNegInt(r.version)) return false;
+  if (!REFUND_STATUS_SET.has(r.status as string)) return false;
+  if (!REFUND_SOURCE_SET.has(r.sourceType as string)) return false;
+  // payment — 금전 판단 필수(amount 비음수 정수).
+  const p = r.payment as Record<string, unknown> | null | undefined;
+  if (!p || typeof p !== 'object' || !isNonNegInt(p.amount)) return false;
+  // request — 사유·요청액(비음수 정수)·시각 필수.
+  const rq = r.request as Record<string, unknown> | null | undefined;
+  if (!rq || typeof rq !== 'object') return false;
+  if (typeof rq.requestReason !== 'string') return false;
+  if (!isNonNegInt(rq.requestedAmount)) return false;
+  if (!isNonEmptyStr(rq.createdAt)) return false;
+  // usage — kind(DIRECT 제외) 유효 객체 + kind별 금전/카운트(비음수 정수), 또는 null/미제공(→ judgmentDataOk 강제 false).
+  const u = r.usage as Record<string, unknown> | null | undefined;
+  if (u !== null && u !== undefined) {
+    if (typeof u !== 'object' || !REFUND_USAGE_KIND_SET.has(u.kind as string)) return false;
+    if (u.kind === 'CLASS_PREPAID') {
+      if (!isNonNegInt(u.usedCount)) return false;
+      // perClass — 배열 + 각 item {classId string, count 비음수 정수}.
+      if (!Array.isArray(u.perClass)) return false;
+      for (const pc of u.perClass) {
+        if (!pc || typeof pc !== 'object') return false;
+        const p2 = pc as Record<string, unknown>;
+        if (typeof p2.classId !== 'string' || !isNonNegInt(p2.count)) return false;
+      }
+    }
+    if (
+      u.kind === 'CLASS_POSTPAID' &&
+      (!isNonNegInt(u.attendanceCount) || !isNonNegInt(u.amount))
+    )
+      return false;
+    if (
+      u.kind === 'TOURNAMENT' &&
+      (!isNonNegInt(u.gamesCount) || !isNonNegInt(u.calculatedFee))
+    )
+      return false;
+  }
+  // snapshotVsCurrent — 요청액 비음수 정수 + 생성시점/현재 상태 문자열 필수.
+  const sc = r.snapshotVsCurrent as Record<string, unknown> | null | undefined;
+  if (!sc || typeof sc !== 'object') return false;
+  if (!isNonNegInt(sc.requestedAmount)) return false;
+  if (typeof sc.requestedStatusAtCreate !== 'string') return false;
+  if (typeof sc.currentPaymentStatus !== 'string') return false;
+  // decision — 객체 + nullable 문자열 필드 + failureStage enum 검증.
+  const dc = r.decision as Record<string, unknown> | null | undefined;
+  if (!dc || typeof dc !== 'object') return false;
+  if (
+    !isStrOrNull(dc.decidedBy) ||
+    !isStrOrNull(dc.decidedByName) ||
+    !isStrOrNull(dc.decidedAt) ||
+    !isStrOrNull(dc.decisionReason) ||
+    !isFailureStageOrNull(dc.failureStage) ||
+    !isStrOrNull(dc.failureCode) ||
+    !isStrOrNull(dc.failureReason)
+  )
+    return false;
+  // history — 배열 + 각 item 구조.
+  if (!Array.isArray(r.history) || !isValidRefundHistory(r.history)) return false;
+  // scope — 백엔드 상시 emit(DIRECT 원장 포함). sourceType 필수 + 소속키 규칙.
+  if (!isValidRefundScope(r.scope)) return false;
+  // sourceType 일치 강제 — top-level 과 scope.sourceType 불일치 = 오염.
+  if (r.sourceType !== (r.scope as Record<string, unknown>).sourceType) return false;
+  return true;
+}
+
+/**
+ * 목록 행 전수 계약 검증(fail-closed) — 하나라도 무효면 호출부가 전체 응답 실패 처리.
+ * id·status(배열별 허용집합)·sourceType(허용값)·subjectLabel·requesterName·createdAt(string)·
+ * childName(undefined|null|string)·amount·waitingMinutes(비음수 정수)·riskFlags(3 boolean).
+ * @param allowedStatuses activeItems=REFUND_ACTIVE_STATUS_SET · historyItems=REFUND_HISTORY_STATUS_SET.
+ */
+function isValidRefundListItem(it: unknown, allowedStatuses: Set<string>): boolean {
+  if (!it || typeof it !== 'object') return false;
+  const r = it as Record<string, unknown>;
+  if (!isNonEmptyStr(r.id)) return false;
+  if (!allowedStatuses.has(r.status as string)) return false; // 배열 교차 혼입 거부
+  if (!REFUND_SOURCE_SET.has(r.sourceType as string)) return false;
+  if (typeof r.subjectLabel !== 'string') return false;
+  if (typeof r.requesterName !== 'string') return false;
+  if (typeof r.createdAt !== 'string') return false;
+  if (!isStrOrNull(r.childName)) return false; // undefined|null|string 만(숫자 등 거부)
+  if (!isNonNegInt(r.amount)) return false; // 음수/소수/numeric string 거부
+  if (!isNonNegInt(r.waitingMinutes)) return false;
+  const rf = r.riskFlags as Record<string, unknown> | null | undefined;
+  if (!rf || typeof rf !== 'object') return false;
+  if (
+    typeof rf.used !== 'boolean' ||
+    typeof rf.postpaid !== 'boolean' ||
+    typeof rf.tournament !== 'boolean'
+  )
+    return false;
+  return true;
+}
+
+/**
+ * 역할 기반 환불 승인 권한(페이지에서 layout-provided user + 상세 sourceType 으로 판정).
+ * - 수업/대회: team=director/admin·academy=academy_director/admin(+system/oper).
+ * - DIRECT(관리자 직접 환불): admin/system/oper 만 true — 팀/아카데미 감독은 읽기 전용.
+ */
+export function canManageRefund(
+  scope: RefundScope,
+  userType: string | undefined | null,
+  sourceType?: RefundDisplaySource,
+): boolean {
+  const t = (userType ?? '').toLowerCase();
+  const isAdminTier = t === 'admin' || t === 'system' || t === 'oper';
+  if (sourceType === 'DIRECT') return isAdminTier;
+  return scope === 'academy'
+    ? t === 'academy_director' || isAdminTier
+    : t === 'director' || isAdminTier;
+}
+
+/**
+ * 관리자 환불 요청 목록 (`GET /refund-requests`).
+ * 소속 범위는 백엔드가 저장된 team_id/academy_id 스냅샷으로 필터한다.
+ */
+export async function listRefundRequests(params: {
+  scope: RefundScope;
+  scopeId?: string;
+  status?: RefundRequestStatus | 'all';
+  page?: number;
+  limit?: number;
+}): Promise<ApiResponse<RefundRequestListResponse>> {
+  const query: Record<string, string | number> = {
+    ...buildScopeParams(params.scope, params.scopeId),
+  };
+  if (params.status) query.status = params.status;
+  if (params.page) query.page = params.page;
+  if (params.limit) query.limit = params.limit;
+
+  const res = await api.get<RefundRequestListResponse>('/refund-requests', {
+    params: query,
+  });
+  if (!res.success || !res.data) {
+    return res as ApiResponse<RefundRequestListResponse>;
+  }
+  const raw = res.data as unknown as Record<string, unknown>;
+  // fail-closed 목록 계약 검증 — 하나라도 오염되면 상태 반영 없이 전체 실패(silent drop 금지).
+  const invalid = (message: string): ApiResponse<RefundRequestListResponse> => ({
+    success: false,
+    error: { code: 'INVALID_REFUND_LIST', statusCode: 500, message },
+  });
+  // ① 두 배열 존재 필수 · ② pendingCount 비음수 정수 · ③ pagination 산식 · ④ 행 전수 계약.
+  if (!Array.isArray(raw.activeItems) || !Array.isArray(raw.historyItems)) {
+    return invalid('invalid refund list arrays');
+  }
+  if (!isNonNegInt(raw.pendingCount)) {
+    return invalid('invalid refund list pendingCount');
+  }
+  if (!isValidPagination(raw.pagination)) {
+    return invalid('invalid refund list pagination');
+  }
+  if (
+    !raw.activeItems.every((it) => isValidRefundListItem(it, REFUND_ACTIVE_STATUS_SET)) ||
+    !raw.historyItems.every((it) => isValidRefundListItem(it, REFUND_HISTORY_STATUS_SET))
+  ) {
+    return invalid('invalid refund list item');
+  }
+  // 검증 통과 후 정규화(폴백 변환 없이 검증된 값 매핑). childName 은 string|null|undefined 만 통과됨.
+  const mapItem = (it: Record<string, unknown>): RefundRequestListItem => ({
+    id: String(it.id),
+    status: normalizeRefundStatus(it.status),
+    sourceType: normalizeRefundSource(it.sourceType),
+    subjectLabel: it.subjectLabel as string,
+    requesterName: it.requesterName as string,
+    childName: typeof it.childName === 'string' ? it.childName : null,
+    amount: it.amount as number,
+    createdAt: it.createdAt as string,
+    waitingMinutes: it.waitingMinutes as number,
+    riskFlags: normalizeRiskFlags(it.riskFlags),
+  });
+  return {
+    success: true,
+    data: {
+      activeItems: raw.activeItems.map(mapItem),
+      historyItems: raw.historyItems.map(mapItem),
+      pendingCount: raw.pendingCount as number,
+      pagination: raw.pagination as RefundListPagination,
+    },
+  };
+}
+
+/**
+ * 환불 요청 상세 (`GET /refund-requests/:requestId`).
+ * 범위 밖 접근은 백엔드 403 → error.statusCode 로 "권한 없음" 분기.
+ */
+export async function getRefundRequestDetail(
+  requestId: string,
+): Promise<ApiResponse<RefundRequestDetail>> {
+  const res = await api.get<RefundRequestDetail>(`/refund-requests/${requestId}`);
+  if (!res.success || !res.data) {
+    return res as ApiResponse<RefundRequestDetail>;
+  }
+  const raw = res.data;
+  // 런타임 스키마 검증(fail-open 제거) — 금전 판단 필드 오염 시 부분 렌더 금지, 오류 화면 유도.
+  if (!isValidRefundDetailPayload(raw)) {
+    return {
+      success: false,
+      error: { statusCode: 500, message: 'invalid refund detail schema' },
+    } as ApiResponse<RefundRequestDetail>;
+  }
+  const normalizedUsage = normalizeUsage(raw.usage);
+  const p = (raw.payment ?? {}) as Partial<RefundRequestDetail['payment']>;
+  const rq = (raw.request ?? {}) as Partial<RefundRequestDetail['request']>;
+  const sc = (raw.snapshotVsCurrent ?? {}) as Partial<RefundRequestDetail['snapshotVsCurrent']>;
+  const dc = (raw.decision ?? {}) as Partial<RefundRequestDetail['decision']>;
+  const rawScope = raw.scope as RefundRequestDetail['scope'] | undefined;
+  return {
+    success: true,
+    data: {
+      id: String(raw.id ?? ''),
+      status: normalizeRefundStatus(raw.status),
+      sourceType: normalizeRefundSource(raw.sourceType),
+      subjectLabel: raw.subjectLabel ?? '',
+      version: toNumber(raw.version),
+      // scope 는 백엔드 배포 전 부재 가능 — 존재 시에만 전달(부재=대조 스킵).
+      ...(rawScope && typeof rawScope === 'object'
+        ? {
+            scope: {
+              sourceType: rawScope.sourceType ?? null,
+              teamId: rawScope.teamId ?? null,
+              academyId: rawScope.academyId ?? null,
+            },
+          }
+        : {}),
+      payment: {
+        orderNumber: p.orderNumber ?? null,
+        amount: toNumber(p.amount),
+        paymentMethod: p.paymentMethod ?? null,
+        tid: p.tid ?? null,
+        currentStatus: p.currentStatus ?? '',
+        completedAt: p.completedAt ?? null,
+        product: p.product ?? null,
+      },
+      request: {
+        requesterName: rq.requesterName ?? '',
+        requesterPhone: rq.requesterPhone ?? null,
+        childName: rq.childName ?? null,
+        requestReason: rq.requestReason ?? '',
+        requestedAmount: toNumber(rq.requestedAmount),
+        createdAt: rq.createdAt ?? '',
+      },
+      usage: normalizedUsage,
+      // 엄격 fail-closed — raw 값이 true 이면서 usage(판단 자료)가 존재할 때만 승인 허용.
+      //   usage=null(판별 불가) 이면 강제 false(승인 CTA 비활성).
+      judgmentDataOk: raw.judgmentDataOk === true && normalizedUsage !== null,
+      snapshotVsCurrent: {
+        requestedStatusAtCreate: sc.requestedStatusAtCreate ?? '',
+        requestedAmount: toNumber(sc.requestedAmount),
+        currentPaymentStatus: sc.currentPaymentStatus ?? p.currentStatus ?? '',
+      },
+      decision: {
+        decidedBy: dc.decidedBy ?? null,
+        decidedByName: dc.decidedByName ?? null,
+        decidedAt: dc.decidedAt ?? null,
+        decisionReason: dc.decisionReason ?? null,
+        failureStage: normalizeFailureStage(dc.failureStage),
+        failureCode: dc.failureCode ?? null,
+        failureReason: dc.failureReason ?? null,
+      },
+      history: Array.isArray(raw.history)
+        ? raw.history.map((h) => ({
+            id: String(h?.id ?? ''),
+            refundAmount: toNumber(h?.refundAmount),
+            refundReason: h?.refundReason ?? null,
+            processedAt: h?.processedAt ?? null,
+            actorId: h?.actorId ?? null,
+          }))
+        : [],
+    },
+  };
+}
+
+/**
+ * 승인=실행 (`POST /refund-requests/:requestId/approve`).
+ * version 으로 더블탭·stale 방지. count 0(CAS 실패) → 409.
+ */
+export async function approveRefundRequest(
+  requestId: string,
+  params: { version: number; memo?: string },
+): Promise<ApiResponse<RefundRequestResponse>> {
+  return api.post<RefundRequestResponse>(
+    `/refund-requests/${requestId}/approve`,
+    { version: params.version, ...(params.memo ? { memo: params.memo } : {}) },
+  );
+}
+
+/**
+ * 거절 (`POST /refund-requests/:requestId/reject`). 재정 변화 없음. decisionReason 필수.
+ */
+export async function rejectRefundRequest(
+  requestId: string,
+  params: { version: number; decisionReason: string },
+): Promise<ApiResponse<RefundRequestResponse>> {
+  return api.post<RefundRequestResponse>(
+    `/refund-requests/${requestId}/reject`,
+    { version: params.version, decisionReason: params.decisionReason },
+  );
+}
+
+/**
+ * 재처리 (`POST /refund-requests/:requestId/reprocess`). execution_failed 전용.
+ * DB_AFTER_PG 는 PG 재호출 없이 DB 보상만 재적용(백엔드 처리).
+ */
+export async function reprocessRefundRequest(
+  requestId: string,
+  params: { version: number },
+): Promise<ApiResponse<RefundRequestResponse>> {
+  return api.post<RefundRequestResponse>(
+    `/refund-requests/${requestId}/reprocess`,
+    { version: params.version },
+  );
+}
+
+/** KG 미확정 정산 결과 — PG 취소 확인됨 / PG 미취소 확인됨. */
+export type RefundReconcileOutcome = 'CONFIRMED_CANCELLED' | 'CONFIRMED_NOT_CANCELLED';
+
+/**
+ * KG 미확정 정산 (`POST /refund-requests/:requestId/reconcile`) — ADMIN(system/oper 포함) 전용.
+ * KG_UNCONFIRMED(PG 결과 미확정) 건을 관리자가 PG 결과 확인 후 해소한다.
+ * body: { version(CAS), outcome(2종), memo(1~500 필수) }.
+ */
+export async function reconcileRefundRequest(
+  requestId: string,
+  params: { version: number; outcome: RefundReconcileOutcome; memo: string },
+): Promise<ApiResponse<RefundRequestResponse>> {
+  return api.post<RefundRequestResponse>(
+    `/refund-requests/${requestId}/reconcile`,
+    { version: params.version, outcome: params.outcome, memo: params.memo },
+  );
+}
+
+/**
+ * 대기 건수 (`GET /refund-requests/pending-count`) — 메뉴·배너·알림 공통 단일 집계.
+ * 활성(pending) 건수만 반환. 실패/0건 구분 위해 ApiResponse 그대로 반환.
+ */
+export async function getRefundPendingCount(params: {
+  scope: RefundScope;
+  scopeId?: string;
+}): Promise<ApiResponse<{ count: number }>> {
+  const res = await api.get<{ count: number }>('/refund-requests/pending-count', {
+    params: buildScopeParams(params.scope, params.scopeId),
+  });
+  if (!res.success || !res.data) {
+    return res as ApiResponse<{ count: number }>;
+  }
+  return { success: true, data: { count: toNumber(res.data.count) } };
+}
+
 /**
  * 결제 내역을 월별로 그룹화하는 유틸리티
  */
@@ -741,6 +1503,15 @@ const paymentService = {
   verifyPaymentCompletion,
   getReceiptDownloadUrl,
   requestPaymentCancel,
+  createRefundRequest,
+  getMyRefundRequests,
+  listRefundRequests,
+  getRefundRequestDetail,
+  approveRefundRequest,
+  rejectRefundRequest,
+  reprocessRefundRequest,
+  reconcileRefundRequest,
+  getRefundPendingCount,
   groupPaymentsByMonth,
   groupUsagesByMonth,
 };

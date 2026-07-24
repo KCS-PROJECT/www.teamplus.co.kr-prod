@@ -174,6 +174,7 @@ const DIRECTOR_MENU: AppMenuGroupSpec[] = [
     icon: "credit-card",
     children: [
       { label: "결제 관리", icon: "credit-card", href: "/director-payments" },
+      { label: "환불 요청", icon: "receipt", href: "/director-payments/refunds" },
       { label: "크레딧 관리", icon: "wallet", href: "/director-credits" },
     ],
   },

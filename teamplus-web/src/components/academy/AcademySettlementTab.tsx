@@ -33,6 +33,7 @@ import {
 } from '@/components/settlement/SettlementItemCard';
 import { InlineRetryError } from '@/components/settlement/InlineRetryError';
 import { formatCurrency, shiftMonth } from '@/components/settlement/settlement-format';
+import { RefundPendingBanner } from '@/components/refunds/RefundPendingBanner';
 
 interface AcademySettlementTabProps {
   academyId: string;
@@ -164,6 +165,9 @@ export function AcademySettlementTab({ academyId }: AcademySettlementTabProps) {
 
   return (
     <div className="flex flex-col">
+      {/* 환불 대기 조건부 배너 — pending > 0 일 때만 노출(0건이면 wrapper 째 미렌더). */}
+      <RefundPendingBanner scope="academy" scopeId={academyId} className="pb-3" />
+
       {/* ── 월 선택 + 요약 (flat 흰 섹션 — 페이지에 이미 navy Hero 있으므로 navy 금지) ── */}
       <section aria-label={MESSAGES.settlement.heroLabel} className="pt-1">
         {/* 상단 라벨 + 월 스텝퍼 */}

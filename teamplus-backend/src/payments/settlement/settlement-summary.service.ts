@@ -944,6 +944,7 @@ export class SettlementSummaryService {
           amount: Number(reg.calculatedFee),
           endDate: t.endDate,
           payment: reg.payment,
+          tournamentBillingMode: t.billingMode,
         });
         if (att.attributionUnknown) {
           attributionUnknownCount++;
@@ -1540,7 +1541,8 @@ export class SettlementSummaryService {
       notificationType: "payment_unpaid",
       title: "미납 결제 안내",
       message: `${detail.member.name} 회원의 미납 금액 ${won}원이 있습니다. 결제를 완료해 주세요.`,
-      linkUrl: "/credits",
+      // 결제내역 미납 탭 — 후불 미납 목록에서 건별 결제 진입 (구 /credits 는 폐기 화면).
+      linkUrl: "/payment/history?tab=pending",
     });
 
     return { sent: true, cooldown: false, recipientCount: parentIds.length };

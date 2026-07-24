@@ -11,6 +11,7 @@ import { PaymentCreateService } from "./services/payment-create.service";
 import {
   PaymentRefundService,
   RefundRequester,
+  RefundExecutionContext,
 } from "./services/payment-refund.service";
 import { PaymentReceiptService } from "./services/payment-receipt.service";
 import { deriveSource } from "./payment-source.util";
@@ -982,6 +983,7 @@ export class PaymentsService {
     refundAccount?: string,
     refundAccountHolder?: string,
     requester?: RefundRequester,
+    refundContext?: RefundExecutionContext,
   ) {
     return this.refundService.cancelPayment(
       paymentId,
@@ -991,6 +993,7 @@ export class PaymentsService {
       refundAccount,
       refundAccountHolder,
       requester,
+      refundContext,
     );
   }
 
@@ -1002,12 +1005,14 @@ export class PaymentsService {
     refundReason: string,
     refundAmount?: number,
     requester?: RefundRequester,
+    refundContext?: RefundExecutionContext,
   ) {
     return this.refundService.requestRefund(
       paymentId,
       refundReason,
       refundAmount,
       requester,
+      refundContext,
     );
   }
 

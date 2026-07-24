@@ -267,6 +267,11 @@ model User {
   uploadedFiles UploadedFile[] @relation("FileUploader")
   modifiedFiles UploadedFile[] @relation("FileModifier")
 
+  // 환불 요청 (Phase 1 환불 승인제 — 2026-07-23)
+  refundRequestsRequested RefundRequest[] @relation("RefundRequestRequester") /// 요청 학부모
+  refundRequestsForChild  RefundRequest[] @relation("RefundRequestChild") /// 대상 자녀
+  refundRequestsDecided   RefundRequest[] @relation("RefundRequestDecider") /// 승인/거절 감독·ADMIN
+
   @@index([userType])
   @@index([isVerified])
   @@index([createdAt])
@@ -705,7 +710,7 @@ model MonthlyPostpaidBillingLine {
   userId          String   @map("user_id") /// 청구 대상(자녀 User.id)
   attendanceCount Int      @map("attendance_count")
   amount          Int /// ₩ KRW (attendanceCount × feePerSession)
-  paymentStatus   String   @default("pending") @map("payment_status") /// pending | paid
+  paymentStatus   String   @default("pending") @map("payment_status") /// pending | paid | refunded | partially_refunded (환불 승인제 — pending 롤백 금지)
   paymentId       String?  @map("payment_id") /// 생성된 Payment 연결
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -855,6 +860,10 @@ model ClassProduct {
 
 /// 결제 - 결제 거래 정보 (KG이니시스 연동)
 model Payment {
+  /// paymentStatus 값: pending|completed|failed|refunded|partially_refunded
+  ///  + refund_processing — 환불 실행 선점(초 단위 과도 상태). cancelPayment가 PG 호출 전
+  ///    completed→refund_processing CAS로 선점하고, PG 실패 시 completed 복원 / 성공 시
+  ///    트랜잭션에서 refunded(_partially)로 확정. 이 상태로 잔존 = 실행자 크래시 → reprocess 복구 대상.
   id            String    @id @default(cuid())
   orderNumber   String    @unique @map("order_number")
   userId        String    @map("user_id")
@@ -873,6 +882,7 @@ model Payment {
   product                 ClassProduct?            @relation(fields: [productId], references: [id])
   credits                 MemberCredit[]
   refundLogs              RefundLog[]
+  refundRequests          RefundRequest[]
   eventRegistrations      TeamEventRegistration[]
   enrollments             Enrollment[] /// 해당 결제로 완료된 수강신청 목록
   tournamentRegistrations TournamentRegistration[]
@@ -935,12 +945,65 @@ model RefundLog {
   refundAmount Int      @map("refund_amount")
   refundReason String   @map("refund_reason")
   processedAt  DateTime @default(now()) @map("processed_at") @db.Timestamptz(3)
+  actorId      String?  @map("actor_id") /// 환불 실행 주체(승인 감독·ADMIN·trusted 시스템). null=레거시. FK/relation 없는 감사 컬럼.
 
   // Relationships
   payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
 
   @@index([paymentId])
   @@map("refund_logs")
+}
+
+/// 환불 요청 — 학부모 요청 → 소속 감독/ADMIN 승인=실행(단일 액션) 승인제.
+/// 상태 전이: pending → rejected|canceled|executing → executed|execution_failed (approved 없음).
+/// 활성 중복 제약(pending·executing·execution_failed 1건)은 partial unique index로 수동 SQL 적용.
+model RefundRequest {
+  id                  String    @id @default(cuid())
+  paymentId           String    @map("payment_id")
+  requesterId         String    @map("requester_id") /// 요청 학부모(User.id = Payment.userId)
+  childId             String?   @map("child_id") /// 대상 자녀(수강/참가 컨텍스트)
+  /// 결제 출처 — CLASS_PREPAID | CLASS_POSTPAID | TOURNAMENT | DIRECT(ADMIN·trusted 직접 환불의
+  ///  시스템 원장 — 도메인 미판별 결제 포함). 학부모 요청 생성은 3종만(fail-closed), DIRECT는 시스템 전용.
+  sourceType          String    @map("source_type")
+  /// 소속 스코프 키(요청 생성 시 스냅샷) — 목록 필터·승인 재검증·알림 라우팅 SoT.
+  classId             String?   @map("class_id")
+  tournamentId        String?   @map("tournament_id")
+  teamId              String?   @map("team_id")
+  academyId           String?   @map("academy_id")
+  status              String    @default("pending")
+  requestReason       String    @map("request_reason") @db.Text
+  requestedAmount     Int       @map("requested_amount") /// 요청 시점 Payment.amount 스냅샷(Phase 1=전액)
+  approvedAmount      Int?      @map("approved_amount") /// 실행 확정 환불액(Phase 1=전액)
+  decidedBy           String?   @map("decided_by") /// 승인/거절 감독·ADMIN User.id
+  decidedAt           DateTime? @map("decided_at") @db.Timestamptz(3)
+  decisionReason      String?   @map("decision_reason") @db.Text /// 거절 사유(필수)·승인 메모
+  executionStartedAt  DateTime? @map("execution_started_at") @db.Timestamptz(3)
+  executedAt          DateTime? @map("executed_at") @db.Timestamptz(3)
+  /// 실패 단계 — PG(PG 환불 실패, 무이체) | DB_AFTER_PG(PG 성공·DB 실패, 재처리 시 PG 재호출 금지).
+  failureStage        String?   @map("failure_stage")
+  failureCode         String?   @map("failure_code")
+  failureReason       String?   @map("failure_reason") @db.Text
+  pgRefundSucceededAt DateTime? @map("pg_refund_succeeded_at") @db.Timestamptz(3)
+  /// 최초 PG 시도 시각(1회만 기록) — 토스 멱등키 유효기간(~15일) 경과 판정 기준.
+  ///  executionStartedAt 은 reprocess 마다 갱신되므로 별도 보존.
+  pgFirstAttemptedAt  DateTime? @map("pg_first_attempted_at") @db.Timestamptz(3)
+  version             Int       @default(0) /// CAS 낙관적 잠금
+  idempotencyKey      String?   @unique @map("idempotency_key") /// 결제 단위 실행 식별자(선택)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  payment   Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  requester User    @relation("RefundRequestRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  child     User?   @relation("RefundRequestChild", fields: [childId], references: [id], onDelete: SetNull)
+  decider   User?   @relation("RefundRequestDecider", fields: [decidedBy], references: [id], onDelete: SetNull)
+
+  @@index([paymentId])
+  @@index([requesterId])
+  @@index([status])
+  @@index([childId])
+  @@index([teamId, status])
+  @@index([academyId, status])
+  @@map("refund_requests")
 }
 
 // ==================== Attendance ====================

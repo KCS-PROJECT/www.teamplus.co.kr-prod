@@ -709,6 +709,17 @@ export const MESSAGES = {
       `결제 요청 ${count}건 · 총 ${total.toLocaleString()}원`,
     pendingSheetTitle: "결제 요청",
     pendingPayCta: "결제하기",
+    // 결제내역 미납 탭 (/payment/history?tab=pending) — 미납 후불 목록 + 합계 히어로.
+    tabsAria: "결제 구분",
+    tabHistory: "결제 내역",
+    tabPending: "미납 결제",
+    pendingSummaryLabel: "미납 결제 합계",
+    pendingSummaryCount: (n: number) => `${n}건`,
+    pendingListTitle: "결제 대기 내역",
+    pendingEmpty: "미납된 결제가 없습니다.",
+    pendingEmptyDesc: "모든 결제가 완료되었습니다.",
+    pendingLoadFailed: "미납 결제 정보를 불러오지 못했습니다.",
+    pendingRetry: "다시 시도하기",
     completed: "결제가 완료되었습니다!",
     // [수정 2026-05-18] 감성 톤 — 결제 완료 화면 분위기. "결제권" 어색함 해소.
     creditIssued: "이제 이번 달 수업에 참여하실 수 있어요",
@@ -1002,12 +1013,14 @@ export const MESSAGES = {
     // 미수금 카드 — 결제 방식 / 미납액 / 액션
     billingPrepaid: "선결제",
     billingPostpaid: "후결제",
-    unpaidLabel: "미납액",
-    sendReminder: "알림 발송",
+    unpaidLabel: "미납액 합계",
+    sendReminder: "미납 안내 발송",
     viewDetail: "상세 보기",
-    // 미수금 출처 배지 (회원이 수업·대회 동시 미납 가능)
+    // 미수금 출처 (회원이 수업·대회 동시 미납 가능) — 카드는 건수 메타, 상세 시트는 라벨
     sourceClass: "훈련",
     sourceTournament: "대회",
+    sourceClassCount: (n: number) => `훈련 ${n}건`,
+    sourceTournamentCount: (n: number) => `대회 ${n}건`,
     unpaidMemberCount: (n: number) => `미납 ${n}명`,
     // 미수금 상세 시트
     detailSheetTitle: "미수금 상세",
@@ -1057,6 +1070,16 @@ export const MESSAGES = {
     waitedMinutes: (n: number) => `${n}분 대기`,
     waitedHours: (n: number) => `${n}시간 대기`,
     waitedDays: (n: number) => `${n}일 대기`,
+    /** Payment.paymentStatus 원문 키 → 한글 라벨 (상세 스냅샷/현재 상태 표기). */
+    paymentStatus: {
+      completed: '결제 완료',
+      pending: '결제 대기',
+      failed: '결제 실패',
+      cancelled: '결제 취소',
+      refunded: '환불 완료',
+      partially_refunded: '부분 환불',
+      refund_processing: '환불 처리 중',
+    } as Record<string, string>,
     // ── 상태 라벨 (색+아이콘+텍스트 — 색만 구분 금지) ──────
     status: {
       pending: "승인 대기",
@@ -2497,6 +2520,16 @@ export const MESSAGES = {
     groupMembersFilterTitle: "출생연도를 선택해주세요.",
     groupMembersFilterEmpty:
       "해당 연령의 회원이 없습니다. 다른 카테고리를 선택해 주세요.",
+
+    // 회원 선택 현황 (하위그룹 등록/수정 — 전체/선택 세그먼트 탭)
+    groupMembersTotalCount: (total: number) => `전체 ${total}명`,
+    groupMembersTabAll: (total: number) => `전체 ${total}`,
+    groupMembersTabSelected: (count: number) => `선택 ${count}`,
+    // 출생연도 필터 바텀시트 sub — 선택 인원이 있는 항목만 선택 수 병기
+    groupMembersFilterSub: (total: number, selected: number) =>
+      selected > 0 ? `${total}명 · ${selected}명 선택` : `${total}명`,
+    groupMembersSelectedEmpty:
+      "조건에 맞는 선택 인원이 없습니다. 필터를 변경해 주세요.",
 
     // 재사용 힌트
     retryHint: "목록으로 돌아가 다시 시도해 주세요.",

@@ -207,6 +207,7 @@ describe("PaymentsService", () => {
         "고객 요청",
         240000,
         requester,
+        undefined, // refundContext pass-through (미지정)
       );
     });
 
@@ -234,6 +235,7 @@ describe("PaymentsService", () => {
         undefined,
         undefined,
         requester,
+        undefined, // refundContext pass-through (미지정)
       );
     });
 

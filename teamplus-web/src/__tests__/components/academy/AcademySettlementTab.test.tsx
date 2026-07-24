@@ -17,6 +17,8 @@ const getAcademySettlementSummaryMock = jest.fn();
 jest.mock('@/services/payment', () => ({
   getAcademySettlementSummary: (...args: unknown[]) =>
     getAcademySettlementSummaryMock(...args),
+  // RefundPendingBanner(아카데미 정산 상단 삽입)가 사용 — 0건 응답으로 미노출(테스트 무간섭).
+  getRefundPendingCount: () => Promise.resolve({ success: true, data: { count: 0 } }),
 }));
 
 // ── KST 현재월 고정 ─────────────────────────────────────

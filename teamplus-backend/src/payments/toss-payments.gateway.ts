@@ -6,7 +6,31 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import * as crypto from "crypto";
-import axios, { AxiosInstance } from "axios";
+import axios, { AxiosError, AxiosInstance } from "axios";
+
+/**
+ * 토스 취소 결과 미확정(transport 모호성) — timeout·응답 유실·connection reset/refused·5xx.
+ * 토스가 취소를 처리했으나 응답만 유실됐을 수 있어 **Payment 복원 금지·격리** 대상이다.
+ * KG 와 달리 토스는 멱등 키(Idempotency-Key) 재시도가 공식 보장되므로, 해소는
+ * **같은 멱등키로 reprocess 재호출**(원 결과 반환)로 처리한다.
+ * (정상 수신된 명확한 거절 응답 4xx 바디는 이 에러가 아니라 BadRequestException 으로 던진다.)
+ */
+export class TossCancelAmbiguousError extends Error {
+  /**
+   * TRANSPORT = timeout·응답 유실·conn reset/refused·5xx (결과 미확정)
+   * PROCESSING = 409 IDEMPOTENT_REQUEST_PROCESSING (같은 키 이전 요청 처리 중 — 결과 미확정)
+   * CONFLICT   = 422 (같은 키에 다른 본문 — 멱등 불변조건 위반, 운영 확인 대상)
+   */
+  readonly kind: "TRANSPORT" | "PROCESSING" | "CONFLICT";
+  constructor(
+    message: string,
+    kind: "TRANSPORT" | "PROCESSING" | "CONFLICT" = "TRANSPORT",
+  ) {
+    super(message);
+    this.name = "TossCancelAmbiguousError";
+    this.kind = kind;
+  }
+}
 
 /**
  * 토스페이먼츠 게이트웨이 클라이언트 (2026-05-13 신규)
@@ -140,21 +164,75 @@ export class TossPaymentsGateway {
     paymentKey: string;
     cancelReason: string;
     cancelAmount?: number;
+    /** 멱등 키 — 동일 키 재요청 시 토스가 원 취소 결과를 반환(이중 취소 방지). */
+    idempotencyKey?: string;
   }): Promise<TossPaymentConfirmResponse> {
-    const { paymentKey, cancelReason, cancelAmount } = params;
+    const { paymentKey, cancelReason, cancelAmount, idempotencyKey } = params;
     try {
       const res = await this.httpClient.post<TossPaymentConfirmResponse>(
         `/v1/payments/${paymentKey}/cancel`,
         cancelAmount ? { cancelReason, cancelAmount } : { cancelReason },
+        idempotencyKey
+          ? { headers: { "Idempotency-Key": idempotencyKey } }
+          : undefined,
       );
       this.logger.log(
         `토스 결제 취소 성공: paymentKey=${paymentKey.slice(0, 12)}*** reason=${cancelReason}`,
       );
       return res.data;
     } catch (err) {
-      const error = err as { response?: { data?: { message?: string } } };
+      // [상태매트릭스 감사] transport 모호성(취소 처리 여부 불명)과 명확한 거절을 구분한다.
+      //   모호(timeout·응답 유실·conn reset/refused·5xx) → TossCancelAmbiguousError(격리, 복원 금지).
+      //   정상 수신된 명확한 거절(4xx 에러 바디 — ALREADY_CANCELED/NOT_CANCELABLE_* 등) → 확정 실패.
+      const ax = err as AxiosError<{ message?: string; code?: string }>;
+      const status = ax.response?.status;
+      const isTimeout = ax.code === "ECONNABORTED" || ax.code === "ETIMEDOUT";
+      const isConnErr = ax.code === "ECONNRESET" || ax.code === "ECONNREFUSED";
+      const noResponse = !!ax.request && !ax.response;
+      const is5xx = typeof status === "number" && status >= 500;
+      if (isTimeout || isConnErr || noResponse || is5xx) {
+        this.logger.error(
+          `[TOSS_UNCONFIRMED] 취소 결과 미확정(transport): paymentKey=${paymentKey.slice(
+            0,
+            12,
+          )}***, code=${ax.code}, status=${status ?? "none"}`,
+        );
+        throw new TossCancelAmbiguousError(
+          "토스 취소 결과가 확인되지 않았습니다(응답 유실/타임아웃).",
+          "TRANSPORT",
+        );
+      }
+      // [멱등 계약] 정상 수신 응답이라도 결과 미확정/불변조건 위반은 확정 실패로 처리하지 않는다.
+      //   409 IDEMPOTENT_REQUEST_PROCESSING = 같은 키 이전 요청 처리 중(결과 미확정) → 같은 키 재시도 대상.
+      //   [Minor 1] status(409)와 body code 를 함께 판정 — 한쪽만으로 오분류 방지.
+      const bodyCode = ax.response?.data?.code;
+      if (status === 409 && bodyCode === "IDEMPOTENT_REQUEST_PROCESSING") {
+        this.logger.error(
+          `[TOSS_UNCONFIRMED] 멱등 요청 처리 중(409): paymentKey=${paymentKey.slice(
+            0,
+            12,
+          )}***, code=${bodyCode}`,
+        );
+        throw new TossCancelAmbiguousError(
+          "토스 멱등 요청이 처리 중입니다(결과 미확정).",
+          "PROCESSING",
+        );
+      }
+      //   422 = 같은 키에 다른 본문(멱등 불변조건 위반) → 운영 확인 대상(격리, Payment 복원 금지).
+      if (status === 422) {
+        this.logger.error(
+          `[TOSS_IDEMPOTENCY_CONFLICT] 멱등 본문 불일치(422): paymentKey=${paymentKey.slice(
+            0,
+            12,
+          )}***, code=${bodyCode ?? "none"}`,
+        );
+        throw new TossCancelAmbiguousError(
+          "토스 멱등 요청 본문이 일치하지 않습니다(422).",
+          "CONFLICT",
+        );
+      }
       const msg =
-        error.response?.data?.message ?? "토스 결제 취소에 실패했습니다.";
+        ax.response?.data?.message ?? "토스 결제 취소에 실패했습니다.";
       throw new BadRequestException(msg);
     }
   }

@@ -764,7 +764,9 @@ export class PaymentsController {
   @Post(":paymentId/cancel")
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @ApiBearerAuth()
-  @Roles("PARENT", "ADMIN")
+  // [환불 승인제 Phase 1] PARENT 직접 취소 차단 — 학부모는 환불 요청(RefundRequest)만 생성.
+  //   ADMIN 직접 환불은 유지(멱등·actorId 감사). 서비스 소유권/trusted 가드는 방어 심층으로 유지.
+  @Roles("ADMIN")
   @AuditAction({
     action: "payment.cancel",
     resource: "Payment",
@@ -815,6 +817,7 @@ export class PaymentsController {
       cancelDto.refundAccount,
       cancelDto.refundAccountHolder,
       { id: req.user.id, userType: req.user.userType },
+      { actorId: req.user.id }, // 감사 — ADMIN 직접 환불 실행 주체 기록(RefundLog.actorId)
     );
   }
 
@@ -941,7 +944,8 @@ export class PaymentsController {
   @Post(":paymentId/refund")
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @ApiBearerAuth()
-  @Roles("PARENT", "ADMIN")
+  // [환불 승인제 Phase 1] PARENT 직접 환불 차단 — 학부모는 환불 요청(RefundRequest)만 생성.
+  @Roles("ADMIN")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: "환불 요청",
@@ -979,6 +983,7 @@ export class PaymentsController {
       refundDto.refundReason,
       refundDto.refundAmount,
       { id: req.user.id, userType: req.user.userType },
+      { actorId: req.user.id }, // 감사 — ADMIN 직접 환불 실행 주체 기록(RefundLog.actorId)
     );
   }
 

@@ -1,0 +1,10 @@
+# 환불 승인제(Phase 1) 전용 마이그레이션 매니페스트 (rebaseline-plan.md §5)
+# 이 5개 SQL만, 이 순서로 실행한다. 전역 apply-all.sh 를 호출하지 않는다(feature-scoped).
+# 순서 근거: log_actor(refund_logs 독립) → step1(테이블+제약+FK) → step2(active partial unique index)
+#            → step3(source CHECK 에 DIRECT) → pg_first_attempted(컬럼).
+# '#' 시작 줄과 빈 줄은 무시. 실행 러너: prisma/manual-migrations/run-refund-approval.sh
+20260723_refund_log_actor.sql
+20260723_refund_request_step1_table.sql
+20260723_refund_request_step2_active_unique.sql
+20260723_refund_request_step3_direct_source.sql
+20260724_refund_request_pg_first_attempted.sql

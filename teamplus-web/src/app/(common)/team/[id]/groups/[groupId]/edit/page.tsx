@@ -69,6 +69,8 @@ export default function TeamGroupEditPage() {
   const [teamName, setTeamName] = useState<string>("");
   // [2026-06-05] 회원 선택 연령 필터 — U8~U12 칩 → 출생연도 칩.
   const [ageFilter, setAgeFilter] = useState<"all" | number>("all");
+  // 선택 인원 검토 모드 — 목록을 선택된 회원만 표시 (카운터 필 버튼 토글).
+  const [showSelectedOnly, setShowSelectedOnly] = useState(false);
   // 출생연도 필터 선택 바텀시트 열림 상태.
   const [ageSheetOpen, setAgeSheetOpen] = useState(false);
   // 담당코치 선택 바텀시트 열림 상태.
@@ -199,6 +201,18 @@ export default function TeamGroupEditPage() {
     [counts],
   );
 
+  // 출생연도별 선택 인원 수 — 필터 바텀시트에 선택 현황 병기용.
+  const selectedCounts = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const m of members) {
+      if (!selectedIds.has(m.memberId)) continue;
+      const y = birthYearOf(m);
+      if (y != null) map.set(y, (map.get(y) ?? 0) + 1);
+    }
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [members, selectedIds, currentYear]);
+
   // 담당코치 트리거 표시명 — 후보에 없는 기존 지정(역할 변경 등)은 prefill 이름 폴백.
   const selectedCoach = coachCandidates.find(
     (c) => c.memberId === coachMemberId,
@@ -214,6 +228,7 @@ export default function TeamGroupEditPage() {
   const filteredMembers = useMemo(() => {
     const q = search.trim().toLowerCase();
     const list = members.filter((m) => {
+      if (showSelectedOnly && !selectedIds.has(m.memberId)) return false;
       if (q && !m.playerName.toLowerCase().includes(q)) return false;
       if (ageFilter === "all") return true;
       return birthYearOf(m) === ageFilter;
@@ -225,7 +240,12 @@ export default function TeamGroupEditPage() {
       return aRank - bRank;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [members, search, ageFilter, currentYear, initialMemberIds]);
+  }, [members, search, ageFilter, currentYear, initialMemberIds, showSelectedOnly, selectedIds]);
+
+  // 검토 모드에서 전원 해제 시 빈 목록에 갇히지 않도록 전체 목록으로 자동 복귀.
+  useEffect(() => {
+    if (showSelectedOnly && selectedIds.size === 0) setShowSelectedOnly(false);
+  }, [showSelectedOnly, selectedIds]);
 
   // 카드 우측에 표시할 출생연도 라벨 (chip).
   const ageLabel = (m: EligibleMemberRow): string => {
@@ -451,9 +471,41 @@ export default function TeamGroupEditPage() {
               <label className="text-[14px] font-extrabold tracking-[-0.01em] text-it-ink-800 dark:text-white">
                 {MESSAGES.team.groupMembersLabel}
               </label>
-              <span className="text-[13px] font-medium text-it-ink-500 dark:text-it-ink-300 tabular-nums">
-                선택 {selectedIds.size}명 / 전체 {members.length}명
-              </span>
+              {members.length === 0 ? (
+                <span className="text-[13px] font-medium text-it-ink-500 dark:text-it-ink-300 tabular-nums">
+                  {MESSAGES.team.groupMembersTotalCount(members.length)}
+                </span>
+              ) : (
+                <div className="flex shrink-0 items-center rounded-w-pill bg-it-fill dark:bg-it-blue-900/40 p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowSelectedOnly(false)}
+                    aria-pressed={!showSelectedOnly}
+                    className={cn(
+                      "h-7 rounded-w-pill px-2.5 text-[13px] font-bold tabular-nums transition-colors duration-150 ease-ios motion-reduce:transition-none",
+                      !showSelectedOnly
+                        ? "bg-it-blue-500 text-white"
+                        : "text-it-ink-500 dark:text-it-ink-300",
+                    )}
+                  >
+                    {MESSAGES.team.groupMembersTabAll(members.length)}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowSelectedOnly(true)}
+                    disabled={selectedIds.size === 0}
+                    aria-pressed={showSelectedOnly}
+                    className={cn(
+                      "h-7 rounded-w-pill px-2.5 text-[13px] font-bold tabular-nums transition-colors duration-150 ease-ios motion-reduce:transition-none disabled:opacity-40",
+                      showSelectedOnly
+                        ? "bg-it-blue-500 text-white"
+                        : "text-it-ink-500 dark:text-it-ink-300",
+                    )}
+                  >
+                    {MESSAGES.team.groupMembersTabSelected(selectedIds.size)}
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* 회원 선택 출생연도 필터 — 인원이 있는 연도만 공통 바텀시트로 선택 (회원 0명이면 숨김) */}
@@ -484,13 +536,19 @@ export default function TeamGroupEditPage() {
                     {
                       id: "all",
                       name: MESSAGES.team.groupMembersFilterAll,
-                      sub: `${members.length}명`,
+                      sub: MESSAGES.team.groupMembersFilterSub(
+                        members.length,
+                        selectedIds.size,
+                      ),
                       selected: ageFilter === "all",
                     },
                     ...birthYearOptions.map((y) => ({
                       id: String(y),
                       name: `${y}년생`,
-                      sub: `${counts.get(y) ?? 0}명`,
+                      sub: MESSAGES.team.groupMembersFilterSub(
+                        counts.get(y) ?? 0,
+                        selectedCounts.get(y) ?? 0,
+                      ),
                       selected: ageFilter === y,
                     })),
                   ]}
@@ -523,9 +581,11 @@ export default function TeamGroupEditPage() {
               <div className="flex flex-col items-center justify-center py-12">
                 <p className="text-center text-[14px] font-medium text-it-ink-700 dark:text-it-ink-300">
                   {/* [수정 2026-05-18 W2.B #8] 연령 필터 적용 시 안내 메시지 분기 */}
-                  {ageFilter !== "all"
-                    ? MESSAGES.team.groupMembersFilterEmpty
-                    : MESSAGES.team.groupMembersEmpty}
+                  {showSelectedOnly
+                    ? MESSAGES.team.groupMembersSelectedEmpty
+                    : ageFilter !== "all"
+                      ? MESSAGES.team.groupMembersFilterEmpty
+                      : MESSAGES.team.groupMembersEmpty}
                 </p>
               </div>
             ) : (
