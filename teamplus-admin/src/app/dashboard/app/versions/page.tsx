@@ -23,10 +23,25 @@ import { GitBranch, Plus, Apple, Smartphone, ChevronLeft, ChevronRight, Chevrons
 
 const ITEMS_PER_PAGE = 10;
 
+/** semver 비교: a>b → 1, a<b → -1, a==b → 0 (빌드번호/비숫자 세그먼트는 0으로 취급) */
+function compareVersions(a: string, b: string): number {
+  const pa = a.split('.').map((n) => parseInt(n, 10) || 0);
+  const pb = b.split('.').map((n) => parseInt(n, 10) || 0);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const x = pa[i] ?? 0;
+    const y = pb[i] ?? 0;
+    if (x !== y) return x > y ? 1 : -1;
+  }
+  return 0;
+}
+
 interface VersionItem {
   id: string;
   platform: string;
   version: string;
+  minVersion?: string;
+  forceUpdate?: boolean;
   releaseNotes?: string;
   storeUrl?: string;
   createdAt: string;
@@ -41,6 +56,8 @@ export default function AppVersionsPage() {
   const [formData, setFormData] = useState({
     platform: 'ios' as 'ios' | 'android',
     version: '',
+    minVersion: '',
+    forceUpdate: false,
     releaseNotes: '',
     storeUrl: '',
   });
@@ -91,6 +108,8 @@ export default function AppVersionsPage() {
     setFormData({
       platform: 'ios',
       version: '',
+      minVersion: '',
+      forceUpdate: false,
       releaseNotes: '',
       storeUrl: '',
     });
@@ -104,13 +123,20 @@ export default function AppVersionsPage() {
       return;
     }
 
+    // 최소 지원 버전: 비우면 '0.0.0'(강제 안 함, 권장 안내만). 입력 시 등록 버전보다 높을 수 없음.
+    const minVersion = formData.minVersion.trim() || '0.0.0';
+    if (formData.minVersion.trim() && compareVersions(minVersion, formData.version) > 0) {
+      setActionMsg({ type: 'error', text: MESSAGES.version.invalidMinVersion });
+      setTimeout(() => setActionMsg(null), 3000);
+      return;
+    }
+
     try {
       await api.post('/app/versions', {
         platform: formData.platform,
         version: formData.version,
-        // 백엔드 필수 컬럼 호환: 최소요구버전/강제업데이트/활성화는 미사용(현재 버전 정보 표시 전용)
-        minVersion: formData.version,
-        forceUpdate: false,
+        minVersion,
+        forceUpdate: formData.forceUpdate,
         releaseNotes: formData.releaseNotes || undefined,
         storeUrl: formData.storeUrl || undefined,
         isActive: true,
@@ -214,6 +240,8 @@ export default function AppVersionsPage() {
                   <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">번호</th>
                   <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">플랫폼</th>
                   <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">버전</th>
+                  <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">최소버전</th>
+                  <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">강제</th>
                   <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">등록일</th>
                 </tr>
               </thead>
@@ -236,6 +264,16 @@ export default function AppVersionsPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-center font-semibold text-slate-900 dark:text-white tabular-nums">v{version.version}</td>
+                    <td className="px-6 py-4 text-center text-sm text-slate-600 dark:text-slate-300 tabular-nums">
+                      {version.minVersion && version.minVersion !== '0.0.0' ? `v${version.minVersion}` : '-'}
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      {version.forceUpdate ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">강제</span>
+                      ) : (
+                        <span className="text-sm text-slate-400 dark:text-slate-500">-</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-center text-sm text-slate-600 dark:text-slate-300 tabular-nums">
                       {version.createdAt ? new Date(version.createdAt).toLocaleDateString('ko-KR') : '-'}
                     </td>
@@ -414,6 +452,36 @@ export default function AppVersionsPage() {
                 placeholder="예: 2.2.0"
                 className="h-11 bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 dark:text-white"
               />
+            </div>
+
+            {/* 최소 지원 버전 */}
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">최소 지원 버전</label>
+              <Input
+                value={formData.minVersion}
+                onChange={(e) => setFormData({ ...formData, minVersion: e.target.value })}
+                placeholder="비우면 강제하지 않음 (예: 1.0.0)"
+                className="h-11 bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 dark:text-white"
+              />
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                이 버전 미만 사용자는 강제 업데이트(앱 차단) 대상이 됩니다. 비우면 강제하지 않고 권장 안내만 표시합니다.
+              </p>
+            </div>
+
+            {/* 강제 업데이트 */}
+            <div className="space-y-2">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.forceUpdate}
+                  onChange={(e) => setFormData({ ...formData, forceUpdate: e.target.checked })}
+                  className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-primary focus:ring-2 focus:ring-primary"
+                />
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">강제 업데이트</span>
+              </label>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                체크하면 이 버전 미만 전원이 강제 업데이트 대상이 됩니다. (긴급 배포용)
+              </p>
             </div>
 
             {/* 스토어 URL */}
