@@ -245,7 +245,8 @@ export default function TeamGroupEditPage() {
     try {
       await teamGroupService.update(groupId, {
         name: trimmed,
-        ageGroup: ageGroup || undefined,
+        // 항상 전송 — "" 는 비우기(백엔드에서 null 처리)
+        ageGroup: ageGroup.trim(),
         memberIds: Array.from(selectedIds),
         // 항상 전송 — "" 는 지정 해제(백엔드에서 null 처리)
         coachMemberId,
