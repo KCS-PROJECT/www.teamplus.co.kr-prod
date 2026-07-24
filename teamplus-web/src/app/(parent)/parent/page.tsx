@@ -491,7 +491,7 @@ export default function ParentDashboardPage() {
                 <button
                   type="button"
                   onClick={() => navigate('/children/add')}
-                  aria-label="선수 등록하기"
+                  aria-label="자녀 등록하기"
                   className="inline-flex w-full min-h-[48px] items-center justify-center gap-1.5 rounded-xl bg-it-blue-500 text-white text-card-emphasis font-bold shadow-sm hover:bg-it-blue-600 active:brightness-95 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-rink-900"
                 >
                   <Icon
@@ -499,7 +499,7 @@ export default function ParentDashboardPage() {
                     className="text-white text-w-body"
                     aria-hidden="true"
                   />
-                  선수 등록하기
+                  자녀 등록하기
                 </button>
               </div>
             )}
