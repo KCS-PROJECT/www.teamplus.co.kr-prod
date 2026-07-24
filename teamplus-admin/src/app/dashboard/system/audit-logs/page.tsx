@@ -94,11 +94,10 @@ export default function AuditLogsPage() {
       if (params.platform !== 'all') queryParams.platform = params.platform;
 
       const res = await api.get<AuditLogsResponse | { data: AuditLogsResponse }>('/admin/audit-logs', { params: queryParams });
-      const body = (res as { data: AuditLogsResponse })?.pagination
-        ? (res as AuditLogsResponse)
-        : ((res as { data: AuditLogsResponse })?.data ?? (res as AuditLogsResponse));
-      setLogs(body.data || []);
-      setTotal(body.pagination?.total || 0);
+      const body =
+        res && 'pagination' in res ? res : (res as { data: AuditLogsResponse })?.data;
+      setLogs(body?.data || []);
+      setTotal(body?.pagination?.total || 0);
     } catch (err) {
       console.error('감사 로그 조회 실패:', err);
       setLogs([]);
