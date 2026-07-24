@@ -94,7 +94,7 @@ export default function ChildrenManagementPage() {
 
   return (
     <MobileContainer hasBottomNav>
-      <SubmainAppBar title="선수 관리" />
+      <SubmainAppBar title="자녀 관리" />
 
       {/* ref Body: padding 0, inner sections each have padding "X 20px Y".
           [2026-05-22] 사용자 직접 지시 — 자녀 0명 빈 상태 한정으로 body 컨테이너를
