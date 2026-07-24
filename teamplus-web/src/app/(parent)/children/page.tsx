@@ -162,7 +162,7 @@ export default function ChildrenManagementPage() {
                 className="mt-6 inline-flex items-center gap-2 min-h-[44px] px-5 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-body font-semibold transition-colors motion-reduce:transition-none active:brightness-95"
               >
                 <Icon name="add" className="text-[18px]" aria-hidden="true" />
-                선수 등록하기
+                자녀 등록하기
               </button>
             </div>
           </div>
@@ -241,7 +241,7 @@ export default function ChildrenManagementPage() {
         onClick={() => navigate('/children/add')}
         disabled={!canAdd}
         className="fixed right-5 bottom-[calc(80px+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px)))] z-50 flex h-14 w-14 items-center justify-center rounded-w-pill bg-it-blue-500 text-white shadow-sh-blue hover:bg-it-blue-600 hover:shadow-sh-3 active:brightness-95 transition-all motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 disabled:bg-it-ink-300 dark:disabled:bg-rink-500 disabled:cursor-not-allowed disabled:active:brightness-100 disabled:hover:bg-it-ink-300 dark:disabled:hover:bg-rink-500 disabled:hover:shadow-sh-blue"
-        aria-label={canAdd ? '선수 등록하기' : `선수는 최대 ${MAX_CHILDREN}명까지 등록할 수 있습니다`}
+        aria-label={canAdd ? '자녀 등록하기' : `자녀는 최대 ${MAX_CHILDREN}명까지 등록할 수 있습니다`}
       >
         <Icon name="add" className="text-[28px]" aria-hidden="true" />
       </button>
