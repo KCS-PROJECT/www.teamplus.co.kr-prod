@@ -182,7 +182,7 @@ export default function TermsManagementPage() {
 
       {/* 페이지 헤더 */}
       <div className="mb-8">
-        <h1 className="text-3xl font-black tracking-tight text-slate-900 dark:text-white">약관 관리</h1>
+        <h1 className="text-3xl font-black tracking-tight text-slate-900 dark:text-white">약관 및 정책 관리</h1>
         <p className="text-base text-slate-500 dark:text-slate-400 mt-2">서비스 약관 및 정책 문서를 관리합니다</p>
       </div>
         {/* 약관 목록 */}

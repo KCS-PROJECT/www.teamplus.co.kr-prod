@@ -364,6 +364,36 @@ export function TeamGroupedUserList({
     }
   };
 
+  // 팀/아카데미 헤더 인원 표시 — 통합 라벨(감독/코치·학부모/선수)을 역할별로 분리.
+  const renderMemberCount = (
+    mems: AdminUser[],
+    groupTeamId?: string,
+  ): string => {
+    const ut = (u: AdminUser) => (u.userType ?? '').toUpperCase();
+    // 감독/코치 페이지 — 감독(DIRECTOR·ACADEMY_DIRECTOR) / 코치(COACH)
+    if (roleLabel.includes('감독')) {
+      const d = mems.filter((m) =>
+        ['DIRECTOR', 'ACADEMY_DIRECTOR'].includes(ut(m)),
+      ).length;
+      const c = mems.filter((m) => ut(m) === 'COACH').length;
+      return `감독 ${d}명 / 코치 ${c}명`;
+    }
+    // 학부모/선수 페이지 — 학부모(PARENT) / 선수(이 팀 소속 자녀 + orphan 선수)
+    if (roleLabel.includes('학부모')) {
+      const pc = mems.filter((m) => ut(m) === 'PARENT').length;
+      const sids = new Set<string>();
+      mems.forEach((m) => {
+        if (ut(m) === 'TEEN' || ut(m) === 'CHILD') sids.add(m.id);
+        (m.children ?? []).forEach((ch) => {
+          if (groupTeamId && (ch.teamIds ?? []).includes(groupTeamId))
+            sids.add(ch.id);
+        });
+      });
+      return `학부모 ${pc}명 / 선수 ${sids.size}명`;
+    }
+    return `${roleLabel} ${mems.length}명`;
+  };
+
   if (isLoading) return <LoadingSpinner message={`${roleLabel} 목록을 불러오는 중...`} />;
 
   return (
@@ -446,7 +476,7 @@ export function TeamGroupedUserList({
                     <div className="min-w-0">
                       <h2 className="truncate text-base font-bold text-slate-900 dark:text-white">{teamLabel}</h2>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {roleLabel} {members.length}명
+                        {renderMemberCount(members, team.id)}
                       </p>
                     </div>
                   </div>
@@ -508,7 +538,7 @@ export function TeamGroupedUserList({
                         </span>
                       </h2>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {roleLabel} {members.length}명
+                        {renderMemberCount(members)}
                       </p>
                     </div>
                   </div>

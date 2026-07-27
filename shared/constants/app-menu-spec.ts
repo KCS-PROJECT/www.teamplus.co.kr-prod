@@ -53,12 +53,7 @@ export const COMMON_SUPPORT_GROUP: AppMenuGroupSpec = {
     { label: "피드백", icon: "support-agent", href: "/feedback" },
     { label: "자주 묻는 질문", icon: "message-circle", href: "/faq" },
     { label: "공지사항", icon: "megaphone", href: "/notices" },
-    { label: "이용약관", icon: "description", href: "/terms?section=terms_of_service" },
-    { label: "개인정보 처리방침", icon: "privacy_tip", href: "/terms?section=privacy_policy" },
-    { label: "환불 규정", icon: "payments", href: "/terms?section=refund" },
-    { label: "커뮤니티 운영 규칙", icon: "forum", href: "/community-guideline" },
-    { label: "계정·데이터 삭제", icon: "person_remove", href: "/account-deletion" },
-    { label: "접근성", icon: "accessibility_new", href: "/settings/accessibility" },
+    { label: "약관 및 정책", icon: "description", href: "/terms" },
   ],
 };
 

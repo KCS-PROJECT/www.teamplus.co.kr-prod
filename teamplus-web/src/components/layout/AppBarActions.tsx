@@ -94,8 +94,12 @@ export function AppBarActionButton({
       : String(badgeCount)
     : '';
   return (
+    // tabIndex=-1: iOS 키보드 이전/다음 화살표(form assistant)가 tab 순회 대상 버튼을
+    // 활성화해 입력 도중 메뉴/알림이 열리는 문제 차단. 앱 전용 배포라 tab 이동 손실은
+    // 없고, VoiceOver 등 스크린리더는 접근성 트리를 사용하므로 영향 없음.
     <button
       type="button"
+      tabIndex={-1}
       onClick={onClick}
       aria-label={`${label}${hasCount ? ` (읽지 않음 ${countText}개)` : ''}${isActive ? ' (현재 페이지)' : ''}`}
       aria-current={isActive ? 'page' : undefined}

@@ -767,6 +767,10 @@ export function GlobalMenu({ isOpen, onClose }: GlobalMenuProps) {
         !isOpen && "pointer-events-none",
       )}
       aria-hidden={!isOpen}
+      // 닫힘 상태에서도 포털이 DOM에 남으므로 inert 로 포커스 진입까지 차단.
+      // aria-hidden/pointer-events-none 은 iOS 키보드 이전/다음(form assistant)의
+      // 순차 포커스 이동을 막지 못해, 숨은 드로어 버튼이 포커스·활성화되는 문제가 있었음.
+      inert={!isOpen}
     >
       {/* Backdrop — overlay-fullscreen-dim (rink-900/55) + fade-in 애니메이션 유지 */}
       <div
