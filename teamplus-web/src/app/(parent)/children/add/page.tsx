@@ -601,8 +601,9 @@ export default function AddChildPage() {
                   <NavLink
                     href="/terms#terms-fallback-child_privacy"
                     className="text-card-meta font-extrabold text-it-ink-800 dark:text-wtext-4 underline whitespace-nowrap leading-tight"
+                    aria-label="자녀 개인정보 처리방침 보기"
                   >
-                    자세히<br />보기
+                    보기
                   </NavLink>
                 }
               />
