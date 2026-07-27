@@ -28,6 +28,10 @@ import {
 } from "@/common/utils/class-lifecycle.util";
 import { filterSellableProducts } from "@/common/billing/sales-gate.util";
 import {
+  resolvePrepaidAttribution,
+  type AttributionResult,
+} from "@/payments/settlement/attribution.util";
+import {
   MONTHLY_PASS_CREDIT_FILTER,
   creditStartedWhere,
 } from "@/common/billing/fee-type.constants";
@@ -2073,6 +2077,8 @@ export class ClassesService {
     expectedScope?: { teamId?: string; academyId?: string },
     // [Phase 2a] 정산 기준 월(YYYY-MM). 미전송 시 현재 KST 월. 출석 집계·후불 BillingLine
     //   선택·후불 예상액의 단일 기준. 형식 오류는 방어적으로 현재 월 폴백.
+    //   **유효하게 명시 시** 선불 행에도 월귀속 필터(허브 R1 동일 계약) 적용 —
+    //   미전송 호출(admin 결제 관리)은 종전 "최신 Enrollment 스냅샷" 유지.
     yearMonth?: string,
   ) {
     const cls = await this.prisma.class.findUnique({
@@ -2159,6 +2165,8 @@ export class ClassesService {
                 //   후불 미확정 월 예상액(출석 × feePerSession) 산출용.
                 billingTiming: true,
                 feePerSession: true,
+                // 선불 월귀속 — MONTHLY_FIXED 서비스월(resolvePrepaidAttribution R1).
+                billingMonth: true,
               },
             },
             payment: {
@@ -2168,6 +2176,8 @@ export class ClassesService {
                 paymentStatus: true,
                 paymentMethod: true,
                 completedAt: true,
+                // 선불 월귀속 — pending 결제의 임시 귀속월(createdAt KST 월).
+                createdAt: true,
                 // 선불 환불 순수납액 계산용 — Payment terminal 상태가 SoT.
                 refundLogs: { select: { refundAmount: true } },
                 // [추가 2026-05-14] 결제자(보통 학부모) 정보 — admin 결제관리에서 "결제한 부모" 노출용
@@ -2187,10 +2197,18 @@ export class ClassesService {
       : [];
 
     const enrollmentByChild = new Map<string, (typeof enrollments)[number]>();
+    // 월 스코프 모드 선불 판정용 — 자녀별 전체 enrollment(복수 구매 포함, updatedAt desc 유지).
+    const enrollmentsByChild = new Map<string, typeof enrollments>();
     for (const e of enrollments) {
       // updatedAt desc 이므로 첫 번째가 최신 — 이미 매핑된 childId 는 건너뜀
       if (!enrollmentByChild.has(e.childId)) {
         enrollmentByChild.set(e.childId, e);
+      }
+      const list = enrollmentsByChild.get(e.childId);
+      if (list) {
+        list.push(e);
+      } else {
+        enrollmentsByChild.set(e.childId, [e]);
       }
     }
 
@@ -2216,6 +2234,11 @@ export class ClassesService {
 
     // [Phase 2a R1] 정산 기준 월 확정 — 미전송/형식오류 시 현재 KST 월 폴백.
     const selectedYearMonth = this.resolveSettlementYearMonth(yearMonth);
+    // 월 스코프 판정 — yearMonth 를 **유효하게 명시한** 호출만 선불 행에 월귀속 필터를
+    //   적용한다(정산 허브와 동일 계약). 미전송/무효(admin 결제 관리 등 레거시 소비처)는
+    //   종전 그대로 "최신 Enrollment 스냅샷"으로 응답해 회귀를 막는다.
+    const monthScoped =
+      !!yearMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(yearMonth);
     const [selY, selM] = selectedYearMonth.split("-").map(Number);
     // scheduledDate(@db.Date) 선택월 경계 — KST 해당 월의 UTC 자정 [gte, lt).
     const monthStart = new Date(Date.UTC(selY, selM - 1, 1));
@@ -2418,6 +2441,118 @@ export class ClassesService {
           billingStatus: "UNSETTLED" as BillingStatus,
           billedAmount: null,
           estimatedAmount,
+          paidAmount: 0,
+          outstandingAmount: 0,
+        };
+      }
+
+      // ── 선불(PREPAID) 행 · 월 스코프 모드: 선택월 귀속 거래만 표시 ──────
+      //   허브(settlement-summary)와 동일 SoT(resolvePrepaidAttribution) — 귀속월
+      //   (MONTHLY_FIXED=billingMonth / 완료=completedAt / pending=createdAt / 레거시=paidAt)
+      //   == 선택월인 거래를 최신순으로 채택. 없으면 명단은 유지하되 "이 달 청구 없음"
+      //   (UNSETTLED·금액 0)으로 응답해 행 합계가 허브 소계와 정렬되게 한다.
+      if (monthScoped && billingTiming === "PREPAID") {
+        let matched: {
+          en: (typeof enrollments)[number];
+          att: AttributionResult;
+        } | null = null;
+        for (const cand of enrollmentsByChild.get(reg.userId) ?? []) {
+          if (
+            this.resolveRowBillingTiming(
+              cls.billingMode,
+              cand.product?.billingTiming,
+            ) !== "PREPAID"
+          ) {
+            continue;
+          }
+          const att = resolvePrepaidAttribution({
+            billingTiming: "PREPAID",
+            feeType: cand.product?.feeType,
+            billingMonth: cand.product?.billingMonth,
+            enrollmentStatus: cand.status,
+            enrollmentPaidAt: cand.paidAt,
+            productPrice: cand.product?.price,
+            payment: cand.payment,
+          });
+          if (!att.attributionUnknown && att.yearMonth === selectedYearMonth) {
+            matched = { en: cand, att };
+            break; // updatedAt desc — 첫 매칭이 선택월 최신 거래
+          }
+        }
+        if (matched) {
+          const mPayer = matched.en.payment?.user;
+          let mStatus: BillingStatus = matched.att.billingStatus;
+          let mBilled = matched.att.billedAmount;
+          let mPaid = matched.att.paidAmount;
+          // Phase 2a 행 계약 보존 — R1(허브 집계)은 선불 pending 을 UNSETTLED(미집계)로
+          //   보지만, 이 화면의 5-state 는 pending 결제를 BILLED(청구·미결제)로 표시해 왔다.
+          //   이번 변경은 "월 필터 추가"에 한정하므로 표시 의미는 종전대로 유지한다.
+          if (
+            mStatus === "UNSETTLED" &&
+            matched.en.payment?.paymentStatus === "pending"
+          ) {
+            mStatus = "BILLED";
+            mBilled =
+              matched.en.payment?.amount ?? matched.en.product?.price ?? null;
+            mPaid = 0;
+          }
+          const outstandingAmount =
+            mBilled != null ? Math.max(0, mBilled - mPaid) : 0;
+          return {
+            registrationId: reg.id,
+            memberId: reg.userId,
+            memberName: fullName,
+            memberType: reg.user.userType,
+            registrationDate: reg.registrationDate,
+            enrollmentId: matched.en.id,
+            enrollmentStatus: matched.en.status,
+            productName: matched.en.product?.productName ?? null,
+            amount:
+              matched.en.payment?.amount ?? matched.en.product?.price ?? null,
+            paymentMethod: matched.en.payment?.paymentMethod ?? null,
+            paidAt:
+              matched.en.paidAt ?? matched.en.payment?.completedAt ?? null,
+            paymentState: toPaymentState(mStatus),
+            payerId: mPayer?.id ?? null,
+            payerName: mPayer
+              ? `${mPayer.lastName ?? ""}${mPayer.firstName ?? ""}`.trim() ||
+                mPayer.email
+              : null,
+            attendanceCount,
+            billingTiming,
+            billingStatus: mStatus,
+            billedAmount: mBilled,
+            estimatedAmount: null,
+            paidAmount: mPaid,
+            outstandingAmount,
+          };
+        }
+        // 선택월 귀속 거래 없음 — 명단 유지(Phase 1 계약 2) + 이 달 청구·수납 0.
+        //   payerName 은 roster 탭(월 비종속 명단) 표기용으로 최신 enrollment 값 유지.
+        const latestPayer = en?.payment?.user;
+        return {
+          registrationId: reg.id,
+          memberId: reg.userId,
+          memberName: fullName,
+          memberType: reg.user.userType,
+          registrationDate: reg.registrationDate,
+          enrollmentId: en?.id ?? null,
+          enrollmentStatus: en?.status ?? null,
+          productName: null,
+          amount: null,
+          paymentMethod: null,
+          paidAt: null,
+          paymentState: "unpaid" as PaymentState,
+          payerId: latestPayer?.id ?? null,
+          payerName: latestPayer
+            ? `${latestPayer.lastName ?? ""}${latestPayer.firstName ?? ""}`.trim() ||
+              latestPayer.email
+            : null,
+          attendanceCount,
+          billingTiming,
+          billingStatus: "UNSETTLED" as BillingStatus,
+          billedAmount: null,
+          estimatedAmount: null,
           paidAmount: 0,
           outstandingAmount: 0,
         };

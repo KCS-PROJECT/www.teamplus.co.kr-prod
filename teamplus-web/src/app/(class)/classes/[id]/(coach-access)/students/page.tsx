@@ -7,7 +7,7 @@
  * RBAC: 상위 (coach-access) layout 단일 가드 — coach/director/academy_director/admin.
  *   page 는 useRouteUser() 로 파생 user 를 소비만 하고 인증 훅을 재호출하지 않는다(#6).
  *
- * 2탭 구조 (DESIGN.md Pattern A wallet-tabs):
+ * 2탭 구조 (ICETIMES flat — 네이비 히어로 + 밑줄 탭 + full-bleed 흰 섹션):
  *   ① 선수정보(roster): 이름·등록일·학부모·이번 달 출석 + 상태 칩
  *   ② 결제 현황(payment): 선택 월 축 + 행별 5-state·결제방식·금액·출석수 + 후불 정산 확정
  *
@@ -100,30 +100,30 @@ const ROW_STATUS_META: Record<
   },
   BILLED: {
     label: MESSAGES.settlement.rowStatusBilled,
-    chip: 'bg-ice-500/10 text-ice-500 dark:bg-ice-500/20 dark:text-ice-100',
-    dot: 'bg-ice-500',
+    chip: 'bg-it-blue-500/10 text-it-blue-600 dark:bg-it-blue-500/20 dark:text-it-blue-100',
+    dot: 'bg-it-blue-500',
   },
   UNSETTLED: {
     label: MESSAGES.settlement.rowStatusUnsettled,
-    chip: 'bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-100',
-    dot: 'bg-wtext-3',
+    chip: 'bg-it-fill text-it-ink-600 dark:bg-rink-700 dark:text-rink-100',
+    dot: 'bg-it-ink-400',
   },
   CANCELLED: {
     label: MESSAGES.settlement.rowStatusCancelled,
-    chip: 'bg-wline-2 text-wtext-3 dark:bg-rink-700 dark:text-rink-300',
-    dot: 'bg-wtext-4',
+    chip: 'bg-it-fill text-it-ink-400 dark:bg-rink-700 dark:text-rink-300',
+    dot: 'bg-it-ink-300',
   },
   REFUNDED: {
     label: MESSAGES.settlement.rowStatusRefunded,
-    chip: 'bg-wline-2 text-wtext-3 dark:bg-rink-700 dark:text-rink-300',
-    dot: 'bg-wtext-4',
+    chip: 'bg-it-fill text-it-ink-400 dark:bg-rink-700 dark:text-rink-300',
+    dot: 'bg-it-ink-300',
   },
 };
 
 const TIMING_META: Record<BillingTiming, { label: string; cls: string }> = {
   PREPAID: {
     label: MESSAGES.settlement.prepaid,
-    cls: 'bg-ice-500/10 text-ice-500 dark:bg-ice-500/15 dark:text-ice-100',
+    cls: 'bg-it-blue-500/10 text-it-blue-600 dark:bg-it-blue-500/15 dark:text-it-blue-100',
   },
   POSTPAID: {
     label: MESSAGES.settlement.postpaid,
@@ -131,7 +131,7 @@ const TIMING_META: Record<BillingTiming, { label: string; cls: string }> = {
   },
   UNASSIGNED: {
     label: MESSAGES.settlement.unassigned,
-    cls: 'bg-wline-2 text-wtext-3 dark:bg-rink-700 dark:text-rink-300',
+    cls: 'bg-it-fill text-it-ink-400 dark:bg-rink-700 dark:text-rink-300',
   },
 };
 
@@ -343,38 +343,39 @@ export default function ClassStudentsPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title={M.playersTitle} forceNative />
       <main
-        className="flex-1 min-h-0 overflow-y-auto bg-wbg dark:bg-puck"
+        className="flex-1 min-h-0 overflow-y-auto bg-it-canvas dark:bg-puck"
         role="main"
         aria-label={M.playersTitle}
       >
-        {/* Hero — 탭 공통 (수업명·팀명·등록 인원) */}
-        <section className="px-4 pt-4">
-          <div className="rounded-w-xl bg-rink-800 dark:bg-rink-900 shadow-sh-rink p-5 text-white">
-            <div className="text-w-caption font-extrabold tracking-[0.08em] text-mint-100">
-              PLAYERS
-            </div>
-            {!data ? null : (
-              <>
-                <h1 className="mt-2 text-w-h3 font-extrabold tracking-tight break-keep">
-                  {data.className}
-                </h1>
-                <p className="mt-1 text-w-caption font-semibold text-mint-100/80">
-                  {data.teamName}
-                  {data.teamCode ? ` (${data.teamCode})` : ''}
-                  <span className="ml-1.5 font-num tabular-nums">· {M.rosterCount(data.total)}</span>
-                </p>
-              </>
-            )}
-          </div>
+        {/* Hero — 네이비 full-bleed 밴드, 탭 공통 (수업명·팀명·등록 인원) */}
+        <section
+          className="bg-it-blue-800 dark:bg-it-blue-950 px-4 sm:px-5 pt-5 pb-5"
+          aria-label={M.playersTitle}
+        >
+          <span className="inline-flex items-center rounded-md bg-white/15 px-2 py-0.5 text-[11px] font-bold uppercase tracking-widest text-white/90">
+            PLAYERS
+          </span>
+          {!data ? null : (
+            <>
+              <h1 className="mt-3 text-[22px] font-extrabold tracking-[-0.01em] leading-[1.18] text-white break-keep">
+                {data.className}
+              </h1>
+              <p className="mt-1.5 text-[13px] font-semibold text-white/80">
+                {data.teamName}
+                {data.teamCode ? ` (${data.teamCode})` : ''}
+                <span className="ml-1.5 font-num tabular-nums">· {M.rosterCount(data.total)}</span>
+              </p>
+            </>
+          )}
         </section>
 
-        {/* 탭 — DESIGN Pattern A wallet-tabs */}
+        {/* 탭 — ICETIMES SegmentedTabs (밑줄형, flat 흰 섹션) */}
         {data && (
-          <section className="px-4 pt-3">
+          <div className="mt-2 bg-it-surface dark:bg-it-blue-950">
             <div
               role="tablist"
               aria-label={M.playersTitle}
-              className="flex gap-1 rounded-w-md bg-wline-2 dark:bg-rink-800 p-1"
+              className="flex border-b border-it-line dark:border-rink-700"
             >
               {([
                 { key: 'roster' as const, label: M.tabRoster },
@@ -387,70 +388,73 @@ export default function ClassStudentsPage() {
                   aria-selected={tab === t.key}
                   onClick={() => setTab(t.key)}
                   className={cn(
-                    'flex-1 h-9 rounded-w-sm text-card-body font-bold transition-colors duration-150 motion-reduce:transition-none',
-                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500',
+                    'relative flex-1 px-1 pb-[13px] pt-[14px] text-[15px] transition-colors duration-200 motion-reduce:transition-none',
+                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-it-blue-500',
                     tab === t.key
-                      ? 'bg-wsurface dark:bg-rink-700 text-wtext-1 dark:text-white shadow-sh-1'
-                      : 'text-wtext-3 dark:text-rink-300 hover:text-wtext-2 dark:hover:text-rink-100',
+                      ? 'font-extrabold text-it-blue-600 dark:text-white'
+                      : 'font-semibold text-it-ink-500 hover:text-it-ink-800 dark:text-wtext-4 dark:hover:text-white',
                   )}
                 >
                   {t.label}
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      'absolute inset-x-0 -bottom-px h-[2.5px] rounded-sm',
+                      tab === t.key ? 'bg-it-blue-500' : 'bg-transparent',
+                    )}
+                  />
                 </button>
               ))}
             </div>
-          </section>
+          </div>
         )}
 
         {/* 에러 (초기 로드 실패) */}
         {error ? (
-          <section className="px-4 pt-3 pb-8">
-            <div className="rounded-w-xl bg-wsurface dark:bg-rink-800 shadow-sh-1 border border-wline dark:border-rink-700 p-6 text-center">
-              <Icon name="error_outline" className="text-3xl text-flame-500" aria-hidden="true" />
-              <p className="mt-2 text-w-body font-semibold text-wtext-1 dark:text-white">{error}</p>
-              <button
-                type="button"
-                onClick={() => void handleInitialRetry()}
-                disabled={isRetrying}
-                className="mt-3 inline-flex items-center gap-1.5 h-10 px-4 rounded-w-md bg-ice-500 text-white text-w-small font-bold hover:bg-ice-600 disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {M.retry}
-              </button>
-            </div>
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-8 text-center">
+            <Icon name="error_outline" className="text-3xl text-it-red-500" aria-hidden="true" />
+            <p className="mt-2 text-card-body font-semibold text-it-ink-800 dark:text-white">{error}</p>
+            <button
+              type="button"
+              onClick={() => void handleInitialRetry()}
+              disabled={isRetrying}
+              className="mt-3 inline-flex items-center gap-1.5 h-10 px-4 rounded-w-md bg-it-blue-500 text-white text-w-small font-bold hover:bg-it-blue-600 active:brightness-95 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {M.retry}
+            </button>
           </section>
         ) : !data ? null : tab === 'roster' ? (
-          /* ── 탭 ① 선수정보 ── */
-          <section className="px-4 pt-3 pb-8">
+          /* ── 탭 ① 선수정보 — 탭 바에 이어지는 flat 흰 섹션 + hairline 행 ── */
+          <section className="bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 pb-8">
             {data.students.length === 0 ? (
-              <EmptyCard icon="group_off" text={M.emptyRoster} />
+              <EmptyState icon="group_off" text={M.emptyRoster} />
             ) : (
-              <div className="rounded-w-xl bg-wsurface dark:bg-rink-800 shadow-sh-1 border border-wline dark:border-rink-700 overflow-hidden">
-                <ul className="divide-y divide-wline-2 dark:divide-rink-700">
-                  {data.students.map((s) => (
-                    <StudentRow key={s.registrationId} student={s} variant="roster" />
-                  ))}
-                </ul>
-              </div>
+              <ul className="divide-y divide-it-line dark:divide-rink-700">
+                {data.students.map((s) => (
+                  <StudentRow key={s.registrationId} student={s} variant="roster" />
+                ))}
+              </ul>
             )}
           </section>
         ) : (
           /* ── 탭 ② 결제 현황 ── */
           <>
-            <section className="px-4 pt-3 pb-4 flex flex-col gap-3">
-              {/* 월 스텝퍼 */}
-              <div className="flex items-center justify-between rounded-w-xl bg-wsurface dark:bg-rink-800 shadow-sh-1 border border-wline dark:border-rink-700 px-2 py-2">
+            <section className="bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 pt-2 pb-4 flex flex-col gap-3">
+              {/* 월 스텝퍼 — flat 행 + hairline */}
+              <div className="flex items-center justify-between py-1 border-b border-it-line dark:border-rink-700">
                 <button
                   type="button"
                   onClick={goPrevMonth}
                   aria-label={MESSAGES.settlement.prevMonth}
-                  className="flex size-9 items-center justify-center rounded-w-md text-wtext-2 dark:text-rink-100 hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
+                  className="flex size-9 items-center justify-center rounded-w-md text-it-ink-600 dark:text-rink-100 hover:bg-it-fill dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
                 >
                   <Icon name="chevron_left" aria-hidden="true" />
                 </button>
-                <span className="flex items-center gap-2 text-w-body font-bold text-wtext-1 dark:text-white tabular-nums">
+                <span className="flex items-center gap-2 text-card-body font-bold text-it-ink-800 dark:text-white tabular-nums">
                   {MESSAGES.settlement.monthLabel(ymY, ymM)}
                   {isMonthLoading && (
                     <span
-                      className="h-3.5 w-3.5 rounded-w-pill border-2 border-ice-500 border-t-transparent animate-spin motion-reduce:animate-none"
+                      className="h-3.5 w-3.5 rounded-w-pill border-2 border-it-blue-500 border-t-transparent animate-spin motion-reduce:animate-none"
                       role="status"
                       aria-label={MESSAGES.settlement.monthLoading}
                     />
@@ -461,7 +465,7 @@ export default function ClassStudentsPage() {
                   onClick={goNextMonth}
                   disabled={nextMonthDisabled}
                   aria-label={MESSAGES.settlement.nextMonth}
-                  className="flex size-9 items-center justify-center rounded-w-md text-wtext-2 dark:text-rink-100 hover:bg-wline-2 dark:hover:bg-rink-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors motion-reduce:transition-none"
+                  className="flex size-9 items-center justify-center rounded-w-md text-it-ink-600 dark:text-rink-100 hover:bg-it-fill dark:hover:bg-rink-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors motion-reduce:transition-none"
                 >
                   <Icon name="chevron_right" aria-hidden="true" />
                 </button>
@@ -484,37 +488,37 @@ export default function ClassStudentsPage() {
                 <PaymentMonthSkeleton />
               ) : (
                 <>
-                  {/* 요약 압축 — 총 수납 + 선불/후불/미설정 인원 + 미수·정산예정 */}
-                  <div className="rounded-w-xl bg-wsurface dark:bg-rink-800 shadow-sh-1 border border-wline dark:border-rink-700 p-4">
+                  {/* 요약 압축 — inset fill 패널 (총 수납 + 선불/후불/미설정 인원 + 미수·정산예정) */}
+                  <div className="rounded-w-md bg-it-fill dark:bg-rink-800 p-4">
                     <div className="flex items-baseline justify-between">
-                      <span className="text-w-caption font-semibold text-wtext-3 dark:text-rink-300">
+                      <span className="text-card-meta font-semibold text-it-ink-500 dark:text-rink-300">
                         {MESSAGES.settlement.totalCollected}
                       </span>
-                      <span className="text-w-h3 font-extrabold font-num text-wtext-1 dark:text-white tabular-nums">
+                      <span className="text-w-h3 font-extrabold font-num text-it-ink-800 dark:text-white tabular-nums">
                         {data.totalPaidAmount.toLocaleString('ko-KR')}
                         <span className="ml-0.5 text-w-body">{MESSAGES.settlement.won}</span>
                       </span>
                     </div>
                     <div className="mt-3 grid grid-cols-3 gap-2">
-                      <CountBlock label={MESSAGES.settlement.prepaid} value={timingCounts.PREPAID} dotClass="bg-ice-500" />
+                      <CountBlock label={MESSAGES.settlement.prepaid} value={timingCounts.PREPAID} dotClass="bg-it-blue-500" />
                       <CountBlock label={MESSAGES.settlement.postpaid} value={timingCounts.POSTPAID} dotClass="bg-sun-500" />
-                      <CountBlock label={MESSAGES.settlement.unassigned} value={timingCounts.UNASSIGNED} dotClass="bg-wtext-3" />
+                      <CountBlock label={MESSAGES.settlement.unassigned} value={timingCounts.UNASSIGNED} dotClass="bg-it-ink-400" />
                     </div>
                     {(outstandingTotal > 0 || estimatedTotal > 0) && (
-                      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-wline-2 dark:border-rink-700 pt-3">
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-it-line-strong dark:border-rink-700 pt-3">
                         {outstandingTotal > 0 && (
-                          <span className="text-w-caption text-wtext-2 dark:text-rink-100">
+                          <span className="text-card-meta text-it-ink-600 dark:text-rink-100">
                             {MESSAGES.settlement.outstanding}{' '}
-                            <span className="font-num tabular-nums font-bold text-flame-500">
+                            <span className="font-num tabular-nums font-bold text-it-red-500">
                               {outstandingTotal.toLocaleString('ko-KR')}
                               {MESSAGES.settlement.won}
                             </span>
                           </span>
                         )}
                         {estimatedTotal > 0 && (
-                          <span className="text-w-caption text-wtext-2 dark:text-rink-100">
+                          <span className="text-card-meta text-it-ink-600 dark:text-rink-100">
                             {MESSAGES.settlement.pendingSettlement}{' '}
-                            <span className="font-num tabular-nums font-bold text-ice-500">
+                            <span className="font-num tabular-nums font-bold text-it-blue-500">
                               {estimatedTotal.toLocaleString('ko-KR')}
                               {MESSAGES.settlement.won}
                             </span>
@@ -538,10 +542,10 @@ export default function ClassStudentsPage() {
                         onClick={() => setPayFilter(f.key)}
                         className={cn(
                           'inline-flex items-center gap-1 h-8 px-3 rounded-w-pill text-card-meta font-bold transition-colors duration-150 motion-reduce:transition-none',
-                          'focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500',
+                          'focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500',
                           payFilter === f.key
-                            ? 'bg-ice-500 text-white'
-                            : 'bg-wsurface dark:bg-rink-800 border border-wline dark:border-rink-700 text-wtext-2 dark:text-rink-100 hover:bg-wline-2 dark:hover:bg-rink-700',
+                            ? 'bg-it-blue-500 text-white'
+                            : 'bg-it-fill dark:bg-rink-800 border border-it-line-strong dark:border-rink-700 text-it-ink-600 dark:text-rink-100 hover:border-it-blue-500/40',
                         )}
                       >
                         {f.label}
@@ -550,17 +554,15 @@ export default function ClassStudentsPage() {
                     ))}
                   </div>
 
-                  {/* 결제 리스트 (미납·미정산 우선 정렬) */}
+                  {/* 결제 리스트 (미납·미정산 우선 정렬) — hairline 행 */}
                   {paymentList.length === 0 ? (
-                    <EmptyCard icon="receipt_long" text={M.emptyPaymentFilter} />
+                    <EmptyState icon="receipt_long" text={M.emptyPaymentFilter} />
                   ) : (
-                    <div className="rounded-w-xl bg-wsurface dark:bg-rink-800 shadow-sh-1 border border-wline dark:border-rink-700 overflow-hidden">
-                      <ul className="divide-y divide-wline-2 dark:divide-rink-700">
-                        {paymentList.map((s) => (
-                          <StudentRow key={s.registrationId} student={s} variant="payment" />
-                        ))}
-                      </ul>
-                    </div>
+                    <ul className="divide-y divide-it-line dark:divide-rink-700 border-t border-it-line dark:border-rink-700">
+                      {paymentList.map((s) => (
+                        <StudentRow key={s.registrationId} student={s} variant="payment" />
+                      ))}
+                    </ul>
                   )}
                 </>
               )}
@@ -600,13 +602,13 @@ function StudentRow({
   const timing = TIMING_META[student.billingTiming] ?? TIMING_META.UNASSIGNED;
   const M = MESSAGES.academy.students;
   return (
-    <li className="px-4 py-3 flex items-center gap-3">
-      <div className="h-9 w-9 shrink-0 rounded-w-pill flex items-center justify-center bg-wline-2 dark:bg-rink-700">
-        <Icon name="person" className="text-[18px] text-wtext-2 dark:text-rink-100" aria-hidden="true" />
+    <li className="py-3 flex items-center gap-3">
+      <div className="h-9 w-9 shrink-0 rounded-w-pill flex items-center justify-center bg-it-fill dark:bg-rink-700">
+        <Icon name="person" className="text-[18px] text-it-ink-500 dark:text-rink-100" aria-hidden="true" />
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <p className="truncate text-w-body font-bold text-wtext-1 dark:text-white">
+          <p className="truncate text-card-body font-bold text-it-ink-800 dark:text-white">
             {student.memberName}
           </p>
           {variant === 'payment' && (
@@ -620,7 +622,7 @@ function StudentRow({
             </span>
           )}
         </div>
-        <div className="mt-0.5 flex items-center gap-2 text-w-caption text-wtext-3 dark:text-rink-300">
+        <div className="mt-0.5 flex items-center gap-2 text-card-meta text-it-ink-500 dark:text-rink-300">
           {variant === 'roster' ? (
             <>
               {student.registrationDate && (
@@ -631,7 +633,7 @@ function StudentRow({
               {student.payerName && (
                 <span className="truncate">· {M.payerLabel(student.payerName)}</span>
               )}
-              <span className="font-num tabular-nums text-ice-500 dark:text-ice-400">
+              <span className="font-num tabular-nums text-it-blue-500 dark:text-it-blue-300">
                 · {M.attendanceThisMonth(student.attendanceCount ?? 0)}
               </span>
             </>
@@ -673,7 +675,7 @@ function AmountCell({ student }: { student: PaymentStudent }) {
     student.billedAmount != null
   ) {
     return (
-      <span className="text-w-body font-bold font-num text-wtext-1 dark:text-white tabular-nums">
+      <span className="text-card-body font-bold font-num text-it-ink-800 dark:text-white tabular-nums">
         {formatPrice(student.billedAmount)}
       </span>
     );
@@ -685,17 +687,17 @@ function AmountCell({ student }: { student: PaymentStudent }) {
   ) {
     return (
       <span className="inline-flex items-center gap-1">
-        <span className="text-w-body font-bold font-num text-wtext-2 dark:text-rink-100 tabular-nums">
+        <span className="text-card-body font-bold font-num text-it-ink-600 dark:text-rink-100 tabular-nums">
           {formatPrice(student.estimatedAmount)}
         </span>
-        <span className="rounded-w-pill bg-ice-500/10 px-1.5 py-0.5 text-w-caption font-extrabold text-ice-500 dark:bg-ice-500/15 dark:text-ice-100">
+        <span className="rounded-w-pill bg-it-blue-500/10 px-1.5 py-0.5 text-w-caption font-extrabold text-it-blue-600 dark:bg-it-blue-500/15 dark:text-it-blue-100">
           {MESSAGES.settlement.estimated}
         </span>
       </span>
     );
   }
   return (
-    <span className="text-w-caption font-num text-wtext-3 dark:text-rink-300 tabular-nums">-</span>
+    <span className="text-w-caption font-num text-it-ink-400 dark:text-rink-300 tabular-nums">-</span>
   );
 }
 
@@ -704,20 +706,21 @@ function PaymentMonthSkeleton() {
   return (
     <div className="flex flex-col gap-3" aria-busy="true" aria-live="polite">
       <span className="sr-only">{MESSAGES.settlement.monthLoading}</span>
-      <div className="h-28 rounded-w-xl bg-wline-2 dark:bg-rink-800 animate-pulse motion-reduce:animate-none" />
-      <div className="h-8 w-1/2 rounded-w-pill bg-wline-2 dark:bg-rink-800 animate-pulse motion-reduce:animate-none" />
-      <div className="h-40 rounded-w-xl bg-wline-2 dark:bg-rink-800 animate-pulse motion-reduce:animate-none" />
+      <div className="h-28 rounded-w-md bg-it-fill dark:bg-rink-800 animate-pulse motion-reduce:animate-none" />
+      <div className="h-8 w-1/2 rounded-w-pill bg-it-fill dark:bg-rink-800 animate-pulse motion-reduce:animate-none" />
+      <div className="h-40 rounded-w-md bg-it-fill dark:bg-rink-800 animate-pulse motion-reduce:animate-none" />
     </div>
   );
 }
 
-function EmptyCard({ icon, text }: { icon: string; text: string }) {
+/** flat 빈 상태 — 흰 섹션 내부 중앙 정렬 (카드 박스 없음). */
+function EmptyState({ icon, text }: { icon: string; text: string }) {
   return (
-    <div className="rounded-w-xl bg-wsurface dark:bg-rink-800 shadow-sh-1 border border-wline dark:border-rink-700 p-8 text-center">
-      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-w-pill bg-wline-2 dark:bg-rink-700">
-        <Icon name={icon} className="text-2xl text-wtext-3 dark:text-rink-300" aria-hidden="true" />
+    <div className="py-10 text-center">
+      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-w-pill bg-it-fill dark:bg-rink-700">
+        <Icon name={icon} className="text-2xl text-it-ink-400 dark:text-rink-300" aria-hidden="true" />
       </div>
-      <p className="mt-2 text-w-body font-semibold text-wtext-2 dark:text-rink-100">{text}</p>
+      <p className="mt-2 text-card-body font-semibold text-it-ink-500 dark:text-rink-100">{text}</p>
     </div>
   );
 }
@@ -727,9 +730,9 @@ function CountBlock({ label, value, dotClass }: { label: string; value: number; 
     <div className="flex flex-col items-center gap-1">
       <div className="flex items-center gap-1">
         <span className={cn('h-1.5 w-1.5 rounded-w-pill', dotClass)} aria-hidden="true" />
-        <span className="text-w-caption font-semibold text-wtext-3 dark:text-rink-300">{label}</span>
+        <span className="text-w-caption font-semibold text-it-ink-500 dark:text-rink-300">{label}</span>
       </div>
-      <span className="text-w-h3 font-extrabold font-num text-wtext-1 dark:text-white tabular-nums">
+      <span className="text-w-h3 font-extrabold font-num text-it-ink-800 dark:text-white tabular-nums">
         {value}
       </span>
     </div>
