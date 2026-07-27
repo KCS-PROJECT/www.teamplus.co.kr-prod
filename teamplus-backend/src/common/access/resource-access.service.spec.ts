@@ -16,8 +16,8 @@ describe("ResourceAccessService", () => {
 
   const prismaMock = {
     class: { findUnique: jest.fn() },
-    team: { findFirst: jest.fn() },
-    teamMember: { findFirst: jest.fn() },
+    team: { findFirst: jest.fn(), findMany: jest.fn() },
+    teamMember: { findFirst: jest.fn(), findMany: jest.fn() },
     academy: { findUnique: jest.fn() },
     academyCoach: { findUnique: jest.fn() },
     tournament: { findUnique: jest.fn() },
@@ -103,6 +103,43 @@ describe("ResourceAccessService", () => {
       await expect(
         service.assertTeamManager("team-1", asUser("p-1", "PARENT")),
       ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  // ─── 관리 팀 scope resolver (정산 소계 HIGH-1) ──────────────────
+  describe("resolveManageableTeamIds", () => {
+    it("owner + 승인 관리 멤버 팀을 합집합으로 반환한다", async () => {
+      prismaMock.team.findMany.mockResolvedValue([{ id: "team-own" }]);
+      prismaMock.teamMember.findMany.mockResolvedValue([{ teamId: "team-mgr" }]);
+      const ids = await service.resolveManageableTeamIds(teamCoach);
+      expect(ids.sort()).toEqual(["team-mgr", "team-own"]);
+      // assertTeamManager 와 동일 정책 — 승인 관리 역할 게이트가 쿼리에 반영(일반 멤버 배제).
+      expect(prismaMock.teamMember.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            userId: teamCoach.id,
+            approvalStatus: "approved",
+            leftAt: null,
+            roleInTeam: { in: ["HEAD_COACH", "COACH", "MANAGER"] },
+          }),
+        }),
+      );
+    });
+
+    it("[차단] 소유·승인관리 멤버십 없는 코치(일반 멤버·CoachProfile-only)는 빈 집합", async () => {
+      // 관리 역할 멤버십/소유가 없으면(일반 멤버·CoachProfile 단독) 관리 팀 0 —
+      //   resolveManageableTeamIds 는 CoachProfile 을 아예 조회하지 않는다.
+      prismaMock.team.findMany.mockResolvedValue([]);
+      prismaMock.teamMember.findMany.mockResolvedValue([]);
+      const ids = await service.resolveManageableTeamIds(teamCoach);
+      expect(ids).toEqual([]);
+    });
+
+    it("[역할 게이트] ACADEMY_DIRECTOR 등 비팀 역할은 조회 없이 빈 집합", async () => {
+      const ids = await service.resolveManageableTeamIds(academyDirector);
+      expect(ids).toEqual([]);
+      expect(prismaMock.team.findMany).not.toHaveBeenCalled();
+      expect(prismaMock.teamMember.findMany).not.toHaveBeenCalled();
     });
   });
 
