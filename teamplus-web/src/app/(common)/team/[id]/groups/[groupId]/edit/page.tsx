@@ -364,7 +364,7 @@ export default function TeamGroupEditPage() {
                   );
                 }}
                 placeholder={MESSAGES.team.groupNamePlaceholder}
-                className="h-[50px] w-full rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-950 px-4 text-[15.5px] font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-it-ink-300 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20"
+                className="h-[50px] w-full rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-950 px-4 text-[15.5px] font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-it-ink-300 outline-none focus:outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20"
               />
               {(errors.name ?? liveNameError) && (
                 <p className="mt-1.5 text-[12px] font-semibold text-it-red-500">
@@ -454,7 +454,7 @@ export default function TeamGroupEditPage() {
                 onChange={(e) => setAgeGroup(e.target.value)}
                 placeholder={MESSAGES.team.groupAgeGroupPlaceholder}
                 maxLength={30}
-                className="h-[50px] w-full rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-950 px-4 text-[15.5px] font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-it-ink-300 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20"
+                className="h-[50px] w-full rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-950 px-4 text-[15.5px] font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-it-ink-300 outline-none focus:outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20"
               />
               <p className="mt-1.5 text-[12px] font-medium text-it-ink-500 dark:text-it-ink-300">
                 {MESSAGES.team.groupAgeGroupHelper}
@@ -573,7 +573,7 @@ export default function TeamGroupEditPage() {
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="이름으로 검색"
                 aria-label="회원 이름 검색"
-                className="h-12 w-full rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-950 pl-11 pr-4 text-[15px] font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-it-ink-300 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20"
+                className="h-12 w-full rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-950 pl-11 pr-4 text-[15px] font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-it-ink-300 outline-none focus:outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20"
               />
             </div>
 

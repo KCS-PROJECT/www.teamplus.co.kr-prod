@@ -202,7 +202,7 @@ export default function MatchPaymentPage() {
             <select
               value={level}
               onChange={(e) => setLevel(e.target.value as LevelType)}
-              className="mt-2 w-full h-12 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 text-[15px] font-medium text-it-ink-800 dark:text-white outline-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 transition-colors duration-150 ease-ios motion-reduce:transition-none"
+              className="mt-2 w-full h-12 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 text-[15px] font-medium text-it-ink-800 dark:text-white outline-none focus:outline-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 transition-colors duration-150 ease-ios motion-reduce:transition-none"
             >
               <option value="">{MESSAGES.match.payment.level.none}</option>
               {MESSAGES.match.payment.level.options.map((opt) => (
@@ -222,7 +222,7 @@ export default function MatchPaymentPage() {
               onChange={(e) => setNote(e.target.value)}
               maxLength={500}
               placeholder={MESSAGES.match.payment.note.placeholder}
-              className="mt-2 w-full min-h-[88px] px-4 py-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 text-[15px] font-medium text-it-ink-800 dark:text-white placeholder:text-it-ink-400 resize-none outline-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 transition-colors duration-150 ease-ios motion-reduce:transition-none"
+              className="mt-2 w-full min-h-[88px] px-4 py-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 text-[15px] font-medium text-it-ink-800 dark:text-white placeholder:text-it-ink-400 resize-none outline-none focus:outline-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 transition-colors duration-150 ease-ios motion-reduce:transition-none"
             />
           </label>
         </section>

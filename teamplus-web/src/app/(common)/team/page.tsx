@@ -283,7 +283,7 @@ export default function TeamListPage() {
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="팀 이름으로 검색"
                     aria-label="팀 이름으로 검색"
-                    className="w-full h-12 bg-it-fill dark:bg-it-blue-950 border-[1.5px] border-it-line-strong dark:border-it-blue-900 rounded-w-md pl-11 pr-10 text-[15px] font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-it-ink-300 focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none"
+                    className="w-full h-12 bg-it-fill dark:bg-it-blue-950 border-[1.5px] border-it-line-strong dark:border-it-blue-900 rounded-w-md pl-11 pr-10 text-[15px] font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-it-ink-300 focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 outline-none focus:outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none"
                   />
                   {searchQuery && (
                     <button

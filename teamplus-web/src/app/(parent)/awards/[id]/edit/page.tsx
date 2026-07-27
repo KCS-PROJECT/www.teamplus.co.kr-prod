@@ -43,7 +43,7 @@ type FormState = {
 
 /** 입력 필드 공통 스타일 (ICETIMES — it-fill + 1.5px it-line-strong + it-blue 포커스) */
 const INPUT_CLASS =
-  'w-full rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 px-3.5 py-3 text-[15px] font-medium text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-wtext-3 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 disabled:opacity-60';
+  'w-full rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-800 px-3.5 py-3 text-[15px] font-medium text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-wtext-3 outline-none focus:outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 disabled:opacity-60';
 
 /** 라벨 공통 스타일 (ICETIMES — it-ink-800 bold) */
 const LABEL_CLASS = 'mb-1.5 block text-card-body font-bold text-it-ink-800 dark:text-white';

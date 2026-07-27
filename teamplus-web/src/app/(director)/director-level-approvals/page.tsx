@@ -548,7 +548,7 @@ export default function DirectorLevelApprovalsPage() {
               id="season-select"
               value={season}
               onChange={(e) => setSeason(e.target.value)}
-              className="h-12 w-full cursor-pointer appearance-none rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-900/40 pl-9 pr-9 text-card-body font-medium text-it-ink-800 dark:text-white outline-none transition-colors motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20"
+              className="h-12 w-full cursor-pointer appearance-none rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-900/40 pl-9 pr-9 text-card-body font-medium text-it-ink-800 dark:text-white outline-none focus:outline-none transition-colors motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20"
               aria-label="시즌 선택"
             >
               {seasonOptions.map((s) => (

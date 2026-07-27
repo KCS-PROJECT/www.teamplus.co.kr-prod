@@ -337,7 +337,7 @@ export default function PaymentSelectPage() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="block w-full p-4 pl-12 text-card-body text-it-ink-900 dark:text-white bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md focus:ring-2 focus:ring-it-blue-500/40 focus:border-it-blue-500 placeholder-it-ink-400 dark:placeholder-rink-300 transition-colors motion-reduce:transition-none"
+              className="block w-full p-4 pl-12 text-card-body text-it-ink-900 dark:text-white bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md focus:outline-none focus:ring-2 focus:ring-it-blue-500/40 focus:border-it-blue-500 placeholder-it-ink-400 dark:placeholder-rink-300 transition-colors motion-reduce:transition-none"
               placeholder="수업명, 강사명 검색..."
             />
           </div>

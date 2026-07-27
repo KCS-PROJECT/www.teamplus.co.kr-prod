@@ -2500,7 +2500,7 @@ export default function ClassDetailPage() {
                                 setPkgPrices((prev) => ({ ...prev, [pkg.id]: e.target.value }))
                               }
                               aria-label={MESSAGES.class.salesCycle.priceInputAria(pkg.productName, targetMonthLabel)}
-                              className="flex-1 min-w-0 h-11 rounded-w-md bg-it-fill dark:bg-rink-700 border-[1.5px] border-it-line-strong dark:border-rink-600 px-3 text-sm text-it-ink-800 dark:text-white focus:border-it-blue-500"
+                              className="flex-1 min-w-0 h-11 rounded-w-md bg-it-fill dark:bg-rink-700 border-[1.5px] border-it-line-strong dark:border-rink-600 px-3 text-sm text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500"
                             />
                             <button
                               type="button"

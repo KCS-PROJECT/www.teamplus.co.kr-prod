@@ -276,7 +276,7 @@ export default function ShopCheckoutPage() {
                 required
                 aria-required="true"
                 aria-label="수령인 이름 (필수)"
-                className="w-full bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 text-it-ink-800 dark:text-white text-w-small rounded-w-md focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 p-3 outline-none transition-colors"
+                className="w-full bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 text-it-ink-800 dark:text-white text-w-small rounded-w-md focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 p-3 outline-none focus:outline-none transition-colors"
               />
             </div>
             <div>
@@ -297,7 +297,7 @@ export default function ShopCheckoutPage() {
                 aria-required="true"
                 aria-label="수령인 연락처 (필수)"
                 inputMode="tel"
-                className="w-full bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 text-it-ink-800 dark:text-white text-w-small rounded-w-md focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 p-3 outline-none transition-colors"
+                className="w-full bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 text-it-ink-800 dark:text-white text-w-small rounded-w-md focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 p-3 outline-none focus:outline-none transition-colors"
               />
             </div>
             <div>
@@ -317,14 +317,14 @@ export default function ShopCheckoutPage() {
                 required
                 aria-required="true"
                 aria-label="배송지 주소 (필수)"
-                className="w-full bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 text-it-ink-800 dark:text-white text-w-small rounded-w-md focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 p-3 outline-none transition-colors"
+                className="w-full bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 text-it-ink-800 dark:text-white text-w-small rounded-w-md focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 p-3 outline-none focus:outline-none transition-colors"
               />
             </div>
             <select
               value={deliveryOption}
               onChange={(e) => setDeliveryOption(e.target.value)}
               aria-label="배송 요청사항 선택"
-              className="w-full bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 text-it-ink-800 dark:text-white text-w-small rounded-w-md focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 p-3 outline-none transition-colors"
+              className="w-full bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 text-it-ink-800 dark:text-white text-w-small rounded-w-md focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 p-3 outline-none focus:outline-none transition-colors"
             >
               {deliveryOptions.map((option) => (
                 <option key={option} value={option}>
@@ -433,7 +433,7 @@ export default function ShopCheckoutPage() {
                 value={installment}
                 onChange={(e) => setInstallment(e.target.value)}
                 aria-label="신용카드 할부 기간 선택"
-                className="w-full bg-it-surface dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 text-it-ink-800 dark:text-white text-w-small rounded-w-md focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 p-2.5 outline-none transition-colors"
+                className="w-full bg-it-surface dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 text-it-ink-800 dark:text-white text-w-small rounded-w-md focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 p-2.5 outline-none focus:outline-none transition-colors"
               >
                 <option>일시불</option>
                 <option>2개월 (무이자)</option>

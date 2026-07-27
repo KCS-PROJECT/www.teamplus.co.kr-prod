@@ -429,7 +429,7 @@ function TextField({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         maxLength={maxLength}
-        className="w-full h-12 rounded-w-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 px-3 text-card-body text-wtext-1 dark:text-rink-100 placeholder:text-wtext-4"
+        className="w-full h-12 rounded-w-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 px-3 text-card-body text-wtext-1 dark:text-rink-100 placeholder:text-wtext-4 focus:outline-none focus:border-ice-500"
       />
     </div>
   );

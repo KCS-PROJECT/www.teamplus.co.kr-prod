@@ -40,7 +40,7 @@ export interface CareerFormSheetProps {
 
 /** ICETIMES flat 입력 — it-fill 배경 + 1.5px it-line-strong + it-blue 포커스 */
 const TEXTAREA_CLASS =
-  'w-full rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-700 px-4 py-3 text-card-body font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-wtext-3 outline-none transition-colors motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 resize-none';
+  'w-full rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-700 px-4 py-3 text-card-body font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-wtext-3 outline-none focus:outline-none transition-colors motion-reduce:transition-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 resize-none';
 
 export function CareerFormSheet({
   open,

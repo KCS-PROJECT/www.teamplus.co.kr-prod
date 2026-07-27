@@ -89,7 +89,7 @@ export function BirthYearRangeSlider({
           onChange={(e) => handleFrom(Number(e.target.value))}
           aria-label="시작 출생연도"
           aria-valuetext={`${from}년생`}
-          className="tp-byr-range"
+          className="tp-byr-range focus:outline-none"
           style={{ zIndex: from >= max - (span / 6) ? 5 : 3 }}
         />
         {/* to 핸들 */}
@@ -103,7 +103,7 @@ export function BirthYearRangeSlider({
           onChange={(e) => handleTo(Number(e.target.value))}
           aria-label="끝 출생연도"
           aria-valuetext={`${to}년생`}
-          className="tp-byr-range"
+          className="tp-byr-range focus:outline-none"
           style={{ zIndex: 4 }}
         />
       </div>

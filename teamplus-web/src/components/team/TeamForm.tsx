@@ -490,7 +490,7 @@ function ColorInput({
         type="color"
         value={/^#[0-9A-Fa-f]{6}$/.test(value) ? value : '#1E3FAE'}
         onChange={(e) => onChange(e.target.value.toUpperCase())}
-        className="mr-2 h-7 w-7 cursor-pointer rounded-md border border-wline dark:border-rink-700"
+        className="mr-2 h-7 w-7 cursor-pointer rounded-md border border-wline focus:outline-none dark:border-rink-700"
         aria-label="컬러 선택"
       />
     </div>
