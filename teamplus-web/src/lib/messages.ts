@@ -3591,7 +3591,7 @@ export const MESSAGES = {
   emptyByPersona: {
     teen: (target: string) => `${target}${subjectParticle(target)} 없네요. 더 도전해보세요! 🔥`,
     admin: (target: string) => `모니터링할 ${target}${subjectParticle(target)} 없습니다`,
-    parent: (target: string) => `예정된 ${target}${subjectParticle(target)} 없네요 💭`,
+    parent: (target: string) => `예정된 ${target}${subjectParticle(target)} 없습니다`,
     child: (target: string) => `오늘은 ${target} 쉬는 날이에요! 🎊`,
     coach: (target: string) =>
       `${target}${subjectParticle(target)} 비어 있어요. 새로 시작해볼까요?`,
