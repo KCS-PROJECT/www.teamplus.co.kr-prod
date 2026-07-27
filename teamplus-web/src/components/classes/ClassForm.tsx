@@ -705,10 +705,10 @@ export function ClassForm({
                   최대 인원 <span className={iceTheme ? 'text-it-red-500' : 'text-red-500'}>*</span>
                 </label>
                 <div className={cn(
-                  'flex items-center gap-2 px-3 py-2.5 rounded-w-md',
+                  'flex items-center gap-2 px-3 py-2.5 rounded-w-md transition-colors',
                   iceTheme
-                    ? cn('bg-it-fill dark:bg-rink-900 border-[1.5px]', errors.capacity ? 'border-red-400' : 'border-it-line-strong dark:border-rink-700')
-                    : cn('bg-wbg dark:bg-rink-900 border', errors.capacity ? 'border-red-400' : 'border-wline dark:border-rink-700')
+                    ? cn('bg-it-fill dark:bg-rink-900 border-[1.5px]', errors.capacity ? 'border-red-400' : 'border-it-line-strong dark:border-rink-700 focus-within:border-it-blue-500')
+                    : cn('bg-wbg dark:bg-rink-900 border', errors.capacity ? 'border-red-400' : 'border-wline dark:border-rink-700 focus-within:border-ice-500')
                 )}>
                   <input
                     type="text"
@@ -1339,10 +1339,10 @@ export function ClassForm({
                             <span className={iceTheme ? 'text-it-red-500' : 'text-red-500'}>*</span>
                           </label>
                           <div className={cn(
-                            'flex items-center gap-2 px-3 py-2.5 rounded-w-md',
+                            'flex items-center gap-2 px-3 py-2.5 rounded-w-md transition-colors',
                             iceTheme
-                              ? cn('bg-it-fill dark:bg-rink-900 border-[1.5px]', errors.singlePrice ? 'border-red-400' : 'border-it-line-strong dark:border-rink-700')
-                              : cn('bg-wbg dark:bg-rink-900 border', errors.singlePrice ? 'border-red-400' : 'border-wline dark:border-rink-700')
+                              ? cn('bg-it-fill dark:bg-rink-900 border-[1.5px]', errors.singlePrice ? 'border-red-400' : 'border-it-line-strong dark:border-rink-700 focus-within:border-it-blue-500')
+                              : cn('bg-wbg dark:bg-rink-900 border', errors.singlePrice ? 'border-red-400' : 'border-wline dark:border-rink-700 focus-within:border-ice-500')
                           )}>
                             <input
                               type="text"

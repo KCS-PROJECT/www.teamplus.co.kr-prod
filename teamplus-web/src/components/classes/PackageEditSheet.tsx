@@ -366,7 +366,7 @@ function NumberField({
         {label}
         {required && <span className="ml-1 text-error-500">*</span>}
       </label>
-      <div className="flex items-center gap-2 h-12 rounded-w-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 px-3">
+      <div className="flex items-center gap-2 h-12 rounded-w-lg border border-wline dark:border-rink-700 focus-within:border-ice-500 transition-colors bg-white dark:bg-rink-800 px-3">
         <input
           type="text"
           inputMode="numeric"

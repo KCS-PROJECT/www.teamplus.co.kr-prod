@@ -23,6 +23,7 @@ import { getServerToday } from '@/services/server-time';
 import { TeamPickerSheet, type TeamPickerSelection } from '@/components/team/TeamPickerSheet';
 import { MESSAGES } from '@/lib/messages';
 import { useNativeUI } from '@/hooks/useNativeUI';
+import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
 import { usePageReady } from '@/hooks/usePageReady';
 import { calculateKoreanAge, cn } from '@/lib/utils';
 import { resolveImageSrc } from '@/lib/image-url';
@@ -88,6 +89,12 @@ export default function AddChildPage() {
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // iOS WebView 키보드 개폐 시 화면 전체가 밀렸다 돌아오는 점프 방지 —
+  // 컨테이너에 키보드 inset 여백(pb-keyboard-safe)을 주고 활성 input 을 컨테이너
+  // 내부 스크롤로 보정 (SPEC_LOGIN_KEYBOARD 표준 패턴). 점프 중 탭이 앱바에
+  // 착지해 사이드메뉴가 열리던 오탭도 함께 제거된다.
+  const formRef = useRef<HTMLFormElement>(null);
+  useKeyboardAvoidance(formRef);
 
   // L-10/L-11 법정대리인 동의 (Apple 5.1.4 / Google Families / 개인정보보호법 §22조의2)
   // 자녀 등록 시 학부모가 법정대리인 자격으로 자녀 개인정보 처리에 동의해야 함.
@@ -286,8 +293,9 @@ export default function AddChildPage() {
 
       {/* [ICETIMES flat] main = 회색 캔버스 · 콘텐츠는 full-bleed 흰 섹션(RefCard)을
           8px 회색 갭(gap-2)으로 쌓는다. 좌우 패딩은 섹션 내부(px-5)가 담당. */}
-      <div className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck">
+      <div className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck scroll-keyboard-safe pb-keyboard-safe">
         <form
+          ref={formRef}
           onSubmit={(e) => {
             e.preventDefault();
             handleSubmit();

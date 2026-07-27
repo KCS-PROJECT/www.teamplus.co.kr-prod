@@ -184,7 +184,7 @@ export function FeeEditCard({
           <label className="block text-card-meta font-bold text-wtext-3 dark:text-rink-300 uppercase tracking-wider">
             {priceLabel}
           </label>
-          <div className="flex items-center gap-2 bg-wbg dark:bg-rink-900 px-3 py-2.5 rounded-lg border border-wline dark:border-rink-700">
+          <div className="flex items-center gap-2 bg-wbg dark:bg-rink-900 px-3 py-2.5 rounded-lg border border-wline dark:border-rink-700 focus-within:border-ice-500 focus-within:ring-2 focus-within:ring-ice-500/20 transition-colors motion-reduce:transition-none">
             <input
               type="text"
               inputMode="numeric"
