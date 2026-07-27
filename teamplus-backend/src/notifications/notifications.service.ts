@@ -1491,12 +1491,13 @@ export class NotificationsService {
         throw new NotFoundException("사용자를 찾을 수 없습니다.");
       }
 
-      // 2. 앱 내 알림 생성
+      // 2. 앱 내 알림 생성 — 수신자는 승인된 회원의 학부모(유일 호출처 member-approvals) → 대시보드 착지.
       const notification = await this.createNotification({
         userId: dto.userId,
         notificationType: "membership_approved",
         title: "가입 승인",
         message: `${dto.clubName} 클럽 가입이 승인되었습니다.`,
+        linkUrl: "/parent",
       });
 
       // 3. 알림톡 발송 (비동기 큐)

@@ -288,16 +288,14 @@ describe("WaitlistService", () => {
 
       await service.processExpiredWaitlists();
 
-      // 각 만료 항목마다 EXPIRED 업데이트
-      expect(mockPrismaService.waitlist.update).toHaveBeenCalledTimes(2);
-      expiredItems.forEach((item) => {
-        expect(mockPrismaService.waitlist.update).toHaveBeenCalledWith(
-          expect.objectContaining({
-            where: { id: item.id },
-            data: { status: "EXPIRED" },
-          }),
-        );
-      });
+      // 만료 항목 EXPIRED 일괄 update (2026-05-14 N+1 해소 — updateMany 1회 계약)
+      expect(mockPrismaService.waitlist.updateMany).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.waitlist.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: { in: expiredItems.map((i) => i.id) } },
+          data: { status: "EXPIRED" },
+        }),
+      );
     });
 
     it("만료된 항목이 없으면 update를 호출하지 않는다", async () => {

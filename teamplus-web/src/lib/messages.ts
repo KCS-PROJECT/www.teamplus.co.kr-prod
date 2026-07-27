@@ -941,11 +941,24 @@ export const MESSAGES = {
   },
   // 팀 정산 센터 (/director-payments) — 월 인식 훈련/대회/미수금
   settlement: {
-    // 탭
+    // 탭 — 거래 내역(건별 장부·기본) / 정산 집계(훈련·대회 소계)
+    tabTransactions: "거래 내역",
+    tabSettlementAgg: "정산 집계",
     tabTraining: "훈련",
     tabTournament: "대회",
     tabUnpaid: "미수금",
     tabSettlement: "정산",
+    // 거래 내역 탭 — 결제 1건=1행 목록
+    emptyTransactions: "해당 월 거래 내역이 없습니다.",
+    transactionsLoadFailed: "거래 내역을 불러오지 못했습니다.",
+    txnStatusCompleted: "결제 완료",
+    txnStatusRefunded: "환불",
+    txnStatusCancelled: "결제 취소",
+    txnCapNotice: (shown: number, total: number) =>
+      `최근 ${shown}건 표시 (전체 ${total}건)`,
+    // 미수금 접이식 배너 (정산 집계 탭 상단)
+    unpaidBannerOpen: "미수금 목록 펼치기",
+    unpaidBannerClose: "미수금 목록 접기",
     // Hero 요약
     heroLabel: "정산 요약",
     totalCollected: "총 수납",
@@ -980,6 +993,7 @@ export const MESSAGES = {
     rowStatusPaid: "완납",
     rowStatusBilled: "청구",
     rowStatusUnsettled: "미정산",
+    rowStatusUnpurchased: "미구매",
     rowStatusCancelled: "취소",
     rowStatusRefunded: "환불",
     // 정산 보기 링크 (attendance-manage → students 결제 탭)
@@ -994,6 +1008,8 @@ export const MESSAGES = {
     // 빈 상태
     emptyTraining: "해당 월에 정산할 훈련이 없습니다.",
     emptyTournament: "해당 월에 정산할 대회가 없습니다.",
+    // 정산 집계 탭 — 훈련·대회 모두 없을 때만 통합 표기(한쪽만 없으면 섹션 자체 숨김)
+    emptySettlement: "해당 월에 정산할 내역이 없습니다.",
     // 접근성 라벨 (하드코딩 금지 — aria-label)
     ariaCenter: "감독 정산 센터",
     ariaFilter: "정산 현황 필터",

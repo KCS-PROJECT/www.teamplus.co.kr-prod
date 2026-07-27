@@ -1,7 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Cron, CronExpression } from "@nestjs/schedule";
 import { PrismaService } from "@/prisma/prisma.service";
-import { NotificationsService } from "@/notifications/notifications.service";
 import { CreditDomainService } from "./credit-domain.service";
 import { SystemLogService } from "@/logger/system-log.service";
 
@@ -14,7 +13,6 @@ export class CreditExpiryService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly notificationsService: NotificationsService,
     private readonly creditDomain: CreditDomainService, // PR-B (v0.5): 만료 + 이월 단일 진입점
     private readonly systemLog: SystemLogService,
   ) {}
@@ -162,108 +160,6 @@ export class CreditExpiryService {
     }
   }
 
-  /**
-   * 매일 오전 9시 - 만료 사전 알림 발송 (7일/3일/1일 전)
-   *
-   * 만료 예정 크레딧이 있는 회원에게 앱 내 알림을 발송합니다.
-   */
-  @Cron("0 0 9 * * *") // 매일 09:00
-  async sendExpiryWarnings() {
-    this.logger.log("크레딧 만료 사전 알림 배치 시작");
-
-    try {
-      const now = new Date();
-      const warningDays = [7, 3, 1];
-      let totalNotifications = 0;
-
-      for (const days of warningDays) {
-        const targetDate = new Date(now);
-        targetDate.setDate(targetDate.getDate() + days);
-
-        // 해당 일자에 만료되는 크레딧 조회 (해당일의 시작~끝)
-        const startOfDay = new Date(targetDate);
-        startOfDay.setHours(0, 0, 0, 0);
-
-        const endOfDay = new Date(targetDate);
-        endOfDay.setHours(23, 59, 59, 999);
-
-        const expiringCredits = await this.prisma.memberCredit.findMany({
-          where: {
-            expiresAt: {
-              gte: startOfDay,
-              lte: endOfDay,
-            },
-          },
-          include: {
-            user: { select: { id: true } },
-          },
-        });
-
-        // 잔여 크레딧이 있는 건만 필터
-        const creditsWithRemaining = expiringCredits.filter(
-          (c) => c.totalSessions - c.usedSessions > 0,
-        );
-
-        // 동일 사용자에 대해 크레딧을 그룹핑 (사용자별 합산 알림)
-        const userCreditMap = new Map<
-          string,
-          { totalRemaining: number; expiresAt: Date }
-        >();
-
-        for (const credit of creditsWithRemaining) {
-          const userId = credit.userId;
-          const remaining = credit.totalSessions - credit.usedSessions;
-          const existing = userCreditMap.get(userId);
-
-          if (existing) {
-            existing.totalRemaining += remaining;
-          } else {
-            userCreditMap.set(userId, {
-              totalRemaining: remaining,
-              expiresAt: credit.expiresAt,
-            });
-          }
-        }
-
-        // 사용자별 알림 발송
-        for (const [userId, info] of userCreditMap) {
-          try {
-            const expiryDateStr = info.expiresAt.toISOString().split("T")[0];
-
-            await this.notificationsService.createNotification({
-              userId,
-              notificationType: "credit_expiry_warning",
-              title: "크레딧 만료 예정",
-              message: `보유 크레딧 ${info.totalRemaining}회가 ${days}일 후(${expiryDateStr})에 만료됩니다. 만료 전에 사용해주세요.`,
-            });
-
-            totalNotifications++;
-          } catch (error) {
-            this.logger.error(
-              `크레딧 만료 알림 발송 실패: userId=${userId}, days=${days}`,
-              error.stack,
-            );
-          }
-        }
-
-        if (userCreditMap.size > 0) {
-          this.logger.log(
-            `${days}일 전 만료 알림: ${userCreditMap.size}명에게 발송`,
-          );
-        }
-      }
-
-      this.logger.log(
-        `크레딧 만료 사전 알림 배치 완료: 총 ${totalNotifications}건 발송`,
-      );
-
-      return { totalNotifications };
-    } catch (error) {
-      this.logger.error(
-        `크레딧 만료 사전 알림 배치 실패: ${error.message}`,
-        error.stack,
-      );
-      throw error;
-    }
-  }
+  /* [제거 2026-07-24] sendExpiryWarnings(만료 사전 알림 7/3/1일 전 09:00 cron) —
+   *  크레딧 미사용 전환 정책에 따라 알림 발송 폐기(사용자 지시). 만료 처리(processExpiredCredits)는 유지. */
 }

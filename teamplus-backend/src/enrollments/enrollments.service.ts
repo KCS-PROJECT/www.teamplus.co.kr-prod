@@ -449,6 +449,7 @@ export class EnrollmentsService {
             notificationType: "enrollment_request",
             title: "수강신청 승인 요청",
             message: `${childName}님이 ${className} 수업 수강을 요청했습니다. 승인해주세요.`,
+            linkUrl: `/classes/${dto.classId}`,
           })
           .catch((err) =>
             this.logger.warn(
@@ -759,6 +760,7 @@ export class EnrollmentsService {
           notificationType: "enrollment_approved",
           title: "수강신청 승인",
           message: `${className} 수업 수강신청이 승인되었습니다.`,
+          linkUrl: `/classes/${updatedEnrollment.classId}`,
         })
         .catch((err) =>
           this.logger.warn(
@@ -831,6 +833,7 @@ export class EnrollmentsService {
           notificationType: "enrollment_rejected",
           title: "수강신청 거절",
           message: `${className} 수업 수강신청이 거절되었습니다.${reason}`,
+          linkUrl: `/classes/${updatedEnrollment.classId}`,
         })
         .catch((err) =>
           this.logger.warn(

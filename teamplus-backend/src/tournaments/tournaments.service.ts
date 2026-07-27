@@ -2401,6 +2401,7 @@ export class TournamentsService {
           notificationType: "tournament_postpaid_billing",
           title: "대회 참가비 결제 요청 취소",
           message: `${tournament.name} 참가비 결제 요청이 취소되었습니다.`,
+          linkUrl: `/tournaments/${tournamentId}`,
         });
       } catch (e) {
         void e;

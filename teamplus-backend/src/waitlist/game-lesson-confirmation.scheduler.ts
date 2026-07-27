@@ -117,6 +117,7 @@ export class GameLessonConfirmationScheduler {
             notificationType: "waitlist_confirm_reminder",
             title: "내일 수업 확정 알림",
             message: `${waitlist.class?.className || "수업"} 수업이 내일입니다. 아직 확정 신청을 완료하지 않으셨습니다. 기한 내에 확정해 주세요.`,
+            linkUrl: `/classes/${waitlist.classId}`,
           }),
         ),
       );

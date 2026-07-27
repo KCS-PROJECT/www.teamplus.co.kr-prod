@@ -16,12 +16,16 @@ import { UnpaidDetailSheet } from '@/components/director/UnpaidDetailSheet';
 import {
   getTeamSettlementSummary,
   getTeamUnpaidMembers,
+  getTeamTransactions,
   sendTeamUnpaidReminder,
   type TeamSettlementSummaryResponse,
   type TeamUnpaidMembersResponse,
+  type TeamTransactionsResponse,
+  type TeamTransactionItem,
   type TournamentSettlementSummary,
   type UnpaidMemberRow,
 } from '@/services/payment';
+import { PaymentSourceBadge } from '@/components/payment/PaymentSourceBadge';
 import {
   formatCurrency,
   staggerDelay,
@@ -36,7 +40,8 @@ import { InlineRetryError } from '@/components/settlement/InlineRetryError';
 import { RefundPendingBanner } from '@/components/refunds/RefundPendingBanner';
 
 // ─── Types ──────────────────────────────────────────
-type TabType = 'training' | 'tournament' | 'unpaid';
+// 거래 내역(건별 장부·기본) / 정산 집계(훈련·대회 소계) — 업계 관행(거래 vs 정산) 2분법.
+type TabType = 'transactions' | 'settlement';
 
 // formatCurrency · staggerDelay · shiftMonth 는 공유 모듈(components/settlement/settlement-format)로 이동.
 // SettlementCardData · SETTLEMENT_STATUS_BADGE · BLOCKED_REASON_LABEL · classToCardData ·
@@ -69,12 +74,14 @@ export default function DirectorPaymentsPage() {
 
   const currentYm = useMemo(() => kstYearMonth(), []);
   const [yearMonth, setYearMonth] = useState<string>(currentYm);
-  const [activeTab, setActiveTab] = useState<TabType>('training');
+  const [activeTab, setActiveTab] = useState<TabType>('transactions');
 
-  // 신규 월인식 소계 (훈련/대회 탭 + Hero)
+  // 신규 월인식 소계 (정산 집계 탭 + Hero)
   const [settlement, setSettlement] = useState<TeamSettlementSummaryResponse | null>(null);
-  // 신규 월인식 인별 미수금 (미수금 탭 — 선택 월 연동)
+  // 신규 월인식 인별 미수금 (정산 집계 탭 상단 배너 — 선택 월 연동)
   const [unpaid, setUnpaid] = useState<TeamUnpaidMembersResponse | null>(null);
+  // 거래 내역 (결제 1건=1행 장부 — 선택 월 완료 기준)
+  const [transactions, setTransactions] = useState<TeamTransactionsResponse | null>(null);
 
   const [isLoading, setIsLoading] = useState(true); // 최초 풀스크린 로더 게이트
   const [isMonthLoading, setIsMonthLoading] = useState(false); // 월 전환 인라인 로딩
@@ -83,8 +90,12 @@ export default function DirectorPaymentsPage() {
   const [monthError, setMonthError] = useState(false); // 월 새로고침 실패(직전 유효월 데이터 보존)
   const [unpaidError, setUnpaidError] = useState(false); // 미수금 로드 실패
   const [isUnpaidRetrying, setIsUnpaidRetrying] = useState(false); // 미수금 재시도 진행 중
+  const [txnError, setTxnError] = useState(false); // 거래 내역 로드 실패
+  const [isTxnRetrying, setIsTxnRetrying] = useState(false); // 거래 내역 재시도 진행 중
 
-  // 미수금 탭 — 상세 시트 대상 회원 / 미납 안내 발송 중 회원
+  // 미수금 배너 펼침 (정산 집계 탭 상단 — 기본 접힘)
+  const [unpaidExpanded, setUnpaidExpanded] = useState(false);
+  // 미수금 — 상세 시트 대상 회원 / 미납 안내 발송 중 회원
   const [detailMember, setDetailMember] = useState<UnpaidMemberRow | null>(null);
   const [remindingId, setRemindingId] = useState<string | null>(null);
 
@@ -100,10 +111,11 @@ export default function DirectorPaymentsPage() {
   });
 
   // 요청 시퀀스 — 늦게 도착한 이전 월 응답이 최신 선택 월을 덮어쓰는 race 를 차단.
-  // 로더별 독립 카운터: 소계(loadNew)=settlementSeq, 인별 미수금(loadUnpaid)=unpaidSeq.
-  // 미수금 단독 재시도가 in-flight 소계 로드를 폐기하지 않도록 seq 를 분리(간섭 0).
+  // 로더별 독립 카운터: 소계=settlementSeq, 미수금=unpaidSeq, 거래=txnSeq.
+  // 단독 재시도가 in-flight 다른 로드를 폐기하지 않도록 seq 를 분리(간섭 0).
   const settlementSeq = useRef(0);
   const unpaidSeq = useRef(0);
+  const txnSeq = useRef(0);
 
   // 신규 소계 로드 — 최신 요청(seq)만 반영. 실패 시 mode 별 에러 플래그 설정.
   // seq 는 호출부(트리거)에서 settlementSeq 를 1회 증가시켜 주입 → 늦은 이전월 응답 폐기.
@@ -139,18 +151,34 @@ export default function DirectorPaymentsPage() {
     }
   }, []);
 
+  // 거래 내역 로드 — 선택 월 완료 결제(환불·취소 포함) 건별 장부. 실패 위장 금지(동일 규약).
+  const loadTransactions = useCallback(async (ym: string, seq: number) => {
+    try {
+      const data = await getTeamTransactions({ yearMonth: ym });
+      if (seq !== txnSeq.current) return; // 폐기 — 더 최신 거래 요청이 진행 중
+      setTransactions(data);
+      setTxnError(false);
+    } catch (err) {
+      if (seq !== txnSeq.current) return;
+      devError(MESSAGES.common.loadFailed, err);
+      setTxnError(true);
+    }
+  }, []);
+
   // 최초 로드 — 신규 소계/인별 미수금 독립 처리(allSettled). 소계 실패면 settlement=null → 풀 에러 UI.
   // 미수금 실패는 loadUnpaid 내부에서 unpaidError 로 처리 → 미수금 탭 인라인 에러+재시도.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setIsLoading(true);
-      // 두 로더 동시 트리거 — 각 seq 를 1회씩 증가시켜 각자 stale 폐기 판정에 주입.
+      // 세 로더 동시 트리거 — 각 seq 를 1회씩 증가시켜 각자 stale 폐기 판정에 주입.
       const sSeq = ++settlementSeq.current;
       const uSeq = ++unpaidSeq.current;
+      const tSeq = ++txnSeq.current;
       await Promise.allSettled([
         loadNew(currentYm, 'initial', sSeq),
         loadUnpaid(currentYm, uSeq),
+        loadTransactions(currentYm, tSeq),
       ]);
       if (!cancelled) setIsLoading(false);
     })();
@@ -171,43 +199,49 @@ export default function DirectorPaymentsPage() {
     let cancelled = false;
     (async () => {
       setIsMonthLoading(true);
-      // 두 로더 동시 트리거 — 각 seq 를 1회씩 증가시켜 늦은 이전월 응답이 최신 선택월을 덮지 않게 한다.
+      // 세 로더 동시 트리거 — 각 seq 를 1회씩 증가시켜 늦은 이전월 응답이 최신 선택월을 덮지 않게 한다.
       const sSeq = ++settlementSeq.current;
       const uSeq = ++unpaidSeq.current;
+      const tSeq = ++txnSeq.current;
       await Promise.allSettled([
         loadNew(yearMonth, 'month', sSeq),
         loadUnpaid(yearMonth, uSeq),
+        loadTransactions(yearMonth, tSeq),
       ]);
       if (!cancelled) setIsMonthLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [yearMonth, loadNew, loadUnpaid]);
+  }, [yearMonth, loadNew, loadUnpaid, loadTransactions]);
 
   // 최초 로드 실패 재시도 — 풀스크린 로더 재게이트 없이 신규 소계/미수금 재호출.
   const handleInitialRetry = useCallback(async () => {
     setIsInitialRetrying(true);
     const sSeq = ++settlementSeq.current;
     const uSeq = ++unpaidSeq.current;
+    const tSeq = ++txnSeq.current;
     await Promise.allSettled([
       loadNew(currentYm, 'initial', sSeq),
       loadUnpaid(currentYm, uSeq),
+      loadTransactions(currentYm, tSeq),
     ]);
     setIsInitialRetrying(false);
-  }, [currentYm, loadNew, loadUnpaid]);
+  }, [currentYm, loadNew, loadUnpaid, loadTransactions]);
 
-  // 월 새로고침 실패 재시도 — 선택 월 유지, 신규 소계 + 미수금 재호출(둘 다 월 스코프).
+  // 월 새로고침 실패 재시도 — 선택 월 유지, 소계 + 미수금 + 거래 재호출(셋 다 월 스코프).
   const handleMonthRetry = useCallback(async () => {
     setIsMonthLoading(true);
     const sSeq = ++settlementSeq.current;
     const uSeq = ++unpaidSeq.current;
+    const tSeq = ++txnSeq.current;
     await Promise.allSettled([
       loadNew(yearMonth, 'month', sSeq),
       loadUnpaid(yearMonth, uSeq),
+      loadTransactions(yearMonth, tSeq),
     ]);
     setIsMonthLoading(false);
-  }, [yearMonth, loadNew, loadUnpaid]);
+  }, [yearMonth, loadNew, loadUnpaid, loadTransactions]);
 
   // 미수금 로드 실패 재시도 — 선택 월 인별 미수금 단독 재호출.
   // unpaidSeq 만 증가 → settlementSeq 불변 → in-flight loadNew(훈련/대회·Hero) 생존(폐기 안 함).
@@ -217,6 +251,14 @@ export default function DirectorPaymentsPage() {
     await loadUnpaid(yearMonth, uSeq);
     setIsUnpaidRetrying(false);
   }, [yearMonth, loadUnpaid]);
+
+  // 거래 내역 로드 실패 재시도 — 선택 월 거래 단독 재호출(txnSeq 만 증가, 타 로더 생존).
+  const handleTxnRetry = useCallback(async () => {
+    setIsTxnRetrying(true);
+    const tSeq = ++txnSeq.current;
+    await loadTransactions(yearMonth, tSeq);
+    setIsTxnRetrying(false);
+  }, [yearMonth, loadTransactions]);
 
   // 미납 안내 발송 — 미납 자녀의 보호자에게 인앱+푸시 (선택 월, 월별 쿨다운)
   const handleRemind = useCallback(
@@ -288,18 +330,15 @@ export default function DirectorPaymentsPage() {
   const [selY, selM] = yearMonth.split('-').map(Number);
   const nextMonthDisabled = yearMonth >= currentYm;
 
-  // 미수금 탭 — 응답 월과 선택 월 일치 시에만 렌더(전환 중 stale 방지).
+  // 미수금 배너 — 응답 월과 선택 월 일치 시에만 렌더(전환 중 stale 방지).
   const unpaidMonthMatches = unpaid?.yearMonth === yearMonth;
   const unpaidCount = unpaid?.totalCount ?? 0;
+  // 거래 내역 — 동일 stale 가드.
+  const txnMonthMatches = transactions?.yearMonth === yearMonth;
 
-  // 미수금 탭 라벨 — 실패 시 카운트(0)를 그대로 노출하지 않고 실패 표식으로 대체.
-  const unpaidTabLabel = unpaidError
-    ? `${MESSAGES.settlement.tabUnpaid} ${MESSAGES.settlement.tabErrorMark}`
-    : `${MESSAGES.settlement.tabUnpaid} ${unpaidCount}`;
   const tabs: { key: TabType; label: string }[] = [
-    { key: 'training', label: MESSAGES.settlement.tabTraining },
-    { key: 'tournament', label: MESSAGES.settlement.tabTournament },
-    { key: 'unpaid', label: unpaidTabLabel },
+    { key: 'transactions', label: MESSAGES.settlement.tabTransactions },
+    { key: 'settlement', label: MESSAGES.settlement.tabSettlementAgg },
   ];
 
   return (
@@ -391,13 +430,22 @@ export default function DirectorPaymentsPage() {
             </div>
           </div>
 
-          {/* 미납 건수 */}
+          {/* 미납 건수 — 탭하면 정산 집계 탭의 미수금 배너를 펼친다 */}
           <div className="mt-3.5 border-t border-white/15 pt-3 text-[12.5px]">
-            <span
-              className={cn('font-bold tabular-nums', hasUnpaid ? 'text-it-red-250' : 'text-white/70')}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('settlement');
+                setUnpaidExpanded(true);
+              }}
+              className={cn(
+                'font-bold tabular-nums active:brightness-95',
+                hasUnpaid ? 'text-it-red-250' : 'text-white/70',
+              )}
+              aria-label={MESSAGES.settlement.unpaidBannerOpen}
             >
               {showMonthData ? MESSAGES.settlement.unpaidCountBadge(unpaidItemCount) : amountDash}
-            </span>
+            </button>
           </div>
         </section>
 
@@ -446,111 +494,171 @@ export default function DirectorPaymentsPage() {
         {/* ── 탭 컨텐츠 ─────────────────────────────────────────────────── */}
         {/* 하단 여백은 MobileContainer 가 main 에 pb-30 자동 부여 → 중복 금지. */}
         <div>
-          {activeTab === 'training' && (
+          {activeTab === 'transactions' && (
             <section
               role="tabpanel"
-              id="director-payments-panel-training"
-              aria-labelledby="director-payments-tab-training"
+              id="director-payments-panel-transactions"
+              aria-labelledby="director-payments-tab-transactions"
               aria-busy={isMonthLoading}
               className={cn(
-                'bg-it-surface px-5 transition-opacity dark:bg-rink-800',
+                'bg-it-surface transition-opacity dark:bg-rink-800',
                 isMonthLoading && 'opacity-60',
               )}
             >
-              {monthError ? (
-                <InlineRetryError
-                  message={MESSAGES.settlement.monthLoadFailed}
-                  onRetry={handleMonthRetry}
-                  retrying={isMonthLoading}
-                />
-              ) : !monthMatches ? (
-                <MonthLoadingState />
-              ) : classes.length > 0 ? (
-                classes.map((item, i) => (
-                  <SettlementItemCard
-                    key={item.classId}
-                    data={classToCardData(item)}
-                    index={i}
-                    last={i === classes.length - 1}
-                    onOpen={handleOpenDetail}
+              {/* 거래 목록 — 결제 1건=1행 최신순 (선택 월 완료 기준) */}
+              <div className="px-5">
+                {txnError ? (
+                  <InlineRetryError
+                    message={MESSAGES.settlement.transactionsLoadFailed}
+                    onRetry={handleTxnRetry}
+                    retrying={isTxnRetrying}
                   />
-                ))
-              ) : (
-                <EmptyState message={MESSAGES.settlement.emptyTraining} />
-              )}
+                ) : !txnMonthMatches ? (
+                  <MonthLoadingState />
+                ) : transactions && transactions.items.length > 0 ? (
+                  <>
+                    {groupTxnsByDate(transactions.items).map((group, gi) => (
+                      <div key={`${group.dateLabel}-${gi}`}>
+                        <TxnDateHeader label={group.dateLabel} />
+                        {group.items.map((item, i) => (
+                          <TransactionRow
+                            key={item.paymentId}
+                            item={item}
+                            index={i}
+                            last={i === group.items.length - 1}
+                          />
+                        ))}
+                      </div>
+                    ))}
+                    {transactions.totalCount > transactions.items.length && (
+                      <p className="py-3 text-center text-card-meta text-it-ink-400 dark:text-wtext-4">
+                        {MESSAGES.settlement.txnCapNotice(
+                          transactions.items.length,
+                          transactions.totalCount,
+                        )}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <EmptyState message={MESSAGES.settlement.emptyTransactions} />
+                )}
+              </div>
             </section>
           )}
 
-          {activeTab === 'tournament' && (
+          {activeTab === 'settlement' && (
             <section
               role="tabpanel"
-              id="director-payments-panel-tournament"
-              aria-labelledby="director-payments-tab-tournament"
+              id="director-payments-panel-settlement"
+              aria-labelledby="director-payments-tab-settlement"
               aria-busy={isMonthLoading}
               className={cn(
-                'bg-it-surface px-5 transition-opacity dark:bg-rink-800',
+                'bg-it-surface transition-opacity dark:bg-rink-800',
                 isMonthLoading && 'opacity-60',
               )}
             >
-              {monthError ? (
-                <InlineRetryError
-                  message={MESSAGES.settlement.monthLoadFailed}
-                  onRetry={handleMonthRetry}
-                  retrying={isMonthLoading}
-                />
-              ) : !monthMatches ? (
-                <MonthLoadingState />
-              ) : tournaments.length > 0 ? (
-                tournaments.map((item, i) => (
-                  <SettlementItemCard
-                    key={item.tournamentId}
-                    data={tournamentToCardData(item)}
-                    index={i}
-                    last={i === tournaments.length - 1}
-                    onOpen={handleOpenDetail}
-                  />
-                ))
-              ) : (
-                <EmptyState message={MESSAGES.settlement.emptyTournament} />
+              {/* 미수금 접이식 배너 — 미수 0이면 미노출. 실패는 배너로 노출(0 위장 금지). */}
+              {(unpaidError || (unpaidMonthMatches && unpaidCount > 0)) && (
+                <div className="border-b border-it-line dark:border-rink-700">
+                  <button
+                    type="button"
+                    onClick={() => setUnpaidExpanded((v) => !v)}
+                    aria-expanded={unpaidExpanded}
+                    aria-controls="director-payments-unpaid-banner"
+                    className="flex w-full items-center gap-2 bg-it-red-50/60 px-5 py-3 text-left active:brightness-95 dark:bg-it-red-500/10"
+                  >
+                    <Icon
+                      name="error"
+                      className="text-[18px] text-it-red-500"
+                      aria-hidden="true"
+                    />
+                    <span className="flex-1 text-[14px] font-bold text-it-ink-800 dark:text-white">
+                      {unpaidError
+                        ? MESSAGES.settlement.unpaidLoadFailed
+                        : `${MESSAGES.settlement.unpaidAmount} ${formatCurrency(unpaid?.totalOutstanding ?? 0)}${MESSAGES.settlement.won} · ${MESSAGES.settlement.unpaidMemberCount(unpaidCount)}`}
+                    </span>
+                    <Icon
+                      name={unpaidExpanded ? 'expand_less' : 'expand_more'}
+                      className="text-[20px] text-it-ink-500 dark:text-wtext-4"
+                      aria-hidden="true"
+                    />
+                  </button>
+                  {unpaidExpanded && (
+                    <div id="director-payments-unpaid-banner" className="px-5">
+                      {unpaidError ? (
+                        <InlineRetryError
+                          message={MESSAGES.settlement.unpaidLoadFailed}
+                          onRetry={handleUnpaidRetry}
+                          retrying={isUnpaidRetrying}
+                        />
+                      ) : !unpaidMonthMatches ? (
+                        <MonthLoadingState />
+                      ) : (
+                        (unpaid?.members ?? []).map((member, i, arr) => (
+                          <UnpaidMemberCard
+                            key={member.memberId}
+                            member={member}
+                            index={i}
+                            last={i === arr.length - 1}
+                            isReminding={remindingId === member.memberId}
+                            onRemind={handleRemind}
+                            onDetail={setDetailMember}
+                          />
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
-            </section>
-          )}
 
-          {activeTab === 'unpaid' && (
-            <section
-              role="tabpanel"
-              id="director-payments-panel-unpaid"
-              aria-labelledby="director-payments-tab-unpaid"
-              aria-busy={isMonthLoading}
-              className={cn(
-                'bg-it-surface px-5 dark:bg-rink-800',
-                isMonthLoading && 'opacity-60',
-              )}
-            >
-              {unpaidError ? (
-                // 금융 화면 — 실패를 "미수금 없음"으로 위장하지 않는다. 에러 + 재시도.
-                <InlineRetryError
-                  message={MESSAGES.settlement.unpaidLoadFailed}
-                  onRetry={handleUnpaidRetry}
-                  retrying={isUnpaidRetrying}
-                />
-              ) : !unpaidMonthMatches ? (
-                <MonthLoadingState />
-              ) : unpaid && unpaid.members.length > 0 ? (
-                unpaid.members.map((member, i) => (
-                  <UnpaidMemberCard
-                    key={member.memberId}
-                    member={member}
-                    index={i}
-                    last={i === unpaid.members.length - 1}
-                    isReminding={remindingId === member.memberId}
-                    onRemind={handleRemind}
-                    onDetail={setDetailMember}
+              <div className="px-5">
+                {monthError ? (
+                  <InlineRetryError
+                    message={MESSAGES.settlement.monthLoadFailed}
+                    onRetry={handleMonthRetry}
+                    retrying={isMonthLoading}
                   />
-                ))
-              ) : (
-                <EmptyState message={MESSAGES.settlement.emptyUnpaid} />
-              )}
+                ) : !monthMatches ? (
+                  <MonthLoadingState />
+                ) : classes.length === 0 && tournaments.length === 0 ? (
+                  // 둘 다 없을 때만 통합 빈 상태 — 한쪽만 없으면 그 섹션은 통째로 숨김.
+                  <EmptyState message={MESSAGES.settlement.emptySettlement} />
+                ) : (
+                  <>
+                    {/* 훈련 소계 섹션 */}
+                    {classes.length > 0 && (
+                      <>
+                        <SectionTitle label={MESSAGES.settlement.tabTraining} />
+                        {classes.map((item, i) => (
+                          <SettlementItemCard
+                            key={item.classId}
+                            data={classToCardData(item)}
+                            index={i}
+                            last={i === classes.length - 1}
+                            onOpen={handleOpenDetail}
+                          />
+                        ))}
+                      </>
+                    )}
+
+                    {/* 대회 소계 섹션 */}
+                    {tournaments.length > 0 && (
+                      <>
+                        <SectionTitle label={MESSAGES.settlement.tabTournament} />
+                        {tournaments.map((item, i) => (
+                          <SettlementItemCard
+                            key={item.tournamentId}
+                            data={tournamentToCardData(item)}
+                            index={i}
+                            last={i === tournaments.length - 1}
+                            onOpen={handleOpenDetail}
+                          />
+                        ))}
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
             </section>
           )}
         </div>
@@ -579,6 +687,171 @@ function EmptyState({ message }: { message: string }) {
       </div>
       <p className="text-card-body text-it-ink-700 dark:text-wtext-4">{message}</p>
     </div>
+  );
+}
+
+/** 정산 집계 탭 — 훈련/대회 소계 섹션 헤더. */
+function SectionTitle({ label }: { label: string }) {
+  return (
+    <h3 className="pb-1 pt-4 text-[12.5px] font-extrabold text-it-ink-400 dark:text-wtext-3">
+      {label}
+    </h3>
+  );
+}
+
+/** 거래 상태 표시 — completed/refunded(부분 포함)/cancelled 3분류. */
+const TXN_STATUS: Record<string, { label: string; cls: string; dot: string }> = {
+  completed: {
+    label: MESSAGES.settlement.txnStatusCompleted,
+    cls: 'text-success',
+    dot: 'bg-mint-500',
+  },
+  refunded: {
+    label: MESSAGES.settlement.txnStatusRefunded,
+    cls: 'text-it-red-500',
+    dot: 'bg-it-red-500',
+  },
+  partially_refunded: {
+    label: MESSAGES.settlement.txnStatusRefunded,
+    cls: 'text-it-red-500',
+    dot: 'bg-it-red-500',
+  },
+  cancelled: {
+    label: MESSAGES.settlement.txnStatusCancelled,
+    cls: 'text-it-red-500',
+    dot: 'bg-it-red-500',
+  },
+};
+
+/** KST 일시 파트 — 일자 헤더("MM.DD (요일)" — 연월 문맥은 Hero 월 선택기가 제공)와
+ *  행 시각("HH:mm") 분리 표기용. */
+function txnKstParts(iso: string): { dateLabel: string; time: string } | null {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(d);
+  const g = (t: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === t)?.value ?? '';
+  return {
+    dateLabel: `${g('month')}.${g('day')} (${g('weekday')})`,
+    time: `${g('hour')}:${g('minute')}`,
+  };
+}
+
+/** 거래를 KST 일자별로 그룹핑 — 은행앱 거래내역 패턴(최신순 유지, 연속 동일 일자 묶음). */
+function groupTxnsByDate(
+  items: TeamTransactionItem[],
+): { dateLabel: string; items: TeamTransactionItem[] }[] {
+  const groups: { dateLabel: string; items: TeamTransactionItem[] }[] = [];
+  for (const item of items) {
+    const dateLabel = txnKstParts(item.completedAt)?.dateLabel ?? '';
+    const lastGroup = groups[groups.length - 1];
+    if (lastGroup && lastGroup.dateLabel === dateLabel) {
+      lastGroup.items.push(item);
+    } else {
+      groups.push({ dateLabel, items: [item] });
+    }
+  }
+  return groups;
+}
+
+/** 일자 그룹 헤더 — "YYYY.MM.DD (요일)" (결제내역 월 헤더와 동일 톤). */
+function TxnDateHeader({ label }: { label: string }) {
+  return (
+    <h3 className="pb-1 pt-4 font-num text-[12.5px] font-extrabold tabular-nums text-it-ink-400 dark:text-wtext-3">
+      {label}
+    </h3>
+  );
+}
+
+/** 거래 내역 행 — 결제 1건. 타이틀 줄=출처 배지+선수명(볼드)+결제 보호자(옅은 톤),
+ *  메타 줄=상품명·시각(구분 기호 없이 간격 구분). 선수 연결이 없으면 상품명이 타이틀로 승격. */
+function TransactionRow({
+  item,
+  index = 0,
+  last,
+}: {
+  item: TeamTransactionItem;
+  index?: number;
+  last?: boolean;
+}) {
+  const status = TXN_STATUS[item.paymentStatus] ?? TXN_STATUS.completed;
+  const struck =
+    item.paymentStatus === 'refunded' || item.paymentStatus === 'cancelled';
+  const subjectAsTitle = !item.childName && !!item.subjectName;
+  const title = item.childName ?? item.subjectName ?? item.payerName ?? '';
+  const payer = item.payerName === title ? null : item.payerName;
+  const metaSubject = subjectAsTitle ? null : item.subjectName;
+  const time = txnKstParts(item.completedAt)?.time ?? null;
+  return (
+    <article
+      className={cn(
+        'animate-slide-up py-[14px] motion-reduce:animate-none',
+        !last && 'border-b border-it-line dark:border-rink-700',
+      )}
+      style={{ animationDelay: staggerDelay(index) }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2">
+            <PaymentSourceBadge
+              sourceType={item.sourceType}
+              billingTiming={item.billingTiming}
+              className="shrink-0 self-center"
+            />
+            <p className="min-w-0 truncate text-[15px] font-bold text-it-ink-800 dark:text-white">
+              {title}
+            </p>
+            {payer && (
+              <span className="shrink-0 text-[13px] text-it-ink-500 dark:text-wtext-4">
+                {payer}
+              </span>
+            )}
+          </div>
+          {/* 시각 선행 — 일자 헤더와 세로 스캔축 일치 + 고정폭이라 유사 컬럼 정렬. */}
+          <p className="mt-0.5 flex items-center gap-x-3 font-num text-[13px] tabular-nums text-it-ink-500 dark:text-wtext-4">
+            {time && <span className="shrink-0">{time}</span>}
+            {metaSubject && (
+              <span className="min-w-0 truncate">{metaSubject}</span>
+            )}
+          </p>
+        </div>
+        <div className="shrink-0 text-right">
+          <p
+            className={cn(
+              'text-[15px] font-extrabold tabular-nums',
+              struck
+                ? 'text-it-ink-400 line-through decoration-it-ink-300/50'
+                : 'text-it-ink-800 dark:text-white',
+            )}
+          >
+            {formatCurrency(item.amount)}
+            <span className="ml-0.5 text-[12px] font-medium">
+              {MESSAGES.settlement.won}
+            </span>
+          </p>
+          <span
+            className={cn(
+              'mt-0.5 inline-flex items-center gap-1 text-card-meta font-semibold',
+              status.cls,
+            )}
+          >
+            <span
+              className={cn('h-1.5 w-1.5 rounded-w-pill', status.dot)}
+              aria-hidden="true"
+            />
+            {status.label}
+          </span>
+        </div>
+      </div>
+    </article>
   );
 }
 

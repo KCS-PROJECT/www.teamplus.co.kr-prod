@@ -1438,6 +1438,127 @@ describe("ClassesService", () => {
       expect(row.outstandingAmount).toBe(0);
     });
 
+    // ── 선불 월 스코프(B안) — yearMonth 명시 시에만 월귀속 필터 ──
+    const juneCompletedPayment = {
+      id: "pay-pre",
+      amount: 50000,
+      paymentStatus: "completed",
+      paymentMethod: "card",
+      completedAt: new Date("2026-06-05T00:00:00Z"),
+      createdAt: new Date("2026-06-05T00:00:00Z"),
+      refundLogs: [],
+      user: null,
+    };
+
+    it("[선불 월스코프] 6월 완료 결제를 7월로 조회 → UNSETTLED·금액 0(타월 배제)", async () => {
+      wireBillingMocks({
+        billing: null,
+        classRecord: prepaidClassRecord,
+        enrollments: [prepaidEnrollment(juneCompletedPayment)],
+      });
+      const result = await service.getClassPayments(
+        mockClassId,
+        requester,
+        undefined,
+        "2026-07",
+      );
+      const row = result.students[0];
+      expect(row.billingTiming).toBe("PREPAID");
+      expect(row.billingStatus).toBe("UNSETTLED");
+      expect(row.paymentState).toBe("unpaid");
+      expect(row.billedAmount).toBeNull();
+      expect(row.paidAmount).toBe(0);
+      expect(row.outstandingAmount).toBe(0);
+      expect(row.amount).toBeNull();
+      expect(row.paidAt).toBeNull();
+      expect(result.totalPaidAmount).toBe(0); // 타월 수납이 이 달 총수납에 섞이지 않는다
+    });
+
+    it("[선불 월스코프] 같은 6월로 조회하면 PAID·총수납 유지", async () => {
+      wireBillingMocks({
+        billing: null,
+        classRecord: prepaidClassRecord,
+        enrollments: [prepaidEnrollment(juneCompletedPayment)],
+      });
+      const result = await service.getClassPayments(
+        mockClassId,
+        requester,
+        undefined,
+        "2026-06",
+      );
+      const row = result.students[0];
+      expect(row.billingStatus).toBe("PAID");
+      expect(row.paidAmount).toBe(50000);
+      expect(result.totalPaidAmount).toBe(50000);
+    });
+
+    it("[레거시 스냅샷] yearMonth 미전송(admin 소비처) → 월 무관 최신 상태 유지", async () => {
+      wireBillingMocks({
+        billing: null,
+        classRecord: prepaidClassRecord,
+        enrollments: [prepaidEnrollment(juneCompletedPayment)],
+      });
+      // 미전송 → 현재 KST 월 폴백이지만 선불 행은 월귀속 필터 없이 종전 스냅샷.
+      const result = await service.getClassPayments(
+        mockClassId,
+        requester,
+        undefined,
+        undefined,
+      );
+      const row = result.students[0];
+      expect(row.billingStatus).toBe("PAID");
+      expect(row.paidAmount).toBe(50000);
+      expect(result.totalPaidAmount).toBe(50000);
+    });
+
+    it("[선불 월스코프·복수구매] 6월·7월 각각 결제 → 각 월 조회에 해당 거래만", async () => {
+      const juneEnrollment = {
+        ...prepaidEnrollment(juneCompletedPayment),
+        id: "enr-jun",
+      };
+      const julyEnrollment = {
+        ...prepaidEnrollment({
+          ...juneCompletedPayment,
+          id: "pay-jul",
+          amount: 60000,
+          completedAt: new Date("2026-07-03T00:00:00Z"),
+          createdAt: new Date("2026-07-03T00:00:00Z"),
+        }),
+        id: "enr-jul",
+        paidAt: new Date("2026-07-03T00:00:00Z"),
+      };
+      // updatedAt desc 정렬 계약 — 최신(7월) 이 먼저 온다.
+      wireBillingMocks({
+        billing: null,
+        classRecord: prepaidClassRecord,
+        enrollments: [julyEnrollment, juneEnrollment],
+      });
+      const june = await service.getClassPayments(
+        mockClassId,
+        requester,
+        undefined,
+        "2026-06",
+      );
+      expect(june.students[0].billingStatus).toBe("PAID");
+      expect(june.students[0].paidAmount).toBe(50000);
+      expect(june.students[0].enrollmentId).toBe("enr-jun");
+
+      wireBillingMocks({
+        billing: null,
+        classRecord: prepaidClassRecord,
+        enrollments: [julyEnrollment, juneEnrollment],
+      });
+      const july = await service.getClassPayments(
+        mockClassId,
+        requester,
+        undefined,
+        "2026-07",
+      );
+      expect(july.students[0].billingStatus).toBe("PAID");
+      expect(july.students[0].paidAmount).toBe(60000);
+      expect(july.students[0].enrollmentId).toBe("enr-jul");
+    });
+
     // ── Codex Cycle 3 지적: 부분환불 총수금 누락·inactive 결제 수명주기 ──
     it("[총수금 정합] 부분환불 행의 순수납이 totalPaidAmount 에 반영 = sum(paidAmount)", async () => {
       wireBillingMocks({

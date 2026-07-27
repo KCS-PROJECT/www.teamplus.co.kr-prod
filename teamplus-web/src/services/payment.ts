@@ -393,6 +393,56 @@ export async function getTeamUnpaidMembers(params: {
   };
 }
 
+/** 거래 내역 행 — 결제 1건 = 1행(장부 축·완료월 귀속). */
+export interface TeamTransactionItem {
+  paymentId: string;
+  amount: number;
+  /** completed | refunded | partially_refunded | cancelled(실결제 후 취소). */
+  paymentStatus: string;
+  completedAt: string;
+  payerName: string | null;
+  childName: string | null;
+  /** 수업명 또는 대회명 — 연결 끊김 시 null. */
+  subjectName: string | null;
+  sourceType: 'CLASS' | 'TOURNAMENT' | null;
+  billingTiming: 'PREPAID' | 'POSTPAID' | null;
+}
+
+export interface TeamTransactionsResponse {
+  yearMonth: string;
+  items: TeamTransactionItem[];
+  /** 월 내 전체 건수 — items 는 최신순 상한(300)까지만. */
+  totalCount: number;
+}
+
+/**
+ * 팀 거래 내역 조회 (`GET /payments/team-settlement-center/transactions`)
+ *
+ * 선택 월에 완료(환불·취소 포함)된 관리 팀 결제를 건별·최신순으로 반환한다.
+ * ⚠️ 금융 화면 — 실패를 빈 목록으로 위장하지 않는다(throw → 에러+재시도 UI).
+ */
+export async function getTeamTransactions(params: {
+  yearMonth: string;
+  teamId?: string;
+}): Promise<TeamTransactionsResponse> {
+  const { yearMonth, teamId } = params;
+  const res = await api.get<TeamTransactionsResponse>(
+    '/payments/team-settlement-center/transactions',
+    { params: { yearMonth, teamId } },
+  );
+
+  if (!res.success || !res.data) {
+    throw new Error(res.error?.message ?? 'team transactions load failed');
+  }
+
+  const raw = res.data;
+  return {
+    yearMonth: raw.yearMonth ?? yearMonth,
+    items: Array.isArray(raw.items) ? raw.items : [],
+    totalCount: toNumber(raw.totalCount),
+  };
+}
+
 /**
  * 팀 인별 미수금 상세 조회 (`GET /payments/team-settlement-center/unpaid-members/:memberId`)
  *

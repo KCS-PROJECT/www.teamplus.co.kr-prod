@@ -31,7 +31,7 @@ import { WaitlistModule } from "@/waitlist/waitlist.module";
  * 2026-05-19 (N주 패키지 정합 재설계):
  * - MonthlyEnrollmentScheduler 폐기 (학부모별 결제일이 N주 패키지 단위로 모두 다름)
  * - ScheduleModule.forRoot() 중복 등록 제거 (app.module.ts 단일 등록 원칙)
- * - 만료 임박 알림은 CreditExpiryService.sendExpiryWarnings (매일 09:00 cron) 가 담당
+ * - 만료 임박 알림(구 CreditExpiryService.sendExpiryWarnings)은 2026-07-24 폐기 — 만료 처리 cron 만 유지
  */
 @Module({
   imports: [PrismaModule, NotificationsModule, WaitlistModule],
