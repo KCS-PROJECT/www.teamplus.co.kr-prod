@@ -74,7 +74,7 @@ function pushTokens(iceTheme: boolean) {
       teamRadioLabelIdle: 'text-it-ink-800 dark:text-white',
       teamRadioCheck: 'text-[22px] text-it-blue-500',
       selectedCount: 'text-card-meta font-bold font-num tabular-nums text-it-blue-500',
-      search: 'h-12 w-full rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill pl-11 pr-10 text-card-body text-it-ink-800 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none placeholder:text-it-ink-400 focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 dark:border-it-blue-900 dark:bg-it-blue-900/40 dark:text-white dark:placeholder:text-rink-300',
+      search: 'h-12 w-full rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill pl-11 pr-10 text-card-body text-it-ink-800 outline-none focus:outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none placeholder:text-it-ink-400 focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 dark:border-it-blue-900 dark:bg-it-blue-900/40 dark:text-white dark:placeholder:text-rink-300',
       searchIcon: 'pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[20px] text-it-ink-400 dark:text-rink-300',
       searchClear: 'absolute right-3 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-w-pill text-it-ink-400 transition-colors motion-reduce:transition-none hover:bg-it-fill hover:text-it-ink-800 dark:hover:bg-it-blue-900/40 dark:hover:text-white',
       selectAllBtn: 'inline-flex h-9 items-center gap-1.5 self-start rounded-w-md border-[1.5px] border-it-line-strong bg-it-surface px-3 text-card-meta font-bold text-it-ink-600 transition-colors motion-reduce:transition-none hover:bg-it-fill active:brightness-95 disabled:cursor-not-allowed disabled:opacity-40 dark:border-it-blue-900 dark:bg-it-blue-950 dark:text-rink-200 dark:hover:bg-it-blue-900/40',
@@ -90,8 +90,8 @@ function pushTokens(iceTheme: boolean) {
       recipientName: 'flex-1 truncate text-card-body font-bold text-it-ink-800 dark:text-white',
       label: 'text-card-meta font-bold text-it-ink-600 dark:text-rink-200',
       charCount: 'text-card-meta font-medium font-num tabular-nums text-it-ink-400 dark:text-rink-300',
-      input: 'h-12 w-full rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill px-4 text-card-body text-it-ink-800 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none placeholder:text-it-ink-400 focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 dark:border-it-blue-900 dark:bg-it-blue-900/40 dark:text-white dark:placeholder:text-rink-300',
-      textarea: 'w-full resize-none rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill px-4 py-3 text-card-body leading-relaxed text-it-ink-800 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none placeholder:text-it-ink-400 focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 dark:border-it-blue-900 dark:bg-it-blue-900/40 dark:text-white dark:placeholder:text-rink-300',
+      input: 'h-12 w-full rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill px-4 text-card-body text-it-ink-800 outline-none focus:outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none placeholder:text-it-ink-400 focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 dark:border-it-blue-900 dark:bg-it-blue-900/40 dark:text-white dark:placeholder:text-rink-300',
+      textarea: 'w-full resize-none rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill px-4 py-3 text-card-body leading-relaxed text-it-ink-800 outline-none focus:outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none placeholder:text-it-ink-400 focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 dark:border-it-blue-900 dark:bg-it-blue-900/40 dark:text-white dark:placeholder:text-rink-300',
       footer: 'sticky bottom-0 left-0 right-0 border-t border-it-line bg-it-canvas px-5 pt-3 dark:border-it-blue-900 dark:bg-puck',
     };
   }
@@ -112,7 +112,7 @@ function pushTokens(iceTheme: boolean) {
     teamRadioLabelIdle: 'text-wtext-1 dark:text-white',
     teamRadioCheck: 'text-[22px] text-ice-500',
     selectedCount: 'text-card-meta font-bold font-num tabular-nums text-ice-500',
-    search: 'h-12 w-full rounded-w-md border border-wline-2 bg-wsurface pl-11 pr-10 text-card-body text-wtext-1 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none placeholder:text-wtext-4 focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20 dark:border-rink-700 dark:bg-rink-800 dark:text-white dark:placeholder:text-wtext-3',
+    search: 'h-12 w-full rounded-w-md border border-wline-2 bg-wsurface pl-11 pr-10 text-card-body text-wtext-1 outline-none focus:outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none placeholder:text-wtext-4 focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20 dark:border-rink-700 dark:bg-rink-800 dark:text-white dark:placeholder:text-wtext-3',
     searchIcon: 'pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[20px] text-wtext-3 dark:text-wtext-4',
     searchClear: 'absolute right-3 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-w-pill text-wtext-3 transition-colors motion-reduce:transition-none hover:bg-wline-2 hover:text-wtext-1 dark:hover:bg-rink-700 dark:hover:text-white',
     selectAllBtn: 'inline-flex h-9 items-center gap-1.5 self-start rounded-w-md border border-wline-2 bg-wsurface px-3 text-card-meta font-bold text-wtext-2 transition-colors motion-reduce:transition-none hover:bg-wline-2/40 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rink-700 dark:bg-rink-800 dark:text-wtext-4 dark:hover:bg-rink-700',
@@ -128,8 +128,8 @@ function pushTokens(iceTheme: boolean) {
     recipientName: 'flex-1 truncate text-card-body font-bold text-wtext-1 dark:text-white',
     label: 'text-card-meta font-bold text-wtext-2 dark:text-wtext-4',
     charCount: 'text-card-meta font-medium font-num tabular-nums text-wtext-3 dark:text-wtext-4',
-    input: 'h-12 w-full rounded-w-md border border-wline-2 bg-wsurface px-4 text-card-body text-wtext-1 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none placeholder:text-wtext-4 focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20 dark:border-rink-700 dark:bg-rink-800 dark:text-white dark:placeholder:text-wtext-3',
-    textarea: 'w-full resize-none rounded-w-md border border-wline-2 bg-wsurface px-4 py-3 text-card-body leading-relaxed text-wtext-1 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none placeholder:text-wtext-4 focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20 dark:border-rink-700 dark:bg-rink-800 dark:text-white dark:placeholder:text-wtext-3',
+    input: 'h-12 w-full rounded-w-md border border-wline-2 bg-wsurface px-4 text-card-body text-wtext-1 outline-none focus:outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none placeholder:text-wtext-4 focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20 dark:border-rink-700 dark:bg-rink-800 dark:text-white dark:placeholder:text-wtext-3',
+    textarea: 'w-full resize-none rounded-w-md border border-wline-2 bg-wsurface px-4 py-3 text-card-body leading-relaxed text-wtext-1 outline-none focus:outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none placeholder:text-wtext-4 focus:border-ice-500 focus:ring-2 focus:ring-ice-500/20 dark:border-rink-700 dark:bg-rink-800 dark:text-white dark:placeholder:text-wtext-3',
     footer: 'sticky bottom-0 left-0 right-0 border-t border-wline-2 bg-wbg px-5 pt-3 dark:border-rink-800 dark:bg-puck',
   };
 }

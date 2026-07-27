@@ -22,6 +22,7 @@ import { api } from '@/services/api-client';
 import { getServerToday } from '@/services/server-time';
 import { MESSAGES } from '@/lib/messages';
 import { useNativeUI } from '@/hooks/useNativeUI';
+import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
 import { useModal } from '@/components/ui/Modal';
 import { calculateKoreanAge, cn } from '@/lib/utils';
 import { resolveImageSrc } from '@/lib/image-url';
@@ -106,6 +107,9 @@ export default function EditChildPage() {
   const [isTeamPickerOpen, setIsTeamPickerOpen] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // iOS WebView 키보드 개폐 점프 방지 — add 페이지와 동일한 SPEC_LOGIN_KEYBOARD 패턴.
+  const formRef = useRef<HTMLFormElement>(null);
+  useKeyboardAvoidance(formRef);
 
   // 2026-05-16: 생년월일 DatePickerModal 통합 (add 페이지 패턴과 일치)
   //   기존 native <input type="date"> 제거 → 가운데 모달 팝업으로 통일.
@@ -369,8 +373,9 @@ export default function EditChildPage() {
       <PageAppBar title="선수 정보 수정" forceNative />
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck">
+      <div className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck scroll-keyboard-safe pb-keyboard-safe">
         <form
+          ref={formRef}
           onSubmit={(e) => {
             e.preventDefault();
             handleSubmit();

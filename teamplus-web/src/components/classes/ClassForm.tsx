@@ -132,8 +132,8 @@ export function ClassForm({
       ? 'block text-card-meta font-bold mb-2 text-it-ink-600 dark:text-rink-200 tracking-[-0.01em]'
       : 'block text-card-meta font-bold mb-2 text-wtext-2 dark:text-rink-200 tracking-[-0.01em]',
     input: iceTheme
-      ? 'w-full bg-it-fill dark:bg-rink-700 border-[1.5px] border-it-line-strong dark:border-rink-600 rounded-w-md text-sm h-12 px-4 focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 transition-colors motion-reduce:transition-none text-it-ink-800 dark:text-white placeholder:text-it-ink-400'
-      : 'w-full bg-wbg dark:bg-rink-700 border border-wline-2 dark:border-rink-600 rounded-xl text-sm h-12 px-4 focus:border-ice-500 focus:ring-1 focus:ring-ice-500/20 transition-all text-wtext-1 dark:text-white placeholder:text-wtext-3',
+      ? 'w-full bg-it-fill dark:bg-rink-700 border-[1.5px] border-it-line-strong dark:border-rink-600 rounded-w-md text-sm h-12 px-4 focus:outline-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 transition-colors motion-reduce:transition-none text-it-ink-800 dark:text-white placeholder:text-it-ink-400'
+      : 'w-full bg-wbg dark:bg-rink-700 border border-wline-2 dark:border-rink-600 rounded-xl text-sm h-12 px-4 focus:outline-none focus:border-ice-500 focus:ring-1 focus:ring-ice-500/20 transition-all text-wtext-1 dark:text-white placeholder:text-wtext-3',
     required: iceTheme ? 'text-it-red-500 ml-1' : 'text-flame-500 ml-1',
   };
   const [formData, setFormData] = useState<ClassFormData>({
@@ -705,10 +705,10 @@ export function ClassForm({
                   최대 인원 <span className={iceTheme ? 'text-it-red-500' : 'text-red-500'}>*</span>
                 </label>
                 <div className={cn(
-                  'flex items-center gap-2 px-3 py-2.5 rounded-w-md',
+                  'flex items-center gap-2 px-3 py-2.5 rounded-w-md transition-colors',
                   iceTheme
-                    ? cn('bg-it-fill dark:bg-rink-900 border-[1.5px]', errors.capacity ? 'border-red-400' : 'border-it-line-strong dark:border-rink-700')
-                    : cn('bg-wbg dark:bg-rink-900 border', errors.capacity ? 'border-red-400' : 'border-wline dark:border-rink-700')
+                    ? cn('bg-it-fill dark:bg-rink-900 border-[1.5px]', errors.capacity ? 'border-red-400' : 'border-it-line-strong dark:border-rink-700 focus-within:border-it-blue-500')
+                    : cn('bg-wbg dark:bg-rink-900 border', errors.capacity ? 'border-red-400' : 'border-wline dark:border-rink-700 focus-within:border-ice-500')
                 )}>
                   <input
                     type="text"
@@ -753,8 +753,8 @@ export function ClassForm({
                 rows={5}
                 className={
                   iceTheme
-                    ? 'w-full bg-it-fill dark:bg-rink-700 border-[1.5px] border-it-line-strong dark:border-rink-600 rounded-w-md text-sm min-h-[120px] px-4 py-3 leading-relaxed focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 resize-none text-it-ink-800 dark:text-white placeholder:text-it-ink-400 transition-colors motion-reduce:transition-none'
-                    : 'w-full bg-wsurface dark:bg-rink-700 border border-wline-2 dark:border-rink-600 rounded-xl text-sm min-h-[120px] px-4 py-3 leading-relaxed focus:border-ice-500 focus:ring-1 focus:ring-ice-500/20 resize-none text-wtext-1 dark:text-white placeholder:text-wtext-3'
+                    ? 'w-full bg-it-fill dark:bg-rink-700 border-[1.5px] border-it-line-strong dark:border-rink-600 rounded-w-md text-sm min-h-[120px] px-4 py-3 leading-relaxed focus:outline-none focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 resize-none text-it-ink-800 dark:text-white placeholder:text-it-ink-400 transition-colors motion-reduce:transition-none'
+                    : 'w-full bg-wsurface dark:bg-rink-700 border border-wline-2 dark:border-rink-600 rounded-xl text-sm min-h-[120px] px-4 py-3 leading-relaxed focus:outline-none focus:border-ice-500 focus:ring-1 focus:ring-ice-500/20 resize-none text-wtext-1 dark:text-white placeholder:text-wtext-3'
                 }
                 aria-label="수업 설명"
               />
@@ -1339,10 +1339,10 @@ export function ClassForm({
                             <span className={iceTheme ? 'text-it-red-500' : 'text-red-500'}>*</span>
                           </label>
                           <div className={cn(
-                            'flex items-center gap-2 px-3 py-2.5 rounded-w-md',
+                            'flex items-center gap-2 px-3 py-2.5 rounded-w-md transition-colors',
                             iceTheme
-                              ? cn('bg-it-fill dark:bg-rink-900 border-[1.5px]', errors.singlePrice ? 'border-red-400' : 'border-it-line-strong dark:border-rink-700')
-                              : cn('bg-wbg dark:bg-rink-900 border', errors.singlePrice ? 'border-red-400' : 'border-wline dark:border-rink-700')
+                              ? cn('bg-it-fill dark:bg-rink-900 border-[1.5px]', errors.singlePrice ? 'border-red-400' : 'border-it-line-strong dark:border-rink-700 focus-within:border-it-blue-500')
+                              : cn('bg-wbg dark:bg-rink-900 border', errors.singlePrice ? 'border-red-400' : 'border-wline dark:border-rink-700 focus-within:border-ice-500')
                           )}>
                             <input
                               type="text"

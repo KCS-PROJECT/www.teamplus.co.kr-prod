@@ -508,7 +508,7 @@ export default function CreditsPage() {
       {/* 검색바 — extraActions 검색 아이콘 토글로 노출/숨김 */}
       {isSearchOpen && (
         <div className="px-4 pt-3 pb-1 bg-it-canvas dark:bg-puck border-b border-it-line-strong dark:border-rink-700">
-          <div className="flex items-center gap-2 bg-it-surface dark:bg-rink-800 border border-it-line dark:border-rink-700 rounded-w-md px-3 py-2.5">
+          <div className="flex items-center gap-2 bg-it-surface dark:bg-rink-800 border border-it-line dark:border-rink-700 focus-within:border-it-blue-500 transition-colors rounded-w-md px-3 py-2.5">
             <Icon name="search" className="text-card-emphasis text-it-ink-500 dark:text-rink-300" aria-hidden="true" />
             <input
               type="text"
@@ -516,7 +516,7 @@ export default function CreditsPage() {
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="자녀 이름 또는 상품명으로 검색"
               aria-label="결제 내역 검색"
-              className="flex-1 bg-transparent border-0 outline-none text-card-body text-it-ink-900 dark:text-white placeholder-it-ink-400 dark:placeholder-rink-300"
+              className="flex-1 bg-transparent border-0 outline-none focus-visible-disabled text-card-body text-it-ink-900 dark:text-white placeholder-it-ink-400 dark:placeholder-rink-300"
             />
             {searchQuery && (
               <button

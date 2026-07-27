@@ -112,7 +112,7 @@ export default function MessageListPage() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="block w-full h-12 pl-11 pr-10 rounded-w-md bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 text-[15px] font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-wtext-3 outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500"
+            className="block w-full h-12 pl-11 pr-10 rounded-w-md bg-it-fill dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700 text-[15px] font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-wtext-3 outline-none focus:outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500"
             placeholder={MESSAGES.chat.searchPlaceholder}
             aria-label="대화 검색"
           />

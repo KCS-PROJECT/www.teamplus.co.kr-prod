@@ -278,7 +278,7 @@ export default function CoachProfileEditPage() {
                       type="tel"
                       value={phone}
                       readOnly
-                      className="w-full h-12 px-4 pr-10 bg-it-canvas dark:bg-rink-800/50 border-[1.5px] border-it-line dark:border-rink-700 rounded-w-md text-[15px] font-medium text-it-ink-500 dark:text-rink-300 cursor-not-allowed tabular-nums"
+                      className="w-full h-12 px-4 pr-10 bg-it-canvas dark:bg-rink-800/50 border-[1.5px] border-it-line dark:border-rink-700 rounded-w-md text-[15px] font-medium text-it-ink-500 dark:text-rink-300 cursor-not-allowed tabular-nums focus:outline-none"
                       aria-readonly="true"
                     />
                     <Icon
@@ -305,7 +305,7 @@ export default function CoachProfileEditPage() {
                       type="email"
                       value={email}
                       readOnly
-                      className="w-full h-12 px-4 pr-10 bg-it-canvas dark:bg-rink-800/50 border-[1.5px] border-it-line dark:border-rink-700 rounded-w-md text-[15px] font-medium text-it-ink-500 dark:text-rink-300 cursor-not-allowed"
+                      className="w-full h-12 px-4 pr-10 bg-it-canvas dark:bg-rink-800/50 border-[1.5px] border-it-line dark:border-rink-700 rounded-w-md text-[15px] font-medium text-it-ink-500 dark:text-rink-300 cursor-not-allowed focus:outline-none"
                       aria-readonly="true"
                     />
                     <Icon
