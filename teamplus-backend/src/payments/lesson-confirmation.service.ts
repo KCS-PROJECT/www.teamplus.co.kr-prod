@@ -132,6 +132,7 @@ export class LessonConfirmationService {
             notificationType: "rsvp_auto_declined",
             title: "수업 참석 미응답 처리",
             message: `${className} 수업에 미응답하여 자동으로 불참 처리되었습니다.`,
+            linkUrl: `/classes/${schedule.classId}`,
           })
           .catch((err) =>
             this.logger.warn(
@@ -149,6 +150,7 @@ export class LessonConfirmationService {
           notificationType: "lesson_confirmed",
           title: "수업 참석 확정",
           message: `내일 ${className} 수업 참석이 확정되었습니다.`,
+          linkUrl: `/classes/${schedule.classId}`,
         })
         .catch((err) =>
           this.logger.warn(
@@ -211,6 +213,7 @@ export class LessonConfirmationService {
           notificationType: "waitlist_promoted",
           title: "대기 순번이 도래했습니다",
           message: "수업에 자리가 생겼습니다. 24시간 내에 확정해주세요.",
+          linkUrl: `/classes/${classId}`,
         })
         .catch((err) =>
           this.logger.warn(

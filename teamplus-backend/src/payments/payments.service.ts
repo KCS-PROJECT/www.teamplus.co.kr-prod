@@ -572,6 +572,7 @@ export class PaymentsService {
         notificationType: "payment_success",
         title: "대회 결제 알림",
         message: `"${name}" 대회 참가비 결제가 완료되었어요. (${won})`,
+        linkUrl: "/director-payments",
       });
     }
   }

@@ -598,7 +598,12 @@ function StudentRow({
   student: PaymentStudent;
   variant: 'roster' | 'payment';
 }) {
-  const status = ROW_STATUS_META[student.billingStatus] ?? ROW_STATUS_META.UNSETTLED;
+  // 선불 UNSETTLED 는 "미정산"(후불 용어)이 아니라 "미구매" — 월권은 그 달만 유효하므로
+  //   선택월에 거래 없는 선불 학생의 사실 상태는 재구매 전이다.
+  const status =
+    student.billingTiming === 'PREPAID' && student.billingStatus === 'UNSETTLED'
+      ? { ...ROW_STATUS_META.UNSETTLED, label: MESSAGES.settlement.rowStatusUnpurchased }
+      : (ROW_STATUS_META[student.billingStatus] ?? ROW_STATUS_META.UNSETTLED);
   const timing = TIMING_META[student.billingTiming] ?? TIMING_META.UNASSIGNED;
   const M = MESSAGES.academy.students;
   return (

@@ -1,14 +1,26 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { CreditExpiryService } from "../credit-expiry.service";
+import { CreditDomainService } from "../credit-domain.service";
 import { PrismaService } from "@/prisma/prisma.service";
-import { NotificationsService } from "@/notifications/notifications.service";
+import { SystemLogService } from "@/logger/system-log.service";
 
+/**
+ * CreditExpiryService — 만료 크레딧 소멸 배치 (PR-B 위임 계약)
+ *
+ * [재작성 2026-07-24] 구 spec 은 PR-B(CreditDomainService 위임) 이전 계약
+ * (totalCredits/usedCredits 필드·직접 creditTransaction 생성·NotificationsService 주입)
+ * 이라 DI 부터 실패하던 상태였다. 현행 계약으로 정비:
+ *  - 소멸 = creditDomain.expireRemaining 위임 (이월+소진+expired 트랜잭션 일괄)
+ *  - actor = SYSTEM 사용자 (lazy 조회)
+ *  - sendExpiryWarnings(만료 사전 알림)는 폐기되어 테스트 없음.
+ */
 describe("CreditExpiryService", () => {
   let service: CreditExpiryService;
   let prisma: jest.Mocked<PrismaService>;
-  let notifications: jest.Mocked<NotificationsService>;
 
   const mockPrismaTransaction = jest.fn();
+  const mockExpireRemaining = jest.fn();
+  const mockSystemLogCron = jest.fn();
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -17,28 +29,28 @@ describe("CreditExpiryService", () => {
         {
           provide: PrismaService,
           useValue: {
-            memberCredit: {
-              findMany: jest.fn(),
-              update: jest.fn(),
-            },
-            creditTransaction: {
-              create: jest.fn(),
+            memberCredit: { findMany: jest.fn() },
+            user: {
+              findFirst: jest
+                .fn()
+                .mockResolvedValue({ id: "system-user-1" }),
             },
             $transaction: mockPrismaTransaction,
           },
         },
         {
-          provide: NotificationsService,
-          useValue: {
-            createNotification: jest.fn().mockResolvedValue(undefined),
-          },
+          provide: CreditDomainService,
+          useValue: { expireRemaining: mockExpireRemaining },
+        },
+        {
+          provide: SystemLogService,
+          useValue: { cron: mockSystemLogCron },
         },
       ],
     }).compile();
 
     service = module.get<CreditExpiryService>(CreditExpiryService);
     prisma = module.get(PrismaService);
-    notifications = module.get(NotificationsService);
   });
 
   afterEach(() => {
@@ -60,8 +72,9 @@ describe("CreditExpiryService", () => {
         {
           id: "credit-1",
           userId: "user-1",
-          totalCredits: 10,
-          usedCredits: 10,
+          classId: "class-1",
+          totalSessions: 10,
+          usedSessions: 10,
           expiresAt: new Date("2020-01-01"),
           user: { id: "user-1" },
         },
@@ -73,24 +86,29 @@ describe("CreditExpiryService", () => {
       expect(mockPrismaTransaction).not.toHaveBeenCalled();
     });
 
-    it("잔여 크레딧이 있는 만료 건은 $transaction으로 처리한다", async () => {
-      const expiredCredit = {
-        id: "credit-1",
-        userId: "user-1",
-        totalCredits: 10,
-        usedCredits: 5,
-        expiresAt: new Date("2020-01-01"),
-        user: { id: "user-1" },
-      };
-
+    it("잔여 크레딧이 있는 만료 건은 $transaction 안에서 expireRemaining 에 위임한다", async () => {
       (prisma.memberCredit.findMany as jest.Mock).mockResolvedValue([
-        expiredCredit,
+        {
+          id: "credit-1",
+          userId: "user-1",
+          classId: "class-1",
+          totalSessions: 10,
+          usedSessions: 5,
+          expiresAt: new Date("2020-01-01"),
+          user: { id: "user-1" },
+        },
       ]);
 
       mockPrismaTransaction.mockImplementation(async (fn) => {
         const tx = {
-          memberCredit: { update: jest.fn().mockResolvedValue({}) },
-          creditTransaction: { create: jest.fn().mockResolvedValue({}) },
+          enrollment: {
+            findFirst: jest.fn().mockResolvedValue(null),
+            update: jest.fn(),
+          },
+          classRegistration: {
+            findUnique: jest.fn().mockResolvedValue(null),
+            update: jest.fn(),
+          },
         };
         await fn(tx);
         return {};
@@ -100,94 +118,14 @@ describe("CreditExpiryService", () => {
 
       expect(result.processedCount).toBe(1);
       expect(mockPrismaTransaction).toHaveBeenCalledTimes(1);
-    });
-
-    it("트랜잭션 내에서 CreditTransaction(type=expired)을 생성한다", async () => {
-      const expiredCredit = {
-        id: "credit-2",
-        userId: "user-2",
-        totalCredits: 20,
-        usedCredits: 8,
-        expiresAt: new Date("2020-06-01"),
-        user: { id: "user-2" },
-      };
-
-      (prisma.memberCredit.findMany as jest.Mock).mockResolvedValue([
-        expiredCredit,
-      ]);
-
-      let capturedTxCreate: jest.Mock | undefined;
-
-      mockPrismaTransaction.mockImplementation(async (fn) => {
-        const mockCreate = jest.fn().mockResolvedValue({});
-        const tx = {
-          memberCredit: { update: jest.fn().mockResolvedValue({}) },
-          creditTransaction: { create: mockCreate },
-        };
-        await fn(tx);
-        capturedTxCreate = mockCreate;
-        return {};
-      });
-
-      await service.processExpiredCredits();
-
-      expect(capturedTxCreate).toHaveBeenCalledWith(
+      // 소멸은 도메인 단일 진입점(expireRemaining)에 SYSTEM actor 로 위임한다.
+      expect(mockExpireRemaining).toHaveBeenCalledWith(
+        expect.anything(),
         expect.objectContaining({
-          data: expect.objectContaining({
-            type: "expired",
-            amount: 12, // totalCredits(20) - usedCredits(8)
-            balanceAfter: 0,
-          }),
+          memberCreditId: "credit-1",
+          actorUserId: "system-user-1",
         }),
       );
-    });
-  });
-
-  describe("sendExpiryWarnings", () => {
-    it("만료 예정 크레딧이 없으면 totalNotifications=0을 반환한다", async () => {
-      (prisma.memberCredit.findMany as jest.Mock).mockResolvedValue([]);
-
-      const result = await service.sendExpiryWarnings();
-
-      expect(result).toEqual({ totalNotifications: 0 });
-      expect(notifications.createNotification).not.toHaveBeenCalled();
-    });
-
-    it("잔여 크레딧이 있는 사용자에게만 알림을 발송한다", async () => {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-
-      (prisma.memberCredit.findMany as jest.Mock).mockResolvedValueOnce([
-        {
-          id: "c1",
-          userId: "u1",
-          totalCredits: 5,
-          usedCredits: 5,
-          expiresAt: tomorrow,
-          user: { id: "u1" },
-        },
-        {
-          id: "c2",
-          userId: "u2",
-          totalCredits: 10,
-          usedCredits: 3,
-          expiresAt: tomorrow,
-          user: { id: "u2" },
-        },
-      ]);
-
-      // 나머지 두 경우(3일, 7일)는 빈 배열 반환
-      (prisma.memberCredit.findMany as jest.Mock)
-        .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([]);
-
-      const result = await service.sendExpiryWarnings();
-
-      expect(notifications.createNotification).toHaveBeenCalledTimes(1);
-      expect(notifications.createNotification).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: "u2" }),
-      );
-      expect(result.totalNotifications).toBe(1);
     });
   });
 });

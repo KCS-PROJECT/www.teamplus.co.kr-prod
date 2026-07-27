@@ -993,6 +993,7 @@ export const MESSAGES = {
     rowStatusPaid: "완납",
     rowStatusBilled: "청구",
     rowStatusUnsettled: "미정산",
+    rowStatusUnpurchased: "미구매",
     rowStatusCancelled: "취소",
     rowStatusRefunded: "환불",
     // 정산 보기 링크 (attendance-manage → students 결제 탭)

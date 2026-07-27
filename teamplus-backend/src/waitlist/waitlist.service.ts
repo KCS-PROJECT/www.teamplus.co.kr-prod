@@ -400,6 +400,7 @@ export class WaitlistService {
         notificationType: "waitlist_promoted",
         title: "대기 순번이 도래했습니다",
         message: `${className} 수업에 자리가 생겼습니다. 24시간 내에 확정 신청을 해주세요.`,
+        linkUrl: `/classes/${classId}`,
       })
       .catch((err) =>
         this.logger.warn(

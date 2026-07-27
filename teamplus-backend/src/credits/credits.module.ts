@@ -5,7 +5,6 @@ import { CreditDomainService } from "./credit-domain.service";
 import { CreditExpiryService } from "./credit-expiry.service";
 import { CreditsController } from "./credits.controller";
 import { PrismaModule } from "@/prisma/prisma.module";
-import { NotificationsModule } from "@/notifications/notifications.module";
 
 /**
  * PR-B (v0.5): CreditDomainService 신설 + Global 처리.
@@ -16,7 +15,7 @@ import { NotificationsModule } from "@/notifications/notifications.module";
  */
 @Global()
 @Module({
-  imports: [PrismaModule, ScheduleModule.forRoot(), NotificationsModule],
+  imports: [PrismaModule, ScheduleModule.forRoot()],
   controllers: [CreditsController],
   providers: [CreditDomainService, CreditsService, CreditExpiryService],
   exports: [CreditDomainService, CreditsService, CreditExpiryService],
