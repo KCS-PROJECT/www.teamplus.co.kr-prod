@@ -448,6 +448,7 @@ export function PageAppBar({
             <button
               key={`${action.icon}-${idx}`}
               type="button"
+              tabIndex={-1}
               onClick={action.onClick}
               aria-label={action.label}
               className={cn(
@@ -478,6 +479,7 @@ export function PageAppBar({
             <button
               key={`extra-${action.icon}-${idx}`}
               type="button"
+              tabIndex={-1}
               onClick={action.onClick}
               aria-label={action.label}
               className={cn(
@@ -499,6 +501,7 @@ export function PageAppBar({
           {a4.showMenu && (
             <button
               type="button"
+              tabIndex={-1}
               onClick={a4.onMenu ?? (() => setIsMenuOpen(true))}
               className={cn(
                 'flex shrink-0 -mr-2 size-10 items-center justify-center rounded-full transition-colors motion-reduce:transition-none',
@@ -529,6 +532,7 @@ export function PageAppBar({
           {effectiveShowBack ? (
             <button
               type="button"
+              tabIndex={-1}
               onClick={handleBack}
               className={cn(
                 'flex shrink-0 -ml-2 items-center justify-center rounded-full transition-colors motion-reduce:transition-none',
@@ -672,6 +676,7 @@ export function PageAppBar({
         {a4.showMenu ? (
           <button
             type="button"
+            tabIndex={-1}
             onClick={a4.onMenu ?? (() => setIsMenuOpen(true))}
             className={cn(
               'flex shrink-0 -mr-2 items-center justify-center rounded-full transition-colors motion-reduce:transition-none',

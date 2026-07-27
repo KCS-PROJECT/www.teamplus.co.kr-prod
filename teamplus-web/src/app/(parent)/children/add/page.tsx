@@ -753,8 +753,10 @@ function RefInput({
     /* [ICETIMES] 입력 컨테이너 it-fill + 1.5px it-line-strong, 포커스/에러 it-blue/it-red */
     <div
       className={cn(
-        'h-[46px] px-3.5 rounded-w-md bg-it-fill dark:bg-rink-900 border-[1.5px] flex items-center gap-2.5',
-        error ? 'border-it-red-500' : 'border-it-line-strong dark:border-rink-700',
+        'h-[46px] px-3.5 rounded-w-md bg-it-fill dark:bg-rink-900 border-[1.5px] flex items-center gap-2.5 transition-colors',
+        error
+          ? 'border-it-red-500 focus-within:border-it-red-500'
+          : 'border-it-line-strong dark:border-rink-700 focus-within:border-it-blue-500',
         disabled && 'opacity-60',
       )}
     >
@@ -768,7 +770,7 @@ function RefInput({
         maxLength={maxLength}
         aria-label={ariaLabel}
         className={cn(
-          'flex-1 bg-transparent outline-none border-0 p-0 w-full min-w-0',
+          'flex-1 bg-transparent outline-none border-0 p-0 w-full min-w-0 focus-visible-disabled',
           'text-card-body tracking-[-0.01em]',
           'placeholder:text-it-ink-400 placeholder:font-medium dark:placeholder:text-wtext-4/80',
           hasValue
