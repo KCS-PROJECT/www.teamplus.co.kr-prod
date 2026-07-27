@@ -1802,6 +1802,96 @@ export class TeamsService {
       this.prisma.team.count({ where }),
     ]);
 
+    // [2026-07-24] 카드 인원 = 승인된 감독+코치+선수 + 학부모(승인 선수의 주보호자 편입).
+    //   팀 상세(status='approved', 학부모=선수 주보호자 이름 distinct)와 동일 기준으로 합계 계산.
+    const teamIds = clubs.map((c) => c.id);
+    const nameOf = (u?: {
+      firstName?: string | null;
+      lastName?: string | null;
+    }): string => `${u?.lastName ?? ""}${u?.firstName ?? ""}`.trim();
+    type Agg = {
+      directors: number;
+      coaches: number;
+      students: number;
+      studentIds: string[];
+      parentNames: Set<string>;
+    };
+    const agg = new Map<string, Agg>();
+    for (const id of teamIds)
+      agg.set(id, {
+        directors: 0,
+        coaches: 0,
+        students: 0,
+        studentIds: [],
+        parentNames: new Set<string>(),
+      });
+
+    if (teamIds.length > 0) {
+      const approvedMembers = await this.prisma.teamMember.findMany({
+        where: {
+          teamId: { in: teamIds },
+          approvalStatus: "approved",
+          leftAt: null,
+          user: { status: { not: "WITHDRAWN" } },
+        },
+        select: {
+          teamId: true,
+          userId: true,
+          roleInTeam: true,
+          user: {
+            select: { userType: true, firstName: true, lastName: true },
+          },
+        },
+      });
+      for (const m of approvedMembers) {
+        const a = agg.get(m.teamId);
+        if (!a) continue;
+        const role = (m.roleInTeam ?? "").toUpperCase();
+        const ut = m.user?.userType ?? "";
+        if (role === "HEAD_COACH" || ut === "DIRECTOR" || ut === "ACADEMY_DIRECTOR")
+          a.directors++;
+        else if (role === "COACH" || ut === "COACH") a.coaches++;
+        else if (role === "MANAGER" || role === "PARENT" || ut === "PARENT") {
+          const n = nameOf(m.user);
+          if (n) a.parentNames.add(n);
+        } else if (role === "PLAYER" || ut === "TEEN" || ut === "CHILD") {
+          a.students++;
+          a.studentIds.push(m.userId);
+        }
+      }
+
+      // 승인 선수(자녀)의 주보호자 → 팀별 학부모 이름 편입
+      const studentTeams = new Map<string, string[]>();
+      for (const [tid, a] of agg)
+        for (const sid of a.studentIds) {
+          const arr = studentTeams.get(sid) ?? [];
+          arr.push(tid);
+          studentTeams.set(sid, arr);
+        }
+      const allStudentIds = [...studentTeams.keys()];
+      if (allStudentIds.length > 0) {
+        const rel = await this.prisma.parentChild.findMany({
+          where: { childId: { in: allStudentIds }, isPrimary: true },
+          select: {
+            childId: true,
+            parent: { select: { firstName: true, lastName: true } },
+          },
+        });
+        for (const r of rel) {
+          const n = nameOf(r.parent);
+          if (!n) continue;
+          for (const tid of studentTeams.get(r.childId) ?? [])
+            agg.get(tid)?.parentNames.add(n);
+        }
+      }
+    }
+
+    const totalOf = (id: string): number => {
+      const a = agg.get(id);
+      if (!a) return 0;
+      return a.directors + a.coaches + a.students + a.parentNames.size;
+    };
+
     return {
       total,
       clubs: clubs.map((club) => ({
@@ -1824,11 +1914,18 @@ export class TeamsService {
           ? `${club.coach.lastName}${club.coach.firstName}`
           : "",
         createdAt: club.createdAt,
-        // 평탄화 카운트 (호환)
-        memberCount: club._count.members,
+        // 카드 인원 = 승인 감독+코치+선수 + 학부모(주보호자 편입) 합계
+        memberCount: totalOf(club.id),
+        memberSummary: {
+          directors: agg.get(club.id)?.directors ?? 0,
+          coaches: agg.get(club.id)?.coaches ?? 0,
+          students: agg.get(club.id)?.students ?? 0,
+          parents: agg.get(club.id)?.parentNames.size ?? 0,
+          total: totalOf(club.id),
+        },
         // FE alias-aware nested 카운트 (admin TeamRow 인터페이스 호환)
         _count: {
-          roster: club._count.members,
+          roster: totalOf(club.id),
           groups: club._count.groups,
         },
       })),

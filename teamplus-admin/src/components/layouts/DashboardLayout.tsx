@@ -206,7 +206,7 @@ const appNavItems = [
   { href: "/dashboard/app/notices", label: "공지사항관리", icon: Megaphone },
   { href: "/dashboard/app/faq", label: "FAQ관리", icon: HelpCircle },
   { href: "/dashboard/app/feedback", label: "피드백관리", icon: MessageSquare },
-  { href: "/dashboard/app/terms", label: "약관관리", icon: FileText },
+  { href: "/dashboard/app/terms", label: "약관및정책관리", icon: FileText },
   { href: "/dashboard/app/versions", label: "버전관리", icon: Tag },
   { href: "/dashboard/app/statistics", label: "앱통계", icon: BarChart3 },
   { href: "/dashboard/app/settings", label: "앱설정", icon: Settings },
