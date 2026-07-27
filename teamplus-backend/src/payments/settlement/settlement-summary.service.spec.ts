@@ -48,6 +48,7 @@ describe("SettlementSummaryService", () => {
     coachProfile: { findMany: jest.fn() },
     user: { findMany: jest.fn(), findUnique: jest.fn() },
     parentChild: { findMany: jest.fn() },
+    payment: { findMany: jest.fn(), count: jest.fn() },
   };
 
   const resourceAccessMock = {
@@ -115,6 +116,8 @@ describe("SettlementSummaryService", () => {
     prismaMock.user.findMany.mockResolvedValue([]);
     prismaMock.user.findUnique.mockResolvedValue(null);
     prismaMock.parentChild.findMany.mockResolvedValue([]);
+    prismaMock.payment.findMany.mockResolvedValue([]);
+    prismaMock.payment.count.mockResolvedValue(0);
     resourceAccessMock.resolveManageableTeamIds.mockResolvedValue([]);
     notificationsMock.notifyUsers.mockResolvedValue(undefined);
     redisMock.setIfNotExists.mockResolvedValue(true);
@@ -1713,6 +1716,90 @@ describe("SettlementSummaryService", () => {
         const r = await service.sendTeamUnpaidReminder(coach, "u5", YM);
         expect(r.sent).toBe(true);
         expect(r.recipientCount).toBe(1);
+      });
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  // 정산 센터 ③ — 팀 거래 내역(결제 1건=1행 장부)
+  // ══════════════════════════════════════════════════════════════
+  describe("팀 거래 내역 (getTeamTransactions)", () => {
+    it("[빈 결과] 관리 팀 0 → 빈 목록(쿼리 미실행)", async () => {
+      resourceAccessMock.resolveManageableTeamIds.mockResolvedValue([]);
+      const res = await service.getTeamTransactions(coach, YM);
+      expect(res).toEqual({ yearMonth: YM, items: [], totalCount: 0 });
+      expect(prismaMock.payment.findMany).not.toHaveBeenCalled();
+    });
+
+    it("월 경계(KST)·상태 필터·팀 연결 스코프로 조회하고 파생 필드를 매핑한다", async () => {
+      resourceAccessMock.resolveManageableTeamIds.mockResolvedValue(["team-1"]);
+      prismaMock.payment.count.mockResolvedValue(2);
+      prismaMock.payment.findMany.mockResolvedValue([
+        {
+          id: "pay-1",
+          amount: 50000,
+          paymentStatus: "completed",
+          completedAt: new Date("2026-07-24T05:32:00Z"),
+          user: { firstName: "부모", lastName: "홍" },
+          product: { billingTiming: "PREPAID" },
+          enrollments: [
+            {
+              class: { className: "3월 정규수업" },
+              child: { firstName: "길동", lastName: "홍" },
+            },
+          ],
+          tournamentRegistrations: [],
+          monthlyBillingLines: [],
+        },
+        {
+          id: "pay-2",
+          amount: 40000,
+          paymentStatus: "refunded",
+          completedAt: new Date("2026-07-20T02:00:00Z"),
+          user: { firstName: "부모", lastName: "김" },
+          product: null,
+          enrollments: [],
+          tournamentRegistrations: [
+            { tournament: { name: "여름컵", billingMode: "POSTPAID" } },
+          ],
+          monthlyBillingLines: [],
+        },
+      ]);
+
+      const res = await service.getTeamTransactions(coach, YM);
+
+      // where 계약 — KST 월 경계 + 상태 필터 + 팀 연결 3축 OR.
+      const arg = prismaMock.payment.findMany.mock.calls[0][0];
+      expect(arg.where.completedAt.gte.toISOString()).toBe(
+        "2026-06-30T15:00:00.000Z", // 7/1 00:00 KST
+      );
+      expect(arg.where.completedAt.lt.toISOString()).toBe(
+        "2026-07-31T15:00:00.000Z", // 8/1 00:00 KST
+      );
+      expect(arg.where.paymentStatus.in).toEqual([
+        "completed",
+        "refunded",
+        "partially_refunded",
+        "cancelled",
+      ]);
+      expect(arg.where.OR).toHaveLength(3);
+      expect(arg.orderBy).toEqual({ completedAt: "desc" });
+
+      expect(res.totalCount).toBe(2);
+      expect(res.items[0]).toMatchObject({
+        paymentId: "pay-1",
+        payerName: "홍부모",
+        childName: "홍길동",
+        subjectName: "3월 정규수업",
+        sourceType: "CLASS",
+        billingTiming: "PREPAID",
+      });
+      expect(res.items[1]).toMatchObject({
+        paymentId: "pay-2",
+        paymentStatus: "refunded",
+        subjectName: "여름컵",
+        sourceType: "TOURNAMENT",
+        billingTiming: "POSTPAID",
       });
     });
   });

@@ -533,14 +533,16 @@ export class PaymentsService {
 
     for (const cls of classMap.values()) {
       if (cls.teamId) {
-        // 정규 수업 → 팀 감독/코치.
+        // 정규 수업 → 팀 감독/코치. 착지 = 결제 관리(수납 현황) — director/coach 모두 접근 가능.
         await this.notificationsService.notifyTeamManagers(cls.teamId, {
           notificationType: "payment_success",
           title: "수업 결제 알림",
           message: `"${cls.className}" 수업 결제가 완료되었어요. (${won})`,
+          linkUrl: "/director-payments",
         });
       } else if (cls.academyId) {
         // 오픈클래스 → 해당 아카데미 감독(ACADEMY_DIRECTOR)에게만 발송 (정규 감독/코치 제외).
+        //  착지 = 아카데미 상세 정산 탭 — ACADEMY_DIRECTOR 는 /director-payments 미들웨어 차단 대상.
         const academy = await this.prisma.academy.findUnique({
           where: { id: cls.academyId },
           select: { directorId: true },
@@ -550,6 +552,7 @@ export class PaymentsService {
             notificationType: "payment_success",
             title: "오픈클래스 결제 알림",
             message: `"${cls.className}" 오픈클래스 결제가 완료되었어요. (${won})`,
+            linkUrl: `/academy/${cls.academyId}?tab=settlement`,
           });
         }
       }

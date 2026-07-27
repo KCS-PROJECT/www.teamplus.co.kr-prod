@@ -16,6 +16,7 @@ import {
   dbDateToKstYearMonth,
   SettlementBillingStatus,
 } from "./attribution.util";
+import { deriveSource } from "../payment-source.util";
 
 /** 소계 결제 상태 — 취소·환불 제외한 유효 청구 기준. */
 export type SubtotalPaymentStatus =
@@ -233,6 +234,30 @@ export interface UnpaidReminderResult {
   sent: boolean;
   cooldown: boolean;
   recipientCount: number;
+}
+
+/** 거래 내역 행 — 결제 1건 = 1행(장부 축·완료월 귀속). */
+export interface TeamTransactionItem {
+  paymentId: string;
+  amount: number;
+  /** completed | refunded | partially_refunded | cancelled(실결제 후 취소). */
+  paymentStatus: string;
+  completedAt: Date;
+  /** 결제자(보호자) 표시명 — 이름 비어 있으면 null. */
+  payerName: string | null;
+  /** 청구 대상 자녀 표시명 — 연결 없으면 null. */
+  childName: string | null;
+  /** 수업명 또는 대회명 — 연결 끊김 시 null. */
+  subjectName: string | null;
+  sourceType: "CLASS" | "TOURNAMENT" | null;
+  billingTiming: "PREPAID" | "POSTPAID" | null;
+}
+
+export interface TeamTransactionsResponse {
+  yearMonth: string;
+  items: TeamTransactionItem[];
+  /** 월 내 전체 건수 — items 는 최신순 상한(300)까지만 담는다. */
+  totalCount: number;
 }
 
 interface AggregatedAmounts {
@@ -1546,5 +1571,119 @@ export class SettlementSummaryService {
     });
 
     return { sent: true, cooldown: false, recipientCount: parentIds.length };
+  }
+
+  /**
+   * [정산 센터 ③] 팀 거래 내역 — 결제 1건 = 1행 장부(선택 월 완료 기준·최신순).
+   *  scope = resolveTeamScope(관리 팀·IDOR 규약 동일). 장부는 "일어난 결제"만 —
+   *  pending 은 제외하고, 고아 취소(completedAt null)는 결제내역(getUserPayments)과
+   *  동일 규칙으로 completedAt 경계가 자연 배제한다. 팀 귀속은 결제↔수업/대회 연결로
+   *  판정한다(레거시 getClubPayments 의 TeamMember 축은 결제자=보호자 모델과 불일치).
+   */
+  async getTeamTransactions(
+    requester: JwtUserPayload,
+    yearMonthRaw?: string,
+    teamId?: string,
+  ): Promise<TeamTransactionsResponse> {
+    const yearMonth = resolveSettlementYearMonth(yearMonthRaw);
+    const scopeTeamIds = await this.resolveTeamScope(requester, teamId);
+    if (scopeTeamIds.length === 0) {
+      return { yearMonth, items: [], totalCount: 0 };
+    }
+
+    // 선택 월의 KST 경계 [1일 00:00, 다음달 1일 00:00) → UTC instant 범위.
+    const [y, m] = yearMonth.split("-").map(Number);
+    const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+    const monthStart = new Date(Date.UTC(y, m - 1, 1) - KST_OFFSET_MS);
+    const monthEnd = new Date(Date.UTC(y, m, 1) - KST_OFFSET_MS);
+
+    const where: import("@prisma/client").Prisma.PaymentWhereInput = {
+      completedAt: { gte: monthStart, lt: monthEnd },
+      paymentStatus: {
+        in: ["completed", "refunded", "partially_refunded", "cancelled"],
+      },
+      OR: [
+        { enrollments: { some: { class: { teamId: { in: scopeTeamIds } } } } },
+        {
+          monthlyBillingLines: {
+            some: { billing: { class: { teamId: { in: scopeTeamIds } } } },
+          },
+        },
+        {
+          tournamentRegistrations: {
+            some: { tournament: { teamId: { in: scopeTeamIds } } },
+          },
+        },
+      ],
+    };
+
+    const TRANSACTIONS_MAX = 300;
+    const [totalCount, payments] = await Promise.all([
+      this.prisma.payment.count({ where }),
+      this.prisma.payment.findMany({
+        where,
+        select: {
+          id: true,
+          amount: true,
+          paymentStatus: true,
+          completedAt: true,
+          user: { select: { firstName: true, lastName: true } },
+          product: { select: { billingTiming: true } },
+          enrollments: {
+            select: {
+              class: { select: { className: true } },
+              child: { select: { firstName: true, lastName: true } },
+            },
+            take: 1,
+          },
+          tournamentRegistrations: {
+            select: {
+              tournament: { select: { name: true, billingMode: true } },
+            },
+            take: 1,
+          },
+          monthlyBillingLines: {
+            select: {
+              billing: { select: { class: { select: { className: true } } } },
+              user: { select: { firstName: true, lastName: true } },
+            },
+            take: 1,
+          },
+        },
+        orderBy: { completedAt: "desc" },
+        take: TRANSACTIONS_MAX,
+      }),
+    ]);
+
+    const toName = (
+      u?: { firstName: string | null; lastName: string | null } | null,
+    ) => (u ? `${u.lastName ?? ""}${u.firstName ?? ""}`.trim() || null : null);
+
+    const items: TeamTransactionItem[] = payments.map((p) => {
+      const line = p.monthlyBillingLines?.[0] ?? null;
+      const tReg = p.tournamentRegistrations?.[0] ?? null;
+      const src = deriveSource({
+        productBillingTiming: p.product?.billingTiming,
+        hasMonthlyBillingLine: line != null,
+        tournamentBillingMode: tReg?.tournament?.billingMode ?? null,
+      });
+      return {
+        paymentId: p.id,
+        amount: p.amount,
+        paymentStatus: p.paymentStatus,
+        completedAt: p.completedAt as Date,
+        payerName: toName(p.user),
+        childName: toName(line?.user) ?? toName(p.enrollments?.[0]?.child),
+        subjectName:
+          tReg?.tournament?.name ??
+          p.enrollments?.[0]?.class?.className ??
+          line?.billing?.class?.className ??
+          null,
+        sourceType: src.sourceType,
+        billingTiming: src.billingTiming,
+      };
+    });
+
+    return { yearMonth, items, totalCount };
   }
 }

@@ -694,6 +694,42 @@ export class PaymentsController {
   }
 
   /**
+   * [정산 센터 ③] 팀 거래 내역 — 결제 1건=1행 장부(선택 월 완료 기준·최신순).
+   *   결제 관리 "거래 내역" 탭용. static 경로라 `:paymentId` 위에 위치.
+   */
+  @Get("team-settlement-center/transactions")
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @ApiBearerAuth()
+  @Roles("COACH", "DIRECTOR", "ADMIN")
+  @ApiOperation({
+    summary: "팀 거래 내역",
+    description:
+      "선택 월에 완료(환불·취소 포함)된 관리 팀의 결제를 건별·최신순으로 반환합니다.",
+  })
+  @ApiQuery({
+    name: "yearMonth",
+    required: false,
+    description: "완료월 기준 (YYYY-MM). 미전송 시 현재 KST 월.",
+  })
+  @ApiQuery({
+    name: "teamId",
+    required: false,
+    description: "특정 팀으로 필터 (관리 팀만 유효, 비관리 팀은 빈 결과).",
+  })
+  @ApiResponse({ status: 200, description: "팀 거래 내역 조회 성공" })
+  async getTeamTransactions(
+    @Request() req: AuthenticatedRequest,
+    @Query("yearMonth") yearMonth?: string,
+    @Query("teamId") teamId?: string,
+  ) {
+    return this.settlementSummaryService.getTeamTransactions(
+      req.user,
+      yearMonth,
+      teamId,
+    );
+  }
+
+  /**
    * [정산 센터 ②] 팀 인별 미수금 상세 — 보호자 연락처 + source 단위 미납 라인.
    *   scope 재계산 후 미납 0건이면 404(IDOR 차단).
    */
