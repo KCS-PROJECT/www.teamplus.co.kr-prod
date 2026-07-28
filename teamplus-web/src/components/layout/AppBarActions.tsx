@@ -44,6 +44,33 @@
 
 import { Icon } from '@/components/ui/Icon';
 import { cn } from '@/lib/utils';
+import { isKeyboardTapGuardActive } from '@/services/native-bridge-ui';
+
+// ──────────────────────────────────────────────────────────
+// 키보드 전환 탭 가드 (2026-07-27)
+// ──────────────────────────────────────────────────────────
+
+/**
+ * 앱바 액션 클릭을 키보드 전환 탭 가드로 감싼다.
+ *
+ * iOS 실기기에서 키보드 개폐 점프 중 폼 영역을 노린 탭이 sticky 앱바에
+ * 착지해 전체메뉴/뒤로가기가 트리거되는 오탭 차단. 가드 활성(키보드 표시 중
+ * 또는 방금 닫힘) 동안의 탭은 활성 input blur(키보드 닫기)로만 소비한다.
+ * 키보드가 없는 데스크톱/웹 환경에서는 가드가 항상 비활성 — 동작 변화 없음.
+ */
+export function guardedAppBarClick(
+  onClick?: () => void,
+): (() => void) | undefined {
+  if (!onClick) return undefined;
+  return () => {
+    if (isKeyboardTapGuardActive()) {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement) active.blur();
+      return;
+    }
+    onClick();
+  };
+}
 
 // ──────────────────────────────────────────────────────────
 // 단일 액션 버튼 (모든 AppBar 아이콘 버튼의 기본 단위)
@@ -100,7 +127,7 @@ export function AppBarActionButton({
     <button
       type="button"
       tabIndex={-1}
-      onClick={onClick}
+      onClick={guardedAppBarClick(onClick)}
       aria-label={`${label}${hasCount ? ` (읽지 않음 ${countText}개)` : ''}${isActive ? ' (현재 페이지)' : ''}`}
       aria-current={isActive ? 'page' : undefined}
       className={cn(

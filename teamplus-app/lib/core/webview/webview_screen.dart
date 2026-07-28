@@ -1210,6 +1210,21 @@ class WebViewScreenState extends ConsumerState<WebViewScreen>
                           // Done 액세서리 바 제거해도 입력 UX 영향 없음.
                           disableInputAccessoryView: true,
 
+                          // 🎯 iOS 키보드 개폐 중 히트테스트 desync 방지 (2026-07-27).
+                          //
+                          // 실기기(iPhone) 한정으로 키보드 개폐 점프 중 탭 좌표가 실제
+                          // 히트 요소와 어긋나(자녀 등록 폼의 달력 아이콘 탭 → 상단 앱바
+                          // 메뉴 오탭) 전체메뉴가 열리던 문제의 네이티브 보강.
+                          // Scaffold `resizeToAvoidBottomInset: true` 가 WebView 를
+                          // 키보드만큼 축소/복원할 때 WKWebView 기본 동작(.automatic)이
+                          // 스크롤뷰 contentInset 을 추가 보정하면서 렌더 위치와 터치
+                          // 판정이 어긋날 수 있다. safe-area 는 이미 Flutter Padding +
+                          // CSS 변수(SCREEN_METRICS)로 수동 관리하므로 자동 보정을 끈다.
+                          // 웹 측 키보드 전환 탭 가드(guardedAppBarClick)와 이중 방어.
+                          contentInsetAdjustmentBehavior:
+                              ScrollViewContentInsetAdjustmentBehavior.NEVER,
+                          automaticallyAdjustsScrollIndicatorInsets: false,
+
                           // iOS Safari 스타일 좌/우 스와이프 히스토리 제스처 비활성화.
                           //
                           // 이유:

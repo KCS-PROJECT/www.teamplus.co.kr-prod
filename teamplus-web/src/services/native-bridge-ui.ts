@@ -69,6 +69,34 @@ function wait(ms: number): Promise<void> {
 // 키보드로 오인하지 않기 위한 노이즈 가드 (실제 소프트 키보드는 200px 이상).
 const KEYBOARD_OPEN_MIN_PX = 100;
 
+// ─── 키보드 전환 탭 가드 (2026-07-27) ─────────────────────────────────
+//   iOS 실기기에서 키보드 개폐 점프(Flutter resizeToAvoidBottomInset 축소/복원 +
+//   WKWebView 자체 스크롤 보정) 중 탭이 sticky 앱바(메뉴/뒤로가기)에 착지해
+//   전체메뉴가 열리거나 화면이 이탈하는 오탭을 차단하기 위한 판정 헬퍼.
+//   `data-keyboard-open` 속성이 켜져 있거나 "방금 꺼진" 전환 구간이면 가드 활성.
+let _lastKeyboardCloseAt = 0;
+
+function setKeyboardOpenAttribute(root: HTMLElement, open: boolean): void {
+  if (!open && root.hasAttribute("data-keyboard-open")) {
+    _lastKeyboardCloseAt = Date.now();
+  }
+  root.toggleAttribute("data-keyboard-open", open);
+}
+
+/**
+ * 키보드 전환 탭 가드 활성 여부.
+ *
+ * 키보드가 표시 중(`data-keyboard-open`)이거나 닫힌 지 `withinMs` 이내(레이아웃
+ * 복원 애니메이션 구간)면 true. 앱바 액션 버튼은 이 동안의 탭을 "키보드 닫기
+ * 전용"으로 소비해 오탭으로 메뉴/뒤로가기가 트리거되지 않게 한다 (iOS 표준 UX).
+ * 데스크톱/키보드 미표시 환경에서는 속성이 세팅되지 않아 항상 false — no-op.
+ */
+export function isKeyboardTapGuardActive(withinMs = 450): boolean {
+  if (typeof document === "undefined") return false;
+  if (document.documentElement.hasAttribute("data-keyboard-open")) return true;
+  return Date.now() - _lastKeyboardCloseAt < withinMs;
+}
+
 /**
  * UI 제어 기능 (상태바, AppBar, BottomNav)
  *
@@ -601,8 +629,8 @@ export const ui = {
     // 키보드 표시 상태 속성 — CSS 가 "실제 키보드 노출" 을 selector 로 분기
     // (예: 로그인 푸터 숨김). 포커스 기반 프록시(focus-within)는 Android 에서
     // 키보드만 내려도 포커스가 남아 오판하므로 이 속성이 판정 SoT.
-    root.toggleAttribute(
-      "data-keyboard-open",
+    setKeyboardOpenAttribute(
+      root,
       info.viewInsets.bottom > KEYBOARD_OPEN_MIN_PX,
     );
     root.dataset.nativePlatform = info.platform;
@@ -817,10 +845,7 @@ function applyWebViewportToCss(): void {
   const keyboardBottom = Math.max(0, window.innerHeight - h);
   root.style.setProperty("--keyboard-inset-bottom", `${keyboardBottom}px`);
   // 키보드 표시 상태 속성 — native 경로(applyDeviceInsetsToCss)와 동일 시맨틱
-  root.toggleAttribute(
-    "data-keyboard-open",
-    keyboardBottom > KEYBOARD_OPEN_MIN_PX,
-  );
+  setKeyboardOpenAttribute(root, keyboardBottom > KEYBOARD_OPEN_MIN_PX);
   root.dataset.orientation = orientation;
   root.dataset.screenBp = computeScreenBreakpoint(w);
 }
