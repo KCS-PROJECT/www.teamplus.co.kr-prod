@@ -23,7 +23,7 @@ export function postpaidPayLink(b: PendingBilling): string {
 }
 
 /**
- * 미납 결제 탭 패널 (/payment/history?tab=pending)
+ * 결제 대기 탭 패널 (/payment/history?tab=pending)
  *
  *  미납 후불 청구(수업 정산 + 후불 대회 참가비)를 합계 히어로 + 행 리스트로 표시하고,
  *  행 탭 시 후불 결제 페이지로 이동한다. 데이터 fetch 는 페이지가 담당(탭 배지 건수 공유).
@@ -92,8 +92,8 @@ export function PendingPaymentsPanel({
 
   return (
     <>
-      {/* 합계 히어로 — 결제 내역 탭 SummaryCard 와 동일 navy 밴드 톤 */}
-      <section className="mt-2 bg-it-blue-800 dark:bg-it-blue-950 px-5 pt-[22px] pb-6">
+      {/* 합계 히어로 — 결제 내역 탭 SummaryCard 와 동일 navy 밴드 톤. 탭 바로 아래 밀착(mt 금지 — 탭 대칭) */}
+      <section className="bg-it-blue-800 dark:bg-it-blue-950 px-5 pt-[22px] pb-6">
         <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-white/60">
           <Icon name="payments" className="text-[14px]" aria-hidden="true" />
           {MESSAGES.payment2.pendingSummaryLabel}

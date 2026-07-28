@@ -467,7 +467,7 @@ function PaymentHistoryContent() {
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('all');
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
 
-  // 탭 — 결제 내역(기본) / 미납 결제. 미납 안내 알림 딥링크(?tab=pending) 초기 탭 지원.
+  // 탭 — 결제 내역(기본) / 결제 대기. 미납 안내 알림 딥링크(?tab=pending) 초기 탭 지원.
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<PaymentTab>(
     searchParams?.get('tab') === 'pending' ? 'pending' : 'history',
@@ -619,15 +619,9 @@ function PaymentHistoryContent() {
   const showSummary = !isPaymentLoading && !paymentError && paymentSummary.count > 0;
 
   const pendingCount = pendingBillings?.length ?? 0;
-  const tabs: { key: PaymentTab; label: string }[] = [
+  const tabs: { key: PaymentTab; label: string; badge?: number }[] = [
     { key: 'history', label: MESSAGES.payment2.tabHistory },
-    {
-      key: 'pending',
-      label:
-        pendingCount > 0
-          ? `${MESSAGES.payment2.tabPending} ${pendingCount}`
-          : MESSAGES.payment2.tabPending,
-    },
+    { key: 'pending', label: MESSAGES.payment2.tabPending, badge: pendingCount },
   ];
 
   return (
@@ -642,7 +636,7 @@ function PaymentHistoryContent() {
       {/* 스크롤 영역 — MobileContainer 직계 자식(overflow-y-auto)만 momentum 스크롤 대상.
           PageAppBar 는 영역 밖(고정 헤더)에 유지하고, 본문 전체를 이 컨테이너가 스크롤. */}
       <div className="flex-1 min-h-0 overflow-y-auto bg-it-canvas dark:bg-puck [&>*]:shrink-0">
-        {/* 탭 — 결제 내역 / 미납 결제 (정산 센터와 동일 패턴). 미납 탭은 건수 배지 표기 */}
+        {/* 탭 — 결제 내역 / 결제 대기 (정산 센터와 동일 패턴). 결제 대기 탭은 건수 배지 표기 */}
         <div
           role="tablist"
           aria-label={MESSAGES.payment2.tabsAria}
@@ -666,7 +660,14 @@ function PaymentHistoryContent() {
                     : 'font-semibold text-it-ink-500 hover:text-it-ink-800 dark:text-wtext-4 dark:hover:text-white',
                 )}
               >
-                {tab.label}
+                <span className="inline-flex items-center justify-center gap-1.5">
+                  {tab.label}
+                  {(tab.badge ?? 0) > 0 && (
+                    <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-w-pill bg-it-red-500 px-1 text-[11px] font-bold leading-none tabular-nums text-white">
+                      {tab.badge}
+                    </span>
+                  )}
+                </span>
                 <span
                   aria-hidden="true"
                   className={cn(
@@ -686,7 +687,11 @@ function PaymentHistoryContent() {
             aria-labelledby="payment-history-tab-history"
             className="[&>*]:shrink-0"
           >
-            {/* Filter Bar — 조회 건수 + 기간 선택 칩 (항상 노출, 빈 결과에서도 기간 변경 가능) */}
+            {/* Summary Card — 기간 내 총 결제 금액 요약 (navy 히어로, 탭 바로 아래 최상단) */}
+            {showSummary && <SummaryCard payment={paymentSummary} />}
+
+            {/* Filter Bar — 조회 건수 + 기간 선택 칩. 히어로 하단·리스트 헤더 자리.
+                항상 노출(빈 결과에서도 기간 변경 가능) — 히어로 미노출 시 탭 바로 아래로 붙는다. */}
             <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-2">
               <span className="shrink-0 whitespace-nowrap text-card-meta text-it-ink-500 dark:text-rink-300 tabular-nums">
                 {isPaymentLoading || paymentError ? PERIOD_LABEL[periodFilter] : `${paymentSummary.count}건 조회`}
@@ -702,13 +707,6 @@ function PaymentHistoryContent() {
                 <Icon name="expand_more" className="text-base" aria-hidden="true" />
               </button>
             </div>
-
-            {/* Summary Card — 기간 내 총 결제 금액 요약 (navy 히어로) */}
-            {showSummary && (
-              <div className="mt-2">
-                <SummaryCard payment={paymentSummary} />
-              </div>
-            )}
 
             {/* History List — 하단 여백은 MobileContainer hasBottomNav(60px+safe-area 예약)가 담당 */}
             <div>

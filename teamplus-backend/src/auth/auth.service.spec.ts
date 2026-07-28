@@ -35,11 +35,15 @@ describe("AuthService", () => {
       create: jest.fn(),
       update: jest.fn(),
     },
-    team: { count: jest.fn() },
+    team: { count: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     class: { count: jest.fn() },
     tournament: { count: jest.fn() },
-    academy: { count: jest.fn() },
+    academy: { count: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     enrollment: { count: jest.fn() },
+    monthlyPostpaidBillingLine: { count: jest.fn() },
+    tournamentRegistration: { count: jest.fn() },
+    refundRequest: { count: jest.fn() },
+    payment: { findMany: jest.fn().mockResolvedValue([]) },
   };
 
   const mockJwtService = {

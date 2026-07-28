@@ -709,16 +709,17 @@ export const MESSAGES = {
       `결제 요청 ${count}건 · 총 ${total.toLocaleString()}원`,
     pendingSheetTitle: "결제 요청",
     pendingPayCta: "결제하기",
-    // 결제내역 미납 탭 (/payment/history?tab=pending) — 미납 후불 목록 + 합계 히어로.
+    // 결제내역 결제 대기 탭 (/payment/history?tab=pending) — 미결제 후불 목록 + 합계 히어로.
+    // "미납" 대신 "결제 대기" — 청구 직후 건과 밀린 건이 섞여 있고 기한 개념이 없어 중립 상태 서술 사용.
     tabsAria: "결제 구분",
     tabHistory: "결제 내역",
-    tabPending: "미납 결제",
-    pendingSummaryLabel: "미납 결제 합계",
+    tabPending: "결제 대기",
+    pendingSummaryLabel: "결제 대기 합계",
     pendingSummaryCount: (n: number) => `${n}건`,
     pendingListTitle: "결제 대기 내역",
-    pendingEmpty: "미납된 결제가 없습니다.",
+    pendingEmpty: "결제 대기 중인 내역이 없습니다.",
     pendingEmptyDesc: "모든 결제가 완료되었습니다.",
-    pendingLoadFailed: "미납 결제 정보를 불러오지 못했습니다.",
+    pendingLoadFailed: "결제 대기 내역을 불러오지 못했습니다.",
     pendingRetry: "다시 시도하기",
     completed: "결제가 완료되었습니다!",
     // [수정 2026-05-18] 감성 톤 — 결제 완료 화면 분위기. "결제권" 어색함 해소.
@@ -2069,7 +2070,15 @@ export const MESSAGES = {
     creditExpire:
       "보유 중인 잔여 결제권은 탈퇴 확정 시 전액 소멸되며, 복구할 수 없습니다.",
     assetGuard:
-      "운영 중인 팀·수업·대회(감독) 또는 자녀의 진행 중인 수강신청(학부모)이 있는 경우 탈퇴 신청이 제한됩니다. 먼저 정리한 후 신청해주세요.",
+      "운영 중인 팀·수업·대회와 미정산 내역(감독) 또는 자녀의 진행 중인 수강신청·미납·환불 처리 중 내역(학부모)이 있는 경우 탈퇴 신청이 제한됩니다. 먼저 정리한 후 신청해주세요.",
+    // 탈퇴 전 정리 체크리스트 (GET /auth/withdraw/eligibility)
+    blockerTitle: "탈퇴 전 정리가 필요합니다",
+    blockerGuide:
+      "아래 항목을 정리한 후 다시 신청해주세요. 정리 후 이 화면에 다시 들어오면 자동으로 반영됩니다.",
+    blockerGo: "바로가기",
+    refundableNotice: (count: number) =>
+      `아직 이용하지 않아 환불 가능한 결제가 ${count}건 있습니다. 탈퇴가 확정되면 소멸되니, 필요하면 결제 내역에서 먼저 취소해주세요.`,
+    refundableGo: "결제 내역 보기",
     childCascade:
       "다른 보호자가 연결되어 있지 않은 자녀의 계정과 프로필 정보도 함께 비식별화 처리됩니다.",
     reasonTitle: "탈퇴 사유를 선택해주세요",

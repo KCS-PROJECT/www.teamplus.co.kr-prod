@@ -1007,6 +1007,52 @@ export class AuthController {
   }
 
   /**
+   * 탈퇴 가능 여부 사전 조회
+   * /withdrawal 진입 시 차단 사유(미납·미정산·환불 처리 중 등) 체크리스트와
+   * 환불 가능 결제 안내에 사용합니다. 판정은 POST /withdraw 신청 가드와 동일 SoT.
+   */
+  @Get("withdraw/eligibility")
+  @SkipThrottle()
+  @UseGuards(AuthGuard("jwt"))
+  @ApiBearerAuth("access_token")
+  @ApiOperation({
+    summary: "Check withdraw eligibility",
+    description:
+      "탈퇴 가능 여부와 차단 사유 목록(해소 동선 링크 포함), 환불 가능 결제 수를 반환합니다.",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "조회 성공",
+    schema: {
+      type: "object",
+      properties: {
+        canWithdraw: { type: "boolean" },
+        status: { type: "string", example: "ACTIVE" },
+        blockers: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              key: { type: "string", example: "postpaidUnpaid" },
+              label: { type: "string", example: "미납된 후불 정산 2건" },
+              count: { type: "number", example: 2 },
+              linkUrl: {
+                type: "string",
+                example: "/payment/history?tab=pending",
+              },
+            },
+          },
+        },
+        refundableCount: { type: "number", example: 1 },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: "인증 실패" })
+  async getWithdrawEligibility(@Request() req: AuthenticatedRequest) {
+    return this.authService.getWithdrawEligibility(req.user.id);
+  }
+
+  /**
    * 회원 탈퇴 철회
    * 유예 기간(7일) 내에 탈퇴를 취소할 수 있습니다.
    */

@@ -31,8 +31,16 @@ import { SocialUserInfo } from "./dto/social-login.dto";
 import { AppleTokenService } from "./services/apple-token.service";
 import { UserType, Prisma } from "@prisma/client";
 import { calculateKoreanAge } from "@/common/utils/age.util";
-import { dateOnlyToUtc } from "@/common/utils/kst-date.util";
-import { findBlockingOwnership } from "@/common/utils/withdrawal-guard.util";
+import {
+  dateOnlyToUtc,
+  instantToKstDateOnly,
+} from "@/common/utils/kst-date.util";
+import {
+  findBlockingOwnership,
+  findBlockingOwnershipDetailed,
+  WithdrawBlockerKey,
+} from "@/common/utils/withdrawal-guard.util";
+import { countPresentAttendanceSincePayment } from "@/common/utils/enrollment-usage.util";
 import { JwtPayload } from "@/common/interfaces/authenticated-request.interface";
 import {
   CHLDIV,
@@ -2618,15 +2626,92 @@ export class AuthService {
 
     if (userType === "PARENT") {
       throw new BadRequestException(
-        `${blockers[0]}이 있어 탈퇴할 수 없습니다. 먼저 수강신청을 취소하거나 완료한 후 다시 시도해주세요.`,
+        `${blockers.join(
+          ", ",
+        )}이 있어 탈퇴할 수 없습니다. 수강신청·결제·환불을 먼저 정리한 후 다시 시도해주세요.`,
       );
     }
 
     throw new BadRequestException(
       `${blockers.join(
         ", ",
-      )}가 있어 탈퇴할 수 없습니다. 팀/수업/대회를 다른 감독에게 이관하거나 정리한 후 다시 시도해주세요.`,
+      )}가 있어 탈퇴할 수 없습니다. 팀/수업/대회와 미정산 내역을 정리한 후 다시 시도해주세요.`,
     );
+  }
+
+  /**
+   * 탈퇴 가능 여부 사전 조회 — /withdrawal 진입 시 차단 사유 체크리스트와
+   * "이용 전(환불 가능) 결제" 안내에 사용한다. 판정 SoT 는 requestWithdraw ·
+   * 배치 재검증과 동일한 findBlockingOwnership 계열 유틸이다.
+   */
+  async getWithdrawEligibility(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, userType: true, status: true },
+    });
+    if (!user) {
+      throw new NotFoundException("사용자를 찾을 수 없습니다.");
+    }
+
+    const restricted = isAdminRole(user.userType);
+    const detailed = restricted
+      ? []
+      : await findBlockingOwnershipDetailed(
+          this.prisma,
+          user.id,
+          user.userType,
+        );
+    const blockers = detailed.map((b) => ({
+      ...b,
+      linkUrl: resolveWithdrawBlockerLink(b.key, user.userType),
+    }));
+
+    // 개시 전(결제일 이후 present 출석 0) 셀프 전액환불 가능한 수강 결제 수 —
+    // 탈퇴 확정 시 소멸 대신 환불을 유도하기 위한 안내용(학부모만).
+    let refundableCount = 0;
+    if (user.userType === "PARENT") {
+      const payments = await this.prisma.payment.findMany({
+        where: {
+          userId: user.id,
+          paymentStatus: "completed",
+          deletedAt: null,
+          enrollments: { some: {} },
+        },
+        select: {
+          completedAt: true,
+          createdAt: true,
+          enrollments: { select: { childId: true, classId: true } },
+        },
+        take: 100,
+      });
+      for (const p of payments) {
+        const paidDayUtc = instantToKstDateOnly(p.completedAt ?? p.createdAt);
+        let used = false;
+        for (const e of p.enrollments) {
+          const usedCount = await countPresentAttendanceSincePayment(
+            this.prisma,
+            e,
+            paidDayUtc,
+          );
+          if (usedCount > 0) {
+            used = true;
+            break;
+          }
+        }
+        if (!used) refundableCount += 1;
+      }
+    }
+
+    return {
+      canWithdraw:
+        !restricted &&
+        user.status !== "WITHDRAWN" &&
+        user.status !== "WITHDRAW_PENDING" &&
+        blockers.length === 0,
+      status: user.status,
+      blockers,
+      refundableCount,
+    };
   }
 
   /**
@@ -2719,6 +2804,42 @@ export class AuthService {
     throw new BadRequestException(
       "오픈클래스 코드 생성에 실패했습니다. 잠시 후 다시 시도해주세요.",
     );
+  }
+}
+
+/**
+ * 탈퇴 차단 사유별 해소 동선(웹 경로) — /withdrawal 체크리스트의 바로가기.
+ * ACADEMY_DIRECTOR 는 (director) 그룹 화면 접근이 없어 /academy 로 보낸다.
+ */
+function resolveWithdrawBlockerLink(
+  key: WithdrawBlockerKey,
+  userType: string,
+): string {
+  const isParent = userType === "PARENT";
+  const isAcademyDirector = userType === "ACADEMY_DIRECTOR";
+  switch (key) {
+    case "team":
+      return "/team";
+    case "class":
+      return "/classes-manage";
+    case "tournamentActive":
+      return "/tournaments";
+    case "academy":
+      return "/academy";
+    case "postpaidUnpaid":
+      if (isParent) return "/payment/history?tab=pending";
+      return isAcademyDirector ? "/academy" : "/director-payments";
+    case "tournamentUnsettled":
+      return "/director-payments";
+    case "refundInProgress":
+      if (isParent) return "/payment/history";
+      return isAcademyDirector ? "/academy" : "/director-payments/refunds";
+    case "enrollmentActive":
+      return "/payment/history?tab=pending";
+    // UNPAID(청구 전)는 결제 대기 탭에 안 뜨므로(주문 미생성) 대회 상세로 —
+    // 참가 취소(UNPAID)와 결제하기(PENDING)가 모두 있는 단일 랜딩.
+    case "tournamentPostpaid":
+      return "/tournaments";
   }
 }
 

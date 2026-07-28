@@ -286,6 +286,33 @@ export async function withdraw(
   return api.post<WithdrawResponse>("/auth/withdraw", data);
 }
 
+/** 탈퇴 차단 사유 1건 — label 표시 + linkUrl 로 해소 화면 이동. */
+export interface WithdrawBlocker {
+  key: string;
+  label: string;
+  count: number;
+  linkUrl: string;
+}
+
+export interface WithdrawEligibilityResponse {
+  canWithdraw: boolean;
+  status: string;
+  blockers: WithdrawBlocker[];
+  /** 이용 개시 전이라 셀프 전액환불이 가능한 수강 결제 수 (학부모만 > 0) */
+  refundableCount: number;
+}
+
+/**
+ * 탈퇴 가능 여부 사전 조회 — /withdrawal 진입 시 차단 사유 체크리스트·환불 안내용.
+ * 판정 SoT 는 서버(POST /auth/withdraw 신청 가드와 동일 유틸)이며, 이 조회가 실패해도
+ * 신청 시 서버 가드가 재검증하므로 화면은 기본 플로우로 진행한다.
+ */
+export async function getWithdrawEligibility(): Promise<
+  ApiResponse<WithdrawEligibilityResponse>
+> {
+  return api.get<WithdrawEligibilityResponse>("/auth/withdraw/eligibility");
+}
+
 /**
  * 로그아웃
  * 서버 로그아웃 실패 시에도 로컬 토큰은 삭제하되, 에러 정보 반환

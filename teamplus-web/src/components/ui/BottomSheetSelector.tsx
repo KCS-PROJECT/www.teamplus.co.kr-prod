@@ -135,6 +135,7 @@ export function BottomSheetSelector<T extends string | number>({
       {/* 오버레이 — viewport 전체(status bar / home indicator) dim, SPEC 2026-05-16 SoT */}
       <div
         className="overlay-fullscreen-dim-sheet animate-overlay-in motion-reduce:animate-none"
+        onClick={onClose}
         aria-hidden="true"
       />
 
