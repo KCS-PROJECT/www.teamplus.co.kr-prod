@@ -11,7 +11,7 @@ import { registerWebAppBarMount } from '@/hooks/useNativeUI';
 import { resolvePageTitle } from '@/lib/page-titles';
 import { cn } from '@/lib/utils';
 import { MESSAGES } from '@/lib/messages';
-import { AppBarActionButton } from '@/components/layout/AppBarActions';
+import { AppBarActionButton, guardedAppBarClick } from '@/components/layout/AppBarActions';
 
 // AppBar 공통 상수 — Material 3 Top App Bar / iOS Navigation Bar 호환.
 // (이전 './appbar-constants' 파일을 inline 함 — wrapper 통합 시 단일 SoT 로 흡수)
@@ -449,7 +449,7 @@ export function PageAppBar({
               key={`${action.icon}-${idx}`}
               type="button"
               tabIndex={-1}
-              onClick={action.onClick}
+              onClick={guardedAppBarClick(action.onClick)}
               aria-label={action.label}
               className={cn(
                 'flex items-center justify-center rounded-full transition-colors motion-reduce:transition-none',
@@ -480,7 +480,7 @@ export function PageAppBar({
               key={`extra-${action.icon}-${idx}`}
               type="button"
               tabIndex={-1}
-              onClick={action.onClick}
+              onClick={guardedAppBarClick(action.onClick)}
               aria-label={action.label}
               className={cn(
                 'flex shrink-0 items-center justify-center rounded-full transition-colors motion-reduce:transition-none',
@@ -502,7 +502,7 @@ export function PageAppBar({
             <button
               type="button"
               tabIndex={-1}
-              onClick={a4.onMenu ?? (() => setIsMenuOpen(true))}
+              onClick={guardedAppBarClick(a4.onMenu ?? (() => setIsMenuOpen(true)))}
               className={cn(
                 'flex shrink-0 -mr-2 size-10 items-center justify-center rounded-full transition-colors motion-reduce:transition-none',
                 detailIconColor,
@@ -533,7 +533,7 @@ export function PageAppBar({
             <button
               type="button"
               tabIndex={-1}
-              onClick={handleBack}
+              onClick={guardedAppBarClick(handleBack)}
               className={cn(
                 'flex shrink-0 -ml-2 items-center justify-center rounded-full transition-colors motion-reduce:transition-none',
                 isKid ? 'size-12' : 'size-10',
@@ -677,7 +677,7 @@ export function PageAppBar({
           <button
             type="button"
             tabIndex={-1}
-            onClick={a4.onMenu ?? (() => setIsMenuOpen(true))}
+            onClick={guardedAppBarClick(a4.onMenu ?? (() => setIsMenuOpen(true)))}
             className={cn(
               'flex shrink-0 -mr-2 items-center justify-center rounded-full transition-colors motion-reduce:transition-none',
               backButtonSize,

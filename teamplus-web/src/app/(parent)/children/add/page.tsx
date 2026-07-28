@@ -29,8 +29,6 @@ import { calculateKoreanAge, cn } from '@/lib/utils';
 import { resolveImageSrc } from '@/lib/image-url';
 import { isNativeApp } from '@/lib/environment';
 import { upload as nativeUpload } from '@/services/native-bridge';
-import dynamic from 'next/dynamic';
-const GlobalMenu = dynamic(() => import('@/components/layout/GlobalMenu').then(mod => ({ default: mod.GlobalMenu })), { ssr: false });
 
 const MAX_CHILDREN = 10;
 const MIN_AGE = 3;
@@ -82,7 +80,6 @@ export default function AddChildPage() {
   useNativeUI({ showStatusBar: true, showAppBar: false, showBottomNav: false });
   const { children, addChild } = useChildren();
 
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [formData, setFormData] = useState<FormData>(initialFormData);
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -601,9 +598,8 @@ export default function AddChildPage() {
                   <NavLink
                     href="/terms#terms-fallback-child_privacy"
                     className="text-card-meta font-extrabold text-it-ink-800 dark:text-wtext-4 underline whitespace-nowrap leading-tight"
-                    aria-label="자녀 개인정보 처리방침 보기"
                   >
-                    보기
+                    자세히<br />보기
                   </NavLink>
                 }
               />
@@ -651,7 +647,6 @@ export default function AddChildPage() {
           </button>
         </form>
       </div>
-      <GlobalMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
       <DatePickerModal
         isOpen={isDatePickerOpen}
         value={formData.birthDate}

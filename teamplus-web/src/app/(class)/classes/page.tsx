@@ -1711,7 +1711,18 @@ export default function ClassesPage() {
   const visibleTournamentCount = showTournaments
     ? filteredTournaments.length
     : 0;
-  const visibleCount = visibleClassCount + visibleTournamentCount;
+  // [2026-07-27 수정] 학부모/감독(default) 뷰는 섹션 분류 후 렌더하므로 fetch 원본이
+  //   있어도 전부 종료+미참여로 걸러지면 모든 섹션이 숨겨져(count 0 && !footer → null)
+  //   빈 화면이 남던 버그 — 섹션 기준으로 노출 개수를 재계산해 이 경우
+  //   EmptyState("등록된 수업이 없습니다")를 표시한다.
+  const visibleCount = sections
+    ? sections.enrolled.length +
+      sections.endedEnrolled.length +
+      sections.regular.length +
+      sections.open.length +
+      sections.tournaments.length +
+      sections.endedTournaments.length
+    : visibleClassCount + visibleTournamentCount;
   const hasItems = visibleCount > 0;
 
   // [v16 2026-05-16] 이중 로더 제거 — LoadingProvider 풀스크린 로더가 usePageReady 신호로 종료.

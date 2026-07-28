@@ -4752,7 +4752,33 @@ Type error: Property 'clearSession' does not exist on type 'AuthContextValue'.
 
 ---
 
-**Last Updated**: 2026-05-14 (실측 SOT 동기화)
+## 🟠 WEB-073: [iOS 실기기] 자녀 등록 폼 — 달력 아이콘 탭 시 전체메뉴(GlobalMenu) 오픈 (키보드 개폐 오탭)
+
+**발생**: 2026-07-26 사용자 리포트 (iPhone 17 실기기 한정 · 웹/시뮬레이터/에뮬레이터 정상)
+
+**증상**: `/children/add`에서 성 포커스 → 이름 탭(활성화 안 됨·키보드 유지) → 생년월일 달력 아이콘 탭 → DatePickerModal 대신 전체메뉴 화면 표시.
+
+**원인**: 네이티브에는 전체메뉴를 여는 코드가 없음 — 실체는 **키보드 개폐 점프 중 탭이 sticky 앱바(z-20)의 메뉴 버튼에 착지**한 오탭. iOS 실기기에서 소프트 키보드 개폐 시 ① Flutter `resizeToAvoidBottomInset:true`의 WebView 축소/복원 ② WKWebView 자체 스크롤/inset 보정(.automatic) ③ 웹 `pb-keyboard-safe` padding transition(200ms)이 겹쳐 탭 좌표와 실제 히트 요소가 어긋난다. 시뮬레이터는 하드웨어 키보드 연결이 기본이라 소프트 키보드 리사이즈가 없어 재현 불가.
+
+**수정 (3중 방어선)**:
+
+1. `f512dcb1` (07/27): 앱바 버튼 `tabIndex={-1}` + 닫힌 GlobalMenu `inert` — iOS 키보드 form assistant(이전/다음 화살표) 탭 순회 차단.
+2. `4b435520` (07/27): add·edit 페이지 `useKeyboardAvoidance` + `scroll-keyboard-safe pb-keyboard-safe` — 점프 완화.
+3. **키보드 전환 탭 가드 (07/27 신규)**: `native-bridge-ui.ts`가 `data-keyboard-open` 토글 시각을 기록하고 `isKeyboardTapGuardActive()` (표시 중 또는 닫힘 후 450ms) export → `AppBarActions.guardedAppBarClick()`이 앱바 메뉴/백/액션 클릭을 래핑, 가드 활성 중 탭은 활성 input blur(키보드 닫기)로만 소비. 데스크톱은 속성 미설정으로 no-op.
+   - 부수 정리: add 페이지의 열리지 않는 죽은 `GlobalMenu` 포털 제거 (PageAppBar 내부 GlobalMenu와 이중 마운트).
+   - 네이티브 보강: `webview_screen.dart` InAppWebViewSettings에 `contentInsetAdjustmentBehavior: NEVER` + `automaticallyAdjustsScrollIndicatorInsets: false` (앱 빌드 필요).
+
+**회귀 테스트**: `e2e/children-add-keyboard.spec.ts` — 순차 포커스·달력→DatePickerModal·tabindex=-1·inert·탭 가드 5케이스.
+
+**Prevention**:
+- 앱바에 새 버튼을 직접 추가할 때는 `AppBarActionButton` 사용(가드 내장) 또는 `guardedAppBarClick()` 래핑 + `tabIndex={-1}` 필수.
+- 키보드 관련 오탭 리포트는 "시뮬레이터 재현 불가"가 정상 — 시뮬레이터는 ⌘K로 소프트 키보드 강제 표시 후 재현 시도.
+
+**관련 파일**: `src/services/native-bridge-ui.ts` · `src/components/layout/AppBarActions.tsx` · `src/components/layout/PageAppBar.tsx` · `src/app/(parent)/children/add/page.tsx` · `teamplus-app/lib/core/webview/webview_screen.dart`
+
+---
+
+**Last Updated**: 2026-07-27 (WEB-073 iOS 실기기 키보드 개폐 오탭 — 키보드 전환 탭 가드 신설) · 2026-05-14 (실측 SOT 동기화)
 
 - [Error 인덱스](../)
 - [Backend 에러](../backend/backend-errors.md)

@@ -258,6 +258,9 @@ async function bootstrap() {
 
   // 프로덕션 환경 허용 origins (HTTPS 강제)
   const prodOrigins = [
+    // 실 운영 도메인 (2026-05-27 단일 도메인 전환) — 서버 CORS_ORIGIN env 미설정
+    // 시에도 web/admin/home 서브도메인 간 호출이 차단되지 않도록 코드에 명시.
+    "https://*.icetimes.co.kr",
     "https://teamplus.com",
     "https://www.teamplus.com",
     "https://app.teamplus.com",
@@ -313,9 +316,13 @@ async function bootstrap() {
           logger.warn(`[CORS] Unknown origin ${origin} - allowing in dev mode`);
           callback(null, true);
         } else {
-          // 프로덕션: 차단 및 로깅
+          // 프로덕션: 차단 및 로깅.
+          // callback(Error) 는 Express 에러 미들웨어로 흘러 OPTIONS preflight 가
+          // 500 으로 응답된다 (2026-07-25~26 PROD `/api/v1/app/settings` OPTIONS
+          // 500 10건의 원인). `callback(null, false)` 는 CORS 헤더 없는 정상
+          // 응답을 반환하고 브라우저가 차단하므로 서버 5xx 소음이 사라진다.
           logger.error(`[CORS] Blocked origin ${origin}`);
-          callback(new Error(`Origin ${origin} not allowed by CORS`));
+          callback(null, false);
         }
       }
     },
