@@ -64,7 +64,7 @@ export default function SettingsPage() {
             icon="person"
             label={S.items.profile.label}
             sub={S.items.profile.sub}
-            href="/settings/profile"
+            href="/profile/edit"
             iceTheme
           />
         </SettingsSection>
