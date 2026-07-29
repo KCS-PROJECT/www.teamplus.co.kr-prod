@@ -22,6 +22,7 @@ import { Prisma } from "@prisma/client";
 
 const SALES_LOCK_PREFIX = "class-sales:";
 const POSTPAID_LOCK_PREFIX = "class-postpaid:";
+const SEAT_LOCK_PREFIX = "class-seats:";
 
 type LockableTx = Pick<Prisma.TransactionClient, "$queryRaw">;
 
@@ -35,6 +36,19 @@ export async function acquireClassSalesLock(
   classId: string,
 ): Promise<void> {
   await acquireAdvisoryLock(tx, `${SALES_LOCK_PREFIX}${classId}`);
+}
+
+/**
+ * 좌석(정원) 선점 직렬화 lock — 결제 승인(캡처) 직전 "active 카운트 + 선점"을 원자화.
+ *  마지막 1자리 동시 confirm 이 둘 다 통과하는 race 차단. tx 선두에서 호출.
+ *  ⚠️ 단독 사용 전용 — sales/postpaid lock 과 같은 트랜잭션에서 조합 획득 금지
+ *  (조합이 필요해지면 고정 순서 규약을 먼저 정의할 것).
+ */
+export async function acquireClassSeatLock(
+  tx: LockableTx,
+  classId: string,
+): Promise<void> {
+  await acquireAdvisoryLock(tx, `${SEAT_LOCK_PREFIX}${classId}`);
 }
 
 /** 후불 단가 ↔ 출석 ↔ 정산 직렬화 lock. tx 선두에서 호출. */
