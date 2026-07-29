@@ -2740,13 +2740,17 @@ export const MESSAGES = {
         "출석한 만큼 월말에 정산됩니다. 출석 횟수·정산 확정은 출석 관리에서 진행됩니다.",
       // [Phase C] 선수정보 탭 당월 출석 횟수
       attendanceThisMonth: (n: number) => `이번 달 출석 ${n}회`,
-      // [만료 회원] 결제가 끊겨 자동 해제된(expired) 선수 관리 목록 — 재등록 대상
+      // [만료 회원] 결제가 끊겨 자동 해제된(expired) 선수 관리 목록 — 재등록 대상.
+      //   복귀는 학부모 재결제 시 자동 복구 단일 경로(수동 배치 미사용 정책).
+      //   명단제외 = expired → inactive 정리(감독 판단) — 재결제 시 자동 복귀는 동일.
       expiredSectionTitle: (n: number) => `만료 회원 ${n}명`,
       expiredLastPaid: (y: number, m: number) => `마지막 결제 ${y}년 ${m}월`,
       expiredNoPayment: "결제 이력 없음",
-      reassignButton: "다시 배치하기",
-      reassignSuccess: (name: string) =>
-        `${name} 선수를 명단에 다시 배치했습니다.`,
+      excludeButton: "명단제외",
+      excludeConfirmTitle: "명단제외",
+      excludeConfirmMessage: (name: string) =>
+        `${name} 선수를 만료 회원 목록에서 제외할까요? 다시 결제하면 명단에 자동으로 복귀합니다.`,
+      excludeSuccess: (name: string) => `${name} 선수를 명단에서 제외했습니다.`,
       // ── [DEPRECATED] SPEC v1 잔존 키 — deprecated 컴포넌트의 빌드 안전성 유지 목적.
       //    SPEC v3 에서는 정렬/필터 칩 UI 가 노출되지 않으므로 신규 사용 금지.
       noClasses: "수업 등록 후 수강생이 자동으로 표시됩니다",

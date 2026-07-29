@@ -28,6 +28,7 @@ import { useRouteUser } from '@/app/(class)/route-user-context';
 import { usePageReady } from '@/hooks/usePageReady';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { useToast } from '@/components/ui/Toast';
+import { useModal } from '@/components/ui/Modal';
 import { kstYearMonth } from '@/lib/kst-month';
 import { shiftMonth } from '@/components/settlement/settlement-format';
 import { cn } from '@/lib/utils';
@@ -199,10 +200,11 @@ export default function ClassStudentsPage() {
   const [error, setError] = useState<string | null>(null); // 초기 실패(풀 에러)
   const [monthError, setMonthError] = useState(false); // 월 새로고침 실패(직전월 보존)
   const [isRetrying, setIsRetrying] = useState(false);
-  // [만료 회원] 접이식 섹션 열림 + 다시 배치 진행 중 표시
+  // [만료 회원] 접이식 섹션 — 복귀는 학부모 재결제 자동 복구, 정리는 명단제외(expired→inactive)
   const [expiredOpen, setExpiredOpen] = useState(false);
-  const [reassigningId, setReassigningId] = useState<string | null>(null);
+  const [excludingId, setExcludingId] = useState<string | null>(null);
   const { toast } = useToast();
+  const { modal } = useModal();
 
   // 풀스크린 로더 fast-path — 초기 로드 시도 완료(성공/실패) 시 ready.
   usePageReady(!isLoading);
@@ -285,25 +287,34 @@ export default function ClassStudentsPage() {
     setIsMonthLoading(false);
   }, [loadData, yearMonth]);
 
-  // [만료 회원] 다시 배치 — 기존 직접 배치 API 재사용(active 복구·정원 검증은 서버).
-  const handleReassign = useCallback(
+  // [만료 회원] 명단제외 — expired → inactive 정리(기존 배치 해제 API 재사용).
+  //   재결제 시 자동 복귀는 유지되므로 되돌릴 수 없는 액션은 아님.
+  const handleExclude = useCallback(
     async (userId: string, name: string) => {
-      setReassigningId(userId);
+      const M2 = MESSAGES.academy.students;
+      const ok = await modal.confirm({
+        title: M2.excludeConfirmTitle,
+        message: M2.excludeConfirmMessage(name),
+        confirmText: M2.excludeButton,
+        variant: 'danger',
+      });
+      if (!ok) return;
+      setExcludingId(userId);
       try {
-        const res = await api.post(`/classes/${classId}/registrations`, {
-          userId,
-        });
+        const res = await api.delete(
+          `/classes/${classId}/registrations/${userId}`,
+        );
         if (res.success) {
-          toast.success(MESSAGES.academy.students.reassignSuccess(name));
+          toast.success(M2.excludeSuccess(name));
           await reloadCurrentMonth();
         } else if (res.error?.message) {
           toast.error(res.error.message);
         }
       } finally {
-        setReassigningId(null);
+        setExcludingId(null);
       }
     },
-    [classId, toast, reloadCurrentMonth],
+    [classId, modal, toast, reloadCurrentMonth],
   );
 
   // ── 월 스텝퍼 ──
@@ -513,12 +524,12 @@ export default function ClassStudentsPage() {
                             <button
                               type="button"
                               onClick={() =>
-                                void handleReassign(m.userId, m.memberName)
+                                void handleExclude(m.userId, m.memberName)
                               }
-                              disabled={reassigningId === m.userId}
-                              className="shrink-0 h-9 px-3 rounded-w-md bg-it-blue-500 text-white text-card-meta font-bold hover:bg-it-blue-600 active:brightness-95 disabled:opacity-60 disabled:cursor-not-allowed transition-colors motion-reduce:transition-none"
+                              disabled={excludingId === m.userId}
+                              className="shrink-0 h-9 px-3 rounded-w-md bg-it-fill dark:bg-rink-700 border-[1.5px] border-it-line-strong dark:border-rink-600 text-card-meta font-bold text-it-ink-600 dark:text-rink-100 hover:border-it-blue-500/40 active:brightness-95 disabled:opacity-60 disabled:cursor-not-allowed transition-colors motion-reduce:transition-none"
                             >
-                              {M.reassignButton}
+                              {M.excludeButton}
                             </button>
                           )}
                         </li>
