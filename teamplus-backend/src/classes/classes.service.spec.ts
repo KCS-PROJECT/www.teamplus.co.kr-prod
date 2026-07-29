@@ -1553,6 +1553,50 @@ describe("ClassesService", () => {
       expect(row.outstandingAmount).toBe(0);
     });
 
+    it("[명단 밖 확정 청구] registration 없는 학생의 확정 청구 라인도 행 생성(미수 가시성)", async () => {
+      wireBillingMocks({
+        billing: {
+          status: "confirmed",
+          items: [
+            {
+              userId: "ghost-1",
+              amount: 30000,
+              paymentStatus: "pending",
+              payment: null,
+            },
+          ],
+        },
+        registrations: [], // 명단 비어 있음 — 청구 라인만 존재
+        enrollments: [],
+      });
+      (
+        prismaService.user as unknown as Record<string, jest.Mock>
+      ).findMany = jest.fn().mockResolvedValue([
+        {
+          id: "ghost-1",
+          firstName: "령",
+          lastName: "유",
+          email: "ghost@t.dev",
+          userType: "CHILD",
+        },
+      ]);
+      const result = await service.getClassPayments(
+        mockClassId,
+        requester,
+        undefined,
+        "2026-06",
+      );
+      expect(result.students).toHaveLength(1);
+      const row = result.students[0];
+      expect(row.memberId).toBe("ghost-1");
+      expect(row.memberName).toBe("유령");
+      expect(row.billingTiming).toBe("POSTPAID");
+      expect(row.billingStatus).toBe("BILLED");
+      expect(row.outstandingAmount).toBe(30000);
+      expect(result.total).toBe(1);
+      expect(result.totalPaidAmount).toBe(0);
+    });
+
     // ── 선불 월 스코프(B안) — yearMonth 명시 시에만 월귀속 필터 ──
     const juneCompletedPayment = {
       id: "pay-pre",

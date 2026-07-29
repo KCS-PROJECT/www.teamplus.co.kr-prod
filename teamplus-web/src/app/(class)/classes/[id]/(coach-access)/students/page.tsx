@@ -44,7 +44,8 @@ interface PaymentStudent {
   memberId: string;
   memberName: string;
   memberType: string;
-  registrationDate: string;
+  /** 명단 밖 확정 청구 합성 행(billing-*)은 null. */
+  registrationDate: string | null;
   enrollmentId: string | null;
   enrollmentStatus: string | null;
   productName: string | null;

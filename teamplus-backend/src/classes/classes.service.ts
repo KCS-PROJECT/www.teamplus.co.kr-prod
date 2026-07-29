@@ -2785,6 +2785,67 @@ export class ClassesService {
       };
     });
 
+    // ── [명단 밖 확정 청구 보완] 확정 후불 청구 라인이 있으나 registration 이
+    //   없는 학생도 행 생성 — 명단 부재로 확정 청구·수납·미수가 화면에서 누락되지
+    //   않게(허브의 "로스터 밖 후불 대상" 계약과 정합). 출석은 active 명단이 전제라
+    //   실질 발생 경로는 확정 청구 라인뿐이다.
+    const registeredIds = new Set(registrations.map((r) => r.userId));
+    const orphanBilledIds = [...postpaidLineByUser.keys()].filter(
+      (uid) => !registeredIds.has(uid),
+    );
+    if (orphanBilledIds.length > 0) {
+      const orphanUsers = await this.prisma.user.findMany({
+        where: { id: { in: orphanBilledIds } },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          userType: true,
+        },
+      });
+      for (const u of orphanUsers) {
+        const ln = postpaidLineByUser.get(u.id);
+        if (!ln) continue;
+        const billingStatus: BillingStatus = ln.status;
+        const isRefunded = billingStatus === "REFUNDED";
+        const billedAmount = isRefunded ? null : ln.amount;
+        const paidAmount =
+          billingStatus === "PAID"
+            ? ln.amount
+            : isRefunded
+              ? Math.max(0, ln.amount - ln.refundedAmount)
+              : 0;
+        const outstandingAmount =
+          billedAmount != null ? Math.max(0, billedAmount - paidAmount) : 0;
+        students.push({
+          // 합성 행 — registration 부재. FE 는 key 로만 사용.
+          registrationId: `billing-${u.id}`,
+          memberId: u.id,
+          memberName:
+            `${u.lastName ?? ""}${u.firstName ?? ""}`.trim() || u.email,
+          memberType: u.userType,
+          registrationDate: null,
+          enrollmentId: null,
+          enrollmentStatus: null,
+          productName: null,
+          amount: ln.amount,
+          paymentMethod: ln.paymentMethod,
+          paidAt: ln.paidAt,
+          paymentState: toPaymentState(billingStatus),
+          payerId: ln.payerId,
+          payerName: ln.payerName,
+          attendanceCount: attendanceByUser.get(u.id) ?? 0,
+          billingTiming: "POSTPAID",
+          billingStatus,
+          billedAmount,
+          estimatedAmount: null,
+          paidAmount,
+          outstandingAmount,
+        } as unknown as (typeof students)[number]);
+      }
+    }
+
     const counts = students.reduce(
       (acc, s) => {
         acc[s.paymentState] = (acc[s.paymentState] ?? 0) + 1;
