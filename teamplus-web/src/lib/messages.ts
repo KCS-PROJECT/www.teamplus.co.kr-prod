@@ -78,11 +78,13 @@ export const MESSAGES = {
       completeOpenSalesDone:
         "판매가 시작되었습니다. 이제 학부모가 이 수업을 신청할 수 있어요.",
       // 이력 잠금(지난 월분·판매 중지분) — 수정/삭제 불가, 기본 접힘.
-      pastLockedShow: (n: number) => `판매가 끝난 월 결제 ${n}건 보기`,
-      pastLockedHide: "판매가 끝난 월 결제 접기",
+      pastLockedShow: (n: number) => `판매 종료된 수강권 ${n}건 보기`,
+      pastLockedHide: "판매 종료된 수강권 접기",
       pastLockedHint:
-        "판매가 끝난 월 결제는 이력 보존을 위해 수정하거나 삭제할 수 없어요.",
-      pastLockedListAria: "판매가 끝난 월 결제 (읽기 전용)",
+        "판매 종료된 수강권은 이력 보존을 위해 수정하거나 삭제할 수 없어요.",
+      pastLockedListAria: "판매 종료된 수강권 (읽기 전용)",
+      // 무월(레거시) 수강권 — 월별 판매 체계 도입 전 등록분 (귀속월 없음).
+      legacyMonthTag: "이전 방식",
       renewNeedScheduleHint:
         "다음 달 일정을 등록하면 월 결제를 새 달분으로 갱신할 수 있어요.",
     },
@@ -3946,7 +3948,7 @@ export const MESSAGES = {
     fieldFeePerSession: "회당 단가(원)",
     fieldIsActive: "활성화",
     fieldIsActiveHelp: "비활성화 시 결제 화면에서 선택할 수 없습니다.",
-    badgeInactive: "비활성",
+    badgeInactive: "판매 중지",
     badgeEndDateExceed: "수업 종료일 초과",
     badgeClassEnded: "수업 종료",
     listBadgeClassEnded: "종료된 수업",
@@ -3972,6 +3974,13 @@ export const MESSAGES = {
     validationWeeks: "주 수는 1~52 사이로 입력해주세요.",
     perSessionEditHint:
       "1회 수업료는 가격만 수정할 수 있어요. 다른 정보는 변경되지 않습니다.",
+    // [가격 잠금 Phase 5] 판매 시작 확정 정책 안내
+    priceLockedNotice:
+      "판매가 시작되어 가격이 확정되었습니다. 다음 월분부터 변경할 수 있어요.",
+    unitPriceLockedNotice: (months: string) =>
+      `정산되지 않은 출석(${months})이 있어 회당 단가를 변경할 수 없어요. 정산 확정 후 수정할 수 있습니다.`,
+    saleStartNotice:
+      "등록하면 이번 달 판매가 시작되고, 선불 수강료는 제출 즉시 확정됩니다. 다음 월분부터 변경할 수 있어요.",
     previewTitle: "자동 계산",
     previewSessionsPerWeek: "주당 횟수",
     previewSessionsPerWeekHint: "(수업 일정 기준)",

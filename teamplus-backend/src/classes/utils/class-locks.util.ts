@@ -27,7 +27,9 @@ const SEAT_LOCK_PREFIX = "class-seats:";
 type LockableTx = Pick<Prisma.TransactionClient, "$queryRaw">;
 
 async function acquireAdvisoryLock(tx: LockableTx, key: string): Promise<void> {
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
+  // pg_advisory_xact_lock 은 void 반환 — Prisma 는 void 컬럼을 역직렬화하지 못해
+  //   P2010(Failed to deserialize column of type 'void')로 죽는다. ::text 캐스팅 필수.
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))::text`;
 }
 
 /** 판매 시작 ↔ 상품 변경 직렬화 lock. tx 선두에서 호출. */

@@ -30,6 +30,10 @@ interface FeeEditCardProps {
   packageDirty?: boolean;
   /** 비매니저(학부모·학생) 진입 시 읽기전용. */
   readonly?: boolean;
+  /** [가격 잠금] 후불 단가 잠금 — 미정산 출석 존재(서버 판정). 단가 입력 비활성. */
+  unitPriceLocked?: boolean;
+  /** [가격 잠금] 미정산 월 "YYYY-MM" 목록 — 잠금 사유 표시. */
+  unsettledMonths?: string[];
   /** [Lifecycle v4.1 §9.2] 판매 승인 대기 수업의 대상월 "YYYY-MM" — 월분 갱신 UI 게이트. */
   renewalTargetMonth?: string | null;
   /** 판매 승인 대기 여부 — 대상월 없어도(잔여 일정 0) 구 정기권 수정/삭제를 잠근다. */
@@ -50,12 +54,19 @@ export function FeeEditCard({
   onPackageChange,
   packageDirty = false,
   readonly = false,
+  unitPriceLocked = false,
+  unsettledMonths = [],
+  iceTheme = false,
   renewalTargetMonth = null,
   salesPendingLock = false,
-  iceTheme = false,
 }: FeeEditCardProps) {
   const isPostpaid = billingMode === 'POSTPAID';
   const isPrepaidOnly = billingMode === 'PREPAID';
+  // 후불 단가 잠금은 판매 단가(후불·선택형)에만 적용 — 선불 전용 참고용 입력은 비대상.
+  const unitLockActive = !isPrepaidOnly && unitPriceLocked;
+  const unitLockNotice = unitLockActive
+    ? MESSAGES.classProduct.unitPriceLockedNotice(unsettledMonths.join(', '))
+    : null;
   // [Phase B-6] 선불 전용은 1회 수업료가 참고용(판매 안 함), 후불·선택형은 판매되는 단가.
   const priceLabel = isPrepaidOnly
     ? MESSAGES.classProduct.singlePriceRefLabel
@@ -106,7 +117,7 @@ export function FeeEditCard({
               <input
                 type="text"
                 inputMode="numeric"
-                disabled={readonly}
+                disabled={readonly || unitLockActive}
                 value={
                   perSessionPrice === ''
                     ? ''
@@ -126,6 +137,14 @@ export function FeeEditCard({
               />
               <span className="text-xs font-bold text-it-ink-500 shrink-0">원</span>
             </div>
+            {unitLockNotice && (
+              <p
+                role="note"
+                className="text-card-caption text-it-ink-500 dark:text-rink-300"
+              >
+                {unitLockNotice}
+              </p>
+            )}
           </div>
 
           {/* 정기 패키지 — 선불 한정. PER_SESSION 은 위 단가 입력에서 관리하므로 목록에서 제외. */}
@@ -188,7 +207,7 @@ export function FeeEditCard({
             <input
               type="text"
               inputMode="numeric"
-              disabled={readonly}
+              disabled={readonly || unitLockActive}
               value={
                 perSessionPrice === ''
                   ? ''
@@ -208,6 +227,14 @@ export function FeeEditCard({
             />
             <span className="text-xs font-bold text-wtext-3 shrink-0">원</span>
           </div>
+          {unitLockNotice && (
+            <p
+              role="note"
+              className="text-card-caption text-wtext-3 dark:text-rink-300"
+            >
+              {unitLockNotice}
+            </p>
+          )}
         </div>
 
         {/* 정기 패키지 — 선불 한정. PER_SESSION 은 위 단가 입력에서 관리하므로 목록에서 제외. */}

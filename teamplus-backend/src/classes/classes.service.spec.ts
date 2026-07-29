@@ -105,6 +105,7 @@ describe("ClassesService", () => {
 
   const mockNotificationsService = {
     notifyTeamParents: jest.fn(),
+    createNotification: jest.fn(),
   };
 
   // $transaction 콜백에 주입되는 tx — 교차 오염 방지를 위해 매 테스트 새로 생성.
@@ -2412,6 +2413,69 @@ describe("ClassesService", () => {
         }),
       ).rejects.toThrow("이전 방식 수강권을 다시 판매할 수 없습니다");
       expect(mockTx.classProduct.update).not.toHaveBeenCalled();
+    });
+
+    it("미판매 월분 가격 변경 시 학부모에게 가격 변경 알림 발송 (Phase 5)", async () => {
+      wireProductMocks({
+        feeType: "MONTHLY_FIXED",
+        billingMonth: AUG,
+        salesOpenMonth: JUL,
+      });
+      mockNotificationsService.createNotification.mockClear();
+      jest
+        .spyOn(prismaService.class, "findUnique")
+        .mockResolvedValue({ className: "주니어반" } as any);
+      jest.spyOn(prismaService.enrollment, "findMany").mockResolvedValue([
+        { childId: "kid-1" },
+        { childId: "kid-2" },
+      ] as any);
+      (prismaService as unknown as Record<string, unknown>).parentChild = {
+        findMany: jest.fn().mockResolvedValue([
+          { childId: "kid-1", parentId: "parent-1", isPrimary: true },
+          // kid-2 는 보호자 없음 → 학부모 전용 계약이라 수신자에서 제외(자녀 발송 금지).
+        ]),
+      };
+
+      await service.updateClassProductByClassId(
+        "u-1",
+        "COACH",
+        mockClassId,
+        productId,
+        { price: 130000 },
+      );
+
+      const calls = mockNotificationsService.createNotification.mock.calls.map(
+        (c) => c[0] as {
+          userId: string;
+          notificationType: string;
+          message: string;
+          linkUrl: string;
+        },
+      );
+      expect(calls).toHaveLength(1);
+      expect(calls.map((c) => c.userId)).toEqual(["parent-1"]);
+      expect(calls[0].notificationType).toBe("class_price_changed");
+      expect(calls[0].message).toContain("100,000원 → 130,000원");
+      expect(calls[0].linkUrl).toBe(`/classes/${mockClassId}`);
+    });
+
+    it("이름·설명만 변경하면 가격 변경 알림 미발송 (Phase 5)", async () => {
+      wireProductMocks({
+        feeType: "MONTHLY_FIXED",
+        billingMonth: AUG,
+        salesOpenMonth: JUL,
+      });
+      mockNotificationsService.createNotification.mockClear();
+
+      await service.updateClassProductByClassId(
+        "u-1",
+        "COACH",
+        mockClassId,
+        productId,
+        { productName: "이름만 변경" },
+      );
+
+      expect(mockNotificationsService.createNotification).not.toHaveBeenCalled();
     });
 
     it("월분 상품이 없는 legacy 수업의 재활성화는 허용 (과차단 방지)", async () => {

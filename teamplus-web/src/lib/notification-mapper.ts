@@ -195,6 +195,7 @@ export const NOTIFICATION_TYPES_BY_CATEGORY: Record<
     'class_coach_assigned',
     'class_approved',
     'class_changed',
+    'class_price_changed',
     'class_schedule_created',
     'schedule',
     'attendance_confirmed',

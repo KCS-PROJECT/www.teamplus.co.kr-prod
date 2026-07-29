@@ -49,6 +49,7 @@ import {
   assertMonthNotFrozen,
   assertLegacyNotReactivated,
   isEntitlementOrAmountChange,
+  isPrepaidProductLocked,
   resolveProductDeletionMode,
   resolveNewProductBillingMonth,
 } from "./utils/price-lock.util";
@@ -61,6 +62,7 @@ import {
 import {
   assertPostpaidUnitPriceMutable,
   assertScheduleMonthNotSettled,
+  findUnsettledPostpaidMonths,
 } from "@/payments/settlement/postpaid-attendance.util";
 import { CreateClassDto, DayScheduleItemDto } from "./dto/create-class.dto";
 import { UpdateClassDto } from "./dto/update-class.dto";
@@ -3074,14 +3076,22 @@ export class ClassesService {
       );
 
       // [M-1] id 보존 reconcile — enrollment/payment 참조 ClassProduct 의 FK 단절 방지.
-      await this.prisma.$transaction(async (tx) => {
-        await this.reconcileClassProducts(
+      const priceChanges = await this.prisma.$transaction(async (tx) =>
+        this.reconcileClassProducts(
           tx,
           classId,
           products,
           classRecord.billingMode,
-        );
-      });
+        ),
+      );
+      // [Phase 5 §3-4] 커밋 후 알림 — 다건 변경은 금액 표기 없이 1건으로 합산 발송.
+      if (priceChanges.length > 0) {
+        const change =
+          priceChanges.length === 1
+            ? priceChanges[0]
+            : { oldAmount: null, newAmount: null };
+        await this.notifyClassPriceChanged(classId, change);
+      }
     }
 
     const updatedClass = await this.prisma.$transaction(async (txUpdate) => {
@@ -3627,14 +3637,22 @@ export class ClassesService {
       );
 
       // [M-1] id 보존 reconcile — enrollment/payment 참조 ClassProduct 의 FK 단절 방지.
-      await this.prisma.$transaction(async (tx) => {
-        await this.reconcileClassProducts(
+      const priceChanges = await this.prisma.$transaction(async (tx) =>
+        this.reconcileClassProducts(
           tx,
           classId,
           products,
           classRecord.billingMode,
-        );
-      });
+        ),
+      );
+      // [Phase 5 §3-4] 커밋 후 알림 — 다건 변경은 금액 표기 없이 1건으로 합산 발송.
+      if (priceChanges.length > 0) {
+        const change =
+          priceChanges.length === 1
+            ? priceChanges[0]
+            : { oldAmount: null, newAmount: null };
+        await this.notifyClassPriceChanged(classId, change);
+      }
     }
 
     const updatedClass = await this.prisma.$transaction(async (txAcademyUpdate) => {
@@ -4935,9 +4953,27 @@ export class ClassesService {
     const roleScoped = shouldHideInactiveFor(requester?.userType)
       ? filterSellableProducts(products, classRecord.salesOpenMonth)
       : products;
+
+    // [가격 잠금 Phase 5] 잠금 상태 3필드 emit — FE 가 저장 400 대신 사전 disabled 로
+    //   안내하기 위한 additive 필드 (기존 소비처 영향 0).
+    //   priceLocked 는 salesOpenMonth 비교뿐(결제 조회 0) — N+1 없음.
+    //   후불 미정산 월은 클래스당 1회 산출해 POSTPAID 상품 item 에 복제.
+    const hasPostpaid = roleScoped.some((p) => p.billingTiming === "POSTPAID");
+    const unsettledMonths = hasPostpaid
+      ? await findUnsettledPostpaidMonths(this.prisma, classId)
+      : [];
+    const unitPriceLocked = unsettledMonths.length > 0;
+
     const productsWithMeta = roleScoped.map((p) => ({
       ...p,
       ...computePackageGuardMeta(p, null),
+      priceLocked: isPrepaidProductLocked(
+        { feeType: p.feeType, billingMonth: p.billingMonth },
+        classRecord.salesOpenMonth,
+      ),
+      ...(p.billingTiming === "POSTPAID"
+        ? { unitPriceLocked, unsettledMonths }
+        : {}),
     }));
     return shouldHideInactiveFor(requester?.userType)
       ? productsWithMeta.filter((p) => p.isPurchasable !== false)
@@ -4985,6 +5021,8 @@ export class ClassesService {
     //   salesOpenMonth·상품을 재조회한 값으로 잠금 판정한다 (가격 잠금 §4-0 A).
     //   후불(POSTPAID/BOTH) 수업은 출석·정산과의 직렬화를 위해 postpaid lock 도
     //   고정 순서(sales→postpaid)로 함께 획득한다 (§4-0 B).
+    let priceChange: { oldAmount: number | null; newAmount: number | null } | null =
+      null;
     const updated = await this.prisma.$transaction(async (tx) => {
       if (shouldUsePostpaidLock(product.class.billingMode)) {
         await acquireClassSalesAndPostpaidLocks(tx, classId);
@@ -5055,6 +5093,15 @@ export class ClassesService {
         });
       }
 
+      // [Phase 5 §3-4] 금액 실변경 시 커밋 후 알림 발송용 payload (동일 값 재저장 미발송).
+      if (diff.effectiveAmountChanged) {
+        priceChange = this.resolvePriceChangeAmounts(
+          fresh,
+          dto,
+          diff.changedFields,
+        );
+      }
+
       return tx.classProduct.update({
         where: { id: productId },
         data: {
@@ -5074,9 +5121,15 @@ export class ClassesService {
           ...(dto.sessionsPerWeek !== undefined && {
             sessionsPerWeek: dto.sessionsPerWeek,
           }),
-          ...(dto.feePerSession !== undefined && {
-            feePerSession: dto.feePerSession,
-          }),
+          // 단가 미러 — feePerSession 미전송 + price 변경이면 정산 SoT 도 동치 유지
+          //   (feePerSession 보유 PER_SESSION 상품 한정, bulk/reconcile 경로와 동일 계약).
+          ...(dto.feePerSession !== undefined
+            ? { feePerSession: dto.feePerSession }
+            : dto.price !== undefined &&
+                (dto.feeType ?? fresh.feeType) === "PER_SESSION" &&
+                fresh.feePerSession != null
+              ? { feePerSession: dto.price }
+              : {}),
           ...(dto.isActive !== undefined && { isActive: dto.isActive }),
           // 2026-05-22 옵션 H — feeType 수정 허용.
           ...(dto.feeType !== undefined && { feeType: dto.feeType }),
@@ -5100,6 +5153,13 @@ export class ClassesService {
     });
 
     await this.invalidateClassCache(teamId);
+    const committedChange = priceChange as {
+      oldAmount: number | null;
+      newAmount: number | null;
+    } | null;
+    if (committedChange) {
+      await this.notifyClassPriceChanged(classId, committedChange);
+    }
 
     return updated;
   }
@@ -5819,6 +5879,8 @@ export class ClassesService {
     //   salesOpenMonth·상품을 재조회한 값으로 잠금 판정한다 (가격 잠금 §4-0 A).
     //   후불(POSTPAID/BOTH) 수업은 출석·정산과의 직렬화를 위해 postpaid lock 도
     //   고정 순서(sales→postpaid)로 함께 획득한다 (§4-0 B).
+    let priceChange: { oldAmount: number | null; newAmount: number | null } | null =
+      null;
     const updated = await this.prisma.$transaction(async (tx) => {
       if (shouldUsePostpaidLock(billingMode)) {
         await acquireClassSalesAndPostpaidLocks(tx, classId);
@@ -5889,6 +5951,15 @@ export class ClassesService {
         });
       }
 
+      // [Phase 5 §3-4] 금액 실변경 시 커밋 후 알림 발송용 payload (동일 값 재저장 미발송).
+      if (diff.effectiveAmountChanged) {
+        priceChange = this.resolvePriceChangeAmounts(
+          fresh,
+          dto,
+          diff.changedFields,
+        );
+      }
+
       return tx.classProduct.update({
         where: { id: productId },
         data: {
@@ -5908,9 +5979,15 @@ export class ClassesService {
           ...(dto.sessionsPerWeek !== undefined && {
             sessionsPerWeek: dto.sessionsPerWeek,
           }),
-          ...(dto.feePerSession !== undefined && {
-            feePerSession: dto.feePerSession,
-          }),
+          // 단가 미러 — feePerSession 미전송 + price 변경이면 정산 SoT 도 동치 유지
+          //   (feePerSession 보유 PER_SESSION 상품 한정, bulk/reconcile 경로와 동일 계약).
+          ...(dto.feePerSession !== undefined
+            ? { feePerSession: dto.feePerSession }
+            : dto.price !== undefined &&
+                (dto.feeType ?? fresh.feeType) === "PER_SESSION" &&
+                fresh.feePerSession != null
+              ? { feePerSession: dto.price }
+              : {}),
           ...(dto.isActive !== undefined && { isActive: dto.isActive }),
           // 2026-05-22 옵션 H — feeType 수정 허용.
           ...(dto.feeType !== undefined && { feeType: dto.feeType }),
@@ -5935,6 +6012,13 @@ export class ClassesService {
 
     if (ownerType === "team") {
       await this.invalidateClassCache(ownerId);
+    }
+    const committedChange = priceChange as {
+      oldAmount: number | null;
+      newAmount: number | null;
+    } | null;
+    if (committedChange) {
+      await this.notifyClassPriceChanged(classId, committedChange);
     }
 
     return updated;
@@ -6167,6 +6251,12 @@ export class ClassesService {
       }
     }
 
+    // [Phase 5 §3-4] 금액 실변경 수집 — 커밋 후 알림 발송용.
+    const bulkPriceChanges: {
+      oldAmount: number | null;
+      newAmount: number | null;
+    }[] = [];
+
     await this.prisma.$transaction(async (tx) => {
       // 판매 시작(openClassSales)과의 레이스 차단 — sales lock 획득 후 tx 안에서
       //   salesOpenMonth 를 재조회해 잠금 판정 기준값으로 쓴다 (가격 잠금 §4-0 A).
@@ -6281,7 +6371,14 @@ export class ClassesService {
             sessionsPerWeek: item.sessionsPerWeek,
             durationDays: this.deriveBulkDurationDays(item),
           });
-          if (diff.changed) {
+          // 단가 미러 동기화 — feePerSession 보유 PER_SESSION 상품(후불·BOTH 1회 수업료)은
+          //   price(스냅샷)=feePerSession(정산·표시 SoT) 동치가 계약. bulk DTO 는 price 만
+          //   받으므로 여기서 함께 갱신 — 미동기 시 상세 화면·후불 정산은 구 단가를 계속 쓴다.
+          const syncUnitPrice =
+            item.feeType === "PER_SESSION" && existing.feePerSession != null;
+          const unitPriceDrift =
+            syncUnitPrice && Number(existing.feePerSession) !== item.price;
+          if (diff.changed || unitPriceDrift) {
             assertPrepaidChangeAllowed(
               {
                 storedFeeType: existing.feeType,
@@ -6319,6 +6416,16 @@ export class ClassesService {
               hasCurrentMonthProduct: !!currentMonthProduct,
             });
           }
+          // [Phase 5 §3-4] 금액 실변경 수집 (동일 값 재저장 미수집).
+          if (diff.effectiveAmountChanged) {
+            bulkPriceChanges.push(
+              this.resolvePriceChangeAmounts(
+                existing,
+                { price: item.price },
+                diff.changedFields,
+              ),
+            );
+          }
           await tx.classProduct.update({
             where: { id: item.id },
             data: {
@@ -6331,6 +6438,8 @@ export class ClassesService {
               ...(item.sessionsPerWeek !== undefined && {
                 sessionsPerWeek: item.sessionsPerWeek,
               }),
+              // 단가 미러 — price 변경 시 정산 SoT(feePerSession)도 동치 유지.
+              ...(syncUnitPrice && { feePerSession: item.price }),
               // 무월(레거시) 원본 비활성 전환 — 월분 갱신과 같은 트랜잭션에서 처리해
               //   부분 실패(새 월분만 생성·무월 중복 노출) 상태를 차단한다.
               ...(item.isActive !== undefined && { isActive: item.isActive }),
@@ -6344,11 +6453,118 @@ export class ClassesService {
       await this.invalidateClassCache(ownerId);
     }
 
+    // [Phase 5 §3-4] 커밋 후 알림 — 다건 변경은 금액 표기 없이 1건으로 합산 발송.
+    if (bulkPriceChanges.length > 0) {
+      const change =
+        bulkPriceChanges.length === 1
+          ? bulkPriceChanges[0]
+          : { oldAmount: null, newAmount: null };
+      await this.notifyClassPriceChanged(classId, change);
+    }
+
     // 갱신 후 활성 목록을 단건 GET 과 동일 형태로 반환 (운영자 시점 — 전체 노출).
     return this.getClassProducts(classId, {
       id: userId,
       userType,
     } as JwtUserPayload);
+  }
+
+  /**
+   * [가격 잠금 Phase 5] 가격 실변경 알림 문구용 금액 산출 — price 우선, breakdown
+   * (feePerSession) 차선. 그 외 금액 축 변경(sessionsPerWeek 등)은 금액 표기 생략.
+   */
+  private resolvePriceChangeAmounts(
+    before: { price?: unknown; feePerSession?: unknown },
+    after: { price?: number; feePerSession?: number },
+    changedFields: string[],
+  ): { oldAmount: number | null; newAmount: number | null } {
+    if (changedFields.includes("price") && after.price !== undefined) {
+      return { oldAmount: Number(before.price), newAmount: after.price };
+    }
+    if (
+      changedFields.includes("feePerSession") &&
+      after.feePerSession !== undefined
+    ) {
+      return {
+        oldAmount:
+          before.feePerSession == null ? null : Number(before.feePerSession),
+        newAmount: after.feePerSession,
+      };
+    }
+    return { oldAmount: null, newAmount: null };
+  }
+
+  /**
+   * [가격 잠금 Phase 5 §3-4] 가격 실변경 알림 — 수업 활성 수강생 전원의 학부모에게 발송.
+   * 잠긴 월분은 가드가 선행 차단하므로 실발송 대상은 "미판매 월분 가격 변경"
+   * (이전 월분 구매자에게 다음 달 가격을 예고하는 용도).
+   * 호출 계약: 변경 트랜잭션 **커밋 후** 호출 — 알림 실패가 수정을 롤백시키지 않는다.
+   */
+  private async notifyClassPriceChanged(
+    classId: string,
+    change: { oldAmount: number | null; newAmount: number | null },
+  ): Promise<void> {
+    try {
+      const klass = await this.prisma.class.findUnique({
+        where: { id: classId },
+        select: { className: true },
+      });
+      const enrollments = await this.prisma.enrollment.findMany({
+        where: { classId, status: { in: ["approved", "paid"] } },
+        select: { childId: true },
+      });
+      const childIds = [...new Set(enrollments.map((e) => e.childId))];
+      if (childIds.length === 0) return;
+      // 수신자 = 자녀의 주 보호자 (isPrimary 우선). 보호자 링크가 없는 자녀는
+      //   수신자에서 제외 — 결제·안내 알림은 학부모 계정 전용(자녀 계정 발송 금지).
+      const links = await this.prisma.parentChild.findMany({
+        where: { childId: { in: childIds } },
+        select: { childId: true, parentId: true, isPrimary: true },
+      });
+      const parentOf = new Map<string, string>();
+      for (const l of links) {
+        if (!parentOf.has(l.childId) || l.isPrimary) {
+          parentOf.set(l.childId, l.parentId);
+        }
+      }
+      const orphanCount = childIds.filter((c) => !parentOf.has(c)).length;
+      if (orphanCount > 0) {
+        this.logger.warn(
+          `가격 변경 알림: 보호자 미연결 자녀 ${orphanCount}명 제외 (classId=${classId})`,
+        );
+      }
+      const recipients = [
+        ...new Set(
+          childIds
+            .map((c) => parentOf.get(c))
+            .filter((id): id is string => Boolean(id)),
+        ),
+      ];
+      if (recipients.length === 0) return;
+      const amountText =
+        change.oldAmount != null && change.newAmount != null
+          ? `: ${change.oldAmount.toLocaleString()}원 → ${change.newAmount.toLocaleString()}원`
+          : "";
+      for (const userId of recipients) {
+        try {
+          await this.notificationsService.createNotification({
+            userId,
+            notificationType: "class_price_changed",
+            title: "수강료 변경 안내",
+            message: `${klass?.className ?? "수업"} 수강료가 변경되었습니다${amountText}. 다음 월분부터 적용됩니다.`,
+            linkUrl: `/classes/${classId}`,
+          });
+        } catch (e) {
+          this.logger.warn(
+            `가격 변경 알림 실패: userId=${userId}, ${(e as Error).message}`,
+          );
+        }
+      }
+    } catch (e) {
+      this.logger.warn(
+        `가격 변경 알림 처리 실패: classId=${classId}, ${(e as Error).message}`,
+      );
+    }
   }
 
   /**
@@ -6382,7 +6598,12 @@ export class ClassesService {
     classId: string,
     desired: ReturnType<typeof buildClassProducts>,
     billingMode?: string | null,
-  ): Promise<void> {
+  ): Promise<{ oldAmount: number | null; newAmount: number | null }[]> {
+    // [Phase 5 §3-4] 금액 실변경 수집 — 호출부가 커밋 후 알림 발송.
+    const priceChanges: {
+      oldAmount: number | null;
+      newAmount: number | null;
+    }[] = [];
     // 판매 시작(openClassSales)과의 레이스 차단 — sales lock 획득 후 tx 안에서
     //   salesOpenMonth 를 재조회해 잠금 판정 기준값으로 쓴다 (가격 잠금 §4-0 A).
     //   후불(POSTPAID/BOTH) 수업은 postpaid lock 도 고정 순서로 함께 획득 (§4-0 B).
@@ -6464,6 +6685,16 @@ export class ClassesService {
             await assertPostpaidUnitPriceMutable(tx, classId);
           }
         }
+        // [Phase 5 §3-4] 금액 실변경 수집 (동일 값 재저장 미수집).
+        if (diff.effectiveAmountChanged) {
+          priceChanges.push(
+            this.resolvePriceChangeAmounts(
+              match,
+              { price: d.price, feePerSession: d.feePerSession },
+              diff.changedFields,
+            ),
+          );
+        }
         await tx.classProduct.update({
           where: { id: match.id },
           data: {
@@ -6511,5 +6742,7 @@ export class ClassesService {
         });
       }
     }
+
+    return priceChanges;
   }
 }

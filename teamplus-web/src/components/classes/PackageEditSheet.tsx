@@ -53,6 +53,8 @@ interface PackageEditSheetProps {
   initialDraft?: DraftProduct | null;
   /** 동작 모드 (기본 immediate). */
   mode?: 'immediate' | 'deferred';
+  /** [가격 잠금] 판매 시작된 월분 — 가격 입력 잠금(이름·설명만 수정 가능). */
+  priceLocked?: boolean;
   onSaved: () => void;
   /** deferred 전용 — API 대신 편집 결과를 부모로 전달. */
   onLocalSave?: (draft: LocalProductDraft) => void;
@@ -105,6 +107,7 @@ export function PackageEditSheet({
   initial,
   initialDraft = null,
   mode = 'immediate',
+  priceLocked = false,
   onSaved,
   onLocalSave,
 }: PackageEditSheetProps) {
@@ -283,6 +286,18 @@ export function PackageEditSheet({
           </div>
         )}
 
+        {/* [가격 잠금 Phase 5] 판매 시작 확정 안내 — 가격 입력 잠금, 이름·설명만 수정. */}
+        {priceLocked && (
+          <div
+            role="note"
+            className="rounded-w-lg bg-wbg dark:bg-rink-700/50 border border-wline dark:border-rink-700 px-3 py-2.5"
+          >
+            <p className="text-card-meta text-wtext-2 dark:text-rink-100">
+              {MESSAGES.classProduct.priceLockedNotice}
+            </p>
+          </div>
+        )}
+
         {/* 패키지명 — 필수 */}
         <TextField
           label={MESSAGES.classProduct.fieldProductName}
@@ -293,7 +308,7 @@ export function PackageEditSheet({
           maxLength={50}
         />
 
-        {/* 가격 — 공통 */}
+        {/* 가격 — 공통. 판매 시작된 월분은 잠금(disabled) — 저장 400 대신 사전 차단. */}
         <NumberField
           label={MESSAGES.classProduct.fieldPrice}
           required
@@ -304,6 +319,7 @@ export function PackageEditSheet({
           suffix="원"
           format="comma"
           placeholder="180,000"
+          disabled={priceLocked}
         />
 
         {/* 설명 — 선택 */}
@@ -344,6 +360,7 @@ function NumberField({
   suffix,
   placeholder,
   format,
+  disabled,
 }: {
   label: string;
   required?: boolean;
@@ -355,6 +372,7 @@ function NumberField({
   suffix?: string;
   placeholder?: string;
   format?: 'comma';
+  disabled?: boolean;
 }) {
   const display =
     format === 'comma' && value !== ''
@@ -366,11 +384,18 @@ function NumberField({
         {label}
         {required && <span className="ml-1 text-error-500">*</span>}
       </label>
-      <div className="flex items-center gap-2 h-12 rounded-w-lg border border-wline dark:border-rink-700 focus-within:border-ice-500 transition-colors bg-white dark:bg-rink-800 px-3">
+      <div
+        className={
+          disabled
+            ? 'flex items-center gap-2 h-12 rounded-w-lg border border-wline-2 dark:border-rink-700 bg-wbg dark:bg-rink-900 px-3 opacity-70'
+            : 'flex items-center gap-2 h-12 rounded-w-lg border border-wline dark:border-rink-700 focus-within:border-ice-500 transition-colors bg-white dark:bg-rink-800 px-3'
+        }
+      >
         <input
           type="text"
           inputMode="numeric"
           value={display}
+          disabled={disabled}
           onChange={(e) => {
             const raw = e.target.value.replace(/[^0-9]/g, '');
             if (raw === '') {
@@ -383,7 +408,7 @@ function NumberField({
             onChange(String(num));
           }}
           placeholder={placeholder}
-          className="w-full bg-transparent border-0 p-0 text-card-body font-bold text-wtext-1 dark:text-rink-100 tabular-nums focus:ring-0 focus:outline-none"
+          className="w-full bg-transparent border-0 p-0 text-card-body font-bold text-wtext-1 dark:text-rink-100 tabular-nums focus:ring-0 focus:outline-none disabled:opacity-60"
           aria-label={label}
         />
         {suffix && (

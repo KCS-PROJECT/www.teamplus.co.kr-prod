@@ -216,6 +216,75 @@ describe("ClassesService.bulkUpsertClassProducts", () => {
     expect(tx.classProduct.update).not.toHaveBeenCalled();
   });
 
+  it("PER_SESSION 단가 변경 시 feePerSession(정산 SoT)도 함께 동기화한다 (단가 미러)", async () => {
+    tx.classProduct.findUnique.mockResolvedValueOnce({
+      id: "fee-1",
+      classId,
+      billingMonth: null,
+      feeType: "PER_SESSION",
+      billingTiming: "PREPAID",
+      isActive: true,
+      price: 70000,
+      feePerSession: 70000,
+      sessionsPerMonth: 0,
+      sessionsPerWeek: null,
+      durationDays: 30,
+    });
+
+    await service.bulkUpsertClassProducts(userId, "COACH", classId, {
+      upserts: [
+        {
+          id: "fee-1",
+          productName: "1회 수업료",
+          price: 80000,
+          feeType: "PER_SESSION",
+          sessionsPerMonth: 0,
+          durationDays: 30,
+        },
+      ],
+      deleteIds: [],
+    });
+
+    const updData = tx.classProduct.update.mock.calls[0][0].data;
+    expect(updData.price).toBe(80000);
+    // bulk DTO 는 price 만 받지만 정산·표시 SoT(feePerSession)도 동치로 갱신돼야 한다.
+    expect(updData.feePerSession).toBe(80000);
+  });
+
+  it("feePerSession 미보유 상품(선불 참고용 1회권)은 단가 미러 미동작", async () => {
+    tx.classProduct.findUnique.mockResolvedValueOnce({
+      id: "fee-2",
+      classId,
+      billingMonth: null,
+      feeType: "PER_SESSION",
+      billingTiming: "PREPAID",
+      isActive: true,
+      price: 70000,
+      feePerSession: null,
+      sessionsPerMonth: 0,
+      sessionsPerWeek: null,
+      durationDays: 30,
+    });
+
+    await service.bulkUpsertClassProducts(userId, "COACH", classId, {
+      upserts: [
+        {
+          id: "fee-2",
+          productName: "1회 수업료",
+          price: 80000,
+          feeType: "PER_SESSION",
+          sessionsPerMonth: 0,
+          durationDays: 30,
+        },
+      ],
+      deleteIds: [],
+    });
+
+    const updData = tx.classProduct.update.mock.calls[0][0].data;
+    expect(updData.price).toBe(80000);
+    expect(updData.feePerSession).toBeUndefined();
+  });
+
   it("발급 수량 0 정기권(미발급 기본)은 회차 검증을 통과하고 전송된 durationDays 를 보존한다", async () => {
     await service.bulkUpsertClassProducts(userId, "COACH", classId, {
       upserts: [
