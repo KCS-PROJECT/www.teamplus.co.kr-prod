@@ -311,11 +311,15 @@ export class ClassesListController {
   async openClassSales(
     @Request() req: AuthenticatedRequest,
     @Param("classId") classId: string,
+    // [Phase 2] dryRun=true — 검증 + 미갱신 선불 선수 해제 대상 미리보기(쓰기 0).
+    //   FE 판매 시작 확인 다이얼로그의 사전 고지용.
+    @Body() body?: { dryRun?: boolean },
   ) {
     return this.classesService.openClassSales(
       req.user.id,
       req.user.userType,
       classId,
+      body?.dryRun === true,
     );
   }
 }

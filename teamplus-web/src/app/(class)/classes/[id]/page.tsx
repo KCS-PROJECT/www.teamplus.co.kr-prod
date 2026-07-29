@@ -1071,9 +1071,39 @@ export default function ClassDetailPage() {
   const handleOpenSales = useCallback(async () => {
     setOpeningSales(true);
     try {
-      const res = await api.post(`/classes/${classId}/open-sales`);
+      // [Phase 2] 미갱신 선불 선수 해제 사전 고지 — dryRun으로 대상을 먼저 조회하고,
+      //   해제 대상이 있으면 감독 확인 후에만 실제 판매 시작을 실행한다.
+      const preview = await api.post<{
+        releaseCandidates?: { userId: string; name: string }[];
+      }>(`/classes/${classId}/open-sales`, { dryRun: true });
+      if (!preview.success) {
+        if (preview.error?.message) toast.error(preview.error.message);
+        return;
+      }
+      const candidates = preview.data?.releaseCandidates ?? [];
+      if (candidates.length > 0) {
+        const ok = await modal.confirm({
+          title: MESSAGES.class.salesCycle.openSalesReleaseTitle,
+          message: MESSAGES.class.salesCycle.openSalesReleaseNotice(
+            candidates.map((c) => c.name).join(', '),
+            candidates.length,
+          ),
+          confirmText: MESSAGES.class.salesCycle.openSalesButton,
+        });
+        if (!ok) return;
+      }
+      const res = await api.post<{ releasedCount?: number }>(
+        `/classes/${classId}/open-sales`,
+      );
       if (res.success) {
         toast.success(MESSAGES.class.salesCycle.openSalesSuccess);
+        if ((res.data?.releasedCount ?? 0) > 0) {
+          toast.info(
+            MESSAGES.class.salesCycle.openSalesReleasedToast(
+              res.data!.releasedCount!,
+            ),
+          );
+        }
         await reloadClassDetail();
       } else if (res.error?.message) {
         toast.error(res.error.message);
@@ -1081,7 +1111,7 @@ export default function ClassDetailPage() {
     } finally {
       setOpeningSales(false);
     }
-  }, [classId, toast, reloadClassDetail]);
+  }, [classId, toast, reloadClassDetail, modal]);
 
   const handleEndClass = useCallback(async () => {
     const ok = await modal.confirm({
