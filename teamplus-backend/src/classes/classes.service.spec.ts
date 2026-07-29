@@ -109,17 +109,29 @@ describe("ClassesService", () => {
 
   // $transaction 콜백에 주입되는 tx — 교차 오염 방지를 위해 매 테스트 새로 생성.
   let mockTx: {
-    class: { create: jest.Mock; update: jest.Mock };
+    $queryRaw: jest.Mock;
+    class: {
+      create: jest.Mock;
+      update: jest.Mock;
+      findUnique: jest.Mock;
+      findUniqueOrThrow: jest.Mock;
+    };
     classDaySchedule: { deleteMany: jest.Mock; createMany: jest.Mock };
     classSchedule: {
       create: jest.Mock;
       createMany: jest.Mock;
       findFirst: jest.Mock;
+      findUnique: jest.Mock;
       findMany: jest.Mock;
       deleteMany: jest.Mock;
       update: jest.Mock;
     };
-    classProduct: { createMany: jest.Mock };
+    classProduct: {
+      createMany: jest.Mock;
+      findUnique: jest.Mock;
+      findFirst: jest.Mock;
+      update: jest.Mock;
+    };
     classCoachAssignment: { createMany: jest.Mock };
     classAttendance: { findMany: jest.Mock; updateMany: jest.Mock };
     classRsvp: { createMany: jest.Mock };
@@ -127,17 +139,39 @@ describe("ClassesService", () => {
 
   beforeEach(async () => {
     mockTx = {
-      class: { create: jest.fn(), update: jest.fn() },
+      // 가격 잠금 §4-0 A — sales lock(advisory) + tx 내 재조회 기본값.
+      //   salesOpenMonth null = 판매 이력 없음 → 잠금 가드 전부 통과(기존 동작 보존).
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      class: {
+        create: jest.fn(),
+        update: jest.fn(),
+        // postpaid lock 판정용(§4-0 B) — 기본 undefined = PREPAID 취급, lock 미획득.
+        findUnique: jest.fn(),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          endedAt: null,
+          salesOpenMonth: null,
+          trainingType: null,
+          schedules: [],
+          products: [],
+        }),
+      },
       classDaySchedule: { deleteMany: jest.fn(), createMany: jest.fn() },
       classSchedule: {
         create: jest.fn(),
         createMany: jest.fn(),
         findFirst: jest.fn().mockResolvedValue(null),
+        // P3-H1 재검증용 — 기본 undefined = 일정 미조회 취급, 통과.
+        findUnique: jest.fn(),
         findMany: jest.fn().mockResolvedValue([]),
         deleteMany: jest.fn(),
         update: jest.fn(),
       },
-      classProduct: { createMany: jest.fn() },
+      classProduct: {
+        createMany: jest.fn(),
+        findUnique: jest.fn(),
+        findFirst: jest.fn(),
+        update: jest.fn(),
+      },
       classCoachAssignment: { createMany: jest.fn() },
       classAttendance: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -171,6 +205,9 @@ describe("ClassesService", () => {
               findMany: jest.fn(),
               update: jest.fn(),
               delete: jest.fn(),
+            },
+            classProduct: {
+              findUnique: jest.fn(),
             },
             classSchedule: {
               create: jest.fn(),
@@ -356,6 +393,64 @@ describe("ClassesService", () => {
         service.createClass(mockCoachUserId, mockClubId, createDto as any),
       ).rejects.toThrow("1회용 수업은 일정을 1개만 등록할 수 있습니다.");
       expect(mockTx.class.create).not.toHaveBeenCalled();
+    });
+
+    // [가격 잠금 §3-7] 신규 MONTHLY_FIXED 귀속월 계약 — 생성 경로
+    it("일정 + 월 정액: 첫 일정의 달이 귀속월로 기록된다", async () => {
+      jest
+        .spyOn(prismaService.team, "findUnique")
+        .mockResolvedValue(mockClub as any);
+      mockTx.class.create.mockResolvedValue(mockClass as any);
+      (mockTx.classSchedule.findFirst as jest.Mock).mockResolvedValue({
+        scheduledDate: new Date("2026-08-05T00:00:00.000Z"),
+      });
+
+      await service.createClass(mockCoachUserId, mockClubId, {
+        className: "월정액반",
+        monthlyPrice: 200000,
+        dateSchedules: [
+          { date: "2026-08-05", startTime: "10:00", endTime: "11:00" },
+        ],
+      } as any);
+
+      expect(mockTx.classProduct.createMany).toHaveBeenCalledTimes(1);
+      const rows = (mockTx.classProduct.createMany as jest.Mock).mock
+        .calls[0][0].data as Array<{ feeType: string; billingMonth?: Date }>;
+      const monthly = rows.find((r) => r.feeType === "MONTHLY_FIXED");
+      expect(monthly?.billingMonth).toEqual(
+        new Date("2026-08-01T00:00:00.000Z"),
+      );
+    });
+
+    it("일정 없음 + 월 정액: fail-fast 400 — 상품 row 미생성", async () => {
+      jest
+        .spyOn(prismaService.team, "findUnique")
+        .mockResolvedValue(mockClub as any);
+      mockTx.class.create.mockResolvedValue(mockClass as any);
+      (mockTx.classSchedule.findFirst as jest.Mock).mockResolvedValue(null);
+
+      await expect(
+        service.createClass(mockCoachUserId, mockClubId, {
+          className: "일정 없는 월정액반",
+          monthlyPrice: 200000,
+        } as any),
+      ).rejects.toThrow("첫 일정을 먼저 등록해주세요");
+      expect(mockTx.classProduct.createMany).not.toHaveBeenCalled();
+    });
+
+    it("일정 없음 + 월 정액 없음: 기존대로 생성 허용 (과차단 방지)", async () => {
+      jest
+        .spyOn(prismaService.team, "findUnique")
+        .mockResolvedValue(mockClub as any);
+      mockTx.class.create.mockResolvedValue(mockClass as any);
+      (mockTx.classSchedule.findFirst as jest.Mock).mockResolvedValue(null);
+
+      const result = await service.createClass(mockCoachUserId, mockClubId, {
+        className: "일정 없는 수업",
+      } as any);
+
+      expect(result.isActive).toBe(true);
+      expect(mockTx.classProduct.createMany).not.toHaveBeenCalled();
     });
   });
 
@@ -816,6 +911,26 @@ describe("ClassesService", () => {
         mockClubId,
         expect.any(String),
       );
+    });
+
+    it("정산 확정 월의 일정 취소는 lock 안 재검증으로 거부한다 (P3-H1)", async () => {
+      jest.spyOn(prismaService.classSchedule, "findUnique").mockResolvedValue({
+        ...futureSchedule,
+        class: mockClass,
+      } as any);
+      (mockTx.classSchedule.findUnique as jest.Mock).mockResolvedValue({
+        classId: mockClassId,
+        scheduledDate: futureSchedule.scheduledDate,
+      });
+      (mockTx as unknown as Record<string, unknown>).monthlyPostpaidBilling = {
+        findUnique: jest.fn().mockResolvedValue({ status: "confirmed" }),
+      };
+
+      await expect(
+        service.cancelClassSchedule(mockCoachUserId, mockScheduleId, "사유"),
+      ).rejects.toThrow("정산이 확정된 월");
+      expect(mockTx.classSchedule.update).not.toHaveBeenCalled();
+      expect(mockTx.classAttendance.updateMany).not.toHaveBeenCalled();
     });
 
     it("should throw ForbiddenException when cancelling a past schedule", async () => {
@@ -1559,6 +1674,126 @@ describe("ClassesService", () => {
       expect(july.students[0].enrollmentId).toBe("enr-jul");
     });
 
+    // ── 선택월 로스터 멤버십 (허브 규칙 공유) ──
+    it("[명단 월스코프] inactive + 선택월 무활동 → 행 제외(그만둔 학생 잔존 해소)", async () => {
+      wireBillingMocks({
+        billing: null,
+        classRecord: prepaidClassRecord,
+        registrations: [{ ...postpaidChildRegistration, status: "inactive" }],
+        enrollments: [prepaidEnrollment(juneCompletedPayment)],
+      });
+      // 등록 6월·결제 6월·inactive — 7월엔 활동 없음 → 명단 제외.
+      const result = await service.getClassPayments(
+        mockClassId,
+        requester,
+        undefined,
+        "2026-07",
+      );
+      expect(result.students).toHaveLength(0);
+      expect(result.total).toBe(0);
+      expect(result.totalPaidAmount).toBe(0);
+    });
+
+    it("[명단 월스코프] 등록월이 선택월보다 미래 → 제외(그 달엔 등록 전)", async () => {
+      wireBillingMocks({
+        billing: null,
+        classRecord: prepaidClassRecord,
+        registrations: [
+          {
+            ...postpaidChildRegistration,
+            registrationDate: new Date("2026-07-10T00:00:00Z"),
+          },
+        ],
+        enrollments: [],
+      });
+      const result = await service.getClassPayments(
+        mockClassId,
+        requester,
+        undefined,
+        "2026-06",
+      );
+      expect(result.students).toHaveLength(0);
+    });
+
+    it("[만료 회원] expired 는 월 명단에서 빠지고 expiredMembers 목록에 마지막 결제월과 함께 노출", async () => {
+      wireBillingMocks({
+        billing: null,
+        classRecord: prepaidClassRecord,
+        registrations: [{ ...postpaidChildRegistration, status: "expired" }],
+        enrollments: [prepaidEnrollment(juneCompletedPayment)],
+      });
+      const result = await service.getClassPayments(
+        mockClassId,
+        requester,
+        undefined,
+        "2026-07",
+      );
+      // 7월 무활동 expired → 월 명단 제외
+      expect(result.students).toHaveLength(0);
+      // 재등록 대상 관리 목록에는 월 필터와 무관하게 노출
+      expect(result.expiredMembers).toEqual([
+        {
+          userId: "child-1",
+          memberName: "김철",
+          lastPaidYearMonth: "2026-06",
+        },
+      ]);
+    });
+
+    it("[명단 월스코프] yearMonth 미전송(admin) → inactive 무활동도 전체 명단 유지", async () => {
+      wireBillingMocks({
+        billing: null,
+        classRecord: prepaidClassRecord,
+        registrations: [{ ...postpaidChildRegistration, status: "inactive" }],
+        enrollments: [prepaidEnrollment(juneCompletedPayment)],
+      });
+      const result = await service.getClassPayments(
+        mockClassId,
+        requester,
+        undefined,
+        undefined,
+      );
+      expect(result.students).toHaveLength(1);
+    });
+
+    it("[명단 월스코프] 종료 수업(endedAt 6월)의 7월 조회 → active 무활동 학생 제외", async () => {
+      wireBillingMocks({
+        billing: null,
+        classRecord: {
+          ...prepaidClassRecord,
+          isActive: false,
+          endedAt: new Date("2026-06-15T00:00:00Z"),
+        },
+        enrollments: [prepaidEnrollment(juneCompletedPayment)],
+      });
+      const july = await service.getClassPayments(
+        mockClassId,
+        requester,
+        undefined,
+        "2026-07",
+      );
+      expect(july.students).toHaveLength(0);
+
+      // 종료월(6월) 조회는 진행 중으로 인정 — 그 달 결제 활동도 있어 포함.
+      wireBillingMocks({
+        billing: null,
+        classRecord: {
+          ...prepaidClassRecord,
+          isActive: false,
+          endedAt: new Date("2026-06-15T00:00:00Z"),
+        },
+        enrollments: [prepaidEnrollment(juneCompletedPayment)],
+      });
+      const june = await service.getClassPayments(
+        mockClassId,
+        requester,
+        undefined,
+        "2026-06",
+      );
+      expect(june.students).toHaveLength(1);
+      expect(june.students[0].billingStatus).toBe("PAID");
+    });
+
     // ── Codex Cycle 3 지적: 부분환불 총수금 누락·inactive 결제 수명주기 ──
     it("[총수금 정합] 부분환불 행의 순수납이 totalPaidAmount 에 반영 = sum(paidAmount)", async () => {
       wireBillingMocks({
@@ -1711,6 +1946,458 @@ describe("ClassesService", () => {
       expect(["UNSETTLED"]).toContain(row.billingStatus);
       expect(row.paidAmount).toBe(0);
       expect(row.outstandingAmount).toBe(0);
+    });
+  });
+
+  describe("openClassSales (Phase 2 — 판매 시작 시 미갱신 선불 배치 해제)", () => {
+    const mkUser = (id: string, name: string) => ({
+      userId: id,
+      user: { firstName: name, lastName: "김", email: `${id}@t.dev` },
+    });
+    const prepaidEnroll = (childId: string, completedAtIso: string) => ({
+      childId,
+      status: "paid",
+      paidAt: new Date(completedAtIso),
+      product: {
+        billingTiming: "PREPAID",
+        feeType: "MONTHLY_FIXED",
+        billingMonth: null,
+        price: 50000,
+      },
+      payment: {
+        amount: 50000,
+        paymentStatus: "completed",
+        completedAt: new Date(completedAtIso),
+        createdAt: new Date(completedAtIso),
+        refundLogs: [],
+      },
+    });
+    const postpaidEnroll = (childId: string) => ({
+      childId,
+      status: "approved",
+      paidAt: null,
+      product: {
+        billingTiming: "POSTPAID",
+        feeType: "PER_SESSION",
+        billingMonth: null,
+        price: 0,
+      },
+      payment: null,
+    });
+
+    /** 8월 판매 시작(직전 판매월=7월) 상황의 공통 mock 배선. */
+    const wireOpenSalesMocks = (opts: {
+      salesOpenMonth: Date | null;
+      registrations: ReturnType<typeof mkUser>[];
+      enrollments: unknown[];
+    }) => {
+      jest
+        .spyOn(service as never as { assertClassManagerPermission: () => unknown }, "assertClassManagerPermission" as never)
+        .mockResolvedValue({ ownerType: "team", ownerId: mockClubId } as never);
+      jest
+        .spyOn(service as never as { invalidateClassCache: () => unknown }, "invalidateClassCache" as never)
+        .mockResolvedValue(undefined as never);
+      (prismaService.class as unknown as Record<string, jest.Mock>).findUniqueOrThrow =
+        jest.fn().mockResolvedValue({
+          endedAt: null,
+          salesOpenMonth: opts.salesOpenMonth,
+          trainingType: null,
+          billingMode: "BOTH",
+          schedules: [{ scheduledDate: new Date("2026-08-05T00:00:00Z") }],
+          products: [],
+        });
+      (prismaService as unknown as Record<string, unknown>).classRegistration = {
+        findMany: jest.fn().mockResolvedValue(opts.registrations),
+      };
+      jest
+        .spyOn(prismaService.enrollment, "findMany")
+        .mockResolvedValue(opts.enrollments as never);
+      (mockTx.class.update as jest.Mock).mockResolvedValue({
+        id: mockClassId,
+        salesOpenMonth: new Date("2026-08-01T00:00:00Z"),
+      });
+      // tx 내 재조회(§4-0 A)도 외부 조회와 동일 상태를 반환하도록 배선 —
+      //   lifecycle 재산출용 trainingType·schedules 포함.
+      (mockTx.class.findUniqueOrThrow as jest.Mock).mockResolvedValue({
+        endedAt: null,
+        salesOpenMonth: opts.salesOpenMonth,
+        trainingType: null,
+        schedules: [{ scheduledDate: new Date("2026-08-05T00:00:00Z") }],
+        products: [],
+      });
+      (mockTx as unknown as Record<string, unknown>).classProduct = {
+        createMany: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      };
+      const regUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
+      (mockTx as unknown as Record<string, unknown>).classRegistration = {
+        updateMany: regUpdateMany,
+      };
+      return { regUpdateMany };
+    };
+
+    it("미갱신 선불만 해제 — 직전월 결제·후불·배치전용은 유지", async () => {
+      const { regUpdateMany } = wireOpenSalesMocks({
+        salesOpenMonth: new Date("2026-07-01T00:00:00Z"),
+        registrations: [
+          mkUser("u-june", "미갱신"),
+          mkUser("u-july", "갱신"),
+          mkUser("u-post", "후불"),
+          mkUser("u-roster", "배치"),
+        ],
+        enrollments: [
+          prepaidEnroll("u-june", "2026-06-05T00:00:00Z"), // 6월 결제 후 미갱신 → 해제
+          prepaidEnroll("u-july", "2026-07-03T00:00:00Z"), // 직전 판매월(7월) 결제 → 유지
+          postpaidEnroll("u-post"), // 활성 후불 구독 → 유지
+          // u-roster: enrollment 없음(감독 배치 전용) → 유지
+        ],
+      });
+      const result = (await service.openClassSales(
+        mockCoachUserId,
+        "COACH",
+        mockClassId,
+      )) as { releasedCount: number; releasedNames: string[] };
+      expect(regUpdateMany).toHaveBeenCalledTimes(1);
+      expect(regUpdateMany.mock.calls[0][0].where.userId.in).toEqual([
+        "u-june",
+      ]);
+      // 만료(expired) 상태로 기록 — 감독 수동 해제(inactive)와 구분.
+      expect(regUpdateMany.mock.calls[0][0].data).toEqual({
+        status: "expired",
+      });
+      expect(result.releasedCount).toBe(1);
+      expect(result.releasedNames).toEqual(["김미갱신"]);
+    });
+
+    it("dryRun — 해제 대상 미리보기만 반환, 쓰기 0", async () => {
+      const { regUpdateMany } = wireOpenSalesMocks({
+        salesOpenMonth: new Date("2026-07-01T00:00:00Z"),
+        registrations: [mkUser("u-june", "미갱신")],
+        enrollments: [prepaidEnroll("u-june", "2026-06-05T00:00:00Z")],
+      });
+      const result = await service.openClassSales(
+        mockCoachUserId,
+        "COACH",
+        mockClassId,
+        true,
+      );
+      expect(result).toMatchObject({
+        dryRun: true,
+        releaseCandidates: [{ userId: "u-june", name: "김미갱신" }],
+      });
+      expect(prismaService.$transaction).not.toHaveBeenCalled();
+      expect(regUpdateMany).not.toHaveBeenCalled();
+      expect(mockTx.class.update).not.toHaveBeenCalled();
+    });
+
+    it("첫 판매(직전 판매월 없음) — 해제 대상 산출 없이 판매만 시작", async () => {
+      const { regUpdateMany } = wireOpenSalesMocks({
+        salesOpenMonth: null,
+        registrations: [mkUser("u-june", "미갱신")],
+        enrollments: [prepaidEnroll("u-june", "2026-06-05T00:00:00Z")],
+      });
+      const result = (await service.openClassSales(
+        mockCoachUserId,
+        "COACH",
+        mockClassId,
+      )) as { releasedCount: number; releasedNames: string[] };
+      expect(regUpdateMany).not.toHaveBeenCalled();
+      expect(result.releasedCount).toBe(0);
+      expect(result.releasedNames).toEqual([]);
+    });
+
+    it("tx 재산출 대상월이 외부 산출과 다르면 낡은 월을 커밋하지 않음 (P2-H1)", async () => {
+      wireOpenSalesMocks({
+        salesOpenMonth: new Date("2026-07-01T00:00:00Z"),
+        registrations: [],
+        enrollments: [],
+      });
+      // 외부 조회는 8월 일정 → 대상월 8월. lock 획득 후 재조회는 9월 일정만 —
+      //   그 사이 일정이 변경된 상황 재현.
+      (mockTx.class.findUniqueOrThrow as jest.Mock).mockResolvedValue({
+        endedAt: null,
+        salesOpenMonth: new Date("2026-07-01T00:00:00Z"),
+        trainingType: null,
+        schedules: [{ scheduledDate: new Date("2026-09-05T00:00:00Z") }],
+        products: [],
+      });
+      await expect(
+        service.openClassSales(mockCoachUserId, "COACH", mockClassId),
+      ).rejects.toThrow("수업 일정이 방금 변경되었습니다");
+      expect(mockTx.class.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("가격 잠금 가드 (Phase 2 — 판매 시작된 월분 수정 거부)", () => {
+    const JUL = new Date(Date.UTC(2026, 6, 1));
+    const AUG = new Date(Date.UTC(2026, 7, 1));
+    const productId = "prod-lock-1";
+
+    const wireProductMocks = (fresh: {
+      feeType: string;
+      billingMonth: Date | null;
+      salesOpenMonth: Date | null;
+      billingTiming?: string | null;
+      billingMode?: string;
+      feePerSession?: number | null;
+    }) => {
+      jest
+        .spyOn(
+          service as never as { assertClassManagerPermission: () => unknown },
+          "assertClassManagerPermission" as never,
+        )
+        .mockResolvedValue({
+          ownerType: "team",
+          ownerId: mockClubId,
+          billingMode: fresh.billingMode,
+        } as never);
+      jest
+        .spyOn(
+          service as never as { invalidateClassCache: () => unknown },
+          "invalidateClassCache" as never,
+        )
+        .mockResolvedValue(undefined as never);
+      (prismaService.classProduct.findUnique as jest.Mock).mockResolvedValue({
+        id: productId,
+        classId: mockClassId,
+        billingMonth: fresh.billingMonth,
+      });
+      (mockTx.classProduct.findUnique as jest.Mock).mockResolvedValue({
+        feeType: fresh.feeType,
+        billingTiming: fresh.billingTiming ?? null,
+        billingMonth: fresh.billingMonth,
+        price: 100000,
+        feePerSession: fresh.feePerSession ?? null,
+        sessionsPerMonth: 8,
+        sessionsPerWeek: null,
+        durationDays: 28,
+        class: { salesOpenMonth: fresh.salesOpenMonth },
+      });
+      (mockTx.classProduct.update as jest.Mock).mockResolvedValue({
+        id: productId,
+      });
+    };
+
+    it("판매 시작된 현재 월분의 가격 변경 → 400 + 미반영", async () => {
+      wireProductMocks({
+        feeType: "MONTHLY_FIXED",
+        billingMonth: JUL,
+        salesOpenMonth: JUL,
+      });
+      await expect(
+        service.updateClassProductByClassId("u-1", "COACH", mockClassId, productId, {
+          price: 120000,
+        }),
+      ).rejects.toThrow("이미 판매가 시작된 수강권");
+      expect(mockTx.classProduct.update).not.toHaveBeenCalled();
+    });
+
+    it("잠긴 상품이라도 이름·설명만 변경하면 통과", async () => {
+      wireProductMocks({
+        feeType: "MONTHLY_FIXED",
+        billingMonth: JUL,
+        salesOpenMonth: JUL,
+      });
+      await service.updateClassProductByClassId(
+        "u-1",
+        "COACH",
+        mockClassId,
+        productId,
+        { productName: "새 이름", description: "설명" },
+      );
+      expect(mockTx.classProduct.update).toHaveBeenCalledTimes(1);
+    });
+
+    it("동일 값 재저장(가격 불변)은 잠긴 상품에서도 통과", async () => {
+      wireProductMocks({
+        feeType: "MONTHLY_FIXED",
+        billingMonth: JUL,
+        salesOpenMonth: JUL,
+      });
+      await service.updateClassProductByClassId(
+        "u-1",
+        "COACH",
+        mockClassId,
+        productId,
+        { price: 100000, sessionsPerMonth: 8 },
+      );
+      expect(mockTx.classProduct.update).toHaveBeenCalledTimes(1);
+    });
+
+    it("미판매 미래 월분은 가격 변경 허용", async () => {
+      wireProductMocks({
+        feeType: "MONTHLY_FIXED",
+        billingMonth: AUG,
+        salesOpenMonth: JUL,
+      });
+      await service.updateClassProductByClassId(
+        "u-1",
+        "COACH",
+        mockClassId,
+        productId,
+        { price: 130000 },
+      );
+      expect(mockTx.classProduct.update).toHaveBeenCalledTimes(1);
+    });
+
+    it("PER_SESSION 일반 단가 수정은 Phase 3 전까지 허용", async () => {
+      wireProductMocks({
+        feeType: "PER_SESSION",
+        billingMonth: null,
+        salesOpenMonth: JUL,
+      });
+      await service.updateClassProductByClassId(
+        "u-1",
+        "COACH",
+        mockClassId,
+        productId,
+        { price: 60000, feePerSession: 60000 },
+      );
+      expect(mockTx.classProduct.update).toHaveBeenCalledTimes(1);
+    });
+
+    it("판매 시작 후 PER_SESSION → MONTHLY_FIXED 전환은 거부 (P2-C1)", async () => {
+      wireProductMocks({
+        feeType: "PER_SESSION",
+        billingMonth: null,
+        salesOpenMonth: JUL,
+      });
+      await expect(
+        service.updateClassProductByClassId("u-1", "COACH", mockClassId, productId, {
+          feeType: "MONTHLY_FIXED",
+        }),
+      ).rejects.toThrow("이미 판매가 시작된 수강권");
+      expect(mockTx.classProduct.update).not.toHaveBeenCalled();
+    });
+
+    it("후불 단가 — 미정산 출석 존재 시 수정 거부 (Phase 3)", async () => {
+      wireProductMocks({
+        feeType: "PER_SESSION",
+        billingTiming: "POSTPAID",
+        billingMode: "POSTPAID",
+        billingMonth: null,
+        salesOpenMonth: null,
+        feePerSession: 50000,
+      });
+      (mockTx.classSchedule.findMany as jest.Mock).mockResolvedValue([
+        {
+          scheduledDate: new Date("2026-06-10T00:00:00.000Z"),
+          attendances: [{ memberId: "m1" }],
+        },
+      ]);
+      (mockTx.class.findUnique as jest.Mock).mockResolvedValue({
+        billingMode: "POSTPAID",
+      });
+      (mockTx as unknown as Record<string, unknown>).monthlyPostpaidBilling = {
+        findMany: jest.fn().mockResolvedValue([]),
+      };
+      await expect(
+        service.updateClassProductByClassId("u-1", "COACH", mockClassId, productId, {
+          price: 70000,
+          feePerSession: 70000,
+        }),
+      ).rejects.toThrow("정산되지 않은 출석");
+      expect(mockTx.classProduct.update).not.toHaveBeenCalled();
+    });
+
+    it("후불 단가 — 경과월 정산이 전부 확정이면 수정 허용 (Phase 3)", async () => {
+      wireProductMocks({
+        feeType: "PER_SESSION",
+        billingTiming: "POSTPAID",
+        billingMode: "POSTPAID",
+        billingMonth: null,
+        salesOpenMonth: null,
+        feePerSession: 50000,
+      });
+      (mockTx.classSchedule.findMany as jest.Mock).mockResolvedValue([
+        {
+          scheduledDate: new Date("2026-06-10T00:00:00.000Z"),
+          attendances: [{ memberId: "m1" }],
+        },
+      ]);
+      (mockTx.class.findUnique as jest.Mock).mockResolvedValue({
+        billingMode: "POSTPAID",
+      });
+      (mockTx as unknown as Record<string, unknown>).monthlyPostpaidBilling = {
+        findMany: jest.fn().mockResolvedValue([{ yearMonth: "2026-06" }]),
+      };
+      await service.updateClassProductByClassId(
+        "u-1",
+        "COACH",
+        mockClassId,
+        productId,
+        { price: 70000, feePerSession: 70000 },
+      );
+      expect(mockTx.classProduct.update).toHaveBeenCalledTimes(1);
+      // dual lock 고정 순서 (§4-0) — sales → postpaid, 역순 획득 없음.
+      const lockKeys = (mockTx.$queryRaw as jest.Mock).mock.calls.map(
+        (c) => c[1],
+      );
+      expect(lockKeys).toEqual([
+        `class-sales:${mockClassId}`,
+        `class-postpaid:${mockClassId}`,
+      ]);
+    });
+
+    it("월별 판매 중 무월 legacy 재활성화는 거부 (§3-1 단서, Phase 4)", async () => {
+      wireProductMocks({
+        feeType: "MONTHLY_FIXED",
+        billingMonth: null,
+        salesOpenMonth: JUL,
+      });
+      (mockTx.classProduct.findUnique as jest.Mock).mockResolvedValue({
+        feeType: "MONTHLY_FIXED",
+        billingTiming: null,
+        billingMonth: null,
+        isActive: false,
+        price: 100000,
+        feePerSession: null,
+        sessionsPerMonth: 8,
+        sessionsPerWeek: null,
+        durationDays: 28,
+        class: { salesOpenMonth: JUL },
+      });
+      // 현재 판매월 월분 상품 존재 (isActive 무관 조회).
+      (mockTx.classProduct.findFirst as jest.Mock).mockResolvedValue({
+        id: "cur-month-prod",
+      });
+
+      await expect(
+        service.updateClassProductByClassId("u-1", "COACH", mockClassId, productId, {
+          isActive: true,
+        }),
+      ).rejects.toThrow("이전 방식 수강권을 다시 판매할 수 없습니다");
+      expect(mockTx.classProduct.update).not.toHaveBeenCalled();
+    });
+
+    it("월분 상품이 없는 legacy 수업의 재활성화는 허용 (과차단 방지)", async () => {
+      wireProductMocks({
+        feeType: "MONTHLY_FIXED",
+        billingMonth: null,
+        salesOpenMonth: JUL,
+      });
+      (mockTx.classProduct.findUnique as jest.Mock).mockResolvedValue({
+        feeType: "MONTHLY_FIXED",
+        billingTiming: null,
+        billingMonth: null,
+        isActive: false,
+        price: 100000,
+        feePerSession: null,
+        sessionsPerMonth: 8,
+        sessionsPerWeek: null,
+        durationDays: 28,
+        class: { salesOpenMonth: JUL },
+      });
+      (mockTx.classProduct.findFirst as jest.Mock).mockResolvedValue(null);
+
+      await service.updateClassProductByClassId(
+        "u-1",
+        "COACH",
+        mockClassId,
+        productId,
+        { isActive: true },
+      );
+      expect(mockTx.classProduct.update).toHaveBeenCalledTimes(1);
     });
   });
 });

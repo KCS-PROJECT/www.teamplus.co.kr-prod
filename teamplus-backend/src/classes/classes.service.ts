@@ -29,6 +29,9 @@ import {
 import { filterSellableProducts } from "@/common/billing/sales-gate.util";
 import {
   resolvePrepaidAttribution,
+  isRosterMemberForMonth,
+  instantToKstYearMonth,
+  dbDateToKstYearMonth,
   type AttributionResult,
 } from "@/payments/settlement/attribution.util";
 import {
@@ -39,6 +42,26 @@ import {
   computePackageGuardMeta,
   shouldHideInactiveFor,
 } from "./utils/package-guard.util";
+import {
+  PRICE_LOCK_MESSAGES,
+  assertPrepaidChangeAllowed,
+  assertSalesMonthNotRolledBack,
+  assertMonthNotFrozen,
+  assertLegacyNotReactivated,
+  isEntitlementOrAmountChange,
+  resolveProductDeletionMode,
+  resolveNewProductBillingMonth,
+} from "./utils/price-lock.util";
+import {
+  acquireClassSalesLock,
+  acquireClassSalesAndPostpaidLocks,
+  acquireClassPostpaidLockIfNeeded,
+  shouldUsePostpaidLock,
+} from "./utils/class-locks.util";
+import {
+  assertPostpaidUnitPriceMutable,
+  assertScheduleMonthNotSettled,
+} from "@/payments/settlement/postpaid-attendance.util";
 import { CreateClassDto, DayScheduleItemDto } from "./dto/create-class.dto";
 import { UpdateClassDto } from "./dto/update-class.dto";
 import { CreateClassProductDto } from "./dto/create-product.dto";
@@ -455,16 +478,6 @@ export class ClassesService {
         });
       }
 
-      if (createDto.singlePrice || createDto.monthlyPrice) {
-        const products = buildClassProducts(created.id, {
-          ...createDto,
-          billingMode: createDto.billingMode ?? "BOTH",
-        });
-        if (products.length > 0) {
-          await tx.classProduct.createMany({ data: products });
-        }
-      }
-
       // 날짜별 일정(dateSchedules) → ClassSchedule 직접 생성 (요일 기반 자동 생성과 배타적).
       if (createDto.dateSchedules && createDto.dateSchedules.length > 0) {
         await tx.classSchedule.createMany({
@@ -515,6 +528,33 @@ export class ClassesService {
           where: { id: created.id },
           data: { salesOpenMonth: utcMonthStart(firstSched.scheduledDate) },
         });
+      }
+
+      // [가격 잠금 §3-7] 상품 생성은 첫 일정 산출 뒤 — 신규 MONTHLY_FIXED 는 첫 일정의
+      //   달(= salesOpenMonth 로 기록되는 그 달)을 귀속월로 기록한다. 일정 없는 수업의
+      //   월 정액 요청은 fail-fast 400 (같은 tx 라 부분 반영 없음 — 월 정액 미요청이면
+      //   일정 없는 수업 생성은 기존대로 허용).
+      if (createDto.singlePrice || createDto.monthlyPrice) {
+        const products = buildClassProducts(created.id, {
+          ...createDto,
+          billingMode: createDto.billingMode ?? "BOTH",
+        });
+        if (products.length > 0) {
+          const firstScheduleMonth = firstSched
+            ? utcMonthStart(firstSched.scheduledDate)
+            : null;
+          const data = products.map((p) =>
+            p.feeType === "MONTHLY_FIXED"
+              ? {
+                  ...p,
+                  billingMonth: resolveNewProductBillingMonth({
+                    firstScheduleMonth,
+                  }),
+                }
+              : p,
+          );
+          await tx.classProduct.createMany({ data });
+        }
       }
 
       return created;
@@ -737,18 +777,6 @@ export class ClassesService {
         });
       }
 
-      // 오픈클래스도 팀과 동일하게 singlePrice/monthlyPrice → buildClassProducts 경로 사용.
-      //   상세 패키지(다중 플랜)는 수업 상세 "수강 플랜" 섹션에서 PackageEditSheet 로 관리.
-      if (createDto.singlePrice || createDto.monthlyPrice) {
-        const products = buildClassProducts(created.id, {
-          ...createDto,
-          billingMode: createDto.billingMode ?? "BOTH",
-        });
-        if (products.length > 0) {
-          await tx.classProduct.createMany({ data: products });
-        }
-      }
-
       // [2026-05-13] 오픈클래스 수업 일정 자동 일괄 생성 — 팀 정규와 동일 패턴.
       // [2026-06-05] daySchedules 있으면 요일별 시각 적용, 없으면 기존 단일 startTime 경로(하위호환).
       //   - autoGenerateSchedules=true(또는 미전송) + startDate/endDate/effectiveClassDays 모두 있을 때
@@ -926,6 +954,33 @@ export class ClassesService {
           where: { id: created.id },
           data: { salesOpenMonth: utcMonthStart(firstSched.scheduledDate) },
         });
+      }
+
+      // [가격 잠금 §3-7] 상품 생성은 첫 일정 산출 뒤 — 신규 MONTHLY_FIXED 는 첫 일정의
+      //   달(= salesOpenMonth 로 기록되는 그 달)을 귀속월로 기록한다. 일정 없는 수업의
+      //   월 정액 요청은 fail-fast 400 (같은 tx 라 부분 반영 없음 — 월 정액 미요청이면
+      //   일정 없는 수업 생성은 기존대로 허용).
+      if (createDto.singlePrice || createDto.monthlyPrice) {
+        const products = buildClassProducts(created.id, {
+          ...createDto,
+          billingMode: createDto.billingMode ?? "BOTH",
+        });
+        if (products.length > 0) {
+          const firstScheduleMonth = firstSched
+            ? utcMonthStart(firstSched.scheduledDate)
+            : null;
+          const data = products.map((p) =>
+            p.feeType === "MONTHLY_FIXED"
+              ? {
+                  ...p,
+                  billingMonth: resolveNewProductBillingMonth({
+                    firstScheduleMonth,
+                  }),
+                }
+              : p,
+          );
+          await tx.classProduct.createMany({ data });
+        }
       }
 
       return created;
@@ -2092,6 +2147,9 @@ export class ClassesService {
         billingMode: true,
         startTime: true,
         endTime: true,
+        // 선택월 멤버십 — 그 달 수업 진행 여부(classActiveForMonth) 판정용.
+        isActive: true,
+        endedAt: true,
         team: { select: { id: true, name: true, teamCode: true } },
         products: {
           select: {
@@ -2211,6 +2269,46 @@ export class ClassesService {
         enrollmentsByChild.set(e.childId, [e]);
       }
     }
+
+    // ── [만료 회원] 결제가 끊겨 자동 해제된(expired) 선수 관리 목록 ────────
+    //   월 필터와 무관한 재등록 대상 목록 — 마지막 유효 결제월(선불 귀속) 포함.
+    //   additive 필드라 기존 소비처 무영향.
+    const expiredMembers = registrations
+      .filter((r) => r.status === "expired")
+      .map((r) => {
+        let lastPaidYearMonth: string | null = null;
+        for (const en of enrollmentsByChild.get(r.userId) ?? []) {
+          if (
+            this.resolveRowBillingTiming(
+              cls.billingMode,
+              en.product?.billingTiming,
+            ) !== "PREPAID"
+          ) {
+            continue;
+          }
+          const att = resolvePrepaidAttribution({
+            billingTiming: "PREPAID",
+            feeType: en.product?.feeType,
+            billingMonth: en.product?.billingMonth,
+            enrollmentStatus: en.status,
+            enrollmentPaidAt: en.paidAt,
+            productPrice: en.product?.price,
+            payment: en.payment,
+          });
+          if (att.billingStatus === "PAID" && att.yearMonth != null) {
+            if (lastPaidYearMonth == null || att.yearMonth > lastPaidYearMonth) {
+              lastPaidYearMonth = att.yearMonth;
+            }
+          }
+        }
+        return {
+          userId: r.userId,
+          memberName:
+            `${r.user.lastName ?? ""}${r.user.firstName ?? ""}`.trim() ||
+            r.user.email,
+          lastPaidYearMonth,
+        };
+      });
 
     // [수정 2026-05-14] 레거시 결제 상태 2-state(+취소/환불). 신규 5-state(billingStatus)에서
     //   파생하여 하위호환 유지 — paymentState·counts 키/의미 불변(프론트 무수정 보장).
@@ -2358,7 +2456,67 @@ export class ClassesService {
       }
     }
 
-    const students = registrations.map((reg) => {
+    // ── 선불 선택월 귀속 거래 사전 계산 (월 스코프 전용) ─────────────────
+    //   멤버십 활동 증거와 행 생성이 같은 판정 결과를 공유하도록 1회만 계산.
+    const prepaidMatchedByChild = new Map<
+      string,
+      { en: (typeof enrollments)[number]; att: AttributionResult }
+    >();
+    if (monthScoped) {
+      for (const [childId, list] of enrollmentsByChild) {
+        for (const cand of list) {
+          if (
+            this.resolveRowBillingTiming(
+              cls.billingMode,
+              cand.product?.billingTiming,
+            ) !== "PREPAID"
+          ) {
+            continue;
+          }
+          const att = resolvePrepaidAttribution({
+            billingTiming: "PREPAID",
+            feeType: cand.product?.feeType,
+            billingMonth: cand.product?.billingMonth,
+            enrollmentStatus: cand.status,
+            enrollmentPaidAt: cand.paidAt,
+            productPrice: cand.product?.price,
+            payment: cand.payment,
+          });
+          if (!att.attributionUnknown && att.yearMonth === selectedYearMonth) {
+            prepaidMatchedByChild.set(childId, { en: cand, att });
+            break; // updatedAt desc — 첫 매칭이 선택월 최신 거래
+          }
+        }
+      }
+    }
+
+    // ── 선택월 로스터 멤버십 (월 스코프 전용 · 허브와 동일 계약) ─────────
+    //   "그 달의 수강생"만 명단·집계에 포함. 활동 증거 = 출석·후불 라인·선불 귀속 거래.
+    //   미전송(admin) 호출은 종전 전체 명단 유지.
+    const classEndedMonth =
+      cls.endedAt != null ? instantToKstYearMonth(cls.endedAt) : null;
+    const classActiveForMonth =
+      classEndedMonth != null
+        ? classEndedMonth >= selectedYearMonth
+        : cls.isActive !== false;
+    const billingLineUserIds = new Set(
+      (monthlyBilling?.items ?? []).map((i) => i.userId),
+    );
+    const visibleRegistrations = monthScoped
+      ? registrations.filter((reg) =>
+          isRosterMemberForMonth(
+            reg.registrationDate,
+            reg.status,
+            selectedYearMonth,
+            classActiveForMonth,
+            (attendanceByUser.get(reg.userId) ?? 0) > 0 ||
+              billingLineUserIds.has(reg.userId) ||
+              prepaidMatchedByChild.has(reg.userId),
+          ),
+        )
+      : registrations;
+
+    const students = visibleRegistrations.map((reg) => {
       const en = enrollmentByChild.get(reg.userId);
       const fullName =
         `${reg.user.lastName ?? ""}${reg.user.firstName ?? ""}`.trim() ||
@@ -2452,33 +2610,8 @@ export class ClassesService {
       //   == 선택월인 거래를 최신순으로 채택. 없으면 명단은 유지하되 "이 달 청구 없음"
       //   (UNSETTLED·금액 0)으로 응답해 행 합계가 허브 소계와 정렬되게 한다.
       if (monthScoped && billingTiming === "PREPAID") {
-        let matched: {
-          en: (typeof enrollments)[number];
-          att: AttributionResult;
-        } | null = null;
-        for (const cand of enrollmentsByChild.get(reg.userId) ?? []) {
-          if (
-            this.resolveRowBillingTiming(
-              cls.billingMode,
-              cand.product?.billingTiming,
-            ) !== "PREPAID"
-          ) {
-            continue;
-          }
-          const att = resolvePrepaidAttribution({
-            billingTiming: "PREPAID",
-            feeType: cand.product?.feeType,
-            billingMonth: cand.product?.billingMonth,
-            enrollmentStatus: cand.status,
-            enrollmentPaidAt: cand.paidAt,
-            productPrice: cand.product?.price,
-            payment: cand.payment,
-          });
-          if (!att.attributionUnknown && att.yearMonth === selectedYearMonth) {
-            matched = { en: cand, att };
-            break; // updatedAt desc — 첫 매칭이 선택월 최신 거래
-          }
-        }
+        // 사전 계산(prepaidMatchedByChild)과 동일 판정 공유 — 멤버십/행 불일치 방지.
+        const matched = prepaidMatchedByChild.get(reg.userId) ?? null;
         if (matched) {
           const mPayer = matched.en.payment?.user;
           let mStatus: BillingStatus = matched.att.billingStatus;
@@ -2698,6 +2831,8 @@ export class ClassesService {
       counts,
       billingStatusCounts,
       totalPaidAmount,
+      // [만료 회원] 재등록 대상 관리 목록 — 월 필터 무관(additive).
+      expiredMembers,
       students,
     };
   }
@@ -2856,6 +2991,37 @@ export class ClassesService {
     const dateRepresentativeUpdate = (hasDateSchedulesUpdate && updateDto.dateSchedules && updateDto.dateSchedules.length > 0)
       ? deriveRepresentativeFromDateSchedules(updateDto.dateSchedules)
       : null;
+
+    // 수강료 업데이트 (ClassProduct) — 다른 write 보다 먼저 수행한다.
+    //   가격 잠금 400 이 선행 쓰기(수업 필드·코치 배정) 이후에 발생하면 부분 반영이
+    //   남으므로, 거부 가능성이 있는 이 블록을 첫 write 로 배치 (P2-H2).
+    //   reconcile 내부의 sales lock + tx 재조회 판정이 최종 가드.
+    if (
+      updateDto.singlePrice !== undefined ||
+      updateDto.monthlyPrice !== undefined
+    ) {
+      const products = buildClassProducts(
+        classId,
+        {
+          singlePrice: updateDto.singlePrice,
+          monthlyPrice: updateDto.monthlyPrice,
+          packageWeeks: updateDto.packageWeeks,
+          packageTotalSessions: updateDto.packageTotalSessions,
+          // 기존 수업의 결제방식 기준으로 PER_SESSION 판매/비판매·billingTiming 결정 (B2).
+          billingMode: classRecord.billingMode,
+        },
+      );
+
+      // [M-1] id 보존 reconcile — enrollment/payment 참조 ClassProduct 의 FK 단절 방지.
+      await this.prisma.$transaction(async (tx) => {
+        await this.reconcileClassProducts(
+          tx,
+          classId,
+          products,
+          classRecord.billingMode,
+        );
+      });
+    }
 
     const updatedClass = await this.prisma.$transaction(async (txUpdate) => {
       // [2026-06-05] daySchedules 전송 시: ClassDaySchedule 전체 교체
@@ -3163,30 +3329,6 @@ export class ClassesService {
       }
     }
 
-    // 수강료 업데이트 (ClassProduct)
-    //   - delete → create 를 단일 트랜잭션으로 원자화 (중간 실패 시 좀비 상품 0건 방지)
-    if (
-      updateDto.singlePrice !== undefined ||
-      updateDto.monthlyPrice !== undefined
-    ) {
-      const products = buildClassProducts(
-        classId,
-        {
-          singlePrice: updateDto.singlePrice,
-          monthlyPrice: updateDto.monthlyPrice,
-          packageWeeks: updateDto.packageWeeks,
-          packageTotalSessions: updateDto.packageTotalSessions,
-          // 기존 수업의 결제방식 기준으로 PER_SESSION 판매/비판매·billingTiming 결정 (B2).
-          billingMode: classRecord.billingMode,
-        },
-      );
-
-      // [M-1] id 보존 reconcile — enrollment/payment 참조 ClassProduct 의 FK 단절 방지.
-      await this.prisma.$transaction(async (tx) => {
-        await this.reconcileClassProducts(tx, classId, products);
-      });
-    }
-
     // 캐시 무효화
     await this.invalidateClassCache(teamId);
 
@@ -3403,6 +3545,37 @@ export class ClassesService {
       ? deriveRepresentative(updateDto.daySchedules)
       : null;
 
+    // ClassProduct 갱신 — 다른 write 보다 먼저 수행한다.
+    //   가격 잠금 400 이 선행 쓰기 이후에 발생하면 부분 반영이 남으므로,
+    //   거부 가능성이 있는 이 블록을 첫 write 로 배치 (P2-H2).
+    //   reconcile 내부의 sales lock + tx 재조회 판정이 최종 가드.
+    if (
+      updateDto.singlePrice !== undefined ||
+      updateDto.monthlyPrice !== undefined
+    ) {
+      const products = buildClassProducts(
+        classId,
+        {
+          singlePrice: updateDto.singlePrice,
+          monthlyPrice: updateDto.monthlyPrice,
+          packageWeeks: updateDto.packageWeeks,
+          packageTotalSessions: updateDto.packageTotalSessions,
+          // 기존 수업의 결제방식 기준으로 PER_SESSION 판매/비판매·billingTiming 결정 (B2).
+          billingMode: classRecord.billingMode,
+        },
+      );
+
+      // [M-1] id 보존 reconcile — enrollment/payment 참조 ClassProduct 의 FK 단절 방지.
+      await this.prisma.$transaction(async (tx) => {
+        await this.reconcileClassProducts(
+          tx,
+          classId,
+          products,
+          classRecord.billingMode,
+        );
+      });
+    }
+
     const updatedClass = await this.prisma.$transaction(async (txAcademyUpdate) => {
       // daySchedules 전송 시 — ClassDaySchedule 전체 교체
       if (updateDto.daySchedules !== undefined) {
@@ -3512,29 +3685,6 @@ export class ClassesService {
           data: { role: "ASSISTANT" },
         });
       }
-    }
-
-    // ClassProduct 갱신
-    if (
-      updateDto.singlePrice !== undefined ||
-      updateDto.monthlyPrice !== undefined
-    ) {
-      const products = buildClassProducts(
-        classId,
-        {
-          singlePrice: updateDto.singlePrice,
-          monthlyPrice: updateDto.monthlyPrice,
-          packageWeeks: updateDto.packageWeeks,
-          packageTotalSessions: updateDto.packageTotalSessions,
-          // 기존 수업의 결제방식 기준으로 PER_SESSION 판매/비판매·billingTiming 결정 (B2).
-          billingMode: classRecord.billingMode,
-        },
-      );
-
-      // [M-1] id 보존 reconcile — enrollment/payment 참조 ClassProduct 의 FK 단절 방지.
-      await this.prisma.$transaction(async (tx) => {
-        await this.reconcileClassProducts(tx, classId, products);
-      });
     }
 
     // [2026-05-15] 오픈클래스 노출 팀 전체 replace.
@@ -3696,8 +3846,8 @@ export class ClassesService {
     });
     if (!student) throw new NotFoundException("학생을 찾을 수 없습니다.");
 
-    // 정원 체크
-    if (cls.capacity != null) {
+    // 정원 체크 — 0 = 무제한(정원 미운영). 신청 경로(createEnrollment)와 동일 해석.
+    if (cls.capacity != null && cls.capacity > 0) {
       const activeCount = await this.prisma.classRegistration.count({
         where: { classId, status: "active" },
       });
@@ -4381,6 +4531,10 @@ export class ClassesService {
 
     // 일정 취소 + 출석 상태 변경 + 크레딧 복원 — 원자적 트랜잭션
     const cancelledSchedule = await this.prisma.$transaction(async (tx) => {
+      // 가격 잠금 §4-0 B — 일정 취소는 present 집계를 바꾸므로 동일 lock 직렬화.
+      await acquireClassPostpaidLockIfNeeded(tx, schedule.class.id);
+      // P3-H1 — 정산 확정 월의 출석 변경은 lock 안에서 재검증 후 거부.
+      await assertScheduleMonthNotSettled(tx, scheduleId);
       const updated = await tx.classSchedule.update({
         where: { id: scheduleId },
         data: {
@@ -4755,7 +4909,7 @@ export class ClassesService {
         id: true,
         classId: true,
         billingMonth: true,
-        class: { select: { id: true, teamId: true } },
+        class: { select: { id: true, teamId: true, billingMode: true } },
       },
     });
     if (!product || product.classId !== classId) {
@@ -4766,43 +4920,122 @@ export class ClassesService {
     }
     this.assertProductMonthMutable(product.billingMonth, "수정");
 
-    const updated = await this.prisma.classProduct.update({
-      where: { id: productId },
-      data: {
-        ...(dto.productName !== undefined && { productName: dto.productName }),
-        ...(dto.description !== undefined && { description: dto.description }),
-        ...(dto.price !== undefined && { price: dto.price }),
-        ...(dto.sessionsPerMonth !== undefined && {
-          sessionsPerMonth: dto.sessionsPerMonth,
-        }),
-        ...(dto.durationDays !== undefined && {
-          durationDays: dto.durationDays,
-        }),
-        ...(dto.sessionsPerWeek !== undefined && {
-          sessionsPerWeek: dto.sessionsPerWeek,
-        }),
-        ...(dto.feePerSession !== undefined && {
-          feePerSession: dto.feePerSession,
-        }),
-        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
-        // 2026-05-22 옵션 H — feeType 수정 허용.
-        ...(dto.feeType !== undefined && { feeType: dto.feeType }),
-      },
-      select: {
-        id: true,
-        classId: true,
-        productName: true,
-        description: true,
-        price: true,
-        sessionsPerMonth: true,
-        durationDays: true,
-        sessionsPerWeek: true,
-        feePerSession: true,
-        feeType: true,
-        billingTiming: true,
-        isActive: true,
-        updatedAt: true,
-      },
+    // 판매 시작(openClassSales)과의 레이스 차단 — sales lock 획득 후 tx 안에서
+    //   salesOpenMonth·상품을 재조회한 값으로 잠금 판정한다 (가격 잠금 §4-0 A).
+    //   후불(POSTPAID/BOTH) 수업은 출석·정산과의 직렬화를 위해 postpaid lock 도
+    //   고정 순서(sales→postpaid)로 함께 획득한다 (§4-0 B).
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (shouldUsePostpaidLock(product.class.billingMode)) {
+        await acquireClassSalesAndPostpaidLocks(tx, classId);
+      } else {
+        await acquireClassSalesLock(tx, classId);
+      }
+      const fresh = await tx.classProduct.findUnique({
+        where: { id: productId },
+        select: {
+          feeType: true,
+          billingTiming: true,
+          billingMonth: true,
+          isActive: true,
+          price: true,
+          feePerSession: true,
+          sessionsPerMonth: true,
+          sessionsPerWeek: true,
+          durationDays: true,
+          class: { select: { salesOpenMonth: true } },
+        },
+      });
+      if (!fresh) {
+        throw new NotFoundException("수강권을 찾을 수 없습니다.");
+      }
+      // 판매 시작된 월분은 유효금액·권리조건 변경 거부 — 비금전 필드(이름·설명·판매중지)만 허용.
+      //   feeType 은 저장값·변경값 양쪽 판정 (PER_SESSION↔MONTHLY_FIXED 전환 우회 차단).
+      const diff = isEntitlementOrAmountChange(fresh, dto);
+      if (diff.changed) {
+        assertPrepaidChangeAllowed(
+          {
+            storedFeeType: fresh.feeType,
+            effectiveFeeType: dto.feeType,
+            billingMonth: fresh.billingMonth,
+          },
+          fresh.class.salesOpenMonth,
+        );
+        // 후불 단가(출석 × feePerSession의 기준값)는 미정산 출석 존재 시 변경 거부 —
+        //   정산 확정과 동일 집계로 판정 (§3-2, Phase 3).
+        if (fresh.billingTiming === "POSTPAID") {
+          await assertPostpaidUnitPriceMutable(tx, classId);
+        }
+      }
+
+      // [가격 잠금 §3-1 단서] 무월 legacy 재활성화 차단 — 월별 판매 중 되살리면
+      //   월 필터를 우회해 현재 월분과 이중 가격으로 병렬 노출된다.
+      //   존재 판정은 isActive 무관(판매중지 row 도 그 달의 월별 판매 증거).
+      if (
+        dto.isActive === true &&
+        !fresh.isActive &&
+        fresh.feeType === "MONTHLY_FIXED" &&
+        !fresh.billingMonth &&
+        fresh.class.salesOpenMonth
+      ) {
+        const currentMonthProduct = await tx.classProduct.findFirst({
+          where: {
+            classId,
+            feeType: "MONTHLY_FIXED",
+            billingMonth: fresh.class.salesOpenMonth,
+          },
+          select: { id: true },
+        });
+        assertLegacyNotReactivated({
+          wasActive: fresh.isActive,
+          willBeActive: dto.isActive,
+          feeType: fresh.feeType,
+          billingMonth: fresh.billingMonth,
+          hasCurrentMonthProduct: !!currentMonthProduct,
+        });
+      }
+
+      return tx.classProduct.update({
+        where: { id: productId },
+        data: {
+          ...(dto.productName !== undefined && {
+            productName: dto.productName,
+          }),
+          ...(dto.description !== undefined && {
+            description: dto.description,
+          }),
+          ...(dto.price !== undefined && { price: dto.price }),
+          ...(dto.sessionsPerMonth !== undefined && {
+            sessionsPerMonth: dto.sessionsPerMonth,
+          }),
+          ...(dto.durationDays !== undefined && {
+            durationDays: dto.durationDays,
+          }),
+          ...(dto.sessionsPerWeek !== undefined && {
+            sessionsPerWeek: dto.sessionsPerWeek,
+          }),
+          ...(dto.feePerSession !== undefined && {
+            feePerSession: dto.feePerSession,
+          }),
+          ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+          // 2026-05-22 옵션 H — feeType 수정 허용.
+          ...(dto.feeType !== undefined && { feeType: dto.feeType }),
+        },
+        select: {
+          id: true,
+          classId: true,
+          productName: true,
+          description: true,
+          price: true,
+          sessionsPerMonth: true,
+          durationDays: true,
+          sessionsPerWeek: true,
+          feePerSession: true,
+          feeType: true,
+          billingTiming: true,
+          isActive: true,
+          updatedAt: true,
+        },
+      });
     });
 
     await this.invalidateClassCache(teamId);
@@ -4853,24 +5086,47 @@ export class ClassesService {
     }
     this.assertProductMonthMutable(product.billingMonth, "삭제");
 
-    const hasHistory =
-      (product._count?.payments ?? 0) > 0 ||
-      (product._count?.enrollments ?? 0) > 0;
-
-    if (hasHistory) {
-      // 결제·수강 이력 있음 → soft delete (isActive=false).
-      await this.prisma.classProduct.update({
-        where: { id: productId },
-        data: { isActive: false },
+    // [가격 잠금 §3-6] 판매 시작된 월분(무월 legacy 포함)은 이력 0건이어도 hard delete
+    //   금지 — 판매 계약 이력으로 row 보존(판매 중지 전환). 판정은 sales lock 획득 후
+    //   tx 안에서 재조회한 값으로 (판매 시작과의 레이스 차단).
+    const deleted = await this.prisma.$transaction(async (tx) => {
+      await acquireClassSalesLock(tx, classId);
+      const basis = await tx.class.findUniqueOrThrow({
+        where: { id: classId },
+        select: { salesOpenMonth: true },
       });
-      await this.invalidateClassCache(teamId);
-      return { id: productId, deleted: "soft" };
-    }
+      const fresh = await tx.classProduct.findUnique({
+        where: { id: productId },
+        select: {
+          feeType: true,
+          billingMonth: true,
+          _count: { select: { payments: true, enrollments: true } },
+        },
+      });
+      if (!fresh) {
+        throw new NotFoundException("수강권을 찾을 수 없습니다.");
+      }
+      const hasHistory =
+        (fresh._count?.payments ?? 0) > 0 ||
+        (fresh._count?.enrollments ?? 0) > 0;
+      const mode = resolveProductDeletionMode(
+        { feeType: fresh.feeType, billingMonth: fresh.billingMonth },
+        basis.salesOpenMonth,
+        hasHistory,
+      );
+      if (mode === "soft") {
+        await tx.classProduct.update({
+          where: { id: productId },
+          data: { isActive: false },
+        });
+      } else {
+        await tx.classProduct.delete({ where: { id: productId } });
+      }
+      return mode;
+    });
 
-    // 이력 없음 → hard delete.
-    await this.prisma.classProduct.delete({ where: { id: productId } });
     await this.invalidateClassCache(teamId);
-    return { id: productId, deleted: "hard" };
+    return { id: productId, deleted };
   }
 
   // ============================================================
@@ -5075,7 +5331,13 @@ export class ClassesService {
    *   강제하지 않는다 — 노출 차단은 filterSellableProducts, 갱신 유도는 FE needsUpdate 게이트.
    *   월 패키지 0개 = 후불 전용·무월 레거시만 있는 수업은 ③ 통과).
    */
-  async openClassSales(userId: string, userType: string, classId: string) {
+  async openClassSales(
+    userId: string,
+    userType: string,
+    classId: string,
+    // [Phase 2] true 면 검증·미갱신 해제 대상 산출까지만 수행(쓰기 0) — FE 사전 고지용.
+    dryRun = false,
+  ) {
     const { ownerType, ownerId } = await this.assertClassManagerPermission(
       userId,
       userType,
@@ -5088,6 +5350,8 @@ export class ClassesService {
         endedAt: true,
         salesOpenMonth: true,
         trainingType: true,
+        // [Phase 2] 미갱신 판정 — BOTH 수업의 선수별 결제방식 분기용.
+        billingMode: true,
         schedules: {
           where: { isCancelled: false },
           select: { scheduledDate: true },
@@ -5113,6 +5377,9 @@ export class ClassesService {
         "다가오는 일정이 없습니다. 다음 달 일정을 먼저 등록해주세요.",
       );
     }
+    // salesOpenMonth 비감소 불변식 — 이른 달 일정 추가로 대상월이 과거로 이동하면
+    //   이미 판매된 월분이 잠금 판정(billingMonth ≤ salesOpenMonth)을 빠져나가므로 거부.
+    assertSalesMonthNotRolledBack(targetMonth, klass.salesOpenMonth);
     // §9.2 — 지난 월분 row 는 판매 이력으로 "보존"되는 설계이므로 전부-갱신을 강제하지
     //   않는다 (강제 시 2차 사이클부터 항상 실패 — Reviewer C-1). 검증은 "판매할 물건이
     //   있는가"만: 월권 이력이 있는 수업은 대상월 분이 1건 이상 있어야 판매 시작 가능.
@@ -5132,19 +5399,192 @@ export class ClassesService {
         "판매 대상 달의 월 정기권이 없습니다. 정기권 확인 후 다시 시도해주세요.",
       );
     }
+
+    // ── [Phase 2] 미갱신 선불 선수 배치 해제 대상 산출 ─────────────────────
+    //   크레딧 미사용 운영에선 선불 좌석이 자동 반납되지 않으므로, 감독의 [판매 시작]
+    //   시점에 "직전 판매월에 유효 결제가 없는 선불 이력 선수"를 명단(active)에서 내린다.
+    //   · 판정월 = 직전 salesOpenMonth (첫 판매/동월 재실행은 대상 0 — 1개월 유예 설계)
+    //   · 제외: 활성 후불 등록(구독형) · 결제 이력 0(감독 배치 전용 명단)
+    //   · 해제 후 재결제하면 결제 완료 경로 upsert 가 active 로 자동 복구한다.
+    const prevSalesYm = klass.salesOpenMonth
+      ? dbDateToKstYearMonth(klass.salesOpenMonth)
+      : null;
+    const targetYm = dbDateToKstYearMonth(targetMonth);
+    const releaseCandidates: { userId: string; name: string }[] = [];
+    if (prevSalesYm != null && targetYm > prevSalesYm) {
+      const activeRegs = await this.prisma.classRegistration.findMany({
+        where: { classId, status: "active" },
+        select: {
+          userId: true,
+          user: {
+            select: { firstName: true, lastName: true, email: true },
+          },
+        },
+      });
+      const regUserIds = activeRegs.map((r) => r.userId);
+      const enrolls = regUserIds.length
+        ? await this.prisma.enrollment.findMany({
+            where: { classId, childId: { in: regUserIds } },
+            select: {
+              childId: true,
+              status: true,
+              paidAt: true,
+              product: {
+                select: {
+                  billingTiming: true,
+                  feeType: true,
+                  billingMonth: true,
+                  price: true,
+                },
+              },
+              payment: {
+                select: {
+                  amount: true,
+                  paymentStatus: true,
+                  completedAt: true,
+                  createdAt: true,
+                  refundLogs: { select: { refundAmount: true } },
+                },
+              },
+            },
+          })
+        : [];
+      const enrollsByChild = new Map<string, typeof enrolls>();
+      for (const e of enrolls) {
+        const list = enrollsByChild.get(e.childId);
+        if (list) {
+          list.push(e);
+        } else {
+          enrollsByChild.set(e.childId, [e]);
+        }
+      }
+      for (const reg of activeRegs) {
+        let hasPrepaidPaidHistory = false;
+        let hasPaidSincePrevCycle = false;
+        let hasActivePostpaid = false;
+        for (const en of enrollsByChild.get(reg.userId) ?? []) {
+          const timing = this.resolveRowBillingTiming(
+            klass.billingMode,
+            en.product?.billingTiming,
+          );
+          if (timing === "POSTPAID") {
+            // 후불 계약은 월 단위 만료가 없는 구독형 — 활성이면 해제 대상 아님.
+            if (en.status === "approved" || en.status === "paid") {
+              hasActivePostpaid = true;
+            }
+            continue;
+          }
+          if (timing !== "PREPAID") continue;
+          const att = resolvePrepaidAttribution({
+            billingTiming: "PREPAID",
+            feeType: en.product?.feeType,
+            billingMonth: en.product?.billingMonth,
+            enrollmentStatus: en.status,
+            enrollmentPaidAt: en.paidAt,
+            productPrice: en.product?.price,
+            payment: en.payment,
+          });
+          if (att.billingStatus === "PAID" && att.yearMonth != null) {
+            hasPrepaidPaidHistory = true;
+            // 직전 판매월 이후 귀속 유효 결제(선구매 포함)가 있으면 유지.
+            if (att.yearMonth >= prevSalesYm) hasPaidSincePrevCycle = true;
+          }
+        }
+        if (hasPrepaidPaidHistory && !hasPaidSincePrevCycle && !hasActivePostpaid) {
+          const name =
+            `${reg.user.lastName ?? ""}${reg.user.firstName ?? ""}`.trim() ||
+            reg.user.email;
+          releaseCandidates.push({ userId: reg.userId, name });
+        }
+      }
+    }
+
+    // dryRun — 검증·해제 대상 미리보기만 반환(쓰기 0). FE 판매 시작 확인 다이얼로그용.
+    if (dryRun) {
+      return {
+        id: classId,
+        salesOpenMonth: klass.salesOpenMonth,
+        dryRun: true as const,
+        targetMonth,
+        releaseCandidates,
+      };
+    }
     // 판매 시작 = 그 달 상품 확정. 대상월 갱신분이 있는 수업(월별 체계 도입)은
     //   미갱신 무월(레거시) 정기권을 같은 트랜잭션에서 판매 중단한다 — 무월은 월 필터를
     //   우회해 상시 노출되므로, 안 하면 "갱신 안 함 = 이번 달 판매 안 함" 선택이 무시되고
     //   새 월분과 중복 노출된다. 무월만 있는 수업은 폴백 판매(§9.2 점진 전환) 유지.
-    const { updated, retiredLegacyCount } = await this.prisma.$transaction(
-      async (tx) => {
+    const { updated, retiredLegacyCount, releasedCount } =
+      await this.prisma.$transaction(async (tx) => {
+        // 상품 수정·생성 경로와의 레이스 차단 — sales lock 획득 후 tx 안에서
+        //   lifecycle 입력(일정·trainingType)까지 재조회해 대상월을 재산출한다 (§4-0 A).
+        //   일정 writer 는 sales lock 미참여라, 외부에서 계산한 targetMonth 는 tx 진입
+        //   시점에 이미 낡았을 수 있다.
+        await acquireClassSalesLock(tx, classId);
+        const freshClass = await tx.class.findUniqueOrThrow({
+          where: { id: classId },
+          select: {
+            endedAt: true,
+            salesOpenMonth: true,
+            trainingType: true,
+            schedules: {
+              where: { isCancelled: false },
+              select: { scheduledDate: true },
+            },
+            products: {
+              where: { isActive: true, feeType: "MONTHLY_FIXED" },
+              select: { billingMonth: true },
+            },
+          },
+        });
+        if (freshClass.endedAt) {
+          throw new BadRequestException(
+            "종료된 수업입니다. 재개 후 진행해주세요.",
+          );
+        }
+        const freshLifecycle = deriveClassLifecycle({
+          endedAt: freshClass.endedAt,
+          salesOpenMonth: freshClass.salesOpenMonth,
+          trainingType: freshClass.trainingType,
+          schedules: freshClass.schedules,
+        });
+        const freshTargetMonth = freshLifecycle.earliestRemainingMonth;
+        if (!freshTargetMonth) {
+          throw new BadRequestException(
+            "다가오는 일정이 없습니다. 다음 달 일정을 먼저 등록해주세요.",
+          );
+        }
+        // 외부 산출 대상월과 다르면 낡은 값 — 외부에서 계산한 해제 대상 명단과
+        //   섞어 커밋하지 않고 재시도로 유도한다.
+        if (freshTargetMonth.getTime() !== targetMonth.getTime()) {
+          throw new ConflictException(
+            "수업 일정이 방금 변경되었습니다. 다시 시도해주세요.",
+          );
+        }
+        assertSalesMonthNotRolledBack(
+          freshTargetMonth,
+          freshClass.salesOpenMonth,
+        );
+        const freshHasTargetMonthPkg = freshClass.products.some(
+          (prd) =>
+            prd.billingMonth &&
+            prd.billingMonth.getTime() === freshTargetMonth.getTime(),
+        );
+        const freshHasMonthlyPkgHistory = freshClass.products.some(
+          (prd) => prd.billingMonth != null,
+        );
+        if (freshHasMonthlyPkgHistory && !freshHasTargetMonthPkg) {
+          throw new BadRequestException(
+            "판매 대상 달의 월 정기권이 없습니다. 정기권 확인 후 다시 시도해주세요.",
+          );
+        }
+
         const cls = await tx.class.update({
           where: { id: classId },
-          data: { salesOpenMonth: targetMonth },
+          data: { salesOpenMonth: freshTargetMonth },
           select: { id: true, salesOpenMonth: true },
         });
         let retired = 0;
-        if (hasTargetMonthPkg) {
+        if (freshHasTargetMonthPkg) {
           const res = await tx.classProduct.updateMany({
             where: {
               classId,
@@ -5156,16 +5596,38 @@ export class ClassesService {
           });
           retired = res.count;
         }
-        return { updated: cls, retiredLegacyCount: retired };
-      },
-    );
+        // [Phase 2] 미갱신 선불 선수 배치 해제 — active 조건 재확인(동시성 가드).
+        //   상태는 "expired"(만료) — 감독 수동 해제(inactive)와 구분해 재등록 대상 목록의 SoT.
+        let released = 0;
+        if (releaseCandidates.length > 0) {
+          const res = await tx.classRegistration.updateMany({
+            where: {
+              classId,
+              userId: { in: releaseCandidates.map((c) => c.userId) },
+              status: "active",
+            },
+            data: { status: "expired" },
+          });
+          released = res.count;
+        }
+        return {
+          updated: cls,
+          retiredLegacyCount: retired,
+          releasedCount: released,
+        };
+      });
     this.logger.log(
-      `[AUDIT] 판매 시작: classId=${classId}, salesOpenMonth=${targetMonth.toISOString().slice(0, 10)}, 무월 레거시 판매중단=${retiredLegacyCount}건, by=${userId}(${userType})`,
+      `[AUDIT] 판매 시작: classId=${classId}, salesOpenMonth=${targetMonth.toISOString().slice(0, 10)}, 무월 레거시 판매중단=${retiredLegacyCount}건, 미갱신 선수 배치해제=${releasedCount}명(${releaseCandidates.map((c) => c.name).join(",") || "-"}), by=${userId}(${userType})`,
     );
     if (ownerType === "team") {
       await this.invalidateClassCache(ownerId);
     }
-    return updated;
+    return {
+      ...updated,
+      // [Phase 2] additive — 기존 소비처(id·salesOpenMonth)는 그대로 유지.
+      releasedCount,
+      releasedNames: releaseCandidates.map((c) => c.name),
+    };
   }
 
   /**
@@ -5197,39 +5659,63 @@ export class ClassesService {
     //   정액(MONTHLY_FIXED)은 무차감 기간제라 이 값이 출석 회차를 제한하지 않는다.
     const resolvedSessionsPerMonth = dto.sessionsPerMonth ?? 0;
 
-    const product = await this.prisma.classProduct.create({
-      data: {
-        classId,
-        productName: dto.productName,
-        description: dto.description,
-        price: dto.price,
-        sessionsPerMonth: resolvedSessionsPerMonth,
-        durationDays: dto.durationDays || 30,
-        // 2026-05-22 옵션 H — PackageEditSheet 가 전달한 feeType/sessionsPerWeek 저장.
-        ...(dto.feeType ? { feeType: dto.feeType } : {}),
-        ...(dto.sessionsPerWeek
-          ? { sessionsPerWeek: dto.sessionsPerWeek }
-          : {}),
-        // [Lifecycle v4.1 §9.2] 귀속월 — "YYYY-MM" → 그 달 1일(@db.Date, UTC 자정).
-        ...(dto.billingMonth
-          ? { billingMonth: new Date(`${dto.billingMonth}-01T00:00:00.000Z`) }
-          : {}),
-      },
-      select: {
-        id: true,
-        classId: true,
-        productName: true,
-        description: true,
-        price: true,
-        sessionsPerMonth: true,
-        durationDays: true,
-        sessionsPerWeek: true,
-        feePerSession: true,
-        feeType: true,
-        billingTiming: true,
-        isActive: true,
-        createdAt: true,
-      },
+    // [가격 잠금 §3-7] 신규 MONTHLY_FIXED 는 귀속월 필수 — 무월 신규 유입 차단.
+    //   첫 write 전 검증 (부분 반영 방지 — Codex 승인 조건).
+    if (dto.feeType === "MONTHLY_FIXED" && !dto.billingMonth) {
+      throw new BadRequestException(
+        PRICE_LOCK_MESSAGES.BILLING_MONTH_INPUT_REQUIRED,
+      );
+    }
+
+    const product = await this.prisma.$transaction(async (tx) => {
+      // 판매 시작(openClassSales)과의 레이스 차단 — lock 후 salesOpenMonth 재조회로
+      //   월분 동결(§3-4) 판정 (판매 시작된 달의 신규 생성 = 판매중지+재등록 우회 차단).
+      await acquireClassSalesLock(tx, classId);
+      if (dto.feeType === "MONTHLY_FIXED" && dto.billingMonth) {
+        const basis = await tx.class.findUniqueOrThrow({
+          where: { id: classId },
+          select: { salesOpenMonth: true },
+        });
+        assertMonthNotFrozen(
+          new Date(`${dto.billingMonth}-01T00:00:00.000Z`),
+          basis.salesOpenMonth,
+        );
+      }
+
+      return tx.classProduct.create({
+        data: {
+          classId,
+          productName: dto.productName,
+          description: dto.description,
+          price: dto.price,
+          sessionsPerMonth: resolvedSessionsPerMonth,
+          durationDays: dto.durationDays || 30,
+          // 2026-05-22 옵션 H — PackageEditSheet 가 전달한 feeType/sessionsPerWeek 저장.
+          ...(dto.feeType ? { feeType: dto.feeType } : {}),
+          ...(dto.sessionsPerWeek
+            ? { sessionsPerWeek: dto.sessionsPerWeek }
+            : {}),
+          // [Lifecycle v4.1 §9.2] 귀속월 — "YYYY-MM" → 그 달 1일(@db.Date, UTC 자정).
+          ...(dto.billingMonth
+            ? { billingMonth: new Date(`${dto.billingMonth}-01T00:00:00.000Z`) }
+            : {}),
+        },
+        select: {
+          id: true,
+          classId: true,
+          productName: true,
+          description: true,
+          price: true,
+          sessionsPerMonth: true,
+          durationDays: true,
+          sessionsPerWeek: true,
+          feePerSession: true,
+          feeType: true,
+          billingTiming: true,
+          isActive: true,
+          createdAt: true,
+        },
+      });
     });
 
     // 캐시 무효화 — 팀 수업만 (오픈클래스 캐시 키 별도)
@@ -5250,12 +5736,13 @@ export class ClassesService {
     productId: string,
     dto: import("./dto/update-product.dto").UpdateClassProductDto,
   ) {
-    const { ownerType, ownerId } = await this.assertClassManagerPermission(
-      userId,
-      userType,
-      classId,
-      "이 수업의 감독/코치만 수강권을 수정할 수 있습니다.",
-    );
+    const { ownerType, ownerId, billingMode } =
+      await this.assertClassManagerPermission(
+        userId,
+        userType,
+        classId,
+        "이 수업의 감독/코치만 수강권을 수정할 수 있습니다.",
+      );
 
     // 패키지 소속 확인 (cross-class 차단)
     const product = await this.prisma.classProduct.findUnique({
@@ -5267,43 +5754,122 @@ export class ClassesService {
     }
     this.assertProductMonthMutable(product.billingMonth, "수정");
 
-    const updated = await this.prisma.classProduct.update({
-      where: { id: productId },
-      data: {
-        ...(dto.productName !== undefined && { productName: dto.productName }),
-        ...(dto.description !== undefined && { description: dto.description }),
-        ...(dto.price !== undefined && { price: dto.price }),
-        ...(dto.sessionsPerMonth !== undefined && {
-          sessionsPerMonth: dto.sessionsPerMonth,
-        }),
-        ...(dto.durationDays !== undefined && {
-          durationDays: dto.durationDays,
-        }),
-        ...(dto.sessionsPerWeek !== undefined && {
-          sessionsPerWeek: dto.sessionsPerWeek,
-        }),
-        ...(dto.feePerSession !== undefined && {
-          feePerSession: dto.feePerSession,
-        }),
-        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
-        // 2026-05-22 옵션 H — feeType 수정 허용.
-        ...(dto.feeType !== undefined && { feeType: dto.feeType }),
-      },
-      select: {
-        id: true,
-        classId: true,
-        productName: true,
-        description: true,
-        price: true,
-        sessionsPerMonth: true,
-        durationDays: true,
-        sessionsPerWeek: true,
-        feePerSession: true,
-        feeType: true,
-        billingTiming: true,
-        isActive: true,
-        updatedAt: true,
-      },
+    // 판매 시작(openClassSales)과의 레이스 차단 — sales lock 획득 후 tx 안에서
+    //   salesOpenMonth·상품을 재조회한 값으로 잠금 판정한다 (가격 잠금 §4-0 A).
+    //   후불(POSTPAID/BOTH) 수업은 출석·정산과의 직렬화를 위해 postpaid lock 도
+    //   고정 순서(sales→postpaid)로 함께 획득한다 (§4-0 B).
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (shouldUsePostpaidLock(billingMode)) {
+        await acquireClassSalesAndPostpaidLocks(tx, classId);
+      } else {
+        await acquireClassSalesLock(tx, classId);
+      }
+      const fresh = await tx.classProduct.findUnique({
+        where: { id: productId },
+        select: {
+          feeType: true,
+          billingTiming: true,
+          billingMonth: true,
+          isActive: true,
+          price: true,
+          feePerSession: true,
+          sessionsPerMonth: true,
+          sessionsPerWeek: true,
+          durationDays: true,
+          class: { select: { salesOpenMonth: true } },
+        },
+      });
+      if (!fresh) {
+        throw new NotFoundException("수강권을 찾을 수 없습니다.");
+      }
+      // 판매 시작된 월분은 유효금액·권리조건 변경 거부 — 비금전 필드(이름·설명·판매중지)만 허용.
+      //   feeType 은 저장값·변경값 양쪽 판정 (PER_SESSION↔MONTHLY_FIXED 전환 우회 차단).
+      const diff = isEntitlementOrAmountChange(fresh, dto);
+      if (diff.changed) {
+        assertPrepaidChangeAllowed(
+          {
+            storedFeeType: fresh.feeType,
+            effectiveFeeType: dto.feeType,
+            billingMonth: fresh.billingMonth,
+          },
+          fresh.class.salesOpenMonth,
+        );
+        // 후불 단가(출석 × feePerSession의 기준값)는 미정산 출석 존재 시 변경 거부 —
+        //   정산 확정과 동일 집계로 판정 (§3-2, Phase 3).
+        if (fresh.billingTiming === "POSTPAID") {
+          await assertPostpaidUnitPriceMutable(tx, classId);
+        }
+      }
+
+      // [가격 잠금 §3-1 단서] 무월 legacy 재활성화 차단 — 월별 판매 중 되살리면
+      //   월 필터를 우회해 현재 월분과 이중 가격으로 병렬 노출된다.
+      //   존재 판정은 isActive 무관(판매중지 row 도 그 달의 월별 판매 증거).
+      if (
+        dto.isActive === true &&
+        !fresh.isActive &&
+        fresh.feeType === "MONTHLY_FIXED" &&
+        !fresh.billingMonth &&
+        fresh.class.salesOpenMonth
+      ) {
+        const currentMonthProduct = await tx.classProduct.findFirst({
+          where: {
+            classId,
+            feeType: "MONTHLY_FIXED",
+            billingMonth: fresh.class.salesOpenMonth,
+          },
+          select: { id: true },
+        });
+        assertLegacyNotReactivated({
+          wasActive: fresh.isActive,
+          willBeActive: dto.isActive,
+          feeType: fresh.feeType,
+          billingMonth: fresh.billingMonth,
+          hasCurrentMonthProduct: !!currentMonthProduct,
+        });
+      }
+
+      return tx.classProduct.update({
+        where: { id: productId },
+        data: {
+          ...(dto.productName !== undefined && {
+            productName: dto.productName,
+          }),
+          ...(dto.description !== undefined && {
+            description: dto.description,
+          }),
+          ...(dto.price !== undefined && { price: dto.price }),
+          ...(dto.sessionsPerMonth !== undefined && {
+            sessionsPerMonth: dto.sessionsPerMonth,
+          }),
+          ...(dto.durationDays !== undefined && {
+            durationDays: dto.durationDays,
+          }),
+          ...(dto.sessionsPerWeek !== undefined && {
+            sessionsPerWeek: dto.sessionsPerWeek,
+          }),
+          ...(dto.feePerSession !== undefined && {
+            feePerSession: dto.feePerSession,
+          }),
+          ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+          // 2026-05-22 옵션 H — feeType 수정 허용.
+          ...(dto.feeType !== undefined && { feeType: dto.feeType }),
+        },
+        select: {
+          id: true,
+          classId: true,
+          productName: true,
+          description: true,
+          price: true,
+          sessionsPerMonth: true,
+          durationDays: true,
+          sessionsPerWeek: true,
+          feePerSession: true,
+          feeType: true,
+          billingTiming: true,
+          isActive: true,
+          updatedAt: true,
+        },
+      });
     });
 
     if (ownerType === "team") {
@@ -5352,26 +5918,47 @@ export class ClassesService {
     }
     this.assertProductMonthMutable(product.billingMonth, "삭제");
 
-    const hasHistory =
-      (product._count?.payments ?? 0) > 0 ||
-      (product._count?.enrollments ?? 0) > 0;
-
-    if (hasHistory) {
-      await this.prisma.classProduct.update({
-        where: { id: productId },
-        data: { isActive: false },
+    // [가격 잠금 §3-6] 판매 시작된 월분은 이력 0건이어도 판매 중지로 보존 (D1 과 동일 규칙).
+    const deleted = await this.prisma.$transaction(async (tx) => {
+      await acquireClassSalesLock(tx, classId);
+      const basis = await tx.class.findUniqueOrThrow({
+        where: { id: classId },
+        select: { salesOpenMonth: true },
       });
-      if (ownerType === "team") {
-        await this.invalidateClassCache(ownerId);
+      const fresh = await tx.classProduct.findUnique({
+        where: { id: productId },
+        select: {
+          feeType: true,
+          billingMonth: true,
+          _count: { select: { payments: true, enrollments: true } },
+        },
+      });
+      if (!fresh) {
+        throw new NotFoundException("수강권을 찾을 수 없습니다.");
       }
-      return { id: productId, deleted: "soft" };
-    }
+      const hasHistory =
+        (fresh._count?.payments ?? 0) > 0 ||
+        (fresh._count?.enrollments ?? 0) > 0;
+      const mode = resolveProductDeletionMode(
+        { feeType: fresh.feeType, billingMonth: fresh.billingMonth },
+        basis.salesOpenMonth,
+        hasHistory,
+      );
+      if (mode === "soft") {
+        await tx.classProduct.update({
+          where: { id: productId },
+          data: { isActive: false },
+        });
+      } else {
+        await tx.classProduct.delete({ where: { id: productId } });
+      }
+      return mode;
+    });
 
-    await this.prisma.classProduct.delete({ where: { id: productId } });
     if (ownerType === "team") {
       await this.invalidateClassCache(ownerId);
     }
-    return { id: productId, deleted: "hard" };
+    return { id: productId, deleted };
   }
 
   /**
@@ -5510,10 +6097,29 @@ export class ClassesService {
           item.sessionsPerMonth,
           item.sessionsPerWeek,
         );
+        // [가격 잠금 §3-7] id 無(신규) MONTHLY_FIXED 는 귀속월 필수 — 무월 신규 유입 차단.
+        if (!item.id && !item.billingMonth) {
+          throw new BadRequestException(
+            PRICE_LOCK_MESSAGES.BILLING_MONTH_INPUT_REQUIRED,
+          );
+        }
       }
     }
 
     await this.prisma.$transaction(async (tx) => {
+      // 판매 시작(openClassSales)과의 레이스 차단 — sales lock 획득 후 tx 안에서
+      //   salesOpenMonth 를 재조회해 잠금 판정 기준값으로 쓴다 (가격 잠금 §4-0 A).
+      //   후불(POSTPAID/BOTH) 수업은 postpaid lock 도 고정 순서로 함께 획득 (§4-0 B).
+      if (shouldUsePostpaidLock(billingMode)) {
+        await acquireClassSalesAndPostpaidLocks(tx, classId);
+      } else {
+        await acquireClassSalesLock(tx, classId);
+      }
+      const lockBasis = await tx.class.findUniqueOrThrow({
+        where: { id: classId },
+        select: { salesOpenMonth: true },
+      });
+
       // 1) deleteIds — soft/hard 판정. 모든 대상이 해당 classId 소속인지 확인.
       for (const productId of deleteIds) {
         const product = await tx.classProduct.findUnique({
@@ -5522,6 +6128,7 @@ export class ClassesService {
             id: true,
             classId: true,
             billingMonth: true,
+            feeType: true,
             _count: { select: { payments: true, enrollments: true } },
           },
         });
@@ -5532,7 +6139,13 @@ export class ClassesService {
         const hasHistory =
           (product._count?.payments ?? 0) > 0 ||
           (product._count?.enrollments ?? 0) > 0;
-        if (hasHistory) {
+        // [가격 잠금 §3-6] 판매 시작된 월분은 이력 0건이어도 판매 중지로 보존 (D1~D4 공통).
+        const mode = resolveProductDeletionMode(
+          { feeType: product.feeType, billingMonth: product.billingMonth },
+          lockBasis.salesOpenMonth,
+          hasHistory,
+        );
+        if (mode === "soft") {
           await tx.classProduct.update({
             where: { id: productId },
             data: { isActive: false },
@@ -5545,6 +6158,14 @@ export class ClassesService {
       // 2) upserts — id 없으면 create, 있으면 update(소속 확인).
       for (const item of upserts) {
         if (!item.id) {
+          // [가격 잠금 §3-4] 판매 시작된 달의 신규 MONTHLY_FIXED 생성 동결
+          //   (판매중지 + 재등록 우회 차단).
+          if (item.feeType === "MONTHLY_FIXED" && item.billingMonth) {
+            assertMonthNotFrozen(
+              new Date(`${item.billingMonth}-01T00:00:00.000Z`),
+              lockBasis.salesOpenMonth,
+            );
+          }
           await tx.classProduct.create({
             data: {
               classId,
@@ -5571,12 +6192,72 @@ export class ClassesService {
         } else {
           const existing = await tx.classProduct.findUnique({
             where: { id: item.id },
-            select: { id: true, classId: true, billingMonth: true },
+            select: {
+              id: true,
+              classId: true,
+              billingMonth: true,
+              feeType: true,
+              billingTiming: true,
+              isActive: true,
+              price: true,
+              feePerSession: true,
+              sessionsPerMonth: true,
+              sessionsPerWeek: true,
+              durationDays: true,
+            },
           });
           if (!existing || existing.classId !== classId) {
             throw new NotFoundException("수강권을 찾을 수 없습니다.");
           }
           this.assertProductMonthMutable(existing.billingMonth, "수정");
+          // 판매 시작된 월분은 유효금액·권리조건 변경 거부 — 실제 기록될 값 기준 diff
+          //   (durationDays 는 파생값, sessionsPerWeek 미전송은 변경 없음으로 간주).
+          //   feeType 은 저장값·변경값 양쪽 판정 (PER_SESSION↔MONTHLY_FIXED 전환 우회 차단).
+          const diff = isEntitlementOrAmountChange(existing, {
+            price: item.price,
+            feeType: item.feeType,
+            sessionsPerMonth: item.sessionsPerMonth,
+            sessionsPerWeek: item.sessionsPerWeek,
+            durationDays: this.deriveBulkDurationDays(item),
+          });
+          if (diff.changed) {
+            assertPrepaidChangeAllowed(
+              {
+                storedFeeType: existing.feeType,
+                effectiveFeeType: item.feeType,
+                billingMonth: existing.billingMonth,
+              },
+              lockBasis.salesOpenMonth,
+            );
+            // 후불 단가는 미정산 출석 존재 시 변경 거부 (§3-2, Phase 3).
+            if (existing.billingTiming === "POSTPAID") {
+              await assertPostpaidUnitPriceMutable(tx, classId);
+            }
+          }
+          // [가격 잠금 §3-1 단서] 무월 legacy 재활성화 차단 (단건 경로와 동일 규칙).
+          if (
+            item.isActive === true &&
+            !existing.isActive &&
+            existing.feeType === "MONTHLY_FIXED" &&
+            !existing.billingMonth &&
+            lockBasis.salesOpenMonth
+          ) {
+            const currentMonthProduct = await tx.classProduct.findFirst({
+              where: {
+                classId,
+                feeType: "MONTHLY_FIXED",
+                billingMonth: lockBasis.salesOpenMonth,
+              },
+              select: { id: true },
+            });
+            assertLegacyNotReactivated({
+              wasActive: existing.isActive,
+              willBeActive: item.isActive,
+              feeType: existing.feeType,
+              billingMonth: existing.billingMonth,
+              hasCurrentMonthProduct: !!currentMonthProduct,
+            });
+          }
           await tx.classProduct.update({
             where: { id: item.id },
             data: {
@@ -5639,13 +6320,49 @@ export class ClassesService {
     tx: Prisma.TransactionClient,
     classId: string,
     desired: ReturnType<typeof buildClassProducts>,
+    billingMode?: string | null,
   ): Promise<void> {
+    // 판매 시작(openClassSales)과의 레이스 차단 — sales lock 획득 후 tx 안에서
+    //   salesOpenMonth 를 재조회해 잠금 판정 기준값으로 쓴다 (가격 잠금 §4-0 A).
+    //   후불(POSTPAID/BOTH) 수업은 postpaid lock 도 고정 순서로 함께 획득 (§4-0 B).
+    if (shouldUsePostpaidLock(billingMode)) {
+      await acquireClassSalesAndPostpaidLocks(tx, classId);
+    } else {
+      await acquireClassSalesLock(tx, classId);
+    }
+    const lockBasis = await tx.class.findUniqueOrThrow({
+      where: { id: classId },
+      select: {
+        salesOpenMonth: true,
+        endedAt: true,
+        trainingType: true,
+        schedules: {
+          where: { isCancelled: false },
+          select: { scheduledDate: true },
+        },
+      },
+    });
+    // 신규 MONTHLY_FIXED 귀속월 (§3-7) — lifecycle 대상월 ?? 현재 판매 승인 월.
+    //   매칭 update 는 기존 row 의 billingMonth 를 바꾸지 않으므로 create 분기 전용.
+    const lifecycleTargetMonth = deriveClassLifecycle({
+      endedAt: lockBasis.endedAt,
+      salesOpenMonth: lockBasis.salesOpenMonth,
+      trainingType: lockBasis.trainingType,
+      schedules: lockBasis.schedules,
+    }).earliestRemainingMonth;
+
     const existing = await tx.classProduct.findMany({
       where: { classId },
       select: {
         id: true,
         feeType: true,
         billingTiming: true,
+        billingMonth: true,
+        price: true,
+        feePerSession: true,
+        sessionsPerMonth: true,
+        sessionsPerWeek: true,
+        durationDays: true,
         _count: { select: { enrollments: true, payments: true } },
       },
     });
@@ -5662,6 +6379,30 @@ export class ClassesService {
       );
       if (match) {
         usedExistingIds.add(match.id);
+        // 판매 시작된 월분은 유효금액·권리조건 변경 거부 — 실제 기록될 값 기준 diff.
+        //   값이 그대로면(이름 등 무관 수정) 잠긴 상품이어도 통과한다.
+        //   feeType 은 keyOf 매칭으로 동일하지만 판정 함수는 4개 write 경로 공용으로 통일.
+        const diff = isEntitlementOrAmountChange(match, {
+          price: d.price,
+          sessionsPerMonth: d.sessionsPerMonth,
+          sessionsPerWeek: d.sessionsPerWeek ?? null,
+          durationDays: d.durationDays,
+          feePerSession: d.feePerSession ?? null,
+        });
+        if (diff.changed) {
+          assertPrepaidChangeAllowed(
+            {
+              storedFeeType: match.feeType,
+              effectiveFeeType: d.feeType,
+              billingMonth: match.billingMonth,
+            },
+            lockBasis.salesOpenMonth,
+          );
+          // 후불 단가는 미정산 출석 존재 시 변경 거부 (§3-2, Phase 3).
+          if (match.billingTiming === "POSTPAID") {
+            await assertPostpaidUnitPriceMutable(tx, classId);
+          }
+        }
         await tx.classProduct.update({
           where: { id: match.id },
           data: {
@@ -5675,17 +6416,38 @@ export class ClassesService {
             isActive: d.isActive ?? true,
           },
         });
+      } else if (d.feeType === "MONTHLY_FIXED") {
+        // 신규 월 정액 — 귀속월 필수(도출 불가 시 fail-fast 400) + 판매 시작된 달 동결.
+        const month = resolveNewProductBillingMonth({
+          lifecycleTargetMonth,
+          salesOpenMonth: lockBasis.salesOpenMonth,
+        });
+        assertMonthNotFrozen(month, lockBasis.salesOpenMonth);
+        await tx.classProduct.create({ data: { ...d, billingMonth: month } });
       } else {
         await tx.classProduct.create({ data: d });
       }
     }
 
-    // 잔여(매칭 안 된) 기존 행은 참조가 없을 때만 삭제 — 참조 중이면 FK 보존 위해 유지.
+    // 잔여(매칭 안 된) 기존 행 — 참조 중이면 FK 보존 위해 그대로 유지(기존 동작).
+    //   미참조라도 판매 시작된 월분(무월 legacy 포함)은 판매 계약 이력 보존을 위해
+    //   hard delete 대신 판매 중지로 전환 (§3-6 D4 — D1~D3 과 공통 판정).
     for (const e of existing) {
       if (usedExistingIds.has(e.id)) continue;
       const referenced = e._count.enrollments > 0 || e._count.payments > 0;
-      if (!referenced) {
+      if (referenced) continue;
+      const mode = resolveProductDeletionMode(
+        { feeType: e.feeType, billingMonth: e.billingMonth },
+        lockBasis.salesOpenMonth,
+        false,
+      );
+      if (mode === "hard") {
         await tx.classProduct.delete({ where: { id: e.id } });
+      } else {
+        await tx.classProduct.update({
+          where: { id: e.id },
+          data: { isActive: false },
+        });
       }
     }
   }

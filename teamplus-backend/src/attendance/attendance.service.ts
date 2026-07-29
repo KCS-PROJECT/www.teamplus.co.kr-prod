@@ -13,6 +13,8 @@ import {
   ISSUING_PRODUCT_WHERE,
 } from "@/common/billing/fee-type.constants";
 import { RedisService } from "@/redis/redis.service";
+import { acquireClassPostpaidLockIfNeeded } from "@/classes/utils/class-locks.util";
+import { assertScheduleMonthNotSettled } from "@/payments/settlement/postpaid-attendance.util";
 import { CreditDomainService } from "@/credits/credit-domain.service";
 import { AttendanceAuditLogService } from "./attendance-audit-log.service";
 import { NotificationsService } from "@/notifications/notifications.service";
@@ -362,6 +364,11 @@ export class AttendanceService {
 
     // ── 6) 원자적 트랜잭션: 출석 + 수업권 차감 + QR 스캔 기록 ──
     const result = await this.prisma.$transaction(async (tx) => {
+      // 가격 잠금 §4-0 B — 후불(POSTPAID/BOTH) 수업의 출석 기록은 단가 수정·정산
+      //   확정과 동일 lock 으로 직렬화한다 (PREPAID 수업은 미획득 — 영향 0).
+      await acquireClassPostpaidLockIfNeeded(tx, classId);
+      // P3-H1 — 정산 확정 월의 출석 변경은 lock 안에서 재검증 후 거부.
+      await assertScheduleMonthNotSettled(tx, scheduleId);
       // 6-a) 출석 기록 upsert (absent → present 전환 포함, checkedInVia/By 기록)
       const attendance = await tx.classAttendance.upsert({
         where: {
@@ -717,6 +724,10 @@ export class AttendanceService {
 
     // 출석 기록 생성 및 수업권 차감 - 원자적 트랜잭션 처리
     const result = await this.prisma.$transaction(async (tx) => {
+      // 가격 잠금 §4-0 B — 후불 수업의 출석 기록은 단가 수정·정산 확정과 직렬화.
+      await acquireClassPostpaidLockIfNeeded(tx, classId);
+      // P3-H1 — 정산 확정 월의 출석 변경은 lock 안에서 재검증 후 거부.
+      await assertScheduleMonthNotSettled(tx, scheduleId);
       const attendance = await tx.classAttendance.upsert({
         where: {
           scheduleId_memberId: {
@@ -1434,6 +1445,14 @@ export class AttendanceService {
     let modificationPush: { parentIds: string[]; message: string } | null =
       null;
     const result = await this.prisma.$transaction(async (tx) => {
+      // 가격 잠금 §4-0 B — present 전환 포함 상태 변경도 후불 lock 직렬화 대상.
+      const lockClassId = attendance.schedule?.class?.id;
+      if (lockClassId) {
+        await acquireClassPostpaidLockIfNeeded(tx, lockClassId);
+      }
+      // P3-H1 — lock 밖 사전 검사(assertMonthNotSettled)는 빠른 실패용일 뿐,
+      //   "정산 확정 → 출석 변경" 순서는 lock 안의 이 재검증만이 막는다.
+      await assertScheduleMonthNotSettled(tx, attendance.scheduleId);
       const updated = await tx.classAttendance.update({
         where: { id: attendanceId },
         data: {
@@ -2158,6 +2177,10 @@ export class AttendanceService {
 
     // 8) 트랜잭션: 출석 + 수업권 차감 + 이력
     const result = await this.prisma.$transaction(async (tx) => {
+      // 가격 잠금 §4-0 B — 후불 수업의 출석 기록은 단가 수정·정산 확정과 직렬화.
+      await acquireClassPostpaidLockIfNeeded(tx, classId);
+      // P3-H1 — 정산 확정 월의 출석 변경은 lock 안에서 재검증 후 거부.
+      await assertScheduleMonthNotSettled(tx, scheduleId);
       const attendance = await tx.classAttendance.upsert({
         where: { scheduleId_memberId: { scheduleId, memberId: childId } },
         update: {
@@ -2358,6 +2381,10 @@ export class AttendanceService {
 
     // 7) 트랜잭션: 출석 + 수업권 차감 + 이력
     const result = await this.prisma.$transaction(async (tx) => {
+      // 가격 잠금 §4-0 B — 후불 수업의 출석 기록은 단가 수정·정산 확정과 직렬화.
+      await acquireClassPostpaidLockIfNeeded(tx, classId);
+      // P3-H1 — 정산 확정 월의 출석 변경은 lock 안에서 재검증 후 거부.
+      await assertScheduleMonthNotSettled(tx, scheduleId);
       const attendance = await tx.classAttendance.upsert({
         where: { scheduleId_memberId: { scheduleId, memberId: studentId } },
         update: {
@@ -2635,6 +2662,10 @@ export class AttendanceService {
 
         // 트랜잭션 (개별 처리 — 한 명 실패가 다른 명 차단 안 함, N-4)
         const tr = await this.prisma.$transaction(async (tx) => {
+          // 가격 잠금 §4-0 B — 후불 수업의 출석 기록은 단가 수정·정산 확정과 직렬화.
+          await acquireClassPostpaidLockIfNeeded(tx, classId);
+          // P3-H1 — 정산 확정 월의 출석 변경은 lock 안에서 재검증 후 거부.
+          await assertScheduleMonthNotSettled(tx, scheduleId);
           const att = await tx.classAttendance.upsert({
             where: { scheduleId_memberId: { scheduleId, memberId } },
             update: {
@@ -3062,6 +3093,10 @@ export class AttendanceService {
     let modificationPush: { parentIds: string[]; message: string } | null =
       null;
     const result = await this.prisma.$transaction(async (tx) => {
+      // 가격 잠금 §4-0 B — 후불 수업의 출석 기록은 단가 수정·정산 확정과 직렬화.
+      await acquireClassPostpaidLockIfNeeded(tx, schedule.class.id);
+      // P3-H1 — 정산 확정 월의 출석 변경은 lock 안에서 재검증 후 거부.
+      await assertScheduleMonthNotSettled(tx, scheduleId);
       // 5-1) 차감 대상 수업권 조회 (만료 안 된 것 중 잔량 > 0)
       let memberCredit: {
         id: string;
@@ -3257,6 +3292,12 @@ export class AttendanceService {
     const now = new Date();
 
     await this.prisma.$transaction(async (tx) => {
+      // 가격 잠금 §4-0 B — 출석 취소(복원)도 후불 집계를 바꾸므로 동일 lock 직렬화.
+      if (classId) {
+        await acquireClassPostpaidLockIfNeeded(tx, classId);
+      }
+      // P3-H1 — 정산 확정 월의 출석 변경은 lock 안에서 재검증 후 거부.
+      await assertScheduleMonthNotSettled(tx, attendance.scheduleId);
       // 1) 수업권 복원 (차감되어 있던 경우만) — PR-B: CreditDomainService 경유
       if (attendance.creditDeducted) {
         await this.creditDomain.restoreOne(tx, {

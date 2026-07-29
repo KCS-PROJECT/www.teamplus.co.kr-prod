@@ -5,6 +5,7 @@ import { PrismaService } from "@/prisma/prisma.service";
 import { PaymentCalculationService } from "./payment-calculation.service";
 import { NotificationsService } from "@/notifications/notifications.service";
 import { ResourceAccessService } from "@/common/access/resource-access.service";
+import { SystemLogService } from "@/logger/system-log.service";
 
 /**
  * 출처 라벨링 append 검증 (SPEC §6-1):
@@ -28,6 +29,7 @@ describe("PostpaidSettlementService · 출처 라벨링", () => {
         { provide: PaymentCalculationService, useValue: {} },
         { provide: NotificationsService, useValue: {} },
         { provide: ResourceAccessService, useValue: {} },
+        { provide: SystemLogService, useValue: {} },
       ],
     }).compile();
 
