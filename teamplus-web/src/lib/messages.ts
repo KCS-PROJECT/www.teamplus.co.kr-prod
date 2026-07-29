@@ -53,6 +53,12 @@ export const MESSAGES = {
       packageCreated: "정기권이 등록되었습니다.",
       openSalesButton: "판매 시작하기",
       openSalesSuccess: "판매가 시작되었습니다.",
+      // [Phase 2] 미갱신 선불 선수 배치 해제 사전 고지 — 판매 시작 확인 다이얼로그.
+      openSalesReleaseTitle: "판매 시작",
+      openSalesReleaseNotice: (names: string, count: number) =>
+        `지난 판매 달에 결제하지 않은 선수 ${count}명(${names})이 수강생 명단에서 제외됩니다. 다시 결제하면 명단에 자동으로 복구됩니다. 판매를 시작할까요?`,
+      openSalesReleasedToast: (count: number) =>
+        `미갱신 선수 ${count}명이 명단에서 제외되었습니다.`,
       ctaPreparing: "일정 준비 중",
       ctaEnded: "종료된 수업",
       pendingBannerAria: "판매 준비",
@@ -2734,6 +2740,13 @@ export const MESSAGES = {
         "출석한 만큼 월말에 정산됩니다. 출석 횟수·정산 확정은 출석 관리에서 진행됩니다.",
       // [Phase C] 선수정보 탭 당월 출석 횟수
       attendanceThisMonth: (n: number) => `이번 달 출석 ${n}회`,
+      // [만료 회원] 결제가 끊겨 자동 해제된(expired) 선수 관리 목록 — 재등록 대상
+      expiredSectionTitle: (n: number) => `만료 회원 ${n}명`,
+      expiredLastPaid: (y: number, m: number) => `마지막 결제 ${y}년 ${m}월`,
+      expiredNoPayment: "결제 이력 없음",
+      reassignButton: "다시 배치하기",
+      reassignSuccess: (name: string) =>
+        `${name} 선수를 명단에 다시 배치했습니다.`,
       // ── [DEPRECATED] SPEC v1 잔존 키 — deprecated 컴포넌트의 빌드 안전성 유지 목적.
       //    SPEC v3 에서는 정렬/필터 칩 UI 가 노출되지 않으므로 신규 사용 금지.
       noClasses: "수업 등록 후 수강생이 자동으로 표시됩니다",

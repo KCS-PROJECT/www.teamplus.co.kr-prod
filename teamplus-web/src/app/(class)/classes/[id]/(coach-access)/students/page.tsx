@@ -27,6 +27,7 @@ import { Icon } from '@/components/ui/Icon';
 import { useRouteUser } from '@/app/(class)/route-user-context';
 import { usePageReady } from '@/hooks/usePageReady';
 import { useNativeUI } from '@/hooks/useNativeUI';
+import { useToast } from '@/components/ui/Toast';
 import { kstYearMonth } from '@/lib/kst-month';
 import { shiftMonth } from '@/components/settlement/settlement-format';
 import { cn } from '@/lib/utils';
@@ -74,6 +75,12 @@ interface PaymentsResponse {
   teamCode: string;
   total: number;
   totalPaidAmount: number;
+  /** [만료 회원] 결제가 끊겨 자동 해제된(expired) 선수 — 월 필터 무관 재등록 대상 목록. */
+  expiredMembers?: {
+    userId: string;
+    memberName: string;
+    lastPaidYearMonth: string | null;
+  }[];
   students: PaymentStudent[];
   products?: {
     id: string;
@@ -192,6 +199,10 @@ export default function ClassStudentsPage() {
   const [error, setError] = useState<string | null>(null); // 초기 실패(풀 에러)
   const [monthError, setMonthError] = useState(false); // 월 새로고침 실패(직전월 보존)
   const [isRetrying, setIsRetrying] = useState(false);
+  // [만료 회원] 접이식 섹션 열림 + 다시 배치 진행 중 표시
+  const [expiredOpen, setExpiredOpen] = useState(false);
+  const [reassigningId, setReassigningId] = useState<string | null>(null);
+  const { toast } = useToast();
 
   // 풀스크린 로더 fast-path — 초기 로드 시도 완료(성공/실패) 시 ready.
   usePageReady(!isLoading);
@@ -273,6 +284,27 @@ export default function ClassStudentsPage() {
     await loadData(yearMonth, 'month');
     setIsMonthLoading(false);
   }, [loadData, yearMonth]);
+
+  // [만료 회원] 다시 배치 — 기존 직접 배치 API 재사용(active 복구·정원 검증은 서버).
+  const handleReassign = useCallback(
+    async (userId: string, name: string) => {
+      setReassigningId(userId);
+      try {
+        const res = await api.post(`/classes/${classId}/registrations`, {
+          userId,
+        });
+        if (res.success) {
+          toast.success(MESSAGES.academy.students.reassignSuccess(name));
+          await reloadCurrentMonth();
+        } else if (res.error?.message) {
+          toast.error(res.error.message);
+        }
+      } finally {
+        setReassigningId(null);
+      }
+    },
+    [classId, toast, reloadCurrentMonth],
+  );
 
   // ── 월 스텝퍼 ──
   const nextMonthDisabled = yearMonth >= kstYearMonth();
@@ -425,17 +457,78 @@ export default function ClassStudentsPage() {
           </section>
         ) : !data ? null : tab === 'roster' ? (
           /* ── 탭 ① 선수정보 — 탭 바에 이어지는 flat 흰 섹션 + hairline 행 ── */
-          <section className="bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 pb-8">
-            {data.students.length === 0 ? (
-              <EmptyState icon="group_off" text={M.emptyRoster} />
-            ) : (
-              <ul className="divide-y divide-it-line dark:divide-rink-700">
-                {data.students.map((s) => (
-                  <StudentRow key={s.registrationId} student={s} variant="roster" />
-                ))}
-              </ul>
+          <>
+            <section className="bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 pb-8">
+              {data.students.length === 0 ? (
+                <EmptyState icon="group_off" text={M.emptyRoster} />
+              ) : (
+                <ul className="divide-y divide-it-line dark:divide-rink-700">
+                  {data.students.map((s) => (
+                    <StudentRow key={s.registrationId} student={s} variant="roster" />
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            {/* ── 만료 회원 — 결제가 끊겨 자동 해제된 선수의 재등록 관리 목록 (월 무관) ── */}
+            {(data.expiredMembers?.length ?? 0) > 0 && (
+              <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-4">
+                <button
+                  type="button"
+                  onClick={() => setExpiredOpen((v) => !v)}
+                  aria-expanded={expiredOpen}
+                  className="flex w-full items-center justify-between focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 rounded-w-sm"
+                >
+                  <span className="text-card-title font-extrabold text-it-ink-800 dark:text-white">
+                    {M.expiredSectionTitle(data.expiredMembers!.length)}
+                  </span>
+                  <Icon
+                    name={expiredOpen ? 'expand_less' : 'expand_more'}
+                    className="text-it-ink-400 dark:text-rink-300"
+                    aria-hidden="true"
+                  />
+                </button>
+                {expiredOpen && (
+                  <ul className="mt-2 divide-y divide-it-line dark:divide-rink-700">
+                    {data.expiredMembers!.map((m) => {
+                      const ym = m.lastPaidYearMonth
+                        ?.split('-')
+                        .map(Number) as [number, number] | undefined;
+                      return (
+                        <li
+                          key={m.userId}
+                          className="py-3 flex items-center justify-between gap-3"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-card-body font-bold text-it-ink-800 dark:text-white">
+                              {m.memberName}
+                            </p>
+                            <p className="mt-0.5 text-card-meta text-it-ink-500 dark:text-rink-300 font-num tabular-nums">
+                              {ym
+                                ? M.expiredLastPaid(ym[0], ym[1])
+                                : M.expiredNoPayment}
+                            </p>
+                          </div>
+                          {canWrite && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleReassign(m.userId, m.memberName)
+                              }
+                              disabled={reassigningId === m.userId}
+                              className="shrink-0 h-9 px-3 rounded-w-md bg-it-blue-500 text-white text-card-meta font-bold hover:bg-it-blue-600 active:brightness-95 disabled:opacity-60 disabled:cursor-not-allowed transition-colors motion-reduce:transition-none"
+                            >
+                              {M.reassignButton}
+                            </button>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </section>
             )}
-          </section>
+          </>
         ) : (
           /* ── 탭 ② 결제 현황 ── */
           <>

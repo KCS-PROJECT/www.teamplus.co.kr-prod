@@ -924,7 +924,8 @@ export class PaymentsService {
         for (const reg of regs) {
           studentCount += 1;
           const e = enrollMap.get(`${c.id}:${reg.userId}`);
-          const paid = reg.status !== "inactive" && isPaid(e);
+          // active 만 결제 집계 — expired(만료) 등 비활성 상태가 완납으로 오집계되지 않게 양성 비교.
+          const paid = reg.status === "active" && isPaid(e);
           if (paid) {
             paidCount += 1;
             paidAmount +=

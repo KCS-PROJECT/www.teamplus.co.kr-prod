@@ -1524,7 +1524,7 @@ model ClassRegistration {
   classId          String   @map("class_id")
   userId           String   @map("user_id") /// 출석 주체 (자녀 User.id)
   registrationDate DateTime @default(now()) @map("registration_date") @db.Timestamptz(3)
-  status           String   @default("active") // active, inactive, suspended
+  status           String   @default("active") // active(수강 중·정원 점유), expired(미갱신 자동 해제·재등록 대상), inactive(감독 해제·취소·환불), suspended(예약)
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 

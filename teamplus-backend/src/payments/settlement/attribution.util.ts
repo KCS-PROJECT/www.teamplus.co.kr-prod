@@ -82,6 +82,30 @@ export function resolveRowBillingTiming(
   return "UNASSIGNED";
 }
 
+/**
+ * [선택월 로스터 멤버십] "그 달의 수강생" 판정 — 정산 허브(settlement-summary)와
+ * 선수정보 화면(getClassPayments 월 스코프)이 공유하는 단일 계약.
+ *  · 등록월 > 선택월 → 제외 (그 달엔 아직 등록 전)
+ *  · 등록월 == 선택월 → 포함 (그 달 등록·탈퇴여도 그 달 명단 보존)
+ *  · 그 달 활동 증거(출석·청구 라인·선불 귀속 거래) → 포함 (inactive 여도 보존)
+ *  · 그 외 → status=active AND 그 달 수업 진행 중일 때만
+ *  ⚠️ 한계: 단일 가변 ClassRegistration 행으로 정밀 탈퇴/재가입 이력은 복원 불가.
+ */
+export function isRosterMemberForMonth(
+  registrationDate: Date | null,
+  status: string,
+  selectedYearMonth: string,
+  classActiveForMonth: boolean,
+  hasMonthActivity: boolean,
+): boolean {
+  const regMonth =
+    registrationDate != null ? instantToKstYearMonth(registrationDate) : null;
+  if (regMonth != null && regMonth > selectedYearMonth) return false;
+  if (regMonth === selectedYearMonth) return true;
+  if (hasMonthActivity) return true;
+  return status === "active" && classActiveForMonth;
+}
+
 function sumRefund(
   refundLogs?: { refundAmount: number | null }[] | null,
 ): number {
