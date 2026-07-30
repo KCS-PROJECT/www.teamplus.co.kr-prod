@@ -2310,8 +2310,9 @@ export const MESSAGES = {
     disabledPendingShort: "승인대기",
     disabledRejectedLabel: "가입 반려",
     disabledRejectedShort: "반려",
-    disabledNotMemberLabel: "미가입 팀",
-    disabledNotMemberShort: "미가입",
+    // "미가입 팀" 은 이 화면에서 가입시킬 수 있다는 오해를 부른다 — 자격 사실만 표기.
+    disabledNotMemberLabel: "이 수업 대상 아님",
+    disabledNotMemberShort: "대상 아님",
 
     // 대시보드 상단 배너 (/parent) — [2026-06-18] 실제 자녀 이름 표기. 2명 이상이면 "OO 외 N명".
     dashboardPendingBanner: (name: string, extraCount: number) =>

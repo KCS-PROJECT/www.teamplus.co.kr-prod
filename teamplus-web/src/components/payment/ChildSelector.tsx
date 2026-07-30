@@ -15,7 +15,7 @@
  *  - 토큰만 사용 (ice-500, wline, wtext-3, rink-700/300 등).
  *
  * 비활성 사유 우선순위:
- *  '이미 수강 중' > '가입 반려' > '가입 승인 대기' > '미가입 팀' > '연령 제한'
+ *  '이미 수강 중' > '가입 반려' > '가입 승인 대기' > '이 수업 대상 아님' > '연령 제한'
  */
 
 import { Icon } from '@/components/ui/Icon';
@@ -187,7 +187,7 @@ export function ChildSelector({
           (multiSelect
             ? (selectedIds?.has(child.id) ?? false)
             : selectedId === child.id);
-        // 비활성 사유 우선순위: '이미 수강 중' > '가입 반려' > '가입 승인 대기' > '미가입 팀' > '연령 제한'
+        // 비활성 사유 우선순위: '이미 수강 중' > '가입 반려' > '가입 승인 대기' > '이 수업 대상 아님' > '연령 제한'
         //   paid 는 잠금이 아니므로 별도 "결제완료" 배지로 표시.
         const approvalKind = approvalStatusById.get(child.id);
         const disabledLabel = isEnrolled

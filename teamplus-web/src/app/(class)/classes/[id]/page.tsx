@@ -556,6 +556,25 @@ export default function ClassDetailPage() {
     return { notApprovedChildIds: notApproved, approvalStatusById: statusMap };
   }, [parentChildren, isOpenClass, eligibleTeamId]);
 
+  /** 수강생 선택 pill 표시 순서 — 선택 가능 자녀 먼저, 잠금 자녀 뒤로.
+   *  pill 은 flex-wrap 이라 잠금 자녀가 앞에 오면 선택 가능한 자녀가 둘째 줄로 밀린다.
+   *  paid 는 잠금이 아니므로(결제취소 진입 가능) 앞 그룹에 남긴다. sort 는 안정 정렬이라 그룹 내 기존 순서 유지.
+   */
+  const selectorChildren = useMemo(() => {
+    const isLocked = (id: string) =>
+      enrolledChildIds.has(id) ||
+      notApprovedChildIds.has(id) ||
+      ageIncompatibleChildIds.has(id);
+    return [...parentChildren].sort(
+      (a, b) => Number(isLocked(a.id)) - Number(isLocked(b.id)),
+    );
+  }, [
+    parentChildren,
+    enrolledChildIds,
+    notApprovedChildIds,
+    ageIncompatibleChildIds,
+  ]);
+
   // 자녀 선택 단일 진입점 (Option A1) — ChildSelector 가 본 state 를 갱신.
   //   - 자동 선택 우선순위:
   //     1. 미결제 + 등록 가능 자녀 (enrolled/notApproved/ageIncompatible 모두 아닌 자녀) — 등록(결제)하기 기본 액션.
@@ -2307,7 +2326,7 @@ export default function ClassDetailPage() {
                     </h2>
                   </div>
                   <ChildSelector
-                    childList={parentChildren}
+                    childList={selectorChildren}
                     selectedId={selectedChildId}
                     onSelect={setSelectedChildId}
                     enrolledChildIds={enrolledChildIds}
