@@ -44,6 +44,7 @@ interface VersionItem {
   forceUpdate?: boolean;
   releaseNotes?: string;
   storeUrl?: string;
+  isActive?: boolean;
   createdAt: string;
 }
 
@@ -51,6 +52,7 @@ export default function AppVersionsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [versions, setVersions] = useState<VersionItem[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'ios' | 'android'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [formData, setFormData] = useState({
@@ -60,6 +62,7 @@ export default function AppVersionsPage() {
     forceUpdate: false,
     releaseNotes: '',
     storeUrl: '',
+    isActive: true,
   });
   const [actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -105,6 +108,7 @@ export default function AppVersionsPage() {
   };
 
   const handleOpenAddModal = () => {
+    setEditingId(null);
     setFormData({
       platform: 'ios',
       version: '',
@@ -112,6 +116,21 @@ export default function AppVersionsPage() {
       forceUpdate: false,
       releaseNotes: '',
       storeUrl: '',
+      isActive: true,
+    });
+    setShowModal(true);
+  };
+
+  const handleOpenEditModal = (version: VersionItem) => {
+    setEditingId(version.id);
+    setFormData({
+      platform: version.platform === 'android' ? 'android' : 'ios',
+      version: version.version,
+      minVersion: version.minVersion && version.minVersion !== '0.0.0' ? version.minVersion : '',
+      forceUpdate: !!version.forceUpdate,
+      releaseNotes: version.releaseNotes ?? '',
+      storeUrl: version.storeUrl ?? '',
+      isActive: version.isActive !== false,
     });
     setShowModal(true);
   };
@@ -132,27 +151,47 @@ export default function AppVersionsPage() {
     }
 
     try {
-      await api.post('/app/versions', {
-        platform: formData.platform,
-        version: formData.version,
-        minVersion,
-        forceUpdate: formData.forceUpdate,
-        releaseNotes: formData.releaseNotes || undefined,
-        storeUrl: formData.storeUrl || undefined,
-        isActive: true,
-      });
+      if (editingId) {
+        await api.put(`/app/versions/${editingId}`, {
+          minVersion,
+          forceUpdate: formData.forceUpdate,
+          releaseNotes: formData.releaseNotes || null,
+          storeUrl: formData.storeUrl || null,
+          isActive: formData.isActive,
+        });
+      } else {
+        await api.post('/app/versions', {
+          platform: formData.platform,
+          version: formData.version,
+          minVersion,
+          forceUpdate: formData.forceUpdate,
+          releaseNotes: formData.releaseNotes || undefined,
+          storeUrl: formData.storeUrl || undefined,
+          isActive: true,
+        });
+      }
       setShowModal(false);
       await loadVersions();
     } catch (error) {
       console.error('[Versions] 저장 실패:', error);
-      setActionMsg({ type: 'error', text: MESSAGES.version.createError });
+      setActionMsg({
+        type: 'error',
+        text: editingId ? MESSAGES.version.updateError : MESSAGES.version.createError,
+      });
       setTimeout(() => setActionMsg(null), 3000);
     }
   };
 
-  // 플랫폼별 최신 버전 가져오기
-  const latestIos = versions.find(v => v.platform === 'ios');
-  const latestAndroid = versions.find(v => v.platform === 'android');
+  // 플랫폼별 최신 버전 — 게이트(/versions/latest)와 동일 기준: 활성 버전 중 semver 최대값
+  const pickLatest = (platform: 'ios' | 'android'): VersionItem | null =>
+    versions
+      .filter(v => v.platform === platform && v.isActive !== false)
+      .reduce<VersionItem | null>(
+        (max, v) => (max === null || compareVersions(v.version, max.version) > 0 ? v : max),
+        null,
+      );
+  const latestIos = pickLatest('ios');
+  const latestAndroid = pickLatest('android');
 
   return (
     <div className="space-y-6">
@@ -238,20 +277,27 @@ export default function AppVersionsPage() {
               <thead>
                 <tr className="bg-slate-50 dark:bg-slate-700/50">
                   <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">번호</th>
-                  <th className="px-4 py-3 w-px whitespace-nowrap text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">플랫폼</th>
+                  <th className="px-4 py-3 w-px whitespace-nowrap text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">플랫폼</th>
                   <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">버전</th>
                   <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">최소버전</th>
                   <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">강제</th>
                   <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">스토어 URL</th>
+                  <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">상태</th>
                   <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">등록일</th>
+                  <th className="px-4 py-3 w-px whitespace-nowrap text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">관리</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                 {paginatedVersions.map((version, index) => (
-                  <tr key={version.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors motion-reduce:transition-none">
+                  <tr
+                    key={version.id}
+                    className={`hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors motion-reduce:transition-none ${
+                      version.isActive === false ? 'opacity-50' : ''
+                    }`}
+                  >
                     <td className="px-6 py-4 text-center text-sm text-slate-600 dark:text-slate-300 tabular-nums">{filteredVersions.length - startIndex - index}</td>
                     <td className="px-4 py-4 w-px whitespace-nowrap">
-                      <div className="flex items-center justify-center gap-2">
+                      <div className="flex items-center gap-2">
                         {version.platform === 'ios' ? (
                           <div className="w-8 h-8 bg-slate-900 dark:bg-slate-600 rounded-lg flex items-center justify-center">
                             <Apple className="w-4 h-4 text-white" aria-hidden="true" />
@@ -261,7 +307,9 @@ export default function AppVersionsPage() {
                             <Smartphone className="w-4 h-4 text-white" aria-hidden="true" />
                           </div>
                         )}
-                        <span className="font-medium text-slate-900 dark:text-white capitalize">{version.platform}</span>
+                        <span className="font-medium text-slate-900 dark:text-white">
+                          {version.platform === 'ios' ? 'iOS' : version.platform === 'android' ? 'Android' : version.platform}
+                        </span>
                       </div>
                     </td>
                     <td className="px-6 py-4 text-center font-semibold text-slate-900 dark:text-white tabular-nums">v{version.version}</td>
@@ -291,8 +339,24 @@ export default function AppVersionsPage() {
                         <span className="text-slate-400 dark:text-slate-500">미등록</span>
                       )}
                     </td>
+                    <td className="px-6 py-4 text-center">
+                      {version.isActive !== false ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">활성</span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400">비활성</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-center text-sm text-slate-600 dark:text-slate-300 tabular-nums">
                       {version.createdAt ? new Date(version.createdAt).toLocaleDateString('ko-KR') : '-'}
+                    </td>
+                    <td className="px-4 py-4 w-px whitespace-nowrap text-center">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditModal(version)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors motion-reduce:transition-none"
+                      >
+                        수정
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -402,17 +466,19 @@ export default function AppVersionsPage() {
       {/* 버전 등록 모달 */}
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} size="lg">
         <ModalHeader
-          title="새 버전 등록"
+          title={editingId ? '버전 수정' : '새 버전 등록'}
           icon={GitBranch}
         />
         <ModalBody>
           <div className="space-y-5">
-            {/* 플랫폼 선택 */}
+            {/* 플랫폼 선택 — 수정 시에는 식별자라 변경 불가 */}
             <div className="space-y-2">
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">플랫폼</label>
               <div className="grid grid-cols-2 gap-3">
                 <label
-                  className={`flex items-center gap-3 p-4 border rounded-xl cursor-pointer transition-colors ${
+                  className={`flex items-center gap-3 p-4 border rounded-xl transition-colors ${
+                    editingId ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                  } ${
                     formData.platform === 'ios'
                       ? 'border-primary bg-primary/5 dark:bg-primary/10'
                       : 'border-slate-200 dark:border-slate-600 hover:border-slate-300 dark:hover:border-slate-500'
@@ -423,6 +489,7 @@ export default function AppVersionsPage() {
                     name="platform"
                     value="ios"
                     checked={formData.platform === 'ios'}
+                    disabled={!!editingId}
                     onChange={(e) => setFormData({ ...formData, platform: e.target.value as 'ios' | 'android' })}
                     className="sr-only"
                   />
@@ -435,7 +502,9 @@ export default function AppVersionsPage() {
                   </div>
                 </label>
                 <label
-                  className={`flex items-center gap-3 p-4 border rounded-xl cursor-pointer transition-colors ${
+                  className={`flex items-center gap-3 p-4 border rounded-xl transition-colors ${
+                    editingId ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                  } ${
                     formData.platform === 'android'
                       ? 'border-primary bg-primary/5 dark:bg-primary/10'
                       : 'border-slate-200 dark:border-slate-600 hover:border-slate-300 dark:hover:border-slate-500'
@@ -446,6 +515,7 @@ export default function AppVersionsPage() {
                     name="platform"
                     value="android"
                     checked={formData.platform === 'android'}
+                    disabled={!!editingId}
                     onChange={(e) => setFormData({ ...formData, platform: e.target.value as 'ios' | 'android' })}
                     className="sr-only"
                   />
@@ -460,14 +530,15 @@ export default function AppVersionsPage() {
               </div>
             </div>
 
-            {/* 버전 정보 */}
+            {/* 버전 정보 — 수정 시에는 식별자라 변경 불가 */}
             <div className="space-y-2">
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">버전 번호 *</label>
               <Input
                 value={formData.version}
+                disabled={!!editingId}
                 onChange={(e) => setFormData({ ...formData, version: e.target.value })}
                 placeholder="예: 2.2.0"
-                className="h-11 bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 dark:text-white"
+                className="h-11 bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
               />
             </div>
 
@@ -500,6 +571,24 @@ export default function AppVersionsPage() {
                 체크하면 이 버전 미만 전원이 강제 업데이트 대상이 됩니다. (긴급 배포용)
               </p>
             </div>
+
+            {/* 활성 상태 — 수정 시에만 노출 (등록은 항상 활성) */}
+            {editingId && (
+              <div className="space-y-2">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.isActive}
+                    onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+                    className="w-5 h-5 rounded border-slate-300 dark:border-slate-600 text-primary focus:ring-2 focus:ring-primary"
+                  />
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300">활성 상태</span>
+                </label>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  해제하면 앱 업데이트 안내 판정에서 이 버전이 제외됩니다. (잘못 등록한 버전 회수용)
+                </p>
+              </div>
+            )}
 
             {/* 스토어 URL */}
             <div className="space-y-2">
@@ -539,7 +628,7 @@ export default function AppVersionsPage() {
             onClick={handleSaveVersion}
             className="flex-1 h-12 px-5 text-base font-bold bg-primary hover:bg-primary-dark text-white"
           >
-            등록하기
+            {editingId ? '수정하기' : '등록하기'}
           </Button>
         </ModalFooter>
       </Modal>
