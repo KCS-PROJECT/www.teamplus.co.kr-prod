@@ -1127,10 +1127,14 @@ export class ClassesService {
     //  isAdmin → undefined (제한 없음) / 그 외 → 소속 팀 ID 배열
     const isAdmin = user?.userType === "ADMIN";
     // childId 지정 시(학부모 자녀 선택) 해당 자녀 소속 팀으로만 좁힘.
+    // includePendingChildTeams — 가입 승인 대기 자녀도 신청한 팀의 훈련을 "열람"만 할 수 있게.
+    //   등록·결제는 createEnrollment 의 approved 가드가 계속 막는다(§4.5 + BR-12).
+    //   PARENT 자녀 경유 경로에만 적용되며 COACH/DIRECTOR/CHILD/TEEN 판정에는 영향 없다.
     const viewerTeamIds =
       user && !isAdmin
         ? await resolveViewerTeamIds(this.prisma, user.id, user.userType, {
             childId: query.childId,
+            includePendingChildTeams: true,
           })
         : null;
     // 오픈클래스(academyId) WHERE 조건.
@@ -1176,8 +1180,9 @@ export class ClassesService {
     };
 
     // 학부모 가드 — 자녀 경유 팀 ID(viewerTeamIds)로 정규수업 필터.
-    //  viewerTeamIds 는 line 941 에서 resolveViewerTeamIds(..., { childId }) 로 해석되어
+    //  viewerTeamIds 는 resolveViewerTeamIds(..., { childId }) 로 해석되어
     //  childId 지정 시 해당 자녀 소속 팀만, 미지정 시 모든 자녀 팀 합집합.
+    //  승인 대기(pending) 신청 팀도 포함 — 목록 열람만 허용(등록은 enrollments 가드가 차단).
     //  자녀 0명/팀 0개(또는 타 자녀 childId)면 빈 결과 — 오인 노출 차단.
     if (user?.userType === "PARENT" && query.category !== "open") {
       const teamIds = viewerTeamIds ?? [];

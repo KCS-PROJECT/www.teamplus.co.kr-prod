@@ -167,7 +167,8 @@ export function Modal({
       closeOnOverlayClick={closeOnOverlayClick}
       closeOnEscape={closeOnEscape}
       className={cn(
-        'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg relative',
+        // max-h + flex-col: 내용이 창 높이를 넘으면 헤더/푸터는 고정하고 ModalBody만 스크롤
+        'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg relative max-h-[calc(100vh-2rem)] flex flex-col',
         sizeStyles[size],
         className
       )}
@@ -202,7 +203,7 @@ export function ModalHeader({
   return (
     <div
       className={cn(
-        'p-6',
+        'p-6 shrink-0',
         description && 'pb-4',
         centered && 'text-center',
         className
@@ -247,8 +248,8 @@ export function ModalBody({
   return (
     <div
       className={cn(
-        'px-6 pb-6',
-        scrollable && 'overflow-y-auto',
+        // min-h-0: flex 부모(max-h 패널) 안에서 초과분만 스크롤되도록 허용
+        'px-6 pb-6 min-h-0 overflow-y-auto',
         className
       )}
       style={scrollable ? { maxHeight } : undefined}
@@ -266,7 +267,7 @@ export function ModalFooter({ children, className }: ModalFooterProps) {
   return (
     <div
       className={cn(
-        'px-6 pb-6 pt-2 flex gap-3',
+        'px-6 pb-6 pt-2 flex gap-3 shrink-0',
         className
       )}
     >

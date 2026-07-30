@@ -386,9 +386,14 @@ export class AppManagementController {
    */
   @Get("versions/latest")
   @Public()
-  @ApiOperation({ summary: "최신 앱 버전 정보 (iOS/Android 통합)" })
-  getLatestVersion() {
-    return this.service.getLatestVersion();
+  @ApiOperation({ summary: "최신 앱 버전 정보 (platform 지정 시 해당 플랫폼 기준)" })
+  @ApiQuery({
+    name: "platform",
+    required: false,
+    description: "ios | android — 미지정 시 iOS 우선 통합 응답 (구버전 앱 호환)",
+  })
+  getLatestVersion(@Query("platform") platform?: string) {
+    return this.service.getLatestVersion(platform);
   }
 
   @Post("versions")
@@ -409,6 +414,28 @@ export class AppManagementController {
     },
   ) {
     return this.service.createVersion(body);
+  }
+
+  /**
+   * 앱 버전 수정 — platform/version 은 식별자이므로 변경 불가.
+   * isActive=false 로 게이트(/versions/latest) 판정에서 제외할 수 있다.
+   */
+  @Put("versions/:id")
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "앱 버전 수정 (minVersion·forceUpdate·storeUrl·isActive)" })
+  updateVersion(
+    @Param("id") id: string,
+    @Body()
+    body: {
+      minVersion?: string;
+      forceUpdate?: boolean;
+      releaseNotes?: string | null;
+      storeUrl?: string | null;
+      isActive?: boolean;
+    },
+  ) {
+    return this.service.updateVersion(id, body);
   }
 
   // ==================== 앱 사용 통계 ====================

@@ -676,6 +676,19 @@ export class AppManagementService implements OnModuleInit {
     });
   }
 
+  /** semver 비교: a>b → 1, a<b → -1, 동일 → 0 (비숫자 세그먼트는 0 취급) */
+  private compareSemver(a: string, b: string): number {
+    const pa = a.split(".").map((n) => parseInt(n, 10) || 0);
+    const pb = b.split(".").map((n) => parseInt(n, 10) || 0);
+    const len = Math.max(pa.length, pb.length);
+    for (let i = 0; i < len; i++) {
+      const x = pa[i] ?? 0;
+      const y = pb[i] ?? 0;
+      if (x !== y) return x > y ? 1 : -1;
+    }
+    return 0;
+  }
+
   /**
    * 최신 활성 버전 정보 (앱 cold start 호출).
    *
@@ -683,23 +696,40 @@ export class AppManagementService implements OnModuleInit {
    *   { currentVersion, minimumVersion, latestVersion,
    *     forceUpdate, updateMessage, iosStoreUrl, androidStoreUrl }
    *
-   * iOS/Android 각 플랫폼별 최신 활성 버전 1건씩 조회 후 통합 응답.
-   * 데이터 미존재 시에도 안전한 기본값(0.0.0)으로 응답하여 404를 차단한다.
+   * - "최신"은 등록 순서가 아니라 활성 버전 중 semver 최대값으로 선택한다
+   *   (낮은 버전을 나중에 등록해도 오판하지 않도록).
+   * - platform 명시(신버전 앱): 해당 플랫폼 기록만으로 판정값을 구성한다.
+   * - platform 미지정(기배포 구버전 앱): 기존 iOS 우선 통합 응답 유지 (하위 호환).
+   * - 데이터 미존재 시에도 안전한 기본값(0.0.0)으로 응답하여 404를 차단한다.
    */
-  async getLatestVersion() {
-    const [ios, android] = await Promise.all([
-      this.prisma.appVersion.findFirst({
+  async getLatestVersion(platform?: string) {
+    const [iosList, androidList] = await Promise.all([
+      this.prisma.appVersion.findMany({
         where: { platform: "ios", isActive: true },
-        orderBy: { createdAt: "desc" },
       }),
-      this.prisma.appVersion.findFirst({
+      this.prisma.appVersion.findMany({
         where: { platform: "android", isActive: true },
-        orderBy: { createdAt: "desc" },
       }),
     ]);
 
-    // 우선순위: iOS → Android → 기본값
-    const primary = ios ?? android;
+    const pickLatest = (rows: typeof iosList) =>
+      rows.reduce<(typeof rows)[number] | null>(
+        (max, row) =>
+          max === null || this.compareSemver(row.version, max.version) > 0
+            ? row
+            : max,
+        null,
+      );
+    const ios = pickLatest(iosList);
+    const android = pickLatest(androidList);
+
+    const primary =
+      platform === "ios"
+        ? ios
+        : platform === "android"
+          ? android
+          : (ios ?? android);
+
     const latestVersion = primary?.version ?? "0.0.0";
     const minimumVersion = primary?.minVersion ?? "0.0.0";
     const forceUpdate = primary?.forceUpdate ?? false;
@@ -725,6 +755,34 @@ export class AppManagementService implements OnModuleInit {
     isActive?: boolean;
   }) {
     return this.prisma.appVersion.create({ data });
+  }
+
+  async updateVersion(
+    id: string,
+    data: {
+      minVersion?: string;
+      forceUpdate?: boolean;
+      releaseNotes?: string | null;
+      storeUrl?: string | null;
+      isActive?: boolean;
+    },
+  ) {
+    const version = await this.prisma.appVersion.findUnique({ where: { id } });
+    if (!version) throw new NotFoundException("버전을 찾을 수 없습니다.");
+    return this.prisma.appVersion.update({
+      where: { id },
+      data: {
+        ...(data.minVersion !== undefined && { minVersion: data.minVersion }),
+        ...(data.forceUpdate !== undefined && {
+          forceUpdate: data.forceUpdate,
+        }),
+        ...(data.releaseNotes !== undefined && {
+          releaseNotes: data.releaseNotes,
+        }),
+        ...(data.storeUrl !== undefined && { storeUrl: data.storeUrl }),
+        ...(data.isActive !== undefined && { isActive: data.isActive }),
+      },
+    });
   }
 
   // ==================== 앱 사용 통계 (UserActivityLog 집계) ====================

@@ -150,12 +150,11 @@ export function EnrolledTrainingSection({ iceTheme = false }: EnrolledTrainingSe
   const { selectedChildId } = useSelectedChild();
 
   // 현재 선택된 자녀만 노출 (선택값 없으면 안전망으로 전체 — 보통 컨텍스트가 첫 자녀 자동 선택).
+  //   순서는 useChildren.selectableChildren 단일 SoT를 그대로 사용(지역 재정렬 제거).
   const children = useMemo(() => {
-    const yearOf = (c: { birthDate?: string | null }) =>
-      c.birthDate ? new Date(c.birthDate).getFullYear() : Number.POSITIVE_INFINITY;
-    const sorted = [...selectableChildren].sort((a, b) => yearOf(a) - yearOf(b));
-    if (selectedChildId) return sorted.filter((c) => c.id === selectedChildId);
-    return sorted;
+    if (selectedChildId)
+      return selectableChildren.filter((c) => c.id === selectedChildId);
+    return selectableChildren;
   }, [selectableChildren, selectedChildId]);
 
   // childId → 등록완료(active) classId 집합

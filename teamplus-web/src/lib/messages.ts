@@ -30,6 +30,9 @@ export const MESSAGES = {
       "다가오는 일정이 있어 종료할 수 없습니다. 일정을 모두 마치거나 취소한 후 종료할 수 있습니다.",
     noActiveClasses: "진행 중인 훈련이 없습니다.",
     noActiveTournaments: "진행 중인 대회가 없습니다.",
+    // 선택한 선수가 아직 팀 가입 승인을 받지 못한 상태 — 목록은 보이지만 신청은 승인 후 가능.
+    //   lifecycle 의 '일정 준비 중'(판매 준비)과 구분되도록 '가입' 을 명시한다.
+    pendingTeamApproval: "가입 승인 대기",
     endedTrainingSection: "종료된 훈련",
     endedTournamentSection: "종료된 대회",
     // [Lifecycle v4.1 §9.3] 판매 승인 사이클 — 감독 확인 플로우 · 학부모 CTA
@@ -2310,8 +2313,9 @@ export const MESSAGES = {
     disabledPendingShort: "승인대기",
     disabledRejectedLabel: "가입 반려",
     disabledRejectedShort: "반려",
-    disabledNotMemberLabel: "미가입 팀",
-    disabledNotMemberShort: "미가입",
+    // "미가입 팀" 은 이 화면에서 가입시킬 수 있다는 오해를 부른다 — 자격 사실만 표기.
+    disabledNotMemberLabel: "이 수업 대상 아님",
+    disabledNotMemberShort: "대상 아님",
 
     // 대시보드 상단 배너 (/parent) — [2026-06-18] 실제 자녀 이름 표기. 2명 이상이면 "OO 외 N명".
     dashboardPendingBanner: (name: string, extraCount: number) =>

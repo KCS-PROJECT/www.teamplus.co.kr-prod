@@ -9,6 +9,7 @@ import { useNavigation } from '@/components/ui/NavLink';
 import { useChildren } from '@/hooks/useChildren';
 import { useSelectedChild } from '@/contexts/SelectedChildContext';
 import type { Child } from '@/components/children/ChildCard';
+import { compareChildDisplayOrder } from '@/lib/child-status';
 import { MESSAGES } from '@/lib/messages';
 import { PATHS } from '@/lib/paths';
 import { useNativeUI } from '@/hooks/useNativeUI';
@@ -55,13 +56,15 @@ function approvedTeam(child: Child): { teamName: string | null } {
 export default function ChildrenManagementPage() {
   const { navigate } = useNavigation();
   const { children: rawChildren, isLoading, error, refresh } = useChildren();
-  // [2026-06-16] 자녀를 출생연도 오름차순(나이 많은 순: 2017 → 2018 → 2021)으로 정렬.
-  //   출생일 미상은 맨 뒤로. 상단 탭·선택·카운트 모두 이 정렬된 목록 사용.
-  const children = useMemo(() => {
-    const yearOf = (c: Child) =>
-      c.birthDate ? new Date(c.birthDate).getFullYear() : Number.POSITIVE_INFINITY;
-    return [...rawChildren].sort((a, b) => yearOf(a) - yearOf(b));
-  }, [rawChildren]);
+  // 정렬은 compareChildDisplayOrder(child-status.ts) 단일 SoT — 팀 승인 자녀 우선 →
+  //   출생연도 오름차순(나이 많은 순), 출생일 미상 맨 뒤. 사이드메뉴 칩·홈 전환 시트와 동일 순서.
+  //   목록 자체는 원본 children 을 쓴다 — 자녀 관리 화면은 소속 여부와 무관하게 전원 표시해야 한다
+  //   (selectableChildren 은 노출 대상 필터가 걸릴 수 있는 선택용 목록이라 부적합).
+  //   상단 탭·선택·카운트 모두 이 정렬된 목록 사용.
+  const children = useMemo(
+    () => [...rawChildren].sort(compareChildDisplayOrder),
+    [rawChildren],
+  );
   // [appbar-harness-v2 fix 2026-05-12]
   //   `isDataLoaded: !isLoading` 가드 제거 — SubmainAppBar + 자녀 카드 리스트만
   //   렌더링하는 BottomNav 탭 hub 페이지이므로 학부모 수업목록(classes/page.tsx) 과

@@ -586,6 +586,7 @@ export class NoticesController {
       noticeId,
       req.user.id,
       dto.content,
+      req.user.userType,
     );
   }
 

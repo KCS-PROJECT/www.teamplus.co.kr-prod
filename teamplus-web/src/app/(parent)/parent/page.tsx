@@ -170,18 +170,9 @@ export default function ParentDashboardPage() {
   // 선택 대상 자녀를 칩에 노출 — 무소속 포함, pending/rejected(관계 미확정)만 제외.
   //   drawer·전역 Context 와 동일 기준(useChildren.selectableChildren). 무소속이어도 오픈클래스를
   //   수강할 수 있어 선택 가능해야 한다.
-  const approvedChildren = useMemo(
-    () => {
-      // [2026-06-16] 자녀 필터 칩을 출생연도 오름차순(나이 많은 순: 2017 → 2018 → 2021)으로 정렬.
-      //   출생일 미상은 맨 뒤로.
-      const yearOf = (c: (typeof selectableChildren)[number]) =>
-        c.birthDate
-          ? new Date(c.birthDate).getFullYear()
-          : Number.POSITIVE_INFINITY;
-      return [...selectableChildren].sort((a, b) => yearOf(a) - yearOf(b));
-    },
-    [selectableChildren],
-  );
+  //   정렬은 useChildren.selectableChildren 이 단일 SoT(팀 승인 자녀 우선 → 출생연도 오름차순).
+  //   지역 재정렬을 두면 드로어 칩과 순서가 갈라지고, 전역 기본 선택 자녀가 첫 칩이 아니게 된다.
+  const approvedChildren = selectableChildren;
 
   // 미승인 자녀 목록 (배너 표시용) — [2026-06-18] 배너에 실제 자녀 이름 노출용으로 목록 보유.
   const pendingChildren = useMemo(

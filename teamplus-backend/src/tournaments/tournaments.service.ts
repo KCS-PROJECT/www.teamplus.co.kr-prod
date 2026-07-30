@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -67,6 +68,7 @@ export class TournamentsService {
       select: {
         id: true,
         name: true,
+        teamId: true,
         feePerGame: true,
         totalGames: true,
         feeType: true,
@@ -117,6 +119,12 @@ export class TournamentsService {
         "해당 자녀는 이 대회 참가 대상이 아닙니다.",
       );
     }
+    // 주최 팀 가입 승인 검증 — 승인 대기(pending) 자녀의 결제 차단.
+    //   목록 열람은 허용하되 결제는 승인 후에만 (registerTournament 와 동일 가드).
+    await this.assertTournamentTeamMembership(
+      tournament.teamId,
+      body.childId,
+    );
 
     // 서버사이드 금액 검증 — feePerGame × gamesCount (TOTAL_FIXED 는 1회 단가).
     const feePerGame = tournament.feePerGame
@@ -391,7 +399,12 @@ export class TournamentsService {
         );
         if (childIds.length === 0) return [];
 
-        // 자녀별 출생연도 + 소속(approved·활성) 팀 ids
+        // 자녀별 출생연도 + 소속 팀 ids.
+        //  승인 대기(pending) 신청 팀도 포함 — 가입 승인을 기다리는 자녀도 그 팀 대회를
+        //  "열람"만 할 수 있게 (참가 신청·결제는 registerTournament 가드가 계속 차단).
+        //  단 이 완화는 명단 미지정 대회(아래 isTournamentVisibleToChildren 의 레거시 폴백
+        //  경로)에만 효력이 있다. selectedParticipantIds 가 있는 대회는 명단 포함 여부로만
+        //  판정하므로, 명단에 없는 자녀는 승인 상태와 무관하게 노출되지 않는다.
         const childUsers = await this.prisma.user.findMany({
           where: { id: { in: childIds } },
           select: {
@@ -399,7 +412,10 @@ export class TournamentsService {
             birthDate: true,
             childProfile: { select: { birthDate: true } },
             teamMembers: {
-              where: { approvalStatus: "approved", leftAt: null },
+              where: {
+                approvalStatus: { in: ["approved", "pending"] },
+                leftAt: null,
+              },
               select: { teamId: true },
             },
           },
@@ -1848,6 +1864,37 @@ export class TournamentsService {
    * 참가 신청 가능 검증 — 첫 경기 시작 후에는 신청 마감.
    *  경기 미등록 대회는 종료일(@db.Date, day-level) 경과 시 차단 폴백.
    */
+  /**
+   * 대회 참가 자격 — 주최 팀에 승인(approved)된 선수만 신청·결제 가능.
+   *
+   * 목록 열람은 가입 승인 대기(pending) 자녀에게도 허용하지만(getTournaments),
+   * 신청·결제는 승인 후에만 가능하다. 수업의 enrollments 가드(§4.5 + BR-12)와 동일 취지로,
+   * 명단(selectedParticipantIds)이 비어 있는 대회에서 미승인 선수가 결제까지 가는 경로를 막는다.
+   *
+   * roleInTeam 은 검증하지 않는다 — 대회 참가자는 선수(자녀 본인)이며, 레거시 멤버십의
+   * roleInTeam 값이 일정하지 않아 승인 상태만으로 판정한다.
+   */
+  private async assertTournamentTeamMembership(
+    teamId: string | null,
+    participantUserId: string,
+  ): Promise<void> {
+    if (!teamId) return;
+    const membership = await this.prisma.teamMember.findFirst({
+      where: {
+        userId: participantUserId,
+        teamId,
+        approvalStatus: "approved",
+        leftAt: null,
+      },
+      select: { id: true },
+    });
+    if (!membership) {
+      throw new ForbiddenException(
+        "감독님의 팀 가입 승인이 완료된 후 대회 참가 신청이 가능합니다.",
+      );
+    }
+  }
+
   private async assertTournamentRegistrationOpen(
     tournamentId: string,
     endDate: Date | null,
@@ -2004,6 +2051,10 @@ export class TournamentsService {
         }
       }
     }
+
+    // 3-1. 주최 팀 가입 승인 검증 — 승인 대기(pending) 선수의 신청 차단.
+    //   목록 열람은 허용하되 신청은 승인 후에만 (수업 enrollments 가드와 동일 취지).
+    await this.assertTournamentTeamMembership(tournament.teamId, targetUserId);
 
     // 4. 중복 등록 확인 (nullable childId는 findFirst 사용)
     const existingReg = await this.prisma.tournamentRegistration.findFirst({

@@ -91,12 +91,18 @@ export async function resolveScopedChildUserIds(
  * opts.childId 지정 시(학부모 자녀 선택 스코프):
  *   · 관리 팀(resolveManagedTeamIds)은 합치지 않고 선택 자녀의 팀만 반환.
  *   · childId 미지정(기존 호출) 시 동작 100% 동일.
+ *
+ * opts.includePendingChildTeams:
+ *   · 자녀가 가입 신청만 하고 아직 감독 승인을 받지 않은(pending) 팀까지 포함.
+ *   · ⚠️ 훈련·대회 "목록 열람" 경로 전용. 팀 공지(notices)·알림 수신자 산출에는
+ *     절대 켜지 말 것 — 미승인 학부모가 공지 본문을 읽거나 푸시를 받게 된다.
+ *   · 등록·결제는 enrollments 가드(approved + roleInTeam=PLAYER 필수)가 계속 차단한다.
  */
 export async function resolveViewerTeamIds(
   prisma: PrismaService,
   userId: string,
   userType?: string | null,
-  opts?: { childId?: string },
+  opts?: { childId?: string; includePendingChildTeams?: boolean },
 ): Promise<string[]> {
   // childId 스코프는 PARENT 전용 — 비-PARENT 토큰은 childId 무시(관리 팀 정상 해석).
   const scopedToChild = userType === "PARENT" && !!opts?.childId;
@@ -110,7 +116,9 @@ export async function resolveViewerTeamIds(
       const childMemberships = await prisma.teamMember.findMany({
         where: {
           userId: { in: childIds },
-          approvalStatus: "approved",
+          approvalStatus: opts?.includePendingChildTeams
+            ? { in: ["approved", "pending"] }
+            : "approved",
           leftAt: null,
         },
         select: { teamId: true },
