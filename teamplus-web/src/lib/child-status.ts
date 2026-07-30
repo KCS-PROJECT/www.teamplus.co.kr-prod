@@ -45,6 +45,32 @@ export function getSelectableChildren(children: Child[]): Child[] {
   return children.filter(isSelectableChild);
 }
 
+/**
+ * 자녀 표시 순서 비교자 — 선택 칩·탭·목록 공용 SoT.
+ *
+ *  ① 팀 승인(approved) 자녀 우선 — 무소속·승인 대기·거절은 뒤로.
+ *  ② 같은 그룹 내 출생연도 오름차순(나이 많은 순), 출생일 미상은 맨 뒤.
+ *
+ * ①이 필요한 이유: 전역 기본 선택(SelectedChildContext)이 목록의 첫 번째 자녀라, 무소속 자녀가
+ *   맨 앞이면 세션 시작 시 훈련·대회·일정이 빈 화면으로 시작한다(기존 승인 자녀보다 나이 많은
+ *   자녀를 새로 등록하면 조작 없이 발생).
+ * ②는 2026-06-17 사용자 지시 유지.
+ *
+ * 화면마다 지역 정렬을 두면 순서가 갈라지고 기본 선택 자녀가 첫 항목이 아니게 되므로,
+ * 자녀를 나열하는 모든 화면은 이 비교자를 사용한다.
+ */
+export function compareChildDisplayOrder(
+  a: Pick<Child, 'clubIds' | 'birthDate'>,
+  b: Pick<Child, 'clubIds' | 'birthDate'>,
+): number {
+  const hasTeam = (c: Pick<Child, 'clubIds'>) => (c.clubIds ?? []).length > 0;
+  const byTeam = Number(hasTeam(b)) - Number(hasTeam(a));
+  if (byTeam !== 0) return byTeam;
+  const yearOf = (c: Pick<Child, 'birthDate'>) =>
+    c.birthDate ? new Date(c.birthDate).getFullYear() : Number.POSITIVE_INFINITY;
+  return yearOf(a) - yearOf(b);
+}
+
 /** 비활성 사유 — 우선순위: rejected > pending > not_member */
 export type ChildInactiveReason = 'rejected' | 'pending' | 'not_member';
 

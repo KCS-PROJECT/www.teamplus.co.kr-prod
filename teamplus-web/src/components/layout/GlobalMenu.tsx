@@ -916,7 +916,10 @@ export function GlobalMenu({ isOpen, onClose }: GlobalMenuProps) {
                 )}
               </span>
               {userRole === "parent" ? (
-                // 학부모: 부제 자리에 선수명 나열(정적 회색). 자녀 선택 카드는 별도 유지.
+                // 학부모: 선수명은 화면 한 곳에만 — 자녀 선택 카드(showChildChips)가 뜨는
+                //   2명 이상에서는 카드가 이름을 담당하므로 이 줄을 숨긴다. 카드가 없는
+                //   1명(또는 미로딩) 학부모만 부제 자리에 선수명을 정적 회색으로 노출.
+                !showChildChips &&
                 childrenList.length > 0 && (
                   <span className="text-card-meta text-wtext-4 dark:text-rink-300 tracking-[-0.01em] truncate">
                     {childrenList.map((c) => c.name).join(" · ")}

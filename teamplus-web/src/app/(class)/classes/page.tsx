@@ -61,6 +61,8 @@ interface ClassItem {
   isActive: boolean;
   /** 백엔드 getAllClasses가 내려주는 flat clubId — 학부모 자녀 팀 필터에 사용 */
   clubId?: string;
+  /** 주최 팀 ID — 응답 select 에 포함(clubId 와 달리 실제로 내려온다). 승인 대기 팀 판정용. */
+  teamId?: string | null;
   clubName?: string;
   club?: { id: string; clubName: string };
   /** 팀 프로필(로고) URL — 카드 좌측 아이콘에 표시. 없으면 기본 trainingType 아이콘 폴백. */
@@ -99,6 +101,50 @@ interface ClassItem {
   lifecycleStatus?: 'ON_SALE' | 'PENDING_SCHEDULE' | 'ENDED';
   /** 수업 장소 (Venue 모델) */
   venue?: { id: string; name: string } | null;
+}
+
+/**
+ * GET /children 응답 중 이 화면이 쓰는 필드만 — 연령 분기 + 가입 승인 대기 팀 판정용.
+ * (useChildren.ChildApiItem 의 부분집합 · 별도 fetch 없이 기존 호출 재사용)
+ */
+interface ChildApprovalItem {
+  id: string;
+  age?: number;
+  birthDate?: string;
+  clubMemberships?: Array<{ teamId: string; approvalStatus: string }>;
+}
+
+/**
+ * '가입 승인 대기' 배지를 띄울 팀 ID — 없으면 null.
+ *
+ * 배지의 의미는 "이 팀 수업을 지금 신청할 수 있는 선수가 한 명도 없다" 이므로 두 조건을 모두 본다.
+ *  ① 선택 자녀가 그 팀에 승인 대기(pending) 중
+ *  ② 학부모의 자녀 중 그 팀에 승인(approved)된 선수가 **아무도 없음**
+ *
+ * ②가 필요한 이유: 형제가 이미 그 팀 승인 선수라면 수업 상세에서 그 선수로 신청·결제가
+ * 정상 완료된다(상세는 전체 자녀로 자격을 계산하고 등록 가능한 자녀를 자동 선택한다).
+ * 이때 '대기' 배지를 띄우면 신청 불가로 오독된다.
+ *
+ * 판정은 팀 단위다 — 선택 자녀가 다른 팀에 승인돼 있어도, 이 팀에 대기 중이면 배지 대상.
+ * 무소속·거절 자녀는 대상이 아니다(완화 범위는 pending 만).
+ */
+function resolvePendingTeamId(
+  children: ChildApprovalItem[],
+  selectedChildId: string | null,
+): string | null {
+  if (!selectedChildId) return null;
+  const selected = children.find((c) => c.id === selectedChildId);
+  const pendingTeamId =
+    (selected?.clubMemberships ?? []).find(
+      (m) => m.approvalStatus === "pending",
+    )?.teamId ?? null;
+  if (!pendingTeamId) return null;
+  const hasApprovedInTeam = children.some((c) =>
+    (c.clubMemberships ?? []).some(
+      (m) => m.teamId === pendingTeamId && m.approvalStatus === "approved",
+    ),
+  );
+  return hasApprovedInTeam ? null : pendingTeamId;
 }
 
 // [수정 2026-05-15] mock fallback 제거 — 실제 가격이 없으면 0 으로 표시하고
@@ -887,6 +933,7 @@ const DefaultClassCard = memo(function DefaultClassCard({
   enrolledClassIds,
   childAges,
   forceShowTypeBadge,
+  pendingTeamId,
 }: {
   item: ClassItem;
   /** 현재 사용자(부모)가 paid 로 등록한 classId 집합 — 등록완료 라벨 분기에 사용 */
@@ -899,6 +946,12 @@ const DefaultClassCard = memo(function DefaultClassCard({
   childAges?: number[];
   /** '등록 훈련' 섹션 등 혼합 분류 영역 — 정규수업/오픈클래스 배지를 강제 노출 */
   forceShowTypeBadge?: boolean;
+  /**
+   * '가입 승인 대기' 배지 대상 팀 ID (resolvePendingTeamId SoT). 선택 자녀가 승인 대기 중이고
+   * **그 팀에 승인된 형제도 없는** 경우에만 채워진다 — 형제로 신청이 가능하면 null 이라
+   * 등록 칩이 유지된다. 이 팀 수업은 열람만 가능하므로 등록 칩을 상태 칩으로 대체한다.
+   */
+  pendingTeamId?: string | null;
 }) {
   const { navigate } = useNavigation();
   // [2026-06-05] 요일별 규칙 우선 — 있으면 "월 17:00 ~ 18:00 / 수 ..." 한 줄(장소 생략),
@@ -949,6 +1002,12 @@ const DefaultClassCard = memo(function DefaultClassCard({
     registerLabel = "등록완료";
     registerClass =
       "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400";
+  } else if (!!pendingTeamId && item.teamId === pendingTeamId) {
+    // 선택 자녀가 이 팀의 가입 승인을 기다리는 중 — 열람만 가능. 신청은 승인 후.
+    //   (백엔드 enrollments 가드가 실제 차단, 여기는 이유를 미리 알리는 표시.)
+    registerLabel = MESSAGES.class.pendingTeamApproval;
+    registerClass =
+      "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400";
   } else if (item.lifecycleStatus === 'PENDING_SCHEDULE') {
     // [Lifecycle v4.1 §7.3] 일정 준비 중 — 미등록자의 등록 칩 자리를 상태 칩으로 대체.
     registerLabel = MESSAGES.class.preparingSchedule;
@@ -1227,8 +1286,11 @@ const TeenTournamentCard = memo(function TeenTournamentCard({
 
 const DefaultTournamentCard = memo(function DefaultTournamentCard({
   item,
+  pendingTeamId,
 }: {
   item: TournamentListItem;
+  /** '가입 승인 대기' 배지 대상 팀 ID — 승인된 형제가 있으면 null(신청 가능하므로 등록 칩 유지). */
+  pendingTeamId?: string | null;
 }) {
   const dateLabel = formatTournamentDateRange(item.startDate, item.endDate);
   // [2026-06-17] 종료 판정 — 공용 isTournamentClosed (섹션 필터와 동일 SoT).
@@ -1238,6 +1300,8 @@ const DefaultTournamentCard = memo(function DefaultTournamentCard({
   //   enrolledChildIds: 백엔드가 billingMode 별로 산출(후불 신청 포함 · 폴백 paidChildIds).
   const isEnrolled =
     ((item.enrolledChildIds ?? item.paidChildIds)?.length ?? 0) > 0;
+  // 주최 팀 = 선택 자녀가 승인 대기 중인 팀이면 신청 칩을 상태 칩으로 대체.
+  const isPendingTeam = !!pendingTeamId && item.team?.id === pendingTeamId;
 
   return (
     <ClassListCard
@@ -1257,7 +1321,9 @@ const DefaultTournamentCard = memo(function DefaultTournamentCard({
               ? "bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-200"
               : isEnrolled
                 ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400"
-                : "bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-500/15 dark:text-it-blue-300",
+                : isPendingTeam
+                  ? "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
+                  : "bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-500/15 dark:text-it-blue-300",
           )}
           aria-hidden="true"
         >
@@ -1267,7 +1333,9 @@ const DefaultTournamentCard = memo(function DefaultTournamentCard({
               : "종료"
             : isEnrolled
               ? "등록완료"
-              : "등록"}
+              : isPendingTeam
+                ? MESSAGES.class.pendingTeamApproval
+                : "등록"}
         </span>
       }
     >
@@ -1419,6 +1487,9 @@ export default function ClassesPage() {
   //   - 카드 우측 버튼(등록완료/등록불가) 분기에 사용.
   //   - 학생/teen viewMode 에서는 fetch 안 함 (그 시점은 별도 카드 컴포넌트가 그림).
   const [childAges, setChildAges] = useState<number[] | undefined>(undefined);
+  // 선택 자녀가 가입 승인을 기다리는 팀 ID — 그 팀 훈련·대회는 열람만 가능(신청은 승인 후).
+  //   백엔드가 pending 팀 목록을 함께 내려주므로, 카드에 이유를 표시하기 위한 판정값.
+  const [pendingTeamId, setPendingTeamId] = useState<string | null>(null);
   const [enrolledClassIds, setEnrolledClassIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -1575,13 +1646,14 @@ export default function ClassesPage() {
             }
         >("/enrollments");
 
-        // children — default 시점만 호출
+        // children — default 시점만 호출.
+        //   clubMemberships 를 함께 읽어 선택 자녀의 '가입 승인 대기' 팀도 판정한다
+        //   (별도 fetch 없이 기존 호출 재사용 — useChildren.toChild 와 동일 우선순위).
         const childrenPromise =
           viewMode === "default"
-            ? api.get<
-                | { id: string; age?: number; birthDate?: string }[]
-                | { data: { id: string; age?: number; birthDate?: string }[] }
-              >("/children")
+            ? api.get<ChildApprovalItem[] | { data: ChildApprovalItem[] }>(
+                "/children",
+              )
             : Promise.resolve(null);
 
         const [enrollRes, childrenRes] = await Promise.all([
@@ -1643,8 +1715,16 @@ export default function ClassesPage() {
             })
             .filter((a): a is number => typeof a === "number" && a >= 0);
           setChildAges(ages);
+          // '가입 승인 대기' 배지 대상 팀 — 같은 팀에 승인된 형제가 있으면 신청 가능하므로 제외.
+          setPendingTeamId(
+            resolvePendingTeamId(
+              Array.isArray(arr) ? arr : [],
+              selectedChildId,
+            ),
+          );
         } else if (viewMode === "default") {
           setChildAges([]);
+          setPendingTeamId(null);
         }
       } catch {
         // 실패 시 분기 없이 기본 "등록" 표시 (회귀 방지)
@@ -1684,6 +1764,7 @@ export default function ClassesPage() {
             enrolledClassIds={enrolledClassIds}
             childAges={childAges}
             forceShowTypeBadge={opts?.forceShowTypeBadge}
+            pendingTeamId={pendingTeamId}
           />
         );
     }
@@ -1696,7 +1777,13 @@ export default function ClassesPage() {
       case "teen":
         return <TeenTournamentCard key={item.id} item={item} />;
       default:
-        return <DefaultTournamentCard key={item.id} item={item} />;
+        return (
+          <DefaultTournamentCard
+            key={item.id}
+            item={item}
+            pendingTeamId={pendingTeamId}
+          />
+        );
     }
   };
 

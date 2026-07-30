@@ -47,8 +47,9 @@ export function SelectedChildProvider({ children }: { children: ReactNode }) {
   const userId = user?.id ?? null;
   const [selectedChildId, setSelectedChildIdState] = useState<string | null>(null);
 
-  // 선택 대상 자녀 ID 목록 — 검증·폴백 판정용(무소속 포함, pending/rejected 제외).
-  //  drawer·대시보드 칩과 동일 기준(useChildren.selectableChildren). 첫 번째는 정렬 기준 고정.
+  // 선택 대상 자녀 ID 목록 — 검증·폴백 판정용(무소속 포함).
+  //  drawer·대시보드 칩과 동일 기준(useChildren.selectableChildren). 순서 SoT 는 그 훅이며,
+  //  첫 번째 = 팀 승인 자녀 우선 → 그 안에서 나이 많은 순.
   const selectableIds = useMemo(
     () => selectableChildren.map((c) => c.id),
     [selectableChildren],
@@ -57,11 +58,13 @@ export function SelectedChildProvider({ children }: { children: ReactNode }) {
   // 검증·기본 선택 — userId 또는 선택 대상 자녀 목록 변동 시 재평가.
   //  · 자녀 0명 → null (빈 상태)
   //  · 세션 내 현재 선택이 유효 → 유지 (앱 내 탐색 중 사용자 선택 보존)
-  //  · 그 외(로그인·새로고침 등 세션 시작) → 항상 첫 번째 자녀 = 나이 많은 순(출생연도 오름차순) 기본 선택
+  //  · 그 외(로그인·새로고침 등 세션 시작) → 항상 첫 번째 자녀 기본 선택
   //
   // [2026-06-17 사용자 직접 지시] 로그인 시 마지막 선택 자녀(localStorage) 복원 제거.
   //   기존: 저장값 복원 → 로그아웃 후 재로그인 시 직전 선택(예: 강길동)이 기본이 되는 회귀.
-  //   변경: 항상 selectableIds[0](useChildren 가 출생연도 오름차순 정렬 → 가장 나이 많은 자녀) 기본 선택.
+  //   변경: 항상 selectableIds[0] 기본 선택.
+  // selectableIds[0] = 팀 승인 자녀 우선 → 그 안에서 나이 많은 순 (useChildren 정렬 SoT).
+  //   무소속 자녀가 기본 선택되어 훈련·대회·일정이 빈 화면으로 시작하는 것을 막는다.
   useEffect(() => {
     if (!userId) {
       setSelectedChildIdState(null);

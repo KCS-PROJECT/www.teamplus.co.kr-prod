@@ -5,7 +5,11 @@ import { Child } from '@/components/children/ChildCard';
 import { api } from '@/services/api-client';
 import { useAuth } from '@/contexts/AuthContext';
 import { devWarn } from '@/lib/logger';
-import { getActiveChildren, getSelectableChildren } from '@/lib/child-status';
+import {
+  compareChildDisplayOrder,
+  getActiveChildren,
+  getSelectableChildren,
+} from '@/lib/child-status';
 
 /** 백엔드 GET /api/v1/children 응답 아이템 형태 */
 export interface ChildApiItem {
@@ -235,20 +239,15 @@ export function useChildren() {
   /** 활성 자녀 (최소 1개 팀에 approved 멤버) — child-status.ts SoT 기준 */
   const activeChildren = useMemo(() => getActiveChildren(children), [children]);
 
-  /** 선택 스코프 노출 대상 자녀 (무소속 포함, pending/rejected 제외) — 자녀 선택 칩 SoT */
+  /**
+   * 선택 스코프 노출 대상 자녀 (무소속 포함) — 자녀 선택 칩·전역 기본 선택 **순서 SoT**.
+   *
+   * 정렬은 compareChildDisplayOrder(child-status.ts) 단일 SoT — 팀 승인 자녀 우선 →
+   * 출생연도 오름차순. 드로어 칩·대시보드·출석 내역·캘린더·자녀 관리 탭이 같은 규칙을 공유한다
+   * (지역 재정렬 금지 — 화면 간 순서가 갈라지고, 기본 선택된 자녀가 첫 칩이 아니게 된다).
+   */
   const selectableChildren = useMemo(
-    () => {
-      // [2026-06-17] 자녀 선택 목록을 출생연도 오름차순(나이 많은 순: 2017 → 2018 → 2021)으로 정렬.
-      //   첫 번째가 가장 나이 많은 자녀(신자녀) → 전역 기본 선택·드로어·칩 모두 동일 순서/기본값.
-      //   출생일 미상은 맨 뒤로.
-      const yearOf = (c: { birthDate?: string | null }) =>
-        c.birthDate
-          ? new Date(c.birthDate).getFullYear()
-          : Number.POSITIVE_INFINITY;
-      return [...getSelectableChildren(children)].sort(
-        (a, b) => yearOf(a) - yearOf(b),
-      );
-    },
+    () => [...getSelectableChildren(children)].sort(compareChildDisplayOrder),
     [children],
   );
 

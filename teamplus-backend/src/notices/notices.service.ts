@@ -1069,15 +1069,33 @@ export class NoticesService {
   /**
    * 댓글 작성
    */
-  async createComment(noticeId: string, userId: string, content: string) {
+  async createComment(
+    noticeId: string,
+    userId: string,
+    content: string,
+    userType?: string,
+  ) {
     const notice = await this.prisma.systemNotice.findUnique({
       where: { id: noticeId },
-      select: { id: true, title: true, targetTeamId: true },
+      select: {
+        id: true,
+        title: true,
+        targetTeamId: true,
+        isActive: true,
+        createdBy: true,
+      },
     });
 
     if (!notice) {
       throw new NotFoundException("공지사항을 찾을 수 없습니다.");
     }
+
+    // 작성 권한 = 열람 권한 (단일 규칙). 팀 공지는 resolveViewerTeamIds 에 targetTeamId 가
+    //   포함되어야 하며, 학부모는 childId 미지정이라 **전체 자녀 중 해당 팀 approved 멤버가
+    //   1명 이상**일 때만 통과한다(가입 승인 대기·거절·무소속 자녀만 있으면 차단).
+    //   기존에는 가드가 없어 noticeId 만 알면 타 팀 공지에도 댓글 작성 + 감독/코치 알림
+    //   발송이 가능했다. 시스템 공지(targetTeamId=null)는 기존대로 전체 허용.
+    await this.assertCanViewNotice(notice, userId, userType);
 
     const sanitizedContent = sanitizeStrict(content);
 
