@@ -5,11 +5,12 @@ import { useSearchParams } from 'next/navigation';
 import { useNavigation } from '@/components/ui/NavLink';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { Icon } from '@/components/ui/Icon';
+import { useAuth } from '@/contexts/AuthContext';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { cn } from '@/lib/utils';
 import { usePageReady } from '@/hooks/usePageReady';
 
-export default function ChildAttendanceSuccessPage() {
+export default function AttendanceSuccessPage() {
   usePageReady(true); // 정적 페이지 — 마운트 즉시 ready
   return (
     <Suspense fallback={
@@ -19,13 +20,14 @@ export default function ChildAttendanceSuccessPage() {
         </div>
       </MobileContainer>
     }>
-      <ChildAttendanceSuccessContent />
+      <AttendanceSuccessContent />
     </Suspense>
   );
 }
 
-function ChildAttendanceSuccessContent() {
+function AttendanceSuccessContent() {
   const { navigate } = useNavigation();
+  const { user } = useAuth();
   const searchParams = useSearchParams();
   const [showContent, setShowContent] = useState(false);
 
@@ -37,7 +39,6 @@ function ChildAttendanceSuccessContent() {
     showBottomNav: true,
   });
 
-  const remainingClasses = parseInt(searchParams?.get('remainingClasses') ?? '0') || 0;
   const className = searchParams?.get('className') ?? '';
   const checkInTime = searchParams?.get('checkInTime') ?? '';
 
@@ -47,7 +48,8 @@ function ChildAttendanceSuccessContent() {
   }, []);
 
   const handleConfirm = () => {
-    navigate('/schedule');
+    // 학부모 대리 출석은 (student) 경로인 /schedule 진입이 불가하므로 자녀 캘린더로 안내
+    navigate(user?.userType === 'parent' ? '/parent-calendar' : '/schedule');
   };
 
   return (
@@ -117,16 +119,16 @@ function ChildAttendanceSuccessContent() {
             </p>
           </div>
 
-          {/* Info Card */}
-          <div
-            className={cn(
-              'mt-8 w-full max-w-[320px] transition-all duration-700 delay-300 motion-reduce:transition-none',
-              showContent ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'
-            )}
-          >
-            <div className="rounded-2xl border border-wline-2 bg-white p-4 shadow-sm dark:border-rink-700 dark:bg-rink-800">
-              {className && (
-                <div className="mb-3 flex items-center gap-3 border-b border-wline-2 pb-3 dark:border-rink-700">
+          {/* Info Card — 크레딧 미사용 정책으로 잔여 횟수 미표시, 수업 정보만 안내 */}
+          {className && (
+            <div
+              className={cn(
+                'mt-8 w-full max-w-[320px] transition-all duration-700 delay-300 motion-reduce:transition-none',
+                showContent ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'
+              )}
+            >
+              <div className="rounded-2xl border border-wline-2 bg-white p-4 shadow-sm dark:border-rink-700 dark:bg-rink-800">
+                <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-ice-500/10">
                     <Icon name="sports_hockey" className="text-xl text-ice-500" filled aria-hidden="true" />
                   </div>
@@ -140,25 +142,9 @@ function ChildAttendanceSuccessContent() {
                     </span>
                   )}
                 </div>
-              )}
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-ice-500/10">
-                  <Icon name="calendar_month" className="text-xl text-ice-500" filled aria-hidden="true" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-[11px] font-semibold text-wtext-3 dark:text-rink-300">남은 수업</p>
-                  <p className="text-card-title font-bold text-wtext-1 dark:text-white tabular-nums">
-                    {remainingClasses}회
-                  </p>
-                </div>
-                <div className="flex items-center gap-1" aria-hidden="true">
-                  <span className="h-2 w-2 rounded-w-pill bg-ice-500" />
-                  <span className="h-2 w-2 rounded-w-pill bg-ice-500/50" />
-                  <span className="h-2 w-2 rounded-w-pill bg-ice-500/20" />
-                </div>
               </div>
             </div>
-          </div>
+          )}
         </main>
 
         {/* Footer Action */}

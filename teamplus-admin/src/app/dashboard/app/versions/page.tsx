@@ -19,7 +19,7 @@ import { Input } from '@/components/ui/input';
 import { StatusFilter } from '@/components/ui/admin-tabs';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal';
-import { GitBranch, Plus, Apple, Smartphone, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { GitBranch, Plus, Apple, Smartphone, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ExternalLink } from 'lucide-react';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -238,10 +238,11 @@ export default function AppVersionsPage() {
               <thead>
                 <tr className="bg-slate-50 dark:bg-slate-700/50">
                   <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">번호</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">플랫폼</th>
+                  <th className="px-4 py-3 w-px whitespace-nowrap text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">플랫폼</th>
                   <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">버전</th>
                   <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">최소버전</th>
                   <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">강제</th>
+                  <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">스토어 URL</th>
                   <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase">등록일</th>
                 </tr>
               </thead>
@@ -249,8 +250,8 @@ export default function AppVersionsPage() {
                 {paginatedVersions.map((version, index) => (
                   <tr key={version.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors motion-reduce:transition-none">
                     <td className="px-6 py-4 text-center text-sm text-slate-600 dark:text-slate-300 tabular-nums">{filteredVersions.length - startIndex - index}</td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
+                    <td className="px-4 py-4 w-px whitespace-nowrap">
+                      <div className="flex items-center justify-center gap-2">
                         {version.platform === 'ios' ? (
                           <div className="w-8 h-8 bg-slate-900 dark:bg-slate-600 rounded-lg flex items-center justify-center">
                             <Apple className="w-4 h-4 text-white" aria-hidden="true" />
@@ -272,6 +273,22 @@ export default function AppVersionsPage() {
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">강제</span>
                       ) : (
                         <span className="text-sm text-slate-400 dark:text-slate-500">-</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-center text-sm">
+                      {version.storeUrl ? (
+                        <a
+                          href={version.storeUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={version.storeUrl}
+                          className="inline-flex items-center gap-1.5 max-w-[260px] align-middle text-primary hover:underline"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                          <span className="truncate">{version.storeUrl.replace(/^https?:\/\//, '')}</span>
+                        </a>
+                      ) : (
+                        <span className="text-slate-400 dark:text-slate-500">미등록</span>
                       )}
                     </td>
                     <td className="px-6 py-4 text-center text-sm text-slate-600 dark:text-slate-300 tabular-nums">

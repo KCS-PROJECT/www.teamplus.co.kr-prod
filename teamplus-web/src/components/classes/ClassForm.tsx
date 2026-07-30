@@ -1327,6 +1327,17 @@ export function ClassForm({
                             ? MESSAGES.classProduct.billingModePostpaidHint
                             : MESSAGES.classProduct.billingModeBothHint}
                       </p>
+                      {/* [가격 잠금 §3-3] 제출 전 고지 — 등록 제출 즉시 선불 첫 월분 확정
+                          (A안, 결제 여부 무관). 후불 전용은 선불 월분이 없어 미노출.
+                          text-card-caption 은 미정의 유령 클래스(상속 크기)라 실존 토큰 사용. */}
+                      {formData.billingMode !== 'POSTPAID' && (
+                        <p
+                          role="note"
+                          className={cn('text-card-meta', iceTheme ? 'text-it-ink-400 dark:text-rink-300' : 'text-wtext-4 dark:text-rink-300')}
+                        >
+                          {MESSAGES.classProduct.saleStartNotice}
+                        </p>
+                      )}
                     </div>
 
                     {/* 1회 수강권 — 필수 (팀·오픈 공통) */}

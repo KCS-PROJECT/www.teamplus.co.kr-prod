@@ -781,4 +781,217 @@ describe("PaymentsService", () => {
       ).rejects.toThrow(BadRequestException);
     });
   });
+
+  // ────────────────────────────────────────────────────────────────────
+  //  [정원 선점] 승인(캡처) 직전 좌석 원자 확보 — reservation before capture
+  // ────────────────────────────────────────────────────────────────────
+  describe("좌석 선점 (claimSeatsBeforeApproval)", () => {
+    const pendingPayment = {
+      id: mockPaymentId,
+      userId: mockUserId,
+      amount: 240000,
+      paymentStatus: "pending",
+      productId: mockProductId,
+      product: {
+        classId: "cls-1",
+        durationDays: null,
+        sessionsPerMonth: 0, // 크레딧 미발급 경로 — 후처리 단순화
+        feeType: "MONTHLY_FIXED",
+        billingTiming: "PREPAID",
+        billingMonth: null,
+      },
+    };
+    const tossDone = {
+      status: "DONE",
+      totalAmount: 240000,
+      approvedAt: "2026-07-28T10:00:00+09:00",
+      method: "card",
+      receipt: { url: null },
+    };
+
+    /** claim tx + apply tx 겸용 tx mock 배선. */
+    const wireSeatMocks = (opts: {
+      capacity: number | null;
+      existingStatus: string | null;
+      activeCount: number;
+    }) => {
+      const mockTx = {
+        $queryRaw: jest.fn().mockResolvedValue([]),
+        class: {
+          findUnique: jest
+            .fn()
+            .mockResolvedValue({ capacity: opts.capacity }),
+        },
+        classRegistration: {
+          findUnique: jest
+            .fn()
+            .mockResolvedValue(
+              opts.existingStatus ? { status: opts.existingStatus } : null,
+            ),
+          count: jest.fn().mockResolvedValue(opts.activeCount),
+          upsert: jest.fn().mockResolvedValue({}),
+        },
+        payment: { update: jest.fn().mockResolvedValue({}) },
+        monthlyPostpaidBillingLine: {
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+        enrollment: {
+          findMany: jest.fn().mockResolvedValue([]), // apply 후처리 루프 스킵
+          update: jest.fn(),
+        },
+        tournamentRegistration: {
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+          findMany: jest.fn().mockResolvedValue([]),
+        },
+      };
+      // clearAllMocks 가 모듈 스코프 기본값을 지우므로 매 배선에서 재설정.
+      mockRedisService.setIfNotExists.mockResolvedValue(true);
+      (prismaService.payment.findUnique as jest.Mock).mockResolvedValue(
+        pendingPayment,
+      );
+      // claim 쌍 조회(서비스 루트 prisma) — 자녀 1명 수업 결제
+      (prismaService.enrollment.findMany as jest.Mock).mockResolvedValue([
+        { classId: "cls-1", childId: "child-1" },
+      ]);
+      (prismaService as unknown as Record<string, unknown>).classRegistration =
+        {
+          deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        };
+      (prismaService.$transaction as jest.Mock).mockImplementation(
+        (arg: unknown) =>
+          typeof arg === "function"
+            ? (arg as (tx: typeof mockTx) => unknown)(mockTx)
+            : Promise.all(arg as Promise<unknown>[]),
+      );
+      mockTossGateway.confirm.mockResolvedValue(tossDone);
+      return { mockTx };
+    };
+
+    it("정원 마감 → 승인 미호출·좌석 미생성·마감 에러", async () => {
+      const { mockTx } = wireSeatMocks({
+        capacity: 10,
+        existingStatus: null,
+        activeCount: 10, // 만석
+      });
+      await expect(
+        service.confirmTossPayment(mockUserId, {
+          paymentKey: "pk",
+          orderId: mockOrderNumber,
+          amount: 240000,
+        }),
+      ).rejects.toThrow("수업 정원이 마감되어");
+      expect(mockTossGateway.confirm).not.toHaveBeenCalled(); // 돈 안 나감
+      expect(mockTx.classRegistration.upsert).not.toHaveBeenCalled();
+    });
+
+    it("잔여 좌석 있음 → 선점(upsert active) 후 승인 진행", async () => {
+      const { mockTx } = wireSeatMocks({
+        capacity: 10,
+        existingStatus: null,
+        activeCount: 9,
+      });
+      const res = await service.confirmTossPayment(mockUserId, {
+        paymentKey: "pk",
+        orderId: mockOrderNumber,
+        amount: 240000,
+      });
+      expect(res.success).toBe(true);
+      expect(mockTx.classRegistration.upsert).toHaveBeenCalledTimes(1);
+      expect(mockTossGateway.confirm).toHaveBeenCalledTimes(1);
+    });
+
+    it("자녀가 이미 active(갱신 결제) → 선점 스킵·정상 승인", async () => {
+      const { mockTx } = wireSeatMocks({
+        capacity: 10,
+        existingStatus: "active",
+        activeCount: 10, // 만석이어도 본인 좌석 보유라 통과해야 함
+      });
+      const res = await service.confirmTossPayment(mockUserId, {
+        paymentKey: "pk",
+        orderId: mockOrderNumber,
+        amount: 240000,
+      });
+      expect(res.success).toBe(true);
+      expect(mockTx.classRegistration.upsert).not.toHaveBeenCalled();
+    });
+
+    it("무정원(capacity 0) → 선점 로직 전체 스킵", async () => {
+      const { mockTx } = wireSeatMocks({
+        capacity: 0,
+        existingStatus: null,
+        activeCount: 99,
+      });
+      const res = await service.confirmTossPayment(mockUserId, {
+        paymentKey: "pk",
+        orderId: mockOrderNumber,
+        amount: 240000,
+      });
+      expect(res.success).toBe(true);
+      expect(mockTx.classRegistration.count).not.toHaveBeenCalled();
+      expect(mockTx.classRegistration.upsert).not.toHaveBeenCalled();
+    });
+
+    it("승인 실패(DONE 아님) → 신규 선점 좌석 삭제 원복", async () => {
+      wireSeatMocks({ capacity: 10, existingStatus: null, activeCount: 9 });
+      mockTossGateway.confirm.mockResolvedValue({
+        ...tossDone,
+        status: "CANCELED",
+      });
+      await expect(
+        service.confirmTossPayment(mockUserId, {
+          paymentKey: "pk",
+          orderId: mockOrderNumber,
+          amount: 240000,
+        }),
+      ).rejects.toThrow("DONE 이 아닙니다");
+      const reg = (
+        prismaService as unknown as Record<
+          string,
+          { deleteMany: jest.Mock; updateMany: jest.Mock }
+        >
+      ).classRegistration;
+      expect(reg.deleteMany).toHaveBeenCalledTimes(1); // 신규 행 → 삭제 복귀
+      expect(reg.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("expired 자녀 승인 실패 → expired 상태로 복원", async () => {
+      wireSeatMocks({
+        capacity: 10,
+        existingStatus: "expired",
+        activeCount: 9,
+      });
+      mockTossGateway.confirm.mockRejectedValue(new Error("network"));
+      await expect(
+        service.confirmTossPayment(mockUserId, {
+          paymentKey: "pk",
+          orderId: mockOrderNumber,
+          amount: 240000,
+        }),
+      ).rejects.toThrow("network");
+      const reg = (
+        prismaService as unknown as Record<
+          string,
+          { deleteMany: jest.Mock; updateMany: jest.Mock }
+        >
+      ).classRegistration;
+      expect(reg.updateMany).toHaveBeenCalledWith({
+        where: { classId: "cls-1", userId: "child-1", status: "active" },
+        data: { status: "expired" },
+      });
+      expect(reg.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it("mock-confirm 도 동일 계약 — 정원 마감 시 거부·후처리 미실행", async () => {
+      const { mockTx } = wireSeatMocks({
+        capacity: 10,
+        existingStatus: null,
+        activeCount: 10,
+      });
+      await expect(
+        service.mockConfirmPayment(mockUserId, mockOrderNumber),
+      ).rejects.toThrow("수업 정원이 마감되어");
+      expect(mockTx.payment.update).not.toHaveBeenCalled(); // applyApprovedPayment 미도달
+    });
+  });
 });

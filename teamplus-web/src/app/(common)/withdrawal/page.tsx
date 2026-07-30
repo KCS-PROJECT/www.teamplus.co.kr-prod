@@ -11,16 +11,21 @@
  *   백엔드: POST /auth/withdraw → 7일 유예 후 비식별화. 성공 시 세션 즉시 폐기.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MobileContainer } from "@/components/layout/MobileContainer";
 import { PageAppBar } from "@/components/layout/PageAppBar";
 import { useNativeUI } from "@/hooks/useNativeUI";
 import { Button } from "@/components/ui/Button";
 import { Input, Checkbox } from "@/components/ui/Input";
 import { Icon } from "@/components/ui/Icon";
+import { NavLink } from "@/components/ui/NavLink";
 import { usePageReady } from "@/hooks/usePageReady";
 import { useSessionAuth } from "@/hooks/useSessionAuth";
-import { withdraw } from "@/services/auth";
+import {
+  withdraw,
+  getWithdrawEligibility,
+  type WithdrawEligibilityResponse,
+} from "@/services/auth";
 import { MESSAGES } from "@/lib/messages";
 
 type Step = "notice" | "reason" | "confirm" | "complete";
@@ -30,7 +35,6 @@ const REASON_KEYS = ["inconvenient", "notUsing", "privacy", "other"] as const;
 type ReasonKey = (typeof REASON_KEYS)[number];
 
 export default function WithdrawalPage() {
-  usePageReady(true); // 세션 user 는 layout 에서 로드됨 — 마운트 즉시 ready
   useNativeUI({
     showStatusBar: true,
     showAppBar: false,
@@ -38,6 +42,34 @@ export default function WithdrawalPage() {
   });
 
   const { user, logout } = useSessionAuth();
+
+  // 탈퇴 가능 여부 사전 조회 — 차단 사유 체크리스트·환불 안내.
+  // 조회 실패 시 null 유지(기본 플로우 진행) — 신청 시 서버 가드가 재검증한다.
+  const [eligibility, setEligibility] =
+    useState<WithdrawEligibilityResponse | null>(null);
+  const [eligibilityLoaded, setEligibilityLoaded] = useState(false);
+
+  usePageReady(eligibilityLoaded);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await getWithdrawEligibility();
+        if (!cancelled && res.success && res.data) setEligibility(res.data);
+      } catch {
+        // 조회 실패는 무시 — 서버 가드가 최종 판정
+      } finally {
+        if (!cancelled) setEligibilityLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const blockers = eligibility?.blockers ?? [];
+  const isBlocked = blockers.length > 0;
 
   // 소셜 전용 계정 여부 (phone 이 social_ 로 시작) — 백엔드와 동일 기준
   const isSocialOnly = useMemo(
@@ -121,9 +153,50 @@ export default function WithdrawalPage() {
 
       <main className="flex-1 overflow-y-auto pb-30 hide-scrollbar bg-it-canvas dark:bg-puck">
         <section className="px-5 pt-6 pb-6 flex flex-col gap-5">
-          {/* STEP 1 — 유의사항 + 동의 */}
+          {/* STEP 1 — 유의사항 + 동의 (차단 사유 있으면 정리 체크리스트로 대체) */}
           {step === "notice" && (
             <>
+              {isBlocked && (
+                <Card>
+                  <div className="flex items-start gap-3">
+                    <div className="flex size-10 shrink-0 items-center justify-center rounded-w-pill bg-it-red-500/10">
+                      <Icon name="lock" className="text-[20px] text-it-red-500" />
+                    </div>
+                    <div>
+                      <h2 className="text-w-h3 font-bold text-it-ink-800 dark:text-white">
+                        {W.blockerTitle}
+                      </h2>
+                      <p className="pt-1 text-w-small text-it-ink-500 dark:text-rink-300 leading-relaxed">
+                        {W.blockerGuide}
+                      </p>
+                    </div>
+                  </div>
+                  <ul className="pt-4">
+                    {blockers.map((b) => (
+                      <li
+                        key={b.key}
+                        className="flex items-center justify-between gap-3 border-t border-it-line dark:border-rink-700 py-3 first:border-t-0"
+                      >
+                        <span className="text-w-body font-medium text-it-ink-800 dark:text-white">
+                          {b.label}
+                        </span>
+                        <NavLink
+                          href={b.linkUrl}
+                          className="flex shrink-0 items-center gap-0.5 text-w-small font-semibold text-it-blue-600 dark:text-it-blue-400"
+                        >
+                          {W.blockerGo}
+                          <Icon
+                            name="chevron_right"
+                            className="text-[16px]"
+                            aria-hidden="true"
+                          />
+                        </NavLink>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              )}
+
               <Card>
                 <div className="flex flex-col items-center text-center gap-3 pb-2">
                   <div className="flex size-14 items-center justify-center rounded-w-pill bg-it-red-500/10">
@@ -155,22 +228,61 @@ export default function WithdrawalPage() {
                 </ul>
               </Card>
 
-              <Card>
-                <Checkbox
-                  label={W.agreeLabel}
-                  checked={agreed}
-                  onChange={(e) => {
-                    setAgreed(e.target.checked);
-                    if (e.target.checked) setError(null);
-                  }}
-                />
-              </Card>
+              {!isBlocked &&
+                eligibility &&
+                eligibility.refundableCount > 0 && (
+                  <Card>
+                    <div className="flex items-start gap-3">
+                      <div className="flex size-10 shrink-0 items-center justify-center rounded-w-pill bg-it-blue-50 dark:bg-it-blue-500/15">
+                        <Icon
+                          name="currency_exchange"
+                          className="text-[20px] text-it-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <p className="text-w-body text-it-ink-700 dark:text-rink-200 leading-relaxed">
+                          {W.refundableNotice(eligibility.refundableCount)}
+                        </p>
+                        <NavLink
+                          href="/payment/history"
+                          className="mt-2 inline-flex items-center gap-0.5 text-w-small font-semibold text-it-blue-600 dark:text-it-blue-400"
+                        >
+                          {W.refundableGo}
+                          <Icon
+                            name="chevron_right"
+                            className="text-[16px]"
+                            aria-hidden="true"
+                          />
+                        </NavLink>
+                      </div>
+                    </div>
+                  </Card>
+                )}
 
-              {error && <ErrorText message={error} />}
+              {!isBlocked && (
+                <>
+                  <Card>
+                    <Checkbox
+                      label={W.agreeLabel}
+                      checked={agreed}
+                      onChange={(e) => {
+                        setAgreed(e.target.checked);
+                        if (e.target.checked) setError(null);
+                      }}
+                    />
+                  </Card>
 
-              <Button fullWidth variant="primary" onClick={handleNoticeNext}>
-                {W.next}
-              </Button>
+                  {error && <ErrorText message={error} />}
+
+                  <Button
+                    fullWidth
+                    variant="primary"
+                    onClick={handleNoticeNext}
+                  >
+                    {W.next}
+                  </Button>
+                </>
+              )}
             </>
           )}
 

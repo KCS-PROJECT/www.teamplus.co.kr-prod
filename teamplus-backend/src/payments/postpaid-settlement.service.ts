@@ -16,6 +16,11 @@ import {
   BillingTiming,
 } from "./payment-calculation.service";
 import { deriveSource } from "./payment-source.util";
+import {
+  aggregatePostpaidAttendance,
+  monthRangeUtc,
+} from "./settlement/postpaid-attendance.util";
+import { acquireClassPostpaidLock } from "@/classes/utils/class-locks.util";
 
 export interface PostpaidSummaryItem {
   classId: string;
@@ -215,11 +220,7 @@ export class PostpaidSettlementService {
 
   /** "YYYY-MM" → 해당 월 [start, end) — scheduledDate(@db.Date) UTC 자정 경계. */
   private monthRange(yearMonth: string): { start: Date; end: Date } {
-    const [y, m] = yearMonth.split("-").map(Number);
-    return {
-      start: new Date(Date.UTC(y, m - 1, 1)),
-      end: new Date(Date.UTC(y, m, 1)),
-    };
+    return monthRangeUtc(yearMonth);
   }
 
   /** 수업×월 출석 집계 (present) — scheduleId 단위 합산. */
@@ -228,54 +229,8 @@ export class PostpaidSettlementService {
     start: Date,
     end: Date,
   ): Promise<Map<string, number>> {
-    const schedules = await this.prisma.classSchedule.findMany({
-      where: {
-        classId,
-        scheduledDate: { gte: start, lt: end },
-        isCancelled: false,
-      },
-      select: {
-        attendances: {
-          where: { attendanceStatus: "present" },
-          select: { memberId: true },
-        },
-      },
-    });
-    const counts = new Map<string, number>();
-    for (const s of schedules) {
-      for (const a of s.attendances) {
-        counts.set(a.memberId, (counts.get(a.memberId) ?? 0) + 1);
-      }
-    }
-
-    // BOTH(선택형) 수업은 "후불 상품을 선택한 학생"만 정산 대상이다.
-    //   동일 수업의 선불 학생은 크레딧 차감으로 이미 정산되었으므로 후불 청구에서 제외(이중청구 방지).
-    //   POSTPAID 전용 수업은 전원 후불이므로 필터를 적용하지 않는다(기존 동작 불변).
-    if (counts.size > 0) {
-      const cls = await this.prisma.class.findUnique({
-        where: { id: classId },
-        select: { billingMode: true },
-      });
-      if (cls?.billingMode === "BOTH") {
-        const postpaidEnrollments = await this.prisma.enrollment.findMany({
-          where: {
-            classId,
-            childId: { in: [...counts.keys()] },
-            status: { in: ["approved", "paid"] },
-            product: { billingTiming: BillingTiming.POSTPAID },
-          },
-          select: { childId: true },
-        });
-        const postpaidSet = new Set(
-          postpaidEnrollments.map((e) => e.childId),
-        );
-        for (const memberId of [...counts.keys()]) {
-          if (!postpaidSet.has(memberId)) counts.delete(memberId);
-        }
-      }
-    }
-
-    return counts;
+    // 집계·BOTH 필터 SoT 는 postpaid-attendance.util — 단가 잠금 가드와 판정을 공유한다.
+    return aggregatePostpaidAttendance(this.prisma, classId, start, end);
   }
 
   /** 수업×월 POSTPAID 정산 초안 — 회원별 출석×단가 미리보기 (미저장). */
@@ -363,95 +318,118 @@ export class PostpaidSettlementService {
 
     const { start, end } = this.monthRange(yearMonth);
 
-    const product = await this.prisma.classProduct.findFirst({
-      where: { classId, billingTiming: BillingTiming.POSTPAID },
-      select: { id: true, feePerSession: true },
-    });
-    if (!product?.feePerSession) {
-      throw new BadRequestException("후불 단가가 설정되지 않은 수업입니다.");
-    }
-    const unitPrice = Number(product.feePerSession);
+    // 단가 수정·present 출석 기록과의 직렬화 — postpaid lock 획득 후 tx 안에서
+    //   단가·확정 상태·출석 집계를 재조회한다 (가격 잠금 §4-0 B). lock 없이 밖에서
+    //   집계하면 확정 직전에 끼어든 단가 변경·출석이 낡은 청구로 굳는다.
+    const { billing, lines, totalAmount, payerOf } =
+      await this.prisma.$transaction(async (tx) => {
+        await acquireClassPostpaidLock(tx, classId);
 
-    const existing = await this.prisma.monthlyPostpaidBilling.findUnique({
-      where: { classId_yearMonth: { classId, yearMonth } },
-      select: { status: true },
-    });
-    if (existing?.status === "confirmed") {
-      throw new ConflictException("이미 확정된 정산입니다.");
-    }
+        const product = await tx.classProduct.findFirst({
+          where: { classId, billingTiming: BillingTiming.POSTPAID },
+          select: { id: true, feePerSession: true },
+        });
+        if (!product?.feePerSession) {
+          throw new BadRequestException(
+            "후불 단가가 설정되지 않은 수업입니다.",
+          );
+        }
+        const unitPrice = Number(product.feePerSession);
 
-    const counts = await this.aggregateAttendance(classId, start, end);
-    const lines = [...counts.entries()]
-      .filter(([, c]) => c > 0)
-      .map(([userId, count]) => ({ userId, count, amount: unitPrice * count }));
-    const totalAmount = lines.reduce((s, l) => s + l.amount, 0);
+        const existing = await tx.monthlyPostpaidBilling.findUnique({
+          where: { classId_yearMonth: { classId, yearMonth } },
+          select: { status: true },
+        });
+        if (existing?.status === "confirmed") {
+          throw new ConflictException("이미 확정된 정산입니다.");
+        }
 
-    // [Phase B-5-4] 결제자(payer) 해석 — 출석자(자녀)의 주 보호자. Payment.userId 는 결제자여야
-    //   confirmTossPayment(본인 결제 검증)를 통과한다. 보호자 없으면 본인(성인/청소년) 폴백.
-    const childIds = lines.map((l) => l.userId);
-    const parentLinks = childIds.length
-      ? await this.prisma.parentChild.findMany({
-          where: { childId: { in: childIds } },
-          select: { childId: true, parentId: true, isPrimary: true },
-        })
-      : [];
-    const payerOf = new Map<string, string>();
-    for (const pl of parentLinks) {
-      if (!payerOf.has(pl.childId) || pl.isPrimary) {
-        payerOf.set(pl.childId, pl.parentId);
-      }
-    }
-
-    const billing = await this.prisma.$transaction(async (tx) => {
-      const head = await tx.monthlyPostpaidBilling.upsert({
-        where: { classId_yearMonth: { classId, yearMonth } },
-        update: { status: "confirmed", confirmedBy, confirmedAt: new Date() },
-        create: {
+        const counts = await aggregatePostpaidAttendance(
+          tx,
           classId,
-          yearMonth,
-          status: "confirmed",
-          confirmedBy,
-          confirmedAt: new Date(),
-        },
-        select: { id: true },
-      });
+          start,
+          end,
+        );
+        const txLines = [...counts.entries()]
+          .filter(([, c]) => c > 0)
+          .map(([userId, count]) => ({
+            userId,
+            count,
+            amount: unitPrice * count,
+          }));
+        const txTotalAmount = txLines.reduce((s, l) => s + l.amount, 0);
 
-      for (const ln of lines) {
-        const orderNumber = `POSTPAID-${head.id}-${ln.userId}`;
-        const payment = await tx.payment.upsert({
-          where: { orderNumber },
-          update: { amount: ln.amount, paymentStatus: "pending" },
+        // [Phase B-5-4] 결제자(payer) 해석 — 출석자(자녀)의 주 보호자. Payment.userId 는
+        //   결제자여야 confirmTossPayment(본인 결제 검증)를 통과한다. 보호자 없으면
+        //   본인(성인/청소년) 폴백.
+        const childIds = txLines.map((l) => l.userId);
+        const parentLinks = childIds.length
+          ? await tx.parentChild.findMany({
+              where: { childId: { in: childIds } },
+              select: { childId: true, parentId: true, isPrimary: true },
+            })
+          : [];
+        const txPayerOf = new Map<string, string>();
+        for (const pl of parentLinks) {
+          if (!txPayerOf.has(pl.childId) || pl.isPrimary) {
+            txPayerOf.set(pl.childId, pl.parentId);
+          }
+        }
+
+        const head = await tx.monthlyPostpaidBilling.upsert({
+          where: { classId_yearMonth: { classId, yearMonth } },
+          update: { status: "confirmed", confirmedBy, confirmedAt: new Date() },
           create: {
-            orderNumber,
-            userId: payerOf.get(ln.userId) ?? ln.userId,
-            productId: product.id,
-            amount: ln.amount,
-            paymentStatus: "pending",
+            classId,
+            yearMonth,
+            status: "confirmed",
+            confirmedBy,
+            confirmedAt: new Date(),
           },
           select: { id: true },
         });
-        await tx.monthlyPostpaidBillingLine.upsert({
-          where: {
-            billingId_userId: { billingId: head.id, userId: ln.userId },
-          },
-          update: {
-            attendanceCount: ln.count,
-            amount: ln.amount,
-            paymentId: payment.id,
-            paymentStatus: "pending",
-          },
-          create: {
-            billingId: head.id,
-            userId: ln.userId,
-            attendanceCount: ln.count,
-            amount: ln.amount,
-            paymentId: payment.id,
-          },
-        });
-      }
 
-      return head;
-    });
+        for (const ln of txLines) {
+          const orderNumber = `POSTPAID-${head.id}-${ln.userId}`;
+          const payment = await tx.payment.upsert({
+            where: { orderNumber },
+            update: { amount: ln.amount, paymentStatus: "pending" },
+            create: {
+              orderNumber,
+              userId: txPayerOf.get(ln.userId) ?? ln.userId,
+              productId: product.id,
+              amount: ln.amount,
+              paymentStatus: "pending",
+            },
+            select: { id: true },
+          });
+          await tx.monthlyPostpaidBillingLine.upsert({
+            where: {
+              billingId_userId: { billingId: head.id, userId: ln.userId },
+            },
+            update: {
+              attendanceCount: ln.count,
+              amount: ln.amount,
+              paymentId: payment.id,
+              paymentStatus: "pending",
+            },
+            create: {
+              billingId: head.id,
+              userId: ln.userId,
+              attendanceCount: ln.count,
+              amount: ln.amount,
+              paymentId: payment.id,
+            },
+          });
+        }
+
+        return {
+          billing: head,
+          lines: txLines,
+          totalAmount: txTotalAmount,
+          payerOf: txPayerOf,
+        };
+      });
 
     // 청구 알림 (트랜잭션 밖 — 실패해도 정산 롤백 없음).
     //   [Phase B-5-4] 결제자(학부모)에게 발송 + orderNumber 담은 결제 화면 deep-link.

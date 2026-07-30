@@ -28,6 +28,8 @@ describe("ClassesService.bulkUpsertClassProducts", () => {
       delete: jest.Mock;
       findMany: jest.Mock;
     };
+    $queryRaw: jest.Mock;
+    class: { findUniqueOrThrow: jest.Mock };
   };
   let prisma: any;
   let teamsService: { assertTeamManagerPermission: jest.Mock };
@@ -42,6 +44,14 @@ describe("ClassesService.bulkUpsertClassProducts", () => {
         update: jest.fn(),
         delete: jest.fn(),
         findMany: jest.fn(),
+      },
+      // 가격 잠금 §4-0 A — sales lock(advisory) + salesOpenMonth 재조회.
+      //   salesOpenMonth null = 판매 이력 없음 → 잠금 가드 전부 통과(기존 동작 보존).
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      class: {
+        findUniqueOrThrow: jest
+          .fn()
+          .mockResolvedValue({ salesOpenMonth: null }),
       },
     };
 
@@ -141,6 +151,140 @@ describe("ClassesService.bulkUpsertClassProducts", () => {
     ).toBe(false);
   });
 
+  it("판매 시작된 월분 정기권의 가격 변경은 거부한다 (Phase 2 가격 잠금)", async () => {
+    const JUL = new Date(Date.UTC(2026, 6, 1));
+    tx.class.findUniqueOrThrow.mockResolvedValue({ salesOpenMonth: JUL });
+    tx.classProduct.findUnique.mockResolvedValueOnce({
+      id: "upd-1",
+      classId,
+      billingMonth: JUL,
+      feeType: "MONTHLY_FIXED",
+      price: 200000,
+      feePerSession: null,
+      sessionsPerMonth: 8,
+      sessionsPerWeek: 2,
+      durationDays: 28,
+    });
+
+    await expect(
+      service.bulkUpsertClassProducts(userId, "COACH", classId, {
+        upserts: [
+          {
+            id: "upd-1",
+            productName: "정기권",
+            price: 240000,
+            feeType: "MONTHLY_FIXED",
+            sessionsPerMonth: 8,
+            sessionsPerWeek: 2,
+          },
+        ],
+        deleteIds: [],
+      }),
+    ).rejects.toThrow("이미 판매가 시작된 수강권");
+    expect(tx.classProduct.update).not.toHaveBeenCalled();
+  });
+
+  it("판매 시작 후 PER_SESSION → MONTHLY_FIXED 전환은 거부한다 (P2-C1)", async () => {
+    const JUL = new Date(Date.UTC(2026, 6, 1));
+    tx.class.findUniqueOrThrow.mockResolvedValue({ salesOpenMonth: JUL });
+    tx.classProduct.findUnique.mockResolvedValueOnce({
+      id: "upd-2",
+      classId,
+      billingMonth: null,
+      feeType: "PER_SESSION",
+      price: 30000,
+      feePerSession: 30000,
+      sessionsPerMonth: 1,
+      sessionsPerWeek: null,
+      durationDays: 30,
+    });
+
+    await expect(
+      service.bulkUpsertClassProducts(userId, "COACH", classId, {
+        upserts: [
+          {
+            id: "upd-2",
+            productName: "둔갑 시도",
+            price: 30000,
+            feeType: "MONTHLY_FIXED",
+            sessionsPerMonth: 0,
+          },
+        ],
+        deleteIds: [],
+      }),
+    ).rejects.toThrow("이미 판매가 시작된 수강권");
+    expect(tx.classProduct.update).not.toHaveBeenCalled();
+  });
+
+  it("PER_SESSION 단가 변경 시 feePerSession(정산 SoT)도 함께 동기화한다 (단가 미러)", async () => {
+    tx.classProduct.findUnique.mockResolvedValueOnce({
+      id: "fee-1",
+      classId,
+      billingMonth: null,
+      feeType: "PER_SESSION",
+      billingTiming: "PREPAID",
+      isActive: true,
+      price: 70000,
+      feePerSession: 70000,
+      sessionsPerMonth: 0,
+      sessionsPerWeek: null,
+      durationDays: 30,
+    });
+
+    await service.bulkUpsertClassProducts(userId, "COACH", classId, {
+      upserts: [
+        {
+          id: "fee-1",
+          productName: "1회 수업료",
+          price: 80000,
+          feeType: "PER_SESSION",
+          sessionsPerMonth: 0,
+          durationDays: 30,
+        },
+      ],
+      deleteIds: [],
+    });
+
+    const updData = tx.classProduct.update.mock.calls[0][0].data;
+    expect(updData.price).toBe(80000);
+    // bulk DTO 는 price 만 받지만 정산·표시 SoT(feePerSession)도 동치로 갱신돼야 한다.
+    expect(updData.feePerSession).toBe(80000);
+  });
+
+  it("feePerSession 미보유 상품(선불 참고용 1회권)은 단가 미러 미동작", async () => {
+    tx.classProduct.findUnique.mockResolvedValueOnce({
+      id: "fee-2",
+      classId,
+      billingMonth: null,
+      feeType: "PER_SESSION",
+      billingTiming: "PREPAID",
+      isActive: true,
+      price: 70000,
+      feePerSession: null,
+      sessionsPerMonth: 0,
+      sessionsPerWeek: null,
+      durationDays: 30,
+    });
+
+    await service.bulkUpsertClassProducts(userId, "COACH", classId, {
+      upserts: [
+        {
+          id: "fee-2",
+          productName: "1회 수업료",
+          price: 80000,
+          feeType: "PER_SESSION",
+          sessionsPerMonth: 0,
+          durationDays: 30,
+        },
+      ],
+      deleteIds: [],
+    });
+
+    const updData = tx.classProduct.update.mock.calls[0][0].data;
+    expect(updData.price).toBe(80000);
+    expect(updData.feePerSession).toBeUndefined();
+  });
+
   it("발급 수량 0 정기권(미발급 기본)은 회차 검증을 통과하고 전송된 durationDays 를 보존한다", async () => {
     await service.bulkUpsertClassProducts(userId, "COACH", classId, {
       upserts: [
@@ -150,6 +294,8 @@ describe("ClassesService.bulkUpsertClassProducts", () => {
           feeType: "MONTHLY_FIXED",
           sessionsPerMonth: 0,
           durationDays: 28,
+          // §3-7 — 신규 MONTHLY_FIXED 는 귀속월 필수.
+          billingMonth: "2026-08",
         },
       ],
       deleteIds: [],
@@ -161,6 +307,71 @@ describe("ClassesService.bulkUpsertClassProducts", () => {
     expect(createData.sessionsPerMonth).toBe(0);
     // 0 은 회차 역산 대상이 아니므로 전송된 durationDays(28) 를 그대로 사용(주수 1로 오도출 금지).
     expect(createData.durationDays).toBe(28);
+    expect(createData.billingMonth).toEqual(
+      new Date("2026-08-01T00:00:00.000Z"),
+    );
+  });
+
+  it("id 없는 신규 MONTHLY_FIXED 에 귀속월이 없으면 400 (§3-7 무월 신규 차단)", async () => {
+    await expect(
+      service.bulkUpsertClassProducts(userId, "COACH", classId, {
+        upserts: [
+          {
+            productName: "무월 신규 시도",
+            price: 200000,
+            feeType: "MONTHLY_FIXED",
+            sessionsPerMonth: 0,
+          },
+        ],
+        deleteIds: [],
+      }),
+    ).rejects.toThrow("귀속 월을 지정해야 합니다");
+    // 선검증(트랜잭션 진입 전) — 부분 반영 없음.
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("판매 시작된 달의 신규 MONTHLY_FIXED 생성은 거부 (§3-4 월분 동결)", async () => {
+    const JUL = new Date(Date.UTC(2026, 6, 1));
+    tx.class.findUniqueOrThrow.mockResolvedValue({ salesOpenMonth: JUL });
+
+    await expect(
+      service.bulkUpsertClassProducts(userId, "COACH", classId, {
+        upserts: [
+          {
+            productName: "판매월 재등록 시도",
+            price: 300000,
+            feeType: "MONTHLY_FIXED",
+            sessionsPerMonth: 0,
+            billingMonth: "2026-07",
+          },
+        ],
+        deleteIds: [],
+      }),
+    ).rejects.toThrow("판매가 시작된 월분에는 수강권을 추가할 수 없습니다");
+    expect(tx.classProduct.create).not.toHaveBeenCalled();
+  });
+
+  it("판매 시작된 월분 상품 삭제는 이력 0건이어도 판매 중지로 전환 (§3-6)", async () => {
+    const JUL = new Date(Date.UTC(2026, 6, 1));
+    tx.class.findUniqueOrThrow.mockResolvedValue({ salesOpenMonth: JUL });
+    tx.classProduct.findUnique.mockResolvedValueOnce({
+      id: "del-sold",
+      classId,
+      billingMonth: JUL,
+      feeType: "MONTHLY_FIXED",
+      _count: { payments: 0, enrollments: 0 },
+    });
+
+    await service.bulkUpsertClassProducts(userId, "COACH", classId, {
+      upserts: [],
+      deleteIds: ["del-sold"],
+    });
+
+    expect(tx.classProduct.delete).not.toHaveBeenCalled();
+    expect(tx.classProduct.update).toHaveBeenCalledWith({
+      where: { id: "del-sold" },
+      data: { isActive: false },
+    });
   });
 
   it("정기권 회수 검증 위반 시 트랜잭션 진입 전 예외(롤백)", async () => {

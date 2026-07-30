@@ -23,6 +23,7 @@ import { PrismaService } from "@/prisma/prisma.service";
 import { CreditDomainService } from "@/credits/credit-domain.service";
 import { isAdminRole } from "@/auth/constants/chldiv.constants";
 import { instantToKstDateOnly } from "@/common/utils/kst-date.util";
+import { countPresentAttendanceSincePayment } from "@/common/utils/enrollment-usage.util";
 import { KgInicisGateway, KgCancelAmbiguousError } from "../kg-inicis.gateway";
 import {
   TossPaymentsGateway,
@@ -139,16 +140,11 @@ export class PaymentRefundService {
     const paidDayUtc = instantToKstDateOnly(paidAt);
 
     for (const e of enrollments) {
-      const usedCount = await this.prisma.classAttendance.count({
-        where: {
-          memberId: e.childId,
-          attendanceStatus: "present",
-          schedule: {
-            classId: e.classId,
-            scheduledDate: { gte: paidDayUtc },
-          },
-        },
-      });
+      const usedCount = await countPresentAttendanceSincePayment(
+        this.prisma,
+        e,
+        paidDayUtc,
+      );
       if (usedCount > 0) {
         throw new ForbiddenException(
           `이미 ${usedCount}회 출석한 수업의 결제는 앱에서 직접 취소할 수 없습니다. 환불은 감독에게 문의해주세요.`,

@@ -34,6 +34,13 @@ export interface ClassProductDto {
   classEndDate: string | null;
   expectedExpiresAt: string | null;
   disabledReason: string | null;
+  // [가격 잠금 Phase 5] 잠금 상태 (백엔드 additive 주입) — 저장 400 대신 사전 disabled 용.
+  /** 판매 시작된 월분(무월 레거시 포함) — 가격·권리조건 수정 불가. */
+  priceLocked?: boolean;
+  /** POSTPAID 상품 전용 — 미정산 출석이 있어 회당 단가 수정 불가. */
+  unitPriceLocked?: boolean;
+  /** POSTPAID 상품 전용 — 미정산 월 "YYYY-MM" 목록 (잠금 사유 표시). */
+  unsettledMonths?: string[];
 }
 
 export interface CreateClassProductInput {

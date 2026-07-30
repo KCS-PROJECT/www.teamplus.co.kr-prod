@@ -71,11 +71,14 @@ describe("WithdrawCleanupService", () => {
     user: { findMany: jest.Mock };
     socialAccount: { findMany: jest.Mock };
     parentChild: { findMany: jest.Mock; count: jest.Mock };
-    team: { count: jest.Mock };
+    team: { count: jest.Mock; findMany: jest.Mock };
     class: { count: jest.Mock };
     tournament: { count: jest.Mock };
-    academy: { count: jest.Mock };
+    academy: { count: jest.Mock; findMany: jest.Mock };
     enrollment: { count: jest.Mock };
+    monthlyPostpaidBillingLine: { count: jest.Mock };
+    tournamentRegistration: { count: jest.Mock };
+    refundRequest: { count: jest.Mock };
     $transaction: jest.Mock;
   };
   let redisService: { del: jest.Mock };
@@ -87,12 +90,21 @@ describe("WithdrawCleanupService", () => {
       user: { findMany: jest.fn() },
       socialAccount: { findMany: jest.fn().mockResolvedValue([]) },
       parentChild: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn() },
-      // findBlockingOwnership 재검증용 — 기본 0(차단 자산 없음)
-      team: { count: jest.fn().mockResolvedValue(0) },
+      // findBlockingOwnership 재검증용 — 기본 0(차단 자산·미정산·환불 없음)
+      team: {
+        count: jest.fn().mockResolvedValue(0),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
       class: { count: jest.fn().mockResolvedValue(0) },
       tournament: { count: jest.fn().mockResolvedValue(0) },
-      academy: { count: jest.fn().mockResolvedValue(0) },
+      academy: {
+        count: jest.fn().mockResolvedValue(0),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
       enrollment: { count: jest.fn().mockResolvedValue(0) },
+      monthlyPostpaidBillingLine: { count: jest.fn().mockResolvedValue(0) },
+      tournamentRegistration: { count: jest.fn().mockResolvedValue(0) },
+      refundRequest: { count: jest.fn().mockResolvedValue(0) },
       $transaction: jest.fn(),
     };
     redisService = { del: jest.fn().mockResolvedValue(1) };

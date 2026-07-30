@@ -6,6 +6,8 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
+import { acquireClassPostpaidLockIfNeeded } from "@/classes/utils/class-locks.util";
+import { assertScheduleMonthNotSettled } from "@/payments/settlement/postpaid-attendance.util";
 import { CreditDomainService } from "@/credits/credit-domain.service";
 import { AttendanceAuditLogService } from "@/attendance/attendance-audit-log.service";
 import { NotificationsService } from "@/notifications/notifications.service";
@@ -604,6 +606,10 @@ export class TrainingService {
     // 원자적 트랜잭션: 일정 취소 + 출석 상태 변경 + 수업권 복원
     const classId = schedule.class.id;
     const cancelledSchedule = await this.prisma.$transaction(async (tx) => {
+      // 가격 잠금 §4-0 B — 일정 취소는 present 집계를 바꾸므로 동일 lock 직렬화.
+      await acquireClassPostpaidLockIfNeeded(tx, classId);
+      // P3-H1 — 정산 확정 월의 출석 변경은 lock 안에서 재검증 후 거부.
+      await assertScheduleMonthNotSettled(tx, scheduleId);
       const updated = await tx.classSchedule.update({
         where: { id: scheduleId },
         data: {
@@ -872,6 +878,11 @@ export class TrainingService {
     }
 
     const results = await this.prisma.$transaction(async (tx) => {
+      // 가격 잠금 §4-0 B — 후불(POSTPAID/BOTH) 수업의 출석 기록은 단가 수정·정산
+      //   확정과 동일 lock 으로 직렬화한다 (PREPAID 수업은 미획득 — 영향 0).
+      await acquireClassPostpaidLockIfNeeded(tx, classId);
+      // P3-H1 — 정산 확정 월의 출석 변경은 lock 안에서 재검증 후 거부.
+      await assertScheduleMonthNotSettled(tx, scheduleId);
       type AttendanceResult =
         | {
             memberId: string;

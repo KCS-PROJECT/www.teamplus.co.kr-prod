@@ -14,6 +14,7 @@ import {
   resolveTournamentAttribution,
   instantToKstYearMonth,
   dbDateToKstYearMonth,
+  isRosterMemberForMonth,
   SettlementBillingStatus,
 } from "./attribution.util";
 import { deriveSource } from "../payment-source.util";
@@ -708,7 +709,7 @@ export class SettlementSummaryService {
         const hasMonthActivity =
           (attByUser.get(userId) ?? 0) > 0 || billingUserIds.has(userId);
         if (
-          this.isRosterMemberForMonth(
+          isRosterMemberForMonth(
             entry.registrationDate,
             entry.status,
             yearMonth,
@@ -1126,22 +1127,8 @@ export class SettlementSummaryService {
    *  · 그 외 → status=active AND 그 달 수업 진행 중(classActiveForMonth)일 때만 true.
    *  ⚠️ 한계: 정밀 탈퇴/재가입 이력은 단일 가변 ClassRegistration 행으로 복원 불가 — 향후 이력 테이블 과제.
    */
-  private isRosterMemberForMonth(
-    registrationDate: Date | null,
-    status: string,
-    selectedYearMonth: string,
-    classActiveForMonth: boolean,
-    hasMonthActivity: boolean,
-  ): boolean {
-    const regMonth =
-      registrationDate != null
-        ? instantToKstYearMonth(registrationDate)
-        : null;
-    if (regMonth != null && regMonth > selectedYearMonth) return false;
-    if (regMonth === selectedYearMonth) return true;
-    if (hasMonthActivity) return true;
-    return status === "active" && classActiveForMonth;
-  }
+  // isRosterMemberForMonth 는 attribution.util 로 추출 — getClassPayments(선수정보
+  //   화면 월 스코프)와 동일 계약을 공유한다.
 
   /** 등록만 하고 결제방식 미배정(BOTH 상품 없음) 대상 행 — 금액 제외·인원만 반영. */
   private unassignedRow(userId: string): SettlementRow {

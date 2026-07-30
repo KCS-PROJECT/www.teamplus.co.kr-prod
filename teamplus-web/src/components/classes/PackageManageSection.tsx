@@ -43,8 +43,24 @@ export interface DraftProduct {
   billingMonth?: string | null;
   /** 활성 여부 (서버 로드 값) — false = 판매 중지(soft delete·월별 편입 중단된 무월 레거시). */
   isActive?: boolean;
+  /** [가격 잠금] 판매 시작된 월분(서버 판정) — 가격·권리조건 수정 불가, 이름·설명만 허용. */
+  priceLocked?: boolean;
   /** 월분 갱신 마킹 "YYYY-MM" — 저장 시 이 달의 신규 row 로 생성(원본은 이력 보존). */
   renewToMonth?: string;
+  /**
+   * 서버 로드 시점 원본 스냅샷 — 갱신 편집으로 draft 값이 바뀌어도 원본 row 를
+   * 서버에 재전송해야 하는 경로(무월 레거시 비활성 전환)는 이 값을 사용한다.
+   * 미보존 시 잠긴 원본에 변경값이 실려 BE 가격 잠금 가드(400)에 걸린다.
+   */
+  original?: {
+    productName: string;
+    price: number;
+    feeType: string;
+    sessionsPerMonth: number;
+    sessionsPerWeek?: number;
+    durationDays?: number;
+    description?: string;
+  };
   /** 삭제 마킹 (기존 항목) — 목록에서 시각적으로 제거. */
   _deleted?: boolean;
 }
@@ -148,8 +164,6 @@ export function PackageManageSection({
     null,
   );
   const [isSheetOpen, setIsSheetOpen] = useState(false);
-  // [이력 불가침] 지난 월분(이번 달 이전 billingMonth) — 기본 접힘, 펼침 토글.
-  const [showPastPkgs, setShowPastPkgs] = useState(false);
 
   const refresh = useCallback(async () => {
     if (isDeferred || !classId) return;
@@ -360,13 +374,19 @@ export function PackageManageSection({
     );
   const hideMutationsFor = (d: DraftProduct): boolean =>
     isPastLocked(d) || isRetired(d) || isRenewOnly(d);
+  // 갱신 마킹 row 는 "다음 월분 내용 준비" 컨텍스트 — 수정 버튼을 열어 새 달 가격을
+  //   입력받는다(제출은 id 미전송 신규 create). 삭제는 원본 서버 row 삭제로 이어지므로
+  //   이력·레거시 row 에서는 계속 숨김(hideRowDelete).
+  const hideRowEdit = (d: DraftProduct): boolean =>
+    hideMutationsFor(d) && !d.renewToMonth;
+  const hideRowDelete = (d: DraftProduct): boolean => hideMutationsFor(d);
+  // 이력(지난 월분·판매 중지분)은 화면 미노출 — 서버 보존만 유지(제출 시 미전송).
   const mainDrafts = visibleDrafts.filter(
     (d) =>
       !(isPastLocked(d) || isRetired(d)) ||
       renewableKeys.has(d.localKey) ||
       Boolean(d.renewToMonth),
   );
-  const historyDrafts = visibleDrafts.filter((d) => !mainDrafts.includes(d));
 
   const visibleProducts: ClassProductDto[] = !isDeferred
     ? [...products]
@@ -622,13 +642,15 @@ export function PackageManageSection({
                     // deferred 로컬 항목은 비활성/구매가능 계산이 없으므로 항상 활성 표시.
                     disabled={false}
                     badge={null}
-                    // 월분 표기 — 갱신 마킹 시 예정 배지, 아니면 귀속월 칩(무월은 표기 없음).
+                    // 월분 표기 — 갱신 마킹 시 예정 배지, 귀속월 칩, 무월 서버분은 "이전 방식".
                     monthBadge={
                       !d.renewToMonth && d.billingMonth
                         ? MESSAGES.class.salesCycle.monthTag(
                             Number(d.billingMonth.slice(5, 7)),
                           )
-                        : null
+                        : !d.renewToMonth && d.serverId && !d.billingMonth
+                          ? MESSAGES.class.salesCycle.legacyMonthTag
+                          : null
                     }
                     renewBadge={
                       d.renewToMonth
@@ -659,9 +681,9 @@ export function PackageManageSection({
                         : null
                     }
                     readonly={readonly}
-                    // 이력·갱신 전용 row(지난 월분·비활성·갱신 모드의 무월 레거시) — 수정/삭제 숨김.
-                    hideMutations={hideMutationsFor(d)}
-                    canDelete={!isPostpaid}
+                    // 이력·갱신 전용 row — 갱신 마킹 시에는 수정만 열림(새 달 가격 입력).
+                    hideMutations={hideRowEdit(d)}
+                    canDelete={!isPostpaid && !hideRowDelete(d)}
                     iceTheme={iceTheme}
                     onEdit={() => handleEdit(d)}
                     onDelete={() => handleDeleteDeferred(d)}
@@ -693,70 +715,6 @@ export function PackageManageSection({
         </ul>
       )}
 
-      {/* [이력 불가침] 지난 월분 이력 — 기본 접힘, 읽기 전용(수정/삭제 없음). */}
-      {isDeferred && historyDrafts.length > 0 && (
-        <div className="mt-3">
-          <button
-            type="button"
-            onClick={() => setShowPastPkgs((prev) => !prev)}
-            aria-expanded={showPastPkgs}
-            className={
-              iceTheme
-                ? 'text-card-meta font-semibold text-it-ink-500 dark:text-rink-300 underline underline-offset-2'
-                : 'text-card-meta font-semibold text-wtext-3 dark:text-rink-300 underline underline-offset-2'
-            }
-          >
-            {showPastPkgs
-              ? MESSAGES.class.salesCycle.pastLockedHide
-              : MESSAGES.class.salesCycle.pastLockedShow(historyDrafts.length)}
-          </button>
-          {showPastPkgs && (
-            <>
-              <p
-                className={
-                  iceTheme
-                    ? 'mt-2 text-card-caption text-it-ink-500 dark:text-rink-300'
-                    : 'mt-2 text-card-caption text-wtext-3 dark:text-rink-300'
-                }
-              >
-                {MESSAGES.class.salesCycle.pastLockedHint}
-              </p>
-              <ul
-                className="space-y-2 mt-2"
-                role="list"
-                aria-label={MESSAGES.class.salesCycle.pastLockedListAria}
-              >
-                {historyDrafts.map((d) => (
-                  <PackageRow
-                    key={d.localKey}
-                    name={d.productName}
-                    description={d.description}
-                    price={d.price}
-                    disabled
-                    badge={
-                      d.isActive === false
-                        ? MESSAGES.classProduct.badgeInactive
-                        : null
-                    }
-                    monthBadge={
-                      d.billingMonth
-                        ? MESSAGES.class.salesCycle.monthTag(
-                            Number(d.billingMonth.slice(5, 7)),
-                          )
-                        : null
-                    }
-                    readonly
-                    iceTheme={iceTheme}
-                    onEdit={() => undefined}
-                    onDelete={() => undefined}
-                  />
-                ))}
-              </ul>
-            </>
-          )}
-        </div>
-      )}
-
       {!readonly && (
         <PackageEditSheet
           isOpen={isSheetOpen}
@@ -769,6 +727,15 @@ export function PackageManageSection({
               : (editTarget as ClassProductDto | null)
           }
           initialDraft={isDeferred ? (editTarget as DraftProduct | null) : null}
+          // [가격 잠금 Phase 5] 판매 시작된 월분 — 가격 입력 잠금(이름·설명만 수정).
+          //   단, 갱신 마킹(renewToMonth) 편집은 미래 월 신규 row 준비(제출 시 id 미전송
+          //   create만)이므로 잠금 해제 — 기존 월 row 는 서버 미접촉으로 계속 불변.
+          priceLocked={
+            Boolean(
+              (editTarget as ClassProductDto | DraftProduct | null)
+                ?.priceLocked,
+            ) && !(editTarget as DraftProduct | null)?.renewToMonth
+          }
           onSaved={() => {
             void refresh();
           }}

@@ -2679,7 +2679,55 @@ curl -i -X OPTIONS https://teamplusweb.icetimes.co.kr/api/v1/app/settings \
 
 ---
 
-**Last Updated**: 2026-07-27 (BE-043 CORS 미등록 origin preflight 500 — `callback(new Error)` → `callback(null,false)` 전환 + prodOrigins에 `*.icetimes.co.kr` 추가. OPTIONS 500 10건의 원인 제거) · 2026-07-18 (BE-042 resolveManageableTeamIds 동기화 유실 — settlement는 prod 고유물인데 dev 파일 덮어쓰기로 prod 고유 메서드 삭제 → TS2339 빌드 실패. git 이력 원본 복원 + dev 역백포트로 파일 동일화) · 2026-06-18 (BE-041 contact_inquiries 프로덕션 마이그레이션 누락 — 상담신청 list/stats 500 "데이터베이스 오류". manual-migrations SQL 미적용이 원인, 코드 정상. prod DB 에 `prisma db execute` 적용 필요) · 2026-05-23 (BE-040 FileContentBasedDenyList 신규 — Mach-O/PE/ELF/DEX 등 실행 가능 시그니처 magic bytes DENY 리스트 신설, 이름·MIME 위장 봉인. BE-039 토큰 정교화와 함께 4중 방어선 완성)
+## BE-044: pg_advisory_xact_lock `$queryRaw` P2010 — void 컬럼 역직렬화 실패 [500] (2026-07-29)
+
+### Error Message
+
+```
+PrismaClientKnownRequestError: Invalid `prisma.$queryRaw()` invocation:
+Raw query failed. Code: `N/A`. Message: `Failed to deserialize column of type 'void'.
+If you're using $queryRaw and this column is explicitly marked as `Unsupported` in your
+Prisma schema, try casting this column to any supported Prisma type such as `String`.`
+errorCode: "DB_ERROR_P2010"
+```
+
+`PUT /api/v1/classes/{id}/products/bulk` 등 advisory lock 을 선두에서 획득하는 모든 트랜잭션(상품 bulk/수정 · 출석 기록 · 정산 확정 · 좌석 선점)이 500.
+
+### Cause Analysis
+
+1. `class-locks.util.ts` 의 `acquireAdvisoryLock` 이 `` tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))` `` 호출.
+2. `pg_advisory_xact_lock` 은 **void 반환** — Prisma 는 결과 컬럼을 역직렬화하려다 void 타입에서 P2010 으로 실패한다. lock 자체는 걸리지만 호출이 throw 되어 트랜잭션 전체가 롤백.
+3. **unit spec 은 `$queryRaw` 를 mock 하므로 통과** — 실 PostgreSQL 에서만 발현. 하네스·Codex 검토를 모두 통과한 뒤 화면 실사용에서 발견됐다.
+
+### Incorrect Code
+
+```typescript
+await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
+```
+
+### Correct Code
+
+```typescript
+// void → text 캐스팅으로 역직렬화 가능한 컬럼으로 변환 (반환값은 "" — 사용 안 함)
+await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))::text`;
+```
+
+### Prevention Guide
+
+- `$queryRaw` 로 void 반환 함수(`pg_advisory_*`, `pg_sleep` 등)를 호출할 때는 **항상 `::text` 캐스팅**.
+- raw SQL 신규 도입 시 unit spec(mock)만으로 검증 종료 금지 — **실 DB 1회 실행 확인 필수** (mock 은 쿼리 문자열의 유효성을 전혀 검증하지 못한다).
+
+### 검증
+
+실 DEV DB에서 `$transaction` 내 sales/postpaid 두 lock 획득 스크립트 실행 → `[{"pg_advisory_xact_lock":""}]` 정상 반환 확인 (2026-07-29).
+
+### 관련 파일
+
+- `teamplus-backend/src/classes/utils/class-locks.util.ts` — `acquireAdvisoryLock` (dev·prod 양쪽 수정 완료)
+
+---
+
+**Last Updated**: 2026-07-29 (BE-044 advisory lock void 역직렬화 P2010 — `::text` 캐스팅, mock spec 사각 교훈) · 2026-07-27 (BE-043 CORS 미등록 origin preflight 500 — `callback(new Error)` → `callback(null,false)` 전환 + prodOrigins에 `*.icetimes.co.kr` 추가. OPTIONS 500 10건의 원인 제거) · 2026-07-18 (BE-042 resolveManageableTeamIds 동기화 유실 — settlement는 prod 고유물인데 dev 파일 덮어쓰기로 prod 고유 메서드 삭제 → TS2339 빌드 실패. git 이력 원본 복원 + dev 역백포트로 파일 동일화) · 2026-06-18 (BE-041 contact_inquiries 프로덕션 마이그레이션 누락 — 상담신청 list/stats 500 "데이터베이스 오류". manual-migrations SQL 미적용이 원인, 코드 정상. prod DB 에 `prisma db execute` 적용 필요) · 2026-05-23 (BE-040 FileContentBasedDenyList 신규 — Mach-O/PE/ELF/DEX 등 실행 가능 시그니처 magic bytes DENY 리스트 신설, 이름·MIME 위장 봉인. BE-039 토큰 정교화와 함께 4중 방어선 완성)
 
 - [Error 인덱스](../)
 - [Web 에러](../web/web-errors.md)

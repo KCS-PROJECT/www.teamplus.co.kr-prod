@@ -27,6 +27,7 @@ import {
   ReconcileRefundRequestDto,
 } from "./dto/decision-refund-request.dto";
 import { ListRefundRequestQueryDto } from "./dto/list-refund-request-query.dto";
+import { REFUND_REQUEST_ACTIVE_STATUSES as ACTIVE_STATUSES } from "./refund-request.constants";
 
 /** Team.coachId(owner) 외에 팀 관리자로 인정하는 승인 멤버 역할(N1 알림 라우팅). */
 const TEAM_MANAGER_ROLES = ["HEAD_COACH", "COACH", "MANAGER"];
@@ -82,9 +83,6 @@ const RESPONSE_SELECT = {
 type RefundRequestRow = Prisma.RefundRequestGetPayload<{
   select: typeof RESPONSE_SELECT;
 }>;
-
-/** 활성(대기·처리 중·실패 미해소) 상태 집합 — 목록 우선 노출·partial unique index 정합. */
-const ACTIVE_STATUSES: string[] = ["pending", "executing", "execution_failed"];
 
 /** 목록(E2) select — subjectLabel/이름 표기용 최소 필드. */
 const LIST_SELECT = {

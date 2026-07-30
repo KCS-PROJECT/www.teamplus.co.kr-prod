@@ -285,6 +285,25 @@ export class PaymentWebhookService {
                   this.logger.log(
                     `ClassRegistration 생성: classId=${enrollment.classId}, userId=${enrollment.childId}`,
                   );
+                  // [정원 감지] 레거시 웹훅은 입금 후 통지라 사전 차단 불가 —
+                  //   토스 confirm 의 좌석 선점과 달리 초과를 경고 로그로만 남긴다.
+                  const capCls = await tx.class.findUnique({
+                    where: { id: enrollment.classId },
+                    select: { capacity: true },
+                  });
+                  if (capCls?.capacity && capCls.capacity > 0) {
+                    const activeCount = await tx.classRegistration.count({
+                      where: {
+                        classId: enrollment.classId,
+                        status: "active",
+                      },
+                    });
+                    if (activeCount > capCls.capacity) {
+                      this.logger.warn(
+                        `[정원 초과] 웹훅 결제로 정원 초과 등재: classId=${enrollment.classId} active=${activeCount}/${capCls.capacity} — 감독 조정 필요`,
+                      );
+                    }
+                  }
                 }
               }
             }

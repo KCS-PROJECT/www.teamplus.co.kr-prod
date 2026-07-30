@@ -23,6 +23,7 @@ import {
   monthlyPassWindow,
 } from "@/common/billing/billing-date.util";
 import { NotificationsService } from "@/notifications/notifications.service";
+import { acquireClassSeatLock } from "@/classes/utils/class-locks.util";
 import { Logger } from "@nestjs/common";
 
 export interface InitiatePaymentDto {
@@ -67,6 +68,13 @@ type ConfirmPaymentRow = import("@prisma/client").Prisma.PaymentGetPayload<{
     };
   };
 }>;
+
+/** [정원 선점] 승인 실패 원복용 스냅샷 — prevStatus null = 선점 전 행 없음(삭제로 원상 복귀). */
+type SeatClaim = {
+  classId: string;
+  userId: string;
+  prevStatus: string | null;
+};
 
 @Injectable()
 export class PaymentsService {
@@ -173,7 +181,12 @@ export class PaymentsService {
       );
     }
 
+    let seatClaims: SeatClaim[] = [];
+    let captured = false;
     try {
+      // 2.5) [정원 선점] 승인(캡처) 전 좌석 원자 확보 — 초과 시 돈이 나가기 전에 거부.
+      seatClaims = await this.claimSeatsBeforeApproval(payment.id);
+
       // 3) 토스 승인 API 호출
       const tossResult = await this.tossGateway.confirm({
         paymentKey,
@@ -191,6 +204,9 @@ export class PaymentsService {
           `토스 응답 금액 불일치 — 응답 ${tossResult.totalAmount}원`,
         );
       }
+      // 캡처 확정 — 이후 실패(후처리 오류)는 돈이 이미 나간 상태라 좌석을 유지한다
+      //   (재시도로 후처리 완결이 정상 경로, 좌석 회수는 환불 플로우의 몫).
+      captured = true;
 
       // 4) DB 갱신 — Payment 완료 + Enrollment paid + ClassRegistration active + MemberCredit 발급.
       //    실결제·mock 공용 후처리(applyApprovedPayment)로 위임 — 토스 승인만 confirm 고유.
@@ -236,9 +252,108 @@ export class PaymentsService {
         approvedAt: tossResult.approvedAt,
       };
     } catch (e) {
+      // 캡처 전 실패(정원 마감·승인 거부·금액 불일치)만 좌석 원복 — 보상 트랜잭션.
+      if (!captured) {
+        await this.releaseClaimedSeats(seatClaims);
+      }
       // 승인 실패 시 락 해제 — 사용자 재시도 가능
       await this.redisService.del(lockKey);
       throw e;
+    }
+  }
+
+  /**
+   * [정원 선점] 결제 승인(캡처) 직전 좌석 원자 확보 — 표준 reservation-before-capture.
+   *  결제에 연결된 수업 enrollment 의 (classId, childId) 쌍마다:
+   *   · 무정원(capacity 0/null) 수업 → 스킵
+   *   · 자녀가 이미 active(월권 갱신 재결제) → 스킵 — 자기 좌석에 만석 판정 방지
+   *   · advisory lock(class-seats) 트랜잭션 안에서 카운트+선점 원자화 —
+   *     마지막 1자리 동시 confirm race 차단. 초과면 승인 미호출로 돈이 나가지 않는다.
+   *  대회/쇼핑 결제는 수업 enrollment 연결이 없어 자연 스킵.
+   *  복수 자녀 결제 중 일부만 선점된 채 실패하면 내부에서 전량 원복 후 throw.
+   */
+  private async claimSeatsBeforeApproval(
+    paymentId: string,
+  ): Promise<SeatClaim[]> {
+    const enrollments = await this.prisma.enrollment.findMany({
+      where: { paymentId },
+      select: { classId: true, childId: true },
+    });
+    const claims: SeatClaim[] = [];
+    try {
+      for (const en of enrollments) {
+        const claim = await this.prisma.$transaction(async (tx) => {
+          await acquireClassSeatLock(tx, en.classId);
+          const cls = await tx.class.findUnique({
+            where: { id: en.classId },
+            select: { capacity: true },
+          });
+          if (!cls?.capacity || cls.capacity <= 0) return null; // 무정원
+          const existing = await tx.classRegistration.findUnique({
+            where: {
+              classId_userId: { classId: en.classId, userId: en.childId },
+            },
+            select: { status: true },
+          });
+          if (existing?.status === "active") return null; // 좌석 이미 보유(갱신)
+          const activeCount = await tx.classRegistration.count({
+            where: { classId: en.classId, status: "active" },
+          });
+          if (activeCount >= cls.capacity) {
+            throw new BadRequestException(
+              "수업 정원이 마감되어 결제가 진행되지 않았습니다.",
+            );
+          }
+          await tx.classRegistration.upsert({
+            where: {
+              classId_userId: { classId: en.classId, userId: en.childId },
+            },
+            update: { status: "active" },
+            create: {
+              classId: en.classId,
+              userId: en.childId,
+              status: "active",
+            },
+          });
+          return {
+            classId: en.classId,
+            userId: en.childId,
+            prevStatus: existing?.status ?? null,
+          };
+        });
+        if (claim) claims.push(claim);
+      }
+    } catch (e) {
+      await this.releaseClaimedSeats(claims);
+      throw e;
+    }
+    return claims;
+  }
+
+  /**
+   * [정원 선점] 원복 — 승인(캡처) 실패 시 보상 트랜잭션.
+   *  신규 생성 행(prevStatus=null)은 삭제(무행 원상 복귀), 기존 행은 이전 상태 복원.
+   *  원복 자체 실패는 로그만 — 잔존 좌석은 "미구매 active"로 화면에 드러나
+   *  감독 명단제외/판매 시작 만료로 정리 가능한 자가 치유 상태다.
+   */
+  private async releaseClaimedSeats(claims: SeatClaim[]): Promise<void> {
+    for (const c of claims) {
+      try {
+        if (c.prevStatus == null) {
+          await this.prisma.classRegistration.deleteMany({
+            where: { classId: c.classId, userId: c.userId, status: "active" },
+          });
+        } else {
+          await this.prisma.classRegistration.updateMany({
+            where: { classId: c.classId, userId: c.userId, status: "active" },
+            data: { status: c.prevStatus },
+          });
+        }
+      } catch (err) {
+        this.logger.error(
+          `좌석 선점 원복 실패: classId=${c.classId} userId=${c.userId} ${(err as Error).message}`,
+        );
+      }
     }
   }
 
@@ -447,7 +562,11 @@ export class PaymentsService {
       );
     }
 
+    let seatClaims: SeatClaim[] = [];
     try {
+      // 2.5) [정원 선점] 실결제와 동일 계약 — 초과 시 mock 승인도 동일하게 거부.
+      seatClaims = await this.claimSeatsBeforeApproval(payment.id);
+
       // 3) 토스 승인 없이 공용 후처리 호출 — 금액은 DB payment.amount 신뢰(클라이언트 금액 미수신).
       const approvedAt = new Date();
       await this.applyApprovedPayment(payment, {
@@ -480,6 +599,8 @@ export class PaymentsService {
         approvedAt: approvedAt.toISOString(),
       };
     } catch (e) {
+      // mock 은 실출금이 없으므로 실패 시 항상 좌석 원복 — 보상 트랜잭션.
+      await this.releaseClaimedSeats(seatClaims);
       // 후처리 실패 시 락 해제 — 사용자 재시도 가능
       await this.redisService.del(lockKey);
       throw e;
@@ -924,7 +1045,8 @@ export class PaymentsService {
         for (const reg of regs) {
           studentCount += 1;
           const e = enrollMap.get(`${c.id}:${reg.userId}`);
-          const paid = reg.status !== "inactive" && isPaid(e);
+          // active 만 결제 집계 — expired(만료) 등 비활성 상태가 완납으로 오집계되지 않게 양성 비교.
+          const paid = reg.status === "active" && isPaid(e);
           if (paid) {
             paidCount += 1;
             paidAmount +=

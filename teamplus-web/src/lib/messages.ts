@@ -53,6 +53,12 @@ export const MESSAGES = {
       packageCreated: "정기권이 등록되었습니다.",
       openSalesButton: "판매 시작하기",
       openSalesSuccess: "판매가 시작되었습니다.",
+      // [Phase 2] 미갱신 선불 선수 배치 해제 사전 고지 — 판매 시작 확인 다이얼로그.
+      openSalesReleaseTitle: "판매 시작",
+      openSalesReleaseNotice: (names: string, count: number) =>
+        `지난 판매 달에 결제하지 않은 선수 ${count}명(${names})이 수강생 명단에서 제외됩니다. 다시 결제하면 명단에 자동으로 복구됩니다. 판매를 시작할까요?`,
+      openSalesReleasedToast: (count: number) =>
+        `미갱신 선수 ${count}명이 명단에서 제외되었습니다.`,
       ctaPreparing: "일정 준비 중",
       ctaEnded: "종료된 수업",
       pendingBannerAria: "판매 준비",
@@ -72,11 +78,13 @@ export const MESSAGES = {
       completeOpenSalesDone:
         "판매가 시작되었습니다. 이제 학부모가 이 수업을 신청할 수 있어요.",
       // 이력 잠금(지난 월분·판매 중지분) — 수정/삭제 불가, 기본 접힘.
-      pastLockedShow: (n: number) => `판매가 끝난 월 결제 ${n}건 보기`,
-      pastLockedHide: "판매가 끝난 월 결제 접기",
+      pastLockedShow: (n: number) => `판매 종료된 수강권 ${n}건 보기`,
+      pastLockedHide: "판매 종료된 수강권 접기",
       pastLockedHint:
-        "판매가 끝난 월 결제는 이력 보존을 위해 수정하거나 삭제할 수 없어요.",
-      pastLockedListAria: "판매가 끝난 월 결제 (읽기 전용)",
+        "판매 종료된 수강권은 이력 보존을 위해 수정하거나 삭제할 수 없어요.",
+      pastLockedListAria: "판매 종료된 수강권 (읽기 전용)",
+      // 무월(레거시) 수강권 — 월별 판매 체계 도입 전 등록분 (귀속월 없음).
+      legacyMonthTag: "이전 방식",
       renewNeedScheduleHint:
         "다음 달 일정을 등록하면 월 결제를 새 달분으로 갱신할 수 있어요.",
     },
@@ -709,16 +717,17 @@ export const MESSAGES = {
       `결제 요청 ${count}건 · 총 ${total.toLocaleString()}원`,
     pendingSheetTitle: "결제 요청",
     pendingPayCta: "결제하기",
-    // 결제내역 미납 탭 (/payment/history?tab=pending) — 미납 후불 목록 + 합계 히어로.
+    // 결제내역 결제 대기 탭 (/payment/history?tab=pending) — 미결제 후불 목록 + 합계 히어로.
+    // "미납" 대신 "결제 대기" — 청구 직후 건과 밀린 건이 섞여 있고 기한 개념이 없어 중립 상태 서술 사용.
     tabsAria: "결제 구분",
     tabHistory: "결제 내역",
-    tabPending: "미납 결제",
-    pendingSummaryLabel: "미납 결제 합계",
+    tabPending: "결제 대기",
+    pendingSummaryLabel: "결제 대기 합계",
     pendingSummaryCount: (n: number) => `${n}건`,
     pendingListTitle: "결제 대기 내역",
-    pendingEmpty: "미납된 결제가 없습니다.",
+    pendingEmpty: "결제 대기 중인 내역이 없습니다.",
     pendingEmptyDesc: "모든 결제가 완료되었습니다.",
-    pendingLoadFailed: "미납 결제 정보를 불러오지 못했습니다.",
+    pendingLoadFailed: "결제 대기 내역을 불러오지 못했습니다.",
     pendingRetry: "다시 시도하기",
     completed: "결제가 완료되었습니다!",
     // [수정 2026-05-18] 감성 톤 — 결제 완료 화면 분위기. "결제권" 어색함 해소.
@@ -2069,7 +2078,15 @@ export const MESSAGES = {
     creditExpire:
       "보유 중인 잔여 결제권은 탈퇴 확정 시 전액 소멸되며, 복구할 수 없습니다.",
     assetGuard:
-      "운영 중인 팀·수업·대회(감독) 또는 자녀의 진행 중인 수강신청(학부모)이 있는 경우 탈퇴 신청이 제한됩니다. 먼저 정리한 후 신청해주세요.",
+      "운영 중인 팀·수업·대회와 미정산 내역(감독) 또는 자녀의 진행 중인 수강신청·미납·환불 처리 중 내역(학부모)이 있는 경우 탈퇴 신청이 제한됩니다. 먼저 정리한 후 신청해주세요.",
+    // 탈퇴 전 정리 체크리스트 (GET /auth/withdraw/eligibility)
+    blockerTitle: "탈퇴 전 정리가 필요합니다",
+    blockerGuide:
+      "아래 항목을 정리한 후 다시 신청해주세요. 정리 후 이 화면에 다시 들어오면 자동으로 반영됩니다.",
+    blockerGo: "바로가기",
+    refundableNotice: (count: number) =>
+      `아직 이용하지 않아 환불 가능한 결제가 ${count}건 있습니다. 탈퇴가 확정되면 소멸되니, 필요하면 결제 내역에서 먼저 취소해주세요.`,
+    refundableGo: "결제 내역 보기",
     childCascade:
       "다른 보호자가 연결되어 있지 않은 자녀의 계정과 프로필 정보도 함께 비식별화 처리됩니다.",
     reasonTitle: "탈퇴 사유를 선택해주세요",
@@ -2725,6 +2742,17 @@ export const MESSAGES = {
         "출석한 만큼 월말에 정산됩니다. 출석 횟수·정산 확정은 출석 관리에서 진행됩니다.",
       // [Phase C] 선수정보 탭 당월 출석 횟수
       attendanceThisMonth: (n: number) => `이번 달 출석 ${n}회`,
+      // [만료 회원] 결제가 끊겨 자동 해제된(expired) 선수 관리 목록 — 재등록 대상.
+      //   복귀는 학부모 재결제 시 자동 복구 단일 경로(수동 배치 미사용 정책).
+      //   명단제외 = expired → inactive 정리(감독 판단) — 재결제 시 자동 복귀는 동일.
+      expiredSectionTitle: (n: number) => `만료 회원 ${n}명`,
+      expiredLastPaid: (y: number, m: number) => `마지막 결제 ${y}년 ${m}월`,
+      expiredNoPayment: "결제 이력 없음",
+      excludeButton: "명단제외",
+      excludeConfirmTitle: "명단제외",
+      excludeConfirmMessage: (name: string) =>
+        `${name} 선수를 만료 회원 목록에서 제외할까요? 다시 결제하면 명단에 자동으로 복귀합니다.`,
+      excludeSuccess: (name: string) => `${name} 선수를 명단에서 제외했습니다.`,
       // ── [DEPRECATED] SPEC v1 잔존 키 — deprecated 컴포넌트의 빌드 안전성 유지 목적.
       //    SPEC v3 에서는 정렬/필터 칩 UI 가 노출되지 않으므로 신규 사용 금지.
       noClasses: "수업 등록 후 수강생이 자동으로 표시됩니다",
@@ -3920,7 +3948,7 @@ export const MESSAGES = {
     fieldFeePerSession: "회당 단가(원)",
     fieldIsActive: "활성화",
     fieldIsActiveHelp: "비활성화 시 결제 화면에서 선택할 수 없습니다.",
-    badgeInactive: "비활성",
+    badgeInactive: "판매 중지",
     badgeEndDateExceed: "수업 종료일 초과",
     badgeClassEnded: "수업 종료",
     listBadgeClassEnded: "종료된 수업",
@@ -3946,6 +3974,13 @@ export const MESSAGES = {
     validationWeeks: "주 수는 1~52 사이로 입력해주세요.",
     perSessionEditHint:
       "1회 수업료는 가격만 수정할 수 있어요. 다른 정보는 변경되지 않습니다.",
+    // [가격 잠금 Phase 5] 판매 시작 확정 정책 안내
+    priceLockedNotice:
+      "판매가 시작되어 가격이 확정되었습니다. 다음 월분부터 변경할 수 있어요.",
+    unitPriceLockedNotice: (months: string) =>
+      `정산되지 않은 출석(${months})이 있어 회당 단가를 변경할 수 없어요. 정산 확정 후 수정할 수 있습니다.`,
+    saleStartNotice:
+      "등록하면 이번 달 판매가 시작되고, 선불 수강료는 제출 즉시 확정됩니다. 다음 월분부터 변경할 수 있어요.",
     previewTitle: "자동 계산",
     previewSessionsPerWeek: "주당 횟수",
     previewSessionsPerWeekHint: "(수업 일정 기준)",

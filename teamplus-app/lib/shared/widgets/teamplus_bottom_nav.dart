@@ -214,10 +214,10 @@ class TeamplusBottomNav extends StatefulWidget {
               activeIcon: Icons.notifications_rounded,
               label: '알림'),
           NavItem(
-              href: '/settings',
-              icon: Icons.settings_outlined,
-              activeIcon: Icons.settings_rounded,
-              label: '설정'),
+              href: '/mypage',
+              icon: Icons.person_outline_rounded,
+              activeIcon: Icons.person_rounded,
+              label: '마이'),
         ];
     }
   }

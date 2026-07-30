@@ -136,6 +136,11 @@ function ClassCreatePageInner() {
   //   bulk 엔드포인트로 일괄 반영한다. (기존: 시트 저장 시 즉시 단건 API → 저장 시점 이원화 문제)
   const [draftProducts, setDraftProducts] = useState<DraftProduct[]>([]);
   const [productsDirty, setProductsDirty] = useState(false);
+  // [가격 잠금 Phase 5] 후불 단가 잠금 상태 — 서버 판정(unitPriceLocked·unsettledMonths).
+  const [unitPriceLock, setUnitPriceLock] = useState<{
+    locked: boolean;
+    months: string[];
+  }>({ locked: false, months: [] });
   // [Lifecycle v4.1 §9.2] 판매 승인 대기 여부 — 수강료 섹션 월분 갱신 UI 게이트(수정 모드 전용).
   const [salesPending, setSalesPending] = useState(false);
 
@@ -183,7 +188,13 @@ function ClassCreatePageInner() {
           if (d.serverId && d.billingMonth == null) {
             // 무월(레거시) 원본은 월 필터를 우회해 새 월분과 중복 노출되므로
             //   같은 bulk 트랜잭션에서 비활성 전환(수업 상세 배너의 갱신 로직과 동일 정책).
-            upserts.push({ ...base, id: d.serverId, isActive: false });
+            //   갱신 편집으로 draft 값이 바뀌었어도 원본에는 원값(original)을 보내야
+            //   BE 가격 잠금 가드(레거시=잠금)에 걸리지 않는다.
+            upserts.push({
+              ...(d.original ?? base),
+              id: d.serverId,
+              isActive: false,
+            });
           }
         } else if (isPastLocked(d) || (d.serverId && d.isActive === false)) {
           // 이력 row(지난 월분·판매 중지분) — 변경 대상 아님(전송 생략 = 보존).
@@ -547,8 +558,30 @@ function ClassCreatePageInner() {
           billingMonth: p.billingMonth ? p.billingMonth.slice(0, 7) : null,
           // 활성 여부 보존 — 판매 중지 이력 row 잠금·제출 제외 판정에 사용.
           isActive: p.isActive,
+          // [가격 잠금 Phase 5] 판매 시작된 월분(서버 판정) — 편집 시트 가격 입력 잠금.
+          priceLocked: p.priceLocked,
+          // 원본 스냅샷 — 갱신 편집 후에도 원본 재전송 경로(레거시 비활성)는 원값 유지.
+          original: {
+            productName: p.productName,
+            price: p.price,
+            feeType: p.feeType ?? 'MONTHLY_FIXED',
+            sessionsPerMonth: p.sessionsPerMonth ?? 1,
+            ...(p.sessionsPerWeek != null
+              ? { sessionsPerWeek: p.sessionsPerWeek }
+              : {}),
+            ...(p.durationDays != null
+              ? { durationDays: p.durationDays }
+              : {}),
+            ...(p.description ? { description: p.description } : {}),
+          },
         })),
       );
+      // [가격 잠금 Phase 5] 후불 단가 잠금 — POSTPAID 상품의 서버 판정을 수강료 카드에 전달.
+      const postpaid = list.find((p) => p.billingTiming === 'POSTPAID');
+      setUnitPriceLock({
+        locked: Boolean(postpaid?.unitPriceLocked),
+        months: postpaid?.unsettledMonths ?? [],
+      });
       setProductsDirty(false);
     })();
     return () => {
@@ -760,6 +793,8 @@ function ClassCreatePageInner() {
                         packageDirty={productsDirty}
                         renewalTargetMonth={renewalTargetMonth}
                         salesPendingLock={pendingLock}
+                        unitPriceLocked={unitPriceLock.locked}
+                        unsettledMonths={unitPriceLock.months}
                         iceTheme
                       />
                     )
