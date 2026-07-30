@@ -54,6 +54,8 @@ String _dashboardPathByUserType(String? userType) {
       return '/child/';
     case 'director':
       return '/director/';
+    case 'academy_director':
+      return '/academy-director/';
     default:
       return '/login/';
   }

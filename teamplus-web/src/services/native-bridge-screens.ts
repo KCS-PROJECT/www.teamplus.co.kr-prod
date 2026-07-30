@@ -79,6 +79,7 @@ export function isMobile(): boolean {
 const MAIN_SCREEN_PATHS: ReadonlySet<string> = new Set([
   "/admin",
   "/director",
+  "/academy-director",
   "/coach",
   "/parent",
   "/student",
