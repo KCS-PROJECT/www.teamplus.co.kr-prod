@@ -9,6 +9,8 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "@/prisma/prisma.service";
+import { maskProfanity } from "@/common/utils/content-filter.util";
+import { maskFullName } from "@/common/utils/mask-name.util";
 import { NotificationsService } from "@/notifications/notifications.service";
 import { PaymentsService } from "@/payments/payments.service";
 import { CreatePickupMatchDto } from "./dto/create-pickup-match.dto";
@@ -237,7 +239,18 @@ export class PickupMatchesService {
     };
   }
 
-  async getRoster(id: string) {
+  /**
+   * 매치 참여 명단 조회.
+   *
+   * 비로그인(@Public) 열람을 유지하되 — 프론트가 상세/명단을 비로그인에도 노출한다
+   * (teamplus-web `matches/[id]/roster/page.tsx`) — **실명·프로필 사진은 내려주지
+   * 않는다**. CHILD/TEEN 회원 실명이 포함될 수 있어 공개 노출은
+   * 개인정보 안전성 확보조치(§6) 위반이다.
+   *
+   * @param viewerId 로그인 사용자 ID (없으면 비로그인 → 실명 마스킹 + avatar 제거)
+   */
+  async getRoster(id: string, viewerId?: string) {
+    const isAuthenticated = Boolean(viewerId);
     const match = await this.prisma.pickupMatch.findUnique({
       where: { id },
       select: {
@@ -262,8 +275,10 @@ export class PickupMatchesService {
         level: true,
         status: true,
         appliedAt: true,
+        // avatarUrl 은 응답에 넣지 않는다(과거에도 select 만 하고 미사용) — 비로그인
+        // 노출 방지를 위해 조회 자체를 제거해 재유입 여지를 없앤다.
         user: {
-          select: { id: true, firstName: true, lastName: true, avatarUrl: true },
+          select: { id: true, firstName: true, lastName: true },
         },
       },
       orderBy: { appliedAt: "asc" },
@@ -274,6 +289,16 @@ export class PickupMatchesService {
     );
     const pendingApplicants = applicants.filter((a) => a.status === "pending");
 
+    /** 비로그인 열람 시 실명을 마스킹한다 (홍길동 → 홍*동). */
+    const displayName = (
+      lastName: string | null,
+      firstName: string | null,
+    ): string => {
+      const full = `${lastName ?? ""}${firstName ?? ""}`.trim();
+      if (!full) return "익명";
+      return isAuthenticated ? full : maskFullName(lastName, firstName);
+    };
+
     return {
       matchId: match.id,
       matchTitle: match.title,
@@ -282,8 +307,7 @@ export class PickupMatchesService {
       confirmedPlayers: approvedApplicants.map((a, index) => ({
         id: a.id,
         userId: a.user.id,
-        name:
-          `${a.user.lastName ?? ""}${a.user.firstName ?? ""}`.trim() || "익명",
+        name: displayName(a.user.lastName, a.user.firstName),
         position: a.position ?? "",
         level: a.level ?? "",
         isHost: a.userId === match.managerId,
@@ -293,8 +317,7 @@ export class PickupMatchesService {
       waitlistPlayers: pendingApplicants.map((a, index) => ({
         id: a.id,
         userId: a.user.id,
-        name:
-          `${a.user.lastName ?? ""}${a.user.firstName ?? ""}`.trim() || "익명",
+        name: displayName(a.user.lastName, a.user.firstName),
         position: a.position ?? "",
         level: a.level ?? "",
         waitNumber: index + 1,
@@ -307,7 +330,8 @@ export class PickupMatchesService {
     return this.prisma.pickupMatch.create({
       data: {
         managerId,
-        title: dto.title,
+        // UGC 콘텐츠 필터 — 비로그인도 열람하는 공개 목록/상세에 노출되는 자유 입력
+        title: maskProfanity(dto.title),
         scheduledAt: new Date(dto.scheduledAt),
         rinkName: dto.rinkName,
         rinkAddress: dto.rinkAddress,
@@ -320,7 +344,7 @@ export class PickupMatchesService {
         homeTeamName: dto.homeTeamName,
         awayTeamName: dto.awayTeamName,
         rules: dto.rules ?? [],
-        description: dto.description,
+        description: maskProfanity(dto.description ?? null),
       },
       select: { id: true, title: true, scheduledAt: true, status: true },
     });
@@ -364,7 +388,7 @@ export class PickupMatchesService {
       updatedBy: { connect: { id: actor.id } },
     };
 
-    if (dto.title !== undefined) data.title = dto.title;
+    if (dto.title !== undefined) data.title = maskProfanity(dto.title);
     if (dto.scheduledAt !== undefined)
       data.scheduledAt = new Date(dto.scheduledAt);
     if (dto.rinkName !== undefined) data.rinkName = dto.rinkName;
@@ -379,7 +403,8 @@ export class PickupMatchesService {
     if (dto.homeTeamName !== undefined) data.homeTeamName = dto.homeTeamName;
     if (dto.awayTeamName !== undefined) data.awayTeamName = dto.awayTeamName;
     if (dto.rules !== undefined) data.rules = dto.rules;
-    if (dto.description !== undefined) data.description = dto.description;
+    if (dto.description !== undefined)
+      data.description = maskProfanity(dto.description);
 
     const updated = await this.prisma.pickupMatch.update({
       where: { id: matchId },

@@ -28,6 +28,28 @@ export default registerAs("payment", () => {
         `[결제 설정 오류] ${nodeEnv} 환경에서 필수 환경변수가 누락되었습니다: ${missing.join(", ")}`,
       );
     }
+
+    // [2026-07-30] PG 콜백 URL 평문(http) 경고.
+    //   콜백·웹훅에는 결제 결과와 구매자 정보가 실려 오므로 평문 전송은
+    //   「개인정보의 안전성 확보조치 기준」 §7④(정보통신망 전송 시 암호화) 위반이다.
+    //   미설정 시 기본값이 http://localhost 라서 환경변수 누락이 곧 평문 전송이 된다.
+    //   부팅을 중단시키지 않는 이유: 운영 중 배포에서 서비스가 죽는 부작용이
+    //   경고를 놓치는 것보다 위험하다. 대신 ERROR 레벨로 남겨 로그 감시에 걸리게 한다.
+    const insecureUrls = (
+      [
+        ["INICIS_RETURN_URL", process.env.INICIS_RETURN_URL],
+        ["INICIS_WEBHOOK_URL", process.env.INICIS_WEBHOOK_URL],
+      ] as const
+    ).filter(([, v]) => !v || v.startsWith("http://"));
+
+    if (insecureUrls.length > 0) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[결제 설정 경고] ${nodeEnv} 환경에서 PG 콜백 URL 이 HTTPS 가 아닙니다: ` +
+          `${insecureUrls.map(([k, v]) => `${k}=${v ?? "(미설정)"}`).join(", ")} — ` +
+          "결제 결과·구매자 정보가 평문 전송됩니다. https:// 로 즉시 교체하십시오.",
+      );
+    }
   }
 
   return {

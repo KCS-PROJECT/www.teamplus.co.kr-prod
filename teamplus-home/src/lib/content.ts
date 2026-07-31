@@ -36,6 +36,11 @@ export const BRAND = {
     address: "서울특별시 송파구 송파대로 260, 제일오피스텔 1210호 (가락동)",
     /** 개인정보보호책임자 (2026-06-14 확정: 이준섭 · icehockey@knewscorp.co.kr) */
     privacyOfficer: "이준섭",
+    /**
+     * 청소년보호책임자 (정보통신망법 §42조의3) — 개인정보보호책임자 겸임.
+     * 서비스가 명시적으로 아동·청소년을 대상으로 하므로 선제 표시한다. (2026-07-30)
+     */
+    youthProtectionOfficer: "이준섭",
   },
   sns: {
     blog: "https://blog.teamplus.kr",
@@ -44,7 +49,7 @@ export const BRAND = {
     "아동 화면 고대비 설계",
     "보호자 결제 관리",
     "QR 출석 지원",
-    "KG이니시스 공식 연동",
+    "토스페이먼츠 · KG이니시스 연동",
     "카카오 알림톡 연동",
   ],
 };
@@ -67,7 +72,7 @@ export const NAV_ITEMS = [
  */
 export const HERO_PROOF = [
   "QR 출석 자동 기록",
-  "KG이니시스 공식 연동",
+  "토스페이먼츠 · KG이니시스 연동",
   "카카오 알림톡 연동",
   "역할별 맞춤 화면",
 ];
@@ -120,7 +125,7 @@ export const HERO_FEATURES = [
     icon: "ShieldCheck",
     accent: "ice",
     title: "안전한 결제·수업권",
-    desc: "KG이니시스 공식 연동으로 결제와 수업권을 안전하게 관리합니다.",
+    desc: "국내 공식 결제대행사(토스페이먼츠 · KG이니시스) 연동으로 결제와 수업권을 안전하게 관리합니다.",
   },
 ] as const;
 
@@ -170,7 +175,7 @@ export const TRUST_INDICATORS = [
   {
     iconName: "credit-card" as const,
     label: "결제 · 정산",
-    value: "KG이니시스 공식",
+    value: "토스페이먼츠 · KG이니시스",
     description: "카드 토큰화 · Webhook 서명 · 멱등성 · PCI DSS 비저장",
   },
   {
@@ -343,7 +348,7 @@ export const FEATURES: FeatureItem[] = [
     title: "결제",
     subtitle: "Payment",
     description:
-      "KG이니시스 공식 연동으로 카드 · 간편결제 · 가상계좌를 모두 지원합니다. Webhook 서명 검증과 멱등성 키로 중복 결제를 원천 차단합니다.",
+      "공식 결제대행사(토스페이먼츠 · KG이니시스) 연동으로 카드 · 간편결제 · 가상계좌를 지원합니다. Webhook 서명 검증과 멱등성 키로 중복 결제를 원천 차단합니다.",
     bullets: [
       "카드 · 간편결제 · 가상계좌",
       "Webhook 서명 · 멱등성",
@@ -378,7 +383,7 @@ export const FEATURES: FeatureItem[] = [
       "13개 전용 모델 · 장바구니 · 주문",
       "회원 할인가 · 그룹 할인",
       "리뷰 · 위시리스트 · 재고 관리",
-      "결제 시스템 공유 (동일 KG이니시스)",
+      "결제 시스템 공유 (동일 결제대행사)",
     ],
     icon: "shop",
     accent: "rose",
@@ -471,7 +476,7 @@ export const FEATURE_SIGNATURE = {
   flow: [
     { step: "QR 출석", note: "5분 일회용 · 3초 연속 스캔" },
     { step: "결제권 차감", note: "수업권 잔여 자동 반영" },
-    { step: "결제 · 정산", note: "KG이니시스 공식 연동" },
+    { step: "결제 · 정산", note: "공식 결제대행사 연동" },
     { step: "성장 기록", note: "출석 · 진도 · 코치 메모" },
   ],
   // [0] = 앞(큰) hero · [1] = 뒤(작은) 보조. 결과(학부모 출석·결제권)를 hero 로, QR 생성(코치)을 보조로.
@@ -585,32 +590,47 @@ export type PricingPlan = {
   ctaHref: string;
 };
 
+/**
+ * 도입 플랜 — [2026-07-30 정정]
+ *
+ * 이전 버전은 월 구독가(99,000원/월 · 249,000원/월)와 "14일 무료 체험 후 자동 결제"를
+ * 표기했으나, **실제 서비스에는 정기결제·구독·자동갱신 기능이 구현되어 있지 않다**
+ * (전 저장소에 정기결제 코드 0건 · 실 과금 모델은 수업권/결제권 단건 구매).
+ * 결제가 불가능한 가격표를 게시하는 것은 표시·광고 규제상 거짓·과장 표시에 해당할 수 있어,
+ * 구체적 월 구독가와 무료 체험 자동결제 문구를 제거하고 **"구독 요금제 준비 중 · 맞춤 견적"**
+ * 으로 정정했다. 정기결제가 실제 구현·오픈될 때 근거와 함께 가격을 되살린다.
+ *
+ * ⚠️ 함께 정리해야 하는 하드코딩 문구 (이 파일 밖):
+ *   - components/sections/Pricing.tsx (SectionHeading description · 하단 주석)
+ *   - app/pricing/page.tsx (metadata description)
+ *   - app/contact/page.tsx (상단 설명)
+ */
 export const PRICING: PricingPlan[] = [
   {
     name: "Starter",
     tagline: "소규모 클럽 · 소속 회원 50명 이하",
-    price: "99,000",
-    priceUnit: "원 / 월",
+    price: "준비 중",
+    priceUnit: "맞춤 견적 안내",
     description:
-      "핵심 기능만 빠르게 도입하여 종이 운영을 디지털로 옮기고 싶은 신규 클럽에 추천합니다.",
+      "핵심 기능만 빠르게 도입하여 종이 운영을 디지털로 옮기고 싶은 신규 클럽에 추천합니다. 월 구독 요금제는 준비 중이며, 현재는 클럽 규모에 맞춘 개별 견적으로 도입합니다.",
     includes: [
       "회원 · 수업 · 스케줄",
       "QR 출석 (기본 1코치)",
-      "KG이니시스 결제 연동",
+      "결제 연동 (수업권 · 결제권)",
       "알림톡 기본 3템플릿",
       "이메일 지원",
     ],
-    ctaLabel: "14일 무료 체험",
+    ctaLabel: "도입 문의하기",
     ctaHref: "/contact?plan=starter",
   },
   {
     name: "Business",
     tagline: "성장 중인 클럽 · 회원 50-300명",
-    price: "249,000",
-    priceUnit: "원 / 월",
+    price: "준비 중",
+    priceUnit: "맞춤 견적 안내",
     featured: true,
     description:
-      "대부분의 프로 · 아마추어 클럽이 선택하는 기본 플랜입니다. 쇼핑몰 · 대회 · 실시간 채팅까지 포함합니다.",
+      "대부분의 프로 · 아마추어 클럽이 선택하는 기본 구성입니다. 쇼핑몰 · 대회 · 실시간 채팅까지 포함합니다. 월 구독 요금제는 준비 중이며, 현재는 개별 견적으로 도입합니다.",
     includes: [
       "Starter 전 기능 +",
       "클럽 쇼핑몰 (상품 무제한)",
@@ -620,7 +640,7 @@ export const PRICING: PricingPlan[] = [
       "알림톡 5종 + SMS 폴백",
       "카카오톡 · 전화 지원",
     ],
-    ctaLabel: "Business 데모 받기",
+    ctaLabel: "데모 요청하기",
     ctaHref: "/contact?plan=business",
   },
   {
@@ -629,7 +649,7 @@ export const PRICING: PricingPlan[] = [
     price: "문의",
     priceUnit: "Custom",
     description:
-      "복수 지점 통합, 자체 도메인, SSO, 전용 인프라가 필요한 조직을 위한 맞춤형 플랜입니다.",
+      "복수 지점 통합, 자체 도메인, SSO, 전용 인프라가 필요한 조직을 위한 맞춤형 구성입니다.",
     includes: [
       "Business 전 기능 +",
       "다중 클럽 · 지점 통합 관리",
@@ -680,7 +700,7 @@ export const CASES: CaseStudy[] = [
       { label: "환불 처리", value: "-68%" },
     ],
     quote:
-      "KG이니시스 연동이 깔끔하고 환불 처리가 자동이라 CS 업무가 크게 줄었습니다. 리그 · 토너먼트 관리가 특히 강점이에요.",
+      "결제 연동이 깔끔하고 환불 처리가 빨라 CS 업무가 크게 줄었습니다. 리그 · 토너먼트 관리가 특히 강점이에요.",
     author: "이 대표 / 구단주",
   },
   {
@@ -821,7 +841,7 @@ export const WHY_TEAMPLUS = {
     {
       title: "결제·출석·정산이 한 흐름",
       description:
-        "QR 출석이 결제권 차감과 KG이니시스 결제·정산까지 끊김 없이 이어집니다.",
+        "QR 출석이 결제권 차감과 결제·정산까지 끊김 없이 이어집니다.",
       marker: "한 흐름 운영",
     },
   ],

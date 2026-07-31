@@ -118,7 +118,9 @@ export function Footer() {
         </div>
 
         {/* 사업자 정보 — PG 대행사 심사 및 전자상거래법 §10조 표시 의무사항.
-            (사업자등록증 + 통신판매업신고증 원본 기준, 2026-05-27 적용) */}
+            (사업자등록증 + 통신판매업신고증 원본 기준, 2026-05-27 적용)
+            [2026-07-30] 정보통신망법 §42조의3 청소년보호책임자 표시 추가
+            (개인정보보호책임자 겸임 — BRAND.legal.youthProtectionOfficer) */}
         <address className="mt-14 not-italic border-t border-wline pt-6 text-xs leading-relaxed text-wtext-4">
           <p className="mb-1">
             <span className="font-semibold text-wtext-3">{BRAND.legal.companyName}</span>
@@ -150,6 +152,8 @@ export function Footer() {
             </a>
             <span className="mx-2 text-wline">|</span>
             개인정보보호책임자: {BRAND.legal.privacyOfficer}
+            <span className="mx-2 text-wline">|</span>
+            청소년보호책임자: {BRAND.legal.youthProtectionOfficer}
           </p>
         </address>
 

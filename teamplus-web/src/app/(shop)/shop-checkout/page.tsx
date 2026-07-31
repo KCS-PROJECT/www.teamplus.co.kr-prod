@@ -481,6 +481,10 @@ export default function ShopCheckoutPage() {
               </span>
             </div>
           </div>
+          {/* ⚠️ [오픈 차단 조건 · CHECKLIST A-5] 아래 문구는 체크박스 없는 정적 텍스트다.
+              전자상거래법 §8② 는 '구매 조건 및 결제 진행 동의'를 사용자의 명시적 확인
+              절차(체크박스 등)로 받고 그 기록을 보존할 것을 요구하므로, 현재 형태는
+              동의 취득으로 인정되지 않는다. 오픈 시 체크박스 + 동의 이력 저장으로 교체 필요. */}
           <div className="mt-6 flex items-start gap-2 bg-it-blue-50 dark:bg-it-blue-900/20 p-3 rounded-w-md border border-it-blue-100 dark:border-it-blue-500/20">
             <Icon name="verified" className="text-it-blue-500 text-xl mt-0.5" />
             <p className="text-w-caption text-it-ink-600 dark:text-blue-200/80 leading-relaxed">
@@ -493,17 +497,21 @@ export default function ShopCheckoutPage() {
         <div className="h-10 bg-it-canvas dark:bg-puck" />
       </div>
 
-      {/* Fixed Bottom CTA */}
+      {/* Fixed Bottom CTA
+          [2026-07-30 · 전자상거래법 리스크 차단]
+          기존 '결제하기' 버튼은 onClick 핸들러가 없어 누르면 아무 일도 일어나지 않았다.
+          주문 생성(`POST /shop/orders`)은 PG 를 호출하지 않고 `ShopOrder` 에 `Payment`
+          relation 도 없어 결제 자체가 성립하지 않는다(전상법 §13② · §6 5년 보존 이행 불가).
+          쇼핑몰 미오픈 중이므로 결제 CTA 를 비활성화 + 준비 중 안내로 대체한다.
+          실제 PG 연동은 오픈 차단 조건 — docs/Planning/SHOP_LAUNCH_CHECKLIST.md (A-1). */}
       <div className="fixed bottom-0 fixed-center-x bg-it-surface dark:bg-rink-900 border-t border-it-line dark:border-white/10 p-4 pb-8 z-50">
         <button
           type="button"
-          disabled={orderItems.length === 0}
-          className="w-full bg-it-blue-500 hover:bg-it-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xl font-bold py-5 rounded-w-md transition-all motion-reduce:transition-none active:brightness-95 flex items-center justify-center gap-2"
+          disabled
+          aria-disabled="true"
+          className="w-full bg-it-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-w-body-lg font-bold py-5 rounded-w-md flex items-center justify-center gap-2"
         >
-          <span>
-            {total > 0 ? `${total.toLocaleString()}원 결제하기` : "결제하기"}
-          </span>
-          <Icon name="arrow_forward" className="text-xl" />
+          <span>{MESSAGES.common.featureComingSoon("쇼핑몰 결제")}</span>
         </button>
       </div>
       <GlobalMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />

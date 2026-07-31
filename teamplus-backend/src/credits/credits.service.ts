@@ -6,7 +6,10 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
 import { isAdminRole } from "@/auth/constants/chldiv.constants";
-import { CreditDomainService } from "./credit-domain.service";
+import {
+  CreditDomainService,
+  resolveCreditExpiry,
+} from "./credit-domain.service";
 import { AdjustCreditDto } from "./dto/adjust-credit.dto";
 
 /**
@@ -39,7 +42,7 @@ export class CreditsService {
   /**
    * 수업권 발급 (결제 완료 또는 관리자 수동 충전).
    * 2026-04-27 (N-9): User × Class 단위로 발급. ClubMember 결합 제거.
-   * 2026-05-19 (N주 패키지 정합): expiresAt = 결제일 + durationDays.
+   * 2026-07-30 (유효기간 SoT 통일): expiresAt 은 resolveCreditExpiry 가 산정한다.
    *   - durationDays 미지정 시 28일(4주) 폴백.
    *   - ClassProduct.durationDays 가 패키지 N주 × 7일을 의미 (예: 8주 패키지 → 56).
    */
@@ -134,12 +137,10 @@ export class CreditsService {
       throw new NotFoundException("수업을 찾을 수 없습니다.");
     }
 
-    // 만료일 계산: 결제일 + durationDays (N주 패키지 유효 기간).
-    // 예) 8주 패키지(durationDays=56) 5/1 결제 → 6/26 만료
-    //     4주 패키지(durationDays=28) 5/1 결제 → 5/29 만료
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + durationDays);
-    expiresAt.setHours(23, 59, 59, 999);
+    // 만료일 계산 — 결제 승인 경로와 동일한 SoT(resolveCreditExpiry)를 사용한다.
+    //   기존엔 이 경로만 durationDays 만큼(추가 사용 유예 없이) 산정해 같은 상품이라도
+    //   발급 경로에 따라 유효기간이 달라졌다.
+    const { startsAt, expiresAt } = resolveCreditExpiry({ durationDays });
 
     // PR-B (v0.5): CreditDomainService.issueFromPayment 위임
     const result = await this.prisma.$transaction(async (tx) => {
@@ -148,6 +149,7 @@ export class CreditsService {
         userId,
         classId,
         sessions: totalSessions,
+        startsAt,
         expiresAt,
         sourceLabel: "수업권 발급",
       });
@@ -229,7 +231,9 @@ export class CreditsService {
       }
     }
 
-    throw new ForbiddenException("해당 회원의 크레딧을 조회할 권한이 없습니다.");
+    throw new ForbiddenException(
+      "해당 회원의 크레딧을 조회할 권한이 없습니다.",
+    );
   }
 
   /**
@@ -601,7 +605,10 @@ export class CreditsService {
       (sum, c) => sum + c.totalSessions,
       0,
     );
-    const totalUsed = sessionCredits.reduce((sum, c) => sum + c.usedSessions, 0);
+    const totalUsed = sessionCredits.reduce(
+      (sum, c) => sum + c.usedSessions,
+      0,
+    );
     const totalRemaining = totalIssued - totalUsed;
     const availableRemaining = availableSessionCredits.reduce(
       (sum, c) => sum + (c.totalSessions - c.usedSessions),

@@ -773,22 +773,65 @@ export class IdentityService {
     );
   }
 
+  /* ============================================================
+   * CI/DI 암호화 — [2026-07-30 SECURITY] AES-256-CBC → AES-256-GCM 전환
+   *
+   * 문제 1: CBC 는 무결성 검증이 없어(AEAD 아님) 저장된 암호문이 변조돼도 탐지 불가.
+   *         비트 플리핑으로 복호 평문을 조작할 수 있어 고유식별정보 보관에 부적합.
+   * 문제 2: 키를 `padEnd(32,"0").slice(0,32)` 로 만들어, dev 폴백값(31바이트)이 0 으로
+   *         패딩돼 실질 엔트로피가 키 길이보다 짧았다. → HKDF-SHA256 로 유도한다.
+   *
+   * 하위 호환(필수): 이미 저장된 CI/DI 는 CBC 암호문이며 폴백을 끊으면 운영 데이터를
+   *   영구히 읽을 수 없다. 저장 포맷에 알고리즘 마커를 넣어 분기한다.
+   *     - 신규(GCM):   `v2:<ivHex>:<authTagHex>:<cipherHex>`   (4 파트)
+   *     - 레거시(CBC): `<ivHex>:<cipherHex>`                    (2 파트, 마커 없음)
+   *   파트 수와 접두사로 구분되므로 판별이 모호하지 않다.
+   *
+   * ⚠️ generateCiHash(HMAC-SHA256) 는 절대 변경하지 않는다 — DB 의 ciHash 인덱스 값과
+   *   1:1 이어야 중복가입 차단이 계속 동작한다.
+   * ============================================================ */
+
+  /** 신규 GCM 암호문 접두사 — 레거시 CBC(마커 없음)와 구분하는 버전 마커. */
+  private static readonly ENC_V2_PREFIX = "v2";
+
   /**
-   * 데이터 암호화 (AES-256-CBC)
+   * GCM 용 32바이트 키 유도 (HKDF-SHA256).
+   * padEnd 패딩과 달리 입력 키 길이와 무관하게 균일한 32바이트 키를 만든다.
+   * salt/info 를 고정 문자열로 두어 동일 encryptionKey → 항상 동일 키(복호화 재현성).
    */
-  private encryptData(data: string): string {
-    const key = Buffer.from(
+  private deriveGcmKey(): Buffer {
+    return Buffer.from(
+      crypto.hkdfSync(
+        "sha256",
+        this.config.security.encryptionKey,
+        "teamplus-identity-ci-di", // salt
+        "aes-256-gcm-field", // info (용도 분리)
+        32,
+      ),
+    );
+  }
+
+  /** 레거시 CBC 키 — 복호화 전용(신규 암호화에는 쓰지 않음). */
+  private legacyCbcKey(): Buffer {
+    return Buffer.from(
       this.config.security.encryptionKey.padEnd(32, "0").slice(0, 32),
     );
-    const iv = crypto.randomBytes(16);
+  }
+
+  /**
+   * 데이터 암호화 (AES-256-GCM, AEAD)
+   */
+  private encryptData(data: string): string {
+    const iv = crypto.randomBytes(12); // GCM 권장 96bit nonce
     const cipher = crypto.createCipheriv(
-      this.config.security.encryptionAlgorithm,
-      key,
+      "aes-256-gcm",
+      this.deriveGcmKey(),
       iv,
     );
     let encrypted = cipher.update(data, "utf8", "hex");
     encrypted += cipher.final("hex");
-    return iv.toString("hex") + ":" + encrypted;
+    const authTag = cipher.getAuthTag().toString("hex");
+    return `${IdentityService.ENC_V2_PREFIX}:${iv.toString("hex")}:${authTag}:${encrypted}`;
   }
 
   /**
@@ -810,24 +853,46 @@ export class IdentityService {
 
   /**
    * [2026-06-10] encryptData 로 저장된 CI/DI 복호화 (백필 스크립트 전용).
-   *   포맷: `${ivHex}:${cipherHex}` (AES-256-CBC, encryptData 와 대칭).
+   *
+   * [2026-07-30] GCM 전환에 따라 두 포맷을 모두 지원한다. 레거시 CBC 경로를 남기지 않으면
+   *   전환 이전에 저장된 운영 CI/DI 를 복호화할 수 없다(재발급 불가 → 영구 손실).
+   *     - `v2:<ivHex>:<authTagHex>:<cipherHex>` → AES-256-GCM + HKDF 키
+   *     - `<ivHex>:<cipherHex>`                → AES-256-CBC + padEnd 키 (레거시, 읽기 전용)
    */
   decryptData(encrypted: string): string {
-    const key = Buffer.from(
-      this.config.security.encryptionKey.padEnd(32, "0").slice(0, 32),
-    );
-    const [ivHex, cipherHex] = encrypted.split(":");
-    if (!ivHex || !cipherHex) {
-      throw new Error("암호문 형식이 올바르지 않습니다.");
+    const parts = encrypted.split(":");
+
+    // 신규 포맷 (GCM) — auth tag 검증까지 수행하므로 변조 시 throw 된다.
+    if (parts.length === 4 && parts[0] === IdentityService.ENC_V2_PREFIX) {
+      const [, ivHex, authTagHex, cipherHex] = parts;
+      const decipher = crypto.createDecipheriv(
+        "aes-256-gcm",
+        this.deriveGcmKey(),
+        Buffer.from(ivHex, "hex"),
+      );
+      decipher.setAuthTag(Buffer.from(authTagHex, "hex"));
+      let decrypted = decipher.update(cipherHex, "hex", "utf8");
+      decrypted += decipher.final("utf8");
+      return decrypted;
     }
-    const decipher = crypto.createDecipheriv(
-      this.config.security.encryptionAlgorithm,
-      key,
-      Buffer.from(ivHex, "hex"),
-    );
-    let decrypted = decipher.update(cipherHex, "hex", "utf8");
-    decrypted += decipher.final("utf8");
-    return decrypted;
+
+    // 레거시 포맷 (CBC) — 전환 이전 저장분 호환.
+    if (parts.length === 2) {
+      const [ivHex, cipherHex] = parts;
+      if (!ivHex || !cipherHex) {
+        throw new Error("암호문 형식이 올바르지 않습니다.");
+      }
+      const decipher = crypto.createDecipheriv(
+        "aes-256-cbc",
+        this.legacyCbcKey(),
+        Buffer.from(ivHex, "hex"),
+      );
+      let decrypted = decipher.update(cipherHex, "hex", "utf8");
+      decrypted += decipher.final("utf8");
+      return decrypted;
+    }
+
+    throw new Error("암호문 형식이 올바르지 않습니다.");
   }
 
   /**

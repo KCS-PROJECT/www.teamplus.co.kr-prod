@@ -47,7 +47,7 @@ export default function TermsManagementPage() {
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [newTerm, setNewTerm] = useState({
-    type: 'service' as string,
+    type: 'terms_of_service' as string,
     title: '',
     content: '',
   });
@@ -92,17 +92,35 @@ export default function TermsManagementPage() {
     }
   };
 
+  /**
+   * 약관 type 정규화 (2026-07-30)
+   *
+   * 어드민이 저장하던 축약형(`service`/`privacy`/`child`)과 앱·웹 조회측이 사용하는
+   * 표준형(`terms_of_service`/`privacy_policy`/`child_privacy`)이 달라, 어드민에서
+   * 등록한 본문이 사용자 화면의 표준 type 슬롯에 매칭되지 않는 문제가 있었다.
+   * → 신규 등록은 아래 표준형으로만 저장하고, 이미 저장된 레거시 축약형 레코드는
+   *   `normalizeTermType()` 로 표준형에 매핑해 동일하게 표시한다.
+   * (사용자 웹 `/terms` 는 조회측에서도 동일한 alias 를 인식한다 —
+   *  teamplus-web/src/lib/legal/policy-content.ts `normalizePolicyType`)
+   *
+   * 위치정보(`location`)는 서비스가 위치정보를 수집하지 않으므로 선택지에서 제외했다.
+   */
+  const LEGACY_TYPE_ALIASES: Record<string, string> = {
+    service: 'terms_of_service',
+    privacy: 'privacy_policy',
+    child: 'child_privacy',
+  };
+  const normalizeTermType = (type: string) => LEGACY_TYPE_ALIASES[type] ?? type;
+
   const getTypeIcon = (type: string) => {
-    switch (type) {
-      case 'service':
+    switch (normalizeTermType(type)) {
+      case 'terms_of_service':
         return <FileText className="w-5 h-5 text-primary" />;
-      case 'privacy':
+      case 'privacy_policy':
         return <FileText className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />;
-      case 'location':
-        return <FileText className="w-5 h-5 text-amber-600 dark:text-amber-400" />;
       case 'marketing':
         return <FileText className="w-5 h-5 text-purple-600 dark:text-purple-400" />;
-      case 'child':
+      case 'child_privacy':
         return <FileText className="w-5 h-5 text-red-600 dark:text-red-400" />;
       case 'refund':
         return <FileText className="w-5 h-5 text-sky-600 dark:text-sky-400" />;
@@ -114,12 +132,11 @@ export default function TermsManagementPage() {
   };
 
   const getTypeBgColor = (type: string) => {
-    switch (type) {
-      case 'service': return 'bg-primary/10';
-      case 'privacy': return 'bg-emerald-100 dark:bg-emerald-900/30';
-      case 'location': return 'bg-amber-100 dark:bg-amber-900/30';
+    switch (normalizeTermType(type)) {
+      case 'terms_of_service': return 'bg-primary/10';
+      case 'privacy_policy': return 'bg-emerald-100 dark:bg-emerald-900/30';
       case 'marketing': return 'bg-purple-100 dark:bg-purple-900/30';
-      case 'child': return 'bg-red-100 dark:bg-red-900/30';
+      case 'child_privacy': return 'bg-red-100 dark:bg-red-900/30';
       case 'refund': return 'bg-sky-100 dark:bg-sky-900/30';
       case 'community_guideline': return 'bg-teal-100 dark:bg-teal-900/30';
       default: return 'bg-slate-100 dark:bg-slate-700';
@@ -127,11 +144,10 @@ export default function TermsManagementPage() {
   };
 
   const termTypeOptions = [
-    { value: 'service', label: '서비스 이용약관', color: 'text-primary' },
-    { value: 'privacy', label: '개인정보 처리방침', color: 'text-emerald-600 dark:text-emerald-400' },
-    { value: 'location', label: '위치정보 이용약관', color: 'text-amber-600 dark:text-amber-400' },
+    { value: 'terms_of_service', label: '서비스 이용약관', color: 'text-primary' },
+    { value: 'privacy_policy', label: '개인정보 처리방침', color: 'text-emerald-600 dark:text-emerald-400' },
     { value: 'marketing', label: '마케팅 정보 수신 동의', color: 'text-purple-600 dark:text-purple-400' },
-    { value: 'child', label: '아동 개인정보 수집 동의', color: 'text-red-600 dark:text-red-400' },
+    { value: 'child_privacy', label: '자녀(만 14세 미만) 개인정보 처리방침', color: 'text-red-600 dark:text-red-400' },
     { value: 'refund', label: '환불 규정', color: 'text-sky-600 dark:text-sky-400' },
     { value: 'community_guideline', label: '커뮤니티 운영 규칙', color: 'text-teal-600 dark:text-teal-400' },
   ];
@@ -155,7 +171,7 @@ export default function TermsManagementPage() {
       setActionMsg({ type: 'error', text: MESSAGES.terms.createError });
       setTimeout(() => setActionMsg(null), 3000);
     }
-    setNewTerm({ type: 'service', title: '', content: '' });
+    setNewTerm({ type: 'terms_of_service', title: '', content: '' });
     setShowAddModal(false);
   };
 
@@ -392,8 +408,8 @@ export default function TermsManagementPage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
               <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 ${getTypeBgColor(selectedTerm?.type || 'service')} rounded-lg flex items-center justify-center`}>
-                  {getTypeIcon(selectedTerm?.type || 'service')}
+                <div className={`w-10 h-10 ${getTypeBgColor(selectedTerm?.type || 'terms_of_service')} rounded-lg flex items-center justify-center`}>
+                  {getTypeIcon(selectedTerm?.type || 'terms_of_service')}
                 </div>
                 <div>
                   <p className="font-semibold text-slate-900 dark:text-white">{selectedTerm?.title}</p>

@@ -97,10 +97,30 @@ function isRefreshTokenFresh(token: string | undefined): boolean {
   }
 }
 
+/**
+ * 실운영 호스트 판정 — CSP 에서 dev/LAN HTTP origin 을 제외할지 결정한다.
+ *
+ * [2026-07-30] 기존에는 `NEXT_PUBLIC_ENVIRONMENT === "production"` 만 봤는데,
+ * 운영 배포에 그 변수가 주입되지 않아 **실서비스 CSP 에 dev origin(HTTP localhost·
+ * 211.236.x)이 그대로 실려 있었다**(실측 확인). XSS 가 발생하면 그 origin 으로
+ * 데이터를 실어 보낼 수 있어 공격면이 넓어진다.
+ *
+ * 환경변수 주입을 놓쳐도 안전하도록 요청 호스트로도 판정한다(fail-safe).
+ */
+function isRealProductionHost(host: string | null): boolean {
+  if (process.env.NEXT_PUBLIC_ENVIRONMENT === "production") return true;
+  if (!host) return false;
+  const h = host.split(":")[0].toLowerCase();
+  // 운영 도메인(icetimes.co.kr·teamplus.com 계열)이면 실운영으로 본다.
+  //   스테이징은 IP(211.236.x) 로 접근하므로 여기에 걸리지 않아 기존 호환이 유지된다.
+  return h.endsWith(".icetimes.co.kr") || h.endsWith(".teamplus.com");
+}
+
 /** 응답에 표준 보안 헤더(+production CSP, 보호경로 캐시 차단)를 적용한다. */
 function withSecurityHeaders(
   response: NextResponse,
   pathname?: string,
+  host?: string | null,
 ): NextResponse {
   response.headers.set("X-Frame-Options", "DENY");
   response.headers.set("X-Content-Type-Options", "nosniff");
@@ -120,10 +140,9 @@ function withSecurityHeaders(
       "http://211.236.174.90:5001", "http://211.236.174.90:5002", "http://211.236.174.90:5003", "http://211.236.174.90:5010",
       "http://211.236.174.115:5001", "http://211.236.174.115:5002", "http://211.236.174.115:5003", "http://211.236.174.115:5010",
     ];
-    const devConnect =
-      process.env.NEXT_PUBLIC_ENVIRONMENT === "production"
-        ? ""
-        : ` ${DEV_CONNECT_ORIGINS.join(" ")}`;
+    const devConnect = isRealProductionHost(host ?? null)
+      ? ""
+      : ` ${DEV_CONNECT_ORIGINS.join(" ")}`;
     // staging(211.236.x HTTP 배포)에서 백엔드 정적 이미지(/uploads/*)가 HTTP origin 으로
     //   로드되므로 img-src 에도 dev origin 보강. 실운영(https)은 제외해 공격면 불변.
     const devImg = devConnect;
@@ -241,7 +260,7 @@ export function middleware(request: NextRequest) {
       //   RBAC(isAuthorized) 는 access 가 없어 판정 불가하므로 일시 통과시키고,
       //   갱신된 access 로 다음 요청/렌더에서 검증된다(admin 미들웨어와 동일 정책).
       if (canDeferToClientRefresh) {
-        return withSecurityHeaders(NextResponse.next(), pathname);
+        return withSecurityHeaders(NextResponse.next(), pathname, request.headers.get("host"));
       }
       const loginUrl = new URL("/login", request.url);
       // 쿼리스트링 포함 보존 — 토스 successUrl(/payment/complete?paymentKey=...) 등
@@ -278,7 +297,7 @@ export function middleware(request: NextRequest) {
   }
 
   // 3. 보안 헤더 + 보호경로 캐시 차단 (헬퍼 — defer-to-refresh 통과 경로와 공유)
-  return withSecurityHeaders(NextResponse.next(), pathname);
+  return withSecurityHeaders(NextResponse.next(), pathname, request.headers.get("host"));
 }
 
 export const config = {

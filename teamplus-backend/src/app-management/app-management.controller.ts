@@ -383,14 +383,18 @@ export class AppManagementController {
    * 앱 cold start 시 호출되는 최신 버전 통합 정보.
    * `AppVersionService.fetchLatestVersionInfo()` (teamplus-app) 의 호출 대상.
    * 미로그인 상태(앱 최초 진입)에서도 호출되므로 @Public() 처리.
+   *
+   * `platform` 지정 시 해당 플랫폼 행의 값으로 판정 기준(latest/minimum/force)을
+   * 내려준다. 미지정(구버전 앱)은 기존 iOS 우선 병합 동작 유지.
    */
   @Get("versions/latest")
   @Public()
-  @ApiOperation({ summary: "최신 앱 버전 정보 (platform 지정 시 해당 플랫폼 기준)" })
+  @ApiOperation({ summary: "최신 앱 버전 정보 (플랫폼별 판정 기준)" })
   @ApiQuery({
     name: "platform",
     required: false,
-    description: "ios | android — 미지정 시 iOS 우선 통합 응답 (구버전 앱 호환)",
+    enum: ["ios", "android"],
+    description: "요청 단말 플랫폼 — 지정 시 해당 플랫폼 행 기준으로 판정값 응답",
   })
   getLatestVersion(@Query("platform") platform?: string) {
     return this.service.getLatestVersion(platform);

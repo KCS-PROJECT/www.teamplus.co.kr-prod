@@ -1926,6 +1926,7 @@ export class TournamentsService {
     tournamentId: string,
     userId: string,
     dto: RegisterTournamentDto,
+    requesterUserType?: string,
   ) {
     const tournament = await this.prisma.tournament.findUnique({
       where: { id: tournamentId },
@@ -2095,6 +2096,20 @@ export class TournamentsService {
       : Number(calculatedFee) <= 0
         ? "PAID"
         : "PENDING";
+
+    // 미성년자(TEEN/CHILD)가 참가비 채무를 단독으로 발생시키는 것을 차단한다.
+    //  법정대리인 동의 없는 미성년자의 법률행위는 취소 대상이므로(민법 §5·§141),
+    //  취소 시 사업자가 손실을 부담한다. 무료 대회(즉시 PAID)는 채무가 없어 허용한다.
+    //  후불(POSTPAID)은 신청 시점에 금액이 미확정이지만 종료 후 청구되므로 차단 대상이다.
+    const incursDebt = isPostpaid || Number(calculatedFee) > 0;
+    if (
+      incursDebt &&
+      (requesterUserType === "TEEN" || requesterUserType === "CHILD")
+    ) {
+      throw new ForbiddenException(
+        "참가비가 발생하는 대회는 보호자(학부모) 계정으로 신청해주세요.",
+      );
+    }
 
     // [후불] 일정 수와 무관한 단일 금액 청구이므로 gamesCount=1 고정(설계 §2.2).
     //   PREPAID 는 기존대로 신청 경기 수(dto.gamesCount)를 그대로 저장한다.

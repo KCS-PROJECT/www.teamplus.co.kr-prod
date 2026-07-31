@@ -13,6 +13,28 @@ import {
 } from "./dto/alimtalk.dto";
 import { SmsService } from "@/sms/sms.service";
 import { PrismaService } from "@/prisma/prisma.service";
+import {
+  AD_LABEL,
+  MARKETING_ALIMTALK_CATEGORIES,
+  MARKETING_ALIMTALK_CODE_PREFIXES,
+  hasAdLabel,
+  isNightTimeKST,
+} from "@/common/utils/advertising.util";
+
+/**
+ * 야간(KST 21:00~08:00) 광고성 알림톡 차단 에러.
+ *
+ * 발송 실패가 아니라 '법적으로 보내면 안 되는 상태'이므로 재시도 대상이 아니다.
+ * AlimtalkProcessor 가 이 에러를 잡아 재시도 없이 blocked 로 종결한다.
+ */
+export class AlimtalkNightAdBlockedError extends Error {
+  constructor(templateCode: string) {
+    super(
+      `야간 시간대(21:00~08:00)에는 광고성 알림톡을 발송할 수 없습니다. (정보통신망법 제50조, template=${templateCode})`,
+    );
+    this.name = "AlimtalkNightAdBlockedError";
+  }
+}
 
 /**
  * 카카오 비즈니스 Alimtalk 게이트웨이
@@ -24,6 +46,7 @@ import { PrismaService } from "@/prisma/prisma.service";
  * - 발송 상태 조회
  * - 템플릿 유효성 검증
  * - SMS 폴백 처리
+ * - 광고성 템플릿 야간 발송 차단 (정보통신망법 §50③)
  *
  * 보안 요구사항:
  * - API 키는 환경변수로 관리
@@ -111,6 +134,26 @@ export class AlimtalkGateway {
     this.logger.log(
       `알림톡 발송 시작: ${maskedPhone} (템플릿: ${dto.templateCode})`,
     );
+
+    // ── 광고성 알림톡 법적 게이트 (정보통신망법 §50) ──
+    // 푸시·SMS 3경로에만 있던 야간 게이트가 알림톡에는 없어 우회 경로였다.
+    const isAdvertising = await this.isAdvertisingTemplate(dto.templateCode);
+    if (isAdvertising) {
+      if (isNightTimeKST()) {
+        this.logger.warn(
+          `야간 광고성 알림톡 발송 차단: ${maskedPhone} (템플릿: ${dto.templateCode})`,
+        );
+        throw new AlimtalkNightAdBlockedError(dto.templateCode);
+      }
+      // 알림톡 본문은 카카오 사전승인 템플릿이라 코드에서 임의 가공하면 발송이
+      // 거부된다 — '(광고)' 표기·수신거부 문구는 템플릿 등록 단계에서 포함해야 한다.
+      // 누락은 차단하지 않고 경고만 남긴다(운영 중단 방지 + 운영자 시정 유도).
+      if (!hasAdLabel(this.getTemplateContent(dto.templateCode))) {
+        this.logger.warn(
+          `광고성 알림톡 템플릿에 '${AD_LABEL}' 표기가 없습니다 — 카카오 템플릿 본문을 수정하세요 (템플릿: ${dto.templateCode})`,
+        );
+      }
+    }
 
     let lastError: Error | null = null;
 
@@ -294,6 +337,43 @@ export class AlimtalkGateway {
   }
 
   /**
+   * 광고성 템플릿 판정 (정보성 알림톡에 규제를 오적용하지 않기 위한 게이트).
+   *
+   * 1순위: AlimtalkTemplate.category — 운영자가 어드민에서 지정하는 값.
+   *   광고성으로 취급하는 값은 advertising.util 의 MARKETING_ALIMTALK_CATEGORIES.
+   * 2순위: templateCode 접두어(MARKETING_/PROMO_/AD_/EVENT_) — category 미지정 템플릿 보조 판정.
+   *
+   * PrismaService 미주입(테스트) 시에는 접두어만으로 판정한다.
+   */
+  private async isAdvertisingTemplate(templateCode: string): Promise<boolean> {
+    const code = (templateCode ?? "").toUpperCase();
+    if (MARKETING_ALIMTALK_CODE_PREFIXES.some((p) => code.startsWith(p))) {
+      return true;
+    }
+
+    if (!this.prisma) return false;
+
+    try {
+      const row = await this.prisma.alimtalkTemplate.findUnique({
+        where: { templateCode },
+        select: { category: true },
+      });
+      const category = row?.category?.toLowerCase() ?? null;
+      if (!category) return false;
+      return (MARKETING_ALIMTALK_CATEGORIES as readonly string[]).includes(
+        category,
+      );
+    } catch (error) {
+      // 판정 실패 시 정보성으로 간주한다 — 결제/출석 등 정보성 알림톡이 DB 장애로
+      // 전면 중단되는 것이 더 큰 사고다. 광고성 발송은 어차피 관리자 수동 트리거다.
+      this.logger.warn(
+        `광고성 템플릿 판정 실패 (${templateCode}): ${error instanceof Error ? error.message : error}`,
+      );
+      return false;
+    }
+  }
+
+  /**
    * 템플릿 버튼 가져오기
    */
   private getTemplateButtons(_templateCode: string): any[] {
@@ -324,10 +404,14 @@ export class AlimtalkGateway {
         return;
       }
 
+      // SMS 폴백은 사전승인 템플릿 제약이 없으므로 광고성일 때 '(광고)' 표기·전송자
+      // 정보·수신거부 방법을 SmsService 가 삽입하도록 isMarketing 을 전달한다 (§50④).
+      const isAdvertising = await this.isAdvertisingTemplate(dto.templateCode);
       const message = this.renderTemplate(dto.templateCode, dto.templateData);
       const success = await this.smsService.sendNotificationSms(
         dto.phone,
         message,
+        isAdvertising,
       );
 
       if (success) {

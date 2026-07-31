@@ -20,6 +20,12 @@ import {
 } from "./fcm.service";
 import { PushPolicyService } from "./push-policy.service";
 import { buildPushData } from "./push-payload";
+import {
+  MARKETING_NOTIFICATION_TYPES,
+  decorateAdvertisingMessage,
+  isMarketingNotificationType,
+  isNightTimeKST,
+} from "@/common/utils/advertising.util";
 import { ConfigService } from "@nestjs/config";
 import { NotificationsGateway } from "@/websocket/notifications.gateway";
 
@@ -46,20 +52,10 @@ export interface CreateNotificationDto {
 }
 
 /**
- * 광고성/마케팅 알림 타입 목록
- *
- * 정보통신망법 제50조에 의거, 야간(KST 21:00~08:00) 광고성 메시지 발송 금지.
- * 아래 목록에 해당하는 notificationType만 야간 발송 제한 대상입니다.
- * 정보성 메시지(출석 알림, 결제 완료 등)는 제한 없이 발송됩니다.
+ * 광고성/마케팅 알림 타입 목록은 `@/common/utils/advertising.util` 이 단일 SoT다
+ * (푸시·SMS·알림톡 3경로 공용). 하위 호환을 위해 re-export 만 유지한다.
  */
-const MARKETING_NOTIFICATION_TYPES = [
-  "marketing",
-  "promotion",
-  "advertisement",
-  "event_promotion",
-  "academy_promotion",
-  "admin_push_marketing",
-] as const;
+export { MARKETING_NOTIFICATION_TYPES };
 
 export interface AlimtalkTemplateData {
   [key: string]: string;
@@ -99,27 +95,18 @@ export class NotificationsService {
   // ──────────────────────────────────────────────────────────────
 
   /**
-   * 현재 시각이 야간 시간대(KST 21:00~08:00)인지 판별
+   * 현재 시각이 야간 시간대(KST 21:00~08:00)인지 판별.
+   * 판정 로직은 advertising.util(푸시·SMS·알림톡 공용 SoT)에 위임한다.
    */
   private isNightTimeKST(): boolean {
-    const now = new Date();
-    // KST = UTC+9
-    const kstOffset = 9 * 60; // 분 단위
-    const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
-    const kstMinutes = (utcMinutes + kstOffset) % (24 * 60);
-    const kstHour = Math.floor(kstMinutes / 60);
-    // 21:00 ~ 23:59 또는 00:00 ~ 07:59
-    return kstHour >= 21 || kstHour < 8;
+    return isNightTimeKST();
   }
 
   /**
    * 주어진 알림 타입이 광고성(마케팅) 메시지인지 판별
    */
   private isMarketingNotification(notificationType: string): boolean {
-    const normalized = notificationType.toLowerCase();
-    return (MARKETING_NOTIFICATION_TYPES as readonly string[]).includes(
-      normalized,
-    );
+    return isMarketingNotificationType(notificationType);
   }
 
   /**
@@ -149,12 +136,20 @@ export class NotificationsService {
       );
     }
 
+    // 광고성이면 '(광고)' 표기 + 전송자 명칭·연락처 + 무료 수신거부 방법을 삽입한다 (§50④).
+    // 알림함에 남는 문구와 실제 발송(푸시·WebSocket) 문구를 동일하게 유지하려고 저장 전에 가공한다.
+    const decorated = this.isMarketingNotification(dto.notificationType)
+      ? decorateAdvertisingMessage(dto.title, dto.message)
+      : null;
+    const title = decorated?.title ?? dto.title;
+    const message = decorated?.body ?? dto.message;
+
     const notification = await this.prisma.notification.create({
       data: {
         userId: dto.userId,
         notificationType: dto.notificationType,
-        title: dto.title,
-        message: dto.message,
+        title,
+        message,
         linkUrl: dto.linkUrl ?? null,
         isRead: false,
       },
@@ -224,15 +219,17 @@ export class NotificationsService {
   }
 
   /**
-   * 푸시 정책(수신거부·카테고리·방해금지)을 통과한 FCM 발송 대상 반환.
+   * 푸시 정책(수신거부·마케팅 수신동의·카테고리·방해금지)을 통과한 FCM 발송 대상 반환.
    * 정책 로직은 PushPolicyService(단일 SoT)로 이관 — 여기는 위임 래퍼.
    */
   private async filterPushEnabled(
     userIds: string[],
     notificationType?: string,
+    isMarketing?: boolean,
   ): Promise<string[]> {
     const { allowed } = await this.pushPolicy.filterRecipients(userIds, {
       notificationType,
+      isMarketing,
     });
     return allowed;
   }
@@ -1166,7 +1163,9 @@ export class NotificationsService {
       // 허용 키만 화이트리스트 필터 (class/payment/notice/system/marketing)
       // marketing: 광고성 정보 수신 동의 토글 (iOS 4.5.4 · 정보통신망법 제50조).
       // categories JSON 컬럼에 그대로 저장/반환되므로 Prisma 스키마 변경 불요.
-      // ⚠️ 마케팅 성격 푸시 발송기 추가 시 발송 전 categories.marketing === false 사용자 제외 가드를 추가할 것.
+      // 이 토글은 PushPolicyService.filterRecipients 의 카테고리 필터가 실제로 존중한다
+      // (categoryOfNotificationType 이 marketing 계열 타입을 'marketing' 으로 매핑).
+      // 법정 사전동의(opt-in) 자체는 User.marketingConsent 가 1순위 기준이다.
       const allowed = ["class", "payment", "notice", "system", "marketing"];
       const filtered: Record<string, boolean> = {};
       for (const key of allowed) {
@@ -1725,6 +1724,16 @@ export class NotificationsService {
       );
     }
 
+    // 광고성이면 '(광고)' 표기 + 전송자 정보·수신거부 방법을 삽입한다 (§50④).
+    // 큐 잡·PushNotificationLog·AuditLog·알림함에 모두 '실제 발송 문구'가 남도록
+    // 분기 이전에 한 번만 가공한다(관리자가 입력한 원문은 AuditLog 이전 값에 없으므로
+    // 감사 시 가공 결과 = 발송 결과로 일치한다).
+    if (isMarketing) {
+      const decorated = decorateAdvertisingMessage(title, bodyText);
+      title = decorated.title;
+      bodyText = decorated.body;
+    }
+
     // 개인 타겟은 대상 userIds 필수
     if (targetType === "specific" && (!userIds || userIds.length === 0)) {
       throw new BadRequestException("개인 발송 대상(userIds)이 필요합니다.");
@@ -1821,12 +1830,14 @@ export class NotificationsService {
     // ── specific: 소량 개인 발송은 동기 처리 (관리자 즉시 피드백 유지) ──
     let recipientUserIds = Array.from(new Set((userIds ?? []).filter(Boolean)));
 
-    // 광고성 발송 시 수신거부(pushEnabled=false) 제외 (정보성/시스템 공지는 전체 발송 유지
-    // — 관리자 긴급 공지의 의도적 우회 경로, PUSH_NOTIFICATION_GUIDE §4 참조).
+    // 광고성 발송 시 수신거부(pushEnabled=false) + 마케팅 미동의(marketingConsent=false)
+    // 대상을 제외한다 (정보성/시스템 공지는 전체 발송 유지 — 관리자 긴급 공지의
+    // 의도적 우회 경로, PUSH_NOTIFICATION_GUIDE §4 참조).
     if (isMarketing && recipientUserIds.length > 0) {
       recipientUserIds = await this.filterPushEnabled(
         recipientUserIds,
         "admin_push_marketing",
+        true,
       );
     }
 
@@ -1999,6 +2010,7 @@ export class NotificationsService {
         recipientUserIds = await this.filterPushEnabled(
           recipientUserIds,
           "admin_push_marketing",
+          true,
         );
       }
       deviceWhere.userId = { in: recipientUserIds };
@@ -2009,6 +2021,9 @@ export class NotificationsService {
       deviceWhere.NOT = {
         user: { is: { notificationPreference: { is: { pushEnabled: false } } } },
       };
+      // 사전 수신동의(opt-in)가 없는 회원은 relation 필터로 원천 제외한다 (§50①).
+      // 전 회원 목록을 메모리로 올리지 않기 위해 filterRecipients 대신 DB 조건으로 처리.
+      deviceWhere.user = { is: { marketingConsent: true } };
     }
 
     const devices = await this.prisma.userDevice.findMany({

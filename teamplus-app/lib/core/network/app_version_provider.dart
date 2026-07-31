@@ -27,8 +27,7 @@ final versionCompareResultProvider =
     return null;
   }
 
-  final service = AppVersionService();
-  final result = service.compareVersions(
+  final result = AppVersionService.compareVersions(
     currentVersion: packageInfo.version,
     info: serverInfo,
   );

@@ -35,6 +35,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { useAuth } from '@/contexts/AuthContext';
 import { MESSAGES } from '@/lib/messages';
+import { env } from '@/lib/env';
 import { api } from '@/services/api-client';
 import { usePageReady } from '@/hooks/usePageReady';
 
@@ -181,9 +182,9 @@ function PaymentCheckoutContent() {
   };
 
   // 토스 위젯을 열지 않고 백엔드가 결제 완료 처리(mock). orderId 만 있으면 동작(위젯 isReady 무관).
-  // ⚠️ 오픈 전 임시 노출 — 정식 서비스 오픈 시 이 핸들러와 아래 "테스트 결제" 버튼을 제거해야 한다(0원 결제 경로).
+  // 개발 환경 전용 — 버튼 자체가 프로덕션에서 렌더되지 않고, 백엔드도 NODE_ENV=production 에서 403 으로 차단한다.
   const handleMockPayment = async () => {
-    if (!orderId || isPaying) return;
+    if (env.isProduction || !orderId || isPaying) return;
     setIsPaying(true);
     try {
       const res = await api.post('/payments/mock-confirm', { orderId });
@@ -306,14 +307,16 @@ function PaymentCheckoutContent() {
               `${amount.toLocaleString()}원 결제하기`
             )}
           </button>
-          <button
-            type="button"
-            onClick={handleMockPayment}
-            disabled={!orderId || isPaying}
-            className="w-full rounded-w-md border border-dashed border-it-line-strong dark:border-rink-600 bg-it-fill dark:bg-rink-800 text-it-ink-500 dark:text-rink-200 py-3 font-semibold text-card-body transition-colors motion-reduce:transition-none hover:bg-it-line dark:hover:bg-rink-700 active:brightness-95 disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {MESSAGES.payment2.mockPayButton}
-          </button>
+          {!env.isProduction && (
+            <button
+              type="button"
+              onClick={handleMockPayment}
+              disabled={!orderId || isPaying}
+              className="w-full rounded-w-md border border-dashed border-it-line-strong dark:border-rink-600 bg-it-fill dark:bg-rink-800 text-it-ink-500 dark:text-rink-200 py-3 font-semibold text-card-body transition-colors motion-reduce:transition-none hover:bg-it-line dark:hover:bg-rink-700 active:brightness-95 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {MESSAGES.payment2.mockPayButton}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => back()}

@@ -22,6 +22,7 @@ import { extractClientIp } from "../utils/extract-client-ip.util";
 import { LoggerService } from "../../logger/logger.service";
 import { truncateForLog } from "../utils/truncate-for-log.util";
 import { TransactionLogService } from "../../transaction-log/transaction-log.service";
+import { toPathname } from "../../transaction-log/transaction-log.util";
 import { SystemLogService } from "../../logger/system-log.service";
 
 /**
@@ -131,6 +132,12 @@ export class ApiLifecycleInterceptor implements NestInterceptor {
       }),
       finalize(() => {
         const durationMs = Date.now() - ctx.startAt;
+        // [2026-07-30 SECURITY] 파일 로그·Sentry·시스템로그에 기록하는 URL 은 반드시
+        //   쿼리스트링을 제거한 pathname 만 쓴다. 공개 엔드포인트가 `?phone=010…`,
+        //   `?email=…`, `?ci=<연계정보>` 를 쿼리로 받아 평문이 그대로 로그 파일에 적재됐다.
+        //   쿼리값이 필요한 디버깅은 `query` 필드(LoggerService.sanitize 로 PII 마스킹)를 본다.
+        //   거래로그(DB)는 TransactionLogService 내부에서 이미 toPathname 을 적용한다.
+        const logPath = toPathname(req.url ?? "");
         try {
           if (!res.headersSent) {
             res.setHeader("X-Response-Time", `${durationMs}ms`);
@@ -143,7 +150,7 @@ export class ApiLifecycleInterceptor implements NestInterceptor {
         // 1000ms 초과 시 WARN 로그 (자동 알림 파이프라인 트리거 지점)
         if (durationMs > this.SLA_THRESHOLD_MS) {
           this.logger.warn(
-            `[SLA_BREACH] ${req.method} ${req.url} took ${durationMs}ms ` +
+            `[SLA_BREACH] ${req.method} ${logPath} took ${durationMs}ms ` +
               `(>${this.SLA_THRESHOLD_MS}ms) ` +
               `requestId=${ctx.requestId} ` +
               `userId=${req.user?.id ?? "-"} ` +
@@ -152,8 +159,8 @@ export class ApiLifecycleInterceptor implements NestInterceptor {
           );
           // 성능 경고(SLA 초과)를 시스템로그(DB)에 기록
           this.systemLog.perf(
-            `${req.method} ${req.url} ${durationMs}ms (>${this.SLA_THRESHOLD_MS}ms)`,
-            `${req.method} ${req.url}`,
+            `${req.method} ${logPath} ${durationMs}ms (>${this.SLA_THRESHOLD_MS}ms)`,
+            `${req.method} ${logPath}`,
             durationMs,
             {
               requestId: ctx.requestId,
@@ -171,11 +178,11 @@ export class ApiLifecycleInterceptor implements NestInterceptor {
               if (ctx.clientIp) scope.setTag("clientIp", ctx.clientIp);
               scope.setExtra("requestId", ctx.requestId);
               scope.setExtra("durationMs", durationMs);
-              scope.setExtra("url", req.url);
+              scope.setExtra("url", logPath);
               scope.setExtra("clientIp", ctx.clientIp ?? null);
               if (req.user?.id) scope.setUser({ id: req.user.id });
               Sentry.captureMessage(
-                `[SLA_VIOLATION] ${req.method} ${req.url} took ${durationMs}ms`,
+                `[SLA_VIOLATION] ${req.method} ${logPath} took ${durationMs}ms`,
                 durationMs > 3000 ? "error" : "warning",
               );
             });
@@ -238,7 +245,7 @@ export class ApiLifecycleInterceptor implements NestInterceptor {
             userRole: userRoleForLog,
             userEmail: userEmailForLog,
             method: req.method,
-            url: req.url,
+            url: logPath,
             status: statusCode,
             durationMs,
             platform: ctx.platform,
@@ -250,7 +257,7 @@ export class ApiLifecycleInterceptor implements NestInterceptor {
           };
           this.appLogger.access(
             level,
-            `${req.method} ${req.url} ${statusCode} ${durationMs}ms`,
+            `${req.method} ${logPath} ${statusCode} ${durationMs}ms`,
             accessCtx,
           );
 
@@ -258,7 +265,7 @@ export class ApiLifecycleInterceptor implements NestInterceptor {
           if (statusCode >= 500) {
             this.appLogger.errorAs(
               "server",
-              `[5XX] ${req.method} ${req.url} ${statusCode} in ${durationMs}ms`,
+              `[5XX] ${req.method} ${logPath} ${statusCode} in ${durationMs}ms`,
               outputError instanceof Error ? outputError : undefined,
               accessCtx,
             );
@@ -277,7 +284,7 @@ export class ApiLifecycleInterceptor implements NestInterceptor {
             // 4xx 클라이언트 오류 — client.log + _all.jsonl 기록 + 헤더 안내 (사용자 요구 v8.6)
             this.appLogger.errorAs(
               "client",
-              `[4XX] ${req.method} ${req.url} ${statusCode} in ${durationMs}ms`,
+              `[4XX] ${req.method} ${logPath} ${statusCode} in ${durationMs}ms`,
               outputError instanceof Error ? outputError : undefined,
               accessCtx,
             );
@@ -307,13 +314,13 @@ export class ApiLifecycleInterceptor implements NestInterceptor {
           //   2) viewId 는 body 직전(메타데이터 마지막)으로 이동 — 검색 편의 + 가독성 모두 확보.
           //   3) userId/userRole 은 "누가 호출했는지" 1차 식별값 — requestId 다음 최상단 고정.
           //      비인증/Public 라우트는 "anonymous" 로 표기 (omit 방지).
-          this.appLogger.input("info", `IN  ${req.method} ${req.url}`, {
+          this.appLogger.input("info", `IN  ${req.method} ${logPath}`, {
             requestId: ctx.requestId,
             userId: userIdForLog,
             userRole: userRoleForLog,
             userEmail: userEmailForLog,
             method: req.method,
-            url: req.url,
+            url: logPath,
             // GET 등 빈 객체여도 명시적으로 노출 (`query: {}` 가 보여야 디버거가 안심)
             query: req.query ?? {},
             params: (req as Request & { params?: unknown }).params ?? {},
@@ -361,14 +368,14 @@ export class ApiLifecycleInterceptor implements NestInterceptor {
           //   userId/userRole 도 IN 과 동일 정책 — "anonymous" 폴백으로 누가 호출했는지 항상 노출.
           this.appLogger.output(
             outputError ? "error" : statusCode >= 400 ? "warn" : "info",
-            `OUT ${req.method} ${req.url} ${statusCode} ${bodySize}bytes${bodyTruncated ? "(truncated)" : ""}`,
+            `OUT ${req.method} ${logPath} ${statusCode} ${bodySize}bytes${bodyTruncated ? "(truncated)" : ""}`,
             {
               requestId: ctx.requestId,
               userId: userIdForLog,
               userRole: userRoleForLog,
               userEmail: userEmailForLog,
               method: req.method,
-              url: req.url,
+              url: logPath,
               status: statusCode,
               durationMs,
               // v8.7 — IN 과 짝 맞춰 OUT 로그에도 viewId 노출
@@ -423,7 +430,8 @@ export class ApiLifecycleInterceptor implements NestInterceptor {
               ip: ctx.clientIp,
               // 인증 JWT 우선, 없으면 세션헤더(로깅 전용). 둘 다 없으면 undefined(NULL).
               userId: userId ?? headerSessionUserId ?? undefined,
-              userRole: req.user?.userType ?? headerSessionUserRole ?? undefined,
+              userRole:
+                req.user?.userType ?? headerSessionUserRole ?? undefined,
               userEmail: headerSessionUserEmail ?? undefined,
               env: process.env.NODE_ENV ?? "development",
             });

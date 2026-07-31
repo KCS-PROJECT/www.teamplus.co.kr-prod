@@ -17,13 +17,24 @@ const GlobalMenu = dynamic(
   { ssr: false },
 );
 
+/**
+ * 주문 표시 상태 — 백엔드 `ShopOrder.orderStatus` 실제 값과 1:1 대응한다.
+ *
+ * [2026-07-30 수정] 기존 `confirmed`/`shipping`/`returned` 는 백엔드에 없는 죽은 값이었고
+ * (`schema.prisma:1402` = pending|paid|preparing|shipped|delivered|cancelled|refunded),
+ * 실제 값 `paid`/`preparing`/`shipped`/`refunded` 는 매핑 누락으로 '결제 대기' 로
+ * 오표시됐다. `returned: '반품 완료'` 는 반품 기능 미구현 상태의 허위 표시였다.
+ * 반품·교환 구현은 오픈 차단 조건 — docs/Planning/SHOP_LAUNCH_CHECKLIST.md (A-3).
+ */
 type OrderStatus =
   | 'pending'
-  | 'confirmed'
-  | 'shipping'
+  | 'paid'
+  | 'preparing'
+  | 'shipped'
   | 'delivered'
   | 'cancelled'
-  | 'returned';
+  | 'refunded'
+  | 'unknown';
 
 interface ApiOrderItem {
   id: string;
@@ -40,7 +51,10 @@ interface ApiOrderItem {
 interface ApiOrder {
   id: string;
   orderNumber: string;
-  status: string;
+  /** 백엔드 canonical 키 (`ShopOrder.orderStatus`). */
+  orderStatus?: string;
+  /** 구 프론트 계약 잔재 — 백엔드는 이 키를 emit 하지 않는다(하위호환 폴백만). */
+  status?: string;
   totalAmount: number;
   createdAt: string;
   recipientName?: string;
@@ -50,18 +64,24 @@ interface ApiOrder {
   items: ApiOrderItem[];
 }
 
+// 라벨 문구는 teamplus-admin `getOrderStatusLabel()` 과 동일 어휘를 사용한다(운영자↔구매자 동일 표기).
 const STATUS_CONFIG: Record<OrderStatus, { label: string; bg: string; text: string }> = {
   pending: {
     label: '결제 대기',
     bg: 'bg-amber-100 dark:bg-amber-900/30',
     text: 'text-amber-600 dark:text-amber-400',
   },
-  confirmed: {
-    label: '주문 확인',
+  paid: {
+    label: '결제 완료',
     bg: 'bg-it-blue-50 dark:bg-it-blue-900/30',
     text: 'text-it-blue-500',
   },
-  shipping: {
+  preparing: {
+    label: '상품 준비중',
+    bg: 'bg-it-blue-50 dark:bg-it-blue-900/30',
+    text: 'text-it-blue-500',
+  },
+  shipped: {
     label: '배송 중',
     bg: 'bg-it-blue-50 dark:bg-it-blue-900/30',
     text: 'text-it-blue-500',
@@ -72,26 +92,33 @@ const STATUS_CONFIG: Record<OrderStatus, { label: string; bg: string; text: stri
     text: 'text-blue-600 dark:text-blue-400',
   },
   cancelled: {
-    label: '취소 완료',
+    label: '주문 취소',
     bg: 'bg-it-fill dark:bg-rink-800',
     text: 'text-it-ink-600 dark:text-rink-300',
   },
-  returned: {
-    label: '반품 완료',
-    bg: 'bg-rose-100 dark:bg-rose-900/30',
-    text: 'text-rose-600 dark:text-rose-400',
+  refunded: {
+    label: '환불 완료',
+    bg: 'bg-it-fill dark:bg-rink-800',
+    text: 'text-it-ink-600 dark:text-rink-300',
+  },
+  unknown: {
+    label: '미정',
+    bg: 'bg-it-fill dark:bg-rink-700',
+    text: 'text-it-ink-600 dark:text-rink-100',
   },
 };
 
-function mapStatus(raw: string): OrderStatus {
-  const s = raw.toLowerCase();
+function mapStatus(raw?: string): OrderStatus {
+  const s = (raw ?? '').toLowerCase();
   if (s === 'pending') return 'pending';
-  if (s === 'confirmed') return 'confirmed';
-  if (s === 'shipping') return 'shipping';
+  if (s === 'paid') return 'paid';
+  if (s === 'preparing') return 'preparing';
+  if (s === 'shipped') return 'shipped';
   if (s === 'delivered') return 'delivered';
   if (s === 'cancelled' || s === 'canceled') return 'cancelled';
-  if (s === 'returned') return 'returned';
-  return 'pending';
+  if (s === 'refunded') return 'refunded';
+  // 미지의 값·누락은 '결제 대기' 로 위장하지 않고 '미정' 으로 표시한다.
+  return 'unknown';
 }
 
 function formatPrice(value: number): string {
@@ -184,7 +211,7 @@ export default function OrderDetailPage() {
     );
   }
 
-  const status = mapStatus(order.status);
+  const status = mapStatus(order.orderStatus ?? order.status);
   const statusConf = STATUS_CONFIG[status];
 
   return (

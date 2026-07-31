@@ -3,6 +3,10 @@ import { SkipThrottle } from "@nestjs/throttler";
 import { ApiTags, ApiOperation, ApiQuery, ApiResponse } from "@nestjs/swagger";
 import { Public } from "@/auth/public.decorator";
 import { TeamsService } from "./teams.service";
+import {
+  clampLimit,
+  clampOffset,
+} from "@/common/utils/pagination-clamp.util";
 
 /**
  * 인증 없이 접근 가능한 공개 클럽 목록 API
@@ -70,8 +74,8 @@ export class TeamsPublicController {
   ) {
     return this.teamsService.getPublicTeams(
       search,
-      limit ? parseInt(limit, 10) : 20,
-      offset ? parseInt(offset, 10) : 0,
+      clampLimit(limit, 20),
+      clampOffset(offset),
     );
   }
 

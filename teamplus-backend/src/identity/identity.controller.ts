@@ -588,14 +588,23 @@ export class IdentityController {
    * CI 중복 확인 (관리자용)
    *
    * 동일한 CI로 가입된 사용자가 있는지 확인
+   *
+   * [2026-07-30 SECURITY] GET `?ci=<연계정보>` → POST body 로 전환.
+   *   CI 는 고유식별정보에 준하는 연계정보인데, 쿼리스트링에 실리면 access 로그·프록시
+   *   로그·브라우저 히스토리·Referer 헤더에 평문으로 남는다(안전성확보조치 §8·§9 위반 소지).
+   *   POST body 는 로그 마스킹 대상(`ci` 키 → [REDACTED])이라 평문 잔존 경로가 없다.
+   *   호출하는 프론트엔드는 저장소 전수 검색 결과 없음(백엔드 전용 API) → 파급 없음.
    */
-  @Get("admin/check-duplicate")
+  @Post("admin/check-duplicate")
+  @HttpCode(HttpStatus.OK)
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @ApiBearerAuth()
   @Roles("ADMIN")
   @ApiOperation({
     summary: "CI 중복 확인 (관리자용)",
-    description: "동일한 CI(연계정보)로 가입된 사용자가 있는지 확인합니다.",
+    description:
+      "동일한 CI(연계정보)로 가입된 사용자가 있는지 확인합니다. " +
+      "CI 가 URL 에 남지 않도록 요청 body 로 전달합니다.",
   })
   @ApiResponse({
     status: 200,
@@ -607,7 +616,7 @@ export class IdentityController {
       },
     },
   })
-  async checkDuplicateCI(@Query("ci") ci: string) {
+  async checkDuplicateCI(@Body("ci") ci: string) {
     if (!ci) {
       throw new BadRequestException("CI 값이 필요합니다.");
     }

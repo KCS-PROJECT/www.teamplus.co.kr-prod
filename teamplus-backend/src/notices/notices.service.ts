@@ -18,6 +18,8 @@ import {
   sanitizeStrict,
   sanitizeExtendedHtml,
 } from "@/common/utils/sanitize.util";
+import { maskProfanity } from "@/common/utils/content-filter.util";
+import { maskFullName } from "@/common/utils/mask-name.util";
 import { resolveViewerTeamIds } from "@/common/utils/team-scope.util";
 
 interface NoticeFilter {
@@ -1097,7 +1099,8 @@ export class NoticesService {
     //   발송이 가능했다. 시스템 공지(targetTeamId=null)는 기존대로 전체 허용.
     await this.assertCanViewNotice(notice, userId, userType);
 
-    const sanitizedContent = sanitizeStrict(content);
+    // UGC 콘텐츠 필터 — XSS 살균 후 비속어 마스킹 (아동·청소년 이용 서비스)
+    const sanitizedContent = maskProfanity(sanitizeStrict(content));
 
     const comment = await this.prisma.noticeComment.create({
       data: { noticeId, userId, content: sanitizedContent },
@@ -1123,9 +1126,20 @@ export class NoticesService {
   }
 
   /**
-   * 댓글 목록 조회
+   * 댓글 목록 조회.
+   *
+   * 비로그인(@Public) 열람을 허용하지만 작성자 **실명은 마스킹**한다(홍길동 → 홍*동).
+   * CHILD/TEEN 회원 실명이 검색엔진·크롤러에 그대로 노출되는 것을 막는다
+   * (개인정보 안전성 확보조치 §6).
+   *
+   * @param viewerId 로그인 사용자 ID (없으면 비로그인 → 마스킹)
    */
-  async getComments(noticeId: string, page: number = 1, limit: number = 10) {
+  async getComments(
+    noticeId: string,
+    page: number = 1,
+    limit: number = 10,
+    viewerId?: string,
+  ) {
     const notice = await this.prisma.systemNotice.findUnique({
       where: { id: noticeId },
       select: { id: true },
@@ -1151,13 +1165,31 @@ export class NoticesService {
       this.prisma.noticeComment.count({ where: { noticeId } }),
     ]);
 
+    const isAuthenticated = Boolean(viewerId);
+
     return {
-      data: comments.map((c) => ({
-        ...c,
-        userName: c.user
-          ? `${c.user.lastName}${c.user.firstName}`
-          : "알 수 없음",
-      })),
+      // 비로그인 응답은 userName 뿐 아니라 중첩 user 객체의 원본 성/이름까지 마스킹한다
+      // (spread 로 실명이 그대로 새어나가던 경로).
+      data: comments.map(({ user, ...rest }) => {
+        const fullName = user ? `${user.lastName}${user.firstName}` : "";
+        const maskedName = user
+          ? maskFullName(user.lastName, user.firstName, "알 수 없음")
+          : "알 수 없음";
+
+        return {
+          ...rest,
+          user: user
+            ? isAuthenticated
+              ? user
+              : { id: user.id, firstName: null, lastName: maskedName }
+            : null,
+          userName: user
+            ? isAuthenticated
+              ? fullName
+              : maskedName
+            : "알 수 없음",
+        };
+      }),
       pagination: {
         total,
         page,

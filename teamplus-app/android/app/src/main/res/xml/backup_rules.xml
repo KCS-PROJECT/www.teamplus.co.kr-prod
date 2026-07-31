@@ -1,8 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  전체 백업 규칙 (Android 11 / API 30 이하 · 2026-05-26 신규)
-  - 자동 백업에서 보안 저장소(flutter_secure_storage)를 제외해 토큰 유출 + 복원 크래시 방지.
+  전체 백업 규칙 (Android 11 / API 30 이하 · 2026-05-26 신규 · 2026-07-30 범위 확대)
+
+  제외 대상과 이유:
+   1) flutter_secure_storage(FlutterSecureStorage.xml)
+      Keystore 키에 묶여 있어 다른 기기로 복원하면 복호화가 불가하다.
+      토큰 유출과 복원 후 크래시를 함께 막는다.
+   2) 앱 문서 디렉토리 전체(domain="file")
+      Hive 오프라인 캐시와 Drift 로컬 DB 가 이 경로에 저장되며
+      출석(AttendanceCache)·일정(SchedulesCache)·알림(NotificationsCache)·
+      프로필(ProfileCache) 등 개인정보가 평문으로 담긴다. 파일 로그도 같은 위치다.
+      adb backup·클라우드 백업으로 추출되면 자녀 출석·일정이 유출되므로 제외한다.
+      캐시·로그는 서버에서 재생성되므로 기능 손실이 없고, stale 캐시 복원 문제도 함께 막는다.
+
+  SharedPreferences 는 제외하지 않는다 — 온보딩 완료·스플래시 표시 여부처럼
+  민감하지 않은 UX 상태만 담고 있어 기기 이전 시 유지되는 편이 낫다.
 -->
 <full-backup-content>
     <exclude domain="sharedpref" path="FlutterSecureStorage.xml"/>
+    <exclude domain="file" path="."/>
 </full-backup-content>

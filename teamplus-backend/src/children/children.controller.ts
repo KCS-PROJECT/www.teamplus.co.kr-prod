@@ -34,6 +34,7 @@ import {
 } from "./dto";
 import { Roles } from "@/auth/roles.decorator";
 import { RolesGuard } from "@/auth/roles.guard";
+import { extractClientIp } from "@/common/utils/extract-client-ip.util";
 
 /**
  * Children Controller
@@ -65,24 +66,51 @@ export class ChildrenController {
   constructor(private readonly childrenService: ChildrenService) {}
 
   /**
+   * 동의 증거용 요청 메타(IP · User-Agent) 추출.
+   *
+   * PIPA §22⑦ 입증 책임 — "누가 어디서 언제 동의했는지"를 남기려면 요청 컨텍스트가
+   * 필요하다. IP 는 공용 유틸(extractClientIp)에 위임한다 — 프록시(ALB·Nginx·
+   * Cloudflare)마다 x-forwarded-for 가 배열로 오거나 x-real-ip 만 오는 경우가 있어
+   * 컨트롤러마다 헤더를 직접 파싱하면 환경에 따라 IP 가 유실된다.
+   */
+  private extractConsentMeta(req: AuthenticatedRequest): {
+    ipAddress?: string;
+    userAgent?: string;
+  } {
+    return {
+      ipAddress: extractClientIp(req),
+      userAgent:
+        typeof req.headers["user-agent"] === "string"
+          ? req.headers["user-agent"]
+          : undefined,
+    };
+  }
+
+  /**
    * 자녀 등록
    *
    * 학부모가 자녀를 대리 등록합니다.
    * - 자녀용 User 계정 자동 생성 (UserType: CHILD)
    * - ChildProfile 생성
    * - ParentChild 관계 생성 (주 보호자로 등록)
+   * - ChildConsent 생성 (법정대리인 동의 증빙)
    */
   @Post()
   @ApiOperation({
     summary: "자녀 등록",
-    description: "학부모가 자녀를 대리 등록합니다.",
+    description:
+      "학부모가 자녀를 대리 등록합니다. consentPersonalInfo=true 없이는 400 으로 거부되며, " +
+      "동의 사실은 IP·User-Agent·약관버전과 함께 ChildConsent 에 기록됩니다. (PIPA §22조의2① · §22⑦)",
   })
   @ApiResponse({
     status: 201,
     description: "자녀 등록 성공",
     type: ChildSingleResponseDto,
   })
-  @ApiResponse({ status: 400, description: "유효하지 않은 요청" })
+  @ApiResponse({
+    status: 400,
+    description: "유효하지 않은 요청 · 법정대리인 필수 동의 누락",
+  })
   @ApiResponse({ status: 403, description: "학부모만 자녀를 등록할 수 있음" })
   async createChild(
     @Request() req: AuthenticatedRequest,
@@ -91,7 +119,11 @@ export class ChildrenController {
     const userId = req.user.id;
     this.logger.log(`자녀 등록 요청: userId=${userId}`);
 
-    const child = await this.childrenService.createChild(userId, dto);
+    const child = await this.childrenService.createChild(
+      userId,
+      dto,
+      this.extractConsentMeta(req),
+    );
 
     return {
       success: true,
@@ -329,21 +361,14 @@ export class ChildrenController {
     @Body() dto: CreateChildConsentDto,
   ): Promise<{ success: true; data: ChildConsentResponseDto }> {
     const userId = req.user.id;
-    const ipAddress =
-      (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
-      req.socket?.remoteAddress ||
-      undefined;
-    const userAgent =
-      typeof req.headers["user-agent"] === "string"
-        ? req.headers["user-agent"]
-        : undefined;
     this.logger.log(
       `[L-10] 법정대리인 동의 저장: parent=${userId}, child=${dto.childUserId}`,
     );
-    const data = await this.childrenService.createChildConsent(userId, dto, {
-      ipAddress,
-      userAgent,
-    });
+    const data = await this.childrenService.createChildConsent(
+      userId,
+      dto,
+      this.extractConsentMeta(req),
+    );
     return { success: true, data };
   }
 

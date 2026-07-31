@@ -17,12 +17,12 @@ import { PaymentReceiptService } from "./services/payment-receipt.service";
 import { deriveSource } from "./payment-source.util";
 import { TossPaymentsGateway } from "./toss-payments.gateway";
 import { RedisService } from "@/redis/redis.service";
-import { CreditDomainService } from "@/credits/credit-domain.service";
 import {
-  endOfMonthKst,
-  monthlyPassWindow,
-} from "@/common/billing/billing-date.util";
+  CreditDomainService,
+  resolveCreditExpiry,
+} from "@/credits/credit-domain.service";
 import { NotificationsService } from "@/notifications/notifications.service";
+import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
 import { acquireClassSeatLock } from "@/classes/utils/class-locks.util";
 import { Logger } from "@nestjs/common";
 
@@ -219,11 +219,13 @@ export class PaymentsService {
 
       // [2026-06-19 사용자 직접 지시] 결제 완료 → 팀 감독/코치에게 결제 알림 (수업/대회).
       //   best-effort — 실패해도 결제 승인 흐름에 영향 없음.
-      void this.notifyManagersOfCompletedPayment(payment.id, Number(amount)).catch(
-        (err) =>
-          this.logger.warn(
-            `결제 완료 감독/코치 알림 실패: paymentId=${payment.id} ${(err as Error).message}`,
-          ),
+      void this.notifyManagersOfCompletedPayment(
+        payment.id,
+        Number(amount),
+      ).catch((err) =>
+        this.logger.warn(
+          `결제 완료 감독/코치 알림 실패: paymentId=${payment.id} ${(err as Error).message}`,
+        ),
       );
 
       // 트랜잭션 완료 후 영수증 발급(best-effort) — 실패해도 결제 승인은 유지.
@@ -432,31 +434,14 @@ export class PaymentsService {
         payment.product.sessionsPerMonth > 0 &&
         !isPostpaidProduct
       ) {
-        // [B7] 선불 정액(MONTHLY_FIXED) 수업권 만료 = 결제한 그 달 말일 23:59:59 (약관 §13).
-        //   그 외 feeType 은 기존 정책 — durationDays + 미사용 회차 사용 30일.
-        const MEMBER_CREDIT_EXTRA_USABLE_DAYS = 30;
-        const approvedAt = opts.approvedAt;
-        // [Lifecycle v4.1 §9.5] 월별 패키지(billingMonth 有)는 귀속월 창(1일 KST~말일),
-        //   무월 레거시는 현행 폴백(결제일 달 말일·startsAt null — §9.2 점진 전환).
-        const passWindow =
-          payment.product.feeType === "MONTHLY_FIXED" &&
-          payment.product.billingMonth
-            ? monthlyPassWindow(payment.product.billingMonth)
-            : null;
-        const startsAt = passWindow?.startsAt ?? null;
-        const expiresAt =
-          passWindow?.expiresAt ??
-          (payment.product.feeType === "MONTHLY_FIXED"
-            ? endOfMonthKst(approvedAt)
-            : (() => {
-                const durationDays = payment.product.durationDays ?? 28;
-                const e = new Date(approvedAt);
-                e.setDate(
-                  e.getDate() + durationDays + MEMBER_CREDIT_EXTRA_USABLE_DAYS,
-                );
-                e.setHours(23, 59, 59, 999);
-                return e;
-              })());
+        // 유효기간 산정은 resolveCreditExpiry 단일 SoT — 승인 경로(토스/KG 웹훅)와
+        //   관리자 수동 발급이 같은 식을 쓰도록 통일했다(경로별 식 복제 금지).
+        const { startsAt, expiresAt } = resolveCreditExpiry({
+          feeType: payment.product.feeType,
+          billingMonth: payment.product.billingMonth,
+          durationDays: payment.product.durationDays,
+          at: opts.approvedAt,
+        });
 
         const targetUserId = enrollments[0]?.childId ?? payment.userId;
 
@@ -496,14 +481,25 @@ export class PaymentsService {
   }
 
   /**
-   * [오픈 전 임시] 토스 승인 API 를 건너뛴 테스트 결제 완료 처리.
+   * [DEV ONLY] 토스 승인 API 를 건너뛴 테스트 결제 완료 처리.
    *  결제창에 테스터의 실카드/실계좌가 노출되지 않도록 토스 위젯 없이 결제를 완료한다.
    *  검증·멱등 락·후처리(applyApprovedPayment)는 confirmTossPayment 와 완전히 동일하며,
    *  토스 승인 단계만 생략한다.
-   *  ⚠️ 0원으로 결제가 완료되는 경로 — 정식 서비스 오픈 시 이 메서드·엔드포인트·체크아웃
-   *  "테스트 결제" 버튼을 반드시 제거(또는 차단 가드 복원)해야 한다.
+   *
+   *  운영 환경(NODE_ENV=production)에서는 호출 차단 — `enrollments.mockPay()` 와 동일 관례.
+   *  대금 이체 없이 paymentStatus='completed' + MemberCredit 이 발급되므로, 운영에서 열리면
+   *  매출·정산·부가세 영수증에 허위 거래가 혼입되고 tid=MOCK-* 는 PG 취소가 불가하다.
    */
   async mockConfirmPayment(userId: string, orderId: string) {
+    if (process.env.NODE_ENV === "production") {
+      this.logger.warn(
+        `[MOCK CONFIRM] 운영 환경에서 호출 차단: userId=${userId}, orderId=${orderId}`,
+      );
+      throw new ForbiddenException(
+        "운영 환경에서는 사용할 수 없는 기능입니다.",
+      );
+    }
+
     if (!orderId) {
       throw new BadRequestException("orderId 값이 유효하지 않습니다.");
     }
@@ -686,7 +682,8 @@ export class PaymentsService {
     });
     const tourTeams = new Map<string, string>(); // teamId -> tournamentName
     for (const r of tRegs) {
-      if (r.tournament?.teamId) tourTeams.set(r.tournament.teamId, r.tournament.name);
+      if (r.tournament?.teamId)
+        tourTeams.set(r.tournament.teamId, r.tournament.name);
     }
     for (const [teamId, name] of tourTeams) {
       await this.notificationsService.notifyTeamManagers(teamId, {
@@ -1147,6 +1144,49 @@ export class PaymentsService {
    */
   async getRefundLogs(paymentId: string, requester?: RefundRequester) {
     return this.refundService.getRefundLogs(paymentId, requester);
+  }
+
+  /**
+   * [환불 정책 2단계] 잔여 회차 비례 환불 산정 미리보기 — 확정 전 동일 값 노출용.
+   * 소유자(학부모) 본인 또는 소속 관리자만 조회할 수 있다.
+   */
+  async getRefundQuote(paymentId: string, requester: JwtUserPayload) {
+    await this.assertRefundQuoteViewer(paymentId, requester);
+    return this.refundService.computeRefundQuote(paymentId);
+  }
+
+  /** 산정 미리보기 열람 권한 — 본인 결제는 통과, 그 외는 감독 스코프 검증에 위임. */
+  private async assertRefundQuoteViewer(
+    paymentId: string,
+    requester: JwtUserPayload,
+  ) {
+    if (isAdminRole(requester.userType)) return;
+    const owner = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+      select: { userId: true },
+    });
+    if (!owner) {
+      throw new NotFoundException("결제 기록을 찾을 수 없습니다.");
+    }
+    if (owner.userId === requester.id) return;
+    await this.refundService.assertManagerRefundScopeFor(paymentId, requester);
+  }
+
+  /**
+   * [환불 정책 2단계] 감독/원장 승인 부분환불 — PaymentRefundService.refundByManager 위임.
+   */
+  async refundByManager(
+    paymentId: string,
+    dto: {
+      refundReason: string;
+      refundAmount?: number;
+      refundBankCode?: string;
+      refundAccount?: string;
+      refundAccountHolder?: string;
+    },
+    requester: JwtUserPayload,
+  ) {
+    return this.refundService.refundByManager(paymentId, dto, requester);
   }
 
   /**
@@ -1702,7 +1742,11 @@ export class PaymentsService {
     requesterId: string,
     requesterType: string,
   ) {
-    return this.receiptService.getReceipt(paymentId, requesterId, requesterType);
+    return this.receiptService.getReceipt(
+      paymentId,
+      requesterId,
+      requesterType,
+    );
   }
 
   /**
@@ -1831,7 +1875,9 @@ export class PaymentsService {
       if (owner || approvedCoach) return;
     }
 
-    throw new ForbiddenException("해당 회원의 결제 이력을 조회할 권한이 없습니다.");
+    throw new ForbiddenException(
+      "해당 회원의 결제 이력을 조회할 권한이 없습니다.",
+    );
   }
 
   private async assertTeamManager(

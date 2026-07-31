@@ -1,15 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  데이터 추출 규칙 (Android 12 / API 31+ · 2026-05-26 신규)
-  - 클라우드 백업·기기 간 이전에서 보안 저장소를 제외해 토큰 유출 + 복원 후 키 불일치 크래시 방지.
-  - flutter_secure_storage(EncryptedSharedPreferences: FlutterSecureStorage.xml)는 Keystore 키에 묶여
-    있어 다른 기기로 복원 시 복호화 불가 → 반드시 제외.
+  데이터 추출 규칙 (Android 12 / API 31+ · 2026-05-26 신규 · 2026-07-30 범위 확대)
+
+  제외 대상과 이유:
+   1) flutter_secure_storage(EncryptedSharedPreferences: FlutterSecureStorage.xml)
+      Keystore 키에 묶여 있어 다른 기기로 복원 시 복호화가 불가하다.
+      토큰 유출과 복원 후 키 불일치 크래시를 함께 막는다.
+   2) 앱 문서 디렉토리 전체(domain="file")
+      Hive 오프라인 캐시와 Drift 로컬 DB 가 이 경로에 저장되며
+      출석·일정·알림·프로필 등 개인정보가 평문으로 담긴다. 파일 로그도 같은 위치다.
+      클라우드 백업·기기 이전으로 추출되면 자녀 출석·일정이 유출되므로 제외한다.
+      캐시·로그는 서버에서 재생성되므로 기능 손실이 없다.
+
+  SharedPreferences 는 제외하지 않는다 — 민감하지 않은 UX 상태만 담고 있다.
 -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="FlutterSecureStorage.xml"/>
+        <exclude domain="file" path="."/>
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="FlutterSecureStorage.xml"/>
+        <exclude domain="file" path="."/>
     </device-transfer>
 </data-extraction-rules>

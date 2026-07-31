@@ -38,17 +38,17 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   final List<OnboardingPage> _pages = const [
     OnboardingPage(
-      imagePath: 'assets/images/onboarding01.png',
+      imagePath: 'assets/images/onboarding01.webp',
       title: '함께하는 아이스하키',
       description: '팀과 동료들이 함께하는 빙판 위의 시작\n팀플러스가 든든하게 함께합니다',
     ),
     OnboardingPage(
-      imagePath: 'assets/images/onboarding02.png',
+      imagePath: 'assets/images/onboarding02.webp',
       title: '매일이 새로운 도전',
       description: '스케이트 한 발 한 발이 만드는 성장\n즐거운 순간을 놓치지 마세요',
     ),
     OnboardingPage(
-      imagePath: 'assets/images/onboarding03.png',
+      imagePath: 'assets/images/onboarding03.webp',
       title: '꿈을 향한 여정',
       description: '수업·출석·성취까지 한 곳에서\n부모님과 코치님이 함께하는 관리',
     ),

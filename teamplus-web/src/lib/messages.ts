@@ -303,7 +303,11 @@ export const MESSAGES = {
       "이 수업에 수강 등록되지 않았습니다. 수강 신청 후 이용해주세요",
     scanAgain: "다시 스캔하기",
     viewHistory: "출석 이력 보기",
-    chargeCredit: "결제권 충전하기",
+    // [법무 2026-07-30 전자금융거래법 §2 14호] '충전' → '구매'.
+    //   결제권(MemberCredit)은 범용 선불 잔액이 아니라 '사용자 × 특정 수업' 단위 수강권이며
+    //   유상 충전 API 가 없다. '충전' 표현이 선불전자지급수단 외관을 만들어 미등록 선불업
+    //   영위로 오인될 여지가 있어 실질(특정 용역 수강권 구매)에 맞춰 문구를 교체한다.
+    chargeCredit: "결제권 구매하기",
     cancel: "취소",
     networkError:
       "네트워크 연결이 원활하지 않습니다. 잠시 후 다시 시도해주세요",
@@ -489,7 +493,8 @@ export const MESSAGES = {
       monthlyPerformance: "월간 출석 추이",
       recentPayments: "최근 결제 내역",
       creditSummary: "보유 결제권",
-      creditCharge: "충전하기",
+      // [법무 2026-07-30] '충전' → '구매' (전자금융거래법 §2 14호 선불전자지급수단 외관 제거)
+      creditCharge: "구매하기",
       creditLow: "해당 수업 미결제 상태입니다",
       creditExpiring: "만료 예정",
       upcomingClasses: "다가오는 수업",
@@ -755,6 +760,23 @@ export const MESSAGES = {
     // [추가 2026-06-09] App Store 3.1.1 — 결제권은 디지털 콘텐츠/화폐가 아닌 '오프라인 대면 수업 수강료 결제 수단'임을 명시(심사 오인 방지)
     offlineCreditNotice:
       "본 결제권은 오프라인 빙상 아이스하키 수업의 수업료 결제 수단이며, 수업 당일 현장 QR 출석 시 차감됩니다.",
+    // [추가 2026-07-30 법무 · 전자금융거래법 §2 14호·§28·§49] 결제권 구매 CTA.
+    //   결제권은 '사용자 × 특정 수업' 단위 수강권이라 범용 선불 잔액이 아니다. 실제 동선도
+    //   /payment/select(수업 상품 선택)이므로 '충전'이 아닌 '구매'로 표기해 선불전자지급수단
+    //   외관(미등록 선불업 영위 오인)을 제거한다.
+    buyCreditCta: "결제권 구매하기",
+    // [추가 2026-07-30 법무 · 표시광고법 / 소득세법 §162조의3] 자체 전자영수증 성격 고지.
+    //   PaymentReceipt 는 자체 시퀀스(YYYYMMDD-NNNNN)만 부여되고 국세청 승인번호·발급구분·
+    //   식별번호가 없다(현금영수증·세금계산서 발급 코드 0건). 따라서 '소득공제 사용 가능'
+    //   안내는 사실과 다르며, 확인용 문서임을 명시하고 발급 창구를 안내한다.
+    receiptNotice:
+      "본 영수증은 결제 내역 확인용입니다. 현금영수증·세금계산서 발급이 필요하시면 고객센터로 문의해 주세요.",
+    // [추가 2026-07-30 법무 · 전자상거래법 §13②2, 가격표시제 실시요령] 총액 표시 원칙 고지.
+    //   소비자에게 표시하는 가격은 추가 부담 없는 총액이어야 한다. 다만 체육 교육용역의
+    //   과세/면세 구분(부가세법 §26①6)이 아직 확정되지 않았으므로 '부가세 포함'·'면세' 등
+    //   과세 성격을 단정하는 표현은 쓰지 않고, 표시액 = 최종 결제액임만 고지한다.
+    totalPriceNotice:
+      "표시 금액은 세금 등이 모두 포함된 최종 결제 금액이며, 별도로 추가되는 금액은 없습니다.",
     // [추가 2026-05-18] 결제 완료 페이지 — 신규 결제 금액 카드 + 결제 상세 항목 정리
     totalAmountLabel: "최종 결제 금액",
     orderNumberLabel: "주문번호",
@@ -793,7 +815,8 @@ export const MESSAGES = {
     creditRecovered: "결제권 복구됨",
     emptyPaymentHistory: "결제 내역이 없습니다",
     emptyUsageHistory: "사용 내역이 없습니다",
-    paymentHistoryHint: "아직 결제 내역이 없어요. 결제권을 충전해보세요!",
+    // [법무 2026-07-30] '충전' → '구매' (전자금융거래법 §2 14호 선불전자지급수단 외관 제거)
+    paymentHistoryHint: "아직 결제 내역이 없어요. 결제권을 구매해보세요!",
     usageHistoryHint: "아직 사용 내역이 없어요. 수업에 출석해보세요!",
     dataLoadError: "데이터를 불러올 수 없습니다",
     feeType: {
@@ -3428,6 +3451,16 @@ export const MESSAGES = {
     // 마이페이지 Hero 보조 한 줄 — 학부모 다자녀 요약 ("자녀 2명 · 안OO")
     heroChildSummary: (count: number, firstChildName: string) =>
       `자녀 ${count}명 · ${firstChildName}`,
+    // [추가 2026-07-30 법무 · 개인정보 보호법 §36①] 정정 요구권 창구 안내.
+    //   프로필 수정 화면의 자가 정정 범위는 주소 3필드뿐이고 이름·연락처는 본인확인
+    //   정보와 연동되어 읽기 전용이다. 자가 수정 개방은 본인인증 정합성을 깨뜨리므로
+    //   대체 창구(고객센터)를 화면에 직접 노출해 정정 요구권 행사 경로를 보장한다.
+    correctionNoticeTitle: "정정 요청 안내",
+    correctionNoticeBody:
+      "이름·연락처 등은 본인확인 정보와 연동되어 직접 수정할 수 없습니다. 정정이 필요하시면 고객센터로 문의해 주세요.",
+    correctionContactPhone: (phone: string) => `고객센터 ${phone}`,
+    correctionContactEmail: (email: string) => `이메일 ${email}`,
+    correctionContactHours: (hours: string) => `운영시간 ${hours}`,
   },
 
   // ─── O. 보안 / 2FA / 디바이스 ───────────────────────

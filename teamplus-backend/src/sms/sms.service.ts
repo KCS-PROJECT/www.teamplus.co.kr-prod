@@ -3,6 +3,10 @@ import { ConfigService } from "@nestjs/config";
 import { RedisService } from "@/redis/redis.service";
 import { LoggerService } from "@/logger/logger.service";
 import { OtpService } from "./otp.service";
+import {
+  decorateAdvertisingText,
+  isNightTimeKST,
+} from "@/common/utils/advertising.util";
 import axios from "axios";
 
 /**
@@ -214,15 +218,11 @@ export class SmsService {
   // ──────────────────────────────────────────────────────────────
 
   /**
-   * 현재 시각이 야간 시간대(KST 21:00~08:00)인지 판별
+   * 현재 시각이 야간 시간대(KST 21:00~08:00)인지 판별.
+   * 판정 로직은 advertising.util(푸시·SMS·알림톡 공용 SoT)에 위임한다.
    */
   private isNightTimeKST(): boolean {
-    const now = new Date();
-    const kstOffset = 9 * 60; // 분 단위
-    const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
-    const kstMinutes = (utcMinutes + kstOffset) % (24 * 60);
-    const kstHour = Math.floor(kstMinutes / 60);
-    return kstHour >= 21 || kstHour < 8;
+    return isNightTimeKST();
   }
 
   /**
@@ -232,7 +232,7 @@ export class SmsService {
    *
    * @param phone 수신자 전화번호
    * @param message 발송 메시지
-   * @param isMarketing 광고성 메시지 여부 (true이면 야간 발송 제한 적용)
+   * @param isMarketing 광고성 메시지 여부 (true이면 야간 발송 제한 + '(광고)' 표기 적용)
    */
   async sendNotificationSms(
     phone: string,
@@ -247,6 +247,12 @@ export class SmsService {
         `야간 광고성 SMS 발송 차단: phone=${this.maskPhone(normalizedPhone)}`,
       );
       return false;
+    }
+
+    // 광고성이면 '(광고)' 접두어 + 전송자 명칭·연락처 + 무료 수신거부 방법 삽입 (§50④).
+    // SMS 는 사전승인 템플릿 제약이 없어 본문 가공이 안전하다.
+    if (isMarketing) {
+      message = decorateAdvertisingText(message);
     }
 
     if (!/^01[0-9]{8,9}$/.test(normalizedPhone)) {

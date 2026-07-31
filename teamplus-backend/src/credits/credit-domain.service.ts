@@ -6,9 +6,83 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import {
+  MONTHLY_FIXED_FEE_TYPE,
   MONTHLY_PASS_CREDIT_FILTER,
   creditStartedWhere,
 } from "@/common/billing/fee-type.constants";
+import {
+  endOfMonthKst,
+  monthlyPassWindow,
+} from "@/common/billing/billing-date.util";
+
+/** 비월정액 패키지의 미사용 회차 추가 사용 유예(일). */
+export const MEMBER_CREDIT_EXTRA_USABLE_DAYS = 30;
+
+/**
+ * 유상 수업권의 최소 보장 유효기간(일).
+ *
+ * 월정액(MONTHLY_FIXED)은 달력 월말 만료라 말일 결제 시 유효기간이 수 시간까지
+ * 줄어든다 — 대금을 받고 사실상 사용 불가능한 이용권을 주는 구조라 무효 주장이
+ * 가능하므로(약관규제법 §6) 발급 시점 기준 하한을 강제한다.
+ */
+export const MIN_CREDIT_VALIDITY_DAYS = 14;
+
+/** 기준 시각 + n일의 그날 끝(23:59:59.999). 기존 발급 경로의 시간 처리와 동일. */
+function endOfDayAfterDays(at: Date, days: number): Date {
+  const e = new Date(at);
+  e.setDate(e.getDate() + days);
+  e.setHours(23, 59, 59, 999);
+  return e;
+}
+
+/**
+ * 최소 보장 유효기간 적용 — 산정된 만료일이 하한보다 이르면 하한으로 늘린다.
+ * 절대 단축하지 않으므로 어느 경로에서 중복 호출돼도 안전하다.
+ */
+export function applyMinCreditValidity(expiresAt: Date, at: Date): Date {
+  const floor = endOfDayAfterDays(at, MIN_CREDIT_VALIDITY_DAYS);
+  return expiresAt.getTime() >= floor.getTime() ? expiresAt : floor;
+}
+
+/**
+ * 수업권 유효기간 산정 SoT — 결제 승인·관리자 수동 발급이 모두 이 함수를 경유한다.
+ *
+ * 경로마다 식이 복제되면 약관에 고지한 기간과 실제 만료가 어긋나 전자상거래법
+ * §21①1(거짓·과장 고지) 문제가 되므로 단일 함수로 통일한다.
+ *
+ *   - MONTHLY_FIXED + billingMonth: 귀속월 창(1일 KST ~ 말일 23:59:59 KST)
+ *   - MONTHLY_FIXED (무월 레거시): 결제일이 속한 달의 말일
+ *   - 그 외 feeType: 결제일 + durationDays + 추가 사용 유예 30일
+ *   - 위 결과에 최소 보장 유효기간(MIN_CREDIT_VALIDITY_DAYS) 하한 적용
+ */
+export function resolveCreditExpiry(params: {
+  feeType?: string | null;
+  billingMonth?: Date | null;
+  durationDays?: number | null;
+  /** 산정 기준 시각(결제 승인 시각). 미지정 시 현재. */
+  at?: Date;
+}): { startsAt: Date | null; expiresAt: Date } {
+  const at = params.at ?? new Date();
+  const isMonthlyFixed = params.feeType === MONTHLY_FIXED_FEE_TYPE;
+  const passWindow =
+    isMonthlyFixed && params.billingMonth
+      ? monthlyPassWindow(params.billingMonth)
+      : null;
+
+  const baseExpiresAt =
+    passWindow?.expiresAt ??
+    (isMonthlyFixed
+      ? endOfMonthKst(at)
+      : endOfDayAfterDays(
+          at,
+          (params.durationDays ?? 28) + MEMBER_CREDIT_EXTRA_USABLE_DAYS,
+        ));
+
+  return {
+    startsAt: passWindow?.startsAt ?? null,
+    expiresAt: applyMinCreditValidity(baseExpiresAt, at),
+  };
+}
 
 /**
  * CreditDomainService — MemberCredit 수정 단일 진입점
@@ -348,6 +422,10 @@ export class CreditDomainService {
       throw new BadRequestException("발급 회차는 1 이상이어야 합니다.");
     }
 
+    // 만료일을 자체 계산해 넘기는 호출부(KG 웹훅 등)도 하한을 벗어나지 못하도록
+    //   발급 단일 진입점에서 최종 강제한다. 늘리기만 하므로 중복 적용 안전.
+    const expiresAt = applyMinCreditValidity(params.expiresAt, new Date());
+
     const newCredit = await tx.memberCredit.create({
       data: {
         userId: params.userId,
@@ -355,7 +433,7 @@ export class CreditDomainService {
         totalSessions: params.sessions,
         usedSessions: 0,
         startsAt: params.startsAt ?? null,
-        expiresAt: params.expiresAt,
+        expiresAt,
         paymentId: params.paymentId,
       },
     });
@@ -481,6 +559,56 @@ export class CreditDomainService {
     );
 
     return { expiredAmount: remainingSessions, carriedOverCreditId };
+  }
+
+  /**
+   * 5-1. 잔여 회차 회수 (이월 없음) — 이용 개시 후 중도해지 환불 전용.
+   *
+   * 잔여분을 금액으로 환급했으므로 회차는 소멸시켜야 한다. expireRemaining 은
+   * 미사용분을 다음 달로 이월해 환급과 이중 혜택이 되므로 이 경로에서 쓸 수 없다.
+   */
+  async forfeitRemaining(
+    tx: Prisma.TransactionClient,
+    params: {
+      memberCreditId: string;
+      reason: string;
+      actorUserId?: string;
+    },
+  ): Promise<{ forfeitedAmount: number }> {
+    const credit = await tx.memberCredit.findUnique({
+      where: { id: params.memberCreditId },
+      select: { id: true, totalSessions: true, usedSessions: true },
+    });
+    if (!credit) {
+      throw new NotFoundException("MemberCredit을 찾을 수 없습니다.");
+    }
+
+    const remainingSessions = credit.totalSessions - credit.usedSessions;
+    if (remainingSessions <= 0) return { forfeitedAmount: 0 };
+
+    // 동시 출석 차감과의 경쟁 차단 — 관찰한 usedSessions 그대로일 때만 소진 확정.
+    const cas = await tx.memberCredit.updateMany({
+      where: { id: credit.id, usedSessions: credit.usedSessions },
+      data: { usedSessions: credit.totalSessions },
+    });
+    if (cas.count !== 1) {
+      throw new Error(
+        `CREDIT_FORFEIT_CONTENTION: memberCreditId=${credit.id} 회수 중 동시 변경 감지.`,
+      );
+    }
+
+    await tx.creditTransaction.create({
+      data: {
+        memberCreditId: credit.id,
+        type: "expired",
+        amount: remainingSessions,
+        balanceAfter: 0,
+        reason: params.reason,
+        adjustedBy: params.actorUserId ?? null,
+      },
+    });
+
+    return { forfeitedAmount: remainingSessions };
   }
 
   /**

@@ -4,6 +4,7 @@ import { diskStorage } from "multer";
 import { extname } from "path";
 import { ShopController } from "./shop.controller";
 import { ShopService } from "./shop.service";
+import { ShopEnabledGuard } from "./guards/shop-enabled.guard";
 import { getCategoryDir } from "@/common/upload-paths";
 
 @Module({
@@ -42,7 +43,9 @@ import { getCategoryDir } from "@/common/upload-paths";
     }),
   ],
   controllers: [ShopController],
-  providers: [ShopService],
+  // ShopEnabledGuard — 쇼핑몰 피처 플래그 게이트(fail-closed). ShopController 클래스
+  // 레벨 @UseGuards 로 부착되며, DI 해석을 명시하기 위해 providers 에 등록한다.
+  providers: [ShopService, ShopEnabledGuard],
   exports: [ShopService],
 })
 export class ShopModule {}

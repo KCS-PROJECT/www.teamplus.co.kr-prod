@@ -63,6 +63,9 @@ Future<void> _deferredInit() async {
     () async {
       try {
         await SslPinningService().initialize();
+        // pinning 이 꺼진 채 릴리스가 도는 상태를 모니터링에 표면화한다.
+        //   초기화 직후 호출해야 인증서 누락·CA 교체를 배포 직후 알 수 있다.
+        SslPinningService().reportIfInsecure();
       } catch (e) {
         debugPrint('⚠️ SSL Pinning 초기화 실패 (백그라운드): $e');
       }
@@ -207,7 +210,7 @@ void main() {
   // 빌드 시 둘 중 하나로 환경 선택 (대소문자 무시):
   //   --dart-define=APP_ENV=local|home|dev|prod   ← 권장 (README/docs SoT)
   //   --dart-define=ENV=local|dev|prod            ← 동일 효과 (legacy alias)
-  // 미지정 시: Debug → LOCAL, Release → PROD (자동 감지)
+  // 미지정 시: Debug → DEV, Release → PROD (자동 감지)
   //
   // ⚠️ 잘못된 키 (예: NEW_ENV=dev) 는 무시되고 자동 감지로 폴백된다.
   //   release 빌드에서 자동 감지는 PROD 로 떨어지므로, dev 서버 의도라면
@@ -235,8 +238,8 @@ void main() {
   } else {
     debugPrint(
       '[Boot] ℹ️ No APP_ENV/ENV dart-define detected — '
-      'auto detect by build mode (release→PROD, debug→LOCAL). '
-      'Hint: --dart-define=APP_ENV=dev for dev server.',
+      'auto detect by build mode (release→PROD, debug→DEV). '
+      'Hint: --dart-define=APP_ENV=local for local server.',
     );
   }
   AppEnvironment.instance.initialize(forceEnvironment: forced);
@@ -307,6 +310,29 @@ void main() {
     WebViewCookieSync.syncRefreshToken(refreshToken);
   };
 
+  // [2026-07-28 관측성] 전역 uncaught 에러 핸들러 — SENTRY_DSN 미주입 빌드에서도
+  //   프레임워크/플랫폼 비동기 예외가 최소한 AppLogger(파일/원격 sink)에 남도록
+  //   한다. Sentry init 은 기존 onError 를 체이닝하므로 여기 등록(선행)이
+  //   Sentry 캡처를 막지 않는다.
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details); // 디버그 red screen/콘솔 기본 동작 유지
+    AppLogger.instance.errorAs(
+      ErrorCategory.client,
+      'Uncaught Flutter error: ${details.exceptionAsString()}',
+      error: details.exception,
+      stackTrace: details.stack,
+    );
+  };
+  WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
+    AppLogger.instance.errorAs(
+      ErrorCategory.client,
+      'Uncaught platform error: $error',
+      error: error,
+      stackTrace: stack,
+    );
+    return true; // 처리됨 표시 — 로깅 후 프로세스 강제 종료 방지
+  };
+
   BootTimeline.instance.mark('run_app');
   debugPrint('[Boot] runApp 호출 직전');
 
@@ -324,6 +350,7 @@ void main() {
                 ? 0.1
                 : 1.0;
         // 민감 정보 자동 제거 (Authorization 헤더, 카드번호 등)
+        // Sentry 9.x: copyWith deprecated — 인스턴스에 직접 할당.
         options.beforeSend = (event, hint) {
           final req = event.request;
           if (req != null) {
@@ -332,9 +359,7 @@ void main() {
             headers.remove('authorization');
             headers.remove('Cookie');
             headers.remove('cookie');
-            return event.copyWith(
-              request: req.copyWith(headers: headers),
-            );
+            req.headers = headers;
           }
           return event;
         };

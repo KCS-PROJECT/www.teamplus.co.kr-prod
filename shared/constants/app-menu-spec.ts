@@ -54,6 +54,9 @@ export const COMMON_SUPPORT_GROUP: AppMenuGroupSpec = {
     { label: "자주 묻는 질문", icon: "message-circle", href: "/faq" },
     { label: "공지사항", icon: "megaphone", href: "/notices" },
     { label: "약관 및 정책", icon: "description", href: "/terms" },
+    // Apache-2.0 §4(d)·MIT·BSD·ISC 는 배포 시 저작권 고지와 라이선스 포함을 요구하므로
+    //   고지 화면이 실제로 도달 가능해야 한다(페이지만 있고 진입점이 없으면 미이행).
+    { label: "오픈소스 라이선스", icon: "file", href: "/licenses" },
   ],
 };
 

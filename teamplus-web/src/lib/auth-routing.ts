@@ -85,6 +85,14 @@ const ADMIN_PROTECTED_PATHS = [
   '/overseas-trips',
   '/receipts',
   '/wishlist',
+  // [추가 2026-07-30 법무 · 민법 §5 미성년자 취소권 / Apple Kids · Google Families]
+  //  '/shop-checkout' 은 어느 역할 목록에도 없어 ALL_PROTECTED_PATHS 에서 누락 → 미들웨어가
+  //  자유 경로로 취급했고, CHILD/TEEN 이 URL 직접 입력으로 'N원 결제하기' 화면에 진입할 수
+  //  있었다. 결제 개시 자체는 백엔드가 PARENT 전용으로 차단하지만 미성년자에게 결제 화면을
+  //  노출하는 것 자체가 스토어 정책 리스크다. 결제 가능한 성인 역할(admin·director·
+  //  academy_director·coach·parent)에만 등록해 보호 경로로 승격하고 child/teen 은 제외한다.
+  //  (참고: '/payment' 는 이미 admin·parent 목록에만 있어 child/teen 이 차단된다.)
+  '/shop-checkout',
   '/leagues',
   '/statistics',
   '/team-chat',
@@ -151,6 +159,9 @@ const PROTECTED_PATHS_BY_ROLE: Record<UserType, string[]> = {
     // 가입 승인 요청 알림(membership_requested, linkUrl="/approval") 동선.
     //  (coach) layout 가드는 director 를 허용하나 middleware paths 누락으로 /director 로 튕기던 버그.
     '/approval',
+    // [추가 2026-07-30 법무] 쇼핑몰 결제 화면 — (shop) layout 이 director 를 허용하므로 등록.
+    //  CHILD/TEEN 차단 목적의 보호 경로 승격이며 성인 역할 동선은 그대로 유지한다.
+    '/shop-checkout',
   ],
   academy_director: [
     // [수정 2026-05-13 P1] ACADEMY_DIRECTOR 전용 대시보드 URL 분리 (/academy-director).
@@ -191,6 +202,8 @@ const PROTECTED_PATHS_BY_ROLE: Record<UserType, string[]> = {
     '/classes',
     // 가입 승인 요청 알림(membership_requested, linkUrl="/approval") 동선 — (coach) layout 가드 정합화.
     '/approval',
+    // [추가 2026-07-30 법무] 쇼핑몰 결제 화면 — (shop) layout 이 academy_director 를 허용하므로 등록.
+    '/shop-checkout',
   ],
   coach: [
     '/coach',
@@ -245,6 +258,8 @@ const PROTECTED_PATHS_BY_ROLE: Record<UserType, string[]> = {
     '/statistics',
     '/match-manage',
     '/scoreboard',
+    // [추가 2026-07-30 법무] 쇼핑몰 결제 화면 — (shop) layout 이 coach 를 허용하므로 등록.
+    '/shop-checkout',
   ],
   parent: [
     '/parent',
@@ -279,6 +294,9 @@ const PROTECTED_PATHS_BY_ROLE: Record<UserType, string[]> = {
     // [추가 2026-05-15] 수업목록 '대회' 탭에서 대회 카드 클릭 → /tournaments/{id} 진입.
     //  미들웨어가 미허용 시 dashboard(/parent) 으로 redirect 되어 홈 이동 버그 발생.
     '/tournaments',
+    // [추가 2026-07-30 법무] 쇼핑몰 결제 화면 — 기본 구매자(성인 보호자) 동선 유지.
+    //  child/teen 목록에는 의도적으로 넣지 않는다 (민법 §5 · 스토어 아동 정책).
+    '/shop-checkout',
   ],
   child: [
     '/child',
@@ -332,6 +350,14 @@ const PROTECTED_PATHS_BY_ROLE: Record<UserType, string[]> = {
     '/tournaments',
   ],
 };
+// NOTE [법무 2026-07-30 · 미성년자 결제 화면 차단]: 결제가 개시되는 경로
+//  ('/payment/*' · '/shop-checkout') 는 child/teen 목록에 의도적으로 포함하지 않는다.
+//  ALL_PROTECTED_PATHS 는 전 역할 목록의 합집합이므로, 성인 역할에만 등록하면 해당 경로가
+//  '보호 경로'로 승격되면서 child/teen 은 미들웨어가 각자의 대시보드로 리다이렉트한다.
+//  ⚠️ 향후 결제 화면 경로를 추가할 때 child/teen 목록에 넣으면 이 차단이 무력화된다.
+//  (역으로, 어느 역할 목록에도 없으면 자유 경로가 되어 아무도 차단되지 않는다 — 반드시
+//   성인 역할 중 최소 한 곳에는 등록해야 보호 경로가 된다.)
+
 // NOTE: /team 은 (common) 그룹 내부 페이지로 모든 역할(parent/child/teen/coach/director/admin)이
 // 공통으로 접근 가능해야 한다. 따라서 PROTECTED_PATHS_BY_ROLE 에 포함하지 않는다 —
 // 미들웨어는 ALL_PROTECTED_PATHS 기반으로 판단하므로, 여기 없으면 자유 경로로 취급되어

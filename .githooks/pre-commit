@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# TEAMPLUS pre-commit — 시크릿 커밋 차단
+#
+# 도입 근거: 2026-07-30 법적 리스크 감사. 과거 .env / .claude/settings.local.json 커밋으로
+# DB·SMTP·PG·SSH 자격증명이 유출됐고 재발 방지 수단이 없었다.
+#
+# 활성화(개발자 1회 실행):
+#   git config core.hooksPath .githooks
+#
+# gitleaks 설치:
+#   brew install gitleaks
+# 미설치 시 이 훅은 파일명 기반 차단만 수행하고 통과시킨다(경고 출력).
+
+set -uo pipefail
+
+RED=$'\033[0;31m'; YEL=$'\033[0;33m'; GRN=$'\033[0;32m'; NC=$'\033[0m'
+fail=0
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -z "$staged" ] && exit 0
+
+# ── 1) 절대 커밋 금지 파일명 ─────────────────────────────────────────
+# .env.example / .env.sample 은 플레이스홀더만 담으므로 허용한다.
+# .p12/.keystore/.jks/.mobileprovision 은 바이너리 키 저장소라 내용과 무관하게 차단한다.
+blocked=$(printf '%s\n' "$staged" | grep -E '(^|/)\.env(\.[A-Za-z0-9_-]+)*$|(^|/)\.claude/settings\.local\.json$|(^|/)[^/]*\.(p12|keystore|jks|mobileprovision)$' \
+  | grep -vE '\.env\.(example|sample|template)$' || true)
+
+# ── 1-2) PEM 계열은 내용으로 판정 ────────────────────────────────────
+# .pem/.key 확장자라도 공개 인증서 체인(SSL Pinning 번들 등)은 커밋해야 한다.
+# 위험한 것은 개인키뿐이므로 스테이지된 "내용"에 PRIVATE KEY 블록이 있을 때만 차단한다.
+# (워킹트리가 아니라 `git show :파일` 로 실제 커밋될 내용을 본다.)
+for f in $(printf '%s\n' "$staged" | grep -E '(^|/)[^/]*\.(pem|key|crt|cer)$' || true); do
+  if git show ":$f" 2>/dev/null | grep -qE -- '-----BEGIN [A-Z ]*PRIVATE KEY-----'; then
+    blocked=$(printf '%s\n%s' "$blocked" "$f")
+  fi
+done
+blocked=$(printf '%s\n' "$blocked" | grep -v '^$' || true)
+
+if [ -n "$blocked" ]; then
+  echo "${RED}✘ 커밋 차단 — 시크릿을 담을 수 있는 파일이 스테이지에 있습니다:${NC}"
+  printf '  %s\n' $blocked
+  echo ""
+  echo "  해제: git restore --staged <파일>"
+  echo "  의도적 커밋이라면 플레이스홀더만 남기고 .env.example 로 옮기세요."
+  fail=1
+fi
+
+# ── 2) gitleaks 콘텐츠 스캔 ─────────────────────────────────────────
+if command -v gitleaks >/dev/null 2>&1; then
+  cfg="$(git rev-parse --show-toplevel)/.gitleaks.toml"
+  args=(protect --staged --redact --no-banner)
+  [ -f "$cfg" ] && args+=(--config "$cfg")
+  if ! gitleaks "${args[@]}"; then
+    echo ""
+    echo "${RED}✘ 커밋 차단 — gitleaks 가 시크릿을 탐지했습니다 (값은 위에서 마스킹됨).${NC}"
+    echo "  오탐이면 .gitleaks.toml [allowlist] 에 추가하세요."
+    fail=1
+  fi
+else
+  echo "${YEL}⚠ gitleaks 미설치 — 콘텐츠 스캔을 건너뜁니다 (파일명 검사만 수행).${NC}"
+  echo "  설치: brew install gitleaks"
+fi
+
+if [ "$fail" -ne 0 ]; then
+  exit 1
+fi
+
+echo "${GRN}✔ pre-commit: 시크릿 검사 통과${NC}"
+exit 0

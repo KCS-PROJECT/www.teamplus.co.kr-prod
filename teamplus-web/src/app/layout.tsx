@@ -65,11 +65,35 @@ export default async function RootLayout({
           href={env.NEXT_PUBLIC_API_URL}
         />
 
+        {/* 폰트 preload — production 한정.
+            @font-face 가 인라인 <style> 안에 있으면 브라우저는 CSSOM 구성 + DOM 매칭 이후에야
+            폰트를 요청한다. 즉 JS/CSS 파싱이 끝난 뒤 폰트 다운로드가 시작돼 직렬로 가산된다.
+            preload 는 그 발견 시점을 문서 파싱 즉시로 끌어올린다.
+
+            dev 에서 제외하는 이유: Next.js dev HMR 이 CSS 를 분할 주입하면서
+            "preloaded but not used" 경고를 유발한다(WEB-049). 그 경고를 없애려고
+            production 최적화까지 포기했던 것을 환경 분기로 되돌린다. */}
+        {env.isProduction && (
+          <>
+            <link
+              rel="preload"
+              href="/fonts/MaterialSymbolsOutlined.woff2"
+              as="font"
+              type="font/woff2"
+              crossOrigin="anonymous"
+            />
+            <link
+              rel="preload"
+              href="/fonts/PretendardVariable.woff2"
+              as="font"
+              type="font/woff2"
+              crossOrigin="anonymous"
+            />
+          </>
+        )}
+
         {/* Critical CSS: @font-face inline 선언 + 배경색 즉시 적용.
-            ⚠️ preload <link> 는 의도적으로 제거됨 — Next.js dev HMR 이 CSS 를 분할 주입하면서
-            "preloaded but not used" 경고를 억지로 유발하기 때문. font-display:block 이 FOUT
-            (아이콘 이름 텍스트 노출)을 이미 차단하므로 preload 없이도 UX 손실 없음.
-            재발 방지 참조: docs/Error/web/web-errors.md WEB-049 */}
+            font-display:block 이 FOUT(아이콘 이름 텍스트 노출)을 차단한다. */}
         <style
           key="critical-css"
           dangerouslySetInnerHTML={{

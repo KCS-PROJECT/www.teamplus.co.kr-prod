@@ -1,0 +1,97 @@
+# gitleaks 설정 — 시크릿 재유입 차단
+# 도입 근거: 2026-07-30 법적 리스크 감사. 과거 커밋에 .env / .claude/settings.local.json 이
+# 포함되어 DB·SMTP·PG·SSH 자격증명이 유출된 이력이 있다(docs/Security/SECRET_ROTATION_GUIDE.md).
+# 재발 방지 수단이 전무했기 때문에 이 설정 + .githooks/pre-commit 을 함께 도입한다.
+#
+# 사용:
+#   gitleaks detect --config .gitleaks.toml        # 히스토리 전체 스캔
+#   gitleaks protect --staged --config .gitleaks.toml   # 커밋 직전 스테이지만 스캔 (pre-commit)
+
+title = "TEAMPLUS gitleaks config"
+
+[extend]
+# gitleaks 기본 룰셋(AWS·GCP·GitHub PAT·Slack·Stripe 등)을 그대로 상속한다.
+useDefault = true
+
+# ── 프로젝트 고유 룰 ────────────────────────────────────────────────
+
+[[rules]]
+id = "teamplus-db-url-with-password"
+description = "DATABASE_URL 에 평문 비밀번호가 포함됨"
+regex = '''postgres(?:ql)?://[A-Za-z0-9_\-]+:[^:@\s/"']{3,}@'''
+tags = ["database", "credential"]
+
+[[rules]]
+id = "teamplus-crypto-secret-hex"
+description = "CRYPTO_SECRET_KEY / FIELD_ENCRYPTION_KEY / IDENTITY_ENCRYPTION_KEY 실값(32바이트 hex)"
+regex = '''(?i)(CRYPTO_SECRET_KEY|FIELD_ENCRYPTION_KEY|IDENTITY_ENCRYPTION_KEY|IDENTITY_CI_HASH_KEY)\s*[:=]\s*["']?[0-9a-f]{32,}'''
+tags = ["encryption-key"]
+
+# 주의: gitleaks 는 Go RE2 엔진을 쓰므로 negative lookahead `(?!` 를 지원하지 않는다.
+# 플레이스홀더 제외는 정규식이 아니라 아래 [allowlist](regexTarget = "line")로 처리한다.
+
+[[rules]]
+id = "teamplus-jwt-secret"
+description = "JWT_SECRET / JWT_REFRESH_SECRET 실값"
+regex = '''(?i)JWT_(?:REFRESH_)?SECRET\s*[:=]\s*["']?[^\s"'#]{16,}'''
+tags = ["jwt"]
+
+[[rules]]
+id = "teamplus-pg-live-key"
+description = "PG(토스·KG이니시스) 상점키·웹훅 시크릿"
+regex = '''(?i)(TOSS_(?:API_)?SECRET_KEY|TOSS_WEBHOOK_SECRET|INICIS_(?:SIGNATURE|MERCHANT)_KEY)\s*[:=]\s*["']?[A-Za-z0-9_\-]{16,}'''
+tags = ["payment"]
+
+[[rules]]
+id = "teamplus-smtp-password"
+description = "SMTP 계정 비밀번호"
+regex = '''(?i)SMTP_PASS(?:WORD)?\s*[:=]\s*["']?[^\s"'#]{6,}'''
+tags = ["email", "credential"]
+
+[[rules]]
+id = "teamplus-ssh-inline-password"
+description = "SSHPASS / PGPASSWORD / sudo -S 파이프에 평문 비밀번호"
+regex = '''(?i)(SSHPASS|PGPASSWORD)\s*=\s*["']?[^\s"']{4,}|echo\s+[^\s|]{4,}\s*\|\s*sudo\s+-S'''
+tags = ["ssh", "credential"]
+
+[[rules]]
+id = "teamplus-git-remote-pat"
+description = "git remote URL 에 임베드된 토큰"
+regex = '''https://(?:gh[pousr]_[A-Za-z0-9]{16,}|[A-Za-z0-9_\-]{20,}):?[^@\s]*@github\.com'''
+tags = ["github", "token"]
+
+# ── 허용 목록 ───────────────────────────────────────────────────────
+
+[allowlist]
+description = "플레이스홀더·예시·테스트 픽스처는 시크릿이 아니다"
+# 매치값이 아니라 라인 전체를 보고 판정한다 — `JWT_SECRET=CHANGE_ME_...` 처럼
+# 플레이스홀더가 키 이름 뒤에 오는 형태를 잡으려면 line 단위 검사가 필요하다.
+regexTarget = "line"
+
+paths = [
+  '''(^|/)node_modules/''',
+  '''(^|/)\.next/''',
+  '''(^|/)dist/''',
+  '''(^|/)build/''',
+  '''(^|/)coverage/''',
+  '''(^|/)ios/Pods/''',
+  '''(^|/)package-lock\.json$''',
+  '''(^|/)pubspec\.lock$''',
+  '''(^|/)Podfile\.lock$''',
+  '''(^|/)\.gitleaks\.toml$''',
+  # Firebase 클라이언트 키는 설계상 공개값(앱 번들에 포함되어 배포된다)
+  '''(^|/)google-services\.json$''',
+  '''(^|/)GoogleService-Info\.plist$''',
+]
+
+regexes = [
+  '''CHANGE_ME''',
+  '''your[-_](?:secret|key|token|password)''',
+  '''dev-secret-key-change-in-production''',
+  '''default-32-char-encryption-key''',
+  '''(?i)placeholder''',
+  '''(?i)example\.(?:com|org)''',
+  '''test_(?:gsk|sk|ak)_''',
+  # 문서에서 유출 사실 자체를 기술하는 부분(마스킹된 값)
+  '''\*{3,}MASKED\*{3,}''',
+]

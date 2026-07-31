@@ -57,6 +57,7 @@ describe("PaymentRefundService", () => {
       classRegistration: { updateMany: jest.fn() },
       monthlyPostpaidBillingLine: { updateMany: jest.fn() },
       tournamentRegistration: { updateMany: jest.fn() },
+      pickupMatchApplicant: { updateMany: jest.fn() },
       refundRequest: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         create: jest.fn().mockResolvedValue({ id: "sys-rr-1", version: 0 }),

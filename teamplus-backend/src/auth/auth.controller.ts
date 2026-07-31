@@ -680,10 +680,14 @@ export class AuthController {
     status: 400,
     description: "이미 등록된 이메일/휴대폰 번호 또는 약관 미동의",
   })
-  async signup(@Body() signupDto: SignupDto) {
+  async signup(@Body() signupDto: SignupDto, @Req() req: ExpressRequest) {
     // 이메일 인증 폐기 — 아이디는 일반 식별자로 입력받고 중복확인만 수행.
     //   중복(이미 등록된 아이디)은 authService.signup 내부에서 차단된다.
-    return this.authService.signup(signupDto);
+    //
+    // IP·User-Agent 를 함께 넘긴다 — 동의 획득 사실의 증빙 보관 의무(PIPA §22⑦,
+    //   시행령 §17④)를 이행하려면 동의 시점의 접속 정보가 필요하다.
+    const { ipAddress, userAgent } = this.extractClientInfo(req);
+    return this.authService.signup(signupDto, { ipAddress, userAgent });
   }
 
   /**

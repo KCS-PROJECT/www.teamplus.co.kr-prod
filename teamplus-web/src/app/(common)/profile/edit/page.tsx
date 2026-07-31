@@ -13,6 +13,8 @@ import { AvatarUploader } from "@/components/shared/AvatarUploader";
 import { CareerFormSheet, type StaffCareer } from "@/components/coach/CareerFormSheet";
 import { api } from "@/services/api-client";
 import { MESSAGES } from "@/lib/messages";
+// [법무 2026-07-30 PIPA §36①] 정정 요청 창구 연락처 — COMPANY_INFO 단일 출처(읽기 전용).
+import { COMPANY_INFO } from "@/lib/legal/policy-content";
 import { useSessionAuth } from "@/hooks/useSessionAuth";
 import type { UploadedFile } from "@/types/file";
 import { usePageReady } from '@/hooks/usePageReady';
@@ -392,6 +394,48 @@ export default function ProfileEditPage() {
                 </p>
               </div>
 
+              {/* [추가 2026-07-30 법무 · 개인정보 보호법 §36①] 정정 요구권 창구 안내.
+                  자가 정정 범위가 주소 3필드로 제한되고 이름·연락처·생년월일·성별은 읽기
+                  전용이다. 자가 수정을 열면 본인인증 정합성이 깨지므로 범위는 그대로 두되,
+                  대체 창구(고객센터)를 화면에 직접 노출해 정정 요구권 행사 경로를 보장한다.
+                  연락처 값은 lib/legal/policy-content.ts 의 COMPANY_INFO 단일 출처를 읽는다. */}
+              <div className="mt-5 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-900 px-4 py-3.5">
+                <p className="flex items-start gap-1.5 text-[12.5px] font-extrabold text-it-ink-800 dark:text-rink-100 tracking-[-0.01em]">
+                  <Icon
+                    name="info"
+                    className="mt-px shrink-0 text-[15px] text-it-ink-500 dark:text-rink-300"
+                    aria-hidden="true"
+                  />
+                  <span>{MESSAGES.profile.correctionNoticeTitle}</span>
+                </p>
+                <p className="mt-1.5 text-[11.5px] font-medium leading-relaxed text-it-ink-500 dark:text-rink-300 tracking-[-0.01em]">
+                  {MESSAGES.profile.correctionNoticeBody}
+                </p>
+                <ul className="mt-2.5 flex flex-col gap-1 text-[11.5px] font-semibold text-it-ink-600 dark:text-rink-200 tracking-[-0.01em]">
+                  <li>
+                    <a
+                      href={`tel:${COMPANY_INFO.csPhone.replace(/-/g, '')}`}
+                      className="inline-flex min-h-[28px] items-center gap-1.5 text-it-blue-500 underline-offset-2 hover:underline tabular-nums"
+                    >
+                      <Icon name="call" className="text-[14px]" aria-hidden="true" />
+                      {MESSAGES.profile.correctionContactPhone(COMPANY_INFO.csPhone)}
+                    </a>
+                  </li>
+                  <li>
+                    <a
+                      href={`mailto:${COMPANY_INFO.csEmail}`}
+                      className="inline-flex min-h-[28px] items-center gap-1.5 break-all text-it-blue-500 underline-offset-2 hover:underline"
+                    >
+                      <Icon name="mail" className="text-[14px]" aria-hidden="true" />
+                      {MESSAGES.profile.correctionContactEmail(COMPANY_INFO.csEmail)}
+                    </a>
+                  </li>
+                  <li className="inline-flex items-center gap-1.5 text-it-ink-500 dark:text-rink-300">
+                    <Icon name="schedule" className="text-[14px]" aria-hidden="true" />
+                    {MESSAGES.profile.correctionContactHours(COMPANY_INFO.csHours)}
+                  </li>
+                </ul>
+              </div>
             </section>
 
             {/* 8px 회색 구분선 */}

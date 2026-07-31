@@ -15,7 +15,25 @@ const GlobalMenu = dynamic(() => import('@/components/layout/GlobalMenu').then(m
 
 type OrderStatus = 'all' | 'shipping' | 'delivered' | 'cancelled';
 
-type OrderDisplayStatus = 'pending' | 'confirmed' | 'shipping' | 'delivered' | 'cancelled' | 'returned';
+/**
+ * 주문 표시 상태 — 백엔드 `ShopOrder.orderStatus` 실제 값과 1:1 대응한다.
+ *
+ * [2026-07-30 수정] 기존 `confirmed`/`shipping`/`returned` 는 백엔드에 존재하지 않는
+ * 죽은 값이었고(`schema.prisma:1402` = pending|paid|preparing|shipped|delivered|cancelled|refunded),
+ * 반대로 실제 값인 `paid`/`preparing`/`shipped`/`refunded` 는 매핑이 없어 모두
+ * '결제대기' 로 오표시됐다. 특히 `returned: '반품완료'` 는 반품 기능 자체가
+ * 미구현(모델·엔드포인트 0건)인데 완료 라벨을 노출하는 허위 표시였다.
+ * 반품·교환 구현은 오픈 차단 조건 — docs/Planning/SHOP_LAUNCH_CHECKLIST.md (A-3).
+ */
+type OrderDisplayStatus =
+  | 'pending'
+  | 'paid'
+  | 'preparing'
+  | 'shipped'
+  | 'delivered'
+  | 'cancelled'
+  | 'refunded'
+  | 'unknown';
 
 interface DisplayOrder {
   id: string;
@@ -44,7 +62,10 @@ interface ApiOrderItem {
 interface ApiOrder {
   id: string;
   orderNumber: string;
-  status: string;
+  /** 백엔드 canonical 키 (`ShopOrder.orderStatus`). */
+  orderStatus?: string;
+  /** 구 프론트 계약 잔재 — 백엔드는 이 키를 emit 하지 않는다(하위호환 폴백만). */
+  status?: string;
   totalAmount: number;
   createdAt: string;
   items: ApiOrderItem[];
@@ -55,32 +76,38 @@ interface ApiOrdersResponse {
   pagination: { total: number; page: number; limit: number; totalPages: number };
 }
 
+// 라벨 문구는 teamplus-admin `getOrderStatusLabel()` 과 동일 어휘를 사용한다(운영자↔구매자 동일 표기).
 const statusConfig: Record<OrderDisplayStatus, { label: string; bgColor: string; textColor: string }> = {
-  pending:   { label: '결제대기',  bgColor: 'bg-amber-100 dark:bg-amber-900/30',  textColor: 'text-amber-600 dark:text-amber-400' },
-  confirmed: { label: '주문확인',  bgColor: 'bg-it-blue-50 dark:bg-it-blue-900/30', textColor: 'text-it-blue-500' },
-  shipping:  { label: '배송중',    bgColor: 'bg-it-blue-50 dark:bg-it-blue-900/30', textColor: 'text-it-blue-500' },
-  delivered: { label: '배송완료',  bgColor: 'bg-blue-100 dark:bg-blue-900/30',    textColor: 'text-blue-600 dark:text-blue-400' },
-  cancelled: { label: '취소완료',  bgColor: 'bg-it-fill dark:bg-rink-800',        textColor: 'text-it-ink-600 dark:text-rink-300' },
-  returned:  { label: '반품완료',  bgColor: 'bg-rose-100 dark:bg-rose-900/30',    textColor: 'text-rose-600 dark:text-rose-400' },
+  pending:   { label: '결제대기',   bgColor: 'bg-amber-100 dark:bg-amber-900/30',    textColor: 'text-amber-600 dark:text-amber-400' },
+  paid:      { label: '결제완료',   bgColor: 'bg-it-blue-50 dark:bg-it-blue-900/30', textColor: 'text-it-blue-500' },
+  preparing: { label: '상품준비중', bgColor: 'bg-it-blue-50 dark:bg-it-blue-900/30', textColor: 'text-it-blue-500' },
+  shipped:   { label: '배송중',     bgColor: 'bg-it-blue-50 dark:bg-it-blue-900/30', textColor: 'text-it-blue-500' },
+  delivered: { label: '배송완료',   bgColor: 'bg-blue-100 dark:bg-blue-900/30',      textColor: 'text-blue-600 dark:text-blue-400' },
+  cancelled: { label: '주문취소',   bgColor: 'bg-it-fill dark:bg-rink-800',          textColor: 'text-it-ink-600 dark:text-rink-300' },
+  refunded:  { label: '환불완료',   bgColor: 'bg-it-fill dark:bg-rink-800',          textColor: 'text-it-ink-600 dark:text-rink-300' },
+  unknown:   { label: '미정',       bgColor: 'bg-it-fill dark:bg-rink-700',          textColor: 'text-it-ink-600 dark:text-rink-100' },
 };
 
 const filterTabs: { id: OrderStatus; label: string }[] = [
   { id: 'all', label: '전체' },
   { id: 'shipping', label: '배송중' },
   { id: 'delivered', label: '배송완료' },
-  { id: 'cancelled', label: '취소/반품' },
+  // 반품 기능 미구현 — '취소/반품' → '취소·환불' (RULE-D04 가운뎃점)
+  { id: 'cancelled', label: '취소·환불' },
 ];
 
-function mapStatus(s: string): OrderDisplayStatus {
-  switch (s.toLowerCase()) {
+function mapStatus(raw?: string): OrderDisplayStatus {
+  switch ((raw ?? '').toLowerCase()) {
     case 'pending':   return 'pending';
-    case 'confirmed': return 'confirmed';
-    case 'shipping':  return 'shipping';
+    case 'paid':      return 'paid';
+    case 'preparing': return 'preparing';
+    case 'shipped':   return 'shipped';
     case 'delivered': return 'delivered';
     case 'cancelled':
     case 'canceled':  return 'cancelled';
-    case 'returned':  return 'returned';
-    default:          return 'pending';
+    case 'refunded':  return 'refunded';
+    // 미지의 값·누락은 '결제대기' 로 위장하지 않고 '미정' 으로 표시한다.
+    default:          return 'unknown';
   }
 }
 
@@ -102,11 +129,11 @@ function mapApiOrder(o: ApiOrder): DisplayOrder {
     option: firstItem?.productOption ?? '-',
     price: firstItem ? firstItem.unitPrice * firstItem.quantity : o.totalAmount,
     quantity: firstItem?.quantity ?? 1,
-    status: mapStatus(o.status),
+    status: mapStatus(o.orderStatus ?? o.status),
   };
 }
 
-const STATUS_FALLBACK = { label: '미정', bgColor: 'bg-it-fill dark:bg-rink-700', textColor: 'text-it-ink-600 dark:text-rink-100' };
+const STATUS_FALLBACK = statusConfig.unknown;
 
 function StatusBadge({ status }: { status: OrderDisplayStatus }) {
   const config = statusConfig[status] ?? STATUS_FALLBACK;
@@ -120,35 +147,38 @@ function StatusBadge({ status }: { status: OrderDisplayStatus }) {
 function OrderCard({ order }: { order: DisplayOrder }) {
   const { navigate } = useNavigation();
 
+  // [2026-07-30] 배송조회·리뷰쓰기·재구매 3개 버튼은 onClick 핸들러가 없는 상태다.
+  //   쇼핑몰 미오픈 중이라 도달 불가하지만, 동작하지 않는 버튼을 활성 상태로
+  //   노출하는 것은 표시 리스크이므로 disabled 로 고정한다.
+  //   실제 배선은 오픈 작업 항목 — docs/Planning/SHOP_LAUNCH_CHECKLIST.md (C-2).
+  const OUTLINE_CLASS =
+    'flex-1 py-2.5 text-card-body font-medium text-it-ink-700 dark:text-rink-100 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md disabled:opacity-50 disabled:cursor-not-allowed';
+  const PRIMARY_CLASS =
+    'flex-1 py-2.5 text-card-body font-medium text-white bg-it-blue-500 rounded-w-md disabled:opacity-50 disabled:cursor-not-allowed';
+
   const getActionButtons = () => {
     switch (order.status) {
-      case 'shipping':
+      case 'shipped':
         return (
-          <button type="button" className="flex-1 py-2.5 text-card-body font-medium text-it-blue-500 border-[1.5px] border-it-blue-500 rounded-w-md hover:bg-it-blue-50 transition-colors motion-reduce:transition-none">
+          <button type="button" disabled aria-disabled="true" className="flex-1 py-2.5 text-card-body font-medium text-it-blue-500 border-[1.5px] border-it-blue-500 rounded-w-md disabled:opacity-50 disabled:cursor-not-allowed">
             배송조회
           </button>
         );
       case 'delivered':
         return (
           <>
-            <button type="button" className="flex-1 py-2.5 text-card-body font-medium text-it-ink-700 dark:text-rink-100 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md hover:bg-it-fill dark:hover:bg-rink-800 transition-colors motion-reduce:transition-none">
+            <button type="button" disabled aria-disabled="true" className={OUTLINE_CLASS}>
               리뷰쓰기
             </button>
-            <button type="button" className="flex-1 py-2.5 text-card-body font-medium text-white bg-it-blue-500 rounded-w-md hover:bg-it-blue-600 transition-colors motion-reduce:transition-none">
+            <button type="button" disabled aria-disabled="true" className={PRIMARY_CLASS}>
               재구매
             </button>
           </>
         );
-      case 'confirmed':
-        return (
-          <button type="button" className="flex-1 py-2.5 text-card-body font-medium text-white bg-it-blue-500 rounded-w-md hover:bg-it-blue-600 transition-colors motion-reduce:transition-none">
-            재구매
-          </button>
-        );
-      case 'returned':
       case 'cancelled':
+      case 'refunded':
         return (
-          <button type="button" className="flex-1 py-2.5 text-card-body font-medium text-it-ink-700 dark:text-rink-100 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md hover:bg-it-fill dark:hover:bg-rink-800 transition-colors motion-reduce:transition-none">
+          <button type="button" disabled aria-disabled="true" className={OUTLINE_CLASS}>
             재구매
           </button>
         );
@@ -156,6 +186,8 @@ function OrderCard({ order }: { order: DisplayOrder }) {
         return null;
     }
   };
+
+  const actionButtons = getActionButtons();
 
   return (
     <div className="bg-it-surface dark:bg-rink-800 p-4 border-b border-it-line dark:border-rink-700 last:border-b-0">
@@ -198,10 +230,12 @@ function OrderCard({ order }: { order: DisplayOrder }) {
         </div>
       </div>
 
-      {/* Action Buttons */}
-      <div className="flex gap-2 mt-4 pt-4 border-t border-it-line dark:border-white/10">
-        {getActionButtons()}
-      </div>
+      {/* Action Buttons — 표시할 액션이 없으면 빈 구분선 행을 만들지 않는다 */}
+      {actionButtons ? (
+        <div className="flex gap-2 mt-4 pt-4 border-t border-it-line dark:border-white/10">
+          {actionButtons}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -236,9 +270,11 @@ export default function OrdersPage() {
 
   const filteredOrders = orders.filter((order) => {
     if (activeFilter === 'all') return true;
-    if (activeFilter === 'shipping') return order.status === 'shipping' || order.status === 'confirmed';
+    // 배송중 탭 = 결제 후 배송 진행 구간 (paid → preparing → shipped)
+    if (activeFilter === 'shipping')
+      return order.status === 'paid' || order.status === 'preparing' || order.status === 'shipped';
     if (activeFilter === 'delivered') return order.status === 'delivered';
-    if (activeFilter === 'cancelled') return order.status === 'returned' || order.status === 'cancelled';
+    if (activeFilter === 'cancelled') return order.status === 'cancelled' || order.status === 'refunded';
     return true;
   });
 

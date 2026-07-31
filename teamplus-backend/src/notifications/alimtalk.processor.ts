@@ -1,7 +1,10 @@
 import { Process, Processor } from "@nestjs/bull";
 import { Logger } from "@nestjs/common";
 import { Job } from "bull";
-import { AlimtalkGateway } from "./alimtalk.gateway";
+import {
+  AlimtalkGateway,
+  AlimtalkNightAdBlockedError,
+} from "./alimtalk.gateway";
 import { PrismaService } from "@/prisma/prisma.service";
 import { SendAlimtalkDto } from "./dto/alimtalk.dto";
 
@@ -41,6 +44,21 @@ export class AlimtalkProcessor {
       this.logger.log(`알림톡 발송 완료: jobId=${job.id}`);
     } catch (error) {
       const err = error as Error;
+
+      // 야간 광고성 차단은 '실패'가 아니라 법적 차단 — 재시도하면 안 된다(§50③).
+      // blocked 로 종결하고 에러를 재throw 하지 않아 Bull 재시도를 끊는다.
+      if (error instanceof AlimtalkNightAdBlockedError) {
+        this.logger.warn(`알림톡 야간 광고성 차단: jobId=${job.id}`);
+        await this.prisma.alimtalkLog.updateMany({
+          where: { notificationId, status: "pending" },
+          data: {
+            status: "blocked",
+            responseData: { blockedReason: err.message },
+          },
+        });
+        return;
+      }
+
       this.logger.error(
         `알림톡 발송 실패: jobId=${job.id} (시도: ${attempt}/3)`,
         err.message,
