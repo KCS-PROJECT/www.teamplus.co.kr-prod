@@ -63,6 +63,13 @@ model User {
   agreedPrivacyVersion String?   @map("agreed_privacy_version") /// 마지막 동의한 개인정보처리방침 버전
   agreedAt             DateTime? @map("agreed_at") @db.Timestamptz(3) /// 마지막 약관 동의 시각
 
+  // 마케팅 정보 수신 동의 (2026-07-30 추가)
+  // 정통망법 §50① — 영리목적 광고성 정보는 사전 수신동의(opt-in) 없이 전송 금지.
+  // 발송 게이트(푸시/알림톡/SMS 마케팅)가 단건 조회로 판별할 수 있도록 User 에 직접 둔다.
+  // 동의/철회 이력(시점·IP·UA·약관버전 스냅샷)은 AuditLog(action='marketing_consent_*') 에 남는다.
+  marketingConsent   Boolean   @default(false) @map("marketing_consent") /// 마케팅 수신 동의 현재 상태 (false = 발송 금지)
+  marketingConsentAt DateTime? @map("marketing_consent_at") @db.Timestamptz(3) /// 마지막 동의/철회 처리 시각
+
   // Soft Delete (NEW-06 — 2026-05-21 추가, PIPA 30일 보존)
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3) /// 논리적 삭제 시각 (NULL = active, 값 있음 = soft-deleted)
 
@@ -393,7 +400,9 @@ model ChildConsent {
   consentThirdParty   Boolean   @default(false) @map("consent_third_party")
   /// 마케팅 활용 동의 (선택).
   consentMarketing    Boolean   @default(false) @map("consent_marketing")
-  /// 동의 확인 방법 — 'sms_otp' / 'identity_verify' / 'pin'.
+  /// 동의 확인 방법 — 'sms_otp' / 'identity_verify' / 'pin' / 'guardian_account'.
+  /// guardian_account = 자녀 등록(POST /children) 경로에서 본인인증 이력이 없는 레거시
+  /// 보호자 계정이라 로그인 세션(JWT)이 유일한 신원 확인 수단이었던 경우.
   verificationMethod  String    @map("verification_method")
   /// 동의 시 IP 주소 (법적 증거).
   ipAddress           String?   @map("ip_address")
@@ -2933,6 +2942,9 @@ model ChatMessage {
   attachments Json            @default("[]") // 첨부파일 URL 배열
   isEdited    Boolean         @default(false) @map("is_edited")
   isDeleted   Boolean         @default(false) @map("is_deleted")
+  /// PIPA §21 파기 — isDeleted 만으로는 "언제 삭제됐는지"를 알 수 없어 보존기간 경과 판별이 불가했다.
+  /// 파기 배치가 이 시각 기준으로 물리 삭제 대상을 고른다(탈퇴 회원 메시지는 soft delete 정책상 Cascade 미적용).
+  deletedAt   DateTime?       @map("deleted_at") @db.Timestamptz(3)
   readBy      Json            @default("[]") @map("read_by") // 읽은 사용자 ID 배열
   createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -2946,6 +2958,7 @@ model ChatMessage {
   @@index([receiverId])
   @@index([createdAt])
   @@index([roomId, isDeleted, createdAt]) // P0: 메시지 페이징 최적화
+  @@index([deletedAt]) // 파기 배치가 보존기간 경과 soft-delete 건만 골라내야 함(전체 스캔 방지)
   @@map("chat_messages")
 }
 

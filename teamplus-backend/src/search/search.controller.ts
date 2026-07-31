@@ -5,6 +5,10 @@ import { Public } from "../auth/public.decorator";
 import { OptionalJwtAuthGuard } from "../auth/optional-jwt-auth.guard";
 import { AuthenticatedRequest } from "@/common/interfaces/authenticated-request.interface";
 import { SearchService } from "./search.service";
+import {
+  clampLimit,
+  clampOffset,
+} from "@/common/utils/pagination-clamp.util";
 
 @ApiTags("Search")
 @Controller("api/v1/search")
@@ -121,8 +125,8 @@ export class SearchController {
     return this.searchService.search(
       q ?? "",
       (type as any) ?? "all",
-      limit ? parseInt(limit, 10) : 20,
-      offset ? parseInt(offset, 10) : 0,
+      clampLimit(limit, 20),
+      clampOffset(offset),
       req.user,
     );
   }
@@ -161,8 +165,6 @@ export class SearchController {
     },
   })
   async popular(@Query("limit") limit?: string) {
-    return this.searchService.getPopularKeywords(
-      limit ? parseInt(limit, 10) : 10,
-    );
+    return this.searchService.getPopularKeywords(clampLimit(limit, 10, 30));
   }
 }

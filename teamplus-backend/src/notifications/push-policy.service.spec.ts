@@ -13,6 +13,10 @@ describe("PushPolicyService", () => {
     userNotificationPreference: {
       findMany: jest.fn(),
     },
+    // 광고성 발송 시 마케팅 수신동의(User.marketingConsent) 조회
+    user: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
   };
 
   /** 기본 preference 행 (전 항목 허용) */
@@ -138,6 +142,90 @@ describe("PushPolicyService", () => {
     });
   });
 
+  describe("② 마케팅 수신동의 (§50① · PIPA §22④)", () => {
+    it("광고성 발송은 marketingConsent=false 사용자를 marketing_not_consented 로 제외", async () => {
+      prismaMock.userNotificationPreference.findMany.mockResolvedValue([
+        basePref("consented"),
+        basePref("not-consented"),
+      ]);
+      prismaMock.user.findMany.mockResolvedValueOnce([
+        { id: "consented", marketingConsent: true },
+        { id: "not-consented", marketingConsent: false },
+      ]);
+
+      const result = await service.filterRecipients(
+        ["consented", "not-consented"],
+        { notificationType: "admin_push_marketing" },
+      );
+
+      expect(result.allowed).toEqual(["consented"]);
+      expect(result.suppressed).toEqual([
+        { userId: "not-consented", reason: "marketing_not_consented" },
+      ]);
+    });
+
+    it("preference 행이 없어도 광고성은 동의 없으면 제외 (기본 허용 우회 차단)", async () => {
+      prismaMock.userNotificationPreference.findMany.mockResolvedValue([]);
+      prismaMock.user.findMany.mockResolvedValueOnce([
+        { id: "u1", marketingConsent: false },
+      ]);
+
+      const result = await service.filterRecipients(["u1"], {
+        notificationType: "marketing",
+      });
+
+      expect(result.allowed).toEqual([]);
+      expect(result.suppressed).toEqual([
+        { userId: "u1", reason: "marketing_not_consented" },
+      ]);
+    });
+
+    it("isMarketing=true 만 넘겨도(타입 미지정) 동의 게이트가 적용된다", async () => {
+      prismaMock.userNotificationPreference.findMany.mockResolvedValue([]);
+      prismaMock.user.findMany.mockResolvedValueOnce([
+        { id: "u1", marketingConsent: false },
+      ]);
+
+      const result = await service.filterRecipients(["u1"], {
+        isMarketing: true,
+      });
+
+      expect(result.suppressed).toEqual([
+        { userId: "u1", reason: "marketing_not_consented" },
+      ]);
+    });
+
+    it("정보성 발송은 동의 조회를 하지 않는다 (쿼리 비용 회귀 방지)", async () => {
+      prismaMock.userNotificationPreference.findMany.mockResolvedValue([]);
+
+      const result = await service.filterRecipients(["u1"], {
+        notificationType: "payment_success",
+      });
+
+      expect(result.allowed).toEqual(["u1"]);
+      expect(prismaMock.user.findMany).not.toHaveBeenCalled();
+    });
+
+    it("동의했더라도 categories.marketing=false 면 카테고리 필터로 제외", async () => {
+      prismaMock.userNotificationPreference.findMany.mockResolvedValue([
+        basePref("u1", {
+          categories: { notice: true, marketing: false },
+        }),
+      ]);
+      prismaMock.user.findMany.mockResolvedValueOnce([
+        { id: "u1", marketingConsent: true },
+      ]);
+
+      const result = await service.filterRecipients(["u1"], {
+        notificationType: "promotion",
+      });
+
+      expect(result.suppressed).toEqual([
+        { userId: "u1", reason: "category_disabled" },
+      ]);
+    });
+  });
+
   describe("④ quietHours (B6)", () => {
     it("방해금지 시간대 사용자는 suppressed(quiet_hours) — 인앱은 게이트 밖", async () => {
       prismaMock.userNotificationPreference.findMany.mockResolvedValue([
@@ -191,12 +279,24 @@ describe("categoryOfNotificationType (설정 카테고리 매핑)", () => {
     expect(categoryOfNotificationType(type)).toBe(expected);
   });
 
-  it.each(["chat_message", "admin_push", "admin_push_marketing", "unknown"])(
+  it.each(["chat_message", "admin_push", "unknown"])(
     "미분류 %s → null (필터 통과)",
     (type) => {
       expect(categoryOfNotificationType(type)).toBeNull();
     },
   );
+
+  // 과거 회귀: marketing 계열이 null 로 떨어져 '마케팅 정보 수신' OFF 가 무력화됐다 (§50⑥)
+  it.each([
+    "marketing",
+    "promotion",
+    "advertisement",
+    "event_promotion",
+    "academy_promotion",
+    "admin_push_marketing",
+  ])("광고성 %s → marketing (필터 적용)", (type) => {
+    expect(categoryOfNotificationType(type)).toBe("marketing");
+  });
 });
 
 describe("isWithinQuietHoursKST", () => {

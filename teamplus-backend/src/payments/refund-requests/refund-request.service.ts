@@ -32,8 +32,29 @@ import { REFUND_REQUEST_ACTIVE_STATUSES as ACTIVE_STATUSES } from "./refund-requ
 /** Team.coachId(owner) 외에 팀 관리자로 인정하는 승인 멤버 역할(N1 알림 라우팅). */
 const TEAM_MANAGER_ROLES = ["HEAD_COACH", "COACH", "MANAGER"];
 
-/** 환불 요청 가능 기간(결제일 기준, 일) — 전액 환불 정책과 정합. 프론트 버튼 노출 기준과 동일 값 유지. */
-const REFUND_REQUEST_WINDOW_DAYS = 14;
+/**
+ * 법정 청약철회 기간(전자상거래법 §17①) — 결제일 기준 7일.
+ * 이 기간 내 + 이용 개시 전이면 전액 환불 대상이다.
+ */
+const LEGAL_WITHDRAWAL_DAYS = 7;
+
+/**
+ * 환불 요청 접수 상한(결제일 기준, 일).
+ *
+ * 계속거래 중도해지권(방문판매법 §31)은 청약철회 기간과 별개라 기간 경과만으로
+ * 환불 경로를 소실시킬 수 없다. 경과분은 차단 대신 이용분을 공제한 비례 환급
+ * 요청으로 접수하고, 무기한 소급 청구만 이 상한으로 막는다.
+ */
+const REFUND_REQUEST_MAX_DAYS = 365;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * 거절 시 소비자에게 함께 제공하는 이의제기 안내 (전자상거래법 §6 분쟁 기록 3년 보존 취지).
+ * 거절이 최종 통보로 읽히지 않도록 응답·알림에 동일 문구를 싣는다.
+ */
+const REFUND_APPEAL_GUIDE =
+  "환불 거절에 이의가 있으시면 고객센터로 재심을 요청할 수 있습니다. 처리 결과에 동의하지 않으실 경우 한국소비자원(1372) 또는 전자거래분쟁조정위원회에 조정을 신청할 수 있습니다.";
 
 /** 활성(대기·처리 중·실패 미해소) 상태 — 목록 정렬 우선순위 계산용. */
 const ACTIVE_STATUS_PRIORITY: Record<string, number> = {
@@ -44,7 +65,11 @@ const ACTIVE_STATUS_PRIORITY: Record<string, number> = {
 
 /** 요청 생성 시 스냅샷할 도메인 스코프. */
 interface DomainScope {
-  sourceType: "CLASS_PREPAID" | "CLASS_POSTPAID" | "TOURNAMENT";
+  sourceType:
+    | "CLASS_PREPAID"
+    | "CLASS_POSTPAID"
+    | "TOURNAMENT"
+    | "PICKUP_MATCH";
   classId: string | null;
   tournamentId: string | null;
   teamId: string | null;
@@ -141,26 +166,37 @@ export class RefundRequestService {
     }
     // 완료된 결제만.
     if (payment.paymentStatus !== "completed") {
-      throw new BadRequestException(
-        "완료된 결제만 환불을 요청할 수 있습니다.",
-      );
+      throw new BadRequestException("완료된 결제만 환불을 요청할 수 있습니다.");
     }
-    // 요청 기한 — 결제일로부터 14일 이내만 허용(전액 환불 정책 정합, 기간 경과분은 Phase 2 부분환불 경로).
+    // 요청 접수 상한 — 기간 경과분도 비례 환급으로 접수하되 무기한 소급만 차단한다.
     const paidAt = payment.completedAt ?? payment.createdAt;
-    if (
-      Date.now() - paidAt.getTime() >
-      REFUND_REQUEST_WINDOW_DAYS * 24 * 60 * 60 * 1000
-    ) {
+    const elapsedDays = (Date.now() - paidAt.getTime()) / DAY_MS;
+    if (elapsedDays > REFUND_REQUEST_MAX_DAYS) {
       throw new BadRequestException(
-        `환불 요청 가능 기간(결제일로부터 ${REFUND_REQUEST_WINDOW_DAYS}일)이 지나 요청할 수 없습니다.`,
+        `환불 요청 가능 기간(결제일로부터 ${REFUND_REQUEST_MAX_DAYS}일)이 지났습니다. 고객센터로 문의해주세요.`,
       );
     }
 
-    // 도메인 판별 (fail-closed) — 지원하지 않는 결제(픽업 개별·쇼핑 등)는 422.
+    // 도메인 판별 (fail-closed) — 지원하지 않는 결제(쇼핑 등)는 422.
     const domain = await this.resolveDomainScope(payment.id);
     if (!domain) {
       throw new UnprocessableEntityException(
         "환불 요청을 지원하지 않는 결제입니다.",
+      );
+    }
+
+    // 요청 금액은 서버가 산정한다(클라이언트 입력 없음).
+    //   법정 청약철회 기간 내 + 이용 개시 전 → 전액,
+    //   그 외(기간 경과·이용 개시분) → 이용분을 공제한 비례 환급액.
+    const quote = await this.refundService.computeRefundQuote(payment.id);
+    const withinWithdrawal = elapsedDays <= LEGAL_WITHDRAWAL_DAYS;
+    const requestedAmount =
+      withinWithdrawal && !quote.started
+        ? Number(payment.amount)
+        : quote.refundableAmount;
+    if (requestedAmount <= 0) {
+      throw new BadRequestException(
+        `환불 가능 잔액이 없습니다. (${quote.calculationNote})`,
       );
     }
 
@@ -177,7 +213,7 @@ export class RefundRequestService {
           academyId: domain.academyId,
           status: "pending",
           requestReason: dto.reason,
-          requestedAmount: payment.amount, // Phase 1 = 전액
+          requestedAmount,
         },
         select: RESPONSE_SELECT,
       });
@@ -439,6 +475,8 @@ export class RefundRequestService {
         failureCode: rr.failureCode,
         failureReason: rr.failureReason,
       },
+      // 거절 건은 이의제기 경로를 함께 노출한다 — 거절이 최종 통보로 읽히지 않게.
+      appealGuide: rr.status === "rejected" ? REFUND_APPEAL_GUIDE : null,
       history: refundLogs,
     };
   }
@@ -461,9 +499,7 @@ export class RefundRequestService {
     await this.assertCanManage(rr, user);
     // DIRECT(관리자 직접 환불 시스템 원장)는 승인 대상이 아니다(reprocess 만 허용).
     if (rr.sourceType === "DIRECT") {
-      throw new BadRequestException(
-        "직접 환불 요청은 승인 대상이 아닙니다.",
-      );
+      throw new BadRequestException("직접 환불 요청은 승인 대상이 아닙니다.");
     }
 
     // CAS 선점: pending + version → executing. idempotencyKey 저장(PG 멱등).
@@ -493,7 +529,10 @@ export class RefundRequestService {
       actorId: user.id,
       expectedVersion,
       idempotencyKey,
+      creditPolicy: await this.resolveCreditPolicy(rr.paymentId),
     };
+    await this.recordDecisionAudit(rr, user, "approved", dto.memo ?? null);
+
     try {
       await this.runExecution(
         rr,
@@ -526,7 +565,7 @@ export class RefundRequestService {
     requestId: string,
     dto: RejectRefundRequestDto,
     user: JwtUserPayload,
-  ): Promise<RefundRequestRow> {
+  ): Promise<RefundRequestRow & { appealGuide: string }> {
     const rr = await this.prisma.refundRequest.findUnique({
       where: { id: requestId },
       select: RESPONSE_SELECT,
@@ -537,9 +576,7 @@ export class RefundRequestService {
     await this.assertCanManage(rr, user);
     // DIRECT(관리자 직접 환불 시스템 원장)는 거절 대상이 아니다.
     if (rr.sourceType === "DIRECT") {
-      throw new BadRequestException(
-        "직접 환불 요청은 거절 대상이 아닙니다.",
-      );
+      throw new BadRequestException("직접 환불 요청은 거절 대상이 아닙니다.");
     }
 
     const cas = await this.prisma.refundRequest.updateMany({
@@ -556,9 +593,13 @@ export class RefundRequestService {
       throw new ConflictException("다른 담당자가 이미 처리했습니다.");
     }
 
-    // N2: 결정 → 학부모. (재정 변화 없음)
+    // 거절 결정 감사 기록 — 분쟁 기록 보존(전자상거래법 §6). 실패해도 거절은 유효.
+    await this.recordDecisionAudit(rr, user, "rejected", dto.decisionReason);
+
+    // N2: 결정 → 학부모. (재정 변화 없음) 이의제기 경로를 함께 안내한다.
     await this.notifyDecision(rr, "rejected");
-    return this.reload(requestId);
+    const reloaded = await this.reload(requestId);
+    return { ...reloaded, appealGuide: REFUND_APPEAL_GUIDE };
   }
 
   // ──────────────────────────────────────────────────────────────
@@ -647,6 +688,7 @@ export class RefundRequestService {
       actorId: user.id,
       expectedVersion,
       idempotencyKey,
+      creditPolicy: await this.resolveCreditPolicy(rr.paymentId),
     };
 
     // [C-3] 분기: 자기 PG 성공 증거(DB_AFTER_PG) 우선 → PG 재호출 없이 DB 보상만.
@@ -667,10 +709,7 @@ export class RefundRequestService {
           ctx,
         );
         await this.notifyDecision(rr, "executed");
-      } else if (
-        pstatus === "refunded" ||
-        pstatus === "partially_refunded"
-      ) {
+      } else if (pstatus === "refunded" || pstatus === "partially_refunded") {
         // 증거 없이 이미 환불됨 → 별도 환불(admin/trusted)로 종결. executed 오인 금지 → canceled.
         await this.reconcileToCanceled(
           requestId,
@@ -893,7 +932,9 @@ export class RefundRequestService {
     if (query.academyId) and.push({ academyId: query.academyId });
     if (query.scope === "team") and.push({ teamId: { not: null } });
     if (query.scope === "academy") and.push({ academyId: { not: null } });
-    const count = await this.prisma.refundRequest.count({ where: { AND: and } });
+    const count = await this.prisma.refundRequest.count({
+      where: { AND: and },
+    });
     return { count };
   }
 
@@ -904,7 +945,13 @@ export class RefundRequestService {
     const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
     const pending = await this.prisma.refundRequest.findMany({
       where: { status: "pending", createdAt: { lt: cutoff } },
-      select: { id: true, teamId: true, academyId: true },
+      select: {
+        id: true,
+        teamId: true,
+        academyId: true,
+        sourceType: true,
+        paymentId: true,
+      },
     });
     if (pending.length === 0) return 0;
 
@@ -933,6 +980,73 @@ export class RefundRequestService {
       sent += targets.length;
     }
     return sent;
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  N4. 처리기한 초과 에스컬레이션
+  // ──────────────────────────────────────────────────────────────
+  /**
+   * 승인 대기가 처리기한(영업일 기준 3일 상당)을 넘긴 요청을 운영자에게 올리고
+   * 소비자에게 지연 사실을 알린다.
+   *
+   * 대금 환급은 청약철회 통지 후 3영업일 내가 원칙이라(전자상거래법 §18) 감독
+   * 미처리로 요청이 무기한 방치되면 그 자체가 위반이 된다. 금전 이동을 자동
+   * 실행하지는 않고(오환불 위험) 운영자 개입 경로만 강제한다.
+   */
+  async escalateStalePending(olderThanDays: number): Promise<number> {
+    const cutoff = new Date(Date.now() - olderThanDays * DAY_MS);
+    const stale = await this.prisma.refundRequest.findMany({
+      where: { status: "pending", createdAt: { lt: cutoff } },
+      select: { id: true, requesterId: true, createdAt: true },
+    });
+    if (stale.length === 0) return 0;
+
+    // 중복 에스컬레이션 방지 — 최근 24h 내 동일 타입 수신자 제외.
+    const dayAgo = new Date(Date.now() - DAY_MS);
+    const recent = await this.prisma.notification.findMany({
+      where: {
+        notificationType: "refund_request_escalated",
+        createdAt: { gte: dayAgo },
+      },
+      select: { userId: true },
+    });
+    const recentlyNotified = new Set(recent.map((n) => n.userId));
+
+    const operators = await this.prisma.user.findMany({
+      where: { userType: { in: ["ADMIN", "SYSTEM", "OPER"] }, deletedAt: null },
+      select: { id: true },
+    });
+    const operatorIds = operators
+      .map((o) => o.id)
+      .filter((id) => !recentlyNotified.has(id));
+
+    if (operatorIds.length > 0) {
+      await this.notifications.notifyUsers(operatorIds, {
+        notificationType: "refund_request_escalated",
+        title: "환불 요청 처리기한 초과",
+        message: `${olderThanDays}일 이상 미처리된 환불 요청이 ${stale.length}건 있습니다. 즉시 확인이 필요합니다.`,
+        linkUrl: "/director-payments/refunds",
+      });
+    }
+
+    // 소비자 지연 안내 — 요청자별 1건.
+    const requesterIds = Array.from(
+      new Set(stale.map((r) => r.requesterId)),
+    ).filter((id) => !recentlyNotified.has(id));
+    if (requesterIds.length > 0) {
+      await this.notifications.notifyUsers(requesterIds, {
+        notificationType: "refund_request_escalated",
+        title: "환불 처리 지연 안내",
+        message:
+          "요청하신 환불 처리가 지연되고 있습니다. 운영자에게 전달되었으며 확인 후 신속히 처리해드리겠습니다.",
+        linkUrl: "/payment/history",
+      });
+    }
+
+    this.logger.warn(
+      `[REFUND_SLA_BREACH] ${olderThanDays}일 초과 미처리 환불 요청 ${stale.length}건 — 운영자 ${operatorIds.length}명 에스컬레이션`,
+    );
+    return stale.length;
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -1000,7 +1114,35 @@ export class RefundRequestService {
       };
     }
 
-    return null; // 픽업 개별·쇼핑 등 — 지원하지 않음(422).
+    // 픽업매치 참가비 — 관리 주체가 팀/아카데미가 아니라 주최자(PickupMatch.managerId)라
+    //   스코프 스냅샷 컬럼이 없다. 승인 권한·알림 라우팅은 결제 → 신청 → 매치로 역참조한다.
+    const applicant = await this.prisma.pickupMatchApplicant.findFirst({
+      where: { paymentId },
+      select: { id: true },
+    });
+    if (applicant) {
+      return {
+        sourceType: "PICKUP_MATCH",
+        classId: null,
+        tournamentId: null,
+        teamId: null,
+        academyId: null,
+        childId: null, // 픽업매치는 신청자 본인 참가 — 자녀 컨텍스트 없음.
+      };
+    }
+
+    return null; // 쇼핑 등 — 지원하지 않음(422).
+  }
+
+  /** 픽업매치 결제의 주최자 User.id — 승인 권한·알림 라우팅 SoT(스냅샷 컬럼 부재 대체). */
+  private async resolvePickupManagerId(
+    paymentId: string,
+  ): Promise<string | null> {
+    const applicant = await this.prisma.pickupMatchApplicant.findFirst({
+      where: { paymentId },
+      select: { match: { select: { managerId: true } } },
+    });
+    return applicant?.match?.managerId ?? null;
   }
 
   /** 역할별 소속 범위 필터(SoT = 저장된 team_id/academy_id 스냅샷). */
@@ -1014,19 +1156,34 @@ export class RefundRequestService {
       sourceType: { not: "DIRECT" },
     };
 
+    // 픽업매치 요청은 스코프 스냅샷이 없어 결제 → 신청 → 매치 주최자로 역참조한다.
+    const ownPickup: Prisma.RefundRequestWhereInput = {
+      sourceType: "PICKUP_MATCH",
+      payment: {
+        pickupMatchApplicants: { some: { match: { managerId: user.id } } },
+      },
+    };
+
     if (user.userType === "ACADEMY_DIRECTOR") {
       const academies = await this.prisma.academy.findMany({
         where: { directorId: user.id },
         select: { id: true },
       });
       return {
-        AND: [notDirect, { academyId: { in: academies.map((a) => a.id) } }],
+        AND: [
+          notDirect,
+          {
+            OR: [{ academyId: { in: academies.map((a) => a.id) } }, ownPickup],
+          },
+        ],
       };
     }
 
     if (user.userType === "DIRECTOR") {
       const teamIds = await this.resourceAccess.resolveManageableTeamIds(user);
-      return { AND: [notDirect, { teamId: { in: teamIds } }] };
+      return {
+        AND: [notDirect, { OR: [{ teamId: { in: teamIds } }, ownPickup] }],
+      };
     }
 
     if (user.userType === "COACH") {
@@ -1044,6 +1201,7 @@ export class RefundRequestService {
             OR: [
               { teamId: { in: teamIds } },
               { academyId: { in: coachAcademies.map((a) => a.academyId) } },
+              ownPickup,
             ],
           },
         ],
@@ -1056,7 +1214,14 @@ export class RefundRequestService {
 
   /** 상세/승인/거절/재처리 스코프 재검증 — sourceType별 자원 관리 권한 단언. */
   private async assertCanManage(
-    rr: { sourceType: string; classId: string | null; tournamentId: string | null; teamId: string | null; academyId: string | null },
+    rr: {
+      sourceType: string;
+      paymentId?: string;
+      classId: string | null;
+      tournamentId: string | null;
+      teamId: string | null;
+      academyId: string | null;
+    },
     user: JwtUserPayload,
   ): Promise<void> {
     if (isAdminRole(user.userType)) return;
@@ -1065,6 +1230,17 @@ export class RefundRequestService {
     if (rr.sourceType === "DIRECT") {
       throw new ForbiddenException(
         "관리자 직접 환불 내역은 관리자만 조회·재처리할 수 있습니다.",
+      );
+    }
+
+    // 픽업매치는 팀/아카데미 스냅샷이 없으므로 주최자만 관리 가능.
+    if (rr.sourceType === "PICKUP_MATCH") {
+      const managerId = rr.paymentId
+        ? await this.resolvePickupManagerId(rr.paymentId)
+        : null;
+      if (managerId && managerId === user.id) return;
+      throw new ForbiddenException(
+        "해당 매치의 주최자만 환불 요청을 처리할 수 있습니다.",
       );
     }
 
@@ -1104,6 +1280,26 @@ export class RefundRequestService {
     throw new ForbiddenException("이 환불 요청을 관리할 권한이 없습니다.");
   }
 
+  /**
+   * 크레딧 처리 정책 결정 — 이용 개시 후 환불은 수강 종료이므로 잔여 회차를 회수한다.
+   * 산정 실패 시에는 기존 동작(복원)을 유지해 환불 자체가 막히지 않게 한다.
+   */
+  private async resolveCreditPolicy(
+    paymentId: string,
+  ): Promise<"restore" | "forfeit"> {
+    try {
+      const quote = await this.refundService.computeRefundQuote(paymentId);
+      return quote.started ? "forfeit" : "restore";
+    } catch (err) {
+      this.logger.warn(
+        `크레딧 정책 판정 실패 — restore 폴백: paymentId=${paymentId}, error=${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return "restore";
+    }
+  }
+
   /** cancelPayment(trusted) 위임 — RefundRequest→executed 는 동일 트랜잭션(fencing)에서 전이된다. */
   private async runExecution(
     rr: RefundRequestRow,
@@ -1115,7 +1311,9 @@ export class RefundRequestService {
     await this.refundService.cancelPayment(
       rr.paymentId,
       reason,
-      undefined,
+      // 실행액 = 요청 시 서버가 산정해 스냅샷한 금액. 부분환불 요청이 승인 단계에서
+      //   전액으로 부풀지 않도록 명시 전달한다(applyRefundDbOnly 재처리 경로와 동일 기준).
+      rr.requestedAmount,
       undefined,
       undefined,
       undefined,
@@ -1347,6 +1545,42 @@ export class RefundRequestService {
     }
   }
 
+  /**
+   * 환불 결정 감사 기록 (전자상거래법 §6 — 분쟁 기록 3년 보존).
+   * 승인·거절 주체와 사유를 RefundRequest 컬럼과 별도로 AuditLog 에 남긴다.
+   * 기록 실패가 결정 자체를 되돌리지 않도록 격리한다.
+   */
+  private async recordDecisionAudit(
+    rr: RefundRequestRow,
+    user: JwtUserPayload,
+    outcome: "approved" | "rejected",
+    reason: string | null,
+  ): Promise<void> {
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          userId: user.id,
+          action: `refund_request.${outcome}`,
+          resource: `RefundRequest:${rr.id}`,
+          newValue: {
+            paymentId: rr.paymentId,
+            requesterId: rr.requesterId,
+            sourceType: rr.sourceType,
+            requestedAmount: rr.requestedAmount,
+            outcome,
+            reason,
+          },
+        },
+      });
+    } catch (err) {
+      this.logger.warn(
+        `환불 결정 감사 기록 실패: requestId=${rr.id}, error=${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
   /** N2: 결정 → 요청 학부모. */
   private async notifyDecision(
     rr: RefundRequestRow,
@@ -1360,7 +1594,7 @@ export class RefundRequestService {
         message:
           outcome === "executed"
             ? "요청하신 환불이 완료되었습니다."
-            : "요청하신 환불이 거절되었습니다. 자세한 사유를 확인해주세요.",
+            : `요청하신 환불이 거절되었습니다. 자세한 사유를 확인해주세요. ${REFUND_APPEAL_GUIDE}`,
         linkUrl: "/payment/history",
       });
     } catch (err) {
@@ -1372,12 +1606,21 @@ export class RefundRequestService {
     }
   }
 
-  /** N1/N3 수신자 라우팅 — 팀=owner+관리멤버 / 아카데미=directorId. */
+  /** N1/N3 수신자 라우팅 — 팀=owner+관리멤버 / 아카데미=directorId / 픽업=주최자. */
   private async resolveRequestRecipients(rr: {
     id: string;
     teamId: string | null;
     academyId: string | null;
+    sourceType?: string;
+    paymentId?: string;
   }): Promise<{ userIds: string[]; linkUrl: string }> {
+    if (rr.sourceType === "PICKUP_MATCH" && rr.paymentId) {
+      const managerId = await this.resolvePickupManagerId(rr.paymentId);
+      return {
+        userIds: managerId ? [managerId] : [],
+        linkUrl: `/director-payments/refunds/${rr.id}`,
+      };
+    }
     if (rr.academyId) {
       const academy = await this.prisma.academy.findUnique({
         where: { id: rr.academyId },

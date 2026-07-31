@@ -812,6 +812,14 @@ function PaymentOptionsContent() {
                   {finalPrice.toLocaleString()}원
                 </span>
               </div>
+              {/* [추가 2026-07-30 법무 · 전자상거래법 §13②2, 가격표시제 실시요령]
+                  소비자 대상 가격은 부대비용을 포함한 총액으로 표시해야 하는데 결제 화면에
+                  부가세 관련 표기가 전무했다. 다만 체육 교육용역의 과세/면세 구분
+                  (부가세법 §26①6)이 확정 전이므로 '부가세 포함'·'면세' 등 과세 성격을
+                  단정하지 않고, 표시액 = 최종 결제액(추가 부담 없음)만 고지한다. */}
+              <p className="mt-3 text-card-meta leading-relaxed text-it-ink-500 dark:text-rink-300">
+                {MESSAGES.payment2.totalPriceNotice}
+              </p>
             </>
         </section>
 

@@ -55,6 +55,7 @@ class _AppDrawerState extends ConsumerState<AppDrawer> {
     '/profile/password',
     '/profile/notifications',
     '/profile/security',
+    '/profile/licenses',
     '/attendance-history',
     '/payment-history',
     '/home',

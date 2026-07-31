@@ -37,6 +37,7 @@ describe("RefundRequestService", () => {
     enrollment: { findFirst: jest.fn(), findMany: jest.fn() },
     monthlyPostpaidBillingLine: { findFirst: jest.fn() },
     tournamentRegistration: { findFirst: jest.fn() },
+    pickupMatchApplicant: { findFirst: jest.fn() },
     class: { findUnique: jest.fn(), findMany: jest.fn() },
     tournament: { findUnique: jest.fn(), findMany: jest.fn() },
     academy: { findMany: jest.fn(), findUnique: jest.fn() },
@@ -46,13 +47,24 @@ describe("RefundRequestService", () => {
     classAttendance: { count: jest.fn() },
     refundLog: { findMany: jest.fn() },
     notification: { findMany: jest.fn() },
+    auditLog: { create: jest.fn() },
+    user: { findMany: jest.fn() },
     $transaction: jest.fn(),
   };
 
   const refundServiceMock = {
     cancelPayment: jest.fn(),
     applyRefundDbOnly: jest.fn(),
+    computeRefundQuote: jest.fn(),
   };
+
+  /** 픽업매치 요청(스코프 스냅샷 부재) 역참조 필터 — buildPermissionWhere 기대값 조립용. */
+  const ownPickupWhere = (managerId: string) => ({
+    sourceType: "PICKUP_MATCH",
+    payment: {
+      pickupMatchApplicants: { some: { match: { managerId } } },
+    },
+  });
 
   const resourceAccessMock = {
     resolveManageableTeamIds: jest.fn(),
@@ -102,6 +114,18 @@ describe("RefundRequestService", () => {
     service = moduleRef.get(RefundRequestService);
     // 기본 $transaction: 콜백을 prismaMock 자체로 실행(tx delegate = prismaMock 위임).
     prismaMock.$transaction.mockImplementation((cb: any) => cb(prismaMock));
+    // 기본 산정: 미개시 · 전액 환불 가능(create 가 서버 산정액을 요청 금액으로 쓴다).
+    refundServiceMock.computeRefundQuote.mockResolvedValue({
+      paymentId: "pay-1",
+      paidAmount: 240000,
+      alreadyRefunded: 0,
+      attendedCount: 0,
+      unitFee: 30000,
+      deductedAmount: 0,
+      refundableAmount: 240000,
+      started: false,
+      calculationNote: "결제액 240000원 − 이용분 0회 × 30000원(0원) = 240000원",
+    });
   });
 
   const completedPayment = {
@@ -117,6 +141,7 @@ describe("RefundRequestService", () => {
   describe("create — 도메인 판별", () => {
     beforeEach(() => {
       prismaMock.payment.findUnique.mockResolvedValue(completedPayment);
+      prismaMock.pickupMatchApplicant.findFirst.mockResolvedValue(null);
       prismaMock.refundRequest.create.mockImplementation(({ data }: any) => ({
         id: "rr-1",
         ...data,
@@ -181,10 +206,28 @@ describe("RefundRequestService", () => {
       expect(arg.teamId).toBe("team-3");
     });
 
-    it("어디에도 안 걸림(픽업/쇼핑) → 422 fail-closed (요청 생성 안 함)", async () => {
+    it("PickupMatchApplicant 연결 → PICKUP_MATCH (스코프 스냅샷 없음)", async () => {
       prismaMock.enrollment.findFirst.mockResolvedValue(null);
       prismaMock.monthlyPostpaidBillingLine.findFirst.mockResolvedValue(null);
       prismaMock.tournamentRegistration.findFirst.mockResolvedValue(null);
+      prismaMock.pickupMatchApplicant.findFirst.mockResolvedValue({
+        id: "app-1",
+      });
+
+      await service.create({ paymentId: "pay-1", reason: "사유" }, parent);
+
+      const arg = prismaMock.refundRequest.create.mock.calls[0][0].data;
+      expect(arg.sourceType).toBe("PICKUP_MATCH");
+      expect(arg.teamId).toBeNull();
+      expect(arg.academyId).toBeNull();
+      expect(arg.childId).toBeNull();
+    });
+
+    it("어디에도 안 걸림(쇼핑 등) → 422 fail-closed (요청 생성 안 함)", async () => {
+      prismaMock.enrollment.findFirst.mockResolvedValue(null);
+      prismaMock.monthlyPostpaidBillingLine.findFirst.mockResolvedValue(null);
+      prismaMock.tournamentRegistration.findFirst.mockResolvedValue(null);
+      prismaMock.pickupMatchApplicant.findFirst.mockResolvedValue(null);
 
       await expect(
         service.create({ paymentId: "pay-1", reason: "사유" }, parent),
@@ -215,12 +258,12 @@ describe("RefundRequestService", () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it("결제일로부터 14일 초과 → 400 (요청 생성 안 함)", async () => {
-      const fifteenDaysAgo = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000);
+    it("접수 상한(365일) 초과 → 400 (요청 생성 안 함)", async () => {
+      const longAgo = new Date(Date.now() - 366 * 24 * 60 * 60 * 1000);
       prismaMock.payment.findUnique.mockResolvedValue({
         ...completedPayment,
-        completedAt: fifteenDaysAgo,
-        createdAt: fifteenDaysAgo,
+        completedAt: longAgo,
+        createdAt: longAgo,
       });
       await expect(
         service.create({ paymentId: "pay-1", reason: "r" }, parent),
@@ -228,12 +271,81 @@ describe("RefundRequestService", () => {
       expect(prismaMock.refundRequest.create).not.toHaveBeenCalled();
     });
 
-    it("completedAt null이면 createdAt 기준으로 기한 판정 (14일 초과 → 400)", async () => {
+    it("completedAt null이면 createdAt 기준으로 접수 상한 판정 (365일 초과 → 400)", async () => {
       prismaMock.payment.findUnique.mockResolvedValue({
         ...completedPayment,
         completedAt: null,
-        createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000),
+        createdAt: new Date(Date.now() - 366 * 24 * 60 * 60 * 1000),
       });
+      await expect(
+        service.create({ paymentId: "pay-1", reason: "r" }, parent),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prismaMock.refundRequest.create).not.toHaveBeenCalled();
+    });
+
+    it("청약철회 기간(7일) 경과 → 차단 대신 비례 환급액으로 접수", async () => {
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      prismaMock.payment.findUnique.mockResolvedValue({
+        ...completedPayment,
+        completedAt: thirtyDaysAgo,
+        createdAt: thirtyDaysAgo,
+      });
+      prismaMock.pickupMatchApplicant.findFirst.mockResolvedValue(null);
+      prismaMock.enrollment.findFirst.mockResolvedValue({
+        classId: "cls-1",
+        childId: "child-1",
+      });
+      prismaMock.class.findUnique.mockResolvedValue({
+        teamId: "team-1",
+        academyId: null,
+      });
+      prismaMock.refundRequest.create.mockImplementation(({ data }: any) => ({
+        id: "rr-1",
+        ...data,
+        version: 0,
+      }));
+      refundServiceMock.computeRefundQuote.mockResolvedValue({
+        paymentId: "pay-1",
+        paidAmount: 240000,
+        alreadyRefunded: 0,
+        attendedCount: 4,
+        unitFee: 30000,
+        deductedAmount: 120000,
+        refundableAmount: 120000,
+        started: true,
+        calculationNote:
+          "결제액 240000원 − 이용분 4회 × 30000원(120000원) = 120000원",
+      });
+
+      await service.create({ paymentId: "pay-1", reason: "r" }, parent);
+
+      const arg = prismaMock.refundRequest.create.mock.calls[0][0].data;
+      expect(arg.requestedAmount).toBe(120000); // 전액(240000)이 아닌 비례 환급액
+    });
+
+    it("환불 가능 잔액 0 → 400 (요청 생성 안 함)", async () => {
+      prismaMock.pickupMatchApplicant.findFirst.mockResolvedValue(null);
+      prismaMock.enrollment.findFirst.mockResolvedValue({
+        classId: "cls-1",
+        childId: "child-1",
+      });
+      prismaMock.class.findUnique.mockResolvedValue({
+        teamId: "team-1",
+        academyId: null,
+      });
+      refundServiceMock.computeRefundQuote.mockResolvedValue({
+        paymentId: "pay-1",
+        paidAmount: 240000,
+        alreadyRefunded: 0,
+        attendedCount: 8,
+        unitFee: 30000,
+        deductedAmount: 240000,
+        refundableAmount: 0,
+        started: true,
+        calculationNote:
+          "결제액 240000원 − 이용분 8회 × 30000원(240000원) = 0원",
+      });
+
       await expect(
         service.create({ paymentId: "pay-1", reason: "r" }, parent),
       ).rejects.toBeInstanceOf(BadRequestException);
@@ -283,7 +395,11 @@ describe("RefundRequestService", () => {
     it("CAS 선점 성공 → cancelPayment(trusted + refundContext: fencing/idempotency) 호출", async () => {
       prismaMock.refundRequest.findUnique
         .mockResolvedValueOnce(pendingRr) // approve 진입
-        .mockResolvedValueOnce({ ...pendingRr, status: "executed", version: 1 }); // reload
+        .mockResolvedValueOnce({
+          ...pendingRr,
+          status: "executed",
+          version: 1,
+        }); // reload
       prismaMock.refundRequest.updateMany.mockResolvedValue({ count: 1 });
       refundServiceMock.cancelPayment.mockResolvedValue({});
 
@@ -298,11 +414,12 @@ describe("RefundRequestService", () => {
         actorId: "admin-1",
         expectedVersion: 1,
         idempotencyKey: "rr:rr-1",
+        creditPolicy: "restore", // 미개시(quote.started=false) → 기존 복원 정책
       });
       // CAS 데이터에 idempotencyKey 저장 확인.
-      expect(prismaMock.refundRequest.updateMany.mock.calls[0][0].data).toMatchObject(
-        { status: "executing", idempotencyKey: "rr:rr-1" },
-      );
+      expect(
+        prismaMock.refundRequest.updateMany.mock.calls[0][0].data,
+      ).toMatchObject({ status: "executing", idempotencyKey: "rr:rr-1" });
     });
 
     it("CAS 경쟁(count 0) → 409, PG 미호출", async () => {
@@ -430,6 +547,7 @@ describe("RefundRequestService", () => {
       expect(refundServiceMock.cancelPayment).not.toHaveBeenCalled();
       // fencing context 전달(expectedVersion=3, idempotencyKey).
       expect(refundServiceMock.applyRefundDbOnly.mock.calls[0][3]).toEqual({
+        creditPolicy: "restore", // 미개시(quote.started=false) → 기존 복원 정책
         refundRequestId: "rr-1",
         actorId: "admin-1",
         expectedVersion: 3,
@@ -440,7 +558,11 @@ describe("RefundRequestService", () => {
     it("payment refunded + 증거 없음 → canceled 정합화(executed 오인 금지), PG·보상 미호출", async () => {
       prismaMock.refundRequest.findUnique
         .mockResolvedValueOnce({ ...failedBase, failureStage: "PG" }) // 증거 없음
-        .mockResolvedValueOnce({ ...failedBase, status: "canceled", version: 4 });
+        .mockResolvedValueOnce({
+          ...failedBase,
+          status: "canceled",
+          version: 4,
+        });
       prismaMock.refundRequest.updateMany.mockResolvedValue({ count: 1 });
       prismaMock.payment.findUnique.mockResolvedValue({
         paymentStatus: "refunded",
@@ -453,7 +575,10 @@ describe("RefundRequestService", () => {
       // 2번째 updateMany = reconcileToCanceled(canceled, version fencing).
       const reconcile = prismaMock.refundRequest.updateMany.mock.calls[1][0];
       expect(reconcile.data.status).toBe("canceled");
-      expect(reconcile.where).toMatchObject({ status: "executing", version: 3 });
+      expect(reconcile.where).toMatchObject({
+        status: "executing",
+        version: 3,
+      });
     });
 
     it("payment refund_processing → cancelPayment resumeProcessing(PG 멱등 재개)", async () => {
@@ -813,7 +938,11 @@ describe("RefundRequestService", () => {
     it("CONFIRMED_CANCELLED → 자기 증거(DB_AFTER_PG) 기록 + applyRefundDbOnly 반영", async () => {
       prismaMock.refundRequest.findUnique
         .mockResolvedValueOnce(unconfirmedRr)
-        .mockResolvedValueOnce({ ...unconfirmedRr, status: "executed", version: 4 });
+        .mockResolvedValueOnce({
+          ...unconfirmedRr,
+          status: "executed",
+          version: 4,
+        });
       prismaMock.refundRequest.updateMany.mockResolvedValue({ count: 1 });
       refundServiceMock.applyRefundDbOnly.mockResolvedValue({
         paymentStatus: "refunded",
@@ -851,7 +980,11 @@ describe("RefundRequestService", () => {
           ...unconfirmedRr,
           failureCode: "TOSS_UNCONFIRMED",
         })
-        .mockResolvedValueOnce({ ...unconfirmedRr, status: "executed", version: 4 });
+        .mockResolvedValueOnce({
+          ...unconfirmedRr,
+          status: "executed",
+          version: 4,
+        });
       prismaMock.refundRequest.updateMany.mockResolvedValue({ count: 1 });
       refundServiceMock.applyRefundDbOnly.mockResolvedValue({
         paymentStatus: "refunded",
@@ -1036,7 +1169,12 @@ describe("RefundRequestService", () => {
       const permission = {
         AND: [
           { sourceType: { not: "DIRECT" } },
-          { teamId: { in: ["team-1", "team-2"] } },
+          {
+            OR: [
+              { teamId: { in: ["team-1", "team-2"] } },
+              ownPickupWhere("dir-1"),
+            ],
+          },
         ],
       };
       // baseAnd(permission + teamId=team-1) + status=pending.
@@ -1061,7 +1199,12 @@ describe("RefundRequestService", () => {
           {
             AND: [
               { sourceType: { not: "DIRECT" } },
-              { teamId: { in: ["team-1", "team-2"] } },
+              {
+                OR: [
+                  { teamId: { in: ["team-1", "team-2"] } },
+                  ownPickupWhere("dir-1"),
+                ],
+              },
             ],
           },
           { status: "pending" },
@@ -1087,7 +1230,12 @@ describe("RefundRequestService", () => {
       expect(where.AND[0]).toEqual({
         AND: [
           { sourceType: { not: "DIRECT" } },
-          { teamId: { in: ["team-1", "team-2"] } },
+          {
+            OR: [
+              { teamId: { in: ["team-1", "team-2"] } },
+              ownPickupWhere("dir-1"),
+            ],
+          },
         ],
       });
       expect(where.AND[1]).toEqual({ status: "pending" });
@@ -1103,7 +1251,9 @@ describe("RefundRequestService", () => {
       expect(where.AND[0]).toEqual({
         AND: [
           { sourceType: { not: "DIRECT" } },
-          { academyId: { in: ["ac-1"] } },
+          {
+            OR: [{ academyId: { in: ["ac-1"] } }, ownPickupWhere("acad-1")],
+          },
         ],
       });
     });

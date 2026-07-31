@@ -75,6 +75,7 @@ import { SettlementsModule } from "./settlements/settlements.module";
 import { GalleryModule } from "./gallery/gallery.module";
 import { MainPopupsModule } from "./main-popups/main-popups.module";
 import { ReminderScheduler } from "./common/schedulers/reminder.scheduler";
+import { DataRetentionScheduler } from "./common/schedulers/data-retention.scheduler";
 import { ViewCounterModule } from "./common/view-counter/view-counter.module";
 import { ResourceAccessModule } from "./common/access/resource-access.module";
 import { UploadCleanupModule } from "./common/upload-cleanup.module";
@@ -222,6 +223,9 @@ import { TransactionLogModule } from "./transaction-log/transaction-log.module";
   providers: [
     AppService,
     ReminderScheduler,
+    // 보유기간 경과 파기 배치 — AuditLog 2년 / UserActivityLog(접속기록 2년·이용내역 90일).
+    // PrismaModule·LoggerModule 이 @Global 이라 별도 imports 없이 주입된다.
+    DataRetentionScheduler,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,

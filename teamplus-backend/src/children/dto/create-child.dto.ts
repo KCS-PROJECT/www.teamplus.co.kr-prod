@@ -7,6 +7,7 @@ import {
   MaxLength,
   MinLength,
   IsEnum,
+  IsBoolean,
   Matches,
   ValidateIf,
 } from "class-validator";
@@ -132,6 +133,43 @@ export class CreateChildDto {
   @IsOptional()
   @IsString({ message: "팀 ID를 문자열로 입력해주세요." })
   teamId?: string;
+
+  // ──────────────────────────────────────────────────────────────────────
+  // 법정대리인 동의 (L-10 / 2026-07-30 등록 플로우 통합)
+  //
+  // PIPA §22조의2① — 만 14세 미만 아동의 개인정보 처리는 법정대리인 동의가 필수이고,
+  // §22⑦ 에 따라 동의를 받은 사실을 입증할 수 있어야 한다.
+  // 종전에는 웹 체크박스(브라우저 state)로만 받아 서버에 아무 증빙이 남지 않았고,
+  // DevTools 로 우회하면 동의 없이 등록이 통과했다 → 필수 동의를 DTO 로 승격.
+  //
+  // 필드명은 ChildConsent 모델과 1:1 (consentPersonalInfo / consentThirdParty / consentMarketing).
+  // ──────────────────────────────────────────────────────────────────────
+
+  @ApiProperty({
+    description:
+      "법정대리인 개인정보 수집·이용 동의 (필수 — true 가 아니면 400). PIPA §22조의2①",
+    example: true,
+  })
+  @IsBoolean({ message: "법정대리인 동의 여부를 boolean 으로 전달해주세요." })
+  consentPersonalInfo!: boolean;
+
+  @ApiPropertyOptional({
+    description: "제3자 제공 동의 (선택 — 결제·알림톡 등 외부 전송)",
+    example: false,
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  consentThirdParty?: boolean;
+
+  @ApiPropertyOptional({
+    description: "마케팅 활용 동의 (선택)",
+    example: false,
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  consentMarketing?: boolean;
 
   /**
    * [Deprecated 2026-04-29] 옵션 A 도입 후 무시됩니다.

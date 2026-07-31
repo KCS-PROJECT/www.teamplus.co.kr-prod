@@ -52,9 +52,27 @@ import { RolesGuard } from "@/auth/roles.guard";
 import { Public } from "@/auth/public.decorator";
 import { AuditAction } from "@/common/decorators";
 import { AuthenticatedRequest } from "@/common/interfaces/authenticated-request.interface";
+import { ShopEnabledGuard } from "./guards/shop-enabled.guard";
 
+/**
+ * 쇼핑몰 API.
+ *
+ * ⚠️ 클래스 레벨 `ShopEnabledGuard` 로 **전체 라우트가 피처 플래그 게이트**를 통과한다.
+ *   `SHOP_ENABLED=true` 가 아니면 `@Public()` 상품 목록·상세까지 503 `SHOP_DISABLED` 로
+ *   차단된다 (기본값 차단 · fail-closed). 오픈 전 필수 조치는
+ *   docs/Planning/SHOP_LAUNCH_CHECKLIST.md 참조.
+ *
+ *   컨트롤러 레벨 가드는 메서드 레벨 `@UseGuards(...)` 보다 먼저 실행되므로
+ *   플래그 OFF 시에는 인증/권한 판정 이전에 503 이 확정된다.
+ */
 @ApiTags("Shop - 쇼핑몰")
 @Controller("api/v1/shop")
+@UseGuards(ShopEnabledGuard)
+@ApiResponse({
+  status: 503,
+  description:
+    "쇼핑몰 미오픈 (SHOP_ENABLED 플래그 OFF) — errorCode: SHOP_DISABLED",
+})
 export class ShopController {
   constructor(private readonly shopService: ShopService) {}
 
@@ -499,7 +517,8 @@ export class ShopController {
 
   @Post("orders/:orderId/cancel")
   @UseGuards(AuthGuard("jwt"), RolesGuard)
-  @Roles("PARENT", "ADMIN")
+  // COACH 는 주문 생성이 가능하므로(위 createOrder) 취소도 가능해야 한다 — 권리 비대칭 해소.
+  @Roles("PARENT", "COACH", "ADMIN")
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

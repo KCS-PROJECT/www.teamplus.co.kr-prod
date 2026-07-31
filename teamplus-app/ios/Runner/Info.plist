@@ -70,8 +70,16 @@
 	<string>팀플러스가 QR코드 출석 체크인 및 프로필 사진·첨부파일 촬영을 위해 카메라를 사용합니다.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>팀플러스 앱 잠금 해제와 로그인·결제 본인 확인을 위해 Face ID를 사용합니다.</string>
+	<!-- [2026-07-30 실사용 확인] 미사용 권한 선언(심사 5.1.1) 아님 — 실제 호출 경로 3곳:
+	     1) lib/features/videos/presentation/screens/video_upload_screen.dart:60
+	        `ImagePicker().pickVideo(source: ImageSource.camera)` (자녀 훈련 영상 촬영)
+	        └ 진입: /children → children_management_screen.dart:276 '영상 등록' → /videos/upload
+	     2) lib/core/webview/upload_handler.dart:514 `requestPermission({kind:'microphone'})`
+	        (Web → Native 업로드 브릿지에 마이크 권한 요청 노출)
+	     3) lib/core/webview/webview_screen.dart:1113 `iframeAllow: "camera; microphone"`
+	     경로 1이 제거되면 이 선언도 함께 제거할 것. -->
 	<key>NSMicrophoneUsageDescription</key>
-	<string>팀플러스가 동영상 촬영·업로드 시 마이크를 사용합니다.</string>
+	<string>팀플러스가 자녀 훈련 영상을 촬영·업로드할 때 마이크를 사용합니다.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>팀플러스가 촬영한 사진 및 다운로드한 파일을 사진 보관함에 저장할 수 있도록 허용해 주세요.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

@@ -1,11 +1,19 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { ModuleRef } from "@nestjs/core";
 import { Cron, CronExpression } from "@nestjs/schedule";
 import { PrismaService } from "@/prisma/prisma.service";
+import { NotificationsService } from "@/notifications/notifications.service";
 import { CreditDomainService } from "./credit-domain.service";
 import { SystemLogService } from "@/logger/system-log.service";
 
 /** SYSTEM 사용자 id 캐시 — cron actorUserId 매핑용 (lazy load) */
 let cachedSystemUserId: string | null = null;
+
+/**
+ * 만료 사전 통지 시점(만료 N일 전). 7일은 법적 최소선 — 유상 이용권을 사전 고지
+ * 없이 소멸시키는 조항은 무효 판단 소지가 있다(약관규제법 §6·§9④).
+ */
+const EXPIRY_WARNING_DAYS = [7, 3, 1] as const;
 
 @Injectable()
 export class CreditExpiryService {
@@ -15,7 +23,28 @@ export class CreditExpiryService {
     private readonly prisma: PrismaService,
     private readonly creditDomain: CreditDomainService, // PR-B (v0.5): 만료 + 이월 단일 진입점
     private readonly systemLog: SystemLogService,
+    private readonly moduleRef: ModuleRef,
   ) {}
+
+  /**
+   * NotificationsService 지연 조회.
+   *
+   * CreditsModule 은 NotificationsModule 을 imports 하지 않으므로 생성자 주입이 불가하다.
+   * 알림은 사전 통지 cron 에서만 쓰는 부수 의존이라 모듈 그래프를 넓히는 대신
+   * 전역 컨테이너에서 지연 조회한다. 조회 실패는 통지만 건너뛰고 만료 처리는 유지.
+   */
+  private getNotifications(): NotificationsService | null {
+    try {
+      return this.moduleRef.get(NotificationsService, { strict: false });
+    } catch (error) {
+      this.logger.error(
+        `NotificationsService 조회 실패 — 만료 사전 통지 스킵: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return null;
+    }
+  }
 
   /** SYSTEM 사용자 id 를 lazy load + 캐시. cron actorUserId 매핑용 */
   private async getSystemUserId(): Promise<string> {
@@ -160,6 +189,119 @@ export class CreditExpiryService {
     }
   }
 
-  /* [제거 2026-07-24] sendExpiryWarnings(만료 사전 알림 7/3/1일 전 09:00 cron) —
-   *  크레딧 미사용 전환 정책에 따라 알림 발송 폐기(사용자 지시). 만료 처리(processExpiredCredits)는 유지. */
+  /**
+   * 매일 09:00 - 만료 사전 통지 (7일/3일/1일 전)
+   *
+   * [복원 2026-07-30] 유상 취득한 수업권을 사전 고지 없이 소멸시키는 구조는 고객에게
+   * 부당하게 불리한 조항으로 무효 판단 소지가 있어(약관규제법 §6·§9④) 최소 7일 전
+   * 1회 통지를 법적 최소선으로 되살린다. 발급 시 최소 유효기간
+   * (MIN_CREDIT_VALIDITY_DAYS)이 보장되므로 7일 전 통지는 항상 1회 이상 발송된다.
+   *
+   * 발송 실패는 사용자 단위로 격리한다 — 통지 실패가 자정 만료 배치를 막지 않는다.
+   */
+  @Cron("0 0 9 * * *") // 매일 09:00
+  async sendExpiryWarnings() {
+    this.logger.log("수업권 만료 사전 통지 배치 시작");
+
+    const notifications = this.getNotifications();
+    if (!notifications) {
+      return { totalNotifications: 0 };
+    }
+
+    try {
+      const now = new Date();
+      let totalNotifications = 0;
+
+      for (const days of EXPIRY_WARNING_DAYS) {
+        const targetDate = new Date(now);
+        targetDate.setDate(targetDate.getDate() + days);
+
+        const startOfDay = new Date(targetDate);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(targetDate);
+        endOfDay.setHours(23, 59, 59, 999);
+
+        const expiringCredits = await this.prisma.memberCredit.findMany({
+          where: { expiresAt: { gte: startOfDay, lte: endOfDay } },
+          select: {
+            userId: true,
+            totalSessions: true,
+            usedSessions: true,
+            expiresAt: true,
+          },
+        });
+
+        // 사용자별 잔여 회차 합산 — 같은 날 만료 건이 여러 개여도 통지는 1건.
+        const userCreditMap = new Map<
+          string,
+          { totalRemaining: number; expiresAt: Date }
+        >();
+        for (const credit of expiringCredits) {
+          const remaining = credit.totalSessions - credit.usedSessions;
+          if (remaining <= 0) continue;
+          const existing = userCreditMap.get(credit.userId);
+          if (existing) {
+            existing.totalRemaining += remaining;
+          } else {
+            userCreditMap.set(credit.userId, {
+              totalRemaining: remaining,
+              expiresAt: credit.expiresAt,
+            });
+          }
+        }
+        if (userCreditMap.size === 0) continue;
+
+        // 만료일이 동일한 사용자끼리 묶어 notifyUsers 배치 1회로 발송
+        //   (인앱 적재는 수신거부와 무관하게 전원 — 법정 고지 성격).
+        const byExpiryDate = new Map<string, string[]>();
+        for (const [userId, info] of userCreditMap) {
+          const key = `${info.expiresAt.toISOString().split("T")[0]}|${info.totalRemaining}`;
+          const bucket = byExpiryDate.get(key);
+          if (bucket) bucket.push(userId);
+          else byExpiryDate.set(key, [userId]);
+        }
+
+        for (const [key, userIds] of byExpiryDate) {
+          const [expiryDateStr, remaining] = key.split("|");
+          try {
+            await notifications.notifyUsers(userIds, {
+              notificationType: "credit_expiry_warning",
+              title: "수업권 만료 예정",
+              message: `보유 수업권 ${remaining}회가 ${days}일 후(${expiryDateStr})에 만료됩니다. 만료 전에 사용해주세요.`,
+              linkUrl: "/credits",
+            });
+            totalNotifications += userIds.length;
+          } catch (error) {
+            this.logger.error(
+              `만료 사전 통지 발송 실패: days=${days}, 대상=${userIds.length}명`,
+              error instanceof Error ? error.stack : String(error),
+            );
+          }
+        }
+
+        this.logger.log(
+          `${days}일 전 만료 통지: ${userCreditMap.size}명 대상 발송`,
+        );
+      }
+
+      this.logger.log(
+        `수업권 만료 사전 통지 배치 완료: 총 ${totalNotifications}건 발송`,
+      );
+      this.systemLog.cron(
+        "CREDIT_EXPIRY_WARNING",
+        `수업권 만료 사전 통지 배치 완료: 총 ${totalNotifications}건 발송`,
+      );
+
+      return { totalNotifications };
+    } catch (error) {
+      this.logger.error(
+        `수업권 만료 사전 통지 배치 실패: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      // 통지 배치 실패가 만료 처리 cron 에 영향을 주지 않도록 여기서 종결한다.
+      return { totalNotifications: 0 };
+    }
+  }
 }

@@ -56,6 +56,7 @@ import {
   Database,
   ReceiptText,
   Headset,
+  ShieldAlert,
 } from "lucide-react";
 import { authService } from "@/services/auth.service";
 import {
@@ -192,6 +193,13 @@ const generalNavItems = [
     href: "/dashboard/contact-inquiries",
     label: "도입상담관리",
     icon: Headset,
+  },
+  // [추가 2026-07-30] UGC 신고 관리 — 정보통신망법 §44조의2 + 앱마켓 UGC 심사 대응.
+  //   경로가 `/dashboard/reports`(리포트=운영 통계)와 의미 충돌하므로 `/dashboard/moderation/reports` 로 분리.
+  {
+    href: "/dashboard/moderation/reports",
+    label: "신고관리",
+    icon: ShieldAlert,
   },
   // [추가 2026-07-14] 랜딩 블로그 관리 — teamplus-home /blog 공개 노출.
   { href: "/dashboard/blog", label: "블로그관리", icon: FileText },
@@ -363,6 +371,7 @@ const getGroupFromPath = (pathname: string | null): MenuGroupId | null => {
     pathname.startsWith("/dashboard/rinks") ||
     pathname.startsWith("/dashboard/venues") ||
     pathname.startsWith("/dashboard/contact-inquiries") ||
+    pathname.startsWith("/dashboard/moderation") ||
     pathname.startsWith("/dashboard/blog")
   )
     return "general";

@@ -172,10 +172,15 @@ export default function ReceiptDetailPage() {
               />
             </section>
 
-            {/* 안내 텍스트 */}
+            {/* 안내 텍스트
+                [법무 2026-07-30 표시광고법 / 소득세법 §162조의3] 기존 "전자영수증은 소득공제 및
+                증빙용으로 사용할 수 있습니다." 문구 제거. PaymentReceipt 는 자체 시퀀스
+                (YYYYMMDD-NNNNN)만 부여될 뿐 국세청 승인번호·발급구분·식별번호가 없고
+                현금영수증·세금계산서 발급 경로가 구현되어 있지 않아 실제로는 소득공제가
+                불가하다. 사실에 부합하도록 '확인용' 고지 + 발급 창구 안내로 교체. */}
             <div className="text-center mt-4 px-5">
               <p className="text-card-meta text-it-ink-400 dark:text-rink-300 leading-relaxed">
-                전자영수증은 소득공제 및 증빙용으로 사용할 수 있습니다.
+                {MESSAGES.payment2.receiptNotice}
               </p>
             </div>
           </>

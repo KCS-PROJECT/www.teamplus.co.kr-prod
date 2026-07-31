@@ -2,7 +2,7 @@ name: teamplus_app
 description: "TEAMPLUS - Ice Hockey Club Management System"
 publish_to: "none"
 
-version: 1.0.2+13
+version: 1.0.3+14
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
@@ -82,8 +82,8 @@ dependencies:
   http_parser: ^4.0.2 # Dio MultipartFile Content-Type (MediaType)
 
   # 🔐 Security - Encryption (CRITICAL for Phase 7)
+  # pointycastle 은 encrypt 의 transitive 의존성 — 직접 import 0건이라 명시 제거 (2026-07-28)
   encrypt: ^5.0.3
-  pointycastle: ^3.9.1
   crypto: ^3.0.6 # SHA-256 (가입 PIN 해싱)
 
   # 🔐 Security - Biometric Authentication
@@ -107,9 +107,6 @@ dependencies:
   #   미선언 시 빌드 경고: "Expected to find fonts for (.../CupertinoIcons, MaterialIcons)"
   cupertino_icons: ^1.0.8
 
-  # SVG Support
-  flutter_svg: ^2.0.10
-
   # Native Splash Screen
   flutter_native_splash: ^2.4.3
 
@@ -124,8 +121,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
-  # Testing & Mocking
-  mockito: ^5.4.4
+  # Testing & Mocking (mocktail 단일 사용 — mockito 는 import 0건이라 제거 2026-07-28)
   mocktail: ^1.0.0
 
   # Code generation

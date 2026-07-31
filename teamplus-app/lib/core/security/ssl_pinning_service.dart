@@ -4,6 +4,9 @@ import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
+
+import '../logging/app_logger.dart';
 
 /// SSL/TLS Certificate Pinning 서비스
 ///
@@ -48,6 +51,15 @@ class SslPinningService {
       return;
     }
 
+    // 긴급 비활성화 스위치 — CA 교체·인증서 만료로 전 사용자가 통신 불가가 되는
+    //   상황에서 핫픽스 빌드로 즉시 pinning 을 끌 수 있어야 한다.
+    //   빌드: flutter build --dart-define=SSL_PINNING_ENABLED=false
+    if (!_pinningEnabledByBuildConfig) {
+      _markInsecure('빌드 설정으로 비활성화됨 (SSL_PINNING_ENABLED=false)');
+      _isInitialized = true;
+      return;
+    }
+
     try {
       // 프로덕션 환경: 인증서 로드
       const certPath = kReleaseMode
@@ -65,18 +77,30 @@ class SslPinningService {
         return;
       }
 
-      _securityContext = SecurityContext.defaultContext
+      // withTrustedRoots: false — 시스템 신뢰 저장소를 배제하고 번들된 CA 만 신뢰한다.
+      //   [2026-07-30 수정] 이전 구현은 `SecurityContext.defaultContext` 에 인증서를
+      //   *추가*했다. 그 경우 시스템 CA 가 계속 신뢰되므로, 공격자가 단말에 설치된
+      //   임의 CA(기업 MDM·프록시·사용자 설치 루트)로 발급한 인증서를 제시하면
+      //   그대로 통과해 pinning 이 사실상 무효였다. 또한 defaultContext 수정은
+      //   앱 전역의 다른 HttpClient 에도 영향을 주는 부작용이 있었다.
+      final context = SecurityContext(withTrustedRoots: false)
         ..setTrustedCertificatesBytes(certData);
+      _securityContext = context;
 
       _pinningActive = true;
       _isInitialized = true;
-      debugPrint('[SSL Pinning] 인증서 로드 완료: $certPath');
+      debugPrint('[SSL Pinning] 인증서 로드 완료(시스템 CA 배제): $certPath');
     } catch (e) {
       // 인증서 로드 실패 — 앱은 계속 실행하되 insecure 상태를 명시적으로 기록한다.
       _markInsecure('인증서 로드 실패: $e');
       _isInitialized = true;
     }
   }
+
+  /// `--dart-define=SSL_PINNING_ENABLED=false` 로만 끌 수 있다(기본 활성).
+  static const bool _pinningEnabledByBuildConfig =
+      String.fromEnvironment('SSL_PINNING_ENABLED', defaultValue: 'true') !=
+          'false';
 
   /// Pinning 미적용(insecure) 상태를 명시적으로 기록한다.
   ///
@@ -121,6 +145,46 @@ class SslPinningService {
         return client;
       },
     );
+  }
+
+  /// release 빌드에서 pinning 이 꺼진 채 동작하는 상태를 모니터링에 표면화한다.
+  ///
+  /// [isPinningActive] 가 false 라는 사실을 아무도 조회하지 않으면 pinning 이
+  /// 비활성인 채 배포돼도 알 수 없다(2026-07-30 감사에서 참조 0건으로 확인).
+  /// `JailbreakDetectionService.checkAndReport()` 와 동일한 관례로 리포트한다.
+  ///
+  /// 앱을 차단하지 않는다 — 차단 여부는 transport 레이어가 아닌 정책 결정이고,
+  /// 통신 자체를 막으면 사용자가 서비스를 전혀 쓸 수 없게 된다.
+  void reportIfInsecure() {
+    if (!kReleaseMode || _pinningActive) return;
+
+    final context = <String, dynamic>{
+      'pinningActive': _pinningActive,
+      'initialized': _isInitialized,
+      'buildConfigEnabled': _pinningEnabledByBuildConfig,
+      'platform': defaultTargetPlatform.name,
+      'severity': 'SEVERE',
+    };
+
+    AppLogger.instance.errorAs(
+      ErrorCategory.client,
+      '[Security] SSL Pinning 비활성 상태로 릴리스 동작 (MITM 위험)',
+      context: context,
+    );
+
+    try {
+      Sentry.captureMessage(
+        '[Security] SSL Pinning inactive in release',
+        level: SentryLevel.fatal,
+        withScope: (scope) {
+          scope.setTag('type', 'SSL_PINNING_INACTIVE');
+          scope.setTag('platform', defaultTargetPlatform.name);
+          scope.setContexts('transport_security', context);
+        },
+      );
+    } catch (_) {
+      /* Sentry 미초기화 시 무시 */
+    }
   }
 
   /// 초기화 상태 확인

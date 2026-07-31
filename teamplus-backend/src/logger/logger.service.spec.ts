@@ -108,9 +108,43 @@ describe("LoggerService (v8.6)", () => {
         }
       ).sanitize(dirty);
 
-      expect(sanitized.user.name).toBe("홍길동");
+      // [2026-07-30 SECURITY] 이름은 PII 부분 마스킹 대상 — 전부 지우면 장애 추적이 불가하므로
+      //   형태만 남기고 식별성을 제거한다(홍길동 → 홍*동).
+      expect(sanitized.user.name).toBe("홍*동");
       expect(sanitized.user.password).toBe("[REDACTED]");
       expect(sanitized.user.tokens.accessToken).toBe("[REDACTED]");
+    });
+
+    it("이름·이메일·전화·주소 등 PII 는 부분 마스킹된다 (2026-07-30)", () => {
+      const dirty = {
+        email: "parent@teamplus.com",
+        firstName: "길동",
+        lastName: "홍",
+        phone: "010-1234-5678",
+        birthDate: "19900315",
+        gender: "M",
+        zipCode: "06236",
+        address: "서울시 강남구 삼성동",
+        addressDetail: "101동 1001호",
+        // 고유식별정보는 부분 마스킹이 아니라 전부 삭제
+        ci: "CI_RAW_VALUE",
+        di: "DI_RAW_VALUE",
+      };
+      const sanitized = (
+        logger as unknown as { sanitize: (d: unknown) => any }
+      ).sanitize(dirty);
+
+      expect(sanitized.email).toBe("pa***@teamplus.com");
+      expect(sanitized.firstName).toBe("길*");
+      expect(sanitized.lastName).toBe("*");
+      expect(sanitized.phone).toBe("010-****-5678");
+      expect(sanitized.birthDate).toBe("1990-**-**");
+      expect(sanitized.gender).toBe("***");
+      expect(sanitized.zipCode).toBe("06***");
+      expect(sanitized.address).toBe("서울시 ***");
+      expect(sanitized.addressDetail).toBe("101동 ***");
+      expect(sanitized.ci).toBe("[REDACTED]");
+      expect(sanitized.di).toBe("[REDACTED]");
     });
   });
 

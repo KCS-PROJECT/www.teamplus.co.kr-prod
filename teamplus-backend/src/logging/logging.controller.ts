@@ -5,8 +5,12 @@
  * 1) 카테고리별 파일 (log/YYYY/MM/DD/{category}.log)에 기록
  * 2) UserActivityLog Prisma 모델에 DB 영속화 (이중화 — 파일은 안전망)
  *
- * Rate Limit: 기본 100req/min 적용 (전역 ThrottlerGuard)
  * 인증: @Public() — 비로그인 사용자 활동(페이지 뷰 등)도 수집 가능
+ *
+ * Rate Limit: 전역 100req/min 은 무인증 적재 엔드포인트로는 과하게 관대해
+ * 로그 오염·저장공간 고갈 경로였다. 엔드포인트별 @Throttle 로 조인다
+ * (배치 전송이라 클라이언트 1대의 정상 호출 빈도는 분당 수 회 수준).
+ * 배치 크기도 서버에서 상한을 강제해 1회 요청의 적재량을 제한한다.
  */
 import {
   Body,
@@ -18,6 +22,7 @@ import {
   Post,
   Headers,
 } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
 import { ApiTags, ApiOperation, ApiBody } from "@nestjs/swagger";
 import { Public } from "../auth/public.decorator";
 import { LoggerService } from "../logger/logger.service";
@@ -48,6 +53,9 @@ interface ActivityBatchDto {
   userAgent?: string;
 }
 
+/** 1회 요청으로 적재할 수 있는 이벤트 상한 (초과분은 버리고 경고). */
+const MAX_EVENTS_PER_BATCH = 50;
+
 @ApiTags("Logs")
 @Controller("api/v1/logs")
 export class LoggingController {
@@ -62,10 +70,12 @@ export class LoggingController {
    * 클라이언트 활동 batch 수신 — 4 클라이언트 공용
    */
   @Public()
+  @Throttle({ default: { limit: 20, ttl: 60000 } }) // 무인증 적재 — IP 당 1분 20회
   @Post("activity")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: "클라이언트 활동 batch 수신 (Flutter/Web/Admin/Home)",
+    description: `무인증 엔드포인트라 IP 당 1분 20회 · 1회 최대 ${MAX_EVENTS_PER_BATCH}건으로 제한됩니다.`,
   })
   @ApiBody({ description: "ActivityEvent[] batch" })
   async receiveActivity(
@@ -73,9 +83,17 @@ export class LoggingController {
     @Ip() ip: string,
     @Headers("user-agent") userAgent?: string,
   ): Promise<{ success: true; accepted: number; persisted: number }> {
-    const events = Array.isArray(dto?.events) ? dto.events : [];
-    if (events.length === 0) {
+    const rawEvents = Array.isArray(dto?.events) ? dto.events : [];
+    if (rawEvents.length === 0) {
       return { success: true, accepted: 0, persisted: 0 };
+    }
+
+    // 배치 상한 초과분은 조용히 버리지 않고 경고를 남긴다(클라이언트 버그·공격 구분용).
+    const events = rawEvents.slice(0, MAX_EVENTS_PER_BATCH);
+    if (rawEvents.length > events.length) {
+      this.nestLogger.warn(
+        `[LOGS] 배치 상한 초과 — ${rawEvents.length}건 중 ${events.length}건만 처리 (ip=${ip})`,
+      );
     }
 
     const source = dto?.source ?? "unknown";
@@ -173,9 +191,13 @@ export class LoggingController {
    * 클라이언트 단일 에러 수신 — 스택 trace 포함 상세 기록
    */
   @Public()
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 무인증 — IP 당 1분 10회
   @Post("client-error")
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "클라이언트 단일 에러 보고 (스택 trace 포함)" })
+  @ApiOperation({
+    summary: "클라이언트 단일 에러 보고 (스택 trace 포함)",
+    description: "무인증 엔드포인트라 IP 당 1분 10회로 제한됩니다.",
+  })
   receiveClientError(
     @Body()
     dto: {

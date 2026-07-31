@@ -676,19 +676,6 @@ export class AppManagementService implements OnModuleInit {
     });
   }
 
-  /** semver 비교: a>b → 1, a<b → -1, 동일 → 0 (비숫자 세그먼트는 0 취급) */
-  private compareSemver(a: string, b: string): number {
-    const pa = a.split(".").map((n) => parseInt(n, 10) || 0);
-    const pb = b.split(".").map((n) => parseInt(n, 10) || 0);
-    const len = Math.max(pa.length, pb.length);
-    for (let i = 0; i < len; i++) {
-      const x = pa[i] ?? 0;
-      const y = pb[i] ?? 0;
-      if (x !== y) return x > y ? 1 : -1;
-    }
-    return 0;
-  }
-
   /**
    * 최신 활성 버전 정보 (앱 cold start 호출).
    *
@@ -696,39 +683,33 @@ export class AppManagementService implements OnModuleInit {
    *   { currentVersion, minimumVersion, latestVersion,
    *     forceUpdate, updateMessage, iosStoreUrl, androidStoreUrl }
    *
-   * - "최신"은 등록 순서가 아니라 활성 버전 중 semver 최대값으로 선택한다
-   *   (낮은 버전을 나중에 등록해도 오판하지 않도록).
-   * - platform 명시(신버전 앱): 해당 플랫폼 기록만으로 판정값을 구성한다.
-   * - platform 미지정(기배포 구버전 앱): 기존 iOS 우선 통합 응답 유지 (하위 호환).
-   * - 데이터 미존재 시에도 안전한 기본값(0.0.0)으로 응답하여 404를 차단한다.
+   * iOS/Android 각 플랫폼별 최신 활성 버전 1건씩 조회 후,
+   * `platform` 지정 시 **해당 플랫폼 행의 값**으로 판정 기준
+   * (latestVersion/minimumVersion/forceUpdate/updateMessage)을 응답한다.
+   * 지정 플랫폼 행이 없으면 다른 플랫폼 값으로 대체하지 않고 안전 기본값
+   * (0.0.0, fail-open)으로 응답한다 — iOS 기준이 Android 판정을 덮어쓰던
+   * 병합 버그의 재발 방지.
+   *
+   * `platform` 미지정(구버전 앱 하위호환)은 기존 iOS → Android 우선 병합 유지.
+   * 데이터 미존재 시에도 안전한 기본값(0.0.0)으로 응답하여 404를 차단한다.
    */
   async getLatestVersion(platform?: string) {
-    const [iosList, androidList] = await Promise.all([
-      this.prisma.appVersion.findMany({
+    const [ios, android] = await Promise.all([
+      this.prisma.appVersion.findFirst({
         where: { platform: "ios", isActive: true },
       }),
-      this.prisma.appVersion.findMany({
+      this.prisma.appVersion.findFirst({
         where: { platform: "android", isActive: true },
       }),
     ]);
 
-    const pickLatest = (rows: typeof iosList) =>
-      rows.reduce<(typeof rows)[number] | null>(
-        (max, row) =>
-          max === null || this.compareSemver(row.version, max.version) > 0
-            ? row
-            : max,
-        null,
-      );
-    const ios = pickLatest(iosList);
-    const android = pickLatest(androidList);
-
+    const normalized = platform?.trim().toLowerCase();
     const primary =
-      platform === "ios"
+      normalized === "ios"
         ? ios
-        : platform === "android"
+        : normalized === "android"
           ? android
-          : (ios ?? android);
+          : (ios ?? android); // 미지정: 기존 동작(iOS 우선) 하위호환
 
     const latestVersion = primary?.version ?? "0.0.0";
     const minimumVersion = primary?.minVersion ?? "0.0.0";

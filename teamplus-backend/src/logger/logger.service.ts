@@ -53,6 +53,149 @@ export interface LogContext {
 
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error" | "fatal";
 
+/* ==============================================================
+ * PII 부분 마스킹 함수 — [2026-07-30 SECURITY]
+ *
+ * 이름·이메일·주소 등은 [REDACTED] 로 전부 지우면 장애 추적(동일 사용자 요청 상관관계
+ * 확인)이 불가해진다. 그래서 완전 삭제가 아니라 **식별성만 제거**하는 부분 마스킹을 쓴다.
+ * 반면 비밀값(비밀번호·토큰·CI/DI)은 흔적조차 남길 이유가 없어 SENSITIVE_KEYS 로 전부 삭제.
+ * ============================================================== */
+
+/** 홍길동 → 홍*동 / 김철 → 김* */
+function maskName(v: string): string {
+  const s = v.trim();
+  if (s.length <= 1) return "*";
+  if (s.length === 2) return `${s[0]}*`;
+  return `${s[0]}${"*".repeat(s.length - 2)}${s[s.length - 1]}`;
+}
+
+/** user@example.com → us***@example.com (도메인은 유지 — 소속 파악·스팸 진단용) */
+function maskEmail(v: string): string {
+  const at = v.lastIndexOf("@");
+  if (at <= 0) return maskName(v);
+  const local = v.slice(0, at);
+  const domain = v.slice(at);
+  const keep = local.slice(0, Math.min(2, local.length));
+  return `${keep}***${domain}`;
+}
+
+/** 01012345678 → 010-****-5678 (앞 3 + 뒤 4 유지) */
+function maskPhone(v: string): string {
+  const digits = v.replace(/[^0-9]/g, "");
+  if (digits.length < 7) return "*".repeat(Math.max(1, v.length));
+  return `${digits.slice(0, 3)}-****-${digits.slice(-4)}`;
+}
+
+/** 19900315 / 1990-03-15 → 1990-**-** (연도만 유지 — 연령 통계 진단용) */
+function maskBirth(v: string): string {
+  const digits = v.replace(/[^0-9]/g, "");
+  if (digits.length < 4) return "****";
+  return `${digits.slice(0, 4)}-**-**`;
+}
+
+/** "서울시 강남구 삼성동 123-45" → "서울시 ***" (행정구역 첫 토큰만 유지) */
+function maskAddress(v: string): string {
+  const first = v.trim().split(/\s+/)[0] ?? "";
+  return first ? `${first} ***` : "***";
+}
+
+/** 06236 → 06*** */
+function maskZip(v: string): string {
+  return v.length <= 2 ? "***" : `${v.slice(0, 2)}***`;
+}
+
+/** 성별 등 1~2자 코드는 형태 보존 의미가 없어 통째로 가린다. */
+function maskWhole(_v: string): string {
+  return "***";
+}
+
+/**
+ * 부분 마스킹 대상 키 → 마스킹 함수 매핑 (모두 lowercase 정확일치).
+ *
+ * `name` 을 포함한 이유: `social-login.dto.ts` 등 실제 사람 이름을 담는 필드가 bare `name`
+ * 이라 제외하면 실명이 그대로 적재된다. 대가로 팀/상품명 같은 엔티티 이름도 부분 마스킹되지만,
+ * 로그 추적은 url·id·requestId 로 충분하므로 개인정보 보호를 우선한다.
+ */
+const PII_MASKERS: ReadonlyMap<string, (v: string) => string> = new Map([
+  // ── 이메일
+  ...(
+    [
+      "email",
+      "useremail",
+      "targetemail",
+      "recipientemail",
+      "contactemail",
+    ] as const
+  ).map((k) => [k, maskEmail] as [string, (v: string) => string]),
+  // ── 사람 이름
+  ...(
+    [
+      "name",
+      "firstname",
+      "lastname",
+      "fullname",
+      "username",
+      "verifiedname",
+      "receivername",
+      "recipientname",
+      "sendername",
+      "membername",
+      "parentname",
+      "childname",
+      "studentname",
+      "guardianname",
+      "applicantname",
+      "orderername",
+      "buyername",
+      "holdername",
+      "accountholder",
+      "depositorname",
+    ] as const
+  ).map((k) => [k, maskName] as [string, (v: string) => string]),
+  // ── 전화번호
+  ...(
+    [
+      "phone",
+      "mobile",
+      "tel",
+      "telephone",
+      "phonenumber",
+      "verifiedphone",
+      "contactphone",
+      "receiverphone",
+      "recipientphone",
+      "parentphone",
+      "guardianphone",
+      "emergencycontact",
+    ] as const
+  ).map((k) => [k, maskPhone] as [string, (v: string) => string]),
+  // ── 생년월일
+  ...(["birth", "birthday", "birthdate", "verifiedbirth"] as const).map(
+    (k) => [k, maskBirth] as [string, (v: string) => string],
+  ),
+  // ── 주소
+  ...(
+    [
+      "address",
+      "address1",
+      "address2",
+      "addressdetail",
+      "detailaddress",
+      "baseaddress",
+      "roadaddress",
+      "jibunaddress",
+    ] as const
+  ).map((k) => [k, maskAddress] as [string, (v: string) => string]),
+  // ── 우편번호
+  ...(["zipcode", "postcode", "postalcode"] as const).map(
+    (k) => [k, maskZip] as [string, (v: string) => string],
+  ),
+  // ── 성별
+  ...(["gender", "verifiedgender", "sex"] as const).map(
+    (k) => [k, maskWhole] as [string, (v: string) => string],
+  ),
+]);
+
 @Injectable()
 export class LoggerService implements OnModuleInit {
   /** stdout 전용 logger — 운영 환경 LOG_LEVEL 적용 */
@@ -78,6 +221,21 @@ export class LoggerService implements OnModuleInit {
     // 자녀 인증 자격증명 — sanitize()는 lowercase 정확일치라 pin/otp 키만 [REDACTED]
     "pin",
     "otp",
+    // [2026-07-30] 고유식별정보·결제 비밀값 — 부분 마스킹으로도 남겨선 안 되는 값.
+    //   ci/di 는 연계정보(고유식별정보 준용)라 로그 파일 적재 자체가 위반 소지.
+    "ci",
+    "di",
+    "cihash",
+    "rrn",
+    "residentnumber",
+    "cardnumber",
+    "cvv",
+    "cvc",
+    "privatekey",
+    "apikey",
+    "clientsecret",
+    "apisecret",
+    "signature",
   ];
 
   constructor() {
@@ -198,12 +356,19 @@ export class LoggerService implements OnModuleInit {
 
     const sanitized: Record<string, any> = { ...data };
     for (const key of Object.keys(sanitized)) {
-      if (this.SENSITIVE_KEYS.includes(key.toLowerCase())) {
+      const lower = key.toLowerCase();
+      if (this.SENSITIVE_KEYS.includes(lower)) {
         sanitized[key] = "[REDACTED]";
-      } else if (
-        typeof sanitized[key] === "object" &&
-        sanitized[key] !== null
-      ) {
+        continue;
+      }
+      // [2026-07-30 SECURITY] 이름·이메일·전화·주소 등 PII 는 부분 마스킹.
+      //   문자열일 때만 적용 — 숫자/객체 값(예: address 객체)은 아래 재귀로 내려가 하위 키에서 처리.
+      const masker = PII_MASKERS.get(lower);
+      if (masker && typeof sanitized[key] === "string" && sanitized[key]) {
+        sanitized[key] = masker(sanitized[key]);
+        continue;
+      }
+      if (typeof sanitized[key] === "object" && sanitized[key] !== null) {
         sanitized[key] = this.sanitize(sanitized[key]);
       }
     }

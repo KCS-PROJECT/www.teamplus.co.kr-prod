@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "@/prisma/prisma.service";
 import { sanitizeStrict } from "@/common/utils/sanitize.util";
+import { maskProfanity } from "@/common/utils/content-filter.util";
 import { CreateContactInquiryDto } from "./dto/create-contact-inquiry.dto";
 import { UpdateContactInquiryDto } from "./dto/update-contact-inquiry.dto";
 import { QueryContactInquiriesDto } from "./dto/query-contact-inquiries.dto";
@@ -57,7 +58,10 @@ export class ContactInquiriesService {
           ? sanitizeStrict(dto.interestedPlan)
           : null,
         clubSize: dto.clubSize ? sanitizeStrict(dto.clubSize) : null,
-        message: dto.message ? sanitizeStrict(dto.message) : null,
+        // 본문은 공개 폼 입력이라 XSS 살균 후 비속어 마스킹까지 적용한다.
+        message: dto.message
+          ? maskProfanity(sanitizeStrict(dto.message))
+          : null,
         privacyAgreed: true,
         ipAddress: meta.ipAddress ?? null,
         userAgent: meta.userAgent ?? null,

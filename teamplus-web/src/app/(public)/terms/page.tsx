@@ -7,7 +7,7 @@ import { Icon } from '@/components/ui/Icon';
 import { NavLink, useNavigation } from '@/components/ui/NavLink';
 import { api } from '@/services/api-client';
 import { MESSAGES } from '@/lib/messages';
-import { POLICY_FALLBACKS } from '@/lib/legal/policy-content';
+import { POLICY_FALLBACKS, normalizePolicyType } from '@/lib/legal/policy-content';
 
 import { usePageReady } from '@/hooks/usePageReady';
 import { useDefaultUI } from '@/hooks/useNativeUI';
@@ -32,24 +32,24 @@ interface TermsItem {
   updatedAt: string;
 }
 
-// 필수(법적) type 그룹 — 각 그룹은 서로 동의어(alias)
-// DB에 축약형("service", "privacy")이 들어있는 레거시 데이터도 인식
-const REQUIRED_TYPE_GROUPS: readonly (readonly string[])[] = [
-  ['terms_of_service', 'service'],
-  ['privacy_policy', 'privacy'],
-];
+// 필수(법적) type — 표준형 기준.
+// DB에 축약형('service'/'privacy'/'child')이 들어있는 레거시 데이터는
+// policy-content.ts 의 normalizePolicyType() 이 표준형으로 흡수한다.
+const REQUIRED_TYPES: readonly string[] = ['terms_of_service', 'privacy_policy'];
 
-// type별 표시 메타데이터 (alias 포함)
+// type별 표시 메타데이터 — 키는 표준형만 사용 (조회 시 normalizePolicyType 경유)
 const TYPE_META: Record<string, { label: string; required: boolean; order: number }> = {
   terms_of_service: { label: '서비스 이용약관', required: true, order: 1 },
-  service: { label: '서비스 이용약관', required: true, order: 1 }, // 레거시 alias
   privacy_policy: { label: '개인정보 처리방침', required: true, order: 2 },
-  privacy: { label: '개인정보 처리방침', required: true, order: 2 }, // 레거시 alias
   child_privacy: { label: '자녀(만 14세 미만) 개인정보 처리방침', required: true, order: 3 },
   refund: { label: '환불 규정', required: false, order: 4 },
   community_guideline: { label: '커뮤니티 운영 규칙', required: false, order: 5 },
   marketing: { label: '마케팅 수신 동의', required: false, order: 6 },
 };
+
+function typeMeta(type: string) {
+  return TYPE_META[normalizePolicyType(type)];
+}
 
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—';
@@ -73,8 +73,10 @@ export default function TermsPage() {
   // 약관 로드 — 활성 레코드만 + DB 빈 항목은 정책 표준 fallback 으로 보완
   //
   // 정책 본문 fallback (POLICY_FALLBACKS):
-  //   변호사 검토 전까지 표준 템플릿 기반 임시 본문을 노출.
+  //   DB(AppTerms) 에 해당 type 이 등록돼 있지 않으면 코드의 정책 전문을 게시한다.
+  //   (fallback 본문도 실제로 게시되어 효력을 갖는 정책이다 — lib/legal/policy-content.ts 참조)
   //   어드민에서 동일 type 으로 본문 등록 시 DB 본문이 자동 우선됨.
+  //   레거시 축약형 type(service/privacy/child)은 normalizePolicyType 이 표준형으로 흡수한다.
   // 관련: docs/앱심사_1차런칭_미적용항목.xlsx L-01·L-05·L-11 등
   useEffect(() => {
     let cancelled = false;
@@ -95,15 +97,10 @@ export default function TermsPage() {
       }
 
       // 등록되지 않은 표준 type 을 fallback 으로 보완
-      const existingTypes = new Set<string>();
-      combined.forEach((t) => {
-        existingTypes.add(t.type);
-        // 레거시 alias 처리 (service → terms_of_service, privacy → privacy_policy)
-        if (t.type === 'service') existingTypes.add('terms_of_service');
-        if (t.type === 'terms_of_service') existingTypes.add('service');
-        if (t.type === 'privacy') existingTypes.add('privacy_policy');
-        if (t.type === 'privacy_policy') existingTypes.add('privacy');
-      });
+      // 레거시 축약형(service/privacy/child)은 표준형으로 정규화해 중복 노출을 막는다.
+      const existingTypes = new Set<string>(
+        combined.map((t) => normalizePolicyType(t.type)),
+      );
 
       POLICY_FALLBACKS.forEach((fallback) => {
         if (!existingTypes.has(fallback.type)) {
@@ -122,8 +119,8 @@ export default function TermsPage() {
 
       // type 순서 정렬
       combined.sort((a, b) => {
-        const orderA = TYPE_META[a.type]?.order ?? 99;
-        const orderB = TYPE_META[b.type]?.order ?? 99;
+        const orderA = typeMeta(a.type)?.order ?? 99;
+        const orderB = typeMeta(b.type)?.order ?? 99;
         return orderA - orderB;
       });
       setTerms(combined);
@@ -149,12 +146,8 @@ export default function TermsPage() {
     if (typeof window === 'undefined') return;
     const section = new URLSearchParams(window.location.search).get('section');
     if (!section) return;
-    const match = terms.find(
-      (t) =>
-        t.type === section ||
-        (section === 'terms_of_service' && t.type === 'service') ||
-        (section === 'privacy_policy' && t.type === 'privacy'),
-    );
+    const target = normalizePolicyType(section);
+    const match = terms.find((t) => normalizePolicyType(t.type) === target);
     if (!match) return;
     appliedSectionRef.current = true;
     setExpandedId(match.id);
@@ -166,10 +159,10 @@ export default function TermsPage() {
   }, [terms]);
 
   // 필수 약관 누락 경고 (PIPA 준수 모니터링)
-  // 각 그룹 중 어떤 alias로든 하나라도 등록돼 있으면 OK
-  const missingRequired = REQUIRED_TYPE_GROUPS
-    .filter((group) => !group.some((t) => terms.some((item) => item.type === t)))
-    .map((group) => group[0]); // 표준명(첫 번째 alias)으로 표시
+  // 레거시 축약형도 표준형으로 정규화해 판정한다.
+  const missingRequired = REQUIRED_TYPES.filter(
+    (t) => !terms.some((item) => normalizePolicyType(item.type) === t),
+  );
 
   return (
     <MobileContainer hasBottomNav={true} className="selectable-text">
@@ -238,7 +231,7 @@ export default function TermsPage() {
             <section className="bg-it-surface dark:bg-rink-800 px-5 pt-2 pb-3">
               <ul className="flex flex-col">
                 {terms.map((item, idx) => {
-                  const meta = TYPE_META[item.type] ?? { label: item.title, required: false };
+                  const meta = typeMeta(item.type) ?? { label: item.title, required: false };
                   const isExpanded = expandedId === item.id;
                   const displayTitle = item.title || meta.label;
                   const isLast = idx === terms.length - 1;
@@ -306,17 +299,26 @@ export default function TermsPage() {
                           aria-label={`${displayTitle} 본문`}
                           className={`rounded-w-md overflow-hidden mb-4 ${!isLast ? 'border-b border-it-line dark:border-rink-700' : ''}`}
                         >
-                          {/* Fallback (DB 미등록) 본문 표시 시 "변호사 검토 진행 중" 배너 */}
-                          {item.id.startsWith('fallback-') && (
-                            <div className="px-4 py-2.5 bg-sun-100/60 dark:bg-sun-500/15 border-b border-sun-500/30">
-                              <div className="flex items-start gap-1.5">
-                                <Icon name="info" className="text-sun-500 text-card-emphasis shrink-0 mt-0.5" />
-                                <p className="text-card-meta text-wtext-2 dark:text-sun-100 leading-relaxed">
-                                  본 본문은 표준 템플릿 기반 임시 안내입니다. 정식 약관은 변호사 검토 완료 후 갱신됩니다.
-                                </p>
+                          {/*
+                            [2026-07-30] 기존 "표준 템플릿 기반 임시 안내 · 변호사 검토 완료 후 갱신"
+                              사용자 노출 배너를 제거했다. fallback 본문은 DB 미등록 시 실제로 게시되어
+                              효력을 갖는 정책 전문이므로, 이용자에게 "임시" 라고 안내하는 것은
+                              약관의 구속력·명확성 측면에서 오히려 리스크였다.
+                              (배너 제거 대신 운영자용 개발 환경 안내로 전환 — DB 등록 필요 여부 확인용)
+                          */}
+                          {item.id.startsWith('fallback-') &&
+                            process.env.NODE_ENV !== 'production' && (
+                              <div className="px-4 py-2.5 bg-sun-100/60 dark:bg-sun-500/15 border-b border-sun-500/30">
+                                <div className="flex items-start gap-1.5">
+                                  <Icon name="info" className="text-sun-500 text-card-emphasis shrink-0 mt-0.5" />
+                                  <p className="text-card-meta text-wtext-2 dark:text-sun-100 leading-relaxed">
+                                    <strong>운영 안내(개발 환경 전용):</strong> DB(AppTerms)에 이 type
+                                    이 등록되지 않아 코드 내 정책 본문(POLICY_FALLBACKS)이 게시되고
+                                    있습니다.
+                                  </p>
+                                </div>
                               </div>
-                            </div>
-                          )}
+                            )}
                           <div className="max-h-[60vh] overflow-y-auto p-4 bg-it-fill dark:bg-puck/30">
                             <pre className="text-[13px] text-it-ink-800 dark:text-wtext-2 leading-relaxed whitespace-pre-wrap font-sans">
                               {item.content}

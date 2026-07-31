@@ -68,6 +68,18 @@ android {
             } else {
                 null // 서명 미설정 — release 실행 시 아래 가드가 명시적으로 실패시킴
             }
+
+            // [2026-08-01 Play 권장 조치] R8 최적화 — 버전 13(1.0.2)까지 minify 가
+            // 꺼져 있어 "최적화된 리소스 축소가 사용 설정되지 않음" 권장이 반복 노출됐다.
+            // gradle.properties 의 android.r8.optimizedResourceShrinking=true 는
+            // isShrinkResources=true 가 전제라 단독으로는 무의미했다(7/20 대응의 사각).
+            // keep 규칙은 proguard-rules.pro (gson 기반 flutter_local_notifications 등).
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }

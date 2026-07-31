@@ -17,11 +17,14 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import { PrismaService } from "@/prisma/prisma.service";
 import { CreditDomainService } from "@/credits/credit-domain.service";
 import { isAdminRole } from "@/auth/constants/chldiv.constants";
+import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
+import { ResourceAccessService } from "@/common/access/resource-access.service";
 import { instantToKstDateOnly } from "@/common/utils/kst-date.util";
 import { countPresentAttendanceSincePayment } from "@/common/utils/enrollment-usage.util";
 import { KgInicisGateway, KgCancelAmbiguousError } from "../kg-inicis.gateway";
@@ -29,6 +32,30 @@ import {
   TossPaymentsGateway,
   TossCancelAmbiguousError,
 } from "../toss-payments.gateway";
+
+/**
+ * 잔여 회차 비례 환불 산정 결과 (설계 SoT: claudedocs/refund-policy-design-2026-07-09.md §3-1).
+ *   환불액 = 결제액 − (개시 판정과 동일 기준의 present 출석 회수 × 회당 단가)
+ */
+export interface RefundQuote {
+  paymentId: string;
+  /** 결제 총액 */
+  paidAmount: number;
+  /** 기환불 누계(RefundLog 합산) — 중복 환불 방지용 */
+  alreadyRefunded: number;
+  /** 결제일 이후 present 출석 회수(사용분) */
+  attendedCount: number;
+  /** 회당 단가(원) */
+  unitFee: number;
+  /** 사용분 공제액 = attendedCount × unitFee */
+  deductedAmount: number;
+  /** 실제 환불 가능액 = max(0, 결제액 − 공제액 − 기환불액) */
+  refundableAmount: number;
+  /** 이용 개시 여부(출석 ≥ 1) */
+  started: boolean;
+  /** 산식 스냅샷 — RefundLog.refundReason·응답에 병기 */
+  calculationNote: string;
+}
 
 /**
  * 환불/취소 요청자 컨텍스트.
@@ -57,6 +84,13 @@ export interface RefundExecutionContext {
   expectedVersion?: number;
   idempotencyKey?: string;
   resumeProcessing?: boolean;
+  /**
+   * 크레딧 처리 정책.
+   *  - 'restore'(기본): 개시 전 취소 — 차감분을 되돌린다.
+   *  - 'forfeit': 이용 개시 후 중도해지 — 잔여분을 금액으로 환급했으므로 회차는 소멸.
+   *    복원하면 환급 + 회차 존치의 이중 혜택이 된다.
+   */
+  creditPolicy?: "restore" | "forfeit";
 }
 
 /**
@@ -118,6 +152,10 @@ export class PaymentRefundService {
     private readonly kgInicisGateway: KgInicisGateway,
     private readonly tossPaymentsGateway: TossPaymentsGateway,
     private readonly creditDomain: CreditDomainService, // PR-B (v0.5): 환불 단일 진입점
+    // 감독 승인 부분환불(refundByManager)의 소속 스코프 검증에만 쓰는 부수 의존.
+    //   @Global 모듈이라 런타임에는 항상 주입되며, 미주입 시 관리자 외 요청은 fail-closed.
+    @Optional()
+    private readonly resourceAccess?: ResourceAccessService,
   ) {}
 
   /**
@@ -151,6 +189,216 @@ export class PaymentRefundService {
         );
       }
     }
+  }
+
+  /**
+   * [환불 정책 2단계] 잔여 회차 비례 환불 산정 (서버 단독 계산 — 클라이언트 값 신뢰 금지).
+   *
+   * 환불액 = 결제액 − (결제일 이후 present 출석 회수 × 회당 단가) − 기환불 누계.
+   * 회당 단가는 ① 해당 수업의 PER_SESSION 상품가, ② 결제액 ÷ 패키지 총 회차 순으로 정한다.
+   * 반올림은 공제액을 내림 처리해 소비자에게 불리하지 않게 한다(단가 폴백의 소수점 절사).
+   * 단가를 산정할 수 없으면 공제 0 — 사업자 자료 미비를 소비자에게 전가하지 않는다.
+   */
+  async computeRefundQuote(paymentId: string): Promise<RefundQuote> {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+      select: {
+        id: true,
+        amount: true,
+        completedAt: true,
+        createdAt: true,
+        product: {
+          select: { classId: true, sessionsPerMonth: true },
+        },
+      },
+    });
+    if (!payment) {
+      throw new NotFoundException("결제 기록을 찾을 수 없습니다.");
+    }
+
+    const paidAmount = Number(payment.amount);
+    const paidDayUtc = instantToKstDateOnly(
+      payment.completedAt ?? payment.createdAt,
+    );
+
+    const enrollments = await this.prisma.enrollment.findMany({
+      where: { paymentId },
+      select: { childId: true, classId: true },
+    });
+    let attendedCount = 0;
+    for (const e of enrollments) {
+      attendedCount += await countPresentAttendanceSincePayment(
+        this.prisma,
+        e,
+        paidDayUtc,
+      );
+    }
+
+    const refundedSum = await this.prisma.refundLog.aggregate({
+      where: { paymentId },
+      _sum: { refundAmount: true },
+    });
+    const alreadyRefunded = refundedSum._sum.refundAmount ?? 0;
+
+    const unitFee = await this.resolveUnitFee(
+      payment.product?.classId ?? enrollments[0]?.classId ?? null,
+      payment.product?.sessionsPerMonth ?? 0,
+      paidAmount,
+    );
+    const deductedAmount = Math.min(paidAmount, attendedCount * unitFee);
+    const refundableAmount = Math.max(
+      0,
+      paidAmount - deductedAmount - alreadyRefunded,
+    );
+
+    return {
+      paymentId,
+      paidAmount,
+      alreadyRefunded,
+      attendedCount,
+      unitFee,
+      deductedAmount,
+      refundableAmount,
+      started: attendedCount > 0,
+      calculationNote:
+        `결제액 ${paidAmount}원 − 이용분 ${attendedCount}회 × ${unitFee}원(${deductedAmount}원)` +
+        (alreadyRefunded > 0 ? ` − 기환불 ${alreadyRefunded}원` : "") +
+        ` = ${refundableAmount}원`,
+    };
+  }
+
+  /** 회당 단가 — PER_SESSION 상품가 우선, 없으면 결제액 ÷ 패키지 총 회차(내림). */
+  private async resolveUnitFee(
+    classId: string | null,
+    sessionsPerPackage: number,
+    paidAmount: number,
+  ): Promise<number> {
+    if (classId) {
+      // 선불 수업에도 "1회 수업료"가 비판매(isActive:false) 참고용으로 보존된다.
+      const perSession = await this.prisma.classProduct.findFirst({
+        where: { classId, feeType: "PER_SESSION" },
+        orderBy: { createdAt: "desc" },
+        select: { price: true },
+      });
+      if (perSession && perSession.price > 0) return perSession.price;
+    }
+    if (sessionsPerPackage > 0) {
+      return Math.floor(paidAmount / sessionsPerPackage);
+    }
+    return 0;
+  }
+
+  /**
+   * [환불 정책 2단계] 감독/원장 승인 부분환불 — 이용 개시 후 잔여분 비례 환급.
+   *
+   * `POST /payments/:paymentId/cancel` 은 본인 결제(또는 ADMIN)만 대상이라 감독은
+   * 소속 학생의 결제를 취소할 수 없다. 이 경로는 소속 스코프를 단언한 뒤
+   * trusted 로 실행 엔진(cancelPayment)을 재사용한다.
+   *
+   * 금액은 서버 산정(computeRefundQuote)이 상한이며, 미지정 시 산정액 전액을 환불한다.
+   */
+  async refundByManager(
+    paymentId: string,
+    dto: {
+      refundReason: string;
+      refundAmount?: number;
+      refundBankCode?: string;
+      refundAccount?: string;
+      refundAccountHolder?: string;
+    },
+    user: JwtUserPayload,
+  ) {
+    await this.assertManagerRefundScopeFor(paymentId, user);
+
+    const quote = await this.computeRefundQuote(paymentId);
+    const amount = dto.refundAmount ?? quote.refundableAmount;
+
+    if (amount <= 0) {
+      throw new BadRequestException(
+        `환불 가능 잔액이 없습니다. (${quote.calculationNote})`,
+      );
+    }
+    if (amount > quote.refundableAmount) {
+      throw new BadRequestException(
+        `환불액이 산정액을 초과할 수 없습니다. (${quote.calculationNote})`,
+      );
+    }
+
+    const result = await this.cancelPayment(
+      paymentId,
+      `${dto.refundReason} [${quote.calculationNote}]`,
+      amount,
+      dto.refundBankCode,
+      dto.refundAccount,
+      dto.refundAccountHolder,
+      { id: user.id, userType: user.userType, trusted: true },
+      {
+        actorId: user.id,
+        // 개시 후 환불은 수강 종료 — 잔여 회차를 되돌리면 환급과 이중 혜택이 된다.
+        creditPolicy: quote.started ? "forfeit" : "restore",
+      },
+    );
+
+    return { ...result, quote };
+  }
+
+  /**
+   * 감독 환불 소속 스코프 단언 — 결제가 속한 수업/대회/픽업매치의 관리자만 실행 가능.
+   * 도메인이 판별되지 않는 결제(쇼핑 등)는 ADMIN 전용(fail-closed).
+   */
+  async assertManagerRefundScopeFor(
+    paymentId: string,
+    user: JwtUserPayload,
+  ): Promise<void> {
+    if (isAdminRole(user.userType)) return;
+    if (!this.resourceAccess) {
+      throw new ForbiddenException("해당 결제를 환불할 권한이 없습니다.");
+    }
+
+    const enrollment = await this.prisma.enrollment.findFirst({
+      where: { paymentId },
+      select: { classId: true },
+    });
+    if (enrollment) {
+      await this.resourceAccess.assertManageableClass(enrollment.classId, user);
+      return;
+    }
+
+    const line = await this.prisma.monthlyPostpaidBillingLine.findFirst({
+      where: { paymentId },
+      select: { billing: { select: { classId: true } } },
+    });
+    if (line) {
+      await this.resourceAccess.assertManageableClass(
+        line.billing.classId,
+        user,
+      );
+      return;
+    }
+
+    const reg = await this.prisma.tournamentRegistration.findFirst({
+      where: { paymentId },
+      select: { tournamentId: true },
+    });
+    if (reg) {
+      await this.resourceAccess.assertManageableTournament(
+        reg.tournamentId,
+        user,
+      );
+      return;
+    }
+
+    // 픽업매치는 주최자(PickupMatch.managerId)가 관리 주체 — 팀/아카데미 스코프가 없다.
+    const applicant = await this.prisma.pickupMatchApplicant.findFirst({
+      where: { paymentId },
+      select: { match: { select: { managerId: true } } },
+    });
+    if (applicant) {
+      if (applicant.match.managerId === user.id) return;
+      throw new ForbiddenException("해당 매치의 주최자만 환불할 수 있습니다.");
+    }
+
+    throw new ForbiddenException("해당 결제를 환불할 권한이 없습니다.");
   }
 
   /**
@@ -226,7 +474,11 @@ export class PaymentRefundService {
         },
         select: { id: true, version: true },
       });
-      return { id: rr.id, version: rr.version, reconciledCount: reconciled.count };
+      return {
+        id: rr.id,
+        version: rr.version,
+        reconciledCount: reconciled.count,
+      };
     });
 
     if (created.reconciledCount > 0) {
@@ -374,15 +626,21 @@ export class PaymentRefundService {
       throw new NotFoundException("결제 기록을 찾을 수 없습니다.");
     }
 
+    /** 소비자 본인의 셀프 취소(청약철회) — 관리자·trusted 내부 호출과 가드/금액 규칙이 다르다. */
+    const isSelfService =
+      !requester?.trusted && !isAdminRole(requester?.userType);
+
     // [2026-06-10 SECURITY] 소유권 검증 — 본인 결제만 취소/환불 가능.
     //   기존: 요청자 컨텍스트 없이 paymentId만으로 취소 → 임의 결제 환불·가상계좌 환불금 탈취 가능.
     //   예외: ADMIN/SYSTEM/OPER(isAdminRole) 또는 상위에서 권한 검증된 trusted 내부 호출.
-    if (!requester?.trusted && !isAdminRole(requester?.userType)) {
+    if (isSelfService) {
       if (!requester?.id || payment.userId !== requester.id) {
         this.logger.warn(
           `[SECURITY] 권한 없는 결제 취소 시도 차단: paymentId=${paymentId}, requesterId=${requester?.id ?? "none"}, ownerId=${payment.userId}`,
         );
-        throw new ForbiddenException("해당 결제를 취소/환불할 권한이 없습니다.");
+        throw new ForbiddenException(
+          "해당 결제를 취소/환불할 권한이 없습니다.",
+        );
       }
     }
 
@@ -404,7 +662,7 @@ export class PaymentRefundService {
     //   이 결제에 연결된 수강의 자녀가 결제일 이후 일정에 present 출석이 1회라도
     //   있으면 본인(학부모) 셀프 결제취소를 거절한다 — 환불은 감독/관리자 경로로만.
     //   ADMIN/SYSTEM/OPER·trusted 내부 호출은 통과 (관리자 환불·시스템 보상 경로).
-    if (!requester?.trusted && !isAdminRole(requester?.userType)) {
+    if (isSelfService) {
       await this.assertEnrollmentNotUsed(
         paymentId,
         payment.completedAt ?? payment.createdAt,
@@ -415,8 +673,12 @@ export class PaymentRefundService {
       throw new BadRequestException("결제 거래번호(TID)가 없습니다.");
     }
 
-    // 취소 금액 설정 (기본값: 전액)
-    const finalCancelAmount = cancelAmount || Number(payment.amount);
+    // 취소 금액 설정 (기본값: 전액).
+    //   셀프 취소는 이용 개시 전만 도달하므로 항상 전액 — 소비자가 임의 부분금액을
+    //   지정해 스스로 손해 보는 요청을 만들 수 없게 한다(부분환불은 감독 승인 경로).
+    const finalCancelAmount = isSelfService
+      ? Number(payment.amount)
+      : cancelAmount || Number(payment.amount);
 
     if (finalCancelAmount > Number(payment.amount)) {
       throw new BadRequestException(
@@ -569,9 +831,7 @@ export class PaymentRefundService {
             "PG 결과 미확정 — 수동 확인이 필요합니다.",
           );
         }
-        let cancelResult: Awaited<
-          ReturnType<KgInicisGateway["cancelPayment"]>
-        >;
+        let cancelResult: Awaited<ReturnType<KgInicisGateway["cancelPayment"]>>;
         try {
           cancelResult = await this.kgInicisGateway.cancelPayment({
             tid: payment.tid,
@@ -631,11 +891,7 @@ export class PaymentRefundService {
         refundErr.code === "KG_UNCONFIRMED" ||
         refundErr.code === "TOSS_UNCONFIRMED" ||
         refundErr.code === "TOSS_IDEMPOTENCY_CONFLICT";
-      if (
-        !refundContext?.resumeProcessing &&
-        !isDbAfterPg &&
-        !isUnconfirmed
-      ) {
+      if (!refundContext?.resumeProcessing && !isDbAfterPg && !isUnconfirmed) {
         const restore = await this.prisma.payment.updateMany({
           where: { id: paymentId, paymentStatus: "refund_processing" },
           data: { paymentStatus: "completed" },
@@ -754,14 +1010,24 @@ export class PaymentRefundService {
         );
       }
 
-      // 3. 크레딧 복원 (해당 결제로 발급된 크레딧이 있으면)
+      // 3. 크레딧 처리 (해당 결제로 발급된 크레딧이 있으면)
       const relatedCredits = await tx.memberCredit.findMany({
         where: { paymentId },
         select: { id: true, totalSessions: true },
       });
 
-      // PR-B (v0.5): CreditDomainService.refundSessions 위임 (전액/부분 환불 통합)
+      const forfeit = refundContext?.creditPolicy === "forfeit";
       for (const credit of relatedCredits) {
+        if (forfeit) {
+          // 이용 개시 후 중도해지 — 잔여분은 금액으로 환급했으므로 회차 소멸.
+          await this.creditDomain.forfeitRemaining(tx, {
+            memberCreditId: credit.id,
+            reason: `중도해지 환불 — 잔여 회차 회수 (${cancelReason})`,
+            actorUserId: refundContext?.actorId,
+          });
+          continue;
+        }
+        // PR-B (v0.5): CreditDomainService.refundSessions 위임 (전액/부분 환불 통합)
         const restoredSessions = isFullRefund
           ? credit.totalSessions
           : Math.floor(credit.totalSessions * refundRatio);
@@ -778,12 +1044,13 @@ export class PaymentRefundService {
       }
       if (relatedCredits.length > 0) {
         this.logger.log(
-          `수업권 복원: paymentId=${paymentId}, 복원 수업권 ${relatedCredits.length}건`,
+          `수업권 ${forfeit ? "회수" : "복원"}: paymentId=${paymentId}, 대상 수업권 ${relatedCredits.length}건`,
         );
       }
 
-      // 4. Enrollment / ClassRegistration 동기화 — 전액 환불 시 캘린더에서 제외.
-      if (isFullRefund) {
+      // 4. Enrollment / ClassRegistration 동기화 — 전액 환불 또는 중도해지(회차 회수) 시
+      //    수강이 종료되므로 캘린더·활성 수강생에서 제외한다.
+      if (isFullRefund || forfeit) {
         const enrollments = await tx.enrollment.findMany({
           where: { paymentId },
           select: { id: true, classId: true, childId: true },
@@ -811,6 +1078,18 @@ export class PaymentRefundService {
         await tx.tournamentRegistration.updateMany({
           where: { paymentId },
           data: { paymentStatus: "REFUNDED", cancelledAt: new Date() },
+        });
+
+        // 픽업매치 신청 동기화 — 학부모 셀프 취소·감독 환불처럼 호출부가 직접
+        //   applicant 를 갱신하지 않는 경로에서 결제만 refunded 로 남는 것을 막는다.
+        //   (매치 일괄 취소 경로는 자체 갱신 후 진입하므로 멱등 재기록.)
+        await tx.pickupMatchApplicant.updateMany({
+          where: { paymentId },
+          data: {
+            paymentStatus: "refunded",
+            refundedAt: new Date(),
+            refundAmount: finalCancelAmount,
+          },
         });
       }
 
@@ -904,7 +1183,9 @@ export class PaymentRefundService {
       finalCancelAmount !== rr.requestedAmount ||
       finalCancelAmount > Number(payment.amount)
     ) {
-      throw new BadRequestException("재처리 금액이 요청/결제와 일치하지 않습니다.");
+      throw new BadRequestException(
+        "재처리 금액이 요청/결제와 일치하지 않습니다.",
+      );
     }
 
     const fenceWhere: { id: string; status: string; version?: number } = {

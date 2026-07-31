@@ -60,13 +60,19 @@ export const securityConfig = {
    * Password Hashing
    * bcrypt salt rounds: higher = more secure but slower
    * round 10 ≈ 65ms / round 12 ≈ 250ms (Apple M-series 기준).
-   * AccountLockoutService(3/5/10회 진행형 잠금) + ThrottlerGuard(login Rate Limit
-   * local 30 / dev 10 / prod 3 per min) 가 brute-force 를 이미 차단하므로 round 10
-   * 은 OWASP minimum 충족 + 1초 SLA 달성에 적합. 신규 가입자만 영향, 기존 해시는
-   * bcrypt.compare 가 cost prefix 를 자체 인식해 그대로 검증된다.
+   *
+   * [2026-07-30 SECURITY] 10 → 12 상향. AccountLockoutService(3/5/10회 진행형 잠금) +
+   * ThrottlerGuard 가 온라인 brute-force 는 막지만, DB 유출 후 **오프라인 크래킹**은
+   * cost 만이 방어수단이라 OWASP 권고치(12)를 따른다.
+   *
+   * 하위 호환: 기존 해시는 cost 10 으로 저장돼 있어도 bcrypt.compare 가 해시 문자열의
+   * cost prefix(`$2b$10$…`)를 스스로 읽어 검증하므로 **로그인이 깨지지 않는다**.
+   * 신규 가입·비밀번호 변경분부터 cost 12 로 저장되고, 두 cost 가 DB에 공존해도 무해하다.
+   *
+   * 성능: 해싱은 회원가입·비밀번호 변경·로그인 검증 시 1회뿐이고 +185ms 는 1초 SLA 내.
    */
   password: {
-    saltRounds: 10,
+    saltRounds: 12,
     minLength: 8,
     maxLength: 128,
   },
@@ -179,7 +185,18 @@ export const securityConfig = {
       "creditCard",
       "ssn",
     ],
-    retention: 90, // Days to retain audit logs
+    /**
+     * 감사·접속기록 보관일수.
+     *
+     * [2026-07-30 LEGAL] 90 → 730 (2년) 상향.
+     * 근거: 「개인정보의 안전성 확보조치 기준」 §8② — 접속기록 보관 최소 1년.
+     *   단, ①5만명 이상 정보주체의 개인정보를 처리하거나 ②고유식별정보·민감정보를
+     *   처리하는 개인정보처리자는 **최소 2년**. 본 서비스는 본인인증 CI/DI(고유식별정보
+     *   준용 연계정보)와 아동 개인정보를 처리하므로 2년 기준을 적용한다.
+     * 집행: DataRetentionScheduler(src/common/schedulers/data-retention.scheduler.ts)가
+     *   이 값을 읽어 매일 실제 삭제한다. (종전엔 집행 코드가 없어 死설정이었다.)
+     */
+    retention: 730,
   },
 
   /**

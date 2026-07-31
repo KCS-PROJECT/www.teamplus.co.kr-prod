@@ -137,17 +137,24 @@ export class PickupMatchesController {
     return this.service.findOne(id);
   }
 
-  /** 매치 참여 명단 조회 (인증 불필요) */
+  /**
+   * 매치 참여 명단 조회 (인증 불필요 — 단, 비로그인은 실명 마스킹).
+   *
+   * 비로그인 열람 UX 는 유지하되(프론트 roster 페이지가 비로그인 진입을 허용) 참가자
+   * 실명·프로필 사진이 공개되지 않도록 OptionalJwtAuthGuard 로 열람자를 식별한다.
+   */
   @Get(":id/roster")
   @Public()
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({
     summary: "매치 참여 명단 조회",
-    description: "확정 참가자와 대기 목록을 함께 반환합니다.",
+    description:
+      "확정 참가자와 대기 목록을 함께 반환합니다. 비로그인 열람 시 참가자 실명은 마스킹(홍*동)되며 프로필 사진은 반환하지 않습니다.",
   })
   @ApiParam({ name: "id", description: "매치 ID" })
   @ApiResponse({ status: 200, description: "참여 명단 조회 성공" })
-  getRoster(@Param("id") id: string) {
-    return this.service.getRoster(id);
+  getRoster(@Param("id") id: string, @Request() req: OptionalAuthRequest) {
+    return this.service.getRoster(id, req.user?.id);
   }
 
   /**

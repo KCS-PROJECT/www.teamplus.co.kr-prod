@@ -34,6 +34,7 @@ import { AuthenticatedRequest } from "@/common/interfaces/authenticated-request.
 import { PrismaService } from "../prisma/prisma.service";
 import { RolesGuard } from "../auth/roles.guard";
 import { Roles } from "../auth/roles.decorator";
+import { AuditAction } from "@/common/decorators/audit-action.decorator";
 import { UserType } from "@prisma/client";
 import { UpdateSettlementBankInfoDto } from "./dto/settlement-action.dto";
 import { BulkUserStatusDto } from "./dto/bulk-user-status.dto";
@@ -141,6 +142,12 @@ export class AdminController {
 
   @Put("users/:id/type")
   @ApiOperation({ summary: "사용자 타입 변경" })
+  // 역할 변경은 권한 상승 경로라 누가 언제 바꿨는지 추적 가능해야 한다.
+  @AuditAction({
+    action: "admin.user.role.change",
+    resource: "User",
+    includeKeys: ["id", "userType"],
+  })
   async updateUserType(
     @Param("id") id: string,
     @Body("userType") userType: UserType,
@@ -150,6 +157,11 @@ export class AdminController {
 
   @Put("users/:id/approve")
   @ApiOperation({ summary: "회원 승인 (관리자)" })
+  @AuditAction({
+    action: "admin.user.approve",
+    resource: "User",
+    includeKeys: ["id"],
+  })
   async approveUser(@Param("id") id: string) {
     await this.prisma.user.update({
       where: { id },
@@ -165,6 +177,11 @@ export class AdminController {
 
   @Put("users/:id/reject")
   @ApiOperation({ summary: "회원 거절 (관리자)" })
+  @AuditAction({
+    action: "admin.user.reject",
+    resource: "User",
+    includeKeys: ["id"],
+  })
   async rejectUser(@Param("id") id: string) {
     await this.prisma.teamMember.updateMany({
       where: { userId: id, approvalStatus: "pending" },
@@ -175,14 +192,37 @@ export class AdminController {
 
   @Delete("users/:id")
   @ApiOperation({ summary: "사용자 삭제" })
+  // 회원 삭제는 되돌릴 수 없는 개인정보 처리라 감사기록이 법정 요구사항(§8).
+  @AuditAction({
+    action: "admin.user.delete",
+    resource: "User",
+    includeKeys: ["id"],
+  })
   async deleteUser(@Param("id") id: string) {
     return this.adminService.deleteUser(id);
   }
 
+  /**
+   * 관리자 계정 생성.
+   *
+   * [2026-07-30 SECURITY] 메서드 레벨 @Roles 가 없어 클래스 기본값 ADMIN 을 상속했고,
+   *   일반 ADMIN 이 SYSTEM/OPER 계정을 임의 생성할 수 있었다(권한 상승).
+   *   ⚠️ RolesGuard 는 ADMIN/SYSTEM/OPER 를 super-admin 으로 무조건 통과시키므로
+   *      (`roles.guard.ts` isAdminRole pass-through) @Roles 만으로는 차단되지 않는다.
+   *      → 실효 차단은 AdminService 에서 호출자 userType 을 검사한다. 여기의 @Roles 는
+   *        Swagger 문서화 + 가드 정책 변경 시의 이중 안전망 역할.
+   */
   @Post("admins")
   @HttpCode(HttpStatus.CREATED)
+  @Roles("SYSTEM", "OPER")
   @ApiOperation({ summary: "관리자 계정 생성 (SYSTEM/OPER)" })
+  @AuditAction({
+    action: "admin.account.create",
+    resource: "User",
+    includeKeys: ["email", "userType"],
+  })
   async createAdmin(
+    @Request() req: AuthenticatedRequest,
     @Body()
     body: {
       email?: string;
@@ -193,13 +233,23 @@ export class AdminController {
       userType?: string;
     },
   ) {
-    return this.adminService.createAdminUser(body);
+    return this.adminService.createAdminUser(body, req.user.userType);
   }
 
+  /** 관리자 계정 삭제 — createAdmin 과 동일한 SYSTEM/OPER 전용 정책. */
   @Delete("admins/:id")
-  @ApiOperation({ summary: "관리자 계정 삭제" })
-  async deleteAdmin(@Param("id") id: string) {
-    return this.adminService.deleteAdminUser(id);
+  @Roles("SYSTEM", "OPER")
+  @ApiOperation({ summary: "관리자 계정 삭제 (SYSTEM/OPER)" })
+  @AuditAction({
+    action: "admin.account.delete",
+    resource: "User",
+    includeKeys: ["id"],
+  })
+  async deleteAdmin(
+    @Param("id") id: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.adminService.deleteAdminUser(id, req.user.userType);
   }
 
   // ==================== 정산 관리 ====================
@@ -304,7 +354,12 @@ export class AdminController {
   @ApiQuery({ name: "action", required: false, type: String })
   @ApiQuery({ name: "resource", required: false, type: String })
   @ApiQuery({ name: "search", required: false, type: String })
-  @ApiQuery({ name: "platform", required: false, type: String, description: "web | admin | app" })
+  @ApiQuery({
+    name: "platform",
+    required: false,
+    type: String,
+    description: "web | admin | app",
+  })
   @ApiQuery({ name: "startDate", required: false, type: String })
   @ApiQuery({ name: "endDate", required: false, type: String })
   async getAuditLogs(

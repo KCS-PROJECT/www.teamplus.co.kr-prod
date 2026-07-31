@@ -308,7 +308,7 @@ export class TournamentsController {
   @ApiOperation({
     summary: "대회 참가 등록",
     description:
-      "대회에 참가 신청합니다. 출생연도 자격 검증 및 참가비 자동계산이 수행됩니다.",
+      "대회에 참가 신청합니다. 출생연도 자격 검증 및 참가비 자동계산이 수행됩니다. 참가비가 발생하는 대회는 미성년자(TEEN/CHILD) 단독 신청이 차단되며 보호자 계정으로만 신청할 수 있습니다.",
   })
   @ApiParam({ name: "id", description: "대회 ID" })
   @ApiResponse({ status: 201, description: "참가 등록 성공" })
@@ -319,7 +319,12 @@ export class TournamentsController {
     @Body() dto: RegisterTournamentDto,
     @Request() req: AuthenticatedRequest,
   ) {
-    return this.tournamentsService.registerTournament(id, req.user.id, dto);
+    return this.tournamentsService.registerTournament(
+      id,
+      req.user.id,
+      dto,
+      req.user.userType,
+    );
   }
 
   /**

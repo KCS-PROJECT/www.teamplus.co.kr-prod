@@ -40,6 +40,26 @@ export interface EncryptedPayload {
 }
 
 /**
+ * 평문 Base64 폴백 허용 여부 — 단일 판정 함수.
+ *
+ * [2026-07-30 SECURITY] 판정이 decryptCredentials / getCryptoStatus 두 곳에 복제돼 있어
+ * 한쪽만 고치면 어긋날 수 있었다 → 여기로 집중한다.
+ *
+ * 허용 조건(AND):
+ *  1) NODE_ENV 가 development | test — **allow-list 방식**이라 production/staging 은 물론
+ *     미설정·오타 등 인식 불가 값도 전부 차단된다(프로덕션 활성 경로 없음).
+ *  2) `ALLOW_CRYPTO_FALLBACK !== "false"` — dev/test 안에서 폴백을 끄고 실제 암호화 동작을
+ *     검증하기 위한 스위치. 기본 허용이지만 (1) 때문에 dev/test 밖으로 새지 않는다.
+ */
+function isFallbackAllowed(): boolean {
+  const env = (process.env.NODE_ENV ?? "").toLowerCase();
+  return (
+    process.env.ALLOW_CRYPTO_FALLBACK !== "false" &&
+    (env === "development" || env === "test")
+  );
+}
+
+/**
  * 폴백 모드 여부 확인
  * WebView 환경에서 Web Crypto API가 지원되지 않을 때 사용되는 폴백 모드 감지
  *
@@ -107,24 +127,19 @@ export function decryptCredentials(payload: EncryptedPayload): string {
 
     // 2. 폴백 모드 감지 (WebView 환경에서 Web Crypto API 미지원 시)
     if (isFallbackMode(iv)) {
-      // ⚠️ 보안 게이트: production / staging 에서는 거부.
+      // ⚠️ 보안 게이트: dev/test 외 모든 환경에서 거부(isFallbackAllowed allow-list).
       //   클라이언트가 평문을 보내고 있다는 의미이므로 절대 처리하지 않는다.
       //   (감사 로그는 호출자 service 레이어가 IP/UA 컨텍스트와 함께 기록.)
       const env = (process.env.NODE_ENV ?? "").toLowerCase();
-      const allowFallback =
-        process.env.ALLOW_CRYPTO_FALLBACK !== "false" &&
-        (env === "development" || env === "test");
-
-      if (!allowFallback) {
+      if (!isFallbackAllowed()) {
+        // stderr 보안 경고 — production/staging 뿐 아니라 NODE_ENV 미설정·오타 환경도
+        //   운영 사고 가능성이 있어 동일하게 알린다(종전엔 production/staging 만 로깅).
+        console.error(
+          "[Crypto][SECURITY] Fallback payload rejected " +
+            `(NODE_ENV=${env || "unset"}). Clients must use WebCrypto AES-GCM.`,
+        );
         // 보안: 클라이언트로는 일반적인 복호화 실패 메시지로 위장하여
         //       fallback 감지 로직 자체를 노출하지 않는다.
-        if (env === "production" || env === "staging") {
-          // stderr 로 명시적 보안 경고 — 운영 모니터링에서 즉시 알림이 필요한 사항.
-          console.error(
-            "[Crypto][SECURITY] Fallback payload rejected in non-dev env " +
-              `(NODE_ENV=${env}). Clients must use WebCrypto AES-GCM.`,
-          );
-        }
         throw new Error("Decryption failed");
       }
 
@@ -164,10 +179,8 @@ export function decryptCredentials(payload: EncryptedPayload): string {
  */
 export function getCryptoStatus() {
   const secretKey = process.env.CRYPTO_SECRET_KEY;
-  const env = (process.env.NODE_ENV ?? "").toLowerCase();
-  const fallbackSupported =
-    process.env.ALLOW_CRYPTO_FALLBACK !== "false" &&
-    (env === "development" || env === "test");
+  // 판정 중복 제거 — decryptCredentials 와 항상 동일한 결과를 보장한다.
+  const fallbackSupported = isFallbackAllowed();
   return {
     isConfigured: secretKey && secretKey.length === 64,
     keyLength: secretKey?.length || 0,

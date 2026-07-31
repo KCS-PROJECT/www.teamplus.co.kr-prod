@@ -23,6 +23,7 @@ import '../../features/profile/presentation/screens/profile_edit_screen.dart';
 import '../../features/profile/presentation/screens/profile_password_screen.dart';
 import '../../features/profile/presentation/screens/profile_notification_settings_screen.dart';
 import '../../features/profile/presentation/screens/profile_security_screen.dart';
+import '../../features/profile/presentation/screens/profile_licenses_screen.dart';
 import '../../features/attendance/presentation/screens/attendance_history_screen.dart';
 import '../../features/payments/presentation/screens/payment_history_screen.dart';
 import 'initial_destination.dart';
@@ -43,7 +44,6 @@ import '../../features/matches/presentation/screens/match_recruitment_screen.dar
 import '../../features/community/presentation/screens/club_feed_screen.dart';
 import '../../features/community/presentation/screens/club_events_screen.dart';
 import '../../features/identity/presentation/screens/identity_verification_screen.dart';
-import '../../features/identity/presentation/screens/identity_verify_screen.dart';
 import '../../features/videos/presentation/screens/video_upload_screen.dart';
 import '../../core/webview/webview_screen.dart';
 import '../../shared/widgets/teamplus_bottom_nav.dart';
@@ -360,6 +360,14 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         name: 'profile-security',
         builder: (context, state) => const ProfileSecurityScreen(),
       ),
+      // 오픈소스 라이선스 고지 — Apache-2.0 §4(d) / MIT·BSD 저작권 고지 /
+      //   SIL OFL 1.1 §2(번들 폰트) 의무 이행 경로. Web 은 `navigation` 브릿지
+      //   (`{action:'navigate', route:'/profile/licenses'}`) 로도 진입할 수 있다.
+      GoRoute(
+        path: '/profile/licenses',
+        name: 'profile-licenses',
+        builder: (context, state) => const ProfileLicensesScreen(),
+      ),
 
       // History Routes
       GoRoute(
@@ -429,18 +437,6 @@ final goRouterProvider = Provider<GoRouter>((ref) {
           return VideoUploadScreen(
             childId: extras?['childId'] as String? ?? '',
             childName: extras?['childName'] as String? ?? '자녀',
-          );
-        },
-      ),
-
-      // Identity Gateway Selection Route (본인인증 제공자 선택)
-      GoRoute(
-        path: '/identity-gateway',
-        name: 'identity-gateway',
-        builder: (context, state) {
-          final extras = state.extra as Map<String, dynamic>?;
-          return IdentityVerifyScreen(
-            returnPath: extras?['returnPath'] as String?,
           );
         },
       ),

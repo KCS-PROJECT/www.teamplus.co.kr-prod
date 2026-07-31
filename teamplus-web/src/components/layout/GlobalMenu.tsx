@@ -1104,17 +1104,24 @@ export function GlobalMenu({ isOpen, onClose }: GlobalMenuProps) {
         {/* ── M1 Footer — 사업자 정보 + 약관 + 버전 ── */}
         {/*
           전자상거래법 §10조: 통신판매업자 정보 표시 의무
+          정보통신망법 §42조의3: 청소년보호책임자 지정 사실 공개
           Apple App Review 1.5: Developer Information (Support URL)
           관련 정책 항목: O-01~O-08 (사업자정보·고객센터)
-          TODO: COMPANY_INFO 의 placeholder 를 실제 정보로 교체 (lib/legal/policy-content.ts)
+
+          [2026-07-30] COMPANY_INFO 는 사업자등록증 원본 기준 실제 정보로 채워져 있다
+            (lib/legal/policy-content.ts) — 과거의 "placeholder 교체" TODO 는 해소되어 제거.
+          [2026-07-30] 청소년보호책임자 표시 추가 (개인정보 보호책임자 겸임).
+          ※ 통신판매업 신고번호는 쇼핑몰 영역(ShopBusinessFooter)에만 표시한다 —
+            쇼핑몰 1차 미노출 정책에 따라 이 전역 푸터에는 넣지 않는다.
+          ※ 이 푸터는 드로어 스크롤 영역 밖(aside 직계)이라 드로어가 열려 있는 동안 항상 보인다.
         */}
         <footer className="px-6 pt-3.5 pb-7 border-t border-wline-2 dark:border-rink-700/60 space-y-3">
           {/* [2026-05-25] 약관 링크 nav 제거 — 이용약관·개인정보·환불·커뮤니티 규칙·접근성은
               "고객지원" 그룹 하위 항목(LEGAL_SUPPORT_ITEMS)으로 이동 (사용자 요청).
               footer 에는 전자상거래법 §10조 사업자 정보 + 앱 버전만 유지. */}
 
-          {/* 사업자 정보 — 전자상거래법 §10조 (쇼핑몰 운영 시 통신판매업 신고번호 추가 필요) */}
-          <div className="text-card-meta text-wtext-4 dark:text-rink-300 leading-relaxed space-y-0.5">
+          {/* 사업자 정보 — 전자상거래법 §10조 */}
+          <address className="not-italic text-card-meta text-wtext-4 dark:text-rink-300 leading-relaxed space-y-0.5">
             <p>
               <span className="font-semibold">{COMPANY_INFO.name}</span>
               <span className="mx-1.5" aria-hidden="true">
@@ -1137,7 +1144,12 @@ export function GlobalMenu({ isOpen, onClose }: GlobalMenuProps) {
             <p className="text-card-meta opacity-80">
               개인정보 보호책임자 {COMPANY_INFO.privacyOfficer}
             </p>
-          </div>
+            {/* 정보통신망법 §42조의3 — 청소년보호책임자 지정 사실 공개 */}
+            <p className="text-card-meta opacity-80">
+              청소년보호책임자 {COMPANY_INFO.youthProtectionOfficer} (
+              {COMPANY_INFO.youthProtectionOfficerEmail})
+            </p>
+          </address>
 
           {/* 앱 버전 (기존) */}
           <p className="text-card-meta text-wtext-4 dark:text-rink-300 tracking-[-0.01em]">

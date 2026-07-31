@@ -154,6 +154,14 @@ class ProfileScreen extends ConsumerWidget {
                     'showBottomNav': false,
                   }),
                 ),
+                const Divider(height: 1),
+                // 오픈소스 라이선스 고지 — Apache-2.0 NOTICE · MIT/BSD 저작권 고지 ·
+                //   번들 폰트(Pretendard) SIL OFL 1.1 사본 제공 의무 이행 경로.
+                _buildMenuItem(
+                  icon: Icons.code_outlined,
+                  label: '오픈소스 라이선스',
+                  onTap: () => context.push('/profile/licenses'),
+                ),
                 // 개발자 도구 (Debug 모드에서만 표시)
                 if (kDebugMode) ...[
                   const Divider(height: 1),

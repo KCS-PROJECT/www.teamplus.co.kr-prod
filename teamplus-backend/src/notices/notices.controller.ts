@@ -28,6 +28,7 @@ import { CreateNoticeCommentDto } from "./dto/create-notice-comment.dto";
 import { Roles } from "@/auth/roles.decorator";
 import { RolesGuard } from "@/auth/roles.guard";
 import { Public } from "@/auth/public.decorator";
+import { OptionalJwtAuthGuard } from "@/auth/optional-jwt-auth.guard";
 
 @ApiTags("Notices")
 @Controller("api/v1/notices")
@@ -634,9 +635,11 @@ export class NoticesController {
    */
   @Get(":noticeId/comments")
   @Public()
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({
     summary: "공지사항 댓글 목록",
-    description: "공지사항의 댓글 목록을 조회합니다.",
+    description:
+      "공지사항의 댓글 목록을 조회합니다. 비로그인 열람 시 작성자 실명은 마스킹(홍*동)됩니다.",
   })
   @ApiQuery({ name: "page", required: false, description: "페이지 번호" })
   @ApiQuery({ name: "limit", required: false, description: "페이지당 개수" })
@@ -650,7 +653,7 @@ export class NoticesController {
             id: "comment-uuid",
             content: "댓글 내용입니다.",
             userId: "user-uuid",
-            userName: "홍길동",
+            userName: "홍*동",
             createdAt: "2026-04-12T10:00:00Z",
           },
         ],
@@ -664,6 +667,7 @@ export class NoticesController {
   })
   async getComments(
     @Param("noticeId") noticeId: string,
+    @Request() req: { user?: { id: string } },
     @Query("page") page?: string,
     @Query("limit") limit?: string,
   ) {
@@ -671,6 +675,7 @@ export class NoticesController {
       noticeId,
       page ? parseInt(page, 10) : 1,
       limit ? parseInt(limit, 10) : 10,
+      req.user?.id,
     );
   }
 }

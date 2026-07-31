@@ -25,6 +25,7 @@ import {
   sanitizeBasicHtml,
   sanitizeExtendedHtml,
 } from "@/common/utils/sanitize.util";
+import { maskProfanity } from "@/common/utils/content-filter.util";
 import { NotificationsService } from "@/notifications/notifications.service";
 import { isAdminRole } from "@/auth/constants/chldiv.constants";
 
@@ -187,8 +188,9 @@ export class CommunityService {
       data: {
         teamId: teamId,
         authorId: userId,
-        title: sanitizeStrict(dto.title),
-        content: sanitizeExtendedHtml(dto.content),
+        // UGC 콘텐츠 필터 — XSS 살균 후 비속어 마스킹 (아동·청소년 이용 서비스)
+        title: maskProfanity(sanitizeStrict(dto.title)),
+        content: maskProfanity(sanitizeExtendedHtml(dto.content)),
         postType: dto.postType ?? "announcement",
         targetLevel: dto.targetLevel,
         isPinned: dto.isPinned ?? false,
@@ -237,8 +239,10 @@ export class CommunityService {
     return this.prisma.teamPost.update({
       where: { id: postId },
       data: {
-        ...(dto.title && { title: sanitizeStrict(dto.title) }),
-        ...(dto.content && { content: sanitizeExtendedHtml(dto.content) }),
+        ...(dto.title && { title: maskProfanity(sanitizeStrict(dto.title)) }),
+        ...(dto.content && {
+          content: maskProfanity(sanitizeExtendedHtml(dto.content)),
+        }),
         ...(dto.postType && { postType: dto.postType }),
         ...(dto.targetLevel !== undefined && { targetLevel: dto.targetLevel }),
         ...(dto.isPinned !== undefined && { isPinned: dto.isPinned }),
@@ -403,7 +407,7 @@ export class CommunityService {
       data: {
         postId,
         authorId: userId,
-        content: sanitizeBasicHtml(dto.content),
+        content: maskProfanity(sanitizeBasicHtml(dto.content)),
       },
       include: {
         author: {
@@ -447,7 +451,9 @@ export class CommunityService {
     return this.prisma.teamPostComment.update({
       where: { id: commentId },
       data: {
-        content: dto.content ? sanitizeBasicHtml(dto.content) : undefined,
+        content: dto.content
+          ? maskProfanity(sanitizeBasicHtml(dto.content))
+          : undefined,
       },
       include: {
         author: {
@@ -553,9 +559,9 @@ export class CommunityService {
     return this.prisma.teamEvent.create({
       data: {
         teamId: teamId,
-        title: sanitizeStrict(dto.title),
+        title: maskProfanity(sanitizeStrict(dto.title)),
         description: dto.description
-          ? sanitizeExtendedHtml(dto.description)
+          ? maskProfanity(sanitizeExtendedHtml(dto.description))
           : undefined,
         eventType: dto.eventType,
         targetLevel: dto.targetLevel,
@@ -613,7 +619,7 @@ export class CommunityService {
         memberId: dto.memberId,
         status: "pending",
         paid: false,
-        memo: dto.memo ? sanitizeStrict(dto.memo) : undefined,
+        memo: dto.memo ? maskProfanity(sanitizeStrict(dto.memo)) : undefined,
       },
     });
   }
@@ -655,10 +661,10 @@ export class CommunityService {
     }
 
     const updateData: any = {};
-    if (dto.title) updateData.title = sanitizeStrict(dto.title);
+    if (dto.title) updateData.title = maskProfanity(sanitizeStrict(dto.title));
     if (dto.description !== undefined)
       updateData.description = dto.description
-        ? sanitizeExtendedHtml(dto.description)
+        ? maskProfanity(sanitizeExtendedHtml(dto.description))
         : null;
     if (dto.eventType) updateData.eventType = dto.eventType;
     if (dto.targetLevel !== undefined) updateData.targetLevel = dto.targetLevel;

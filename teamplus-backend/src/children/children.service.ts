@@ -107,6 +107,96 @@ export class ChildrenService {
   }
 
   /**
+   * 동의 시점의 자녀 만나이(개월) 계산.
+   *
+   * birthDate 는 `@db.Date`(UTC 자정) 이므로 성분은 getUTC*, 기준 시각(now)은
+   * KST 벽시계 로컬 getter 를 쓴다. 두 경로(createChild / createChildConsent)가
+   * 같은 값을 남겨야 증빙이 일관되므로 단일 헬퍼로 둔다.
+   */
+  private calcChildAgeMonths(birthDate: Date, now: Date = new Date()): number {
+    return (
+      (now.getFullYear() - birthDate.getUTCFullYear()) * 12 +
+      (now.getMonth() - birthDate.getUTCMonth()) -
+      (now.getDate() < birthDate.getUTCDate() ? 1 : 0)
+    );
+  }
+
+  /**
+   * 동의 시점의 약관/개인정보처리방침 버전 스냅샷.
+   *
+   * 약관이 개정되면 기존 동의의 유효 범위를 판별할 수 없으므로 동의 레코드에
+   * 버전을 함께 굳혀 둔다. 호출자가 명시한 값이 있으면 그것을 우선한다.
+   */
+  private async resolveConsentVersions(overrides: {
+    termsVersion?: string;
+    privacyVersion?: string;
+  }): Promise<{ termsVersion: string; privacyVersion: string }> {
+    const appSettings = await this.prisma.appSettings.findFirst({
+      select: { termsVersion: true, privacyVersion: true },
+    });
+    return {
+      termsVersion:
+        overrides.termsVersion ?? appSettings?.termsVersion ?? "1.0",
+      privacyVersion:
+        overrides.privacyVersion ?? appSettings?.privacyVersion ?? "1.0",
+    };
+  }
+
+  /**
+   * ChildConsent 레코드 생성 (PIPA §22조의2① · §22⑦ 입증 책임).
+   *
+   * 자녀 등록(createChild, 트랜잭션 내부)과 단독 동의 API(createChildConsent)가
+   * 동일한 증거 필드 집합을 남겨야 하므로 write 만 이 헬퍼로 모은다.
+   * 검증(관계·연령·중복)은 호출자 플로우마다 다르므로 여기서 하지 않는다.
+   */
+  private async writeChildConsent(
+    tx: Prisma.TransactionClient,
+    params: {
+      guardianUserId: string;
+      childUserId: string;
+      childAgeMonths: number;
+      termsVersion: string;
+      privacyVersion: string;
+      consentPersonalInfo: boolean;
+      consentThirdParty: boolean;
+      consentMarketing: boolean;
+      verificationMethod: string;
+      ipAddress?: string;
+      userAgent?: string;
+    },
+  ): Promise<ChildConsentResponseDto> {
+    return tx.childConsent.create({
+      data: {
+        guardianUserId: params.guardianUserId,
+        childUserId: params.childUserId,
+        childAgeMonths: params.childAgeMonths,
+        termsVersion: params.termsVersion,
+        privacyVersion: params.privacyVersion,
+        consentPersonalInfo: params.consentPersonalInfo,
+        consentThirdParty: params.consentThirdParty,
+        consentMarketing: params.consentMarketing,
+        verificationMethod: params.verificationMethod,
+        ipAddress: params.ipAddress,
+        userAgent: params.userAgent,
+      },
+      select: {
+        id: true,
+        guardianUserId: true,
+        childUserId: true,
+        childAgeMonths: true,
+        termsVersion: true,
+        privacyVersion: true,
+        consentPersonalInfo: true,
+        consentThirdParty: true,
+        consentMarketing: true,
+        verificationMethod: true,
+        revokedAt: true,
+        signedAt: true,
+      },
+    });
+  }
+
+  /**
    * 자녀 팀 멤버십 생성/재활성화 (upsert).
    *
    * (userId, teamId) 는 @@unique 이므로, 과거 탈퇴(leftAt) 이력이 있는 팀에
@@ -162,14 +252,27 @@ export class ChildrenService {
    * 1. Child User 생성 (UserType=CHILD)
    * 2. ChildProfile 생성
    * 3. ParentChild 관계 생성
+   * 4. ChildConsent 생성 (법정대리인 동의 증빙 — PIPA §22조의2① · §22⑦)
+   *
+   * meta(ipAddress/userAgent)는 동의의 법적 증거이므로 컨트롤러가 요청에서 뽑아 넘긴다.
    */
   async createChild(
     parentId: string,
     dto: CreateChildDto,
+    meta: { ipAddress?: string; userAgent?: string } = {},
   ): Promise<ChildResponseDto> {
     this.logger.log(
       `자녀 등록: parentId=${parentId}, name=${dto.lastName}${dto.firstName}`,
     );
+
+    // 0. 법정대리인 동의 서버측 가드 (PIPA §22조의2①)
+    //    클라이언트 체크박스는 DevTools 로 우회 가능하므로 입증 수단이 못 된다.
+    //    필수 동의가 없으면 자녀 User 를 아예 만들지 않는다.
+    if (dto.consentPersonalInfo !== true) {
+      throw new BadRequestException(
+        "자녀 개인정보 수집·이용에 대한 법정대리인 동의는 필수입니다.",
+      );
+    }
 
     // 1. 학부모 확인
     const parent = await this.prisma.user.findUnique({
@@ -209,6 +312,17 @@ export class ChildrenService {
     //    - CHILD: 한국나이 10세 미만 (어린이 UI · WCAG AAA · /child 대시보드)
     //    - TEEN:  한국나이 10세 이상 ~ 18세 (/teen 대시보드)
     const resolvedUserType = age < 10 ? "CHILD" : "TEEN";
+
+    // 4.1 동의 증빙 스냅샷 준비 — AppSettings 조회는 트랜잭션 밖에서 끝내 tx 를 짧게 유지한다.
+    //     verificationMethod: 보호자 본인인증(NEW-02)을 통과한 계정이면 그 사실이 곧 신원 확인
+    //     수단이고, 레거시 미인증 계정은 로그인 세션(JWT)이 유일한 확인 수단이다.
+    const { termsVersion, privacyVersion } = await this.resolveConsentVersions(
+      {},
+    );
+    const consentAgeMonths = this.calcChildAgeMonths(birthDate, today);
+    const verificationMethod = parent.isVerified
+      ? "identity_verify"
+      : "guardian_account";
 
     // 5. 자녀 개별 로그인 폐지 — email/password 미입력 시 내부 식별자 자동 생성
     const childEmail =
@@ -292,7 +406,25 @@ export class ChildrenService {
         },
       });
 
-      // 6.7 팀 선택 시에만 PLAYER pending 멤버십 생성.
+      // 6.7 법정대리인 동의 기록 (PIPA §22조의2① · §22⑦ 입증 책임)
+      //  자녀 User 와 같은 트랜잭션에 넣어 "동의 없는 자녀 레코드"가 존재할 수 없게 한다.
+      //  만 14세 이상(TEEN)도 함께 남긴다 — 자녀 계정은 독립 가입 경로가 없어 보호자가
+      //  대리 등록하므로 실제 동의 주체는 어느 연령대든 보호자다. childAgeMonths 로 구분 가능.
+      await this.writeChildConsent(tx, {
+        guardianUserId: parentId,
+        childUserId: childUser.id,
+        childAgeMonths: consentAgeMonths,
+        termsVersion,
+        privacyVersion,
+        consentPersonalInfo: dto.consentPersonalInfo,
+        consentThirdParty: dto.consentThirdParty ?? false,
+        consentMarketing: dto.consentMarketing ?? false,
+        verificationMethod,
+        ipAddress: meta.ipAddress,
+        userAgent: meta.userAgent,
+      });
+
+      // 6.8 팀 선택 시에만 PLAYER pending 멤버십 생성.
       //  upsert(재활성화) 패턴 — 과거 탈퇴 이력이 있는 팀 재가입(Phase 3) 시 unique 충돌 방지.
       if (teamToJoin) {
         await this.upsertChildTeamMembership(tx, {
@@ -1070,13 +1202,7 @@ export class ChildrenService {
     }
 
     // 3) 만나이 계산 (14세 미만 검증)
-    const now = new Date();
-    const birth = child.childProfile.birthDate;
-    // birth 는 `@db.Date`(UTC 자정) → 성분은 getUTC*, now 는 KST 벽시계 로컬 getter.
-    const ageMonths =
-      (now.getFullYear() - birth.getUTCFullYear()) * 12 +
-      (now.getMonth() - birth.getUTCMonth()) -
-      (now.getDate() < birth.getUTCDate() ? 1 : 0);
+    const ageMonths = this.calcChildAgeMonths(child.childProfile.birthDate);
     if (ageMonths >= 14 * 12) {
       throw new BadRequestException(
         "만 14세 이상은 본인이 직접 동의해야 합니다.",
@@ -1104,42 +1230,23 @@ export class ChildrenService {
     }
 
     // 6) AppSettings 의 termsVersion / privacyVersion 스냅샷 (없으면 dto fallback)
-    const appSettings = await this.prisma.appSettings.findFirst({
-      select: { termsVersion: true, privacyVersion: true },
+    const { termsVersion, privacyVersion } = await this.resolveConsentVersions({
+      termsVersion: dto.termsVersion,
+      privacyVersion: dto.privacyVersion,
     });
-    const termsVersion =
-      dto.termsVersion ?? appSettings?.termsVersion ?? "1.0";
-    const privacyVersion =
-      dto.privacyVersion ?? appSettings?.privacyVersion ?? "1.0";
 
-    const created = await this.prisma.childConsent.create({
-      data: {
-        guardianUserId: parentId,
-        childUserId: dto.childUserId,
-        childAgeMonths: ageMonths,
-        termsVersion,
-        privacyVersion,
-        consentPersonalInfo: dto.consentPersonalInfo,
-        consentThirdParty: dto.consentThirdParty,
-        consentMarketing: dto.consentMarketing,
-        verificationMethod: dto.verificationMethod,
-        ipAddress: meta.ipAddress,
-        userAgent: meta.userAgent,
-      },
-      select: {
-        id: true,
-        guardianUserId: true,
-        childUserId: true,
-        childAgeMonths: true,
-        termsVersion: true,
-        privacyVersion: true,
-        consentPersonalInfo: true,
-        consentThirdParty: true,
-        consentMarketing: true,
-        verificationMethod: true,
-        revokedAt: true,
-        signedAt: true,
-      },
+    const created = await this.writeChildConsent(this.prisma, {
+      guardianUserId: parentId,
+      childUserId: dto.childUserId,
+      childAgeMonths: ageMonths,
+      termsVersion,
+      privacyVersion,
+      consentPersonalInfo: dto.consentPersonalInfo,
+      consentThirdParty: dto.consentThirdParty,
+      consentMarketing: dto.consentMarketing,
+      verificationMethod: dto.verificationMethod,
+      ipAddress: meta.ipAddress,
+      userAgent: meta.userAgent,
     });
 
     this.logger.log(

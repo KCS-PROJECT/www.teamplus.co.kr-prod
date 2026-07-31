@@ -26,7 +26,44 @@ import {
   SettlementResponseDto,
 } from "../dto/responses/settlement-response.dto";
 import { kstTodayUtcMidnight } from "@/common/utils/kst-date.util";
-import { deriveSource } from "../payment-source.util";
+import { deriveSource, PaymentSourceType } from "../payment-source.util";
+
+/**
+ * 부가세 면세 대상 결제 출처 — `PAYMENT_TAX_EXEMPT_SOURCES` 환경변수(콤마 구분).
+ *
+ * 값: `CLASS` | `TOURNAMENT` | `ALL`. 미설정 시 전건 과세(현행 동작 유지).
+ * 체육 교육용역은 사업자 업종 등록에 따라 면세일 수 있어(부가가치세법 §26①6)
+ * 코드에 과세를 못 박지 않고 운영 설정으로 분리한다. 상품 단위로 구분해야 하면
+ * `ClassProduct.taxExempt` 컬럼 도입이 필요하다(스키마 변경 필요 — 미구현).
+ */
+function taxExemptSources(): Set<string> {
+  return new Set(
+    (process.env.PAYMENT_TAX_EXEMPT_SOURCES ?? "")
+      .split(",")
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean),
+  );
+}
+
+/**
+ * 영수증 과세 구분 + 부가세 산정.
+ *
+ * 면세 거래에는 역산(amount/11)을 적용하지 않는다 — 면세 매출에 부가세를 표기하면
+ * 소비자에게 거짓 세액을 고지하는 것이 되고 매입세액 공제 오인을 유발한다.
+ */
+export function resolveReceiptTax(
+  sourceType: PaymentSourceType | null,
+  amount: number,
+  exempt: Set<string> = taxExemptSources(),
+): { taxable: boolean; taxAmount: number } {
+  const isExempt =
+    exempt.has("ALL") || (sourceType != null && exempt.has(sourceType));
+  return {
+    taxable: !isExempt,
+    // 공급대가(부가세 포함가) 역산 — 과세 거래에만 적용.
+    taxAmount: isExempt ? 0 : Math.round(amount / 11),
+  };
+}
 
 /**
  * 정산 상세 조회 시 필요한 필드만 select — N+1 방지 및 over-fetching 제거.
@@ -458,7 +495,7 @@ export class PaymentReceiptService {
         paymentMethod: true,
         completedAt: true,
         createdAt: true,
-        receipt: { select: { id: true } },
+        receipt: { select: { id: true, taxable: true, taxAmount: true } },
         product: { select: { productName: true, billingTiming: true } },
         credits: { select: { totalSessions: true } },
         enrollments: {
@@ -495,8 +532,16 @@ export class PaymentReceiptService {
     }
 
     // 영수증 레코드가 없으면 완료 결제에 한해 멱등 생성 (과거 결제건 복구).
+    let taxInfo: { taxable: boolean; taxAmount: number } | null =
+      payment.receipt
+        ? {
+            taxable: payment.receipt.taxable,
+            taxAmount: payment.receipt.taxAmount,
+          }
+        : null;
     if (!payment.receipt && payment.paymentStatus === "completed") {
-      await this.createReceipt(paymentId);
+      const created = await this.createReceipt(paymentId);
+      taxInfo = { taxable: created.taxable, taxAmount: created.taxAmount };
     }
 
     const creditsIssued = payment.credits.reduce(
@@ -545,6 +590,10 @@ export class PaymentReceiptService {
         // 파생 append (Dual Emit) — 무관계 결제는 null
         sourceType: src.sourceType,
         billingTiming: src.billingTiming,
+        // 과세 구분 — 면세 거래는 taxable=false·taxAmount=0. 화면은 이 값으로 부가세
+        //   표기 여부를 결정해야 한다(면세 매출에 부가세를 찍으면 거짓 세액 고지).
+        taxable: taxInfo?.taxable ?? null,
+        taxAmount: taxInfo?.taxAmount ?? null,
       },
     };
   }
@@ -574,6 +623,13 @@ export class PaymentReceiptService {
             receiptUrl: true,
           },
         },
+        // 과세/면세 판정용 출처 신호 — getReceipt 와 동일한 파생 규칙(N+1 방지 take:1).
+        product: { select: { billingTiming: true } },
+        tournamentRegistrations: {
+          select: { tournament: { select: { billingMode: true } } },
+          take: 1,
+        },
+        monthlyBillingLines: { select: { id: true }, take: 1 },
       },
     });
 
@@ -636,14 +692,23 @@ export class PaymentReceiptService {
 
     const receiptNumber = `${dateStr}-${String(todayCount + 1).padStart(5, "0")}`;
 
-    // 부가세 계산 (10% 기준)
-    const taxAmount = Math.round(Number(payment.amount) / 11);
+    // 과세 구분 + 부가세 — 면세 거래에는 역산을 적용하지 않는다(거짓 세액 고지 방지).
+    const src = deriveSource({
+      productBillingTiming: payment.product?.billingTiming,
+      hasMonthlyBillingLine: (payment.monthlyBillingLines?.length ?? 0) > 0,
+      tournamentBillingMode:
+        payment.tournamentRegistrations?.[0]?.tournament?.billingMode ?? null,
+    });
+    const { taxable, taxAmount } = resolveReceiptTax(
+      src.sourceType,
+      Number(payment.amount),
+    );
 
     const receipt = await this.prisma.paymentReceipt.create({
       data: {
         paymentId,
         receiptNumber,
-        taxable: true,
+        taxable,
         taxAmount,
         receiptUrl: receiptUrl ?? null,
       },

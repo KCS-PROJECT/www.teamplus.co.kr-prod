@@ -20,6 +20,7 @@ import {
   isEncryptedField,
 } from "@/common/utils/field-encryption.util";
 import { resolveManagedTeamIds } from "@/common/utils/team-scope.util";
+import { securityConfig } from "@/config/security.config";
 import { dateOnlyToUtc } from "@/common/utils/kst-date.util";
 import Redis from "ioredis";
 
@@ -467,6 +468,34 @@ export class AdminService {
       }
     }
 
+    // ─── 법정 보존 의무 가드 (2026-07-30) ───
+    // Payment.user / ShopOrder.user 는 onDelete: Cascade 라 user 하드삭제가 결제·주문·환불
+    // 기록을 연쇄 삭제한다. 이는 전자상거래법 §6(대금결제·재화공급 기록 5년) 및
+    // 국세기본법 §85조의3(장부·증빙 5년) 위반이며, 같은 저장소의 Soft Delete 설계
+    // (Payment.deletedAt "전자상거래법 5년 보존")와도 정면 충돌한다.
+    // → 거래 이력이 있으면 하드삭제를 차단하고 익명화(탈퇴 처리) 경로로 유도한다.
+    //   (스키마 Cascade 자체를 Restrict 로 바꾸는 것이 근본 해결이나 별도 마이그레이션 사안.)
+    const [paymentCount, orderCount, refundCount] = await Promise.all([
+      this.prisma.payment.count({ where: { userId } }),
+      this.prisma.shopOrder.count({ where: { userId } }),
+      this.prisma.refundRequest.count({ where: { requesterId: userId } }),
+    ]);
+    if (paymentCount > 0 || orderCount > 0 || refundCount > 0) {
+      const detail = [
+        paymentCount > 0 ? `결제 ${paymentCount}건` : null,
+        orderCount > 0 ? `주문 ${orderCount}건` : null,
+        refundCount > 0 ? `환불요청 ${refundCount}건` : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+      throw new BadRequestException(
+        `이 회원에게 ${detail}의 거래 이력이 있어 완전 삭제할 수 없습니다. ` +
+          "전자상거래법(대금결제 기록 5년)·국세기본법(증빙 5년) 상 보존 의무가 있는 기록으로, " +
+          "삭제 시 함께 지워집니다. 대신 회원 탈퇴 처리(개인정보 익명화)를 사용해주세요 — " +
+          "이름·연락처 등 개인정보는 즉시 파기되고 거래 기록은 법정 기간 동안 비식별 상태로 보존됩니다.",
+      );
+    }
+
     // ─── 실제 삭제 (의존 없는 정상 케이스) ───
     return this.prisma.$transaction(async (tx) => {
       await tx.auditLog.create({
@@ -546,17 +575,39 @@ export class AdminService {
   }
 
   /**
+   * 관리자 계정 생성·삭제 권한 검사.
+   *
+   * [2026-07-30 SECURITY] `RolesGuard` 는 ADMIN/SYSTEM/OPER 를 super-admin 으로 무조건
+   * 통과시키므로(`isAdminRole` pass-through) 컨트롤러의 `@Roles("SYSTEM","OPER")` 만으로는
+   * 일반 ADMIN 을 막을 수 없다. 관리자 계정 생성·삭제는 권한 상승 경로라 서비스 레이어에서
+   * 호출자 역할을 직접 검사해 실효 차단한다.
+   */
+  private assertAdminAccountManager(actorUserType?: string): void {
+    const actor = String(actorUserType ?? "").toUpperCase();
+    if (actor !== "SYSTEM" && actor !== "OPER") {
+      throw new ForbiddenException(
+        "관리자 계정은 시스템관리자(SYSTEM) 또는 업무관리자(OPER) 만 생성·삭제할 수 있습니다.",
+      );
+    }
+  }
+
+  /**
    * 관리자 계정 생성 (SYSTEM / OPER) — 2026-05-22
    * 관리자계정관리 페이지에서 신규 관리자를 등록한다.
    */
-  async createAdminUser(data: {
-    email?: string;
-    password?: string;
-    firstName?: string;
-    lastName?: string;
-    phone?: string;
-    userType?: string;
-  }) {
+  async createAdminUser(
+    data: {
+      email?: string;
+      password?: string;
+      firstName?: string;
+      lastName?: string;
+      phone?: string;
+      userType?: string;
+    },
+    actorUserType?: string,
+  ) {
+    this.assertAdminAccountManager(actorUserType);
+
     const email = (data.email ?? "").trim().toLowerCase();
     const password = data.password ?? "";
     const userType = String(data.userType ?? "").toUpperCase();
@@ -573,7 +624,11 @@ export class AdminService {
     if (existing)
       throw new BadRequestException("이미 사용 중인 이메일(ID)입니다.");
 
-    const passwordHash = await bcrypt.hash(password, 10);
+    // bcrypt cost 는 securityConfig 단일 SoT — 하드코딩 10 은 정책 상향(12) 미반영이었다.
+    const passwordHash = await bcrypt.hash(
+      password,
+      securityConfig.password.saltRounds,
+    );
     return this.prisma.user.create({
       data: {
         email,
@@ -599,7 +654,9 @@ export class AdminService {
   /**
    * 관리자 계정 삭제 — deleteUser 의 "관리자 삭제 불가" 가드를 우회하는 전용 메서드.
    */
-  async deleteAdminUser(id: string) {
+  async deleteAdminUser(id: string, actorUserType?: string) {
+    this.assertAdminAccountManager(actorUserType);
+
     const user = await this.prisma.user.findUnique({
       where: { id },
       select: { id: true, email: true, userType: true },
@@ -1897,7 +1954,10 @@ export class AdminService {
 
     // 4) 감독 지정 아이디/비밀번호 — 자동합성 이메일·고정 비번 폐기.
     const email = dto.loginId;
-    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const passwordHash = await bcrypt.hash(
+      dto.password,
+      securityConfig.password.saltRounds,
+    );
 
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -2529,7 +2589,11 @@ export class AdminService {
     // 기본 비밀번호 해시 (일괄 등록용)
     // NOTE: 브랜드 리네이밍(2026-05-16) 시에도 기존 admin 비밀번호 시드 호환성 유지를 위해 의도적으로 보존.
     //       시드 변경 시 기존 일괄 등록 사용자의 비밀번호 호환성 깨질 수 있어 운영 정책상 변경 금지.
-    const defaultPasswordHash = await bcrypt.hash("teamplus1234!", 10);
+    //       (cost 는 securityConfig SoT 를 따른다 — 평문 시드가 아니라 해시 강도라서 호환 무관.)
+    const defaultPasswordHash = await bcrypt.hash(
+      "teamplus1234!",
+      securityConfig.password.saltRounds,
+    );
 
     // $transaction으로 원자적 일괄 생성
     let successCount = 0;

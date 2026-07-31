@@ -674,14 +674,19 @@ export default function CreditsPage() {
               </div>
             </div>
 
-            {/* CTA 버튼 — ICETIMES accent(red) (시안 Button accent lg) */}
+            {/* CTA 버튼 — ICETIMES accent(red) (시안 Button accent lg)
+                [법무 2026-07-30 전자금융거래법 §2 14호·§28·§49] 라벨 '충전' → '구매'.
+                결제권은 '사용자 × 특정 수업' 단위 수강권이고 유상 충전 API 가 없으며
+                이 CTA 의 실제 동선도 /payment/select(수업 상품 선택)이다. '충전' 표현은
+                선불전자지급수단 외관을 만들어 미등록 선불업 오인 리스크가 있어 제거. */}
             <button
               onClick={() => navigate('/payment/select')}
+              aria-label={MESSAGES.payment2.buyCreditCta}
               className="mt-[18px] flex w-full items-center justify-center gap-2 rounded-w-md bg-it-red-500 py-3.5 text-white shadow-sh-1 transition-colors motion-reduce:transition-none active:brightness-95 hover:bg-it-red-600"
             >
               <Icon name="add_card" className="text-[20px]" aria-hidden="true" />
               <span className="text-card-body font-bold tracking-[0.02em]">
-                결제권 충전하기
+                {MESSAGES.payment2.buyCreditCta}
               </span>
             </button>
 

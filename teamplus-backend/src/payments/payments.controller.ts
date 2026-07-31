@@ -33,6 +33,7 @@ import { ConfirmPostpaidBillingDto } from "./dto/confirm-postpaid-billing.dto";
 import { PaymentsService } from "./payments.service";
 import { WebhookRetryService } from "./webhook-retry.service";
 import { RefundDto } from "./dto/refund.dto";
+import { RefundByManagerDto } from "./refund-requests/dto/refund-by-manager.dto";
 import {
   InitiatePaymentDto,
   PaymentResultDto,
@@ -119,10 +120,10 @@ export class PaymentsController {
   }
 
   /**
-   * [오픈 전 임시] 토스 승인 API 를 우회한 테스트 결제 승인.
+   * [DEV ONLY] 토스 승인 API 를 우회한 테스트 결제 승인.
    *  결제창에 테스터의 실카드/실계좌가 노출되지 않도록 위젯 없이 결제를 완료 처리한다.
    *  confirmTossPayment 와 동일 검증·멱등 락·후처리를 공유하며 토스 승인만 생략한다.
-   *  ⚠️ 정식 서비스 오픈 시 제거 대상 (0원 결제 경로).
+   *  운영 환경에서는 서비스 계층에서 403 으로 차단된다.
    */
   @Post("mock-confirm")
   @UseGuards(AuthGuard("jwt"), RolesGuard)
@@ -130,9 +131,9 @@ export class PaymentsController {
   @Roles("PARENT")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: "[오픈 전 임시] 테스트 결제 승인 (토스 우회)",
+    summary: "[DEV] 테스트 결제 승인 (토스 우회)",
     description:
-      "토스 위젯/승인 API 없이 orderId 로 결제를 완료 처리합니다. 정식 서비스 오픈 전 테스트 용도 — 오픈 시 제거 대상입니다.",
+      "개발 환경 전용 기능입니다. 토스 위젯/승인 API 없이 orderId 로 결제를 완료 처리합니다. 운영 환경에서는 403 으로 차단됩니다.",
   })
   async mockConfirmPayment(
     @Request() req: AuthenticatedRequest,
@@ -800,9 +801,11 @@ export class PaymentsController {
   @Post(":paymentId/cancel")
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @ApiBearerAuth()
-  // [환불 승인제 Phase 1] PARENT 직접 취소 차단 — 학부모는 환불 요청(RefundRequest)만 생성.
-  //   ADMIN 직접 환불은 유지(멱등·actorId 감사). 서비스 소유권/trusted 가드는 방어 심층으로 유지.
-  @Roles("ADMIN")
+  // [청약철회 — 전자상거래법 §17] 소비자의 청약철회는 사업자 승인 대상이 아니므로
+  //   PARENT 셀프 취소 경로를 유지한다. 이용 개시(출석 1회) 후에는 서비스 가드
+  //   (assertEnrollmentNotUsed)가 403 으로 막고 감독 승인 부분환불로 유도한다.
+  //   ADMIN 직접 환불도 동일 경로(멱등·actorId 감사). 소유권/trusted 가드는 방어 심층.
+  @Roles("PARENT", "ADMIN")
   @AuditAction({
     action: "payment.cancel",
     resource: "Payment",
@@ -1021,6 +1024,61 @@ export class PaymentsController {
       { id: req.user.id, userType: req.user.userType },
       { actorId: req.user.id }, // 감사 — ADMIN 직접 환불 실행 주체 기록(RefundLog.actorId)
     );
+  }
+
+  /**
+   * 환불 산정 미리보기 (잔여 회차 비례 환불)
+   */
+  @Get(":paymentId/refund-preview")
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @ApiBearerAuth()
+  @Roles("PARENT", "COACH", "DIRECTOR", "ACADEMY_DIRECTOR", "ADMIN")
+  @ApiOperation({
+    summary: "환불 산정 미리보기",
+    description:
+      "이용분(출석 회수 × 회당 단가)을 공제한 환불 예정액을 서버에서 산정해 반환합니다. 본인 결제 또는 소속 관리 범위만 조회할 수 있습니다.",
+  })
+  @ApiResponse({ status: 200, description: "산정 결과" })
+  @ApiResponse({ status: 403, description: "조회 권한 없음" })
+  @ApiResponse({ status: 404, description: "결제 기록을 찾을 수 없습니다." })
+  async getRefundPreview(
+    @Request() req: AuthenticatedRequest,
+    @Param("paymentId") paymentId: string,
+  ) {
+    return this.paymentsService.getRefundQuote(paymentId, req.user);
+  }
+
+  /**
+   * 감독/원장 승인 부분환불 (이용 개시 후 잔여분 비례 환급)
+   */
+  @Post(":paymentId/refund-by-manager")
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @ApiBearerAuth()
+  @Roles("DIRECTOR", "ACADEMY_DIRECTOR", "ADMIN")
+  @AuditAction({
+    action: "payment.refundByManager",
+    resource: "Payment",
+    includeKeys: ["paymentId", "refundReason", "refundAmount"],
+  })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "감독 승인 부분환불",
+    description:
+      "이용 개시 후 결제의 잔여분을 비례 환급합니다. 환불액은 서버 산정액(refund-preview 와 동일)을 상한으로 하며, 미지정 시 산정액 전액을 환불합니다.",
+  })
+  @ApiResponse({ status: 200, description: "환불 완료 + 산정 내역" })
+  @ApiResponse({
+    status: 400,
+    description: "환불 가능 잔액 없음 / 산정액 초과",
+  })
+  @ApiResponse({ status: 403, description: "관리 범위 밖" })
+  @ApiResponse({ status: 404, description: "결제 기록을 찾을 수 없습니다." })
+  async refundByManager(
+    @Request() req: AuthenticatedRequest,
+    @Param("paymentId") paymentId: string,
+    @Body() dto: RefundByManagerDto,
+  ) {
+    return this.paymentsService.refundByManager(paymentId, dto, req.user);
   }
 
   /**

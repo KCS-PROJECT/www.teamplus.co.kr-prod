@@ -95,7 +95,8 @@ export default function AddChildPage() {
 
   // L-10/L-11 법정대리인 동의 (Apple 5.1.4 / Google Families / 개인정보보호법 §22조의2)
   // 자녀 등록 시 학부모가 법정대리인 자격으로 자녀 개인정보 처리에 동의해야 함.
-  // 동의 없이는 등록 차단. 향후 ChildConsent 모델 추가 시 백엔드에도 기록.
+  // 두 값은 POST /children 의 consentPersonalInfo 로 전송되어 ChildConsent 로 기록된다
+  // (PIPA §22⑦ 입증 책임 — 브라우저 state 만으로는 동의 사실을 증명할 수 없다).
   const [guardianConsent, setGuardianConsent] = useState(false);
   const [childPrivacyConsent, setChildPrivacyConsent] = useState(false);
   const [consentError, setConsentError] = useState('');
@@ -266,6 +267,9 @@ export default function AddChildPage() {
         gender: formData.gender || undefined,
         ...(formData.imageUrl && { imageUrl: formData.imageUrl }),
         ...(selectedTeam && { teamId: selectedTeam.id }),
+        // 필수 동의 2개(법정대리인 자격 + 자녀 개인정보 처리)를 모두 받은 상태만
+        // 서버에 동의로 전달한다. 서버도 동일 값을 재검증해 400 으로 차단한다.
+        consentPersonalInfo: guardianConsent && childPrivacyConsent,
       });
 
       if (result.success) {
@@ -598,8 +602,9 @@ export default function AddChildPage() {
                   <NavLink
                     href="/terms#terms-fallback-child_privacy"
                     className="text-card-meta font-extrabold text-it-ink-800 dark:text-wtext-4 underline whitespace-nowrap leading-tight"
+                    aria-label="자녀 개인정보 처리방침 보기"
                   >
-                    자세히<br />보기
+                    보기
                   </NavLink>
                 }
               />

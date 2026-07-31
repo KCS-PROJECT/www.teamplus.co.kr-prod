@@ -104,6 +104,26 @@ export class AuthService {
   ) {}
 
   /**
+   * 가입 시점의 운영 약관 버전 스냅샷.
+   *
+   * 동의 레코드에 버전을 굳혀 두지 않으면 약관 개정 후 기존 동의의 유효 범위를
+   * 판별할 수 없다. SoT 는 TermsConsentService 와 동일한 AppSettings 단일 row.
+   * (UsersModule 을 AuthModule 로 끌어오면 순환 참조가 생겨 조회만 직접 한다.)
+   */
+  private async getCurrentTermsVersions(): Promise<{
+    termsVersion: string;
+    privacyVersion: string;
+  }> {
+    const settings = await this.prisma.appSettings.findFirst({
+      select: { termsVersion: true, privacyVersion: true },
+    });
+    return {
+      termsVersion: settings?.termsVersion ?? "1.0",
+      privacyVersion: settings?.privacyVersion ?? "1.0",
+    };
+  }
+
+  /**
    * User Registration
    * Creates a new user with email, phone, password, and user type
    */
@@ -117,6 +137,15 @@ export class AuthService {
       academyInfo?: { name: string; region?: string };
       teamId?: string;
       teamCode?: string;
+      /**
+       * 가입 화면에서 받은 동의값. PIPA §22⑦(동의 입증) · 정통망법 §50①(마케팅 opt-in).
+       * 종전에는 signup() 이 존재 여부만 검사하고 register() 로 넘기지 않아
+       * User.agreedTermsVersion/agreedPrivacyVersion/agreedAt 이 NULL 로 남고
+       * 마케팅 동의는 저장할 곳조차 없어 소실됐다.
+       */
+      agreements?: { terms: boolean; privacy: boolean; marketing?: boolean };
+      /** 동의 증거용 요청 메타 — 컨트롤러가 요청에서 추출해 전달. */
+      consentMeta?: { ipAddress?: string; userAgent?: string };
     },
   ) {
     // 자동 채움(B안, 2026-05-26) 을 위해 firstName/lastName/phone/birthDate/gender 는
@@ -133,6 +162,8 @@ export class AuthService {
       teamId,
       teamCode,
       identityVerificationId,
+      agreements,
+      consentMeta,
     } = registerDto;
     let { firstName, lastName, phone, birthDate, gender } = registerDto;
 
@@ -367,6 +398,16 @@ export class AuthService {
     // Hash password
     const passwordHash = await bcrypt.hash(password, this.SALT_ROUNDS);
 
+    // 동의 스냅샷 준비 — AppSettings 조회는 트랜잭션 밖에서 끝내 tx 를 짧게 유지한다.
+    //   agreements 미전달(레거시 /auth/register 직접 호출)이면 동의 필드를 건드리지 않는다.
+    //   이 경우 TermsConsentService 가 NEVER_AGREED → 재동의 화면으로 유도하므로
+    //   "동의 없이 가입된 계정"이 조용히 통과하지는 않는다.
+    const consentedAt = new Date();
+    const consentVersions = agreements
+      ? await this.getCurrentTermsVersions()
+      : null;
+    const marketingAgreed = agreements?.marketing === true;
+
     try {
       // Create user + profile in transaction
       const user = await this.prisma.$transaction(async (tx) => {
@@ -389,6 +430,16 @@ export class AuthService {
             // [2026-06-10 SECURITY] ciHash 동시 저장 — 1인1계정 중복가입 차단 인덱스.
             ...(verifiedCiHash && { ciHash: verifiedCiHash }),
             ...(verifiedDi && { di: verifiedDi }),
+            // 가입 동의 기록 (PIPA §22⑦ · 정통망법 §50①)
+            ...(consentVersions && {
+              agreedTermsVersion: consentVersions.termsVersion,
+              agreedPrivacyVersion: consentVersions.privacyVersion,
+              agreedAt: consentedAt,
+              marketingConsent: marketingAgreed,
+              // 미동의(false)일 때 시각을 남기지 않으면 "아직 안 물어봄"과 "거부함"이
+              // 구별되지 않아 재동의 요청 가능 여부를 판단할 수 없다.
+              marketingConsentAt: consentedAt,
+            }),
           },
           select: {
             id: true,
@@ -400,6 +451,31 @@ export class AuthService {
             createdAt: true,
           },
         });
+
+        // 동의 이력 (PIPA §22⑦ 입증 책임)
+        //  User 컬럼은 "현재 상태"만 담아 재동의/철회 시 덮어써지므로, 시점·IP·UA·
+        //  버전 스냅샷은 append-only 인 AuditLog 에 남긴다. 성인 회원 전용 동의 이력
+        //  테이블을 새로 만드는 것보다 조회·보존 경로가 이미 갖춰진 쪽이 낫다.
+        //  가입 자체가 실패하면 이력도 남아선 안 되므로 같은 트랜잭션에 넣는다.
+        if (agreements && consentVersions) {
+          await tx.auditLog.create({
+            data: {
+              userId: newUser.id,
+              action: "signup_consent",
+              resource: "auth:signup",
+              ipAddress: consentMeta?.ipAddress,
+              newValue: {
+                terms: agreements.terms,
+                privacy: agreements.privacy,
+                marketing: marketingAgreed,
+                termsVersion: consentVersions.termsVersion,
+                privacyVersion: consentVersions.privacyVersion,
+                consentedAt: consentedAt.toISOString(),
+                userAgent: consentMeta?.userAgent ?? null,
+              },
+            },
+          });
+        }
 
         // NEW-02: IdentityVerification.userId 를 신규 user 로 연결
         // (회원가입 전이라 NULL 이었던 verification 레코드를 사후 매핑)
@@ -1723,7 +1799,10 @@ export class AuthService {
    * 회원가입 (프론트엔드 형식 지원)
    * 프론트엔드의 signup 엔드포인트 → register 로직과 연동
    */
-  async signup(signupData: SignupDto) {
+  async signup(
+    signupData: SignupDto,
+    consentMeta: { ipAddress?: string; userAgent?: string } = {},
+  ) {
     if (!signupData.agreements.terms || !signupData.agreements.privacy) {
       throw new BadRequestException("필수 약관에 동의해주세요.");
     }
@@ -1751,6 +1830,10 @@ export class AuthService {
       academyInfo: signupData.academyInfo,
       teamId: signupData.teamId,
       teamCode: signupData.teamCode,
+      // 동의값을 register() 로 넘기지 않으면 agreedTermsVersion/agreedPrivacyVersion/
+      // agreedAt 이 NULL 로 남아 신규 가입자 전원이 재동의 대상으로 오판된다.
+      agreements: signupData.agreements,
+      consentMeta,
     });
   }
 
