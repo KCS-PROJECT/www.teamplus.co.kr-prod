@@ -2,6 +2,7 @@ package kr.co.teamplus
 
 import android.os.Bundle
 import android.view.WindowManager
+import androidx.activity.enableEdgeToEdge
 import androidx.core.view.WindowCompat
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -26,6 +27,13 @@ class MainActivity : FlutterFragmentActivity() {
     //   제거했고, 여기서 런타임으로도 명시 해제하여 기기 파편화와 무관하게
     //   edge-to-edge(시스템바 표시 + 콘텐츠가 뒤로 그려짐) 를 보장한다.
     override fun onCreate(savedInstanceState: Bundle?) {
+        // [2026-08-01 Play 권장 조치] AndroidX 표준 edge-to-edge 진입점.
+        //   Play 정적 분석이 EdgeToEdge.enable()/enableEdgeToEdge() 호출 존재를 확인하므로
+        //   (카드: "일부 사용자에게는 더 넓은 화면이 표시되지 않을 수 있습니다") 명시 호출한다.
+        //   내부적으로 setDecorFitsSystemWindows(false) + 시스템바 투명 스타일 — 아래 기존
+        //   수동 호출과 동일 계열이라 동작 변화 없음. Flutter 쪽 SystemUiMode 는 불변
+        //   (appstatus 회귀 이력상 네이티브에서 SystemUiMode 를 건드리지 않는다).
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         // FLAG_FULLSCREEN 잔존 시 강제 해제 → 시스템 status bar inset 복원
         window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)

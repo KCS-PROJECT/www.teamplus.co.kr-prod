@@ -380,10 +380,9 @@ packages:
   file_picker:
     dependency: "direct main"
     description:
-      name: file_picker
-      sha256: "1d4afa261268e59863af47b9f9dd9a230502d4c702b9d9183353646fe6d5b6e1"
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/file_picker"
+      relative: true
+    source: path
     version: "12.0.0-beta.1"
   file_selector_linux:
     dependency: transitive
@@ -487,12 +486,11 @@ packages:
     source: hosted
     version: "6.1.5"
   flutter_inappwebview_android:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      name: flutter_inappwebview_android
-      sha256: "62557c15a5c2db5d195cb3892aab74fcaec266d7b86d59a6f0027abd672cddba"
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/flutter_inappwebview_android"
+      relative: true
+    source: path
     version: "1.1.3"
   flutter_inappwebview_internal_annotations:
     dependency: transitive
@@ -545,10 +543,9 @@ packages:
   flutter_jailbreak_detection:
     dependency: "direct main"
     description:
-      name: flutter_jailbreak_detection
-      sha256: "67ff11ea41965152d24db7104da1f9b343f94ada64c2a9e309ec4d753a12d281"
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/flutter_jailbreak_detection"
+      relative: true
+    source: path
     version: "1.10.0"
   flutter_launcher_icons:
     dependency: "direct dev"
