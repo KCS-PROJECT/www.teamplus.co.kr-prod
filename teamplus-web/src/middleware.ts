@@ -208,6 +208,35 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // ─── 앱 전용 접근 게이트 (2026-08-02) ───
+  // 실운영 도메인(teamplusweb.icetimes.co.kr 등)은 Flutter 앱 WebView 전용 —
+  // 일반 브라우저 직접 접근·검색엔진 크롤을 페이지 라우트에서 404 로 차단한다.
+  //   · 판정: 실운영 호스트(isRealProductionHost) + UA 에 앱 토큰 없음.
+  //     앱 WebView UA 토큰(teamplusApp/Flutter)은 environment.ts 감지 기준과 동일.
+  //   · 스테이징(211.236.x IP)·localhost 는 호스트 판정 밖이라 브라우저 개발 그대로.
+  //   · robots.txt·GSC 인증 파일·/.well-known(AASA/assetlinks)·/api·/_next 는
+  //     위 스킵 블록에서 이미 통과 — Apple/Google 검증 서버·크롤러 접근 유지.
+  //   · PG(이니시스)·본인인증(PortOne/NICE) 리턴 URL 은 WebView 내부 내비게이션이라
+  //     앱 UA 를 그대로 가진다 (frame-src/form-action CSP 설계와 동일 전제).
+  //   · 긴급 해제: 서버 env APP_ONLY_GATE=off 설정 후 재기동.
+  const gateUserAgent = request.headers.get("user-agent") ?? "";
+  const isAppWebView =
+    gateUserAgent.includes("teamplusApp") || gateUserAgent.includes("Flutter");
+  if (
+    process.env.APP_ONLY_GATE !== "off" &&
+    isRealProductionHost(request.headers.get("host")) &&
+    !isAppWebView
+  ) {
+    return new NextResponse("Not Found", {
+      status: 404,
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "X-Robots-Tag": "noindex, nofollow",
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+
   // ─── CHILD 직접사용 기능 비활성화 (2026-06-06 · 18+ 타겟 정책) ───
   // 자녀는 비사용자(감독·코치·학부모 등 성인만 이용). 자녀 PIN 로그인·어린이 전용 화면
   // (홈/수업/QR 체크인) 라우팅을 차단한다. 코드는 보존하며, 복구 시 이 블록만 제거.

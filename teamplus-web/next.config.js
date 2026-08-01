@@ -140,6 +140,13 @@ const securityHeaders = [
     key: "X-DNS-Prefetch-Control",
     value: "on",
   },
+  {
+    // [2026-08-02] 검색엔진 색인 차단 — 이 도메인은 앱 WebView 전용.
+    //   layout.tsx metadata robots(noindex)는 HTML 페이지만 커버하므로,
+    //   정적 파일(public/*.html 등)까지 응답 헤더로 전면 차단한다.
+    key: "X-Robots-Tag",
+    value: "noindex, nofollow",
+  },
 ];
 
 const isStaticExport = process.env.NEXT_EXPORT === "true";
