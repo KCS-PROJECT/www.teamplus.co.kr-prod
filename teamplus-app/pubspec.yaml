@@ -2,7 +2,7 @@ name: teamplus_app
 description: "TEAMPLUS - Ice Hockey Club Management System"
 publish_to: "none"
 
-version: 1.0.3+14
+version: 1.0.3+15
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
@@ -116,6 +116,26 @@ dependencies:
   # 2026-05-17: 8.x → 9.x 업그레이드 — sentry-cocoa 최신 SDK API 호환
   #   (Xcode 26 + SPM 자동 다운로드한 sentry-cocoa 8.46+ 와 8.14.2 API 미스매치 해결).
   sentry_flutter: ^9.20.0
+
+dependency_overrides:
+  # [2026-08-01 Play 권장 조치] "비트맵 다운샘플링" — 업스트림 file_picker 가
+  # BitmapFactory 를 Options 없이 호출해 Play 정적 분석에 계속 지적됨
+  # (12.0.0-beta.1 기준 미수정). third_party 로컬 사본에 2-pass
+  # inSampleSize 다운샘플링 패치 적용 (FileUtils.kt compressImage).
+  # 업스트림 수정 릴리스가 나오면 이 override 를 제거하고 버전 업그레이드할 것.
+  file_picker:
+    path: third_party/file_picker
+  # [2026-08-01 AGP 9 승급] 업스트림 1.1.3 의 build.gradle 이 AGP 9 에서 금지된
+  # getDefaultProguardFile('proguard-android.txt') 를 참조해 빌드가 하드 실패
+  # (-dontoptimize 포함 파일은 AGP 9 부터 미지원). 로컬 사본에서
+  # proguard-android-optimize.txt 로 교체. 업스트림 수정 시 override 제거.
+  flutter_inappwebview_android:
+    path: third_party/flutter_inappwebview_android
+  # [2026-08-01 AGP 9 승급] 업스트림 1.10.0 이 compileSdk 33 하드코딩 — AGP 9 의존성
+  # 검사(annotation-experimental 1.4 요구 34+)에서 하드 실패. fork 에서 compileSdk 36
+  # + namespace 명시 + 신식 DSL 전환. 업스트림 수정 시 override 제거.
+  flutter_jailbreak_detection:
+    path: third_party/flutter_jailbreak_detection
 
 dev_dependencies:
   flutter_test:

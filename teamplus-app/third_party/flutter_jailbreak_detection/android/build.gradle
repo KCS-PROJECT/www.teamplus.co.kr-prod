@@ -1,0 +1,49 @@
+// [TEAMPLUS PATCH 2026-08-01] AGP 9 호환 패치 (업스트림 1.10.0 은 compileSdk 33 하드코딩).
+//   - compileSdkVersion 33 → compileSdk 36 (AGP 9 의존성 요구: androidx annotation-experimental 1.4+)
+//   - 구식 DSL(compileSdkVersion/minSdkVersion) → 신식(compileSdk/minSdk)
+//   - namespace 명시 (AGP 9 는 manifest package 추론 제거)
+//   - Kotlin 1.7.20 → 루트 KGP(2.2.20) 사용, stdlib-jdk7 수동 의존 제거(KGP 자동 주입)
+//   업스트림이 compileSdk 를 올린 릴리스를 내면 이 fork 를 제거할 것.
+group 'appmire.be.flutterjailbreakdetection'
+version '1.0-SNAPSHOT'
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://jitpack.io' }
+    }
+}
+
+apply plugin: 'com.android.library'
+apply plugin: 'org.jetbrains.kotlin.android'
+
+android {
+    namespace 'appmire.be.flutterjailbreakdetection'
+    compileSdk 36
+
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
+    }
+    defaultConfig {
+        minSdk 17
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_17.toString()
+    }
+}
+
+dependencies {
+    implementation 'com.github.scottyab:rootbeer:0.1.0'
+}

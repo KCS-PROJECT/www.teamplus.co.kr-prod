@@ -119,6 +119,8 @@ configurations.all {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // [2026-08-01 Play 권장 조치] enableEdgeToEdge() (MainActivity) — androidx.activity 1.8+
+    implementation("androidx.activity:activity-ktx:1.9.3")
 }
 
 flutter {
