@@ -52,6 +52,13 @@ export const BLOG_CATEGORIES: BlogCategory[] = ['NEWS', 'GUIDE', 'EVENT', 'PRESS
 
 const REVALIDATE_SECONDS = 300;
 
+/**
+ * 블로그 fetch 공통 캐시 태그 — 조회수 비콘(/api/blog-view)이 증가 성공 시
+ * revalidateTag 로 일괄 무효화한다. 목록·카테고리 탭·상세가 각각 독립된 5분
+ * 캐시를 갖던 구조에서 화면 간 카운터 불일치(최대 5분)가 생기던 문제의 해법.
+ */
+export const BLOG_CACHE_TAG = 'blog';
+
 /** backend API base — contact route 와 동일한 env 해석(운영/개발 자동 대응). */
 export function apiBase(): string {
   const raw =
@@ -89,7 +96,9 @@ type FetchOutcome<T> =
 async function fetchJson<T>(url: string): Promise<FetchOutcome<T>> {
   let res: Response;
   try {
-    res = await fetch(url, { next: { revalidate: REVALIDATE_SECONDS } });
+    res = await fetch(url, {
+      next: { revalidate: REVALIDATE_SECONDS, tags: [BLOG_CACHE_TAG] },
+    });
   } catch (cause) {
     return { ok: false, error: new BlogBackendError(url, '연결 실패', { cause }) };
   }

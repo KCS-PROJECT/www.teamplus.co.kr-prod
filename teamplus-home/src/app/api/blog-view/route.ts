@@ -11,8 +11,9 @@
  *
  * 패턴 참고: src/app/api/contact/route.ts (backend forward 방식)
  */
+import { revalidateTag } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
-import { apiBase } from "@/lib/blog-api";
+import { apiBase, BLOG_CACHE_TAG } from "@/lib/blog-api";
 
 export const runtime = "nodejs"; // backend fetch — Node.js runtime 명시
 export const dynamic = "force-dynamic"; // ISR 캐시 차단
@@ -43,6 +44,10 @@ export async function POST(req: NextRequest) {
     if (!res.ok) {
       return NextResponse.json({ success: false }, { status: 502 });
     }
+    // 조회수가 실제로 올랐으므로 블로그 캐시(목록·카테고리 탭·상세) 일괄 무효화 —
+    // 다음 요청부터 모든 화면의 카운터가 일치한다. 트래픽 = 실제 열람 수(세션당
+    // 글별 1회)라 무효화 빈도는 낮고, 재렌더는 다음 방문 1회로 한정된다.
+    revalidateTag(BLOG_CACHE_TAG);
     return NextResponse.json({ success: true });
   } catch {
     // 백엔드 순단 — 조회수 비콘은 조용히 실패해도 무방
