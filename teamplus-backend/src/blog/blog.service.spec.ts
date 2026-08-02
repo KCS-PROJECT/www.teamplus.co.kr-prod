@@ -16,6 +16,7 @@ describe("BlogService", () => {
       findUnique: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
     },
   };
 
@@ -95,23 +96,46 @@ describe("BlogService", () => {
       );
     });
 
-    it("발행글이면 반환하고 조회수를 증가시킨다", async () => {
+    it("발행글이면 반환하고 조회수는 건드리지 않는다 (증가는 비콘 전용)", async () => {
       mockPrisma.blogPost.findFirst.mockResolvedValue({
         id: "blog-1",
         slug: "hello-abcd1234",
         title: "제목",
       });
-      mockPrisma.blogPost.update.mockResolvedValue({ id: "blog-1" });
 
       const result = await service.findPublicBySlug("hello-abcd1234");
 
       expect(result.id).toBe("blog-1");
-      expect(mockPrisma.blogPost.update).toHaveBeenCalledWith(
+      // ISR 캐시 뒤의 GET 은 독자 수와 무관 — 조회수 증가 없음
+      expect(mockPrisma.blogPost.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("addPublicView", () => {
+    it("발행·미삭제 글의 조회수를 1 증가시킨다", async () => {
+      mockPrisma.blogPost.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await service.addPublicView("hello-abcd1234");
+
+      expect(result).toEqual({ success: true });
+      expect(mockPrisma.blogPost.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: "blog-1" },
+          where: {
+            slug: "hello-abcd1234",
+            status: BlogStatus.PUBLISHED,
+            deletedAt: null,
+          },
           data: { viewCount: { increment: 1 } },
         }),
       );
+    });
+
+    it("미존재 slug 도 예외 없이 조용히 무시한다", async () => {
+      mockPrisma.blogPost.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.addPublicView("missing")).resolves.toEqual({
+        success: true,
+      });
     });
   });
 

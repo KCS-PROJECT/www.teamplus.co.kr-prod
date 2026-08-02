@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, ArrowRight, Clock, Eye, Pin } from 'lucide-react';
+import { BlogViewPing } from '@/components/blog/BlogViewPing';
 import { FinalCta } from '@/components/sections/FinalCta';
 import { JsonLd } from '@/components/seo/JsonLd';
 import {
@@ -50,6 +51,31 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 function readingMinutes(html: string): number {
   const text = html.replace(/<[^>]*>/g, '').replace(/\s+/g, '');
   return Math.max(1, Math.round(text.length / 500));
+}
+
+/**
+ * 본문 h2 에서 목차를 추출하고 앵커 id(sec-N)를 주입 — 좌측 레일 목차용.
+ * 저장된 HTML(살균 완료)은 불변이며 렌더 시점에만 가공한다. id 는 인덱스 기반이라
+ * 한글 제목 인코딩 이슈가 없고, 주입 문자열에 사용자 입력이 섞이지 않는다.
+ */
+function extractToc(html: string): {
+  toc: Array<{ id: string; label: string }>;
+  content: string;
+} {
+  const toc: Array<{ id: string; label: string }> = [];
+  let n = 0;
+  const content = html.replace(
+    /<h2(\s[^>]*)?>([\s\S]*?)<\/h2>/g,
+    (match, attrs: string | undefined, inner: string) => {
+      const label = inner.replace(/<[^>]*>/g, '').trim();
+      if (!label) return match;
+      n += 1;
+      const id = `sec-${n}`;
+      toc.push({ id, label });
+      return `<h2 id="${id}"${attrs ?? ''}>${inner}</h2>`;
+    },
+  );
+  return { toc, content };
 }
 
 function formatDate(iso: string) {
@@ -107,6 +133,7 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
 
   const meta = BLOG_CATEGORY_META[post.category];
   const minutes = readingMinutes(post.content);
+  const { toc, content: bodyHtml } = extractToc(post.content);
 
   // 관련 글 — 최신 발행 글에서 현재 글 제외 후 최대 3개.
   const { items } = await getBlogList({ pageSize: 4 });
@@ -114,6 +141,8 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
 
   return (
     <>
+      {/* 실측 조회수 비콘 — 실제 열람 시 1회 POST (세션당 글별 1회) */}
+      <BlogViewPing slug={post.slug} />
       <JsonLd
         data={[
           blogPostingSchema(post),
@@ -128,7 +157,10 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
       {/* 아티클 헤더 — 좁은 컬럼 중앙, 에디토리얼 톤 */}
       <header className="relative isolate pt-36 sm:pt-44">
         <div className="container-site">
-          <div className="mx-auto max-w-3xl">
+          <div className="mx-auto flex max-w-5xl justify-center gap-10 xl:gap-14">
+            {/* 좌측 레일과 동일 폭 스페이서 — 제목·본문 시작선을 정렬 */}
+            <div aria-hidden="true" className="hidden w-60 shrink-0 lg:block" />
+            <div className="w-full min-w-0 max-w-3xl">
             {/* breadcrumb */}
             <nav className="flex items-center gap-1.5 text-xs text-wtext-4" aria-label="breadcrumb">
               <Link href="/blog" className="transition-colors hover:text-ice-600">
@@ -170,13 +202,101 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
                 <Eye size={14} /> {post.viewCount.toLocaleString()}
               </span>
             </div>
+            </div>
           </div>
         </div>
       </header>
 
       <article className="pb-8 pt-10">
         <div className="container-site">
-          <div className="mx-auto max-w-3xl">
+          <div className="mx-auto flex max-w-5xl justify-center gap-10 xl:gap-14">
+            {/* 좌측 레일 — 글 정보 · 목차 · 도입 CTA (데스크톱 전용, 본문과 함께 읽는 보조 내비게이션) */}
+            <aside className="hidden w-60 shrink-0 lg:block" aria-label="글 정보와 목차">
+              <div className="sticky top-28 space-y-4">
+                <Link
+                  href="/blog"
+                  className="inline-flex items-center gap-1.5 text-sm font-semibold text-wtext-3 transition-colors hover:text-ice-600"
+                >
+                  <ArrowLeft size={15} /> 블로그 목록으로
+                </Link>
+
+                {/* 글 정보 */}
+                <div className="rounded-2xl border border-wline bg-wsurface p-5">
+                  <span
+                    className={cn(
+                      'inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1',
+                      meta.chip,
+                    )}
+                  >
+                    {meta.label}
+                  </span>
+                  <dl className="mt-4 space-y-2.5 text-xs">
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="shrink-0 text-wtext-4">발행일</dt>
+                      <dd className="font-medium text-wtext-2">
+                        {formatDate(post.publishedAt ?? post.createdAt)}
+                      </dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="shrink-0 text-wtext-4">읽는 시간</dt>
+                      <dd className="font-medium text-wtext-2">약 {minutes}분</dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="shrink-0 text-wtext-4">조회</dt>
+                      <dd className="font-medium text-wtext-2">
+                        {post.viewCount.toLocaleString()}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+
+                {/* 목차 — 소제목 2개 이상일 때만 */}
+                {toc.length >= 2 && (
+                  <nav
+                    className="rounded-2xl border border-wline bg-wsurface p-5"
+                    aria-label="목차"
+                  >
+                    <p className="text-[11px] font-bold uppercase tracking-widest text-wtext-4">
+                      목차
+                    </p>
+                    <ol className="mt-3 space-y-2.5">
+                      {toc.map((t) => (
+                        <li key={t.id}>
+                          <a
+                            href={`#${t.id}`}
+                            className="group flex items-start gap-2 text-[13px] leading-snug text-wtext-3 transition-colors hover:text-ice-600"
+                          >
+                            <span
+                              aria-hidden="true"
+                              className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-ice-200 transition-colors group-hover:bg-ice-500"
+                            />
+                            {t.label}
+                          </a>
+                        </li>
+                      ))}
+                    </ol>
+                  </nav>
+                )}
+
+                {/* 도입 상담 미니 CTA */}
+                <div className="rounded-2xl bg-ice-50 p-5 ring-1 ring-ice-100">
+                  <p className="text-sm font-bold text-rink-900">
+                    클럽 도입을 고민 중이신가요?
+                  </p>
+                  <p className="mt-1.5 text-xs leading-relaxed text-wtext-3">
+                    지금 운영 방식 그대로 말씀해 주시면 클럽 상황에 맞춰 안내드립니다.
+                  </p>
+                  <Link
+                    href="/contact"
+                    className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-ice-600 transition-colors hover:text-ice-700"
+                  >
+                    도입 상담 신청하기 <ArrowRight size={14} />
+                  </Link>
+                </div>
+              </div>
+            </aside>
+
+            <div className="w-full min-w-0 max-w-3xl">
             {/* 커버 */}
             {post.coverImageUrl && (
               <div className="mb-10 overflow-hidden rounded-2xl border border-wline">
@@ -195,7 +315,7 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
               className={cn(
                 'prose prose-slate max-w-none',
                 'prose-headings:text-rink-900 prose-headings:font-bold prose-headings:tracking-tight',
-                'prose-h2:mt-12 prose-h2:text-2xl prose-h3:mt-8 prose-h3:text-xl',
+                'prose-h2:mt-12 prose-h2:scroll-mt-28 prose-h2:text-2xl prose-h3:mt-8 prose-h3:text-xl',
                 'prose-p:text-[16px] prose-p:leading-[1.85] prose-p:text-wtext-2',
                 'prose-li:text-wtext-2 prose-li:leading-[1.8] prose-strong:text-rink-900',
                 'prose-a:font-medium prose-a:text-ice-600 prose-a:no-underline hover:prose-a:underline',
@@ -204,7 +324,7 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
                 'prose-hr:border-wline',
               )}
               // eslint-disable-next-line react/no-danger
-              dangerouslySetInnerHTML={{ __html: post.content }}
+              dangerouslySetInnerHTML={{ __html: bodyHtml }}
             />
 
             {/* 목록으로 */}
@@ -215,6 +335,7 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
               >
                 <ArrowLeft size={15} /> 블로그 목록으로
               </Link>
+            </div>
             </div>
           </div>
         </div>

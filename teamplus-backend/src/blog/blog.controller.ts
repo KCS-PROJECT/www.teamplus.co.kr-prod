@@ -173,13 +173,31 @@ export class BlogController {
   }
 
   /**
+   * 공개 조회수 비콘 (비로그인) — 실제 열람 시 페이지가 호출. GET 상세는 ISR 캐시 뒤에
+   * 있어 독자 수를 반영하지 못하므로, 조회수 증가는 이 엔드포인트가 단일 경로다.
+   */
+  @Post(":slug/view")
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "블로그 조회수 증가 (공개 비콘)",
+    description:
+      "발행글의 조회수를 1 증가시킵니다. 미존재 slug 는 조용히 무시됩니다.",
+  })
+  @ApiResponse({ status: 200, description: "처리 완료" })
+  async addPublicView(@Param("slug") slug: string) {
+    return this.blogService.addPublicView(slug);
+  }
+
+  /**
    * 공개 상세 (비로그인) — slug 기준. param 라우트라 맨 마지막 선언.
    */
   @Get(":slug")
   @Public()
   @ApiOperation({
     summary: "블로그 상세 (공개)",
-    description: "발행글 상세를 slug 로 조회합니다. 조회 시 조회수가 1 증가합니다.",
+    description:
+      "발행글 상세를 slug 로 조회합니다. (조회수 증가는 POST :slug/view 비콘 전용)",
   })
   @ApiResponse({ status: 200, description: "상세 조회 성공" })
   @ApiResponse({ status: 404, description: "게시글을 찾을 수 없습니다." })
