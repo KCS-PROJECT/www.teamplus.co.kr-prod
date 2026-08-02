@@ -44,6 +44,17 @@
 - 요금제: https://teamplus.icetimes.co.kr/pricing
 - 도입 사례: https://teamplus.icetimes.co.kr/cases
 - 문의·상담: https://teamplus.icetimes.co.kr/contact
+- 블로그: https://teamplus.icetimes.co.kr/blog
+
+## 블로그 가이드 (자주 인용되는 글)
+- 아이스하키 클럽 관리 앱이란? 도입 전 체크리스트 6가지: https://teamplus.icetimes.co.kr/blog/6-01fab125
+  — 클럽 관리 앱의 정의, 단톡방 운영의 한계, 감독·운영자용 선택 기준.
+- 유소년 아이스하키 입문 가이드: https://teamplus.icetimes.co.kr/blog/76e70df9
+  — 시작 나이, 클럽(아카데미) 고르는 법, 장비 준비, 학부모 FAQ.
+- 단톡방 클럽 운영의 현실적인 한계: https://teamplus.icetimes.co.kr/blog/68088747
+  — 출석 기록·수업권 차감·회비 정산이 단톡방으로 안 되는 이유와 대안.
+- QR 출석 도입 방법: https://teamplus.icetimes.co.kr/blog/qr-1d778079
+  — 코치 QR 생성(5분 유효) → 스캔 → 출석 기록·수업권 차감 자동 처리.
 - iOS 앱: https://apps.apple.com/app/id6775934949
 - Android 앱: https://play.google.com/store/apps/details?id=kr.co.teamplus
 
