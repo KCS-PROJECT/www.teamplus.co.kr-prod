@@ -155,12 +155,11 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
       />
 
       {/* 아티클 헤더 — 좁은 컬럼 중앙, 에디토리얼 톤 */}
+      {/* 헤더 — 컨테이너 좌측 끝에서 시작하는 에디토리얼 헤더 (Stripe 블로그 패턴).
+          들여쓰기 스페이서를 두지 않아 와이드 화면에서 좌상단이 비어 보이지 않는다. */}
       <header className="relative isolate pt-36 sm:pt-44">
         <div className="container-site">
-          <div className="mx-auto flex max-w-5xl justify-center gap-10 xl:gap-14">
-            {/* 좌측 레일과 동일 폭 스페이서 — 제목·본문 시작선을 정렬 */}
-            <div aria-hidden="true" className="hidden w-60 shrink-0 lg:block" />
-            <div className="w-full min-w-0 max-w-3xl">
+          <div className="mx-auto max-w-5xl">
             {/* breadcrumb */}
             <nav className="flex items-center gap-1.5 text-xs text-wtext-4" aria-label="breadcrumb">
               <Link href="/blog" className="transition-colors hover:text-ice-600">
@@ -186,10 +185,12 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
               </span>
             </div>
 
-            <h1 className="mt-4 text-balance text-3xl font-black leading-tight tracking-tight text-rink-900 sm:text-4xl">
+            <h1 className="mt-4 max-w-4xl text-balance text-3xl font-black leading-tight tracking-tight text-rink-900 sm:text-4xl lg:text-[42px]">
               {post.title}
             </h1>
-            <p className="mt-4 text-base leading-relaxed text-wtext-3 sm:text-lg">{post.summary}</p>
+            <p className="mt-4 max-w-3xl text-base leading-relaxed text-wtext-3 sm:text-lg">
+              {post.summary}
+            </p>
 
             <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-wline pt-5 text-sm text-wtext-4">
               <span className="font-medium text-wtext-3">
@@ -202,16 +203,29 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
                 <Eye size={14} /> {post.viewCount.toLocaleString()}
               </span>
             </div>
-            </div>
           </div>
         </div>
       </header>
 
       <article className="pb-8 pt-10">
         <div className="container-site">
-          <div className="mx-auto flex max-w-5xl justify-center gap-10 xl:gap-14">
+          <div className="mx-auto max-w-5xl">
+            {/* 히어로 커버 — 레일+본문 전체 폭으로 상단을 가득 채워 좌우 공백감 제거 */}
+            {post.coverImageUrl && (
+              <div className="mb-12 overflow-hidden rounded-2xl border border-wline">
+                {/* backend 업로드 이미지(외부 오리진) — next/image 대신 일반 img 사용 */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={post.coverImageUrl}
+                  alt={post.title}
+                  className="aspect-[16/9] w-full object-cover sm:aspect-[21/9]"
+                />
+              </div>
+            )}
+
+            <div className="flex justify-center gap-8 xl:gap-10">
             {/* 좌측 레일 — 글 정보 · 목차 · 도입 CTA (데스크톱 전용, 본문과 함께 읽는 보조 내비게이션) */}
-            <aside className="hidden w-60 shrink-0 lg:block" aria-label="글 정보와 목차">
+            <aside className="hidden w-56 shrink-0 lg:block" aria-label="글 정보와 목차">
               <div className="sticky top-28 space-y-4">
                 <Link
                   href="/blog"
@@ -297,19 +311,6 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
             </aside>
 
             <div className="w-full min-w-0 max-w-3xl">
-            {/* 커버 */}
-            {post.coverImageUrl && (
-              <div className="mb-10 overflow-hidden rounded-2xl border border-wline">
-                {/* backend 업로드 이미지(외부 오리진) — next/image 대신 일반 img 사용 */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={post.coverImageUrl}
-                  alt={post.title}
-                  className="aspect-[16/9] w-full object-cover"
-                />
-              </div>
-            )}
-
             {/* 본문 — backend sanitizeBlogHtml 로 저장 시점에 살균된 신뢰 HTML */}
             <div
               className={cn(
@@ -335,6 +336,7 @@ export default async function BlogDetailPage({ params }: { params: Params }) {
               >
                 <ArrowLeft size={15} /> 블로그 목록으로
               </Link>
+            </div>
             </div>
             </div>
           </div>
