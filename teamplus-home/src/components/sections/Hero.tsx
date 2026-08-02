@@ -69,11 +69,11 @@ export function Hero() {
                     }}
                     className="flex h-full items-start gap-3 border-t border-wline py-4 first:border-t-0 motion-reduce:transition-none motion-reduce:transform-none sm:border-t-0 sm:border-l sm:px-5 sm:first:border-l-0 md:border-l-0 md:border-t md:px-0 md:first:border-t-0 lg:border-l lg:border-t-0 lg:px-5 lg:first:border-l-0"
                   >
-                    <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-ice-50 text-ice-600 ring-1 ring-ice-100">
+                    <span className="mt-0.5 flex shrink-0 items-center justify-center text-ice-600">
                       <Icon size={18} aria-hidden />
                     </span>
                     <div>
-                      <p className="text-sm font-bold text-rink-900">{f.title}</p>
+                      <p className="whitespace-nowrap text-sm font-bold text-rink-900">{f.title}</p>
                       <p className="mt-1.5 text-[13px] leading-5 text-wtext-3">{f.desc}</p>
                     </div>
                   </motion.div>
