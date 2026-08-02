@@ -53,7 +53,7 @@ export const BLOG_CATEGORIES: BlogCategory[] = ['NEWS', 'GUIDE', 'EVENT', 'PRESS
 const REVALIDATE_SECONDS = 300;
 
 /** backend API base — contact route 와 동일한 env 해석(운영/개발 자동 대응). */
-function apiBase(): string {
+export function apiBase(): string {
   const raw =
     process.env.NEXT_PUBLIC_API_URL ??
     process.env.BACKEND_URL ??

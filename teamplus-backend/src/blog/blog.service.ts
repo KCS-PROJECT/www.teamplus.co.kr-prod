@@ -70,7 +70,11 @@ export class BlogService {
   }
 
   /**
-   * 공개 상세 (slug) — 발행·미삭제만. 조회수는 fire-and-forget 증가.
+   * 공개 상세 (slug) — 발행·미삭제만.
+   *
+   * ⚠️ 여기서 조회수를 올리지 않는다: 랜딩(teamplus-home)은 ISR(5분) 캐시라 이 API 는
+   * 실제 독자 수와 무관하게 재검증 시점에만 호출된다(크롤러·sitemap 조회 포함).
+   * 실측 조회수는 페이지의 클라이언트 비콘이 호출하는 addPublicView 가 단일 경로다.
    */
   async findPublicBySlug(slug: string) {
     const post = await this.prisma.blogPost.findFirst({
@@ -82,16 +86,20 @@ export class BlogService {
       throw new NotFoundException("게시글을 찾을 수 없습니다.");
     }
 
-    // 조회수 증가는 응답을 막지 않는다(실패 무시).
-    void this.prisma.blogPost
-      .update({
-        where: { id: post.id },
-        data: { viewCount: { increment: 1 } },
-        select: { id: true },
-      })
-      .catch(() => undefined);
-
     return post;
+  }
+
+  /**
+   * 공개 조회수 +1 (실제 열람 비콘 전용) — 발행·미삭제 글만.
+   * updateMany 라 미존재 slug 는 조용히 무시된다(존재 여부 노출·404 스팸 방지).
+   * 남용 방어는 전역 ThrottlerGuard(IP당 100req/min) + 프론트 세션 1회 가드에 위임.
+   */
+  async addPublicView(slug: string) {
+    await this.prisma.blogPost.updateMany({
+      where: { slug, status: BlogStatus.PUBLISHED, deletedAt: null },
+      data: { viewCount: { increment: 1 } },
+    });
+    return { success: true };
   }
 
   // ==================== 관리자 (SYSTEM/OPER) ====================
