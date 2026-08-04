@@ -1,6 +1,5 @@
 'use client';
 
-import { motion } from 'framer-motion';
 import {
   Sparkles,
   QrCode,
@@ -12,7 +11,7 @@ import { HERO, HERO_FEATURES, HERO_PROOF, APP_DOWNLOAD } from '@/lib/content';
 import { BackgroundMesh } from '@/components/ui/BackgroundMesh';
 import { PhoneFrame } from '@/components/ui/PhoneFrame';
 import { StoreBadge } from '@/components/ui/StoreBadge';
-import { DUR, EASE_OUT, stagger } from '@/lib/motion';
+import { stagger } from '@/lib/motion';
 
 /** 피처 카드 아이콘 — content.ts 의 icon 문자열 → lucide 컴포넌트 매핑 */
 const FEATURE_ICONS: Record<string, LucideIcon> = {
@@ -31,13 +30,10 @@ export function Hero() {
 
       <div className="container-site">
         <div className="grid items-center gap-14 md:grid-cols-[0.86fr_1.14fr] md:items-start md:gap-8 lg:grid-cols-[0.98fr_1.02fr] lg:items-center lg:gap-16">
-          {/* Left — copy block */}
-          <motion.div
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: DUR.slow, ease: EASE_OUT }}
-            className="max-w-2xl md:max-w-none lg:max-w-2xl"
-          >
+          {/* Left — copy block.
+              Hero(첫 화면)는 framer-motion 마운트 애니메이션 금지 — SSR에 opacity:0이 박혀
+              JS 하이드레이션 전까지 화면이 비어 보인다(FOUC). CSS .reveal-up/.reveal-fade 사용. */}
+          <div className="reveal-up max-w-2xl md:max-w-none lg:max-w-2xl">
             <h1 className="text-[clamp(2.15rem,4.9vw,4.25rem)] font-black leading-[1.04] tracking-normal text-rink-900">
               <span className="block">
                 {HERO.headlineTop}
@@ -58,16 +54,10 @@ export function Hero() {
               {HERO_FEATURES.map((f, i) => {
                 const Icon = FEATURE_ICONS[f.icon] ?? Sparkles;
                 return (
-                  <motion.div
+                  <div
                     key={f.title}
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{
-                      duration: DUR.fast,
-                      delay: 0.3 + stagger(i),
-                      ease: EASE_OUT,
-                    }}
-                    className="flex h-full items-start gap-3 border-t border-wline py-4 first:border-t-0 motion-reduce:transition-none motion-reduce:transform-none sm:border-t-0 sm:border-l sm:px-5 sm:first:border-l-0 md:border-l-0 md:border-t md:px-0 md:first:border-t-0 lg:border-l lg:border-t-0 lg:px-5 lg:first:border-l-0"
+                    style={{ animationDelay: `${0.3 + stagger(i)}s` }}
+                    className="reveal-up flex h-full items-start gap-3 border-t border-wline py-4 first:border-t-0 sm:border-t-0 sm:border-l sm:px-5 sm:first:border-l-0 md:border-l-0 md:border-t md:px-0 md:first:border-t-0 lg:border-l lg:border-t-0 lg:px-5 lg:first:border-l-0"
                   >
                     <span className="mt-0.5 flex shrink-0 items-center justify-center text-ice-600">
                       <Icon size={18} aria-hidden />
@@ -76,17 +66,15 @@ export function Hero() {
                       <p className="whitespace-nowrap text-sm font-bold text-rink-900">{f.title}</p>
                       <p className="mt-1.5 text-[13px] leading-5 text-wtext-3">{f.desc}</p>
                     </div>
-                  </motion.div>
+                  </div>
                 );
               })}
             </div>
 
             {/* 신뢰 라인 — 검증 가능한 제품 사실만(날조 수치 제거). dot 마커로 절제 노출. */}
-            <motion.ul
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.6, delay: 0.5 }}
-              className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-2.5 border-t border-wline pt-6"
+            <ul
+              style={{ animationDelay: '0.5s' }}
+              className="reveal-fade mt-8 flex flex-wrap items-center gap-x-5 gap-y-2.5 border-t border-wline pt-6"
             >
               {HERO_PROOF.map((p) => (
                 <li
@@ -97,14 +85,12 @@ export function Hero() {
                   {p}
                 </li>
               ))}
-            </motion.ul>
+            </ul>
 
             {/* 앱 다운로드 — App Store / Google Play 실제 앱 페이지로 연결 (링크 SoT: content.ts APP_DOWNLOAD) */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.6, delay: 0.6 }}
-              className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center"
+            <div
+              style={{ animationDelay: '0.6s' }}
+              className="reveal-fade mt-7 flex flex-col gap-3 sm:flex-row sm:items-center"
             >
               <div className="flex gap-2.5">
                 <StoreBadge
@@ -118,15 +104,13 @@ export function Hero() {
                   className="scale-90 origin-left"
                 />
               </div>
-            </motion.div>
-          </motion.div>
+            </div>
+          </div>
 
           {/* Right — reference-style dual device showcase */}
-          <motion.div
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: DUR.slow, delay: 0.15, ease: EASE_OUT }}
-            className="relative mx-auto h-[420px] w-full max-w-[440px] overflow-visible sm:h-[540px] sm:max-w-[580px] md:h-[520px] md:max-w-[500px] lg:h-[620px] lg:max-w-[700px]"
+          <div
+            style={{ animationDelay: '0.15s' }}
+            className="reveal-up relative mx-auto h-[420px] w-full max-w-[440px] overflow-visible sm:h-[540px] sm:max-w-[580px] md:h-[520px] md:max-w-[500px] lg:h-[620px] lg:max-w-[700px]"
           >
             {/* calm product stage, clipped by the hero section like the reference image */}
             <div
@@ -159,7 +143,7 @@ export function Hero() {
                 className="origin-center [transform:perspective(1280px)_rotateX(1.5deg)_rotateY(-6deg)_rotateZ(-8deg)]"
               />
             </div>
-          </motion.div>
+          </div>
         </div>
       </div>
     </section>
