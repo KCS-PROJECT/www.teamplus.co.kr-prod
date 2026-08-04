@@ -120,6 +120,13 @@ export class TrainingService {
         levelRequired: dto.levelRequired,
         startTime: new Date(dto.startTime),
         endTime: new Date(dto.endTime),
+        // [2026-08-04] 감독/코치 생성 = 자동 승인 — classes.service.createClass 와 동일 정책.
+        //   누락 시 스키마 기본값 PENDING 이라 팀원 학부모의 수업목록(APPROVED 필터)에
+        //   훈련이 영원히 노출되지 않는다.
+        approvalStatus: "APPROVED",
+        // [2026-08-04] 공개 범위 — 감독/코치가 등록 폼에서 선택.
+        //   미선택 시 스키마 기본값 TEAM_ONLY(비공개 — 우리 팀에만) 유지.
+        ...(dto.visibility ? { visibility: dto.visibility } : {}),
       },
     });
 
@@ -171,6 +178,7 @@ export class TrainingService {
       startTime: training.startTime,
       endTime: training.endTime,
       isActive: training.isActive,
+      visibility: training.visibility,
       createdAt: training.createdAt,
       schedules: schedules.map((s) => ({
         id: s.id,
@@ -445,6 +453,8 @@ export class TrainingService {
         startTime: dto.startTime ? new Date(dto.startTime) : existing.startTime,
         endTime: dto.endTime ? new Date(dto.endTime) : existing.endTime,
         isActive: dto.isActive ?? existing.isActive,
+        // [2026-08-04] 공개 범위 — 전송 시에만 변경 (미전송 = 기존 값 유지).
+        ...(dto.visibility ? { visibility: dto.visibility } : {}),
       },
       select: {
         id: true,
@@ -460,6 +470,7 @@ export class TrainingService {
         startTime: true,
         endTime: true,
         isActive: true,
+        visibility: true,
         updatedAt: true,
       },
     });

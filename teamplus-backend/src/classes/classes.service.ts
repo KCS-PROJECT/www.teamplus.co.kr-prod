@@ -59,7 +59,12 @@ import {
   acquireClassPostpaidLockIfNeeded,
   shouldUsePostpaidLock,
 } from "./utils/class-locks.util";
-import { assertVisibilitySelection } from "./utils/class-visibility.util";
+import {
+  assertVisibilitySelection,
+  buildClassVisibilityWhere,
+} from "./utils/class-visibility.util";
+import { CLASSES_DOMAIN_TRAINING_TYPES } from "@/common/constants/class-domain.constant";
+import { TRAINING_TYPES } from "@/training/dto/create-training.dto";
 import {
   assertClassRegion,
   formatRegionLabel,
@@ -1411,29 +1416,47 @@ export class ClassesService {
       ...(query.category === "open" && openClassWhere),
     };
 
+    // [2026-08-04 공개범위 상시 병합] 전체공개(PUBLIC)·학부모공개(PARENTS_ONLY) 타 팀 수업을
+    //   소속 팀과 무관하게 학부모/학생 목록에 항상 노출한다 (사용자 지시: "전체공개는 다
+    //   보이게, 비공개일 때만 숨기고, 팀원공개는 팀원이 목록에 들어오면 보이게").
+    //   · 게이트는 explore(전국 수업찾기)와 동일한 buildClassVisibilityWhere 단일 SoT —
+    //     비소속 뷰어에게는 PUBLIC + PARENTS_ONLY 만, 소속 팀원에게는 TEAM_ONLY(비공개=
+    //     우리 팀에만)·SELECTED_TEAMS(지정 팀)까지 열린다.
+    //   · 내 팀 branch 와 OR 합집합으로 쓰는 "타 팀 발견" branch 라서:
+    //     - trainingType 가드 — 수업 도메인(소문자) + 훈련 도메인(대문자)만 허용.
+    //       훈련(대문자)은 기본 TEAM_ONLY 백필이라 visibility 게이트가 차단하고,
+    //       감독/코치가 등록 폼에서 전체공개/학부모공개를 명시 선택한 훈련만 통과한다
+    //       (2026-08-04 — 훈련 등록 공개범위 입력 지원과 세트).
+    //     - endedAt=null — 타 팀의 이미 종료된 수업은 발견 가치가 없다.
+    //       (내 팀 branch 는 종료 수업 유지 — '종료된 훈련' 이력 접힘에 필요.)
+    //   · 연령(targetBirthYears) 필터는 아래 top-level where.AND 가 모든 branch 에 공통 적용.
+    const externalPublicWhere: Prisma.ClassWhereInput = {
+      teamId: { not: null },
+      academyId: null,
+      endedAt: null,
+      trainingType: {
+        in: [...CLASSES_DOMAIN_TRAINING_TYPES, ...TRAINING_TYPES],
+      },
+      AND: [buildClassVisibilityWhere(user, viewerTeamIds ?? [])],
+    };
+
     // 학부모 가드 — 자녀 경유 팀 ID(viewerTeamIds)로 정규수업 필터.
     //  viewerTeamIds 는 resolveViewerTeamIds(..., { childId }) 로 해석되어
     //  childId 지정 시 해당 자녀 소속 팀만, 미지정 시 모든 자녀 팀 합집합.
     //  승인 대기(pending) 신청 팀도 포함 — 목록 열람만 허용(등록은 enrollments 가드가 차단).
-    //  자녀 0명/팀 0개(또는 타 자녀 childId)면 빈 결과 — 오인 노출 차단.
+    //  [2026-08-04] 팀 스코프 단독 → "내 팀 ∪ 공개범위 허용 타 팀" 합집합으로 확장.
+    //  무소속(팀 0)이어도 전체공개 수업은 보이므로 빈 결과 조기 반환하지 않는다.
     if (user?.userType === "PARENT" && query.category !== "open") {
       const teamIds = viewerTeamIds ?? [];
-      // 'regular' 탭이면 정규 수업만(팀 필요), '전체' 탭이면 자녀 팀 수업 + 전체 오픈클래스.
+      // 'regular' 탭: 내 팀 정규 수업 + 전체공개 타 팀 수업. '전체' 탭: + 오픈클래스.
       if (query.category === "regular") {
-        if (teamIds.length === 0) {
-          return {
-            data: [],
-            pagination: { total: 0, page, limit, totalPages: 0 },
-          };
-        }
-        where.teamId = { in: teamIds };
+        where.OR = [{ teamId: { in: teamIds } }, externalPublicWhere];
       } else {
-        // [2026-06-29] 전체 탭 — 자녀 팀의 수업 + 오픈클래스(전체 노출).
-        //   무소속(팀 0)이어도 오픈클래스는 노출되어야 하므로 빈 결과 조기 반환하지 않는다.
-        where.OR =
-          teamIds.length > 0
-            ? [{ teamId: { in: teamIds } }, openClassWhere]
-            : [openClassWhere];
+        where.OR = [
+          { teamId: { in: teamIds } },
+          externalPublicWhere,
+          openClassWhere,
+        ];
       }
     } else if (
       user &&
@@ -1443,14 +1466,19 @@ export class ClassesService {
       // [수정 2026-05-15] CHILD/TEEN — 본인 소속 팀의 정규 수업 + 노출 허용 오픈클래스만.
       //  기존엔 미지정 탭에서 모든 팀 정규수업이 무제한 노출되어, 학생이 다른 팀
       //  (예: test2/나코치) 수업까지 다 보이던 버그. PARENT 와 동일 패턴으로 viewerTeamIds 매칭.
+      //  [2026-08-04] 학부모와 동일하게 공개범위 허용 타 팀 수업(externalPublicWhere)도 합집합.
       const studentTeamIds = viewerTeamIds ?? [];
       if (query.category === "regular") {
-        where.teamId = { in: studentTeamIds };
+        where.OR = [{ teamId: { in: studentTeamIds } }, externalPublicWhere];
       } else if (query.category === "open") {
         // openClassWhere 가 이미 visibility 매칭 처리.
       } else {
-        // 전체 탭: 본인 팀 수업 OR 노출 오픈클래스.
-        where.OR = [{ teamId: { in: studentTeamIds } }, openClassWhere];
+        // 전체 탭: 본인 팀 수업 OR 전체공개 타 팀 수업 OR 노출 오픈클래스.
+        where.OR = [
+          { teamId: { in: studentTeamIds } },
+          externalPublicWhere,
+          openClassWhere,
+        ];
       }
     } else if (
       user &&
@@ -1521,115 +1549,118 @@ export class ClassesService {
       }
     }
 
-    const [classes, total] = await this.prisma.$transaction([
-      this.prisma.class.findMany({
-        where,
-        skip,
-        take: limit,
-        select: {
-          id: true,
-          className: true,
-          description: true,
-          trainingType: true,
-          instructorName: true,
-          capacity: true,
-          ageMin: true,
-          ageMax: true,
-          targetBirthYears: true,
-          levelRequired: true,
-          startTime: true,
-          endTime: true,
-          isActive: true,
-          endedAt: true,
-          salesOpenMonth: true,
-          category: true,
-          classDays: true,
-          teamId: true,
-          academyId: true,
-          createdAt: true,
-          // [2026-08-04] 수업 지역 — 목록 카드에 "서울 강남구" 표기용.
-          //   타지역 학부모가 이동 거리를 모른 채 등록하는 사고 방지(사용자 지시).
-          regionCity: true,
-          regionDistrict: true,
-          team: {
-            select: {
-              id: true,
-              name: true,
-              logoUrl: true,
-              // 지역 미입력(2026-08-04 이전) 수업의 표기 폴백 — 팀 홈링크장 시/도.
-              homeVenue: { select: { city: true } },
-            },
-          },
-          // 오픈클래스(teamId=null): 로고 폴백용 대표 이미지 + 카드 subtitle 노출용 아카데미명.
-          academy: { select: { imageUrl: true, name: true } },
-          coach: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-              avatarUrl: true,
-            },
-          },
-          // 지역 표기 폴백 2순위 — 수업 장소의 시/도 (regionCity 미입력 구 데이터용).
-          venue: { select: { id: true, name: true, city: true } },
-          // PACKAGE_WEEKS_SPEC §6 응답 필드 매핑용 — durationDays/sessionsPerMonth/sessionsPerWeek 필수.
-          // PACKAGE_END_GUARD (2026-05-22): 대표가 산정 시 활성 패키지 우선 위해 isActive 추가 select.
-          products: {
-            select: {
-              feeType: true,
-              price: true,
-              durationDays: true,
-              sessionsPerMonth: true,
-              sessionsPerWeek: true,
-              billingMonth: true,
-              isActive: true,
-            },
-          },
-          registrations: {
-            where: { status: "active" },
-            select: { id: true },
-          },
-          // 2026-05-12: 다중 코치 배정 (LEAD/ASSISTANT)
-          coachAssignments: {
-            where: { status: "ACCEPTED" },
-            select: {
-              id: true,
-              coachUserId: true,
-              role: true,
-              coach: {
-                select: {
-                  id: true,
-                  firstName: true,
-                  lastName: true,
-                  userType: true,
-                  avatarUrl: true,
-                },
+    const runList = (listWhere: Prisma.ClassWhereInput) =>
+      this.prisma.$transaction([
+        this.prisma.class.findMany({
+          where: listWhere,
+          skip,
+          take: limit,
+          select: {
+            id: true,
+            className: true,
+            description: true,
+            trainingType: true,
+            instructorName: true,
+            capacity: true,
+            ageMin: true,
+            ageMax: true,
+            targetBirthYears: true,
+            levelRequired: true,
+            startTime: true,
+            endTime: true,
+            isActive: true,
+            endedAt: true,
+            salesOpenMonth: true,
+            category: true,
+            classDays: true,
+            teamId: true,
+            academyId: true,
+            createdAt: true,
+            // [2026-08-04] 수업 지역 — 목록 카드에 "서울 강남구" 표기용.
+            //   타지역 학부모가 이동 거리를 모른 채 등록하는 사고 방지(사용자 지시).
+            regionCity: true,
+            regionDistrict: true,
+            team: {
+              select: {
+                id: true,
+                name: true,
+                logoUrl: true,
+                // 지역 미입력(2026-08-04 이전) 수업의 표기 폴백 — 팀 홈링크장 시/도.
+                homeVenue: { select: { city: true } },
               },
             },
-            orderBy: [{ role: "asc" }, { respondedAt: "asc" }],
-          },
-          // 2026-06-05: 요일별 시간·장소 규칙 (ClassDaySchedule) — venue는 id/name만 선택해 응답 최소화
-          dayScheduleEntries: {
-            select: {
-              dayOfWeek: true,
-              startTime: true,
-              endTime: true,
-              venueId: true,
-              venue: { select: { id: true, name: true } },
+            // 오픈클래스(teamId=null): 로고 폴백용 대표 이미지 + 카드 subtitle 노출용 아카데미명.
+            academy: { select: { imageUrl: true, name: true } },
+            coach: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                avatarUrl: true,
+              },
+            },
+            // 지역 표기 폴백 2순위 — 수업 장소의 시/도 (regionCity 미입력 구 데이터용).
+            venue: { select: { id: true, name: true, city: true } },
+            // PACKAGE_WEEKS_SPEC §6 응답 필드 매핑용 — durationDays/sessionsPerMonth/sessionsPerWeek 필수.
+            // PACKAGE_END_GUARD (2026-05-22): 대표가 산정 시 활성 패키지 우선 위해 isActive 추가 select.
+            products: {
+              select: {
+                feeType: true,
+                price: true,
+                durationDays: true,
+                sessionsPerMonth: true,
+                sessionsPerWeek: true,
+                billingMonth: true,
+                isActive: true,
+              },
+            },
+            registrations: {
+              where: { status: "active" },
+              select: { id: true },
+            },
+            // 2026-05-12: 다중 코치 배정 (LEAD/ASSISTANT)
+            coachAssignments: {
+              where: { status: "ACCEPTED" },
+              select: {
+                id: true,
+                coachUserId: true,
+                role: true,
+                coach: {
+                  select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true,
+                    userType: true,
+                    avatarUrl: true,
+                  },
+                },
+              },
+              orderBy: [{ role: "asc" }, { respondedAt: "asc" }],
+            },
+            // 2026-06-05: 요일별 시간·장소 규칙 (ClassDaySchedule) — venue는 id/name만 선택해 응답 최소화
+            dayScheduleEntries: {
+              select: {
+                dayOfWeek: true,
+                startTime: true,
+                endTime: true,
+                venueId: true,
+                venue: { select: { id: true, name: true } },
+              },
+            },
+            // [2026-06-09] 오픈클래스 날짜별 일정 — 목록 카드에 실제 일정 날짜 표시용.
+            // [2026-06-10] 회차별 실제 시각(startTime/endTime "HH:mm") — 카드 시간 표시용.
+            schedules: {
+              where: { isCancelled: false },
+              select: { scheduledDate: true, startTime: true, endTime: true },
+              orderBy: { scheduledDate: "asc" },
             },
           },
-          // [2026-06-09] 오픈클래스 날짜별 일정 — 목록 카드에 실제 일정 날짜 표시용.
-          // [2026-06-10] 회차별 실제 시각(startTime/endTime "HH:mm") — 카드 시간 표시용.
-          schedules: {
-            where: { isCancelled: false },
-            select: { scheduledDate: true, startTime: true, endTime: true },
-            orderBy: { scheduledDate: "asc" },
-          },
-        },
-        orderBy: { createdAt: "desc" },
-      }),
-      this.prisma.class.count({ where }),
-    ]);
+          orderBy: { createdAt: "desc" },
+        }),
+        this.prisma.class.count({ where: listWhere }),
+      ]);
+
+    const [classes, total] = await runList(where);
 
     return {
       data: classes.map((c) => {
@@ -1677,6 +1708,12 @@ export class ClassesService {
           teamLogoUrl: c.team?.logoUrl ?? c.academy?.imageUrl ?? null,
           // 오픈클래스만 아카데미명 노출(팀 수업은 academy 없어 null) — 학부모 /classes 카드 subtitle.
           academyName: c.academy?.name ?? null,
+          // [2026-08-04 공개범위 상시 병합] 뷰어 소속 팀 수업 여부 — FE 섹션 분리
+          //   ('정규훈련' vs '전체공개 수업')와 타 팀 카드의 팀명 표기 분기용.
+          //   viewerTeamIds=null(ADMIN 등 무제한 스코프)은 전부 내 스코프로 취급.
+          isViewerTeam:
+            viewerTeamIds === null ||
+            (c.teamId != null && viewerTeamIds.includes(c.teamId)),
           // [2026-08-04] 지역 라벨 "서울 강남구" — 목록 카드 표기 SoT.
           //   수업 지역(감독 선택) > 수업 장소 시/도 > 팀 홈링크장 시/도 순 폴백.
           //   폴백은 2026-08-04 이전 수업(regionCity=null)의 표기 공백을 메우기 위한 것이고,

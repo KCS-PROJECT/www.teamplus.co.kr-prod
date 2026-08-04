@@ -10,7 +10,11 @@ import {
   MaxLength,
 } from "class-validator";
 import { ApiPropertyOptional } from "@nestjs/swagger";
-import { TRAINING_TYPES } from "./create-training.dto";
+import {
+  TRAINING_TYPES,
+  TRAINING_VISIBILITY_VALUES,
+  type TrainingVisibilityValue,
+} from "./create-training.dto";
 
 export class UpdateTrainingDto {
   @ApiPropertyOptional({
@@ -43,6 +47,19 @@ export class UpdateTrainingDto {
       "유효한 훈련 유형을 선택해주세요. (REGULAR_TRAINING, GAME, FUN, CAMP, PICKUP)",
   })
   trainingType?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "공개 범위 — PUBLIC(전체공개) | PARENTS_ONLY(학부모공개) | TEAM_ONLY(비공개)",
+    example: "PUBLIC",
+    enum: TRAINING_VISIBILITY_VALUES,
+  })
+  @IsOptional()
+  @IsIn([...TRAINING_VISIBILITY_VALUES], {
+    message:
+      "유효한 공개 범위를 선택해주세요. (PUBLIC, PARENTS_ONLY, TEAM_ONLY)",
+  })
+  visibility?: TrainingVisibilityValue;
 
   @ApiPropertyOptional({
     example: "이영희 코치",
@@ -91,7 +108,9 @@ export class UpdateTrainingDto {
   })
   @IsOptional()
   @IsDateString({}, { message: "올바른 날짜 형식을 입력해주세요." })
-  startTime?: Date;
+  // [2026-08-04 fix] Date → string — enableImplicitConversion 이 Date 인스턴스로
+  //   선변환해 @IsDateString 이 항상 실패하던 버그 (create DTO 와 동일).
+  startTime?: string;
 
   @ApiPropertyOptional({
     example: "2026-04-07T20:00:00Z",
@@ -99,7 +118,8 @@ export class UpdateTrainingDto {
   })
   @IsOptional()
   @IsDateString({}, { message: "올바른 날짜 형식을 입력해주세요." })
-  endTime?: Date;
+  // [2026-08-04 fix] Date → string — startTime 과 동일.
+  endTime?: string;
 
   @ApiPropertyOptional({
     example: true,

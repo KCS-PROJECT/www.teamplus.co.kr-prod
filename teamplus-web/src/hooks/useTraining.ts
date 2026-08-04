@@ -277,6 +277,8 @@ export async function createTraining(
     startTime: string;
     endTime: string;
     scheduleDates?: string[];
+    /** [2026-08-04] 공개 범위 — PUBLIC | PARENTS_ONLY | TEAM_ONLY. 미전송 시 TEAM_ONLY(비공개). */
+    visibility?: string;
   },
 ) {
   return api.post<TrainingSession>(`/training/${clubId}`, body);
@@ -296,6 +298,8 @@ export async function updateTraining(
     startTime: string;
     endTime: string;
     isActive: boolean;
+    /** [2026-08-04] 공개 범위 — PUBLIC | PARENTS_ONLY | TEAM_ONLY */
+    visibility: string;
   }>,
 ) {
   return api.patch<TrainingSession>(`/training/${trainingId}`, body);

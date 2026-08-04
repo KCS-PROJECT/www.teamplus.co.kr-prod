@@ -40,6 +40,11 @@ export const MESSAGES = {
     pendingTeamApproval: "가입 승인 대기",
     endedTrainingSection: "종료된 훈련",
     endedTournamentSection: "종료된 대회",
+    // [2026-08-04 공개범위 상시 병합] 전체공개(PUBLIC 등) 타 팀 수업이 목록에 함께
+    //   노출된다 — 그 섹션 제목 + 소속 팀 수업이 하나도 없을 때의 안내 문구.
+    publicFallbackSection: "전체공개 수업",
+    publicFallbackNotice:
+      "소속 팀에 등록된 수업이 아직 없어 전체공개 수업을 보여드려요.",
     // [Lifecycle v4.1 §9.3] 판매 승인 사이클 — 감독 확인 플로우 · 학부모 CTA
     salesCycle: {
       // entryLabel: 화면 하단에 실재하는 일정 등록 진입 버튼명 (일정 편집 수정 폼 단일화 후 '수업 수정하기')
