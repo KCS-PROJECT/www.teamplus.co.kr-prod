@@ -63,6 +63,11 @@ interface ClassItem {
   clubId?: string;
   /** 주최 팀 ID — 응답 select 에 포함(clubId 와 달리 실제로 내려온다). 승인 대기 팀 판정용. */
   teamId?: string | null;
+  /** 주최 팀 요약 — 백엔드 select 의 team 관계. 전체공개 타 팀 수업 카드의 팀명 표기에 사용. */
+  team?: { id: string; name: string; logoUrl?: string | null } | null;
+  /** [2026-08-04 공개범위 상시 병합] 뷰어 소속 팀 수업 여부 — false 면 전체공개로 노출된
+   *  타 팀 수업. '전체공개 수업' 섹션 분리 + 카드 팀명 표기 분기. 구버전 응답은 undefined(내 팀 취급). */
+  isViewerTeam?: boolean;
   clubName?: string;
   club?: { id: string; clubName: string };
   /** 팀 프로필(로고) URL — 카드 좌측 아이콘에 표시. 없으면 기본 trainingType 아이콘 폴백. */
@@ -1076,8 +1081,12 @@ const DefaultClassCard = memo(function DefaultClassCard({
       }
       ariaLabel={`${item.className} 수업 상세 보기`}
       title={item.className}
-      // 오픈클래스만 소속 아카데미명을 제목 아래 subtitle 로 노출(팀 수업은 undefined → 미렌더).
-      metaInline={item.academyName || undefined}
+      // 오픈클래스는 소속 아카데미명, 전체공개로 노출된 타 팀 수업(isViewerTeam=false)은
+      //   주최 팀명을 subtitle 로 노출. 내 팀 수업은 팀명이 자명해 미노출(기존 정책 유지).
+      metaInline={
+        item.academyName ??
+        (item.isViewerTeam === false ? (item.team?.name ?? undefined) : undefined)
+      }
       titleRight={
         /* 등록 상태 칩 — 클릭은 카드 NavLink 가 처리 (시각 표시 전용).
            min-w-[72px] 고정. 준비 중 수업은 이 칩 자리가 "일정 준비 중"으로
@@ -1506,9 +1515,9 @@ export default function ClassesPage() {
     if (isManagerRole) navigate("/classes-manage");
   }, [isManagerRole, navigate]);
 
-  // 학부모 본인 소속 팀 필터링은 BE에서 수행한다.
-  //  - PARENT 토큰 → TeamMember(approved, PARENT).teamId 기반으로 응답을 제한
-  //  - 가입 시 teamCode 필수 → 학부모는 항상 1개 이상의 소속 팀 보유
+  // 목록 스코프는 BE 가 결정한다 (2026-08-04 공개범위 상시 병합):
+  //  - 내 팀(자녀 경유) 수업 전체 + 공개범위가 허용하는 타 팀 수업(PUBLIC/PARENTS_ONLY)
+  //  - 타 팀 수업은 isViewerTeam=false 로 내려와 '전체공개 수업' 섹션으로 분리 렌더
   // FE에는 자녀 팀 토글 UI가 없으며, 검색·수업 유형 필터만 노출한다.
 
   const [filter, setFilter] = useState<FilterValue>("all");
@@ -1573,11 +1582,21 @@ export default function ClassesPage() {
     // 대회 참가 판정 — 카드 등록완료 표기와 동일 기준(enrolledChildIds ?? paidChildIds).
     const isTournamentEnrolled = (t: TournamentListItem) =>
       ((t.enrolledChildIds ?? t.paidChildIds)?.length ?? 0) > 0;
+    // [2026-08-04 공개범위 상시 병합] 백엔드가 전체공개(PUBLIC 등) 타 팀 수업을 함께
+    //   내려준다(isViewerTeam=false). 내 팀 수업으로 오인하지 않도록 '전체공개 수업'
+    //   별도 섹션으로 분리한다. 구버전 응답(필드 없음)은 내 팀 취급(!== false).
+    const isExternal = (c: ClassItem) => c.isViewerTeam === false;
     return {
       enrolled: classes.filter((c) => isEnrolled(c) && !isEnded(c)),
       // 참여했던 종료 훈련 — '등록 훈련' 섹션 하단 접힘 (이력 확인용).
       endedEnrolled: classes.filter((c) => isEnrolled(c) && isEnded(c)),
-      regular: classes.filter((c) => !isOpen(c) && !isEnrolled(c) && !isEnded(c)),
+      regular: classes.filter(
+        (c) => !isOpen(c) && !isEnrolled(c) && !isEnded(c) && !isExternal(c),
+      ),
+      // 전체공개로 노출된 타 팀 수업 — 발견(discovery) 카탈로그.
+      publicPool: classes.filter(
+        (c) => !isOpen(c) && !isEnrolled(c) && !isEnded(c) && isExternal(c),
+      ),
       open: classes.filter((c) => isOpen(c) && !isEnrolled(c) && !isEnded(c)),
       tournaments: tournaments.filter((t) => !isTournamentClosed(t)),
       // 참가했던 종료/취소 대회 — '대회' 섹션 하단 접힘.
@@ -1845,6 +1864,7 @@ export default function ClassesPage() {
     ? sections.enrolled.length +
       sections.endedEnrolled.length +
       sections.regular.length +
+      sections.publicPool.length +
       sections.open.length +
       sections.tournaments.length +
       sections.endedTournaments.length
@@ -1932,6 +1952,31 @@ export default function ClassesPage() {
           </div>
         )}
 
+        {/* [2026-08-04 공개범위 상시 병합] 소속 팀 수업이 하나도 없고 전체공개 수업만 보이는
+            상태 안내 — 목록 행과 같은 full-bleed 행으로 이어 붙여 리스트 흐름을 유지한다. */}
+        {!isChild &&
+          !isTeen &&
+          !isLoading &&
+          !!sections &&
+          sections.enrolled.length === 0 &&
+          sections.endedEnrolled.length === 0 &&
+          sections.regular.length === 0 &&
+          sections.publicPool.length > 0 && (
+          <div
+            className="flex items-start gap-2 px-4 sm:px-5 py-3 bg-it-blue-500/5 dark:bg-it-blue-500/10 border-b border-it-line dark:border-it-ink-700"
+            role="status"
+          >
+            <Icon
+              name="info"
+              className="text-[16px] text-it-blue-500 dark:text-it-blue-300 shrink-0 mt-0.5"
+              aria-hidden="true"
+            />
+            <p className="text-[12.5px] font-medium leading-relaxed text-it-ink-600 dark:text-rink-100">
+              {MESSAGES.class.publicFallbackNotice}
+            </p>
+          </div>
+        )}
+
         {/* Filter Tabs — 아동/청소년 전용. 학부모/감독(default)은 유형별 섹션으로 분리(2026-06-12). */}
         {(isChild || isTeen) && (
           <div className="px-6 pb-4">
@@ -2005,6 +2050,18 @@ export default function ClassesPage() {
                 count={sections.regular.length}
               >
                 {sections.regular.map((item) => (
+                  <div key={item.id} role="listitem">
+                    {renderClassCard(item)}
+                  </div>
+                ))}
+              </ClassSection>
+              {/* [2026-08-04 공개범위 상시 병합] 전체공개로 노출된 타 팀 수업 —
+                  내 팀 '정규훈련'과 분리해 오인을 막고, 카드에는 주최 팀명이 표기된다. */}
+              <ClassSection
+                title={MESSAGES.class.publicFallbackSection}
+                count={sections.publicPool.length}
+              >
+                {sections.publicPool.map((item) => (
                   <div key={item.id} role="listitem">
                     {renderClassCard(item)}
                   </div>

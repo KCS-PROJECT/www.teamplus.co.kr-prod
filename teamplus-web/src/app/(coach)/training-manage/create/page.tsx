@@ -14,6 +14,7 @@ import {
   TRAINING_TYPE_LABELS,
   createTraining,
 } from '@/hooks/useTraining';
+import type { ClassVisibility } from '@/lib/class-visibility';
 import { MESSAGES } from '@/lib/messages';
 import { cn } from '@/lib/utils';
 
@@ -30,6 +31,30 @@ const TYPE_ICON_MAP: Record<string, string> = {
   FUN: 'emoji_events',
   CAMP: 'hiking',
 };
+
+// [2026-08-04] 공개 범위 — 감독/코치가 등록 시 직접 선택 (ClassForm SECTION 4.5 와 동일 SoT).
+//   SELECTED_TEAMS 는 노출 팀 선택 UI 가 이 폼에 없어 제외. 기본 TEAM_ONLY(비공개) = 기존 동작 유지.
+const TRAINING_VISIBILITY_OPTIONS: ReadonlyArray<{
+  value: ClassVisibility;
+  label: string;
+  hint: string;
+}> = [
+  {
+    value: 'PUBLIC',
+    label: MESSAGES.class.visibility.public,
+    hint: MESSAGES.class.visibility.publicHint,
+  },
+  {
+    value: 'PARENTS_ONLY',
+    label: MESSAGES.class.visibility.parentsOnly,
+    hint: MESSAGES.class.visibility.parentsOnlyHint,
+  },
+  {
+    value: 'TEAM_ONLY',
+    label: MESSAGES.class.visibility.teamOnly,
+    hint: MESSAGES.class.visibility.teamOnlyHint,
+  },
+];
 
 export default function CreateTrainingPage() {
   const { clubId: resolvedClubId } = useMyClubId();
@@ -74,6 +99,9 @@ export default function CreateTrainingPage() {
   const [startTimeStr, setStartTimeStr] = useState('18:00');
   const [endTimeStr, setEndTimeStr] = useState('20:00');
   const [scheduleDatesStr, setScheduleDatesStr] = useState('');
+  // 공개 범위 — 기본 비공개(TEAM_ONLY). 훈련은 내부 활동 성격이라 발견성 기본을 두지 않고,
+  //   감독/코치가 전체공개/학부모공개를 의식적으로 선택했을 때만 외부에 노출된다.
+  const [visibility, setVisibility] = useState<ClassVisibility>('TEAM_ONLY');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -134,6 +162,7 @@ export default function CreateTrainingPage() {
         startTime,
         endTime,
         scheduleDates: scheduleDates.length > 0 ? scheduleDates : undefined,
+        visibility,
       });
 
       if (response.success) {
@@ -149,7 +178,7 @@ export default function CreateTrainingPage() {
   }, [
     className, description, trainingType, instructorName, capacity,
     ageMin, ageMax, levelRequired, startDate, startTimeStr, endTimeStr,
-    scheduleDatesStr, clubId, navigate,
+    scheduleDatesStr, visibility, clubId, navigate,
   ]);
 
   return (
@@ -400,6 +429,66 @@ export default function CreateTrainingPage() {
             <Icon name="info" className="text-card-body shrink-0 mt-0.5" aria-hidden="true" />
             <span>쉼표로 구분하여 여러 날짜를 입력하면 일정이 한 번에 생성됩니다. (형식: YYYY-MM-DD)</span>
           </p>
+        </section>
+
+        {/* [2026-08-04] 공개 범위 — 수업 등록 폼(ClassForm SECTION 4.5)과 동일한 선택 경험.
+            훈련을 어디까지 보여줄지 감독/코치가 등록 시 직접 체크한다. */}
+        <section>
+          <label className={LABEL_BASE}>
+            {MESSAGES.class.visibility.sectionTitle}
+          </label>
+          <div
+            role="radiogroup"
+            aria-label={MESSAGES.class.visibility.sectionTitle}
+            className="space-y-2"
+          >
+            {TRAINING_VISIBILITY_OPTIONS.map((opt) => {
+              const selected = visibility === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  onClick={() => setVisibility(opt.value)}
+                  className={cn(
+                    'w-full flex items-start gap-3 p-3.5 rounded-w-md text-left transition-colors motion-reduce:transition-none active:brightness-95',
+                    selected
+                      ? 'bg-it-blue-500/5 border-2 border-it-blue-500'
+                      : 'bg-it-fill dark:bg-rink-900/50 border-[1.5px] border-it-line-strong dark:border-rink-700 hover:border-it-blue-500/30',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 transition-colors motion-reduce:transition-none',
+                      selected
+                        ? 'border-it-blue-500'
+                        : 'border-it-line-strong dark:border-rink-500',
+                    )}
+                  >
+                    {selected && (
+                      <span className="w-2.5 h-2.5 rounded-full bg-it-blue-500" />
+                    )}
+                  </span>
+                  <span className="min-w-0">
+                    <span
+                      className={cn(
+                        'block text-card-body font-bold',
+                        selected
+                          ? 'text-it-blue-500'
+                          : 'text-it-ink-600 dark:text-rink-100',
+                      )}
+                    >
+                      {opt.label}
+                    </span>
+                    <span className="block text-card-meta font-medium mt-0.5 text-it-ink-400 dark:text-rink-400">
+                      {opt.hint}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </section>
 
         {/* 하단 액션 (body flow 내부 — 고정 X) */}

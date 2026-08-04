@@ -30,6 +30,20 @@ export const TRAINING_TYPES = [
 
 export type TrainingTypeValue = (typeof TRAINING_TYPES)[number];
 
+/**
+ * [2026-08-04] 훈련 공개 범위 — Prisma ClassVisibility 의 부분집합.
+ *   SELECTED_TEAMS 는 노출 팀 선택 UI(ClassTeamVisibility)가 훈련 등록 폼에 없어 제외.
+ *   미전송 시 스키마 기본값 TEAM_ONLY(비공개 — 우리 팀에만) 유지.
+ */
+export const TRAINING_VISIBILITY_VALUES = [
+  "PUBLIC",
+  "PARENTS_ONLY",
+  "TEAM_ONLY",
+] as const;
+
+export type TrainingVisibilityValue =
+  (typeof TRAINING_VISIBILITY_VALUES)[number];
+
 export class CreateTrainingDto {
   @ApiProperty({
     example: "월요일 정규훈련",
@@ -70,6 +84,19 @@ export class CreateTrainingDto {
   @IsString({ message: "담당 코치 이름은 문자열이어야 합니다." })
   @MaxLength(30, { message: "코치 이름은 30자 이내여야 합니다." })
   instructorName!: string;
+
+  @ApiPropertyOptional({
+    description:
+      "공개 범위 — 감독/코치가 등록 시 선택. 미전송 시 TEAM_ONLY(비공개, 우리 팀에만).",
+    example: "TEAM_ONLY",
+    enum: TRAINING_VISIBILITY_VALUES,
+  })
+  @IsOptional()
+  @IsIn([...TRAINING_VISIBILITY_VALUES], {
+    message:
+      "유효한 공개 범위를 선택해주세요. (PUBLIC, PARENTS_ONLY, TEAM_ONLY)",
+  })
+  visibility?: TrainingVisibilityValue;
 
   @ApiProperty({
     example: 25,
@@ -115,7 +142,10 @@ export class CreateTrainingDto {
   })
   @IsNotEmpty({ message: "시작 시간은 필수입니다." })
   @IsDateString({}, { message: "올바른 날짜 형식을 입력해주세요." })
-  startTime!: Date;
+  // [2026-08-04 fix] Date → string. 전역 ValidationPipe 의 enableImplicitConversion 이
+  //   Date 타입 프로퍼티를 Date 인스턴스로 선변환해 @IsDateString(문자열 검증)이 항상
+  //   실패 → 훈련 등록이 무조건 400 이던 버그. 서비스가 new Date() 로 직접 변환한다.
+  startTime!: string;
 
   @ApiProperty({
     example: "2026-04-07T20:00:00Z",
@@ -123,7 +153,8 @@ export class CreateTrainingDto {
   })
   @IsNotEmpty({ message: "종료 시간은 필수입니다." })
   @IsDateString({}, { message: "올바른 날짜 형식을 입력해주세요." })
-  endTime!: Date;
+  // [2026-08-04 fix] Date → string — startTime 과 동일한 implicit conversion 버그 수정.
+  endTime!: string;
 
   @ApiPropertyOptional({
     example: ["2026-04-07", "2026-04-14", "2026-04-21"],
