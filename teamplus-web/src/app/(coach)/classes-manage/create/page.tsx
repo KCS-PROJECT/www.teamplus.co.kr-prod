@@ -8,6 +8,8 @@ import { PageAppBar } from '@/components/layout/PageAppBar';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { usePageReady } from '@/hooks/usePageReady';
 import { useClassForm, ClassFormData, localTodayISO } from '@/hooks/useClassForm';
+import { isClassVisibility } from '@/lib/class-visibility';
+import { districtsOf, isRegion } from '@/lib/regions';
 import { useAuth } from '@/contexts/AuthContext';
 import { useMyAcademies } from '@/hooks/useAcademy';
 import { NavLink, useNavigation } from '@/components/ui/NavLink';
@@ -479,7 +481,19 @@ function ClassCreatePageInner() {
               ? 'BOTH'
               : 'PREPAID') as 'PREPAID' | 'POSTPAID' | 'BOTH',
           category: (d.category ?? '') as string,
-          // [2026-05-15] 오픈클래스 노출 팀 복원 — getClass 응답의 visibleTeams 매핑.
+          // [2026-08-04] 공개 범위 복원 — 응답값이 유효한 enum 일 때만 반영.
+          //   구 데이터/비정상 값이면 폼 기본값(학부모공개)이 아니라 비공개로 폴백해
+          //   수정 저장 시 의도치 않게 노출 범위가 넓어지는 것을 막는다.
+          visibility: isClassVisibility(d.visibility) ? d.visibility : 'TEAM_ONLY',
+          // [2026-08-04] 수업 지역 복원 — 시/도가 유효할 때만 시군구도 함께 살린다.
+          //   시/도가 깨진 값이면 시군구만 남아 "미상 지역 + 강남구" 가 되므로 둘 다 비운다.
+          regionCity: isRegion(d.regionCity) ? d.regionCity : '',
+          regionDistrict: isRegion(d.regionCity)
+            ? (districtsOf(d.regionCity).includes(String(d.regionDistrict ?? ''))
+                ? String(d.regionDistrict)
+                : '')
+            : '',
+          // [2026-05-15] 노출 팀 복원 — getClass 응답의 visibleTeams 매핑.
           selectedVisibleTeams: Array.isArray(d.visibleTeams)
             ? (d.visibleTeams as Array<{ id: string; name: string; teamCode?: string | null }>).map(
                 (t) => ({ id: t.id, name: t.name, teamCode: t.teamCode ?? null }),

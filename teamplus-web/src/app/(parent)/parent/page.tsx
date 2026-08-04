@@ -597,7 +597,9 @@ export default function ParentDashboardPage() {
 
         {/* ② 수업 목록 — 팀 등록 수업 상위 5건 요약 + 전체보기.
               팀 전체 카탈로그라 자녀 칩 필터와 무관 → 칩보다 위에 배치. */}
-        <TeamClassesSummary selectedChildId={selectedChildId} classLimit={7} tournamentLimit={3} onReady={setSummaryReady} iceTheme />
+        {/* [2026-08-04 사용자 지시] 홈 수업 목록 = 내가 등록했거나 신청/요청한 수업·대회만.
+            팀 카탈로그 전체 탐색은 '전체보기'(→ /classes) 와 빈 상태 CTA 가 담당한다. */}
+        <TeamClassesSummary selectedChildId={selectedChildId} classLimit={7} tournamentLimit={3} onReady={setSummaryReady} myOnly iceTheme />
 
         {/* (자녀 전환은 상단 자녀 스트립 [선택] 버튼 → ChildPickerSheet 로 이동 — 2026-07-06) */}
 

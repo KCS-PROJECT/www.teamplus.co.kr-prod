@@ -9,6 +9,10 @@ import { MESSAGES } from '@/lib/messages';
 // sortDaySchedules SoT — class-categories 의 제네릭 구현을 단일 출처로 사용.
 //   ClassForm.tsx 등 기존 import 경로 호환을 위해 아래에서 re-export 한다.
 import { sortDaySchedules } from '@/lib/class-categories';
+import {
+  DEFAULT_CLASS_VISIBILITY,
+  type ClassVisibility,
+} from '@/lib/class-visibility';
 
 // ─── 완료 페이지 데이터 전달 (모듈 스코프) ──────────
 export interface ClassCompletePayload {
@@ -128,9 +132,17 @@ export interface ClassFormData {
   category: string;
   // 2026-05-12: 정규 수업 등록과 동시에 일정 자동 일괄 생성 (기본 ON).
   autoGenerateSchedules: boolean;
-  // 2026-05-15: 오픈클래스(academy 컨텍스트) 전용 — 이 수업을 노출할 팀 목록.
+  // 2026-08-04: 공개 범위 — 전국 수업 탐색(/classes-explore) 노출 게이트.
+  //   PUBLIC(전체공개) | PARENTS_ONLY(학부모공개) | SELECTED_TEAMS(지정 팀에만) | TEAM_ONLY(비공개)
+  visibility: ClassVisibility;
+  // 2026-08-04: 수업 지역 — 감독/코치가 등록 시 직접 선택하는 시/도 + 시군구.
+  //   목록·탐색 카드에 "서울 강남구" 로 노출돼 타지역 학부모의 오등록을 막는다.
+  //   값 SoT: src/lib/regions.ts REGIONS / CITY_DISTRICTS (백엔드 상수와 동기화 필수)
+  regionCity: string;
+  regionDistrict: string;
+  // 2026-05-15 → 2026-08-04: 이 수업을 노출할 팀 목록.
+  //   visibility='SELECTED_TEAMS' 일 때만 유효하며, 그 외 값에서는 payload 미전송.
   //   여기 선택된 팀 소속자(감독·코치·학부모·학생)에게만 수업목록·캘린더에 노출.
-  //   team 컨텍스트에서는 사용 안 함 (payload 미전송).
   selectedVisibleTeams: TeamOption[];
   // PACKAGE_WEEKS_SPEC §3 옵션 A — 정기 패키지 주 수 명시 입력.
   //   packageMode='weeks': packageWeeks 입력값, endDate 자동 산출 (startDate + weeks*7 - 1일)
@@ -212,6 +224,13 @@ export const DEFAULT_FORM_DATA: ClassFormData = {
   billingMode: 'BOTH',
   category: '',
   autoGenerateSchedules: true,
+  // [2026-08-04] 폼 기본값은 학부모공개 — DB 기본값(TEAM_ONLY)과 의도적으로 다르다.
+  //   근거: src/lib/class-visibility.ts DEFAULT_CLASS_VISIBILITY 주석
+  visibility: DEFAULT_CLASS_VISIBILITY,
+  // 지역은 기본값을 두지 않는다 — 임의 기본값("서울")이 그대로 저장되면
+  //   오히려 잘못된 지역을 학부모에게 보여주게 된다. 감독이 반드시 고르게 한다.
+  regionCity: '',
+  regionDistrict: '',
   selectedVisibleTeams: [],
   packageWeeks: '',
   packageMode: 'weeks',
@@ -239,6 +258,11 @@ export interface FormErrors {
   packageWeeks?: string;
   // [Phase B-6] 선불·선택형 정액 패키지 ≥1 강제 — 미충족 시 등록 차단.
   packages?: string;
+  // [2026-08-04] 공개범위 — SELECTED_TEAMS 인데 노출 팀 미선택 시.
+  visibility?: string;
+  // [2026-08-04] 수업 지역 — 시/도·시군구 미선택 시.
+  regionCity?: string;
+  regionDistrict?: string;
 }
 
 /** 로컬 기준 오늘(YYYY-MM-DD) — 지난 회차 판정 경계(MultiDatePickerModal 과 동일 기준).
@@ -312,6 +336,25 @@ export function validateClassForm(
     }
   }
   // [2026-06-04] 강사명 입력란 제거 — 검증 스킵 (미입력 시 빈 값으로 저장).
+
+  // [2026-08-04] 공개범위 — '지정 팀에만' 은 팀 1개 이상 필수.
+  //   빈 채로 저장하면 아무에게도 보이지 않는 수업이 되어 원인 파악이 어렵다.
+  //   백엔드도 동일 검증(assertVisibilitySelection)을 하지만, 여기서 먼저 막아 왕복을 줄인다.
+  if (
+    data.visibility === 'SELECTED_TEAMS' &&
+    data.selectedVisibleTeams.length === 0
+  ) {
+    errors.visibility = MESSAGES.class.visibility.selectTeamsRequired;
+  }
+
+  // [2026-08-04] 수업 지역 — 시/도·시군구 모두 필수.
+  //   "서울 수업을 부산 학부모가 신청" 사고를 막는 것이 이 필드의 목적이라
+  //   시/도만 고르고 넘어가면 목적을 절반만 달성한다. 둘 다 강제한다.
+  if (!data.regionCity) {
+    errors.regionCity = MESSAGES.class.region.cityRequired;
+  } else if (!data.regionDistrict) {
+    errors.regionDistrict = MESSAGES.class.region.districtRequired;
+  }
 
   if (data.ageMin !== '' && data.ageMax !== '' && Number(data.ageMax) < Number(data.ageMin)) {
     errors.ageMax = MESSAGES.class.ageMaxInvalid;
@@ -975,11 +1018,18 @@ export function useClassForm({
         category: data.category || undefined,
         // 정규 수업 일정 자동 일괄 생성 폐기 — startDate/endDate/autoGenerateSchedules 미전송.
         //   일정은 등록 후 일정 관리 화면(미니달력)에서 누적 추가한다. (오픈클래스는 별도 경로)
-        // 2026-05-15: 오픈클래스 노출 팀 — academy 컨텍스트에서만 전송.
-        //   여기 선택된 팀 소속자에게만 이 오픈클래스가 노출된다 (ClassTeamVisibility).
-        visibleTeamIds: isAcademy
-          ? data.selectedVisibleTeams.map((t) => t.id)
-          : undefined,
+        // [2026-08-04] 공개 범위 — 팀 수업·오픈클래스 공통 전송.
+        visibility: data.visibility,
+        // [2026-08-04] 수업 지역 — 빈 문자열은 미전송(undefined)으로 보내 기존 값을 지우지 않는다.
+        //   백엔드는 조합 정합(예: "부산 강남구")을 assertClassRegion 으로 다시 검증한다.
+        regionCity: data.regionCity || undefined,
+        regionDistrict: data.regionDistrict || undefined,
+        // 2026-05-15 → 2026-08-04: 노출 팀 — visibility='SELECTED_TEAMS' 일 때만 전송.
+        //   그 외 값에서는 undefined(변경 없음) 로 보내고, 백엔드가 기존 지정을 정리한다.
+        visibleTeamIds:
+          data.visibility === 'SELECTED_TEAMS'
+            ? data.selectedVisibleTeams.map((t) => t.id)
+            : undefined,
       };
 
       let res;

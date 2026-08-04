@@ -23,7 +23,10 @@ import {
 } from '@/services/tournament.service';
 import { cn } from '@/lib/utils';
 import { MESSAGES } from '@/lib/messages';
-import { isActiveEnrollment } from '@/lib/enrollment-visibility';
+import {
+  isActiveEnrollment,
+  isMyEnrollment,
+} from '@/lib/enrollment-visibility';
 import {
   getTrainingTypeBadgeClass,
   TRAINING_TYPE_LABEL,
@@ -58,6 +61,8 @@ type SummaryItem =
       classDays?: string[];
       /** [2026-06-15] 등록완료(결제) 수업 — 정렬 시 위로. */
       enrolled?: boolean;
+      /** [2026-08-04] 신청·요청 대기(결제 전) — myOnly 목록에서 '신청중' 칩으로 구분. */
+      pending?: boolean;
       sortKey: number;
     }
   | {
@@ -174,6 +179,16 @@ interface Props {
    *   true 시 카드 shadow 제거 + flat it-surface/it-line, 행 hover/구분선 it 톤 적용.
    */
   iceTheme?: boolean;
+  /**
+   * [2026-08-04 사용자 지시] '내 것만' 모드 — 등록했거나 신청/요청한 수업·대회만 노출.
+   *
+   * 기본 false 는 기존 동작(소속 팀 카탈로그 전체)이라 감독/코치 대시보드는 영향 0.
+   * 학부모 홈에서 true 로 켜면 메인 화면이 "내 수업 현황"이 되고, 새 수업 발견은
+   * '전체보기'(→ /classes 카탈로그)와 빈 상태 CTA 가 담당한다.
+   *
+   * ⚠️ showEnrollment=false 면 등록 정보를 아예 조회하지 않으므로 이 옵션은 무시된다.
+   */
+  myOnly?: boolean;
 }
 
 export function TeamClassesSummary({
@@ -188,6 +203,7 @@ export function TeamClassesSummary({
   classesCategory,
   showTournament = true,
   iceTheme = false,
+  myOnly = false,
 }: Props) {
   const { navigate } = useNavigation();
   const [items, setItems] = useState<SummaryItem[]>([]);
@@ -232,28 +248,37 @@ export function TeamClassesSummary({
 
       // [2026-06-15] 등록완료(결제) classId 집합 — 정렬 시 상단 우선.
       const enrolledIds = new Set<string>();
+      // [2026-08-04] 신청·요청 대기(결제 전) classId 집합 — myOnly 목록 포함 + '신청중' 칩.
+      const pendingIds = new Set<string>();
       if (enrollRes && enrollRes.success && enrollRes.data) {
         const arr = Array.isArray(enrollRes.data)
           ? enrollRes.data
           : (enrollRes.data as { data?: unknown[] }).data;
         (Array.isArray(arr) ? arr : []).forEach((e) => {
           const row = e as EnrollRow;
-          // 등록완료 판정 — 선불 paid / 후불(POSTPAID·BOTH 후불상품) approved (isActiveEnrollment SoT).
-          if (
-            !isActiveEnrollment(
-              row.status,
-              row.class?.billingMode,
-              row.product?.billingTiming,
-              row.hasValidPass,
-            )
-          )
-            return;
+          // 취소·거절 등 종결 상태는 '내 것'이 아니다 — 여기서 먼저 걸러낸다.
+          if (!isMyEnrollment(row.status)) return;
           // [2026-06-17] 선택 자녀 기준 필터 — /enrollments 는 부모의 모든 자녀 등록을
           //   반환하므로, 형제 등록이 선택 자녀 카드에 '등록완료'로 잘못 표시되던 버그 수정.
           const cid = row.childId ?? row.child?.id;
           if (selectedChildId && cid && cid !== selectedChildId) return;
           const id = row.classId ?? row.class?.id;
-          if (id) enrolledIds.add(id);
+          if (!id) return;
+          // 등록완료 판정 — 선불 paid / 후불(POSTPAID·BOTH 후불상품) approved (isActiveEnrollment SoT).
+          //   그 외(pending·pending_approval·선불 approved)는 '신청중'.
+          if (
+            isActiveEnrollment(
+              row.status,
+              row.class?.billingMode,
+              row.product?.billingTiming,
+              row.hasValidPass,
+            )
+          ) {
+            enrolledIds.add(id);
+            pendingIds.delete(id);
+          } else if (!enrolledIds.has(id)) {
+            pendingIds.add(id);
+          }
         });
       }
 
@@ -265,6 +290,10 @@ export function TeamClassesSummary({
       )
         // 종료(ENDED) 수업 제외 — 명시 종료·spot 자동종료. 대기(PENDING_SCHEDULE)는 유지.
         .filter((c) => c.lifecycleStatus !== 'ENDED')
+        // [2026-08-04] myOnly — 등록했거나 신청/요청한 수업만. 카탈로그(미신청)는 제외.
+        .filter(
+          (c) => !myOnly || enrolledIds.has(c.id) || pendingIds.has(c.id),
+        )
         .map((c) => ({
         kind: 'class',
         id: c.id,
@@ -273,6 +302,7 @@ export function TeamClassesSummary({
         instructorName: c.instructorName,
         classDays: c.classDays,
         enrolled: enrolledIds.has(c.id),
+        pending: pendingIds.has(c.id),
         sortKey: toSortMs(c.startTime),
       }));
 
@@ -287,6 +317,14 @@ export function TeamClassesSummary({
         .filter((t) => {
           const startKey = toDbDateKey(t.startDate);
           return startKey === null || startKey >= todayKey;
+        })
+        // [2026-08-04] myOnly — 참가 신청/확정한 대회만. 판정 기준은 아래 enrolled 와 동일.
+        .filter((t) => {
+          if (!myOnly) return true;
+          const ids = t.enrolledChildIds ?? t.paidChildIds ?? [];
+          return selectedChildId
+            ? ids.includes(selectedChildId)
+            : ids.length > 0;
         })
         .map((t) => ({
           kind: 'tournament',
@@ -305,9 +343,11 @@ export function TeamClassesSummary({
 
       // 각 그룹 내부 정렬 — 등록완료(결제) 항목을 위로, 그 다음 임박순(시작일시 오름차순).
       const byPriority = (a: SummaryItem, b: SummaryItem) => {
-        const ae = a.enrolled ? 0 : 1;
-        const be = b.enrolled ? 0 : 1;
-        if (ae !== be) return ae - be;
+        // 등록완료(0) > 신청중(1) > 미신청(2) 순, 같은 그룹 안에서는 임박순.
+        const rank = (i: SummaryItem) =>
+          i.enrolled ? 0 : i.kind === 'class' && i.pending ? 1 : 2;
+        const diff = rank(a) - rank(b);
+        if (diff !== 0) return diff;
         return a.sortKey - b.sortKey;
       };
       // 유형별 최대 노출 수 — 훈련(수업)/대회를 각각 캡한 뒤 합쳐 다시 우선순위 정렬.
@@ -326,7 +366,7 @@ export function TeamClassesSummary({
     return () => {
       cancelled = true;
     };
-  }, [limit, classLimit, tournamentLimit, selectedChildId, classesCategory, classesEndpoint]);
+  }, [limit, classLimit, tournamentLimit, selectedChildId, classesCategory, classesEndpoint, myOnly]);
 
   // 첫 로딩 완료 시 onReady(true) 1회 발화 — 에러/빈 응답에도 보장하여 로더 영구표시 방지.
   useEffect(() => {
@@ -366,8 +406,27 @@ export function TeamClassesSummary({
                 />
               </div>
               <p className="text-card-title font-semibold text-wtext-2 dark:text-rink-100">
-                {MESSAGES.emptyByPersona.parent('수업')}
+                {myOnly
+                  ? MESSAGES.dashboard.myClasses.emptyTitle
+                  : MESSAGES.emptyByPersona.parent('수업')}
               </p>
+              {/* [2026-08-04] myOnly 는 '내 것만' 보여주므로 비어 있으면 막다른 화면이 된다.
+                  카탈로그(전체보기 대상)로 이어주는 진입점을 함께 노출한다. */}
+              {myOnly && (
+                <>
+                  <p className="text-card-meta font-medium text-wtext-3 dark:text-rink-300">
+                    {MESSAGES.dashboard.myClasses.emptyDescription}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => navigate(targetPath)}
+                    className="mt-2 inline-flex items-center gap-1.5 h-10 px-4 rounded-w-pill text-card-body font-bold bg-it-blue-500 text-white transition-colors motion-reduce:transition-none active:brightness-95"
+                  >
+                    <Icon name="search" className="text-[18px]" aria-hidden="true" />
+                    {MESSAGES.dashboard.myClasses.emptyCta}
+                  </button>
+                </>
+              )}
             </div>
           ) : (
             <ul className={cn(
@@ -427,11 +486,17 @@ export function TeamClassesSummary({
                           >
                             {item.title}
                           </p>
-                          {item.enrolled && (
+                          {item.enrolled ? (
                             <span className="shrink-0 rounded-w-pill bg-mint-500/15 px-1.5 py-0.5 text-card-meta font-bold text-mint-600 dark:text-mint-500">
                               등록완료
                             </span>
-                          )}
+                          ) : item.kind === 'class' && item.pending ? (
+                            /* [2026-08-04] 신청·요청 대기 — 결제/승인 전이라 '등록완료'와 구분한다.
+                               색은 상태 칩 관례(amber soft)를 따른다. */
+                            <span className="shrink-0 rounded-w-pill bg-amber-50 px-1.5 py-0.5 text-card-meta font-bold text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
+                              {MESSAGES.dashboard.myClasses.pendingChip}
+                            </span>
+                          ) : null}
                         </div>
                       </div>
                       <Icon

@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useMemo, useEffect, useRef, useId } from 'react';
+import { useState, useMemo, useEffect, useRef, useId, Suspense } from 'react';
 import {
   uploadFile,
   UploadValidationError,
   UploadNetworkError,
 } from '@/services/upload.service';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
 import { Icon } from '@/components/ui/Icon';
@@ -18,6 +18,7 @@ import { useToast } from '@/components/ui/Toast';
 import { usePageReady } from '@/hooks/usePageReady';
 import { useChildren, ChildApiItem } from '@/hooks/useChildren';
 import { TeamPickerSheet, type TeamPickerSelection } from '@/components/team/TeamPickerSheet';
+import { getTeam } from '@/services/team.service';
 import { api } from '@/services/api-client';
 import { getServerToday } from '@/services/server-time';
 import { MESSAGES } from '@/lib/messages';
@@ -62,8 +63,12 @@ interface FormErrors {
 
 // ========== 메인 컴포넌트 ==========
 
-export default function EditChildPage() {
+function EditChildPageInner() {
   const params = useParams();
+  const searchParams = useSearchParams();
+  // [2026-08-04] 전국 수업 찾기 → [팀 가입 신청하기] 진입 시 지정되는 팀.
+  //   소속 팀이 없는 자녀에 한해 선택 상태로 프리필된다(아래 loadChild 참조).
+  const prefillTeamId = searchParams.get('teamId');
   const childId = params?.childId as string;
   // [appbar-harness-v3 / 2026-05-13] 이중 헤더 방지 — Web `<PageAppBar />` 단독 렌더.
   // useDetailUI 는 showAppBar:true 를 호출하므로 Flutter Native AppBar 가 Web 헤더를 덮어
@@ -219,6 +224,19 @@ export default function EditChildPage() {
           });
           setInitialTeamId(null);
           setTeamPending(false);
+        } else if (prefillTeamId) {
+          // [2026-08-04] 소속 팀이 없고 `?teamId=` 로 진입한 경우 — 전국 수업 찾기에서
+          //   정규수업을 보고 [팀 가입 신청하기] 를 누른 경로다. 해당 팀을 미리 선택해
+          //   저장 한 번으로 가입 신청이 되게 한다.
+          //   ⚠️ 이미 소속/신청 중인 팀이 있으면 이 분기를 타지 않는다 — 기존 소속을 덮어쓰지 않는다.
+          const teamRes = await getTeam(prefillTeamId);
+          setSelectedTeam(
+            teamRes.success && teamRes.data?.name
+              ? { id: teamRes.data.id, name: teamRes.data.name }
+              : null,
+          );
+          setInitialTeamId(null);
+          setTeamPending(false);
         } else {
           setSelectedTeam(null);
           setInitialTeamId(null);
@@ -233,7 +251,9 @@ export default function EditChildPage() {
     if (childId) {
       loadChild();
     }
-  }, [childId, getChild]);
+    // prefillTeamId 는 진입 시 고정(쿼리스트링)이라 재조회를 유발하지 않지만,
+    // loadChild 내부에서 참조하므로 의존성에 포함해 stale closure 를 방지한다.
+  }, [childId, getChild, prefillTeamId]);
 
   // 필드 업데이트
   const updateField = (field: keyof FormData, value: string) => {
@@ -763,5 +783,17 @@ export default function EditChildPage() {
         }}
       />
     </MobileContainer>
+  );
+}
+
+/**
+ * [2026-08-04] useSearchParams(`?teamId=` 프리필) 사용에 따른 Suspense 경계.
+ *   Next.js App Router 는 useSearchParams 를 쓰는 클라이언트 트리를 Suspense 로 감싸야 한다.
+ */
+export default function EditChildPage() {
+  return (
+    <Suspense fallback={null}>
+      <EditChildPageInner />
+    </Suspense>
   );
 }

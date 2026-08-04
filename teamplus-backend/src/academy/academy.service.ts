@@ -28,6 +28,7 @@ import { kstTodayUtcMidnight } from "@/common/utils/kst-date.util";
 import { deriveClassLifecycle } from "@/common/utils/class-lifecycle.util";
 import { filterSellableProducts } from "@/common/billing/sales-gate.util";
 import { UploadCleanupService } from "@/common/upload-cleanup.service";
+import { formatRegionLabel } from "@/classes/utils/class-region.util";
 
 @Injectable()
 export class AcademyService {
@@ -620,7 +621,10 @@ export class AcademyService {
         coach: {
           select: { id: true, firstName: true, lastName: true, userType: true },
         },
-        venue: { select: { id: true, name: true, address: true } },
+        venue: { select: { id: true, name: true, address: true, city: true } },
+        // [2026-08-04] 수업 지역 — 오픈클래스 목록에도 "서울 강남구" 노출.
+        regionCity: true,
+        regionDistrict: true,
         products: {
           select: {
             id: true,
@@ -681,9 +685,7 @@ export class AcademyService {
         c.products ?? [],
         c.salesOpenMonth,
       );
-      const singleProduct = sellable.find(
-        (p) => p.feeType === "PER_SESSION",
-      );
+      const singleProduct = sellable.find((p) => p.feeType === "PER_SESSION");
       const monthlyProduct = sellable.find(
         (p) => p.feeType === "MONTHLY_FIXED",
       );
@@ -705,6 +707,11 @@ export class AcademyService {
         endTime: c.endTime,
         location: c.venue?.name ?? "",
         venueAddress: c.venue?.address ?? "",
+        // [2026-08-04] 지역 라벨 — 감독 선택값 우선, 없으면 장소 시/도 폴백(시군구 없음).
+        regionLabel:
+          formatRegionLabel(c.regionCity, c.regionDistrict) ??
+          c.venue?.city ??
+          null,
         studentCount: c._count.registrations,
         maxStudents: c.capacity,
         level: c.levelRequired,
@@ -785,7 +792,8 @@ export class AcademyService {
           ? Math.max(1, Math.round(monthlyProduct.durationDays / 7))
           : null,
         packageTotalSessions:
-          monthlyProduct?.sessionsPerMonth && monthlyProduct.sessionsPerMonth > 0
+          monthlyProduct?.sessionsPerMonth &&
+          monthlyProduct.sessionsPerMonth > 0
             ? monthlyProduct.sessionsPerMonth
             : null,
         packageSessionsPerWeek: monthlyProduct?.sessionsPerWeek ?? null,
@@ -1205,9 +1213,7 @@ export class AcademyService {
     const me = end.match(re);
     if (!ms || !me) return 0;
     let diff =
-      Number(me[1]) * 60 +
-      Number(me[2]) -
-      (Number(ms[1]) * 60 + Number(ms[2]));
+      Number(me[1]) * 60 + Number(me[2]) - (Number(ms[1]) * 60 + Number(ms[2]));
     if (diff < 0) diff += 24 * 60;
     return diff;
   }

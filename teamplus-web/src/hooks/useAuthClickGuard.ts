@@ -20,6 +20,9 @@ const PUBLIC_UI_PATHS: readonly string[] = [
   '/faq',
   '/terms',
   '/academies',
+  // [추가 2026-08-04] 전국 수업 찾기 — 팀 미가입 학부모의 발견 경로.
+  //   비로그인 진입을 허용해야 수업을 보고 가입 여부를 판단할 수 있다.
+  '/classes-explore',
 ];
 
 export function isPublicUIPath(href: string): boolean {

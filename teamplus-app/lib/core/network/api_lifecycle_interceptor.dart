@@ -38,6 +38,11 @@ const List<Pattern> kPublicApiPatterns = <Pattern>[
   '/app/premium-events/featured',
   '/main-popups',
   '/academies/public/',
+  // [추가 2026-08-04] 전국 수업 탐색 — 서버 @Public + web PUBLIC_API_PATTERNS 동기화.
+  //   팀 미가입 학부모가 WebView 에서 수업을 발견하는 경로. 누락 시 무토큰 요청이
+  //   401 차단되어 목록이 빈 상태로 표시된다.
+  //   ⚠️ '/classes' 로 줄이지 말 것 — contains 부분일치라 인증 필요한 수업 API 까지 열린다.
+  '/classes/explore',
   // [추가 2026-05-28] 회원가입(비로그인) 화면 호출 — 서버 @Public + web PUBLIC_API_PATTERNS 동기화.
   //   감독 가입: 훈련 링크장 선택(GET /venues). 학부모/코치 가입: 팀 선택(GET /teams/public).
   //   누락 시 AuthGuardInterceptor 가 무토큰 요청을 401 차단 → WebView 에서 목록이 빈 상태로 표시되는 회귀.

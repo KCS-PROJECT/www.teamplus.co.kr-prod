@@ -6,7 +6,8 @@
 //  자녀 등록 시 팀 코드 입력 불필요 — 학부모 TeamMember(PARENT) 팀 자동 매핑.
 //  팀 코드 필드는 readonly 학부모 팀명 표시로 변경 + onBlur 실시간 검증 로직 제거.
 
-import { useState, useMemo, useId, useEffect, useRef, type ReactNode } from 'react';
+import { useState, useMemo, useId, useEffect, useRef, Suspense, type ReactNode } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { DatePickerModal, formatDateLabel } from '@/components/ui/DatePickerModal';
 import {
@@ -21,6 +22,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useChildren } from '@/hooks/useChildren';
 import { getServerToday } from '@/services/server-time';
 import { TeamPickerSheet, type TeamPickerSelection } from '@/components/team/TeamPickerSheet';
+import { getTeam } from '@/services/team.service';
 import { MESSAGES } from '@/lib/messages';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { useKeyboardAvoidance } from '@/hooks/useKeyboardAvoidance';
@@ -72,9 +74,10 @@ void CHILD_TEEN_BOUNDARY;
 
 // ========== 메인 컴포넌트 ==========
 
-export default function AddChildPage() {
+function AddChildPageInner() {
   const { back, navigate } = useNavigation();
   const { toast } = useToast();
+  const searchParams = useSearchParams();
   const birthDateId = useId();
   // [2차 사이클 / 2026-05-13] 이중 헤더 방지 — Web `<PageAppBar />` 단독 렌더.
   useNativeUI({ showStatusBar: true, showAppBar: false, showBottomNav: false });
@@ -105,6 +108,24 @@ export default function AddChildPage() {
   //  - 팀 미선택 시 팀 없이 등록되며, 나중에 가입할 수 있다.
   const [selectedTeam, setSelectedTeam] = useState<{ id: string; name: string } | null>(null);
   const [isTeamPickerOpen, setIsTeamPickerOpen] = useState(false);
+
+  // [2026-08-04] `?teamId=` 프리필 — 전국 수업 찾기에서 정규수업을 보고 넘어온 경로.
+  //   팀 가입 신청은 별도 API 가 없고 자녀 등록 시 teamId 지정이 곧 신청이므로,
+  //   수업 상세의 [팀 가입 신청하기] 가 이 화면으로 팀을 지정해 보낸다.
+  //   조회 실패(비공개·삭제 등)는 조용히 무시 — 사용자가 직접 선택하면 된다.
+  const prefillTeamId = searchParams.get('teamId');
+  useEffect(() => {
+    if (!prefillTeamId) return;
+    let mounted = true;
+    (async () => {
+      const res = await getTeam(prefillTeamId);
+      if (!mounted || !res.success || !res.data?.name) return;
+      setSelectedTeam({ id: res.data.id, name: res.data.name });
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [prefillTeamId]);
 
   usePageReady(true);
 
@@ -859,5 +880,18 @@ function RefCheckbox({
         )}
       </span>
     </button>
+  );
+}
+
+/**
+ * [2026-08-04] useSearchParams(`?teamId=` 프리필) 사용에 따른 Suspense 경계.
+ *   Next.js App Router 는 useSearchParams 를 쓰는 클라이언트 트리를 Suspense 로 감싸지 않으면
+ *   빌드 시 CSR 바이패스 경고/에러를 낸다. classes-manage/create 와 동일 패턴.
+ */
+export default function AddChildPage() {
+  return (
+    <Suspense fallback={null}>
+      <AddChildPageInner />
+    </Suspense>
   );
 }

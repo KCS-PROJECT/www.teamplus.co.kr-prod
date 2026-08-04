@@ -48,6 +48,9 @@ interface ClassItem {
   firstScheduleDate?: string | null;
   lastScheduleDate?: string | null;
   classDays?: string[];
+  /** [2026-08-04] 수업 지역 라벨 "서울 강남구" — 등록 시 선택값(regionCity+regionDistrict) 조합.
+   *  미입력 구 수업은 장소/팀 홈링크장 시/도로 폴백돼 시/도만 온다. */
+  regionLabel?: string | null;
   location: string;
   studentCount: number;
   maxStudents: number;
@@ -477,6 +480,15 @@ function ClassCard({ item }: { item: ClassItem }) {
           lastScheduleDate: item.lastScheduleDate,
         }) ?? MESSAGES.class.noUpcomingSchedule}
       </ClassCardInfoRow>
+      {/* [2026-08-04] 수업 지역 — 감독 본인이 등록 시 고른 값. 목록에서 바로 확인·정정할 수 있게
+          학부모 화면과 같은 자리에 노출한다. 미입력(구 수업)이면 행 자체를 숨긴다. */}
+      {item.regionLabel && (
+        <ClassCardInfoRow icon="place">
+          <span className="font-bold text-it-ink-700 dark:text-white">
+            {item.regionLabel}
+          </span>
+        </ClassCardInfoRow>
+      )}
       {/* [2026-06-19] 대상 출생연도 — 입력 없으면 '전체'(전체 대상)로 표기. */}
       <ClassCardInfoRow icon="cake">
         {`대상: ${formatBirthYears(item.targetBirthYears) ?? '전체'}`}
@@ -706,6 +718,8 @@ export default function ClassManagePage() {
             scheduleCount: (c.scheduleCount as number | undefined) ?? null,
             scheduledDates: (c.scheduledDates as string[] | undefined) ?? [],
             classDays: normalizedDays,
+            // [2026-08-04] 수업 지역 라벨 — 백엔드 getAllClasses 응답의 조합 문자열.
+            regionLabel: (c.regionLabel as string | null | undefined) ?? null,
             location:
               (c.location as string) ?? (c.venueName as string) ?? ((c.venue as { name?: string })?.name ?? ''),
             studentCount: (c.studentCount as number) ?? 0,
@@ -826,6 +840,8 @@ export default function ClassManagePage() {
         scheduleCount: (c.scheduleCount as number | undefined) ?? null,
         scheduledDates: (c.scheduledDates as string[] | undefined) ?? [],
         classDays: normalizedDays,
+        // [2026-08-04] 수업 지역 라벨 — 백엔드 getAllClasses 응답의 조합 문자열.
+        regionLabel: c.regionLabel ?? null,
         location: c.location ?? c.venueName ?? c.venue?.name ?? '',
         studentCount: c.studentCount ?? 0,
         maxStudents: c.maxStudents ?? c.capacity ?? 0,

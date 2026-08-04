@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<style>
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body { width:1080px; height:1350px; overflow:hidden; }
+body {
+  font-family:'Pretendard',-apple-system,BlinkMacSystemFont,sans-serif;
+  background:#141826; color:#fff;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  position:relative;
+}
+.wordmark { position:absolute; top:88px; left:0; right:0; text-align:center;
+  font-size:30px; font-weight:700; letter-spacing:8px; color:#8fa3ff; }
+.logo { width:380px; height:380px; margin-bottom:72px; }
+h1 { font-size:88px; font-weight:800; line-height:1.28; text-align:center; letter-spacing:-2px; }
+h1 .accent { color:#7d9bff; }
+.sub { margin-top:44px; font-size:42px; font-weight:500; color:#aab4cc; letter-spacing:2px; }
+.sub b { color:#fff; font-weight:700; }
+.swipe { position:absolute; bottom:96px; left:0; right:0; text-align:center;
+  font-size:32px; font-weight:600; color:#5b6a8f; letter-spacing:1px; }
+.dots { position:absolute; bottom:170px; left:0; right:0; display:flex; gap:16px; justify-content:center; }
+.dot { width:14px; height:14px; border-radius:50%; background:#3a4562; }
+.dot.on { background:#2f5fff; width:40px; border-radius:8px; }
+</style>
+</head>
+<body>
+  <div class="wordmark">TEAMPLUS</div>
+  <img class="logo" src="logo.png" alt="">
+  <h1>유소년 아이스하키 클럽,<br><span class="accent">앱 하나로.</span></h1>
+  <div class="sub"><b>일정</b> · <b>출석</b> · <b>회비</b> — 팀플러스</div>
+  <div class="dots"><div class="dot on"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+  <div class="swipe">밀어서 보기 →</div>
+</body>
+</html>

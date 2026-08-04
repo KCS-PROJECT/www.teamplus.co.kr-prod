@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { Prisma } from "@prisma/client";
+import { ClassVisibility, Prisma } from "@prisma/client";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
 import { CreditDomainService } from "@/credits/credit-domain.service";
@@ -59,6 +59,12 @@ import {
   acquireClassPostpaidLockIfNeeded,
   shouldUsePostpaidLock,
 } from "./utils/class-locks.util";
+import { assertVisibilitySelection } from "./utils/class-visibility.util";
+import {
+  assertClassRegion,
+  formatRegionLabel,
+  mergeClassRegion,
+} from "./utils/class-region.util";
 import {
   assertPostpaidUnitPriceMutable,
   assertScheduleMonthNotSettled,
@@ -178,21 +184,48 @@ function buildClassProducts(
 // ─── ClassDaySchedule 헬퍼 ──────────────────────────────────────────────────
 
 /** buildDayTimeMap 전용 최소 입력 타입 — venueId 없는 plain 호출(bulk 경로)도 수용. */
-type DayTimeInput = { dayOfWeek: string; startTime: string; endTime: string; venueId?: string };
+type DayTimeInput = {
+  dayOfWeek: string;
+  startTime: string;
+  endTime: string;
+  venueId?: string;
+};
 
 /**
  * daySchedules 배열을 요일 → {startHH, startMM, endHH, endMM, venueId} 맵으로 변환.
  * 빈 입력이면 빈 Map 반환.
  */
-function buildDayTimeMap(
-  daySchedules?: DayTimeInput[],
-): Map<string, { startHH: number; startMM: number; endHH: number; endMM: number; venueId?: string }> {
-  const map = new Map<string, { startHH: number; startMM: number; endHH: number; endMM: number; venueId?: string }>();
+function buildDayTimeMap(daySchedules?: DayTimeInput[]): Map<
+  string,
+  {
+    startHH: number;
+    startMM: number;
+    endHH: number;
+    endMM: number;
+    venueId?: string;
+  }
+> {
+  const map = new Map<
+    string,
+    {
+      startHH: number;
+      startMM: number;
+      endHH: number;
+      endMM: number;
+      venueId?: string;
+    }
+  >();
   if (!daySchedules || daySchedules.length === 0) return map;
   for (const ds of daySchedules) {
     const [startHH, startMM] = ds.startTime.split(":").map(Number);
     const [endHH, endMM] = ds.endTime.split(":").map(Number);
-    map.set(ds.dayOfWeek, { startHH, startMM, endHH, endMM, venueId: ds.venueId });
+    map.set(ds.dayOfWeek, {
+      startHH,
+      startMM,
+      endHH,
+      endMM,
+      venueId: ds.venueId,
+    });
   }
   return map;
 }
@@ -226,8 +259,28 @@ function deriveRepresentative(daySchedules?: DayScheduleItemDto[]): {
 
   // UTC 기반 Date 생성 (기존 일정 생성 코드의 dt.setHours(hh, mm, 0, 0) 패턴과 동일).
   const now = new Date();
-  const startTime = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), startHH, startMM, 0, 0));
-  const endTime = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), endHH, endMM, 0, 0));
+  const startTime = new Date(
+    Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+      startHH,
+      startMM,
+      0,
+      0,
+    ),
+  );
+  const endTime = new Date(
+    Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+      endHH,
+      endMM,
+      0,
+      0,
+    ),
+  );
 
   return {
     startTime,
@@ -268,12 +321,48 @@ function deriveRepresentativeFromDateSchedules(
   const [startHH, startMM] = earliest.startTime.split(":").map(Number);
   const [endHH, endMM] = earliest.endTime.split(":").map(Number);
   const now = new Date();
-  const startTime = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), startHH, startMM, 0, 0));
-  const endTime = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), endHH, endMM, 0, 0));
+  const startTime = new Date(
+    Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+      startHH,
+      startMM,
+      0,
+      0,
+    ),
+  );
+  const endTime = new Date(
+    Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+      endHH,
+      endMM,
+      0,
+      0,
+    ),
+  );
 
   // 날짜별 요일 파생 — 중복 제거 후 월~일 순 정렬
-  const KO_DAY_NAMES: Record<number, string> = { 0: "일", 1: "월", 2: "화", 3: "수", 4: "목", 5: "금", 6: "토" };
-  const KO_DAY_ORDER: Record<string, number> = { 월: 0, 화: 1, 수: 2, 목: 3, 금: 4, 토: 5, 일: 6 };
+  const KO_DAY_NAMES: Record<number, string> = {
+    0: "일",
+    1: "월",
+    2: "화",
+    3: "수",
+    4: "목",
+    5: "금",
+    6: "토",
+  };
+  const KO_DAY_ORDER: Record<string, number> = {
+    월: 0,
+    화: 1,
+    수: 2,
+    목: 3,
+    금: 4,
+    토: 5,
+    일: 6,
+  };
   const daySet = new Set<string>();
   for (const s of dateSchedules) {
     const dow = dateOnlyToUtc(s.date).getUTCDay();
@@ -327,6 +416,80 @@ export class ClassesService {
   ) {}
 
   /**
+   * [2026-08-04] 노출 팀(ClassTeamVisibility) 전체 교체 — visibility=SELECTED_TEAMS 전용.
+   *
+   * 기존 행을 모두 지우고 유효한 팀만 다시 넣는다(멱등).
+   * 존재하지 않거나 비활성인 teamId 는 조용히 걸러진다 — FK 위반으로 트랜잭션 전체가
+   * 실패하면 수업 생성 자체가 막히므로, 팀 검증은 사전 필터로 처리한다.
+   *
+   * @param teamIds 빈 배열이면 노출 지정만 해제한다(호출부에서 SELECTED_TEAMS 여부를 판단).
+   */
+  private async replaceClassTeamVisibilities(
+    tx: Prisma.TransactionClient,
+    classId: string,
+    teamIds: string[],
+  ): Promise<void> {
+    await tx.classTeamVisibility.deleteMany({ where: { classId } });
+    if (teamIds.length === 0) return;
+
+    const uniqueTeamIds = [...new Set(teamIds)];
+    const validTeams = await tx.team.findMany({
+      where: { id: { in: uniqueTeamIds }, isActive: true },
+      select: { id: true },
+    });
+    if (validTeams.length === 0) return;
+
+    await tx.classTeamVisibility.createMany({
+      data: validTeams.map((t) => ({ classId, teamId: t.id })),
+      skipDuplicates: true,
+    });
+  }
+
+  /**
+   * [2026-08-04] 수정 경로의 공개범위 반영 — visibility ↔ ClassTeamVisibility 정합 유지.
+   *
+   * 두 필드가 따로 전달되므로 "변경 후 최종 상태" 기준으로 판단해야 한다:
+   *   · SELECTED_TEAMS 밖으로 전환 → 남은 노출 지정은 의미가 없으므로 정리(고아 행 방지)
+   *   · SELECTED_TEAMS 유지/진입 → 최종 팀 목록이 비면 400 (아무도 못 보는 수업 차단)
+   *   · visibleTeamIds 미전달 → 기존 노출 지정을 그대로 둔다(부분 수정 호환)
+   */
+  private async applyClassVisibilityUpdate(
+    classId: string,
+    currentVisibility: ClassVisibility,
+    updateDto: Pick<UpdateClassDto, "visibility" | "visibleTeamIds">,
+  ): Promise<void> {
+    const nextVisibility = updateDto.visibility ?? currentVisibility;
+    const teamIdsProvided = updateDto.visibleTeamIds !== undefined;
+
+    if (nextVisibility !== ClassVisibility.SELECTED_TEAMS) {
+      // 공개범위를 명시적으로 바꿨을 때만 정리한다 — 미전달이면 기존 상태 보존.
+      if (updateDto.visibility !== undefined) {
+        await this.prisma.classTeamVisibility.deleteMany({
+          where: { classId },
+        });
+      }
+      return;
+    }
+
+    const finalTeamIds = teamIdsProvided
+      ? (updateDto.visibleTeamIds ?? [])
+      : (
+          await this.prisma.classTeamVisibility.findMany({
+            where: { classId },
+            select: { teamId: true },
+          })
+        ).map((r) => r.teamId);
+
+    assertVisibilitySelection(ClassVisibility.SELECTED_TEAMS, finalTeamIds);
+
+    if (teamIdsProvided) {
+      await this.prisma.$transaction((tx) =>
+        this.replaceClassTeamVisibilities(tx, classId, finalTeamIds),
+      );
+    }
+  }
+
+  /**
    * 수업 생성 (감독만)
    */
   async createClass(
@@ -370,6 +533,14 @@ export class ClassesService {
         "1회용 수업은 일정을 1개만 등록할 수 있습니다.",
       );
     }
+
+    // [2026-08-04] 공개범위 검증 — SELECTED_TEAMS 는 노출 팀이 최소 1개 필요.
+    //   빈 채로 저장하면 아무에게도 안 보이는 수업이 되어 감독이 원인을 알기 어렵다.
+    assertVisibilitySelection(createDto.visibility, createDto.visibleTeamIds);
+
+    // [2026-08-04] 지역 조합 검증 — "부산 강남구" 같은 불가능한 조합 차단.
+    //   DTO 는 값 자체만 보므로(시군구 이름은 시/도 간 중복이 많다) 조합은 여기서 본다.
+    assertClassRegion(createDto.regionCity, createDto.regionDistrict);
 
     // 카테고리 자동 계산
     let category = createDto.category;
@@ -421,7 +592,9 @@ export class ClassesService {
       ? deriveRepresentativeFromDateSchedules(createDto.dateSchedules)
       : null;
     const hasDaySchedules = (createDto.daySchedules?.length ?? 0) > 0;
-    const representative = hasDaySchedules ? deriveRepresentative(createDto.daySchedules) : null;
+    const representative = hasDaySchedules
+      ? deriveRepresentative(createDto.daySchedules)
+      : null;
 
     const classRecord = await this.prisma.$transaction(async (tx) => {
       const created = await tx.class.create({
@@ -434,30 +607,43 @@ export class ClassesService {
           targetBirthYears: createDto.targetBirthYears ?? [],
           // targetBirthYears(SoT) 가 있으면 ageMin/ageMax 는 한국나이 파생값으로 기록,
           //   없으면 기존 ageMin/ageMax 값을 그대로 유지(하위호환 — 구 폼/타 화면 대응).
-          ...(createDto.targetBirthYears && createDto.targetBirthYears.length > 0
+          ...(createDto.targetBirthYears &&
+          createDto.targetBirthYears.length > 0
             ? this.deriveAgeRangeFromBirthYears(createDto.targetBirthYears)
             : { ageMin: createDto.ageMin, ageMax: createDto.ageMax }),
           levelRequired: createDto.levelRequired,
           // 우선순위: dateSchedules 대표값 > daySchedules 대표값 > 기존 단일 startTime 경로(하위호환)
-          startTime: dateRepresentative?.startTime
-            ?? representative?.startTime
-            ?? (createDto.startTime ? new Date(createDto.startTime) : new Date()),
-          endTime: dateRepresentative?.endTime
-            ?? representative?.endTime
-            ?? (createDto.endTime ? new Date(createDto.endTime) : new Date()),
+          startTime:
+            dateRepresentative?.startTime ??
+            representative?.startTime ??
+            (createDto.startTime ? new Date(createDto.startTime) : new Date()),
+          endTime:
+            dateRepresentative?.endTime ??
+            representative?.endTime ??
+            (createDto.endTime ? new Date(createDto.endTime) : new Date()),
           trainingType: createDto.trainingType,
           coachId: primaryCoachId,
-          venueId: dateRepresentative !== null
-            ? (dateRepresentative.venueId ?? null)
-            : representative?.venueId !== undefined
-              ? (representative.venueId ?? null)
-              : (createDto.venueId ?? null),
+          venueId:
+            dateRepresentative !== null
+              ? (dateRepresentative.venueId ?? null)
+              : representative?.venueId !== undefined
+                ? (representative.venueId ?? null)
+                : (createDto.venueId ?? null),
           // dateSchedules/daySchedules 있으면 날짜/요일 집합으로 자동 세팅.
-          classDays: dateRepresentative?.classDays ?? representative?.classDays ?? createDto.classDays ?? [],
+          classDays:
+            dateRepresentative?.classDays ??
+            representative?.classDays ??
+            createDto.classDays ??
+            [],
           category,
           requiredCoaches: createDto.requiredCoaches ?? 1,
           // 결제 방식 — 감독 지정 (PREPAID 선불 / POSTPAID 후불 / BOTH 선택형). 미전송 시 BOTH(기본).
           billingMode: createDto.billingMode ?? "BOTH",
+          // [2026-08-04] 공개 범위 — 미전송 시 TEAM_ONLY(기존 동작: 소속 팀에만 노출).
+          visibility: createDto.visibility ?? ClassVisibility.TEAM_ONLY,
+          // [2026-08-04] 수업 지역 — 감독/코치 선택값. 목록 카드에 "서울 강남구" 로 노출된다.
+          regionCity: createDto.regionCity ?? null,
+          regionDistrict: createDto.regionDistrict ?? null,
           // 2026-05-08: 수업 자동 승인 — 감독/코치가 만든 수업은 즉시 활성화.
           approvalStatus: "APPROVED",
           approvedAt: new Date(),
@@ -466,8 +652,22 @@ export class ClassesService {
         },
       });
 
+      // [2026-08-04] 노출 팀 지정 — visibility=SELECTED_TEAMS 일 때만 ClassTeamVisibility 생성.
+      //   팀 수업(teamId)·오픈클래스(academyId) 공통 적용. 그 외 visibility 에서는 행을 만들지 않는다.
+      if (createDto.visibility === ClassVisibility.SELECTED_TEAMS) {
+        await this.replaceClassTeamVisibilities(
+          tx,
+          created.id,
+          createDto.visibleTeamIds ?? [],
+        );
+      }
+
       // [2026-06-05] ClassDaySchedule 행 생성 (daySchedules 전송 시)
-      if (hasDaySchedules && createDto.daySchedules && createDto.daySchedules.length > 0) {
+      if (
+        hasDaySchedules &&
+        createDto.daySchedules &&
+        createDto.daySchedules.length > 0
+      ) {
         await tx.classDaySchedule.createMany({
           data: createDto.daySchedules.map((ds) => ({
             classId: created.id,
@@ -664,6 +864,13 @@ export class ClassesService {
     // 회차(요일/날짜별) 시간 순서 검증
     assertScheduleTimeRanges(createDto.daySchedules, createDto.dateSchedules);
 
+    // [2026-08-04] 공개범위 검증 — SELECTED_TEAMS 는 노출 팀이 최소 1개 필요.
+    assertVisibilitySelection(createDto.visibility, createDto.visibleTeamIds);
+
+    // [2026-08-04] 지역 조합 검증 — "부산 강남구" 같은 불가능한 조합 차단.
+    //   DTO 는 값 자체만 보므로(시군구 이름은 시/도 간 중복이 많다) 조합은 여기서 본다.
+    assertClassRegion(createDto.regionCity, createDto.regionDistrict);
+
     // 카테고리 자동 계산
     let category = createDto.category;
     if (!category && (createDto.ageMin || createDto.ageMax)) {
@@ -709,8 +916,12 @@ export class ClassesService {
     // schedulesCreated 는 트랜잭션 내부에서 setting 후 응답 객체로 노출 (운영자 즉시 피드백용)
     // [2026-06-05] daySchedules 대표값 산출 (학원 도메인 — lesson 전용)
     const hasDaySchedulesAcademy = (createDto.daySchedules?.length ?? 0) > 0;
-    const representativeAcademy = hasDaySchedulesAcademy ? deriveRepresentative(createDto.daySchedules) : null;
-    const dayTimeMapAcademy = hasDaySchedulesAcademy ? buildDayTimeMap(createDto.daySchedules) : new Map();
+    const representativeAcademy = hasDaySchedulesAcademy
+      ? deriveRepresentative(createDto.daySchedules)
+      : null;
+    const dayTimeMapAcademy = hasDaySchedulesAcademy
+      ? buildDayTimeMap(createDto.daySchedules)
+      : new Map();
 
     let schedulesCreated = 0;
     const classRecord = await this.prisma.$transaction(async (tx) => {
@@ -725,25 +936,38 @@ export class ClassesService {
           targetBirthYears: createDto.targetBirthYears ?? [],
           // targetBirthYears(SoT) 가 있으면 ageMin/ageMax 는 한국나이 파생값으로 기록,
           //   없으면 기존 ageMin/ageMax 값을 그대로 유지(하위호환 — 구 폼/타 화면 대응).
-          ...(createDto.targetBirthYears && createDto.targetBirthYears.length > 0
+          ...(createDto.targetBirthYears &&
+          createDto.targetBirthYears.length > 0
             ? this.deriveAgeRangeFromBirthYears(createDto.targetBirthYears)
             : { ageMin: createDto.ageMin, ageMax: createDto.ageMax }),
           levelRequired: createDto.levelRequired,
           // daySchedules 있으면 대표값, 없으면 기존 단일 경로(하위호환)
-          startTime: representativeAcademy?.startTime
-            ?? (createDto.startTime ? new Date(createDto.startTime) : new Date()),
-          endTime: representativeAcademy?.endTime
-            ?? (createDto.endTime ? new Date(createDto.endTime) : new Date()),
+          startTime:
+            representativeAcademy?.startTime ??
+            (createDto.startTime ? new Date(createDto.startTime) : new Date()),
+          endTime:
+            representativeAcademy?.endTime ??
+            (createDto.endTime ? new Date(createDto.endTime) : new Date()),
           trainingType: createDto.trainingType ?? "lesson",
           coachId: primaryCoachId,
-          venueId: representativeAcademy?.venueId !== undefined
-            ? (representativeAcademy.venueId ?? null)
-            : (createDto.venueId ?? null),
-          classDays: representativeAcademy?.classDays ?? createDto.classDays ?? [],
+          venueId:
+            representativeAcademy?.venueId !== undefined
+              ? (representativeAcademy.venueId ?? null)
+              : (createDto.venueId ?? null),
+          classDays:
+            representativeAcademy?.classDays ?? createDto.classDays ?? [],
           category,
           requiredCoaches: createDto.requiredCoaches ?? 1,
           // 결제 방식 — 감독 지정 (PREPAID 선불 / POSTPAID 후불 / BOTH 선택형). 미전송 시 BOTH(기본).
           billingMode: createDto.billingMode ?? "BOTH",
+          // [2026-08-04] 공개 범위 — 미전송 시 TEAM_ONLY.
+          //   기존 /classes 목록의 오픈클래스 노출(2026-06-29 정책 — PARENT 에게 팀 무관)은
+          //   getAllClasses 가 그대로 유지하므로 이 값과 무관하다.
+          //   전국 탐색(/classes/explore)에 띄우려면 감독이 PARENTS_ONLY 이상을 명시 선택해야 한다.
+          visibility: createDto.visibility ?? ClassVisibility.TEAM_ONLY,
+          // [2026-08-04] 수업 지역 — 오픈클래스도 동일. 아카데미 주소와 별개로 수업 단위 저장.
+          regionCity: createDto.regionCity ?? null,
+          regionDistrict: createDto.regionDistrict ?? null,
           approvalStatus: "APPROVED",
           approvedAt: new Date(),
           approvedBy: directorUserId,
@@ -752,7 +976,11 @@ export class ClassesService {
       });
 
       // [2026-06-05] ClassDaySchedule 행 생성 (daySchedules 전송 시)
-      if (hasDaySchedulesAcademy && createDto.daySchedules && createDto.daySchedules.length > 0) {
+      if (
+        hasDaySchedulesAcademy &&
+        createDto.daySchedules &&
+        createDto.daySchedules.length > 0
+      ) {
         await tx.classDaySchedule.createMany({
           data: createDto.daySchedules.map((ds) => ({
             classId: created.id,
@@ -785,7 +1013,8 @@ export class ClassesService {
       //   - 안전 상한 200건
       //   - 4개 필드 중 누락 시 명시적 logger.warn 사유 기록 (silent skip 제거)
       //   - 응답 객체에 schedulesCreated 카운트 포함 → 운영자가 폼 누락 즉시 인지 가능
-      const effectiveClassDaysAcademy = representativeAcademy?.classDays ?? createDto.classDays;
+      const effectiveClassDaysAcademy =
+        representativeAcademy?.classDays ?? createDto.classDays;
       if (createDto.dateSchedules && createDto.dateSchedules.length > 0) {
         // [2026-06-09] 날짜별 일정으로 ClassSchedule 직접 생성됨 — 요일 기반 자동 생성 스킵.
       } else if (createDto.autoGenerateSchedules === false) {
@@ -797,7 +1026,8 @@ export class ClassesService {
         if (!createDto.startDate) missingFields.push("startDate");
         if (!createDto.endDate) missingFields.push("endDate");
         if (!effectiveClassDaysAcademy?.length) missingFields.push("classDays");
-        if (!hasDaySchedulesAcademy && !createDto.startTime) missingFields.push("startTime");
+        if (!hasDaySchedulesAcademy && !createDto.startTime)
+          missingFields.push("startTime");
 
         if (missingFields.length > 0) {
           this.logger.warn(
@@ -821,7 +1051,15 @@ export class ClassesService {
               금: 5,
               토: 6,
             };
-            const dowToNameAcademy: Record<number, string> = { 0: "일", 1: "월", 2: "화", 3: "수", 4: "목", 5: "금", 6: "토" };
+            const dowToNameAcademy: Record<number, string> = {
+              0: "일",
+              1: "월",
+              2: "화",
+              3: "수",
+              4: "목",
+              5: "금",
+              6: "토",
+            };
             const targetDows = new Set(
               effectiveClassDaysAcademy!
                 .map((d) => dayMap[d])
@@ -836,8 +1074,12 @@ export class ClassesService {
               //   회차 row 의 startTime/endTime(text) 필드에 직접 저장해 "시간 없는 회차"
               //   생성 경로를 차단한다 (대표값 폴백에 기대지 않도록).
               const pad2 = (n: number) => String(n).padStart(2, "0");
-              const fallbackDtAcademy = createDto.startTime ? new Date(createDto.startTime) : null;
-              const fallbackEndDtAcademy = createDto.endTime ? new Date(createDto.endTime) : null;
+              const fallbackDtAcademy = createDto.startTime
+                ? new Date(createDto.startTime)
+                : null;
+              const fallbackEndDtAcademy = createDto.endTime
+                ? new Date(createDto.endTime)
+                : null;
               const fallbackStartHHmm = fallbackDtAcademy
                 ? `${pad2(fallbackDtAcademy.getUTCHours())}:${pad2(fallbackDtAcademy.getUTCMinutes())}`
                 : null;
@@ -921,25 +1163,15 @@ export class ClassesService {
         });
       }
 
-      // [2026-05-15] 오픈클래스 팀 노출 — ClassTeamVisibility 생성.
-      //   visibleTeamIds 에 지정된 팀의 소속자(감독·코치·학부모·학생)에게만
-      //   이 오픈클래스가 수업목록·캘린더·대시보드에 노출된다.
-      //   존재하지 않는 teamId 는 skipDuplicates + FK 로 자연 방어, 추가로 사전 검증.
-      if (createDto.visibleTeamIds && createDto.visibleTeamIds.length > 0) {
-        const uniqueTeamIds = [...new Set(createDto.visibleTeamIds)];
-        const validTeams = await tx.team.findMany({
-          where: { id: { in: uniqueTeamIds }, isActive: true },
-          select: { id: true },
-        });
-        if (validTeams.length > 0) {
-          await tx.classTeamVisibility.createMany({
-            data: validTeams.map((t) => ({
-              classId: created.id,
-              teamId: t.id,
-            })),
-            skipDuplicates: true,
-          });
-        }
+      // [2026-05-15 → 2026-08-04] 노출 팀 지정 — visibility=SELECTED_TEAMS 일 때만 생성.
+      //   여기 등록된 팀의 소속자(감독·코치·학부모·학생)에게만 이 수업이 노출된다.
+      //   존재하지 않거나 비활성인 teamId 는 헬퍼가 사전 필터로 걸러낸다.
+      if (createDto.visibility === ClassVisibility.SELECTED_TEAMS) {
+        await this.replaceClassTeamVisibilities(
+          tx,
+          created.id,
+          createDto.visibleTeamIds ?? [],
+        );
       }
 
       // [Lifecycle v4.1 §9.3] 첫 수업 생성 = 첫 일정 달 자동 승인.
@@ -1270,7 +1502,10 @@ export class ClassesService {
         user.userType === "CHILD" ||
         user.userType === "TEEN")
     ) {
-      const viewerBirthYears = await this.resolveViewerBirthYears(user, query.childId);
+      const viewerBirthYears = await this.resolveViewerBirthYears(
+        user,
+        query.childId,
+      );
       if (viewerBirthYears.length > 0) {
         const ageFilter: Prisma.ClassWhereInput = {
           OR: [
@@ -1312,11 +1547,31 @@ export class ClassesService {
           teamId: true,
           academyId: true,
           createdAt: true,
-          team: { select: { id: true, name: true, logoUrl: true } },
+          // [2026-08-04] 수업 지역 — 목록 카드에 "서울 강남구" 표기용.
+          //   타지역 학부모가 이동 거리를 모른 채 등록하는 사고 방지(사용자 지시).
+          regionCity: true,
+          regionDistrict: true,
+          team: {
+            select: {
+              id: true,
+              name: true,
+              logoUrl: true,
+              // 지역 미입력(2026-08-04 이전) 수업의 표기 폴백 — 팀 홈링크장 시/도.
+              homeVenue: { select: { city: true } },
+            },
+          },
           // 오픈클래스(teamId=null): 로고 폴백용 대표 이미지 + 카드 subtitle 노출용 아카데미명.
           academy: { select: { imageUrl: true, name: true } },
-          coach: { select: { id: true, firstName: true, lastName: true, avatarUrl: true } },
-          venue: { select: { id: true, name: true } },
+          coach: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              avatarUrl: true,
+            },
+          },
+          // 지역 표기 폴백 2순위 — 수업 장소의 시/도 (regionCity 미입력 구 데이터용).
+          venue: { select: { id: true, name: true, city: true } },
           // PACKAGE_WEEKS_SPEC §6 응답 필드 매핑용 — durationDays/sessionsPerMonth/sessionsPerWeek 필수.
           // PACKAGE_END_GUARD (2026-05-22): 대표가 산정 시 활성 패키지 우선 위해 isActive 추가 select.
           products: {
@@ -1422,6 +1677,15 @@ export class ClassesService {
           teamLogoUrl: c.team?.logoUrl ?? c.academy?.imageUrl ?? null,
           // 오픈클래스만 아카데미명 노출(팀 수업은 academy 없어 null) — 학부모 /classes 카드 subtitle.
           academyName: c.academy?.name ?? null,
+          // [2026-08-04] 지역 라벨 "서울 강남구" — 목록 카드 표기 SoT.
+          //   수업 지역(감독 선택) > 수업 장소 시/도 > 팀 홈링크장 시/도 순 폴백.
+          //   폴백은 2026-08-04 이전 수업(regionCity=null)의 표기 공백을 메우기 위한 것이고,
+          //   시군구는 폴백 소스에 없어 시/도까지만 표시된다.
+          regionLabel:
+            formatRegionLabel(c.regionCity, c.regionDistrict) ??
+            c.venue?.city ??
+            c.team?.homeVenue?.city ??
+            null,
           enrolledCount: c.registrations?.length ?? 0,
           coachAssignments: (c.coachAssignments ?? []).map((a) => ({
             id: a.id,
@@ -1437,7 +1701,8 @@ export class ClassesService {
             ? Math.max(1, Math.round(monthlyProduct.durationDays / 7))
             : null,
           packageTotalSessions:
-            monthlyProduct?.sessionsPerMonth && monthlyProduct.sessionsPerMonth > 0
+            monthlyProduct?.sessionsPerMonth &&
+            monthlyProduct.sessionsPerMonth > 0
               ? monthlyProduct.sessionsPerMonth
               : null,
           // "주 N회" 자동 파생 폐기 — classDays 폴백 제거(스냅샷 오염원).
@@ -1454,7 +1719,8 @@ export class ClassesService {
               .slice()
               .sort(
                 (a, b) =>
-                  DOW_ORDER.indexOf(a.dayOfWeek) - DOW_ORDER.indexOf(b.dayOfWeek),
+                  DOW_ORDER.indexOf(a.dayOfWeek) -
+                  DOW_ORDER.indexOf(b.dayOfWeek),
               )
               .map((ds) => ({
                 dayOfWeek: ds.dayOfWeek,
@@ -1584,13 +1850,21 @@ export class ClassesService {
             id: true,
             name: true,
             logoUrl: true,
-            coach: { select: { firstName: true, lastName: true, avatarUrl: true } },
+            coach: {
+              select: { firstName: true, lastName: true, avatarUrl: true },
+            },
           },
         },
         // 오픈클래스(teamId=null) 로고 폴백용 — 소속 아카데미 대표 이미지.
         academy: { select: { imageUrl: true } },
         coach: {
-          select: { id: true, firstName: true, lastName: true, email: true, avatarUrl: true },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            avatarUrl: true,
+          },
         },
         venue: {
           select: {
@@ -1738,6 +2012,16 @@ export class ClassesService {
       isActive: classRecord.isActive,
       // [Phase B] 결제 방식 — 프론트 후불/선불 등록 분기에 필수.
       billingMode: classRecord.billingMode,
+      // [2026-08-04] 공개 범위 — 수정 폼 prefill 에 필수(미포함 시 저장할 때마다 기본값으로 덮임).
+      visibility: classRecord.visibility,
+      // [2026-08-04] 수업 지역 — 수정 폼 prefill + 상세 화면 표기.
+      //   regionLabel 은 "서울 강남구" 조합 문자열(프론트 3곳이 같은 포맷을 쓰도록 서버에서 만든다).
+      regionCity: classRecord.regionCity,
+      regionDistrict: classRecord.regionDistrict,
+      regionLabel: formatRegionLabel(
+        classRecord.regionCity,
+        classRecord.regionDistrict,
+      ),
       category: classRecord.category,
       classDays: classRecord.classDays ?? [],
       coachId: classRecord.coachId,
@@ -1764,7 +2048,8 @@ export class ClassesService {
       })),
       waitlistCount: classRecord.waitlists?.length ?? 0,
       // 오픈클래스는 팀이 없으므로 소속 아카데미 대표 이미지로 폴백.
-      teamLogoUrl: classRecord.team?.logoUrl ?? classRecord.academy?.imageUrl ?? null,
+      teamLogoUrl:
+        classRecord.team?.logoUrl ?? classRecord.academy?.imageUrl ?? null,
       club: classRecord.team
         ? { id: classRecord.team.id, name: classRecord.team.name }
         : null,
@@ -1915,14 +2200,24 @@ export class ClassesService {
         levelRequired: true,
         description: true,
         createdAt: true,
+        // [2026-08-04] 수업 지역 — 운영자 목록에도 "서울 강남구" 를 노출해
+        //   감독이 자기 수업의 지역 표기를 바로 확인·정정할 수 있게 한다.
+        regionCity: true,
+        regionDistrict: true,
         // [수정 2026-05-11] coach.userType 추가 — 프론트에서 코치 실제 역할(감독/코치 등) 호칭 동적 표시용.
         coach: {
           select: { id: true, firstName: true, lastName: true, userType: true },
         },
-        team: { select: { logoUrl: true } },
+        team: {
+          select: {
+            logoUrl: true,
+            // 지역 미입력(구 수업) 표기 폴백 — 팀 홈링크장 시/도.
+            homeVenue: { select: { city: true } },
+          },
+        },
         // 오픈클래스(teamId=null) 로고 폴백용 — 소속 아카데미 대표 이미지.
         academy: { select: { imageUrl: true } },
-        venue: { select: { id: true, name: true, address: true } },
+        venue: { select: { id: true, name: true, address: true, city: true } },
         products: {
           select: {
             id: true,
@@ -2011,6 +2306,13 @@ export class ClassesService {
         endTime: c.endTime,
         location: c.venue?.name ?? "",
         venueAddress: c.venue?.address ?? "",
+        // [2026-08-04] 지역 라벨 "서울 강남구" — 수업 지역(감독 선택) > 장소 시/도 > 팀 홈링크장 시/도.
+        //   폴백 소스에는 시군구가 없어 구 수업은 시/도까지만 표시된다.
+        regionLabel:
+          formatRegionLabel(c.regionCity, c.regionDistrict) ??
+          c.venue?.city ??
+          c.team?.homeVenue?.city ??
+          null,
         studentCount: c._count.registrations,
         maxStudents: c.capacity,
         level: c.levelRequired,
@@ -2064,9 +2366,7 @@ export class ClassesService {
             c.products ?? [],
             c.salesOpenMonth,
           );
-          const single = sellableList.find(
-            (p) => p.feeType === "PER_SESSION",
-          );
+          const single = sellableList.find((p) => p.feeType === "PER_SESSION");
           const monthly = sellableList.find(
             (p) => p.feeType === "MONTHLY_FIXED",
           );
@@ -2303,7 +2603,10 @@ export class ClassesService {
             payment: en.payment,
           });
           if (att.billingStatus === "PAID" && att.yearMonth != null) {
-            if (lastPaidYearMonth == null || att.yearMonth > lastPaidYearMonth) {
+            if (
+              lastPaidYearMonth == null ||
+              att.yearMonth > lastPaidYearMonth
+            ) {
               lastPaidYearMonth = att.yearMonth;
             }
           }
@@ -2909,7 +3212,8 @@ export class ClassesService {
   private resolveSettlementYearMonth(yearMonth?: string): string {
     // 월 범위(01-12)까지 검증 — 형식만 맞는 2026-13/2026-00 이 Date.UTC 에서 조용히
     //   인접 월로 롤오버되는 오월 폴백을 차단(형식 통과 ≠ 의미 유효). 무효 시 당월 폴백.
-    if (yearMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(yearMonth)) return yearMonth;
+    if (yearMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(yearMonth))
+      return yearMonth;
     const base = kstTodayUtcMidnight();
     return `${base.getUTCFullYear()}-${String(base.getUTCMonth() + 1).padStart(2, "0")}`;
   }
@@ -3052,13 +3356,18 @@ export class ClassesService {
 
     // [2026-06-05] daySchedules 재동기화 — updateClass 트랜잭션 내에서 처리
     const hasDaySchedulesUpdate = (updateDto.daySchedules?.length ?? 0) > 0;
-    const representativeUpdate = hasDaySchedulesUpdate ? deriveRepresentative(updateDto.daySchedules) : null;
+    const representativeUpdate = hasDaySchedulesUpdate
+      ? deriveRepresentative(updateDto.daySchedules)
+      : null;
 
     // dateSchedules 대표값 산출 (전송 시에만)
     const hasDateSchedulesUpdate = updateDto.dateSchedules !== undefined;
-    const dateRepresentativeUpdate = (hasDateSchedulesUpdate && updateDto.dateSchedules && updateDto.dateSchedules.length > 0)
-      ? deriveRepresentativeFromDateSchedules(updateDto.dateSchedules)
-      : null;
+    const dateRepresentativeUpdate =
+      hasDateSchedulesUpdate &&
+      updateDto.dateSchedules &&
+      updateDto.dateSchedules.length > 0
+        ? deriveRepresentativeFromDateSchedules(updateDto.dateSchedules)
+        : null;
 
     // 수강료 업데이트 (ClassProduct) — 다른 write 보다 먼저 수행한다.
     //   가격 잠금 400 이 선행 쓰기(수업 필드·코치 배정) 이후에 발생하면 부분 반영이
@@ -3068,17 +3377,14 @@ export class ClassesService {
       updateDto.singlePrice !== undefined ||
       updateDto.monthlyPrice !== undefined
     ) {
-      const products = buildClassProducts(
-        classId,
-        {
-          singlePrice: updateDto.singlePrice,
-          monthlyPrice: updateDto.monthlyPrice,
-          packageWeeks: updateDto.packageWeeks,
-          packageTotalSessions: updateDto.packageTotalSessions,
-          // 기존 수업의 결제방식 기준으로 PER_SESSION 판매/비판매·billingTiming 결정 (B2).
-          billingMode: classRecord.billingMode,
-        },
-      );
+      const products = buildClassProducts(classId, {
+        singlePrice: updateDto.singlePrice,
+        monthlyPrice: updateDto.monthlyPrice,
+        packageWeeks: updateDto.packageWeeks,
+        packageTotalSessions: updateDto.packageTotalSessions,
+        // 기존 수업의 결제방식 기준으로 PER_SESSION 판매/비판매·billingTiming 결정 (B2).
+        billingMode: classRecord.billingMode,
+      });
 
       // [M-1] id 보존 reconcile — enrollment/payment 참조 ClassProduct 의 FK 단절 방지.
       const priceChanges = await this.prisma.$transaction(async (tx) =>
@@ -3210,14 +3516,17 @@ export class ClassesService {
         data: {
           className: updateDto.className ?? classRecord.className,
           description: updateDto.description ?? classRecord.description,
-          instructorName: updateDto.instructorName ?? classRecord.instructorName,
+          instructorName:
+            updateDto.instructorName ?? classRecord.instructorName,
           capacity: updateDto.capacity ?? classRecord.capacity,
           // targetBirthYears 전송 시 SoT 갱신 + ageMin/ageMax 파생 재계산(빈 배열=전 연령→null).
           //   미전송(undefined) 시 기존 ageMin/ageMax 유지(하위호환).
           ...(updateDto.targetBirthYears !== undefined
             ? {
                 targetBirthYears: updateDto.targetBirthYears,
-                ...this.deriveAgeRangeFromBirthYears(updateDto.targetBirthYears),
+                ...this.deriveAgeRangeFromBirthYears(
+                  updateDto.targetBirthYears,
+                ),
               }
             : {
                 ageMin: updateDto.ageMin ?? classRecord.ageMin,
@@ -3225,14 +3534,16 @@ export class ClassesService {
               }),
           levelRequired: updateDto.levelRequired ?? classRecord.levelRequired,
           // 우선순위: dateSchedules 대표값 > daySchedules 대표값 > 단일 startTime > 기존값 유지
-          startTime: dateRepresentativeUpdate?.startTime
-            ?? representativeUpdate?.startTime
-            ?? updateDto.startTime
-            ?? classRecord.startTime,
-          endTime: dateRepresentativeUpdate?.endTime
-            ?? representativeUpdate?.endTime
-            ?? updateDto.endTime
-            ?? classRecord.endTime,
+          startTime:
+            dateRepresentativeUpdate?.startTime ??
+            representativeUpdate?.startTime ??
+            updateDto.startTime ??
+            classRecord.startTime,
+          endTime:
+            dateRepresentativeUpdate?.endTime ??
+            representativeUpdate?.endTime ??
+            updateDto.endTime ??
+            classRecord.endTime,
           isActive: updateDto.isActive ?? classRecord.isActive,
           // trainingType 은 변경 차단 정책에 따라 기존 값 그대로 유지
           trainingType: classRecord.trainingType,
@@ -3242,20 +3553,31 @@ export class ClassesService {
             (updateDto.coachId !== undefined
               ? updateDto.coachId
               : classRecord.coachId),
-          venueId: dateRepresentativeUpdate !== null
-            ? (dateRepresentativeUpdate.venueId ?? null)
-            : representativeUpdate?.venueId !== undefined
-              ? (representativeUpdate.venueId ?? null)
-              : (updateDto.venueId !== undefined ? updateDto.venueId : classRecord.venueId),
+          venueId:
+            dateRepresentativeUpdate !== null
+              ? (dateRepresentativeUpdate.venueId ?? null)
+              : representativeUpdate?.venueId !== undefined
+                ? (representativeUpdate.venueId ?? null)
+                : updateDto.venueId !== undefined
+                  ? updateDto.venueId
+                  : classRecord.venueId,
           // classDays 우선순위: dateSchedules 기반 요일 집합 > daySchedules 요일 집합 > updateDto.classDays > 기존 유지
-          classDays: dateRepresentativeUpdate?.classDays !== undefined
-            ? dateRepresentativeUpdate.classDays
-            : (hasDateSchedulesUpdate && updateDto.dateSchedules?.length === 0)
-              ? []
-              : representativeUpdate?.classDays !== undefined
-                ? representativeUpdate.classDays
-                : (updateDto.classDays !== undefined ? updateDto.classDays : undefined),
+          classDays:
+            dateRepresentativeUpdate?.classDays !== undefined
+              ? dateRepresentativeUpdate.classDays
+              : hasDateSchedulesUpdate && updateDto.dateSchedules?.length === 0
+                ? []
+                : representativeUpdate?.classDays !== undefined
+                  ? representativeUpdate.classDays
+                  : updateDto.classDays !== undefined
+                    ? updateDto.classDays
+                    : undefined,
           category: derivedCategory,
+          // [2026-08-04] 공개 범위 — 미전송 시 기존 값 유지.
+          visibility: updateDto.visibility ?? classRecord.visibility,
+          // [2026-08-04] 수업 지역 — 미전송 필드는 기존 값 유지.
+          //   시/도만 바꾸고 시군구를 안 보내면 조합이 깨지므로 mergeClassRegion 이 시군구를 비운다.
+          ...mergeClassRegion(classRecord, updateDto),
         },
         include: {
           team: {
@@ -3266,6 +3588,14 @@ export class ClassesService {
         },
       });
     });
+
+    // [2026-08-04] 공개범위·노출 팀 반영 — SELECTED_TEAMS 일 때만 노출 지정이 유효하고,
+    //   그 밖으로 전환되면 기존 지정을 정리한다.
+    await this.applyClassVisibilityUpdate(
+      classId,
+      classRecord.visibility,
+      updateDto,
+    );
 
     // [추가 2026-05-13] ageMin/ageMax 변경 시 매칭 PLAYER 자동 배치.
     //  팀 PLAYER(TEEN/CHILD) 중 새 ageRange 에 부합하는 학생을 ClassRegistration(active) 으로 upsert.
@@ -3616,7 +3946,8 @@ export class ClassesService {
     }
 
     // [2026-06-05] daySchedules 재동기화 (학원 도메인)
-    const hasDaySchedulesAcademyUpdate = (updateDto.daySchedules?.length ?? 0) > 0;
+    const hasDaySchedulesAcademyUpdate =
+      (updateDto.daySchedules?.length ?? 0) > 0;
     const representativeAcademyUpdate = hasDaySchedulesAcademyUpdate
       ? deriveRepresentative(updateDto.daySchedules)
       : null;
@@ -3629,17 +3960,14 @@ export class ClassesService {
       updateDto.singlePrice !== undefined ||
       updateDto.monthlyPrice !== undefined
     ) {
-      const products = buildClassProducts(
-        classId,
-        {
-          singlePrice: updateDto.singlePrice,
-          monthlyPrice: updateDto.monthlyPrice,
-          packageWeeks: updateDto.packageWeeks,
-          packageTotalSessions: updateDto.packageTotalSessions,
-          // 기존 수업의 결제방식 기준으로 PER_SESSION 판매/비판매·billingTiming 결정 (B2).
-          billingMode: classRecord.billingMode,
-        },
-      );
+      const products = buildClassProducts(classId, {
+        singlePrice: updateDto.singlePrice,
+        monthlyPrice: updateDto.monthlyPrice,
+        packageWeeks: updateDto.packageWeeks,
+        packageTotalSessions: updateDto.packageTotalSessions,
+        // 기존 수업의 결제방식 기준으로 PER_SESSION 판매/비판매·billingTiming 결정 (B2).
+        billingMode: classRecord.billingMode,
+      });
 
       // [M-1] id 보존 reconcile — enrollment/payment 참조 ClassProduct 의 FK 단절 방지.
       const priceChanges = await this.prisma.$transaction(async (tx) =>
@@ -3660,62 +3988,86 @@ export class ClassesService {
       }
     }
 
-    const updatedClass = await this.prisma.$transaction(async (txAcademyUpdate) => {
-      // daySchedules 전송 시 — ClassDaySchedule 전체 교체
-      if (updateDto.daySchedules !== undefined) {
-        await txAcademyUpdate.classDaySchedule.deleteMany({ where: { classId } });
-        if (updateDto.daySchedules.length > 0) {
-          await txAcademyUpdate.classDaySchedule.createMany({
-            data: updateDto.daySchedules.map((ds) => ({
-              classId,
-              dayOfWeek: ds.dayOfWeek,
-              startTime: ds.startTime,
-              endTime: ds.endTime,
-              venueId: ds.venueId ?? null,
-            })),
-            skipDuplicates: true,
+    const updatedClass = await this.prisma.$transaction(
+      async (txAcademyUpdate) => {
+        // daySchedules 전송 시 — ClassDaySchedule 전체 교체
+        if (updateDto.daySchedules !== undefined) {
+          await txAcademyUpdate.classDaySchedule.deleteMany({
+            where: { classId },
           });
+          if (updateDto.daySchedules.length > 0) {
+            await txAcademyUpdate.classDaySchedule.createMany({
+              data: updateDto.daySchedules.map((ds) => ({
+                classId,
+                dayOfWeek: ds.dayOfWeek,
+                startTime: ds.startTime,
+                endTime: ds.endTime,
+                venueId: ds.venueId ?? null,
+              })),
+              skipDuplicates: true,
+            });
+          }
         }
-      }
 
-      return txAcademyUpdate.class.update({
-        where: { id: classId },
-        data: {
-          className: updateDto.className ?? classRecord.className,
-          description: updateDto.description ?? classRecord.description,
-          instructorName: updateDto.instructorName ?? classRecord.instructorName,
-          capacity: updateDto.capacity ?? classRecord.capacity,
-          // targetBirthYears 전송 시 SoT 갱신 + ageMin/ageMax 파생 재계산(빈 배열=전 연령→null).
-          //   미전송(undefined) 시 기존 ageMin/ageMax 유지(하위호환).
-          ...(updateDto.targetBirthYears !== undefined
-            ? {
-                targetBirthYears: updateDto.targetBirthYears,
-                ...this.deriveAgeRangeFromBirthYears(updateDto.targetBirthYears),
-              }
-            : {
-                ageMin: updateDto.ageMin ?? classRecord.ageMin,
-                ageMax: updateDto.ageMax ?? classRecord.ageMax,
-              }),
-          levelRequired: updateDto.levelRequired ?? classRecord.levelRequired,
-          startTime: representativeAcademyUpdate?.startTime ?? updateDto.startTime ?? classRecord.startTime,
-          endTime: representativeAcademyUpdate?.endTime ?? updateDto.endTime ?? classRecord.endTime,
-          isActive: updateDto.isActive ?? classRecord.isActive,
-          trainingType: classRecord.trainingType,
-          coachId:
-            newLeadCoachId ??
-            (updateDto.coachId !== undefined
-              ? updateDto.coachId
-              : classRecord.coachId),
-          venueId: representativeAcademyUpdate?.venueId !== undefined
-            ? (representativeAcademyUpdate.venueId ?? null)
-            : (updateDto.venueId !== undefined ? updateDto.venueId : classRecord.venueId),
-          classDays: representativeAcademyUpdate?.classDays !== undefined
-            ? representativeAcademyUpdate.classDays
-            : (updateDto.classDays !== undefined ? updateDto.classDays : undefined),
-          category: derivedCategory,
-        },
-      });
-    });
+        return txAcademyUpdate.class.update({
+          where: { id: classId },
+          data: {
+            className: updateDto.className ?? classRecord.className,
+            description: updateDto.description ?? classRecord.description,
+            instructorName:
+              updateDto.instructorName ?? classRecord.instructorName,
+            capacity: updateDto.capacity ?? classRecord.capacity,
+            // targetBirthYears 전송 시 SoT 갱신 + ageMin/ageMax 파생 재계산(빈 배열=전 연령→null).
+            //   미전송(undefined) 시 기존 ageMin/ageMax 유지(하위호환).
+            ...(updateDto.targetBirthYears !== undefined
+              ? {
+                  targetBirthYears: updateDto.targetBirthYears,
+                  ...this.deriveAgeRangeFromBirthYears(
+                    updateDto.targetBirthYears,
+                  ),
+                }
+              : {
+                  ageMin: updateDto.ageMin ?? classRecord.ageMin,
+                  ageMax: updateDto.ageMax ?? classRecord.ageMax,
+                }),
+            levelRequired: updateDto.levelRequired ?? classRecord.levelRequired,
+            startTime:
+              representativeAcademyUpdate?.startTime ??
+              updateDto.startTime ??
+              classRecord.startTime,
+            endTime:
+              representativeAcademyUpdate?.endTime ??
+              updateDto.endTime ??
+              classRecord.endTime,
+            isActive: updateDto.isActive ?? classRecord.isActive,
+            trainingType: classRecord.trainingType,
+            coachId:
+              newLeadCoachId ??
+              (updateDto.coachId !== undefined
+                ? updateDto.coachId
+                : classRecord.coachId),
+            venueId:
+              representativeAcademyUpdate?.venueId !== undefined
+                ? (representativeAcademyUpdate.venueId ?? null)
+                : updateDto.venueId !== undefined
+                  ? updateDto.venueId
+                  : classRecord.venueId,
+            classDays:
+              representativeAcademyUpdate?.classDays !== undefined
+                ? representativeAcademyUpdate.classDays
+                : updateDto.classDays !== undefined
+                  ? updateDto.classDays
+                  : undefined,
+            category: derivedCategory,
+            // [2026-08-04] 공개 범위 — 미전송 시 기존 값 유지.
+            visibility: updateDto.visibility ?? classRecord.visibility,
+            // [2026-08-04] 수업 지역 — 미전송 필드는 기존 값 유지.
+            //   시/도만 바꾸고 시군구를 안 보내면 조합이 깨지므로 mergeClassRegion 이 시군구를 비운다.
+            ...mergeClassRegion(classRecord, updateDto),
+          },
+        });
+      },
+    );
 
     if (assignedCoachUserIds !== undefined) {
       const now = new Date();
@@ -3771,27 +4123,14 @@ export class ClassesService {
       }
     }
 
-    // [2026-05-15] 오픈클래스 노출 팀 전체 replace.
-    //   visibleTeamIds 가 전달된 경우만 — undefined 면 기존 노출 유지.
-    //   유효한 활성 팀만 ClassTeamVisibility 로 저장.
-    if (updateDto.visibleTeamIds !== undefined) {
-      await this.prisma.$transaction(async (tx) => {
-        await tx.classTeamVisibility.deleteMany({ where: { classId } });
-        const uniqueTeamIds = [...new Set(updateDto.visibleTeamIds)];
-        if (uniqueTeamIds.length > 0) {
-          const validTeams = await tx.team.findMany({
-            where: { id: { in: uniqueTeamIds }, isActive: true },
-            select: { id: true },
-          });
-          if (validTeams.length > 0) {
-            await tx.classTeamVisibility.createMany({
-              data: validTeams.map((t) => ({ classId, teamId: t.id })),
-              skipDuplicates: true,
-            });
-          }
-        }
-      });
-    }
+    // [2026-05-15 → 2026-08-04] 공개범위·노출 팀 반영.
+    //   visibility 가 SELECTED_TEAMS 일 때만 노출 지정이 유효하며,
+    //   그 밖으로 전환되면 기존 지정을 정리한다.
+    await this.applyClassVisibilityUpdate(
+      classId,
+      classRecord.visibility,
+      updateDto,
+    );
 
     // 신규 코치 배정 알림 발송
     if (newlyAddedCoachIds.length > 0) {
@@ -4045,7 +4384,11 @@ export class ClassesService {
     // 요일 모드 회차별 시각·장소 (날짜 문자열 → 저장값) — 요일 규칙에서 산출.
     const weekdayTimeByDate = new Map<
       string,
-      { startTime: string | null; endTime: string | null; venueId: string | null }
+      {
+        startTime: string | null;
+        endTime: string | null;
+        venueId: string | null;
+      }
     >();
     if (useDates) {
       // 미니달력으로 선택한 날짜 배열 — 자정 기준 ClassSchedule 생성.
@@ -4098,7 +4441,15 @@ export class ClassesService {
         })) ?? [],
       );
       const hasBulkDaySchedules = bulkDayTimeMap.size > 0;
-      const dowToNameBulk: Record<number, string> = { 0: "일", 1: "월", 2: "화", 3: "수", 4: "목", 5: "금", 6: "토" };
+      const dowToNameBulk: Record<number, string> = {
+        0: "일",
+        1: "월",
+        2: "화",
+        3: "수",
+        4: "목",
+        5: "금",
+        6: "토",
+      };
       const pad2Bulk = (n: number) => String(n).padStart(2, "0");
 
       // 회차 시각 — dto 지정 > 수업 ClassDaySchedule 요일별 > 미저장(null).
@@ -4120,10 +4471,14 @@ export class ClassesService {
           weekdayTimeByDate.set(dateOnlyToString(dt), {
             startTime:
               dto.startTime ??
-              (entry ? `${pad2Bulk(entry.startHH)}:${pad2Bulk(entry.startMM)}` : null),
+              (entry
+                ? `${pad2Bulk(entry.startHH)}:${pad2Bulk(entry.startMM)}`
+                : null),
             endTime:
               dto.endTime ??
-              (entry ? `${pad2Bulk(entry.endHH)}:${pad2Bulk(entry.endMM)}` : null),
+              (entry
+                ? `${pad2Bulk(entry.endHH)}:${pad2Bulk(entry.endMM)}`
+                : null),
             venueId: entry?.venueId ?? dto.venueId ?? null,
           });
           dates.push(dt);
@@ -4345,7 +4700,11 @@ export class ClassesService {
     // 요일 모드 회차별 시각·장소 (날짜 문자열 → 저장값) — 요일 규칙에서 산출.
     const weekdayTimeByDate = new Map<
       string,
-      { startTime: string | null; endTime: string | null; venueId: string | null }
+      {
+        startTime: string | null;
+        endTime: string | null;
+        venueId: string | null;
+      }
     >();
     if (useDates) {
       candidateDates = dto.dates!.map((d) => dateOnlyToUtc(d));
@@ -4395,7 +4754,15 @@ export class ClassesService {
         })) ?? [],
       );
       const hasBulkAcademyDaySchedules = bulkAcademyDayTimeMap.size > 0;
-      const dowToNameBulkAcademy: Record<number, string> = { 0: "일", 1: "월", 2: "화", 3: "수", 4: "목", 5: "금", 6: "토" };
+      const dowToNameBulkAcademy: Record<number, string> = {
+        0: "일",
+        1: "월",
+        2: "화",
+        3: "수",
+        4: "목",
+        5: "금",
+        6: "토",
+      };
       const pad2AcademyBulk = (n: number) => String(n).padStart(2, "0");
 
       // 회차 시각 — dto 지정 > 요일 규칙 > 미저장(null). 대표값(Class.startTime) 폴백 제거.
@@ -4783,7 +5150,11 @@ export class ClassesService {
       throw new ForbiddenException("지난 일정은 수정할 수 없습니다.");
     }
 
-    const data: { startTime?: string | null; endTime?: string | null; venueId?: string | null } = {};
+    const data: {
+      startTime?: string | null;
+      endTime?: string | null;
+      venueId?: string | null;
+    } = {};
     if (dto.startTime !== undefined) data.startTime = dto.startTime || null;
     if (dto.endTime !== undefined) data.endTime = dto.endTime || null;
     if (dto.venueId !== undefined) data.venueId = dto.venueId || null;
@@ -4917,7 +5288,12 @@ export class ClassesService {
     // 응답에 isPurchasable / expectedExpiresAt / classEndDate / disabledReason 계산 필드 부여.
     const classRecord = await this.prisma.class.findUnique({
       where: { id: classId },
-      select: { id: true, endTime: true, academyId: true, salesOpenMonth: true },
+      select: {
+        id: true,
+        endTime: true,
+        academyId: true,
+        salesOpenMonth: true,
+      },
     });
 
     if (!classRecord) {
@@ -5026,8 +5402,10 @@ export class ClassesService {
     //   salesOpenMonth·상품을 재조회한 값으로 잠금 판정한다 (가격 잠금 §4-0 A).
     //   후불(POSTPAID/BOTH) 수업은 출석·정산과의 직렬화를 위해 postpaid lock 도
     //   고정 순서(sales→postpaid)로 함께 획득한다 (§4-0 B).
-    let priceChange: { oldAmount: number | null; newAmount: number | null } | null =
-      null;
+    let priceChange: {
+      oldAmount: number | null;
+      newAmount: number | null;
+    } | null = null;
     const updated = await this.prisma.$transaction(async (tx) => {
       if (shouldUsePostpaidLock(product.class.billingMode)) {
         await acquireClassSalesAndPostpaidLocks(tx, classId);
@@ -5616,7 +5994,11 @@ export class ClassesService {
             if (att.yearMonth >= prevSalesYm) hasPaidSincePrevCycle = true;
           }
         }
-        if (hasPrepaidPaidHistory && !hasPaidSincePrevCycle && !hasActivePostpaid) {
+        if (
+          hasPrepaidPaidHistory &&
+          !hasPaidSincePrevCycle &&
+          !hasActivePostpaid
+        ) {
           const name =
             `${reg.user.lastName ?? ""}${reg.user.firstName ?? ""}`.trim() ||
             reg.user.email;
@@ -5884,8 +6266,10 @@ export class ClassesService {
     //   salesOpenMonth·상품을 재조회한 값으로 잠금 판정한다 (가격 잠금 §4-0 A).
     //   후불(POSTPAID/BOTH) 수업은 출석·정산과의 직렬화를 위해 postpaid lock 도
     //   고정 순서(sales→postpaid)로 함께 획득한다 (§4-0 B).
-    let priceChange: { oldAmount: number | null; newAmount: number | null } | null =
-      null;
+    let priceChange: {
+      oldAmount: number | null;
+      newAmount: number | null;
+    } | null = null;
     const updated = await this.prisma.$transaction(async (tx) => {
       if (shouldUsePostpaidLock(billingMode)) {
         await acquireClassSalesAndPostpaidLocks(tx, classId);
