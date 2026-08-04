@@ -112,6 +112,8 @@ interface ClassDetail {
   venueId?: string;
   venueName?: string;
   venueAddress?: string;
+  /** [2026-08-04] 수업 지역 "서울 강남구" — 등록 시 감독이 고른 시/도+시군구 조합. */
+  regionLabel?: string | null;
   /** [2026-06-05] 요일별 시간·장소 규칙 — 백엔드 getClass 응답. 규칙 없으면 빈 배열. */
   daySchedules?: DaySchedule[];
   currentEnrollment?: number;
@@ -798,6 +800,29 @@ export default function ClassDetailPage() {
       return;
     }
     if (!hasEligibleChild) {
+      // [2026-08-04] 정규수업 + 자녀 팀 미소속 — 여기서 알럿만 띄우면 막다른 길이 된다.
+      //   전국 수업 찾기(/classes-explore)로 유입된 학부모가 대부분 이 상태이므로
+      //   팀 가입 신청 경로(자녀 등록/수정 시 팀 선택)로 이어준다.
+      //   ※ 별도 "팀 가입 신청" API 는 없다 — 팀 가입은 자녀 등록/수정에서 teamId 를 지정하는 흐름이다.
+      if (!isOpenClass && eligibleTeamId) {
+        const goJoin = await modal.confirm({
+          title: MESSAGES.enrollment.notEligibleForTeam,
+          message: MESSAGES.class.explore.joinTeamHint,
+          confirmText: MESSAGES.class.explore.joinTeamCta,
+          cancelText: '닫기',
+        });
+        if (goJoin) {
+          // 자녀가 있으면 선택된 자녀(없으면 첫 자녀)의 편집 화면, 없으면 자녀 추가 화면으로.
+          const targetChildId =
+            selectedChildId ?? parentChildren?.[0]?.id ?? null;
+          navigate(
+            targetChildId
+              ? `/children/${targetChildId}/edit?teamId=${eligibleTeamId}`
+              : `/children/add?teamId=${eligibleTeamId}`,
+          );
+        }
+        return;
+      }
       await modal.alert({
         title: '신청할 수 없어요',
         message: MESSAGES.enrollment.notEligibleForTeam,
@@ -1614,8 +1639,9 @@ export default function ClassDetailPage() {
             </div>
           </div>
 
-          {/* 시간 · 장소 */}
-          {(heroScheduleText || classData.venueName) && (
+          {/* 지역 · 시간 · 장소 — [2026-08-04] 지역을 장소와 한 줄에 묶어 먼저 보여준다.
+              신청 직전 화면이라 "어느 지역 수업인지" 를 놓치면 곧바로 오등록으로 이어진다. */}
+          {(heroScheduleText || classData.venueName || classData.regionLabel) && (
             <div className="mt-3 flex flex-col gap-1.5">
               {heroScheduleText && (
                 <div className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white/80">
@@ -1627,14 +1653,22 @@ export default function ClassDetailPage() {
                   <span className="truncate">{heroScheduleText}</span>
                 </div>
               )}
-              {classData.venueName && (
+              {(classData.regionLabel || classData.venueName) && (
                 <div className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white/80">
                   <Icon
                     name="place"
                     className="text-[15px] text-it-blue-200"
                     aria-hidden="true"
                   />
-                  <span className="truncate">{classData.venueName}</span>
+                  <span className="truncate">
+                    {classData.regionLabel && (
+                      <span className="font-extrabold text-white">
+                        {classData.regionLabel}
+                      </span>
+                    )}
+                    {classData.venueName &&
+                      `${classData.regionLabel ? ' · ' : ''}${classData.venueName}`}
+                  </span>
                 </div>
               )}
             </div>

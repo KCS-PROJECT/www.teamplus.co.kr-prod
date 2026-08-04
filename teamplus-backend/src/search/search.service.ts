@@ -6,6 +6,9 @@ import {
   buildBirthYearWhere,
   type ViewerLike,
 } from "@/common/utils/viewer-birth-years.util";
+import { resolveViewerTeamIds } from "@/common/utils/team-scope.util";
+import { buildClassVisibilityWhere } from "@/classes/utils/class-visibility.util";
+import { CLASSES_DOMAIN_TRAINING_TYPES } from "@/common/constants/class-domain.constant";
 
 type SearchType = "all" | "clubs" | "classes" | "coaches" | "notices";
 
@@ -222,6 +225,15 @@ export class SearchService {
     //   비로그인(@Public) 또는 그 외 역할은 전체 노출(검색은 발견 목적). 결제는 별도 최종 방어선이 차단.
     const birthYears = await resolveViewerBirthYears(this.prisma, user);
     const ageWhere = buildBirthYearWhere(birthYears);
+
+    // [2026-08-04] 공개범위 게이트 — 목록(/classes/explore)과 동일 규칙.
+    //   기존에는 `isActive` 외에 아무 조건이 없어 (1) 미승인(PENDING) 수업과
+    //   (2) 감독 내부 훈련(대문자 trainingType)이 비로그인 검색에 그대로 노출됐다.
+    const viewerTeamIds = user
+      ? await resolveViewerTeamIds(this.prisma, user.id, user.userType)
+      : [];
+    const visibilityWhere = buildClassVisibilityWhere(user, viewerTeamIds);
+
     const where: Prisma.ClassWhereInput = {
       OR: [
         { className: { contains: q } },
@@ -229,7 +241,11 @@ export class SearchService {
         { instructorName: { contains: q } },
       ],
       isActive: true,
-      ...(ageWhere ? { AND: [ageWhere] } : {}),
+      approvalStatus: "APPROVED",
+      endedAt: null,
+      // 학부모용 결제 수업만 — 대문자 training 도메인(감독 내부 훈련) 배제.
+      trainingType: { in: [...CLASSES_DOMAIN_TRAINING_TYPES] },
+      AND: [...(ageWhere ? [ageWhere] : []), visibilityWhere],
     };
 
     const [items, total] = await Promise.all([

@@ -12,8 +12,8 @@ import { MESSAGES } from '@/lib/messages';
 import { cn } from '@/lib/utils';
 import type { Academy } from '@/hooks/useAcademy';
 import { usePageReady } from '@/hooks/usePageReady';
-
-const REGIONS = ['서울', '경기', '인천', '부산', '대구', '대전', '광주', '울산', '세종', '강원', '충북', '충남', '전북', '전남', '경북', '경남', '제주'];
+// [2026-08-04] 지역 목록을 lib/regions.ts 로 이관 — 수업 탐색(/classes-explore)과 공용 SoT.
+import { REGIONS } from '@/lib/regions';
 
 /**
  * PublicAcademiesPage - 공개 오픈클래스 검색

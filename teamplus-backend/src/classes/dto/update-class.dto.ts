@@ -6,12 +6,18 @@ import {
   IsBoolean,
   IsArray,
   IsIn,
+  IsEnum,
   ValidateNested,
   Min,
   Max,
 } from "class-validator";
 import { Type } from "class-transformer";
 import { ApiPropertyOptional } from "@nestjs/swagger";
+import { ClassVisibility } from "@prisma/client";
+import {
+  ALL_DISTRICTS,
+  VENUE_CITIES,
+} from "@/common/constants/regions.constant";
 import { DateScheduleItemDto, DayScheduleItemDto } from "./create-class.dto";
 
 /**
@@ -188,11 +194,44 @@ export class UpdateClassDto {
   @IsArray()
   coachUserIds?: string[];
 
-  // 2026-05-15: 오픈클래스 팀 노출 ID 배열 — ClassTeamVisibility 전체 replace.
-  // undefined = 변경 없음 / [] = 모든 노출 제거 / 배열 = 해당 팀들로 교체.
+  // 2026-08-04: 공개 범위 변경. undefined = 변경 없음.
+  //   SELECTED_TEAMS 외의 값으로 바꾸면 서비스가 기존 ClassTeamVisibility 를 정리한다.
   @ApiPropertyOptional({
     description:
-      "오픈클래스 노출 팀 ID 배열. academyId 수업일 때만 적용. 전달 시 ClassTeamVisibility 를 이 배열로 전체 교체.",
+      "공개 범위. PUBLIC(전체공개) | PARENTS_ONLY(학부모공개) | SELECTED_TEAMS(지정 팀에만) | TEAM_ONLY(비공개). " +
+      "미전달 시 변경 없음.",
+    enum: ClassVisibility,
+  })
+  @IsOptional()
+  @IsEnum(ClassVisibility)
+  visibility?: ClassVisibility;
+
+  // 2026-08-04: 수업 지역 — undefined = 변경 없음.
+  //   시/도만 바꾸고 시군구를 안 보내면 조합이 깨지므로 서비스가 둘을 함께 검증한다.
+  @ApiPropertyOptional({
+    description: "수업 지역 — 시/도. 미전달 시 변경 없음.",
+    enum: VENUE_CITIES,
+    example: "서울",
+  })
+  @IsOptional()
+  @IsIn(VENUE_CITIES)
+  regionCity?: string;
+
+  @ApiPropertyOptional({
+    description: "수업 지역 — 시군구. regionCity 에 속한 값이어야 합니다.",
+    example: "강남구",
+  })
+  @IsOptional()
+  // 기본 @IsIn 메시지는 시군구 250여 개를 전부 나열해 응답이 수 KB 로 부푼다 → 짧게 대체.
+  @IsIn(ALL_DISTRICTS, { message: "유효하지 않은 시군구입니다." })
+  regionDistrict?: string;
+
+  // 2026-05-15: 노출 팀 ID 배열 — ClassTeamVisibility 전체 replace.
+  // undefined = 변경 없음 / [] = 모든 노출 제거 / 배열 = 해당 팀들로 교체.
+  // 2026-08-04: visibility=SELECTED_TEAMS 일 때만 유효.
+  @ApiPropertyOptional({
+    description:
+      "노출 팀 ID 배열. visibility=SELECTED_TEAMS 일 때만 적용. 전달 시 ClassTeamVisibility 를 이 배열로 전체 교체.",
     example: ["team-uuid-1", "team-uuid-2"],
   })
   @IsOptional()
@@ -208,7 +247,12 @@ export class UpdateClassDto {
       "미전달 시 기존 요일 규칙 유지(변경 없음).",
     type: [DayScheduleItemDto],
     example: [
-      { dayOfWeek: "월", startTime: "17:00", endTime: "18:30", venueId: "venue-id-1" },
+      {
+        dayOfWeek: "월",
+        startTime: "17:00",
+        endTime: "18:30",
+        venueId: "venue-id-1",
+      },
       { dayOfWeek: "수", startTime: "19:00", endTime: "20:30" },
     ],
   })
@@ -227,7 +271,12 @@ export class UpdateClassDto {
       "미전달 시 기존 일정 보존(변경 없음).",
     type: [DateScheduleItemDto],
     example: [
-      { date: "2026-07-01", startTime: "17:00", endTime: "18:30", venueId: "venue-id-1" },
+      {
+        date: "2026-07-01",
+        startTime: "17:00",
+        endTime: "18:30",
+        venueId: "venue-id-1",
+      },
       { date: "2026-07-03", startTime: "17:00", endTime: "18:30" },
     ],
   })

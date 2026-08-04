@@ -6,7 +6,10 @@
  *
  * 참조: CLAUDE.md > Tone & Manner Guidelines
  */
-import { MESSAGES as SHARED_MESSAGES, subjectParticle } from "@shared/constants/messages";
+import {
+  MESSAGES as SHARED_MESSAGES,
+  subjectParticle,
+} from "@shared/constants/messages";
 
 export { subjectParticle };
 
@@ -22,9 +25,11 @@ export const MESSAGES = {
     endClassButton: "수업 종료하기",
     reopenClassButton: "종료 취소하기",
     endSuccess: "수업이 종료되었습니다.",
-    reopenSuccess: "수업이 재개되었습니다. 일정 등록 후 판매 시작이 필요합니다.",
+    reopenSuccess:
+      "수업이 재개되었습니다. 일정 등록 후 판매 시작이 필요합니다.",
     spotCheckboxLabel: "1회용 수업 (단일 일정)",
-    spotCheckboxHint: "하루짜리 수업입니다. 일정은 1개만 선택할 수 있고, 일정이 지나면 자동 종료됩니다.",
+    spotCheckboxHint:
+      "하루짜리 수업입니다. 일정은 1개만 선택할 수 있고, 일정이 지나면 자동 종료됩니다.",
     spotSingleScheduleLimit: "1회용 수업은 일정을 1개만 등록할 수 있습니다.",
     endBlockedBySchedule:
       "다가오는 일정이 있어 종료할 수 없습니다. 일정을 모두 마치거나 취소한 후 종료할 수 있습니다.",
@@ -155,7 +160,8 @@ export const MESSAGES = {
       removeDay: "삭제",
       removeDayAria: (day: string) => `${day}요일 기본값 삭제`,
       applyToAll: "모든 요일에 적용",
-      applyToAllAria: (day: string) => `${day}요일 시간·장소를 선택된 모든 요일에 적용`,
+      applyToAllAria: (day: string) =>
+        `${day}요일 시간·장소를 선택된 모든 요일에 적용`,
       appliedToAll: "모든 요일에 적용되었습니다.",
       timeUndecided: "시간 미정",
       dateUndecided: "날짜 미정",
@@ -163,9 +169,11 @@ export const MESSAGES = {
     // 정규 요일 기반 이번 달 일괄 생성 — 로컬 draft만 갱신(실제 저장은 등록/수정 시). 월 단위 운영.
     rangeGen: {
       fillThisMonth: "이번 달 일정 일괄 생성",
-      fillThisMonthCount: (count: number) => `이번 달 일정 일괄 생성 (${count}일)`,
+      fillThisMonthCount: (count: number) =>
+        `이번 달 일정 일괄 생성 (${count}일)`,
       emptyResult: "이번 달에 새로 만들 날짜가 없습니다.",
-      success: (count: number) => `${count}개 날짜를 만들었어요. 등록·수정할 때 저장됩니다.`,
+      success: (count: number) =>
+        `${count}개 날짜를 만들었어요. 등록·수정할 때 저장됩니다.`,
     },
     // ② 목록의 예외 날짜(패턴 외) 직접 추가 — 미니달력 모달 진입 버튼.
     scheduleAddSingle: "날짜 직접 추가",
@@ -212,6 +220,97 @@ export const MESSAGES = {
       label: "이번 주 추천 수업",
     },
     accessDenied: "이 수업에 접근할 권한이 없습니다.",
+    // [2026-08-04] /classes 전국 수업 찾기 진입 배너 — 중첩 객체(class.explore)는
+    //   webpack chunk 초기화 순서에 따라 undefined 가 되는 사례가 있어 평평한 키로 둔다.
+    exploreBannerTitle: "찾는 수업이 없나요?",
+    exploreBannerDesc: "전국에 공개된 수업을 찾아볼 수 있습니다.",
+    exploreBannerCta: "전국 수업 찾아보기",
+    // [2026-08-04] 전국 수업 찾기 — 팀 미가입 학부모의 수업 발견 경로.
+    explore: {
+      title: "수업 찾기",
+      searchPlaceholder: "수업명, 코치, 팀으로 검색",
+      searchAriaLabel: "수업 검색",
+      resultTitle: "수업",
+      filterButton: "필터",
+      filterTitle: "조건으로 찾기",
+      filterApply: "적용하기",
+      filterReset: "초기화",
+      regionAll: "전체 지역",
+      regionLabel: "지역",
+      dayLabel: "요일",
+      timeSlotLabel: "시간대",
+      timeSlot: {
+        morning: "오전",
+        morningHint: "12시 이전",
+        afternoon: "오후",
+        afternoonHint: "12~17시",
+        evening: "저녁",
+        eveningHint: "17시 이후",
+      },
+      categoryLabel: "대상",
+      category: {
+        KIDS: "유소년",
+        JUNIOR: "주니어",
+        ADULT: "성인",
+      },
+      trainingTypeLabel: "수업 유형",
+      priceMaxLabel: "가격 상한",
+      priceMaxPlaceholder: "예: 200000",
+      sortLabel: "정렬",
+      sortRecent: "최신순",
+      sortCapacity: "정원 많은 순",
+      emptyTitle: "조건에 맞는 수업이 없습니다.",
+      emptyDescription: "지역이나 요일 조건을 바꿔서 다시 찾아보세요.",
+      emptyGuestHint: "로그인하면 더 많은 수업을 볼 수 있습니다.",
+      loadMore: "더보기",
+      loadingMore: "불러오는 중...",
+      remainingSeats: (n: number) => `잔여 ${n}석`,
+      seatsFull: "정원 마감",
+      seatsUnlimited: "정원 제한 없음",
+      perSession: (won: string) => `회당 ${won}원`,
+      monthly: (won: string) => `월 ${won}원`,
+      priceUndecided: "수강료 문의",
+      scheduleUndecided: "일정 준비 중",
+      entryBannerTitle: "찾는 수업이 없나요?",
+      entryBannerDesc: "전국에 공개된 수업을 찾아볼 수 있습니다.",
+      entryBannerCta: "전국 수업 찾아보기",
+      joinTeamCta: "팀 가입 신청하기",
+      joinTeamHint: "승인되면 이 수업에 등록할 수 있습니다.",
+      inquiryCta: "수업 문의하기",
+    },
+
+    // [2026-08-04] 공개 범위 — 감독/코치가 수업 생성 시 선택.
+    //   전국 수업 찾기(/classes-explore) 노출을 결정한다.
+    visibility: {
+      sectionTitle: "공개 범위",
+      sectionHint: "수업을 어디까지 보여줄지 선택해주세요.",
+      public: "전체공개",
+      publicHint: "로그인하지 않은 사람도 수업 찾기에서 볼 수 있습니다.",
+      parentsOnly: "학부모공개",
+      parentsOnlyHint: "로그인한 학부모·학생에게 전국에 노출됩니다.",
+      selectedTeams: "지정 팀에만",
+      selectedTeamsHint: "선택한 팀의 회원에게만 보입니다.",
+      teamOnly: "비공개",
+      teamOnlyHint: "우리 팀 회원에게만 보입니다.",
+      selectTeamsRequired: "노출할 팀을 1개 이상 선택해주세요.",
+      selectTeamsButton: "팀 선택하기",
+      selectedTeamsCount: (n: number) => `${n}개 팀 선택됨`,
+    },
+    // [2026-08-04] 수업 지역 — 감독/코치가 등록 시 시/도 + 시군구를 직접 선택한다.
+    //   목록 카드에 그대로 노출돼 타지역 학부모의 오등록을 막는 것이 목적.
+    region: {
+      sectionTitle: "수업 지역",
+      sectionHint:
+        "수업이 열리는 지역을 선택해주세요. 학부모에게 시군구까지 표시되어 먼 지역 오등록을 막아줍니다.",
+      cityLabel: "시/도",
+      cityPlaceholder: "시/도 선택",
+      districtLabel: "시군구",
+      districtPlaceholder: "시군구 선택",
+      districtSelectCityFirst: "시/도를 먼저 선택해주세요.",
+      cityRequired: "수업 지역(시/도)을 선택해주세요.",
+      districtRequired: "수업 지역(시군구)을 선택해주세요.",
+      unset: "지역 미지정",
+    },
   },
   enrollment: {
     // 성공/실패
@@ -259,7 +358,8 @@ export const MESSAGES = {
     disabledAgeLabel: "연령 제한",
     disabledAgeShort: "연령",
     // 결제 단계에서 선택된 자녀가 수업 대상 연령(출생연도)에 맞지 않을 때 진행 차단 안내.
-    ageBlockedNotice: "선택한 자녀는 이 수업의 대상 연령이 아니에요. 다른 자녀를 선택해주세요.",
+    ageBlockedNotice:
+      "선택한 자녀는 이 수업의 대상 연령이 아니에요. 다른 자녀를 선택해주세요.",
     allChildrenEnrolled: "모든 자녀가 이미 이 수업을 수강 중입니다.",
     noEligibleChildForAge: (ageRangeLabel: string) =>
       `이 수업을 수강 가능한 자녀가 없습니다. (수강 연령 ${ageRangeLabel})`,
@@ -383,6 +483,15 @@ export const MESSAGES = {
     },
     todaySchedule: "오늘의 수업 일정",
     classSchedule: "수업 일정",
+    // [2026-08-04 사용자 지시] 홈 수업 목록은 "내가 등록한 것 또는 수업 요청한 것"만 노출.
+    //   등록 전 단계(신청·자녀 요청 대기)를 '신청중'으로 구분하고,
+    //   비어 있을 때는 카탈로그(/classes)로 이어주는 문구·CTA 를 함께 둔다.
+    myClasses: {
+      pendingChip: "신청중",
+      emptyTitle: "등록한 수업이 없습니다.",
+      emptyDescription: "수업을 신청하면 여기에서 한눈에 볼 수 있어요.",
+      emptyCta: "수업 둘러보기",
+    },
     teamNotices: "공지사항",
     notices: "공지사항",
     // [2026-07-18] 대시보드 공지 영역 2탭 분리 — 공지사항(service, 전역)/팀공지(team, 소속·자녀 경유).
@@ -574,8 +683,7 @@ export const MESSAGES = {
     equipment: {
       teamRequired: "점검할 팀을 먼저 선택해주세요.",
       itemNameRequired: "모든 항목의 이름을 입력해주세요.",
-      fileSizeExceed:
-        "사진 크기는 10MB 이하만 업로드할 수 있어요.",
+      fileSizeExceed: "사진 크기는 10MB 이하만 업로드할 수 있어요.",
       imageOnly: "사진 파일만 업로드할 수 있어요.",
     },
     // 스태프 상세 역할 배지 — User.userType(대문자 enum) → 한글 라벨.
@@ -599,8 +707,7 @@ export const MESSAGES = {
     formCreateTitle: "약력 추가",
     formEditTitle: "약력 수정",
     bioLabel: "약력",
-    bioPlaceholder:
-      "소속·경력·자격·수상 내역을 자유롭게 작성해주세요.",
+    bioPlaceholder: "소속·경력·자격·수상 내역을 자유롭게 작성해주세요.",
     organizationLabel: "소속 기관",
     organizationPlaceholder: "예: 서울 아이스하키 클럽",
     roleLabel: "직책",
@@ -648,8 +755,7 @@ export const MESSAGES = {
     coachClassStatus: "코치별 수업 현황",
     upcomingEvents: "다가오는 주요 일정",
     // [추가 2026-05-20 Phase 2] 레벨 승인/거절 처리 실패 — clarify: 기술 용어 배제, 행동 유도.
-    approvalError:
-      "승인 처리 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.",
+    approvalError: "승인 처리 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.",
   },
   feedback: {
     submitted: "피드백이 접수되었습니다.",
@@ -754,7 +860,8 @@ export const MESSAGES = {
     prepaid: "선불",
     postpaid: "후불",
     // 후불 산정 근거 라인 — 결제내역 카드에 정산월·출석횟수·회당 단가 표시.
-    settlementMonth: (year: number, month: number) => `${year}년 ${month}월 정산`,
+    settlementMonth: (year: number, month: number) =>
+      `${year}년 ${month}월 정산`,
     attendanceTimes: (count: number) => `출석 ${count}회`,
     perSessionPrice: (price: number) => `회당 ${price.toLocaleString()}원`,
     // [추가 2026-06-09] App Store 3.1.1 — 결제권은 디지털 콘텐츠/화폐가 아닌 '오프라인 대면 수업 수강료 결제 수단'임을 명시(심사 오인 방지)
@@ -882,20 +989,15 @@ export const MESSAGES = {
     // ─── [추가 2026-05-20 Phase 2] 결제 흐름 표준 토스트/배너 카피 ───
     //   토스/KG이니시스 분기 공용. clarify 원칙: 기술 용어("위젯 초기화") 배제 + 행동 유도("다시 시도해주세요").
     //   설명은 사용자 입장 — "왜 실패했는지"보다 "지금 어떻게 하면 되는지"에 초점.
-    confirmFailed:
-      "결제 승인이 완료되지 않았어요. 잠시 후 다시 시도해주세요.",
-    initFailed:
-      "결제 화면을 불러올 수 없어요. 잠시 후 다시 시도해주세요.",
+    confirmFailed: "결제 승인이 완료되지 않았어요. 잠시 후 다시 시도해주세요.",
+    initFailed: "결제 화면을 불러올 수 없어요. 잠시 후 다시 시도해주세요.",
     widgetInitFailed:
       "결제 위젯을 불러올 수 없어요. 새로고침 후 다시 시도해주세요.",
-    requestFailed:
-      "결제 요청에 실패했어요. 잠시 후 다시 시도해주세요.",
-    loadError:
-      "결제 내역을 가져오지 못했어요. 새로고침 후 다시 시도해주세요.",
+    requestFailed: "결제 요청에 실패했어요. 잠시 후 다시 시도해주세요.",
+    loadError: "결제 내역을 가져오지 못했어요. 새로고침 후 다시 시도해주세요.",
     usageLoadError:
       "사용 내역을 가져오지 못했어요. 새로고침 후 다시 시도해주세요.",
-    cancelFailed:
-      "결제 취소에 실패했어요. 잠시 후 다시 시도해주세요.",
+    cancelFailed: "결제 취소에 실패했어요. 잠시 후 다시 시도해주세요.",
     cancelSuccess: "결제가 취소되었습니다.",
     emptyDesc: "아직 결제 내역이 없어요.",
     completeNoInfo:
@@ -1038,8 +1140,7 @@ export const MESSAGES = {
     blockedNoAttendance: "출석 내역이 없어 정산할 금액이 없어요.",
     blockedUnitPriceMissing: "수업 단가가 없어 금액을 계산할 수 없어요.",
     blockedTournamentNotEnded: "대회가 끝나면 정산할 수 있어요.",
-    blockedBillingTimingUnassigned:
-      "결제 방식이 정해지지 않은 인원이 있어요.",
+    blockedBillingTimingUnassigned: "결제 방식이 정해지지 않은 인원이 있어요.",
     // 빈 상태
     emptyTraining: "해당 월에 정산할 훈련이 없습니다.",
     emptyTournament: "해당 월에 정산할 대회가 없습니다.",
@@ -1123,13 +1224,13 @@ export const MESSAGES = {
     waitedDays: (n: number) => `${n}일 대기`,
     /** Payment.paymentStatus 원문 키 → 한글 라벨 (상세 스냅샷/현재 상태 표기). */
     paymentStatus: {
-      completed: '결제 완료',
-      pending: '결제 대기',
-      failed: '결제 실패',
-      cancelled: '결제 취소',
-      refunded: '환불 완료',
-      partially_refunded: '부분 환불',
-      refund_processing: '환불 처리 중',
+      completed: "결제 완료",
+      pending: "결제 대기",
+      failed: "결제 실패",
+      cancelled: "결제 취소",
+      refunded: "환불 완료",
+      partially_refunded: "부분 환불",
+      refund_processing: "환불 처리 중",
     } as Record<string, string>,
     // ── 상태 라벨 (색+아이콘+텍스트 — 색만 구분 금지) ──────
     status: {
@@ -1154,7 +1255,8 @@ export const MESSAGES = {
     // reconcile(관리자 PG 정산) 시트 — ADMIN 전용
     reconcileCta: "PG 정산 처리",
     reconcileSheetTitle: "PG 정산 처리",
-    reconcileSheetBody: "PG 실제 취소 여부를 확인하고 처리 결과를 선택해주세요.",
+    reconcileSheetBody:
+      "PG 실제 취소 여부를 확인하고 처리 결과를 선택해주세요.",
     reconcileOutcomeLabel: "PG 결과",
     reconcileCancelled: "PG 취소 확인됨",
     reconcileNotCancelled: "PG 미취소 확인됨",
@@ -1232,7 +1334,8 @@ export const MESSAGES = {
     reprocessSuccess: "환불 재처리를 완료했습니다.",
     reprocessFailed: "환불 재처리에 실패했습니다.",
     // ── 상태별 안내 ─────────────────────────────────────
-    executionFailedNotice: "환불 실행이 실패했습니다. 아래에서 재처리할 수 있습니다.",
+    executionFailedNotice:
+      "환불 실행이 실패했습니다. 아래에서 재처리할 수 있습니다.",
     executionFailedToast: "환불 실행에 실패했습니다. 재처리해주세요.",
     executingNotice: "다른 담당자가 처리 중입니다.",
     executedNotice: "환불이 완료된 요청입니다.",
@@ -1352,7 +1455,7 @@ export const MESSAGES = {
     historyYearLabel: (y: number) => `${y}년`,
     // 총계 타일 라벨 — 올해면 "올해 출석", 과거 연도면 "2025년 출석"
     historyAttendanceLabel: (y: number, isCurrent: boolean) =>
-      isCurrent ? '올해 출석' : `${y}년 출석`,
+      isCurrent ? "올해 출석" : `${y}년 출석`,
     historyMonthEmpty: "이 달에는 수업 이력이 없습니다.",
     historyLoadError: "수업 이력을 불러올 수 없습니다.",
     historyStatus: {
@@ -1502,7 +1605,8 @@ export const MESSAGES = {
     registerCancelled: "참가 신청이 취소되었습니다.",
     registerFailed: "참가 신청에 실패했습니다.",
     // [후불 대회] 결제 위젯 없이 참가 신청만 처리 — 종료 후 감독이 일괄 청구.
-    postpaidRegistered: "대회 참가 신청이 완료되었습니다. 참가비는 대회 종료 후 청구됩니다.",
+    postpaidRegistered:
+      "대회 참가 신청이 완료되었습니다. 참가비는 대회 종료 후 청구됩니다.",
     postpaidNotice: "후불 대회입니다. 참가비는 대회 종료 후 일괄 청구됩니다.",
     postpaidApplyCta: "참가 신청하기",
     // 참가 신청 CTA 비활성 사유 — 신청 가능한 자녀가 남아 있지 않을 때.
@@ -1653,7 +1757,8 @@ export const MESSAGES = {
     // 앱 종료 확인 (Android 하드웨어 백키 → 홈 화면 — 2026-05-16)
     exitConfirmTitle: "앱을 종료하시겠습니까?",
     // [2026-07-16] 종료 확인 시 세션(토큰) 클리어 후 종료 — 재실행 시 로그인 필요 (useAppBack.requestAppExit)
-    exitConfirmMessage: "종료하면 로그아웃되며\n다시 실행할 때 로그인이 필요합니다.",
+    exitConfirmMessage:
+      "종료하면 로그아웃되며\n다시 실행할 때 로그인이 필요합니다.",
     exitConfirmButton: "종료하기",
     // 기능 준비 중 안내 (attendance2.featureComingSoon 의 공통화 — 2026-05-14)
     featureComingSoon: (name: string) => `${name} 기능 준비 중입니다.`,
@@ -1690,7 +1795,10 @@ export const MESSAGES = {
       },
       withdrawal: { label: "회원 탈퇴", sub: "계정 삭제 및 데이터 처리" },
       terms: { label: "이용약관", sub: "서비스 이용약관" },
-      privacyPolicy: { label: "개인정보 처리방침", sub: "수집·이용 및 보호 정책" },
+      privacyPolicy: {
+        label: "개인정보 처리방침",
+        sub: "수집·이용 및 보호 정책",
+      },
       refund: { label: "환불 규정", sub: "결제 취소 및 환불 안내" },
     },
     footer: {
@@ -2166,8 +2274,7 @@ export const MESSAGES = {
   //   clarify: WCAG AAA 대상이 아닌 학부모 화면에서 사용되는 메시지지만 (자녀를 "추가하는" 학부모 화면)
   //   톤은 친근한 존댓말 유지. 법적 표현("법정대리인")은 정확성을 위해 보존.
   child: {
-    photoPermission:
-      "사진 접근 권한이 거부되었어요. 설정에서 허용해주세요.",
+    photoPermission: "사진 접근 권한이 거부되었어요. 설정에서 허용해주세요.",
     guardianConsent:
       "법정대리인 동의가 필요해요. 동의 항목을 모두 확인해주세요.",
     deleteSuccess: "선수 정보가 삭제되었습니다.",
@@ -2185,9 +2292,11 @@ export const MESSAGES = {
     permissionDenied: "이 팀을 관리할 권한이 없습니다.",
     // [추가 2026-05-21] /team 메뉴 — managed(approved+pending) 결과 0건일 때 안내.
     //  코치가 가입 신청도 하지 않은 상태이거나, 모든 신청이 거절되어 활성/대기 팀이 없을 때.
-    listEmptyForCoach: "가입한 팀이 없습니다. 회원가입 시 선택한 팀을 확인하거나 감독님께 문의해주세요.",
+    listEmptyForCoach:
+      "가입한 팀이 없습니다. 회원가입 시 선택한 팀을 확인하거나 감독님께 문의해주세요.",
     // [추가 2026-05-21] pending 팀 카드 클릭 시 안내 — 조회는 허용하되 수정 권한 없음 명시.
-    pendingClickHelperToast: "감독님 승인 후 팀 관리가 가능합니다. 정보 확인만 가능해요.",
+    pendingClickHelperToast:
+      "감독님 승인 후 팀 관리가 가능합니다. 정보 확인만 가능해요.",
 
     // 팀 하위 그룹 (감독·코치가 팀 안에서 만드는 단위)
     groupListTitle: "하위그룹",
@@ -2211,8 +2320,7 @@ export const MESSAGES = {
     groupCoachHelper: "이 하위그룹을 담당할 코치를 지정합니다.",
     groupAgeGroupLabel: "대상 설명",
     groupAgeGroupPlaceholder: "예: 주말반 · 초급 · 2014년생 위주",
-    groupAgeGroupHelper:
-      "이 하위그룹의 대상이나 성격을 자유롭게 적어주세요.",
+    groupAgeGroupHelper: "이 하위그룹의 대상이나 성격을 자유롭게 적어주세요.",
     // 하위그룹 선수 트리 — 미리보기 초과분 더보기/접기 토글
     groupMemberShowMore: (count: number) => `외 ${count}명 더보기`,
     groupMemberCollapse: "접기",
@@ -2351,7 +2459,7 @@ export const MESSAGES = {
       reason?: string | null,
     ) =>
       `${extraCount > 0 ? `${name} 외 ${extraCount}명` : name}의 팀 가입이 반려되었어요.${
-        reason && reason.trim() ? `(사유 : ${reason.trim()})` : ''
+        reason && reason.trim() ? `(사유 : ${reason.trim()})` : ""
       } 다시 신청하려면 클릭하세요`,
     dashboardBannerCta: "자세히 보기",
 
@@ -2572,8 +2680,7 @@ export const MESSAGES = {
 
     // [추가 2026-05-18 W2.B] 가입 신청 처리 (CoachTeamManageCard 푸터)
     pendingHandleLabel: "처리하기",
-    pendingHandleAria: (teamName: string) =>
-      `${teamName} 가입 신청 처리하기`,
+    pendingHandleAria: (teamName: string) => `${teamName} 가입 신청 처리하기`,
 
     // [추가 2026-05-18 W2.B] 회원 선택 카테고리 (하위그룹 등록/수정 — 연령별 필터)
     groupMembersFilterAll: "전체",
@@ -2764,7 +2871,7 @@ export const MESSAGES = {
       // [Phase B 연동] 결제 탭 모드 분기 — 후불(POSTPAID) 표시
       billingPostpaid: "후불 정산",
       postpaidPerSessionNote: (price: number) =>
-        `회당 ${price.toLocaleString('ko-KR')}원 · 월말 출석 기준 정산`,
+        `회당 ${price.toLocaleString("ko-KR")}원 · 월말 출석 기준 정산`,
       postpaidNotice:
         "출석한 만큼 월말에 정산됩니다. 출석 횟수·정산 확정은 출석 관리에서 진행됩니다.",
       // [Phase C] 선수정보 탭 당월 출석 횟수
@@ -3063,7 +3170,8 @@ export const MESSAGES = {
     blockConfirmTitle: "사용자 차단",
     blockConfirm:
       "이 사용자를 차단하시겠습니까? 차단하면 상대의 메시지가 더 이상 표시되지 않습니다.",
-    blockSuccess: "차단되었습니다. 이 사용자의 메시지가 더 이상 표시되지 않습니다.",
+    blockSuccess:
+      "차단되었습니다. 이 사용자의 메시지가 더 이상 표시되지 않습니다.",
     blockedMessage: "차단한 사용자의 메시지입니다.",
   },
   gallery: {
@@ -3222,7 +3330,8 @@ export const MESSAGES = {
       "안전한 사용을 위해 일정 시간 후\n자동으로 로그아웃됩니다.\n서비스를 계속 이용하시려면\n재로그인 해주세요.",
     reloginButton: "재로그인",
     // 다른 기기 로그인으로 세션 강제 종료 (SESSION_REPLACED)
-    replaced: "다른 기기에서 로그인되어 로그아웃되었습니다. 다시 로그인해주세요.",
+    replaced:
+      "다른 기기에서 로그인되어 로그아웃되었습니다. 다시 로그인해주세요.",
     sessionReplacedTitle: "로그아웃 안내",
     sessionReplacedMessage:
       "다른 기기에서 같은 계정으로 로그인되어\n이 기기에서는 로그아웃되었습니다.\n계속 이용하시려면 다시 로그인해주세요.",
@@ -3569,7 +3678,8 @@ export const MESSAGES = {
       packagePriceRequired: "월 결제 가격을 입력해주세요.",
       capacityRequired: "정원(최대 인원)을 입력해주세요.",
       dateScheduleRequired: "일정을 1개 이상 추가해주세요.",
-      dateScheduleTimeRequired: "각 일정의 날짜·시작·종료 시간을 올바르게 입력해주세요.",
+      dateScheduleTimeRequired:
+        "각 일정의 날짜·시작·종료 시간을 올바르게 입력해주세요.",
       endDateRequired: "교육 종료일을 입력해주세요.",
       // 오픈클래스 자동 일정 생성 분기 (handleSubmit 내 academyErrors)
       academyAutoGenStartDate:
@@ -3670,9 +3780,12 @@ export const MESSAGES = {
   //   tone & manner: teen(열정 🔥) · admin(중립) · parent(따뜻 💭) · child(놀이 🎊)
   //   사용 예: const empty = MESSAGES.emptyByPersona[role]?.('수업') ?? MESSAGES.empty('수업');
   emptyByPersona: {
-    teen: (target: string) => `${target}${subjectParticle(target)} 없네요. 더 도전해보세요! 🔥`,
-    admin: (target: string) => `모니터링할 ${target}${subjectParticle(target)} 없습니다`,
-    parent: (target: string) => `예정된 ${target}${subjectParticle(target)} 없습니다`,
+    teen: (target: string) =>
+      `${target}${subjectParticle(target)} 없네요. 더 도전해보세요! 🔥`,
+    admin: (target: string) =>
+      `모니터링할 ${target}${subjectParticle(target)} 없습니다`,
+    parent: (target: string) =>
+      `예정된 ${target}${subjectParticle(target)} 없습니다`,
     child: (target: string) => `오늘은 ${target} 쉬는 날이에요! 🎊`,
     coach: (target: string) =>
       `${target}${subjectParticle(target)} 비어 있어요. 새로 시작해볼까요?`,
@@ -3692,7 +3805,8 @@ export const MESSAGES = {
     emailDuplicated: "이미 사용 중인 이메일입니다.",
     phoneDuplicated: "이미 등록된 전화번호입니다.",
     passwordRequired: "비밀번호를 입력해주세요.",
-    passwordRule: "비밀번호는 영문·숫자·특수문자를 포함해 8자 이상이어야 합니다.",
+    passwordRule:
+      "비밀번호는 영문·숫자·특수문자를 포함해 8자 이상이어야 합니다.",
     passwordForbiddenChars: (chars: string) =>
       `사용할 수 없는 문자가 있어요: ${chars}`,
   },
@@ -3703,7 +3817,8 @@ export const MESSAGES = {
     titleHint: "대회를 쉽게 식별할 수 있도록 입력해주세요",
     dateHint: "대회가 진행되는 시작일과 종료일을 지정해주세요",
     // [2026-06-16] 대회 기간 수동 입력 제거 — 경기 일정에서 자동 산출.
-    scheduleHint: "경기별 상대팀과 일정을 입력하세요. 대회 기간은 경기 일정에서 자동 계산됩니다",
+    scheduleHint:
+      "경기별 상대팀과 일정을 입력하세요. 대회 기간은 경기 일정에서 자동 계산됩니다",
     capacityHint: "모집 마감일과 참가팀 정원을 설정해주세요",
     // [선불 단일 금액 입력 — 일정별 합계 대체]
     feeLabel: "대회 참가비",
@@ -3916,7 +4031,8 @@ export const MESSAGES = {
   },
   classProduct: {
     sectionTitle: "수강권",
-    sectionDescription: "수강권별로 수업료·유효기간을 다양하게 운영할 수 있어요.",
+    sectionDescription:
+      "수강권별로 수업료·유효기간을 다양하게 운영할 수 있어요.",
     // 후불 수업 수정 — 패키지 대신 노출하는 단순 수강료 카드 제목.
     feeSectionTitle: "수업료",
     // [Phase B-5] 결제 방식 (감독이 수업 생성 시 지정)
@@ -3990,7 +4106,8 @@ export const MESSAGES = {
     badgeClassEnded: "수업 종료",
     listBadgeClassEnded: "종료된 수업",
     emptyTitle: "등록된 수강권이 없어요",
-    emptyDescription: "감독·코치가 수강권을 등록해야 학부모가 결제할 수 있습니다.",
+    emptyDescription:
+      "감독·코치가 수강권을 등록해야 학부모가 결제할 수 있습니다.",
     unavailableEndDateExceed: "수업 종료일을 초과하는 수강권입니다",
     unavailableClassEnded: "이 수업은 종료되었습니다",
     selectAnotherPackage: "다른 수강권을 선택해주세요",
@@ -4002,7 +4119,7 @@ export const MESSAGES = {
     saving: "저장 중…",
     // 2026-05-22 옵션 F-2 — 수업 등록 폼 안내 + 수업 상세 관리 진입점.
     formHintCreate:
-      "정기권 등 수강권은 수업 등록 후 수업 상세의 \"수강 플랜\" 섹션에서 관리해요.",
+      '정기권 등 수강권은 수업 등록 후 수업 상세의 "수강 플랜" 섹션에서 관리해요.',
     // 2026-05-22 옵션 H — PackageEditSheet 재설계 라벨.
     fieldWeeks: "주 수",
     fieldSessions: "수업 횟수",

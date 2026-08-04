@@ -49,11 +49,24 @@ function itIconBoxClass(trainingType?: string | null): string {
  */
 const ClassCardThemeContext = createContext(false);
 
+/**
+ * compact(리스트 행) 모드 전파용 컨텍스트 — InfoRow 폰트/여백 축소에 사용.
+ * 기본 false → 미전달 화면(운영자 목록·캘린더)은 기존 그대로.
+ */
+const ClassCardCompactContext = createContext(false);
+
 export interface ClassListCardProps {
   /** 카드 전체 클릭 시 이동할 상세 경로 */
   href: string;
   /** ICETIMES flat 스타일 적용. 기본 false = 기존 카드 외형 그대로 (미전달 화면 영향 0). */
   iceTheme?: boolean;
+  /**
+   * 리스트 행(compact) 모드 — 카드 인상을 주던 요소를 제거한다.
+   *   · 좌측 아이콘 박스 44 → 32px (타입 색·팀 로고 식별은 유지)
+   *   · 제목 1줄 truncate · 정보 라인 12.5px · 세로 패딩 축소(행 높이 ≈ 절반)
+   * 기본 false → 운영자 수업목록·캘린더 등 미전달 화면은 기존 카드 골격 그대로.
+   */
+  compact?: boolean;
   /** 좌측 아이콘 박스 색·아이콘·배지 결정 (regular/lesson/tournament) */
   trainingType?: string | null;
   /** 있으면 trainingType 아이콘 대신 이미지(예: 팀 로고) 표시 */
@@ -83,6 +96,7 @@ export interface ClassListCardProps {
 export const ClassListCard = memo(function ClassListCard({
   href,
   iceTheme = false,
+  compact = false,
   trainingType,
   iconImageUrl,
   typeBadgeLabel,
@@ -107,6 +121,7 @@ export const ClassListCard = memo(function ClassListCard({
 
   return (
     <ClassCardThemeContext.Provider value={iceTheme}>
+    <ClassCardCompactContext.Provider value={compact}>
     <article
       className={cn(
         'group relative overflow-hidden transition-colors motion-reduce:transition-none',
@@ -124,13 +139,20 @@ export const ClassListCard = memo(function ClassListCard({
           iceTheme ? 'focus-visible:ring-it-blue-500/40' : 'focus-visible:ring-ice-500/40',
         )}
       >
-        <div className="flex gap-3 px-3.5 pt-3.5 pb-3">
+        <div
+          className={cn(
+            'flex',
+            compact ? 'gap-2.5 px-4 py-2.5 items-center' : 'gap-3 px-3.5 pt-3.5 pb-3',
+          )}
+        >
           {/* 좌측 아이콘 박스 — trainingType 색·아이콘 + 하단 타입 배지. iconImageUrl 있으면 이미지.
-              ICETIMES(true): 시안 Avatar 44px(w-11 h-11). 기본(false): 56px(w-14 h-14) 그대로. */}
+              compact(리스트 행): 32px. ICETIMES(true): 시안 Avatar 44px(w-11 h-11).
+              기본(false): 56px(w-14 h-14) 그대로. */}
           <div
             className={cn(
-              'shrink-0 grid place-items-center rounded-xl relative',
-              iceTheme ? 'w-11 h-11' : 'w-14 h-14',
+              'shrink-0 grid place-items-center relative',
+              compact ? 'w-8 h-8 rounded-lg' : 'rounded-xl',
+              compact ? '' : iceTheme ? 'w-11 h-11' : 'w-14 h-14',
               dimmed && 'opacity-60',
             )}
           >
@@ -140,18 +162,22 @@ export const ClassListCard = memo(function ClassListCard({
                 src={imgSrc}
                 alt=""
                 onError={() => setImgError(true)}
-                className="absolute inset-0 h-full w-full rounded-xl object-cover bg-wline dark:bg-rink-700"
+                className={cn(
+                  'absolute inset-0 h-full w-full object-cover bg-wline dark:bg-rink-700',
+                  compact ? 'rounded-lg' : 'rounded-xl',
+                )}
               />
             ) : (
               <span
                 className={cn(
-                  'absolute inset-0 rounded-xl flex items-center justify-center',
+                  'absolute inset-0 flex items-center justify-center',
+                  compact ? 'rounded-lg' : 'rounded-xl',
                   iceTheme ? itIconBoxClass(trainingType) : getTrainingTypeBadgeClass(trainingType),
                 )}
               >
                 <Icon
                   name={getTrainingTypeIcon(trainingType)}
-                  className={cn(iceTheme ? 'text-[22px]' : 'text-[26px]')}
+                  className={cn(compact ? 'text-[18px]' : iceTheme ? 'text-[22px]' : 'text-[26px]')}
                   aria-hidden="true"
                 />
               </span>
@@ -159,15 +185,18 @@ export const ClassListCard = memo(function ClassListCard({
           </div>
 
           {/* 우측 콘텐츠 — 제목 → 메타 → 정보 라인 → 본체 액션 */}
-          <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+          <div className={cn('flex-1 min-w-0 flex flex-col', compact ? 'gap-0.5' : 'gap-1.5')}>
             {topRight && <div className="flex items-center gap-1.5">{topRight}</div>}
 
             {/* [제안 B] 유형 배지를 아이콘 하단에서 제거하고 수업명 왼쪽 인라인으로 이동 (팀 로고 가림 방지). */}
-            <div className="flex items-start gap-1.5">
+            <div className={cn('flex gap-1.5', compact ? 'items-center' : 'items-start')}>
               {typeBadgeLabel && (
                 <span
                   className={cn(
-                    'shrink-0 mt-[1px] inline-flex items-center justify-center min-w-[36px] px-1.5 h-[20px] rounded-md text-[11px] font-bold tracking-[0.04em] whitespace-nowrap text-white leading-none',
+                    'shrink-0 inline-flex items-center justify-center rounded-md font-bold tracking-[0.04em] whitespace-nowrap text-white leading-none',
+                    compact
+                      ? 'min-w-[32px] px-1.5 h-[18px] text-[10.5px]'
+                      : 'mt-[1px] min-w-[36px] px-1.5 h-[20px] text-[11px]',
                     iceTheme ? itTypeBadgeColor(trainingType) : typeBadgeColor(trainingType),
                   )}
                 >
@@ -176,7 +205,9 @@ export const ClassListCard = memo(function ClassListCard({
               )}
               <h3
                 className={cn(
-                  'leading-[1.3] line-clamp-2',
+                  'leading-[1.3]',
+                  // compact: 1줄 truncate — flex 자식이라 min-w-0 이 있어야 실제로 줄어든다.
+                  compact ? 'truncate min-w-0' : 'line-clamp-2',
                   // ICETIMES(true): 시안 ListRow title 15.5px/700/-0.01em.
                   // 기본(false): 기존 card-body/800/-0.025em 그대로(회귀 0).
                   iceTheme
@@ -199,11 +230,13 @@ export const ClassListCard = memo(function ClassListCard({
             {metaInline && (
               <div
                 className={cn(
-                  'flex items-center flex-wrap gap-x-1.5 gap-y-0.5',
+                  'flex items-center gap-x-1.5 gap-y-0.5',
+                  // compact: 1줄 유지(줄바꿈 금지) → 행 높이 고정.
+                  compact ? 'min-w-0 truncate text-[12.5px] font-medium' : 'flex-wrap',
                   // ICETIMES(true): 시안 subtitle 13px/500/it-ink-500. 기본(false): 기존 그대로.
                   iceTheme
-                    ? 'text-[13px] font-medium text-it-ink-500 dark:text-it-ink-300'
-                    : 'text-card-meta font-semibold text-wtext-3 dark:text-wtext-4',
+                    ? cn(!compact && 'text-[13px] font-medium', 'text-it-ink-500 dark:text-it-ink-300')
+                    : cn(!compact && 'text-card-meta font-semibold', 'text-wtext-3 dark:text-wtext-4'),
                 )}
               >
                 {metaInline}
@@ -212,7 +245,7 @@ export const ClassListCard = memo(function ClassListCard({
 
             {children}
 
-            {bodyAction && <div className="mt-1">{bodyAction}</div>}
+            {bodyAction && <div className={cn(compact ? 'mt-0.5' : 'mt-1')}>{bodyAction}</div>}
           </div>
         </div>
       </NavLink>
@@ -230,6 +263,7 @@ export const ClassListCard = memo(function ClassListCard({
         </div>
       )}
     </article>
+    </ClassCardCompactContext.Provider>
     </ClassCardThemeContext.Provider>
   );
 });
@@ -246,23 +280,34 @@ export function ClassCardInfoRow({
   strong?: boolean;
   children: ReactNode;
 }) {
-  // 부모 ClassListCard 의 iceTheme 를 컨텍스트로 상속 (호출처 무수정).
+  // 부모 ClassListCard 의 iceTheme·compact 를 컨텍스트로 상속 (호출처 무수정).
   const iceTheme = useContext(ClassCardThemeContext);
+  const compact = useContext(ClassCardCompactContext);
   return (
     <div
       className={cn(
         'flex items-center min-w-0',
+        // compact(리스트 행): 12.5px · 아이콘 14px · gap 4px 로 축소.
         // ICETIMES(true): 시안 subtitle/InfoRow 13px/500/it-ink-500 · 아이콘 15px · gap 6px.
         //   기본(false): 기존 그대로.
+        compact
+          ? 'gap-1 text-[12.5px] font-medium'
+          : iceTheme
+            ? 'gap-1.5 text-[13px] font-medium'
+            : 'gap-2 text-card-meta font-semibold',
         iceTheme
-          ? 'gap-1.5 text-[13px] font-medium text-it-ink-500 dark:text-it-ink-300'
-          : 'gap-2 text-card-meta font-semibold text-wtext-3 dark:text-wtext-4',
+          ? 'text-it-ink-500 dark:text-it-ink-300'
+          : 'text-wtext-3 dark:text-wtext-4',
       )}
     >
       {icon && (
         <Icon
           name={icon}
-          className={cn(iceTheme ? 'text-[15px]' : 'text-[14px]', 'shrink-0', iconClassName)}
+          className={cn(
+            compact ? 'text-[14px]' : iceTheme ? 'text-[15px]' : 'text-[14px]',
+            'shrink-0',
+            iconClassName,
+          )}
           aria-hidden="true"
         />
       )}
@@ -270,9 +315,11 @@ export function ClassCardInfoRow({
         className={cn(
           'truncate min-w-0',
           strong &&
-            (iceTheme
-              ? 'text-[13px] font-semibold text-wtext-2 dark:text-white tabular-nums'
-              : 'text-card-body font-bold text-wtext-1 dark:text-white tabular-nums'),
+            (compact
+              ? 'text-[12.5px] font-semibold text-wtext-2 dark:text-white tabular-nums'
+              : iceTheme
+                ? 'text-[13px] font-semibold text-wtext-2 dark:text-white tabular-nums'
+                : 'text-card-body font-bold text-wtext-1 dark:text-white tabular-nums'),
         )}
       >
         {children}

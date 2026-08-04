@@ -116,6 +116,64 @@ function isRealProductionHost(host: string | null): boolean {
   return h.endsWith(".icetimes.co.kr") || h.endsWith(".teamplus.com");
 }
 
+/**
+ * 내부망 IP 접두사 — 이 대역에서 온 요청은 앱 전용 게이트(§아래)를 통과한다.
+ *
+ * [2026-08-04] 운영 도메인(teamplusweb.icetimes.co.kr)이 앱 WebView 전용으로 막혀 있어
+ *   내부 인원(개발·운영·QA)이 브라우저로 확인할 수 없었다. 외부 차단은 그대로 두고
+ *   사내 대역만 열어준다. `211.236.174.*` 는 사무실·서버 대역
+ *   (Jenkinsfile CSP 에도 211.236.174.86 등이 등록되어 있다).
+ *
+ * 추가 대역이 필요하면 서버 env `APP_ONLY_GATE_ALLOW_IP_PREFIXES` 에 쉼표로 나열한다
+ * (예: "203.0.113.,198.51.100."). 코드 배포 없이 확장 가능.
+ */
+const INTERNAL_IP_PREFIXES = ["211.236.174."] as const;
+
+/**
+ * 요청 클라이언트 IP — nginx 리버스 프록시 뒤이므로 forwarded 헤더를 본다.
+ *
+ * `X-Forwarded-For` 는 "client, proxy1, proxy2" 순서라 **첫 번째**가 원 클라이언트다.
+ * Next.js self-hosted 는 소켓 IP 에 직접 접근할 수 없어(request.ip 는 Vercel 전용)
+ * 헤더에 의존한다.
+ */
+function getClientIp(request: NextRequest): string | null {
+  const xff = request.headers.get("x-forwarded-for");
+  if (xff) {
+    const first = xff.split(",")[0]?.trim();
+    if (first) return first;
+  }
+  return (
+    request.headers.get("x-real-ip") ??
+    request.headers.get("cf-connecting-ip") ??
+    null
+  );
+}
+
+/**
+ * 내부망에서 온 요청인지 판정 — 앱 전용 게이트 우회 조건.
+ *
+ * ⚠️ 한계: `X-Forwarded-For` 는 클라이언트가 위조할 수 있다. 다만 이 게이트의 목적은
+ *   "일반 브라우저·검색엔진 크롤 차단"이지 인증이 아니며, 기존 판정 기준인 UA 토큰도
+ *   동일하게 위조 가능하다. 실제 접근 통제는 JWT 인증·RBAC 이 담당한다.
+ */
+function isInternalNetwork(request: NextRequest): boolean {
+  const ip = getClientIp(request);
+  if (!ip) return false;
+
+  const extra = process.env.APP_ONLY_GATE_ALLOW_IP_PREFIXES;
+  const prefixes = extra
+    ? [
+        ...INTERNAL_IP_PREFIXES,
+        ...extra
+          .split(",")
+          .map((p) => p.trim())
+          .filter(Boolean),
+      ]
+    : INTERNAL_IP_PREFIXES;
+
+  return prefixes.some((prefix) => ip.startsWith(prefix));
+}
+
 /** 응답에 표준 보안 헤더(+production CSP, 보호경로 캐시 차단)를 적용한다. */
 function withSecurityHeaders(
   response: NextResponse,
@@ -219,13 +277,17 @@ export function middleware(request: NextRequest) {
   //   · PG(이니시스)·본인인증(PortOne/NICE) 리턴 URL 은 WebView 내부 내비게이션이라
   //     앱 UA 를 그대로 가진다 (frame-src/form-action CSP 설계와 동일 전제).
   //   · 긴급 해제: 서버 env APP_ONLY_GATE=off 설정 후 재기동.
+  //   · [2026-08-04] 내부망(211.236.174.*) 예외 추가 — 개발·운영·QA 가 운영 도메인을
+  //     브라우저로 확인할 수 있어야 한다. 외부(그 외 모든 IP)는 종전대로 404 유지.
+  //     대역 확장은 env APP_ONLY_GATE_ALLOW_IP_PREFIXES (코드 배포 불필요).
   const gateUserAgent = request.headers.get("user-agent") ?? "";
   const isAppWebView =
     gateUserAgent.includes("teamplusApp") || gateUserAgent.includes("Flutter");
   if (
     process.env.APP_ONLY_GATE !== "off" &&
     isRealProductionHost(request.headers.get("host")) &&
-    !isAppWebView
+    !isAppWebView &&
+    !isInternalNetwork(request)
   ) {
     return new NextResponse("Not Found", {
       status: 404,

@@ -593,6 +593,16 @@ model TeamMember {
 
 // ==================== Classes & Schedules ====================
 
+/// 수업 공개 범위 (2026-08-04 신설)
+/// 감독/코치가 수업 생성 시 지정한다. 기본값 TEAM_ONLY = 기존 동작(소속 팀에만 노출).
+/// 전국 탐색(GET /api/v1/classes/explore)의 노출 게이트로 쓰인다 — SoT: docs/Planning/SPEC_CLASS_VISIBILITY.md
+enum ClassVisibility {
+  PUBLIC /// 전체공개 — 비로그인 포함 전국 수업찾기 노출
+  PARENTS_ONLY /// 학부모공개 — 로그인한 PARENT/TEEN/CHILD 에게 전국 노출, 비로그인 차단
+  SELECTED_TEAMS /// 지정 팀에만 — ClassTeamVisibility 에 등록된 팀 구성원만
+  TEAM_ONLY /// 비공개 — 소속 팀·아카데미 구성원만
+}
+
 /// 수업 - 클럽에서 제공하는 수업 정보
 model Class {
   id               String    @id @default(cuid())
@@ -636,6 +646,17 @@ model Class {
   requiredCoaches  Int       @default(1) @map("required_coaches") /// 필요 코치 수
   /// 결제 방식 (감독이 수업 생성 시 지정, Phase B) — PREPAID(선불 번들) | POSTPAID(후불 정산) | BOTH(선택형·기본, 학생이 결제 시 택1)
   billingMode      String    @default("BOTH") @map("billing_mode")
+  /// [2026-08-04] 공개 범위 — 전국 탐색(/classes/explore) 노출 게이트.
+  /// 기본 TEAM_ONLY = 기존 동작 유지(소속 팀만). SELECTED_TEAMS 는 teamVisibilities 와 함께 사용.
+  visibility       ClassVisibility @default(TEAM_ONLY)
+  /// [2026-08-04] 수업 지역 — 감독/코치가 등록 시 직접 선택하는 시/도 ("서울").
+  /// venue.city 는 링크장 등록 상태에 좌우돼 커버리지가 낮아(venueId nullable) 신뢰할 수 없다.
+  /// 값 SoT: src/common/constants/regions.constant.ts VENUE_CITIES
+  regionCity       String?   @map("region_city") @db.VarChar(20)
+  /// [2026-08-04] 수업 지역 — 시군구 ("강남구"). 목록 카드에 시/도와 함께 노출해
+  /// 타지역 학부모가 이동 거리를 모르고 등록하는 사고를 막는다.
+  /// 값 SoT: src/common/constants/regions.constant.ts CITY_DISTRICTS[regionCity]
+  regionDistrict   String?   @map("region_district") @db.VarChar(30)
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -687,6 +708,10 @@ model Class {
   @@index([category])
   @@index([approvalStatus])
   @@index([billingMode])
+  /// [2026-08-04] 전국 탐색 핫패스 — visibility 게이트 + 공통 강제 필터(isActive/approvalStatus)
+  @@index([visibility, isActive, approvalStatus])
+  /// [2026-08-04] 지역 필터 — 시/도 단독 · 시/도+시군구 조합 모두 이 인덱스로 커버(선두 컬럼 규칙)
+  @@index([regionCity, regionDistrict])
   @@map("classes")
 }
 

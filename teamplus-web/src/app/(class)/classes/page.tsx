@@ -101,6 +101,9 @@ interface ClassItem {
   lifecycleStatus?: 'ON_SALE' | 'PENDING_SCHEDULE' | 'ENDED';
   /** 수업 장소 (Venue 모델) */
   venue?: { id: string; name: string } | null;
+  /** [2026-08-04] 수업 지역 라벨 "서울 강남구" — 백엔드 조합 문자열(regionCity+regionDistrict).
+   *  지역 미입력 구 수업은 장소/팀 홈링크장 시/도로 폴백돼 시/도만 온다. */
+  regionLabel?: string | null;
 }
 
 /**
@@ -1023,6 +1026,11 @@ const DefaultClassCard = memo(function DefaultClassCard({
       ? `${daysLabel || time}${daysLabel && time ? ` · ${time}` : ''}`
       : null;
 
+  // [2026-08-04 리스트 전환] 카드 인상을 주던 2줄 스택(일정/대상)을 한 줄로 합친다.
+  //   일정이 없으면 대상만 남으므로 아이콘도 cake 로 바꿔 의미를 유지.
+  const targetLine = `대상: ${formatBirthYears(item.targetBirthYears) ?? '전체'}`;
+  const metaLine = scheduleLine ? `${scheduleLine} · ${targetLine}` : targetLine;
+
   // 출석확인 버튼만 우하단에 유지 — 등록했던 수업 식별 + 이력 진입(종료 후에도 유효).
   const bodyAction =
     isAlreadyEnrolled ? (
@@ -1045,10 +1053,10 @@ const DefaultClassCard = memo(function DefaultClassCard({
               navigate(`/attendance-history?classId=${item.id}`);
             }
           }}
-          className="inline-flex items-center justify-center gap-1 h-[30px] px-3 rounded-full text-[14px] leading-[1.55] font-extrabold tracking-[-0.01em] border border-ice-500 text-ice-500 bg-transparent hover:bg-ice-500/10 active:brightness-95 transition-colors motion-reduce:transition-none cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
+          className="inline-flex items-center justify-center gap-1 h-[26px] px-2.5 rounded-full text-[12.5px] leading-[1.55] font-bold tracking-[-0.01em] border border-ice-500 text-ice-500 bg-transparent hover:bg-ice-500/10 active:brightness-95 transition-colors motion-reduce:transition-none cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
           aria-label={`${item.className} 출석 내역 보기`}
         >
-          <Icon name="fact_check" className="text-[16px]" aria-hidden="true" />
+          <Icon name="fact_check" className="text-[15px]" aria-hidden="true" />
           출석확인
         </span>
       </div>
@@ -1058,6 +1066,7 @@ const DefaultClassCard = memo(function DefaultClassCard({
     <ClassListCard
       href={`/classes/${item.id}`}
       iceTheme
+      compact
       trainingType={item.trainingType}
       iconImageUrl={item.teamLogoUrl}
       typeBadgeLabel={
@@ -1075,8 +1084,8 @@ const DefaultClassCard = memo(function DefaultClassCard({
            대체된다 (registerLabel 분기 — 별도 하단 배지 없음). */
         <span
           className={cn(
-            // [ICETIMES 시안 2026-07-18] 상태 pill — 4px 10px · 12px/700 (min-w-[72px] 슬롯 유지)
-            "inline-flex items-center justify-center min-w-[72px] px-2.5 py-1 rounded-full text-[12px] leading-[1.55] font-bold tracking-[-0.01em]",
+            // [2026-08-04 리스트 전환] 상태 pill — 리스트 행 높이에 맞춰 축소 (2px 8px · 11.5px/700)
+            "inline-flex items-center justify-center min-w-[62px] px-2 py-0.5 rounded-full text-[11.5px] leading-[1.55] font-bold tracking-[-0.01em]",
             registerClass,
           )}
           aria-hidden="true"
@@ -1086,10 +1095,23 @@ const DefaultClassCard = memo(function DefaultClassCard({
       }
       bodyAction={bodyAction}
     >
-      {scheduleLine && <ClassCardInfoRow icon="schedule">{scheduleLine}</ClassCardInfoRow>}
-      {/* [2026-06-19] 대상 출생연도 — 입력 없으면 '전체'(전체 대상)로 표기. */}
-      <ClassCardInfoRow icon="cake">
-        {`대상: ${formatBirthYears(item.targetBirthYears) ?? '전체'}`}
+      {/* [2026-08-04] 지역 + 일정 + 대상을 한 줄로 합쳐 리스트 행 높이를 고정.
+          지역을 맨 앞에 굵게 두는 이유: 좁은 화면에서 잘려도 끝까지 남아야 하는 정보다.
+          "서울 수업을 부산 학부모가 신청" 사고를 막는 것이 이 표기의 목적(사용자 지시).
+          대상은 입력 없으면 '전체'(전체 대상)로 표기. */}
+      <ClassCardInfoRow
+        icon={item.regionLabel ? "place" : scheduleLine ? "schedule" : "cake"}
+      >
+        {item.regionLabel ? (
+          <>
+            <span className="font-bold text-it-ink-700 dark:text-white">
+              {item.regionLabel}
+            </span>
+            {` · ${metaLine}`}
+          </>
+        ) : (
+          metaLine
+        )}
       </ClassCardInfoRow>
     </ClassListCard>
   );
@@ -1307,6 +1329,7 @@ const DefaultTournamentCard = memo(function DefaultTournamentCard({
     <ClassListCard
       href={`/tournaments/${item.id}`}
       iceTheme
+      compact
       trainingType="tournament"
       ariaLabel={`${item.name} 대회 상세 보기`}
       title={item.name}
@@ -1315,8 +1338,8 @@ const DefaultTournamentCard = memo(function DefaultTournamentCard({
         //   종료된 대회는 등록 칩이 무의미해 상태 칩으로 대체 (하단 중복 종료 배지 제거).
         <span
           className={cn(
-            // [ICETIMES 시안 2026-07-18] 상태 pill — 4px 10px · 12px/700 (min-w-[72px] 슬롯 유지)
-            "inline-flex items-center justify-center min-w-[72px] px-2.5 py-1 rounded-full text-[12px] leading-[1.55] font-bold tracking-[-0.01em]",
+            // [2026-08-04 리스트 전환] 상태 pill — 수업 행과 동일 규격 (2px 8px · 11.5px/700)
+            "inline-flex items-center justify-center min-w-[62px] px-2 py-0.5 rounded-full text-[11.5px] leading-[1.55] font-bold tracking-[-0.01em]",
             isClosed
               ? "bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-200"
               : isEnrolled
@@ -1339,12 +1362,12 @@ const DefaultTournamentCard = memo(function DefaultTournamentCard({
         </span>
       }
     >
-      {dateLabel && (
-        <ClassCardInfoRow icon="event">{dateLabel}</ClassCardInfoRow>
-      )}
-      {/* [2026-06-19] 참가 대상 출생연도 — 입력 없으면 '전체'(전체 대상)로 표기. */}
-      <ClassCardInfoRow icon="cake">
-        {`대상: ${formatTournamentTargetYears(item) ?? '전체'}`}
+      {/* [2026-08-04] 일정 + 참가 대상을 한 줄로 합쳐 리스트 행 높이를 고정.
+          대상은 입력 없으면 '전체'(전체 대상)로 표기. */}
+      <ClassCardInfoRow icon={dateLabel ? "event" : "cake"}>
+        {[dateLabel, `대상: ${formatTournamentTargetYears(item) ?? '전체'}`]
+          .filter(Boolean)
+          .join(' · ')}
       </ClassCardInfoRow>
     </ClassListCard>
   );
@@ -1356,10 +1379,13 @@ function EmptyState({
   isChild,
   label = "수업",
   icon = "sports_hockey",
+  showExploreCta = false,
 }: {
   isChild: boolean;
   label?: string;
   icon?: string;
+  /** [2026-08-04] 전국 수업 찾기 진입 — 팀 미가입 학부모가 막다른 빈 화면에 갇히지 않게 한다. */
+  showExploreCta?: boolean;
 }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 px-5 text-center">
@@ -1395,16 +1421,28 @@ function EmptyState({
         {!isChild && <br />}
         다른 유형을 선택하거나 잠시 후 다시 확인해주세요.
       </p>
+
+      {/* [2026-08-04] 전국 수업 찾기 — 자녀가 팀에 가입되지 않으면 정규수업은 항상 0건이라
+          여기서 끝나면 학부모가 할 수 있는 게 없다. 발견 경로로 이어준다. */}
+      {showExploreCta && (
+        <NavLink
+          href="/classes-explore"
+          className="mt-6 inline-flex items-center gap-1.5 h-11 px-5 rounded-w-pill text-card-body font-bold bg-it-blue-500 text-white transition-colors motion-reduce:transition-none active:brightness-95"
+        >
+          <Icon name="search" className="text-[18px]" aria-hidden="true" />
+          {MESSAGES.class.exploreBannerCta}
+        </NavLink>
+      )}
     </div>
   );
 }
 
 // ── 섹션 영역 (학부모/감독 — 정규수업/오픈클래스/대회 구분) ──────────
-// [2026-06-12→06-24 ICETIMES flat] 상단 필터 태그 제거 → 유형별 섹션 카드영역으로 분리.
-//   [재작업] 좌측 stripe + 카드 박스(gap-3) 구조를 /director 와 동일한 full-bleed flat
-//   섹션으로 전환: 흰 패널(bg-it-surface)이 8px 회색 갭(mt-2)으로 쌓이고, 헤더는
-//   SectionHead(iceTheme) 17px/800 it-ink 톤 + 우측 개수. 수업 행은 공유 ClassListCard
-//   iceTheme(무라운드 + 하단 hairline)이 담당해 카드 박스/그림자가 사라진다.
+// [2026-06-12→06-24 ICETIMES flat] 상단 필터 태그 제거 → 유형별 섹션으로 분리.
+// [2026-08-04 리스트 전환] 사용자 지시 "목록이 카드형태로 보이지 않게" —
+//   흰 패널을 회색 갭으로 띄우던 구조(mt-2)를 제거해 섹션이 하나의 연속된 목록으로 이어지고,
+//   구분은 연회색 그룹 헤더 바(13px)가 담당한다. 항목 행은 공유 ClassListCard
+//   iceTheme + compact(32px 아이콘 · 1줄 제목 · 1줄 메타)로 카드 인상을 제거했다.
 //   섹션 내부는 등록완료 → 등록(미등록) 순으로 정렬한다.
 function ClassSection({
   title,
@@ -1425,14 +1463,15 @@ function ClassSection({
   return (
     <section
       aria-label={`${title} 목록`}
-      className="mt-2 bg-it-surface dark:bg-it-blue-950"
+      className="bg-it-surface dark:bg-it-blue-950"
     >
-      <header className="flex items-center gap-2 px-4 sm:px-5 pt-4 sm:pt-[18px] pb-2">
-        <h2 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
+      {/* [2026-08-04 리스트 전환] 회색 갭(mt-2)으로 흰 패널을 띄우면 섹션 자체가 '카드'로
+          읽힌다 → 갭 제거 + 그룹 헤더 바(연회색 + 하단 hairline)로 구분하는 리스트 형태. */}
+      <header className="flex items-center gap-1.5 px-4 sm:px-5 py-2 bg-it-fill dark:bg-it-ink-900/60 border-b border-it-line dark:border-it-ink-700">
+        <h2 className="text-[13px] font-bold tracking-[-0.01em] text-it-ink-500 dark:text-it-ink-300">
           {title}
         </h2>
-        {/* 시안 SectionHeader count — 15px/800 it-blue (AcademyList.jsx) */}
-        <span className="text-[15px] font-extrabold text-it-blue-500 dark:text-it-blue-300 tabular-nums">
+        <span className="text-[13px] font-bold text-it-blue-500 dark:text-it-blue-300 tabular-nums">
           {count}
         </span>
       </header>
@@ -1856,6 +1895,43 @@ export default function ClassesPage() {
 
         {/* 검색창 제거 (사용자 요청) */}
 
+        {/* [2026-08-04] 전국 수업 찾기 진입 배너 — 학부모 전용.
+            이 목록은 자녀의 소속 팀 수업만 보여주므로, 다른 클럽 수업을 찾을 경로가 필요하다.
+            아동/청소년은 보호자가 등록하는 구조라 제외한다. */}
+        {/* [2026-08-04 리스트 전환] 둥근 배너 박스(rounded + 좌우 여백)는 목록 위에서 '카드'로
+            읽혀 흐름을 끊는다 → 목록 행과 같은 full-bleed 행으로 이어 붙인다. */}
+        {!isChild && !isTeen && !isLoading && (
+          <div>
+            <NavLink
+              href="/classes-explore"
+              className="flex items-center gap-2.5 w-full px-4 py-3 bg-it-surface dark:bg-it-ink-900 border-b border-it-line dark:border-it-ink-700 transition-colors motion-reduce:transition-none active:brightness-95"
+            >
+              <span
+                className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-it-blue-500/10 text-it-blue-500"
+                aria-hidden="true"
+              >
+                {/* ⚠️ 아이콘은 서브셋 폰트(public/fonts/MaterialSymbolsOutlined.woff2, 389자)에
+                    포함된 것만 사용할 것. 미포함 아이콘은 엉뚱한 glyph 로 렌더된다.
+                    (2026-08-04: travel_explore 가 미포함이라 깨져 explore 로 교체) */}
+                <Icon name="explore" className="text-[18px]" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[15.5px] font-bold tracking-[-0.01em] text-it-ink-800 dark:text-white">
+                  {MESSAGES.class.exploreBannerTitle}
+                </span>
+                <span className="block truncate text-[12.5px] font-medium text-it-ink-500 dark:text-wtext-4 mt-0.5">
+                  {MESSAGES.class.exploreBannerDesc}
+                </span>
+              </span>
+              <Icon
+                name="chevron_right"
+                className="text-[20px] text-it-ink-400 dark:text-wtext-4 shrink-0"
+                aria-hidden="true"
+              />
+            </NavLink>
+          </div>
+        )}
+
         {/* Filter Tabs — 아동/청소년 전용. 학부모/감독(default)은 유형별 섹션으로 분리(2026-06-12). */}
         {(isChild || isTeen) && (
           <div className="px-6 pb-4">
@@ -1884,6 +1960,9 @@ export default function ClassesPage() {
               isChild={isChild}
               label={isTournamentTab ? "대회" : "수업"}
               icon={isTournamentTab ? "emoji_events" : "sports_hockey"}
+              // 학부모 전용 — 아동/청소년은 보호자가 등록하는 구조라 탐색 진입을 노출하지 않는다.
+              // 대회 탭에서도 숨긴다(수업 탐색과 무관).
+              showExploreCta={!isChild && !isTeen && !isTournamentTab}
             />
           ) : sections ? (
             /* 학부모/감독 — 유형별 섹션 카드영역 (등록 훈련 → 정규 → 대회 → 오픈) */

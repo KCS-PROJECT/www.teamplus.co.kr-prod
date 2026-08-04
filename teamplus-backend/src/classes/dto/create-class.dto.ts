@@ -7,6 +7,7 @@ import {
   IsArray,
   IsBoolean,
   IsIn,
+  IsEnum,
   Matches,
   ValidateNested,
   Min,
@@ -14,6 +15,11 @@ import {
 } from "class-validator";
 import { Type } from "class-transformer";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { ClassVisibility } from "@prisma/client";
+import {
+  ALL_DISTRICTS,
+  VENUE_CITIES,
+} from "@/common/constants/regions.constant";
 
 const DAY_OF_WEEK_VALUES = ["월", "화", "수", "목", "금", "토", "일"] as const;
 const TIME_HH_MM_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -28,21 +34,27 @@ export class DayScheduleItemDto {
     description: "요일 (월|화|수|목|금|토|일)",
     enum: DAY_OF_WEEK_VALUES,
   })
-  @IsIn(DAY_OF_WEEK_VALUES, { message: "요일은 월·화·수·목·금·토·일 중 하나여야 합니다." })
+  @IsIn(DAY_OF_WEEK_VALUES, {
+    message: "요일은 월·화·수·목·금·토·일 중 하나여야 합니다.",
+  })
   dayOfWeek!: string;
 
   @ApiProperty({
     example: "17:00",
     description: "시작 시간 (HH:mm 24시간 형식)",
   })
-  @Matches(TIME_HH_MM_PATTERN, { message: "시작 시간은 HH:mm 형식이어야 합니다. (예: 17:00)" })
+  @Matches(TIME_HH_MM_PATTERN, {
+    message: "시작 시간은 HH:mm 형식이어야 합니다. (예: 17:00)",
+  })
   startTime!: string;
 
   @ApiProperty({
     example: "18:30",
     description: "종료 시간 (HH:mm 24시간 형식)",
   })
-  @Matches(TIME_HH_MM_PATTERN, { message: "종료 시간은 HH:mm 형식이어야 합니다. (예: 18:30)" })
+  @Matches(TIME_HH_MM_PATTERN, {
+    message: "종료 시간은 HH:mm 형식이어야 합니다. (예: 18:30)",
+  })
   endTime!: string;
 
   @ApiPropertyOptional({
@@ -61,15 +73,21 @@ export class DayScheduleItemDto {
 export class DateScheduleItemDto {
   @ApiProperty({ example: "2026-06-15", description: "수업 날짜 (YYYY-MM-DD)" })
   @IsString({ message: "날짜는 문자열이어야 합니다." })
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: "날짜는 YYYY-MM-DD 형식이어야 합니다." })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
+    message: "날짜는 YYYY-MM-DD 형식이어야 합니다.",
+  })
   date!: string;
 
   @ApiProperty({ example: "17:00", description: "시작 시간 (HH:mm)" })
-  @Matches(TIME_HH_MM_PATTERN, { message: "시작 시간은 HH:mm 형식이어야 합니다." })
+  @Matches(TIME_HH_MM_PATTERN, {
+    message: "시작 시간은 HH:mm 형식이어야 합니다.",
+  })
   startTime!: string;
 
   @ApiProperty({ example: "18:30", description: "종료 시간 (HH:mm)" })
-  @Matches(TIME_HH_MM_PATTERN, { message: "종료 시간은 HH:mm 형식이어야 합니다." })
+  @Matches(TIME_HH_MM_PATTERN, {
+    message: "종료 시간은 HH:mm 형식이어야 합니다.",
+  })
   endTime!: string;
 
   @ApiPropertyOptional({ example: "venue-cuid", description: "장소 ID" })
@@ -182,8 +200,7 @@ export class CreateClassDto {
   isActive?: boolean;
 
   @ApiPropertyOptional({
-    description:
-      "수업 유형 (regular: 정규 수업 | lesson: 오픈클래스 레슨)",
+    description: "수업 유형 (regular: 정규 수업 | lesson: 오픈클래스 레슨)",
     enum: CLASSES_TRAINING_TYPES,
     example: "regular",
   })
@@ -306,14 +323,56 @@ export class CreateClassDto {
   @IsArray()
   coachUserIds?: string[];
 
-  // ─── 오픈클래스 팀 노출 (2026-05-15) ─────────────────
-  // 오픈클래스(academyId 수업) 를 어느 팀 소속자에게 노출할지 지정.
-  // 여기 등록된 팀의 감독·코치·학부모·학생에게만 수업목록·캘린더·대시보드에 노출.
-  // 정규 수업(teamId)에는 적용 안 됨 (무시).
+  // ─── 공개 범위 (2026-08-04) ─────────────────────────
+  // 수업을 어디까지 노출할지 감독/코치가 직접 선택. 전국 탐색(/classes/explore) 게이트.
+  // 미지정 시 DB 기본값 TEAM_ONLY — 기존 동작(소속 팀에만 노출) 유지.
+  // SoT: docs/Planning/SPEC_CLASS_VISIBILITY.md
 
   @ApiPropertyOptional({
     description:
-      "오픈클래스 노출 팀 ID 배열. academyId 수업일 때만 적용. 빈 배열/미지정 시 어느 팀에도 노출 안 됨.",
+      "공개 범위. PUBLIC(전체공개·비로그인 포함) | PARENTS_ONLY(학부모공개·로그인 필요) | " +
+      "SELECTED_TEAMS(지정 팀에만 — visibleTeamIds 필수) | TEAM_ONLY(비공개·소속 팀만). " +
+      "미지정 시 TEAM_ONLY.",
+    enum: ClassVisibility,
+    default: ClassVisibility.TEAM_ONLY,
+  })
+  @IsOptional()
+  @IsEnum(ClassVisibility)
+  visibility?: ClassVisibility;
+
+  // ─── 수업 지역 (2026-08-04) ─────────────────────────
+  // 감독/코치가 등록 시 시/도 + 시군구를 직접 선택한다. 목록 카드에 그대로 노출돼
+  // 타지역 학부모가 이동 거리를 모른 채 등록하는 사고를 막는다.
+  // 조합 정합(예: "부산 강남구" 차단)은 서비스에서 assertClassRegion 으로 검증한다.
+
+  @ApiPropertyOptional({
+    description: "수업 지역 — 시/도",
+    enum: VENUE_CITIES,
+    example: "서울",
+  })
+  @IsOptional()
+  @IsIn(VENUE_CITIES)
+  regionCity?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "수업 지역 — 시군구. regionCity 에 속한 값이어야 하며, 단독 전달은 무시됩니다.",
+    example: "강남구",
+  })
+  @IsOptional()
+  // 기본 @IsIn 메시지는 시군구 250여 개를 전부 나열해 응답이 수 KB 로 부푼다 → 짧게 대체.
+  @IsIn(ALL_DISTRICTS, { message: "유효하지 않은 시군구입니다." })
+  regionDistrict?: string;
+
+  // ─── 노출 팀 지정 (2026-05-15 → 2026-08-04 재활성화) ─────────────────
+  // visibility=SELECTED_TEAMS 일 때 어느 팀 소속자에게 노출할지 지정.
+  // 여기 등록된 팀의 감독·코치·학부모·학생에게만 수업목록·캘린더·대시보드에 노출.
+  // 그 외 visibility 값에서는 무시되며 서비스가 기존 행을 정리한다.
+
+  @ApiPropertyOptional({
+    description:
+      "노출 팀 ID 배열. visibility=SELECTED_TEAMS 일 때만 적용됩니다. " +
+      "그 외 값에서는 무시되고 기존 노출 지정이 해제됩니다.",
     example: ["team-uuid-1", "team-uuid-2"],
   })
   @IsOptional()
@@ -332,8 +391,18 @@ export class CreateClassDto {
       "미전송 또는 빈 배열이면 기존 단일 startTime/endTime 경로로 동작합니다.",
     type: [DayScheduleItemDto],
     example: [
-      { dayOfWeek: "월", startTime: "17:00", endTime: "18:30", venueId: "venue-id-1" },
-      { dayOfWeek: "수", startTime: "19:00", endTime: "20:30", venueId: "venue-id-2" },
+      {
+        dayOfWeek: "월",
+        startTime: "17:00",
+        endTime: "18:30",
+        venueId: "venue-id-1",
+      },
+      {
+        dayOfWeek: "수",
+        startTime: "19:00",
+        endTime: "20:30",
+        venueId: "venue-id-2",
+      },
     ],
   })
   @IsOptional()

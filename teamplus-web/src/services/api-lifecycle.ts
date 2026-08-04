@@ -209,6 +209,12 @@ export const PUBLIC_API_PATTERNS: readonly RegExp[] = [
   /(^|\/)app\/premium-events\/featured(\/|\?|$)/,
   /(^|\/)main-popups(\/|\?|$)/,
   /(^|\/)academies\/public(\/|\?|$)/,
+  // [추가 2026-08-04] 전국 수업 탐색 — GET /classes/explore 는 백엔드 @Public.
+  //   (public)/classes-explore 페이지가 비로그인 상태로 호출하므로 화이트리스트 필수.
+  //   누락 시 토큰 없는 사용자가 진입 → AUTH_REQUIRED → /login 강제 이동
+  //   (= 팀 미가입 학부모가 수업을 발견할 수 없게 되어 기능 자체가 무의미해짐).
+  //   ⚠️ `classes/` 단독 패턴 금지 — 인증이 필요한 나머지 수업 API 까지 열린다.
+  /(^|\/)classes\/explore(\/|\?|$)/,
   // 회원가입 화면 팀 선택 목록 (비로그인 호출).
   /(^|\/)teams\/public(\/|\?|$)/,
   // 회원가입 화면 팀명 중복 사전 확인 (비로그인 호출) — 백엔드 @Public.

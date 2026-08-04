@@ -21,6 +21,9 @@ import {
   localTodayISO,
   isPastScheduleDate,
 } from '@/hooks/useClassForm';
+import type { ClassVisibility } from '@/lib/class-visibility';
+// [2026-08-04] 수업 지역 SoT — 백엔드 regions.constant.ts 와 값 동기화 필수.
+import { REGIONS, districtsOf } from '@/lib/regions';
 import { VenueSearchSheet } from '@/components/venue/VenueSearchSheet';
 import { AnimatedSection } from '@/components/ui/AnimatedSection';
 import { Toggle } from '@/components/ui/Toggle';
@@ -38,6 +41,42 @@ import {
 import { useDateTime } from '@/hooks/useDateTime';
 import { MultiDatePickerModal, type MultiDateResolved } from '@/components/ui/MultiDatePickerModal';
 import { TimePicker } from '@/components/ui/TimePicker';
+
+/* ────────────────────────────────────────────
+   공개 범위 옵션 (2026-08-04)
+   ──────────────────────────────────────────── */
+// 넓은 범위 → 좁은 범위 순서. 감독이 위에서부터 읽으며 필요한 만큼 좁히도록 배치한다.
+// 값은 백엔드 Prisma ClassVisibility enum 과 1:1 — src/lib/class-visibility.ts 참조.
+//
+// ⚠️ 함수로 감싼다 — 모듈 최상위에서 `MESSAGES.*` 를 평가하면 webpack 모듈 초기화 순서에 따라
+//   messages 모듈보다 먼저 실행되어 `Cannot read properties of undefined` 로 페이지가 죽는다
+//   (2026-08-04 ExploreFilterSheet 에서 실측). 렌더 시점에 호출할 것.
+const buildVisibilityOptions = (): ReadonlyArray<{
+  value: ClassVisibility;
+  label: string;
+  hint: string;
+}> => [
+  {
+    value: 'PUBLIC',
+    label: MESSAGES.class.visibility.public,
+    hint: MESSAGES.class.visibility.publicHint,
+  },
+  {
+    value: 'PARENTS_ONLY',
+    label: MESSAGES.class.visibility.parentsOnly,
+    hint: MESSAGES.class.visibility.parentsOnlyHint,
+  },
+  {
+    value: 'SELECTED_TEAMS',
+    label: MESSAGES.class.visibility.selectedTeams,
+    hint: MESSAGES.class.visibility.selectedTeamsHint,
+  },
+  {
+    value: 'TEAM_ONLY',
+    label: MESSAGES.class.visibility.teamOnly,
+    hint: MESSAGES.class.visibility.teamOnlyHint,
+  },
+];
 
 /* ────────────────────────────────────────────
    TotalClassDays — 교육기간 + 요일로 자동 계산
@@ -162,8 +201,12 @@ export function ClassForm({
   const [portalReady, setPortalReady] = useState(false);
 
   // [2026-06-04] 코치 배정 UI 제거 — useClubCoaches/useAcademyCoaches 코치 조회 훅 삭제.
-  // [2026-05-15] 오픈클래스 노출 팀 후보 — academy 컨텍스트에서만 조회.
-  const { teams: selectableTeams, isLoading: isTeamsLoading } = useSelectableTeams(isAcademy);
+  // [2026-05-15 → 2026-08-04] 노출 팀 후보 — '지정 팀에만'(SELECTED_TEAMS) 선택 시에만 조회.
+  //   기존엔 academy 컨텍스트에서만 조회했으나, 공개범위 도입으로 팀 수업도 지정 노출이 가능해졌다.
+  //   선택 시점에 지연 로딩해 불필요한 팀 목록 호출(200건)을 피한다.
+  const { teams: selectableTeams, isLoading: isTeamsLoading } = useSelectableTeams(
+    formData.visibility === 'SELECTED_TEAMS',
+  );
 
   // 수정 모드: initialData 변경 시 반영
   useEffect(() => {
@@ -1264,6 +1307,85 @@ export function ClassForm({
           </section>
         </AnimatedSection>
 
+        {/* ── SECTION 3.5: 수업 지역 ──
+            [2026-08-04] 사용자 지시: "서울에서 하는 수업을 부산 학부모가 신청하면 매주 올라오겠다는 소리"
+            → 감독/코치가 등록 시 시/도 + 시군구를 직접 고르고, 목록 카드에 그대로 표시한다.
+            장소(Venue)에 의존하지 않는 이유: Class.venueId 가 nullable 이라 커버리지가 낮고,
+            Venue 에는 시군구 필드 자체가 없다. */}
+        <AnimatedSection delay={290}>
+          <section className="space-y-4">
+            <h2 className={ic.head}>
+              <span className={ic.headBar} aria-hidden="true" />
+              {MESSAGES.class.region.sectionTitle}
+              <span className={ic.required} aria-hidden="true">*</span>
+            </h2>
+            <div className={cn(ic.card, 'space-y-4')}>
+              <p className={cn('text-card-meta leading-relaxed font-medium', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
+                {MESSAGES.class.region.sectionHint}
+              </p>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="class-region-city" className={ic.label}>
+                    {MESSAGES.class.region.cityLabel}
+                    <span className={ic.required}>*</span>
+                  </label>
+                  <select
+                    id="class-region-city"
+                    value={formData.regionCity}
+                    onChange={(e) => {
+                      // 시/도가 바뀌면 시군구는 반드시 초기화한다 —
+                      //   남겨두면 "부산 강남구" 같은 불가능한 조합이 저장 요청으로 나간다.
+                      const nextCity = e.target.value;
+                      setFormData((prev) => ({
+                        ...prev,
+                        regionCity: nextCity,
+                        regionDistrict: '',
+                      }));
+                    }}
+                    className={ic.input}
+                  >
+                    <option value="">{MESSAGES.class.region.cityPlaceholder}</option>
+                    {REGIONS.map((r) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="class-region-district" className={ic.label}>
+                    {MESSAGES.class.region.districtLabel}
+                    <span className={ic.required}>*</span>
+                  </label>
+                  <select
+                    id="class-region-district"
+                    value={formData.regionDistrict}
+                    disabled={!formData.regionCity}
+                    onChange={(e) => handleChange('regionDistrict', e.target.value)}
+                    className={cn(ic.input, !formData.regionCity && 'opacity-50 cursor-not-allowed')}
+                  >
+                    <option value="">
+                      {formData.regionCity
+                        ? MESSAGES.class.region.districtPlaceholder
+                        : MESSAGES.class.region.districtSelectCityFirst}
+                    </option>
+                    {districtsOf(formData.regionCity).map((d) => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {(errors.regionCity || errors.regionDistrict) && (
+                <p className="text-xs text-red-500 flex items-center gap-1" role="alert">
+                  <Icon name="error" className="text-xs" aria-hidden="true" />
+                  {errors.regionCity ?? errors.regionDistrict}
+                </p>
+              )}
+            </div>
+          </section>
+        </AnimatedSection>
+
         {/* ── SECTION 4: 수강료 ──
             [2026-06] '디렉터 전용 설정' + '수업 패키지' 영역 통합. 동일 ClassProduct 도메인이므로
             한 자리에서 관리한다.
@@ -1466,23 +1588,98 @@ export function ClassForm({
           </section>
         </AnimatedSection>
 
-        {/* ── SECTION 4.5: 오픈클래스 노출 팀 선택 (academy 컨텍스트 전용) ──
-            [2026-06-29] 정책 변경 — 오픈클래스는 전체 학부모(자녀 연령 매칭)에게 노출하므로
-            팀 단위 노출 선택을 폐지하고 UI 를 숨긴다. 상태·핸들러 코드는 보존(되돌림 대비). */}
-        {false && isAcademy && (
-          <AnimatedSection delay={325}>
+        {/* ── SECTION 4.5: 공개 범위 ──
+            [2026-08-04] 수업 단위 공개범위 신설. 기존 "노출 팀 선택"(2026-06-29 폐지)을
+            SELECTED_TEAMS 옵션으로 흡수해 팀 수업·오픈클래스 공통으로 노출한다.
+            SoT: docs/Planning/SPEC_CLASS_VISIBILITY.md */}
+        <AnimatedSection delay={325}>
+          <section className="space-y-4">
+            <h2 className={ic.head}>
+              <span className={ic.headBar} aria-hidden="true" />
+              {MESSAGES.class.visibility.sectionTitle}
+            </h2>
+            <div className={cn(ic.card, 'space-y-3')}>
+              <p className={cn('text-card-meta leading-relaxed font-medium', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
+                {MESSAGES.class.visibility.sectionHint}
+              </p>
+
+              <div role="radiogroup" aria-label={MESSAGES.class.visibility.sectionTitle} className="space-y-2">
+                {buildVisibilityOptions().map(opt => {
+                  const selected = formData.visibility === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => handleChange('visibility', opt.value)}
+                      className={cn(
+                        'w-full flex items-start gap-3 p-3.5 rounded-w-md text-left transition-colors motion-reduce:transition-none active:brightness-95',
+                        iceTheme
+                          ? selected
+                            ? 'bg-it-blue-500/5 border-2 border-it-blue-500'
+                            : 'bg-it-fill dark:bg-rink-900/50 border-[1.5px] border-it-line-strong dark:border-rink-700 hover:border-it-blue-500/30'
+                          : selected
+                            ? 'bg-ice-500/5 border-2 border-ice-500'
+                            : 'bg-wbg dark:bg-rink-900/50 border border-wline-2 dark:border-rink-700 hover:border-ice-500/30',
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 transition-colors motion-reduce:transition-none',
+                          iceTheme
+                            ? selected ? 'border-it-blue-500' : 'border-it-line-strong dark:border-rink-500'
+                            : selected ? 'border-ice-500' : 'border-wline dark:border-rink-500',
+                        )}
+                      >
+                        {selected && (
+                          <span className={cn('w-2.5 h-2.5 rounded-full', iceTheme ? 'bg-it-blue-500' : 'bg-ice-500')} />
+                        )}
+                      </span>
+                      <span className="min-w-0">
+                        <span className={cn(
+                          'block text-card-body font-bold',
+                          selected
+                            ? (iceTheme ? 'text-it-blue-500' : 'text-ice-500')
+                            : (iceTheme ? 'text-it-ink-600 dark:text-rink-100' : 'text-wtext-1 dark:text-rink-100'),
+                        )}>
+                          {opt.label}
+                        </span>
+                        <span className={cn('block text-card-meta font-medium mt-0.5', iceTheme ? 'text-it-ink-400 dark:text-rink-400' : 'text-wtext-3 dark:text-rink-400')}>
+                          {opt.hint}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {errors.visibility && (
+                <p className="text-xs text-red-500 flex items-center gap-1" role="alert">
+                  <Icon name="error" className="text-xs" aria-hidden="true" />
+                  {errors.visibility}
+                </p>
+              )}
+            </div>
+          </section>
+        </AnimatedSection>
+
+        {/* ── SECTION 4.6: 노출 팀 선택 — visibility='SELECTED_TEAMS' 일 때만 ── */}
+        {formData.visibility === 'SELECTED_TEAMS' && (
+          <AnimatedSection delay={330}>
             <section className="space-y-4">
               <h2 className={ic.head}>
                 <span className={ic.headBar} aria-hidden="true" />
-                노출 팀 선택
+                {MESSAGES.class.visibility.selectTeamsButton}
                 {formData.selectedVisibleTeams.length > 0 && (
-                  <span className={iceTheme ? 'text-it-blue-500' : 'text-ice-500'}>({formData.selectedVisibleTeams.length}개)</span>
+                  <span className={iceTheme ? 'text-it-blue-500' : 'text-ice-500'}>
+                    ({MESSAGES.class.visibility.selectedTeamsCount(formData.selectedVisibleTeams.length)})
+                  </span>
                 )}
               </h2>
               <div className={cn(ic.card, 'space-y-3')}>
                 <p className={cn('text-card-meta leading-relaxed font-medium', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
-                  이 오픈클래스를 어느 팀에 노출할지 선택하세요. 선택한 팀의 감독·코치·학부모·학생에게만
-                  수업 목록과 캘린더에 표시됩니다.
+                  {MESSAGES.class.visibility.selectedTeamsHint}
                 </p>
                 {isTeamsLoading ? (
                   <div className="py-6 text-center text-sm text-wtext-3 dark:text-rink-300">
@@ -1537,7 +1734,7 @@ export function ClassForm({
                 {!isTeamsLoading && selectableTeams.length > 0 && formData.selectedVisibleTeams.length === 0 && (
                   <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1 font-medium">
                     <Icon name="warning" className="text-sm" aria-hidden="true" />
-                    팀을 선택하지 않으면 이 수업은 아무에게도 노출되지 않습니다.
+                    {MESSAGES.class.visibility.selectTeamsRequired}
                   </p>
                 )}
               </div>
