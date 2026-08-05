@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '@/components/ui/Icon';
+import { BottomSheetSelector } from '@/components/ui/BottomSheetSelector';
 import { useToast } from '@/components/ui/Toast';
 import { useNavigation } from '@/components/ui/NavLink';
 import { cn } from '@/lib/utils';
@@ -197,6 +198,9 @@ export function ClassForm({
   // [2026-06-09] 오픈클래스 날짜별 일정 — 장소 시트 대상 일정 key + 신규 행 key 카운터.
   const [venueTargetDateKey, setVenueTargetDateKey] = useState<string | null>(null);
   const dateKeySeq = useMemo(() => ({ n: 0 }), []);
+  // [2026-08-05] 수업 지역 시/도·시군구 — select 대신 BottomSheet 로 선택.
+  const [regionCitySheetOpen, setRegionCitySheetOpen] = useState(false);
+  const [regionDistrictSheetOpen, setRegionDistrictSheetOpen] = useState(false);
   // [2026-06-04] 코치 배정 UI 제거 — coachSearch/coachSheetOpen state 삭제.
   const [portalReady, setPortalReady] = useState(false);
 
@@ -1330,26 +1334,30 @@ export function ClassForm({
                     {MESSAGES.class.region.cityLabel}
                     <span className={ic.required}>*</span>
                   </label>
-                  <select
+                  <button
+                    type="button"
                     id="class-region-city"
-                    value={formData.regionCity}
-                    onChange={(e) => {
-                      // 시/도가 바뀌면 시군구는 반드시 초기화한다 —
-                      //   남겨두면 "부산 강남구" 같은 불가능한 조합이 저장 요청으로 나간다.
-                      const nextCity = e.target.value;
-                      setFormData((prev) => ({
-                        ...prev,
-                        regionCity: nextCity,
-                        regionDistrict: '',
-                      }));
-                    }}
-                    className={ic.input}
+                    onClick={() => setRegionCitySheetOpen(true)}
+                    aria-haspopup="dialog"
+                    className={cn(ic.input, 'flex items-center justify-between gap-2 text-left')}
                   >
-                    <option value="">{MESSAGES.class.region.cityPlaceholder}</option>
-                    {REGIONS.map((r) => (
-                      <option key={r} value={r}>{r}</option>
-                    ))}
-                  </select>
+                    <span
+                      className={cn(
+                        'truncate',
+                        !formData.regionCity && (iceTheme ? 'text-it-ink-400' : 'text-wtext-3'),
+                      )}
+                    >
+                      {formData.regionCity || MESSAGES.class.region.cityPlaceholder}
+                    </span>
+                    <Icon
+                      name="expand_more"
+                      className={cn(
+                        'shrink-0 text-[20px]',
+                        iceTheme ? 'text-it-ink-400 dark:text-it-ink-300' : 'text-wtext-3 dark:text-rink-300',
+                      )}
+                      aria-hidden="true"
+                    />
+                  </button>
                 </div>
 
                 <div>
@@ -1357,24 +1365,81 @@ export function ClassForm({
                     {MESSAGES.class.region.districtLabel}
                     <span className={ic.required}>*</span>
                   </label>
-                  <select
+                  <button
+                    type="button"
                     id="class-region-district"
-                    value={formData.regionDistrict}
                     disabled={!formData.regionCity}
-                    onChange={(e) => handleChange('regionDistrict', e.target.value)}
-                    className={cn(ic.input, !formData.regionCity && 'opacity-50 cursor-not-allowed')}
+                    onClick={() => setRegionDistrictSheetOpen(true)}
+                    aria-haspopup="dialog"
+                    className={cn(
+                      ic.input,
+                      'flex items-center justify-between gap-2 text-left',
+                      !formData.regionCity && 'opacity-50 cursor-not-allowed',
+                    )}
                   >
-                    <option value="">
-                      {formData.regionCity
-                        ? MESSAGES.class.region.districtPlaceholder
-                        : MESSAGES.class.region.districtSelectCityFirst}
-                    </option>
-                    {districtsOf(formData.regionCity).map((d) => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
-                  </select>
+                    <span
+                      className={cn(
+                        'truncate',
+                        !formData.regionDistrict && (iceTheme ? 'text-it-ink-400' : 'text-wtext-3'),
+                      )}
+                    >
+                      {formData.regionDistrict ||
+                        (formData.regionCity
+                          ? MESSAGES.class.region.districtPlaceholder
+                          : MESSAGES.class.region.districtSelectCityFirst)}
+                    </span>
+                    <Icon
+                      name="expand_more"
+                      className={cn(
+                        'shrink-0 text-[20px]',
+                        iceTheme ? 'text-it-ink-400 dark:text-it-ink-300' : 'text-wtext-3 dark:text-rink-300',
+                      )}
+                      aria-hidden="true"
+                    />
+                  </button>
                 </div>
               </div>
+
+              <BottomSheetSelector
+                isOpen={regionCitySheetOpen}
+                title={MESSAGES.class.region.cityPlaceholder}
+                items={REGIONS.map((r) => ({
+                  id: r,
+                  name: r,
+                  selected: formData.regionCity === r,
+                }))}
+                onSelect={(city) => {
+                  // 시/도가 바뀌면 시군구는 반드시 초기화한다 —
+                  //   남겨두면 "부산 강남구" 같은 불가능한 조합이 저장 요청으로 나간다.
+                  setFormData((prev) => ({
+                    ...prev,
+                    regionCity: city,
+                    regionDistrict: '',
+                  }));
+                  setErrors((prev) => {
+                    const next = { ...prev };
+                    delete next.regionCity;
+                    return next;
+                  });
+                  setRegionCitySheetOpen(false);
+                }}
+                onClose={() => setRegionCitySheetOpen(false)}
+              />
+
+              <BottomSheetSelector
+                isOpen={regionDistrictSheetOpen}
+                title={MESSAGES.class.region.districtPlaceholder}
+                items={districtsOf(formData.regionCity).map((d) => ({
+                  id: d,
+                  name: d,
+                  selected: formData.regionDistrict === d,
+                }))}
+                onSelect={(district) => {
+                  handleChange('regionDistrict', district);
+                  setRegionDistrictSheetOpen(false);
+                }}
+                onClose={() => setRegionDistrictSheetOpen(false)}
+              />
 
               {(errors.regionCity || errors.regionDistrict) && (
                 <p className="text-xs text-red-500 flex items-center gap-1" role="alert">
