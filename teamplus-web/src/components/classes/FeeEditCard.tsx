@@ -11,11 +11,13 @@
  *   헤더/카드 스타일은 ClassForm 의 다른 섹션과 동일 패턴(ice 세로바 + 카드 밖 헤더)을 따른다.
  */
 
+import { useMemo } from 'react';
 import { MESSAGES } from '@/lib/messages';
 import {
   PackageManageSection,
   type DraftProduct,
 } from '@/components/classes/PackageManageSection';
+import type { PriceCalcContext } from '@/components/classes/PackageEditSheet';
 
 interface FeeEditCardProps {
   /** 결제 방식 — 읽기전용 표시 + 선불·선택형일 때 정기 패키지 영역 노출. */
@@ -38,6 +40,8 @@ interface FeeEditCardProps {
   renewalTargetMonth?: string | null;
   /** 판매 승인 대기 여부 — 대상월 없어도(잔여 일정 0) 구 정기권 수정/삭제를 잠근다. */
   salesPendingLock?: boolean;
+  /** [가격 계산 도우미] 폼 draft 일정 날짜("YYYY-MM-DD") — 월 결제 시트 회차 집계용. */
+  scheduleDates?: string[];
   /**
    * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
    *   true 시 카드 박스 제거(flat) + it-* 토큰(it-fill 입력·hairline 구분)으로 교체.
@@ -59,8 +63,26 @@ export function FeeEditCard({
   iceTheme = false,
   renewalTargetMonth = null,
   salesPendingLock = false,
+  scheduleDates = [],
 }: FeeEditCardProps) {
   const isPostpaid = billingMode === 'POSTPAID';
+  // [가격 계산 도우미] 수정 폼 시트 컨텍스트 — 기본 대상월은 갱신 대상월, 없으면 잔여 일정의
+  //   가장 이른 달로 폴백(판매 중 수업의 신규 패키지 추가 경로 — 기존 row 수정은 시트에서
+  //   해당 row 귀속월이 우선 적용된다). 일정·단가가 없으면 도우미 미노출.
+  const priceContext: PriceCalcContext | null = useMemo(
+    () =>
+      scheduleDates.length > 0
+        ? {
+            unitPrice: Number(perSessionPrice) || 0,
+            targetMonth:
+              renewalTargetMonth ??
+              [...scheduleDates].sort()[0]?.slice(0, 7) ??
+              null,
+            scheduleDates,
+          }
+        : null,
+    [scheduleDates, perSessionPrice, renewalTargetMonth],
+  );
   const isPrepaidOnly = billingMode === 'PREPAID';
   // 후불 단가 잠금은 판매 단가(후불·선택형)에만 적용 — 선불 전용 참고용 입력은 비대상.
   const unitLockActive = !isPrepaidOnly && unitPriceLocked;
@@ -165,6 +187,7 @@ export function FeeEditCard({
                 readonly={readonly}
                 renewalTargetMonth={renewalTargetMonth}
                 salesPendingLock={salesPendingLock}
+                priceContext={priceContext}
                 iceTheme
               />
             </div>
@@ -255,6 +278,7 @@ export function FeeEditCard({
               readonly={readonly}
               renewalTargetMonth={renewalTargetMonth}
               salesPendingLock={salesPendingLock}
+              priceContext={priceContext}
             />
           </div>
         )}

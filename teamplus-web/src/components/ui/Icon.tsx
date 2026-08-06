@@ -130,6 +130,8 @@ const LUCIDE_TO_MATERIAL: Record<string, string> = {
   minus: "remove",
   check: "check",
   "check-circle": "check_circle",
+  "check-circle-2": "check_circle",
+  "check-square": "check_box",
   "x-circle": "cancel",
   "alert-circle": "error",
   "alert-triangle": "warning",

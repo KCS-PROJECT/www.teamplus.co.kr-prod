@@ -787,9 +787,11 @@ function ClassCreatePageInner() {
                     ({
                       renewalTargetMonth,
                       salesPending: pendingLock,
+                      scheduleDates,
                     }: {
                       renewalTargetMonth: string | null;
                       salesPending: boolean;
+                      scheduleDates: string[];
                     }) => (
                       <FeeEditCard
                         billingMode={
@@ -807,6 +809,7 @@ function ClassCreatePageInner() {
                         packageDirty={productsDirty}
                         renewalTargetMonth={renewalTargetMonth}
                         salesPendingLock={pendingLock}
+                        scheduleDates={scheduleDates}
                         unitPriceLocked={unitPriceLock.locked}
                         unsettledMonths={unitPriceLock.months}
                         iceTheme

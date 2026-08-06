@@ -17,7 +17,7 @@
  * 수정(initial=값) → feeType 분기.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { useToast } from '@/components/ui/Toast';
 import { MESSAGES } from '@/lib/messages';
@@ -44,6 +44,24 @@ export interface LocalProductDraft {
   description?: string;
 }
 
+/**
+ * [가격 계산 도우미] 귀속월 실제 일정 기반 참여 회차 × 1회 수업료 계산 컨텍스트.
+ *   산출된 회차는 가격 필드 프리필에만 쓰고 서버로 보내지 않는다
+ *   (sessionsPerMonth = 크레딧 발급 SoT 불변).
+ */
+export interface PriceCalcContext {
+  /** 1회 수업료(참고 단가) — 0 이하면 도우미 미노출. */
+  unitPrice: number;
+  /** 기본 대상월 "YYYY-MM" — 등록 폼은 첫 판매월, 수정 폼은 갱신 대상월. */
+  targetMonth: string | null;
+  /** 일정 날짜 "YYYY-MM-DD" 목록(취소 제외) — 대상월분만 골라 회차·요일을 집계한다. */
+  scheduleDates: string[];
+}
+
+// 요일 라벨/정렬 — Date#getDay 인덱스(0=일) 기준, 칩은 월요일 시작으로 노출.
+const CALC_DAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'] as const;
+const CALC_DAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const;
+
 interface PackageEditSheetProps {
   isOpen: boolean;
   onClose: () => void;
@@ -55,6 +73,8 @@ interface PackageEditSheetProps {
   mode?: 'immediate' | 'deferred';
   /** [가격 잠금] 판매 시작된 월분 — 가격 입력 잠금(이름·설명만 수정 가능). */
   priceLocked?: boolean;
+  /** [가격 계산 도우미] 일정·단가 컨텍스트 — 미전달 시 도우미 미노출(기존 동작). */
+  priceContext?: PriceCalcContext | null;
   onSaved: () => void;
   /** deferred 전용 — API 대신 편집 결과를 부모로 전달. */
   onLocalSave?: (draft: LocalProductDraft) => void;
@@ -108,6 +128,7 @@ export function PackageEditSheet({
   initialDraft = null,
   mode = 'immediate',
   priceLocked = false,
+  priceContext = null,
   onSaved,
   onLocalSave,
 }: PackageEditSheetProps) {
@@ -129,11 +150,50 @@ export function PackageEditSheet({
   //   연타 시 같은 패키지가 중복 등록된다. 동기 ref 로 1회만 처리하고 시트 재오픈 시 해제.
   const submittingRef = useRef(false);
 
+  // ── [가격 계산 도우미] 귀속월 일정 집계 ──
+  //   대상월 우선순위: 갱신 마킹(renewToMonth·새 달 가격 준비) > 편집 row 귀속월 > 컨텍스트 기본값.
+  const calcMonth =
+    initialDraft?.renewToMonth ??
+    initialDraft?.billingMonth ??
+    priceContext?.targetMonth ??
+    null;
+  const monthDates = useMemo(
+    () =>
+      calcMonth && priceContext
+        ? priceContext.scheduleDates.filter(
+            (d) => d && d.slice(0, 7) === calcMonth,
+          )
+        : [],
+    [calcMonth, priceContext],
+  );
+  const totalCount = monthDates.length;
+  // 요일별 회차 수 — TZ 시프트 방지를 위해 로컬 기준 파싱.
+  const dayCounts = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const dateStr of monthDates) {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      if (!y || !m || !d) continue;
+      const dow = new Date(y, m - 1, d).getDay();
+      map.set(dow, (map.get(dow) ?? 0) + 1);
+    }
+    return map;
+  }, [monthDates]);
+  const unitPrice = priceContext?.unitPrice ?? 0;
+  // 참여 회차/요일 선택 — 가격 산정 보조 로컬 상태(서버 미전송).
+  const [calcCount, setCalcCount] = useState(0);
+  const [calcDays, setCalcDays] = useState<number[]>([]);
+  // 직전 자동 제안 이름 — 자동값 그대로면 재제안으로 갱신, 수동 입력은 보호.
+  const autoNameRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (isOpen) {
       setForm(toFormState(editSource));
       setError(null);
       submittingRef.current = false;
+      // 계산 도우미 초기화 — 기본은 전체 회차 참여.
+      setCalcDays([]);
+      setCalcCount(monthDates.length);
+      autoNameRef.current = null;
     }
     // editSource 는 initial/initialDraft 파생 — 두 원본을 deps 로 추적.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -153,6 +213,65 @@ export function PackageEditSheet({
     ? (editSource.sessionsPerMonth ?? 0)
     : 0;
   const previewDurationDays = isPerSession ? (editSource?.durationDays ?? 30) : 30;
+
+  // ── [가격 계산 도우미] 노출 조건·핸들러 ──
+  //   정기권 + 가격 잠금 아님 + 대상월 일정·1회 수업료가 있을 때만.
+  const calcAvailable =
+    !isPerSession && !priceLocked && totalCount > 0 && unitPrice > 0;
+  const calcMonthNum = calcMonth ? Number(calcMonth.slice(5, 7)) : 0;
+  // 표시/계산용 회차 — 오픈 effect 전(초기 0)에도 1~전체 회차 범위로 보정.
+  const calcCountSafe = Math.min(
+    Math.max(totalCount, 1),
+    Math.max(1, calcCount || totalCount),
+  );
+
+  const toggleCalcDay = (dow: number) => {
+    const next = calcDays.includes(dow)
+      ? calcDays.filter((d) => d !== dow)
+      : [...calcDays, dow];
+    setCalcDays(next);
+    const sum = next.reduce((acc, d) => acc + (dayCounts.get(d) ?? 0), 0);
+    // 전부 해제하면 기본(전체 회차 참여)으로 복귀.
+    setCalcCount(next.length > 0 ? Math.max(1, sum) : totalCount);
+  };
+  const stepCalcCount = (delta: number) => {
+    // 수동 조정은 요일 프리셋과 불일치할 수 있으므로 선택 해제.
+    setCalcDays([]);
+    setCalcCount(Math.min(totalCount, Math.max(1, calcCountSafe + delta)));
+  };
+  const applyCalcPrice = () => {
+    update('price', String(unitPrice * calcCountSafe));
+    // 요일 기반 이름 제안 — 회차 수는 달마다 변하므로 이름에 넣지 않는다
+    //   (월분 갱신이 productName 매칭이라 숫자 포함 시 다음 달에 오표기로 남는다).
+    //   빈 이름 또는 직전 자동 제안 그대로일 때만 갱신 — 수동 입력은 보호.
+    const current = form.productName.trim();
+    if (calcDays.length > 0) {
+      const labels = CALC_DAY_ORDER.filter((d) => calcDays.includes(d)).map(
+        (d) => CALC_DAY_LABELS[d],
+      );
+      const suggestion = MESSAGES.classProduct.priceCalc.dayClassName(
+        labels.join('·'),
+      );
+      if (!current || current === autoNameRef.current) {
+        update('productName', suggestion);
+        autoNameRef.current = suggestion;
+      }
+    } else if (current && current === autoNameRef.current) {
+      // 요일 전체 해제 후 적용 — 옛 요일 이름이 남으면 오표기이므로 자동값만 비운다.
+      update('productName', '');
+      autoNameRef.current = null;
+    }
+  };
+  // 역표시 — 입력된 가격 ÷ 참여 회차 = 회당 단가(+1회 수업료 대비 할인율).
+  //   0원은 회당/할인율 표시가 무의미("100% 할인")하므로 양수일 때만 산출.
+  const perUnit =
+    calcAvailable && form.price !== '' && Number(form.price) > 0
+      ? Math.round(Number(form.price) / calcCountSafe)
+      : null;
+  const discountPct =
+    perUnit != null && perUnit < unitPrice
+      ? Math.round(((unitPrice - perUnit) / unitPrice) * 100)
+      : null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -321,6 +440,121 @@ export function PackageEditSheet({
           placeholder="180,000"
           disabled={priceLocked}
         />
+
+        {/* [가격 계산 도우미] 귀속월 실제 일정 기반 참여 회차 × 1회 수업료 — 선택 사용.
+            산출 회차는 가격 프리필 전용(서버 미전송·sessionsPerMonth 불변). */}
+        {calcAvailable && (
+          <section
+            aria-label={MESSAGES.classProduct.priceCalc.sectionTitle}
+            className="rounded-w-lg border border-wline dark:border-rink-700 bg-wbg dark:bg-rink-900/40 px-3 py-3 space-y-3"
+          >
+            <p className="text-card-meta font-bold text-wtext-2 dark:text-rink-100">
+              {MESSAGES.classProduct.priceCalc.sectionTitle}
+            </p>
+
+            {/* 참여 요일 — 대상월 일정에 존재하는 요일만 칩으로 노출 */}
+            <div className="space-y-1.5">
+              <p className="text-card-meta font-semibold text-wtext-3 dark:text-rink-300">
+                {MESSAGES.classProduct.priceCalc.daysLabel}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {CALC_DAY_ORDER.filter((d) => dayCounts.has(d)).map((d) => {
+                  const active = calcDays.includes(d);
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => toggleCalcDay(d)}
+                      aria-pressed={active}
+                      className={
+                        active
+                          ? 'h-8 px-3 rounded-w-pill border border-ice-500 bg-ice-50 dark:bg-rink-700 text-card-meta font-bold text-ice-600 dark:text-ice-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40'
+                          : 'h-8 px-3 rounded-w-pill border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-card-meta font-semibold text-wtext-2 dark:text-rink-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40'
+                      }
+                    >
+                      {MESSAGES.classProduct.priceCalc.dayChip(
+                        CALC_DAY_LABELS[d],
+                        dayCounts.get(d) ?? 0,
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 참여 회차 수 스테퍼 */}
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-card-meta font-semibold text-wtext-3 dark:text-rink-300">
+                {MESSAGES.classProduct.priceCalc.countLabel}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => stepCalcCount(-1)}
+                  disabled={calcCountSafe <= 1}
+                  aria-label={MESSAGES.classProduct.priceCalc.countDecrease}
+                  className="w-9 h-9 rounded-w-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-card-body font-bold text-wtext-1 dark:text-rink-100 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
+                >
+                  −
+                </button>
+                <span className="min-w-[48px] text-center text-card-body font-bold text-wtext-1 dark:text-rink-100 tabular-nums">
+                  {MESSAGES.classProduct.priceCalc.count(calcCountSafe)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => stepCalcCount(1)}
+                  disabled={calcCountSafe >= totalCount}
+                  aria-label={MESSAGES.classProduct.priceCalc.countIncrease}
+                  className="w-9 h-9 rounded-w-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-card-body font-bold text-wtext-1 dark:text-rink-100 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
+                >
+                  ＋
+                </button>
+              </div>
+            </div>
+
+            <p
+              className="text-card-meta text-wtext-3 dark:text-rink-300 tabular-nums"
+              aria-live="polite"
+            >
+              {MESSAGES.classProduct.priceCalc.summary(
+                calcMonthNum,
+                totalCount,
+                calcCountSafe,
+              )}
+            </p>
+
+            {/* 산식 + 가격 적용 */}
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-card-meta font-bold text-wtext-1 dark:text-rink-100 tabular-nums">
+                {MESSAGES.classProduct.priceCalc.formula(
+                  unitPrice,
+                  calcCountSafe,
+                  unitPrice * calcCountSafe,
+                )}
+              </p>
+              <button
+                type="button"
+                onClick={applyCalcPrice}
+                className="shrink-0 h-9 px-3 rounded-w-lg bg-ice-500 text-white text-card-meta font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
+              >
+                {MESSAGES.classProduct.priceCalc.applyButton}
+              </button>
+            </div>
+
+            {/* 회당 단가 역표시 — 입력된 가격 기준(할인 반영 시 할인율 병기) */}
+            {perUnit != null && (
+              <p
+                className="text-card-meta text-wtext-3 dark:text-rink-300 tabular-nums"
+                aria-live="polite"
+              >
+                {MESSAGES.classProduct.priceCalc.perSessionRate(perUnit)}
+                {discountPct != null && discountPct >= 1
+                  ? ` · ${MESSAGES.classProduct.priceCalc.discountHint(discountPct)}`
+                  : ''}
+              </p>
+            )}
+          </section>
+        )}
 
         {/* 설명 — 선택 */}
         <TextField

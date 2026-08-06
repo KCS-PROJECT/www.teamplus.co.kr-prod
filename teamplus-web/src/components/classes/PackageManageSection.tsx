@@ -24,7 +24,11 @@ import {
   deleteClassProduct,
   type ClassProductDto,
 } from '@/services/class-product.service';
-import { PackageEditSheet, type LocalProductDraft } from './PackageEditSheet';
+import {
+  PackageEditSheet,
+  type LocalProductDraft,
+  type PriceCalcContext,
+} from './PackageEditSheet';
 
 /** deferred 모드 로컬 모델 — 신규(serverId 없음)·수정·삭제(_deleted) 마킹. */
 export interface DraftProduct {
@@ -126,6 +130,8 @@ interface PackageManageSectionProps {
    * 수정/삭제를 잠근다. 일정 등록 후 renewalTargetMonth 가 생기면 갱신 버튼이 나타난다.
    */
   salesPendingLock?: boolean;
+  /** [가격 계산 도우미] 일정·단가 컨텍스트 — 편집 시트로 릴레이(미전달 시 도우미 미노출). */
+  priceContext?: PriceCalcContext | null;
 }
 
 function formatPrice(n: number): string {
@@ -145,6 +151,7 @@ export function PackageManageSection({
   iceTheme = false,
   renewalTargetMonth = null,
   salesPendingLock = false,
+  priceContext = null,
 }: PackageManageSectionProps) {
   const { toast } = useToast();
   const { modal } = useModal();
@@ -727,6 +734,7 @@ export function PackageManageSection({
               : (editTarget as ClassProductDto | null)
           }
           initialDraft={isDeferred ? (editTarget as DraftProduct | null) : null}
+          priceContext={priceContext}
           // [가격 잠금 Phase 5] 판매 시작된 월분 — 가격 입력 잠금(이름·설명만 수정).
           //   단, 갱신 마킹(renewToMonth) 편집은 미래 월 신규 row 준비(제출 시 id 미전송
           //   create만)이므로 잠금 해제 — 기존 월 row 는 서버 미접촉으로 계속 불변.

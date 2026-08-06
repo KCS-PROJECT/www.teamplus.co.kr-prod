@@ -5,9 +5,11 @@ import {
   IsInt,
   IsOptional,
   IsArray,
+  IsIn,
 } from "class-validator";
 import { UserType } from "@prisma/client";
 import { ApiProperty } from "@nestjs/swagger";
+import APP_MENU_ICONS from "../constants/app-menu-icons.json";
 
 export class CreateAppMenuDto {
   @ApiProperty({ enum: UserType })
@@ -18,8 +20,9 @@ export class CreateAppMenuDto {
   @IsString()
   label!: string;
 
-  @ApiProperty()
+  @ApiProperty({ enum: APP_MENU_ICONS })
   @IsString()
+  @IsIn(APP_MENU_ICONS)
   icon!: string;
 
   @ApiProperty()
@@ -52,8 +55,9 @@ export class UpdateAppMenuDto {
   @IsOptional()
   label?: string;
 
-  @ApiProperty({ required: false })
+  @ApiProperty({ required: false, enum: APP_MENU_ICONS })
   @IsString()
+  @IsIn(APP_MENU_ICONS)
   @IsOptional()
   icon?: string;
 
@@ -93,8 +97,9 @@ export class ResetMenuTreeChildDto {
   @IsString()
   label!: string;
 
-  @ApiProperty()
+  @ApiProperty({ enum: APP_MENU_ICONS })
   @IsString()
+  @IsIn(APP_MENU_ICONS)
   icon!: string;
 
   @ApiProperty()
@@ -112,8 +117,9 @@ export class ResetMenuTreeGroupDto {
   @IsString()
   label!: string;
 
-  @ApiProperty()
+  @ApiProperty({ enum: APP_MENU_ICONS })
   @IsString()
+  @IsIn(APP_MENU_ICONS)
   icon!: string;
 
   @ApiProperty({ type: [ResetMenuTreeChildDto] })

@@ -23,6 +23,7 @@
  */
 
 import { cn } from '@/lib/utils';
+import { Icon } from '@/components/ui/Icon';
 
 export interface CategoryChipItem {
   /** 고유 키 */
@@ -108,9 +109,7 @@ export function CategoryChipsRow({
               )}
             >
               {chip.icon && (
-                <span className="material-symbols-rounded text-[18px] leading-none">
-                  {chip.icon}
-                </span>
+                <Icon name={chip.icon} className="text-[18px] leading-none" />
               )}
               <span className="leading-none">{chip.label}</span>
               {typeof chip.count === 'number' && chip.count > 0 && (

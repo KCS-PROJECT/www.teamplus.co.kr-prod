@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { RedisService } from "../redis/redis.service";
 import { Prisma, UserType } from "@prisma/client";
@@ -7,6 +11,7 @@ import {
   ResetMenuTreeGroupDto,
   UpdateAppMenuDto,
 } from "./dto/app-menu.dto";
+import APP_MENU_ICONS from "./constants/app-menu-icons.json";
 
 /** 폴백 raw 쿼리 반환 행 */
 interface AppMenuRow {
@@ -19,6 +24,33 @@ interface AppMenuRow {
 
 /** Redis 캐시 TTL: 1시간 */
 const MENU_CACHE_TTL = 3600;
+const APP_MENU_ICON_SET = new Set<string>(APP_MENU_ICONS);
+
+function assertAppMenuIcon(icon: string): void {
+  if (!APP_MENU_ICON_SET.has(icon)) {
+    throw new BadRequestException(`지원하지 않는 앱 메뉴 아이콘입니다: ${icon}`);
+  }
+}
+
+function sanitizeAppMenuIcons<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeAppMenuIcons(item)) as T;
+  }
+  if (!value || typeof value !== "object") return value;
+
+  const menu = value as Record<string, unknown>;
+  const sanitized: Record<string, unknown> = { ...menu };
+  if (
+    "icon" in menu &&
+    (typeof menu.icon !== "string" || !APP_MENU_ICON_SET.has(menu.icon))
+  ) {
+    sanitized.icon = "menu";
+  }
+  if (Array.isArray(menu.children)) {
+    sanitized.children = sanitizeAppMenuIcons(menu.children);
+  }
+  return sanitized as T;
+}
 
 @Injectable()
 export class MenusService {
@@ -37,7 +69,7 @@ export class MenusService {
     // Redis 캐시 확인 (RedisService.get은 내부에서 JSON.parse 처리)
     const cached = await this.redis.get<any[]>(cacheKey);
     if (cached) {
-      return cached;
+      return sanitizeAppMenuIcons(cached);
     }
 
     let result: any;
@@ -81,6 +113,8 @@ export class MenusService {
       result = (byParent.get(null) ?? []).map(attachChildren);
     }
 
+    result = sanitizeAppMenuIcons(result);
+
     // 결과 캐싱 (RedisService.set은 내부에서 JSON.stringify 처리)
     await this.redis.set(cacheKey, result, MENU_CACHE_TTL);
     return result;
@@ -118,6 +152,7 @@ export class MenusService {
    * 메뉴 생성
    */
   async createMenu(dto: CreateAppMenuDto) {
+    assertAppMenuIcon(dto.icon);
     const result = await this.prisma.appMenu.create({
       data: dto,
     });
@@ -129,6 +164,7 @@ export class MenusService {
    * 메뉴 수정
    */
   async updateMenu(id: string, dto: UpdateAppMenuDto) {
+    if (dto.icon !== undefined) assertAppMenuIcon(dto.icon);
     // 캐시 무효화를 위해 변경 전 userType 조회
     const existing = await this.prisma.appMenu.findUnique({
       where: { id },
@@ -171,6 +207,11 @@ export class MenusService {
    * createMany 로는 batch 내 parentId 참조가 불가하므로 create 반복 사용.
    */
   async resetTree(userType: UserType, groups: ResetMenuTreeGroupDto[]) {
+    for (const group of groups) {
+      assertAppMenuIcon(group.icon);
+      for (const child of group.children) assertAppMenuIcon(child.icon);
+    }
+
     await this.prisma.$transaction(async (tx) => {
       try {
         await tx.appMenu.deleteMany({ where: { userType } });
@@ -218,6 +259,8 @@ export class MenusService {
    * 특정 사용자 유형의 메뉴를 일괄 저장 (createMany 벌크 처리)
    */
   async syncMenus(userType: UserType, menus: CreateAppMenuDto[]) {
+    for (const menu of menus) assertAppMenuIcon(menu.icon);
+
     // 트랜잭션으로 기존 메뉴 삭제 후 재생성
     const result = await this.prisma.$transaction(async (tx) => {
       try {
