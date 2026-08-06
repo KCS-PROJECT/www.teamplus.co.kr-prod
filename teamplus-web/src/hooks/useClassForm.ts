@@ -780,6 +780,10 @@ export function useClassForm({
   // 연타 가드 — isSubmitting state 는 비동기라 빠른 연타에 두 번째 제출이 통과할 수 있어
   //   동기 ref 로 실제 제출(POST) 진입을 1회로 제한한다.
   const submittingRef = useRef(false);
+  // 등록 모드에서 이미 생성에 성공한 수업 id — 후처리(수강권 bulk) 실패로 폼에 남아
+  //   재제출하는 경우 POST 를 다시 쏘면 수업이 하나 더 생긴다. 그때는 이 id 로 수정(PUT)
+  //   요청을 보내 수업은 1개로 유지하고 후처리만 다시 시도한다.
+  const createdIdRef = useRef<string | null>(null);
 
   const getClubId = useCallback(async (): Promise<string | null> => {
     // [수정 2026-05-11] edit/delete 모드에서 classId 가 주어진 경우, 정확한 teamId 를 클래스 본인에서 추출.
@@ -928,11 +932,19 @@ export function useClassForm({
       const hasValidTimeRange =
         !!startISO && !!endISO && new Date(startISO) < new Date(endISO);
 
+      // 등록 모드라도 직전 시도에서 수업이 이미 만들어졌다면 생성이 아니라 수정으로 보낸다.
+      //   (수강권 반영 실패 후 재클릭 = 수업 중복 생성 차단)
+      const createdId = mode === 'create' ? createdIdRef.current : null;
+      // 재시도는 수정 요청이므로 등록 전용 필드는 빼야 한다 — UpdateClassDto 화이트리스트에
+      //   없는 값을 실어 보내면 400(property should not exist)으로 재시도가 통째로 막힌다.
+      const isCreateRequest = mode === 'create' && !createdId;
+
       const payload = {
         className: data.className.trim(),
         description: data.description.trim() || undefined,
-        // 수정 모드에서는 trainingType 미전송 (BE 가드: 변경 시 BadRequest). 등록 모드에서만 전송.
-        trainingType: mode === 'create' ? (effectiveTrainingType || undefined) : undefined,
+        // 수정 요청에서는 trainingType 미전송 — 변경 불가 정책(BE 가드)이고, UpdateClassDto 가
+        //   regular/lesson 만 받아 spot(1회용) 재시도가 400 으로 막히기 때문.
+        trainingType: isCreateRequest ? (effectiveTrainingType || undefined) : undefined,
         instructorName: data.selectedCoaches.length > 0
           ? data.selectedCoaches.map(c => c.name).join(', ')
           : data.instructorName.trim(),
@@ -1010,8 +1022,8 @@ export function useClassForm({
           mode === 'create' && data.singlePrice !== ''
             ? Number(data.singlePrice)
             : undefined,
-        // [Phase B-5] 결제 방식 — create 모드에서만 전송 (감독 지정).
-        billingMode: mode === 'create' ? data.billingMode : undefined,
+        // [Phase B-5] 결제 방식 — 최초 생성 요청에서만 전송 (감독 지정, UpdateClassDto 미수용).
+        billingMode: isCreateRequest ? data.billingMode : undefined,
         monthlyPrice: undefined,
         packageTotalSessions: undefined,
         packageWeeks: undefined,
@@ -1032,25 +1044,35 @@ export function useClassForm({
             : undefined,
       };
 
+      const targetId = createdId ?? classId;
       let res;
       if (isAcademy) {
         // 오픈클래스 분기 — 등록 + 수정 모두 지원 (2026-05-15 BE PUT 엔드포인트 추가).
-        if (mode === 'create') {
+        if (isCreateRequest) {
           res = await api.post(`/academies/${academyId}/classes`, payload);
         } else {
-          res = await api.put(`/academies/${academyId}/classes/${classId}`, payload);
+          res = await api.put(`/academies/${academyId}/classes/${targetId}`, payload);
         }
-      } else if (mode === 'create') {
+      } else if (isCreateRequest) {
         res = await api.post(`/teams/${clubId}/classes`, payload);
       } else {
-        res = await api.put(`/teams/${clubId}/classes/${classId}`, payload);
+        res = await api.put(`/teams/${clubId}/classes/${targetId}`, payload);
       }
 
       if (res.success) {
         // 신규 등록 시 응답 id 추출, 수정 시 입력 classId 사용. complete 페이지에서
         // PackageManageSection 호출에 필요 (2026-05-22 옵션 A).
+        //   재시도 PUT 응답에 id 가 없어도 직전에 생성한 수업을 잃지 않도록 ref 를 폴백에 둔다
+        //   (id 를 놓치면 수강권 반영이 통째로 건너뛰어진다).
         const createdClassId =
-          (res.data as { id?: string } | undefined)?.id ?? classId ?? '';
+          (res.data as { id?: string } | undefined)?.id ??
+          createdId ??
+          classId ??
+          '';
+        // 등록 모드 생성 성공 — 이후 재제출은 이 id 로 수정 요청이 나간다.
+        if (mode === 'create' && createdClassId) {
+          createdIdRef.current = createdClassId;
+        }
 
         // 완료 페이지에 object 형태로 전달 (모듈 스코프 변수)
         const _totalSessions =
