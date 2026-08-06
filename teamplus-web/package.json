@@ -19,7 +19,10 @@
     "test:e2e:report": "playwright show-report",
     "lhci": "lhci autorun",
     "verify:page-ready": "bash scripts/verify-page-ready-coverage.sh",
-    "check:usePageReady": "npx -y tsx tools/check-usePageReady.ts"
+    "check:usePageReady": "npx -y tsx tools/check-usePageReady.ts",
+    "collect:material-symbols": "node ../scripts/collect-material-symbols.mjs",
+    "build:material-symbols": "python ../scripts/subset-material-symbols.py",
+    "check:material-symbols": "node ../scripts/check-material-symbols.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

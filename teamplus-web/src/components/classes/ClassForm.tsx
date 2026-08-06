@@ -1610,7 +1610,7 @@ export function ClassForm({
                               <div className={cn('mt-2 rounded-w-md border px-3 py-2', iceTheme ? 'border-it-blue-100 dark:border-rink-700 bg-it-blue-50 dark:bg-rink-700/40' : 'border-ice-100 dark:border-rink-700 bg-ice-50 dark:bg-rink-700/40')}>
                                 <div className="flex items-center justify-between">
                                   <span className={cn('text-card-meta font-bold', iceTheme ? 'text-it-ink-600 dark:text-rink-100' : 'text-wtext-2 dark:text-rink-100')}>
-                                    총 수업료
+                                    {MESSAGES.classProduct.allSessionsRefTitle}
                                   </span>
                                   <span className={cn('text-sm font-extrabold tabular-nums', iceTheme ? 'text-it-blue-500 dark:text-it-blue-300' : 'text-ice-600 dark:text-ice-400')}>
                                     {(

@@ -34,7 +34,8 @@
   유지해 25% 밖에 줄지 않는다. 글리프를 직접 지정하고 `--no-layout-closure` 를
   써야 95% 감소한다.
 """
-import re
+import argparse
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -44,30 +45,32 @@ WEB_SRC = ROOT / "teamplus-web/src"
 FULL_FONT = ROOT / "tools/fonts/MaterialSymbolsOutlined.full.woff2"
 OUT_FONT = ROOT / "teamplus-web/public/fonts/MaterialSymbolsOutlined.woff2"
 
-# 코드에서 추출되지만 아이콘이 아닌 값 (HTML 속성명 등)
-NOT_ICONS = {"name", "product", "tel", "username", "email", "password"}
+COLLECTOR = ROOT / "scripts/collect-material-symbols.mjs"
 
 
-def collect_ligatures() -> set[str]:
-    icon_tsx = (WEB_SRC / "components/ui/Icon.tsx").read_text(encoding="utf-8")
+def collect_ligatures() -> tuple[
+    set[str], list[dict[str, object]], list[str], list[str], set[str]
+]:
+    """TypeScript AST 수집기를 실행해 후보와 rounded 직접 사용 위치를 반환한다."""
+    result = subprocess.run(
+        ["node", str(COLLECTOR), "--json", "--root", str(ROOT)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip()
+        raise RuntimeError(f"Material Symbols AST 수집 실패: {detail}")
 
-    # 1) 매핑 테이블의 값
-    ligs = set(re.findall(r':\s*"([a-z][a-z0-9_]*)"\s*,', icon_tsx))
-    mapping_keys = set(re.findall(r'^\s*"?([a-zA-Z0-9_-]+)"?\s*:\s*"', icon_tsx, re.M))
-
-    names: set[str] = set()
-    for f in WEB_SRC.rglob("*.tsx"):
-        t = f.read_text(encoding="utf-8", errors="ignore")
-        names |= set(re.findall(r'name="([a-zA-Z0-9_-]+)"', t))
-        # 인라인 <span class="material-symbols-outlined">icon_name</span>
-        ligs |= set(
-            re.findall(r'material-symbols-outlined[^>]*>\s*([a-z][a-z0-9_]*)\s*<', t)
-        )
-
-    # 2) 매핑 키가 아닌 name= 값은 그 자체가 ligature
-    ligs |= {n for n in names if n not in mapping_keys and re.fullmatch(r"[a-z][a-z0-9_]*", n)}
-
-    return {l for l in ligs if 2 <= len(l) <= 40} - NOT_ICONS
+    report = json.loads(result.stdout)
+    return (
+        set(report["ligatures"]),
+        report.get("roundedUsages", []),
+        report.get("unlistedMenuIcons", []),
+        report.get("invalidRuntimeIcons", []),
+        set(report.get("runtimeLigatures", [])),
+    )
 
 
 def unwrap(lookup):
@@ -104,7 +107,35 @@ def ligature_map(font) -> tuple[dict[str, str], dict[int, str]]:
     return out, cmap
 
 
+def validate_subset(found: dict[str, str]) -> int:
+    if not OUT_FONT.exists():
+        print(f"배포 서브셋이 없습니다: {OUT_FONT}", file=sys.stderr)
+        return 1
+
+    from fontTools.ttLib import TTFont
+
+    sub = TTFont(OUT_FONT)
+    sub_map, _ = ligature_map(sub)
+    lost = sorted(set(found) - set(sub_map))
+    if lost:
+        print(f"\n  ✘ 유실된 아이콘 {len(lost)}개: {', '.join(lost[:20])}", file=sys.stderr)
+        return 1
+    print(f"  ✔ 요청 아이콘 {len(found)}개 ligature 전부 유지")
+    return 0
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Material Symbols 서브셋 생성·검증")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="폰트를 재생성하지 않고 현재 배포 서브셋의 누락 여부만 검사",
+    )
+    return parser.parse_args()
+
+
 def main() -> int:
+    args = parse_args()
     try:
         from fontTools.ttLib import TTFont
     except ImportError:
@@ -117,16 +148,55 @@ def main() -> int:
               file=sys.stderr)
         return 1
 
-    want = collect_ligatures()
+    try:
+        (
+            want,
+            rounded_usages,
+            unlisted_menu_icons,
+            invalid_runtime_icons,
+            runtime_ligatures,
+        ) = collect_ligatures()
+    except (RuntimeError, json.JSONDecodeError) as error:
+        print(str(error), file=sys.stderr)
+        return 1
+
     print(f"실사용 아이콘 {len(want)}개 수집")
+    if rounded_usages:
+        print("material-symbols-rounded 직접 사용은 공용 Icon으로 교체해야 합니다:", file=sys.stderr)
+        for usage in rounded_usages:
+            print(f"  {usage['file']}:{usage['line']}", file=sys.stderr)
+        return 1
+    if unlisted_menu_icons:
+        print(
+            "앱 메뉴 허용 목록에 없는 아이콘: " + ", ".join(unlisted_menu_icons),
+            file=sys.stderr,
+        )
+        return 1
+    if invalid_runtime_icons:
+        print(
+            "Material 매핑이 없는 앱 메뉴 아이콘: "
+            + ", ".join(invalid_runtime_icons),
+            file=sys.stderr,
+        )
+        return 1
 
     font = TTFont(FULL_FONT)
     lig_map, cmap = ligature_map(font)
     found = {w: lig_map[w] for w in want if w in lig_map}
     missing = sorted(want - set(found))
+    missing_runtime = sorted(runtime_ligatures - set(found))
     print(f"  폰트에 존재 {len(found)}개 / 없음 {len(missing)}개")
     if missing:
         print(f"  ⚠ 폰트에 없는 이름(오타 또는 아이콘 아님): {', '.join(missing[:10])}")
+    if missing_runtime:
+        print(
+            "  ✘ 원본 폰트에 없는 앱 메뉴 아이콘: " + ", ".join(missing_runtime),
+            file=sys.stderr,
+        )
+        return 1
+
+    if args.check:
+        return validate_subset(found)
 
     # 필요 글리프 = 아이콘 글리프 + ligature 입력 문자 글리프
     need = set(found.values())
@@ -168,13 +238,7 @@ def main() -> int:
     print(f"  variable axes: {axes}")
 
     # 검증 — 요청한 ligature 가 서브셋에 살아있는지
-    sub_map, _ = ligature_map(sub)
-    lost = sorted(set(found) - set(sub_map))
-    if lost:
-        print(f"\n  ✘ 유실된 아이콘 {len(lost)}개: {', '.join(lost[:10])}", file=sys.stderr)
-        return 1
-    print(f"  ✔ 요청 아이콘 {len(found)}개 ligature 전부 유지")
-    return 0
+    return validate_subset(found)
 
 
 if __name__ == "__main__":

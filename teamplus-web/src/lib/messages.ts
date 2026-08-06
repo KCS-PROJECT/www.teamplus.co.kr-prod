@@ -4061,6 +4061,8 @@ export const MESSAGES = {
     singlePriceRefHint:
       "선불 수업의 1회 수업료는 참고용이며, 결제는 월 결제 상품으로 진행됩니다.",
     singlePricePlaceholder: "1회 수업료를 입력하세요.",
+    // 등록 폼 자동 계산 배너 제목 — 확정 수업료가 아니라 "전 일정 참여 가정" 참고값임을 명시.
+    allSessionsRefTitle: "모든 일정 참여 시",
     // [Phase B-6] 선택형(BOTH) 결제 옵션 — 결제 방식 택1 UI.
     timingSelectTitle: "결제 방식 선택",
     timingPrepaidTitle: "선 결제",

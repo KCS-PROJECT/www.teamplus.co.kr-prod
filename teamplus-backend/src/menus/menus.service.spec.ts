@@ -1,5 +1,5 @@
 import { Test, TestingModule } from "@nestjs/testing";
-import { NotFoundException } from "@nestjs/common";
+import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { UserType } from "@prisma/client";
 import { MenusService } from "./menus.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -63,13 +63,29 @@ describe("MenusService", () => {
   // ==================== getMenusByUserType ====================
 
   describe("getMenusByUserType", () => {
+    it("캐시의 레거시 미지원 아이콘은 안전한 menu 아이콘으로 대체한다", async () => {
+      mockRedisService.get.mockResolvedValueOnce([
+        {
+          id: "legacy-1",
+          icon: "not-in-subset",
+          children: [{ id: "legacy-child", icon: "also-unknown" }],
+        },
+      ]);
+
+      const result = await service.getMenusByUserType(UserType.PARENT);
+
+      expect(result[0].icon).toBe("menu");
+      expect(result[0].children[0].icon).toBe("menu");
+      expect(mockPrismaService.appMenu.findMany).not.toHaveBeenCalled();
+    });
+
     it("정상 경로 — userType 으로 parentId:null 그룹을 조회하고 children 2단계를 include 한다", async () => {
       const fakeMenus = [{ id: "m-1", label: "자녀 관리", children: [] }];
       mockPrismaService.appMenu.findMany.mockResolvedValue(fakeMenus);
 
       const result = await service.getMenusByUserType(UserType.PARENT);
 
-      expect(result).toBe(fakeMenus);
+      expect(result).toEqual(fakeMenus);
       expect(mockPrismaService.appMenu.findMany).toHaveBeenCalledTimes(1);
 
       const callArg = mockPrismaService.appMenu.findMany.mock.calls[0][0];
@@ -188,6 +204,41 @@ describe("MenusService", () => {
       expect(createManyArg.data).toHaveLength(2);
       expect(createManyArg.data[0].userType).toBe(UserType.PARENT);
       expect(result).toHaveLength(2);
+    });
+  });
+
+  describe("앱 메뉴 아이콘 허용 목록", () => {
+    it("create/update/reset/sync 모든 저장 경로에서 허용하지 않은 아이콘을 거부한다", async () => {
+      const invalidMenu = {
+        userType: UserType.PARENT,
+        label: "잘못된 메뉴",
+        icon: "not-in-subset",
+        href: "/invalid",
+        order: 1,
+      };
+
+      await expect(service.createMenu(invalidMenu)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(
+        service.updateMenu("menu-1", { icon: invalidMenu.icon }),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.resetTree(UserType.PARENT, [
+          {
+            label: "잘못된 그룹",
+            icon: invalidMenu.icon,
+            children: [],
+          },
+        ]),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.syncMenus(UserType.PARENT, [invalidMenu]),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockPrismaService.appMenu.create).not.toHaveBeenCalled();
+      expect(mockPrismaService.appMenu.update).not.toHaveBeenCalled();
+      expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
     });
   });
 

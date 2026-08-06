@@ -8,6 +8,8 @@ import { CookieConsentBanner } from '@/components/legal/CookieConsentBanner';
 import { GoogleAnalytics } from '@/components/analytics/GoogleAnalytics';
 import { env } from '@/lib/env';
 
+const MATERIAL_SYMBOLS_FONT_URL = '/fonts/MaterialSymbolsOutlined.woff2?v=20260806';
+
 export const metadata: Metadata = {
   title: 'TEAMPLUS - 아이스하키 팀 관리',
   description: '아이스하키 팀을 위한 통합 관리 시스템',
@@ -77,7 +79,7 @@ export default async function RootLayout({
           <>
             <link
               rel="preload"
-              href="/fonts/MaterialSymbolsOutlined.woff2"
+              href={MATERIAL_SYMBOLS_FONT_URL}
               as="font"
               type="font/woff2"
               crossOrigin="anonymous"
@@ -97,7 +99,7 @@ export default async function RootLayout({
         <style
           key="critical-css"
           dangerouslySetInnerHTML={{
-            __html: `@font-face{font-family:'Material Symbols Outlined';font-style:normal;font-weight:100 700;font-display:block;src:url('/fonts/MaterialSymbolsOutlined.woff2') format('woff2')}html,body{background:#f8fafc;color:#0f172a;font-family:Pretendard,"Apple SD Gothic Neo",AppleSDGothicNeo-Regular,"Malgun Gothic","Noto Sans CJK KR",-apple-system,BlinkMacSystemFont,system-ui,sans-serif}`,
+            __html: `@font-face{font-family:'Material Symbols Outlined';font-style:normal;font-weight:100 700;font-display:block;src:url('${MATERIAL_SYMBOLS_FONT_URL}') format('woff2')}html,body{background:#f8fafc;color:#0f172a;font-family:Pretendard,"Apple SD Gothic Neo",AppleSDGothicNeo-Regular,"Malgun Gothic","Noto Sans CJK KR",-apple-system,BlinkMacSystemFont,system-ui,sans-serif}`,
           }}
         />
         {/* v17 Anti-Flicker (SPEC §2.4, §2.5) — Theme FOUC 차단 강화.
