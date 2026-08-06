@@ -19,15 +19,29 @@ describe("ClassesService.bulkUpsertClassProducts", () => {
   const teamId = "team-1";
   const userId = "coach-1";
 
+  // 월 픽스처는 실행 시점 기준 상대값 — 절대 월을 하드코딩하면 달이 바뀔 때
+  //   "지난 월분" 가드에 걸려 테스트가 썩는다.
+  const nowUtc = new Date();
+  const PREV_MONTH = new Date(
+    Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth() - 1, 1),
+  );
+  const NEXT_MONTH = new Date(
+    Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth() + 1, 1),
+  );
+  const monthKey = (d: Date): string =>
+    `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+
   let service: ClassesService;
   let tx: {
     classProduct: {
       findUnique: jest.Mock;
+      findFirst: jest.Mock;
       create: jest.Mock;
       update: jest.Mock;
       delete: jest.Mock;
       findMany: jest.Mock;
     };
+    classSchedule: { findFirst: jest.Mock };
     $queryRaw: jest.Mock;
     class: { findUniqueOrThrow: jest.Mock };
   };
@@ -40,11 +54,15 @@ describe("ClassesService.bulkUpsertClassProducts", () => {
     tx = {
       classProduct: {
         findUnique: jest.fn(),
+        findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn(),
         update: jest.fn(),
         delete: jest.fn(),
-        findMany: jest.fn(),
+        // §3-4 동결 판정 기준 — 기존 월분 스냅샷(isActive 무관). 기본 0건.
+        findMany: jest.fn().mockResolvedValue([]),
       },
+      // §3-7 귀속월 서버 도출 — 첫 비취소 일정. 기본 일정 없음.
+      classSchedule: { findFirst: jest.fn().mockResolvedValue(null) },
       // 가격 잠금 §4-0 A — sales lock(advisory) + salesOpenMonth 재조회.
       //   salesOpenMonth null = 판매 이력 없음 → 잠금 가드 전부 통과(기존 동작 보존).
       $queryRaw: jest.fn().mockResolvedValue([]),
@@ -312,7 +330,59 @@ describe("ClassesService.bulkUpsertClassProducts", () => {
     );
   });
 
-  it("id 없는 신규 MONTHLY_FIXED 에 귀속월이 없으면 400 (§3-7 무월 신규 차단)", async () => {
+  it("귀속월 미전송 신규 MONTHLY_FIXED 는 잔여 일정의 달로 서버 도출한다 (§3-7)", async () => {
+    tx.classSchedule.findFirst.mockResolvedValue({
+      scheduledDate: new Date(NEXT_MONTH.getTime() + 9 * 24 * 3600 * 1000),
+    });
+
+    await service.bulkUpsertClassProducts(userId, "COACH", classId, {
+      upserts: [
+        {
+          productName: "등록 직후 정기권",
+          price: 200000,
+          feeType: "MONTHLY_FIXED",
+          sessionsPerMonth: 0,
+          durationDays: 28,
+        },
+      ],
+      deleteIds: [],
+    });
+
+    expect(tx.classProduct.create).toHaveBeenCalledTimes(1);
+    expect(tx.classProduct.create.mock.calls[0][0].data.billingMonth).toEqual(
+      NEXT_MONTH,
+    );
+    // 지난 월분 생성 방지 — 도출 기준은 "오늘 이후" 잔여 일정만 (lifecycle
+    //   earliestRemainingMonth 와 동일 축). 과거 일정이 기준이 되면 안 된다.
+    expect(
+      tx.classSchedule.findFirst.mock.calls[0][0].where.scheduledDate.gte,
+    ).toBeInstanceOf(Date);
+  });
+
+  it("잔여 일정이 없고 판매월이 지난 달이면 400 — 지난 월분 신규 생성 금지 (§9.4)", async () => {
+    // 과거 일정만 쌓인 "일정 등록 대기" 수업 — 잔여 일정 조회는 0건.
+    tx.class.findUniqueOrThrow.mockResolvedValue({
+      salesOpenMonth: PREV_MONTH,
+    });
+    tx.classSchedule.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.bulkUpsertClassProducts(userId, "COACH", classId, {
+        upserts: [
+          {
+            productName: "과거 귀속 유입 시도",
+            price: 200000,
+            feeType: "MONTHLY_FIXED",
+            sessionsPerMonth: 0,
+          },
+        ],
+        deleteIds: [],
+      }),
+    ).rejects.toThrow("첫 일정을 먼저 등록해주세요");
+    expect(tx.classProduct.create).not.toHaveBeenCalled();
+  });
+
+  it("귀속월 미전송 + 일정 0건 + 판매월 없음이면 400 (§3-7 무월 신규 차단)", async () => {
     await expect(
       service.bulkUpsertClassProducts(userId, "COACH", classId, {
         upserts: [
@@ -325,14 +395,17 @@ describe("ClassesService.bulkUpsertClassProducts", () => {
         ],
         deleteIds: [],
       }),
-    ).rejects.toThrow("귀속 월을 지정해야 합니다");
-    // 선검증(트랜잭션 진입 전) — 부분 반영 없음.
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+    ).rejects.toThrow("첫 일정을 먼저 등록해주세요");
+    // 트랜잭션 안에서 fail-fast — 롤백되어 부분 반영 없음.
+    expect(tx.classProduct.create).not.toHaveBeenCalled();
   });
 
-  it("판매 시작된 달의 신규 MONTHLY_FIXED 생성은 거부 (§3-4 월분 동결)", async () => {
-    const JUL = new Date(Date.UTC(2026, 6, 1));
-    tx.class.findUniqueOrThrow.mockResolvedValue({ salesOpenMonth: JUL });
+  it("판매 시작된 달에 그 월분 상품이 이미 있으면 신규 생성 거부 (§3-4 월분 동결)", async () => {
+    tx.class.findUniqueOrThrow.mockResolvedValue({
+      salesOpenMonth: NEXT_MONTH,
+    });
+    // 그 월분 상품 존재(판매중지 soft delete row 포함) → 동결 적용.
+    tx.classProduct.findMany.mockResolvedValue([{ billingMonth: NEXT_MONTH }]);
 
     await expect(
       service.bulkUpsertClassProducts(userId, "COACH", classId, {
@@ -342,13 +415,79 @@ describe("ClassesService.bulkUpsertClassProducts", () => {
             price: 300000,
             feeType: "MONTHLY_FIXED",
             sessionsPerMonth: 0,
-            billingMonth: "2026-07",
+            billingMonth: monthKey(NEXT_MONTH),
           },
         ],
         deleteIds: [],
       }),
     ).rejects.toThrow("판매가 시작된 월분에는 수강권을 추가할 수 없습니다");
     expect(tx.classProduct.create).not.toHaveBeenCalled();
+  });
+
+  it("판매 시작된 달이어도 그 월분 상품이 0건이면 생성 허용 (수업 생성 직후 최초 등록)", async () => {
+    // 수업 생성 tx 가 salesOpenMonth 를 첫 일정 달로 기록한 직후 상태.
+    tx.class.findUniqueOrThrow.mockResolvedValue({
+      salesOpenMonth: NEXT_MONTH,
+    });
+    tx.classSchedule.findFirst.mockResolvedValue({
+      scheduledDate: new Date(NEXT_MONTH.getTime() + 7 * 24 * 3600 * 1000),
+    });
+    // 그 월분 MONTHLY_FIXED 는 아직 0건 → 동결 미적용.
+    tx.classProduct.findMany.mockResolvedValue([]);
+
+    await service.bulkUpsertClassProducts(userId, "COACH", classId, {
+      upserts: [
+        {
+          productName: "최초 정기권",
+          price: 250000,
+          feeType: "MONTHLY_FIXED",
+          sessionsPerMonth: 0,
+          durationDays: 28,
+        },
+      ],
+      deleteIds: [],
+    });
+
+    expect(tx.classProduct.create).toHaveBeenCalledTimes(1);
+    expect(tx.classProduct.create.mock.calls[0][0].data.billingMonth).toEqual(
+      NEXT_MONTH,
+    );
+  });
+
+  it("같은 달 정기권 다건을 한 번에 추가해도 두 번째부터 동결로 오판하지 않는다", async () => {
+    tx.class.findUniqueOrThrow.mockResolvedValue({
+      salesOpenMonth: NEXT_MONTH,
+    });
+    tx.classSchedule.findFirst.mockResolvedValue({
+      scheduledDate: new Date(NEXT_MONTH.getTime() + 7 * 24 * 3600 * 1000),
+    });
+    // 동결 기준은 요청 이전 상태(0건) — 루프 중 생성한 행은 기준에 포함되지 않는다.
+    tx.classProduct.findMany.mockResolvedValue([]);
+
+    await service.bulkUpsertClassProducts(userId, "COACH", classId, {
+      upserts: [
+        {
+          productName: "주2회권",
+          price: 200000,
+          feeType: "MONTHLY_FIXED",
+          sessionsPerMonth: 0,
+          durationDays: 28,
+        },
+        {
+          productName: "주3회권",
+          price: 280000,
+          feeType: "MONTHLY_FIXED",
+          sessionsPerMonth: 0,
+          durationDays: 28,
+        },
+      ],
+      deleteIds: [],
+    });
+
+    expect(tx.classProduct.create).toHaveBeenCalledTimes(2);
+    expect(tx.classProduct.create.mock.calls[1][0].data.billingMonth).toEqual(
+      NEXT_MONTH,
+    );
   });
 
   it("판매 시작된 월분 상품 삭제는 이력 0건이어도 판매 중지로 전환 (§3-6)", async () => {

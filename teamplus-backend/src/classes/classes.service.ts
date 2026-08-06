@@ -6668,12 +6668,6 @@ export class ClassesService {
           item.sessionsPerMonth,
           item.sessionsPerWeek,
         );
-        // [가격 잠금 §3-7] id 無(신규) MONTHLY_FIXED 는 귀속월 필수 — 무월 신규 유입 차단.
-        if (!item.id && !item.billingMonth) {
-          throw new BadRequestException(
-            PRICE_LOCK_MESSAGES.BILLING_MONTH_INPUT_REQUIRED,
-          );
-        }
       }
     }
 
@@ -6696,6 +6690,37 @@ export class ClassesService {
         where: { id: classId },
         select: { salesOpenMonth: true },
       });
+
+      // [가격 잠금 §3-7] 귀속월 미전송 신규 MONTHLY_FIXED 의 서버 도출 기준 —
+      //   기준은 lifecycle 의 earliestRemainingMonth 와 동일한 "잔여(오늘 이후) 일정의
+      //   가장 이른 달"이다. 과거 일정까지 포함하면 지난 월분(생성 즉시 잠기고 월 필터에도
+      //   안 잡히는 행)이 만들어진다 — 신규 수업만 다루는 createClass 와 다른 지점.
+      //   필요한 요청에서만 조회한다(미전송 항목이 없으면 쿼리 자체를 생략).
+      const needsMonthDerivation = upserts.some(
+        (i) => !i.id && i.feeType === "MONTHLY_FIXED" && !i.billingMonth,
+      );
+      const currentMonthStart = utcMonthStart(kstTodayUtcMidnight());
+      const nextSched = needsMonthDerivation
+        ? await tx.classSchedule.findFirst({
+            where: {
+              classId,
+              isCancelled: false,
+              scheduledDate: { gte: kstTodayUtcMidnight() },
+            },
+            orderBy: { scheduledDate: "asc" },
+            select: { scheduledDate: true },
+          })
+        : null;
+      const firstScheduleMonth = nextSched
+        ? utcMonthStart(nextSched.scheduledDate)
+        : null;
+      // 폴백(salesOpenMonth)도 지난 달이면 쓰지 않는다 — 잔여 일정이 없는 "일정 등록 대기"
+      //   수업은 도출 실패로 BILLING_MONTH_REQUIRED 400 이 정합(§9.4 판매 차단).
+      const salesOpenFallback =
+        lockBasis.salesOpenMonth &&
+        lockBasis.salesOpenMonth.getTime() >= currentMonthStart.getTime()
+          ? lockBasis.salesOpenMonth
+          : null;
 
       // 1) deleteIds — soft/hard 판정. 모든 대상이 해당 classId 소속인지 확인.
       for (const productId of deleteIds) {
@@ -6732,16 +6757,45 @@ export class ClassesService {
         }
       }
 
+      // [가격 잠금 §3-4] 동결 판정 기준 — 이 요청 **이전**에 존재하던 월분 집합 스냅샷.
+      //   같은 bulk 로 방금 만든 행이 뒤 항목의 판정에 끼어들면(주2회권+주3회권 동시 등록)
+      //   두 번째부터 동결로 오판되므로, 루프 진입 전에 한 번만 수집한다.
+      //   isActive 무관 — 판매 시작된 월분은 삭제가 soft(row 보존)라 재등록 우회는 계속 차단된다.
+      const frozenBasisMonths = new Set(
+        (
+          await tx.classProduct.findMany({
+            where: {
+              classId,
+              feeType: "MONTHLY_FIXED",
+              billingMonth: { not: null },
+            },
+            select: { billingMonth: true },
+          })
+        ).map((p) => (p.billingMonth as Date).getTime()),
+      );
+
       // 2) upserts — id 없으면 create, 있으면 update(소속 확인).
       for (const item of upserts) {
         if (!item.id) {
-          // [가격 잠금 §3-4] 판매 시작된 달의 신규 MONTHLY_FIXED 생성 동결
-          //   (판매중지 + 재등록 우회 차단).
-          if (item.feeType === "MONTHLY_FIXED" && item.billingMonth) {
-            assertMonthNotFrozen(
-              new Date(`${item.billingMonth}-01T00:00:00.000Z`),
-              lockBasis.salesOpenMonth,
-            );
+          // [가격 잠금 §3-7] 신규 MONTHLY_FIXED 귀속월 — 전송값 우선, 미전송이면
+          //   첫 일정의 달 → salesOpenMonth 순으로 서버 도출(생성 경로와 동일 SoT).
+          //   전부 없으면 BILLING_MONTH_REQUIRED 400 — 무월 신규 유입은 계속 차단된다.
+          let newBillingMonth: Date | null = item.billingMonth
+            ? new Date(`${item.billingMonth}-01T00:00:00.000Z`)
+            : null;
+          if (item.feeType === "MONTHLY_FIXED") {
+            newBillingMonth =
+              newBillingMonth ??
+              resolveNewProductBillingMonth({
+                firstScheduleMonth,
+                salesOpenMonth: salesOpenFallback,
+              });
+            // [가격 잠금 §3-4] 월분 동결 — 그 월분 상품이 **이미 있던** 경우에만 적용해
+            //   "판매중지 후 고가 재등록" 우회는 계속 차단하고, 수업 생성 직후
+            //   최초 수강권 등록(그 월분 0건)만 통과시킨다.
+            if (frozenBasisMonths.has(newBillingMonth.getTime())) {
+              assertMonthNotFrozen(newBillingMonth, lockBasis.salesOpenMonth);
+            }
           }
           await tx.classProduct.create({
             data: {
@@ -6755,15 +6809,9 @@ export class ClassesService {
               ...(item.sessionsPerWeek !== undefined && {
                 sessionsPerWeek: item.sessionsPerWeek,
               }),
-              // [Lifecycle v4.1 §9.2] 귀속월 — "YYYY-MM" → 그 달 1일(@db.Date, UTC 자정).
-              //   단건 createClassProductByClassId 와 동일 규칙. 생성 후 불변이라 create 에만 적용.
-              ...(item.billingMonth
-                ? {
-                    billingMonth: new Date(
-                      `${item.billingMonth}-01T00:00:00.000Z`,
-                    ),
-                  }
-                : {}),
+              // [Lifecycle v4.1 §9.2] 귀속월 — 그 달 1일(@db.Date, UTC 자정).
+              //   생성 후 불변이라 create 에만 적용. MONTHLY_FIXED 는 위에서 도출 완료.
+              ...(newBillingMonth ? { billingMonth: newBillingMonth } : {}),
             },
           });
         } else {
