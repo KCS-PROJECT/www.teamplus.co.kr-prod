@@ -4133,6 +4133,25 @@ export const MESSAGES = {
     validationWeeks: "주 수는 1~52 사이로 입력해주세요.",
     perSessionEditHint:
       "1회 수업료는 가격만 수정할 수 있어요. 다른 정보는 변경되지 않습니다.",
+    // [가격 계산 도우미] 월 결제 시트 — 귀속월 실제 일정 기반 참여 회차 × 1회 수업료.
+    //   회차는 가격 산정 보조값일 뿐 서버 미전송(sessionsPerMonth 크레딧 SoT 불변).
+    priceCalc: {
+      sectionTitle: "가격 자동 계산 (선택)",
+      daysLabel: "참여 요일",
+      dayChip: (day: string, count: number) => `${day} (${count}회)`,
+      dayClassName: (days: string) => `${days}요일반`,
+      countLabel: "참여 회차 수",
+      count: (n: number) => `${n}회`,
+      countDecrease: "참여 회차 줄이기",
+      countIncrease: "참여 회차 늘리기",
+      summary: (month: number, total: number, count: number) =>
+        `${month}월 일정 ${total}회 중 ${count}회 참여`,
+      formula: (unit: number, count: number, total: number) =>
+        `${unit.toLocaleString("ko-KR")}원 × ${count}회 = ${total.toLocaleString("ko-KR")}원`,
+      applyButton: "적용하기",
+      perSessionRate: (won: number) => `회당 ${won.toLocaleString("ko-KR")}원`,
+      discountHint: (pct: number) => `1회 수업료 대비 ${pct}% 할인`,
+    },
     // [가격 잠금 Phase 5] 판매 시작 확정 정책 안내
     priceLockedNotice:
       "판매가 시작되어 가격이 확정되었습니다. 다음 월분부터 변경할 수 있어요.",

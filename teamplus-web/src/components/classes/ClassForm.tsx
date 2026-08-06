@@ -123,6 +123,8 @@ interface ClassFormProps {
     | ((ctx: {
         renewalTargetMonth: string | null;
         salesPending: boolean;
+        /** [가격 계산 도우미] 폼 draft 일정 날짜("YYYY-MM-DD") — 월 결제 시트 회차 집계용. */
+        scheduleDates: string[];
       }) => React.ReactNode);
   /** [Lifecycle v4.1 §9.2] 판매 승인 대기(PENDING_SCHEDULE) 수업 여부 — 대상월 계산 게이트. */
   salesPending?: boolean;
@@ -482,8 +484,13 @@ export function ClassForm({
   const pastSchedules = formData.dateSchedules.filter((s) =>
     isPastScheduleDate(s.date, todayISO),
   );
-  const editableSchedules = formData.dateSchedules.filter(
-    (s) => !isPastScheduleDate(s.date, todayISO),
+  // memo — 파생 배열/객체(scheduleDatesForCalc·createPriceContext)의 참조 안정화 기점.
+  const editableSchedules = useMemo(
+    () =>
+      formData.dateSchedules.filter(
+        (s) => !isPastScheduleDate(s.date, todayISO),
+      ),
+    [formData.dateSchedules, todayISO],
   );
   // [Lifecycle v4.1 §9.2] 판매 대상월 — draft 잔여 일정(지난 회차 제외)의 가장 이른 달.
   //   서버 earliestRemainingMonth 파생과 동일 규칙(비취소·미래 일정 기준)을 draft 로 선계산해,
@@ -496,6 +503,26 @@ export function ClassForm({
       .sort();
     return dates.length > 0 ? dates[0].slice(0, 7) : null;
   })();
+  // [가격 계산 도우미] 폼 draft 일정 날짜 — 월 결제 시트의 귀속월 회차·요일 집계용.
+  //   renewalTargetMonth 파생과 동일하게 지난 회차를 제외한다 — 기준이 어긋나면
+  //   같은 달의 지난 회차가 섞여 회차·가격이 과다 산출된다(판매 대상 = 잔여 일정).
+  const scheduleDatesForCalc = useMemo(
+    () => editableSchedules.map((s) => s.date).filter(Boolean),
+    [editableSchedules],
+  );
+  // 등록 모드 컨텍스트 — BE 는 첫 비취소 일정의 달을 salesOpenMonth·정액 귀속월로 기록하므로
+  //   동일 규칙(가장 이른 일정의 달)으로 첫 판매월을 선계산한다.
+  const createPriceContext = useMemo(
+    () =>
+      mode === 'create' && scheduleDatesForCalc.length > 0
+        ? {
+            unitPrice: Number(formData.singlePrice) || 0,
+            targetMonth: [...scheduleDatesForCalc].sort()[0].slice(0, 7),
+            scheduleDates: scheduleDatesForCalc,
+          }
+        : null,
+    [mode, scheduleDatesForCalc, formData.singlePrice],
+  );
   // 최신(currentYear-6) → 오래된(currentYear-12) 순. 미취학~초등 6학년 범위.
   const selectableBirthYears = useMemo(() => {
     const years: number[] = [];
@@ -1629,6 +1656,7 @@ export function ClassForm({
                         onChange={onPackageDraftChange}
                         dirty={packageDirty}
                         billingMode={formData.billingMode}
+                        priceContext={createPriceContext}
                         iceTheme={iceTheme}
                       />
                     </div>
@@ -1646,7 +1674,11 @@ export function ClassForm({
                   </p>
                 )}
                 {typeof pricingSection === 'function'
-                  ? pricingSection({ renewalTargetMonth, salesPending })
+                  ? pricingSection({
+                      renewalTargetMonth,
+                      salesPending,
+                      scheduleDates: scheduleDatesForCalc,
+                    })
                   : pricingSection}
               </>
             )}
