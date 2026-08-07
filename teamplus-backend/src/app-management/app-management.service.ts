@@ -1132,6 +1132,11 @@ export class AppManagementService implements OnModuleInit {
     const notice = await this.prisma.systemNotice.findFirst({
       where: {
         targetType: "maintenance",
+        // 전역(전체) 공지만 점검 판정 — 팀 공지가 maintenance 타입을 달고 있어도
+        // 전체 앱 차단으로 번지지 않게 격리한다. 쓰기 쪽은 NoticesService 가
+        // "시스템 역할 + 전역 전용" 으로 강제하며, 이 필터는 레거시/우회 생성분까지
+        // 무력화하는 2차 방어다.
+        targetTeamId: null,
         isActive: true,
         startAt: { lte: now },
         // 종료일시는 필수 정책이나, 과거 데이터/누락 방어로 null 도 허용(무기한).
