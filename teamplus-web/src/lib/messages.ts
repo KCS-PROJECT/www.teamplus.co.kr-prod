@@ -1498,6 +1498,17 @@ export const MESSAGES = {
     deleteConfirmDesc: "삭제한 공지는 복구할 수 없습니다.",
     manage: "공지 관리",
     manageMenuOpen: "공지 관리 메뉴 열기",
+    /**
+     * 상세 진입 실패 안내 2종.
+     * ⚠️ notFound 문구에 "타 팀 공지" 같은 사유를 넣지 말 것 —
+     *    백엔드가 403 이 아닌 **404** 로 존재 자체를 감추는 IDOR 방어와 충돌한다.
+     *    "없음"과 "권한 없음"을 의도적으로 뭉뚱그린 표현이어야 한다.
+     */
+    notFoundOrForbidden: "공지사항을 찾을 수 없거나 접근 권한이 없습니다.",
+    loadFailed: "공지사항을 불러오지 못했습니다.",
+    /** 재시도는 일시적 실패(네트워크·5xx)에만 노출한다 — 권한/부재는 재시도해도 결과가 같다. */
+    loadRetry: "다시 시도",
+    backToList: "목록으로 돌아가기",
     targetAll: "전체",
     targetParent: "학부모",
     targetCoach: "코치",
@@ -1699,9 +1710,13 @@ export const MESSAGES = {
     participantSegmentAll: "전체",
     participantSegmentYear: "연도",
     participantSegmentGroup: "그룹",
-    // [2026-06-16] 대회 기간(start/end)을 경기 일정에서 자동 파생 — 일정 1건 이상 필수.
+    // [2026-06-16] 대회 기간(start/end)을 경기 일정에서 자동 파생.
+    // [2026-08-07] 일정 필수 해제 — 일정 0건이면 기간 null(일정 미정) 대회로 생성.
+    //   scheduleRequired 는 일정 필수 해제로 폐기(사용처 0) — 재도입 대비 보존.
     scheduleRequired: "경기 일정을 최소 1건 등록해주세요 (날짜·시간 입력).",
     scheduleIncomplete: "경기 일정의 날짜와 시간을 모두 입력해주세요.",
+    datesTbd: "일정 미정",
+    datesTbdLong: "일정 미정 · 추후 확정",
     locationRequired: "장소를 입력해주세요.",
     statusChanged: "대회 상태가 변경되었습니다.",
     feePreview: (games: number, fee: number) =>
@@ -3723,6 +3738,19 @@ export const MESSAGES = {
     createError: "등록 중 오류가 발생했습니다.",
     updateError: "수정 중 오류가 발생했습니다.",
     periodInvalid: "노출 종료일은 시작일 이후로 설정해주세요.",
+    /** 시작일이 미래일 때 안내 — 예약 노출은 지원하되 도래 시점 푸시는 미지원(스케줄러 미도입). */
+    scheduledStartNotice:
+      "시작일이 오늘 이후예요. 그날부터 목록에 노출되며, 푸시 알림은 발송되지 않습니다.",
+    /**
+     * 대상 팀 선택 — 관리 팀이 2개 이상일 때만 노출한다.
+     * 1개면 백엔드가 자동 주입하므로 선택지를 만들지 않는다.
+     */
+    targetTeamLabel: "공지 대상 팀",
+    targetTeamDesc: "선택한 팀의 구성원에게만 공지가 노출됩니다.",
+    targetTeamPlaceholder: "팀을 선택해주세요",
+    targetTeamRequired: "공지를 등록할 팀을 선택해주세요.",
+    targetTeamLoadFailed: "관리하는 팀 목록을 불러오지 못했습니다.",
+    targetTeamRetry: "다시 시도",
   },
 
   // ─── Z. 폼 취소 confirm 공통 ───────────────────────
@@ -3822,8 +3850,14 @@ export const MESSAGES = {
     titleHint: "대회를 쉽게 식별할 수 있도록 입력해주세요",
     dateHint: "대회가 진행되는 시작일과 종료일을 지정해주세요",
     // [2026-06-16] 대회 기간 수동 입력 제거 — 경기 일정에서 자동 산출.
+    // [2026-08-07] 일정 없이도 등록 가능 — 미입력 시 "일정 미정" 대회로 생성.
     scheduleHint:
       "경기별 상대팀과 일정을 입력하세요. 대회 기간은 경기 일정에서 자동 계산됩니다",
+    scheduleTbdHint:
+      "일정을 입력하지 않으면 '일정 미정' 대회로 등록되며, 참가 신청은 바로 받을 수 있습니다. 일정이 확정되면 대회 수정에서 추가하세요.",
+    // 수정 모드 빈 상태 — "대회 수정에서" 자기참조를 피하고 하단 버튼 안내로 대체.
+    scheduleTbdHintEdit:
+      "등록된 경기가 없어 '일정 미정' 대회로 유지됩니다. 일정이 확정되면 아래 버튼으로 경기를 추가하세요.",
     capacityHint: "모집 마감일과 참가팀 정원을 설정해주세요",
     // [선불 단일 금액 입력 — 일정별 합계 대체]
     feeLabel: "대회 참가비",

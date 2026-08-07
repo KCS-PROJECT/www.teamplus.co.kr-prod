@@ -7,6 +7,10 @@ import {
   type ViewerLike,
 } from "@/common/utils/viewer-birth-years.util";
 import { resolveViewerTeamIds } from "@/common/utils/team-scope.util";
+import {
+  publicationConditions,
+  buildNoticeTeamScopeCondition,
+} from "@/common/utils/notice-publication.util";
 import { buildClassVisibilityWhere } from "@/classes/utils/class-visibility.util";
 import { CLASSES_DOMAIN_TRAINING_TYPES } from "@/common/constants/class-domain.constant";
 
@@ -153,7 +157,7 @@ export class SearchService {
 
     if (type === "all" || type === "notices") {
       tasks.push(
-        this.searchNotices(searchTerm, limit, offset).then((data) => {
+        this.searchNotices(searchTerm, limit, offset, user).then((data) => {
           results.notices = data;
         }),
       );
@@ -331,10 +335,36 @@ export class SearchService {
     };
   }
 
-  private async searchNotices(q: string, limit: number, offset: number) {
-    const where = {
+  /**
+   * 공지 검색.
+   *
+   * [Phase 0 · F-EX-05] 이전에는 `isActive` 만 걸어 **팀 공지가 팀 밖으로 전부 노출**됐다.
+   *   이 엔드포인트는 `@Public()` + `@SkipThrottle()` 이라 비로그인 사용자가 임의 질의로
+   *   타 팀 공지 본문의 존재를 탐침하고 미리보기 100자를 얻을 수 있었다.
+   *   이제 열람 팀 스코프 + 게시 기간을 적용한다.
+   *     · 비로그인 → 서비스 공지(targetTeamId=null)만
+   *     · 로그인   → 서비스 공지 ∪ 본인 열람 가능 팀 공지
+   *
+   * ⚠️ `where` 는 `findMany` 와 `count` 가 **반드시 같은 객체를 공유**해야 한다.
+   *    분기되면 total 만으로 비열람 공지의 존재가 새어나간다.
+   */
+  private async searchNotices(
+    q: string,
+    limit: number,
+    offset: number,
+    viewer?: ViewerLike,
+  ) {
+    const viewerTeamIds = viewer?.id
+      ? await resolveViewerTeamIds(this.prisma, viewer.id, viewer.userType)
+      : [];
+
+    const where: Prisma.SystemNoticeWhereInput = {
       OR: [{ title: { contains: q } }, { content: { contains: q } }],
       isActive: true,
+      AND: [
+        buildNoticeTeamScopeCondition(viewerTeamIds),
+        ...publicationConditions(),
+      ],
     };
 
     const [items, total] = await Promise.all([

@@ -21,6 +21,17 @@ import {
 import { maskProfanity } from "@/common/utils/content-filter.util";
 import { maskFullName } from "@/common/utils/mask-name.util";
 import { resolveViewerTeamIds } from "@/common/utils/team-scope.util";
+import {
+  isWithinPublicationWindow,
+  publicationConditions,
+  buildNoticeTeamScopeCondition,
+} from "@/common/utils/notice-publication.util";
+import {
+  resolveNoticeManageTeamIds,
+  normalizeTargetTeamId,
+  isNoticeSystemRole,
+  isNoticeTeamScopedRole,
+} from "./utils/notice-manage-scope.util";
 
 interface NoticeFilter {
   targetType?: string;
@@ -35,8 +46,18 @@ interface NoticeFilter {
    *  - 미지정    : 기존 동작 (teamId 필터 또는 전체)
    */
   scope?: "service" | "team";
-  /** scope='team' 일 때 controller 가 채우는 열람 가능 팀 ID 목록 */
+  /** scope='team' · scope 미지정일 때 채우는 열람 가능 팀 ID 목록 */
   scopeTeamIds?: string[];
+  /**
+   * [2026-08-07 · R10-H1] 팀 스코프 우회 — **관리 목록(ADMIN/SYSTEM/OPER) 전용**.
+   *   audience 경로에서는 절대 켜지 않는다. 켜면 전 팀 공지가 반환된다.
+   */
+  skipViewerScope?: boolean;
+  /**
+   * [2026-08-07 · F-01] 게시 기간 우회 — **관리 목록 전용**.
+   *   관리자는 예약·만료 공지를 확인해야 하므로 predicate 를 건너뛴다.
+   */
+  skipPublicationWindow?: boolean;
 }
 
 function safeParseLocations(value: unknown): string[] {
@@ -124,7 +145,15 @@ export class NoticesService {
   ) {
     // [2026-05-21] scope='team' — 내가 열람 가능한 팀 ID 해석 (감독/코치/학생 소속 + 학부모 자녀 경유).
     // childId 지정 시(학부모 자녀 선택) 해당 자녀 소속 팀으로만 좁힘.
-    if (filters.scope === "team") {
+    //
+    // [2026-08-07 SECURITY · R10-H1] **scope 생략 시에도** 해석한다.
+    //   기존에는 scope='team' 일 때만 해석하고, scope 미지정이면 팀 조건 자체가 없어
+    //   `GET /notices` 한 번으로 **전 팀 공지 본문**이 반환됐다(목록 select 에 content 포함).
+    //   관리 목록(skipViewerScope)만 이 해석을 건너뛴다.
+    if (
+      !filters.skipViewerScope &&
+      (filters.scope === "team" || filters.scope === undefined)
+    ) {
       filters.scopeTeamIds = userId
         ? await resolveViewerTeamIds(this.prisma, userId, userType, { childId })
         : [];
@@ -155,16 +184,35 @@ export class NoticesService {
       where.isActive = filters.isActive;
     }
 
+    // AND 조건 누적 — 개별 필터가 `where.AND` 를 직접 대입하면 서로 덮어써서
+    //   먼저 설정한 조건이 조용히 사라진다(출생연도 필터 ↔ 게시 기간 충돌 사례).
+    const andConditions: Prisma.SystemNoticeWhereInput[] = [];
+
     // [2026-05-21] scope 필터 — 서비스 공지 / 팀 공지 명확 분리.
+    //   ⚠️ scope 는 관리 목록에서도 유효하다. skipViewerScope 를 먼저 분기하면
+    //      어드민의 `?scope=service` 요청에 팀 공지가 섞인다.
     if (filters.scope === "service") {
       // 서비스 공지: 팀 미지정(targetTeamId = null) 만.
       where.targetTeamId = null;
     } else if (filters.scope === "team") {
-      // 팀 공지: 내 소속/관리 팀 대상 공지만. 소속 팀 0개면 빈 결과.
-      where.targetTeamId = { in: filters.scopeTeamIds ?? [] };
-    } else if (filters.teamId) {
-      // (레거시) 팀 필터: 특정 팀 대상 공지 OR 전체 대상 공지
-      where.OR = [{ targetTeamId: filters.teamId }, { targetTeamId: null }];
+      // 팀 공지. 관리 목록은 전체 팀(또는 지정 팀), audience 는 내 열람 팀만.
+      where.targetTeamId = filters.skipViewerScope
+        ? (filters.teamId ?? { not: null })
+        : { in: filters.scopeTeamIds ?? [] };
+    } else if (filters.skipViewerScope) {
+      // 관리 목록 + scope 미지정 — 팀 스코프를 의도적으로 우회(teamId 지정 시 그 팀만).
+      if (filters.teamId) {
+        where.targetTeamId = filters.teamId;
+      }
+    } else {
+      // [2026-08-07 · R10-H1] scope 생략 = "내가 볼 수 있는 전부".
+      //   기존 레거시 `teamId` 분기는 **viewer 검증 없이** 임의 팀 공지를 반환했고,
+      //   teamId 조차 없으면 팀 조건이 통째로 빠져 전 팀 공지가 나갔다.
+      //   호출자 실측: `teamId` 파라미터 사용 0건(web·admin 전수) → 레거시 분기 제거.
+      //   scope 없이 호출하는 화면 3곳(events·club/news·notice-detail)은 이 기본값으로 무변경 동작한다.
+      andConditions.push(
+        buildNoticeTeamScopeCondition(filters.scopeTeamIds ?? []),
+      );
     }
 
     // displayLocation 필터: PostgreSQL JsonB array_contains로 DB 레벨 필터
@@ -178,7 +226,7 @@ export class NoticesService {
     // 학년(출생연도) 필터: DB 레벨로 처리
     const filterBirthYear = filters.childBirthYear;
     if (filterBirthYear !== undefined) {
-      where.AND = [
+      andConditions.push(
         {
           OR: [
             { targetBirthYearFrom: null },
@@ -191,7 +239,17 @@ export class NoticesService {
             { targetBirthYearTo: { gte: filterBirthYear } },
           ],
         },
-      ];
+      );
+    }
+
+    // [2026-08-07 · F-01] 게시 기간 — audience 열람 경로 공통 인가 조건.
+    //   관리 목록은 만료·예약 공지를 계속 봐야 하므로 명시적으로 우회한다.
+    if (!filters.skipPublicationWindow) {
+      andConditions.push(...publicationConditions());
+    }
+
+    if (andConditions.length > 0) {
+      where.AND = andConditions;
     }
 
     const [notices, total] = await Promise.all([
@@ -416,48 +474,46 @@ export class NoticesService {
   /**
    * 공지사항 생성
    *
-   * [T02-M 2026-05-15] teamId 격리:
+   * teamId 격리 ([T02-M 2026-05-15] 도입 · **2026-08-06 Phase 0 에서 SoT 교체**):
    *  - ADMIN/SYSTEM/OPER: 모든 팀 또는 전체 공지 작성 가능 (targetTeamId 자유)
-   *  - DIRECTOR/COACH: 본인이 관리하는 팀 ID 만 허용 (자동 주입 또는 검증)
-   *      - dto.targetTeamId 미지정 시 본인 coachProfile.teamId 자동 주입
-   *      - dto.targetTeamId 지정 시 본인이 coachId 인 팀인지 검증
+   *  - DIRECTOR/COACH: `resolveNoticeManageTeamIds` 가 반환한 팀만 허용
+   *      = `active Team.coachId` ∪ `TeamMember(approved · leftAt=null · 관리 역할)`
+   *      - `targetTeamId` **키 생략** 시 관리 팀이 하나면 자동 주입, 여럿이면 지정 요구
+   *      - 명시적 `null`/`""` 는 전역 공지 요청 → 시스템 역할만 허용
+   *  - ACADEMY_DIRECTOR: 팀 도메인 권한이 없어 제외
    *  - 기타 role: 컨트롤러 @Roles 가드로 차단되므로 도달 불가
+   *
+   * ⚠️ `CoachProfile.teamId` 는 더 이상 권한 근거가 아니다(승인 여부를 반영하지 않아
+   *    미승인 코치가 관리자로 취급되던 경로 — Phase 0 에서 제거).
    */
   async createNotice(userId: string, createDto: CreateNoticeDto) {
     // 1) 작성자 userType + 관리 가능 팀 조회
     const author = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: {
-        userType: true,
-        coachProfile: { select: { teamId: true } },
-      },
+      select: { userType: true },
     });
     if (!author) {
       throw new NotFoundException("작성자 정보를 찾을 수 없습니다.");
     }
 
-    const isSystemRole =
-      author.userType === "ADMIN" ||
-      author.userType === "SYSTEM" ||
-      author.userType === "OPER";
-    const isTeamScoped =
-      author.userType === "DIRECTOR" ||
-      author.userType === "ACADEMY_DIRECTOR" ||
-      author.userType === "COACH";
+    const isSystemRole = isNoticeSystemRole(author.userType);
+    // [Phase 0] ACADEMY_DIRECTOR 제외 — 가입 시 Team 을 만들지 않아 팀 도메인 권한이 없다.
+    const isTeamScoped = isNoticeTeamScopedRole(author.userType);
 
-    let resolvedTeamId: string | null = createDto.targetTeamId ?? null;
+    // [Phase 0 · F-EX-04] DTO 계약과 런타임을 일치시킨다.
+    //   · 키 생략(undefined) → "대상 미지정" → 팀 스코프 작성자는 단일 관리 팀 자동 주입
+    //   · 명시적 null·""·공백  → "전역(전체) 공지 요청" → **시스템 역할만 허용**
+    //   두 경우를 뭉뚱그리면 DIRECTOR 가 `targetTeamId: null` 을 보냈을 때 403 대신
+    //   본인 팀으로 조용히 자동 주입되어, updateNotice 의 전이 계약과도 어긋난다.
+    const hasExplicitTarget = createDto.targetTeamId !== undefined;
+    const requestedTeamId = normalizeTargetTeamId(createDto.targetTeamId);
+    let resolvedTeamId: string | null = requestedTeamId;
 
     if (isTeamScoped) {
-      // 본인이 관리하는 팀 목록 (coachId 기준)
-      const managedTeams = await this.prisma.team.findMany({
-        where: { coachId: userId, isActive: true },
-        select: { id: true },
-      });
-      const managedIds = new Set(managedTeams.map((t) => t.id));
-      // coachProfile.teamId 도 본인 팀에 포함
-      if (author.coachProfile?.teamId) {
-        managedIds.add(author.coachProfile.teamId);
-      }
+      // [Phase 0 · F-03·F-04] 공지 전용 관리 SoT — CoachProfile 미사용, 승인된 관리 역할만.
+      const managedIds = new Set(
+        await resolveNoticeManageTeamIds(this.prisma, userId, author.userType),
+      );
 
       if (managedIds.size === 0) {
         throw new ForbiddenException(
@@ -465,8 +521,15 @@ export class NoticesService {
         );
       }
 
+      if (hasExplicitTarget && requestedTeamId === null) {
+        // 명시적 전역 요청 — 팀 범위 권한자는 전체 공지를 만들 수 없다.
+        throw new ForbiddenException(
+          "전체 공지는 시스템 관리자만 작성할 수 있습니다.",
+        );
+      }
+
       if (!resolvedTeamId) {
-        // dto.targetTeamId 미지정 → 본인 팀으로 자동 주입 (단일 팀이면 자동)
+        // 키 생략 → 본인 팀으로 자동 주입 (단일 팀이면 자동)
         if (managedIds.size === 1) {
           resolvedTeamId = Array.from(managedIds)[0]!;
         } else {
@@ -494,6 +557,8 @@ export class NoticesService {
         isActive: createDto.isPublished !== false,
         createdBy: userId,
         displayLocationsJson: validatedLocations as Prisma.InputJsonValue,
+        // A군 절대 시점 — 화면이 KST 벽시계를 ISO 로 변환해 보낸 값을 그대로 저장한다.
+        //   (규약: 절대 시점은 UTC 저장, 벽시계 변환은 입력 화면 책임)
         startAt: createDto.startDate ? new Date(createDto.startDate) : null,
         expiresAt: createDto.endDate ? new Date(createDto.endDate) : null,
         maintenanceReason: createDto.maintenanceReason
@@ -568,9 +633,15 @@ export class NoticesService {
 
     await this.assertCanManageNotice(userId, notice.targetTeamId);
 
-    // DIRECTOR/COACH 는 targetTeamId 를 본인 관리 팀 밖으로 변경 불가
-    if (updateDto.targetTeamId !== undefined && updateDto.targetTeamId) {
-      await this.assertCanManageNotice(userId, updateDto.targetTeamId);
+    // [Phase 0 · F-EX-04] targetTeamId 전이 계약.
+    //   기존 가드는 `&& updateDto.targetTeamId`(truthy) 라 **null 과 빈 문자열이 검증을 통과**했다.
+    //   → 팀 관리자가 자기 팀 공지를 전역 공지(전체 사용자 노출)로 승격시킬 수 있었다.
+    //   이제 키가 존재하면(undefined 아님) 정규화 후 항상 검증한다:
+    //     · null(전역 전환) → assertCanManageNotice(null) 이 시스템 역할만 통과시킨다
+    //     · 팀 B 이동      → B 관리 권한까지 검증 (A 권한은 위에서 이미 확인)
+    if (updateDto.targetTeamId !== undefined) {
+      const nextTeamId = normalizeTargetTeamId(updateDto.targetTeamId);
+      await this.assertCanManageNotice(userId, nextTeamId);
     }
 
     const updateData: Prisma.SystemNoticeUpdateInput = {};
@@ -600,6 +671,9 @@ export class NoticesService {
         updateDto.displayLocations,
       ) as Prisma.InputJsonValue;
     }
+    // [2026-08-07 · F-05] 키가 있으면(null 포함) 반영 — `null` 이 곧 "기간 해제" 다.
+    //   프론트가 빈 값을 `undefined` 로 보내 키가 사라지던 탓에 한 번 설정한 기간을
+    //   지울 수 없었다. 이제 `null` 을 명시적으로 보낸다.
     if (updateDto.startDate !== undefined) {
       updateData.startAt = updateDto.startDate
         ? new Date(updateDto.startDate)
@@ -617,7 +691,8 @@ export class NoticesService {
       updateData.targetBirthYearTo = updateDto.targetBirthYearTo ?? null;
     }
     if (updateDto.targetTeamId !== undefined) {
-      updateData.targetTeamId = updateDto.targetTeamId ?? null;
+      // 정규화 결과를 기록 — `""` 가 그대로 저장되어 아무에게도 안 보이는 고아 공지가 되던 경로 차단.
+      updateData.targetTeamId = normalizeTargetTeamId(updateDto.targetTeamId);
     }
 
     const updated = await this.prisma.systemNotice.update({
@@ -660,11 +735,44 @@ export class NoticesService {
   }
 
   /**
+   * 공지를 작성·관리할 수 있는 팀 목록 (팀 선택기용).
+   *
+   * [2026-08-07 · Phase 2 · F-02] **쓰기 권한 SoT 와 동일 집합**을 반환한다.
+   *   화면이 다른 기준(예: `/teams/my/managed`)으로 팀을 보여주면 목록에는 있는데
+   *   저장은 403 이 나는 불일치가 생긴다.
+   *
+   * 시스템 역할(ADMIN/SYSTEM/OPER)은 전체 공지도 쓸 수 있으므로 팀 제한이 없다 —
+   * 화면에서 팀 선택이 필요 없어 빈 배열을 반환한다(선택기 미노출).
+   */
+  async getManageableTeams(userId: string, userType?: string) {
+    if (isNoticeSystemRole(userType)) {
+      return { data: [] };
+    }
+
+    const teamIds = await resolveNoticeManageTeamIds(
+      this.prisma,
+      userId,
+      userType,
+    );
+    if (teamIds.length === 0) {
+      return { data: [] };
+    }
+
+    const teams = await this.prisma.team.findMany({
+      where: { id: { in: teamIds } },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
+
+    return { data: teams };
+  }
+
+  /**
    * 관리자용 공지 목록.
    *
    * [T02-M 2026-05-15] teamId 격리:
    *  - ADMIN/SYSTEM/OPER: teamId 자유 (지정 시 해당 팀만, 미지정 시 전체)
-   *  - DIRECTOR/ACADEMY_DIRECTOR/COACH: 본인 관리 팀 ID 목록으로 강제 필터
+   *  - DIRECTOR/COACH: 본인 관리 팀 ID 목록으로 강제 필터 (ACADEMY_DIRECTOR 는 대상 제외 — 빈 결과)
    */
   async getAdminNotices(
     userId: string,
@@ -680,25 +788,21 @@ export class NoticesService {
   ) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: {
-        userType: true,
-        coachProfile: { select: { teamId: true } },
-      },
+      select: { userType: true },
     });
     if (!user) {
       throw new NotFoundException("사용자 정보를 찾을 수 없습니다.");
     }
 
-    const isSystemRole =
-      user.userType === "ADMIN" ||
-      user.userType === "SYSTEM" ||
-      user.userType === "OPER";
+    const isSystemRole = isNoticeSystemRole(user.userType);
 
     const page = options.page ?? 1;
     const limit = options.limit ?? 10;
 
     if (isSystemRole) {
-      // 시스템 관리자: 자유 필터
+      // 시스템 관리자: 자유 필터.
+      //   [2026-08-07] 관리 목록은 **팀 스코프·게시 기간을 의도적으로 우회**한다 —
+      //   예약·만료 공지까지 보여야 관리가 가능하다. audience 경로와 구분되는 유일한 지점.
       return this.getNotices(
         {
           targetType: options.targetType,
@@ -706,6 +810,8 @@ export class NoticesService {
           displayLocation: options.displayLocation,
           teamId: options.teamId,
           scope: options.scope,
+          skipViewerScope: true,
+          skipPublicationWindow: true,
         },
         page,
         limit,
@@ -713,15 +819,10 @@ export class NoticesService {
       );
     }
 
-    // 팀 스코프 사용자: 본인 관리 팀만
-    const managedTeams = await this.prisma.team.findMany({
-      where: { coachId: userId, isActive: true },
-      select: { id: true },
-    });
-    const managedIds = new Set(managedTeams.map((t) => t.id));
-    if (user.coachProfile?.teamId) {
-      managedIds.add(user.coachProfile.teamId);
-    }
+    // 팀 스코프 사용자: 본인 관리 팀만 (Phase 0 공지 전용 SoT)
+    const managedIds = new Set(
+      await resolveNoticeManageTeamIds(this.prisma, userId, user.userType),
+    );
 
     if (managedIds.size === 0) {
       return {
@@ -802,19 +903,30 @@ export class NoticesService {
       targetTeamId: string | null;
       isActive: boolean;
       createdBy: string | null;
+      startAt?: Date | null;
+      expiresAt?: Date | null;
     },
     userId?: string,
     userType?: string,
   ): Promise<void> {
-    const isSystemRole =
-      userType === "ADMIN" || userType === "SYSTEM" || userType === "OPER";
+    const isSystemRole = isNoticeSystemRole(userType);
     const isAuthor = !!userId && notice.createdBy === userId;
     if (isSystemRole || isAuthor) return;
 
     if (!notice.isActive) {
       throw new NotFoundException("공지사항을 찾을 수 없습니다.");
     }
-    if (notice.targetTeamId === null) return;
+
+    // [Phase 0 · F-EX-01] 게시 기간은 목록만이 아니라 **모든 audience 열람 경로**의 인가 조건이다.
+    //   (목록만 필터하면 상세·댓글 직접 링크가 그대로 우회로가 된다)
+    const published = isWithinPublicationWindow(notice);
+
+    if (notice.targetTeamId === null) {
+      if (!published) {
+        throw new NotFoundException("공지사항을 찾을 수 없습니다.");
+      }
+      return;
+    }
 
     const viewerTeamIds = userId
       ? await resolveViewerTeamIds(this.prisma, userId, userType)
@@ -822,13 +934,25 @@ export class NoticesService {
     if (!viewerTeamIds.includes(notice.targetTeamId)) {
       throw new NotFoundException("공지사항을 찾을 수 없습니다.");
     }
+
+    // 게시 기간 밖이어도 **해당 팀의 검증된 관리자**는 관리 목적으로 열람할 수 있다
+    //   (지난 공지 확인·수정·moderation 동선 보존). 게시 중이면 추가 쿼리 0.
+    if (!published) {
+      const manageTeamIds = userId
+        ? await resolveNoticeManageTeamIds(this.prisma, userId, userType)
+        : [];
+      if (!manageTeamIds.includes(notice.targetTeamId)) {
+        throw new NotFoundException("공지사항을 찾을 수 없습니다.");
+      }
+    }
   }
 
   /**
    * 공지 관리 권한 검증 헬퍼.
    *
    *  - ADMIN/SYSTEM/OPER: 모든 공지 관리 허용
-   *  - DIRECTOR/ACADEMY_DIRECTOR/COACH: targetTeamId 가 본인 관리 팀일 때만 허용
+   *  - DIRECTOR/COACH: targetTeamId 가 본인 관리 팀(소유 팀 ∪ 승인된 관리 역할)일 때만 허용
+   *  - ACADEMY_DIRECTOR: 팀 공지 관리 대상 아님 — 항상 ForbiddenException
    *  - 그 외 role: ForbiddenException
    */
   private async assertCanManageNotice(
@@ -837,26 +961,16 @@ export class NoticesService {
   ): Promise<void> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: {
-        userType: true,
-        coachProfile: { select: { teamId: true } },
-      },
+      select: { userType: true },
     });
     if (!user) {
       throw new ForbiddenException("사용자 정보를 찾을 수 없습니다.");
     }
 
-    const isSystemRole =
-      user.userType === "ADMIN" ||
-      user.userType === "SYSTEM" ||
-      user.userType === "OPER";
-    if (isSystemRole) return;
+    if (isNoticeSystemRole(user.userType)) return;
 
-    const isTeamScoped =
-      user.userType === "DIRECTOR" ||
-      user.userType === "ACADEMY_DIRECTOR" ||
-      user.userType === "COACH";
-    if (!isTeamScoped) {
+    // [Phase 0 · 결정 4] ACADEMY_DIRECTOR 는 팀 공지 관리 대상에서 제외.
+    if (!isNoticeTeamScopedRole(user.userType)) {
       throw new ForbiddenException("공지 관리 권한이 없습니다.");
     }
 
@@ -867,16 +981,13 @@ export class NoticesService {
       );
     }
 
-    const managedTeams = await this.prisma.team.findMany({
-      where: { coachId: userId, isActive: true },
-      select: { id: true },
-    });
-    const managedIds = new Set(managedTeams.map((t) => t.id));
-    if (user.coachProfile?.teamId) {
-      managedIds.add(user.coachProfile.teamId);
-    }
+    const managedIds = await resolveNoticeManageTeamIds(
+      this.prisma,
+      userId,
+      user.userType,
+    );
 
-    if (!managedIds.has(targetTeamId)) {
+    if (!managedIds.includes(targetTeamId)) {
       throw new ForbiddenException(
         "본인이 관리하는 팀의 공지만 처리할 수 있습니다.",
       );
@@ -1085,6 +1196,9 @@ export class NoticesService {
         targetTeamId: true,
         isActive: true,
         createdBy: true,
+        // [Phase 0 · F-EX-01] assertCanViewNotice 의 게시 기간 판정 입력
+        startAt: true,
+        expiresAt: true,
       },
     });
 
@@ -1132,22 +1246,39 @@ export class NoticesService {
    * CHILD/TEEN 회원 실명이 검색엔진·크롤러에 그대로 노출되는 것을 막는다
    * (개인정보 안전성 확보조치 §6).
    *
-   * @param viewerId 로그인 사용자 ID (없으면 비로그인 → 마스킹)
+   * [Phase 0 · F-09] **인증 필수 + 열람 권한 검증**으로 전환.
+   *   이전에는 `@Public()` 이라 공지 id 만 알면 비로그인 사용자가 타 팀 공지의 댓글을 읽을 수 있었고,
+   *   미게시·만료·예약 공지의 댓글도 같은 경로로 노출됐다. 이제 상세 조회와 동일한 인가를 적용한다.
+   *   마스킹 로직은 비로그인 경로가 사라져 사실상 dead 지만, 방어적으로 유지한다(Phase 4 정리 판단).
+   *
+   * @param viewerId 로그인 사용자 ID
+   * @param viewerType 로그인 사용자 역할 (열람 권한 판정용)
    */
   async getComments(
     noticeId: string,
     page: number = 1,
     limit: number = 10,
     viewerId?: string,
+    viewerType?: string,
   ) {
     const notice = await this.prisma.systemNotice.findUnique({
       where: { id: noticeId },
-      select: { id: true },
+      select: {
+        id: true,
+        targetTeamId: true,
+        isActive: true,
+        createdBy: true,
+        startAt: true,
+        expiresAt: true,
+      },
     });
 
     if (!notice) {
       throw new NotFoundException("공지사항을 찾을 수 없습니다.");
     }
+
+    // 댓글 열람 = 공지 열람 (단일 규칙). 차단 시 404 로 존재 여부도 감춘다.
+    await this.assertCanViewNotice(notice, viewerId, viewerType);
 
     const skip = (page - 1) * limit;
     const [comments, total] = await Promise.all([

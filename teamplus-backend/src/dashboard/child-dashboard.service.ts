@@ -5,6 +5,11 @@ import {
   ISSUING_PRODUCT_WHERE,
 } from "@/common/billing/fee-type.constants";
 import { canCheckInForClass } from "@/common/billing/schedule-eligibility.util";
+import { resolveViewerTeamIds } from "@/common/utils/team-scope.util";
+import {
+  publicationConditions,
+  buildNoticeTeamScopeCondition,
+} from "@/common/utils/notice-publication.util";
 import { RedisService } from "@/redis/redis.service";
 import {
   kstTodayUtcMidnight,
@@ -55,6 +60,20 @@ export class ChildDashboardService {
     if (cached) return cached;
 
     try {
+      // [Phase 0 · F-EX-05] 공지 팀 스코프 + 게시 기간 — 두 분기(멤버십 없음/정상) 공통 적용.
+      //   멤버십 없는 승인 대기 아동은 열람 팀이 없으므로 서비스 공지만 남는다.
+      //   ⚠️ 반드시 캐시 확인 **뒤**에 계산한다 — 앞에 두면 캐시 적중 시에도 Prisma 를 호출해
+      //      나머지 3개 대시보드(캐시 뒤 해석)와 동작이 갈린다.
+      const noticeTeamIds = await resolveViewerTeamIds(
+        this.prisma,
+        userId,
+        userType,
+      );
+      const noticeScopeAnd = [
+        buildNoticeTeamScopeCondition(noticeTeamIds),
+        ...publicationConditions(),
+      ];
+
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       // scheduledDate(@db.Date)는 UTC 자정 규약 — 이 컬럼 경계·in-memory 월 버킷은 KST 달력일의
@@ -118,6 +137,7 @@ export class ChildDashboardService {
           where: {
             isActive: true,
             OR: noticeTargetTypeFilter,
+            AND: noticeScopeAnd,
           },
           orderBy: [{ pinned: "desc" }, { createdAt: "desc" }],
           take: 5,
@@ -205,6 +225,7 @@ export class ChildDashboardService {
           where: {
             isActive: true,
             OR: noticeTargetTypeFilter,
+            AND: noticeScopeAnd,
           },
           orderBy: [{ pinned: "desc" }, { createdAt: "desc" }],
           take: 5,

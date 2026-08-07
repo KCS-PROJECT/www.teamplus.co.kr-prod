@@ -7,6 +7,11 @@ import {
 import { RedisService } from "@/redis/redis.service";
 import { resolveScheduleTimeByTemplate } from "@/common/utils/schedule-time.util";
 import { kstTodayUtcMidnight } from "@/common/utils/kst-date.util";
+import { resolveViewerTeamIds } from "@/common/utils/team-scope.util";
+import {
+  publicationConditions,
+  buildNoticeTeamScopeCondition,
+} from "@/common/utils/notice-publication.util";
 import {
   scheduleEligibleClassFilter,
   scheduleVisibleChildIds,
@@ -156,6 +161,13 @@ export class ParentDashboardService {
       const thirtyDaysLater = new Date(today);
       thirtyDaysLater.setDate(thirtyDaysLater.getDate() + 30);
       const nowDate = new Date();
+
+      // [Phase 0 · F-EX-05] 최근 공지 팀 스코프 — 학부모는 자녀 경유 팀까지 열람 가능.
+      const noticeTeamIds = await resolveViewerTeamIds(
+        this.prisma,
+        parentId,
+        "PARENT",
+      );
 
       // === W1 Step 2: 11개 쿼리 단일 Promise.all 통합 ===
       const [
@@ -397,6 +409,7 @@ export class ParentDashboardService {
           : Promise.resolve([]),
         // W6: 프론트 NoticeSection 중복 API 제거
         // targetType: null(미지정), "all", "parent"만 학부모에게 노출
+        // [Phase 0 · F-EX-05] 팀 스코프 + 게시 기간 — 타 팀 공지가 섞이던 경로 차단.
         this.prisma.systemNotice.findMany({
           where: {
             isActive: true,
@@ -404,6 +417,10 @@ export class ParentDashboardService {
               { targetType: null },
               { targetType: "all" },
               { targetType: "parent" },
+            ],
+            AND: [
+              buildNoticeTeamScopeCondition(noticeTeamIds),
+              ...publicationConditions(),
             ],
           },
           orderBy: [{ pinned: "desc" }, { createdAt: "desc" }],

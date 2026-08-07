@@ -27,8 +27,8 @@ import { UpdateNoticeDto } from "./dto/update-notice.dto";
 import { CreateNoticeCommentDto } from "./dto/create-notice-comment.dto";
 import { Roles } from "@/auth/roles.decorator";
 import { RolesGuard } from "@/auth/roles.guard";
-import { Public } from "@/auth/public.decorator";
-import { OptionalJwtAuthGuard } from "@/auth/optional-jwt-auth.guard";
+// [Phase 0] @Public / OptionalJwtAuthGuard 는 마지막 사용처였던 댓글 목록이
+//   JWT 필수로 전환되면서 제거됐다. 이 컨트롤러에 비인증 엔드포인트는 없다.
 
 @ApiTags("Notices")
 @Controller("api/v1/notices")
@@ -114,6 +114,9 @@ export class NoticesController {
     const userId: string | undefined = req?.user?.id;
     const userType: string | undefined = req?.user?.userType;
     // [2026-05-21] scope — 'service'(서비스 공지) / 'team'(팀 공지) 외 값은 무시.
+    //   [2026-08-07 · R10-H1] scope 를 생략해도 서비스가 열람 팀을 해석해
+    //   "서비스 공지 ∪ 내 팀 공지" 로 좁힌다. teamId 파라미터는 더 이상 팀 필터로 쓰이지 않는다
+    //   (viewer 검증 없이 임의 팀 공지를 노출하던 레거시 경로 — 호출자 실측 0건).
     const normalizedScope: "service" | "team" | undefined =
       scope === "service" || scope === "team" ? scope : undefined;
     return this.noticesService.getNotices(
@@ -267,13 +270,15 @@ export class NoticesController {
    */
   @Post()
   @UseGuards(AuthGuard("jwt"), RolesGuard)
-  @Roles("ADMIN", "SYSTEM", "OPER", "DIRECTOR", "ACADEMY_DIRECTOR", "COACH")
+  // [Phase 0 · 결정 4] ACADEMY_DIRECTOR 제외 — 가입 시 Team 을 만들지 않아 팀 공지 관리 권한이 없다.
+  //   (오픈클래스 공지는 별도 도메인으로 설계 예정)
+  @Roles("ADMIN", "SYSTEM", "OPER", "DIRECTOR", "COACH")
   @ApiBearerAuth()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: "공지사항 생성",
     description:
-      "새로운 공지사항을 생성합니다. ADMIN/SYSTEM/OPER 는 전체 공지(targetTeamId=null) 또는 특정 팀 공지 작성 가능. DIRECTOR/ACADEMY_DIRECTOR/COACH 는 본인이 관리하는 팀 공지만 작성 가능 (targetTeamId 자동 주입 또는 검증).",
+      "새로운 공지사항을 생성합니다. ADMIN/SYSTEM/OPER 는 전체 공지(targetTeamId=null) 또는 특정 팀 공지 작성 가능. DIRECTOR/COACH 는 본인이 관리하는 팀(소유 팀 또는 승인된 관리 역할) 공지만 작성 가능하며, targetTeamId 키를 생략하면 단일 관리 팀이 자동 주입됩니다. targetTeamId 에 null/빈 문자열을 명시하면 전체 공지 요청으로 간주되어 시스템 관리자만 허용됩니다. ACADEMY_DIRECTOR 는 팀 공지 작성 대상이 아닙니다.",
   })
   @ApiResponse({
     status: 201,
@@ -303,7 +308,9 @@ export class NoticesController {
    */
   @Patch(":noticeId")
   @UseGuards(AuthGuard("jwt"), RolesGuard)
-  @Roles("ADMIN", "SYSTEM", "OPER", "DIRECTOR", "ACADEMY_DIRECTOR", "COACH")
+  // [Phase 0 · 결정 4] ACADEMY_DIRECTOR 제외 — 가입 시 Team 을 만들지 않아 팀 공지 관리 권한이 없다.
+  //   (오픈클래스 공지는 별도 도메인으로 설계 예정)
+  @Roles("ADMIN", "SYSTEM", "OPER", "DIRECTOR", "COACH")
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -336,7 +343,9 @@ export class NoticesController {
    */
   @Delete(":noticeId")
   @UseGuards(AuthGuard("jwt"), RolesGuard)
-  @Roles("ADMIN", "SYSTEM", "OPER", "DIRECTOR", "ACADEMY_DIRECTOR", "COACH")
+  // [Phase 0 · 결정 4] ACADEMY_DIRECTOR 제외 — 가입 시 Team 을 만들지 않아 팀 공지 관리 권한이 없다.
+  //   (오픈클래스 공지는 별도 도메인으로 설계 예정)
+  @Roles("ADMIN", "SYSTEM", "OPER", "DIRECTOR", "COACH")
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -367,9 +376,45 @@ export class NoticesController {
   /**
    * 관리자용 공지사항 목록 (미공개 포함)
    */
+  /**
+   * 공지를 작성할 수 있는 팀 목록 (팀 선택기용).
+   *
+   * [2026-08-07 · Phase 2 · F-02] 관리 팀이 둘 이상인 감독/코치는 `targetTeamId` 를 지정해야
+   * 공지를 쓸 수 있는데(`createNotice` 403), 화면에 선택 수단이 없어 작성 자체가 불가능했다.
+   *
+   * ⚠️ `/teams/my/managed` 를 재사용하지 않는다 —
+   *   ① `includePending` 옵션이 pending 멤버십을 포함해 F-03(미승인 코치)을 UI 로 되살리고
+   *   ② `active Team.coachId` 소유자를 합집합하지 않아 공지 관리 SoT 와 집합이 다르다.
+   *   여기서는 `resolveNoticeManageTeamIds`(Phase 0 SoT)를 그대로 사용해 **쓰기 권한과 화면이 일치**하게 한다.
+   */
+  @Get("manage/teams")
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("ADMIN", "SYSTEM", "OPER", "DIRECTOR", "COACH")
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "공지 작성 가능 팀 목록",
+    description:
+      "로그인 사용자가 공지를 작성·관리할 수 있는 팀 목록입니다. 공지 관리 권한 SoT(소유 팀 ∪ 승인된 관리 역할 멤버십)와 동일한 집합이며, 미승인(pending) 멤버십 팀은 포함되지 않습니다.",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "조회 성공",
+    schema: {
+      example: { data: [{ id: "team-cuid", name: "서울 아이스하키" }] },
+    },
+  })
+  async getManageableTeams(@Request() req: AuthenticatedRequest) {
+    return this.noticesService.getManageableTeams(
+      req.user.id,
+      req.user.userType,
+    );
+  }
+
   @Get("admin/list")
   @UseGuards(AuthGuard("jwt"), RolesGuard)
-  @Roles("ADMIN", "SYSTEM", "OPER", "DIRECTOR", "ACADEMY_DIRECTOR", "COACH")
+  // [Phase 0 · 결정 4] ACADEMY_DIRECTOR 제외 — 가입 시 Team 을 만들지 않아 팀 공지 관리 권한이 없다.
+  //   (오픈클래스 공지는 별도 도메인으로 설계 예정)
+  @Roles("ADMIN", "SYSTEM", "OPER", "DIRECTOR", "COACH")
   @ApiBearerAuth()
   @ApiOperation({
     summary: "관리자용 공지사항 목록",
@@ -425,7 +470,9 @@ export class NoticesController {
    */
   @Patch(":noticeId/pin")
   @UseGuards(AuthGuard("jwt"), RolesGuard)
-  @Roles("ADMIN", "SYSTEM", "OPER", "DIRECTOR", "ACADEMY_DIRECTOR", "COACH")
+  // [Phase 0 · 결정 4] ACADEMY_DIRECTOR 제외 — 가입 시 Team 을 만들지 않아 팀 공지 관리 권한이 없다.
+  //   (오픈클래스 공지는 별도 도메인으로 설계 예정)
+  @Roles("ADMIN", "SYSTEM", "OPER", "DIRECTOR", "COACH")
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -449,7 +496,9 @@ export class NoticesController {
    */
   @Patch(":noticeId/publish")
   @UseGuards(AuthGuard("jwt"), RolesGuard)
-  @Roles("ADMIN", "SYSTEM", "OPER", "DIRECTOR", "ACADEMY_DIRECTOR", "COACH")
+  // [Phase 0 · 결정 4] ACADEMY_DIRECTOR 제외 — 가입 시 Team 을 만들지 않아 팀 공지 관리 권한이 없다.
+  //   (오픈클래스 공지는 별도 도메인으로 설계 예정)
+  @Roles("ADMIN", "SYSTEM", "OPER", "DIRECTOR", "COACH")
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -634,12 +683,23 @@ export class NoticesController {
    * 댓글 목록 조회
    */
   @Get(":noticeId/comments")
-  @Public()
-  @UseGuards(OptionalJwtAuthGuard)
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles(
+    "PARENT",
+    "COACH",
+    "CHILD",
+    "TEEN",
+    "ADMIN",
+    "DIRECTOR",
+    "ACADEMY_DIRECTOR",
+    "SYSTEM",
+    "OPER",
+  )
+  @ApiBearerAuth()
   @ApiOperation({
     summary: "공지사항 댓글 목록",
     description:
-      "공지사항의 댓글 목록을 조회합니다. 비로그인 열람 시 작성자 실명은 마스킹(홍*동)됩니다.",
+      "공지사항의 댓글 목록을 조회합니다. JWT 인증 필수이며, 해당 공지를 열람할 수 있는 사용자만 조회할 수 있습니다. (2026-08-06 Phase 0 — 비로그인 공개 및 팀 격리 부재 해소)",
   })
   @ApiQuery({ name: "page", required: false, description: "페이지 번호" })
   @ApiQuery({ name: "limit", required: false, description: "페이지당 개수" })
@@ -667,7 +727,7 @@ export class NoticesController {
   })
   async getComments(
     @Param("noticeId") noticeId: string,
-    @Request() req: { user?: { id: string } },
+    @Request() req: AuthenticatedRequest,
     @Query("page") page?: string,
     @Query("limit") limit?: string,
   ) {
@@ -676,6 +736,7 @@ export class NoticesController {
       page ? parseInt(page, 10) : 1,
       limit ? parseInt(limit, 10) : 10,
       req.user?.id,
+      req.user?.userType,
     );
   }
 }
