@@ -49,6 +49,12 @@ import {
   isAdminRole,
   isUserTypeAllowedForChldiv,
 } from "./constants/chldiv.constants";
+import {
+  isPublicSignupAllowedUserType,
+  publicSignupDenialMessage,
+  endpointContractDenialMessage,
+  PUBLIC_SIGNUP_ALLOWED_USER_TYPES,
+} from "./constants/public-signup.constants";
 
 /**
  * Refresh Token 저장 레코드 (Rotation + Grace Window)
@@ -147,6 +153,11 @@ export class AuthService {
       /** 동의 증거용 요청 메타 — 컨트롤러가 요청에서 추출해 전달. */
       consentMeta?: { ipAddress?: string; userAgent?: string };
     },
+    /**
+     * [2026-08-06 · R14-C1] 호출 엔드포인트의 역할 계약.
+     *   미지정 시 공개 가입 allowlist 3종. `/auth/register` 는 PARENT 만 전달한다.
+     */
+    options?: { allowedUserTypes?: readonly UserType[] },
   ) {
     // 자동 채움(B안, 2026-05-26) 을 위해 firstName/lastName/phone/birthDate/gender 는
     // let 으로 destructure — 본인인증 통과 시 verification 값으로 채워질 수 있다.
@@ -183,6 +194,32 @@ export class AuthService {
       }
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // [2026-08-06 SECURITY · R14-C1] 공개 가입 역할 **allowlist** 가드 — 차단 단일 지점.
+    //   이전에는 CHILD/TEEN 만 막는 denylist 였고 DTO 도 `@IsEnum(UserType)`(전체 9종)이라
+    //   `userType:"ADMIN"` 요청 하나로 **본인인증 없이 관리자 계정이 생성**됐다
+    //   (ADMIN/SYSTEM/OPER 는 IDENTITY_REQUIRED_TYPES 에도 없어 인증 면제).
+    //   denylist 는 "목록에 없는 역할 = 자동 허용" 이라 역할 추가마다 구멍이 생기므로 allowlist 로 전환.
+    //
+    //   ⚠️ 차단을 DTO 로 올리지 않는 이유: ValidationPipe 가 먼저 400 을 던지면 값별로 다른
+    //      메시지를 낼 수 없어 **CHILD/TEEN 가족정책 안내(앱심사 대응)와 역할별 안내가 소실**된다.
+    //      (Codex Round 2 지적 1) → DTO 는 enum 유효성만, 정책 판정은 여기서.
+    //   ⚠️ DB 조회 이전에 실패시켜 열거·부하 유발을 차단한다(중복 검사보다 앞).
+    // ─────────────────────────────────────────────────────────────────────
+    if (!isPublicSignupAllowedUserType(resolvedUserType)) {
+      throw new ForbiddenException(publicSignupDenialMessage(resolvedUserType));
+    }
+
+    // 엔드포인트별 계약 — `/auth/register` 는 팀/오픈클래스 정보를 받지 않아 PARENT 만 성공한다.
+    //   (Codex Round 2 지적 2 — Swagger/DTO 가 3종을 광고하던 계약 불일치 해소)
+    const endpointAllowed =
+      options?.allowedUserTypes ?? PUBLIC_SIGNUP_ALLOWED_USER_TYPES;
+    if (!(endpointAllowed as readonly string[]).includes(resolvedUserType)) {
+      throw new ForbiddenException(
+        endpointContractDenialMessage(resolvedUserType),
+      );
+    }
+
     // Check if user already exists (email or phone)
     const existingUser = await this.prisma.user.findFirst({
       where: {
@@ -210,41 +247,20 @@ export class AuthService {
       throw new BadRequestException("오픈클래스 정보를 입력해주세요.");
     }
 
-    // 코치 가입 + 팀 선택 선검증 (2026-06-01 · teamId 우선, teamCode 레거시 fallback)
-    //  - 팀 선택은 선택 입력. 지정된 경우에만 Team 존재 확인.
-    //  - 잘못된 식별자면 User 자체를 생성하지 않기 위함 (원자성).
-    if (resolvedUserType === UserType.COACH && (teamId || teamCode)) {
-      const coachTargetClub = teamId
-        ? await this.prisma.team.findUnique({
-            where: { id: teamId },
-            select: { id: true },
-          })
-        : await this.prisma.team.findUnique({
-            where: { teamCode: teamCode! },
-            select: { id: true },
-          });
-      if (!coachTargetClub) {
-        throw new BadRequestException("선택하신 팀을 찾을 수 없습니다.");
-      }
-    }
-
-    // CHILD/TEEN 직접 회원가입 차단 (가족정책 하드닝 · 2026-06-18 · INFO-3)
-    //  - 자녀(아동/청소년)는 보호자 계정에서만 생성한다. 정식 경로는
-    //    ChildrenService.createChild() (학부모 경유, register() 미경유 독립 $transaction).
-    //  - 본 register()로의 CHILD/TEEN 직접 가입은 App Store/Google Play 가족정책상
-    //    금지되므로 ForbiddenException으로 즉시 차단한다(birthDate 유무 무관).
-    if (
-      resolvedUserType === UserType.CHILD ||
-      resolvedUserType === UserType.TEEN
-    ) {
-      throw new ForbiddenException(
-        "자녀(아동/청소년) 회원가입은 보호자 계정에서만 가능합니다. 학부모로 가입 후 '내 자녀 추가'에서 등록해주세요.",
-      );
-    }
+    // [2026-08-06 · R14-C1] 코치 팀 선택 선검증 블록 제거.
+    //   COACH 는 위 allowlist 가드에서 이미 거부되므로 도달할 수 없었다.
+    //   코치 계정의 정식 발급 경로는 `AdminService.createCoach()`(`POST /admin/coaches`) 이며
+    //   register() 를 경유하지 않는다. RegisterDto 의 teamId/teamCode 필드와 아래 트랜잭션의
+    //   COACH 분기도 같은 이유로 **도달 불가(dead)** 상태다 — 후속 정리 대상(§7).
+    //
+    // CHILD/TEEN 차단은 allowlist 가드로 흡수됐다(문구는 가족정책 심사 대응 문구 그대로 유지).
+    //   정식 경로: ChildrenService.createChild() (보호자 경유, register() 미경유 독립 $transaction).
 
     // ─────────────────────────────────────────────────────────────────────
-    // NEW-02 (2026-05-22 · 앱심사 v7) — PARENT/COACH/DIRECTOR/ACADEMY_DIRECTOR
-    // 가입 시 본인인증 강제 가드.
+    // NEW-02 (2026-05-22 · 앱심사 v7) — 공개 가입 허용 역할 전원 본인인증 강제.
+    //   [2026-08-06 · R14-C1] allowlist 도입 후 공개 가입 가능 역할은
+    //   PARENT/DIRECTOR/ACADEMY_DIRECTOR 3종이며 **전원 본인인증 대상**이다.
+    //   (COACH 는 목록에 남겨두지만 allowlist 에서 이미 거부되어 도달하지 않는다)
     //   · 근거: PIPA §22조 + 정통망법 §31조 (실명 확인 의무)
     //   · CHILD/TEEN 은 L-10 법정대리인 동의로 대체 (보호자가 가입 대행)
     //   · ADMIN/SYSTEM/OPER 는 운영자 콘솔에서 별도 발급 — 본인인증 불요

@@ -55,6 +55,7 @@ import { Roles } from "./roles.decorator";
 import { AuditAction } from "@/common/decorators";
 import { extractClientIp } from "@/common/utils/extract-client-ip.util";
 import { normalizeAuditPlatform } from "@/common/utils/client-platform.util";
+import { REGISTER_ENDPOINT_ALLOWED_USER_TYPES } from "./constants/public-signup.constants";
 
 @ApiTags("Authentication")
 @Controller("api/v1/auth")
@@ -129,7 +130,11 @@ export class AuthController {
     description: "Invalid input or user already exists",
   })
   async register(@Body() registerDto: RegisterDto) {
-    return this.authService.register(registerDto);
+    // [2026-08-06 · R14-C1] 이 엔드포인트는 팀/오픈클래스 중첩 정보를 받지 않으므로 PARENT 전용.
+    //   감독·오픈클래스 감독 가입은 POST /auth/signup (SignupDto) 를 사용한다.
+    return this.authService.register(registerDto, {
+      allowedUserTypes: REGISTER_ENDPOINT_ALLOWED_USER_TYPES,
+    });
   }
 
   @Public()

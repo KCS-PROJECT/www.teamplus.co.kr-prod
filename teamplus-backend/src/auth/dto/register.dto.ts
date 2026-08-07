@@ -8,6 +8,7 @@ import {
 } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { UserType } from "@prisma/client";
+import { REGISTER_ENDPOINT_ALLOWED_USER_TYPES } from "../constants/public-signup.constants";
 
 export class RegisterDto {
   @ApiProperty({
@@ -56,14 +57,23 @@ export class RegisterDto {
   })
   password!: string;
 
+  /**
+   * [2026-08-06 SECURITY · R14-C1] 역할 차단은 **서비스 allowlist 가드 단일 지점**에서 수행한다.
+   *
+   * DTO 에 `@IsIn(allowlist)` 을 걸었더니 ValidationPipe 가 먼저 400 을 던지면서
+   * **CHILD/TEEN 가족정책 안내 문구(2026-06-18 앱심사 대응)와 역할별 안내가 HTTP 응답에서 소실**됐다
+   * (Codex Round 2 지적 1). class-validator 는 값별로 다른 메시지를 낼 수 없다.
+   *
+   * → DTO 는 "알려진 UserType 인가"만 검사하고, **누가 가입 가능한가는 서비스가 판정**한다.
+   *   서비스 가드는 DB 조회 이전에 실행되므로 방어력 손실은 없다.
+   */
   @ApiProperty({
-    enum: ["PARENT", "COACH", "ADMIN", "TEEN", "CHILD"],
-    description: "User type",
+    enum: REGISTER_ENDPOINT_ALLOWED_USER_TYPES,
+    description:
+      "회원 유형. 이 엔드포인트는 팀/오픈클래스 정보를 받지 않으므로 **PARENT 만 가입 가능**합니다. 감독·오픈클래스 감독은 POST /auth/signup 을, 코치는 감독의 코치 등록을, 자녀는 보호자 계정을, 관리자는 운영자 콘솔을 이용합니다.",
     example: "PARENT",
   })
-  @IsEnum(UserType, {
-    message: "User type must be one of: PARENT, COACH, ADMIN, TEEN, CHILD",
-  })
+  @IsEnum(UserType, { message: "유효한 회원 유형을 입력해주세요." })
   userType!: UserType;
 
   @ApiPropertyOptional({
