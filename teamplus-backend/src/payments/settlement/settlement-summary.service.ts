@@ -973,7 +973,11 @@ export class SettlementSummaryService {
           tournamentBillingMode: t.billingMode,
         });
         if (att.attributionUnknown) {
-          attributionUnknownCount++;
+          // 일정 미정(endDate null) 대회의 미확정 건은 정상 상태(기간 확정 시 귀속) —
+          //   이상치 경고 카운트에서 분리해 진짜 귀속 불명만 warn 에 남긴다.
+          if (t.endDate != null) {
+            attributionUnknownCount++;
+          }
           continue;
         }
         if (att.yearMonth !== yearMonth) continue;

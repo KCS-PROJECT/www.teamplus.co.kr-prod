@@ -250,8 +250,9 @@ function TournamentsPageContent() {
     const isPostpaid = form.billingMode === 'POSTPAID';
     const payload: CreateTournamentRequest = {
       name: form.name,
-      startDate: new Date(form.startDate).toISOString(),
-      endDate: new Date(form.endDate).toISOString(),
+      // 기간 미입력 = 일정 미정 대회 — null 전송(수정 시 기간 해제 포함).
+      startDate: form.startDate ? new Date(form.startDate).toISOString() : null,
+      endDate: form.endDate ? new Date(form.endDate).toISOString() : null,
       status: form.status,
       billingMode: form.billingMode,
       // 후불은 종료 후 정산에서 금액을 입력하므로 생성/수정 시 TOTAL_FIXED 고정.
@@ -276,8 +277,13 @@ function TournamentsPageContent() {
   };
 
   const handleCreate = async () => {
-    if (!form.name || !form.startDate || !form.endDate) {
-      alert('대회명, 시작일, 종료일은 필수 항목입니다.');
+    if (!form.name) {
+      alert(MESSAGES.tournament.nameRequired);
+      return;
+    }
+    // 기간은 선택 — 둘 다 비우면 "일정 미정" 대회. 한쪽만 입력은 차단(백엔드 계약 동일).
+    if (!!form.startDate !== !!form.endDate) {
+      alert(MESSAGES.tournament.datesPairRequired);
       return;
     }
     try {
@@ -290,8 +296,12 @@ function TournamentsPageContent() {
   };
 
   const handleUpdate = async () => {
-    if (!selectedTournament || !form.name || !form.startDate || !form.endDate) {
-      alert('대회명, 시작일, 종료일은 필수 항목입니다.');
+    if (!selectedTournament || !form.name) {
+      alert(MESSAGES.tournament.nameRequired);
+      return;
+    }
+    if (!!form.startDate !== !!form.endDate) {
+      alert(MESSAGES.tournament.datesPairRequired);
       return;
     }
     try {
@@ -424,7 +434,7 @@ function TournamentsPageContent() {
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-            시작일 <span className="text-red-500">*</span>
+            시작일
           </label>
           <Input
             type="date"
@@ -434,7 +444,7 @@ function TournamentsPageContent() {
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-            종료일 <span className="text-red-500">*</span>
+            종료일
           </label>
           <Input
             type="date"
@@ -442,6 +452,9 @@ function TournamentsPageContent() {
             onChange={(e) => updateForm('endDate', e.target.value)}
           />
         </div>
+        <p className="col-span-2 -mt-2 text-xs text-slate-500 dark:text-slate-400">
+          {MESSAGES.tournament.datesTbdFormHint}
+        </p>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -723,7 +736,11 @@ function TournamentsPageContent() {
               <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                 <span className="inline-flex items-center gap-1">
                   <Calendar className="w-3 h-3" aria-hidden="true" />
-                  <span className="tabular-nums">{formatDate(tournament.startDate)} ~ {formatDate(tournament.endDate)}</span>
+                  <span className="tabular-nums">
+                    {tournament.startDate && tournament.endDate
+                      ? `${formatDate(tournament.startDate)} ~ ${formatDate(tournament.endDate)}`
+                      : MESSAGES.tournament.datesTbdLong}
+                  </span>
                 </span>
                 <span>·</span>
                 <span>{getAgeGroupLabel(tournament) || MESSAGES.tournament.eligibleNone}</span>

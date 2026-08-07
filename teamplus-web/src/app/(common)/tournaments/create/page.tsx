@@ -10,8 +10,10 @@
  *  - Sticky Bottom CTA (등록하기)
  *
  * 검증:
- *  - 대회명 필수 / 경기 일정 1건 이상(날짜·시간) 필수
+ *  - 대회명 필수 / 참가 선수 1명 이상 필수
  *  - 대회 기간(start/end)은 경기 일정 날짜의 min/max 로 자동 파생
+ *  - 경기 일정 0건 허용 — 기간 null(일정 미정) 대회로 생성, 신청 접수 가능.
+ *    일정 행이 있는데 날짜·시간 미완성이면 조용한 유실 방지를 위해 제출 차단.
  */
 
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
@@ -400,13 +402,12 @@ export default function TournamentCreatePage() {
 
   const validationError = useMemo<string | null>(() => {
     if (!name.trim()) return MESSAGES.tournament.nameRequired;
-    // [2026-06-16] 대회 기간(start/end)을 경기 일정에서 자동 파생 — 일정 1건 이상 필수.
-    if (scheduleMatches.length === 0) {
-      return MESSAGES.tournament.scheduleRequired;
+    // [2026-08-07] 일정 0건 허용 — 기간 null(일정 미정) 대회로 생성.
+    //   단, 미완성(날짜·시간 누락) 행이 하나라도 있으면 그 행이 저장에서 조용히
+    //   유실되므로 제출을 차단해 완성 또는 삭제를 유도.
+    if (scheduleMatches.some((m) => !m.date || !m.time)) {
+      return MESSAGES.tournament.scheduleIncomplete;
     }
-    // 날짜·시간이 모두 채워진 경기가 1건 이상이어야 기간 파생 가능.
-    const hasValidMatch = scheduleMatches.some((m) => m.date && m.time);
-    if (!hasValidMatch) return MESSAGES.tournament.scheduleIncomplete;
     // [2026-06-16] 참가대상 = 선수 명단 스냅샷 — 최소 1명 필수.
     if (selectedPlayerIds.size === 0) {
       return MESSAGES.tournament.participantRequired;
@@ -447,13 +448,15 @@ export default function TournamentCreatePage() {
     let navigated = false;
     try {
       // [2026-06-16] 대회 기간(start/end)을 경기 일정에서 파생 — 유효 경기(date+time) 날짜의
-      //   최소/최대를 시작/종료일로 사용. validationError 가 1건 이상 보장하므로 항상 존재.
+      //   최소/최대를 시작/종료일로 사용.
+      // [2026-08-07] 일정 0건이면 null 전송 = 일정 미정 대회. 수정 모드에서 경기를 전부
+      //   삭제한 경우에도 null 로 기간을 해제해 미정 상태로 복귀시킨다(백엔드 계약).
       const validMatchDates = scheduleMatches
         .filter((m) => m.date && m.time)
         .map((m) => m.date)
         .sort();
-      const derivedStart = validMatchDates[0];
-      const derivedEnd = validMatchDates[validMatchDates.length - 1];
+      const derivedStart = validMatchDates[0] ?? null;
+      const derivedEnd = validMatchDates[validMatchDates.length - 1] ?? null;
       const payload: CreateTournamentInput = {
         name: name.trim(),
         startDate: derivedStart,
@@ -811,7 +814,9 @@ export default function TournamentCreatePage() {
           >
             {scheduleMatches.length === 0 ? (
               <p className="px-1 py-2 text-w-caption text-it-ink-400 dark:text-rink-300">
-                아직 등록된 경기가 없습니다. 아래 버튼으로 추가하세요.
+                {isEditMode
+                  ? MESSAGES.tournamentForm.scheduleTbdHintEdit
+                  : MESSAGES.tournamentForm.scheduleTbdHint}
               </p>
             ) : (
               <ul className="flex flex-col gap-3">

@@ -592,8 +592,9 @@ export class TournamentsService {
           },
         },
       },
+      // 일정 미정(startDate null) 대회는 모집 노출 우대 — 목록 맨 위 고정(PG desc 기본이지만 명시).
       orderBy: {
-        startDate: "desc",
+        startDate: { sort: "desc", nulls: "first" },
       },
     });
 
@@ -682,7 +683,8 @@ export class TournamentsService {
           },
         },
       },
-      orderBy: [{ startDate: "asc" }, { createdAt: "desc" }],
+      // 일정 미정 대회는 모집 노출 우대 — asc 기본(nulls last)을 뒤집어 맨 위 배치.
+      orderBy: [{ startDate: { sort: "asc", nulls: "first" } }, { createdAt: "desc" }],
     });
 
     return tournaments
@@ -895,8 +897,19 @@ export class TournamentsService {
    *  · ageGroup / selectedParticipantIds 신규 필드 저장.
    */
   async createTournament(dto: CreateTournamentDto, requester: JwtUserPayload) {
-    // 날짜 검증
-    if (new Date(dto.startDate) > new Date(dto.endDate)) {
+    // 날짜 검증 — 기간은 둘 다 있거나 둘 다 없어야 한다(null 쌍 = 일정 미정 대회).
+    const hasStart = dto.startDate != null;
+    const hasEnd = dto.endDate != null;
+    if (hasStart !== hasEnd) {
+      throw new BadRequestException(
+        "시작 날짜와 종료 날짜는 함께 입력하거나 함께 비워야 합니다.",
+      );
+    }
+    if (
+      dto.startDate != null &&
+      dto.endDate != null &&
+      new Date(dto.startDate) > new Date(dto.endDate)
+    ) {
       throw new BadRequestException("시작 날짜가 종료 날짜보다 늦을 수 없습니다.");
     }
 
@@ -995,8 +1008,10 @@ export class TournamentsService {
         teamId,
         rinkId: dto.rinkId,
         venueId: dto.venueId,
-        startDate: dateOnlyToUtc(dto.startDate.slice(0, 10)),
-        endDate: dateOnlyToUtc(dto.endDate.slice(0, 10)),
+        startDate:
+          dto.startDate != null ? dateOnlyToUtc(dto.startDate.slice(0, 10)) : null,
+        endDate:
+          dto.endDate != null ? dateOnlyToUtc(dto.endDate.slice(0, 10)) : null,
         status: dto.status || "scheduled",
         eligibleBirthYearFrom: derivedBirthYearFrom,
         eligibleBirthYearTo: derivedBirthYearTo,
@@ -1076,15 +1091,26 @@ export class TournamentsService {
       throw new BadRequestException("종료된 대회는 수정할 수 없습니다.");
     }
 
-    // 날짜 검증
-    const startDate = dto.startDate
-      ? dateOnlyToUtc(dto.startDate.slice(0, 10))
-      : tournament.startDate;
-    const endDate = dto.endDate
-      ? dateOnlyToUtc(dto.endDate.slice(0, 10))
-      : tournament.endDate;
+    // 날짜 검증 — undefined=기존 유지 · null 명시=기간 해제(일정 미정 복귀) · 문자열=변경.
+    const startDate =
+      dto.startDate === undefined
+        ? tournament.startDate
+        : dto.startDate === null
+          ? null
+          : dateOnlyToUtc(dto.startDate.slice(0, 10));
+    const endDate =
+      dto.endDate === undefined
+        ? tournament.endDate
+        : dto.endDate === null
+          ? null
+          : dateOnlyToUtc(dto.endDate.slice(0, 10));
 
-    if (startDate > endDate) {
+    if ((startDate == null) !== (endDate == null)) {
+      throw new BadRequestException(
+        "시작 날짜와 종료 날짜는 함께 설정하거나 함께 비워야 합니다.",
+      );
+    }
+    if (startDate != null && endDate != null && startDate > endDate) {
       throw new BadRequestException("시작 날짜가 종료 날짜보다 늦을 수 없습니다.");
     }
 
@@ -1629,18 +1655,22 @@ export class TournamentsService {
 
   private mapStudentTournamentStatus(
     status: string,
-    startDate: Date,
-    endDate: Date,
+    startDate: Date | null,
+    endDate: Date | null,
     registrationDeadline: Date | null,
     currentParticipants: number,
     maxParticipants: number | null,
     now: Date,
   ) {
-    if (status === "finished" || endDate < now) {
+    // 기간 null = 일정 미정 대회 — 날짜 기반 종료/진행 판정 불가, status·마감·정원 기준만 적용.
+    if (status === "finished" || (endDate != null && endDate < now)) {
       return "COMPLETED";
     }
 
-    if (status === "ongoing" || (startDate <= now && endDate >= now)) {
+    if (
+      status === "ongoing" ||
+      (startDate != null && endDate != null && startDate <= now && endDate >= now)
+    ) {
       return "IN_PROGRESS";
     }
 
@@ -2587,7 +2617,7 @@ export class TournamentsService {
   ) {
     const registration = await this.prisma.tournamentRegistration.findUnique({
       where: { id: registrationId },
-      include: { tournament: { select: { startDate: true } } },
+      include: { tournament: { select: { startDate: true, status: true } } },
     });
 
     if (!registration) {
@@ -2616,6 +2646,27 @@ export class TournamentsService {
       throw new BadRequestException(
         "대회 당일부터는 참가를 취소할 수 없습니다.",
       );
+    }
+    // 일정 미정(startDate null) 대회 — 날짜 가드가 비활성이므로 경기 폴백으로 사후 취소 차단.
+    //   assertTournamentRegistrationOpen·confirmTournamentSettlement 와 동일한 hockeyMatch
+    //   기준: 첫 경기가 이미 시작됐거나 대회가 진행/종료 상태면 취소(환불 전환) 불가.
+    if (registration.tournament?.startDate == null) {
+      const status = registration.tournament?.status;
+      if (status === "ongoing" || status === "finished") {
+        throw new BadRequestException(
+          "대회가 시작된 후에는 참가를 취소할 수 없습니다.",
+        );
+      }
+      const firstMatch = await this.prisma.hockeyMatch.aggregate({
+        where: { tournamentId },
+        _min: { scheduledAt: true },
+      });
+      const firstStart = firstMatch._min.scheduledAt;
+      if (firstStart != null && firstStart.getTime() <= Date.now()) {
+        throw new BadRequestException(
+          "대회가 시작된 후에는 참가를 취소할 수 없습니다.",
+        );
+      }
     }
 
     // [2026-06-15] 결제 완료(PAID) 건도 취소(환불) 가능하도록 허용.

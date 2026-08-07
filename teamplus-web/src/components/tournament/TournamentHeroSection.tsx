@@ -17,14 +17,16 @@
 
 import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/lib/utils";
+import { MESSAGES } from "@/lib/messages";
 import type { TournamentUiStatus } from "@/services/tournament.service";
 import { TournamentStatusBadge } from "./TournamentStatusBadge";
 
 interface Props {
   title: string;
   subtitle?: string;
-  startDate: string;
-  endDate: string;
+  /** 대회 기간 — null = 일정 미정(추후 확정) 표기. */
+  startDate: string | null;
+  endDate: string | null;
   status: TournamentUiStatus;
   dDay?: number;
   /**
@@ -34,7 +36,9 @@ interface Props {
   iceTheme?: boolean;
 }
 
-function formatRangeLong(start: string, end: string): string {
+function formatRangeLong(start: string | null, end: string | null): string {
+  // 기간 null = 일정 미정 대회 — 날짜 대신 미정 문구 표시.
+  if (!start || !end) return MESSAGES.tournament.datesTbdLong;
   const s = start.slice(0, 10).replace(/-/g, ".");
   const e = end.slice(0, 10).replace(/-/g, ".");
   return `${s} - ${e}`;

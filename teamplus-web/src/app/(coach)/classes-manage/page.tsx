@@ -513,7 +513,8 @@ function TournamentManageCard({ item }: { item: TournamentListItem }) {
     const s = fmtDate(item.startDate);
     const e = fmtDate(item.endDate);
     if (s && e) return s === e ? s : `${s} ~ ${e}`;
-    return s || e || '';
+    // 기간 null = 일정 미정 대회 — 일정 행을 숨기지 않고 미정 문구로 표시.
+    return s || e || MESSAGES.tournament.datesTbdLong;
   })();
   // [B1 2026-05-26] 대회도 동일 규칙 — 기간 지난 대회가 '예정'으로 표시되던 문제 보정.
   //   'cancelled'(취소)는 날짜로 도출 불가한 수동 상태이므로 우선 유지.

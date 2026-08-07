@@ -377,15 +377,20 @@ export class CalendarDashboardService {
     const tournaments = await this.prisma.tournament.findMany({
       where: {
         status: { not: "cancelled" },
-        startDate: { lte: monthEnd },
-        endDate: { gte: monthStart },
+        // 일정 미정(기간 null) 대회도 조회에 포함 — 대회 자체 이벤트는 아래 루프에서
+        //   제외되지만, 그 대회에 등록된 경기(HockeyMatch)는 달력에 노출돼야 한다.
+        OR: [
+          { startDate: null },
+          { startDate: { lte: monthEnd }, endDate: { gte: monthStart } },
+        ],
         // [수정 2026-06-15] 1차 팀 필터는 코치/감독(enrollmentUserIds===null)에만 적용.
         //   학부모/학생은 본인이 TeamMember 가 아니어서 teamIds 가 비는 경우가 많아,
         //   teamId 가 있는 팀 대회(자녀가 결제·선택된 대회 포함)가 통째로 누락되던 버그.
         //   학부모/학생은 팀 절을 생략하고, 아래 2차(selectedParticipantIds/eligibleGroup
         //   + PAID) 필터로 본인/자녀 참가 대회만 정확히 노출한다.
+        //   (기간 OR 절과의 충돌을 피해 AND 로 감싼다.)
         ...(enrollmentUserIds === null
-          ? { OR: [{ teamId: { in: teamIds } }, { teamId: null }] }
+          ? { AND: [{ OR: [{ teamId: { in: teamIds } }, { teamId: null }] }] }
           : {}),
       },
       select: {
@@ -431,6 +436,9 @@ export class CalendarDashboardService {
 
     for (const tournament of visibleTournaments) {
       const startDt = tournament.startDate;
+      const endDt = tournament.endDate;
+      // 일정 미정(기간 null) 대회는 달력에 놓을 날짜가 없어 미표시(where 범위 필터로 이미 제외).
+      if (startDt == null || endDt == null) continue;
       if (startDt < monthStart || startDt > monthEnd) continue;
 
       events.push({
@@ -453,8 +461,8 @@ export class CalendarDashboardService {
         meta: {
           tournamentId: tournament.id,
           status: tournament.status,
-          startDate: this.formatDate(tournament.startDate),
-          endDate: this.formatDate(tournament.endDate),
+          startDate: this.formatDate(startDt),
+          endDate: this.formatDate(endDt),
         },
       });
     }

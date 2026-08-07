@@ -69,8 +69,9 @@ type SummaryItem =
       kind: 'tournament';
       id: string;
       title: string;
-      startDate: string;
-      endDate: string;
+      /** null = 일정 미정 대회 — sortKey Infinity(맨 뒤)·노출 필터 통과(항상 노출). */
+      startDate: string | null;
+      endDate: string | null;
       /** [2026-06-16] 자녀 1명이라도 결제완료(PAID) — 정렬 시 위로. */
       enrolled?: boolean;
       sortKey: number;

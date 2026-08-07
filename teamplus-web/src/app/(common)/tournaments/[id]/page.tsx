@@ -550,8 +550,13 @@ export default function CommonTournamentDetailPage() {
   };
   const startLabel = formatDateLong(tournament.startDate);
   const endLabel = formatDateLong(tournament.endDate);
-  // 당일 대회(시작=종료)는 단일 날짜로 표기.
-  const periodLabel = startLabel === endLabel ? startLabel : `${startLabel} ~ ${endLabel}`;
+  // 당일 대회(시작=종료)는 단일 날짜로 표기. 기간 null = 일정 미정 문구로 대체.
+  const periodLabel =
+    !tournament.startDate || !tournament.endDate
+      ? MESSAGES.tournament.datesTbdLong
+      : startLabel === endLabel
+        ? startLabel
+        : `${startLabel} ~ ${endLabel}`;
   // 참가 대상 = 선택 선수 명단(selectedParticipantIds) 스냅샷.
   //   · 감독/코치: 선수 이름 최대 5명 인라인 + "외 N명"(초과 시 전체 명단 시트).
   //   · 학부모/학생: 본인 자녀 중 대상 자녀 이름만.

@@ -88,8 +88,9 @@ export interface TournamentListItem {
   clubId: string | null;
   teamId?: string | null;
   rinkId: string | null;
-  startDate: string;
-  endDate: string;
+  /** 대회 기간 — null = 일정 미정(추후 확정). 경기 일정에서 파생 저장된다. */
+  startDate: string | null;
+  endDate: string | null;
   status: TournamentStatus;
   eligibleBirthYearFrom: number | null;
   eligibleBirthYearTo: number | null;
@@ -251,8 +252,9 @@ export interface CreateTournamentInput {
   venueId?: string;
   /** [2026-06-05] 대회장소 — 자유 텍스트 직접 입력 (venueId 대체). Tournament.location 매핑. */
   location?: string;
-  startDate: string;
-  endDate: string;
+  /** 대회 기간 — 경기 일정 날짜의 min/max. null = 일정 미정(수정 시 null 전송 = 기간 해제). */
+  startDate?: string | null;
+  endDate?: string | null;
   status?: TournamentStatus;
   eligibleBirthYearFrom?: number;
   eligibleBirthYearTo?: number;

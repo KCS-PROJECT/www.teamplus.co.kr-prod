@@ -452,7 +452,8 @@ export function useCalendar(options: UseCalendarOptions = {}): UseCalendarReturn
     interface RawTournament {
       id: string;
       name: string;
-      startDate: string;
+      /** null = 일정 미정 대회 — 달력에 놓을 날짜가 없어 미표시. */
+      startDate: string | null;
       endDate?: string | null;
       status?: string;
       /** 장소 폴백 체인 소스 — location(보조 텍스트) > venue.name > rink.location > rink.name. */
@@ -540,6 +541,9 @@ export function useCalendar(options: UseCalendarOptions = {}): UseCalendarReturn
     // 경기일정이 없는 대회만 시작일에 1회 노출(폴백). 경기일정 있으면 위 경기 이벤트로 대체.
     for (const t of tournamentList) {
       if (matchedTournamentIds.has(t.id)) continue;
+      // 일정 미정(startDate null) 대회는 달력 배치 불가 — 명시 제외.
+      //   (new Date(null)은 NaN 이 아니라 epoch 라 아래 가드를 통과해 버림.)
+      if (!t.startDate) continue;
       const start = new Date(t.startDate);
       if (Number.isNaN(start.getTime())) continue;
       if (start.toISOString() < rangeStart || start.toISOString() > rangeEnd) continue;

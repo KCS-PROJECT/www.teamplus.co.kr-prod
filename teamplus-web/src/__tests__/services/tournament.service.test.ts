@@ -12,6 +12,7 @@
 import {
   canManageMatch,
   calculateDDay,
+  canCancelTournamentRegistration,
   mapTournamentUiStatus,
 } from '@/services/tournament.service';
 
@@ -129,5 +130,24 @@ describe('tournament.service — mapTournamentUiStatus', () => {
     expect(mapTournamentUiStatus('scheduled', '2026-04-12T00:00:00Z', NOW)).toBe(
       'recruiting',
     );
+  });
+});
+
+// 일정 미정(기간 null) 대회 — C-1 재설계 회귀. 취소 가드는 시작일이 있어야만 발동한다.
+describe('tournament.service — canCancelTournamentRegistration (일정 미정)', () => {
+  const NOW = new Date('2026-04-12T10:00:00Z');
+
+  it('startDate null/undefined(일정 미정) → 항상 취소 가능', () => {
+    expect(canCancelTournamentRegistration(null, NOW)).toBe(true);
+    expect(canCancelTournamentRegistration(undefined, NOW)).toBe(true);
+  });
+
+  it('시작일 당일(KST)부터 취소 불가, 전날까지 가능 — 기존 규칙 유지', () => {
+    expect(
+      canCancelTournamentRegistration('2026-04-12T00:00:00Z', NOW),
+    ).toBe(false);
+    expect(
+      canCancelTournamentRegistration('2026-04-13T00:00:00Z', NOW),
+    ).toBe(true);
   });
 });
