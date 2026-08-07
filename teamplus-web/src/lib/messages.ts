@@ -1504,6 +1504,16 @@ export const MESSAGES = {
      *    백엔드가 403 이 아닌 **404** 로 존재 자체를 감추는 IDOR 방어와 충돌한다.
      *    "없음"과 "권한 없음"을 의도적으로 뭉뚱그린 표현이어야 한다.
      */
+    /** 고정 한도(2개) — 서버 409 errorCode=NOTICE_PIN_LIMIT 매핑 + 작성 폼 체크박스 안내 공용. */
+    pinnedFull: "이미 2개가 고정되어 있어 추가할 수 없습니다.",
+    pinnedHint: "공지 목록 상단에 고정해 노출합니다 (최대 2개).",
+    /**
+     * 관리 목록 상태 배지 — 독립 조건이라 복수 표시될 수 있다
+     * (예: 미게시+만료). 고정 배지는 기존 "고정" 표기 재사용.
+     */
+    badgeUnpublished: "미게시",
+    badgeScheduled: "예약",
+    badgeExpired: "만료",
     notFoundOrForbidden: "공지사항을 찾을 수 없거나 접근 권한이 없습니다.",
     loadFailed: "공지사항을 불러오지 못했습니다.",
     /** 재시도는 일시적 실패(네트워크·5xx)에만 노출한다 — 권한/부재는 재시도해도 결과가 같다. */
@@ -1667,8 +1677,16 @@ export const MESSAGES = {
       `${count}명에게 총 ${new Intl.NumberFormat("ko-KR").format(total)}원이 청구되었습니다.`,
     nameRequired: "대회명을 입력해주세요.",
     dateRequired: "대회 기간을 입력해주세요.",
-    // [2026-06-16] 참가대상 = 선수 명단 선택. 최소 1명 필수.
+    // 참가대상 — 전체(팀 선수 전원) 토글 또는 선수 직접 선택(최소 1명).
     participantRequired: "참가할 선수를 1명 이상 선택해주세요.",
+    participantSectionDesc: "전체 대상으로 하거나, 참가할 선수를 직접 선택하세요",
+    participantAllLabel: "전체 (팀 선수 전원)",
+    participantAllDesc: "팀 선수 전원이 참가 대상이 됩니다",
+    participantPickDesc: "아래에서 참가할 선수를 선택하세요 (최소 1명)",
+    /** 관리 카드 대상 표기 — 명단 대회는 선수 수로 요약. */
+    participantCountLabel: (n: number) => `선수 ${n}명`,
+    /** 목록 카드 대상 라벨 — 값만으로는 의미가 모호해 "대상:" 접두어를 붙인다. */
+    targetLabel: (value: string) => `대상: ${value}`,
     participantSelectedCount: (n: number) => `선수 ${n}명 선택`,
     participantBirthYearUnknown: "출생연도 미상",
     participantSelectAll: "전체 선택",
@@ -1692,6 +1710,7 @@ export const MESSAGES = {
     //  · 학부모/학생: 본인 자녀 중 대상 자녀 이름만.
     participantMore: (n: number) => `외 ${n}명`,
     participantListTitle: "참가 선수",
+    // participantViewList("명단 보기")는 상세 스크롤 단축 버튼 제거로 폐기 — 재도입 대비 보존.
     participantViewList: "명단 보기",
     participantNameUnknown: "선수",
     // 학부모 뷰 참가 대상 문장 — 이름 끝 받침에 따라 주격조사 이/가 자동 선택.
@@ -1717,6 +1736,8 @@ export const MESSAGES = {
     scheduleIncomplete: "경기 일정의 날짜와 시간을 모두 입력해주세요.",
     datesTbd: "일정 미정",
     datesTbdLong: "일정 미정 · 추후 확정",
+    /** "일정" 라벨이 앞에 붙는 행 전용 — "일정 일정 미정" 중복 방지. */
+    datesTbdValue: "미정 · 추후 확정",
     locationRequired: "장소를 입력해주세요.",
     statusChanged: "대회 상태가 변경되었습니다.",
     feePreview: (games: number, fee: number) =>

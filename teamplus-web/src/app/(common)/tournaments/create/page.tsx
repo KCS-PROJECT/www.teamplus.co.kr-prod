@@ -10,7 +10,10 @@
  *  - Sticky Bottom CTA (등록하기)
  *
  * 검증:
- *  - 대회명 필수 / 참가 선수 1명 이상 필수
+ *  - 대회명 필수
+ *  - 참가 대상 — 전체(팀 선수 전원, 기본) 토글 ON 이면 명단 없이 생성(빈 배열 전송 =
+ *    백엔드 전체 허용 시맨틱). 직접 선택 모드에서만 최소 1명 필수.
+ *    (ClassForm 의 "전체 연령 대상" 토글과 동일 패턴)
  *  - 대회 기간(start/end)은 경기 일정 날짜의 min/max 로 자동 파생
  *  - 경기 일정 0건 허용 — 기간 null(일정 미정) 대회로 생성, 신청 접수 가능.
  *    일정 행이 있는데 날짜·시간 미완성이면 조용한 유실 방지를 위해 제출 차단.
@@ -23,6 +26,7 @@ import { useNavigation } from "@/components/ui/NavLink";
 import { MobileContainer } from "@/components/layout/MobileContainer";
 import { PageAppBar } from "@/components/layout/PageAppBar";
 import { BottomSheet } from "@/components/ui/BottomSheet";
+import { Toggle } from "@/components/ui/Toggle";
 import { TimePicker } from "@/components/ui/TimePicker";
 import { Icon } from "@/components/ui/Icon";
 import { useToast } from "@/components/ui/Toast";
@@ -136,6 +140,9 @@ export default function TournamentCreatePage() {
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<string>>(
     () => new Set(),
   );
+  // 참가 대상 전체(팀 선수 전원) 토글 — 기본 ON. ON 이면 빈 배열 전송(백엔드가 빈 명단을
+  //   전체 허용으로 해석). OFF 전환 시 기존 선택 명단은 보존(무손실 왕복).
+  const [allPlayers, setAllPlayers] = useState(true);
   // 관리팀 선수 목록(비-선수 제외) — 연도칩·그룹칩·체크박스의 데이터 소스.
   const [teamMembers, setTeamMembers] = useState<TeamMemberRow[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
@@ -224,9 +231,12 @@ export default function TournamentCreatePage() {
         setBillingMode(t.billingMode ?? "PREPAID");
         // [2026-06-16] 참가 대상 복원 — 선택 선수 명단(userId) 단일 SoT.
         //   팀 이탈로 멤버 목록에 없는 id 는 회색 표기(아래 렌더에서 처리)하되 선택값은 보존.
-        if (Array.isArray(t.selectedParticipantIds)) {
-          setSelectedPlayerIds(new Set(t.selectedParticipantIds));
-        }
+        //   명단이 비어 있으면(전체 대상·레거시 대회) 전체 토글 ON 으로 복원.
+        const restoredIds = Array.isArray(t.selectedParticipantIds)
+          ? t.selectedParticipantIds
+          : [];
+        setSelectedPlayerIds(new Set(restoredIds));
+        setAllPlayers(restoredIds.length === 0);
         // 참가비 복원 — feePerGame(선불 금액 / 후불 참고 예상 금액)을 단일 입력에 복원.
         const feeNum = t.feePerGame != null ? Number(t.feePerGame) : 0;
         setTournamentFee(Number.isFinite(feeNum) && feeNum > 0 ? String(feeNum) : "");
@@ -408,12 +418,12 @@ export default function TournamentCreatePage() {
     if (scheduleMatches.some((m) => !m.date || !m.time)) {
       return MESSAGES.tournament.scheduleIncomplete;
     }
-    // [2026-06-16] 참가대상 = 선수 명단 스냅샷 — 최소 1명 필수.
-    if (selectedPlayerIds.size === 0) {
+    // 참가대상 — 직접 선택 모드에서만 최소 1명 필수(전체 토글 ON 은 빈 명단 = 전체 허용).
+    if (!allPlayers && selectedPlayerIds.size === 0) {
       return MESSAGES.tournament.participantRequired;
     }
     return null;
-  }, [name, scheduleMatches, selectedPlayerIds]);
+  }, [name, scheduleMatches, selectedPlayerIds, allPlayers]);
 
   // 경기 일정은 과거 날짜 선택 불가(오늘부터) — create·edit 공통. 수정 모드의 지난 경기는 잠금(아래 locked).
   const scheduleMinDate = useMemo(() => {
@@ -469,10 +479,10 @@ export default function TournamentCreatePage() {
       //   location 은 항상 전송 — 링크장 선택 전환 시 빈 문자열로 스테일 텍스트를 클리어(백엔드 null 정규화).
       if (venueId) payload.venueId = venueId;
       payload.location = venueId ? "" : venueQuery.trim();
-      // [2026-06-16] 참가 대상 — 선택한 선수 명단(userId) 전송. SoT 단일.
-      //   eligibleBirthYears/eligibleGroupIds 는 전송하지 않는다(백엔드가 명단에서 파생/클리어).
-      //   validationError 가 1명 이상을 보장하므로 항상 비어있지 않다.
-      payload.selectedParticipantIds = [...selectedPlayerIds];
+      // 참가 대상 — 선택한 선수 명단(userId) 전송. SoT 단일. eligibleBirthYears/
+      //   eligibleGroupIds 는 전송하지 않는다(백엔드가 명단에서 파생/클리어).
+      //   전체 토글 ON = 빈 배열 — 백엔드 전 경로(노출·신청·결제 가드)가 전체 허용으로 해석.
+      payload.selectedParticipantIds = allPlayers ? [] : [...selectedPlayerIds];
 
       // 대회 참가비 = 대회당 단일 금액(feePerGame) — 양수일 때만 전송 (무료/미입력은 미전송).
       // 선불: 신청 시 결제 금액. 후불: 참고용 예상 금액 — 실제 청구액은 종료 후 정산에서 확정.
@@ -661,56 +671,72 @@ export default function TournamentCreatePage() {
 
           {/* 참가 대상 — 선수 명단 선택 (2026-06-16)
               출생연도칩·하위그룹칩은 선수를 고르는 필터. SoT 는 selectedPlayerIds(userId) 단일.
-              연도·그룹 어느 칩에서 보든 같은 선수는 동일 선택 상태로 표시된다. */}
+              연도·그룹 어느 칩에서 보든 같은 선수는 동일 선택 상태로 표시된다.
+              전체(팀 선수 전원) 토글 ON(기본) 이면 선수 선택 UI 를 숨기고 빈 명단(전체
+              허용)으로 생성한다 — ClassForm "전체 연령 대상"과 동일 패턴. */}
           <SectionCard
             icon="groups"
             title="참가 대상"
-            description="참가할 선수를 직접 선택하세요 (최소 1명)"
+            description={MESSAGES.tournament.participantSectionDesc}
           >
-            {membersLoading ? (
-              <p className="px-1 py-2 text-w-caption text-it-ink-500 dark:text-rink-300">
-                {MESSAGES.common.loading}
-              </p>
-            ) : teamMembers.length === 0 ? (
-              <p className="px-1 py-2 text-w-caption text-it-ink-500 dark:text-rink-300">
-                {MESSAGES.tournament.participantEmpty}
-              </p>
-            ) : (
-              <>
-                {/* 요약 + 트리거 — 실제 선택은 전용 시트(ParticipantPickerSheet)에서 수행. */}
-                <div className="flex items-center justify-between gap-3">
-                  <span
-                    className={`min-w-0 truncate text-w-small font-extrabold ${
-                      selectedPlayerIds.size > 0
-                        ? "text-it-ink-800 dark:text-white"
-                        : "text-it-ink-500 dark:text-rink-300"
-                    }`}
-                  >
-                    {selectedPlayerIds.size > 0
-                      ? MESSAGES.tournament.participantSelectedSummary(
-                          selectedPlayerIds.size,
-                        )
-                      : MESSAGES.tournament.participantSelectPrompt}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setPickerOpen(true)}
-                    className="shrink-0 rounded-w-md border-[1.5px] border-it-blue-500 bg-it-blue-50 px-4 py-2 text-w-small font-extrabold text-it-blue-500 transition-colors motion-reduce:transition-none hover:bg-it-blue-100 active:scale-[0.98] dark:bg-it-blue-500/15"
-                  >
-                    {selectedPlayerIds.size > 0
-                      ? MESSAGES.tournament.participantPickerChange
-                      : MESSAGES.tournament.participantPickerOpen}
-                  </button>
-                </div>
+            <div className="rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill px-3.5 py-3 dark:border-rink-600 dark:bg-rink-700">
+              <Toggle
+                checked={allPlayers}
+                onChange={setAllPlayers}
+                label={MESSAGES.tournament.participantAllLabel}
+                description={
+                  allPlayers
+                    ? MESSAGES.tournament.participantAllDesc
+                    : MESSAGES.tournament.participantPickDesc
+                }
+              />
+            </div>
 
-                {orphanSelectedIds.length > 0 && (
-                  <p className="text-w-caption text-it-ink-500 dark:text-rink-300">
-                    {MESSAGES.tournament.participantLeftTeam} (
-                    {orphanSelectedIds.length}명)
-                  </p>
-                )}
-              </>
-            )}
+            {!allPlayers &&
+              (membersLoading ? (
+                <p className="px-1 py-2 text-w-caption text-it-ink-500 dark:text-rink-300">
+                  {MESSAGES.common.loading}
+                </p>
+              ) : teamMembers.length === 0 ? (
+                <p className="px-1 py-2 text-w-caption text-it-ink-500 dark:text-rink-300">
+                  {MESSAGES.tournament.participantEmpty}
+                </p>
+              ) : (
+                <>
+                  {/* 요약 + 트리거 — 실제 선택은 전용 시트(ParticipantPickerSheet)에서 수행. */}
+                  <div className="flex items-center justify-between gap-3">
+                    <span
+                      className={`min-w-0 truncate text-w-small font-extrabold ${
+                        selectedPlayerIds.size > 0
+                          ? "text-it-ink-800 dark:text-white"
+                          : "text-it-ink-500 dark:text-rink-300"
+                      }`}
+                    >
+                      {selectedPlayerIds.size > 0
+                        ? MESSAGES.tournament.participantSelectedSummary(
+                            selectedPlayerIds.size,
+                          )
+                        : MESSAGES.tournament.participantSelectPrompt}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPickerOpen(true)}
+                      className="shrink-0 rounded-w-md border-[1.5px] border-it-blue-500 bg-it-blue-50 px-4 py-2 text-w-small font-extrabold text-it-blue-500 transition-colors motion-reduce:transition-none hover:bg-it-blue-100 active:scale-[0.98] dark:bg-it-blue-500/15"
+                    >
+                      {selectedPlayerIds.size > 0
+                        ? MESSAGES.tournament.participantPickerChange
+                        : MESSAGES.tournament.participantPickerOpen}
+                    </button>
+                  </div>
+
+                  {orphanSelectedIds.length > 0 && (
+                    <p className="text-w-caption text-it-ink-500 dark:text-rink-300">
+                      {MESSAGES.tournament.participantLeftTeam} (
+                      {orphanSelectedIds.length}명)
+                    </p>
+                  )}
+                </>
+              ))}
           </SectionCard>
 
           {/* [2026-06-16] 결제 방식 — 선불/후불 토글. 후불은 종료 후 1인당 금액 일괄 청구. */}
@@ -992,7 +1018,7 @@ export default function TournamentCreatePage() {
           폼 안 SectionCard 의 [선택] 트리거로 열리며 selectedPlayerIds 를 라이브 토글한다.
           포털/ESC/scroll-lock/scrim/애니메이션은 BottomSheet 가 내장 처리한다. */}
       <ParticipantPickerSheet
-        isOpen={pickerOpen}
+        isOpen={pickerOpen && !allPlayers}
         onClose={() => setPickerOpen(false)}
         teamMembers={teamMembers}
         teamGroups={teamGroups}

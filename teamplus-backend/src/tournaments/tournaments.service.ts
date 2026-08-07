@@ -990,6 +990,13 @@ export class TournamentsService {
     //   자동 파생·저장한다. from/to 는 레거시 표시/쿼리 호환을 위해 min/max 를 파생 기록.
     //   eligibleGroupIds 는 자격 의미 폐기 — 미저장(빈 배열).
     const selectedParticipantIds = dto.selectedParticipantIds ?? [];
+    // 빈 명단 = 전체(팀 선수 전원) 허용 — 단, 노출 폴백이 팀 기준이라 teamId 없는 대회가
+    //   명단까지 비면 학부모/학생 누구에게도 노출되지 않는 유령 대회가 된다 → 차단.
+    if (!teamId && selectedParticipantIds.length === 0) {
+      throw new BadRequestException(
+        "주최 팀이 없는 대회는 참가 선수 명단을 지정해야 합니다.",
+      );
+    }
     const eligibleBirthYears = await this.deriveBirthYearsFromPlayers(
       selectedParticipantIds,
     );
@@ -1185,12 +1192,20 @@ export class TournamentsService {
       );
     }
 
+    // 생성과 동일 불변식 — teamId 없는 대회가 명단까지 비면 노출 폴백이 죽어 유령 대회가 된다.
+    const nextTeamId = dto.teamId ?? tournament.teamId;
+    if (!nextTeamId && nextParticipantIds.length === 0) {
+      throw new BadRequestException(
+        "주최 팀이 없는 대회는 참가 선수 명단을 지정해야 합니다.",
+      );
+    }
+
     const updated = await this.prisma.tournament.update({
       where: { id },
       data: {
         name: dto.name ?? tournament.name,
         description: dto.description ?? tournament.description,
-        teamId: dto.teamId ?? tournament.teamId,
+        teamId: nextTeamId,
         rinkId: dto.rinkId ?? tournament.rinkId,
         venueId: dto.venueId ?? tournament.venueId,
         startDate,
