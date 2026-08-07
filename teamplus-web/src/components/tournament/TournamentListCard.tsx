@@ -18,6 +18,7 @@
 import { Icon } from '@/components/ui/Icon';
 import { NavLink } from '@/components/ui/NavLink';
 import { cn } from '@/lib/utils';
+import { MESSAGES } from '@/lib/messages';
 import { formatEligibleBirthYearsLabel } from '@/lib/gradeToBirthYear';
 import {
   calculateDDay,
@@ -44,7 +45,9 @@ interface Props {
   iceTheme?: boolean;
 }
 
-function formatDateRange(start: string, end: string): string {
+function formatDateRange(start: string | null, end: string | null): string {
+  // 기간 null = 일정 미정 대회 — 날짜 대신 미정 문구 표시.
+  if (!start || !end) return MESSAGES.tournament.datesTbdLong;
   const s = start.slice(2, 10).replace(/-/g, '.');
   const e = end.slice(2, 10).replace(/-/g, '.');
   return `${s} - ${e}`;

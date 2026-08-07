@@ -451,7 +451,8 @@ export function ClassCalendarSection({
       type RawTournament = {
         id: string;
         name: string;
-        startDate: string;
+        /** null = 일정 미정 대회 — 달력에 놓을 날짜가 없어 미표시. */
+        startDate: string | null;
         endDate?: string | null;
         status?: string;
         paidChildIds?: string[] | null;
@@ -700,6 +701,9 @@ export function ClassCalendarSection({
       for (const t of calendarTournaments) {
         if (t.status === 'cancelled') continue;
         if (matchedTournamentIds.has(t.id)) continue;
+        // 일정 미정(startDate null) 대회는 달력 배치 불가 — 명시 제외.
+        //   (new Date(null)은 NaN 이 아니라 epoch 라 아래 가드를 통과해 버림.)
+        if (!t.startDate) continue;
         const startDt = new Date(t.startDate);
         if (Number.isNaN(startDt.getTime())) continue;
         if (startDt < queryStart || startDt > queryEnd) continue;

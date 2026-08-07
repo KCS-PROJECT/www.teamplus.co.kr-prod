@@ -470,7 +470,12 @@ function formatScheduleLabel(item: {
 }
 
 /** 대회 일정 포맷터 — startDate/endDate(ISO) → "1.20 ~ 1.22" 형태 */
-function formatTournamentDateRange(start: string, end: string): string | null {
+function formatTournamentDateRange(
+  start: string | null,
+  end: string | null,
+): string | null {
+  // 기간 null = 일정 미정 대회 — 날짜 대신 미정 문구 표시.
+  if (!start || !end) return MESSAGES.tournament.datesTbdLong;
   const s = new Date(start);
   const e = new Date(end);
   if (isNaN(s.getTime()) || isNaN(e.getTime())) return null;

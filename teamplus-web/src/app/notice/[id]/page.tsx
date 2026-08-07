@@ -120,7 +120,9 @@ export default function NoticeDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   usePageReady(!isLoading);
-  const [hasError, setHasError] = useState(false);
+  // 'denied' = 404/403 (백엔드가 타 팀 공지를 404 로 감춤 — 재시도해도 결과 동일)
+  // 'load'   = 네트워크·5xx 등 일시적 실패 (재시도 의미 있음)
+  const [errorKind, setErrorKind] = useState<'denied' | 'load' | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [prevNotice, setPrevNotice] = useState<AdjacentNotice | null>(null);
   const [nextNotice, setNextNotice] = useState<AdjacentNotice | null>(null);
@@ -130,9 +132,6 @@ export default function NoticeDetailPage() {
   const currentUserId = user?.id ?? '';
   const [comments, setComments] = useState<CommentData[]>([]);
 
-  // [2026-06-18] 댓글 밑 공지 수정/삭제 버튼 노출 역할 판정.
-  //   [2026-06-19 사용자 직접 지시] 서비스 공지(targetTeamId=null)는 admin(시스템관리자)만,
-  //   팀 공지는 감독(DIRECTOR)만 수정/삭제 가능.
   const { navigate, back } = useNavigation();
   const { toast } = useToast();
   // [2026-07-20 읽음 동기화] 공지 열람(GET /notices/:id)이 백엔드에서 대응 알림함
@@ -140,7 +139,11 @@ export default function NoticeDetailPage() {
   const { refresh: refreshBellNotifications } = useNotificationContext();
   const { modal } = useModal();
   const noticeRole = (user?.userType ?? '').toUpperCase();
-  const isDirector = noticeRole === 'DIRECTOR';
+  // 팀 공지 관리 후보 역할 — 백엔드 SoT(notice-manage-scope.util) 의 팀 스코프 역할과 동일하게
+  // DIRECTOR·COACH 만. ACADEMY_DIRECTOR 는 팀 공지 주체가 아니므로 제외한다.
+  // 실제 팀 소속·관리역할 여부는 클라이언트가 알 수 없으므로 최종 집행은 백엔드가 한다
+  // (여기 통과해도 권한 없으면 수정/삭제 API 가 거부).
+  const canManageTeamNotice = noticeRole === 'DIRECTOR' || noticeRole === 'COACH';
   const isAdmin = ['ADMIN', 'SYSTEM', 'OPER'].includes(noticeRole);
 
   const handleEditNotice = useCallback(() => {
@@ -174,7 +177,7 @@ export default function NoticeDetailPage() {
   const loadNotice = useCallback(async () => {
     if (!noticeId) return;
     setIsLoading(true);
-    setHasError(false);
+    setErrorKind(null);
     try {
       const res = await api.get<{
         id: string;
@@ -206,10 +209,11 @@ export default function NoticeDetailPage() {
         // 열람 = 읽음(백엔드 NoticeRead + 알림함 동기화 완료) → 벨/앱 배지 갱신
         void refreshBellNotifications();
       } else {
-        setHasError(true);
+        const status = res.error?.statusCode;
+        setErrorKind(status === 404 || status === 403 ? 'denied' : 'load');
       }
     } catch {
-      setHasError(true);
+      setErrorKind('load');
     } finally {
       setIsLoading(false);
     }
@@ -310,32 +314,37 @@ export default function NoticeDetailPage() {
     );
   }
 
-  if (hasError || !notice) {
+  if (errorKind || !notice) {
+    // 일시적 실패만 재시도를 제공한다. 404/403(=열람 권한 없음·부재)은 재시도해도 동일하므로
+    // 목록 복귀만 안내한다.
+    const isTransient = errorKind === 'load';
     return (
       <MobileContainer hasBottomNav={false}>
         {header}
         <div className="flex flex-col items-center justify-center flex-1 py-20 bg-it-canvas dark:bg-puck">
           <Icon
-            name={hasError ? 'wifi_off' : 'error_outline'}
+            name={isTransient ? 'wifi_off' : 'error_outline'}
             className="text-6xl text-it-ink-300 dark:text-rink-500 mb-4"
             aria-hidden="true"
           />
-          <p className="text-it-ink-500 dark:text-rink-300 text-center">
-            {hasError ? '공지사항을 불러오지 못했습니다.' : '공지사항을 찾을 수 없습니다.'}
+          <p className="text-it-ink-500 dark:text-rink-300 text-center px-8">
+            {isTransient
+              ? MESSAGES.notice.loadFailed
+              : MESSAGES.notice.notFoundOrForbidden}
           </p>
-          {hasError && (
+          {isTransient && (
             <button
               onClick={() => void loadNotice()}
               className="mt-4 px-6 h-11 bg-it-blue-500 hover:bg-it-blue-600 text-white font-semibold rounded-w-md transition-colors motion-reduce:transition-none active:brightness-95"
             >
-              다시 시도
+              {MESSAGES.notice.loadRetry}
             </button>
           )}
           <NavLink
             href="/notices"
             className="mt-3 text-it-blue-500 font-medium hover:underline text-card-body"
           >
-            목록으로 돌아가기
+            {MESSAGES.notice.backToList}
           </NavLink>
         </div>
       </MobileContainer>
@@ -426,12 +435,12 @@ export default function NoticeDetailPage() {
           </div>
         </section>
 
-        {/* [2026-06-19 사용자 직접 지시] 공지 수정/삭제 — 서비스 공지(targetTeamId=null)는 admin(시스템관리자)만,
-            팀 공지는 감독만 노출. (서비스 공지에서 감독에게 보이던 버튼 제거) */}
-        {(notice?.targetTeamId ? isDirector : isAdmin) && (
+        {/* 공지 수정/삭제 — 서비스 공지(targetTeamId=null)는 시스템 관리자만,
+            팀 공지는 감독·코치(팀 관리역할)만 노출. */}
+        {(notice?.targetTeamId ? canManageTeamNotice : isAdmin) && (
           <>
             <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
-            <section className="bg-it-surface dark:bg-rink-800 px-5 py-4 grid grid-cols-2 gap-2" aria-label="공지 관리">
+            <section className="bg-it-surface dark:bg-rink-800 px-5 py-4 grid grid-cols-2 gap-2" aria-label={MESSAGES.notice.manage}>
               <button
                 type="button"
                 onClick={handleEditNotice}

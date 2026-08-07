@@ -74,13 +74,26 @@ export class CreateTournamentDto {
   @IsString()
   venueId?: string;
 
-  @ApiProperty({ description: "시작 날짜", example: "2026-04-01T09:00:00Z" })
+  // 기간은 경기 일정에서 파생 — 일정 미정 대회는 둘 다 생략(null 저장). 한쪽만 전송은 서비스에서 400.
+  @ApiPropertyOptional({
+    description: "시작 날짜 — 미전송/null = 일정 미정",
+    example: "2026-04-01T09:00:00Z",
+    nullable: true,
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
   @IsDateString()
-  startDate!: string;
+  startDate?: string | null;
 
-  @ApiProperty({ description: "종료 날짜", example: "2026-04-03T18:00:00Z" })
+  @ApiPropertyOptional({
+    description: "종료 날짜 — 미전송/null = 일정 미정",
+    example: "2026-04-03T18:00:00Z",
+    nullable: true,
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
   @IsDateString()
-  endDate!: string;
+  endDate?: string | null;
 
   @ApiPropertyOptional({
     description: "상태",
@@ -261,15 +274,24 @@ export class UpdateTournamentDto {
   @IsString()
   venueId?: string;
 
-  @ApiPropertyOptional({ description: "시작 날짜" })
+  // null 명시 전송 = 기간 해제(일정 미정 복귀). undefined = 기존 값 유지.
+  @ApiPropertyOptional({
+    description: "시작 날짜 — null 명시 시 기간 해제(일정 미정)",
+    nullable: true,
+  })
   @IsOptional()
+  @ValidateIf((_, value) => value !== null)
   @IsDateString()
-  startDate?: string;
+  startDate?: string | null;
 
-  @ApiPropertyOptional({ description: "종료 날짜" })
+  @ApiPropertyOptional({
+    description: "종료 날짜 — null 명시 시 기간 해제(일정 미정)",
+    nullable: true,
+  })
   @IsOptional()
+  @ValidateIf((_, value) => value !== null)
   @IsDateString()
-  endDate?: string;
+  endDate?: string | null;
 
   @ApiPropertyOptional({
     description: "상태",

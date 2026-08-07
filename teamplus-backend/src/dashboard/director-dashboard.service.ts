@@ -1,6 +1,11 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
+import { resolveViewerTeamIds } from "@/common/utils/team-scope.util";
+import {
+  publicationConditions,
+  buildNoticeTeamScopeCondition,
+} from "@/common/utils/notice-publication.util";
 import {
   kstTodayUtcMidnight,
   addUtcDays,
@@ -93,6 +98,13 @@ export class DirectorDashboardService {
         ]),
       );
       const managedTeamIds = managedClubIds;
+
+      // [Phase 0 · F-EX-05] 최근 공지 팀 스코프 — 타 팀 공지가 섞이던 경로 차단.
+      const noticeTeamIds = await resolveViewerTeamIds(
+        this.prisma,
+        directorId,
+        "DIRECTOR",
+      );
 
       // === W1 Step 2: 나머지 15개 쿼리 모두 단일 Promise.all ===
       const [
@@ -313,6 +325,7 @@ export class DirectorDashboardService {
           : Promise.resolve([] as Array<never>),
         // W6: 프론트 NoticeSection 중복 API 제거
         // targetType: null(미지정), "all", "director"만 감독에게 노출
+        // [Phase 0 · F-EX-05] 팀 스코프 + 게시 기간 — 타 팀 공지가 섞이던 경로 차단.
         this.prisma.systemNotice.findMany({
           where: {
             isActive: true,
@@ -320,6 +333,10 @@ export class DirectorDashboardService {
               { targetType: null },
               { targetType: "all" },
               { targetType: "director" },
+            ],
+            AND: [
+              buildNoticeTeamScopeCondition(noticeTeamIds),
+              ...publicationConditions(),
             ],
           },
           orderBy: [{ pinned: "desc" }, { createdAt: "desc" }],
@@ -443,24 +460,30 @@ export class DirectorDashboardService {
         upcomingClassSchedules as Array<{
           id: string;
           name: string;
-          startDate: Date;
+          startDate: Date | null;
           createdAt: Date;
           team: { name: string | null; location: string | null } | null;
         }>
       ).map((t) => {
-        const dDay = Math.ceil(
-          (t.startDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
-        );
+        // startDate null = 일정 미정 대회 — 노출은 유지하되 월/일/D-day 는 null 로 내려
+        //   프론트가 "일정 미정" 표기로 분기한다(모집 접수 중인 대회이므로 숨기지 않는다).
+        const dDay =
+          t.startDate != null
+            ? Math.ceil(
+                (t.startDate.getTime() - today.getTime()) /
+                  (1000 * 60 * 60 * 24),
+              )
+            : null;
         return {
           id: t.id,
           type: "tournament" as const,
           title: t.name,
           location: t.team?.location || t.team?.name || "장소 미정",
           // startDate 는 `@db.Date`(UTC 자정) → 월/일은 getUTC* 로 추출.
-          month: `${t.startDate.getUTCMonth() + 1}월`,
-          day: t.startDate.getUTCDate().toString(),
+          month: t.startDate != null ? `${t.startDate.getUTCMonth() + 1}월` : null,
+          day: t.startDate != null ? t.startDate.getUTCDate().toString() : null,
           dDay,
-          isPriority: dDay <= 3,
+          isPriority: dDay != null && dDay <= 3,
           createdAt: t.createdAt,
         };
       });

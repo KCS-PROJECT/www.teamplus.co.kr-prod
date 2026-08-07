@@ -18,8 +18,9 @@ export interface Tournament {
   description: string | null;
   clubId: string | null;
   rinkId: string | null;
-  startDate: string;
-  endDate: string;
+  /** 대회 기간 — null = 일정 미정(경기 일정 미확정). */
+  startDate: string | null;
+  endDate: string | null;
   status: TournamentStatus;
   billingMode: TournamentBillingMode;
   /**
@@ -42,8 +43,9 @@ export interface CreateTournamentRequest {
   name: string;
   description?: string;
   clubId?: string;
-  startDate: string;
-  endDate: string;
+  /** null = 일정 미정 대회 생성(수정 시 null 전송 = 기간 해제). */
+  startDate: string | null;
+  endDate: string | null;
   status: TournamentStatus;
   billingMode?: TournamentBillingMode;
   eligibleBirthYearFrom?: number;

@@ -141,7 +141,10 @@ function TournamentCard({
           {tournament.name}
         </h3>
         <p className="text-card-meta text-wtext-3 dark:text-rink-300 mt-1 tabular-nums">
-          {tournament.startDate} ~ {tournament.endDate}
+          {/* 기간 null(빈 문자열 매핑) = 일정 미정 대회 — 날짜 대신 미정 문구 표시. */}
+          {tournament.startDate && tournament.endDate
+            ? `${tournament.startDate} ~ ${tournament.endDate}`
+            : MESSAGES.tournament.datesTbdLong}
         </p>
       </div>
 
@@ -417,8 +420,8 @@ export default function TournamentsPage() {
         id: string;
         name?: string;
         description?: string;
-        startDate?: string;
-        endDate?: string;
+        startDate?: string | null;
+        endDate?: string | null;
         status?: string;
         maxParticipants?: number | null;
         selectedParticipantIds?: string[] | null;
@@ -481,14 +484,18 @@ export default function TournamentsPage() {
     }
   };
 
+  // 현재 미사용(dead) 경로 — 실제 대회 수정은 /tournaments/create?edit= 폼이 담당.
+  //   수정 모달 복원 대비로 백엔드 계약(기간 '' → null 정규화)만 최신 상태로 유지한다.
   const handleEditSave = async () => {
     if (!editingTournament) return;
     try {
       const response = await api.patch(`/tournaments/${editingTournament.id}`, {
         name: editingTournament.name,
         description: editingTournament.description,
-        startDate: editingTournament.startDate,
-        endDate: editingTournament.endDate,
+        // 일정 미정 대회는 startDate 가 '' 로 매핑돼 있음 — ''는 IsDateString 검증에
+        //   걸리므로 null(기간 해제 유지)로 정규화해 전송.
+        startDate: editingTournament.startDate || null,
+        endDate: editingTournament.endDate || null,
         location: editingTournament.location,
         maxParticipants: editingTournament.maxParticipants,
         status: editingTournament.status,

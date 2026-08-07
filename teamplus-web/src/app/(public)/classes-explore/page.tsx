@@ -89,7 +89,10 @@ export default function ClassesExplorePage() {
 
   return (
     <MobileContainer hasBottomNav>
-      <PageAppBar title={MESSAGES.class.explore.title} showBack />
+      {/* forceNative — 네이티브 WebView 에서도 웹 DOM 헤더를 단독 렌더한다.
+          (public) 그룹은 useNativeUI 호출이 없어 Flutter AppBar 가 뜨지 않으므로,
+          이 값이 없으면 앱에서 헤더가 통째로 사라진다. */}
+      <PageAppBar title={MESSAGES.class.explore.title} showBack forceNative />
 
       <main className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck">
         {/* 검색 + 지역 필터 */}

@@ -78,7 +78,9 @@ interface ClientKeyResponse {
   clientKey: string;
 }
 
-function formatDateRange(start: string, end: string): string {
+function formatDateRange(start: string | null, end: string | null): string {
+  // 기간 null = 일정 미정 대회 — 날짜 대신 미정 문구 표시.
+  if (!start || !end) return MESSAGES.tournament.datesTbdLong;
   const s = new Date(start);
   const e = new Date(end);
   const fmt = (d: Date) => `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;

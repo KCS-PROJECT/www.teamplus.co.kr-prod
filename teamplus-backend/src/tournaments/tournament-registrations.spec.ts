@@ -259,3 +259,225 @@ describe("TournamentsService.getTournamentRegistrations — 파생 필드/명단
     return service.getTournamentRegistrations("trn-1", requester);
   }
 });
+
+/**
+ * 일정 미정(기간 null) 대회 — C-1 재설계 회귀 스펙.
+ *
+ * 증명 대상:
+ *  1) 경기 0건 + endDate null 대회는 신청 접수 가능(assertTournamentRegistrationOpen 통과).
+ *  2) 기간 null 은 날짜 기반 종료/진행 판정을 건너뛴다(mapStudentTournamentStatus).
+ *  3) startDate null 이면 "대회 당일 취소 불가" 가드가 적용되지 않아 취소 가능.
+ */
+describe("TournamentsService — 일정 미정(기간 null) 대회", () => {
+  const makeService = (prisma: any) =>
+    new TournamentsService(prisma, {} as any, {} as any);
+
+  it("경기 0건 + endDate null — 참가 신청 가드 통과", async () => {
+    const prisma = {
+      hockeyMatch: {
+        aggregate: jest.fn().mockResolvedValue({ _min: { scheduledAt: null } }),
+      },
+    };
+    const service = makeService(prisma);
+    await expect(
+      (service as any).assertTournamentRegistrationOpen("trn-tbd", null),
+    ).resolves.toBeUndefined();
+  });
+
+  it("기간 null — 날짜 판정 없이 status·마감 기준만 적용", () => {
+    const service = makeService({});
+    const now = new Date("2026-03-10T06:00:00.000Z");
+    const call = (status: string, deadline: Date | null) =>
+      (service as any).mapStudentTournamentStatus(
+        status,
+        null,
+        null,
+        deadline,
+        0,
+        null,
+        now,
+      );
+    expect(call("scheduled", null)).toBe("UPCOMING");
+    expect(call("scheduled", new Date("2026-04-01T00:00:00.000Z"))).toBe("OPEN");
+    expect(call("finished", null)).toBe("COMPLETED");
+    expect(call("ongoing", null)).toBe("IN_PROGRESS");
+  });
+
+  it("startDate null + 경기 0건 — 날짜 가드 미적용, 취소 성공", async () => {
+    const tx = {
+      payment: { update: jest.fn() },
+      tournamentRegistration: { update: jest.fn().mockResolvedValue({}) },
+    };
+    const prisma = {
+      tournamentRegistration: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "reg-1",
+          tournamentId: "trn-tbd",
+          userId: "u-1",
+          paymentStatus: "PENDING",
+          paymentId: null,
+          tournament: { startDate: null, status: "scheduled" },
+        }),
+      },
+      hockeyMatch: {
+        aggregate: jest.fn().mockResolvedValue({ _min: { scheduledAt: null } }),
+      },
+      $transaction: jest.fn(async (fn: any) => fn(tx)),
+    };
+    const service = makeService(prisma);
+    const res = await service.cancelRegistration("trn-tbd", "reg-1", "u-1");
+    expect(res.refunded).toBe(false);
+    expect(tx.tournamentRegistration.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ paymentStatus: "CANCELLED" }),
+      }),
+    );
+  });
+
+  it("startDate null 이라도 첫 경기가 시작됐으면 사후 취소 차단(경기 폴백)", async () => {
+    const prisma = {
+      tournamentRegistration: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "reg-1",
+          tournamentId: "trn-tbd",
+          userId: "u-1",
+          paymentStatus: "PAID",
+          paymentId: "pay-1",
+          tournament: { startDate: null, status: "scheduled" },
+        }),
+      },
+      hockeyMatch: {
+        aggregate: jest.fn().mockResolvedValue({
+          _min: { scheduledAt: new Date(Date.now() - 60 * 60 * 1000) },
+        }),
+      },
+      $transaction: jest.fn(),
+    };
+    const service = makeService(prisma);
+    await expect(
+      service.cancelRegistration("trn-tbd", "reg-1", "u-1"),
+    ).rejects.toThrow("대회가 시작된 후에는");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("startDate null + status finished — 취소 차단", async () => {
+    const prisma = {
+      tournamentRegistration: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "reg-1",
+          tournamentId: "trn-tbd",
+          userId: "u-1",
+          paymentStatus: "PAID",
+          paymentId: "pay-1",
+          tournament: { startDate: null, status: "finished" },
+        }),
+      },
+      hockeyMatch: { aggregate: jest.fn() },
+      $transaction: jest.fn(),
+    };
+    const service = makeService(prisma);
+    await expect(
+      service.cancelRegistration("trn-tbd", "reg-1", "u-1"),
+    ).rejects.toThrow("대회가 시작된 후에는");
+    expect(prisma.hockeyMatch.aggregate).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * 기간(startDate/endDate) 쌍 계약 — C-1 재설계 핵심 회귀 스펙.
+ *  · create: 한쪽만 전송 → 400.
+ *  · update: null 명시 → 기간 해제(DB write 에 null 이 정확히 도달 — whitelist/ValidateIf
+ *    조합이 null 을 undefined 로 뭉개는 회귀 차단).
+ *  · update: 한쪽만 null → 400.
+ */
+describe("TournamentsService — 기간 쌍(both-or-neither) 계약", () => {
+  const requester: JwtUserPayload = {
+    id: "coach-1",
+    email: "coach-1@t.dev",
+    userType: "COACH",
+  };
+
+  const baseTournament = {
+    id: "trn-1",
+    name: "기존 대회",
+    description: null,
+    teamId: "team-1",
+    rinkId: null,
+    venueId: null,
+    startDate: new Date("2099-01-01T00:00:00.000Z"),
+    endDate: new Date("2099-01-02T00:00:00.000Z"),
+    status: "scheduled",
+    eligibleBirthYearFrom: null,
+    eligibleBirthYearTo: null,
+    eligibleBirthYears: [] as number[],
+    feePerGame: null,
+    totalGames: null,
+    feeType: null,
+    maxParticipants: null,
+    registrationDeadline: null,
+    ageGroup: null,
+    selectedParticipantIds: [] as string[],
+    eligibleGroupIds: [] as string[],
+    rules: null,
+    location: null,
+    prizeAmount: null,
+    billingMode: "PREPAID",
+  };
+
+  const makeAccess = () => ({
+    assertManageableTournamentRecord: jest.fn().mockResolvedValue(undefined),
+    assertTeamManager: jest.fn().mockResolvedValue(undefined),
+  });
+
+  it("create — 한쪽만 전송(startDate만) → 400", async () => {
+    const service = new TournamentsService({} as any, {} as any, {} as any);
+    await expect(
+      service.createTournament(
+        { name: "새 대회", startDate: "2026-09-01" } as any,
+        requester,
+      ),
+    ).rejects.toThrow("함께 입력하거나 함께 비워야");
+  });
+
+  it("update — null 명시 전송 시 기간 해제(write 에 null 도달)", async () => {
+    const prisma = {
+      tournament: {
+        findUnique: jest.fn().mockResolvedValue({ ...baseTournament }),
+        update: jest.fn().mockResolvedValue({ ...baseTournament }),
+      },
+    };
+    const service = new TournamentsService(
+      prisma as any,
+      {} as any,
+      makeAccess() as any,
+    );
+    await service.updateTournament(
+      "trn-1",
+      { startDate: null, endDate: null } as any,
+      requester,
+    );
+    expect(prisma.tournament.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ startDate: null, endDate: null }),
+      }),
+    );
+  });
+
+  it("update — 한쪽만 null(기존 반대쪽 유지) → 400", async () => {
+    const prisma = {
+      tournament: {
+        findUnique: jest.fn().mockResolvedValue({ ...baseTournament }),
+        update: jest.fn(),
+      },
+    };
+    const service = new TournamentsService(
+      prisma as any,
+      {} as any,
+      makeAccess() as any,
+    );
+    await expect(
+      service.updateTournament("trn-1", { startDate: null } as any, requester),
+    ).rejects.toThrow("함께 설정하거나 함께 비워야");
+    expect(prisma.tournament.update).not.toHaveBeenCalled();
+  });
+});

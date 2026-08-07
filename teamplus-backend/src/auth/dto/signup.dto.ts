@@ -15,6 +15,7 @@ import {
 import { Type } from "class-transformer";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { UserType } from "@prisma/client";
+import { PUBLIC_SIGNUP_ALLOWED_USER_TYPES } from "../constants/public-signup.constants";
 
 /**
  * 팀 감독 가입 시 함께 생성할 팀 정보 (설계서 §4.5)
@@ -141,10 +142,16 @@ export class SignupDto {
   )
   password!: string;
 
+  /**
+   * [2026-08-06 SECURITY · R14-C1] 역할 차단은 **서비스 allowlist 가드 단일 지점**에서 수행한다.
+   *   DTO 단계에서 막으면 역할별 안내 문구(특히 CHILD/TEEN 가족정책 문구)가 소실된다 —
+   *   상세 사유는 `RegisterDto.userType` 주석 참조.
+   */
   @ApiPropertyOptional({
-    enum: ["PARENT", "COACH", "DIRECTOR", "ACADEMY_DIRECTOR", "TEEN", "CHILD"],
+    enum: PUBLIC_SIGNUP_ALLOWED_USER_TYPES,
     default: "PARENT",
-    description: "사용자 유형",
+    description:
+      "사용자 유형 (공개 가입 허용: PARENT/DIRECTOR/ACADEMY_DIRECTOR). 코치는 감독의 코치 등록, 자녀는 보호자 계정, 관리자는 운영자 콘솔에서만 생성됩니다.",
   })
   @IsOptional()
   @IsEnum(UserType, { message: "유효한 사용자 유형을 입력해주세요." })

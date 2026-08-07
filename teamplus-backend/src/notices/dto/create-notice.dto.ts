@@ -4,12 +4,13 @@ import {
   IsOptional,
   IsEnum,
   IsArray,
-  IsDateString,
   IsInt,
   Min,
   Max,
   MinLength,
   MaxLength,
+  ValidateIf,
+  IsDateString,
 } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
@@ -99,21 +100,39 @@ export class CreateNoticeDto {
   @IsString({ each: true })
   displayLocations?: string[];
 
+  /**
+   * 노출 기간 — **A군 절대 시점**(`SystemNotice.startAt`/`expiresAt` = `@db.Timestamptz(3)`).
+   *
+   * [2026-08-07] 규약(`CLAUDE_STANDARDS.md` ⏰ 시간 처리): 절대 시점은 **UTC ISO 로 주고받고**
+   * KST 벽시계 ↔ 절대시각 변환은 **입력 화면이 담당**한다. date-only 계약은 `@db.Date`(B군) 전용이다.
+   *   · 팀 공지 폼 — 날짜 선택 → KST 00:00 / 23:59:59.999 로 변환해 ISO 전송
+   *   · 어드민 점검 공지 — 분 단위(datetime-local) 입력이 본질이라 ISO 여야 한다
+   *
+   * `null` 을 보내면 기간 해제(상시 노출) — 값을 지울 수 없던 문제(F-05) 해소.
+   */
   @ApiPropertyOptional({
-    description: "공지 시작일 (ISO 8601)",
-    example: "2026-03-06T00:00:00.000Z",
+    description:
+      "공지 노출 시작 시각 (ISO 8601 절대시각). 화면에서 KST 벽시계를 ISO 로 변환해 전송합니다. null 이면 시작 제한 없음.",
+    example: "2026-03-05T15:00:00.000Z",
+    nullable: true,
+    type: String,
   })
   @IsOptional()
-  @IsDateString()
-  startDate?: string;
+  @ValidateIf((_o, value) => value !== null)
+  @IsDateString({}, { message: "노출 시작 시각 형식이 올바르지 않습니다." })
+  startDate?: string | null;
 
   @ApiPropertyOptional({
-    description: "공지 종료일 (ISO 8601)",
-    example: "2026-03-31T23:59:59.000Z",
+    description:
+      "공지 노출 종료 시각 (ISO 8601 절대시각). 날짜 단위 종료는 화면에서 해당일 23:59:59.999 KST 로 변환해 전송합니다. null 이면 종료 제한 없음.",
+    example: "2026-03-31T14:59:59.999Z",
+    nullable: true,
+    type: String,
   })
   @IsOptional()
-  @IsDateString()
-  endDate?: string;
+  @ValidateIf((_o, value) => value !== null)
+  @IsDateString({}, { message: "노출 종료 시각 형식이 올바르지 않습니다." })
+  endDate?: string | null;
 
   @ApiPropertyOptional({
     description:
@@ -136,11 +155,19 @@ export class CreateNoticeDto {
   @Max(2030)
   targetBirthYearTo?: number;
 
+  /**
+   * [Phase 0 · F-EX-04] nullable 계약 — `null`·`""`·공백은 모두 "전역(전체) 공지" 요청으로
+   * 정규화되며 시스템 역할만 허용된다. 팀 스코프 작성자는 본인 관리 팀으로 자동 주입/검증된다.
+   */
   @ApiPropertyOptional({
-    description: "특정 팀 대상 공지 (teamId)",
+    description:
+      "특정 팀 대상 공지 (teamId). null/빈 문자열은 전역(전체) 공지 요청이며 시스템 관리자만 허용됩니다.",
     example: "team-cuid-abc123",
+    nullable: true,
+    type: String,
   })
   @IsOptional()
+  @ValidateIf((_object, value) => value !== null)
   @IsString()
-  targetTeamId?: string;
+  targetTeamId?: string | null;
 }

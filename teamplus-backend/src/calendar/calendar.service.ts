@@ -206,7 +206,7 @@ export class CalendarService {
           }),
       // 대회는 팀 단위 운영 — 학원 무관.
       teamIds.length === 0
-        ? Promise.resolve([] as { startDate: Date; endDate: Date }[])
+        ? Promise.resolve([] as { startDate: Date | null; endDate: Date | null }[])
         : this.prisma.tournament.findMany({
             where: {
               startDate: { lt: sdYearEnd },
@@ -229,6 +229,8 @@ export class CalendarService {
       }).length;
 
       const tournamentCount = tournaments.filter((t) => {
+        // where 범위 필터로 null(일정 미정)은 조회되지 않지만 타입 방어를 겸해 재확인.
+        if (t.startDate == null || t.endDate == null) return false;
         return t.startDate < mEnd && t.endDate >= mStart;
       }).length;
 
@@ -444,8 +446,11 @@ export class CalendarService {
       const rows = await this.prisma.tournament.findMany({
         where: {
           id: { in: Array.from(participatingIds) },
-          startDate: { lt: end },
-          endDate: { gte: start },
+          // 일정 미정(기간 null) 대회 포함 — 대회 자체 이벤트는 스킵되지만 경기(HockeyMatch)는 노출.
+          OR: [
+            { startDate: null },
+            { startDate: { lt: end }, endDate: { gte: start } },
+          ],
           status: { not: "cancelled" },
         },
         select: {
@@ -469,8 +474,11 @@ export class CalendarService {
     if (clubIds.length === 0) return [];
     const rows = await this.prisma.tournament.findMany({
       where: {
-        startDate: { lt: end },
-        endDate: { gte: start },
+        // 일정 미정(기간 null) 대회 포함 — 대회 자체 이벤트는 스킵되지만 경기(HockeyMatch)는 노출.
+        OR: [
+          { startDate: null },
+          { startDate: { lt: end }, endDate: { gte: start } },
+        ],
         teamId: { in: clubIds },
         status: { not: "cancelled" },
       },
@@ -617,6 +625,8 @@ export class CalendarService {
       // [2026-06-15] 경기일정(HockeyMatch)이 있는 대회는 위 경기 이벤트로 대체 — 시작일 단일 이벤트 생략.
       //   경기일정이 아직 없는 대회만 시작일에 1회 노출(폴백).
       if (matchedTournamentIds.has(t.id)) continue;
+      // 일정 미정(기간 null) 대회는 달력에 놓을 날짜가 없어 미표시(where 범위 필터로 이미 제외).
+      if (t.startDate == null || t.endDate == null) continue;
       const eventDate = t.startDate >= start ? t.startDate : start;
       const dateKey = this.toDateKey(eventDate);
       if (!dayMap.has(dateKey)) dayMap.set(dateKey, []);

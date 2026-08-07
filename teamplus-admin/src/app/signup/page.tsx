@@ -9,6 +9,27 @@ import { Card } from "@/components/ui/card";
 import { authService } from "@/services/auth.service";
 import { UserType } from "@/types";
 
+/**
+ * [2026-08-06 SECURITY · R14-C1] 어드민 콘솔 공개 가입 **차단**.
+ *
+ * 이 화면은 어디에서도 링크되지 않는 orphan 페이지(레거시 이관물)이지만
+ * `middleware.ts` 의 `publicPaths` 에 `/signup` 이 있어 URL 직접 입력으로 열렸고,
+ * 회원 유형에 **"관리자"** 선택지가 노출돼 있었다.
+ *
+ * 계정 발급의 정식 경로는 아래 하나뿐이다.
+ *   · 관리자(ADMIN/SYSTEM/OPER) → `POST /admin/admins` (SYSTEM/OPER 전용 콘솔)
+ *   · 코치                      → 감독의 코치 등록 `POST /admin/coaches`
+ *   · 학부모·감독·오픈클래스 감독 → 서비스 앱/웹 공개 가입
+ *   · 자녀(아동/청소년)          → 보호자 계정에서 등록
+ *
+ * 백엔드는 이미 공개 가입 역할 allowlist(PARENT/DIRECTOR/ACADEMY_DIRECTOR)로 차단하므로
+ * 이 화면에서 제출해도 계정은 생성되지 않는다. 사용자에게 "눌러도 안 되는 버튼"을 남기지 않기 위해
+ * 화면에서도 제출을 막고 사유를 안내한다. (페이지 자체는 사용자 지시로 존치)
+ */
+const SIGNUP_DISABLED = true;
+const SIGNUP_DISABLED_NOTICE =
+  "이 화면에서는 계정을 생성할 수 없습니다. 관리자 계정은 운영자 콘솔에서, 코치 계정은 감독의 코치 등록에서 발급됩니다.";
+
 export default function SignupPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
@@ -25,6 +46,14 @@ export default function SignupPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // [R14-C1] 버튼 disabled 는 개발자도구로 우회되므로 핸들러에서도 차단한다.
+    //   (최종 방어선은 백엔드 allowlist — 여기서는 요청 자체를 보내지 않는다)
+    if (SIGNUP_DISABLED) {
+      setError(SIGNUP_DISABLED_NOTICE);
+      return;
+    }
+
     setError("");
     setIsLoading(true);
 
@@ -314,13 +343,28 @@ export default function SignupPage() {
               </div>
             )}
 
+            {/* [R14-C1] 가입 차단 안내 — 버튼 위에 사유를 먼저 보여준다 */}
+            {SIGNUP_DISABLED && (
+              <p
+                role="status"
+                className="rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/50 px-4 py-3 text-sm leading-relaxed text-slate-700 dark:text-slate-300"
+              >
+                {SIGNUP_DISABLED_NOTICE}
+              </p>
+            )}
+
             {/* Submit Button */}
             <Button
               type="submit"
-              disabled={isLoading}
-              className="w-full h-12 bg-primary hover:bg-primary-dark text-white font-semibold transition-colors motion-reduce:transition-none"
+              disabled={isLoading || SIGNUP_DISABLED}
+              aria-disabled={SIGNUP_DISABLED}
+              className="w-full h-12 bg-primary hover:bg-primary-dark text-white font-semibold transition-colors motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isLoading ? "가입 중..." : "회원가입하기"}
+              {SIGNUP_DISABLED
+                ? "가입이 제한되어 있습니다"
+                : isLoading
+                  ? "가입 중..."
+                  : "회원가입하기"}
             </Button>
           </form>
 

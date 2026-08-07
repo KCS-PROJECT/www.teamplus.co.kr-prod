@@ -14,6 +14,12 @@ import { emitRefresh, REFRESH_KEYS } from '@/lib/refresh-bus';
 import { usePageReady } from '@/hooks/usePageReady';
 import { cn } from '@/lib/utils';
 
+/** `GET /notices/manage/teams` — 이 사용자가 공지를 쓸 수 있는 팀 (백엔드 관리 SoT 결과). */
+interface ManageableTeam {
+  id: string;
+  name: string;
+}
+
 interface NoticeDetail {
   id: string;
   title: string;
@@ -26,10 +32,48 @@ interface NoticeDetail {
 }
 
 /** ISO 문자열을 date input 용 YYYY-MM-DD 로 변환 (타임존 시프트 방지 위해 앞 10자 슬라이스). */
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+/**
+ * 절대시각(ISO) → date 입력값 "YYYY-MM-DD" (**KST 달력일**).
+ *
+ * `startAt`/`expiresAt` 은 A군 절대 시점(`@db.Timestamptz`)이라 Prisma·API 는 UTC 로 준다.
+ * 앞 10자를 그대로 자르면 KST 오전 9시 이전 값이 하루 앞당겨진다
+ * (예: KST 자정 = 전날 15:00Z → "전날"로 읽힘).
+ * → `+9h` 시프트 후 **`getUTC*` getter** 로 읽는다 (규약: +9h 트릭은 반드시 getUTC* 와 짝).
+ * teamplus-admin 의 `isoToDateInput` 과 동일 규약.
+ */
 function toDateInput(iso?: string | null): string {
   if (!iso) return '';
-  const m = iso.match(/^(\d{4}-\d{2}-\d{2})/);
-  return m ? m[1] : '';
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return '';
+  const kst = new Date(ms + KST_OFFSET_MS);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${kst.getUTCFullYear()}-${pad(kst.getUTCMonth() + 1)}-${pad(kst.getUTCDate())}`;
+}
+
+/**
+ * date 입력값 "YYYY-MM-DD" → **KST 벽시계 기준 절대시각 ISO**.
+ *
+ * 규약(`CLAUDE_STANDARDS.md` ⏰): 절대 시점은 UTC 로 저장하고 벽시계 변환은 입력 화면 책임.
+ * 오프셋 없는 파싱(`new Date("2026-08-06")`)은 UTC 자정으로 해석돼 KST 오전 9시가 되므로 금지.
+ *
+ * @param boundary 'start' = 그날 KST 00:00 · 'end' = 그날 KST 23:59:59.999 (종료일 당일까지 노출)
+ */
+function kstDateToIso(
+  date: string,
+  boundary: 'start' | 'end',
+): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!m) return null;
+  const [, y, mo, d] = m;
+  const base = Date.UTC(Number(y), Number(mo) - 1, Number(d));
+  const ms =
+    boundary === 'start'
+      ? base - KST_OFFSET_MS
+      : base + 24 * 60 * 60 * 1000 - 1 - KST_OFFSET_MS;
+  const dt = new Date(ms);
+  return Number.isNaN(dt.getTime()) ? null : dt.toISOString();
 }
 
 export default function NoticeCreatePage() {
@@ -59,9 +103,18 @@ export default function NoticeCreatePage() {
   // [2026-06-18] 공지 노출 기간 (등록기간) — 비우면 상시 노출. 백엔드 startDate/endDate 로 전송.
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  // 관리 팀이 여러 개인 작성자용 대상 팀 선택. 1개면 백엔드가 자동 주입하므로 선택기를 만들지 않는다.
+  const [manageTeams, setManageTeams] = useState<ManageableTeam[]>([]);
+  const [targetTeamId, setTargetTeamId] = useState('');
+  // 조회 전·실패 후에는 관리 팀이 몇 개인지 알 수 없다 → 그 상태로 제출하면 다중 팀 작성자가
+  // 서버 403 을 맞는다. 두 상태 동안 제출을 잠그고 인라인 재시도를 제공한다.
+  const [isTeamsLoading, setIsTeamsLoading] = useState(!isEditMode);
+  const [teamsLoadFailed, setTeamsLoadFailed] = useState(false);
+  const needsTeamChoice = !isEditMode && manageTeams.length > 1;
 
-  // edit 모드일 때 isPrefilling 도착 대기.
-  usePageReady(!isPrefilling);
+  // edit 모드는 프리필, 신규 작성은 대상 팀 후보 도착까지 대기 —
+  //   선택기도 화면 구성 요소라 도착 전에 로더를 내리면 레이아웃이 뒤늦게 바뀐다.
+  usePageReady(!isPrefilling && !isTeamsLoading);
 
   const prefillFromEdit = useCallback(async () => {
     if (!editId) return;
@@ -108,6 +161,46 @@ export default function NoticeCreatePage() {
     })();
   }, [isEditMode]);
 
+  // 대상 팀 후보 조회 — 시스템 역할은 빈 배열이 오므로 선택기가 뜨지 않는다.
+  //   수정 모드는 대상 팀을 바꾸지 않으므로(payload 에 키 미포함) 조회도 생략.
+  const loadManageTeams = useCallback(async () => {
+    setIsTeamsLoading(true);
+    setTeamsLoadFailed(false);
+    try {
+      const res = await api.get<{ data?: ManageableTeam[] } | ManageableTeam[]>(
+        '/notices/manage/teams',
+      );
+      if (!res.success || !res.data) {
+        setTeamsLoadFailed(true);
+        return;
+      }
+      const list = Array.isArray(res.data) ? res.data : (res.data.data ?? []);
+      setManageTeams(list);
+      if (list.length === 1) setTargetTeamId(list[0]!.id);
+    } catch {
+      setTeamsLoadFailed(true);
+    } finally {
+      setIsTeamsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isEditMode) return;
+    void loadManageTeams();
+  }, [isEditMode, loadManageTeams]);
+
+  /**
+   * 시작일이 오늘(KST) 이후인가 — 예약 노출 안내 표시용.
+   * `<input type="date">` 값은 사용자의 달력 날짜라 KST 오늘과 문자열로 비교하면 충분하다.
+   */
+  const isScheduledStart = (() => {
+    if (!startDate) return false;
+    const kstToday = new Date(Date.now() + 9 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
+    return startDate > kstToday;
+  })();
+
   const handleClose = () => {
     back();
   };
@@ -137,15 +230,28 @@ export default function NoticeCreatePage() {
       toast.error(MESSAGES.noticesCreate.periodInvalid);
       return;
     }
+    if (needsTeamChoice && !targetTeamId) {
+      toast.error(MESSAGES.noticesCreate.targetTeamRequired);
+      return;
+    }
     setIsSubmitting(true);
     try {
       const payload = {
         title: trimmedTitle,
         content: trimmedContent,
         isPinned,
-        // 노출 기간 — date(YYYY-MM-DD) → ISO. 시작일 00:00, 종료일 23:59:59 까지 노출.
-        startDate: startDate ? `${startDate}T00:00:00.000Z` : undefined,
-        endDate: endDate ? `${endDate}T23:59:59.999Z` : undefined,
+        // [2026-08-07] 노출 기간 — **KST 벽시계 → 절대시각 ISO**.
+        //   이전에는 `${d}T00:00:00.000Z` / `${d}T23:59:59.999Z` 를 조립했는데 그 값은 UTC 라
+        //   KST 기준 시작 09:00 · 종료 익일 08:59 로 9시간 밀렸다(F-06).
+        //   빈 값은 `undefined` 가 아니라 **`null`** — undefined 는 JSON 에서 키가 사라져
+        //   서버가 "변경 없음" 으로 해석하고, 한 번 설정한 기간을 지울 수 없었다(F-05).
+        startDate: startDate ? kstDateToIso(startDate, 'start') : null,
+        endDate: endDate ? kstDateToIso(endDate, 'end') : null,
+        // 대상 팀은 **선택했을 때만** 키를 싣는다.
+        //   키 생략(undefined) = "대상 미지정" → 백엔드가 단일 관리 팀을 자동 주입.
+        //   명시적 null 은 "전체 공지 요청" 이라 팀 권한자에게 403 이 되므로 절대 보내지 않는다.
+        //   수정 모드도 키를 빼서 기존 대상 팀을 그대로 유지한다.
+        ...(!isEditMode && targetTeamId ? { targetTeamId } : {}),
       };
       const response = isEditMode
         ? await api.patch(`/notices/${editId}`, payload)
@@ -230,10 +336,69 @@ export default function NoticeCreatePage() {
 
         {/* 옵션 — flat 흰 섹션 (상단 고정 + 노출 기간, hairline 구분) */}
         <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6" aria-label="공지 옵션">
+          {/* 대상 팀 조회 실패 — toast 는 사라져 원인을 놓치므로 상주 배너 + 재시도.
+              이 상태에서는 제출도 잠근다(관리 팀 수를 몰라 다중 팀 작성자가 서버 403 을 맞는다). */}
+          {teamsLoadFailed && (
+            <div
+              role="alert"
+              className="mb-4 flex items-start gap-2 rounded-w-md bg-it-red-50 dark:bg-it-red-500/10 px-3 py-2.5"
+            >
+              {/* 다크 배경(rink-800 + it-red-500/10)에서 it-red-500 은 2.57:1 로 WCAG AA 미달 →
+                  다크 변형은 it-red-300 (약 4.95:1). */}
+              <Icon
+                name="error_outline"
+                className="mt-px text-[16px] shrink-0 text-it-red-500 dark:text-it-red-300"
+                aria-hidden="true"
+              />
+              <span className="flex-1 text-card-meta text-it-red-500 dark:text-it-red-300">
+                {MESSAGES.noticesCreate.targetTeamLoadFailed}
+              </span>
+              <button
+                type="button"
+                onClick={() => void loadManageTeams()}
+                disabled={isTeamsLoading}
+                className="shrink-0 text-card-meta font-bold text-it-red-500 dark:text-it-red-300 underline disabled:opacity-50"
+              >
+                {MESSAGES.noticesCreate.targetTeamRetry}
+              </button>
+            </div>
+          )}
+
+          {/* 대상 팀 — 관리 팀이 2개 이상인 작성자에게만 노출. */}
+          {needsTeamChoice && (
+            <div className="pb-4 border-b border-it-line dark:border-rink-700">
+              <label
+                htmlFor="notice-target-team"
+                className="block text-[14px] font-bold text-it-ink-800 dark:text-white"
+              >
+                {MESSAGES.noticesCreate.targetTeamLabel}
+              </label>
+              <span className="mt-0.5 block text-card-meta text-it-ink-500 dark:text-rink-300">
+                {MESSAGES.noticesCreate.targetTeamDesc}
+              </span>
+              <select
+                id="notice-target-team"
+                value={targetTeamId}
+                onChange={(e) => setTargetTeamId(e.target.value)}
+                required
+                aria-required="true"
+                className="mt-3 w-full px-3 h-[46px] bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[14px] font-semibold text-it-ink-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 transition-colors motion-reduce:transition-none ease-ios"
+              >
+                <option value="">{MESSAGES.noticesCreate.targetTeamPlaceholder}</option>
+                {manageTeams.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* [2026-06-09] 상단 고정 옵션 — 최대 2개까지. */}
           <label
             className={cn(
               'flex items-center gap-3 pb-4 border-b border-it-line dark:border-rink-700',
+              needsTeamChoice && 'pt-4',
               !isPinned && pinnedFull ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
             )}
           >
@@ -298,6 +463,22 @@ export default function NoticeCreatePage() {
                 />
               </div>
             </div>
+            {/* [2026-08-07] 예약 노출 안내 — 도래 시점 푸시는 미지원(스케줄러 미도입).
+                생성 시점에 게시 중이 아니면 알림이 나가지 않으므로 미리 알린다. */}
+            {isScheduledStart && (
+              <p
+                role="status"
+                className="mt-2.5 flex items-start gap-1.5 rounded-w-md bg-it-blue-50 dark:bg-it-blue-900/30 px-3 py-2 text-card-meta text-it-blue-700 dark:text-it-blue-200"
+              >
+                <Icon
+                  name="schedule"
+                  className="mt-px text-[14px] shrink-0"
+                  aria-hidden="true"
+                />
+                <span>{MESSAGES.noticesCreate.scheduledStartNotice}</span>
+              </p>
+            )}
+
             {(startDate || endDate) && (
               <button
                 type="button"
@@ -321,7 +502,7 @@ export default function NoticeCreatePage() {
         <button
           type="button"
           onClick={handleSubmit}
-          disabled={isSubmitting || isPrefilling}
+          disabled={isSubmitting || isPrefilling || isTeamsLoading || teamsLoadFailed}
           className="w-full h-[54px] rounded-w-md bg-it-blue-500 text-white font-extrabold text-[16px] hover:bg-it-blue-600 active:brightness-95 transition-colors motion-reduce:transition-none flex items-center justify-center gap-2 disabled:bg-it-line-strong dark:disabled:bg-rink-700 disabled:cursor-not-allowed"
         >
           {isSubmitting

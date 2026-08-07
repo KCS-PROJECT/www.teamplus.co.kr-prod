@@ -2212,8 +2212,12 @@ model Tournament {
   teamId      String?  @map("team_id") // 주최 팀 (선택)
   rinkId      String?  @map("rink_id")
   venueId     String?  @map("venue_id") // 개최 링크장 (Venue FK · 2026-05-22)
-  startDate   DateTime @map("start_date") @db.Date
-  endDate     DateTime @map("end_date") @db.Date
+  /// 대회 기간 — null = 일정 미정(추후 확정). 팀 웹 폼은 경기 일정(HockeyMatch) 날짜의
+  ///  min/max 를 클라이언트에서 파생해 저장하고, 어드민 폼은 수동 입력(백엔드 자동 파생 없음).
+  ///  미정 대회 = 신청 접수 가능 · 사후 취소는 경기 폴백으로 차단 · 후불 정산 차단 ·
+  ///  캘린더 대회 이벤트 미표시(등록된 경기는 표시).
+  startDate   DateTime? @map("start_date") @db.Date
+  endDate     DateTime? @map("end_date") @db.Date
   status      String   @default("scheduled") // scheduled|ongoing|finished|cancelled
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)

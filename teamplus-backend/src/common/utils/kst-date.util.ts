@@ -100,3 +100,11 @@ export function kstDayEndExclusive(at: Date): Date {
   const dayUtcMidnight = instantToKstDateOnly(at);
   return new Date(dayUtcMidnight.getTime() + 15 * 60 * 60 * 1000);
 }
+
+/*
+ * [2026-08-07] 게시 기간(A군 `@db.Timestamptz`) 변환 helper 는 **백엔드에 두지 않는다.**
+ *   규약(`CLAUDE_STANDARDS.md` ⏰): 절대 시점은 UTC 로 주고받고, KST 벽시계 ↔ 절대시각
+ *   변환은 **입력 화면**이 담당한다(웹 `notices-create`, 어드민 `notices` 각각 구현).
+ *   백엔드가 date-only 를 받아 변환하려던 시도는 어드민 점검 공지의 분 단위 입력을
+ *   깨뜨려 철회했다. 이 파일은 `@db.Date`(B군) 전용 유틸만 유지한다.
+ */

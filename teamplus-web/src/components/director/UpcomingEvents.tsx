@@ -2,6 +2,7 @@
 
 import { Icon } from '@/components/ui/Icon';
 import { NavLink } from '@/components/ui/NavLink';
+import { MESSAGES } from '@/lib/messages';
 import { UpcomingEvent } from '@/components/dashboard/DirectorEventItem';
 
 interface UpcomingEventsProps {
@@ -48,16 +49,24 @@ export function UpcomingEvents({
           >
             {/* 날짜 배지 */}
             <div className="flex flex-col items-center justify-center min-w-[56px] bg-wbg dark:bg-rink-700/50 rounded-xl py-2.5 border border-wline-2 dark:border-rink-700">
-              <span
-                className={`text-[10px] font-extrabold uppercase tracking-wider ${
-                  event.isPriority ? 'text-ice-500 dark:text-blue-400' : 'text-wtext-3 dark:text-rink-300'
-                }`}
-              >
-                {event.month}
-              </span>
-              <span className="text-xl font-extrabold text-wtext-1 dark:text-white mt-0.5">
-                {event.day}
-              </span>
+              {event.month != null && event.day != null ? (
+                <>
+                  <span
+                    className={`text-[10px] font-extrabold uppercase tracking-wider ${
+                      event.isPriority ? 'text-ice-500 dark:text-blue-400' : 'text-wtext-3 dark:text-rink-300'
+                    }`}
+                  >
+                    {event.month}
+                  </span>
+                  <span className="text-xl font-extrabold text-wtext-1 dark:text-white mt-0.5">
+                    {event.day}
+                  </span>
+                </>
+              ) : (
+                <span className="px-1 text-center text-[10px] font-extrabold leading-tight text-wtext-3 dark:text-rink-300">
+                  {MESSAGES.tournament.datesTbd}
+                </span>
+              )}
             </div>
 
             {/* 이벤트 정보 */}
@@ -66,7 +75,9 @@ export function UpcomingEvents({
                 <h4 className="font-bold text-wtext-1 dark:text-white truncate text-[15px]">
                   {event.title}
                 </h4>
-                <DdayBadge dDay={event.dDay} isPriority={event.isPriority} />
+                {event.dDay != null && (
+                  <DdayBadge dDay={event.dDay} isPriority={event.isPriority} />
+                )}
               </div>
               <p className="text-[13px] text-wtext-3 dark:text-rink-300 flex items-center gap-1 font-medium">
                 <Icon name="location_on" className="text-[16px]" aria-hidden="true" />

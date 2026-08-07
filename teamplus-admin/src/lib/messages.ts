@@ -56,6 +56,12 @@ export const MESSAGES = {
     eligibleFromLabel: (from: number) => `${from}년생~`,
     eligibleToLabel: (to: number) => `~${to}년생`,
     eligibleNone: '연령 제한 없음',
+    // 기간 null = 일정 미정 대회(경기 일정 미확정) 표기.
+    datesTbdLong: '일정 미정 · 추후 확정',
+    datesPairRequired: '시작일과 종료일은 함께 입력하거나 함께 비워야 합니다.',
+    datesTbdFormHint:
+      "기간을 비워두면 '일정 미정' 대회로 등록되며, 참가 신청은 바로 받을 수 있습니다.",
+    nameRequired: '대회명은 필수 항목입니다.',
   },
   tournamentSettlement: {
     confirm: (count: number, total: number) =>

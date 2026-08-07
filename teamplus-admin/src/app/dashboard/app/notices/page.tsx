@@ -87,13 +87,23 @@ const isoToDateInput = (iso?: string | null): string => {
  * 브라우저 타임존에 의존하던 `new Date(input).toISOString()` 을 대체 — 어떤 환경에서
  * 등록하든 입력값이 항상 KST 벽시계로 해석되어 저장 인스턴트가 일정하다.
  */
-const kstInputToUtcIso = (local?: string | null): string | undefined => {
+const kstInputToUtcIso = (
+  local?: string | null,
+  boundary: 'start' | 'end' = 'start',
+): string | undefined => {
   if (!local) return undefined;
   const m = local.match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/);
   if (!m) return undefined;
-  const [, y, mo, d, hh = '00', mm = '00'] = m;
+  const [, y, mo, d, hh, mm] = m;
+  const hasTime = hh !== undefined && mm !== undefined;
   // KST 벽시계 → UTC epoch: Date.UTC(KST 파트) - 9h
-  const utcMs = Date.UTC(+y, +mo - 1, +d, +hh, +mm) - KST_OFFSET_MS;
+  let utcMs = Date.UTC(+y, +mo - 1, +d, +(hh ?? 0), +(mm ?? 0)) - KST_OFFSET_MS;
+  // [2026-08-07] 날짜만 입력된 **종료일**은 그날 23:59:59.999 KST 까지로 해석한다.
+  //   기존에는 00:00 으로 변환돼 "종료일 당일 0시에 이미 만료" 되어 하루가 통째로 사라졌다.
+  //   분 단위(datetime-local)로 받은 점검 공지는 입력 시각을 그대로 존중한다.
+  if (boundary === 'end' && !hasTime) {
+    utcMs += 24 * 60 * 60 * 1000 - 1;
+  }
   const dt = new Date(utcMs);
   if (Number.isNaN(dt.getTime())) return undefined;
   return dt.toISOString();
@@ -110,8 +120,11 @@ const kstInputToUtcIso = (local?: string | null): string | undefined => {
  */
 type NoticeLiveStatus = 'inactive' | 'upcoming' | 'ongoing' | 'ended';
 
-const _toEpochMs = (kstLocal?: string | null): number | null => {
-  const iso = kstInputToUtcIso(kstLocal ?? undefined);
+const _toEpochMs = (
+  kstLocal?: string | null,
+  boundary: 'start' | 'end' = 'start',
+): number | null => {
+  const iso = kstInputToUtcIso(kstLocal ?? undefined, boundary);
   if (!iso) return null;
   const t = new Date(iso).getTime();
   return Number.isNaN(t) ? null : t;
@@ -125,7 +138,9 @@ const getNoticeLiveStatus = (n: {
   if (!n.isActive) return 'inactive';
   const now = Date.now();
   const startMs = _toEpochMs(n.startDate);
-  const endMs = _toEpochMs(n.endDate);
+  // 종료일은 저장 규약과 동일하게 그날 끝(23:59:59.999 KST)까지로 판정한다 —
+  //   0시 기준으로 보면 종료일 당일이 통째로 "종료"로 표시된다.
+  const endMs = _toEpochMs(n.endDate, 'end');
   if (endMs !== null && now > endMs) return 'ended';
   if (startMs !== null && now < startMs) return 'upcoming';
   return 'ongoing';
@@ -330,7 +345,7 @@ export default function NoticeManagementPage() {
         displayLocations: newNotice.displayLocations,
         // 입력값을 한국시간(KST)으로 간주해 UTC ISO 로 변환(브라우저 TZ 무관).
         startDate: kstInputToUtcIso(newNotice.startDate),
-        endDate: kstInputToUtcIso(newNotice.endDate),
+        endDate: kstInputToUtcIso(newNotice.endDate, 'end'),
         isPinned: newNotice.isPinned,
       });
       setActionMsg({ type: 'success', text: MESSAGES.adminNotice.created });
@@ -382,7 +397,7 @@ export default function NoticeManagementPage() {
         displayLocations: newNotice.displayLocations,
         // 입력값을 한국시간(KST)으로 간주해 UTC ISO 로 변환(브라우저 TZ 무관).
         startDate: kstInputToUtcIso(newNotice.startDate),
-        endDate: kstInputToUtcIso(newNotice.endDate),
+        endDate: kstInputToUtcIso(newNotice.endDate, 'end'),
         isPinned: newNotice.isPinned,
       });
       setActionMsg({ type: 'success', text: MESSAGES.adminNotice.updated });
