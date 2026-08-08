@@ -436,14 +436,73 @@ function finishLoadingDataTracking(config?: AxiosRequestConfig | null): void {
   }
 }
 
+/**
+ * native 브릿지 경로 공용 래퍼 — 로딩 데이터 추적 + lifecycle 계측.
+ *
+ * [2026-08-08 SLA] lifecycle 계측 추가. axios 경로는 인터셉터가
+ * runBeforeRequest/runAfterResponse 를 실행하지만 nativeApi.* 브릿지 경로는
+ * 계측이 전무해, 앱 WebView(주 트래픽 80~85%)의 1초 SLA 위반이 devLog·Sentry
+ * 어디에도 잡히지 않는 관측 사각지대였다. 이 래퍼는 native 5개 분기(GET/POST/
+ * PUT/PATCH/DELETE)의 단일 통과점이므로 여기서만 배선한다.
+ * - onError 훅은 의도적으로 미배선 — 401 자동 로그인 유도 등 부수효과가
+ *   native 자체 에러 처리와 이중 발화하지 않도록 관측(계측)에 한정.
+ * - 브릿지 실패 → web axios fallback 시에는 `onWebFallback` 플래그로 바깥
+ *   afterResponse 를 skip 해 axios 인터셉터와의 이중 계측(부정확 durationMs +
+ *   Sentry SLA 이벤트 2건)을 차단한다.
+ */
 async function withLoadingDataTracking<T>(
   method: string,
   url: string,
-  fn: () => Promise<T>,
+  fn: (onWebFallback: () => void) => Promise<T>,
 ): Promise<T> {
+  const ctx: LifecycleRequestContext = {
+    requestId: generateRequestId(),
+    method,
+    url,
+    startAt:
+      typeof performance !== "undefined" ? performance.now() : Date.now(),
+    platform: apiLifecycle.getPlatform(),
+    clientVersion: apiLifecycle.getClientVersion(),
+    meta: { source: "native-bridge" },
+  };
+  // 순수 관측(devLog)이라 완료를 기다릴 필요 없음 — 주 트래픽 크리티컬 패스에
+  // 훅이 async 화되며 얹히는 것을 구조적으로 차단 (runAfterResponse 와 대칭).
+  void apiLifecycle.runBeforeRequest(ctx);
+  // 브릿지 실패 → web axios fallback 시 branch 가 호출 — axios 인터셉터가 동일
+  // 요청을 다시 계측하므로 바깥 afterResponse 를 skip 해 SLA 이벤트 이중 발화
+  // (부정확한 durationMs + Sentry 2건)를 막는다.
+  let fellBackToWebAxios = false;
+  const onWebFallback = () => {
+    fellBackToWebAxios = true;
+  };
   const finish = beginLoadingDataRequest({ method, url });
   try {
-    return await fn();
+    const result = await fn(onWebFallback);
+    if (!fellBackToWebAxios) {
+      // native 분기는 모두 ApiResponse<T> 를 반환한다 — status 를 방어적으로 추론.
+      const res = result as
+        | { success?: boolean; error?: { statusCode?: number } }
+        | undefined;
+      const now =
+        typeof performance !== "undefined" ? performance.now() : Date.now();
+      void apiLifecycle.runAfterResponse({
+        ...ctx,
+        status: res?.success ? 200 : res?.error?.statusCode,
+        durationMs: Math.round(now - ctx.startAt),
+      });
+    }
+    return result;
+  } catch (e) {
+    // 방어적 terminal 이벤트 — native 분기는 내부 catch 로 항상 ApiResponse 를
+    // 반환하므로 현재는 도달하지 않지만, throw 경로가 생겨도 "[API] → 만 찍히고
+    // 끝나는" 비대칭 계측이 되지 않도록 보장한다.
+    const now =
+      typeof performance !== "undefined" ? performance.now() : Date.now();
+    void apiLifecycle.runAfterResponse({
+      ...ctx,
+      durationMs: Math.round(now - ctx.startAt),
+    });
+    throw e;
   } finally {
     finish();
   }
@@ -1158,7 +1217,7 @@ export const api = {
       if (guard) return guard;
 
       if (isNativeApp()) {
-        return withLoadingDataTracking("GET", url, async () => {
+        return withLoadingDataTracking("GET", url, async (onWebFallback) => {
           try {
             const data = await nativeApi.get<T>(url, options?.params, {
               async: options?.async ?? true,
@@ -1174,6 +1233,7 @@ export const api = {
                   { url, code: apiError.code },
                 );
               }
+              onWebFallback();
               return apiRequestWebDirect<T>("GET", url, undefined, options);
             }
             return { success: false, error: apiError };
@@ -1201,7 +1261,7 @@ export const api = {
     if (guard) return guard;
 
     if (isNativeApp()) {
-      return withLoadingDataTracking("POST", url, async () => {
+      return withLoadingDataTracking("POST", url, async (onWebFallback) => {
         try {
           const result = await nativeApi.post<T>(url, data, {
             async: options?.async ?? true,
@@ -1216,6 +1276,7 @@ export const api = {
                 { url, code: apiError.code },
               );
             }
+            onWebFallback();
             return apiRequestWebDirect<T>("POST", url, data, options);
           }
           return { success: false, error: apiError };
@@ -1243,7 +1304,7 @@ export const api = {
     if (guard) return guard;
 
     if (isNativeApp()) {
-      return withLoadingDataTracking("PUT", url, async () => {
+      return withLoadingDataTracking("PUT", url, async (onWebFallback) => {
         try {
           const result = await nativeApi.put<T>(url, data, {
             async: options?.async ?? true,
@@ -1258,6 +1319,7 @@ export const api = {
                 { url, code: apiError.code },
               );
             }
+            onWebFallback();
             return apiRequestWebDirect<T>("PUT", url, data, options);
           }
           return { success: false, error: apiError };
@@ -1285,7 +1347,7 @@ export const api = {
     if (guard) return guard;
 
     if (isNativeApp()) {
-      return withLoadingDataTracking("PATCH", url, async () => {
+      return withLoadingDataTracking("PATCH", url, async (onWebFallback) => {
         try {
           const result = await nativeApi.patch<T>(url, data, {
             async: options?.async ?? true,
@@ -1300,6 +1362,7 @@ export const api = {
                 { url, code: apiError.code },
               );
             }
+            onWebFallback();
             return apiRequestWebDirect<T>("PATCH", url, data, options);
           }
           return { success: false, error: apiError };
@@ -1326,7 +1389,7 @@ export const api = {
     if (guard) return guard;
 
     if (isNativeApp()) {
-      return withLoadingDataTracking("DELETE", url, async () => {
+      return withLoadingDataTracking("DELETE", url, async (onWebFallback) => {
         try {
           const resultRaw = await nativeApi.delete<T>(url, {
             async: options?.async ?? true,
@@ -1341,6 +1404,7 @@ export const api = {
                 { url, code: apiError.code },
               );
             }
+            onWebFallback();
             return apiRequestWebDirect<T>("DELETE", url, undefined, options);
           }
           return { success: false, error: apiError };

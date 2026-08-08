@@ -16,16 +16,23 @@ describe("chldiv.constants", () => {
   });
 
   describe("CHLDIV_ALLOWED_USER_TYPES", () => {
-    it("APP 은 PARENT/COACH/CHILD/DIRECTOR/TEEN/ADMIN/ACADEMY_DIRECTOR 7개를 허용해야 한다", () => {
+    // [2026-08-08 스펙 정합화] 2026-05-26 정책 변경(59b4b9c3 — CHILD/TEEN 평문
+    // 로그인 차단, 자녀는 child-auth PIN/OTP 전용) 이전 기준으로 작성돼 있던
+    // 기대값(7개 허용)을 현행 정책(5개 허용)으로 갱신.
+    it("APP 은 PARENT/COACH/DIRECTOR/ADMIN/ACADEMY_DIRECTOR 5개를 허용해야 한다", () => {
       const appAllowed = CHLDIV_ALLOWED_USER_TYPES[CHLDIV.APP];
       expect(appAllowed.has(UserType.PARENT)).toBe(true);
       expect(appAllowed.has(UserType.COACH)).toBe(true);
-      expect(appAllowed.has(UserType.CHILD)).toBe(true);
       expect(appAllowed.has(UserType.DIRECTOR)).toBe(true);
-      expect(appAllowed.has(UserType.TEEN)).toBe(true);
       expect(appAllowed.has(UserType.ADMIN)).toBe(true);
       expect(appAllowed.has(UserType.ACADEMY_DIRECTOR)).toBe(true);
-      expect(appAllowed.size).toBe(7);
+      expect(appAllowed.size).toBe(5);
+    });
+
+    it("APP 은 CHILD/TEEN 평문 로그인을 차단해야 한다 (child-auth PIN/OTP 전용)", () => {
+      const appAllowed = CHLDIV_ALLOWED_USER_TYPES[CHLDIV.APP];
+      expect(appAllowed.has(UserType.CHILD)).toBe(false);
+      expect(appAllowed.has(UserType.TEEN)).toBe(false);
     });
 
     it("ADM 은 SYSTEM/OPER 2개만 허용해야 한다", () => {
@@ -57,9 +64,10 @@ describe("chldiv.constants", () => {
     it.each([
       [UserType.PARENT, CHLDIV.APP, true],
       [UserType.COACH, CHLDIV.APP, true],
-      [UserType.CHILD, CHLDIV.APP, true],
+      // CHILD/TEEN: 2026-05-26 평문 로그인 차단 (child-auth PIN/OTP 전용)
+      [UserType.CHILD, CHLDIV.APP, false],
       [UserType.DIRECTOR, CHLDIV.APP, true],
-      [UserType.TEEN, CHLDIV.APP, true],
+      [UserType.TEEN, CHLDIV.APP, false],
       [UserType.ADMIN, CHLDIV.APP, true],
       [UserType.ACADEMY_DIRECTOR, CHLDIV.APP, true],
       [UserType.SYSTEM, CHLDIV.APP, false],

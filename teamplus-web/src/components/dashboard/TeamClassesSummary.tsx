@@ -394,7 +394,52 @@ export function TeamClassesSummary({
             ? ''
             : 'rounded-w-xl border overflow-hidden bg-wsurface dark:bg-rink-800 shadow-sh-1 border-wline dark:border-rink-700',
         )}>
-          {isLoading ? null : items.length === 0 ? (
+          {isLoading ? (
+            // [2026-08-08 SLA] 게이트 완화 — 첫 fetch 동안 null 대신 실제 행 구조를
+            //   미러링한 스켈레톤 3행. 실제 행(:479 `px-5 py-3` + 배지 pill + 제목
+            //   단일행)과 동일 지오메트리라 데이터 교체 시 레이아웃 점프가 없다.
+            //   role="status"+sr-only 로 스크린리더에도 로딩 상태를 안내한다.
+            <div
+              role="status"
+              aria-busy="true"
+              data-testid="team-classes-skeleton"
+            >
+              <span className="sr-only">{MESSAGES.common.loading}</span>
+              <ul
+                aria-hidden="true"
+                className={cn(
+                  'divide-y',
+                  iceTheme
+                    ? 'divide-it-line dark:divide-it-blue-800'
+                    : 'divide-wline-2 dark:divide-rink-700',
+                )}
+              >
+                {[0, 1, 2].map((i) => (
+                  <li
+                    key={`sk-${i}`}
+                    className="flex items-center gap-2 px-5 py-3"
+                  >
+                    <span
+                      className={cn(
+                        'h-5 w-12 shrink-0 animate-pulse rounded-w-pill motion-reduce:animate-none',
+                        iceTheme
+                          ? 'bg-it-fill dark:bg-it-blue-900'
+                          : 'bg-wline-2 dark:bg-rink-700',
+                      )}
+                    />
+                    <span
+                      className={cn(
+                        'h-4 w-3/5 animate-pulse rounded motion-reduce:animate-none',
+                        iceTheme
+                          ? 'bg-it-fill dark:bg-it-blue-900'
+                          : 'bg-wline-2 dark:bg-rink-700',
+                      )}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : items.length === 0 ? (
             <div className="px-5 py-8 flex flex-col items-center gap-2 text-center">
               <div className={cn(
                 'flex h-11 w-11 items-center justify-center rounded-w-pill',

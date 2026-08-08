@@ -24,6 +24,7 @@ import {
   getPendingLoadingDataRequestCount,
   subscribeLoadingDataRequests,
 } from '@/services/loading-data-tracker';
+import { devWarn } from '@/lib/logger';
 
 /**
  * LoadingContext - TEAMPLUS 페이지 전환 로딩 관리
@@ -184,6 +185,9 @@ export function LoadingProvider({
   const dataCaptureTimerRef = useRef<NodeJS.Timeout | null>(null);
   const dataIdleTimerRef = useRef<NodeJS.Timeout | null>(null);
   const dataUnsubscribeRef = useRef<(() => void) | null>(null);
+  // [2026-08-08 SLA] SAFETY_HOLD 폴백 복원 — usePageReady 신호가 유실/지연돼도
+  // MAX_WAIT(5s) 전에 DOM+데이터 안정 조건으로 조기 종료하는 소프트 폴백 타이머.
+  const softReadyFallbackTimerRef = useRef<NodeJS.Timeout | null>(null);
   // 절대 페일세이프 (2026-05-08 v11) — startLoading() 호출 후 라우트 변경이
   // 발생하지 않거나 호출부가 stopLoading() 을 누락한 경우에도 MAX_WAIT 후 강제 OFF.
   // handleRouteChange 의 finish() 가 먼저 실행되면 cleanup 됨.
@@ -231,7 +235,10 @@ export function LoadingProvider({
         //   잠깐 노출되는 회귀 발생. document.fonts.ready 가 resolve 될 때까지 fade-out 전체
         //   (setIsHiding + setIsLoading) 진입 보류. FONTS_READY_TIMEOUT(1500ms) 안전망으로
         //   폰트 영구 실패 시에도 무한 대기 방지.
-        const FADE_OUT_DURATION = 300; // ms — v16.2: fade-out 시간 확대로 더 부드러운 사라짐
+        // [2026-08-08 SLA] 300 → 150ms — 로그인→메인 2초 SLA 확보를 위한 인위 지연
+        //   다이어트(사용자 승인). 페이지는 fade 시작 시점에 이미 완성돼 있으므로
+        //   (usePageReady + paint hold 이후) 체감 부드러움 손실 없이 150ms 단축.
+        const FADE_OUT_DURATION = 150;
         const FONTS_READY_TIMEOUT = 1500;
 
         const proceedFadeOut = () => {
@@ -348,6 +355,10 @@ export function LoadingProvider({
       dataUnsubscribeRef.current();
       dataUnsubscribeRef.current = null;
     }
+    if (softReadyFallbackTimerRef.current) {
+      clearTimeout(softReadyFallbackTimerRef.current);
+      softReadyFallbackTimerRef.current = null;
+    }
   }, []);
 
   useEffect(() => {
@@ -444,12 +455,21 @@ export function LoadingProvider({
     //   data-sync-1 Phase 4 분석: DATA_TRACKER_AUDIT_2026-05-20.md §3 참조.
     const DATA_CAPTURE_WINDOW = 350;
     const DATA_IDLE_WINDOW = 160;
+    // [2026-08-08 SLA] SAFETY_HOLD 폴백 복원 (v16 정책 문서에는 있었으나 코드에서
+    //   유실됐던 중간 안전망). usePageReady 8중 AND 게이트 중 하나가 신호를 못 쏘면
+    //   기존에는 무조건 MAX_WAIT(5000ms)까지 로더가 유지됐다. 이제 2500ms 경과 후
+    //   DOM 안정(domStable) + 데이터 유휴(dataIdle) + route fallback 부재가 모두
+    //   충족되면 조기 종료한다. explicitPageReady 가 항상 1순위이며, 이 폴백은
+    //   신호 유실 사고의 상한을 5s → ~2.5s 로 낮추는 보험이다.
+    const SOFT_READY_FALLBACK_MS = 2500;
     const dataSince = loadingStartTimeRef.current || Date.now();
 
     let finished = false;
     let domStable = false;
     let dataIdle = false;
     let dataCaptureClosed = false;
+    // SOFT_READY_FALLBACK_MS 경과 후 true — maybeFinish 의 폴백 경로 활성화 게이트
+    let softFallbackArmed = false;
     // v16 — 사이클 진입 전 들어온 pending signal 도 fast-path 로 합산
     let explicitPageReady =
       pageReadySignaledRef.current || pendingExplicitReadyRef.current;
@@ -475,10 +495,13 @@ export function LoadingProvider({
       //   발화하므로(각 page.tsx usePageReady 호출부), finish() 의 STABILIZE 는
       //   layout 안정 대기를 두 번 하는 중복이었다. "완료 후 더 빨리 hide" 이므로
       //   §11 사용자 직접 지시(데이터+셋팅 완료 전 hide 금지)는 그대로 준수.
-      //   rAF×3 + fade-out 300ms 는 깜빡임 방지로 유지(0 단축 비권장).
+      //   rAF×3 는 깜빡임 방지로 유지(0 단축 비권장) · fade-out 은 v21 에서 150ms.
       //   정책 SoT: docs/Design/LOADING_TIMING_POLICY.md §10 #9 동반 갱신됨.
       const POST_READY_PAINT_HOLD_FRAMES = 3;
-      const POST_READY_STABILIZE_MS = 120;
+      // [2026-08-08 SLA] 120 → 60ms — ready 신호가 이미 useStableLayout + rAF 안정화
+      //   이후에만 발화하므로(LD-01 과 동일 근거) 3중 중첩 안정화를 추가 축소.
+      //   rAF×3 paint hold 는 유지 — 실제 깜빡임 방어선은 rAF 쪽이다.
+      const POST_READY_STABILIZE_MS = 60;
 
       const runHide = () => {
         if (typeof window === 'undefined' || typeof requestAnimationFrame === 'undefined') {
@@ -537,6 +560,22 @@ export function LoadingProvider({
         finish();
         return;
       }
+      // [2026-08-08 SLA] 소프트 폴백 — SOFT_READY_FALLBACK_MS 경과 후 DOM 안정 +
+      // 데이터 유휴가 확인되면 explicit 신호 없이도 종료 (신호 유실 사고 상한 축소).
+      // ⚠️ 폴백 발화 = 해당 페이지의 usePageReady 신호가 오지 않았다는 뜻 —
+      //   정상 상태가 아니라 조사 대상이다. 관측 없이 조용히 닫으면 신호 유실
+      //   페이지가 영구히 은폐되므로 반드시 경고를 남긴다 (정책 §2 사다리 참조).
+      if (softFallbackArmed && domStable && dataIdle) {
+        devWarn(
+          '[LOADING] soft fallback fired — usePageReady 신호 미도착 (조사 대상)',
+          {
+            pathname:
+              typeof window !== 'undefined' ? window.location.pathname : '',
+            elapsedMs: Date.now() - loadingStartTimeRef.current,
+          },
+        );
+        finish();
+      }
     };
 
     // Phase 1 v16 — 페이지 ready 신호가 오면 DOM 추정 대신 명시 신호로 종료.
@@ -584,6 +623,14 @@ export function LoadingProvider({
       dataCaptureClosed = true;
       armDataIdleTimer();
     }, DATA_CAPTURE_WINDOW);
+
+    // [2026-08-08 SLA] 소프트 폴백 타이머 arm — 발화 시점 이후의 domStable/dataIdle
+    // 이벤트에서도 maybeFinish 가 재평가하므로 1회 arm 으로 충분하다.
+    softReadyFallbackTimerRef.current = setTimeout(() => {
+      softReadyFallbackTimerRef.current = null;
+      softFallbackArmed = true;
+      maybeFinish();
+    }, SOFT_READY_FALLBACK_MS);
 
     // Cycle gating — 사이클 시작 후 1초가 지나면 추가 DOM 변화로
     //   armStableTimer() 가 호출되어도 더 이상 STABLE_WINDOW 만큼 지연시키지 않고

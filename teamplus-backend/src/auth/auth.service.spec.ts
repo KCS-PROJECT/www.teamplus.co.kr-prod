@@ -28,22 +28,80 @@ describe("AuthService", () => {
     updatedAt: new Date(),
   };
 
+  // NEW-02 (2026-05-22 앱심사 v7) — 공개 가입 역할은 본인인증(IdentityVerification)
+  // 완료가 선행 조건이다. requestId 로 조회해 status/verifiedAt/만료/이름일치를 검증한다.
+  const IDENTITY_REQUEST_ID = "identity-request-1";
+
+  /**
+   * 본인인증 완료 상태를 준비한다.
+   * - verifiedName 만 있고 firstName/lastName 미입력 → 서비스가 성/이름을 자동 채움
+   * - user.findUnique = null → 자동 채움된 phone 의 중복 재확인 통과
+   */
+  const arrangeIdentityVerified = (overrides: Record<string, unknown> = {}) => {
+    mockPrismaService.identityVerification.findUnique.mockResolvedValue({
+      id: "identity-1",
+      status: "completed",
+      verifiedAt: new Date(),
+      verifiedName: "홍길동",
+      verifiedPhone: "01012345678",
+      verifiedBirth: null,
+      verifiedGender: null,
+      ci: "encrypted-ci",
+      ciHash: "ci-hash-1",
+      di: "encrypted-di",
+      userId: null,
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+      ...overrides,
+    });
+    mockPrismaService.user.findUnique.mockResolvedValue(null);
+  };
+
   const mockPrismaService = {
     user: {
       findFirst: jest.fn(),
       findUnique: jest.fn(),
       create: jest.fn(),
-      update: jest.fn(),
+      // login 성공 경로의 lastLoginAt 갱신은 fire-and-forget (`void ....catch()`)
+      // 이라 Promise 를 반환해야 한다.
+      update: jest.fn().mockResolvedValue({ tokenVersion: 1 }),
     },
-    team: { count: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
+    // NEW-02 본인인증 선행 (register)
+    identityVerification: {
+      findUnique: jest.fn(),
+      update: jest.fn().mockResolvedValue({}),
+    },
+    // 로그인 성공/실패 감사 로그 (성공 경로는 fire-and-forget)
+    auditLog: { create: jest.fn().mockResolvedValue({}) },
+    appSettings: { findFirst: jest.fn().mockResolvedValue(null) },
+    parentProfile: { create: jest.fn().mockResolvedValue({}) },
+    coachProfile: { create: jest.fn().mockResolvedValue({}) },
+    teamMember: {
+      create: jest.fn().mockResolvedValue({}),
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
+    userDevice: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    team: {
+      count: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
+      findFirst: jest.fn().mockResolvedValue(null),
+      findUnique: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({ id: "team-1" }),
+    },
     class: { count: jest.fn() },
     tournament: { count: jest.fn() },
-    academy: { count: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
+    academy: {
+      count: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
+      create: jest.fn().mockResolvedValue({}),
+    },
     enrollment: { count: jest.fn() },
     monthlyPostpaidBillingLine: { count: jest.fn() },
     tournamentRegistration: { count: jest.fn() },
     refundRequest: { count: jest.fn() },
     payment: { findMany: jest.fn().mockResolvedValue([]) },
+    // register 는 $transaction 안에서 user/profile 을 생성한다.
+    // tx 로 자기 자신을 넘겨 기존 mockPrismaService.user.create 단언을 그대로 사용.
+    $transaction: jest.fn(),
   };
 
   const mockJwtService = {
@@ -57,7 +115,18 @@ describe("AuthService", () => {
     del: jest.fn().mockResolvedValue(undefined),
     delByPattern: jest.fn().mockResolvedValue(undefined),
     exists: jest.fn().mockResolvedValue(false),
+    // 단일 세션 정책의 hasAnySession() 이 세션별 키를 패턴 조회한다.
+    keysByPattern: jest.fn().mockResolvedValue([]),
     getConnectionStatus: jest.fn().mockReturnValue(true),
+  };
+
+  // 계정 잠금 서비스 — login 1단계에서 항상 호출되므로 반환값이 필수다.
+  const mockAccountLockoutService = {
+    checkIfLocked: jest.fn().mockResolvedValue({ isLocked: false }),
+    recordFailedAttempt: jest
+      .fn()
+      .mockResolvedValue({ isLocked: false, attempts: 1 }),
+    clearFailedAttempts: jest.fn().mockResolvedValue(undefined),
   };
 
   const mockConfigService = {
@@ -77,12 +146,20 @@ describe("AuthService", () => {
       const config: Record<string, any> = {
         JWT_EXPIRATION: "900",
         JWT_REFRESH_EXPIRATION: "604800",
+        JWT_SECRET: "test-jwt-secret",
+        JWT_REFRESH_SECRET: "test-refresh-secret",
       };
       return config[key];
     }),
   };
 
   beforeEach(async () => {
+    // register 의 $transaction — 콜백에 mockPrismaService 자체를 tx 로 주입
+    mockPrismaService.$transaction.mockImplementation(
+      async (cb: (tx: typeof mockPrismaService) => unknown) =>
+        cb(mockPrismaService),
+    );
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
@@ -112,11 +189,7 @@ describe("AuthService", () => {
         },
         {
           provide: AccountLockoutService,
-          useValue: {
-            checkIfLocked: jest.fn().mockResolvedValue(undefined),
-            recordFailedAttempt: jest.fn().mockResolvedValue(undefined),
-            clearFailedAttempts: jest.fn().mockResolvedValue(undefined),
-          },
+          useValue: mockAccountLockoutService,
         },
         {
           provide: SmsService,
@@ -153,10 +226,13 @@ describe("AuthService", () => {
       phone: "01012345678",
       password: "SecurePassword123",
       userType: UserType.PARENT,
+      // NEW-02 (앱심사 v7) — PARENT/DIRECTOR/ACADEMY_DIRECTOR 가입은 본인인증 선행 필수
+      identityVerificationId: IDENTITY_REQUEST_ID,
     };
 
     it("should register a new user successfully", async () => {
       // Arrange
+      arrangeIdentityVerified();
       mockPrismaService.user.findFirst.mockResolvedValue(null);
       mockJwtService.sign.mockReturnValue("mock-token");
       mockPrismaService.user.create.mockResolvedValue({
@@ -184,20 +260,24 @@ describe("AuthService", () => {
     });
 
     it("should throw BadRequestException if user already exists by email", async () => {
-      // Arrange
-      mockPrismaService.user.findFirst.mockResolvedValue(mockUser);
+      // Arrange — 이메일이 겹치는 기존 계정
+      mockPrismaService.user.findFirst.mockResolvedValue({
+        ...mockUser,
+        email: registerDto.email,
+        phone: "01099998888",
+      });
 
-      // Act & Assert
+      // Act & Assert — 이메일/휴대폰을 구분해 안내한다
       await expect(service.register(registerDto)).rejects.toThrow(
         BadRequestException,
       );
       await expect(service.register(registerDto)).rejects.toThrow(
-        "이미 등록된 이메일 또는 휴대폰 번호입니다.",
+        "이미 등록된 이메일입니다.",
       );
     });
 
     it("should throw BadRequestException if user already exists by phone", async () => {
-      // Arrange
+      // Arrange — 휴대폰만 겹치는 기존 계정
       const existingUser = { ...mockUser, email: "different@example.com" };
       mockPrismaService.user.findFirst.mockResolvedValue(existingUser);
 
@@ -205,10 +285,27 @@ describe("AuthService", () => {
       await expect(service.register(registerDto)).rejects.toThrow(
         BadRequestException,
       );
+      await expect(service.register(registerDto)).rejects.toThrow(
+        "이미 등록된 휴대폰 번호입니다.",
+      );
+    });
+
+    it("should throw BadRequestException if identity verification is missing", async () => {
+      // Arrange — 본인인증 ID 없이 공개 가입 시도
+      mockPrismaService.user.findFirst.mockResolvedValue(null);
+      const { identityVerificationId: _omitted, ...withoutIdentity } =
+        registerDto;
+
+      // Act & Assert
+      await expect(
+        service.register(withoutIdentity as RegisterDto),
+      ).rejects.toThrow("본인인증을 먼저 완료해주세요.");
+      expect(mockPrismaService.user.create).not.toHaveBeenCalled();
     });
 
     it("should hash password correctly", async () => {
       // Arrange
+      arrangeIdentityVerified();
       mockPrismaService.user.findFirst.mockResolvedValue(null);
       mockJwtService.sign.mockReturnValue("mock-token");
       mockPrismaService.user.create.mockResolvedValue({
@@ -230,6 +327,7 @@ describe("AuthService", () => {
 
     it("should generate both access and refresh tokens", async () => {
       // Arrange
+      arrangeIdentityVerified();
       mockPrismaService.user.findFirst.mockResolvedValue(null);
       mockJwtService.sign
         .mockReturnValueOnce("access-token")
@@ -274,6 +372,25 @@ describe("AuthService", () => {
       expect(result.user.email).toBe(mockUser.email);
       expect(result.accessToken).toBe("access-token");
       expect(result.refreshToken).toBe("refresh-token");
+      // 로그인 성공 시 누적 실패 횟수를 초기화한다
+      expect(mockAccountLockoutService.clearFailedAttempts).toHaveBeenCalledWith(
+        loginDto.email,
+      );
+    });
+
+    it("should throw HttpException(429) if account is locked", async () => {
+      // Arrange — 잠금 상태면 비밀번호 검증 전에 차단된다
+      mockAccountLockoutService.checkIfLocked.mockResolvedValueOnce({
+        isLocked: true,
+        remainingTime: 600,
+        lockoutLevel: 1,
+      });
+
+      // Act & Assert
+      await expect(service.login(loginDto)).rejects.toThrow(
+        "계정이 보안상 잠겨있습니다. 10분 후 다시 시도해주세요.",
+      );
+      expect(mockPrismaService.user.findUnique).not.toHaveBeenCalled();
     });
 
     it("should throw UnauthorizedException if user not found", async () => {
@@ -286,6 +403,10 @@ describe("AuthService", () => {
       );
       await expect(service.login(loginDto)).rejects.toThrow(
         "아이디 또는 비밀번호가 일치하지 않습니다.",
+      );
+      // 계정 열거 방지 — 미존재 계정도 실패 횟수를 기록한다
+      expect(mockAccountLockoutService.recordFailedAttempt).toHaveBeenCalledWith(
+        loginDto.email,
       );
     });
 
@@ -324,12 +445,33 @@ describe("AuthService", () => {
 
   describe("refreshToken", () => {
     const refreshToken = "valid-refresh-token";
+    const SESSION_ID = "session-1";
+
+    /**
+     * 회전(rotation) 정책 — Redis 세션 키의 current 와 일치해야 재발급된다.
+     * Redis 에 없으면(로그아웃/TTL 만료) 재발급을 거부하고 재로그인을 요구한다.
+     */
+    const arrangeStoredSession = (current = refreshToken) => {
+      mockRedisService.get.mockResolvedValue({
+        current,
+        previous: undefined,
+        rotatedAt: Date.now(),
+      });
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        id: mockUser.id,
+        status: "ACTIVE",
+        tokenVersion: 1,
+      });
+    };
 
     it("should refresh token successfully with valid refresh token", async () => {
       // Arrange
+      arrangeStoredSession();
       mockJwtService.verify.mockReturnValue({
         sub: mockUser.id,
         userType: mockUser.userType,
+        tokenVersion: 1,
+        jti: SESSION_ID,
       });
       mockJwtService.sign
         .mockReturnValueOnce("new-access-token")
@@ -341,9 +483,29 @@ describe("AuthService", () => {
       // Assert
       expect(result.accessToken).toBe("new-access-token");
       expect(result.refreshToken).toBe("new-refresh-token");
+      // refresh 토큰은 access 와 분리된 시크릿으로 검증한다
       expect(mockJwtService.verify).toHaveBeenCalledWith(refreshToken, {
-        secret: process.env.JWT_SECRET,
+        secret: "test-refresh-secret",
       });
+      // 회전된 새 토큰이 Redis 에 저장된다
+      expect(mockRedisService.set).toHaveBeenCalled();
+    });
+
+    it("should throw UnauthorizedException if session is missing in Redis", async () => {
+      // Arrange — 로그아웃/TTL 만료로 세션이 사라진 상태
+      mockRedisService.get.mockResolvedValue(null);
+      mockJwtService.verify.mockReturnValue({
+        sub: mockUser.id,
+        userType: mockUser.userType,
+        tokenVersion: 1,
+        jti: SESSION_ID,
+      });
+
+      // Act & Assert
+      await expect(service.refreshToken(refreshToken)).rejects.toThrow(
+        "세션이 만료되었습니다. 다시 로그인해주세요.",
+      );
+      expect(mockJwtService.sign).not.toHaveBeenCalled();
     });
 
     it("should throw UnauthorizedException if refresh token is invalid", async () => {
@@ -378,7 +540,10 @@ describe("AuthService", () => {
       const decodedPayload = {
         sub: "user-123",
         userType: UserType.COACH,
+        tokenVersion: 1,
+        jti: SESSION_ID,
       };
+      arrangeStoredSession();
       mockJwtService.verify.mockReturnValue(decodedPayload);
       mockJwtService.sign
         .mockReturnValueOnce("new-access-token")
@@ -404,6 +569,8 @@ describe("AuthService", () => {
         id: mockUser.id,
         email: mockUser.email,
         userType: mockUser.userType,
+        status: "ACTIVE",
+        tokenVersion: 1,
       });
 
       // Act
@@ -413,14 +580,33 @@ describe("AuthService", () => {
       expect(result.id).toBe(mockUser.id);
       expect(result.email).toBe(mockUser.email);
       expect(result.userType).toBe(mockUser.userType);
+      // status/tokenVersion 은 JWT 전략의 탈퇴 차단·세션 무효화 검증에 쓰인다
       expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
         where: { id: mockUser.id },
         select: {
           id: true,
           email: true,
           userType: true,
+          status: true,
+          tokenVersion: true,
         },
       });
+    });
+
+    it("should throw UnauthorizedException if user is withdrawn", async () => {
+      // Arrange
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        id: mockUser.id,
+        email: mockUser.email,
+        userType: mockUser.userType,
+        status: "WITHDRAWN",
+        tokenVersion: 1,
+      });
+
+      // Act & Assert
+      await expect(service.validateUser(mockUser.id)).rejects.toThrow(
+        "탈퇴 처리된 계정입니다. 새로운 계정으로 가입해주세요.",
+      );
     });
 
     it("should throw UnauthorizedException if user not found", async () => {
@@ -442,6 +628,8 @@ describe("AuthService", () => {
         id: mockUser.id,
         email: mockUser.email,
         userType: mockUser.userType,
+        status: "ACTIVE",
+        tokenVersion: 1,
       });
 
       // Act
@@ -455,6 +643,7 @@ describe("AuthService", () => {
   describe("Token generation", () => {
     it("should generate tokens with correct payload structure", async () => {
       // Arrange
+      arrangeIdentityVerified();
       mockPrismaService.user.findFirst.mockResolvedValue(null);
       mockJwtService.sign.mockReturnValue("mock-token");
       mockPrismaService.user.create.mockResolvedValue({
@@ -470,6 +659,7 @@ describe("AuthService", () => {
         phone: "01012345678",
         password: "TestPassword123",
         userType: UserType.PARENT,
+        identityVerificationId: IDENTITY_REQUEST_ID,
       };
 
       // Act
@@ -485,6 +675,7 @@ describe("AuthService", () => {
 
     it("should use correct expiration times", async () => {
       // Arrange
+      arrangeIdentityVerified();
       mockPrismaService.user.findFirst.mockResolvedValue(null);
       mockJwtService.sign.mockReturnValue("mock-token");
       mockPrismaService.user.create.mockResolvedValue({
@@ -500,6 +691,7 @@ describe("AuthService", () => {
         phone: "01012345678",
         password: "TestPassword123",
         userType: UserType.PARENT,
+        identityVerificationId: IDENTITY_REQUEST_ID,
       };
 
       // Act
@@ -521,6 +713,7 @@ describe("AuthService", () => {
     it("should not log passwords", async () => {
       // Arrange
       const consoleSpy = jest.spyOn(console, "log").mockImplementation();
+      arrangeIdentityVerified();
       mockPrismaService.user.findFirst.mockResolvedValue(null);
       mockJwtService.sign.mockReturnValue("mock-token");
       mockPrismaService.user.create.mockResolvedValue({
@@ -533,6 +726,7 @@ describe("AuthService", () => {
         phone: "01012345678",
         password: "SecurePassword123",
         userType: UserType.PARENT,
+        identityVerificationId: IDENTITY_REQUEST_ID,
       };
 
       // Act
@@ -547,6 +741,7 @@ describe("AuthService", () => {
 
     it("should always hash passwords before storing", async () => {
       // Arrange
+      arrangeIdentityVerified();
       mockPrismaService.user.findFirst.mockResolvedValue(null);
       mockJwtService.sign.mockReturnValue("mock-token");
       mockPrismaService.user.create.mockResolvedValue({
@@ -559,6 +754,7 @@ describe("AuthService", () => {
         phone: "01012345678",
         password: "PlainPassword123",
         userType: UserType.PARENT,
+        identityVerificationId: IDENTITY_REQUEST_ID,
       };
 
       // Act
@@ -576,6 +772,7 @@ describe("AuthService", () => {
 
     it("should generate bcrypt hash with proper format", async () => {
       // Arrange
+      arrangeIdentityVerified();
       mockPrismaService.user.findFirst.mockResolvedValue(null);
       mockJwtService.sign.mockReturnValue("mock-token");
       mockPrismaService.user.create.mockResolvedValue({
@@ -588,6 +785,7 @@ describe("AuthService", () => {
         phone: "01012345678",
         password: "SecurePassword123",
         userType: UserType.PARENT,
+        identityVerificationId: IDENTITY_REQUEST_ID,
       };
 
       // Act

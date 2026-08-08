@@ -122,6 +122,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
   });
 
   const hasAttemptedLoad = useRef(false);
+  // [2026-08-08 SLA] 마지막 로그인 성공 시각 — 로그인 직후 ensureFreshAccessToken
+  // 즉시 실행(브릿지 왕복)을 skip 하기 위한 판정 기준. 0 = 이 세션에서 로그인 안 함.
+  const lastLoginAtRef = useRef(0);
 
   /**
    * 사용자 정보 로드 (중복 호출 및 세션 캐싱 최적화)
@@ -375,8 +378,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
         // 실패는 무시 — 다음 사이클이나 401 시점에 재시도됨
       });
     }, intervalMs);
-    // 마운트 직후 1회 즉시 실행 — 캐시 복원 후 첫 네비게이션이 타이트할 때 보호
-    void ensureFreshAccessToken().catch(() => {});
+    // 마운트 직후 1회 즉시 실행 — 캐시 복원 후 첫 네비게이션이 타이트할 때 보호.
+    // [2026-08-08 SLA] 단, 방금 로그인해 토큰을 저장한 직후(60초 이내)는 skip —
+    //   토큰이 확실히 신선한데도 native 브릿지 getToken 왕복 1회를 소비해
+    //   로그인→메인 크리티컬 패스에 얹히던 낭비 제거. 콜드 부팅(캐시 복원) 경로는
+    //   lastLoginAtRef 가 0 이므로 종전대로 즉시 검사한다.
+    if (Date.now() - lastLoginAtRef.current > 60_000) {
+      void ensureFreshAccessToken().catch(() => {});
+    }
     return () => clearInterval(id);
   }, [state.isAuthenticated]);
 
@@ -394,6 +403,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (response.success && response.data && response.data.user) {
         // 로그인 성공 시 리다이렉트 플래그 리셋 (apiLifecycle 가드 루프)
         resetAuthGuardRedirectFlag();
+        // [2026-08-08 SLA] 로그인 직후 ensureFreshAccessToken 즉시 실행 skip 판정용
+        lastLoginAtRef.current = Date.now();
 
         const normalizedUser = normalizeAuthUser(response.data.user);
 
@@ -573,6 +584,26 @@ export function useAuth(): AuthContextValue {
   return context;
 }
 
+/**
+ * 미인증 bounce 대상 로그인 URL 에 현재 경로를 `?redirect=` 로 보존한다.
+ *
+ * [2026-07-29 SNS 딥링크 목적지 보존] 미들웨어(middleware.ts)는 보호 경로에서
+ * `/login?redirect={path}` 로 보내지만, 미들웨어 보호 목록에 없는 클라이언트
+ * 가드 전용 경로(예: /classes/[id] 딥링크)는 파라미터 없는 `/login` 으로
+ * bounce 되어 로그인 후 원래 목적지가 유실됐다(에뮬레이터 실측). 로그인
+ * 페이지는 이미 `safeRedirectTarget()` 검증과 함께 redirect 를 소비하므로
+ * 여기서 붙여만 주면 연속성이 복원된다.
+ */
+function withLoginRedirect(base: string): string {
+  if (typeof window === "undefined") return base;
+  if (!base.startsWith("/login")) return base;
+  if (base.includes("redirect=")) return base;
+  const path = window.location.pathname + window.location.search;
+  if (!path || path === "/" || path.startsWith("/login")) return base;
+  const sep = base.includes("?") ? "&" : "?";
+  return `${base}${sep}redirect=${encodeURIComponent(path)}`;
+}
+
 export function useRequireAuth(redirectTo: string = "/login") {
   const { isAuthenticated, isLoading } = useAuth();
   const { replace } = useNavigation();
@@ -581,7 +612,7 @@ export function useRequireAuth(redirectTo: string = "/login") {
   useEffect(() => {
     if (!isLoading && !isAuthenticated && !isRedirectingRef.current) {
       isRedirectingRef.current = true;
-      replace(redirectTo);
+      replace(withLoginRedirect(redirectTo));
       setTimeout(() => {
         isRedirectingRef.current = false;
       }, 2000);
@@ -611,7 +642,8 @@ export function useRequireRole(allowedRoles: Array<UserType>) {
     if (!isAuthenticated) {
       if (!isRedirectingRef.current) {
         isRedirectingRef.current = true;
-        replace("/login");
+        // 로그인 후 원래 목적지 복귀 — withLoginRedirect 주석 참고 (SNS 딥링크 보존)
+        replace(withLoginRedirect("/login"));
         setTimeout(() => {
           isRedirectingRef.current = false;
         }, 2000);

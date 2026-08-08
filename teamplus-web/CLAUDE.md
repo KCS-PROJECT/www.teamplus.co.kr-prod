@@ -55,10 +55,10 @@ Flutter WebView: Web → NativeBridge → Flutter HTTP → Backend
 
 ### Provider 계층 구조 (ClientProviders.tsx)
 
-> **풀스크린 로더 타이밍·5중 안전망 정책**: [`docs/Design/LOADING_TIMING_POLICY.md`](../docs/Design/LOADING_TIMING_POLICY.md) (**v16, 2026-05-16**) — `MIN_SHOW_DURATION 300ms` · `SAFETY_HOLD 400ms` · `MAX_WAIT 5000ms` · **`usePageReady` 232/232 (100%) 커버리지 의무** · 이중 로더 금지 · §11 사용자 직접 지시 SoT (데이터+셋팅 완료 전 hide 절대 금지).
+> **풀스크린 로더 타이밍·7중 안전망 정책**: [`docs/Design/LOADING_TIMING_POLICY.md`](../docs/Design/LOADING_TIMING_POLICY.md) (**v21, 2026-08-08**) — `MIN_SHOW_DURATION 300ms` · `SOFT_READY_FALLBACK 2500ms`(구 SAFETY_HOLD 재설계 복원) · `MAX_WAIT 5000ms` · `fade-out 150ms` · **`usePageReady` 232/232 (100%) 커버리지 의무** · 이중 로더 금지 · §11 사용자 직접 지시 SoT (데이터+셋팅 완료 전 hide 절대 금지).
 
 ```
-LoadingProvider          ← 페이지 전환 스피너 (v16 (2026-05-16) — usePageReady 100% 커버리지 의무 + SAFETY_HOLD 400ms · 데이터+셋팅 완료 전 hide 절대 금지 — LOADING_TIMING_POLICY.md §11 참조)
+LoadingProvider          ← 페이지 전환 스피너 (v21 (2026-08-08) — usePageReady 100% 커버리지 의무 + SOFT_READY_FALLBACK 2500ms · 데이터+셋팅 완료 전 hide 절대 금지 — LOADING_TIMING_POLICY.md §11 참조)
   ThemeProvider          ← light/dark/system 테마
     AppSettingsProvider  ← /api/v1/app/settings (5분 캐시)
       ModalProvider      ← 전역 모달
