@@ -283,8 +283,15 @@ export function middleware(request: NextRequest) {
   const gateUserAgent = request.headers.get("user-agent") ?? "";
   const isAppWebView =
     gateUserAgent.includes("teamplusApp") || gateUserAgent.includes("Flutter");
+  //   · [2026-08-08] /account-deletion 컴플라이언스 예외 — Google Play 데이터 보안
+  //     선언의 계정 삭제 URL 은 "전 세계 어디에서나 액세스 가능"해야 한다.
+  //     게이트 404 로 Play 사전 검사가 실패해 프로덕션 출시 제출이 차단됨(실측).
+  //     색인 차단은 next.config 전역 X-Robots-Tag(noindex) 로 유지되므로
+  //     접근만 허용되고 검색 노출 차단 방침은 그대로다.
+  const isComplianceExemptPath = matchesPath(pathname, "/account-deletion");
   if (
     process.env.APP_ONLY_GATE !== "off" &&
+    !isComplianceExemptPath &&
     isRealProductionHost(request.headers.get("host")) &&
     !isAppWebView &&
     !isInternalNetwork(request)
