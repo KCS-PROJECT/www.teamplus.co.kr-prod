@@ -509,12 +509,13 @@ function TournamentManageCard({ item }: { item: TournamentListItem }) {
     if (Number.isNaN(d.getTime())) return '';
     return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}`;
   };
+  // 날짜 라벨 — 기간 null(일정 미정) 대회는 '' 로 두고 렌더에서 미정 문구로 분기.
+  //   ("일정 " 접두어 + "일정 미정…" 문구가 겹쳐 "일정 일정 미정"으로 읽히는 중복 방지)
   const dateLabel = (() => {
     const s = fmtDate(item.startDate);
     const e = fmtDate(item.endDate);
     if (s && e) return s === e ? s : `${s} ~ ${e}`;
-    // 기간 null = 일정 미정 대회 — 일정 행을 숨기지 않고 미정 문구로 표시.
-    return s || e || MESSAGES.tournament.datesTbdLong;
+    return s || e || '';
   })();
   // [B1 2026-05-26] 대회도 동일 규칙 — 기간 지난 대회가 '예정'으로 표시되던 문제 보정.
   //   'cancelled'(취소)는 날짜로 도출 불가한 수동 상태이므로 우선 유지.
@@ -560,15 +561,27 @@ function TournamentManageCard({ item }: { item: TournamentListItem }) {
         </span>
       }
     >
-      {dateLabel && (
-        <ClassCardInfoRow icon="event_available" strong>
-          <span className="font-medium text-wtext-3 dark:text-rink-300">일정 </span>
-          {dateLabel}
-        </ClassCardInfoRow>
-      )}
-      {/* [2026-06-19] 참가 대상 출생연도 — 입력 없으면 '전체'(전체 대상)로 표기. */}
+      <ClassCardInfoRow icon="event_available" strong>
+        {dateLabel ? (
+          <>
+            <span className="font-medium text-wtext-3 dark:text-rink-300">일정 </span>
+            {dateLabel}
+          </>
+        ) : (
+          MESSAGES.tournament.datesTbdLong
+        )}
+      </ClassCardInfoRow>
+      {/* 참가 대상 — 명단(SoT) 우선: "선수 N명" / 전체 토글 대회는 '전체'.
+          명단 없는 레거시 대회만 파생 출생연도 요약으로 폴백. */}
       <ClassCardInfoRow icon="cake">
-        {`대상: ${formatTournamentTargetYears(item) ?? '전체'}`}
+        {`대상: ${
+          Array.isArray(item.selectedParticipantIds) &&
+          item.selectedParticipantIds.length > 0
+            ? MESSAGES.tournament.participantCountLabel(
+                item.selectedParticipantIds.length,
+              )
+            : (formatTournamentTargetYears(item) ?? '전체')
+        }`}
       </ClassCardInfoRow>
     </ClassListCard>
   );

@@ -481,3 +481,108 @@ describe("TournamentsService — 기간 쌍(both-or-neither) 계약", () => {
     expect(prisma.tournament.update).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * 참가 대상 전체(빈 명단) 정책 — 2026-08-07 확장 회귀 스펙.
+ *  · 빈 명단 = 전체(팀 선수 전원) 허용. 단 teamId 없는 대회는 노출 폴백(팀 기준)이
+ *    동작하지 않아 유령 대회가 되므로 생성/수정 모두 400 차단.
+ */
+describe("TournamentsService — 참가 대상 전체(빈 명단) 계약", () => {
+  const admin: JwtUserPayload = {
+    id: "admin-1",
+    email: "admin@t.dev",
+    userType: "ADMIN",
+  };
+  const coach: JwtUserPayload = {
+    id: "coach-1",
+    email: "coach-1@t.dev",
+    userType: "COACH",
+  };
+
+  const makeAccess = () => ({
+    assertManageableTournamentRecord: jest.fn().mockResolvedValue(undefined),
+    assertTeamManager: jest.fn().mockResolvedValue(undefined),
+  });
+
+  it("create — teamId 없음 + 빈 명단 → 400 (유령 대회 차단)", async () => {
+    const prisma = {
+      team: { findFirst: jest.fn().mockResolvedValue(null) },
+      teamMember: { findFirst: jest.fn().mockResolvedValue(null) },
+      tournament: { create: jest.fn() },
+    };
+    const service = new TournamentsService(
+      prisma as any,
+      {} as any,
+      makeAccess() as any,
+    );
+    await expect(
+      service.createTournament({ name: "전역 대회" } as any, admin),
+    ).rejects.toThrow("주최 팀이 없는 대회는");
+    expect(prisma.tournament.create).not.toHaveBeenCalled();
+  });
+
+  it("create — teamId 있음 + 빈 명단 → 전체 허용 대회 생성(파생 자격 클리어)", async () => {
+    const prisma = {
+      team: { findUnique: jest.fn().mockResolvedValue({ id: "team-1" }) },
+      tournament: {
+        create: jest
+          .fn()
+          .mockResolvedValue({ id: "trn-all", name: "전체 대회" }),
+      },
+    };
+    const notifications = { notifyTeamParents: jest.fn() };
+    const service = new TournamentsService(
+      prisma as any,
+      notifications as any,
+      makeAccess() as any,
+    );
+    await service.createTournament(
+      { name: "전체 대회", teamId: "team-1" } as any,
+      coach,
+    );
+    expect(prisma.tournament.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          selectedParticipantIds: [],
+          eligibleBirthYears: [],
+        }),
+      }),
+    );
+  });
+
+  it("update — teamId null 대회에서 명단을 비우면 400", async () => {
+    const prisma = {
+      tournament: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "trn-1",
+          name: "전역 대회",
+          teamId: null,
+          startDate: null,
+          endDate: null,
+          status: "scheduled",
+          ageGroup: null,
+          eligibleBirthYearFrom: null,
+          eligibleBirthYearTo: null,
+          eligibleBirthYears: [],
+          selectedParticipantIds: ["u-1"],
+          eligibleGroupIds: [],
+          billingMode: "PREPAID",
+        }),
+        update: jest.fn(),
+      },
+    };
+    const service = new TournamentsService(
+      prisma as any,
+      {} as any,
+      makeAccess() as any,
+    );
+    await expect(
+      service.updateTournament(
+        "trn-1",
+        { selectedParticipantIds: [] } as any,
+        admin,
+      ),
+    ).rejects.toThrow("주최 팀이 없는 대회는");
+    expect(prisma.tournament.update).not.toHaveBeenCalled();
+  });
+});

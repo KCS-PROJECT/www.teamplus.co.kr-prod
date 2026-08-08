@@ -21,10 +21,17 @@
  *
  * ⚠️ 2026-06-15 수정: Play Console 딥링크 페이지가 `teamplusweb.icetimes.co.kr` 을
  *    "도메인 검사 실패(문제 1개)"로 표시하던 원인 = 서빙 파일에 Play 앱 서명 키 지문
- *    (90:DF:23:...)이 누락되어 있었음. Google 콘솔이 `kr.co.teamplus` 에 대해 생성한
- *    권장 assetlinks.json 의 두 지문을 DEFAULT_FINGERPRINTS 로 하드코딩한다.
+ *    누락. 권장 assetlinks.json 의 두 지문을 DEFAULT_FINGERPRINTS 로 하드코딩한다.
  *    (지문은 앱 바이너리·Play Console 에 공개된 식별자이므로 하드코딩이 안전 —
  *     AASA 라우트가 Team ID 를 하드코딩하는 것과 동일한 근거.)
+ *
+ * ⚠️ 2026-08-08 수정: 종전 하드코딩 지문 2종(4C:73:A9:… / 90:DF:23:…)이 현재
+ *    Play Console 실측값과 불일치하여 도메인 검증이 계속 실패
+ *    ("웹 도메인이 앱과 연결되어 있지 않음" 경고)하던 것을 교정.
+ *    현행 지문 출처(둘 다 실측):
+ *      - Play 앱 서명 키: Play Console > 앱 서명(keymanagement) 페이지 SHA-256
+ *      - 업로드 키: `keytool -list -v -keystore android/keystore/teamplus-release.jks`
+ *        (Play Console 업로드 키 인증서 SHA-256 과 일치 확인)
  */
 
 import { NextResponse } from "next/server";
@@ -34,15 +41,16 @@ export const dynamic = "force-dynamic";
 const ANDROID_PACKAGE = "kr.co.teamplus";
 
 /**
- * `kr.co.teamplus` 의 기본 SHA-256 인증서 지문 2종 (Play Console 권장값).
- *   - 4C:73:A9:... → 업로드 키 인증서 (개발자 업로드/직접 설치 빌드)
- *   - 90:DF:23:... → Play 앱 서명 키 인증서 (Google 이 배포본을 서명 —
+ * `kr.co.teamplus` 의 기본 SHA-256 인증서 지문 2종 (2026-08-08 Play Console 실측).
+ *   - 3C:C0:59:... → Play 앱 서명 키 인증서 (Google 이 배포본을 서명 —
  *                    실제 스토어 설치 앱의 App Links 검증에 필수)
- * 둘 다 있어야 직접 설치(업로드 키)·스토어 배포(Play 서명 키) 모두 검증 통과.
+ *   - 92:A0:A1:... → 업로드 키 인증서 (개발자 업로드/직접 설치 빌드,
+ *                    teamplus-release.jks alias teamplus-release)
+ * 둘 다 있어야 스토어 배포(Play 서명 키)·직접 설치(업로드 키) 모두 검증 통과.
  */
 const DEFAULT_FINGERPRINTS = [
-  "4C:73:A9:F3:CE:C2:CD:F2:69:DF:3F:3E:16:0C:BE:40:E1:75:C5:52:DF:0D:AD:52:3C:13:1D:4C:77:25:0A:4F",
-  "90:DF:23:01:FC:05:D7:2A:52:6E:78:68:E6:DA:2B:2D:63:F8:07:9E:92:2F:3A:61:D0:4D:18:FB:5A:26:6E:B9",
+  "3C:C0:59:32:D5:EA:37:D5:55:FA:95:26:8E:2C:23:AD:6C:6C:58:5A:71:9A:8C:8F:33:02:35:D3:31:B8:6A:2E",
+  "92:A0:A1:78:67:13:EC:BC:2A:DB:9B:F1:FF:5E:A3:27:5C:75:5D:92:AC:BB:8A:3D:C4:CA:4C:47:A8:EF:DC:FF",
 ];
 
 interface AssetLinkStatement {

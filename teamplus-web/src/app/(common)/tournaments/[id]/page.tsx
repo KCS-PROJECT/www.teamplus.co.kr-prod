@@ -612,11 +612,6 @@ export default function CommonTournamentDetailPage() {
           inlineLimit={INLINE_NAME_LIMIT}
           fallbackLabel={ageGroupLabel}
           onShowAll={() => setPlayersSheetOpen(true)}
-          onViewList={() =>
-            document
-              .getElementById("participants")
-              ?.scrollIntoView({ behavior: "smooth", block: "start" })
-          }
         />
         <InfoRow label="장소" value={location} />
         <InfoRow label="참가비" value={entryFee} />
@@ -1220,7 +1215,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 /**
  * [2026-06-16] 참가 대상 행 — 역할 분기 표기(개인정보 고려).
  *  · 감독/코치(isManager): 선수 이름 최대 inlineLimit 명 인라인.
- *      초과 시 "외 N명" 탭 → 전체 명단 BottomSheet. 옆에 "명단 보기"(선수정보 페이지) 링크.
+ *      초과 시 "외 N명" 탭 → 전체 명단 BottomSheet.
  *      이름 미해석(teamId 없음 등) 시 "선수 N명"만.
  *  · 학부모/학생(비-isManager): 본인 자녀 중 대상 자녀 이름만(타 자녀 노출 금지).
  *      대상 자녀 없으면 안전 폴백(연령 라벨).
@@ -1233,7 +1228,6 @@ function ParticipantTargetRow({
   inlineLimit,
   fallbackLabel,
   onShowAll,
-  onViewList,
 }: {
   isManager: boolean;
   names: string[];
@@ -1241,7 +1235,6 @@ function ParticipantTargetRow({
   inlineLimit: number;
   fallbackLabel: string;
   onShowAll: () => void;
-  onViewList: () => void;
 }) {
   const labelCell = (
     <p className="text-w-small font-medium text-it-ink-500 dark:text-rink-300">
@@ -1315,14 +1308,9 @@ function ParticipantTargetRow({
             </>
           )}
         </p>
-        <button
-          type="button"
-          onClick={onViewList}
-          className="inline-flex w-fit items-center gap-0.5 text-w-caption font-bold text-it-blue-500 hover:text-it-blue-600"
-        >
-          <Icon name="groups" className="text-[16px]" aria-hidden="true" />
-          {MESSAGES.tournament.participantViewList}
-        </button>
+        {/* "명단 보기"(같은 페이지 #participants 스크롤 단축) 버튼 제거 —
+            참가선수목록 섹션이 하단에 상시 노출되고, 선수 전체 명단은 "외 N명" 시트가 담당.
+            알림 딥링크의 #participants 해시 앵커 스크롤은 별도 로직으로 유지. */}
       </div>
     </div>
   );

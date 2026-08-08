@@ -954,7 +954,32 @@ export function ClassCalendarSection({
             - 이후 월 변경 시 그리드 mount 유지 + transition-opacity 로 부드러운 갱신
               · isLoading=true 시 opacity-60 (stale 데이터 유지, 로딩 중임을 시각 신호로 제공)
               · isLoading=false 시 opacity-100 (정상) */}
-        {!hasLoadedOnceRef.current && isLoading ? null : (
+        {!hasLoadedOnceRef.current && isLoading ? (
+          // [2026-08-08 SLA] 게이트 완화 — 첫 fetch 동안 null 대신 실측 동일 높이(42셀
+          //   × min-h-[48px]) 스켈레톤을 렌더한다. 페이지 풀스크린 로더가 캘린더
+          //   fetch(teams→classes→schedules 워터폴)를 기다리지 않아도 로더 해제 후
+          //   레이아웃 점프가 없다. 데이터 도착 시 그리드로 교체.
+          <div role="status" aria-busy="true" data-testid="calendar-skeleton">
+            <span className="sr-only">{MESSAGES.common.loading}</span>
+            <div className="grid grid-cols-7 gap-y-0.5" aria-hidden="true">
+              {Array.from({ length: 42 }, (_, i) => (
+                <div
+                  key={`sk-${i}`}
+                  className="flex min-h-[48px] items-center justify-center py-1.5"
+                >
+                  <span
+                    className={cn(
+                      'h-7 w-7 animate-pulse rounded-lg motion-reduce:animate-none',
+                      iceTheme
+                        ? 'bg-it-fill dark:bg-it-blue-900'
+                        : 'bg-wline-2 dark:bg-rink-700',
+                    )}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
           <div
             className={cn(
               'grid grid-cols-7 gap-y-0.5 transition-opacity duration-200 motion-reduce:transition-none transform-gpu',

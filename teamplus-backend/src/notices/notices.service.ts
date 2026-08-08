@@ -11,6 +11,7 @@ import { RedisService } from "@/redis/redis.service";
 import { NotificationsService } from "@/notifications/notifications.service";
 import {
   CreateNoticeDto,
+  NoticeType,
   VALID_DISPLAY_LOCATIONS,
 } from "./dto/create-notice.dto";
 import { UpdateNoticeDto } from "./dto/update-notice.dto";
@@ -547,6 +548,26 @@ export class NoticesService {
       throw new ForbiddenException("공지를 작성할 권한이 없습니다.");
     }
 
+    // 점검 공지(maintenance)는 **시스템 역할 + 전역(전체) 공지 전용**.
+    //   앱 진입 차단 화면(`GET /app-management/maintenance-notice`, @Public)을 발동시키는
+    //   특수 타입이라 팀 관리자가 만들 수 있으면 팀 공지 하나로 전체 앱이 차단된다.
+    //   웹 팀 공지 작성 화면에는 type 입력 자체가 없지만, API 직접 호출은 막지 못하므로
+    //   서버에서 강제한다 (UI 부재 ≠ 차단).
+    //   팀 대상(resolvedTeamId != null) 점검 공지는 판정 쿼리의 targetTeamId:null 필터에
+    //   걸리지 않는 죽은 데이터가 되므로 시스템 역할에게도 금지한다.
+    if (createDto.type === NoticeType.MAINTENANCE) {
+      if (!isSystemRole) {
+        throw new ForbiddenException(
+          "점검 공지는 시스템 관리자만 작성할 수 있습니다.",
+        );
+      }
+      if (resolvedTeamId !== null) {
+        throw new ForbiddenException(
+          "점검 공지는 전체 공지로만 작성할 수 있습니다.",
+        );
+      }
+    }
+
     const validatedLocations = sanitizeLocations(createDto.displayLocations);
     const notice = await this.prisma.systemNotice.create({
       data: {
@@ -642,6 +663,34 @@ export class NoticesService {
     if (updateDto.targetTeamId !== undefined) {
       const nextTeamId = normalizeTargetTeamId(updateDto.targetTeamId);
       await this.assertCanManageNotice(userId, nextTeamId);
+    }
+
+    // 점검 공지 가드 — create 와 동일 계약 (시스템 역할 + 전역 전용).
+    //   UpdateNoticeDto 가 PartialType(CreateNoticeDto) 로 `type` 을 상속하므로 전환 경로가 열려 있고,
+    //   [R1-01] `type` 을 **생략**한 채 기존 maintenance 공지를 팀 대상으로 이동하는 경로도 있다.
+    //   → 요청 키가 아니라 **수정 결과 상태**(type·대상 팀 모두 "키 있으면 새 값, 없으면 기존 값")로
+    //     판정해야 두 경로를 한 가드로 막는다.
+    const effectiveType =
+      updateDto.type !== undefined ? updateDto.type : notice.targetType;
+    if (effectiveType === NoticeType.MAINTENANCE) {
+      const editor = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { userType: true },
+      });
+      if (!isNoticeSystemRole(editor?.userType)) {
+        throw new ForbiddenException(
+          "점검 공지는 시스템 관리자만 설정할 수 있습니다.",
+        );
+      }
+      const effectiveTeamId =
+        updateDto.targetTeamId !== undefined
+          ? normalizeTargetTeamId(updateDto.targetTeamId)
+          : notice.targetTeamId;
+      if (effectiveTeamId !== null) {
+        throw new ForbiddenException(
+          "점검 공지는 전체 공지로만 설정할 수 있습니다.",
+        );
+      }
     }
 
     const updateData: Prisma.SystemNoticeUpdateInput = {};

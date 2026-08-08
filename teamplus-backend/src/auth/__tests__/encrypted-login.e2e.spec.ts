@@ -10,13 +10,44 @@
 
 import { Test, TestingModule } from "@nestjs/testing";
 import { INestApplication } from "@nestjs/common";
-import * as request from "supertest";
+// supertest 6.x 타입은 default export 호출형 — namespace import 는 호출 불가(TS2349)
+import request from "supertest";
 import { AuthController } from "../auth.controller";
 import { AuthService } from "../auth.service";
+import { CryptoService } from "../services/crypto.service";
+import { TwoFactorService } from "../two-factor.service";
+import { WithdrawCleanupService } from "../withdraw-cleanup.service";
+import { EmailVerificationService } from "../email-verification.service";
+import { LoggerService } from "@/logger/logger.service";
+import { createCipheriv, randomBytes } from "crypto";
 import {
-  encryptCredentials,
   decryptCredentials,
+  EncryptedPayload,
 } from "../../common/utils/crypto.util";
+
+/**
+ * [2026-08-08 스펙 정합화] 서버 util 의 `encryptCredentials` 는 보안 정비 과정에서
+ * 제거됐다(서버는 복호화 전용 — 암호화는 클라이언트 책임). 이 스펙은 클라이언트
+ * (Web `shared/crypto/aes-gcm.ts` · Flutter EncryptionService)의 AES-256-GCM
+ * 암호화를 node:crypto 로 재현하는 테스트 전용 헬퍼로 대체한다 — 서버 복호화와의
+ * E2E 계약(페이로드 포맷·탬퍼링 감지)은 동일하게 검증된다.
+ */
+async function encryptCredentials(
+  plaintext: string,
+): Promise<EncryptedPayload> {
+  const key = Buffer.from(process.env.CRYPTO_SECRET_KEY ?? "", "hex");
+  const iv = randomBytes(16);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const encryptedData = Buffer.concat([
+    cipher.update(plaintext, "utf8"),
+    cipher.final(),
+  ]);
+  return {
+    encryptedData: encryptedData.toString("base64"),
+    iv: iv.toString("base64"),
+    authTag: cipher.getAuthTag().toString("base64"),
+  };
+}
 
 describe("E2E Encryption - Login Flow", () => {
   let app: INestApplication;
@@ -30,6 +61,10 @@ describe("E2E Encryption - Login Flow", () => {
     process.env.CRYPTO_SECRET_KEY =
       "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
+    // [2026-08-08 스펙 정합화] AuthController 생성자가 6개 의존성으로 확장된
+    // 현행 계약에 맞춰 provider mock 을 보강. 로그인 경로가 실제 사용하는 것은
+    // CryptoService.decryptCredentialsWithAudit(→ 실제 decryptCredentials 위임,
+    // E2E 복호화·탬퍼링 검증 유지) + LoggerService 뿐이며 나머지는 미호출 스텁.
     const moduleFixture: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [
@@ -47,6 +82,30 @@ describe("E2E Encryption - Login Flow", () => {
             }),
           },
         },
+        {
+          provide: CryptoService,
+          useValue: {
+            decryptCredentialsWithAudit: jest
+              .fn()
+              .mockImplementation((payload: EncryptedPayload) =>
+                Promise.resolve(decryptCredentials(payload)),
+              ),
+          },
+        },
+        {
+          provide: LoggerService,
+          useValue: {
+            log: jest.fn(),
+            error: jest.fn(),
+            warn: jest.fn(),
+            debug: jest.fn(),
+            logAuthEvent: jest.fn(),
+            audit: jest.fn(),
+          },
+        },
+        { provide: TwoFactorService, useValue: {} },
+        { provide: WithdrawCleanupService, useValue: {} },
+        { provide: EmailVerificationService, useValue: {} },
       ],
     }).compile();
 
@@ -229,10 +288,14 @@ describe("E2E Encryption - Login Flow", () => {
       expect(response.body).toHaveProperty("refreshToken");
 
       // 5. authService.login이 올바른 자격증명으로 호출되었는지 확인
-      expect(authService.login).toHaveBeenCalledWith({
-        email: testEmail,
-        password: testPassword,
-      });
+      //    [2026-08-08] 현행 계약: (dto, context) 2-인자 — context 에 IP/UA/chldiv/force 전달
+      expect(authService.login).toHaveBeenCalledWith(
+        {
+          email: testEmail,
+          password: testPassword,
+        },
+        expect.objectContaining({ chldiv: "APP", force: false }),
+      );
     });
 
     it("Flutter 앱: 암호화 → API 요청 → 로그인 성공", async () => {
@@ -267,7 +330,10 @@ describe("E2E Encryption - Login Flow", () => {
         .expect(401);
 
       // Generic 에러 메시지만 반환 (복호화 실패 상세 정보 노출 안 함)
-      expect(response.body.message).toBe("Invalid credentials");
+      // [2026-08-08] 현행 한국어 표준 메시지 — 계정 존재/복호화 실패 힌트 미노출 계약은 동일
+      expect(response.body.message).toBe(
+        "아이디 또는 비밀번호가 올바르지 않습니다.",
+      );
     });
   });
 

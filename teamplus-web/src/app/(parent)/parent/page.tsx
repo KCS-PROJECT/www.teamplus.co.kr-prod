@@ -129,36 +129,32 @@ export default function ParentDashboardPage() {
   const [childClassMap, setChildClassMap] = useState<Map<string, Set<string>>>(
     new Map(),
   );
-  const [calendarReady, setCalendarReady] = useState(false);
-  const [summaryReady, setSummaryReady] = useState(false);
-
   // v16.3 (2026-05-16): useStableLayout — main wrapper 의 ResizeObserver 기반 layout 안정화 감지.
   // sub-component (BannerCarousel, ChildrenSwipeCards, ClassCalendarSection, RecentNoticesSection
   // 등) mount/paint 완료 보장. SoT: SPEC_LOADING_STABLE_PAINT.md §2.1.
   const mainRef = useRef<HTMLElement>(null);
-  // [성능 2026-05-28 P0-A] 400→220ms. [2026-05-30 LD-04] 220→150ms. 레이아웃 디바운스
-  //   윈도우 단축 (데이터·이미지·폰트는 별도 신호가 보장). child/teen 은 WCAG AAA 로 220+ 유지.
-  const isLayoutStable = useStableLayout(mainRef, { stableMs: 150 });
+  // [성능 2026-05-28 P0-A] 400→220ms. [2026-05-30 LD-04] 220→150ms.
+  // [2026-08-08 SLA] 150→100ms — 로그인→메인 2초 SLA 다이어트(사용자 승인). 데이터·
+  //   이미지·폰트는 별도 신호가 보장하므로 debounce 창만 축소. child/teen 은 220+ 유지.
+  const isLayoutStable = useStableLayout(mainRef, { stableMs: 100 });
 
-  // 풀스크린 로더 fast-path — 7중 안전망 합성:
+  // 풀스크린 로더 fast-path — 6중 안전망 합성:
   //   ① 자녀 목록 (useChildren) ② 자녀 소속 팀 (listParentVisibleTeams)
-  //   ③ ClassCalendarSection(월 달력) 첫 fetch + 첫 paint 완료 (onReady=>calendarReady)
-  //   ④ TeamClassesSummary 첫 fetch 완료 (onReady=>summaryReady — 빈/에러 응답에도 발화)
-  //   ⑤ main wrapper ResizeObserver stable (useStableLayout — 모든 sub-component paint 완료 보장)
-  //   ⑥ Banner/Notice 이미지 모두 decode 완료 (useImagesReady — SPEC §3.1 v18)
-  //   ⑦ Pretendard 폰트 swap 완료 (useFontsReady — 텍스트 깜빡임 방지)
-  // 일곱 신호 모두 충족 시점에 PageTransitionLoader OFF. 빈 카드/이미지 깜빡임/폰트 swap 차단.
-  // SoT: docs/Design/LOADING_TIMING_POLICY.md §11 (사용자 직접 지시 — 데이터+셋팅 완료 전 hide 금지)
+  //   ③ main wrapper ResizeObserver stable (useStableLayout — sub-component paint 보장)
+  //   ④ Banner/Notice 이미지 모두 decode 완료 (useImagesReady — SPEC §3.1 v18)
+  //   ⑤ Pretendard 폰트 swap 완료 (useFontsReady — 텍스트 깜빡임 방지)
+  //   ⑥ 결제 요청 배너 데이터(pendingBillings) — 최상단 배너 늦은 팝인 점프 방지
+  // [2026-08-08 SLA] 게이트 완화(사용자 승인): ClassCalendarSection·TeamClassesSummary 는
+  //   게이트에서 제외 — teams→classes→schedules 3단 직렬 워터폴이 로더를 붙잡는 지배
+  //   병목이었다. 두 섹션은 자체 스켈레톤(동일 높이)을 렌더하므로 §11(데이터+셋팅 완료
+  //   전 hide 금지)의 보호 목적인 "빈 화면/레이아웃 점프 노출"이 발생하지 않는다.
+  // SoT: docs/Design/LOADING_TIMING_POLICY.md §11
   const imagesReady = useImagesReady([allChildren, teams, isLayoutStable]);
   const fontsReady = useFontsReady();
-  // ⑧ 결제 요청 배너 데이터(pendingBillings) — 최상단 배너가 로더 해제 후 늦게 붙으면
-  //    레이아웃 점프가 생기므로 ready 게이트에 포함 (LOADING_TIMING_POLICY §11).
   usePageReady(
     !isChildrenLoading &&
       teams !== null &&
       pendingBillings !== null &&
-      calendarReady &&
-      summaryReady &&
       isLayoutStable &&
       imagesReady &&
       fontsReady,
@@ -599,7 +595,7 @@ export default function ParentDashboardPage() {
               팀 전체 카탈로그라 자녀 칩 필터와 무관 → 칩보다 위에 배치. */}
         {/* [2026-08-04 사용자 지시] 홈 수업 목록 = 내가 등록했거나 신청/요청한 수업·대회만.
             팀 카탈로그 전체 탐색은 '전체보기'(→ /classes) 와 빈 상태 CTA 가 담당한다. */}
-        <TeamClassesSummary selectedChildId={selectedChildId} classLimit={7} tournamentLimit={3} onReady={setSummaryReady} myOnly iceTheme />
+        <TeamClassesSummary selectedChildId={selectedChildId} classLimit={7} tournamentLimit={3} myOnly iceTheme />
 
         {/* (자녀 전환은 상단 자녀 스트립 [선택] 버튼 → ChildPickerSheet 로 이동 — 2026-07-06) */}
 
@@ -614,7 +610,6 @@ export default function ParentDashboardPage() {
               enabledChildId={selectedChildId}
               onSelectionChange={setSelection}
               selectionMode="week-default"
-              onReady={setCalendarReady}
               iceTheme
             />
           </div>

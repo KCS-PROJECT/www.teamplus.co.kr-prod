@@ -6,7 +6,7 @@
  * 레퍼런스: 사용자 제공 HTML "대회 및 경기 목록"
  *
  * 역할 동작:
- *  - DIRECTOR/COACH/ADMIN : "새 대회 등록" CTA + 카드에 수정/삭제 버튼 노출
+ *  - DIRECTOR/COACH/ADMIN : "새 대회 등록" FAB. 수정/삭제는 상세 하단에서 수행(카드 버튼 없음)
  *  - PARENT/TEEN/CHILD/ACADEMY_DIRECTOR : 조회 전용 (신청/대진표/대기 등록)
  *
  * 구조:
@@ -17,6 +17,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useDebounce } from "@/hooks/useDebounce";
 import { usePageReady } from '@/hooks/usePageReady';
 import { useSessionAuth } from "@/hooks/useSessionAuth";
 import { useNavigation } from "@/components/ui/NavLink";
@@ -26,8 +27,6 @@ import { MobileContainer } from "@/components/layout/MobileContainer";
 //   뒤로가기 필요. PageAppBar 사용 + showBack/onBack 으로 표준 뒤로가기 제공.
 import { PageAppBar } from "@/components/layout/PageAppBar";
 import { Icon } from "@/components/ui/Icon";
-import { useToast } from "@/components/ui/Toast";
-import { useModal } from "@/components/ui/Modal";
 import { useNativeUI } from "@/hooks/useNativeUI";
 import { MESSAGES } from "@/lib/messages";
 import { TournamentListCard } from "@/components/tournament";
@@ -35,7 +34,6 @@ import { cn } from "@/lib/utils";
 import { useRefreshSubscription, REFRESH_KEYS } from "@/lib/refresh-bus";
 import {
   canManageMatch,
-  deleteTournament,
   listTournaments,
   mapTournamentUiStatus,
   type TournamentListItem,
@@ -48,8 +46,6 @@ export default function CommonTournamentsPage() {
   const { user } = useSessionAuth();
   const { navigate } = useNavigation();
   const router = useRouter();
-  const { toast } = useToast();
-  const { modal } = useModal();
   const isManager = canManageMatch(user?.userType);
 
   const [tab, setTab] = useState<Tab>("active");
@@ -59,6 +55,9 @@ export default function CommonTournamentsPage() {
   // 풀스크린 로더 fast-path (v11) — fetch 완료 시점에 PageTransitionLoader OFF
   usePageReady(!isLoading);
   const [search, setSearch] = useState("");
+  // 필터는 디바운스 값으로 — 한글 조합 중간 글자가 매 키마다 필터를 돌려
+  //   빈 상태 화면이 번쩍이던 깜빡임 제거(입력창 자체는 즉시 반영).
+  const debouncedSearch = useDebounce(search, 250);
 
   useNativeUI({
     showStatusBar: true,
@@ -95,17 +94,15 @@ export default function CommonTournamentsPage() {
   // 두 탭을 동시에 DOM에 렌더하여 carousel 스타일로 슬라이드하므로 각각 미리 계산
   const { activeList, pastList } = useMemo(() => {
     const now = new Date();
-    const q = search.trim().toLowerCase();
+    const q = debouncedSearch.trim().toLowerCase();
     const active: TournamentListItem[] = [];
     const past: TournamentListItem[] = [];
 
     for (const t of tournaments) {
-      if (q) {
-        const matches =
-          t.name.toLowerCase().includes(q) ||
-          (t.club?.clubName?.toLowerCase().includes(q) ?? false) ||
-          (t.rink?.name?.toLowerCase().includes(q) ?? false);
-        if (!matches) continue;
+      // 검색 대상 = 대회명 단일 — 기존 팀(club.clubName)·장소(rink.name)는 레거시 필드라
+      //   실데이터와 어긋나 사실상 동작하지 않던 검색축이라 제거(placeholder 도 동기화).
+      if (q && !t.name.toLowerCase().includes(q)) {
+        continue;
       }
       const ui: TournamentUiStatus = mapTournamentUiStatus(
         t.status,
@@ -122,37 +119,10 @@ export default function CommonTournamentsPage() {
     }
 
     return { activeList: active, pastList: past };
-  }, [tournaments, search]);
+  }, [tournaments, debouncedSearch]);
 
-  const handleEdit = useCallback(
-    (id: string) => {
-      if (!isManager) return;
-      navigate(`/tournaments/create?edit=${id}`);
-    },
-    [isManager, navigate],
-  );
-
-  const handleDelete = useCallback(
-    async (id: string) => {
-      if (!isManager) return;
-      const confirmed = await modal.confirm({
-        title: "대회 삭제",
-        message: MESSAGES.tournament.deleteConfirm,
-        confirmText: "삭제하기",
-        cancelText: "취소",
-        variant: "danger",
-      });
-      if (!confirmed) return;
-      const res = await deleteTournament(id);
-      if (res.success) {
-        toast.success(MESSAGES.tournament.deleted);
-        setTournaments((prev) => prev.filter((t) => t.id !== id));
-      } else {
-        toast.error(res.error?.message ?? MESSAGES.tournament.deleteHasMatches);
-      }
-    },
-    [isManager, modal, toast],
-  );
+  // 수정/삭제는 목록 카드가 아닌 상세 하단("대회 수정/대회 삭제")에서 수행 —
+  //   행 사이에 낀 버튼의 소속 모호 문제 해소, 수업 관리 목록과 동일 동선.
 
   return (
     <MobileContainer hasBottomNav>
@@ -166,10 +136,10 @@ export default function CommonTournamentsPage() {
       />
 
       <main className="flex-1 overflow-y-auto bg-it-canvas pb-30 dark:bg-puck">
-        {/* 검색 + 필터 영역 — flat 흰 섹션(카드 박스 제거) */}
-        <div className="border-b border-it-line bg-it-surface dark:border-rink-700 dark:bg-it-blue-950">
+        {/* 검색 + 탭 영역 — flat 흰 섹션. 하단 마감선은 밑줄형 탭의 border-b 가 겸한다. */}
+        <div className="bg-it-surface dark:bg-it-blue-950">
           {/* 검색창 */}
-          <div className="px-5 pt-3">
+          <div className="px-5 pt-3 pb-1">
             <label htmlFor="tournament-search" className="sr-only">
               대회 검색
             </label>
@@ -182,7 +152,7 @@ export default function CommonTournamentsPage() {
                 type="search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="대회명, 팀, 장소 검색"
+                placeholder="대회명 검색"
                 className="h-11 w-full appearance-none rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill pl-10 pr-10 text-w-body text-it-ink-800 placeholder:text-it-ink-400 transition-colors duration-150 ease-ios focus:border-it-blue-500 focus:bg-it-surface focus:outline-none dark:border-rink-700 dark:bg-rink-700 dark:text-white dark:placeholder:text-wtext-4 dark:focus:bg-rink-800 [&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none [&::-webkit-search-results-button]:appearance-none [&::-webkit-search-results-decoration]:appearance-none"
               />
               {search && (
@@ -198,56 +168,52 @@ export default function CommonTournamentsPage() {
             </div>
           </div>
 
-          {/* Segmented Control — sliding pill 인디케이터 */}
-          <div className="px-5 py-3">
-            <div
-              role="tablist"
-              aria-label="대회 필터"
-              className="relative flex h-11 w-full items-center rounded-w-md bg-it-fill border-[1.5px] border-it-line-strong p-1 dark:border-rink-700 dark:bg-rink-700"
-            >
-              {/* 탭 간 부드럽게 슬라이드하는 인디케이터 */}
-              <span
-                aria-hidden="true"
-                className="pointer-events-none absolute bottom-1 top-1 left-1 w-[calc(50%-0.25rem)] rounded-w-sm bg-it-blue-500 transition-transform duration-300 ease-ios"
-                style={{
-                  transform:
-                    tab === "active" ? "translateX(0%)" : "translateX(100%)",
-                }}
-              />
-              <button
-                role="tab"
-                type="button"
-                aria-selected={tab === "active"}
-                onClick={() => setTab("active")}
-                className={cn(
-                  "relative z-10 flex h-full grow items-center justify-center rounded-w-sm px-2 text-w-small font-bold tracking-wide transition-colors duration-300 ease-ios motion-reduce:transition-none",
-                  tab === "active"
-                    ? "text-white"
-                    : "text-it-ink-600 dark:text-wtext-4",
-                )}
-              >
-                진행 중인 대회
-              </button>
-              <button
-                role="tab"
-                type="button"
-                aria-selected={tab === "past"}
-                onClick={() => setTab("past")}
-                className={cn(
-                  "relative z-10 flex h-full grow items-center justify-center rounded-w-sm px-2 text-w-small font-bold tracking-wide transition-colors duration-300 ease-ios motion-reduce:transition-none",
-                  tab === "past"
-                    ? "text-white"
-                    : "text-it-ink-600 dark:text-wtext-4",
-                )}
-              >
-                지난 대회
-              </button>
-            </div>
+          {/* 탭 — ICETIMES 표준 SegmentedTabs(밑줄형). director-payments 와 동일 패턴:
+              활성 = extrabold it-blue-600 + 하단 2.5px 파란 밑줄, 컨테이너 border-b 가 섹션 마감선. */}
+          <div
+            role="tablist"
+            aria-label="대회 필터"
+            className="flex border-b border-it-line dark:border-rink-700"
+          >
+            {(
+              [
+                ["active", "진행 중인 대회"],
+                ["past", "지난 대회"],
+              ] as const
+            ).map(([key, label]) => {
+              const isActive = tab === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => setTab(key)}
+                  className={cn(
+                    "relative flex-1 px-1 pb-[13px] pt-[14px] text-[15px] transition-colors duration-200 motion-reduce:transition-none",
+                    isActive
+                      ? "font-extrabold text-it-blue-600 dark:text-white"
+                      : "font-semibold text-it-ink-500 hover:text-it-ink-800 dark:text-wtext-4 dark:hover:text-white",
+                  )}
+                >
+                  {label}
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "absolute inset-x-0 -bottom-px h-[2.5px] rounded-sm",
+                      isActive ? "bg-it-blue-500" : "bg-transparent",
+                    )}
+                  />
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {/* Tournament List — 캐러셀 스타일: 두 탭이 가로로 이어져 함께 슬라이드 */}
-        <div className="overflow-hidden pt-4">
+        {/* Tournament List — 캐러셀 스타일: 두 탭이 가로로 이어져 함께 슬라이드.
+            ICETIMES — 탭 패널은 목록/빈 상태와 무관하게 항상 full-bleed 흰 섹션 1개로
+            고정(레이아웃 출렁임 방지), 검색 섹션과는 표준 8px 회색 갭(pt-2). */}
+        <div className="overflow-hidden pt-2">
           <div
             className="flex w-[200%] transition-transform duration-300 ease-ios"
             style={{
@@ -258,51 +224,52 @@ export default function CommonTournamentsPage() {
             <div
               role="tabpanel"
               aria-hidden={tab !== "active"}
-              className="flex w-1/2 shrink-0 flex-col gap-3 px-4"
+              className="w-1/2 shrink-0"
             >
-              {/* 결과 카운트 — 로딩이 아니고 비어있지 않을 때만 */}
-              {!isLoading && activeList.length > 0 && (
-                <div
-                  className="flex items-center gap-2 pt-1"
-                  aria-live="polite"
-                >
-                  <span className="inline-flex items-center gap-1.5 rounded-w-pill bg-it-blue-50 px-2.5 py-1 text-w-caption font-bold text-it-blue-500 dark:bg-it-blue-500/15">
-                    <Icon
-                      name="emoji_events"
-                      className="text-[14px]"
-                      aria-hidden="true"
+              {!isLoading && (
+                <section className="bg-it-surface px-4 pb-2 dark:bg-it-blue-950">
+                  {activeList.length === 0 ? (
+                    <EmptyState
+                      icon={debouncedSearch ? "search_off" : "emoji_events"}
+                      title={
+                        debouncedSearch
+                          ? "검색 결과가 없어요"
+                          : "진행 중인 대회가 없어요"
+                      }
+                      description={
+                        debouncedSearch
+                          ? "다른 검색어로 시도해보세요."
+                          : isManager
+                            ? "우측 하단 버튼을 눌러 첫 대회를 등록해주세요."
+                            : "새로운 대회가 열리면 이곳에서 확인하실 수 있습니다."
+                      }
                     />
-                    <span>진행 중 <span className="font-num tabular-nums">{activeList.length}</span>건</span>
-                  </span>
-                </div>
-              )}
-
-              {isLoading ? null : activeList.length === 0 ? (
-                <EmptyState
-                  title={
-                    search ? "검색 결과가 없어요" : "진행 중인 대회가 없어요"
-                  }
-                  description={
-                    search
-                      ? "다른 검색어로 시도해보세요."
-                      : isManager
-                        ? "우측 하단 버튼을 눌러 첫 대회를 등록해주세요."
-                        : "새로운 대회가 열리면 이곳에서 확인하실 수 있습니다."
-                  }
-                />
-              ) : (
-                // ICETIMES — flat 카드는 full-bleed 흰 섹션 위에 hairline 행으로(회색 위 떠보임 방지).
-                <section className="-mx-4 bg-it-surface px-4 dark:bg-it-blue-950">
-                  {activeList.map((t) => (
-                    <TournamentListCard
-                      key={t.id}
-                      tournament={t}
-                      isManager={isManager}
-                      onEdit={handleEdit}
-                      onDelete={handleDelete}
-                      iceTheme
-                    />
-                  ))}
+                  ) : (
+                    <>
+                      {/* 결과 카운트 — 흰 섹션 내부 상단 */}
+                      <div
+                        className="flex items-center gap-2 pt-4 pb-2"
+                        aria-live="polite"
+                      >
+                        <span className="inline-flex items-center gap-1.5 rounded-w-pill bg-it-blue-50 px-2.5 py-1 text-w-caption font-bold text-it-blue-500 dark:bg-it-blue-500/15">
+                          <Icon
+                            name="emoji_events"
+                            className="text-[14px]"
+                            aria-hidden="true"
+                          />
+                          <span>진행 중 <span className="font-num tabular-nums">{activeList.length}</span>건</span>
+                        </span>
+                      </div>
+                      {activeList.map((t) => (
+                        <TournamentListCard
+                          key={t.id}
+                          tournament={t}
+                          isManager={isManager}
+                          iceTheme
+                        />
+                      ))}
+                    </>
+                  )}
                 </section>
               )}
             </div>
@@ -310,56 +277,49 @@ export default function CommonTournamentsPage() {
             <div
               role="tabpanel"
               aria-hidden={tab !== "past"}
-              className="flex w-1/2 shrink-0 flex-col gap-3 px-4"
+              className="w-1/2 shrink-0"
             >
-              {!isLoading && pastList.length > 0 && (
-                <div
-                  className="flex items-center gap-2 pt-1"
-                  aria-live="polite"
-                >
-                  <span className="inline-flex items-center gap-1.5 rounded-w-pill bg-it-fill px-2.5 py-1 text-w-caption font-bold text-it-ink-600 dark:bg-rink-700 dark:text-wtext-4">
-                    <Icon
-                      name="history"
-                      className="text-[14px]"
-                      aria-hidden="true"
+              {!isLoading && (
+                <section className="bg-it-surface px-4 pb-2 dark:bg-it-blue-950">
+                  {pastList.length === 0 ? (
+                    <EmptyState
+                      icon={debouncedSearch ? "search_off" : "emoji_events"}
+                      title={
+                        debouncedSearch
+                          ? "검색 결과가 없어요"
+                          : "지난 대회가 없어요"
+                      }
+                      description={
+                        debouncedSearch
+                          ? "다른 검색어로 시도해보세요."
+                          : "종료된 대회 기록이 쌓이면 이곳에 표시됩니다."
+                      }
                     />
-                    <span>지난 대회 <span className="font-num tabular-nums">{pastList.length}</span>건</span>
-                  </span>
-                </div>
-              )}
-
-              {isLoading ? null : pastList.length === 0 ? (
-                <div
-                  role="status"
-                  className="flex flex-col items-center px-6 py-16 text-center"
-                >
-                  <Icon
-                    name={search ? "search_off" : "emoji_events"}
-                    className="mb-3 text-[40px] text-it-ink-300 dark:text-wtext-4"
-                    aria-hidden="true"
-                  />
-                  <p className="text-w-body font-bold text-it-ink-800 dark:text-white">
-                    {search ? "검색 결과가 없어요" : "지난 대회가 없어요"}
-                  </p>
-                  <p className="mt-2 mx-auto max-w-xs text-w-caption leading-relaxed text-it-ink-500 dark:text-wtext-4">
-                    {search
-                      ? "다른 검색어로 시도해보세요."
-                      : "종료된 대회 기록이 쌓이면 이곳에 표시됩니다."}
-                  </p>
-                </div>
-              ) : (
-                // ICETIMES — flat 카드는 full-bleed 흰 섹션 위에 hairline 행으로(회색 위 떠보임 방지).
-                <section className="-mx-4 bg-it-surface px-4 dark:bg-it-blue-950">
-                  {pastList.map((t) => (
-                    <TournamentListCard
-                      key={t.id}
-                      tournament={t}
-                      isManager={isManager}
-                      onEdit={handleEdit}
-                      onDelete={handleDelete}
-                      iceTheme
-                    />
-                  ))}
+                  ) : (
+                    <>
+                      <div
+                        className="flex items-center gap-2 pt-4 pb-2"
+                        aria-live="polite"
+                      >
+                        <span className="inline-flex items-center gap-1.5 rounded-w-pill bg-it-fill px-2.5 py-1 text-w-caption font-bold text-it-ink-600 dark:bg-rink-700 dark:text-wtext-4">
+                          <Icon
+                            name="history"
+                            className="text-[14px]"
+                            aria-hidden="true"
+                          />
+                          <span>지난 대회 <span className="font-num tabular-nums">{pastList.length}</span>건</span>
+                        </span>
+                      </div>
+                      {pastList.map((t) => (
+                        <TournamentListCard
+                          key={t.id}
+                          tournament={t}
+                          isManager={isManager}
+                          iceTheme
+                        />
+                      ))}
+                    </>
+                  )}
                 </section>
               )}
             </div>
@@ -395,19 +355,21 @@ export default function CommonTournamentsPage() {
 }
 
 interface EmptyStateProps {
+  icon?: string;
   title?: string;
   description?: string;
 }
 
-function EmptyState({ title, description }: EmptyStateProps = {}) {
+// ICETIMES flat — 점선 카드 박스 제거, 흰 섹션 내부 플레인 빈 상태. 두 탭 공용.
+function EmptyState({ icon = "emoji_events", title, description }: EmptyStateProps = {}) {
   return (
     <div
       role="status"
-      className="flex flex-col items-center justify-center gap-2 rounded-w-lg border border-dashed border-it-line-strong bg-it-surface px-6 py-16 text-center dark:border-rink-700 dark:bg-it-blue-950"
+      className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center"
     >
       <div className="mb-2 flex h-16 w-16 items-center justify-center rounded-w-pill bg-it-fill dark:bg-rink-700">
         <Icon
-          name="emoji_events"
+          name={icon}
           className="text-[36px] text-it-ink-400 dark:text-wtext-4"
           aria-hidden="true"
         />

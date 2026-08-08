@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { NotFoundException, ForbiddenException } from "@nestjs/common";
 import { NoticesService } from "./notices.service";
+import { NoticeType } from "./dto/create-notice.dto";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
 import { NotificationsService } from "@/notifications/notifications.service";
@@ -814,6 +815,113 @@ describe("NoticesService — Phase 0 권한·전이·게시기간", () => {
       expect(result.data).toEqual([]);
       expect(prisma.team.findMany).not.toHaveBeenCalled();
       expect(prisma.teamMember.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── 점검 공지 격리 — 시스템 역할 + 전역 전용 ─────────────────
+  //   웹 팀 공지 작성 화면에는 type 입력이 없지만 API 직접 호출은 가능하므로
+  //   (UI 부재 ≠ 차단) 서버 가드를 검증한다. 읽기 격리는 app-management spec 소유.
+  describe("점검 공지 격리", () => {
+    it("DIRECTOR 는 type=maintenance 로 작성할 수 없다", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "DIRECTOR" });
+      setManageTeams([TEAM_A]);
+
+      await expect(
+        service.createNotice(USER_ID, {
+          title: "점검 시도",
+          content: "10자 이상 본문입니다.",
+          type: NoticeType.MAINTENANCE,
+        }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.systemNotice.create).not.toHaveBeenCalled();
+    });
+
+    it("ADMIN 은 전역 점검 공지를 작성할 수 있다", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "ADMIN" });
+      prisma.systemNotice.create.mockResolvedValue(
+        teamNotice({ targetTeamId: null, targetType: "maintenance" }),
+      );
+
+      await service.createNotice(USER_ID, {
+        title: "시스템 점검",
+        content: "10자 이상 본문입니다.",
+        type: NoticeType.MAINTENANCE,
+      });
+
+      expect(prisma.systemNotice.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            targetType: "maintenance",
+            targetTeamId: null,
+          }),
+        }),
+      );
+    });
+
+    it("ADMIN 이라도 팀 대상 점검 공지는 작성할 수 없다 — 판정 쿼리에 안 잡히는 죽은 데이터 방지", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "ADMIN" });
+
+      await expect(
+        service.createNotice(USER_ID, {
+          title: "팀 점검 시도",
+          content: "10자 이상 본문입니다.",
+          type: NoticeType.MAINTENANCE,
+          targetTeamId: TEAM_A,
+        }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.systemNotice.create).not.toHaveBeenCalled();
+    });
+
+    it("COACH 는 자기 팀 공지를 maintenance 로 전환할 수 없다 — Update 상속 type 경로", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "COACH" });
+      setManageTeams([TEAM_A]);
+
+      await expect(
+        service.updateNotice(USER_ID, NOTICE_ID, {
+          type: NoticeType.MAINTENANCE,
+        }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.systemNotice.update).not.toHaveBeenCalled();
+    });
+
+    it("ADMIN 이라도 팀 공지를 maintenance 로 전환할 수 없다 (전역 전용)", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "ADMIN" });
+
+      await expect(
+        service.updateNotice(USER_ID, NOTICE_ID, {
+          type: NoticeType.MAINTENANCE,
+        }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.systemNotice.update).not.toHaveBeenCalled();
+    });
+
+    it("ADMIN 이 기존 maintenance 공지를 type 생략 + 팀 이동해도 403 — R1-01 결과 상태 판정", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "ADMIN" });
+      prisma.systemNotice.findUnique.mockResolvedValue(
+        teamNotice({ targetTeamId: null, targetType: "maintenance" }),
+      );
+
+      await expect(
+        service.updateNotice(USER_ID, NOTICE_ID, { targetTeamId: TEAM_A }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.systemNotice.update).not.toHaveBeenCalled();
+    });
+
+    it("ADMIN 은 전역 공지를 maintenance 로 전환할 수 있다", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "ADMIN" });
+      prisma.systemNotice.findUnique.mockResolvedValue(
+        teamNotice({ targetTeamId: null }),
+      );
+
+      await service.updateNotice(USER_ID, NOTICE_ID, {
+        type: NoticeType.MAINTENANCE,
+      });
+
+      expect(prisma.systemNotice.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ targetType: "maintenance" }),
+        }),
+      );
     });
   });
 });

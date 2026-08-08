@@ -41,23 +41,39 @@ extension WebViewBridgeHandlers on WebViewBridge {
             return BridgeResponse.error(error: '토큰 정보가 필요합니다.').toJson();
           }
           final tokenData = args[1] as Map<String, dynamic>;
-          await _tokenStorage.saveTokenInfo(
-            accessToken: tokenData['accessToken'] as String,
-            refreshToken: tokenData['refreshToken'] as String?,
-            expiryTimestamp: tokenData['expiryTimestamp'] as int?,
-            userId: tokenData['userId'] as String?,
-            userType: tokenData['userType'] as String?,
-            userName: tokenData['userName'] as String?,
-            userEmail: tokenData['userEmail'] as String?,
-          );
           // [2026-07-15 로그인 개선 ①] refresh 쿠키를 WebView 쿠키 저장소에 동기화.
           //   웹 브라우저에서는 백엔드 Set-Cookie 가 담당하지만, 네이티브에서는
           //   로그인이 Flutter Dio 경유라 쿠키가 유실되므로 여기서 직접 심는다.
           //   웹의 navigate 가 이 핸들러 응답을 await 한 뒤 발생하므로,
           //   미들웨어 판정 전에 쿠키가 준비되도록 반드시 await 한다.
+          // [2026-08-08 SLA] secure storage 쓰기와 쿠키 동기화는 상호 의존(교차
+          //   참조·공유 상태·순서 계약)이 없어 Future.wait 로 병렬화 가능.
+          //   둘 다 완료된 뒤에만 응답하는 계약은 동일. 실이득은 플랫폼별로
+          //   다를 수 있음(iOS 는 Keychain·WKHTTPCookieStore 가 모두 메인 스레드
+          //   경유) — 왕복 duration 은 _handleWithLogging Stopwatch 로 계측된다.
+          //   ⚠️ 실패 경로: 직렬 시절에는 storage 실패 시 쿠키 sync 에 도달하지
+          //   않았다. 병렬화 후에는 storage 가 실패해도 쿠키가 이미 심어질 수
+          //   있으므로, 실패 시 쿠키를 롤백해 "Keychain 은 비고 쿠키만 남은
+          //   반쪽 세션"(미들웨어 통과 + 전 API 401)을 차단한다.
           final refreshTokenValue = tokenData['refreshToken'] as String?;
-          if (refreshTokenValue != null && refreshTokenValue.isNotEmpty) {
-            await WebViewCookieSync.syncRefreshToken(refreshTokenValue);
+          try {
+            await Future.wait(<Future<void>>[
+              _tokenStorage.saveTokenInfo(
+                accessToken: tokenData['accessToken'] as String,
+                refreshToken: refreshTokenValue,
+                expiryTimestamp: tokenData['expiryTimestamp'] as int?,
+                userId: tokenData['userId'] as String?,
+                userType: tokenData['userType'] as String?,
+                userName: tokenData['userName'] as String?,
+                userEmail: tokenData['userEmail'] as String?,
+              ),
+              if (refreshTokenValue != null && refreshTokenValue.isNotEmpty)
+                WebViewCookieSync.syncRefreshToken(refreshTokenValue),
+            ]);
+          } catch (_) {
+            // 쿠키 롤백 (syncRefreshToken(null) = 삭제) 후 기존 에러 계약대로 전파
+            await WebViewCookieSync.syncRefreshToken(null);
+            rethrow;
           }
           // 로그인/회원가입 성공 → FCM 토큰을 해당 계정에 등록 (fire-and-forget)
           unawaited(_notificationService.ensureTokenRegistered());
@@ -66,15 +82,10 @@ extension WebViewBridgeHandlers on WebViewBridge {
           ).toJson();
 
         case 'clearToken':
-          // 토큰 삭제 (로그아웃) — 인증이 유효한 동안 FCM 디바이스 비활성화 후 토큰 제거
-          await _notificationService.unregisterTokenFromServer();
-          await _tokenStorage.clearAll();
-          // [2026-07-15 로그인 개선 ①] WebView refresh 쿠키도 함께 삭제 —
-          //   로그아웃 후 미들웨어가 stale 쿠키로 "세션 있음" 오판하지 않도록.
-          await WebViewCookieSync.syncRefreshToken(null);
-          // [2026-07-20 배지 미제거 대응] 로그아웃 시 iOS 앱 아이콘 배지 클리어 —
-          //   푸시 대상에서 빠진 계정의 잔존 배지를 정리한다 (fire-and-forget).
-          unawaited(_notificationService.clearBadge());
+          // 토큰 삭제 (로그아웃) — 세션 클리어 SoT 로 위임 (FCM 해제 → 토큰 삭제
+          // → WebView refresh 쿠키 삭제 → 배지 클리어). 각 단계가 독립 try 라
+          // 오프라인에서도 로컬 로그아웃이 반드시 완결된다.
+          await SessionCleaner.clearSession();
           return BridgeResponse.success(
             data: {'message': '토큰이 삭제되었습니다.'},
           ).toJson();
@@ -625,6 +636,43 @@ extension WebViewBridgeHandlers on WebViewBridge {
             data: {'splashRemoved': true},
           ).toJson();
 
+        case 'requestNotificationPermission':
+          // 웹 계약(native-bridge-ui.ts requestNotificationPermission):
+          //   data.granted 로 허용 여부 반환. JS wrapper 는 있는데 이 case 가
+          //   없어서 default 에러로 떨어지던 미구현 표면 (2026-07-28 구현).
+          // [2026-07-29] permanentlyDenied 추가 — 영구 거부 상태에선 OS 팝업이
+          //   다시 뜨지 않아 granted:false 만으로는 웹이 '재요청 가능'과
+          //   '설정 이동 필요'를 구분할 수 없었다 (A5 권한 화면과 동일 공백을
+          //   메운 것 — upload_handler 의 granted/permanentlyDenied 계약과 일관).
+          final granted = await _notificationService.requestPermission();
+          final notifStatus = await Permission.notification.status;
+          return BridgeResponse.success(data: {
+            'granted': granted,
+            'permanentlyDenied': !granted && notifStatus.isPermanentlyDenied,
+          }).toJson();
+
+        case 'share':
+          // 웹 계약(native-bridge-ui.ts share): payload {title?, text?, url?} →
+          //   data.shared 로 공유 완료 여부 반환. JS wrapper 만 있고 이 case 가
+          //   없어 default 에러 → 웹 에러 토스트가 뜨던 미구현 표면
+          //   (2026-07-28 구현 — share_plus 는 프로필 QR 공유로 기존 의존성).
+          final shareText = <String?>[
+            uiData['text'] as String?,
+            uiData['url'] as String?,
+          ].whereType<String>().where((s) => s.isNotEmpty).join('\n');
+          if (shareText.isEmpty) {
+            return BridgeResponse.error(error: '공유할 내용이 없습니다.').toJson();
+          }
+          final shareResult = await SharePlus.instance.share(
+            ShareParams(
+              text: shareText,
+              subject: uiData['title'] as String?,
+            ),
+          );
+          return BridgeResponse.success(data: {
+            'shared': shareResult.status == ShareResultStatus.success,
+          }).toJson();
+
         default:
           return BridgeResponse.error(error: '알 수 없는 UI 요청입니다: $action')
               .toJson();
@@ -954,13 +1002,14 @@ extension WebViewBridgeHandlers on WebViewBridge {
 
       switch (action) {
         case 'setHardwareBackEnabled':
+          // [2026-07-28 데드코드 정리] 소비자(MainShellScreen useAppBack 배선)
+          //   제거됨 — 백키 SoT 는 WebViewScreen._onHardwareBack 단일 경로.
+          //   웹 잔존 호출 호환을 위해 case 는 no-op success 로 유지한다.
           final enabled = navigationData['enabled'] as bool? ?? false;
-          onHardwareBackEnabledChange?.call(enabled);
           return BridgeResponse.success(data: {'enabled': enabled}).toJson();
 
         case 'backReceived':
-          // Web 이 백키 이벤트를 정상 수신했음을 알림 → fallback timer cancel
-          onBackReceived?.call();
+          // [2026-07-28 데드코드 정리] fallback timer 소비자 제거 — no-op ACK.
           return BridgeResponse.success(data: {'ack': true}).toJson();
 
         case 'exitApp':
