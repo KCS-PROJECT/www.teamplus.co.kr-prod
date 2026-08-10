@@ -13,6 +13,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { MESSAGES } from '@/lib/messages';
+import { isoToDatetimeLocal, isoToDateInput, kstInputToUtcIso } from '@/lib/kst-date';
 import { api } from '@/services/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -54,60 +55,12 @@ interface ApiNotice {
   isPublished: boolean;
 }
 
-const _pad2 = (n: number) => String(n).padStart(2, '0');
-
 /**
  * 시스템 공지 시간은 **한국시간(KST · UTC+9 · DST 없음) 기준**으로 일관 처리한다.
  * 브라우저/서버 타임존과 무관하게: 입력·표시는 항상 KST 벽시계, 저장은 절대시각(UTC ISO).
- * 백엔드 점검 판정(startAt<=서버now<=expiresAt)은 절대시각 비교라 TZ-안전하며,
- * 여기서 KST 벽시계 ↔ UTC 변환만 명시 고정하면 입력값이 곧 한국시간으로 해석된다.
+ * 백엔드 점검 판정(startAt<=서버now<=expiresAt)은 절대시각 비교라 TZ-안전하다.
+ * 변환 유틸은 `@/lib/kst-date` 단일 출처를 사용한다.
  */
-const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
-
-/** ISO(UTC) → datetime-local 입력값 "YYYY-MM-DDTHH:mm" (한국시간 KST 고정) */
-const isoToDatetimeLocal = (iso?: string | null): string => {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  // 인스턴트를 +9h 시프트한 뒤 UTC 파트를 읽으면 KST 벽시계가 된다(브라우저 TZ 무관).
-  const kst = new Date(d.getTime() + KST_OFFSET_MS);
-  return `${kst.getUTCFullYear()}-${_pad2(kst.getUTCMonth() + 1)}-${_pad2(kst.getUTCDate())}T${_pad2(kst.getUTCHours())}:${_pad2(kst.getUTCMinutes())}`;
-};
-/** ISO(UTC) → date 입력값 "YYYY-MM-DD" (한국시간 KST 고정) */
-const isoToDateInput = (iso?: string | null): string => {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const kst = new Date(d.getTime() + KST_OFFSET_MS);
-  return `${kst.getUTCFullYear()}-${_pad2(kst.getUTCMonth() + 1)}-${_pad2(kst.getUTCDate())}`;
-};
-/**
- * datetime-local("YYYY-MM-DDTHH:mm") 또는 date("YYYY-MM-DD") 입력값을
- * **한국시간(KST)으로 간주**하여 백엔드용 UTC ISO 문자열로 변환한다.
- * 브라우저 타임존에 의존하던 `new Date(input).toISOString()` 을 대체 — 어떤 환경에서
- * 등록하든 입력값이 항상 KST 벽시계로 해석되어 저장 인스턴트가 일정하다.
- */
-const kstInputToUtcIso = (
-  local?: string | null,
-  boundary: 'start' | 'end' = 'start',
-): string | undefined => {
-  if (!local) return undefined;
-  const m = local.match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/);
-  if (!m) return undefined;
-  const [, y, mo, d, hh, mm] = m;
-  const hasTime = hh !== undefined && mm !== undefined;
-  // KST 벽시계 → UTC epoch: Date.UTC(KST 파트) - 9h
-  let utcMs = Date.UTC(+y, +mo - 1, +d, +(hh ?? 0), +(mm ?? 0)) - KST_OFFSET_MS;
-  // [2026-08-07] 날짜만 입력된 **종료일**은 그날 23:59:59.999 KST 까지로 해석한다.
-  //   기존에는 00:00 으로 변환돼 "종료일 당일 0시에 이미 만료" 되어 하루가 통째로 사라졌다.
-  //   분 단위(datetime-local)로 받은 점검 공지는 입력 시각을 그대로 존중한다.
-  if (boundary === 'end' && !hasTime) {
-    utcMs += 24 * 60 * 60 * 1000 - 1;
-  }
-  const dt = new Date(utcMs);
-  if (Number.isNaN(dt.getTime())) return undefined;
-  return dt.toISOString();
-};
 
 /**
  * 공지/점검의 현재 상태 — **서버 판정과 동일하게 절대시각(KST 벽시계 → UTC)으로

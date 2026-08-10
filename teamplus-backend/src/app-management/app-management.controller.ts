@@ -307,14 +307,45 @@ export class AppManagementController {
 
   @Get("terms")
   @Public()
-  @ApiOperation({ summary: "약관 목록 조회" })
+  @ApiOperation({
+    summary: "약관 조회 (현행 · 시행 예정)",
+    description:
+      "게시 여부는 시행일(publishedAt)이 결정한다. 기본은 type 별 현행 1건씩 반환하며, " +
+      "scope=upcoming 이면 시행 예정 버전을 반환한다. 전체 이력은 GET terms/history(ADMIN) 참조.",
+  })
   @ApiQuery({
     name: "type",
     required: false,
-    description: "service | privacy | marketing | refund",
+    description:
+      "terms_of_service | privacy_policy | marketing | refund | child_privacy | community_guideline",
   })
-  getTerms(@Query("type") type?: string) {
-    return this.service.getTerms(type);
+  @ApiQuery({
+    name: "scope",
+    required: false,
+    enum: ["current", "upcoming"],
+    description: "기본값 current",
+  })
+  getTerms(
+    @Query("type") type?: string,
+    @Query("scope") scope?: "current" | "upcoming",
+  ) {
+    return this.service.getTerms({
+      type,
+      scope: scope === "upcoming" ? "upcoming" : "current",
+    });
+  }
+
+  @Get("terms/history")
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("ADMIN")
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "약관 전체 버전 이력 조회 (관리자)",
+    description: "철회(isActive=false)된 버전을 포함한 모든 버전을 반환한다.",
+  })
+  @ApiQuery({ name: "type", required: false })
+  getTermsHistory(@Query("type") type?: string) {
+    return this.service.getTermsHistory(type);
   }
 
   @Post("terms")
@@ -365,7 +396,11 @@ export class AppManagementController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("ADMIN")
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "약관 비활성화 (소프트 삭제)" })
+  @ApiOperation({
+    summary: "시행 예정 약관 삭제",
+    description:
+      "아직 게시된 적 없는 시행 예정 버전만 완전 삭제한다. 현행·과거 버전은 게시 이력이므로 409.",
+  })
   deleteTerms(@Param("id") id: string) {
     return this.service.deleteTerms(id);
   }

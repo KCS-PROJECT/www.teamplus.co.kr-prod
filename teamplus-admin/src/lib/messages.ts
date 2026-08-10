@@ -76,6 +76,14 @@ export const MESSAGES = {
   terms: {
     requiredFields: '약관 유형, 제목, 내용을 모두 입력해주세요.',
     createError: '약관 등록에 실패했습니다.',
+    versionRequired: '버전 번호를 입력해주세요.',
+    publishedAtRequired: '시행일을 선택해주세요.',
+    versionDuplicated: '이미 등록된 버전입니다. 다른 버전 번호를 입력해주세요.',
+    immutable: '이미 시행된 약관은 수정할 수 없습니다. 새 버전으로 등록해주세요.',
+    deleteConfirm: '이 시행 예약을 삭제하시겠습니까? 삭제하면 되돌릴 수 없습니다.',
+    deleteError: '삭제에 실패했습니다.',
+    deleteSuccess: '시행 예약이 삭제되었습니다.',
+    createSuccess: '약관이 등록되었습니다.',
   },
   version: {
     requiredFields: '버전 번호는 필수 입력 항목입니다.',

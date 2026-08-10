@@ -3125,7 +3125,13 @@ model AppTerms {
   title       String
   content     String    @db.Text
   version     String // 예: "1.0.0"
+  /// 무효화되지 않았는지 여부 (취소 표시). **"게시 중"이라는 뜻이 아니다.**
+  ///   게시(현행) 판정은 시행일이 한다 — isActive=true AND publishedAt <= now 인 것 중
+  ///   해당 type 에서 시행일이 가장 늦은 1건이 현행이고, 나머지는 과거다.
+  ///   false = 잘못 등록했거나 시행 예약을 취소해 무효화한 행.
   isActive    Boolean   @default(true) @map("is_active")
+  /// 시행 시각 (A군 절대시점 · UTC 저장). KST 자정을 instant 로 저장한다.
+  ///   미래 값으로 등록하면 그 시점까지 게시되지 않는다(예약 게시).
   publishedAt DateTime? @map("published_at") @db.Timestamptz(3)
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
