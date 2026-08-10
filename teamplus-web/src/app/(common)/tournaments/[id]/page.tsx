@@ -45,6 +45,7 @@ import {
   buildTournamentChildOptions,
   isTournamentChildApplicable,
   type MatchSummary,
+  type TournamentChildInput,
   type TournamentDetail,
   type TournamentRegistrationRow,
   type TournamentUiStatus,
@@ -196,19 +197,15 @@ export default function CommonTournamentDetailPage() {
 
   // 내 자녀 목록 — 학부모 시점 1회 조회 후 결제내역 이름 매핑·참가대상 이름·신청 가능 판정이 공유.
   //   (기존: 결제내역/참가대상이 각자 /children 을 중복 호출 → 단일 state 로 통합)
-  const [myChildren, setMyChildren] = useState<Array<{
-    id: string;
-    firstName?: string;
-    lastName?: string;
-    birthDate?: string | null;
-  }> | null>(null);
+  const [myChildren, setMyChildren] = useState<TournamentChildInput[] | null>(
+    null,
+  );
 
   useEffect(() => {
     if (isManager || !user?.id) return;
     void (async () => {
       const cRes = await api.get<
-        | { children: Array<{ id: string; firstName?: string; lastName?: string; birthDate?: string | null }> }
-        | Array<{ id: string; firstName?: string; lastName?: string; birthDate?: string | null }>
+        { children: TournamentChildInput[] } | TournamentChildInput[]
       >("/children");
       const list = cRes.success && cRes.data
         ? Array.isArray(cRes.data)
@@ -363,8 +360,20 @@ export default function CommonTournamentDetailPage() {
     if (firstMatchStarted) return MESSAGES.tournament.applyClosedAfterStart;
     if (!applyOptions) return null; // 자녀 목록 로딩 전 — 기존 동작 유지
     if (applyOptions.some(isTournamentChildApplicable)) return null;
+    // 승인만 나면 신청 가능한 자녀가 있으면 그 사유를 우선 안내(결제 단계 403 예방).
+    if (
+      applyOptions.some(
+        (o) =>
+          !o.isPaid &&
+          !o.isRegistered &&
+          o.isEligible &&
+          o.teamMembership === "pending",
+      )
+    ) {
+      return MESSAGES.tournament.applyPendingApproval;
+    }
     // 자격 충족 자녀가 있는데 전원 신청·결제 완료 vs 대상 자녀 자체가 없음.
-    return applyOptions.some((o) => o.isEligible)
+    return applyOptions.some((o) => o.isEligible && o.isTeamMember)
       ? MESSAGES.tournament.applyAllChildrenDone
       : MESSAGES.tournament.applyNoEligibleChildren;
   }, [applyOptions, firstMatchStarted]);

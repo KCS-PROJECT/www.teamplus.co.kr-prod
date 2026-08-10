@@ -14,6 +14,10 @@ import {
   calculateDDay,
   canCancelTournamentRegistration,
   mapTournamentUiStatus,
+  buildTournamentChildOptions,
+  isTournamentChildApplicable,
+  type TournamentChildInput,
+  type TournamentDetail,
 } from '@/services/tournament.service';
 
 describe('tournament.service — canManageMatch', () => {
@@ -149,5 +153,112 @@ describe('tournament.service — canCancelTournamentRegistration (일정 미정)
     expect(
       canCancelTournamentRegistration('2026-04-13T00:00:00Z', NOW),
     ).toBe(true);
+  });
+});
+
+// 신청 선수 목록 판정 — 백엔드 assertTournamentTeamMembership(403) 을 결제 전에 선반영.
+//   "참가 대상 전체"(selectedParticipantIds=[]) 대회에서 학부모의 모든 자녀가 노출되어
+//   결제 버튼을 눌러야 403 을 보던 갭에 대한 회귀 테스트.
+describe('tournament.service — buildTournamentChildOptions (주최 팀 멤버십)', () => {
+  const TEAM = 'team-1';
+
+  type TournamentArg = Parameters<typeof buildTournamentChildOptions>[0];
+
+  const tournament = (
+    overrides: Partial<TournamentDetail> = {},
+  ): TournamentArg =>
+    ({
+      teamId: TEAM,
+      selectedParticipantIds: [],
+      paidParticipantIds: [],
+      myRegistrations: [],
+      eligibleBirthYears: null,
+      eligibleBirthYearFrom: null,
+      eligibleBirthYearTo: null,
+      billingMode: 'PREPAID',
+      ...overrides,
+    }) as TournamentArg;
+
+  const child = (
+    id: string,
+    approvalStatus: string | null,
+    teamId: string | null = TEAM,
+  ): TournamentChildInput => ({
+    id,
+    lastName: '김',
+    firstName: id,
+    birthDate: '2016-03-01',
+    clubMemberships:
+      approvalStatus === null ? [] : [{ teamId, approvalStatus }],
+  });
+
+  it('명단이 빈 대회에서도 주최 팀 승인 자녀만 신청 가능하다', () => {
+    const options = buildTournamentChildOptions(tournament(), [
+      child('approved', 'approved'),
+      child('pending', 'pending'),
+      child('other', 'approved', 'team-2'),
+      child('none', null),
+    ]);
+
+    // 미소속·타 팀·반려 자녀는 목록에서 제외, 승인 대기는 사유 안내를 위해 남긴다.
+    expect(options.map((o) => o.id)).toEqual(['approved', 'pending']);
+    expect(options.filter(isTournamentChildApplicable).map((o) => o.id)).toEqual(
+      ['approved'],
+    );
+    expect(options.find((o) => o.id === 'pending')?.teamMembership).toBe(
+      'pending',
+    );
+  });
+
+  it('반려(rejected) 자녀는 승인 대기와 달리 목록에서 제외된다', () => {
+    const options = buildTournamentChildOptions(tournament(), [
+      child('rejected', 'rejected'),
+    ]);
+    expect(options).toHaveLength(0);
+  });
+
+  it('주최 팀이 없는 대회(teamId null)는 멤버십을 검사하지 않는다 — 백엔드 조기 return 과 동일', () => {
+    const options = buildTournamentChildOptions(
+      tournament({ teamId: null }),
+      [child('none', null)],
+    );
+    expect(options).toHaveLength(1);
+    expect(options[0].teamMembership).toBe('not_required');
+    expect(isTournamentChildApplicable(options[0])).toBe(true);
+  });
+
+  it('소속 정보가 없는 응답은 판정 불가로 보고 막지 않는다 (전원 숨김 방지)', () => {
+    const options = buildTournamentChildOptions(tournament(), [
+      { id: 'c1', lastName: '김', firstName: '하나', birthDate: '2016-03-01' },
+    ]);
+    expect(options).toHaveLength(1);
+    expect(isTournamentChildApplicable(options[0])).toBe(true);
+  });
+
+  it('지정 명단 대회는 명단 + 승인 조건을 모두 만족해야 신청 가능하다', () => {
+    const options = buildTournamentChildOptions(
+      tournament({ selectedParticipantIds: ['approved', 'pending'] }),
+      [
+        child('approved', 'approved'),
+        child('pending', 'pending'),
+        child('outside', 'approved'),
+      ],
+    );
+    expect(options.map((o) => o.id)).toEqual(['approved', 'pending']);
+    expect(options.filter(isTournamentChildApplicable).map((o) => o.id)).toEqual(
+      ['approved'],
+    );
+  });
+
+  it('신청·결제한 자녀는 승인이 풀려도 목록에 남는다 (취소·후불결제 동선 보존)', () => {
+    const options = buildTournamentChildOptions(
+      tournament({
+        paidParticipantIds: ['paid'],
+        selectedParticipantIds: [],
+      }),
+      [child('paid', null)],
+    );
+    expect(options).toHaveLength(1);
+    expect(options[0].isPaid).toBe(true);
   });
 });

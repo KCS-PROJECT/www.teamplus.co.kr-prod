@@ -3,6 +3,7 @@ import {
   NotFoundException,
   OnModuleInit,
   BadRequestException,
+  ConflictException,
   Logger,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
@@ -621,12 +622,75 @@ export class AppManagementService implements OnModuleInit {
   }
 
   // ==================== 약관 ====================
+  //
+  // 게시 여부는 isActive 토글이 아니라 **시행일(publishedAt)** 이 결정한다.
+  //   현행(current)  = type 별 publishedAt <= now 중 가장 늦은 1건
+  //   예정(upcoming) = type 별 publishedAt >  now 중 가장 이른 1건
+  //   isActive       = "철회" 표시 (잘못 등록했거나 예약을 취소한 행의 무효화)
+  // 이렇게 두면 미래 시행일로 미리 등록해 둔 버전이 시행일에 자동으로 현행이 된다.
+  // 상세: claudedocs/terms-versioning-redesign-2026-08-10.md
 
-  async getTerms(type?: string) {
-    const where = type ? { type, isActive: true } : { isActive: true };
+  /** 레거시 축약형 type 을 표준형으로 흡수 (조회측 alias — 웹 normalizePolicyType 과 동일 규칙) */
+  private normalizeTermsType(type: string): string {
+    const aliases: Record<string, string> = {
+      service: "terms_of_service",
+      privacy: "privacy_policy",
+      child: "child_privacy",
+    };
+    return aliases[type] ?? type;
+  }
+
+  /**
+   * 게시 중(또는 시행 예정) 약관 조회.
+   *
+   * app_terms 는 행 수가 작아(수~수십) 단일 findMany 후 메모리에서 type 별로 추린다.
+   */
+  async getTerms(opts: { type?: string; scope?: "current" | "upcoming" } = {}) {
+    const now = new Date();
+    const rows = await this.prisma.appTerms.findMany({
+      where: {
+        isActive: true,
+        ...(opts.type && { type: opts.type }),
+      },
+      // publishedAt DESC 우선, 동률이면 최근 등록분 우선 → 현행이 하나로 확정된다.
+      orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+    });
+
+    const byType = new Map<string, typeof rows>();
+    for (const row of rows) {
+      const key = this.normalizeTermsType(row.type);
+      const list = byType.get(key);
+      if (list) list.push(row);
+      else byType.set(key, [row]);
+    }
+
+    const picked: typeof rows = [];
+    for (const list of byType.values()) {
+      if (opts.scope === "upcoming") {
+        // DESC 정렬이므로 뒤에서부터 찾으면 "가장 이른 미래" 가 나온다.
+        for (let i = list.length - 1; i >= 0; i -= 1) {
+          const row = list[i];
+          if (row.publishedAt && row.publishedAt > now) {
+            picked.push(row);
+            break;
+          }
+        }
+      } else {
+        // publishedAt 이 없는 행은 시행 시점을 알 수 없으므로 현행 후보에서 제외한다.
+        const current = list.find(
+          (row) => row.publishedAt && row.publishedAt <= now,
+        );
+        if (current) picked.push(current);
+      }
+    }
+    return picked;
+  }
+
+  /** 어드민 전용 — 철회분까지 포함한 전체 버전 이력 */
+  async getTermsHistory(type?: string) {
     return this.prisma.appTerms.findMany({
-      where,
-      orderBy: { publishedAt: "desc" },
+      where: type ? { type } : undefined,
+      orderBy: [{ type: "asc" }, { publishedAt: "desc" }, { createdAt: "desc" }],
     });
   }
 
@@ -638,6 +702,24 @@ export class AppManagementService implements OnModuleInit {
     isActive?: boolean;
     publishedAt?: Date;
   }) {
+    if (!data.version?.trim()) {
+      throw new BadRequestException("버전 번호는 필수입니다.");
+    }
+    if (!data.publishedAt || Number.isNaN(data.publishedAt.getTime())) {
+      throw new BadRequestException("시행일은 필수입니다.");
+    }
+
+    // 같은 문서에 같은 버전이 두 번 존재하면 어느 본문이 그 버전인지 특정할 수 없다.
+    const duplicated = await this.prisma.appTerms.findFirst({
+      where: { type: data.type, version: data.version },
+      select: { id: true },
+    });
+    if (duplicated) {
+      throw new ConflictException(
+        "이미 등록된 버전입니다. 다른 버전 번호를 사용해주세요.",
+      );
+    }
+
     return this.prisma.appTerms.create({ data });
   }
 
@@ -654,18 +736,69 @@ export class AppManagementService implements OnModuleInit {
   ) {
     const terms = await this.prisma.appTerms.findUnique({ where: { id } });
     if (!terms) throw new NotFoundException("약관을 찾을 수 없습니다.");
+
+    // [버전 불변] 이미 시행된 버전의 본문·버전·시행일은 수정할 수 없다.
+    //   그 시점에 게시돼 있던 본문을 나중에 입증해야 하는 문서이므로,
+    //   내용 변경은 반드시 새 버전 등록으로 처리한다. 철회(isActive)만 허용.
+    const alreadyEffective =
+      !!terms.publishedAt && terms.publishedAt <= new Date();
+    if (alreadyEffective) {
+      const mutatesContent =
+        data.type !== undefined ||
+        data.title !== undefined ||
+        data.content !== undefined ||
+        data.version !== undefined ||
+        data.publishedAt !== undefined;
+      if (mutatesContent) {
+        throw new ConflictException(
+          "이미 시행된 약관은 수정할 수 없습니다. 새 버전으로 등록해주세요.",
+        );
+      }
+    }
+
+    if (data.version !== undefined) {
+      if (!data.version.trim()) {
+        throw new BadRequestException("버전 번호는 필수입니다.");
+      }
+      const duplicated = await this.prisma.appTerms.findFirst({
+        where: {
+          type: data.type ?? terms.type,
+          version: data.version,
+          id: { not: id },
+        },
+        select: { id: true },
+      });
+      if (duplicated) {
+        throw new ConflictException(
+          "이미 등록된 버전입니다. 다른 버전 번호를 사용해주세요.",
+        );
+      }
+    }
+
     return this.prisma.appTerms.update({ where: { id }, data });
   }
 
   async deleteTerms(id: string) {
     const terms = await this.prisma.appTerms.findUnique({ where: { id } });
     if (!terms) throw new NotFoundException("약관을 찾을 수 없습니다.");
-    // 소프트 삭제: isActive = false 처리
-    await this.prisma.appTerms.update({
-      where: { id },
-      data: { isActive: false },
-    });
-    return { message: "약관이 비활성화되었습니다." };
+
+    // 삭제 가능 여부는 **시행 시각 도래 여부**만으로 판정한다.
+    //   publishedAt > now  = 아직 시행되지 않음 = 게시된 적이 없다(사용자 화면은 현행만 조회).
+    //     이용자에게 노출된 적도 동의 대상이 된 적도 없으므로 "그 시점에 게시돼 있던 본문"의
+    //     증거가 아니다 → 지워도 된다. isActive 는 무관하다(취소 상태여도 미게시는 확실).
+    //   publishedAt <= now = 게시됐거나(현행·과거) 게시 이력이 불명(취소분) → 증거이므로 보존.
+    //     잘못 게시된 경우의 복구는 "올바른 내용으로 새 버전 등록"(시행일 도래 시 자동 교체)이다.
+    //   publishedAt IS NULL = 시행 시각 불명 → 판단 근거가 없으므로 보존.
+    const neverPublished =
+      !!terms.publishedAt && terms.publishedAt > new Date();
+    if (!neverPublished) {
+      throw new ConflictException(
+        "시행 예정인 버전만 삭제할 수 있습니다. 이미 게시된 약관은 새 버전을 등록해 교체해주세요.",
+      );
+    }
+
+    await this.prisma.appTerms.delete({ where: { id } });
+    return { message: "시행 예약이 삭제되었습니다." };
   }
 
   // ==================== 앱 버전 ====================

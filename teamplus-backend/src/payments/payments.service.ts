@@ -481,24 +481,20 @@ export class PaymentsService {
   }
 
   /**
-   * [DEV ONLY] 토스 승인 API 를 건너뛴 테스트 결제 완료 처리.
+   * 토스 승인 API 를 건너뛴 테스트 결제 완료 처리 (수업 결제 + 대회 선불 결제 공용).
    *  결제창에 테스터의 실카드/실계좌가 노출되지 않도록 토스 위젯 없이 결제를 완료한다.
    *  검증·멱등 락·후처리(applyApprovedPayment)는 confirmTossPayment 와 완전히 동일하며,
    *  토스 승인 단계만 생략한다.
    *
-   *  운영 환경(NODE_ENV=production)에서는 호출 차단 — `enrollments.mockPay()` 와 동일 관례.
-   *  대금 이체 없이 paymentStatus='completed' + MemberCredit 이 발급되므로, 운영에서 열리면
-   *  매출·정산·부가세 영수증에 허위 거래가 혼입되고 tid=MOCK-* 는 PG 취소가 불가하다.
+   *  ⚠️ 오픈 전 운영 환경 테스트를 위해 상시 허용 상태다. 대금 이체 없이
+   *  paymentStatus='completed' + MemberCredit 이 발급되므로, 매출·정산·부가세 영수증에
+   *  허위 거래가 혼입되고 tid=MOCK-* 는 PG 취소가 불가하다.
+   *  정식 서비스 오픈 시 이 메서드와 컨트롤러 엔드포인트를 제거해야 한다.
    */
   async mockConfirmPayment(userId: string, orderId: string) {
-    if (process.env.NODE_ENV === "production") {
-      this.logger.warn(
-        `[MOCK CONFIRM] 운영 환경에서 호출 차단: userId=${userId}, orderId=${orderId}`,
-      );
-      throw new ForbiddenException(
-        "운영 환경에서는 사용할 수 없는 기능입니다.",
-      );
-    }
+    this.logger.warn(
+      `[MOCK CONFIRM] 테스트 결제 호출: userId=${userId}, orderId=${orderId}`,
+    );
 
     if (!orderId) {
       throw new BadRequestException("orderId 값이 유효하지 않습니다.");

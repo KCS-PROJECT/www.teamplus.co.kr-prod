@@ -797,13 +797,39 @@ export function canCancelTournamentRegistration(
   return start.getTime() > kstTodayUtcMidnight;
 }
 
+/** 주최 팀 가입 상태 — 백엔드 assertTournamentTeamMembership 과 1:1 대응.
+ *  · not_required: 대회에 주최 팀이 없음(teamId null) — 백엔드도 검사를 건너뛴다.
+ *  · approved: 승인 멤버(leftAt null) — 신청 가능.
+ *  · pending: 가입 승인 대기 — 신청 불가지만 사유 안내를 위해 목록에 남긴다.
+ *  · none: 미소속·반려 — 이 대회와 무관하므로 목록에서 제외한다. */
+export type TournamentTeamMembership =
+  | 'not_required'
+  | 'approved'
+  | 'pending'
+  | 'none';
+
+/** buildTournamentChildOptions 입력 — GET /children 응답 형태(필요 필드만). */
+export interface TournamentChildInput {
+  id: string;
+  firstName?: string;
+  lastName?: string;
+  birthDate?: string | null;
+  /** 자녀 팀 소속 목록 — 백엔드가 leftAt=null 로 필터해 내려준다. */
+  clubMemberships?: Array<{
+    teamId?: string | null;
+    approvalStatus?: string | null;
+  }> | null;
+}
+
 /** 참가 신청 자녀 옵션 — 신청(apply) 페이지와 상세 CTA 판정이 공유하는 단일 규칙.
  *  · 지정 명단(selectedParticipantIds) 대회면 명단 자녀만 남긴다.
  *  · isPaid: 결제완료(PAID) — 중복 결제 방지.
  *  · isRegistered: 후불(POSTPAID) 미결제 신청 — 신청완료 취급.
  *    (선불 결제중단 PENDING 은 재결제 가능해야 하므로 신청 가능으로 본다)
  *  · isEligible: 출생연도 자격 — 개별 연도 집합 우선, 없으면 from/to 범위 폴백.
- *    명단 지정 자녀는 자격 무관 허용, 출생연도 불명은 막지 않는다. */
+ *    명단 지정 자녀는 자격 무관 허용, 출생연도 불명은 막지 않는다.
+ *  · teamMembership/isTeamMember: 주최 팀 승인 여부. 명단이 빈 대회(=전체 대상)에서
+ *    다른 팀 자녀·승인 대기 자녀까지 노출되어 결제 단계에서야 403 을 보던 갭을 막는다. */
 export interface TournamentChildOption {
   id: string;
   name: string;
@@ -815,11 +841,14 @@ export interface TournamentChildOption {
   orderNumber: string | null;
   registrationId?: string;
   isEligible: boolean;
+  teamMembership: TournamentTeamMembership;
+  isTeamMember: boolean;
 }
 
 export function buildTournamentChildOptions(
   tournament: Pick<
     TournamentDetail,
+    | 'teamId'
     | 'selectedParticipantIds'
     | 'paidParticipantIds'
     | 'myRegistrations'
@@ -828,16 +857,25 @@ export function buildTournamentChildOptions(
     | 'eligibleBirthYearTo'
     | 'billingMode'
   >,
-  childrenList: Array<{
-    id: string;
-    firstName?: string;
-    lastName?: string;
-    birthDate?: string | null;
-  }>,
+  childrenList: TournamentChildInput[],
 ): TournamentChildOption[] {
   const participantIds = Array.isArray(tournament.selectedParticipantIds)
     ? tournament.selectedParticipantIds
     : [];
+  const hostTeamId = tournament.teamId ?? null;
+  const resolveTeamMembership = (
+    c: TournamentChildInput,
+  ): TournamentTeamMembership => {
+    // 주최 팀이 없는 대회는 백엔드도 멤버십을 검사하지 않는다(조기 return).
+    if (!hostTeamId) return 'not_required';
+    // 소속 정보 자체가 없으면(구 호출부·응답 누락) 판정 불가 — 막지 않는다.
+    // 백엔드 가드가 최종 방어선이므로 여기서 조용히 전원 숨기는 쪽이 더 위험하다.
+    if (!Array.isArray(c.clubMemberships)) return 'not_required';
+    const mine = c.clubMemberships.filter((m) => m.teamId === hostTeamId);
+    if (mine.some((m) => m.approvalStatus === 'approved')) return 'approved';
+    if (mine.some((m) => m.approvalStatus === 'pending')) return 'pending';
+    return 'none';
+  };
   const paidIds = Array.isArray(tournament.paidParticipantIds)
     ? tournament.paidParticipantIds
     : [];
@@ -864,6 +902,7 @@ export function buildTournamentChildOptions(
   return childrenList
     .map((c) => {
       const reg = regByParticipant.get(c.id);
+      const teamMembership = resolveTeamMembership(c);
       return {
         id: c.id,
         name: `${c.lastName ?? ''}${c.firstName ?? ''}`.trim() || '자녀',
@@ -878,18 +917,22 @@ export function buildTournamentChildOptions(
         orderNumber: reg?.orderNumber ?? null,
         registrationId: reg?.registrationId,
         isEligible: isChildEligible(c),
+        teamMembership,
+        isTeamMember:
+          teamMembership === 'approved' || teamMembership === 'not_required',
       };
     })
-    .filter(
-      (c) => participantIds.length === 0 || participantIds.includes(c.id),
-    );
+    .filter((c) => participantIds.length === 0 || participantIds.includes(c.id))
+    // 주최 팀 미소속(반려 포함) 자녀는 이 대회와 무관 — 목록에서 제외.
+    //   단 이미 신청·결제한 건은 취소/후불결제 동선이 필요하므로 남긴다.
+    .filter((c) => c.isTeamMember || c.teamMembership === 'pending' || c.isPaid || c.isRegistered);
 }
 
-/** 이 자녀로 지금 신청을 진행할 수 있는가 (미결제 · 미신청 · 자격 충족) */
+/** 이 자녀로 지금 신청을 진행할 수 있는가 (미결제 · 미신청 · 자격 충족 · 주최 팀 승인) */
 export function isTournamentChildApplicable(
   o: TournamentChildOption,
 ): boolean {
-  return !o.isPaid && !o.isRegistered && o.isEligible;
+  return !o.isPaid && !o.isRegistered && o.isEligible && o.isTeamMember;
 }
 
 export function mapTournamentUiStatus(
