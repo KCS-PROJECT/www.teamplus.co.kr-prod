@@ -874,7 +874,10 @@ export class NotificationsService {
         data: { isRead: true, readAt: new Date() },
       });
       if (result.count > 0) {
-        void this.invalidateUnreadCountCache(userId);
+        // [Phase 4 · AC 4-3] unread 캐시 무효화는 **응답 전 완료** — void 로 흘리면
+        // 클라이언트가 응답 직후 재조회한 벨 카운트가 30초 TTL 스테일을 읽는다.
+        // FCM badge sync 만 기존 best-effort 비동기 유지.
+        await this.invalidateUnreadCountCache(userId);
         void this.fcmService.sendBadgeSync(userId);
       }
       return result.count;

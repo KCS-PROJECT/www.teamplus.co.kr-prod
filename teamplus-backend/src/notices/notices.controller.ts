@@ -266,6 +266,53 @@ export class NoticesController {
   }
 
   /**
+   * 이전/다음 공지 (Phase 5 · F-14 — 클라이언트 limit=100 계산 대체)
+   */
+  @Get(":noticeId/adjacent")
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles(
+    "PARENT",
+    "COACH",
+    "CHILD",
+    "TEEN",
+    "ADMIN",
+    "DIRECTOR",
+    "ACADEMY_DIRECTOR",
+    "SYSTEM",
+    "OPER",
+  )
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "이전/다음 공지 조회",
+    description:
+      "현재 공지와 같은 종류(팀/서비스) 풀에서 인접 공지를 반환합니다. " +
+      "mode=audience(기본)는 게시 중 공지만, mode=manage 는 관리 권한 확인 후 미게시·예약·만료를 포함합니다. " +
+      "권한 없는 manage 요청과 부재 공지는 동일한 404 입니다. 정렬은 createdAt DESC, id DESC 결정론.",
+  })
+  @ApiQuery({
+    name: "mode",
+    required: false,
+    description: "audience(기본) | manage",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "인접 공지 조회 성공 — { next, previous } (없으면 null)",
+  })
+  @ApiResponse({ status: 404, description: "공지사항을 찾을 수 없습니다." })
+  async getAdjacentNotices(
+    @Param("noticeId") noticeId: string,
+    @Request() req: AuthenticatedRequest,
+    @Query("mode") mode?: string,
+  ) {
+    return this.noticesService.getAdjacentNotices(
+      noticeId,
+      req?.user?.id,
+      req?.user?.userType,
+      mode === "manage" ? "manage" : "audience",
+    );
+  }
+
+  /**
    * 공지사항 생성 (관리자 전용)
    */
   @Post()
@@ -431,7 +478,8 @@ export class NoticesController {
   @ApiQuery({
     name: "teamId",
     required: false,
-    description: "특정 팀 ID 필터 (ADMIN/SYSTEM/OPER 만 사용)",
+    description:
+      "특정 팀 ID 필터 — 시스템 역할(ADMIN/SYSTEM/OPER)은 임의 팀, DIRECTOR/COACH 는 본인 관리 팀만 허용 (권한 밖 팀은 404)",
   })
   @ApiQuery({
     name: "scope",
@@ -641,16 +689,23 @@ export class NoticesController {
   }
 
   /**
-   * 댓글 삭제 (본인만 가능)
+   * 댓글 삭제 — 본인 또는 moderation(해당 공지 관리 팀 관리자·시스템 역할, 감사 로그 동반)
    */
   @Delete("comments/:commentId")
   @UseGuards(AuthGuard("jwt"), RolesGuard)
+  // [P4-R1-01] SYSTEM/OPER 포함 — 서비스 moderation 판정(isNoticeSystemRole)의
+  // 시스템 역할 SoT(ADMIN/SYSTEM/OPER)와 선언 계약을 일치시킨다.
+  // 현재 RolesGuard 는 이 3종을 super-admin 으로 일괄 통과시켜(런타임 403 은 원래 없었음)
+  // 이 목록은 방어적 선언이다 — 우회가 제거되는 순간 조용한 403 회귀를 막고,
+  // Swagger/코드 독자의 허용 집합 오독을 방지한다. (허용 집합은 spec 이 메타데이터로 고정)
   @Roles(
     "PARENT",
     "COACH",
     "CHILD",
     "TEEN",
     "ADMIN",
+    "SYSTEM",
+    "OPER",
     "DIRECTOR",
     "ACADEMY_DIRECTOR",
   )
@@ -658,25 +713,28 @@ export class NoticesController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: "공지사항 댓글 삭제",
-    description: "본인이 작성한 댓글을 삭제합니다.",
+    description:
+      "본인 댓글 또는 (해당 공지를 관리하는 팀 관리자·시스템 역할의) 타인 댓글을 삭제합니다. " +
+      "관리자 삭제는 감사 로그와 함께 기록됩니다.",
   })
   @ApiResponse({
     status: 200,
     description: "댓글 삭제 성공",
   })
   @ApiResponse({
-    status: 403,
-    description: "본인 댓글만 삭제할 수 있습니다.",
-  })
-  @ApiResponse({
     status: 404,
-    description: "댓글을 찾을 수 없습니다.",
+    description:
+      "댓글을 찾을 수 없습니다. (부재·권한 밖 모두 동일 — 존재 은닉)",
   })
   async deleteComment(
     @Param("commentId") commentId: string,
     @Request() req: AuthenticatedRequest,
   ) {
-    return this.noticesService.deleteComment(commentId, req.user.id);
+    return this.noticesService.deleteComment(
+      commentId,
+      req.user.id,
+      req.user.userType,
+    );
   }
 
   /**
@@ -713,7 +771,8 @@ export class NoticesController {
             id: "comment-uuid",
             content: "댓글 내용입니다.",
             userId: "user-uuid",
-            userName: "홍*동",
+            // [P4-R1-03] 인증 필수 전환 후 실계약 = 전체 이름 (마스킹 제거 — AC 4-4)
+            userName: "홍길동",
             createdAt: "2026-04-12T10:00:00Z",
           },
         ],

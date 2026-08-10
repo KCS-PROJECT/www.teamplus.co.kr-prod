@@ -59,19 +59,18 @@ interface NoticeDetail {
   date: string;
   viewCount: number;
   isPinned?: boolean;
-  // 이전/다음글 scope 판정용 — 팀 공지(값) vs 서비스 공지(null)
   targetTeamId?: string | null;
+  /**
+   * [Phase 5 · AC 5-1] 관리(수정/삭제) 버튼 단일 기준 — 서버가 공지별로 계산.
+   * 프론트 역할 추정(DIRECTOR|COACH vs ADMIN — Phase 2 과도기)은 이 필드로 대체됐다:
+   * 역할 문자열로는 "타 팀 코치" 를 구분할 수 없어 버튼이 보였다가 API 에서 거부되던 간극 해소.
+   */
+  canManage?: boolean;
 }
 
 interface AdjacentNotice {
   id: string;
   title: string;
-}
-
-interface NoticeListItem {
-  id: string;
-  title: string;
-  createdAt?: string;
 }
 
 /** 백엔드 /notices/{id}/comments 원시 응답 (목록 data[] · 생성 응답 공통 형태) */
@@ -99,16 +98,15 @@ function mapRawComment(c: RawComment): CommentData {
   };
 }
 
-/* ───────── 섹션 라벨 (좌측 스트라이프 + 14px 800) ───────── */
+/* ───────── 섹션 라벨 (14px 800) ─────────
+   [Phase 5 · AC 5-6] 좌측 3px 세로 스트라이프 제거 — RULE-D04(pipe-like 세로 구분선 금지)
+   전역 규칙 준수. 위계는 굵기·크기·여백으로만 표현한다. */
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between px-5 pt-4 pb-2.5">
-      <div className="inline-flex items-center gap-2">
-        <span aria-hidden="true" className="w-[3px] h-3.5 bg-it-blue-500 rounded-sm" />
-        <span className="text-[14px] font-extrabold text-it-ink-800 dark:text-white tracking-[-0.02em] inline-flex items-center gap-1.5">
-          {children}
-        </span>
-      </div>
+      <span className="text-[14px] font-extrabold text-it-ink-800 dark:text-white tracking-[-0.02em] inline-flex items-center gap-1.5">
+        {children}
+      </span>
     </div>
   );
 }
@@ -138,13 +136,6 @@ export default function NoticeDetailPage() {
   //   행까지 읽음 처리하므로, 벨 미읽음·앱 아이콘 배지를 즉시 재조회로 반영한다.
   const { refresh: refreshBellNotifications } = useNotificationContext();
   const { modal } = useModal();
-  const noticeRole = (user?.userType ?? '').toUpperCase();
-  // 팀 공지 관리 후보 역할 — 백엔드 SoT(notice-manage-scope.util) 의 팀 스코프 역할과 동일하게
-  // DIRECTOR·COACH 만. ACADEMY_DIRECTOR 는 팀 공지 주체가 아니므로 제외한다.
-  // 실제 팀 소속·관리역할 여부는 클라이언트가 알 수 없으므로 최종 집행은 백엔드가 한다
-  // (여기 통과해도 권한 없으면 수정/삭제 API 가 거부).
-  const canManageTeamNotice = noticeRole === 'DIRECTOR' || noticeRole === 'COACH';
-  const isAdmin = ['ADMIN', 'SYSTEM', 'OPER'].includes(noticeRole);
 
   const handleEditNotice = useCallback(() => {
     navigate(`/notices-create?edit=${noticeId}`);
@@ -188,6 +179,7 @@ export default function NoticeDetailPage() {
         isPinned?: boolean;
         createdAt: string;
         targetTeamId?: string | null;
+        canManage?: boolean;
       }>(`/notices/${noticeId}`);
       if (res.success && res.data) {
         const d = res.data;
@@ -205,6 +197,7 @@ export default function NoticeDetailPage() {
           viewCount: d.viewCount ?? 0,
           isPinned: d.isPinned,
           targetTeamId: d.targetTeamId ?? null,
+          canManage: d.canManage === true,
         });
         // 열람 = 읽음(백엔드 NoticeRead + 알림함 동기화 완료) → 벨/앱 배지 갱신
         void refreshBellNotifications();
@@ -223,46 +216,28 @@ export default function NoticeDetailPage() {
     void loadNotice();
   }, [loadNotice]);
 
-  // 이전글/다음글 — 진입 공지의 종류(팀/서비스)와 동일한 scope 안에서만 계산.
-  //   (scope 없이 전체를 가져오면 팀 공지 상세에 서비스 공지가 섞여 노출됨)
+  // 이전글/다음글 — 전용 API (Phase 5 · AC 5-3~4 · F-14).
+  //   기존 limit=100 목록 수신 후 클라이언트 계산은 101번째부터 부정확했고, 진입 공지의
+  //   종류(팀/서비스) 풀·게시기간·정렬(createdAt DESC, id DESC 동률 포함)을 서버가 단일 계산한다.
   const loadAdjacent = useCallback(async () => {
-    if (!noticeId || !notice) return;
-    const scope = notice.targetTeamId ? 'team' : 'service';
+    if (!noticeId) return;
     try {
-      const res = await api.get<
-        | { data?: NoticeListItem[]; notices?: NoticeListItem[] }
-        | NoticeListItem[]
-      >(`/notices?limit=100&page=1&isActive=true&scope=${scope}`);
-      if (!res.success || !res.data) return;
-      const list: NoticeListItem[] = Array.isArray(res.data)
-        ? res.data
-        : ((res.data as { notices?: NoticeListItem[] }).notices
-          ?? (res.data as { data?: NoticeListItem[] }).data
-          ?? []);
-      // [2026-06-18] 이전/다음 글은 '등록일시(createdAt)' 기준으로 계산.
-      //   목록 API 기본 정렬은 pinned 우선(고정 공지 최상단)이라, 고정된 오래된 공지가 맨 위로 와
-      //   더 최신 공지가 '다음글'이 아닌 '이전글'로 잡히고 다음글이 비는 버그가 있었음.
-      //   여기서 createdAt 내림차순(최신 우선)으로 재정렬한 뒤 인접 글을 구한다.
-      const chrono = [...list].sort(
-        (a, b) =>
-          new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime(),
-      );
-      const idx = chrono.findIndex((n) => n.id === noticeId);
-      if (idx === -1) {
+      const res = await api.get<{
+        next: AdjacentNotice | null;
+        previous: AdjacentNotice | null;
+      }>(`/notices/${noticeId}/adjacent`);
+      if (!res.success || !res.data) {
         setPrevNotice(null);
         setNextNotice(null);
         return;
       }
-      // chrono 는 최신순 — idx-1 이 더 최신(다음글), idx+1 이 더 오래됨(이전글).
-      const next = idx - 1 >= 0 ? chrono[idx - 1] : null;
-      const prev = idx + 1 < chrono.length ? chrono[idx + 1] : null;
-      setPrevNotice(prev ? { id: prev.id, title: prev.title } : null);
-      setNextNotice(next ? { id: next.id, title: next.title } : null);
+      setNextNotice(res.data.next);
+      setPrevNotice(res.data.previous);
     } catch {
       setPrevNotice(null);
       setNextNotice(null);
     }
-  }, [noticeId, notice]);
+  }, [noticeId]);
 
   useEffect(() => {
     void loadAdjacent();
@@ -435,9 +410,8 @@ export default function NoticeDetailPage() {
           </div>
         </section>
 
-        {/* 공지 수정/삭제 — 서비스 공지(targetTeamId=null)는 시스템 관리자만,
-            팀 공지는 감독·코치(팀 관리역할)만 노출. */}
-        {(notice?.targetTeamId ? canManageTeamNotice : isAdmin) && (
+        {/* 공지 수정/삭제 — 서버 계산 canManage 단일 기준 (AC 5-1 · Phase 2 역할 추정 과도기 종료). */}
+        {notice?.canManage && (
           <>
             <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
             <section className="bg-it-surface dark:bg-rink-800 px-5 py-4 grid grid-cols-2 gap-2" aria-label={MESSAGES.notice.manage}>
@@ -465,19 +439,28 @@ export default function NoticeDetailPage() {
         {(prevNotice || nextNotice) && (
           <>
             <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
-            <section className="bg-it-surface dark:bg-rink-800 pb-3" aria-label="다른 공지 보기">
-              <SectionLabel>다른 공지 보기</SectionLabel>
+            <section
+              className="bg-it-surface dark:bg-rink-800 pb-3"
+              aria-label={MESSAGES.notice.adjacentTitle}
+            >
+              <SectionLabel>{MESSAGES.notice.adjacentTitle}</SectionLabel>
               <div className="px-5">
                 {nextNotice ? (
+                  // 인접 이동은 push 가 아닌 **historyMode="replace"** — push 로 이동하면 방문 공지가
+                  // 히스토리에 층층이 쌓여, 헤더 뒤로가기가 목록이 아니라 지나온 공지들을 되짚는다.
+                  // replace 는 [진입점, 현재 상세] 두 층만 유지해 한 번에 복귀한다.
+                  // [R3-01] 실제 <a href> 링크로 유지 — 새 탭/링크 복사/스크린 리더 link 역할 보존,
+                  // 일반 좌클릭만 replace 위임(수정키·비주 클릭은 네이티브 동작).
                   <NavLink
                     href={`/notice/${nextNotice.id}`}
+                    historyMode="replace"
                     className={cn(
                       'flex w-full items-center gap-3 py-3.5 text-left',
                       prevNotice && 'border-b border-it-line dark:border-rink-700',
                     )}
                   >
-                    <span className="w-9 shrink-0 text-[11px] font-extrabold tracking-[0.02em] text-it-blue-500">
-                      다음글
+                    <span className="w-10 shrink-0 whitespace-nowrap text-[11px] font-extrabold tracking-[0.02em] text-it-blue-500">
+                      {MESSAGES.notice.adjacentNext}
                     </span>
                     <span className="flex-1 truncate text-[13.5px] font-bold tracking-[-0.01em] text-it-ink-800 dark:text-white">
                       {nextNotice.title}
@@ -491,21 +474,22 @@ export default function NoticeDetailPage() {
                       prevNotice && 'border-b border-it-line dark:border-rink-700',
                     )}
                   >
-                    <span className="w-9 shrink-0 text-[11px] font-extrabold tracking-[0.02em] text-it-ink-400 dark:text-wtext-4">
-                      다음글
+                    <span className="w-10 shrink-0 whitespace-nowrap text-[11px] font-extrabold tracking-[0.02em] text-it-ink-400 dark:text-wtext-4">
+                      {MESSAGES.notice.adjacentNext}
                     </span>
                     <span className="flex-1 truncate text-[13px] font-medium text-it-ink-400 dark:text-wtext-4">
-                      다음 공지사항이 없습니다.
+                      {MESSAGES.notice.adjacentNextEmpty}
                     </span>
                   </div>
                 )}
                 {prevNotice ? (
                   <NavLink
                     href={`/notice/${prevNotice.id}`}
+                    historyMode="replace"
                     className="flex w-full items-center gap-3 py-3.5 text-left"
                   >
-                    <span className="w-9 shrink-0 text-[11px] font-extrabold tracking-[0.02em] text-it-blue-500">
-                      이전글
+                    <span className="w-10 shrink-0 whitespace-nowrap text-[11px] font-extrabold tracking-[0.02em] text-it-blue-500">
+                      {MESSAGES.notice.adjacentPrev}
                     </span>
                     <span className="flex-1 truncate text-[13.5px] font-bold tracking-[-0.01em] text-it-ink-800 dark:text-white">
                       {prevNotice.title}
@@ -514,11 +498,11 @@ export default function NoticeDetailPage() {
                   </NavLink>
                 ) : (
                   <div className="flex w-full items-center gap-3 py-3.5">
-                    <span className="w-9 shrink-0 text-[11px] font-extrabold tracking-[0.02em] text-it-ink-400 dark:text-wtext-4">
-                      이전글
+                    <span className="w-10 shrink-0 whitespace-nowrap text-[11px] font-extrabold tracking-[0.02em] text-it-ink-400 dark:text-wtext-4">
+                      {MESSAGES.notice.adjacentPrev}
                     </span>
                     <span className="flex-1 truncate text-[13px] font-medium text-it-ink-400 dark:text-wtext-4">
-                      이전 공지사항이 없습니다.
+                      {MESSAGES.notice.adjacentPrevEmpty}
                     </span>
                   </div>
                 )}

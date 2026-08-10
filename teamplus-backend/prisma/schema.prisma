@@ -1630,7 +1630,10 @@ model SystemNotice {
   title                String // 공지 제목
   content              String    @db.Text // 공지 내용
   priority             Int       @default(0) // 정렬 우선순위 (고정 여부는 pinned 컬럼 사용 · priority 는 향후 정렬 가중치용 예약, @@index([priority]) 정렬 대비 유지)
-  targetType           String?   @map("target_type") // all, parent, coach, admin (대상 사용자)
+  /// 공지 유형/대상 분류 — **유지 확정** (Phase 5 · AC 5-5). 실사용 값: general|important|event(NoticeType)
+  /// + maintenance(앱 점검 판정 SoT — 시스템 역할·전역 전용) + all(생성 기본값)·parent·coach·director(대상 필터).
+  /// maintenance 판정(app-management)·이벤트 분류가 이 컬럼을 SoT 로 소비하므로 제거·rename 금지.
+  targetType           String?   @map("target_type")
   isActive             Boolean   @default(true) @map("is_active")
   viewCount            Int       @default(0) @map("view_count") // 조회수
   pinned               Boolean   @default(false) @map("pinned") // 고정 공지 여부
@@ -1639,6 +1642,8 @@ model SystemNotice {
   expiresAt            DateTime? @map("expires_at") @db.Timestamptz(3) // 만료일
   startAt              DateTime? @map("start_at") @db.Timestamptz(3)
   maintenanceReason    String?   @map("maintenance_reason") // 점검 사유(점검 공지 전용 · M4 화면 표시)
+  /// 게시 알림 생애 1회 claim — 첫 유효 게시 시각. null=미발송. 값이 있으면 재게시에도 알림 재생성 금지.
+  publishedNotifiedAt  DateTime? @map("published_notified_at") @db.Timestamptz(3)
   displayLocationsJson Json      @default("[]") @map("display_locations_json") @db.JsonB
 
   // 학년별 타겟 공지 (출생연도 범위로 필터링)

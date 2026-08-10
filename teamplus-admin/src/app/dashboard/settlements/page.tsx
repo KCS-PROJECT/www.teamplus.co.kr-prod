@@ -174,6 +174,17 @@ const statusLabels: Record<string, { label: string; color: string; icon: typeof 
 //  SWC TSX 파서가 `<'coach'` 를 JSX 로 오인하므로 type alias 로 분리.
 type SettlementTab = 'coach' | 'class';
 
+/** 조회 실패 시 서버가 알려준 사유를 화면·콘솔에 그대로 드러내기 위한 추출기. */
+function extractErrorMessage(error: unknown): string {
+  const data = (error as { response?: { data?: unknown } })?.response?.data as
+    | { message?: string | string[]; errors?: { message?: string }[] }
+    | undefined;
+  const raw = data?.message ?? data?.errors?.map((e) => e.message).join(', ');
+  if (Array.isArray(raw)) return raw.join(', ');
+  if (typeof raw === 'string' && raw.length > 0) return raw;
+  return (error as Error)?.message ?? '알 수 없는 오류';
+}
+
 export default function SettlementsPage() {
   // [추가 2026-05-14] 탭 — 수업 결제 정산(기본) / 코치 정산
   const [activeTab, setActiveTab] = useState<SettlementTab>('class');
@@ -188,16 +199,21 @@ export default function SettlementsPage() {
   const [actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ id: string; action: string } | null>(null);
   const [isPayoutOpen, setIsPayoutOpen] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadSettlements = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await api.get<unknown>('/settlements?limit=100');
+      const res = await api.get<unknown>('/settlements?pageSize=100');
       const items = extractSettlementItems(res);
       setSettlements(items.map(mapApiSettlement));
+      setLoadError(null);
     } catch (error) {
-      console.error('[SettlementsPage] 정산 목록 로드 실패:', error);
+      // 조회 실패를 빈 목록으로 덮으면 "정산 없음"으로 오인되므로 사유를 보존해 화면에 노출한다.
+      const reason = extractErrorMessage(error);
+      console.error('[SettlementsPage] 정산 목록 로드 실패:', reason, error);
       setSettlements([]);
+      setLoadError(reason);
     } finally {
       setIsLoading(false);
     }
@@ -340,6 +356,28 @@ export default function SettlementsPage() {
 
       {activeTab === 'coach' && (
       <>
+      {loadError && (
+        <div
+          role="alert"
+          className="flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-red-900/50 dark:bg-red-900/20"
+        >
+          <div className="flex items-start gap-2">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600 dark:text-red-400" aria-hidden="true" />
+            <div>
+              <p className="font-medium text-red-700 dark:text-red-400">
+                정산 목록을 불러오지 못했습니다.
+              </p>
+              <p className="mt-0.5 text-sm text-red-600 dark:text-red-300">
+                아래 수치는 실제 정산 현황이 아닙니다. 사유: {loadError}
+              </p>
+            </div>
+          </div>
+          <Button type="button" variant="outline" onClick={loadSettlements} className="h-10 shrink-0">
+            다시 시도
+          </Button>
+        </div>
+      )}
+
       {/* 통계 카드 */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <MiniStatsCard
@@ -437,6 +475,12 @@ export default function SettlementsPage() {
               <TableRow>
                 <TableCell colSpan={8} className="text-center py-10">
                   로딩 중...
+                </TableCell>
+              </TableRow>
+            ) : loadError ? (
+              <TableRow>
+                <TableCell colSpan={8} className="text-center py-10 text-red-600 dark:text-red-400">
+                  정산 목록을 불러오지 못했습니다.
                 </TableCell>
               </TableRow>
             ) : filteredSettlements.length === 0 ? (

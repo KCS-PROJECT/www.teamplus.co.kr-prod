@@ -15,7 +15,7 @@ class SignupWelcomeScreen extends ConsumerWidget {
   const SignupWelcomeScreen({super.key});
 
   Future<void> _finishSignup(BuildContext context, WidgetRef ref) async {
-    // 1) 가입 완료 처리 (stub — 추후 백엔드 POST /auth/signup 호출 자리)
+    // 1) 온보딩 완료 처리 (계정 생성은 아래 웹 /signup/ 이 담당)
     //    - signup_completed=true SharedPreferences 영구 저장
     //    - 메모리 state 의 민감정보(주민번호·PIN) 폐기
     await ref.read(signupFlowProvider.notifier).completeSignup();

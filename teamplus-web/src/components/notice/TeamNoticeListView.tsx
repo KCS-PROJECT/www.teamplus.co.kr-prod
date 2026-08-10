@@ -2,10 +2,10 @@
 
 // 팀 공지 공용 리스트 뷰 — /team-notices(열람)·/director-notices(관리) 공유 코어.
 //   화면 정체성(열람 vs 관리)은 props 로 분기:
-//     canManage  → 케밥(수정/삭제) 노출       (감독/코치 관리 화면)
+//     canManage  → 관리 화면 카피(부제목) 전용 — 케밥·시트는 **행별 서버 canManage** 가 단일 기준 (AC 5-1)
 //     canWrite   → 작성 FAB 노출              (작성 권한자)
 //     showReadState → 미확인(읽음) 점 노출     (회원 열람 화면)
-//     activeOnly → 활성 공지만 조회            (열람=활성만 / 관리=비활성 포함)
+//     mode       → 데이터 계약 (audience=게시 중 공지만 / manage=관리 목록 API·미게시/예약/만료 포함)
 //   카드 클릭 → /notice/[id] (양쪽 동일). 서비스 공지(/notices, (notice)/list)와는 무관.
 
 import { useState, useEffect, useCallback } from 'react';
@@ -37,6 +37,12 @@ interface NoticeItem {
   createdAt: string;
   isPinned: boolean;
   isRead?: boolean;
+  /** manage 모드 상태 배지용 — audience 응답에는 없을 수 있어 optional. */
+  isPublished?: boolean;
+  startAt?: string | null;
+  expiresAt?: string | null;
+  /** [Phase 5 · AC 5-1] 케밥(수정/삭제) 노출 단일 기준 — 서버가 공지별 계산. */
+  canManage?: boolean;
 }
 
 interface BackendNotice {
@@ -47,6 +53,10 @@ interface BackendNotice {
   isPinned?: boolean;
   createdAt: string;
   isRead?: boolean;
+  isPublished?: boolean;
+  startAt?: string | null;
+  expiresAt?: string | null;
+  canManage?: boolean;
 }
 
 interface BackendNoticeListResponse {
@@ -67,7 +77,33 @@ function toNoticeItem(n: BackendNotice): NoticeItem {
     createdAt: n.createdAt,
     isPinned: n.isPinned ?? false,
     isRead: n.isRead,
+    isPublished: n.isPublished,
+    startAt: n.startAt,
+    expiresAt: n.expiresAt,
+    canManage: n.canManage,
   };
+}
+
+/**
+ * 관리 목록 상태 배지 — 각 조건은 **독립**이라 복수 배지가 동시에 붙을 수 있다.
+ * (예: 미게시+만료) 판정은 호출자가 넘긴 **동일 now 스냅샷**(nowMs)으로만 한다 —
+ * 행마다 Date.now() 를 다시 읽으면 렌더 중 시각이 갈라져 경계 공지의 배지가 불일치한다.
+ */
+function computeStatusBadges(
+  notice: NoticeItem,
+  nowMs: number,
+): Array<{ key: 'unpublished' | 'scheduled' | 'expired'; label: string }> {
+  const badges: Array<{ key: 'unpublished' | 'scheduled' | 'expired'; label: string }> = [];
+  if (notice.isPublished === false) {
+    badges.push({ key: 'unpublished', label: MESSAGES.notice.badgeUnpublished });
+  }
+  if (notice.startAt && new Date(notice.startAt).getTime() > nowMs) {
+    badges.push({ key: 'scheduled', label: MESSAGES.notice.badgeScheduled });
+  }
+  if (notice.expiresAt && new Date(notice.expiresAt).getTime() < nowMs) {
+    badges.push({ key: 'expired', label: MESSAGES.notice.badgeExpired });
+  }
+  return badges;
 }
 
 const PAGE_SIZE = 10;
@@ -75,14 +111,18 @@ const PAGE_SIZE = 10;
 export interface TeamNoticeListViewProps {
   /** AppBar 제목 */
   title: string;
-  /** 케밥(수정/삭제) 관리 기능 노출 — 감독/코치 관리 화면 */
+  /** 관리 화면 카피(부제목·빈 상태 문구) 전용 — 케밥/시트 노출은 행별 서버 canManage 가 결정 (AC 5-1) */
   canManage?: boolean;
   /** 작성 FAB 노출 — 작성 권한자 */
   canWrite?: boolean;
   /** 미확인(읽음) 점 노출 — 회원 열람 화면 */
   showReadState?: boolean;
-  /** 활성 공지만 조회 (관리 화면은 비활성 포함) */
-  activeOnly?: boolean;
+  /**
+   * 데이터 계약 (Phase 3 · AC 3-3 — boolean `activeOnly` 대체).
+   *   audience(기본) → `GET /notices?scope=team&isActive=true` — 게시 중 공지만 (게시기간 서버 적용)
+   *   manage        → `GET /notices/admin/list?scope=team` — 관리 팀의 미게시·예약·만료 포함 + 상태 배지
+   */
+  mode?: 'audience' | 'manage';
   /**
    * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
    *   true 시 카드 박스 → full-bleed 흰 섹션 + hairline 행, it-* 토큰 적용.
@@ -97,7 +137,7 @@ export function TeamNoticeListView({
   canManage = false,
   canWrite = false,
   showReadState = false,
-  activeOnly = false,
+  mode = 'audience',
   iceTheme = false,
 }: TeamNoticeListViewProps) {
   const { toast } = useToast();
@@ -114,7 +154,7 @@ export function TeamNoticeListView({
   const [totalCount, setTotalCount] = useState(0);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  // 케밥(⋮) 액션시트 / 삭제 확인 상태 (canManage 일 때만 사용)
+  // 케밥(⋮) 액션시트 / 삭제 확인 상태 — canManage=true 행의 케밥으로만 열림
   const [actionTarget, setActionTarget] = useState<NoticeItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<NoticeItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -143,12 +183,14 @@ export function TeamNoticeListView({
           // 팀 공지 화면은 본인 소속/관리 팀 공지만.
           scope: 'team',
         };
-        // 열람 화면은 활성 공지만, 관리 화면은 비활성 포함.
-        if (activeOnly) params.isActive = 'true';
+        // audience = 게시 중 공지만 (게시기간·활성은 서버 predicate 가 강제).
+        // manage   = 관리 목록 API — 서버가 **권한으로** 관리 팀을 판정해 미게시·예약·만료까지
+        //            반환한다. query 로 우회 스위치를 켜는 구조가 아니다 (AC 공통 2).
+        if (mode === 'audience') params.isActive = 'true';
 
         const res = await apiRequest<BackendNoticeListResponse | BackendNotice[]>({
           method: 'GET',
-          url: '/notices',
+          url: mode === 'manage' ? '/notices/admin/list' : '/notices',
           params,
         });
 
@@ -191,7 +233,7 @@ export function TeamNoticeListView({
         setIsLoadingMore(false);
       }
     },
-    [activeOnly, toast],
+    [mode, toast],
   );
 
   useEffect(() => {
@@ -246,6 +288,11 @@ export function TeamNoticeListView({
     (a, b) => Number(b.isPinned) - Number(a.isPinned),
   );
 
+  // [AC 3-2] 상태 배지 판정용 now 스냅샷 — 렌더당 1회만 읽어 전체 행이 동일 시각으로 판정.
+  const nowMs = Date.now();
+  const badgesFor = (notice: NoticeItem) =>
+    mode === 'manage' ? computeStatusBadges(notice, nowMs) : undefined;
+
   if (isLoading) return null;
 
   // ICETIMES flat — 카드 박스 제거. full-bleed 흰 섹션 + hairline 행, it-* 토큰.
@@ -289,7 +336,8 @@ export function TeamNoticeListView({
                     key={notice.id}
                     notice={notice}
                     showReadState={showReadState}
-                    onKebab={canManage ? setActionTarget : undefined}
+                    statusBadges={badgesFor(notice)}
+                    onKebab={notice.canManage ? setActionTarget : undefined}
                     iceTheme
                   />
                 ))}
@@ -373,9 +421,10 @@ export function TeamNoticeListView({
           <FloatingActionButton href="/notices-create" icon="add" label="공지 작성하기" />
         )}
 
-        {/* 케밥(⋮) 액션 시트 + 삭제 확인 (관리 권한자만) */}
-        {canManage && (
-          <>
+        {/* 케밥(⋮) 액션 시트 + 삭제 확인 — [P5-R1-01] 화면 prop 이 아닌 **행별 서버 canManage** 로만
+            열린다(케밥 자체가 canManage=true 행에만 렌더). 시트를 화면 prop 으로 재차 gate 하면
+            audience 화면에서 관리 가능 행의 케밥을 눌러도 시트가 열리지 않는 불일치가 생긴다. */}
+        <>
             <ActionSheet
               isOpen={!!actionTarget}
               onClose={() => setActionTarget(null)}
@@ -414,7 +463,6 @@ export function TeamNoticeListView({
               }}
             />
           </>
-        )}
       </MobileContainer>
     );
   }
@@ -454,7 +502,8 @@ export function TeamNoticeListView({
                   key={notice.id}
                   notice={notice}
                   showReadState={showReadState}
-                  onKebab={canManage ? setActionTarget : undefined}
+                  statusBadges={badgesFor(notice)}
+                  onKebab={notice.canManage ? setActionTarget : undefined}
                 />
               ))}
 
@@ -534,9 +583,8 @@ export function TeamNoticeListView({
         <FloatingActionButton href="/notices-create" icon="add" label="공지 작성하기" />
       )}
 
-      {/* 케밥(⋮) 액션 시트 + 삭제 확인 (관리 권한자만) */}
-      {canManage && (
-        <>
+      {/* 케밥(⋮) 액션 시트 + 삭제 확인 — [P5-R1-01] 행별 서버 canManage 로만 열림 (위 iceTheme 분기 주석 참조) */}
+      <>
           <ActionSheet
             isOpen={!!actionTarget}
             onClose={() => setActionTarget(null)}
@@ -575,20 +623,41 @@ export function TeamNoticeListView({
             }}
           />
         </>
-      )}
     </MobileContainer>
   );
 }
 
 // ─── Sub Components ──────────────────────────────────
+/** 상태 배지 색 — 미게시=중성 회색 · 예약=파랑 · 만료=빨강 (라이트/다크 각각 4.5:1 이상 유지). */
+const BADGE_TONE: Record<
+  'unpublished' | 'scheduled' | 'expired',
+  { ice: string; legacy: string }
+> = {
+  unpublished: {
+    ice: 'bg-it-ink-100 text-it-ink-600 dark:bg-it-ink-700/60 dark:text-it-ink-100',
+    legacy: 'bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-100',
+  },
+  scheduled: {
+    ice: 'bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-900/50 dark:text-it-blue-200',
+    legacy: 'bg-ice-50 text-ice-600 dark:bg-ice-500/20 dark:text-ice-300',
+  },
+  expired: {
+    ice: 'bg-it-red-500/10 text-it-red-600 dark:bg-it-red-500/15 dark:text-it-red-300',
+    // flame 스케일은 100/500/600/700 만 정의됨 — 다크 텍스트는 flame-100 사용 (300 미존재)
+    legacy: 'bg-flame-500/10 text-flame-600 dark:bg-flame-500/15 dark:text-flame-100',
+  },
+};
+
 function NoticeCard({
   notice,
   showReadState,
+  statusBadges,
   onKebab,
   iceTheme = false,
 }: {
   notice: NoticeItem;
   showReadState?: boolean;
+  statusBadges?: Array<{ key: 'unpublished' | 'scheduled' | 'expired'; label: string }>;
   onKebab?: (notice: NoticeItem) => void;
   iceTheme?: boolean;
 }) {
@@ -610,14 +679,22 @@ function NoticeCard({
       >
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
-            {/* 고정 배지 + 날짜 */}
-            <div className="mb-1 flex items-center gap-2">
+            {/* 고정/상태 배지 + 날짜 */}
+            <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1">
               {notice.isPinned && (
-                <span className="inline-flex items-center gap-0.5 rounded-w-pill bg-it-red-500/10 px-2 py-0.5 text-[12px] font-bold text-it-red-500">
+                <span className="inline-flex items-center gap-0.5 rounded-w-pill bg-it-red-500/10 px-2 py-0.5 text-[12px] font-bold text-it-red-500 dark:text-it-red-300">
                   <Icon name="push_pin" className="text-[12px]" aria-hidden="true" />
                   고정
                 </span>
               )}
+              {statusBadges?.map((b) => (
+                <span
+                  key={b.key}
+                  className={`inline-flex items-center rounded-w-pill px-2 py-0.5 text-[12px] font-bold ${BADGE_TONE[b.key].ice}`}
+                >
+                  {b.label}
+                </span>
+              ))}
               {unread && (
                 <span
                   className="inline-block h-2 w-2 rounded-w-pill bg-it-red-500"
@@ -669,14 +746,22 @@ function NoticeCard({
     >
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          {/* 고정 배지 + 날짜 */}
-          <div className="mb-1 flex items-center gap-2">
+          {/* 고정/상태 배지 + 날짜 */}
+          <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1">
             {notice.isPinned && (
               <span className="inline-flex items-center gap-0.5 rounded-w-pill bg-flame-500/10 px-2 py-0.5 text-card-meta font-bold text-flame-500">
                 <Icon name="push_pin" className="text-card-meta" aria-hidden="true" />
                 고정
               </span>
             )}
+            {statusBadges?.map((b) => (
+              <span
+                key={b.key}
+                className={`inline-flex items-center rounded-w-pill px-2 py-0.5 text-card-meta font-bold ${BADGE_TONE[b.key].legacy}`}
+              >
+                {b.label}
+              </span>
+            ))}
             {unread && (
               <span
                 className="inline-block h-2 w-2 rounded-w-pill bg-flame-500"

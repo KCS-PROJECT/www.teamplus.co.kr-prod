@@ -29,6 +29,14 @@ interface NoticeDetail {
   /** 노출 시작/종료일 (ISO) — 백엔드 SystemNotice.startAt/expiresAt */
   startAt?: string | null;
   expiresAt?: string | null;
+  /** 고정 한도 풀 판정용 — 팀 공지(값) vs 서비스 공지(null) */
+  targetTeamId?: string | null;
+}
+
+/** `GET /notices/admin/list` 행 중 고정 카운트에 필요한 필드만 */
+interface AdminListNotice {
+  id: string;
+  isPinned?: boolean;
 }
 
 /** ISO 문자열을 date input 용 YYYY-MM-DD 로 변환 (타임존 시프트 방지 위해 앞 10자 슬라이스). */
@@ -97,9 +105,18 @@ export default function NoticeCreatePage() {
   const [content, setContent] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPrefilling, setIsPrefilling] = useState(isEditMode);
-  // [2026-06-09] 상단 고정 옵션 — 최대 2개. pinnedFull 이면 신규 고정 불가.
+  // [2026-06-09] 상단 고정 옵션 — 최대 2개.
   const [isPinned, setIsPinned] = useState(false);
+  // 대상 팀 풀의 고정 한도 도달 여부 — 정확한 사전 안내용(아래 풀 카운트 effect).
+  // 최종 판정은 여전히 서버 409(NOTICE_PIN_LIMIT) — 사전 판정과 등록 사이의 레이스 백스톱.
   const [pinnedFull, setPinnedFull] = useState(false);
+  // 수정 모드의 풀 판정용 — 프리필에서 확보한 공지의 대상 팀.
+  // undefined=미확정(프리필 전·실패 — 판정 보류) / null=서비스 공지 / string=팀 풀
+  const [editTeamId, setEditTeamId] = useState<string | null | undefined>(undefined);
+  // [R6-02] 프리필 원값과 현재 체크 상태의 구분 — **원래 고정돼 있던 공지의 수정**은
+  // full 판정과 무관하게 체크박스를 살려 고정 해제가 가능해야 한다(자기 제외로 full 도 아님).
+  // 반대로 신규·원래 미고정 수정은 full 이면 체크를 강제 해제하고 비활성화한다.
+  const [wasPinned, setWasPinned] = useState(false);
   // [2026-06-18] 공지 노출 기간 (등록기간) — 비우면 상시 노출. 백엔드 startDate/endDate 로 전송.
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -116,50 +133,103 @@ export default function NoticeCreatePage() {
   //   선택기도 화면 구성 요소라 도착 전에 로더를 내리면 레이아웃이 뒤늦게 바뀐다.
   usePageReady(!isPrefilling && !isTeamsLoading);
 
-  const prefillFromEdit = useCallback(async () => {
-    if (!editId) return;
-    setIsPrefilling(true);
-    try {
-      const res = await api.get<NoticeDetail>(`/notices/${editId}`);
-      if (res.success && res.data) {
-        const n = res.data;
-        setTitle(n.title ?? '');
-        setContent(n.content ?? '');
-        setIsPinned(n.pinned ?? n.isPinned ?? false);
-        setStartDate(toDateInput(n.startAt));
-        setEndDate(toDateInput(n.expiresAt));
-      }
-    } finally {
+  useEffect(() => {
+    // [R7-02·R8-01] 프리필 소유 상태 전체가 editId 와 결합 — editId 변경(수정→작성 전환
+    // 포함) 즉시 이전 공지의 identity(wasPinned·editTeamId)와 폼 값(체크·제목·본문·기간)을
+    // 모두 폐기한다. 남기면 이전 공지의 내용·체크가 새 identity 의 POST/PATCH 에 실린다.
+    // 늦게 도착한 이전 프리필 응답은 cancelled 로 무시 (A→B 전환 역순 도착 보호),
+    // 프리필 실패 시 editTeamId 는 undefined(미확정)로 남아 풀 판정이 보류된다(fail-open).
+    setWasPinned(false);
+    setEditTeamId(undefined);
+    setIsPinned(false);
+    setTitle('');
+    setContent('');
+    setStartDate('');
+    setEndDate('');
+    if (!editId) {
       setIsPrefilling(false);
+      return;
     }
-  }, [editId]);
-
-  useEffect(() => {
-    if (isEditMode) {
-      prefillFromEdit();
-    }
-  }, [isEditMode, prefillFromEdit]);
-
-  // [2026-06-09] 신규 작성 시 현재 상단 고정 공지 개수 확인 — 2개면 고정 불가.
-  useEffect(() => {
-    if (isEditMode) return;
+    let cancelled = false;
+    setIsPrefilling(true);
     (async () => {
-      const res = await api.get<{ notices?: unknown[]; data?: unknown[] } | unknown[]>(
-        '/notices?limit=50&page=1&isActive=true&scope=team',
-      );
-      if (res.success && res.data) {
-        const arr = Array.isArray(res.data)
-          ? res.data
-          : ((res.data as { notices?: unknown[] }).notices ??
-            (res.data as { data?: unknown[] }).data ??
-            []);
-        const cnt = (arr as Array<{ pinned?: boolean; priority?: number }>).filter(
-          (n) => n.pinned || (n.priority ?? 0) > 0,
-        ).length;
-        setPinnedFull(cnt >= 2);
+      try {
+        const res = await api.get<NoticeDetail>(`/notices/${editId}`);
+        if (cancelled) return;
+        if (res.success && res.data) {
+          const n = res.data;
+          setTitle(n.title ?? '');
+          setContent(n.content ?? '');
+          setIsPinned(n.pinned ?? n.isPinned ?? false);
+          setWasPinned(n.pinned ?? n.isPinned ?? false);
+          setStartDate(toDateInput(n.startAt));
+          setEndDate(toDateInput(n.expiresAt));
+          setEditTeamId(n.targetTeamId ?? null);
+        }
+      } finally {
+        if (!cancelled) setIsPrefilling(false);
       }
     })();
-  }, [isEditMode]);
+    return () => {
+      cancelled = true;
+    };
+  }, [editId]);
+
+  // ── 고정 한도 사전 안내 (정확 판정 복원) ─────────────────────────
+  // [P3-R1-05] 에서 제거했던 사전 비활성화의 복원 — 당시 제거 사유는 "사전 차단" 자체가
+  // 아니라 **계산이 틀려서**였다(전 열람 팀 활성 고정 합산 ≠ 팀별 독립 풀·게시 상태 무관).
+  // 이제 두 재료로 정확한 판정이 가능하다:
+  //   · 대상 풀 확정 — 단일 팀은 manage/teams 자동 확정, 다중 팀은 선택기 값, 수정은 공지의 팀
+  //   · 풀 단위 카운트 — 관리 목록 API(admin/list)는 미게시·만료 포함 + 고정 우선 정렬이라
+  //     첫 페이지로 해당 풀의 pinned 전수를 셀 수 있다 (한도 2)
+  // 서버 409 는 백스톱으로 유지 — 사전 판정과 등록 사이에 다른 관리자가 고정하는 레이스는
+  // 서버가 최종 판정한다. 조회 실패 시에는 막지 않는다(false) — 오차단보다 409 안내가 낫다.
+  const pinPoolTeamId = isEditMode
+    ? (editTeamId ?? null)
+    : needsTeamChoice
+      ? targetTeamId || null
+      : (manageTeams[0]?.id ?? null);
+  // 수정 모드는 **현재 editId 의 프리필이 대상 팀까지 확정**한 후, 신규는 팀 후보 확정 후에만
+  // 판정 (미확정 상태에서 조회 금지 — 프리필 실패 시 undefined 로 남아 판정 보류)
+  const pinPoolResolved = isEditMode
+    ? !isPrefilling && editTeamId !== undefined
+    : !isTeamsLoading && !teamsLoadFailed && (!needsTeamChoice || !!targetTeamId);
+
+  useEffect(() => {
+    // [R6-01] 풀 키가 바뀌는 즉시 이전 풀의 판정을 폐기 — A팀 full 확정 후 B팀으로 바꾸면
+    // B팀 응답 전까지는 fail-open(false). 늦게 도착한 이전 풀 응답은 cancelled 로 무시된다.
+    setPinnedFull(false);
+    if (!pinPoolResolved) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        // 팀 풀 = scope=team&teamId / 서비스 풀(시스템 역할·서비스 공지 수정) = scope=service.
+        // pinned 우선 정렬이라 limit 5 안에 풀의 모든 고정(≤2)이 들어온다.
+        const query = pinPoolTeamId
+          ? `scope=team&teamId=${encodeURIComponent(pinPoolTeamId)}`
+          : 'scope=service';
+        const res = await api.get<{ data?: AdminListNotice[] }>(
+          `/notices/admin/list?${query}&page=1&limit=5`,
+        );
+        if (cancelled) return;
+        const rows = res.success ? (res.data?.data ?? []) : [];
+        // 수정 중인 공지 자신은 제외 — 이미 고정된 공지의 수정을 막지 않는다 (서버 불변식과 동일)
+        const pinnedCount = rows.filter(
+          (n) => n.isPinned && n.id !== editId,
+        ).length;
+        const full = pinnedCount >= 2;
+        setPinnedFull(full);
+        // [R6-02] full 확정 시 신규·원래 미고정 수정의 체크를 강제 해제 —
+        // 응답 대기 중 체크했거나 여유 풀에서 체크 후 full 팀으로 전환한 경우의 우회 차단.
+        if (full && !wasPinned) setIsPinned(false);
+      } catch {
+        if (!cancelled) setPinnedFull(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pinPoolResolved, pinPoolTeamId, editId, wasPinned]);
 
   // 대상 팀 후보 조회 — 시스템 역할은 빈 배열이 오므로 선택기가 뜨지 않는다.
   //   수정 모드는 대상 팀을 바꾸지 않으므로(payload 에 키 미포함) 조회도 생략.
@@ -239,7 +309,9 @@ export default function NoticeCreatePage() {
       const payload = {
         title: trimmedTitle,
         content: trimmedContent,
-        isPinned,
+        // [R6-02] 제출 방어 — full 확정 상태에서 신규·원래 미고정의 고정 요청은 보내지 않는다
+        // (강제 해제와 이중 방어). 레이스의 최종 판정은 여전히 서버 409.
+        isPinned: pinnedFull && !wasPinned ? false : isPinned,
         // [2026-08-07] 노출 기간 — **KST 벽시계 → 절대시각 ISO**.
         //   이전에는 `${d}T00:00:00.000Z` / `${d}T23:59:59.999Z` 를 조립했는데 그 값은 UTC 라
         //   KST 기준 시작 09:00 · 종료 익일 08:59 로 9시간 밀렸다(F-06).
@@ -263,6 +335,9 @@ export default function NoticeCreatePage() {
         emitRefresh(REFRESH_KEYS.NOTICES);
         emitRefresh(['notices', 'admin']);
         back();
+      } else if (response.error?.code === 'NOTICE_PIN_LIMIT') {
+        // [AC 3-8 · P3-R1-05] 고정 한도의 단일 SoT = 서버 409. 표준 문구로 매핑.
+        toast.error(MESSAGES.notice.pinnedFull);
       } else {
         toast.error(
           isEditMode ? MESSAGES.noticesCreate.updateError : MESSAGES.noticesCreate.createError,
@@ -394,18 +469,21 @@ export default function NoticeCreatePage() {
             </div>
           )}
 
-          {/* [2026-06-09] 상단 고정 옵션 — 최대 2개까지. */}
+          {/* 상단 고정 옵션 — 최대 2개. 대상 팀 풀 기준 정확 카운트로 사전 안내(비활성화)하고,
+              사전 판정과 등록 사이의 레이스는 서버 409 → pinnedFull toast 가 최종 판정. */}
           <label
             className={cn(
               'flex items-center gap-3 pb-4 border-b border-it-line dark:border-rink-700',
               needsTeamChoice && 'pt-4',
-              !isPinned && pinnedFull ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+              // [R6-02] 원래 고정돼 있던 공지의 수정은 full 판정과 무관하게 항상 조작 가능
+              // (고정 해제 경로 보존). 신규·원래 미고정은 full 이면 잠금.
+              pinnedFull && !wasPinned ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
             )}
           >
             <input
               type="checkbox"
               checked={isPinned}
-              disabled={!isPinned && pinnedFull}
+              disabled={pinnedFull && !wasPinned}
               onChange={(e) => setIsPinned(e.target.checked)}
               className="h-5 w-5 shrink-0 accent-it-blue-500"
             />
@@ -414,9 +492,9 @@ export default function NoticeCreatePage() {
                 상단 고정
               </span>
               <span className="block text-card-meta text-it-ink-500 dark:text-rink-300 mt-0.5">
-                {!isPinned && pinnedFull
-                  ? '이미 2개가 고정되어 있어 추가할 수 없습니다.'
-                  : '공지 목록 상단에 고정해 노출합니다 (최대 2개).'}
+                {pinnedFull && !wasPinned
+                  ? MESSAGES.notice.pinnedFull
+                  : MESSAGES.notice.pinnedHint}
               </span>
             </span>
           </label>

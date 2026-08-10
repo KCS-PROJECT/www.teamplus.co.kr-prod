@@ -1,9 +1,7 @@
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../../../core/network/api_client.dart';
 
 /// A5~A13 가입 플로우 진행 상태 모델.
 class SignupFlowState {
@@ -147,71 +145,22 @@ class SignupFlowNotifier extends Notifier<SignupFlowState> {
     );
   }
 
-  /// 가입 완료 처리 — 백엔드 `POST /auth/signup` 호출 + 로컬 영구 저장.
+  /// 온보딩 완료 처리 — 로컬 영구 저장 + 민감정보 폐기.
+  ///
+  /// 계정 생성은 이 플로우의 책임이 아니다. 실제 회원가입은 본인인증·약관동의·
+  /// 아이디 입력을 모두 수집하는 웹 `/signup/` 이 담당하며, 완료 화면(A13)이
+  /// 곧바로 해당 페이지로 이동시킨다.
   ///
   /// 동작 순서:
-  /// 1. 백엔드 호출 시도 (실패해도 UI 흐름은 진행 — 데모 우선)
-  /// 2. SharedPreferences 에 `signup_completed=true` 영구 저장
-  /// 3. 메모리 state 의 민감정보(주민번호·PIN) 폐기
-  ///
-  /// 백엔드 SignupDto 호환:
-  /// - firstName/lastName/email/phone/password (필수)
-  /// - userType=PARENT (가입 플로우는 학부모용)
-  /// - birthDate/gender (자녀 정보 → 별도 /children 엔드포인트로 분리해야 함)
+  /// 1. SharedPreferences 에 `signup_completed=true` 영구 저장
+  /// 2. 메모리 state 의 민감정보(주민번호·PIN) 폐기
   Future<void> completeSignup() async {
-    // 1) 백엔드 호출 시도 — 실패해도 silent fail (현재는 UI 데모, 본인인증 미연동)
-    await _attemptBackendSignup();
-
-    // 2) 영구 플래그 저장
     await persistSignupCompleted();
 
-    // 3) 민감정보 메모리 폐기
     state = state.copyWith(
       rrnFront: '',
       pinHash: null,
     );
-  }
-
-  /// `POST /auth/signup` 호출 시도.
-  ///
-  /// 현재는 stub 단계 — 본인인증으로 받은 이름·생년월일·전화번호는 메모리에만 있고
-  /// 이메일·비밀번호 등 SignupDto 필수 필드는 가입 플로우에서 수집하지 않으므로
-  /// 더미 값으로 채워 호출만 시도한다. 본격 운영 시:
-  /// (a) 이메일 입력 단계 추가 또는 본인인증 응답으로 받은 CI 기반 가입 엔드포인트 신설
-  /// (b) PIN 별도 보호 — `/auth/pin` 분리 엔드포인트 권장
-  Future<void> _attemptBackendSignup() async {
-    try {
-      final phone = state.phoneNumber ?? '01012345678';
-      final pin = state.pinHash ?? '';
-
-      // 더미 데이터로 SignupDto 채움 (디자인 데모용 — 실 운영은 신규 엔드포인트 필요)
-      final payload = <String, dynamic>{
-        'firstName': '회원',
-        'lastName': '팀플러스',
-        'email': '${DateTime.now().millisecondsSinceEpoch}@teamplus.local',
-        'phone': phone,
-        'password': pin.isNotEmpty ? '${pin}Aa!ce' : 'Demo1234!',
-        'userType': 'PARENT',
-        if (state.childBirth != null && state.childBirth!.isNotEmpty)
-          'birthDate': _toIsoDate(state.childBirth!),
-        if (state.childGender != null) 'gender': state.childGender,
-      };
-
-      final client = ApiClient();
-      await client.post('/auth/signup', data: payload).timeout(
-            const Duration(seconds: 8),
-          );
-      debugPrint('[SignupFlow] /auth/signup 성공');
-    } catch (e) {
-      // UI 데모 단계 — 실패 silent fail (백엔드 SignupDto 미스매치 또는 네트워크 오류)
-      debugPrint('[SignupFlow] /auth/signup 실패 (silent): $e');
-    }
-  }
-
-  /// "2018.04.12" → "2018-04-12"
-  String _toIsoDate(String raw) {
-    final cleaned = raw.replaceAll('.', '-').replaceAll('/', '-');
-    return cleaned;
   }
 }
 

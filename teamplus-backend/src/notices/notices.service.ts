@@ -20,7 +20,6 @@ import {
   sanitizeExtendedHtml,
 } from "@/common/utils/sanitize.util";
 import { maskProfanity } from "@/common/utils/content-filter.util";
-import { maskFullName } from "@/common/utils/mask-name.util";
 import { resolveViewerTeamIds } from "@/common/utils/team-scope.util";
 import {
   isWithinPublicationWindow,
@@ -33,6 +32,11 @@ import {
   isNoticeSystemRole,
   isNoticeTeamScopedRole,
 } from "./utils/notice-manage-scope.util";
+
+/** 고정 공지 최대 개수 — `targetTeamId` 별 독립 풀 (null = 시스템 공지 전용 풀). */
+const MAX_PINNED_PER_POOL = 2;
+/** Serializable 직렬화 충돌(P2034) bounded retry 횟수. */
+const PIN_TX_MAX_RETRIES = 3;
 
 interface NoticeFilter {
   targetType?: string;
@@ -112,6 +116,34 @@ export class NoticesService {
     } catch {
       /* Redis 일시 오류 무시 */
     }
+  }
+
+  /**
+   * [Phase 5 · AC 5-1~2] 공지 관리 가능 여부 판정 컨텍스트 — 요청당 **한 번만** 해석한다.
+   *   시스템 역할 = 전역·팀 공지 모두 / 팀 역할 = 관리 팀 공지만 / 그 외 = false.
+   *   행별 판정은 `canManageWith` 로 O(1) — 목록에서 행마다 권한 쿼리를 만들지 않는다.
+   */
+  private async resolveManageContext(
+    userId?: string,
+    userType?: string,
+  ): Promise<{ isSystem: boolean; managedIds: Set<string> }> {
+    if (!userId) return { isSystem: false, managedIds: new Set() };
+    if (isNoticeSystemRole(userType)) {
+      return { isSystem: true, managedIds: new Set() };
+    }
+    if (!isNoticeTeamScopedRole(userType)) {
+      return { isSystem: false, managedIds: new Set() };
+    }
+    const ids = await resolveNoticeManageTeamIds(this.prisma, userId, userType);
+    return { isSystem: false, managedIds: new Set(ids) };
+  }
+
+  private canManageWith(
+    ctx: { isSystem: boolean; managedIds: Set<string> },
+    targetTeamId: string | null,
+  ): boolean {
+    if (ctx.isSystem) return true;
+    return targetTeamId !== null && ctx.managedIds.has(targetTeamId);
   }
 
   private mapNotice<
@@ -288,8 +320,14 @@ export class NoticesService {
       this.prisma.systemNotice.count({ where }),
     ]);
 
+    // [Phase 5 · AC 5-1~2] canManage — 권한 집합은 요청당 **한 번만** 해석해 전 행에 적용.
+    const manageCtx = await this.resolveManageContext(userId, userType);
+
     const mapped = notices.map((notice) => {
-      const base = this.mapNotice(notice);
+      const base = {
+        ...this.mapNotice(notice),
+        canManage: this.canManageWith(manageCtx, notice.targetTeamId),
+      };
       if (userId) {
         // reads가 select 되었을 때만 isRead 주입
         const reads = (notice as unknown as { reads?: { readAt: Date }[] })
@@ -343,8 +381,9 @@ export class NoticesService {
     });
 
     // [2026-07-20 읽음 동기화 B→A] 이 공지를 가리키는 알림함 미읽음 행도 읽음 처리
-    //   (벨 카운트·iOS 뱃지 동반 하향). 실패는 격리.
-    void this.notificationsService.markNotificationsReadByLinkUrls(userId, [
+    //   (벨 카운트·iOS 뱃지 동반 하향). 실패는 메서드 내부에서 격리(예외 미전파).
+    //   [Phase 4 · AC 4-3] 응답 전 완료 — 응답 직후 벨 재조회가 스테일 캐시를 읽지 않게.
+    await this.notificationsService.markNotificationsReadByLinkUrls(userId, [
       `/notice/${noticeId}`,
     ]);
 
@@ -401,7 +440,8 @@ export class NoticesService {
       skipDuplicates: true,
     });
     // [2026-07-20 읽음 동기화 B→A] 일괄 읽음한 공지들의 알림함 행도 함께 읽음 처리.
-    void this.notificationsService.markNotificationsReadByLinkUrls(
+    //   [Phase 4 · AC 4-3] 응답 전 완료 (실패는 메서드 내부 격리).
+    await this.notificationsService.markNotificationsReadByLinkUrls(
       userId,
       unread.map((n) => `/notice/${n.id}`),
     );
@@ -424,8 +464,12 @@ export class NoticesService {
       throw new NotFoundException("공지사항을 찾을 수 없습니다.");
     }
 
+    // [Phase 5 · AC 5-1~2 · P5-R1-03] 관리 컨텍스트는 요청당 1회 — 열람 검증의 관리자 예외와
+    // 응답 canManage 가 같은 해석 결과를 공유한다 (만료 팀 공지를 관리자가 열 때 이중 조회 방지).
+    const manageCtx = await this.resolveManageContext(userId, userType);
+
     // 열람 권한 검증 — read 마킹/조회수 증가 이전에 수행 (차단 시 흔적 남기지 않음)
-    await this.assertCanViewNotice(existing, userId, userType);
+    await this.assertCanViewNotice(existing, userId, userType, manageCtx);
 
     // 로그인 사용자: 읽음 마킹 (best effort — 실패해도 조회는 진행)
     if (userId) {
@@ -437,7 +481,8 @@ export class NoticesService {
         });
         // [2026-07-20 읽음 동기화 B→A] 공지 상세 열람 = 대응 알림함 행도 읽음 처리.
         //   "공지 내용을 읽었는데 알림/뱃지 미읽음이 그대로" 문제의 근본 해소.
-        void this.notificationsService.markNotificationsReadByLinkUrls(userId, [
+        //   [Phase 4 · AC 4-3] 응답 전 완료 — 상세 열람 직후 벨 카운트가 스테일이지 않게.
+        await this.notificationsService.markNotificationsReadByLinkUrls(userId, [
           `/notice/${noticeId}`,
         ]);
       } catch {
@@ -451,8 +496,11 @@ export class NoticesService {
       userId,
     });
 
+    // [Phase 5 · AC 5-1] 상세 canManage — 위에서 1회 해석한 컨텍스트 재사용 (P5-R1-03).
+    const canManage = this.canManageWith(manageCtx, existing.targetTeamId);
+
     if (!shouldIncrement) {
-      return { ...this.mapNotice(existing), isRead: !!userId };
+      return { ...this.mapNotice(existing), isRead: !!userId, canManage };
     }
 
     try {
@@ -460,7 +508,7 @@ export class NoticesService {
         where: { id: noticeId },
         data: { viewCount: { increment: 1 } },
       });
-      return { ...this.mapNotice(updated), isRead: !!userId };
+      return { ...this.mapNotice(updated), isRead: !!userId, canManage };
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -470,6 +518,113 @@ export class NoticesService {
       }
       throw error;
     }
+  }
+
+  /**
+   * 이전/다음 공지 — 전용 API (Phase 5 · AC 5-3~4 · F-14).
+   *
+   * 기존에는 상세 화면이 `limit=100` 목록을 받아 클라이언트에서 인접을 계산했다 —
+   * 101번째부터 부정확하고, 목록·상세의 권한 predicate 가 이중화된다. 서버 단일 계산으로 대체.
+   *
+   * 모드 계약 (AC 5-3):
+   *   · audience(기본) — 상세와 동일한 열람 검증(assertCanViewNotice) 후, **진입 공지와 같은
+   *     종류**(팀 공지 → 내 열람 팀 풀 · 서비스 공지 → 서비스 풀)의 **게시 중** 공지만 후보.
+   *   · manage — 현재 공지의 관리 권한을 서버가 확인(없으면 **404 은닉**). 후보는 같은 종류의
+   *     관리 가능 풀이며 **미게시·예약·만료 포함** (관리 목록과 동일 우회).
+   *
+   * 정렬 계약 (AC 5-4): `createdAt DESC, id DESC` 결정론 — createdAt 동률은 id 로 판정.
+   *   next = 즉시 더 최신 글 · previous = 즉시 더 오래된 글 (현 UI 의미 유지).
+   */
+  async getAdjacentNotices(
+    noticeId: string,
+    userId?: string,
+    userType?: string,
+    mode: "audience" | "manage" = "audience",
+  ) {
+    const current = await this.prisma.systemNotice.findUnique({
+      where: { id: noticeId },
+      select: {
+        id: true,
+        createdAt: true,
+        targetTeamId: true,
+        isActive: true,
+        createdBy: true,
+        startAt: true,
+        expiresAt: true,
+      },
+    });
+    if (!current) {
+      throw new NotFoundException("공지사항을 찾을 수 없습니다.");
+    }
+
+    const baseConditions: Prisma.SystemNoticeWhereInput[] = [];
+
+    if (mode === "manage") {
+      // 관리 모드 — 권한 없는 요청과 부재 공지는 동일한 404
+      const ctx = await this.resolveManageContext(userId, userType);
+      if (!this.canManageWith(ctx, current.targetTeamId)) {
+        throw new NotFoundException("공지사항을 찾을 수 없습니다.");
+      }
+      baseConditions.push(
+        current.targetTeamId
+          ? ctx.isSystem
+            ? { targetTeamId: { not: null } }
+            : { targetTeamId: { in: Array.from(ctx.managedIds) } }
+          : { targetTeamId: null },
+      );
+    } else {
+      // audience — 상세 열람과 동일 검증 (타 팀·비공개는 여기서 404)
+      await this.assertCanViewNotice(current, userId, userType);
+      const viewerTeamIds =
+        current.targetTeamId && userId
+          ? await resolveViewerTeamIds(this.prisma, userId, userType)
+          : [];
+      baseConditions.push(
+        current.targetTeamId
+          ? { targetTeamId: { in: viewerTeamIds } }
+          : { targetTeamId: null },
+        { isActive: true },
+        ...publicationConditions(),
+      );
+    }
+
+    // 결정론 인접 판정 — (createdAt, id) 튜플 비교로 동률까지 안정.
+    const [next, previous] = await Promise.all([
+      // next = 현재보다 (createdAt, id) 가 큰 것 중 가장 작은 것 (즉시 더 최신)
+      this.prisma.systemNotice.findFirst({
+        where: {
+          AND: [
+            ...baseConditions,
+            {
+              OR: [
+                { createdAt: { gt: current.createdAt } },
+                { createdAt: current.createdAt, id: { gt: current.id } },
+              ],
+            },
+          ],
+        },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: { id: true, title: true },
+      }),
+      // previous = 현재보다 작은 것 중 가장 큰 것 (즉시 더 오래됨)
+      this.prisma.systemNotice.findFirst({
+        where: {
+          AND: [
+            ...baseConditions,
+            {
+              OR: [
+                { createdAt: { lt: current.createdAt } },
+                { createdAt: current.createdAt, id: { lt: current.id } },
+              ],
+            },
+          ],
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: { id: true, title: true },
+      }),
+    ]);
+
+    return { next, previous };
   }
 
   /**
@@ -569,69 +724,131 @@ export class NoticesService {
     }
 
     const validatedLocations = sanitizeLocations(createDto.displayLocations);
-    const notice = await this.prisma.systemNotice.create({
-      data: {
-        title: sanitizeStrict(createDto.title),
-        content: sanitizeExtendedHtml(createDto.content),
-        targetType: createDto.type || "all",
-        pinned: createDto.isPinned ?? false,
-        isActive: createDto.isPublished !== false,
-        createdBy: userId,
-        displayLocationsJson: validatedLocations as Prisma.InputJsonValue,
-        // A군 절대 시점 — 화면이 KST 벽시계를 ISO 로 변환해 보낸 값을 그대로 저장한다.
-        //   (규약: 절대 시점은 UTC 저장, 벽시계 변환은 입력 화면 책임)
-        startAt: createDto.startDate ? new Date(createDto.startDate) : null,
-        expiresAt: createDto.endDate ? new Date(createDto.endDate) : null,
-        maintenanceReason: createDto.maintenanceReason
-          ? sanitizeStrict(createDto.maintenanceReason)
-          : null,
-        targetBirthYearFrom: createDto.targetBirthYearFrom ?? null,
-        targetBirthYearTo: createDto.targetBirthYearTo ?? null,
-        targetTeamId: resolvedTeamId,
-      },
-    });
-
-    // [2026-05-14] 공지 생성 → 공개 목록 캐시 무효화
-    await this.invalidateNoticesListCache();
-
     // 게시 상태(공개 + 게시 시작 시각 도래)에서만 생성 시점 푸시.
     //   - isActive=false(임시저장) 또는 startAt 미래(예약 공지)는 발송하지 않는다.
     //     (예약 공지의 도래 시점 발송은 미지원 — 게시 시각에 맞춰 생성할 것)
+    const now = new Date();
+    const startAt = createDto.startDate ? new Date(createDto.startDate) : null;
+    const expiresAt = createDto.endDate ? new Date(createDto.endDate) : null;
+    const isActive = createDto.isPublished !== false;
+    // [P3-R1-04] 종료 경계 포함 — 이미 만료된 기간으로 생성된 공지는 "유효 게시" 가
+    // 아니므로 claim·알림 대상이 아니다 (전환 경로의 withinWindow 판정과 대칭).
     const isPushablePublication =
-      notice.isActive && (!notice.startAt || notice.startAt <= new Date());
+      isActive &&
+      (!startAt || startAt <= now) &&
+      (!expiresAt || expiresAt >= now);
 
-    if (resolvedTeamId) {
-      // [2026-07-20 수신자 확대] 팀 공지 → 팀 전체 풀(멤버 ∪ 학부모 ∪ 감독/코치).
-      //   기존 notifyTeamParents(학부모 한정)는 선수 본인·코치가 푸시를 못 받고,
-      //   ParentChild 링크 0건 팀은 조용히 미발송되던 원인 — 작성자 본인만 제외.
-      if (isPushablePublication) {
-        void this.notificationsService.notifyTeamAudience(
-          resolvedTeamId,
-          {
-            notificationType: "team_notice_created",
-            title: "팀 공지",
-            message: notice.title,
-            linkUrl: `/notice/${notice.id}`,
-          },
-          { excludeUserIds: [userId] },
-        );
-      }
-    } else if (isPushablePublication) {
-      // [2026-07-20 신규] 시스템/서비스 공지(targetTeamId=null) → 전체 활성 사용자 푸시.
-      //   기존에는 `if (resolvedTeamId)` 가드에 막혀 시스템 공지가 인앱 알림·FCM 을
-      //   전혀 발송하지 않았다("시스템 공지 push 미수신"의 근본 원인).
-      void this.notificationsService.notifyAllAppUsers(
-        {
-          notificationType: "system_notice_created",
-          title: notice.targetType === "maintenance" ? "시스템 점검 안내" : "공지사항",
-          message: notice.title,
-          linkUrl: `/notice/${notice.id}`,
-        },
-        { excludeUserIds: [userId] },
-      );
+    const noticeData = {
+      title: sanitizeStrict(createDto.title),
+      content: sanitizeExtendedHtml(createDto.content),
+      targetType: createDto.type || "all",
+      pinned: createDto.isPinned ?? false,
+      isActive,
+      createdBy: userId,
+      displayLocationsJson: validatedLocations as Prisma.InputJsonValue,
+      // A군 절대 시점 — 화면이 KST 벽시계를 ISO 로 변환해 보낸 값을 그대로 저장한다.
+      //   (규약: 절대 시점은 UTC 저장, 벽시계 변환은 입력 화면 책임)
+      startAt,
+      expiresAt,
+      maintenanceReason: createDto.maintenanceReason
+        ? sanitizeStrict(createDto.maintenanceReason)
+        : null,
+      targetBirthYearFrom: createDto.targetBirthYearFrom ?? null,
+      targetBirthYearTo: createDto.targetBirthYearTo ?? null,
+      targetTeamId: resolvedTeamId,
+      // [Phase 3 · AC 3-9] 게시 알림 생애 1회 claim — 즉시 게시 생성은 이 요청이 곧
+      // 첫 게시 이벤트이므로 생성과 동시에 claim 을 소진 기록한다(별도 레이스 없음).
+      publishedNotifiedAt: isPushablePublication ? now : null,
+    };
+
+    // [Phase 3 · AC 3-7] 고정 생성은 한도 불변식과 같은 Serializable 트랜잭션.
+    const notice = createDto.isPinned
+      ? await this.withPinSerializableRetry(async (tx) => {
+          await this.assertPinCapacity(tx, resolvedTeamId);
+          return tx.systemNotice.create({ data: noticeData });
+        })
+      : await this.prisma.systemNotice.create({ data: noticeData });
+
+    // [2026-05-14] 공지 생성 → 공개 목록 캐시 무효화 (트랜잭션 밖 — AC 3-7)
+    await this.invalidateNoticesListCache();
+
+    if (isPushablePublication) {
+      this.sendPublishNotification(notice, userId);
     }
 
     return this.mapNotice(notice);
+  }
+
+  /**
+   * 게시 알림 발송 (claim 확보 후 commit 뒤에만 호출할 것).
+   *
+   * [Phase 3 · AC 3-10] 이 호출은 "알림 이벤트 생성의 exactly-once" 를 의미하며
+   * WebSocket/FCM 실제 전달은 기존 best-effort 정책 그대로다. 발송 실패를 이유로
+   * `publishedNotifiedAt` claim 을 초기화하거나 재발송하지 않는다.
+   */
+  private sendPublishNotification(
+    notice: { id: string; title: string; targetType: string | null; targetTeamId: string | null },
+    actorUserId: string,
+  ): void {
+    // 행위자 미상(레거시 무인자 호출)이면 제외 없이 전체 발송
+    const excludeUserIds = actorUserId ? [actorUserId] : [];
+    if (notice.targetTeamId) {
+      // [2026-07-20 수신자 확대] 팀 공지 → 팀 전체 풀(멤버 ∪ 학부모 ∪ 감독/코치) — 작성자 본인만 제외.
+      void this.notificationsService.notifyTeamAudience(
+        notice.targetTeamId,
+        {
+          notificationType: "team_notice_created",
+          title: "팀 공지",
+          message: notice.title,
+          linkUrl: `/notice/${notice.id}`,
+        },
+        { excludeUserIds },
+      );
+    } else {
+      // [2026-07-20 신규] 시스템/서비스 공지(targetTeamId=null) → 전체 활성 사용자 푸시.
+      void this.notificationsService.notifyAllAppUsers(
+        {
+          notificationType: "system_notice_created",
+          title:
+            notice.targetType === "maintenance" ? "시스템 점검 안내" : "공지사항",
+          message: notice.title,
+          linkUrl: `/notice/${notice.id}`,
+        },
+        { excludeUserIds },
+      );
+    }
+  }
+
+  /**
+   * 게시 전환의 생애 1회 알림 claim — **게시 상태 변경과 같은 트랜잭션(tx) 안에서** 호출.
+   *
+   * [Phase 3 · AC 3-9~10 · P3-R1-03] `updateMany({ id, publishedNotifiedAt: null })` 의
+   * 원자적 count 로 claim 을 판정한다 — 동시 전환 2건이 와도 한 트랜잭션만 count=1 을 받는다.
+   * 조건: 전환 결과가 "첫 유효 게시"(isActive + 게시기간 내)일 때만.
+   * [AC 3-11] 예약 공지(startAt 미래)는 claim 하지 않는다 — 도래 후 명시적 전환에서 처리.
+   * 반환된 claimed 는 commit 뒤 sendPublishNotification 호출 여부로만 사용한다.
+   */
+  private async claimPublishInTx(
+    tx: Prisma.TransactionClient,
+    row: {
+      id: string;
+      isActive: boolean;
+      startAt: Date | null;
+      expiresAt: Date | null;
+    },
+  ): Promise<boolean> {
+    if (!row.isActive) return false;
+    const now = new Date();
+    const withinWindow =
+      (!row.startAt || row.startAt <= now) &&
+      (!row.expiresAt || row.expiresAt >= now);
+    if (!withinWindow) return false;
+
+    const claim = await tx.systemNotice.updateMany({
+      where: { id: row.id, publishedNotifiedAt: null },
+      data: { publishedNotifiedAt: now },
+    });
+    return claim.count === 1; // false = 이미 소진(생애 1회 계약)
   }
 
   /**
@@ -744,13 +961,60 @@ export class NoticesService {
       updateData.targetTeamId = normalizeTargetTeamId(updateDto.targetTeamId);
     }
 
-    const updated = await this.prisma.systemNotice.update({
-      where: { id: noticeId },
-      data: updateData,
-    });
+    // [Phase 3 · AC 3-6~7] 고정 불변식 — update 상속 경로 포함.
+    //   create·togglePin 만 막으면 PATCH { isPinned: true } 가 세 번째 우회가 된다
+    //   (웹 수정 폼이 실제로 isPinned 를 항상 전송). 풀 판정은 전이 결과 대상 팀 기준.
+    //   [P3-R1-02] 신규 고정(false→true)뿐 아니라 **이미 고정된 공지의 풀 이동**
+    //   (targetTeamId 변경)도 목적지 풀 한도를 검사해야 한다 — 안 하면 고정을 유지한 채
+    //   팀을 옮겨 목적지 풀에 3번째 고정이 저장된다.
+    const becomesPinned = updateDto.isPinned === true && !notice.pinned;
+    const effectivePinned =
+      updateDto.isPinned !== undefined ? updateDto.isPinned : notice.pinned;
+    const nextTargetTeamId =
+      updateDto.targetTeamId !== undefined
+        ? normalizeTargetTeamId(updateDto.targetTeamId)
+        : notice.targetTeamId;
+    const poolChanged = nextTargetTeamId !== notice.targetTeamId;
+    const needsPinCheck = effectivePinned && (becomesPinned || poolChanged);
+    const publishTransition =
+      updateDto.isPublished === true && !notice.isActive;
 
-    // [2026-05-14] 공지 수정 → 공개 목록 캐시 무효화
+    // [P3-R1-03 · AC 3-9~10] 게시 전환과 생애 1회 claim 은 **같은 트랜잭션** —
+    //   isActive=true 커밋과 claim 기록 사이에서 프로세스가 죽으면 "게시됐지만 알림은
+    //   영구 누락" 상태가 남는다. 트랜잭션으로 묶으면 둘 다 반영되거나 둘 다 롤백된다.
+    //   알림 **호출**은 commit 뒤에만 (claimed 플래그로 전달).
+    const runUpdate = async (tx: Prisma.TransactionClient) => {
+      if (needsPinCheck) {
+        await this.assertPinCapacity(tx, nextTargetTeamId, noticeId);
+      }
+      const row = await tx.systemNotice.update({
+        where: { id: noticeId },
+        data: updateData,
+      });
+      const claimed = publishTransition
+        ? await this.claimPublishInTx(tx, row)
+        : false;
+      return { row, claimed };
+    };
+
+    const { row: updated, claimed } = needsPinCheck
+      ? await this.withPinSerializableRetry(runUpdate)
+      : publishTransition
+        ? await this.prisma.$transaction(runUpdate)
+        : {
+            row: await this.prisma.systemNotice.update({
+              where: { id: noticeId },
+              data: updateData,
+            }),
+            claimed: false,
+          };
+
+    // [2026-05-14] 공지 수정 → 공개 목록 캐시 무효화 (트랜잭션 밖 — AC 3-7)
     await this.invalidateNoticesListCache();
+
+    if (claimed) {
+      this.sendPublishNotification(updated, userId);
+    }
 
     return this.mapNotice(updated);
   }
@@ -865,6 +1129,8 @@ export class NoticesService {
         page,
         limit,
         userId,
+        // [Phase 5 · AC 5-1] userType 을 전달해야 위임 경로의 canManage 가 시스템 역할로 계산된다
+        user.userType,
       );
     }
 
@@ -872,6 +1138,14 @@ export class NoticesService {
     const managedIds = new Set(
       await resolveNoticeManageTeamIds(this.prisma, userId, user.userType),
     );
+
+    // [P3-R1-01 · AC 3-5] teamId 은닉 검사는 빈 관리 집합 조기 반환보다 **먼저** —
+    // 관리 팀 0개 사용자가 임의 teamId 로 200 빈 목록을 받으면, 404 를 받는 다른
+    // 사용자와의 응답 차이가 존재/권한 정보를 누설한다. 어떤 사용자든 권한 밖
+    // teamId 는 동일한 404 여야 한다.
+    if (options.teamId && !managedIds.has(options.teamId)) {
+      throw new NotFoundException("공지사항을 찾을 수 없습니다.");
+    }
 
     if (managedIds.size === 0) {
       return {
@@ -891,13 +1165,10 @@ export class NoticesService {
         array_contains: [options.displayLocation],
       };
     }
-    // DIRECTOR/COACH 가 teamId 지정 시 본인 관리 팀에 한해 적용
+    // DIRECTOR/COACH 가 teamId 지정 시 본인 관리 팀에 한해 적용.
+    // 권한 밖 teamId 의 404 은닉은 위(빈 집합 조기 반환 이전)에서 이미 처리됨 — 여기 도달한
+    // teamId 는 관리 팀 확정.
     if (options.teamId) {
-      if (!managedIds.has(options.teamId)) {
-        throw new ForbiddenException(
-          "본인이 관리하는 팀의 공지만 조회할 수 있습니다.",
-        );
-      }
       where.targetTeamId = options.teamId;
     }
 
@@ -928,7 +1199,9 @@ export class NoticesService {
     ]);
 
     return {
-      data: notices.map((n) => this.mapNotice(n)),
+      // [Phase 5 · AC 5-1~2] 이 분기의 where 는 관리 팀으로 한정돼 있으므로 전 행 canManage=true —
+      // 이미 해석한 managedIds 를 재사용하며 추가 권한 쿼리는 없다.
+      data: notices.map((n) => ({ ...this.mapNotice(n), canManage: true })),
       pagination: {
         total,
         page,
@@ -957,6 +1230,9 @@ export class NoticesService {
     },
     userId?: string,
     userType?: string,
+    // [P5-R1-03] 호출자가 이미 관리 컨텍스트를 해석했다면 전달 — 게시기간 밖 팀 공지의
+    // 관리자 예외 판정에 재사용해 같은 요청에서 관리 SoT 를 두 번 조회하지 않는다.
+    precomputedManageCtx?: { isSystem: boolean; managedIds: Set<string> },
   ): Promise<void> {
     const isSystemRole = isNoticeSystemRole(userType);
     const isAuthor = !!userId && notice.createdBy === userId;
@@ -987,10 +1263,10 @@ export class NoticesService {
     // 게시 기간 밖이어도 **해당 팀의 검증된 관리자**는 관리 목적으로 열람할 수 있다
     //   (지난 공지 확인·수정·moderation 동선 보존). 게시 중이면 추가 쿼리 0.
     if (!published) {
-      const manageTeamIds = userId
-        ? await resolveNoticeManageTeamIds(this.prisma, userId, userType)
-        : [];
-      if (!manageTeamIds.includes(notice.targetTeamId)) {
+      const ctx =
+        precomputedManageCtx ??
+        (await this.resolveManageContext(userId, userType));
+      if (!this.canManageWith(ctx, notice.targetTeamId)) {
         throw new NotFoundException("공지사항을 찾을 수 없습니다.");
       }
     }
@@ -1044,9 +1320,66 @@ export class NoticesService {
   }
 
   /**
+   * 고정 한도 검사가 필요한 쓰기를 Serializable 트랜잭션 + bounded retry 로 실행.
+   *
+   * [Phase 3 · AC 3-7] count → write 사이의 레이스로 3번째 고정이 커밋되는 것을
+   * Serializable 격리로 차단한다. 직렬화 충돌(P2034)은 재시도하되,
+   * 한도 초과(ConflictException) 등 업무 예외는 그대로 전파한다.
+   * 외부 알림·캐시 작업은 재시도될 수 있는 트랜잭션 안에 넣지 말 것.
+   */
+  private async withPinSerializableRetry<T>(
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.prisma.$transaction(fn, {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        });
+      } catch (e) {
+        const isSerializationConflict =
+          e instanceof Prisma.PrismaClientKnownRequestError &&
+          e.code === "P2034";
+        if (!isSerializationConflict || attempt >= PIN_TX_MAX_RETRIES) {
+          throw e;
+        }
+      }
+    }
+  }
+
+  /**
+   * 고정 최대 2개 불변식 — 같은 트랜잭션(tx) 안에서 호출해야 원자적이다.
+   *
+   * [Phase 3 · AC 3-6] 풀 단위: `targetTeamId` 별 독립 (null = 시스템 공지 전용 풀).
+   * 게시·기간 상태와 무관하게 `pinned=true` 전체를 센다 — 만료·예약 공지를 편집하는
+   * 동안에도 불변식이 흔들리지 않게.
+   * [AC 3-8] 초과 시 409 + errorCode=NOTICE_PIN_LIMIT (Web 은 MESSAGES.notice.pinnedFull 매핑).
+   */
+  private async assertPinCapacity(
+    tx: Prisma.TransactionClient,
+    targetTeamId: string | null,
+    excludeNoticeId?: string,
+  ): Promise<void> {
+    const pinnedCount = await tx.systemNotice.count({
+      where: {
+        pinned: true,
+        targetTeamId,
+        ...(excludeNoticeId ? { id: { not: excludeNoticeId } } : {}),
+      },
+    });
+    if (pinnedCount >= MAX_PINNED_PER_POOL) {
+      throw new ConflictException({
+        statusCode: 409,
+        message: `상단 고정은 최대 ${MAX_PINNED_PER_POOL}개까지 가능합니다.`,
+        error: "NOTICE_PIN_LIMIT",
+      });
+    }
+  }
+
+  /**
    * 상단 고정 토글
    *
    * [T02-M 2026-05-15] teamId 격리 — DIRECTOR/COACH 는 본인 관리 팀 공지만 토글 가능.
+   * [Phase 3 · AC 3-7] false→true 전환은 create 와 동일한 서버 불변식(Serializable)을 통과해야 한다.
    */
   async togglePin(noticeId: string, userId?: string) {
     const notice = await this.prisma.systemNotice.findUnique({
@@ -1062,12 +1395,19 @@ export class NoticesService {
     }
 
     const isPinned = notice.pinned;
-    const updated = await this.prisma.systemNotice.update({
-      where: { id: noticeId },
-      data: {
-        pinned: !isPinned,
-      },
-    });
+    const updated = isPinned
+      ? // 고정 해제는 한도와 무관 — 일반 update
+        await this.prisma.systemNotice.update({
+          where: { id: noticeId },
+          data: { pinned: false },
+        })
+      : await this.withPinSerializableRetry(async (tx) => {
+          await this.assertPinCapacity(tx, notice.targetTeamId, noticeId);
+          return tx.systemNotice.update({
+            where: { id: noticeId },
+            data: { pinned: true },
+          });
+        });
 
     // 토글 후 캐시 무효화
     await this.invalidateNoticesListCache();
@@ -1100,15 +1440,29 @@ export class NoticesService {
       await this.assertCanManageNotice(userId, notice.targetTeamId);
     }
 
-    const updated = await this.prisma.systemNotice.update({
-      where: { id: noticeId },
-      data: {
-        isActive: !notice.isActive,
+    // [Phase 3 · AC 3-9~10 · P3-R1-03] 미게시→게시 전환과 생애 1회 claim 을 같은
+    //   트랜잭션으로 기록 — updateNotice(isPublished) 경로와 claim 저장소
+    //   (publishedNotifiedAt)를 공유하므로 어느 경로로 전환해도 생애 1회가 유지된다.
+    const publishTransition = !notice.isActive;
+    const { row: updated, claimed } = await this.prisma.$transaction(
+      async (tx) => {
+        const row = await tx.systemNotice.update({
+          where: { id: noticeId },
+          data: { isActive: !notice.isActive },
+        });
+        const didClaim = publishTransition
+          ? await this.claimPublishInTx(tx, row)
+          : false;
+        return { row, claimed: didClaim };
       },
-    });
+    );
 
-    // 토글 후 캐시 무효화
+    // 토글 후 캐시 무효화 (트랜잭션 밖)
     await this.invalidateNoticesListCache();
+
+    if (claimed) {
+      this.sendPublishNotification(updated, userId ?? "");
+    }
 
     return {
       id: updated.id,
@@ -1291,14 +1645,11 @@ export class NoticesService {
   /**
    * 댓글 목록 조회.
    *
-   * 비로그인(@Public) 열람을 허용하지만 작성자 **실명은 마스킹**한다(홍길동 → 홍*동).
-   * CHILD/TEEN 회원 실명이 검색엔진·크롤러에 그대로 노출되는 것을 막는다
-   * (개인정보 안전성 확보조치 §6).
-   *
-   * [Phase 0 · F-09] **인증 필수 + 열람 권한 검증**으로 전환.
-   *   이전에는 `@Public()` 이라 공지 id 만 알면 비로그인 사용자가 타 팀 공지의 댓글을 읽을 수 있었고,
-   *   미게시·만료·예약 공지의 댓글도 같은 경로로 노출됐다. 이제 상세 조회와 동일한 인가를 적용한다.
-   *   마스킹 로직은 비로그인 경로가 사라져 사실상 dead 지만, 방어적으로 유지한다(Phase 4 정리 판단).
+   * [Phase 0 · F-09] **인증 필수 + 열람 권한 검증** — 상세 조회와 동일한 인가.
+   * [Phase 4 · AC 4-4] 비로그인 실명 마스킹 분기 제거 — 컨트롤러가 `AuthGuard("jwt")` 를
+   *   강제해 viewerId 없는 요청은 이 메서드에 도달할 수 없다(팀/게시기간 열람 검증도
+   *   `assertCanViewNotice` 가 비로그인을 404 로 차단). 도달 불가 분기를 남겨두면
+   *   "비로그인 열람이 가능하다"는 오독을 낳으므로 제거한다.
    *
    * @param viewerId 로그인 사용자 ID
    * @param viewerType 로그인 사용자 역할 (열람 권한 판정용)
@@ -1345,31 +1696,12 @@ export class NoticesService {
       this.prisma.noticeComment.count({ where: { noticeId } }),
     ]);
 
-    const isAuthenticated = Boolean(viewerId);
-
     return {
-      // 비로그인 응답은 userName 뿐 아니라 중첩 user 객체의 원본 성/이름까지 마스킹한다
-      // (spread 로 실명이 그대로 새어나가던 경로).
-      data: comments.map(({ user, ...rest }) => {
-        const fullName = user ? `${user.lastName}${user.firstName}` : "";
-        const maskedName = user
-          ? maskFullName(user.lastName, user.firstName, "알 수 없음")
-          : "알 수 없음";
-
-        return {
-          ...rest,
-          user: user
-            ? isAuthenticated
-              ? user
-              : { id: user.id, firstName: null, lastName: maskedName }
-            : null,
-          userName: user
-            ? isAuthenticated
-              ? fullName
-              : maskedName
-            : "알 수 없음",
-        };
-      }),
+      data: comments.map(({ user, ...rest }) => ({
+        ...rest,
+        user: user ?? null,
+        userName: user ? `${user.lastName}${user.firstName}` : "알 수 없음",
+      })),
       pagination: {
         total,
         page,
@@ -1382,19 +1714,70 @@ export class NoticesService {
   /**
    * 댓글 삭제 (본인만 가능)
    */
-  async deleteComment(commentId: string, userId: string) {
+  /**
+   * 댓글 삭제.
+   *
+   * [Phase 4 · AC 4-1] 두 경로:
+   *   · 작성자 본인 — 항상 삭제 가능 (감사 로그 없음, 기존 동작 유지)
+   *   · moderation — 해당 공지를 관리할 수 있는 팀 관리자(공지 대상 팀 기준) 또는 시스템 역할.
+   *     권한 밖·타 팀·부재 대상은 **동일한 404** — 기존 403("본인 댓글만")은 댓글의 존재를
+   *     확인시켜 주는 응답이라 IDOR 은닉 결정으로 대체한다.
+   * [AC 4-2] moderation 삭제는 AuditLog 생성과 **하나의 트랜잭션** — 부분 성공(삭제됐는데
+   *   기록 없음 / 기록됐는데 삭제 안 됨)이 남지 않는다. 감사에는 식별자만 기록하고
+   *   **댓글 본문은 복제하지 않는다**(개인정보 최소화).
+   */
+  async deleteComment(commentId: string, userId: string, userType?: string) {
     const comment = await this.prisma.noticeComment.findUnique({
       where: { id: commentId },
+      select: {
+        id: true,
+        userId: true,
+        noticeId: true,
+        notice: { select: { targetTeamId: true } },
+      },
     });
 
     if (!comment) {
       throw new NotFoundException("댓글을 찾을 수 없습니다.");
     }
 
-    if (comment.userId !== userId) {
-      throw new ForbiddenException("본인 댓글만 삭제할 수 있습니다.");
+    // 본인 댓글 — 기존 경로 그대로
+    if (comment.userId === userId) {
+      return this.prisma.noticeComment.delete({ where: { id: commentId } });
     }
 
-    return this.prisma.noticeComment.delete({ where: { id: commentId } });
+    // moderation 권한 판정 — 쓰기 SoT 재사용.
+    //   전역 공지(targetTeamId=null) 댓글은 시스템 역할만, 팀 공지 댓글은 해당 팀 관리자도.
+    const noticeTeamId = comment.notice?.targetTeamId ?? null;
+    let canModerate = isNoticeSystemRole(userType);
+    if (!canModerate && noticeTeamId && isNoticeTeamScopedRole(userType)) {
+      const managedIds = await resolveNoticeManageTeamIds(
+        this.prisma,
+        userId,
+        userType,
+      );
+      canModerate = managedIds.includes(noticeTeamId);
+    }
+    if (!canModerate) {
+      // 404 은닉 — 권한 없는 사용자에게 댓글 존재를 확인시켜 주지 않는다
+      throw new NotFoundException("댓글을 찾을 수 없습니다.");
+    }
+
+    const [deleted] = await this.prisma.$transaction([
+      this.prisma.noticeComment.delete({ where: { id: commentId } }),
+      this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: "NOTICE_COMMENT_DELETED",
+          resource: "NoticeComment",
+          oldValue: {
+            noticeId: comment.noticeId,
+            commentId: comment.id,
+            commentOwnerUserId: comment.userId,
+          },
+        },
+      }),
+    ]);
+    return deleted;
   }
 }
