@@ -78,6 +78,7 @@ describe("NotificationsService", () => {
               findMany: jest.fn(),
               findUnique: jest.fn(),
               update: jest.fn(),
+              updateMany: jest.fn(),
               delete: jest.fn(),
               count: jest.fn(),
             },
@@ -1171,6 +1172,65 @@ describe("NotificationsService", () => {
           status: "sent",
         }),
       });
+    });
+  });
+
+  // ── Phase 4 · P4-R1-02 — linkUrl 읽음 동기화 계약 ─────────────
+  //   (notices 3곳 호출부가 await 하는 대상 메서드의 자체 계약)
+  describe("markNotificationsReadByLinkUrls", () => {
+    const getUpdateMany = () =>
+      (prismaService.notification as unknown as { updateMany: jest.Mock })
+        .updateMany;
+
+    it("unread 캐시 무효화 완료 후에 반환한다 — 응답 전 완료 (AC 4-3)", async () => {
+      getUpdateMany().mockResolvedValue({ count: 2 });
+      let cacheInvalidated = false;
+      jest.spyOn(service, "invalidateUnreadCountCache").mockImplementation(
+        () =>
+          new Promise<void>((resolve) =>
+            setTimeout(() => {
+              cacheInvalidated = true;
+              resolve();
+            }, 5),
+          ),
+      );
+
+      const count = await service.markNotificationsReadByLinkUrls("u1", [
+        "/notice/n1",
+      ]);
+
+      expect(count).toBe(2);
+      // void 로 흘렸다면 반환 시점에 false
+      expect(cacheInvalidated).toBe(true);
+    });
+
+    it("FCM badge sync 는 best-effort — 미해결(pending)이어도 반환을 막지 않는다", async () => {
+      getUpdateMany().mockResolvedValue({ count: 1 });
+      // 영원히 resolve 되지 않는 promise — await 했다면 이 테스트는 타임아웃으로 실패한다
+      mockFcmService.sendBadgeSync.mockReturnValue(new Promise(() => {}));
+
+      await expect(
+        service.markNotificationsReadByLinkUrls("u1", ["/notice/n1"]),
+      ).resolves.toBe(1);
+    });
+
+    it("DB 실패는 내부 격리 — throw 하지 않고 0 을 반환한다 (호출부 await 안전)", async () => {
+      getUpdateMany().mockRejectedValue(new Error("db down"));
+
+      await expect(
+        service.markNotificationsReadByLinkUrls("u1", ["/notice/n1"]),
+      ).resolves.toBe(0);
+    });
+
+    it("읽을 행이 없으면(count=0) 캐시 무효화·FCM 을 호출하지 않는다", async () => {
+      getUpdateMany().mockResolvedValue({ count: 0 });
+      const cacheSpy = jest.spyOn(service, "invalidateUnreadCountCache");
+
+      await expect(
+        service.markNotificationsReadByLinkUrls("u1", ["/notice/n1"]),
+      ).resolves.toBe(0);
+      expect(cacheSpy).not.toHaveBeenCalled();
+      expect(mockFcmService.sendBadgeSync).not.toHaveBeenCalled();
     });
   });
 });

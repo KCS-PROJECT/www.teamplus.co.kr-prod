@@ -1514,6 +1514,12 @@ export const MESSAGES = {
     badgeUnpublished: "미게시",
     badgeScheduled: "예약",
     badgeExpired: "만료",
+    /** 상세 하단 인접 공지 섹션 (Phase 5 · 전용 API 전환과 함께 MESSAGES 화) */
+    adjacentTitle: "다른 공지 보기",
+    adjacentNext: "다음글",
+    adjacentPrev: "이전글",
+    adjacentNextEmpty: "다음 공지사항이 없습니다.",
+    adjacentPrevEmpty: "이전 공지사항이 없습니다.",
     notFoundOrForbidden: "공지사항을 찾을 수 없거나 접근 권한이 없습니다.",
     loadFailed: "공지사항을 불러오지 못했습니다.",
     /** 재시도는 일시적 실패(네트워크·5xx)에만 노출한다 — 권한/부재는 재시도해도 결과가 같다. */

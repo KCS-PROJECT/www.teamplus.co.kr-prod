@@ -1,5 +1,6 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { NotFoundException, ForbiddenException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { NoticesService } from "./notices.service";
 import { NoticeType } from "./dto/create-notice.dto";
 import { PrismaService } from "@/prisma/prisma.service";
@@ -162,9 +163,19 @@ describe("NoticesService — Phase 0 권한·전이·게시기간", () => {
       update: jest.Mock;
       create: jest.Mock;
       findMany: jest.Mock;
+      findFirst: jest.Mock;
       count: jest.Mock;
+      updateMany: jest.Mock;
     };
-    noticeComment: { findMany: jest.Mock; count: jest.Mock };
+    $transaction: jest.Mock;
+    noticeComment: {
+      findMany: jest.Mock;
+      count: jest.Mock;
+      findUnique: jest.Mock;
+      delete: jest.Mock;
+    };
+    noticeRead: { upsert: jest.Mock; createMany: jest.Mock };
+    auditLog: { create: jest.Mock };
     user: { findUnique: jest.Mock };
     team: { findMany: jest.Mock };
     teamMember: { findMany: jest.Mock };
@@ -224,12 +235,22 @@ describe("NoticesService — Phase 0 권한·전이·게시기간", () => {
         update: jest.fn(),
         create: jest.fn(),
         findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null),
         count: jest.fn().mockResolvedValue(0),
+        // 게시 알림 claim — 기본은 "claim 획득"(count:1). 소진 케이스는 개별 테스트가 재지정.
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       noticeComment: {
         findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(0),
+        findUnique: jest.fn(),
+        delete: jest.fn().mockResolvedValue({ id: "comment-1" }),
       },
+      noticeRead: {
+        upsert: jest.fn().mockResolvedValue({}),
+        createMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      auditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) },
       user: { findUnique: jest.fn() },
       team: { findMany: jest.fn().mockResolvedValue([]) },
       teamMember: { findMany: jest.fn().mockResolvedValue([]) },
@@ -238,6 +259,16 @@ describe("NoticesService — Phase 0 권한·전이·게시기간", () => {
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn(),
       },
+      // 트랜잭션 — 단위 spec 에서는 콜백형이면 같은 mock 을 tx 로 넘겨 실행,
+      // 배열형(Promise 목록)이면 Promise.all. 실제 격리·직렬화 충돌은
+      // PostgreSQL 통합 spec(notice-pin-concurrency)이 검증한다.
+      $transaction: jest.fn((arg: unknown) =>
+        Array.isArray(arg)
+          ? Promise.all(arg)
+          : ((arg as (tx: unknown) => Promise<unknown>)(
+              prisma,
+            ) as Promise<unknown>),
+      ),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -922,6 +953,801 @@ describe("NoticesService — Phase 0 권한·전이·게시기간", () => {
           data: expect.objectContaining({ targetType: "maintenance" }),
         }),
       );
+    });
+  });
+
+  // ── Phase 3 — 고정 한도 (AC 3-6~8) ──────────────────────────
+  describe("고정 한도 불변식", () => {
+    const validBody = { title: "고정 공지", content: "10자 이상 본문입니다." };
+
+    it("풀이 가득 차면 create(isPinned=true) 는 409 + NOTICE_PIN_LIMIT", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "DIRECTOR" });
+      setManageTeams([TEAM_A]);
+      prisma.systemNotice.count.mockResolvedValue(2);
+
+      await expect(
+        service.createNotice(USER_ID, { ...validBody, isPinned: true }),
+      ).rejects.toMatchObject({
+        status: 409,
+        response: expect.objectContaining({ error: "NOTICE_PIN_LIMIT" }),
+      });
+      expect(prisma.systemNotice.create).not.toHaveBeenCalled();
+      // 풀 판정은 대상 팀 기준(팀별 독립 풀)
+      expect(prisma.systemNotice.count).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ pinned: true, targetTeamId: TEAM_A }),
+        }),
+      );
+    });
+
+    it("여유가 있으면 고정 생성은 Serializable 트랜잭션 안에서 성공한다", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "DIRECTOR" });
+      setManageTeams([TEAM_A]);
+      prisma.systemNotice.count.mockResolvedValue(1);
+      prisma.systemNotice.create.mockResolvedValue(teamNotice({ pinned: true }));
+
+      await service.createNotice(USER_ID, { ...validBody, isPinned: true });
+
+      expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+        isolationLevel: "Serializable",
+      });
+      expect(prisma.systemNotice.create).toHaveBeenCalled();
+    });
+
+    it("togglePin false→true 는 한도 초과 시 409, 해제는 한도와 무관", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "DIRECTOR" });
+      setManageTeams([TEAM_A]);
+
+      // 고정 시도 — 풀 가득
+      prisma.systemNotice.findUnique.mockResolvedValue(
+        teamNotice({ pinned: false }),
+      );
+      prisma.systemNotice.count.mockResolvedValue(2);
+      await expect(service.togglePin(NOTICE_ID, USER_ID)).rejects.toMatchObject({
+        status: 409,
+      });
+      // 자기 자신은 카운트에서 제외
+      expect(prisma.systemNotice.count).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: { not: NOTICE_ID } }),
+        }),
+      );
+
+      // 해제 — count 무관하게 즉시 성공
+      prisma.systemNotice.count.mockClear();
+      prisma.systemNotice.findUnique.mockResolvedValue(
+        teamNotice({ pinned: true }),
+      );
+      prisma.systemNotice.update.mockResolvedValue(teamNotice({ pinned: false }));
+      await service.togglePin(NOTICE_ID, USER_ID);
+      expect(prisma.systemNotice.count).not.toHaveBeenCalled();
+    });
+
+    it("update 상속 경로(PATCH isPinned:true)도 동일 불변식 — 세 번째 우회 차단", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "DIRECTOR" });
+      setManageTeams([TEAM_A]);
+      prisma.systemNotice.findUnique.mockResolvedValue(
+        teamNotice({ pinned: false }),
+      );
+      prisma.systemNotice.count.mockResolvedValue(2);
+
+      await expect(
+        service.updateNotice(USER_ID, NOTICE_ID, { isPinned: true }),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(prisma.systemNotice.update).not.toHaveBeenCalled();
+    });
+
+    it("직렬화 충돌(P2034)은 bounded retry 후 성공한다", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "DIRECTOR" });
+      setManageTeams([TEAM_A]);
+      prisma.systemNotice.count.mockResolvedValue(0);
+      prisma.systemNotice.create.mockResolvedValue(teamNotice({ pinned: true }));
+
+      const p2034 = new Prisma.PrismaClientKnownRequestError(
+        "serialization conflict",
+        { code: "P2034", clientVersion: "test" },
+      );
+      let calls = 0;
+      prisma.$transaction.mockImplementation(
+        (fn: (tx: unknown) => Promise<unknown>) => {
+          calls += 1;
+          if (calls <= 2) return Promise.reject(p2034);
+          return fn(prisma) as Promise<unknown>;
+        },
+      );
+
+      await service.createNotice(USER_ID, { ...validBody, isPinned: true });
+      expect(calls).toBe(3);
+    });
+  });
+
+  // ── Phase 3 — 게시 알림 생애 1회 claim (AC 3-9~11) ───────────
+  describe("게시 알림 claim", () => {
+    const notifications = () =>
+      (service as unknown as { notificationsService: { notifyTeamAudience: jest.Mock; notifyAllAppUsers: jest.Mock } })
+        .notificationsService;
+
+    it("즉시 게시 생성은 publishedNotifiedAt 을 생성 데이터에 함께 기록하고 1회 발송한다", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "DIRECTOR" });
+      setManageTeams([TEAM_A]);
+      prisma.systemNotice.create.mockResolvedValue(teamNotice());
+
+      await service.createNotice(USER_ID, {
+        title: "즉시 게시",
+        content: "10자 이상 본문입니다.",
+      });
+
+      expect(prisma.systemNotice.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            publishedNotifiedAt: expect.any(Date),
+          }),
+        }),
+      );
+      expect(notifications().notifyTeamAudience).toHaveBeenCalledTimes(1);
+    });
+
+    it("임시저장(isPublished:false) 생성은 claim 을 남겨두고(null) 발송하지 않는다", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "DIRECTOR" });
+      setManageTeams([TEAM_A]);
+      prisma.systemNotice.create.mockResolvedValue(
+        teamNotice({ isActive: false }),
+      );
+
+      await service.createNotice(USER_ID, {
+        title: "임시저장",
+        content: "10자 이상 본문입니다.",
+        isPublished: false,
+      });
+
+      expect(prisma.systemNotice.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ publishedNotifiedAt: null }),
+        }),
+      );
+      expect(notifications().notifyTeamAudience).not.toHaveBeenCalled();
+      expect(notifications().notifyAllAppUsers).not.toHaveBeenCalled();
+    });
+
+    it("미게시→게시 전환은 claim(updateMany where publishedNotifiedAt:null) 획득 시에만 발송한다", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "DIRECTOR" });
+      setManageTeams([TEAM_A]);
+      prisma.systemNotice.findUnique.mockResolvedValue(
+        teamNotice({ isActive: false }),
+      );
+      prisma.systemNotice.update.mockResolvedValue(teamNotice({ isActive: true }));
+      prisma.systemNotice.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.updateNotice(USER_ID, NOTICE_ID, { isPublished: true });
+
+      expect(prisma.systemNotice.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: NOTICE_ID, publishedNotifiedAt: null },
+        }),
+      );
+      expect(notifications().notifyTeamAudience).toHaveBeenCalledTimes(1);
+    });
+
+    it("claim 이 이미 소진됐으면(재게시) 발송하지 않는다 — 생애 1회", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "DIRECTOR" });
+      setManageTeams([TEAM_A]);
+      prisma.systemNotice.findUnique.mockResolvedValue(
+        teamNotice({ isActive: false }),
+      );
+      prisma.systemNotice.update.mockResolvedValue(teamNotice({ isActive: true }));
+      prisma.systemNotice.updateMany.mockResolvedValue({ count: 0 });
+
+      await service.updateNotice(USER_ID, NOTICE_ID, { isPublished: true });
+
+      expect(notifications().notifyTeamAudience).not.toHaveBeenCalled();
+    });
+
+    it("예약 공지(startAt 미래)의 게시 전환은 claim 하지 않는다 — AC 3-11", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "DIRECTOR" });
+      setManageTeams([TEAM_A]);
+      const future = new Date("2999-01-01T00:00:00.000Z");
+      prisma.systemNotice.findUnique.mockResolvedValue(
+        teamNotice({ isActive: false, startAt: future }),
+      );
+      prisma.systemNotice.update.mockResolvedValue(
+        teamNotice({ isActive: true, startAt: future }),
+      );
+
+      await service.updateNotice(USER_ID, NOTICE_ID, { isPublished: true });
+
+      expect(prisma.systemNotice.updateMany).not.toHaveBeenCalled();
+      expect(notifications().notifyTeamAudience).not.toHaveBeenCalled();
+    });
+
+    it("togglePublish 전환도 동일 claim 저장소를 쓴다", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "DIRECTOR" });
+      setManageTeams([TEAM_A]);
+      prisma.systemNotice.findUnique.mockResolvedValue(
+        teamNotice({ isActive: false }),
+      );
+      prisma.systemNotice.update.mockResolvedValue(teamNotice({ isActive: true }));
+      prisma.systemNotice.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.togglePublish(NOTICE_ID, USER_ID);
+
+      expect(prisma.systemNotice.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: NOTICE_ID, publishedNotifiedAt: null },
+        }),
+      );
+      expect(notifications().notifyTeamAudience).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ── Phase 3 — 관리 목록 임의 teamId 404 은닉 (AC 3-5) ────────
+  describe("관리 목록 teamId 은닉", () => {
+    it("관리 밖 teamId 는 403 이 아닌 404 — 팀 존재를 확인시켜 주지 않는다", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "DIRECTOR" });
+      setManageTeams([TEAM_A]);
+
+      await expect(
+        service.getAdminNotices(USER_ID, { teamId: TEAM_B, page: 1, limit: 10 }),
+      ).rejects.toThrow(NotFoundException);
+      expect(prisma.systemNotice.findMany).not.toHaveBeenCalled();
+    });
+
+    it("관리 팀이 0개여도 임의 teamId 는 200 빈 목록이 아닌 404 — P3-R1-01", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "COACH" });
+      setManageTeams([]);
+
+      await expect(
+        service.getAdminNotices(USER_ID, { teamId: TEAM_B, page: 1, limit: 10 }),
+      ).rejects.toThrow(NotFoundException);
+      expect(prisma.systemNotice.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── Phase 3 R2 — R1 지적 회귀 (P3-R1-02·03·04) ───────────────
+  describe("Phase 3 R2 회귀", () => {
+    it("고정 유지 채 팀 이동 시 목적지 풀 한도를 검사한다 — P3-R1-02", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "ADMIN" });
+      prisma.systemNotice.findUnique.mockResolvedValue(
+        teamNotice({ pinned: true, targetTeamId: TEAM_A }),
+      );
+      prisma.systemNotice.count.mockResolvedValue(2); // 목적지(TEAM_B) 풀 가득
+
+      await expect(
+        service.updateNotice(USER_ID, NOTICE_ID, { targetTeamId: TEAM_B }),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(prisma.systemNotice.count).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ pinned: true, targetTeamId: TEAM_B }),
+        }),
+      );
+      expect(prisma.systemNotice.update).not.toHaveBeenCalled();
+    });
+
+    it("고정 해제 상태의 팀 이동은 한도 검사를 하지 않는다", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "ADMIN" });
+      prisma.systemNotice.findUnique.mockResolvedValue(
+        teamNotice({ pinned: false, targetTeamId: TEAM_A }),
+      );
+      prisma.systemNotice.update.mockResolvedValue(
+        teamNotice({ pinned: false, targetTeamId: TEAM_B }),
+      );
+
+      await service.updateNotice(USER_ID, NOTICE_ID, { targetTeamId: TEAM_B });
+      expect(prisma.systemNotice.count).not.toHaveBeenCalled();
+    });
+
+    it("게시 전환의 isActive 반영과 claim 은 같은 트랜잭션에서 수행된다 — P3-R1-03", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "DIRECTOR" });
+      setManageTeams([TEAM_A]);
+      prisma.systemNotice.findUnique.mockResolvedValue(
+        teamNotice({ isActive: false }),
+      );
+      prisma.systemNotice.update.mockResolvedValue(teamNotice({ isActive: true }));
+      prisma.systemNotice.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.updateNotice(USER_ID, NOTICE_ID, { isPublished: true });
+
+      // $transaction 이 사용됐고, 그 안에서 update 와 claim(updateMany)이 모두 호출됨
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.systemNotice.update).toHaveBeenCalled();
+      expect(prisma.systemNotice.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: NOTICE_ID, publishedNotifiedAt: null },
+        }),
+      );
+    });
+
+    it("이미 만료된 기간으로 즉시 게시 생성하면 claim·알림 대상이 아니다 — P3-R1-04", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "DIRECTOR" });
+      setManageTeams([TEAM_A]);
+      prisma.systemNotice.create.mockResolvedValue(
+        teamNotice({ expiresAt: new Date("2020-01-01T00:00:00.000Z") }),
+      );
+
+      await service.createNotice(USER_ID, {
+        title: "만료 생성",
+        content: "10자 이상 본문입니다.",
+        endDate: "2020-01-01T00:00:00.000Z",
+      });
+
+      expect(prisma.systemNotice.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ publishedNotifiedAt: null }),
+        }),
+      );
+      const notifications = (
+        service as unknown as {
+          notificationsService: { notifyTeamAudience: jest.Mock };
+        }
+      ).notificationsService;
+      expect(notifications.notifyTeamAudience).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── Phase 4 — 댓글 moderation + 감사 로그 (AC 4-1~2) ─────────
+  describe("댓글 moderation", () => {
+    const COMMENT_ID = "comment-1";
+    const OWNER_ID = "comment-owner";
+
+    const teamComment = (overrides: Record<string, unknown> = {}) => ({
+      id: COMMENT_ID,
+      userId: OWNER_ID,
+      noticeId: NOTICE_ID,
+      notice: { targetTeamId: TEAM_A },
+      ...overrides,
+    });
+
+    it("본인 댓글 삭제는 감사 로그 없이 성공한다 (기존 동작 유지)", async () => {
+      prisma.noticeComment.findUnique.mockResolvedValue(
+        teamComment({ userId: USER_ID }),
+      );
+
+      await service.deleteComment(COMMENT_ID, USER_ID, "PARENT");
+
+      expect(prisma.noticeComment.delete).toHaveBeenCalled();
+      expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    });
+
+    it("해당 팀 관리자는 타인 댓글을 삭제하며 감사 로그가 같은 트랜잭션에 남는다", async () => {
+      prisma.noticeComment.findUnique.mockResolvedValue(teamComment());
+      prisma.user.findUnique.mockResolvedValue({ userType: "DIRECTOR" });
+      setManageTeams([TEAM_A]);
+
+      await service.deleteComment(COMMENT_ID, USER_ID, "DIRECTOR");
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.noticeComment.delete).toHaveBeenCalled();
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            userId: USER_ID,
+            action: "NOTICE_COMMENT_DELETED",
+            resource: "NoticeComment",
+            oldValue: {
+              noticeId: NOTICE_ID,
+              commentId: COMMENT_ID,
+              commentOwnerUserId: OWNER_ID,
+            },
+          }),
+        }),
+      );
+      // 개인정보 최소화 — 감사 로그에 댓글 본문 미복제
+      const auditData = prisma.auditLog.create.mock.calls[0][0].data;
+      expect(JSON.stringify(auditData)).not.toContain("content");
+    });
+
+    it("권한 없는 사용자의 타인 댓글 삭제는 403 이 아닌 404 — 존재 은닉", async () => {
+      prisma.noticeComment.findUnique.mockResolvedValue(teamComment());
+      prisma.user.findUnique.mockResolvedValue({ userType: "PARENT" });
+
+      await expect(
+        service.deleteComment(COMMENT_ID, USER_ID, "PARENT"),
+      ).rejects.toThrow(NotFoundException);
+      expect(prisma.noticeComment.delete).not.toHaveBeenCalled();
+      expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    });
+
+    it("타 팀 관리자는 404 — 관리 팀 범위 밖", async () => {
+      prisma.noticeComment.findUnique.mockResolvedValue(teamComment());
+      prisma.user.findUnique.mockResolvedValue({ userType: "DIRECTOR" });
+      setManageTeams([TEAM_B]);
+
+      await expect(
+        service.deleteComment(COMMENT_ID, USER_ID, "DIRECTOR"),
+      ).rejects.toThrow(NotFoundException);
+      expect(prisma.noticeComment.delete).not.toHaveBeenCalled();
+    });
+
+    it("전역 공지 댓글은 팀 관리자여도 404, 시스템 역할은 삭제+감사", async () => {
+      // 팀 관리자 — 전역 공지(targetTeamId=null)는 moderation 불가
+      prisma.noticeComment.findUnique.mockResolvedValue(
+        teamComment({ notice: { targetTeamId: null } }),
+      );
+      setManageTeams([TEAM_A]);
+      await expect(
+        service.deleteComment(COMMENT_ID, USER_ID, "DIRECTOR"),
+      ).rejects.toThrow(NotFoundException);
+
+      // 시스템 역할 — 성공 + 감사
+      prisma.noticeComment.delete.mockClear();
+      await service.deleteComment(COMMENT_ID, USER_ID, "ADMIN");
+      expect(prisma.noticeComment.delete).toHaveBeenCalled();
+      expect(prisma.auditLog.create).toHaveBeenCalled();
+    });
+  });
+
+  // ── Phase 4 — 읽음 동기화 응답 전 완료 (AC 4-3 · P4-R1-02) ───
+  describe("읽음 동기화", () => {
+    /** 지연 promise 로 "await 전환" 을 증명 — void 로 흘렸다면 응답 시점에 false. */
+    const delayedSync = () => {
+      let syncDone = false;
+      const notifications = (
+        service as unknown as {
+          notificationsService: { markNotificationsReadByLinkUrls: jest.Mock };
+        }
+      ).notificationsService;
+      notifications.markNotificationsReadByLinkUrls.mockImplementation(
+        () =>
+          new Promise((resolve) =>
+            setTimeout(() => {
+              syncDone = true;
+              resolve(1);
+            }, 5),
+          ),
+      );
+      return () => syncDone;
+    };
+
+    it("markNoticeAsRead 는 알림함 동기화 완료 후에 응답한다", async () => {
+      prisma.systemNotice.findUnique.mockResolvedValue({ id: NOTICE_ID });
+      const isDone = delayedSync();
+
+      await service.markNoticeAsRead(NOTICE_ID, USER_ID);
+
+      expect(isDone()).toBe(true);
+    });
+
+    it("markAllServiceNoticesRead 도 동기화 완료 후에 응답한다 — P4-R1-02", async () => {
+      prisma.systemNotice.findMany.mockResolvedValue([{ id: "svc-1" }]);
+      const isDone = delayedSync();
+
+      const result = await service.markAllServiceNoticesRead(USER_ID);
+
+      expect(result.marked).toBe(1);
+      expect(isDone()).toBe(true);
+    });
+
+    it("getNotice 상세 열람도 동기화 완료 후에 응답한다 — P4-R1-02", async () => {
+      // 전역 활성 공지 — 열람 검증 통과 경로
+      prisma.systemNotice.findUnique.mockResolvedValue(
+        teamNotice({ targetTeamId: null }),
+      );
+      const isDone = delayedSync();
+
+      await service.getNotice(NOTICE_ID, USER_ID, "PARENT");
+
+      expect(isDone()).toBe(true);
+    });
+  });
+
+  // ── Phase 4 — 댓글 비마스킹 계약 (AC 4-4 · P4-R1-03) ─────────
+  describe("댓글 작성자 이름 계약", () => {
+    it("인증 응답의 userName 은 마스킹 없는 전체 이름이다", async () => {
+      setViewerTeams([TEAM_A]);
+      prisma.noticeComment.findMany.mockResolvedValue([
+        {
+          id: "comment-1",
+          noticeId: NOTICE_ID,
+          userId: "user-x",
+          content: "댓글 본문",
+          createdAt: new Date("2026-08-01T00:00:00.000Z"),
+          user: { id: "user-x", firstName: "길동", lastName: "홍" },
+        },
+      ]);
+      prisma.noticeComment.count.mockResolvedValue(1);
+
+      const result = await service.getComments(
+        NOTICE_ID,
+        1,
+        10,
+        USER_ID,
+        "PARENT",
+      );
+
+      expect(result.data[0].userName).toBe("홍길동");
+      // 중첩 user 객체도 원본 그대로 (마스킹 잔재 없음)
+      expect(result.data[0].user).toEqual({
+        id: "user-x",
+        firstName: "길동",
+        lastName: "홍",
+      });
+    });
+  });
+
+  // ── Phase 5 — canManage 단일 기준 (AC 5-1~2) ─────────────────
+  describe("canManage 응답 필드", () => {
+    it("시스템 역할은 전 행 true — 팀 조회 없이 판정", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "ADMIN" });
+      prisma.systemNotice.findMany.mockResolvedValue([
+        teamNotice({ id: "n1", targetTeamId: TEAM_A }),
+        teamNotice({ id: "n2", targetTeamId: null }),
+      ]);
+
+      const result = (await service.getNotices(
+        { skipViewerScope: true, skipPublicationWindow: true },
+        1,
+        10,
+        USER_ID,
+        "ADMIN",
+      )) as { data: Array<{ canManage: boolean }> };
+
+      expect(result.data.map((n) => n.canManage)).toEqual([true, true]);
+      // 시스템 역할 판정에 관리 팀 쿼리 불필요
+      expect(prisma.team.findMany).not.toHaveBeenCalled();
+    });
+
+    it("팀 역할은 관리 팀 공지만 true — 권한 집합은 요청당 1회 해석", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "DIRECTOR" });
+      setManageTeams([TEAM_A]);
+      prisma.systemNotice.findMany.mockResolvedValue([
+        teamNotice({ id: "n1", targetTeamId: TEAM_A }),
+        teamNotice({ id: "n2", targetTeamId: TEAM_B }),
+        teamNotice({ id: "n3", targetTeamId: null }),
+      ]);
+
+      const result = (await service.getNotices(
+        { skipViewerScope: true, skipPublicationWindow: true },
+        1,
+        10,
+        USER_ID,
+        "DIRECTOR",
+      )) as { data: Array<{ canManage: boolean }> };
+
+      expect(result.data.map((n) => n.canManage)).toEqual([
+        true, // 관리 팀
+        false, // 열람만 가능한 타 팀
+        false, // 전역 공지 — 팀 역할은 관리 불가
+      ]);
+      // [AC 5-2] 관리 SoT(roleInTeam 필터 쿼리)는 행 수와 무관하게 정확히 1회
+      const manageQueries = prisma.teamMember.findMany.mock.calls.filter(
+        (c: [{ where?: { roleInTeam?: unknown } }]) => c[0]?.where?.roleInTeam,
+      );
+      expect(manageQueries).toHaveLength(1);
+    });
+
+    it("상세(getNotice)도 동일 기준 — 관리 팀이면 true, 아니면 false", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "DIRECTOR" });
+      setManageTeams([TEAM_A]);
+      prisma.systemNotice.findUnique.mockResolvedValue(teamNotice());
+
+      const managed = await service.getNotice(NOTICE_ID, USER_ID, "DIRECTOR");
+      expect(managed.canManage).toBe(true);
+
+      setManageTeams([TEAM_B]);
+      // 열람은 가능(뷰어 팀 TEAM_A)하지만 관리 팀 아님 — canManage false
+      prisma.teamMember.findMany.mockImplementation(
+        (args: { where?: { roleInTeam?: unknown } }) =>
+          Promise.resolve(
+            args?.where?.roleInTeam ? [] : [{ teamId: TEAM_A }],
+          ),
+      );
+      prisma.team.findMany.mockResolvedValue([]);
+      const viewedOnly = await service.getNotice(NOTICE_ID, USER_ID, "PARENT");
+      expect(viewedOnly.canManage).toBe(false);
+    });
+  });
+
+  // ── Phase 5 — 이전/다음 전용 API (AC 5-3~4) ──────────────────
+  describe("인접 공지 API", () => {
+    it("audience 모드 — 게시 중·같은 종류 풀에서 (createdAt,id) 튜플 결정론으로 판정한다", async () => {
+      setViewerTeams([TEAM_A]);
+      const curCreatedAt = new Date("2026-08-01T00:00:00.000Z");
+      prisma.systemNotice.findUnique.mockResolvedValue(
+        teamNotice({ createdAt: curCreatedAt }),
+      );
+      prisma.systemNotice.findFirst
+        .mockResolvedValueOnce({ id: "newer", title: "더 최신" })
+        .mockResolvedValueOnce({ id: "older", title: "더 오래됨" });
+
+      const result = await service.getAdjacentNotices(
+        NOTICE_ID,
+        USER_ID,
+        "PARENT",
+      );
+
+      expect(result.next).toEqual({ id: "newer", title: "더 최신" });
+      expect(result.previous).toEqual({ id: "older", title: "더 오래됨" });
+
+      const [nextCall, prevCall] = prisma.systemNotice.findFirst.mock.calls;
+      // next = 튜플 (createdAt, id) 초과분 중 최솟값 (asc) — 동률은 id 로 판정
+      expect(nextCall[0].where.AND).toEqual(
+        expect.arrayContaining([
+          { isActive: true },
+          {
+            OR: [
+              { createdAt: { gt: curCreatedAt } },
+              { createdAt: curCreatedAt, id: { gt: NOTICE_ID } },
+            ],
+          },
+        ]),
+      );
+      expect(nextCall[0].orderBy).toEqual([
+        { createdAt: "asc" },
+        { id: "asc" },
+      ]);
+      expect(prevCall[0].orderBy).toEqual([
+        { createdAt: "desc" },
+        { id: "desc" },
+      ]);
+    });
+
+    it("audience 모드 — 마지막/첫 글이면 해당 방향은 null", async () => {
+      setViewerTeams([TEAM_A]);
+      prisma.systemNotice.findUnique.mockResolvedValue(teamNotice());
+      prisma.systemNotice.findFirst.mockResolvedValue(null);
+
+      const result = await service.getAdjacentNotices(
+        NOTICE_ID,
+        USER_ID,
+        "PARENT",
+      );
+      expect(result).toEqual({ next: null, previous: null });
+    });
+
+    it("manage 모드 — 관리 권한자는 미게시·만료 포함(게시기간 조건 없음) 관리 풀에서 판정", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "DIRECTOR" });
+      setManageTeams([TEAM_A]);
+      prisma.systemNotice.findUnique.mockResolvedValue(teamNotice());
+      prisma.systemNotice.findFirst.mockResolvedValue(null);
+
+      await service.getAdjacentNotices(NOTICE_ID, USER_ID, "DIRECTOR", "manage");
+
+      const where = prisma.systemNotice.findFirst.mock.calls[0][0].where;
+      expect(where.AND).toEqual(
+        expect.arrayContaining([{ targetTeamId: { in: [TEAM_A] } }]),
+      );
+      // 관리 모드는 audience 의 isActive/게시기간 조건을 걸지 않는다
+      expect(JSON.stringify(where)).not.toContain("isActive");
+      expect(JSON.stringify(where)).not.toContain("expiresAt");
+    });
+
+    it("manage 모드 — 권한 없는 사용자와 부재 공지는 동일한 404", async () => {
+      // 권한 없음 (PARENT)
+      prisma.user.findUnique.mockResolvedValue({ userType: "PARENT" });
+      prisma.systemNotice.findUnique.mockResolvedValue(teamNotice());
+      await expect(
+        service.getAdjacentNotices(NOTICE_ID, USER_ID, "PARENT", "manage"),
+      ).rejects.toThrow(NotFoundException);
+
+      // 부재 공지
+      prisma.systemNotice.findUnique.mockResolvedValue(null);
+      await expect(
+        service.getAdjacentNotices("ghost", USER_ID, "PARENT", "manage"),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it("audience 모드 — 열람 불가(타 팀) 공지는 404 (상세와 동일 검증)", async () => {
+      setViewerTeams([TEAM_B]);
+      prisma.systemNotice.findUnique.mockResolvedValue(teamNotice());
+
+      await expect(
+        service.getAdjacentNotices(NOTICE_ID, USER_ID, "PARENT"),
+      ).rejects.toThrow(NotFoundException);
+      expect(prisma.systemNotice.findFirst).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── Phase 5 R2 — 인접 경계·동률 실결과 (P5-R1-04) ────────────
+  describe("인접 공지 경계·동률", () => {
+    /**
+     * 서비스가 생성하는 (createdAt, id) 튜플 where/orderBy 를 픽스처 행에 실제로
+     * 평가하는 인메모리 findFirst — mock 반환값 짜맞추기가 아니라 쿼리 시맨틱이
+     * 옳아야만 통과한다.
+     */
+    const fixtureAdjacent = (rows: Array<{ id: string; createdAt: Date }>) => {
+      prisma.systemNotice.findFirst.mockImplementation(
+        (args: {
+          where: { AND: Array<Record<string, unknown>> };
+        }) => {
+          // 게시기간 조건(publicationConditions)도 OR 를 쓰므로, createdAt 튜플 OR 만 선별
+          const tuple = args.where.AND.find(
+            (c) =>
+              "OR" in c &&
+              (c as { OR: Array<{ createdAt?: unknown }> }).OR[0]?.createdAt !==
+                undefined,
+          ) as {
+            OR: [
+              { createdAt: { gt?: Date; lt?: Date } },
+              { createdAt: Date; id: { gt?: string; lt?: string } },
+            ];
+          };
+          const isNext = tuple.OR[0].createdAt.gt !== undefined;
+          const curAt = tuple.OR[1].createdAt;
+          const curId = (tuple.OR[1].id.gt ?? tuple.OR[1].id.lt) as string;
+          const cmp = (r: { id: string; createdAt: Date }) => {
+            const dt = r.createdAt.getTime() - curAt.getTime();
+            if (dt !== 0) return dt;
+            return r.id < curId ? -1 : r.id > curId ? 1 : 0;
+          };
+          const hit = rows
+            .filter((r) => (isNext ? cmp(r) > 0 : cmp(r) < 0))
+            .sort((a, b) => {
+              const dt = a.createdAt.getTime() - b.createdAt.getTime();
+              const s = dt !== 0 ? dt : a.id < b.id ? -1 : 1;
+              return isNext ? s : -s;
+            })[0];
+          return Promise.resolve(
+            hit ? { id: hit.id, title: `t-${hit.id}` } : null,
+          );
+        },
+      );
+    };
+
+    const T = new Date("2026-08-01T00:00:00.000Z");
+    const sameTimeRows = [
+      { id: "aaa", createdAt: T },
+      { id: "bbb", createdAt: T },
+      { id: "ccc", createdAt: T },
+    ];
+
+    const asCurrent = (id: string, createdAt: Date) => {
+      setViewerTeams([TEAM_A]);
+      prisma.systemNotice.findUnique.mockResolvedValue(
+        teamNotice({ id, createdAt }),
+      );
+    };
+
+    it("동일 createdAt 3행에서 중간 글은 id 순서로 양방향이 결정된다", async () => {
+      asCurrent("bbb", T);
+      fixtureAdjacent(sameTimeRows);
+
+      const result = await service.getAdjacentNotices("bbb", USER_ID, "PARENT");
+      expect(result.next?.id).toBe("ccc");
+      expect(result.previous?.id).toBe("aaa");
+    });
+
+    it("가장 최신 글(첫 글)은 next=null, previous 만 존재한다", async () => {
+      asCurrent("ccc", T);
+      fixtureAdjacent(sameTimeRows);
+
+      const result = await service.getAdjacentNotices("ccc", USER_ID, "PARENT");
+      expect(result.next).toBeNull();
+      expect(result.previous?.id).toBe("bbb");
+    });
+
+    it("가장 오래된 글(마지막 글)은 previous=null, next 만 존재한다", async () => {
+      asCurrent("aaa", T);
+      fixtureAdjacent(sameTimeRows);
+
+      const result = await service.getAdjacentNotices("aaa", USER_ID, "PARENT");
+      expect(result.next?.id).toBe("bbb");
+      expect(result.previous).toBeNull();
+    });
+  });
+
+  // ── Phase 5 R2 — 관리 컨텍스트 1회 조회 (P5-R1-03) ───────────
+  describe("상세 관리 컨텍스트 재사용", () => {
+    it("만료 팀 공지를 관리자가 열람해도 관리 SoT 조회는 정확히 1회", async () => {
+      prisma.user.findUnique.mockResolvedValue({ userType: "DIRECTOR" });
+      setManageTeams([TEAM_A]);
+      prisma.systemNotice.findUnique.mockResolvedValue(
+        teamNotice({ expiresAt: new Date("2020-01-01T00:00:00.000Z") }),
+      );
+
+      const result = await service.getNotice(NOTICE_ID, USER_ID, "DIRECTOR");
+
+      expect(result.canManage).toBe(true);
+      // 열람 검증(관리자 예외) + canManage 가 같은 컨텍스트를 공유 — **관리 SoT** 조회 1회.
+      //   (coachId 단독 쿼리는 열람 SoT(resolveViewerTeamIds)의 소유 팀 조회라 별개 —
+      //    관리 SoT 시그니처는 coachId+isActive / roleInTeam 필터로 구분한다)
+      const manageOwnedQueries = prisma.team.findMany.mock.calls.filter(
+        (c: [{ where?: { coachId?: string; isActive?: boolean } }]) =>
+          c[0]?.where?.coachId && c[0]?.where?.isActive === true,
+      );
+      expect(manageOwnedQueries).toHaveLength(1);
+      const manageMemberQueries = prisma.teamMember.findMany.mock.calls.filter(
+        (c: [{ where?: { roleInTeam?: unknown } }]) => c[0]?.where?.roleInTeam,
+      );
+      expect(manageMemberQueries).toHaveLength(1);
     });
   });
 });

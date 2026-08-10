@@ -42,6 +42,14 @@ interface NavLinkProps extends Omit<AnchorHTMLAttributes<HTMLAnchorElement>, key
    * 이 prop 은 무시됩니다. 단일 fullsize 팝업 정책 유지를 위해 시각적으로 영향 없음.
    */
   loadingMessage?: string;
+  /**
+   * [R3-01] 히스토리 기록 방식 (기본 'push').
+   * 'replace' = 현재 히스토리 층을 교체 — 이전글/다음글처럼 **같은 화면 안에서 항목만
+   * 바꿔가는 이동**에 사용한다. push 로 쌓으면 뒤로가기가 방문 항목을 전부 되짚게 된다.
+   * 실제 `<a href>` 시맨틱(새 탭·링크 복사·스크린 리더 link 역할)은 그대로 유지되며,
+   * 일반 무수정 좌클릭만 replace 로 위임되고 수정키·비주 클릭은 네이티브 링크 동작을 따른다.
+   */
+  historyMode?: 'push' | 'replace';
 }
 
 export const NavLink = forwardRef<HTMLAnchorElement, NavLinkProps>(
@@ -52,6 +60,7 @@ export const NavLink = forwardRef<HTMLAnchorElement, NavLinkProps>(
       showSpinner = true,
       onClick,
       target,
+      historyMode = 'push',
       ...props
     },
     ref
@@ -59,7 +68,7 @@ export const NavLink = forwardRef<HTMLAnchorElement, NavLinkProps>(
     const pathname = usePathname();
     // useNavigation 으로 네비게이션 통합 — startLoading + 인증 가드 + 쿠키 정리 + router.push 가
     // 단일 모듈에서 일관 처리되도록 한다 (`@/hooks/useNavigation` 가 SoT).
-    const { navigate } = useNavigationHook();
+    const { navigate, replace } = useNavigationHook();
 
     // href를 문자열로 변환
     const hrefString = typeof href === 'string' ? href : href.pathname || '';
@@ -81,15 +90,21 @@ export const NavLink = forwardRef<HTMLAnchorElement, NavLinkProps>(
         // 현재 페이지면 스피너 표시 안함
         if (isCurrentPage) return;
 
-        // Ctrl/Cmd 클릭 (새 탭)이면 스피너 표시 안함
-        if (e.ctrlKey || e.metaKey || e.button !== 0) return;
+        // [R3-01] 수정키·비주 클릭은 네이티브 링크 동작에 맡긴다 — 새 탭(Ctrl/Cmd)만이 아니라
+        // 새 창(Shift)·브라우저 기본(Alt)·휠 클릭(button!==0)도 가로채면 안 된다.
+        // (기존 가드는 Ctrl/Cmd 만 제외해 Shift/Alt 클릭이 같은 탭 push 로 잡히던 결함 동반 수정)
+        if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0) return;
 
         // 기본 Link 동작 막고 useNavigation 으로 위임 (인증 가드/쿠키 정리/스피너 일괄 처리)
         e.preventDefault();
         // v18 (2026-05-22): message 인자 전달 금지. LoadingPuck 은 단일 그래픽만 표시.
-        await navigate(hrefString, { showSpinner });
+        if (historyMode === 'replace') {
+          await replace(hrefString, { showSpinner });
+        } else {
+          await navigate(hrefString, { showSpinner });
+        }
       },
-      [onClick, target, isCurrentPage, showSpinner, hrefString, navigate]
+      [onClick, target, isCurrentPage, showSpinner, hrefString, historyMode, navigate, replace]
     );
 
     return (
@@ -98,6 +113,9 @@ export const NavLink = forwardRef<HTMLAnchorElement, NavLinkProps>(
         href={href}
         onClick={handleClick}
         target={target}
+        // JS 인터셉트가 닿지 않는 경로(예: 스크립트 미로딩)에서도 히스토리 계약이 유지되도록
+        // next/link 네이티브 동작에도 동일 모드를 전달한다.
+        replace={historyMode === 'replace'}
         scroll={false} // position: sticky/fixed 요소와의 충돌 방지 (깜박임 해결)
         {...props}
       >
