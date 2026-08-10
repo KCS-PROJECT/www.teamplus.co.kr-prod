@@ -8,6 +8,9 @@
  *  · PAID                      → "결제완료" 배지 + [결제취소]
  *  · PENDING + orderNumber     → [후불결제] (감독 정산 완료 → 결제 가능)
  *  · 그 외(UNPAID 등, 정산 전) → [참가취소] + "정산 대기" 배지
+ *
+ * 취소 액션(onCancel)은 선택 — 넘기지 않으면 취소 버튼이 렌더되지 않는다.
+ *   참가결제 화면처럼 읽기 전용으로 상태만 보여줄 때 사용한다(취소 진입점은 대회 상세 단일).
  */
 
 import { Icon } from '@/components/ui/Icon';
@@ -18,9 +21,10 @@ export interface ChildPaymentRowProps {
   amount: number;
   paymentStatus: string;
   orderNumber: string | null;
-  cancelling: boolean;
+  cancelling?: boolean;
   onPay: () => void;
-  onCancel: () => void;
+  /** 취소 액션. 미전달 시 취소 버튼을 렌더하지 않는다(읽기 전용 표시). */
+  onCancel?: () => void;
   /** 취소 가능 여부. 기본 true. false 면 취소 버튼(결제취소/참가취소)을 숨긴다(대회 당일 이후 등). */
   canCancel?: boolean;
   /**
@@ -35,7 +39,7 @@ export function ChildPaymentRow({
   amount,
   paymentStatus,
   orderNumber,
-  cancelling,
+  cancelling = false,
   onPay,
   onCancel,
   canCancel = true,
@@ -44,6 +48,8 @@ export function ChildPaymentRow({
   const isPaid = paymentStatus === 'PAID';
   // 후불 정산 완료(PENDING + orderNumber) → 결제 가능. 그 전(UNPAID 등) → 정산 대기.
   const canPay = !isPaid && paymentStatus === 'PENDING' && !!orderNumber;
+  // 취소 액션이 없으면(읽기 전용 호출부) 취소 버튼 자체를 렌더하지 않는다.
+  const showCancel = canCancel && !!onCancel;
 
   // 취소(참가/결제) 버튼 — 상태별 2곳 공용. iceTheme=true 시 it-red 톤.
   const cancelBtnCls = iceTheme
@@ -100,7 +106,7 @@ export function ChildPaymentRow({
             >
               결제완료
             </span>
-            {canCancel && (
+            {showCancel && (
               <button
                 type="button"
                 onClick={onCancel}
@@ -126,7 +132,7 @@ export function ChildPaymentRow({
           </button>
         ) : (
           <>
-            {canCancel && (
+            {showCancel && (
               <button
                 type="button"
                 onClick={onCancel}

@@ -18,6 +18,9 @@ export const dynamic = 'force-dynamic';
  *   6) 결제 버튼 → widgets.requestPayment({orderId, orderName, successUrl, failUrl})
  *   7) 토스 → /payment/complete (수업 결제 공용) → POST /payments/toss/confirm
  *      → backend 가 TournamentRegistration.paymentStatus=PAID 갱신 → 캘린더 노출.
+ *
+ * 테스트 결제(mock): 6) 대신 POST /payments/mock-confirm → /payment/complete?provider=mock
+ *   으로 토스 위젯 없이 동일 후처리를 태운다. 선불 대회만 해당(후불·무료는 결제 위젯 미진입).
  */
 
 import { useEffect, useMemo, useRef, useState, Suspense, useCallback } from 'react';
@@ -40,10 +43,10 @@ import {
   getTournament,
   initiateTournamentPayment,
   registerTournament,
-  cancelTournamentRegistration,
-  canCancelTournamentRegistration,
   buildTournamentChildOptions,
   isTournamentChildApplicable,
+  type TournamentChildInput,
+  type TournamentChildOption,
   type TournamentDetail,
 } from '@/services/tournament.service';
 
@@ -57,22 +60,8 @@ type TossPaymentsInstance = any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TossWidgets = any;
 
-interface ChildOption {
-  id: string;
-  name: string;
-  birthDate?: string | null;
-  /** [2026-06-15] 이미 이 대회를 결제 완료한 선수 — 선택 비활성화(중복 결제 방지) */
-  isPaid?: boolean;
-  /** [2026-06-17] 이미 참가신청한 선수(미결제 포함) — 선택 비활성화. 자녀별 결제내역과 동일 표시. */
-  isRegistered?: boolean;
-  /** [2026-06-17] 등록 상태/금액/주문번호/등록ID — 신청완료 선수의 결제내역 행 표시용. */
-  paymentStatus?: string;
-  amount?: number;
-  orderNumber?: string | null;
-  registrationId?: string;
-  /** [2026-06-15] 대회 대상 출생연도 자격 충족 여부 — 미달 시 선택 비활성화 */
-  isEligible?: boolean;
-}
+/** 신청 선수 옵션 — 판정 SoT 는 tournament.service 의 공용 util(상세 CTA 와 공유). */
+type ChildOption = TournamentChildOption;
 
 interface ClientKeyResponse {
   clientKey: string;
@@ -94,7 +83,6 @@ function TournamentApplyContent() {
   const { navigate, back } = useNavigation();
   const { toast } = useToast();
   const { modal } = useModal();
-  const [cancellingId, setCancellingId] = useState<string | null>(null);
   const { user } = useAuth();
 
   useNativeUI({
@@ -130,7 +118,7 @@ function TournamentApplyContent() {
     try {
       const [tRes, cRes] = await Promise.all([
         getTournament(tournamentId),
-        api.get<{ children: Array<{ id: string; firstName?: string; lastName?: string; birthDate?: string | null }> } | Array<{ id: string; firstName?: string; lastName?: string; birthDate?: string | null }>>(
+        api.get<{ children: TournamentChildInput[] } | TournamentChildInput[]>(
           '/children',
         ),
       ]);
@@ -140,11 +128,11 @@ function TournamentApplyContent() {
         setError(tRes.error?.message ?? MESSAGES.error.network);
         return;
       }
-      // 자녀 옵션 — selectedParticipantIds 매칭만 노출.
+      // 자녀 옵션 — 지정 명단 + 주최 팀 승인 멤버십 기준으로 걸러진다.
       const childrenList = cRes.success && cRes.data
         ? Array.isArray(cRes.data)
           ? cRes.data
-          : ((cRes.data as { children?: Array<{ id: string; firstName?: string; lastName?: string; birthDate?: string | null }> }).children ?? [])
+          : ((cRes.data as { children?: TournamentChildInput[] }).children ?? [])
         : [];
       // 자녀별 신청 가능 판정 — 상세 CTA 와 공유하는 공용 규칙(tournament.service).
       const filtered = buildTournamentChildOptions(tRes.data, childrenList);
@@ -161,34 +149,6 @@ function TournamentApplyContent() {
     void loadInitial();
   }, [loadInitial]);
 
-  // [2026-06-17] 대회 참가 취소 — 결제완료(환불)·미결제 신청 공통. registrationId 직접 사용.
-  const handleCancelPayment = useCallback(
-    async (childId: string, childName: string, registrationId?: string) => {
-      if (!registrationId) return;
-      const ok = await modal.confirm({
-        title: '대회 참가 취소',
-        message: `${childName} 선수의 대회 참가를 취소하시겠습니까?\n결제 완료된 건은 환불 처리됩니다.`,
-        confirmText: '참가 취소',
-        cancelText: '닫기',
-        variant: 'danger',
-      });
-      if (!ok) return;
-      setCancellingId(childId);
-      const res = await cancelTournamentRegistration(
-        tournamentId,
-        registrationId,
-      );
-      if (res.success) {
-        toast.success('대회 참가가 취소되었습니다.');
-        await loadInitial();
-      } else {
-        toast.error(res.error?.message ?? MESSAGES.error.general);
-      }
-      setCancellingId(null);
-    },
-    [tournamentId, modal, toast, loadInitial],
-  );
-
   // 서버 계산과 일치한 금액 — feeType=TOTAL_FIXED 는 1회 단가, PER_GAME 은 totalGames 곱.
   const amount = useMemo(() => {
     if (!tournament) return 0;
@@ -202,6 +162,12 @@ function TournamentApplyContent() {
   const orderName = useMemo(
     () => (tournament ? `${tournament.name} 참가 결제` : '대회 참가 결제'),
     [tournament],
+  );
+
+  // 주최 팀 승인 대기 자녀가 섞여 있으면 목록 아래에 사유 안내 1줄을 덧붙인다.
+  const hasPendingApprovalChild = useMemo(
+    () => childOptions.some((c) => c.teamMembership === 'pending'),
+    [childOptions],
   );
 
   // 2) 결제 시작 — 자녀 선택 후 사용자가 '결제 진행' 누르면 위젯 init.
@@ -273,6 +239,26 @@ function TournamentApplyContent() {
       setIsPaying(false);
     }
   }, [widgets, orderId, isPaying, orderName, tournamentId, user?.email, user?.name, toast]);
+
+  // 토스 위젯을 열지 않고 백엔드가 결제 완료 처리(mock). orderId 만 있으면 동작(위젯 isReady 무관).
+  // 수업 결제(/payment/checkout)와 동일한 경로 — 완료 후처리도 공용(applyApprovedPayment)이라
+  // TournamentRegistration 이 PAID 로 전환된다.
+  // ⚠️ 오픈 전 임시 노출 — 정식 서비스 오픈 시 이 핸들러와 "테스트 결제" 버튼을 제거해야 한다(0원 결제 경로).
+  const handleMockPayment = useCallback(async () => {
+    if (!orderId || isPaying) return;
+    setIsPaying(true);
+    try {
+      const res = await api.post('/payments/mock-confirm', { orderId });
+      if (!res.success) {
+        throw new Error(res.error?.message ?? MESSAGES.payment2.mockPayFailed);
+      }
+      navigate(`/payment/complete?provider=mock&orderId=${encodeURIComponent(orderId)}`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : MESSAGES.payment2.mockPayFailed;
+      toast.error(msg);
+      setIsPaying(false);
+    }
+  }, [orderId, isPaying, navigate, toast]);
 
   // [2026-06-16] 후불(POSTPAID) 대회 — 결제 위젯 미진입, 참가 신청만 처리.
   const isPostpaid = tournament?.billingMode === 'POSTPAID';
@@ -368,7 +354,8 @@ function TournamentApplyContent() {
                   {childOptions.map((c) => {
                     const active = selectedChildId === c.id;
                     // [2026-06-17] 이미 신청/결제한 선수 — 자녀별 결제내역과 동일한 행으로 표시(선택 불가).
-                    //   결제완료/후불결제/정산 대기 + 참가취소를 ChildPaymentRow 공용 컴포넌트로 통일.
+                    //   결제 화면에서는 읽기 전용(상태 배지 + 후불결제)으로만 두고 onCancel 을 넘기지 않는다.
+                    //   참가/결제 취소 진입점은 대회 상세(/tournaments/[id]) 단일 — 결제 중 오조작 방지.
                     if (c.isPaid || c.isRegistered) {
                       return (
                         <ChildPaymentRow
@@ -377,8 +364,6 @@ function TournamentApplyContent() {
                           amount={c.amount ?? 0}
                           paymentStatus={c.isPaid ? 'PAID' : (c.paymentStatus ?? 'UNPAID')}
                           orderNumber={c.orderNumber ?? null}
-                          cancelling={cancellingId === c.id}
-                          canCancel={canCancelTournamentRegistration(tournament.startDate)}
                           iceTheme
                           onPay={() => {
                             const params = new URLSearchParams({
@@ -388,26 +373,31 @@ function TournamentApplyContent() {
                             });
                             navigate(`/payment/postpaid?${params.toString()}`);
                           }}
-                          onCancel={() =>
-                            handleCancelPayment(c.id, c.name, c.registrationId)
-                          }
                         />
                       );
                     }
-                    const disabled = isReady || !c.isEligible;
+                    // 선택 가능 = 출생연도 자격 + 주최 팀 가입 승인 완료.
+                    //   승인 대기(pending)는 사유를 알려야 하므로 숨기지 않고 배지로 표시한다.
+                    const selectable = c.isEligible && c.isTeamMember;
+                    const blockedLabel = !c.isEligible
+                      ? '참가 대상 아님'
+                      : c.teamMembership === 'pending'
+                        ? MESSAGES.tournament.applyPendingApproval
+                        : null;
+                    const disabled = isReady || !selectable;
                     return (
                       <button
                         key={c.id}
                         type="button"
                         onClick={() => {
-                          if (!isReady && c.isEligible) setSelectedChildId(c.id);
+                          if (!isReady && selectable) setSelectedChildId(c.id);
                         }}
                         disabled={disabled}
                         aria-label={
-                          !c.isEligible ? `${c.name} 참가 대상 아님` : c.name
+                          blockedLabel ? `${c.name} ${blockedLabel}` : c.name
                         }
                         className={`flex items-center justify-between gap-3 px-4 py-3 rounded-w-md border-[1.5px] transition-colors motion-reduce:transition-none ${
-                          !c.isEligible
+                          !selectable
                             ? 'border-it-line-strong dark:border-rink-700 bg-it-fill dark:bg-rink-900/40'
                             : active
                               ? 'border-it-blue-500 bg-it-blue-50 dark:bg-it-blue-500/10'
@@ -415,12 +405,12 @@ function TournamentApplyContent() {
                         } disabled:opacity-60 disabled:cursor-not-allowed`}
                       >
                         <span className="flex items-center gap-2 min-w-0">
-                          <Icon name="person" className={`text-[20px] ${active && c.isEligible ? 'text-it-blue-500' : 'text-it-ink-400'}`} aria-hidden="true" />
+                          <Icon name="person" className={`text-[20px] ${active && selectable ? 'text-it-blue-500' : 'text-it-ink-400'}`} aria-hidden="true" />
                           <span className="font-bold text-it-ink-800 dark:text-white truncate">{c.name}</span>
                         </span>
-                        {!c.isEligible ? (
+                        {blockedLabel ? (
                           <span className="shrink-0 inline-flex items-center px-2 py-0.5 rounded-w-pill bg-it-fill text-it-ink-400 dark:bg-rink-700 dark:text-rink-300 text-w-caption font-bold">
-                            참가 대상 아님
+                            {blockedLabel}
                           </span>
                         ) : active ? (
                           <Icon name="check_circle" className="text-it-blue-500 text-[20px]" filled aria-hidden="true" />
@@ -429,6 +419,11 @@ function TournamentApplyContent() {
                     );
                   })}
                 </div>
+                {hasPendingApprovalChild && (
+                  <p className="mt-2 text-w-caption font-medium text-it-ink-500 dark:text-rink-300">
+                    {MESSAGES.tournament.applyPendingApprovalNote}
+                  </p>
+                )}
               </section>
             ) : (
               <div className="mx-5 mt-2 rounded-w-md border border-it-red-200 bg-it-red-50 dark:bg-it-red-500/10 p-4 text-w-small text-it-red-700 dark:text-it-red-300">
@@ -566,6 +561,14 @@ function TournamentApplyContent() {
                         ) : (
                           `${amount.toLocaleString('ko-KR')}원 결제하기`
                         )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleMockPayment}
+                        disabled={!orderId || isPaying}
+                        className="w-full rounded-w-md border border-dashed border-it-line-strong dark:border-rink-600 bg-it-fill dark:bg-rink-800 text-it-ink-500 dark:text-rink-200 py-3 font-semibold text-w-small transition-colors motion-reduce:transition-none hover:bg-it-line dark:hover:bg-rink-700 active:brightness-95 disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {MESSAGES.payment2.mockPayButton}
                       </button>
                       <button
                         type="button"

@@ -854,7 +854,8 @@ export const MESSAGES = {
     viewReceipt: "영수증 보기",
     processing: "처리 중...",
     securePayment: "안전하게 암호화되어 처리되었습니다",
-    // DEV 전용 테스트 결제 경로 — 실카드 노출 없이 결제 플로우 검증 (운영 빌드 미노출).
+    // 테스트 결제 경로 — 실카드 노출 없이 결제 플로우 검증. 수업 결제·대회 선불 결제 공용.
+    //   오픈 전 운영 환경 검증을 위해 상시 노출. 정식 오픈 시 버튼·엔드포인트 제거 대상.
     mockPayButton: "테스트 결제 (개발용)",
     mockPayFailed: "테스트 결제 처리에 실패했습니다.",
     classLabel: "수업",
@@ -1644,6 +1645,11 @@ export const MESSAGES = {
     // 참가 신청 CTA 비활성 사유 — 신청 가능한 자녀가 남아 있지 않을 때.
     applyAllChildrenDone: "모든 자녀 신청 완료",
     applyNoEligibleChildren: "참가 대상 자녀가 없어요",
+    // 주최 팀 가입 승인 대기 자녀 — 신청 화면 배지 · CTA 비활성 사유.
+    //   백엔드 assertTournamentTeamMembership 403 을 결제 전에 미리 알린다.
+    applyPendingApproval: "팀 가입 승인 대기",
+    applyPendingApprovalNote:
+      "감독님의 팀 가입 승인이 완료된 후 참가 신청할 수 있습니다.",
     // 참가 신청 CTA 비활성 사유 — 첫 경기 시작 후 신청 마감.
     applyClosedAfterStart: "대회가 시작되어 참가 신청이 마감되었습니다.",
     // 후불 결제요청 버튼 비활성 안내 — 마지막 경기 시작 +1시간부터 활성.
