@@ -20,6 +20,7 @@ import { PageHeader, StatsGrid } from '@/components/ui/page-header';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal';
 import { Image as ImageIcon, Plus, Eye, Edit2, Trash2, GripVertical, ExternalLink, Calendar, ToggleLeft, ToggleRight, Upload, Link, AlertCircle, Users, Filter, MapPin } from 'lucide-react';
+import { ActionToast, type ActionToastValue } from '@/components/common';
 
 const displayLocationOptions = [
   { value: 'top', label: '상단', description: '화면 상단 영역' },
@@ -66,7 +67,7 @@ export default function BannerManagementPage() {
     endDate: '',
     isActive: true,
   });
-  const [actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [actionMsg, setActionMsg] = useState<ActionToastValue>(null);
 
   const loadBanners = useCallback(async () => {
     setIsLoading(true);
@@ -256,15 +257,7 @@ export default function BannerManagementPage() {
 
   return (
     <div className="space-y-5">
-      {actionMsg && (
-        <div className={`p-3 rounded-lg text-sm ${
-          actionMsg.type === 'success'
-            ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-            : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
-        }`}>
-          {actionMsg.text}
-        </div>
-      )}
+      <ActionToast value={actionMsg} onClose={() => setActionMsg(null)} />
 
       {/* 페이지 헤더 */}
       <PageHeader

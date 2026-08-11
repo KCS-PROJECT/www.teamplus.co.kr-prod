@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal';
+import { ActionToast, type ActionToastValue } from '@/components/common';
 import {
   HelpCircle, Plus, Edit2, Trash2, ChevronDown, ChevronUp,
   Search, GripVertical, EyeOff, Tag, AlertCircle
@@ -65,7 +66,7 @@ export default function FAQManagementPage() {
     answer: '',
     isActive: true,
   });
-  const [actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [actionMsg, setActionMsg] = useState<ActionToastValue>(null);
 
   const loadFaqs = useCallback(async () => {
     setIsLoading(true);
@@ -168,15 +169,7 @@ export default function FAQManagementPage() {
 
   return (
     <div className="space-y-6">
-      {actionMsg && (
-        <div className={`p-3 rounded-lg text-sm ${
-          actionMsg.type === 'success'
-            ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-            : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
-        }`}>
-          {actionMsg.text}
-        </div>
-      )}
+      <ActionToast value={actionMsg} onClose={() => setActionMsg(null)} />
 
       {/* 페이지 헤더 */}
       <div className="mb-8">

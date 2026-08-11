@@ -13,6 +13,7 @@ import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/moda
 import { clubService } from '@/services/club.service';
 import { communityService } from '@/services/community.service';
 import type { Club, TeamPost, TeamEvent } from '@/types';
+import { ActionToast, type ActionToastValue } from '@/components/common';
 import {
   CalendarDays,
   MessageCircle,
@@ -117,7 +118,7 @@ export default function ClubDetailPage() {
     endAt: '',
     status: 'draft',
   });
-  const [actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [actionMsg, setActionMsg] = useState<ActionToastValue>(null);
 
   useEffect(() => {
     if (!clubId) return;
@@ -304,19 +305,7 @@ export default function ClubDetailPage() {
   return (
     <div className="space-y-6">
       {/* Toast */}
-      {actionMsg && (
-        <div
-          role="status"
-          aria-live="polite"
-          className={`rounded-lg px-4 py-3 text-sm font-medium motion-reduce:transition-none ${
-            actionMsg.type === 'success'
-              ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400 border border-green-200 dark:border-green-800'
-              : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400 border border-red-200 dark:border-red-800'
-          }`}
-        >
-          {actionMsg.text}
-        </div>
-      )}
+      <ActionToast value={actionMsg} onClose={() => setActionMsg(null)} />
 
       {/* Back Button */}
       <button

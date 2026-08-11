@@ -39,6 +39,7 @@ import {
 import { shopService } from '@/services/shop.service';
 import { authService } from '@/services/auth.service';
 import type { ShopCategory } from '@/types';
+import { ActionToast, type ActionToastValue } from '@/components/common';
 
 type LineStyle = 'solid' | 'dashed';
 type LineWeight = 'thin' | 'thick';
@@ -83,7 +84,7 @@ export default function ShopCategoriesPage() {
   const [lineWeight, setLineWeight] = useState<LineWeight>('thin');
   const [lineTone, setLineTone] = useState<LineTone>('blue');
   const [highlightId, setHighlightId] = useState<string | null>(null);
-  const [actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [actionMsg, setActionMsg] = useState<ActionToastValue>(null);
   const [confirmAction, setConfirmAction] = useState<{ id: string; action: string } | null>(null);
   const [prefsKey, setPrefsKey] = useState('shopCategoryViewPrefs:guest');
   const categoryRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
@@ -650,15 +651,7 @@ export default function ShopCategoriesPage() {
 
   return (
     <div className="space-y-6">
-      {actionMsg && (
-        <div className={`p-3 rounded-lg text-sm ${
-          actionMsg.type === 'success'
-            ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-            : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
-        }`}>
-          {actionMsg.text}
-        </div>
-      )}
+      <ActionToast value={actionMsg} onClose={() => setActionMsg(null)} />
       {/* 페이지 헤더 */}
       <PageHeader
         title="카테고리 관리"

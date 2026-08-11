@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/services/api-client';
 import type { ShopProduct, ShopCategory } from '@/types';
+import { ActionToast, type ActionToastValue } from '@/components/common';
 
 /**
  * TEAMPLUS 상품 관리 페이지
@@ -78,7 +79,7 @@ export default function ProductsPage() {
   const [editingProduct, setEditingProduct] = useState<ShopProduct | null>(null);
   const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const [formData, setFormData] = useState<ProductFormData>(EMPTY_FORM);
-  const [actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [actionMsg, setActionMsg] = useState<ActionToastValue>(null);
 
   // ── 카테고리 로드 ──────────────────────────────────
   const loadCategories = useCallback(async () => {
@@ -238,15 +239,7 @@ export default function ProductsPage() {
 
   return (
     <div className="space-y-6">
-      {actionMsg && (
-        <div className={`p-3 rounded-lg text-sm ${
-          actionMsg.type === 'success'
-            ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-            : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
-        }`}>
-          {actionMsg.text}
-        </div>
-      )}
+      <ActionToast value={actionMsg} onClose={() => setActionMsg(null)} />
 
       <PageHeader title="상품 관리" subtitle={`전체 ${total}개의 상품`} />
 

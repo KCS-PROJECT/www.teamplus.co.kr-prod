@@ -32,6 +32,7 @@ import { authService } from '@/services/auth.service';
 import { api } from '@/services/api-client';
 import type { Club } from '@/types';
 import { UserType } from '@/types';
+import { ActionToast, type ActionToastValue } from '@/components/common';
 
 /**
  * TEAMPLUS 클럽 관리 페이지
@@ -74,7 +75,7 @@ export default function ClubsPage() {
     clubName: '',
     description: '',
   });
-  const [actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [actionMsg, setActionMsg] = useState<ActionToastValue>(null);
 
   const loadClubs = useCallback(async () => {
     const start = Date.now();
@@ -245,19 +246,7 @@ export default function ClubsPage() {
   return (
     <div className="space-y-6">
       {/* Action Toast */}
-      {actionMsg && (
-        <div
-          role="status"
-          aria-live="polite"
-          className={`rounded-lg px-4 py-3 text-sm font-medium motion-reduce:transition-none ${
-            actionMsg.type === 'success'
-              ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400 border border-green-200 dark:border-green-800'
-              : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400 border border-red-200 dark:border-red-800'
-          }`}
-        >
-          {actionMsg.text}
-        </div>
-      )}
+      <ActionToast value={actionMsg} onClose={() => setActionMsg(null)} />
 
       {/* Hero Header */}
       <section className="relative overflow-hidden rounded-2xl bg-primary text-white shadow-md motion-reduce:transition-none">

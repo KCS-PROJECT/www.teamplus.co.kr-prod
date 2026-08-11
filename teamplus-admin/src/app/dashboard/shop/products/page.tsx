@@ -23,6 +23,7 @@ import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { StatusFilter } from '@/components/ui/admin-tabs';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal';
 import { shopService } from '@/services';
+import { ActionToast, type ActionToastValue } from '@/components/common';
 import {
   Search,
   Plus,
@@ -64,7 +65,7 @@ export default function ShopProductsPage() {
   const [editingProduct, setEditingProduct] = useState<ShopProduct | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ id: string; action: string } | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [actionMsg, setActionMsg] = useState<ActionToastValue>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -308,19 +309,7 @@ export default function ShopProductsPage() {
       />
 
       {/* 액션 결과 안내 */}
-      {actionMsg && (
-        <div
-          role="status"
-          aria-live="polite"
-          className={`px-4 py-3 rounded-lg border text-sm font-medium ${
-            actionMsg.type === 'success'
-              ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-              : 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800'
-          }`}
-        >
-          {actionMsg.text}
-        </div>
-      )}
+      <ActionToast value={actionMsg} onClose={() => setActionMsg(null)} />
 
       {/* 통계 카드 */}
       <StatsGrid
