@@ -17,7 +17,7 @@ import {
 } from '@/services/upload.service';
 import { PageAppBar } from '@/components/layout/PageAppBar';
 import { Icon } from '@/components/ui/Icon';
-import { useNavigation, NavLink } from '@/components/ui/NavLink';
+import { useNavigation } from '@/components/ui/NavLink';
 import { useToast } from '@/components/ui/Toast';
 import { useChildren } from '@/hooks/useChildren';
 import { getServerToday } from '@/services/server-time';
@@ -30,6 +30,7 @@ import { usePageReady } from '@/hooks/usePageReady';
 import { calculateKoreanAge, cn } from '@/lib/utils';
 import { resolveImageSrc } from '@/lib/image-url';
 import { isNativeApp } from '@/lib/environment';
+import { TermsDocumentModal } from '@/components/legal/TermsDocumentModal';
 import { upload as nativeUpload } from '@/services/native-bridge';
 
 const MAX_CHILDREN = 10;
@@ -102,6 +103,8 @@ function AddChildPageInner() {
   // (PIPA §22⑦ 입증 책임 — 브라우저 state 만으로는 동의 사실을 증명할 수 없다).
   const [guardianConsent, setGuardianConsent] = useState(false);
   const [childPrivacyConsent, setChildPrivacyConsent] = useState(false);
+  // 동의 항목의 "보기" — 폼 입력값 보존을 위해 페이지 이동 없이 모달로 본문을 띄운다.
+  const [policyModalType, setPolicyModalType] = useState<string | null>(null);
   const [consentError, setConsentError] = useState('');
 
   // [Phase 1] 자녀가 가입할 팀을 자녀별로 선택 (무소속 허용).
@@ -620,13 +623,15 @@ function AddChildPageInner() {
                 label="자녀(만 14세 미만) 개인정보 처리방침에 동의합니다."
                 sub="수집 항목: 자녀의 성명·생년월일·성별·출석기록 등"
                 link={
-                  <NavLink
-                    href="/terms#terms-fallback-child_privacy"
+                  // 입력 중 화면 이탈 시 폼 값이 사라지므로 페이지 이동 대신 모달로 연다.
+                  <button
+                    type="button"
+                    onClick={() => setPolicyModalType('child_privacy')}
                     className="text-card-meta font-extrabold text-it-ink-800 dark:text-wtext-4 underline whitespace-nowrap leading-tight"
                     aria-label="자녀 개인정보 처리방침 보기"
                   >
                     보기
-                  </NavLink>
+                  </button>
                 }
               />
             </div>
@@ -681,6 +686,10 @@ function AddChildPageInner() {
         iceTheme
         onClose={() => setIsDatePickerOpen(false)}
         onSelect={(iso) => updateField('birthDate', iso)}
+      />
+      <TermsDocumentModal
+        policyType={policyModalType}
+        onClose={() => setPolicyModalType(null)}
       />
       <TeamPickerSheet
         isOpen={isTeamPickerOpen}
@@ -839,47 +848,57 @@ function RefCheckbox({
   sub?: string;
   link?: ReactNode;
 }) {
+  // `link` 는 자체 인터랙티브 요소(약관 보기 버튼)라 토글 <button> 안에 넣을 수 없다.
+  //   중첩 시 HTML 규격 위반 + React 하이드레이션 에러가 난다. 컨테이너를 <div> 로 두고
+  //   토글 영역만 <button> 으로 감싼 뒤 link 를 형제로 배치한다.
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      disabled={disabled}
+    <div
       className={cn(
         'px-3.5 py-3 rounded-w-md bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700',
-        'flex gap-3 text-left transition-colors motion-reduce:transition-none',
-        disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
+        'flex gap-1.5 items-end transition-colors motion-reduce:transition-none',
+        disabled && 'opacity-60',
       )}
-      aria-pressed={on}
     >
-      {/* [ICETIMES] 체크박스 20×20 / on it-blue-500 / off 흰 표면 + 1.5px it-line-strong */}
-      <span
+      <button
+        type="button"
+        onClick={onToggle}
+        disabled={disabled}
         className={cn(
-          'w-5 h-5 rounded-[5px] grid place-items-center shrink-0 mt-0.5',
-          on
-            ? 'bg-it-blue-500'
-            : 'bg-it-surface dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700',
+          'flex-1 min-w-0 flex gap-3 text-left',
+          disabled ? 'cursor-not-allowed' : 'cursor-pointer',
         )}
-        aria-hidden="true"
+        aria-pressed={on}
       >
-        {on && (
-          <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-            <path d="M2 5.5l2 2 5-6" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        )}
-      </span>
-      <span className="flex-1 min-w-0">
-        {/* 라벨: [필수] it-red */}
-        <span className="block text-card-meta font-bold text-it-ink-900 dark:text-white leading-[1.5] tracking-[-0.01em]">
-          <span className="text-it-red-500">[필수]</span> {label}
+        {/* [ICETIMES] 체크박스 20×20 / on it-blue-500 / off 흰 표면 + 1.5px it-line-strong */}
+        <span
+          className={cn(
+            'w-5 h-5 rounded-[5px] grid place-items-center shrink-0 mt-0.5',
+            on
+              ? 'bg-it-blue-500'
+              : 'bg-it-surface dark:bg-rink-800 border-[1.5px] border-it-line-strong dark:border-rink-700',
+          )}
+          aria-hidden="true"
+        >
+          {on && (
+            <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+              <path d="M2 5.5l2 2 5-6" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
         </span>
-        {sub && (
-          <span className="flex items-end gap-1.5 mt-1">
-            <span className="flex-1 text-card-meta text-it-ink-500 dark:text-wtext-4 leading-[1.5]">{sub}</span>
-            {link}
+        <span className="flex-1 min-w-0">
+          {/* 라벨: [필수] it-red */}
+          <span className="block text-card-meta font-bold text-it-ink-900 dark:text-white leading-[1.5] tracking-[-0.01em]">
+            <span className="text-it-red-500">[필수]</span> {label}
           </span>
-        )}
-      </span>
-    </button>
+          {sub && (
+            <span className="block text-card-meta text-it-ink-500 dark:text-wtext-4 leading-[1.5] mt-1">
+              {sub}
+            </span>
+          )}
+        </span>
+      </button>
+      {link && <span className="shrink-0">{link}</span>}
+    </div>
   );
 }
 

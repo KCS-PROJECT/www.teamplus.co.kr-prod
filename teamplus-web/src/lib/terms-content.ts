@@ -20,7 +20,7 @@
  *   signup/page.tsx 는 위 계약만 사용하므로 import 경로 변경이 필요하지 않습니다.
  */
 
-import { findPolicyFallback } from "./legal/policy-content";
+import { findPolicyFallback, normalizePolicyType } from "./legal/policy-content";
 
 export interface TermsData {
   title: string;
@@ -74,4 +74,72 @@ export type TermsId = (typeof TERMS_IDS)[number];
  */
 export function getTermsContent(id: string): TermsData | undefined {
   return TERMS_CONTENT[id];
+}
+
+// ────────────────────────────────────────────────────────────
+// DB 게시본 연동 (2026-08-10)
+//
+// 위 TERMS_CONTENT 는 **폴백**이다. 실제 게시본은 `GET /app/terms`(현행 1건/유형)가 SoT 이며,
+// 가입 화면도 `/terms` 와 같은 소스를 읽어야 "가입 시 동의한 문서 = 게시된 문서" 가 유지된다.
+// 조회 실패·미등록 유형은 폴백을 그대로 쓴다 — 가입 모달이 빈 화면이면 동의 자체가 무효가 된다.
+// ────────────────────────────────────────────────────────────
+
+/** `GET /app/terms` 응답 행 (필요한 필드만) */
+export interface ApiTermsRow {
+  type: string;
+  title: string;
+  content: string;
+  version: string;
+  publishedAt: string | null;
+  updatedAt: string;
+}
+
+/**
+ * 절대시각(ISO) → 'YYYY.MM.DD' (**한국시간 고정**).
+ * 로컬 getter 를 쓰면 시행일 `2026-07-29T15:00:00Z`(= KST 07-30)가 UTC 브라우저에서
+ * 하루 앞당겨 보인다. +9h 시프트 후 UTC 파트를 읽어 고정한다.
+ */
+function toKstDateLabel(value: string): string {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value.replace(/-/g, ".");
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  return `${kst.getUTCFullYear()}.${String(kst.getUTCMonth() + 1).padStart(2, "0")}.${String(kst.getUTCDate()).padStart(2, "0")}`;
+}
+
+/**
+ * 정책 1건을 DB 게시본에서 찾아 표시용 데이터로 변환한다.
+ * 응답이 없거나 해당 유형이 미등록이면 코드 폴백을 반환한다.
+ *
+ * `policyType` 은 표준형(`terms_of_service` 등)·축약형(`service` 등) 모두 허용한다.
+ */
+export function resolveTermsDocument(
+  rows: ApiTermsRow[] | null | undefined,
+  policyType: string,
+): TermsData | undefined {
+  const normalized = normalizePolicyType(policyType);
+  const row = rows?.find((r) => normalizePolicyType(r.type) === normalized);
+  if (row) {
+    return {
+      title: row.title,
+      version: `v${row.version}`,
+      // 표시 기준은 "시행일" — DB 행은 publishedAt, 값이 없으면 updatedAt 으로 폴백.
+      updatedAt: toKstDateLabel(row.publishedAt ?? row.updatedAt),
+      required: SIGNUP_TERMS_MAP.some(
+        (e) => e.policyType === normalized && e.required,
+      ),
+      content: row.content,
+    };
+  }
+
+  const fallback = findPolicyFallback(normalized);
+  if (!fallback) return undefined;
+  return {
+    title: fallback.title,
+    version: `v${fallback.version}`,
+    updatedAt: toKstDateLabel(fallback.updatedAt),
+    required: SIGNUP_TERMS_MAP.some(
+      (e) => e.policyType === normalized && e.required,
+    ),
+    content: fallback.content,
+  };
 }

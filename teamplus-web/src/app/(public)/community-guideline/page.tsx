@@ -1,9 +1,12 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
 import { Icon } from '@/components/ui/Icon';
-import { COMMUNITY_GUIDELINE, COMPANY_INFO } from '@/lib/legal/policy-content';
+import { COMPANY_INFO } from '@/lib/legal/policy-content';
+import { resolveTermsDocument, type ApiTermsRow } from '@/lib/terms-content';
+import { api } from '@/services/api-client';
 import { usePageReady } from '@/hooks/usePageReady';
 import { useDefaultUI } from '@/hooks/useNativeUI';
 
@@ -19,7 +22,28 @@ import { useDefaultUI } from '@/hooks/useNativeUI';
  * 처리방침과 마찬가지로 푸터/메뉴/약관 페이지에서 연결.
  */
 export default function CommunityGuidelinePage() {
-  usePageReady(true); // 정적 페이지 — 마운트 즉시 ready
+  // 본문 SoT 는 게시본(GET /app/terms 현행) — `/terms` 와 같은 소스를 읽어야
+  //   어드민에서 규칙을 개정했을 때 이 페이지만 옛 내용을 보여주는 일이 없다.
+  //   조회 전·실패 시에는 코드 폴백(policy-content.ts)을 쓴다.
+  const [rows, setRows] = useState<ApiTermsRow[] | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const res = await api.get<ApiTermsRow[]>('/app/terms');
+      if (cancelled) return;
+      if (res.success && Array.isArray(res.data)) setRows(res.data);
+      setIsLoaded(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const doc = resolveTermsDocument(rows, 'community_guideline');
+
+  usePageReady(isLoaded);
   // [2026-05-26 Track D B10] Flutter Native AppBar 끄고 Web PageAppBar(forceNative) 단일 노출
   //   (/faq · /terms 와 동일 패턴). 미적용 시 Native(WebView)에서 상단바가 미표시된다.
   useDefaultUI();
@@ -37,15 +61,22 @@ export default function CommunityGuidelinePage() {
             TEAMPLUS 회원 모두가 안전하고 즐겁게 이용할 수 있도록 다음 규칙을 준수해 주세요.
           </p>
 
-          <div className="flex items-center gap-2 pb-2 border-b border-it-line dark:border-rink-700">
-            <Icon name="forum" className="text-it-blue-500 text-card-emphasis" aria-hidden="true" />
-            <span className="text-[15px] font-bold text-it-ink-800 dark:text-white">
-              TEAMPLUS 커뮤니티 가이드라인
+          <div className="flex items-center justify-between gap-2 pb-2 border-b border-it-line dark:border-rink-700">
+            <span className="flex items-center gap-2 min-w-0">
+              <Icon name="forum" className="text-it-blue-500 text-card-emphasis shrink-0" aria-hidden="true" />
+              <span className="text-[15px] font-bold text-it-ink-800 dark:text-white truncate">
+                {doc?.title ?? 'TEAMPLUS 커뮤니티 가이드라인'}
+              </span>
             </span>
+            {doc && (
+              <span className="text-[11px] text-it-ink-500 dark:text-wtext-4 tabular-nums shrink-0">
+                {doc.version} · {doc.updatedAt} 시행
+              </span>
+            )}
           </div>
           <div className="max-h-[70vh] overflow-y-auto pt-4 bg-it-fill dark:bg-puck/30 rounded-w-md mt-3 p-4">
             <pre className="text-[13px] text-it-ink-800 dark:text-wtext-2 leading-relaxed whitespace-pre-wrap font-sans">
-              {COMMUNITY_GUIDELINE}
+              {doc?.content ?? ''}
             </pre>
           </div>
         </section>

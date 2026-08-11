@@ -21,8 +21,8 @@ import {
 // [수정 2026-05-18] 자녀 선택 readonly 통일 — 인라인 ChildSelector 제거, SelectedChildDisplay 사용.
 //   자녀 선택은 수업 상세 페이지(/classes/[id]) 에서만 가능. URL childId 누락 시 redirect.
 import { SelectedChildDisplay } from "@/components/payment/SelectedChildDisplay";
-import { BottomSheetSelector, BottomSheetConfirm } from "@/components/ui";
-import type { ConfirmTermItem } from "@/components/ui";
+import { BottomSheetSelector } from "@/components/ui";
+import { TermsDocumentModal } from "@/components/legal/TermsDocumentModal";
 import { api } from "@/services/api-client";
 import type { FeeType as PaymentFeeType } from "@/types/payment";
 import { usePageReady } from '@/hooks/usePageReady';
@@ -143,23 +143,12 @@ function PaymentOptionsContent() {
   const [selectedChild] = useState(initialChildId);
   const [termsAccepted, setTermsAccepted] = useState(false);
 
-  // Phase 2 P3/P4 통합 — BottomSheetSelector(옵션 패키지) + BottomSheetConfirm(약관)
+  // Phase 2 P3 — BottomSheetSelector(옵션 패키지)
   const [isPackageSheetOpen, setIsPackageSheetOpen] = useState(false);
-  const [isTermsSheetOpen, setIsTermsSheetOpen] = useState(false);
-  const [terms, setTerms] = useState<ConfirmTermItem[]>([
-    {
-      id: "purchase",
-      label: "[필수] 구매 조건 및 이용약관 동의",
-      required: true,
-      checked: false,
-    },
-    {
-      id: "refund",
-      label: "[필수] 환불 규정 동의",
-      required: true,
-      checked: false,
-    },
-  ]);
+  // 약관 '자세히 보기' — 결제 흐름 이탈 방지를 위해 모달로 본문을 띄운다.
+  const [policyModalType, setPolicyModalType] = useState<string | null>(null);
+  // 동의 없이 다음 단계를 누른 경우의 안내 (기존에는 약관 시트를 띄워 대체했음).
+  const [termsError, setTermsError] = useState(false);
 
   const [classInfo, setClassInfo] = useState<ClassInfo | null>(null);
   const [product, setProduct] = useState<ClassProduct | null>(null);
@@ -467,21 +456,6 @@ function PaymentOptionsContent() {
   // [2026-06-09] 패키지(회차) 선택 숨김 — 상세에서 정한 회차 고정.
   const hasPackageChoice: boolean = false;
   void matchingProducts;
-
-  // 약관 동의 토글 (BottomSheetConfirm 내부)
-  const handleTermToggle = (id: string) => {
-    setTerms((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, checked: !t.checked } : t)),
-    );
-  };
-
-  // BottomSheetConfirm "확인" → 모든 필수 약관 체크 시 inline checkbox 도 동기화
-  const handleTermsConfirm = () => {
-    const allRequiredChecked = terms.every((t) => !t.required || t.checked);
-    if (!allRequiredChecked) return;
-    setTermsAccepted(true);
-    setIsTermsSheetOpen(false);
-  };
 
   return (
     <MobileContainer>
@@ -860,7 +834,8 @@ function PaymentOptionsContent() {
         )}
 
         {/* Terms & CTA — 흰 섹션 (스크롤 마지막 섹션) */}
-        {/* Phase 2 P4 통합 — 인라인 체크박스는 유지(상태 가시성), "약관 자세히 보기" 로 BottomSheetConfirm */}
+        {/* 동의는 인라인 체크박스 1개로 통일하고, '자세히 보기' 는 환불 규정 본문을 모달로 연다.
+            이용약관은 회원가입 시 이미 동의를 받으므로 결제 단계에서 재동의를 요구하지 않는다. */}
         <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4 flex flex-col gap-4">
           <div className="flex items-start gap-3">
             <div className="flex items-center h-5">
@@ -869,13 +844,10 @@ function PaymentOptionsContent() {
                 id="terms"
                 checked={termsAccepted}
                 onChange={(e) => {
-                  const next = e.target.checked;
-                  setTermsAccepted(next);
-                  // 인라인 체크 시 sheet 의 필수 약관도 동기화 (사용자 경험 일관성)
-                  setTerms((prev) =>
-                    prev.map((t) => (t.required ? { ...t, checked: next } : t)),
-                  );
+                  setTermsAccepted(e.target.checked);
+                  if (e.target.checked) setTermsError(false);
                 }}
+                aria-invalid={termsError}
                 className="size-5 rounded border-it-line-strong text-it-blue-500 focus:ring-it-blue-500 dark:border-rink-700 dark:bg-rink-700 cursor-pointer"
               />
             </div>
@@ -893,13 +865,21 @@ function PaymentOptionsContent() {
                 </p>
                 <button
                   type="button"
-                  onClick={() => setIsTermsSheetOpen(true)}
+                  onClick={() => setPolicyModalType("refund")}
                   className="text-card-meta font-semibold text-it-blue-500 underline-offset-2 hover:underline"
                   aria-haspopup="dialog"
                 >
                   자세히 보기
                 </button>
               </div>
+              {termsError && (
+                <p
+                  role="alert"
+                  className="mt-1.5 text-card-meta text-it-red-500 dark:text-it-red-300"
+                >
+                  {MESSAGES.payment2.termsAgreeRequired}
+                </p>
+              )}
             </div>
           </div>
           {/* PACKAGE_END_GUARD (2026-05-22 v2): 선택된 product 가 비활성/종료일 초과/수업 종료면 다음 단계 차단.
@@ -957,7 +937,8 @@ function PaymentOptionsContent() {
               }
               if (!termsAccepted) {
                 e.preventDefault();
-                setIsTermsSheetOpen(true);
+                setTermsError(true);
+                document.getElementById("terms")?.focus();
               }
             }}
           >
@@ -1007,15 +988,10 @@ function PaymentOptionsContent() {
         onClose={() => setIsPackageSheetOpen(false)}
       />
 
-      {/* Phase 2 P4 — 약관 동의 BottomSheetConfirm */}
-      <BottomSheetConfirm
-        isOpen={isTermsSheetOpen}
-        title="약관에 동의해주세요."
-        terms={terms}
-        onTermToggle={handleTermToggle}
-        onConfirm={handleTermsConfirm}
-        onCancel={() => setIsTermsSheetOpen(false)}
-        confirmLabel="동의하고 계속"
+      {/* 약관 본문 — '자세히 보기' 로 열리는 환불 규정 (게시본 우선, 실패 시 코드 폴백) */}
+      <TermsDocumentModal
+        policyType={policyModalType}
+        onClose={() => setPolicyModalType(null)}
       />
     </MobileContainer>
   );

@@ -25,7 +25,7 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import nextDynamic from 'next/dynamic';
 import { useSearchParams } from 'next/navigation';
-import { NavLink, useNavigation } from '@/components/ui/NavLink';
+import { useNavigation } from '@/components/ui/NavLink';
 import { Spinner } from '@/components/ui/Spinner';
 import { Icon } from '@/components/ui/Icon';
 import { MobileContainer } from '@/components/layout/MobileContainer';
@@ -37,6 +37,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { MESSAGES } from '@/lib/messages';
 import { api } from '@/services/api-client';
 import { usePageReady } from '@/hooks/usePageReady';
+import { TermsDocumentModal } from '@/components/legal/TermsDocumentModal';
 
 const GlobalMenu = nextDynamic(
   () => import('@/components/layout/GlobalMenu').then((mod) => ({ default: mod.GlobalMenu })),
@@ -94,6 +95,8 @@ function PaymentCheckoutContent() {
   const [isReady, setIsReady] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 환불 규정 '보기' — 결제 흐름 이탈 방지를 위해 모달로 표시.
+  const [policyModalType, setPolicyModalType] = useState<string | null>(null);
 
   // 위젯 중복 렌더 방지
   const renderedRef = useRef(false);
@@ -283,14 +286,16 @@ function PaymentCheckoutContent() {
               {MESSAGES.payment2.securePayment} (TossPayments)
             </span>
           </div>
-          {/* [추가] 환불 규정 보기 — 결제 전 환불 정책 고지 (앱 심사 Task 3) */}
-          <NavLink
-            href="/terms?section=refund"
+          {/* [추가] 환불 규정 보기 — 결제 전 환불 정책 고지 (앱 심사 Task 3).
+                결제 진행 중 이탈하면 선택 상태가 사라지므로 페이지 이동 대신 모달로 연다. */}
+          <button
+            type="button"
+            onClick={() => setPolicyModalType('refund')}
             className="inline-flex items-center justify-center gap-1 self-center text-[12px] font-medium text-it-ink-600 dark:text-rink-100 underline underline-offset-2 hover:text-it-blue-500 dark:hover:text-it-blue-300 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 rounded"
           >
             <Icon name="receipt_long" className="text-[14px]" aria-hidden="true" />
             {MESSAGES.payment2.viewRefundPolicy}
-          </NavLink>
+          </button>
           <button
             type="button"
             onClick={handlePayment}
@@ -324,6 +329,10 @@ function PaymentCheckoutContent() {
         </section>
       </main>
 
+      <TermsDocumentModal
+        policyType={policyModalType}
+        onClose={() => setPolicyModalType(null)}
+      />
       <GlobalMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </MobileContainer>
   );

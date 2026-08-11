@@ -586,7 +586,8 @@ export default function TermsManagementPage() {
       </div>
 
       {/* 등록·수정 통합 모달 — 필드 구성이 같아 모드만 바꿔 재사용한다. */}
-      <Modal isOpen={formMode !== null} onClose={closeForm} size="full">
+      {/* size="full"(max-w-4xl) 은 약관 편집에 다소 넓어 max-w-3xl 로 좁힌다. */}
+      <Modal isOpen={formMode !== null} onClose={closeForm} size="full" className="max-w-3xl">
         <ModalHeader
           title={formMode === 'edit' ? '시행 예정 버전 수정' : '약관 버전 등록'}
           icon={FileText}
@@ -747,7 +748,7 @@ export default function TermsManagementPage() {
       </Modal>
 
       {/* 약관 미리보기 모달 */}
-      <Modal isOpen={showPreviewModal} onClose={() => setShowPreviewModal(false)} size="full">
+      <Modal isOpen={showPreviewModal} onClose={() => setShowPreviewModal(false)} size="full" className="max-w-3xl">
         <ModalHeader title={`${selectedTerm?.title || ''} 미리보기`} icon={Eye} />
         <ModalBody scrollable maxHeight="70vh">
           <div className="space-y-4">
