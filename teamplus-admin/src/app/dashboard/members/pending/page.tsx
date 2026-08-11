@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { clubService } from '@/services/club.service';
+import { displayEmail } from '@/lib/user-email';
 import { Status, type Club, type TeamMember } from '@/types';
 
 type MessageState = { type: 'success' | 'error'; text: string } | null;
@@ -74,7 +75,7 @@ export default function PendingMembersPage() {
       return (
         member.playerName.toLowerCase().includes(q) ||
         (member.user?.name || '').toLowerCase().includes(q) ||
-        (member.user?.email || '').toLowerCase().includes(q)
+        displayEmail(member.user?.email).toLowerCase().includes(q)
       );
     });
   }, [members, searchTerm]);
@@ -276,12 +277,15 @@ export default function PendingMembersPage() {
                       <p className="font-semibold text-slate-900 dark:text-white">
                         {member.playerName}
                       </p>
-                      <Badge variant="outline" className="rounded-full px-2 py-0.5 text-xs bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600">
-                        {member.playerAge}세
-                      </Badge>
+                      {/* 나이(N세) 표기 금지 — 목록은 출생연도(년생)로 표기한다. */}
+                      {member.birthYear && (
+                        <Badge variant="outline" className="rounded-full px-2 py-0.5 text-xs bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600">
+                          <span className="tabular-nums">{member.birthYear}</span>년생
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-                      보호자: {member.user?.name || '-'} · {member.user?.email || '-'}
+                      보호자: {member.user?.name || '-'} · {displayEmail(member.user?.email) || '-'}
                     </p>
                   </div>
                 </div>
