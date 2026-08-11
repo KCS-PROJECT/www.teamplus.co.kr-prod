@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+
 import { Icon } from '@/components/ui/Icon';
 import { cn } from '@/lib/utils';
 import { MESSAGES } from '@/lib/messages';
@@ -8,10 +10,15 @@ import { resolveImageSrc } from '@/lib/image-url';
 export interface DrawerChildItem {
   id: string;
   name: string;
+  /**
+   * ⚠️ 현재 항상 undefined — 백엔드 `GET /children`(ChildResponseDto)에 profileEmoji 필드가
+   *  없어 이 분기는 도달하지 않는다(2026-08-11 backend 전수 grep 0건). 되살릴 때는 좌측 슬롯이
+   *  팀 아이덴티티 자리라는 점을 먼저 검토할 것.
+   */
   profileEmoji?: string;
   /** 소속 클럽명 — 무소속이면 비움(부제 "무소속" 표기). */
   clubName?: string | null;
-  /** 승인 대표 팀 로고 URL — 좌측 슬롯에 우선 표시. 없으면 이모지 → 아이콘 폴백. */
+  /** 승인 대표 팀 로고 URL — 좌측 슬롯에 우선 표시. 없으면 팀 기본 아이콘 폴백. */
   teamLogoUrl?: string | null;
 }
 
@@ -38,12 +45,17 @@ export function DrawerChildSwitcher({
   activeChildId,
   onSelect,
 }: DrawerChildSwitcherProps) {
-  if (items.length < 2) return null;
+  // 로드 실패(404/깨짐) 로고 URL 기억 → 팀 기본 아이콘으로 대체.
+  //   URL 값 기준이라 팀 로고가 교체되면 자동으로 다시 시도한다.
+  //   ⚠️ Hooks 규칙 — 아래 `items.length < 2` 조기 반환보다 반드시 위에 있어야 한다.
+  const [brokenLogos, setBrokenLogos] = useState<Set<string>>(new Set());
 
   const handleSelect = (id: string) => {
     if (activeChildId === id) return;
     onSelect(id);
   };
+
+  if (items.length < 2) return null;
 
   return (
     <section
@@ -61,6 +73,10 @@ export function DrawerChildSwitcher({
         >
           {items.map((child) => {
             const isActive = activeChildId === child.id;
+            // 판정은 **해석된 URL** 기준 — resolveImageSrc 는 빈 문자열·공백·placeholder.svg 를
+            //  undefined 로 돌려주므로, 원본 truthy 만 보면 src 없는 빈 img 가 남고 onError 도 안 뜬다.
+            const resolvedLogo = resolveImageSrc(child.teamLogoUrl);
+            const showLogo = !!resolvedLogo && !brokenLogos.has(resolvedLogo);
             return (
               <li key={child.id}>
                 <button
@@ -84,17 +100,22 @@ export function DrawerChildSwitcher({
                     )}
                     aria-hidden="true"
                   >
-                    {child.teamLogoUrl ? (
+                    {showLogo ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={resolveImageSrc(child.teamLogoUrl)}
+                        src={resolvedLogo}
                         alt=""
+                        onError={() =>
+                          setBrokenLogos((prev) => new Set(prev).add(resolvedLogo!))
+                        }
                         className="absolute inset-0 h-full w-full object-cover"
                       />
                     ) : child.profileEmoji ? (
                       <span className="text-lg">{child.profileEmoji}</span>
                     ) : (
-                      <Icon name="child_care" className="text-[18px]" />
+                      // 팀 아이덴티티 슬롯이므로 사람 아이콘(child_care)이 아니라 팀 기본 아이콘.
+                      //  홈 자녀 스트립·ChildPickerSheet·team/[id] 히어로·TeamListCard 와 동일 관용.
+                      <Icon name="sports_hockey" className="text-[18px]" />
                     )}
                   </span>
                   <span className="leading-tight text-left">

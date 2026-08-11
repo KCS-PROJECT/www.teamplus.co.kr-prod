@@ -104,6 +104,8 @@ export default function TeamDetailPage() {
   }, [params]);
 
   const [team, setTeam] = useState<TeamDetail | null>(null);
+  // 히어로 로고 로드 실패(404/깨짐) URL 기억 → 기본 팀 아이콘으로 대체. URL 이 바뀌면 자동 재시도.
+  const [brokenLogo, setBrokenLogo] = useState<string | null>(null);
   // [수정 2026-05-21] 팀 단위 권한 — 본인 멤버십이 'approved' 인 매니저 역할만 통과.
   //  admin 은 글로벌 통과, 그 외 director/academy_director/coach 는 owner 또는 approved 멤버만.
   //  pending coach / 무관 팀 진입 director 등은 모두 차단.
@@ -426,6 +428,12 @@ export default function TeamDetailPage() {
       : []),
   ];
 
+  // 히어로 팀 로고 — 판정은 **해석된 URL** 기준. resolveImageSrc 는 빈 문자열·공백·
+  //  placeholder.svg 를 undefined 로 돌려주므로, 원본 truthy 만 보면 src 없는 빈 img 가
+  //  남고 로드 시도가 없어 onError 조차 안 뜬다.
+  const heroLogo = resolveImageSrc(team.logoUrl);
+  const showHeroLogo = !!heroLogo && heroLogo !== brokenLogo;
+
   // [수정 2026-05-18 W2.B #3] 모바일 셸 너비 720px 오버라이드 제거.
   //   기존: PC 화면 활용 의도로 720px override → 모바일 BottomNav (max-w 448px) 와
   //         가로 길이 불일치 → 카드/콘텐츠가 BottomNav 폭을 초과하여 잘려 보임.
@@ -451,11 +459,12 @@ export default function TeamDetailPage() {
           <div className="flex items-center gap-4">
             {/* 로고 박스 — 72×72, 흰 배경 */}
             <div className="flex size-[72px] shrink-0 items-center justify-center rounded-w-2xl bg-white dark:bg-it-surface">
-              {resolveImageSrc(team.logoUrl) ? (
+              {showHeroLogo ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
                 <img
-                  src={resolveImageSrc(team.logoUrl)}
+                  src={heroLogo}
                   alt=""
+                  onError={() => setBrokenLogo(heroLogo!)}
                   className="size-full rounded-w-2xl object-cover"
                 />
               ) : (

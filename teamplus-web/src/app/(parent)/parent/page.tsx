@@ -46,7 +46,7 @@ import { useStableLayout } from '@/hooks/useStableLayout';
 import { useImagesReady } from '@/hooks/useImagesReady';
 import { useFontsReady } from '@/hooks/useFontsReady';
 import { MESSAGES } from '@/lib/messages';
-import { getChildInactiveReason } from '@/lib/child-status';
+import { getChildInactiveReason, isActiveChild } from '@/lib/child-status';
 import { isActiveEnrollment } from '@/lib/enrollment-visibility';
 import { api } from '@/services/api-client';
 import {
@@ -183,6 +183,17 @@ export default function ParentDashboardPage() {
   const rejectedCount = rejectedChildren.length;
   // 반려 배너 클릭 시 이동할 대상 — 첫 반려 자녀의 정보 수정(재신청) 페이지.
   const firstRejectedChildId = rejectedChildren[0]?.id ?? null;
+
+  // 공지 영역 "팀공지" 탭 노출 여부 — 열람 가능한 팀이 있을 때만.
+  //   자녀 0명(selectedChildId=null) 또는 선택 자녀 무소속·승인대기 → 백엔드가 childId 로
+  //   자녀 팀만 스코프하므로(team-scope.util.ts resolveViewerTeamIds) scope=team 은 항상 0건이다.
+  //   학부모 본인 팀 멤버십은 정책상 생성되지 않으므로(auth.service.ts PARENT 분기 — 자녀별 팀
+  //   선택으로 전환) 판정 기준은 "선택 자녀의 승인 팀 유무" 하나로 충분하다.
+  const selectedChild = useMemo(
+    () => allChildren.find((c) => c.id === selectedChildId) ?? null,
+    [allChildren, selectedChildId],
+  );
+  const showTeamNoticeTab = !!selectedChild && isActiveChild(selectedChild);
 
   useNativeUI({
     showStatusBar: true,
@@ -421,7 +432,8 @@ export default function ParentDashboardPage() {
         {focusedChild && (
           <HomeIdentityStrip
             logoUrl={stripTeamLogoUrl}
-            fallbackInitial={focusedChild.club || focusedChild.name}
+            // fallbackInitial 미전달 = 팀 기본 아이콘 폴백. 이 슬롯은 팀 아이덴티티 자리라
+            //  자녀 이름 이니셜을 넣으면 subline("소속없음")과 어긋나 팀명처럼 읽힌다.
             title={focusedChild.name}
             subline={stripSubline}
             sublineTone={stripIsPending ? 'warning' : 'default'}
@@ -588,8 +600,13 @@ export default function ParentDashboardPage() {
         )}
 
         {/* ① 공지사항 — 팀 단위 정보 (최상단 배너 다음). 자녀 칩 필터와 무관.
-              학부모는 "공지사항" 타이틀(타 역할은 기본 "팀 공지사항"). */}
-        <RecentNoticesSection title={MESSAGES.dashboard.notices} iceTheme />
+              학부모는 "공지사항" 타이틀(타 역할은 기본 "팀 공지사항").
+              열람 가능한 팀이 없으면(자녀 0명/선택 자녀 무소속) 팀공지 탭을 숨긴다. */}
+        <RecentNoticesSection
+          title={MESSAGES.dashboard.notices}
+          iceTheme
+          showTeamTab={showTeamNoticeTab}
+        />
 
         {/* ② 수업 목록 — 팀 등록 수업 상위 5건 요약 + 전체보기.
               팀 전체 카탈로그라 자녀 칩 필터와 무관 → 칩보다 위에 배치. */}

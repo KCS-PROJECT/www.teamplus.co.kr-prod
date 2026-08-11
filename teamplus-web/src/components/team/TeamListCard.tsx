@@ -13,6 +13,8 @@
  *  - 학부모 variant (myChild=true) 은 primary 테두리 + "내 아이" 배지
  */
 
+import { useState } from 'react';
+
 import { Icon } from '@/components/ui/Icon';
 import { MESSAGES } from '@/lib/messages';
 import {
@@ -61,6 +63,12 @@ export function TeamListCard({
   highlightBadge,
   footerSlot,
 }: TeamListCardProps) {
+  // 로드 실패(404/깨짐) URL 기억 → 색상 박스 + 하키 아이콘 폴백. URL 이 바뀌면 자동 재시도.
+  const [brokenLogo, setBrokenLogo] = useState<string | null>(null);
+  // 판정은 **해석된 URL** 기준 — resolveImageSrc 는 빈 문자열·공백·placeholder.svg 를
+  //  undefined 로 돌려주므로, 원본 truthy 만 보면 src 없는 빈 img 가 남고 onError 도 안 뜬다.
+  const resolvedLogo = resolveImageSrc(team.logoUrl);
+  const showLogo = !!resolvedLogo && resolvedLogo !== brokenLogo;
   const logoColor = resolveLogoColor(team);
   const memberCount = team._count?.roster ?? 0;
   const clubLocation = team.club?.location ?? null;
@@ -106,11 +114,12 @@ export function TeamListCard({
 
       <div className={cn('flex items-start gap-4', highlight && 'pt-2')}>
         {/* 로고 */}
-        {resolveImageSrc(team.logoUrl) ? (
+        {showLogo ? (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
-            src={resolveImageSrc(team.logoUrl)}
+            src={resolvedLogo}
             alt={`${teamName} 로고`}
+            onError={() => setBrokenLogo(resolvedLogo!)}
             className="size-16 shrink-0 rounded-lg border border-wline-2 object-cover dark:border-rink-700"
           />
         ) : (

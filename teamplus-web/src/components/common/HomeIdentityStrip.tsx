@@ -13,13 +13,27 @@
  */
 
 import { memo, useState, type ReactNode } from 'react';
+import { Icon } from '@/components/ui/Icon';
 import { resolveImageSrc } from '@/lib/image-url';
 
 export interface HomeIdentityStripProps {
-  /** 대표 로고 URL(팀/아카데미) — 없거나 로드 실패 시 이니셜 플레이스홀더 */
+  /** 대표 로고 URL(팀/아카데미) — 없거나 로드 실패 시 폴백 플레이스홀더 */
   logoUrl?: string | null;
-  /** 로고 폴백 이니셜 소스(1글자로 잘라 표시) — 보통 팀명, 없으면 이름 */
-  fallbackInitial: string;
+  /**
+   * 로고 폴백 이니셜 소스(1글자로 잘라 표시). **미전달·빈 문자열이면 팀 기본 아이콘**을 렌더한다.
+   *
+   * 이 슬롯은 팀/아카데미 아이덴티티 자리이므로 사람 이름을 넘기지 말 것 — 소속이 없는데
+   * 이름 이니셜을 넣으면 subline("소속없음")과 어긋나 그 글자가 팀명처럼 읽힌다.
+   * 팀 기본 아이콘(`sports_hockey`)은 team/[id] 히어로·TeamListCard·MatchHeroCard 와 동일한
+   * 프로젝트 관용이다.
+   */
+  fallbackInitial?: string | null;
+  /**
+   * 이니셜이 없을 때 쓸 기본 아이콘. 기본값은 팀 기본 아이콘 `sports_hockey`.
+   * 오픈클래스(Academy) 홈은 팀이 아니므로 `school` 을 넘긴다 — academies/[id]·academy/[id]·
+   * AcademyCard 가 쓰는 오픈클래스 관용과 맞춘다.
+   */
+  fallbackIcon?: string;
   /** 1행 — 주 정체성 (자녀명 / "김감독 감독" 등) */
   title: string;
   /** 2행 — 소속(팀 · 팀 조인) 또는 상태 라벨. 없으면 1행만 노출 */
@@ -34,16 +48,22 @@ export interface HomeIdentityStripProps {
 export const HomeIdentityStrip = memo(function HomeIdentityStrip({
   logoUrl,
   fallbackInitial,
+  fallbackIcon = 'sports_hockey',
   title,
   subline,
   sublineTone = 'default',
   action,
   ariaLabel,
 }: HomeIdentityStripProps) {
-  // 로드 실패(404/깨짐) URL 기억 → 이니셜 플레이스홀더 대체.
+  // 로드 실패(404/깨짐) URL 기억 → 폴백 플레이스홀더 대체.
   //   URL 값 기준이므로 대상 전환으로 다른 로고가 되면 자동으로 다시 시도.
   const [brokenLogo, setBrokenLogo] = useState<string | null>(null);
-  const showLogo = !!logoUrl && logoUrl !== brokenLogo;
+  // 판정은 **해석된 URL** 기준 — resolveImageSrc 는 빈 문자열·공백·placeholder.svg 를
+  //  undefined 로 돌려주므로, 원본 truthy 만 보면 src 없는 빈 img 가 남고 onError 도 안 뜬다.
+  const resolvedLogo = resolveImageSrc(logoUrl);
+  const showLogo = !!resolvedLogo && resolvedLogo !== brokenLogo;
+  // 이니셜 소스가 없으면 팀 기본 아이콘으로 폴백(공백만 넘어온 경우도 아이콘).
+  const initial = fallbackInitial?.trim().charAt(0) || null;
 
   return (
     <section
@@ -53,9 +73,9 @@ export const HomeIdentityStrip = memo(function HomeIdentityStrip({
       {showLogo ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={resolveImageSrc(logoUrl!)}
+          src={resolvedLogo}
           alt=""
-          onError={() => setBrokenLogo(logoUrl!)}
+          onError={() => setBrokenLogo(resolvedLogo!)}
           className="size-11 rounded-xl object-cover shrink-0"
         />
       ) : (
@@ -63,7 +83,9 @@ export const HomeIdentityStrip = memo(function HomeIdentityStrip({
           aria-hidden="true"
           className="size-11 rounded-xl bg-white/[0.12] flex items-center justify-center text-[18px] font-bold text-white shrink-0"
         >
-          {fallbackInitial.charAt(0)}
+          {initial ?? (
+            <Icon name={fallbackIcon} className="text-[22px] text-white" />
+          )}
         </span>
       )}
       <div className="flex-1 flex flex-col min-w-0 gap-0.5">
