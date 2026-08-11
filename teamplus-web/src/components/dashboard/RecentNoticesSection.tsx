@@ -5,6 +5,7 @@
  *  - 탭 A "공지사항"(scope=service, 전역 서비스 공지) / 탭 B "팀공지"(scope=team, 소속·자녀 경유 팀 공지)
  *  - GET /notices?scope=<service|team>&limit=5 — 활성 탭 lazy 로드 + 탭별 캐시(중복 요청 방지)
  *  - 학부모 자녀 변경 시 팀공지 탭 자동 전환 + 해당 자녀 팀 기준 재조회(초기 establishment/자녀0명 제외)
+ *  - showTeamTab=false 면 "팀공지" 탭 자체를 숨김(열람 가능한 팀 0개 — 자녀 0명/선택 자녀 무소속)
  *  - 핀고정 우선, 최신순 정렬, 상위 5건 미리보기
  *  - "전체보기" → 활성 탭별 경로(service→serviceViewAllHref, team→viewAllHref)
  *  - iceTheme(ICETIMES flat) / 기본 카드 / variant='child'(WCAG AAA) 3원 스타일
@@ -81,8 +82,10 @@ const TYPE_BADGE: Record<string, { label: string; cls: string }> = {
   INFO: { label: '안내', cls: 'bg-ice-50 text-ice-700' },
 };
 
-/** 탭 순서 — "팀공지, 공지사항". 키보드 이동/roving tabindex 기준. */
+/** 탭 순서 SoT — "팀공지, 공지사항". 실제 렌더/키보드 이동은 이 순서에서 파생한 `visibleScopes` 기준. */
 const SCOPES: readonly NoticeScope[] = ['team', 'service'] as const;
+/** 팀공지 탭을 뺀 순서 — showTeamTab=false 일 때 사용(참조 안정성 확보용 모듈 상수). */
+const SERVICE_ONLY_SCOPES: readonly NoticeScope[] = ['service'] as const;
 
 interface RecentNoticesSectionProps {
   /**
@@ -117,6 +120,17 @@ interface RecentNoticesSectionProps {
   iceTheme?: boolean;
   /** 초기 활성 탭. 기본 'team'(탭 순서 "팀공지, 공지사항"). */
   defaultTab?: NoticeScope;
+  /**
+   * "팀공지" 탭 노출 여부. 기본 true = 기존 동작(2탭) 그대로.
+   *
+   * false 를 넘기면 탭 자체를 렌더하지 않고 "공지사항"(service) 단일 탭으로 동작한다.
+   *  호출부는 **열람 가능한 팀이 0개임이 확정된 경우에만** false 를 넘길 것 — 백엔드
+   *  `scope=team` 은 열람 팀이 없으면 항상 0건이므로(notices.service.ts · team-scope.util.ts)
+   *  그 상태에서는 빈 카드가 기본 탭으로 열리는 것과 다름없다.
+   *  학부모 본인 팀 멤버십은 정책상 생성되지 않으므로(auth.service.ts PARENT 분기)
+   *  학부모 화면의 판정 기준은 "선택 자녀의 승인 팀 유무" 하나로 충분하다.
+   */
+  showTeamTab?: boolean;
 }
 
 export function RecentNoticesSection({
@@ -126,6 +140,7 @@ export function RecentNoticesSection({
   onCreateNotice,
   iceTheme = false,
   defaultTab = 'team',
+  showTeamTab = true,
 }: RecentNoticesSectionProps = {}) {
   const { navigate } = useNavigation();
   const { selectedChildId } = useSelectedChild();
@@ -136,7 +151,18 @@ export function RecentNoticesSection({
   const tabId = useCallback((scope: NoticeScope) => `${uid}-notice-tab-${scope}`, [uid]);
   const panelId = useCallback((scope: NoticeScope) => `${uid}-notice-panel-${scope}`, [uid]);
 
-  const [activeTab, setActiveTab] = useState<NoticeScope>(defaultTab);
+  // 실제 렌더/키보드 이동 대상 탭 — SCOPES 순서를 유지한 채 숨김 탭만 제외.
+  const visibleScopes = showTeamTab ? SCOPES : SERVICE_ONLY_SCOPES;
+
+  // 실효 기본 탭 — defaultTab 이 숨겨진 탭이면 첫 가시 탭으로 대체.
+  //  초기 활성 탭뿐 아니라 "첫 로드 완료" 판정(initialLoadDoneRef·isInitialDefaultLoad)의
+  //  기준도 이 값이어야 한다. 원본 defaultTab 을 그대로 쓰면 탭이 숨겨진 화면에서 첫 로드가
+  //  'initial'(페이지 로더가 덮는 구간) 이 아니라 'skeleton' 으로 오분류된다.
+  const effectiveDefaultTab: NoticeScope =
+    showTeamTab || defaultTab !== 'team' ? defaultTab : 'service';
+
+  // 초기 활성 탭 — 숨겨진 탭이 기본값이면 첫 가시 탭으로 대체(빈 패널 방지).
+  const [activeTab, setActiveTab] = useState<NoticeScope>(() => effectiveDefaultTab);
   const [data, setData] = useState<Record<NoticeScope, NoticeItem[]>>({ service: [], team: [] });
   const [loading, setLoading] = useState<Record<NoticeScope, boolean>>({ service: false, team: false });
   const [loaded, setLoaded] = useState<Record<NoticeScope, boolean>>({ service: false, team: false });
@@ -186,33 +212,44 @@ export function RecentNoticesSection({
       setData((prev) => ({ ...prev, [scope]: list }));
       setLoaded((prev) => (prev[scope] ? prev : { ...prev, [scope]: true }));
       setLoading((prev) => ({ ...prev, [scope]: false }));
-      if (scope === defaultTab) initialLoadDoneRef.current = true;
+      if (scope === effectiveDefaultTab) initialLoadDoneRef.current = true;
     },
-    [selectedChildId, defaultTab],
+    [selectedChildId, effectiveDefaultTab],
   );
+
+  // 숨겨진 탭이 활성 상태로 남지 않도록 보정 — showTeamTab 이 런타임에 false 로 바뀌는
+  //  경우(무소속 자녀로 전환)에도 활성 탭이 사라진 탭을 가리켜 빈 패널이 되는 것을 막는다.
+  useEffect(() => {
+    if (!visibleScopes.includes(activeTab)) setActiveTab(visibleScopes[0]);
+  }, [visibleScopes, activeTab]);
 
   // 자녀 변경 → 팀공지 탭 자동 전환 + team 캐시 무효화(초기 establishment·null 전이 제외).
   //  · prev==null(자녀0명/최초 establishment) 또는 next==null(로그아웃 등) → 전환 안 함.
   //  · prev·next 모두 실제 자녀이며 상이 → 사용자 자녀 스위칭으로 판단(원문 "자녀 변경 시 팀공지").
+  //  · 팀공지 탭이 숨겨진 상태면 전환하지 않는다(없는 탭으로 전환 방지). 캐시 무효화는 그대로
+  //    수행 — 다시 소속 자녀로 돌아왔을 때 이전 자녀 기준 목록이 남지 않도록.
   //  · service 캐시는 자녀 무관하므로 유지(재요청 없음 — E6).
   useEffect(() => {
     const prev = prevChildIdRef.current;
     prevChildIdRef.current = selectedChildId;
     if (prev == null || selectedChildId == null || prev === selectedChildId) return;
-    setActiveTab('team');
+    if (showTeamTab) setActiveTab('team');
     setData((p) => (p.team.length ? { ...p, team: [] } : p));
     setLoaded((p) => (p.team ? { ...p, team: false } : p));
-  }, [selectedChildId]);
+  }, [selectedChildId, showTeamTab]);
 
   // 활성 탭 lazy 로드 — 최초/전환/자녀변경 후 필요한 scope 만 fetch(캐시 있으면 재요청 0).
   //  team 은 캐시가 다른 자녀 기준이면(teamChildKey 불일치) 재조회.
   useEffect(() => {
     const scope = activeTab;
+    // 숨겨진 탭은 fetch 하지 않는다 — 보정 effect 가 활성 탭을 바꾸기 전 1프레임 동안
+    //  무소속 자녀로 scope=team 요청이 나가는 낭비를 막는다(결과는 항상 0건).
+    if (!visibleScopes.includes(scope)) return;
     const staleTeam = scope === 'team' && teamChildKeyRef.current !== selectedChildId;
     if ((!loaded[scope] || staleTeam) && !loading[scope]) {
       void loadScope(scope);
     }
-  }, [activeTab, loaded, loading, selectedChildId, loadScope]);
+  }, [activeTab, loaded, loading, selectedChildId, loadScope, visibleScopes]);
 
   // [P3-4] 언마운트 후 setState 억제 — SPEC §3.2.3-5 "cancelled 플래그" 의도.
   //  cleanup 에서 양 scope reqCounter 를 증가시켜 in-flight 응답의 reqId!==counter → setData/setLoading 스킵.
@@ -252,22 +289,24 @@ export function RecentNoticesSection({
       const { key } = e;
       if (key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== 'Home' && key !== 'End') return;
       e.preventDefault();
-      const current = SCOPES.indexOf(activeTab);
+      // 이동 대상은 가시 탭만 — 숨긴 탭으로 포커스가 넘어가지 않도록 visibleScopes 기준.
+      const current = visibleScopes.indexOf(activeTab);
+      if (current === -1) return;
       let next = current;
-      if (key === 'ArrowLeft') next = (current - 1 + SCOPES.length) % SCOPES.length;
-      else if (key === 'ArrowRight') next = (current + 1) % SCOPES.length;
+      if (key === 'ArrowLeft') next = (current - 1 + visibleScopes.length) % visibleScopes.length;
+      else if (key === 'ArrowRight') next = (current + 1) % visibleScopes.length;
       else if (key === 'Home') next = 0;
-      else next = SCOPES.length - 1;
-      const nextScope = SCOPES[next];
+      else next = visibleScopes.length - 1;
+      const nextScope = visibleScopes[next];
       handleTabSelect(nextScope);
       tabRefs.current[nextScope]?.focus();
     },
-    [activeTab, handleTabSelect],
+    [activeTab, handleTabSelect, visibleScopes],
   );
 
   const activeList = data[activeTab];
   const activeLoading = loading[activeTab];
-  const isInitialDefaultLoad = !initialLoadDoneRef.current && activeTab === defaultTab;
+  const isInitialDefaultLoad = !initialLoadDoneRef.current && activeTab === effectiveDefaultTab;
 
   // 본문 상태 — initial(페이지 로더 커버, null) / skeleton(지연 로드) / empty / list.
   const bodyState: 'initial' | 'skeleton' | 'empty' | 'list' =
@@ -298,7 +337,7 @@ export function RecentNoticesSection({
             aria-orientation="horizontal"
             className="relative flex items-end gap-5"
           >
-            {SCOPES.map((scope) => {
+            {visibleScopes.map((scope) => {
               const active = scope === activeTab;
               return (
                 <button

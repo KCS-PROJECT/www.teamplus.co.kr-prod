@@ -21,7 +21,7 @@ export interface ChildPickerItem {
   name: string;
   /** 승인 대표 팀명 — 없으면 "소속없음" 라벨 노출 */
   club: string | null;
-  /** 대표 팀 로고 URL — 없거나 로드 실패 시 이니셜 플레이스홀더 */
+  /** 대표 팀 로고 URL — 없거나 로드 실패 시 팀 기본 아이콘 플레이스홀더 */
   logoUrl: string | null;
 }
 
@@ -40,7 +40,7 @@ export const ChildPickerSheet = memo(function ChildPickerSheet({
   selectedChildId,
   onSelect,
 }: ChildPickerSheetProps) {
-  // 로드 실패한 로고 URL 기억 → 이니셜 플레이스홀더로 대체 (자녀 전환 시 재시도 불필요)
+  // 로드 실패한 로고 URL 기억 → 팀 기본 아이콘으로 대체 (자녀 전환 시 재시도 불필요)
   const [brokenLogos, setBrokenLogos] = useState<Set<string>>(new Set());
 
   return (
@@ -53,7 +53,10 @@ export const ChildPickerSheet = memo(function ChildPickerSheet({
       <ul className="space-y-2" role="list">
         {items.map((child) => {
           const isSelected = child.id === selectedChildId;
-          const showLogo = !!child.logoUrl && !brokenLogos.has(child.logoUrl);
+          // 판정은 **해석된 URL** 기준 — resolveImageSrc 는 빈 문자열·공백·placeholder.svg 를
+          //  undefined 로 돌려주므로, 원본 truthy 만 보면 src 없는 빈 img 가 남고 onError 도 안 뜬다.
+          const resolvedLogo = resolveImageSrc(child.logoUrl);
+          const showLogo = !!resolvedLogo && !brokenLogos.has(resolvedLogo);
           return (
             <li key={child.id}>
               <button
@@ -69,10 +72,10 @@ export const ChildPickerSheet = memo(function ChildPickerSheet({
                 {showLogo ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={resolveImageSrc(child.logoUrl!)}
+                    src={resolvedLogo}
                     alt=""
                     onError={() =>
-                      setBrokenLogos((prev) => new Set(prev).add(child.logoUrl!))
+                      setBrokenLogos((prev) => new Set(prev).add(resolvedLogo!))
                     }
                     className="size-10 rounded-lg object-cover shrink-0"
                   />
@@ -81,7 +84,10 @@ export const ChildPickerSheet = memo(function ChildPickerSheet({
                     aria-hidden="true"
                     className="size-10 rounded-lg bg-it-blue-50 dark:bg-it-blue-500/15 flex items-center justify-center text-card-body font-bold text-it-blue-600 dark:text-it-blue-300 shrink-0"
                   >
-                    {(child.club || child.name).charAt(0)}
+                    {/* 팀 아이덴티티 슬롯이므로 자녀 이름 이니셜을 넣지 않는다 — 무소속이면
+                        부제("소속없음")와 어긋나 그 글자가 팀명처럼 읽힌다. 홈 자녀 스트립·
+                        team/[id] 히어로·TeamListCard 와 동일한 팀 기본 아이콘으로 통일. */}
+                    <Icon name="sports_hockey" className="text-[20px]" />
                   </span>
                 )}
                 <span className="flex-1 min-w-0 flex flex-col gap-0.5">

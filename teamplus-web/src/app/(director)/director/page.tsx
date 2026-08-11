@@ -177,7 +177,8 @@ export default function DirectorDashboardPage() {
         {/* 정체성 스트립 — 헤더에서 분리한 이름·직책·팀 표시 (공용 HomeIdentityStrip). */}
         <HomeIdentityStrip
           logoUrl={teams?.[0]?.logoUrl ?? null}
-          fallbackInitial={teams?.[0]?.name || namePart}
+          // fallbackInitial 미전달 = 팀 기본 아이콘 폴백. 이 슬롯은 팀 아이덴티티 자리라
+          //  이름 이니셜을 넣으면 subline(팀 없음)과 어긋나 팀명처럼 읽힌다.
           title={namePart}
           subline={teamNames}
         />

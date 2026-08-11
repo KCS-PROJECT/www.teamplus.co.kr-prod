@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+
 import { Icon } from '@/components/ui/Icon';
 import { cn } from '@/lib/utils';
 import { resolveImageSrc } from '@/lib/image-url';
@@ -60,6 +62,12 @@ export function MatchHeroCard({
 }
 
 function TeamBlock({ team }: { team: TeamInfo }) {
+  // 로드 실패(404/깨짐) URL 기억 → 기본 아이콘으로 대체. URL 이 바뀌면 자동 재시도.
+  const [brokenLogo, setBrokenLogo] = useState<string | null>(null);
+  // 판정은 **해석된 URL** 기준 — resolveImageSrc 는 빈 문자열·공백·placeholder.svg 를
+  //  undefined 로 돌려주므로, 원본 truthy 만 보면 src 없는 빈 img 가 남고 onError 도 안 뜬다.
+  const resolvedLogo = resolveImageSrc(team.logoUrl);
+  const showLogo = !!resolvedLogo && resolvedLogo !== brokenLogo;
   const isHome = team.role === 'HOME';
   return (
     <div className="flex flex-col items-center w-1/3 gap-2">
@@ -71,11 +79,12 @@ function TeamBlock({ team }: { team: TeamInfo }) {
             : 'bg-blue-50 border-blue-100 dark:bg-blue-900/20 dark:border-blue-800'
         )}
       >
-        {resolveImageSrc(team.logoUrl) ? (
+        {showLogo ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={resolveImageSrc(team.logoUrl)}
+            src={resolvedLogo}
             alt={`${team.name} 로고`}
+            onError={() => setBrokenLogo(resolvedLogo!)}
             className="w-full h-full object-cover"
           />
         ) : (

@@ -156,7 +156,9 @@ export default function AcademyDirectorDashboardPage() {
         {/* 정체성 스트립 — 헤더에서 분리한 이름·직책·오픈클래스 표시 (공용 HomeIdentityStrip). */}
         <HomeIdentityStrip
           logoUrl={academies?.[0]?.imageUrl ?? null}
-          fallbackInitial={academies?.[0]?.name || namePart}
+          // fallbackInitial 미전달 = 아이콘 폴백. 오픈클래스는 팀이 아니므로 팀 아이콘이 아니라
+          //  academies/[id]·academy/[id]·AcademyCard 와 같은 `school` 을 쓴다.
+          fallbackIcon="school"
           title={namePart}
           subline={academyNames}
         />

@@ -104,6 +104,9 @@ interface ClassItem {
   isClassEnded?: boolean;
   /** [Lifecycle v4.1] 서버 파생 상태 — 배지 판정 SoT (역산 폴백보다 우선). */
   lifecycleStatus?: 'ON_SALE' | 'PENDING_SCHEDULE' | 'ENDED';
+  /** [Lifecycle v4.1] 대기 사유 — NO_SCHEDULE=잔여 일정 없음 · UNAPPROVED_MONTH=판매 미승인.
+   *  두 사유는 학부모 시점 의미가 달라(전자만 "수강할 회차 없음") 칩 분기에서 구분한다. */
+  pendingReason?: 'NO_SCHEDULE' | 'UNAPPROVED_MONTH' | null;
   /** 수업 장소 (Venue 모델) */
   venue?: { id: string; name: string } | null;
   /** [2026-08-04] 수업 지역 라벨 "서울 강남구" — 백엔드 조합 문자열(regionCity+regionDistrict).
@@ -418,6 +421,25 @@ function isClassEndedByLastSchedule(item: {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return last.getTime() < today.getTime();
+}
+
+/**
+ * 남은 수업 일정이 없는 상태 — 회차를 다 쓰고 다음 달 일정을 기다리는 구간.
+ *  종료(ENDED)와 구분한다: 감독이 다음 달 일정을 등록하면 그대로 재개되므로
+ *  목록에서 내리지 않고 칩만 대기 상태로 표시한다.
+ *  UNAPPROVED_MONTH(잔여 일정은 있고 판매 승인만 미완)는 수강할 회차가 남아 제외.
+ *  일정이 아직 하나도 없는 신규 수업(scheduledDates 0)도 제외.
+ */
+function isAwaitingNextSchedule(item: {
+  lifecycleStatus?: 'ON_SALE' | 'PENDING_SCHEDULE' | 'ENDED';
+  pendingReason?: 'NO_SCHEDULE' | 'UNAPPROVED_MONTH' | null;
+  scheduledDates?: string[];
+}): boolean {
+  return (
+    item.lifecycleStatus === 'PENDING_SCHEDULE' &&
+    item.pendingReason === 'NO_SCHEDULE' &&
+    (item.scheduledDates?.length ?? 0) > 0
+  );
 }
 
 /** 대회 종료/취소 판정 — DefaultTournamentCard 상태 칩과 동일 규칙(SoT 공유).
@@ -1005,12 +1027,18 @@ const DefaultClassCard = memo(function DefaultClassCard({
   //   오독 유발 + ICETIMES 플랫 톤·배지 관례(연한 배경+진한 글자)와 충돌 → soft 칩.
   let registerClass =
     "bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-500/15 dark:text-it-blue-300";
-  // 우선순위 단일 체인 — 종료(회색·등록 유도 차단) > 등록완료(본인 수강) > 일정 준비 중
+  // 우선순위 단일 체인 — 종료(회색·등록 유도 차단) > 일정 대기 > 등록완료(본인 수강)
   //   > 등록불가(연령) > 등록. 종료 수업은 등록 칩이 무의미해 상태 칩으로 대체한다
   //   (classes-manage 상태 배지 위치와 통일 — 하단 중복 종료 배지는 제거).
   if (classEnded) {
     registerLabel = "종료";
     registerClass = "bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-200";
+  } else if (isAwaitingNextSchedule(item)) {
+    // 등록 여부보다 앞선다 — 결제했더라도 지금 수강할 회차가 없다는 사실이 우선 정보다.
+    //   (paid 는 만료 개념이 없어 등록완료 칩만으로는 이 구간이 드러나지 않는다.)
+    registerLabel = MESSAGES.class.preparingSchedule;
+    registerClass =
+      "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400";
   } else if (isAlreadyEnrolled) {
     registerLabel = "등록완료";
     registerClass =
@@ -1592,7 +1620,13 @@ export default function ClassesPage() {
     //   별도 섹션으로 분리한다. 구버전 응답(필드 없음)은 내 팀 취급(!== false).
     const isExternal = (c: ClassItem) => c.isViewerTeam === false;
     return {
-      enrolled: classes.filter((c) => isEnrolled(c) && !isEnded(c)),
+      // 이번 달 수강 중인 훈련이 위, 다음 달 일정을 기다리는 훈련이 아래 (안정 정렬).
+      enrolled: classes
+        .filter((c) => isEnrolled(c) && !isEnded(c))
+        .sort(
+          (a, b) =>
+            Number(isAwaitingNextSchedule(a)) - Number(isAwaitingNextSchedule(b)),
+        ),
       // 참여했던 종료 훈련 — '등록 훈련' 섹션 하단 접힘 (이력 확인용).
       endedEnrolled: classes.filter((c) => isEnrolled(c) && isEnded(c)),
       regular: classes.filter(
