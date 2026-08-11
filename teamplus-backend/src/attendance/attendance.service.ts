@@ -31,6 +31,9 @@ import {
   addUtcDays,
 } from "@/common/utils/kst-date.util";
 
+/** 출석 상태 변경 시 학부모에게 나가는 인앱/푸시 알림 제목 (최초 마킹·정정·취소 공용) */
+const ATTENDANCE_NOTIFY_TITLE = "자녀 출석 안내";
+
 interface AttendanceFilter {
   teamId?: string;
   classId?: string;
@@ -530,7 +533,7 @@ export class AttendanceService {
   }
 
   /**
-   * PR-D (v0.8): 코치 출석 정정 후 학부모 사후 알림 발송
+   * PR-D (v0.8): 코치 출석 변경 후 학부모 사후 알림 발송
    *
    * 발송 채널:
    *   - 인앱 알림 (Notification 테이블) — 항상 발송
@@ -538,6 +541,9 @@ export class AttendanceService {
    *
    * 트랜잭션 외부에서 호출 — 알림 실패가 출석 정정을 롤백하지 않음.
    * AuditLog 의 notifiedParentId/notifiedAt 는 호출 전에 트랜잭션 안에서 채움 (가장 먼저 발견된 학부모 id).
+   *
+   * creditsBefore/creditsAfter 는 **실제 수업권 변동이 있을 때만** 전달한다.
+   * 수업권을 발급하지 않는 수업(회차 0)에서 "0회 → 0회" 가 노출되는 것을 막는다.
    *
    * @returns 알림 발송 대상 학부모 id 배열 (첫 번째 id 가 AuditLog.notifiedParentId 용)
    */
@@ -550,10 +556,10 @@ export class AttendanceService {
       fromStatus: string | null;
       toStatus: string;
       reason: string;
-      creditsBefore: number;
-      creditsAfter: number;
+      creditsBefore?: number;
+      creditsAfter?: number;
     },
-  ): Promise<{ parentIds: string[]; message: string }> {
+  ): Promise<{ parentIds: string[]; message: string; title: string }> {
     const [child, parents] = await Promise.all([
       tx.user.findUnique({
         where: { id: params.childUserId },
@@ -569,7 +575,7 @@ export class AttendanceService {
       this.logger.log(
         `[NotifyMod] skip — childUserId=${params.childUserId} parents=${parents.length}`,
       );
-      return { parentIds: [], message: "" };
+      return { parentIds: [], message: "", title: ATTENDANCE_NOTIFY_TITLE };
     }
 
     const childName = `${child.lastName}${child.firstName}`;
@@ -582,14 +588,33 @@ export class AttendanceService {
     const fromLabel = statusLabel(params.fromStatus);
     const toLabel = statusLabel(params.toStatus);
 
+    // 최초 마킹(기록 없음 → 출석/결석) · 처리 취소(→ 미체크) · 상태 정정 3가지를 구분한다.
+    // "정정되었습니다" 문구는 이미 기록이 있던 값을 바꾼 경우에만 맞다.
+    const isFirstMark = !params.fromStatus || params.fromStatus === "unchecked";
+    const isCleared = params.toStatus === "unchecked";
+    // 받침 있는 라벨(출석·결석)은 '으로', 없는 라벨(미체크)은 '로'
+    const toParticle = toLabel === "미체크" ? "로" : "으로";
+
+    const headline = isCleared
+      ? `${childName}님의 ${dateStr} ${params.className} ${fromLabel} 처리가 취소되었습니다. `
+      : isFirstMark
+        ? `${childName}님이 ${dateStr} ${params.className}에 ${toLabel} 처리되었습니다. `
+        : `${childName}님의 ${dateStr} ${params.className} 출석이 ` +
+          `${fromLabel}에서 ${toLabel}${toParticle} 정정되었습니다. `;
+
     // PR-D Hotfix #3 (v1.0): 사유가 빈 문자열이면 "사유:" 줄 자동 생략
     const reasonLine =
       params.reason && params.reason.trim() ? `사유: ${params.reason}. ` : "";
+    // 수업권을 발급하지 않는 수업은 잔여 회차 자체가 무의미 — 줄 생략
+    const creditLine =
+      typeof params.creditsBefore === "number" &&
+      typeof params.creditsAfter === "number"
+        ? `잔여 회차: ${params.creditsBefore}회 → ${params.creditsAfter}회. `
+        : "";
     const message =
-      `${childName}님의 ${dateStr} ${params.className} 출석이 ` +
-      `${fromLabel}에서 ${toLabel}로 정정되었습니다. ` +
+      headline +
       reasonLine +
-      `잔여 회차: ${params.creditsBefore}회 → ${params.creditsAfter}회. ` +
+      creditLine +
       `문의는 코치에게 채팅으로 연락해주세요.`;
 
     // 인앱 알림 INSERT (학부모 전원)
@@ -597,7 +622,7 @@ export class AttendanceService {
       data: parents.map((p) => ({
         userId: p.parentId,
         notificationType: "attendance_modified",
-        title: "자녀 출석 정정 안내",
+        title: ATTENDANCE_NOTIFY_TITLE,
         message,
         linkUrl: `/attendance-history`,
       })),
@@ -611,7 +636,11 @@ export class AttendanceService {
     );
 
     // FCM 푸시는 호출 측에서 트랜잭션 커밋 후 발송(롤백 시 false 푸시 방지) — parentIds + message 반환.
-    return { parentIds: parents.map((p) => p.parentId), message };
+    return {
+      parentIds: parents.map((p) => p.parentId),
+      message,
+      title: ATTENDANCE_NOTIFY_TITLE,
+    };
   }
 
   /**
@@ -1442,8 +1471,11 @@ export class AttendanceService {
     // 분쟁 예방은 학부모 사후 알림 + AuditLog 영구 보존으로 충분.
 
     // PR-D: 출석 정정 FCM 푸시는 tx 커밋 후 발송(롤백 시 false 푸시 방지). tx 내부에서 페이로드만 채운다.
-    let modificationPush: { parentIds: string[]; message: string } | null =
-      null;
+    let modificationPush: {
+      parentIds: string[];
+      message: string;
+      title: string;
+    } | null = null;
     const result = await this.prisma.$transaction(async (tx) => {
       // 가격 잠금 §4-0 B — present 전환 포함 상태 변경도 후불 lock 직렬화 대상.
       const lockClassId = attendance.schedule?.class?.id;
@@ -1466,6 +1498,11 @@ export class AttendanceService {
         },
       });
 
+      // 학부모 알림 메시지의 "잔여 회차" 줄 판정용 — 상태 전환만으로 계산하는
+      // creditDelta 와 달리, 수업권이 **실제로** 복원/차감된 경우에만 값이 잡힌다.
+      // (수업권 미발급 수업에서 "0회 → 1회" 같은 허위 표기를 막는다.)
+      let actualCreditDelta = 0;
+
       // 수업권 복원 (present → absent) — PR-B: CreditDomainService 경유
       if (wasPresent && !willBePresent && attendance.creditDeducted) {
         const restored = await this.creditDomain.restoreOne(tx, {
@@ -1476,6 +1513,7 @@ export class AttendanceService {
           adjustedBy: userId,
         });
         if (restored) {
+          actualCreditDelta = 1;
           await tx.classAttendance.update({
             where: { id: attendanceId },
             data: { creditDeducted: false },
@@ -1502,6 +1540,7 @@ export class AttendanceService {
           adjustedBy: userId,
           deductedVia: "coach_manual",
         });
+        actualCreditDelta = -1;
         await tx.classAttendance.update({
           where: { id: attendanceId },
           data: { creditDeducted: true },
@@ -1516,22 +1555,31 @@ export class AttendanceService {
             ? -1 // 차감
             : 0;
 
-      // PR-D (v0.8): 수업권 변동 시 학부모 사후 알림 (트랜잭션 내부 — 인앱 알림만)
+      // PR-D (v0.8): 출석 상태가 바뀌면 학부모 사후 알림 (트랜잭션 내부 — 인앱 알림만)
+      //   과거에는 creditDelta !== 0 (수업권 변동) 이 조건이었으나, 수업권 미사용
+      //   정책 전환 이후 차감이 0 이 되면서 알림이 전면 차단됐다. 알림 여부는
+      //   수업권이 아니라 **출석 상태 변동** 을 따른다.
+      const statusChanged =
+        attendance.attendanceStatus !== updateDto.attendanceStatus;
       let notifiedParentIds: string[] = [];
-      if (creditDelta !== 0 && attendance.schedule?.class?.className) {
-        // 잔여 회차 계산 (정정 전/후) — 학부모 메시지에 포함
-        const currentCredits = await tx.memberCredit.aggregate({
-          where: {
-            userId: attendance.memberId,
-            classId: attendance.schedule.class.id,
-            expiresAt: { gte: now },
-          },
-          _sum: { totalSessions: true, usedSessions: true },
-        });
-        const creditsAfter =
-          (currentCredits._sum.totalSessions ?? 0) -
-          (currentCredits._sum.usedSessions ?? 0);
-        const creditsBefore = creditsAfter - creditDelta; // 정정 전 잔여
+      if (statusChanged && attendance.schedule?.class?.className) {
+        // 잔여 회차 계산 (정정 전/후) — 실제 수업권 변동이 있을 때만 메시지에 포함
+        let creditsBefore: number | undefined;
+        let creditsAfter: number | undefined;
+        if (actualCreditDelta !== 0) {
+          const currentCredits = await tx.memberCredit.aggregate({
+            where: {
+              userId: attendance.memberId,
+              classId: attendance.schedule.class.id,
+              expiresAt: { gte: now },
+            },
+            _sum: { totalSessions: true, usedSessions: true },
+          });
+          creditsAfter =
+            (currentCredits._sum.totalSessions ?? 0) -
+            (currentCredits._sum.usedSessions ?? 0);
+          creditsBefore = creditsAfter - actualCreditDelta; // 정정 전 잔여
+        }
 
         const mod = await this.notifyParentsOfModification(tx, {
           childUserId: attendance.memberId,
@@ -1570,6 +1618,7 @@ export class AttendanceService {
     const modPush = modificationPush as {
       parentIds: string[];
       message: string;
+      title: string;
     } | null;
     if (modPush && modPush.parentIds.length > 0) {
       // unread 캐시 무효화 — tx 내부 createMany 경로는 30s TTL 동안 뱃지가 stale
@@ -1580,7 +1629,7 @@ export class AttendanceService {
       );
       void this.notifications.pushOnlyToUsers(modPush.parentIds, {
         notificationType: "attendance_modified",
-        title: "자녀 출석 정정 안내",
+        title: modPush.title,
         message: modPush.message,
         linkUrl: `/attendance-history`,
       });
@@ -3090,8 +3139,11 @@ export class AttendanceService {
     const now = new Date();
 
     // 출석 정정 FCM 푸시는 tx 커밋 후 발송(롤백 시 false 푸시 방지). tx 내부에서 페이로드만 채운다.
-    let modificationPush: { parentIds: string[]; message: string } | null =
-      null;
+    let modificationPush: {
+      parentIds: string[];
+      message: string;
+      title: string;
+    } | null = null;
     const result = await this.prisma.$transaction(async (tx) => {
       // 가격 잠금 §4-0 B — 후불 수업의 출석 기록은 단가 수정·정산 확정과 직렬화.
       await acquireClassPostpaidLockIfNeeded(tx, schedule.class.id);
@@ -3152,21 +3204,27 @@ export class AttendanceService {
         });
       }
 
-      // 5-4) 학부모 사후 알림 — PR-D (v0.8): 신규 present (수업권 차감 동반) 시
+      // 5-4) 학부모 사후 알림 — 신규 마킹은 언제나 출석 상태 변동(미체크 → 출석/결석)이다.
+      //   과거 조건이던 willDeduct(수업권 차감 동반)는 수업권 미사용 수업·결석 마킹에서
+      //   항상 false 라 알림이 통째로 누락됐다. 잔여 회차만 차감 시에 한해 덧붙인다.
       let notifiedParentIds: string[] = [];
-      if (willDeduct && schedule.class.className) {
-        const currentCredits = await tx.memberCredit.aggregate({
-          where: {
-            userId: memberId,
-            classId: schedule.class.id,
-            expiresAt: { gte: now },
-          },
-          _sum: { totalSessions: true, usedSessions: true },
-        });
-        const creditsAfter =
-          (currentCredits._sum.totalSessions ?? 0) -
-          (currentCredits._sum.usedSessions ?? 0);
-        const creditsBefore = creditsAfter + 1; // 정정 전 잔여 (1 차감됨)
+      if (schedule.class.className) {
+        let creditsBefore: number | undefined;
+        let creditsAfter: number | undefined;
+        if (willDeduct) {
+          const currentCredits = await tx.memberCredit.aggregate({
+            where: {
+              userId: memberId,
+              classId: schedule.class.id,
+              expiresAt: { gte: now },
+            },
+            _sum: { totalSessions: true, usedSessions: true },
+          });
+          creditsAfter =
+            (currentCredits._sum.totalSessions ?? 0) -
+            (currentCredits._sum.usedSessions ?? 0);
+          creditsBefore = creditsAfter + 1; // 정정 전 잔여 (1 차감됨)
+        }
 
         const mod = await this.notifyParentsOfModification(tx, {
           childUserId: memberId,
@@ -3205,6 +3263,7 @@ export class AttendanceService {
     const modPush = modificationPush as {
       parentIds: string[];
       message: string;
+      title: string;
     } | null;
     if (modPush && modPush.parentIds.length > 0) {
       // unread 캐시 무효화 — tx 내부 createMany 경로는 30s TTL 동안 뱃지가 stale
@@ -3215,7 +3274,7 @@ export class AttendanceService {
       );
       void this.notifications.pushOnlyToUsers(modPush.parentIds, {
         notificationType: "attendance_modified",
-        title: "자녀 출석 정정 안내",
+        title: modPush.title,
         message: modPush.message,
         linkUrl: `/attendance-history`,
       });
@@ -3252,7 +3311,15 @@ export class AttendanceService {
         schedule: {
           select: {
             id: true,
-            class: { select: { id: true, teamId: true, academyId: true } },
+            scheduledDate: true, // 학부모 알림 메시지에 사용
+            class: {
+              select: {
+                id: true,
+                className: true, // 학부모 알림 메시지에 사용
+                teamId: true,
+                academyId: true,
+              },
+            },
           },
         },
       },
@@ -3291,6 +3358,12 @@ export class AttendanceService {
 
     const now = new Date();
 
+    // 출석 취소 FCM 푸시는 tx 커밋 후 발송(롤백 시 false 푸시 방지). tx 내부에서 페이로드만 채운다.
+    let modificationPush: {
+      parentIds: string[];
+      message: string;
+      title: string;
+    } | null = null;
     await this.prisma.$transaction(async (tx) => {
       // 가격 잠금 §4-0 B — 출석 취소(복원)도 후불 집계를 바꾸므로 동일 lock 직렬화.
       if (classId) {
@@ -3299,20 +3372,57 @@ export class AttendanceService {
       // P3-H1 — 정산 확정 월의 출석 변경은 lock 안에서 재검증 후 거부.
       await assertScheduleMonthNotSettled(tx, attendance.scheduleId);
       // 1) 수업권 복원 (차감되어 있던 경우만) — PR-B: CreditDomainService 경유
+      let restoredCredit = false;
       if (attendance.creditDeducted) {
-        await this.creditDomain.restoreOne(tx, {
+        restoredCredit = !!(await this.creditDomain.restoreOne(tx, {
           userId: attendance.memberId,
           classId: attendance.schedule!.class!.id,
           scheduleId: attendance.scheduleId,
           reason: `코치 처리 취소 (${attendance.attendanceStatus}→미체크) - 수업권 복원`,
           adjustedBy: coachUserId,
-        });
+        }));
       }
 
       // 2) attendance 레코드 삭제 → 미체크 상태(레코드 없음) 로 복귀
       await tx.classAttendance.delete({ where: { id: attendanceId } });
 
-      // 3) AuditLog INSERT (PR-C v0.6) — clear 액션
+      // 3) 학부모 사후 알림 — 처리 취소도 학부모가 보는 출석 상태를 바꾼다.
+      let notifiedParentIds: string[] = [];
+      const className = attendance.schedule?.class?.className;
+      if (className) {
+        // 잔여 회차는 실제 복원이 일어난 경우에만 표기 (복원 반영 후 값 조회)
+        let creditsBefore: number | undefined;
+        let creditsAfter: number | undefined;
+        if (restoredCredit) {
+          const currentCredits = await tx.memberCredit.aggregate({
+            where: {
+              userId: attendance.memberId,
+              classId: attendance.schedule!.class!.id,
+              expiresAt: { gte: now },
+            },
+            _sum: { totalSessions: true, usedSessions: true },
+          });
+          creditsAfter =
+            (currentCredits._sum.totalSessions ?? 0) -
+            (currentCredits._sum.usedSessions ?? 0);
+          creditsBefore = creditsAfter - 1; // 복원 전 잔여
+        }
+
+        const mod = await this.notifyParentsOfModification(tx, {
+          childUserId: attendance.memberId,
+          className,
+          attendanceDate: attendance.schedule?.scheduledDate ?? now,
+          fromStatus: attendance.attendanceStatus,
+          toStatus: "unchecked",
+          reason: "",
+          creditsBefore,
+          creditsAfter,
+        });
+        notifiedParentIds = mod.parentIds;
+        modificationPush = mod;
+      }
+
+      // 4) AuditLog INSERT (PR-C v0.6) — clear 액션
       //    attendanceId 는 삭제됐지만 참조용으로 보존 (외래키 아닌 단순 컬럼)
       await this.auditLog.record(tx, {
         attendanceId,
@@ -3323,8 +3433,31 @@ export class AttendanceService {
         fromStatus: attendance.attendanceStatus,
         toStatus: "unchecked",
         creditDelta: attendance.creditDeducted ? 1 : 0,
+        notifiedParentId: notifiedParentIds[0] ?? null,
+        notifiedAt: notifiedParentIds.length > 0 ? now : null,
       });
     });
+
+    // 트랜잭션 커밋 후 FCM 푸시 — 롤백 시 발송 안 됨. 인앱 알림은 tx 내부에서 원자 적재됨.
+    const modPush = modificationPush as {
+      parentIds: string[];
+      message: string;
+      title: string;
+    } | null;
+    if (modPush && modPush.parentIds.length > 0) {
+      // unread 캐시 무효화 — tx 내부 createMany 경로는 30s TTL 동안 뱃지가 stale
+      void Promise.allSettled(
+        modPush.parentIds.map((pid) =>
+          this.notifications.invalidateUnreadCountCache(pid),
+        ),
+      );
+      void this.notifications.pushOnlyToUsers(modPush.parentIds, {
+        notificationType: "attendance_modified",
+        title: modPush.title,
+        message: modPush.message,
+        linkUrl: `/attendance-history`,
+      });
+    }
 
     this.logger.log(
       `[CoachClearAttendance] coach=${coachUserId} attendanceId=${attendanceId} ` +
