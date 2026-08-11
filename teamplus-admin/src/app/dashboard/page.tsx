@@ -16,7 +16,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { MESSAGES } from '@/lib/messages';
+import { displayEmail } from '@/lib/user-email';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -27,13 +27,11 @@ import {
   CreditCard,
   Image,
   MessageSquare,
-  CheckCircle,
   AlertCircle,
   ArrowRight,
   ChevronRight,
   Building2,
   UserPlus,
-  XCircle,
   Clock,
   Mail,
   // [추가 2026-04-30] 팀/오픈클래스/정산 카드 아이콘
@@ -85,14 +83,57 @@ interface DashboardNotice {
   pinned: boolean;
 }
 
-// 승인 대기 회원
+// 승인 대기 회원 (화면 표시용)
 interface PendingMember {
   id: string;
   name: string;
+  /** 자녀 계정의 내부 식별자 email 은 제외되어 빈 문자열일 수 있다. */
   email: string;
+  /** 가입 신청한 팀 — 승인 판단의 1차 기준 */
+  teamName: string;
   requestDate: string;
   userType: string;
 }
+
+// GET /member-approvals/pending 응답 (TeamMember 기준)
+interface PendingApprovalItem {
+  id: string;
+  playerName?: string | null;
+  createdAt?: string | null;
+  joinedAt?: string | null;
+  user?: {
+    id?: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+    userType?: string | null;
+  } | null;
+  team?: { id: string; name: string } | null;
+}
+
+interface PendingApprovalListResponse {
+  items: PendingApprovalItem[];
+  total: number;
+}
+
+const EMPTY_PENDING: PendingApprovalListResponse = { items: [], total: 0 };
+
+// 백엔드 UserType(대문자) → 한국어 라벨
+const USER_TYPE_LABELS: Record<string, string> = {
+  PARENT: '학부모',
+  COACH: '코치',
+  DIRECTOR: '감독',
+  ACADEMY_DIRECTOR: '오픈클래스 감독',
+  TEEN: '학생',
+  CHILD: '자녀',
+};
+
+const formatRequestDate = (value?: string | null) => {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+};
 
 
 export default function DashboardPage() {
@@ -122,7 +163,7 @@ export default function DashboardPage() {
   });
   const [notices, setNotices] = useState<DashboardNotice[]>([]);
   const [pendingMembers, setPendingMembers] = useState<PendingMember[]>([]);
-  const [_actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [pendingTotal, setPendingTotal] = useState(0);
 
   // 시간 기반 인사말
   const getGreeting = () => {
@@ -159,7 +200,15 @@ export default function DashboardPage() {
         //   · 응답이 배열이 아닌 { data, meta } 페이지네이션 형태여도 배열로 정규화
         const [dashData, pendingData, teamsData, academyData, settlementsData, noticesData] = await Promise.all([
           api.get<AdminDashboardData>('/dashboard/admin').catch(() => null),
-          api.get<{ data?: PendingMember[] }>('/admin/members/pending').catch(() => ({ data: [] })),
+          // [수정 2026-08-11] '/admin/members/pending' 은 백엔드에 없는 경로라 매 진입마다 404 였음.
+          //   실제 SoT 는 member-approvals 모듈(teamId 생략 시 전역 pending). teamplus-web 감독
+          //   승인 화면과 동일한 API 이며, RolesGuard·assertCanManageMemberTeam 이 ADMIN/SYSTEM/OPER 를
+          //   통과시키므로 어드민 계정으로 조회·승인·거절이 모두 가능하다.
+          api
+            .get<PendingApprovalListResponse>('/member-approvals/pending', {
+              params: { pageSize: 5 },
+            })
+            .catch(() => EMPTY_PENDING),
           api.get<unknown>('/teams', { params: { limit: 200 } }).catch(() => []),
           api.get<unknown>('/academies/public', { params: { limit: 200 } }).catch(() => []),
           api.get<unknown>('/settlements').catch(() => []),
@@ -167,7 +216,21 @@ export default function DashboardPage() {
           //   admin 앱 공지사항(/dashboard/app/notices)과 동일한 소스(scope=service).
           api.get<unknown>('/notices/admin/list', { params: { scope: 'service', limit: 5 } }).catch(() => []),
         ]);
-        setPendingMembers(Array.isArray(pendingData?.data) ? pendingData.data : Array.isArray(pendingData) ? pendingData as unknown as PendingMember[] : []);
+        setPendingTotal(pendingData?.total ?? 0);
+        setPendingMembers(
+          (pendingData?.items ?? []).map((m) => ({
+            // TeamMember.id — 승인/거절 API 가 받는 식별자(User.id 아님)
+            id: m.id,
+            name:
+              `${m.user?.lastName ?? ''}${m.user?.firstName ?? ''}`.trim() ||
+              m.playerName ||
+              '-',
+            email: displayEmail(m.user?.email),
+            teamName: m.team?.name ?? '',
+            requestDate: formatRequestDate(m.createdAt ?? m.joinedAt),
+            userType: m.user?.userType ?? '',
+          })),
+        );
         // 배열 또는 { data: [...] } / { academies: [...] } 응답을 모두 배열로 정규화
         const toArray = <T,>(v: unknown): T[] => {
           if (Array.isArray(v)) return v as T[];
@@ -283,29 +346,8 @@ export default function DashboardPage() {
     return value.toLocaleString();
   };
 
-  const handleApproveMember = async (memberId: string) => {
-    try {
-      await api.patch(`/admin/members/${memberId}/approve`, { status: 'approved' });
-      setPendingMembers((prev) => prev.filter((m) => m.id !== memberId));
-      setActionMsg({ type: 'success', text: MESSAGES.member.approved });
-    } catch (error) {
-      console.error('승인 실패:', error);
-      setActionMsg({ type: 'error', text: MESSAGES.member.approveError });
-    }
-    setTimeout(() => setActionMsg(null), 3000);
-  };
-
-  const handleRejectMember = async (memberId: string) => {
-    try {
-      await api.patch(`/admin/members/${memberId}/approve`, { status: 'rejected' });
-      setPendingMembers((prev) => prev.filter((m) => m.id !== memberId));
-      setActionMsg({ type: 'success', text: MESSAGES.member.rejected });
-    } catch (error) {
-      console.error('거절 실패:', error);
-      setActionMsg({ type: 'error', text: MESSAGES.member.rejectError });
-    }
-    setTimeout(() => setActionMsg(null), 3000);
-  };
+  // 가입 승인/거절은 해당 팀 감독·코치 권한이다(teams.assertTeamManagerPermission).
+  //   어드민 대시보드는 적체 현황 모니터링만 담당하고 처리 액션은 두지 않는다.
 
   if (isLoading) {
     return <LoadingSpinner message="대시보드를 불러오는 중..." />;
@@ -429,11 +471,14 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <h2 className="text-xl font-bold text-slate-900 dark:text-white">신규 가입 승인 대기</h2>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{pendingMembers.length}명 대기 중</p>
+                  {/* 목록은 최근 5건만 노출하므로 건수는 서버 total 을 쓴다. 승인 처리는 팀 감독·코치 몫. */}
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                    <span className="tabular-nums">{pendingTotal}</span>명 대기 중 · 승인은 팀 감독이 처리합니다
+                  </p>
                 </div>
               </div>
               <Link
-                href="/dashboard/members?status=pending"
+                href="/dashboard/members"
                 className="flex items-center gap-1 text-sm text-primary hover:text-primary-dark dark:text-blue-400 dark:hover:text-blue-300 font-medium"
               >
                 전체 보기
@@ -456,43 +501,28 @@ export default function DashboardPage() {
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">{member.name}</p>
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400">
-                          {member.userType === 'parent' ? '학부모' : member.userType === 'coach' ? '코치' : member.userType}
+                          {USER_TYPE_LABELS[member.userType?.toUpperCase()] ?? member.userType}
                         </Badge>
                       </div>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <Mail className="w-3 h-3 text-slate-400 dark:text-slate-500" />
-                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{member.email}</p>
+                        <Building2 className="w-3 h-3 text-slate-400 dark:text-slate-500" aria-hidden="true" />
+                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                          {member.teamName || '소속 팀 미지정'}
+                        </p>
                       </div>
+                      {/* 자녀 계정 email 은 내부 식별자라 표시하지 않는다 (displayEmail 이 빈 문자열 반환) */}
+                      {member.email && (
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <Mail className="w-3 h-3 text-slate-400 dark:text-slate-500" aria-hidden="true" />
+                          <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{member.email}</p>
+                        </div>
+                      )}
                       <div className="flex items-center gap-2 mt-0.5">
-                        <Clock className="w-3 h-3 text-slate-400 dark:text-slate-500" />
+                        <Clock className="w-3 h-3 text-slate-400 dark:text-slate-500" aria-hidden="true" />
                         <p className="text-xs text-slate-400 dark:text-slate-500">{member.requestDate}</p>
                       </div>
                     </div>
-                    {/* Action Buttons */}
-                    <div className="flex gap-2 shrink-0">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="success"
-                        onClick={() => handleApproveMember(member.id)}
-                        className="text-xs px-3 h-8"
-                        aria-label={`${member.name}님 가입 승인`}
-                      >
-                        <CheckCircle className="w-3.5 h-3.5 mr-1" aria-hidden="true" />
-                        승인
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleRejectMember(member.id)}
-                        className="text-red-600 dark:text-red-400 border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 text-xs px-3 h-8"
-                        aria-label={`${member.name}님 가입 거절`}
-                      >
-                        <XCircle className="w-3.5 h-3.5 mr-1" aria-hidden="true" />
-                        거절
-                      </Button>
-                    </div>
+                    {/* 처리 액션 없음 — 승인/거절은 해당 팀 감독·코치 권한 */}
                   </div>
                 ))
               ) : (
@@ -634,6 +664,7 @@ export default function DashboardPage() {
           </div>
         </Card>
       )}
+
     </div>
   );
 }

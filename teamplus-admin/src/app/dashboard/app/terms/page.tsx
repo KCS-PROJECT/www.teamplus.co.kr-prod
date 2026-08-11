@@ -29,6 +29,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal';
+import { ActionToast, type ActionToastValue } from '@/components/common';
 import { FileText, Plus, Edit2, Eye, Copy, Trash2, Clock, ChevronDown } from 'lucide-react';
 
 interface TermItem {
@@ -238,7 +239,7 @@ export default function TermsManagementPage() {
     publishedAt: '',
     content: '',
   });
-  const [actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [actionMsg, setActionMsg] = useState<ActionToastValue>(null);
 
   const notify = useCallback((type: 'success' | 'error', text: string) => {
     setActionMsg({ type, text });
@@ -390,15 +391,8 @@ export default function TermsManagementPage() {
 
   return (
     <div className="space-y-6">
-      {actionMsg && (
-        <div className={`p-3 rounded-lg text-sm ${
-          actionMsg.type === 'success'
-            ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-            : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
-        }`}>
-          {actionMsg.text}
-        </div>
-      )}
+      {/* 모달이 열린 상태에서 발생하는 등록·수정·삭제 실패도 보이도록 포털 토스트로 표시한다. */}
+      <ActionToast value={actionMsg} onClose={() => setActionMsg(null)} />
 
       {/* 페이지 헤더 */}
       <div className="mb-8">
@@ -592,7 +586,8 @@ export default function TermsManagementPage() {
       </div>
 
       {/* 등록·수정 통합 모달 — 필드 구성이 같아 모드만 바꿔 재사용한다. */}
-      <Modal isOpen={formMode !== null} onClose={closeForm} size="full">
+      {/* size="full"(max-w-4xl) 은 약관 편집에 다소 넓어 max-w-3xl 로 좁힌다. */}
+      <Modal isOpen={formMode !== null} onClose={closeForm} size="full" className="max-w-3xl">
         <ModalHeader
           title={formMode === 'edit' ? '시행 예정 버전 수정' : '약관 버전 등록'}
           icon={FileText}
@@ -753,7 +748,7 @@ export default function TermsManagementPage() {
       </Modal>
 
       {/* 약관 미리보기 모달 */}
-      <Modal isOpen={showPreviewModal} onClose={() => setShowPreviewModal(false)} size="full">
+      <Modal isOpen={showPreviewModal} onClose={() => setShowPreviewModal(false)} size="full" className="max-w-3xl">
         <ModalHeader title={`${selectedTerm?.title || ''} 미리보기`} icon={Eye} />
         <ModalBody scrollable maxHeight="70vh">
           <div className="space-y-4">

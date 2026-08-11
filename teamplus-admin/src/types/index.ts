@@ -149,6 +149,10 @@ export interface TeamMember {
   club?: Club;
   playerName: string;
   playerAge: number;
+  /** 출생연도(20XX) — 백엔드 getTeamMembers 가 birthDate 기반으로 산출. 없으면 null */
+  birthYear?: number | null;
+  /** 생년월일 ISO — ChildProfile.birthDate 우선, 폴백 User.birthDate. 없으면 null */
+  birthDate?: string | null;
   approvalStatus: Status;
   createdAt: string;
   updatedAt: string;

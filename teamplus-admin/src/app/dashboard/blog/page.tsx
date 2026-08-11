@@ -12,6 +12,7 @@ import { Modal, ModalHeader, ModalBody, ModalFooter, ConfirmModal } from '@/comp
 import { api } from '@/services/api-client';
 import { uploadFile, toAbsoluteUrl } from '@/services/upload.service';
 import { RichTextEditor } from '@/components/blog/RichTextEditor';
+import { ActionToast, type ActionToastValue } from '@/components/common';
 import {
   Plus,
   Search,
@@ -138,7 +139,7 @@ export default function BlogAdminPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
-  const [actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [actionMsg, setActionMsg] = useState<ActionToastValue>(null);
 
   const notify = useCallback((type: 'success' | 'error', text: string, ms = 3000) => {
     setActionMsg({ type, text });
@@ -313,17 +314,7 @@ export default function BlogAdminPage() {
 
   return (
     <div className="space-y-6">
-      {actionMsg && (
-        <div
-          className={`p-3 rounded-lg text-sm ${
-            actionMsg.type === 'success'
-              ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-              : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
-          }`}
-        >
-          {actionMsg.text}
-        </div>
-      )}
+      <ActionToast value={actionMsg} onClose={() => setActionMsg(null)} />
 
       <PageHeader title="블로그 관리" subtitle={`전체 ${posts.length}개의 글`} />
 

@@ -920,7 +920,10 @@ export const MESSAGES = {
     noSearchResult: "검색 결과가 없습니다",
     tryOtherKeyword: "다른 검색어로 시도해보세요",
     noRegisteredStudent: "등록된 수강생이 없습니다.",
-    termsRequired: "구매 조건 및 이용약관에 동의합니다",
+    // 이용약관은 회원가입 시 이미 동의를 받으므로 결제 단계에서 재동의를 요구하지 않는다.
+    //   결제 시점에 필요한 것은 ① 주문 내용 확인(전자상거래법 §8) ② 환불 규정 고지·동의 뿐이다.
+    termsRequired: "주문 내용을 확인했으며, 환불 규정에 동의합니다",
+    termsAgreeRequired: "환불 규정에 동의해주세요.",
     refundPolicy: "본 상품은 환불 규정에 따라 환불이 가능합니다.",
     viewRefundPolicy: "환불 규정 보기",
     historyNote: "결제 내역은 최근 1년까지 조회 가능합니다.",

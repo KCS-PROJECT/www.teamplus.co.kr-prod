@@ -11,6 +11,7 @@ import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Modal } from '@/components/ui/modal';
 import { api } from '@/services/api-client';
 import { env } from '@/lib/env';
+import { ActionToast, type ActionToastValue } from '@/components/common';
 import {
   ArrowLeft,
   Edit2,
@@ -98,7 +99,7 @@ export default function TmsDetailPage() {
 
   const [post, setPost] = useState<TmsPost | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [actionMsg, setActionMsg] = useState<ActionToastValue>(null);
 
   // 이미지 팝업
   const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
@@ -294,15 +295,7 @@ export default function TmsDetailPage() {
       </div>
 
       {/* 알림 메시지 */}
-      {actionMsg && (
-        <div className={`p-4 rounded-lg text-sm font-medium ${
-          actionMsg.type === 'success'
-            ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-            : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
-        }`}>
-          {actionMsg.text}
-        </div>
-      )}
+      <ActionToast value={actionMsg} onClose={() => setActionMsg(null)} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* 본문 (2/3) */}

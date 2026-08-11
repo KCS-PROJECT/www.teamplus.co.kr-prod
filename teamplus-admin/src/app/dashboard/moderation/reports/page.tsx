@@ -42,6 +42,7 @@ import { Card } from '@/components/ui/card';
 import { PageHeader } from '@/components/ui/page-header';
 import { MiniStatsCard } from '@/components/ui/mini-stats-card';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { ActionToast, type ActionToastValue } from '@/components/common';
 import {
   Modal,
   ModalHeader,
@@ -201,10 +202,7 @@ export default function ModerationReportsPage() {
   const [adminNote, setAdminNote] = useState('');
   const [noteError, setNoteError] = useState<string | null>(null);
 
-  const [actionMsg, setActionMsg] = useState<{
-    type: 'success' | 'error';
-    text: string;
-  } | null>(null);
+  const [actionMsg, setActionMsg] = useState<ActionToastValue>(null);
 
   const flash = (type: 'success' | 'error', text: string) => {
     setActionMsg({ type, text });
@@ -317,19 +315,7 @@ export default function ModerationReportsPage() {
   return (
     <div className="space-y-6">
       {/* 액션 배너 */}
-      {actionMsg && (
-        <div
-          role="status"
-          aria-live="polite"
-          className={`p-3 rounded-lg text-sm ${
-            actionMsg.type === 'success'
-              ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-              : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
-          }`}
-        >
-          {actionMsg.text}
-        </div>
-      )}
+      <ActionToast value={actionMsg} onClose={() => setActionMsg(null)} />
 
       <PageHeader
         title="신고관리"

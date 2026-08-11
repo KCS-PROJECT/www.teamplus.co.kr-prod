@@ -25,10 +25,22 @@ export interface FullModalProps {
 
 // ============ Animation Variants ============
 
+/**
+ * 등장 효과 — 프로젝트 표준 `animate-fade-in`(200ms, tailwind.config.cjs) 으로 통일한다.
+ *
+ * 기존에는 `animate-in slide-in-from-bottom` 등 `tailwindcss-animate` 플러그인 클래스를
+ * 썼는데, 이 프로젝트에는 해당 플러그인이 없어 **CSS 가 생성되지 않아 아무 효과가 없었다**
+ * (모달이 즉시 튀어나옴). 플러그인이 나중에 다른 이유로 설치되면 의도치 않게 슬라이드가
+ * 켜지는 문제도 있어 제거한다.
+ *
+ * 방향성 있는 슬라이드는 화면 전체를 덮는 풀스크린 오버레이에는 맞지 않는다
+ * (아래에서 올라오면 바텀시트 동작으로 읽힌다). variant prop 은 호출부 호환을 위해
+ * 유지하되 모두 같은 페이드를 쓴다.
+ */
 const animationVariants = {
-  default: 'animate-in fade-in duration-200',
-  'slide-up': 'animate-in slide-in-from-bottom duration-300',
-  'slide-right': 'animate-in slide-in-from-right duration-300',
+  default: 'animate-fade-in',
+  'slide-up': 'animate-fade-in',
+  'slide-right': 'animate-fade-in',
 };
 
 // ============ FullModal Component ============

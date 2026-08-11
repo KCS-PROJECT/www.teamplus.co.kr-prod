@@ -45,6 +45,7 @@ import {
 } from "@/services/team.service";
 import { api } from "@/services/api-client";
 import { env } from "@/lib/env";
+import { TermsDocumentModal } from '@/components/legal/TermsDocumentModal';
 
 /**
  * [성능 2026-05-28 P0-F] 로그인 성공 직후 역할별 대시보드 핵심 데이터를 미리 발사한다.
@@ -580,6 +581,8 @@ export default function LoginPage() {
   };
 
   const [loading, setLoading] = useState(false);
+  // 하단 안내 문구의 약관 링크 — 입력값 보존을 위해 페이지 이동 대신 모달로 연다.
+  const [policyModalType, setPolicyModalType] = useState<string | null>(null);
 
   // ⚠️ usePageReady 호출 금지 — 로그인 페이지는 자체 fetch 가 없으므로 마운트
   //    시점에 loading=false → !loading=true 로 평가되어 즉시 signalPageReady()
@@ -1099,18 +1102,30 @@ export default function LoginPage() {
             )}
             <p className="text-center text-[12px] leading-[1.6] text-it-ink-400 dark:text-rink-500">
               로그인 시{" "}
-              <NavLink href="/terms" className="text-it-blue-500 hover:underline">
+              <button
+                type="button"
+                onClick={() => setPolicyModalType("terms_of_service")}
+                className="text-it-blue-500 hover:underline"
+              >
                 이용약관
-              </NavLink>{" "}
+              </button>{" "}
               및{" "}
-              <NavLink href="/terms" className="text-it-blue-500 hover:underline">
+              <button
+                type="button"
+                onClick={() => setPolicyModalType("privacy_policy")}
+                className="text-it-blue-500 hover:underline"
+              >
                 개인정보처리방침
-              </NavLink>
+              </button>
               에 동의합니다.
             </p>
           </div>
         </div>
       </main>
+      <TermsDocumentModal
+        policyType={policyModalType}
+        onClose={() => setPolicyModalType(null)}
+      />
     </MobileContainer>
   );
 }

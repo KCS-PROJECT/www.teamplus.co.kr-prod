@@ -8,6 +8,7 @@ import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Modal, ModalHeader, ModalBody, ModalFooter, ConfirmModal } from '@/components/ui/modal';
 import { cn } from '@/lib/utils';
 import { menuService, AppMenu } from '@/services/menu.service';
+import { ActionToast, type ActionToastValue } from '@/components/common';
 import {
   APP_MENU_USER_TYPES,
   getAppMenuSpec,
@@ -543,7 +544,7 @@ export default function AppMenusPage() {
   const [addingLevel, setAddingLevel]     = useState<MenuLevel>(1);
   const [addingParentId, setAddingParentId] = useState<string | null>(null);
   const [expandedIds, setExpandedIds]     = useState<Set<string>>(new Set());
-  const [actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [actionMsg, setActionMsg] = useState<ActionToastValue>(null);
   const [confirmAction, setConfirmAction] = useState<{ id: string; action: string } | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
@@ -815,15 +816,7 @@ export default function AppMenusPage() {
         confirmText={MESSAGES.menu.unsavedTabChangeConfirm}
         variant="warning"
       />
-      {actionMsg && (
-        <div className={`p-3 rounded-lg text-sm ${
-          actionMsg.type === 'success'
-            ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-            : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
-        }`}>
-          {actionMsg.text}
-        </div>
-      )}
+      <ActionToast value={actionMsg} onClose={() => setActionMsg(null)} />
 
       {/* 페이지 헤더 + 저장/취소 버튼 */}
       <div className="flex items-start justify-between gap-4 flex-wrap">

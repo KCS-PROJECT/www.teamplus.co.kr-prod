@@ -176,10 +176,16 @@ export const getMembers = async (
 ): Promise<TeamMember[]> => {
   try {
     const params = status ? { status } : undefined;
-    const members = await api.get<TeamMember[]>(`/teams/${clubId}/members`, {
-      params,
-    });
-    return members;
+    // 백엔드 GET /teams/:teamId/members 는 배열이 아니라 { total, members } 를 반환한다
+    // (teams.service.getTeamMembers). 배열로 단정하면 소비처에서 list.filter / list.length 가
+    // 깨지므로 여기서 배열로 정규화한다. 과거 배열 응답도 그대로 통과시킨다.
+    const response = await api.get<
+      TeamMember[] | { total?: number; members?: TeamMember[] } | null
+    >(`/teams/${clubId}/members`, { params });
+
+    if (Array.isArray(response)) return response;
+    const members = response?.members;
+    return Array.isArray(members) ? members : [];
   } catch (error: unknown) {
     console.error('[Club Service] 멤버 조회 실패:', error);
     throw new Error(

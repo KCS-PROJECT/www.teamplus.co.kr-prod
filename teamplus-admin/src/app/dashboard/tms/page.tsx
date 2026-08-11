@@ -12,6 +12,7 @@ import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Modal, ModalHeader, ModalBody, ModalFooter, ConfirmModal } from '@/components/ui/modal';
 import { api } from '@/services/api-client';
 import { env } from '@/lib/env';
+import { ActionToast, type ActionToastValue } from '@/components/common';
 import {
   Plus,
   Search,
@@ -217,7 +218,7 @@ export default function TmsPage() {
   // 모달
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<TmsPost | null>(null);
-  const [actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [actionMsg, setActionMsg] = useState<ActionToastValue>(null);
 
   // 생성 폼
   const [formTitle, setFormTitle] = useState('');
@@ -429,15 +430,7 @@ export default function TmsPage() {
       />
 
       {/* 알림 메시지 */}
-      {actionMsg && (
-        <div className={`p-4 rounded-lg text-sm font-medium ${
-          actionMsg.type === 'success'
-            ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-            : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
-        }`}>
-          {actionMsg.text}
-        </div>
-      )}
+      <ActionToast value={actionMsg} onClose={() => setActionMsg(null)} />
 
       {/* 통계 카드 — 클릭 시 해당 상태로 필터링 */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">

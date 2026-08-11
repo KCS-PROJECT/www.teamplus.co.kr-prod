@@ -15,6 +15,7 @@ import { env } from '@/lib/env';
 import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal';
+import { ActionToast, type ActionToastValue } from '@/components/common';
 import {
   MessageSquare, User, Users, Paperclip, CheckCircle2, Clock, Eye,
 } from 'lucide-react';
@@ -85,7 +86,7 @@ export default function FeedbackManagementPage() {
   const [replyStatus, setReplyStatus] = useState('reviewed');
   const [replyNote, setReplyNote] = useState('');
   const [saving, setSaving] = useState(false);
-  const [actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [actionMsg, setActionMsg] = useState<ActionToastValue>(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -143,15 +144,7 @@ export default function FeedbackManagementPage() {
 
   return (
     <div className="space-y-6">
-      {actionMsg && (
-        <div className={`p-3 rounded-lg text-sm ${
-          actionMsg.type === 'success'
-            ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-            : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
-        }`}>
-          {actionMsg.text}
-        </div>
-      )}
+      <ActionToast value={actionMsg} onClose={() => setActionMsg(null)} />
 
       {/* 통계 카드 */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

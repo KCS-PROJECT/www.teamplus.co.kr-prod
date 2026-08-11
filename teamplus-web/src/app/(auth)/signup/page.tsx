@@ -7,7 +7,6 @@ import { NavLink, useNavigation } from "@/components/ui/NavLink";
 import { Icon } from "@/components/ui/Icon";
 import { PageAppBar } from "@/components/layout/PageAppBar";
 import { MobileContainer } from "@/components/layout/MobileContainer";
-import { FullModal } from "@/components/ui/Modal/FullModal";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useToast } from "@/components/ui/Toast";
@@ -33,10 +32,10 @@ import { useDebounce } from "@/hooks/useDebounce";
 import type { UserType } from "@/types/api";
 import { useNativeUI } from "@/hooks/useNativeUI";
 import { useKeyboardAvoidance } from "@/hooks/useKeyboardAvoidance";
-import { TERMS_CONTENT } from "@/lib/terms-content";
+import { TermsDocumentModal } from "@/components/legal/TermsDocumentModal";
 
-// 약관 동의 row 의 chevron(>) 클릭 시 노출할 약관 키 — terms-content.ts 의 키와 매핑.
-type TermsModalKey = "service" | "privacy" | "marketing";
+// 약관 동의 row 의 chevron(>) 클릭 시 노출할 정책 type (표준형).
+type TermsModalKey = "terms_of_service" | "privacy_policy" | "marketing";
 
 // 아이디 규칙 — 백엔드 signup DTO @Matches 와 동일. 영문 소문자 시작, 영소문자·숫자·`_`, 8~20자.
 // [2026-06-04] 아이디 길이 정책 4~20 → 8~20자 (첫글자 + 7~19).
@@ -340,7 +339,8 @@ export default function SignupPage() {
 
   // [추가 2026-05-23] 약관 동의 row 의 chevron(>) 클릭 시 약관 본문 노출 모달 상태.
   //  기존: chevron 은 단순 장식이라 클릭해도 아무 일도 안 일어남 → 사용자 회귀.
-  //  변경: chevron 을 button 으로 변경 + 클릭 시 TERMS_CONTENT 에서 해당 약관 본문 노출.
+  //  변경: chevron 을 button 으로 변경 + 클릭 시 해당 약관 본문 노출.
+  //  본문 SoT 는 게시본(GET /app/terms) — TermsDocumentModal 이 조회·폴백을 담당한다.
   const [termsModalKey, setTermsModalKey] = useState<TermsModalKey | null>(null);
 
   const handleInputChange = (field: keyof FormData, value: string) => {
@@ -1280,7 +1280,7 @@ export default function SignupPage() {
                     // label 의 default(체크박스 토글) 차단 — chevron 은 약관 본문 노출 전용.
                     e.preventDefault();
                     e.stopPropagation();
-                    setTermsModalKey("service");
+                    setTermsModalKey("terms_of_service");
                   }}
                   className="p-1 -m-1 rounded-w-pill hover:bg-wbg dark:hover:bg-rink-700/40 transition-colors motion-reduce:transition-none"
                   aria-label="서비스 이용약관 보기"
@@ -1313,7 +1313,7 @@ export default function SignupPage() {
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    setTermsModalKey("privacy");
+                    setTermsModalKey("privacy_policy");
                   }}
                   className="p-1 -m-1 rounded-w-pill hover:bg-wbg dark:hover:bg-rink-700/40 transition-colors motion-reduce:transition-none"
                   aria-label="개인정보 처리방침 보기"
@@ -1390,25 +1390,11 @@ export default function SignupPage() {
 
       {/* [추가 2026-05-23] 약관 본문 모달 — agreement row 의 chevron(>) 클릭 시 노출.
             서비스 이용약관 / 개인정보 처리방침 / 마케팅 정보 수신 3종.
-            본문은 lib/terms-content.ts 의 TERMS_CONTENT 상수 (정적). */}
-      {termsModalKey && (
-        <FullModal
-          isOpen={termsModalKey !== null}
-          onClose={() => setTermsModalKey(null)}
-          title={TERMS_CONTENT[termsModalKey]?.title ?? "약관"}
-          variant="slide-up"
-        >
-          <div className="px-5 py-5 bg-wbg dark:bg-puck">
-            <div className="mb-3 text-card-meta text-wtext-3 dark:text-rink-300">
-              {TERMS_CONTENT[termsModalKey]?.version} ·{" "}
-              {TERMS_CONTENT[termsModalKey]?.updatedAt}
-            </div>
-            <pre className="whitespace-pre-wrap break-words font-sans text-card-body leading-relaxed text-wtext-2 dark:text-rink-100">
-              {TERMS_CONTENT[termsModalKey]?.content ?? "약관 내용을 불러올 수 없습니다."}
-            </pre>
-          </div>
-        </FullModal>
-      )}
+            본문 SoT 는 게시본(GET /app/terms 현행) — 조회 실패 시 코드 폴백. */}
+      <TermsDocumentModal
+        policyType={termsModalKey}
+        onClose={() => setTermsModalKey(null)}
+      />
 
       {/* 팀 선택 모달 — 학부모/코치 가입 공용 (2026-05-21 추가) */}
       <TeamPickerSheet

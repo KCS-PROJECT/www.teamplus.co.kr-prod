@@ -51,11 +51,26 @@ function typeMeta(type: string) {
   return TYPE_META[normalizePolicyType(type)];
 }
 
-function formatDate(iso: string | null | undefined): string {
+/**
+ * 절대시각(ISO) → 'YYYY.MM.DD' (**한국시간 고정**).
+ *
+ * `publishedAt` 은 A군 절대시점이라 UTC 로 온다. 로컬 getter(`getFullYear` 등)를 쓰면
+ * 브라우저 타임존에 따라 하루가 밀린다 — 시행일 `2026-07-29T15:00:00Z`(= KST 07-30 00:00)이
+ * UTC 브라우저에서 "07.29" 로 보이는 식이다. +9h 시프트 후 UTC 파트를 읽어 KST 로 고정한다.
+ */
+function formatKstDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  return `${kst.getUTCFullYear()}.${String(kst.getUTCMonth() + 1).padStart(2, '0')}.${String(kst.getUTCDate()).padStart(2, '0')}`;
+}
+
+/**
+ * 표시용 시행일 — DB 본문은 `publishedAt`, 코드 폴백은 `updatedAt`(시행일 문자열)을 쓴다.
+ */
+function effectiveDate(item: { publishedAt: string | null; updatedAt: string }): string {
+  return formatKstDate(item.publishedAt ?? item.updatedAt);
 }
 
 export default function TermsPage() {
@@ -271,7 +286,7 @@ export default function TermsPage() {
                             )}
                           </div>
                           <p className="text-[11px] text-it-ink-500 dark:text-wtext-4 tabular-nums">
-                            v{item.version} · 최종 수정 {formatDate(item.updatedAt)}
+                            v{item.version} · {effectiveDate(item)} 시행
                           </p>
                         </div>
                         <span
