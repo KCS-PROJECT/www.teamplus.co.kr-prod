@@ -67,6 +67,9 @@ export default function DirectorCoachDetailPage() {
   const { user } = useSessionAuth();
 
   const [coach, setCoach] = useState<CoachDetail | null>(null);
+  // 로드 실패(404/깨짐) 사진 URL 기억 → person 아이콘으로 대체. URL 이 바뀌면 자동 재시도.
+  //   ⚠️ Hooks 규칙 — 로딩/에러 조기 반환보다 위에 있어야 한다.
+  const [brokenAvatar, setBrokenAvatar] = useState<string | null>(null);
   const [careers, setCareers] = useState<StaffCareer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -302,7 +305,10 @@ export default function DirectorCoachDetailPage() {
     );
   }
 
-  const initial = coach.name?.charAt(0) || '?';
+  // 인물 아바타 — 사진이 없거나 로드 실패면 person 아이콘(이니셜 금지).
+  //  판정은 해석된 URL 기준(resolveImageSrc 는 빈 문자열·placeholder 를 undefined 로 반환).
+  const avatar = resolveImageSrc(coach.avatarUrl);
+  const showAvatar = !!avatar && avatar !== brokenAvatar;
   // 역할 배지 라벨 — userType(대문자) → 한글. 매핑 없으면 미표시.
   const roleLabel = coach.userType ? MESSAGES.coach.roleBadge[coach.userType] : undefined;
   // 약력(staff_careers) 관리 권한: 대상이 코치(editable)이거나, 감독 본인이 자기 프로필을
@@ -328,17 +334,20 @@ export default function DirectorCoachDetailPage() {
         <section className="bg-it-blue-800 dark:bg-it-blue-950 px-6 pt-8 pb-7" aria-label="코치 프로필">
           <div className="flex flex-col items-center">
             <div className="relative size-24 overflow-hidden rounded-w-md bg-it-blue-700/60 dark:bg-rink-700 flex items-center justify-center">
-              {resolveImageSrc(coach.avatarUrl) ? (
+              {showAvatar ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
                 <img
-                  src={resolveImageSrc(coach.avatarUrl)}
+                  src={avatar}
                   alt={`${coach.name} 코치`}
+                  onError={() => setBrokenAvatar(avatar!)}
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <span className="text-4xl font-bold text-white/70">
-                  {initial}
-                </span>
+                <Icon
+                  name="person"
+                  className="text-[48px] text-white/70"
+                  aria-hidden="true"
+                />
               )}
             </div>
 

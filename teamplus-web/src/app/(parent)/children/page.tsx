@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { SubmainAppBar } from '@/components/layout/SubmainAppBar';
 import { SectionHead } from '@/components/wallet';
@@ -43,10 +43,6 @@ const MAX_CHILDREN = 10;
 const DASH = '—';
 
 // ─── helpers ─────────────────────────────────────────────────
-function initialOf(name: string): string {
-  return name?.trim().charAt(0) || '?';
-}
-
 function approvedTeam(child: Child): { teamName: string | null } {
   // Child 타입은 club: string|null SoT (ChildCard 타입 정의 §13)
   return { teamName: child.club ?? null };
@@ -183,8 +179,7 @@ export default function ChildrenManagementPage() {
                 tabs={children.map((c) => ({
                   id: c.id,
                   name: c.name,
-                  init: initialOf(c.name),
-                  // 자녀 스위처이므로 칩 좌측 슬롯은 자녀 본인 사진 (없으면 이니셜 폴백).
+                  // 자녀 스위처이므로 칩 좌측 슬롯은 자녀 본인 사진 (없으면 person 아이콘 폴백).
                   // 팀 로고는 Hero 팀명 줄과 중복 + 같은 팀 형제 식별 불가로 교체.
                   imageUrl: c.imageUrl ?? null,
                   active: c.id === (selected?.id ?? children[0].id),
@@ -259,8 +254,11 @@ export default function ChildrenManagementPage() {
 interface SwitcherTab {
   id: string;
   name: string;
-  init: string;
-  /** 자녀 프로필 사진 — 칩 좌측 슬롯에 우선 표시. 없으면 이니셜 폴백. */
+  /**
+   * 자녀 프로필 사진 — 칩 좌측 슬롯에 우선 표시. 없거나 로드 실패 시 `person` 아이콘 폴백.
+   *  이 슬롯은 인물 사진 자리이므로 이름 이니셜을 쓰지 않는다 — 자녀 사진을 등록하는
+   *  children/[childId]/edit 를 비롯한 인물 아바타 전반이 `person` 으로 통일돼 있다.
+   */
   imageUrl: string | null;
   active: boolean;
 }
@@ -272,6 +270,8 @@ function ChildSwitcherTabs({
   tabs: SwitcherTab[];
   onSelect: (id: string) => void;
 }) {
+  // 로드 실패(404/깨짐) 사진 URL 기억 → person 아이콘으로 대체. URL 이 바뀌면 자동 재시도.
+  const [brokenAvatars, setBrokenAvatars] = useState<Set<string>>(new Set());
   // [2026-05-18 BUG FIX] 자녀 리스트 잘림 — 가로 스크롤 컨테이너에 좌우 패딩(px-5)이
   // 직접 적용되면 칩 trailing 공간이 잘려 마지막 칩이 화면 가장자리에 붙어 잘려 보임.
   // 패턴: outer wrapper(pt-3) + inner scroll(overflow-x-auto px-5) + trailing spacer(pr-5)
@@ -284,7 +284,12 @@ function ChildSwitcherTabs({
         role="tablist"
         aria-label="자녀 선택"
       >
-        {tabs.map((t) => (
+        {tabs.map((t) => {
+          // 판정은 **해석된 URL** 기준 — resolveImageSrc 는 빈 문자열·공백·placeholder.svg 를
+          //  undefined 로 돌려주므로, 원본 truthy 만 보면 src 없는 빈 img 가 남고 onError 도 안 뜬다.
+          const avatar = resolveImageSrc(t.imageUrl);
+          const showAvatar = !!avatar && !brokenAvatars.has(avatar);
+          return (
           <button
             key={t.id}
             type="button"
@@ -302,9 +307,9 @@ function ChildSwitcherTabs({
                 : 'bg-it-surface text-it-ink-700 border-[1.5px] border-it-line-strong dark:bg-rink-800 dark:text-rink-100 dark:border-rink-700',
             )}
           >
-            {/* 칩 좌측 슬롯 — 자녀 프로필 사진 우선, 없으면 이니셜 폴백.
+            {/* 칩 좌측 슬롯 — 자녀 프로필 사진 우선, 없거나 로드 실패면 person 아이콘 폴백.
                 사진은 활성(navy 칩)에서도 식별되도록 흰 배경 + 얇은 링으로 분리. */}
-            {resolveImageSrc(t.imageUrl) ? (
+            {showAvatar ? (
               <span
                 className={cn(
                   'w-7 h-7 rounded-full shrink-0 overflow-hidden bg-white',
@@ -316,26 +321,31 @@ function ChildSwitcherTabs({
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={resolveImageSrc(t.imageUrl)}
+                  src={avatar}
                   alt=""
+                  onError={() =>
+                    setBrokenAvatars((prev) => new Set(prev).add(avatar!))
+                  }
                   className="h-full w-full object-cover"
                 />
               </span>
             ) : (
               <span
                 className={cn(
-                  'w-7 h-7 rounded-full grid place-items-center text-card-meta font-extrabold',
+                  'w-7 h-7 rounded-full grid place-items-center shrink-0',
                   t.active
                     ? 'bg-white/20 text-white'
                     : 'bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-500/15 dark:text-it-blue-300',
                 )}
+                aria-hidden="true"
               >
-                {t.init}
+                <Icon name="person" className="text-[18px]" />
               </span>
             )}
             {t.name}
           </button>
-        ))}
+          );
+        })}
         {/* trailing spacer — 마지막 칩 우측에 20px 의 가시 여백 확보 (잘림 방지) */}
         <span className="shrink-0 w-5" aria-hidden="true" />
       </div>
@@ -352,6 +362,8 @@ function HeroChildCard({
   team: string | null;
   onEditInfo: () => void;
 }) {
+  // 로드 실패(404/깨짐) 사진 URL 기억 → person 아이콘으로 대체. URL 이 바뀌면 자동 재시도.
+  const [brokenAvatar, setBrokenAvatar] = useState<string | null>(null);
   // 승인 상태 기반 배지 — [2026-06-17 사용자 직접 지시] 반려(rejected)도 학부모에게는
   //   '승인 대기' 로 표시(대기와 동일 amber 배지). 거절 문구·빨강 배지 미노출.
   const isPending = !!child.pendingClubName;
@@ -375,7 +387,10 @@ function HeroChildCard({
         ? MESSAGES.childProfile.genderFemale
         : null;
   const teamLabel = team ?? child.pendingClubName ?? child.rejectedClubName ?? null;
-  const init = initialOf(child.name);
+  // 판정은 **해석된 URL** 기준 — resolveImageSrc 는 빈 문자열·공백·placeholder.svg 를
+  //  undefined 로 돌려주므로, 원본 truthy 만 보면 src 없는 빈 img 가 남고 onError 도 안 뜬다.
+  const avatar = resolveImageSrc(child.imageUrl);
+  const showAvatar = !!avatar && avatar !== brokenAvatar;
 
   return (
     /* orphan 자녀 상세(/children/[childId])의 navy Hero 흡수 — full-bleed navy 밴드 +
@@ -383,25 +398,25 @@ function HeroChildCard({
        빠른 이동 4타일(수업이력/수상이력/선수카드/전체수정)은 미이식 — 수정 진입은 우상단 버튼. */
     <section className="mt-2 bg-it-blue-800 dark:bg-it-blue-950 relative" aria-label="자녀 프로필">
       <div className="px-5 pt-7 pb-7 flex flex-col items-center">
-        {/* 프로필 사진 — 96px 원형 */}
+        {/* 프로필 사진 — 96px 원형. 없거나 로드 실패면 person 아이콘 폴백(이니셜 금지). */}
         <div className="size-24 rounded-w-pill overflow-hidden bg-white/15 dark:bg-white/10 mb-4 shrink-0">
-          {resolveImageSrc(child.imageUrl) ? (
+          {showAvatar ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
-              src={resolveImageSrc(child.imageUrl)}
+              src={avatar}
               alt={`${child.name} 프로필`}
               width={96}
               height={96}
+              onError={() => setBrokenAvatar(avatar!)}
               className="object-cover size-full"
             />
           ) : (
             <div className="size-full flex items-center justify-center">
-              <span
-                className="text-3xl font-extrabold text-white tracking-[-0.02em] select-none"
+              <Icon
+                name="person"
+                className="text-[48px] text-white"
                 aria-hidden="true"
-              >
-                {init}
-              </span>
+              />
             </div>
           )}
         </div>

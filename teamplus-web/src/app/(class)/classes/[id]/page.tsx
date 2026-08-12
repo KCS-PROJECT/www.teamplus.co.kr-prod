@@ -2373,7 +2373,7 @@ export default function ClassDetailPage() {
                     multiSelect={isOpenClass}
                     selectedIds={selectedChildIds}
                     onToggle={handleChildToggle}
-                    variant="pill"
+                    variant="list"
                   />
                   {/* 안내 메시지 — 모든 자녀가 잠금이면(paid 제외) 메시지 표시 */}
                   {noneSelectable && ageRangeLabel && (

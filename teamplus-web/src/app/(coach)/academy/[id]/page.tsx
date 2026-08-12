@@ -362,10 +362,11 @@ export default function AcademyDetailPage() {
                         />
                       ) : (
                         <div
-                          className="size-12 rounded-w-pill bg-it-blue-500/10 text-it-blue-500 flex items-center justify-center text-card-emphasis font-extrabold shrink-0"
+                          className="size-12 rounded-w-pill bg-it-blue-500/10 text-it-blue-500 flex items-center justify-center shrink-0"
                           aria-hidden="true"
                         >
-                          {`${academy.director.lastName ?? ''}${academy.director.firstName ?? ''}`.trim().charAt(0) || '원'}
+                          {/* 인물 자리이므로 이니셜 대신 person 아이콘 */}
+                          <Icon name="person" className="text-[26px]" />
                         </div>
                       )}
                       <div className="min-w-0">

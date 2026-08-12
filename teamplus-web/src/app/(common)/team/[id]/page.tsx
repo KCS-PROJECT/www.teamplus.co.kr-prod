@@ -730,8 +730,9 @@ function TeamInfoPanel({
                   key={c.id}
                   className="flex items-center gap-3 py-1.5"
                 >
-                  <div className="size-9 rounded-w-pill bg-it-blue-500/10 text-it-blue-500 flex items-center justify-center text-card-body font-extrabold">
-                    {fullName.charAt(0)}
+                  {/* 인물 자리이므로 이니셜 대신 person 아이콘 */}
+                  <div className="size-9 rounded-w-pill bg-it-blue-500/10 text-it-blue-500 flex items-center justify-center">
+                    <Icon name="person" className="text-[20px]" aria-hidden="true" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-card-body font-bold text-it-ink-800 dark:text-white tracking-tight truncate">

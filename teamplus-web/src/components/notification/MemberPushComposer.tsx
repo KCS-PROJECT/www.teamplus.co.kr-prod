@@ -571,9 +571,10 @@ export function MemberPushComposer({ context, iceTheme = false }: MemberPushComp
                                     >
                                       {checked && <Icon name="check" className="text-[16px] text-white" />}
                                     </span>
-                                    <span className={tk.avatarWrap}>
+                                    {/* 인물 자리이므로 이니셜 대신 person 아이콘 */}
+                                    <span className={tk.avatarWrap} aria-hidden="true">
                                       <span className={tk.avatarText}>
-                                        {r.name?.charAt(0) || '?'}
+                                        <Icon name="person" className="text-[20px]" />
                                       </span>
                                     </span>
                                     <span className={tk.recipientName}>

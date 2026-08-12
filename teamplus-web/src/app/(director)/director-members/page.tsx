@@ -47,6 +47,8 @@ export default function DirectorMembersPage() {
 
   // ── 데이터 상태 ──
   const [members, setMembers] = useState<Member[]>([]);
+  // 로드 실패(404/깨짐) 사진 URL 기억 → person 아이콘으로 대체. URL 이 바뀌면 자동 재시도.
+  const [brokenAvatars, setBrokenAvatars] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
 
   // 풀스크린 로더 fast-path (v11) — fetch 완료 시점에 PageTransitionLoader OFF
@@ -318,7 +320,10 @@ export default function DirectorMembersPage() {
           ) : (
             <div className="flex flex-col">
               {sortedMembers.map((member, idx) => {
-                const initial = member.name?.charAt(0) || '?';
+                // 인물 아바타 — 사진이 없거나 로드 실패면 person 아이콘(이니셜 금지).
+                //  판정은 해석된 URL 기준(resolveImageSrc 는 빈 문자열·placeholder 를 undefined 로 반환).
+                const avatar = resolveImageSrc(member.avatarUrl);
+                const showAvatar = !!avatar && !brokenAvatars.has(avatar);
                 const isLast = idx === sortedMembers.length - 1;
 
                 return (
@@ -335,15 +340,22 @@ export default function DirectorMembersPage() {
                       'relative flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-w-pill',
                       ROLE_STYLE.bg,
                     )}>
-                      {resolveImageSrc(member.avatarUrl) ? (
+                      {showAvatar ? (
                         /* eslint-disable-next-line @next/next/no-img-element */
                         <img
-                          src={resolveImageSrc(member.avatarUrl)}
+                          src={avatar}
                           alt=""
+                          onError={() =>
+                            setBrokenAvatars((prev) => new Set(prev).add(avatar!))
+                          }
                           className="h-full w-full object-cover"
                         />
                       ) : (
-                        <span className={cn('text-[18px] font-bold', ROLE_STYLE.text)}>{initial}</span>
+                        <Icon
+                          name="person"
+                          className={cn('text-[24px]', ROLE_STYLE.text)}
+                          aria-hidden="true"
+                        />
                       )}
                     </div>
 
