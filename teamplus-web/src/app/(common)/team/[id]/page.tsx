@@ -730,8 +730,9 @@ function TeamInfoPanel({
                   key={c.id}
                   className="flex items-center gap-3 py-1.5"
                 >
-                  <div className="size-9 rounded-w-pill bg-it-blue-500/10 text-it-blue-500 flex items-center justify-center text-card-body font-extrabold">
-                    {fullName.charAt(0)}
+                  {/* 인물 자리이므로 이니셜 대신 person 아이콘 */}
+                  <div className="size-9 rounded-w-pill bg-it-blue-500/10 text-it-blue-500 flex items-center justify-center">
+                    <Icon name="person" className="text-[20px]" aria-hidden="true" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-card-body font-bold text-it-ink-800 dark:text-white tracking-tight truncate">
@@ -1121,14 +1122,17 @@ function RosterCard({
   onEdit: (item: RosterMember) => void;
 }) {
   const pos = item.position ? POSITION_COLOR[item.position] : null;
-  // 메타 줄 — 있는 정보만 ' · ' 로 연결. 포지션은 기능 도입 시 자동 노출, 그 전엔 출생연도·그룹만.
-  const metaParts = [
+  // 메타 줄 — 선수 속성(포지션·출생연도)은 평문, 소속 그룹은 배지로 승격한다.
+  //  그룹명은 자유 텍스트라 "2017년생" 처럼 출생연도와 값이 겹칠 수 있어, 위계로 역할을 구분한다.
+  const textParts = [
     item.position ? POSITION_LABEL[item.position] : null,
     item.member.birthYear
       ? MESSAGES.team.birthYearLabel(item.member.birthYear)
       : null,
-    item.groupName ?? (item.isGrouped ? null : MESSAGES.team.groupUnassigned),
   ].filter(Boolean);
+  const groupLabel =
+    item.groupName ?? (item.isGrouped ? null : MESSAGES.team.groupUnassigned);
+  const isUnassigned = !item.groupName;
 
   return (
     <div
@@ -1176,10 +1180,30 @@ function RosterCard({
               </span>
             )}
           </div>
-        {metaParts.length > 0 && (
-          <p className="mt-0.5 text-[13px] font-medium text-it-ink-500 dark:text-it-ink-300">
-            {metaParts.join(" · ")}
-          </p>
+        {(textParts.length > 0 || groupLabel) && (
+          <div className="mt-0.5 flex items-center gap-1.5">
+            {textParts.length > 0 && (
+              <p className="truncate text-[13px] font-medium text-it-ink-500 dark:text-it-ink-300">
+                {textParts.join(" · ")}
+              </p>
+            )}
+            {groupLabel && (
+              <span
+                className={cn(
+                  "inline-flex shrink-0 max-w-[45%] items-center gap-1 rounded-w-md px-1.5 py-0.5 text-[12px] font-bold",
+                  isUnassigned
+                    ? "bg-it-line text-it-ink-500 dark:bg-it-blue-900 dark:text-it-ink-300"
+                    : "bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-500/15 dark:text-it-blue-300",
+                )}
+              >
+                <span className="sr-only">{MESSAGES.team.groupBadgePrefix}</span>
+                {!isUnassigned && (
+                  <Icon name="shield" size={11} aria-hidden="true" />
+                )}
+                <span className="truncate">{groupLabel}</span>
+              </span>
+            )}
+          </div>
         )}
       </div>
 

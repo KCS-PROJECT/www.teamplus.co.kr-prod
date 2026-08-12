@@ -5,14 +5,30 @@ import {
   ConflictException,
   BadRequestException,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../prisma/prisma.service";
+import { RedisService } from "../redis/redis.service";
 import { CreateTeamGroupDto } from "./dto/create-team-group.dto";
 import { UpdateTeamGroupDto } from "./dto/update-team-group.dto";
 import { sanitizeStrict } from "../common/utils/sanitize.util";
 
 @Injectable()
 export class TeamGroupsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private redisService: RedisService,
+    private configService: ConfigService,
+  ) {}
+
+  /**
+   * 팀 상세 캐시 무효화 — TeamsService.getTeam 이 그룹 목록·그룹 수를 함께 10분 캐시하므로
+   * 그룹을 생성/수정/삭제하면 같은 키를 지워야 팀 상세에 즉시 반영된다.
+   */
+  private async invalidateTeamCache(teamId: string) {
+    const redisConfig = this.configService.get("redis");
+    const keyPrefix = redisConfig.keyPrefix.team;
+    await this.redisService.del(`${keyPrefix}info:${teamId}`);
+  }
 
   /**
    * 팀의 그룹 목록 — 멤버 카운트 포함.
@@ -221,7 +237,7 @@ export class TeamGroupsService {
       }
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const created = await this.prisma.$transaction(async (tx) => {
       const group = await tx.teamGroup.create({
         data: {
           teamId,
@@ -248,6 +264,10 @@ export class TeamGroupsService {
         },
       });
     });
+
+    await this.invalidateTeamCache(teamId);
+
+    return created;
   }
 
   /**
@@ -278,7 +298,7 @@ export class TeamGroupsService {
       ? undefined
       : await this.resolveCoachMemberId(current.teamId, dto.coachMemberId);
 
-    return this.prisma.$transaction(async (tx) => {
+    const updated = await this.prisma.$transaction(async (tx) => {
       const group = await tx.teamGroup.update({
         where: { id: groupId },
         data: {
@@ -305,14 +325,19 @@ export class TeamGroupsService {
 
       return group;
     });
+
+    await this.invalidateTeamCache(current.teamId);
+
+    return updated;
   }
 
   /**
    * 그룹 삭제 (cascade — 멤버도 함께 삭제).
    */
   async delete(groupId: string) {
-    await this.assertGroupExists(groupId);
+    const current = await this.assertGroupExists(groupId);
     await this.prisma.teamGroup.delete({ where: { id: groupId } });
+    await this.invalidateTeamCache(current.teamId);
     return { success: true };
   }
 

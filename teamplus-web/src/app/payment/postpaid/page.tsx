@@ -23,6 +23,7 @@ import { Icon } from '@/components/ui/Icon';
 import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
 import { useNativeUI } from '@/hooks/useNativeUI';
+import { useBlockBackNavigation } from '@/hooks/useBlockBackNavigation';
 import { usePageReady } from '@/hooks/usePageReady';
 import { useAuth } from '@/contexts/AuthContext';
 import { MESSAGES } from '@/lib/messages';
@@ -101,6 +102,17 @@ function PostpaidPayContent() {
             : null;
 
   usePageReady(isReady || !!error || !!blockedMessage);
+
+  // 토스 결제창에서 취소/실패로 복귀한 재진입(failUrl) 여부.
+  //   토스는 같은 창을 문서 이동으로 쓰므로 만료된 결제창 URL 이 히스토리에 남는다.
+  //   되돌아가면 토스가 "이미 종료된 세션입니다"(버튼 없는 토스 소유 화면)를 띄운다.
+  //   이 화면은 결제 요청 알림 딥링크로도 진입해 "이전 화면"이 없을 수 있어,
+  //   수업·대회 후불을 모두 담는 미납 목록으로 내보낸다.
+  const isTossReturn = (searchParams?.get('error') ?? '') === 'fail';
+  useBlockBackNavigation({
+    enabled: isTossReturn,
+    getRedirectTarget: () => '/payment/history?tab=pending',
+  });
 
   const init = useCallback(async () => {
     if (initRef.current || !payable || !user?.id) return;

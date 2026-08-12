@@ -46,6 +46,11 @@ import { TimePicker } from '@/components/ui/TimePicker';
 /* ────────────────────────────────────────────
    공개 범위 옵션 (2026-08-04)
    ──────────────────────────────────────────── */
+// CLASS_VISIBILITY_DISABLED — 정책상 공개 범위 선택 미사용(기능은 존치, 화면 노출만 차단).
+//   모든 수업이 비공개(소속 팀 전용)로 저장된다 — 폼이 값을 보내지 않아 서버 기본값 TEAM_ONLY 로 수렴.
+//   이 플래그를 true 로 되돌리면 그대로 복원된다. 절차: claudedocs/class-visibility-disable-2026-08-12.md §5
+const SHOW_VISIBILITY_SECTION: boolean = false;
+
 // 넓은 범위 → 좁은 범위 순서. 감독이 위에서부터 읽으며 필요한 만큼 좁히도록 배치한다.
 // 값은 백엔드 Prisma ClassVisibility enum 과 1:1 — src/lib/class-visibility.ts 참조.
 //
@@ -1410,10 +1415,11 @@ export function ClassForm({
                         !formData.regionDistrict && (iceTheme ? 'text-it-ink-400' : 'text-wtext-3'),
                       )}
                     >
+                      {/* 시/도 미선택 상태도 같은 문구를 쓴다 — 별도 안내문("시/도를 먼저…")은
+                          좁은 2열 칸에서 잘려 읽히지 않았고, 비활성 여부는 opacity·disabled 로
+                          이미 드러난다. */}
                       {formData.regionDistrict ||
-                        (formData.regionCity
-                          ? MESSAGES.class.region.districtPlaceholder
-                          : MESSAGES.class.region.districtSelectCityFirst)}
+                        MESSAGES.class.region.districtPlaceholder}
                     </span>
                     <Icon
                       name="expand_more"
@@ -1688,7 +1694,9 @@ export function ClassForm({
         {/* ── SECTION 4.5: 공개 범위 ──
             [2026-08-04] 수업 단위 공개범위 신설. 기존 "노출 팀 선택"(2026-06-29 폐지)을
             SELECTED_TEAMS 옵션으로 흡수해 팀 수업·오픈클래스 공통으로 노출한다.
-            SoT: docs/Planning/SPEC_CLASS_VISIBILITY.md */}
+            SoT: docs/Planning/SPEC_CLASS_VISIBILITY.md
+            CLASS_VISIBILITY_DISABLED — 현재 미노출(SHOW_VISIBILITY_SECTION=false). */}
+        {SHOW_VISIBILITY_SECTION && (
         <AnimatedSection delay={325}>
           <section className="space-y-4">
             <h2 className={ic.head}>
@@ -1760,9 +1768,11 @@ export function ClassForm({
             </div>
           </section>
         </AnimatedSection>
+        )}
 
-        {/* ── SECTION 4.6: 노출 팀 선택 — visibility='SELECTED_TEAMS' 일 때만 ── */}
-        {formData.visibility === 'SELECTED_TEAMS' && (
+        {/* ── SECTION 4.6: 노출 팀 선택 — visibility='SELECTED_TEAMS' 일 때만 ──
+            CLASS_VISIBILITY_DISABLED — 4.5 미노출로 SELECTED_TEAMS 선택 경로가 없어 도달 불가. */}
+        {SHOW_VISIBILITY_SECTION && formData.visibility === 'SELECTED_TEAMS' && (
           <AnimatedSection delay={330}>
             <section className="space-y-4">
               <h2 className={ic.head}>

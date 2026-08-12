@@ -20,6 +20,7 @@
 
 import { Icon } from '@/components/ui/Icon';
 import { MESSAGES } from '@/lib/messages';
+import { cn } from '@/lib/utils';
 import type { Child } from '@/components/children/ChildCard';
 
 interface ChildSelectorProps {
@@ -45,8 +46,14 @@ interface ChildSelectorProps {
   multiSelect?: boolean;
   selectedIds?: Set<string>;
   onToggle?: (id: string) => void;
-  /** [2026-06-25] 표시 변형 — 'avatar'(기본, 원형 아바타 캐러셀) | 'pill'(ICETIMES 하우스 pill 토글). */
-  variant?: 'avatar' | 'pill';
+  /**
+   * 표시 변형 — 'list'(세로 리스트) | 'avatar'(원형 아바타 캐러셀) | 'pill'(가로 pill 토글).
+   *
+   * 수업 상세는 'list' 를 쓴다. 자녀마다 상태(수강중·승인대기·반려·대상아님·연령·결제완료)가
+   * 붙는데 chip 규격에는 보조 텍스트 슬롯이 없어, pill 로 넣으면 상태 문구 길이만큼 폭이
+   * 들쑥날쑥해진다. 리스트 행은 full-width 라 폭 편차가 생기지 않고 사유를 축약 없이 쓸 수 있다.
+   */
+  variant?: 'avatar' | 'pill' | 'list';
 }
 
 export function ChildSelector({
@@ -63,7 +70,145 @@ export function ChildSelector({
   onToggle,
   variant = 'avatar',
 }: ChildSelectorProps) {
-  /* ── ICETIMES 하우스 pill 변형 (수업 상세 전용) ── */
+  /* ── 세로 리스트 변형 (수업 상세 · 결제 대상 확정) ──────────────────────────
+     행 = [아바타][이름 / 상태 사유][우측 상태]. 선택 동작·잠금 판정은 pill 과 100% 동일하고
+     표현만 다르다. 사유는 축약(shortLabel) 대신 원문(disabledLabel)을 쓴다 — 폭 제약이 없다. */
+  if (variant === 'list') {
+    return (
+      <ul
+        className="flex flex-col overflow-hidden rounded-w-md border border-it-line dark:border-rink-700 bg-wsurface dark:bg-rink-900 divide-y divide-it-line dark:divide-rink-700"
+        role={multiSelect ? 'group' : 'radiogroup'}
+        aria-label={MESSAGES.enrollment.childSelectorAriaLabel}
+      >
+        {childList.map((child) => {
+          const isPaid = paidChildIds?.has(child.id) ?? false;
+          // paid 는 잠금 X — 선택 가능(결제취소 진입). enrolled/notApproved/ageIncompatible 만 잠금.
+          const isEnrolled = enrolledChildIds.has(child.id);
+          const isNotApproved = !isEnrolled && notApprovedChildIds.has(child.id);
+          const isAgeIncompatible =
+            !isEnrolled && !isNotApproved && ageIncompatibleChildIds.has(child.id);
+          const isDisabled = isEnrolled || isNotApproved || isAgeIncompatible;
+          const isSelected =
+            !isDisabled &&
+            (multiSelect
+              ? (selectedIds?.has(child.id) ?? false)
+              : selectedId === child.id);
+          const approvalKind = approvalStatusById.get(child.id);
+          // 비활성 사유 우선순위: '이미 수강 중' > '가입 반려' > '가입 승인 대기' > '이 수업 대상 아님' > '연령 제한'
+          const disabledLabel = isEnrolled
+            ? MESSAGES.enrollment.disabledEnrolledLabel
+            : isNotApproved
+              ? approvalKind === 'rejected'
+                ? MESSAGES.team.disabledRejectedLabel
+                : approvalKind === 'pending'
+                  ? MESSAGES.team.disabledPendingLabel
+                  : MESSAGES.team.disabledNotMemberLabel
+              : isAgeIncompatible
+                ? MESSAGES.enrollment.disabledAgeLabel
+                : null;
+          // paid 배지는 disabledLabel 보다 후순위 (paid 시 disabledLabel 은 null)
+          const paidLabel =
+            isPaid && !disabledLabel ? MESSAGES.enrollment.paidBadgeLabel : null;
+          const subLabel = disabledLabel ?? paidLabel;
+          return (
+            <li key={child.id}>
+              <button
+                type="button"
+                role={multiSelect ? 'checkbox' : 'radio'}
+                aria-checked={isSelected}
+                disabled={isDisabled}
+                aria-label={`${child.name}${subLabel ? ` (${subLabel})` : ''}`}
+                onClick={() => {
+                  if (isDisabled) return;
+                  if (multiSelect) onToggle?.(child.id);
+                  else onSelect(child.id);
+                }}
+                className={cn(
+                  'flex w-full items-center gap-3 px-4 py-3 min-h-[60px] text-left transition-colors motion-reduce:transition-none',
+                  isDisabled
+                    ? 'cursor-not-allowed opacity-60'
+                    : isSelected
+                      ? isPaid
+                        ? 'bg-it-red-50 dark:bg-it-red-500/10'
+                        : 'bg-it-blue-50 dark:bg-it-blue-900/30'
+                      : 'hover:bg-it-fill dark:hover:bg-rink-800 active:brightness-95',
+                )}
+              >
+                {/* 아바타 — 인물 자리이므로 person 아이콘 (이니셜 금지) */}
+                <span
+                  className={cn(
+                    'flex size-9 shrink-0 items-center justify-center rounded-w-pill',
+                    isDisabled
+                      ? 'bg-wline dark:bg-rink-700 text-wtext-3 dark:text-rink-300'
+                      : isPaid
+                        ? 'bg-it-red-500/10 text-it-red-500 dark:text-it-red-300'
+                        : 'bg-it-blue-500/10 text-it-blue-600 dark:text-it-blue-300',
+                  )}
+                  aria-hidden="true"
+                >
+                  <Icon name="person" className="text-[20px]" />
+                </span>
+
+                {/* 이름 + 상태 사유 */}
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span
+                    className={cn(
+                      'truncate text-[15px] font-bold tracking-[-0.01em]',
+                      isSelected
+                        ? isPaid
+                          ? 'text-it-red-600 dark:text-it-red-200'
+                          : 'text-it-blue-700 dark:text-it-blue-200'
+                        : 'text-it-ink-800 dark:text-white',
+                    )}
+                  >
+                    {child.name}
+                  </span>
+                  {subLabel && (
+                    <span
+                      className={cn(
+                        'truncate text-[12.5px] font-semibold',
+                        paidLabel
+                          ? 'text-it-red-500 dark:text-it-red-300'
+                          : 'text-it-ink-500 dark:text-rink-300',
+                      )}
+                    >
+                      {subLabel}
+                    </span>
+                  )}
+                </span>
+
+                {/* 우측 상태 — 잠금 / 선택됨 / 미선택 */}
+                {isDisabled ? (
+                  <Icon
+                    name="lock"
+                    className="shrink-0 text-[18px] text-wtext-3 dark:text-rink-300"
+                    aria-hidden="true"
+                  />
+                ) : isSelected ? (
+                  <Icon
+                    name="check_circle"
+                    filled
+                    className={cn(
+                      'shrink-0 text-[22px]',
+                      isPaid ? 'text-it-red-500' : 'text-it-blue-500',
+                    )}
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <span
+                    className="size-[22px] shrink-0 rounded-w-pill border-[1.5px] border-it-line-strong dark:border-rink-600"
+                    aria-hidden="true"
+                  />
+                )}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
+
+  /* ── ICETIMES 하우스 pill 변형 ── */
   if (variant === 'pill') {
     return (
       <div
@@ -109,7 +254,6 @@ export function ChildSelector({
                 : null;
           const paidLabel =
             isPaid && !disabledLabel ? MESSAGES.enrollment.paidBadgeLabel : null;
-          const initial = child.name?.charAt(0) ?? '?';
           return (
             <button
               key={child.id}
@@ -132,8 +276,10 @@ export function ChildSelector({
                     : 'bg-wsurface dark:bg-rink-900 border-wline dark:border-rink-600 text-wtext-2 dark:text-rink-100'
               }`}
             >
+              {/* 좌측 슬롯 — 인물 자리이므로 이름 이니셜을 쓰지 않는다. 아래 아바타 variant·
+                  SelectedChildDisplay(다음 단계 화면)와 동일하게 person 아이콘으로 통일. */}
               <span
-                className={`flex h-7 w-7 items-center justify-center rounded-w-pill text-[12px] font-extrabold ${
+                className={`flex h-7 w-7 items-center justify-center rounded-w-pill ${
                   isDisabled
                     ? 'bg-wline dark:bg-rink-700 text-wtext-3 dark:text-rink-300'
                     : isSelected
@@ -142,7 +288,10 @@ export function ChildSelector({
                 }`}
                 aria-hidden="true"
               >
-                {isDisabled ? <Icon name="lock" className="text-[14px]" /> : initial}
+                <Icon
+                  name={isDisabled ? 'lock' : 'person'}
+                  className={isDisabled ? 'text-[14px]' : 'text-[16px]'}
+                />
               </span>
               {child.name}
               {shortLabel && (

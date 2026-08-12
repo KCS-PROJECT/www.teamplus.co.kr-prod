@@ -944,11 +944,13 @@ function UnpaidMemberCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          {/* 시안 Avatar(red tone, 이니셜) — 44px */}
+          {/* 시안 Avatar(red tone) — 44px. 인물 자리이므로 이니셜 대신 person 아이콘. */}
           <div className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-w-pill bg-it-red-50 dark:bg-it-red-500/15">
-            <span className="text-[16px] font-extrabold text-it-red-500 dark:text-it-red-300">
-              {member.name?.charAt(0) || '?'}
-            </span>
+            <Icon
+              name="person"
+              className="text-[24px] text-it-red-500 dark:text-it-red-300"
+              aria-hidden="true"
+            />
           </div>
           <div className="min-w-0 flex-1">
             <h4 className="text-[15px] font-bold text-it-ink-800 truncate dark:text-white">{member.name}</h4>

@@ -48,9 +48,12 @@ export function MatchParticipantRow({ data, action, iceTheme = false }: MatchPar
           </div>
 
           <div className="relative w-10 h-10 shrink-0 rounded-w-pill bg-it-line dark:bg-rink-700 flex items-center justify-center">
-            <span className="text-card-emphasis font-semibold text-it-ink-700 dark:text-it-ink-200">
-              {data.name.charAt(0) || '?'}
-            </span>
+            {/* 인물 자리이므로 이니셜 대신 person 아이콘 */}
+            <Icon
+              name="person"
+              className="text-[22px] text-it-ink-700 dark:text-it-ink-200"
+              aria-hidden="true"
+            />
             {data.isHost && (
               <div
                 className="absolute -top-1 -right-1 w-5 h-5 rounded-w-pill bg-it-blue-500 flex items-center justify-center"
@@ -100,9 +103,12 @@ export function MatchParticipantRow({ data, action, iceTheme = false }: MatchPar
         </div>
 
         <div className="relative w-10 h-10 shrink-0 rounded-full bg-wline dark:bg-rink-700 flex items-center justify-center">
-          <span className="text-card-emphasis font-semibold text-wtext-2 dark:text-rink-100">
-            {data.name.charAt(0) || '?'}
-          </span>
+          {/* 인물 자리이므로 이니셜 대신 person 아이콘 */}
+          <Icon
+            name="person"
+            className="text-[22px] text-wtext-2 dark:text-rink-100"
+            aria-hidden="true"
+          />
           {data.isHost && (
             <div
               className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-ice-500 flex items-center justify-center"

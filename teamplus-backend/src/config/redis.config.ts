@@ -72,6 +72,7 @@ export default registerAs("redis", () => ({
   keyPrefix: {
     class: "class:",
     club: "club:",
+    team: "team:",
     user: "user:",
     payment: "payment:",
     jwt: "jwt:blacklist:",

@@ -301,17 +301,17 @@ export const MESSAGES = {
       selectTeamsButton: "팀 선택하기",
       selectedTeamsCount: (n: number) => `${n}개 팀 선택됨`,
     },
-    // [2026-08-04] 수업 지역 — 감독/코치가 등록 시 시/도 + 시군구를 직접 선택한다.
-    //   목록 카드에 그대로 노출돼 타지역 학부모의 오등록을 막는 것이 목적.
+    // 수업 지역 — 감독/코치가 등록 시 시/도 + 시군구를 직접 선택한다(필수).
+    //   목록·상세 카드에 "서울 강남구" 로 노출돼 학부모가 수업 위치를 목록 단계에서 판단한다.
     region: {
       sectionTitle: "수업 지역",
       sectionHint:
-        "수업이 열리는 지역을 선택해주세요. 학부모에게 시군구까지 표시되어 먼 지역 오등록을 막아줍니다.",
+        "수업이 열리는 지역을 선택해주세요. 학부모에게 수업 목록과 상세에서 시군구까지 표시됩니다.",
       cityLabel: "시/도",
       cityPlaceholder: "시/도 선택",
       districtLabel: "시군구",
+      // 시/도 미선택(비활성) 상태에도 같은 문구를 쓴다 — 별도 안내문은 좁은 칸에서 잘렸다.
       districtPlaceholder: "시군구 선택",
-      districtSelectCityFirst: "시/도를 먼저 선택해주세요.",
       cityRequired: "수업 지역(시/도)을 선택해주세요.",
       districtRequired: "수업 지역(시군구)을 선택해주세요.",
       unset: "지역 미지정",
@@ -2780,6 +2780,8 @@ export const MESSAGES = {
     backToList: "목록으로",
     positionUnassigned: "미지정",
     groupUnassigned: "그룹 미배정",
+    /** 선수단 행 그룹 배지의 스크린리더 접두 — 그룹명이 출생연도와 같아도 역할을 구분해 읽히게 한다. */
+    groupBadgePrefix: "그룹",
     groupsEmpty: "등록된 하위 그룹이 없습니다.",
     ourTeamFallback: "우리팀",
     opponentTbd: "상대 미정",

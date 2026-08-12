@@ -2063,7 +2063,7 @@ export default function ClassDetailPage() {
                 <span className="text-card-body font-extrabold text-wtext-1 dark:text-white">
                   {MESSAGES.classProduct.timingPrepaidTitle}
                 </span>
-                <span className="text-card-caption text-wtext-3 dark:text-rink-300">
+                <span className="text-card-meta text-wtext-3 dark:text-rink-300">
                   {MESSAGES.classProduct.timingPrepaidDesc}
                 </span>
               </button>
@@ -2082,7 +2082,7 @@ export default function ClassDetailPage() {
                 <span className="text-card-body font-extrabold text-wtext-1 dark:text-white">
                   {MESSAGES.classProduct.timingPostpaidTitle}
                 </span>
-                <span className="text-card-caption text-wtext-3 dark:text-rink-300">
+                <span className="text-card-meta text-wtext-3 dark:text-rink-300">
                   {MESSAGES.classProduct.timingPostpaidDesc}
                 </span>
               </button>
@@ -2211,13 +2211,15 @@ export default function ClassDetailPage() {
                         </span>
                       )}
                       <div className={cn("flex-1 min-w-0", isDisabled && !isPaidPackage && "opacity-70")}>
-                        <div className="flex items-center gap-1.5">
+                        {/* min-h — 배지 유무로 줄 높이가 달라져 선택 자녀에 따라 행이 들쭉날쭉해지던
+                            문제 차단. 옆 체크박스(22px)에 기대지 않고 제목 줄 자체가 높이를 보장한다. */}
+                        <div className="flex min-h-[22px] items-center gap-1.5">
                           <p className="text-card-body font-extrabold text-wtext-1 dark:text-white tracking-tight truncate">
                             {p.productName}
                           </p>
                           {/* [2026-06-18] 선택 자녀가 이미 결제완료한 패키지 배지. */}
                           {isPaidPackage && (
-                            <span className="shrink-0 inline-flex items-center rounded-w-pill bg-emerald-100 px-2 py-0.5 text-card-caption font-extrabold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
+                            <span className="shrink-0 inline-flex items-center rounded-w-pill bg-emerald-100 px-2 py-0.5 text-card-meta font-extrabold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
                               결제완료
                             </span>
                           )}
@@ -2237,7 +2239,7 @@ export default function ClassDetailPage() {
                         {isDisabled && disabledBadge && (
                           <p
                             role="status"
-                            className="mt-1 text-card-caption font-semibold text-wtext-3 dark:text-rink-300 truncate"
+                            className="mt-1 text-card-meta font-semibold text-wtext-3 dark:text-rink-300 truncate"
                           >
                             {disabledBadge}
                           </p>
@@ -2373,7 +2375,7 @@ export default function ClassDetailPage() {
                     multiSelect={isOpenClass}
                     selectedIds={selectedChildIds}
                     onToggle={handleChildToggle}
-                    variant="pill"
+                    variant="list"
                   />
                   {/* 안내 메시지 — 모든 자녀가 잠금이면(paid 제외) 메시지 표시 */}
                   {noneSelectable && ageRangeLabel && (

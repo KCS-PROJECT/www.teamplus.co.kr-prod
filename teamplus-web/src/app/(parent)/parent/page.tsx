@@ -193,7 +193,15 @@ export default function ParentDashboardPage() {
     () => allChildren.find((c) => c.id === selectedChildId) ?? null,
     [allChildren, selectedChildId],
   );
-  const showTeamNoticeTab = !!selectedChild && isActiveChild(selectedChild);
+  //   로딩 중(미확정)은 "팀 없음(확정)"과 구분해 낙관적으로 탭을 노출한다 — 초기 마운트에서
+  //   false 로 판정되면 공지 컴포넌트가 기본 탭을 '공지사항'으로 캡처한 채 복구하지 못한다.
+  //   자녀 로딩 완료 직후 SelectedChildContext 기본 자녀 확정 전 프레임(effect 경유라 한 커밋
+  //   늦음)도 같은 미확정 구간 — 선택 대상 자녀가 있는데 selectedChild 가 null 이면 곧 기본
+  //   선택이 일어나므로 낙관을 유지한다.
+  const isChildSelectionPending =
+    isChildrenLoading || (!selectedChild && selectableChildren.length > 0);
+  const showTeamNoticeTab =
+    isChildSelectionPending || (!!selectedChild && isActiveChild(selectedChild));
 
   useNativeUI({
     showStatusBar: true,

@@ -752,7 +752,10 @@ export function GlobalMenu({ isOpen, onClose }: GlobalMenuProps) {
   const displaySub =
     user?.email ||
     (user?.phone ? `${roleLabel} · ${user.phone}` : `${roleLabel} 계정`);
-  const avatarInitial = (user?.name ?? "나").charAt(0);
+  // 프로필 사진 로드 실패(404/깨짐) URL 기억 → person 아이콘으로 대체.
+  //   URL 값 기준이라 사진을 교체하면(cacheBust 로 URL 변경) 자동으로 다시 시도한다.
+  //   ⚠️ Hooks 규칙 — 아래 SSR 조기 반환보다 반드시 위에 있어야 한다.
+  const [brokenAvatar, setBrokenAvatar] = useState<string | null>(null);
 
   // SSR 보호 — 호출 사이트는 모두 ssr:false 이지만 안전장치로 한 번 더 확인.
   if (typeof document === "undefined") return null;
@@ -843,7 +846,9 @@ export function GlobalMenu({ isOpen, onClose }: GlobalMenuProps) {
                   user?.avatarUrl,
                   user?.updatedAt,
                 );
-                return avatarSrc ? (
+                // 사진이 없거나 로드 실패면 person 아이콘 폴백 — 이름 이니셜을 쓰지 않는다.
+                //  인물 아바타 전반(children/[childId]/edit·코치 상세·승인 대기 등)과 동일 관용.
+                return avatarSrc && avatarSrc !== brokenAvatar ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img
                     key={avatarSrc}
@@ -851,10 +856,15 @@ export function GlobalMenu({ isOpen, onClose }: GlobalMenuProps) {
                     alt={`${displayName} 프로필 이미지`}
                     width={56}
                     height={56}
+                    onError={() => setBrokenAvatar(avatarSrc)}
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  avatarInitial
+                  <Icon
+                    name="person"
+                    className="text-[30px] text-white"
+                    aria-hidden="true"
+                  />
                 );
               })()}
               {/* 업로드 중 진행 오버레이 (blur 미사용 — 불투명 dim + 스피너) */}

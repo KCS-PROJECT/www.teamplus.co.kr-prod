@@ -1430,6 +1430,11 @@ export class ClassesService {
     //     - endedAt=null — 타 팀의 이미 종료된 수업은 발견 가치가 없다.
     //       (내 팀 branch 는 종료 수업 유지 — '종료된 훈련' 이력 접힘에 필요.)
     //   · 연령(targetBirthYears) 필터는 아래 top-level where.AND 가 모든 branch 에 공통 적용.
+    //   CLASS_VISIBILITY_DISABLED — 정책상 이 합집합을 현재 사용하지 않는다(선언은 복원용으로 존치).
+    //     전 수업이 비공개(TEAM_ONLY)라 게이트를 통과하는 타 팀 수업이 없고,
+    //     목록은 도입 전과 같이 "내 소속 팀 수업"만 보여준다.
+    //     아래 두 분기에서 이 상수를 다시 OR 에 넣으면 복원된다.
+    //     절차: claudedocs/class-visibility-disable-2026-08-12.md §5
     const externalPublicWhere: Prisma.ClassWhereInput = {
       teamId: { not: null },
       academyId: null,
@@ -1439,6 +1444,7 @@ export class ClassesService {
       },
       AND: [buildClassVisibilityWhere(user, viewerTeamIds ?? [])],
     };
+    void externalPublicWhere;
 
     // 학부모 가드 — 자녀 경유 팀 ID(viewerTeamIds)로 정규수업 필터.
     //  viewerTeamIds 는 resolveViewerTeamIds(..., { childId }) 로 해석되어
@@ -1448,15 +1454,12 @@ export class ClassesService {
     //  무소속(팀 0)이어도 전체공개 수업은 보이므로 빈 결과 조기 반환하지 않는다.
     if (user?.userType === "PARENT" && query.category !== "open") {
       const teamIds = viewerTeamIds ?? [];
-      // 'regular' 탭: 내 팀 정규 수업 + 전체공개 타 팀 수업. '전체' 탭: + 오픈클래스.
+      // CLASS_VISIBILITY_DISABLED — 타 팀 수업 합집합 제외.
+      //   'regular' 탭: 내 팀 정규 수업만. '전체' 탭: + 오픈클래스.
       if (query.category === "regular") {
-        where.OR = [{ teamId: { in: teamIds } }, externalPublicWhere];
+        where.OR = [{ teamId: { in: teamIds } }];
       } else {
-        where.OR = [
-          { teamId: { in: teamIds } },
-          externalPublicWhere,
-          openClassWhere,
-        ];
+        where.OR = [{ teamId: { in: teamIds } }, openClassWhere];
       }
     } else if (
       user &&
@@ -1467,18 +1470,15 @@ export class ClassesService {
       //  기존엔 미지정 탭에서 모든 팀 정규수업이 무제한 노출되어, 학생이 다른 팀
       //  (예: test2/나코치) 수업까지 다 보이던 버그. PARENT 와 동일 패턴으로 viewerTeamIds 매칭.
       //  [2026-08-04] 학부모와 동일하게 공개범위 허용 타 팀 수업(externalPublicWhere)도 합집합.
+      //  CLASS_VISIBILITY_DISABLED — 타 팀 수업 합집합 제외 (학부모 분기와 동일).
       const studentTeamIds = viewerTeamIds ?? [];
       if (query.category === "regular") {
-        where.OR = [{ teamId: { in: studentTeamIds } }, externalPublicWhere];
+        where.OR = [{ teamId: { in: studentTeamIds } }];
       } else if (query.category === "open") {
         // openClassWhere 가 이미 visibility 매칭 처리.
       } else {
-        // 전체 탭: 본인 팀 수업 OR 전체공개 타 팀 수업 OR 노출 오픈클래스.
-        where.OR = [
-          { teamId: { in: studentTeamIds } },
-          externalPublicWhere,
-          openClassWhere,
-        ];
+        // 전체 탭: 본인 팀 수업 OR 노출 오픈클래스.
+        where.OR = [{ teamId: { in: studentTeamIds } }, openClassWhere];
       }
     } else if (
       user &&
