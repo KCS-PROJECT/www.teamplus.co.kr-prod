@@ -32,6 +32,11 @@ const TYPE_ICON_MAP: Record<string, string> = {
   CAMP: 'hiking',
 };
 
+// CLASS_VISIBILITY_DISABLED — 정책상 공개 범위 선택 미사용(기능 존치, 화면 노출만 차단).
+//   훈련도 비공개(소속 팀 전용)로 저장된다. 이 플래그를 true 로 되돌리면 그대로 복원된다.
+//   절차: claudedocs/class-visibility-disable-2026-08-12.md §5
+const SHOW_VISIBILITY_SECTION: boolean = false;
+
 // [2026-08-04] 공개 범위 — 감독/코치가 등록 시 직접 선택 (ClassForm SECTION 4.5 와 동일 SoT).
 //   SELECTED_TEAMS 는 노출 팀 선택 UI 가 이 폼에 없어 제외. 기본 TEAM_ONLY(비공개) = 기존 동작 유지.
 const TRAINING_VISIBILITY_OPTIONS: ReadonlyArray<{
@@ -39,6 +44,7 @@ const TRAINING_VISIBILITY_OPTIONS: ReadonlyArray<{
   label: string;
   hint: string;
 }> = [
+  // CLASS_VISIBILITY_DISABLED — 아래 옵션은 현재 화면에 노출되지 않는다(SHOW_VISIBILITY_SECTION).
   {
     value: 'PUBLIC',
     label: MESSAGES.class.visibility.public,
@@ -162,7 +168,8 @@ export default function CreateTrainingPage() {
         startTime,
         endTime,
         scheduleDates: scheduleDates.length > 0 ? scheduleDates : undefined,
-        visibility,
+        // CLASS_VISIBILITY_DISABLED — 공개 범위 미전송. 서버 기본값 TEAM_ONLY(비공개)로 저장된다.
+        //   되살리는 절차: claudedocs/class-visibility-disable-2026-08-12.md §5
       });
 
       if (response.success) {
@@ -178,7 +185,7 @@ export default function CreateTrainingPage() {
   }, [
     className, description, trainingType, instructorName, capacity,
     ageMin, ageMax, levelRequired, startDate, startTimeStr, endTimeStr,
-    scheduleDatesStr, visibility, clubId, navigate,
+    scheduleDatesStr, clubId, navigate,
   ]);
 
   return (
@@ -432,7 +439,9 @@ export default function CreateTrainingPage() {
         </section>
 
         {/* [2026-08-04] 공개 범위 — 수업 등록 폼(ClassForm SECTION 4.5)과 동일한 선택 경험.
-            훈련을 어디까지 보여줄지 감독/코치가 등록 시 직접 체크한다. */}
+            훈련을 어디까지 보여줄지 감독/코치가 등록 시 직접 체크한다.
+            CLASS_VISIBILITY_DISABLED — 현재 미노출(SHOW_VISIBILITY_SECTION=false). */}
+        {SHOW_VISIBILITY_SECTION && (
         <section>
           <label className={LABEL_BASE}>
             {MESSAGES.class.visibility.sectionTitle}
@@ -490,6 +499,7 @@ export default function CreateTrainingPage() {
             })}
           </div>
         </section>
+        )}
 
         {/* 하단 액션 (body flow 내부 — 고정 X) */}
         <div className="flex gap-3 pt-2">

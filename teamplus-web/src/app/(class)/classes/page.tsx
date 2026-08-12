@@ -1415,6 +1415,13 @@ const DefaultTournamentCard = memo(function DefaultTournamentCard({
   );
 });
 
+// CLASS_VISIBILITY_DISABLED — 정책상 소속 팀 밖 수업을 노출하지 않는다(기능 존치, 화면만 차단).
+//   전 수업이 비공개(TEAM_ONLY)라 전국 탐색은 항상 0건이고, '전체공개 수업' 섹션도 비어 있다.
+//   막는 대상: 탐색 진입 배너 · 빈 상태 CTA · '전체공개 수업' 섹션.
+//   백엔드 합집합(classes.service.ts externalPublicWhere)도 선언만 남기고 미사용 처리됨.
+//   이 플래그를 true 로 되돌리면 그대로 복원된다. 절차: claudedocs/class-visibility-disable-2026-08-12.md §5
+const SHOW_CLASS_EXPLORE_ENTRY: boolean = false;
+
 // ── Empty State ──────────────────────────────────────
 
 function EmptyState({
@@ -1959,7 +1966,7 @@ export default function ClassesPage() {
             아동/청소년은 보호자가 등록하는 구조라 제외한다. */}
         {/* [2026-08-04 리스트 전환] 둥근 배너 박스(rounded + 좌우 여백)는 목록 위에서 '카드'로
             읽혀 흐름을 끊는다 → 목록 행과 같은 full-bleed 행으로 이어 붙인다. */}
-        {!isChild && !isTeen && !isLoading && (
+        {SHOW_CLASS_EXPLORE_ENTRY && !isChild && !isTeen && !isLoading && (
           <div>
             <NavLink
               href="/classes-explore"
@@ -2046,7 +2053,9 @@ export default function ClassesPage() {
               icon={isTournamentTab ? "emoji_events" : "sports_hockey"}
               // 학부모 전용 — 아동/청소년은 보호자가 등록하는 구조라 탐색 진입을 노출하지 않는다.
               // 대회 탭에서도 숨긴다(수업 탐색과 무관).
-              showExploreCta={!isChild && !isTeen && !isTournamentTab}
+              showExploreCta={
+                SHOW_CLASS_EXPLORE_ENTRY && !isChild && !isTeen && !isTournamentTab
+              }
             />
           ) : sections ? (
             /* 학부모/감독 — 유형별 섹션 카드영역 (등록 훈련 → 정규 → 대회 → 오픈) */
@@ -2095,7 +2104,9 @@ export default function ClassesPage() {
                 ))}
               </ClassSection>
               {/* [2026-08-04 공개범위 상시 병합] 전체공개로 노출된 타 팀 수업 —
-                  내 팀 '정규훈련'과 분리해 오인을 막고, 카드에는 주최 팀명이 표기된다. */}
+                  내 팀 '정규훈련'과 분리해 오인을 막고, 카드에는 주최 팀명이 표기된다.
+                  CLASS_VISIBILITY_DISABLED — 현재 미노출(SHOW_CLASS_EXPLORE_ENTRY=false). */}
+              {SHOW_CLASS_EXPLORE_ENTRY && (
               <ClassSection
                 title={MESSAGES.class.publicFallbackSection}
                 count={sections.publicPool.length}
@@ -2106,6 +2117,7 @@ export default function ClassesPage() {
                   </div>
                 ))}
               </ClassSection>
+              )}
               <ClassSection
                 title="대회"
                 count={sections.tournaments.length}
