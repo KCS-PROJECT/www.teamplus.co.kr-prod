@@ -164,6 +164,27 @@ function waitForTokenRefresh(): Promise<string> {
 }
 
 /**
+ * access 토큰을 미들웨어 인증용 쿠키에 동기화 — 쿠키 기록 단일 창구.
+ *
+ * 미들웨어는 이 쿠키만 보고 보호 경로를 판정하므로, localStorage 토큰은 유효한데
+ * 쿠키만 유실된 상태(인증 경로 이동 시 선제 삭제, 동일 호스트 admin 의 레거시
+ * 쿠키 정리 등)를 방치하면 미들웨어 ↔ 로그인 페이지 `/login?redirect` 무한 왕복이
+ * 생긴다. 토큰을 "유효"로 판정해 반환하는 모든 경로는 이 함수로 쿠키를 함께
+ * 복구해야 한다.
+ *
+ * 만료 시각을 알 수 없거나 이미 만료된 토큰은 기록하지 않는다 — 만료 토큰을
+ * 장수 쿠키로 심으면 "쿠키는 살아있는데 토큰은 만료" 상태로 미들웨어가 오판한다.
+ */
+export function syncAccessTokenCookie(accessToken: string): void {
+  if (typeof document === "undefined") return;
+  const remaining = getTokenRemainingCookieSec(accessToken);
+  if (remaining <= 0) return;
+  // HTTPS 에서는 Secure 플래그 부착 — 평문 전송 차단.
+  const secure = location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `teamplus_access_token=${accessToken}; path=/; max-age=${remaining}; SameSite=Lax${secure}`;
+}
+
+/**
  * 통합 토큰 갱신 함수 (모든 갱신 요청을 하나로 처리)
  * Race condition 방지를 위해 단일 Promise 사용
  */
@@ -223,18 +244,10 @@ async function refreshAccessToken(): Promise<string | null> {
       // 새 토큰 저장
       await hybridAuth.saveToken({ accessToken, refreshToken });
 
-      // Cookie에도 저장 (미들웨어 인증용)
-      // [2026-05-13 Phase B-1] cookie 만료를 JWT exp 기반으로 동기화 →
-      //   "쿠키는 살아있는데 토큰은 만료" 미들웨어 회귀 차단. exp 없으면 폴백 7일.
-      if (typeof document !== "undefined") {
-        const remainingSec = getTokenRemainingCookieSec(accessToken);
-        const maxAge = remainingSec > 0 ? remainingSec : 60 * 60 * 24 * 7;
-        // [2026-06-10 SECURITY] HTTPS 에서 Secure 플래그 부착 — 평문 전송 차단.
-        const secure = location.protocol === "https:" ? "; Secure" : "";
-        document.cookie = `teamplus_access_token=${accessToken}; path=/; max-age=${maxAge}; SameSite=Lax${secure}`;
-        // [2026-06-15 SECURITY] refresh 토큰은 JS 접근 쿠키로 쓰지 않는다 — 백엔드 refresh
-        //   응답이 httpOnly refresh 쿠키(path=/)를 재설정하며 미들웨어가 그것으로 판정한다.
-      }
+      // Cookie에도 저장 (미들웨어 인증용) — 만료는 JWT exp 기반 동기화.
+      //   refresh 토큰은 JS 접근 쿠키로 쓰지 않는다 — 백엔드 refresh 응답이
+      //   httpOnly refresh 쿠키(path=/)를 재설정하며 미들웨어가 그것으로 판정한다.
+      syncAccessTokenCookie(accessToken);
 
       devLog("[API Client] 토큰 갱신 성공");
 
@@ -526,6 +539,10 @@ async function preemptiveTokenRefresh(): Promise<string | null> {
 
     // 토큰이 곧 만료되는 경우에만 갱신 (default 5분 버퍼)
     if (!isTokenExpired(tokenInfo.accessToken)) {
+      // 쿠키만 유실된 상태 복구 — 이 함수의 반환은 "쿠키까지 동기화 완료"를
+      //   뜻한다. 갱신 경로만 쿠키를 쓰고 이 단락 경로가 건너뛰면, 유효 토큰
+      //   구간 내내 미들웨어 ↔ 로그인 페이지 `/login?redirect` 무한 왕복이 남는다.
+      syncAccessTokenCookie(tokenInfo.accessToken);
       return tokenInfo.accessToken;
     }
 
