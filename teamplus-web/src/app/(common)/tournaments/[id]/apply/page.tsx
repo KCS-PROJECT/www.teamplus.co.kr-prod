@@ -24,7 +24,7 @@ export const dynamic = 'force-dynamic';
  */
 
 import { useEffect, useMemo, useRef, useState, Suspense, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import nextDynamic from 'next/dynamic';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
@@ -35,6 +35,7 @@ import { useNavigation } from '@/components/ui/NavLink';
 import { useToast } from '@/components/ui/Toast';
 import { useModal } from '@/components/ui/Modal';
 import { useNativeUI } from '@/hooks/useNativeUI';
+import { useBlockBackNavigation } from '@/hooks/useBlockBackNavigation';
 import { usePageReady } from '@/hooks/usePageReady';
 import { useAuth } from '@/contexts/AuthContext';
 import { MESSAGES } from '@/lib/messages';
@@ -107,6 +108,17 @@ function TournamentApplyContent() {
   const [isRegistering, setIsRegistering] = useState(false);
 
   usePageReady(!isLoading);
+
+  // 토스 결제창에서 취소/실패로 복귀한 재진입(failUrl) 여부.
+  //   토스는 같은 창을 문서 이동으로 쓰므로 만료된 결제창 URL 이 히스토리에 남는다.
+  //   되돌아가면 토스가 "이미 종료된 세션입니다"(버튼 없는 토스 소유 화면)를 띄우므로,
+  //   이 상태에서는 히스토리 되짚기 대신 대회 상세로 내보낸다.
+  const searchParams = useSearchParams();
+  const isTossReturn = (searchParams?.get('error') ?? '') === 'fail';
+  useBlockBackNavigation({
+    enabled: isTossReturn && Boolean(tournamentId),
+    getRedirectTarget: () => `/tournaments/${tournamentId}`,
+  });
 
   const renderedRef = useRef(false);
   const initRef = useRef(false);
