@@ -12,6 +12,12 @@ export type AgeGroup = 'U8' | 'U9' | 'U10' | 'U11' | 'U12';
 /** 로스터 자동 편성이 이름으로 찾는 시스템 예약 그룹명 — 수동 생성/변경 금지. */
 export const RESERVED_TEAM_GROUP_NAME = '기본';
 
+/**
+ * 그룹 이름 입력 상한 — 칩·배지 등 좁은 표시 영역에 들어가는 길이로 제한한다.
+ * 백엔드 DTO 는 30자를 허용하므로 기존에 저장된 장문 이름은 그대로 유지·표시된다.
+ */
+export const TEAM_GROUP_NAME_MAX_LENGTH = 20;
+
 export interface TeamGroupSummary {
   id: string;
   name: string;

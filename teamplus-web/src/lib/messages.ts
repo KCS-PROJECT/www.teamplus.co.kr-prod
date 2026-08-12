@@ -2780,6 +2780,8 @@ export const MESSAGES = {
     backToList: "목록으로",
     positionUnassigned: "미지정",
     groupUnassigned: "그룹 미배정",
+    /** 선수단 행 그룹 배지의 스크린리더 접두 — 그룹명이 출생연도와 같아도 역할을 구분해 읽히게 한다. */
+    groupBadgePrefix: "그룹",
     groupsEmpty: "등록된 하위 그룹이 없습니다.",
     ourTeamFallback: "우리팀",
     opponentTbd: "상대 미정",
