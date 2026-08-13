@@ -24,12 +24,12 @@
 import { useState, useEffect, useCallback, useId, useMemo } from 'react';
 import { MESSAGES } from '@/lib/messages';
 import { api } from '@/services/api-client';
-import { isoToDateInput, isoToKstDateLabel, kstInputToUtcIso } from '@/lib/kst-date';
+import { isoToDateInput, isoToKstDateLabel, isoToKstDateTimeLabel, kstInputToUtcIso } from '@/lib/kst-date';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '@/components/ui/modal';
-import { ActionToast, type ActionToastValue } from '@/components/common';
+import { ActionToast, ConfirmModal, type ActionToastValue } from '@/components/common';
 import { FileText, Plus, Edit2, Eye, Copy, Trash2, Clock, ChevronDown } from 'lucide-react';
 
 interface TermItem {
@@ -232,6 +232,8 @@ export default function TermsManagementPage() {
   //   목록 아래에 열려 어느 행을 누른 건지 시야에서 사라지는 문제가 있었다).
   const [formMode, setFormMode] = useState<'create' | 'edit' | null>(null);
   const [formTargetId, setFormTargetId] = useState<string | null>(null);
+  // 시행일이 오늘·과거일 때의 저장 전 확인 (아래 isImmediatePublish 주석 참조).
+  const [showImmediateConfirm, setShowImmediateConfirm] = useState(false);
   const [form, setForm] = useState({
     type: 'terms_of_service' as string,
     title: '',
@@ -308,9 +310,24 @@ export default function TermsManagementPage() {
   const closeForm = () => {
     setFormMode(null);
     setFormTargetId(null);
+    setShowImmediateConfirm(false);
   };
 
-  const handleSubmitForm = async () => {
+  /**
+   * 시행일이 오늘이거나 과거인가.
+   *
+   * 시행일 00:00(KST)이 이미 지난 시각이면 저장하는 순간 현행 약관이 교체되고,
+   * 백엔드가 그 행을 잠근다 — `updateTerms` 는 본문·버전·시행일 수정을 409 로 막고
+   * `deleteTerms` 는 시행 예정 건만 허용한다. 화면에는 철회 수단도 없어서
+   * 날짜를 잘못 넣으면 되돌릴 방법이 없다. 그래서 저장 전에 한 번 더 확인받는다.
+   *
+   * 과거 시행일 자체는 막지 않는다 — 기존 약관을 뒤늦게 옮겨 담거나 누락분을
+   * 보정할 때 실제로 필요하다(현행 v2.0.0 6종도 소급 등록분이다).
+   */
+  const kstToday = isoToDateInput(new Date().toISOString());
+  const isImmediatePublish = !!form.publishedAt && form.publishedAt <= kstToday;
+
+  const handleSubmitForm = () => {
     if (!form.title.trim() || !form.content.trim()) {
       notify('error', MESSAGES.terms.requiredFields);
       return;
@@ -323,7 +340,14 @@ export default function TermsManagementPage() {
       notify('error', MESSAGES.terms.publishedAtRequired);
       return;
     }
+    if (isImmediatePublish) {
+      setShowImmediateConfirm(true);
+      return;
+    }
+    void submitForm();
+  };
 
+  const submitForm = async () => {
     const payload = {
       type: form.type,
       title: form.title.trim(),
@@ -359,6 +383,9 @@ export default function TermsManagementPage() {
       );
     } finally {
       setIsSaving(false);
+      // 확인 모달은 저장이 끝난 뒤 닫는다 — 먼저 닫으면 진행 상태가 보이지 않고,
+      // 실패했을 때도 확인 모달이 남아 있으면 에러 토스트가 가려진다.
+      setShowImmediateConfirm(false);
     }
   };
 
@@ -388,6 +415,49 @@ export default function TermsManagementPage() {
   }
 
   const formCurrent = currentOfType(form.type);
+
+  /**
+   * 시행일이 오늘·과거여도 **현행이 되지 못하는** 경우 — 현행보다 시행일이 앞설 때다.
+   * 이때는 저장하는 즉시 '과거' 버전으로만 기록되고 사용자 화면에는 노출되지 않는데,
+   * 수정·삭제는 이미 잠긴 뒤라 회수도 안 된다. 과거 이력을 뒤늦게 채워 넣는 정상
+   * 작업이기도 해서 막지는 않고, 어느 쪽인지만 정확히 알린다.
+   *
+   * 비교는 날짜 문자열이 아니라 instant 로 한다 — 기존 행의 시행 시각이 KST 00:00 이
+   * 아닐 수 있어(시드·레거시) 같은 날짜라도 앞뒤가 갈린다. 시각이 완전히 같으면
+   * createdAt 이 늦은 새 건이 현행을 가져가므로 `<` 일 때만 해당한다.
+   */
+  const formPublishedMs = new Date(kstInputToUtcIso(form.publishedAt) ?? '').getTime();
+  const currentPublishedMs = formCurrent?.publishedAt
+    ? new Date(formCurrent.publishedAt).getTime()
+    : Number.NaN;
+  const staysPast =
+    isImmediatePublish &&
+    !Number.isNaN(formPublishedMs) &&
+    !Number.isNaN(currentPublishedMs) &&
+    formPublishedMs < currentPublishedMs;
+
+  /** 경고·확인 문구에서 반복되는 현행 표기 (예: "v2.0.0(2026.07.30 시행)") */
+  const currentLabel = formCurrent
+    ? `v${formCurrent.version}(${isoToKstDateLabel(formCurrent.publishedAt)} 시행)`
+    : '';
+
+  /**
+   * 같은 유형에 시행 시각이 **완전히 같은** 기존 버전.
+   *
+   * 시행일이 동률이면 현행 판정은 등록 시각(createdAt)이 가른다 — 버전 번호는 쓰이지
+   * 않아서 v2.1.0 뒤에 v2.0.0 을 같은 날짜로 올리면 v2.0.0 이 현행이 된다. 저장하고
+   * 나면 되돌릴 수 없으므로 미리 알린다. 시행일이 미래여도 같은 문제라 즉시 시행
+   * 여부와 무관하게 검사한다.
+   */
+  const sameInstantTerm = Number.isNaN(formPublishedMs)
+    ? null
+    : (terms.find(
+        (t) =>
+          t.id !== formTargetId &&
+          normalizeTermType(t.type) === normalizeTermType(form.type) &&
+          !!t.publishedAt &&
+          new Date(t.publishedAt).getTime() === formPublishedMs,
+      ) ?? null);
 
   return (
     <div className="space-y-6">
@@ -647,11 +717,12 @@ export default function TermsManagementPage() {
                   aria-required="true"
                   className="h-11 bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 dark:text-white"
                 />
-                {formCurrent && (
-                  <p className="text-xs text-slate-400 dark:text-slate-500 tabular-nums">
-                    현재 v{formCurrent.version}
-                  </p>
-                )}
+                {/* 입력 영역에서는 `v` 를 쓰지 않는다 — 저장값은 접두사 없는 숫자이고
+                    화면 표시에서만 `v` 를 붙이기 때문에, 여기에 `v2.0.0` 을 노출하면
+                    입력에도 `v` 가 필요한 것으로 읽힌다. */}
+                <p className="text-xs text-slate-400 dark:text-slate-500 tabular-nums">
+                  {formCurrent ? `현재 버전 ${formCurrent.version} · ` : ''}v 없이 숫자만 입력
+                </p>
               </div>
               <div className="space-y-2">
                 <label htmlFor={formPublishedAtId} className="block text-sm font-medium text-slate-700 dark:text-slate-300">시행일</label>
@@ -683,8 +754,38 @@ export default function TermsManagementPage() {
               />
             </div>
 
+            {/* 즉시 시행 경고 — 등록·수정 공통. 수정 모드에서도 시행 예정 건의 시행일을
+                지난 날짜로 바꾸면 그대로 잠기므로 안내를 create 로 한정하지 않는다. */}
+            {isImmediatePublish && (
+              <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-sm text-amber-800 dark:text-amber-300 leading-relaxed">
+                {staysPast ? (
+                  <>
+                    현행 {currentLabel}보다 시행일이 앞섭니다. 저장해도 현행이 되지 않고
+                    과거 버전으로만 기록되며, 사용자 화면에는 노출되지 않습니다.
+                  </>
+                ) : (
+                  <>
+                    {form.publishedAt === kstToday
+                      ? '시행일이 오늘입니다. 00:00(한국시간)이 이미 지나 저장 즉시 현행 약관으로 교체됩니다.'
+                      : '지난 날짜입니다. 저장 즉시 현행 약관으로 교체됩니다.'}
+                  </>
+                )}
+                {' '}이미 시행된 약관은 이후 수정·삭제할 수 없습니다.
+              </div>
+            )}
+
+            {/* 동일 시행 시각 안내 — 버전 번호가 아니라 등록 순서가 현행을 가르므로 미리 알린다. */}
+            {sameInstantTerm && (
+              <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-sm text-amber-800 dark:text-amber-300 leading-relaxed">
+                같은 시행일에 v{sameInstantTerm.version}이(가) 이미 있습니다
+                ({isoToKstDateTimeLabel(sameInstantTerm.createdAt)} 등록).
+                시행일이 같으면 버전 번호와 무관하게 <strong className="font-semibold">나중에 등록한 쪽</strong>이 현행이 되므로,
+                저장하면 이 버전이 v{sameInstantTerm.version}을(를) 대신합니다.
+              </div>
+            )}
+
             {/* 시행 안내 — 등록 시에만 (수정은 이미 예약된 건이라 안내가 중복된다) */}
-            {formMode === 'create' && form.publishedAt && form.version.trim() && (
+            {formMode === 'create' && form.publishedAt && !isImmediatePublish && form.version.trim() && (
               <div className="p-3 rounded-lg bg-sky-50 dark:bg-sky-900/20 text-sm text-sky-800 dark:text-sky-300">
                 {form.publishedAt.replace(/-/g, '.')} 00:00부터 v{form.version.trim()}이(가) 시행되며,
                 {formCurrent ? ` 현재 v${formCurrent.version}은(는) 과거 버전이 됩니다.` : ' 해당 시점부터 현행 약관이 됩니다.'}
@@ -713,6 +814,28 @@ export default function TermsManagementPage() {
           </Button>
         </ModalFooter>
       </Modal>
+
+      {/* 즉시 시행 확인 — 저장하면 되돌릴 수 없으므로 공통 ConfirmModal 로 한 번 더 받는다. */}
+      <ConfirmModal
+        isOpen={showImmediateConfirm}
+        onClose={() => setShowImmediateConfirm(false)}
+        onConfirm={submitForm}
+        variant="warning"
+        title={
+          staysPast
+            ? '과거 버전으로만 기록됩니다'
+            : form.publishedAt === kstToday
+              ? '오늘 시행으로 등록할까요?'
+              : '지난 날짜로 시행할까요?'
+        }
+        description={
+          staysPast
+            ? `${typeLabel(form.type)} 현행은 ${currentLabel}입니다.\n시행일 ${form.publishedAt.replace(/-/g, '.')}이(가) 더 앞서므로 v${form.version.trim()}은(는) 현행이 되지 않고 과거 버전으로만 기록됩니다. 사용자 화면에는 노출되지 않으며, 이후 수정도 삭제도 할 수 없습니다.`
+            : `${form.publishedAt.replace(/-/g, '.')} 00:00(한국시간)은 이미 지난 시각입니다.\n저장하는 즉시 ${typeLabel(form.type)} 현행이 v${form.version.trim()}으로 교체되며, 이후에는 수정도 삭제도 할 수 없습니다.`
+        }
+        confirmText={formMode === 'edit' ? '저장하기' : '등록하기'}
+        isLoading={isSaving}
+      />
 
       {/* 시행 예약 삭제 확인 모달 */}
       <Modal isOpen={deleteTarget !== null} onClose={() => setDeleteTarget(null)} size="sm">
@@ -752,17 +875,27 @@ export default function TermsManagementPage() {
         <ModalHeader title={`${selectedTerm?.title || ''} 미리보기`} icon={Eye} />
         <ModalBody scrollable maxHeight="70vh">
           <div className="space-y-4">
-            <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 ${getTypeBgColor(selectedTerm?.type || 'terms_of_service')} rounded-lg flex items-center justify-center`}>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-slate-50 dark:bg-slate-700 rounded-lg">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className={`w-10 h-10 shrink-0 ${getTypeBgColor(selectedTerm?.type || 'terms_of_service')} rounded-lg flex items-center justify-center`}>
                   {getTypeIcon(selectedTerm?.type || 'terms_of_service')}
                 </div>
-                <div>
-                  <p className="font-semibold text-slate-900 dark:text-white">{selectedTerm?.title}</p>
+                <div className="min-w-0">
+                  <p className="font-semibold text-slate-900 dark:text-white truncate">{selectedTerm?.title}</p>
                   <p className="text-sm text-slate-500 dark:text-slate-400 tabular-nums">
-                    버전 {selectedTerm?.version} · {isoToKstDateLabel(selectedTerm?.publishedAt)} 시행
+                    v{selectedTerm?.version} · {isoToKstDateLabel(selectedTerm?.publishedAt)} 시행
                   </p>
                 </div>
+              </div>
+
+              {/* 등록 시각 — 시행일이 같은 버전이 여럿일 때 어느 쪽이 현행인지 가르는 값이다.
+                  목록은 상태·시행일 순이라 이 근거가 드러나지 않으므로 여기에서만 밝힌다.
+                  식별값(좌)과 성격이 다르므로 축을 나눠 우측 메타로 둔다. */}
+              <div className="sm:text-right shrink-0">
+                <p className="text-xs text-slate-400 dark:text-slate-500">등록</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400 tabular-nums">
+                  {isoToKstDateTimeLabel(selectedTerm?.createdAt)}
+                </p>
               </div>
             </div>
             <div className="p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg">
