@@ -370,6 +370,10 @@ export const MESSAGES = {
       `이 수업을 수강 가능한 자녀가 없습니다. (수강 연령 ${ageRangeLabel})`,
     // [추가 2026-05-18] ChildSelector paid 자녀 배지 / SelectedChildDisplay 라벨
     paidBadgeLabel: "결제완료",
+    // ChildSelector 자녀별 등록 상태 배지 — 선/후불 방식 구분 표기
+    paidPrepaidBadgeLabel: "결제완료 · 선불",
+    postpaidActiveBadgeLabel: "수강 중 · 후불",
+    pendingPaymentBadgeLabel: "결제 대기",
     studentLabel: "수강생",
     childSelectorAriaLabel: "자녀 선택",
     selectedChildAriaLabel: "선택된 수강생",

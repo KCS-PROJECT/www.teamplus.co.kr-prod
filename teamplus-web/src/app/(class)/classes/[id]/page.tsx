@@ -163,8 +163,9 @@ interface MyEnrollment {
   requester?: { id: string };
   status: string;
   paymentId?: string | null;
-  /** [2026-06-18] 결제한 수강 플랜(ClassProduct) — 결제완료 패키지 표시·잠금용. */
-  product?: { id: string } | null;
+  /** [2026-06-18] 결제한 수강 플랜(ClassProduct) — 결제완료 패키지 표시·잠금용.
+   *  billingTiming: 선택형(BOTH) 수업의 행별 선/후불 판정용 (백엔드 resolveRowBillingTiming 규칙 미러). */
+  product?: { id: string; billingTiming?: string | null } | null;
 }
 
 // [추가 2026-05-18] 결제 옵션 페이지와 동일 — 본 수업에 신청/수강 중으로 간주할 상태.
@@ -516,6 +517,58 @@ export default function ClassDetailPage() {
     }
     return map;
   }, [myEnrollments, classId, isPostpaid, isBoth]);
+
+  // 자녀별 등록 상태 배지 — 수강생 선택 리스트에서 선/후불 방식까지 구분 표기.
+  //   후불 approved 는 잠금 집합(enrolledChildIds)에서 제외되어 무표시였음 — 미신청 자녀와
+  //   구분되지 않던 문제를 배지로 해소. 우선순위: paid > 후불 수강 중 > 결제 대기.
+  //   행별 선/후불 판정은 백엔드 resolveRowBillingTiming 규칙 미러:
+  //   전용 수업은 billingMode, BOTH 는 결제 상품의 billingTiming 으로 분기.
+  const enrollmentBadgeByChildId = useMemo(() => {
+    const RANK = { paid: 3, postpaid: 2, pending: 1 } as const;
+    const map = new Map<
+      string,
+      { label: string; tone: "paid" | "postpaid" | "pending" }
+    >();
+    const myUserId = user?.id;
+    const setIfHigher = (
+      childId: string,
+      badge: { label: string; tone: "paid" | "postpaid" | "pending" },
+    ) => {
+      const prev = map.get(childId);
+      if (!prev || RANK[badge.tone] > RANK[prev.tone]) map.set(childId, badge);
+    };
+    for (const e of myEnrollments) {
+      if (e.class?.id !== classId) continue;
+      if (!e.child?.id) continue;
+      const isRowPostpaid =
+        isPostpaid || (isBoth && e.product?.billingTiming === "POSTPAID");
+      if (e.status === "paid") {
+        setIfHigher(
+          e.child.id,
+          isRowPostpaid
+            ? {
+                label: MESSAGES.enrollment.postpaidActiveBadgeLabel,
+                tone: "postpaid",
+              }
+            : {
+                label: MESSAGES.enrollment.paidPrepaidBadgeLabel,
+                tone: "paid",
+              },
+        );
+      } else if (e.status === "approved" && (isPostpaid || isBoth)) {
+        setIfHigher(e.child.id, {
+          label: MESSAGES.enrollment.postpaidActiveBadgeLabel,
+          tone: "postpaid",
+        });
+      } else if (e.status === "pending" && e.requester?.id === myUserId) {
+        setIfHigher(e.child.id, {
+          label: MESSAGES.enrollment.pendingPaymentBadgeLabel,
+          tone: "pending",
+        });
+      }
+    }
+    return map;
+  }, [myEnrollments, classId, user?.id, isPostpaid, isBoth]);
 
   // 수업 대상 연령(targetBirthYears 우선, ageMin/ageMax 폴백)에 맞지 않는 자녀 ID 집합.
   //   결제 옵션 페이지와 동일하게 공용 isChildAgeEligibleForClass 사용 (출생연도 비연속 정확 매칭).
@@ -2372,6 +2425,7 @@ export default function ClassDetailPage() {
                     paidChildIds={
                       new Set(Array.from(paidByChildId.keys()))
                     }
+                    enrollmentBadgeByChildId={enrollmentBadgeByChildId}
                     multiSelect={isOpenClass}
                     selectedIds={selectedChildIds}
                     onToggle={handleChildToggle}
