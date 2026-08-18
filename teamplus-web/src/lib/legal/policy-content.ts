@@ -37,7 +37,8 @@ export const COMPANY_INFO = {
   name: "주식회사 아이스타임즈",
   ceo: "신명근",
   businessNumber: "554-87-03674",
-  mailOrderRegNumber: "제2025-서울송파-2647호", // 통신판매업 신고 (송파구청 2025-08-29)
+  // 통신판매업 신고 (송파구청 2025-08-29) — 신고증 원본 표기는 "제…호", 표시용은 번호만
+  mailOrderRegNumber: "2025-서울송파-2647",
   address: "서울특별시 송파구 송파대로 260, 제일오피스텔 1210호 (가락동)",
   privacyOfficer: "이준섭",
   privacyOfficerEmail: "icehockey@knewscorp.co.kr",

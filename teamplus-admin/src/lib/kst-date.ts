@@ -44,6 +44,15 @@ export const isoToKstDateLabel = (iso?: string | null): string => {
   return `${kst.getUTCFullYear()}.${pad2(kst.getUTCMonth() + 1)}.${pad2(kst.getUTCDate())}`;
 };
 
+/** ISO(UTC) → "YYYY.MM.DD HH:mm" 표시 문자열 (한국시간 KST 고정) */
+export const isoToKstDateTimeLabel = (iso?: string | null): string => {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  const kst = new Date(d.getTime() + KST_OFFSET_MS);
+  return `${kst.getUTCFullYear()}.${pad2(kst.getUTCMonth() + 1)}.${pad2(kst.getUTCDate())} ${pad2(kst.getUTCHours())}:${pad2(kst.getUTCMinutes())}`;
+};
+
 /**
  * datetime-local("YYYY-MM-DDTHH:mm") 또는 date("YYYY-MM-DD") 입력값을
  * **한국시간(KST)으로 간주**하여 백엔드용 UTC ISO 문자열로 변환한다.

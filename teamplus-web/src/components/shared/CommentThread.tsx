@@ -43,6 +43,10 @@ export interface CommentThreadProps {
     authorId: string,
     authorName: string,
   ) => void;
+  /** 댓글 삭제 클릭 핸들러. 지정 시 본인 댓글(또는 canModerate)에 삭제 버튼 노출 */
+  onDelete?: (commentId: string | number) => void;
+  /** 타 사용자 댓글도 삭제 가능한 관리 권한 (서버 moderation 판정과 동일 기준으로 전달) */
+  canModerate?: boolean;
 }
 
 /**
@@ -85,6 +89,8 @@ export function CommentThread({
   className,
   currentUserId,
   onReportClick,
+  onDelete,
+  canModerate = false,
 }: CommentThreadProps) {
   const [text, setText] = useState('');
 
@@ -146,27 +152,44 @@ export function CommentThread({
                 >
                   {formatRelativeTime(comment.createdAt)}
                 </time>
-                {/* UGC 신고 — 타 사용자 댓글에만 노출 (App Store 1.2) */}
-                {currentUserId &&
-                  comment.authorId &&
-                  comment.authorId !== currentUserId &&
-                  onReportClick && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onReportClick(
-                          comment.id,
-                          comment.authorId as string,
-                          comment.author,
-                        )
-                      }
-                      className="ml-auto shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-full text-wtext-3 hover:text-flame-500 hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
-                      aria-label="댓글 신고"
-                      title="신고"
-                    >
-                      <Icon name="flag" className="text-[15px]" aria-hidden="true" />
-                    </button>
-                  )}
+                <span className="ml-auto shrink-0 inline-flex items-center gap-0.5">
+                  {/* UGC 신고 — 타 사용자 댓글에만 노출 (App Store 1.2) */}
+                  {currentUserId &&
+                    comment.authorId &&
+                    comment.authorId !== currentUserId &&
+                    onReportClick && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onReportClick(
+                            comment.id,
+                            comment.authorId as string,
+                            comment.author,
+                          )
+                        }
+                        className="inline-flex h-6 w-6 items-center justify-center rounded-full text-wtext-3 hover:text-flame-500 hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
+                        aria-label="댓글 신고"
+                        title="신고"
+                      >
+                        <Icon name="flag" className="text-[15px]" aria-hidden="true" />
+                      </button>
+                    )}
+                  {/* 삭제 — 본인 댓글 또는 관리 권한(canModerate) */}
+                  {onDelete &&
+                    ((currentUserId &&
+                      comment.authorId === currentUserId) ||
+                      canModerate) && (
+                      <button
+                        type="button"
+                        onClick={() => onDelete(comment.id)}
+                        className="inline-flex h-6 w-6 items-center justify-center rounded-full text-wtext-3 hover:text-flame-500 hover:bg-wline-2 dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none"
+                        aria-label="댓글 삭제"
+                        title="삭제"
+                      >
+                        <Icon name="delete" className="text-[15px]" aria-hidden="true" />
+                      </button>
+                    )}
+                </span>
               </div>
               <p className="mt-1 text-sm text-wtext-2 dark:text-rink-100 whitespace-pre-wrap break-words">
                 {comment.content}

@@ -1500,6 +1500,10 @@ export const MESSAGES = {
     deleted: "공지사항이 삭제되었습니다.",
     deleteConfirm: "정말 이 공지를 삭제하시겠습니까?",
     deleteConfirmDesc: "삭제한 공지는 복구할 수 없습니다.",
+    commentDeleted: "댓글이 삭제되었습니다.",
+    commentDeleteConfirm: "이 댓글을 삭제하시겠습니까?",
+    commentDeleteConfirmDesc: "삭제한 댓글은 복구할 수 없습니다.",
+    commentLoadMore: (n: number) => `이전 댓글 ${n}개 더보기`,
     manage: "공지 관리",
     manageMenuOpen: "공지 관리 메뉴 열기",
     /**

@@ -384,6 +384,8 @@ export function GlobalMenu({ isOpen, onClose }: GlobalMenuProps) {
   // [추가] 아코디언 — single-open 방식. 현재 펼친 그룹 id 1개만 보관(null = 전체 닫힘 / 기본값).
   //  다른 그룹을 열면 기존 그룹은 자동으로 닫혀(max-height transition), 한 번에 하나만 펼쳐진다.
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
+  // 푸터 사업자 정보 접이식 토글 — 기본 접힘 (전상법 §10 연결화면 방식)
+  const [isBizInfoOpen, setIsBizInfoOpen] = useState(false);
   // [추가] 아바타 사진 변경 — 숨겨진 파일 input ref + 업로드 진행 상태
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
@@ -1111,60 +1113,72 @@ export function GlobalMenu({ isOpen, onClose }: GlobalMenuProps) {
           <div className="h-6" />
         </div>
 
-        {/* ── M1 Footer — 사업자 정보 + 약관 + 버전 ── */}
+        {/* ── M1 Footer — 사업자 정보(접이식) + 앱 버전 ── */}
         {/*
-          전자상거래법 §10조: 통신판매업자 정보 표시 의무
-          정보통신망법 §42조의3: 청소년보호책임자 지정 사실 공개
+          전자상거래법 §10조: 통신판매업자 정보 표시 의무.
+            초기 화면 외 "연결화면"(한 번의 조작으로 도달) 표시가 허용되므로
+            기본 접힘 토글로 표시한다 — 토스·배민 등 통용 패턴.
           Apple App Review 1.5: Developer Information (Support URL)
           관련 정책 항목: O-01~O-08 (사업자정보·고객센터)
 
-          [2026-07-30] COMPANY_INFO 는 사업자등록증 원본 기준 실제 정보로 채워져 있다
-            (lib/legal/policy-content.ts) — 과거의 "placeholder 교체" TODO 는 해소되어 제거.
-          [2026-07-30] 청소년보호책임자 표시 추가 (개인정보 보호책임자 겸임).
-          ※ 통신판매업 신고번호는 쇼핑몰 영역(ShopBusinessFooter)에만 표시한다 —
-            쇼핑몰 1차 미노출 정책에 따라 이 전역 푸터에는 넣지 않는다.
+          COMPANY_INFO 는 사업자등록증 원본 기준 실제 정보 (lib/legal/policy-content.ts).
+          ※ 개인정보 보호책임자·청소년보호책임자는 법정 공개 위치인 개인정보 처리방침
+            (DB AppTerms 현행본 + policy-content.ts 폴백 양쪽 기재 확인)으로 일원화 —
+            푸터 표시 의무가 없어 여기서는 제외한다. 처리방침 개정 시 해당 조항 유지 필수.
+          ※ 통신판매업 신고번호는 수업·대회 결제도 통신판매에 해당하므로 전역 푸터에도
+            표시한다 (쇼핑몰 영역 ShopBusinessFooter 와 병행 · SoT=COMPANY_INFO).
           ※ 이 푸터는 드로어 스크롤 영역 밖(aside 직계)이라 드로어가 열려 있는 동안 항상 보인다.
         */}
-        <footer className="px-6 pt-3.5 pb-7 border-t border-wline-2 dark:border-rink-700/60 space-y-3">
-          {/* [2026-05-25] 약관 링크 nav 제거 — 이용약관·개인정보·환불·커뮤니티 규칙·접근성은
-              "고객지원" 그룹 하위 항목(LEGAL_SUPPORT_ITEMS)으로 이동 (사용자 요청).
-              footer 에는 전자상거래법 §10조 사업자 정보 + 앱 버전만 유지. */}
+        <footer className="px-6 pt-1.5 pb-7 border-t border-wline-2 dark:border-rink-700/60">
+          {/* 토글 행 — 접힌 상태에서는 이 한 줄 + 앱 버전만 보인다 */}
+          <button
+            type="button"
+            onClick={() => setIsBizInfoOpen((prev) => !prev)}
+            className={cn(
+              "w-full flex items-center justify-between gap-2 py-2 text-left",
+              "transition-colors motion-reduce:transition-none",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40",
+            )}
+            aria-expanded={isBizInfoOpen}
+            aria-controls="gm-biz-info"
+          >
+            <span className="flex items-center gap-1 text-card-meta font-semibold text-wtext-4 dark:text-rink-300">
+              {COMPANY_INFO.name} 사업자 정보
+              <Icon
+                name="expand_more"
+                className={cn(
+                  "shrink-0 text-[16px]",
+                  "transition-transform duration-300 ease-ios motion-reduce:transition-none",
+                  isBizInfoOpen ? "rotate-180" : "rotate-0",
+                )}
+                aria-hidden="true"
+              />
+            </span>
+            <span className="text-card-meta text-wtext-4 dark:text-rink-300 tracking-[-0.01em]">
+              {appVersionLabel}
+            </span>
+          </button>
 
-          {/* 사업자 정보 — 전자상거래법 §10조 */}
-          <address className="not-italic text-card-meta text-wtext-4 dark:text-rink-300 leading-relaxed space-y-0.5">
-            <p>
-              <span className="font-semibold">{COMPANY_INFO.name}</span>
-              <span className="mx-1.5" aria-hidden="true">
-                |
-              </span>
-              대표 {COMPANY_INFO.ceo}
-            </p>
-            <p>사업자등록번호 {COMPANY_INFO.businessNumber}</p>
-            <p>{COMPANY_INFO.address}</p>
-            <p>
-              고객센터 {COMPANY_INFO.csPhone}
-              <span className="mx-1.5" aria-hidden="true">
-                |
-              </span>
-              {COMPANY_INFO.csEmail}
-            </p>
-            <p className="text-card-meta opacity-80">
-              운영시간 {COMPANY_INFO.csHours}
-            </p>
-            <p className="text-card-meta opacity-80">
-              개인정보 보호책임자 {COMPANY_INFO.privacyOfficer}
-            </p>
-            {/* 정보통신망법 §42조의3 — 청소년보호책임자 지정 사실 공개 */}
-            <p className="text-card-meta opacity-80">
-              청소년보호책임자 {COMPANY_INFO.youthProtectionOfficer} (
-              {COMPANY_INFO.youthProtectionOfficerEmail})
-            </p>
-          </address>
-
-          {/* 앱 버전 (기존) */}
-          <p className="text-card-meta text-wtext-4 dark:text-rink-300 tracking-[-0.01em]">
-            {appVersionLabel}
-          </p>
+          {/* 사업자 정보 — 전자상거래법 §10조 법정 항목만 */}
+          <div
+            id="gm-biz-info"
+            className={cn(
+              "overflow-hidden transition-all duration-300 ease-ios motion-reduce:transition-none",
+              isBizInfoOpen ? "max-h-52 opacity-100" : "max-h-0 opacity-0",
+            )}
+          >
+            <address className="not-italic pt-1 text-card-meta text-wtext-4 dark:text-rink-300 leading-relaxed space-y-0.5">
+              {/* 상호는 토글 행에 상시 노출되므로 여기서는 반복하지 않는다 */}
+              <p>대표: {COMPANY_INFO.ceo}</p>
+              <p>사업자등록번호: {COMPANY_INFO.businessNumber}</p>
+              <p>통신판매업 신고번호: {COMPANY_INFO.mailOrderRegNumber}</p>
+              <p>주소: {COMPANY_INFO.address}</p>
+              <p>
+                고객센터: {COMPANY_INFO.csPhone} · {COMPANY_INFO.csEmail}
+              </p>
+              <p>운영시간: {COMPANY_INFO.csHours}</p>
+            </address>
+          </div>
         </footer>
       </aside>
     </div>,

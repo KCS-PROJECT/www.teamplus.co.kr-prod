@@ -765,6 +765,9 @@ function AppSettingsContent() {
                     aria-label="이용약관 버전"
                     className="h-11 bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 dark:text-white"
                   />
+                  <p className="text-xs text-slate-400 dark:text-slate-500 tabular-nums">
+                    v 없이 숫자만 입력
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <label
@@ -783,6 +786,9 @@ function AppSettingsContent() {
                     aria-label="개인정보처리방침 버전"
                     className="h-11 bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 dark:text-white"
                   />
+                  <p className="text-xs text-slate-400 dark:text-slate-500 tabular-nums">
+                    v 없이 숫자만 입력
+                  </p>
                 </div>
               </div>
             </div>

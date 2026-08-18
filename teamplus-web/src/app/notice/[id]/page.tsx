@@ -83,6 +83,16 @@ interface RawComment {
   user?: { id: string; firstName?: string; lastName?: string };
 }
 
+/** 댓글 목록 페이지 응답 (백엔드 getComments 계약) */
+interface RawCommentPage {
+  data?: RawComment[];
+  comments?: RawComment[];
+  pagination?: { total: number; page: number; limit: number; totalPages: number };
+}
+
+/** 한 페이지 수신 개수 — 백엔드 기본값(10)은 잘림이 보이지 않는 문제가 있어 명시 전송 */
+const COMMENTS_PAGE_SIZE = 30;
+
 /** 원시 댓글 → CommentData 매핑 (작성자명/ID 정규화). 백엔드는 userName/userId 를 내려주고
  *  CommentThread 는 author/authorId 를 기대하므로 여기서 통일한다. */
 function mapRawComment(c: RawComment): CommentData {
@@ -129,6 +139,10 @@ export default function NoticeDetailPage() {
   const { user } = useSessionAuth();
   const currentUserId = user?.id ?? '';
   const [comments, setComments] = useState<CommentData[]>([]);
+  // 서버 기준 전체 댓글 수 — 더보기 버튼 노출 판정. 작성/삭제 시 로컬에서 함께 보정한다.
+  const [commentTotal, setCommentTotal] = useState(0);
+  const [commentPage, setCommentPage] = useState(1);
+  const [isLoadingMoreComments, setIsLoadingMoreComments] = useState(false);
 
   const { navigate, back } = useNavigation();
   const { toast } = useToast();
@@ -246,8 +260,8 @@ export default function NoticeDetailPage() {
   // 댓글 로드 (api 클라이언트 사용 — 파일 일관성)
   const loadComments = useCallback(async () => {
     if (!noticeId) return;
-    const res = await api.get<{ data?: RawComment[]; comments?: RawComment[] }>(
-      `/notices/${noticeId}/comments`,
+    const res = await api.get<RawCommentPage>(
+      `/notices/${noticeId}/comments?page=1&limit=${COMMENTS_PAGE_SIZE}`,
     );
     // 백엔드는 { data: [...] } 형태로 반환. 과거 comments 키와의 불일치 양쪽 지원.
     const rawList = res.data?.data ?? res.data?.comments;
@@ -257,12 +271,44 @@ export default function NoticeDetailPage() {
         (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
       );
       setComments(ordered.map(mapRawComment));
+      setCommentPage(1);
+      setCommentTotal(res.data?.pagination?.total ?? rawList.length);
     }
   }, [noticeId]);
 
   useEffect(() => {
     void loadComments();
   }, [loadComments]);
+
+  // 이전 댓글 더보기 — 다음 페이지(desc 기준 = 더 오래된 묶음)를 받아 목록 위쪽에 병합.
+  // offset 기반이라 로드 사이에 새 댓글이 달리면 경계가 밀려 중복 수신될 수 있어 id 로 걸러낸다.
+  const handleLoadMoreComments = useCallback(async () => {
+    if (!noticeId || isLoadingMoreComments) return;
+    setIsLoadingMoreComments(true);
+    try {
+      const nextPage = commentPage + 1;
+      const res = await api.get<RawCommentPage>(
+        `/notices/${noticeId}/comments?page=${nextPage}&limit=${COMMENTS_PAGE_SIZE}`,
+      );
+      const rawList = res.data?.data ?? res.data?.comments;
+      if (res.success && rawList) {
+        const ordered = [...rawList].sort(
+          (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+        );
+        setComments((prev) => {
+          const existingIds = new Set(prev.map((c) => c.id));
+          const fresh = ordered
+            .map(mapRawComment)
+            .filter((c) => !existingIds.has(c.id));
+          return [...fresh, ...prev];
+        });
+        setCommentPage(nextPage);
+        if (res.data?.pagination) setCommentTotal(res.data.pagination.total);
+      }
+    } finally {
+      setIsLoadingMoreComments(false);
+    }
+  }, [noticeId, commentPage, isLoadingMoreComments]);
 
   const handleCommentSubmit = useCallback(
     async (text: string) => {
@@ -271,9 +317,36 @@ export default function NoticeDetailPage() {
       });
       if (res.success && res.data) {
         setComments((prev) => [...prev, mapRawComment(res.data as RawComment)]);
+        setCommentTotal((prev) => prev + 1);
       }
     },
     [noticeId],
+  );
+
+  const handleCommentDelete = useCallback(
+    async (commentId: string | number) => {
+      const confirmed = await modal.confirm({
+        title: MESSAGES.notice.commentDeleteConfirm,
+        message: MESSAGES.notice.commentDeleteConfirmDesc,
+        confirmText: '삭제하기',
+        cancelText: '취소',
+        variant: 'danger',
+      });
+      if (!confirmed) return;
+      try {
+        const res = await api.delete(`/notices/comments/${commentId}`);
+        if (res.success) {
+          toast.success(MESSAGES.notice.commentDeleted);
+          setComments((prev) => prev.filter((c) => c.id !== commentId));
+          setCommentTotal((prev) => Math.max(0, prev - 1));
+        } else {
+          toast.error(MESSAGES.error.general);
+        }
+      } catch {
+        toast.error(MESSAGES.error.general);
+      }
+    },
+    [modal, toast],
   );
 
   const header = <PageAppBar title="공지 상세" forceNative />;
@@ -394,18 +467,28 @@ export default function NoticeDetailPage() {
         <section className="bg-it-surface dark:bg-rink-800 pb-3" aria-label="댓글">
           <SectionLabel>
             댓글
-            {comments.length > 0 && (
-              <span className="ml-1 rounded-w-pill bg-it-line dark:bg-rink-700 px-1.5 py-px text-[11px] font-extrabold text-it-ink-700 dark:text-wtext-4 tabular-nums">
-                {comments.length}
-              </span>
-            )}
+            <span className="ml-1 rounded-w-pill bg-it-line dark:bg-rink-700 px-1.5 py-px text-[11px] font-extrabold text-it-ink-700 dark:text-wtext-4 tabular-nums">
+              {commentTotal}
+            </span>
           </SectionLabel>
           <div className="px-5 pb-2">
+            {commentTotal > comments.length && (
+              <button
+                type="button"
+                onClick={() => void handleLoadMoreComments()}
+                disabled={isLoadingMoreComments}
+                className="mb-4 flex h-10 w-full items-center justify-center gap-1.5 rounded-w-md border border-it-line dark:border-rink-700 bg-it-fill dark:bg-rink-700/40 text-[13px] font-bold text-it-ink-600 dark:text-rink-100 transition-colors motion-reduce:transition-none hover:bg-it-line/60 dark:hover:bg-rink-700 active:brightness-95 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-it-blue-500/40"
+              >
+                <Icon name="expand_less" className="text-[18px]" aria-hidden="true" />
+                {MESSAGES.notice.commentLoadMore(commentTotal - comments.length)}
+              </button>
+            )}
             <CommentThread
               comments={comments}
               onSubmit={handleCommentSubmit}
               placeholder={MESSAGES.placeholders.enterCommentSimple}
               currentUserId={currentUserId}
+              onDelete={handleCommentDelete}
             />
           </div>
         </section>
