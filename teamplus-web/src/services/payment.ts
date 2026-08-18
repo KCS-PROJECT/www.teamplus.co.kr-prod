@@ -7,6 +7,7 @@
  */
 
 import { api } from './api-client';
+import { MESSAGES } from '@/lib/messages';
 import type { ApiResponse } from '@/types';
 import type { PaymentStatus } from '@/types/api';
 import type {
@@ -150,7 +151,13 @@ function normalizePositiveInt(value: unknown): number | undefined {
 
 function toPaymentHistoryItem(item: BackendPaymentItem): PaymentHistoryItem {
   const status = mapPaymentStatus(item.paymentStatus);
-  const productName = item.productName || '이용권';
+  const sourceType = normalizePaymentSourceType(item.sourceType);
+  // 대회 결제는 Payment.productId 가 null(상품 미연결) — 출처 인식형 폴백으로 표기.
+  const productName =
+    item.productName ||
+    (sourceType === 'TOURNAMENT'
+      ? MESSAGES.payment2.tournamentFeeProduct
+      : MESSAGES.payment2.fallbackProduct);
   const amount = typeof item.amount === 'string' ? Number(item.amount) : item.amount;
   const baseDate = item.completedAt || item.createdAt;
 
@@ -165,7 +172,7 @@ function toPaymentHistoryItem(item: BackendPaymentItem): PaymentHistoryItem {
     amount: Number.isFinite(amount) ? amount : 0,
     status,
     orderNumber: item.orderNumber,
-    sourceType: normalizePaymentSourceType(item.sourceType),
+    sourceType,
     billingTiming: normalizePaymentBillingTiming(item.billingTiming),
     subjectName: normalizeOptionalText(item.subjectName),
     childName: normalizeOptionalText(item.childName),

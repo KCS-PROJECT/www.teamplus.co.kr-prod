@@ -14,6 +14,7 @@ jest.mock('@/services/api-client', () => ({
 
 import { api } from '@/services/api-client';
 import { getPaymentHistory } from '@/services/payment';
+import { MESSAGES } from '@/lib/messages';
 
 const mockGet = api.get as jest.Mock;
 
@@ -185,5 +186,44 @@ describe('getPaymentHistory — 출처·선후불 정규화', () => {
     expect(item.billingYearMonth).toBeUndefined();
     expect(item.attendanceCount).toBeUndefined();
     expect(item.unitPrice).toBeUndefined();
+  });
+  it('상품명 미연결 대회 결제 → "대회 참가비" 폴백', async () => {
+    mockGet.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          id: 'p8',
+          orderNumber: 'TRN-1',
+          amount: 20000,
+          paymentStatus: 'completed',
+          productName: null,
+          createdAt: '2026-07-08T00:00:00.000Z',
+          sourceType: 'TOURNAMENT',
+          billingTiming: 'PREPAID',
+        },
+      ],
+    });
+
+    const item = (await getPaymentHistory()).data!.payments[0];
+    expect(item.productName).toBe(MESSAGES.payment2.tournamentFeeProduct);
+  });
+
+  it('상품명·출처 모두 미상 → 일반 "이용권" 폴백 유지', async () => {
+    mockGet.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          id: 'p9',
+          orderNumber: 'ORD-9',
+          amount: 15000,
+          paymentStatus: 'completed',
+          productName: null,
+          createdAt: '2026-07-09T00:00:00.000Z',
+        },
+      ],
+    });
+
+    const item = (await getPaymentHistory()).data!.payments[0];
+    expect(item.productName).toBe(MESSAGES.payment2.fallbackProduct);
   });
 });

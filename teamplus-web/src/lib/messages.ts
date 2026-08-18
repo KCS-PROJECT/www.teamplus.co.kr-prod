@@ -869,6 +869,10 @@ export const MESSAGES = {
     sourceTournament: "대회",
     prepaid: "선불",
     postpaid: "후불",
+    // 상품명 폴백 — 대회 결제는 Payment.productId 가 null(상품 미연결)이라
+    //   출처 인식형 라벨로 대체. 그 외 미상 건만 일반 폴백 사용.
+    tournamentFeeProduct: "대회 참가비",
+    fallbackProduct: "이용권",
     // 후불 산정 근거 라인 — 결제내역 카드에 정산월·출석횟수·회당 단가 표시.
     settlementMonth: (year: number, month: number) =>
       `${year}년 ${month}월 정산`,

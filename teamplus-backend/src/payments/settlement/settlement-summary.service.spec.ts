@@ -1733,7 +1733,7 @@ describe("SettlementSummaryService", () => {
 
     it("월 경계(KST)·상태 필터·팀 연결 스코프로 조회하고 파생 필드를 매핑한다", async () => {
       resourceAccessMock.resolveManageableTeamIds.mockResolvedValue(["team-1"]);
-      prismaMock.payment.count.mockResolvedValue(2);
+      prismaMock.payment.count.mockResolvedValue(3);
       prismaMock.payment.findMany.mockResolvedValue([
         {
           id: "pay-1",
@@ -1760,7 +1760,26 @@ describe("SettlementSummaryService", () => {
           product: null,
           enrollments: [],
           tournamentRegistrations: [
-            { tournament: { name: "여름컵", billingMode: "POSTPAID" } },
+            {
+              tournament: { name: "여름컵", billingMode: "POSTPAID" },
+              child: { firstName: "영희", lastName: "김" },
+            },
+          ],
+          monthlyBillingLines: [],
+        },
+        {
+          id: "pay-3",
+          amount: 30000,
+          paymentStatus: "completed",
+          completedAt: new Date("2026-07-18T02:00:00Z"),
+          user: { firstName: "부모", lastName: "박" },
+          product: null,
+          enrollments: [],
+          tournamentRegistrations: [
+            {
+              tournament: { name: "가을컵", billingMode: "PREPAID" },
+              child: null,
+            },
           ],
           monthlyBillingLines: [],
         },
@@ -1785,7 +1804,7 @@ describe("SettlementSummaryService", () => {
       expect(arg.where.OR).toHaveLength(3);
       expect(arg.orderBy).toEqual({ completedAt: "desc" });
 
-      expect(res.totalCount).toBe(2);
+      expect(res.totalCount).toBe(3);
       expect(res.items[0]).toMatchObject({
         paymentId: "pay-1",
         payerName: "홍부모",
@@ -1794,12 +1813,21 @@ describe("SettlementSummaryService", () => {
         sourceType: "CLASS",
         billingTiming: "PREPAID",
       });
+      // 대회 건도 신청 자녀(선수)명을 childName 으로 매핑 — 훈련 건과 표기 통일.
       expect(res.items[1]).toMatchObject({
         paymentId: "pay-2",
         paymentStatus: "refunded",
+        childName: "김영희",
         subjectName: "여름컵",
         sourceType: "TOURNAMENT",
         billingTiming: "POSTPAID",
+      });
+      // 자녀 미지정 대회 신청 — childName null 유지(프론트가 대회명 타이틀로 폴백).
+      expect(res.items[2]).toMatchObject({
+        paymentId: "pay-3",
+        childName: null,
+        subjectName: "가을컵",
+        sourceType: "TOURNAMENT",
       });
     });
   });

@@ -1630,6 +1630,7 @@ export class SettlementSummaryService {
           tournamentRegistrations: {
             select: {
               tournament: { select: { name: true, billingMode: true } },
+              child: { select: { firstName: true, lastName: true } },
             },
             take: 1,
           },
@@ -1664,7 +1665,10 @@ export class SettlementSummaryService {
         paymentStatus: p.paymentStatus,
         completedAt: p.completedAt as Date,
         payerName: toName(p.user),
-        childName: toName(line?.user) ?? toName(p.enrollments?.[0]?.child),
+        childName:
+          toName(line?.user) ??
+          toName(p.enrollments?.[0]?.child) ??
+          toName(tReg?.child),
         subjectName:
           tReg?.tournament?.name ??
           p.enrollments?.[0]?.class?.className ??
