@@ -49,6 +49,8 @@ describe("SettlementSummaryService", () => {
     user: { findMany: jest.fn(), findUnique: jest.fn() },
     parentChild: { findMany: jest.fn() },
     payment: { findMany: jest.fn(), count: jest.fn() },
+    monthlyPostpaidBillingLine: { findMany: jest.fn(), count: jest.fn() },
+    tournamentRegistration: { findMany: jest.fn(), count: jest.fn() },
   };
 
   const resourceAccessMock = {
@@ -118,6 +120,10 @@ describe("SettlementSummaryService", () => {
     prismaMock.parentChild.findMany.mockResolvedValue([]);
     prismaMock.payment.findMany.mockResolvedValue([]);
     prismaMock.payment.count.mockResolvedValue(0);
+    prismaMock.monthlyPostpaidBillingLine.findMany.mockResolvedValue([]);
+    prismaMock.tournamentRegistration.findMany.mockResolvedValue([]);
+    prismaMock.monthlyPostpaidBillingLine.count.mockResolvedValue(0);
+    prismaMock.tournamentRegistration.count.mockResolvedValue(0);
     resourceAccessMock.resolveManageableTeamIds.mockResolvedValue([]);
     notificationsMock.notifyUsers.mockResolvedValue(undefined);
     redisMock.setIfNotExists.mockResolvedValue(true);
@@ -1733,7 +1739,7 @@ describe("SettlementSummaryService", () => {
 
     it("월 경계(KST)·상태 필터·팀 연결 스코프로 조회하고 파생 필드를 매핑한다", async () => {
       resourceAccessMock.resolveManageableTeamIds.mockResolvedValue(["team-1"]);
-      prismaMock.payment.count.mockResolvedValue(2);
+      prismaMock.payment.count.mockResolvedValue(3);
       prismaMock.payment.findMany.mockResolvedValue([
         {
           id: "pay-1",
@@ -1760,7 +1766,26 @@ describe("SettlementSummaryService", () => {
           product: null,
           enrollments: [],
           tournamentRegistrations: [
-            { tournament: { name: "여름컵", billingMode: "POSTPAID" } },
+            {
+              tournament: { name: "여름컵", billingMode: "POSTPAID" },
+              child: { firstName: "영희", lastName: "김" },
+            },
+          ],
+          monthlyBillingLines: [],
+        },
+        {
+          id: "pay-3",
+          amount: 30000,
+          paymentStatus: "completed",
+          completedAt: new Date("2026-07-18T02:00:00Z"),
+          user: { firstName: "부모", lastName: "박" },
+          product: null,
+          enrollments: [],
+          tournamentRegistrations: [
+            {
+              tournament: { name: "가을컵", billingMode: "PREPAID" },
+              child: null,
+            },
           ],
           monthlyBillingLines: [],
         },
@@ -1785,7 +1810,7 @@ describe("SettlementSummaryService", () => {
       expect(arg.where.OR).toHaveLength(3);
       expect(arg.orderBy).toEqual({ completedAt: "desc" });
 
-      expect(res.totalCount).toBe(2);
+      expect(res.totalCount).toBe(3);
       expect(res.items[0]).toMatchObject({
         paymentId: "pay-1",
         payerName: "홍부모",
@@ -1794,12 +1819,139 @@ describe("SettlementSummaryService", () => {
         sourceType: "CLASS",
         billingTiming: "PREPAID",
       });
+      // 대회 건도 신청 자녀(선수)명을 childName 으로 매핑 — 훈련 건과 표기 통일.
       expect(res.items[1]).toMatchObject({
         paymentId: "pay-2",
         paymentStatus: "refunded",
+        childName: "김영희",
         subjectName: "여름컵",
         sourceType: "TOURNAMENT",
         billingTiming: "POSTPAID",
+      });
+      // 자녀 미지정 대회 신청 — childName null 유지(프론트가 대회명 타이틀로 폴백).
+      expect(res.items[2]).toMatchObject({
+        paymentId: "pay-3",
+        childName: null,
+        subjectName: "가을컵",
+        sourceType: "TOURNAMENT",
+      });
+    });
+  });
+
+  // ── 연체 미납 (getTeamUnpaidTotal / getTeamUnpaidItems — Hero 칩·미납 페이지) ──
+  describe("getTeamUnpaidTotal", () => {
+    it("scope 0팀이면 조회 없이 count 0", async () => {
+      resourceAccessMock.resolveManageableTeamIds.mockResolvedValue([]);
+      const res = await service.getTeamUnpaidTotal(coach);
+      expect(res).toEqual({ count: 0 });
+      expect(prismaMock.monthlyPostpaidBillingLine.count).not.toHaveBeenCalled();
+      expect(prismaMock.tournamentRegistration.count).not.toHaveBeenCalled();
+    });
+
+    it("인별 청구 라인 단위 합산 — 수업 라인 3 + 대회 청구 2 = 5건 (감독이 화면에서 세는 줄 수)", async () => {
+      resourceAccessMock.resolveManageableTeamIds.mockResolvedValue(["team-1"]);
+      prismaMock.monthlyPostpaidBillingLine.count.mockResolvedValue(3);
+      prismaMock.tournamentRegistration.count.mockResolvedValue(2);
+
+      const res = await service.getTeamUnpaidTotal(coach);
+      expect(res).toEqual({ count: 5 });
+    });
+
+    it("연체 정의 가드 — 확정 청구 pending + 그레이스 경과만 / PREPAID 대회 PENDING(결제 이탈) 제외", async () => {
+      resourceAccessMock.resolveManageableTeamIds.mockResolvedValue(["team-1"]);
+      await service.getTeamUnpaidTotal(coach);
+
+      const lineWhere =
+        prismaMock.monthlyPostpaidBillingLine.count.mock.calls[0][0].where;
+      expect(lineWhere.paymentStatus).toBe("pending");
+      expect(lineWhere.billing.status).toBe("confirmed");
+      // 그레이스: 청구 확정이 cutoff(현재-7일) 이전인 것만 — 정산 직후 전원 미납의 칩 폭증 차단.
+      expect(lineWhere.billing.confirmedAt.lte).toBeInstanceOf(Date);
+      expect(
+        Date.now() - lineWhere.billing.confirmedAt.lte.getTime(),
+      ).toBeGreaterThanOrEqual(7 * 24 * 60 * 60 * 1000 - 5000);
+
+      const regWhere =
+        prismaMock.tournamentRegistration.count.mock.calls[0][0].where;
+      expect(regWhere.paymentStatus).toBe("PENDING");
+      expect(regWhere.tournament.billingMode).toBe("POSTPAID");
+      expect(regWhere.payment.is.paymentStatus).toBe("pending");
+      expect(regWhere.payment.is.createdAt.lte).toBeInstanceOf(Date);
+    });
+  });
+
+  describe("getTeamUnpaidItems", () => {
+    it("청구 단위 그룹 + 인별 라인 + 오래된 청구 우선 정렬 — count/총액이 total 과 동일 정의", async () => {
+      resourceAccessMock.resolveManageableTeamIds.mockResolvedValue(["team-1"]);
+      const june = new Date("2026-06-05T03:00:00Z");
+      const aug = new Date("2026-08-01T03:00:00Z");
+      prismaMock.monthlyPostpaidBillingLine.findMany.mockResolvedValue([
+        {
+          userId: "child-1",
+          amount: 50000,
+          billingId: "b1",
+          billing: {
+            yearMonth: "2026-06",
+            confirmedAt: june,
+            class: { id: "c1", className: "블랭크 수업" },
+          },
+          user: { firstName: "자녀", lastName: "자" },
+        },
+        {
+          userId: "child-2",
+          amount: 30000,
+          billingId: "b1",
+          billing: {
+            yearMonth: "2026-06",
+            confirmedAt: june,
+            class: { id: "c1", className: "블랭크 수업" },
+          },
+          user: { firstName: "이녀", lastName: "자" },
+        },
+      ]);
+      prismaMock.tournamentRegistration.findMany.mockResolvedValue([
+        {
+          tournamentId: "t1",
+          userId: "parent-1",
+          childId: "child-3",
+          payment: { amount: 50000, createdAt: aug },
+          tournament: { name: "대회대회" },
+          child: { firstName: "삼녀", lastName: "자" },
+          user: { firstName: "부모", lastName: "강" },
+        },
+      ]);
+
+      const res = await service.getTeamUnpaidItems(coach);
+
+      // count = 인별 청구 라인 수(수업 2명 + 대회 1명) — total 집계와 동일 단위.
+      expect(res.count).toBe(3);
+      expect(res.totalAmount).toBe(130000);
+      expect(res.graceDays).toBe(7);
+      // 오래된 청구(6월 수업) 우선.
+      expect(res.items[0]).toMatchObject({
+        sourceType: "CLASS",
+        sourceId: "c1",
+        sourceName: "블랭크 수업",
+        yearMonth: "2026-06",
+        amount: 80000,
+      });
+      expect(res.items[0].members).toEqual([
+        { memberId: "child-1", memberName: "자자녀", amount: 50000 },
+        { memberId: "child-2", memberName: "자이녀", amount: 30000 },
+      ]);
+      expect(res.items[0].overdueDays).toBeGreaterThan(7);
+      // 대회 — 귀속월 = 청구 발행 KST월, member = 자녀 우선.
+      expect(res.items[1]).toMatchObject({
+        sourceType: "TOURNAMENT",
+        sourceId: "t1",
+        sourceName: "대회대회",
+        yearMonth: "2026-08",
+        amount: 50000,
+      });
+      expect(res.items[1].members[0]).toEqual({
+        memberId: "child-3",
+        memberName: "자삼녀",
+        amount: 50000,
       });
     });
   });

@@ -40,7 +40,10 @@ import {
   findBlockingOwnershipDetailed,
   WithdrawBlockerKey,
 } from "@/common/utils/withdrawal-guard.util";
-import { countPresentAttendanceSincePayment } from "@/common/utils/enrollment-usage.util";
+import {
+  countPresentAttendanceSincePayment,
+  hasElapsedScheduleSincePayment,
+} from "@/common/utils/enrollment-usage.util";
 import { JwtPayload } from "@/common/interfaces/authenticated-request.interface";
 import {
   CHLDIV,
@@ -2765,8 +2768,9 @@ export class AuthService {
       linkUrl: resolveWithdrawBlockerLink(b.key, user.userType),
     }));
 
-    // 개시 전(결제일 이후 present 출석 0) 셀프 전액환불 가능한 수강 결제 수 —
+    // 개시 전(출석 0 + 경과 일정 0) 셀프 전액환불 가능한 수강 결제 수 —
     // 탈퇴 확정 시 소멸 대신 환불을 유도하기 위한 안내용(학부모만).
+    // 판정은 셀프 취소 가드(assertEnrollmentNotUsed)와 동일 기준을 공유한다.
     let refundableCount = 0;
     if (user.userType === "PARENT") {
       const payments = await this.prisma.payment.findMany({
@@ -2792,7 +2796,10 @@ export class AuthService {
             e,
             paidDayUtc,
           );
-          if (usedCount > 0) {
+          if (
+            usedCount > 0 ||
+            (await hasElapsedScheduleSincePayment(this.prisma, e, paidDayUtc))
+          ) {
             used = true;
             break;
           }

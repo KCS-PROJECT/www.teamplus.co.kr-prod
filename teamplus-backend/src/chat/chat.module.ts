@@ -1,9 +1,12 @@
 import { Module } from "@nestjs/common";
+import { JwtModule } from "@nestjs/jwt";
+import { ConfigModule, ConfigService } from "@nestjs/config";
 import { MulterModule } from "@nestjs/platform-express";
 import { diskStorage } from "multer";
 import { extname } from "path";
 import { ChatController } from "./chat.controller";
 import { ChatService } from "./chat.service";
+import { ChatGateway } from "./chat.gateway";
 import { PrismaModule } from "@/prisma/prisma.module";
 import { ModerationModule } from "@/moderation/moderation.module";
 import { NotificationsModule } from "@/notifications/notifications.module";
@@ -14,6 +17,20 @@ import { getCategoryDir } from "@/common/upload-paths";
     PrismaModule,
     NotificationsModule, // 신규 메시지 FCM 푸시(pushOnlyToUsers)
     ModerationModule, // 차단 사용자 ID 조회(getBlockedUserIds) — 채팅 차단 필터링
+    // ChatGateway JWT 핸드셰이크 검증용 — websocket.module.ts 와 동일 구성
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.get<string>("JWT_SECRET"),
+        signOptions: {
+          expiresIn: parseInt(
+            configService.get<string>("JWT_EXPIRATION", "900"),
+            10,
+          ),
+        },
+      }),
+      inject: [ConfigService],
+    }),
     MulterModule.register({
       storage: diskStorage({
         // 단일 진입점 — UPLOAD_ROOT env 적용. files/videos/shop/inspections/tms 와 동일 베이스.
@@ -52,7 +69,7 @@ import { getCategoryDir } from "@/common/upload-paths";
     }),
   ],
   controllers: [ChatController],
-  providers: [ChatService],
+  providers: [ChatService, ChatGateway],
   exports: [ChatService],
 })
 export class ChatModule {}

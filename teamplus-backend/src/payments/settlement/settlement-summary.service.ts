@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "@/prisma/prisma.service";
 import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
 import { ResourceAccessService } from "@/common/access/resource-access.service";
@@ -118,6 +119,52 @@ export interface TeamSettlementSummaryResponse {
   classes: ClassSettlementSummary[];
   tournaments: TournamentSettlementSummary[];
   unpaid: UnpaidSummary;
+}
+
+/**
+ * 연체 유예(그레이스) 일수 — 청구 후 이 기간 내 미결제는 "수납 진행 중"(정상)으로 보고
+ * 할 일 큐(Hero 미납 칩·미납 관리 페이지)에서 제외한다. 정산 확정 직후 전원 미납이
+ * 칩을 상시 점등시키는 알람 피로를 막는다. 월 소계·미수금 배너(장부)는 전량 그대로.
+ */
+export const UNPAID_OVERDUE_GRACE_DAYS = 7;
+
+/**
+ * 연체 미납 집계 — count=**인별 청구 라인** 수(월 무관 누적).
+ * 감독이 화면에서 세는 단위(사람별 미납 줄 = 안 낸 결제 낱건)와 일치시킨다 —
+ * 같은 자녀가 두 청구에 걸리면 2건(별개 미수채권).
+ */
+export interface TeamUnpaidTotalResponse {
+  count: number;
+}
+
+/** 연체 미납 회원 라인 — memberId 는 인별 상세/안내 발송 API 파라미터와 동일 축(자녀 User.id). */
+export interface UnpaidOverdueMemberLine {
+  memberId: string;
+  memberName: string;
+  amount: number;
+}
+
+/** 연체 미납 항목 — 청구 단위(수업×월 청구서 / 대회 일괄청구). */
+export interface UnpaidOverdueItem {
+  key: string;
+  sourceType: "CLASS" | "TOURNAMENT";
+  sourceId: string;
+  sourceName: string;
+  /** 귀속 월(YYYY-MM) — 인별 상세/안내 발송의 yearMonth 파라미터와 동일 축. */
+  yearMonth: string;
+  billedAt: Date;
+  overdueDays: number;
+  amount: number;
+  members: UnpaidOverdueMemberLine[];
+}
+
+export interface TeamUnpaidItemsResponse {
+  /** 인별 청구 라인 수(Σ items[].members.length) — getTeamUnpaidTotal.count 와 동일 정의(정합). */
+  count: number;
+  totalAmount: number;
+  graceDays: number;
+  /** 오래된 청구 우선(회수 우선순위). */
+  items: UnpaidOverdueItem[];
 }
 
 export interface AcademySettlementSummaryResponse {
@@ -354,6 +401,199 @@ export class SettlementSummaryService {
       classes,
       tournaments,
       unpaid: this.computeUnpaid([...classes, ...tournaments]),
+    };
+  }
+
+  /** 연체 기준 시각 — 이 시각 이전에 청구된 미결제만 "연체"로 승격. */
+  private overdueCutoff(): Date {
+    return new Date(
+      Date.now() - UNPAID_OVERDUE_GRACE_DAYS * 24 * 60 * 60 * 1000,
+    );
+  }
+
+  /**
+   * [정산 센터] 연체 미납 조회 공용 where — total(집계)·items(목록)가 반드시 같은 정의를 쓴다.
+   *
+   * 미납 정의는 월 소계(computeUnpaid)와 동일한 "확정 청구됐는데 미결제"에 연체 유예를 더한 것:
+   *  · 수업 후불 — confirmed 청구(MonthlyPostpaidBilling)의 pending 라인, 확정 후 그레이스 경과
+   *  · 후불 대회 — 결제요청 발행(PENDING + Payment pending), 발행 후 그레이스 경과.
+   *    PREPAID 대회의 PENDING 은 결제 이탈이라 제외(billingMode 필터 필수 — 이중 의미 함정)
+   * 선불 pending·draft 청구는 미납이 아니다(attribution 계약 동일).
+   * 단위는 청구(수업×월 billing / 대회) — 월 소계 미납을 전 월 합산한 것과 같은 축이다.
+   */
+  private overdueWheres(scopeTeamIds: string[], cutoff: Date) {
+    return {
+      lineWhere: {
+        paymentStatus: "pending",
+        amount: { gt: 0 },
+        billing: {
+          status: "confirmed",
+          confirmedAt: { lte: cutoff },
+          class: { teamId: { in: scopeTeamIds } },
+        },
+      } satisfies Prisma.MonthlyPostpaidBillingLineWhereInput,
+      regWhere: {
+        paymentStatus: "PENDING",
+        payment: { is: { paymentStatus: "pending", createdAt: { lte: cutoff } } },
+        tournament: {
+          teamId: { in: scopeTeamIds },
+          billingMode: "POSTPAID",
+        },
+      } satisfies Prisma.TournamentRegistrationWhereInput,
+    };
+  }
+
+  /**
+   * [정산 센터] 연체 미납 인별 청구 라인 수 — Hero "미납 N건" 칩 전용 경량 집계(월 무관 누적).
+   * 단위=사람별 미납 낱건(미납 페이지의 회원 줄 수와 1:1).
+   */
+  async getTeamUnpaidTotal(
+    requester: JwtUserPayload,
+    teamId?: string,
+  ): Promise<TeamUnpaidTotalResponse> {
+    const scopeTeamIds = await this.resolveTeamScope(requester, teamId);
+    if (scopeTeamIds.length === 0) return { count: 0 };
+
+    const { lineWhere, regWhere } = this.overdueWheres(
+      scopeTeamIds,
+      this.overdueCutoff(),
+    );
+    const [lineCount, regCount] = await Promise.all([
+      this.prisma.monthlyPostpaidBillingLine.count({ where: lineWhere }),
+      this.prisma.tournamentRegistration.count({ where: regWhere }),
+    ]);
+    return { count: lineCount + regCount };
+  }
+
+  /**
+   * [정산 센터] 연체 미납 목록 — 미납 관리 페이지 전용. 청구 단위 그룹 + 인별 라인.
+   *  귀속 월은 인별 상세/안내 발송 API 와 동일 축(수업=billing.yearMonth, 대회=청구 발행 KST월
+   *  — resolveTournamentAttribution 의 PENDING 규칙과 일치)이라 페이지에서 그대로 넘겨도
+   *  월 스코프가 어긋나지 않는다.
+   */
+  async getTeamUnpaidItems(
+    requester: JwtUserPayload,
+    teamId?: string,
+  ): Promise<TeamUnpaidItemsResponse> {
+    const scopeTeamIds = await this.resolveTeamScope(requester, teamId);
+    if (scopeTeamIds.length === 0) {
+      return {
+        count: 0,
+        totalAmount: 0,
+        graceDays: UNPAID_OVERDUE_GRACE_DAYS,
+        items: [],
+      };
+    }
+
+    const now = Date.now();
+    const { lineWhere, regWhere } = this.overdueWheres(
+      scopeTeamIds,
+      this.overdueCutoff(),
+    );
+    const [pendingLines, pendingRegs] = await Promise.all([
+      this.prisma.monthlyPostpaidBillingLine.findMany({
+        where: lineWhere,
+        select: {
+          userId: true,
+          amount: true,
+          billingId: true,
+          billing: {
+            select: {
+              yearMonth: true,
+              confirmedAt: true,
+              class: { select: { id: true, className: true } },
+            },
+          },
+          user: { select: { firstName: true, lastName: true } },
+        },
+      }),
+      this.prisma.tournamentRegistration.findMany({
+        where: regWhere,
+        select: {
+          tournamentId: true,
+          userId: true,
+          childId: true,
+          payment: { select: { amount: true, createdAt: true } },
+          tournament: { select: { name: true } },
+          child: { select: { firstName: true, lastName: true } },
+          user: { select: { firstName: true, lastName: true } },
+        },
+      }),
+    ]);
+
+    const fullName = (u: { firstName: string; lastName: string } | null) =>
+      u ? `${u.lastName}${u.firstName}`.trim() || "-" : "-";
+    const itemMap = new Map<string, UnpaidOverdueItem>();
+
+    for (const line of pendingLines) {
+      const key = `billing:${line.billingId}`;
+      const billedAt = line.billing.confirmedAt ?? new Date(now);
+      let item = itemMap.get(key);
+      if (!item) {
+        item = {
+          key,
+          sourceType: "CLASS",
+          sourceId: line.billing.class.id,
+          sourceName: line.billing.class.className,
+          yearMonth: line.billing.yearMonth,
+          billedAt,
+          overdueDays: Math.max(
+            0,
+            Math.floor((now - billedAt.getTime()) / (24 * 60 * 60 * 1000)),
+          ),
+          amount: 0,
+          members: [],
+        };
+        itemMap.set(key, item);
+      }
+      item.amount += line.amount;
+      item.members.push({
+        memberId: line.userId,
+        memberName: fullName(line.user),
+        amount: line.amount,
+      });
+    }
+
+    for (const reg of pendingRegs) {
+      const key = `trn:${reg.tournamentId}`;
+      const billedAt = reg.payment?.createdAt ?? new Date(now);
+      const amount = Number(reg.payment?.amount ?? 0);
+      let item = itemMap.get(key);
+      if (!item) {
+        item = {
+          key,
+          sourceType: "TOURNAMENT",
+          sourceId: reg.tournamentId,
+          sourceName: reg.tournament?.name ?? "-",
+          yearMonth: instantToKstYearMonth(billedAt),
+          billedAt,
+          overdueDays: Math.max(
+            0,
+            Math.floor((now - billedAt.getTime()) / (24 * 60 * 60 * 1000)),
+          ),
+          amount: 0,
+          members: [],
+        };
+        itemMap.set(key, item);
+      }
+      item.amount += amount;
+      item.members.push({
+        // 상세/안내 발송 대상 — 자녀(선수) 우선, 미지정이면 결제자(보호자 본인 신청).
+        memberId: reg.childId ?? reg.userId,
+        memberName: fullName(reg.child ?? reg.user),
+        amount,
+      });
+    }
+
+    const items = [...itemMap.values()].sort(
+      (a, b) => a.billedAt.getTime() - b.billedAt.getTime(),
+    );
+    return {
+      // 인별 청구 라인 수 — getTeamUnpaidTotal(count 쿼리 합)과 동일 정의.
+      count: items.reduce((sum, i) => sum + i.members.length, 0),
+      totalAmount: items.reduce((sum, i) => sum + i.amount, 0),
+      graceDays: UNPAID_OVERDUE_GRACE_DAYS,
+      items,
     };
   }
 
@@ -1630,6 +1870,7 @@ export class SettlementSummaryService {
           tournamentRegistrations: {
             select: {
               tournament: { select: { name: true, billingMode: true } },
+              child: { select: { firstName: true, lastName: true } },
             },
             take: 1,
           },
@@ -1664,7 +1905,10 @@ export class SettlementSummaryService {
         paymentStatus: p.paymentStatus,
         completedAt: p.completedAt as Date,
         payerName: toName(p.user),
-        childName: toName(line?.user) ?? toName(p.enrollments?.[0]?.child),
+        childName:
+          toName(line?.user) ??
+          toName(p.enrollments?.[0]?.child) ??
+          toName(tReg?.child),
         subjectName:
           tReg?.tournament?.name ??
           p.enrollments?.[0]?.class?.className ??

@@ -3,9 +3,10 @@
 /**
  * EnrolledTrainingSection — 학부모 통합 캘린더 상단 '등록훈련' 섹션 (2026-06-18 신규).
  *
- * 각 자녀마다 '등록완료(결제/수강 중)'된 수업만 카드로 노출한다.
- * 카드 형태는 수업목록 페이지(classes/page.tsx DefaultClassCard)와 동일하게 ClassListCard 기반 +
- * '등록완료' 칩으로 통일한다. (해당 페이지의 소형 일정 포맷 헬퍼를 동일 컨벤션으로 재현)
+ * 각 자녀마다 '등록완료(결제/수강 중)'된 수업만 노출한다.
+ * 행 형태는 수업목록 페이지(classes/page.tsx DefaultClassCard)와 동일하게 ClassListCard
+ * iceTheme + compact 리스트 행 + '등록완료' 칩(titleRight)으로 통일한다.
+ * (해당 페이지의 소형 일정 포맷 헬퍼를 동일 컨벤션으로 재현)
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -37,6 +38,8 @@ interface EnrolledClassItem {
   nextSchedule?: NextScheduleInfo | null;
   /** 비취소 총 회차 수 — "총 N회" 표기용. */
   scheduleCount?: number;
+  /** 대상 출생연도 — "대상: 2014, 2015년생" 표기용. */
+  targetBirthYears?: number[] | null;
 }
 
 interface EnrollmentRow {
@@ -81,6 +84,16 @@ function formatScheduleLabel(item: EnrolledClassItem): string | null {
   return formatClassDays(item.classDays);
 }
 
+/** 대상 출생연도 — "2014, 2015년생" 형태. 중복 제거 + 오름차순 (classes/page.tsx 동일 컨벤션). */
+function formatBirthYears(years?: number[] | null): string | null {
+  if (!Array.isArray(years) || years.length === 0) return null;
+  const sorted = Array.from(new Set(years.filter((y) => Number.isFinite(y)))).sort(
+    (a, b) => a - b,
+  );
+  if (sorted.length === 0) return null;
+  return `${sorted.join(', ')}년생`;
+}
+
 function scheduleLineOf(item: EnrolledClassItem): string | null {
   const dayScheduleLabel = formatDaySchedulesShort(item.daySchedules);
   const time = dayScheduleLabel
@@ -101,29 +114,33 @@ function scheduleLineOf(item: EnrolledClassItem): string | null {
   return `${daysLabel || time}${daysLabel && time ? ` · ${time}` : ''}`;
 }
 
-// ── 등록완료 수업 카드 — 수업목록 DefaultClassCard 와 동일 ClassListCard 형태 ──
-function EnrolledClassCard({ item }: { item: EnrolledClassItem }) {
+// ── 등록완료 수업 행 — 수업목록 DefaultClassCard 와 동일 ClassListCard compact 형태 ──
+function EnrolledClassCard({ item, iceTheme }: { item: EnrolledClassItem; iceTheme?: boolean }) {
   const scheduleLine = scheduleLineOf(item);
+  // 일정 + 대상 한 줄 — /classes 리스트 행과 동일 표기 (대상 미입력 = '전체').
+  const targetLine = `대상: ${formatBirthYears(item.targetBirthYears) ?? '전체'}`;
+  const metaLine = scheduleLine ? `${scheduleLine} · ${targetLine}` : targetLine;
   const typeLabel = TRAINING_TYPE_LABEL[item.trainingType];
   return (
     <ClassListCard
       href={`/classes/${item.id}`}
+      iceTheme={iceTheme}
+      compact
       trainingType={item.trainingType}
       typeBadgeLabel={typeLabel}
       ariaLabel={`${item.className} 수업 상세 보기`}
       title={item.className}
-      bodyAction={
-        <div className="flex items-center justify-end">
-          <span
-            className="inline-flex items-center justify-center min-w-[72px] h-[30px] px-3.5 rounded-full text-[14px] leading-[1.55] font-extrabold tracking-[-0.01em] bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400"
-            aria-hidden="true"
-          >
-            등록완료
-          </span>
-        </div>
+      titleRight={
+        /* 등록 상태 칩 — /classes compact 행과 동일 규격 (시각 표시 전용). */
+        <span
+          className="inline-flex items-center justify-center min-w-[62px] px-2 py-0.5 rounded-full text-[11.5px] leading-[1.55] font-bold tracking-[-0.01em] bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400"
+          aria-hidden="true"
+        >
+          등록완료
+        </span>
       }
     >
-      {scheduleLine && <ClassCardInfoRow icon="schedule">{scheduleLine}</ClassCardInfoRow>}
+      <ClassCardInfoRow icon={scheduleLine ? 'schedule' : 'cake'}>{metaLine}</ClassCardInfoRow>
     </ClassListCard>
   );
 }
@@ -246,14 +263,16 @@ export function EnrolledTrainingSection({ iceTheme = false }: EnrolledTrainingSe
   return (
     <section
       className={cn(
-        'px-4 sm:px-5 pt-4',
+        // compact 행이 자체 px-4 를 가지므로 섹션 수평 패딩은 헤더/라벨에만 준다
+        //   (행 hairline 을 /classes 처럼 full-bleed 로 유지).
+        'pt-4',
         // ICETIMES: 회색 캔버스 위에 떠 보이지 않도록 흰 섹션으로 self-wrap(mt-2 = 상단 8px 회색 갭).
-        //   pb-4 로 카드 묶음 하단 여백 확보. 기본 테마는 기존 padding 그대로(회귀 0).
+        //   pb-4 로 행 묶음 하단 여백 확보. 기본 테마는 기존 padding 그대로(회귀 0).
         iceTheme && 'mt-2 bg-it-surface pb-4 dark:bg-rink-800',
       )}
       aria-label="등록훈련"
     >
-      <div className="flex items-center gap-1.5 px-1 pb-2">
+      <div className="flex items-center gap-1.5 px-5 sm:px-6 pb-2">
         <Icon name="task_alt" className="text-card-title text-emerald-500" aria-hidden="true" />
         <h2
           className={cn(
@@ -271,7 +290,7 @@ export function EnrolledTrainingSection({ iceTheme = false }: EnrolledTrainingSe
             <div key={child.id}>
               <p
                 className={cn(
-                  'px-1 pb-1.5 text-card-meta font-bold',
+                  'px-5 sm:px-6 pb-1.5 text-card-meta font-bold',
                   iceTheme ? 'text-it-ink-700 dark:text-rink-100' : 'text-wtext-2 dark:text-rink-100',
                 )}
               >
@@ -285,9 +304,11 @@ export function EnrolledTrainingSection({ iceTheme = false }: EnrolledTrainingSe
                   ({classes.length})
                 </span>
               </p>
-              <div className={cn('flex flex-col gap-2')}>
+              {/* iceTheme compact 행은 border-b hairline 으로 구분 → gap 없이 연속 리스트.
+                  기본 테마(미사용 경로)는 카드 외형이라 gap 유지. */}
+              <div className={cn('flex flex-col', !iceTheme && 'gap-2 px-4 sm:px-5')}>
                 {classes.map((cls) => (
-                  <EnrolledClassCard key={cls.id} item={cls} />
+                  <EnrolledClassCard key={cls.id} item={cls} iceTheme={iceTheme} />
                 ))}
               </div>
             </div>

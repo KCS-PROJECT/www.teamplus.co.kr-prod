@@ -42,6 +42,17 @@ interface ChildSelectorProps {
    *   - 선택사항 (undefined 시 빈 Set 으로 처리).
    */
   paidChildIds?: Set<string>;
+  /**
+   * 자녀별 등록 상태 배지 (list variant 전용) — 선/후불 방식 구분 표기.
+   *   - 'paid': 선불 결제완료 (빨강 — 결제취소 진입 시그널, paidChildIds 색상 체계와 동일)
+   *   - 'postpaid': 후불 수강 중 (파랑 — 정상 수강 상태, 선택 시 수강 종료 진입)
+   *   - 'pending': 결제 대기 (중성)
+   *   잠금 사유(disabledLabel)가 있으면 배지보다 우선. 미전달 시 기존 paidBadgeLabel 폴백.
+   */
+  enrollmentBadgeByChildId?: Map<
+    string,
+    { label: string; tone: 'paid' | 'postpaid' | 'pending' }
+  >;
   /** [2026-06-09] 복수 선택 모드 — 오픈클래스 자녀 복수 결제. true 면 체크박스 + selectedIds/onToggle 사용. */
   multiSelect?: boolean;
   selectedIds?: Set<string>;
@@ -65,6 +76,7 @@ export function ChildSelector({
   notApprovedChildIds,
   approvalStatusById,
   paidChildIds,
+  enrollmentBadgeByChildId,
   multiSelect = false,
   selectedIds,
   onToggle,
@@ -106,10 +118,17 @@ export function ChildSelector({
               : isAgeIncompatible
                 ? MESSAGES.enrollment.disabledAgeLabel
                 : null;
-          // paid 배지는 disabledLabel 보다 후순위 (paid 시 disabledLabel 은 null)
-          const paidLabel =
-            isPaid && !disabledLabel ? MESSAGES.enrollment.paidBadgeLabel : null;
-          const subLabel = disabledLabel ?? paidLabel;
+          // 등록 상태 배지는 disabledLabel 보다 후순위. 배지 맵 미전달 시 기존 paid 배지 폴백.
+          const badge = !disabledLabel
+            ? (enrollmentBadgeByChildId?.get(child.id) ??
+              (isPaid
+                ? {
+                    label: MESSAGES.enrollment.paidBadgeLabel,
+                    tone: 'paid' as const,
+                  }
+                : null))
+            : null;
+          const subLabel = disabledLabel ?? badge?.label ?? null;
           return (
             <li key={child.id}>
               <button
@@ -167,9 +186,11 @@ export function ChildSelector({
                     <span
                       className={cn(
                         'truncate text-[12.5px] font-semibold',
-                        paidLabel
+                        badge?.tone === 'paid'
                           ? 'text-it-red-500 dark:text-it-red-300'
-                          : 'text-it-ink-500 dark:text-rink-300',
+                          : badge?.tone === 'postpaid'
+                            ? 'text-it-blue-600 dark:text-it-blue-300'
+                            : 'text-it-ink-500 dark:text-rink-300',
                       )}
                     >
                       {subLabel}

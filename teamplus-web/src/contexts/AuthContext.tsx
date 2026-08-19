@@ -104,12 +104,31 @@ interface AuthProviderProps {
 let globalLoadAttempted = false;
 let activeLoadPromise: Promise<void> | null = null;
 
+// 프로필 조회 실패 시 지연 재시도 — 일시 오류(순단·429 등)가 "영구 미인증"으로
+// 굳지 않게 한다. 실패를 latch 하면 토큰은 유효한데 상태만 미인증인 탭이 되고,
+// 클라이언트 가드(/login 이동)와 미들웨어(유효 쿠키 → 대시보드 반사)가 서로
+// 반대로 던지는 무한 리다이렉트가 성립한다. AuthProvider 는 소프트 네비게이션에서
+// 재마운트되지 않으므로 회복 트리거는 이 타이머가 유일하다.
+let loadRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let loadRetryAttempt = 0;
+const LOAD_RETRY_BASE_MS = 4_000;
+const LOAD_RETRY_MAX_MS = 60_000;
+
+function clearAuthLoadRetry(): void {
+  if (loadRetryTimer) {
+    clearTimeout(loadRetryTimer);
+    loadRetryTimer = null;
+  }
+  loadRetryAttempt = 0;
+}
+
 // 세션 스토리지 키
 const AUTH_CACHE_KEY = "teamplus_auth_profile";
 
 export function resetAuthStateForTests(): void {
   globalLoadAttempted = false;
   activeLoadPromise = null;
+  clearAuthLoadRetry();
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
@@ -150,15 +169,36 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
 
     // 3. 로드 시작
+    const scheduleProfileRetry = () => {
+      if (typeof window === "undefined") return;
+      if (loadRetryTimer) return;
+      const delay = Math.min(
+        LOAD_RETRY_BASE_MS * 2 ** loadRetryAttempt,
+        LOAD_RETRY_MAX_MS,
+      );
+      loadRetryAttempt += 1;
+      devWarn(`[AuthContext] 프로필 조회 실패 — ${delay}ms 후 재시도`);
+      loadRetryTimer = setTimeout(() => {
+        loadRetryTimer = null;
+        // 그 사이 로그인/성공으로 확정됐으면 재시도 불필요
+        if (globalLoadAttempted) return;
+        void loadUser();
+      }, delay);
+    };
+
     const performLoad = async () => {
       if (process.env.NODE_ENV === "development") {
         devLog("[AuthContext] loadUser 시작");
       }
 
+      // 프로필 조회 실패 여부 — 실패 시에는 latch 를 남기지 않아 재시도를 허용한다.
+      let profileLoadFailed = false;
+
       try {
-        // 토큰이 없으면 캐시가 남아 있어도 비로그인 상태로 처리
+        // 토큰이 없으면 캐시가 남아 있어도 비로그인 상태로 처리 (확정 — 재시도 불필요)
         const tokenInfo = await hybridAuth.getToken();
         if (!tokenInfo?.accessToken) {
+          clearAuthLoadRetry();
           sessionStorage.removeItem(AUTH_CACHE_KEY);
           setState({
             user: null,
@@ -175,6 +215,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
             const cached = sessionStorage.getItem(AUTH_CACHE_KEY);
             if (cached) {
               const cachedUser = normalizeAuthUser(JSON.parse(cached));
+              clearAuthLoadRetry();
               setState({
                 user: cachedUser,
                 isLoading: false,
@@ -228,6 +269,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
         if (response.success && response.data) {
           const normalizedUser = normalizeAuthUser(response.data);
+          clearAuthLoadRetry();
 
           // 세션 스토리지에 UI 표시에 필요한 필드 캐시
           // 2026-04-22: email 추가 — 캐시 복원 후 drawer/profile 이메일 "미등록" 표시 방지.
@@ -253,6 +295,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
             error: null,
           });
         } else {
+          profileLoadFailed = true;
+          scheduleProfileRetry();
           setState({
             user: null,
             isLoading: false,
@@ -265,6 +309,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
           sessionStorage.removeItem(AUTH_CACHE_KEY);
         }
       } catch (err) {
+        profileLoadFailed = true;
+        scheduleProfileRetry();
         setState({
           user: null,
           isLoading: false,
@@ -273,8 +319,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
         });
         sessionStorage.removeItem(AUTH_CACHE_KEY);
       } finally {
-        globalLoadAttempted = true;
-        hasAttemptedLoad.current = true;
+        // 실패는 latch 하지 않는다 — 실패를 잠그면 이 탭은 새로고침 전까지
+        // "토큰 유효 + 상태 미인증" 으로 굳어 가드↔미들웨어 리다이렉트 루프가 된다.
+        globalLoadAttempted = !profileLoadFailed;
+        hasAttemptedLoad.current = !profileLoadFailed;
         activeLoadPromise = null;
       }
     };
@@ -422,6 +470,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
         globalLoadAttempted = true;
         hasAttemptedLoad.current = true;
+        clearAuthLoadRetry();
         setState({
           user: normalizedUser,
           isLoading: false,
@@ -510,6 +559,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
     globalLoadAttempted = false;
     hasAttemptedLoad.current = false;
+    clearAuthLoadRetry();
     setState({
       user: null,
       isLoading: false,

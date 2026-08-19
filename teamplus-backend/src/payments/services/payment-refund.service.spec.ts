@@ -34,6 +34,7 @@ describe("PaymentRefundService", () => {
     class: { findUnique: jest.fn() },
     tournament: { findUnique: jest.fn() },
     classAttendance: { count: jest.fn() },
+    classSchedule: { findFirst: jest.fn() },
     $transaction: jest.fn(),
   };
 
@@ -102,6 +103,8 @@ describe("PaymentRefundService", () => {
       version: 0,
     });
     mockPrisma.refundRequest.update.mockResolvedValue({});
+    // 기본: 경과한 일정 없음(개시 전) — 일정 경과 가드 테스트에서만 override.
+    mockPrisma.classSchedule.findFirst.mockResolvedValue(null);
     // 도메인 판별 실패 → DIRECT.
     mockPrisma.enrollment.findFirst.mockResolvedValue(null);
     mockPrisma.monthlyPostpaidBillingLine.findFirst.mockResolvedValue(null);
@@ -145,6 +148,38 @@ describe("PaymentRefundService", () => {
           where: expect.objectContaining({
             memberId: "child-1",
             attendanceStatus: "present",
+          }),
+        }),
+      );
+    });
+
+    it("출석이 없어도 결제일 이후 일정이 이미 경과했으면(미입력·결석) 셀프 취소를 거절한다", async () => {
+      mockPrisma.payment.findUnique.mockResolvedValue(kgPayment);
+      mockPrisma.enrollment.findMany.mockResolvedValue([
+        { childId: "child-1", classId: "class-1" },
+      ]);
+      mockPrisma.classAttendance.count.mockResolvedValue(0);
+      mockPrisma.classSchedule.findFirst.mockResolvedValue({ id: "sch-1" });
+
+      await expect(
+        service.cancelPayment(
+          "pay-1",
+          "학부모 요청",
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          { id: "parent-1", userType: "PARENT" },
+        ),
+      ).rejects.toThrow(ForbiddenException);
+
+      expect(mockKgGateway.cancelPayment).not.toHaveBeenCalled();
+      // 경과 판정 쿼리 — 취소되지 않은 일정 + 결제일 이후~오늘 이전 범위.
+      expect(mockPrisma.classSchedule.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            classId: "class-1",
+            isCancelled: false,
           }),
         }),
       );

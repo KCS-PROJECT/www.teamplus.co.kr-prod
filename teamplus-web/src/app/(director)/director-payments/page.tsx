@@ -18,6 +18,8 @@ import {
   getTeamUnpaidMembers,
   getTeamTransactions,
   sendTeamUnpaidReminder,
+  getRefundPendingCount,
+  getTeamUnpaidTotal,
   type TeamSettlementSummaryResponse,
   type TeamUnpaidMembersResponse,
   type TeamTransactionsResponse,
@@ -37,7 +39,6 @@ import {
   type SettlementCardData,
 } from '@/components/settlement/SettlementItemCard';
 import { InlineRetryError } from '@/components/settlement/InlineRetryError';
-import { RefundPendingBanner } from '@/components/refunds/RefundPendingBanner';
 
 // ─── Types ──────────────────────────────────────────
 // 거래 내역(건별 장부·기본) / 정산 집계(훈련·대회 소계) — 업계 관행(거래 vs 정산) 2분법.
@@ -93,6 +94,13 @@ export default function DirectorPaymentsPage() {
   const [txnError, setTxnError] = useState(false); // 거래 내역 로드 실패
   const [isTxnRetrying, setIsTxnRetrying] = useState(false); // 거래 내역 재시도 진행 중
 
+  // 환불 대기 건수 — Hero "처리 필요" 줄의 칩(> 0 일 때만 노출). 월 스코프와 무관한 전체 대기 건수.
+  //   실패/빈 응답은 0 취급(fail-closed) — 칩 미노출로 화면을 깨지 않는다.
+  const [refundPendingCount, setRefundPendingCount] = useState(0);
+  // 전 기간 미납 항목 수 — Hero 미납 칩 전용(월 무관 누적). 과거 달 미납이 달이 바뀌어도
+  //   칩에 남도록 월 소계와 축을 분리한다. 실패는 0 취급(fail-closed).
+  const [unpaidTotalCount, setUnpaidTotalCount] = useState(0);
+
   // 미수금 배너 펼침 (정산 집계 탭 상단 — 기본 접힘)
   const [unpaidExpanded, setUnpaidExpanded] = useState(false);
   // 미수금 — 상세 시트 대상 회원 / 미납 안내 발송 중 회원
@@ -116,6 +124,34 @@ export default function DirectorPaymentsPage() {
   const settlementSeq = useRef(0);
   const unpaidSeq = useRef(0);
   const txnSeq = useRef(0);
+
+  // 처리 필요 칩 데이터 로드 — 마운트 1회. 둘 다 월 전환과 무관(전 기간)이라 월 로드와 분리.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await getRefundPendingCount({ scope: 'team' });
+        if (!cancelled) {
+          setRefundPendingCount(res.success && res.data ? res.data.count : 0);
+        }
+      } catch {
+        if (!cancelled) setRefundPendingCount(0);
+      }
+    })();
+    (async () => {
+      try {
+        const res = await getTeamUnpaidTotal();
+        if (!cancelled) {
+          setUnpaidTotalCount(res.success && res.data ? res.data.count : 0);
+        }
+      } catch {
+        if (!cancelled) setUnpaidTotalCount(0);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // 신규 소계 로드 — 최신 요청(seq)만 반영. 실패 시 mode 별 에러 플래그 설정.
   // seq 는 호출부(트리거)에서 settlementSeq 를 1회 증가시켜 주입 → 늦은 이전월 응답 폐기.
@@ -323,7 +359,6 @@ export default function DirectorPaymentsPage() {
     classes.reduce((a, c) => a + c.estimatedAmount, 0) +
     tournaments.reduce((a, t) => a + t.estimatedAmount, 0);
   const unpaidAmount = settlement.unpaid.amount;
-  const unpaidItemCount = settlement.unpaid.count;
   const hasUnpaid = showMonthData && unpaidAmount > 0;
   const amountDash = '—';
 
@@ -350,9 +385,6 @@ export default function DirectorPaymentsPage() {
         role="main"
         aria-label={MESSAGES.settlement.ariaCenter}
       >
-        {/* 환불 대기 조건부 배너 — pending > 0 일 때만 노출(0건이면 wrapper 째 미렌더). */}
-        <RefundPendingBanner scope="team" className="px-5 pt-3" />
-
         {/* ── 정산 요약 — navy 밴드 Hero (ICETIMES flat) + 월 선택기 ──────── */}
         <section className="animate-fade-in bg-it-blue-800 px-5 pb-[22px] pt-5 motion-reduce:animate-none dark:bg-it-blue-900">
           {/* 상단 라벨 + 월 스텝퍼 */}
@@ -430,22 +462,45 @@ export default function DirectorPaymentsPage() {
             </div>
           </div>
 
-          {/* 미납 건수 — 탭하면 정산 집계 탭의 미수금 배너를 펼친다 */}
-          <div className="mt-3.5 border-t border-white/15 pt-3 text-[12.5px]">
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab('settlement');
-                setUnpaidExpanded(true);
-              }}
-              className={cn(
-                'font-bold tabular-nums active:brightness-95',
-                hasUnpaid ? 'text-it-red-250' : 'text-white/70',
-              )}
-              aria-label={MESSAGES.settlement.unpaidBannerOpen}
-            >
-              {showMonthData ? MESSAGES.settlement.unpaidCountBadge(unpaidItemCount) : amountDash}
-            </button>
+          {/* 처리 필요 줄 — 액션 칩 쌍: 미납(탭=미납 관리 페이지) + 환불 대기(탭=요청 목록).
+              두 칩 모두 월 무관 전 기간 축(위 숫자들과 의도적 분리) — 미납은 청구 후 유예(7일)
+              경과분만 세는 연체 큐라 정산 확정 직후 전원 미납으로 점등되지 않는다.
+              해당 건이 있을 때만 칩으로 승격(dot/아이콘 + 진한 반투명 배경 + chevron),
+              미납 0건은 각주 텍스트로 강등하되 상시 진입점으로 탭은 유지. */}
+          <div className="mt-3.5 flex items-center justify-between border-t border-white/15 pt-3">
+            {unpaidTotalCount > 0 ? (
+              <button
+                type="button"
+                onClick={() => void navigate('/director-payments/unpaid')}
+                className="inline-flex items-center gap-1.5 rounded-w-pill border border-white/25 bg-white/15 py-1.5 pl-3 pr-1.5 text-[13px] font-bold text-it-red-250 tabular-nums transition-colors hover:bg-white/25 active:brightness-95 motion-reduce:transition-none"
+                aria-label={MESSAGES.settlement.overdueOpen}
+              >
+                <span className="size-1.5 rounded-w-pill bg-it-red-250" aria-hidden="true" />
+                {MESSAGES.settlement.unpaidCountBadge(unpaidTotalCount)}
+                <Icon name="chevron_right" className="text-[15px] text-white/70" aria-hidden="true" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void navigate('/director-payments/unpaid')}
+                className="text-[12.5px] font-bold text-white/70 tabular-nums active:brightness-95"
+                aria-label={MESSAGES.settlement.overdueOpen}
+              >
+                {MESSAGES.settlement.unpaidCountBadge(0)}
+              </button>
+            )}
+            {refundPendingCount > 0 && (
+              <button
+                type="button"
+                onClick={() => void navigate('/director-payments/refunds')}
+                className="inline-flex items-center gap-1.5 rounded-w-pill border border-white/25 bg-white/15 py-1.5 pl-3 pr-1.5 text-[13px] font-bold text-white tabular-nums transition-colors hover:bg-white/25 active:brightness-95 motion-reduce:transition-none"
+                aria-label={MESSAGES.refund.bannerWaiting(refundPendingCount)}
+              >
+                <Icon name="currency_exchange" className="text-[15px] text-white/85" aria-hidden="true" />
+                {MESSAGES.refund.heroPendingBadge(refundPendingCount)}
+                <Icon name="chevron_right" className="text-[15px] text-white/70" aria-hidden="true" />
+              </button>
+            )}
           </div>
         </section>
 

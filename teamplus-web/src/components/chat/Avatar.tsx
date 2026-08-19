@@ -50,32 +50,13 @@ const badgeFontSizes = {
   xl: 'text-[11px]',
 };
 
-function getInitials(name: string): string {
-  const parts = name.trim().split(' ');
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  }
-  return name.slice(0, 2).toUpperCase();
-}
-
-function getAvatarColor(name: string): { bg: string; text: string } {
-  const colors = [
-    { bg: 'bg-blue-100 dark:bg-blue-900/40', text: 'text-blue-600 dark:text-blue-400' },
-    { bg: 'bg-green-100 dark:bg-green-900/40', text: 'text-green-600 dark:text-green-400' },
-    { bg: 'bg-purple-100 dark:bg-purple-900/40', text: 'text-purple-600 dark:text-purple-400' },
-    { bg: 'bg-amber-100 dark:bg-amber-900/40', text: 'text-amber-600 dark:text-amber-400' },
-    { bg: 'bg-rose-100 dark:bg-rose-900/40', text: 'text-rose-600 dark:text-rose-400' },
-    { bg: 'bg-cyan-100 dark:bg-cyan-900/40', text: 'text-cyan-600 dark:text-cyan-400' },
-    { bg: 'bg-indigo-100 dark:bg-indigo-900/40', text: 'text-indigo-600 dark:text-indigo-400' },
-  ];
-
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-
-  return colors[Math.abs(hash) % colors.length];
-}
+/** 기본 프로필 아이콘 크기 — 이미지 없음/로드 실패 시 person 폴백 (/messages 목록과 동일 관용) */
+const fallbackIconSizes = {
+  sm: 'text-[18px]',
+  md: 'text-[22px]',
+  lg: 'text-[26px]',
+  xl: 'text-[30px]',
+};
 
 export function Avatar({
   src,
@@ -86,9 +67,6 @@ export function Avatar({
   badgeColor = 'bg-ice-500',
   className,
 }: AvatarProps) {
-  const initials = getInitials(name);
-  const colors = getAvatarColor(name);
-
   // 백엔드 상대 경로(`/uploads/...`) 를 표시용 절대 URL 로 정규화 — 페이지 호스트 ≠ 백엔드 호스트
   // 환경(예: 안드로이드 실기기 LAN IP) 에서 이미지 404 가 되는 회귀 차단.
   const resolvedSrc = resolveImageSrc(src);
@@ -108,7 +86,7 @@ export function Avatar({
           'relative rounded-full flex items-center justify-center overflow-hidden',
           'shadow-sm border border-wline-2 dark:border-rink-700',
           sizeClasses[size],
-          !showImage && colors.bg
+          !showImage && 'bg-it-fill dark:bg-rink-700'
         )}
       >
         {showImage && resolvedSrc ? (
@@ -124,15 +102,12 @@ export function Avatar({
         ) : (
           <span
             className={cn(
-              'font-bold select-none',
-              colors.text,
-              size === 'sm' && 'text-xs',
-              size === 'md' && 'text-sm',
-              size === 'lg' && 'text-base',
-              size === 'xl' && 'text-lg'
+              'material-symbols-outlined select-none text-it-ink-400 dark:text-wtext-4',
+              fallbackIconSizes[size]
             )}
+            aria-hidden="true"
           >
-            {initials}
+            person
           </span>
         )}
       </div>

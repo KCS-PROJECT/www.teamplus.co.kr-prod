@@ -21,6 +21,9 @@ export interface Message {
   isRead?: boolean;
   type: 'text' | 'image';
   imageUrl?: string;
+  /** 발신자 프로필 (REST 이력에 포함 — 소켓 수신분은 방 상대 정보로 폴백) */
+  senderName?: string;
+  senderAvatar?: string;
 }
 
 interface MessageBubbleProps {
@@ -47,7 +50,8 @@ export function MessageBubble({
 
   if (isIncoming) {
     return (
-      <div className={cn('flex items-end gap-3 group', className)}>
+      // items-center — 아바타를 이름+말풍선+시각 컬럼의 세로 중앙에 배치
+      <div className={cn('flex items-center gap-3 group', className)}>
         {/* Avatar */}
         {showAvatar && (
           <Avatar

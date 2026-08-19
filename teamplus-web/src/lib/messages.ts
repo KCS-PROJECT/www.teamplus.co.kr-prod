@@ -302,11 +302,12 @@ export const MESSAGES = {
       selectedTeamsCount: (n: number) => `${n}개 팀 선택됨`,
     },
     // 수업 지역 — 감독/코치가 등록 시 시/도 + 시군구를 직접 선택한다(필수).
-    //   목록·상세 카드에 "서울 강남구" 로 노출돼 학부모가 수업 위치를 목록 단계에서 판단한다.
+    //   수업 상세에 "서울 강남구" 로 노출되며 수업 탐색 지역 필터의 데이터 공급원이다
+    //   (목록 카드 표시는 제거됨 — claudedocs/class-visibility-disable-2026-08-12.md §3-B).
     region: {
       sectionTitle: "수업 지역",
       sectionHint:
-        "수업이 열리는 지역을 선택해주세요. 학부모에게 수업 목록과 상세에서 시군구까지 표시됩니다.",
+        "수업이 열리는 지역을 선택해주세요. 학부모에게 수업 상세에서 시군구까지 표시됩니다.",
       cityLabel: "시/도",
       cityPlaceholder: "시/도 선택",
       districtLabel: "시군구",
@@ -370,6 +371,10 @@ export const MESSAGES = {
       `이 수업을 수강 가능한 자녀가 없습니다. (수강 연령 ${ageRangeLabel})`,
     // [추가 2026-05-18] ChildSelector paid 자녀 배지 / SelectedChildDisplay 라벨
     paidBadgeLabel: "결제완료",
+    // ChildSelector 자녀별 등록 상태 배지 — 선/후불 방식 구분 표기
+    paidPrepaidBadgeLabel: "결제완료 · 선불",
+    postpaidActiveBadgeLabel: "수강 중 · 후불",
+    pendingPaymentBadgeLabel: "결제 대기",
     studentLabel: "수강생",
     childSelectorAriaLabel: "자녀 선택",
     selectedChildAriaLabel: "선택된 수강생",
@@ -865,6 +870,10 @@ export const MESSAGES = {
     sourceTournament: "대회",
     prepaid: "선불",
     postpaid: "후불",
+    // 상품명 폴백 — 대회 결제는 Payment.productId 가 null(상품 미연결)이라
+    //   출처 인식형 라벨로 대체. 그 외 미상 건만 일반 폴백 사용.
+    tournamentFeeProduct: "대회 참가비",
+    fallbackProduct: "이용권",
     // 후불 산정 근거 라인 — 결제내역 카드에 정산월·출석횟수·회당 단가 표시.
     settlementMonth: (year: number, month: number) =>
       `${year}년 ${month}월 정산`,
@@ -1113,6 +1122,16 @@ export const MESSAGES = {
     unpaidCountBadge: (n: number) => `미납 ${n}건`,
     won: "원",
     person: "명",
+    // 미납 관리 페이지 (연체 미납 큐 — 청구 후 유예 경과분만)
+    overdueTitle: "미납 관리",
+    overdueOpen: "미납 관리 열기",
+    overdueTotalLabel: "전체 미납",
+    overdueDaysBadge: (d: number) => `청구 후 ${d}일 경과`,
+    overdueGraceCaption: (d: number) =>
+      `청구 후 ${d}일이 지나도 결제되지 않은 내역입니다.`,
+    overdueEmpty: "연체된 미납이 없습니다.",
+    overdueMemberCount: (n: number) => `미납 ${n}명`,
+    overdueLoadFailed: "미납 내역을 불러오지 못했습니다.",
     // 월 선택
     monthLabel: (y: number, m: number) => `${y}년 ${m}월`,
     prevMonth: "이전 달",
@@ -1370,6 +1389,7 @@ export const MESSAGES = {
     // ── 배너 / 메뉴 ─────────────────────────────────────
     bannerWaiting: (n: number) => `환불 요청 ${n}건 대기 중`,
     bannerAction: "확인하기",
+    heroPendingBadge: (n: number) => `환불 대기 ${n}건`,
     menuLabel: "환불 요청",
     // ── admin 결제 관리 안내 ────────────────────────────
     adminHandoffTitle: "환불은 승인제로 처리됩니다",
@@ -3200,6 +3220,7 @@ export const MESSAGES = {
     startConversation: "대화를 시작해보세요.",
     inputPlaceholder: "메시지를 입력하세요...",
     fileUploadError: "파일 업로드 중 오류가 발생했습니다.",
+    imageOnly: "이미지 파일만 첨부할 수 있습니다. (jpg, png, gif, webp)",
     leaveConfirm: "채팅방을 나가시겠습니까?",
     leaveError: "처리 중 오류가 발생했습니다.",
     notificationChanged: "알림 설정이 변경되었습니다.",
