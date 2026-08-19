@@ -96,6 +96,8 @@ export class ChatService {
         membershipId: member.id,
         roomId: room.id,
         name: displayName,
+        // DIRECT 방 상대 프로필 — 목록 아바타 표시용 (없으면 프론트가 기본 프로필 폴백)
+        avatarUrl: otherUser?.avatarUrl ?? null,
         type: room.type,
         lastMessage: isBlockedUser
           ? BLOCKED_MESSAGE_PLACEHOLDER
@@ -254,8 +256,12 @@ export class ChatService {
           isEdited: msg.isEdited,
           isBlocked,
           isMine: msg.senderId === userId,
+          // 내 발신 메시지는 저장 시 발신자 읽음이 자동 기록되므로 "상대가 읽었는가" 로 판정
+          // (본인 외 1명 이상 읽음). 수신 메시지는 기존대로 "내가 읽었는가".
           isRead: Array.isArray(msg.readBy)
-            ? (msg.readBy as string[]).includes(userId)
+            ? msg.senderId === userId
+              ? (msg.readBy as string[]).some((id) => id !== userId)
+              : (msg.readBy as string[]).includes(userId)
             : false,
           createdAt: msg.createdAt,
           sender: {
@@ -319,6 +325,8 @@ export class ChatService {
     // 1:1 채팅이면 상대방 정보 표시
     let displayName = room.name ?? "";
     const isOnline = false;
+    // DIRECT 방 상대 프로필 — 상세 헤더 아바타 표시용
+    let avatarUrl: string | null = null;
     // 신고·차단 대상 식별용 — DIRECT 방의 상대 사용자 (UGC 안전장치)
     let otherUser: { userId: string; name: string } | null = null;
 
@@ -329,6 +337,7 @@ export class ChatService {
           `${other.user.lastName}${other.user.firstName}`.trim() ||
           "알 수 없음";
         displayName = name;
+        avatarUrl = other.user.avatarUrl ?? null;
         otherUser = { userId: other.userId, name };
       }
     }
@@ -343,6 +352,7 @@ export class ChatService {
     return {
       id: room.id,
       name: displayName,
+      avatar: avatarUrl,
       type: room.type,
       isOnline,
       status: "활성",

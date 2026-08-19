@@ -18,8 +18,6 @@ import {
 
 import { AuthGuard } from "@nestjs/passport";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { diskStorage } from "multer";
-import { extname } from "path";
 import {
   ApiOperation,
   ApiTags,
@@ -229,32 +227,10 @@ export class ChatController {
     status: 400,
     description: "파일 없음 또는 허용되지 않는 형식",
   })
-  @UseInterceptors(
-    FileInterceptor("file", {
-      storage: diskStorage({
-        destination: "./uploads/chat",
-        filename: (_req, file, cb) => {
-          const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-          cb(null, `${uniqueSuffix}${extname(file.originalname)}`);
-        },
-      }),
-      limits: {
-        fileSize: 10 * 1024 * 1024, // 10MB
-      },
-      fileFilter: (_req, file, cb) => {
-        const allowedExt = /\.(jpg|jpeg|png|gif|webp|pdf|doc|docx|zip|mp4)$/i;
-        if (!allowedExt.test(file.originalname)) {
-          return cb(
-            new BadRequestException(
-              "허용되지 않는 파일 형식입니다. (jpg/png/gif/webp/pdf/doc/docx/zip/mp4)",
-            ),
-            false,
-          );
-        }
-        cb(null, true);
-      },
-    }),
-  )
+  // 인라인 storage 옵션 금지 — chat.module MulterModule(getCategoryDir("chat") =
+  // UPLOAD_ROOT SoT) 설정을 사용해야 정적 서빙 루트와 저장 위치가 일치한다.
+  // (구 "./uploads/chat" cwd 상대 저장은 서빙 루트(<workspace>/uploads)와 어긋나 404)
+  @UseInterceptors(FileInterceptor("file"))
   async uploadFile(
     @UploadedFile() file: Express.Multer.File,
     @Request() req: AuthenticatedRequest,
@@ -262,10 +238,8 @@ export class ChatController {
     if (!file) {
       throw new BadRequestException("파일이 없습니다.");
     }
-    const baseUrl =
-      process.env.BACKEND_URL ??
-      `http://localhost:${process.env.BACKEND_PORT ?? 4001}`;
-    const url = `${baseUrl}/uploads/chat/${file.filename}`;
+    // 상대 경로 반환 — 프론트 resolveImageSrc 가 환경별 호스트를 붙인다 (files 모듈과 동일 규약)
+    const url = `/uploads/chat/${file.filename}`;
     void req; // userId 로깅 목적 (미래 감사 로그용)
 
     return {

@@ -3219,6 +3219,7 @@ export const MESSAGES = {
     startConversation: "대화를 시작해보세요.",
     inputPlaceholder: "메시지를 입력하세요...",
     fileUploadError: "파일 업로드 중 오류가 발생했습니다.",
+    imageOnly: "이미지 파일만 첨부할 수 있습니다. (jpg, png, gif, webp)",
     leaveConfirm: "채팅방을 나가시겠습니까?",
     leaveError: "처리 중 오류가 발생했습니다.",
     notificationChanged: "알림 설정이 변경되었습니다.",
