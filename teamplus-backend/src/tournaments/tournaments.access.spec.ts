@@ -68,7 +68,7 @@ describe("Tournaments Phase 0 access", () => {
   });
 
   const makeService = (prisma: any, access: any) =>
-    new TournamentsService(prisma, { } as any, access);
+    new TournamentsService(prisma, { } as any, access, {} as any);
 
   // ─── 2) 서비스: 비관리자 차단 + 쓰기 미수행 ────────────────────────
   describe("서비스 가드 배선 — 타 팀 관리자 차단", () => {

@@ -1121,6 +1121,16 @@ export const MESSAGES = {
     unpaidCountBadge: (n: number) => `미납 ${n}건`,
     won: "원",
     person: "명",
+    // 미납 관리 페이지 (연체 미납 큐 — 청구 후 유예 경과분만)
+    overdueTitle: "미납 관리",
+    overdueOpen: "미납 관리 열기",
+    overdueTotalLabel: "전체 미납",
+    overdueDaysBadge: (d: number) => `청구 후 ${d}일 경과`,
+    overdueGraceCaption: (d: number) =>
+      `청구 후 ${d}일이 지나도 결제되지 않은 내역입니다.`,
+    overdueEmpty: "연체된 미납이 없습니다.",
+    overdueMemberCount: (n: number) => `미납 ${n}명`,
+    overdueLoadFailed: "미납 내역을 불러오지 못했습니다.",
     // 월 선택
     monthLabel: (y: number, m: number) => `${y}년 ${m}월`,
     prevMonth: "이전 달",
@@ -1378,6 +1388,7 @@ export const MESSAGES = {
     // ── 배너 / 메뉴 ─────────────────────────────────────
     bannerWaiting: (n: number) => `환불 요청 ${n}건 대기 중`,
     bannerAction: "확인하기",
+    heroPendingBadge: (n: number) => `환불 대기 ${n}건`,
     menuLabel: "환불 요청",
     // ── admin 결제 관리 안내 ────────────────────────────
     adminHandoffTitle: "환불은 승인제로 처리됩니다",

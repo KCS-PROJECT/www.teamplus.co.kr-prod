@@ -21,6 +21,7 @@ import {
   resolveScopedChildUserIds,
 } from "@/common/utils/team-scope.util";
 import { resolveTournamentAttribution } from "@/payments/settlement/attribution.util";
+import { PaymentRefundService } from "@/payments/services/payment-refund.service";
 import {
   CreateTournamentDto,
   UpdateTournamentDto,
@@ -44,6 +45,7 @@ export class TournamentsService {
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
     private readonly resourceAccess: ResourceAccessService, // 관리자 전용 API 리소스 소속 검증 (IDOR 가드)
+    private readonly paymentRefund: PaymentRefundService, // 참가 취소 시 PG 환불 실행 엔진
   ) {}
 
   /**
@@ -2648,7 +2650,11 @@ export class TournamentsService {
       throw new BadRequestException("본인의 등록만 취소할 수 있습니다.");
     }
 
-    if (registration.paymentStatus === "CANCELLED") {
+    // REFUNDED 포함 — 환불 요청 승인(RefundRequest) 경로로 이미 환불된 등록의 중복 취소 차단.
+    if (
+      registration.paymentStatus === "CANCELLED" ||
+      registration.paymentStatus === "REFUNDED"
+    ) {
       throw new BadRequestException("이미 취소된 등록입니다.");
     }
 
@@ -2684,17 +2690,27 @@ export class TournamentsService {
       }
     }
 
-    // [2026-06-15] 결제 완료(PAID) 건도 취소(환불) 가능하도록 허용.
-    //   결제가 있으면 Payment 를 refunded 로 전환하고 등록을 CANCELLED 처리한다.
-    //   (실제 PG 환불 연동은 운영 키 적용 시 별도 — 현재는 상태 전환으로 노출/집계에서 제외)
+    // 결제 완료(PAID) 건 — 환불 실행 엔진(PaymentRefundService)에 위임한다.
+    //   엔진이 소유권 재검증 → Payment CAS 선점 → 실제 PG 취소(토스/KG 자동 분기, mock 생략)
+    //   → 단일 트랜잭션으로 RefundLog + Payment refunded + 등록 REFUNDED·cancelledAt 동기화까지 수행.
+    //   PG 실패 시 예외 전파 — 등록은 PAID 로 남아 재시도 가능(돈만 나가고 명단 이탈하는 사고 방지).
     const wasPaid = registration.paymentStatus === "PAID";
+    if (wasPaid && registration.paymentId) {
+      await this.paymentRefund.cancelPayment(
+        registration.paymentId,
+        "대회 참가 신청 취소(참가자 본인)",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { id: userId },
+        { actorId: userId },
+      );
+      return { id: registrationId, cancelledAt: new Date(), refunded: true };
+    }
+
+    // 미결제(PENDING/UNPAID) 건 — 돈이 오가지 않았으므로 등록 상태만 취소 전환.
     await this.prisma.$transaction(async (tx) => {
-      if (wasPaid && registration.paymentId) {
-        await tx.payment.update({
-          where: { id: registration.paymentId },
-          data: { paymentStatus: "refunded" },
-        });
-      }
       await tx.tournamentRegistration.update({
         where: { id: registrationId },
         data: {
@@ -2704,7 +2720,7 @@ export class TournamentsService {
       });
     });
 
-    return { id: registrationId, cancelledAt: new Date(), refunded: wasPaid };
+    return { id: registrationId, cancelledAt: new Date(), refunded: false };
   }
 
   // ==================== Tournament Status & Summary ====================

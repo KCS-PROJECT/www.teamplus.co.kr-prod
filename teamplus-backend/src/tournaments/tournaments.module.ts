@@ -3,9 +3,10 @@ import { TournamentsController } from "./tournaments.controller";
 import { TournamentsService } from "./tournaments.service";
 import { PrismaModule } from "@/prisma/prisma.module";
 import { NotificationsModule } from "@/notifications/notifications.module";
+import { PaymentsModule } from "@/payments/payments.module";
 
 @Module({
-  imports: [PrismaModule, NotificationsModule],
+  imports: [PrismaModule, NotificationsModule, PaymentsModule],
   controllers: [TournamentsController],
   providers: [TournamentsService],
   exports: [TournamentsService],

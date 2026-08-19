@@ -679,6 +679,82 @@ export async function getTeamSettlementSummary(params?: {
 }
 
 /**
+ * 연체 미납 청구 항목 수 조회 (`GET /payments/team-settlement-center/unpaid-total`)
+ *
+ * 정산센터 Hero "미납 N건" 칩 전용 — 월과 무관하게, 청구 후 유예 기간(백엔드 7일)이
+ * 지나도 미결제인 청구 항목 수만 센다(정산 확정 직후 전원 미납은 "수납 중"이라 제외).
+ * 실패는 호출부에서 0 처리(fail-closed, 칩 미노출)하므로 throw 하지 않고 응답을 그대로 반환한다.
+ */
+export async function getTeamUnpaidTotal(params?: { teamId?: string }) {
+  return api.get<{ count: number }>(
+    '/payments/team-settlement-center/unpaid-total',
+    { params },
+  );
+}
+
+/** 연체 미납 회원 라인 — memberId 는 인별 상세/안내 발송 API 와 동일 축(자녀 User.id). */
+export interface UnpaidOverdueMemberLine {
+  memberId: string;
+  memberName: string;
+  amount: number;
+}
+
+/** 연체 미납 항목 — 청구 단위(수업×월 청구서 / 대회 일괄청구). */
+export interface UnpaidOverdueItem {
+  key: string;
+  sourceType: 'CLASS' | 'TOURNAMENT';
+  sourceId: string;
+  sourceName: string;
+  /** 귀속 월(YYYY-MM) — 인별 상세/안내 발송의 yearMonth 파라미터로 그대로 사용. */
+  yearMonth: string;
+  billedAt: string;
+  overdueDays: number;
+  amount: number;
+  members: UnpaidOverdueMemberLine[];
+}
+
+export interface TeamUnpaidItemsResponse {
+  count: number;
+  totalAmount: number;
+  graceDays: number;
+  items: UnpaidOverdueItem[];
+}
+
+/**
+ * 연체 미납 목록 조회 (`GET /payments/team-settlement-center/unpaid-items`)
+ *
+ * 미납 관리 페이지 전용 — 청구 단위 그룹 + 인별 라인, 오래된 청구 우선.
+ * ⚠️ 금융 화면 — 실패를 빈 목록으로 위장하지 않는다. 실패 시 **throw**.
+ */
+export async function getTeamUnpaidItems(params?: {
+  teamId?: string;
+}): Promise<TeamUnpaidItemsResponse> {
+  const res = await api.get<TeamUnpaidItemsResponse>(
+    '/payments/team-settlement-center/unpaid-items',
+    { params },
+  );
+  if (!res.success || !res.data) {
+    throw new Error(res.error?.message ?? 'unpaid items load failed');
+  }
+  const raw = res.data;
+  return {
+    count: toNumber(raw.count),
+    totalAmount: toNumber(raw.totalAmount),
+    graceDays: toNumber(raw.graceDays),
+    items: Array.isArray(raw.items)
+      ? raw.items.map((item) => ({
+          ...item,
+          amount: toNumber(item.amount),
+          overdueDays: toNumber(item.overdueDays),
+          members: Array.isArray(item.members)
+            ? item.members.map((m) => ({ ...m, amount: toNumber(m.amount) }))
+            : [],
+        }))
+      : [],
+  };
+}
+
+/**
  * 오픈클래스 정산 센터 소계 조회 (`GET /academies/:academyId/settlement-summary`)
  *
  * 선택 월 기준으로 오픈클래스 수업 소계 + 미납 요약을 반환한다(대회 없음).

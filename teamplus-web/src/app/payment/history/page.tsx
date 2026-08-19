@@ -189,8 +189,11 @@ const ACTIVE_REFUND_STATUSES: RefundRequestStatus[] = [
   'execution_failed',
 ];
 
-/** 환불 요청 가능 기간(결제일 기준, 일) — 백엔드 create 가드와 동일 값. */
-const REFUND_REQUEST_WINDOW_DAYS = 14;
+/**
+ * 환불 요청 버튼 노출 기간(결제일 기준, 일) — FE 노출 정책.
+ * 백엔드 접수 상한(365일)과 의도적으로 분리 — 이후 건은 감독/고객센터 경유로 처리한다.
+ */
+const REFUND_REQUEST_WINDOW_DAYS = 30;
 
 /** 결제 시각이 요청 가능 기간 이내인지 — 원시 시각 부재/무효는 fail-closed(버튼 미노출, 백엔드 가드가 최종 판정). */
 function isWithinRefundWindow(paidAtIso?: string): boolean {

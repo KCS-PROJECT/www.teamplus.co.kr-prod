@@ -1,4 +1,4 @@
-import { ForbiddenException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { Decimal } from "@prisma/client/runtime/library";
 import { TournamentsService } from "./tournaments.service";
 import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
@@ -32,7 +32,7 @@ describe("TournamentsService.getTournamentRegistrations — 파생 필드/명단
   });
 
   const makeService = (prisma: any, access: any) =>
-    new TournamentsService(prisma, {} as any, access);
+    new TournamentsService(prisma, {} as any, access, {} as any);
 
   // KST 2026-03-10 15:00 → UTC 06:00. 귀속월 2026-03.
   const march = new Date("2026-03-10T06:00:00.000Z");
@@ -178,9 +178,9 @@ describe("TournamentsService.getTournamentRegistrations — 파생 필드/명단
     expect(byId["r-refunded"].paidAt).toBeNull();
   });
 
-  it("실제 취소 형태(registration=CANCELLED·payment=refunded·refundLogs=[]) → paidAmount 0 · refundedAmount=amount", async () => {
-    // cancelRegistration 은 RefundLog 를 생성하지 않는다 → 로그 부재를 전액 환불로 해석해야
-    //  이름은 명단에 남되(REFUNDED) 순수납은 0 이 된다.
+  it("레거시 취소 형태(registration=CANCELLED·payment=refunded·refundLogs=[]) → paidAmount 0 · refundedAmount=amount", async () => {
+    // PG 미연동 시절 cancelRegistration 이 만든 레거시 행(RefundLog 없음)은 로그 부재를
+    //  전액 환불로 해석해야 이름은 명단에 남되(REFUNDED) 순수납은 0 이 된다.
     const prisma = makePrismaMock();
     prisma.tournament.findUnique.mockResolvedValue({
       id: "trn-3",
@@ -231,6 +231,7 @@ describe("TournamentsService.getTournamentRegistrations — 파생 필드/명단
       prisma as any,
       {} as any,
       makeAccessMock(false) as any,
+      {} as any,
     ).getTournamentRegistrations("trn-2", requester);
 
     expect(res.billingMode).toBe("PREPAID");
@@ -269,8 +270,8 @@ describe("TournamentsService.getTournamentRegistrations — 파생 필드/명단
  *  3) startDate null 이면 "대회 당일 취소 불가" 가드가 적용되지 않아 취소 가능.
  */
 describe("TournamentsService — 일정 미정(기간 null) 대회", () => {
-  const makeService = (prisma: any) =>
-    new TournamentsService(prisma, {} as any, {} as any);
+  const makeService = (prisma: any, refund?: any) =>
+    new TournamentsService(prisma, {} as any, {} as any, refund ?? ({} as any));
 
   it("경기 0건 + endDate null — 참가 신청 가드 통과", async () => {
     const prisma = {
@@ -332,6 +333,99 @@ describe("TournamentsService — 일정 미정(기간 null) 대회", () => {
         data: expect.objectContaining({ paymentStatus: "CANCELLED" }),
       }),
     );
+  });
+
+  it("PAID 취소 — 환불 엔진(cancelPayment)에 위임, 등록 상태는 엔진 트랜잭션이 동기화", async () => {
+    const refund = {
+      cancelPayment: jest.fn().mockResolvedValue({
+        id: "rl-1",
+        paymentId: "pay-1",
+        refundAmount: 30000,
+        paymentStatus: "refunded",
+      }),
+    };
+    const prisma = {
+      tournamentRegistration: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "reg-1",
+          tournamentId: "trn-tbd",
+          userId: "u-1",
+          paymentStatus: "PAID",
+          paymentId: "pay-1",
+          tournament: { startDate: null, status: "scheduled" },
+        }),
+      },
+      hockeyMatch: {
+        aggregate: jest.fn().mockResolvedValue({ _min: { scheduledAt: null } }),
+      },
+      $transaction: jest.fn(),
+    };
+    const service = makeService(prisma, refund);
+    const res = await service.cancelRegistration("trn-tbd", "reg-1", "u-1");
+
+    expect(res.refunded).toBe(true);
+    expect(refund.cancelPayment).toHaveBeenCalledWith(
+      "pay-1",
+      expect.any(String),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { id: "u-1" },
+      { actorId: "u-1" },
+    );
+    // 등록 REFUNDED 전환은 엔진 트랜잭션 내부 담당 — 서비스가 직접 갱신하지 않는다.
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("PAID 취소 — PG 환불 실패 시 예외 전파, 등록 상태 미변경", async () => {
+    const refund = {
+      cancelPayment: jest
+        .fn()
+        .mockRejectedValue(new BadRequestException("토스 결제 취소에 실패했습니다.")),
+    };
+    const prisma = {
+      tournamentRegistration: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "reg-1",
+          tournamentId: "trn-tbd",
+          userId: "u-1",
+          paymentStatus: "PAID",
+          paymentId: "pay-1",
+          tournament: { startDate: null, status: "scheduled" },
+        }),
+      },
+      hockeyMatch: {
+        aggregate: jest.fn().mockResolvedValue({ _min: { scheduledAt: null } }),
+      },
+      $transaction: jest.fn(),
+    };
+    const service = makeService(prisma, refund);
+    await expect(
+      service.cancelRegistration("trn-tbd", "reg-1", "u-1"),
+    ).rejects.toThrow("토스 결제 취소에 실패했습니다.");
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("REFUNDED 등록 — 승인제 환불 기완료 건 중복 취소 차단", async () => {
+    const prisma = {
+      tournamentRegistration: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "reg-1",
+          tournamentId: "trn-tbd",
+          userId: "u-1",
+          paymentStatus: "REFUNDED",
+          paymentId: "pay-1",
+          tournament: { startDate: null, status: "scheduled" },
+        }),
+      },
+      hockeyMatch: { aggregate: jest.fn() },
+      $transaction: jest.fn(),
+    };
+    const service = makeService(prisma);
+    await expect(
+      service.cancelRegistration("trn-tbd", "reg-1", "u-1"),
+    ).rejects.toThrow("이미 취소된 등록입니다.");
   });
 
   it("startDate null 이라도 첫 경기가 시작됐으면 사후 취소 차단(경기 폴백)", async () => {
@@ -430,7 +524,12 @@ describe("TournamentsService — 기간 쌍(both-or-neither) 계약", () => {
   });
 
   it("create — 한쪽만 전송(startDate만) → 400", async () => {
-    const service = new TournamentsService({} as any, {} as any, {} as any);
+    const service = new TournamentsService(
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
     await expect(
       service.createTournament(
         { name: "새 대회", startDate: "2026-09-01" } as any,
@@ -450,6 +549,7 @@ describe("TournamentsService — 기간 쌍(both-or-neither) 계약", () => {
       prisma as any,
       {} as any,
       makeAccess() as any,
+      {} as any,
     );
     await service.updateTournament(
       "trn-1",
@@ -474,6 +574,7 @@ describe("TournamentsService — 기간 쌍(both-or-neither) 계약", () => {
       prisma as any,
       {} as any,
       makeAccess() as any,
+      {} as any,
     );
     await expect(
       service.updateTournament("trn-1", { startDate: null } as any, requester),
@@ -514,6 +615,7 @@ describe("TournamentsService — 참가 대상 전체(빈 명단) 계약", () =>
       prisma as any,
       {} as any,
       makeAccess() as any,
+      {} as any,
     );
     await expect(
       service.createTournament({ name: "전역 대회" } as any, admin),
@@ -535,6 +637,7 @@ describe("TournamentsService — 참가 대상 전체(빈 명단) 계약", () =>
       prisma as any,
       notifications as any,
       makeAccess() as any,
+      {} as any,
     );
     await service.createTournament(
       { name: "전체 대회", teamId: "team-1" } as any,
@@ -575,6 +678,7 @@ describe("TournamentsService — 참가 대상 전체(빈 명단) 계약", () =>
       prisma as any,
       {} as any,
       makeAccess() as any,
+      {} as any,
     );
     await expect(
       service.updateTournament(

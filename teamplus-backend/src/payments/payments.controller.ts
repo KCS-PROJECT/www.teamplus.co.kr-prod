@@ -659,6 +659,58 @@ export class PaymentsController {
   }
 
   /**
+   * [정산 센터] 연체 미납 인별 청구 라인 수 — Hero "미납 N건" 칩 전용(월 무관 누적).
+   *   청구 후 그레이스(7일) 경과 미결제만 센다. static 경로라 `:paymentId` 위에 위치.
+   */
+  @Get("team-settlement-center/unpaid-total")
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @ApiBearerAuth()
+  @Roles("COACH", "DIRECTOR", "ADMIN")
+  @ApiOperation({
+    summary: "연체 미납 건수",
+    description:
+      "월과 무관하게, 청구 후 유예 기간(7일)이 지나도 미결제인 인별 청구 라인 수(사람별 미납 낱건)를 반환합니다. 정산센터 Hero 미납 칩 전용 경량 집계입니다.",
+  })
+  @ApiQuery({
+    name: "teamId",
+    required: false,
+    description: "특정 팀으로 필터 (관리 팀만 유효, 비관리 팀은 빈 결과).",
+  })
+  @ApiResponse({ status: 200, description: "연체 미납 청구 항목 수 조회 성공" })
+  async getTeamUnpaidTotal(
+    @Request() req: AuthenticatedRequest,
+    @Query("teamId") teamId?: string,
+  ) {
+    return this.settlementSummaryService.getTeamUnpaidTotal(req.user, teamId);
+  }
+
+  /**
+   * [정산 센터] 연체 미납 목록 — 미납 관리 페이지 전용(청구 단위 그룹 + 인별 라인).
+   *   합계·정의는 unpaid-total 과 동일 where 를 공유한다. static 경로라 `:paymentId` 위에 위치.
+   */
+  @Get("team-settlement-center/unpaid-items")
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @ApiBearerAuth()
+  @Roles("COACH", "DIRECTOR", "ADMIN")
+  @ApiOperation({
+    summary: "연체 미납 목록",
+    description:
+      "청구 후 유예 기간(7일)이 지나도 미결제인 청구를 항목(수업 청구서/대회) 단위로 그룹핑해 인별 라인과 함께 반환합니다. 오래된 청구 우선 정렬.",
+  })
+  @ApiQuery({
+    name: "teamId",
+    required: false,
+    description: "특정 팀으로 필터 (관리 팀만 유효, 비관리 팀은 빈 결과).",
+  })
+  @ApiResponse({ status: 200, description: "연체 미납 목록 조회 성공" })
+  async getTeamUnpaidItems(
+    @Request() req: AuthenticatedRequest,
+    @Query("teamId") teamId?: string,
+  ) {
+    return this.settlementSummaryService.getTeamUnpaidItems(req.user, teamId);
+  }
+
+  /**
    * [정산 센터 ②] 팀 인별 미수금 목록 — 소계(summary)와 동일 행 SoT 공유(정합).
    *   수업+대회 후불 미납을 회원별로 통합, 선택월 인식. static 경로라 `:paymentId` 위에 위치.
    */

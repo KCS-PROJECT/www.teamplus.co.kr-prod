@@ -26,7 +26,10 @@ import { isAdminRole } from "@/auth/constants/chldiv.constants";
 import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
 import { ResourceAccessService } from "@/common/access/resource-access.service";
 import { instantToKstDateOnly } from "@/common/utils/kst-date.util";
-import { countPresentAttendanceSincePayment } from "@/common/utils/enrollment-usage.util";
+import {
+  countPresentAttendanceSincePayment,
+  hasElapsedScheduleSincePayment,
+} from "@/common/utils/enrollment-usage.util";
 import { KgInicisGateway, KgCancelAmbiguousError } from "../kg-inicis.gateway";
 import {
   TossPaymentsGateway,
@@ -159,13 +162,15 @@ export class PaymentRefundService {
   ) {}
 
   /**
-   * [환불 정책 1단계] 결제 사용(출석) 여부 검증 — 사용 이력이 있으면 셀프 취소 거절.
+   * [환불 정책 1단계] 이용 개시 검증 — 개시된 결제는 셀프 취소 거절.
    *
-   * 판정: 이 결제에 연결된 수강(Enrollment)별로, 해당 자녀가 해당 수업에서
-   *   결제일(KST 달력일) 이후 일정에 present 출석 ≥ 1 이면 "이용 개시"로 본다.
-   *   결제일 이전 일정의 출석(과거 재수강분)은 이 결제의 사용분이 아니므로 제외.
+   * 판정(둘 중 하나면 개시): 이 결제에 연결된 수강(Enrollment)별로,
+   *   ① 결제일(KST 달력일) 이후 일정에 present 출석 ≥ 1, 또는
+   *   ② 결제일 이후 취소되지 않은 일정이 이미 경과(어제 이전).
+   * ②는 출석 입력이 일정보다 늦게 생기는 지연 창(코치 미입력·결석)에서 전액 셀프
+   *   취소가 통과되는 구멍을 막는다. 결제일 이전 일정·출석(과거 재수강분)은 제외.
    * 수강 결제가 아닌 경우(쇼핑몰·대회·픽업매치 등 Enrollment 미연결)는 대상 아님.
-   * 개시 후 환불(사용분 공제 부분환불)은 2단계 — 감독/관리자 승인 경로에서 처리 예정.
+   * 개시 후 환불은 환불 요청(승인제)·감독 부분환불 경로에서 처리한다.
    */
   private async assertEnrollmentNotUsed(paymentId: string, paidAt: Date) {
     const enrollments = await this.prisma.enrollment.findMany({
@@ -186,6 +191,11 @@ export class PaymentRefundService {
       if (usedCount > 0) {
         throw new ForbiddenException(
           `이미 ${usedCount}회 출석한 수업의 결제는 앱에서 직접 취소할 수 없습니다. 환불은 감독에게 문의해주세요.`,
+        );
+      }
+      if (await hasElapsedScheduleSincePayment(this.prisma, e, paidDayUtc)) {
+        throw new ForbiddenException(
+          "이미 수업이 진행된 결제는 앱에서 직접 취소할 수 없습니다. 결제 내역에서 환불 요청을 이용해주세요.",
         );
       }
     }

@@ -25,8 +25,9 @@ jest.mock('@/services/payment', () => ({
   getTeamUnpaidMembers: (...args: unknown[]) => getTeamUnpaidMembersMock(...args),
   getTeamTransactions: (...args: unknown[]) => getTeamTransactionsMock(...args),
   sendTeamUnpaidReminder: jest.fn(),
-  // RefundPendingBanner(정산센터 상단 삽입)가 사용 — 0건 응답으로 미노출(테스트 무간섭).
+  // Hero 처리 필요 칩(환불 대기·전 기간 미납)이 사용 — 0건 응답으로 미노출(테스트 무간섭).
   getRefundPendingCount: () => Promise.resolve({ success: true, data: { count: 0 } }),
+  getTeamUnpaidTotal: () => Promise.resolve({ success: true, data: { count: 0 } }),
 }));
 
 // ── KST 현재월 고정 ─────────────────────────────────────
