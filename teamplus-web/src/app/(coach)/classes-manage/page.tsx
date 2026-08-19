@@ -480,15 +480,6 @@ function ClassCard({ item }: { item: ClassItem }) {
           lastScheduleDate: item.lastScheduleDate,
         }) ?? MESSAGES.class.noUpcomingSchedule}
       </ClassCardInfoRow>
-      {/* [2026-08-04] 수업 지역 — 감독 본인이 등록 시 고른 값. 목록에서 바로 확인·정정할 수 있게
-          학부모 화면과 같은 자리에 노출한다. 미입력(구 수업)이면 행 자체를 숨긴다. */}
-      {item.regionLabel && (
-        <ClassCardInfoRow icon="place">
-          <span className="font-bold text-it-ink-700 dark:text-white">
-            {item.regionLabel}
-          </span>
-        </ClassCardInfoRow>
-      )}
       {/* [2026-06-19] 대상 출생연도 — 입력 없으면 '전체'(전체 대상)로 표기. */}
       <ClassCardInfoRow icon="cake">
         {`대상: ${formatBirthYears(item.targetBirthYears) ?? '전체'}`}

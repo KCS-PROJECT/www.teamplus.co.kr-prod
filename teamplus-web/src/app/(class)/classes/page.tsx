@@ -1137,23 +1137,10 @@ const DefaultClassCard = memo(function DefaultClassCard({
       }
       bodyAction={bodyAction}
     >
-      {/* [2026-08-04] 지역 + 일정 + 대상을 한 줄로 합쳐 리스트 행 높이를 고정.
-          지역을 맨 앞에 굵게 두는 이유: 좁은 화면에서 잘려도 끝까지 남아야 하는 정보다.
-          "서울 수업을 부산 학부모가 신청" 사고를 막는 것이 이 표기의 목적(사용자 지시).
+      {/* 일정 + 대상을 한 줄로 합쳐 리스트 행 높이를 고정.
           대상은 입력 없으면 '전체'(전체 대상)로 표기. */}
-      <ClassCardInfoRow
-        icon={item.regionLabel ? "place" : scheduleLine ? "schedule" : "cake"}
-      >
-        {item.regionLabel ? (
-          <>
-            <span className="font-bold text-it-ink-700 dark:text-white">
-              {item.regionLabel}
-            </span>
-            {` · ${metaLine}`}
-          </>
-        ) : (
-          metaLine
-        )}
+      <ClassCardInfoRow icon={scheduleLine ? "schedule" : "cake"}>
+        {metaLine}
       </ClassCardInfoRow>
     </ClassListCard>
   );

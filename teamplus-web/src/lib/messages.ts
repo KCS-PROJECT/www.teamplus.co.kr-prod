@@ -302,11 +302,12 @@ export const MESSAGES = {
       selectedTeamsCount: (n: number) => `${n}개 팀 선택됨`,
     },
     // 수업 지역 — 감독/코치가 등록 시 시/도 + 시군구를 직접 선택한다(필수).
-    //   목록·상세 카드에 "서울 강남구" 로 노출돼 학부모가 수업 위치를 목록 단계에서 판단한다.
+    //   수업 상세에 "서울 강남구" 로 노출되며 수업 탐색 지역 필터의 데이터 공급원이다
+    //   (목록 카드 표시는 제거됨 — claudedocs/class-visibility-disable-2026-08-12.md §3-B).
     region: {
       sectionTitle: "수업 지역",
       sectionHint:
-        "수업이 열리는 지역을 선택해주세요. 학부모에게 수업 목록과 상세에서 시군구까지 표시됩니다.",
+        "수업이 열리는 지역을 선택해주세요. 학부모에게 수업 상세에서 시군구까지 표시됩니다.",
       cityLabel: "시/도",
       cityPlaceholder: "시/도 선택",
       districtLabel: "시군구",
