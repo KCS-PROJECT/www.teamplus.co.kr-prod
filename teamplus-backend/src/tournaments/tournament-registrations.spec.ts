@@ -539,12 +539,16 @@ describe("TournamentsService — 기간 쌍(both-or-neither) 계약", () => {
   });
 
   it("update — null 명시 전송 시 기간 해제(write 에 null 도달)", async () => {
-    const prisma = {
+    // [2026-08-20] 기간 변경 요청은 경기 정합 검증(hockeyMatch.findMany)과
+    //   단일 트랜잭션($transaction 패스스루)을 거친다 — 경기 0건이라 해제 허용.
+    const prisma: any = {
       tournament: {
         findUnique: jest.fn().mockResolvedValue({ ...baseTournament }),
         update: jest.fn().mockResolvedValue({ ...baseTournament }),
       },
+      hockeyMatch: { findMany: jest.fn().mockResolvedValue([]) },
     };
+    prisma.$transaction = jest.fn(async (cb: any) => cb(prisma));
     const service = new TournamentsService(
       prisma as any,
       {} as any,
@@ -624,7 +628,8 @@ describe("TournamentsService — 참가 대상 전체(빈 명단) 계약", () =>
   });
 
   it("create — teamId 있음 + 빈 명단 → 전체 허용 대회 생성(파생 자격 클리어)", async () => {
-    const prisma = {
+    // [2026-08-20] 생성은 경기 일정과 단일 트랜잭션 — $transaction 패스스루 필요.
+    const prisma: any = {
       team: { findUnique: jest.fn().mockResolvedValue({ id: "team-1" }) },
       tournament: {
         create: jest
@@ -632,6 +637,7 @@ describe("TournamentsService — 참가 대상 전체(빈 명단) 계약", () =>
           .mockResolvedValue({ id: "trn-all", name: "전체 대회" }),
       },
     };
+    prisma.$transaction = jest.fn(async (cb: any) => cb(prisma));
     const notifications = { notifyTeamParents: jest.fn() };
     const service = new TournamentsService(
       prisma as any,

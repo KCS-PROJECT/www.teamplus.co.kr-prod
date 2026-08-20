@@ -88,7 +88,7 @@ export interface TournamentListItem {
   clubId: string | null;
   teamId?: string | null;
   rinkId: string | null;
-  /** 대회 기간 — null = 일정 미정(추후 확정). 경기 일정에서 파생 저장된다. */
+  /** 대회 기간 — null = 일정 미정(추후 확정). 감독이 직접 입력한다(2026-08-20 자동 파생 폐기). */
   startDate: string | null;
   endDate: string | null;
   status: TournamentStatus;
@@ -242,6 +242,21 @@ export interface MatchEventRecord {
 // Request DTO Types (Backend DTO와 1:1 매핑)
 // ============================================
 
+/**
+ * [2026-08-20] 대회 등록/수정과 단일 요청으로 전송하는 경기 일정 1행 —
+ *  백엔드 TournamentScheduleMatchDto 와 1:1. 수정 시 이 배열이 "최종 경기 집합"이며
+ *  id 있는 행 = 기존 경기(무변경 시 백엔드 미접촉), 없는 행 = 신규, 빠진 기존 경기 = 삭제.
+ */
+export interface TournamentScheduleMatchInput {
+  id?: string;
+  opponentName?: string;
+  /** 오프셋 없는 KST 벽시계 "YYYY-MM-DDTHH:mm:00" */
+  scheduledAt: string;
+  venueId?: string;
+  venueName?: string;
+  matchOrder?: number;
+}
+
 export interface CreateTournamentInput {
   name: string;
   description?: string;
@@ -252,9 +267,12 @@ export interface CreateTournamentInput {
   venueId?: string;
   /** [2026-06-05] 대회장소 — 자유 텍스트 직접 입력 (venueId 대체). Tournament.location 매핑. */
   location?: string;
-  /** 대회 기간 — 경기 일정 날짜의 min/max. null = 일정 미정(수정 시 null 전송 = 기간 해제). */
+  /** 대회 기간 — 사용자 직접 입력(2026-08-20 자동 파생 폐기). null = 일정 미정(수정 시 null 전송 = 기간 해제).
+   *  경기 일정(matches)이 있으면 기간 필수 + 모든 경기 날짜가 기간 안(백엔드 검증). */
   startDate?: string | null;
   endDate?: string | null;
+  /** [2026-08-20] 경기 일정 — 대회 본체와 단일 트랜잭션 처리(diff 동기화). 미전송 시 기존 경기 무변경. */
+  matches?: TournamentScheduleMatchInput[];
   status?: TournamentStatus;
   eligibleBirthYearFrom?: number;
   eligibleBirthYearTo?: number;

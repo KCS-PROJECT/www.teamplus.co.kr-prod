@@ -14,9 +14,13 @@
  *  - 참가 대상 — 전체(팀 선수 전원, 기본) 토글 ON 이면 명단 없이 생성(빈 배열 전송 =
  *    백엔드 전체 허용 시맨틱). 직접 선택 모드에서만 최소 1명 필수.
  *    (ClassForm 의 "전체 연령 대상" 토글과 동일 패턴)
- *  - 대회 기간(start/end)은 경기 일정 날짜의 min/max 로 자동 파생
- *  - 경기 일정 0건 허용 — 기간 null(일정 미정) 대회로 생성, 신청 접수 가능.
- *    일정 행이 있는데 날짜·시간 미완성이면 조용한 유실 방지를 위해 제출 차단.
+ *  - 대회 기간(start/end)은 사용자가 직접 입력 (2026-08-20 자동 파생 폐기 — A안).
+ *    기간·경기 둘 다 없으면 "일정 미정" 대회. 기간은 저절로 바뀌지 않는다.
+ *  - 기간 ↔ 경기 일정 정합: 경기가 있으면 기간 필수, 모든 경기 날짜는 기간 안(양끝 포함).
+ *    백엔드(updateTournament/createTournament)가 동일 규칙을 최종 상태 기준으로 재검증.
+ *  - 저장은 단일 요청 — matches 배열(diff 동기화)로 대회 본체와 한 트랜잭션 처리.
+ *    수정 시 잠긴 지난 경기는 무변경 왕복으로 백엔드가 미접촉(기록 보존).
+ *  - 일정 행이 있는데 날짜·시간 미완성이면 조용한 유실 방지를 위해 제출 차단.
  */
 
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
@@ -42,13 +46,12 @@ import { getTeamMembers, type TeamMemberRow } from "@/services/team.service";
 import {
   canManageMatch,
   createTournament,
-  createMatch,
-  deleteMatch,
   getTournament,
   updateTournament,
   type CreateTournamentInput,
   type UpdateTournamentInput,
   type TournamentBillingMode,
+  type TournamentScheduleMatchInput,
 } from "@/services/tournament.service";
 
 // [2026-06-16] 참가 대상 = 선수 명단(selectedParticipantIds) 스냅샷.
@@ -59,6 +62,8 @@ import {
 interface ScheduleMatchRow {
   /** 안정적 key (렌더용) */
   key: string;
+  /** 기존 경기(HockeyMatch) id — 수정 모드 prefill 행만 보유. 저장 시 diff 동기화 기준. */
+  id?: string;
   opponentName: string;
   /** YYYY-MM-DD */
   date: string;
@@ -120,8 +125,14 @@ export default function TournamentCreatePage() {
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  // [2026-06-16] 대회 기간(start/end)은 경기 일정에서 자동 파생 — 수동 입력 state 제거.
-  // [2026-06-05] openPicker: "schedule-{key}"(대회일정 경기 날짜)만 사용.
+  // [2026-08-20] 대회 기간(start/end) — 사용자 직접 입력(자동 파생 폐기).
+  //   둘 다 비움 = 일정 미정. 경기 일정을 넣어도 기간은 저절로 바뀌지 않는다.
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  // 수정 모드 prefill 시점의 시작일 — 진행 중 대회(과거 시작)에서 시작일을 실수로 바꿔도
+  //   피커 하한을 기존 값까지 열어 되돌릴 수 있게 한다(과거로 더 내려가는 것은 불가).
+  const [initialStartDate, setInitialStartDate] = useState("");
+  // openPicker: "period-start" | "period-end" | "schedule-{key}".
   const [openPicker, setOpenPicker] = useState<string | null>(null);
   // 대회장소 — VenueSearchSheet(바텀시트)에서 선택/입력. venueId = 선택 링크장(SoT),
   //   venueQuery = 표시 텍스트(선택 링크장명 또는 자유 텍스트 → location 전송).
@@ -152,9 +163,8 @@ export default function TournamentCreatePage() {
   const [pickerOpen, setPickerOpen] = useState(false);
 
   // [2026-06-05 3단계] 대회일정 — 경기별 vs 상대팀(자유 텍스트) + 날짜/시간.
+  //   [2026-08-20] 저장은 단일 요청 diff 동기화 — 기존 경기 id 는 행(row.id)에 보존한다.
   const [scheduleMatches, setScheduleMatches] = useState<ScheduleMatchRow[]>([]);
-  // [2026-06-08] 수정 모드: 진입 시점 기존 경기 id — 저장 시 전체 교체(삭제 후 재생성)용.
-  const [existingMatchIds, setExistingMatchIds] = useState<string[]>([]);
   // 신규 경기 행 key 생성용 카운터 (Math.random 금지 환경 → 단조 증가 인덱스).
   const matchKeySeq = useMemo(() => ({ n: 0 }), []);
 
@@ -222,7 +232,10 @@ export default function TournamentCreatePage() {
         const t = res.data;
         setName(t.name ?? "");
         setDescription(t.description ?? "");
-        // [2026-06-16] start/end 는 경기 일정에서 파생 — 수정 시 matches prefill 로 자동 재계산.
+        // [2026-08-20] 대회 기간 복원 — 저장값 그대로 prefill(직접 입력 SoT).
+        setStartDate(toDateInputValue(t.startDate));
+        setEndDate(toDateInputValue(t.endDate));
+        setInitialStartDate(toDateInputValue(t.startDate));
         // 링크장 복원 — venue 관계 우선, 없으면 자유 텍스트(location)를 입력칸에 복원.
         //   복원하지 않으면 수정 저장 시 기존 텍스트 장소가 유실된다.
         setVenueId(t.venue?.id ?? t.venueId ?? "");
@@ -248,16 +261,17 @@ export default function TournamentCreatePage() {
             const mm = String(dt.getMinutes()).padStart(2, "0");
             return {
               key: `existing-${m.id}`,
+              // 기존 경기 id 보존 — 저장 시 diff 동기화(무변경 행은 백엔드 미접촉) 기준.
+              id: m.id,
               opponentName: m.awayTeam?.name ?? m.opponentName ?? "",
               date: toDateInputValue(m.scheduledAt),
               time: `${hh}:${mm}`,
               venueId: m.venue?.id ?? "",
-              // 링크장 미선택 경기는 자유 텍스트(venueName) 복원 — 전체 교체 저장이라 미복원 시 유실.
+              // 링크장 미선택 경기는 자유 텍스트(venueName) 복원 — 미복원 시 저장에서 클리어로 오인.
               venueQuery: m.venue?.name ?? m.venueName ?? "",
             };
           });
           setScheduleMatches(rows);
-          setExistingMatchIds(t.matches.map((m) => m.id));
         }
       } else {
         toast.error(res.error?.message ?? MESSAGES.error.network);
@@ -418,19 +432,62 @@ export default function TournamentCreatePage() {
     if (scheduleMatches.some((m) => !m.date || !m.time)) {
       return MESSAGES.tournament.scheduleIncomplete;
     }
+    // [2026-08-20] 대회 기간 ↔ 경기 일정 정합 — 백엔드와 동일 규칙 이중 검증.
+    //   ① 시작·종료는 짝(둘 다 입력 또는 둘 다 비움) ② 시작 ≤ 종료
+    //   ③ 경기가 있으면 기간 필수 ④ 모든 경기 날짜는 기간 안(양끝 포함, 날짜 문자열 비교).
+    if ((startDate === "") !== (endDate === "")) {
+      return MESSAGES.tournament.periodPairIncomplete;
+    }
+    if (startDate && endDate && startDate > endDate) {
+      return MESSAGES.tournament.periodOrderInvalid;
+    }
+    if (scheduleMatches.length > 0 && !startDate) {
+      return MESSAGES.tournament.dateRequired;
+    }
+    if (startDate && endDate) {
+      const outsideIdx = scheduleMatches.findIndex(
+        (m) => m.date && (m.date < startDate || m.date > endDate),
+      );
+      if (outsideIdx >= 0) {
+        return MESSAGES.tournament.scheduleOutOfPeriod(outsideIdx + 1);
+      }
+    }
     // 참가대상 — 직접 선택 모드에서만 최소 1명 필수(전체 토글 ON 은 빈 명단 = 전체 허용).
     if (!allPlayers && selectedPlayerIds.size === 0) {
       return MESSAGES.tournament.participantRequired;
     }
     return null;
-  }, [name, scheduleMatches, selectedPlayerIds, allPlayers]);
+  }, [name, scheduleMatches, startDate, endDate, selectedPlayerIds, allPlayers]);
 
-  // 경기 일정은 과거 날짜 선택 불가(오늘부터) — create·edit 공통. 수정 모드의 지난 경기는 잠금(아래 locked).
-  const scheduleMinDate = useMemo(() => {
+  // 날짜 피커 경계 — 과거 선택 불가(오늘부터), 경기 날짜는 기간 안으로 제한.
+  //   수정 모드의 지난 경기는 잠금(아래 locked)이라 피커 자체가 열리지 않는다.
+  const todayDate = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
     return d;
   }, []);
+  // "YYYY-MM-DD" → 로컬 자정 Date — new Date("YYYY-MM-DD")의 UTC 파싱 시프트 회피.
+  const parseLocalDate = useCallback((v: string): Date | undefined => {
+    if (!v) return undefined;
+    const [y, m, d] = v.split("-").map(Number);
+    if (!y || !m || !d) return undefined;
+    return new Date(y, m - 1, d);
+  }, []);
+  const pickerMinDate = useMemo(() => {
+    // 시작일 — 오늘부터. 단 수정 모드에서 기존 시작일이 과거면(진행 중 대회) 그 값까지 허용.
+    if (openPicker === "period-start") {
+      const init = parseLocalDate(initialStartDate);
+      return init && init < todayDate ? init : todayDate;
+    }
+    // 종료일·경기 날짜는 시작일(미래인 경우)부터, 그 외 오늘부터.
+    const s = parseLocalDate(startDate);
+    return s && s > todayDate ? s : todayDate;
+  }, [openPicker, startDate, initialStartDate, parseLocalDate, todayDate]);
+  const pickerMaxDate = useMemo(() => {
+    // 시작일·경기 날짜는 종료일까지, 종료일 피커는 상한 없음.
+    if (openPicker === "period-end") return undefined;
+    return parseLocalDate(endDate);
+  }, [openPicker, endDate, parseLocalDate]);
   // 오늘(YYYY-MM-DD) — 지난 경기(수정 모드 잠금) 판정용.
   const todayStr = useMemo(() => {
     const d = new Date();
@@ -457,22 +514,38 @@ export default function TournamentCreatePage() {
     //   전환을 시작한 경우엔 ref 를 유지한다(실패 시에만 해제).
     let navigated = false;
     try {
-      // [2026-06-16] 대회 기간(start/end)을 경기 일정에서 파생 — 유효 경기(date+time) 날짜의
-      //   최소/최대를 시작/종료일로 사용.
-      // [2026-08-07] 일정 0건이면 null 전송 = 일정 미정 대회. 수정 모드에서 경기를 전부
-      //   삭제한 경우에도 null 로 기간을 해제해 미정 상태로 복귀시킨다(백엔드 계약).
-      const validMatchDates = scheduleMatches
+      // [2026-08-20] 대회 기간 — 사용자 입력값 그대로 전송. 둘 다 비움 = null(일정 미정).
+      //   경기 일정은 matches 배열로 대회 본체와 단일 요청(백엔드 diff 동기화·단일 트랜잭션).
+      //   잠긴 지난 경기는 무변경 왕복이라 백엔드가 미접촉 처리(기록 보존).
+      const matchesPayload: TournamentScheduleMatchInput[] = scheduleMatches
         .filter((m) => m.date && m.time)
-        .map((m) => m.date)
-        .sort();
-      const derivedStart = validMatchDates[0] ?? null;
-      const derivedEnd = validMatchDates[validMatchDates.length - 1] ?? null;
+        .map((m, i) => {
+          const rowVenueText = m.venueQuery.trim();
+          // 경기별 장소 — 링크장 선택 시 venueId, 텍스트 입력 시 venueName(자유 텍스트).
+          //   기존 경기의 장소 미지정은 그대로 유지(표시 시점 대회 장소 폴백 참조),
+          //   신규 경기만 레거시 유지로 대회 링크장 venueId 폴백 저장.
+          const venueFields = m.venueId
+            ? { venueId: m.venueId }
+            : rowVenueText
+              ? { venueName: rowVenueText }
+              : m.id || !venueId
+                ? {}
+                : { venueId };
+          return {
+            ...(m.id ? { id: m.id } : {}),
+            opponentName: m.opponentName.trim() || undefined,
+            scheduledAt: `${m.date}T${m.time}:00`,
+            matchOrder: i + 1,
+            ...venueFields,
+          };
+        });
       const payload: CreateTournamentInput = {
         name: name.trim(),
-        startDate: derivedStart,
-        endDate: derivedEnd,
+        startDate: startDate || null,
+        endDate: endDate || null,
         // [2026-06-16] 결제 방식 — 항상 전송 (수정 시 PREPAID↔POSTPAID 전환 반영).
         billingMode,
+        matches: matchesPayload,
       };
       if (description.trim()) payload.description = description.trim();
       // 대회장소 — 링크장 선택 시 venueId, 미선택 시 입력 텍스트를 location(자유 텍스트)으로 저장.
@@ -498,36 +571,8 @@ export default function TournamentCreatePage() {
           ? await updateTournament(editId, payload as UpdateTournamentInput)
           : await createTournament(payload);
       if (res.success && res.data) {
-        const tournamentId = res.data.id;
-        // [2026-06-08] 대회일정 저장 — 신규/수정 모두 반영.
-        //   수정 모드는 진입 시점 기존 경기(existingMatchIds)를 전체 삭제 후 재생성(전체 교체).
-        if (isEditMode && existingMatchIds.length > 0) {
-          for (const mid of existingMatchIds) {
-            try {
-              await deleteMatch(mid);
-            } catch {
-              /* 이미 삭제됐을 수 있음 — 무시 */
-            }
-          }
-        }
-        const validMatches = scheduleMatches.filter((m) => m.date && m.time);
-        for (let i = 0; i < validMatches.length; i += 1) {
-          const m = validMatches[i];
-          // 일정별 참가비 입력 제거 — 경기 일정은 안내용. 금액은 대회 단일 참가비로만 관리.
-          // 경기별 장소 — 링크장 선택 시 venueId, 미선택+텍스트 입력 시 venueName(자유 텍스트).
-          //   둘 다 없으면 대회 링크장 venueId 폴백 저장(레거시 유지), 텍스트 장소는 복사하지
-          //   않고 null 로 두어 표시 시점에 대회 장소로 폴백(참조 방식).
-          const rowVenueText = m.venueQuery.trim();
-          await createMatch({
-            tournamentId,
-            opponentName: m.opponentName.trim() || undefined,
-            scheduledAt: `${m.date}T${m.time}:00`,
-            matchOrder: i + 1,
-            venueId:
-              m.venueId || (rowVenueText ? undefined : venueId || undefined),
-            venueName: !m.venueId && rowVenueText ? rowVenueText : undefined,
-          });
-        }
+        // [2026-08-20] 경기 일정은 matches 배열로 본체와 함께 저장 완료 —
+        //   과거의 개별 deleteMatch/createMatch 루프(전량 교체·부분 실패 잔존) 제거.
         toast.success(
           isEditMode ? "대회가 수정되었습니다." : MESSAGES.tournament.created,
         );
@@ -831,8 +876,49 @@ export default function TournamentCreatePage() {
             </Field>
           </SectionCard>
 
+          {/* [2026-08-20] 대회 기간 — 직접 입력(자동 파생 폐기, A안). 값은 저절로 바뀌지
+              않으며, 경기 일정과의 정합은 validationError(폼)·백엔드가 이중 검증한다. */}
+          <SectionCard
+            icon="calendar_today"
+            title="대회 기간"
+            description={MESSAGES.tournamentForm.dateHint}
+          >
+            <div className="grid grid-cols-2 gap-2">
+              <DateTriggerButton
+                value={startDate}
+                placeholder="시작일"
+                ariaLabel="대회 시작일 선택"
+                isOpen={openPicker === "period-start"}
+                onOpen={() => setOpenPicker("period-start")}
+              />
+              <DateTriggerButton
+                value={endDate}
+                placeholder="종료일"
+                ariaLabel="대회 종료일 선택"
+                isOpen={openPicker === "period-end"}
+                onOpen={() => setOpenPicker("period-end")}
+              />
+            </div>
+            {startDate || endDate ? (
+              scheduleMatches.length === 0 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStartDate("");
+                    setEndDate("");
+                  }}
+                  className="inline-flex items-center gap-1 self-start text-w-caption font-semibold text-it-ink-500 underline dark:text-rink-300"
+                >
+                  기간 비우기 (일정 미정)
+                </button>
+              ) : null
+            ) : (
+              <Hint>{MESSAGES.tournamentForm.periodTbdHint}</Hint>
+            )}
+          </SectionCard>
+
           {/* [2026-06-05 3단계] 대회일정 — 대회기간 밑. 경기별 vs 상대팀(자유 텍스트) + 날짜/시간.
-              신규 등록 시 입력된 경기는 저장과 함께 HockeyMatch 로 생성된다. */}
+              [2026-08-20] 저장은 matches 배열 단일 요청(diff 동기화) — 개별 경기 API 호출 없음. */}
           <SectionCard
             icon="event_note"
             title="대회일정"
@@ -1076,21 +1162,32 @@ export default function TournamentCreatePage() {
         }}
       />
 
-      {/* [추가 2026-05-30] 날짜 선택 공통 모달 — 경기 일정(schedule-{key}) 날짜 단일 인스턴스.
+      {/* [추가 2026-05-30] 날짜 선택 공통 모달 — 대회 기간(period-start/end) + 경기 일정
+          (schedule-{key}) 공용 단일 인스턴스.
           · createPortal(document.body) 렌더라 SectionCard 의 overflow-hidden 영향을 받지 않음.
-          · [2026-06-16] 대회 기간(start/end) 수동 입력 제거 — 경기 일정 날짜만 선택. */}
+          · [2026-08-20] 기간 수동 입력 복원 — 경기 날짜 피커는 기간 안(min/max)으로 제한. */}
       <DatePickerModal
         isOpen={openPicker !== null}
         value={
-          openPicker?.startsWith("schedule-")
-            ? (scheduleMatches.find((m) => m.key === openPicker.slice(9))?.date ?? "")
-            : ""
+          openPicker === "period-start"
+            ? startDate
+            : openPicker === "period-end"
+              ? endDate
+              : openPicker?.startsWith("schedule-")
+                ? (scheduleMatches.find((m) => m.key === openPicker.slice(9))
+                    ?.date ?? "")
+                : ""
         }
-        ariaLabel="경기 날짜 선택"
-        minDate={scheduleMinDate}
+        ariaLabel="날짜 선택"
+        minDate={pickerMinDate}
+        maxDate={pickerMaxDate}
         onClose={() => setOpenPicker(null)}
         onSelect={(iso) => {
-          if (openPicker?.startsWith("schedule-")) {
+          if (openPicker === "period-start") {
+            setStartDate(iso);
+          } else if (openPicker === "period-end") {
+            setEndDate(iso);
+          } else if (openPicker?.startsWith("schedule-")) {
             updateScheduleMatch(openPicker.slice(9), { date: iso });
           }
         }}
@@ -1509,8 +1606,6 @@ const pillInput = `h-11 ${pillInputBase}`;
 //   강제되어 placeholder 텍스트가 상하 패딩에 밀려 "아래로 내려간 느낌"을 주던 회귀 차단.
 //   pt-2.5/pb-3 로 텍스트가 박스 상단에서 자연스럽게 시작하도록 조정.
 const pillTextarea = `min-h-[7.5rem] pt-2.5 pb-3 leading-relaxed resize-none ${pillInputBase}`;
-
-// [2026-06-16] parseLocalDate 제거 — 대회 기간(start/end) 수동 입력 폐기로 minDate prop 미사용.
 
 // [추가 2026-05-30] 날짜 선택 트리거 버튼 — 네이티브 date input 대체.
 //   클릭 시 DatePickerModal(공통 달력) 오픈. pillInput 과 동일한 필 스타일로 다른 입력과 정렬.
