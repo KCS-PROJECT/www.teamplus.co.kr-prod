@@ -17,6 +17,11 @@ import { NotificationsService } from "@/notifications/notifications.service";
 import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
 import { resolveViewerTeamIds } from "@/common/utils/team-scope.util";
 import {
+  countActiveUnitNotices,
+  cleanupUnitNoticesForDelete,
+  isForeignKeyRestrictError,
+} from "@/community/utils/unit-notice-delete-guard.util";
+import {
   dateOnlyToUtc,
   dateOnlyToString,
   kstTodayUtcMidnight,
@@ -3823,23 +3828,37 @@ export class ClassesService {
    *   classAttendance.schedule.classId(ClassSchedule.classId :785).
    */
   private async countClassBlockingRefs(classId: string): Promise<number> {
-    const [activeEnroll, creditCount, postpaidCount, attendanceCount] =
-      await Promise.all([
-        this.prisma.enrollment.count({
-          where: {
-            classId,
-            status: { notIn: ["cancelled", "expired", "rejected"] },
-          },
-        }),
-        this.prisma.memberCredit.count({ where: { classId } }),
-        this.prisma.monthlyPostpaidBillingLine.count({
-          where: { billing: { classId } },
-        }),
-        this.prisma.classAttendance.count({
-          where: { schedule: { classId } },
-        }),
-      ]);
-    return activeEnroll + creditCount + postpaidCount + attendanceCount;
+    const [
+      activeEnroll,
+      creditCount,
+      postpaidCount,
+      attendanceCount,
+      activeNoticeCount,
+    ] = await Promise.all([
+      this.prisma.enrollment.count({
+        where: {
+          classId,
+          status: { notIn: ["cancelled", "expired", "rejected"] },
+        },
+      }),
+      this.prisma.memberCredit.count({ where: { classId } }),
+      this.prisma.monthlyPostpaidBillingLine.count({
+        where: { billing: { classId } },
+      }),
+      this.prisma.classAttendance.count({
+        where: { schedule: { classId } },
+      }),
+      // [Codex R1 H-04] 게시 중 단위 공지 — FK RESTRICT 라 비제어 DB 오류가 되기 전에
+      // 가드에서 차단 (soft 삭제된 공지 잔재는 삭제 트랜잭션이 정리)
+      countActiveUnitNotices(this.prisma, { classId }),
+    ]);
+    return (
+      activeEnroll +
+      creditCount +
+      postpaidCount +
+      attendanceCount +
+      activeNoticeCount
+    );
   }
 
   /**
@@ -3862,17 +3881,30 @@ export class ClassesService {
       throw new NotFoundException("수업을 찾을 수 없습니다.");
     }
 
-    // [수정 2026-06-29] B안 가드 — 유효 신청/크레딧/후불청구/출석 이력 중 하나라도 있으면 삭제 불가.
-    //   countClassBlockingRefs 헬퍼로 4종 참조를 합산(가드+deletable 공용 · DRY).
+    // [수정 2026-06-29] B안 가드 — 유효 신청/크레딧/후불청구/출석/게시 중 공지 중
+    //   하나라도 있으면 삭제 불가. countClassBlockingRefs 헬퍼 합산(가드+deletable 공용 · DRY).
     if ((await this.countClassBlockingRefs(classId)) > 0) {
       throw new ConflictException(
-        "신청자 또는 결제·출석 이력이 있는 수업은 삭제할 수 없습니다.",
+        "신청자 또는 결제·출석·공지 이력이 있는 수업은 삭제할 수 없습니다.",
       );
     }
 
-    await this.prisma.class.delete({
-      where: { id: classId },
-    });
+    // [Codex R1 H-04] soft 삭제된 공지 잔재만 정리(FK RESTRICT 점유 해제) 후 삭제.
+    // [R2] 가드 count 이후 레이스로 생긴 active 공지는 FK 가 delete 를 막는다 —
+    //      P2003 을 제어된 Conflict 로 변환해 공지를 보존한다.
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await cleanupUnitNoticesForDelete(tx, { classId });
+        await tx.class.delete({ where: { id: classId } });
+      });
+    } catch (error) {
+      if (isForeignKeyRestrictError(error)) {
+        throw new ConflictException(
+          "신청자 또는 결제·출석·공지 이력이 있는 수업은 삭제할 수 없습니다.",
+        );
+      }
+      throw error;
+    }
 
     // 캐시 무효화
     await this.invalidateClassCache(teamId);
@@ -4226,15 +4258,28 @@ export class ClassesService {
       throw new NotFoundException("수업을 찾을 수 없습니다.");
     }
 
-    // [수정 2026-06-29] B안 가드 — 유효 신청/크레딧/후불청구/출석 이력 중 하나라도 있으면 삭제 불가.
-    //   countClassBlockingRefs 헬퍼로 4종 참조를 합산(가드+deletable 공용 · DRY).
+    // [수정 2026-06-29] B안 가드 — 유효 신청/크레딧/후불청구/출석/게시 중 공지 중
+    //   하나라도 있으면 삭제 불가. countClassBlockingRefs 헬퍼 합산(가드+deletable 공용 · DRY).
     if ((await this.countClassBlockingRefs(classId)) > 0) {
       throw new ConflictException(
-        "신청자 또는 결제·출석 이력이 있는 수업은 삭제할 수 없습니다.",
+        "신청자 또는 결제·출석·공지 이력이 있는 수업은 삭제할 수 없습니다.",
       );
     }
 
-    await this.prisma.class.delete({ where: { id: classId } });
+    // [Codex R1 H-04] soft 삭제된 공지 잔재만 정리 후 삭제 · [R2] 레이스 P2003 → Conflict
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await cleanupUnitNoticesForDelete(tx, { classId });
+        await tx.class.delete({ where: { id: classId } });
+      });
+    } catch (error) {
+      if (isForeignKeyRestrictError(error)) {
+        throw new ConflictException(
+          "신청자 또는 결제·출석·공지 이력이 있는 수업은 삭제할 수 없습니다.",
+        );
+      }
+      throw error;
+    }
 
     return { id: classId, deletedAt: new Date() };
   }

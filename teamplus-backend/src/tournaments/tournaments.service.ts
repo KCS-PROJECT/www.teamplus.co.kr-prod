@@ -23,6 +23,11 @@ import {
   resolveScopedChildUserIds,
 } from "@/common/utils/team-scope.util";
 import { resolveTournamentAttribution } from "@/payments/settlement/attribution.util";
+import {
+  countActiveUnitNotices,
+  cleanupUnitNoticesForDelete,
+  isForeignKeyRestrictError,
+} from "@/community/utils/unit-notice-delete-guard.util";
 import { PaymentRefundService } from "@/payments/services/payment-refund.service";
 import {
   CreateTournamentDto,
@@ -1588,21 +1593,44 @@ export class TournamentsService {
       );
     }
 
+    // [Codex R1 H-04] 게시 중 단위 공지 가드 — TeamPost FK 가 RESTRICT 라 공지가 남아
+    // 있으면 삭제가 비제어 DB 오류로 실패한다. 게시 중 공지는 제어된 차단으로 안내.
+    if ((await countActiveUnitNotices(this.prisma, { tournamentId: id })) > 0) {
+      throw new BadRequestException(
+        "공지가 등록된 대회는 삭제할 수 없습니다. 공지를 먼저 삭제해주세요.",
+      );
+    }
+
     // [2026-06-15] 경기가 있어도 대회를 삭제할 수 있도록 연관 데이터를 트랜잭션으로 함께 삭제.
     //   FK 제약(Restrict)으로 막던 항목을 선삭제한다:
     //     · GameExpense (tournament/match 둘 다 Restrict) — 먼저 삭제
     //     · HockeyMatch (tournament Restrict) — periods/events 는 Cascade 자동 삭제
     //   나머지(TournamentRegistration=Cascade · PlayerAward/Video=SetNull · TournamentMatch=Cascade)는 자동 처리.
-    await this.prisma.$transaction(async (tx) => {
-      await tx.gameExpense.deleteMany({
-        where: { OR: [{ tournamentId: id }, { match: { tournamentId: id } }] },
+    // [Codex R1 H-04] soft 삭제된 공지 잔재만 정리(FK 점유 해제) 후 삭제.
+    // [R2] 가드 count 이후 레이스로 생긴 active 공지는 FK 가 delete 를 막는다 —
+    //      P2003 을 제어된 안내로 변환해 공지를 보존한다.
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.gameExpense.deleteMany({
+          where: {
+            OR: [{ tournamentId: id }, { match: { tournamentId: id } }],
+          },
+        });
+        await tx.hockeyMatch.deleteMany({ where: { tournamentId: id } });
+        await tx.tournamentRegistration.deleteMany({
+          where: { tournamentId: id },
+        });
+        await cleanupUnitNoticesForDelete(tx, { tournamentId: id });
+        await tx.tournament.delete({ where: { id } });
       });
-      await tx.hockeyMatch.deleteMany({ where: { tournamentId: id } });
-      await tx.tournamentRegistration.deleteMany({
-        where: { tournamentId: id },
-      });
-      await tx.tournament.delete({ where: { id } });
-    });
+    } catch (error) {
+      if (isForeignKeyRestrictError(error)) {
+        throw new BadRequestException(
+          "공지가 등록된 대회는 삭제할 수 없습니다. 공지를 먼저 삭제해주세요.",
+        );
+      }
+      throw error;
+    }
 
     return { id, deletedAt: new Date() };
   }

@@ -104,6 +104,7 @@ model User {
   teamPosts        TeamPost[]
   teamPostComments TeamPostComment[]
   teamPostLikes    TeamPostLike[]
+  teamPostReads    TeamPostRead[]
 
   // 학부모-자녀 관계 (ParentChild)
   parentChildren ParentChild[] @relation("ParentChildren") /// 학부모로서 연결된 자녀들
@@ -605,60 +606,60 @@ enum ClassVisibility {
 
 /// 수업 - 클럽에서 제공하는 수업 정보
 model Class {
-  id               String    @id @default(cuid())
+  id               String          @id @default(cuid())
   /// teamId 또는 academyId 중 하나는 반드시 존재해야 함 (orphan 방지)
   /// DB CHECK: ALTER TABLE classes ADD CONSTRAINT chk_class_owner CHECK (team_id IS NOT NULL OR academy_id IS NOT NULL);
   /// 서비스 레이어에서도 이중 검증 적용
-  teamId           String?   @map("team_id") /// 팀 소속 수업 (nullable — 아카데미 수업은 null)
-  academyId        String?   @map("academy_id") /// 아카데미 소속 수업 (nullable — 클럽 수업은 null)
-  className        String    @map("class_name")
+  teamId           String?         @map("team_id") /// 팀 소속 수업 (nullable — 아카데미 수업은 null)
+  academyId        String?         @map("academy_id") /// 아카데미 소속 수업 (nullable — 클럽 수업은 null)
+  className        String          @map("class_name")
   description      String?
   /// 수업/훈련 유형. 같은 컬럼에 두 도메인이 공존한다:
   ///   - classes 도메인 (학부모용 결제 수업, 소문자): regular | spot | lesson
   ///   - training 도메인 (감독 내부 훈련, 대문자): REGULAR_TRAINING | GAME | FUN | CAMP | PICKUP
   /// 두 도메인은 API 라우트(/classes vs /training)·권한·UI가 분리되어 있다.
-  trainingType     String?   @map("training_type")
-  instructorName   String    @map("instructor_name")
+  trainingType     String?         @map("training_type")
+  instructorName   String          @map("instructor_name")
   capacity         Int
-  ageMin           Int?      @map("age_min")
-  ageMax           Int?      @map("age_max")
+  ageMin           Int?            @map("age_min")
+  ageMax           Int?            @map("age_max")
   /// 대상 출생연도 개별 목록(SoT). 예: [2015, 2017, 2019] — 비연속 선택 가능.
   /// 빈 배열([]) = 전 연령 대상. ageMin/ageMax 는 이 값의 한국나이 min/max 파생값(Dual-write).
-  targetBirthYears Int[]     @default([]) @map("target_birth_years")
-  levelRequired    String?   @map("level_required")
-  startTime        DateTime  @map("start_time")
-  endTime          DateTime  @map("end_time")
-  isActive         Boolean   @default(true) @map("is_active")
+  targetBirthYears Int[]           @default([]) @map("target_birth_years")
+  levelRequired    String?         @map("level_required")
+  startTime        DateTime        @map("start_time")
+  endTime          DateTime        @map("end_time")
+  isActive         Boolean         @default(true) @map("is_active")
   /// [Lifecycle v4.1] 명시 종료 — null=진행, 값=종료+시점. 종료 가드(일정0+잔여선불0) 통과 시에만 기록,
   /// [종료 취소]로 null 롤백 허용. SoT: claudedocs/class-softdelete-lifecycle-design.md §8.2
-  endedAt          DateTime? @map("ended_at") @db.Timestamptz(3)
+  endedAt          DateTime?       @map("ended_at") @db.Timestamptz(3)
   /// [Lifecycle v4.1] 판매 승인 월(그 달 1일). 감독의 [판매 시작] 명시 액션으로만 갱신 — 자동 전환 금지.
   /// 판매 중 = "잔여 일정의 가장 이른 달 == salesOpenMonth". SoT: 동 문서 §9.3
-  salesOpenMonth   DateTime? @map("sales_open_month") @db.Date
-  approvalStatus   String    @default("PENDING") @map("approval_status") // PENDING|APPROVED|REJECTED
-  approvedAt       DateTime? @map("approved_at") @db.Timestamptz(3)
-  approvedBy       String?   @map("approved_by")
-  rejectionReason  String?   @map("rejection_reason")
-  coachId          String?   @map("coach_id")
-  venueId          String?   @map("venue_id")
-  classDays        Json?     @map("class_days") @db.JsonB
-  category         String?   @map("category") // KIDS|JUNIOR|ADULT
-  requiredCoaches  Int       @default(1) @map("required_coaches") /// 필요 코치 수
+  salesOpenMonth   DateTime?       @map("sales_open_month") @db.Date
+  approvalStatus   String          @default("PENDING") @map("approval_status") // PENDING|APPROVED|REJECTED
+  approvedAt       DateTime?       @map("approved_at") @db.Timestamptz(3)
+  approvedBy       String?         @map("approved_by")
+  rejectionReason  String?         @map("rejection_reason")
+  coachId          String?         @map("coach_id")
+  venueId          String?         @map("venue_id")
+  classDays        Json?           @map("class_days") @db.JsonB
+  category         String?         @map("category") // KIDS|JUNIOR|ADULT
+  requiredCoaches  Int             @default(1) @map("required_coaches") /// 필요 코치 수
   /// 결제 방식 (감독이 수업 생성 시 지정, Phase B) — PREPAID(선불 번들) | POSTPAID(후불 정산) | BOTH(선택형·기본, 학생이 결제 시 택1)
-  billingMode      String    @default("BOTH") @map("billing_mode")
+  billingMode      String          @default("BOTH") @map("billing_mode")
   /// [2026-08-04] 공개 범위 — 전국 탐색(/classes/explore) 노출 게이트.
   /// 기본 TEAM_ONLY = 기존 동작 유지(소속 팀만). SELECTED_TEAMS 는 teamVisibilities 와 함께 사용.
   visibility       ClassVisibility @default(TEAM_ONLY)
   /// [2026-08-04] 수업 지역 — 감독/코치가 등록 시 직접 선택하는 시/도 ("서울").
   /// venue.city 는 링크장 등록 상태에 좌우돼 커버리지가 낮아(venueId nullable) 신뢰할 수 없다.
   /// 값 SoT: src/common/constants/regions.constant.ts VENUE_CITIES
-  regionCity       String?   @map("region_city") @db.VarChar(20)
+  regionCity       String?         @map("region_city") @db.VarChar(20)
   /// [2026-08-04] 수업 지역 — 시군구 ("강남구"). 목록 카드에 시/도와 함께 노출해
   /// 타지역 학부모가 이동 거리를 모르고 등록하는 사고를 막는다.
   /// 값 SoT: src/common/constants/regions.constant.ts CITY_DISTRICTS[regionCity]
-  regionDistrict   String?   @map("region_district") @db.VarChar(30)
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  regionDistrict   String?         @map("region_district") @db.VarChar(30)
+  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Relationships
   team             Team?                  @relation(fields: [teamId], references: [id], onDelete: Cascade)
@@ -676,6 +677,7 @@ model Class {
   waitlists        Waitlist[] /// 대기자 목록
   coachAssignments ClassCoachAssignment[] /// 코치 초대/배정 (N:M)
   promotions       AcademyPromotion[]     @relation("PromotionClass") /// 연결된 홍보 게시물
+  communityPosts   TeamPost[]             @relation("ClassCommunityPosts") /// 수업 단위 공지 스트림
 
   // 훈련 스탯
   trainingSessions TrainingSession[] @relation("ClassTrainingSessions")
@@ -858,25 +860,25 @@ model ClassSchedule {
 
 /// 수업 상품 - 수업 가격 및 크레딧 패키지
 model ClassProduct {
-  id               String   @id @default(cuid())
-  classId          String   @map("class_id")
-  productName      String   @map("product_name")
+  id               String    @id @default(cuid())
+  classId          String    @map("class_id")
+  productName      String    @map("product_name")
   description      String?
   price            Int // ₩ KRW
-  sessionsPerMonth Int      @map("sessions_per_month")
-  durationDays     Int      @default(30) @map("duration_days")
+  sessionsPerMonth Int       @map("sessions_per_month")
+  durationDays     Int       @default(30) @map("duration_days")
   // 결제 방식: MONTHLY_FIXED(월정액), PER_SESSION(횟수제), PER_GAME(경기당)
-  feeType          String   @default("PER_SESSION") @map("fee_type")
+  feeType          String    @default("PER_SESSION") @map("fee_type")
   // 결제 시점: PREPAID(선결제), POSTPAID(후결제)
-  billingTiming    String   @default("PREPAID") @map("billing_timing")
-  sessionsPerWeek  Int?     @map("sessions_per_week")
-  feePerSession    Decimal? @map("fee_per_session") @db.Decimal(10, 2)
+  billingTiming    String    @default("PREPAID") @map("billing_timing")
+  sessionsPerWeek  Int?      @map("sessions_per_week")
+  feePerSession    Decimal?  @map("fee_per_session") @db.Decimal(10, 2)
   /// [Lifecycle v4.1] 월별 패키지 귀속월(그 달 1일) — MONTHLY_FIXED 전용, 생성 후 불변(월별 row).
   /// null=무월 레거시(결제일 달 귀속 폴백). SoT: claudedocs/class-softdelete-lifecycle-design.md §9.2
   billingMonth     DateTime? @map("billing_month") @db.Date
-  isActive         Boolean  @default(true) @map("is_active") /// 상품 활성화 여부
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  isActive         Boolean   @default(true) @map("is_active") /// 상품 활성화 여부
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Relationships
   class       Class        @relation(fields: [classId], references: [id], onDelete: Cascade)
@@ -945,19 +947,19 @@ model Payment {
 /// 2026-04-27 정정 (N-9): "클럽 회원 단위 통합 풀" → "사용자(User) × 수업(Class) 단위" 로 의미 변경.
 /// Team/Academy 무관 동일 모델 사용. TeamMember.id 결합 제거.
 model MemberCredit {
-  id            String   @id @default(cuid())
-  userId        String   @map("user_id") /// 출석 주체 (자녀 User.id)
-  classId       String   @map("class_id") /// 어느 수업의 수업권인가 (수업 단위 결합)
-  totalSessions Int      @map("total_sessions") /// 발급된 총 회차 (구 totalCredits)
-  usedSessions  Int      @default(0) @map("used_sessions") /// 사용된 회차 (구 usedCredits)
+  id            String    @id @default(cuid())
+  userId        String    @map("user_id") /// 출석 주체 (자녀 User.id)
+  classId       String    @map("class_id") /// 어느 수업의 수업권인가 (수업 단위 결합)
+  totalSessions Int       @map("total_sessions") /// 발급된 총 회차 (구 totalCredits)
+  usedSessions  Int       @default(0) @map("used_sessions") /// 사용된 회차 (구 usedCredits)
   /// [Lifecycle v4.1] 유효 시작(발급 시점 스냅샷) — null=즉시 유효(기존/이번 달분).
   /// 다음 달분 선구매의 당월 출석 차단: startsAt ≤ now ≤ expiresAt. SoT: 동 문서 §9.5
   startsAt      DateTime? @map("starts_at") @db.Timestamptz(3)
-  expiresAt     DateTime @map("expires_at") @db.Timestamptz(3)
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  issuedDate    DateTime @default(now()) @map("issued_date") @db.Timestamptz(3)
-  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
-  paymentId     String?  @map("payment_id")
+  expiresAt     DateTime  @map("expires_at") @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  issuedDate    DateTime  @default(now()) @map("issued_date") @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  paymentId     String?   @map("payment_id")
 
   // Relationships
   user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -2054,35 +2056,72 @@ model DailyMetrics {
 // ==================== Team Community ====================
 
 /// 팀 게시글 - 팀/연령대별 공지 및 피드
+/// [단위 공지 스트림 v1.2.3] 축 배타 스코프 — teamId·targetClassId·targetTournamentId 중
+/// **정확히 1개만 non-null** (DB CHECK team_posts_scope_axis_check).
+///   · teamId 축 = 팀 게시판 글 (Phase 2 이후 팀 공지 합류)
+///   · targetClassId 축 = 수업 공지 (팀 수업·오픈클래스 — 소유는 Class→teamId|academyId 유도)
+///   · targetTournamentId 축 = 대회 공지
+/// 설계 SoT: claudedocs/unit-notice-stream-design-2026-08-19.md
 model TeamPost {
-  id           String   @id @default(cuid())
-  teamId       String   @map("team_id")
-  authorId     String   @map("author_id")
-  title        String
-  content      String   @db.Text
-  postType     String   @default("announcement") @map("post_type") // announcement|lesson|tournament|friendly|survey
-  targetLevel  String?  @map("target_level") // U8/U10, beginner/intermediate 등 태그용
-  isPinned     Boolean  @default(false) @map("is_pinned")
-  isActive     Boolean  @default(true) @map("is_active")
-  likeCount    Int      @default(0) @map("like_count") // 좋아요 수 캐시
-  commentCount Int      @default(0) @map("comment_count") // 댓글 수 캐시
-  viewCount    Int      @default(0) @map("view_count") // 조회수
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                  String    @id @default(cuid())
+  teamId              String?   @map("team_id")
+  targetClassId       String?   @map("target_class_id")
+  targetTournamentId  String?   @map("target_tournament_id")
+  /// 게시 알림 생애 1회 claim — SystemNotice.publishedNotifiedAt 과 동일 계약.
+  publishedNotifiedAt DateTime? @map("published_notified_at") @db.Timestamptz(3)
+  /// 노출 판정 (팀 공지 경계와 동일): (startAt IS NULL OR startAt <= now()) AND (expiresAt IS NULL OR expiresAt >= now())
+  startAt             DateTime? @map("start_at") @db.Timestamptz(3)
+  expiresAt           DateTime? @map("expires_at") @db.Timestamptz(3)
+  /// 미읽음 재알림 마지막 발송 시각 — 24시간 쿨다운 판정 (updateMany 원자 claim)
+  lastRemindAt        DateTime? @map("last_remind_at") @db.Timestamptz(3)
+  authorId            String    @map("author_id")
+  title               String
+  content             String    @db.Text
+  postType            String    @default("announcement") @map("post_type") // announcement|lesson|tournament|friendly|survey
+  targetLevel         String?   @map("target_level") // U8/U10, beginner/intermediate 등 태그용
+  isPinned            Boolean   @default(false) @map("is_pinned")
+  isActive            Boolean   @default(true) @map("is_active")
+  likeCount           Int       @default(0) @map("like_count") // 좋아요 수 캐시
+  commentCount        Int       @default(0) @map("comment_count") // 댓글 수 캐시
+  viewCount           Int       @default(0) @map("view_count") // 조회수
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // Relationships
-  team        Team                 @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  author      User                 @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  comments    TeamPostComment[]
-  likes       TeamPostLike[]
-  attachments TeamPostAttachment[]
+  // onDelete: Restrict — optional 관계 기본값(SetNull)은 대상 삭제 시 축 CHECK(정확히 1개)와
+  // 충돌하고, 공지 아카이브 보존 정책과도 어긋난다. 대상 정리는 소프트 종료로 처리.
+  team             Team?                @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  targetClass      Class?               @relation("ClassCommunityPosts", fields: [targetClassId], references: [id], onDelete: Restrict)
+  targetTournament Tournament?          @relation("TournamentCommunityPosts", fields: [targetTournamentId], references: [id], onDelete: Restrict)
+  author           User                 @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments         TeamPostComment[]
+  likes            TeamPostLike[]
+  attachments      TeamPostAttachment[]
+  reads            TeamPostRead[]
 
   @@index([teamId])
   @@index([authorId])
   @@index([postType])
   @@index([isActive])
   @@index([teamId, isPinned, createdAt]) // P0: 게시판 정렬 최적화
+  @@index([targetClassId, isPinned, createdAt])
+  @@index([targetTournamentId, isPinned, createdAt])
   @@map("team_posts")
+}
+
+/// 단위/팀 게시글 읽음 로그 — NoticeRead 동형 (읽음 N/M 근거)
+model TeamPostRead {
+  id     String   @id @default(cuid())
+  postId String   @map("post_id")
+  userId String   @map("user_id")
+  readAt DateTime @default(now()) @map("read_at") @db.Timestamptz(3)
+
+  post TeamPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@index([userId, readAt])
+  @@map("team_post_reads")
 }
 
 /// 팀 게시글 댓글
@@ -2211,21 +2250,22 @@ model Rink {
 
 /// 토너먼트/대회 정보
 model Tournament {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   name        String
-  description String?  @db.Text
-  teamId      String?  @map("team_id") // 주최 팀 (선택)
-  rinkId      String?  @map("rink_id")
-  venueId     String?  @map("venue_id") // 개최 링크장 (Venue FK · 2026-05-22)
-  /// 대회 기간 — null = 일정 미정(추후 확정). 팀 웹 폼은 경기 일정(HockeyMatch) 날짜의
-  ///  min/max 를 클라이언트에서 파생해 저장하고, 어드민 폼은 수동 입력(백엔드 자동 파생 없음).
+  description String?   @db.Text
+  teamId      String?   @map("team_id") // 주최 팀 (선택)
+  rinkId      String?   @map("rink_id")
+  venueId     String?   @map("venue_id") // 개최 링크장 (Venue FK · 2026-05-22)
+  /// 대회 기간 — null = 일정 미정(추후 확정). 감독이 직접 입력한다(2026-08-20 경기 min/max
+  ///  자동 파생 폐기 — 값은 저절로 바뀌지 않음). 경기 일정(HockeyMatch)이 있으면 기간 필수 +
+  ///  모든 경기 날짜가 기간 안(양끝 포함)임을 tournaments.service 가 생성/수정에서 검증.
   ///  미정 대회 = 신청 접수 가능 · 사후 취소는 경기 폴백으로 차단 · 후불 정산 차단 ·
   ///  캘린더 대회 이벤트 미표시(등록된 경기는 표시).
   startDate   DateTime? @map("start_date") @db.Date
   endDate     DateTime? @map("end_date") @db.Date
-  status      String   @default("scheduled") // scheduled|ongoing|finished|cancelled
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  status      String    @default("scheduled") // scheduled|ongoing|finished|cancelled
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   // 참가 자격 및 비용 설정
   eligibleBirthYearFrom Int?      @map("eligible_birth_year_from") // 참가 자격 출생연도 시작 (예: 2014)
@@ -2276,6 +2316,9 @@ model Tournament {
 
   // 영상
   videos Video[]
+
+  // 대회 단위 공지 스트림
+  communityPosts TeamPost[] @relation("TournamentCommunityPosts")
 
   @@index([teamId])
   @@index([rinkId])
@@ -3441,7 +3484,7 @@ model PlayerCareer {
 model StaffCareer {
   id               String    @id @default(cuid())
   userId           String    @map("user_id") /// User ID (DIRECTOR/COACH/ADMIN)
-  role             String?   /// 역할 (head_coach|assistant_coach|goalie_coach|director|manager|trainer|referee|analyst)
+  role             String? /// 역할 (head_coach|assistant_coach|goalie_coach|director|manager|trainer|referee|analyst)
   organizationName String?   @map("organization_name") /// 소속 기관/클럽명
   leagueName       String?   @map("league_name") /// 리그명
   startDate        DateTime? @map("start_date") @db.Date /// 경력 시작일
@@ -5015,7 +5058,7 @@ model ContactInquiry {
   userAgent        String? // 스팸 추적(서버 기록, 선택)
   createdAt        DateTime             @default(now()) @db.Timestamptz(3)
   updatedAt        DateTime             @updatedAt @db.Timestamptz(3)
-  deletedAt        DateTime? @db.Timestamptz(3) // soft delete
+  deletedAt        DateTime?            @db.Timestamptz(3) // soft delete
 
   @@index([status, deletedAt, createdAt])
   @@index([deletedAt, createdAt])

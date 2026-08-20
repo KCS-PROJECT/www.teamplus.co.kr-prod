@@ -105,11 +105,14 @@ export function normalizeNotificationType(raw?: string): NotificationType {
     return 'match';
   }
   // 공지류 — 팀 공지/아카데미/대회/팀/결제권/피드백 → deriveCategory 'notice'.
+  //   notice_class_created/notice_tournament_created = 수업/대회 단위 공지 (unit-notice Phase 1).
   if (
     t === 'club' ||
     t.startsWith('club_') ||
     t === 'academy_notice' ||
     t.startsWith('team_notice') ||
+    t.startsWith('team_post') ||
+    t.startsWith('notice_') ||
     t.startsWith('tournament') ||
     t.startsWith('credit') ||
     t.startsWith('waitlist') ||
@@ -229,6 +232,11 @@ export const NOTIFICATION_TYPES_BY_CATEGORY: Record<
     'notice_comment_added',
     'academy_notice',
     'tournament_created',
+    // 수업(훈련)/대회 단위 공지 (unit-notice Phase 1)
+    'notice_class_created',
+    'notice_tournament_created',
+    'notice_unread_reminder',
+    'team_post_created',
     // trip
     'trip_waitlist_promoted',
     // credit

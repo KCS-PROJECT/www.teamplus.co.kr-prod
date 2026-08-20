@@ -31,6 +31,8 @@ import { useNativeUI } from "@/hooks/useNativeUI";
 import { MESSAGES } from "@/lib/messages";
 import { formatEligibleBirthYearsLabel } from "@/lib/gradeToBirthYear";
 import { TournamentHeroSection, ChildPaymentRow } from "@/components/tournament";
+import { UnitNoticeSection } from "@/components/notice/UnitNoticeSection";
+import { isUnitNoticeManagerRole } from "@/services/community-notice.service";
 import {
   calculateDDay,
   canManageMatch,
@@ -607,6 +609,14 @@ export default function CommonTournamentDetailPage() {
         status={uiStatus}
         dDay={dDay}
         iceTheme
+      />
+
+      {/* ── 대회 공지 고정 블록 (밴드형 · 히어로 직하 — unit-notice v1.2.4) ──
+          [Codex R3 H-05] canWrite 는 canManageMatch(ACADEMY_DIRECTOR/SYSTEM/OPER 미포함)가
+          아니라 백엔드 MANAGER_ROLES 와 동일한 후보 헬퍼 사용 — 최종 판정은 서버 targets. */}
+      <UnitNoticeSection
+        tournamentId={id}
+        canWrite={isUnitNoticeManagerRole(user?.userType)}
       />
 
       {/* [2026-06-05 1단계] Quick Action(규정/장소/상금) + 규정/장소/상금 카드 박스 삭제.

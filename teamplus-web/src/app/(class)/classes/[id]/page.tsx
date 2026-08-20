@@ -26,6 +26,8 @@ import { resolveImageUrl, resolveImageSrc } from "@/lib/image-url";
 //  결제 옵션 페이지는 readonly SelectedChildDisplay 로 통일.
 import { ChildSelector } from "@/components/payment/ChildSelector";
 import { ScheduleCalendarView } from "@/components/classes/ScheduleCalendarView";
+import { UnitNoticeSection } from "@/components/notice/UnitNoticeSection";
+import { isUnitNoticeManagerRole } from "@/services/community-notice.service";
 // [2026-05-11] classes 도메인 trainingType SoT — class-categories.ts 통합.
 // 기존 자체 정의(CLASS_TYPE_LABEL) 는 옛 대문자 enum 만 인식해 신규 데이터를 놓치는 버그였음.
 import {
@@ -1828,6 +1830,17 @@ export default function ClassDetailPage() {
             </button>
           </section>
         )}
+
+        {/* ── 수업 공지 고정 블록 (밴드형 · 히어로 직하 — unit-notice v1.2.4) ──
+            [Codex R2 H-05] canWrite 는 소속 판정(isManager)이 아니라 **역할 후보**를 전달 —
+            소속 기반이면 ClassCoachAssignment(ACCEPTED) 전담 코치의 서버 targets 검증이
+            시작조차 안 되는 false negative. 최종 노출은 섹션 내부의 /community/targets 가 판정.
+            [Codex R3 H-05] 후보 집합은 백엔드 MANAGER_ROLES 와 동일한 헬퍼 단일 SoT 사용
+            (system/oper 포함 — 화면별 인라인 배열의 집합 드리프트 차단). */}
+        <UnitNoticeSection
+          classId={classId}
+          canWrite={isUnitNoticeManagerRole(user?.userType)}
+        />
 
         {/* ── 수업 정보 — 소개·기간·시간·장소·대상·일정 통합 (full-bleed 흰 섹션) ── */}
         <section
