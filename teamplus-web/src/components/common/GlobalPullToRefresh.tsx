@@ -63,6 +63,11 @@ export function GlobalPullToRefresh() {
     const onTouchStart = (e: TouchEvent) => {
       if (refreshingRef.current || e.touches.length !== 1) return;
 
+      // 오버레이(모달/바텀시트/라이트박스) 열림 중에는 배경 페이지 새로고침 금지 —
+      // useNativeScrim 이 토글하는 전역 마커를 신호로 사용 (portal 오버레이는
+      // [data-no-ptr] 조상 판정에 걸리지 않으므로 body 마커가 유일한 공통 신호)
+      if (document.body.hasAttribute('data-modal-open')) return;
+
       const targetEl = e.target as HTMLElement | null;
       if (!targetEl) return;
 

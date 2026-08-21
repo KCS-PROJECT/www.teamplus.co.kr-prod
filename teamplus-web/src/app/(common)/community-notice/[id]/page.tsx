@@ -21,6 +21,7 @@ import { MESSAGES } from '@/lib/messages';
 import { resolveImageSrc } from '@/lib/image-url';
 import { emitRefresh, REFRESH_KEYS } from '@/lib/refresh-bus';
 import { CommentThread, type CommentData } from '@/components/shared/CommentThread';
+import { ImageLightbox } from '@/components/shared/ImageLightbox';
 import { ActionSheet } from '@/components/director/ActionSheet';
 import { ConfirmSheet } from '@/components/shared/ConfirmSheet';
 import { openDirectChat } from '@/services/chat';
@@ -101,6 +102,8 @@ export default function UnitNoticeDetailPage() {
   const [isReadsLoading, setIsReadsLoading] = useState(false);
   const [chatOpeningId, setChatOpeningId] = useState<string | null>(null);
   const [isReminding, setIsReminding] = useState(false);
+  // 첨부 이미지 전체화면 보기 (탭 → ImageLightbox, 핀치줌 지원)
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   useNativeUI({
     showStatusBar: true,
@@ -399,21 +402,28 @@ export default function UnitNoticeDetailPage() {
                 dangerouslySetInnerHTML={{ __html: sanitizeHtml(post.content) }}
               />
 
-              {/* 첨부 이미지 */}
+              {/* 첨부 이미지 — 탭 시 전체화면 라이트박스 (핀치줌 지원) */}
               {post.attachments.length > 0 && (
                 <div className="mt-4 space-y-3">
-                  {post.attachments.map((att) => {
+                  {post.attachments.map((att, idx) => {
                     const src = resolveImageSrc(att.fileUrl);
                     if (!src) return null;
                     return (
-                      /* eslint-disable-next-line @next/next/no-img-element */
-                      <img
+                      <button
                         key={att.id}
-                        src={src}
-                        alt={att.fileName}
-                        className="w-full rounded-w-md border border-it-line dark:border-it-blue-900"
-                        loading="lazy"
-                      />
+                        type="button"
+                        onClick={() => setLightboxIndex(idx)}
+                        aria-label={MESSAGES.unitNotice.viewImageLarge}
+                        className="block w-full rounded-w-md focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={src}
+                          alt={att.fileName}
+                          className="w-full rounded-w-md border border-it-line dark:border-it-blue-900"
+                          loading="lazy"
+                        />
+                      </button>
                     );
                   })}
                 </div>
@@ -594,6 +604,14 @@ export default function UnitNoticeDetailPage() {
         onConfirm={handleDeleteComment}
         onCancel={() => setDeleteCommentId(null)}
       />
+      {lightboxIndex !== null && post?.attachments[lightboxIndex] && (
+        <ImageLightbox
+          isOpen
+          onClose={() => setLightboxIndex(null)}
+          src={post.attachments[lightboxIndex].fileUrl}
+          alt={post.attachments[lightboxIndex].fileName}
+        />
+      )}
     </MobileContainer>
   );
 }

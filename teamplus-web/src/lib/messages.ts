@@ -1604,6 +1604,7 @@ export const MESSAGES = {
     unreadDotAria: "미확인 공지",
     unreadSuffixAria: "미확인",
     nameFallback: "이름 없음",
+    viewImageLarge: "이미지 크게 보기",
     profileAlt: (name: string) => `${name} 프로필`,
     commentsTitle: "댓글",
     targetFallback: "공지 대상",

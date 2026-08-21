@@ -23,6 +23,7 @@ import { resolveManagedContentScope } from "./utils/content-scope.util";
 import {
   CreateUnitCommentDto,
   CreateUnitPostDto,
+  UNIT_NOTICE_IMAGE_MAX_COUNT,
   UnitNoticeAttachmentDto,
   UpdateUnitCommentDto,
   UpdateUnitPostDto,
@@ -1345,10 +1346,16 @@ export class CommunityPostsService {
       throw new NotFoundException("게시글을 찾을 수 없습니다.");
     }
 
-    const maxOrder = await this.prisma.teamPostAttachment.aggregate({
+    const existing = await this.prisma.teamPostAttachment.aggregate({
       where: { postId },
       _max: { displayOrder: true },
+      _count: true,
     });
+    if (existing._count >= UNIT_NOTICE_IMAGE_MAX_COUNT) {
+      throw new BadRequestException(
+        `이미지는 최대 ${UNIT_NOTICE_IMAGE_MAX_COUNT}장까지 첨부할 수 있습니다.`,
+      );
+    }
     return this.prisma.teamPostAttachment.create({
       data: {
         postId,
@@ -1356,7 +1363,7 @@ export class CommunityPostsService {
         fileName: dto.fileName,
         fileType: dto.fileType,
         fileSize: dto.fileSize,
-        displayOrder: (maxOrder._max.displayOrder ?? -1) + 1,
+        displayOrder: (existing._max.displayOrder ?? -1) + 1,
       },
     });
   }

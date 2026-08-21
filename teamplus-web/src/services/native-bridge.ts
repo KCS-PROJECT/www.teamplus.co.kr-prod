@@ -126,7 +126,11 @@ import { api, payment, upload } from "./native-bridge-api";
 export { api, payment, upload } from "./native-bridge-api";
 // [C-1 2026-06-07] ui 모듈은 native-bridge-ui 로 분리.
 import { ui } from "./native-bridge-ui";
-export { ui } from "./native-bridge-ui";
+export {
+  ui,
+  suppressPullToRefreshForOverlay,
+  releasePullToRefreshForOverlay,
+} from "./native-bridge-ui";
 import type { ThemeMode } from "./native-bridge-ui";
 export type { ThemeMode } from "./native-bridge-ui";
 // [C-1 2026-06-07] theme 모듈은 native-bridge-ui 로 분리.

@@ -45,6 +45,38 @@ function clearFullscreenGuardTimer(): void {
   }
 }
 
+// ─── 오버레이 열림 중 native PullToRefresh 억제 ───────────────────────
+// 모달/바텀시트/라이트박스가 떠 있는 동안 배경 페이지가 당겨서-새로고침되는
+// 오동작 방지. 오버레이는 중첩될 수 있어 refcount 로 관리하고, 페이지가
+// 마지막으로 명시한 정책(_pagePullToRefresh)을 기억했다가 모두 닫히면 복원한다.
+// null = 페이지 미설정 → 복원 시 활성(true)으로 취급 (native URL 자동 정책과
+// 달리 auth 화면 구분은 없지만, 오버레이를 띄우는 화면은 사실상 인증 화면뿐).
+let _pagePullToRefresh: boolean | null = null;
+let _overlayPullToRefreshSuppress = 0;
+
+function rawSetPullToRefresh(enabled: boolean) {
+  return callUIBridge(
+    "setPullToRefresh",
+    "UI_PULL_TO_REFRESH_ERROR",
+    (r) => r.enabled,
+    enabled,
+  );
+}
+
+/** 오버레이 열림 — 첫 오버레이에서만 native 로 비활성 전송 */
+export function suppressPullToRefreshForOverlay(): void {
+  _overlayPullToRefreshSuppress += 1;
+  if (_overlayPullToRefreshSuppress === 1) void rawSetPullToRefresh(false);
+}
+
+/** 오버레이 닫힘 — 마지막 오버레이가 닫힐 때 페이지 정책으로 복원 */
+export function releasePullToRefreshForOverlay(): void {
+  _overlayPullToRefreshSuppress = Math.max(0, _overlayPullToRefreshSuppress - 1);
+  if (_overlayPullToRefreshSuppress === 0) {
+    void rawSetPullToRefresh(_pagePullToRefresh ?? true);
+  }
+}
+
 /**
  * 풀스크린 가드를 활성화하고 실패안전 만료 타이머를 arm 한다.
  * 만료 시 `_isFullscreenActive` 를 자동 false 로 해제 → 가드가 영구 고착될 수 없다(FM1).
@@ -109,12 +141,22 @@ export const ui = {
   async setConfig(
     config: UIConfig,
   ): Promise<{ applied: boolean; config: UIConfig }> {
+    // 페이지의 PTR 명시 정책 기록 — 오버레이가 닫힐 때 복원 기준
+    if (typeof config.pullToRefreshEnabled === "boolean") {
+      _pagePullToRefresh = config.pullToRefreshEnabled;
+    }
     // 🛡️ 풀스크린 활성 중이면 showStatusBar 를 false 로 강제 override.
     //   페이지의 useNativeUI({ showStatusBar: true }) 호출에서도 fetch 완료 전
     //   (= LoadingContext 가 stopLoading 호출 전) 에는 status bar 가 켜지지 않도록 보장.
-    const safeConfig: UIConfig = _isFullscreenActive
-      ? { ...config, showStatusBar: false }
-      : config;
+    // 🛡️ 오버레이 억제 중에는 PTR 활성 전달도 차단 (닫힐 때 release 가 복원).
+    const safeConfig: UIConfig = {
+      ...config,
+      ...(_isFullscreenActive ? { showStatusBar: false } : null),
+      ...(_overlayPullToRefreshSuppress > 0 &&
+      typeof config.pullToRefreshEnabled === "boolean"
+        ? { pullToRefreshEnabled: false }
+        : null),
+    };
 
     try {
       const bridge = getBridge();
@@ -271,13 +313,14 @@ export const ui = {
    * 명령형으로 즉시 적용하고 싶을 때 사용. native 미가용(웹 브라우저) 환경에서는
    * `false` 반환 후 no-op.
    */
-  setPullToRefresh: (enabled: boolean) =>
-    callUIBridge(
-      "setPullToRefresh",
-      "UI_PULL_TO_REFRESH_ERROR",
-      (r) => r.enabled,
-      enabled,
-    ),
+  setPullToRefresh: (enabled: boolean) => {
+    // 페이지 명시 정책으로 기록. 오버레이 억제 중에는 비활성을 유지하고
+    // 마지막 오버레이가 닫힐 때 release 가 이 값으로 복원한다.
+    _pagePullToRefresh = enabled;
+    return rawSetPullToRefresh(
+      _overlayPullToRefreshSuppress > 0 ? false : enabled,
+    );
+  },
   stopLoading: async () => {
     // 자동 풀스크린 종료 — useNativeUI(isDataLoaded=true) → stopLoading 한 번
     // 호출만으로 status bar 가 자연스럽게 복원되도록 lifecycle 일원화.
