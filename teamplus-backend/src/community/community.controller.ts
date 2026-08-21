@@ -39,7 +39,12 @@ import {
 import { RegisterTeamEventDto as RegisterClubEventDto } from "./dto/register-team-event.dto";
 import { AddAttachmentDto } from "./dto/add-attachment.dto";
 
-@ApiTags("Community")
+/**
+ * @deprecated 팀 축 전용 레거시 경로 — 오픈클래스·대회 축을 표현할 수 없다.
+ * 신규 소비는 flat `api/v1/community/*`(CommunityPostsController)를 사용할 것.
+ * 실제 제거는 Flutter 등 소비처 확인 후 별도 호환성 작업 (설계 v1.2 Deferred).
+ */
+@ApiTags("Community (deprecated — api/v1/community/* 사용)")
 @Controller("api/v1/teams/:teamId/community")
 @UseGuards(AuthGuard("jwt"), RolesGuard)
 @ApiBearerAuth()
@@ -88,12 +93,14 @@ export class CommunityController {
   })
   async getTeamPostDetail(
     @Request() req: AuthenticatedRequest,
+    @Param("teamId") teamId: string,
     @Param("postId") postId: string,
   ) {
-    return this.communityService.getTeamPostDetail(postId, {
-      id: req.user.id,
-      userType: req.user.userType,
-    });
+    return this.communityService.getTeamPostDetail(
+      postId,
+      { id: req.user.id, userType: req.user.userType },
+      teamId,
+    );
   }
 
   @Post("posts")
@@ -120,10 +127,11 @@ export class CommunityController {
   @ApiOperation({ summary: "게시글 수정", description: "게시글을 수정합니다." })
   async updateTeamPost(
     @Request() req: AuthenticatedRequest,
+    @Param("teamId") teamId: string,
     @Param("postId") postId: string,
     @Body() dto: UpdateClubPostDto,
   ) {
-    return this.communityService.updateTeamPost(req.user.id, postId, dto);
+    return this.communityService.updateTeamPost(req.user.id, postId, dto, teamId);
   }
 
   @Delete("posts/:postId")
@@ -134,10 +142,11 @@ export class CommunityController {
   })
   async deleteTeamPost(
     @Request() req: AuthenticatedRequest,
+    @Param("teamId") teamId: string,
     @Param("postId") postId: string,
   ) {
     const isAdmin = req.user.userType === "ADMIN";
-    return this.communityService.deleteTeamPost(req.user.id, postId, isAdmin);
+    return this.communityService.deleteTeamPost(req.user.id, postId, isAdmin, teamId);
   }
 
   // ===== Likes =====
@@ -156,9 +165,14 @@ export class CommunityController {
   })
   async toggleLike(
     @Request() req: AuthenticatedRequest,
+    @Param("teamId") teamId: string,
     @Param("postId") postId: string,
   ) {
-    return this.communityService.toggleLike(req.user.id, postId);
+    return this.communityService.toggleLike(
+      { id: req.user.id, userType: req.user.userType },
+      postId,
+      teamId,
+    );
   }
 
   @Get("posts/:postId/likes")
@@ -167,8 +181,16 @@ export class CommunityController {
     summary: "좋아요 목록",
     description: "게시글에 좋아요한 사용자 목록을 조회합니다.",
   })
-  async getPostLikes(@Param("postId") postId: string) {
-    return this.communityService.getPostLikes(postId);
+  async getPostLikes(
+    @Request() req: AuthenticatedRequest,
+    @Param("teamId") teamId: string,
+    @Param("postId") postId: string,
+  ) {
+    return this.communityService.getPostLikes(
+      { id: req.user.id, userType: req.user.userType },
+      postId,
+      teamId,
+    );
   }
 
   // ===== Attachments =====
@@ -182,10 +204,11 @@ export class CommunityController {
   })
   async addAttachment(
     @Request() req: AuthenticatedRequest,
+    @Param("teamId") teamId: string,
     @Param("postId") postId: string,
     @Body() dto: AddAttachmentDto,
   ) {
-    return this.communityService.addAttachment(req.user.id, postId, dto);
+    return this.communityService.addAttachment(req.user.id, postId, dto, teamId);
   }
 
   @Delete("attachments/:attachmentId")
@@ -196,9 +219,10 @@ export class CommunityController {
   })
   async deleteAttachment(
     @Request() req: AuthenticatedRequest,
+    @Param("teamId") teamId: string,
     @Param("attachmentId") attachmentId: string,
   ) {
-    return this.communityService.deleteAttachment(req.user.id, attachmentId);
+    return this.communityService.deleteAttachment(req.user.id, attachmentId, teamId);
   }
 
   // ===== Comments =====
@@ -212,10 +236,16 @@ export class CommunityController {
   })
   async addComment(
     @Request() req: AuthenticatedRequest,
+    @Param("teamId") teamId: string,
     @Param("postId") postId: string,
     @Body() dto: CreateClubPostCommentDto,
   ) {
-    return this.communityService.addCommentToPost(req.user.id, postId, dto);
+    return this.communityService.addCommentToPost(
+      { id: req.user.id, userType: req.user.userType },
+      postId,
+      dto,
+      teamId,
+    );
   }
 
   @Patch("comments/:commentId")
@@ -223,10 +253,16 @@ export class CommunityController {
   @ApiOperation({ summary: "댓글 수정", description: "댓글을 수정합니다." })
   async updateComment(
     @Request() req: AuthenticatedRequest,
+    @Param("teamId") teamId: string,
     @Param("commentId") commentId: string,
     @Body() dto: UpdateClubPostCommentDto,
   ) {
-    return this.communityService.updateComment(req.user.id, commentId, dto);
+    return this.communityService.updateComment(
+      { id: req.user.id, userType: req.user.userType },
+      commentId,
+      dto,
+      teamId,
+    );
   }
 
   @Delete("comments/:commentId")
@@ -234,10 +270,16 @@ export class CommunityController {
   @ApiOperation({ summary: "댓글 삭제", description: "댓글을 삭제합니다." })
   async deleteComment(
     @Request() req: AuthenticatedRequest,
+    @Param("teamId") teamId: string,
     @Param("commentId") commentId: string,
   ) {
     const isAdmin = req.user.userType === "ADMIN";
-    return this.communityService.deleteComment(req.user.id, commentId, isAdmin);
+    return this.communityService.deleteComment(
+      { id: req.user.id, userType: req.user.userType },
+      commentId,
+      isAdmin,
+      teamId,
+    );
   }
 
   // ===== Events =====

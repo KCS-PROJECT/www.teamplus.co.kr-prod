@@ -182,4 +182,6 @@ export const REFRESH_KEYS = {
   // [추가 2026-05-23 Phase C] 수상 정보 변경 — awards/[id]/edit 의 사진 업로드 등
   //   즉시 PATCH 후 발행 → awards 리스트 자동 재fetch.
   AWARDS: "awards",
+  // 수업/대회 단위 공지 — community-notice/create 저장 후 발행 → 감독 공지함·상세 공지 섹션 재fetch.
+  UNIT_NOTICES: "unit-notices",
 } as const;

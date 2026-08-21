@@ -13,7 +13,9 @@ import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interf
 import { isAdminRole } from "@/auth/constants/chldiv.constants";
 import { calculateKoreanAgeSafe } from "@/common/utils/age.util";
 import {
+  dateOnlyToString,
   dateOnlyToUtc,
+  instantToKstDateOnly,
   kstTodayUtcMidnight,
 } from "@/common/utils/kst-date.util";
 import {
@@ -21,6 +23,11 @@ import {
   resolveScopedChildUserIds,
 } from "@/common/utils/team-scope.util";
 import { resolveTournamentAttribution } from "@/payments/settlement/attribution.util";
+import {
+  countActiveUnitNotices,
+  cleanupUnitNoticesForDelete,
+  isForeignKeyRestrictError,
+} from "@/community/utils/unit-notice-delete-guard.util";
 import { PaymentRefundService } from "@/payments/services/payment-refund.service";
 import {
   CreateTournamentDto,
@@ -92,10 +99,7 @@ export class TournamentsService {
     }
     // 종료/시작 대회 결제 차단 — status(cancelled/finished) 외에 첫 경기 시작 후에도
     //   신청 마감(registerTournament 와 동일 기준). 경기 미등록 대회는 종료일 폴백.
-    if (
-      tournament.status === "cancelled" ||
-      tournament.status === "finished"
-    ) {
+    if (tournament.status === "cancelled" || tournament.status === "finished") {
       throw new BadRequestException("이미 종료된 대회는 결제할 수 없습니다.");
     }
     await this.assertTournamentRegistrationOpen(
@@ -123,10 +127,7 @@ export class TournamentsService {
     }
     // 주최 팀 가입 승인 검증 — 승인 대기(pending) 자녀의 결제 차단.
     //   목록 열람은 허용하되 결제는 승인 후에만 (registerTournament 와 동일 가드).
-    await this.assertTournamentTeamMembership(
-      tournament.teamId,
-      body.childId,
-    );
+    await this.assertTournamentTeamMembership(tournament.teamId, body.childId);
 
     // 서버사이드 금액 검증 — feePerGame × gamesCount (TOTAL_FIXED 는 1회 단가).
     const feePerGame = tournament.feePerGame
@@ -686,7 +687,10 @@ export class TournamentsService {
         },
       },
       // 일정 미정 대회는 모집 노출 우대 — asc 기본(nulls last)을 뒤집어 맨 위 배치.
-      orderBy: [{ startDate: { sort: "asc", nulls: "first" } }, { createdAt: "desc" }],
+      orderBy: [
+        { startDate: { sort: "asc", nulls: "first" } },
+        { createdAt: "desc" },
+      ],
     });
 
     return tournaments
@@ -823,7 +827,11 @@ export class TournamentsService {
     //   [2026-06-16] paymentId 연결된 "실결제"만 — 무료 대회는 신청 시 자동 PAID(Payment 없음)라
     //     결제내역/결제취소에서 제외(취소할 결제가 없음).
     const paidRegs = await this.prisma.tournamentRegistration.findMany({
-      where: { tournamentId: id, paymentStatus: "PAID", paymentId: { not: null } },
+      where: {
+        tournamentId: id,
+        paymentStatus: "PAID",
+        paymentId: { not: null },
+      },
       select: { id: true, userId: true, childId: true },
     });
     const paidParticipantIds = Array.from(
@@ -892,6 +900,70 @@ export class TournamentsService {
   }
 
   /**
+   * 대회 기간 ↔ 경기 일정 정합 검증 (A안 — 기간 수동 입력).
+   *  · 경기가 1건 이상이면 기간(양쪽) 필수.
+   *  · 모든 경기의 KST 달력일이 [startDate, endDate] 안(양끝 포함)이어야 한다.
+   *  날짜 비교는 YYYY-MM-DD 문자열로만 수행 — Date 파싱 비교는 서버 TZ 함정이 있어 금지.
+   */
+  private assertPeriodCoversMatchDates(
+    startDate: Date | null,
+    endDate: Date | null,
+    matchDates: string[],
+  ): void {
+    if (matchDates.length === 0) return;
+    if (startDate == null || endDate == null) {
+      throw new BadRequestException(
+        "경기 일정이 있는 대회는 대회 기간을 입력해야 합니다.",
+      );
+    }
+    const startStr = dateOnlyToString(startDate);
+    const endStr = dateOnlyToString(endDate);
+    const outside = matchDates.find((d) => d < startStr || d > endStr);
+    if (outside) {
+      throw new BadRequestException(
+        `대회 기간(${startStr}~${endStr})을 벗어난 경기 일정(${outside})이 있습니다. 대회 기간을 먼저 수정해주세요.`,
+      );
+    }
+  }
+
+  /**
+   * 경기 불가침 판정 — 시작/종료·점수·피리어드·이벤트·경비가 붙었거나 이미 지난 경기.
+   *  삭제하면 Cascade 로 기록(MatchPeriod/MatchEvent)이 유실되고, GameExpense 는
+   *  Restrict 라 삭제가 터지므로 변경/삭제 자체를 400 으로 차단한다.
+   *  includePastSchedule=false 는 단독 경기 삭제 경로용 — 기록 없는 지난 경기는
+   *  오입력 정리를 허용한다(폼 diff 경로는 잠금 UI 와 동일하게 지난 경기도 불가침).
+   */
+  private isMatchRecordProtected(
+    m: {
+      scheduledAt: Date;
+      startedAt: Date | null;
+      endedAt: Date | null;
+      status: string;
+      homeScore: number;
+      awayScore: number;
+      _count: { periods: number; events: number; gameExpenses: number };
+    },
+    opts: { includePastSchedule?: boolean } = {},
+  ): boolean {
+    const { includePastSchedule = true } = opts;
+    if (m.startedAt != null || m.endedAt != null) return true;
+    if (m.status !== "scheduled") return true;
+    if (m.homeScore > 0 || m.awayScore > 0) return true;
+    if (
+      m._count.periods > 0 ||
+      m._count.events > 0 ||
+      m._count.gameExpenses > 0
+    ) {
+      return true;
+    }
+    if (!includePastSchedule) return false;
+    return (
+      instantToKstDateOnly(m.scheduledAt).getTime() <
+      kstTodayUtcMidnight().getTime()
+    );
+  }
+
+  /**
    * 토너먼트 생성.
    *
    * [수정 2026-05-11]
@@ -912,7 +984,30 @@ export class TournamentsService {
       dto.endDate != null &&
       new Date(dto.startDate) > new Date(dto.endDate)
     ) {
-      throw new BadRequestException("시작 날짜가 종료 날짜보다 늦을 수 없습니다.");
+      throw new BadRequestException(
+        "시작 날짜가 종료 날짜보다 늦을 수 없습니다.",
+      );
+    }
+
+    const startDateValue =
+      dto.startDate != null ? dateOnlyToUtc(dto.startDate.slice(0, 10)) : null;
+    const endDateValue =
+      dto.endDate != null ? dateOnlyToUtc(dto.endDate.slice(0, 10)) : null;
+
+    // 경기 일정 — 기간 정합 + 지난 날짜 차단. 판정은 dto 문자열의 KST 달력일부로만 수행.
+    const scheduleMatches = dto.matches ?? [];
+    if (scheduleMatches.length > 0) {
+      const todayStr = dateOnlyToString(kstTodayUtcMidnight());
+      if (scheduleMatches.some((m) => m.scheduledAt.slice(0, 10) < todayStr)) {
+        throw new BadRequestException(
+          "지난 날짜로는 경기 일정을 등록할 수 없습니다.",
+        );
+      }
+      this.assertPeriodCoversMatchDates(
+        startDateValue,
+        endDateValue,
+        scheduleMatches.map((m) => m.scheduledAt.slice(0, 10)),
+      );
     }
 
     // teamId 자동 보강 — DIRECTOR/COACH 가 본인 팀 생략 시 첫 관리 팀 사용.
@@ -1010,43 +1105,62 @@ export class TournamentsService {
       ? Math.max(...eligibleBirthYears)
       : dto.eligibleBirthYearTo;
 
-    const tournament = await this.prisma.tournament.create({
-      data: {
-        name: dto.name,
-        description: dto.description,
-        teamId,
-        rinkId: dto.rinkId,
-        venueId: dto.venueId,
-        startDate:
-          dto.startDate != null ? dateOnlyToUtc(dto.startDate.slice(0, 10)) : null,
-        endDate:
-          dto.endDate != null ? dateOnlyToUtc(dto.endDate.slice(0, 10)) : null,
-        status: dto.status || "scheduled",
-        eligibleBirthYearFrom: derivedBirthYearFrom,
-        eligibleBirthYearTo: derivedBirthYearTo,
-        eligibleBirthYears,
-        feePerGame: dto.feePerGame ? new Decimal(dto.feePerGame) : undefined,
-        totalGames: dto.totalGames,
-        feeType: dto.feeType,
-        maxParticipants: dto.maxParticipants,
-        registrationDeadline: dto.registrationDeadline
-          ? new Date(dto.registrationDeadline)
-          : undefined,
-        ageGroup: dto.ageGroup,
-        selectedParticipantIds,
-        // [재설계 2026-06-16] eligibleGroupIds 자격 의미 폐기 — 항상 빈 배열 저장.
-        eligibleGroupIds: [],
-        // [추가 2026-05-15 db-keeper] T03/H2 — 대회 정보 페이지 신규 필드.
-        rules: dto.rules,
-        // 빈 문자열은 null 정규화 — 표시 폴백이 ??/|| 혼재라 "" 저장 시 장소가 공란으로 뜬다.
-        location: dto.location?.trim() || null,
-        prizeAmount:
-          dto.prizeAmount !== undefined
-            ? new Decimal(dto.prizeAmount)
+    // 대회 본체 + 경기 일정을 단일 트랜잭션으로 생성 — 경기 생성 중간 실패 시
+    //   대회만 남는 부분 저장을 차단한다(과거 폼의 개별 createMatch 루프 원자성 결함 대체).
+    const tournament = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.tournament.create({
+        data: {
+          name: dto.name,
+          description: dto.description,
+          teamId,
+          rinkId: dto.rinkId,
+          venueId: dto.venueId,
+          startDate: startDateValue,
+          endDate: endDateValue,
+          status: dto.status || "scheduled",
+          eligibleBirthYearFrom: derivedBirthYearFrom,
+          eligibleBirthYearTo: derivedBirthYearTo,
+          eligibleBirthYears,
+          feePerGame: dto.feePerGame ? new Decimal(dto.feePerGame) : undefined,
+          totalGames: dto.totalGames,
+          feeType: dto.feeType,
+          maxParticipants: dto.maxParticipants,
+          registrationDeadline: dto.registrationDeadline
+            ? new Date(dto.registrationDeadline)
             : undefined,
-        // 결제 모드 — 미지정 시 schema default(PREPAID) 적용.
-        billingMode: dto.billingMode ?? undefined,
-      },
+          ageGroup: dto.ageGroup,
+          selectedParticipantIds,
+          // [재설계 2026-06-16] eligibleGroupIds 자격 의미 폐기 — 항상 빈 배열 저장.
+          eligibleGroupIds: [],
+          // [추가 2026-05-15 db-keeper] T03/H2 — 대회 정보 페이지 신규 필드.
+          rules: dto.rules,
+          // 빈 문자열은 null 정규화 — 표시 폴백이 ??/|| 혼재라 "" 저장 시 장소가 공란으로 뜬다.
+          location: dto.location?.trim() || null,
+          prizeAmount:
+            dto.prizeAmount !== undefined
+              ? new Decimal(dto.prizeAmount)
+              : undefined,
+          // 결제 모드 — 미지정 시 schema default(PREPAID) 적용.
+          billingMode: dto.billingMode ?? undefined,
+        },
+      });
+
+      if (scheduleMatches.length > 0) {
+        // 생성 컨텍스트에서 행의 id 는 무의미 — 전부 신규 경기로 저장.
+        await tx.hockeyMatch.createMany({
+          data: scheduleMatches.map((m, i) => ({
+            tournamentId: created.id,
+            opponentName: m.opponentName?.trim() || null,
+            venueId: m.venueId || null,
+            // null = 대회 장소 폴백(참조) — 대회 장소 텍스트를 복사 저장하지 않는다.
+            venueName: m.venueName?.trim() || null,
+            scheduledAt: new Date(m.scheduledAt),
+            matchOrder: m.matchOrder ?? i + 1,
+          })),
+        });
+      }
+
+      return created;
     });
 
     // 팀 지정 대회면 해당 팀 소속 학생의 학부모에게 알림 (전체 대회는 제외, 실패 격리)
@@ -1120,7 +1234,9 @@ export class TournamentsService {
       );
     }
     if (startDate != null && endDate != null && startDate > endDate) {
-      throw new BadRequestException("시작 날짜가 종료 날짜보다 늦을 수 없습니다.");
+      throw new BadRequestException(
+        "시작 날짜가 종료 날짜보다 늦을 수 없습니다.",
+      );
     }
 
     // [추가 2026-05-15 db-keeper] T02/T04 협업 — ageGroup ↔ birth year 정합성:
@@ -1174,9 +1290,8 @@ export class TournamentsService {
       nextBirthYearTo = null;
     } else if (dto.selectedParticipantIds !== undefined) {
       // 명단 전송됨 — 선택 선수 출생연도로 파생 재계산.
-      nextBirthYears = await this.deriveBirthYearsFromPlayers(
-        nextParticipantIds,
-      );
+      nextBirthYears =
+        await this.deriveBirthYearsFromPlayers(nextParticipantIds);
       nextBirthYearFrom =
         nextBirthYears.length > 0 ? Math.min(...nextBirthYears) : null;
       nextBirthYearTo =
@@ -1202,58 +1317,244 @@ export class TournamentsService {
       );
     }
 
-    const updated = await this.prisma.tournament.update({
-      where: { id },
+    // ── 경기 일정 diff 동기화 + 기간 정합 (2026-08-20 A안) ─────────────────
+    //   dto.matches 전송 = "이번 편집의 최종 경기 집합". id 있는 행은 갱신(무변경 미접촉),
+    //   없는 행은 생성, 배열에 빠진 기존 경기는 삭제. 과거 폼의 전량 삭제-재생성이
+    //   기록(피리어드/이벤트) Cascade 유실·경비(Restrict) 삭제 실패 후 중복 재생성을
+    //   일으키던 결함을 대체한다. 검증은 이 요청이 만드는 "최종 상태" 기준으로 수행.
+    const matchesProvided = dto.matches !== undefined;
+    const periodTouched =
+      dto.startDate !== undefined || dto.endDate !== undefined;
+    type MatchCreateData = {
+      tournamentId: string;
+      opponentName: string | null;
+      venueId: string | null;
+      venueName: string | null;
+      scheduledAt: Date;
+      matchOrder: number;
+    };
+    type MatchUpdateEntry = {
+      id: string;
       data: {
-        name: dto.name ?? tournament.name,
-        description: dto.description ?? tournament.description,
-        teamId: nextTeamId,
-        rinkId: dto.rinkId ?? tournament.rinkId,
-        venueId: dto.venueId ?? tournament.venueId,
-        startDate,
-        endDate,
-        status: dto.status ?? tournament.status,
-        eligibleBirthYearFrom: nextBirthYearFrom,
-        eligibleBirthYearTo: nextBirthYearTo,
-        eligibleBirthYears: nextBirthYears,
-        feePerGame: dto.feePerGame
-          ? new Decimal(dto.feePerGame)
-          : tournament.feePerGame,
-        totalGames: dto.totalGames ?? tournament.totalGames,
-        feeType: dto.feeType ?? tournament.feeType,
-        maxParticipants: dto.maxParticipants ?? tournament.maxParticipants,
-        registrationDeadline: dto.registrationDeadline
-          ? new Date(dto.registrationDeadline)
-          : tournament.registrationDeadline,
-        // [수정 2026-05-15 db-keeper] T03/H1 + T02/T04 협업 — ageGroup 명시 변경 보장.
-        //  `nextAgeGroup` 변수로 birth year 정합성 (resolveBirthYear) 과 동기화.
-        //  U8 → ALL 다운그레이드 시 birth year 도 함께 자동 클리어됨.
-        ageGroup: nextAgeGroup,
-        // [재설계 2026-06-16] selectedParticipantIds 는 명시 시에만 갱신 (생략 시 기존 유지).
-        //   자격 SoT 이며, 위에서 eligibleBirthYears 를 이 명단 기준으로 파생 재계산했다.
-        selectedParticipantIds: nextParticipantIds,
-        // [재설계 2026-06-16] eligibleGroupIds 자격 의미 폐기 — 명단 전송 시 빈 배열로 클리어,
-        //   미전송 시 기존값 보존(레거시 데이터 무변경).
-        eligibleGroupIds:
-          dto.selectedParticipantIds !== undefined
-            ? []
-            : ((tournament as { eligibleGroupIds?: unknown })
-                .eligibleGroupIds ?? undefined),
-        // [추가 2026-05-15 db-keeper] T03/H2 — 대회 정보 페이지 신규 필드.
-        rules: dto.rules !== undefined ? dto.rules : tournament.rules,
-        // 빈 문자열 전송 = 클리어(null) — 링크장 선택 전환 시 스테일 텍스트가 폴백 최우선으로
-        //   새 링크장 이름을 가리는 것을 방지.
-        location:
-          dto.location !== undefined
-            ? dto.location.trim() || null
-            : tournament.location,
-        prizeAmount:
-          dto.prizeAmount !== undefined
-            ? new Decimal(dto.prizeAmount)
-            : tournament.prizeAmount,
-        // 결제 모드 — 명시 시에만 갱신 (생략 시 기존 유지).
-        billingMode: dto.billingMode ?? tournament.billingMode,
-      },
+        opponentName?: string | null;
+        venueId?: string | null;
+        venueName?: string | null;
+        scheduledAt?: Date;
+        matchOrder: number;
+      };
+    };
+    let matchPlan: {
+      creates: MatchCreateData[];
+      updates: MatchUpdateEntry[];
+      deleteIds: string[];
+    } | null = null;
+
+    if (matchesProvided || periodTouched) {
+      const existingMatches = await this.prisma.hockeyMatch.findMany({
+        where: { tournamentId: id },
+        select: {
+          id: true,
+          scheduledAt: true,
+          startedAt: true,
+          endedAt: true,
+          status: true,
+          homeScore: true,
+          awayScore: true,
+          opponentName: true,
+          venueId: true,
+          venueName: true,
+          matchOrder: true,
+          _count: {
+            select: { periods: true, events: true, gameExpenses: true },
+          },
+        },
+      });
+
+      if (!matchesProvided) {
+        // 기간만 변경(경기 미전송) — 기존 경기 전체가 새 기간 안이어야 축소를 허용한다.
+        this.assertPeriodCoversMatchDates(
+          startDate,
+          endDate,
+          existingMatches.map((m) =>
+            dateOnlyToString(instantToKstDateOnly(m.scheduledAt)),
+          ),
+        );
+      } else {
+        const rows = dto.matches ?? [];
+        const byId = new Map(existingMatches.map((m) => [m.id, m]));
+        const seenIds = new Set<string>();
+        const todayStr = dateOnlyToString(kstTodayUtcMidnight());
+        const creates: MatchCreateData[] = [];
+        const updates: MatchUpdateEntry[] = [];
+
+        for (let i = 0; i < rows.length; i += 1) {
+          const row = rows[i];
+          const nextOpponent = row.opponentName?.trim() || null;
+          const nextVenueId = row.venueId || null;
+          const nextVenueName = row.venueName?.trim() || null;
+          const nextOrder = row.matchOrder ?? i + 1;
+
+          if (row.id) {
+            const existing = byId.get(row.id);
+            if (!existing) {
+              throw new BadRequestException(
+                "이 대회의 경기가 아닌 일정이 포함되어 있습니다.",
+              );
+            }
+            if (seenIds.has(row.id)) {
+              throw new BadRequestException(
+                "같은 경기가 두 번 포함되어 있습니다.",
+              );
+            }
+            seenIds.add(row.id);
+
+            // 분 단위 instant 비교 — 폼은 HH:mm 까지만 다루므로 초 단위 차이는 무변경으로
+            //   보아 미접촉 유지(불가침 경기의 왕복 저장이 오탐 400 나지 않도록).
+            const nextAt = new Date(row.scheduledAt);
+            const scheduleChanged =
+              Math.floor(nextAt.getTime() / 60000) !==
+              Math.floor(existing.scheduledAt.getTime() / 60000);
+            const contentChanged =
+              scheduleChanged ||
+              nextOpponent !== (existing.opponentName ?? null) ||
+              nextVenueId !== (existing.venueId ?? null) ||
+              nextVenueName !== (existing.venueName ?? null);
+
+            if (contentChanged && this.isMatchRecordProtected(existing)) {
+              throw new BadRequestException(
+                "지난 경기 또는 기록이 있는 경기는 수정할 수 없습니다.",
+              );
+            }
+            if (scheduleChanged && row.scheduledAt.slice(0, 10) < todayStr) {
+              throw new BadRequestException(
+                "지난 날짜로는 경기 일정을 변경할 수 없습니다.",
+              );
+            }
+            if (contentChanged || nextOrder !== (existing.matchOrder ?? null)) {
+              updates.push({
+                id: row.id,
+                data: contentChanged
+                  ? {
+                      opponentName: nextOpponent,
+                      venueId: nextVenueId,
+                      venueName: nextVenueName,
+                      scheduledAt: nextAt,
+                      matchOrder: nextOrder,
+                    }
+                  : { matchOrder: nextOrder },
+              });
+            }
+          } else {
+            if (row.scheduledAt.slice(0, 10) < todayStr) {
+              throw new BadRequestException(
+                "지난 날짜로는 경기 일정을 등록할 수 없습니다.",
+              );
+            }
+            creates.push({
+              tournamentId: id,
+              opponentName: nextOpponent,
+              venueId: nextVenueId,
+              venueName: nextVenueName,
+              scheduledAt: new Date(row.scheduledAt),
+              matchOrder: nextOrder,
+            });
+          }
+        }
+
+        for (const m of existingMatches) {
+          if (seenIds.has(m.id)) continue;
+          if (this.isMatchRecordProtected(m)) {
+            throw new BadRequestException(
+              "지난 경기 또는 기록이 있는 경기는 삭제할 수 없습니다.",
+            );
+          }
+        }
+        const deleteIds = existingMatches
+          .filter((m) => !seenIds.has(m.id))
+          .map((m) => m.id);
+
+        matchPlan = { creates, updates, deleteIds };
+
+        // 최종 상태 기준 기간 정합 — 유지·갱신·신규 전부 dto 문자열의 KST 달력일부 사용.
+        this.assertPeriodCoversMatchDates(
+          startDate,
+          endDate,
+          rows.map((r) => r.scheduledAt.slice(0, 10)),
+        );
+      }
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const t = await tx.tournament.update({
+        where: { id },
+        data: {
+          name: dto.name ?? tournament.name,
+          description: dto.description ?? tournament.description,
+          teamId: nextTeamId,
+          rinkId: dto.rinkId ?? tournament.rinkId,
+          venueId: dto.venueId ?? tournament.venueId,
+          startDate,
+          endDate,
+          status: dto.status ?? tournament.status,
+          eligibleBirthYearFrom: nextBirthYearFrom,
+          eligibleBirthYearTo: nextBirthYearTo,
+          eligibleBirthYears: nextBirthYears,
+          feePerGame: dto.feePerGame
+            ? new Decimal(dto.feePerGame)
+            : tournament.feePerGame,
+          totalGames: dto.totalGames ?? tournament.totalGames,
+          feeType: dto.feeType ?? tournament.feeType,
+          maxParticipants: dto.maxParticipants ?? tournament.maxParticipants,
+          registrationDeadline: dto.registrationDeadline
+            ? new Date(dto.registrationDeadline)
+            : tournament.registrationDeadline,
+          // [수정 2026-05-15 db-keeper] T03/H1 + T02/T04 협업 — ageGroup 명시 변경 보장.
+          //  `nextAgeGroup` 변수로 birth year 정합성 (resolveBirthYear) 과 동기화.
+          //  U8 → ALL 다운그레이드 시 birth year 도 함께 자동 클리어됨.
+          ageGroup: nextAgeGroup,
+          // [재설계 2026-06-16] selectedParticipantIds 는 명시 시에만 갱신 (생략 시 기존 유지).
+          //   자격 SoT 이며, 위에서 eligibleBirthYears 를 이 명단 기준으로 파생 재계산했다.
+          selectedParticipantIds: nextParticipantIds,
+          // [재설계 2026-06-16] eligibleGroupIds 자격 의미 폐기 — 명단 전송 시 빈 배열로 클리어,
+          //   미전송 시 기존값 보존(레거시 데이터 무변경).
+          eligibleGroupIds:
+            dto.selectedParticipantIds !== undefined
+              ? []
+              : ((tournament as { eligibleGroupIds?: unknown })
+                  .eligibleGroupIds ?? undefined),
+          // [추가 2026-05-15 db-keeper] T03/H2 — 대회 정보 페이지 신규 필드.
+          rules: dto.rules !== undefined ? dto.rules : tournament.rules,
+          // 빈 문자열 전송 = 클리어(null) — 링크장 선택 전환 시 스테일 텍스트가 폴백 최우선으로
+          //   새 링크장 이름을 가리는 것을 방지.
+          location:
+            dto.location !== undefined
+              ? dto.location.trim() || null
+              : tournament.location,
+          prizeAmount:
+            dto.prizeAmount !== undefined
+              ? new Decimal(dto.prizeAmount)
+              : tournament.prizeAmount,
+          // 결제 모드 — 명시 시에만 갱신 (생략 시 기존 유지).
+          billingMode: dto.billingMode ?? tournament.billingMode,
+        },
+      });
+
+      if (matchPlan) {
+        if (matchPlan.deleteIds.length > 0) {
+          // 불가침 검증을 통과한 경기만 도달 — periods/events 는 비어 있어 Cascade 유실 없음.
+          await tx.hockeyMatch.deleteMany({
+            where: { id: { in: matchPlan.deleteIds }, tournamentId: id },
+          });
+        }
+        for (const u of matchPlan.updates) {
+          await tx.hockeyMatch.update({ where: { id: u.id }, data: u.data });
+        }
+        if (matchPlan.creates.length > 0) {
+          await tx.hockeyMatch.createMany({ data: matchPlan.creates });
+        }
+      }
+
+      return t;
     });
 
     return updated;
@@ -1292,21 +1593,44 @@ export class TournamentsService {
       );
     }
 
+    // [Codex R1 H-04] 게시 중 단위 공지 가드 — TeamPost FK 가 RESTRICT 라 공지가 남아
+    // 있으면 삭제가 비제어 DB 오류로 실패한다. 게시 중 공지는 제어된 차단으로 안내.
+    if ((await countActiveUnitNotices(this.prisma, { tournamentId: id })) > 0) {
+      throw new BadRequestException(
+        "공지가 등록된 대회는 삭제할 수 없습니다. 공지를 먼저 삭제해주세요.",
+      );
+    }
+
     // [2026-06-15] 경기가 있어도 대회를 삭제할 수 있도록 연관 데이터를 트랜잭션으로 함께 삭제.
     //   FK 제약(Restrict)으로 막던 항목을 선삭제한다:
     //     · GameExpense (tournament/match 둘 다 Restrict) — 먼저 삭제
     //     · HockeyMatch (tournament Restrict) — periods/events 는 Cascade 자동 삭제
     //   나머지(TournamentRegistration=Cascade · PlayerAward/Video=SetNull · TournamentMatch=Cascade)는 자동 처리.
-    await this.prisma.$transaction(async (tx) => {
-      await tx.gameExpense.deleteMany({
-        where: { OR: [{ tournamentId: id }, { match: { tournamentId: id } }] },
+    // [Codex R1 H-04] soft 삭제된 공지 잔재만 정리(FK 점유 해제) 후 삭제.
+    // [R2] 가드 count 이후 레이스로 생긴 active 공지는 FK 가 delete 를 막는다 —
+    //      P2003 을 제어된 안내로 변환해 공지를 보존한다.
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.gameExpense.deleteMany({
+          where: {
+            OR: [{ tournamentId: id }, { match: { tournamentId: id } }],
+          },
+        });
+        await tx.hockeyMatch.deleteMany({ where: { tournamentId: id } });
+        await tx.tournamentRegistration.deleteMany({
+          where: { tournamentId: id },
+        });
+        await cleanupUnitNoticesForDelete(tx, { tournamentId: id });
+        await tx.tournament.delete({ where: { id } });
       });
-      await tx.hockeyMatch.deleteMany({ where: { tournamentId: id } });
-      await tx.tournamentRegistration.deleteMany({
-        where: { tournamentId: id },
-      });
-      await tx.tournament.delete({ where: { id } });
-    });
+    } catch (error) {
+      if (isForeignKeyRestrictError(error)) {
+        throw new BadRequestException(
+          "공지가 등록된 대회는 삭제할 수 없습니다. 공지를 먼저 삭제해주세요.",
+        );
+      }
+      throw error;
+    }
 
     return { id, deletedAt: new Date() };
   }
@@ -1438,12 +1762,21 @@ export class TournamentsService {
     if (dto.tournamentId) {
       const tournament = await this.prisma.tournament.findUnique({
         where: { id: dto.tournamentId },
-        select: { id: true, teamId: true },
+        select: { id: true, teamId: true, startDate: true, endDate: true },
       });
       if (!tournament) {
         throw new NotFoundException("대회를 찾을 수 없습니다.");
       }
       tournamentTeamId = tournament.teamId;
+      // 기간이 설정된 대회는 기간 밖 경기 생성 차단 — 기간 null(일정 미정) 대회는 통과
+      //   (신청 마감·정산 게이트가 경기를 1순위 집계하므로 미정 대회의 경기 추가는 안전).
+      if (tournament.startDate != null && tournament.endDate != null) {
+        this.assertPeriodCoversMatchDates(
+          tournament.startDate,
+          tournament.endDate,
+          [dto.scheduledAt.slice(0, 10)],
+        );
+      }
     }
     // 생성 권한 — 대회 소속이면 주최 팀 관리자, 독립 경기면 home/away 팀 관리자 (IDOR 가드)
     await this.resourceAccess.assertManageableMatchRecord(
@@ -1512,6 +1845,22 @@ export class TournamentsService {
       throw new BadRequestException("홈 팀과 어웨이 팀은 서로 달라야 합니다.");
     }
 
+    // 대회 소속 경기의 일정 변경은 대회 기간 안에서만 허용 (기간 미설정 대회는 통과).
+    //   점수·상태 등 기록 입력(scheduledAt 미전송)은 이 가드와 무관하게 기존대로 동작.
+    if (dto.scheduledAt && match.tournamentId) {
+      const tournament = await this.prisma.tournament.findUnique({
+        where: { id: match.tournamentId },
+        select: { startDate: true, endDate: true },
+      });
+      if (tournament?.startDate != null && tournament?.endDate != null) {
+        this.assertPeriodCoversMatchDates(
+          tournament.startDate,
+          tournament.endDate,
+          [dto.scheduledAt.slice(0, 10)],
+        );
+      }
+    }
+
     const updated = await this.prisma.hockeyMatch.update({
       where: { id },
       data: {
@@ -1554,13 +1903,31 @@ export class TournamentsService {
     await this.resourceAccess.assertManageableMatch(id, requester);
     const match = await this.prisma.hockeyMatch.findUnique({
       where: { id },
+      select: {
+        id: true,
+        scheduledAt: true,
+        startedAt: true,
+        endedAt: true,
+        status: true,
+        homeScore: true,
+        awayScore: true,
+        _count: { select: { periods: true, events: true, gameExpenses: true } },
+      },
     });
 
     if (!match) {
       throw new NotFoundException("경기를 찾을 수 없습니다.");
     }
 
-    // Cascade로 periods, events 자동 삭제
+    // 기록 보유 경기 삭제 차단 — 삭제 시 periods/events 가 Cascade 유실되고 경비는
+    //   Restrict 로 터진다. 기록 없는 지난 경기는 오입력 정리를 허용(includePastSchedule=false).
+    if (this.isMatchRecordProtected(match, { includePastSchedule: false })) {
+      throw new BadRequestException(
+        "경기 기록(점수·피리어드·이벤트·경비)이 있는 경기는 삭제할 수 없습니다.",
+      );
+    }
+
+    // Cascade로 periods, events 자동 삭제 (위 가드로 기록 0건 보장)
     await this.prisma.hockeyMatch.delete({
       where: { id },
     });
@@ -1686,7 +2053,10 @@ export class TournamentsService {
 
     if (
       status === "ongoing" ||
-      (startDate != null && endDate != null && startDate <= now && endDate >= now)
+      (startDate != null &&
+        endDate != null &&
+        startDate <= now &&
+        endDate >= now)
     ) {
       return "IN_PROGRESS";
     }
@@ -1782,12 +2152,12 @@ export class TournamentsService {
   /**
    * 연도 자격 해당 선수 목록 조회
    */
-  async getEligiblePlayers(
-    tournamentId: string,
-    requester: JwtUserPayload,
-  ) {
+  async getEligiblePlayers(tournamentId: string, requester: JwtUserPayload) {
     // 선수 이름·보호자 정보가 담기는 응답 — 주최 팀 관리자만 조회 가능 (IDOR 가드)
-    await this.resourceAccess.assertManageableTournament(tournamentId, requester);
+    await this.resourceAccess.assertManageableTournament(
+      tournamentId,
+      requester,
+    );
     const tournament = await this.prisma.tournament.findUnique({
       where: { id: tournamentId },
       select: {
@@ -1991,11 +2361,10 @@ export class TournamentsService {
     // 0. 신청 가능 검증 — status(cancelled/finished) 종료 차단 + 첫 경기 시작 후 신청 마감.
     //   선불 initiateTournamentPayment 와 동일 기준. 후불 대회는 마감일이 대개 없어(null)
     //   이 가드가 유일한 차단 — /apply 직접 접근으로 종료 대회 신청되던 갭 방지.
-    if (
-      tournament.status === "cancelled" ||
-      tournament.status === "finished"
-    ) {
-      throw new BadRequestException("이미 종료된 대회는 참가 신청할 수 없습니다.");
+    if (tournament.status === "cancelled" || tournament.status === "finished") {
+      throw new BadRequestException(
+        "이미 종료된 대회는 참가 신청할 수 없습니다.",
+      );
     }
     await this.assertTournamentRegistrationOpen(
       tournamentId,
@@ -2246,7 +2615,9 @@ export class TournamentsService {
       requester,
     );
     if (tournament.billingMode !== "POSTPAID") {
-      throw new BadRequestException("후불(POSTPAID) 대회만 정산할 수 있습니다.");
+      throw new BadRequestException(
+        "후불(POSTPAID) 대회만 정산할 수 있습니다.",
+      );
     }
     if (tournament.status === "cancelled") {
       throw new BadRequestException("취소된 대회는 정산할 수 없습니다.");
@@ -2275,7 +2646,8 @@ export class TournamentsService {
 
     // 청구 대상 — 미결제(UNPAID/PENDING)만. CANCELLED·REFUNDED·PAID 제외.
     //   registrationIds 전달 시 그중 미결제 건만 청구(선택 청구). 미전송이면 전원.
-    const hasSelection = Array.isArray(registrationIds) && registrationIds.length > 0;
+    const hasSelection =
+      Array.isArray(registrationIds) && registrationIds.length > 0;
     const targets = await this.prisma.tournamentRegistration.findMany({
       where: {
         tournamentId,
@@ -2611,7 +2983,7 @@ export class TournamentsService {
         estimatedAmount: att.estimatedAmount,
         paidAt:
           att.billingStatus === "PAID"
-            ? reg.payment?.completedAt ?? null
+            ? (reg.payment?.completedAt ?? null)
             : null,
       };
     });

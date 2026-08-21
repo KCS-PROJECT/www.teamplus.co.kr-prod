@@ -34,6 +34,12 @@ import { shiftMonth } from '@/components/settlement/settlement-format';
 import { cn } from '@/lib/utils';
 import { MESSAGES } from '@/lib/messages';
 import { api } from '@/services/api-client';
+import { openDirectChat } from '@/services/chat';
+import {
+  fetchClassContacts,
+  type ClassContact,
+} from '@/services/community-notice.service';
+import { useNavigation } from '@/components/ui/NavLink';
 
 // ── 5-state / 결제방식 계약 (getClassPayments Dual Emit) ──
 type BillingTiming = 'PREPAID' | 'POSTPAID' | 'UNASSIGNED';
@@ -170,6 +176,50 @@ export default function ClassStudentsPage() {
   }, [params]);
 
   const user = useRouteUser();
+  const { navigate } = useNavigation();
+  const { toast } = useToast();
+
+  // [Codex R1 H-02] 참가자 명단 행 [1:1 문의] — 부모 우선 연락 대상 (관할 전용 API,
+  //   실패는 무해: 버튼만 미노출). 정산 응답(getClassPayments 5-state)은 건드리지 않는다.
+  const [contactByMember, setContactByMember] = useState<
+    Map<string, ClassContact>
+  >(new Map());
+  const [chatOpeningId, setChatOpeningId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!classId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetchClassContacts(classId);
+        if (cancelled || !res.success || !res.data) return;
+        setContactByMember(
+          new Map(res.data.contacts.map((c) => [c.memberId, c])),
+        );
+      } catch {
+        /* 버튼 미노출로 폴백 */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [classId]);
+
+  const handleOpenChat = useCallback(
+    async (contactUserId: string) => {
+      if (chatOpeningId) return;
+      setChatOpeningId(contactUserId);
+      try {
+        const roomId = await openDirectChat(contactUserId);
+        if (roomId) navigate(`/chat/${roomId}`);
+        else toast.error(MESSAGES.unitNotice.askDirectFailed);
+      } catch {
+        toast.error(MESSAGES.unitNotice.askDirectFailed);
+      } finally {
+        setChatOpeningId(null);
+      }
+    },
+    [chatOpeningId, navigate, toast],
+  );
 
   useNativeUI({
     showStatusBar: true,
@@ -204,7 +254,6 @@ export default function ClassStudentsPage() {
   // [만료 회원] 접이식 섹션 — 복귀는 학부모 재결제 자동 복구, 정리는 명단제외(expired→inactive)
   const [expiredOpen, setExpiredOpen] = useState(false);
   const [excludingId, setExcludingId] = useState<string | null>(null);
-  const { toast } = useToast();
   const { modal } = useModal();
 
   // 풀스크린 로더 fast-path — 초기 로드 시도 완료(성공/실패) 시 ready.
@@ -476,7 +525,14 @@ export default function ClassStudentsPage() {
               ) : (
                 <ul className="divide-y divide-it-line dark:divide-rink-700">
                   {data.students.map((s) => (
-                    <StudentRow key={s.registrationId} student={s} variant="roster" />
+                    <StudentRow
+                      key={s.registrationId}
+                      student={s}
+                      variant="roster"
+                      contact={contactByMember.get(s.memberId) ?? null}
+                      isChatOpening={chatOpeningId !== null}
+                      onChat={handleOpenChat}
+                    />
                   ))}
                 </ul>
               )}
@@ -699,9 +755,16 @@ export default function ClassStudentsPage() {
 function StudentRow({
   student,
   variant,
+  contact = null,
+  isChatOpening = false,
+  onChat,
 }: {
   student: PaymentStudent;
   variant: 'roster' | 'payment';
+  /** [H-02] 부모 우선 연락 대상 — roster variant 전용, null 이면 버튼 미노출 */
+  contact?: ClassContact | null;
+  isChatOpening?: boolean;
+  onChat?: (contactUserId: string) => void;
 }) {
   // 선불 UNSETTLED 는 "미정산"(후불 용어)이 아니라 "미구매" — 월권은 그 달만 유효하므로
   //   선택월에 거래 없는 선불 학생의 사실 상태는 재구매 전이다.
@@ -761,6 +824,18 @@ function StudentRow({
         </div>
       </div>
       <div className="shrink-0 flex flex-col items-end gap-1">
+        {variant === 'roster' && contact?.contactUserId && onChat && (
+          <button
+            type="button"
+            onClick={() => onChat(contact.contactUserId!)}
+            disabled={isChatOpening}
+            aria-label={`${contact.contactName ?? student.memberName} ${MESSAGES.unitNotice.askDirect}`}
+            className="inline-flex items-center gap-1 rounded-w-pill border-[1.5px] border-it-blue-500/40 px-2.5 py-1 text-w-caption font-bold text-it-blue-600 dark:text-it-blue-300 hover:bg-it-blue-50 dark:hover:bg-it-blue-900/40 transition-colors motion-reduce:transition-none disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40"
+          >
+            <Icon name="chat_bubble" className="text-[12px]" aria-hidden="true" />
+            {MESSAGES.unitNotice.askDirect}
+          </button>
+        )}
         {variant === 'payment' && <AmountCell student={student} />}
         <span
           className={cn(

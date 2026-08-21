@@ -28,11 +28,10 @@ import {
 import { maskProfanity } from "@/common/utils/content-filter.util";
 import { NotificationsService } from "@/notifications/notifications.service";
 import { isAdminRole } from "@/auth/constants/chldiv.constants";
+import { CommunityPostsService } from "./community-posts.service";
+import { CommunityActor } from "./community.types";
 
-export interface CommunityActor {
-  id: string;
-  userType?: string;
-}
+export type { CommunityActor } from "./community.types";
 
 @Injectable()
 export class CommunityService {
@@ -40,9 +39,27 @@ export class CommunityService {
     private readonly prisma: PrismaService,
     private readonly viewCounter: ViewCounterService,
     private readonly notificationsService: NotificationsService,
+    private readonly communityPosts: CommunityPostsService,
   ) {}
 
   // ===== Team Posts =====
+
+  /**
+   * [Codex R1 H-01] 레거시 팀 경로 축 격리 — `teams/:teamId/community/*` 는 팀 게시판
+   * (teamId 축) 전용이다. 단위 공지(teamId=null)가 이 경로로 열리면 신규 flat API 의
+   * 게시기간(startAt/expiresAt)·soft delete 노출 필터·좋아요 미지원·첨부 이미지 제한
+   * 계약을 전부 우회하므로, route teamId 와 정확히 일치하는 팀 축 게시글만 통과시킨다.
+   * (축 배타 DB CHECK 로 teamId non-null ⇒ 단위 축 null 이 보장된다)
+   * 불일치는 404 은닉 — 타 팀/단위 공지의 존재를 확인시켜 주지 않는다.
+   */
+  private assertLegacyTeamAxis(
+    post: { teamId: string | null } | null | undefined,
+    routeTeamId: string,
+  ): asserts post is { teamId: string } {
+    if (!post || !post.teamId || post.teamId !== routeTeamId) {
+      throw new NotFoundException("게시글을 찾을 수 없습니다.");
+    }
+  }
 
   async getTeamPosts(
     teamId: string,
@@ -98,7 +115,11 @@ export class CommunityService {
     }));
   }
 
-  async getTeamPostDetail(postId: string, requester: CommunityActor) {
+  async getTeamPostDetail(
+    postId: string,
+    requester: CommunityActor,
+    routeTeamId: string,
+  ) {
     const userId = requester.id;
     const post = await this.prisma.teamPost.findUnique({
       where: { id: postId },
@@ -136,11 +157,10 @@ export class CommunityService {
       },
     });
 
-    if (!post) {
-      throw new NotFoundException("게시글을 찾을 수 없습니다.");
-    }
+    // [H-01] 팀 축 + route teamId 일치만 통과 (단위 공지 우회 차단)
+    this.assertLegacyTeamAxis(post, routeTeamId);
 
-    // 팀 멤버십(또는 관리 역할)만 상세 열람 — 크로스-팀 노출 차단
+    // 팀 멤버십(또는 관리 역할)만 상세 열람 — 크로스-팀 노출 차단.
     await this.assertTeamMember(requester, post.teamId);
 
     // 1일 1회 조회수 증가
@@ -220,13 +240,19 @@ export class CommunityService {
       message: post.title,
     });
 
-    return this.getTeamPostDetail(post.id, requester);
+    return this.getTeamPostDetail(post.id, requester, teamId);
   }
 
-  async updateTeamPost(userId: string, postId: string, dto: UpdateClubPostDto) {
+  async updateTeamPost(
+    userId: string,
+    postId: string,
+    dto: UpdateClubPostDto,
+    routeTeamId: string,
+  ) {
     const post = await this.prisma.teamPost.findUnique({
       where: { id: postId },
     });
+    this.assertLegacyTeamAxis(post, routeTeamId); // [H-01] 단위 공지 우회 차단
     if (!post || !post.isActive) {
       throw new NotFoundException("게시글을 찾을 수 없습니다.");
     }
@@ -263,10 +289,16 @@ export class CommunityService {
     });
   }
 
-  async deleteTeamPost(userId: string, postId: string, isAdmin = false) {
+  async deleteTeamPost(
+    userId: string,
+    postId: string,
+    isAdmin = false,
+    routeTeamId: string,
+  ) {
     const post = await this.prisma.teamPost.findUnique({
       where: { id: postId },
     });
+    this.assertLegacyTeamAxis(post, routeTeamId); // [H-01] 단위 공지 우회 차단
     if (!post) {
       throw new NotFoundException("게시글을 찾을 수 없습니다.");
     }
@@ -284,13 +316,22 @@ export class CommunityService {
 
   // ===== Likes =====
 
-  async toggleLike(userId: string, postId: string) {
+  async toggleLike(
+    requester: CommunityActor,
+    postId: string,
+    routeTeamId: string,
+  ) {
+    const userId = requester.id;
     const post = await this.prisma.teamPost.findUnique({
       where: { id: postId },
     });
+    // [H-01] 팀 축 전용 — 단위 공지는 좋아요 미지원 계약(v1.2)이라 레거시 우회 차단
+    this.assertLegacyTeamAxis(post, routeTeamId);
     if (!post || !post.isActive) {
       throw new NotFoundException("게시글을 찾을 수 없습니다.");
     }
+    // [Phase 1 보안 수정] 열람 검증 없이 좋아요/집계가 가능하던 IDOR 차단 (축별 공용 판정)
+    await this.communityPosts.assertCanViewPost(requester, post);
 
     const existingLike = await this.prisma.teamPostLike.findUnique({
       where: { postId_userId: { postId, userId } },
@@ -319,7 +360,28 @@ export class CommunityService {
     }
   }
 
-  async getPostLikes(postId: string) {
+  async getPostLikes(
+    requester: CommunityActor,
+    postId: string,
+    routeTeamId: string,
+  ) {
+    const post = await this.prisma.teamPost.findUnique({
+      where: { id: postId },
+      select: {
+        id: true,
+        teamId: true,
+        targetClassId: true,
+        targetTournamentId: true,
+        isActive: true,
+      },
+    });
+    this.assertLegacyTeamAxis(post, routeTeamId); // [H-01] 단위 공지 우회 차단
+    if (!post || !post.isActive) {
+      throw new NotFoundException("게시글을 찾을 수 없습니다.");
+    }
+    // [Phase 1 보안 수정] 열람 검증 없이 좋아요 사용자 목록이 노출되던 IDOR 차단
+    await this.communityPosts.assertCanViewPost(requester, post);
+
     return this.prisma.teamPostLike.findMany({
       where: { postId },
       include: {
@@ -340,10 +402,17 @@ export class CommunityService {
 
   // ===== Attachments =====
 
-  async addAttachment(userId: string, postId: string, dto: AddAttachmentDto) {
+  async addAttachment(
+    userId: string,
+    postId: string,
+    dto: AddAttachmentDto,
+    routeTeamId: string,
+  ) {
     const post = await this.prisma.teamPost.findUnique({
       where: { id: postId },
     });
+    // [H-01] 팀 축 전용 — 단위 공지는 이미지 4종·10MB 계약이라 범용 첨부 우회 차단
+    this.assertLegacyTeamAxis(post, routeTeamId);
     if (!post || !post.isActive) {
       throw new NotFoundException("게시글을 찾을 수 없습니다.");
     }
@@ -370,7 +439,11 @@ export class CommunityService {
     });
   }
 
-  async deleteAttachment(userId: string, attachmentId: string) {
+  async deleteAttachment(
+    userId: string,
+    attachmentId: string,
+    routeTeamId: string,
+  ) {
     const attachment = await this.prisma.teamPostAttachment.findUnique({
       where: { id: attachmentId },
       include: { post: true },
@@ -379,6 +452,7 @@ export class CommunityService {
     if (!attachment) {
       throw new NotFoundException("첨부파일을 찾을 수 없습니다.");
     }
+    this.assertLegacyTeamAxis(attachment.post, routeTeamId); // [H-01]
 
     if (attachment.post.authorId !== userId) {
       throw new ForbiddenException("첨부파일 삭제 권한이 없습니다.");
@@ -392,16 +466,24 @@ export class CommunityService {
   // ===== Comments =====
 
   async addCommentToPost(
-    userId: string,
+    requester: CommunityActor,
     postId: string,
     dto: CreateClubPostCommentDto,
+    routeTeamId: string,
   ) {
+    const userId = requester.id;
     const post = await this.prisma.teamPost.findUnique({
       where: { id: postId },
     });
+    // [H-01] 팀 축 전용 — 단위 공지 댓글은 신규 flat API 경로만 (노출 필터 우회 차단)
+    this.assertLegacyTeamAxis(post, routeTeamId);
     if (!post || !post.isActive) {
       throw new NotFoundException("게시글을 찾을 수 없습니다.");
     }
+    // [Phase 1 보안 수정] 열람 검증 없이 임의 게시글에 댓글이 가능하던 IDOR 차단
+    await this.communityPosts.assertCanViewPost(requester, post);
+    // [Codex R3 H-03] 게시기간 정책 통일 — 예약 전·만료 후 팀 글 댓글은 관할/글작성자만
+    await this.communityPosts.assertCommentablePostState(requester, post);
 
     const comment = await this.prisma.teamPostComment.create({
       data: {
@@ -433,20 +515,44 @@ export class CommunityService {
   }
 
   async updateComment(
-    userId: string,
+    requester: CommunityActor,
     commentId: string,
     dto: UpdateClubPostCommentDto,
+    routeTeamId: string,
   ) {
     const comment = await this.prisma.teamPostComment.findUnique({
       where: { id: commentId },
+      include: {
+        post: {
+          select: {
+            id: true,
+            teamId: true,
+            targetClassId: true,
+            targetTournamentId: true,
+            authorId: true,
+            isActive: true,
+            startAt: true,
+            expiresAt: true,
+          },
+        },
+      },
     });
     if (!comment) {
       throw new NotFoundException("댓글을 찾을 수 없습니다.");
     }
+    this.assertLegacyTeamAxis(comment.post, routeTeamId); // [H-01]
+    if (!comment.post.isActive) {
+      throw new NotFoundException("댓글을 찾을 수 없습니다.");
+    }
 
-    if (comment.authorId !== userId) {
+    if (comment.authorId !== requester.id) {
       throw new ForbiddenException("댓글 수정 권한이 없습니다.");
     }
+    // [Codex R3 H-03] 게시기간 정책 통일 — 예약 전·만료 후에는 관할/글작성자만
+    await this.communityPosts.assertCommentablePostState(
+      requester,
+      comment.post,
+    );
 
     return this.prisma.teamPostComment.update({
       where: { id: commentId },
@@ -470,7 +576,12 @@ export class CommunityService {
     });
   }
 
-  async deleteComment(userId: string, commentId: string, isAdmin = false) {
+  async deleteComment(
+    requester: CommunityActor,
+    commentId: string,
+    isAdmin = false,
+    routeTeamId: string,
+  ) {
     const comment = await this.prisma.teamPostComment.findUnique({
       where: { id: commentId },
       include: { post: true },
@@ -479,10 +590,20 @@ export class CommunityService {
     if (!comment) {
       throw new NotFoundException("댓글을 찾을 수 없습니다.");
     }
+    this.assertLegacyTeamAxis(comment.post, routeTeamId); // [H-01]
+    // [Codex R2 H-03] soft 삭제된 게시글의 댓글은 삭제 경로도 404 (수정 경로와 통일)
+    if (!comment.post.isActive) {
+      throw new NotFoundException("댓글을 찾을 수 없습니다.");
+    }
 
-    if (!isAdmin && comment.authorId !== userId) {
+    if (!isAdmin && comment.authorId !== requester.id) {
       throw new ForbiddenException("댓글 삭제 권한이 없습니다.");
     }
+    // [Codex R3 H-03] 게시기간 정책 통일 — 예약 전·만료 후에는 관할/글작성자만
+    await this.communityPosts.assertCommentablePostState(
+      requester,
+      comment.post,
+    );
 
     await this.prisma.teamPostComment.delete({ where: { id: commentId } });
 

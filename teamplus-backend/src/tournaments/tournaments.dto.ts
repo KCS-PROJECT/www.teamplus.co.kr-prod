@@ -13,6 +13,7 @@ import {
   Min,
   Max,
   ValidateIf,
+  ValidateNested,
 } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
@@ -49,6 +50,54 @@ export const PENALTY_TYPES = [
 
 // ==================== Tournament DTOs ====================
 
+/**
+ * 대회 등록/수정 폼의 경기 일정 1행 — 대회 본체와 단일 요청·단일 트랜잭션으로 처리한다.
+ *  · scheduledAt 은 오프셋 없는 KST 벽시계 문자열("YYYY-MM-DDTHH:mm:00") 계약 —
+ *    날짜부(slice 0..10)가 곧 KST 달력일이며, 기간 정합·지난 날짜 판정은 이 문자열로만 수행.
+ *  · id 존재 = 기존 경기 갱신(변경 없으면 미접촉), 부재 = 신규 생성.
+ *    수정 요청에서 기존 경기 id 가 배열에 빠져 있으면 해당 경기는 삭제 대상이다(diff 동기화).
+ */
+export class TournamentScheduleMatchDto {
+  @ApiPropertyOptional({
+    description:
+      "기존 경기 ID — 있으면 갱신(무변경 시 미접촉), 없으면 신규 생성",
+  })
+  @IsOptional()
+  @IsString()
+  id?: string;
+
+  @ApiPropertyOptional({ description: "상대팀 자유 텍스트" })
+  @IsOptional()
+  @IsString()
+  opponentName?: string;
+
+  @ApiProperty({
+    description:
+      '경기 예정 시간 — 오프셋 없는 KST 벽시계 "YYYY-MM-DDTHH:mm:00" (기존 createMatch 파싱 계약과 동일)',
+    example: "2026-04-01T14:00",
+  })
+  @IsDateString()
+  scheduledAt!: string;
+
+  @ApiPropertyOptional({ description: "경기장(링크장) ID" })
+  @IsOptional()
+  @IsString()
+  venueId?: string;
+
+  @ApiPropertyOptional({
+    description: "경기 장소 자유 텍스트 — 미입력 시 대회 장소 폴백(참조)",
+  })
+  @IsOptional()
+  @IsString()
+  venueName?: string;
+
+  @ApiPropertyOptional({ description: "경기 순서" })
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  matchOrder?: number;
+}
+
 export class CreateTournamentDto {
   @ApiProperty({ description: "대회 이름", example: "2026 봄 시즌 토너먼트" })
   @IsString()
@@ -74,7 +123,8 @@ export class CreateTournamentDto {
   @IsString()
   venueId?: string;
 
-  // 기간은 경기 일정에서 파생 — 일정 미정 대회는 둘 다 생략(null 저장). 한쪽만 전송은 서비스에서 400.
+  // 기간은 사용자 직접 입력(2026-08-20 자동 파생 폐기) — 일정 미정 대회는 둘 다 생략(null 저장).
+  // 한쪽만 전송은 서비스에서 400. 경기 일정(matches)이 있으면 기간 필수 + 전체 경기가 기간 안.
   @ApiPropertyOptional({
     description: "시작 날짜 — 미전송/null = 일정 미정",
     example: "2026-04-01T09:00:00Z",
@@ -246,6 +296,17 @@ export class CreateTournamentDto {
   @IsOptional()
   @IsIn(["PREPAID", "POSTPAID"])
   billingMode?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "경기 일정 — 대회 생성과 단일 트랜잭션으로 함께 생성. 경기가 있으면 기간(startDate/endDate) 필수이며 모든 경기 날짜가 기간 안이어야 한다.",
+    type: [TournamentScheduleMatchDto],
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TournamentScheduleMatchDto)
+  matches?: TournamentScheduleMatchDto[];
 }
 
 export class UpdateTournamentDto {
@@ -432,13 +493,25 @@ export class UpdateTournamentDto {
   @IsOptional()
   @IsIn(["PREPAID", "POSTPAID"])
   billingMode?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "경기 일정 최종 집합(diff 동기화) — 전송 시 id 있는 행은 갱신(무변경 미접촉)·없는 행은 생성·빠진 기존 경기는 삭제. 미전송(undefined) 시 기존 경기 무변경. 지난 경기·기록 보유 경기는 변경/삭제 불가.",
+    type: [TournamentScheduleMatchDto],
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TournamentScheduleMatchDto)
+  matches?: TournamentScheduleMatchDto[];
 }
 
 // ==================== Tournament Settlement DTO ====================
 
 export class ConfirmTournamentSettlementDto {
   @ApiProperty({
-    description: "후불 대회 1인당 참가비 (원) — 선택 참가자에게 동일 단가 일괄 청구",
+    description:
+      "후불 대회 1인당 참가비 (원) — 선택 참가자에게 동일 단가 일괄 청구",
     example: 30000,
   })
   @IsNumber()
@@ -587,7 +660,10 @@ export class CreateMatchDto {
   @Type(() => Number)
   matchOrder?: number;
 
-  @ApiPropertyOptional({ description: "일정별 참가비 (원) — null/0=무료", example: 15000 })
+  @ApiPropertyOptional({
+    description: "일정별 참가비 (원) — null/0=무료",
+    example: 15000,
+  })
   @IsOptional()
   @IsNumber()
   @Min(0)
@@ -717,7 +793,10 @@ export class UpdateMatchDto {
   @Type(() => Number)
   matchOrder?: number;
 
-  @ApiPropertyOptional({ description: "일정별 참가비 (원) — null/0=무료", example: 15000 })
+  @ApiPropertyOptional({
+    description: "일정별 참가비 (원) — null/0=무료",
+    example: 15000,
+  })
   @IsOptional()
   @IsNumber()
   @Min(0)

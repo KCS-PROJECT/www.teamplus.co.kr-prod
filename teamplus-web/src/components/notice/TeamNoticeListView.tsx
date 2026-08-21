@@ -129,6 +129,12 @@ export interface TeamNoticeListViewProps {
    *   (현재 /director-notices 관리 화면만 전달. /team-notices 열람은 미적용.)
    */
   iceTheme?: boolean;
+  /**
+   * 탭 페이지 삽입용 — true 면 MobileContainer/PageAppBar/useNativeUI 를 생략하고
+   * 콘텐츠(목록·FAB·시트)만 렌더한다. 부모 페이지가 컨테이너·AppBar·탭 바를 소유.
+   * (/director-notices 2탭 재편 — 기본 false = 기존 단독 화면 1:1 보존)
+   */
+  embedded?: boolean;
 }
 
 // ─── Main Component ──────────────────────────────────
@@ -139,6 +145,7 @@ export function TeamNoticeListView({
   showReadState = false,
   mode = 'audience',
   iceTheme = false,
+  embedded = false,
 }: TeamNoticeListViewProps) {
   const { toast } = useToast();
   const { navigate } = useNavigation();
@@ -297,10 +304,8 @@ export function TeamNoticeListView({
 
   // ICETIMES flat — 카드 박스 제거. full-bleed 흰 섹션 + hairline 행, it-* 토큰.
   if (iceTheme) {
-    return (
-      <MobileContainer hasBottomNav>
-        <PageAppBar title={title} forceNative />
-
+    const iceContent = (
+      <>
         <main
           className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck !pb-8 relative"
           role="main"
@@ -463,14 +468,20 @@ export function TeamNoticeListView({
               }}
             />
           </>
+      </>
+    );
+
+    if (embedded) return iceContent;
+    return (
+      <MobileContainer hasBottomNav>
+        <PageAppBar title={title} forceNative />
+        {iceContent}
       </MobileContainer>
     );
   }
 
-  return (
-    <MobileContainer hasBottomNav>
-      <PageAppBar title={title} forceNative />
-
+  const legacyContent = (
+    <>
       <main className="flex-1 overflow-y-auto hide-scrollbar" role="main" aria-label={title}>
         <div className="px-5 py-5 pb-30 space-y-4 relative">
           {/* 섹션 헤더 */}
@@ -623,6 +634,14 @@ export function TeamNoticeListView({
             }}
           />
         </>
+    </>
+  );
+
+  if (embedded) return legacyContent;
+  return (
+    <MobileContainer hasBottomNav>
+      <PageAppBar title={title} forceNative />
+      {legacyContent}
     </MobileContainer>
   );
 }

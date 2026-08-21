@@ -114,9 +114,11 @@ describe("ClassesService", () => {
     class: {
       create: jest.Mock;
       update: jest.Mock;
+      delete: jest.Mock;
       findUnique: jest.Mock;
       findUniqueOrThrow: jest.Mock;
     };
+    teamPost: { deleteMany: jest.Mock };
     classDaySchedule: { deleteMany: jest.Mock; createMany: jest.Mock };
     classSchedule: {
       create: jest.Mock;
@@ -146,6 +148,7 @@ describe("ClassesService", () => {
       class: {
         create: jest.fn(),
         update: jest.fn(),
+        delete: jest.fn(),
         // postpaid lock 판정용(§4-0 B) — 기본 undefined = PREPAID 취급, lock 미획득.
         findUnique: jest.fn(),
         findUniqueOrThrow: jest.fn().mockResolvedValue({
@@ -179,6 +182,8 @@ describe("ClassesService", () => {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       classRsvp: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      // [H-04] 삭제 트랜잭션의 단위 공지 잔재 정리
+      teamPost: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
     };
 
     mockTeamsService.assertTeamManagerPermission
@@ -237,6 +242,11 @@ describe("ClassesService", () => {
             },
             monthlyPostpaidBillingLine: {
               count: jest.fn(),
+            },
+            // [H-04] countClassBlockingRefs 5번째 축 — 게시 중 단위 공지 (기본 0 = 차단 없음)
+            teamPost: {
+              count: jest.fn().mockResolvedValue(0),
+              deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
             },
             classCoachAssignment: {
               findMany: jest.fn(),
@@ -707,9 +717,7 @@ describe("ClassesService", () => {
         .spyOn(prismaService.monthlyPostpaidBillingLine, "count")
         .mockResolvedValue(0);
       jest.spyOn(prismaService.classAttendance, "count").mockResolvedValue(0);
-      jest
-        .spyOn(prismaService.class, "delete")
-        .mockResolvedValue(mockClass as any);
+      mockTx.class.delete.mockResolvedValue(mockClass as any);
 
       const result = await service.deleteClass(
         mockCoachUserId,
@@ -718,9 +726,49 @@ describe("ClassesService", () => {
       );
 
       expect(result.id).toBe(mockClassId);
-      expect(prismaService.class.delete).toHaveBeenCalledWith({
+      // [H-04·R2] 삭제 tx 는 inactive 공지 잔재만 정리 후 delete (레이스 active 보존)
+      expect(mockTx.teamPost.deleteMany).toHaveBeenCalledWith({
+        where: { targetClassId: mockClassId, isActive: false },
+      });
+      expect(mockTx.class.delete).toHaveBeenCalledWith({
         where: { id: mockClassId },
       });
+    });
+
+    it("[R2 H-04] count 이후 레이스로 남은 active 공지의 FK 실패(P2003) — 제어된 Conflict", async () => {
+      jest
+        .spyOn(prismaService.class, "findUnique")
+        .mockResolvedValue(mockClass as any);
+      jest.spyOn(prismaService.enrollment, "count").mockResolvedValue(0);
+      jest.spyOn(prismaService.memberCredit, "count").mockResolvedValue(0);
+      jest
+        .spyOn(prismaService.monthlyPostpaidBillingLine, "count")
+        .mockResolvedValue(0);
+      jest.spyOn(prismaService.classAttendance, "count").mockResolvedValue(0);
+      // 가드 통과(0건) 후 tx 안에서 FK RESTRICT 가 delete 를 막는 레이스 재현
+      mockTx.class.delete.mockRejectedValue({ code: "P2003" });
+
+      await expect(
+        service.deleteClass(mockCoachUserId, mockClubId, mockClassId),
+      ).rejects.toThrow("공지 이력이 있는 수업은 삭제할 수 없습니다");
+    });
+
+    it("[H-04] 게시 중 단위 공지가 있으면 Conflict 로 제어 차단 (FK 오류 방지)", async () => {
+      jest
+        .spyOn(prismaService.class, "findUnique")
+        .mockResolvedValue(mockClass as any);
+      jest.spyOn(prismaService.enrollment, "count").mockResolvedValue(0);
+      jest.spyOn(prismaService.memberCredit, "count").mockResolvedValue(0);
+      jest
+        .spyOn(prismaService.monthlyPostpaidBillingLine, "count")
+        .mockResolvedValue(0);
+      jest.spyOn(prismaService.classAttendance, "count").mockResolvedValue(0);
+      jest.spyOn(prismaService.teamPost, "count").mockResolvedValue(1); // 게시 중 공지 1건
+
+      await expect(
+        service.deleteClass(mockCoachUserId, mockClubId, mockClassId),
+      ).rejects.toThrow("공지 이력이 있는 수업은 삭제할 수 없습니다");
+      expect(mockTx.class.delete).not.toHaveBeenCalled();
     });
 
     it("should throw ForbiddenException if user is not coach", async () => {
