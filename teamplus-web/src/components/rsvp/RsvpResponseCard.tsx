@@ -109,7 +109,13 @@ export function RsvpResponseCard({
       aria-labelledby="decline-modal-title"
       onClick={handleOverlayClick}
     >
-      <div className="overlay-fullscreen-dim" aria-hidden="true" />
+      {/* dim 은 pointer-events:auto 자식이라 wrapper 의 target 판정에 걸리지 않으므로
+          닫기 핸들러를 직접 부착한다 (BottomSheet.tsx 표준과 동일). */}
+      <div
+        className="overlay-fullscreen-dim"
+        onClick={handleDeclineCancel}
+        aria-hidden="true"
+      />
       <div
         className="relative pointer-events-auto w-full max-w-sm"
         onClick={(e) => e.stopPropagation()}

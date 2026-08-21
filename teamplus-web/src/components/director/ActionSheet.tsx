@@ -104,9 +104,12 @@ export function ActionSheet({ isOpen, onClose, title, items }: ActionSheetProps)
       aria-label={title}
       onClick={handleOverlayClick}
     >
-      {/* Overlay — viewport 전체 (status bar / appbar / bottom nav 위) */}
+      {/* Overlay — viewport 전체 (status bar / appbar / bottom nav 위).
+          dim 은 pointer-events:auto 자식이라 wrapper 의 target 판정에 걸리지 않으므로
+          닫기 핸들러를 직접 부착한다 (BottomSheet.tsx 표준과 동일). */}
       <div
         className="overlay-fullscreen-dim-sheet animate-overlay-in motion-reduce:animate-none"
+        onClick={onClose}
         aria-hidden="true"
       />
 
