@@ -2777,6 +2777,10 @@ export const MESSAGES = {
     fieldRegion: "지역",
     fieldRegionPlaceholder: "예: 서울 강남구",
     fieldRegionHint: "팀 활동 지역 (선택)",
+    // 지역 하이브리드 입력 (시/도 → 시군구 선택 + 직접 입력) — 시트 타이틀·플레이스홀더는 class.region 재사용
+    regionClear: "선택 해제 (지역 미지정)",
+    regionCustomToggle: "직접 입력",
+    regionSelectToggle: "목록에서 선택",
     fieldLogoUrl: "로고 URL",
     fieldPrimaryColor: "메인 컬러",
     fieldSecondaryColor: "보조 컬러",

@@ -138,6 +138,28 @@ export function formatRegionLabel(
   return district ? `${city} ${district}` : city;
 }
 
+/**
+ * 지역 라벨 역파싱 — "시/도" 또는 "시/도 시군구" 표준 라벨만 인정.
+ *
+ * teams.location 은 컬럼 분리 없이 formatRegionLabel 형태의 표준 라벨을 저장한다
+ * (백엔드 team-region-label.util.ts 와 동일 계약). 시/도·시군구가 전부 공백 없는
+ * 단일 토큰이라 공백 분리만으로 무손실 복원이 보장된다.
+ * 자유 텍스트 등 비표준 값은 null — 폼에서 미선택 + 재선택 안내로 처리한다.
+ */
+export function parseRegionLabel(
+  label?: string | null,
+): { city: Region; district: string | null } | null {
+  if (!label) return null;
+  const tokens = label.trim().split(/\s+/);
+  if (tokens.length === 0 || tokens.length > 2) return null;
+
+  const [city, district] = tokens;
+  if (!isRegion(city)) return null;
+  if (district === undefined) return { city, district: null };
+  if (!CITY_DISTRICTS[city].includes(district)) return null;
+  return { city, district };
+}
+
 /** 수업 요일 — 백엔드 `ClassDaySchedule.dayOfWeek` 한글 SoT 와 동일. */
 export const DAYS_OF_WEEK = ['월', '화', '수', '목', '금', '토', '일'] as const;
 

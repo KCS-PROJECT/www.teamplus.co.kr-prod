@@ -39,7 +39,7 @@ export interface TeamListItem {
   name?: string;
   shortName?: string | null;
   division?: TeamDivision | null;
-  /** 지역 (자유 텍스트, 선택). 홈 경기장(venue/homeArena)과 별개의 활동 지역. */
+  /** 지역 (선택). 표준 라벨 "시/도[ 시군구]" — 구 데이터엔 자유 텍스트 잔존 가능. 홈 경기장(venue/homeArena)과 별개의 활동 지역. */
   location?: string | null;
   logoUrl?: string | null;
   primaryColor?: string | null;
@@ -366,7 +366,7 @@ export interface TeamMatchesResponse {
 export interface CreateTeamPayload {
   clubId: string;
   name: string;
-  /** 지역 (선택, 자유 텍스트) */
+  /** 지역 (선택). 표준 라벨 "시/도[ 시군구]"는 백엔드가 canonical 정규화, 자유 문구는 원문 수용 (하이브리드 — 1안) */
   location?: string;
   // [제거 2026-05-21 시나리오 B] shortName — Phase 2 (2026-04-29) Club↔Team 통합 잔재.
   //   백엔드 createTeam(teams.service.ts:165-175) 이 data 객체에 포함시키지 않아 저장되지 않음.
@@ -388,7 +388,11 @@ export interface CreateTeamPayload {
 
 export interface UpdateTeamPayload {
   clubName?: string;
-  /** 지역 (선택, 자유 텍스트). 빈 문자열/미전송이면 변경 없음 */
+  /**
+   * 지역 (선택). 표준 라벨 "시/도[ 시군구]"는 백엔드가 canonical 정규화하고
+   * 자유 문구는 trim 원문 수용 (하이브리드 — 1안).
+   * 미전송 = 무변경 · 빈 문자열 = 해제(null 저장).
+   */
   location?: string;
   /** 팀 초대 코드 (선택, 고유). 빈 문자열이면 해제(null) */
   teamCode?: string;
