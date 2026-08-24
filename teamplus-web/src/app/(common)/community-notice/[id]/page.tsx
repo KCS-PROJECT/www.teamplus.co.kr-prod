@@ -44,6 +44,13 @@ import {
  */
 const SHOW_DIRECT_CHAT = false;
 
+/**
+ * [댓글 수정 잠금 — 2026-08-24 사용자 결정] 수정은 하단 공용 입력창 재사용 구조라
+ * 긴 댓글 목록에서 스크롤 수고가 커 비노출. 본인 삭제 후 재작성으로 대체(카톡 관행).
+ * 재개 시 이 플래그 복원 + 수정 진입 시 입력창 자동 스크롤·포커스를 함께 적용할 것.
+ */
+const SHOW_COMMENT_EDIT = false;
+
 /** XSS 방어 — /notice/[id] 와 동일 정책 */
 let dompurifyHookAdded = false;
 function sanitizeHtml(dirty: string): string {
@@ -607,10 +614,13 @@ export default function UnitNoticeDetailPage() {
                 placeholder={MESSAGES.unitNotice.commentPlaceholder}
                 currentUserId={user?.id}
                 onDelete={(commentId) => setDeleteCommentId(String(commentId))}
-                onEdit={(commentId, content) =>
-                  setEditingComment({ id: commentId, content })
+                onEdit={
+                  SHOW_COMMENT_EDIT
+                    ? (commentId, content) =>
+                        setEditingComment({ id: commentId, content })
+                    : undefined
                 }
-                editingComment={editingComment}
+                editingComment={SHOW_COMMENT_EDIT ? editingComment : null}
                 onCancelEdit={() => setEditingComment(null)}
               />
             </section>

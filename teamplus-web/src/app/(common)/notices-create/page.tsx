@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useState, useEffect, useCallback } from 'react';
+import { useId, useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useNavigation } from '@/components/ui/NavLink';
 import { MobileContainer } from '@/components/layout/MobileContainer';
@@ -14,12 +14,6 @@ import { emitRefresh, REFRESH_KEYS } from '@/lib/refresh-bus';
 import { usePageReady } from '@/hooks/usePageReady';
 import { cn } from '@/lib/utils';
 
-/** `GET /notices/manage/teams` — 이 사용자가 공지를 쓸 수 있는 팀 (백엔드 관리 SoT 결과). */
-interface ManageableTeam {
-  id: string;
-  name: string;
-}
-
 interface NoticeDetail {
   id: string;
   title: string;
@@ -29,8 +23,6 @@ interface NoticeDetail {
   /** 노출 시작/종료일 (ISO) — 백엔드 SystemNotice.startAt/expiresAt */
   startAt?: string | null;
   expiresAt?: string | null;
-  /** 고정 한도 풀 판정용 — 팀 공지(값) vs 서비스 공지(null) */
-  targetTeamId?: string | null;
 }
 
 /** `GET /notices/admin/list` 행 중 고정 카운트에 필요한 필드만 */
@@ -110,9 +102,6 @@ export default function NoticeCreatePage() {
   // 대상 팀 풀의 고정 한도 도달 여부 — 정확한 사전 안내용(아래 풀 카운트 effect).
   // 최종 판정은 여전히 서버 409(NOTICE_PIN_LIMIT) — 사전 판정과 등록 사이의 레이스 백스톱.
   const [pinnedFull, setPinnedFull] = useState(false);
-  // 수정 모드의 풀 판정용 — 프리필에서 확보한 공지의 대상 팀.
-  // undefined=미확정(프리필 전·실패 — 판정 보류) / null=서비스 공지 / string=팀 풀
-  const [editTeamId, setEditTeamId] = useState<string | null | undefined>(undefined);
   // [R6-02] 프리필 원값과 현재 체크 상태의 구분 — **원래 고정돼 있던 공지의 수정**은
   // full 판정과 무관하게 체크박스를 살려 고정 해제가 가능해야 한다(자기 제외로 full 도 아님).
   // 반대로 신규·원래 미고정 수정은 full 이면 체크를 강제 해제하고 비활성화한다.
@@ -120,27 +109,16 @@ export default function NoticeCreatePage() {
   // [2026-06-18] 공지 노출 기간 (등록기간) — 비우면 상시 노출. 백엔드 startDate/endDate 로 전송.
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  // 관리 팀이 여러 개인 작성자용 대상 팀 선택. 1개면 백엔드가 자동 주입하므로 선택기를 만들지 않는다.
-  const [manageTeams, setManageTeams] = useState<ManageableTeam[]>([]);
-  const [targetTeamId, setTargetTeamId] = useState('');
-  // 조회 전·실패 후에는 관리 팀이 몇 개인지 알 수 없다 → 그 상태로 제출하면 다중 팀 작성자가
-  // 서버 403 을 맞는다. 두 상태 동안 제출을 잠그고 인라인 재시도를 제공한다.
-  const [isTeamsLoading, setIsTeamsLoading] = useState(!isEditMode);
-  const [teamsLoadFailed, setTeamsLoadFailed] = useState(false);
-  const needsTeamChoice = !isEditMode && manageTeams.length > 1;
-
-  // edit 모드는 프리필, 신규 작성은 대상 팀 후보 도착까지 대기 —
-  //   선택기도 화면 구성 요소라 도착 전에 로더를 내리면 레이아웃이 뒤늦게 바뀐다.
-  usePageReady(!isPrefilling && !isTeamsLoading);
+  // [Phase 3] 팀 공지는 TeamPost(/community-notice/create)로 이관 완결 —
+  //   이 화면은 **서비스 공지 전용**이라 대상 팀 후보 조회·선택기를 제거했다.
+  usePageReady(!isPrefilling);
 
   useEffect(() => {
     // [R7-02·R8-01] 프리필 소유 상태 전체가 editId 와 결합 — editId 변경(수정→작성 전환
-    // 포함) 즉시 이전 공지의 identity(wasPinned·editTeamId)와 폼 값(체크·제목·본문·기간)을
+    // 포함) 즉시 이전 공지의 identity(wasPinned)와 폼 값(체크·제목·본문·기간)을
     // 모두 폐기한다. 남기면 이전 공지의 내용·체크가 새 identity 의 POST/PATCH 에 실린다.
-    // 늦게 도착한 이전 프리필 응답은 cancelled 로 무시 (A→B 전환 역순 도착 보호),
-    // 프리필 실패 시 editTeamId 는 undefined(미확정)로 남아 풀 판정이 보류된다(fail-open).
+    // 늦게 도착한 이전 프리필 응답은 cancelled 로 무시 (A→B 전환 역순 도착 보호).
     setWasPinned(false);
-    setEditTeamId(undefined);
     setIsPinned(false);
     setTitle('');
     setContent('');
@@ -164,7 +142,6 @@ export default function NoticeCreatePage() {
           setWasPinned(n.pinned ?? n.isPinned ?? false);
           setStartDate(toDateInput(n.startAt));
           setEndDate(toDateInput(n.expiresAt));
-          setEditTeamId(n.targetTeamId ?? null);
         }
       } finally {
         if (!cancelled) setIsPrefilling(false);
@@ -175,41 +152,18 @@ export default function NoticeCreatePage() {
     };
   }, [editId]);
 
-  // ── 고정 한도 사전 안내 (정확 판정 복원) ─────────────────────────
-  // [P3-R1-05] 에서 제거했던 사전 비활성화의 복원 — 당시 제거 사유는 "사전 차단" 자체가
-  // 아니라 **계산이 틀려서**였다(전 열람 팀 활성 고정 합산 ≠ 팀별 독립 풀·게시 상태 무관).
-  // 이제 두 재료로 정확한 판정이 가능하다:
-  //   · 대상 풀 확정 — 단일 팀은 manage/teams 자동 확정, 다중 팀은 선택기 값, 수정은 공지의 팀
-  //   · 풀 단위 카운트 — 관리 목록 API(admin/list)는 미게시·만료 포함 + 고정 우선 정렬이라
-  //     첫 페이지로 해당 풀의 pinned 전수를 셀 수 있다 (한도 2)
-  // 서버 409 는 백스톱으로 유지 — 사전 판정과 등록 사이에 다른 관리자가 고정하는 레이스는
-  // 서버가 최종 판정한다. 조회 실패 시에는 막지 않는다(false) — 오차단보다 409 안내가 낫다.
-  const pinPoolTeamId = isEditMode
-    ? (editTeamId ?? null)
-    : needsTeamChoice
-      ? targetTeamId || null
-      : (manageTeams[0]?.id ?? null);
-  // 수정 모드는 **현재 editId 의 프리필이 대상 팀까지 확정**한 후, 신규는 팀 후보 확정 후에만
-  // 판정 (미확정 상태에서 조회 금지 — 프리필 실패 시 undefined 로 남아 판정 보류)
-  const pinPoolResolved = isEditMode
-    ? !isPrefilling && editTeamId !== undefined
-    : !isTeamsLoading && !teamsLoadFailed && (!needsTeamChoice || !!targetTeamId);
-
+  // ── 고정 한도 사전 안내 — 서비스 공지 풀(scope=service) 단일 (한도 2).
+  //   pinned 우선 정렬이라 limit 5 안에 풀의 모든 고정(≤2)이 들어온다.
+  //   서버 409(NOTICE_PIN_LIMIT) 는 레이스 백스톱으로 유지.
   useEffect(() => {
-    // [R6-01] 풀 키가 바뀌는 즉시 이전 풀의 판정을 폐기 — A팀 full 확정 후 B팀으로 바꾸면
-    // B팀 응답 전까지는 fail-open(false). 늦게 도착한 이전 풀 응답은 cancelled 로 무시된다.
     setPinnedFull(false);
-    if (!pinPoolResolved) return;
+    // 수정 모드는 프리필(wasPinned 확정) 후에만 판정 — 자기 제외 계산이 흔들리지 않게
+    if (isEditMode && isPrefilling) return;
     let cancelled = false;
     (async () => {
       try {
-        // 팀 풀 = scope=team&teamId / 서비스 풀(시스템 역할·서비스 공지 수정) = scope=service.
-        // pinned 우선 정렬이라 limit 5 안에 풀의 모든 고정(≤2)이 들어온다.
-        const query = pinPoolTeamId
-          ? `scope=team&teamId=${encodeURIComponent(pinPoolTeamId)}`
-          : 'scope=service';
         const res = await api.get<{ data?: AdminListNotice[] }>(
-          `/notices/admin/list?${query}&page=1&limit=5`,
+          `/notices/admin/list?scope=service&page=1&limit=5`,
         );
         if (cancelled) return;
         const rows = res.success ? (res.data?.data ?? []) : [];
@@ -229,35 +183,7 @@ export default function NoticeCreatePage() {
     return () => {
       cancelled = true;
     };
-  }, [pinPoolResolved, pinPoolTeamId, editId, wasPinned]);
-
-  // 대상 팀 후보 조회 — 시스템 역할은 빈 배열이 오므로 선택기가 뜨지 않는다.
-  //   수정 모드는 대상 팀을 바꾸지 않으므로(payload 에 키 미포함) 조회도 생략.
-  const loadManageTeams = useCallback(async () => {
-    setIsTeamsLoading(true);
-    setTeamsLoadFailed(false);
-    try {
-      const res = await api.get<{ data?: ManageableTeam[] } | ManageableTeam[]>(
-        '/notices/manage/teams',
-      );
-      if (!res.success || !res.data) {
-        setTeamsLoadFailed(true);
-        return;
-      }
-      const list = Array.isArray(res.data) ? res.data : (res.data.data ?? []);
-      setManageTeams(list);
-      if (list.length === 1) setTargetTeamId(list[0]!.id);
-    } catch {
-      setTeamsLoadFailed(true);
-    } finally {
-      setIsTeamsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (isEditMode) return;
-    void loadManageTeams();
-  }, [isEditMode, loadManageTeams]);
+  }, [isEditMode, isPrefilling, editId, wasPinned]);
 
   /**
    * 시작일이 오늘(KST) 이후인가 — 예약 노출 안내 표시용.
@@ -300,10 +226,6 @@ export default function NoticeCreatePage() {
       toast.error(MESSAGES.noticesCreate.periodInvalid);
       return;
     }
-    if (needsTeamChoice && !targetTeamId) {
-      toast.error(MESSAGES.noticesCreate.targetTeamRequired);
-      return;
-    }
     setIsSubmitting(true);
     try {
       const payload = {
@@ -319,11 +241,6 @@ export default function NoticeCreatePage() {
         //   서버가 "변경 없음" 으로 해석하고, 한 번 설정한 기간을 지울 수 없었다(F-05).
         startDate: startDate ? kstDateToIso(startDate, 'start') : null,
         endDate: endDate ? kstDateToIso(endDate, 'end') : null,
-        // 대상 팀은 **선택했을 때만** 키를 싣는다.
-        //   키 생략(undefined) = "대상 미지정" → 백엔드가 단일 관리 팀을 자동 주입.
-        //   명시적 null 은 "전체 공지 요청" 이라 팀 권한자에게 403 이 되므로 절대 보내지 않는다.
-        //   수정 모드도 키를 빼서 기존 대상 팀을 그대로 유지한다.
-        ...(!isEditMode && targetTeamId ? { targetTeamId } : {}),
       };
       const response = isEditMode
         ? await api.patch(`/notices/${editId}`, payload)
@@ -411,70 +328,11 @@ export default function NoticeCreatePage() {
 
         {/* 옵션 — flat 흰 섹션 (상단 고정 + 노출 기간, hairline 구분) */}
         <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6" aria-label="공지 옵션">
-          {/* 대상 팀 조회 실패 — toast 는 사라져 원인을 놓치므로 상주 배너 + 재시도.
-              이 상태에서는 제출도 잠근다(관리 팀 수를 몰라 다중 팀 작성자가 서버 403 을 맞는다). */}
-          {teamsLoadFailed && (
-            <div
-              role="alert"
-              className="mb-4 flex items-start gap-2 rounded-w-md bg-it-red-50 dark:bg-it-red-500/10 px-3 py-2.5"
-            >
-              {/* 다크 배경(rink-800 + it-red-500/10)에서 it-red-500 은 2.57:1 로 WCAG AA 미달 →
-                  다크 변형은 it-red-300 (약 4.95:1). */}
-              <Icon
-                name="error_outline"
-                className="mt-px text-[16px] shrink-0 text-it-red-500 dark:text-it-red-300"
-                aria-hidden="true"
-              />
-              <span className="flex-1 text-card-meta text-it-red-500 dark:text-it-red-300">
-                {MESSAGES.noticesCreate.targetTeamLoadFailed}
-              </span>
-              <button
-                type="button"
-                onClick={() => void loadManageTeams()}
-                disabled={isTeamsLoading}
-                className="shrink-0 text-card-meta font-bold text-it-red-500 dark:text-it-red-300 underline disabled:opacity-50"
-              >
-                {MESSAGES.noticesCreate.targetTeamRetry}
-              </button>
-            </div>
-          )}
-
-          {/* 대상 팀 — 관리 팀이 2개 이상인 작성자에게만 노출. */}
-          {needsTeamChoice && (
-            <div className="pb-4 border-b border-it-line dark:border-rink-700">
-              <label
-                htmlFor="notice-target-team"
-                className="block text-[14px] font-bold text-it-ink-800 dark:text-white"
-              >
-                {MESSAGES.noticesCreate.targetTeamLabel}
-              </label>
-              <span className="mt-0.5 block text-card-meta text-it-ink-500 dark:text-rink-300">
-                {MESSAGES.noticesCreate.targetTeamDesc}
-              </span>
-              <select
-                id="notice-target-team"
-                value={targetTeamId}
-                onChange={(e) => setTargetTeamId(e.target.value)}
-                required
-                aria-required="true"
-                className="mt-3 w-full px-3 h-[46px] bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[14px] font-semibold text-it-ink-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 transition-colors motion-reduce:transition-none ease-ios"
-              >
-                <option value="">{MESSAGES.noticesCreate.targetTeamPlaceholder}</option>
-                {manageTeams.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
           {/* 상단 고정 옵션 — 최대 2개. 대상 팀 풀 기준 정확 카운트로 사전 안내(비활성화)하고,
               사전 판정과 등록 사이의 레이스는 서버 409 → pinnedFull toast 가 최종 판정. */}
           <label
             className={cn(
               'flex items-center gap-3 pb-4 border-b border-it-line dark:border-rink-700',
-              needsTeamChoice && 'pt-4',
               // [R6-02] 원래 고정돼 있던 공지의 수정은 full 판정과 무관하게 항상 조작 가능
               // (고정 해제 경로 보존). 신규·원래 미고정은 full 이면 잠금.
               pinnedFull && !wasPinned ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
@@ -580,7 +438,7 @@ export default function NoticeCreatePage() {
         <button
           type="button"
           onClick={handleSubmit}
-          disabled={isSubmitting || isPrefilling || isTeamsLoading || teamsLoadFailed}
+          disabled={isSubmitting || isPrefilling}
           className="w-full h-[54px] rounded-w-md bg-it-blue-500 text-white font-extrabold text-[16px] hover:bg-it-blue-600 active:brightness-95 transition-colors motion-reduce:transition-none flex items-center justify-center gap-2 disabled:bg-it-line-strong dark:disabled:bg-rink-700 disabled:cursor-not-allowed"
         >
           {isSubmitting

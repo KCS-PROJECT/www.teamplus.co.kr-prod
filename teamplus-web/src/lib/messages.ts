@@ -3946,16 +3946,6 @@ export const MESSAGES = {
     /** 시작일이 미래일 때 안내 — 예약 노출은 지원하되 도래 시점 푸시는 미지원(스케줄러 미도입). */
     scheduledStartNotice:
       "시작일이 오늘 이후예요. 그날부터 목록에 노출되며, 푸시 알림은 발송되지 않습니다.",
-    /**
-     * 대상 팀 선택 — 관리 팀이 2개 이상일 때만 노출한다.
-     * 1개면 백엔드가 자동 주입하므로 선택지를 만들지 않는다.
-     */
-    targetTeamLabel: "공지 대상 팀",
-    targetTeamDesc: "선택한 팀의 구성원에게만 공지가 노출됩니다.",
-    targetTeamPlaceholder: "팀을 선택해주세요",
-    targetTeamRequired: "공지를 등록할 팀을 선택해주세요.",
-    targetTeamLoadFailed: "관리하는 팀 목록을 불러오지 못했습니다.",
-    targetTeamRetry: "다시 시도",
   },
 
   // ─── Z. 폼 취소 confirm 공통 ───────────────────────

@@ -69,9 +69,8 @@ const mockGet = api.get as jest.Mock;
 const mockPost = api.post as jest.Mock;
 const mockPatch = api.patch as jest.Mock;
 
-/** URL 라우팅형 get mock — manage/teams + admin/list(팀별 풀 행) + 상세 프리필(공지별) */
+/** URL 라우팅형 get mock — admin/list(서비스 풀 행) + 상세 프리필(공지별) */
 function routeGet({
-  teams = [{ id: 't1', name: 'A팀' }] as Array<{ id: string; name: string }>,
   poolRows = [] as Array<{ id: string; isPinned?: boolean }>,
   poolByTeam = {} as Record<
     string,
@@ -85,9 +84,6 @@ function routeGet({
   >,
 } = {}) {
   mockGet.mockImplementation((url: string) => {
-    if (url.includes('/notices/manage/teams')) {
-      return Promise.resolve({ success: true, data: { data: teams } });
-    }
     if (url.includes('/notices/admin/list')) {
       const teamId = /teamId=([^&]+)/.exec(url)?.[1];
       const rows =
@@ -112,11 +108,6 @@ function routeGet({
 const FULL_POOL = [
   { id: 'p1', isPinned: true },
   { id: 'p2', isPinned: true },
-];
-
-const TWO_TEAMS = [
-  { id: 't1', name: 'A팀' },
-  { id: 't2', name: 'B팀' },
 ];
 
 /** 외부에서 resolve 시점을 제어하는 지연 응답 */
@@ -145,7 +136,7 @@ async function fillAndSubmit() {
 }
 
 describe('notices-create — 고정 한도 사전 안내 (풀 기준 정확 판정)', () => {
-  it('대상 팀 풀이 가득(고정 2)이면 체크박스가 비활성화되고 pinnedFull 안내가 뜬다', async () => {
+  it('서비스 공지 풀이 가득(고정 2)이면 체크박스가 비활성화되고 pinnedFull 안내가 뜬다', async () => {
     routeGet({
       poolRows: [
         { id: 'p1', isPinned: true },
@@ -158,12 +149,11 @@ describe('notices-create — 고정 한도 사전 안내 (풀 기준 정확 판�
 
     await waitFor(() => expect(screen.getByRole('checkbox')).toBeDisabled());
     expect(screen.getByText(MESSAGES.notice.pinnedFull)).toBeInTheDocument();
-    // 풀 판정 쿼리 = 대상 팀 관리 목록 (미게시·만료 포함하는 admin/list)
+    // [Phase 3] 풀 판정 쿼리 = 서비스 공지 풀 단일 (팀 공지는 TeamPost 로 이관 완결)
     const poolCall = mockGet.mock.calls.find((c: [string]) =>
       c[0].includes('/notices/admin/list'),
     );
-    expect(poolCall[0]).toContain('scope=team');
-    expect(poolCall[0]).toContain('teamId=t1');
+    expect(poolCall[0]).toContain('scope=service');
   });
 
   it('풀에 여유(고정 1)가 있으면 체크박스는 활성 — 전 팀 합산 오차단 재발 방지', async () => {
@@ -204,84 +194,7 @@ describe('notices-create — 고정 한도 사전 안내 (풀 기준 정확 판�
   });
 });
 
-describe('notices-create — R6 풀 전환 상태기계', () => {
-  it('A팀(full) 확정 후 B팀(여유)으로 바꾸면 즉시 이전 판정을 폐기하고 활성으로 돌아온다', async () => {
-    routeGet({
-      teams: TWO_TEAMS,
-      poolByTeam: { t1: FULL_POOL, t2: [] },
-    });
-
-    render(<NoticeCreatePage />);
-    const select = await screen.findByRole('combobox');
-
-    fireEvent.change(select, { target: { value: 't1' } });
-    await waitFor(() => expect(screen.getByRole('checkbox')).toBeDisabled());
-
-    fireEvent.change(select, { target: { value: 't2' } });
-    await waitFor(() => expect(screen.getByRole('checkbox')).toBeEnabled());
-    expect(screen.getByText(MESSAGES.notice.pinnedHint)).toBeInTheDocument();
-  });
-
-  it('여유 풀에서 체크한 뒤 full 팀으로 전환하면 체크가 강제 해제되고 비활성화된다', async () => {
-    routeGet({
-      teams: TWO_TEAMS,
-      poolByTeam: { t1: FULL_POOL, t2: [] },
-    });
-
-    render(<NoticeCreatePage />);
-    const select = await screen.findByRole('combobox');
-
-    fireEvent.change(select, { target: { value: 't2' } });
-    await waitFor(() => expect(screen.getByRole('checkbox')).toBeEnabled());
-    fireEvent.click(screen.getByRole('checkbox'));
-    expect(screen.getByRole('checkbox')).toBeChecked();
-
-    fireEvent.change(select, { target: { value: 't1' } });
-    await waitFor(() => expect(screen.getByRole('checkbox')).toBeDisabled());
-    expect(screen.getByRole('checkbox')).not.toBeChecked();
-    expect(screen.getByText(MESSAGES.notice.pinnedFull)).toBeInTheDocument();
-  });
-
-  it('풀 응답 대기 중 체크했다가 full 응답이 도착하면 강제 해제된다', async () => {
-    const pending = deferred<Array<{ id: string; isPinned?: boolean }>>();
-    routeGet({ poolByTeam: { t1: pending.promise }, teams: [{ id: 't1', name: 'A팀' }] });
-
-    render(<NoticeCreatePage />);
-
-    // 응답 전 fail-open 상태에서 체크
-    await waitFor(() => expect(screen.getByRole('checkbox')).toBeEnabled());
-    fireEvent.click(screen.getByRole('checkbox'));
-    expect(screen.getByRole('checkbox')).toBeChecked();
-
-    pending.resolve(FULL_POOL);
-
-    await waitFor(() => expect(screen.getByRole('checkbox')).toBeDisabled());
-    expect(screen.getByRole('checkbox')).not.toBeChecked();
-  });
-
-  it('팀 전환 후 늦게 도착한 이전 풀(full) 응답은 무시된다', async () => {
-    const slowA = deferred<Array<{ id: string; isPinned?: boolean }>>();
-    routeGet({
-      teams: TWO_TEAMS,
-      poolByTeam: { t1: slowA.promise, t2: [] },
-    });
-
-    render(<NoticeCreatePage />);
-    const select = await screen.findByRole('combobox');
-
-    fireEvent.change(select, { target: { value: 't1' } }); // A 조회 시작 (미도착)
-    fireEvent.change(select, { target: { value: 't2' } }); // B 로 전환 → A 조회 취소
-    await waitFor(() => expect(screen.getByRole('checkbox')).toBeEnabled());
-
-    slowA.resolve(FULL_POOL); // 늦은 A(full) 응답
-
-    // 현재 풀은 B(여유) — 이전 풀 판정이 덮어쓰지 않는다
-    await waitFor(() =>
-      expect(screen.getByText(MESSAGES.notice.pinnedHint)).toBeInTheDocument(),
-    );
-    expect(screen.getByRole('checkbox')).toBeEnabled();
-  });
-
+describe('notices-create — R6 풀 판정 (서비스 풀 단일)', () => {
   it('원래 고정돼 있던 공지의 수정은 full 판정과 무관하게 해제가 가능하다', async () => {
     mockEditId = 'p2';
     routeGet({
@@ -312,30 +225,6 @@ describe('notices-create — R6 풀 전환 상태기계', () => {
 });
 
 describe('notices-create — R7 identity 전환 (editId 결합)', () => {
-  it('A팀(full) 확정 후 B팀 전환 — B 응답 대기 중에도 이전 full 판정이 즉시 폐기된다', async () => {
-    const slowB = deferred<Array<{ id: string; isPinned?: boolean }>>();
-    routeGet({
-      teams: TWO_TEAMS,
-      poolByTeam: { t1: FULL_POOL, t2: slowB.promise },
-    });
-
-    render(<NoticeCreatePage />);
-    const select = await screen.findByRole('combobox');
-
-    fireEvent.change(select, { target: { value: 't1' } });
-    await waitFor(() => expect(screen.getByRole('checkbox')).toBeDisabled());
-
-    // B 응답이 아직 도착하지 않은 pending 구간 — 이전 A(full) 판정이 남아 있으면 안 된다
-    fireEvent.change(select, { target: { value: 't2' } });
-    await waitFor(() => expect(screen.getByRole('checkbox')).toBeEnabled());
-    expect(screen.getByText(MESSAGES.notice.pinnedHint)).toBeInTheDocument();
-
-    // B(여유) 응답 도착 후에도 활성 유지
-    slowB.resolve([]);
-    await waitFor(() => expect(screen.getByRole('checkbox')).toBeEnabled());
-    expect(screen.getByText(MESSAGES.notice.pinnedHint)).toBeInTheDocument();
-  });
-
   it('고정 공지 편집 → 작성 모드 전환 시 wasPinned 가 폐기되어 full 풀 방어가 다시 걸린다', async () => {
     mockEditId = 'p2';
     routeGet({
@@ -406,20 +295,6 @@ describe('notices-create — R7 identity 전환 (editId 결합)', () => {
     });
     await waitFor(() => expect(screen.getByRole('checkbox')).toBeDisabled());
     expect(screen.getByRole('checkbox')).not.toBeChecked();
-  });
-
-  it('프리필 실패 시 대상 풀 미확정 → 판정 보류 (풀 조회 없이 fail-open)', async () => {
-    mockEditId = 'x';
-    routeGet({ poolRows: FULL_POOL, editNotice: null }); // 프리필 data 없음 = 실패
-
-    render(<NoticeCreatePage />);
-
-    await waitFor(() => expect(screen.getByRole('checkbox')).toBeEnabled());
-    // 대상 팀을 모르면 풀 판정 자체를 보류 — admin/list 조회가 없어야 한다
-    const poolCalls = mockGet.mock.calls.filter((c: [string]) =>
-      c[0].includes('/notices/admin/list'),
-    );
-    expect(poolCalls).toHaveLength(0);
   });
 
   it('full 상태 제출 payload 는 isPinned:false 로 방어된다', async () => {
