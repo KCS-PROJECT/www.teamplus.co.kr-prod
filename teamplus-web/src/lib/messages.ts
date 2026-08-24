@@ -1676,6 +1676,11 @@ export const MESSAGES = {
     badgeScheduled: "예약",
     badgeExpired: "만료",
     /** 상세 하단 인접 공지 섹션 (Phase 5 · 전용 API 전환과 함께 MESSAGES 화) */
+    /** 서비스 공지 대상 안내 — 카테고리 라벨 탭 시 인라인 팝오버(InfoPopover)로 노출 (상시 문장은 폐기).
+     *  발신 주체(팀플러스 운영)를 명시해 팀·훈련·대회 공지가 아닌 시스템 공지임을 알린다. */
+    serviceAudienceDesc: "팀플러스 운영팀이 전체 회원에게 안내하는 공지예요",
+    /** 서비스 공지 발신자 표기 — 상세 메타 첫 항 (단위 공지의 작성자 이름 자리) */
+    serviceSender: "팀플러스 운영팀",
     adjacentTitle: "다른 공지 보기",
     adjacentNext: "다음글",
     adjacentPrev: "이전글",
@@ -4415,5 +4420,30 @@ export const MESSAGES = {
     unsavedLeaveConfirm:
       "저장하지 않은 월 결제 변경이 있습니다. 이 페이지를 벗어나면 변경 내용이 사라집니다.",
     unsavedLeaveButton: "나가기",
+  },
+
+  // ─── 포스트 (BlogPost 소비 — /contents 목록·상세 + 대시보드 섹션) ───
+  contents: {
+    pageTitle: "포스트",
+    pageDescription: "아이스하키를 더 쉽고 재미있게 알아보세요.",
+    dashboardTitle: "포스트",
+    viewAll: "전체보기",
+    categoryAll: "전체",
+    categories: {
+      NEWS: "소식",
+      GUIDE: "가이드",
+      EVENT: "이벤트",
+      PRESS: "보도자료",
+    },
+    pinned: "추천",
+    empty: "등록된 포스트가 없습니다.",
+    emptyFilterHint: "다른 카테고리를 선택해 보세요.",
+    loadFailed: "포스트를 불러오지 못했습니다.",
+    retry: "다시 시도",
+    backToList: "목록으로",
+    notFound: "포스트를 찾을 수 없습니다.",
+    notFoundHint: "삭제되었거나 아직 공개되지 않은 포스트예요.",
+    readingMinutes: (minutes: number) => `약 ${minutes}분`,
+    loadMore: "더보기",
   },
 } as const;

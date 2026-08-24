@@ -24,9 +24,10 @@ export const NOTICE_CATEGORY_LABEL_CLASS: Record<NoticeCategoryVariant, string> 
   academy: 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30',
 };
 
-/** 카테고리 한국어 표시 라벨 */
+/** 카테고리 한국어 표시 라벨 — notice 는 수신 범위(전체 회원)를 배지가 직접 전달하도록
+ *  '전체공지' 사용 (필터 탭의 "공지" 는 필터 이름이라 별개 유지) */
 export const NOTICE_CATEGORY_LABEL: Record<NoticeCategoryVariant, string> = {
-  notice:  '공지',
+  notice:  '전체공지',
   event:   '이벤트',
   academy: '홍보',
 };

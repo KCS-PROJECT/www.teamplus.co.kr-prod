@@ -11,6 +11,7 @@ import { PageAppBar } from '@/components/layout/PageAppBar';
 import { api } from '@/services/api-client';
 import { cn } from '@/lib/utils';
 import { CommentThread, type CommentData } from '@/components/shared/CommentThread';
+import { InfoPopover } from '@/components/shared/InfoPopover';
 import { MESSAGES } from '@/lib/messages';
 import { useSessionAuth } from '@/hooks/useSessionAuth';
 import { useToast } from '@/components/ui/Toast';
@@ -199,9 +200,10 @@ export default function NoticeDetailPage() {
         const d = res.data;
         const dt = new Date(d.createdAt);
         const pad = (n: number) => String(n).padStart(2, '0');
+        // "YYYY.MM.DD HH:mm" — 단위 공지 상세·댓글과 동일 포맷 (초는 정보 가치가 없어 제거)
         const formattedDate =
           `${dt.getFullYear()}.${pad(dt.getMonth() + 1)}.${pad(dt.getDate())} ` +
-          `${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
+          `${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
         setNotice({
           id: d.id,
           category: d.targetType === 'event' ? 'event' : 'notice',
@@ -399,7 +401,8 @@ export default function NoticeDetailPage() {
     );
   }
 
-  const kindLabel = notice.category === 'event' ? '이벤트' : '공지';
+  // '전체공지' — 단위 공지 축 라벨(팀/훈련/대회)과 같은 문법으로 수신 범위를 배지가 직접 전달
+  const kindLabel = notice.category === 'event' ? '이벤트' : '전체공지';
 
   return (
     <MobileContainer hasBottomNav={false} className="selectable-text">
@@ -410,68 +413,79 @@ export default function NoticeDetailPage() {
         role="main"
         aria-label="공지사항 상세"
       >
-        {/* Hero — full-bleed navy 밴드 (ICETIMES flat · 카드 박스 제거). */}
-        <div className="relative bg-it-blue-800 dark:bg-it-blue-950 px-5 pt-4 pb-5 text-white">
-          {/* 우상단 조회수 chip */}
-          <div className="absolute top-4 right-5 inline-flex items-center gap-1.5 rounded-w-pill border border-white/30 bg-white/15 px-2.5 py-1 text-[11px] font-bold text-white tabular-nums">
-            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-              <path d="M1 6s2-3 5-3 5 3 5 3-2 3-5 3-5-3-5-3z" stroke="#fff" strokeWidth="1.3" />
-              <circle cx="6" cy="6" r="1.6" stroke="#fff" strokeWidth="1.3" />
-            </svg>
-            {notice.viewCount.toLocaleString()}
-          </div>
-
-          <div>
-            <span className="inline-block rounded-w-xs bg-white/20 px-2.5 py-1 text-[11px] font-extrabold tracking-[0.02em] text-white">
+        {/* 헤더+본문 — 흰 flat 단일 섹션 (단위 공지 상세와 동일 골격 · 네이비 히어로 폐기
+            2026-08-24 사용자 확정: 공지 계열은 콘텐츠 중심 흰 헤더 문법으로 통일, 구분은
+            카테고리 라벨(탭 → 설명 토스트)과 발신자 표기가 담당) */}
+        <section
+          className="mt-2 bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-6"
+          aria-label="공지사항 상세 정보"
+        >
+          {/* 카테고리 라벨(색 텍스트 — 단위 공지 축 라벨 문법) + 고정 배지.
+              라벨 탭 → 바로 아래 말풍선으로 수신 대상 설명 (상시 문장은 반복 소음이라
+              온디맨드로 이동, toast 는 결과 알림 용도라 인라인 팝오버 채택) */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <InfoPopover
+              description={MESSAGES.notice.serviceAudienceDesc}
+              className={cn(
+                'text-[12px] font-bold',
+                notice.category === 'event'
+                  ? 'text-flame-600 dark:text-flame-100'
+                  : 'text-it-blue-600 dark:text-it-blue-200',
+              )}
+            >
               {kindLabel}
-            </span>
+            </InfoPopover>
+            {notice.isPinned && (
+              <span className="inline-flex items-center gap-0.5 rounded-w-pill bg-it-red-500/10 px-2 py-0.5 text-[12px] font-bold text-it-red-500 dark:text-it-red-300">
+                <Icon name="push_pin" className="text-[12px]" aria-hidden="true" />
+                고정
+              </span>
+            )}
           </div>
 
-          <h1 className="mt-2.5 pr-10 text-[20px] font-extrabold leading-[1.3] tracking-[-0.025em]">
+          {/* 제목 */}
+          <h1 className="mt-2 text-[19px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white leading-snug">
             {notice.title}
           </h1>
 
-          <div className="mt-2 inline-flex items-center gap-1.5 text-[11.5px] font-bold text-white/85 tabular-nums">
-            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-              <rect x="1.5" y="2.5" width="9" height="8" rx="1" stroke="#fff" strokeWidth="1.3" />
-              <path d="M1.5 4.5h9M4 1.5v2M8 1.5v2" stroke="#fff" strokeWidth="1.3" strokeLinecap="round" />
-            </svg>
-            {notice.date}
+          {/* 발신자 · 날짜 · 조회수 — 단위 공지 상세(작성자 · 시각 · 조회수)와 동일 서식.
+              발신자 "팀플러스 운영팀" 이 서비스/단위 공지 구분 신호를 겸한다 */}
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] text-it-ink-400 dark:text-it-ink-300">
+            <span className="font-semibold">{MESSAGES.notice.serviceSender}</span>
+            <span aria-hidden="true">·</span>
+            <time className="tabular-nums">{notice.date}</time>
+            <span aria-hidden="true">·</span>
+            <span className="inline-flex items-center gap-0.5">
+              <Icon name="visibility" className="text-[13px]" aria-hidden="true" />
+              <span className="font-num tabular-nums">{notice.viewCount}</span>
+            </span>
           </div>
-        </div>
 
-        {/* flat 섹션 사이 8px 회색 갭 */}
-        <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
-
-        {/* 본문 — flat 흰 섹션 (카드 박스 제거, 내용이 짧아도 최소 높이 확보) */}
-        <section className="bg-it-surface dark:bg-rink-800 pb-5" aria-label="공지 본문">
-          <SectionLabel>본문</SectionLabel>
-          <div className="px-5">
-            <div
-              className={cn(
-                'min-h-[140px] text-[14.5px] leading-[1.7] font-medium text-it-ink-700 dark:text-wtext-4 whitespace-pre-line',
-                '[&_b]:text-it-blue-600 [&_b]:font-extrabold',
-                '[&_strong]:text-it-blue-600 [&_strong]:font-extrabold',
-                '[&_p]:my-3 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0',
-                '[&_ul]:list-disc [&_ul]:list-inside [&_ul]:my-3 [&_ul]:space-y-1',
-              )}
-              dangerouslySetInnerHTML={{ __html: sanitizeHtml(notice.content) }}
-            />
-          </div>
+          {/* 본문 — 단위 공지와 동일 규격 (짧아도 최소 높이 확보) */}
+          <div
+            className={cn(
+              'mt-4 min-h-[140px] text-[15px] leading-relaxed text-it-ink-800 dark:text-it-ink-100 whitespace-pre-line break-words',
+              '[&_b]:text-it-blue-600 [&_b]:font-extrabold',
+              '[&_strong]:text-it-blue-600 [&_strong]:font-extrabold',
+              '[&_p]:my-3 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0',
+              '[&_ul]:list-disc [&_ul]:list-inside [&_ul]:my-3 [&_ul]:space-y-1',
+            )}
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(notice.content) }}
+          />
         </section>
 
         {/* flat 섹션 사이 8px 회색 갭 */}
         <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
 
-        {/* 댓글 — flat 흰 섹션 */}
-        <section className="bg-it-surface dark:bg-rink-800 pb-3" aria-label="댓글">
-          <SectionLabel>
-            댓글
-            <span className="ml-1 rounded-w-pill bg-it-line dark:bg-rink-700 px-1.5 py-px text-[11px] font-extrabold text-it-ink-700 dark:text-wtext-4 tabular-nums">
+        {/* 댓글 — flat 흰 섹션 (단위 공지 상세와 동일 헤더 문법) */}
+        <section className="bg-it-surface dark:bg-rink-800 px-5 pt-5 pb-3" aria-label="댓글">
+          <h2 className="text-[15px] font-bold text-it-ink-800 dark:text-white">
+            댓글{' '}
+            <span className="font-num tabular-nums text-it-blue-500">
               {commentTotal}
             </span>
-          </SectionLabel>
-          <div className="px-5 pb-2">
+          </h2>
+          <div className="mt-4 pb-2">
             {commentTotal > comments.length && (
               <button
                 type="button"

@@ -21,6 +21,7 @@ import { MESSAGES } from '@/lib/messages';
 import { resolveImageSrc } from '@/lib/image-url';
 import { emitRefresh, REFRESH_KEYS } from '@/lib/refresh-bus';
 import { CommentThread, type CommentData } from '@/components/shared/CommentThread';
+import { InfoPopover } from '@/components/shared/InfoPopover';
 import { ImageLightbox } from '@/components/shared/ImageLightbox';
 import { ActionSheet } from '@/components/director/ActionSheet';
 import { ConfirmSheet } from '@/components/shared/ConfirmSheet';
@@ -77,6 +78,14 @@ function sanitizeHtml(dirty: string): string {
     ALLOWED_ATTR: ['class', 'href', 'target', 'rel'],
     ALLOW_DATA_ATTR: false,
   });
+}
+
+/** 작성 시각 "YYYY.MM.DD HH:mm" — 댓글·서비스 공지 상세와 동일 포맷 */
+function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function fullName(user: {
@@ -339,6 +348,12 @@ export default function UnitNoticeDetailPage() {
     : post?.targetClassId
       ? MESSAGES.unitNotice.classChip
       : MESSAGES.unitNotice.tournamentChip;
+  // 수신 대상 설명 — 배지 탭 토스트·aria-label 용 (상시 문장 노출은 반복 소음이라 폐기)
+  const audienceDesc = post?.teamId
+    ? MESSAGES.unitNotice.sectionSubtitleTeam
+    : post?.targetClassId
+      ? MESSAGES.unitNotice.sectionSubtitleClass
+      : MESSAGES.unitNotice.sectionSubtitleTournament;
   const comments: CommentData[] =
     post?.comments.map((c) => ({
       id: c.id,
@@ -385,21 +400,29 @@ export default function UnitNoticeDetailPage() {
               {/* 대상 칩 + 배지 + 케밥 */}
               <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-                  {/* 축 라벨 — 색 텍스트(훈련=emerald·대회=red), 대상 칩 배경이 경계라 구분점 불필요 */}
-                  <span
-                    className={`text-[12px] font-bold ${
-                      post.teamId
-                        ? 'text-it-blue-600 dark:text-it-blue-200'
-                        : post.targetClassId
-                          ? 'text-emerald-700 dark:text-emerald-400'
-                          : 'text-red-700 dark:text-red-400'
-                    }`}
+                  {/* 축 라벨+대상 칩 — 탭하면 바로 아래 말풍선으로 수신 대상 설명 (상시 문장은
+                      반복 소음이라 온디맨드로 이동 — 2026-08-24 사용자 확정, toast 는 결과 알림
+                      용도라 인라인 팝오버 채택). 스크린리더는 aria-label 로 즉시 전달 */}
+                  <InfoPopover
+                    description={audienceDesc}
+                    className="inline-flex min-w-0 items-center gap-x-2"
                   >
-                    {axisLabel}
-                  </span>
-                  <span className="inline-flex max-w-full items-center rounded-w-pill bg-it-blue-50 dark:bg-it-blue-900/50 px-2 py-0.5 text-[12px] font-bold text-it-blue-600 dark:text-it-blue-200">
-                    <span className="truncate">{post.targetName ?? axisLabel}</span>
-                  </span>
+                    {/* 축 라벨 — 색 텍스트(훈련=emerald·대회=red), 대상 칩 배경이 경계라 구분점 불필요 */}
+                    <span
+                      className={`text-[12px] font-bold ${
+                        post.teamId
+                          ? 'text-it-blue-600 dark:text-it-blue-200'
+                          : post.targetClassId
+                            ? 'text-emerald-700 dark:text-emerald-400'
+                            : 'text-red-700 dark:text-red-400'
+                      }`}
+                    >
+                      {axisLabel}
+                    </span>
+                    <span className="inline-flex min-w-0 items-center rounded-w-pill bg-it-blue-50 dark:bg-it-blue-900/50 px-2 py-0.5 text-[12px] font-bold text-it-blue-600 dark:text-it-blue-200">
+                      <span className="truncate">{post.targetName ?? axisLabel}</span>
+                    </span>
+                  </InfoPopover>
                   {post.isPinned && (
                     <span className="inline-flex items-center gap-0.5 rounded-w-pill bg-it-red-500/10 px-2 py-0.5 text-[12px] font-bold text-it-red-500 dark:text-it-red-300">
                       <Icon name="push_pin" className="text-[12px]" aria-hidden="true" />
@@ -439,11 +462,7 @@ export default function UnitNoticeDetailPage() {
                 <span className="font-semibold">{fullName(post.author)}</span>
                 <span aria-hidden="true">·</span>
                 <time dateTime={post.createdAt} className="tabular-nums">
-                  {new Date(post.createdAt).toLocaleDateString('ko-KR', {
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                  })}
+                  {formatDateTime(post.createdAt)}
                 </time>
                 <span aria-hidden="true">·</span>
                 <span className="inline-flex items-center gap-0.5">
@@ -451,16 +470,6 @@ export default function UnitNoticeDetailPage() {
                   <span className="font-num tabular-nums">{post.viewCount}</span>
                 </span>
               </div>
-
-              {/* 대상 안내 — 누구에게 전달되는 공지인지 명시 (팀=전체 · 훈련/대회=참가자) */}
-              <p className="mt-1.5 flex items-center gap-1 text-[12.5px] text-it-ink-400 dark:text-it-ink-300">
-                <Icon name="campaign" className="text-[13px] shrink-0" aria-hidden="true" />
-                {post.teamId
-                  ? MESSAGES.unitNotice.sectionSubtitleTeam
-                  : post.targetClassId
-                    ? MESSAGES.unitNotice.sectionSubtitleClass
-                    : MESSAGES.unitNotice.sectionSubtitleTournament}
-              </p>
 
               {/* 본문 — 짧은 공지도 안정적인 높이를 갖도록 구 상세(/notice/[id])와 동일 min-h */}
               <div
