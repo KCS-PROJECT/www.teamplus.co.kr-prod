@@ -1,16 +1,16 @@
 'use client';
 
-// 감독/코치 공지 관리 화면 — 2탭 재편 (Phase 1 · unit-notice-stream-design v1.2.3 §6).
-//   탭 A "팀 공지"     = 기존 TeamNoticeListView(mode=manage, embedded) 그대로
-//   탭 B "수업·대회"   = 단위 공지 통합 공지함 (UnitNoticeManagedList — 읽음 N/M 포함)
+// 감독/코치 공지 관리 화면 — 2탭 (unit-notice-stream-design §6·§7).
+//   [Phase 2] 탭 A "팀 공지" 도 TeamPost 단일 소스로 전환 — UnitNoticeManagedList(axis='team').
+//   (기존 TeamNoticeListView(mode=manage)는 이관 원본(SystemNotice) 소스라 교체 — 읽음 N/M 편입)
+//   탭 B "훈련·대회"   = 단위 공지 통합 공지함 (UnitNoticeManagedList — 읽음 N/M 포함)
 //   BottomNav 는 (director) 그룹 layout 이 렌더한다.
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { cn } from '@/lib/utils';
 import { MESSAGES } from '@/lib/messages';
-import { TeamNoticeListView } from '@/components/notice/TeamNoticeListView';
 import { UnitNoticeManagedList } from '@/components/notice/UnitNoticeManagedList';
 
 const TABS = [
@@ -22,6 +22,13 @@ type TabKey = (typeof TABS)[number]['key'];
 
 export default function DirectorNoticesPage() {
   const [activeTab, setActiveTab] = useState<TabKey>('team');
+  // 페이지 첫 진입 여부 — 첫 탭 인스턴스만 진입 모션(slideUp)을 재생하고,
+  // 탭 전환으로 재마운트되는 인스턴스는 즉시 전환한다 (모션 재생 시 "화면이
+  // 사라졌다 아래에서 올라오는" 체감 — 사용자 지적 2026-08-21).
+  const enteredRef = useRef(false);
+  useEffect(() => {
+    enteredRef.current = true;
+  }, []);
 
   useNativeUI({
     showStatusBar: true,
@@ -93,17 +100,19 @@ export default function DirectorNoticesPage() {
         aria-labelledby={`director-notices-tab-${activeTab}`}
         className="flex min-h-0 flex-1 flex-col"
       >
+        {/* [P2-R1-M02] key 분리 — 탭 전환 시 인스턴스를 새로 만들어 이전 축 상태·응답 오염 차단 */}
         {activeTab === 'team' ? (
-          <TeamNoticeListView
-            title={MESSAGES.unitNotice.managePageTitle}
-            canManage
-            canWrite
-            mode="manage"
-            iceTheme
-            embedded
+          <UnitNoticeManagedList
+            key="team"
+            axis="team"
+            disableEnterMotion={enteredRef.current}
           />
         ) : (
-          <UnitNoticeManagedList />
+          <UnitNoticeManagedList
+            key="unit"
+            axis="unit"
+            disableEnterMotion={enteredRef.current}
+          />
         )}
       </div>
     </MobileContainer>

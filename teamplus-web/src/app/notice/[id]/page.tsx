@@ -144,7 +144,7 @@ export default function NoticeDetailPage() {
   const [commentPage, setCommentPage] = useState(1);
   const [isLoadingMoreComments, setIsLoadingMoreComments] = useState(false);
 
-  const { navigate, back } = useNavigation();
+  const { navigate, replace, back } = useNavigation();
   const { toast } = useToast();
   // [2026-07-20 읽음 동기화] 공지 열람(GET /notices/:id)이 백엔드에서 대응 알림함
   //   행까지 읽음 처리하므로, 벨 미읽음·앱 아이콘 배지를 즉시 재조회로 반영한다.
@@ -194,7 +194,16 @@ export default function NoticeDetailPage() {
         createdAt: string;
         targetTeamId?: string | null;
         canManage?: boolean;
+        /** [Phase 2] 이관 팀 공지 마커 — TeamPost 상세로 안내 */
+        migrated?: boolean;
+        redirectTo?: string;
       }>(`/notices/${noticeId}`);
+      if (res.success && res.data?.migrated && res.data.redirectTo) {
+        // [Phase 2] 팀 공지는 TeamPost 로 이관 — 구 링크(기발송 알림·검색 결과)를
+        // 새 상세로 교체 이동 (뒤로가기에 죽은 중간 화면이 남지 않게 replace).
+        replace(res.data.redirectTo);
+        return;
+      }
       if (res.success && res.data) {
         const d = res.data;
         const dt = new Date(d.createdAt);
@@ -224,7 +233,7 @@ export default function NoticeDetailPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [noticeId, refreshBellNotifications]);
+  }, [noticeId, refreshBellNotifications, replace]);
 
   useEffect(() => {
     void loadNotice();

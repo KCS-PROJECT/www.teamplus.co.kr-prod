@@ -28,6 +28,7 @@ describe("CommunityPostsService", () => {
       teamPost: {
         findUnique: jest.fn(),
         findMany: jest.fn(),
+        count: jest.fn().mockResolvedValue(0),
         create: jest.fn(),
         update: jest.fn(),
         updateMany: jest.fn(),
@@ -49,7 +50,7 @@ describe("CommunityPostsService", () => {
       team: { findMany: jest.fn() },
       teamMember: { findMany: jest.fn() },
       coachProfile: { findMany: jest.fn() },
-      parentChild: { findMany: jest.fn() },
+      parentChild: { findMany: jest.fn(), findFirst: jest.fn() },
       user: { findMany: jest.fn() },
       auditLog: { create: jest.fn() },
     };
@@ -822,6 +823,362 @@ describe("CommunityPostsService", () => {
         }),
       );
       expect(notifications.notifyUsers).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * [Phase 2 §4.5] 통합 feed — 대시보드 탭 A 단일 소스.
+   * 열람 3축 합집합(팀+수업+대회) · childId 표시 필터(권한은 전 자녀) · 게시 중만.
+   */
+  describe("[Phase 2] 통합 feed (getFeed)", () => {
+    /** 열람·관할 해석기가 읽는 mock 전부 빈 결과로 초기화 — 케이스가 필요한 축만 override */
+    const stubEmptyScope = () => {
+      prisma.team.findMany.mockResolvedValue([]);
+      prisma.teamMember.findMany.mockResolvedValue([]);
+      prisma.coachProfile.findMany.mockResolvedValue([]);
+      prisma.parentChild.findMany.mockResolvedValue([]);
+      prisma.classRegistration.findMany.mockResolvedValue([]);
+      prisma.tournamentRegistration.findMany.mockResolvedValue([]);
+      prisma.academy.findMany.mockResolvedValue([]);
+      prisma.academyCoach.findMany.mockResolvedValue([]);
+      prisma.classCoachAssignment.findMany.mockResolvedValue([]);
+      prisma.class.findMany.mockResolvedValue([]);
+      prisma.tournament.findMany.mockResolvedValue([]);
+      prisma.teamPost.findMany.mockResolvedValue([]);
+      prisma.teamPost.count.mockResolvedValue(0);
+      prisma.teamPostRead.findMany.mockResolvedValue([]);
+    };
+
+    const feedWhere = () => prisma.teamPost.findMany.mock.calls[0][0].where;
+
+    it("학부모 — 팀+수업+대회 열람 축 OR 합집합 + 게시기간 조건으로 조회한다", async () => {
+      stubEmptyScope();
+      // 자녀 child-1 → 팀 TEAM_A(자녀 멤버십) + 수업 CLASS_ID 등록
+      prisma.parentChild.findMany.mockResolvedValue([{ childId: "child-1" }]);
+      prisma.teamMember.findMany.mockImplementation(
+        (args: { where?: { roleInTeam?: unknown } }) =>
+          Promise.resolve(
+            args?.where?.roleInTeam ? [] : [{ teamId: "team-a" }],
+          ),
+      );
+      prisma.classRegistration.findMany.mockResolvedValue([
+        { classId: CLASS_ID },
+      ]);
+      // 대회 — 선불 PAID 신청 1건
+      prisma.tournamentRegistration.findMany.mockResolvedValue([
+        {
+          tournamentId: TOURNAMENT_ID,
+          paymentStatus: "PAID",
+          tournament: { billingMode: "PREPAID" },
+        },
+      ]);
+
+      await service.getFeed(PARENT, { limit: 5 });
+
+      const where = feedWhere();
+      expect(where.isActive).toBe(true);
+      expect(where.postType).toBe("announcement");
+      expect(where.OR).toEqual(
+        expect.arrayContaining([
+          { teamId: { in: ["team-a"] } },
+          { targetClassId: { in: [CLASS_ID] } },
+          { targetTournamentId: { in: [TOURNAMENT_ID] } },
+        ]),
+      );
+      // 게시 중만 — startAt/expiresAt 윈도 조건이 AND 로 함께 걸린다
+      const windowKeys = (where.AND as Array<{ OR: Array<Record<string, unknown>> }>)
+        .flatMap((c) => c.OR.flatMap((o) => Object.keys(o)));
+      expect(windowKeys).toContain("startAt");
+      expect(windowKeys).toContain("expiresAt");
+    });
+
+    it("audienceChildNames — 자녀 등록으로 매칭된 수업·대회 공지에 자녀 이름을 채운다", async () => {
+      stubEmptyScope();
+      prisma.parentChild.findMany.mockResolvedValue([
+        {
+          childId: "child-1",
+          child: { firstName: "민준", lastName: "김" },
+        },
+      ]);
+      prisma.classRegistration.findMany.mockResolvedValue([
+        { classId: CLASS_ID, userId: "child-1" },
+      ]);
+      prisma.tournamentRegistration.findMany.mockResolvedValue([
+        {
+          tournamentId: TOURNAMENT_ID,
+          childId: "child-1",
+          paymentStatus: "PAID",
+          tournament: { billingMode: "PREPAID" },
+        },
+      ]);
+      const basePost = {
+        title: "공지",
+        content: "본문",
+        isPinned: false,
+        isActive: true,
+        viewCount: 0,
+        startAt: null,
+        expiresAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        author: { id: "director-1" },
+        attachments: [],
+        _count: { comments: 0 },
+      };
+      prisma.teamPost.findMany.mockResolvedValue([
+        {
+          ...basePost,
+          id: "post-class",
+          teamId: null,
+          targetClassId: CLASS_ID,
+          targetTournamentId: null,
+          team: null,
+          targetClass: { id: CLASS_ID, className: "화요 훈련" },
+          targetTournament: null,
+        },
+        {
+          ...basePost,
+          id: "post-tour",
+          teamId: null,
+          targetClassId: null,
+          targetTournamentId: TOURNAMENT_ID,
+          team: null,
+          targetClass: null,
+          targetTournament: { id: TOURNAMENT_ID, name: "가을 대회" },
+        },
+      ]);
+      prisma.teamPost.count.mockResolvedValue(2);
+
+      const res = await service.getFeed(PARENT, { limit: 5 });
+
+      const byId = new Map(
+        res.data.map((p: { id: string; audienceChildNames: string[] }) => [
+          p.id,
+          p.audienceChildNames,
+        ]),
+      );
+      expect(byId.get("post-class")).toEqual(["김민준"]);
+      expect(byId.get("post-tour")).toEqual(["김민준"]);
+    });
+
+    it("[P2-R3-M01] feed offset 페이지 안정 정렬 — isPinned·createdAt·id 3차 키", async () => {
+      stubEmptyScope();
+      prisma.parentChild.findMany.mockResolvedValue([{ childId: "child-1" }]);
+      prisma.teamMember.findMany.mockImplementation(
+        (args: { where?: { roleInTeam?: unknown } }) =>
+          Promise.resolve(
+            args?.where?.roleInTeam ? [] : [{ teamId: "team-a" }],
+          ),
+      );
+
+      await service.getFeed(PARENT, { limit: 5, offset: 5 });
+
+      const call = prisma.teamPost.findMany.mock.calls[0][0];
+      expect(call.orderBy).toEqual([
+        { isPinned: "desc" },
+        { createdAt: "desc" },
+        { id: "desc" },
+      ]);
+      expect(call.skip).toBe(5);
+    });
+
+    it("childId 표시 필터 — 타인 자녀 지정 시 수업 축은 빈 교집합(IDOR 차단)", async () => {
+      stubEmptyScope();
+      prisma.parentChild.findMany.mockResolvedValue([{ childId: "child-1" }]);
+
+      await service.getFeed(PARENT, { childId: "other-child", limit: 5 });
+
+      // 내 자녀 목록에 없는 childId → 수업 등록 조회 자체가 나가지 않는다
+      expect(prisma.classRegistration.findMany).not.toHaveBeenCalled();
+    });
+
+    it("[P2-R1-H05] childId 지정 시 대회 등록도 선택 자녀로 필터한다", async () => {
+      stubEmptyScope();
+      prisma.parentChild.findMany.mockResolvedValue([{ childId: "child-1" }]);
+      prisma.tournamentRegistration.findMany.mockResolvedValue([]);
+
+      await service.getFeed(PARENT, { childId: "child-1", limit: 5 });
+
+      expect(prisma.tournamentRegistration.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            userId: PARENT.id,
+            childId: "child-1",
+          }),
+        }),
+      );
+    });
+
+    it("대회 축 — PREPAID 는 PAID 만 포함 (PENDING 이중 의미 분기)", async () => {
+      stubEmptyScope();
+      prisma.tournamentRegistration.findMany.mockResolvedValue([
+        {
+          tournamentId: "t-prepaid-pending",
+          paymentStatus: "PENDING",
+          tournament: { billingMode: "PREPAID" },
+        },
+        {
+          tournamentId: "t-postpaid-pending",
+          paymentStatus: "PENDING",
+          tournament: { billingMode: "POSTPAID" },
+        },
+      ]);
+
+      await service.getFeed(PARENT, { limit: 5 });
+
+      const where = feedWhere();
+      expect(where.OR).toEqual([
+        { targetTournamentId: { in: ["t-postpaid-pending"] } },
+      ]);
+    });
+
+    it("열람 축이 전무하면 빈 배열 — 게시글 조회 0", async () => {
+      stubEmptyScope();
+
+      const result = await service.getFeed(PARENT, { limit: 5 });
+
+      expect(result).toEqual({ data: [], total: 0 });
+      expect(prisma.teamPost.findMany).not.toHaveBeenCalled();
+    });
+
+    it("시스템 역할은 3축 전역", async () => {
+      stubEmptyScope();
+
+      await service.getFeed({ id: "admin-1", userType: "ADMIN" }, { limit: 5 });
+
+      expect(feedWhere().OR).toEqual([
+        { teamId: { not: null } },
+        { targetClassId: { not: null } },
+        { targetTournamentId: { not: null } },
+      ]);
+    });
+  });
+
+  /** [Phase 2 §6·§7] managed 공지함·픽커의 팀 축 편입 */
+  describe("[Phase 2] managed 팀 축", () => {
+    it("axis=team — 관할 팀 공지만 조회하고 수신 분모는 팀 전체 풀(멤버∪학부모∪감독)", async () => {
+      // 관할 팀 team-a (소유)
+      prisma.team.findMany.mockImplementation(
+        (args: { where?: { coachId?: string; id?: unknown } }) =>
+          Promise.resolve(
+            args?.where?.coachId
+              ? [{ id: "team-a" }]
+              : [{ id: "team-a", coachId: DIRECTOR.id }],
+          ),
+      );
+      prisma.classCoachAssignment.findMany.mockResolvedValue([]);
+      prisma.academy.findMany.mockResolvedValue([]);
+      prisma.academyCoach.findMany.mockResolvedValue([]);
+      prisma.class.findMany.mockResolvedValue([]);
+      prisma.tournament.findMany.mockResolvedValue([]);
+      prisma.teamPost.findMany.mockResolvedValue([
+        {
+          id: "post-1",
+          teamId: "team-a",
+          targetClassId: null,
+          targetTournamentId: null,
+          title: "팀 공지",
+          content: "본문",
+          isPinned: false,
+          isActive: true,
+          viewCount: 0,
+          startAt: null,
+          expiresAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          author: { id: DIRECTOR.id },
+          team: { id: "team-a", name: "블랭크" },
+          targetClass: null,
+          targetTournament: null,
+          attachments: [],
+          _count: { comments: 0 },
+        },
+      ]);
+      // 팀 수신 풀 — 자녀 멤버 child-1 + 그 학부모 parent-1 + 소유 감독(coachId)
+      prisma.teamMember.findMany.mockResolvedValue([
+        { teamId: "team-a", userId: "child-1" },
+      ]);
+      prisma.parentChild.findMany.mockResolvedValue([
+        { childId: "child-1", parentId: "parent-1" },
+      ]);
+      prisma.teamPostRead.findMany.mockResolvedValue([
+        { postId: "post-1", userId: "parent-1" },
+      ]);
+
+      prisma.teamPost.count.mockResolvedValue(1);
+      const result = await service.getManagedPosts(DIRECTOR, "team", 30, 30);
+
+      // where — 팀 축만
+      const call = prisma.teamPost.findMany.mock.calls[0][0];
+      expect(call.where.OR).toEqual([{ teamId: { in: ["team-a"] } }]);
+      // [P2-R3-M01] offset 페이지 안정 정렬 — createdAt 동률 시 경계 중복·누락 방지
+      expect(call.orderBy).toEqual([
+        { isPinned: "desc" },
+        { createdAt: "desc" },
+        { id: "desc" },
+      ]);
+      expect(call.skip).toBe(30);
+      // [P2-R1-M01] 페이지 계약 — {data,total}
+      expect(result.total).toBe(1);
+      // 분모 M = child-1 + parent-1 + director-1(coachId) = 3 · 읽음 N = parent-1 = 1
+      expect(result.data[0]).toEqual(
+        expect.objectContaining({
+          targetName: "블랭크",
+          readCount: 1,
+          recipientCount: 3,
+        }),
+      );
+    });
+
+    it("status 필터 — expired 는 종료일 경과만·ongoing 은 미만료(예약 포함) 서버 where", async () => {
+      prisma.team.findMany.mockImplementation(
+        (args: { where?: { coachId?: string } }) =>
+          Promise.resolve(args?.where?.coachId ? [{ id: "team-a" }] : []),
+      );
+      prisma.teamMember.findMany.mockResolvedValue([]);
+      prisma.classCoachAssignment.findMany.mockResolvedValue([]);
+      prisma.academy.findMany.mockResolvedValue([]);
+      prisma.academyCoach.findMany.mockResolvedValue([]);
+      prisma.class.findMany.mockResolvedValue([]);
+      prisma.tournament.findMany.mockResolvedValue([]);
+      prisma.teamPost.findMany.mockResolvedValue([]);
+      prisma.teamPost.count.mockResolvedValue(0);
+      prisma.teamPostRead.findMany.mockResolvedValue([]);
+
+      await service.getManagedPosts(DIRECTOR, "team", 30, 0, "expired");
+      const expiredWhere = prisma.teamPost.findMany.mock.calls[0][0].where;
+      expect(expiredWhere.expiresAt).toEqual({ lt: expect.any(Date) });
+
+      await service.getManagedPosts(DIRECTOR, "team", 30, 0, "ongoing");
+      const ongoingWhere = prisma.teamPost.findMany.mock.calls[1][0].where;
+      expect(ongoingWhere.AND).toEqual([
+        {
+          OR: [{ expiresAt: null }, { expiresAt: { gte: expect.any(Date) } }],
+        },
+      ]);
+      // count 는 목록과 같은 where 공유 — total 이 필터와 어긋나면 hasMore 가 깨진다
+      expect(prisma.teamPost.count.mock.calls[1][0].where).toBe(ongoingWhere);
+    });
+
+    it("targets 픽커에 관할 팀 목록이 포함된다", async () => {
+      prisma.team.findMany.mockImplementation(
+        (args: { where?: { coachId?: string; id?: unknown } }) =>
+          Promise.resolve(
+            args?.where?.coachId
+              ? [{ id: "team-a" }]
+              : [{ id: "team-a", name: "블랭크" }],
+          ),
+      );
+      prisma.teamMember.findMany.mockResolvedValue([]);
+      prisma.classCoachAssignment.findMany.mockResolvedValue([]);
+      prisma.academy.findMany.mockResolvedValue([]);
+      prisma.academyCoach.findMany.mockResolvedValue([]);
+      prisma.class.findMany.mockResolvedValue([]);
+      prisma.tournament.findMany.mockResolvedValue([]);
+
+      const result = await service.getManagedTargets(DIRECTOR);
+
+      expect(result.teams).toEqual([{ id: "team-a", name: "블랭크" }]);
     });
   });
 });

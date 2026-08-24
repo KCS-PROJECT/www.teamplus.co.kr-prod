@@ -198,7 +198,7 @@ export default function DirectorDashboardPage() {
               전체보기는 수정/삭제 가능한 관리 페이지(/director-notices)로 이동. */}
         <RecentNoticesSection
           viewAllHref="/director-notices"
-          onCreateNotice={() => navigate('/notices-create')}
+          onCreateNotice={() => navigate('/community-notice/create')}
           iceTheme
         />
 

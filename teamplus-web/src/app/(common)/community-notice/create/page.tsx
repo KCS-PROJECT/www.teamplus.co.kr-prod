@@ -28,6 +28,8 @@ import {
   updateUnitNotice,
   type UnitNoticeTargets,
 } from '@/services/community-notice.service';
+import { BottomSheet } from '@/components/ui/BottomSheet';
+import { SheetSelectRow } from '@/components/notice/SheetSelectRow';
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 /** 첨부 이미지 계약 — 백엔드 unit-notice.dto (4종·10MB)와 동일 */
@@ -60,7 +62,11 @@ function kstDateToIso(date: string, boundary: 'start' | 'end'): string | null {
 }
 
 /** 픽커 값 인코딩 — 축:id (축 배타 select 단일 값) */
-type TargetValue = `class:${string}` | `tournament:${string}` | '';
+type TargetValue =
+  | `team:${string}`
+  | `class:${string}`
+  | `tournament:${string}`
+  | '';
 
 interface PendingAttachment {
   fileUrl: string;
@@ -90,6 +96,8 @@ export default function UnitNoticeCreatePage() {
   // 상세 화면(수업/대회)에서 진입 시 대상 프리셋 — ?classId= | ?tournamentId=
   const presetClassId = searchParams?.get('classId') ?? null;
   const presetTournamentId = searchParams?.get('tournamentId') ?? null;
+  // [Phase 2] 팀 공지 축 — ?teamId= 프리셋 (팀 화면 진입용)
+  const presetTeamId = searchParams?.get('teamId') ?? null;
 
   const titleId = useId();
   const contentId = useId();
@@ -99,6 +107,9 @@ export default function UnitNoticeCreatePage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [target, setTarget] = useState<TargetValue>('');
+  // 대상 픽커 바텀시트 — 네이티브 select 는 WebView 에서 OS 픽커가 떠 앱 디자인과
+  // 이질적 · 관리 공지함 단위 필터와 동일한 공통 시트 패턴으로 통일
+  const [isTargetSheetOpen, setIsTargetSheetOpen] = useState(false);
   const [targets, setTargets] = useState<UnitNoticeTargets | null>(null);
   const [isTargetsLoading, setIsTargetsLoading] = useState(!isEditMode);
   const [targetsLoadFailed, setTargetsLoadFailed] = useState(false);
@@ -113,7 +124,9 @@ export default function UnitNoticeCreatePage() {
 
   // 수정 모드 프리필 — 대상(축)은 변경 불가라 표시만
   const [editTargetName, setEditTargetName] = useState<string | null>(null);
-  const [editAxis, setEditAxis] = useState<'class' | 'tournament' | null>(null);
+  const [editAxis, setEditAxis] = useState<
+    'team' | 'class' | 'tournament' | null
+  >(null);
   // [Codex R1 H-05] 비관할 수정 진입 차단 — 상세 응답의 서버 canManage 가 단일 기준
   const [editBlocked, setEditBlocked] = useState(false);
   // [Codex R1 H-05] 상세 진입 preset 이 관할 목록에 없으면 다른 대상으로 풀리는 대신 차단
@@ -143,7 +156,13 @@ export default function UnitNoticeCreatePage() {
           setEndDate(toDateInput(n.expiresAt));
           setEditTargetName(n.targetName ?? null);
           setEditAxis(
-            n.targetClassId ? 'class' : n.targetTournamentId ? 'tournament' : null,
+            n.teamId
+              ? 'team'
+              : n.targetClassId
+                ? 'class'
+                : n.targetTournamentId
+                  ? 'tournament'
+                  : null,
           );
         } else {
           toast.error(MESSAGES.unitNotice.loadFailed);
@@ -167,7 +186,7 @@ export default function UnitNoticeCreatePage() {
         setTargets(res.data);
         // 상세 화면 진입 프리셋 — 관할 목록에 있으면 그 대상으로 잠금,
         // 없으면(비관할·종료 등) 다른 대상으로 풀리는 대신 **작성 차단** (H-05 오발송 방지)
-        if (presetClassId || presetTournamentId) {
+        if (presetClassId || presetTournamentId || presetTeamId) {
           if (
             presetClassId &&
             res.data.classes.some((c) => c.id === presetClassId)
@@ -178,6 +197,11 @@ export default function UnitNoticeCreatePage() {
             res.data.tournaments.some((t) => t.id === presetTournamentId)
           ) {
             setTarget(`tournament:${presetTournamentId}`);
+          } else if (
+            presetTeamId &&
+            res.data.teams.some((t) => t.id === presetTeamId)
+          ) {
+            setTarget(`team:${presetTeamId}`);
           } else {
             setPresetInvalid(true);
           }
@@ -190,7 +214,7 @@ export default function UnitNoticeCreatePage() {
     } finally {
       setIsTargetsLoading(false);
     }
-  }, [presetClassId, presetTournamentId]);
+  }, [presetClassId, presetTournamentId, presetTeamId]);
 
   useEffect(() => {
     if (isEditMode) return;
@@ -270,13 +294,18 @@ export default function UnitNoticeCreatePage() {
           expiresAt: endDate ? kstDateToIso(endDate, 'end') : null,
         });
       } else {
-        const [axis, id] = target.split(':') as ['class' | 'tournament', string];
+        const [axis, id] = target.split(':') as [
+          'team' | 'class' | 'tournament',
+          string,
+        ];
         response = await createUnitNotice({
           title: trimmedTitle,
           content: trimmedContent,
-          ...(axis === 'class'
-            ? { targetClassId: id }
-            : { targetTournamentId: id }),
+          ...(axis === 'team'
+            ? { teamId: id }
+            : axis === 'class'
+              ? { targetClassId: id }
+              : { targetTournamentId: id }),
           ...(startDate && { startAt: kstDateToIso(startDate, 'start')! }),
           ...(endDate && { expiresAt: kstDateToIso(endDate, 'end')! }),
           ...(attachments.length > 0 && { attachments }),
@@ -311,6 +340,7 @@ export default function UnitNoticeCreatePage() {
     !isTargetsLoading &&
     !targetsLoadFailed &&
     targets !== null &&
+    targets.teams.length === 0 &&
     targets.classes.length === 0 &&
     targets.tournaments.length === 0;
 
@@ -321,37 +351,65 @@ export default function UnitNoticeCreatePage() {
     ? `class:${presetClassId}`
     : presetTournamentId
       ? `tournament:${presetTournamentId}`
-      : '';
+      : presetTeamId
+        ? `team:${presetTeamId}`
+        : '';
   const isTargetLocked = !isEditMode && !!presetTarget && target === presetTarget;
+  // 픽커 트리거 표시용 — 선택 값의 축 아이콘·이름 (시트 그룹 아이콘과 동일 체계)
+  const selectedTargetOption = (() => {
+    if (!target || !targets) return null;
+    if (target.startsWith('team:')) {
+      const name = targets.teams.find((t) => `team:${t.id}` === target)?.name;
+      return name ? { icon: 'groups', name } : null;
+    }
+    if (target.startsWith('class:')) {
+      const name = targets.classes.find((c) => `class:${c.id}` === target)?.name;
+      return name ? { icon: 'school', name } : null;
+    }
+    const name = targets.tournaments.find(
+      (t) => `tournament:${t.id}` === target,
+    )?.name;
+    return name ? { icon: 'trophy', name } : null;
+  })();
   const lockedTargetName = isTargetLocked
     ? (presetClassId
         ? targets?.classes.find((c) => c.id === presetClassId)?.name
-        : targets?.tournaments.find((t) => t.id === presetTournamentId)?.name) ?? null
+        : presetTournamentId
+          ? targets?.tournaments.find((t) => t.id === presetTournamentId)?.name
+          : targets?.teams.find((t) => t.id === presetTeamId)?.name) ?? null
     : null;
 
-  // 헤더 제목 — 축이 확정되면(프리셋·픽커 선택·수정 프리필) 수업/대회를 구분해 표기
-  const resolvedAxis: 'class' | 'tournament' | null = isEditMode
+  // 헤더 제목 — 축이 확정되면(프리셋·픽커 선택·수정 프리필) 팀/훈련/대회를 구분해 표기
+  const resolvedAxis: 'team' | 'class' | 'tournament' | null = isEditMode
     ? editAxis
-    : target.startsWith('class:')
-      ? 'class'
-      : target.startsWith('tournament:')
-        ? 'tournament'
-        : presetClassId
-          ? 'class'
-          : presetTournamentId
-            ? 'tournament'
-            : null;
+    : target.startsWith('team:')
+      ? 'team'
+      : target.startsWith('class:')
+        ? 'class'
+        : target.startsWith('tournament:')
+          ? 'tournament'
+          : presetClassId
+            ? 'class'
+            : presetTournamentId
+              ? 'tournament'
+              : presetTeamId
+                ? 'team'
+                : null;
   const pageTitle = isEditMode
-    ? resolvedAxis === 'class'
-      ? MESSAGES.unitNotice.editTitleClass
-      : resolvedAxis === 'tournament'
-        ? MESSAGES.unitNotice.editTitleTournament
-        : MESSAGES.unitNotice.editTitle
-    : resolvedAxis === 'class'
-      ? MESSAGES.unitNotice.writeTitleClass
-      : resolvedAxis === 'tournament'
-        ? MESSAGES.unitNotice.writeTitleTournament
-        : MESSAGES.unitNotice.writeTitle;
+    ? resolvedAxis === 'team'
+      ? MESSAGES.unitNotice.editTitleTeam
+      : resolvedAxis === 'class'
+        ? MESSAGES.unitNotice.editTitleClass
+        : resolvedAxis === 'tournament'
+          ? MESSAGES.unitNotice.editTitleTournament
+          : MESSAGES.unitNotice.editTitle
+    : resolvedAxis === 'team'
+      ? MESSAGES.unitNotice.writeTitleTeam
+      : resolvedAxis === 'class'
+        ? MESSAGES.unitNotice.writeTitleClass
+        : resolvedAxis === 'tournament'
+          ? MESSAGES.unitNotice.writeTitleTournament
+          : MESSAGES.unitNotice.writeTitle;
 
   // [Codex R1 H-05] 차단 화면 — ①비관리 역할 ②비관할 공지 수정 ③미관할 preset 진입.
   // 폼을 렌더하지 않아 다른 대상으로의 오발송 경로 자체를 제거한다 (최종 판정은 서버).
@@ -456,36 +514,109 @@ export default function UnitNoticeCreatePage() {
               {MESSAGES.unitNotice.targetEmpty}
             </p>
           ) : (
-            <select
+            // select 형 트리거 + 공통 바텀시트 — 관리 공지함 단위 필터와 동일 패턴
+            <button
+              type="button"
               id={targetId}
-              value={target}
-              onChange={(e) => setTarget(e.target.value as TargetValue)}
-              required
-              aria-required="true"
-              className="w-full px-3 h-[50px] bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[15px] font-semibold text-it-ink-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 transition-colors motion-reduce:transition-none ease-ios"
+              onClick={() => setIsTargetSheetOpen(true)}
+              aria-haspopup="dialog"
+              className="flex w-full items-center justify-between gap-2 px-3 h-[50px] bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md transition-colors motion-reduce:transition-none ease-ios hover:border-it-blue-500/40 active:brightness-95 focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500"
             >
-              <option value="">{MESSAGES.unitNotice.targetPlaceholder}</option>
-              {targets && targets.classes.length > 0 && (
-                <optgroup label={MESSAGES.unitNotice.targetClassGroup}>
-                  {targets.classes.map((c) => (
-                    <option key={c.id} value={`class:${c.id}`}>
-                      {c.name}
-                    </option>
-                  ))}
-                </optgroup>
+              {selectedTargetOption ? (
+                <span className="flex min-w-0 items-center gap-1.5 text-[15px] font-semibold text-it-ink-800 dark:text-white">
+                  <Icon
+                    name={selectedTargetOption.icon}
+                    className="text-[16px] shrink-0 text-it-blue-500"
+                    aria-hidden="true"
+                  />
+                  <span className="truncate">{selectedTargetOption.name}</span>
+                </span>
+              ) : (
+                <span className="text-[15px] font-semibold text-it-ink-400 dark:text-it-ink-300">
+                  {MESSAGES.unitNotice.targetPlaceholder}
+                </span>
               )}
-              {targets && targets.tournaments.length > 0 && (
-                <optgroup label={MESSAGES.unitNotice.targetTournamentGroup}>
-                  {targets.tournaments.map((t) => (
-                    <option key={t.id} value={`tournament:${t.id}`}>
-                      {t.name}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
+              <Icon
+                name="expand_more"
+                className="text-[18px] shrink-0 text-it-ink-400 dark:text-it-ink-300"
+                aria-hidden="true"
+              />
+            </button>
           )}
         </section>
+
+        {/* 대상 픽커 바텀시트 — 팀/훈련/대회 그룹 (밴드 라벨 + 들여쓰기), 선택 즉시 적용·닫힘 */}
+        <BottomSheet
+          isOpen={isTargetSheetOpen}
+          onClose={() => setIsTargetSheetOpen(false)}
+          title={MESSAGES.unitNotice.targetLabel}
+        >
+          <div className="pb-2">
+            {targets && targets.teams.length > 0 && (
+              <>
+                <p className="rounded-w-md bg-it-fill dark:bg-it-blue-900/30 px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-wider text-it-ink-400 dark:text-it-ink-300">
+                  {MESSAGES.unitNotice.targetTeamGroup}
+                </p>
+                <div className="pl-2">
+                  {targets.teams.map((t) => (
+                    <SheetSelectRow
+                      key={t.id}
+                      label={t.name}
+                      icon="groups"
+                      active={target === `team:${t.id}`}
+                      onClick={() => {
+                        setTarget(`team:${t.id}`);
+                        setIsTargetSheetOpen(false);
+                      }}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+            {targets && targets.classes.length > 0 && (
+              <>
+                <p className="mt-2 rounded-w-md bg-it-fill dark:bg-it-blue-900/30 px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-wider text-it-ink-400 dark:text-it-ink-300">
+                  {MESSAGES.unitNotice.targetClassGroup}
+                </p>
+                <div className="pl-2">
+                  {targets.classes.map((c) => (
+                    <SheetSelectRow
+                      key={c.id}
+                      label={c.name}
+                      icon="school"
+                      active={target === `class:${c.id}`}
+                      onClick={() => {
+                        setTarget(`class:${c.id}`);
+                        setIsTargetSheetOpen(false);
+                      }}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+            {targets && targets.tournaments.length > 0 && (
+              <>
+                <p className="mt-2 rounded-w-md bg-it-fill dark:bg-it-blue-900/30 px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-wider text-it-ink-400 dark:text-it-ink-300">
+                  {MESSAGES.unitNotice.targetTournamentGroup}
+                </p>
+                <div className="pl-2">
+                  {targets.tournaments.map((t) => (
+                    <SheetSelectRow
+                      key={t.id}
+                      label={t.name}
+                      icon="trophy"
+                      active={target === `tournament:${t.id}`}
+                      onClick={() => {
+                        setTarget(`tournament:${t.id}`);
+                        setIsTargetSheetOpen(false);
+                      }}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </BottomSheet>
 
         <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
 

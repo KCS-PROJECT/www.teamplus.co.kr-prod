@@ -286,9 +286,12 @@ export default function UnitNoticeDetailPage() {
 
   if (isLoading) return null;
 
-  const axisLabel = post?.targetClassId
-    ? MESSAGES.unitNotice.classChip
-    : MESSAGES.unitNotice.tournamentChip;
+  // [Phase 2] 팀 축 편입 — 팀/훈련/대회 3축 라벨
+  const axisLabel = post?.teamId
+    ? MESSAGES.unitNotice.teamChip
+    : post?.targetClassId
+      ? MESSAGES.unitNotice.classChip
+      : MESSAGES.unitNotice.tournamentChip;
   const comments: CommentData[] =
     post?.comments.map((c) => ({
       id: c.id,
@@ -337,7 +340,13 @@ export default function UnitNoticeDetailPage() {
                 <div className="min-w-0 flex-1 flex flex-wrap items-center gap-x-2 gap-y-1">
                   {/* 축 배지 — 훈련 목록 배지 체계(훈련=emerald·대회=red) 재사용 */}
                   <span
-                    className={`inline-flex items-center rounded-w-pill px-2 py-0.5 text-[12px] font-bold ${getTrainingTypeBadgeClass(post.targetClassId ? 'regular' : 'tournament')}`}
+                    className={`inline-flex items-center rounded-w-pill px-2 py-0.5 text-[12px] font-bold ${
+                      post.teamId
+                        ? 'bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-900/50 dark:text-it-blue-200'
+                        : getTrainingTypeBadgeClass(
+                            post.targetClassId ? 'regular' : 'tournament',
+                          )
+                    }`}
                   >
                     {axisLabel}
                   </span>
@@ -395,6 +404,16 @@ export default function UnitNoticeDetailPage() {
                   <span className="font-num tabular-nums">{post.viewCount}</span>
                 </span>
               </div>
+
+              {/* 대상 안내 — 누구에게 전달되는 공지인지 명시 (팀=전체 · 훈련/대회=참가자) */}
+              <p className="mt-1.5 flex items-center gap-1 text-[12.5px] text-it-ink-400 dark:text-it-ink-300">
+                <Icon name="campaign" className="text-[13px] shrink-0" aria-hidden="true" />
+                {post.teamId
+                  ? MESSAGES.unitNotice.sectionSubtitleTeam
+                  : post.targetClassId
+                    ? MESSAGES.unitNotice.sectionSubtitleClass
+                    : MESSAGES.unitNotice.sectionSubtitleTournament}
+              </p>
 
               {/* 본문 */}
               <div

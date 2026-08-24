@@ -1,10 +1,8 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
-import { resolveViewerTeamIds } from "@/common/utils/team-scope.util";
 import {
   publicationConditions,
-  buildNoticeTeamScopeCondition,
 } from "@/common/utils/notice-publication.util";
 import {
   resolveScheduleTimeByTemplate,
@@ -118,12 +116,7 @@ export class CoachDashboardService {
       },
     };
 
-    // [Phase 0 · F-EX-05] 최근 공지 팀 스코프 — 타 팀 공지가 섞이던 경로 차단.
-    const noticeTeamIds = await resolveViewerTeamIds(
-      this.prisma,
-      coachId,
-      "COACH",
-    );
+    // [Phase 2 ③] 팀 공지는 TeamPost feed 로 이관 — 대시보드 내장 공지는 서비스 공지 전용.
 
     // P2037 대응: 기존 9개 Promise.all 로 병렬 실행하던 쿼리를
     // `$transaction([...])` 로 묶어 단일 Prisma 커넥션으로 직렬 실행.
@@ -255,7 +248,7 @@ export class CoachDashboardService {
               { targetType: "coach" },
             ],
             AND: [
-              buildNoticeTeamScopeCondition(noticeTeamIds),
+              { targetTeamId: null },
               ...publicationConditions(),
             ],
           },

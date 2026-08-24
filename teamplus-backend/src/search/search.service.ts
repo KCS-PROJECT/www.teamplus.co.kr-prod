@@ -9,7 +9,6 @@ import {
 import { resolveViewerTeamIds } from "@/common/utils/team-scope.util";
 import {
   publicationConditions,
-  buildNoticeTeamScopeCondition,
 } from "@/common/utils/notice-publication.util";
 import { buildClassVisibilityWhere } from "@/classes/utils/class-visibility.util";
 import { CLASSES_DOMAIN_TRAINING_TYPES } from "@/common/constants/class-domain.constant";
@@ -358,16 +357,42 @@ export class SearchService {
       ? await resolveViewerTeamIds(this.prisma, viewer.id, viewer.userType)
       : [];
 
+    // [Phase 2 ③] 팀 공지는 TeamPost 로 이관 — SystemNotice 검색은 서비스 공지 전용으로
+    //   축소하고, 열람 팀 스코프의 TeamPost 팀 공지를 병합한다. 결과 클릭은 기존처럼
+    //   /notice/{id} 로 가더라도 이관 마커 리다이렉트가 /community-notice/{id} 로 안내한다.
     const where: Prisma.SystemNoticeWhereInput = {
       OR: [{ title: { contains: q } }, { content: { contains: q } }],
       isActive: true,
-      AND: [
-        buildNoticeTeamScopeCondition(viewerTeamIds),
-        ...publicationConditions(),
-      ],
+      AND: [{ targetTeamId: null }, ...publicationConditions()],
     };
+    const now = new Date();
+    const teamWhere: Prisma.TeamPostWhereInput | null =
+      viewerTeamIds.length > 0
+        ? {
+            OR: [{ title: { contains: q } }, { content: { contains: q } }],
+            teamId: { in: viewerTeamIds },
+            postType: "announcement",
+            isActive: true,
+            AND: [
+              { OR: [{ startAt: null }, { startAt: { lte: now } }] },
+              { OR: [{ expiresAt: null }, { expiresAt: { gte: now } }] },
+            ],
+          }
+        : null;
 
-    const [items, total] = await Promise.all([
+    // [Codex P2-R1-H06] 두 소스에 각각 skip/take 를 걸면 서비스 결과가 limit 이상일 때
+    //   팀 공지가 첫 페이지에서 전멸하고, 2페이지부터는 양쪽 offset 이 중복 적용되어
+    //   결과가 누락된다 — **각 소스는 (offset+limit)건까지 수집 → 공통 정렬키로 전역
+    //   병합 → 단일 slice** 로 페이지를 만든다.
+    // [Codex P2-R2 H06] createdAt 동률(대량 시드·같은 밀리초 생성)이 있으면 DB 수집과
+    //   메모리 병합의 상대 순서가 실행마다 달라져 페이지 경계에서 행이 중복/누락된다 —
+    //   DB 조회와 병합 모두 `createdAt DESC, id DESC` 안정 정렬로 통일한다.
+    const fetchSpan = offset + limit;
+    const stableOrder = [
+      { createdAt: "desc" as const },
+      { id: "desc" as const },
+    ];
+    const [items, total, teamItems, teamTotal] = await Promise.all([
       this.prisma.systemNotice.findMany({
         where,
         select: {
@@ -375,19 +400,27 @@ export class SearchService {
           title: true,
           content: true,
           targetType: true,
-          priority: true,
           createdAt: true,
         },
-        take: limit,
-        skip: offset,
-        orderBy: { priority: "desc" },
+        take: fetchSpan,
+        orderBy: stableOrder,
       }),
       this.prisma.systemNotice.count({ where }),
+      teamWhere
+        ? this.prisma.teamPost.findMany({
+            where: teamWhere,
+            select: { id: true, title: true, content: true, createdAt: true },
+            take: fetchSpan,
+            orderBy: stableOrder,
+          })
+        : Promise.resolve([]),
+      teamWhere
+        ? this.prisma.teamPost.count({ where: teamWhere })
+        : Promise.resolve(0),
     ]);
 
-    return {
-      total,
-      items: items.map((notice) => ({
+    const merged = [
+      ...items.map((notice) => ({
         type: "notice" as const,
         id: notice.id,
         title: notice.title,
@@ -395,6 +428,23 @@ export class SearchService {
         targetType: notice.targetType,
         createdAt: notice.createdAt,
       })),
+      ...teamItems.map((post) => ({
+        type: "notice" as const,
+        id: post.id,
+        title: post.title,
+        description: post.content.slice(0, 100),
+        targetType: "team",
+        createdAt: post.createdAt,
+      })),
+    ].sort(
+      (a, b) =>
+        b.createdAt.getTime() - a.createdAt.getTime() ||
+        b.id.localeCompare(a.id),
+    );
+
+    return {
+      total: total + teamTotal,
+      items: merged.slice(offset, offset + limit),
     };
   }
 }

@@ -1,10 +1,8 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
-import { resolveViewerTeamIds } from "@/common/utils/team-scope.util";
 import {
   publicationConditions,
-  buildNoticeTeamScopeCondition,
 } from "@/common/utils/notice-publication.util";
 import {
   kstTodayUtcMidnight,
@@ -99,12 +97,7 @@ export class DirectorDashboardService {
       );
       const managedTeamIds = managedClubIds;
 
-      // [Phase 0 · F-EX-05] 최근 공지 팀 스코프 — 타 팀 공지가 섞이던 경로 차단.
-      const noticeTeamIds = await resolveViewerTeamIds(
-        this.prisma,
-        directorId,
-        "DIRECTOR",
-      );
+      // [Phase 2 ③] 팀 공지는 TeamPost feed 로 이관 — 대시보드 내장 공지는 서비스 공지 전용.
 
       // === W1 Step 2: 나머지 15개 쿼리 모두 단일 Promise.all ===
       const [
@@ -335,7 +328,7 @@ export class DirectorDashboardService {
               { targetType: "director" },
             ],
             AND: [
-              buildNoticeTeamScopeCondition(noticeTeamIds),
+              { targetTeamId: null },
               ...publicationConditions(),
             ],
           },

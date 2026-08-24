@@ -7,10 +7,8 @@ import {
 import { RedisService } from "@/redis/redis.service";
 import { resolveScheduleTimeByTemplate } from "@/common/utils/schedule-time.util";
 import { kstTodayUtcMidnight } from "@/common/utils/kst-date.util";
-import { resolveViewerTeamIds } from "@/common/utils/team-scope.util";
 import {
   publicationConditions,
-  buildNoticeTeamScopeCondition,
 } from "@/common/utils/notice-publication.util";
 import {
   scheduleEligibleClassFilter,
@@ -162,12 +160,7 @@ export class ParentDashboardService {
       thirtyDaysLater.setDate(thirtyDaysLater.getDate() + 30);
       const nowDate = new Date();
 
-      // [Phase 0 · F-EX-05] 최근 공지 팀 스코프 — 학부모는 자녀 경유 팀까지 열람 가능.
-      const noticeTeamIds = await resolveViewerTeamIds(
-        this.prisma,
-        parentId,
-        "PARENT",
-      );
+      // [Phase 2 ③] 팀 공지는 TeamPost feed 로 이관 — 대시보드 내장 공지는 서비스 공지 전용.
 
       // === W1 Step 2: 11개 쿼리 단일 Promise.all 통합 ===
       const [
@@ -419,7 +412,7 @@ export class ParentDashboardService {
               { targetType: "parent" },
             ],
             AND: [
-              buildNoticeTeamScopeCondition(noticeTeamIds),
+              { targetTeamId: null },
               ...publicationConditions(),
             ],
           },

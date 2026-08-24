@@ -197,6 +197,8 @@ export class AdminDashboardService {
         this.prisma.systemNotice.findMany({
           where: {
             isActive: true,
+            // [Phase 2 ③] 팀 공지는 TeamPost 로 이관 — 서비스 공지 전용
+            targetTeamId: null,
             OR: [
               { targetType: null },
               { targetType: "all" },
