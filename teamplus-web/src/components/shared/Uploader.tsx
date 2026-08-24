@@ -1156,6 +1156,13 @@ function AvatarVariant({
   shape = 'circle',
 }: AvatarVariantProps) {
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  // 미리보기 URL 이 있어도 파일이 유실·404 면 깨진 빈 박스가 노출된다 —
+  // 로드 실패 시 placeholder(기본 아이콘)로 폴백하고, URL 이 바뀌면(새 업로드) 리셋.
+  const [previewFailed, setPreviewFailed] = useState(false);
+  useEffect(() => {
+    setPreviewFailed(false);
+  }, [preview]);
+  const showPreview = !!preview && !previewFailed;
   const effectiveSize = childMode ? Math.max(size, 96) : size;
   const activeEntry = entries[0];
   const progress = activeEntry?.percent ?? 0;
@@ -1191,7 +1198,7 @@ function AvatarVariant({
           )}
           style={{ width: effectiveSize, height: effectiveSize }}
         >
-          {preview ? (
+          {showPreview ? (
             <Image
               // key={preview} — src 변경 시 강제 재마운트하여 새 URL 즉시 fetch.
               //   (Next/Image 가 같은 컴포넌트 instance 에서 src 만 갱신하면 일부 브라우저가
@@ -1203,6 +1210,7 @@ function AvatarVariant({
               className="object-cover"
               sizes={`${effectiveSize}px`}
               unoptimized
+              onError={() => setPreviewFailed(true)}
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-wtext-4 dark:text-rink-400">
@@ -1316,8 +1324,8 @@ function AvatarVariant({
           </span>
         )}
 
-        {/* 크게 보기 (preview 있을 때만) */}
-        {preview && !isUploading && (
+        {/* 크게 보기 (preview 가 정상 로드됐을 때만 — 깨진 이미지는 확대 대상 아님) */}
+        {showPreview && !isUploading && (
           <button
             type="button"
             onClick={() => setIsLightboxOpen(true)}

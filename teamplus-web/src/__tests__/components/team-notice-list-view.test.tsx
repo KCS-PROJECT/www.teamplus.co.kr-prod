@@ -1,24 +1,29 @@
 /**
- * TeamNoticeListView — Phase 3 회귀 (P3-R1-06 · AC 3-1/3-2/3-3/3-12).
+ * TeamNoticeListView — Phase 3 회귀 + [Phase 2] audience feed 전환 계약.
  *
  * 계약 고정:
- *   · mode="manage" → GET /notices/admin/list (scope=team) · 상태 배지 노출
- *   · mode 기본(audience) → GET /notices + isActive=true · 상태 배지 미노출
+ *   · mode="manage" → GET /notices/admin/list (scope=team) · 상태 배지 노출 (레거시 원본 열람)
+ *   · mode 기본(audience) → [Phase 2] TeamPost 통합 feed(fetchUnitNoticeFeed) —
+ *     출처 칩(팀/훈련/대회) + /community-notice/{id} 상세 링크 · 상태 배지 미노출
  *   · 상태 배지는 독립 조건 — 미게시+만료 공지는 두 배지가 **동시에** 붙는다
- *   · 더보기 → 다음 페이지 요청 + 기존 목록 뒤에 append
+ *   · 더보기(manage) → 다음 페이지 요청 + append / (audience) → limit 누적 재조회
  */
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MESSAGES } from '@/lib/messages';
 import { apiRequest } from '@/services/api-client';
+import { fetchUnitNoticeFeed } from '@/services/community-notice.service';
 import { TeamNoticeListView } from '@/components/notice/TeamNoticeListView';
 
 jest.mock('@/services/api-client', () => ({ apiRequest: jest.fn() }));
+jest.mock('@/services/community-notice.service', () => ({
+  fetchUnitNoticeFeed: jest.fn(),
+}));
 jest.mock('@/hooks/usePageReady', () => ({ usePageReady: () => {} }));
 jest.mock('@/hooks/useNativeUI', () => ({ useNativeUI: () => {} }));
 jest.mock('@/lib/refresh-bus', () => ({
   useRefreshSubscription: () => {},
-  REFRESH_KEYS: { NOTICES: ['notices'] },
+  REFRESH_KEYS: { NOTICES: ['notices'], UNIT_NOTICES: ['unit-notices'] },
 }));
 jest.mock('@/components/ui/NavLink', () => ({
   NavLink: ({ children, href }: { children: React.ReactNode; href: string }) => (
@@ -55,6 +60,29 @@ jest.mock('@/components/ui/FloatingActionButton', () => ({
 }));
 
 const mockApiRequest = apiRequest as jest.Mock;
+const mockFetchFeed = fetchUnitNoticeFeed as jest.Mock;
+
+/** [Phase 2] feed(UnitNoticePost) 형태의 행 생성기 */
+function makeFeedPost(
+  id: string,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    id,
+    title: `공지 ${id}`,
+    content: '본문',
+    createdAt: '2026-08-01T00:00:00.000Z',
+    isPinned: false,
+    teamId: 'team-1',
+    targetClassId: null,
+    targetTournamentId: null,
+    targetName: '블랭크',
+    isReadByMe: false,
+    startAt: null,
+    expiresAt: null,
+    ...overrides,
+  };
+}
 
 /** 백엔드 관리 목록 응답 형태의 공지 행 생성기 */
 function makeNotice(
@@ -87,6 +115,8 @@ function listResponse(
 
 beforeEach(() => {
   mockApiRequest.mockReset();
+  mockFetchFeed.mockReset();
+  mockFetchFeed.mockResolvedValue({ success: true, data: [] });
 });
 
 describe('TeamNoticeListView — mode 별 데이터 계약', () => {
@@ -102,15 +132,56 @@ describe('TeamNoticeListView — mode 별 데이터 계약', () => {
     expect(call.params.isActive).toBeUndefined();
   });
 
-  it('audience 모드(기본)는 공개 목록 API 에 isActive=true 로 호출한다', async () => {
-    mockApiRequest.mockResolvedValue(listResponse([makeNotice('n1')], 1, 1));
+  it('[Phase 2] audience 모드(기본)는 TeamPost 통합 feed 를 호출한다', async () => {
+    mockFetchFeed.mockResolvedValue({
+      success: true,
+      data: { data: [makeFeedPost('n1')], total: 1 },
+    });
 
     render(<TeamNoticeListView title="팀 공지사항" />);
 
-    await waitFor(() => expect(mockApiRequest).toHaveBeenCalled());
-    const call = mockApiRequest.mock.calls[0][0];
-    expect(call.url).toBe('/notices');
-    expect(call.params.isActive).toBe('true');
+    await waitFor(() => expect(mockFetchFeed).toHaveBeenCalled());
+    // [P2-R1-M01] offset 페이지 계약
+    expect(mockFetchFeed).toHaveBeenCalledWith({ limit: 10, offset: 0 });
+    // 구 SystemNotice 목록 API 는 더 이상 호출하지 않는다
+    expect(mockApiRequest).not.toHaveBeenCalled();
+  });
+
+  it('[Phase 2] audience 행은 출처 칩과 /community-notice 상세 링크를 가진다', async () => {
+    mockFetchFeed.mockResolvedValue({
+      success: true,
+      data: {
+        data: [
+          makeFeedPost('t1'),
+          makeFeedPost('c1', {
+            teamId: null,
+            targetClassId: 'class-1',
+            targetName: '주말 훈련',
+            audienceChildNames: ['김민준'],
+          }),
+        ],
+        total: 2,
+      },
+    });
+
+    render(<TeamNoticeListView title="팀 공지사항" showReadState iceTheme />);
+
+    expect(await screen.findByText('공지 t1')).toBeInTheDocument();
+    // 출처 칩 — 팀 [팀이름][전체] · 훈련 [훈련 배지][단위 이름][참가 자녀 이름]
+    expect(screen.getByText('블랭크')).toBeInTheDocument();
+    expect(screen.getByText(MESSAGES.unitNotice.audienceAll)).toBeInTheDocument();
+    expect(screen.getByText(MESSAGES.unitNotice.classChip)).toBeInTheDocument();
+    expect(screen.getByText('주말 훈련')).toBeInTheDocument();
+    expect(screen.getByText('김민준')).toBeInTheDocument();
+    // 팀 행에는 축 텍스트 배지가 붙지 않는다 (이름+전체로 충분 — 중복 제거)
+    expect(screen.queryByText(MESSAGES.unitNotice.teamChip)).toBeNull();
+    // 상세 링크 — feed 항목은 TeamPost 상세로 직행 (마커 리다이렉트 이중 홉 없음)
+    const links = screen.getAllByRole('link');
+    expect(
+      links.some(
+        (a) => a.getAttribute('href') === '/community-notice/t1',
+      ),
+    ).toBe(true);
   });
 });
 
@@ -153,19 +224,11 @@ describe('TeamNoticeListView — 상태 배지 (AC 3-2)', () => {
     ).toBeInTheDocument();
   });
 
-  it('audience 모드는 같은 데이터라도 상태 배지를 렌더하지 않는다', async () => {
-    mockApiRequest.mockResolvedValue(
-      listResponse(
-        [
-          makeNotice('n1', {
-            isPublished: false,
-            expiresAt: '2020-01-01T00:00:00.000Z',
-          }),
-        ],
-        1,
-        1,
-      ),
-    );
+  it('audience 모드는 상태 배지를 렌더하지 않는다 (feed 는 게시 중만 서빙)', async () => {
+    mockFetchFeed.mockResolvedValue({
+      success: true,
+      data: { data: [makeFeedPost('n1')], total: 1 },
+    });
 
     render(<TeamNoticeListView title="팀 공지사항" />);
 
@@ -197,22 +260,18 @@ describe('TeamNoticeListView — 케밥은 서버 canManage 단일 기준 (AC 5-
     ).toHaveLength(1);
   });
 
-  it('audience 화면(canManage prop 없음)에서도 canManage=true 행 케밥 → 시트가 열린다 — P5-R1-01', async () => {
-    mockApiRequest.mockResolvedValue(
-      listResponse([makeNotice('mine', { canManage: true })], 1, 1),
-    );
+  it('[Phase 2] audience(feed) 행에는 케밥이 없다 — 관리는 /director-notices 가 담당', async () => {
+    mockFetchFeed.mockResolvedValue({
+      success: true,
+      data: { data: [makeFeedPost('mine')], total: 1 },
+    });
 
-    // /team-notices 와 동일 조건 — 화면 prop canManage 미전달(audience)
     render(<TeamNoticeListView title="팀 공지사항" />);
 
-    fireEvent.click(
-      await screen.findByRole('button', { name: MESSAGES.notice.manageMenuOpen }),
-    );
-
-    // 시트 gate 가 화면 prop 에 남아 있으면 이 시트는 열리지 않는다
+    expect(await screen.findByText('공지 mine')).toBeInTheDocument();
     expect(
-      await screen.findByRole('dialog'),
-    ).toHaveTextContent(MESSAGES.notice.manage);
+      screen.queryByRole('button', { name: MESSAGES.notice.manageMenuOpen }),
+    ).toBeNull();
   });
 });
 

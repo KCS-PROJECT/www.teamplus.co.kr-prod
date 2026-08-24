@@ -1,5 +1,5 @@
 import { Test, TestingModule } from "@nestjs/testing";
-import { ForbiddenException, NotFoundException } from "@nestjs/common";
+import { NotFoundException } from "@nestjs/common";
 import { CommunityService } from "./community.service";
 import { CommunityPostsService } from "./community-posts.service";
 import { PrismaService } from "@/prisma/prisma.service";
@@ -240,10 +240,10 @@ describe("CommunityService — 레거시 축 격리 (H-01)", () => {
       expiresAt: null,
     };
 
-    it("댓글 작성 — requester 를 전달하고 게시기간 거부(403)를 전파", async () => {
+    it("댓글 작성 — requester 를 전달하고 게시기간 거부(404 은닉)를 전파", async () => {
       prisma.teamPost.findUnique.mockResolvedValue(teamPost);
       postsService.assertCommentablePostState.mockRejectedValue(
-        new ForbiddenException(),
+        new NotFoundException(),
       );
       await expect(
         service.addCommentToPost(
@@ -252,7 +252,7 @@ describe("CommunityService — 레거시 축 격리 (H-01)", () => {
           { content: "c" },
           ROUTE_TEAM,
         ),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow(NotFoundException);
       expect(postsService.assertCommentablePostState).toHaveBeenCalledWith(
         REQUESTER,
         teamPost,
@@ -260,14 +260,14 @@ describe("CommunityService — 레거시 축 격리 (H-01)", () => {
       expect(prisma.teamPostComment.create).not.toHaveBeenCalled();
     });
 
-    it("댓글 수정 — 작성자 본인이라도 게시기간 거부(403)를 전파", async () => {
+    it("댓글 수정 — 작성자 본인이라도 게시기간 거부(404 은닉)를 전파", async () => {
       prisma.teamPostComment.findUnique.mockResolvedValue({
         id: "comment-1",
         authorId: REQUESTER.id,
         post: commentPostSelect,
       });
       postsService.assertCommentablePostState.mockRejectedValue(
-        new ForbiddenException(),
+        new NotFoundException(),
       );
       await expect(
         service.updateComment(
@@ -276,14 +276,14 @@ describe("CommunityService — 레거시 축 격리 (H-01)", () => {
           { content: "c" },
           ROUTE_TEAM,
         ),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow(NotFoundException);
       expect(postsService.assertCommentablePostState).toHaveBeenCalledWith(
         REQUESTER,
         commentPostSelect,
       );
     });
 
-    it("댓글 삭제 — 작성자 본인이라도 게시기간 거부(403)를 전파", async () => {
+    it("댓글 삭제 — 작성자 본인이라도 게시기간 거부(404 은닉)를 전파", async () => {
       prisma.teamPostComment.findUnique.mockResolvedValue({
         id: "comment-1",
         authorId: REQUESTER.id,
@@ -291,11 +291,11 @@ describe("CommunityService — 레거시 축 격리 (H-01)", () => {
         post: teamPost,
       });
       postsService.assertCommentablePostState.mockRejectedValue(
-        new ForbiddenException(),
+        new NotFoundException(),
       );
       await expect(
         service.deleteComment(REQUESTER, "comment-1", false, ROUTE_TEAM),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow(NotFoundException);
       expect(postsService.assertCommentablePostState).toHaveBeenCalledWith(
         REQUESTER,
         teamPost,
@@ -318,6 +318,121 @@ describe("CommunityService — 레거시 축 격리 (H-01)", () => {
         REQUESTER,
         teamPost,
       );
+    });
+  });
+
+  /**
+   * [Codex R4 H-03] 레거시 경로에서 **실제 게시기간 판정**이 실행되는 것을 고정.
+   * 위 위임 spec 은 helper 를 mock 주입으로 검증하므로 미래/만료 판정 자체는 돌지 않는다 —
+   * 여기서는 실제 `assertCommentablePostState` 구현을 호출하되(관할 판정 `canManagePost` 만
+   * mock — DB 의존 절단), 예약 전·만료 후 일반 사용자 404 은닉과 관할 관리자/게시글
+   * 작성자 예외 허용을 레거시 댓글 경로 위에서 검증한다.
+   */
+  describe("레거시 댓글 경로 실제 게시기간 판정 (R4 H-03)", () => {
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const canManagePostMock = jest.fn();
+    type CommentableStateFn =
+      CommunityPostsService["assertCommentablePostState"];
+
+    beforeEach(() => {
+      canManagePostMock.mockReset().mockResolvedValue(false);
+      const real: CommentableStateFn =
+        CommunityPostsService.prototype.assertCommentablePostState;
+      postsService.assertCommentablePostState.mockImplementation(
+        (
+          requester: Parameters<CommentableStateFn>[0],
+          post: Parameters<CommentableStateFn>[1],
+        ) =>
+          real.call(
+            {
+              canManagePost: canManagePostMock,
+            } as unknown as CommunityPostsService,
+            requester,
+            post,
+          ),
+      );
+    });
+
+    const teamWindowPost = (window: {
+      startAt?: Date | null;
+      expiresAt?: Date | null;
+      authorId?: string;
+    }) => ({
+      id: "post-window",
+      teamId: ROUTE_TEAM,
+      targetClassId: null,
+      targetTournamentId: null,
+      isActive: true,
+      authorId: window.authorId ?? "director-1",
+      likeCount: 0,
+      startAt: window.startAt ?? null,
+      expiresAt: window.expiresAt ?? null,
+    });
+
+    it("미래 startAt — 일반 사용자 댓글 작성 404", async () => {
+      prisma.teamPost.findUnique.mockResolvedValue(
+        teamWindowPost({ startAt: new Date(Date.now() + DAY_MS) }),
+      );
+      await expect(
+        service.addCommentToPost(
+          REQUESTER,
+          "post-window",
+          { content: "c" },
+          ROUTE_TEAM,
+        ),
+      ).rejects.toThrow(NotFoundException);
+      expect(prisma.teamPostComment.create).not.toHaveBeenCalled();
+    });
+
+    it("과거 expiresAt — 일반 사용자 댓글 수정 404", async () => {
+      prisma.teamPostComment.findUnique.mockResolvedValue({
+        id: "comment-1",
+        authorId: REQUESTER.id,
+        post: teamWindowPost({ expiresAt: new Date(Date.now() - DAY_MS) }),
+      });
+      await expect(
+        service.updateComment(
+          REQUESTER,
+          "comment-1",
+          { content: "c" },
+          ROUTE_TEAM,
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it("게시기간 밖 — 관할 관리자는 댓글 삭제 허용", async () => {
+      canManagePostMock.mockResolvedValue(true);
+      prisma.teamPostComment.findUnique.mockResolvedValue({
+        id: "comment-1",
+        authorId: REQUESTER.id,
+        postId: "post-window",
+        post: teamWindowPost({ expiresAt: new Date(Date.now() - DAY_MS) }),
+      });
+      prisma.teamPostComment.delete.mockResolvedValue({});
+      prisma.teamPost.update.mockResolvedValue({});
+      await expect(
+        service.deleteComment(REQUESTER, "comment-1", false, ROUTE_TEAM),
+      ).resolves.toEqual({ deleted: true });
+      expect(canManagePostMock).toHaveBeenCalled();
+    });
+
+    it("게시기간 밖 — 게시글 작성자는 댓글 작성 허용", async () => {
+      prisma.teamPost.findUnique.mockResolvedValue(
+        teamWindowPost({
+          startAt: new Date(Date.now() + DAY_MS),
+          authorId: REQUESTER.id,
+        }),
+      );
+      prisma.teamPostComment.create.mockResolvedValue({ id: "comment-new" });
+      prisma.teamPost.update.mockResolvedValue({});
+      await expect(
+        service.addCommentToPost(
+          REQUESTER,
+          "post-window",
+          { content: "c" },
+          ROUTE_TEAM,
+        ),
+      ).resolves.toEqual({ id: "comment-new" });
     });
   });
 });

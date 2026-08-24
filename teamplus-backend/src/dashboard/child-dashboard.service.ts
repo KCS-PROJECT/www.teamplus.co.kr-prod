@@ -5,10 +5,8 @@ import {
   ISSUING_PRODUCT_WHERE,
 } from "@/common/billing/fee-type.constants";
 import { canCheckInForClass } from "@/common/billing/schedule-eligibility.util";
-import { resolveViewerTeamIds } from "@/common/utils/team-scope.util";
 import {
   publicationConditions,
-  buildNoticeTeamScopeCondition,
 } from "@/common/utils/notice-publication.util";
 import { RedisService } from "@/redis/redis.service";
 import {
@@ -64,13 +62,9 @@ export class ChildDashboardService {
       //   멤버십 없는 승인 대기 아동은 열람 팀이 없으므로 서비스 공지만 남는다.
       //   ⚠️ 반드시 캐시 확인 **뒤**에 계산한다 — 앞에 두면 캐시 적중 시에도 Prisma 를 호출해
       //      나머지 3개 대시보드(캐시 뒤 해석)와 동작이 갈린다.
-      const noticeTeamIds = await resolveViewerTeamIds(
-        this.prisma,
-        userId,
-        userType,
-      );
+// [Phase 2 ③] 팀 공지는 TeamPost feed 로 이관 — 대시보드 내장 공지는 서비스 공지 전용.
       const noticeScopeAnd = [
-        buildNoticeTeamScopeCondition(noticeTeamIds),
+        { targetTeamId: null } as const,
         ...publicationConditions(),
       ];
 

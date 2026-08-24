@@ -40,6 +40,14 @@ import type { TeamDetail } from "@/services/team.service";
 import { useDebounce } from "@/hooks/useDebounce";
 import { AvatarUploader } from "@/components/shared/AvatarUploader";
 import { Icon } from "@/components/ui/Icon";
+import { BottomSheetSelector } from "@/components/ui/BottomSheetSelector";
+import { MatchSegmentedTabs } from "@/components/match/MatchSegmentedTabs";
+import {
+  REGIONS,
+  districtsOf,
+  formatRegionLabel,
+  parseRegionLabel,
+} from "@/lib/regions";
 import { VenueSearchSheet } from "@/components/venue/VenueSearchSheet";
 import { useVenues } from "@/hooks/useClassForm";
 import { resolveImageSrc } from "@/lib/image-url";
@@ -100,8 +108,19 @@ export default function TeamEditPage() {
   const [teamCode, setTeamCode] = useState("");
   // [모집 대상] teams.division 컬럼 재활용 — 자유 텍스트(예: "초등 저학년"). 리그 부문 무관.
   const [division, setDivision] = useState<string>("");
-  // [지역] teams.location 컬럼 재활용 — 자유 텍스트(예: "서울 강남구"). 홈 경기장(venueId)과 별개.
-  const [region, setRegion] = useState<string>("");
+  // [지역] teams.location — 하이브리드 입력 (2026-08-21 1안). 기본은 시/도 → 시군구
+  //  2단계 선택(수업 등록과 동일 UX)이고, "직접 입력" 모드로 임의 문구도 저장 가능.
+  //  표준 라벨은 백엔드가 canonical 정규화, 자유 문구는 trim 원문 수용.
+  //  홈 경기장(venueId)과 별개의 활동 지역.
+  const [regionMode, setRegionMode] = useState<"select" | "custom">("select");
+  const [regionCity, setRegionCity] = useState("");
+  const [regionDistrict, setRegionDistrict] = useState("");
+  const [regionCustomText, setRegionCustomText] = useState("");
+  // 지역을 건드리지 않고 저장하면 기존 값을 보존해야 하므로(location 미전송)
+  // 실제 변경 액션에서만 dirty 를 세운다. 모드 전환 자체는 dirty 아님.
+  const [regionDirty, setRegionDirty] = useState(false);
+  const [regionCitySheetOpen, setRegionCitySheetOpen] = useState(false);
+  const [regionDistrictSheetOpen, setRegionDistrictSheetOpen] = useState(false);
   const [logoUrl, setLogoUrl] = useState("");
   const logoUrlRef = useRef(logoUrl);
   // [메인/보조 컬러 입력 UI 제거] primaryColor/secondaryColor 는 입력·전송하지 않음.
@@ -158,7 +177,26 @@ export default function TeamEditPage() {
         setName(res.data.name ?? "");
         setTeamCode(res.data.teamCode ?? "");
         setDivision(res.data.division ?? "");
-        setRegion(res.data.location ?? "");
+        // 지역 — 표준 라벨이면 선택 모드로 복원, 자유 문구면 직접 입력 모드에 프리필.
+        const parsedRegion = parseRegionLabel(res.data.location);
+        const rawRegion = res.data.location?.trim() || "";
+        if (parsedRegion) {
+          setRegionMode("select");
+          setRegionCity(parsedRegion.city);
+          setRegionDistrict(parsedRegion.district ?? "");
+          setRegionCustomText("");
+        } else if (rawRegion) {
+          setRegionMode("custom");
+          setRegionCity("");
+          setRegionDistrict("");
+          setRegionCustomText(rawRegion);
+        } else {
+          setRegionMode("select");
+          setRegionCity("");
+          setRegionDistrict("");
+          setRegionCustomText("");
+        }
+        setRegionDirty(false);
         setLogoUrl(res.data.logoUrl ?? "");
         logoUrlRef.current = res.data.logoUrl ?? "";
         // [추가 2026-05-15 T04 web-router] 팀 단위 필드 로드.
@@ -243,7 +281,18 @@ export default function TeamEditPage() {
           clubName: name.trim(),
           teamCode: trimmedCode,
           division: division.trim() || undefined,
-          location: region.trim() || undefined,
+          // 지역 — 사용자가 실제로 바꿨을 때만 전송 (undefined = 무변경).
+          //  다른 필드만 수정한 저장이 기존 값을 지우지 않도록 보호.
+          //  선택 모드 = 표준 라벨 조립 / 직접 입력 모드 = 문구 그대로.
+          //  빈 값 전송 → 백엔드가 null(해제) 저장.
+          location: regionDirty
+            ? regionMode === "custom"
+              ? regionCustomText.trim()
+              : (formatRegionLabel(
+                  regionCity || null,
+                  regionDistrict || null,
+                ) ?? "")
+            : undefined,
           logoUrl: logoUrlRef.current.trim() || undefined,
           slogan: slogan.trim() || undefined,
           description: description.trim() || undefined,
@@ -272,7 +321,11 @@ export default function TeamEditPage() {
       nameStatus,
       teamCode,
       division,
-      region,
+      regionDirty,
+      regionMode,
+      regionCity,
+      regionDistrict,
+      regionCustomText,
       slogan,
       description,
       venueId,
@@ -495,25 +548,161 @@ export default function TeamEditPage() {
             </div>
           </Field>
 
-          {/* ── 7) 지역 (선택) ── teams.location 컬럼 재활용(자유 텍스트). 홈 경기장(venueId)과 별개. */}
+          {/* ── 7) 지역 (선택) ── teams.location — 하이브리드 입력 (1안).
+              기본 = 시/도 → 시군구 2단계 선택 (수업 등록 ClassForm 과 동일 UX),
+              "직접 입력" 모드 = 임의 문구 허용. 홈 경기장(venueId)과 별개. */}
           <Field label={MESSAGES.team.fieldRegion} hint={MESSAGES.team.fieldRegionHint}>
-            <div
-              className={cn(
-                "h-12 rounded-w-md bg-it-fill dark:bg-it-blue-950 px-4 flex items-center",
-                "border-[1.5px] border-it-line-strong dark:border-it-blue-900",
-                "transition-[border-color,box-shadow] duration-150 motion-reduce:transition-none",
-                "focus-within:border-it-blue-500 focus-within:ring-2 focus-within:ring-it-blue-500/20",
-              )}
-            >
-              <input
-                type="text"
-                value={region}
-                onChange={(e) => setRegion(e.target.value)}
-                placeholder={MESSAGES.team.fieldRegionPlaceholder}
-                className="flex-1 bg-transparent border-0 outline-none focus-visible-disabled text-[15.5px] font-bold text-it-ink-800 dark:text-white tracking-tight placeholder:text-it-ink-400 placeholder:font-medium"
-                maxLength={40}
-              />
+            {/* 모드 세그먼트 — 전환 자체는 dirty 아님 (실제 값 변경 액션만 dirty).
+                전환 시 현재 값을 반대 모드로 이어받아 입력 유실을 막는다. */}
+            <MatchSegmentedTabs
+              tabs={[
+                { value: "select", label: MESSAGES.team.regionSelectToggle },
+                { value: "custom", label: MESSAGES.team.regionCustomToggle },
+              ]}
+              value={regionMode}
+              onChange={(mode) => {
+                if (mode === regionMode) return;
+                if (mode === "custom") {
+                  // 현재 선택을 문구로 이어받아 직접 입력 모드로 전환.
+                  setRegionCustomText(
+                    formatRegionLabel(
+                      regionCity || null,
+                      regionDistrict || null,
+                    ) ?? regionCustomText,
+                  );
+                } else {
+                  // 입력 문구가 표준 라벨이면 선택 상태로 이어받는다.
+                  const parsed = parseRegionLabel(regionCustomText);
+                  if (parsed) {
+                    setRegionCity(parsed.city);
+                    setRegionDistrict(parsed.district ?? "");
+                  }
+                }
+                setRegionMode(mode);
+              }}
+              iceTheme
+              className="mb-2.5"
+            />
+            {regionMode === "custom" ? (
+              <div
+                className={cn(
+                  "h-12 rounded-w-md bg-it-fill dark:bg-it-blue-950 px-4 flex items-center",
+                  "border-[1.5px] border-it-line-strong dark:border-it-blue-900",
+                  "transition-[border-color,box-shadow] duration-150 motion-reduce:transition-none",
+                  "focus-within:border-it-blue-500 focus-within:ring-2 focus-within:ring-it-blue-500/20",
+                )}
+              >
+                <input
+                  type="text"
+                  value={regionCustomText}
+                  onChange={(e) => {
+                    setRegionCustomText(e.target.value);
+                    setRegionDirty(true);
+                  }}
+                  placeholder={MESSAGES.team.fieldRegionPlaceholder}
+                  className="flex-1 bg-transparent border-0 outline-none focus-visible-disabled text-[15.5px] font-bold text-it-ink-800 dark:text-white tracking-tight placeholder:text-it-ink-400 placeholder:font-medium"
+                  maxLength={40}
+                />
+              </div>
+            ) : (
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => setRegionCitySheetOpen(true)}
+                aria-label={MESSAGES.class.region.cityPlaceholder}
+                className="flex h-12 items-center gap-2 rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill px-4 text-left transition-colors motion-reduce:transition-none focus-visible:border-it-blue-500 focus-visible:outline-none dark:border-it-blue-900 dark:bg-it-blue-950"
+              >
+                <span
+                  className={cn(
+                    "min-w-0 flex-1 truncate text-[15.5px] tracking-tight",
+                    regionCity
+                      ? "font-bold text-it-ink-800 dark:text-white"
+                      : "font-medium text-it-ink-400",
+                  )}
+                >
+                  {regionCity || MESSAGES.class.region.cityPlaceholder}
+                </span>
+                <Icon
+                  name="expand_more"
+                  className="ml-auto shrink-0 text-base text-it-ink-300"
+                  aria-hidden="true"
+                />
+              </button>
+              <button
+                type="button"
+                disabled={!regionCity}
+                onClick={() => setRegionDistrictSheetOpen(true)}
+                aria-label={MESSAGES.class.region.districtPlaceholder}
+                className={cn(
+                  "flex h-12 items-center gap-2 rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill px-4 text-left transition-colors motion-reduce:transition-none focus-visible:border-it-blue-500 focus-visible:outline-none dark:border-it-blue-900 dark:bg-it-blue-950",
+                  !regionCity && "cursor-not-allowed opacity-50",
+                )}
+              >
+                <span
+                  className={cn(
+                    "min-w-0 flex-1 truncate text-[15.5px] tracking-tight",
+                    regionDistrict
+                      ? "font-bold text-it-ink-800 dark:text-white"
+                      : "font-medium text-it-ink-400",
+                  )}
+                >
+                  {regionDistrict || MESSAGES.class.region.districtPlaceholder}
+                </span>
+                <Icon
+                  name="expand_more"
+                  className="ml-auto shrink-0 text-base text-it-ink-300"
+                  aria-hidden="true"
+                />
+              </button>
             </div>
+            )}
+
+            {regionMode === "select" && regionCity && (
+              <button
+                type="button"
+                onClick={() => {
+                  setRegionCity("");
+                  setRegionDistrict("");
+                  setRegionDirty(true);
+                }}
+                className="mt-1 inline-flex items-center gap-1 text-w-caption font-semibold text-it-ink-500 underline dark:text-rink-300"
+              >
+                {MESSAGES.team.regionClear}
+              </button>
+            )}
+
+            <BottomSheetSelector
+              isOpen={regionCitySheetOpen}
+              title={MESSAGES.class.region.cityPlaceholder}
+              items={REGIONS.map((r) => ({
+                id: r,
+                name: r,
+                selected: regionCity === r,
+              }))}
+              onSelect={(city) => {
+                // 시/도 변경 시 시군구는 반드시 초기화 — 불가능한 조합("부산 강남구") 방지.
+                setRegionCity(city);
+                setRegionDistrict("");
+                setRegionDirty(true);
+                setRegionCitySheetOpen(false);
+              }}
+              onClose={() => setRegionCitySheetOpen(false)}
+            />
+            <BottomSheetSelector
+              isOpen={regionDistrictSheetOpen}
+              title={MESSAGES.class.region.districtPlaceholder}
+              items={districtsOf(regionCity).map((d) => ({
+                id: d,
+                name: d,
+                selected: regionDistrict === d,
+              }))}
+              onSelect={(district) => {
+                setRegionDistrict(district);
+                setRegionDirty(true);
+                setRegionDistrictSheetOpen(false);
+              }}
+              onClose={() => setRegionDistrictSheetOpen(false)}
+            />
           </Field>
 
           {/* ── 8) 홈 링크장 (선택) ── 공용 VenueSearchSheet(바텀시트) 트리거. */}

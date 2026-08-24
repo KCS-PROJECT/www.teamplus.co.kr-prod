@@ -58,6 +58,8 @@ export interface UnitNoticePost {
   isReadByMe?: boolean;
   /** managed/상세 전용 — 대상 수업·대회 이름 */
   targetName?: string | null;
+  /** feed 전용 — 이 공지를 보게 만든 참가 자녀 이름 (학부모 대상 칩용, 그 외 빈 배열) */
+  audienceChildNames?: string[];
   /** managed 전용 — 읽음 N/M */
   readCount?: number;
   recipientCount?: number;
@@ -91,6 +93,8 @@ export interface UnitNoticeReadsSummary {
 }
 
 export interface UnitNoticeTargets {
+  /** [Phase 2] 관할 팀 — 팀 공지 축 (백엔드 getManagedTargets 팀 편입) */
+  teams: Array<{ id: string; name: string }>;
   classes: Array<{ id: string; name: string; isOpenClass: boolean }>;
   tournaments: Array<{ id: string; name: string; status: string }>;
 }
@@ -160,20 +164,50 @@ export async function fetchUnitNotices(params: {
   });
 }
 
+/** [Phase 2 · P2-R1-M01] 페이지 계약 — 목록 + 전체 건수 */
+export interface UnitNoticePage {
+  data: UnitNoticePost[];
+  total: number;
+}
+
 export async function fetchManagedUnitNotices(params?: {
-  axis?: 'class' | 'tournament';
+  /** 'unit' = 훈련+대회 (팀 제외 — 서버 필터) */
+  axis?: 'team' | 'class' | 'tournament' | 'unit';
   limit?: number;
+  offset?: number;
+  /** 만료 구분 — ongoing=미만료(예약 포함) · expired=종료일 경과 · 생략=전체 (서버 where) */
+  status?: 'ongoing' | 'expired';
 }) {
-  return api.get<UnitNoticePost[]>('/community/posts/managed', {
+  return api.get<UnitNoticePage>('/community/posts/managed', {
     params: {
       ...(params?.axis && { axis: params.axis }),
       ...(params?.limit && { limit: String(params.limit) }),
+      ...(params?.offset && { offset: String(params.offset) }),
+      ...(params?.status && { status: params.status }),
     },
   });
 }
 
 export async function fetchUnitNoticeTargets() {
   return api.get<UnitNoticeTargets>('/community/targets');
+}
+
+/**
+ * [Phase 2] 통합 공지 feed — 대시보드 탭 A·/team-notices 단일 소스.
+ * 열람 가능한 팀+훈련+대회 공지(게시 중만). childId=학부모 선택 자녀 표시 필터.
+ */
+export async function fetchUnitNoticeFeed(params?: {
+  childId?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  return api.get<UnitNoticePage>('/community/posts/feed', {
+    params: {
+      ...(params?.childId && { childId: params.childId }),
+      ...(params?.limit && { limit: String(params.limit) }),
+      ...(params?.offset && { offset: String(params.offset) }),
+    },
+  });
 }
 
 export async function fetchUnitNoticeDetail(postId: string) {
@@ -201,9 +235,18 @@ export async function fetchUnitNoticeReadsSummary(postId: string) {
   );
 }
 
-/** 미읽음자에게 다시 알리기 — 게시글당 24시간 1회 */
-export async function remindUnreadRecipients(postId: string) {
-  return api.post<{ reminded: number }>(`/community/posts/${postId}/remind`);
+/**
+ * 미읽음자에게 다시 알리기 — 전체(게시글당 24시간 1회 · 24시간 내 수신자 자동 제외)
+ * 또는 targetUserId 지정 시 개별((대상자,게시글)당 24시간 1회).
+ */
+export async function remindUnreadRecipients(
+  postId: string,
+  targetUserId?: string,
+) {
+  return api.post<{ reminded: number; skipped?: number }>(
+    `/community/posts/${postId}/remind`,
+    targetUserId ? { targetUserId } : undefined,
+  );
 }
 
 /** 수업 참가자 연락 대상 — 명단 행 [1:1 문의]용, 부모 우선 규칙 (관할 감독·코치 전용) */

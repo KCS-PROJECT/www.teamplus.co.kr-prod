@@ -23,6 +23,7 @@ import { resolveManagedContentScope } from "./utils/content-scope.util";
 import {
   CreateUnitCommentDto,
   CreateUnitPostDto,
+  UNIT_NOTICE_IMAGE_MAX_COUNT,
   UnitNoticeAttachmentDto,
   UpdateUnitCommentDto,
   UpdateUnitPostDto,
@@ -367,6 +368,12 @@ export class CommunityPostsService {
   }
 
   private async resolveRecipients(scope: PostScope): Promise<string[]> {
+    // 팀 축 — 목록(managed)과 동일한 분모 규칙(멤버∪학부모∪감독)을 배치 해석기
+    // 재사용으로 보장한다. 누락 시 상세 읽음 현황·재알림이 수신자 0(0/0)이 된다.
+    if (scope.teamId) {
+      const map = await this.resolveTeamRecipientsMap([scope.teamId]);
+      return map.get(scope.teamId) ?? [];
+    }
     if (scope.targetClassId) {
       return this.resolveClassRecipients(scope.targetClassId);
     }
@@ -377,25 +384,22 @@ export class CommunityPostsService {
   }
 
   /**
-   * [Codex R1 M-04] 수업 수신자 일괄 산출 — 단위 수에 비례해 resolver 를 반복하던
-   * N+1(관리 목록에서 단위 30개 ≈ 90쿼리)을 고정 3쿼리로 대체. 규칙은 단건과 동일.
+   * 학생 목록 → 보호자 치환 분모 (훈련·팀 축 공용 규칙).
+   * 학생별로 학부모가 있으면 학부모 전원, 없으면 본인(훈련 축의 성인 수강 케이스 —
+   * 팀 축은 설계상 전원 학부모 연결이라 발동하지 않음). WITHDRAWN 은
+   * filterActiveUserIds 가 거른다. 같은 학부모의 자녀가 복수여도 분모 1명(dedup).
    */
-  private async resolveClassRecipientsMap(
-    classIds: string[],
+  private async resolveGuardianRecipientsMap(
+    groupIds: string[],
+    entries: { groupId: string; studentId: string }[],
   ): Promise<Map<string, string[]>> {
     const map = new Map<string, string[]>();
-    classIds.forEach((id) => map.set(id, []));
-    if (classIds.length === 0) return map;
+    groupIds.forEach((id) => map.set(id, []));
+    if (entries.length === 0) return map;
 
-    const registrations = await this.prisma.classRegistration.findMany({
-      where: { classId: { in: classIds }, status: "active" },
-      select: { classId: true, userId: true },
-    });
-    const memberIds = Array.from(new Set(registrations.map((r) => r.userId)));
-    if (memberIds.length === 0) return map;
-
+    const studentIds = Array.from(new Set(entries.map((e) => e.studentId)));
     const parentLinks = await this.prisma.parentChild.findMany({
-      where: { childId: { in: memberIds } },
+      where: { childId: { in: studentIds } },
       select: { parentId: true, childId: true },
     });
     const parentsByChild = new Map<string, string[]>();
@@ -407,26 +411,44 @@ export class CommunityPostsService {
     }
 
     const candidateSet = new Set<string>();
-    for (const reg of registrations) {
-      const parents = parentsByChild.get(reg.userId);
+    for (const entry of entries) {
+      const parents = parentsByChild.get(entry.studentId);
       if (parents?.length) parents.forEach((p) => candidateSet.add(p));
-      else candidateSet.add(reg.userId); // 성인 본인
+      else candidateSet.add(entry.studentId); // 성인 본인
     }
     const activeIds = new Set(
       await this.filterActiveUserIds(Array.from(candidateSet)),
     );
 
-    for (const reg of registrations) {
-      const recipients = new Set(map.get(reg.classId) ?? []);
-      const parents = parentsByChild.get(reg.userId);
+    for (const entry of entries) {
+      const recipients = new Set(map.get(entry.groupId) ?? []);
+      const parents = parentsByChild.get(entry.studentId);
       if (parents?.length) {
         parents.forEach((p) => activeIds.has(p) && recipients.add(p));
-      } else if (activeIds.has(reg.userId)) {
-        recipients.add(reg.userId);
+      } else if (activeIds.has(entry.studentId)) {
+        recipients.add(entry.studentId);
       }
-      map.set(reg.classId, Array.from(recipients));
+      map.set(entry.groupId, Array.from(recipients));
     }
     return map;
+  }
+
+  /**
+   * [Codex R1 M-04] 수업 수신자 일괄 산출 — 단위 수에 비례해 resolver 를 반복하던
+   * N+1(관리 목록에서 단위 30개 ≈ 90쿼리)을 고정 3쿼리로 대체. 규칙은 단건과 동일.
+   */
+  private async resolveClassRecipientsMap(
+    classIds: string[],
+  ): Promise<Map<string, string[]>> {
+    if (classIds.length === 0) return new Map();
+    const registrations = await this.prisma.classRegistration.findMany({
+      where: { classId: { in: classIds }, status: "active" },
+      select: { classId: true, userId: true },
+    });
+    return this.resolveGuardianRecipientsMap(
+      classIds,
+      registrations.map((r) => ({ groupId: r.classId, studentId: r.userId })),
+    );
   }
 
   /** [Codex R1 M-04] 대회 수신자 일괄 산출 — billingMode 분기 규칙은 단건과 동일 */
@@ -476,6 +498,52 @@ export class CommunityPostsService {
       map.set(reg.tournamentId, Array.from(recipients));
     }
     return map;
+  }
+
+  /**
+   * [Phase 2] 팀 공지 읽음 분모 — **선수 멤버의 학부모** (훈련 축과 동일 치환 규칙 공용).
+   *
+   * [2026-08-21 사용자 확정] 관리진(roleInTeam HEAD_COACH/COACH/MANAGER)과 팀 소유
+   * 감독(Team.coachId)은 공지를 "내는" 쪽이라 전달 확인 대상이 아니고, 자녀(선수)
+   * 계정은 CHILD/TEEN 로그인 폐기로 읽을 수 없어 분모에 넣으면 영구 미읽음으로
+   * 부풀므로 학부모로만 치환한다(두 자녀 같은 팀 학부모 = 분모 1명·읽음 1회).
+   * 알림 발송 풀(notifyTeamAudience)은 그대로 — 읽음 통계·미읽음 명단·재알림만 이 기준.
+   */
+  private async resolveTeamRecipientsMap(
+    teamIds: string[],
+  ): Promise<Map<string, string[]>> {
+    if (teamIds.length === 0) return new Map();
+
+    const [members, teams] = await Promise.all([
+      this.prisma.teamMember.findMany({
+        where: {
+          teamId: { in: teamIds },
+          approvalStatus: "approved",
+          leftAt: null,
+          // 관리진 제외 — roleInTeam null(레거시)은 선수로 취급 (notIn 은 null 을 걸러
+          // 선수 행이 소실되므로 OR 로 명시)
+          OR: [
+            { roleInTeam: null },
+            { roleInTeam: { notIn: ["HEAD_COACH", "COACH", "MANAGER"] } },
+          ],
+          user: { status: { not: "WITHDRAWN" } },
+        },
+        select: { teamId: true, userId: true },
+      }),
+      this.prisma.team.findMany({
+        where: { id: { in: teamIds } },
+        select: { id: true, coachId: true },
+      }),
+    ]);
+    // 팀 소유 감독이 멤버 행으로도 등록된 경우 대비 — 감독 본인 제외
+    const coachIdByTeam = new Map(teams.map((t) => [t.id, t.coachId]));
+    const players = members.filter(
+      (m) => m.userId !== coachIdByTeam.get(m.teamId),
+    );
+    return this.resolveGuardianRecipientsMap(
+      teamIds,
+      players.map((m) => ({ groupId: m.teamId, studentId: m.userId })),
+    );
   }
 
   // ==================== 작성 ====================
@@ -710,40 +778,68 @@ export class CommunityPostsService {
     }));
   }
 
-  /** 감독·코치 통합 공지함 — 관할 수업+대회 공지 (읽음 N/M 포함) */
+  /** 감독·코치 통합 공지함 — 관할 팀+수업+대회 공지 (읽음 N/M 포함 · Phase 2 팀 축 편입) */
   async getManagedPosts(
     requester: CommunityActor,
-    axis?: "class" | "tournament",
+    axis?: "team" | "class" | "tournament" | "unit",
     limit = 30,
+    offset = 0,
+    status?: "ongoing" | "expired",
   ) {
+    // [Codex P2-R1-M01] 'unit'(=class+tournament) 은 서버 필터 — 클라이언트 제외 방식은
+    //   팀 공지가 limit 상위를 차지하면 훈련·대회 공지가 잠식된다.
+    const includeAxis = (a: "team" | "class" | "tournament") =>
+      axis === undefined || axis === a || (axis === "unit" && a !== "team");
     const or: Prisma.TeamPostWhereInput[] = [];
     if (isNoticeSystemRole(requester.userType)) {
       // [Codex R1 H-06] 시스템 역할 전면 통과 — 개별 canManage 와 동일하게
       // 통합 목록도 전역(모든 단위 공지)으로 일치시킨다.
-      if (axis !== "tournament") or.push({ targetClassId: { not: null } });
-      if (axis !== "class") or.push({ targetTournamentId: { not: null } });
+      if (includeAxis("team")) or.push({ teamId: { not: null } });
+      if (includeAxis("class")) or.push({ targetClassId: { not: null } });
+      if (includeAxis("tournament")) {
+        or.push({ targetTournamentId: { not: null } });
+      }
     } else {
       const scope = await resolveManagedContentScope(
         this.prisma,
         requester.id,
         requester.userType,
       );
-      if (axis !== "tournament" && scope.classIds.length > 0) {
+      if (includeAxis("team") && scope.teamIds.length > 0) {
+        or.push({ teamId: { in: scope.teamIds } });
+      }
+      if (includeAxis("class") && scope.classIds.length > 0) {
         or.push({ targetClassId: { in: scope.classIds } });
       }
-      if (axis !== "class" && scope.tournamentIds.length > 0) {
+      if (includeAxis("tournament") && scope.tournamentIds.length > 0) {
         or.push({ targetTournamentId: { in: scope.tournamentIds } });
       }
     }
-    if (or.length === 0) return [];
+    if (or.length === 0) return { data: [], total: 0 };
 
     const now = new Date();
+    const managedWhere: Prisma.TeamPostWhereInput = {
+      isActive: true,
+      postType: "announcement",
+      OR: or,
+      // 상태 필터 — 만료 구분(서버 where: 클라 필터는 로드된 페이지에만 적용돼 부정확).
+      //   ongoing = 미만료(예약 포함) · expired = 종료일 경과. 생략 시 전체.
+      ...(status === "ongoing" && {
+        AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gte: now } }] }],
+      }),
+      ...(status === "expired" && { expiresAt: { lt: now } }),
+    };
+    const total = await this.prisma.teamPost.count({ where: managedWhere });
     const posts = await this.prisma.teamPost.findMany({
-      where: { isActive: true, postType: "announcement", OR: or },
-      orderBy: [{ isPinned: "desc" }, { createdAt: "desc" }],
+      where: managedWhere,
+      // [Codex P2-R3 M01] offset 페이지라 createdAt 동률 시 순서가 비결정 —
+      //   id desc 3차 키로 안정화해 페이지 경계 중복·누락을 막는다 (feed 동일)
+      orderBy: [{ isPinned: "desc" }, { createdAt: "desc" }, { id: "desc" }],
       take: Math.min(Math.max(limit, 1), 100),
+      skip: Math.max(offset, 0),
       include: {
         author: { select: AUTHOR_SELECT },
+        team: { select: { id: true, name: true } },
         targetClass: { select: { id: true, className: true } },
         targetTournament: { select: { id: true, name: true } },
         attachments: { orderBy: { displayOrder: "asc" } },
@@ -760,16 +856,24 @@ export class CommunityPostsService {
         posts.map((p) => p.targetTournamentId).filter(Boolean) as string[],
       ),
     );
-    const [classRecipients, tournamentRecipients] = await Promise.all([
-      this.resolveClassRecipientsMap(classIds),
-      this.resolveTournamentRecipientsMap(tournamentIds),
-    ]);
+    const postTeamIds = Array.from(
+      new Set(posts.map((p) => p.teamId).filter(Boolean) as string[]),
+    );
+    const [classRecipients, tournamentRecipients, teamRecipients] =
+      await Promise.all([
+        this.resolveClassRecipientsMap(classIds),
+        this.resolveTournamentRecipientsMap(tournamentIds),
+        this.resolveTeamRecipientsMap(postTeamIds),
+      ]);
     const recipientMap = new Map<string, string[]>();
     for (const [id, list] of classRecipients) {
       recipientMap.set(`class:${id}`, list);
     }
     for (const [id, list] of tournamentRecipients) {
       recipientMap.set(`tournament:${id}`, list);
+    }
+    for (const [id, list] of teamRecipients) {
+      recipientMap.set(`team:${id}`, list);
     }
 
     const reads = await this.prisma.teamPostRead.findMany({
@@ -784,23 +888,216 @@ export class CommunityPostsService {
       readsByPost.get(read.postId)!.add(read.userId);
     }
 
-    return posts.map((post) => {
-      const recipientKey = post.targetClassId
-        ? `class:${post.targetClassId}`
-        : `tournament:${post.targetTournamentId}`;
-      const recipients = recipientMap.get(recipientKey) ?? [];
-      const readSet = readsByPost.get(post.id) ?? new Set<string>();
-      const readCount = recipients.filter((id) => readSet.has(id)).length;
+    return {
+      total,
+      data: posts.map((post) => {
+        const recipientKey = post.teamId
+          ? `team:${post.teamId}`
+          : post.targetClassId
+            ? `class:${post.targetClassId}`
+            : `tournament:${post.targetTournamentId}`;
+        const recipients = recipientMap.get(recipientKey) ?? [];
+        const readSet = readsByPost.get(post.id) ?? new Set<string>();
+        const readCount = recipients.filter((id) => readSet.has(id)).length;
 
-      return {
+        return {
+          ...this.mapPost(post, now),
+          commentCount: post._count.comments,
+          targetName:
+            post.team?.name ??
+            post.targetClass?.className ??
+            post.targetTournament?.name ??
+            null,
+          readCount,
+          recipientCount: recipients.length,
+        };
+      }),
+    };
+  }
+
+  /**
+   * [Phase 2 §4.5] 통합 feed — 대시보드 탭 A 단일 소스 (팀+수업+대회 · 게시 중만).
+   * 표시 스코프 = childId 필터(학부모 선택 자녀 — 팀·수업·대회 3축 일관), **열람 권한 =
+   * 전 자녀 합집합**(푸시 딥링크 403/404 금지는 상세 열람 검증이 담당 — v1.2.2).
+   * 감독·코치·오픈클래스 감독은 관할(쓰기 스코프)을 합집합 — 자기 단위 공지도 함께 본다.
+   */
+  async getFeed(
+    requester: CommunityActor,
+    opts: { childId?: string; limit?: number; offset?: number } = {},
+  ) {
+    // [Codex P2-R1-M01] offset + total — limit 상한(50)에 갇혀 51번째 이후가
+    //   영구 미노출되지 않도록 페이지 계약을 제공한다.
+    const limit = Math.min(Math.max(opts.limit ?? 5, 1), 50);
+    const offset = Math.max(opts.offset ?? 0, 0);
+    const now = new Date();
+    const or: Prisma.TeamPostWhereInput[] = [];
+    // 단위별 "이 공지를 보게 만든 참가 자녀 이름" — 학부모 목록의 대상 칩용.
+    //   자녀 등록/신청으로 매칭된 항목에만 채워진다 (관할·본인 열람은 빈 배열).
+    const classChildNames = new Map<string, string[]>();
+    const tournamentChildNames = new Map<string, string[]>();
+
+    if (isNoticeSystemRole(requester.userType)) {
+      or.push(
+        { teamId: { not: null } },
+        { targetClassId: { not: null } },
+        { targetTournamentId: { not: null } },
+      );
+    } else {
+      // 팀 축 — 열람 팀 (resolveViewerTeamIds 가 childId 표시 필터 지원)
+      const viewerTeamIds = await resolveViewerTeamIds(
+        this.prisma,
+        requester.id,
+        requester.userType,
+        opts.childId ? { childId: opts.childId } : undefined,
+      );
+      // 수업 축 — 본인+자녀 등록. childId 지정 시 내 자녀인지 교집합 검증(타인 자녀 IDOR 차단)
+      const childLinks = await this.prisma.parentChild.findMany({
+        where: { parentId: requester.id },
+        select: {
+          childId: true,
+          child: { select: { firstName: true, lastName: true } },
+        },
+      });
+      const childNameById = new Map(
+        childLinks.map((l) => [
+          l.childId,
+          `${l.child?.lastName ?? ""}${l.child?.firstName ?? ""}`.trim(),
+        ]),
+      );
+      let memberIds = [requester.id, ...childLinks.map((l) => l.childId)];
+      if (opts.childId) {
+        memberIds = memberIds.includes(opts.childId) ? [opts.childId] : [];
+      }
+      const classRegs =
+        memberIds.length > 0
+          ? await this.prisma.classRegistration.findMany({
+              where: { status: "active", userId: { in: memberIds } },
+              select: { classId: true, userId: true },
+            })
+          : [];
+      for (const reg of classRegs) {
+        const name = childNameById.get(reg.userId);
+        if (!name) continue; // 본인 등록(성인) 등 자녀 아님
+        const names = classChildNames.get(reg.classId) ?? [];
+        if (!names.includes(name)) names.push(name);
+        classChildNames.set(reg.classId, names);
+      }
+      // 대회 축 — 신청 완료 (PENDING 이중 의미: PREPAID=PAID만 · POSTPAID=취소/환불 제외)
+      //   [Codex P2-R1-H05] childId 표시 필터는 대회 축에도 적용 —
+      //   TournamentRegistration.childId 로 선택 자녀의 신청만 남긴다
+      //   (userId=requester 조건과 결합되어 타인 자녀 지정은 자연히 0건).
+      const tournamentRegs =
+        await this.prisma.tournamentRegistration.findMany({
+          where: {
+            userId: requester.id,
+            ...(opts.childId ? { childId: opts.childId } : {}),
+            cancelledAt: null,
+            paymentStatus: { notIn: ["CANCELLED", "REFUNDED"] },
+          },
+          select: {
+            tournamentId: true,
+            childId: true,
+            paymentStatus: true,
+            tournament: { select: { billingMode: true } },
+          },
+        });
+      const eligibleTournamentRegs = tournamentRegs.filter((r) =>
+        r.tournament.billingMode === "PREPAID"
+          ? r.paymentStatus === "PAID"
+          : true,
+      );
+      const eligibleTournamentIds = eligibleTournamentRegs.map(
+        (r) => r.tournamentId,
+      );
+      for (const reg of eligibleTournamentRegs) {
+        const name = reg.childId ? childNameById.get(reg.childId) : undefined;
+        if (!name) continue;
+        const names = tournamentChildNames.get(reg.tournamentId) ?? [];
+        if (!names.includes(name)) names.push(name);
+        tournamentChildNames.set(reg.tournamentId, names);
+      }
+      // 관할 합집합 — 학부모는 빈 집합이라 무영향
+      const managed = await resolveManagedContentScope(
+        this.prisma,
+        requester.id,
+        requester.userType,
+      );
+      const teamSet = Array.from(
+        new Set([...viewerTeamIds, ...managed.teamIds]),
+      );
+      const classSet = Array.from(
+        new Set([...classRegs.map((r) => r.classId), ...managed.classIds]),
+      );
+      const tournamentSet = Array.from(
+        new Set([...eligibleTournamentIds, ...managed.tournamentIds]),
+      );
+      if (teamSet.length > 0) or.push({ teamId: { in: teamSet } });
+      if (classSet.length > 0) {
+        or.push({ targetClassId: { in: classSet } });
+      }
+      if (tournamentSet.length > 0) {
+        or.push({ targetTournamentId: { in: tournamentSet } });
+      }
+    }
+    if (or.length === 0) return { data: [], total: 0 };
+
+    const feedWhere: Prisma.TeamPostWhereInput = {
+      isActive: true,
+      postType: "announcement",
+      OR: or,
+      AND: [
+        { OR: [{ startAt: null }, { startAt: { lte: now } }] },
+        { OR: [{ expiresAt: null }, { expiresAt: { gte: now } }] },
+      ],
+    };
+    const total = await this.prisma.teamPost.count({ where: feedWhere });
+    const posts = await this.prisma.teamPost.findMany({
+      where: feedWhere,
+      // [Codex P2-R3 M01] offset 페이지 안정 정렬 — managed 와 동일 계약
+      orderBy: [{ isPinned: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+      take: limit,
+      skip: offset,
+      include: {
+        author: { select: AUTHOR_SELECT },
+        team: { select: { id: true, name: true } },
+        targetClass: { select: { id: true, className: true } },
+        targetTournament: { select: { id: true, name: true } },
+        attachments: { orderBy: { displayOrder: "asc" } },
+        _count: { select: { comments: true } },
+      },
+    });
+
+    const readSet = new Set(
+      (
+        await this.prisma.teamPostRead.findMany({
+          where: {
+            postId: { in: posts.map((p) => p.id) },
+            userId: requester.id,
+          },
+          select: { postId: true },
+        })
+      ).map((r) => r.postId),
+    );
+
+    return {
+      total,
+      data: posts.map((post) => ({
         ...this.mapPost(post, now),
         commentCount: post._count.comments,
         targetName:
-          post.targetClass?.className ?? post.targetTournament?.name ?? null,
-        readCount,
-        recipientCount: recipients.length,
-      };
-    });
+          post.team?.name ??
+          post.targetClass?.className ??
+          post.targetTournament?.name ??
+          null,
+        // 참가 자녀 이름 — 학부모 목록의 대상 칩 ("어느 자녀 때문에 보이는 공지인지")
+        audienceChildNames: post.targetClassId
+          ? (classChildNames.get(post.targetClassId) ?? [])
+          : post.targetTournamentId
+            ? (tournamentChildNames.get(post.targetTournamentId) ?? [])
+            : [],
+        isReadByMe: readSet.has(post.id),
+      })),
+    };
   }
 
   /** 상세 (+읽음 upsert +1일 1회 조회수) */
@@ -820,6 +1117,7 @@ export class CommunityPostsService {
       where: { id: postId },
       include: {
         author: { select: AUTHOR_SELECT },
+        team: { select: { id: true, name: true } },
         targetClass: { select: { id: true, className: true } },
         targetTournament: { select: { id: true, name: true } },
         attachments: { orderBy: { displayOrder: "asc" } },
@@ -840,6 +1138,15 @@ export class CommunityPostsService {
       create: { postId, userId: requester.id },
       update: { readAt: now },
     });
+    // [Phase 2 §3.2 linkUrl 호환] 팀 공지 상세 열람 = 벨 알림도 읽음 동기화.
+    //   이관 공지는 id 보존이라 기발송 구 경로(`/notice/{id}`) 알림이 남아 있다 —
+    //   기존 팀 공지 상세(markNoticeAsRead)가 하던 동기화의 패리티. 실패는 내부 격리.
+    if (post.teamId) {
+      await this.notificationsService.markNotificationsReadByLinkUrls(
+        requester.id,
+        [`/notice/${postId}`, `/community-notice/${postId}`],
+      );
+    }
 
     const shouldIncrement = await this.viewCounter.tryIncrement({
       entityType: "club_post",
@@ -857,7 +1164,10 @@ export class CommunityPostsService {
       ...this.mapPost(post, now),
       commentCount: post._count.comments,
       targetName:
-        post.targetClass?.className ?? post.targetTournament?.name ?? null,
+        post.team?.name ??
+        post.targetClass?.className ??
+        post.targetTournament?.name ??
+        null,
       comments: post.comments.map((comment) => ({
         id: comment.id,
         content: comment.content,
@@ -1098,9 +1408,21 @@ export class CommunityPostsService {
 
   /**
    * 미읽음자에게 다시 알리기 — 업계 표준(밴드 "읽지 않은 멤버에게 다시 알리기"·Spond 리마인더).
-   * 관할 감독·코치 전용 · 알림 스팸 방지를 위해 게시글당 24시간 1회 쿨다운.
+   * 관할 감독·코치 전용.
+   *
+   * 쿨다운 불변식: **수신자 1인당 24시간 최대 1회** — 알림 이력(notice_unread_reminder)
+   * 기반이라 전체/개별 어떤 조합으로 보내도 유지된다.
+   * - 전체: 게시글 단위 24시간 1회(lastRemindAt claim — 일괄 남발 방지)에 더해,
+   *   24시간 내 개별 알림을 이미 받은 미읽음자는 **건너뛰고 나머지만 발송**
+   *   (개별 건 때문에 전체가 통째로 막히지 않는다 — 2026-08-21 사용자 지적).
+   * - 개별(targetUserId): 미읽음 수신자만 허용 · (대상자,게시글) 24시간 이력 쿨다운 ·
+   *   게시글 lastRemindAt 은 건드리지 않아 전체 재알림 가능 시각에 영향 없음.
    */
-  async remindUnread(requester: CommunityActor, postId: string) {
+  async remindUnread(
+    requester: CommunityActor,
+    postId: string,
+    targetUserId?: string,
+  ) {
     const scope = await this.getPostScope(postId);
     const isManager = await this.canManagePost(requester, scope);
     if (!isManager) {
@@ -1113,8 +1435,58 @@ export class CommunityPostsService {
     }
 
     const now = new Date();
-    // 쿨다운 claim — updateMany 원자 판정 (동시 클릭 2건 중 1건만 통과)
     const cooldownGate = new Date(now.getTime() - REMIND_COOLDOWN_MS);
+    const linkUrl = `/community-notice/${postId}`;
+
+    const recipientIds = await this.resolveRecipients(scope);
+    const reads = await this.prisma.teamPostRead.findMany({
+      where: { postId, userId: { in: recipientIds } },
+      select: { userId: true },
+    });
+    const readSet = new Set(reads.map((r) => r.userId));
+    const unreadIds = recipientIds.filter((id) => !readSet.has(id));
+
+    const post = await this.prisma.teamPost.findUnique({
+      where: { id: postId },
+      select: { title: true, teamId: true, targetClassId: true },
+    });
+    const payload = {
+      notificationType: "notice_unread_reminder",
+      title: post?.teamId
+        ? "팀 공지 확인 요청"
+        : post?.targetClassId
+          ? "훈련 공지 확인 요청"
+          : "대회 공지 확인 요청",
+      message: post?.title ?? "공지를 확인해주세요.",
+      linkUrl,
+    };
+
+    // ── 개별 재알림 ──
+    if (targetUserId) {
+      if (!unreadIds.includes(targetUserId)) {
+        throw new BadRequestException(
+          "미읽음 수신자에게만 알림을 보낼 수 있습니다.",
+        );
+      }
+      const recent = await this.prisma.notification.findFirst({
+        where: {
+          userId: targetUserId,
+          notificationType: "notice_unread_reminder",
+          linkUrl,
+          createdAt: { gte: cooldownGate },
+        },
+        select: { id: true },
+      });
+      if (recent) {
+        throw new BadRequestException(
+          "이미 24시간 내에 알림을 보낸 수신자입니다.",
+        );
+      }
+      await this.notificationsService.notifyUsers([targetUserId], payload);
+      return { reminded: 1, skipped: 0 };
+    }
+
+    // ── 전체 재알림 — 쿨다운 claim (updateMany 원자 판정: 동시 클릭 2건 중 1건만 통과) ──
     const claim = await this.prisma.teamPost.updateMany({
       where: {
         id: postId,
@@ -1127,29 +1499,25 @@ export class CommunityPostsService {
         "재알림은 하루에 한 번만 보낼 수 있습니다.",
       );
     }
-
-    const recipientIds = await this.resolveRecipients(scope);
-    const reads = await this.prisma.teamPostRead.findMany({
-      where: { postId, userId: { in: recipientIds } },
+    if (unreadIds.length === 0) {
+      return { reminded: 0, skipped: 0 };
+    }
+    // 24시간 내 재알림(개별 포함)을 이미 받은 사람은 제외 — 1인당 24시간 1회 불변식
+    const recent = await this.prisma.notification.findMany({
+      where: {
+        userId: { in: unreadIds },
+        notificationType: "notice_unread_reminder",
+        linkUrl,
+        createdAt: { gte: cooldownGate },
+      },
       select: { userId: true },
     });
-    const readSet = new Set(reads.map((r) => r.userId));
-    const unreadIds = recipientIds.filter((id) => !readSet.has(id));
-    if (unreadIds.length === 0) {
-      return { reminded: 0 };
+    const recentSet = new Set(recent.map((r) => r.userId));
+    const targets = unreadIds.filter((id) => !recentSet.has(id));
+    if (targets.length > 0) {
+      await this.notificationsService.notifyUsers(targets, payload);
     }
-
-    const post = await this.prisma.teamPost.findUnique({
-      where: { id: postId },
-      select: { title: true, targetClassId: true },
-    });
-    await this.notificationsService.notifyUsers(unreadIds, {
-      notificationType: "notice_unread_reminder",
-      title: post?.targetClassId ? "훈련 공지 확인 요청" : "대회 공지 확인 요청",
-      message: post?.title ?? "공지를 확인해주세요.",
-      linkUrl: `/community-notice/${postId}`,
-    });
-    return { reminded: unreadIds.length };
+    return { reminded: targets.length, skipped: unreadIds.length - targets.length };
   }
 
   // ==================== 댓글 ====================
@@ -1345,10 +1713,16 @@ export class CommunityPostsService {
       throw new NotFoundException("게시글을 찾을 수 없습니다.");
     }
 
-    const maxOrder = await this.prisma.teamPostAttachment.aggregate({
+    const existing = await this.prisma.teamPostAttachment.aggregate({
       where: { postId },
       _max: { displayOrder: true },
+      _count: true,
     });
+    if (existing._count >= UNIT_NOTICE_IMAGE_MAX_COUNT) {
+      throw new BadRequestException(
+        `이미지는 최대 ${UNIT_NOTICE_IMAGE_MAX_COUNT}장까지 첨부할 수 있습니다.`,
+      );
+    }
     return this.prisma.teamPostAttachment.create({
       data: {
         postId,
@@ -1356,7 +1730,7 @@ export class CommunityPostsService {
         fileName: dto.fileName,
         fileType: dto.fileType,
         fileSize: dto.fileSize,
-        displayOrder: (maxOrder._max.displayOrder ?? -1) + 1,
+        displayOrder: (existing._max.displayOrder ?? -1) + 1,
       },
     });
   }
@@ -1457,7 +1831,17 @@ export class CommunityPostsService {
           requester.userType,
         );
 
-    const [classes, tournaments] = await Promise.all([
+    const [teams, classes, tournaments] = await Promise.all([
+      isSystemRole || (scope && scope.teamIds.length > 0)
+        ? this.prisma.team.findMany({
+            where: {
+              ...(scope ? { id: { in: scope.teamIds } } : {}),
+              isActive: true,
+            },
+            select: { id: true, name: true },
+            orderBy: { createdAt: "desc" },
+          })
+        : Promise.resolve([]),
       isSystemRole || (scope && scope.classIds.length > 0)
         ? this.prisma.class.findMany({
             where: {
@@ -1487,6 +1871,7 @@ export class CommunityPostsService {
     ]);
 
     return {
+      teams: teams.map((t) => ({ id: t.id, name: t.name })),
       classes: classes.map((c) => ({
         id: c.id,
         name: c.className,

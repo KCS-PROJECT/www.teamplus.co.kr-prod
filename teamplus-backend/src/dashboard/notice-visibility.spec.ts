@@ -105,6 +105,10 @@ describe("대시보드 최근 공지 가시성 — 실 쿼리 검증", () => {
         (c: { OR?: Array<Record<string, unknown>> }) =>
           Array.isArray(c.OR) && "targetTeamId" in (c.OR[0] ?? {}),
       ),
+      serviceOnly: where.AND.find(
+        (c: Record<string, unknown>) =>
+          !("OR" in c) && "targetTeamId" in c,
+      ),
       publicationKeys: where.AND.flatMap(
         (c: { OR?: Array<Record<string, unknown>> }) =>
           (c.OR ?? []).flatMap((o) => Object.keys(o)),
@@ -112,13 +116,13 @@ describe("대시보드 최근 공지 가시성 — 실 쿼리 검증", () => {
     };
   };
 
-  const expectScopedTo = (scope: unknown, teamIds: string[]) => {
-    expect(scope).toEqual({
-      OR: [
-        { targetTeamId: null },
-        ...(teamIds.length > 0 ? [{ targetTeamId: { in: teamIds } }] : []),
-      ],
-    });
+  /** [Phase 2] 팀 공지는 TeamPost feed 로 이관 — 대시보드 공지는 서비스 전용이어야 한다. */
+  const expectServiceOnly = (parts: {
+    scope: unknown;
+    serviceOnly: unknown;
+  }) => {
+    expect(parts.scope).toBeUndefined(); // 구 팀 스코프 OR 조각 부재
+    expect(parts.serviceOnly).toEqual({ targetTeamId: null });
   };
 
   const run = async (fn: () => Promise<unknown>) => {
@@ -130,7 +134,7 @@ describe("대시보드 최근 공지 가시성 — 실 쿼리 검증", () => {
     }
   };
 
-  it("#12 학부모 대시보드 — 자녀 경유 팀 + 서비스 공지만", async () => {
+  it("#12 학부모 대시보드 — [Phase 2] 서비스 공지 전용", async () => {
     const { prisma, noticeFindMany, modelCache } = createPrismaMock();
     stubViewerTeams(modelCache, prisma, [TEAM_A]);
     const service = new ParentDashboardService(
@@ -140,13 +144,13 @@ describe("대시보드 최근 공지 가시성 — 실 쿼리 검증", () => {
 
     await run(() => service.getParentDashboard("parent-1"));
 
-    const { scope, publicationKeys } = extractScope(noticeFindMany);
-    expectScopedTo(scope, [TEAM_A]);
-    expect(publicationKeys).toContain("startAt");
-    expect(publicationKeys).toContain("expiresAt");
+    const parts = extractScope(noticeFindMany);
+    expectServiceOnly(parts);
+    expect(parts.publicationKeys).toContain("startAt");
+    expect(parts.publicationKeys).toContain("expiresAt");
   });
 
-  it("#12-b 학부모 대시보드 — 타 팀은 스코프에 없다", async () => {
+  it("#12-b 학부모 대시보드 — [Phase 2] 어떤 팀 id 도 쿼리에 없다", async () => {
     const { prisma, noticeFindMany, modelCache } = createPrismaMock();
     stubViewerTeams(modelCache, prisma, [TEAM_A]);
     const service = new ParentDashboardService(
@@ -156,11 +160,12 @@ describe("대시보드 최근 공지 가시성 — 실 쿼리 검증", () => {
 
     await run(() => service.getParentDashboard("parent-1"));
 
-    const { scope } = extractScope(noticeFindMany);
-    expect(JSON.stringify(scope)).not.toContain(TEAM_B);
+    const { where } = extractScope(noticeFindMany);
+    expect(JSON.stringify(where)).not.toContain(TEAM_A);
+    expect(JSON.stringify(where)).not.toContain(TEAM_B);
   });
 
-  it("#14 코치 대시보드 — 자기 팀 + 서비스 공지만", async () => {
+  it("#14 코치 대시보드 — [Phase 2] 서비스 공지 전용", async () => {
     const { prisma, noticeFindMany, modelCache } = createPrismaMock();
     stubViewerTeams(modelCache, prisma, [TEAM_A]);
     const service = new CoachDashboardService(
@@ -170,13 +175,13 @@ describe("대시보드 최근 공지 가시성 — 실 쿼리 검증", () => {
 
     await run(() => service.getCoachDashboard("coach-1"));
 
-    const { scope, publicationKeys } = extractScope(noticeFindMany);
-    expectScopedTo(scope, [TEAM_A]);
-    expect(publicationKeys).toContain("expiresAt");
-    expect(JSON.stringify(scope)).not.toContain(TEAM_B);
+    const parts = extractScope(noticeFindMany);
+    expectServiceOnly(parts);
+    expect(parts.publicationKeys).toContain("expiresAt");
+    expect(JSON.stringify(parts.where)).not.toContain(TEAM_A);
   });
 
-  it("#15 감독 대시보드 — 자기 팀 + 서비스 공지만", async () => {
+  it("#15 감독 대시보드 — [Phase 2] 서비스 공지 전용", async () => {
     const { prisma, noticeFindMany, modelCache } = createPrismaMock();
     stubViewerTeams(modelCache, prisma, [TEAM_A]);
     const service = new DirectorDashboardService(
@@ -186,13 +191,13 @@ describe("대시보드 최근 공지 가시성 — 실 쿼리 검증", () => {
 
     await run(() => service.getDirectorDashboard("director-1"));
 
-    const { scope, publicationKeys } = extractScope(noticeFindMany);
-    expectScopedTo(scope, [TEAM_A]);
-    expect(publicationKeys).toContain("expiresAt");
-    expect(JSON.stringify(scope)).not.toContain(TEAM_B);
+    const parts = extractScope(noticeFindMany);
+    expectServiceOnly(parts);
+    expect(parts.publicationKeys).toContain("expiresAt");
+    expect(JSON.stringify(parts.where)).not.toContain(TEAM_A);
   });
 
-  it("#13 아동 대시보드 멤버십 없음 분기 — 서비스 공지만", async () => {
+  it("#13 아동 대시보드 멤버십 없음 분기 — [Phase 2] 서비스 공지 전용", async () => {
     const { prisma, noticeFindMany, modelCache } = createPrismaMock();
     stubViewerTeams(modelCache, prisma, []); // 열람 팀 0 = 승인 대기 아동
     const service = new ChildDashboardService(
@@ -202,11 +207,10 @@ describe("대시보드 최근 공지 가시성 — 실 쿼리 검증", () => {
 
     await run(() => service.getChildHome("child-1", "CHILD"));
 
-    const { scope } = extractScope(noticeFindMany);
-    expectScopedTo(scope, []);
+    expectServiceOnly(extractScope(noticeFindMany));
   });
 
-  it("#16 아동 대시보드 정상 분기 — 자기 팀 + 서비스 공지만", async () => {
+  it("#16 아동 대시보드 정상 분기 — [Phase 2] 서비스 공지 전용", async () => {
     const { prisma, noticeFindMany, modelCache } = createPrismaMock();
     stubViewerTeams(modelCache, prisma, [TEAM_A]);
     // 멤버십 있음 → 정상 분기(:204)로 진입
@@ -223,10 +227,10 @@ describe("대시보드 최근 공지 가시성 — 실 쿼리 검증", () => {
 
     await run(() => service.getChildHome("child-1", "CHILD"));
 
-    const { scope, publicationKeys } = extractScope(noticeFindMany);
-    expectScopedTo(scope, [TEAM_A]);
-    expect(publicationKeys).toContain("expiresAt");
-    expect(JSON.stringify(scope)).not.toContain(TEAM_B);
+    const parts = extractScope(noticeFindMany);
+    expectServiceOnly(parts);
+    expect(parts.publicationKeys).toContain("expiresAt");
+    expect(JSON.stringify(parts.where)).not.toContain(TEAM_A);
   });
 
   it("캐시 적중 시 아동 대시보드는 Prisma 를 전혀 호출하지 않는다 (Round 10)", async () => {

@@ -6,6 +6,8 @@
 let lockCount = 0;
 let originalOverflow: string | null = null;
 let originalPaddingRight: string | null = null;
+let originalHtmlOverscroll: string | null = null;
+let originalBodyOverscroll: string | null = null;
 
 /**
  * 현재 스크롤바 너비를 계산합니다.
@@ -33,6 +35,15 @@ export function lockBodyScroll() {
     if (scrollbarWidth > 0) {
       document.body.style.paddingRight = `${scrollbarWidth}px`;
     }
+
+    // 모바일 브라우저(Chrome) 당겨서-새로고침 차단 — 루트 스크롤러에만 유효한
+    // 속성이라 오버레이가 아닌 html/body 에 걸어야 한다. 잠금 중 body 가
+    // overflow:hidden 이 되면 아래 드래그가 루트 overscroll 로 해석되어
+    // 배경 페이지 새로고침이 발동하던 문제의 차단 지점.
+    originalHtmlOverscroll = document.documentElement.style.overscrollBehaviorY;
+    originalBodyOverscroll = document.body.style.overscrollBehaviorY;
+    document.documentElement.style.overscrollBehaviorY = 'none';
+    document.body.style.overscrollBehaviorY = 'none';
   }
 
   lockCount += 1;
@@ -51,7 +62,12 @@ export function unlockBodyScroll() {
   if (lockCount === 0) {
     document.body.style.overflow = originalOverflow || '';
     document.body.style.paddingRight = originalPaddingRight || '';
+    document.documentElement.style.overscrollBehaviorY =
+      originalHtmlOverscroll || '';
+    document.body.style.overscrollBehaviorY = originalBodyOverscroll || '';
     originalOverflow = null;
     originalPaddingRight = null;
+    originalHtmlOverscroll = null;
+    originalBodyOverscroll = null;
   }
 }

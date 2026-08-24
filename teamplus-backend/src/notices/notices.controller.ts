@@ -209,7 +209,11 @@ export class NoticesController {
     @Request() req: AuthenticatedRequest,
     @Param("noticeId") noticeId: string,
   ) {
-    return this.noticesService.markNoticeAsRead(noticeId, req.user.id);
+    return this.noticesService.markNoticeAsRead(
+      noticeId,
+      req.user.id,
+      req.user.userType,
+    );
   }
 
   /**
@@ -325,7 +329,7 @@ export class NoticesController {
   @ApiOperation({
     summary: "공지사항 생성",
     description:
-      "새로운 공지사항을 생성합니다. ADMIN/SYSTEM/OPER 는 전체 공지(targetTeamId=null) 또는 특정 팀 공지 작성 가능. DIRECTOR/COACH 는 본인이 관리하는 팀(소유 팀 또는 승인된 관리 역할) 공지만 작성 가능하며, targetTeamId 키를 생략하면 단일 관리 팀이 자동 주입됩니다. targetTeamId 에 null/빈 문자열을 명시하면 전체 공지 요청으로 간주되어 시스템 관리자만 허용됩니다. ACADEMY_DIRECTOR 는 팀 공지 작성 대상이 아닙니다.",
+      "서비스(전체) 공지를 생성합니다 — 시스템 역할(ADMIN/SYSTEM/OPER) 전용. [Phase 2 봉인] 팀 공지 작성은 커뮤니티 공지 API(/community/posts, teamId 축)로 이관되어 이 엔드포인트의 targetTeamId 지정·팀 스코프 역할(DIRECTOR/COACH) 작성은 400 으로 차단됩니다.",
   })
   @ApiResponse({
     status: 201,

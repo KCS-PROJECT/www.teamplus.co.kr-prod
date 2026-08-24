@@ -29,7 +29,12 @@ export class CreateTeamDto {
   @IsPhoneNumber("KR", { message: "올바른 한국 전화번호를 입력해주세요." })
   phoneNumber?: string;
 
-  /** 지역 (선택, 자유 텍스트). 예: "서울 강남구". 홈 경기장(venueId/homeArena)과 별개의 활동 지역. */
+  /**
+   * 지역 (선택). 표준 라벨 "시/도[ 시군구]"(예: "서울 강남구")은 서비스의
+   * normalizeTeamRegionLabel 이 canonical 정규화하고, 그 외 자유 문구는 trim 원문
+   * 그대로 수용한다 (하이브리드 입력 — 2026-08-21 1안).
+   * 홈 경기장(venueId/homeArena)과 별개의 활동 지역.
+   */
   @IsOptional()
   @IsString()
   @MaxLength(40, { message: "지역은 최대 40자 이내로 입력해 주세요." })

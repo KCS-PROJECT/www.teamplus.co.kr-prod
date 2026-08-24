@@ -1,12 +1,13 @@
 'use client';
 
-// 팀 공지 공용 리스트 뷰 — /team-notices(열람)·/director-notices(관리) 공유 코어.
-//   화면 정체성(열람 vs 관리)은 props 로 분기:
-//     canManage  → 관리 화면 카피(부제목) 전용 — 케밥·시트는 **행별 서버 canManage** 가 단일 기준 (AC 5-1)
-//     canWrite   → 작성 FAB 노출              (작성 권한자)
-//     showReadState → 미확인(읽음) 점 노출     (회원 열람 화면)
-//     mode       → 데이터 계약 (audience=게시 중 공지만 / manage=관리 목록 API·미게시/예약/만료 포함)
-//   카드 클릭 → /notice/[id] (양쪽 동일). 서비스 공지(/notices, (notice)/list)와는 무관.
+// 팀 공지 공용 리스트 뷰 — /team-notices(열람) 코어.
+//   [Phase 2] audience 소스를 TeamPost 통합 feed(/community/posts/feed)로 전환 —
+//   팀+훈련+대회 공지를 출처 칩과 함께 보여주고, 카드 클릭 → /community-notice/[id].
+//   (기존 SystemNotice scope=team 은 서버가 빈 목록을 반환 — 이관 완료)
+//   manage 모드(구 /director-notices 탭 A)는 UnitNoticeManagedList(axis='team')로 대체되어
+//   호출처가 없다 — 이관 원본 열람용 레거시 경로로만 잔존 (정리는 Phase 3).
+//     canWrite   → 작성 FAB 노출 (작성 권한자)
+//     showReadState → 미확인(읽음) 점 노출 (회원 열람 화면)
 
 import { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@/components/ui/Icon';
@@ -18,6 +19,10 @@ import { useNativeUI } from '@/hooks/useNativeUI';
 import { useToast } from '@/components/ui/Toast';
 import { MESSAGES } from '@/lib/messages';
 import { apiRequest } from '@/services/api-client';
+import {
+  fetchUnitNoticeFeed,
+  type UnitNoticePost,
+} from '@/services/community-notice.service';
 import { useRefreshSubscription, REFRESH_KEYS } from '@/lib/refresh-bus';
 import { ActionSheet } from '@/components/director/ActionSheet';
 import { ConfirmSheet } from '@/components/shared/ConfirmSheet';
@@ -27,6 +32,24 @@ import { FloatingActionButton } from '@/components/ui/FloatingActionButton';
 function stripHtml(html?: string): string {
   if (!html) return '';
   return html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+}
+
+/** [Phase 2] feed 출처 축 라벨 — 팀/훈련/대회 (targetName 부재 시 폴백) */
+function axisChipLabel(axis: 'team' | 'class' | 'tournament'): string {
+  if (axis === 'team') return MESSAGES.unitNotice.teamChip;
+  if (axis === 'class') return MESSAGES.unitNotice.classChip;
+  return MESSAGES.unitNotice.tournamentChip;
+}
+
+/**
+ * 대상 칩 라벨 — 행 문법: 팀 `[팀이름][전체]` · 훈련/대회 `[훈련|대회 배지][단위 이름][자녀 이름]`.
+ * 팀은 전원 수신이라 "전체", 훈련/대회는 **이 공지를 보게 만든 참가 자녀 이름**을 보여
+ * 어느 자녀의 공지인지 알 수 있게 한다 (자녀 매칭 없으면 — 감독 관할 열람 등 — 생략).
+ */
+function audienceChipLabel(notice: NoticeItem): string | null {
+  if (notice.axis === 'team') return MESSAGES.unitNotice.audienceAll;
+  const names = notice.audienceChildNames ?? [];
+  return names.length > 0 ? names.join('·') : null;
 }
 
 // ─── Types ──────────────────────────────────────────
@@ -43,6 +66,11 @@ interface NoticeItem {
   expiresAt?: string | null;
   /** [Phase 5 · AC 5-1] 케밥(수정/삭제) 노출 단일 기준 — 서버가 공지별 계산. */
   canManage?: boolean;
+  /** [Phase 2] feed 항목 — 출처 축(팀/훈련/대회)과 대상 이름. 있으면 상세는 /community-notice. */
+  axis?: 'team' | 'class' | 'tournament';
+  targetName?: string | null;
+  /** 이 공지를 보게 만든 참가 자녀 이름 — 대상 칩 ("어느 자녀의 공지인지") */
+  audienceChildNames?: string[];
 }
 
 interface BackendNotice {
@@ -66,6 +94,23 @@ interface BackendNoticeListResponse {
     page: number;
     limit: number;
     totalPages: number;
+  };
+}
+
+/** [Phase 2] feed(UnitNoticePost) → 카드 아이템 — 출처 축·읽음 포함 */
+function feedToNoticeItem(p: UnitNoticePost): NoticeItem {
+  return {
+    id: p.id,
+    title: p.title,
+    content: p.content ?? '',
+    createdAt: p.createdAt,
+    isPinned: p.isPinned,
+    isRead: p.isReadByMe,
+    startAt: p.startAt,
+    expiresAt: p.expiresAt,
+    axis: p.teamId ? 'team' : p.targetClassId ? 'class' : 'tournament',
+    targetName: p.targetName ?? null,
+    audienceChildNames: p.audienceChildNames ?? [],
   };
 }
 
@@ -184,20 +229,42 @@ export function TeamNoticeListView({
       if (append) setIsLoadingMore(true);
       else setIsLoading(true);
       try {
+        // [Phase 2] audience = TeamPost 통합 feed (팀+훈련+대회 · 게시 중만).
+        //   [P2-R1-M01] offset 페이지네이션 + total 계약 — 50건 상한 잘림 없음.
+        if (mode === 'audience') {
+          const feedRes = await fetchUnitNoticeFeed({
+            limit: PAGE_SIZE,
+            offset: (pageNum - 1) * PAGE_SIZE,
+          });
+          if (feedRes.success && feedRes.data) {
+            const mapped = feedRes.data.data.map(feedToNoticeItem);
+            setNotices((prev) => (append ? [...prev, ...mapped] : mapped));
+            setTotalCount(feedRes.data.total);
+            setHasMore(pageNum * PAGE_SIZE < feedRes.data.total);
+            setPage(pageNum);
+          } else {
+            if (!append) {
+              setNotices([]);
+              setHasMore(false);
+              setTotalCount(0);
+              setPage(1);
+            }
+            if (feedRes.error?.message) toast.error(feedRes.error.message);
+            else if (append) toast.error(MESSAGES.notice.list.loadMoreError);
+          }
+          return;
+        }
+
+        // manage = 관리 목록 API — 이관 원본(SystemNotice) 열람용 레거시 (호출처 0 · Phase 3 정리).
         const params: Record<string, string> = {
           page: String(pageNum),
           limit: String(PAGE_SIZE),
-          // 팀 공지 화면은 본인 소속/관리 팀 공지만.
           scope: 'team',
         };
-        // audience = 게시 중 공지만 (게시기간·활성은 서버 predicate 가 강제).
-        // manage   = 관리 목록 API — 서버가 **권한으로** 관리 팀을 판정해 미게시·예약·만료까지
-        //            반환한다. query 로 우회 스위치를 켜는 구조가 아니다 (AC 공통 2).
-        if (mode === 'audience') params.isActive = 'true';
 
         const res = await apiRequest<BackendNoticeListResponse | BackendNotice[]>({
           method: 'GET',
-          url: mode === 'manage' ? '/notices/admin/list' : '/notices',
+          url: '/notices/admin/list',
           params,
         });
 
@@ -249,6 +316,10 @@ export function TeamNoticeListView({
 
   // 공지 작성/수정 후 즉시 목록 갱신 (notices-create 에서 emitRefresh(NOTICES))
   useRefreshSubscription(REFRESH_KEYS.NOTICES, () => {
+    void fetchPage(1, false);
+  });
+  // [Phase 2] 새 작성 경로(community-notice/create)의 저장 후 갱신
+  useRefreshSubscription(REFRESH_KEYS.UNIT_NOTICES, () => {
     void fetchPage(1, false);
   });
 
@@ -409,7 +480,13 @@ export function TeamNoticeListView({
                 {canWrite && (
                   <button
                     type="button"
-                    onClick={() => navigate('/notices-create')}
+                    onClick={() =>
+                      navigate(
+                        mode === 'audience'
+                          ? '/community-notice/create'
+                          : '/notices-create',
+                      )
+                    }
                     className="mt-2 inline-flex items-center gap-1.5 rounded-w-md bg-it-blue-500 px-4 py-2 text-card-meta font-bold text-white transition-colors motion-reduce:transition-none hover:bg-it-blue-600 active:brightness-95"
                   >
                     <Icon name="edit" className="text-card-emphasis" aria-hidden="true" />
@@ -423,7 +500,11 @@ export function TeamNoticeListView({
 
         {/* FAB — 우하단 플로팅 작성 버튼 (작성 권한자만) */}
         {canWrite && notices.length > 0 && (
-          <FloatingActionButton href="/notices-create" icon="add" label="공지 작성하기" />
+          <FloatingActionButton
+          href={mode === 'audience' ? '/community-notice/create' : '/notices-create'}
+          icon="add"
+          label={MESSAGES.unitNotice.write}
+        />
         )}
 
         {/* 케밥(⋮) 액션 시트 + 삭제 확인 — [P5-R1-01] 화면 prop 이 아닌 **행별 서버 canManage** 로만
@@ -577,7 +658,13 @@ export function TeamNoticeListView({
               {canWrite && (
                 <button
                   type="button"
-                  onClick={() => navigate('/notices-create')}
+                  onClick={() =>
+                    navigate(
+                      mode === 'audience'
+                        ? '/community-notice/create'
+                        : '/notices-create',
+                    )
+                  }
                   className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-ice-500 px-4 py-2 text-card-meta font-bold text-white transition-colors motion-reduce:transition-none hover:bg-ice-600 active:brightness-95"
                 >
                   <Icon name="edit" className="text-card-emphasis" aria-hidden="true" />
@@ -591,7 +678,11 @@ export function TeamNoticeListView({
 
       {/* FAB — 우하단 플로팅 작성 버튼 (작성 권한자만) */}
       {canWrite && notices.length > 0 && (
-        <FloatingActionButton href="/notices-create" icon="add" label="공지 작성하기" />
+        <FloatingActionButton
+          href={mode === 'audience' ? '/community-notice/create' : '/notices-create'}
+          icon="add"
+          label={MESSAGES.unitNotice.write}
+        />
       )}
 
       {/* 케밥(⋮) 액션 시트 + 삭제 확인 — [P5-R1-01] 행별 서버 canManage 로만 열림 (위 iceTheme 분기 주석 참조) */}
@@ -692,14 +783,47 @@ function NoticeCard({
   if (iceTheme) {
     return (
       <NavLink
-        href={`/notice/${notice.id}`}
+        href={
+        notice.axis ? `/community-notice/${notice.id}` : `/notice/${notice.id}`
+      }
         className="block py-[14px] active:bg-it-fill dark:active:bg-it-blue-900/30 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-it-blue-500/40"
         aria-label={`${notice.isPinned ? '고정 공지 · ' : ''}${notice.title}${unread ? ' · 미확인' : ''}`}
       >
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
-            {/* 고정/상태 배지 + 날짜 */}
+            {/* [Phase 2] 출처 — 팀 [팀이름][전체] · 훈련/대회 축 텍스트 라벨+[단위 이름][자녀 이름]
+                (축은 색 텍스트 — 칩 배경이 경계라 구분점 불필요, 플랫 톤 유지) */}
             <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+              {notice.axis && notice.axis !== 'team' && (
+                <span
+                  className={`text-[12px] font-bold ${
+                    notice.axis === 'class'
+                      ? 'text-emerald-700 dark:text-emerald-400'
+                      : 'text-red-700 dark:text-red-400'
+                  }`}
+                >
+                  {axisChipLabel(notice.axis)}
+                </span>
+              )}
+              {notice.axis && (
+                <span className="inline-flex max-w-[55%] items-center gap-1 rounded-w-pill bg-it-blue-50 dark:bg-it-blue-900/50 px-2 py-0.5 text-[12px] font-bold text-it-blue-600 dark:text-it-blue-200">
+                  {notice.axis === 'team' && (
+                    <Icon
+                      name="groups"
+                      className="text-[12px] shrink-0"
+                      aria-hidden="true"
+                    />
+                  )}
+                  <span className="truncate">
+                    {notice.targetName ?? axisChipLabel(notice.axis)}
+                  </span>
+                </span>
+              )}
+              {notice.axis && audienceChipLabel(notice) && (
+                <span className="inline-flex max-w-[40%] items-center rounded-w-pill bg-it-fill dark:bg-it-blue-900/30 px-2 py-0.5 text-[12px] font-bold text-it-ink-600 dark:text-it-ink-300">
+                  <span className="truncate">{audienceChipLabel(notice)}</span>
+                </span>
+              )}
               {notice.isPinned && (
                 <span className="inline-flex items-center gap-0.5 rounded-w-pill bg-it-red-500/10 px-2 py-0.5 text-[12px] font-bold text-it-red-500 dark:text-it-red-300">
                   <Icon name="push_pin" className="text-[12px]" aria-hidden="true" />
@@ -759,14 +883,46 @@ function NoticeCard({
 
   return (
     <NavLink
-      href={`/notice/${notice.id}`}
+      href={
+        notice.axis ? `/community-notice/${notice.id}` : `/notice/${notice.id}`
+      }
       className="block bg-wsurface dark:bg-rink-800 rounded-w-md p-4 shadow-sh-1 border border-wline-2 dark:border-rink-700 active:bg-wbg dark:active:bg-rink-700 transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
       aria-label={`${notice.isPinned ? '고정 공지 · ' : ''}${notice.title}${unread ? ' · 미확인' : ''}`}
     >
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          {/* 고정/상태 배지 + 날짜 */}
+          {/* [Phase 2] 출처 — 팀 [팀이름][전체] · 훈련/대회 축 텍스트 라벨+[단위 이름][자녀 이름] */}
           <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+            {notice.axis && notice.axis !== 'team' && (
+              <span
+                className={`text-card-meta font-bold ${
+                  notice.axis === 'class'
+                    ? 'text-emerald-700 dark:text-emerald-400'
+                    : 'text-red-700 dark:text-red-400'
+                }`}
+              >
+                {axisChipLabel(notice.axis)}
+              </span>
+            )}
+            {notice.axis && (
+              <span className="inline-flex max-w-[55%] items-center gap-1 rounded-w-pill bg-ice-50 dark:bg-ice-500/20 px-2 py-0.5 text-card-meta font-bold text-ice-600 dark:text-ice-300">
+                {notice.axis === 'team' && (
+                  <Icon
+                    name="groups"
+                    className="text-card-meta shrink-0"
+                    aria-hidden="true"
+                  />
+                )}
+                <span className="truncate">
+                  {notice.targetName ?? axisChipLabel(notice.axis)}
+                </span>
+              </span>
+            )}
+            {notice.axis && audienceChipLabel(notice) && (
+              <span className="inline-flex max-w-[40%] items-center rounded-w-pill bg-wbg dark:bg-rink-700 px-2 py-0.5 text-card-meta font-bold text-wtext-2 dark:text-wtext-3">
+                <span className="truncate">{audienceChipLabel(notice)}</span>
+              </span>
+            )}
             {notice.isPinned && (
               <span className="inline-flex items-center gap-0.5 rounded-w-pill bg-flame-500/10 px-2 py-0.5 text-card-meta font-bold text-flame-500">
                 <Icon name="push_pin" className="text-card-meta" aria-hidden="true" />

@@ -3,7 +3,8 @@
 /**
  * RecentNoticesSection — 대시보드 공지 영역 (공지사항 / 팀공지 2탭)
  *  - 탭 A "공지사항"(scope=service, 전역 서비스 공지) / 탭 B "팀공지"(scope=team, 소속·자녀 경유 팀 공지)
- *  - GET /notices?scope=<service|team>&limit=5 — 활성 탭 lazy 로드 + 탭별 캐시(중복 요청 방지)
+ *  - service 탭: GET /notices?scope=service&limit=5 (서비스 공지)
+ *  - team 탭  : [Phase 2] GET /community/posts/feed — TeamPost 통합(팀+훈련+대회 · 출처 칩)
  *  - 학부모 자녀 변경 시 팀공지 탭 자동 전환 + 해당 자녀 팀 기준 재조회(초기 establishment/자녀0명 제외)
  *  - showTeamTab=false 면 "팀공지" 탭 자체를 숨김(열람 가능한 팀 0개 — 자녀 0명/선택 자녀 무소속)
  *  - 핀고정 우선, 최신순 정렬, 상위 5건 미리보기
@@ -21,6 +22,10 @@ import {
   useAnimatedTabIndicator,
 } from '@/components/ui/AnimatedTabIndicator';
 import { api } from '@/services/api-client';
+import {
+  fetchUnitNoticeFeed,
+  type UnitNoticePost,
+} from '@/services/community-notice.service';
 import { cn } from '@/lib/utils';
 import { MESSAGES } from '@/lib/messages';
 import { useSelectedChild } from '@/contexts/SelectedChildContext';
@@ -34,6 +39,9 @@ interface NoticeItem {
   type?: string | null;
   isPinned?: boolean;
   createdAt: string;
+  /** [Phase 2] feed 항목 — 출처 축. 있으면 상세는 /community-notice/{id}. */
+  axis?: 'team' | 'class' | 'tournament';
+  targetName?: string | null;
 }
 
 interface ApiDataWrapper<T> {
@@ -184,24 +192,43 @@ export function RecentNoticesSection({
 
       let list: NoticeItem[] = [];
       try {
-        const res = await api.get<NoticeItem[] | { notices?: NoticeItem[] } | ApiDataWrapper<NoticeItem[] | { notices?: NoticeItem[] }>>(
-          '/notices',
-          {
-            params: {
-              limit: 5,
-              page: 1,
-              isActive: true,
-              scope,
-              // team 만 선택 자녀 소속 팀 필터(null=자녀0명 시 미전송, 백엔드 폴백). service 는 childId 미전송.
-              ...(scope === 'team' && selectedChildId ? { childId: selectedChildId } : {}),
+        if (scope === 'team') {
+          // [Phase 2 §7] 탭 A = TeamPost 통합 feed 단일 소스 (팀+훈련+대회 · 게시 중만).
+          //   childId = 선택 자녀 표시 필터(열람 권한은 서버가 전 자녀 합집합으로 판정).
+          const feedRes = await fetchUnitNoticeFeed({
+            limit: 5,
+            ...(selectedChildId ? { childId: selectedChildId } : {}),
+          });
+          list =
+            feedRes.success && feedRes.data
+              ? feedRes.data.data.map(
+                  (post: UnitNoticePost): NoticeItem => ({
+                    id: post.id,
+                    title: post.title,
+                    isPinned: post.isPinned,
+                    createdAt: post.createdAt,
+                    axis: post.teamId
+                      ? 'team'
+                      : post.targetClassId
+                        ? 'class'
+                        : 'tournament',
+                    targetName: post.targetName ?? null,
+                  }),
+                )
+              : [];
+        } else {
+          const res = await api.get<NoticeItem[] | { notices?: NoticeItem[] } | ApiDataWrapper<NoticeItem[] | { notices?: NoticeItem[] }>>(
+            '/notices',
+            {
+              params: { limit: 5, page: 1, isActive: true, scope },
+              retry: false,
             },
-            retry: false,
-          },
-        );
-        const payload = res.success ? unwrap<NoticeItem[] | { notices?: NoticeItem[] }>(res.data) : null;
-        list = toNoticeList(payload);
+          );
+          const payload = res.success ? unwrap<NoticeItem[] | { notices?: NoticeItem[] }>(res.data) : null;
+          list = toNoticeList(payload);
+        }
       } catch {
-        // retry:false — 실패 시 graceful 빈 목록(빈 상태 카드). service/team 독립.
+        // 실패 시 graceful 빈 목록(빈 상태 카드). service/team 독립.
         list = [];
       }
 
@@ -233,6 +260,10 @@ export function RecentNoticesSection({
     const prev = prevChildIdRef.current;
     prevChildIdRef.current = selectedChildId;
     if (prev == null || selectedChildId == null || prev === selectedChildId) return;
+    // [P2-R1-M03] 진행 중인 직전 자녀 team 요청을 즉시 무효화 — 늦게 완료된 이전 자녀
+    //   목록이 잠시 표시되는 역전 방지 (loading 상태도 함께 해제해 새 요청이 바로 시작).
+    reqCounters.current.team += 1;
+    setLoading((p) => (p.team ? { ...p, team: false } : p));
     if (showTeamTab) setActiveTab('team');
     setData((p) => (p.team.length ? { ...p, team: [] } : p));
     setLoaded((p) => (p.team ? { ...p, team: false } : p));
@@ -484,7 +515,11 @@ export function RecentNoticesSection({
                          날짜를 우측 정렬해 한 줄에 표시(카드 전체가 클릭 영역). */}
                     <button
                       type="button"
-                      onClick={() => navigate(`/notice/${n.id}`)}
+                      onClick={() =>
+                        navigate(
+                          n.axis ? `/community-notice/${n.id}` : `/notice/${n.id}`,
+                        )
+                      }
                       className={cn(
                         'w-full px-5 py-3 flex items-center gap-2.5 text-left transition-colors duration-150 motion-reduce:transition-none',
                         iceTheme ? 'hover:bg-it-fill dark:hover:bg-it-blue-900' : 'hover:bg-wline-2 dark:hover:bg-rink-700',
@@ -503,22 +538,66 @@ export function RecentNoticesSection({
                           aria-hidden="true"
                         />
                       )}
-                      {badge && (
-                        <span className={cn('shrink-0 rounded-w-pill px-2 py-0.5 text-card-meta font-extrabold', badge.cls)}>
-                          {badge.label}
-                        </span>
-                      )}
-                      {/* 제목 — 시안 ListRow title(15.5px/700/it-ink-800)은 iceTheme=true 유지. false는 기존 그대로. */}
-                      <p
-                        className={cn(
-                          'min-w-0 flex-1 truncate',
-                          iceTheme
-                            ? 'text-[15.5px] font-bold tracking-[-0.01em] text-it-ink-800 dark:text-white'
-                            : 'text-card-title font-semibold text-wtext-1 dark:text-white',
+                      {/* 2줄 구조 — 1줄: 배지+제목(온전) · 2줄: 출처 메타(축·단위 이름).
+                          칩을 걷어내 제목 공간을 최대화한다 (칩 문법은 목록 화면 담당) */}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          {badge && (
+                            <span className={cn('shrink-0 rounded-w-pill px-2 py-0.5 text-card-meta font-extrabold', badge.cls)}>
+                              {badge.label}
+                            </span>
+                          )}
+                          {/* 제목 — 시안 ListRow title(15.5px/700/it-ink-800)은 iceTheme=true 유지. false는 기존 그대로. */}
+                          <p
+                            className={cn(
+                              'min-w-0 flex-1 truncate',
+                              iceTheme
+                                ? 'text-[15.5px] font-bold tracking-[-0.01em] text-it-ink-800 dark:text-white'
+                                : 'text-card-title font-semibold text-wtext-1 dark:text-white',
+                            )}
+                          >
+                            {n.title}
+                          </p>
+                        </div>
+                        {/* [Phase 2 §7] 출처 메타 — 훈련/대회는 축 라벨(배지 색 체계의 텍스트 색)+단위 이름,
+                            팀은 팀이름만. 자녀 이름 칩은 선택 자녀로 필터된 화면이라 목록 화면에만 둔다 */}
+                        {n.axis && (
+                          <p
+                            className={cn(
+                              'mt-0.5 flex items-center gap-1 text-[12px] font-semibold',
+                              iceTheme
+                                ? 'text-it-ink-400 dark:text-it-ink-300'
+                                : 'text-wtext-3 dark:text-rink-300',
+                            )}
+                          >
+                            {n.axis !== 'team' && (
+                              <>
+                                <span
+                                  className={cn(
+                                    'shrink-0',
+                                    n.axis === 'class'
+                                      ? 'text-emerald-700 dark:text-emerald-400'
+                                      : 'text-red-700 dark:text-red-400',
+                                  )}
+                                >
+                                  {n.axis === 'class'
+                                    ? MESSAGES.unitNotice.classChip
+                                    : MESSAGES.unitNotice.tournamentChip}
+                                </span>
+                                <span aria-hidden="true">·</span>
+                              </>
+                            )}
+                            <span className="truncate">
+                              {n.targetName ??
+                                (n.axis === 'team'
+                                  ? MESSAGES.unitNotice.teamChip
+                                  : n.axis === 'class'
+                                    ? MESSAGES.unitNotice.classChip
+                                    : MESSAGES.unitNotice.tournamentChip)}
+                            </span>
+                          </p>
                         )}
-                      >
-                        {n.title}
-                      </p>
+                      </div>
                       {/* 날짜 — 우측 1줄(기존 formatDate 절대날짜). */}
                       <span
                         className={cn(

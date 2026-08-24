@@ -46,7 +46,7 @@ import { useStableLayout } from '@/hooks/useStableLayout';
 import { useImagesReady } from '@/hooks/useImagesReady';
 import { useFontsReady } from '@/hooks/useFontsReady';
 import { MESSAGES } from '@/lib/messages';
-import { getChildInactiveReason, isActiveChild } from '@/lib/child-status';
+import { getChildInactiveReason } from '@/lib/child-status';
 import { isActiveEnrollment } from '@/lib/enrollment-visibility';
 import { api } from '@/services/api-client';
 import {
@@ -200,8 +200,10 @@ export default function ParentDashboardPage() {
   //   선택이 일어나므로 낙관을 유지한다.
   const isChildSelectionPending =
     isChildrenLoading || (!selectedChild && selectableChildren.length > 0);
-  const showTeamNoticeTab =
-    isChildSelectionPending || (!!selectedChild && isActiveChild(selectedChild));
+  // [Phase 2 · P2-R1-H05] 통합 feed 는 팀 공지만이 아니라 오픈클래스·대회 공지도
+  //   포함한다 — 팀 미소속 자녀도 등록 공지를 볼 수 있으므로 노출 게이트를
+  //   "승인 팀 보유"에서 "선택 자녀 존재"로 완화한다 (빈 상태는 feed 결과가 결정).
+  const showTeamNoticeTab = isChildSelectionPending || !!selectedChild;
 
   useNativeUI({
     showStatusBar: true,

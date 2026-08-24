@@ -25,6 +25,7 @@ import {
   addUtcDays,
   dateOnlyToUtc,
 } from "@/common/utils/kst-date.util";
+import { normalizeTeamRegionLabel } from "./utils/team-region-label.util";
 
 /**
  * Phase 4 (2026-04-29) — Team 응답 헬퍼 (Phase 2.5에서 승계)
@@ -185,9 +186,11 @@ export class TeamsService {
     // 팀 초대 코드 생성 (예: "ACE-hockey")
     const teamCode = this.generateTeamCode();
 
-    // [지역/홈경기장 분리] location 은 '지역'(자유 텍스트)으로 독립 — venueId sync 대상 아님.
+    // [지역/홈경기장 분리] location 은 '지역'으로 독립 — venueId sync 대상 아님.
+    //  표준 라벨("시/도[ 시군구]")은 canonical 정규화, 자유 입력은 trim 원문 수용 (1안).
     //  homeArena 만 venueId 지정 시 venue.name 으로 sync (홈 경기장 legacy 텍스트 폴백).
-    const createLocation: string | null = createTeamDto.location ?? null;
+    const createLocation: string | null =
+      normalizeTeamRegionLabel(createTeamDto.location) ?? null;
     let createHomeArena: string | null = null;
     if (createTeamDto.venueId) {
       const venue = await this.prisma.venue.findUnique({
@@ -793,9 +796,12 @@ export class TeamsService {
       }
     }
 
-    // [지역/홈경기장 분리] location 은 '지역'(자유 텍스트)으로 독립 — venueId sync 대상 아님.
-    //  homeArena 만 venueId 지정 시 venue.name 으로 sync. location 은 updateData.location 그대로.
-    const syncedLocation: string | null | undefined = updateData.location;
+    // [지역/홈경기장 분리] location 은 '지역'으로 독립 — venueId sync 대상 아님.
+    //  homeArena 만 venueId 지정 시 venue.name 으로 sync.
+    //  표준 라벨("시/도[ 시군구]")은 canonical 정규화, 자유 입력은 trim 원문 수용 (1안).
+    const syncedLocation: string | null | undefined = normalizeTeamRegionLabel(
+      updateData.location,
+    );
     let syncedHomeArena: string | null | undefined = undefined;
     if (updateData.venueId !== undefined && updateData.venueId) {
       const venue = await this.prisma.venue.findUnique({

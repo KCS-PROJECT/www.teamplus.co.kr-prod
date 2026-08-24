@@ -2,7 +2,11 @@
 
 import { useEffect } from "react";
 import { isNativeApp } from "@/lib/environment";
-import { ui } from "@/services/native-bridge";
+import {
+  ui,
+  suppressPullToRefreshForOverlay,
+  releasePullToRefreshForOverlay,
+} from "@/services/native-bridge";
 
 /**
  * Flutter 네이티브 safe area(Status Bar / Home Indicator / Navigation Bar)
@@ -82,6 +86,14 @@ export function useNativeScrim(
     if (!isOpen) return;
     incrementModalOpen();
     return decrementModalOpen;
+  }, [isOpen]);
+
+  // 오버레이 열림 중 native pull-to-refresh 억제 — 오버레이 위 드래그가
+  // 배경 페이지 새로고침으로 이어지는 오동작 방지 (닫힐 때 페이지 정책 복원)
+  useEffect(() => {
+    if (!isOpen || !isNativeApp()) return;
+    suppressPullToRefreshForOverlay();
+    return releasePullToRefreshForOverlay;
   }, [isOpen]);
 
   // Flutter Native scrim 호출 — iOS notch/Home Indicator/Android NavBar 영역 dim

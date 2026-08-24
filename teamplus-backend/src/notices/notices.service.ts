@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   ForbiddenException,
+  BadRequestException,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "@/prisma/prisma.service";
@@ -24,7 +25,6 @@ import { resolveViewerTeamIds } from "@/common/utils/team-scope.util";
 import {
   isWithinPublicationWindow,
   publicationConditions,
-  buildNoticeTeamScopeCondition,
 } from "@/common/utils/notice-publication.util";
 import {
   resolveNoticeManageTeamIds,
@@ -99,6 +99,10 @@ function sanitizeLocations(locations: string[] | undefined): string[] {
 export class NoticesService {
   // [2026-05-14] 공개 공지 목록 캐싱 — 인증 없는 호출 (userId 미지정) 시
   //   동일 필터 결과를 60초 TTL 로 Redis 에 저장. 공지 생성/수정/삭제 시 무효화.
+  /** [Phase 2 ④ 봉인] 팀 공지는 TeamPost 스트림으로 이관 — SystemNotice 쓰기 전면 차단 */
+  private static readonly TEAM_NOTICE_SEALED_MSG =
+    "팀 공지는 커뮤니티 공지로 이관되었습니다. 커뮤니티 공지 API(/community/posts)를 사용해주세요.";
+
   private readonly NOTICES_CACHE_TTL = 60;
   private readonly NOTICES_CACHE_VERSION_KEY = "notices:list:version";
 
@@ -123,6 +127,41 @@ export class NoticesService {
    *   시스템 역할 = 전역·팀 공지 모두 / 팀 역할 = 관리 팀 공지만 / 그 외 = false.
    *   행별 판정은 `canManageWith` 로 O(1) — 목록에서 행마다 권한 쿼리를 만들지 않는다.
    */
+  /**
+   * [Codex P2-R1-H03] 이관 팀 공지의 마커/no-op 반환 전 열람 판정 — flat 상세
+   * (canViewPost/isWithinWindow)와 동일 계약. 검증 없이 200 을 돌려주면 미존재 404 와의
+   * 차이로 타 팀·비공개·예약·만료 공지 id 의 존재 오라클이 된다 (§5 IDOR 경계).
+   *   · 이관 전(대응 TeamPost 부재)·soft delete = false (404 은닉)
+   *   · 시스템 역할·게시글 작성자 = true
+   *   · 열람 팀 ∩ 게시 중 = true / 게시기간 밖은 관할 관리자만
+   */
+  private async canViewMigratedTeamPost(
+    noticeId: string,
+    userId?: string,
+    userType?: string,
+  ): Promise<boolean> {
+    const tp = await this.prisma.teamPost.findUnique({
+      where: { id: noticeId },
+      select: {
+        teamId: true,
+        isActive: true,
+        startAt: true,
+        expiresAt: true,
+        authorId: true,
+      },
+    });
+    if (!tp || !tp.teamId || !tp.isActive) return false;
+    if (isNoticeSystemRole(userType)) return true;
+    if (userId && tp.authorId === userId) return true;
+    const viewerTeamIds = userId
+      ? await resolveViewerTeamIds(this.prisma, userId, userType)
+      : [];
+    const isViewer = viewerTeamIds.includes(tp.teamId);
+    if (isViewer && isWithinPublicationWindow(tp)) return true;
+    const ctx = await this.resolveManageContext(userId, userType);
+    return this.canManageWith(ctx, tp.teamId);
+  }
+
   private async resolveManageContext(
     userId?: string,
     userType?: string,
@@ -183,14 +222,16 @@ export class NoticesService {
     //   기존에는 scope='team' 일 때만 해석하고, scope 미지정이면 팀 조건 자체가 없어
     //   `GET /notices` 한 번으로 **전 팀 공지 본문**이 반환됐다(목록 select 에 content 포함).
     //   관리 목록(skipViewerScope)만 이 해석을 건너뛴다.
-    if (
-      !filters.skipViewerScope &&
-      (filters.scope === "team" || filters.scope === undefined)
-    ) {
-      filters.scopeTeamIds = userId
-        ? await resolveViewerTeamIds(this.prisma, userId, userType, { childId })
-        : [];
+    // [Phase 2 ③ 전용화] audience 팀 공지 목록은 TeamPost feed(/community/posts/feed)로
+    //   이관 — scope='team' 은 빈 목록을 반환한다(구버전 클라이언트 호환·이중 노출 차단).
+    //   관리 목록(skipViewerScope)은 이관 원본 대조용으로 유지한다 (정리는 Phase 3).
+    if (!filters.skipViewerScope && filters.scope === "team") {
+      return {
+        data: [],
+        pagination: { total: 0, page, limit, totalPages: 0 },
+      };
     }
+    void childId; // [Phase 2] audience 팀 스코프 해석 제거로 미사용 (시그니처 호환 유지)
     // [2026-05-14] 공개 호출(userId 없음) 만 캐싱. 인증 호출은 사용자별 read 상태가
     //   join 되어 결과가 사용자마다 다르므로 캐싱 비효율.
     const cacheKey = !userId
@@ -228,24 +269,19 @@ export class NoticesService {
       // 서비스 공지: 팀 미지정(targetTeamId = null) 만.
       where.targetTeamId = null;
     } else if (filters.scope === "team") {
-      // 팀 공지. 관리 목록은 전체 팀(또는 지정 팀), audience 는 내 열람 팀만.
-      where.targetTeamId = filters.skipViewerScope
-        ? (filters.teamId ?? { not: null })
-        : { in: filters.scopeTeamIds ?? [] };
+      // 관리 목록 전용 (audience 는 위에서 빈 목록 반환) — 이관 원본 열람.
+      where.targetTeamId = filters.teamId ?? { not: null };
     } else if (filters.skipViewerScope) {
       // 관리 목록 + scope 미지정 — 팀 스코프를 의도적으로 우회(teamId 지정 시 그 팀만).
       if (filters.teamId) {
         where.targetTeamId = filters.teamId;
       }
     } else {
-      // [2026-08-07 · R10-H1] scope 생략 = "내가 볼 수 있는 전부".
-      //   기존 레거시 `teamId` 분기는 **viewer 검증 없이** 임의 팀 공지를 반환했고,
-      //   teamId 조차 없으면 팀 조건이 통째로 빠져 전 팀 공지가 나갔다.
-      //   호출자 실측: `teamId` 파라미터 사용 0건(web·admin 전수) → 레거시 분기 제거.
-      //   scope 없이 호출하는 화면 3곳(events·club/news·notice-detail)은 이 기본값으로 무변경 동작한다.
-      andConditions.push(
-        buildNoticeTeamScopeCondition(filters.scopeTeamIds ?? []),
-      );
+      // [Phase 2 ③] scope 생략 audience = 서비스 공지만 — 팀 공지는 feed 로 이관.
+      //   (기존 buildNoticeTeamScopeCondition 의 "서비스 ∪ 열람 팀" 합집합을 대체.
+      //    scope 없이 호출하는 화면 3곳(events·club/news·notice-detail)은 서비스 공지 화면이라
+      //    의미 무변경 — 이관 전에도 팀 공지가 섞이면 안 되는 곳이었다)
+      where.targetTeamId = null;
     }
 
     // displayLocation 필터: PostgreSQL JsonB array_contains로 DB 레벨 필터
@@ -362,14 +398,23 @@ export class NoticesService {
   /**
    * 공지 읽음 마킹 (upsert)
    */
-  async markNoticeAsRead(noticeId: string, userId: string) {
+  async markNoticeAsRead(noticeId: string, userId: string, userType?: string) {
     // 공지 존재 확인
     const existing = await this.prisma.systemNotice.findUnique({
       where: { id: noticeId },
-      select: { id: true },
+      select: { id: true, targetTeamId: true },
     });
     if (!existing) {
       throw new NotFoundException("공지사항을 찾을 수 없습니다.");
+    }
+    // [Phase 2 ③] 이관 팀 공지 — 읽음 SoT 는 TeamPostRead(상세 열람이 기록).
+    //   구버전 클라이언트 호환 no-op (원본 NoticeRead 를 더 쌓지 않는다).
+    //   [Codex P2-R1-H03] no-op 200 도 열람자에게만 — 비인가는 404 (존재 오라클 차단).
+    if (existing.targetTeamId !== null) {
+      if (!(await this.canViewMigratedTeamPost(noticeId, userId, userType))) {
+        throw new NotFoundException("공지사항을 찾을 수 없습니다.");
+      }
+      return { success: true, noticeId };
     }
 
     await this.prisma.noticeRead.upsert({
@@ -462,6 +507,22 @@ export class NoticesService {
     });
     if (!existing) {
       throw new NotFoundException("공지사항을 찾을 수 없습니다.");
+    }
+
+    // [Phase 2 ③] 이관된 팀 공지 — 구 링크(/notice/{id}) 호환 마커.
+    //   id 보존 이관이라 같은 id 의 TeamPost 상세가 SoT 다. 웹 상세 화면이 이 마커를
+    //   감지해 /community-notice/{id} 로 replace 리다이렉트한다 (기발송 알림 링크 호환).
+    //   [Codex P2-R1-H03] 마커도 열람 판정을 통과한 요청에만 — 비인가·미이관·비공개는
+    //   미존재와 동일한 404 (존재 오라클 차단).
+    if (existing.targetTeamId !== null) {
+      if (!(await this.canViewMigratedTeamPost(noticeId, userId, userType))) {
+        throw new NotFoundException("공지사항을 찾을 수 없습니다.");
+      }
+      return {
+        migrated: true as const,
+        id: existing.id,
+        redirectTo: `/community-notice/${existing.id}`,
+      };
     }
 
     // [Phase 5 · AC 5-1~2 · P5-R1-03] 관리 컨텍스트는 요청당 1회 — 열람 검증의 관리자 예외와
@@ -664,6 +725,12 @@ export class NoticesService {
     const hasExplicitTarget = createDto.targetTeamId !== undefined;
     const requestedTeamId = normalizeTargetTeamId(createDto.targetTeamId);
     let resolvedTeamId: string | null = requestedTeamId;
+
+    // [Phase 2 ④ 봉인] 팀 공지 신규 작성 전면 차단 — 팀 스코프 역할(자동 주입 경로 포함)과
+    //   시스템 역할의 팀 지정 모두. 아래 팀 분기들은 도달 불가 (레거시 정리는 Phase 3).
+    if (isTeamScoped || requestedTeamId !== null) {
+      throw new BadRequestException(NoticesService.TEAM_NOTICE_SEALED_MSG);
+    }
 
     if (isTeamScoped) {
       // [Phase 0 · F-03·F-04] 공지 전용 관리 SoT — CoachProfile 미사용, 승인된 관리 역할만.
@@ -1113,16 +1180,17 @@ export class NoticesService {
     const limit = options.limit ?? 10;
 
     if (isSystemRole) {
-      // 시스템 관리자: 자유 필터.
-      //   [2026-08-07] 관리 목록은 **팀 스코프·게시 기간을 의도적으로 우회**한다 —
-      //   예약·만료 공지까지 보여야 관리가 가능하다. audience 경로와 구분되는 유일한 지점.
+      // 시스템 관리자: 서비스 공지 자유 필터 (게시 기간 우회 — 예약·만료 관리).
+      //   [Codex P2-R1-H04] 팀 공지가 TeamPost 로 이관되어 관리 목록도 **service-only** —
+      //   이관 원본을 런타임 API 로 계속 노출하면 서비스 공지 화면(web/admin, scope 미지정
+      //   호출)에 수정 불가(봉인 400)한 원본이 섞인다. 이관 대조는 이관 스크립트의
+      //   전건 대조가 담당하며, 원본 열람이 필요하면 DB 콘솔을 쓴다.
       return this.getNotices(
         {
           targetType: options.targetType,
           isActive: options.isActive,
           displayLocation: options.displayLocation,
-          teamId: options.teamId,
-          scope: options.scope,
+          scope: "service",
           skipViewerScope: true,
           skipPublicationWindow: true,
         },
@@ -1234,6 +1302,15 @@ export class NoticesService {
     // 관리자 예외 판정에 재사용해 같은 요청에서 관리 SoT 를 두 번 조회하지 않는다.
     precomputedManageCtx?: { isSystem: boolean; managedIds: Set<string> },
   ): Promise<void> {
+    // [Phase 2 ③ 전용화] 팀 공지는 TeamPost 로 이관 — audience 열람 경로(상세·댓글·인접)에서
+    //   원본을 계속 서빙하면 복사본과 이중 노출된다. 시스템 역할·작성자 예외보다 먼저
+    //   차단해 댓글 신규 쓰기 우회도 막는다. 상세(getNotice)는 이 검증 전에 이관 마커를
+    //   반환해 /community-notice/{id} 리다이렉트를 안내한다.
+    if (notice.targetTeamId !== null) {
+      throw new NotFoundException("공지사항을 찾을 수 없습니다.");
+    }
+    void precomputedManageCtx; // 서비스 공지 경로는 관리 컨텍스트 불필요 (시그니처 호환 유지)
+
     const isSystemRole = isNoticeSystemRole(userType);
     const isAuthor = !!userId && notice.createdBy === userId;
     if (isSystemRole || isAuthor) return;
@@ -1244,31 +1321,8 @@ export class NoticesService {
 
     // [Phase 0 · F-EX-01] 게시 기간은 목록만이 아니라 **모든 audience 열람 경로**의 인가 조건이다.
     //   (목록만 필터하면 상세·댓글 직접 링크가 그대로 우회로가 된다)
-    const published = isWithinPublicationWindow(notice);
-
-    if (notice.targetTeamId === null) {
-      if (!published) {
-        throw new NotFoundException("공지사항을 찾을 수 없습니다.");
-      }
-      return;
-    }
-
-    const viewerTeamIds = userId
-      ? await resolveViewerTeamIds(this.prisma, userId, userType)
-      : [];
-    if (!viewerTeamIds.includes(notice.targetTeamId)) {
+    if (!isWithinPublicationWindow(notice)) {
       throw new NotFoundException("공지사항을 찾을 수 없습니다.");
-    }
-
-    // 게시 기간 밖이어도 **해당 팀의 검증된 관리자**는 관리 목적으로 열람할 수 있다
-    //   (지난 공지 확인·수정·moderation 동선 보존). 게시 중이면 추가 쿼리 0.
-    if (!published) {
-      const ctx =
-        precomputedManageCtx ??
-        (await this.resolveManageContext(userId, userType));
-      if (!this.canManageWith(ctx, notice.targetTeamId)) {
-        throw new NotFoundException("공지사항을 찾을 수 없습니다.");
-      }
     }
   }
 
@@ -1284,6 +1338,12 @@ export class NoticesService {
     userId: string,
     targetTeamId: string | null,
   ): Promise<void> {
+    // [Phase 2 ④ 봉인] 이관 원본(팀 공지)은 수정·삭제·핀·게시 전환 전부 동결 —
+    //   원본을 고치면 TeamPost 복사본과 diverge 한다. 시스템 역할 포함 전면 차단.
+    //   (updateNotice 의 팀 전이 nextTeamId 도 이 관문을 지나므로 함께 봉인된다)
+    if (targetTeamId !== null) {
+      throw new BadRequestException(NoticesService.TEAM_NOTICE_SEALED_MSG);
+    }
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { userType: true },
@@ -1738,6 +1798,12 @@ export class NoticesService {
     });
 
     if (!comment) {
+      throw new NotFoundException("댓글을 찾을 수 없습니다.");
+    }
+
+    // [Phase 2 ④ 봉인] 이관 팀 공지의 댓글은 TeamPostComment 가 SoT — 원본 삭제(본인
+    //   포함)를 허용하면 복사본과 diverge 한다. 404 은닉으로 동결.
+    if (comment.notice?.targetTeamId) {
       throw new NotFoundException("댓글을 찾을 수 없습니다.");
     }
 

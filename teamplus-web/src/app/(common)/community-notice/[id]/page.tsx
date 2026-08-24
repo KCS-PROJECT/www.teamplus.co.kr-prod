@@ -21,10 +21,10 @@ import { MESSAGES } from '@/lib/messages';
 import { resolveImageSrc } from '@/lib/image-url';
 import { emitRefresh, REFRESH_KEYS } from '@/lib/refresh-bus';
 import { CommentThread, type CommentData } from '@/components/shared/CommentThread';
+import { ImageLightbox } from '@/components/shared/ImageLightbox';
 import { ActionSheet } from '@/components/director/ActionSheet';
 import { ConfirmSheet } from '@/components/shared/ConfirmSheet';
 import { openDirectChat } from '@/services/chat';
-import { getTrainingTypeBadgeClass } from '@/lib/class-categories';
 import {
   addUnitNoticeComment,
   deleteUnitNotice,
@@ -37,6 +37,12 @@ import {
   type UnitNoticeReadsRecipient,
   type UnitNoticeReadsSummary,
 } from '@/services/community-notice.service';
+
+/**
+ * [1:1 문의 잠금 — 2026-08-21 사용자 결정] 1:1 채팅의 사용 시점·채팅 목록 배치가
+ * 미결정이라 진입점을 숨긴다. 로직(openDirectChat 등)은 보존 — 결정되면 이 플래그만 복원.
+ */
+const SHOW_DIRECT_CHAT = false;
 
 /** XSS 방어 — /notice/[id] 와 동일 정책 */
 let dompurifyHookAdded = false;
@@ -101,6 +107,10 @@ export default function UnitNoticeDetailPage() {
   const [isReadsLoading, setIsReadsLoading] = useState(false);
   const [chatOpeningId, setChatOpeningId] = useState<string | null>(null);
   const [isReminding, setIsReminding] = useState(false);
+  // 개별 재알림 진행 중인 대상 — 행별 중복 탭 방지
+  const [remindingUserId, setRemindingUserId] = useState<string | null>(null);
+  // 첨부 이미지 전체화면 보기 (탭 → ImageLightbox, 핀치줌 지원)
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   useNativeUI({
     showStatusBar: true,
@@ -167,14 +177,26 @@ export default function UnitNoticeDetailPage() {
     });
   }, [loadReads, reads]);
 
-  // 미읽음자에게 다시 알리기 — 게시글당 24시간 1회 (서버 쿨다운 claim 이 최종 판정)
+  // 접힘 상태에서도 헤더에 "읽음 N/M" 이 보이도록 관리자면 현황을 미리 로드한다
+  // (기존엔 펼칠 때 lazy 로드라 카운트가 아코디언을 열어야 나타났다)
+  useEffect(() => {
+    if (post?.canManage && !reads && !isReadsLoading) void loadReads();
+  }, [post?.canManage, reads, isReadsLoading, loadReads]);
+
+  // 미읽음자에게 다시 알리기 — 게시글당 24시간 1회 (서버 쿨다운 claim 이 최종 판정).
+  // 24시간 내 개별 알림을 받은 사람은 서버가 건너뛰고 skipped 로 알려준다.
   const handleRemind = useCallback(async () => {
     if (!postId || isReminding) return;
     setIsReminding(true);
     try {
       const res = await remindUnreadRecipients(postId);
       if (res.success && res.data) {
-        toast.success(MESSAGES.unitNotice.remindSuccess(res.data.reminded));
+        const { reminded, skipped } = res.data;
+        toast.success(
+          skipped
+            ? MESSAGES.unitNotice.remindSuccessWithSkipped(reminded, skipped)
+            : MESSAGES.unitNotice.remindSuccess(reminded),
+        );
         void loadReads(); // remindAvailableAt 갱신
       } else {
         toast.error(res.error?.message ?? MESSAGES.unitNotice.remindCooldown);
@@ -185,6 +207,27 @@ export default function UnitNoticeDetailPage() {
       setIsReminding(false);
     }
   }, [isReminding, loadReads, postId, toast]);
+
+  // 개별 재알림 — 미읽음 명단 행의 [알림] 버튼. (대상자,게시글)당 24시간 1회는 서버 판정.
+  const handleRemindOne = useCallback(
+    async (targetUserId: string, name: string) => {
+      if (!postId || remindingUserId) return;
+      setRemindingUserId(targetUserId);
+      try {
+        const res = await remindUnreadRecipients(postId, targetUserId);
+        if (res.success) {
+          toast.success(MESSAGES.unitNotice.remindOneSuccess(name));
+        } else {
+          toast.error(res.error?.message ?? MESSAGES.error.network);
+        }
+      } catch {
+        toast.error(MESSAGES.error.network);
+      } finally {
+        setRemindingUserId(null);
+      }
+    },
+    [postId, remindingUserId, toast],
+  );
 
   const handleOpenChat = useCallback(
     async (targetUserId: string) => {
@@ -283,9 +326,12 @@ export default function UnitNoticeDetailPage() {
 
   if (isLoading) return null;
 
-  const axisLabel = post?.targetClassId
-    ? MESSAGES.unitNotice.classChip
-    : MESSAGES.unitNotice.tournamentChip;
+  // [Phase 2] 팀 축 편입 — 팀/훈련/대회 3축 라벨
+  const axisLabel = post?.teamId
+    ? MESSAGES.unitNotice.teamChip
+    : post?.targetClassId
+      ? MESSAGES.unitNotice.classChip
+      : MESSAGES.unitNotice.tournamentChip;
   const comments: CommentData[] =
     post?.comments.map((c) => ({
       id: c.id,
@@ -332,9 +378,15 @@ export default function UnitNoticeDetailPage() {
               {/* 대상 칩 + 배지 + 케밥 */}
               <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-                  {/* 축 배지 — 훈련 목록 배지 체계(훈련=emerald·대회=red) 재사용 */}
+                  {/* 축 라벨 — 색 텍스트(훈련=emerald·대회=red), 대상 칩 배경이 경계라 구분점 불필요 */}
                   <span
-                    className={`inline-flex items-center rounded-w-pill px-2 py-0.5 text-[12px] font-bold ${getTrainingTypeBadgeClass(post.targetClassId ? 'regular' : 'tournament')}`}
+                    className={`text-[12px] font-bold ${
+                      post.teamId
+                        ? 'text-it-blue-600 dark:text-it-blue-200'
+                        : post.targetClassId
+                          ? 'text-emerald-700 dark:text-emerald-400'
+                          : 'text-red-700 dark:text-red-400'
+                    }`}
                   >
                     {axisLabel}
                   </span>
@@ -393,27 +445,44 @@ export default function UnitNoticeDetailPage() {
                 </span>
               </div>
 
-              {/* 본문 */}
+              {/* 대상 안내 — 누구에게 전달되는 공지인지 명시 (팀=전체 · 훈련/대회=참가자) */}
+              <p className="mt-1.5 flex items-center gap-1 text-[12.5px] text-it-ink-400 dark:text-it-ink-300">
+                <Icon name="campaign" className="text-[13px] shrink-0" aria-hidden="true" />
+                {post.teamId
+                  ? MESSAGES.unitNotice.sectionSubtitleTeam
+                  : post.targetClassId
+                    ? MESSAGES.unitNotice.sectionSubtitleClass
+                    : MESSAGES.unitNotice.sectionSubtitleTournament}
+              </p>
+
+              {/* 본문 — 짧은 공지도 안정적인 높이를 갖도록 구 상세(/notice/[id])와 동일 min-h */}
               <div
-                className="mt-4 text-[15px] leading-relaxed text-it-ink-800 dark:text-it-ink-100 whitespace-pre-wrap break-words [&_a]:text-it-blue-500 [&_a]:underline"
+                className="mt-4 min-h-[140px] text-[15px] leading-relaxed text-it-ink-800 dark:text-it-ink-100 whitespace-pre-wrap break-words [&_a]:text-it-blue-500 [&_a]:underline"
                 dangerouslySetInnerHTML={{ __html: sanitizeHtml(post.content) }}
               />
 
-              {/* 첨부 이미지 */}
+              {/* 첨부 이미지 — 탭 시 전체화면 라이트박스 (핀치줌 지원) */}
               {post.attachments.length > 0 && (
                 <div className="mt-4 space-y-3">
-                  {post.attachments.map((att) => {
+                  {post.attachments.map((att, idx) => {
                     const src = resolveImageSrc(att.fileUrl);
                     if (!src) return null;
                     return (
-                      /* eslint-disable-next-line @next/next/no-img-element */
-                      <img
+                      <button
                         key={att.id}
-                        src={src}
-                        alt={att.fileName}
-                        className="w-full rounded-w-md border border-it-line dark:border-it-blue-900"
-                        loading="lazy"
-                      />
+                        type="button"
+                        onClick={() => setLightboxIndex(idx)}
+                        aria-label={MESSAGES.unitNotice.viewImageLarge}
+                        className="block w-full rounded-w-md focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={src}
+                          alt={att.fileName}
+                          className="w-full rounded-w-md border border-it-line dark:border-it-blue-900"
+                          loading="lazy"
+                        />
+                      </button>
                     );
                   })}
                 </div>
@@ -478,7 +547,9 @@ export default function UnitNoticeDetailPage() {
                                   key={recipient.userId}
                                   recipient={recipient}
                                   isOpening={chatOpeningId === recipient.userId}
+                                  isReminding={remindingUserId === recipient.userId}
                                   onChat={handleOpenChat}
+                                  onRemind={handleRemindOne}
                                 />
                               ))}
                             </ul>
@@ -594,6 +665,14 @@ export default function UnitNoticeDetailPage() {
         onConfirm={handleDeleteComment}
         onCancel={() => setDeleteCommentId(null)}
       />
+      {lightboxIndex !== null && post?.attachments[lightboxIndex] && (
+        <ImageLightbox
+          isOpen
+          onClose={() => setLightboxIndex(null)}
+          src={post.attachments[lightboxIndex].fileUrl}
+          alt={post.attachments[lightboxIndex].fileName}
+        />
+      )}
     </MobileContainer>
   );
 }
@@ -602,11 +681,15 @@ export default function UnitNoticeDetailPage() {
 function ReadRecipientRow({
   recipient,
   isOpening,
+  isReminding,
   onChat,
+  onRemind,
 }: {
   recipient: UnitNoticeReadsRecipient;
   isOpening: boolean;
+  isReminding: boolean;
   onChat: (userId: string) => void;
+  onRemind: (userId: string, name: string) => void;
 }) {
   const name = fullName(recipient);
   const avatarSrc = resolveImageSrc(recipient.avatarUrl ?? undefined);
@@ -640,15 +723,32 @@ function ReadRecipientRow({
           </p>
         )}
       </div>
+      {/* 개별 재알림 — (대상자,게시글)당 하루 1회는 서버 판정 (전체 재알림과 독립) */}
       <button
         type="button"
-        onClick={() => onChat(recipient.userId)}
-        disabled={isOpening}
+        onClick={() => onRemind(recipient.userId, name)}
+        disabled={isReminding}
+        aria-label={MESSAGES.unitNotice.remindOneAria(name)}
         className="shrink-0 inline-flex items-center gap-1 rounded-w-pill border-[1.5px] border-it-blue-500/40 px-3 py-1.5 text-[12.5px] font-bold text-it-blue-600 dark:text-it-blue-300 hover:bg-it-blue-50 dark:hover:bg-it-blue-900/40 transition-colors motion-reduce:transition-none disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40"
       >
-        <Icon name="chat_bubble" className="text-[13px]" aria-hidden="true" />
-        {MESSAGES.unitNotice.askDirect}
+        <Icon
+          name="notifications_active"
+          className="text-[13px]"
+          aria-hidden="true"
+        />
+        {MESSAGES.unitNotice.remindOne}
       </button>
+      {SHOW_DIRECT_CHAT && (
+        <button
+          type="button"
+          onClick={() => onChat(recipient.userId)}
+          disabled={isOpening}
+          className="shrink-0 inline-flex items-center gap-1 rounded-w-pill border-[1.5px] border-it-blue-500/40 px-3 py-1.5 text-[12.5px] font-bold text-it-blue-600 dark:text-it-blue-300 hover:bg-it-blue-50 dark:hover:bg-it-blue-900/40 transition-colors motion-reduce:transition-none disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40"
+        >
+          <Icon name="chat_bubble" className="text-[13px]" aria-hidden="true" />
+          {MESSAGES.unitNotice.askDirect}
+        </button>
+      )}
     </li>
   );
 }

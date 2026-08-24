@@ -112,19 +112,61 @@ export class CommunityPostsController {
   @Roles(...MANAGER_ROLES)
   @ApiOperation({
     summary: "감독·코치 통합 공지함",
-    description: "관할 수업+대회 공지 통합 목록 (읽음 N/M 포함).",
+    description: "관할 팀+수업+대회 공지 통합 목록 (읽음 N/M 포함 · Phase 2 팀 축 편입).",
   })
-  @ApiQuery({ name: "axis", required: false, enum: ["class", "tournament"] })
+  @ApiQuery({
+    name: "axis",
+    required: false,
+    enum: ["team", "class", "tournament", "unit"],
+  })
   @ApiQuery({ name: "limit", required: false })
+  @ApiQuery({ name: "offset", required: false })
+  @ApiQuery({
+    name: "status",
+    required: false,
+    enum: ["ongoing", "expired"],
+    description: "만료 구분 — ongoing=미만료(예약 포함) · expired=종료일 경과 · 생략=전체",
+  })
   async getManagedPosts(
     @Request() req: AuthenticatedRequest,
-    @Query("axis") axis?: "class" | "tournament",
+    @Query("axis") axis?: "team" | "class" | "tournament" | "unit",
     @Query("limit") limit?: string,
+    @Query("offset") offset?: string,
+    @Query("status") status?: "ongoing" | "expired",
   ) {
     return this.service.getManagedPosts(
       { id: req.user.id, userType: req.user.userType },
       axis,
       limit ? parseInt(limit, 10) : 30,
+      offset ? parseInt(offset, 10) : 0,
+      status === "ongoing" || status === "expired" ? status : undefined,
+    );
+  }
+
+  @Get("posts/feed")
+  @Roles(...VIEWER_ROLES)
+  @ApiOperation({
+    summary: "통합 공지 feed",
+    description:
+      "대시보드 탭 A 단일 소스 — 열람 가능한 팀+수업+대회 공지 통합 (게시 중만). " +
+      "childId=학부모 선택 자녀 표시 필터 (열람 권한은 전 자녀 합집합 — 상세 검증 담당).",
+  })
+  @ApiQuery({ name: "childId", required: false })
+  @ApiQuery({ name: "limit", required: false })
+  @ApiQuery({ name: "offset", required: false })
+  async getFeed(
+    @Request() req: AuthenticatedRequest,
+    @Query("childId") childId?: string,
+    @Query("limit") limit?: string,
+    @Query("offset") offset?: string,
+  ) {
+    return this.service.getFeed(
+      { id: req.user.id, userType: req.user.userType },
+      {
+        childId: childId || undefined,
+        limit: limit ? parseInt(limit, 10) : undefined,
+        offset: offset ? parseInt(offset, 10) : undefined,
+      },
     );
   }
 
@@ -228,15 +270,21 @@ export class CommunityPostsController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: "미읽음자에게 다시 알리기",
-    description: "미읽음 수신자 전원에게 재알림 푸시. 게시글당 24시간 1회.",
+    description:
+      "미읽음 수신자 전원(또는 targetUserId 지정 시 1명)에게 재알림 푸시. " +
+      "전체=게시글당 24시간 1회 + 24시간 내 수신자는 자동 제외 · 개별=(대상자,게시글)당 24시간 1회.",
   })
   async remindUnread(
     @Request() req: AuthenticatedRequest,
     @Param("postId") postId: string,
+    @Body("targetUserId") targetUserId?: string,
   ) {
     return this.service.remindUnread(
       { id: req.user.id, userType: req.user.userType },
       postId,
+      typeof targetUserId === "string" && targetUserId.trim().length > 0
+        ? targetUserId
+        : undefined,
     );
   }
 

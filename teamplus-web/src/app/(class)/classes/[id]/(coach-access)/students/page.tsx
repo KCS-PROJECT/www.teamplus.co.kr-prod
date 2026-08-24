@@ -167,6 +167,13 @@ function formatDateKR(iso?: string | null) {
   return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}`;
 }
 
+
+/**
+ * [1:1 문의 잠금 — 2026-08-21 사용자 결정] 1:1 채팅의 사용 시점·채팅 목록 배치가
+ * 미결정이라 진입점을 숨긴다. 로직은 보존 — 결정되면 이 플래그만 복원.
+ */
+const SHOW_DIRECT_CHAT = false;
+
 export default function ClassStudentsPage() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -824,7 +831,7 @@ function StudentRow({
         </div>
       </div>
       <div className="shrink-0 flex flex-col items-end gap-1">
-        {variant === 'roster' && contact?.contactUserId && onChat && (
+        {SHOW_DIRECT_CHAT && variant === 'roster' && contact?.contactUserId && onChat && (
           <button
             type="button"
             onClick={() => onChat(contact.contactUserId!)}

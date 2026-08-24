@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
 import {
+  ArrayMaxSize,
   IsArray,
   IsBoolean,
   IsDateString,
@@ -22,6 +23,8 @@ export const UNIT_NOTICE_IMAGE_MIMES = [
   "image/webp",
 ] as const;
 export const UNIT_NOTICE_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+/** 공지 1건당 첨부 이미지 최대 장수 — 프론트 IMAGE_MAX_COUNT 와 동일 계약 */
+export const UNIT_NOTICE_IMAGE_MAX_COUNT = 5;
 
 export class UnitNoticeAttachmentDto {
   @ApiProperty({
@@ -109,6 +112,9 @@ export class CreateUnitPostDto {
   })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(UNIT_NOTICE_IMAGE_MAX_COUNT, {
+    message: `이미지는 최대 ${UNIT_NOTICE_IMAGE_MAX_COUNT}장까지 첨부할 수 있습니다.`,
+  })
   @ValidateNested({ each: true })
   @Type(() => UnitNoticeAttachmentDto)
   attachments?: UnitNoticeAttachmentDto[];

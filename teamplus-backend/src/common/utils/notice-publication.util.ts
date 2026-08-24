@@ -40,6 +40,10 @@ export function buildPublicationWhere(
 }
 
 /**
+ * @deprecated [Phase 2] 팀 공지가 TeamPost 로 이관되어 런타임 소비처 0 —
+ *   검색·대시보드는 서비스 공지 전용(`targetTeamId: null`) + TeamPost 병합으로 전환됐다.
+ *   레거시 spec 호환용으로만 잔존, 제거는 Phase 3.
+ *
  * 공지 열람 팀 스코프 조건 — 검색·대시보드 등 **notices 모듈 밖** 소비자 공통.
  *
  * `서비스 공지(targetTeamId=null)` ∪ `열람 가능한 팀의 공지` 만 남긴다.
