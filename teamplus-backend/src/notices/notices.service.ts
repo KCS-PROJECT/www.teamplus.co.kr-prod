@@ -127,41 +127,6 @@ export class NoticesService {
    *   시스템 역할 = 전역·팀 공지 모두 / 팀 역할 = 관리 팀 공지만 / 그 외 = false.
    *   행별 판정은 `canManageWith` 로 O(1) — 목록에서 행마다 권한 쿼리를 만들지 않는다.
    */
-  /**
-   * [Codex P2-R1-H03] 이관 팀 공지의 마커/no-op 반환 전 열람 판정 — flat 상세
-   * (canViewPost/isWithinWindow)와 동일 계약. 검증 없이 200 을 돌려주면 미존재 404 와의
-   * 차이로 타 팀·비공개·예약·만료 공지 id 의 존재 오라클이 된다 (§5 IDOR 경계).
-   *   · 이관 전(대응 TeamPost 부재)·soft delete = false (404 은닉)
-   *   · 시스템 역할·게시글 작성자 = true
-   *   · 열람 팀 ∩ 게시 중 = true / 게시기간 밖은 관할 관리자만
-   */
-  private async canViewMigratedTeamPost(
-    noticeId: string,
-    userId?: string,
-    userType?: string,
-  ): Promise<boolean> {
-    const tp = await this.prisma.teamPost.findUnique({
-      where: { id: noticeId },
-      select: {
-        teamId: true,
-        isActive: true,
-        startAt: true,
-        expiresAt: true,
-        authorId: true,
-      },
-    });
-    if (!tp || !tp.teamId || !tp.isActive) return false;
-    if (isNoticeSystemRole(userType)) return true;
-    if (userId && tp.authorId === userId) return true;
-    const viewerTeamIds = userId
-      ? await resolveViewerTeamIds(this.prisma, userId, userType)
-      : [];
-    const isViewer = viewerTeamIds.includes(tp.teamId);
-    if (isViewer && isWithinPublicationWindow(tp)) return true;
-    const ctx = await this.resolveManageContext(userId, userType);
-    return this.canManageWith(ctx, tp.teamId);
-  }
-
   private async resolveManageContext(
     userId?: string,
     userType?: string,
@@ -398,7 +363,7 @@ export class NoticesService {
   /**
    * 공지 읽음 마킹 (upsert)
    */
-  async markNoticeAsRead(noticeId: string, userId: string, userType?: string) {
+  async markNoticeAsRead(noticeId: string, userId: string) {
     // 공지 존재 확인
     const existing = await this.prisma.systemNotice.findUnique({
       where: { id: noticeId },
@@ -407,14 +372,9 @@ export class NoticesService {
     if (!existing) {
       throw new NotFoundException("공지사항을 찾을 수 없습니다.");
     }
-    // [Phase 2 ③] 이관 팀 공지 — 읽음 SoT 는 TeamPostRead(상세 열람이 기록).
-    //   구버전 클라이언트 호환 no-op (원본 NoticeRead 를 더 쌓지 않는다).
-    //   [Codex P2-R1-H03] no-op 200 도 열람자에게만 — 비인가는 404 (존재 오라클 차단).
+    // [Phase 3] 팀 공지는 TeamPost 로 이관 완료 — 구 경로 전면 404 (getNotice 와 동일 계약)
     if (existing.targetTeamId !== null) {
-      if (!(await this.canViewMigratedTeamPost(noticeId, userId, userType))) {
-        throw new NotFoundException("공지사항을 찾을 수 없습니다.");
-      }
-      return { success: true, noticeId };
+      throw new NotFoundException("공지사항을 찾을 수 없습니다.");
     }
 
     await this.prisma.noticeRead.upsert({
@@ -509,20 +469,11 @@ export class NoticesService {
       throw new NotFoundException("공지사항을 찾을 수 없습니다.");
     }
 
-    // [Phase 2 ③] 이관된 팀 공지 — 구 링크(/notice/{id}) 호환 마커.
-    //   id 보존 이관이라 같은 id 의 TeamPost 상세가 SoT 다. 웹 상세 화면이 이 마커를
-    //   감지해 /community-notice/{id} 로 replace 리다이렉트한다 (기발송 알림 링크 호환).
-    //   [Codex P2-R1-H03] 마커도 열람 판정을 통과한 요청에만 — 비인가·미이관·비공개는
-    //   미존재와 동일한 404 (존재 오라클 차단).
+    // [Phase 3] 팀 공지는 TeamPost 로 이관 완료 — 구 경로는 전면 404.
+    //   기발송 알림 링크는 /community-notice/{id} 로 전부 재작성됐고(운영 잔존 0 실측),
+    //   이관 안내(마커) 리다이렉트는 유입 경로가 없어 폐기했다 (2026-08-24 사용자 확정).
     if (existing.targetTeamId !== null) {
-      if (!(await this.canViewMigratedTeamPost(noticeId, userId, userType))) {
-        throw new NotFoundException("공지사항을 찾을 수 없습니다.");
-      }
-      return {
-        migrated: true as const,
-        id: existing.id,
-        redirectTo: `/community-notice/${existing.id}`,
-      };
+      throw new NotFoundException("공지사항을 찾을 수 없습니다.");
     }
 
     // [Phase 5 · AC 5-1~2 · P5-R1-03] 관리 컨텍스트는 요청당 1회 — 열람 검증의 관리자 예외와
@@ -543,9 +494,10 @@ export class NoticesService {
         // [2026-07-20 읽음 동기화 B→A] 공지 상세 열람 = 대응 알림함 행도 읽음 처리.
         //   "공지 내용을 읽었는데 알림/뱃지 미읽음이 그대로" 문제의 근본 해소.
         //   [Phase 4 · AC 4-3] 응답 전 완료 — 상세 열람 직후 벨 카운트가 스테일이지 않게.
-        await this.notificationsService.markNotificationsReadByLinkUrls(userId, [
-          `/notice/${noticeId}`,
-        ]);
+        await this.notificationsService.markNotificationsReadByLinkUrls(
+          userId,
+          [`/notice/${noticeId}`],
+        );
       } catch {
         // NoticeRead upsert 실패 시 조회는 계속 진행
       }
@@ -854,7 +806,12 @@ export class NoticesService {
    * `publishedNotifiedAt` claim 을 초기화하거나 재발송하지 않는다.
    */
   private sendPublishNotification(
-    notice: { id: string; title: string; targetType: string | null; targetTeamId: string | null },
+    notice: {
+      id: string;
+      title: string;
+      targetType: string | null;
+      targetTeamId: string | null;
+    },
     actorUserId: string,
   ): void {
     // 행위자 미상(레거시 무인자 호출)이면 제외 없이 전체 발송
@@ -877,7 +834,9 @@ export class NoticesService {
         {
           notificationType: "system_notice_created",
           title:
-            notice.targetType === "maintenance" ? "시스템 점검 안내" : "공지사항",
+            notice.targetType === "maintenance"
+              ? "시스템 점검 안내"
+              : "공지사항",
           message: notice.title,
           linkUrl: `/notice/${notice.id}`,
         },
@@ -1112,39 +1071,6 @@ export class NoticesService {
     await this.invalidateNoticesListCache();
 
     return { message: "공지사항이 삭제되었습니다." };
-  }
-
-  /**
-   * 공지를 작성·관리할 수 있는 팀 목록 (팀 선택기용).
-   *
-   * [2026-08-07 · Phase 2 · F-02] **쓰기 권한 SoT 와 동일 집합**을 반환한다.
-   *   화면이 다른 기준(예: `/teams/my/managed`)으로 팀을 보여주면 목록에는 있는데
-   *   저장은 403 이 나는 불일치가 생긴다.
-   *
-   * 시스템 역할(ADMIN/SYSTEM/OPER)은 전체 공지도 쓸 수 있으므로 팀 제한이 없다 —
-   * 화면에서 팀 선택이 필요 없어 빈 배열을 반환한다(선택기 미노출).
-   */
-  async getManageableTeams(userId: string, userType?: string) {
-    if (isNoticeSystemRole(userType)) {
-      return { data: [] };
-    }
-
-    const teamIds = await resolveNoticeManageTeamIds(
-      this.prisma,
-      userId,
-      userType,
-    );
-    if (teamIds.length === 0) {
-      return { data: [] };
-    }
-
-    const teams = await this.prisma.team.findMany({
-      where: { id: { in: teamIds } },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    });
-
-    return { data: teams };
   }
 
   /**

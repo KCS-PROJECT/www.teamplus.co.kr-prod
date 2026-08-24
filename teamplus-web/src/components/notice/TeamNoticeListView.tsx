@@ -18,14 +18,11 @@ import { usePageReady } from '@/hooks/usePageReady';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { useToast } from '@/components/ui/Toast';
 import { MESSAGES } from '@/lib/messages';
-import { apiRequest } from '@/services/api-client';
 import {
   fetchUnitNoticeFeed,
   type UnitNoticePost,
 } from '@/services/community-notice.service';
 import { useRefreshSubscription, REFRESH_KEYS } from '@/lib/refresh-bus';
-import { ActionSheet } from '@/components/director/ActionSheet';
-import { ConfirmSheet } from '@/components/shared/ConfirmSheet';
 import { FloatingActionButton } from '@/components/ui/FloatingActionButton';
 
 /** HTML 태그 제거 후 공백 정리 — 카드 내용 미리보기용 */
@@ -73,30 +70,6 @@ interface NoticeItem {
   audienceChildNames?: string[];
 }
 
-interface BackendNotice {
-  id: string;
-  title: string;
-  content: string;
-  type?: string;
-  isPinned?: boolean;
-  createdAt: string;
-  isRead?: boolean;
-  isPublished?: boolean;
-  startAt?: string | null;
-  expiresAt?: string | null;
-  canManage?: boolean;
-}
-
-interface BackendNoticeListResponse {
-  data: BackendNotice[];
-  pagination?: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  };
-}
-
 /** [Phase 2] feed(UnitNoticePost) → 카드 아이템 — 출처 축·읽음 포함 */
 function feedToNoticeItem(p: UnitNoticePost): NoticeItem {
   return {
@@ -114,43 +87,6 @@ function feedToNoticeItem(p: UnitNoticePost): NoticeItem {
   };
 }
 
-function toNoticeItem(n: BackendNotice): NoticeItem {
-  return {
-    id: n.id,
-    title: n.title,
-    content: n.content ?? '',
-    createdAt: n.createdAt,
-    isPinned: n.isPinned ?? false,
-    isRead: n.isRead,
-    isPublished: n.isPublished,
-    startAt: n.startAt,
-    expiresAt: n.expiresAt,
-    canManage: n.canManage,
-  };
-}
-
-/**
- * 관리 목록 상태 배지 — 각 조건은 **독립**이라 복수 배지가 동시에 붙을 수 있다.
- * (예: 미게시+만료) 판정은 호출자가 넘긴 **동일 now 스냅샷**(nowMs)으로만 한다 —
- * 행마다 Date.now() 를 다시 읽으면 렌더 중 시각이 갈라져 경계 공지의 배지가 불일치한다.
- */
-function computeStatusBadges(
-  notice: NoticeItem,
-  nowMs: number,
-): Array<{ key: 'unpublished' | 'scheduled' | 'expired'; label: string }> {
-  const badges: Array<{ key: 'unpublished' | 'scheduled' | 'expired'; label: string }> = [];
-  if (notice.isPublished === false) {
-    badges.push({ key: 'unpublished', label: MESSAGES.notice.badgeUnpublished });
-  }
-  if (notice.startAt && new Date(notice.startAt).getTime() > nowMs) {
-    badges.push({ key: 'scheduled', label: MESSAGES.notice.badgeScheduled });
-  }
-  if (notice.expiresAt && new Date(notice.expiresAt).getTime() < nowMs) {
-    badges.push({ key: 'expired', label: MESSAGES.notice.badgeExpired });
-  }
-  return badges;
-}
-
 const PAGE_SIZE = 10;
 
 export interface TeamNoticeListViewProps {
@@ -162,12 +98,6 @@ export interface TeamNoticeListViewProps {
   canWrite?: boolean;
   /** 미확인(읽음) 점 노출 — 회원 열람 화면 */
   showReadState?: boolean;
-  /**
-   * 데이터 계약 (Phase 3 · AC 3-3 — boolean `activeOnly` 대체).
-   *   audience(기본) → `GET /notices?scope=team&isActive=true` — 게시 중 공지만 (게시기간 서버 적용)
-   *   manage        → `GET /notices/admin/list?scope=team` — 관리 팀의 미게시·예약·만료 포함 + 상태 배지
-   */
-  mode?: 'audience' | 'manage';
   /**
    * [ICETIMES] flat 테마. 기본 false = 기존 스타일 1:1 보존(타 화면 회귀 0).
    *   true 시 카드 박스 → full-bleed 흰 섹션 + hairline 행, it-* 토큰 적용.
@@ -188,7 +118,6 @@ export function TeamNoticeListView({
   canManage = false,
   canWrite = false,
   showReadState = false,
-  mode = 'audience',
   iceTheme = false,
   embedded = false,
 }: TeamNoticeListViewProps) {
@@ -206,10 +135,6 @@ export function TeamNoticeListView({
   const [totalCount, setTotalCount] = useState(0);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  // 케밥(⋮) 액션시트 / 삭제 확인 상태 — canManage=true 행의 케밥으로만 열림
-  const [actionTarget, setActionTarget] = useState<NoticeItem | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<NoticeItem | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
 
   useNativeUI({
     showStatusBar: true,
@@ -229,68 +154,28 @@ export function TeamNoticeListView({
       if (append) setIsLoadingMore(true);
       else setIsLoading(true);
       try {
-        // [Phase 2] audience = TeamPost 통합 feed (팀+훈련+대회 · 게시 중만).
+        // [Phase 3] TeamPost 통합 feed 단일 소스 (팀+훈련+대회 · 게시 중만) —
+        //   이관 원본(SystemNotice) 관리 목록(manage 모드)은 이관 완결로 제거됨.
         //   [P2-R1-M01] offset 페이지네이션 + total 계약 — 50건 상한 잘림 없음.
-        if (mode === 'audience') {
-          const feedRes = await fetchUnitNoticeFeed({
-            limit: PAGE_SIZE,
-            offset: (pageNum - 1) * PAGE_SIZE,
-          });
-          if (feedRes.success && feedRes.data) {
-            const mapped = feedRes.data.data.map(feedToNoticeItem);
-            setNotices((prev) => (append ? [...prev, ...mapped] : mapped));
-            setTotalCount(feedRes.data.total);
-            setHasMore(pageNum * PAGE_SIZE < feedRes.data.total);
-            setPage(pageNum);
-          } else {
-            if (!append) {
-              setNotices([]);
-              setHasMore(false);
-              setTotalCount(0);
-              setPage(1);
-            }
-            if (feedRes.error?.message) toast.error(feedRes.error.message);
-            else if (append) toast.error(MESSAGES.notice.list.loadMoreError);
-          }
-          return;
-        }
-
-        // manage = 관리 목록 API — 이관 원본(SystemNotice) 열람용 레거시 (호출처 0 · Phase 3 정리).
-        const params: Record<string, string> = {
-          page: String(pageNum),
-          limit: String(PAGE_SIZE),
-          scope: 'team',
-        };
-
-        const res = await apiRequest<BackendNoticeListResponse | BackendNotice[]>({
-          method: 'GET',
-          url: '/notices/admin/list',
-          params,
+        const feedRes = await fetchUnitNoticeFeed({
+          limit: PAGE_SIZE,
+          offset: (pageNum - 1) * PAGE_SIZE,
         });
-
-        if (res.success && res.data) {
-          const list = Array.isArray(res.data) ? res.data : res.data.data;
-          const pagination = Array.isArray(res.data) ? undefined : res.data.pagination;
-          const mapped = list.map(toNoticeItem);
-
+        if (feedRes.success && feedRes.data) {
+          const mapped = feedRes.data.data.map(feedToNoticeItem);
           setNotices((prev) => (append ? [...prev, ...mapped] : mapped));
-
-          const total = pagination?.total ?? (append ? undefined : mapped.length);
-          if (typeof total === 'number') setTotalCount(total);
-
-          const more = pagination
-            ? pagination.page < pagination.totalPages
-            : mapped.length === PAGE_SIZE;
-          setHasMore(more);
+          setTotalCount(feedRes.data.total);
+          setHasMore(pageNum * PAGE_SIZE < feedRes.data.total);
           setPage(pageNum);
-        } else if (!append) {
-          setNotices([]);
-          setHasMore(false);
-          setTotalCount(0);
-          setPage(1);
-          if (res.error?.message) toast.error(res.error.message);
         } else {
-          toast.error(MESSAGES.notice.list.loadMoreError);
+          if (!append) {
+            setNotices([]);
+            setHasMore(false);
+            setTotalCount(0);
+            setPage(1);
+          }
+          if (feedRes.error?.message) toast.error(feedRes.error.message);
+          else if (append) toast.error(MESSAGES.notice.list.loadMoreError);
         }
       } catch {
         if (!append) {
@@ -307,7 +192,7 @@ export function TeamNoticeListView({
         setIsLoadingMore(false);
       }
     },
-    [mode, toast],
+    [toast],
   );
 
   useEffect(() => {
@@ -328,48 +213,10 @@ export function TeamNoticeListView({
     void fetchPage(page + 1, true);
   }, [fetchPage, hasMore, isLoadingMore, page]);
 
-  // 케밥 → 수정하기: 작성/수정 단일 페이지로 이동 (edit 모드)
-  const handleEdit = useCallback(
-    (id: string) => {
-      setActionTarget(null);
-      navigate(`/notices-create?edit=${id}`);
-    },
-    [navigate],
-  );
-
-  // 케밥 → 삭제 확인 후 실제 삭제 (본인 관리 팀 공지만 — 백엔드 권한 검증)
-  const handleDeleteConfirm = useCallback(async () => {
-    if (isDeleting || !deleteTarget) return;
-    setIsDeleting(true);
-    try {
-      const res = await apiRequest({
-        method: 'DELETE',
-        url: `/notices/${deleteTarget.id}`,
-      });
-      if (res.success) {
-        setNotices((prev) => prev.filter((n) => n.id !== deleteTarget.id));
-        setTotalCount((c) => Math.max(0, c - 1));
-        toast.success(MESSAGES.notice.deleted);
-      } else {
-        toast.error(res.error?.message ?? MESSAGES.error.network);
-      }
-    } catch {
-      toast.error(MESSAGES.error.network);
-    } finally {
-      setIsDeleting(false);
-      setDeleteTarget(null);
-    }
-  }, [deleteTarget, isDeleting, toast]);
-
   // 고정 공지 상단 정렬 (Hero 카드 대신 '고정' 배지 + 상단 정렬)
   const sorted = [...notices].sort(
     (a, b) => Number(b.isPinned) - Number(a.isPinned),
   );
-
-  // [AC 3-2] 상태 배지 판정용 now 스냅샷 — 렌더당 1회만 읽어 전체 행이 동일 시각으로 판정.
-  const nowMs = Date.now();
-  const badgesFor = (notice: NoticeItem) =>
-    mode === 'manage' ? computeStatusBadges(notice, nowMs) : undefined;
 
   if (isLoading) return null;
 
@@ -412,8 +259,6 @@ export function TeamNoticeListView({
                     key={notice.id}
                     notice={notice}
                     showReadState={showReadState}
-                    statusBadges={badgesFor(notice)}
-                    onKebab={notice.canManage ? setActionTarget : undefined}
                     iceTheme
                   />
                 ))}
@@ -481,11 +326,7 @@ export function TeamNoticeListView({
                   <button
                     type="button"
                     onClick={() =>
-                      navigate(
-                        mode === 'audience'
-                          ? '/community-notice/create'
-                          : '/notices-create',
-                      )
+navigate('/community-notice/create')
                     }
                     className="mt-2 inline-flex items-center gap-1.5 rounded-w-md bg-it-blue-500 px-4 py-2 text-card-meta font-bold text-white transition-colors motion-reduce:transition-none hover:bg-it-blue-600 active:brightness-95"
                   >
@@ -501,54 +342,13 @@ export function TeamNoticeListView({
         {/* FAB — 우하단 플로팅 작성 버튼 (작성 권한자만) */}
         {canWrite && notices.length > 0 && (
           <FloatingActionButton
-          href={mode === 'audience' ? '/community-notice/create' : '/notices-create'}
+          href="/community-notice/create"
           icon="add"
           label={MESSAGES.unitNotice.write}
         />
         )}
 
-        {/* 케밥(⋮) 액션 시트 + 삭제 확인 — [P5-R1-01] 화면 prop 이 아닌 **행별 서버 canManage** 로만
-            열린다(케밥 자체가 canManage=true 행에만 렌더). 시트를 화면 prop 으로 재차 gate 하면
-            audience 화면에서 관리 가능 행의 케밥을 눌러도 시트가 열리지 않는 불일치가 생긴다. */}
-        <>
-            <ActionSheet
-              isOpen={!!actionTarget}
-              onClose={() => setActionTarget(null)}
-              title={MESSAGES.notice.manage}
-              items={
-                actionTarget
-                  ? [
-                      {
-                        icon: 'edit',
-                        label: '수정하기',
-                        onClick: () => handleEdit(actionTarget.id),
-                      },
-                      {
-                        icon: 'delete',
-                        label: '삭제하기',
-                        danger: true,
-                        onClick: () => {
-                          setDeleteTarget(actionTarget);
-                          setActionTarget(null);
-                        },
-                      },
-                    ]
-                  : []
-              }
-            />
-            <ConfirmSheet
-              open={!!deleteTarget}
-              title={MESSAGES.notice.deleteConfirm}
-              description={MESSAGES.notice.deleteConfirmDesc}
-              confirmLabel="삭제하기"
-              cancelLabel="취소"
-              variant="danger"
-              onConfirm={handleDeleteConfirm}
-              onCancel={() => {
-                if (!isDeleting) setDeleteTarget(null);
-              }}
-            />
-          </>
+
       </>
     );
 
@@ -594,8 +394,6 @@ export function TeamNoticeListView({
                   key={notice.id}
                   notice={notice}
                   showReadState={showReadState}
-                  statusBadges={badgesFor(notice)}
-                  onKebab={notice.canManage ? setActionTarget : undefined}
                 />
               ))}
 
@@ -659,11 +457,7 @@ export function TeamNoticeListView({
                 <button
                   type="button"
                   onClick={() =>
-                    navigate(
-                      mode === 'audience'
-                        ? '/community-notice/create'
-                        : '/notices-create',
-                    )
+navigate('/community-notice/create')
                   }
                   className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-ice-500 px-4 py-2 text-card-meta font-bold text-white transition-colors motion-reduce:transition-none hover:bg-ice-600 active:brightness-95"
                 >
@@ -679,52 +473,13 @@ export function TeamNoticeListView({
       {/* FAB — 우하단 플로팅 작성 버튼 (작성 권한자만) */}
       {canWrite && notices.length > 0 && (
         <FloatingActionButton
-          href={mode === 'audience' ? '/community-notice/create' : '/notices-create'}
+          href="/community-notice/create"
           icon="add"
           label={MESSAGES.unitNotice.write}
         />
       )}
 
-      {/* 케밥(⋮) 액션 시트 + 삭제 확인 — [P5-R1-01] 행별 서버 canManage 로만 열림 (위 iceTheme 분기 주석 참조) */}
-      <>
-          <ActionSheet
-            isOpen={!!actionTarget}
-            onClose={() => setActionTarget(null)}
-            title={MESSAGES.notice.manage}
-            items={
-              actionTarget
-                ? [
-                    {
-                      icon: 'edit',
-                      label: '수정하기',
-                      onClick: () => handleEdit(actionTarget.id),
-                    },
-                    {
-                      icon: 'delete',
-                      label: '삭제하기',
-                      danger: true,
-                      onClick: () => {
-                        setDeleteTarget(actionTarget);
-                        setActionTarget(null);
-                      },
-                    },
-                  ]
-                : []
-            }
-          />
-          <ConfirmSheet
-            open={!!deleteTarget}
-            title={MESSAGES.notice.deleteConfirm}
-            description={MESSAGES.notice.deleteConfirmDesc}
-            confirmLabel="삭제하기"
-            cancelLabel="취소"
-            variant="danger"
-            onConfirm={handleDeleteConfirm}
-            onCancel={() => {
-              if (!isDeleting) setDeleteTarget(null);
-            }}
-          />
-        </>
+
     </>
   );
 
@@ -738,36 +493,14 @@ export function TeamNoticeListView({
 }
 
 // ─── Sub Components ──────────────────────────────────
-/** 상태 배지 색 — 미게시=중성 회색 · 예약=파랑 · 만료=빨강 (라이트/다크 각각 4.5:1 이상 유지). */
-const BADGE_TONE: Record<
-  'unpublished' | 'scheduled' | 'expired',
-  { ice: string; legacy: string }
-> = {
-  unpublished: {
-    ice: 'bg-it-ink-100 text-it-ink-600 dark:bg-it-ink-700/60 dark:text-it-ink-100',
-    legacy: 'bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-100',
-  },
-  scheduled: {
-    ice: 'bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-900/50 dark:text-it-blue-200',
-    legacy: 'bg-ice-50 text-ice-600 dark:bg-ice-500/20 dark:text-ice-300',
-  },
-  expired: {
-    ice: 'bg-it-red-500/10 text-it-red-600 dark:bg-it-red-500/15 dark:text-it-red-300',
-    // flame 스케일은 100/500/600/700 만 정의됨 — 다크 텍스트는 flame-100 사용 (300 미존재)
-    legacy: 'bg-flame-500/10 text-flame-600 dark:bg-flame-500/15 dark:text-flame-100',
-  },
-};
-
 function NoticeCard({
   notice,
   showReadState,
-  statusBadges,
   onKebab,
   iceTheme = false,
 }: {
   notice: NoticeItem;
   showReadState?: boolean;
-  statusBadges?: Array<{ key: 'unpublished' | 'scheduled' | 'expired'; label: string }>;
   onKebab?: (notice: NoticeItem) => void;
   iceTheme?: boolean;
 }) {
@@ -830,14 +563,6 @@ function NoticeCard({
                   고정
                 </span>
               )}
-              {statusBadges?.map((b) => (
-                <span
-                  key={b.key}
-                  className={`inline-flex items-center rounded-w-pill px-2 py-0.5 text-[12px] font-bold ${BADGE_TONE[b.key].ice}`}
-                >
-                  {b.label}
-                </span>
-              ))}
               {unread && (
                 <span
                   className="inline-block h-2 w-2 rounded-w-pill bg-it-red-500"
@@ -929,14 +654,6 @@ function NoticeCard({
                 고정
               </span>
             )}
-            {statusBadges?.map((b) => (
-              <span
-                key={b.key}
-                className={`inline-flex items-center rounded-w-pill px-2 py-0.5 text-card-meta font-bold ${BADGE_TONE[b.key].legacy}`}
-              >
-                {b.label}
-              </span>
-            ))}
             {unread && (
               <span
                 className="inline-block h-2 w-2 rounded-w-pill bg-flame-500"

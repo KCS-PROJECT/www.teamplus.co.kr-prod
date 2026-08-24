@@ -66,6 +66,7 @@ export const PAGE_TITLES: Record<string, string> = {
   '/event/premium': '프리미엄 이벤트',
   '/live-review': '라이브 리뷰',
   '/scoreboard': '실시간 스코어보드',
+  '/contents': '포스트',
 
   // ── 팀·수업·쇼핑 공통 ────────────────────────────────
   '/classes': '수업',
@@ -154,12 +155,27 @@ export const PAGE_TITLES: Record<string, string> = {
 };
 
 /**
+ * 동적 세그먼트(prefix) 타이틀 매핑 — **정확 일치 실패 시에만** 조회.
+ * prefix 뒤에 반드시 '/' 가 이어지는 경로만 매칭한다 (예: '/contents' → '/contents/[slug]').
+ * PAGE_TITLES 의 정적 키와 겹치는 경로는 항상 정적 키가 우선하므로 기존 제목 회귀가 없다.
+ */
+const PAGE_TITLE_PREFIXES: ReadonlyArray<readonly [prefix: string, title: string]> = [
+  ['/contents', '포스트'],
+];
+
+/**
  * pathname 에 대응하는 공식 타이틀을 반환.
- * - 정확히 일치하는 키가 있으면 그 값.
- * - 없으면 undefined (호출처에서 fallback 처리).
+ * - 정확히 일치하는 키가 있으면 그 값 (항상 우선).
+ * - 없으면 PAGE_TITLE_PREFIXES 의 `prefix + '/'` 시작 매칭.
+ * - 둘 다 없으면 undefined (호출처에서 fallback 처리).
  */
 export function resolvePageTitle(pathname: string): string | undefined {
   if (!pathname) return undefined;
   const normalized = pathname.replace(/\/+$/, '') || pathname; // trailing slash 제거
-  return PAGE_TITLES[normalized];
+  const exact = PAGE_TITLES[normalized];
+  if (exact) return exact;
+  for (const [prefix, title] of PAGE_TITLE_PREFIXES) {
+    if (normalized.startsWith(`${prefix}/`)) return title;
+  }
+  return undefined;
 }

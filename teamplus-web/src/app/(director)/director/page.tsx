@@ -29,7 +29,11 @@ import {
 } from '@/components/dashboard/ClassCalendarSection';
 import { WeekScheduleList } from '@/components/dashboard/WeekScheduleList';
 import { RecentNoticesSection } from '@/components/dashboard/RecentNoticesSection';
-import { TeamClassesSummary } from '@/components/dashboard/TeamClassesSummary';
+import {
+  TeamClassesSummary,
+  type TeamClassesSummaryActivity,
+} from '@/components/dashboard/TeamClassesSummary';
+import { ReadingContentSection } from '@/components/dashboard/ReadingContentSection';
 // [2026-05-12] DirectorClassCalendar 사용 중단 — 코치/학부모와 동일 ClassCalendarSection 으로 통일.
 import { DirectorPendingApprovals } from '@/components/director/DirectorPendingApprovals';
 import { DirectorEmptyCard } from '@/components/director/DirectorEmptyCard';
@@ -74,6 +78,15 @@ export default function DirectorDashboardPage() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [calendarReady, setCalendarReady] = useState(false);
   const [summaryReady, setSummaryReady] = useState(false);
+  // 포스트 배치 판정 — TeamClassesSummary 첫 조회 결과(1회 발화)만 사용, 별도 API 없음.
+  //   null(판정 전)에는 포스트를 렌더하지 않는다(선렌더 후 이동 금지 — SPEC §2-4).
+  const [activity, setActivity] = useState<TeamClassesSummaryActivity | null>(null);
+  // 승격 조건: 조회 전부 정상 완료 + 실제 0건. partial/error 는 기본(최하단) 위치.
+  const promoteReading =
+    activity !== null &&
+    activity.status === 'success' &&
+    activity.classCount === 0 &&
+    activity.tournamentCount === 0;
 
   // v16.3 (2026-05-16): useStableLayout — main wrapper ResizeObserver 기반 layout 안정화 감지.
   // sub-component (ClassCalendarSection, DirectorPendingApprovals, RecentNoticesSection 등)
@@ -204,7 +217,24 @@ export default function DirectorDashboardPage() {
 
         {/* 3. 수업 목록 — full-bleed flat 섹션. 내 팀 정규수업 요약.
             classesCategory='regular' → 오픈클래스 제외, '/classes-manage'(정규+대회) 와 동일 기준. */}
-        <TeamClassesSummary showEnrollment={false} classesCategory="regular" classLimit={7} tournamentLimit={3} targetPath="/classes-manage" onReady={setSummaryReady} iceTheme />
+        <TeamClassesSummary
+          showEnrollment={false}
+          classesCategory="regular"
+          classLimit={7}
+          tournamentLimit={3}
+          targetPath="/classes-manage"
+          onReady={setSummaryReady}
+          onActivityResolved={setActivity}
+          emptyActions={[
+            // 감독 — POST /classes(COACH·DIRECTOR)·POST /tournaments(ADMIN·DIRECTOR) 모두 허용.
+            { label: MESSAGES.classesEdit.addSheet.classRegister, href: '/classes-manage/create' },
+            { label: MESSAGES.classesEdit.addSheet.tournamentRegister, href: '/tournaments/create' },
+          ]}
+          iceTheme
+        />
+
+        {/* 3.5 포스트(승격) — 훈련·대회가 정상 조회 결과 0건일 때만 등록 CTA 다음에 노출. */}
+        {promoteReading && <ReadingContentSection placement="promoted" iceTheme />}
 
         {/* 4. 수업 일정 — 기본은 이번 주, 날짜 선택 중에는 해당 날짜 일정으로 하단 목록 동기화. */}
         <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
@@ -254,6 +284,12 @@ export default function DirectorDashboardPage() {
             )}
           </div>
         </section>
+
+        {/* 6. 포스트(기본 최하단) — 운영 데이터가 있거나 조회 실패(partial/error)면 여기.
+            판정 전(activity === null)에는 렌더하지 않아 상·하단 이동이 없다. */}
+        {activity !== null && !promoteReading && (
+          <ReadingContentSection placement="footer" iceTheme />
+        )}
 
       </main>
 

@@ -18,7 +18,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 
-import { useNavigation } from '@/components/ui/NavLink';
+import { NavLink, useNavigation } from '@/components/ui/NavLink';
+import { Icon } from '@/components/ui/Icon';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { SectionHead, WalletAppBar } from '@/components/wallet';
 import { HomeIdentityStrip } from '@/components/common/HomeIdentityStrip';
@@ -31,7 +32,11 @@ import {
 } from '@/components/dashboard/ClassCalendarSection';
 import { WeekScheduleList } from '@/components/dashboard/WeekScheduleList';
 import { RecentNoticesSection } from '@/components/dashboard/RecentNoticesSection';
-import { TeamClassesSummary } from '@/components/dashboard/TeamClassesSummary';
+import {
+  TeamClassesSummary,
+  type TeamClassesSummaryActivity,
+} from '@/components/dashboard/TeamClassesSummary';
+import { ReadingContentSection } from '@/components/dashboard/ReadingContentSection';
 // PR-E M1 보정 (2026-05-15): DirectorPendingApprovals 제거.
 //   회의록 §4.6 정합 — 오픈클래스는 멤버 승인 절차가 없음 (학원 가입 ≠ 팀 가입 승인).
 //   기존 컴포넌트는 academyId 를 teamId 로 잘못 매핑하여 /teams/{academyId}/members 404 가능성.
@@ -67,11 +72,16 @@ export default function AcademyDirectorDashboardPage() {
   const { navigate } = useNavigation();
   const { unreadCount } = useNotificationContext();
   const [academies, setAcademies] = useState<AcademyRef[] | null>(null);
+  // 아카데미 조회 실패를 빈 목록(미생성 확정)과 구분 — 실패를 미생성으로 오인하면 포스트가
+  //   잘못 승격되고 '오픈클래스 만들기' CTA 가 잘못 노출된다 (SPEC_DASHBOARD_READING_CONTENT §2-4 v1.4).
+  const [academiesError, setAcademiesError] = useState(false);
   const [selection, setSelection] = useState<SelectedClassesPayload>({ dateKey: null, classes: [], weekGroups: [] });
   const scheduleView = getDashboardScheduleView(selection);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [calendarReady, setCalendarReady] = useState(false);
   const [summaryReady, setSummaryReady] = useState(false);
+  // 포스트 배치 판정용 훈련 조회 결과 — TeamClassesSummary 첫 조회 1회 발화(대회 축 없음).
+  const [activity, setActivity] = useState<TeamClassesSummaryActivity | null>(null);
 
   // v16.3 (2026-05-16): useStableLayout — main wrapper ResizeObserver 기반 layout 안정화 감지.
   // sub-component (ClassCalendarSection, RecentNoticesSection 등) mount/paint 완료 보장.
@@ -106,6 +116,7 @@ export default function AcademyDirectorDashboardPage() {
       const res = await listMyAcademies();
       if (cancelled) return;
       if (res.success && Array.isArray(res.data)) {
+        setAcademiesError(false);
         setAcademies(
           res.data.map((a) => ({
             id: a.id,
@@ -114,6 +125,9 @@ export default function AcademyDirectorDashboardPage() {
           })),
         );
       } else {
+        // 조회 실패 — 화면 골격 유지를 위해 빈 목록은 그대로 두되, 실패 플래그로
+        //   "미생성 확정(success-empty)" 판정과 분리한다.
+        setAcademiesError(true);
         setAcademies([]);
       }
     })();
@@ -130,6 +144,21 @@ export default function AcademyDirectorDashboardPage() {
     academies && academies.length > 0
       ? academies.map((a) => a.name.replace(/\s*\([^()]*\)\s*$/, '').trim()).join(' · ')
       : null;
+
+  // 미생성 확정(success-empty) = 목록 조회가 정상 완료된 뒤의 빈 결과만. 실패는 미생성이 아니다.
+  const noAcademyConfirmed =
+    academies !== null && !academiesError && academies.length === 0;
+  // 포스트 배치 — loading(null)=미확정(미렌더) / 미생성 확정=승격 / 조회 실패=기본 최하단 /
+  //   아카데미 존재 시 훈련 조회 결과(success && 0건)만 승격 (SPEC §2-4 v1.4).
+  const readingPlacement: 'promoted' | 'footer' | null = (() => {
+    if (academies === null) return null;
+    if (academiesError) return 'footer';
+    if (academies.length === 0) return 'promoted';
+    if (activity === null) return null;
+    return activity.status === 'success' && activity.classCount === 0
+      ? 'promoted'
+      : 'footer';
+  })();
 
   return (
     <MobileContainer hasBottomNav>
@@ -170,6 +199,37 @@ export default function AcademyDirectorDashboardPage() {
         {/* 회원 승인 영역 — 오픈클래스는 멤버 승인 절차 없음 (회의록 §4.6).
               P2 에서 AcademyEnrollments(수강 신청 관리) 위젯 신설 후 이 자리에 추가 예정. */}
 
+        {/* 0. 미생성 확정 — 선행 필수 행동(오픈클래스 생성) CTA 를 먼저, 그 다음 포스트.
+            /academy-classes/create 는 아카데미가 없으면 훈련 폼 대신 생성 안내를 표시하므로
+            여기서는 훈련 등록 CTA 를 노출하지 않는다 (SPEC §2-4 v1.4 · classes-manage/create 와 동일 문구). */}
+        {noAcademyConfirmed && (
+          <section
+            className="mt-2 flex flex-col items-center bg-it-surface px-8 py-10 text-center dark:bg-it-blue-950"
+            aria-label={MESSAGES.academy.noAcademyTitle}
+          >
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-w-pill bg-it-fill dark:bg-rink-700">
+              <Icon name="school" className="text-3xl text-it-ink-400 dark:text-rink-300" aria-hidden="true" />
+            </div>
+            <h2 className="mb-2 text-card-section font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
+              {MESSAGES.academy.noAcademyTitle}
+            </h2>
+            <p className="mb-6 text-card-body leading-relaxed text-it-ink-500 dark:text-rink-300">
+              {MESSAGES.academy.noAcademyDescription}
+            </p>
+            <NavLink
+              href="/academy/create"
+              className="inline-flex h-12 items-center justify-center rounded-w-md bg-it-blue-500 px-6 text-card-body font-extrabold tracking-[-0.02em] text-white transition-colors hover:bg-it-blue-600 active:brightness-90"
+            >
+              {MESSAGES.academy.createAcademyCta}
+            </NavLink>
+          </section>
+        )}
+
+        {/* 0.5 포스트(승격 · 미생성) — 오픈클래스 생성 CTA 다음. */}
+        {noAcademyConfirmed && readingPlacement === 'promoted' && (
+          <ReadingContentSection placement="promoted" iceTheme />
+        )}
+
         {/* 1. 수업 목록 — 오픈클래스 수업 요약 (달력 위). 대회·등록완료 배지 없음. */}
         {academyId && (
           <TeamClassesSummary
@@ -178,8 +238,18 @@ export default function AcademyDirectorDashboardPage() {
             showEnrollment={false}
             targetPath="/classes-manage"
             onReady={setSummaryReady}
+            onActivityResolved={setActivity}
+            emptyActions={[
+              // 오픈클래스 감독 — 훈련 등록만(대회 축 없음). 오픈클래스 전용 등록 화면으로 이동.
+              { label: MESSAGES.classesEdit.addSheet.classRegister, href: '/academy-classes/create' },
+            ]}
             iceTheme
           />
+        )}
+
+        {/* 1.5 포스트(승격 · 훈련 0건) — 훈련 등록 CTA 다음, 캘린더 이전. */}
+        {academyId && readingPlacement === 'promoted' && (
+          <ReadingContentSection placement="promoted" iceTheme />
         )}
 
         {/* 2. 수업 일정 — 기본은 이번 주, 날짜 선택 중에는 해당 날짜 일정으로 하단 목록 동기화. */}
@@ -231,6 +301,11 @@ export default function AcademyDirectorDashboardPage() {
             )}
           </div>
         </section>
+
+        {/* 포스트(기본 최하단) — 훈련 존재 또는 조회 실패(미생성 오인 금지) 시 여기. */}
+        {readingPlacement === 'footer' && (
+          <ReadingContentSection placement="footer" iceTheme />
+        )}
 
       </main>
 

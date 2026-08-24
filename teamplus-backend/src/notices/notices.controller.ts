@@ -209,11 +209,7 @@ export class NoticesController {
     @Request() req: AuthenticatedRequest,
     @Param("noticeId") noticeId: string,
   ) {
-    return this.noticesService.markNoticeAsRead(
-      noticeId,
-      req.user.id,
-      req.user.userType,
-    );
+    return this.noticesService.markNoticeAsRead(noticeId, req.user.id);
   }
 
   /**
@@ -427,40 +423,6 @@ export class NoticesController {
   /**
    * 관리자용 공지사항 목록 (미공개 포함)
    */
-  /**
-   * 공지를 작성할 수 있는 팀 목록 (팀 선택기용).
-   *
-   * [2026-08-07 · Phase 2 · F-02] 관리 팀이 둘 이상인 감독/코치는 `targetTeamId` 를 지정해야
-   * 공지를 쓸 수 있는데(`createNotice` 403), 화면에 선택 수단이 없어 작성 자체가 불가능했다.
-   *
-   * ⚠️ `/teams/my/managed` 를 재사용하지 않는다 —
-   *   ① `includePending` 옵션이 pending 멤버십을 포함해 F-03(미승인 코치)을 UI 로 되살리고
-   *   ② `active Team.coachId` 소유자를 합집합하지 않아 공지 관리 SoT 와 집합이 다르다.
-   *   여기서는 `resolveNoticeManageTeamIds`(Phase 0 SoT)를 그대로 사용해 **쓰기 권한과 화면이 일치**하게 한다.
-   */
-  @Get("manage/teams")
-  @UseGuards(AuthGuard("jwt"), RolesGuard)
-  @Roles("ADMIN", "SYSTEM", "OPER", "DIRECTOR", "COACH")
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: "공지 작성 가능 팀 목록",
-    description:
-      "로그인 사용자가 공지를 작성·관리할 수 있는 팀 목록입니다. 공지 관리 권한 SoT(소유 팀 ∪ 승인된 관리 역할 멤버십)와 동일한 집합이며, 미승인(pending) 멤버십 팀은 포함되지 않습니다.",
-  })
-  @ApiResponse({
-    status: 200,
-    description: "조회 성공",
-    schema: {
-      example: { data: [{ id: "team-cuid", name: "서울 아이스하키" }] },
-    },
-  })
-  async getManageableTeams(@Request() req: AuthenticatedRequest) {
-    return this.noticesService.getManageableTeams(
-      req.user.id,
-      req.user.userType,
-    );
-  }
-
   @Get("admin/list")
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   // [Phase 0 · 결정 4] ACADEMY_DIRECTOR 제외 — 가입 시 Team 을 만들지 않아 팀 공지 관리 권한이 없다.

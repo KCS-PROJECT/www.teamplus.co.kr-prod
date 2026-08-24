@@ -61,24 +61,16 @@ export interface CommentThreadProps {
 }
 
 /**
- * 한글 상대 시간을 반환한다.
+ * 절대 시각 "YYYY.MM.DD HH:mm" — 공지 메타와 동일 포맷.
+ * [2026-08-24 사용자 확정] 상대 시간("N개월 전")은 오래될수록 시점 정보가 사라지고
+ * 렌더 시점마다 표기가 변해 기록성이 약하다 — 공지 댓글은 절대 시각으로 통일.
  * @param dateStr ISO 8601 문자열
  */
-function formatRelativeTime(dateStr: string): string {
-  const now = Date.now();
-  const target = new Date(dateStr).getTime();
-  const diffSec = Math.floor((now - target) / 1000);
-
-  if (diffSec < 60) return '방금 전';
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}분 전`;
-  const diffHour = Math.floor(diffMin / 60);
-  if (diffHour < 24) return `${diffHour}시간 전`;
-  const diffDay = Math.floor(diffHour / 24);
-  if (diffDay < 30) return `${diffDay}일 전`;
-  const diffMonth = Math.floor(diffDay / 30);
-  if (diffMonth < 12) return `${diffMonth}개월 전`;
-  return `${Math.floor(diffMonth / 12)}년 전`;
+function formatCommentTime(dateStr: string): string {
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /**
@@ -178,7 +170,7 @@ export function CommentThread({
                   dateTime={comment.createdAt}
                   className="text-[11px] text-wtext-3 dark:text-rink-300 shrink-0"
                 >
-                  {formatRelativeTime(comment.createdAt)}
+                  {formatCommentTime(comment.createdAt)}
                 </time>
                 <span className="ml-auto shrink-0 inline-flex items-center gap-0.5">
                   {/* 수정 — 본인 댓글만 (onEdit 제공 시) */}

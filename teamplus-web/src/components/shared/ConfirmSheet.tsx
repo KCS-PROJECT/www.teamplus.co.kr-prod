@@ -97,9 +97,9 @@ export function ConfirmSheet({
   // BottomNav(z-40) 와 다른 stacking context 충돌 방지를 위해 document.body 로 portal
   return createPortal(
     <div className="fixed inset-0 z-[9990] flex items-end justify-center">
-      {/* 오버레이 — 솔리드 rink-900 dim */}
+      {/* 오버레이 — 솔리드 rink-900 dim (ActionSheet/BottomSheet 와 동일한 페이드 인) */}
       <div
-        className="absolute inset-0 bg-rink-900/45"
+        className="absolute inset-0 bg-rink-900/45 animate-overlay-in motion-reduce:animate-none"
         onClick={onCancel}
         aria-hidden="true"
       />
@@ -120,7 +120,9 @@ export function ConfirmSheet({
           'bg-wsurface dark:bg-rink-800',
           'rounded-t-w-2xl shadow-sh-rink',
           'p-6',
-          'animate-in slide-in-from-bottom duration-200 motion-reduce:animate-none'
+          // 프로젝트 모션 토큰 — 'animate-in slide-in-from-bottom' 은 tailwindcss-animate
+          // 플러그인 문법으로 이 프로젝트에 미정의(죽은 클래스)라 모션 없이 떴었다
+          'animate-sheet-up motion-reduce:animate-none'
         )}
         style={{
           paddingBottom:
