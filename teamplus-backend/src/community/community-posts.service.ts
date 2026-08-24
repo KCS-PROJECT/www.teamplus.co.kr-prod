@@ -368,6 +368,12 @@ export class CommunityPostsService {
   }
 
   private async resolveRecipients(scope: PostScope): Promise<string[]> {
+    // 팀 축 — 목록(managed)과 동일한 분모 규칙(멤버∪학부모∪감독)을 배치 해석기
+    // 재사용으로 보장한다. 누락 시 상세 읽음 현황·재알림이 수신자 0(0/0)이 된다.
+    if (scope.teamId) {
+      const map = await this.resolveTeamRecipientsMap([scope.teamId]);
+      return map.get(scope.teamId) ?? [];
+    }
     if (scope.targetClassId) {
       return this.resolveClassRecipients(scope.targetClassId);
     }

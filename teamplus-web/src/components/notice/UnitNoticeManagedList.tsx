@@ -44,10 +44,48 @@ function axisChipLabel(axis: PostAxis): string {
   return MESSAGES.unitNotice.tournamentChip;
 }
 
-function axisIconName(axis: PostAxis): string {
-  if (axis === 'team') return 'groups';
-  if (axis === 'class') return 'school';
-  return 'trophy';
+/**
+ * 단위 카탈로그 — 단위 필터 후보와 단위별 상태(게시 중/만료) 존재 여부의 SoT.
+ * statusFilter='all' 응답 스냅샷으로만 갱신한다 — 상태 필터를 바꿔 재조회해도
+ * 단위 후보가 출렁이지 않고, 선택 단위에 없는 상태 칩을 비활성화할 근거가 된다.
+ * complete=false(51건+ 부분 로드)면 미로드분에 만료가 있을 수 있어 판단을 보류한다.
+ */
+interface UnitCatalog {
+  options: { key: string; axis: PostAxis; name: string }[];
+  statusByUnit: Record<string, { ongoing: boolean; expired: boolean }>;
+  overall: { ongoing: boolean; expired: boolean };
+  complete: boolean;
+}
+
+function buildUnitCatalog(
+  list: UnitNoticePost[],
+  totalCount: number,
+): UnitCatalog {
+  const nowMs = Date.now();
+  const options: UnitCatalog['options'] = [];
+  const statusByUnit: UnitCatalog['statusByUnit'] = {};
+  const overall = { ongoing: false, expired: false };
+  for (const post of list) {
+    const rowAxis = postAxis(post);
+    const id = post.teamId ?? post.targetClassId ?? post.targetTournamentId;
+    if (!id) continue;
+    const key = `${rowAxis}:${id}`;
+    if (!statusByUnit[key]) {
+      statusByUnit[key] = { ongoing: false, expired: false };
+      options.push({
+        key,
+        axis: rowAxis,
+        name: post.targetName ?? axisChipLabel(rowAxis),
+      });
+    }
+    const slot =
+      post.expiresAt && new Date(post.expiresAt).getTime() < nowMs
+        ? 'expired'
+        : 'ongoing'; // 서버 status 정의와 동일 — ongoing = 미만료(예약 포함)
+    statusByUnit[key][slot] = true;
+    overall[slot] = true;
+  }
+  return { options, statusByUnit, overall, complete: list.length >= totalCount };
 }
 
 export interface UnitNoticeManagedListProps {
@@ -88,6 +126,8 @@ export function UnitNoticeManagedList({
   const [statusFilter, setStatusFilter] = useState<'all' | 'ongoing' | 'expired'>(
     'all',
   );
+  // 단위 카탈로그 — 'all' 응답 스냅샷 (단위 후보 + 단위별 상태 존재 여부의 SoT)
+  const [catalog, setCatalog] = useState<UnitCatalog | null>(null);
 
   usePageReady(!isLoading);
 
@@ -115,6 +155,9 @@ export function UnitNoticeManagedList({
       if (res.success && res.data) {
         setPosts(res.data.data);
         setTotal(res.data.total);
+        if (statusFilter === 'all') {
+          setCatalog(buildUnitCatalog(res.data.data, res.data.total));
+        }
       } else {
         setPosts([]);
         setTotal(0);
@@ -150,6 +193,9 @@ export function UnitNoticeManagedList({
         const page = res.data;
         setPosts((prev) => [...prev, ...page.data]);
         setTotal(page.total);
+        if (statusFilter === 'all') {
+          setCatalog(buildUnitCatalog([...posts, ...page.data], page.total));
+        }
       } else {
         toast.error(res.error?.message ?? MESSAGES.notice.list.loadMoreError);
       }
@@ -159,7 +205,7 @@ export function UnitNoticeManagedList({
     } finally {
       if (seq === loadSeqRef.current) setIsLoadingMore(false);
     }
-  }, [axis, posts.length, statusFilter, toast]);
+  }, [axis, posts, statusFilter, toast]);
 
   const hasMore = posts.length < total;
 
@@ -171,30 +217,34 @@ export function UnitNoticeManagedList({
     void load();
   });
 
-  // 필터 후보 — 로드된 공지의 단위(팀/수업/대회) 중복 제거, 목록 등장 순서 유지
-  const unitOptions = useMemo(() => {
-    const map = new Map<string, { key: string; axis: PostAxis; name: string }>();
-    for (const post of posts) {
-      const rowAxis = postAxis(post);
-      const id = post.teamId ?? post.targetClassId ?? post.targetTournamentId;
-      if (!id) continue;
-      const key = `${rowAxis}:${id}`;
-      if (!map.has(key)) {
-        map.set(key, {
-          key,
-          axis: rowAxis,
-          name: post.targetName ?? axisChipLabel(rowAxis),
-        });
-      }
-    }
-    return Array.from(map.values());
-  }, [posts]);
+  // 필터 후보 — 'all' 스냅샷 카탈로그 기준 (상태 필터 재조회에도 후보가 출렁이지 않음)
+  const unitOptions = catalog?.options ?? [];
 
   // 선택했던 단위의 공지가 전부 삭제돼 후보에서 사라진 경우 — 전체로 폴백 (빈 화면 잠금 방지)
   const selectedUnit =
     unitFilter === 'all'
       ? null
       : (unitOptions.find((u) => u.key === unitFilter) ?? null);
+
+  // 선택 단위(미선택 시 전체)에 해당 상태의 공지가 존재하는지 — 없으면 상태 칩 비활성.
+  // 부분 로드(complete=false)면 미로드분에 있을 수 있어 판단을 보류(활성 유지)한다.
+  const isStatusAvailable = useCallback(
+    (key: 'ongoing' | 'expired'): boolean => {
+      if (!catalog?.complete) return true;
+      const src = selectedUnit
+        ? catalog.statusByUnit[selectedUnit.key]
+        : catalog.overall;
+      return src ? src[key] : true;
+    },
+    [catalog, selectedUnit],
+  );
+
+  // 단위 전환으로 현재 상태 필터가 비활성 대상이 되면 전체로 폴백 (빈 화면 잠금 방지)
+  useEffect(() => {
+    if (statusFilter !== 'all' && !isStatusAvailable(statusFilter)) {
+      setStatusFilter('all');
+    }
+  }, [isStatusAvailable, statusFilter]);
 
   const filteredPosts = useMemo(() => {
     if (!selectedUnit) return posts;
@@ -214,8 +264,14 @@ export function UnitNoticeManagedList({
     try {
       const res = await deleteUnitNotice(deleteTarget.id);
       if (res.success) {
-        setPosts((prev) => prev.filter((p) => p.id !== deleteTarget.id));
+        const remaining = posts.filter((p) => p.id !== deleteTarget.id);
+        setPosts(remaining);
         setTotal((prev) => Math.max(0, prev - 1));
+        // 'all' 로드분일 때만 카탈로그 재계산 가능 — 다른 상태 필터 중 삭제는
+        // 다음 'all' 재조회까지 스냅샷 유지(스테일 허용)
+        if (statusFilter === 'all') {
+          setCatalog(buildUnitCatalog(remaining, Math.max(0, total - 1)));
+        }
         toast.success(MESSAGES.unitNotice.deleted);
       } else {
         toast.error(res.error?.message ?? MESSAGES.error.network);
@@ -226,7 +282,7 @@ export function UnitNoticeManagedList({
       setIsDeleting(false);
       setDeleteTarget(null);
     }
-  }, [deleteTarget, isDeleting, toast]);
+  }, [deleteTarget, isDeleting, posts, statusFilter, toast, total]);
 
   // 최초 로드만 빈 화면 대기 — 재조회는 기존 목록 유지(+dim)로 unmount 모션을 막는다
   if (isLoading && !hasLoadedRef.current) return null;
@@ -262,84 +318,92 @@ export function UnitNoticeManagedList({
                 </p>
               </div>
               <span
-                className="text-[15px] font-extrabold font-num tabular-nums text-it-blue-500"
+                className="text-[13.5px] font-bold font-num tabular-nums text-it-blue-500"
                 aria-live="polite"
               >
-                {selectedUnit ? filteredPosts.length : total}
+                {MESSAGES.unitNotice.totalCount(
+                  selectedUnit ? filteredPosts.length : total,
+                )}
               </span>
             </div>
 
-            {/* 상태 필터 — 만료 구분 세그먼트 칩 (서버 status 필터, 선택 시 재조회) */}
-            <div
-              role="group"
-              aria-label={MESSAGES.unitNotice.statusFilterAria}
-              className="mb-2 flex items-center gap-1.5"
-            >
-              {(
-                [
-                  { key: 'all', label: MESSAGES.unitNotice.statusAll },
-                  { key: 'ongoing', label: MESSAGES.unitNotice.statusOngoing },
-                  { key: 'expired', label: MESSAGES.unitNotice.statusExpired },
-                ] as const
-              ).map((opt) => (
+            {/* 필터 줄 — 상태 칩(좌) + 단위 필터 트리거(우, 단위 2개 이상일 때만).
+                두 필터를 같은 높이·같은 pill 어휘로 통일해 한 줄에 배치한다
+                (칩 나열 vs 풀폭 셀렉트 박스의 이질감 해소 — 사용자 지적 2026-08-21).
+                단위 후보가 많아도 트리거+바텀시트 구조라 확장성은 유지된다. */}
+            <div className="mb-2 flex items-center gap-2">
+              <div
+                role="group"
+                aria-label={MESSAGES.unitNotice.statusFilterAria}
+                className="flex shrink-0 items-center gap-1.5"
+              >
+                {(
+                  [
+                    { key: 'all', label: MESSAGES.unitNotice.statusAll },
+                    { key: 'ongoing', label: MESSAGES.unitNotice.statusOngoing },
+                    { key: 'expired', label: MESSAGES.unitNotice.statusExpired },
+                  ] as const
+                ).map((opt) => {
+                  // 선택 단위에 없는 상태는 비활성 — 숨기면 세그먼트 폭이 출렁여 disabled 로
+                  const disabled =
+                    opt.key !== 'all' && !isStatusAvailable(opt.key);
+                  return (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => setStatusFilter(opt.key)}
+                      disabled={disabled}
+                      aria-pressed={statusFilter === opt.key}
+                      className={`h-9 rounded-w-pill px-3.5 text-[13px] font-bold transition-colors motion-reduce:transition-none active:brightness-95 disabled:cursor-not-allowed disabled:opacity-40 ${
+                        statusFilter === opt.key
+                          ? 'bg-it-blue-500 text-white'
+                          : 'bg-it-fill dark:bg-it-blue-900/30 text-it-ink-600 dark:text-it-ink-300 hover:bg-it-blue-50 dark:hover:bg-it-blue-900/50'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {unitOptions.length >= 2 && (
                 <button
-                  key={opt.key}
                   type="button"
-                  onClick={() => setStatusFilter(opt.key)}
-                  aria-pressed={statusFilter === opt.key}
-                  className={`h-9 rounded-w-pill px-3.5 text-[13px] font-bold transition-colors motion-reduce:transition-none active:brightness-95 ${
-                    statusFilter === opt.key
+                  onClick={() => setIsFilterSheetOpen(true)}
+                  aria-haspopup="dialog"
+                  aria-label={
+                    axis === 'team'
+                      ? MESSAGES.unitNotice.filterAriaTeam
+                      : MESSAGES.unitNotice.filterAria
+                  }
+                  // flex-1 잔여 폭 고정 — 선택된 이름 길이와 무관하게 버튼 크기가 일정
+                  className={`flex h-9 min-w-0 flex-1 items-center justify-between gap-1 rounded-w-pill pl-3 pr-2 text-[13px] font-bold transition-colors motion-reduce:transition-none active:brightness-95 ${
+                    selectedUnit
                       ? 'bg-it-blue-500 text-white'
                       : 'bg-it-fill dark:bg-it-blue-900/30 text-it-ink-600 dark:text-it-ink-300 hover:bg-it-blue-50 dark:hover:bg-it-blue-900/50'
                   }`}
                 >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-
-            {/* 단위 필터 — select 형 트리거 + 바텀시트 (단위 2개 이상일 때만).
-                칩 가로 스크롤은 관할 수업이 많아지면 파손 — 시트 목록으로 확장성 확보. */}
-            {unitOptions.length >= 2 && (
-              <button
-                type="button"
-                onClick={() => setIsFilterSheetOpen(true)}
-                aria-haspopup="dialog"
-                aria-label={
-                  axis === 'team'
-                    ? MESSAGES.unitNotice.filterAriaTeam
-                    : MESSAGES.unitNotice.filterAria
-                }
-                className="mb-2 flex w-full items-center justify-between gap-2 rounded-w-md border-[1.5px] border-it-line-strong dark:border-it-blue-900 bg-it-fill dark:bg-it-blue-900/30 px-3 h-[44px] transition-colors motion-reduce:transition-none hover:border-it-blue-500/40 active:brightness-95"
-              >
-                <span className="flex min-w-0 items-center gap-1.5 text-[13.5px] font-bold text-it-ink-800 dark:text-white">
                   {selectedUnit ? (
-                    <>
-                      <Icon
-                        name={axisIconName(selectedUnit.axis)}
-                        className="text-[14px] shrink-0 text-it-blue-500"
-                        aria-hidden="true"
-                      />
-                      <span className="truncate">{selectedUnit.name}</span>
-                    </>
+                    <span className="min-w-0 truncate">{selectedUnit.name}</span>
                   ) : (
-                    <>
+                    <span className="flex min-w-0 items-center gap-1">
                       <Icon
                         name="filter_list"
-                        className="text-[14px] shrink-0 text-it-ink-400 dark:text-it-ink-300"
+                        className="text-[14px] shrink-0"
                         aria-hidden="true"
                       />
-                      {MESSAGES.unitNotice.filterAll}
-                    </>
+                      <span className="truncate">
+                        {MESSAGES.unitNotice.filterAll}
+                      </span>
+                    </span>
                   )}
-                </span>
-                <Icon
-                  name="expand_more"
-                  className="text-[18px] shrink-0 text-it-ink-400 dark:text-it-ink-300"
-                  aria-hidden="true"
-                />
-              </button>
-            )}
+                  <Icon
+                    name="expand_more"
+                    className="text-[16px] shrink-0"
+                    aria-hidden="true"
+                  />
+                </button>
+              )}
+            </div>
 
             <div className="flex flex-col divide-y divide-it-line dark:divide-it-blue-900">
               {filteredPosts.map((post) => (
@@ -608,7 +672,9 @@ function UnitNoticeRow({
       aria-label={`${axisLabel} 공지 · ${post.title}`}
     >
       <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
+        {/* 만료 공지 — 콘텐츠만 흐림 처리(비활성 인상). 탭·케밥 기능은 정상 동작하고
+            케밥은 dim 대상 밖이라 선명 유지 */}
+        <div className={`min-w-0 flex-1 ${isExpired ? 'opacity-55' : ''}`}>
           {/* 축 배지(훈련=emerald·대회=red — 훈련 목록 배지 체계 재사용) + 대상 칩 + 상태 배지 + 날짜.
               팀 공지 탭은 축·팀이름 중복을 걷어내고 수신 범위("전체") 배지로 대체 */}
           <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1">

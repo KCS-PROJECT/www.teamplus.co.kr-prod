@@ -1537,8 +1537,10 @@ export const MESSAGES = {
     statusAll: "전체",
     statusOngoing: "게시 중",
     statusExpired: "만료",
+    /** 관리 공지함 헤더 카운트 — 현재 필터 기준 목록 건수 */
+    totalCount: (n: number) => `총 ${n}건`,
     managedSubtitle: "관할 훈련·대회에 등록된 공지예요",
-    managedSubtitleTeam: "관할 팀에 등록된 공지예요",
+    managedSubtitleTeam: "우리 팀에 등록된 공지사항이에요",
     filterAria: "훈련·대회별 필터",
     filterAriaTeam: "팀별 필터",
     filterAll: "전체",

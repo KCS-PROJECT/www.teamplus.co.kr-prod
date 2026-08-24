@@ -74,6 +74,41 @@ it("axis='unit' 은 서버 필터 파라미터로 전달된다 (클라이언트 
   expect(mockFetch).toHaveBeenCalledWith({ axis: 'unit', limit: 50 });
 });
 
+it('만료 공지가 없으면(전량 로드) 만료 칩이 비활성화된다', async () => {
+  // 게시 중 2건뿐 — 만료 0건, total=2 로 전량 로드(complete)
+  mockFetch.mockResolvedValue({
+    success: true,
+    data: {
+      data: [makePost('a', '공지 A'), makePost('b', '공지 B')],
+      total: 2,
+    },
+  });
+
+  render(<UnitNoticeManagedList axis="team" />);
+  await screen.findByText('공지 A');
+
+  expect(screen.getByRole('button', { name: '만료' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '게시 중' })).not.toBeDisabled();
+});
+
+it('만료 공지가 있으면 만료 칩이 활성이다', async () => {
+  mockFetch.mockResolvedValue({
+    success: true,
+    data: {
+      data: [
+        makePost('a', '공지 A'),
+        { ...makePost('b', '지난 공지'), expiresAt: '2020-01-01T00:00:00.000Z' },
+      ],
+      total: 2,
+    },
+  });
+
+  render(<UnitNoticeManagedList axis="team" />);
+  await screen.findByText('공지 A');
+
+  expect(screen.getByRole('button', { name: '만료' })).not.toBeDisabled();
+});
+
 it('재조회 중에도 기존 목록을 unmount 하지 않는다 — 진입 모션 재생 방지', async () => {
   let resolveReload: (v: unknown) => void = () => {};
   mockFetch

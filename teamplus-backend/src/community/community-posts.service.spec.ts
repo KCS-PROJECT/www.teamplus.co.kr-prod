@@ -393,6 +393,57 @@ describe("CommunityPostsService", () => {
     });
   });
 
+  describe("팀 공지 읽음 현황 — 단건 수신자 해석기의 팀 축 편입 (목록과 분모 일치)", () => {
+    it("팀 공지 상세 읽음 현황도 팀 수신 풀(멤버∪학부모∪감독)을 분모로 쓴다", async () => {
+      prisma.teamPost.findUnique.mockResolvedValue({
+        id: "post-1",
+        teamId: "team-1",
+        targetClassId: null,
+        targetTournamentId: null,
+        authorId: DIRECTOR.id,
+        isActive: true,
+        startAt: null,
+        expiresAt: null,
+        lastRemindAt: null,
+      });
+      setManagedTeams(["team-1"]);
+      // 팀 수신 풀 — 자녀 멤버 child-1 + 학부모 parent-1 + 소유 감독(coachId)
+      prisma.teamMember.findMany.mockResolvedValue([
+        { teamId: "team-1", userId: "child-1" },
+      ]);
+      prisma.team.findMany.mockResolvedValue([
+        { id: "team-1", coachId: DIRECTOR.id },
+      ]);
+      prisma.parentChild.findMany
+        .mockResolvedValueOnce([{ childId: "child-1", parentId: "parent-1" }])
+        // childNames 조회 (미읽음자 한정)
+        .mockResolvedValueOnce([]);
+      // parent-1 만 읽음 → 미읽음 = child-1 + 감독
+      prisma.teamPostRead.findMany.mockResolvedValue([{ userId: "parent-1" }]);
+      prisma.user.findMany.mockResolvedValue([
+        {
+          id: "child-1",
+          firstName: "자",
+          lastName: "김",
+          avatarUrl: null,
+          userType: "CHILD",
+        },
+        {
+          id: DIRECTOR.id,
+          firstName: "감",
+          lastName: "김",
+          avatarUrl: null,
+          userType: "DIRECTOR",
+        },
+      ]);
+
+      const summary = await service.getReadsSummary(DIRECTOR, "post-1");
+      // 이 계약이 깨지면 목록(managed)은 N/M 인데 상세는 0/0 이 된다
+      expect(summary.recipientCount).toBe(3);
+      expect(summary.readCount).toBe(1);
+    });
+  });
+
   describe("미읽음 재알림 (remindUnread) — 24시간 쿨다운", () => {
     const activePost = {
       id: "post-1",
