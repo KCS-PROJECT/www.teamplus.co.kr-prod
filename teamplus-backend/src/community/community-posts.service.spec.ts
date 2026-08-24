@@ -52,6 +52,7 @@ describe("CommunityPostsService", () => {
       coachProfile: { findMany: jest.fn() },
       parentChild: { findMany: jest.fn(), findFirst: jest.fn() },
       user: { findMany: jest.fn() },
+      notification: { findFirst: jest.fn(), findMany: jest.fn() },
       auditLog: { create: jest.fn() },
     };
     // $transaction — 배열/콜백 양쪽 지원
@@ -394,7 +395,7 @@ describe("CommunityPostsService", () => {
   });
 
   describe("팀 공지 읽음 현황 — 단건 수신자 해석기의 팀 축 편입 (목록과 분모 일치)", () => {
-    it("팀 공지 상세 읽음 현황도 팀 수신 풀(멤버∪학부모∪감독)을 분모로 쓴다", async () => {
+    it("팀 공지 상세 읽음 분모 = 선수 멤버의 학부모 (자녀·관리진·감독 제외)", async () => {
       prisma.teamPost.findUnique.mockResolvedValue({
         id: "post-1",
         teamId: "team-1",
@@ -407,7 +408,7 @@ describe("CommunityPostsService", () => {
         lastRemindAt: null,
       });
       setManagedTeams(["team-1"]);
-      // 팀 수신 풀 — 자녀 멤버 child-1 + 학부모 parent-1 + 소유 감독(coachId)
+      // 선수 멤버 child-1(+관리진 코치 행은 서버 where 로 제외 전제) → 학부모 parent-1 치환
       prisma.teamMember.findMany.mockResolvedValue([
         { teamId: "team-1", userId: "child-1" },
       ]);
@@ -418,29 +419,30 @@ describe("CommunityPostsService", () => {
         .mockResolvedValueOnce([{ childId: "child-1", parentId: "parent-1" }])
         // childNames 조회 (미읽음자 한정)
         .mockResolvedValueOnce([]);
-      // parent-1 만 읽음 → 미읽음 = child-1 + 감독
+      // 분모 = parent-1 뿐 · parent-1 읽음 → 1/1, 미읽음 0
       prisma.teamPostRead.findMany.mockResolvedValue([{ userId: "parent-1" }]);
-      prisma.user.findMany.mockResolvedValue([
-        {
-          id: "child-1",
-          firstName: "자",
-          lastName: "김",
-          avatarUrl: null,
-          userType: "CHILD",
-        },
-        {
-          id: DIRECTOR.id,
-          firstName: "감",
-          lastName: "김",
-          avatarUrl: null,
-          userType: "DIRECTOR",
-        },
-      ]);
+      prisma.user.findMany.mockResolvedValue([{ id: "parent-1" }]);
 
       const summary = await service.getReadsSummary(DIRECTOR, "post-1");
-      // 이 계약이 깨지면 목록(managed)은 N/M 인데 상세는 0/0 이 된다
-      expect(summary.recipientCount).toBe(3);
+      // 이 계약이 깨지면 목록(managed)은 N/M 인데 상세는 0/0 이 된다.
+      // 분모에 자녀 계정(로그인 폐기)·관리진·감독이 섞이면 영구 미읽음으로 부풀므로
+      // 학부모만이어야 한다 (2026-08-21 사용자 확정).
+      expect(summary.recipientCount).toBe(1);
       expect(summary.readCount).toBe(1);
+      expect(summary.unread).toEqual([]);
+      // 관리진 제외가 서버 where 에 실려 있는지 (roleInTeam null=선수 보존 OR 패턴)
+      expect(prisma.teamMember.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: [
+              { roleInTeam: null },
+              {
+                roleInTeam: { notIn: ["HEAD_COACH", "COACH", "MANAGER"] },
+              },
+            ],
+          }),
+        }),
+      );
     });
   });
 
@@ -462,6 +464,17 @@ describe("CommunityPostsService", () => {
         academyId: null,
       });
       setManagedTeams(["team-1"]);
+      // 기본 수신자: child-2 → parent-2 (미읽음) · 재알림 이력 없음
+      prisma.classRegistration.findMany.mockResolvedValue([
+        { userId: "child-2" },
+      ]);
+      prisma.parentChild.findMany.mockResolvedValue([
+        { parentId: "parent-2", childId: "child-2" },
+      ]);
+      prisma.user.findMany.mockResolvedValue([{ id: "parent-2" }]);
+      prisma.teamPostRead.findMany.mockResolvedValue([]);
+      prisma.notification.findFirst.mockResolvedValue(null);
+      prisma.notification.findMany.mockResolvedValue([]);
     };
 
     it("쿨다운 claim 실패(count=0)면 400 — 하루 1회", async () => {
@@ -497,13 +510,85 @@ describe("CommunityPostsService", () => {
       ]);
 
       const result = await service.remindUnread(DIRECTOR, "post-1");
-      expect(result).toEqual({ reminded: 1 });
+      expect(result).toEqual({ reminded: 1, skipped: 0 });
       expect(notifications.notifyUsers).toHaveBeenCalledWith(
         ["parent-2"],
         expect.objectContaining({
           notificationType: "notice_unread_reminder",
           linkUrl: "/community-notice/post-1",
         }),
+      );
+    });
+
+    it("개별 재알림 — 미읽음 수신자 1명에게만 발송, lastRemindAt 무접촉", async () => {
+      prisma.teamPost.findUnique
+        .mockResolvedValueOnce(activePost)
+        .mockResolvedValue({ title: "공지", teamId: null, targetClassId: CLASS_ID });
+      setupManaged();
+
+      const result = await service.remindUnread(DIRECTOR, "post-1", "parent-2");
+      expect(result).toEqual({ reminded: 1, skipped: 0 });
+      expect(notifications.notifyUsers).toHaveBeenCalledWith(
+        ["parent-2"],
+        expect.objectContaining({ notificationType: "notice_unread_reminder" }),
+      );
+      // 개별은 게시글 쿨다운 claim 을 소모하지 않는다 (전체 재알림 가능 시각 무영향)
+      expect(prisma.teamPost.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("개별 재알림 — 미읽음 수신자가 아니면 400 (읽은 사람·외부인)", async () => {
+      prisma.teamPost.findUnique
+        .mockResolvedValueOnce(activePost)
+        .mockResolvedValue({ title: "공지", teamId: null, targetClassId: CLASS_ID });
+      setupManaged();
+      prisma.teamPostRead.findMany.mockResolvedValue([{ userId: "parent-2" }]); // 읽음
+
+      await expect(
+        service.remindUnread(DIRECTOR, "post-1", "parent-2"),
+      ).rejects.toThrow(BadRequestException);
+      expect(notifications.notifyUsers).not.toHaveBeenCalled();
+    });
+
+    it("개별 재알림 — 24시간 내 이력이 있으면 400 (1인당 하루 1회)", async () => {
+      prisma.teamPost.findUnique
+        .mockResolvedValueOnce(activePost)
+        .mockResolvedValue({ title: "공지", teamId: null, targetClassId: CLASS_ID });
+      setupManaged();
+      prisma.notification.findFirst.mockResolvedValue({ id: "noti-1" });
+
+      await expect(
+        service.remindUnread(DIRECTOR, "post-1", "parent-2"),
+      ).rejects.toThrow(BadRequestException);
+      expect(notifications.notifyUsers).not.toHaveBeenCalled();
+    });
+
+    it("전체 재알림 — 24시간 내 개별 알림 수신자는 건너뛰고 나머지만 발송", async () => {
+      prisma.teamPost.findUnique
+        .mockResolvedValueOnce(activePost)
+        .mockResolvedValue({ title: "공지", teamId: null, targetClassId: CLASS_ID });
+      setupManaged();
+      prisma.teamPost.updateMany.mockResolvedValue({ count: 1 });
+      // 미읽음 = parent-2, parent-3 · parent-3 은 24시간 내 개별 수신 이력
+      prisma.classRegistration.findMany.mockResolvedValue([
+        { userId: "child-2" },
+        { userId: "child-3" },
+      ]);
+      prisma.parentChild.findMany.mockResolvedValue([
+        { parentId: "parent-2", childId: "child-2" },
+        { parentId: "parent-3", childId: "child-3" },
+      ]);
+      prisma.user.findMany.mockResolvedValue([
+        { id: "parent-2" },
+        { id: "parent-3" },
+      ]);
+      prisma.notification.findMany.mockResolvedValue([{ userId: "parent-3" }]);
+
+      const result = await service.remindUnread(DIRECTOR, "post-1");
+      // 개별 건 때문에 전체가 통째로 막히지 않는다 — 해당자만 skip
+      expect(result).toEqual({ reminded: 1, skipped: 1 });
+      expect(notifications.notifyUsers).toHaveBeenCalledWith(
+        ["parent-2"],
+        expect.objectContaining({ notificationType: "notice_unread_reminder" }),
       );
     });
 
@@ -1107,7 +1192,7 @@ describe("CommunityPostsService", () => {
 
   /** [Phase 2 §6·§7] managed 공지함·픽커의 팀 축 편입 */
   describe("[Phase 2] managed 팀 축", () => {
-    it("axis=team — 관할 팀 공지만 조회하고 수신 분모는 팀 전체 풀(멤버∪학부모∪감독)", async () => {
+    it("axis=team — 관할 팀 공지만 조회하고 수신 분모는 선수 멤버의 학부모", async () => {
       // 관할 팀 team-a (소유)
       prisma.team.findMany.mockImplementation(
         (args: { where?: { coachId?: string; id?: unknown } }) =>
@@ -1145,13 +1230,14 @@ describe("CommunityPostsService", () => {
           _count: { comments: 0 },
         },
       ]);
-      // 팀 수신 풀 — 자녀 멤버 child-1 + 그 학부모 parent-1 + 소유 감독(coachId)
+      // 선수 멤버 child-1 → 학부모 parent-1 치환 (자녀·감독은 분모 제외)
       prisma.teamMember.findMany.mockResolvedValue([
         { teamId: "team-a", userId: "child-1" },
       ]);
       prisma.parentChild.findMany.mockResolvedValue([
         { childId: "child-1", parentId: "parent-1" },
       ]);
+      prisma.user.findMany.mockResolvedValue([{ id: "parent-1" }]);
       prisma.teamPostRead.findMany.mockResolvedValue([
         { postId: "post-1", userId: "parent-1" },
       ]);
@@ -1171,12 +1257,12 @@ describe("CommunityPostsService", () => {
       expect(call.skip).toBe(30);
       // [P2-R1-M01] 페이지 계약 — {data,total}
       expect(result.total).toBe(1);
-      // 분모 M = child-1 + parent-1 + director-1(coachId) = 3 · 읽음 N = parent-1 = 1
+      // 분모 M = parent-1 = 1 (선수 학부모 치환) · 읽음 N = parent-1 = 1
       expect(result.data[0]).toEqual(
         expect.objectContaining({
           targetName: "블랭크",
           readCount: 1,
-          recipientCount: 3,
+          recipientCount: 1,
         }),
       );
     });

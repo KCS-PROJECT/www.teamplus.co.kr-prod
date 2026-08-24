@@ -270,15 +270,21 @@ export class CommunityPostsController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: "미읽음자에게 다시 알리기",
-    description: "미읽음 수신자 전원에게 재알림 푸시. 게시글당 24시간 1회.",
+    description:
+      "미읽음 수신자 전원(또는 targetUserId 지정 시 1명)에게 재알림 푸시. " +
+      "전체=게시글당 24시간 1회 + 24시간 내 수신자는 자동 제외 · 개별=(대상자,게시글)당 24시간 1회.",
   })
   async remindUnread(
     @Request() req: AuthenticatedRequest,
     @Param("postId") postId: string,
+    @Body("targetUserId") targetUserId?: string,
   ) {
     return this.service.remindUnread(
       { id: req.user.id, userType: req.user.userType },
       postId,
+      typeof targetUserId === "string" && targetUserId.trim().length > 0
+        ? targetUserId
+        : undefined,
     );
   }
 

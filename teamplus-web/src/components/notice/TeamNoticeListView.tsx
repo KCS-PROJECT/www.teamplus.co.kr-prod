@@ -24,7 +24,6 @@ import {
   type UnitNoticePost,
 } from '@/services/community-notice.service';
 import { useRefreshSubscription, REFRESH_KEYS } from '@/lib/refresh-bus';
-import { getTrainingTypeBadgeClass } from '@/lib/class-categories';
 import { ActionSheet } from '@/components/director/ActionSheet';
 import { ConfirmSheet } from '@/components/shared/ConfirmSheet';
 import { FloatingActionButton } from '@/components/ui/FloatingActionButton';
@@ -792,13 +791,16 @@ function NoticeCard({
       >
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
-            {/* [Phase 2] 출처 칩 — 팀 [팀이름][전체] · 훈련/대회 [축 배지][단위 이름][자녀 이름] */}
+            {/* [Phase 2] 출처 — 팀 [팀이름][전체] · 훈련/대회 축 텍스트 라벨+[단위 이름][자녀 이름]
+                (축은 색 텍스트 — 칩 배경이 경계라 구분점 불필요, 플랫 톤 유지) */}
             <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1">
               {notice.axis && notice.axis !== 'team' && (
                 <span
-                  className={`inline-flex items-center rounded-w-pill px-2 py-0.5 text-[12px] font-bold ${getTrainingTypeBadgeClass(
-                    notice.axis === 'class' ? 'regular' : 'tournament',
-                  )}`}
+                  className={`text-[12px] font-bold ${
+                    notice.axis === 'class'
+                      ? 'text-emerald-700 dark:text-emerald-400'
+                      : 'text-red-700 dark:text-red-400'
+                  }`}
                 >
                   {axisChipLabel(notice.axis)}
                 </span>
@@ -889,13 +891,15 @@ function NoticeCard({
     >
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          {/* [Phase 2] 출처 칩 — 팀 [팀이름][전체] · 훈련/대회 [축 배지][단위 이름][자녀 이름] */}
+          {/* [Phase 2] 출처 — 팀 [팀이름][전체] · 훈련/대회 축 텍스트 라벨+[단위 이름][자녀 이름] */}
           <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1">
             {notice.axis && notice.axis !== 'team' && (
               <span
-                className={`inline-flex items-center rounded-w-pill px-2 py-0.5 text-card-meta font-bold ${getTrainingTypeBadgeClass(
-                  notice.axis === 'class' ? 'regular' : 'tournament',
-                )}`}
+                className={`text-card-meta font-bold ${
+                  notice.axis === 'class'
+                    ? 'text-emerald-700 dark:text-emerald-400'
+                    : 'text-red-700 dark:text-red-400'
+                }`}
               >
                 {axisChipLabel(notice.axis)}
               </span>

@@ -235,9 +235,18 @@ export async function fetchUnitNoticeReadsSummary(postId: string) {
   );
 }
 
-/** 미읽음자에게 다시 알리기 — 게시글당 24시간 1회 */
-export async function remindUnreadRecipients(postId: string) {
-  return api.post<{ reminded: number }>(`/community/posts/${postId}/remind`);
+/**
+ * 미읽음자에게 다시 알리기 — 전체(게시글당 24시간 1회 · 24시간 내 수신자 자동 제외)
+ * 또는 targetUserId 지정 시 개별((대상자,게시글)당 24시간 1회).
+ */
+export async function remindUnreadRecipients(
+  postId: string,
+  targetUserId?: string,
+) {
+  return api.post<{ reminded: number; skipped?: number }>(
+    `/community/posts/${postId}/remind`,
+    targetUserId ? { targetUserId } : undefined,
+  );
 }
 
 /** 수업 참가자 연락 대상 — 명단 행 [1:1 문의]용, 부모 우선 규칙 (관할 감독·코치 전용) */

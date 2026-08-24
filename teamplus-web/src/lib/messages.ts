@@ -1587,7 +1587,13 @@ export const MESSAGES = {
     remind: "다시 알리기",
     remindDesc: "아직 읽지 않은 분들에게만 알림을 다시 보냅니다. (하루 1회)",
     remindSuccess: (n: number) => `${n}명에게 다시 알림을 보냈습니다.`,
+    remindSuccessWithSkipped: (n: number, skipped: number) =>
+      `${n}명에게 다시 알림을 보냈습니다. (${skipped}명은 최근 알림 제외)`,
     remindCooldown: "재알림은 하루에 한 번만 보낼 수 있습니다.",
+    /** 미읽음 명단 행 개별 재알림 — (대상자,게시글)당 하루 1회 */
+    remindOne: "알림",
+    remindOneAria: (name: string) => `${name}님에게 다시 알리기`,
+    remindOneSuccess: (name: string) => `${name}님에게 알림을 보냈습니다.`,
     askDirect: "1:1 문의",
     askDirectFailed: "대화방을 열 수 없습니다.",
     recipientsNone: "수신 대상자가 없습니다.",

@@ -23,7 +23,6 @@ import {
   fetchManagedUnitNotices,
   type UnitNoticePost,
 } from '@/services/community-notice.service';
-import { getTrainingTypeBadgeClass } from '@/lib/class-categories';
 
 function stripHtml(html?: string): string {
   if (!html) return '';
@@ -675,17 +674,18 @@ function UnitNoticeRow({
         {/* 만료 공지 — 콘텐츠만 흐림 처리(비활성 인상). 탭·케밥 기능은 정상 동작하고
             케밥은 dim 대상 밖이라 선명 유지 */}
         <div className={`min-w-0 flex-1 ${isExpired ? 'opacity-55' : ''}`}>
-          {/* 축 배지(훈련=emerald·대회=red — 훈련 목록 배지 체계 재사용) + 대상 칩 + 상태 배지 + 날짜.
+          {/* 축 라벨(텍스트 — 훈련=emerald·대회=red, 칩 배경이 경계라 구분점 불필요)
+              + 대상 칩 + 상태 배지 + 날짜.
               팀 공지 탭은 축·팀이름 중복을 걷어내고 수신 범위("전체") 배지로 대체 */}
           <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1">
             {!isTeamTabRow && (
               <span
-                className={`inline-flex items-center rounded-w-pill px-2 py-0.5 text-[12px] font-bold ${
+                className={`text-[12px] font-bold ${
                   rowAxis === 'team'
-                    ? 'bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-900/50 dark:text-it-blue-200'
-                    : getTrainingTypeBadgeClass(
-                        rowAxis === 'class' ? 'regular' : 'tournament',
-                      )
+                    ? 'text-it-blue-600 dark:text-it-blue-200'
+                    : rowAxis === 'class'
+                      ? 'text-emerald-700 dark:text-emerald-400'
+                      : 'text-red-700 dark:text-red-400'
                 }`}
               >
                 {axisLabel}
