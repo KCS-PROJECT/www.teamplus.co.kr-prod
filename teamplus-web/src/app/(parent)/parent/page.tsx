@@ -35,6 +35,7 @@ import {
 import { WeekScheduleList } from '@/components/dashboard/WeekScheduleList';
 import { RecentNoticesSection } from '@/components/dashboard/RecentNoticesSection';
 import { TeamClassesSummary } from '@/components/dashboard/TeamClassesSummary';
+import { ReadingContentSection } from '@/components/dashboard/ReadingContentSection';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { useRefreshSubscription, REFRESH_KEYS } from '@/lib/refresh-bus';
 import { useNotificationContext } from '@/contexts/NotificationContext';
@@ -121,6 +122,9 @@ export default function ParentDashboardPage() {
   const { upcomingSchedules, checkInChild } = useParentHome();
 
   const [teams, setTeams] = useState<TeamRef[] | null>(null);
+  // 팀 조회 실패를 "팀 없음(확정)"과 구분 — 실패를 무소속으로 오인하면 포스트가 잘못
+  //   승격된다 (SPEC_DASHBOARD_READING_CONTENT §2-4 공통 규칙: 조회 실패 ≠ 빈 상태).
+  const [teamsError, setTeamsError] = useState(false);
   // 자녀 선택 바텀시트 — 자녀 스트립 우측 [선택] 버튼으로 열림 (승인 자녀 2명+ 일 때만 노출)
   const [isChildSheetOpen, setIsChildSheetOpen] = useState(false);
   // 미납 후불 청구(수업 정산 + 후불 대회 참가비) — 결제 요청 배너. null=로딩(배너·페이지 ready 보류).
@@ -216,6 +220,16 @@ export default function ParentDashboardPage() {
   const openMenu = useCallback(() => setIsMenuOpen(true), []);
   const closeMenu = useCallback(() => setIsMenuOpen(false), []);
 
+  // 포스트 배치 — 자녀·팀 조회가 확정된 뒤에만 렌더(선렌더 후 이동 금지 — SPEC §2-4).
+  //   판정은 계정 전체 자녀 기준(선택 자녀 아님) — 자녀 전환으로 위치가 흔들리지 않는다.
+  //   승격: 자녀 0명 또는 표시 가능한 팀 0개(조회 정상 완료 기준). 조회 실패는 기본(최하단).
+  const readingPlacement: 'promoted' | 'footer' | null = (() => {
+    if (isChildrenLoading || teams === null) return null;
+    if (allChildren.length === 0) return 'promoted';
+    if (teamsError) return 'footer';
+    return teams.length === 0 ? 'promoted' : 'footer';
+  })();
+
   // 자녀 소속 팀 fetch — 마운트 + REFRESH_KEYS.TEAM 발화 시 재실행.
   // [2026-05-28] 폴백 정책: myChildTeams 가 비어있으면(자녀 0명/자녀 팀 미승인)
   //   학부모 본인 가입 팀(myParentTeams · 회원가입 teamCode 로 자동 가입된 PARENT 멤버십)
@@ -223,9 +237,13 @@ export default function ParentDashboardPage() {
   const loadParentTeams = useCallback(async () => {
     const res = await listParentVisibleTeams();
     if (!res.success || !res.data) {
+      // 조회 실패 — 화면 골격 유지를 위해 빈 목록은 그대로 두되, 실패 플래그로
+      //   "무소속(확정)" 판정과 분리한다 (포스트 승격 오판 방지).
+      setTeamsError(true);
       setTeams([]);
       return;
     }
+    setTeamsError(false);
     const childTeams = Array.isArray(res.data.myChildTeams)
       ? res.data.myChildTeams
       : [];
@@ -618,6 +636,12 @@ export default function ParentDashboardPage() {
           showTeamTab={showTeamNoticeTab}
         />
 
+        {/* ①.5 포스트(승격) — 자녀 0명 또는 표시 가능한 팀 0개(확정)일 때 공지 다음,
+            수업 목록 이전. 상태·가입·결제 배너보다는 항상 아래 (SPEC §2-4). */}
+        {readingPlacement === 'promoted' && (
+          <ReadingContentSection placement="promoted" iceTheme />
+        )}
+
         {/* ② 수업 목록 — 팀 등록 수업 상위 5건 요약 + 전체보기.
               팀 전체 카탈로그라 자녀 칩 필터와 무관 → 칩보다 위에 배치. */}
         {/* [2026-08-04 사용자 지시] 홈 수업 목록 = 내가 등록했거나 신청/요청한 수업·대회만.
@@ -689,6 +713,12 @@ export default function ParentDashboardPage() {
             )}
           </div>
         </section>
+
+        {/* ⑥ 포스트(기본 최하단) — 표시 가능한 팀이 있거나 팀 조회 실패 시 여기.
+            판정 전(readingPlacement === null)에는 렌더하지 않아 상·하단 이동이 없다. */}
+        {readingPlacement === 'footer' && (
+          <ReadingContentSection placement="footer" iceTheme />
+        )}
 
       </main>
 

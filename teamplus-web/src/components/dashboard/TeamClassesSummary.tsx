@@ -144,9 +144,41 @@ function todayKstDateKey(now: Date = new Date()): string {
 
 // [2026-06-16] 수업명 밑 정보(일정/담당자) 제거로 formatClassDays·formatTournamentDateRange 미사용 → 삭제.
 
+/** 훈련·대회 조회 결과 상태 — success: 요청한 축 모두 성공 / partial: 일부 실패 / error: 전체 실패 */
+export type TeamClassesActivityStatus = 'success' | 'partial' | 'error';
+
+/**
+ * 첫 조회 사이클 완료 시 부모로 전달되는 활동 요약 — 대시보드 포스트 승격 판정용.
+ * 설계 SoT: docs/Planning/SPEC_DASHBOARD_READING_CONTENT.md §2-4 `TeamClassesSummary` 확장 계약.
+ * 건수는 표시 필터(종료 제외·대회 임박 필터) 적용 후 · myOnly 적용 전 기준 — "조회된 운영 데이터" 의미.
+ * 실패한 축은 집계에서 제외되므로, 승격 판정은 반드시 `status === 'success'` 와 함께 사용해야 한다.
+ */
+export interface TeamClassesSummaryActivity {
+  status: TeamClassesActivityStatus;
+  classCount: number;
+  tournamentCount: number;
+}
+
+/** 빈 상태 등록 CTA — 페이지가 역할 권한에 맞게 주입. 컴포넌트는 역할 판정을 내장하지 않는다. */
+export interface TeamClassesEmptyAction {
+  /** MESSAGES 상수만 사용 */
+  label: string;
+  href: string;
+}
+
 interface Props {
   /** 첫 fetch 완료 시 true 발화(에러/빈 응답 포함) → 부모 usePageReady 합성용 */
   onReady?: (ready: boolean) => void;
+  /**
+   * 첫 조회 사이클 완료 시 1회 발화 — 훈련·대회 건수와 조회 성공/부분 실패/실패 상태.
+   * onReady 와 동일한 ref mirror 패턴이라 부모 재렌더로 중복 발화하지 않는다.
+   */
+  onActivityResolved?: (activity: TeamClassesSummaryActivity) => void;
+  /**
+   * 빈 상태(수업·대회 0건) 아래에 렌더할 등록 CTA 목록 — 미전달 시 현행 빈 상태 렌더와 완전 동일.
+   * ⚠️ myOnly(학부모 '내 것만') 모드에서는 무시된다 — 그 모드의 CTA 는 기존 '수업 둘러보기'가 담당.
+   */
+  emptyActions?: TeamClassesEmptyAction[];
   /** 표시할 최대 항목 수 (기본 5) — classLimit/tournamentLimit 미지정 시 유형별 폴백값. */
   limit?: number;
   /** 훈련(수업) 최대 노출 수 — 미지정 시 limit. */
@@ -194,6 +226,8 @@ interface Props {
 
 export function TeamClassesSummary({
   onReady,
+  onActivityResolved,
+  emptyActions,
   limit = 5,
   classLimit,
   tournamentLimit,
@@ -216,6 +250,13 @@ export function TeamClassesSummary({
     onReadyRef.current = onReady;
   }, [onReady]);
   const readyFiredRef = useRef(false);
+
+  // onActivityResolved 도 동일 ref mirror — 첫 조회 사이클 완료 시 정확히 1회만 발화.
+  const onActivityResolvedRef = useRef(onActivityResolved);
+  useEffect(() => {
+    onActivityResolvedRef.current = onActivityResolved;
+  }, [onActivityResolved]);
+  const activityFiredRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -286,11 +327,12 @@ export function TeamClassesSummary({
       const classPayload = classRes.success
         ? unwrap<ClassSummaryItem[]>(classRes.data)
         : null;
-      const classItems: SummaryItem[] = (
-        Array.isArray(classPayload) ? classPayload : []
-      )
-        // 종료(ENDED) 수업 제외 — 명시 종료·spot 자동종료. 대기(PENDING_SCHEDULE)는 유지.
-        .filter((c) => c.lifecycleStatus !== 'ENDED')
+      // 종료(ENDED) 수업 제외 — 명시 종료·spot 자동종료. 대기(PENDING_SCHEDULE)는 유지.
+      //   activity 건수 기준(= myOnly 적용 전 "조회된 운영 데이터")도 이 배열이다.
+      const activeClasses = (Array.isArray(classPayload) ? classPayload : []).filter(
+        (c) => c.lifecycleStatus !== 'ENDED',
+      );
+      const classItems: SummaryItem[] = activeClasses
         // [2026-08-04] myOnly — 등록했거나 신청/요청한 수업만. 카탈로그(미신청)는 제외.
         .filter(
           (c) => !myOnly || enrolledIds.has(c.id) || pendingIds.has(c.id),
@@ -311,14 +353,16 @@ export function TeamClassesSummary({
       //  + 첫 일정(startDate)이 오늘 이상인 대회만 노출 — 첫 일정 당일까지는 노출하고
       //    다음날부터 대시보드 요약에서 제외한다. startDate 는 @db.Date(UTC 자정).
       const todayKey = todayKstDateKey();
-      const tournamentItems: SummaryItem[] = unwrapTournamentList(
+      // activity 건수 기준(= myOnly 적용 전 노출 필터 통과 대회)도 이 배열이다.
+      const upcomingTournaments = unwrapTournamentList(
         tournamentRes && tournamentRes.success ? tournamentRes.data : null,
       )
         .filter((t) => t.status === 'scheduled' || t.status === 'ongoing')
         .filter((t) => {
           const startKey = toDbDateKey(t.startDate);
           return startKey === null || startKey >= todayKey;
-        })
+        });
+      const tournamentItems: SummaryItem[] = upcomingTournaments
         // [2026-08-04] myOnly — 참가 신청/확정한 대회만. 판정 기준은 아래 enrolled 와 동일.
         .filter((t) => {
           if (!myOnly) return true;
@@ -362,6 +406,25 @@ export function TeamClassesSummary({
       // 훈련 그룹 위 → 대회 그룹 아래로 나열(통합 재정렬 없음). 각 그룹 내부만 byPriority 정렬.
       const merged = [...cappedClasses, ...cappedTournaments];
       setItems(merged);
+
+      // 활동 상태 발화 — 첫 조회 사이클 1회. 축별 성공/실패를 구분해 부모가
+      //   "조회 실패를 0건으로 오인"하지 않도록 status 를 함께 전달한다.
+      //   showTournament=false(오픈클래스)면 대회 축은 요청 자체가 없으므로 판정에서 제외.
+      if (!activityFiredRef.current) {
+        activityFiredRef.current = true;
+        const classOk = classRes.success === true;
+        const tournamentOk = !showTournament || tournamentRes?.success === true;
+        const allOk = classOk && tournamentOk;
+        const noneOk = !classOk && (!showTournament || tournamentRes?.success !== true);
+        onActivityResolvedRef.current?.({
+          status: allOk ? 'success' : noneOk ? 'error' : 'partial',
+          classCount: classOk ? activeClasses.length : 0,
+          tournamentCount:
+            showTournament && tournamentRes?.success === true
+              ? upcomingTournaments.length
+              : 0,
+        });
+      }
       setIsLoading(false);
     })();
     return () => {
@@ -472,6 +535,34 @@ export function TeamClassesSummary({
                     {MESSAGES.dashboard.myClasses.emptyCta}
                   </button>
                 </>
+              )}
+              {/* 감독·코치·오픈클래스 감독 빈 상태 등록 CTA — 페이지가 역할 권한에 맞게 주입
+                  (SPEC_DASHBOARD_READING_CONTENT §2-4). 미전달 시 렌더 0 = 기존 사용처 회귀 없음. */}
+              {!myOnly && emptyActions && emptyActions.length > 0 && (
+                <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+                  {emptyActions.map((action, index) => (
+                    <button
+                      key={action.href}
+                      type="button"
+                      onClick={() => navigate(action.href)}
+                      className={cn(
+                        'inline-flex h-10 items-center gap-1.5 rounded-w-pill px-4 text-card-body font-bold transition-colors motion-reduce:transition-none active:brightness-95',
+                        'focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/50',
+                        index === 0
+                          ? 'bg-it-blue-500 text-white'
+                          : cn(
+                              'border',
+                              iceTheme
+                                ? 'border-it-line bg-it-fill text-it-ink-600 dark:border-it-blue-800 dark:bg-it-blue-900 dark:text-rink-100'
+                                : 'border-wline bg-wline-2/60 text-wtext-2 dark:border-rink-700 dark:bg-rink-700 dark:text-rink-100',
+                            ),
+                      )}
+                    >
+                      <Icon name="add" className="text-[18px]" aria-hidden="true" />
+                      {action.label}
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
           ) : (

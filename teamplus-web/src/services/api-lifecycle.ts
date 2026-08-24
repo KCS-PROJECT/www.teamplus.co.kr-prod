@@ -215,6 +215,13 @@ export const PUBLIC_API_PATTERNS: readonly RegExp[] = [
   //   (= 팀 미가입 학부모가 수업을 발견할 수 없게 되어 기능 자체가 무의미해짐).
   //   ⚠️ `classes/` 단독 패턴 금지 — 인증이 필요한 나머지 수업 API 까지 열린다.
   /(^|\/)classes\/explore(\/|\?|$)/,
+  // [추가 2026-08-24] 포스트(BlogPost) 소비 — GET /blog(목록)·/blog/:slug(상세)·POST /blog/:slug/view(조회수)는
+  //   전부 백엔드 @Public. 누락 시 클라이언트 전처리 가드가 AUTH_REQUIRED 로 차단해 /contents 계열이 동작하지 않음.
+  //   ⚠️ /blog/admin/* (관리 목록·상세·CRUD)는 SYSTEM/OPER 전용이므로 절대 매칭되면 안 된다 —
+  //      slug 세그먼트에 negative lookahead 로 'admin' 을 배제. (회귀 테스트: __tests__/blog-public-paths.test.ts)
+  /(^|\/)blog(\?|$)/,
+  /(^|\/)blog\/(?!admin(\/|\?|$))[^/?]+(\?|$)/,
+  /(^|\/)blog\/(?!admin(\/|\?|$))[^/?]+\/view(\?|$)/,
   // 회원가입 화면 팀 선택 목록 (비로그인 호출).
   /(^|\/)teams\/public(\/|\?|$)/,
   // 회원가입 화면 팀명 중복 사전 확인 (비로그인 호출) — 백엔드 @Public.

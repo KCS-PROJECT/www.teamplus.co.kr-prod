@@ -30,7 +30,11 @@ import { WeekScheduleList } from '@/components/dashboard/WeekScheduleList';
 import { DirectorEmptyCard } from '@/components/director/DirectorEmptyCard';
 import { PendingApprovalsSection } from '@/components/dashboard/PendingApprovalsSection';
 import { RecentNoticesSection } from '@/components/dashboard/RecentNoticesSection';
-import { TeamClassesSummary } from '@/components/dashboard/TeamClassesSummary';
+import {
+  TeamClassesSummary,
+  type TeamClassesSummaryActivity,
+} from '@/components/dashboard/TeamClassesSummary';
+import { ReadingContentSection } from '@/components/dashboard/ReadingContentSection';
 // [Step 10 2026-05-19] 미결제 학부모 위젯 — 매월 28일~다음달 5일 사이만 노출.
 //   백엔드 API 404/500/조건 미충족 시 컴포넌트 자체 비노출 (graceful degradation).
 import { UnpaidMembersSection } from '@/components/coach/UnpaidMembersSection';
@@ -76,6 +80,15 @@ export default function CoachDashboardPage() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [calendarReady, setCalendarReady] = useState(false);
   const [summaryReady, setSummaryReady] = useState(false);
+  // 포스트 배치 판정 — TeamClassesSummary 첫 조회 결과(1회 발화)만 사용, 별도 API 없음.
+  //   null(판정 전)에는 포스트를 렌더하지 않는다(선렌더 후 이동 금지 — SPEC §2-4).
+  const [activity, setActivity] = useState<TeamClassesSummaryActivity | null>(null);
+  // 승격 조건: 조회 전부 정상 완료 + 실제 0건. partial/error 는 기본(최하단) 위치.
+  const promoteReading =
+    activity !== null &&
+    activity.status === 'success' &&
+    activity.classCount === 0 &&
+    activity.tournamentCount === 0;
 
   // v16.3 (2026-05-16): useStableLayout — main wrapper ResizeObserver 기반 layout 안정화 감지.
   // sub-component (ClassCalendarSection, PendingApprovalsSection, RecentNoticesSection 등)
@@ -210,7 +223,24 @@ export default function CoachDashboardPage() {
 
         {/* 3. 수업 목록 — full-bleed flat 섹션. 내 팀 정규수업 요약 (운영자라 등록완료 배지 미표시).
             classesCategory='regular' → 오픈클래스 제외, '/classes-manage'(정규+대회) 와 동일 기준. */}
-        <TeamClassesSummary showEnrollment={false} classesCategory="regular" classLimit={7} tournamentLimit={3} targetPath="/classes-manage" onReady={setSummaryReady} iceTheme />
+        <TeamClassesSummary
+          showEnrollment={false}
+          classesCategory="regular"
+          classLimit={7}
+          tournamentLimit={3}
+          targetPath="/classes-manage"
+          onReady={setSummaryReady}
+          onActivityResolved={setActivity}
+          emptyActions={[
+            // 코치 — POST /classes 는 COACH 허용, POST /tournaments 는 ADMIN·DIRECTOR 전용이라
+            //   대회 등록 CTA 를 노출하지 않는다 (SPEC §2-4 역할 계약).
+            { label: MESSAGES.classesEdit.addSheet.classRegister, href: '/classes-manage/create' },
+          ]}
+          iceTheme
+        />
+
+        {/* 포스트(승격) — 훈련·대회가 정상 조회 결과 0건일 때만 등록 CTA 다음에 노출. */}
+        {promoteReading && <ReadingContentSection placement="promoted" iceTheme />}
 
         {/* 4. 수업 일정 — 기본은 이번 주, 날짜 선택 중에는 해당 날짜 일정으로 하단 목록 동기화. */}
         <section className="mt-2 bg-it-surface dark:bg-it-blue-950">
@@ -265,6 +295,12 @@ export default function CoachDashboardPage() {
               · 매월 28일~다음달 5일 등록 마감 그레이스 기간에만 자동 노출.
               · 위 기간 외 또는 API 실패/0건 시 컴포넌트 내부에서 return null. */}
         <UnpaidMembersSection />
+
+        {/* 포스트(기본 최하단) — 코치 최하단 = 조건부 UnpaidMembersSection 다음, safe-area 여백 이전.
+            판정 전(activity === null)에는 렌더하지 않아 상·하단 이동이 없다. */}
+        {activity !== null && !promoteReading && (
+          <ReadingContentSection placement="footer" iceTheme />
+        )}
 
         {/* [2026-05-16] BottomNav · iOS safe-area 통합 여백 — pb 24px + safe-area inset.
               이전 `h-8` 고정 32px 은 노치/홈인디케이터 단말기에서 마지막 카드가
