@@ -53,7 +53,7 @@ android {
     buildTypes {
         release {
             // key.properties 가 있으면 release 키로 서명한다.
-            // 없으면 예전엔 조용히 debug 키로 서명했는데(아래 주석), 그 결과 debug 서명된
+            // 없으면 예전엔 조용히 debug 키로 서명했는데, 그 결과 debug 서명된
             // AAB 가 Play Console 에 업로드되어 "디버그 모드로 서명" 거부를 유발했다.
             // → silent fallback 대신 명시적으로 실패시킨다(fail-loud).
             //   (이전: signingConfig = signingConfigs.getByName("debug"))

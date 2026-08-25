@@ -959,6 +959,8 @@ model MemberCredit {
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   issuedDate    DateTime  @default(now()) @map("issued_date") @db.Timestamptz(3)
   updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  /// 결제 1건당 1행 — DB 에 partial UNIQUE 인덱스(uq_member_credits_payment_id)가 있다.
+  /// Prisma @unique 를 쓰면 Payment.credits 가 1:1 로 바뀌어 기존 배열 사용처가 깨지므로 수동 인덱스로 둔다.
   paymentId     String?   @map("payment_id")
 
   // Relationships

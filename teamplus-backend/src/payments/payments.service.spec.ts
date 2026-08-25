@@ -712,9 +712,9 @@ describe("PaymentsService", () => {
         .mockResolvedValue(pendingPayment as any);
       mockRedisService.setIfNotExists.mockResolvedValue(true);
 
-      const txPaymentUpdate = jest.fn().mockResolvedValue({});
+      const txPaymentUpdate = jest.fn().mockResolvedValue({ count: 1 });
       const tx = {
-        payment: { update: txPaymentUpdate },
+        payment: { updateMany: txPaymentUpdate },
         monthlyPostpaidBillingLine: {
           updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
@@ -758,9 +758,10 @@ describe("PaymentsService", () => {
       );
 
       // 공용 후처리(applyApprovedPayment) 가 mock 결제 표식으로 완료 갱신.
+      //   where 에 pending 조건이 있어야 동시 진입 시 단일 실행이 보장된다.
       expect(txPaymentUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: mockPaymentId },
+          where: { id: mockPaymentId, paymentStatus: "pending" },
           data: expect.objectContaining({
             paymentStatus: "completed",
             paymentMethod: "mock",
@@ -831,7 +832,7 @@ describe("PaymentsService", () => {
           count: jest.fn().mockResolvedValue(opts.activeCount),
           upsert: jest.fn().mockResolvedValue({}),
         },
-        payment: { update: jest.fn().mockResolvedValue({}) },
+        payment: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
         monthlyPostpaidBillingLine: {
           updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
@@ -991,7 +992,7 @@ describe("PaymentsService", () => {
       await expect(
         service.mockConfirmPayment(mockUserId, mockOrderNumber),
       ).rejects.toThrow("수업 정원이 마감되어");
-      expect(mockTx.payment.update).not.toHaveBeenCalled(); // applyApprovedPayment 미도달
+      expect(mockTx.payment.updateMany).not.toHaveBeenCalled(); // applyApprovedPayment 미도달
     });
   });
 });

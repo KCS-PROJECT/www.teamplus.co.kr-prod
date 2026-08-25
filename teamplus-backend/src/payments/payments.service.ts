@@ -376,18 +376,26 @@ export class PaymentsService {
     },
   ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
-      await tx.payment.update({
-        where: { id: payment.id },
+      // 완료 전이를 조건부 claim 으로 선점한다. Redis 락은 프로세스 레벨 방어라
+      //   락 소실·우회 경로에서 동시 진입이 가능하므로 DB 에서도 단일 실행을 보장한다.
+      const claimed = await tx.payment.updateMany({
+        where: { id: payment.id, paymentStatus: "pending" },
         data: {
           paymentStatus: "completed",
           tid: opts.tid,
-          // [수정 2026-05-14] paymentMethod 는 PG 판별용 'toss' 로 유지 — cancel 시
-          //   isTossPayment() 가 true 로 분기되어 KG 404 에러를 회피한다.
-          //   토스 응답의 method detail(card/간편결제 등) 은 별도 컬럼이 필요해지면 분리 도입.
+          // paymentMethod 는 PG 판별용 'toss' 로 유지 — cancel 시 isTossPayment() 가
+          //   true 로 분기되어 KG 404 에러를 회피한다.
           paymentMethod: opts.paymentMethod,
           completedAt: opts.approvedAt,
         },
       });
+      if (claimed.count === 0) {
+        // 이미 확정된 결제 — 부수효과를 다시 수행하지 않고 멱등 성공으로 종료한다.
+        this.logger.warn(
+          `이미 확정된 결제라 승인 후처리 스킵(멱등): paymentId=${payment.id} orderId=${opts.orderId}`,
+        );
+        return;
+      }
       // [Phase B-5-4] POSTPAID 후불 청구 라인 paid 처리 (해당 결제가 후불 청구면 — 아니면 no-op).
       await tx.monthlyPostpaidBillingLine.updateMany({
         where: { paymentId: payment.id },
