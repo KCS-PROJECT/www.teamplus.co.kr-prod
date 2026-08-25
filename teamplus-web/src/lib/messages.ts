@@ -1460,9 +1460,6 @@ export const MESSAGES = {
   },
   calendar: {
     title: "통합 캘린더",
-    training: "정규훈련",
-    lesson: "개인 레슨",
-    tournament: "대회",
     noEvents: "이 날짜에 예정된 일정이 없습니다.",
     loadError: "캘린더 데이터를 불러올 수 없습니다.",
     eventCount: (count: number) => `일정 ${count}건`,
@@ -4436,6 +4433,8 @@ export const MESSAGES = {
       PRESS: "보도자료",
     },
     pinned: "추천",
+    categoryFilterLabel: "카테고리 필터",
+    loadingMore: "포스트를 더 불러오는 중입니다.",
     empty: "등록된 포스트가 없습니다.",
     emptyFilterHint: "다른 카테고리를 선택해 보세요.",
     loadFailed: "포스트를 불러오지 못했습니다.",
@@ -4445,5 +4444,15 @@ export const MESSAGES = {
     notFoundHint: "삭제되었거나 아직 공개되지 않은 포스트예요.",
     readingMinutes: (minutes: number) => `약 ${minutes}분`,
     loadMore: "더보기",
+  },
+
+  // ─── 본문 외부 링크 공통 규약 (공지·단위 공지·포스트 본문 앵커) ───
+  externalLink: {
+    confirmTitle: "외부 페이지로 이동",
+    confirmMessage: "기본 브라우저에서 링크를 엽니다. 이동할까요?",
+    confirmOk: "이동하기",
+    confirmCancel: "취소",
+    updateRequired: "최신 버전의 앱에서 열 수 있어요.",
+    openFailed: "링크를 열지 못했습니다. 잠시 후 다시 시도해주세요.",
   },
 } as const;

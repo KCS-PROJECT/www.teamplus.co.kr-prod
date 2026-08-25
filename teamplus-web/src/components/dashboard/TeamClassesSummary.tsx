@@ -179,6 +179,12 @@ interface Props {
    * ⚠️ myOnly(학부모 '내 것만') 모드에서는 무시된다 — 그 모드의 CTA 는 기존 '수업 둘러보기'가 담당.
    */
   emptyActions?: TeamClassesEmptyAction[];
+  /**
+   * myOnly 빈 상태의 안내 문구+'수업 둘러보기' CTA 노출 여부 (기본 true — 기존 동작).
+   * 학부모 홈에서 자녀가 0명이면 수업 신청 자체가 불가능하므로 false 를 전달해
+   * 제목만 남긴다 — 이때의 다음 행동 안내는 상단 '자녀 등록하기' 배너가 전담한다.
+   */
+  showEmptyCta?: boolean;
   /** 표시할 최대 항목 수 (기본 5) — classLimit/tournamentLimit 미지정 시 유형별 폴백값. */
   limit?: number;
   /** 훈련(수업) 최대 노출 수 — 미지정 시 limit. */
@@ -228,6 +234,7 @@ export function TeamClassesSummary({
   onReady,
   onActivityResolved,
   emptyActions,
+  showEmptyCta = true,
   limit = 5,
   classLimit,
   tournamentLimit,
@@ -521,7 +528,7 @@ export function TeamClassesSummary({
               </p>
               {/* [2026-08-04] myOnly 는 '내 것만' 보여주므로 비어 있으면 막다른 화면이 된다.
                   카탈로그(전체보기 대상)로 이어주는 진입점을 함께 노출한다. */}
-              {myOnly && (
+              {myOnly && showEmptyCta && (
                 <>
                   <p className="text-card-meta font-medium text-wtext-3 dark:text-rink-300">
                     {MESSAGES.dashboard.myClasses.emptyDescription}

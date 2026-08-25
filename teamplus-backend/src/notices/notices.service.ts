@@ -27,7 +27,6 @@ import {
   publicationConditions,
 } from "@/common/utils/notice-publication.util";
 import {
-  resolveNoticeManageTeamIds,
   normalizeTargetTeamId,
   isNoticeSystemRole,
   isNoticeTeamScopedRole,
@@ -43,16 +42,13 @@ interface NoticeFilter {
   isActive?: boolean;
   displayLocation?: string;
   childBirthYear?: number; // 자녀 출생연도 (학년별 필터)
-  teamId?: string; // 클럽 ID (클럽별 필터)
   /**
-   * [2026-05-21] 공지 범위 구분.
-   *  - 'service' : 공지만 (targetTeamId = null) — 고객지원 > 공지사항
-   *  - 'team'    : 팀 공지만 (targetTeamId ∈ 내 소속/관리 팀) — 팀 공지(관리/열람)
-   *  - 미지정    : 기존 동작 (teamId 필터 또는 전체)
+   * [2026-05-21] 공지 범위 구분 — [Phase 3 정리] 팀 공지가 TeamPost 로 이관되어
+   * 어느 값이든 결과는 서비스 공지(targetTeamId=null)뿐이다.
+   *  - 'team' : 구버전 클라이언트 호환 — 빈 목록 반환 (이중 노출 차단)
+   *  - 'service' · 미지정 : 서비스 공지
    */
   scope?: "service" | "team";
-  /** scope='team' · scope 미지정일 때 채우는 열람 가능 팀 ID 목록 */
-  scopeTeamIds?: string[];
   /**
    * [2026-08-07 · R10-H1] 팀 스코프 우회 — **관리 목록(ADMIN/SYSTEM/OPER) 전용**.
    *   audience 경로에서는 절대 켜지 않는다. 켜면 전 팀 공지가 반환된다.
@@ -124,30 +120,24 @@ export class NoticesService {
 
   /**
    * [Phase 5 · AC 5-1~2] 공지 관리 가능 여부 판정 컨텍스트 — 요청당 **한 번만** 해석한다.
-   *   시스템 역할 = 전역·팀 공지 모두 / 팀 역할 = 관리 팀 공지만 / 그 외 = false.
-   *   행별 판정은 `canManageWith` 로 O(1) — 목록에서 행마다 권한 쿼리를 만들지 않는다.
+   *   [Phase 3 정리] system_notices 는 서비스 공지 전용 — 관리 = 시스템 역할 여부뿐이라
+   *   팀 관리 팀 조회(resolveNoticeManageTeamIds)를 제거했다(결과가 항상 버려지던 낭비 쿼리).
+   *   행별 판정은 `canManageWith` 로 O(1).
    */
   private async resolveManageContext(
     userId?: string,
     userType?: string,
-  ): Promise<{ isSystem: boolean; managedIds: Set<string> }> {
-    if (!userId) return { isSystem: false, managedIds: new Set() };
-    if (isNoticeSystemRole(userType)) {
-      return { isSystem: true, managedIds: new Set() };
-    }
-    if (!isNoticeTeamScopedRole(userType)) {
-      return { isSystem: false, managedIds: new Set() };
-    }
-    const ids = await resolveNoticeManageTeamIds(this.prisma, userId, userType);
-    return { isSystem: false, managedIds: new Set(ids) };
+  ): Promise<{ isSystem: boolean }> {
+    if (!userId) return { isSystem: false };
+    return { isSystem: isNoticeSystemRole(userType) };
   }
 
   private canManageWith(
-    ctx: { isSystem: boolean; managedIds: Set<string> },
+    ctx: { isSystem: boolean },
     targetTeamId: string | null,
   ): boolean {
-    if (ctx.isSystem) return true;
-    return targetTeamId !== null && ctx.managedIds.has(targetTeamId);
+    // 팀 공지 행은 존재하지 않아야 정상 — 남아 있어도(비정상 데이터) 관리 불가로 판정한다
+    return ctx.isSystem && targetTeamId === null;
   }
 
   private mapNotice<
@@ -189,7 +179,7 @@ export class NoticesService {
     //   관리 목록(skipViewerScope)만 이 해석을 건너뛴다.
     // [Phase 2 ③ 전용화] audience 팀 공지 목록은 TeamPost feed(/community/posts/feed)로
     //   이관 — scope='team' 은 빈 목록을 반환한다(구버전 클라이언트 호환·이중 노출 차단).
-    //   관리 목록(skipViewerScope)은 이관 원본 대조용으로 유지한다 (정리는 Phase 3).
+    //   [Phase 3 정리] 이관 원본은 삭제 완료 — 관리 목록의 팀 열람 분기도 제거됐다.
     if (!filters.skipViewerScope && filters.scope === "team") {
       return {
         data: [],
@@ -227,27 +217,10 @@ export class NoticesService {
     //   먼저 설정한 조건이 조용히 사라진다(출생연도 필터 ↔ 게시 기간 충돌 사례).
     const andConditions: Prisma.SystemNoticeWhereInput[] = [];
 
-    // [2026-05-21] scope 필터 — 서비스 공지 / 팀 공지 명확 분리.
-    //   ⚠️ scope 는 관리 목록에서도 유효하다. skipViewerScope 를 먼저 분기하면
-    //      어드민의 `?scope=service` 요청에 팀 공지가 섞인다.
-    if (filters.scope === "service") {
-      // 서비스 공지: 팀 미지정(targetTeamId = null) 만.
-      where.targetTeamId = null;
-    } else if (filters.scope === "team") {
-      // 관리 목록 전용 (audience 는 위에서 빈 목록 반환) — 이관 원본 열람.
-      where.targetTeamId = filters.teamId ?? { not: null };
-    } else if (filters.skipViewerScope) {
-      // 관리 목록 + scope 미지정 — 팀 스코프를 의도적으로 우회(teamId 지정 시 그 팀만).
-      if (filters.teamId) {
-        where.targetTeamId = filters.teamId;
-      }
-    } else {
-      // [Phase 2 ③] scope 생략 audience = 서비스 공지만 — 팀 공지는 feed 로 이관.
-      //   (기존 buildNoticeTeamScopeCondition 의 "서비스 ∪ 열람 팀" 합집합을 대체.
-      //    scope 없이 호출하는 화면 3곳(events·club/news·notice-detail)은 서비스 공지 화면이라
-      //    의미 무변경 — 이관 전에도 팀 공지가 섞이면 안 되는 곳이었다)
-      where.targetTeamId = null;
-    }
+    // [Phase 3 정리] system_notices = 서비스 공지 전용 (팀 공지는 TeamPost 로 이관·원본 삭제).
+    //   scope 값과 무관하게 항상 targetTeamId=null 로 고정한다
+    //   (audience scope='team' 은 위에서 빈 목록으로 이미 반환 — 구버전 호환).
+    where.targetTeamId = null;
 
     // displayLocation 필터: PostgreSQL JsonB array_contains로 DB 레벨 필터
     const filterLocation = filters.displayLocation;
@@ -578,13 +551,8 @@ export class NoticesService {
       if (!this.canManageWith(ctx, current.targetTeamId)) {
         throw new NotFoundException("공지사항을 찾을 수 없습니다.");
       }
-      baseConditions.push(
-        current.targetTeamId
-          ? ctx.isSystem
-            ? { targetTeamId: { not: null } }
-            : { targetTeamId: { in: Array.from(ctx.managedIds) } }
-          : { targetTeamId: null },
-      );
+      // [Phase 3 정리] canManageWith 통과 = 서비스 공지 — 팀 조건 분기 제거
+      baseConditions.push({ targetTeamId: null });
     } else {
       // audience — 상세 열람과 동일 검증 (타 팀·비공개는 여기서 404)
       await this.assertCanViewNotice(current, userId, userType);
@@ -641,19 +609,11 @@ export class NoticesService {
   }
 
   /**
-   * 공지사항 생성
+   * 공지사항 생성 — 서비스(전체) 공지 전용, 시스템 역할(ADMIN/SYSTEM/OPER)만.
    *
-   * teamId 격리 ([T02-M 2026-05-15] 도입 · **2026-08-06 Phase 0 에서 SoT 교체**):
-   *  - ADMIN/SYSTEM/OPER: 모든 팀 또는 전체 공지 작성 가능 (targetTeamId 자유)
-   *  - DIRECTOR/COACH: `resolveNoticeManageTeamIds` 가 반환한 팀만 허용
-   *      = `active Team.coachId` ∪ `TeamMember(approved · leftAt=null · 관리 역할)`
-   *      - `targetTeamId` **키 생략** 시 관리 팀이 하나면 자동 주입, 여럿이면 지정 요구
-   *      - 명시적 `null`/`""` 는 전역 공지 요청 → 시스템 역할만 허용
-   *  - ACADEMY_DIRECTOR: 팀 도메인 권한이 없어 제외
-   *  - 기타 role: 컨트롤러 @Roles 가드로 차단되므로 도달 불가
-   *
-   * ⚠️ `CoachProfile.teamId` 는 더 이상 권한 근거가 아니다(승인 여부를 반영하지 않아
-   *    미승인 코치가 관리자로 취급되던 경로 — Phase 0 에서 제거).
+   * [Phase 2 봉인 · Phase 3 정리] 팀 공지는 TeamPost(/community/posts)로 이관 —
+   *   팀 스코프 역할(DIRECTOR/COACH) 작성과 targetTeamId 지정은 400 으로 전면 차단되며,
+   *   구 팀 자동 주입·관리 팀 검증 분기는 제거됐다.
    */
   async createNotice(userId: string, createDto: CreateNoticeDto) {
     // 1) 작성자 userType + 관리 가능 팀 조회
@@ -674,50 +634,17 @@ export class NoticesService {
     //   · 명시적 null·""·공백  → "전역(전체) 공지 요청" → **시스템 역할만 허용**
     //   두 경우를 뭉뚱그리면 DIRECTOR 가 `targetTeamId: null` 을 보냈을 때 403 대신
     //   본인 팀으로 조용히 자동 주입되어, updateNotice 의 전이 계약과도 어긋난다.
-    const hasExplicitTarget = createDto.targetTeamId !== undefined;
     const requestedTeamId = normalizeTargetTeamId(createDto.targetTeamId);
-    let resolvedTeamId: string | null = requestedTeamId;
+    const resolvedTeamId: string | null = requestedTeamId;
 
     // [Phase 2 ④ 봉인] 팀 공지 신규 작성 전면 차단 — 팀 스코프 역할(자동 주입 경로 포함)과
-    //   시스템 역할의 팀 지정 모두. 아래 팀 분기들은 도달 불가 (레거시 정리는 Phase 3).
+    //   시스템 역할의 팀 지정 모두. [Phase 3 정리] 봉인 아래의 팀 자동 주입·관리 팀 검증
+    //   분기는 도달 불가라 제거했다 — 이 관문을 지나면 항상 서비스 공지(null)다.
     if (isTeamScoped || requestedTeamId !== null) {
       throw new BadRequestException(NoticesService.TEAM_NOTICE_SEALED_MSG);
     }
 
-    if (isTeamScoped) {
-      // [Phase 0 · F-03·F-04] 공지 전용 관리 SoT — CoachProfile 미사용, 승인된 관리 역할만.
-      const managedIds = new Set(
-        await resolveNoticeManageTeamIds(this.prisma, userId, author.userType),
-      );
-
-      if (managedIds.size === 0) {
-        throw new ForbiddenException(
-          "공지를 작성할 수 있는 팀이 없습니다. (관리하는 팀 미존재)",
-        );
-      }
-
-      if (hasExplicitTarget && requestedTeamId === null) {
-        // 명시적 전역 요청 — 팀 범위 권한자는 전체 공지를 만들 수 없다.
-        throw new ForbiddenException(
-          "전체 공지는 시스템 관리자만 작성할 수 있습니다.",
-        );
-      }
-
-      if (!resolvedTeamId) {
-        // 키 생략 → 본인 팀으로 자동 주입 (단일 팀이면 자동)
-        if (managedIds.size === 1) {
-          resolvedTeamId = Array.from(managedIds)[0]!;
-        } else {
-          throw new ForbiddenException(
-            "관리하는 팀이 여러 개입니다. targetTeamId 를 지정해주세요.",
-          );
-        }
-      } else if (!managedIds.has(resolvedTeamId)) {
-        throw new ForbiddenException(
-          "본인이 관리하는 팀에 대해서만 공지를 작성할 수 있습니다.",
-        );
-      }
-    } else if (!isSystemRole) {
+    if (!isSystemRole) {
       // 안전망: 가드에서 차단되지만 이중 보호
       throw new ForbiddenException("공지를 작성할 권한이 없습니다.");
     }
@@ -1086,8 +1013,6 @@ export class NoticesService {
       targetType?: string;
       isActive?: boolean;
       displayLocation?: string;
-      teamId?: string;
-      scope?: "service" | "team";
       page?: number;
       limit?: number;
     },
@@ -1128,80 +1053,12 @@ export class NoticesService {
       );
     }
 
-    // 팀 스코프 사용자: 본인 관리 팀만 (Phase 0 공지 전용 SoT)
-    const managedIds = new Set(
-      await resolveNoticeManageTeamIds(this.prisma, userId, user.userType),
-    );
-
-    // [P3-R1-01 · AC 3-5] teamId 은닉 검사는 빈 관리 집합 조기 반환보다 **먼저** —
-    // 관리 팀 0개 사용자가 임의 teamId 로 200 빈 목록을 받으면, 404 를 받는 다른
-    // 사용자와의 응답 차이가 존재/권한 정보를 누설한다. 어떤 사용자든 권한 밖
-    // teamId 는 동일한 404 여야 한다.
-    if (options.teamId && !managedIds.has(options.teamId)) {
-      throw new NotFoundException("공지사항을 찾을 수 없습니다.");
-    }
-
-    if (managedIds.size === 0) {
-      return {
-        data: [],
-        pagination: { total: 0, page, limit, totalPages: 0 },
-      };
-    }
-
-    const skip = (page - 1) * limit;
-    const where: Prisma.SystemNoticeWhereInput = {
-      targetTeamId: { in: Array.from(managedIds) },
-    };
-    if (options.targetType) where.targetType = options.targetType;
-    if (options.isActive !== undefined) where.isActive = options.isActive;
-    if (options.displayLocation) {
-      where.displayLocationsJson = {
-        array_contains: [options.displayLocation],
-      };
-    }
-    // DIRECTOR/COACH 가 teamId 지정 시 본인 관리 팀에 한해 적용.
-    // 권한 밖 teamId 의 404 은닉은 위(빈 집합 조기 반환 이전)에서 이미 처리됨 — 여기 도달한
-    // teamId 는 관리 팀 확정.
-    if (options.teamId) {
-      where.targetTeamId = options.teamId;
-    }
-
-    const [notices, total] = await Promise.all([
-      this.prisma.systemNotice.findMany({
-        where,
-        orderBy: [{ pinned: "desc" }, { createdAt: "desc" }],
-        skip,
-        take: limit,
-        select: {
-          id: true,
-          title: true,
-          content: true,
-          maintenanceReason: true,
-          targetType: true,
-          pinned: true,
-          isActive: true,
-          createdAt: true,
-          expiresAt: true,
-          startAt: true,
-          displayLocationsJson: true,
-          targetBirthYearFrom: true,
-          targetBirthYearTo: true,
-          targetTeamId: true,
-        },
-      }),
-      this.prisma.systemNotice.count({ where }),
-    ]);
-
+    // [Phase 3 정리] 팀 스코프 사용자(DIRECTOR/COACH) — 팀 공지 이관·원본 삭제로
+    //   관리 대상(targetTeamId ∈ 관리 팀)이 항상 0건이라 관리 팀 조회·팀 필터 분기를
+    //   제거하고 빈 목록을 반환한다 (팀 공지 관리는 /community/posts managed 가 담당).
     return {
-      // [Phase 5 · AC 5-1~2] 이 분기의 where 는 관리 팀으로 한정돼 있으므로 전 행 canManage=true —
-      // 이미 해석한 managedIds 를 재사용하며 추가 권한 쿼리는 없다.
-      data: notices.map((n) => ({ ...this.mapNotice(n), canManage: true })),
-      pagination: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
+      data: [],
+      pagination: { total: 0, page, limit, totalPages: 0 },
     };
   }
 
@@ -1224,9 +1081,8 @@ export class NoticesService {
     },
     userId?: string,
     userType?: string,
-    // [P5-R1-03] 호출자가 이미 관리 컨텍스트를 해석했다면 전달 — 게시기간 밖 팀 공지의
-    // 관리자 예외 판정에 재사용해 같은 요청에서 관리 SoT 를 두 번 조회하지 않는다.
-    precomputedManageCtx?: { isSystem: boolean; managedIds: Set<string> },
+    // [P5-R1-03] 호출자가 이미 관리 컨텍스트를 해석했다면 전달 (시그니처 호환 유지)
+    precomputedManageCtx?: { isSystem: boolean },
   ): Promise<void> {
     // [Phase 2 ③ 전용화] 팀 공지는 TeamPost 로 이관 — audience 열람 경로(상세·댓글·인접)에서
     //   원본을 계속 서빙하면 복사본과 이중 노출된다. 시스템 역할·작성자 예외보다 먼저
@@ -1285,24 +1141,11 @@ export class NoticesService {
       throw new ForbiddenException("공지 관리 권한이 없습니다.");
     }
 
-    // targetTeamId 가 null (전체 공지) 인데 시스템 관리자가 아니면 차단
-    if (!targetTeamId) {
-      throw new ForbiddenException(
-        "전체 공지(targetTeamId=null) 는 시스템 관리자만 관리할 수 있습니다.",
-      );
-    }
-
-    const managedIds = await resolveNoticeManageTeamIds(
-      this.prisma,
-      userId,
-      user.userType,
+    // [Phase 3 정리] 봉인 관문 통과 = 서비스 공지(targetTeamId=null) — 팀 역할이 관리할
+    //   대상이 없어 항상 차단이다 (관리 팀 대조 분기는 도달 불가라 제거).
+    throw new ForbiddenException(
+      "전체 공지(targetTeamId=null) 는 시스템 관리자만 관리할 수 있습니다.",
     );
-
-    if (!managedIds.includes(targetTeamId)) {
-      throw new ForbiddenException(
-        "본인이 관리하는 팀의 공지만 처리할 수 있습니다.",
-      );
-    }
   }
 
   /**
@@ -1738,18 +1581,9 @@ export class NoticesService {
       return this.prisma.noticeComment.delete({ where: { id: commentId } });
     }
 
-    // moderation 권한 판정 — 쓰기 SoT 재사용.
-    //   전역 공지(targetTeamId=null) 댓글은 시스템 역할만, 팀 공지 댓글은 해당 팀 관리자도.
-    const noticeTeamId = comment.notice?.targetTeamId ?? null;
-    let canModerate = isNoticeSystemRole(userType);
-    if (!canModerate && noticeTeamId && isNoticeTeamScopedRole(userType)) {
-      const managedIds = await resolveNoticeManageTeamIds(
-        this.prisma,
-        userId,
-        userType,
-      );
-      canModerate = managedIds.includes(noticeTeamId);
-    }
+    // moderation 권한 판정 — 서비스 공지(targetTeamId=null) 댓글은 시스템 역할만.
+    //   [Phase 3 정리] 팀 공지 댓글 관리자 분기는 위 동결 가드(팀 댓글 404)로 도달 불가라 제거.
+    const canModerate = isNoticeSystemRole(userType);
     if (!canModerate) {
       // 404 은닉 — 권한 없는 사용자에게 댓글 존재를 확인시켜 주지 않는다
       throw new NotFoundException("댓글을 찾을 수 없습니다.");

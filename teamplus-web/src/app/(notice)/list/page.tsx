@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
-import { usePathname } from "next/navigation";
 import { NavLink, useNavigation } from "@/components/ui/NavLink";
 import { Icon } from "@/components/ui/Icon";
 import { FloatingActionButton } from "@/components/ui/FloatingActionButton";
@@ -147,18 +146,12 @@ const EMPTY_STATE_BY_TAB: Record<
 export default function NoticeListPage() {
   useNavigation();
   const { user } = useSessionAuth();
-  // [2026-05-21] 동일 컴포넌트를 /notices(서비스 공지) · /team-notices(팀 공지) 양쪽에서 재사용.
-  //   경로로 scope 분기 — 서비스 공지는 전체 / 팀 공지는 본인 소속 팀.
-  const pathname = usePathname();
-  const isTeamScope = (pathname ?? "").includes("team-notices");
-  const noticeScope: "service" | "team" = isTeamScope ? "team" : "service";
-  const pageTitle = isTeamScope ? "팀공지" : "공지사항";
-  // 서비스 공지(`/notices`)는 admin 만 작성. 팀 공지(`/team-notices`)는 감독/코치/원장이 작성 가능.
+  // [Phase 3 정리] 이 컴포넌트는 /notices(서비스 공지) 전용 — /team-notices 는 별도
+  //   페이지(TeamNoticeListView)가 렌더해 pathname 기반 팀 모드 분기(isTeamScope)는
+  //   항상 false 였다(발동 불가 dead). 서비스 공지는 admin 만 작성.
   const userType = user?.userType;
-  const canWrite =
-    (isTeamScope && (userType === 'coach' || userType === 'director' || userType === 'academy_director')) ||
-    (!isTeamScope && userType === 'admin');
-  useNativeUI({ showStatusBar: true, showBottomNav: true, appBarTitle: pageTitle });
+  const canWrite = userType === 'admin';
+  useNativeUI({ showStatusBar: true, showBottomNav: true, appBarTitle: "공지사항" });
 
   const [activeCategory, setActiveCategory] = useState<CategoryType>("all");
   const [notices, setNotices] = useState<NoticeItem[]>([]);
@@ -177,8 +170,7 @@ export default function NoticeListPage() {
       else setIsLoadingMore(true);
 
       try {
-        // [2026-05-21] scope — service(서비스 공지·전체) / team(팀 공지·소속 팀).
-        const url = `/notices?limit=${PAGE_SIZE}&page=${pageNum}&isActive=true&scope=${noticeScope}`;
+        const url = `/notices?limit=${PAGE_SIZE}&page=${pageNum}&isActive=true&scope=service`;
         const res = await apiRequest<
           | { notices?: ApiNotice[]; data?: ApiNotice[]; total?: number }
           | ApiNotice[]
@@ -323,7 +315,7 @@ export default function NoticeListPage() {
 
   return (
     <MobileContainer hasBottomNav>
-      <PageAppBar title={pageTitle} forceNative />
+      <PageAppBar title="공지사항" forceNative />
 
       <div className="flex-1 overflow-y-auto pb-30 bg-it-canvas dark:bg-puck hide-scrollbar">
         {/* Hero — 고정 공지 full-bleed navy 밴드 (ICETIMES flat · 박스 제거). */}
@@ -455,7 +447,7 @@ export default function NoticeListPage() {
         )}
 
         {/* [2026-06-19 사용자 직접 지시] 전체/안읽음/전체읽음 배지 — 서비스 공지에서만, 알림 페이지와 동일 크기(h-9). */}
-        {!isTeamScope && !isLoading && totalCount > 0 && (
+        {!isLoading && totalCount > 0 && (
           <div className="px-5 pt-3 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <span className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-[13px] font-extrabold text-it-ink-700 dark:text-rink-100">

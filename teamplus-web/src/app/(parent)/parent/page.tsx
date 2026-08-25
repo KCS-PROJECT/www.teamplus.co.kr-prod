@@ -47,6 +47,10 @@ import { useStableLayout } from '@/hooks/useStableLayout';
 import { useImagesReady } from '@/hooks/useImagesReady';
 import { useFontsReady } from '@/hooks/useFontsReady';
 import { MESSAGES } from '@/lib/messages';
+import {
+  resolveReadingPlacement,
+  resolveShowBrowseCta,
+} from '@/lib/parent-home-visibility';
 import { getChildInactiveReason } from '@/lib/child-status';
 import { isActiveEnrollment } from '@/lib/enrollment-visibility';
 import { api } from '@/services/api-client';
@@ -115,6 +119,8 @@ export default function ParentDashboardPage() {
     children: allChildren,
     selectableChildren,
     isLoading: isChildrenLoading,
+    // 조회 실패 시 children 이 빈 배열로 남으므로, "자녀 0명 확정" 판정과 구분하기 위해 필요.
+    error: childrenError,
   } = useChildren();
   // Phase 1 (2026-05-11): 학부모 출석 처리 — upcomingSchedules 의 scheduleId/childIds/attendanceByChild
   // 를 SelectedDayClassList 에 매핑해서 [출석하기] 버튼을 노출한다. checkInChild 은 POST
@@ -125,6 +131,10 @@ export default function ParentDashboardPage() {
   // 팀 조회 실패를 "팀 없음(확정)"과 구분 — 실패를 무소속으로 오인하면 포스트가 잘못
   //   승격된다 (SPEC_DASHBOARD_READING_CONTENT §2-4 공통 규칙: 조회 실패 ≠ 빈 상태).
   const [teamsError, setTeamsError] = useState(false);
+  // 포스트 승격 판정 전용 — 정상 조회된 "자녀 팀" 개수. 표시용 `teams` 는 자녀 팀이 없으면
+  //   학부모 본인 팀(myParentTeams)으로 폴백하므로 판정에 그대로 쓰면 "자녀 무소속인데
+  //   본인 팀 보유" 케이스가 승격에서 누락된다 (Codex R6-2 #1). null = 미확정.
+  const [childTeamCount, setChildTeamCount] = useState<number | null>(null);
   // 자녀 선택 바텀시트 — 자녀 스트립 우측 [선택] 버튼으로 열림 (승인 자녀 2명+ 일 때만 노출)
   const [isChildSheetOpen, setIsChildSheetOpen] = useState(false);
   // 미납 후불 청구(수업 정산 + 후불 대회 참가비) — 결제 요청 배너. null=로딩(배너·페이지 ready 보류).
@@ -220,15 +230,18 @@ export default function ParentDashboardPage() {
   const openMenu = useCallback(() => setIsMenuOpen(true), []);
   const closeMenu = useCallback(() => setIsMenuOpen(false), []);
 
-  // 포스트 배치 — 자녀·팀 조회가 확정된 뒤에만 렌더(선렌더 후 이동 금지 — SPEC §2-4).
-  //   판정은 계정 전체 자녀 기준(선택 자녀 아님) — 자녀 전환으로 위치가 흔들리지 않는다.
-  //   승격: 자녀 0명 또는 표시 가능한 팀 0개(조회 정상 완료 기준). 조회 실패는 기본(최하단).
-  const readingPlacement: 'promoted' | 'footer' | null = (() => {
-    if (isChildrenLoading || teams === null) return null;
-    if (allChildren.length === 0) return 'promoted';
-    if (teamsError) return 'footer';
-    return teams.length === 0 ? 'promoted' : 'footer';
-  })();
+  // 포스트 배치·둘러보기 CTA — 판정 로직 SoT 는 lib/parent-home-visibility.ts (순수 함수 —
+  //   조회 실패 ≠ 빈 상태 원칙 포함, 단위 테스트 대상). 판정은 계정 전체 자녀 기준.
+  const visibilityInput = {
+    isChildrenLoading,
+    hasChildrenError: !!childrenError,
+    childCount: allChildren.length,
+    teamsResolved: teams !== null,
+    teamsError,
+    childTeamCount,
+  };
+  const readingPlacement = resolveReadingPlacement(visibilityInput);
+  const showBrowseCta = resolveShowBrowseCta(visibilityInput);
 
   // 자녀 소속 팀 fetch — 마운트 + REFRESH_KEYS.TEAM 발화 시 재실행.
   // [2026-05-28] 폴백 정책: myChildTeams 가 비어있으면(자녀 0명/자녀 팀 미승인)
@@ -250,6 +263,8 @@ export default function ParentDashboardPage() {
     const parentTeams = Array.isArray(res.data.myParentTeams)
       ? res.data.myParentTeams
       : [];
+    // 승격 판정용 자녀 팀 개수 — 폴백 합성 전의 원본 축만 기록.
+    setChildTeamCount(childTeams.length);
     const effective = childTeams.length > 0 ? childTeams : parentTeams;
     setTeams(
       effective.map((t) => ({
@@ -646,7 +661,17 @@ export default function ParentDashboardPage() {
               팀 전체 카탈로그라 자녀 칩 필터와 무관 → 칩보다 위에 배치. */}
         {/* [2026-08-04 사용자 지시] 홈 수업 목록 = 내가 등록했거나 신청/요청한 수업·대회만.
             팀 카탈로그 전체 탐색은 '전체보기'(→ /classes) 와 빈 상태 CTA 가 담당한다. */}
-        <TeamClassesSummary selectedChildId={selectedChildId} classLimit={7} tournamentLimit={3} myOnly iceTheme />
+        <TeamClassesSummary
+          selectedChildId={selectedChildId}
+          classLimit={7}
+          tournamentLimit={3}
+          myOnly
+          // 자녀 0명(확정)이면 수업 신청이 불가능 — '수업 둘러보기' CTA 를 숨기고
+          // 다음 행동 안내는 상단 '자녀 등록하기' 배너로 일원화한다.
+          // 로딩·조회 실패는 낙관 노출 (판정 SoT: parent-home-visibility).
+          showEmptyCta={showBrowseCta}
+          iceTheme
+        />
 
         {/* (자녀 전환은 상단 자녀 스트립 [선택] 버튼 → ChildPickerSheet 로 이동 — 2026-07-06) */}
 

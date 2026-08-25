@@ -52,7 +52,8 @@ export const TRAINING_TYPE_COLORS: Record<string, TrainingTypeColor> = {
   lesson: {
     bg: 'bg-blue-500',
     dot: '#3B82F6',
-    label: '레슨',
+    // 오픈클래스 통일 표기 — 범례(OPEN)·카드 배지와 동일 SoT.
+    label: CATEGORY_BADGE_LABEL.open,
     text: 'text-blue-700 dark:text-blue-400',
     darkBg: 'dark:bg-blue-600',
   },
@@ -74,7 +75,7 @@ export const TRAINING_TYPE_COLORS: Record<string, TrainingTypeColor> = {
   LESSON: {
     bg: 'bg-blue-500',
     dot: '#3B82F6',
-    label: '레슨',
+    label: CATEGORY_BADGE_LABEL.open,
     text: 'text-blue-700 dark:text-blue-400',
     darkBg: 'dark:bg-blue-600',
   },

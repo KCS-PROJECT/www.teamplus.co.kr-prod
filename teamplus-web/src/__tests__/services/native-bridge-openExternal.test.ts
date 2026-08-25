@@ -134,4 +134,84 @@ describe("navigation.openExternal — url 을 파라미터(인자/객체)로 받
       expect(callHandler).not.toHaveBeenCalled();
     });
   });
+
+  // ─── 3상태 결과 + 새 탭 폴백 계약 (Codex R1-1·R1-2) ───
+  describe("status 판정 — opened / unsupported / failed", () => {
+    let openSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      openSpy = jest.spyOn(window, "open").mockReturnValue(null);
+    });
+
+    afterEach(() => {
+      openSpy.mockRestore();
+    });
+
+    test("신앱 정상: data.opened=true → opened", async () => {
+      callHandler.mockResolvedValue({ success: true, data: { opened: true } });
+      const result = await navigation.openExternal("https://example.com");
+      expect(result.status).toBe("opened");
+    });
+
+    test("신앱 실행 실패: data.opened=false → failed (업데이트 안내 대상 아님)", async () => {
+      callHandler.mockResolvedValue({ success: true, data: { opened: false } });
+      const result = await navigation.openExternal("https://example.com");
+      expect(result.status).toBe("failed");
+    });
+
+    test("구앱: navigate default 흡수(success 인데 opened 부재) → unsupported", async () => {
+      callHandler.mockResolvedValue({
+        success: true,
+        data: { action: "navigate", route: null },
+      });
+      const result = await navigation.openExternal("https://example.com");
+      expect(result.status).toBe("unsupported");
+    });
+
+    test("브릿지 에러 응답(success:false) → failed", async () => {
+      callHandler.mockResolvedValue({ success: false, error: "boom" });
+      const result = await navigation.openExternal("https://example.com");
+      expect(result.status).toBe("failed");
+    });
+
+    test("callHandler throw + 기본(fallback 허용) → 새 탭 폴백 + opened (기존 호출부 동작)", async () => {
+      callHandler.mockRejectedValue(new Error("bridge down"));
+      const result = await navigation.openExternal("https://example.com");
+      expect(openSpy).toHaveBeenCalledWith(
+        "https://example.com",
+        "_blank",
+        "noopener,noreferrer",
+      );
+      expect(result.status).toBe("opened");
+    });
+
+    test("callHandler throw + fallbackToNewTab:false → 새 탭 없이 failed (iOS 좌초 방지)", async () => {
+      callHandler.mockRejectedValue(new Error("bridge down"));
+      const result = await navigation.openExternal({
+        url: "https://example.com",
+        fallbackToNewTab: false,
+      });
+      expect(openSpy).not.toHaveBeenCalled();
+      expect(result.status).toBe("failed");
+    });
+
+    test("브릿지 미준비 + fallbackToNewTab:false → 새 탭 없이 failed", async () => {
+      delete (window as unknown as { flutter_inappwebview?: unknown })
+        .flutter_inappwebview;
+      const result = await navigation.openExternal({
+        url: "https://example.com",
+        fallbackToNewTab: false,
+      });
+      expect(openSpy).not.toHaveBeenCalled();
+      expect(result.status).toBe("failed");
+    });
+
+    test("브릿지 미준비 + 기본(fallback 허용) → 새 탭 + opened (웹 브라우저 정상 경로)", async () => {
+      delete (window as unknown as { flutter_inappwebview?: unknown })
+        .flutter_inappwebview;
+      const result = await navigation.openExternal("https://example.com");
+      expect(openSpy).toHaveBeenCalled();
+      expect(result.status).toBe("opened");
+    });
+  });
 });
