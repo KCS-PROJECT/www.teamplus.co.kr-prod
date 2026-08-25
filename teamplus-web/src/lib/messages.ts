@@ -1460,9 +1460,6 @@ export const MESSAGES = {
   },
   calendar: {
     title: "통합 캘린더",
-    training: "정규훈련",
-    lesson: "개인 레슨",
-    tournament: "대회",
     noEvents: "이 날짜에 예정된 일정이 없습니다.",
     loadError: "캘린더 데이터를 불러올 수 없습니다.",
     eventCount: (count: number) => `일정 ${count}건`,

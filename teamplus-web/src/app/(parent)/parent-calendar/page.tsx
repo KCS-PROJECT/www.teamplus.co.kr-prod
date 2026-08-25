@@ -22,6 +22,7 @@ import { useNativeUI } from '@/hooks/useNativeUI';
 import { usePageReady } from '@/hooks/usePageReady';
 import { useSelectedChild } from '@/contexts/SelectedChildContext';
 import { getCalendarEventColor } from '@/lib/calendar-colors';
+import { CATEGORY_BADGE_LABEL } from '@/lib/class-categories';
 import { MESSAGES } from '@/lib/messages';
 
 // ────────────────────────────────────────────
@@ -121,12 +122,14 @@ export default function ParentCalendarPage() {
         : event.type === 'LESSON'
           ? 'bg-it-blue-50 text-it-blue-600 dark:bg-it-blue-500/20 dark:text-it-blue-300'
           : 'bg-it-red-50 text-it-red-600 dark:bg-it-red-500/20 dark:text-it-red-300';
+    // 칩 라벨은 달력 범례·등록훈련 배지와 동일한 짧은 배지 표기 SoT(CATEGORY_BADGE_LABEL) 사용
+    //   — LESSON(오픈클래스 회차)은 범례의 '오픈'과 같은 이름이어야 유형 대응이 읽힌다.
     const chipLabel =
       event.type === 'REGULAR'
-        ? MESSAGES.calendar.training
+        ? CATEGORY_BADGE_LABEL.regular
         : event.type === 'LESSON'
-          ? MESSAGES.calendar.lesson
-          : MESSAGES.calendar.tournament;
+          ? CATEGORY_BADGE_LABEL.open
+          : CATEGORY_BADGE_LABEL.tournament;
     // 상세 이동 — 감독 일정(director-schedules)과 동일 패턴.
     //   수업(REGULAR/LESSON, classId 있음) → /classes/:id · 대회/경기(GAME) → /tournaments 목록.
     //   classId 없는 수업(구 응답 호환)은 버튼 미표시.

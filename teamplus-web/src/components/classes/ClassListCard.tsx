@@ -25,9 +25,9 @@ function typeBadgeColor(trainingType?: string | null): string {
 }
 
 // ─── ICETIMES variant (iceTheme=true) 전용 색 매핑 ──────────────────
-// calendar-colors SoT 정합 — 정규=emerald(초록) · 대회=it-red · 레슨=mint.
+// calendar-colors SoT 정합 — 정규=emerald(초록) · 대회=it-red · 오픈클래스(lesson)=it-blue(파랑).
 function itTypeBadgeColor(trainingType?: string | null): string {
-  if (trainingType === 'lesson') return 'bg-mint-500';
+  if (trainingType === 'lesson') return 'bg-it-blue-500';
   if (trainingType === 'tournament') return 'bg-it-red-500';
   return 'bg-emerald-500'; // regular 정규 — 기존 초록(SoT)
 }
@@ -35,7 +35,7 @@ function itTypeBadgeColor(trainingType?: string | null): string {
 /** ICETIMES 좌측 아이콘 박스 배경·텍스트 (soft tone). */
 function itIconBoxClass(trainingType?: string | null): string {
   if (trainingType === 'lesson')
-    return 'bg-mint-100 text-mint-600 dark:bg-mint-700/25 dark:text-mint-100';
+    return 'bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-700/25 dark:text-it-blue-300';
   if (trainingType === 'tournament')
     return 'bg-it-red-50 text-it-red-500 dark:bg-it-red-700/25 dark:text-it-red-300';
   return 'bg-emerald-50 text-emerald-600 dark:bg-emerald-700/25 dark:text-emerald-100'; // regular 정규 — 기존 초록(SoT)

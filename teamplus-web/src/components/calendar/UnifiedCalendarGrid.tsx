@@ -5,6 +5,7 @@ import { Icon } from '@/components/ui/Icon';
 import { MESSAGES } from '@/lib/messages';
 import { cn } from '@/lib/utils';
 import { getCalendarEventColor, CALENDAR_EVENT_LEGEND } from '@/lib/calendar-colors';
+import { CATEGORY_BADGE_LABEL } from '@/lib/class-categories';
 import { WEEKDAY_HEADERS, colIsSaturday, colIsSunday } from '@/lib/calendar-week';
 import type { CalendarEvent, UnifiedCalendarDay } from '@/hooks/useUnifiedCalendar';
 
@@ -119,11 +120,12 @@ export function EventDetail({
               chipClassName,
             )}
           >
+            {/* 라벨은 범례와 동일한 짧은 배지 표기 SoT(CATEGORY_BADGE_LABEL) — LESSON=범례 '오픈' 대응 */}
             {event.type === 'REGULAR'
-              ? MESSAGES.calendar.training
+              ? CATEGORY_BADGE_LABEL.regular
               : event.type === 'LESSON'
-                ? MESSAGES.calendar.lesson
-                : MESSAGES.calendar.tournament}
+                ? CATEGORY_BADGE_LABEL.open
+                : CATEGORY_BADGE_LABEL.tournament}
           </span>
           {timeDisplay && (
             <span
