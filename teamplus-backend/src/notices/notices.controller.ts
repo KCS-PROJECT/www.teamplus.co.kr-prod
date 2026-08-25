@@ -57,7 +57,7 @@ export class NoticesController {
   @ApiOperation({
     summary: "공지사항 목록 조회",
     description:
-      "공지사항 목록을 조회합니다. JWT 인증 필수 (scope=team 처리에 userId 필요). scope=service 또는 미지정 시에도 isRead 정보가 함께 반환됩니다.",
+      "서비스 공지 목록을 조회합니다. JWT 인증 필수 — isRead 정보가 함께 반환됩니다. 팀 공지는 커뮤니티 공지 API(/community/posts/feed)로 이관되어 scope=team 은 빈 목록(구버전 호환)입니다.",
   })
   @ApiQuery({ name: "type", required: false, description: "공지사항 유형" })
   @ApiQuery({ name: "page", required: false, description: "페이지 번호" })
@@ -68,15 +68,9 @@ export class NoticesController {
     description: "자녀 출생연도 (학년별 공지 필터, 예: 2017)",
   })
   @ApiQuery({
-    name: "teamId",
-    required: false,
-    description: "클럽 ID (클럽별 공지 필터)",
-  })
-  @ApiQuery({
     name: "childId",
     required: false,
-    description:
-      "학부모 자녀 선택 스코프 — 지정 시 해당 자녀 소속 팀 공지만 (PARENT 전용)",
+    description: "학부모 자녀 선택 스코프 (레거시 — 현재 결과에 영향 없음)",
   })
   @ApiResponse({
     status: 200,
@@ -107,16 +101,13 @@ export class NoticesController {
     @Query("page") page?: string,
     @Query("limit") limit?: string,
     @Query("childBirthYear") childBirthYear?: string,
-    @Query("teamId") teamId?: string,
     @Query("scope") scope?: string,
     @Query("childId") childId?: string,
   ) {
     const userId: string | undefined = req?.user?.id;
     const userType: string | undefined = req?.user?.userType;
-    // [2026-05-21] scope — 'service'(서비스 공지) / 'team'(팀 공지) 외 값은 무시.
-    //   [2026-08-07 · R10-H1] scope 를 생략해도 서비스가 열람 팀을 해석해
-    //   "서비스 공지 ∪ 내 팀 공지" 로 좁힌다. teamId 파라미터는 더 이상 팀 필터로 쓰이지 않는다
-    //   (viewer 검증 없이 임의 팀 공지를 노출하던 레거시 경로 — 호출자 실측 0건).
+    // [Phase 3 정리] 결과는 항상 서비스 공지 — scope='team' 만 빈 목록(구버전 호환)으로
+    //   구분 의미가 남는다. teamId 파라미터는 필터 기능이 없어 제거(전달돼도 무시).
     const normalizedScope: "service" | "team" | undefined =
       scope === "service" || scope === "team" ? scope : undefined;
     return this.noticesService.getNotices(
@@ -126,7 +117,6 @@ export class NoticesController {
         childBirthYear: childBirthYear
           ? parseInt(childBirthYear, 10)
           : undefined,
-        teamId,
         scope: normalizedScope,
       },
       page ? parseInt(page, 10) : 1,
@@ -432,7 +422,7 @@ export class NoticesController {
   @ApiOperation({
     summary: "관리자용 공지사항 목록",
     description:
-      "미공개 공지사항을 포함한 전체 목록을 조회합니다. DIRECTOR/COACH 는 본인 관리 팀 공지만 노출됩니다.",
+      "미공개 공지사항을 포함한 서비스 공지 전체 목록을 조회합니다 (시스템 역할 전용 데이터 — DIRECTOR/COACH 는 빈 목록, 팀 공지 관리는 /community/posts/managed).",
   })
   @ApiQuery({ name: "type", required: false, description: "공지사항 유형" })
   @ApiQuery({ name: "isPublished", required: false, description: "공개 여부" })
@@ -440,17 +430,6 @@ export class NoticesController {
     name: "displayLocation",
     required: false,
     description: "표시 위치 필터 (app_home|web_home 등)",
-  })
-  @ApiQuery({
-    name: "teamId",
-    required: false,
-    description:
-      "특정 팀 ID 필터 — 시스템 역할(ADMIN/SYSTEM/OPER)은 임의 팀, DIRECTOR/COACH 는 본인 관리 팀만 허용 (권한 밖 팀은 404)",
-  })
-  @ApiQuery({
-    name: "scope",
-    required: false,
-    description: "service | team (미지정 시 전체)",
   })
   @ApiQuery({ name: "page", required: false, description: "페이지 번호" })
   @ApiQuery({ name: "limit", required: false, description: "페이지당 개수" })
@@ -463,17 +442,15 @@ export class NoticesController {
     @Query("type") type?: string,
     @Query("isPublished") isPublished?: string,
     @Query("displayLocation") displayLocation?: string,
-    @Query("teamId") teamId?: string,
-    @Query("scope") scope?: string,
     @Query("page") page?: string,
     @Query("limit") limit?: string,
   ) {
+    // [Phase 3 정리] teamId·scope 파라미터 제거 — 결과가 서비스 공지뿐이라 필터 기능이
+    //   없었다 (기존 호출의 ?scope=service 는 전달돼도 무시되어 동작 동일).
     return this.noticesService.getAdminNotices(req.user.id, {
       targetType: type,
       isActive: isPublished === undefined ? undefined : isPublished === "true",
       displayLocation,
-      teamId,
-      scope: scope === "service" || scope === "team" ? scope : undefined,
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 10,
     });
