@@ -116,7 +116,7 @@ export default function ContentsListPage() {
           <div
             className="mt-3 flex gap-2 overflow-x-auto scrollbar-hide"
             role="tablist"
-            aria-label="카테고리 필터"
+            aria-label={MESSAGES.contents.categoryFilterLabel}
           >
             {CATEGORY_FILTERS.map((filter) => {
               const isActive = category === filter.value;
@@ -220,12 +220,17 @@ export default function ContentsListPage() {
                   type="button"
                   onClick={() => void handleLoadMore()}
                   disabled={isLoadingMore}
+                  aria-busy={isLoadingMore}
                   className="mt-8 flex h-11 w-full items-center justify-center gap-1.5 rounded-w-md border border-it-line dark:border-rink-700 bg-it-fill dark:bg-rink-700/40 text-[13px] font-bold text-it-ink-600 dark:text-rink-100 transition-colors motion-reduce:transition-none hover:bg-it-line/60 dark:hover:bg-rink-700 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/50"
                 >
                   <Icon name="expand_more" className="text-[18px]" aria-hidden="true" />
                   {MESSAGES.contents.loadMore}
                 </button>
               )}
+              {/* 더보기 진행 상태 — 스크린리더 안내용 상시 live region (Codex R6-2 #6) */}
+              <p className="sr-only" role="status" aria-live="polite">
+                {isLoadingMore ? MESSAGES.contents.loadingMore : ''}
+              </p>
             </>
           )}
         </section>

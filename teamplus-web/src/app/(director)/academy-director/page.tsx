@@ -218,7 +218,7 @@ export default function AcademyDirectorDashboardPage() {
             </p>
             <NavLink
               href="/academy/create"
-              className="inline-flex h-12 items-center justify-center rounded-w-md bg-it-blue-500 px-6 text-card-body font-extrabold tracking-[-0.02em] text-white transition-colors hover:bg-it-blue-600 active:brightness-90"
+              className="inline-flex h-12 items-center justify-center rounded-w-md bg-it-blue-500 px-6 text-card-body font-extrabold tracking-[-0.02em] text-white transition-colors motion-reduce:transition-none hover:bg-it-blue-600 active:brightness-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/50 focus-visible:ring-offset-2"
             >
               {MESSAGES.academy.createAcademyCta}
             </NavLink>

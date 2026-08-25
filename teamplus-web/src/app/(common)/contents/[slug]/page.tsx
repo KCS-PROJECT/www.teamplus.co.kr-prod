@@ -11,7 +11,6 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import DOMPurify from 'dompurify';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
 import { Icon } from '@/components/ui/Icon';
@@ -19,6 +18,7 @@ import { NavLink } from '@/components/ui/NavLink';
 import { BLOG_CATEGORY_META, BlogCover, formatBlogDate } from '@/components/contents/ContentCard';
 import { usePageReady } from '@/hooks/usePageReady';
 import { MESSAGES } from '@/lib/messages';
+import { sanitizeBlogHtmlForRender } from '@/lib/blog-sanitize';
 import { cn } from '@/lib/utils';
 import {
   BlogNotFoundError,
@@ -27,38 +27,8 @@ import {
   type BlogDetail,
 } from '@/services/blog.service';
 
-/**
- * Blog 본문 살균 — backend `sanitizeBlogHtml` allowlist 와 1:1 동일 (넓히지 않음).
- * tags: p br hr h1~h4 strong b em i u s strike a img ul ol li blockquote pre code
- * attrs: a[href title target rel] · img[src alt title width height]
- * schemes: http https mailto
- */
-let blogPurifyHookAdded = false;
-function sanitizeBlogHtmlForRender(dirty: string): string {
-  if (typeof window === 'undefined') return '';
-
-  if (!blogPurifyHookAdded) {
-    DOMPurify.addHook('afterSanitizeAttributes', (node) => {
-      if (node.tagName === 'A') {
-        if (node.getAttribute('target') === '_blank') {
-          node.setAttribute('rel', 'noopener noreferrer');
-        }
-      }
-    });
-    blogPurifyHookAdded = true;
-  }
-
-  return DOMPurify.sanitize(dirty, {
-    ALLOWED_TAGS: [
-      'p', 'br', 'hr', 'h1', 'h2', 'h3', 'h4',
-      'strong', 'b', 'em', 'i', 'u', 's', 'strike',
-      'a', 'img', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code',
-    ],
-    ALLOWED_ATTR: ['href', 'title', 'target', 'rel', 'src', 'alt', 'width', 'height'],
-    ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[/#])/i,
-    ALLOW_DATA_ATTR: false,
-  });
-}
+// 본문 살균은 `@/lib/blog-sanitize` 전용 인스턴스 사용 — 태그별 속성 allowlist 로
+// backend `sanitizeBlogHtml` 와 1:1 정합 (테스트: lib/__tests__/blog-sanitize.test.ts).
 
 /** 읽기 시간 — HTML 태그 제거 후 한국어 기준 분당 500자, 최소 1분 */
 function estimateReadingMinutes(html: string): number {
@@ -67,6 +37,12 @@ function estimateReadingMinutes(html: string): number {
 }
 
 type ScreenStatus = 'loading' | 'ready' | 'notFound' | 'error';
+
+/**
+ * 조회수 비콘 세션 가드의 in-memory fallback — sessionStorage 접근이 차단된 환경
+ * (프라이빗 모드 등)에서도 탭 생명주기 동안 slug 당 1회만 전송한다 (Codex R6-2 #2).
+ */
+const viewedSlugsInMemory = new Set<string>();
 
 export default function ContentDetailPage() {
   const params = useParams<{ slug: string }>();
@@ -95,15 +71,21 @@ export default function ContentDetailPage() {
   }, [loadPost]);
 
   // 조회수 비콘 — 세션당 글 1회. 실패해도 열람을 막지 않고, unmount 후 상태 갱신 없음(fire-and-forget).
+  //   1차 가드 sessionStorage(브라우저 세션 지속) + 2차 in-memory Set(저장소 차단 환경 fallback).
   useEffect(() => {
     if (status !== 'ready' || !slug) return;
+    if (viewedSlugsInMemory.has(slug)) return;
     const key = `blog-viewed:${slug}`;
     try {
-      if (sessionStorage.getItem(key)) return;
+      if (sessionStorage.getItem(key)) {
+        viewedSlugsInMemory.add(slug);
+        return;
+      }
       sessionStorage.setItem(key, '1');
     } catch {
-      // sessionStorage 불가 환경(프라이빗 모드 등)에서는 가드 없이 1회 전송
+      // sessionStorage 불가 — in-memory 가드만으로 1회 보장
     }
+    viewedSlugsInMemory.add(slug);
     void recordBlogView(slug);
   }, [status, slug]);
 

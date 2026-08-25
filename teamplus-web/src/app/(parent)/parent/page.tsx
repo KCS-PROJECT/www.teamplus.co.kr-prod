@@ -125,6 +125,10 @@ export default function ParentDashboardPage() {
   // 팀 조회 실패를 "팀 없음(확정)"과 구분 — 실패를 무소속으로 오인하면 포스트가 잘못
   //   승격된다 (SPEC_DASHBOARD_READING_CONTENT §2-4 공통 규칙: 조회 실패 ≠ 빈 상태).
   const [teamsError, setTeamsError] = useState(false);
+  // 포스트 승격 판정 전용 — 정상 조회된 "자녀 팀" 개수. 표시용 `teams` 는 자녀 팀이 없으면
+  //   학부모 본인 팀(myParentTeams)으로 폴백하므로 판정에 그대로 쓰면 "자녀 무소속인데
+  //   본인 팀 보유" 케이스가 승격에서 누락된다 (Codex R6-2 #1). null = 미확정.
+  const [childTeamCount, setChildTeamCount] = useState<number | null>(null);
   // 자녀 선택 바텀시트 — 자녀 스트립 우측 [선택] 버튼으로 열림 (승인 자녀 2명+ 일 때만 노출)
   const [isChildSheetOpen, setIsChildSheetOpen] = useState(false);
   // 미납 후불 청구(수업 정산 + 후불 대회 참가비) — 결제 요청 배너. null=로딩(배너·페이지 ready 보류).
@@ -222,12 +226,13 @@ export default function ParentDashboardPage() {
 
   // 포스트 배치 — 자녀·팀 조회가 확정된 뒤에만 렌더(선렌더 후 이동 금지 — SPEC §2-4).
   //   판정은 계정 전체 자녀 기준(선택 자녀 아님) — 자녀 전환으로 위치가 흔들리지 않는다.
-  //   승격: 자녀 0명 또는 표시 가능한 팀 0개(조회 정상 완료 기준). 조회 실패는 기본(최하단).
+  //   승격: 자녀 0명 또는 "자녀 팀" 0개(childTeamCount — 본인 팀 폴백 미포함, 조회 정상
+  //   완료 기준). 조회 실패는 기본(최하단).
   const readingPlacement: 'promoted' | 'footer' | null = (() => {
     if (isChildrenLoading || teams === null) return null;
     if (allChildren.length === 0) return 'promoted';
-    if (teamsError) return 'footer';
-    return teams.length === 0 ? 'promoted' : 'footer';
+    if (teamsError || childTeamCount === null) return 'footer';
+    return childTeamCount === 0 ? 'promoted' : 'footer';
   })();
 
   // 자녀 소속 팀 fetch — 마운트 + REFRESH_KEYS.TEAM 발화 시 재실행.
@@ -250,6 +255,8 @@ export default function ParentDashboardPage() {
     const parentTeams = Array.isArray(res.data.myParentTeams)
       ? res.data.myParentTeams
       : [];
+    // 승격 판정용 자녀 팀 개수 — 폴백 합성 전의 원본 축만 기록.
+    setChildTeamCount(childTeams.length);
     const effective = childTeams.length > 0 ? childTeams : parentTeams;
     setTeams(
       effective.map((t) => ({

@@ -4436,6 +4436,8 @@ export const MESSAGES = {
       PRESS: "보도자료",
     },
     pinned: "추천",
+    categoryFilterLabel: "카테고리 필터",
+    loadingMore: "포스트를 더 불러오는 중입니다.",
     empty: "등록된 포스트가 없습니다.",
     emptyFilterHint: "다른 카테고리를 선택해 보세요.",
     loadFailed: "포스트를 불러오지 못했습니다.",
