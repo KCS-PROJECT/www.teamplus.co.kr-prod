@@ -14,6 +14,7 @@ import { PageAppBar } from '@/components/layout/PageAppBar';
 import { Icon } from '@/components/ui/Icon';
 import { ContentCard } from '@/components/contents/ContentCard';
 import { usePageReady } from '@/hooks/usePageReady';
+import { useNativeUI } from '@/hooks/useNativeUI';
 import { MESSAGES } from '@/lib/messages';
 import { cn } from '@/lib/utils';
 import {
@@ -45,6 +46,15 @@ export default function ContentsListPage() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   // 필터 전환 중 이전 요청 응답이 늦게 도착해 새 목록을 덮는 것을 차단
   const requestSeq = useRef(0);
+
+  // forceNative 웹 헤더 규약의 필수 짝 — 네이티브 AppBar 명시 숨김, 목록은 BottomNav 유지.
+  //   미호출 시 직전 화면의 네이티브 크롬 상태가 잔존해 앱에서 이중 헤더/뒤로가기 어긋남.
+  useNativeUI({
+    showStatusBar: true,
+    showAppBar: false,
+    showBottomNav: true,
+    isDataLoaded: status !== 'loading',
+  });
 
   const loadFirstPage = useCallback(async (nextCategory: CategoryFilter) => {
     const seq = ++requestSeq.current;

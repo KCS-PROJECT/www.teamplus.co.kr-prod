@@ -4448,4 +4448,14 @@ export const MESSAGES = {
     readingMinutes: (minutes: number) => `약 ${minutes}분`,
     loadMore: "더보기",
   },
+
+  // ─── 본문 외부 링크 공통 규약 (공지·단위 공지·포스트 본문 앵커) ───
+  externalLink: {
+    confirmTitle: "외부 페이지로 이동",
+    confirmMessage: "기본 브라우저에서 링크를 엽니다. 이동할까요?",
+    confirmOk: "이동하기",
+    confirmCancel: "취소",
+    updateRequired: "최신 버전의 앱에서 열 수 있어요.",
+    openFailed: "링크를 열지 못했습니다. 잠시 후 다시 시도해주세요.",
+  },
 } as const;

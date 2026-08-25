@@ -413,7 +413,27 @@ export interface OpenExternalOptions {
   url: string;
   /** 붙일 쿼리 파라미터 — object 또는 쿼리스트링 */
   parameter?: Record<string, unknown> | string;
+  /**
+   * 브릿지 미준비/예외 시 `window.open` 새 탭 폴백 허용 여부 (기본 true — 기존 동작).
+   *
+   * ⚠️ 네이티브 WebView 의 `window.open` 은 onCreateWindow 가 **메인 WebView 를 외부
+   * 사이트로 교체**하고, iOS 는 back 제스처가 꺼져 있어 복귀 불가 좌초가 된다
+   * (webview_screen.dart:1614·:1193). 본문 외부 링크(useContentLinkHandler)처럼
+   * "셸 내 이동 금지" 계약인 호출은 반드시 false 를 지정한다 — 이 경우 폴백 없이
+   * status:'failed' 를 반환하고 호출부가 안내를 담당한다.
+   */
+  fallbackToNewTab?: boolean;
 }
+
+/**
+ * openExternal 결과.
+ * - opened      : 기본 브라우저(또는 웹 새 탭)로 열림
+ * - unsupported : 구버전 앱(1.0.0+5 미만) — openExternal 액션이 navigate default 분기로
+ *                 흡수되어 응답에 `data.opened` 가 없는 경우. 업데이트 안내 대상.
+ * - failed      : 현행 앱에서 실행 실패(launchUrl false·브릿지 에러/예외·미준비).
+ *                 버전 문제가 아니므로 업데이트 안내가 아닌 일반 실패 안내 대상.
+ */
+export type OpenExternalStatus = "opened" | "unsupported" | "failed";
 
 /**
  * 네비게이션 관련 기능
@@ -564,10 +584,13 @@ export const navigation = {
   async openExternal(
     target: string | OpenExternalOptions,
     parameter?: Record<string, unknown> | string,
-  ): Promise<void> {
+  ): Promise<{ status: OpenExternalStatus }> {
     const rawUrl = typeof target === "string" ? target : target?.url;
     const param = typeof target === "string" ? parameter : target?.parameter;
-    if (!rawUrl) return;
+    // 기본 true — 기존 호출부(결제 영수증·앱 업데이트 안내)의 새 탭 폴백 동작 보존.
+    const fallbackToNewTab =
+      typeof target === "string" ? true : target?.fallbackToNewTab !== false;
+    if (!rawUrl) return { status: "failed" };
     // 스킴 없는 bare-host(www.naver.com)는 https:// 부여 → 외부 브라우저에서 정상 오픈
     const finalUrl = buildUrlWithParams(normalizeExternalUrl(rawUrl), param);
     const openInNewTab = () => {
@@ -580,20 +603,38 @@ export const navigation = {
       typeof window === "undefined" ||
       typeof window.flutter_inappwebview?.callHandler !== "function"
     ) {
+      // 웹 브라우저(브릿지 없음) — 새 탭이 정상 경로. 네이티브인데 브릿지가 아직
+      // 준비되지 않은 경계 상태에서는 fallbackToNewTab=false 호출이 좌초를 막는다.
+      if (!fallbackToNewTab) return { status: "failed" };
       openInNewTab();
-      return;
+      return { status: "opened" };
     }
     try {
-      await window.flutter_inappwebview.callHandler("navigation", {
-        action: "openExternal",
-        url: finalUrl,
-      });
+      const response = (await window.flutter_inappwebview.callHandler(
+        "navigation",
+        {
+          action: "openExternal",
+          url: finalUrl,
+        },
+      )) as { success?: boolean; data?: { opened?: boolean } } | undefined;
+      // 구버전 앱(1.0.0+5 미만)은 이 액션이 navigate default 분기로 흡수되어 success 는
+      // 오지만 data.opened 가 **없다** → unsupported(업데이트 안내 대상).
+      // 현행 앱의 실행 실패(launchUrl false=data.opened:false · BridgeResponse.error)는
+      // failed 로 구분한다 — 버전 문제가 아니므로 업데이트 안내를 띄우면 오안내다.
+      if (response?.success === true) {
+        if (response.data?.opened === true) return { status: "opened" };
+        if (response.data?.opened === false) return { status: "failed" };
+        return { status: "unsupported" };
+      }
+      return { status: "failed" };
     } catch (error) {
       handleBridgeError("navigation", error, {
         operation: "openExternal",
         url: finalUrl,
       });
-      openInNewTab(); // 브릿지 실패 시 새 탭 폴백
+      if (!fallbackToNewTab) return { status: "failed" };
+      openInNewTab(); // 브릿지 실패 시 새 탭 폴백 (기존 호출부 동작 유지)
+      return { status: "opened" };
     }
   },
 };

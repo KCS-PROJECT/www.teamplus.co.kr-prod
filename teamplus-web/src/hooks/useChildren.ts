@@ -128,7 +128,10 @@ async function fetchChildren(): Promise<Child[]> {
         : (response.data as { data: ChildApiItem[] }).data ?? [];
       return items.map(toChild);
     }
-    return [];
+    // api-client 는 서버/네트워크 오류를 throw 가 아니라 {success:false, error} 로
+    // 정규화한다. 이를 빈 배열로 삼키면 "자녀 0명 확정"과 조회 실패가 구분되지 않아
+    // 홈의 둘러보기 CTA 숨김·포스트 승격이 오판된다 — 오류로 승격해 error 상태에 싣는다.
+    throw new Error(response.error?.message ?? '자녀 목록 조회 실패');
   } catch (err) {
     devWarn('Failed to fetch children:', err);
     throw err;

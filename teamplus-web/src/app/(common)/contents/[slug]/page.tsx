@@ -17,6 +17,8 @@ import { Icon } from '@/components/ui/Icon';
 import { NavLink } from '@/components/ui/NavLink';
 import { BLOG_CATEGORY_META, BlogCover, formatBlogDate } from '@/components/contents/ContentCard';
 import { usePageReady } from '@/hooks/usePageReady';
+import { useNativeUI } from '@/hooks/useNativeUI';
+import { useContentLinkHandler } from '@/hooks/useContentLinks';
 import { MESSAGES } from '@/lib/messages';
 import { sanitizeBlogHtmlForRender } from '@/lib/blog-sanitize';
 import { cn } from '@/lib/utils';
@@ -50,6 +52,16 @@ export default function ContentDetailPage() {
 
   const [post, setPost] = useState<BlogDetail | null>(null);
   const [status, setStatus] = useState<ScreenStatus>('loading');
+  const handleContentLinkClick = useContentLinkHandler();
+
+  // forceNative 웹 헤더 규약의 필수 짝 — 네이티브 AppBar 명시 숨김 + 상세라 BottomNav 숨김.
+  //   미호출 시 직전 화면의 네이티브 크롬 상태가 잔존해 앱에서 이중 헤더/뒤로가기 어긋남.
+  useNativeUI({
+    showStatusBar: true,
+    showAppBar: false,
+    showBottomNav: false,
+    isDataLoaded: status !== 'loading',
+  });
 
   const loadPost = useCallback(async () => {
     if (!slug) {
@@ -196,8 +208,11 @@ export default function ContentDetailPage() {
             <BlogCover post={post} ratioClassName="aspect-video" className="mt-4" />
           )}
 
-          {/* 본문 — 이중 살균 HTML. 이미지·코드 블록 렌더 규칙은 컨테이너 CSS 로 부여 */}
+          {/* 본문 — 이중 살균 HTML. 이미지·코드 블록 렌더 규칙은 컨테이너 CSS 로 부여.
+              앵커 클릭은 본문 외부 링크 공통 규약(useContentLinkHandler)이 처리. */}
+          {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- 클릭 위임 대상은 내부 앵커(키보드 접근 가능)뿐 */}
           <div
+            onClick={handleContentLinkClick}
             className={cn(
               'mt-5 text-[15px] leading-relaxed text-it-ink-800 dark:text-it-ink-100 break-words',
               '[&_p]:my-3 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0',

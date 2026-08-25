@@ -20,6 +20,7 @@ import { emitRefresh, REFRESH_KEYS } from '@/lib/refresh-bus';
 import { useNotificationContext } from '@/contexts/NotificationContext';
 
 import { usePageReady } from '@/hooks/usePageReady';
+import { useContentLinkHandler } from '@/hooks/useContentLinks';
 const GlobalMenu = dynamic(() => import('@/components/layout/GlobalMenu').then(mod => ({ default: mod.GlobalMenu })), { ssr: false });
 
 /**
@@ -151,6 +152,8 @@ export default function NoticeDetailPage() {
   //   행까지 읽음 처리하므로, 벨 미읽음·앱 아이콘 배지를 즉시 재조회로 반영한다.
   const { refresh: refreshBellNotifications } = useNotificationContext();
   const { modal } = useModal();
+  // 본문 앵커 클릭 — 외부 링크 공통 규약 (웹=새 탭 · 신앱=confirm→기본 브라우저 · 구앱=안내)
+  const handleContentLinkClick = useContentLinkHandler();
 
   const handleEditNotice = useCallback(() => {
     navigate(`/notices-create?edit=${noticeId}`);
@@ -461,8 +464,11 @@ export default function NoticeDetailPage() {
             </span>
           </div>
 
-          {/* 본문 — 단위 공지와 동일 규격 (짧아도 최소 높이 확보) */}
+          {/* 본문 — 단위 공지와 동일 규격 (짧아도 최소 높이 확보).
+              앵커 클릭은 본문 외부 링크 공통 규약(useContentLinkHandler)이 처리. */}
+          {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- 클릭 위임 대상은 내부 앵커(키보드 접근 가능)뿐 */}
           <div
+            onClick={handleContentLinkClick}
             className={cn(
               'mt-4 min-h-[140px] text-[15px] leading-relaxed text-it-ink-800 dark:text-it-ink-100 whitespace-pre-line break-words',
               '[&_b]:text-it-blue-600 [&_b]:font-extrabold',

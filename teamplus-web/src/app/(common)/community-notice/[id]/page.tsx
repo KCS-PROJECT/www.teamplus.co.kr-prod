@@ -13,6 +13,7 @@ import { useNavigation } from '@/components/ui/NavLink';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
 import { usePageReady } from '@/hooks/usePageReady';
+import { useContentLinkHandler } from '@/hooks/useContentLinks';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { useToast } from '@/components/ui/Toast';
 // [Codex R1 H-05] AuthContext 가드 훅 직접 import 금지 — page-safe facade 사용
@@ -103,6 +104,8 @@ export default function UnitNoticeDetailPage() {
   const postId = params?.id ?? '';
   const { toast } = useToast();
   const { navigate, back } = useNavigation();
+  // 본문 앵커 클릭 — 외부 링크 공통 규약 (웹=새 탭 · 신앱=confirm→기본 브라우저 · 구앱=안내)
+  const handleContentLinkClick = useContentLinkHandler();
   const { user } = useSessionAuth();
 
   const [post, setPost] = useState<UnitNoticeDetail | null>(null);
@@ -471,8 +474,11 @@ export default function UnitNoticeDetailPage() {
                 </span>
               </div>
 
-              {/* 본문 — 짧은 공지도 안정적인 높이를 갖도록 구 상세(/notice/[id])와 동일 min-h */}
+              {/* 본문 — 짧은 공지도 안정적인 높이를 갖도록 구 상세(/notice/[id])와 동일 min-h.
+                  앵커 클릭은 본문 외부 링크 공통 규약(useContentLinkHandler)이 처리. */}
+              {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- 클릭 위임 대상은 내부 앵커(키보드 접근 가능)뿐 */}
               <div
+                onClick={handleContentLinkClick}
                 className="mt-4 min-h-[140px] text-[15px] leading-relaxed text-it-ink-800 dark:text-it-ink-100 whitespace-pre-wrap break-words [&_a]:text-it-blue-500 [&_a]:underline"
                 dangerouslySetInnerHTML={{ __html: sanitizeHtml(post.content) }}
               />
