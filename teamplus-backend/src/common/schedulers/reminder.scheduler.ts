@@ -3,6 +3,8 @@ import { Cron, CronExpression } from "@nestjs/schedule";
 import { PrismaService } from "../../prisma/prisma.service";
 import { SystemLogService } from "../../logger/system-log.service";
 import { NotificationsService } from "../../notifications/notifications.service";
+import { dbDateToKstYearMonth } from "@/payments/settlement/attribution.util";
+import { deriveClassLifecycle } from "@/common/utils/class-lifecycle.util";
 
 /** 후불 미납 독촉 — 결제자 1명분으로 합산되는 개별 청구. */
 interface UnpaidReminderItem {
@@ -303,6 +305,185 @@ export class ReminderScheduler {
     } catch (error) {
       this.logger.error("만료 Enrollment 처리 실패", error);
       this.systemLog.cron("ENROLLMENT_EXPIRY", "만료 Enrollment 처리 실패", {
+        level: "ERROR",
+      });
+    }
+  }
+
+  /**
+   * 판매 준비 리마인더 — 월 판매 사이클(일정·상품 등록 후 [판매 시작])이 수동이라
+   * 감독이 잊으면 신규 결제 차단·지난달 결제자 무기한 잔류로 상태가 방치된다.
+   * 매월 25일(다음 달 사전 준비 유도)·1일(당월 미처리 재알림) 09:00 KST 에
+   * 대상월 판매 시작이 안 된 수업을 소유자(팀 감독/아카데미 원장)별 합산 1건으로 통지.
+   */
+  @Cron("0 9 25 * *", { timeZone: "Asia/Seoul" })
+  async handleSalesPrepReminderPre() {
+    await this.runSalesPrepReminder("next");
+  }
+
+  @Cron("0 9 1 * *", { timeZone: "Asia/Seoul" })
+  async handleSalesPrepReminderStart() {
+    await this.runSalesPrepReminder("current");
+  }
+
+  private async runSalesPrepReminder(scope: "next" | "current") {
+    try {
+      // KST 연·월 — +9h 보정값은 getUTC* getter 와 짝으로만 사용(시간 규약).
+      const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+      let year = kst.getUTCFullYear();
+      let monthIdx = kst.getUTCMonth();
+      if (scope === "next") {
+        monthIdx += 1;
+        if (monthIdx > 11) {
+          monthIdx = 0;
+          year += 1;
+        }
+      }
+      const targetYm = `${year}-${String(monthIdx + 1).padStart(2, "0")}`;
+
+      // 운영 중 + 활성 수강생 보유 수업만 — 수강생 0 수업은 방치돼도 피해자가 없다.
+      //   리마인더 중단 수단은 수업 종료(endedAt) — 설계된 생애주기 액션.
+      //   ⚠️ spot(1회용) 파생 자동 종료는 endedAt=null 이라 where 로 거를 수 없다 —
+      //   아래에서 deriveClassLifecycle(수명주기 SoT)로 ENDED 를 제외한다.
+      const classes = await this.prisma.class.findMany({
+        where: {
+          endedAt: null,
+          registrations: { some: { status: "active" } },
+        },
+        select: {
+          id: true,
+          className: true,
+          salesOpenMonth: true,
+          trainingType: true,
+          teamId: true,
+          schedules: {
+            where: { isCancelled: false },
+            select: { scheduledDate: true },
+          },
+          academy: { select: { directorId: true } },
+        },
+      });
+
+      // 대상 수업 선별 — 파생 종료 제외 + 대상월 판매 미시작만.
+      const pendingClasses: {
+        className: string;
+        teamId: string | null;
+        academyDirectorId: string | null;
+      }[] = [];
+      for (const cls of classes) {
+        const lifecycle = deriveClassLifecycle({
+          endedAt: null,
+          salesOpenMonth: cls.salesOpenMonth,
+          trainingType: cls.trainingType,
+          schedules: cls.schedules,
+        });
+        if (lifecycle.state === "ENDED") continue; // spot 파생 종료
+        const salesYm = cls.salesOpenMonth
+          ? dbDateToKstYearMonth(cls.salesOpenMonth)
+          : null;
+        if (salesYm != null && salesYm >= targetYm) continue; // 대상월 판매 시작 완료
+        pendingClasses.push({
+          className: cls.className,
+          teamId: cls.teamId,
+          academyDirectorId: cls.academy?.directorId ?? null,
+        });
+      }
+
+      // 수신자 — 판매 시작 권한 SoT(assertTeamManagerPermission)와 동일 집합:
+      //   팀 = 승인된 관리역할 TeamMember ∪ Team.coachId / 오픈클래스 = 원장.
+      //   레거시 Team.coachId FK 오염 이력이 있어 단독 의존하지 않고, 발송 전
+      //   실존 사용자로 한 번 거른다(무효 id 1건이 createMany 전체를 깨는 것 방지).
+      const teamIds = [
+        ...new Set(
+          pendingClasses.map((c) => c.teamId).filter((v): v is string => !!v),
+        ),
+      ];
+      const [teamManagers, teamOwners] = teamIds.length
+        ? await Promise.all([
+            this.prisma.teamMember.findMany({
+              where: {
+                teamId: { in: teamIds },
+                approvalStatus: "approved",
+                leftAt: null,
+                roleInTeam: { in: ["HEAD_COACH", "COACH", "MANAGER"] },
+              },
+              select: { teamId: true, userId: true },
+            }),
+            this.prisma.team.findMany({
+              where: { id: { in: teamIds } },
+              select: { id: true, coachId: true },
+            }),
+          ])
+        : [[], []];
+      const managersByTeam = new Map<string, Set<string>>();
+      for (const m of teamManagers) {
+        const set = managersByTeam.get(m.teamId) ?? new Set<string>();
+        set.add(m.userId);
+        managersByTeam.set(m.teamId, set);
+      }
+      for (const t of teamOwners) {
+        const set = managersByTeam.get(t.id) ?? new Set<string>();
+        set.add(t.coachId);
+        managersByTeam.set(t.id, set);
+      }
+
+      const pendingByOwner = new Map<string, string[]>();
+      const addPending = (ownerId: string, className: string) => {
+        const list = pendingByOwner.get(ownerId);
+        if (list) {
+          list.push(className);
+        } else {
+          pendingByOwner.set(ownerId, [className]);
+        }
+      };
+      for (const cls of pendingClasses) {
+        if (cls.teamId) {
+          for (const ownerId of managersByTeam.get(cls.teamId) ?? []) {
+            addPending(ownerId, cls.className);
+          }
+        } else if (cls.academyDirectorId) {
+          addPending(cls.academyDirectorId, cls.className);
+        }
+      }
+
+      // 실존 사용자 필터 — 오염된 coachId 가 알림 적재를 깨지 않도록.
+      const validUserIds = new Set(
+        (
+          await this.prisma.user.findMany({
+            where: { id: { in: [...pendingByOwner.keys()] } },
+            select: { id: true },
+          })
+        ).map((u) => u.id),
+      );
+
+      let sent = 0;
+      const monthLabel = monthIdx + 1;
+      for (const [ownerId, names] of pendingByOwner) {
+        if (!validUserIds.has(ownerId)) continue;
+        const head = names.slice(0, 3).join(", ");
+        const rest = names.length > 3 ? ` 외 ${names.length - 3}개` : "";
+        try {
+          await this.notifications.notifyUsers([ownerId], {
+            notificationType: "class_sales_prep_reminder",
+            title: "판매 준비 안내",
+            message: `${monthLabel}월 판매 시작이 필요한 수업이 ${names.length}개 있습니다: ${head}${rest}. 일정·수업권 확인 후 판매를 시작해주세요.`,
+            linkUrl: "/classes-manage",
+          });
+          sent += 1;
+        } catch (error) {
+          this.logger.warn(
+            `판매 준비 리마인더 발송 실패: ownerId=${ownerId}, ${(error as Error).message}`,
+          );
+        }
+      }
+
+      this.systemLog.cron(
+        "SALES_PREP_REMINDER",
+        `판매 준비 리마인더(${targetYm}) 발송: 관리자 ${sent}명 / 대상 수업 ${pendingClasses.length}개`,
+      );
+    } catch (error) {
+      this.logger.error("판매 준비 리마인더 처리 실패", error);
+      this.systemLog.cron("SALES_PREP_REMINDER", "판매 준비 리마인더 처리 실패", {
         level: "ERROR",
       });
     }

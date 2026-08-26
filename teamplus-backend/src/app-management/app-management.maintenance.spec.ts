@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { AppManagementService } from "./app-management.service";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
+import { ConfigService } from "@nestjs/config";
 
 /**
  * 앱 점검 공지 읽기 격리 — 전역(targetTeamId=null) 공지만 점검 판정.
@@ -26,6 +27,7 @@ describe("AppManagementService — 점검 공지 읽기 격리", () => {
           provide: RedisService,
           useValue: { get: jest.fn(), set: jest.fn(), del: jest.fn() },
         },
+        { provide: ConfigService, useValue: { get: jest.fn(() => "test") } },
       ],
     }).compile();
 

@@ -213,6 +213,9 @@ export const NOTIFICATION_TYPES_BY_CATEGORY: Record<
     'enrollment_rejected',
     'enrollment_open',
     'enrollment_deadline',
+    // 월 판매 사이클 — 학부모 갱신 안내 / 감독 판매 준비 리마인더
+    'class_renewal_required',
+    'class_sales_prep_reminder',
   ],
   // 결제 — 선불/후불 정산 청구 포함. 실측: payment_reminder(10)·payment_success(8)
   //        ·tournament_postpaid_billing(3)·postpaid_billing(1).

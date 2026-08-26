@@ -6,10 +6,13 @@ import {
   ConflictException,
   Logger,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
 import { UpdateAppSettingsDto } from "./dto/update-app-settings.dto";
+import { describeProviders } from "@/payments/constants/payment-provider.constant";
+import { ACTIVE_PAYMENT_PROVIDER_CACHE_KEY } from "@/payments/payment-provider.util";
 
 // 🔥 고빈도 Public 엔드포인트 Redis 캐시 키
 const APP_SETTINGS_CACHE_KEY = "app:settings:v1";
@@ -88,6 +91,7 @@ export class AppManagementService implements OnModuleInit {
   constructor(
     private prisma: PrismaService,
     private redis: RedisService,
+    private config: ConfigService, // 결제사 키 설정 여부 판정 (전역 모듈)
   ) {}
 
   async onModuleInit() {
@@ -1234,14 +1238,31 @@ export class AppManagementService implements OnModuleInit {
   }
 
   async updateAppSettings(dto: UpdateAppSettingsDto, adminId: string) {
+    // 화면에서 비활성이어도 API 를 직접 호출하면 통과하므로 서버에서도 막는다.
+    //   키가 없거나 결제 화면이 없는 결제사로 바꾸면 결제 전면 장애가 된다.
+    if (dto.paymentProvider) {
+      const status = describeProviders(this.config).find(
+        (p) => p.code === dto.paymentProvider,
+      );
+      if (!status?.selectable) {
+        throw new BadRequestException(
+          `선택할 수 없는 결제사입니다 (${status?.reason ?? "미지원"})`,
+        );
+      }
+    }
+
     const existing = await this.ensureAppSettings();
     const updated = await this.prisma.appSettings.update({
       where: { id: existing.id },
       data: { ...dto, updatedBy: adminId },
     });
     // 캐시 무효화 — 즉시 최신 유지보수 모드 반영
+    //   결제사 캐시도 함께 지운다 — 전환이 다음 결제부터 즉시 반영되어야 한다.
     try {
-      await this.redis.del(APP_SETTINGS_CACHE_KEY);
+      await this.redis.del([
+        APP_SETTINGS_CACHE_KEY,
+        ACTIVE_PAYMENT_PROVIDER_CACHE_KEY,
+      ]);
     } catch {
       /* Redis 장애 시 무시 (TTL 5분 내 자연 만료) */
     }

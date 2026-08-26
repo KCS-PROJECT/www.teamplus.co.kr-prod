@@ -22,6 +22,7 @@ export const MESSAGES = {
     // [Lifecycle v4.1] 수명주기 라벨 — 학부모=중립 "일정 준비 중"(§7.3), 감독=대기 배지
     preparingSchedule: "일정 준비 중",
     pendingScheduleBadge: "일정 등록 대기",
+    salesOpenNeededBadge: "판매 시작 필요",
     endClassButton: "수업 종료하기",
     reopenClassButton: "종료 취소하기",
     endSuccess: "수업이 종료되었습니다.",

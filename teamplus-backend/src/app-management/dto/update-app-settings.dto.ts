@@ -2,6 +2,7 @@ import {
   IsArray,
   IsBoolean,
   IsEmail,
+  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
@@ -14,6 +15,7 @@ import {
 } from "class-validator";
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform, Type } from "class-transformer";
+import { PAYMENT_PROVIDER_CODES } from "@/payments/constants/payment-provider.constant";
 
 const emptyStringToUndefined = ({ value }: { value: unknown }) =>
   typeof value === "string" && value.trim() === "" ? undefined : value;
@@ -67,6 +69,17 @@ export class UpdateAppSettingsDto {
   @IsOptional()
   @IsBoolean()
   debugMode?: boolean;
+
+  // 결제사 설정
+  @ApiPropertyOptional({
+    description:
+      "신규 결제에 사용할 결제사. 기존 결제의 취소·환불은 결제 당시 결제사로 처리된다. " +
+      "선택 가능 여부는 GET /payments/providers 참고 (키 미설정·결제 화면 미구현이면 저장 거부).",
+    enum: PAYMENT_PROVIDER_CODES,
+  })
+  @IsOptional()
+  @IsIn(PAYMENT_PROVIDER_CODES)
+  paymentProvider?: string;
 
   // 서버 설정 (어드민 UI)
   @ApiPropertyOptional({

@@ -9,7 +9,7 @@
  *   pending          → 승인/거절 (judgmentDataOk=false 시 승인 비활성 fail-closed)
  *   executing        → 처리 중 안내(승인 CTA 숨김)
  *   executed         → 완료 안내
- *   execution_failed → 재처리 전용 동선(일반 승인 버튼 미노출)
+ *   execution_failed → 재처리 + 거절(이체 미발생 확정 실패만) 동선(일반 승인 버튼 미노출)
  *   rejected/canceled→ 종료 안내
  *
  * fail-closed 게이트(모든 mutate CTA 미노출):
@@ -43,6 +43,16 @@ import {
   type RefundUsage,
 } from '@/services/payment';
 import { shouldApplyDetailResponse, isActionStillCurrent } from './refund-guards';
+
+/**
+ * PG 취소 결과 미확정 실패 코드 — 백엔드 REFUND_PG_UNCONFIRMED_CODES 와 동일 집합.
+ * 취소 여부를 모르는 상태라 거절(종결) 대상이 아니다.
+ */
+const PG_UNCONFIRMED_CODES = [
+  'KG_UNCONFIRMED',
+  'TOSS_UNCONFIRMED',
+  'TOSS_IDEMPOTENCY_CONFLICT',
+];
 
 /** Payment.paymentStatus 원문 키 → 한글 라벨 (미지 값은 원문 유지 — 정보 유실 방지). */
 function formatPaymentStatus(status: string): string {
@@ -442,19 +452,32 @@ export function RefundRequestDetailView({
   const isFailed = detail.status === 'execution_failed';
 
   // CTA 게이트 — DIRECT 는 승인/거절 없음(admin 재처리만). canManage 는 위에서 sourceType 반영.
-  const isKgUnconfirmed = detail.decision.failureCode === 'KG_UNCONFIRMED';
+  const failureCode = decision.failureCode ?? '';
+  const isPgUnconfirmed = PG_UNCONFIRMED_CODES.includes(failureCode);
+  // 자동 재시도가 원천 불가한 실패 — KG(멱등 계약 없음) · 토스 멱등 본문 충돌(같은 키 재호출 무의미).
+  //   토스 미확정은 멱등 보장 기간(14일) 안이면 재처리가 정상 해소 경로라 여기서 막지 않는다.
+  const noAutoRetry =
+    failureCode === 'KG_UNCONFIRMED' ||
+    failureCode === 'TOSS_IDEMPOTENCY_CONFLICT';
   const roleLower = (userType ?? '').toLowerCase();
   const isAdminTier =
     roleLower === 'admin' || roleLower === 'system' || roleLower === 'oper';
   const canApprove = isPending && detail.judgmentDataOk && !staleReload;
   const showApproveReject = isPending && !isDirect;
-  // KG 미확정 실패는 일반 재처리 숨김 → ADMIN reconcile 시트로만 해소.
-  const showReprocess = isFailed && !isKgUnconfirmed;
-  const showReconcile = isKgUnconfirmed && isAdminTier;
+  const showReprocess = isFailed && !noAutoRetry;
+  // PG 결과 미확정 3종(KG · 토스 미확정 · 토스 멱등 충돌) 모두 ADMIN 정산 시트로 해소한다.
+  //   백엔드 reconcile 대상과 동일 집합 — 한쪽만 좁으면 화면에서 손댈 수 없는 건이 생긴다.
+  const showReconcile = isFailed && isPgUnconfirmed && isAdminTier;
+  // 실행 실패 거절 = 이체가 발생하지 않은 것이 확정된 PG 거절만(백엔드 가드와 동일 조건).
+  //   DB_AFTER_PG(이체 완료 후 DB 실패) · PG 미확정 코드는 재처리/reconcile 로만 해소한다.
+  const showRejectOnFailed =
+    isFailed && !isDirect && decision.failureStage === 'PG' && !isPgUnconfirmed;
   // 대상 귀속 belt — detail.id 가 현재 route requestId 와 다르면 어떤 CTA 도 노출하지 않는다
   //   (렌더 귀속 가드의 이중 방어; 금전 액션 대상이 route 와 어긋나는 것을 원천 차단).
   const detailMatchesRoute = detail.id === requestId;
-  const actionable = detailMatchesRoute && (showApproveReject || showReprocess || showReconcile);
+  const actionable =
+    detailMatchesRoute &&
+    (showApproveReject || showReprocess || showReconcile || showRejectOnFailed);
 
   // hasPriorRefund 파생 — 요청 생성 이전에 처리된 환불 이력 존재 여부.
   const priorRefund = history.some(
@@ -545,8 +568,8 @@ export function RefundRequestDetailView({
       {isFailed && (
         <RefundDetailNotice icon="error" tone="danger" message={MESSAGES.refund.executionFailedNotice} />
       )}
-      {/* KG 미확정(PG 결과 미확정) — 관리자 정산(reconcile) 필요 안내. Phase 1 화면 CTA 없음. */}
-      {detail.decision.failureCode === 'KG_UNCONFIRMED' && (
+      {/* PG 결과 미확정(KG · 토스) — 관리자 정산(reconcile) 필요 안내. */}
+      {isPgUnconfirmed && (
         <RefundDetailNotice icon="help" tone="info" message={MESSAGES.refund.kgUnconfirmedNotice} />
       )}
 
@@ -661,17 +684,7 @@ export function RefundRequestDetailView({
       {/* ── CTA (역할 게이트) ─────────────────────────────── */}
       {actionable && (
         <div className="bg-it-surface px-5 pb-7 pt-2 dark:bg-rink-800">
-          {showReconcile ? (
-            // KG 미확정 — ADMIN 전용 정산 처리(일반 재처리 대신 reconcile 시트).
-            <button
-              type="button"
-              onClick={() => setReconcileOpen(true)}
-              disabled={isProcessing || staleReload}
-              className="h-12 w-full rounded-w-md bg-it-blue-500 text-card-title font-semibold text-white transition-colors hover:bg-it-blue-600 active:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none"
-            >
-              {MESSAGES.refund.reconcileCta}
-            </button>
-          ) : canManage ? (
+          {canManage ? (
             <>
               {/* DIRECT 는 승인/거절 없음 — showApproveReject 로 게이트(!isDirect). */}
               {showApproveReject && (
@@ -694,16 +707,56 @@ export function RefundRequestDetailView({
                   </button>
                 </div>
               )}
-              {/* execution_failed — 일반 승인 버튼 미노출. 재처리 전용(DIRECT 는 admin만 여기 도달). */}
-              {showReprocess && (
-                <button
-                  type="button"
-                  onClick={handleReprocess}
-                  disabled={isProcessing || staleReload}
-                  className="h-12 w-full rounded-w-md bg-it-blue-500 text-card-title font-semibold text-white transition-colors hover:bg-it-blue-600 active:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none"
-                >
-                  {isProcessing ? MESSAGES.refund.reprocessProcessing : MESSAGES.refund.reprocessCta}
-                </button>
+              {/* execution_failed — 일반 승인 버튼 미노출. 실패 유형별로 재처리 / PG 정산 /
+                  거절(이체 미발생 확정 시)이 최대 2개까지 조합된다. */}
+              {(showReprocess || showRejectOnFailed || showReconcile) && (
+                <div className="flex items-center gap-3">
+                  {showRejectOnFailed && (
+                    <button
+                      type="button"
+                      onClick={() => setRejectOpen(true)}
+                      disabled={isProcessing || staleReload}
+                      className={cn(
+                        'h-12 rounded-w-md border-[1.5px] border-it-red-500 text-card-title font-semibold text-it-red-600 transition-colors hover:bg-it-red-50 active:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-red-500/40 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none dark:border-it-red-400 dark:text-it-red-400 dark:hover:bg-it-red-500/10',
+                        showReprocess ? 'flex-1' : 'w-full',
+                      )}
+                    >
+                      {MESSAGES.refund.rejectCta}
+                    </button>
+                  )}
+                  {/* PG 결과 미확정 — ADMIN 이 PG 콘솔 확인 결과를 확정한다. 토스 미확정은
+                      멱등 기간 내 재처리가 우선 경로라 정산을 보조(외곽선)로 둔다. */}
+                  {showReconcile && (
+                    <button
+                      type="button"
+                      onClick={() => setReconcileOpen(true)}
+                      disabled={isProcessing || staleReload}
+                      className={cn(
+                        'h-12 rounded-w-md text-card-title font-semibold transition-colors active:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none',
+                        showReprocess
+                          ? 'flex-1 border-[1.5px] border-it-blue-500 text-it-blue-600 hover:bg-it-blue-50 dark:border-it-blue-400 dark:text-it-blue-400 dark:hover:bg-it-blue-500/10'
+                          : 'w-full bg-it-blue-500 text-white hover:bg-it-blue-600',
+                      )}
+                    >
+                      {MESSAGES.refund.reconcileCta}
+                    </button>
+                  )}
+                  {showReprocess && (
+                    <button
+                      type="button"
+                      onClick={handleReprocess}
+                      disabled={isProcessing || staleReload}
+                      className={cn(
+                        'h-12 rounded-w-md bg-it-blue-500 text-card-title font-semibold text-white transition-colors hover:bg-it-blue-600 active:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none',
+                        showRejectOnFailed || showReconcile ? 'flex-[1.4]' : 'w-full',
+                      )}
+                    >
+                      {isProcessing
+                        ? MESSAGES.refund.reprocessProcessing
+                        : MESSAGES.refund.reprocessCta}
+                    </button>
+                  )}
+                </div>
               )}
             </>
           ) : (

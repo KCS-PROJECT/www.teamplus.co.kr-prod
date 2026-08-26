@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import { Decimal } from "@prisma/client/runtime/library";
 import { PrismaService } from "@/prisma/prisma.service";
@@ -29,6 +30,8 @@ import {
   isForeignKeyRestrictError,
 } from "@/community/utils/unit-notice-delete-guard.util";
 import { PaymentRefundService } from "@/payments/services/payment-refund.service";
+import { RedisService } from "@/redis/redis.service";
+import { resolveActivePaymentProvider } from "@/payments/payment-provider.util";
 import {
   CreateTournamentDto,
   UpdateTournamentDto,
@@ -53,6 +56,10 @@ export class TournamentsService {
     private readonly notificationsService: NotificationsService,
     private readonly resourceAccess: ResourceAccessService, // 관리자 전용 API 리소스 소속 검증 (IDOR 가드)
     private readonly paymentRefund: PaymentRefundService, // 참가 취소 시 PG 환불 실행 엔진
+    // 활성 결제사 캐시 조회용. @Global 모듈이라 런타임에는 항상 주입되며,
+    //   미주입 시에도 DB 직접 조회로 동작한다(캐시만 생략).
+    @Optional()
+    private readonly redis?: RedisService,
   ) {}
 
   /**
@@ -152,6 +159,12 @@ export class TournamentsService {
       .toString(36)
       .slice(2, 8)}`;
 
+    // 결제사는 시작 시점에 고정 — 이후 관리자가 바꿔도 이 결제의 승인·취소는 이 값을 따른다.
+    const pgProvider = await resolveActivePaymentProvider(
+      this.prisma,
+      this.redis,
+    );
+
     // Payment row 생성 + TournamentRegistration upsert 트랜잭션.
     const payment = await this.prisma.$transaction(async (tx) => {
       const created = await tx.payment.create({
@@ -162,6 +175,7 @@ export class TournamentsService {
           amount: body.amount,
           paymentStatus: "pending",
           paymentMethod: "toss",
+          pgProvider,
         },
       });
 

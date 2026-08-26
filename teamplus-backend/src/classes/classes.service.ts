@@ -6209,6 +6209,19 @@ export class ClassesService {
     this.logger.log(
       `[AUDIT] 판매 시작: classId=${classId}, salesOpenMonth=${targetMonth.toISOString().slice(0, 10)}, 무월 레거시 판매중단=${retiredLegacyCount}건, 미갱신 선수 배치해제=${releasedCount}명(${releaseCandidates.map((c) => c.name).join(",") || "-"}), by=${userId}(${userType})`,
     );
+    // 갱신 안내 — 해제된 자녀의 학부모에게 재결제 경로 통지 (커밋 후 best-effort).
+    //   해제 통지가 없으면 학부모는 출석 차단 시점에야 만료를 인지한다.
+    if (releasedCount > 0) {
+      void this.notifyReleasedParentsOfSalesOpen(
+        classId,
+        releaseCandidates.map((c) => c.userId),
+        targetMonth,
+      ).catch((err) =>
+        this.logger.warn(
+          `갱신 알림 발송 실패: classId=${classId} ${(err as Error).message}`,
+        ),
+      );
+    }
     if (ownerType === "team") {
       await this.invalidateClassCache(ownerId);
     }
@@ -6218,6 +6231,38 @@ export class ClassesService {
       releasedCount,
       releasedNames: releaseCandidates.map((c) => c.name),
     };
+  }
+
+  /**
+   * 판매 시작으로 배치 해제된 자녀의 학부모에게 갱신(재결제) 안내 발송.
+   *  학부모 dedupe — 형제가 같은 수업에서 동시 해제돼도 학부모당 1건.
+   */
+  private async notifyReleasedParentsOfSalesOpen(
+    classId: string,
+    releasedUserIds: string[],
+    targetMonth: Date,
+  ): Promise<void> {
+    if (releasedUserIds.length === 0) return;
+    const [cls, links] = await Promise.all([
+      this.prisma.class.findUnique({
+        where: { id: classId },
+        select: { className: true },
+      }),
+      this.prisma.parentChild.findMany({
+        where: { childId: { in: releasedUserIds } },
+        select: { parentId: true },
+      }),
+    ]);
+    const parentIds = Array.from(new Set(links.map((l) => l.parentId)));
+    if (!cls || parentIds.length === 0) return;
+    // targetMonth 는 @db.Date(UTC 자정) — 월 표기는 getUTC* getter.
+    const monthLabel = targetMonth.getUTCMonth() + 1;
+    await this.notificationsService.notifyUsers(parentIds, {
+      notificationType: "class_renewal_required",
+      title: "수강권 갱신 안내",
+      message: `'${cls.className}' ${monthLabel}월 수강권 판매가 시작되었습니다. 재결제 후 수강을 이어갈 수 있어요.`,
+      linkUrl: `/classes/${classId}`,
+    });
   }
 
   /**
