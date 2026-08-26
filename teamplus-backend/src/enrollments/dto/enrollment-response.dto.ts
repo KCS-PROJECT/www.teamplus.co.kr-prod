@@ -105,11 +105,17 @@ export class RequesterInfoDto {
  * 수강신청 응답 DTO
  */
 export class EnrollmentResponseDto {
-  /** [Lifecycle v4.1] 선불 "수강 중" 유효성 — 유효 기간권(startsAt≤now≤expiresAt, 잔여>0) 보유
-   *  여부. paid 는 만료 개념이 없는 "결제 이력"이라 표시 판정은 크레딧이 SoT.
-   *  paid 가 아닌 상태(후불 approved 등)는 null — 프론트 isActiveEnrollment 가
-   *  false 일 때만 선불 수강 중을 부정한다 (null/미수신=현행 폴백, 회귀 0). */
+  /** 선불 "수강 중" 유효성 — 단일 공식: 등록(ClassRegistration) active AND
+   *  (발급형 상품이면 유효 크레딧 보유). paid 는 만료 개념이 없는 "결제 이력"이라
+   *  현재 수강 여부는 이 필드가 SoT. paid 가 아닌 상태(후불 approved 등)는 null —
+   *  프론트 isActiveEnrollment 가 false 일 때만 선불 수강 중을 부정한다
+   *  (null/미수신=현행 폴백, 회귀 0). */
   hasValidPass?: boolean | null;
+
+  /** 만료(hasValidPass=false) 행의 수강 종료(배치 해제) 시점 — 홈 목록 "재결제 필요"
+   *  노출 시한 계산용. 유효/후불/판정 비대상은 null. 등록 active 인데 크레딧만
+   *  소진된 발급형 케이스도 해제 이력이 없어 null(시한 없이 노출). */
+  passEndedAt?: Date | null;
 
   @ApiProperty({ description: "수강신청 ID" })
   id!: string;

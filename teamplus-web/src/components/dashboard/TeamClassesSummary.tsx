@@ -25,7 +25,6 @@ import { cn } from '@/lib/utils';
 import { MESSAGES } from '@/lib/messages';
 import {
   isActiveEnrollment,
-  isMyEnrollment,
 } from '@/lib/enrollment-visibility';
 import {
   getTrainingTypeBadgeClass,
@@ -61,8 +60,8 @@ type SummaryItem =
       classDays?: string[];
       /** [2026-06-15] 등록완료(결제) 수업 — 정렬 시 위로. */
       enrolled?: boolean;
-      /** [2026-08-04] 신청·요청 대기(결제 전) — myOnly 목록에서 '신청중' 칩으로 구분. */
-      pending?: boolean;
+      /** 만료(paid 이력·수강 중 아님) — myOnly 목록에서 '재결제 필요' 칩으로 구분. */
+      expired?: boolean;
       sortKey: number;
     }
   | {
@@ -80,6 +79,8 @@ type SummaryItem =
 /** /enrollments 행 — 등록완료(선불 paid/후불·BOTH 후불상품 approved) 판정용 최소 필드. */
 interface EnrollRow {
   hasValidPass?: boolean | null;
+  /** 만료 행의 수강 종료(배치 해제) 시점 — '재결제 필요' 노출 시한 계산용. */
+  passEndedAt?: string | null;
   classId?: string;
   childId?: string;
   status?: string;
@@ -297,24 +298,26 @@ export function TeamClassesSummary({
 
       // [2026-06-15] 등록완료(결제) classId 집합 — 정렬 시 상단 우선.
       const enrolledIds = new Set<string>();
-      // [2026-08-04] 신청·요청 대기(결제 전) classId 집합 — myOnly 목록 포함 + '신청중' 칩.
-      const pendingIds = new Set<string>();
+      // 만료(paid + hasValidPass=false) classId 집합 — 다니던 수업의 갱신 의사결정용
+      //   '재결제 필요' 칩. 결제 이탈 pending 등 진행 중 상태는 아무것도 보장하지 않는
+      //   내부 상태라 화면에서 구분하지 않는다(미신청 취급 — 목록 제외).
+      //   노출 시한: 수강 종료(배치 해제) 후 30일 — 이후엔 이탈로 보고 목록에서 제외.
+      //   재결제 자체는 시한과 무관하게 전체보기(/classes)에서 항상 가능.
+      const EXPIRED_RENEW_VISIBLE_MS = 30 * 24 * 60 * 60 * 1000;
+      const expiredIds = new Set<string>();
       if (enrollRes && enrollRes.success && enrollRes.data) {
         const arr = Array.isArray(enrollRes.data)
           ? enrollRes.data
           : (enrollRes.data as { data?: unknown[] }).data;
         (Array.isArray(arr) ? arr : []).forEach((e) => {
           const row = e as EnrollRow;
-          // 취소·거절 등 종결 상태는 '내 것'이 아니다 — 여기서 먼저 걸러낸다.
-          if (!isMyEnrollment(row.status)) return;
           // [2026-06-17] 선택 자녀 기준 필터 — /enrollments 는 부모의 모든 자녀 등록을
           //   반환하므로, 형제 등록이 선택 자녀 카드에 '등록완료'로 잘못 표시되던 버그 수정.
           const cid = row.childId ?? row.child?.id;
           if (selectedChildId && cid && cid !== selectedChildId) return;
           const id = row.classId ?? row.class?.id;
           if (!id) return;
-          // 등록완료 판정 — 선불 paid / 후불(POSTPAID·BOTH 후불상품) approved (isActiveEnrollment SoT).
-          //   그 외(pending·pending_approval·선불 approved)는 '신청중'.
+          // 등록완료 판정 — 선불 paid+유효 / 후불(POSTPAID·BOTH 후불상품) approved (isActiveEnrollment SoT).
           if (
             isActiveEnrollment(
               row.status,
@@ -324,9 +327,22 @@ export function TeamClassesSummary({
             )
           ) {
             enrolledIds.add(id);
-            pendingIds.delete(id);
-          } else if (!enrolledIds.has(id)) {
-            pendingIds.add(id);
+            expiredIds.delete(id);
+          } else if (
+            row.status === "paid" &&
+            row.hasValidPass === false &&
+            !enrolledIds.has(id)
+          ) {
+            // passEndedAt 부재/파싱 불가(구 응답·해제 이력 없는 발급형) → 시한 없이 노출.
+            const endedAt = row.passEndedAt
+              ? new Date(row.passEndedAt).getTime()
+              : NaN;
+            if (
+              !Number.isFinite(endedAt) ||
+              Date.now() - endedAt <= EXPIRED_RENEW_VISIBLE_MS
+            ) {
+              expiredIds.add(id);
+            }
           }
         });
       }
@@ -340,9 +356,9 @@ export function TeamClassesSummary({
         (c) => c.lifecycleStatus !== 'ENDED',
       );
       const classItems: SummaryItem[] = activeClasses
-        // [2026-08-04] myOnly — 등록했거나 신청/요청한 수업만. 카탈로그(미신청)는 제외.
+        // myOnly — 수강 중이거나 만료(재결제 대상)인 수업만. 카탈로그(미신청)·진행 중 신청은 제외.
         .filter(
-          (c) => !myOnly || enrolledIds.has(c.id) || pendingIds.has(c.id),
+          (c) => !myOnly || enrolledIds.has(c.id) || expiredIds.has(c.id),
         )
         .map((c) => ({
         kind: 'class',
@@ -352,7 +368,7 @@ export function TeamClassesSummary({
         instructorName: c.instructorName,
         classDays: c.classDays,
         enrolled: enrolledIds.has(c.id),
-        pending: pendingIds.has(c.id),
+        expired: expiredIds.has(c.id),
         sortKey: toSortMs(c.startTime),
       }));
 
@@ -395,9 +411,9 @@ export function TeamClassesSummary({
 
       // 각 그룹 내부 정렬 — 등록완료(결제) 항목을 위로, 그 다음 임박순(시작일시 오름차순).
       const byPriority = (a: SummaryItem, b: SummaryItem) => {
-        // 등록완료(0) > 신청중(1) > 미신청(2) 순, 같은 그룹 안에서는 임박순.
+        // 등록완료(0) > 재결제 필요(1) > 미신청(2) 순, 같은 그룹 안에서는 임박순.
         const rank = (i: SummaryItem) =>
-          i.enrolled ? 0 : i.kind === 'class' && i.pending ? 1 : 2;
+          i.enrolled ? 0 : i.kind === 'class' && i.expired ? 1 : 2;
         const diff = rank(a) - rank(b);
         if (diff !== 0) return diff;
         return a.sortKey - b.sortKey;
@@ -634,11 +650,11 @@ export function TeamClassesSummary({
                             <span className="shrink-0 rounded-w-pill bg-mint-500/15 px-1.5 py-0.5 text-card-meta font-bold text-mint-600 dark:text-mint-500">
                               등록완료
                             </span>
-                          ) : item.kind === 'class' && item.pending ? (
-                            /* [2026-08-04] 신청·요청 대기 — 결제/승인 전이라 '등록완료'와 구분한다.
+                          ) : item.kind === 'class' && item.expired ? (
+                            /* 만료(다니던 수업·수강권 종료) — 갱신 의사결정 유도.
                                색은 상태 칩 관례(amber soft)를 따른다. */
                             <span className="shrink-0 rounded-w-pill bg-amber-50 px-1.5 py-0.5 text-card-meta font-bold text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
-                              {MESSAGES.dashboard.myClasses.pendingChip}
+                              {MESSAGES.dashboard.myClasses.renewChip}
                             </span>
                           ) : null}
                         </div>

@@ -551,6 +551,10 @@ export default function ClassDetailPage() {
       const isRowPostpaid =
         isPostpaid || (isBoth && e.product?.billingTiming === "POSTPAID");
       if (e.status === "paid") {
+        // 만료(hasValidPass=false)된 결제 이력은 "수강 중"이 아니므로 배지 미표시 —
+        //   paidByChildId(CTA 판정)와 동일 기준. 남기면 재결제 대상 자녀가
+        //   "결제완료"로 보이는데 CTA 는 신청하기인 모순 상태가 된다.
+        if (e.hasValidPass === false) continue;
         setIfHigher(
           e.child.id,
           isRowPostpaid
