@@ -107,6 +107,8 @@ interface EnrollmentItem {
   class?: { id: string };
   requester?: { id: string };
   status: string;
+  /** 선불 paid 의 "현재 수강 중" 여부 (백엔드 emit). 명시적 false = 만료(재결제 대상). */
+  hasValidPass?: boolean | null;
 }
 
 const ENROLLED_STATUSES = new Set([
@@ -270,6 +272,8 @@ function PaymentOptionsContent() {
             // 본인이 만든 pending 은 결제 재시도 가능하므로 잠금 제외
             if (e.status === "pending" && e.requester?.id === myUserId)
               return false;
+            // 만료된 paid(수강 종료 — 배치 해제·크레딧 소진)는 재결제 대상이므로 잠금 제외
+            if (e.status === "paid" && e.hasValidPass === false) return false;
             return true;
           })
           .map((e) => e.child!.id),

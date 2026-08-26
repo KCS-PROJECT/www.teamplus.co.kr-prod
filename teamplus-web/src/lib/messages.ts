@@ -497,7 +497,7 @@ export const MESSAGES = {
     //   등록 전 단계(신청·자녀 요청 대기)를 '신청중'으로 구분하고,
     //   비어 있을 때는 카탈로그(/classes)로 이어주는 문구·CTA 를 함께 둔다.
     myClasses: {
-      pendingChip: "신청중",
+      renewChip: "재결제 필요",
       emptyTitle: "등록한 수업이 없습니다.",
       emptyDescription: "수업을 신청하면 여기에서 한눈에 볼 수 있어요.",
       emptyCta: "수업 둘러보기",

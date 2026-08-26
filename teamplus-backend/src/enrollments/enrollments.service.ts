@@ -558,17 +558,24 @@ export class EnrollmentsService {
     //   "수강 중" SoT 는 배치 상태(ClassRegistration active)다. 판매 시작 시 미갱신
     //   배치 해제(status=expired)가 그대로 반영되어야 만료 자녀가 표시에서 빠진다.
     const activeRegSet = new Set<string>();
+    // 해제 시점(등록이 active 가 아닌 행의 updatedAt) — 만료 paid 의 "재결제 필요"
+    //   노출 시한 판정용(프론트). 해제 이후 다시 건드리지 않는 값이라 앵커로 안정적.
+    const regEndedAtByPair = new Map<string, Date>();
     if (paidRows.length > 0) {
       const regs = await this.prisma.classRegistration.findMany({
         where: {
           userId: { in: [...new Set(paidRows.map((e) => e.childId))] },
           classId: { in: [...new Set(paidRows.map((e) => e.classId))] },
-          status: "active",
         },
-        select: { userId: true, classId: true },
+        select: { userId: true, classId: true, status: true, updatedAt: true },
       });
       for (const r of regs) {
-        activeRegSet.add(`${r.userId}:${r.classId}`);
+        const key = `${r.userId}:${r.classId}`;
+        if (r.status === "active") {
+          activeRegSet.add(key);
+        } else {
+          regEndedAtByPair.set(key, r.updatedAt);
+        }
       }
     }
 
@@ -579,17 +586,26 @@ export class EnrollmentsService {
       const isPostpaidAxis =
         e.product?.billingTiming === "POSTPAID" ||
         e.class?.billingMode === "POSTPAID";
-      // 발급형이 아닌 상품(sessionsPerMonth=0)은 크레딧 미발급이 정상이라 크레딧으로
-      //   판정할 수 없다 → 배치 상태(ClassRegistration active)로 대체 판정.
-      //   null 을 유지하면 배치 해제된 자녀의 결제 이력이 영구히 "수강 중"으로 남는다.
+      // 선불 "수강 중" 단일 공식 — 등록(ClassRegistration) active AND
+      //   (발급형이면 유효 크레딧 보유). 비발급(sessionsPerMonth=0)은 크레딧
+      //   미발급이 정상이라 크레딧 항을 평가하지 않는다(등록만).
+      //   재결제 게이트(paid-enrollment-guard.util)·출석 API 와 동일 기준.
       const isNonIssuingProduct = e.product?.sessionsPerMonth === 0;
+      const pairKey = `${e.childId}:${e.classId}`;
+      const hasValidPass =
+        e.status === "paid" && !isPostpaidAxis
+          ? activeRegSet.has(pairKey) &&
+            (isNonIssuingProduct || validPassSet.has(pairKey))
+          : null;
       return {
         ...this.mapToEnrollmentResponse(e),
-        hasValidPass:
-          e.status === "paid" && !isPostpaidAxis
-            ? isNonIssuingProduct
-              ? activeRegSet.has(`${e.childId}:${e.classId}`)
-              : validPassSet.has(`${e.childId}:${e.classId}`)
+        hasValidPass,
+        // 만료(hasValidPass=false) 행의 수강 종료(배치 해제) 시점 — 프론트가
+        //   "재결제 필요" 노출 시한을 계산한다. 등록 active 인데 크레딧만 소진된
+        //   발급형 케이스는 해제 이력이 없어 null(시한 없이 노출).
+        passEndedAt:
+          hasValidPass === false
+            ? (regEndedAtByPair.get(pairKey) ?? null)
             : null,
       };
     });
