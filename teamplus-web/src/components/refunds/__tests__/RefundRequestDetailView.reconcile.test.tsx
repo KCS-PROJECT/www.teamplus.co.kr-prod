@@ -158,3 +158,88 @@ describe('RefundRequestDetailView reconcile 흐름', () => {
     expect(memo.value).toBe('PG 취소 확인함');
   });
 });
+
+/** PG 결과 미확정 3종(KG · 토스 미확정 · 토스 멱등 충돌) CTA 노출 조합. */
+describe('PG 정산 CTA 노출 조건', () => {
+  beforeEach(() => jest.clearAllMocks());
+  afterEach(() => cleanup());
+
+  function decision(failureCode: string) {
+    return {
+      decidedBy: null,
+      decidedByName: null,
+      decidedAt: null,
+      decisionReason: null,
+      failureStage: 'PG',
+      failureCode,
+      failureReason: 'PG 결과 미확정',
+    };
+  }
+  function renderAs(userType: string) {
+    return render(
+      <RefundRequestDetailView requestId="req-1" scope="team" userType={userType} onReady={jest.fn()} />,
+    );
+  }
+
+  it('토스 미확정 — 정산 + 재처리 동시 노출(멱등 기간 내 재처리가 우선 경로)', async () => {
+    getDetail.mockResolvedValue({
+      success: true,
+      data: kgDetail({ decision: decision('TOSS_UNCONFIRMED') }),
+    });
+
+    renderAs('admin');
+    expect(
+      await screen.findByRole('button', { name: MESSAGES.refund.reconcileCta }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: MESSAGES.refund.reprocessCta }),
+    ).toBeInTheDocument();
+    // 미확정 건은 거절 종결 대상이 아니다.
+    expect(
+      screen.queryByRole('button', { name: MESSAGES.refund.rejectCta }),
+    ).toBeNull();
+  });
+
+  it('토스 멱등 충돌 — 재처리 숨김, 정산만 노출(같은 키 재호출로 해소 불가)', async () => {
+    getDetail.mockResolvedValue({
+      success: true,
+      data: kgDetail({ decision: decision('TOSS_IDEMPOTENCY_CONFLICT') }),
+    });
+
+    renderAs('admin');
+    expect(
+      await screen.findByRole('button', { name: MESSAGES.refund.reconcileCta }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: MESSAGES.refund.reprocessCta }),
+    ).toBeNull();
+  });
+
+  it('KG 미확정 — 재처리 숨김, 정산만 노출(기존 계약 유지)', async () => {
+    getDetail.mockResolvedValue({ success: true, data: kgDetail() });
+
+    renderAs('admin');
+    expect(
+      await screen.findByRole('button', { name: MESSAGES.refund.reconcileCta }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: MESSAGES.refund.reprocessCta }),
+    ).toBeNull();
+  });
+
+  it('감독(비-ADMIN) — 정산 CTA 미노출', async () => {
+    getDetail.mockResolvedValue({
+      success: true,
+      data: kgDetail({ decision: decision('TOSS_UNCONFIRMED') }),
+    });
+
+    renderAs('director');
+    // 재처리는 감독도 가능하지만 정산 확정은 ADMIN 전용.
+    expect(
+      await screen.findByRole('button', { name: MESSAGES.refund.reprocessCta }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: MESSAGES.refund.reconcileCta }),
+    ).toBeNull();
+  });
+});
