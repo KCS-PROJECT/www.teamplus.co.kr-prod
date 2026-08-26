@@ -168,6 +168,9 @@ interface MyEnrollment {
   /** [2026-06-18] 결제한 수강 플랜(ClassProduct) — 결제완료 패키지 표시·잠금용.
    *  billingTiming: 선택형(BOTH) 수업의 행별 선/후불 판정용 (백엔드 resolveRowBillingTiming 규칙 미러). */
   product?: { id: string; billingTiming?: string | null } | null;
+  /** 선불 paid 의 "현재 수강 중" 여부 (백엔드 emit — 기간권/배치 상태 기반).
+   *  명시적 false 만 만료로 본다. null/undefined(후불·구 응답)는 수강 중 유지. */
+  hasValidPass?: boolean | null;
 }
 
 // [추가 2026-05-18] 결제 옵션 페이지와 동일 — 본 수업에 신청/수강 중으로 간주할 상태.
@@ -494,6 +497,8 @@ export default function ClassDetailPage() {
 
   // 자녀 ID → paid Enrollment 매핑 (결제취소 진입 판정용)
   //   - status='paid' 이고 paymentId 가 존재하는 항목만 포함.
+  //   - hasValidPass=false(기간권 만료·배치 해제)는 지난 결제 이력일 뿐 "수강 중"이
+  //     아니므로 제외 — 포함하면 CTA 가 "결제완료"로 잠겨 재결제 경로가 막힌다.
   const paidByChildId = useMemo(() => {
     const map = new Map<string, MyEnrollment>();
     for (const e of myEnrollments) {
@@ -501,6 +506,7 @@ export default function ClassDetailPage() {
       if (e.status !== "paid") continue;
       if (!e.paymentId) continue;
       if (!e.child?.id) continue;
+      if (e.hasValidPass === false) continue;
       map.set(e.child.id, e);
     }
     return map;

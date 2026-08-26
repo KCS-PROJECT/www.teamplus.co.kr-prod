@@ -169,7 +169,7 @@ class _MyProfileQrScreenState extends ConsumerState<MyProfileQrScreen> {
       case 'DIRECTOR':
         return '감독';
       case 'ACADEMY_DIRECTOR':
-        return '아카데미 원장';
+        return '오픈클래스 감독';
       case 'COACH':
         return '코치';
       case 'PARENT':

@@ -13,6 +13,7 @@ import { WaitlistService } from "@/waitlist/waitlist.service";
 import { CreditDomainService } from "@/credits/credit-domain.service";
 import { endOfMonthKst, monthlyPassWindow } from "@/common/billing/billing-date.util";
 import { assertClassOnSale } from "@/common/billing/sales-gate.util";
+import { hasActivePaidEnrollment } from "@/common/billing/paid-enrollment-guard.util";
 import { calculateKoreanAge } from "@/common/utils/age.util";
 import {
   CreateEnrollmentDto,
@@ -286,12 +287,18 @@ export class EnrollmentsService {
     expiresAt.setHours(expiresAt.getHours() + this.ENROLLMENT_EXPIRY_HOURS);
 
     const enrollment = await this.prisma.$transaction(async (tx) => {
+      // paid 이력은 "현재 수강 중"일 때만 차단 — 만료(배치 해제·크레딧 소진) 자녀의
+      //   재신청(갱신)은 통과시킨다. 판정 SoT 는 표시(hasValidPass)와 동일.
+      if (await hasActivePaidEnrollment(tx, dto.childId, dto.classId)) {
+        throw new ConflictException("이미 신청 중이거나 수강 중인 수업입니다.");
+      }
+
       const existingEnrollment = await tx.enrollment.findFirst({
         where: {
           childId: dto.childId,
           classId: dto.classId,
           status: {
-            in: ["pending", "pending_approval", "approved", "paid"],
+            in: ["pending", "pending_approval", "approved"],
           },
         },
         select: { id: true, status: true, requestedBy: true, paymentId: true },
@@ -375,7 +382,7 @@ export class EnrollmentsService {
           return converted;
         }
 
-        // 그 외(approved/paid·PENDING_APPROVAL·후불 아님·재활용 불가) → 기존대로 차단.
+        // 그 외(approved·PENDING_APPROVAL·후불 아님·재활용 불가) → 기존대로 차단.
         throw new ConflictException("이미 신청 중이거나 수강 중인 수업입니다.");
       }
 
@@ -547,6 +554,24 @@ export class EnrollmentsService {
       }
     }
 
+    // 비발급 선불(sessionsPerMonth=0) paid 행은 크레딧이 없어 기간권으로 판정 불가 —
+    //   "수강 중" SoT 는 배치 상태(ClassRegistration active)다. 판매 시작 시 미갱신
+    //   배치 해제(status=expired)가 그대로 반영되어야 만료 자녀가 표시에서 빠진다.
+    const activeRegSet = new Set<string>();
+    if (paidRows.length > 0) {
+      const regs = await this.prisma.classRegistration.findMany({
+        where: {
+          userId: { in: [...new Set(paidRows.map((e) => e.childId))] },
+          classId: { in: [...new Set(paidRows.map((e) => e.classId))] },
+          status: "active",
+        },
+        select: { userId: true, classId: true },
+      });
+      for (const r of regs) {
+        activeRegSet.add(`${r.userId}:${r.classId}`);
+      }
+    }
+
     return enrollments.map((e) => {
       // 후불 축(상품 billingTiming 또는 수업 billingMode = POSTPAID)은 크레딧 미발급이
       //   정상이라 hasValidPass 판정 비대상(null) — false 를 내면 paid 후불 행(정산
@@ -554,14 +579,17 @@ export class EnrollmentsService {
       const isPostpaidAxis =
         e.product?.billingTiming === "POSTPAID" ||
         e.class?.billingMode === "POSTPAID";
-      // 발급형이 아닌 상품(sessionsPerMonth=0)도 크레딧 미발급이 정상 → 비대상(null).
-      //   false 를 내면 "등록 만료"로 오표시된다.
+      // 발급형이 아닌 상품(sessionsPerMonth=0)은 크레딧 미발급이 정상이라 크레딧으로
+      //   판정할 수 없다 → 배치 상태(ClassRegistration active)로 대체 판정.
+      //   null 을 유지하면 배치 해제된 자녀의 결제 이력이 영구히 "수강 중"으로 남는다.
       const isNonIssuingProduct = e.product?.sessionsPerMonth === 0;
       return {
         ...this.mapToEnrollmentResponse(e),
         hasValidPass:
-          e.status === "paid" && !isPostpaidAxis && !isNonIssuingProduct
-            ? validPassSet.has(`${e.childId}:${e.classId}`)
+          e.status === "paid" && !isPostpaidAxis
+            ? isNonIssuingProduct
+              ? activeRegSet.has(`${e.childId}:${e.classId}`)
+              : validPassSet.has(`${e.childId}:${e.classId}`)
             : null,
       };
     });

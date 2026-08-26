@@ -21,11 +21,13 @@ export function EndedCollapseToggle({
       aria-expanded={expanded}
       className="w-full flex items-center gap-2 px-4 sm:px-5 py-3.5 text-left border-t border-it-line dark:border-it-ink-700 active:brightness-95 transition-colors motion-reduce:transition-none"
     >
-      <span className="text-card-body font-bold text-wtext-3 dark:text-wtext-4">
+      {/* 크기는 13px 고정 — 학부모 목록의 섹션 헤더(text-[13px])와 맞춘다.
+          text-card-body(clamp 13~14px)를 쓰면 382px 이상 화면에서 헤더보다 커져 위계가 뒤집힌다. */}
+      <span className="text-[13px] font-bold text-wtext-3 dark:text-wtext-4">
         {title}
       </span>
       {/* 종료 개수는 휴면 정보 — 섹션 헤더와 달리 중립 회색 카운트. */}
-      <span className="text-card-body font-extrabold text-wtext-3 dark:text-wtext-4 tabular-nums">
+      <span className="text-[13px] font-extrabold text-wtext-3 dark:text-wtext-4 tabular-nums">
         {count}
       </span>
       <Icon

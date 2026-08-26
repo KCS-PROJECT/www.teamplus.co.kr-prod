@@ -28,6 +28,7 @@ import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
 import { calculateKoreanAge } from "@/common/utils/age.util";
 import { assertClassOnSale } from "@/common/billing/sales-gate.util";
+import { hasActivePaidEnrollment } from "@/common/billing/paid-enrollment-guard.util";
 import { KgInicisGateway } from "../kg-inicis.gateway";
 import {
   PaymentCalculationService,
@@ -303,12 +304,25 @@ export class PaymentCreateService {
         }
       }
 
+      // paid 이력은 "현재 수강 중"일 때만 차단 — 만료(배치 해제·크레딧 소진) 자녀의
+      //   재결제(갱신)는 통과시킨다. 판정 SoT 는 표시(hasValidPass)와 동일.
+      if (
+        await hasActivePaidEnrollment(
+          this.prisma,
+          options.childId,
+          options.classId,
+        )
+      ) {
+        await this.redisService.del(userProductLockKey);
+        throw new ConflictException("이미 신청 중이거나 수강 중인 수업입니다.");
+      }
+
       existingEnrollment = await this.prisma.enrollment.findFirst({
         where: {
           childId: options.childId,
           classId: options.classId,
           status: {
-            in: ["pending", "pending_approval", "approved", "paid"],
+            in: ["pending", "pending_approval", "approved"],
           },
         },
         select: { id: true, status: true, requestedBy: true, paymentId: true },

@@ -115,13 +115,23 @@ export class PaymentWebhookService {
 
     const { updatedPayment, creditsIssued } = await this.prisma.$transaction(
       async (tx) => {
-        const updatedPayment = await tx.payment.update({
-          where: { orderNumber },
+        // 종결 전이를 조건부 claim 으로 선점한다. 위 사전 검사는 트랜잭션 밖이라
+        //   동시 진입(재시도 큐가 진행 중인 첫 처리와 겹치는 경우)을 막지 못한다.
+        //   claim 승자만 아래 부수효과(크레딧·Enrollment·알림)를 수행한다.
+        const claimed = await tx.payment.updateMany({
+          where: { orderNumber, paymentStatus: "pending" },
           data: {
             paymentStatus,
             tid: paymentStatus === "completed" ? tid : null,
             completedAt,
           },
+        });
+        if (claimed.count === 0) {
+          throw new ConflictException("이미 처리된 결제입니다.");
+        }
+
+        const updatedPayment = await tx.payment.findUniqueOrThrow({
+          where: { orderNumber },
           select: {
             id: true,
             orderNumber: true,

@@ -1392,8 +1392,13 @@ export function SelectedDayClassList({
             ? getAttendanceWindowState(cls.scheduledDate, cls.startTime, cls.endTime)
             : 'before';
 
+          // 출석 자격 — childIds(등록 active ∩ 결제 완료, 대시보드 SoT)에 포함된 자녀만.
+          //   배치 해제(미갱신) 자녀는 API 가 403 을 반환하므로 버튼 자체를 숨긴다.
+          const isCheckInEligible = selectedChildId
+            ? childIds.includes(selectedChildId)
+            : childIds.length > 0;
           const canShowCheckInButton =
-            !!onCheckIn && isToday && !isPresent && !isAbsent && windowState === 'open';
+            !!onCheckIn && isCheckInEligible && isToday && !isPresent && !isAbsent && windowState === 'open';
 
           const submitKeyPrefix = `${cls.id}:`;
           const isSubmittingThisCard =
