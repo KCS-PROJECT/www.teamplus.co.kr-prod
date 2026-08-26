@@ -19,6 +19,7 @@
  */
 
 import { Test, TestingModule } from "@nestjs/testing";
+import { ConfigService } from "@nestjs/config";
 import {
   BadRequestException,
   ConflictException,
@@ -228,6 +229,7 @@ describe("Payment System Integration Tests (7 Scenarios)", () => {
         PaymentsService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: RedisService, useValue: mockRedisService },
+        { provide: ConfigService, useValue: { get: jest.fn(() => "test") } },
         { provide: KgInicisGateway, useValue: mockKgInicisGateway },
         { provide: TossPaymentsGateway, useValue: mockTossGateway },
         { provide: PaymentCalculationService, useValue: mockCalculationService },

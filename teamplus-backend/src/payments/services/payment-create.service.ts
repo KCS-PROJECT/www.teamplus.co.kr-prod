@@ -36,6 +36,7 @@ import {
 } from "../payment-calculation.service";
 import { PaymentWebhookService } from "./payment-webhook.service";
 import { deriveSource } from "../payment-source.util";
+import { resolveActivePaymentProvider } from "../payment-provider.util";
 
 export interface InitiatePaymentOptions {
   paymentMethod?: string;
@@ -374,6 +375,13 @@ export class PaymentCreateService {
         ? existingEnrollment.id
         : null;
 
+    // 결제사는 시작 시점에 고정한다 — 이후 관리자가 결제사를 바꿔도 이 결제의 승인·취소는
+    //   여기서 정해진 결제사로 처리된다.
+    const pgProvider = await resolveActivePaymentProvider(
+      this.prisma,
+      this.redisService,
+    );
+
     const payment = await this.prisma.$transaction(async (tx) => {
       const created = await tx.payment.create({
         data: {
@@ -383,6 +391,7 @@ export class PaymentCreateService {
           amount,
           paymentStatus: "pending",
           paymentMethod: options?.paymentMethod || "card",
+          pgProvider,
         },
       });
 

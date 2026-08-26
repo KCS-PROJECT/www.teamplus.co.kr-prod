@@ -968,6 +968,8 @@ export class EnrollmentsService {
           amount: 0,
           paymentStatus: "completed",
           paymentMethod: "mock",
+          // PG 를 거치지 않은 결제 — 환불 시 PG 호출을 건너뛰어야 한다.
+          pgProvider: "mock",
           completedAt: new Date(),
         },
       });

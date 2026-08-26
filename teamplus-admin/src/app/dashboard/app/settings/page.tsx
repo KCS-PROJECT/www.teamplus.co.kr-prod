@@ -31,6 +31,7 @@ import {
   AlertTriangle,
   CheckCircle,
   XCircle,
+  CreditCard,
 } from "lucide-react";
 import { api } from "@/services/api-client";
 
@@ -61,6 +62,17 @@ interface AppSettingsData {
   supportHours: string;
   termsVersion: string;
   privacyVersion: string;
+
+  // 결제
+  paymentProvider: string;
+}
+
+/** 결제사 목록 — 선택 가능 여부는 서버가 판정(키 설정 + 결제 화면 구현). */
+interface PaymentProviderOption {
+  code: string;
+  label: string;
+  selectable: boolean;
+  reason: string | null;
 }
 
 function normalizeSettings(
@@ -82,6 +94,8 @@ function normalizeSettings(
       data?.minimumAppVersionAnd ?? DEFAULT_SETTINGS.minimumAppVersionAnd,
     termsVersion: data?.termsVersion ?? DEFAULT_SETTINGS.termsVersion,
     privacyVersion: data?.privacyVersion ?? DEFAULT_SETTINGS.privacyVersion,
+    paymentProvider:
+      data?.paymentProvider ?? DEFAULT_SETTINGS.paymentProvider,
   };
 }
 
@@ -109,6 +123,7 @@ function buildUpdatePayload(
     supportHours: settings.supportHours.trim(),
     termsVersion: settings.termsVersion.trim(),
     privacyVersion: settings.privacyVersion.trim(),
+    paymentProvider: settings.paymentProvider,
   };
 }
 
@@ -130,9 +145,10 @@ const DEFAULT_SETTINGS: AppSettingsData = {
   supportHours: "",
   termsVersion: "1.0",
   privacyVersion: "1.0",
+  paymentProvider: "toss",
 };
 
-type TabId = "operation" | "version" | "auth" | "service";
+type TabId = "operation" | "version" | "auth" | "service" | "payment";
 
 interface Tab {
   id: TabId;
@@ -145,6 +161,7 @@ const TABS: Tab[] = [
   { id: "version", label: "앱 버전", icon: Smartphone },
   { id: "auth", label: "회원/인증", icon: Shield },
   { id: "service", label: "서비스 설정", icon: Server },
+  { id: "payment", label: "결제", icon: CreditCard },
 ];
 
 // ==================== API Functions ====================
@@ -152,6 +169,10 @@ const TABS: Tab[] = [
 async function fetchSettings(): Promise<AppSettingsData> {
   const data = await api.get<AppSettingsData>("/app/settings");
   return normalizeSettings(data);
+}
+
+async function fetchPaymentProviders(): Promise<PaymentProviderOption[]> {
+  return api.get<PaymentProviderOption[]>("/payments/providers");
 }
 
 async function updateSettings(
@@ -253,6 +274,14 @@ function AppSettingsContent() {
     retry: 1,
   });
 
+  // 결제사 목록 — 선택 가능 여부를 서버가 판정하므로 화면에 하드코딩하지 않는다.
+  const { data: providers } = useQuery({
+    queryKey: ["payment-providers"],
+    queryFn: fetchPaymentProviders,
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+
   // 설정 저장
   const saveMutation = useMutation({
     mutationFn: updateSettings,
@@ -262,10 +291,15 @@ function AppSettingsContent() {
       queryClient.invalidateQueries({ queryKey: ["app-settings"] });
       setTimeout(() => setStatusMsg(null), 3000);
     },
-    onError: () => {
+    onError: (error: unknown) => {
+      // 결제사처럼 서버가 거절 사유를 주는 항목은 그대로 보여준다 — 왜 저장이 안 됐는지
+      //   알 수 없으면 관리자가 같은 시도를 반복하게 된다.
+      const res = (
+        error as { response?: { data?: { message?: string } } } | undefined
+      )?.response?.data?.message;
       setStatusMsg({
         type: "error",
-        text: "설정 저장 중 오류가 발생했습니다.",
+        text: res ?? "설정 저장 중 오류가 발생했습니다.",
       });
       setTimeout(() => setStatusMsg(null), 5000);
     },
@@ -790,6 +824,89 @@ function AppSettingsContent() {
                     v 없이 숫자만 입력
                   </p>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* 결제 탭 */}
+          {activeTab === "payment" && (
+            <div className="space-y-6">
+              <div className="flex items-start gap-3 p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/30">
+                <AlertTriangle
+                  className="w-5 h-5 text-slate-500 dark:text-slate-400 flex-shrink-0 mt-0.5"
+                  aria-hidden="true"
+                />
+                <div>
+                  <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    새로 시작하는 결제에만 적용됩니다
+                  </p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                    이미 결제된 건의 취소·환불은 결제 당시 결제사로 처리되므로,
+                    결제사를 바꿔도 기존 결제에는 영향이 없습니다.
+                  </p>
+                </div>
+              </div>
+
+              <div
+                role="radiogroup"
+                aria-label="결제사 선택"
+                className="space-y-3"
+              >
+                {(providers ?? []).map((provider) => {
+                  const isSelected =
+                    formData.paymentProvider === provider.code;
+                  return (
+                    <label
+                      key={provider.code}
+                      className={`flex items-center gap-3 p-5 rounded-xl border transition-colors motion-reduce:transition-none ${
+                        !provider.selectable
+                          ? "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/30 cursor-not-allowed"
+                          : isSelected
+                            ? "border-primary bg-white dark:bg-slate-800 cursor-pointer"
+                            : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600 cursor-pointer"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="paymentProvider"
+                        value={provider.code}
+                        checked={isSelected}
+                        disabled={!provider.selectable}
+                        onChange={() =>
+                          updateField("paymentProvider", provider.code)
+                        }
+                        className="w-5 h-5"
+                      />
+                      <div className="flex-1">
+                        <p
+                          className={`text-sm font-medium ${
+                            provider.selectable
+                              ? "text-slate-800 dark:text-slate-200"
+                              : "text-slate-400 dark:text-slate-500"
+                          }`}
+                        >
+                          {provider.label}
+                        </p>
+                        {provider.reason && (
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                            {provider.reason}
+                          </p>
+                        )}
+                      </div>
+                      {isSelected && (
+                        <span className="text-xs font-medium text-primary">
+                          사용 중
+                        </span>
+                      )}
+                    </label>
+                  );
+                })}
+                {(providers ?? []).length === 0 && (
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    결제사 목록을 불러오지 못했습니다. 백엔드 연결 상태를
+                    확인해주세요.
+                  </p>
+                )}
               </div>
             </div>
           )}

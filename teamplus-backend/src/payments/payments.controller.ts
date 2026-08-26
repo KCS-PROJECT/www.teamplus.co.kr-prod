@@ -63,6 +63,8 @@ import { PostpaidSettlementService } from "./postpaid-settlement.service";
 import { SettlementSummaryService } from "./settlement/settlement-summary.service";
 import { Roles } from "@/auth/roles.decorator";
 import { RolesGuard } from "@/auth/roles.guard";
+import { ConfigService } from "@nestjs/config";
+import { describeProviders } from "./constants/payment-provider.constant";
 
 @ApiTags("Payments")
 @Controller("api/v1/payments")
@@ -78,6 +80,7 @@ export class PaymentsController {
     private readonly postpaidSettlementService: PostpaidSettlementService,
     private readonly settlementSummaryService: SettlementSummaryService,
     private readonly redisService: RedisService,
+    private readonly configService: ConfigService, // 결제사 키 설정 여부 판정
   ) {}
 
   // ────────────────────────────────────────────────────────────────────
@@ -94,6 +97,20 @@ export class PaymentsController {
   @ApiOperation({ summary: "토스페이먼츠 클라이언트키 조회" })
   async getTossClientKey() {
     return { clientKey: this.tossGateway.getClientKey() };
+  }
+
+  /**
+   * [어드민] 선택 가능한 결제사 목록.
+   *  화면이 비활성 항목을 하드코딩하지 않도록 서버가 selectable/reason 을 내려준다.
+   *  키 설정 여부가 담기므로 공개하지 않는다(앱 설정 조회는 @Public 이라 분리).
+   */
+  @Get("providers")
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @ApiBearerAuth()
+  @Roles("ADMIN")
+  @ApiOperation({ summary: "결제사 목록 조회 (어드민 전용)" })
+  getPaymentProviders() {
+    return describeProviders(this.configService);
   }
 
   /**

@@ -1,4 +1,5 @@
 import { Test, TestingModule } from "@nestjs/testing";
+import { ConfigService } from "@nestjs/config";
 import { PaymentsController } from "./payments.controller";
 import { PaymentsService } from "./payments.service";
 import { KgInicisGateway } from "./kg-inicis.gateway";
@@ -132,6 +133,7 @@ describe("PaymentsController", () => {
           provide: RedisService,
           useValue: mockRedisService,
         },
+        { provide: ConfigService, useValue: { get: jest.fn(() => "test") } },
       ],
     }).compile();
 

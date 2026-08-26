@@ -907,6 +907,9 @@ model Payment {
   amount        Int // ₩ KRW
   paymentStatus String    @default("pending") @map("payment_status") // pending|completed|failed|refunded
   paymentMethod String?   @map("payment_method") // card|wallet
+  /// 결제사 — 결제 시작 시점에 고정. 승인·취소·환불 라우팅 기준이며 한번 기록되면 바뀌지 않는다.
+  ///  toss|nice|inicis|mock. 마이그레이션: manual-migrations/20260826_payment_pg_provider.sql
+  pgProvider    String?   @map("pg_provider") @db.VarChar(20)
   tid           String?   @map("tid") // KG이니시스 거래번호
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -3302,6 +3305,11 @@ model AppSettings {
   // 정산 설정 (P-12, P-13 — 2026-05-21 추가)
   commissionRate Decimal @default(0.03) @map("commission_rate") @db.Decimal(5, 4) /// 플랫폼 수수료율 (0.0000 ~ 1.0000, 기본 0.03 = 3%)
   settlementDays Int[]   @default([10, 31]) @map("settlement_days") /// 정산 지급일 (월간, 31은 말일 의미. 예: [10, 31] = 매월 10일·말일)
+
+  // 결제사 설정
+  /// 신규 결제에 사용할 결제사. 기존 결제의 승인·취소·환불은 Payment.pgProvider 를 따른다.
+  ///  마이그레이션: manual-migrations/20260826_app_settings_payment_provider.sql
+  paymentProvider String @default("toss") @map("payment_provider") @db.VarChar(20)
 
   // 메타데이터
   updatedBy String?  @map("updated_by")

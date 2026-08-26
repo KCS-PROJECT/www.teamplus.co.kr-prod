@@ -212,6 +212,7 @@ export class PaymentsService {
       //    실결제·mock 공용 후처리(applyApprovedPayment)로 위임 — 토스 승인만 confirm 고유.
       await this.applyApprovedPayment(payment, {
         paymentMethod: "toss",
+        pgProvider: "toss",
         tid: paymentKey,
         approvedAt: new Date(tossResult.approvedAt ?? new Date()),
         orderId,
@@ -370,6 +371,8 @@ export class PaymentsService {
     payment: ConfirmPaymentRow,
     opts: {
       paymentMethod: string;
+      /** 실제로 승인을 처리한 결제사. mock 승인은 PG 를 거치지 않으므로 'mock' 으로 정정된다. */
+      pgProvider: string;
       tid: string;
       approvedAt: Date;
       orderId: string;
@@ -386,6 +389,7 @@ export class PaymentsService {
           // paymentMethod 는 PG 판별용 'toss' 로 유지 — cancel 시 isTossPayment() 가
           //   true 로 분기되어 KG 404 에러를 회피한다.
           paymentMethod: opts.paymentMethod,
+          pgProvider: opts.pgProvider,
           completedAt: opts.approvedAt,
         },
       });
@@ -571,6 +575,8 @@ export class PaymentsService {
       const approvedAt = new Date();
       await this.applyApprovedPayment(payment, {
         paymentMethod: "mock",
+        // 시작 시점에는 활성 결제사로 기록됐지만 실제로는 PG 를 거치지 않았다 — 환불 라우팅용으로 정정.
+        pgProvider: "mock",
         tid: `MOCK-${Date.now()}`,
         approvedAt,
         orderId,
