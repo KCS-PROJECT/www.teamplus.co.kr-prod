@@ -42,6 +42,9 @@ interface ClassItem {
   scheduleCount?: number | null;
   /** [Lifecycle v4.1] 서버 파생 상태 — 종료 배지 판정 SoT (기간 역산보다 우선). */
   lifecycleStatus?: 'ON_SALE' | 'PENDING_SCHEDULE' | 'ENDED' | null;
+  /** PENDING_SCHEDULE 세부 사유 — NO_SCHEDULE(일정 미등록) / UNAPPROVED_MONTH(판매 시작 대기).
+   *  배지 분기: 감독이 목록에서 필요한 액션(일정 등록 vs 판매 시작)을 바로 식별. */
+  pendingReason?: string | null;
   /** [2026-06-09] 오픈클래스 날짜별 일정(ISO) — 카드 일정 날짜 표시. */
   scheduledDates?: string[];
   /** [추가 2026-05-12] 실제 운영 기간 — schedules first/last (startTime/endTime은 하루 세션 시간만 의미) */
@@ -327,7 +330,7 @@ function resolvePeriodStatus(
 }
 
 // ─── Status Config ───────────────────────────────────
-type CardStatus = 'PENDING' | 'REJECTED' | 'ACTIVE' | 'INACTIVE' | 'UPCOMING' | 'ENDED' | 'WAITING_SCHEDULE';
+type CardStatus = 'PENDING' | 'REJECTED' | 'ACTIVE' | 'INACTIVE' | 'UPCOMING' | 'ENDED' | 'WAITING_SCHEDULE' | 'WAITING_SALES_OPEN';
 
 const STATUS_CONFIG: Record<CardStatus, {
   label: string;
@@ -354,6 +357,15 @@ const STATUS_CONFIG: Record<CardStatus, {
   WAITING_SCHEDULE: {
     label: MESSAGES.class.pendingScheduleBadge,
     icon: 'event_busy',
+    dotColor: 'bg-amber-500',
+    pillBg: 'bg-amber-50 dark:bg-amber-900/20',
+    pillText: 'text-amber-700 dark:text-amber-400',
+  },
+  // 판매 시작 대기 — 일정은 있는데 [판매 시작]을 안 누른 수업. 일정 등록 대기와
+  //   필요한 액션이 달라 배지를 분리(목록에서 바로 식별 → 상세의 판매 승인 플로우로).
+  WAITING_SALES_OPEN: {
+    label: MESSAGES.class.salesOpenNeededBadge,
+    icon: 'storefront',
     dotColor: 'bg-amber-500',
     pillBg: 'bg-amber-50 dark:bg-amber-900/20',
     pillText: 'text-amber-700 dark:text-amber-400',
@@ -407,7 +419,13 @@ function resolveStatus(item: ClassItem): CardStatus {
   // 운영자가 명시적으로 비활성/완료 처리한 수업.
   if (item.status === 'INACTIVE' || item.status === 'COMPLETED') return 'INACTIVE';
   // 일정 등록 대기 — 명시 비활성보다 후순위 (비활성은 감독의 명시 의사가 우선).
-  if (item.lifecycleStatus === 'PENDING_SCHEDULE') return 'WAITING_SCHEDULE';
+  //   사유별 분기: 판매 승인 대기(UNAPPROVED_MONTH)는 일정이 이미 있으므로
+  //   "판매 시작 필요"로 구분 표기 — 필요한 액션이 다르다.
+  if (item.lifecycleStatus === 'PENDING_SCHEDULE') {
+    return item.pendingReason === 'UNAPPROVED_MONTH'
+      ? 'WAITING_SALES_OPEN'
+      : 'WAITING_SCHEDULE';
+  }
   // 아직 시작 전이면 '예정'.
   if (period === 'UPCOMING') return 'UPCOMING';
   // 진행 기간 내 또는 날짜 미정 + ACTIVE → '진행 중'.
@@ -719,6 +737,7 @@ export default function ClassManagePage() {
             daySchedules: (c.daySchedules as DaySchedule[] | undefined) ?? [],
             lifecycleStatus:
               (c.lifecycleStatus as ClassItem['lifecycleStatus']) ?? null,
+            pendingReason: (c.pendingReason as string | undefined) ?? null,
             nextSchedule: (c.nextSchedule as NextScheduleInfo | null | undefined) ?? null,
             scheduleCount: (c.scheduleCount as number | undefined) ?? null,
             scheduledDates: (c.scheduledDates as string[] | undefined) ?? [],
@@ -841,6 +860,7 @@ export default function ClassManagePage() {
         daySchedules: (c.daySchedules as DaySchedule[] | undefined) ?? [],
         lifecycleStatus:
           (c.lifecycleStatus as ClassItem['lifecycleStatus']) ?? null,
+        pendingReason: (c.pendingReason as string | undefined) ?? null,
         nextSchedule: (c.nextSchedule as NextScheduleInfo | null | undefined) ?? null,
         scheduleCount: (c.scheduleCount as number | undefined) ?? null,
         scheduledDates: (c.scheduledDates as string[] | undefined) ?? [],

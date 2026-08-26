@@ -153,7 +153,8 @@ export class RefundRequestController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: "환불 거절",
-    description: "CAS 선점(pending→rejected). 거절 사유 필수. 재정 변화 없음.",
+    description:
+      "CAS 선점(pending→rejected). 거절 사유 필수. 재정 변화 없음. execution_failed 도 대상이나, 이체가 발생하지 않은 것이 확정된 실패(failureStage=PG · PG 미확정 코드 아님 · 결제 completed 복원)만 허용한다.",
   })
   @ApiResponse({ status: 200, type: RefundRequestResponseDto })
   @ApiResponse({ status: 409, description: "이미 처리됨 / 동시 처리" })

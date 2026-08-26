@@ -501,6 +501,134 @@ describe("RefundRequestService", () => {
     });
   });
 
+  // ── E5. 거절 — pending + 실행 실패 종결 ────────────────────────
+  describe("reject — 실행 실패 종결", () => {
+    const rejectableFailed = {
+      id: "rr-1",
+      paymentId: "pay-1",
+      requesterId: "parent-1",
+      childId: "child-1",
+      status: "execution_failed",
+      sourceType: "CLASS_PREPAID",
+      classId: "cls-1",
+      tournamentId: null,
+      teamId: "team-1",
+      academyId: null,
+      requestReason: "사유",
+      requestedAmount: 240000,
+      failureStage: "PG",
+      failureCode: "PG_CANCEL_ERROR",
+      failureReason: "허용되지 않은 요청입니다. (FORBIDDEN_REQUEST)",
+      version: 2,
+    };
+
+    it("PG 확정 실패 + 결제 complete 복원 → rejected 전이(CAS where 에 실패 유형 가드 동반)", async () => {
+      prismaMock.refundRequest.findUnique
+        .mockResolvedValueOnce(rejectableFailed) // reject 진입
+        .mockResolvedValueOnce({
+          ...rejectableFailed,
+          status: "rejected",
+          version: 3,
+        }); // reload
+      prismaMock.payment.findUnique.mockResolvedValue({
+        paymentStatus: "completed",
+      });
+      prismaMock.refundRequest.updateMany.mockResolvedValue({ count: 1 });
+
+      const res = await service.reject(
+        "rr-1",
+        { version: 2, decisionReason: "PG 취소 불가 — 종결" },
+        admin,
+      );
+
+      expect(res.status).toBe("rejected");
+      const call = prismaMock.refundRequest.updateMany.mock.calls[0][0];
+      expect(call.data).toMatchObject({ status: "rejected" });
+      expect(call.where.version).toBe(2);
+      // 사전 검사와 갱신 사이 상태 변화에도 이체 발생 건이 거절되지 않도록 where 에 조건 동반.
+      expect(call.where.OR).toEqual([
+        { status: "pending" },
+        {
+          status: "execution_failed",
+          failureStage: "PG",
+          failureCode: {
+            notIn: [
+              "KG_UNCONFIRMED",
+              "TOSS_UNCONFIRMED",
+              "TOSS_IDEMPOTENCY_CONFLICT",
+            ],
+          },
+        },
+      ]);
+      expect(notificationsMock.createNotification).toHaveBeenCalled();
+    });
+
+    it("DB_AFTER_PG(이체 완료 후 DB 실패) → 400, 전이 없음", async () => {
+      prismaMock.refundRequest.findUnique.mockResolvedValue({
+        ...rejectableFailed,
+        failureStage: "DB_AFTER_PG",
+        failureCode: "DB_TX_FAILED",
+      });
+
+      await expect(
+        service.reject("rr-1", { version: 2, decisionReason: "x" }, admin),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prismaMock.refundRequest.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("PG 미확정 코드 → 400, 전이 없음", async () => {
+      prismaMock.refundRequest.findUnique.mockResolvedValue({
+        ...rejectableFailed,
+        failureCode: "TOSS_UNCONFIRMED",
+      });
+
+      await expect(
+        service.reject("rr-1", { version: 2, decisionReason: "x" }, admin),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prismaMock.refundRequest.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("결제가 refund_processing 잔존(복원 실패) → 409, 전이 없음", async () => {
+      prismaMock.refundRequest.findUnique.mockResolvedValue(rejectableFailed);
+      prismaMock.payment.findUnique.mockResolvedValue({
+        paymentStatus: "refund_processing",
+      });
+
+      await expect(
+        service.reject("rr-1", { version: 2, decisionReason: "x" }, admin),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(prismaMock.refundRequest.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("pending 거절은 결제 조회 없이 기존대로 동작", async () => {
+      const pendingRr = {
+        ...rejectableFailed,
+        status: "pending",
+        failureStage: null,
+        failureCode: null,
+        failureReason: null,
+        version: 0,
+      };
+      prismaMock.refundRequest.findUnique
+        .mockResolvedValueOnce(pendingRr)
+        .mockResolvedValueOnce({
+          ...pendingRr,
+          status: "rejected",
+          version: 1,
+        });
+      prismaMock.refundRequest.updateMany.mockResolvedValue({ count: 1 });
+
+      const res = await service.reject(
+        "rr-1",
+        { version: 0, decisionReason: "판단 사유" },
+        admin,
+      );
+
+      expect(res.status).toBe("rejected");
+      expect(prismaMock.payment.findUnique).not.toHaveBeenCalled();
+    });
+  });
+
   // ── E6. 재처리 — Payment 상태 기준 분기(fencing) ────────────────
   describe("reprocess — Payment 상태 분기", () => {
     const failedBase = {

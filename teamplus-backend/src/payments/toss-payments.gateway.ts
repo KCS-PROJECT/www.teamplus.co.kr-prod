@@ -56,6 +56,7 @@ export class TossPaymentsGateway {
   private readonly webhookSecret: string;
   private readonly apiVersion: string;
   private readonly apiBase: string;
+  private readonly mid: string;
 
   constructor(private readonly configService: ConfigService) {
     this.clientKey = this.configService.get<string>("TOSS_CLIENT_KEY", "");
@@ -72,6 +73,7 @@ export class TossPaymentsGateway {
       "TOSS_API_BASE",
       "https://api.tosspayments.com",
     );
+    this.mid = this.configService.get<string>("TOSS_MID", "");
 
     if (!this.clientKey || !this.secretKey) {
       this.logger.warn(
@@ -93,8 +95,10 @@ export class TossPaymentsGateway {
       },
     });
 
+    // mId 를 함께 남긴다 — 환경별 .env 가 분리돼 있어, 어느 상점으로 붙어 있는지 확인할
+    //   다른 수단이 없다. 결제 tid 와 대조하면 상점 불일치를 즉시 판별할 수 있다.
     this.logger.log(
-      `토스페이먼츠 게이트웨이 초기화 (api=${this.apiBase}, version=${this.apiVersion}, key=${this.clientKey.slice(0, 12)}***)`,
+      `토스페이먼츠 게이트웨이 초기화 (api=${this.apiBase}, version=${this.apiVersion}, mid=${this.mid || "미설정"}, key=${this.clientKey.slice(0, 12)}***)`,
     );
   }
 
@@ -231,9 +235,12 @@ export class TossPaymentsGateway {
           "CONFLICT",
         );
       }
+      // 승인 경로와 동일하게 토스 에러 코드를 함께 남긴다 — 메시지만으로는 상점 불일치·권한·
+      //   결제수단 제약을 구분할 수 없어 실패 원장 사유가 진단 불가능해진다.
       const msg =
         ax.response?.data?.message ?? "토스 결제 취소에 실패했습니다.";
-      throw new BadRequestException(msg);
+      const code = ax.response?.data?.code;
+      throw new BadRequestException(code ? `${msg} (${code})` : msg);
     }
   }
 

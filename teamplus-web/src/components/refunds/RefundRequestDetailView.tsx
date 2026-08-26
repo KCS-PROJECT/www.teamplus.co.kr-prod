@@ -9,7 +9,7 @@
  *   pending          → 승인/거절 (judgmentDataOk=false 시 승인 비활성 fail-closed)
  *   executing        → 처리 중 안내(승인 CTA 숨김)
  *   executed         → 완료 안내
- *   execution_failed → 재처리 전용 동선(일반 승인 버튼 미노출)
+ *   execution_failed → 재처리 + 거절(이체 미발생 확정 실패만) 동선(일반 승인 버튼 미노출)
  *   rejected/canceled→ 종료 안내
  *
  * fail-closed 게이트(모든 mutate CTA 미노출):
@@ -43,6 +43,16 @@ import {
   type RefundUsage,
 } from '@/services/payment';
 import { shouldApplyDetailResponse, isActionStillCurrent } from './refund-guards';
+
+/**
+ * PG 취소 결과 미확정 실패 코드 — 백엔드 REFUND_PG_UNCONFIRMED_CODES 와 동일 집합.
+ * 취소 여부를 모르는 상태라 거절(종결) 대상이 아니다.
+ */
+const PG_UNCONFIRMED_CODES = [
+  'KG_UNCONFIRMED',
+  'TOSS_UNCONFIRMED',
+  'TOSS_IDEMPOTENCY_CONFLICT',
+];
 
 /** Payment.paymentStatus 원문 키 → 한글 라벨 (미지 값은 원문 유지 — 정보 유실 방지). */
 function formatPaymentStatus(status: string): string {
@@ -451,10 +461,19 @@ export function RefundRequestDetailView({
   // KG 미확정 실패는 일반 재처리 숨김 → ADMIN reconcile 시트로만 해소.
   const showReprocess = isFailed && !isKgUnconfirmed;
   const showReconcile = isKgUnconfirmed && isAdminTier;
+  // 실행 실패 거절 = 이체가 발생하지 않은 것이 확정된 PG 거절만(백엔드 가드와 동일 조건).
+  //   DB_AFTER_PG(이체 완료 후 DB 실패) · PG 미확정 코드는 재처리/reconcile 로만 해소한다.
+  const showRejectOnFailed =
+    isFailed &&
+    !isDirect &&
+    decision.failureStage === 'PG' &&
+    !PG_UNCONFIRMED_CODES.includes(decision.failureCode ?? '');
   // 대상 귀속 belt — detail.id 가 현재 route requestId 와 다르면 어떤 CTA 도 노출하지 않는다
   //   (렌더 귀속 가드의 이중 방어; 금전 액션 대상이 route 와 어긋나는 것을 원천 차단).
   const detailMatchesRoute = detail.id === requestId;
-  const actionable = detailMatchesRoute && (showApproveReject || showReprocess || showReconcile);
+  const actionable =
+    detailMatchesRoute &&
+    (showApproveReject || showReprocess || showReconcile || showRejectOnFailed);
 
   // hasPriorRefund 파생 — 요청 생성 이전에 처리된 환불 이력 존재 여부.
   const priorRefund = history.some(
@@ -694,16 +713,38 @@ export function RefundRequestDetailView({
                   </button>
                 </div>
               )}
-              {/* execution_failed — 일반 승인 버튼 미노출. 재처리 전용(DIRECT 는 admin만 여기 도달). */}
-              {showReprocess && (
-                <button
-                  type="button"
-                  onClick={handleReprocess}
-                  disabled={isProcessing || staleReload}
-                  className="h-12 w-full rounded-w-md bg-it-blue-500 text-card-title font-semibold text-white transition-colors hover:bg-it-blue-600 active:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none"
-                >
-                  {isProcessing ? MESSAGES.refund.reprocessProcessing : MESSAGES.refund.reprocessCta}
-                </button>
+              {/* execution_failed — 일반 승인 버튼 미노출. 재처리 + 거절(이체 미발생 확정 시). */}
+              {(showReprocess || showRejectOnFailed) && (
+                <div className="flex items-center gap-3">
+                  {showRejectOnFailed && (
+                    <button
+                      type="button"
+                      onClick={() => setRejectOpen(true)}
+                      disabled={isProcessing || staleReload}
+                      className={cn(
+                        'h-12 rounded-w-md border-[1.5px] border-it-red-500 text-card-title font-semibold text-it-red-600 transition-colors hover:bg-it-red-50 active:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-red-500/40 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none dark:border-it-red-400 dark:text-it-red-400 dark:hover:bg-it-red-500/10',
+                        showReprocess ? 'flex-1' : 'w-full',
+                      )}
+                    >
+                      {MESSAGES.refund.rejectCta}
+                    </button>
+                  )}
+                  {showReprocess && (
+                    <button
+                      type="button"
+                      onClick={handleReprocess}
+                      disabled={isProcessing || staleReload}
+                      className={cn(
+                        'h-12 rounded-w-md bg-it-blue-500 text-card-title font-semibold text-white transition-colors hover:bg-it-blue-600 active:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none',
+                        showRejectOnFailed ? 'flex-[1.4]' : 'w-full',
+                      )}
+                    >
+                      {isProcessing
+                        ? MESSAGES.refund.reprocessProcessing
+                        : MESSAGES.refund.reprocessCta}
+                    </button>
+                  )}
+                </div>
               )}
             </>
           ) : (

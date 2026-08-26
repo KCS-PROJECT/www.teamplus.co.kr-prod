@@ -27,7 +27,10 @@ import {
   ReconcileRefundRequestDto,
 } from "./dto/decision-refund-request.dto";
 import { ListRefundRequestQueryDto } from "./dto/list-refund-request-query.dto";
-import { REFUND_REQUEST_ACTIVE_STATUSES as ACTIVE_STATUSES } from "./refund-request.constants";
+import {
+  REFUND_REQUEST_ACTIVE_STATUSES as ACTIVE_STATUSES,
+  REFUND_PG_UNCONFIRMED_CODES,
+} from "./refund-request.constants";
 
 /** Team.coachId(owner) 외에 팀 관리자로 인정하는 승인 멤버 역할(N1 알림 라우팅). */
 const TEAM_MANAGER_ROLES = ["HEAD_COACH", "COACH", "MANAGER"];
@@ -578,9 +581,26 @@ export class RefundRequestService {
     if (rr.sourceType === "DIRECT") {
       throw new BadRequestException("직접 환불 요청은 거절 대상이 아닙니다.");
     }
+    // 실행 실패 건은 이체가 발생하지 않은 것이 확정된 경우만 거절로 종결한다.
+    if (rr.status === "execution_failed") {
+      await this.assertFailureRejectable(rr);
+    }
 
+    // CAS 는 version 만으로도 경합을 막지만, 거절 가능 실패 유형 조건을 where 에 함께 실어
+    //   사전 검사와 갱신 사이의 상태 변화에도 이체 발생 건이 거절되지 않게 한다.
     const cas = await this.prisma.refundRequest.updateMany({
-      where: { id: requestId, status: "pending", version: dto.version },
+      where: {
+        id: requestId,
+        version: dto.version,
+        OR: [
+          { status: "pending" },
+          {
+            status: "execution_failed",
+            failureStage: "PG",
+            failureCode: { notIn: REFUND_PG_UNCONFIRMED_CODES },
+          },
+        ],
+      },
       data: {
         status: "rejected",
         decidedBy: user.id,
@@ -600,6 +620,38 @@ export class RefundRequestService {
     await this.notifyDecision(rr, "rejected");
     const reloaded = await this.reload(requestId);
     return { ...reloaded, appealGuide: REFUND_APPEAL_GUIDE };
+  }
+
+  /**
+   * 실행 실패(execution_failed) 건의 거절 가능 여부 검증.
+   *
+   * PG 가 취소를 명확히 거절한 실패(stage=PG · 미확정 코드 아님)만 거절로 종결할 수 있다.
+   *  - DB_AFTER_PG: PG 취소는 성공하고 DB 반영만 실패 → 거절하면 환불금은 나갔는데 결제가
+   *    completed 로 남는다. 재처리(DB 보상)로만 해소한다.
+   *  - 미확정 코드(KG/토스): 취소 여부 자체를 모른다 → reconcile 로만 해소한다.
+   * 위 두 경우가 아니어도 Payment 가 completed 로 복원되지 않았다면(복원 실패 잔존) 거절을 막는다.
+   */
+  private async assertFailureRejectable(rr: RefundRequestRow): Promise<void> {
+    if (
+      rr.failureStage !== "PG" ||
+      REFUND_PG_UNCONFIRMED_CODES.includes(rr.failureCode ?? "")
+    ) {
+      throw new BadRequestException(
+        "PG 취소 결과가 확정되지 않은 실패는 거절할 수 없습니다. 재처리 또는 운영자 확인이 필요합니다.",
+      );
+    }
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: rr.paymentId },
+      select: { paymentStatus: true },
+    });
+    if (payment?.paymentStatus !== "completed") {
+      this.logger.warn(
+        `[reject-blocked] 결제 미복원 상태에서 거절 시도 — requestId=${rr.id}, paymentStatus=${payment?.paymentStatus ?? "none"}`,
+      );
+      throw new ConflictException(
+        "결제가 정상 복원되지 않아 거절할 수 없습니다. 운영자 확인이 필요합니다.",
+      );
+    }
   }
 
   // ──────────────────────────────────────────────────────────────
@@ -787,11 +839,7 @@ export class RefundRequestService {
     // 대상: execution_failed && PG 미확정/불변조건 위반 코드.
     //   KG_UNCONFIRMED + TOSS_UNCONFIRMED(만료 포함) + TOSS_IDEMPOTENCY_CONFLICT(422 본문충돌).
     //   토스 만료·본문충돌 등 reprocess 자동 해소 불가 건의 운영자 확정 경로(admin 전용).
-    const RECONCILABLE_CODES = [
-      "KG_UNCONFIRMED",
-      "TOSS_UNCONFIRMED",
-      "TOSS_IDEMPOTENCY_CONFLICT",
-    ];
+    const RECONCILABLE_CODES = REFUND_PG_UNCONFIRMED_CODES;
     if (
       rr.status !== "execution_failed" ||
       !RECONCILABLE_CODES.includes(rr.failureCode ?? "")
