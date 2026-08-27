@@ -140,6 +140,20 @@ interface ClassPaymentStudent {
   paymentState: PaymentState;
   payerId?: string | null;
   payerName?: string | null;
+  /** 5-state 계약(Dual Emit) — 후불 "청구 없음" 판정용 */
+  billingTiming?: string | null;
+  billingStatus?: string | null;
+  attendanceCount?: number | null;
+}
+
+/** 후불 미확정 + 선택월 출석 0회 = 청구 없음(낼 금액 0원) — 미납으로 세지 않는다.
+ *  요약 API(team-summaries)와 동일 규칙 — 칩과 상세 표시가 어긋나지 않게 한다. */
+function isNoBilling(s: ClassPaymentStudent): boolean {
+  return (
+    s.billingTiming === 'POSTPAID' &&
+    s.billingStatus === 'UNSETTLED' &&
+    (s.attendanceCount ?? 0) === 0
+  );
 }
 
 interface ClassPaymentData {
@@ -906,16 +920,24 @@ function Mini({ label, value, suffix }: { label: string; value: number; suffix?:
 // ─── 수업별 결제 현황 패널 (accordion 내부) ───
 function ClassPaymentPanel({ data }: { data: ClassPaymentData }) {
   const { counts, totalPaidAmount, students } = data;
+  // 후불 "청구 없음" 행은 API counts.unpaid 에 포함돼 오므로 표시에서 분리한다.
+  const noBillingCount = students.filter(isNoBilling).length;
+  const unpaidCount = Math.max(0, counts.unpaid - noBillingCount);
   return (
     <div className="space-y-3">
-      {/* 요약 — 수업 결제는 미납/결제완료 2-state (+환불) */}
+      {/* 요약 — 수업 결제는 미납/결제완료 2-state (+환불·청구 없음) */}
       <div className="flex flex-wrap items-center gap-2">
         <span className="rounded-md bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 px-2 py-1 text-xs font-bold">
           결제완료 {counts.paid}명
         </span>
         <span className="rounded-md bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-1 text-xs font-bold">
-          미납 {counts.unpaid}명
+          미납 {unpaidCount}명
         </span>
+        {noBillingCount > 0 && (
+          <span className="rounded-md bg-slate-100 dark:bg-slate-700/60 text-slate-400 dark:text-slate-500 px-2 py-1 text-xs font-medium">
+            청구 없음 {noBillingCount}명
+          </span>
+        )}
         {counts.refunded > 0 && (
           <span className="rounded-md bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 px-2 py-1 text-xs font-bold">
             환불 {counts.refunded}명
@@ -963,11 +985,17 @@ function ClassPaymentPanel({ data }: { data: ClassPaymentData }) {
                     {s.paidAt ? new Date(s.paidAt).toLocaleDateString('ko-KR') : <span className="text-slate-300 dark:text-slate-600">-</span>}
                   </td>
                   <td className="px-3 py-2 text-center">
-                    <span
-                      className={`inline-block rounded-md px-2 py-0.5 text-xs font-bold ${PAYMENT_STATE_CLASS[s.paymentState]}`}
-                    >
-                      {PAYMENT_STATE_LABEL[s.paymentState]}
-                    </span>
+                    {isNoBilling(s) ? (
+                      <span className="inline-block rounded-md px-2 py-0.5 text-xs font-medium bg-slate-100 dark:bg-slate-700/60 text-slate-400 dark:text-slate-500">
+                        청구 없음
+                      </span>
+                    ) : (
+                      <span
+                        className={`inline-block rounded-md px-2 py-0.5 text-xs font-bold ${PAYMENT_STATE_CLASS[s.paymentState]}`}
+                      >
+                        {PAYMENT_STATE_LABEL[s.paymentState]}
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}
