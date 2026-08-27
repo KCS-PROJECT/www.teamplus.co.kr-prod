@@ -996,6 +996,18 @@ export interface RefundRequestDetail {
   usage: RefundUsage;
   /** fail-closed — 사용현황 조회 일부 실패 시 false(승인 CTA 비활성). */
   judgmentDataOk: boolean;
+  /**
+   * 산정 내역(표시 자료) — pending 한정, 조회 실패·구버전 백엔드면 null(섹션 숨김).
+   * 승인 실행 금액의 SoT 는 request.requestedAmount.
+   */
+  quote: {
+    paidAmount: number;
+    attendedCount: number;
+    unitFee: number;
+    deductedAmount: number;
+    alreadyRefunded: number;
+    refundableAmount: number;
+  } | null;
   snapshotVsCurrent: {
     /** 요청 생성 시점 결제 상태(예: 'completed'). RefundRequestStatus 아님. */
     requestedStatusAtCreate: string;
@@ -1102,6 +1114,24 @@ function normalizeUsage(value: unknown): RefundUsage {
     };
   }
   return null;
+}
+
+/** 환불 예정액 산정 내역 — 요청 시트·상세 공용 형태. */
+export type RefundPreviewQuote = NonNullable<RefundRequestDetail['quote']>;
+
+/**
+ * 환불 예정액 미리보기 (`GET /payments/:paymentId/refund-preview`) — 학부모 요청 전 표시.
+ * 실패·스키마 오염 시 null — 예상액 없이도 요청 흐름은 유지한다(섹션만 숨김).
+ * 서버가 요청 접수 시 같은 산식으로 재산정하므로 이 값은 표시 전용이다.
+ */
+export async function getRefundPreview(
+  paymentId: string,
+): Promise<RefundPreviewQuote | null> {
+  const res = await api.get<Record<string, unknown>>(
+    `/payments/${paymentId}/refund-preview`,
+  );
+  if (!res.success || !res.data) return null;
+  return normalizeQuote(res.data);
 }
 
 /**
@@ -1425,6 +1455,29 @@ export async function listRefundRequests(params: {
  * 환불 요청 상세 (`GET /refund-requests/:requestId`).
  * 범위 밖 접근은 백엔드 403 → error.statusCode 로 "권한 없음" 분기.
  */
+/** 산정 내역 — 전 필드 비음수 정수일 때만 통과. 표시 자료라 오염 시 null(섹션 숨김). */
+function normalizeQuote(raw: unknown): RefundRequestDetail['quote'] {
+  if (!raw || typeof raw !== 'object') return null;
+  const q = raw as Record<string, unknown>;
+  const fields = [
+    'paidAmount',
+    'attendedCount',
+    'unitFee',
+    'deductedAmount',
+    'alreadyRefunded',
+    'refundableAmount',
+  ] as const;
+  if (!fields.every((f) => isNonNegInt(q[f]))) return null;
+  return {
+    paidAmount: q.paidAmount as number,
+    attendedCount: q.attendedCount as number,
+    unitFee: q.unitFee as number,
+    deductedAmount: q.deductedAmount as number,
+    alreadyRefunded: q.alreadyRefunded as number,
+    refundableAmount: q.refundableAmount as number,
+  };
+}
+
 export async function getRefundRequestDetail(
   requestId: string,
 ): Promise<ApiResponse<RefundRequestDetail>> {
@@ -1485,6 +1538,7 @@ export async function getRefundRequestDetail(
       // 엄격 fail-closed — raw 값이 true 이면서 usage(판단 자료)가 존재할 때만 승인 허용.
       //   usage=null(판별 불가) 이면 강제 false(승인 CTA 비활성).
       judgmentDataOk: raw.judgmentDataOk === true && normalizedUsage !== null,
+      quote: normalizeQuote(raw.quote),
       snapshotVsCurrent: {
         requestedStatusAtCreate: sc.requestedStatusAtCreate ?? '',
         requestedAmount: toNumber(sc.requestedAmount),

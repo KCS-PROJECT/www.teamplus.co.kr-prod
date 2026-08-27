@@ -319,17 +319,22 @@ function formatCoachList(
 
 /** 1회 수업료(참고) 카드 — 라디오·구매 버튼 없는 톤다운 정보 카드.
  *  BOTH(결제방식 토글 아래)·선불 전용(수업료 목록 위) 공용.
- *  부가 문구 없이 타이틀+금액만 — 회색 톤 자체가 참고용 뉘앙스를 전달. */
+ *  하단 캡션은 환불 규정 제3조의 사전 고지 — 중도 해지 시 이 단가로 이용분을 공제한다. */
 function SingleFeeRefCard({ amount }: { amount: number }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-[14px] border border-wline-2 dark:border-rink-700 bg-it-fill dark:bg-rink-900/40 px-4 py-3">
-      <div className="min-w-0">
-        <p className="text-card-body font-bold text-wtext-2 dark:text-rink-100">
-          {MESSAGES.classProduct.singleFeeRefTitle}
+    <div className="rounded-[14px] border border-wline-2 dark:border-rink-700 bg-it-fill dark:bg-rink-900/40 px-4 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-card-body font-bold text-wtext-2 dark:text-rink-100">
+            {MESSAGES.classProduct.singleFeeRefTitle}
+          </p>
+        </div>
+        <p className="shrink-0 text-card-body font-extrabold text-wtext-1 dark:text-white tabular-nums">
+          {MESSAGES.classProduct.singleFeeAmount(amount)}
         </p>
       </div>
-      <p className="shrink-0 text-card-body font-extrabold text-wtext-1 dark:text-white tabular-nums">
-        {MESSAGES.classProduct.singleFeeAmount(amount)}
+      <p className="mt-1.5 text-card-meta leading-relaxed text-wtext-3 dark:text-wtext-4">
+        {MESSAGES.classProduct.singleFeeDeductNotice}
       </p>
     </div>
   );

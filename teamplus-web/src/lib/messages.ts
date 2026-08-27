@@ -1336,8 +1336,22 @@ export const MESSAGES = {
     failureReasonLabel: "실패 사유",
     failureStagePg: "PG 환불 실패 (미이체)",
     failureStageDbAfterPg: "PG 환불 성공 · 내부 처리 실패",
+    // ── 산정 내역 (승인 판단 자료 · pending 한정) ────────
+    quotePaid: "결제액",
+    quoteDeduct: (count: number, unit: number) =>
+      `이용분 ${count}회 × ${unit.toLocaleString()}원`,
+    quoteAlreadyRefunded: "기환불액",
+    quoteRefundable: "환불 예정액",
+    // ── 요청 시트 예상액 (학부모) ────────────────────────
+    previewCalculating: "환불 예정액을 계산하고 있습니다…",
+    previewFinalNote: "최종 금액은 감독 승인 시점에 확정됩니다.",
+    previewNotRefundable: "이용분 공제 후 환불 가능한 금액이 없습니다.",
     // ── 승인 시트 ───────────────────────────────────────
     approveCta: "전액 환불 승인 및 실행",
+    // 요청액 < 결제액(이용분 공제)이면 부분 환불 — 전액 라벨로 오인시키지 않는다.
+    approveCtaPartial: "부분 환불 승인 및 실행",
+    approvePartialDeductNote: (paid: number, deducted: number) =>
+      `결제액 ${paid.toLocaleString()}원에서 이용분 ${deducted.toLocaleString()}원을 공제한 금액입니다.`,
     approveSheetTitle: "환불을 실행할까요?",
     approveSheetBody: "승인 즉시 PG 환불이 실행되며 되돌릴 수 없습니다.",
     approveMemoLabel: "승인 메모 (선택)",
@@ -4315,6 +4329,9 @@ export const MESSAGES = {
     // [선택형(BOTH)] 1회 수업료(참고) 블록 — 선불·후불 공통 노출.
     singleFeeRefTitle: "1회 수업료",
     singleFeeAmount: (won: number) => `${Number(won).toLocaleString()}원`,
+    // 환불 규정 제3조 사전 고지 — 중도 해지 시 이 단가로 이용분을 공제한다.
+    singleFeeDeductNotice:
+      "중도 해지 시 출석한 수업은 이 금액 기준으로 공제됩니다.",
     postpaidEnrollCta: "후불로 신청하기",
     postpaidEnrolling: "신청 중…",
     postpaidAmountNote: "결제 금액은 매월 출석 횟수에 따라 정산됩니다.",
