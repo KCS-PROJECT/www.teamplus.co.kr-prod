@@ -1720,8 +1720,10 @@ export function ClassForm({
                             </p>
                           )}
                           {/* 총 수업료 자동 계산 — 1회권 수강료 × 등록한 회차 수.
-                              회차(일정)가 있을 때만 노출. 회차 미입력 시 영역 숨김. */}
-                          {formData.singlePrice !== '' &&
+                              회차(일정)가 있을 때만 노출. 회차 미입력 시 영역 숨김.
+                              [spot 선불 단건] 1회짜리는 총액=1회 수업료라 중복 표기 — 숨김. */}
+                          {!isSpot &&
+                            formData.singlePrice !== '' &&
                             Number(formData.singlePrice) > 0 &&
                             formData.dateSchedules.length > 0 && (
                               <div className={cn('mt-2 rounded-w-md border px-3 py-2', iceTheme ? 'border-it-blue-100 dark:border-rink-700 bg-it-blue-50 dark:bg-rink-700/40' : 'border-ice-100 dark:border-rink-700 bg-ice-50 dark:bg-rink-700/40')}>
