@@ -278,15 +278,13 @@ export function ClassForm({
       setFormData(prev => ({ ...prev, venueId, venue: venueName, venueAddress: address }));
     }
     setVenueSheetOpen(false);
-    setVenueTargetDay(null);
-    setVenueTargetDateKey(null);
   };
 
-  // [2026-06-05] 장소 BottomSheet 닫기 — 대상요일·대상일정 리셋 공통 처리.
+  // 장소 BottomSheet 닫기 — 대상요일·대상일정은 리셋하지 않는다. 닫힘 애니메이션(300ms) 동안
+  //   시트가 마운트를 유지하므로, 여기서 리셋하면 제목("N요일 장소 선택")이 기본값으로 바뀌는
+  //   깜빡임이 보인다. 대상 상태는 각 열기 트리거가 명시적으로 덮어쓴다.
   const closeVenueSheet = () => {
     setVenueSheetOpen(false);
-    setVenueTargetDay(null);
-    setVenueTargetDateKey(null);
   };
 
   // [2026-06-30 §9] 요일 우선 흐름 — 모달이 고른 날짜들로 일정 재구성.
@@ -1097,6 +1095,7 @@ export function ClassForm({
                         type="button"
                         onClick={() => {
                           setVenueTargetDay(s.dayOfWeek);
+                          setVenueTargetDateKey(null);
                           setVenueSheetOpen(true);
                         }}
                         className={
@@ -1367,6 +1366,7 @@ export function ClassForm({
                                 type="button"
                                 onClick={() => {
                                   setVenueTargetDateKey(s.key);
+                                  setVenueTargetDay(null);
                                   setVenueSheetOpen(true);
                                 }}
                                 className={
