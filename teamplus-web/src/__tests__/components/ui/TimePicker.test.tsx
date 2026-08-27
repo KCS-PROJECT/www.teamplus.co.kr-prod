@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { formatTimeLabel, TimePicker } from '@/components/ui/TimePicker';
+import { formatTimeLabel, nextFullHour, TimePicker } from '@/components/ui/TimePicker';
 
 jest.mock('@/hooks/useNativeScrim', () => ({
   useNativeScrim: jest.fn(),
@@ -35,8 +35,10 @@ describe('TimePicker', () => {
 
     const hourList = screen.getByRole('group', { name: '시' });
     const minuteList = screen.getByRole('group', { name: '분' });
-    expect(hourList).toHaveClass('h-72');
-    expect(minuteList).toHaveClass('h-72');
+    // 목록 높이 = 항목 6개(h-11) + p-1 = 17rem. 시는 24개라 이 높이로 스크롤하고,
+    //   분은 항목 수만큼만 차지해(max-h) 하단 자투리가 남지 않는다.
+    expect(hourList).toHaveClass('h-[17rem]');
+    expect(minuteList).toHaveClass('max-h-[17rem]');
     expect(
       within(minuteList).getAllByRole('button').map((item) => item.textContent),
     ).toEqual(['00', '10', '20', '30', '40', '50']);
@@ -194,5 +196,103 @@ describe('TimePicker', () => {
   it('유효하지 않은 시각 문자열은 표시 과정에서 임의 변환하지 않는다', () => {
     expect(formatTimeLabel('24:00')).toBe('24:00');
     expect(formatTimeLabel('17:60')).toBe('17:60');
+  });
+
+  it('빈 값이면 defaultTime(다음 정시)을 기준으로 열리고 하한 미만 시각은 잠긴다', () => {
+    render(
+      <TimePicker
+        value=""
+        onChange={jest.fn()}
+        ariaLabel="종료 시간"
+        startHour={0}
+        stepMinutes={10}
+        minTime="09:40"
+        defaultTime="10:00"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '종료 시간' }));
+    const hourList = screen.getByRole('group', { name: '시' });
+    const minuteList = screen.getByRole('group', { name: '분' });
+    // 열림 위치 = defaultTime(10:00) — 하한(09:40)보다 우선.
+    expect(within(hourList).getByRole('button', { name: '10' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(minuteList).getByRole('button', { name: '00' })).toHaveAttribute('aria-pressed', 'true');
+    // 하한은 유지 — 09시는 잠기지 않는다(09:40·09:50 선택 가능).
+    expect(within(hourList).getByRole('button', { name: '09' })).toBeEnabled();
+    expect(within(hourList).getByRole('button', { name: '08' })).toBeDisabled();
+  });
+
+  it('nextFullHour 는 다음 정시를 돌려주고 23시대는 null 이다', () => {
+    expect(nextFullHour('09:30')).toBe('10:00');
+    expect(nextFullHour('09:00')).toBe('10:00');
+    expect(nextFullHour('23:10')).toBeNull();
+    expect(nextFullHour('')).toBeNull();
+  });
+
+  it('인라인 변형은 시트 없이 목록을 펼치고 시 탭 즉시 커밋하며 패널을 유지한다', () => {
+    const onChange = jest.fn();
+    render(
+      <TimePicker
+        value="14:30"
+        onChange={onChange}
+        ariaLabel="종료 시간"
+        startHour={0}
+        stepMinutes={10}
+        variant="inline"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '종료 시간' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    const hourList = screen.getByRole('group', { name: '시' });
+    fireEvent.click(within(hourList).getByRole('button', { name: '15' }));
+    expect(onChange).toHaveBeenCalledWith('15:30');
+    // 시 탭으로는 접히지 않는다 — 분을 이어서 고른다.
+    expect(screen.getByRole('group', { name: '시' })).toBeInTheDocument();
+  });
+
+  it('인라인 변형은 분을 탭하면 커밋 후 패널을 접는다', () => {
+    const onChange = jest.fn();
+    render(
+      <TimePicker
+        value="14:30"
+        onChange={onChange}
+        ariaLabel="종료 시간"
+        startHour={0}
+        stepMinutes={10}
+        variant="inline"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '종료 시간' }));
+    const minuteList = screen.getByRole('group', { name: '분' });
+    fireEvent.click(within(minuteList).getByRole('button', { name: '50' }));
+    expect(onChange).toHaveBeenCalledWith('14:50');
+    expect(screen.queryByRole('group', { name: '분' })).not.toBeInTheDocument();
+  });
+
+  it('인라인 변형에서 minTime 미만 시·분은 비활성으로 렌더된다', () => {
+    render(
+      <TimePicker
+        value=""
+        onChange={jest.fn()}
+        ariaLabel="종료 시간"
+        startHour={0}
+        stepMinutes={10}
+        minTime="14:40"
+        variant="inline"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '종료 시간' }));
+    const hourList = screen.getByRole('group', { name: '시' });
+    expect(within(hourList).getByRole('button', { name: '13' })).toBeDisabled();
+    expect(within(hourList).getByRole('button', { name: '14' })).toBeEnabled();
+
+    // 값이 없으면 하한 시(14)가 활성 기준 — 그 이전 분이 잠긴다.
+    const minuteList = screen.getByRole('group', { name: '분' });
+    expect(within(minuteList).getByRole('button', { name: '30' })).toBeDisabled();
+    expect(within(minuteList).getByRole('button', { name: '40' })).toBeEnabled();
   });
 });

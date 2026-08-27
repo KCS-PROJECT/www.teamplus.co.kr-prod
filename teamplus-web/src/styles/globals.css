@@ -677,6 +677,40 @@
     pointer-events: auto;
   }
 
+  /* ─── 중첩 시트(시트 위 시트) — dim 누적 억제 + 스택 표현 ────────────────
+     [2026-08-27] 시트 안에서 또 다른 시트를 여는 화면이 5곳 있다(날짜 선택 ·
+       회차 편집 · 경기 수정 · 장소 등록 — TimePicker 7개). 시트 dim 0.45 가 두 겹
+       쌓이면 1-(0.55^2)=약 70% 로 Critical 알림(0.70) 수준까지 어두워져,
+       아래 시트가 검게 눌린 채 남아 "시트에서 시트가 또 튀어나온" 이물감이 커진다.
+     SoT: docs/Design/MODAL_DIM_POLICY.md */
+
+  /* 2번째 이상 시트의 dim 은 투명 — 어둠을 45% 한 겹으로 유지한다.
+     pointer-events 는 그대로라 바깥 탭으로 닫는 동작은 영향받지 않는다. */
+  [data-bottom-sheet-root] ~ [data-bottom-sheet-root] [data-bottom-sheet-dim] {
+    background-color: transparent;
+  }
+
+  /* 위에 시트가 더 있으면 아래 시트를 축소·후퇴시켜 쌓임을 보여준다(iOS sheet stacking).
+     transform 이 아니라 개별 속성(scale/translate)을 쓴다 — 시트 진입 애니메이션
+     (animate-sheet-up, animation-fill-mode: both)이 transform 을 계속 점유하기 때문.
+     :has() 미지원 기기(iOS 15.0~15.3)에서는 축소만 생략되고 dim 억제는 그대로 적용된다. */
+  [data-bottom-sheet-root]:has(~ [data-bottom-sheet-root]) [data-bottom-sheet-panel] {
+    scale: 0.96;
+    translate: 0 -8px;
+  }
+
+  [data-bottom-sheet-panel] {
+    transition:
+      scale 0.28s cubic-bezier(0.33, 1, 0.68, 1),
+      translate 0.28s cubic-bezier(0.33, 1, 0.68, 1);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-bottom-sheet-panel] {
+      transition: none;
+    }
+  }
+
   /* ─── BottomNav dim — 단일 스크림 모델 (2026-05-30 v3 · 이중 dim 제거) ──────
      [배경] 모든 오버레이(Modal · ConfirmDialog · BottomSheet · *Sheet 류)는 이미
        자신의 풀스크린 backdrop 으로 BottomNav(z-40) 위를 덮는다:

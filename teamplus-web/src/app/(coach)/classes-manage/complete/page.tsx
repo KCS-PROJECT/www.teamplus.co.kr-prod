@@ -371,7 +371,9 @@ export default function ClassCompletePage() {
                   <p className="text-card-meta text-it-ink-500 dark:text-rink-300 leading-relaxed whitespace-pre-line">
                     {isEdit
                       ? '수업 정보가 수정되었습니다.\n변경 사항은 즉시 반영됩니다.'
-                      : '수업이 등록되었습니다.\n수정 화면에서 결제 패키지를 더 추가하거나 관리할 수 있어요.'}
+                      : data.isSpot
+                        ? '수업이 등록되었습니다.\n1회 수업료 단건 결제로 판매됩니다.'
+                        : '수업이 등록되었습니다.\n수정 화면에서 결제 패키지를 더 추가하거나 관리할 수 있어요.'}
                   </p>
                 </div>
               </div>

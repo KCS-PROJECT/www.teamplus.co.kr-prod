@@ -695,7 +695,7 @@ export function VenueFormSheet({
                     placeholder={MESSAGES.venue.form.openLabel}
                     sheetTitle={MESSAGES.venue.form.openLabel}
                     ariaLabel={MESSAGES.venue.form.openLabel}
-                    nested
+                    variant="inline"
                     className={cn(
                       'w-full rounded-lg px-3 py-2 text-sm focus:outline-none',
                       inputCls,
@@ -715,7 +715,7 @@ export function VenueFormSheet({
                     placeholder={MESSAGES.venue.form.closeLabel}
                     sheetTitle={MESSAGES.venue.form.closeLabel}
                     ariaLabel={MESSAGES.venue.form.closeLabel}
-                    nested
+                    variant="inline"
                     className={cn(
                       'w-full rounded-lg px-3 py-2 text-sm focus:outline-none',
                       inputCls,

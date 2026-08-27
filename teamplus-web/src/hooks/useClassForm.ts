@@ -9,6 +9,7 @@ import { MESSAGES } from '@/lib/messages';
 // sortDaySchedules SoT — class-categories 의 제네릭 구현을 단일 출처로 사용.
 //   ClassForm.tsx 등 기존 import 경로 호환을 위해 아래에서 re-export 한다.
 import { sortDaySchedules } from '@/lib/class-categories';
+import { SHOW_CLASS_REGION_SECTION } from '@/lib/regions';
 import {
   DEFAULT_CLASS_VISIBILITY,
   type ClassVisibility,
@@ -47,6 +48,8 @@ export interface ClassCompletePayload {
   // [2026-06-22] 수강료 표시용 전체 패키지 목록(1회권 + 정기권 전부). 있으면 complete 화면이
   //   singlePrice/monthlyPrice 대신 이 목록을 우선 표시 — 다중 정기권·변경 가격 정확 반영.
   feeItems?: { name: string; price: number }[];
+  // [spot 선불 단건] 완료 화면 안내 분기 — 1회용은 "패키지 추가" 안내가 성립하지 않는다.
+  isSpot?: boolean;
 }
 
 let _classCompleteData: ClassCompletePayload | null = null;
@@ -350,10 +353,14 @@ export function validateClassForm(
   // 수업 지역 — 시/도·시군구 모두 필수.
   //   목록·상세에 "서울 강남구" 로 표시돼 학부모가 위치를 목록 단계에서 판단하는 근거가 된다.
   //   시/도만 고르면 표기가 절반만 되므로 둘 다 강제한다.
-  if (!data.regionCity) {
-    errors.regionCity = MESSAGES.class.region.cityRequired;
-  } else if (!data.regionDistrict) {
-    errors.regionDistrict = MESSAGES.class.region.districtRequired;
+  // CLASS_REGION_DISABLED — 입력 섹션을 감췄으므로 필수 검증도 함께 건다.
+  //   가드가 없으면 고를 수단이 없는 값 때문에 저장이 막힌다. 플래그 복원 시 그대로 부활.
+  if (SHOW_CLASS_REGION_SECTION) {
+    if (!data.regionCity) {
+      errors.regionCity = MESSAGES.class.region.cityRequired;
+    } else if (!data.regionDistrict) {
+      errors.regionDistrict = MESSAGES.class.region.districtRequired;
+    }
   }
 
   if (data.ageMin !== '' && data.ageMax !== '' && Number(data.ageMax) < Number(data.ageMin)) {
@@ -380,6 +387,22 @@ export function validateClassForm(
         errors.dateSchedules =
           MESSAGES.classesEdit.validation.dateScheduleTimeRequired;
       }
+    }
+
+    // 요일별 기본 시간 — 종료가 시작보다 이르거나 같은 행을 막는다.
+    //   픽커가 하한(minTime)으로 이미 막지만, 기존 데이터·우회 경로 대비 최종 방어선이다.
+    //   시간 미입력 행은 여기서 걸지 않는다 — 저장 시 유효한 행만 추리는 기존 동작을 유지한다.
+    const dayOrderErrors: Partial<Record<DayOfWeek, string>> = {};
+    for (const s of data.daySchedules ?? []) {
+      if (s.startTime && s.endTime && s.startTime >= s.endTime) {
+        dayOrderErrors[s.dayOfWeek] =
+          MESSAGES.classesEdit.validation.dayScheduleTimeOrderInvalid;
+      }
+    }
+    if (Object.keys(dayOrderErrors).length > 0) {
+      errors.dayScheduleErrors = dayOrderErrors;
+      errors.daySchedules =
+        MESSAGES.classesEdit.validation.dayScheduleTimeOrderInvalid;
     }
   }
 
@@ -1125,7 +1148,12 @@ export function useClassForm({
           singlePrice: data.singlePrice,
           monthlyPrice: data.monthlyPrice,
           // 완료 화면 수강료 — 전체 패키지 목록(빌더 제공 시). 변경 가격·다중 정기권 정확 반영.
-          feeItems: buildCompleteFeeItems?.(data.singlePrice),
+          isSpot: data.trainingType === 'spot',
+          // [spot 선불 단건] 완료 화면에도 1회 수업료만 — 숨김 보존된 정기권 draft 누출 방지.
+          feeItems:
+            data.trainingType === 'spot'
+              ? undefined
+              : buildCompleteFeeItems?.(data.singlePrice),
           capacity: data.capacity,
           ageMin: data.ageMin,
           ageMax: data.ageMax,
@@ -1136,7 +1164,13 @@ export function useClassForm({
         });
         // 폼 PUT 성공 후 패키지(ClassProduct) 일괄 반영 — 수정 페이지가 연결한 경우만.
         //   패키지 bulk 실패 시 완료 페이지로 이동하지 않고 부분 실패로 처리(재시도 유도).
-        if (onAfterSubmit && createdClassId) {
+        //   [spot 선불 단건] 신규 spot 은 정기권 미사용 — 보존+숨김된 draft 를 전송하지 않는다.
+        //   (edit 모드는 제외 — 레거시 spot 의 기존 정기권 정리는 계속 가능해야 한다.)
+        if (
+          onAfterSubmit &&
+          createdClassId &&
+          !(mode === 'create' && data.trainingType === 'spot')
+        ) {
           const afterOk = await onAfterSubmit(createdClassId);
           if (!afterOk) return null;
         }

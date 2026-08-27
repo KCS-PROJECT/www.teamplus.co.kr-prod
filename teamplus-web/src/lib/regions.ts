@@ -11,6 +11,21 @@
  * 참고: 세종은 현재 Venue 시드에 없어 결과가 0건일 수 있으나, 링크장이 등록되면
  *   자동으로 채워지므로 칩은 노출한다.
  */
+/**
+ * CLASS_REGION_DISABLED — 수업 지역 입력 미사용(기능은 존치, 폼 노출·필수 검증만 차단).
+ *
+ * [2026-08-27] 사용자 결정. 필수의 원 근거였던 "전국 노출 시 타지역 오등록 방지"는
+ *   공개범위 중단(2026-08-12)으로 사라졌고, 목록 지역 표시도 제거(2026-08-19)돼
+ *   소비처가 수업 상세 1곳만 남았다. 운영 실측상 직접 입력 9건 중 3건이 장소와 모순이라
+ *   강제 입력이 오히려 오정보를 만들고 있었다.
+ *
+ * 이 플래그를 true 로 되돌리면 등록·수정 폼(동일 컴포넌트)의 입력과 필수 검증이 함께 부활한다.
+ *   절차·복원 시 판단할 것: claudedocs/class-visibility-disable-2026-08-12.md §3-B · §5
+ *
+ * 참조: ClassForm.tsx SECTION 3.5 · useClassForm.ts validateForm
+ */
+export const SHOW_CLASS_REGION_SECTION: boolean = false;
+
 export const REGIONS = [
   '서울',
   '경기',

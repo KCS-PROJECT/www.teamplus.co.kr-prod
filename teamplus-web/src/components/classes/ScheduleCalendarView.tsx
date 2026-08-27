@@ -13,11 +13,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '@/components/ui/Icon';
 import { BottomSheet } from '@/components/ui/BottomSheet';
-import { TimePicker } from '@/components/ui/TimePicker';
+import { TimePicker, addMinutes, nextFullHour } from '@/components/ui/TimePicker';
+import { useToast } from '@/components/ui/Toast';
 import { VenuePicker } from '@/components/common/VenuePicker';
 import { cn } from '@/lib/utils';
 import { MESSAGES } from '@/lib/messages';
 import { WEEKDAY_HEADERS, weekColumnOf, colIsSaturday, colIsSunday } from '@/lib/calendar-week';
+
+/** 회차 수정 시트의 시각 선택 간격(분) — 종료 하한("시작 + 1스텝") 계산 단위와 동일. */
+const EDIT_STEP_MINUTES = 10;
 
 export interface ScheduleCalendarItem {
   id: string;
@@ -201,6 +205,7 @@ export function ScheduleCalendarView({
   const showPastToggle = pastCount > 0;
 
   // 개별 회차 수정 시트.
+  const { toast } = useToast();
   const [editing, setEditing] = useState<ScheduleCalendarItem | null>(null);
   const [editStart, setEditStart] = useState('');
   const [editEnd, setEditEnd] = useState('');
@@ -214,8 +219,15 @@ export function ScheduleCalendarView({
     setEditVenue(s.venue?.id ?? '');
   };
 
+  /**
+   * 종료가 시작보다 이르거나 같으면 저장 불가 — 버튼 비활성과 핸들러 양쪽에서 막는다.
+   * 시간 미입력(ClassSchedule.startTime 은 nullable — "시간 미정" 회차)은 막지 않는다.
+   * 장소만 고치려는 기존 회차의 저장을 가로막게 된다.
+   */
+  const isEditTimeInvalid = !!editStart && !!editEnd && editStart >= editEnd;
+
   const handleSave = async () => {
-    if (!editing || isSaving) return;
+    if (!editing || isSaving || isEditTimeInvalid) return;
     setIsSaving(true);
     try {
       await onUpdate?.(editing.id, { startTime: editStart, endTime: editEnd, venueId: editVenue });
@@ -615,7 +627,7 @@ export function ScheduleCalendarView({
             <button
               type="button"
               onClick={handleSave}
-              disabled={isSaving}
+              disabled={isSaving || isEditTimeInvalid}
               className={
                 iceTheme
                   ? 'flex-1 h-11 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white font-bold disabled:opacity-50 transition-colors motion-reduce:transition-none active:brightness-95'
@@ -633,12 +645,16 @@ export function ScheduleCalendarView({
               <label className={cn('block text-w-caption font-bold', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>시작 시간</label>
               <TimePicker
                 value={editStart}
-                onChange={setEditStart}
+                // 시작을 뒤로 옮기면 무효해진 종료는 비운다.
+                onChange={(time) => {
+                  setEditStart(time);
+                  setEditEnd((prev) => (prev && prev <= time ? '' : prev));
+                }}
                 startHour={0}
-                stepMinutes={10}
+                stepMinutes={EDIT_STEP_MINUTES}
                 placeholder={MESSAGES.class.dayDefaults.startTime}
                 sheetTitle={MESSAGES.class.dayDefaults.startTime}
-                nested
+                variant="inline"
                 className={`${fieldClass} tabular-nums`}
                 aria-label="시작 시간"
               />
@@ -648,11 +664,18 @@ export function ScheduleCalendarView({
               <TimePicker
                 value={editEnd}
                 onChange={setEditEnd}
+                // 시작 미입력이면 잠그고, 입력되면 "시작 + 1스텝" 을 하한으로 연다.
+                disabled={!editStart}
+                onDisabledClick={() => toast.error(MESSAGES.common.timePicker.startTimeFirst)}
+                minTime={
+                  editStart ? (addMinutes(editStart, EDIT_STEP_MINUTES) ?? undefined) : undefined
+                }
+                defaultTime={editStart ? (nextFullHour(editStart) ?? undefined) : undefined}
                 startHour={0}
-                stepMinutes={10}
+                stepMinutes={EDIT_STEP_MINUTES}
                 placeholder={MESSAGES.class.dayDefaults.endTime}
                 sheetTitle={MESSAGES.class.dayDefaults.endTime}
-                nested
+                variant="inline"
                 className={`${fieldClass} tabular-nums`}
                 aria-label="종료 시간"
               />
