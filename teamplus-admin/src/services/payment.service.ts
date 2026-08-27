@@ -248,47 +248,87 @@ export const cancelPayment = async (
 };
 
 /**
- * 결제 통계 조회 (관리자/코치)
- * @param clubId - 클럽 ID (옵션)
- * @param startDate - 시작 날짜 (ISO 8601)
- * @param endDate - 종료 날짜 (ISO 8601)
- * @returns 결제 통계 정보
+ * 관리자 결제 목록 1건 — 백엔드 admin/list 응답은 평탄한 형태다
+ * (product 중첩 객체가 아니라 productName 문자열).
  */
-export const getPaymentStatistics = async (
-  clubId?: string,
-  startDate?: string,
-  endDate?: string
-): Promise<{
-  totalAmount: number;
-  totalCount: number;
-  successCount: number;
+export interface AdminPaymentItem {
+  id: string;
+  orderNumber: string;
+  amount: number;
+  paymentStatus: string;
+  paymentMethod?: string | null;
+  tid?: string | null;
+  userId?: string | null;
+  userEmail?: string | null;
+  userPhone?: string | null;
+  productName?: string | null;
+  createdAt: string;
+  completedAt?: string | null;
+}
+
+export interface AdminPaymentListResult {
+  data: AdminPaymentItem[];
+  pagination: { total: number; page: number; limit: number; totalPages: number };
+}
+
+export interface AdminPaymentStats {
+  totalPayments: number;
+  completedCount: number;
   failedCount: number;
-  cancelledCount: number;
-  averageAmount: number;
-}> => {
+  refundedCount: number;
+  totalRevenue: number;
+  totalRefunded: number;
+  netRevenue: number;
+  successRate: string;
+}
+
+interface AdminPaymentQuery {
+  teamId?: string;
+  startDate?: string;
+  endDate?: string;
+  status?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+/**
+ * 관리자 전체 결제 목록 조회 — 감독용(club/:teamId)·본인용(my) 과 달리 소속 제약이 없다.
+ * 팀 필터는 결제↔수업/대회 연결로 귀속을 판정한다(정산 센터와 동일 기준).
+ */
+export const getAdminPaymentList = async (
+  query: AdminPaymentQuery = {}
+): Promise<AdminPaymentListResult> => {
   try {
-    const params: Record<string, unknown> = {};
-    if (clubId) params.clubId = clubId;
-    if (startDate) params.startDate = startDate;
-    if (endDate) params.endDate = endDate;
-
-    const stats = await api.get<{
-      totalAmount: number;
-      totalCount: number;
-      successCount: number;
-      failedCount: number;
-      cancelledCount: number;
-      averageAmount: number;
-    }>('/payments/statistics', { params });
-
-    return stats;
+    return await api.get<AdminPaymentListResult>('/payments/admin/list', {
+      params: query,
+    });
   } catch (error: unknown) {
-    console.error('[Payment Service] 결제 통계 조회 실패:', error);
+    console.error('[Payment Service] 관리자 결제 목록 조회 실패:', error);
+    if (getApiErrorStatus(error) === 403) {
+      throw new Error('결제 목록 조회 권한이 없습니다.');
+    }
+    throw new Error(
+      getApiErrorMessage(error, '결제 목록을 불러오는 데 실패했습니다.')
+    );
+  }
+};
 
+/**
+ * 관리자 결제 통계 조회 — 상태별 집계를 DB 에서 직접 수행한 값을 그대로 사용한다.
+ */
+export const getAdminPaymentStats = async (
+  query: Pick<AdminPaymentQuery, 'teamId' | 'startDate' | 'endDate'> = {}
+): Promise<AdminPaymentStats> => {
+  try {
+    return await api.get<AdminPaymentStats>('/payments/admin/stats', {
+      params: query,
+    });
+  } catch (error: unknown) {
+    console.error('[Payment Service] 관리자 결제 통계 조회 실패:', error);
     if (getApiErrorStatus(error) === 403) {
       throw new Error('통계 조회 권한이 없습니다.');
     }
-
     throw new Error(
       getApiErrorMessage(error, '결제 통계를 불러오는 데 실패했습니다.')
     );
@@ -308,7 +348,8 @@ export const paymentService = {
   getPaymentHistoryByMember,
   getPaymentHistoryByClub,
   cancelPayment,
-  getPaymentStatistics,
+  getAdminPaymentList,
+  getAdminPaymentStats,
 };
 
 export default paymentService;

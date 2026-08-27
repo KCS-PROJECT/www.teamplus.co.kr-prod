@@ -1319,6 +1319,12 @@ export class PaymentsController {
       "결제 상태 (pending|completed|failed|refunded|partially_refunded)",
   })
   @ApiQuery({
+    name: "teamId",
+    required: false,
+    description:
+      "팀 ID — 결제↔수업/대회 연결로 귀속 판정 (정산 센터와 동일 기준)",
+  })
+  @ApiQuery({
     name: "startDate",
     required: false,
     description: "시작일 (YYYY-MM-DD)",
@@ -1373,6 +1379,7 @@ export class PaymentsController {
   async getAdminPaymentList(
     @Query("search") search?: string,
     @Query("status") status?: string,
+    @Query("teamId") teamId?: string,
     @Query("startDate") startDate?: string,
     @Query("endDate") endDate?: string,
     @Query("page") page?: string,
@@ -1381,6 +1388,7 @@ export class PaymentsController {
     return this.paymentsService.getAdminPaymentList({
       search,
       status,
+      teamId,
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
       page: page ? parseInt(page, 10) : 1,
@@ -1410,6 +1418,12 @@ export class PaymentsController {
     required: false,
     description: "종료일 (YYYY-MM-DD)",
   })
+  @ApiQuery({
+    name: "teamId",
+    required: false,
+    description:
+      "팀 ID — 결제↔수업/대회 연결로 귀속 판정 (정산 센터와 동일 기준)",
+  })
   @ApiResponse({
     status: 200,
     description: "결제 통계 조회 성공",
@@ -1429,10 +1443,12 @@ export class PaymentsController {
   async getAdminPaymentStats(
     @Query("startDate") startDate?: string,
     @Query("endDate") endDate?: string,
+    @Query("teamId") teamId?: string,
   ) {
     return this.paymentsService.getAdminPaymentStats({
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
+      teamId,
     });
   }
 

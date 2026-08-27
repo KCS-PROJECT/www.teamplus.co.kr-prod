@@ -1519,17 +1519,43 @@ export class PaymentsService {
   }
 
   /**
+   * 팀 귀속 조건 — 결제↔수업/대회 연결로 판정한다.
+   *  결제자는 보호자이고 팀에 속한 사람은 자녀라, TeamMember 축(레거시 getClubPayments)은
+   *  결제를 누락·오집계한다. 정산 센터(getTeamTransactions)와 동일 기준을 사용한다.
+   */
+  private buildTeamScopeFilter(
+    teamId: string,
+  ): import("@prisma/client").Prisma.PaymentWhereInput {
+    return {
+      OR: [
+        { enrollments: { some: { class: { teamId } } } },
+        { monthlyBillingLines: { some: { billing: { class: { teamId } } } } },
+        { tournamentRegistrations: { some: { tournament: { teamId } } } },
+      ],
+    };
+  }
+
+  /**
    * 관리자 전체 결제 목록 조회 (검색/필터/페이지네이션)
    */
   async getAdminPaymentList(params: {
     search?: string;
     status?: string;
+    teamId?: string;
     startDate?: Date;
     endDate?: Date;
     page?: number;
     limit?: number;
   }) {
-    const { search, status, startDate, endDate, page = 1, limit = 20 } = params;
+    const {
+      search,
+      status,
+      teamId,
+      startDate,
+      endDate,
+      page = 1,
+      limit = 20,
+    } = params;
     const skip = (page - 1) * limit;
 
     const where: import("@prisma/client").Prisma.PaymentWhereInput = {};
@@ -1545,12 +1571,23 @@ export class PaymentsService {
       };
     }
 
-    // 검색어: 주문번호 또는 사용자 이메일
+    // 검색어(OR)와 팀 귀속(OR)은 서로 다른 축이라 AND 로 합성한다.
+    //   where.OR 에 직접 넣으면 두 조건이 하나의 OR 로 뭉쳐 필터가 무력화된다.
+    const andConditions: import("@prisma/client").Prisma.PaymentWhereInput[] =
+      [];
     if (search) {
-      where.OR = [
-        { orderNumber: { contains: search } },
-        { user: { email: { contains: search } } },
-      ];
+      andConditions.push({
+        OR: [
+          { orderNumber: { contains: search } },
+          { user: { email: { contains: search } } },
+        ],
+      });
+    }
+    if (teamId) {
+      andConditions.push(this.buildTeamScopeFilter(teamId));
+    }
+    if (andConditions.length > 0) {
+      where.AND = andConditions;
     }
 
     const [payments, total] = await Promise.all([
@@ -1613,8 +1650,12 @@ export class PaymentsService {
   /**
    * 관리자 결제 통계 (날짜 필터 지원)
    */
-  async getAdminPaymentStats(params: { startDate?: Date; endDate?: Date }) {
-    const { startDate, endDate } = params;
+  async getAdminPaymentStats(params: {
+    startDate?: Date;
+    endDate?: Date;
+    teamId?: string;
+  }) {
+    const { startDate, endDate, teamId } = params;
 
     const where: import("@prisma/client").Prisma.PaymentWhereInput = {};
 
@@ -1623,6 +1664,10 @@ export class PaymentsService {
         ...(startDate && { gte: startDate }),
         ...(endDate && { lte: endDate }),
       };
+    }
+
+    if (teamId) {
+      where.AND = [this.buildTeamScopeFilter(teamId)];
     }
 
     const statsByStatus = await this.prisma.payment.groupBy({

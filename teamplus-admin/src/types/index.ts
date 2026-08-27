@@ -28,7 +28,10 @@ export enum Status {
   REJECTED = 'rejected',
   COMPLETED = 'completed',
   FAILED = 'failed',
+  /// 결제 화면 진입 후 이탈·재시도로 버려진 주문 (환불이 아니다)
   CANCELLED = 'cancelled',
+  REFUNDED = 'refunded',
+  PARTIALLY_REFUNDED = 'partially_refunded',
   PRESENT = 'present',
   ABSENT = 'absent',
   SENT = 'sent',
