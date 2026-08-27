@@ -1319,6 +1319,12 @@ export class PaymentsController {
       "결제 상태 (pending|completed|failed|refunded|partially_refunded)",
   })
   @ApiQuery({
+    name: "teamId",
+    required: false,
+    description:
+      "팀 ID — 결제↔수업/대회 연결로 귀속 판정 (정산 센터와 동일 기준)",
+  })
+  @ApiQuery({
     name: "startDate",
     required: false,
     description: "시작일 (YYYY-MM-DD)",
@@ -1373,6 +1379,7 @@ export class PaymentsController {
   async getAdminPaymentList(
     @Query("search") search?: string,
     @Query("status") status?: string,
+    @Query("teamId") teamId?: string,
     @Query("startDate") startDate?: string,
     @Query("endDate") endDate?: string,
     @Query("page") page?: string,
@@ -1381,11 +1388,53 @@ export class PaymentsController {
     return this.paymentsService.getAdminPaymentList({
       search,
       status,
+      teamId,
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 20,
     });
+  }
+
+  /**
+   * [어드민 결제 관리] 팀별 결제 요약 — 접힌 팀 카드 칩 + 헤더 합산용.
+   */
+  @Get("admin/team-summaries")
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @ApiBearerAuth()
+  @Roles("ADMIN")
+  @ApiOperation({
+    summary: "팀별 선택 월 결제 요약 (어드민 전용)",
+    description:
+      "선택 월(yearMonth, 기본 현재 KST 월) 기준으로 팀마다 결제 대상/완료/환불/미납 건수를 반환합니다. " +
+      "수치는 결제 현황 모달 상세(수업 monthScoped·대회 신청) 행 집계와 일치합니다. 대회는 월 무관 — " +
+      "진행 중·예정 + 미납 잔존 종료 대회만 포함.",
+  })
+  @ApiQuery({
+    name: "yearMonth",
+    required: false,
+    description: "조회 월 (YYYY-MM, 기본: 현재 KST 월)",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "팀별 결제 요약 조회 성공",
+    schema: {
+      example: [
+        {
+          teamId: "team-uuid",
+          targetCount: 14,
+          paidCount: 8,
+          refundedCount: 0,
+          unpaidCount: 6,
+          classCount: 3,
+          tournamentCount: 1,
+          monthTournamentIds: ["tournament-uuid"],
+        },
+      ],
+    },
+  })
+  getAdminTeamPaymentSummaries(@Query("yearMonth") yearMonth?: string) {
+    return this.paymentsService.getAdminTeamPaymentSummaries(yearMonth);
   }
 
   /**
@@ -1410,6 +1459,12 @@ export class PaymentsController {
     required: false,
     description: "종료일 (YYYY-MM-DD)",
   })
+  @ApiQuery({
+    name: "teamId",
+    required: false,
+    description:
+      "팀 ID — 결제↔수업/대회 연결로 귀속 판정 (정산 센터와 동일 기준)",
+  })
   @ApiResponse({
     status: 200,
     description: "결제 통계 조회 성공",
@@ -1429,10 +1484,12 @@ export class PaymentsController {
   async getAdminPaymentStats(
     @Query("startDate") startDate?: string,
     @Query("endDate") endDate?: string,
+    @Query("teamId") teamId?: string,
   ) {
     return this.paymentsService.getAdminPaymentStats({
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
+      teamId,
     });
   }
 

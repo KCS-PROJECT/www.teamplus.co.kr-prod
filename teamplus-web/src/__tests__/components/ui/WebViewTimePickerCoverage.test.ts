@@ -34,11 +34,23 @@ describe('app-facing WebView time picker coverage', () => {
     expect(timePickers).toHaveLength(18);
     for (const timePicker of timePickers) {
       expect(timePicker).toContain('startHour={0}');
-      expect(timePicker).toContain('stepMinutes={10}');
+      // 리터럴 10 또는 명명 상수 — 상수 정의부는 아래에서 10분으로 고정 검증한다.
+      expect(timePicker).toMatch(
+        /stepMinutes=\{(?:10|SCHEDULE_STEP_MINUTES|EDIT_STEP_MINUTES|COMMON_STEP_MINUTES)\}/,
+      );
     }
+    expect(readSource('src/components/classes/ClassForm.tsx')).toMatch(
+      /const SCHEDULE_STEP_MINUTES = 10;/,
+    );
+    expect(readSource('src/components/classes/ScheduleCalendarView.tsx')).toMatch(
+      /const EDIT_STEP_MINUTES = 10;/,
+    );
+    expect(readSource('src/components/ui/MultiDatePickerModal.tsx')).toMatch(
+      /const COMMON_STEP_MINUTES = 10;/,
+    );
   });
 
-  it('marks pickers inside overlays as nested', () => {
+  it('renders overlay pickers inline instead of nesting bottom sheets', () => {
     const nestedSources = [
       'src/components/classes/ScheduleCalendarView.tsx',
       'src/components/ui/MultiDatePickerModal.tsx',
@@ -53,7 +65,9 @@ describe('app-facing WebView time picker coverage', () => {
 
     expect(nestedPickers).toHaveLength(7);
     for (const timePicker of nestedPickers) {
-      expect(timePicker).toMatch(/\bnested\b/);
+      // 시트 중첩 폐기 — 오버레이 안 픽커는 인라인 전개(variant="inline")만 허용.
+      expect(timePicker).toMatch(/variant="inline"/);
+      expect(timePicker).not.toMatch(/\bnested\b/);
     }
   });
 });

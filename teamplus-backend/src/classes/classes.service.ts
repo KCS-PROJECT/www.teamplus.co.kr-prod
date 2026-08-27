@@ -97,7 +97,7 @@ import { TeamsService } from "@/teams/teams.service";
  *  - 발급 수량 SoT = sessionsPerMonth. 미입력 = 0(크레딧 미발급). 크레딧을 되살리려면
  *    감독이 패키지에 실제 회수를 입력한다. weeks(만료일용)만 미입력 시 4주로 폴백.
  */
-function buildClassProducts(
+export function buildClassProducts(
   classId: string,
   dto: {
     singlePrice?: number;
@@ -105,6 +105,7 @@ function buildClassProducts(
     packageWeeks?: number;
     packageTotalSessions?: number;
     billingMode?: string;
+    trainingType?: string | null;
   },
 ): Array<{
   classId: string;
@@ -120,6 +121,26 @@ function buildClassProducts(
   isActive?: boolean;
 }> {
   const products: ReturnType<typeof buildClassProducts> = [];
+
+  // [spot 선불 단건] 1회용 수업(선불) — "1회 수업료" 판매 1행만. 정기권 미생성.
+  //   일반 선불과 달리 1회권을 판매(isActive 기본 true)로 켠다. feePerSession 미설정 →
+  //   결제 옵션의 수량 선택이 자동 숨김(1회 고정)·금액은 price 단건("횟수제 선결제" 경로).
+  //   billingMode 조건: 신규 정책(선불 고정) 수업에만 적용 — 레거시 spot(BOTH·POSTPAID)은
+  //   아래 기존 분기로 흘려 상품 구성을 보존한다(수정 저장이 판매 상태를 뒤집지 않게).
+  if (dto.trainingType === "spot" && dto.billingMode === "PREPAID") {
+    if (dto.singlePrice) {
+      products.push({
+        classId,
+        productName: "1회 수업료",
+        feeType: "PER_SESSION",
+        billingTiming: "PREPAID",
+        price: dto.singlePrice,
+        sessionsPerMonth: 0,
+        durationDays: 30,
+      });
+    }
+    return products;
+  }
 
   // [Phase B-5] 후불(POSTPAID) — "1회 수업료"(singlePrice=feePerSession) 상품 1개.
   //   출석 횟수 × feePerSession 으로 월말 정산(B-3). price 는 단가 스냅샷.
@@ -541,6 +562,20 @@ export class ClassesService {
     ) {
       throw new BadRequestException(
         "1회용 수업은 일정을 1개만 등록할 수 있습니다.",
+      );
+    }
+    // [spot 선불 단건] 1회용 수업은 1회 수업료 단건(선불) 판매만 지원 — 폼 게이트의 서버 방어선.
+    if (
+      createDto.trainingType === "spot" &&
+      (createDto.billingMode ?? "BOTH") !== "PREPAID"
+    ) {
+      throw new BadRequestException(
+        "1회용 수업은 1회 수업료 단건 결제(선불)로만 판매할 수 있습니다.",
+      );
+    }
+    if (createDto.trainingType === "spot" && createDto.monthlyPrice) {
+      throw new BadRequestException(
+        "1회용 수업은 정기권(월 결제)을 등록할 수 없습니다.",
       );
     }
 
@@ -3332,6 +3367,12 @@ export class ClassesService {
         "1회용 수업은 일정을 1개만 등록할 수 있습니다.",
       );
     }
+    // [spot 선불 단건] 1회용 수업은 정기권 미사용 — 수정 경로의 월 결제 전송 차단.
+    if (classRecord.trainingType === "spot" && updateDto.monthlyPrice) {
+      throw new BadRequestException(
+        "1회용 수업은 정기권(월 결제)을 등록할 수 없습니다.",
+      );
+    }
 
     // 2026-05-12: 배정 코치 동기화 사전 검증 — 회의록 정합 (Team owner + CoachProfile 통합).
     //   - DIRECTOR/감독: Team.coachId 매핑 — CoachProfile 없을 수 있음
@@ -3426,6 +3467,8 @@ export class ClassesService {
         packageTotalSessions: updateDto.packageTotalSessions,
         // 기존 수업의 결제방식 기준으로 PER_SESSION 판매/비판매·billingTiming 결정 (B2).
         billingMode: classRecord.billingMode,
+        // [spot 선불 단건] 신규 정책 spot(선불) 수정 저장이 판매 1회권 구성을 유지하도록 전달.
+        trainingType: classRecord.trainingType,
       });
 
       // [M-1] id 보존 reconcile — enrollment/payment 참조 ClassProduct 의 FK 단절 방지.
@@ -4036,6 +4079,8 @@ export class ClassesService {
         packageTotalSessions: updateDto.packageTotalSessions,
         // 기존 수업의 결제방식 기준으로 PER_SESSION 판매/비판매·billingTiming 결정 (B2).
         billingMode: classRecord.billingMode,
+        // [spot 선불 단건] 신규 정책 spot(선불) 수정 저장이 판매 1회권 구성을 유지하도록 전달.
+        trainingType: classRecord.trainingType,
       });
 
       // [M-1] id 보존 reconcile — enrollment/payment 참조 ClassProduct 의 FK 단절 방지.
@@ -6732,6 +6777,21 @@ export class ClassesService {
         id: userId,
         userType,
       } as JwtUserPayload);
+    }
+
+    // [spot 선불 단건] 1회용 수업 — 정기권(MONTHLY_FIXED) 신규 추가 차단.
+    //   레거시(정책 이전) 정기권의 수정·비활성(id 있는 upsert)·삭제 정리는 허용한다.
+    const { trainingType } = await this.prisma.class.findUniqueOrThrow({
+      where: { id: classId },
+      select: { trainingType: true },
+    });
+    if (
+      trainingType === "spot" &&
+      upserts.some((item) => !item.id && item.feeType === "MONTHLY_FIXED")
+    ) {
+      throw new BadRequestException(
+        "1회용 수업은 정기권(월 결제)을 등록할 수 없습니다.",
+      );
     }
 
     // 후불(POSTPAID) 수업은 "1회 수업료" 단일 상품으로 출석 기반 정산하므로 신규 패키지

@@ -186,7 +186,7 @@ export function MatchEditSheet({
               sheetTitle={MESSAGES.common.timePicker.matchTime}
               ariaLabel={MESSAGES.common.timePicker.matchTime}
               showChevron={false}
-              nested
+              variant="inline"
               className="px-3 gap-2 bg-wbg dark:bg-rink-700"
             />
           </div>

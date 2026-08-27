@@ -7,8 +7,12 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Card } from '@/components/ui/card';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { clubService } from '@/services/club.service';
-import { paymentService } from '@/services/payment.service';
-import { Status, type Club, type Payment } from '@/types';
+import {
+  paymentService,
+  type AdminPaymentItem,
+  type AdminPaymentStats,
+} from '@/services/payment.service';
+import { Status, type Club } from '@/types';
 
 type MessageState = { type: 'error'; text: string } | null;
 
@@ -24,129 +28,12 @@ interface ClassSummary {
   amount: number;
 }
 
-interface CalculatedStats {
-  totalSales: number;
-  refundAmount: number;
-  netSales: number;
-  totalCount: number;
-  completedCount: number;
-  failedCount: number;
-  cancelledCount: number;
+/** 서버 집계(admin/stats)에 없는 파생값만 목록에서 계산한다. */
+interface DerivedStats {
+  /** 결론이 난 결제 건수 (완료 + 환불 + 실패) — 상태 비율의 분모 */
+  settledCount: number;
   averageAmount: number;
 }
-
-const nowIso = (): string => new Date().toISOString();
-
-const fallbackClubs: Club[] = [
-  {
-    id: 'fallback-club-1',
-    clubCode: 'ACE-001',
-    clubName: 'ACE 아이스하키',
-    coachId: 'coach-1',
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
-  },
-];
-
-const fallbackPayments: Payment[] = [
-  {
-    id: 'payment-1',
-    orderNumber: 'ORD-20260301-001',
-    userId: 'user-1',
-    amount: 240000,
-    paymentStatus: Status.COMPLETED,
-    paymentMethod: 'card',
-    createdAt: '2026-03-01T02:00:00.000Z',
-    updatedAt: '2026-03-01T02:00:00.000Z',
-    member: {
-      id: 'member-1',
-      userId: 'user-1',
-      clubId: 'fallback-club-1',
-      playerName: '김민준',
-      playerAge: 9,
-      approvalStatus: Status.APPROVED,
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-    },
-    product: {
-      id: 'product-1',
-      classId: 'class-1',
-      productName: '신규반 월 8회',
-      price: 240000,
-      sessionsPerMonth: 8,
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-    },
-  },
-  {
-    id: 'payment-2',
-    orderNumber: 'ORD-20260302-002',
-    userId: 'user-2',
-    amount: 280000,
-    paymentStatus: Status.COMPLETED,
-    paymentMethod: 'bank',
-    createdAt: '2026-03-02T04:30:00.000Z',
-    updatedAt: '2026-03-02T04:30:00.000Z',
-    member: {
-      id: 'member-2',
-      userId: 'user-2',
-      clubId: 'fallback-club-1',
-      playerName: '이하은',
-      playerAge: 10,
-      approvalStatus: Status.APPROVED,
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-    },
-    product: {
-      id: 'product-2',
-      classId: 'class-2',
-      productName: '중급반 월 8회',
-      price: 280000,
-      sessionsPerMonth: 8,
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-    },
-  },
-  {
-    id: 'payment-3',
-    orderNumber: 'ORD-20260302-003',
-    userId: 'user-3',
-    amount: 120000,
-    paymentStatus: Status.CANCELLED,
-    paymentMethod: 'card',
-    createdAt: '2026-03-02T07:00:00.000Z',
-    updatedAt: '2026-03-03T01:10:00.000Z',
-    member: {
-      id: 'member-3',
-      userId: 'user-3',
-      clubId: 'fallback-club-1',
-      playerName: '박도윤',
-      playerAge: 11,
-      approvalStatus: Status.APPROVED,
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-    },
-    product: {
-      id: 'product-3',
-      classId: 'class-1',
-      productName: '신규반 월 4회',
-      price: 120000,
-      sessionsPerMonth: 4,
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-    },
-  },
-  {
-    id: 'payment-4',
-    orderNumber: 'ORD-20260303-004',
-    userId: 'user-4',
-    amount: 320000,
-    paymentStatus: Status.FAILED,
-    paymentMethod: 'card',
-    createdAt: '2026-03-03T03:50:00.000Z',
-    updatedAt: '2026-03-03T03:55:00.000Z',
-  },
-];
 
 const getDefaultStartDate = (): string => {
   const now = new Date();
@@ -159,24 +46,37 @@ const toApiDate = (date: string): string => new Date(`${date}T00:00:00`).toISOSt
 
 const formatCurrency = (amount: number): string => `${Math.round(amount).toLocaleString()}원`;
 
-const calculateStats = (payments: Payment[]): CalculatedStats => {
-  const completed = payments.filter((payment) => payment.paymentStatus === Status.COMPLETED);
-  const failed = payments.filter((payment) => payment.paymentStatus === Status.FAILED);
-  const cancelled = payments.filter((payment) => payment.paymentStatus === Status.CANCELLED);
+/**
+ * 승인된 적 없는 상태 — 금액 집계에서 제외한다.
+ *  `cancelled` 는 환불이 아니라 결제 화면 진입 후 이탈·재시도로 버려진 주문이다.
+ */
+const INCOMPLETE_STATUSES: string[] = [Status.PENDING, Status.CANCELLED];
 
-  const totalSales = completed.reduce((sum, item) => sum + item.amount, 0);
-  const refundAmount = cancelled.reduce((sum, item) => sum + item.amount, 0);
-  const netSales = totalSales - refundAmount;
+const sumAmount = (list: AdminPaymentItem[]): number =>
+  list.reduce((sum, item) => sum + item.amount, 0);
+
+/** KPI 는 서버 집계를 쓰고, 서버가 주지 않는 값만 목록에서 파생한다. */
+const deriveStats = (
+  payments: AdminPaymentItem[],
+  stats: AdminPaymentStats | null
+): DerivedStats => {
+  const completed = payments.filter((p) => p.paymentStatus === Status.COMPLETED);
+
+  // 상태 비율의 분모는 전체가 아니라 "결론이 난 건"이다.
+  //   전체(totalPayments)에는 결제 화면 진입 후 이탈한 주문이 다수 포함돼 있어,
+  //   그대로 분모로 쓰면 완료 비율이 실제보다 훨씬 낮게 보인다.
+  const settledCount = stats
+    ? stats.completedCount + stats.refundedCount + stats.failedCount
+    : payments.filter((p) => !INCOMPLETE_STATUSES.includes(p.paymentStatus)).length;
 
   return {
-    totalSales,
-    refundAmount,
-    netSales,
-    totalCount: payments.length,
-    completedCount: completed.length,
-    failedCount: failed.length,
-    cancelledCount: cancelled.length,
-    averageAmount: completed.length > 0 ? totalSales / completed.length : 0,
+    settledCount,
+    averageAmount:
+      stats && stats.completedCount > 0
+        ? stats.totalRevenue / stats.completedCount
+        : completed.length > 0
+          ? sumAmount(completed) / completed.length
+          : 0,
   };
 };
 
@@ -189,85 +89,79 @@ const toMethodLabel = (method?: string): string => {
 
 export default function PaymentStatisticsPage() {
   const router = useRouter();
-  const [clubs, setClubs] = useState<Club[]>([]);
-  const [selectedClubId, setSelectedClubId] = useState('all');
+  const [teams, setTeams] = useState<Club[]>([]);
+  const [selectedTeamId, setSelectedTeamId] = useState('all');
   const [startDate, setStartDate] = useState(getDefaultStartDate());
   const [endDate, setEndDate] = useState(getDefaultEndDate());
-  const [payments, setPayments] = useState<Payment[]>([]);
+  const [payments, setPayments] = useState<AdminPaymentItem[]>([]);
+  const [stats, setStats] = useState<AdminPaymentStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState<MessageState>(null);
-  const clubSelectId = useId();
+  const teamSelectId = useId();
   const startDateId = useId();
   const endDateId = useId();
 
   useEffect(() => {
-    const loadClubs = async () => {
+    const loadTeams = async () => {
       try {
+        // 응답 필드는 아직 clubName/clubCode 계약이라 타입은 Club 을 그대로 쓴다.
         const list = await clubService.getClubs({ page: 1, pageSize: 50 });
-        setClubs(list.length > 0 ? list : fallbackClubs);
+        setTeams(list);
       } catch {
-        setClubs(fallbackClubs);
+        setTeams([]);
       }
     };
-    void loadClubs();
+    void loadTeams();
   }, []);
 
   const loadStatistics = useCallback(async () => {
     setIsLoading(true);
     setMessage(null);
 
-    const clubId = selectedClubId === 'all' ? undefined : selectedClubId;
-    const apiStartDate = toApiDate(startDate);
-    const apiEndDate = toApiDate(endDate);
+    const query = {
+      teamId: selectedTeamId === 'all' ? undefined : selectedTeamId,
+      startDate: toApiDate(startDate),
+      endDate: toApiDate(endDate),
+    };
 
     try {
-      const paymentList = clubId
-        ? await paymentService
-            .getPaymentHistoryByClub(clubId, {
-              page: 1,
-              pageSize: 200,
-              startDate: apiStartDate,
-              endDate: apiEndDate,
-            })
-            .catch(() => fallbackPayments)
-        : await paymentService
-            .getPaymentHistory(undefined, {
-              page: 1,
-              pageSize: 200,
-              startDate: apiStartDate,
-              endDate: apiEndDate,
-            })
-            .catch(() => fallbackPayments);
+      // 조회 실패를 빈 목록으로 감추지 않는다 — 매출이 0인 것과 API 가 죽은 것은 다르다.
+      const [list, statsResult] = await Promise.all([
+        paymentService.getAdminPaymentList({ ...query, page: 1, limit: 200 }),
+        paymentService.getAdminPaymentStats(query),
+      ]);
 
-      setPayments(paymentList.length > 0 ? paymentList : fallbackPayments);
-
-      await paymentService
-        .getPaymentStatistics(clubId, apiStartDate, apiEndDate)
-        .catch(() => null);
+      setPayments(list.data ?? []);
+      setStats(statsResult);
     } catch (error) {
       const text = error instanceof Error ? error.message : '결제 통계를 불러오는 중 오류가 발생했습니다.';
       setMessage({ type: 'error', text });
-      setPayments(fallbackPayments);
+      setPayments([]);
+      setStats(null);
     } finally {
       setIsLoading(false);
     }
-  }, [endDate, selectedClubId, startDate]);
+  }, [endDate, selectedTeamId, startDate]);
 
   useEffect(() => {
     void loadStatistics();
   }, [loadStatistics]);
 
-  const calculated = useMemo(() => calculateStats(payments), [payments]);
+  const derived = useMemo(() => deriveStats(payments, stats), [payments, stats]);
 
   const methodSummary = useMemo<MethodSummary[]>(() => {
+    // 매출 비중이므로 승인된 결제만 집계한다 — 이탈·진행 중 건이 섞이면 비중이 왜곡된다.
+    const approved = payments.filter(
+      (p) => !INCOMPLETE_STATUSES.includes(p.paymentStatus) && p.paymentStatus !== Status.FAILED,
+    );
     const map = new Map<string, { amount: number; count: number }>();
-    payments.forEach((payment) => {
+    approved.forEach((payment) => {
       const key = payment.paymentMethod || 'other';
       const previous = map.get(key) || { amount: 0, count: 0 };
       map.set(key, { amount: previous.amount + payment.amount, count: previous.count + 1 });
     });
 
-    const totalAmount = payments.reduce((sum, item) => sum + item.amount, 0) || 1;
+    const totalAmount = sumAmount(approved) || 1;
     return Array.from(map.entries())
       .map(([method, summary]) => ({
         method,
@@ -283,7 +177,7 @@ export default function PaymentStatisticsPage() {
     payments
       .filter((payment) => payment.paymentStatus === Status.COMPLETED)
       .forEach((payment) => {
-        const className = payment.product?.productName || '미분류 상품';
+        const className = payment.productName || '미분류 상품';
         const amount = map.get(className) || 0;
         map.set(className, amount + payment.amount);
       });
@@ -321,18 +215,18 @@ export default function PaymentStatisticsPage() {
       <Card className="p-5 space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <div>
-            <label htmlFor={clubSelectId} className="block text-sm mb-1.5 text-slate-600 dark:text-slate-300">클럽</label>
+            <label htmlFor={teamSelectId} className="block text-sm mb-1.5 text-slate-600 dark:text-slate-300">팀</label>
             <select
-              id={clubSelectId}
-              value={selectedClubId}
-              onChange={(e) => setSelectedClubId(e.target.value)}
-              aria-label="통계 조회 클럽 선택"
+              id={teamSelectId}
+              value={selectedTeamId}
+              onChange={(e) => setSelectedTeamId(e.target.value)}
+              aria-label="통계 조회 팀 선택"
               className="w-full h-10 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 text-sm"
             >
-              <option value="all">전체 클럽</option>
-              {clubs.map((club) => (
-                <option key={club.id} value={club.id}>
-                  {club.clubName}
+              <option value="all">전체 팀</option>
+              {teams.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.clubName}
                 </option>
               ))}
             </select>
@@ -378,25 +272,40 @@ export default function PaymentStatisticsPage() {
         </Card>
       )}
 
+      {!message && payments.length === 0 && (
+        <Card className="p-6 text-center">
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            선택한 기간에 결제 내역이 없습니다.
+          </p>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+            조회 기간이나 팀을 바꿔서 다시 확인해보세요.
+          </p>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
         <Card className="p-4">
-          <p className="text-sm text-slate-500 dark:text-slate-400">총 매출</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">총 결제</p>
           <p className="text-2xl font-semibold text-slate-900 dark:text-white mt-1 text-right tabular-nums">
-            {formatCurrency(calculated.totalSales)}
+            {formatCurrency(stats?.totalRevenue ?? 0)}
           </p>
         </Card>
         <Card className="p-4">
           <p className="text-sm text-slate-500 dark:text-slate-400">환불 금액</p>
-          <p className="text-2xl font-semibold text-red-600 mt-1 text-right tabular-nums">{formatCurrency(calculated.refundAmount)}</p>
+          <p className="text-2xl font-semibold text-red-600 mt-1 text-right tabular-nums">
+            {formatCurrency(stats?.totalRefunded ?? 0)}
+          </p>
         </Card>
         <Card className="p-4">
           <p className="text-sm text-slate-500 dark:text-slate-400">순매출</p>
-          <p className="text-2xl font-semibold text-green-600 mt-1 text-right tabular-nums">{formatCurrency(calculated.netSales)}</p>
+          <p className="text-2xl font-semibold text-green-600 mt-1 text-right tabular-nums">
+            {formatCurrency(stats?.netRevenue ?? 0)}
+          </p>
         </Card>
         <Card className="p-4">
           <p className="text-sm text-slate-500 dark:text-slate-400">평균 결제 금액</p>
           <p className="text-2xl font-semibold text-slate-900 dark:text-white mt-1 text-right tabular-nums">
-            {formatCurrency(calculated.averageAmount)}
+            {formatCurrency(derived.averageAmount)}
           </p>
         </Card>
       </div>
@@ -406,21 +315,21 @@ export default function PaymentStatisticsPage() {
           <h2 className="text-base font-semibold text-slate-900 dark:text-white">결제 상태별 현황</h2>
           <StatusBar
             label="완료"
-            value={calculated.completedCount}
-            total={calculated.totalCount}
+            value={stats?.completedCount ?? 0}
+            total={derived.settledCount}
             barClass="bg-green-500"
           />
           <StatusBar
-            label="실패"
-            value={calculated.failedCount}
-            total={calculated.totalCount}
-            barClass="bg-red-500"
+            label="환불"
+            value={stats?.refundedCount ?? 0}
+            total={derived.settledCount}
+            barClass="bg-amber-500"
           />
           <StatusBar
-            label="환불"
-            value={calculated.cancelledCount}
-            total={calculated.totalCount}
-            barClass="bg-amber-500"
+            label="실패"
+            value={stats?.failedCount ?? 0}
+            total={derived.settledCount}
+            barClass="bg-red-500"
           />
         </Card>
 

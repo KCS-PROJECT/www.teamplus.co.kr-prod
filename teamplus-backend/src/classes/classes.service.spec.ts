@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { ClassesService } from "./classes.service";
+import { buildClassProducts, ClassesService } from "./classes.service";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
 import { TeamsService } from "@/teams/teams.service";
@@ -2555,5 +2555,54 @@ describe("ClassesService", () => {
       );
       expect(mockTx.classProduct.update).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe("buildClassProducts — spot 선불 단건", () => {
+  it("spot(선불)은 판매 1회권 1행만 생성하고 정기권 입력을 무시한다", () => {
+    const rows = buildClassProducts("c1", {
+      trainingType: "spot",
+      billingMode: "PREPAID",
+      singlePrice: 50000,
+      monthlyPrice: 180000,
+      packageWeeks: 4,
+      packageTotalSessions: 4,
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      productName: "1회 수업료",
+      feeType: "PER_SESSION",
+      billingTiming: "PREPAID",
+      price: 50000,
+      sessionsPerMonth: 0,
+    });
+    // isActive 미지정 = DB 기본 true(판매) — 일반 선불의 비판매(false)와 구분되는 핵심.
+    expect(rows[0].isActive).toBeUndefined();
+    // feePerSession 미설정 → 결제 옵션 수량 선택 자동 숨김(1회 고정).
+    expect(rows[0].feePerSession).toBeUndefined();
+  });
+
+  it("레거시 spot(BOTH)은 기존 선택형 규칙을 그대로 탄다 — 수정 저장이 구성을 뒤집지 않는다", () => {
+    const rows = buildClassProducts("c1", {
+      trainingType: "spot",
+      billingMode: "BOTH",
+      singlePrice: 70000,
+      monthlyPrice: 70000,
+    });
+    const per = rows.find((r) => r.feeType === "PER_SESSION");
+    expect(per).toMatchObject({ billingTiming: "POSTPAID", isActive: true });
+    expect(rows.some((r) => r.feeType === "MONTHLY_FIXED")).toBe(true);
+  });
+
+  it("일반 선불은 기존 규칙 유지 — 1회권 비판매 + 정기권 판매", () => {
+    const rows = buildClassProducts("c1", {
+      billingMode: "PREPAID",
+      singlePrice: 50000,
+      monthlyPrice: 180000,
+      packageWeeks: 4,
+    });
+    const per = rows.find((r) => r.feeType === "PER_SESSION");
+    expect(per).toMatchObject({ billingTiming: "PREPAID", isActive: false });
+    expect(rows.some((r) => r.feeType === "MONTHLY_FIXED")).toBe(true);
   });
 });

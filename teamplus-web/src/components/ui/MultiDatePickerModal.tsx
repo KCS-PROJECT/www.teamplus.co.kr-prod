@@ -17,9 +17,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '@/components/ui/Icon';
 import { BottomSheet } from '@/components/ui/BottomSheet';
-import { TimePicker } from '@/components/ui/TimePicker';
+import { TimePicker, addMinutes, nextFullHour } from '@/components/ui/TimePicker';
+import { useToast } from '@/components/ui/Toast';
 import { WEEKDAY_HEADERS, weekColumnOf } from '@/lib/calendar-week';
 import { MESSAGES } from '@/lib/messages';
+
+/** 공통 시간 선택 간격(분) — 종료 하한("시작 + 1스텝") 계산 단위와 동일. */
+const COMMON_STEP_MINUTES = 10;
 
 /** 확인 시 날짜별로 확정된 시간·장소 — 요일 기본값 있으면 그 값, 없으면 빈 시간(개별 수정 유도). */
 export interface MultiDateResolved {
@@ -109,6 +113,7 @@ export function MultiDatePickerModal({
   //   공통 시간 필수 판정(uncovered)에서 제외한다(신규 선택 날짜만 대상).
   const [initialSelected, setInitialSelected] = useState<Set<string>>(() => new Set(selected));
   // 기본값 없는 날짜에 일괄 적용할 공통 시간 — requireCommonTime일 때만 사용.
+  const { toast } = useToast();
   const [commonStart, setCommonStart] = useState('');
   const [commonEnd, setCommonEnd] = useState('');
   const disabledSet = useMemo(() => new Set(disabledDates ?? []), [disabledDates]);
@@ -433,13 +438,19 @@ export function MultiDatePickerModal({
           <div className="grid grid-cols-2 gap-2">
             <TimePicker
               value={commonStart}
-              onChange={setCommonStart}
+              // 시작을 뒤로 옮기면 무효해진 종료는 비운다 — 잘못된 조합을 남기지 않는다.
+              onChange={(time) => {
+                setCommonStart(time);
+                setCommonEnd((prev) => (prev && prev <= time ? '' : prev));
+              }}
               startHour={0}
               defaultHour={9}
-              stepMinutes={10}
+              stepMinutes={COMMON_STEP_MINUTES}
               placeholder={MESSAGES.class.dayDefaults.startTime}
               sheetTitle={MESSAGES.class.dayDefaults.startTime}
-              nested
+              // 시트 중첩 대신 인라인 전개 — 달력이 커서(90vh) 목록은 3행으로 축소.
+              variant="inline"
+              inlineRows={3}
               className={
                 iceTheme
                   ? 'h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500'
@@ -450,12 +461,22 @@ export function MultiDatePickerModal({
             <TimePicker
               value={commonEnd}
               onChange={setCommonEnd}
+              // 시작 미입력이면 잠그고, 입력되면 "시작 + 1스텝" 을 하한으로 연다.
+              disabled={!commonStart}
+              onDisabledClick={() => toast.error(MESSAGES.common.timePicker.startTimeFirst)}
+              minTime={
+                commonStart
+                  ? (addMinutes(commonStart, COMMON_STEP_MINUTES) ?? undefined)
+                  : undefined
+              }
+              defaultTime={commonStart ? (nextFullHour(commonStart) ?? undefined) : undefined}
               startHour={0}
               defaultHour={9}
-              stepMinutes={10}
+              stepMinutes={COMMON_STEP_MINUTES}
               placeholder={MESSAGES.class.dayDefaults.endTime}
               sheetTitle={MESSAGES.class.dayDefaults.endTime}
-              nested
+              variant="inline"
+              inlineRows={3}
               className={
                 iceTheme
                   ? 'h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500'

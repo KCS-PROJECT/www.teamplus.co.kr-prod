@@ -24,7 +24,7 @@ import {
 } from '@/hooks/useClassForm';
 import type { ClassVisibility } from '@/lib/class-visibility';
 // [2026-08-04] 수업 지역 SoT — 백엔드 regions.constant.ts 와 값 동기화 필수.
-import { REGIONS, districtsOf } from '@/lib/regions';
+import { REGIONS, districtsOf, SHOW_CLASS_REGION_SECTION } from '@/lib/regions';
 import { VenueSearchSheet } from '@/components/venue/VenueSearchSheet';
 import { AnimatedSection } from '@/components/ui/AnimatedSection';
 import { Toggle } from '@/components/ui/Toggle';
@@ -41,7 +41,7 @@ import {
 //     매년 1월 1일 최신 출생연도(currentYear-6)가 자동 추가된다. (예: 2026→2020, 2027→2021)
 import { useDateTime } from '@/hooks/useDateTime';
 import { MultiDatePickerModal, type MultiDateResolved } from '@/components/ui/MultiDatePickerModal';
-import { TimePicker } from '@/components/ui/TimePicker';
+import { TimePicker, addMinutes, nextFullHour } from '@/components/ui/TimePicker';
 
 /* ────────────────────────────────────────────
    공개 범위 옵션 (2026-08-04)
@@ -50,6 +50,12 @@ import { TimePicker } from '@/components/ui/TimePicker';
 //   모든 수업이 비공개(소속 팀 전용)로 저장된다 — 폼이 값을 보내지 않아 서버 기본값 TEAM_ONLY 로 수렴.
 //   이 플래그를 true 로 되돌리면 그대로 복원된다. 절차: claudedocs/class-visibility-disable-2026-08-12.md §5
 const SHOW_VISIBILITY_SECTION: boolean = false;
+
+/**
+ * 일정 시각 선택 간격(분) — TimePicker stepMinutes 이자 종료 시각 하한 계산 단위.
+ * 종료는 "시작 + 1스텝" 이상만 고를 수 있다(0분짜리 일정 차단 · 자정 넘김 불허).
+ */
+const SCHEDULE_STEP_MINUTES = 10;
 
 // 넓은 범위 → 좁은 범위 순서. 감독이 위에서부터 읽으며 필요한 만큼 좁히도록 배치한다.
 // 값은 백엔드 Prisma ClassVisibility enum 과 1:1 — src/lib/class-visibility.ts 참조.
@@ -199,6 +205,8 @@ export function ClassForm({
   const { toast } = useToast();
   const { back } = useNavigation();
   const formRef = useRef<HTMLFormElement>(null);
+  // [spot 선불 단건] 체크 전 결제방식 기억 — 해제 시 복원(월 결제 draft 와 같은 보존 원칙).
+  const prevBillingModeRef = useRef<ClassFormData['billingMode'] | null>(null);
   const [venueSheetOpen, setVenueSheetOpen] = useState(false);
   // [2026-06-05] 장소 선택 BottomSheet 대상 — null: 단일 장소 / DayOfWeek: 해당 요일 행 장소.
   const [venueTargetDay, setVenueTargetDay] = useState<DayOfWeek | null>(null);
@@ -412,6 +420,30 @@ export function ClassForm({
       };
     });
   };
+  // 회차 전체 적용 — 정규 요일 applyDayScheduleToAll 과 동일 패턴.
+  //   지난 회차는 읽기 전용 잠금(출석·정산 근거)이라 복사 대상에서 제외한다.
+  const applyDateScheduleToAll = (key: string) => {
+    const todayISO = localTodayISO();
+    setFormData(prev => {
+      const source = prev.dateSchedules.find(s => s.key === key);
+      if (!source) return prev;
+      return {
+        ...prev,
+        dateSchedules: prev.dateSchedules.map(s =>
+          s.key === key || isPastScheduleDate(s.date, todayISO)
+            ? s
+            : {
+                ...s,
+                startTime: source.startTime,
+                endTime: source.endTime,
+                venueId: source.venueId,
+                venueName: source.venueName,
+              },
+        ),
+      };
+    });
+  };
+
   const applyDayScheduleToAll = (day: DayOfWeek) => {
     setFormData(prev => {
       const source = prev.daySchedules.find(s => s.dayOfWeek === day);
@@ -586,8 +618,10 @@ export function ClassForm({
       isAcademy,
       // [Phase B-6] 선불·선택형 시 정액 패키지 ≥1 강제 — draft 의 MONTHLY_FIXED 개수로 검증.
       //   [2026-06-29] 생성뿐 아니라 수정에서도 강제 — 선불/선택형 수업의 정기 패키지 전체 삭제 차단(팀·오픈 공통).
+      // [spot 선불 단건] 1회용은 정기권 미사용 — 정액 필수 강제에서 면제.
       requireMonthlyFixedPackage:
-        formData.billingMode === 'PREPAID' || formData.billingMode === 'BOTH',
+        (formData.billingMode === 'PREPAID' || formData.billingMode === 'BOTH') &&
+        formData.trainingType !== 'spot',
       monthlyFixedPackageCount: (packageDraftValue ?? []).filter(
         (d) => !d._deleted && d.feeType === 'MONTHLY_FIXED',
       ).length,
@@ -860,15 +894,23 @@ export function ClassForm({
                   aria-checked={isSpot}
                   disabled={isEditMode}
                   onClick={() =>
-                    setFormData(prev => ({
-                      ...prev,
-                      trainingType: prev.trainingType === 'spot' ? 'regular' : 'spot',
-                      // 단일 제한 규칙 통일 — 항상 "마지막에 선택한 날짜 1개" 유지 (applyMultiDates 와 동일).
-                      dateSchedules:
-                        prev.trainingType === 'spot'
-                          ? prev.dateSchedules
-                          : prev.dateSchedules.slice(-1),
-                    }))
+                    setFormData(prev => {
+                      const turningOn = prev.trainingType !== 'spot';
+                      // [spot 선불 단건] 체크 시 선불 고정, 해제 시 이전 결제방식 복원.
+                      //   월 결제 draft 는 지우지 않는다(보존+숨김) — 제출 시 spot 이면 미전송.
+                      if (turningOn) prevBillingModeRef.current = prev.billingMode;
+                      return {
+                        ...prev,
+                        trainingType: turningOn ? 'spot' : 'regular',
+                        billingMode: turningOn
+                          ? 'PREPAID'
+                          : (prevBillingModeRef.current ?? 'BOTH'),
+                        // 단일 제한 규칙 통일 — 항상 "마지막에 선택한 날짜 1개" 유지 (applyMultiDates 와 동일).
+                        dateSchedules: turningOn
+                          ? prev.dateSchedules.slice(-1)
+                          : prev.dateSchedules,
+                      };
+                    })
                   }
                   className={cn(
                     'flex items-center gap-2.5 px-3.5 h-12 rounded-w-md border-[1.5px] text-sm font-bold transition-colors motion-reduce:transition-none disabled:opacity-60',
@@ -998,10 +1040,16 @@ export function ClassForm({
                       <div className="grid grid-cols-2 gap-2">
                         <TimePicker
                           value={s.startTime}
-                          onChange={(time) => updateDaySchedule(s.dayOfWeek, { startTime: time })}
+                          // 시작을 뒤로 옮기면 무효해진 종료는 비운다 — 잘못된 조합을 남기지 않는다.
+                          onChange={(time) =>
+                            updateDaySchedule(s.dayOfWeek, {
+                              startTime: time,
+                              ...(s.endTime && s.endTime <= time ? { endTime: '' } : {}),
+                            })
+                          }
                           startHour={0}
                           defaultHour={9}
-                          stepMinutes={10}
+                          stepMinutes={SCHEDULE_STEP_MINUTES}
                           placeholder={MESSAGES.class.dayDefaults.startTime}
                           sheetTitle={`${s.dayOfWeek}요일 ${MESSAGES.class.dayDefaults.startTime}`}
                           className={
@@ -1014,9 +1062,21 @@ export function ClassForm({
                         <TimePicker
                           value={s.endTime}
                           onChange={(time) => updateDaySchedule(s.dayOfWeek, { endTime: time })}
+                          // 시작 미입력이면 잠그고, 입력되면 "시작 + 1스텝" 을 하한으로 연다.
+                          disabled={!s.startTime}
+                          onDisabledClick={() => toast.error(MESSAGES.common.timePicker.startTimeFirst)}
+                          minTime={
+                            s.startTime
+                              ? (addMinutes(s.startTime, SCHEDULE_STEP_MINUTES) ?? undefined)
+                              : undefined
+                          }
+                          // 기본값은 시작의 다음 정시(09:30→10:00) — 하한(시작+1스텝)은 그대로.
+                          defaultTime={
+                            s.startTime ? (nextFullHour(s.startTime) ?? undefined) : undefined
+                          }
                           startHour={0}
                           defaultHour={9}
-                          stepMinutes={10}
+                          stepMinutes={SCHEDULE_STEP_MINUTES}
                           placeholder={MESSAGES.class.dayDefaults.endTime}
                           sheetTitle={`${s.dayOfWeek}요일 ${MESSAGES.class.dayDefaults.endTime}`}
                           className={
@@ -1252,10 +1312,16 @@ export function ClassForm({
                               <div className="grid grid-cols-2 gap-2">
                                 <TimePicker
                                   value={s.startTime}
-                                  onChange={(time) => updateDateSchedule(s.key, { startTime: time })}
+                                  // 시작을 뒤로 옮기면 무효해진 종료는 비운다.
+                                  onChange={(time) =>
+                                    updateDateSchedule(s.key, {
+                                      startTime: time,
+                                      ...(s.endTime && s.endTime <= time ? { endTime: '' } : {}),
+                                    })
+                                  }
                                   startHour={0}
                                   defaultHour={9}
-                                  stepMinutes={10}
+                                  stepMinutes={SCHEDULE_STEP_MINUTES}
                                   placeholder={MESSAGES.class.dayDefaults.startTime}
                                   sheetTitle={`${idx + 1}회차 시작 시간`}
                                   className={
@@ -1268,9 +1334,19 @@ export function ClassForm({
                                 <TimePicker
                                   value={s.endTime}
                                   onChange={(time) => updateDateSchedule(s.key, { endTime: time })}
+                                  disabled={!s.startTime}
+                                  onDisabledClick={() => toast.error(MESSAGES.common.timePicker.startTimeFirst)}
+                                  minTime={
+                                    s.startTime
+                                      ? (addMinutes(s.startTime, SCHEDULE_STEP_MINUTES) ?? undefined)
+                                      : undefined
+                                  }
+                                  defaultTime={
+                                    s.startTime ? (nextFullHour(s.startTime) ?? undefined) : undefined
+                                  }
                                   startHour={0}
                                   defaultHour={9}
-                                  stepMinutes={10}
+                                  stepMinutes={SCHEDULE_STEP_MINUTES}
                                   placeholder={MESSAGES.class.dayDefaults.endTime}
                                   sheetTitle={`${idx + 1}회차 종료 시간`}
                                   className={
@@ -1300,6 +1376,25 @@ export function ClassForm({
                                 </span>
                                 <Icon name="chevron_right" className={cn('text-base ml-auto', iceTheme ? 'text-it-ink-300' : 'text-wtext-4')} aria-hidden="true" />
                               </button>
+                              {formData.dateSchedules.length > 1 &&
+                                (s.startTime || s.endTime || s.venueId) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      applyDateScheduleToAll(s.key);
+                                      toast.success(MESSAGES.class.dayDefaults.appliedToAllDates);
+                                    }}
+                                    className={cn(
+                                      'self-start rounded-md px-2 py-1 text-card-meta font-bold',
+                                      iceTheme
+                                        ? 'text-it-blue-500 hover:bg-it-blue-50 dark:text-it-blue-300 dark:hover:bg-it-blue-500/10'
+                                        : 'text-ice-600 hover:bg-ice-50 dark:text-ice-400 dark:hover:bg-ice-500/10',
+                                    )}
+                                    aria-label={MESSAGES.class.dayDefaults.applyToAllDatesAria(idx + 1)}
+                                  >
+                                    {MESSAGES.class.dayDefaults.applyToAllDates}
+                                  </button>
+                                )}
                             </div>
                           )}
                         </li>
@@ -1347,7 +1442,11 @@ export function ClassForm({
             [2026-08-04] 사용자 지시: "서울에서 하는 수업을 부산 학부모가 신청하면 매주 올라오겠다는 소리"
             → 감독/코치가 등록 시 시/도 + 시군구를 직접 고르고, 목록 카드에 그대로 표시한다.
             장소(Venue)에 의존하지 않는 이유: Class.venueId 가 nullable 이라 커버리지가 낮고,
-            Venue 에는 시군구 필드 자체가 없다. */}
+            Venue 에는 시군구 필드 자체가 없다.
+            CLASS_REGION_DISABLED — 현재 미노출(SHOW_CLASS_REGION_SECTION=false).
+            전국 노출 중단으로 위 근거가 사라졌고 목록 표시도 제거돼 소비처가 상세 1곳만 남았다.
+            폼 상태·BottomSheet·검증은 삭제하지 않았다 — 플래그만 되돌리면 그대로 동작한다. */}
+        {SHOW_CLASS_REGION_SECTION && (
         <AnimatedSection delay={290}>
           <section className="space-y-4">
             <h2 className={ic.head}>
@@ -1483,6 +1582,7 @@ export function ClassForm({
             </div>
           </section>
         </AnimatedSection>
+        )}
 
         {/* ── SECTION 4: 수강료 ──
             [2026-06] '디렉터 전용 설정' + '수업 패키지' 영역 통합. 동일 ClassProduct 도메인이므로
@@ -1504,6 +1604,13 @@ export function ClassForm({
                       <label className={cn('block text-card-meta font-bold uppercase tracking-wider', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                         {MESSAGES.classProduct.billingModeLabel}
                       </label>
+                      {/* [spot 선불 단건] 1회용은 선택 숨김 — 선불 단건 고정 안내로 대체. */}
+                      {isSpot ? (
+                        <p className={cn('text-card-caption font-medium', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
+                          {MESSAGES.classProduct.spotSingleNotice}
+                        </p>
+                      ) : (
+                      <>
                       <div className="grid grid-cols-3 gap-2">
                         {(['PREPAID', 'POSTPAID', 'BOTH'] as const).map((bm) => {
                           const active = formData.billingMode === bm;
@@ -1547,6 +1654,8 @@ export function ClassForm({
                             ? MESSAGES.classProduct.billingModePostpaidHint
                             : MESSAGES.classProduct.billingModeBothHint}
                       </p>
+                      </>
+                      )}
                       {/* [가격 잠금 §3-3] 제출 전 고지 — 등록 제출 즉시 선불 첫 월분 확정
                           (A안, 결제 여부 무관). 후불 전용은 선불 월분이 없어 미노출.
                           text-card-caption 은 미정의 유령 클래스(상속 크기)라 실존 토큰 사용. */}
@@ -1563,8 +1672,9 @@ export function ClassForm({
                     {/* 1회 수강권 — 필수 (팀·오픈 공통) */}
                     <div className="col-span-2 space-y-2">
                           <label className={cn('block text-card-meta font-bold uppercase tracking-wider', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
-                            {/* [Phase B-6] 선불 전용은 참고·판매 안 함 라벨, 후불·선택형은 판매되는 1회 수업료. */}
-                            {formData.billingMode === 'PREPAID'
+                            {/* [Phase B-6] 선불 전용은 참고·판매 안 함 라벨, 후불·선택형은 판매되는 1회 수업료.
+                                [spot 선불 단건] 1회용은 이 금액이 실제 판매가 — 참고 라벨 제외. */}
+                            {formData.billingMode === 'PREPAID' && !isSpot
                               ? MESSAGES.classProduct.singlePriceRefLabel
                               : MESSAGES.classProduct.feePerSessionLabel}{' '}
                             <span className={iceTheme ? 'text-it-red-500' : 'text-red-500'}>*</span>
@@ -1596,8 +1706,9 @@ export function ClassForm({
                             />
                             <span className={cn('text-xs font-bold shrink-0', iceTheme ? 'text-it-ink-500' : 'text-wtext-3')}>원</span>
                           </div>
-                          {/* [Phase B-6] 선불 전용 — 1회 수업료는 참고용(판매 안 함) 안내. */}
-                          {formData.billingMode === 'PREPAID' && (
+                          {/* [Phase B-6] 선불 전용 — 1회 수업료는 참고용(판매 안 함) 안내.
+                              [spot 선불 단건] 1회용은 판매가라 제외 — 상단 spotSingleNotice 가 안내를 대신한다. */}
+                          {formData.billingMode === 'PREPAID' && !isSpot && (
                             <p className={cn('text-card-caption', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                               {MESSAGES.classProduct.singlePriceRefHint}
                             </p>
@@ -1609,8 +1720,10 @@ export function ClassForm({
                             </p>
                           )}
                           {/* 총 수업료 자동 계산 — 1회권 수강료 × 등록한 회차 수.
-                              회차(일정)가 있을 때만 노출. 회차 미입력 시 영역 숨김. */}
-                          {formData.singlePrice !== '' &&
+                              회차(일정)가 있을 때만 노출. 회차 미입력 시 영역 숨김.
+                              [spot 선불 단건] 1회짜리는 총액=1회 수업료라 중복 표기 — 숨김. */}
+                          {!isSpot &&
+                            formData.singlePrice !== '' &&
                             Number(formData.singlePrice) > 0 &&
                             formData.dateSchedules.length > 0 && (
                               <div className={cn('mt-2 rounded-w-md border px-3 py-2', iceTheme ? 'border-it-blue-100 dark:border-rink-700 bg-it-blue-50 dark:bg-rink-700/40' : 'border-ice-100 dark:border-rink-700 bg-ice-50 dark:bg-rink-700/40')}>
@@ -1639,9 +1752,11 @@ export function ClassForm({
                       1회권은 위 1회 수강료 입력으로 자동 생성되고, 여기서 추가하는 신규 패키지는
                       PackageEditSheet 설계상 항상 정기권(MONTHLY_FIXED)이라 1회권과 중복되지 않는다.
                       저장 시 부모(create/page)가 수업 생성 후 bulk 로 일괄 반영한다. */}
-                  {/* [Phase B-6] 정액 패키지 — 선불·선택형에서 노출(후불 전용은 1회 수업료만). */}
-                  {(formData.billingMode === 'PREPAID' ||
-                    formData.billingMode === 'BOTH') &&
+                  {/* [Phase B-6] 정액 패키지 — 선불·선택형에서 노출(후불 전용은 1회 수업료만).
+                      [spot 선불 단건] 1회용은 숨김 — draft 는 보존(체크 해제 시 복원)·제출 시 미전송. */}
+                  {!isSpot &&
+                    (formData.billingMode === 'PREPAID' ||
+                      formData.billingMode === 'BOTH') &&
                     onPackageDraftChange && (
                     <div className={cn('pt-4 border-t space-y-3', iceTheme ? 'border-it-line dark:border-rink-700' : 'border-wline-2 dark:border-rink-700')}>
                       <p className={cn('text-card-meta font-bold uppercase tracking-wider', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
@@ -1998,9 +2113,9 @@ export function ClassForm({
         onConfirm={applyMultiDates}
         onClose={() => setMultiDateOpen(false)}
         iceTheme={iceTheme}
-        // 요일 기본값 없는 신규 날짜는 시트에서 공통 시간을 받아 주입 — 회차별 반복 입력 제거.
-        //   기존 회차 날짜는 applyMultiDates 가 기존 값을 보존하므로 필수 판정에서 제외됨.
-        requireCommonTime
+        // 팝업은 날짜만 고른다 — 시간·장소는 아래 회차 목록에서 입력한다
+        //   (행의 "모든 회차에 적용" 버튼으로 일괄 채움). requireCommonTime 미전달이라
+        //   요일 기본값 없는 날짜는 빈 시간으로 추가되고, 제출 검증이 미입력을 막는다.
       />
 
       {/* ── 삭제 확인 모달 (Portal) ── */}
