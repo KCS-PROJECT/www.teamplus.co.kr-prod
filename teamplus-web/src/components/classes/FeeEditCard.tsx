@@ -47,10 +47,14 @@ interface FeeEditCardProps {
    *   true 시 카드 박스 제거(flat) + it-* 토큰(it-fill 입력·hairline 구분)으로 교체.
    */
   iceTheme?: boolean;
+  /** [spot] 1회용 수업 — 월 결제(정기권) 영역 숨김. 판매 상품이 1회 수업료뿐이라
+   *  정기권 관리가 성립하지 않는다(추가 시 서버 400과도 짝). 단가 수정은 그대로 노출. */
+  hideMonthly?: boolean;
 }
 
 export function FeeEditCard({
   billingMode,
+  hideMonthly = false,
   perSessionPrice,
   onPerSessionPriceChange,
   classId,
@@ -90,7 +94,8 @@ export function FeeEditCard({
     ? MESSAGES.classProduct.unitPriceLockedNotice(unsettledMonths.join(', '))
     : null;
   // [Phase B-6] 선불 전용은 1회 수업료가 참고용(판매 안 함), 후불·선택형은 판매되는 단가.
-  const priceLabel = isPrepaidOnly
+  //   [spot] 1회용(hideMonthly)은 선불이라도 1회권이 실제 판매가 — 참고 라벨 제외.
+  const priceLabel = isPrepaidOnly && !hideMonthly
     ? MESSAGES.classProduct.singlePriceRefLabel
     : MESSAGES.classProduct.feePerSessionLabel;
   // [Phase B-6] 결제 방식 배지/안내 — 선불·후불·선택형 3종.
@@ -169,8 +174,9 @@ export function FeeEditCard({
             )}
           </div>
 
-          {/* 정기 패키지 — 선불 한정. PER_SESSION 은 위 단가 입력에서 관리하므로 목록에서 제외. */}
-          {!isPostpaid && onPackageChange && (
+          {/* 정기 패키지 — 선불 한정. PER_SESSION 은 위 단가 입력에서 관리하므로 목록에서 제외.
+              [spot] 1회용은 hideMonthly 로 영역 자체 미노출. */}
+          {!hideMonthly && !isPostpaid && onPackageChange && (
             <div className="pt-4 border-t border-it-line dark:border-rink-700 space-y-3">
               <p className="text-card-meta font-bold text-it-ink-500 dark:text-rink-300 uppercase tracking-wider">
                 {MESSAGES.classProduct.embedSectionLabel}
@@ -260,8 +266,9 @@ export function FeeEditCard({
           )}
         </div>
 
-        {/* 정기 패키지 — 선불 한정. PER_SESSION 은 위 단가 입력에서 관리하므로 목록에서 제외. */}
-        {!isPostpaid && onPackageChange && (
+        {/* 정기 패키지 — 선불 한정. PER_SESSION 은 위 단가 입력에서 관리하므로 목록에서 제외.
+            [spot] 1회용은 hideMonthly 로 영역 자체 미노출. */}
+        {!hideMonthly && !isPostpaid && onPackageChange && (
           <div className="pt-4 border-t border-wline-2 dark:border-rink-700 space-y-3">
             <p className="text-card-meta font-bold text-wtext-3 dark:text-rink-300 uppercase tracking-wider">
               {MESSAGES.classProduct.embedSectionLabel}

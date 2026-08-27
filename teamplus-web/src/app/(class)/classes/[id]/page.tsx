@@ -26,6 +26,21 @@ import { resolveImageUrl, resolveImageSrc } from "@/lib/image-url";
 //  결제 옵션 페이지는 readonly SelectedChildDisplay 로 통일.
 import { ChildSelector } from "@/components/payment/ChildSelector";
 import { ScheduleCalendarView } from "@/components/classes/ScheduleCalendarView";
+
+/** [spot] 판매 중인 선불 1회권 — 정액 없는 1회용 수업의 결제 대상 상품 판정.
+ *  일반 선불의 1회권은 비판매(isActive false, 참고용)라 걸리지 않는다 —
+ *  2026-06-29 가드(1회 수업료 오결제 차단)를 spot 분기 없이 데이터 성질로 보존한다. */
+function isSellableSingleFee(p: {
+  feeType?: string;
+  billingTiming?: string;
+  isActive?: boolean;
+}): boolean {
+  return (
+    p.feeType === "PER_SESSION" &&
+    p.billingTiming === "PREPAID" &&
+    p.isActive !== false
+  );
+}
 import { UnitNoticeSection } from "@/components/notice/UnitNoticeSection";
 import { isUnitNoticeManagerRole } from "@/services/community-notice.service";
 // [2026-05-11] classes 도메인 trainingType SoT — class-categories.ts 통합.
@@ -408,12 +423,15 @@ export default function ClassDetailPage() {
   //   [2026-06-29] 1회 수업료(PER_SESSION)는 참고가로만 노출(선불=패키지)하므로 자동 선택 대상에서 제외.
   //   정액 패키지가 없으면 아무것도 자동 선택하지 않는다 — 과거 products[0](=PER_SESSION) 폴백이
   //   패키지 없는 오픈클래스를 1회 수업료로 결제 진행시키던 문제를 차단한다.
+  //   [spot] 예외 — 판매 중인 선불 1회권은 결제 대상이므로 자동 선택에 포함.
   useEffect(() => {
     const products = classData?.products ?? [];
     if (products.length === 0) return;
     setSelectedProductIds((prev) => {
       if (prev.size > 0) return prev;
-      const fullProduct = products.find((p) => p.feeType === 'MONTHLY_FIXED');
+      const fullProduct =
+        products.find((p) => p.feeType === 'MONTHLY_FIXED') ??
+        products.find(isSellableSingleFee);
       return fullProduct ? new Set([fullProduct.id]) : new Set();
     });
   }, [classData?.products]);
@@ -1518,8 +1536,11 @@ export default function ClassDetailPage() {
   //   · 학부모 선불 전용(기존) · 오픈클래스(선불=패키지 정책, 정규훈련과 동일) · 매니저(감독/코치/관리자 — 보기용)
   //   오픈클래스·매니저는 1회 수업료를 구매 항목이 아닌 참고가로만 노출하고, 구매는 정액 패키지로 진행한다.
   const pullOutSingleFee = isParentPrepaidOnly || isOpenClass || isManager;
+  //   [spot] 판매 중인 선불 1회권은 아래 구매 행으로 노출되므로 참고 카드에서 제외(중복 방지).
   const singleFeeRefProduct =
-    (classData.products ?? []).find((p) => p.feeType === "PER_SESSION") ?? null;
+    (classData.products ?? []).find(
+      (p) => p.feeType === "PER_SESSION" && !isSellableSingleFee(p),
+    ) ?? null;
   // [2026-06-05] 요일별 시간·장소 — 규칙이 있으면 "수업 정보" 카드에 모두 나열,
   //   없으면 기존 단일 startTime/endTime · venueName 표시로 폴백.
   const daySchedules = classData.daySchedules ?? [];
@@ -2217,7 +2238,12 @@ export default function ClassDetailPage() {
                       p.billingTiming === "POSTPAID"
                     )
                       return false;
-                    if (pullOutSingleFee && p.feeType === "PER_SESSION")
+                    // [spot] 판매 중인 선불 1회권은 결제 대상 행 — 참고 분리 대상에서 제외.
+                    if (
+                      pullOutSingleFee &&
+                      p.feeType === "PER_SESSION" &&
+                      !isSellableSingleFee(p)
+                    )
                       return false;
                     return true;
                   })

@@ -4289,7 +4289,7 @@ export const MESSAGES = {
     billingModePrepaidHint: "수업료를 미리 결제합니다. (정기·번들)",
     billingModePostpaidHint: "월말 출석 횟수에 따라 후불 정산합니다.",
     // [spot 선불 단건] 1회용 수업 — 결제방식 선택을 숨기고 이 안내로 대체.
-    spotSingleNotice: "1회용 수업은 1회 수업료 단건 결제로 판매됩니다.",
+    spotSingleNotice: "1회용 수업은 1회 수업료 단건(선불 또는 후불)으로 판매됩니다.",
     billingModeBothHint: "학부모가 결제 시 선불·후불 중 선택합니다.",
     // [Phase B-6] 정액 패키지 강제 — 선불·선택형은 정액 패키지가 1개 이상 있어야 등록 가능.
     validationMonthlyFixedRequired: "월 결제를 1개 이상 등록해주세요.",

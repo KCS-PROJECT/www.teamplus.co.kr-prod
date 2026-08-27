@@ -2582,6 +2582,21 @@ describe("buildClassProducts — spot 선불 단건", () => {
     expect(rows[0].feePerSession).toBeUndefined();
   });
 
+  it("spot(후불)은 기존 후불 규칙 그대로 — 1회권 후불 판매 1행", () => {
+    const rows = buildClassProducts("c1", {
+      trainingType: "spot",
+      billingMode: "POSTPAID",
+      singlePrice: 60000,
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      feeType: "PER_SESSION",
+      billingTiming: "POSTPAID",
+      price: 60000,
+      feePerSession: 60000,
+    });
+  });
+
   it("레거시 spot(BOTH)은 기존 선택형 규칙을 그대로 탄다 — 수정 저장이 구성을 뒤집지 않는다", () => {
     const rows = buildClassProducts("c1", {
       trainingType: "spot",

@@ -125,8 +125,8 @@ export function buildClassProducts(
   // [spot 선불 단건] 1회용 수업(선불) — "1회 수업료" 판매 1행만. 정기권 미생성.
   //   일반 선불과 달리 1회권을 판매(isActive 기본 true)로 켠다. feePerSession 미설정 →
   //   결제 옵션의 수량 선택이 자동 숨김(1회 고정)·금액은 price 단건("횟수제 선결제" 경로).
-  //   billingMode 조건: 신규 정책(선불 고정) 수업에만 적용 — 레거시 spot(BOTH·POSTPAID)은
-  //   아래 기존 분기로 흘려 상품 구성을 보존한다(수정 저장이 판매 상태를 뒤집지 않게).
+  //   billingMode 조건: 선불 spot 에만 적용. 후불 spot 은 아래 기존 후불 분기가 그대로 맞고
+  //   (1회권 후불 판매 1행), 레거시 spot(BOTH)은 기존 선택형 분기로 흘려 구성을 보존한다.
   if (dto.trainingType === "spot" && dto.billingMode === "PREPAID") {
     if (dto.singlePrice) {
       products.push({
@@ -564,13 +564,13 @@ export class ClassesService {
         "1회용 수업은 일정을 1개만 등록할 수 있습니다.",
       );
     }
-    // [spot 선불 단건] 1회용 수업은 1회 수업료 단건(선불) 판매만 지원 — 폼 게이트의 서버 방어선.
+    // [spot] 1회용 수업은 선불/후불 2택 — 정기권 전제인 선택형(BOTH)만 차단.
     if (
       createDto.trainingType === "spot" &&
-      (createDto.billingMode ?? "BOTH") !== "PREPAID"
+      (createDto.billingMode ?? "BOTH") === "BOTH"
     ) {
       throw new BadRequestException(
-        "1회용 수업은 1회 수업료 단건 결제(선불)로만 판매할 수 있습니다.",
+        "1회용 수업은 선불 또는 후불로만 등록할 수 있습니다.",
       );
     }
     if (createDto.trainingType === "spot" && createDto.monthlyPrice) {
