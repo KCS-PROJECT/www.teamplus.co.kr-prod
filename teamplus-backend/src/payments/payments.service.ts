@@ -15,6 +15,7 @@ import {
 } from "./services/payment-refund.service";
 import { PaymentReceiptService } from "./services/payment-receipt.service";
 import { deriveSource } from "./payment-source.util";
+import { buildAdminTeamPaymentSummaries } from "./admin-team-payment-summary.util";
 import { TossPaymentsGateway } from "./toss-payments.gateway";
 import { RedisService } from "@/redis/redis.service";
 import {
@@ -1707,6 +1708,14 @@ export class PaymentsService {
           ? ((completedCount / totalPayments) * 100).toFixed(1)
           : "0",
     };
+  }
+
+  /**
+   * [어드민 결제 관리] 팀별 "선택 월" 결제 요약 — 구현·판정 계약은
+   * admin-team-payment-summary.util.ts 참조 (attribution.util SoT 공유).
+   */
+  async getAdminTeamPaymentSummaries(yearMonth?: string) {
+    return buildAdminTeamPaymentSummaries(this.prisma, yearMonth);
   }
 
   /**

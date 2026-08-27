@@ -1397,6 +1397,47 @@ export class PaymentsController {
   }
 
   /**
+   * [어드민 결제 관리] 팀별 결제 요약 — 접힌 팀 카드 칩 + 헤더 합산용.
+   */
+  @Get("admin/team-summaries")
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @ApiBearerAuth()
+  @Roles("ADMIN")
+  @ApiOperation({
+    summary: "팀별 선택 월 결제 요약 (어드민 전용)",
+    description:
+      "선택 월(yearMonth, 기본 현재 KST 월) 기준으로 팀마다 결제 대상/완료/환불/미납 건수를 반환합니다. " +
+      "수치는 결제 현황 모달 상세(수업 monthScoped·대회 신청) 행 집계와 일치합니다. 대회는 월 무관 — " +
+      "진행 중·예정 + 미납 잔존 종료 대회만 포함.",
+  })
+  @ApiQuery({
+    name: "yearMonth",
+    required: false,
+    description: "조회 월 (YYYY-MM, 기본: 현재 KST 월)",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "팀별 결제 요약 조회 성공",
+    schema: {
+      example: [
+        {
+          teamId: "team-uuid",
+          targetCount: 14,
+          paidCount: 8,
+          refundedCount: 0,
+          unpaidCount: 6,
+          classCount: 3,
+          tournamentCount: 1,
+          monthTournamentIds: ["tournament-uuid"],
+        },
+      ],
+    },
+  })
+  getAdminTeamPaymentSummaries(@Query("yearMonth") yearMonth?: string) {
+    return this.paymentsService.getAdminTeamPaymentSummaries(yearMonth);
+  }
+
+  /**
    * 관리자 결제 통계 조회
    */
   @Get("admin/stats")
