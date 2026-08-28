@@ -134,7 +134,12 @@ export default function ReceiptDetailPage() {
     <MobileContainer hasBottomNav={false} className="selectable-text">
       <BackHeader title="영수증 상세" onBack={() => back()} />
 
-      <main className="flex-1 overflow-y-auto hide-scrollbar pb-30 bg-it-canvas dark:bg-puck">
+      {/* pb-* 는 MobileContainer 의 [&>main]:pb-30 에 덮여 무효 → inline 으로 지정.
+          176px = 고정 푸터 높이(156px) + 여유. */}
+      <main
+        className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck"
+        style={{ paddingBottom: "11rem" }}
+      >
         {isLoading ? null : error ? (
           /* 에러 상태 */
           <div className="flex flex-col items-center justify-center py-20 px-6">
@@ -191,18 +196,17 @@ export default function ReceiptDetailPage() {
       {!isLoading && !error && receipt && (
         <footer className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-it-surface dark:bg-rink-900 border-t border-it-line dark:border-rink-800 px-5 pt-4 pb-8 z-20">
           <div className="flex flex-col gap-3">
-            <Button
-              onClick={handleDownloadImage}
-              disabled={isDownloading}
-              fullWidth
-              className="flex items-center justify-center gap-2"
-            >
-              {isDownloading ? (
-                <div className="w-5 h-5 rounded-w-pill border-2 border-white/30 border-t-white animate-spin motion-reduce:animate-none" />
-              ) : (
-                <Icon name="open_in_new" className="text-xl" />
-              )}
-              영수증 보기
+            <Button onClick={handleDownloadImage} disabled={isDownloading} fullWidth>
+              {/* Button 은 children 을 내부 span 으로 감싸므로 flex 정렬은 children 쪽에 걸어야
+                  아이콘·문구에 실제 적용된다 — 바깥 className 의 flex/gap 은 도달하지 않는다. */}
+              <span className="flex items-center justify-center gap-2">
+                {isDownloading ? (
+                  <span className="w-5 h-5 rounded-w-pill border-2 border-white/30 border-t-white animate-spin motion-reduce:animate-none" />
+                ) : (
+                  <Icon name="open_in_new" className="text-xl" />
+                )}
+                <span>영수증 보기</span>
+              </span>
             </Button>
 
             <Button

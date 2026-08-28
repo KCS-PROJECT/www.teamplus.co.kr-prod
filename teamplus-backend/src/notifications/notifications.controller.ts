@@ -76,17 +76,20 @@ export class NotificationsController {
     @Query("limit") limit?: string,
     @Query("skip") skip?: string,
     @Query("types") types?: string,
+    @Query("excludeTypes") excludeTypes?: string,
   ) {
     const parsedLimit = limit ? parseInt(limit, 10) : 20;
     const parsedSkip = skip ? parseInt(skip, 10) : 0;
-    const typesArray = types
-      ? types.split(",").map((t) => t.trim()).filter(Boolean)
-      : undefined;
+    const split = (v?: string) =>
+      v
+        ? v.split(",").map((t) => t.trim()).filter(Boolean)
+        : undefined;
     return this.notificationsService.getUserNotifications(
       req.user.id,
       parsedLimit,
       parsedSkip,
-      typesArray,
+      split(types),
+      split(excludeTypes),
     );
   }
 

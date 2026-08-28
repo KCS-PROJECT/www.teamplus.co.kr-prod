@@ -12,6 +12,7 @@ import {
   mapBackendNotification,
   normalizeNotificationPayload,
   getTypesForCategory,
+  getExcludedTypesForCategory,
   aggregateStatsByCategory,
   createEmptyStatsByCategory,
   isNotificationVisible,
@@ -140,6 +141,8 @@ export function useNotifications(options: UseNotificationsOptions = {}): UseNoti
   // 데이터 로드
   // 카테고리 필터(B1): filter.category 에 해당하는 notificationType 목록을 서버에 전달.
   // 'all' 또는 미지정 시 types 파라미터 생략(전체 조회).
+  // 공지 탭만 제외 기반 — 다른 카테고리에 속한 유형을 excludeTypes 로 빼고 나머지를 받는다
+  // (배지 집계의 default -> 'notice' 폴백과 동일 규칙 → 배지·목록 불일치 방지).
   // hasMore 판정: 응답 길이 == limit 일 때 더 있음으로 추정.
   const fetchNotifications = useCallback(async (reset = false, showLoading = true) => {
     try {
@@ -151,12 +154,15 @@ export function useNotifications(options: UseNotificationsOptions = {}): UseNoti
       const LIMIT = 50;
       const skip = reset ? 0 : skipRef.current;
       const types = getTypesForCategory(filter.category);
+      const excludeTypes = getExcludedTypesForCategory(filter.category);
 
       const params = new URLSearchParams();
       params.set('limit', String(LIMIT));
       params.set('skip', String(skip));
       if (types && types.length > 0) {
         params.set('types', types.join(','));
+      } else if (excludeTypes && excludeTypes.length > 0) {
+        params.set('excludeTypes', excludeTypes.join(','));
       }
 
       const res = await api.get<unknown>(`/notifications?${params.toString()}`);

@@ -80,7 +80,7 @@ describe("NotificationsController", () => {
       expect(result.length).toBe(2);
       expect(
         mockNotificationsService.getUserNotifications,
-      ).toHaveBeenCalledWith(mockUserId, 20, 0, undefined);
+      ).toHaveBeenCalledWith(mockUserId, 20, 0, undefined, undefined);
     });
 
     it("should return notifications with custom limit", async () => {
@@ -93,7 +93,7 @@ describe("NotificationsController", () => {
       expect(result.length).toBe(1);
       expect(
         mockNotificationsService.getUserNotifications,
-      ).toHaveBeenCalledWith(mockUserId, 5, 0, undefined);
+      ).toHaveBeenCalledWith(mockUserId, 5, 0, undefined, undefined);
     });
 
     it("should return notifications with custom skip", async () => {
@@ -105,7 +105,7 @@ describe("NotificationsController", () => {
 
       expect(
         mockNotificationsService.getUserNotifications,
-      ).toHaveBeenCalledWith(mockUserId, 10, 5, undefined);
+      ).toHaveBeenCalledWith(mockUserId, 10, 5, undefined, undefined);
     });
 
     it("should return empty array if no notifications", async () => {

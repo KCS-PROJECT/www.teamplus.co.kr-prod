@@ -79,8 +79,12 @@ export function normalizeNotificationType(raw?: string): NotificationType {
 
   // [2026-06-18] 실제 DB notificationType 분포 기준 매핑 보강
   //   (membership/billing/team_notice/tournament 등 — 역할별 탭 가입/수업/결제/공지에 정확 분배).
-  // 결제 — payment*, 후불 정산 청구(postpaid_billing, tournament_postpaid_billing).
-  if (t.startsWith('payment') || t.endsWith('_billing')) return 'payment';
+  // 결제 — payment*, 환불 요청/처리(refund_request_*), 후불 정산 청구(postpaid_billing, tournament_postpaid_billing).
+  //   환불은 결제 생애주기의 일부이며, 알림 linkUrl 도 전부 결제 화면이다
+  //   (요청자 → /payment/history, 처리 담당자 → /director-payments/refunds).
+  if (t.startsWith('payment') || t.startsWith('refund') || t.endsWith('_billing')) {
+    return 'payment';
+  }
   // 가입(팀 회원 가입) — membership_requested/approved/rejected → deriveCategory 'join'.
   if (t.startsWith('membership') || t.startsWith('approval')) {
     return 'approval';
@@ -175,9 +179,13 @@ export function deriveCategory(type: NotificationType | string): NotificationCat
  * `deriveCategory(normalizeNotificationType(type))` 의 역매핑을 명시적으로 enumerate.
  * 신규 notificationType 추가 시 이 카탈로그도 함께 업데이트 필요.
  * `all` 은 필터 없음 (전체 조회).
+ *
+ * `notice` 키는 의도적으로 없다 — 공지 탭은 화이트리스트가 아니라 **제외 기반**이다
+ * (getExcludedTypesForCategory 참조). 백엔드가 새 notificationType 을 추가할 때마다
+ * 이 카탈로그 갱신이 누락돼 배지에는 잡히고 목록에서는 빠지는 불일치가 반복됐다.
  */
 export const NOTIFICATION_TYPES_BY_CATEGORY: Record<
-  Exclude<NotificationCategory, 'all'>,
+  Exclude<NotificationCategory, 'all' | 'notice'>,
   readonly string[]
 > = {
   // 가입 — 팀 회원 가입 신청/승인 (감독·코치 탭). 실측: membership_requested(44)·membership_approved(28).
@@ -227,41 +235,12 @@ export const NOTIFICATION_TYPES_BY_CATEGORY: Record<
     'payment_completed',
     'postpaid_billing',
     'tournament_postpaid_billing',
-  ],
-  // 공지 — 팀 공지/아카데미/대회/원정/결제권/피드백/매치. 실측: team_notice_created(87)
-  //        ·tournament_created(27)·academy_notice(14)·trip_waitlist_promoted(13).
-  notice: [
-    'team_notice_created',
-    'notice_comment_added',
-    'academy_notice',
-    'tournament_created',
-    // 수업(훈련)/대회 단위 공지 (unit-notice Phase 1)
-    'notice_class_created',
-    'notice_tournament_created',
-    'notice_unread_reminder',
-    'team_post_created',
-    // trip
-    'trip_waitlist_promoted',
-    // credit
-    'credit_expiry',
-    'credit_expiry_warning',
-    // waitlist
-    'waitlist_promoted',
-    'waitlist_confirm_reminder',
-    // match (픽업 매치 관련 — match 폴백)
-    'match',
-    'match_updated',
-    'match_applied',
-    'match_rejected',
-    'match_cancelled',
-    'match_left',
-    'match_approved',
-    // feedback
-    'feedback_reply',
-    // generic fallbacks
-    'info',
-    'general',
-    'club',
+    'payment_unpaid',
+    // 환불 요청 — 담당자(감독·오픈클래스 원장·운영자)와 요청자 알림 모두 결제 화면으로 이동한다.
+    'refund_request_created',
+    'refund_request_reminder',
+    'refund_request_escalated',
+    'refund_request_decided',
   ],
   system: [
     'system',
@@ -277,9 +256,33 @@ export const NOTIFICATION_TYPES_BY_CATEGORY: Record<
 export function getTypesForCategory(
   category: NotificationCategory | undefined | null,
 ): string[] | undefined {
-  if (!category || category === 'all') return undefined;
+  // 'notice' 는 제외 기반(getExcludedTypesForCategory) — 화이트리스트를 만들지 않는다.
+  if (!category || category === 'all' || category === 'notice') return undefined;
   const types = NOTIFICATION_TYPES_BY_CATEGORY[category];
   return types ? [...types] : undefined;
+}
+
+/**
+ * 공지 탭 서버 필터 — **제외 기반**.
+ *
+ * 공지 = "가입·수업·결제·시스템 어디에도 속하지 않는 나머지" 로 정의한다.
+ * `deriveCategory` 의 `default -> 'notice'` 폴백과 동일한 규칙이라 탭 배지(집계)와
+ * 탭 목록(조회)이 항상 같은 답을 낸다. 백엔드가 새 notificationType 을 추가해도
+ * 별도 등재 없이 공지 탭에 자동 흡수된다.
+ *
+ * 화면에서 숨기는 유형(HIDDEN_NOTIFICATION_TYPES)도 함께 제외해 서버가 애초에
+ * 내려주지 않게 한다 — 클라이언트 필터로 줄어든 만큼 페이지가 비는 것을 막는다.
+ */
+export function getExcludedTypesForCategory(
+  category: NotificationCategory | undefined | null,
+): string[] | undefined {
+  if (category !== 'notice') return undefined;
+  return Array.from(
+    new Set([
+      ...Object.values(NOTIFICATION_TYPES_BY_CATEGORY).flat(),
+      ...HIDDEN_NOTIFICATION_TYPES,
+    ]),
+  );
 }
 
 /**
