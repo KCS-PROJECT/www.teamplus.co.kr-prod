@@ -29,7 +29,6 @@ export const VISIBLE_UNREAD_HIDDEN_TYPES = [
   "trip_waitlist_promoted",
   "account_dormant",
   "rsvp_reminder",
-  "tournament_created",
 ];
 export const VISIBLE_UNREAD_RECENCY_DAYS = 21;
 

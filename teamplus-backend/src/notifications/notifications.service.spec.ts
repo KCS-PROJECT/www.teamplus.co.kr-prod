@@ -6,7 +6,7 @@ import { NotificationsService } from "./notifications.service";
 import { PrismaService } from "@/prisma/prisma.service";
 import { NotificationQueue } from "./notification.queue";
 import { RedisService } from "@/redis/redis.service";
-import { FcmService } from "./fcm.service";
+import { FcmService, VISIBLE_UNREAD_HIDDEN_TYPES } from "./fcm.service";
 import { PushPolicyService } from "./push-policy.service";
 
 describe("NotificationsService", () => {
@@ -482,14 +482,9 @@ describe("NotificationsService", () => {
         where: {
           userId: "user-1",
           isRead: false,
-          notificationType: {
-            notIn: [
-              "trip_waitlist_promoted",
-              "account_dormant",
-              "rsvp_reminder",
-              "tournament_created",
-            ],
-          },
+          // 숨김 목록은 fcm.service 가 SoT — 리터럴을 복제하면 목록이 바뀔 때마다
+          //   여기가 따로 깨진다(대회 등록 알림 복원 시 실제로 발생).
+          notificationType: { notIn: VISIBLE_UNREAD_HIDDEN_TYPES },
           createdAt: { gte: expect.any(Date) },
         },
       });

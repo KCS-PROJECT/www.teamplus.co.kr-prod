@@ -287,13 +287,20 @@ export function getExcludedTypesForCategory(
 
 /**
  * [2026-06-18 사용자 직접 지시] 현재 화면에 없는(수정으로 사라진) 기능 알림 — 목록·뱃지에서 제외.
- *   해외원정 대기 · 휴면 계정 · RSVP 리마인더 · 대회.
+ *   해외원정 대기 · 휴면 계정 · RSVP 리마인더.
+ *
+ * tournament_created('새 대회 등록')는 제외했다가 복원했다 — 대회 화면
+ * (/tournaments/[id] 및 신청·브래킷·명단)이 살아 있고 대회 공지·참가비 청구
+ * 알림은 정상 노출되는데 등록 알림만 숨겨져, 학부모가 대회 개설 자체를
+ * 알림으로 받지 못했다.
+ *
+ * ⚠️ 백엔드 fcm.service.VISIBLE_UNREAD_HIDDEN_TYPES 와 값이 같아야 한다
+ *    (벨·앱 뱃지·탭 배지 집계가 그쪽을 참조) — 한쪽만 고치면 목록과 배지가 어긋난다.
  */
 export const HIDDEN_NOTIFICATION_TYPES: ReadonlySet<string> = new Set([
   'trip_waitlist_promoted',
   'account_dormant',
   'rsvp_reminder',
-  'tournament_created',
 ]);
 
 /** [2026-06-18] 오래된 알림 숨김 기준 — 21일(3주) 이상 지난 알림은 미표시. */
