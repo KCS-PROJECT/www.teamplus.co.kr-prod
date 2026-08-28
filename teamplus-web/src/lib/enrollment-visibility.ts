@@ -52,7 +52,10 @@ export function isActiveEnrollment(
  * 여기서는 위 4개 상태를 화이트리스트로 본다. 취소·거절·환불 등 종결 상태는 제외되어
  * 목록에서 자동으로 사라진다.
  *
- * ⚠️ 상태 문자열은 백엔드 SoT(enrollments.service.ts:294 중복 검사 목록)와 동일하게 유지할 것.
+ * ⚠️ 상태 문자열은 백엔드 SoT(common/enrollment/enrollment-status.constants.ts —
+ *    BLOCKING_APPLICATION + paid)와 동일하게 유지할 것. 백엔드에는 이 4종 외에
+ *    rejected/cancelled/expired/completed/refunded 종결 상태가 백엔드 enum 과 상태
+ *    상수에 정의되어 있다 — 여기 화이트리스트에 없으므로 자동 제외된다.
  */
 const MY_ENROLLMENT_STATUSES = [
   "pending", // 학부모 신청 — 결제 전

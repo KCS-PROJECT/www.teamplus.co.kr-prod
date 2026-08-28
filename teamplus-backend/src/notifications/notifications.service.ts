@@ -16,6 +16,7 @@ import { NotificationQueue } from "./notification.queue";
 import {
   FcmService,
   FcmDataPayload,
+  visibleNotificationWhere,
   visibleUnreadNotificationWhere,
 } from "./fcm.service";
 import { PushPolicyService } from "./push-policy.service";
@@ -720,10 +721,20 @@ export class NotificationsService {
     limit: number = 20,
     skip: number = 0,
     types?: string[],
+    excludeTypes?: string[],
   ) {
+    // types(화이트리스트) 우선, 없으면 excludeTypes(제외 기반).
+    //   공지 탭은 "다른 카테고리에 속하지 않는 나머지" 라 제외 방식으로 조회한다
+    //   — 프론트 카탈로그 갱신 누락으로 신규 유형이 목록에서 빠지던 문제 차단.
+    const typeFilter =
+      types && types.length > 0
+        ? { in: types }
+        : excludeTypes && excludeTypes.length > 0
+          ? { notIn: excludeTypes }
+          : undefined;
     const where: import("@prisma/client").Prisma.NotificationWhereInput = {
       userId,
-      ...(types && types.length > 0 ? { notificationType: { in: types } } : {}),
+      ...(typeFilter ? { notificationType: typeFilter } : {}),
     };
 
     const notifications = await this.prisma.notification.findMany({
@@ -943,15 +954,19 @@ export class NotificationsService {
    * 프론트엔드 `aggregateStatsByCategory()` 가 deriveCategory 매핑으로 카테고리별 합산.
    */
   async getStatsByType(userId: string) {
+    // 탭 배지·통계 칩 전용 집계. 목록(useNotifications) 이 21일·숨김 유형을 걸러
+    //   보여주므로 집계도 같은 범위로 세야 한다 — 전체 기간을 세면 "배지에 숫자는
+    //   있는데 탭을 열면 없는" 불일치가 생긴다(벨·앱 뱃지는 이미 같은 기준).
+    const visible = visibleNotificationWhere();
     const [totals, unreads] = await Promise.all([
       this.prisma.notification.groupBy({
         by: ["notificationType"],
-        where: { userId },
+        where: { userId, ...visible },
         _count: { _all: true },
       }),
       this.prisma.notification.groupBy({
         by: ["notificationType"],
-        where: { userId, isRead: false },
+        where: { userId, isRead: false, ...visible },
         _count: { _all: true },
       }),
     ]);

@@ -551,19 +551,19 @@ export default function ClassDetailPage() {
 
   // 자녀별 등록 상태 배지 — 수강생 선택 리스트에서 선/후불 방식까지 구분 표기.
   //   후불 approved 는 잠금 집합(enrolledChildIds)에서 제외되어 무표시였음 — 미신청 자녀와
-  //   구분되지 않던 문제를 배지로 해소. 우선순위: paid > 후불 수강 중 > 결제 대기.
+  //   구분되지 않던 문제를 배지로 해소. 우선순위: paid > 후불 수강 중.
+  //   선불 pending(결제 이탈)은 확정 청구가 아니므로 배지 미표시 — 미신청과 동일 취급.
   //   행별 선/후불 판정은 백엔드 resolveRowBillingTiming 규칙 미러:
   //   전용 수업은 billingMode, BOTH 는 결제 상품의 billingTiming 으로 분기.
   const enrollmentBadgeByChildId = useMemo(() => {
-    const RANK = { paid: 3, postpaid: 2, pending: 1 } as const;
+    const RANK = { paid: 2, postpaid: 1 } as const;
     const map = new Map<
       string,
-      { label: string; tone: "paid" | "postpaid" | "pending" }
+      { label: string; tone: "paid" | "postpaid" }
     >();
-    const myUserId = user?.id;
     const setIfHigher = (
       childId: string,
-      badge: { label: string; tone: "paid" | "postpaid" | "pending" },
+      badge: { label: string; tone: "paid" | "postpaid" },
     ) => {
       const prev = map.get(childId);
       if (!prev || RANK[badge.tone] > RANK[prev.tone]) map.set(childId, badge);
@@ -595,15 +595,10 @@ export default function ClassDetailPage() {
           label: MESSAGES.enrollment.postpaidActiveBadgeLabel,
           tone: "postpaid",
         });
-      } else if (e.status === "pending" && e.requester?.id === myUserId) {
-        setIfHigher(e.child.id, {
-          label: MESSAGES.enrollment.pendingPaymentBadgeLabel,
-          tone: "pending",
-        });
       }
     }
     return map;
-  }, [myEnrollments, classId, user?.id, isPostpaid, isBoth]);
+  }, [myEnrollments, classId, isPostpaid, isBoth]);
 
   // 수업 대상 연령(targetBirthYears 우선, ageMin/ageMax 폴백)에 맞지 않는 자녀 ID 집합.
   //   결제 옵션 페이지와 동일하게 공용 isChildAgeEligibleForClass 사용 (출생연도 비연속 정확 매칭).

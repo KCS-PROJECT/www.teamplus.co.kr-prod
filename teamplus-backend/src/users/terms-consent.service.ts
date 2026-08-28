@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
+import { APP_SETTINGS_CACHE_KEY } from "@/app-management/app-settings-cache";
 
 /**
  * TermsConsentService (L-02 — 2026-05-21 신규)
@@ -19,7 +20,6 @@ import { RedisService } from "@/redis/redis.service";
  *  - POST /api/v1/auth/me/terms-consent → 동의 처리
  */
 
-const APP_SETTINGS_CACHE_KEY = "app:settings:v1";
 const USER_TERMS_CACHE_KEY = (userId: string) => `user:terms:${userId}`;
 
 export interface TermsStatus {

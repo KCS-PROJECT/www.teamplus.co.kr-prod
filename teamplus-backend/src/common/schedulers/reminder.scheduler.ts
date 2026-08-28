@@ -4,6 +4,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { SystemLogService } from "../../logger/system-log.service";
 import { NotificationsService } from "../../notifications/notifications.service";
 import { dbDateToKstYearMonth } from "@/payments/settlement/attribution.util";
+import { AWAITING_EXPIRY } from "@/common/enrollment/enrollment-status.constants";
 import { deriveClassLifecycle } from "@/common/utils/class-lifecycle.util";
 
 /** 후불 미납 독촉 — 결제자 1명분으로 합산되는 개별 청구. */
@@ -290,7 +291,8 @@ export class ReminderScheduler {
       const result = await this.prisma.enrollment.updateMany({
         where: {
           expiresAt: { lt: now },
-          status: { in: ["pending", "pending_approval"] },
+          // 만료 대상 2종 — approved(후불 수강 중) 포함 금지. 중복 차단 집합과 다름.
+          status: { in: AWAITING_EXPIRY },
         },
         data: { status: "expired" },
       });

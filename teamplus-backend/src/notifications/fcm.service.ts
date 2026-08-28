@@ -29,11 +29,29 @@ export const VISIBLE_UNREAD_HIDDEN_TYPES = [
   "trip_waitlist_promoted",
   "account_dormant",
   "rsvp_reminder",
-  "tournament_created",
 ];
 export const VISIBLE_UNREAD_RECENCY_DAYS = 21;
 
-/** 뱃지·벨 집계용 '표시되는 미읽음' where 절 — 숨김 유형·21일 초과 제외(웹 정합). */
+/**
+ * 알림함이 '표시하는' 범위 where 절 — 숨김 유형·21일 초과 제외(웹 정합).
+ * 읽음 여부는 포함하지 않는다 — 전체/미읽음 양쪽 집계에서 공용으로 쓰기 위함
+ * (탭 배지·통계 칩은 전체 건수도 같은 범위로 세야 목록과 숫자가 맞는다).
+ */
+export function visibleNotificationWhere(): {
+  notificationType: { notIn: string[] };
+  createdAt: { gte: Date };
+} {
+  return {
+    notificationType: { notIn: VISIBLE_UNREAD_HIDDEN_TYPES },
+    createdAt: {
+      gte: new Date(
+        Date.now() - VISIBLE_UNREAD_RECENCY_DAYS * 24 * 60 * 60 * 1000,
+      ),
+    },
+  };
+}
+
+/** 뱃지·벨 집계용 '표시되는 미읽음' where 절 — 표시 범위 + isRead=false. */
 export function visibleUnreadNotificationWhere(): {
   isRead: false;
   notificationType: { notIn: string[] };
@@ -41,12 +59,7 @@ export function visibleUnreadNotificationWhere(): {
 } {
   return {
     isRead: false,
-    notificationType: { notIn: VISIBLE_UNREAD_HIDDEN_TYPES },
-    createdAt: {
-      gte: new Date(
-        Date.now() - VISIBLE_UNREAD_RECENCY_DAYS * 24 * 60 * 60 * 1000,
-      ),
-    },
+    ...visibleNotificationWhere(),
   };
 }
 

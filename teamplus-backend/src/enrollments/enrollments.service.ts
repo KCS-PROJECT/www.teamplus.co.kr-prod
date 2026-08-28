@@ -13,6 +13,7 @@ import { WaitlistService } from "@/waitlist/waitlist.service";
 import { CreditDomainService } from "@/credits/credit-domain.service";
 import { endOfMonthKst, monthlyPassWindow } from "@/common/billing/billing-date.util";
 import { assertClassOnSale } from "@/common/billing/sales-gate.util";
+import { BLOCKING_APPLICATION } from "@/common/enrollment/enrollment-status.constants";
 import { hasActivePaidEnrollment } from "@/common/billing/paid-enrollment-guard.util";
 import { calculateKoreanAge } from "@/common/utils/age.util";
 import {
@@ -298,7 +299,8 @@ export class EnrollmentsService {
           childId: dto.childId,
           classId: dto.classId,
           status: {
-            in: ["pending", "pending_approval", "approved"],
+            // 중복 신청 차단 3종 — approved(후불 수강 중) 포함. 만료 cron 집합과 다름.
+            in: BLOCKING_APPLICATION,
           },
         },
         select: { id: true, status: true, requestedBy: true, paymentId: true },

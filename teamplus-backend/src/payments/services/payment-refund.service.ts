@@ -39,6 +39,7 @@ import {
   NicePaymentsGateway,
   NiceCancelAmbiguousError,
 } from "../nice-payments.gateway";
+import { ENROLLMENT_STATUS } from "@/common/enrollment/enrollment-status.constants";
 
 /**
  * 잔여 회차 비례 환불 산정 결과 (설계 SoT: claudedocs/refund-policy-design-2026-07-09.md §3-1).
@@ -1142,7 +1143,7 @@ export class PaymentRefundService {
         for (const e of enrollments) {
           await tx.enrollment.update({
             where: { id: e.id },
-            data: { status: "refunded" },
+            data: { status: ENROLLMENT_STATUS.REFUNDED },
           });
           await tx.classRegistration.updateMany({
             where: { classId: e.classId, userId: e.childId, status: "active" },
