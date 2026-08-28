@@ -2950,27 +2950,42 @@ export class ClassesService {
     >();
     if (monthScoped) {
       for (const [childId, list] of enrollmentsByChild) {
-        for (const cand of list) {
-          if (
-            this.resolveRowBillingTiming(
-              cls.billingMode,
-              cand.product?.billingTiming,
-            ) !== "PREPAID"
-          ) {
-            continue;
-          }
-          const att = resolvePrepaidAttribution({
-            billingTiming: "PREPAID",
-            feeType: cand.product?.feeType,
-            billingMonth: cand.product?.billingMonth,
-            enrollmentStatus: cand.status,
-            enrollmentPaidAt: cand.paidAt,
-            productPrice: cand.product?.price,
-            payment: cand.payment,
-          });
-          if (!att.attributionUnknown && att.yearMonth === selectedYearMonth) {
-            prepaidMatchedByChild.set(childId, { en: cand, att });
-            break; // updatedAt desc — 첫 매칭이 선택월 최신 거래
+        // 완료 결제 행 우선 2-pass — 같은 달에 실거래(결제·환불)와 이탈 흔적(재결제
+        //   pending→expired)이 공존하면, "첫 매칭=최신"만으로는 최신 이탈이 실거래를
+        //   가려 환불 학생이 취소로 오표기된다. 돈이 오간 행(payment.completedAt)을
+        //   먼저 훑고, 없을 때만 종전대로 최신 행을 매칭한다. 허브는 행 합산이라
+        //   가림이 없으므로 이 우선순위가 허브 의미와 화면을 정합시킨다.
+        const passes: ((e: (typeof enrollments)[number]) => boolean)[] = [
+          (e) => e.payment?.completedAt != null,
+          () => true,
+        ];
+        matchChild: for (const pass of passes) {
+          for (const cand of list) {
+            if (!pass(cand)) continue;
+            if (
+              this.resolveRowBillingTiming(
+                cls.billingMode,
+                cand.product?.billingTiming,
+              ) !== "PREPAID"
+            ) {
+              continue;
+            }
+            const att = resolvePrepaidAttribution({
+              billingTiming: "PREPAID",
+              feeType: cand.product?.feeType,
+              billingMonth: cand.product?.billingMonth,
+              enrollmentStatus: cand.status,
+              enrollmentPaidAt: cand.paidAt,
+              productPrice: cand.product?.price,
+              payment: cand.payment,
+            });
+            if (
+              !att.attributionUnknown &&
+              att.yearMonth === selectedYearMonth
+            ) {
+              prepaidMatchedByChild.set(childId, { en: cand, att });
+              break matchChild; // pass 내 updatedAt desc — 첫 매칭이 최신 거래
+            }
           }
         }
       }

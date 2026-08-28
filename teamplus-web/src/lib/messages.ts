@@ -1175,6 +1175,8 @@ export const MESSAGES = {
     paidRatio: (paid: number, total: number) => `완납 ${paid}/${total}명`,
     // 예상 배지
     estimated: "예상",
+    // 환불 행 금액 셀 보조 칩 — [환불 N원] 칩(좌) + 순수납(우). 기재 금액=수납금 통일 원칙.
+    refundedChip: (amount: string) => `환불 ${amount}`,
     // 행별 5-state 상태 라벨 (students 결제 탭 행 칩)
     rowStatusPaid: "완납",
     rowStatusBilled: "청구",

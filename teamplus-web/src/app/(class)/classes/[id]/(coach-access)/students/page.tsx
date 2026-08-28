@@ -775,10 +775,23 @@ function StudentRow({
 }) {
   // 선불 UNSETTLED 는 "미정산"(후불 용어)이 아니라 "미구매" — 월권은 그 달만 유효하므로
   //   선택월에 거래 없는 선불 학생의 사실 상태는 재구매 전이다.
+  // 환불 행 상태 칩은 액수까지 표기("환불 600,000원") — 금액 셀은 순수납만 남겨
+  //   열 의미를 통일하고, 환불 정보(부분환불 포함)는 상태 칩이 담당한다.
+  const refundedAmount =
+    student.billingStatus === 'REFUNDED' && student.amount != null
+      ? Math.max(0, student.amount - student.paidAmount)
+      : null;
   const status =
     student.billingTiming === 'PREPAID' && student.billingStatus === 'UNSETTLED'
       ? { ...ROW_STATUS_META.UNSETTLED, label: MESSAGES.settlement.rowStatusUnpurchased }
-      : (ROW_STATUS_META[student.billingStatus] ?? ROW_STATUS_META.UNSETTLED);
+      : refundedAmount != null && refundedAmount > 0
+        ? {
+            ...ROW_STATUS_META.REFUNDED,
+            label: MESSAGES.settlement.refundedChip(
+              formatPrice(refundedAmount),
+            ),
+          }
+        : (ROW_STATUS_META[student.billingStatus] ?? ROW_STATUS_META.UNSETTLED);
   const timing = TIMING_META[student.billingTiming] ?? TIMING_META.UNASSIGNED;
   const M = MESSAGES.academy.students;
   return (
@@ -858,12 +871,21 @@ function StudentRow({
   );
 }
 
-/** 결제 탭 금액 셀 — 확정=billedAmount / 후불 미확정=estimatedAmount+"예상" / UNASSIGNED=미표기. */
+/** 결제 탭 금액 셀 — 확정=billedAmount / 환불=순수납+[환불액] 칩 / 후불 미확정=estimatedAmount+"예상" / UNASSIGNED=미표기. */
 function AmountCell({ student }: { student: PaymentStudent }) {
+  // 환불 행 — 금액 자리는 다른 행과 동일하게 "실제 수납된 돈"(순수납, 총수금 합계
+  //   기준값)만 표시해 열 전체의 의미를 통일한다. 환불액은 하단 상태 칩이
+  //   "환불 {액수}" 로 함께 표기(행 컴포넌트) — 부분환불 식별은 그쪽 책임.
+  //   billedAmount 는 계약상 null(유효 청구 제외 — 미수 집계 오염 방지)이라 사용 불가.
+  if (student.billingStatus === 'REFUNDED') {
+    return (
+      <span className="text-card-body font-bold font-num text-it-ink-800 dark:text-white tabular-nums">
+        {formatPrice(student.paidAmount)}
+      </span>
+    );
+  }
   if (
-    (student.billingStatus === 'PAID' ||
-      student.billingStatus === 'BILLED' ||
-      student.billingStatus === 'REFUNDED') &&
+    (student.billingStatus === 'PAID' || student.billingStatus === 'BILLED') &&
     student.billedAmount != null
   ) {
     return (
