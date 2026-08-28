@@ -228,13 +228,22 @@ function PaymentCompleteContent() {
   const tossOrderId = searchParams?.get('orderId') || '';
   const tossAmount = Number(searchParams?.get('amount') ?? '0');
 
+  // [추가 2026-08-27] 나이스 결제창 복귀 파라미터.
+  //  나이스는 토스와 달리 **백엔드가 승인까지 끝낸 뒤** 여기로 303 리다이렉트한다.
+  //  따라서 이 화면은 confirm 을 호출하지 않고 영수증 조회만 한다.
+  //  실패 시 error 코드가 함께 오며, 그 경우 결제는 발생하지 않았다.
+  const niceError = searchParams?.get('error') || '';
+
   const [confirmError, setConfirmError] = useState<string | null>(null);
   // 결제 확인에 필요한 파라미터가 하나라도 있는지 — 세션 만료 재로그인 복귀 등으로
   // 쿼리가 소실된 채 진입하면 어떤 분기도 타지 못해 무한 스피너가 되므로 안내로 대체.
   const hasPaymentParams =
     Boolean(orderNumber) ||
     (provider === 'toss' && Boolean(tossPaymentKey) && Boolean(tossOrderId) && tossAmount > 0) ||
-    (provider === 'mock' && Boolean(tossOrderId));
+    (provider === 'mock' && Boolean(tossOrderId)) ||
+    // 나이스는 인증 실패 시 orderId 조차 비어 올 수 있다 — 그래도 안내 화면은 보여줘야 하므로
+    //   무한 스피너로 빠지지 않게 파라미터 있음으로 취급한다.
+    provider === 'nice';
   // [2026-06-09] 오픈클래스 자녀 복수 결제 — 다음 자녀 순차 큐.
   const { navigate } = useNavigation();
   const { user } = useAuth();
@@ -282,6 +291,34 @@ function PaymentCompleteContent() {
   });
 
   useEffect(() => {
+    // ── 나이스 분기: 백엔드가 이미 승인을 마치고 리다이렉트한 상태.
+    //    confirm 호출 없이 영수증/결제권만 조회한다. error 가 있으면 승인 자체가 없었다.
+    if (provider === 'nice') {
+      if (confirmCalledRef.current) return; // strict mode 더블 마운트 방지
+      confirmCalledRef.current = true;
+      if (niceError) {
+        setConfirmError(
+          niceError === 'auth_failed'
+            ? MESSAGES.payment2.niceAuthFailed
+            : niceError === 'invalid_signature' || niceError === 'no_tid'
+              ? MESSAGES.payment2.niceVerifyFailed
+              : MESSAGES.payment2.confirmFailed,
+        );
+        return;
+      }
+      const loadNice = async () => {
+        const detail = await verifyPaymentCompletion({ orderNumber });
+        if (detail.success && detail.data) {
+          setReceipt(detail.data.receipt);
+          setCreditsIssued(detail.data.creditsIssued);
+        } else {
+          // 승인은 끝났고 영수증 조회만 실패 — 무한 스피너 대신 에러를 표면화한다.
+          setConfirmError(detail.error?.message ?? MESSAGES.payment2.loadError);
+        }
+      };
+      void loadNice();
+      return;
+    }
     // ── 토스 분기: provider=toss + paymentKey/orderId/amount 모두 있을 때 confirm 호출
     if (provider === 'toss' && tossPaymentKey && tossOrderId && tossAmount > 0) {
       if (confirmCalledRef.current) return; // strict mode 더블 마운트 방지
@@ -349,7 +386,16 @@ function PaymentCompleteContent() {
       }
     };
     void load();
-  }, [orderNumber, tid, resultCode, provider, tossPaymentKey, tossOrderId, tossAmount]);
+  }, [
+    orderNumber,
+    tid,
+    resultCode,
+    provider,
+    tossPaymentKey,
+    tossOrderId,
+    tossAmount,
+    niceError,
+  ]);
 
   const handleDownloadReceipt = async () => {
     if (!receipt) return;

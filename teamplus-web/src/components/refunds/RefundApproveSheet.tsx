@@ -1,10 +1,12 @@
 'use client';
 
 /**
- * RefundApproveSheet — 전액 환불 승인=실행 이중 확인 시트(비가역)
+ * RefundApproveSheet — 환불 승인=실행 이중 확인 시트(비가역)
  *
  * "승인 즉시 PG 환불이 실행되며 되돌릴 수 없습니다" 경고를 강조하고,
  * 확인 버튼은 처리 중 잠금(더블탭 방지)한다. 승인은 사유 입력 없음(거절만 사유 필수).
+ * 표시 금액은 실제 실행 금액(서버 산정 requestedAmount) — 이용분 공제로 결제액보다
+ * 작으면 "부분 환불" 라벨과 공제 근거를 함께 노출한다(전액 오인 방지).
  */
 
 import { BottomSheet } from '@/components/ui/BottomSheet';
@@ -16,8 +18,10 @@ interface RefundApproveSheetProps {
   onClose: () => void;
   onConfirm: () => void;
   isProcessing: boolean;
-  /** 환불 실행 금액(전액) — 확인 화면 강조. */
+  /** 환불 실행 금액(서버 산정 요청액) — 확인 화면 강조. */
   amount: number;
+  /** 원 결제 금액 — amount 보다 크면 부분 환불로 표시. */
+  paymentAmount: number;
 }
 
 export function RefundApproveSheet({
@@ -26,7 +30,9 @@ export function RefundApproveSheet({
   onConfirm,
   isProcessing,
   amount,
+  paymentAmount,
 }: RefundApproveSheetProps) {
+  const isPartial = amount < paymentAmount;
   return (
     <BottomSheet
       isOpen={isOpen}
@@ -69,17 +75,27 @@ export function RefundApproveSheet({
           </p>
         </div>
 
-        {/* 환불 금액 강조 */}
-        <div className="flex items-center justify-between rounded-w-md bg-it-fill px-4 py-3.5 dark:bg-it-blue-900/40">
-          <span className="text-card-body font-semibold text-it-ink-500 dark:text-wtext-4">
-            {MESSAGES.refund.approveCta}
-          </span>
-          <span className="text-[18px] font-extrabold text-it-ink-900 tabular-nums dark:text-white">
-            {amount.toLocaleString()}
-            <span className="ml-0.5 text-[13px] font-semibold text-it-ink-500 dark:text-wtext-4">
-              {MESSAGES.settlement.won}
+        {/* 환불 금액 강조 — 실제 실행 금액. 부분 환불이면 공제 근거를 함께 표시. */}
+        <div className="rounded-w-md bg-it-fill px-4 py-3.5 dark:bg-it-blue-900/40">
+          <div className="flex items-center justify-between">
+            <span className="text-card-body font-semibold text-it-ink-500 dark:text-wtext-4">
+              {isPartial ? MESSAGES.refund.approveCtaPartial : MESSAGES.refund.approveCta}
             </span>
-          </span>
+            <span className="text-[18px] font-extrabold text-it-ink-900 tabular-nums dark:text-white">
+              {amount.toLocaleString()}
+              <span className="ml-0.5 text-[13px] font-semibold text-it-ink-500 dark:text-wtext-4">
+                {MESSAGES.settlement.won}
+              </span>
+            </span>
+          </div>
+          {isPartial && (
+            <p className="mt-1.5 text-card-meta leading-relaxed text-it-ink-500 tabular-nums dark:text-wtext-4">
+              {MESSAGES.refund.approvePartialDeductNote(
+                paymentAmount,
+                paymentAmount - amount,
+              )}
+            </p>
+          )}
         </div>
 
       </div>

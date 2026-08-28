@@ -450,6 +450,8 @@ export function RefundRequestDetailView({
   const { payment, request, snapshotVsCurrent, decision, history } = detail;
   const isPending = detail.status === 'pending';
   const isFailed = detail.status === 'execution_failed';
+  // 요청액 < 결제액 = 이용분 공제 부분 환불 — CTA·승인 시트 라벨을 전액과 구분한다.
+  const isPartialRefund = request.requestedAmount < payment.amount;
 
   // CTA 게이트 — DIRECT 는 승인/거절 없음(admin 재처리만). canManage 는 위에서 sourceType 반영.
   const failureCode = decision.failureCode ?? '';
@@ -613,6 +615,55 @@ export function RefundRequestDetailView({
           </div>
         )}
         <RefundUsageBody usage={detail.usage} sourceType={detail.sourceType} />
+        {/* 산정 내역 — 결제액·이용분 공제·환불 예정액. pending 한정(백엔드가 그 외 null),
+            실행 금액 SoT 는 requestedAmount 라 부재 시 승인은 그대로 가능(섹션만 숨김). */}
+        {isPending && detail.quote && (
+          <div className="mt-3 space-y-1.5 rounded-w-md bg-it-fill px-3.5 py-3 dark:bg-it-blue-900/40">
+            <div className="flex items-center justify-between">
+              <span className="text-card-meta text-it-ink-500 dark:text-wtext-4">
+                {MESSAGES.refund.quotePaid}
+              </span>
+              <span className="text-card-body font-semibold text-it-ink-800 tabular-nums dark:text-white">
+                {detail.quote.paidAmount.toLocaleString()}
+                {MESSAGES.settlement.won}
+              </span>
+            </div>
+            {detail.quote.deductedAmount > 0 && (
+              <div className="flex items-center justify-between">
+                <span className="text-card-meta text-it-ink-500 dark:text-wtext-4">
+                  {MESSAGES.refund.quoteDeduct(
+                    detail.quote.attendedCount,
+                    detail.quote.unitFee,
+                  )}
+                </span>
+                <span className="text-card-body font-semibold text-it-red-600 tabular-nums dark:text-it-red-400">
+                  −{detail.quote.deductedAmount.toLocaleString()}
+                  {MESSAGES.settlement.won}
+                </span>
+              </div>
+            )}
+            {detail.quote.alreadyRefunded > 0 && (
+              <div className="flex items-center justify-between">
+                <span className="text-card-meta text-it-ink-500 dark:text-wtext-4">
+                  {MESSAGES.refund.quoteAlreadyRefunded}
+                </span>
+                <span className="text-card-body font-semibold text-it-red-600 tabular-nums dark:text-it-red-400">
+                  −{detail.quote.alreadyRefunded.toLocaleString()}
+                  {MESSAGES.settlement.won}
+                </span>
+              </div>
+            )}
+            <div className="mt-1 flex items-center justify-between border-t border-wline dark:border-rink-700 pt-2">
+              <span className="text-card-body font-semibold text-it-ink-700 dark:text-it-ink-200">
+                {MESSAGES.refund.quoteRefundable}
+              </span>
+              <span className="text-card-title font-extrabold text-it-ink-900 tabular-nums dark:text-white">
+                {detail.quote.refundableAmount.toLocaleString()}
+                {MESSAGES.settlement.won}
+              </span>
+            </div>
+          </div>
+        )}
       </RefundSection>
 
       {/* ── 스냅샷 vs 현재 ────────────────────────────────── */}
@@ -703,7 +754,9 @@ export function RefundRequestDetailView({
                     disabled={isProcessing || !canApprove}
                     className="h-12 flex-[1.4] rounded-w-md bg-it-blue-500 text-card-title font-semibold text-white transition-colors hover:bg-it-blue-600 active:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none"
                   >
-                    {MESSAGES.refund.approveCta}
+                    {isPartialRefund
+                      ? MESSAGES.refund.approveCtaPartial
+                      : MESSAGES.refund.approveCta}
                   </button>
                 </div>
               )}
@@ -774,13 +827,15 @@ export function RefundRequestDetailView({
         </div>
       )}
 
-      {/* 승인/거절 시트 */}
+      {/* 승인/거절 시트 — 표시 금액은 서버 산정 요청액(이용분 공제 후 실제 실행 금액).
+          payment.amount 를 넘기면 부분 환불 건에서 실행 금액과 다른 총액이 노출된다. */}
       <RefundApproveSheet
         isOpen={approveOpen}
         onClose={() => setApproveOpen(false)}
         onConfirm={handleApprove}
         isProcessing={isProcessing}
-        amount={payment.amount}
+        amount={request.requestedAmount}
+        paymentAmount={payment.amount}
       />
       <RefundRejectSheet
         isOpen={rejectOpen}

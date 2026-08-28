@@ -29,6 +29,7 @@ import { PaymentsService } from "./payments.service";
 import { PaymentsController } from "./payments.controller";
 import { KgInicisGateway } from "./kg-inicis.gateway";
 import { TossPaymentsGateway } from "./toss-payments.gateway";
+import { NicePaymentsGateway } from "./nice-payments.gateway";
 import { PaymentCalculationService } from "./payment-calculation.service";
 import { PostpaidSettlementService } from "./postpaid-settlement.service";
 import { SettlementSummaryService } from "./settlement/settlement-summary.service";
@@ -147,7 +148,11 @@ describe("Payment System Integration Tests (7 Scenarios)", () => {
       delete: jest.fn(),
       groupBy: jest.fn(),
     },
-    memberCredit: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+    memberCredit: {
+      create: jest.fn(),
+      findUnique: jest.fn(),
+      update: jest.fn(),
+    },
     user: { findUnique: jest.fn() },
     clubMember: { findMany: jest.fn() },
     auditLog: { create: jest.fn() },
@@ -232,8 +237,25 @@ describe("Payment System Integration Tests (7 Scenarios)", () => {
         { provide: ConfigService, useValue: { get: jest.fn(() => "test") } },
         { provide: KgInicisGateway, useValue: mockKgInicisGateway },
         { provide: TossPaymentsGateway, useValue: mockTossGateway },
-        { provide: PaymentCalculationService, useValue: mockCalculationService },
-        { provide: PostpaidSettlementService, useValue: mockPostpaidSettlementService },
+        {
+          provide: NicePaymentsGateway,
+          useValue: {
+            approve: jest.fn(),
+            netCancel: jest.fn(),
+            getClientKey: jest.fn().mockReturnValue("S2_test"),
+            verifyAuthSignature: jest.fn().mockReturnValue(true),
+            verifyResultSignature: jest.fn().mockReturnValue(true),
+            verifyWebhookSignature: jest.fn().mockReturnValue(true),
+          },
+        },
+        {
+          provide: PaymentCalculationService,
+          useValue: mockCalculationService,
+        },
+        {
+          provide: PostpaidSettlementService,
+          useValue: mockPostpaidSettlementService,
+        },
         { provide: SettlementSummaryService, useValue: {} },
         { provide: WebhookRetryService, useValue: mockWebhookRetryService },
         { provide: PaymentCreateService, useValue: mockCreateService },
@@ -347,7 +369,10 @@ describe("Payment System Integration Tests (7 Scenarios)", () => {
         new BadRequestException("결제 금액이 일치하지 않습니다."),
       );
 
-      const mismatchedWebhookPayload = { ...mockWebhookPayload, amount: 230000 };
+      const mismatchedWebhookPayload = {
+        ...mockWebhookPayload,
+        amount: 230000,
+      };
 
       await expect(
         service.completePayment(mismatchedWebhookPayload),
@@ -486,9 +511,9 @@ describe("Payment System Integration Tests (7 Scenarios)", () => {
         new ConflictException("이미 처리된 결제입니다."),
       );
 
-      await expect(
-        service.completePayment(mockWebhookPayload),
-      ).rejects.toThrow(ConflictException);
+      await expect(service.completePayment(mockWebhookPayload)).rejects.toThrow(
+        ConflictException,
+      );
       expect(mockWebhookService.completePayment).toHaveBeenCalledWith(
         mockWebhookPayload,
       );
@@ -521,7 +546,9 @@ describe("Payment System Integration Tests (7 Scenarios)", () => {
 
       const decrypted =
         await cryptoService.decryptCredentialsWithAudit(encryptedPayload);
-      const tokens = await mockAuthService.generateTokens(JSON.parse(decrypted));
+      const tokens = await mockAuthService.generateTokens(
+        JSON.parse(decrypted),
+      );
 
       expect(decrypted).toContain("parent@teamplus.com");
       expect(tokens.accessToken).toBeDefined();
@@ -640,7 +667,11 @@ describe("Payment System Integration Tests (7 Scenarios)", () => {
       mockCreateService.initiatePayment.mockResolvedValue(mockInitiateResult);
 
       const startTime = Date.now();
-      await service.initiatePayment(mockUserId, mockProductId, mockProduct.price);
+      await service.initiatePayment(
+        mockUserId,
+        mockProductId,
+        mockProduct.price,
+      );
       const duration = Date.now() - startTime;
 
       expect(duration).toBeLessThan(200);

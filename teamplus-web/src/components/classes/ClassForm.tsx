@@ -205,7 +205,7 @@ export function ClassForm({
   const { toast } = useToast();
   const { back } = useNavigation();
   const formRef = useRef<HTMLFormElement>(null);
-  // [spot 선불 단건] 체크 전 결제방식 기억 — 해제 시 복원(월 결제 draft 와 같은 보존 원칙).
+  // [spot] 선택형(BOTH)에서 체크한 경우의 이전 값 기억 — 해제 시 복원(선불/후불 선택은 불간섭).
   const prevBillingModeRef = useRef<ClassFormData['billingMode'] | null>(null);
   const [venueSheetOpen, setVenueSheetOpen] = useState(false);
   // [2026-06-05] 장소 선택 BottomSheet 대상 — null: 단일 장소 / DayOfWeek: 해당 요일 행 장소.
@@ -278,15 +278,13 @@ export function ClassForm({
       setFormData(prev => ({ ...prev, venueId, venue: venueName, venueAddress: address }));
     }
     setVenueSheetOpen(false);
-    setVenueTargetDay(null);
-    setVenueTargetDateKey(null);
   };
 
-  // [2026-06-05] 장소 BottomSheet 닫기 — 대상요일·대상일정 리셋 공통 처리.
+  // 장소 BottomSheet 닫기 — 대상요일·대상일정은 리셋하지 않는다. 닫힘 애니메이션(300ms) 동안
+  //   시트가 마운트를 유지하므로, 여기서 리셋하면 제목("N요일 장소 선택")이 기본값으로 바뀌는
+  //   깜빡임이 보인다. 대상 상태는 각 열기 트리거가 명시적으로 덮어쓴다.
   const closeVenueSheet = () => {
     setVenueSheetOpen(false);
-    setVenueTargetDay(null);
-    setVenueTargetDateKey(null);
   };
 
   // [2026-06-30 §9] 요일 우선 흐름 — 모달이 고른 날짜들로 일정 재구성.
@@ -896,15 +894,21 @@ export function ClassForm({
                   onClick={() =>
                     setFormData(prev => {
                       const turningOn = prev.trainingType !== 'spot';
-                      // [spot 선불 단건] 체크 시 선불 고정, 해제 시 이전 결제방식 복원.
+                      // [spot] 1회용은 선불/후불 2택(선택형 제외) — 선택형이었을 때만 선불로
+                      //   전환해 두고 해제 시 복원한다(선불/후불 선택은 건드리지 않음).
                       //   월 결제 draft 는 지우지 않는다(보존+숨김) — 제출 시 spot 이면 미전송.
-                      if (turningOn) prevBillingModeRef.current = prev.billingMode;
+                      const fromBoth = turningOn && prev.billingMode === 'BOTH';
+                      if (fromBoth) prevBillingModeRef.current = 'BOTH';
+                      const nextBillingMode = turningOn
+                        ? fromBoth
+                          ? 'PREPAID'
+                          : prev.billingMode
+                        : (prevBillingModeRef.current ?? prev.billingMode);
+                      if (!turningOn) prevBillingModeRef.current = null;
                       return {
                         ...prev,
                         trainingType: turningOn ? 'spot' : 'regular',
-                        billingMode: turningOn
-                          ? 'PREPAID'
-                          : (prevBillingModeRef.current ?? 'BOTH'),
+                        billingMode: nextBillingMode,
                         // 단일 제한 규칙 통일 — 항상 "마지막에 선택한 날짜 1개" 유지 (applyMultiDates 와 동일).
                         dateSchedules: turningOn
                           ? prev.dateSchedules.slice(-1)
@@ -1091,6 +1095,7 @@ export function ClassForm({
                         type="button"
                         onClick={() => {
                           setVenueTargetDay(s.dayOfWeek);
+                          setVenueTargetDateKey(null);
                           setVenueSheetOpen(true);
                         }}
                         className={
@@ -1361,6 +1366,7 @@ export function ClassForm({
                                 type="button"
                                 onClick={() => {
                                   setVenueTargetDateKey(s.key);
+                                  setVenueTargetDay(null);
                                   setVenueSheetOpen(true);
                                 }}
                                 className={
@@ -1604,13 +1610,6 @@ export function ClassForm({
                       <label className={cn('block text-card-meta font-bold uppercase tracking-wider', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                         {MESSAGES.classProduct.billingModeLabel}
                       </label>
-                      {/* [spot 선불 단건] 1회용은 선택 숨김 — 선불 단건 고정 안내로 대체. */}
-                      {isSpot ? (
-                        <p className={cn('text-card-caption font-medium', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
-                          {MESSAGES.classProduct.spotSingleNotice}
-                        </p>
-                      ) : (
-                      <>
                       <div className="grid grid-cols-3 gap-2">
                         {(['PREPAID', 'POSTPAID', 'BOTH'] as const).map((bm) => {
                           const active = formData.billingMode === bm;
@@ -1624,11 +1623,14 @@ export function ClassForm({
                             <button
                               key={bm}
                               type="button"
+                              // [spot] 정기권 전제인 선택형만 비활성 — 선불/후불은 일반 수업과 동일.
+                              disabled={isSpot && bm === 'BOTH'}
                               onClick={() => {
                                 handleChange('billingMode', bm);
                                 // 후불 전환 시 담아둔 정기권 draft 제거 — 후불 전용은 1회 수업료만 운영.
                                 //   선택형(BOTH)은 정액 패키지를 함께 운영하므로 유지.
-                                if (bm === 'POSTPAID') onPackageDraftChange?.([]);
+                                //   [spot] 은 draft 를 보존한다(숨김·미전송 상태라 지울 이유 없음 — 해제 시 복원).
+                                if (bm === 'POSTPAID' && !isSpot) onPackageDraftChange?.([]);
                               }}
                               aria-pressed={active}
                               className={cn(
@@ -1640,6 +1642,7 @@ export function ClassForm({
                                   : active
                                     ? 'border-ice-500 bg-ice-50 text-ice-600 dark:bg-rink-700 dark:text-ice-400 dark:border-ice-500'
                                     : 'border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-wtext-2 dark:text-rink-200',
+                                isSpot && bm === 'BOTH' && 'opacity-40 cursor-not-allowed',
                               )}
                             >
                               {label}
@@ -1654,7 +1657,10 @@ export function ClassForm({
                             ? MESSAGES.classProduct.billingModePostpaidHint
                             : MESSAGES.classProduct.billingModeBothHint}
                       </p>
-                      </>
+                      {isSpot && (
+                        <p className={cn('text-card-caption font-medium', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
+                          {MESSAGES.classProduct.spotSingleNotice}
+                        </p>
                       )}
                       {/* [가격 잠금 §3-3] 제출 전 고지 — 등록 제출 즉시 선불 첫 월분 확정
                           (A안, 결제 여부 무관). 후불 전용은 선불 월분이 없어 미노출.

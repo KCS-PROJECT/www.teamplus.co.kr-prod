@@ -37,6 +37,11 @@ export interface PaymentMethodMeta {
  *                     모두 이 키 사용.
  *  KG이니시스: card·easy·vbank·trans·phone
  *  토스페이먼츠: toss (Web SDK 위젯 위임)
+ *  나이스페이먼츠: nice (결제창 위임 — 실제 수단은 결제창 호출 시 method 로 전달)
+ *
+ *  ⚠️ toss·nice 는 "결제수단"이 아니라 결제사(PG)다. 두 PG 는 SDK 가 결제수단 선택까지
+ *    담당하므로, initiate 시점에는 수단이 확정되지 않아 PG 코드가 그 자리에 들어간다.
+ *    실제 수단은 승인 응답(payMethod)으로 확정되어 Payment 에 기록된다.
  */
 export const PAYMENT_METHODS = {
   card: {
@@ -67,6 +72,11 @@ export const PAYMENT_METHODS = {
   toss: {
     label: "토스페이먼츠",
     kgPaymethod: null, // 토스는 KG 미사용 — 위젯 SDK 가 자체 처리
+    icon: "credit_card",
+  },
+  nice: {
+    label: "나이스페이먼츠",
+    kgPaymethod: null, // 나이스는 KG 미사용 — 결제창이 자체 처리
     icon: "credit_card",
   },
 } as const satisfies Record<string, PaymentMethodMeta>;

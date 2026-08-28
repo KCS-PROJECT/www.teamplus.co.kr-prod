@@ -8,6 +8,7 @@ import { PaymentsService } from "./payments.service";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
 import { TossPaymentsGateway } from "./toss-payments.gateway";
+import { NicePaymentsGateway } from "./nice-payments.gateway";
 import { CreditDomainService } from "@/credits/credit-domain.service";
 import { NotificationsService } from "@/notifications/notifications.service";
 import { PaymentWebhookService } from "./services/payment-webhook.service";
@@ -73,6 +74,11 @@ describe("PaymentsService", () => {
     confirm: jest.fn(),
     getPayment: jest.fn(),
   };
+  const mockNiceGateway = {
+    approve: jest.fn(),
+    netCancel: jest.fn(),
+    verifyResultSignature: jest.fn().mockReturnValue(true),
+  };
   const mockRedisService = {
     setIfNotExists: jest.fn().mockResolvedValue(true),
     del: jest.fn().mockResolvedValue(undefined),
@@ -118,6 +124,7 @@ describe("PaymentsService", () => {
         { provide: PaymentRefundService, useValue: mockRefundService },
         { provide: PaymentReceiptService, useValue: mockReceiptService },
         { provide: TossPaymentsGateway, useValue: mockTossGateway },
+        { provide: NicePaymentsGateway, useValue: mockNiceGateway },
         { provide: RedisService, useValue: mockRedisService },
         { provide: CreditDomainService, useValue: mockCreditDomain },
         { provide: NotificationsService, useValue: mockNotificationsService },
@@ -137,7 +144,10 @@ describe("PaymentsService", () => {
   // ────────────────────────────────────────────────────────────────────
   describe("Facade 위임", () => {
     it("initiatePayment → PaymentCreateService.initiatePayment 위임", async () => {
-      const expected = { orderNumber: mockOrderNumber, paymentStatus: "pending" };
+      const expected = {
+        orderNumber: mockOrderNumber,
+        paymentStatus: "pending",
+      };
       mockCreateService.initiatePayment.mockResolvedValue(expected);
 
       const options = { paymentMethod: "card", buyerName: "홍길동" };
@@ -491,7 +501,10 @@ describe("PaymentsService", () => {
               id: "line-1",
               attendanceCount: 0,
               amount: 0,
-              billing: { yearMonth: "2026-06", class: { className: "주니어 정규반" } },
+              billing: {
+                yearMonth: "2026-06",
+                class: { className: "주니어 정규반" },
+              },
               user: { firstName: "하늘", lastName: "김" },
             },
           ],
@@ -568,9 +581,21 @@ describe("PaymentsService", () => {
   describe("getPaymentStats", () => {
     it("상태별 통계를 계산한다", async () => {
       jest.spyOn(prismaService.payment as any, "groupBy").mockResolvedValue([
-        { paymentStatus: "completed", _count: { id: 2 }, _sum: { amount: 540000 } },
-        { paymentStatus: "failed", _count: { id: 1 }, _sum: { amount: 120000 } },
-        { paymentStatus: "refunded", _count: { id: 1 }, _sum: { amount: 120000 } },
+        {
+          paymentStatus: "completed",
+          _count: { id: 2 },
+          _sum: { amount: 540000 },
+        },
+        {
+          paymentStatus: "failed",
+          _count: { id: 1 },
+          _sum: { amount: 120000 },
+        },
+        {
+          paymentStatus: "refunded",
+          _count: { id: 1 },
+          _sum: { amount: 120000 },
+        },
       ] as any);
 
       const result = await service.getPaymentStats();
@@ -596,8 +621,16 @@ describe("PaymentsService", () => {
 
     it("성공률을 정확히 계산한다", async () => {
       jest.spyOn(prismaService.payment as any, "groupBy").mockResolvedValue([
-        { paymentStatus: "completed", _count: { id: 2 }, _sum: { amount: 540000 } },
-        { paymentStatus: "failed", _count: { id: 2 }, _sum: { amount: 220000 } },
+        {
+          paymentStatus: "completed",
+          _count: { id: 2 },
+          _sum: { amount: 540000 },
+        },
+        {
+          paymentStatus: "failed",
+          _count: { id: 2 },
+          _sum: { amount: 220000 },
+        },
       ] as any);
 
       const result = await service.getPaymentStats();
@@ -612,8 +645,16 @@ describe("PaymentsService", () => {
       const endDate = new Date("2026-01-31");
 
       jest.spyOn(prismaService.payment as any, "groupBy").mockResolvedValue([
-        { paymentStatus: "completed", _count: { id: 2 }, _sum: { amount: 540000 } },
-        { paymentStatus: "failed", _count: { id: 1 }, _sum: { amount: 120000 } },
+        {
+          paymentStatus: "completed",
+          _count: { id: 2 },
+          _sum: { amount: 540000 },
+        },
+        {
+          paymentStatus: "failed",
+          _count: { id: 1 },
+          _sum: { amount: 120000 },
+        },
       ] as any);
 
       const result = await service.getPaymentStatsByDateRange(
@@ -819,9 +860,7 @@ describe("PaymentsService", () => {
       const mockTx = {
         $queryRaw: jest.fn().mockResolvedValue([]),
         class: {
-          findUnique: jest
-            .fn()
-            .mockResolvedValue({ capacity: opts.capacity }),
+          findUnique: jest.fn().mockResolvedValue({ capacity: opts.capacity }),
         },
         classRegistration: {
           findUnique: jest

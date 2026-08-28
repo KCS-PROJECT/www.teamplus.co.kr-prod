@@ -39,7 +39,10 @@ const securityHeaders = [
       "default-src 'self'",
       // [추가 2026-05-26] PortOne(본인인증 게이트웨이) SDK 동적 로드 허용.
       //   cdn.portone.io = SDK 파일 / *.portone.io = 향후 추가 도메인 대응.
-      `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} https://pg.inicis.com https://*.sentry.io https://*.daumcdn.net https://t1.kakaocdn.net https://developers.kakao.com https://*.tosspayments.com https://cdn.portone.io https://*.portone.io https://*.iamport.co https://*.iamport.kr`,
+      // [추가 2026-08-27] 나이스페이먼츠 결제창 SDK(pay.nicepay.co.kr/v1/js/).
+      //   ⚠️ 결제는 `*.nicepay.co.kr`, 본인인증(checkplus)은 `*.nice.co.kr` — 서로 다른 도메인이라
+      //     아래 frame-src/form-action 에 이미 있는 nice.co.kr 로는 결제창 SDK 가 허용되지 않는다.
+      `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} https://pg.inicis.com https://*.sentry.io https://*.daumcdn.net https://t1.kakaocdn.net https://developers.kakao.com https://*.tosspayments.com https://cdn.portone.io https://*.portone.io https://*.iamport.co https://*.iamport.kr https://*.nicepay.co.kr`,
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       // [수정] dev/staging 백엔드(HTTP) 정적 이미지(/uploads/*) 허용 — resolveImageUrl 이
       //   상대경로를 http://<backend>/uploads/... 절대 URL 로 변환하므로 img-src 에 명시 필요.
@@ -72,6 +75,8 @@ const securityHeaders = [
         "https://*.iamport.co",
         "https://*.iamport.kr",
         "https://*.inicis.com",
+        // [추가 2026-08-27] 나이스 결제창 SDK 내부 XHR (결제창 상태/토큰 조회).
+        "https://*.nicepay.co.kr",
         "wss: ws:",
         "http://localhost:5001 http://localhost:5003",
         "http://127.0.0.1:5001 http://127.0.0.1:5003",
@@ -94,7 +99,8 @@ const securityHeaders = [
       // [추가 2026-05-26] PortOne 본인인증 iframe + KG이니시스 통합인증창 + PASS/카카오 등 인증사 도메인.
       //   KG 통합인증창은 PASS/네이버/카카오/금융인증/TOSS 등을 sub-iframe 으로 띄우므로
       //   주요 인증 도메인을 함께 화이트리스트.
-      "frame-src 'self' https://pg.inicis.com https://*.inicis.com https://*.portone.io https://*.iamport.co https://*.iamport.kr http://postcode.map.kakao.com https://postcode.map.kakao.com https://*.daumcdn.net http://*.daumcdn.net https://*.tosspayments.com https://*.kakao.com https://*.kakaopay.com https://*.naver.com https://*.nice.co.kr https://*.passauth.co.kr https://nice.checkplus.co.kr",
+      // [추가 2026-08-27] 나이스 결제창(*.nicepay.co.kr) — SDK 가 iframe 으로 띄운다.
+      "frame-src 'self' https://pg.inicis.com https://*.inicis.com https://*.portone.io https://*.iamport.co https://*.iamport.kr http://postcode.map.kakao.com https://postcode.map.kakao.com https://*.daumcdn.net http://*.daumcdn.net https://*.tosspayments.com https://*.kakao.com https://*.kakaopay.com https://*.naver.com https://*.nice.co.kr https://*.passauth.co.kr https://nice.checkplus.co.kr https://*.nicepay.co.kr",
       "media-src 'self' data: blob:", // QR 스캔 성공 beep(data:audio/mp3), 카메라 스트림(blob:)
       "object-src 'none'",
       "base-uri 'self'",
@@ -102,7 +108,10 @@ const securityHeaders = [
       //   <form action="https://sa.inicis.com/auth"> 를 POST submit 한다.
       //   form-action 'self' 만 허용하면 CSP 가 차단하여 본인인증창이 뜨지 못함.
       //   인증사 도메인(KG/PortOne/NICE/PASS/카카오/네이버) 을 frame-src 와 동일하게 허용.
-      "form-action 'self' https://*.inicis.com https://*.portone.io https://*.iamport.co https://*.iamport.kr https://*.kakao.com https://*.kakaopay.com https://*.naver.com https://*.nice.co.kr https://*.passauth.co.kr https://nice.checkplus.co.kr",
+      //   [추가 2026-08-27] 나이스 결제창도 동일하게 form submit 방식이다.
+      //   AUTHNICE.requestPay() 가 우리 문서에 form 을 만들어 nicepay 로 POST 하므로
+      //   *.nicepay.co.kr 이 없으면 결제창이 뜨지 않는다.
+      "form-action 'self' https://*.inicis.com https://*.portone.io https://*.iamport.co https://*.iamport.kr https://*.kakao.com https://*.kakaopay.com https://*.naver.com https://*.nice.co.kr https://*.passauth.co.kr https://nice.checkplus.co.kr https://*.nicepay.co.kr",
       "worker-src 'self' blob:",
     ].join("; "),
   },

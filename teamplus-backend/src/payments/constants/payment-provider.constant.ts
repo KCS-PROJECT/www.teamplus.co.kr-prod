@@ -27,8 +27,10 @@ export const PAYMENT_PROVIDERS = {
     requiredEnv: ["TOSS_CLIENT_KEY", "TOSS_SECRET_KEY"],
   },
   nice: {
+    // [2026-08-27] 결제 화면 구현 완료 — Server 승인 모델(결제창 → returnUrl POST →
+    //   /payments/nice/authorize 승인). 클라이언트키는 반드시 Server 승인 타입(S2_)이어야 한다.
     label: "나이스페이먼츠",
-    checkoutImplemented: false,
+    checkoutImplemented: true,
     requiredEnv: ["NICE_CLIENT_KEY", "NICE_SECRET_KEY"],
   },
 } as const satisfies Record<string, PaymentProviderMeta>;
@@ -90,7 +92,5 @@ export function isProviderSelectable(
   code: string,
   config: ConfigService,
 ): boolean {
-  return describeProviders(config).some(
-    (p) => p.code === code && p.selectable,
-  );
+  return describeProviders(config).some((p) => p.code === code && p.selectable);
 }

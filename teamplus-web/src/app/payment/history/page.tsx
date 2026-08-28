@@ -30,6 +30,8 @@ import {
   groupPaymentsByMonth,
   createRefundRequest,
   getMyRefundRequests,
+  getRefundPreview,
+  type RefundPreviewQuote,
   type RefundRequestStatus,
 } from '@/services/payment';
 import { usePageReady } from '@/hooks/usePageReady';
@@ -334,13 +336,8 @@ function PaymentHistoryCard({
           <span className="text-card-meta text-it-ink-400">{item.refundStatus ?? MESSAGES.refund.status.executed}</span>
         ) : (
           <div className="flex items-center gap-3">
-            <NavLink
-              href={`/payment/receipt/${item.id}`}
-              className="text-card-meta font-semibold text-success underline underline-offset-2"
-            >
-              영수증 보기
-            </NavLink>
-            {/* 환불 승인제 — 즉시 취소 폐기. 활성 요청은 배지, 거절은 배지+재요청, 그 외 결제완료는 요청 버튼. */}
+            {/* 환불 승인제 — 즉시 취소 폐기. 활성 요청은 배지, 거절은 배지+재요청, 그 외 결제완료는 요청 버튼.
+                항상 뜨는 영수증 보기를 우측 끝에 고정 — 간헐 노출되는 환불 영역은 그 왼쪽에 배치. */}
             {refundActive ? (
               <span
                 className="inline-flex items-center gap-1 rounded-w-pill bg-sun-100 px-2.5 py-1 text-card-meta font-bold text-it-ink-800 dark:bg-sun-500/15 dark:text-sun-500"
@@ -373,6 +370,12 @@ function PaymentHistoryCard({
                 )}
               </div>
             )}
+            <NavLink
+              href={`/payment/receipt/${item.id}`}
+              className="text-card-meta font-semibold text-success underline underline-offset-2"
+            >
+              영수증 보기
+            </NavLink>
           </div>
         )}
       </div>
@@ -496,6 +499,12 @@ function PaymentHistoryContent() {
   // 환불 요청 사유 입력 시트 — 대상 결제 + 사유(필수).
   const [refundTarget, setRefundTarget] = useState<{ paymentId: string; productName: string } | null>(null);
   const [refundReason, setRefundReason] = useState('');
+  // 요청 시트 예상액 — paymentId 로 시트 대상과 대조(늦게 도착한 다른 결제 응답 차단).
+  const [refundPreview, setRefundPreview] = useState<{
+    paymentId: string;
+    quote: RefundPreviewQuote | null;
+    loading: boolean;
+  } | null>(null);
   const { toast } = useToast();
 
   // ── 기간 필터 적용 + 월별 그룹화 (파생) ─────────────────────────
@@ -576,10 +585,20 @@ function PaymentHistoryContent() {
     void fetchPendingBillings();
   }, []);
 
-  /** 환불 요청 버튼 → 사유 입력 시트 오픈(사유는 감독 승인 판단 자료의 핵심이라 필수). */
+  /** 환불 요청 버튼 → 사유 입력 시트 오픈(사유는 감독 승인 판단 자료의 핵심이라 필수).
+   *  예상액 미리보기를 함께 조회 — 실패해도 요청 흐름은 유지(섹션만 숨김). */
   const openRefundSheet = (paymentId: string, productName: string) => {
     setRefundReason('');
     setRefundTarget({ paymentId, productName });
+    setRefundPreview({ paymentId, quote: null, loading: true });
+    void getRefundPreview(paymentId).then((quote) => {
+      // 다른 결제의 시트로 전환된 뒤 도착한 응답은 버린다.
+      setRefundPreview((prev) =>
+        prev && prev.paymentId === paymentId
+          ? { paymentId, quote, loading: false }
+          : prev,
+      );
+    });
   };
 
   /** 환불 요청 제출 — 즉시 취소 폐기. RefundRequest(pending) 생성 후 감독/운영자 승인 대기.
@@ -608,8 +627,8 @@ function PaymentHistoryContent() {
         return;
       }
       toast.success(MESSAGES.refund.requestSuccess);
+      // 사유·예상액은 닫힘 애니메이션 보존을 위해 여기서 지우지 않는다(다음 오픈 시 초기화).
       setRefundTarget(null);
-      setRefundReason('');
       await Promise.all([fetchPaymentHistory(), loadMyRefunds()]);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : MESSAGES.refund.requestFailed);
@@ -617,6 +636,14 @@ function PaymentHistoryContent() {
       setRequestingId(null);
     }
   };
+
+  // 예상액 0원 이하 = 서버도 400으로 거부하는 요청 — 시트에서 선제 차단.
+  // 조회 실패(quote=null)면 차단하지 않는다 — 표시 자료 실패로 정당한 요청을 막지 않고 서버가 최종 방어.
+  const refundBlocked =
+    refundPreview !== null &&
+    !refundPreview.loading &&
+    refundPreview.quote !== null &&
+    refundPreview.quote.refundableAmount <= 0;
 
   const isFiltered = periodFilter !== 'all';
   const showSummary = !isPaymentLoading && !paymentError && paymentSummary.count > 0;
@@ -763,18 +790,16 @@ function PaymentHistoryContent() {
         isOpen={refundTarget !== null}
         onClose={() => {
           if (requestingId) return; // 제출 처리 중 닫기 방지
+          // 사유·예상액은 여기서 지우지 않는다 — 시트는 닫힘 애니메이션 동안 계속 렌더되므로
+          // 즉시 비우면 내용 영역이 먼저 접히는 게 보인다. 초기화는 다음 오픈 시점에 한다.
           setRefundTarget(null);
-          setRefundReason('');
         }}
         title={MESSAGES.refund.requestModalTitle}
         footer={
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => {
-                setRefundTarget(null);
-                setRefundReason('');
-              }}
+              onClick={() => setRefundTarget(null)}
               disabled={requestingId !== null}
               className="h-12 flex-1 rounded-w-md bg-it-fill text-card-title font-semibold text-it-ink-700 transition-colors motion-reduce:transition-none hover:bg-it-line active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-it-blue-900/40 dark:text-it-ink-200 dark:hover:bg-it-blue-900/60"
             >
@@ -783,7 +808,7 @@ function PaymentHistoryContent() {
             <button
               type="button"
               onClick={() => void submitRefundRequest()}
-              disabled={!refundReason.trim() || requestingId !== null}
+              disabled={!refundReason.trim() || requestingId !== null || refundBlocked}
               className="h-12 flex-1 rounded-w-md bg-it-red-500 text-card-title font-semibold text-white transition-colors motion-reduce:transition-none hover:bg-it-red-600 active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {requestingId !== null ? MESSAGES.refund.requestProcessing : MESSAGES.refund.requestSubmit}
@@ -795,6 +820,70 @@ function PaymentHistoryContent() {
           <p className="text-card-body leading-relaxed text-it-ink-600 dark:text-rink-300">
             {MESSAGES.refund.requestModalBody}
           </p>
+          {/* 예상 환불액 — 감독 승인 산정과 같은 서버 산식. 조회 실패 시 섹션 숨김(요청은 가능).
+              닫힘 애니메이션 중(refundTarget=null)에도 유지 — 조건에서 target 을 강제하지 않는다. */}
+          {refundPreview && (!refundTarget || refundPreview.paymentId === refundTarget.paymentId) && (
+            refundPreview.loading ? (
+              <p className="rounded-w-md bg-it-fill px-3.5 py-3 text-card-meta text-it-ink-500 dark:bg-it-blue-900/40 dark:text-wtext-4">
+                {MESSAGES.refund.previewCalculating}
+              </p>
+            ) : refundPreview.quote ? (
+              <div className="space-y-1.5 rounded-w-md bg-it-fill px-3.5 py-3 dark:bg-it-blue-900/40">
+                <div className="flex items-center justify-between">
+                  <span className="text-card-meta text-it-ink-500 dark:text-wtext-4">
+                    {MESSAGES.refund.quotePaid}
+                  </span>
+                  <span className="text-card-body font-semibold text-it-ink-800 tabular-nums dark:text-white">
+                    {refundPreview.quote.paidAmount.toLocaleString()}
+                    {MESSAGES.settlement.won}
+                  </span>
+                </div>
+                {refundPreview.quote.deductedAmount > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-card-meta text-it-ink-500 dark:text-wtext-4">
+                      {MESSAGES.refund.quoteDeduct(
+                        refundPreview.quote.attendedCount,
+                        refundPreview.quote.unitFee,
+                      )}
+                    </span>
+                    <span className="text-card-body font-semibold text-it-red-600 tabular-nums dark:text-it-red-400">
+                      −{refundPreview.quote.deductedAmount.toLocaleString()}
+                      {MESSAGES.settlement.won}
+                    </span>
+                  </div>
+                )}
+                {refundPreview.quote.alreadyRefunded > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-card-meta text-it-ink-500 dark:text-wtext-4">
+                      {MESSAGES.refund.quoteAlreadyRefunded}
+                    </span>
+                    <span className="text-card-body font-semibold text-it-red-600 tabular-nums dark:text-it-red-400">
+                      −{refundPreview.quote.alreadyRefunded.toLocaleString()}
+                      {MESSAGES.settlement.won}
+                    </span>
+                  </div>
+                )}
+                <div className="mt-1 flex items-center justify-between border-t border-wline pt-2 dark:border-rink-700">
+                  <span className="text-card-body font-semibold text-it-ink-700 dark:text-it-ink-200">
+                    {MESSAGES.refund.quoteRefundable}
+                  </span>
+                  <span className="text-card-title font-extrabold text-it-ink-900 tabular-nums dark:text-white">
+                    {refundPreview.quote.refundableAmount.toLocaleString()}
+                    {MESSAGES.settlement.won}
+                  </span>
+                </div>
+                {refundBlocked ? (
+                  <p className="pt-1 text-card-meta font-semibold leading-relaxed text-it-red-600 dark:text-it-red-400">
+                    {MESSAGES.refund.previewNotRefundable}
+                  </p>
+                ) : (
+                  <p className="pt-1 text-card-meta leading-relaxed text-it-ink-400 dark:text-wtext-4">
+                    {MESSAGES.refund.previewFinalNote}
+                  </p>
+                )}
+              </div>
+            ) : null
+          )}
           <div>
             <label
               htmlFor="refund-request-reason"

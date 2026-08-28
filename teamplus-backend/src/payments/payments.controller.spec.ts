@@ -4,6 +4,7 @@ import { PaymentsController } from "./payments.controller";
 import { PaymentsService } from "./payments.service";
 import { KgInicisGateway } from "./kg-inicis.gateway";
 import { TossPaymentsGateway } from "./toss-payments.gateway";
+import { NicePaymentsGateway } from "./nice-payments.gateway";
 import { PaymentCalculationService } from "./payment-calculation.service";
 import { PostpaidSettlementService } from "./postpaid-settlement.service";
 import { SettlementSummaryService } from "./settlement/settlement-summary.service";
@@ -116,6 +117,17 @@ describe("PaymentsController", () => {
         {
           provide: TossPaymentsGateway,
           useValue: mockTossGateway,
+        },
+        {
+          provide: NicePaymentsGateway,
+          useValue: {
+            getClientKey: jest.fn().mockReturnValue("S2_test"),
+            verifyAuthSignature: jest.fn().mockReturnValue(true),
+            verifyResultSignature: jest.fn().mockReturnValue(true),
+            verifyWebhookSignature: jest.fn().mockReturnValue(true),
+            approve: jest.fn(),
+            netCancel: jest.fn(),
+          },
         },
         {
           provide: PaymentCalculationService,
@@ -364,7 +376,11 @@ describe("PaymentsController", () => {
       });
 
       // Act
-      const result = await controller.cancelPayment({ user: { id: "user-uuid", userType: "ADMIN" } } as any, "payment-uuid", cancelDto);
+      const result = await controller.cancelPayment(
+        { user: { id: "user-uuid", userType: "ADMIN" } } as any,
+        "payment-uuid",
+        cancelDto,
+      );
 
       // Assert
       expect(result.paymentStatus).toBe("cancelled");
@@ -388,7 +404,11 @@ describe("PaymentsController", () => {
 
       // Act & Assert
       await expect(
-        controller.cancelPayment({ user: { id: "user-uuid", userType: "ADMIN" } } as any, "invalid-id", cancelDto),
+        controller.cancelPayment(
+          { user: { id: "user-uuid", userType: "ADMIN" } } as any,
+          "invalid-id",
+          cancelDto,
+        ),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -400,7 +420,11 @@ describe("PaymentsController", () => {
 
       // Act & Assert
       await expect(
-        controller.cancelPayment({ user: { id: "user-uuid", userType: "ADMIN" } } as any, "payment-uuid", cancelDto),
+        controller.cancelPayment(
+          { user: { id: "user-uuid", userType: "ADMIN" } } as any,
+          "payment-uuid",
+          cancelDto,
+        ),
       ).rejects.toThrow(BadRequestException);
     });
   });
@@ -411,7 +435,10 @@ describe("PaymentsController", () => {
       mockPaymentsService.getPayment.mockResolvedValue(mockPayment);
 
       // Act
-      const result = await controller.getPaymentStatus({ user: { id: "user-uuid", userType: "ADMIN" } } as any, "payment-uuid");
+      const result = await controller.getPaymentStatus(
+        { user: { id: "user-uuid", userType: "ADMIN" } } as any,
+        "payment-uuid",
+      );
 
       // Assert
       expect(result.paymentStatus).toBe("completed");
@@ -429,9 +456,12 @@ describe("PaymentsController", () => {
       );
 
       // Act & Assert
-      await expect(controller.getPaymentStatus({ user: { id: "user-uuid", userType: "ADMIN" } } as any, "invalid-id")).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        controller.getPaymentStatus(
+          { user: { id: "user-uuid", userType: "ADMIN" } } as any,
+          "invalid-id",
+        ),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -441,7 +471,10 @@ describe("PaymentsController", () => {
       mockPaymentsService.getPayment.mockResolvedValue(mockPayment);
 
       // Act
-      const result = await controller.getPayment({ user: { id: "user-uuid", userType: "ADMIN" } } as any, "payment-uuid");
+      const result = await controller.getPayment(
+        { user: { id: "user-uuid", userType: "ADMIN" } } as any,
+        "payment-uuid",
+      );
 
       // Assert
       expect(result).toEqual(mockPayment);
@@ -509,7 +542,11 @@ describe("PaymentsController", () => {
       mockPaymentsService.requestRefund.mockResolvedValue(mockRefund);
 
       // Act
-      const result = await controller.requestRefund({ user: { id: "user-uuid", userType: "ADMIN" } } as any, "payment-uuid", refundDto);
+      const result = await controller.requestRefund(
+        { user: { id: "user-uuid", userType: "ADMIN" } } as any,
+        "payment-uuid",
+        refundDto,
+      );
 
       // Assert
       expect(result.paymentStatus).toBe("refunded");
@@ -531,7 +568,11 @@ describe("PaymentsController", () => {
 
       // Act & Assert
       await expect(
-        controller.requestRefund({ user: { id: "user-uuid", userType: "ADMIN" } } as any, "payment-uuid", refundDto),
+        controller.requestRefund(
+          { user: { id: "user-uuid", userType: "ADMIN" } } as any,
+          "payment-uuid",
+          refundDto,
+        ),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -543,7 +584,11 @@ describe("PaymentsController", () => {
 
       // Act & Assert
       await expect(
-        controller.requestRefund({ user: { id: "user-uuid", userType: "ADMIN" } } as any, "invalid-id", refundDto),
+        controller.requestRefund(
+          { user: { id: "user-uuid", userType: "ADMIN" } } as any,
+          "invalid-id",
+          refundDto,
+        ),
       ).rejects.toThrow(NotFoundException);
     });
   });
@@ -554,7 +599,10 @@ describe("PaymentsController", () => {
       mockPaymentsService.getRefundLogs.mockResolvedValue([mockRefund]);
 
       // Act
-      const result = await controller.getRefundLogs({ user: { id: "user-uuid", userType: "ADMIN" } } as any, "payment-uuid");
+      const result = await controller.getRefundLogs(
+        { user: { id: "user-uuid", userType: "ADMIN" } } as any,
+        "payment-uuid",
+      );
 
       // Assert
       expect(result).toEqual([mockRefund]);
@@ -569,7 +617,10 @@ describe("PaymentsController", () => {
       mockPaymentsService.getRefundLogs.mockResolvedValue([]);
 
       // Act
-      const result = await controller.getRefundLogs({ user: { id: "user-uuid", userType: "ADMIN" } } as any, "payment-uuid");
+      const result = await controller.getRefundLogs(
+        { user: { id: "user-uuid", userType: "ADMIN" } } as any,
+        "payment-uuid",
+      );
 
       // Assert
       expect(result).toEqual([]);
@@ -657,7 +708,10 @@ describe("PaymentsController", () => {
       mockPaymentsService.getPayment.mockResolvedValue(mockPayment);
 
       // Act
-      const result = await controller.getPaymentStatus({ user: { id: "user-uuid", userType: "ADMIN" } } as any, "payment-uuid");
+      const result = await controller.getPaymentStatus(
+        { user: { id: "user-uuid", userType: "ADMIN" } } as any,
+        "payment-uuid",
+      );
 
       // Assert
       expect(result).toHaveProperty("id");

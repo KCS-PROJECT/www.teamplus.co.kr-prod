@@ -644,6 +644,76 @@ export function useAuth(): AuthContextValue {
  * 페이지는 이미 `safeRedirectTarget()` 검증과 함께 redirect 를 소비하므로
  * 여기서 붙여만 주면 연속성이 복원된다.
  */
+/**
+ * 인증 리다이렉트 루프 차단 — 탭 스코프(sessionStorage) 왕복 감지.
+ *
+ * [2026-08-13] 각 가드 훅의 `isRedirectingRef` 는 페이지 이동마다 언마운트로
+ * 초기화되므로 `/login ↔ 대시보드` 왕복을 막지 못한다. 실제로 공유 DEV DB 의
+ * tokenVersion 이 증가해 세션이 무효화(SESSION_REPLACED)되면, 미들웨어의
+ * defer 통과(canDeferToClientRefresh — RBAC 미판정) 구간과 겹치며 두 가드가
+ * 서로를 무한히 튕겨내는 루프가 발생했다.
+ *
+ * 리다이렉트 시각을 sessionStorage 에 남겨 짧은 창 안에 임계치를 넘으면 루프로
+ * 판정한다. 탭 스코프라 다른 탭의 정상 이동에 간섭하지 않는다.
+ */
+const AUTH_REDIRECT_TRACE_KEY = "teamplus_auth_redirect_trace";
+const AUTH_REDIRECT_WINDOW_MS = 6000;
+const AUTH_REDIRECT_THRESHOLD = 6;
+/** 루프 차단으로 로그인 화면에 보낼 때 붙이는 사유 — 서버 강제 로그아웃과 구분. */
+const AUTH_LOOP_REASON = "session_loop";
+
+/** 리다이렉트 1회를 기록하고, 최근 창 안에서 임계치를 넘었으면 true. */
+function noteAuthRedirect(): boolean {
+  if (typeof window === "undefined") return false;
+  const now = Date.now();
+  try {
+    const raw = sessionStorage.getItem(AUTH_REDIRECT_TRACE_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    const recent = (Array.isArray(parsed) ? parsed : [])
+      .filter((t): t is number => typeof t === "number")
+      .filter((t) => now - t < AUTH_REDIRECT_WINDOW_MS);
+    recent.push(now);
+    sessionStorage.setItem(AUTH_REDIRECT_TRACE_KEY, JSON.stringify(recent));
+    return recent.length >= AUTH_REDIRECT_THRESHOLD;
+  } catch {
+    // 스토리지 차단(프라이빗 모드·WebView) — 감지 포기하고 기존 동작 유지
+    return false;
+  }
+}
+
+/** 정상 도달(가드 통과)·루프 처리 완료 시 추적 초기화. */
+function clearAuthRedirectTrace(): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.removeItem(AUTH_REDIRECT_TRACE_KEY);
+  } catch {
+    // 스토리지 접근 불가 — 무시
+  }
+}
+
+/**
+ * 가드 훅 공용 리다이렉트 — 루프로 판정되면 목적지 대신 세션을 비우고
+ * `/login?reason=session_loop` 로 고정한다. 세션이 비워지므로 `/login` 의
+ * `useGuestOnly` 가 다시 대시보드로 되돌리지 못해 왕복이 끊긴다.
+ */
+function useGuardedRedirect() {
+  const { clearSession } = useAuth();
+  const { replace } = useNavigation();
+  return useCallback(
+    (target: string) => {
+      if (noteAuthRedirect()) {
+        clearAuthRedirectTrace();
+        void clearSession().finally(() => {
+          replace(`/login?reason=${AUTH_LOOP_REASON}`);
+        });
+        return;
+      }
+      replace(target);
+    },
+    [clearSession, replace],
+  );
+}
+
 function withLoginRedirect(base: string): string {
   if (typeof window === "undefined") return base;
   if (!base.startsWith("/login")) return base;
@@ -656,35 +726,48 @@ function withLoginRedirect(base: string): string {
 
 export function useRequireAuth(redirectTo: string = "/login") {
   const { isAuthenticated, isLoading } = useAuth();
-  const { replace } = useNavigation();
+  const guardedReplace = useGuardedRedirect();
   // useRef로 인증 리다이렉트 중복 방지 (React StrictMode 안전)
   const isRedirectingRef = useRef(false);
   useEffect(() => {
-    if (!isLoading && !isAuthenticated && !isRedirectingRef.current) {
+    if (isLoading) return;
+    if (isAuthenticated) {
+      // 정상 도달 — 루프 추적 초기화 (직전 왕복 흔적이 다음 이동을 오판하지 않게)
+      clearAuthRedirectTrace();
+      return;
+    }
+    if (!isRedirectingRef.current) {
       isRedirectingRef.current = true;
-      replace(withLoginRedirect(redirectTo));
+      guardedReplace(withLoginRedirect(redirectTo));
       setTimeout(() => {
         isRedirectingRef.current = false;
       }, 2000);
     }
-  }, [isAuthenticated, isLoading, redirectTo, replace]);
+  }, [isAuthenticated, isLoading, redirectTo, guardedReplace]);
   return { isAuthenticated, isLoading };
 }
 
 export function useGuestOnly() {
   const { user, isAuthenticated, isLoading } = useAuth();
-  const { replace } = useNavigation();
+  const guardedReplace = useGuardedRedirect();
+  // [2026-08-13] 중복 리다이렉트 방지 — 종전에는 가드가 없어 `/login ↔ 대시보드`
+  //   왕복의 한 축이 무제한으로 발화했다 (useRequireRole 과 동일 패턴으로 정렬).
+  const isRedirectingRef = useRef(false);
   useEffect(() => {
-    if (!isLoading && isAuthenticated && user) {
-      replace(getDashboardPathByUserType(user.userType, "/"));
-    }
-  }, [isAuthenticated, isLoading, user, replace]);
+    if (isLoading || !isAuthenticated || !user) return;
+    if (isRedirectingRef.current) return;
+    isRedirectingRef.current = true;
+    guardedReplace(getDashboardPathByUserType(user.userType, "/"));
+    setTimeout(() => {
+      isRedirectingRef.current = false;
+    }, 2000);
+  }, [isAuthenticated, isLoading, user, guardedReplace]);
   return { isAuthenticated, isLoading };
 }
 
 export function useRequireRole(allowedRoles: Array<UserType>) {
   const { user, isAuthenticated, isLoading } = useAuth();
-  const { replace } = useNavigation();
+  const guardedReplace = useGuardedRedirect();
   // useRef로 인증 리다이렉트 중복 방지 (React StrictMode 안전)
   const isRedirectingRef = useRef(false);
   useEffect(() => {
@@ -693,7 +776,7 @@ export function useRequireRole(allowedRoles: Array<UserType>) {
       if (!isRedirectingRef.current) {
         isRedirectingRef.current = true;
         // 로그인 후 원래 목적지 복귀 — withLoginRedirect 주석 참고 (SNS 딥링크 보존)
-        replace(withLoginRedirect("/login"));
+        guardedReplace(withLoginRedirect("/login"));
         setTimeout(() => {
           isRedirectingRef.current = false;
         }, 2000);
@@ -701,9 +784,19 @@ export function useRequireRole(allowedRoles: Array<UserType>) {
       return;
     }
     if (user && !allowedRoles.includes(user.userType)) {
-      replace(getDashboardPathByUserType(user.userType, "/"));
+      // 역할 불일치 bounce 도 루프의 한 축 — 종전 가드 없음 → guardedReplace 로 통일.
+      if (!isRedirectingRef.current) {
+        isRedirectingRef.current = true;
+        guardedReplace(getDashboardPathByUserType(user.userType, "/"));
+        setTimeout(() => {
+          isRedirectingRef.current = false;
+        }, 2000);
+      }
+      return;
     }
-  }, [user, isAuthenticated, isLoading, allowedRoles, replace]);
+    // 인증 + 역할 모두 통과 — 정상 도달이므로 루프 추적 초기화
+    clearAuthRedirectTrace();
+  }, [user, isAuthenticated, isLoading, allowedRoles, guardedReplace]);
 
   return {
     user,

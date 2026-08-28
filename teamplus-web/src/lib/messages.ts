@@ -930,6 +930,7 @@ export const MESSAGES = {
       trans: "계좌이체",
       phone: "휴대폰 결제",
       toss: "토스페이먼츠",
+      nice: "나이스페이먼츠",
     } as Record<string, string>,
     noSearchResult: "검색 결과가 없습니다",
     tryOtherKeyword: "다른 검색어로 시도해보세요",
@@ -1018,6 +1019,22 @@ export const MESSAGES = {
       "결제 위젯을 불러올 수 없어요. 새로고침 후 다시 시도해주세요.",
     requestFailed: "결제 요청에 실패했어요. 잠시 후 다시 시도해주세요.",
     loadError: "결제 내역을 가져오지 못했어요. 새로고침 후 다시 시도해주세요.",
+    // ─── [추가 2026-08-27] 나이스페이먼츠 결제창 분기 ───
+    //   토스는 위젯이 결제수단·약관 UI 를 그려줬지만 나이스는 결제창만 띄운다.
+    //   따라서 결제수단 선택과 약관 동의를 우리가 직접 그려야 하고, 그 카피가 여기 있다.
+    methodSectionTitle: "결제 수단",
+    methodCard: "신용·체크카드",
+    methodBank: "계좌이체",
+    methodVbank: "가상계좌(무통장)",
+    methodVbankHint: "발급된 계좌로 입금하시면 결제가 완료됩니다.",
+    agreementTitle: "결제 진행 동의",
+    agreementRequired: "(필수) 결제 진행 및 환불 규정에 동의합니다.",
+    agreementNotChecked: "결제 진행에 동의해주세요.",
+    windowOpenFailed: "결제창을 열 수 없어요. 새로고침 후 다시 시도해주세요.",
+    // 결제창이 취소·인증 실패로 돌아왔을 때 — 백엔드 redirect 의 error 코드별 안내.
+    niceAuthFailed: "결제가 취소되었거나 인증에 실패했어요. 다시 시도해주세요.",
+    niceVerifyFailed:
+      "결제 정보 검증에 실패했어요. 결제가 진행되지 않았습니다. 고객센터로 문의해주세요.",
     usageLoadError:
       "사용 내역을 가져오지 못했어요. 새로고침 후 다시 시도해주세요.",
     cancelFailed: "결제 취소에 실패했어요. 잠시 후 다시 시도해주세요.",
@@ -1336,8 +1353,22 @@ export const MESSAGES = {
     failureReasonLabel: "실패 사유",
     failureStagePg: "PG 환불 실패 (미이체)",
     failureStageDbAfterPg: "PG 환불 성공 · 내부 처리 실패",
+    // ── 산정 내역 (승인 판단 자료 · pending 한정) ────────
+    quotePaid: "결제액",
+    quoteDeduct: (count: number, unit: number) =>
+      `이용분 ${count}회 × ${unit.toLocaleString()}원`,
+    quoteAlreadyRefunded: "기환불액",
+    quoteRefundable: "환불 예정액",
+    // ── 요청 시트 예상액 (학부모) ────────────────────────
+    previewCalculating: "환불 예정액을 계산하고 있습니다…",
+    previewFinalNote: "최종 금액은 감독 승인 시점에 확정됩니다.",
+    previewNotRefundable: "이용분 공제 후 환불 가능한 금액이 없습니다.",
     // ── 승인 시트 ───────────────────────────────────────
     approveCta: "전액 환불 승인 및 실행",
+    // 요청액 < 결제액(이용분 공제)이면 부분 환불 — 전액 라벨로 오인시키지 않는다.
+    approveCtaPartial: "부분 환불 승인 및 실행",
+    approvePartialDeductNote: (paid: number, deducted: number) =>
+      `결제액 ${paid.toLocaleString()}원에서 이용분 ${deducted.toLocaleString()}원을 공제한 금액입니다.`,
     approveSheetTitle: "환불을 실행할까요?",
     approveSheetBody: "승인 즉시 PG 환불이 실행되며 되돌릴 수 없습니다.",
     approveMemoLabel: "승인 메모 (선택)",
@@ -4289,7 +4320,7 @@ export const MESSAGES = {
     billingModePrepaidHint: "수업료를 미리 결제합니다. (정기·번들)",
     billingModePostpaidHint: "월말 출석 횟수에 따라 후불 정산합니다.",
     // [spot 선불 단건] 1회용 수업 — 결제방식 선택을 숨기고 이 안내로 대체.
-    spotSingleNotice: "1회용 수업은 1회 수업료 단건 결제로 판매됩니다.",
+    spotSingleNotice: "1회용 수업은 1회 수업료 단건(선불 또는 후불)으로 판매됩니다.",
     billingModeBothHint: "학부모가 결제 시 선불·후불 중 선택합니다.",
     // [Phase B-6] 정액 패키지 강제 — 선불·선택형은 정액 패키지가 1개 이상 있어야 등록 가능.
     validationMonthlyFixedRequired: "월 결제를 1개 이상 등록해주세요.",
@@ -4315,6 +4346,9 @@ export const MESSAGES = {
     // [선택형(BOTH)] 1회 수업료(참고) 블록 — 선불·후불 공통 노출.
     singleFeeRefTitle: "1회 수업료",
     singleFeeAmount: (won: number) => `${Number(won).toLocaleString()}원`,
+    // 환불 규정 제3조 사전 고지 — 중도 해지 시 이 단가로 이용분을 공제한다.
+    singleFeeDeductNotice:
+      "중도 해지 시 출석한 수업은 이 금액 기준으로 공제됩니다.",
     postpaidEnrollCta: "후불로 신청하기",
     postpaidEnrolling: "신청 중…",
     postpaidAmountNote: "결제 금액은 매월 출석 횟수에 따라 정산됩니다.",

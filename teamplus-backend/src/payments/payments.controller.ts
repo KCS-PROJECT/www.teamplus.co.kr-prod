@@ -53,11 +53,19 @@ import {
 } from "./dto/payment-preview.dto";
 import { KgInicisGateway } from "./kg-inicis.gateway";
 import { TossPaymentsGateway } from "./toss-payments.gateway";
+import {
+  NicePaymentsGateway,
+  NICE_RESULT_OK,
+  type NiceAuthResult,
+} from "./nice-payments.gateway";
 import { Public } from "@/auth/public.decorator";
 import { RedisService } from "@/redis/redis.service";
 import { AuditAction } from "@/common/decorators";
-import { Req, Headers } from "@nestjs/common";
-import type { Request as ExpressRequest } from "express";
+import { Req, Res, Header, Headers } from "@nestjs/common";
+import type {
+  Request as ExpressRequest,
+  Response as ExpressResponse,
+} from "express";
 import { PaymentCalculationService } from "./payment-calculation.service";
 import { PostpaidSettlementService } from "./postpaid-settlement.service";
 import { SettlementSummaryService } from "./settlement/settlement-summary.service";
@@ -76,6 +84,7 @@ export class PaymentsController {
     private readonly webhookRetryService: WebhookRetryService,
     private readonly kgInicisGateway: KgInicisGateway,
     private readonly tossGateway: TossPaymentsGateway,
+    private readonly niceGateway: NicePaymentsGateway,
     private readonly calculationService: PaymentCalculationService,
     private readonly postpaidSettlementService: PostpaidSettlementService,
     private readonly settlementSummaryService: SettlementSummaryService,
@@ -97,6 +106,18 @@ export class PaymentsController {
   @ApiOperation({ summary: "토스페이먼츠 클라이언트키 조회" })
   async getTossClientKey() {
     return { clientKey: this.tossGateway.getClientKey() };
+  }
+
+  /**
+   * [공개] 현재 활성 결제사 — 결제 화면이 어느 PG SDK 를 띄울지 결정한다.
+   *  어드민 전용 /providers 와 다르다: 저쪽은 "선택 가능한 목록 + 키 설정 여부"라 비공개,
+   *  이쪽은 "지금 무엇으로 결제하는가" 한 값이라 공개해도 무방하다.
+   */
+  @Get("active-provider")
+  @Public()
+  @ApiOperation({ summary: "활성 결제사 조회" })
+  async getActiveProvider() {
+    return this.paymentsService.getActivePaymentProvider();
   }
 
   /**
@@ -286,6 +307,171 @@ export class PaymentsController {
       );
     }
     return { received: true, verified: true };
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //   나이스페이먼츠 (2026-08-27 신규 · Server 승인 모델)
+  //   토스와 병행. 활성 결제사는 AppSettings.paymentProvider 가 결정한다.
+  // ────────────────────────────────────────────────────────────────────
+
+  /**
+   * [공개] 나이스 결제창 호출용 클라이언트키 반환.
+   *  클라이언트키는 공개 정보(브라우저 노출 가능), 시크릿키는 절대 노출 금지.
+   */
+  @Get("nice/client-key")
+  @Public()
+  @ApiOperation({ summary: "나이스페이먼츠 클라이언트키 조회" })
+  async getNiceClientKey() {
+    return { clientKey: this.niceGateway.getClientKey() };
+  }
+
+  /**
+   * 나이스 결제창 인증 결과 수신 → 승인 → 결과 화면으로 리다이렉트.
+   *
+   *  이 엔드포인트는 **브라우저의 form POST 착지점**이다(AUTHNICE.requestPay 의 returnUrl).
+   *  토스처럼 프론트가 쿼리를 읽어 confirm 을 호출하는 구조가 아니라, 나이스는
+   *  `application/x-www-form-urlencoded` 로 서버에 직접 POST 한다. 그래서:
+   *   - @Public() 필수 — 브라우저 네비게이션이라 Authorization 헤더가 없다.
+   *     정당성은 JWT 가 아니라 **인증 signature + 서버 보관 금액 대조**로 확인한다.
+   *   - 응답은 JSON 이 아니라 **303 리다이렉트** — 사용자를 결과 화면으로 보내야 한다.
+   *     303 을 쓰는 이유: POST 를 GET 으로 바꿔 재전송(새로고침 시 이중 승인)을 막는다.
+   *
+   *  실패해도 사용자에게는 항상 결과 화면을 보여준다(에러 JSON 노출 금지).
+   */
+  @Post("nice/authorize")
+  @Public()
+  @ApiOperation({
+    summary: "나이스 결제창 인증 결과 수신 및 승인",
+    description:
+      "나이스 결제창이 returnUrl 로 POST 하는 인증 결과를 검증하고 승인 API를 호출한 뒤, 결제 결과 화면으로 리다이렉트합니다.",
+  })
+  async authorizeNicePayment(
+    @Body() body: NiceAuthResult,
+    @Res() res: ExpressResponse,
+  ) {
+    const orderId = body?.orderId ?? "";
+    const amount = Number(body?.amount ?? 0);
+
+    // 1) 인증 실패 — 사용자가 결제창에서 취소했거나 카드사 인증이 거절된 경우.
+    //    승인 API 를 부르면 안 된다(부르지 않으면 결제는 발생하지 않는다).
+    if (body?.authResultCode !== NICE_RESULT_OK) {
+      this.logger.warn(
+        `나이스 인증 실패: orderId=${orderId} code=${body?.authResultCode} msg=${body?.authResultMsg}`,
+      );
+      return this.redirectToPaymentResult(res, {
+        orderId,
+        error: "auth_failed",
+        message: body?.authResultMsg,
+      });
+    }
+
+    // 2) 위변조 검증 — SecretKey 없이는 위조할 수 없는 유일한 관문이다.
+    const signatureOk = this.niceGateway.verifyAuthSignature({
+      authToken: body.authToken ?? "",
+      clientId: body.clientId,
+      amount: body.amount,
+      signature: body.signature ?? "",
+    });
+    if (!signatureOk) {
+      this.logger.error(
+        `[NICE_SIGNATURE_MISMATCH] 인증 응답 서명 불일치 — orderId=${orderId}`,
+      );
+      return this.redirectToPaymentResult(res, {
+        orderId,
+        error: "invalid_signature",
+      });
+    }
+    if (!body.tid) {
+      this.logger.error(`나이스 인증 성공인데 tid 없음 — orderId=${orderId}`);
+      return this.redirectToPaymentResult(res, { orderId, error: "no_tid" });
+    }
+
+    // 3) 승인 — 금액 대조·멱등 락·좌석 선점·후처리는 서비스가 담당한다.
+    try {
+      await this.paymentsService.confirmNicePayment({
+        tid: body.tid,
+        orderId,
+        amount,
+      });
+      return this.redirectToPaymentResult(res, { orderId, success: true });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      this.logger.error(`나이스 승인 처리 실패: orderId=${orderId} ${message}`);
+      return this.redirectToPaymentResult(res, {
+        orderId,
+        error: "approve_failed",
+        message,
+      });
+    }
+  }
+
+  /**
+   * 결제 결과 화면으로 303 리다이렉트.
+   *  리다이렉트 대상은 **서버 설정값만** 사용한다 — 요청 본문(mallReserved 등)에서
+   *  받은 URL 로 보내면 오픈 리다이렉트가 된다.
+   *  NICE_RETURN_BASE_URL 미설정 시 상대경로로 보낸다(운영은 웹 도메인이 /api 를
+   *  백엔드로 프록시하므로 상대경로가 그대로 동작한다).
+   */
+  private redirectToPaymentResult(
+    res: ExpressResponse,
+    params: {
+      orderId: string;
+      success?: boolean;
+      error?: string;
+      message?: string;
+    },
+  ) {
+    const base = this.configService.get<string>("NICE_RETURN_BASE_URL", "");
+    const query = new URLSearchParams({ provider: "nice" });
+    if (params.orderId) query.set("orderNumber", params.orderId);
+    if (params.error) query.set("error", params.error);
+    if (params.message) query.set("message", params.message);
+    const target = `${base}/payment/complete?${query.toString()}`;
+    // 303 See Other — POST 를 GET 으로 전환해 새로고침 재전송(이중 승인)을 차단.
+    return res.redirect(HttpStatus.SEE_OTHER, target);
+  }
+
+  /**
+   * 나이스 결제 Webhook — 결제 상태 변경 알림.
+   *
+   *  ⚠️ 토스와 두 가지가 다르다.
+   *   1) 서명이 헤더가 아니라 **본문 필드**에 있다 — rawBody 보존이 필요 없다.
+   *   2) 응답 본문에 반드시 문자열 `OK` 를 실어야 한다. HTTP 200 만으로는
+   *      나이스가 전송 실패로 간주해 재전송 큐에 쌓는다.
+   */
+  @Post("nice/webhook")
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @Header("Content-Type", "text/html;charset=utf-8")
+  @ApiOperation({ summary: "나이스 webhook 수신" })
+  async niceWebhook(
+    @Body()
+    body: {
+      tid?: string;
+      orderId?: string;
+      status?: string;
+      amount?: number;
+      ediDate?: string;
+      signature?: string;
+    },
+  ): Promise<string> {
+    const ok = this.niceGateway.verifyWebhookSignature(body);
+    if (!ok) {
+      this.logger.warn(
+        `나이스 webhook 서명 검증 실패 — 무시 (orderId=${body?.orderId}, status=${body?.status})`,
+      );
+      // 재전송을 유발하지 않도록 OK 로 응답하되 처리는 하지 않는다.
+      //   서명이 틀린 요청은 재전송받아도 계속 틀리므로 큐에 쌓아둘 이유가 없다.
+      return "OK";
+    }
+    try {
+      await this.paymentsService.handleNiceWebhook(body);
+    } catch (e) {
+      this.logger.error(
+        `나이스 webhook 처리 실패: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+    return "OK";
   }
 
   /**
@@ -1942,7 +2128,8 @@ export class PaymentsController {
     description: "영수증 URL 조회 성공",
     schema: {
       example: {
-        downloadUrl: "https://dashboard.tosspayments.com/receipt/redirection?...",
+        downloadUrl:
+          "https://dashboard.tosspayments.com/receipt/redirection?...",
       },
     },
   })

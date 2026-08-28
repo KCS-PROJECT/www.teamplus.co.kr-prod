@@ -420,6 +420,24 @@ export class RefundRequestService {
       );
     }
 
+    // 산정 내역(표시 자료) — 결제액·이용분 공제·환불 예정액. 승인 실행 금액의 SoT 는
+    //   requestedAmount 이므로 조회 실패 시 null 로 두고 섹션만 숨긴다(승인 차단 아님).
+    //   pending 한정: 처리 완료 건은 기환불 반영으로 예정액이 0이 되어 오독을 만든다.
+    let quote: Awaited<
+      ReturnType<typeof this.refundService.computeRefundQuote>
+    > | null = null;
+    if (rr.status === "pending") {
+      try {
+        quote = await this.refundService.computeRefundQuote(rr.paymentId);
+      } catch (err) {
+        this.logger.warn(
+          `산정 내역 조회 실패 — quote=null: requestId=${requestId}, error=${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+
     // 기존 환불 이력.
     const refundLogs = await this.prisma.refundLog.findMany({
       where: { paymentId: rr.paymentId },
@@ -464,6 +482,16 @@ export class RefundRequestService {
       },
       usage,
       judgmentDataOk,
+      quote: quote
+        ? {
+            paidAmount: quote.paidAmount,
+            attendedCount: quote.attendedCount,
+            unitFee: quote.unitFee,
+            deductedAmount: quote.deductedAmount,
+            alreadyRefunded: quote.alreadyRefunded,
+            refundableAmount: quote.refundableAmount,
+          }
+        : null,
       snapshotVsCurrent: {
         requestedStatusAtCreate: "completed",
         requestedAmount: rr.requestedAmount,

@@ -781,7 +781,9 @@ function ClassCreatePageInner() {
               packageDirty={productsDirty}
               salesPending={salesPending}
               pricingSection={
-                isEditMode && editClassId
+                // [spot] initialData 로드 전에는 카드 미렌더 — SSR/로딩 첫 페인트에
+                //   trainingType 미확정 상태로 월 결제 영역이 노출되는 것을 차단한다.
+                isEditMode && editClassId && initialData
                   ? // 선불/후불 공통 수강료 카드 — 1회 단가 입력 + (선불) 정기 패키지 embed.
                     //   함수형 — ClassForm 이 draft 일정에서 계산한 대상월을 받아 월분 갱신 UI 게이트.
                     ({
@@ -794,6 +796,8 @@ function ClassCreatePageInner() {
                       scheduleDates: string[];
                     }) => (
                       <FeeEditCard
+                        // [spot] 1회용 수업 — 월 결제(정기권) 영역 숨김(단가 수정만 노출).
+                        hideMonthly={initialData?.trainingType === 'spot'}
                         billingMode={
                           initialData?.billingMode === 'POSTPAID'
                             ? 'POSTPAID'

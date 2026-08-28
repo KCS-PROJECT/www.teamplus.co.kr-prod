@@ -35,6 +35,10 @@ import {
   TossPaymentsGateway,
   TossCancelAmbiguousError,
 } from "../toss-payments.gateway";
+import {
+  NicePaymentsGateway,
+  NiceCancelAmbiguousError,
+} from "../nice-payments.gateway";
 
 /**
  * 잔여 회차 비례 환불 산정 결과 (설계 SoT: claudedocs/refund-policy-design-2026-07-09.md §3-1).
@@ -135,6 +139,21 @@ export class RefundExecutionError extends BadRequestException {
  *   3) tid 가 't' 로 시작하고 영숫자만 + 길이 12~40 → 토스
  *   4) 기타 → KG (보수적 fallback)
  */
+/**
+ * 나이스 결제 판별 — 승인 시 applyApprovedPayment 가 paymentMethod/pgProvider 를 'nice' 로
+ *  기록하므로 둘 중 하나만 맞아도 나이스로 본다(과거 행 대비 pgProvider 도 함께 확인).
+ *  토스처럼 tid 패턴 추론에 기대지 않는다 — 나이스 tid 는 상점별 접두가 달라 패턴이 불안정하다.
+ */
+function isNicePayment(payment: {
+  paymentMethod?: string | null;
+  pgProvider?: string | null;
+}): boolean {
+  return (
+    (payment.paymentMethod || "").toLowerCase() === "nice" ||
+    (payment.pgProvider || "").toLowerCase() === "nice"
+  );
+}
+
 function isTossPayment(payment: {
   paymentMethod?: string | null;
   tid?: string | null;
@@ -154,6 +173,7 @@ export class PaymentRefundService {
     private readonly prisma: PrismaService,
     private readonly kgInicisGateway: KgInicisGateway,
     private readonly tossPaymentsGateway: TossPaymentsGateway,
+    private readonly nicePaymentsGateway: NicePaymentsGateway,
     private readonly creditDomain: CreditDomainService, // PR-B (v0.5): 환불 단일 진입점
     // 감독 승인 부분환불(refundByManager)의 소속 스코프 검증에만 쓰는 부수 의존.
     //   @Global 모듈이라 런타임에는 항상 주입되며, 미주입 시 관리자 외 요청은 fail-closed.
@@ -748,6 +768,60 @@ export class PaymentRefundService {
         // [DEV] mock 결제는 실제 PG 승인이 없으므로 PG 호출을 건너뛰고 DB 트랜잭션만 진행.
         this.logger.log(
           `mock 결제 취소 — PG 호출 생략: paymentId=${paymentId}`,
+        );
+      } else if (isNicePayment(payment)) {
+        // [나이스] 토스와 두 가지가 결정적으로 다르다.
+        //  1) 멱등 키가 없다 → 같은 키 재호출로 원 결과를 되받는 안전망이 없으므로,
+        //     stale 재개(resumeProcessing)는 KG 와 동일하게 자동 재호출을 금지하고 격리한다.
+        //  2) 부분취소는 **중복 orderId 로 재호출 불가**다 → 전액취소는 원 주문번호를 쓰되,
+        //     부분취소는 환불요청 ID 로 매 호출 고유한 orderId 를 만들어 보낸다.
+        if (refundContext?.resumeProcessing) {
+          throw new RefundExecutionError(
+            "PG",
+            "NICE_UNCONFIRMED",
+            "PG 결과 미확정 — 수동 확인이 필요합니다.",
+          );
+        }
+        const isFullCancel = finalCancelAmount === Number(payment.amount);
+        const cancelOrderId =
+          isFullCancel || !ctx?.refundRequestId
+            ? payment.orderNumber
+            : `${payment.orderNumber}-R${ctx.refundRequestId}`;
+        let niceRes: Awaited<ReturnType<NicePaymentsGateway["cancel"]>>;
+        try {
+          niceRes = await this.nicePaymentsGateway.cancel({
+            tid: payment.tid,
+            orderId: cancelOrderId,
+            reason: cancelReason,
+            cancelAmt: isFullCancel ? undefined : finalCancelAmount,
+          });
+        } catch (niceErr) {
+          // transport 모호(취소 처리 여부 불명) → 격리(Payment 복원 금지).
+          //   확정 실패(정상 수신 거절)는 아래 PG_CANCEL_ERROR 정규화 + 복원 경로로 전파.
+          if (niceErr instanceof NiceCancelAmbiguousError) {
+            throw new RefundExecutionError(
+              "PG",
+              "NICE_UNCONFIRMED",
+              niceErr.message,
+            );
+          }
+          throw niceErr;
+        }
+        const niceOk = ["cancelled", "partialCancelled"].includes(
+          niceRes.status || "",
+        );
+        if (!niceOk) {
+          this.logger.error(
+            `나이스 결제 취소 응답 비정상: paymentId=${paymentId}, status=${niceRes.status}`,
+          );
+          throw new RefundExecutionError(
+            "PG",
+            "NICE_CANCEL_FAILED",
+            "나이스 결제 취소에 실패했습니다.",
+          );
+        }
+        this.logger.log(
+          `나이스 결제 취소 성공: paymentId=${paymentId}, tid=${payment.tid.slice(0, 12)}***, cancelledTid=${niceRes.cancelledTid ?? "none"}`,
         );
       } else if (isTossPayment(payment)) {
         // 토스는 paymentKey(=Payment.tid) 와 reason 만 필요. cancelAmount 미지정 시 전액 취소.
