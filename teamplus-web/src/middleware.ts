@@ -208,7 +208,16 @@ function withSecurityHeaders(
       "Content-Security-Policy",
       // 운영에서는 이 매-요청 CSP가 next.config.js headers()의 CSP를 덮어쓰므로,
       // 외부 도메인(카카오 SDK·이니시스·Sentry·Daum CDN·폰트) 허용 목록을 여기에도 유지해야 한다.
-      `default-src 'self'; script-src 'self' 'unsafe-inline' https://pg.inicis.com https://*.sentry.io https://*.daumcdn.net https://t1.kakaocdn.net https://developers.kakao.com https://*.tosspayments.com https://cdn.portone.io https://*.portone.io https://*.iamport.co https://*.iamport.kr; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https: blob:${devImg}; font-src 'self' data: https://fonts.gstatic.com; media-src 'self' data: blob:; connect-src 'self'${devConnect} https://*.teamplus.com https://*.icetimes.co.kr https://*.sentry.io https://*.ingest.sentry.io https://*.kakao.com https://t1.kakaocdn.net https://*.tosspayments.com https://api.portone.io https://*.portone.io https://*.iamport.co https://*.iamport.kr https://*.inicis.com wss: ws:; frame-src 'self' https://*.tosspayments.com https://pg.inicis.com https://*.inicis.com https://*.portone.io https://*.iamport.co https://*.iamport.kr https://*.kakao.com https://*.kakaopay.com https://*.naver.com https://*.nice.co.kr https://*.passauth.co.kr https://nice.checkplus.co.kr;`,
+      // ⚠️ 나이스페이먼츠(결제) 도메인은 `*.nicepay.co.kr` 이다. 기존에 있던
+      //   `*.nice.co.kr`(본인인증 checkplus)과 **다른 도메인**이라 별도로 허용해야 한다.
+      //   script-src: 결제창 SDK(pay.nicepay.co.kr/v1/js/)
+      //   frame-src : SDK 가 띄우는 결제창 iframe
+      //   form-action: SDK 가 우리 문서에 form 을 만들어 nicepay 로 POST 한다.
+      //   ⚠️ 이 헤더는 next.config.js 의 CSP 를 매 요청 덮어쓴다. form-action 을 여기서
+      //     처음 선언하는 것이므로, next.config.js 의 form-action 허용 목록(KG·PortOne·
+      //     PASS·카카오·네이버 등 본인인증 도메인)을 **빠짐없이 그대로** 옮겨야 한다.
+      //     빠뜨리면 운영에서 본인인증창이 CSP 로 차단된다.
+      `default-src 'self'; script-src 'self' 'unsafe-inline' https://pg.inicis.com https://*.sentry.io https://*.daumcdn.net https://t1.kakaocdn.net https://developers.kakao.com https://*.tosspayments.com https://cdn.portone.io https://*.portone.io https://*.iamport.co https://*.iamport.kr https://*.nicepay.co.kr; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https: blob:${devImg}; font-src 'self' data: https://fonts.gstatic.com; media-src 'self' data: blob:; connect-src 'self'${devConnect} https://*.teamplus.com https://*.icetimes.co.kr https://*.sentry.io https://*.ingest.sentry.io https://*.kakao.com https://t1.kakaocdn.net https://*.tosspayments.com https://api.portone.io https://*.portone.io https://*.iamport.co https://*.iamport.kr https://*.inicis.com https://*.nicepay.co.kr wss: ws:; frame-src 'self' https://*.tosspayments.com https://pg.inicis.com https://*.inicis.com https://*.portone.io https://*.iamport.co https://*.iamport.kr https://*.kakao.com https://*.kakaopay.com https://*.naver.com https://*.nice.co.kr https://*.passauth.co.kr https://nice.checkplus.co.kr https://*.nicepay.co.kr; form-action 'self'${devConnect} https://*.teamplus.com https://*.icetimes.co.kr https://*.inicis.com https://*.portone.io https://*.iamport.co https://*.iamport.kr https://*.kakao.com https://*.kakaopay.com https://*.naver.com https://*.nice.co.kr https://*.passauth.co.kr https://nice.checkplus.co.kr https://*.nicepay.co.kr;`,
     );
   }
 

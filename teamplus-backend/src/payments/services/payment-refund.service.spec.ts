@@ -5,21 +5,23 @@ import {
   RefundExecutionError,
 } from "./payment-refund.service";
 import { PrismaService } from "@/prisma/prisma.service";
-import {
-  KgInicisGateway,
-  KgCancelAmbiguousError,
-} from "../kg-inicis.gateway";
+import { KgInicisGateway, KgCancelAmbiguousError } from "../kg-inicis.gateway";
 import {
   TossPaymentsGateway,
   TossCancelAmbiguousError,
 } from "../toss-payments.gateway";
+import { NicePaymentsGateway } from "../nice-payments.gateway";
 import { CreditDomainService } from "@/credits/credit-domain.service";
 
 describe("PaymentRefundService", () => {
   let service: PaymentRefundService;
 
   const mockPrisma = {
-    payment: { findUnique: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
+    payment: {
+      findUnique: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
+    },
     memberCredit: { findMany: jest.fn(), updateMany: jest.fn() },
     refundLog: { create: jest.fn(), findMany: jest.fn() },
     refundRequest: {
@@ -46,6 +48,10 @@ describe("PaymentRefundService", () => {
     cancel: jest.fn(),
   };
 
+  const mockNiceGateway = {
+    cancel: jest.fn(),
+  };
+
   const mockCreditDomain = { refundSessions: jest.fn() };
 
   /** $transaction 콜백에 전달할 tx delegate 목 — tx-A(claim+정합화+원장) + tx-B(확정) 전부. */
@@ -54,7 +60,10 @@ describe("PaymentRefundService", () => {
       refundLog: { create: jest.fn().mockResolvedValue({ id: "rlog-1" }) },
       payment: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       memberCredit: { findMany: jest.fn().mockResolvedValue([]) },
-      enrollment: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
+      enrollment: {
+        findMany: jest.fn().mockResolvedValue([]),
+        update: jest.fn(),
+      },
       classRegistration: { updateMany: jest.fn() },
       monthlyPostpaidBillingLine: { updateMany: jest.fn() },
       tournamentRegistration: { updateMany: jest.fn() },
@@ -89,6 +98,7 @@ describe("PaymentRefundService", () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: KgInicisGateway, useValue: mockKgGateway },
         { provide: TossPaymentsGateway, useValue: mockTossGateway },
+        { provide: NicePaymentsGateway, useValue: mockNiceGateway },
         { provide: CreditDomainService, useValue: mockCreditDomain },
       ],
     }).compile();
@@ -325,12 +335,10 @@ describe("PaymentRefundService", () => {
       mockPrisma.$transaction.mockImplementation((cb: any) => cb(tx));
 
       await expect(
-        (service as any).executeRefundTransaction(
-          paymentArg,
-          400000,
-          "환불",
-          { refundRequestId: "rr-1", expectedVersion: 1 },
-        ),
+        (service as any).executeRefundTransaction(paymentArg, 400000, "환불", {
+          refundRequestId: "rr-1",
+          expectedVersion: 1,
+        }),
       ).rejects.toThrow(/PAYMENT_CAS_CONFLICT/);
       // RefundLog 는 생성됐어도 tx throw 로 전체 롤백(원장 확정 안 됨).
       expect(tx.refundRequest.updateMany).not.toHaveBeenCalled();
@@ -338,17 +346,17 @@ describe("PaymentRefundService", () => {
 
     it("RefundRequest fence count!==1(선점 상실) → 전체 rollback(throw)", async () => {
       const tx = makeTxMock({
-        refundRequest: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        refundRequest: {
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
       });
       mockPrisma.$transaction.mockImplementation((cb: any) => cb(tx));
 
       await expect(
-        (service as any).executeRefundTransaction(
-          paymentArg,
-          400000,
-          "환불",
-          { refundRequestId: "rr-1", expectedVersion: 3 },
-        ),
+        (service as any).executeRefundTransaction(paymentArg, 400000, "환불", {
+          refundRequestId: "rr-1",
+          expectedVersion: 3,
+        }),
       ).rejects.toThrow(/REFUND_REQUEST_FENCE_LOST/);
       // fence where 에 executing + expectedVersion 포함.
       expect(tx.refundRequest.updateMany.mock.calls[0][0].where).toMatchObject({
@@ -363,10 +371,15 @@ describe("PaymentRefundService", () => {
       mockPrisma.$transaction.mockImplementation((cb: any) => cb(tx));
 
       // 직접 환불 정합화는 PG 전 createDirectRefundLedger 로 이동 — tx 안에서는 fence 만.
-      await (service as any).executeRefundTransaction(paymentArg, 400000, "환불", {
-        refundRequestId: "rr-1",
-        expectedVersion: 3,
-      });
+      await (service as any).executeRefundTransaction(
+        paymentArg,
+        400000,
+        "환불",
+        {
+          refundRequestId: "rr-1",
+          expectedVersion: 3,
+        },
+      );
       expect(tx.refundRequest.updateMany.mock.calls[0][0].data.status).toBe(
         "executed",
       );
@@ -707,7 +720,10 @@ describe("PaymentRefundService", () => {
           { id: "admin-1", userType: "ADMIN" },
           { actorId: "admin-1" },
         ),
-      ).rejects.toMatchObject({ stage: "PG", code: "TOSS_IDEMPOTENCY_CONFLICT" });
+      ).rejects.toMatchObject({
+        stage: "PG",
+        code: "TOSS_IDEMPOTENCY_CONFLICT",
+      });
       const restoreCall = mockPrisma.payment.updateMany.mock.calls.find(
         (c) => c[0]?.data?.paymentStatus === "completed",
       );
@@ -940,7 +956,9 @@ describe("PaymentRefundService", () => {
           requestedAmount: 100000,
           pgFirstAttemptedAt: new Date(firstAtMs),
         });
-        mockTossGateway.cancel.mockResolvedValue({ status: "PARTIAL_CANCELED" });
+        mockTossGateway.cancel.mockResolvedValue({
+          status: "PARTIAL_CANCELED",
+        });
       });
       afterEach(() => nowSpy?.mockRestore());
 

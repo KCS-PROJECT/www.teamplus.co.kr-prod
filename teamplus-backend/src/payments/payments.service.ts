@@ -17,7 +17,13 @@ import { PaymentReceiptService } from "./services/payment-receipt.service";
 import { deriveSource } from "./payment-source.util";
 import { buildAdminTeamPaymentSummaries } from "./admin-team-payment-summary.util";
 import { TossPaymentsGateway } from "./toss-payments.gateway";
+import {
+  NicePaymentsGateway,
+  NiceApproveAmbiguousError,
+} from "./nice-payments.gateway";
 import { RedisService } from "@/redis/redis.service";
+import { resolveActivePaymentProvider } from "./payment-provider.util";
+import type { PaymentProviderCode } from "./constants/payment-provider.constant";
 import {
   CreditDomainService,
   resolveCreditExpiry,
@@ -88,6 +94,7 @@ export class PaymentsService {
     private readonly refundService: PaymentRefundService,
     private readonly receiptService: PaymentReceiptService,
     private readonly tossGateway: TossPaymentsGateway,
+    private readonly niceGateway: NicePaymentsGateway,
     private readonly redisService: RedisService,
     private readonly creditDomain: CreditDomainService, // PR-D 후속 (v0.8): 토스 confirm MemberCredit 발급
     private readonly notificationsService: NotificationsService, // [2026-06-19] 결제 완료 → 감독/코치 알림
@@ -263,6 +270,273 @@ export class PaymentsService {
       // 승인 실패 시 락 해제 — 사용자 재시도 가능
       await this.redisService.del(lockKey);
       throw e;
+    }
+  }
+
+  /**
+   * 활성 결제사 조회 — 결제 화면이 어느 PG SDK 를 띄울지 결정하는 데 쓴다.
+   *
+   *  결제사는 서버가 정한다(AppSettings.paymentProvider). 클라이언트가 임의로 고를 수 없어야
+   *  하므로 화면은 이 값을 "조회"만 하고, 실제 Payment.pgProvider 는 initiate 가 서버에서
+   *  다시 해석해 기록한다 — 화면이 거짓말을 해도 결제 원장은 오염되지 않는다.
+   *
+   *  민감정보가 아니라 공개 조회로 둔다(결제창을 열면 어느 PG 인지 어차피 드러난다).
+   */
+  async getActivePaymentProvider(): Promise<{ provider: PaymentProviderCode }> {
+    const provider = await resolveActivePaymentProvider(
+      this.prisma,
+      this.redisService,
+    );
+    return { provider };
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  나이스페이먼츠 결제 승인 / Webhook 처리 (2026-08-27 신규)
+  //  토스와 병행. 활성 결제사는 AppSettings.paymentProvider 가 결정한다.
+  // ────────────────────────────────────────────────────────────────────
+
+  /**
+   * 나이스 결제 승인 (Server 승인 모델).
+   *  1) Payment row 조회 (orderId == orderNumber)
+   *  2) 멱등성 락 — Redis `nice:confirm:{orderId}` 24h
+   *  3) 금액 검증 — DB amount 와 인증 결과 amount 일치
+   *  4) 나이스 승인 API 호출 → resultCode '0000' && status 'paid'
+   *  5) 응답 signature 재검증 → applyApprovedPayment 로 공용 후처리
+   *
+   *  ⚠️ 토스와 달리 userId 인자가 없다. 이 흐름은 결제창이 returnUrl 로 보내는
+   *    브라우저 form POST 가 기점이라 Authorization 헤더가 실리지 않는다. 대신
+   *    ① 인증 signature(SecretKey 없이는 위조 불가) ② orderNumber(UUID) 조회
+   *    ③ 서버 보관 금액과의 대조 로 정당성을 확인한다. 컨트롤러가 ①을 이미 통과시킨
+   *    요청만 여기로 넘긴다.
+   *
+   *  ⚠️ 승인 결과 미확정(read-timeout 등)은 반드시 망취소로 해소한다. 그대로 두면
+   *    승인은 됐는데 우리 DB 는 pending 인 미매칭 거래가 남는다(유효기간 1시간).
+   */
+  async confirmNicePayment(body: {
+    tid: string;
+    orderId: string;
+    amount: number;
+  }) {
+    const { tid, orderId, amount } = body;
+    if (!tid || !orderId || !amount || amount <= 0) {
+      throw new BadRequestException(
+        "tid/orderId/amount 값이 유효하지 않습니다.",
+      );
+    }
+
+    const payment = await this.prisma.payment.findUnique({
+      where: { orderNumber: orderId },
+      select: {
+        id: true,
+        userId: true,
+        amount: true,
+        paymentStatus: true,
+        productId: true,
+        product: {
+          select: {
+            classId: true,
+            durationDays: true,
+            sessionsPerMonth: true,
+            feeType: true,
+            billingTiming: true,
+            billingMonth: true,
+          },
+        },
+      },
+    });
+    if (!payment) {
+      throw new NotFoundException("주문 정보를 찾을 수 없습니다.");
+    }
+    if (payment.paymentStatus === "completed") {
+      this.logger.log(
+        `나이스 confirm 멱등 응답 — orderId=${orderId} already completed`,
+      );
+      return { success: true, paymentId: payment.id, idempotent: true };
+    }
+    if (payment.paymentStatus === "cancelled") {
+      throw new BadRequestException(
+        "취소된 결제 요청입니다. 최신 결제 요청을 확인해주세요.",
+      );
+    }
+    if (Math.abs(payment.amount - amount) > 0) {
+      throw new BadRequestException(
+        `결제 금액 불일치 — 주문 ${payment.amount}원, 요청 ${amount}원`,
+      );
+    }
+
+    const lockKey = `nice:confirm:${orderId}`;
+    const acquired = await this.redisService.setIfNotExists(
+      lockKey,
+      "1",
+      86400,
+    );
+    if (!acquired) {
+      this.logger.warn(`나이스 confirm 동시 호출 차단: orderId=${orderId}`);
+      throw new BadRequestException(
+        "결제 승인이 이미 진행 중입니다. 잠시 후 다시 시도해주세요.",
+      );
+    }
+
+    let seatClaims: SeatClaim[] = [];
+    let captured = false;
+    try {
+      // 승인(캡처) 전 좌석 원자 확보 — 초과 시 돈이 나가기 전에 거부(토스와 동일 정책).
+      seatClaims = await this.claimSeatsBeforeApproval(payment.id);
+
+      const result = await this.niceGateway.approve({ tid, amount, orderId });
+
+      if (result.status !== "paid") {
+        throw new BadRequestException(
+          `나이스 결제 상태가 paid 가 아닙니다: ${result.status}`,
+        );
+      }
+      if (result.amount !== amount) {
+        throw new BadRequestException(
+          `나이스 응답 금액 불일치 — 응답 ${result.amount}원`,
+        );
+      }
+      // 응답 위변조 검증 — 승인 성공 건에만 signature 가 내려온다.
+      //   검증 실패는 캡처 전 실패로 다루지 않는다(이미 승인된 상태일 수 있음) → 격리 대상.
+      if (result.signature && result.ediDate) {
+        const valid = this.niceGateway.verifyResultSignature({
+          tid: result.tid,
+          amount: result.amount,
+          ediDate: result.ediDate,
+          signature: result.signature,
+        });
+        if (!valid) {
+          this.logger.error(
+            `[NICE_SIGNATURE_MISMATCH] 승인 응답 서명 불일치 — orderId=${orderId} tid=${result.tid}`,
+          );
+          throw new BadRequestException(
+            "결제 응답 검증에 실패했습니다. 고객센터로 문의해주세요.",
+          );
+        }
+      } else {
+        // 서명 미응답은 매뉴얼상 "유효 거래건에 한하여 응답" 의 이면 —
+        //   승인은 성공했는데 서명이 없다면 후속 대사 대상으로 남긴다(결제는 진행).
+        this.logger.warn(
+          `나이스 승인 응답에 signature 없음 — orderId=${orderId} (대사 대상)`,
+        );
+      }
+      captured = true;
+
+      await this.applyApprovedPayment(payment, {
+        paymentMethod: "nice",
+        pgProvider: "nice",
+        tid: result.tid,
+        approvedAt: this.parseNicePaidAt(result.paidAt),
+        orderId,
+      });
+
+      void this.notifyManagersOfCompletedPayment(
+        payment.id,
+        Number(amount),
+      ).catch((err) =>
+        this.logger.warn(
+          `결제 완료 감독/코치 알림 실패: paymentId=${payment.id} ${(err as Error).message}`,
+        ),
+      );
+
+      try {
+        await this.receiptService.createReceipt(
+          payment.id,
+          result.receiptUrl ?? null,
+        );
+      } catch (receiptErr) {
+        this.logger.warn(
+          `나이스 결제 영수증 발급 실패(무시): orderId=${orderId} ${(receiptErr as Error).message}`,
+        );
+      }
+
+      this.logger.log(
+        `나이스 결제 승인 완료: orderId=${orderId} amount=${amount} method=${result.payMethod}`,
+      );
+      return {
+        success: true,
+        paymentId: payment.id,
+        orderId,
+        amount,
+        method: result.payMethod,
+        receiptUrl: result.receiptUrl ?? null,
+        approvedAt: result.paidAt,
+      };
+    } catch (e) {
+      if (!captured) {
+        await this.releaseClaimedSeats(seatClaims);
+      }
+      await this.redisService.del(lockKey);
+
+      // 승인 결과 미확정 → 망취소로 해소(1시간 제한). 실패해도 원 예외를 삼키지 않는다.
+      if (e instanceof NiceApproveAmbiguousError) {
+        try {
+          await this.niceGateway.netCancel({ orderId: e.orderId });
+          this.logger.warn(
+            `[NICE_NETCANCEL] 승인 미확정 거래 망취소 완료: orderId=${e.orderId}`,
+          );
+        } catch (ncErr) {
+          // 망취소까지 실패하면 사람이 봐야 한다 — 승인됐는데 DB 는 pending 인 거래가 남는다.
+          this.logger.error(
+            `[NICE_NETCANCEL_FAILED] 수동 확인 필요: orderId=${e.orderId} ${(ncErr as Error).message}`,
+          );
+        }
+        throw new BadRequestException(
+          "결제 결과를 확인하지 못했습니다. 중복 결제를 방지하기 위해 취소 처리했습니다. 다시 시도해주세요.",
+        );
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * 나이스 paidAt 파싱 — 결제완료가 아니면 문자열 "0" 이 온다.
+   *  그대로 new Date("0") 하면 Invalid Date 가 되어 Prisma 가 던지므로 방어한다.
+   */
+  private parseNicePaidAt(paidAt?: string): Date {
+    if (!paidAt || paidAt === "0") return new Date();
+    const d = new Date(paidAt);
+    return Number.isNaN(d.getTime()) ? new Date() : d;
+  }
+
+  /**
+   * 나이스 Webhook 처리 — 결제 상태 동기화.
+   *  webhook 은 보조 수단이다. 카드 결제는 authorize 흐름이 주(主)이고,
+   *  webhook 은 ① 취소 반영 ② 가상계좌 입금 통지 ③ 승인 응답 유실 보완 용도다.
+   *
+   *  서명 검증은 컨트롤러가 이미 수행한 뒤 호출한다.
+   */
+  async handleNiceWebhook(body: {
+    tid?: string;
+    orderId?: string;
+    status?: string;
+    amount?: number;
+  }) {
+    const { orderId, status } = body;
+    if (!orderId) return;
+    const payment = await this.prisma.payment.findUnique({
+      where: { orderNumber: orderId },
+      select: { id: true, paymentStatus: true },
+    });
+    if (!payment) {
+      this.logger.warn(`나이스 webhook: orderId=${orderId} 결제 없음 — 무시`);
+      return;
+    }
+    if (status === "cancelled" || status === "partialCancelled") {
+      if (payment.paymentStatus !== "refunded") {
+        await this.prisma.payment.update({
+          where: { id: payment.id },
+          data: { paymentStatus: "refunded" },
+        });
+        this.logger.log(`나이스 webhook 처리: orderId=${orderId} → refunded`);
+      }
+      return;
+    }
+    // 'paid' 는 authorize 흐름에서 처리되므로 여기서는 미확정 건만 보완 기록한다.
+    //   가상계좌 입금(vbank) 완료 처리는 결제수단 도입 시 이 지점에 추가한다.
+    if (status === "paid" && payment.paymentStatus === "pending") {
+      this.logger.warn(
+        `[NICE_WEBHOOK_PAID] 승인 응답 유실 의심 — orderId=${orderId} 는 나이스 기준 paid 이나 DB 는 pending. 대사 대상.`,
+      );
     }
   }
 

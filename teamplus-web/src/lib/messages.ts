@@ -930,6 +930,7 @@ export const MESSAGES = {
       trans: "계좌이체",
       phone: "휴대폰 결제",
       toss: "토스페이먼츠",
+      nice: "나이스페이먼츠",
     } as Record<string, string>,
     noSearchResult: "검색 결과가 없습니다",
     tryOtherKeyword: "다른 검색어로 시도해보세요",
@@ -1018,6 +1019,22 @@ export const MESSAGES = {
       "결제 위젯을 불러올 수 없어요. 새로고침 후 다시 시도해주세요.",
     requestFailed: "결제 요청에 실패했어요. 잠시 후 다시 시도해주세요.",
     loadError: "결제 내역을 가져오지 못했어요. 새로고침 후 다시 시도해주세요.",
+    // ─── [추가 2026-08-27] 나이스페이먼츠 결제창 분기 ───
+    //   토스는 위젯이 결제수단·약관 UI 를 그려줬지만 나이스는 결제창만 띄운다.
+    //   따라서 결제수단 선택과 약관 동의를 우리가 직접 그려야 하고, 그 카피가 여기 있다.
+    methodSectionTitle: "결제 수단",
+    methodCard: "신용·체크카드",
+    methodBank: "계좌이체",
+    methodVbank: "가상계좌(무통장)",
+    methodVbankHint: "발급된 계좌로 입금하시면 결제가 완료됩니다.",
+    agreementTitle: "결제 진행 동의",
+    agreementRequired: "(필수) 결제 진행 및 환불 규정에 동의합니다.",
+    agreementNotChecked: "결제 진행에 동의해주세요.",
+    windowOpenFailed: "결제창을 열 수 없어요. 새로고침 후 다시 시도해주세요.",
+    // 결제창이 취소·인증 실패로 돌아왔을 때 — 백엔드 redirect 의 error 코드별 안내.
+    niceAuthFailed: "결제가 취소되었거나 인증에 실패했어요. 다시 시도해주세요.",
+    niceVerifyFailed:
+      "결제 정보 검증에 실패했어요. 결제가 진행되지 않았습니다. 고객센터로 문의해주세요.",
     usageLoadError:
       "사용 내역을 가져오지 못했어요. 새로고침 후 다시 시도해주세요.",
     cancelFailed: "결제 취소에 실패했어요. 잠시 후 다시 시도해주세요.",

@@ -3,23 +3,35 @@
 export const dynamic = 'force-dynamic';
 
 /**
- * Step 3: 결제수단 — 토스페이먼츠 결제위젯 (v2 SDK, 2026-05-13 신규).
+ * Step 3: 결제수단 — 결제사(PG)별 분기. 활성 결제사는 **서버가 정한다**.
  *
- *  흐름:
- *   1) POST /payments/initiate 호출 → Payment row 생성 + orderNumber 반환 (paymentMethod='toss')
- *   2) GET /payments/toss/client-key 로 클라이언트키 조회
- *   3) TossPayments(clientKey).widgets({ customerKey: userId }) — 위젯 인스턴스
- *   4) widgets.setAmount({ currency: 'KRW', value: amount })
- *   5) widgets.renderPaymentMethods({ selector: '#payment-method' })
- *      widgets.renderAgreement({ selector: '#agreement' })
- *   6) 결제 버튼 → widgets.requestPayment({ orderId, orderName, successUrl, failUrl })
- *   7) 토스가 결제 처리 후 successUrl 로 paymentKey/orderId/amount 쿼리와 함께 리다이렉트
- *   8) /payment/complete 에서 POST /payments/toss/confirm 호출
+ *  공통 1단계: GET /payments/active-provider → 'toss' | 'nice'
+ *
+ *  ─── 토스페이먼츠 (위젯, 2026-05-13) ───────────────────────────────
+ *   1) POST /payments/initiate (paymentMethod='toss') → orderNumber
+ *   2) GET /payments/toss/client-key
+ *   3) TossPayments(clientKey).widgets({ customerKey }) → setAmount → render
+ *   4) 결제 버튼 → widgets.requestPayment({ successUrl, failUrl })
+ *   5) 토스가 successUrl 로 리다이렉트 → /payment/complete 가 /toss/confirm 호출
+ *
+ *  ─── 나이스페이먼츠 (결제창, 2026-08-27) ──────────────────────────
+ *   1) POST /payments/initiate (paymentMethod='nice') → orderNumber
+ *   2) GET /payments/nice/client-key
+ *   3) https://pay.nicepay.co.kr/v1/js/ 스크립트 로드
+ *   4) 결제 버튼 → AUTHNICE.requestPay({ clientId, method, orderId, amount, returnUrl })
+ *   5) 나이스가 returnUrl(=백엔드 /payments/nice/authorize)로 **form POST**
+ *   6) 백엔드가 서명 검증 + 승인까지 마치고 /payment/complete 로 303 리다이렉트
+ *
+ *  두 결제사의 UI 차이 (여기가 분기의 핵심):
+ *   토스 위젯은 결제수단 선택 UI 와 약관 동의 UI 를 **SDK 가 그려준다**.
+ *   나이스는 결제창만 띄우므로 두 UI 를 **우리가 직접 그려야 한다**.
+ *   그래서 nice 분기에만 selectedMethod/agreed 상태와 전용 섹션이 존재한다.
  *
  *  보안:
- *   - 카드 데이터 서버 저장 절대 금지 — 토스 SDK 가 토큰화/3DS 위임
- *   - clientKey 만 브라우저 노출, secretKey/webhookSecret 은 백엔드 .env 만
+ *   - 카드 데이터 서버 저장 절대 금지 — PG SDK 가 토큰화/3DS 위임
+ *   - clientKey 만 브라우저 노출, secretKey 는 백엔드 .env 만
  *   - orderId 멱등성 — backend 가 24h Redis 락
+ *   - 금액은 서버 보관값과 대조 — 화면이 보낸 amount 를 그대로 믿지 않는다
  */
 
 import { useEffect, useMemo, useRef, useState, Suspense } from 'react';
@@ -36,6 +48,8 @@ import { useNativeUI } from '@/hooks/useNativeUI';
 import { useBlockBackNavigation } from '@/hooks/useBlockBackNavigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { MESSAGES } from '@/lib/messages';
+import { env } from '@/lib/env';
+import { isNativeApp } from '@/lib/environment';
 import { api } from '@/services/api-client';
 import { usePageReady } from '@/hooks/usePageReady';
 import { TermsDocumentModal } from '@/components/legal/TermsDocumentModal';
@@ -52,13 +66,103 @@ type TossPaymentsInstance = any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TossWidgets = any;
 
+/** 결제사 — 서버(AppSettings.paymentProvider)가 정하는 값. */
+type PaymentProvider = 'toss' | 'nice';
+
+/** 나이스 결제창 결제수단. 결제창 호출 시 method 로 그대로 전달된다. */
+type NiceMethod = 'card' | 'bank' | 'vbank';
+
 interface InitiateResponse {
   id: string;
   orderNumber: string;
+  /** 서버가 해석한 결제사. 화면 분기는 이 값을 최종 기준으로 삼는다. */
+  pgProvider?: PaymentProvider;
 }
 
 interface ClientKeyResponse {
   clientKey: string;
+}
+
+interface ActiveProviderResponse {
+  provider: PaymentProvider;
+}
+
+/**
+ * 나이스 결제창 JS SDK 전역. 스크립트 로드 후 window.AUTHNICE 로 노출된다.
+ *  npm 패키지가 없어 script 태그로 직접 로드해야 한다(토스는 SDK 패키지 존재).
+ */
+declare global {
+  interface Window {
+    AUTHNICE?: {
+      requestPay: (options: Record<string, unknown>) => void;
+    };
+  }
+}
+
+const NICE_SDK_SRC = 'https://pay.nicepay.co.kr/v1/js/';
+
+/** SDK 준비 판정 타임아웃 — 초과 시 무한 대기 대신 에러로 끝낸다. */
+const NICE_SDK_TIMEOUT_MS = 15000;
+
+/**
+ * 나이스 결제창 SDK 로드.
+ *
+ *  준비 판정을 **load 이벤트가 아니라 `window.AUTHNICE` 존재 여부**로 한다.
+ *  SDK 는 스크립트 마지막 줄에서 `window.AUTHNICE = new AUTHNICE()` 를 동기 실행하므로
+ *  이 전역이 곧 준비 신호이고, 이벤트 타이밍에 의존하지 않아 다음 경우에 전부 안전하다.
+ *   - StrictMode 이중 마운트·Fast Refresh 로 script 태그만 남고 load 이벤트는 이미 지나간 경우
+ *     (기존 태그에 addEventListener('load') 를 걸면 영원히 안 불려 무한 로딩이 된다)
+ *   - 다른 화면이 먼저 SDK 를 심어둔 경우
+ *
+ *  같은 src 의 script 를 중복 삽입하지 않는다 — SDK 가 전역을 두 번 초기화한다.
+ */
+function loadNiceSdk(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (typeof window === 'undefined') {
+      reject(new Error('SSR 환경에서는 결제창을 열 수 없습니다.'));
+      return;
+    }
+    if (window.AUTHNICE) {
+      resolve();
+      return;
+    }
+
+    const startedAt = Date.now();
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const stop = () => {
+      if (timer) clearInterval(timer);
+      timer = null;
+    };
+    // 전역이 준비되면 즉시 종료. 스크립트 실행이 끝나야 세팅되므로 폴링이 유일한 확정 신호다.
+    timer = setInterval(() => {
+      if (window.AUTHNICE) {
+        stop();
+        resolve();
+        return;
+      }
+      if (Date.now() - startedAt > NICE_SDK_TIMEOUT_MS) {
+        stop();
+        reject(new Error(MESSAGES.payment2.windowOpenFailed));
+      }
+    }, 100);
+
+    const existing = document.querySelector<HTMLScriptElement>(
+      `script[src="${NICE_SDK_SRC}"]`,
+    );
+    if (existing) return; // 이미 로드 중/완료 — 폴링이 마무리한다.
+
+    const script = document.createElement('script');
+    script.src = NICE_SDK_SRC;
+    script.async = true;
+    // 로드 실패는 폴링 타임아웃(15초)을 기다리지 않고 즉시 알린다.
+    script.onerror = () => {
+      stop();
+      // 재시도가 가능하도록 실패한 태그는 걷어낸다 — 남겨두면 위 existing 분기에 걸린다.
+      script.remove();
+      reject(new Error(MESSAGES.payment2.windowOpenFailed));
+    };
+    document.head.appendChild(script);
+  });
 }
 
 function PaymentCheckoutContent() {
@@ -104,6 +208,12 @@ function PaymentCheckoutContent() {
   const [orderId, setOrderId] = useState<string | null>(null);
   const [widgets, setWidgets] = useState<TossWidgets | null>(null);
   const [isReady, setIsReady] = useState(false);
+  // 결제사 — 확정 전에는 null 이라 어떤 결제 UI 도 그리지 않는다(토스 위젯 자리 깜빡임 방지).
+  const [provider, setProvider] = useState<PaymentProvider | null>(null);
+  const [niceClientKey, setNiceClientKey] = useState<string | null>(null);
+  // 나이스 전용 — 토스 위젯이 대신 그려주던 두 가지를 직접 관리한다.
+  const [niceMethod, setNiceMethod] = useState<NiceMethod>('card');
+  const [niceAgreed, setNiceAgreed] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // 환불 규정 '보기' — 결제 흐름 이탈 방지를 위해 모달로 표시.
@@ -114,9 +224,9 @@ function PaymentCheckoutContent() {
   const initRef = useRef(false);
 
   /**
+   * 0) 활성 결제사 조회 — 어느 PG 로 결제할지는 서버가 정한다.
    * 1) 결제 시작 — backend 에 Payment row 생성 + orderNumber 발급
-   * 2) 토스 클라이언트키 조회
-   * 3) 토스 SDK 로드 → widgets 인스턴스 + setAmount + render
+   * 2) 결제사별 준비 (토스: 위젯 렌더 / 나이스: clientKey + SDK 프리로드)
    */
   useEffect(() => {
     if (initRef.current) return;
@@ -125,13 +235,21 @@ function PaymentCheckoutContent() {
 
     const init = async () => {
       try {
-        // 1) initiate — Payment row + orderNumber
+        // 0) 활성 결제사 — 실패 시 토스로 폴백한다(기존 동작 유지, 결제 시작을 막지 않음).
+        const provRes = await api.get<ActiveProviderResponse>(
+          '/payments/active-provider',
+        );
+        const activeProvider: PaymentProvider =
+          provRes.success && provRes.data?.provider === 'nice' ? 'nice' : 'toss';
+
+        // 1) initiate — Payment row + orderNumber.
+        //    paymentMethod 로 결제사를 넘겨야 백엔드가 KG 결제 URL 생성을 건너뛴다.
         const initiateRes = await api.post<InitiateResponse>('/payments/initiate', {
           productId,
           childId,
           classId,
           amount,
-          paymentMethod: 'toss',
+          paymentMethod: activeProvider,
         });
         if (!initiateRes.success || !initiateRes.data) {
           throw new Error(initiateRes.error?.message ?? MESSAGES.payment2.initFailed);
@@ -139,14 +257,30 @@ function PaymentCheckoutContent() {
         const newOrderId = initiateRes.data.orderNumber;
         setOrderId(newOrderId);
 
-        // 2) clientKey
+        // 서버가 되돌려준 pgProvider 를 최종 기준으로 삼는다 — 조회와 initiate 사이에
+        //   관리자가 결제사를 바꿨다면 이 결제는 initiate 시점 값으로 고정되기 때문이다.
+        const resolved: PaymentProvider = initiateRes.data.pgProvider ?? activeProvider;
+        setProvider(resolved);
+
+        if (resolved === 'nice') {
+          // 2-N) 나이스 — clientKey 조회 + SDK 프리로드. 결제창은 버튼 클릭 시 연다.
+          const ckRes = await api.get<ClientKeyResponse>('/payments/nice/client-key');
+          if (!ckRes.success || !ckRes.data?.clientKey) {
+            throw new Error('클라이언트키 조회 실패');
+          }
+          setNiceClientKey(ckRes.data.clientKey);
+          await loadNiceSdk();
+          setIsReady(true);
+          return;
+        }
+
+        // 2-T) 토스 — clientKey 조회 + 위젯 렌더
         const ckRes = await api.get<ClientKeyResponse>('/payments/toss/client-key');
         if (!ckRes.success || !ckRes.data?.clientKey) {
           throw new Error('클라이언트키 조회 실패');
         }
         const clientKey = ckRes.data.clientKey;
 
-        // 3) SDK 로드 + 위젯 인스턴스
         const { loadTossPayments, ANONYMOUS } = await import(
           '@tosspayments/tosspayments-sdk'
         );
@@ -171,7 +305,72 @@ function PaymentCheckoutContent() {
     void init();
   }, [productId, childId, classId, amount, user?.id, toast]);
 
+  /**
+   * 나이스 결제창 호출.
+   *
+   *  returnUrl 을 **백엔드 절대 URL** 로 지정하는 게 핵심이다. 나이스는 인증 결과를
+   *  form POST 로 보내는데 Next.js 페이지는 POST 를 받을 수 없다. 백엔드가 받아 서명 검증 +
+   *  승인까지 마친 뒤 /payment/complete 로 리다이렉트한다.
+   *
+   *  requestPay 는 Promise 를 반환하지 않는다 — 결제창을 열고 즉시 반환하며, 이후 흐름은
+   *  브라우저 문서 이동이다. 따라서 await 하지 않고 isPaying 도 되돌리지 않는다.
+   */
+  const handleNicePayment = () => {
+    if (!orderId || !niceClientKey || isPaying) return;
+    if (!niceAgreed) {
+      toast.error(MESSAGES.payment2.agreementNotChecked);
+      return;
+    }
+    const authnice = typeof window !== 'undefined' ? window.AUTHNICE : undefined;
+    if (!authnice) {
+      const msg = MESSAGES.payment2.windowOpenFailed;
+      setError(msg);
+      toast.error(msg);
+      return;
+    }
+    setIsPaying(true);
+    try {
+      authnice.requestPay({
+        clientId: niceClientKey,
+        method: niceMethod,
+        orderId,
+        amount,
+        goodsName: orderName,
+        returnUrl: `${env.NEXT_PUBLIC_API_URL}/api/v1/payments/nice/authorize`,
+        buyerName: user?.name ?? undefined,
+        buyerEmail: user?.email ?? undefined,
+        // [필수] SDK 가 함수 타입이 아니면 "필수 파라미터 fnError Funtion 누락되었습니다"
+        //   alert 를 띄우고 결제창을 아예 열지 않는다.
+        //   결제창을 띄우기 전 단계의 오류(파라미터 검증·통신 실패)만 여기로 온다.
+        //   결제 자체의 성공/실패는 returnUrl POST → 백엔드 승인 경로로 처리된다.
+        fnError: (result: { errorMsg?: string; resultMsg?: string }) => {
+          const msg =
+            result?.errorMsg ?? result?.resultMsg ?? MESSAGES.payment2.requestFailed;
+          setError(msg);
+          toast.error(msg);
+          // 결제창이 닫힌 상태이므로 버튼을 되살려 재시도할 수 있게 한다.
+          setIsPaying(false);
+        },
+        // 가상계좌 채번 시 필수 — 입금자에게 표시될 예금주명.
+        ...(niceMethod === 'vbank'
+          ? { vbankHolder: user?.name ?? '팀플러스' }
+          : {}),
+        // 앱 WebView 에서 카드사 앱 인증 후 우리 앱으로 복귀시키는 스킴.
+        ...(isNativeApp() ? { appScheme: 'teamplus://' } : {}),
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : MESSAGES.payment2.requestFailed;
+      setError(msg);
+      toast.error(msg);
+      setIsPaying(false);
+    }
+  };
+
   const handlePayment = async () => {
+    if (provider === 'nice') {
+      handleNicePayment();
+      return;
+    }
     if (!widgets || !orderId || isPaying) return;
     setIsPaying(true);
     try {
@@ -254,8 +453,110 @@ function PaymentCheckoutContent() {
           <StepHeadline currentStep={3} iceTheme />
         </section>
 
-        {/* 토스 결제수단 위젯 — 흰 섹션 */}
-        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-5" aria-label="결제 수단 선택">
+        {/* ── 나이스 분기: 결제수단 선택 (토스 위젯이 그려주던 것을 직접 구현) ── */}
+        {provider === 'nice' && (
+          <section
+            className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-5"
+            aria-label={MESSAGES.payment2.methodSectionTitle}
+          >
+            <h2 className="text-card-title font-bold text-it-ink-900 dark:text-white">
+              {MESSAGES.payment2.methodSectionTitle}
+            </h2>
+            <div className="mt-3 flex flex-col" role="radiogroup" aria-label={MESSAGES.payment2.methodSectionTitle}>
+              {(
+                [
+                  { value: 'card', label: MESSAGES.payment2.methodCard, icon: 'credit_card' },
+                  { value: 'bank', label: MESSAGES.payment2.methodBank, icon: 'account_balance' },
+                  { value: 'vbank', label: MESSAGES.payment2.methodVbank, icon: 'receipt_long' },
+                ] as { value: NiceMethod; label: string; icon: string }[]
+              ).map((m) => {
+                const selected = niceMethod === m.value;
+                return (
+                  <button
+                    key={m.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => setNiceMethod(m.value)}
+                    disabled={isPaying}
+                    className="flex w-full items-center gap-3 border-b border-it-line dark:border-rink-700 py-3.5 text-left last:border-b-0 disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 rounded"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={
+                        selected
+                          ? 'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-[6px] border-it-blue-500'
+                          : 'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-it-line-strong dark:border-rink-600'
+                      }
+                    />
+                    <Icon
+                      name={m.icon}
+                      className="text-[18px] text-it-ink-500 dark:text-rink-300"
+                      aria-hidden="true"
+                    />
+                    <span className="text-card-body font-semibold text-it-ink-900 dark:text-white">
+                      {m.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {niceMethod === 'vbank' && (
+              <p className="mt-3 text-[12px] text-it-ink-500 dark:text-rink-300">
+                {MESSAGES.payment2.methodVbankHint}
+              </p>
+            )}
+          </section>
+        )}
+
+        {/* ── 나이스 분기: 약관 동의 (토스 renderAgreement 대체) ── */}
+        {provider === 'nice' && (
+          <section
+            className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-5"
+            aria-label={MESSAGES.payment2.agreementTitle}
+          >
+            <h2 className="text-card-title font-bold text-it-ink-900 dark:text-white">
+              {MESSAGES.payment2.agreementTitle}
+            </h2>
+            <label className="mt-3 flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={niceAgreed}
+                onChange={(e) => setNiceAgreed(e.target.checked)}
+                disabled={isPaying}
+                className="mt-0.5 h-5 w-5 shrink-0 rounded border-2 border-it-line-strong dark:border-rink-600 text-it-blue-500 focus:ring-2 focus:ring-it-blue-500/40"
+              />
+              <span className="text-card-body text-it-ink-700 dark:text-rink-100">
+                {MESSAGES.payment2.agreementRequired}
+              </span>
+            </label>
+            {!isReady && !error && (
+              <div className="flex items-center justify-center py-4 gap-2 text-it-ink-500 dark:text-rink-300">
+                <Spinner className="w-4 h-4" />
+                <span className="text-card-meta">{MESSAGES.loading.paymentWidget}</span>
+              </div>
+            )}
+            {error && (
+              <div className="mt-3 rounded-w-md border border-it-red-500/30 bg-it-red-50 dark:bg-it-red-500/15 p-4 text-card-body text-it-red-600 dark:text-it-red-200">
+                {error}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* 토스 결제수단 위젯 — 흰 섹션.
+            ⚠️ nice 일 때만 숨긴다(provider === null 인 초기에는 보인다). 조건을
+            `provider === 'toss'` 로 뒤집으면, 토스 위젯 render 시점에 컨테이너가 아직
+            display:none 이라 iframe 이 높이 0 으로 굳는다 — setProvider 리렌더가
+            renderPaymentMethods 호출보다 늦게 반영되기 때문이다. */}
+        <section
+          className={
+            provider === 'nice'
+              ? 'hidden'
+              : 'mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-5'
+          }
+          aria-label="결제 수단 선택"
+        >
           {/* [수정 2026-05-13] overflow-hidden 제거 — 토스 위젯 내부 dropdown/모달 펼침 시
               컨테이너에 잘려 클릭이 비활성으로 보이던 문제. 토스 SDK 가 자체 스타일을 가지므로
               wrapper 는 min-height 만 유지.
@@ -271,8 +572,15 @@ function PaymentCheckoutContent() {
           />
         </section>
 
-        {/* 토스 약관 위젯 — 흰 섹션 */}
-        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4" aria-label="약관 동의">
+        {/* 토스 약관 위젯 — 흰 섹션. 숨김 조건은 위 결제수단 섹션과 동일한 이유로 nice 기준. */}
+        <section
+          className={
+            provider === 'nice'
+              ? 'hidden'
+              : 'mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4'
+          }
+          aria-label="약관 동의"
+        >
           <div id="agreement" className="min-h-[80px]" />
 
           {/* 위젯 로딩 / 에러 안내 */}
@@ -294,7 +602,8 @@ function PaymentCheckoutContent() {
           <div className="flex items-center justify-center gap-1.5 text-it-ink-400 dark:text-rink-300">
             <Icon name="lock" filled className="text-card-body" />
             <span className="text-[11px] font-medium">
-              {MESSAGES.payment2.securePayment} (TossPayments)
+              {MESSAGES.payment2.securePayment} (
+              {provider === 'nice' ? 'NICEPAY' : 'TossPayments'})
             </span>
           </div>
           {/* [추가] 환불 규정 보기 — 결제 전 환불 정책 고지 (앱 심사 Task 3).
@@ -310,7 +619,13 @@ function PaymentCheckoutContent() {
           <button
             type="button"
             onClick={handlePayment}
-            disabled={!isReady || isPaying || !!error}
+            // 나이스는 필수 동의 체크 전까지 비활성 — 토스는 위젯이 자체 검증한다.
+            disabled={
+              !isReady ||
+              isPaying ||
+              !!error ||
+              (provider === 'nice' && !niceAgreed)
+            }
             className="w-full bg-it-blue-500 hover:bg-it-blue-600 active:brightness-95 transition-colors motion-reduce:transition-none text-white rounded-w-md py-4 px-6 shadow-sh-1 flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed font-bold text-card-title"
           >
             {isPaying ? (

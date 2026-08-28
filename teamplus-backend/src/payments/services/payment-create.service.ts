@@ -451,9 +451,15 @@ export class PaymentCreateService {
     // [수정 2026-05-13] DEV mock 자동 완료 분기 제거 — 실제 결제(토스/KG이니시스) 흐름만 사용.
     //  paymentMethod='toss' 면 frontend 위젯이 결제 진행 후 /payments/toss/confirm 호출.
     //  paymentMethod=card 등 KG이니시스 분기는 paymentPageUrl 리다이렉트.
-    if (options?.paymentMethod === "toss") {
+    //  [2026-08-27] 나이스도 동일 분기 — 결제창이 자체적으로 결제를 진행하므로 KG 결제 URL 이
+    //    필요 없다. 나이스는 위젯이 아니라 결제창을 띄운 뒤 returnUrl 로 POST 하고,
+    //    백엔드 /nice/authorize 가 승인까지 마친다.
+    if (
+      options?.paymentMethod === "toss" ||
+      options?.paymentMethod === "nice"
+    ) {
       this.logger.log(
-        `[TOSS] Payment 발급 — orderNumber=${orderNumber} (위젯이 결제 후 /toss/confirm 호출)`,
+        `[${(options.paymentMethod ?? "").toUpperCase()}] Payment 발급 — orderNumber=${orderNumber} (결제창이 결제 후 승인 호출)`,
       );
       // [추가 2026-05-13] 토스 분기는 위젯이 결제 진행하므로 backend 락 즉시 해제 —
       //  사용자가 위젯에서 취소·실패 후 즉시 재시도 가능하게.
@@ -464,6 +470,9 @@ export class PaymentCreateService {
         amount: payment.amount,
         paymentStatus: payment.paymentStatus,
         productId: payment.productId,
+        // 화면이 어느 결제창을 띄울지 서버 판정으로 확정해준다 — 클라이언트가 보낸
+        //   paymentMethod 를 되돌려주는 게 아니라 서버가 해석한 결제사다.
+        pgProvider,
       };
     }
 

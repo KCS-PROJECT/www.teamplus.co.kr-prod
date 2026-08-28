@@ -20,10 +20,12 @@ describe("refund atomicity/concurrency (real PostgreSQL)", () => {
   const creditDomain = new CreditDomainService();
   const kgStub = { cancelPayment: jest.fn() } as any;
   const tossStub = { cancel: jest.fn() } as any;
+  const niceStub = { cancel: jest.fn() } as any;
   const service = new PaymentRefundService(
     prisma,
     kgStub,
     tossStub,
+    niceStub,
     creditDomain,
   );
 
@@ -216,7 +218,9 @@ describe("refund atomicity/concurrency (real PostgreSQL)", () => {
     });
     expect(successBumps).toBe(BUMPS); // headroom 상 전량 성공.
     expect(restoreRes.sessionsRestored).toBe(RESTORE); // safe=min(2,관찰≥5)=2 결정적.
-    expect(final.usedSessions).toBe(U0 + successBumps - restoreRes.sessionsRestored); // = 6, 유실 0.
+    expect(final.usedSessions).toBe(
+      U0 + successBumps - restoreRes.sessionsRestored,
+    ); // = 6, 유실 0.
     expect(final.usedSessions).toBeGreaterThanOrEqual(0);
     expect(final.usedSessions).toBeLessThanOrEqual(final.totalSessions);
 
