@@ -13,10 +13,10 @@ import { RedisService } from "@/redis/redis.service";
 import { UpdateAppSettingsDto } from "./dto/update-app-settings.dto";
 import { describeProviders } from "@/payments/constants/payment-provider.constant";
 import { ACTIVE_PAYMENT_PROVIDER_CACHE_KEY } from "@/payments/payment-provider.util";
-
-// 🔥 고빈도 Public 엔드포인트 Redis 캐시 키
-const APP_SETTINGS_CACHE_KEY = "app:settings:v1";
-const APP_SETTINGS_CACHE_TTL = 300; // 5분 (변경 빈도 낮음, 유지보수 모드도 5분 유예 허용)
+import {
+  APP_SETTINGS_CACHE_KEY,
+  APP_SETTINGS_CACHE_TTL,
+} from "./app-settings-cache";
 
 // 배너 노출 위치 화이트리스트 (Notice의 VALID_DISPLAY_LOCATIONS와 동일 기준)
 const VALID_BANNER_DISPLAY_LOCATIONS = [

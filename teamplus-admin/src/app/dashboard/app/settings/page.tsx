@@ -99,28 +99,32 @@ function normalizeSettings(
   };
 }
 
+/**
+ * 저장 payload 의 필드 화이트리스트 — 단일 출처.
+ *   백엔드가 forbidNonWhitelisted: true 라 응답에 딸려온 id·createdAt 같은 메타 필드가
+ *   섞이면 400 이 난다. 보낼 필드를 늘릴 때는 이 함수만 고치면 된다.
+ */
 function buildUpdatePayload(
   settings: AppSettingsData,
 ): Partial<AppSettingsData> {
+  // 빈 문자열은 아예 보내지 않는다 — 백엔드 검증이 빈 값을 거절한다.
+  const orUndefined = (value: string) => value.trim() || undefined;
   return {
     maintenanceMode: settings.maintenanceMode,
-    maintenanceMessage: settings.maintenanceMessage.trim(),
+    maintenanceMessage: orUndefined(settings.maintenanceMessage),
     debugMode: settings.debugMode,
     minimumAppVersionIos: settings.minimumAppVersionIos.trim(),
     minimumAppVersionAnd: settings.minimumAppVersionAnd.trim(),
-    forceUpdateMessage: settings.forceUpdateMessage.trim(),
+    forceUpdateMessage: orUndefined(settings.forceUpdateMessage),
     signupEnabled: settings.signupEnabled,
     socialLoginEnabled: settings.socialLoginEnabled,
     maxLoginAttempts: settings.maxLoginAttempts,
     sessionTimeout: settings.sessionTimeout,
     creditExpireDays: settings.creditExpireDays,
     qrExpireMinutes: settings.qrExpireMinutes,
-    supportEmail:
-      settings.supportEmail.trim() === ""
-        ? undefined
-        : settings.supportEmail.trim(),
-    supportPhone: settings.supportPhone.trim(),
-    supportHours: settings.supportHours.trim(),
+    supportEmail: orUndefined(settings.supportEmail),
+    supportPhone: orUndefined(settings.supportPhone),
+    supportHours: orUndefined(settings.supportHours),
     termsVersion: settings.termsVersion.trim(),
     privacyVersion: settings.privacyVersion.trim(),
     paymentProvider: settings.paymentProvider,
@@ -175,30 +179,10 @@ async function fetchPaymentProviders(): Promise<PaymentProviderOption[]> {
   return api.get<PaymentProviderOption[]>("/payments/providers");
 }
 
+/** payload 구성은 buildUpdatePayload 가 책임진다 — 여기서 다시 걸러내면 필드 누락이 생긴다. */
 async function updateSettings(
-  settings: Partial<AppSettingsData>,
+  payload: Partial<AppSettingsData>,
 ): Promise<AppSettingsData> {
-  // forbidNonWhitelisted: true — API 응답의 id/createdAt 등 메타 필드 제외, 빈 문자열 → undefined 변환
-  const s = settings as Record<string, unknown>;
-  const payload = {
-    maintenanceMode: s.maintenanceMode,
-    maintenanceMessage: (s.maintenanceMessage as string) || undefined,
-    debugMode: s.debugMode,
-    minimumAppVersionIos: s.minimumAppVersionIos,
-    minimumAppVersionAnd: s.minimumAppVersionAnd,
-    forceUpdateMessage: (s.forceUpdateMessage as string) || undefined,
-    signupEnabled: s.signupEnabled,
-    socialLoginEnabled: s.socialLoginEnabled,
-    maxLoginAttempts: s.maxLoginAttempts,
-    sessionTimeout: s.sessionTimeout,
-    creditExpireDays: s.creditExpireDays,
-    qrExpireMinutes: s.qrExpireMinutes,
-    supportEmail: (s.supportEmail as string) || undefined,
-    supportPhone: (s.supportPhone as string) || undefined,
-    supportHours: (s.supportHours as string) || undefined,
-    termsVersion: s.termsVersion,
-    privacyVersion: s.privacyVersion,
-  };
   const data = await api.patch<AppSettingsData>("/app/settings", payload);
   return normalizeSettings(data);
 }
