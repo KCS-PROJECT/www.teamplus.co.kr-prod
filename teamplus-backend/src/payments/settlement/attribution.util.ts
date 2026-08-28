@@ -1,4 +1,5 @@
 import { instantToKstDateOnly, kstTodayUtcMidnight } from "@/common/utils/kst-date.util";
+import { TERMINAL_NO_MONEY } from "@/common/enrollment/enrollment-status.constants";
 
 /**
  * [정산 센터 Phase 2b] 월귀속·상태·순수납 순수 함수 모음.
@@ -156,9 +157,7 @@ export function resolvePrepaidAttribution(
     billingStatus = "REFUNDED";
   } else if (
     payStatus === "cancelled" ||
-    enrollmentStatus === "cancelled" ||
-    enrollmentStatus === "rejected" ||
-    enrollmentStatus === "expired"
+    (enrollmentStatus != null && TERMINAL_NO_MONEY.includes(enrollmentStatus))
   ) {
     billingStatus = "CANCELLED";
   } else if (

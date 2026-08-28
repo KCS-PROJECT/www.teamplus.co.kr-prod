@@ -239,6 +239,8 @@ describe("ClassesService", () => {
             },
             memberCredit: {
               count: jest.fn(),
+              // selector 분리 — paid 유효성 batch 판정용 크레딧 일괄 조회 기본값
+              findMany: jest.fn().mockResolvedValue([]),
             },
             monthlyPostpaidBillingLine: {
               count: jest.fn(),
@@ -2039,6 +2041,196 @@ describe("ClassesService", () => {
       expect(["UNSETTLED"]).toContain(row.billingStatus);
       expect(row.paidAmount).toBe(0);
       expect(row.outstandingAmount).toBe(0);
+    });
+
+    describe("[selector 분리] 계약/거래 대표 행 — 이탈·종결 행이 결제 이력을 가리지 않음", () => {
+      const refundedJuneEnrollment = {
+        id: "enr-refunded",
+        childId: "child-1",
+        status: "refunded",
+        paymentId: "pay-refunded",
+        paidAt: new Date("2026-06-05T00:00:00Z"),
+        classProductId: "prod-pre",
+        product: {
+          id: "prod-pre",
+          productName: "월권",
+          price: 50000,
+          feeType: "MONTHLY_FIXED",
+          billingTiming: "PREPAID",
+          feePerSession: null,
+          billingMonth: null,
+        },
+        payment: {
+          id: "pay-refunded",
+          amount: 50000,
+          paymentStatus: "refunded",
+          paymentMethod: "card",
+          completedAt: new Date("2026-06-05T00:00:00Z"),
+          createdAt: new Date("2026-06-05T00:00:00Z"),
+          refundLogs: [{ refundAmount: 50000 }],
+          user: {
+            id: "parent-1",
+            firstName: "부",
+            lastName: "학",
+            email: "parent1@t.dev",
+            userType: "PARENT",
+          },
+        },
+      };
+      // 재결제 시도 이탈 흔적 — updatedAt 최신(배열 첫 번째)이지만 완료 결제 없음.
+      const expiredJulyEnrollment = {
+        id: "enr-expired",
+        childId: "child-1",
+        status: "expired",
+        paymentId: null,
+        paidAt: null,
+        classProductId: "prod-pre",
+        product: {
+          id: "prod-pre",
+          productName: "월권",
+          price: 50000,
+          feeType: "MONTHLY_FIXED",
+          billingTiming: "PREPAID",
+          feePerSession: null,
+          billingMonth: null,
+        },
+        payment: null,
+      };
+
+      it("[반례 1] refunded(구)+expired(신) — 무거래 월 행의 결제자·상태가 이탈 행에 가려지지 않음", async () => {
+        wireBillingMocks({
+          billing: null,
+          classRecord: prepaidClassRecord,
+          // updatedAt desc 모사 — 이탈 expired 가 첫 번째(최신).
+          enrollments: [expiredJulyEnrollment, refundedJuneEnrollment],
+        });
+        const result = await service.getClassPayments(
+          mockClassId,
+          requester,
+          undefined,
+          "2026-07", // 6월 환불 거래는 7월에 귀속되지 않음 → 무거래 행
+        );
+        const row = result.students[0];
+        expect(row.billingStatus).toBe("UNSETTLED");
+        // 종전(최신 행 스냅샷)은 expired 행이라 결제자 null·상태 expired 로 오표기됐다.
+        expect(row.payerName).toBe("학부");
+        expect(row.enrollmentStatus).toBe("refunded");
+      });
+
+      it("[반례 1-b] refunded 귀속월 조회 시 REFUNDED·순수납 유지 (거래 이력 보존)", async () => {
+        wireBillingMocks({
+          billing: null,
+          classRecord: prepaidClassRecord,
+          enrollments: [expiredJulyEnrollment, refundedJuneEnrollment],
+        });
+        const result = await service.getClassPayments(
+          mockClassId,
+          requester,
+          undefined,
+          "2026-06",
+        );
+        const row = result.students[0];
+        expect(row.billingStatus).toBe("REFUNDED");
+        expect(row.paidAmount).toBe(0); // 전액 환불 → 순수납 0
+      });
+
+      it("[BOTH 전환] paid 선불(구)+approved 후불(신) → 현재 계약 POSTPAID (H-02 회귀 없음)", async () => {
+        const oldPrepaidPaid = {
+          ...refundedJuneEnrollment,
+          id: "enr-old-paid",
+          status: "paid",
+          payment: {
+            ...refundedJuneEnrollment.payment,
+            paymentStatus: "completed",
+            refundLogs: [],
+          },
+        };
+        wireBillingMocks({
+          billing: null,
+          classRecord: bothClass,
+          // 후불 approved 가 최신 — 종전 코드도 통과하던 케이스(비회귀 확인).
+          enrollments: [postpaidEnrollment, oldPrepaidPaid],
+        });
+        const result = await service.getClassPayments(
+          mockClassId,
+          requester,
+          undefined,
+          "2026-07",
+        );
+        const row = result.students[0];
+        expect(row.billingTiming).toBe("POSTPAID");
+        expect(row.productName).toBe("후불(회당)");
+      });
+
+      it("[BOTH 전환] completed 선불이 updatedAt 최신이어도 approved 후불 계약이 이김", async () => {
+        const completedPrepaid = {
+          ...refundedJuneEnrollment,
+          id: "enr-completed",
+          status: "completed", // 크레딧 만료 cron 이 updatedAt 을 건드려 최신이 된 케이스
+          payment: {
+            ...refundedJuneEnrollment.payment,
+            paymentStatus: "completed",
+            refundLogs: [],
+          },
+        };
+        wireBillingMocks({
+          billing: null,
+          classRecord: bothClass,
+          // completed 선불이 첫 번째(최신) — 종전 최신 스냅샷은 PREPAID 로 오판했다.
+          enrollments: [completedPrepaid, postpaidEnrollment],
+        });
+        const result = await service.getClassPayments(
+          mockClassId,
+          requester,
+          undefined,
+          "2026-07",
+        );
+        const row = result.students[0];
+        expect(row.billingTiming).toBe("POSTPAID");
+      });
+
+      it("[환불 후 재구매] 월별 조회에서 최신 paid 와 과거 refunded 이력이 각자 보존됨", async () => {
+        const julyRepurchase = {
+          ...refundedJuneEnrollment,
+          id: "enr-july-paid",
+          status: "paid",
+          paidAt: new Date("2026-07-03T00:00:00Z"),
+          payment: {
+            ...refundedJuneEnrollment.payment,
+            id: "pay-july",
+            paymentStatus: "completed",
+            completedAt: new Date("2026-07-03T00:00:00Z"),
+            createdAt: new Date("2026-07-03T00:00:00Z"),
+            refundLogs: [],
+          },
+        };
+        wireBillingMocks({
+          billing: null,
+          classRecord: prepaidClassRecord,
+          enrollments: [julyRepurchase, refundedJuneEnrollment],
+        });
+        const july = await service.getClassPayments(
+          mockClassId,
+          requester,
+          undefined,
+          "2026-07",
+        );
+        expect(july.students[0].billingStatus).toBe("PAID");
+        expect(july.students[0].paidAmount).toBe(50000);
+
+        wireBillingMocks({
+          billing: null,
+          classRecord: prepaidClassRecord,
+          enrollments: [julyRepurchase, refundedJuneEnrollment],
+        });
+        const june = await service.getClassPayments(
+          mockClassId,
+          requester,
+          undefined,
+          "2026-06",
+        );
+        expect(june.students[0].billingStatus).toBe("REFUNDED");
+      });
     });
   });
 

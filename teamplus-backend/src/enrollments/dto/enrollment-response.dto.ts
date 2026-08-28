@@ -19,7 +19,10 @@ export enum EnrollmentStatus {
   COMPLETED = "completed", // 수강 완료 (월말 자동 전환)
   CANCELLED = "cancelled", // 취소됨
   EXPIRED = "expired", // 만료됨
+  REFUNDED = "refunded", // 전액 환불·회차 회수 (payment-refund.service 가 기록)
 }
+// ⚠️ 값 목록의 SoT 는 common/enrollment/enrollment-status.constants.ts —
+//    이 enum 은 응답 타입·Swagger 용이며 두 파일은 항상 동일 값을 유지할 것.
 
 /**
  * 자녀 정보 (간략)

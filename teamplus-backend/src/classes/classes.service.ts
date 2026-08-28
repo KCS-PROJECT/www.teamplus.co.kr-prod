@@ -33,6 +33,10 @@ import {
 } from "@/common/utils/class-lifecycle.util";
 import { filterSellableProducts } from "@/common/billing/sales-gate.util";
 import {
+  ENROLLMENT_STATUS,
+  TERMINAL_NO_MONEY,
+} from "@/common/enrollment/enrollment-status.constants";
+import {
   resolvePrepaidAttribution,
   isRosterMemberForMonth,
   instantToKstYearMonth,
@@ -2517,7 +2521,8 @@ export class ClassesService {
     // [Phase 2a] 정산 기준 월(YYYY-MM). 미전송 시 현재 KST 월. 출석 집계·후불 BillingLine
     //   선택·후불 예상액의 단일 기준. 형식 오류는 방어적으로 현재 월 폴백.
     //   **유효하게 명시 시** 선불 행에도 월귀속 필터(허브 R1 동일 계약) 적용 —
-    //   미전송 호출(admin 결제 관리)은 종전 "최신 Enrollment 스냅샷" 유지.
+    //   현재 web(students)·admin(결제 관리) 소비처 모두 yearMonth 를 전송한다.
+    //   미전송/무효 호출만 "스냅샷 모드"(월 필터 없는 최신 기준)로 응답.
     yearMonth?: string,
   ) {
     const cls = await this.prisma.class.findUnique({
@@ -2607,6 +2612,9 @@ export class ClassesService {
                 //   후불 미확정 월 예상액(출석 × feePerSession) 산출용.
                 billingTiming: true,
                 feePerSession: true,
+                // paid 유효성 batch 판정 — 비발급(0) 상품은 등록 active 만으로 수강 중
+                //   (hasActivePaidEnrollment 공식 미러).
+                sessionsPerMonth: true,
                 // 선불 월귀속 — MONTHLY_FIXED 서비스월(resolvePrepaidAttribution R1).
                 billingMonth: true,
               },
@@ -2638,19 +2646,110 @@ export class ClassesService {
         })
       : [];
 
-    const enrollmentByChild = new Map<string, (typeof enrollments)[number]>();
     // 월 스코프 모드 선불 판정용 — 자녀별 전체 enrollment(복수 구매 포함, updatedAt desc 유지).
     const enrollmentsByChild = new Map<string, typeof enrollments>();
     for (const e of enrollments) {
-      // updatedAt desc 이므로 첫 번째가 최신 — 이미 매핑된 childId 는 건너뜀
-      if (!enrollmentByChild.has(e.childId)) {
-        enrollmentByChild.set(e.childId, e);
-      }
       const list = enrollmentsByChild.get(e.childId);
       if (list) {
         list.push(e);
       } else {
         enrollmentsByChild.set(e.childId, [e]);
+      }
+    }
+
+    // ── 자녀별 대표 행 선택 — 질문별 selector 분리 ──────────────────────
+    //   종전 "상태 불문 updatedAt 최신 1건" 단일 대표는 취소·이탈 행이 결제·수강
+    //   행을 가리는 오표기를 만들었다(환불 이력이 expired 에 가려지는 실측 반례).
+    //   "현재 수강 기록"과 "최근 실거래"는 다른 질문이라 각각 고른다.
+
+    // paid 유효성 batch 판정 — hasActivePaidEnrollment(paid-enrollment-guard.util)
+    //   단일 공식 미러: 수강 중 = ClassRegistration active AND (발급형이면 유효 크레딧).
+    //   자녀별 반복 쿼리(N+1) 대신 필요한 자녀만 모아 크레딧을 1회 일괄 조회한다.
+    const activeRegChildIds = new Set(
+      registrations.filter((r) => r.status === "active").map((r) => r.userId),
+    );
+    const paidRowsByChild = new Map<string, typeof enrollments>();
+    for (const [childId, list] of enrollmentsByChild) {
+      const paidRows = list.filter(
+        (e) => e.status === ENROLLMENT_STATUS.PAID,
+      );
+      if (paidRows.length > 0) paidRowsByChild.set(childId, paidRows);
+    }
+    // 크레딧 조회가 필요한 자녀 = 등록 active + paid 전부가 발급형(비발급 0 없음).
+    //   비발급(sessionsPerMonth=0) paid 보유 자녀는 등록만으로 유효 — 크레딧 항 미평가.
+    //   product 미연결 행은 발급형으로 폴백(가드 util 과 동일 해석).
+    const creditCheckChildIds = [...paidRowsByChild.entries()]
+      .filter(
+        ([childId, rows]) =>
+          activeRegChildIds.has(childId) &&
+          !rows.some((e) => e.product?.sessionsPerMonth === 0),
+      )
+      .map(([childId]) => childId);
+    const validCreditChildIds = new Set<string>();
+    if (creditCheckChildIds.length > 0) {
+      const credits = await this.prisma.memberCredit.findMany({
+        where: {
+          classId,
+          userId: { in: creditCheckChildIds },
+          expiresAt: { gte: new Date() },
+        },
+        select: { userId: true, totalSessions: true, usedSessions: true },
+      });
+      for (const c of credits) {
+        if (c.usedSessions < c.totalSessions) validCreditChildIds.add(c.userId);
+      }
+    }
+    const hasValidPassByChild = new Map<string, boolean>();
+    for (const [childId, rows] of paidRowsByChild) {
+      if (!activeRegChildIds.has(childId)) {
+        hasValidPassByChild.set(childId, false);
+        continue;
+      }
+      const hasNonIssuing = rows.some(
+        (e) => e.product?.sessionsPerMonth === 0,
+      );
+      hasValidPassByChild.set(
+        childId,
+        hasNonIssuing || validCreditChildIds.has(childId),
+      );
+    }
+
+    // ① 현재 수강 기록 — "살아있는" 행만 후보:
+    //    · approved: 유효 결제방식이 POSTPAID 인 행만(전용 POSTPAID 또는 BOTH+후불 상품).
+    //      선불 미결제 approved 는 수강 중이 아니므로 제외.
+    //    · paid: 배치(등록)가 살아있는 자녀만(hasValidPassByChild — 크레딧 미사용 전환
+    //      이후 실질 축은 배치 해제 여부). 지난달 결제 이력은 제외.
+    //    updatedAt desc 라 첫 등장 = 최신 → BOTH 선불→후불 전환은 최신 approved 가 유지.
+    const contractByChild = new Map<string, (typeof enrollments)[number]>();
+    // ② 최근 실거래 — 완료 결제 연결 행만 후보. "최신" 기준은 payment.completedAt
+    //    최대값(가장 최근에 돈이 오간 사건 — enrollment updatedAt 아님).
+    //    환불·결제자 표기의 SoT. 이탈 흔적(미완료 pending·cancelled·expired)은 배제.
+    const lastTransactionByChild = new Map<
+      string,
+      (typeof enrollments)[number]
+    >();
+    const isPostpaidRow = (e: (typeof enrollments)[number]) =>
+      this.resolveRowBillingTiming(
+        cls.billingMode,
+        e.product?.billingTiming,
+      ) === "POSTPAID";
+    for (const e of enrollments) {
+      if (
+        !contractByChild.has(e.childId) &&
+        ((e.status === ENROLLMENT_STATUS.APPROVED && isPostpaidRow(e)) ||
+          (e.status === ENROLLMENT_STATUS.PAID &&
+            hasValidPassByChild.get(e.childId) === true))
+      ) {
+        contractByChild.set(e.childId, e);
+      }
+      if (e.payment?.completedAt != null) {
+        const prev = lastTransactionByChild.get(e.childId);
+        if (
+          !prev ||
+          e.payment.completedAt > (prev.payment?.completedAt ?? new Date(0))
+        ) {
+          lastTransactionByChild.set(e.childId, e);
+        }
       }
     }
 
@@ -2904,17 +3003,26 @@ export class ClassesService {
       : registrations;
 
     const students = visibleRegistrations.map((reg) => {
-      const en = enrollmentByChild.get(reg.userId);
+      const contract = contractByChild.get(reg.userId);
+      const lastTx = lastTransactionByChild.get(reg.userId);
+      // 종전 스냅샷(updatedAt 최신 행) — 계약도 거래도 없는 자녀(취소·이탈만 한 학생)의
+      //   표시 폴백. 이 폴백 덕에 단일 행 자녀의 표기는 종전과 동일하다.
+      const latest = enrollmentsByChild.get(reg.userId)?.[0];
+      /** 상품·상태 표기 — 현재 수강 기록 우선, 없으면 최근 실거래 → 최신 스냅샷. */
+      const displayEn = contract ?? lastTx ?? latest;
+      /** 결제·환불 표기 — 최근 실거래 우선(이탈 행이 결제 이력을 가리지 않게). */
+      const txEn = lastTx ?? latest;
       const fullName =
         `${reg.user.lastName ?? ""}${reg.user.firstName ?? ""}`.trim() ||
         reg.user.email;
       const attendanceCount = attendanceByUser.get(reg.userId) ?? 0;
 
       // [Phase 2a R2] 클래스 모드 판정 폐기 — 학생별 유효 결제방식 결정.
-      //   BOTH 수업은 학생 enrollment 상품의 billingTiming 을 사용한다.
+      //   BOTH 수업은 "현재 수강 기록"의 상품 billingTiming 을 사용한다 — 과거 선불
+      //   이력이 현재 후불 수강을 PREPAID 로 오판하지 않게(contract 가 최신 approved).
       const billingTiming = this.resolveRowBillingTiming(
         cls.billingMode,
-        en?.product?.billingTiming,
+        displayEn?.product?.billingTiming,
       );
 
       // ── 후불(POSTPAID) 행: 선택월 확정 BillingLine 기준 ──────────────
@@ -2940,9 +3048,9 @@ export class ClassesService {
             memberName: fullName,
             memberType: reg.user.userType,
             registrationDate: reg.registrationDate,
-            enrollmentId: en?.id ?? null,
-            enrollmentStatus: en?.status ?? null,
-            productName: en?.product?.productName ?? null,
+            enrollmentId: displayEn?.id ?? null,
+            enrollmentStatus: displayEn?.status ?? null,
+            productName: displayEn?.product?.productName ?? null,
             amount: ln.amount,
             paymentMethod: ln.paymentMethod,
             paidAt: ln.paidAt,
@@ -2961,8 +3069,8 @@ export class ClassesService {
         }
         // 미확정 월(UNSETTLED) — 예상액 = 선택월 출석 × 후불 단가.
         const rowUnit =
-          en?.product?.feePerSession != null
-            ? Number(en.product.feePerSession)
+          displayEn?.product?.feePerSession != null
+            ? Number(displayEn.product.feePerSession)
             : classPostpaidUnit;
         const estimatedAmount =
           rowUnit != null ? attendanceCount * rowUnit : null;
@@ -2972,9 +3080,9 @@ export class ClassesService {
           memberName: fullName,
           memberType: reg.user.userType,
           registrationDate: reg.registrationDate,
-          enrollmentId: en?.id ?? null,
-          enrollmentStatus: en?.status ?? null,
-          productName: en?.product?.productName ?? null,
+          enrollmentId: displayEn?.id ?? null,
+          enrollmentStatus: displayEn?.status ?? null,
+          productName: displayEn?.product?.productName ?? null,
           amount: null,
           paymentMethod: null,
           paidAt: null,
@@ -3048,16 +3156,17 @@ export class ClassesService {
           };
         }
         // 선택월 귀속 거래 없음 — 명단 유지(Phase 1 계약 2) + 이 달 청구·수납 0.
-        //   payerName 은 roster 탭(월 비종속 명단) 표기용으로 최신 enrollment 값 유지.
-        const latestPayer = en?.payment?.user;
+        //   payerName 은 roster 탭(월 비종속 명단) 표기용 — 최근 실거래의 결제자를
+        //   우선한다(이탈 pending/expired 행이 실제 결제자를 가리지 않게).
+        const latestPayer = txEn?.payment?.user;
         return {
           registrationId: reg.id,
           memberId: reg.userId,
           memberName: fullName,
           memberType: reg.user.userType,
           registrationDate: reg.registrationDate,
-          enrollmentId: en?.id ?? null,
-          enrollmentStatus: en?.status ?? null,
+          enrollmentId: displayEn?.id ?? null,
+          enrollmentStatus: displayEn?.status ?? null,
           productName: null,
           amount: null,
           paymentMethod: null,
@@ -3078,15 +3187,18 @@ export class ClassesService {
         };
       }
 
-      // ── 선불(PREPAID)·미배정(UNASSIGNED) 행: enrollment 기준 ──────────
-      const payer = en?.payment?.user;
+      // ── 선불(PREPAID)·미배정(UNASSIGNED) 행: 최근 실거래(txEn) 기준 ──────
+      //   종전 "최신 행" 기준은 이탈 pending/expired 가 결제·환불 이력을 가렸다.
+      //   거래 없는 자녀는 txEn 이 최신 스냅샷으로 폴백해 종전 표기 유지.
+      const payer = txEn?.payment?.user;
       const payerName = payer
         ? `${payer.lastName ?? ""}${payer.firstName ?? ""}`.trim() ||
           payer.email
         : null;
-      const legacyAmount = en?.payment?.amount ?? en?.product?.price ?? null;
-      const payStatus = en?.payment?.paymentStatus ?? null;
-      const refundedAmount = (en?.payment?.refundLogs ?? []).reduce(
+      const legacyAmount =
+        txEn?.payment?.amount ?? txEn?.product?.price ?? null;
+      const payStatus = txEn?.payment?.paymentStatus ?? null;
+      const refundedAmount = (txEn?.payment?.refundLogs ?? []).reduce(
         (sum, r) => sum + (r.refundAmount ?? 0),
         0,
       );
@@ -3114,15 +3226,13 @@ export class ClassesService {
         billingStatus = "REFUNDED";
       } else if (
         payStatus === "cancelled" ||
-        en?.status === "cancelled" ||
-        en?.status === "rejected" ||
-        en?.status === "expired"
+        (txEn?.status != null && TERMINAL_NO_MONEY.includes(txEn.status))
       ) {
         billingStatus = "CANCELLED";
       } else if (
         payStatus === "completed" ||
-        en?.status === "paid" ||
-        en?.status === "completed"
+        txEn?.status === ENROLLMENT_STATUS.PAID ||
+        txEn?.status === ENROLLMENT_STATUS.COMPLETED
       ) {
         billingStatus = "PAID";
       } else if (payStatus === "pending") {
@@ -3152,12 +3262,12 @@ export class ClassesService {
         memberName: fullName,
         memberType: reg.user.userType,
         registrationDate: reg.registrationDate,
-        enrollmentId: en?.id ?? null,
-        enrollmentStatus: en?.status ?? null,
-        productName: en?.product?.productName ?? null,
+        enrollmentId: displayEn?.id ?? null,
+        enrollmentStatus: displayEn?.status ?? null,
+        productName: displayEn?.product?.productName ?? null,
         amount: legacyAmount,
-        paymentMethod: en?.payment?.paymentMethod ?? null,
-        paidAt: en?.paidAt ?? en?.payment?.completedAt ?? null,
+        paymentMethod: txEn?.payment?.paymentMethod ?? null,
+        paidAt: txEn?.paidAt ?? txEn?.payment?.completedAt ?? null,
         // 레거시 paymentState 는 billingStatus 에서 파생(R3) — counts/totalPaidAmount 정합.
         paymentState: toPaymentState(billingStatus),
         payerId: payer?.id ?? null,
