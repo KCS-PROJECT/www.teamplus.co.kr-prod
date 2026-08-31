@@ -793,7 +793,7 @@ export function ClassForm({
                         {birthYearSummaryLabel}
                       </p>
                     )}
-                    <p className={cn('mt-1.5 text-xs', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
+                    <p className={cn('mt-1.5 text-[11px] leading-[15px]', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                       대상 출생연도를 선택해주세요 (복수 선택 가능)
                     </p>
                   </>
@@ -945,7 +945,7 @@ export function ClassForm({
                   <span>{MESSAGES.class.spotCheckboxLabel}</span>
                 </button>
                 {isSpot && (
-                  <p className="text-xs text-wtext-3 dark:text-rink-300 mt-1.5">
+                  <p className="text-[11px] leading-[15px] text-wtext-3 dark:text-rink-300 mt-1.5">
                     {MESSAGES.class.spotCheckboxHint}
                   </p>
                 )}
@@ -964,7 +964,7 @@ export function ClassForm({
                     ({MESSAGES.class.dayDefaults.optional})
                   </span>
                 </label>
-                <p className={cn('mt-1 text-xs leading-relaxed', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
+                <p className={cn('mt-1 text-[11px] leading-[15px]', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                   {MESSAGES.class.dayDefaults.hint}
                 </p>
               </div>
@@ -1158,7 +1158,7 @@ export function ClassForm({
                     {MESSAGES.class.scheduleAddSingle}
                   </button>
                   {isSpot && pastSchedules.length > 0 && (
-                    <p className={cn('text-xs px-1', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')} role="status">
+                    <p className={cn('text-[11px] leading-[15px] px-1', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')} role="status">
                       {MESSAGES.class.spotSingleScheduleLimit}
                     </p>
                   )}
@@ -1223,7 +1223,7 @@ export function ClassForm({
                             );
                           })}
                         </ul>
-                        <p className={cn('mt-1 text-xs px-1', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
+                        <p className={cn('mt-1 text-[11px] leading-[15px] px-1', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                           {MESSAGES.class.pastSchedulesLockedHint}
                         </p>
                       </>
@@ -1231,7 +1231,7 @@ export function ClassForm({
                   </div>
                 )}
                 {editableSchedules.length === 0 ? (
-                  <p className={cn('text-xs px-1 py-1', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
+                  <p className={cn('text-[11px] leading-[15px] px-1 py-1', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                     위 버튼으로 일정을 추가하고 날짜·시간·장소를 지정하세요.
                   </p>
                 ) : (

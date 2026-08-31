@@ -739,11 +739,11 @@ export default function TournamentCreatePage() {
 
             {!allPlayers &&
               (membersLoading ? (
-                <p className="px-1 py-2 text-w-caption text-it-ink-500 dark:text-rink-300">
+                <p className="px-1 py-2 text-[11px] leading-[15px] text-it-ink-400 dark:text-rink-300">
                   {MESSAGES.common.loading}
                 </p>
               ) : teamMembers.length === 0 ? (
-                <p className="px-1 py-2 text-w-caption text-it-ink-500 dark:text-rink-300">
+                <p className="px-1 py-2 text-[11px] leading-[15px] text-it-ink-400 dark:text-rink-300">
                   {MESSAGES.tournament.participantEmpty}
                 </p>
               ) : (
@@ -775,7 +775,7 @@ export default function TournamentCreatePage() {
                   </div>
 
                   {orphanSelectedIds.length > 0 && (
-                    <p className="text-w-caption text-it-ink-500 dark:text-rink-300">
+                    <p className="text-[11px] leading-[15px] text-it-ink-400 dark:text-rink-300">
                       {MESSAGES.tournament.participantLeftTeam} (
                       {orphanSelectedIds.length}명)
                     </p>
@@ -925,7 +925,7 @@ export default function TournamentCreatePage() {
             description={MESSAGES.tournamentForm.scheduleHint}
           >
             {scheduleMatches.length === 0 ? (
-              <p className="px-1 py-2 text-w-caption text-it-ink-400 dark:text-rink-300">
+              <p className="px-1 py-2 text-[11px] leading-[15px] text-it-ink-400 dark:text-rink-300">
                 {isEditMode
                   ? MESSAGES.tournamentForm.scheduleTbdHintEdit
                   : MESSAGES.tournamentForm.scheduleTbdHint}
@@ -1226,7 +1226,7 @@ function SectionCard({
           <h3 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
             {title}
           </h3>
-          <p className="mt-0.5 text-w-caption leading-snug text-it-ink-500 dark:text-rink-300">
+          <p className="mt-0.5 text-[11px] leading-[15px] text-it-ink-400 dark:text-rink-300">
             {description}
           </p>
         </div>
@@ -1525,13 +1525,13 @@ function ParticipantPickerSheet({
       <div className="mt-3 h-[50vh]">
         {teamMembers.length === 0 ? (
           <div className="flex h-full items-center justify-center">
-            <p className="px-1 text-center text-w-caption text-it-ink-500 dark:text-rink-300">
+            <p className="px-1 text-center text-[11px] leading-[15px] text-it-ink-400 dark:text-rink-300">
               {MESSAGES.tournament.participantEmpty}
             </p>
           </div>
         ) : filteredPlayers.length === 0 ? (
           <div className="flex h-full items-center justify-center">
-            <p className="px-1 text-center text-w-caption text-it-ink-500 dark:text-rink-300">
+            <p className="px-1 text-center text-[11px] leading-[15px] text-it-ink-400 dark:text-rink-300">
               {MESSAGES.tournament.participantSearchEmpty}
             </p>
           </div>
@@ -1587,7 +1587,7 @@ function Hint({
 }) {
   return (
     <p
-      className={`text-w-caption text-it-ink-500 dark:text-rink-300 ${
+      className={`text-[11px] leading-[15px] text-it-ink-400 dark:text-rink-300 ${
         align === "right" ? "text-right" : "text-left"
       }`}
     >

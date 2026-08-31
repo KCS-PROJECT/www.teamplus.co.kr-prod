@@ -603,7 +603,9 @@ export default function CommonTournamentDetailPage() {
       {/* Hero */}
       <TournamentHeroSection
         title={tournament.name}
-        subtitle={tournament.club?.clubName ?? "아이스하키 대회"}
+        // 주최팀명 — 상세 API 는 team 키로 내려준다(club 은 구 계약 호환 폴백).
+        //   주최팀 없는 대회(관리자 생성)는 subtitle 줄 자체를 숨긴다.
+        subtitle={tournament.team?.name ?? tournament.club?.clubName ?? undefined}
         startDate={tournament.startDate}
         endDate={tournament.endDate}
         status={uiStatus}

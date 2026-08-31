@@ -48,6 +48,7 @@ import { isUnitNoticeManagerRole } from "@/services/community-notice.service";
 import {
   TRAINING_TYPE_LABEL,
   formatDaySchedulesFull,
+  formatDaySchedulesShort,
   formatNextScheduleLabel,
   formatNextScheduleSummary,
   sortDaySchedules,
@@ -408,6 +409,8 @@ export default function ClassDetailPage() {
     isDataLoaded: !isLoading,
   });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  // 히어로 팀 로고 로드 실패(404/깨짐) URL 기억 → 기본 아이콘 폴백. URL 변경 시 자동 재시도.
+  const [brokenTeamLogo, setBrokenTeamLogo] = useState<string | null>(null);
   /* ── 수강신청 — /payment/options 로 이동 ──
    * 상품 선택은 options 페이지에서 결제 방식으로 수행
    * 정원 마감 정책: Waitlist UX 미노출 (월/시즌 운영 특성상 대기 순번 비현실적)
@@ -1574,13 +1577,21 @@ export default function ClassDetailPage() {
   // eyebrow — 분류 · 레벨 (예: "정규 훈련 · 입문")
   const heroEyebrow = [typeLabel, levelLabel].filter(Boolean).join(" · ");
 
+  // 팀 로고 — 미등록이거나 로드 실패한 URL 이면 기본 아이콘(sports_hockey) 폴백.
+  const resolvedTeamLogo = resolveImageSrc(classData.teamLogoUrl);
+  const heroLogoSrc =
+    resolvedTeamLogo && resolvedTeamLogo !== brokenTeamLogo
+      ? resolvedTeamLogo
+      : null;
+
   // 다음 회차 (비취소·오늘 이후) — 요일 규칙 없는 수업의 시간 표시 소스.
   const upcomingSchedule = pickUpcomingSchedule(scheduleList);
 
   // 시간 줄 — 요일별 규칙 > 다음 회차 요약(총 N회 · 다음 …) > 미표시.
   //   대표값(Class.startTime)은 회차별 실제 시각과 다를 수 있어 사용하지 않는다.
+  //   요일 규칙은 Short(요일+시간만) 사용 — 장소는 아래 place 줄이 담당해 중복 표기 방지.
   const heroScheduleText = (() => {
-    const dayLabel = formatDaySchedulesFull(classData.daySchedules);
+    const dayLabel = formatDaySchedulesShort(classData.daySchedules);
     if (dayLabel) return dayLabel;
     return upcomingSchedule
       ? formatNextScheduleSummary(
@@ -1652,28 +1663,26 @@ export default function ClassDetailPage() {
         >
           {/* eyebrow(분류 · 레벨) + 남은 자리 칩 */}
           <div className="flex items-center justify-between gap-2">
+            {/* ICETIMES 시안 — eyebrow 는 pill 배경 없이 uppercase 텍스트만(자간 0.12em). */}
             {heroEyebrow ? (
-              <span className="inline-flex items-center rounded-md bg-white/15 px-2 py-0.5 text-[11px] font-bold uppercase tracking-widest text-white/90">
+              <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-white/80 whitespace-nowrap">
                 {heroEyebrow}
               </span>
             ) : (
               <span aria-hidden="true" />
             )}
+            {/* ICETIMES 시안 — 배경은 중립 반투명 고정, 코랄 텍스트·아이콘이 희소성 전달(상태별 배경 스왑 없음). */}
             {capacity > 0 && !isOpenClass && (
               <span
                 className={cn(
-                  "inline-flex items-center gap-1 rounded-w-pill px-2.5 py-1 text-[12px] font-bold whitespace-nowrap",
-                  isFull
-                    ? "bg-white/12 text-white/70"
-                    : isUrgent
-                      ? "bg-it-red-500/25 text-it-red-100"
-                      : "bg-white/15 text-white",
+                  "inline-flex items-center gap-[5px] rounded-w-pill bg-white/12 px-[11px] py-[5px] text-[12.5px] font-bold whitespace-nowrap",
+                  isFull ? "text-white/70" : "text-it-red-250",
                 )}
               >
                 {!isFull && (
                   <Icon
                     name="local_fire_department"
-                    className="text-[14px]"
+                    className="text-[15px]"
                     aria-hidden="true"
                   />
                 )}
@@ -1684,11 +1693,12 @@ export default function ClassDetailPage() {
 
           {/* 로고 타일 + 수업명 + 찜/공유 */}
           <div className="mt-3 flex items-start gap-3">
-            {/* 팀 로고 타일 — logoUrl 있으면 이미지, 없으면 기본 아이콘 */}
-            {resolveImageSrc(classData.teamLogoUrl) ? (
+            {/* 팀 로고 타일 — logoUrl 있으면 이미지, 미등록·로드 실패 시 기본 아이콘 폴백 */}
+            {heroLogoSrc ? (
               <img
-                src={resolveImageSrc(classData.teamLogoUrl)}
+                src={heroLogoSrc}
                 alt={classData.club?.clubName ?? ""}
+                onError={() => setBrokenTeamLogo(heroLogoSrc)}
                 className="shrink-0 size-12 rounded-2xl object-cover bg-white/15"
               />
             ) : (
@@ -1696,15 +1706,7 @@ export default function ClassDetailPage() {
                 className="shrink-0 flex size-12 items-center justify-center rounded-2xl bg-white/15 text-white"
                 aria-hidden="true"
               >
-                <svg width={26} height={26} viewBox="0 0 26 26" fill="none">
-                  <path
-                    d="M5 19l4-12 4 4 4-8 4 16"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+                <Icon name="sports_hockey" className="text-[26px]" />
               </div>
             )}
 
@@ -1725,9 +1727,9 @@ export default function ClassDetailPage() {
             </div>
           </div>
 
-          {/* 지역 · 시간 · 장소 — [2026-08-04] 지역을 장소와 한 줄에 묶어 먼저 보여준다.
-              신청 직전 화면이라 "어느 지역 수업인지" 를 놓치면 곧바로 오등록으로 이어진다. */}
-          {(heroScheduleText || classData.venueName || classData.regionLabel) && (
+          {/* 시간 · 장소 — 신청 직전 화면이라 히어로에서 일정과 장소를 먼저 보여준다.
+              지역 라벨은 탐색 화면(/classes-explore) 전용 — 상세에서는 표시하지 않는다. */}
+          {(heroScheduleText || classData.venueName) && (
             <div className="mt-3 flex flex-col gap-1.5">
               {heroScheduleText && (
                 <div className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white/80">
@@ -1739,22 +1741,14 @@ export default function ClassDetailPage() {
                   <span className="truncate">{heroScheduleText}</span>
                 </div>
               )}
-              {(classData.regionLabel || classData.venueName) && (
+              {classData.venueName && (
                 <div className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white/80">
                   <Icon
                     name="place"
                     className="text-[15px] text-it-blue-200"
                     aria-hidden="true"
                   />
-                  <span className="truncate">
-                    {classData.regionLabel && (
-                      <span className="font-extrabold text-white">
-                        {classData.regionLabel}
-                      </span>
-                    )}
-                    {classData.venueName &&
-                      `${classData.regionLabel ? ' · ' : ''}${classData.venueName}`}
-                  </span>
+                  <span className="truncate">{classData.venueName}</span>
                 </div>
               )}
             </div>
@@ -2090,6 +2084,36 @@ export default function ClassDetailPage() {
           )}
         </section>
 
+        {/* ── 장소 — full-bleed 흰 섹션 (훈련 정보 바로 아래, 결제 섹션들 앞) ── */}
+        {hasVenue && (
+          <section
+            className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4"
+            aria-label="장소"
+          >
+            <h2 className="text-[15px] font-extrabold text-wtext-1 dark:text-white tracking-tight">
+              장소
+            </h2>
+            <div className="mt-3 flex items-center gap-3">
+              <div
+                className="shrink-0 flex size-9 items-center justify-center rounded-lg bg-it-blue-500/10 text-it-blue-500"
+                aria-hidden="true"
+              >
+                <Icon name="location_on" size={18} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-card-body font-bold text-wtext-1 dark:text-white truncate tracking-tight">
+                  {classData.venueName ?? "장소 미정"}
+                </p>
+                {classData.venueAddress && (
+                  <p className="text-card-meta text-wtext-3 dark:text-rink-300 truncate mt-0.5">
+                    {classData.venueAddress}
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* ── 가격 표시 (싱글/월 가격 라벨 기반) ──
             [추가 2026-05-15 T03 협업 / T05-F1] singlePriceLabel/monthlyPriceLabel 노출.
               · 회당 가격 + 정기권 2열 표기
@@ -2381,36 +2405,6 @@ export default function ClassDetailPage() {
             </div>
           )}
         </section>
-        )}
-
-        {/* ── 장소 — full-bleed 흰 섹션 ── */}
-        {hasVenue && (
-          <section
-            className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4"
-            aria-label="장소"
-          >
-            <h2 className="text-[15px] font-extrabold text-wtext-1 dark:text-white tracking-tight">
-              장소
-            </h2>
-            <div className="mt-3 flex items-center gap-3">
-              <div
-                className="shrink-0 flex size-9 items-center justify-center rounded-lg bg-it-blue-500/10 text-it-blue-500"
-                aria-hidden="true"
-              >
-                <Icon name="location_on" size={18} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-card-body font-bold text-wtext-1 dark:text-white truncate tracking-tight">
-                  {classData.venueName ?? "장소 미정"}
-                </p>
-                {classData.venueAddress && (
-                  <p className="text-card-meta text-wtext-3 dark:text-rink-300 truncate mt-0.5">
-                    {classData.venueAddress}
-                  </p>
-                )}
-              </div>
-            </div>
-          </section>
         )}
 
         {/* ── parent ChildSelector + CTA — 자녀 단일 선택 진입점 ──
