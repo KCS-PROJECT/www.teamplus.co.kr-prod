@@ -85,6 +85,8 @@ export const PATHS = {
     manage: '/classes-manage',
     create: '/classes-manage/create',
     edit: (id: string) => `/classes-manage/edit/${id}`,
+    // 일정·판매 관리 — 상시 일정 운영 + 판매 준비(패키지 갱신 → 판매 시작) 페이지.
+    manageSchedules: (id: string) => `/classes-manage/${id}/schedules`,
   },
   team: {
     list: '/team',

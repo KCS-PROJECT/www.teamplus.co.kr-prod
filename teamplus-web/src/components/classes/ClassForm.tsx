@@ -139,6 +139,10 @@ interface ClassFormProps {
       }) => React.ReactNode);
   /** [Lifecycle v4.1 §9.2] 판매 승인 대기(PENDING_SCHEDULE) 수업 여부 — 대상월 계산 게이트. */
   salesPending?: boolean;
+  /** [일정·판매 관리 승격] 수정 모드 일정 편집 이관 대상 경로 — 전달 시 수업 일정 카드를
+   *  진입 안내로 대체한다(일정 추가·변경·취소 = /classes-manage/[id]/schedules 단일화).
+   *  등록 모드는 첫 일정이 서버 계약(salesOpenMonth 자동 승인·월 정액 fail-fast)상 필수라 미적용. */
+  manageSchedulesHref?: string;
   /** [등록 모드] 추가 패키지(정기권 등) deferred draft 목록. 선불일 때만 노출. */
   packageDraftValue?: DraftProduct[];
   /** [등록 모드] 추가 패키지 draft 변경 콜백. 미전달 시 등록 패키지 섹션 미노출. */
@@ -164,6 +168,7 @@ export function ClassForm({
   // [2026-06-04] academyId — 코치 조회 훅 제거로 현재 미사용 (prop 인터페이스는 호출처 호환 위해 유지).
   pricingSection,
   salesPending = false,
+  manageSchedulesHref,
   packageDraftValue,
   onPackageDraftChange,
   packageDirty = false,
@@ -203,7 +208,7 @@ export function ClassForm({
   );
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const { toast } = useToast();
-  const { back } = useNavigation();
+  const { back, navigate } = useNavigation();
   const formRef = useRef<HTMLFormElement>(null);
   // [spot] 선택형(BOTH)에서 체크한 경우의 이전 값 기억 — 해제 시 복원(선불/후불 선택은 불간섭).
   const prevBillingModeRef = useRef<ClassFormData['billingMode'] | null>(null);
@@ -332,38 +337,44 @@ export function ClassForm({
     });
   };
 
-  // [이번 달 채우기] 정규 요일(daySchedules) 기준으로 이달 남은 날짜를 로컬 draft(dateSchedules)에만 생성.
+  // [월 일괄 생성] 정규 요일(daySchedules) 기준으로 대상월 날짜를 로컬 draft(dateSchedules)에만 생성.
   //   · API 호출 없음 — 실제 저장은 등록/수정 제출 시점. applyMultiDates 재사용(추가+기존/지난 회차 보존).
-  //   · 시간이 채워진 요일만 대상(모달 validDayDefaults와 동일 기준). 다음 달은 다음 달에 다시(월 단위 운영).
+  //   · 시간이 채워진 요일만 대상(모달 validDayDefaults와 동일 기준).
+  //   · 대상월: 이번 달 남은 날짜가 있으면 이번 달, 소진됐으면 다음 달(월말 선등록 지원).
   const activeDayDefaults = useMemo(
     () => formData.daySchedules.filter((s) => s.startTime && s.endTime),
     [formData.daySchedules],
   );
-  const computeThisMonthDates = useCallback((): string[] => {
-    const weekdays = new Set<string>(activeDayDefaults.map((s) => s.dayOfWeek));
-    if (weekdays.size === 0) return [];
+  const computeMonthFill = useCallback((): { month: number; dates: string[] } => {
     const now = new Date();
-    const y = now.getFullYear();
-    const m = now.getMonth(); // 0-based
-    const mm = String(m + 1).padStart(2, '0');
-    const daysInMonth = new Date(y, m + 1, 0).getDate();
+    const weekdays = new Set<string>(activeDayDefaults.map((s) => s.dayOfWeek));
+    if (weekdays.size === 0) return { month: now.getMonth() + 1, dates: [] };
     const existing = new Set(
       formData.dateSchedules.filter((s) => s.date).map((s) => s.date),
     );
-    const out: string[] = [];
+    const collect = (y: number, m0: number, fromDay: number): string[] => {
+      const mm = String(m0 + 1).padStart(2, '0');
+      const daysInMonth = new Date(y, m0 + 1, 0).getDate();
+      const out: string[] = [];
+      for (let d = fromDay; d <= daysInMonth; d += 1) {
+        const iso = `${y}-${mm}-${String(d).padStart(2, '0')}`;
+        if (weekdays.has(getKoreanWeekday(iso)) && !existing.has(iso)) out.push(iso);
+      }
+      return out;
+    };
     // 오늘부터 이달 말까지 — 정규 요일에 해당하고 아직 없는 날짜만.
-    for (let d = now.getDate(); d <= daysInMonth; d += 1) {
-      const iso = `${y}-${mm}-${String(d).padStart(2, '0')}`;
-      if (weekdays.has(getKoreanWeekday(iso)) && !existing.has(iso)) out.push(iso);
+    const thisMonth = collect(now.getFullYear(), now.getMonth(), now.getDate());
+    if (thisMonth.length > 0) {
+      return { month: now.getMonth() + 1, dates: thisMonth };
     }
-    return out;
+    // 이번 달 소진 — 다음 달 전체를 대상으로 선등록.
+    const nextY = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
+    const nextM0 = (now.getMonth() + 1) % 12;
+    return { month: nextM0 + 1, dates: collect(nextY, nextM0, 1) };
   }, [activeDayDefaults, formData.dateSchedules]);
-  const thisMonthFillCount = useMemo(
-    () => computeThisMonthDates().length,
-    [computeThisMonthDates],
-  );
+  const monthFill = useMemo(() => computeMonthFill(), [computeMonthFill]);
   const handleFillThisMonth = () => {
-    const newDates = computeThisMonthDates();
+    const newDates = monthFill.dates;
     if (newDates.length === 0) {
       toast.error(MESSAGES.class.rangeGen.emptyResult);
       return;
@@ -1118,8 +1129,31 @@ export function ClassForm({
             </div>
             )}
 
-            {/* [2026-06-09] 미니달력 날짜별 일정(날짜·시간·장소). 요일 토글 대체. */}
-            {(
+            {/* [2026-06-09] 미니달력 날짜별 일정(날짜·시간·장소). 요일 토글 대체.
+                [일정·판매 관리 승격] 수정 모드는 일정 편집을 일정·판매 관리로 이관 —
+                폼은 진입 안내만 렌더한다(등록 모드는 첫 일정 필수라 기존 카드 유지). */}
+            {isEditMode && manageSchedulesHref ? (
+              <div className={cn(ic.card, 'space-y-3')}>
+                <label className={cn('block text-sm font-bold', iceTheme ? 'text-it-ink-600 dark:text-rink-100' : 'text-wtext-2 dark:text-rink-100')}>
+                  수업 일정
+                </label>
+                <p className={cn('text-card-meta leading-relaxed', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
+                  {MESSAGES.class.salesCycle.scheduleMovedHint}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => navigate(manageSchedulesHref)}
+                  className={
+                    iceTheme
+                      ? 'flex h-11 w-full items-center justify-center gap-1.5 rounded-w-md border-[1.5px] border-it-blue-500 text-sm font-bold text-it-blue-500 dark:text-it-blue-300 dark:border-it-blue-400 hover:bg-it-blue-500/[0.06] transition-colors motion-reduce:transition-none active:brightness-95'
+                      : 'flex h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-ice-500 text-sm font-bold text-ice-500 hover:bg-ice-500/[0.06] transition-colors active:brightness-95'
+                  }
+                >
+                  <Icon name="calendar_month" className="text-base" aria-hidden="true" />
+                  {MESSAGES.class.salesCycle.manageEntryButton}
+                </button>
+              </div>
+            ) : (
               <div className={cn(ic.card, 'space-y-3')}>
                 <label className={cn('block text-sm font-bold', iceTheme ? 'text-it-ink-600 dark:text-rink-100' : 'text-wtext-2 dark:text-rink-100')}>
                   수업 일정
@@ -1130,7 +1164,7 @@ export function ClassForm({
                     <button
                       type="button"
                       onClick={handleFillThisMonth}
-                      disabled={thisMonthFillCount === 0}
+                      disabled={monthFill.dates.length === 0}
                       className={
                         iceTheme
                           ? 'flex h-11 w-full items-center justify-center gap-1.5 rounded-w-md bg-it-blue-500 text-white text-sm font-bold hover:bg-it-blue-600 transition-colors motion-reduce:transition-none disabled:opacity-40 disabled:cursor-not-allowed'
@@ -1138,9 +1172,12 @@ export function ClassForm({
                       }
                     >
                       <Icon name="calendar_month" className="text-base" aria-hidden="true" />
-                      {thisMonthFillCount > 0
-                        ? MESSAGES.class.rangeGen.fillThisMonthCount(thisMonthFillCount)
-                        : MESSAGES.class.rangeGen.fillThisMonth}
+                      {monthFill.dates.length > 0
+                        ? MESSAGES.class.rangeGen.fillMonthCount(
+                            monthFill.month,
+                            monthFill.dates.length,
+                          )
+                        : MESSAGES.class.rangeGen.fillMonth(monthFill.month)}
                     </button>
                   )}
                   <button

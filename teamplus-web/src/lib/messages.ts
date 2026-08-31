@@ -58,39 +58,59 @@ export const MESSAGES = {
       reopenExpiredHint: (days: number) =>
         `종료 후 ${days}일이 지나 재개할 수 없습니다. 새 수업 등록 화면의 '기존 수업 불러오기'로 이어서 등록할 수 있어요.`,
       pendingTitle: (month: number) => `${month}월 판매 준비`,
+      // 용어: "월 수강 구성"(전체 묶음) + "항목"(개별 행) — 정기권(구독 뉘앙스)·
+      //   수강권(소진형 이용권 뉘앙스)·수강료(금액 치중) 대체. 갱신 = 대상월 구성에
+      //   항목을 등록하는 것 (학부모 표면의 '정기권'은 약관 연계로 별도 스트림).
       pendingGuide:
-        "일정과 월 정기권 금액을 확인한 뒤 판매를 시작할 수 있습니다.",
-      packageSectionTitle: "월 정기권 확인",
-      packageUpToDate: "갱신 완료",
-      packageNeedsUpdate: "금액 확인 필요",
-      keepPriceButton: "이 금액으로 등록하기",
-      packageCreated: "정기권이 등록되었습니다.",
+        "일정과 월 수강 구성(항목·금액)을 확인한 뒤 판매를 시작할 수 있습니다.",
+      packageSectionTitle: "월 수강 구성 확인",
+      packageUpToDate: "등록 완료",
+      packageNeedsUpdate: "미등록",
+      renewRegisterButton: "등록하기",
+      packageCreated: "새 달분으로 등록되었습니다.",
       openSalesButton: "판매 시작하기",
-      openSalesSuccess: "판매가 시작되었습니다.",
+      // 성공 토스트 — 행위("판매되었다")가 아니라 결과(학부모가 N월 훈련을 신청 가능)를 서술.
+      openSalesSuccess: (month: number) =>
+        `이제 학부모가 ${month}월 훈련을 신청할 수 있어요.`,
       // [Phase 2] 미갱신 선불 선수 배치 해제 사전 고지 — 판매 시작 확인 다이얼로그.
       openSalesReleaseTitle: "판매 시작",
       openSalesReleaseNotice: (names: string, count: number) =>
         `지난 판매 달에 결제하지 않은 선수 ${count}명(${names})이 수강생 명단에서 제외됩니다. 다시 결제하면 명단에 자동으로 복구됩니다. 판매를 시작할까요?`,
       openSalesReleasedToast: (count: number) =>
         `미갱신 선수 ${count}명이 명단에서 제외되었습니다.`,
+      // [고지형 판매 시작] 수강료 미등록 항목 — 차단 대신 "이번 달 미판매" 고지 후 진행
+      //   (자동결제 없는 접수형 모델: 미등록 = 그 달은 안 받는 항목).
+      openSalesUnrenewedNotice: (names: string, month: number) =>
+        `${names} — ${month}월 구성에 등록되지 않아 ${month}월에는 판매되지 않습니다.`,
+      openSalesConfirmAsk: "판매를 시작할까요?",
+      // 대상월 등록 0건 사전 차단 — 서버 400("팔 물건 없음") 가드의 FE 미러.
+      openSalesNeedOnePkg:
+        "판매를 시작하려면 최소 1개 항목을 등록해주세요.",
+      unrenewedInlineHint: (month: number) =>
+        `등록하지 않은 항목은 ${month}월에 판매되지 않아요. 다음 달 준비 때 다시 확인할 수 있어요.`,
       ctaPreparing: "일정 준비 중",
       ctaEnded: "종료된 수업",
       pendingBannerAria: "판매 준비",
       priceInputAria: (name: string, month: number) =>
         `${name} ${month}월 금액`,
-      // 수정 폼 월 결제 월분 갱신 — 구 월분/무월 row 를 대상월 신규 row 로 저장 시 생성.
+      // 미등록 항목 입력 필드 라벨 — 이름/금액 input 구분용.
+      renewNameLabel: "항목 이름",
+      renewPriceLabel: (month: number) => `${month}월 금액`,
+      // 수정 폼 월 수강료 — 귀속월 칩 + 등록 이관 안내(실행은 일정·판매 관리).
       monthTag: (month: number) => `${month}월분`,
-      renewButton: (month: number) => `${month}월분으로 갱신하기`,
-      renewScheduledBadge: (month: number) => `${month}월분 갱신 예정`,
-      renewCancelButton: "갱신 취소",
-      renewSectionHint: (month: number) =>
-        `${month}월 일정이 등록되었어요. 월 결제를 ${month}월분으로 갱신한 뒤 저장하면 판매를 준비할 수 있어요.`,
-      // 수정 완료 페이지 — 판매 승인 대기 수업의 즉시 판매 시작.
+      renewMovedHint:
+        "다음 달 수강 구성 등록은 '일정·판매 관리'에서 진행할 수 있어요. 여기서는 항목 내용 수정과 신규 추가만 가능해요.",
+      // 수정 폼(edit) 일정 카드 대체 안내 — 일정 편집 이관.
+      scheduleMovedHint:
+        "일정 추가·변경·취소는 '일정·판매 관리'에서 진행할 수 있어요.",
+      // 모든 회차에 적용 — 일정·판매 관리 아코디언(즉시 반영이라 확인창 필수).
+      applyAllConfirm: (n: number) =>
+        `다가오는 ${n}개 회차에 이 시간·장소를 적용할까요? 지난 회차는 변경되지 않습니다.`,
+      applyAllDone: (n: number) => `${n}개 회차에 적용되었습니다.`,
+      applyAllPartialFailed: (n: number) =>
+        `${n}개 회차는 적용하지 못했습니다. 다시 시도해주세요.`,
+      // 수정 완료 페이지 — 판매 승인 대기 수업의 일정·판매 관리 유도.
       completeOpenSalesTitle: (month: number) => `${month}월 판매 시작`,
-      completeOpenSalesGuide:
-        "일정과 월 결제가 준비되었습니다. 지금 바로 판매를 시작할 수 있어요. 새 달분으로 갱신하지 않은 이전 월 결제는 판매가 중단됩니다.",
-      completeOpenSalesDone:
-        "판매가 시작되었습니다. 이제 학부모가 이 수업을 신청할 수 있어요.",
       // 이력 잠금(지난 월분·판매 중지분) — 수정/삭제 불가, 기본 접힘.
       pastLockedShow: (n: number) => `판매 종료된 수강권 ${n}건 보기`,
       pastLockedHide: "판매 종료된 수강권 접기",
@@ -99,8 +119,28 @@ export const MESSAGES = {
       pastLockedListAria: "판매 종료된 수강권 (읽기 전용)",
       // 무월(레거시) 수강권 — 월별 판매 체계 도입 전 등록분 (귀속월 없음).
       legacyMonthTag: "이전 방식",
-      renewNeedScheduleHint:
-        "다음 달 일정을 등록하면 월 결제를 새 달분으로 갱신할 수 있어요.",
+      // 일정·판매 관리 페이지(/classes-manage/[id]/schedules) — 상시 일정 관리 +
+      //   상태 조건부 판매 준비(패키지 갱신 → 판매 시작) 단일 플로우.
+      managePageTitle: "일정·판매 관리",
+      manageEntryButton: "일정·판매 관리",
+      goPrepButton: "판매 준비하러 가기",
+      goScheduleButton: "일정 등록하러 가기",
+      onSaleChip: (month: number) => `${month}월 판매 중`,
+      pageIntroNoSchedule:
+        "다가오는 일정이 없어요. 일정을 추가하면 아래에서 이어서 판매를 준비할 수 있어요.",
+      pendingGoPrepGuide:
+        "일정과 월 수강 구성 확인은 '일정·판매 관리'에서 진행할 수 있어요.",
+      endedManageNotice:
+        "종료된 수업입니다. 수업 상세에서 종료를 취소한 뒤 일정을 등록할 수 있어요.",
+      completePrepGuide:
+        "일정이 준비되었습니다. 일정·판매 관리에서 월 수강 구성을 확인하고 판매를 시작해 주세요.",
+      // 월분 갱신 제안 금액 — 대상월 실제 일정 수 × 1회 수업료(참고 단가). 눌러서 적용.
+      renewCalcHint: (month: number, unit: string) =>
+        `1회 ${unit}원 기준 ${month}월 제안 금액이에요. 눌러서 적용할 수 있어요.`,
+      renewCalcDayChip: (day: string, count: number, amount: string) =>
+        `${day} ${count}회 ${amount}원`,
+      renewCalcAllChip: (count: number, amount: string) =>
+        `전체 ${count}회 ${amount}원`,
     },
     endConfirmTitle: "수업을 종료할까요?",
     endConfirmMessage:
@@ -148,7 +188,7 @@ export const MESSAGES = {
     dayDefaults: {
       title: "정규 수업 요일",
       optional: "선택",
-      hint: "이 수업이 진행되는 요일이에요. 수업 정보에 '월·수·금'처럼 표시되고, 아래 '이번 달 일정 일괄 생성'을 누르면 이 요일·시간·장소로 이달 날짜가 만들어져요.",
+      hint: "이 수업이 진행되는 요일이에요. 수업 정보에 '월·수·금'처럼 표시되고, 아래 '월 일정 일괄 생성'을 누르면 이 요일·시간·장소로 이번 달(남은 날짜가 없으면 다음 달) 날짜가 만들어져요.",
       startTime: "시작 시간",
       endTime: "종료 시간",
       venueSelect: "장소 선택",
@@ -176,12 +216,13 @@ export const MESSAGES = {
       timeUndecided: "시간 미정",
       dateUndecided: "날짜 미정",
     },
-    // 정규 요일 기반 이번 달 일괄 생성 — 로컬 draft만 갱신(실제 저장은 등록/수정 시). 월 단위 운영.
+    // 정규 요일 기반 월 일괄 생성 — 이번 달 남은 날짜, 소진 시 다음 달로 자동 전환(선등록).
+    //   수정 폼=로컬 draft(저장은 등록/수정 시) · 일정·판매 관리=즉시 등록.
     rangeGen: {
-      fillThisMonth: "이번 달 일정 일괄 생성",
-      fillThisMonthCount: (count: number) =>
-        `이번 달 일정 일괄 생성 (${count}일)`,
-      emptyResult: "이번 달에 새로 만들 날짜가 없습니다.",
+      fillMonth: (month: number) => `${month}월 일정 일괄 생성`,
+      fillMonthCount: (month: number, count: number) =>
+        `${month}월 일정 일괄 생성 (${count}일)`,
+      emptyResult: "새로 만들 날짜가 없습니다.",
       success: (count: number) =>
         `${count}개 날짜를 만들었어요. 등록·수정할 때 저장됩니다.`,
     },
