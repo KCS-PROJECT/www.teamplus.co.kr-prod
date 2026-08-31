@@ -48,6 +48,7 @@ import { isUnitNoticeManagerRole } from "@/services/community-notice.service";
 import {
   TRAINING_TYPE_LABEL,
   formatDaySchedulesFull,
+  formatDaySchedulesShort,
   formatNextScheduleLabel,
   formatNextScheduleSummary,
   sortDaySchedules,
@@ -408,6 +409,8 @@ export default function ClassDetailPage() {
     isDataLoaded: !isLoading,
   });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  // 히어로 팀 로고 로드 실패(404/깨짐) URL 기억 → 기본 아이콘 폴백. URL 변경 시 자동 재시도.
+  const [brokenTeamLogo, setBrokenTeamLogo] = useState<string | null>(null);
   /* ── 수강신청 — /payment/options 로 이동 ──
    * 상품 선택은 options 페이지에서 결제 방식으로 수행
    * 정원 마감 정책: Waitlist UX 미노출 (월/시즌 운영 특성상 대기 순번 비현실적)
@@ -1063,24 +1066,9 @@ export default function ClassDetailPage() {
   };
 
   /* ── [Lifecycle v4.1] 감독 관리 — 판매 승인 사이클 + 수업 종료/재개 ──
-     orphan 페이지(training-manage/[id])에 선구현했던 UI 를 실사용 상세로 이식.
-     데이터 소스: getClass 응답(lifecycleStatus/pendingReason/earliestRemainingMonth/endedAt). */
-  interface MonthlyPkg {
-    id: string;
-    productName: string;
-    description?: string | null;
-    price: number;
-    feeType?: string;
-    isActive?: boolean;
-    billingMonth?: string | null;
-    durationDays?: number | null;
-    sessionsPerMonth?: number | null;
-    sessionsPerWeek?: number | null;
-  }
-  const [monthlyPkgs, setMonthlyPkgs] = useState<MonthlyPkg[] | null>(null);
-  const [pkgPrices, setPkgPrices] = useState<Record<string, string>>({});
-  const [pkgSubmitting, setPkgSubmitting] = useState<string | null>(null);
-  const [openingSales, setOpeningSales] = useState(false);
+     데이터 소스: getClass 응답(lifecycleStatus/pendingReason/earliestRemainingMonth/endedAt).
+     [일정·판매 관리 승격] 패키지 월분 갱신·판매 시작 실행은
+     /classes-manage/[id]/schedules 로 이관 — 상세는 상태 요약 + 진입 CTA 만 담당. */
   const [lifecycleActing, setLifecycleActing] = useState(false);
 
   // 액션 후 상세 재조회 — load 이펙트와 동일 엔드포인트 최소 재호출.
@@ -1089,156 +1077,10 @@ export default function ClassDetailPage() {
     if (res.success && res.data) setClassData(res.data);
   }, [classId]);
 
-  const isUnapprovedPending =
-    classData?.lifecycleStatus === 'PENDING_SCHEDULE' &&
-    classData?.pendingReason === 'UNAPPROVED_MONTH';
   const targetMonthIso = classData?.earliestRemainingMonth ?? null;
   const targetMonthLabel = targetMonthIso
     ? new Date(targetMonthIso).getUTCMonth() + 1
     : null;
-  const targetMonthKey = targetMonthIso ? targetMonthIso.slice(0, 7) : null;
-
-  const fetchMonthlyPkgs = useCallback(async () => {
-    if (!classId) return;
-    const res = await api.get<MonthlyPkg[] | { data: MonthlyPkg[] }>(
-      `/classes/${classId}/products`,
-    );
-    if (res.success && res.data) {
-      const list = Array.isArray(res.data)
-        ? res.data
-        : ((res.data as { data?: MonthlyPkg[] }).data ?? []);
-      setMonthlyPkgs(
-        list.filter(
-          (pkg) => pkg.feeType === 'MONTHLY_FIXED' && pkg.isActive !== false,
-        ),
-      );
-    }
-  }, [classId]);
-
-  // isManager(소속 검증 포함)는 렌더 직전에 계산되므로 여기선 역할만 선판정 —
-  //   products GET 자체는 서버가 권한을 재검증한다.
-  const isManagerRoleForPkgs = ["coach", "director", "admin", "academy_director"].includes(
-    (user?.userType ?? "").toLowerCase(),
-  );
-  useEffect(() => {
-    if (isManagerRoleForPkgs && isUnapprovedPending) fetchMonthlyPkgs();
-  }, [isManagerRoleForPkgs, isUnapprovedPending, fetchMonthlyPkgs]);
-
-  // 대상월 row 가 이미 있는 상품명 집합 — 같은 이름의 이전 분은 "갱신 완료" 취급.
-  const updatedNames = new Set(
-    (monthlyPkgs ?? [])
-      .filter(
-        (pkg) =>
-          pkg.billingMonth && pkg.billingMonth.slice(0, 7) === targetMonthKey,
-      )
-      .map((pkg) => pkg.productName),
-  );
-  // 갱신 필요 목록 — 이름별 "최신 분"(billingMonth 내림차순, 무월=가장 오래됨) 1건.
-  const needsUpdate = (() => {
-    const seen = new Set<string>();
-    const byLatestMonth = [...(monthlyPkgs ?? [])].sort((a, b) =>
-      (b.billingMonth ?? '').localeCompare(a.billingMonth ?? ''),
-    );
-    return byLatestMonth.filter((pkg) => {
-      const isTarget = pkg.billingMonth?.slice(0, 7) === targetMonthKey;
-      if (
-        isTarget ||
-        updatedNames.has(pkg.productName) ||
-        seen.has(pkg.productName)
-      ) {
-        return false;
-      }
-      seen.add(pkg.productName);
-      return true;
-    });
-  })();
-
-  const handleCreateMonthPkg = useCallback(
-    async (pkg: MonthlyPkg) => {
-      if (!targetMonthKey) return;
-      const raw = pkgPrices[pkg.id];
-      const price = raw === undefined || raw === '' ? pkg.price : Number(raw);
-      if (!Number.isFinite(price) || price < 0) {
-        toast.error(MESSAGES.error.general);
-        return;
-      }
-      setPkgSubmitting(pkg.id);
-      try {
-        // §9.2 "동일 내용 복제" — 단위 필드 3종 패스스루.
-        const res = await api.post(`/classes/${classId}/products`, {
-          productName: pkg.productName,
-          description: pkg.description ?? undefined,
-          price,
-          feeType: 'MONTHLY_FIXED',
-          durationDays: pkg.durationDays ?? 30,
-          sessionsPerMonth: pkg.sessionsPerMonth ?? undefined,
-          sessionsPerWeek: pkg.sessionsPerWeek ?? undefined,
-          billingMonth: targetMonthKey,
-        });
-        if (res.success) {
-          // 달 미지정(레거시) 원본은 월 필터를 우회해 항상 판매 노출되므로,
-          // 월별 체계 편입 즉시 판매 중단 — 안 하면 새 달 상품과 중복 노출된다.
-          if (!pkg.billingMonth) {
-            await api.patch(`/classes/${classId}/products/${pkg.id}`, {
-              isActive: false,
-            });
-          }
-          toast.success(MESSAGES.class.salesCycle.packageCreated);
-          await fetchMonthlyPkgs();
-        } else if (res.error?.message) {
-          toast.error(res.error.message);
-        }
-      } finally {
-        setPkgSubmitting(null);
-      }
-    },
-    [classId, targetMonthKey, pkgPrices, toast, fetchMonthlyPkgs],
-  );
-
-  const handleOpenSales = useCallback(async () => {
-    setOpeningSales(true);
-    try {
-      // [Phase 2] 미갱신 선불 선수 해제 사전 고지 — dryRun으로 대상을 먼저 조회하고,
-      //   해제 대상이 있으면 감독 확인 후에만 실제 판매 시작을 실행한다.
-      const preview = await api.post<{
-        releaseCandidates?: { userId: string; name: string }[];
-      }>(`/classes/${classId}/open-sales`, { dryRun: true });
-      if (!preview.success) {
-        if (preview.error?.message) toast.error(preview.error.message);
-        return;
-      }
-      const candidates = preview.data?.releaseCandidates ?? [];
-      if (candidates.length > 0) {
-        const ok = await modal.confirm({
-          title: MESSAGES.class.salesCycle.openSalesReleaseTitle,
-          message: MESSAGES.class.salesCycle.openSalesReleaseNotice(
-            candidates.map((c) => c.name).join(', '),
-            candidates.length,
-          ),
-          confirmText: MESSAGES.class.salesCycle.openSalesButton,
-        });
-        if (!ok) return;
-      }
-      const res = await api.post<{ releasedCount?: number }>(
-        `/classes/${classId}/open-sales`,
-      );
-      if (res.success) {
-        toast.success(MESSAGES.class.salesCycle.openSalesSuccess);
-        if ((res.data?.releasedCount ?? 0) > 0) {
-          toast.info(
-            MESSAGES.class.salesCycle.openSalesReleasedToast(
-              res.data!.releasedCount!,
-            ),
-          );
-        }
-        await reloadClassDetail();
-      } else if (res.error?.message) {
-        toast.error(res.error.message);
-      }
-    } finally {
-      setOpeningSales(false);
-    }
-  }, [classId, toast, reloadClassDetail, modal]);
 
   const handleEndClass = useCallback(async () => {
     const ok = await modal.confirm({
@@ -1574,13 +1416,21 @@ export default function ClassDetailPage() {
   // eyebrow — 분류 · 레벨 (예: "정규 훈련 · 입문")
   const heroEyebrow = [typeLabel, levelLabel].filter(Boolean).join(" · ");
 
+  // 팀 로고 — 미등록이거나 로드 실패한 URL 이면 기본 아이콘(sports_hockey) 폴백.
+  const resolvedTeamLogo = resolveImageSrc(classData.teamLogoUrl);
+  const heroLogoSrc =
+    resolvedTeamLogo && resolvedTeamLogo !== brokenTeamLogo
+      ? resolvedTeamLogo
+      : null;
+
   // 다음 회차 (비취소·오늘 이후) — 요일 규칙 없는 수업의 시간 표시 소스.
   const upcomingSchedule = pickUpcomingSchedule(scheduleList);
 
   // 시간 줄 — 요일별 규칙 > 다음 회차 요약(총 N회 · 다음 …) > 미표시.
   //   대표값(Class.startTime)은 회차별 실제 시각과 다를 수 있어 사용하지 않는다.
+  //   요일 규칙은 Short(요일+시간만) 사용 — 장소는 아래 place 줄이 담당해 중복 표기 방지.
   const heroScheduleText = (() => {
-    const dayLabel = formatDaySchedulesFull(classData.daySchedules);
+    const dayLabel = formatDaySchedulesShort(classData.daySchedules);
     if (dayLabel) return dayLabel;
     return upcomingSchedule
       ? formatNextScheduleSummary(
@@ -1652,28 +1502,26 @@ export default function ClassDetailPage() {
         >
           {/* eyebrow(분류 · 레벨) + 남은 자리 칩 */}
           <div className="flex items-center justify-between gap-2">
+            {/* ICETIMES 시안 — eyebrow 는 pill 배경 없이 uppercase 텍스트만(자간 0.12em). */}
             {heroEyebrow ? (
-              <span className="inline-flex items-center rounded-md bg-white/15 px-2 py-0.5 text-[11px] font-bold uppercase tracking-widest text-white/90">
+              <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-white/80 whitespace-nowrap">
                 {heroEyebrow}
               </span>
             ) : (
               <span aria-hidden="true" />
             )}
+            {/* ICETIMES 시안 — 배경은 중립 반투명 고정, 코랄 텍스트·아이콘이 희소성 전달(상태별 배경 스왑 없음). */}
             {capacity > 0 && !isOpenClass && (
               <span
                 className={cn(
-                  "inline-flex items-center gap-1 rounded-w-pill px-2.5 py-1 text-[12px] font-bold whitespace-nowrap",
-                  isFull
-                    ? "bg-white/12 text-white/70"
-                    : isUrgent
-                      ? "bg-it-red-500/25 text-it-red-100"
-                      : "bg-white/15 text-white",
+                  "inline-flex items-center gap-[5px] rounded-w-pill bg-white/12 px-[11px] py-[5px] text-[12.5px] font-bold whitespace-nowrap",
+                  isFull ? "text-white/70" : "text-it-red-250",
                 )}
               >
                 {!isFull && (
                   <Icon
                     name="local_fire_department"
-                    className="text-[14px]"
+                    className="text-[15px]"
                     aria-hidden="true"
                   />
                 )}
@@ -1684,11 +1532,12 @@ export default function ClassDetailPage() {
 
           {/* 로고 타일 + 수업명 + 찜/공유 */}
           <div className="mt-3 flex items-start gap-3">
-            {/* 팀 로고 타일 — logoUrl 있으면 이미지, 없으면 기본 아이콘 */}
-            {resolveImageSrc(classData.teamLogoUrl) ? (
+            {/* 팀 로고 타일 — logoUrl 있으면 이미지, 미등록·로드 실패 시 기본 아이콘 폴백 */}
+            {heroLogoSrc ? (
               <img
-                src={resolveImageSrc(classData.teamLogoUrl)}
+                src={heroLogoSrc}
                 alt={classData.club?.clubName ?? ""}
+                onError={() => setBrokenTeamLogo(heroLogoSrc)}
                 className="shrink-0 size-12 rounded-2xl object-cover bg-white/15"
               />
             ) : (
@@ -1696,15 +1545,7 @@ export default function ClassDetailPage() {
                 className="shrink-0 flex size-12 items-center justify-center rounded-2xl bg-white/15 text-white"
                 aria-hidden="true"
               >
-                <svg width={26} height={26} viewBox="0 0 26 26" fill="none">
-                  <path
-                    d="M5 19l4-12 4 4 4-8 4 16"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+                <Icon name="sports_hockey" className="text-[26px]" />
               </div>
             )}
 
@@ -1725,9 +1566,9 @@ export default function ClassDetailPage() {
             </div>
           </div>
 
-          {/* 지역 · 시간 · 장소 — [2026-08-04] 지역을 장소와 한 줄에 묶어 먼저 보여준다.
-              신청 직전 화면이라 "어느 지역 수업인지" 를 놓치면 곧바로 오등록으로 이어진다. */}
-          {(heroScheduleText || classData.venueName || classData.regionLabel) && (
+          {/* 시간 · 장소 — 신청 직전 화면이라 히어로에서 일정과 장소를 먼저 보여준다.
+              지역 라벨은 탐색 화면(/classes-explore) 전용 — 상세에서는 표시하지 않는다. */}
+          {(heroScheduleText || classData.venueName) && (
             <div className="mt-3 flex flex-col gap-1.5">
               {heroScheduleText && (
                 <div className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white/80">
@@ -1739,22 +1580,14 @@ export default function ClassDetailPage() {
                   <span className="truncate">{heroScheduleText}</span>
                 </div>
               )}
-              {(classData.regionLabel || classData.venueName) && (
+              {classData.venueName && (
                 <div className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white/80">
                   <Icon
                     name="place"
                     className="text-[15px] text-it-blue-200"
                     aria-hidden="true"
                   />
-                  <span className="truncate">
-                    {classData.regionLabel && (
-                      <span className="font-extrabold text-white">
-                        {classData.regionLabel}
-                      </span>
-                    )}
-                    {classData.venueName &&
-                      `${classData.regionLabel ? ' · ' : ''}${classData.venueName}`}
-                  </span>
+                  <span className="truncate">{classData.venueName}</span>
                 </div>
               )}
             </div>
@@ -2090,6 +1923,36 @@ export default function ClassDetailPage() {
           )}
         </section>
 
+        {/* ── 장소 — full-bleed 흰 섹션 (훈련 정보 바로 아래, 결제 섹션들 앞) ── */}
+        {hasVenue && (
+          <section
+            className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4"
+            aria-label="장소"
+          >
+            <h2 className="text-[15px] font-extrabold text-wtext-1 dark:text-white tracking-tight">
+              장소
+            </h2>
+            <div className="mt-3 flex items-center gap-3">
+              <div
+                className="shrink-0 flex size-9 items-center justify-center rounded-lg bg-it-blue-500/10 text-it-blue-500"
+                aria-hidden="true"
+              >
+                <Icon name="location_on" size={18} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-card-body font-bold text-wtext-1 dark:text-white truncate tracking-tight">
+                  {classData.venueName ?? "장소 미정"}
+                </p>
+                {classData.venueAddress && (
+                  <p className="text-card-meta text-wtext-3 dark:text-rink-300 truncate mt-0.5">
+                    {classData.venueAddress}
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* ── 가격 표시 (싱글/월 가격 라벨 기반) ──
             [추가 2026-05-15 T03 협업 / T05-F1] singlePriceLabel/monthlyPriceLabel 노출.
               · 회당 가격 + 정기권 2열 표기
@@ -2383,36 +2246,6 @@ export default function ClassDetailPage() {
         </section>
         )}
 
-        {/* ── 장소 — full-bleed 흰 섹션 ── */}
-        {hasVenue && (
-          <section
-            className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4"
-            aria-label="장소"
-          >
-            <h2 className="text-[15px] font-extrabold text-wtext-1 dark:text-white tracking-tight">
-              장소
-            </h2>
-            <div className="mt-3 flex items-center gap-3">
-              <div
-                className="shrink-0 flex size-9 items-center justify-center rounded-lg bg-it-blue-500/10 text-it-blue-500"
-                aria-hidden="true"
-              >
-                <Icon name="location_on" size={18} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-card-body font-bold text-wtext-1 dark:text-white truncate tracking-tight">
-                  {classData.venueName ?? "장소 미정"}
-                </p>
-                {classData.venueAddress && (
-                  <p className="text-card-meta text-wtext-3 dark:text-rink-300 truncate mt-0.5">
-                    {classData.venueAddress}
-                  </p>
-                )}
-              </div>
-            </div>
-          </section>
-        )}
-
         {/* ── parent ChildSelector + CTA — 자녀 단일 선택 진입점 ──
             [추가 2026-05-18] Option A1 — 자녀 선택을 수업 상세에서 단일 진입점으로 통일.
               - ChildSelector: 자녀 ≥1명 일 때 노출. 자녀별 잠금 상태(enrolled/notApproved/ageIncompatible) 표시.
@@ -2610,14 +2443,23 @@ export default function ClassDetailPage() {
                  종료 가드(다가오는 일정 0)가 실제로 통과 가능한 상태도 여기뿐이라
                  종료 버튼을 이 분기에만 노출한다(판매 승인 대기 중 헛클릭 차단). */
               <>
-                {/* 등록 CTA 는 두지 않는다 — 바로 아래 스티키 바의 동일 진입점과 중복.
-                    문구가 실재 버튼명을 지목한다 (일정 편집은 수정 폼으로 단일화). */}
+                {/* [일정·판매 관리 승격] 일정 등록 진입 = /classes-manage/[id]/schedules —
+                    수정 폼(정보 편집)과 역할 분리. 문구가 실재 진입 버튼명을 지목한다. */}
                 <div className="flex items-start gap-3 rounded-w-md bg-amber-50 dark:bg-amber-900/20 px-3.5 py-3">
                   <Icon name="event_busy" className="text-xl text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" aria-hidden="true" />
                   <p className="text-card-body text-amber-800 dark:text-amber-300">
-                    {MESSAGES.class.salesCycle.pendingNoSchedule('수업 수정하기')}
+                    {MESSAGES.class.salesCycle.pendingNoSchedule(
+                      MESSAGES.class.salesCycle.manageEntryButton,
+                    )}
                   </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/classes-manage/${classId}/schedules`)}
+                  className="mt-3 w-full h-12 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-body font-extrabold transition-colors motion-reduce:transition-none active:brightness-95"
+                >
+                  {MESSAGES.class.salesCycle.goScheduleButton}
+                </button>
                 <div className="mt-4 pt-4 border-t border-it-line dark:border-rink-700">
                   <p className="text-card-meta text-wtext-3 dark:text-rink-300 mb-2">
                     {MESSAGES.class.salesCycle.endHint}
@@ -2641,82 +2483,17 @@ export default function ClassDetailPage() {
                     {MESSAGES.class.salesCycle.pendingTitle(targetMonthLabel)}
                   </h2>
                 </div>
+                {/* [일정·판매 관리 승격] 패키지 갱신·판매 시작 실행은 일정·판매 관리로
+                    이관 — 상세는 요약 + 진입 CTA (실행 지점 중복 0). */}
                 <p className="text-card-meta text-wtext-3 dark:text-rink-300 mb-3">
-                  {MESSAGES.class.salesCycle.pendingGuide}
+                  {MESSAGES.class.salesCycle.pendingGoPrepGuide}
                 </p>
-
-                {monthlyPkgs !== null && monthlyPkgs.length > 0 && (
-                  <div className="mb-3">
-                    <h4 className="text-card-meta font-bold text-wtext-2 dark:text-rink-200 mb-2">
-                      {MESSAGES.class.salesCycle.packageSectionTitle}
-                    </h4>
-                    <ul className="space-y-2">
-                      {Array.from(updatedNames).map((name) => (
-                        <li
-                          key={`done-${name}`}
-                          className="flex items-center justify-between rounded-w-md bg-it-fill dark:bg-rink-800 px-3.5 py-2.5"
-                        >
-                          <span className="text-card-body font-semibold text-wtext-1 dark:text-white truncate">
-                            {name}
-                          </span>
-                          <span className="inline-flex items-center gap-1 text-card-meta font-bold text-emerald-600 dark:text-emerald-400 shrink-0">
-                            <Icon name="check_circle" className="text-base" aria-hidden="true" />
-                            {MESSAGES.class.salesCycle.packageUpToDate}
-                          </span>
-                        </li>
-                      ))}
-                      {needsUpdate.map((pkg) => (
-                        <li
-                          key={pkg.id}
-                          className="rounded-w-md border border-amber-200 dark:border-amber-700/50 px-3.5 py-2.5"
-                        >
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-card-body font-semibold text-wtext-1 dark:text-white truncate">
-                              {pkg.productName}
-                            </span>
-                            <span className="text-card-meta font-bold text-amber-600 dark:text-amber-400 shrink-0">
-                              {MESSAGES.class.salesCycle.packageNeedsUpdate}
-                            </span>
-                          </div>
-                          <div className="flex gap-2">
-                            <input
-                              type="number"
-                              inputMode="numeric"
-                              min={0}
-                              value={pkgPrices[pkg.id] ?? String(pkg.price)}
-                              onChange={(e) =>
-                                setPkgPrices((prev) => ({ ...prev, [pkg.id]: e.target.value }))
-                              }
-                              aria-label={MESSAGES.class.salesCycle.priceInputAria(pkg.productName, targetMonthLabel)}
-                              className="flex-1 min-w-0 h-11 rounded-w-md bg-it-fill dark:bg-rink-700 border-[1.5px] border-it-line-strong dark:border-rink-600 px-3 text-sm text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleCreateMonthPkg(pkg)}
-                              disabled={pkgSubmitting === pkg.id}
-                              className="shrink-0 h-11 px-4 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-meta font-bold disabled:opacity-60 transition-colors motion-reduce:transition-none active:brightness-95"
-                            >
-                              {MESSAGES.class.salesCycle.keepPriceButton}
-                            </button>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
                 <button
                   type="button"
-                  onClick={handleOpenSales}
-                  disabled={openingSales || needsUpdate.length > 0}
-                  title={
-                    needsUpdate.length > 0
-                      ? MESSAGES.class.salesCycle.packageNeedsUpdate
-                      : undefined
-                  }
-                  className="w-full h-12 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-body font-extrabold disabled:bg-it-line disabled:text-it-ink-400 dark:disabled:bg-rink-700 transition-colors motion-reduce:transition-none active:brightness-95"
+                  onClick={() => navigate(`/classes-manage/${classId}/schedules`)}
+                  className="w-full h-12 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-body font-extrabold transition-colors motion-reduce:transition-none active:brightness-95"
                 >
-                  {MESSAGES.class.salesCycle.openSalesButton}
+                  {MESSAGES.class.salesCycle.goPrepButton}
                 </button>
               </>
             )}
@@ -2780,11 +2557,12 @@ export default function ClassDetailPage() {
          canEditClass(=isManager && (!isOpenClass || academy_director/admin)) 가드로
          버튼 전체를 통째로 숨김.
 
-         일정 편집(추가·변경·삭제)은 수정 폼(dateSchedules diff)으로 단일화 —
-         별도 '일정 관리' 슬롯 없음 (일정 관리 페이지는 orphan 보존, P5 휴강 알림 때 재검토). */}
+         [일정·판매 관리 승격] 일상 일정 운영(추가·취소)·판매 준비는
+         /classes-manage/[id]/schedules 담당, 수정 폼(dateSchedules diff)은
+         수업 정보·일정 전체 편집 담당 — 역할 분리. */}
       {canEditClass && (
         <div
-          className="absolute left-0 right-0 z-30 bg-white dark:bg-rink-800 border-t border-wline-2 dark:border-rink-700 px-4 py-3 grid grid-cols-[auto_1fr] gap-2 w-full items-center"
+          className="absolute left-0 right-0 z-30 bg-white dark:bg-rink-800 border-t border-wline-2 dark:border-rink-700 px-4 py-3 grid grid-cols-[auto_1fr_1fr] gap-2 w-full items-center"
           style={{ bottom: 'calc(60px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))' }}
           aria-label="수업 관리 액션바"
         >
@@ -2817,6 +2595,14 @@ export default function ClassDetailPage() {
               className="text-[18px]"
               aria-hidden="true"
             />
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate(`/classes-manage/${classId}/schedules`)}
+            aria-label={MESSAGES.class.salesCycle.manageEntryButton}
+            className="min-w-0 h-11 rounded-xl border border-it-blue-500 text-it-blue-500 dark:text-it-blue-300 dark:border-it-blue-400 bg-white dark:bg-rink-800 text-card-body font-extrabold tracking-tight transition-colors motion-reduce:transition-none hover:bg-it-blue-50 dark:hover:bg-rink-700 active:brightness-95 truncate"
+          >
+            {MESSAGES.class.salesCycle.manageEntryButton}
           </button>
           {canEditClass && (
             <button

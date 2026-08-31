@@ -1,11 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
 import { Icon } from '@/components/ui/Icon';
 import { NavLink } from '@/components/ui/NavLink';
-import { useToast } from '@/components/ui/Toast';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { usePageReady } from '@/hooks/usePageReady';
 import { api } from '@/services/api-client';
@@ -41,14 +40,12 @@ export default function ClassCompletePage() {
   // 모듈 스코프에서 동기적으로 읽기 (Strict Mode 영향 없음, 1회만 실행)
   const [data] = useState<ClassCompletePayload | null>(() => getClassCompleteData());
   const [animate, setAnimate] = useState(false);
-  const { toast } = useToast();
 
-  // [Lifecycle v4.1 §9.3] 판매 승인 대기 수업의 즉시 판매 시작 — 수정 저장 직후
-  //   상세 페이지 재진입 없이 이 화면에서 감독이 명시 승인한다. 저장 후 서버 파생
-  //   상태를 재조회해 조건(잔여 일정 有 + 미승인 월) 충족 시에만 노출.
+  // [Lifecycle v4.1 §9.3 · 일정·판매 관리 승격] 판매 승인 대기 수업 안내 — 저장 후
+  //   서버 파생 상태를 재조회해 조건(잔여 일정 有 + 미승인 월) 충족 시 일정·판매
+  //   관리 페이지로 유도한다. (직접 판매 시작은 패키지 갱신 게이트가 없어 이관 — 실행
+  //   지점은 /classes-manage/[id]/schedules 단일화.)
   const [salesOfferMonth, setSalesOfferMonth] = useState<number | null>(null);
-  const [openingSales, setOpeningSales] = useState(false);
-  const [salesDone, setSalesDone] = useState(false);
 
   const classId = data?.mode === 'edit' ? data.classId : '';
   useEffect(() => {
@@ -78,22 +75,6 @@ export default function ClassCompletePage() {
       mounted = false;
     };
   }, [classId]);
-
-  const handleOpenSales = useCallback(async () => {
-    if (!classId) return;
-    setOpeningSales(true);
-    try {
-      const res = await api.post(`/classes/${classId}/open-sales`);
-      if (res.success) {
-        setSalesDone(true);
-        toast.success(MESSAGES.class.salesCycle.openSalesSuccess);
-      } else if (res.error?.message) {
-        toast.error(res.error.message);
-      }
-    } finally {
-      setOpeningSales(false);
-    }
-  }, [classId, toast]);
 
   usePageReady(true);
 
@@ -391,45 +372,29 @@ export default function ClassCompletePage() {
 
         </div>
 
-        {/* [Lifecycle v4.1 §9.3] 판매 시작 — 판매 승인 대기(미승인 월) 수업 한정 노출.
-            일정·월 결제가 폼 저장으로 준비된 직후이므로 여기서 바로 승인해 재진입을 없앤다. */}
+        {/* [Lifecycle v4.1 §9.3 · 일정·판매 관리 승격] 판매 승인 대기(미승인 월) 수업
+            한정 노출 — 패키지 월분 확인 게이트가 있는 일정·판매 관리로 유도한다. */}
         {salesOfferMonth !== null && (
           <section
             className="-mx-5 w-[calc(100%+2.5rem)] mt-6 bg-it-surface dark:bg-it-blue-950 px-6 py-5"
             aria-label={MESSAGES.class.salesCycle.pendingBannerAria}
           >
-            {salesDone ? (
-              <div className="flex items-start gap-2.5" role="status" aria-live="polite">
-                <Icon
-                  name="check_circle"
-                  className="text-xl text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5"
-                  aria-hidden="true"
-                />
-                <p className="text-card-body font-semibold text-it-ink-800 dark:text-rink-100">
-                  {MESSAGES.class.salesCycle.completeOpenSalesDone}
-                </p>
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center gap-2 mb-1">
-                  <Icon name="storefront" className="text-xl text-it-blue-500" aria-hidden="true" />
-                  <h2 className="text-[15px] font-extrabold text-it-ink-800 dark:text-white tracking-tight">
-                    {MESSAGES.class.salesCycle.completeOpenSalesTitle(salesOfferMonth)}
-                  </h2>
-                </div>
-                <p className="text-card-meta text-it-ink-500 dark:text-rink-300 mb-3">
-                  {MESSAGES.class.salesCycle.completeOpenSalesGuide}
-                </p>
-                <button
-                  type="button"
-                  onClick={handleOpenSales}
-                  disabled={openingSales}
-                  className="w-full h-12 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-body font-extrabold disabled:opacity-60 disabled:cursor-not-allowed transition-colors motion-reduce:transition-none active:brightness-95"
-                >
-                  {MESSAGES.class.salesCycle.openSalesButton}
-                </button>
-              </>
-            )}
+            <div className="flex items-center gap-2 mb-1">
+              <Icon name="storefront" className="text-xl text-it-blue-500" aria-hidden="true" />
+              <h2 className="text-[15px] font-extrabold text-it-ink-800 dark:text-white tracking-tight">
+                {MESSAGES.class.salesCycle.completeOpenSalesTitle(salesOfferMonth)}
+              </h2>
+            </div>
+            <p className="text-card-meta text-it-ink-500 dark:text-rink-300 mb-3">
+              {MESSAGES.class.salesCycle.completePrepGuide}
+            </p>
+            <NavLink
+              href={`/classes-manage/${classId}/schedules`}
+              aria-label={MESSAGES.class.salesCycle.goPrepButton}
+              className="w-full h-12 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-body font-extrabold flex items-center justify-center transition-colors motion-reduce:transition-none active:brightness-95"
+            >
+              {MESSAGES.class.salesCycle.goPrepButton}
+            </NavLink>
           </section>
         )}
 

@@ -2189,6 +2189,52 @@ describe("ClassesService", () => {
         expect(row.billingTiming).toBe("POSTPAID");
       });
 
+      it("[동월 공존] 같은 달의 환불 거래가 최신 이탈(pending→expired) 흔적에 가려지지 않음", async () => {
+        // 실측 반례(임선수): 7/15 결제→전액환불 + 7/16 재결제 이탈(만료). 둘 다 7월 귀속인데
+        //   최신 이탈 행이 먼저 매칭되어 '취소·-' 로 오표기되던 결함 — 완료 결제 행 우선 2-pass 검증.
+        const expiredWithPendingPay = {
+          ...expiredJulyEnrollment,
+          payment: {
+            id: "pay-abandoned",
+            amount: 600000,
+            paymentStatus: "pending",
+            paymentMethod: "card",
+            completedAt: null,
+            createdAt: new Date("2026-07-16T00:00:00Z"),
+            refundLogs: [],
+            user: null,
+          },
+        };
+        const refundedJuly = {
+          ...refundedJuneEnrollment,
+          payment: {
+            ...refundedJuneEnrollment.payment,
+            amount: 600000,
+            completedAt: new Date("2026-07-15T00:00:00Z"),
+            createdAt: new Date("2026-07-15T00:00:00Z"),
+            refundLogs: [{ refundAmount: 600000 }],
+          },
+        };
+        wireBillingMocks({
+          billing: null,
+          classRecord: prepaidClassRecord,
+          // updatedAt desc — 이탈 흔적이 최신(첫 번째).
+          enrollments: [expiredWithPendingPay, refundedJuly],
+        });
+        const result = await service.getClassPayments(
+          mockClassId,
+          requester,
+          undefined,
+          "2026-07",
+        );
+        const row = result.students[0];
+        expect(row.billingStatus).toBe("REFUNDED");
+        expect(row.paymentState).toBe("refunded"); // '취소' 아님
+        expect(row.paidAmount).toBe(0); // 전액 환불 → 순수납 0
+        expect(result.billingStatusCounts.REFUNDED).toBe(1);
+        expect(result.billingStatusCounts.CANCELLED).toBe(0);
+      });
+
       it("[환불 후 재구매] 월별 조회에서 최신 paid 와 과거 refunded 이력이 각자 보존됨", async () => {
         const julyRepurchase = {
           ...refundedJuneEnrollment,

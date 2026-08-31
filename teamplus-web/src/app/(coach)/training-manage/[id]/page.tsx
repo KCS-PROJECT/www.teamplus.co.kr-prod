@@ -320,7 +320,11 @@ export default function TrainingDetailPage() {
     try {
       const res = await api.post(`/classes/${trainingId}/open-sales`);
       if (res.success) {
-        toast.success(MESSAGES.class.salesCycle.openSalesSuccess);
+        if (targetMonthLabel !== null) {
+          toast.success(
+            MESSAGES.class.salesCycle.openSalesSuccess(targetMonthLabel),
+          );
+        }
         refresh();
       } else if (res.error?.message) {
         toast.error(res.error.message);
@@ -328,7 +332,7 @@ export default function TrainingDetailPage() {
     } finally {
       setOpeningSales(false);
     }
-  }, [trainingId, toast, refresh]);
+  }, [trainingId, toast, refresh, targetMonthLabel]);
 
   // [Lifecycle v4.1] 수업 종료/재개 — 가드(일정0+잔여선불0)는 서버 판정, 실패 시 사유 토스트.
   const [lifecycleActing, setLifecycleActing] = useState(false);
@@ -566,7 +570,7 @@ ${MESSAGES.class.endConfirmMessage}`)) return;
                               disabled={pkgSubmitting === pkg.id}
                               className="shrink-0 h-11 px-4 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-meta font-bold disabled:opacity-60 transition-colors motion-reduce:transition-none active:brightness-95"
                             >
-                              {MESSAGES.class.salesCycle.keepPriceButton}
+                              {MESSAGES.class.salesCycle.renewRegisterButton}
                             </button>
                           </div>
                         </li>

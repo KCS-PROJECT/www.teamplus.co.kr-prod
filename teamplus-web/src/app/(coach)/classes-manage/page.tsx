@@ -439,9 +439,14 @@ function resolveStatus(item: ClassItem): CardStatus {
 function ClassCard({ item }: { item: ClassItem }) {
   const mode = resolveMode(item);
   const modeCfg = MODE_CONFIG[mode];
+  const { navigate } = useNavigation();
   const status = resolveStatus(item);
   const statusCfg = STATUS_CONFIG[status];
   const isDimmed = status === 'PENDING' || status === 'REJECTED';
+  // [일정·판매 관리 승격] 대기 배지 카드 — 필요한 액션(일정 등록/판매 시작)의 실행
+  //   지점(/classes-manage/[id]/schedules)으로 배지 자체가 진입 버튼이 된다.
+  const isWaitingAction =
+    status === 'WAITING_SCHEDULE' || status === 'WAITING_SALES_OPEN';
 
   return (
     <ClassListCard
@@ -456,15 +461,37 @@ function ClassCard({ item }: { item: ClassItem }) {
       title={item.title}
       titleRight={
         // [2026-06-19] 진행 상태(예정/진행 중/종료) 배지를 제목 줄 우측 상단으로 이동.
-        <span
-          className={cn(
-            'inline-flex items-center px-2.5 py-1 rounded-full text-card-meta font-bold',
-            statusCfg.pillBg,
-            statusCfg.pillText,
-          )}
-        >
-          {statusCfg.label}
-        </span>
+        // 대기 배지(일정 등록 대기/판매 시작 필요)는 카드 링크와 별개로 일정·판매
+        //   관리로 직행하는 버튼 — 링크 내부라 기본 내비게이션을 막고 이동한다.
+        isWaitingAction ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              navigate(`/classes-manage/${item.id}/schedules`);
+            }}
+            aria-label={`${item.title} ${statusCfg.label} — ${MESSAGES.class.salesCycle.managePageTitle}로 이동`}
+            className={cn(
+              'inline-flex items-center gap-0.5 pl-2.5 pr-1.5 py-1 rounded-full text-card-meta font-bold transition-[filter] motion-reduce:transition-none hover:brightness-95 active:brightness-90',
+              statusCfg.pillBg,
+              statusCfg.pillText,
+            )}
+          >
+            {statusCfg.label}
+            <Icon name="chevron_right" className="text-sm" aria-hidden="true" />
+          </button>
+        ) : (
+          <span
+            className={cn(
+              'inline-flex items-center px-2.5 py-1 rounded-full text-card-meta font-bold',
+              statusCfg.pillBg,
+              statusCfg.pillText,
+            )}
+          >
+            {statusCfg.label}
+          </span>
+        )
       }
     >
       {status === 'PENDING' && (

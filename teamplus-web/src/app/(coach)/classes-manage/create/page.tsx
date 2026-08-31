@@ -228,7 +228,15 @@ function ClassCreatePageInner() {
   //   PER_SESSION → 정기권(회차 오름차순) 순으로 정렬. 변경 가격·다중 정기권을 정확히 반영한다.
   const buildCompleteFeeItems = useCallback(
     (formSinglePrice: number | '') => {
-      const active = draftProducts.filter((d) => !d._deleted);
+      // 지난 월분(이력)·판매 중지분 제외 — 안 하면 모든 달의 동명 row 가 전부 나열된다.
+      //   (PackageManageSection 의 isPastLocked/isRetired 와 동일 판정)
+      const nowMonthKey = localTodayISO().slice(0, 7);
+      const active = draftProducts.filter(
+        (d) =>
+          !d._deleted &&
+          d.isActive !== false &&
+          !(d.serverId && d.billingMonth && d.billingMonth < nowMonthKey),
+      );
       const order = (d: DraftProduct) =>
         d.feeType === 'PER_SESSION'
           ? -1
@@ -780,6 +788,12 @@ function ClassCreatePageInner() {
               onPackageDraftChange={handleProductsChange}
               packageDirty={productsDirty}
               salesPending={salesPending}
+              // [일정·판매 관리 승격] 수정 모드 일정 편집 이관 — 폼의 일정 카드를 진입 안내로 대체.
+              manageSchedulesHref={
+                isEditMode && editClassId
+                  ? `/classes-manage/${editClassId}/schedules`
+                  : undefined
+              }
               pricingSection={
                 // [spot] initialData 로드 전에는 카드 미렌더 — SSR/로딩 첫 페인트에
                 //   trainingType 미확정 상태로 월 결제 영역이 노출되는 것을 차단한다.
