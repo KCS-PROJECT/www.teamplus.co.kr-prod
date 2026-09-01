@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
 } from "@nestjs/common";
@@ -125,9 +126,11 @@ describe("ClassesService", () => {
       createMany: jest.Mock;
       findFirst: jest.Mock;
       findUnique: jest.Mock;
+      findUniqueOrThrow: jest.Mock;
       findMany: jest.Mock;
       deleteMany: jest.Mock;
       update: jest.Mock;
+      updateMany: jest.Mock;
     };
     classProduct: {
       createMany: jest.Mock;
@@ -138,6 +141,8 @@ describe("ClassesService", () => {
     classCoachAssignment: { createMany: jest.Mock };
     classAttendance: { findMany: jest.Mock; updateMany: jest.Mock };
     classRsvp: { createMany: jest.Mock };
+    memberCredit: { findMany: jest.Mock };
+    scheduleApplyOperation: { findUnique: jest.Mock; create: jest.Mock };
   };
 
   beforeEach(async () => {
@@ -166,9 +171,13 @@ describe("ClassesService", () => {
         findFirst: jest.fn().mockResolvedValue(null),
         // P3-H1 재검증용 — 기본 undefined = 일정 미조회 취급, 통과.
         findUnique: jest.fn(),
+        // 취소 tx 의 fresh 재조회/updated 재조회 (설계 v4 §4.3-①).
+        findUniqueOrThrow: jest.fn(),
         findMany: jest.fn().mockResolvedValue([]),
         deleteMany: jest.fn(),
         update: jest.fn(),
+        // 취소 승자 게이트(isCancelled:false 조건부) — 기본 승자(count 1).
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       classProduct: {
         createMany: jest.fn(),
@@ -182,6 +191,13 @@ describe("ClassesService", () => {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       classRsvp: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      // 취소 크레딧 복원 경로 — 기본 유효 수업권 없음(복원 대상 0건).
+      memberCredit: { findMany: jest.fn().mockResolvedValue([]) },
+      // apply-draft 멱등 ledger — 기본 신규 operation.
+      scheduleApplyOperation: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({}),
+      },
       // [H-04] 삭제 트랜잭션의 단위 공지 잔재 정리
       teamPost: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
     };
@@ -855,7 +871,12 @@ describe("ClassesService", () => {
       const txRsvpCreateMany = jest.fn().mockResolvedValue({ count: 0 });
       jest.spyOn(prismaService, "$transaction").mockImplementation((cb: any) =>
         cb({
-          classSchedule: { create: txClassScheduleCreate },
+          // schedule writer 공용 lock(설계 v4 §4.3-③) + lock 안 중복 재검증.
+          $queryRaw: jest.fn().mockResolvedValue([]),
+          classSchedule: {
+            create: txClassScheduleCreate,
+            findMany: jest.fn().mockResolvedValue([]),
+          },
           classRsvp: { createMany: txRsvpCreateMany },
         }),
       );
@@ -935,16 +956,29 @@ describe("ClassesService", () => {
       scheduledDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     };
 
+    // tx 내 fresh/updated 재조회 공용 세팅 (설계 v4 §4.3-① — lock 후 재조회 흐름).
+    const primeCancelTx = (freshCancelled = false) => {
+      mockTx.classSchedule.findUniqueOrThrow
+        .mockResolvedValueOnce({
+          id: mockScheduleId,
+          scheduledDate: futureSchedule.scheduledDate,
+          isCancelled: freshCancelled,
+          cancellationReason: freshCancelled ? "기존 사유" : null,
+        } as any)
+        .mockResolvedValueOnce({
+          id: mockScheduleId,
+          scheduledDate: futureSchedule.scheduledDate,
+          isCancelled: true,
+          cancellationReason: "강사 부재",
+        } as any);
+    };
+
     it("should successfully cancel schedule and update attendances", async () => {
       jest.spyOn(prismaService.classSchedule, "findUnique").mockResolvedValue({
         ...futureSchedule,
         class: mockClass,
       } as any);
-      mockTx.classSchedule.update.mockResolvedValue({
-        ...mockSchedule,
-        isCancelled: true,
-        cancellationReason: "강사 부재",
-      } as any);
+      primeCancelTx();
       // 크레딧 차감 출석 없음 → 복원 경로 미진입.
       mockTx.classAttendance.findMany.mockResolvedValue([] as any);
       mockTx.classAttendance.updateMany.mockResolvedValue({ count: 5 } as any);
@@ -957,10 +991,155 @@ describe("ClassesService", () => {
 
       expect(result.isCancelled).toBe(true);
       expect(result.cancellationReason).toBe("강사 부재");
+      // 승자 게이트 — isCancelled:false 조건부 update 로만 취소 전환.
+      expect(mockTx.classSchedule.updateMany).toHaveBeenCalledWith({
+        where: { id: mockScheduleId, isCancelled: false },
+        data: { isCancelled: true, cancellationReason: "강사 부재" },
+      });
       expect(mockTeamsService.assertTeamManagerPermission).toHaveBeenCalledWith(
         mockCoachUserId,
         mockClubId,
         expect.any(String),
+      );
+    });
+
+    it("이미 취소된 회차 재취소는 no-op(멱등) — 부수효과 미실행 (설계 v4 §4.3-①)", async () => {
+      jest.spyOn(prismaService.classSchedule, "findUnique").mockResolvedValue({
+        ...futureSchedule,
+        class: mockClass,
+      } as any);
+      primeCancelTx(true); // fresh 재조회가 이미 취소됨을 반환
+
+      const result = await service.cancelClassSchedule(
+        mockCoachUserId,
+        mockScheduleId,
+        "재시도",
+      );
+
+      expect(result.isCancelled).toBe(true);
+      // 게이트·출석 변경·크레딧 복원 전부 미실행 — 중복 복원 차단의 핵심.
+      expect(mockTx.classSchedule.updateMany).not.toHaveBeenCalled();
+      expect(mockTx.classAttendance.updateMany).not.toHaveBeenCalled();
+      expect(mockTx.classAttendance.findMany).not.toHaveBeenCalled();
+    });
+
+    it("동시 취소 패자(게이트 count=0)는 부수효과를 실행하지 않는다 — PREPAID 동시 취소 1회 복원 (QA 20)", async () => {
+      jest.spyOn(prismaService.classSchedule, "findUnique").mockResolvedValue({
+        ...futureSchedule,
+        class: mockClass,
+      } as any);
+      primeCancelTx();
+      mockTx.classSchedule.updateMany.mockResolvedValueOnce({ count: 0 } as any);
+
+      const result = await service.cancelClassSchedule(
+        mockCoachUserId,
+        mockScheduleId,
+        "동시 취소",
+      );
+
+      expect(result.isCancelled).toBe(true);
+      expect(mockTx.classAttendance.updateMany).not.toHaveBeenCalled();
+      expect(mockTx.classAttendance.findMany).not.toHaveBeenCalled();
+    });
+
+    // [Codex R2-B1] flag/creditDelta 는 실제 복원 성공에만 결합 — 3케이스.
+    const creditDomainMock = () =>
+      (service as unknown as {
+        creditDomain: { bulkRestoreOne: jest.Mock };
+      }).creditDomain.bulkRestoreOne;
+    const auditRecordMock = () =>
+      (service as unknown as { auditLog: { record: jest.Mock } }).auditLog
+        .record;
+
+    it("전부 복원 성공 — 성공 출석만 플래그 해제 + creditDelta:1 (R2-B1)", async () => {
+      jest.spyOn(prismaService.classSchedule, "findUnique").mockResolvedValue({
+        ...futureSchedule,
+        class: mockClass,
+      } as any);
+      primeCancelTx();
+      mockTx.classAttendance.findMany.mockResolvedValue([
+        { id: "att-1", memberId: "user-1" },
+      ] as any);
+      mockTx.memberCredit.findMany.mockResolvedValue([
+        { id: "credit-1", userId: "user-1", totalSessions: 4, usedSessions: 1 },
+      ] as any);
+      creditDomainMock().mockResolvedValue({
+        restoredCount: 1,
+        restoredCreditIds: ["credit-1"],
+      });
+
+      await service.cancelClassSchedule(mockCoachUserId, mockScheduleId, "휴강");
+
+      // 성공 출석 id 기반 해제 (scheduleId 전체 일괄 해제 아님).
+      expect(mockTx.classAttendance.updateMany).toHaveBeenCalledWith({
+        where: { id: { in: ["att-1"] } },
+        data: { creditDeducted: false },
+      });
+      expect(auditRecordMock()).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ attendanceId: "att-1", creditDelta: 1 }),
+      );
+    });
+
+    it("유효 수업권 없음 — 복원 미호출·플래그 보존·creditDelta:0 (R2-B1)", async () => {
+      jest.spyOn(prismaService.classSchedule, "findUnique").mockResolvedValue({
+        ...futureSchedule,
+        class: mockClass,
+      } as any);
+      primeCancelTx();
+      mockTx.classAttendance.findMany.mockResolvedValue([
+        { id: "att-1", memberId: "user-1" },
+      ] as any);
+      // mockTx.memberCredit 기본값 [] — 유효 수업권 없음.
+
+      await service.cancelClassSchedule(mockCoachUserId, mockScheduleId, "휴강");
+
+      expect(creditDomainMock()).not.toHaveBeenCalled();
+      // 플래그 해제 updateMany 미호출 — 미복원 상태가 복원 완료처럼 고착되지 않음.
+      expect(mockTx.classAttendance.updateMany).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { creditDeducted: false },
+        }),
+      );
+      expect(auditRecordMock()).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ attendanceId: "att-1", creditDelta: 0 }),
+      );
+    });
+
+    it("부분 복원 — 성공분만 플래그 해제, creditDelta 1/0 분리 (R2-B1)", async () => {
+      jest.spyOn(prismaService.classSchedule, "findUnique").mockResolvedValue({
+        ...futureSchedule,
+        class: mockClass,
+      } as any);
+      primeCancelTx();
+      mockTx.classAttendance.findMany.mockResolvedValue([
+        { id: "att-1", memberId: "user-1" },
+        { id: "att-2", memberId: "user-2" },
+      ] as any);
+      mockTx.memberCredit.findMany.mockResolvedValue([
+        { id: "credit-1", userId: "user-1", totalSessions: 4, usedSessions: 1 },
+        { id: "credit-2", userId: "user-2", totalSessions: 4, usedSessions: 0 },
+      ] as any);
+      // credit-2 는 usedSessions=0 이라 감소 실패 — 성공 id 에 미포함.
+      creditDomainMock().mockResolvedValue({
+        restoredCount: 1,
+        restoredCreditIds: ["credit-1"],
+      });
+
+      await service.cancelClassSchedule(mockCoachUserId, mockScheduleId, "휴강");
+
+      expect(mockTx.classAttendance.updateMany).toHaveBeenCalledWith({
+        where: { id: { in: ["att-1"] } },
+        data: { creditDeducted: false },
+      });
+      expect(auditRecordMock()).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ attendanceId: "att-1", creditDelta: 1 }),
+      );
+      expect(auditRecordMock()).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ attendanceId: "att-2", creditDelta: 0 }),
       );
     });
 
@@ -969,6 +1148,7 @@ describe("ClassesService", () => {
         ...futureSchedule,
         class: mockClass,
       } as any);
+      primeCancelTx();
       (mockTx.classSchedule.findUnique as jest.Mock).mockResolvedValue({
         classId: mockClassId,
         scheduledDate: futureSchedule.scheduledDate,
@@ -980,7 +1160,7 @@ describe("ClassesService", () => {
       await expect(
         service.cancelClassSchedule(mockCoachUserId, mockScheduleId, "사유"),
       ).rejects.toThrow("정산이 확정된 월");
-      expect(mockTx.classSchedule.update).not.toHaveBeenCalled();
+      expect(mockTx.classSchedule.updateMany).not.toHaveBeenCalled();
       expect(mockTx.classAttendance.updateMany).not.toHaveBeenCalled();
     });
 
@@ -1020,6 +1200,319 @@ describe("ClassesService", () => {
       await expect(
         service.cancelClassSchedule(mockCoachUserId, mockScheduleId),
       ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe("applyScheduleDraft (설계 v4 §4.1 — draft 일괄 반영)", () => {
+    const OP_ID = "11111111-2222-3333-4444-555555555555";
+    const BASE_AT = new Date("2026-09-01T10:00:00.000Z");
+    const FUTURE_DATE = (() => {
+      const d = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    })();
+
+    const primeClassLookup = () => {
+      jest.spyOn(prismaService.class, "findUnique").mockResolvedValue({
+        id: mockClassId,
+        teamId: mockClubId,
+        academyId: null,
+        trainingType: "regular",
+      } as any);
+    };
+
+    it("추가+수정+취소를 한 트랜잭션으로 반영하고 ledger 를 기록한다", async () => {
+      primeClassLookup();
+      // 대상 row 재조회 — edit 1건 + cancel 1건 (버전 일치, 미취소, 미래 일정).
+      mockTx.classSchedule.findMany.mockResolvedValue([
+        {
+          id: "sch-e1",
+          classId: mockClassId,
+          scheduledDate: new Date(Date.now() + 7 * 86400000),
+          isCancelled: false,
+          updatedAt: BASE_AT,
+        },
+        {
+          id: "sch-c1",
+          classId: mockClassId,
+          scheduledDate: new Date(Date.now() + 8 * 86400000),
+          isCancelled: false,
+          updatedAt: BASE_AT,
+        },
+      ] as any);
+      mockTx.classSchedule.createMany.mockResolvedValue({ count: 1 } as any);
+
+      const result = await service.applyScheduleDraft(
+        mockCoachUserId,
+        mockClassId,
+        {
+          operationId: OP_ID,
+          additions: [
+            { date: FUTURE_DATE, startTime: "17:00", endTime: "18:00" },
+          ],
+          edits: [
+            {
+              scheduleId: "sch-e1",
+              baseUpdatedAt: BASE_AT.toISOString(),
+              startTime: "19:00",
+              endTime: "20:00",
+              venueId: "",
+            },
+          ],
+          cancellations: [
+            {
+              scheduleId: "sch-c1",
+              baseUpdatedAt: BASE_AT.toISOString(),
+              reason: "감독/코치 취소",
+            },
+          ],
+        } as any,
+        { teamId: mockClubId },
+      );
+
+      expect(result).toEqual({
+        applied: true,
+        created: 1,
+        skipped: 0,
+        edited: 1,
+        cancelled: 1,
+      });
+      // 조건부 mutation — 버전·미취소 조건이 where 에 포함(§4.1-7).
+      expect(mockTx.classSchedule.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: "sch-e1",
+            isCancelled: false,
+            updatedAt: BASE_AT,
+          }),
+        }),
+      );
+      // 취소 부수효과 — 출석 cancelled 전환 실행.
+      expect(mockTx.classAttendance.updateMany).toHaveBeenCalled();
+      // additions 는 createMany+skipDuplicates — 개별 create+catch 는 PostgreSQL
+      //   aborted tx 로 성립 불가 (Codex R1-1).
+      expect(mockTx.classSchedule.createMany).toHaveBeenCalledWith(
+        expect.objectContaining({ skipDuplicates: true }),
+      );
+      // 멱등 ledger 기록.
+      expect(mockTx.scheduleApplyOperation.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ id: OP_ID, classId: mockClassId }),
+        }),
+      );
+    });
+
+    it("같은 operationId·같은 payload 재요청은 저장된 결과를 replay 한다(쓰기 0)", async () => {
+      primeClassLookup();
+      const stored = {
+        applied: true,
+        created: 3,
+        skipped: 0,
+        edited: 0,
+        cancelled: 0,
+      };
+      const dto = {
+        operationId: OP_ID,
+        additions: [{ date: FUTURE_DATE }],
+        edits: [],
+        cancellations: [],
+      } as any;
+      // digest 는 서비스와 동일 재료(actor 포함 — Codex R1-5)로 산출해 일치 상태 재현.
+      const { createHash } = await import("crypto");
+      const digest = createHash("sha256")
+        .update(
+          JSON.stringify({
+            classId: mockClassId,
+            actorId: mockCoachUserId,
+            additions: dto.additions,
+            edits: [],
+            cancellations: [],
+          }),
+        )
+        .digest("hex");
+      mockTx.scheduleApplyOperation.findUnique.mockResolvedValue({
+        id: OP_ID,
+        payloadDigest: digest,
+        result: stored,
+      } as any);
+
+      const result = await service.applyScheduleDraft(
+        mockCoachUserId,
+        mockClassId,
+        dto,
+        { teamId: mockClubId },
+      );
+
+      expect(result).toEqual(stored);
+      expect(mockTx.classSchedule.create).not.toHaveBeenCalled();
+      expect(mockTx.scheduleApplyOperation.create).not.toHaveBeenCalled();
+    });
+
+    it("같은 operationId 에 다른 payload 는 409 OPERATION_MISMATCH", async () => {
+      primeClassLookup();
+      mockTx.scheduleApplyOperation.findUnique.mockResolvedValue({
+        id: OP_ID,
+        payloadDigest: "different-digest",
+        result: {},
+      } as any);
+
+      await expect(
+        service.applyScheduleDraft(
+          mockCoachUserId,
+          mockClassId,
+          {
+            operationId: OP_ID,
+            additions: [{ date: FUTURE_DATE }],
+            edits: [],
+            cancellations: [],
+          } as any,
+          { teamId: mockClubId },
+        ),
+      ).rejects.toThrow(ConflictException);
+      expect(mockTx.classSchedule.create).not.toHaveBeenCalled();
+    });
+
+    it("버전 불일치는 전체 롤백 + 409 DRAFT_CONFLICT — mutation 미실행", async () => {
+      primeClassLookup();
+      mockTx.classSchedule.findMany.mockResolvedValue([
+        {
+          id: "sch-e1",
+          classId: mockClassId,
+          scheduledDate: new Date(Date.now() + 7 * 86400000),
+          isCancelled: false,
+          updatedAt: new Date("2026-09-01T11:00:00.000Z"), // base 와 다름
+        },
+      ] as any);
+
+      await expect(
+        service.applyScheduleDraft(
+          mockCoachUserId,
+          mockClassId,
+          {
+            operationId: OP_ID,
+            additions: [],
+            edits: [
+              {
+                scheduleId: "sch-e1",
+                baseUpdatedAt: BASE_AT.toISOString(),
+                startTime: "19:00",
+              },
+            ],
+            cancellations: [],
+          } as any,
+          { teamId: mockClubId },
+        ),
+      ).rejects.toThrow(ConflictException);
+      expect(mockTx.classSchedule.updateMany).not.toHaveBeenCalled();
+      expect(mockTx.scheduleApplyOperation.create).not.toHaveBeenCalled();
+    });
+
+    it("지난 날짜 addition 은 400 (소급 일정 생성 금지)", async () => {
+      primeClassLookup();
+      await expect(
+        service.applyScheduleDraft(
+          mockCoachUserId,
+          mockClassId,
+          {
+            operationId: OP_ID,
+            additions: [{ date: "2020-01-01" }],
+            edits: [],
+            cancellations: [],
+          } as any,
+          { teamId: mockClubId },
+        ),
+      ).rejects.toThrow("지난 날짜에는 일정을 추가할 수 없습니다.");
+    });
+
+    it("빈 변경 요청은 400 — 조기 200 이 멱등 계약을 우회하지 않도록 (Codex R1-2)", async () => {
+      primeClassLookup();
+      await expect(
+        service.applyScheduleDraft(
+          mockCoachUserId,
+          mockClassId,
+          { operationId: OP_ID, additions: [], edits: [], cancellations: [] } as any,
+          { teamId: mockClubId },
+        ),
+      ).rejects.toThrow("반영할 변경이 없습니다.");
+    });
+
+    it("무효 달력 날짜(자동 보정 케이스)는 400 (Codex R1-4)", async () => {
+      primeClassLookup();
+      await expect(
+        service.applyScheduleDraft(
+          mockCoachUserId,
+          mockClassId,
+          {
+            operationId: OP_ID,
+            additions: [{ date: "2099-02-30" }],
+            edits: [],
+            cancellations: [],
+          } as any,
+          { teamId: mockClubId },
+        ),
+      ).rejects.toThrow("유효한 달력 날짜");
+    });
+
+    it("같은 operationId·같은 body 라도 행위자가 다르면 409 (digest actor 결합 — Codex R1-5)", async () => {
+      primeClassLookup();
+      const dto = {
+        operationId: OP_ID,
+        additions: [{ date: FUTURE_DATE }],
+        edits: [],
+        cancellations: [],
+      } as any;
+      // 다른 행위자 기준으로 저장된 digest — 현재 요청(coach) digest 와 불일치해야 한다.
+      const { createHash } = await import("crypto");
+      const otherActorDigest = createHash("sha256")
+        .update(
+          JSON.stringify({
+            classId: mockClassId,
+            actorId: "someone-else",
+            additions: dto.additions,
+            edits: [],
+            cancellations: [],
+          }),
+        )
+        .digest("hex");
+      mockTx.scheduleApplyOperation.findUnique.mockResolvedValue({
+        id: OP_ID,
+        payloadDigest: otherActorDigest,
+        result: {},
+      } as any);
+
+      await expect(
+        service.applyScheduleDraft(mockCoachUserId, mockClassId, dto, {
+          teamId: mockClubId,
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it("같은 회차에 수정+취소 동시 지시는 400 (invariant 서버 이중 방어)", async () => {
+      primeClassLookup();
+      await expect(
+        service.applyScheduleDraft(
+          mockCoachUserId,
+          mockClassId,
+          {
+            operationId: OP_ID,
+            additions: [],
+            edits: [
+              {
+                scheduleId: "sch-1",
+                baseUpdatedAt: BASE_AT.toISOString(),
+                startTime: "19:00",
+              },
+            ],
+            cancellations: [
+              {
+                scheduleId: "sch-1",
+                baseUpdatedAt: BASE_AT.toISOString(),
+                reason: "취소",
+              },
+            ],
+          } as any,
+          { teamId: mockClubId },
+        ),
+      ).rejects.toThrow("중복 지시");
     });
   });
 

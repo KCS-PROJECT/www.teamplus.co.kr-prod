@@ -855,7 +855,28 @@ model ClassSchedule {
   @@index([scheduledDate])
   @@index([isCancelled])
   @@index([classId, scheduledDate, isCancelled]) // P0: 정산/통계 핫패스
+  // ⚠️ DB 전용 부분 유니크 인덱스 존재 (Prisma 미표현) — uq_class_schedules_active_date:
+  //   UNIQUE (class_id, scheduled_date) WHERE is_cancelled = false.
+  //   활성 일정 중복 차단(취소 날짜 재등록은 허용). 적용 SQL:
+  //   prisma/manual-migrations/20260901_schedule_active_unique/
   @@map("class_schedules")
+}
+
+/// 일정 draft 일괄 반영(apply-draft) 멱등 ledger — operationId 재요청 시 저장된 결과를
+/// replay 해 응답 유실 후 재시도의 중복 반영을 차단한다 (설계 v4 §4.1-2·8).
+/// payloadDigest: 같은 operationId 에 다른 내용이 오면 409 거부하는 무결성 대조값.
+model ScheduleApplyOperation {
+  id            String   @id /// 클라이언트 생성 operationId (uuid)
+  classId       String   @map("class_id")
+  actorId       String   @map("actor_id")
+  payloadDigest String   @map("payload_digest")
+  result        Json /// 반영 결과 요약 { applied, created, skipped, edited, cancelled }
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  // map 명시 — 수동 마이그레이션(02_*.sql)의 인덱스 이름과 일치시켜 drift 방지.
+  @@index([classId], map: "idx_schedule_apply_ops_class")
+  @@index([createdAt], map: "idx_schedule_apply_ops_created") /// 보존 기간 정리(후속 배치)용
+  @@map("schedule_apply_operations")
 }
 
 /// 수업 상품 - 수업 가격 및 크레딧 패키지

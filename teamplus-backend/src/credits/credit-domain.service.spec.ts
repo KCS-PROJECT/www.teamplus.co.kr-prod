@@ -143,3 +143,85 @@ describe("CreditDomainService.refundSessions — 원자 증감", () => {
     expect(res.sessionsRestored).toBe(6);
   });
 });
+
+/**
+ * [Codex R3-B1] bulkRestoreOne — 원장·반환 id 는 DB RETURNING(실제 갱신 성공 row)
+ *  에서만 파생. 사전 조회 목록 기반 파생은 경쟁 writer 개입 시 실패 id 를 성공으로
+ *  오인한다.
+ */
+describe("CreditDomainService.bulkRestoreOne — RETURNING 기반 성공 결합", () => {
+  const service = new CreditDomainService();
+
+  function makeTx(returningRows: unknown[]) {
+    return {
+      $queryRaw: jest.fn().mockResolvedValue(returningRows),
+      creditTransaction: {
+        createMany: jest.fn().mockResolvedValue({ count: returningRows.length }),
+      },
+    } as any;
+  }
+
+  it("부분 성공 — RETURNING 에 없는 실패 id 는 원장·반환에서 제외된다", async () => {
+    // 요청 2건 중 DB 가 실제로 감소시킨 것은 c1 뿐 (c2 는 경쟁으로 used_sessions=0).
+    const tx = makeTx([{ id: "c1", total_sessions: 4, used_sessions: 0 }]);
+
+    const res = await service.bulkRestoreOne(tx, {
+      creditIds: ["c1", "c2"],
+      reason: "취소 복원",
+      adjustedBy: "coach-1",
+      scheduleId: "sch-1",
+    });
+
+    expect(res.restoredCount).toBe(1);
+    expect(res.restoredCreditIds).toEqual(["c1"]);
+    // CreditTransaction 도 성공 row(c1)만 — 실패 c2 원장 기록 없음.
+    expect(tx.creditTransaction.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          memberCreditId: "c1",
+          type: "restored",
+          balanceAfter: 4,
+        }),
+      ],
+    });
+  });
+
+  it("전건 실패(RETURNING 0행) — 원장 기록 없이 빈 결과", async () => {
+    const tx = makeTx([]);
+
+    const res = await service.bulkRestoreOne(tx, {
+      creditIds: ["c1"],
+      reason: "취소 복원",
+      adjustedBy: "coach-1",
+    });
+
+    expect(res).toEqual({ restoredCount: 0, restoredCreditIds: [] });
+    expect(tx.creditTransaction.createMany).not.toHaveBeenCalled();
+  });
+
+  it("빈 입력 — 쿼리 자체를 실행하지 않는다", async () => {
+    const tx = makeTx([]);
+    const res = await service.bulkRestoreOne(tx, {
+      creditIds: [],
+      reason: "r",
+      adjustedBy: "a",
+    });
+    expect(res).toEqual({ restoredCount: 0, restoredCreditIds: [] });
+    expect(tx.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it("raw UPDATE 가 updated_at 을 함께 갱신한다 — @updatedAt 우회 회귀 방지 (R4-RG-01)", async () => {
+    const tx = makeTx([{ id: "c1", total_sessions: 4, used_sessions: 0 }]);
+
+    await service.bulkRestoreOne(tx, {
+      creditIds: ["c1"],
+      reason: "취소 복원",
+      adjustedBy: "coach-1",
+    });
+
+    // $queryRaw 첫 인자 = SQL 템플릿 조각 — updated_at 명시 갱신이 포함되어야 한다.
+    const sqlParts = (tx.$queryRaw.mock.calls[0][0] as string[]).join("?");
+    expect(sqlParts).toContain("used_sessions = used_sessions - 1");
+    expect(sqlParts).toContain("updated_at = CURRENT_TIMESTAMP");
+  });
+});

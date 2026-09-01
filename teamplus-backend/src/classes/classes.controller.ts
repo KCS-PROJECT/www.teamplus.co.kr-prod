@@ -30,6 +30,7 @@ import {
   CreateBulkScheduleDto,
   UpdateScheduleDto,
 } from "./dto/create-schedule.dto";
+import { ApplyScheduleDraftDto } from "./dto/apply-schedule-draft.dto";
 import { Roles } from "@/auth/roles.decorator";
 import { RolesGuard } from "@/auth/roles.guard";
 
@@ -297,6 +298,41 @@ export class ClassesController {
       classId,
       dto,
     );
+  }
+
+  /**
+   * [설계 v4 §4.1] 일정 draft 일괄 반영 — 추가·수정·취소를 단일 트랜잭션으로.
+   *  일정·판매 관리 화면의 [저장하기] 전용. operationId 멱등 + baseUpdatedAt 잠금.
+   */
+  @Post(":classId/schedules/apply-draft")
+  @Roles("COACH", "DIRECTOR", "ACADEMY_DIRECTOR")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "일정 draft 일괄 반영",
+    description:
+      "추가(additions)·수정(edits)·취소(cancellations)를 all-or-nothing 트랜잭션으로 반영합니다. 같은 operationId 재요청은 저장된 결과를 반환(멱등)하고, 버전 불일치는 409 DRAFT_CONFLICT 로 전체 롤백됩니다.",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "반영 결과",
+    schema: {
+      example: { applied: true, created: 12, skipped: 1, edited: 2, cancelled: 1 },
+    },
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      "DRAFT_CONFLICT(버전 불일치·이미 취소·부재 — conflicts 목록) · OPERATION_MISMATCH(같은 operationId 다른 내용)",
+  })
+  async applyScheduleDraft(
+    @Request() req: AuthenticatedRequest,
+    @Param("teamId") teamId: string,
+    @Param("classId") classId: string,
+    @Body() dto: ApplyScheduleDraftDto,
+  ) {
+    return this.classesService.applyScheduleDraft(req.user.id, classId, dto, {
+      teamId,
+    });
   }
 
   /**

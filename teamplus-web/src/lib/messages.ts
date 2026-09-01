@@ -1918,9 +1918,10 @@ export const MESSAGES = {
     rosterParticipantCount: (n: number) => `참가 ${n}명`,
     rosterSelectAllAria: "청구 대상 전체 선택",
     rosterRowCheckAria: (name: string) => `${name} 결제요청 대상`,
-    // 명단·정산 관리 분리 페이지(/tournaments/[id]/students) — 상세는 진입 카드만 노출.
-    rosterPageTitle: "참가 선수 명단",
-    rosterManageCta: "명단·정산 관리",
+    // 선수정보 분리 페이지(/tournaments/[id]/students) — 상세는 진입 카드만 노출.
+    //   명칭은 수업 축(/classes/[id]/students "선수정보")과 통일.
+    rosterPageTitle: "선수정보",
+    rosterManageCta: "선수정보",
     rosterGamesCount: (n: number) => `${n}경기`,
     settleRequestCta: "결제요청",
     settleRequestCancelCta: "결제요청취소",

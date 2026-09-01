@@ -6,7 +6,10 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
-import { acquireClassPostpaidLockIfNeeded } from "@/classes/utils/class-locks.util";
+import {
+  acquireClassPostpaidLockIfNeeded,
+  acquireClassScheduleAndPostpaidLocksIfNeeded,
+} from "@/classes/utils/class-locks.util";
 import { assertScheduleMonthNotSettled } from "@/payments/settlement/postpaid-attendance.util";
 import { CreditDomainService } from "@/credits/credit-domain.service";
 import { AttendanceAuditLogService } from "@/attendance/attendance-audit-log.service";
@@ -617,16 +620,25 @@ export class TrainingService {
     // 원자적 트랜잭션: 일정 취소 + 출석 상태 변경 + 수업권 복원
     const classId = schedule.class.id;
     const cancelledSchedule = await this.prisma.$transaction(async (tx) => {
-      // 가격 잠금 §4-0 B — 일정 취소는 present 집계를 바꾸므로 동일 lock 직렬화.
-      await acquireClassPostpaidLockIfNeeded(tx, classId);
+      // [설계 v4 §4.3-①] schedule lock(무조건) → postpaid lock(IfNeeded) 고정 순서.
+      //   postpaid lock 단독은 PREPAID 수업 no-op — 동시 취소 크레딧 중복 복원 차단.
+      await acquireClassScheduleAndPostpaidLocksIfNeeded(tx, classId);
       // P3-H1 — 정산 확정 월의 출석 변경은 lock 안에서 재검증 후 거부.
       await assertScheduleMonthNotSettled(tx, scheduleId);
-      const updated = await tx.classSchedule.update({
-        where: { id: scheduleId },
+      // 부수효과 단일 진입 게이트 — tx 밖 isCancelled 검사는 lock 대기 중 낡을 수
+      //   있으므로 조건부 update count=1 승자만 부수효과를 실행한다(기존 400 계약 유지).
+      const gate = await tx.classSchedule.updateMany({
+        where: { id: scheduleId, isCancelled: false },
         data: {
           isCancelled: true,
           cancellationReason,
         },
+      });
+      if (gate.count !== 1) {
+        throw new BadRequestException("이미 취소된 일정입니다.");
+      }
+      const updated = await tx.classSchedule.findUniqueOrThrow({
+        where: { id: scheduleId },
       });
 
       // 크레딧이 차감된 출석 기록 조회
@@ -635,7 +647,9 @@ export class TrainingService {
         select: { id: true, memberId: true },
       });
 
-      // 출석 상태 일괄 변경
+      // 출석 상태 일괄 변경 — 차감 플래그는 실제 복원 성공한 출석에만 해제한다
+      //   (미복원 상태 고착 방지 — Codex R2-B1, classes.service 와 동일 규칙).
+      //   잔존 플래그의 중복 복원은 위 승자 게이트(재취소 400)가 차단.
       await tx.classAttendance.updateMany({
         where: { scheduleId },
         data: { attendanceStatus: "cancelled" },
@@ -670,15 +684,24 @@ export class TrainingService {
 
       // 크레딧 복원 (차감되었던 출석 기록에 대해서만)
       // PR-B (v0.5): CreditDomainService.restoreOne 위임 (userId × classId FIFO)
-      // PR-C (v0.6): AuditLog 동반 INSERT
+      // PR-C (v0.6): AuditLog 동반 INSERT — creditDelta·플래그 해제는 restoreOne 의
+      //   **실제 성공(null 아님)** 에만 결합 (후보 존재 여부만으로는 usedSessions=0
+      //   케이스에서 미복원을 복원처럼 기록하게 된다 — Codex R2-B1).
       for (const attendance of deductedAttendances) {
         const memberCredit = memberCreditMap.get(attendance.memberId) ?? null;
+        let restored = false;
         if (memberCredit) {
-          await this.creditDomain.restoreOne(tx, {
+          restored = !!(await this.creditDomain.restoreOne(tx, {
             userId: attendance.memberId,
             classId,
             scheduleId,
             reason: `훈련 일정 취소 - 크레딧 복원 (사유: ${cancellationReason || "미기재"})`,
+          }));
+        }
+        if (restored) {
+          await tx.classAttendance.updateMany({
+            where: { id: attendance.id },
+            data: { creditDeducted: false },
           });
         }
         await this.auditLog.record(tx, {
@@ -689,7 +712,7 @@ export class TrainingService {
           actionType: "clear",
           fromStatus: "present",
           toStatus: "cancelled",
-          creditDelta: memberCredit ? 1 : 0,
+          creditDelta: restored ? 1 : 0,
           reason: `훈련 일정 취소 (사유: ${cancellationReason || "미기재"})`,
         });
       }

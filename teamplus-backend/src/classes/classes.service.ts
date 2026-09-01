@@ -27,6 +27,8 @@ import {
   kstTodayUtcMidnight,
   kstDayEndExclusive,
 } from "@/common/utils/kst-date.util";
+import { createHash } from "crypto";
+import { ApplyScheduleDraftDto } from "./dto/apply-schedule-draft.dto";
 import {
   deriveClassLifecycle,
   utcMonthStart,
@@ -65,7 +67,8 @@ import {
 import {
   acquireClassSalesLock,
   acquireClassSalesAndPostpaidLocks,
-  acquireClassPostpaidLockIfNeeded,
+  acquireClassScheduleLock,
+  acquireClassScheduleAndPostpaidLocksIfNeeded,
   shouldUsePostpaidLock,
 } from "./utils/class-locks.util";
 import {
@@ -4755,12 +4758,17 @@ export class ClassesService {
     }
 
     // 기존 일정 중복 제거 (정확히 동일 scheduledDate) — 취소된 일정은 제외하여 재등록 허용.
+    // [설계 v4 §4.3-②] 범위 경계는 min/max 명시 계산 — candidateDates 정렬을 암묵
+    //   가정하면 미정렬 입력에서 범위 밖 활성 일정을 놓쳐 중복이 생성된다.
+    const candidateTimes = candidateDates.map((d) => d.getTime());
+    const rangeMin = new Date(Math.min(...candidateTimes));
+    const rangeMax = new Date(Math.max(...candidateTimes));
     const existing = await this.prisma.classSchedule.findMany({
       where: {
         classId,
         scheduledDate: {
-          gte: candidateDates[0],
-          lte: candidateDates[candidateDates.length - 1],
+          gte: rangeMin,
+          lte: rangeMax,
         },
         isCancelled: false,
       },
@@ -4818,8 +4826,26 @@ export class ClassesService {
 
     // 트랜잭션 — 일정 일괄 생성 (RSVP 자동 생성 비활성)
     const created = await this.prisma.$transaction(async (tx) => {
+      // [설계 v4 §4.3-③] schedule writer 공용 lock — 동시 bulk/취소/수정과 직렬화.
+      //   tx 밖 중복 판정은 lock 대기 중 낡을 수 있어 lock 안에서 재검증한다
+      //   (최종 방어는 활성 일정 부분 유니크 인덱스).
+      await acquireClassScheduleLock(tx, classId);
+      const freshExisting = await tx.classSchedule.findMany({
+        where: {
+          classId,
+          scheduledDate: { gte: rangeMin, lte: rangeMax },
+          isCancelled: false,
+        },
+        select: { scheduledDate: true },
+      });
+      const freshSet = new Set(
+        freshExisting.map((e) => dateOnlyToString(e.scheduledDate)),
+      );
+      const toCreateFresh = toCreate.filter(
+        (d) => !freshSet.has(dateOnlyToString(d)),
+      );
       const schedules = await Promise.all(
-        toCreate.map((scheduledDate) =>
+        toCreateFresh.map((scheduledDate) =>
           tx.classSchedule.create({
             data: {
               classId,
@@ -5066,13 +5092,14 @@ export class ClassesService {
     }
 
     // 취소된 일정은 중복으로 보지 않음 — 취소했던 날짜에 재등록 허용.
+    // [설계 v4 §4.3-②] 범위 경계 min/max 명시 계산 (정렬 암묵 가정 제거).
+    const candidateTimes = candidateDates.map((d) => d.getTime());
+    const rangeMin = new Date(Math.min(...candidateTimes));
+    const rangeMax = new Date(Math.max(...candidateTimes));
     const existing = await this.prisma.classSchedule.findMany({
       where: {
         classId,
-        scheduledDate: {
-          gte: candidateDates[0],
-          lte: candidateDates[candidateDates.length - 1],
-        },
+        scheduledDate: { gte: rangeMin, lte: rangeMax },
         isCancelled: false,
       },
       select: { scheduledDate: true },
@@ -5113,8 +5140,25 @@ export class ClassesService {
       : null;
 
     const createdSchedules = await this.prisma.$transaction(async (tx) => {
+      // [설계 v4 §4.3-③] schedule writer 공용 lock + lock 안 중복 재검증
+      //   (팀 bulk 와 동일 — 최종 방어는 활성 일정 부분 유니크 인덱스).
+      await acquireClassScheduleLock(tx, classId);
+      const freshExisting = await tx.classSchedule.findMany({
+        where: {
+          classId,
+          scheduledDate: { gte: rangeMin, lte: rangeMax },
+          isCancelled: false,
+        },
+        select: { scheduledDate: true },
+      });
+      const freshSet = new Set(
+        freshExisting.map((e) => dateOnlyToString(e.scheduledDate)),
+      );
+      const toCreateFresh = toCreate.filter(
+        (d) => !freshSet.has(dateOnlyToString(d)),
+      );
       const schedules = await Promise.all(
-        toCreate.map((scheduledDate) =>
+        toCreateFresh.map((scheduledDate) =>
           tx.classSchedule.create({
             data: {
               classId,
@@ -5237,102 +5281,56 @@ export class ClassesService {
 
     // 일정 취소 + 출석 상태 변경 + 크레딧 복원 — 원자적 트랜잭션
     const cancelledSchedule = await this.prisma.$transaction(async (tx) => {
-      // 가격 잠금 §4-0 B — 일정 취소는 present 집계를 바꾸므로 동일 lock 직렬화.
-      await acquireClassPostpaidLockIfNeeded(tx, schedule.class.id);
+      // [설계 v4 §4.3-①] schedule lock(무조건) → postpaid lock(IfNeeded) 고정 순서.
+      //   postpaid lock 단독은 PREPAID 수업에서 no-op 이라 동시 취소가 직렬화되지
+      //   않아 크레딧이 중복 복원될 수 있었다.
+      await acquireClassScheduleAndPostpaidLocksIfNeeded(tx, schedule.class.id);
+      // 멱등 no-op — tx 밖에서 읽은 schedule 은 lock 대기 중 낡을 수 있으므로
+      //   lock 획득 후 재조회로 판정한다. 이미 취소된 회차의 재취소(재시도·중복 탭)는
+      //   에러가 아니라 현재 상태 반환 — 정산월 검증보다 먼저 (no-op 까지 막지 않도록).
+      const fresh = await tx.classSchedule.findUniqueOrThrow({
+        where: { id: scheduleId },
+        select: {
+          id: true,
+          scheduledDate: true,
+          isCancelled: true,
+          cancellationReason: true,
+        },
+      });
+      if (fresh.isCancelled) {
+        return fresh;
+      }
       // P3-H1 — 정산 확정 월의 출석 변경은 lock 안에서 재검증 후 거부.
       await assertScheduleMonthNotSettled(tx, scheduleId);
-      const updated = await tx.classSchedule.update({
-        where: { id: scheduleId },
+      // [설계 v4 §4.3-①] 부수효과 단일 진입 게이트 — isCancelled:false 조건부
+      //   update 의 count=1 승자만 출석·크레딧 부수효과를 실행한다(이중 방어).
+      const gate = await tx.classSchedule.updateMany({
+        where: { id: scheduleId, isCancelled: false },
         data: {
           isCancelled: true,
           cancellationReason,
         },
       });
-
-      // 크레딧이 차감된 출석 기록 조회
-      const deductedAttendances = await tx.classAttendance.findMany({
-        where: { scheduleId, creditDeducted: true },
-      });
-
-      // 출석 상태 일괄 변경
-      await tx.classAttendance.updateMany({
-        where: { scheduleId },
-        data: {
-          attendanceStatus: "cancelled",
+      if (gate.count !== 1) {
+        return { ...fresh, isCancelled: true };
+      }
+      const updated = await tx.classSchedule.findUniqueOrThrow({
+        where: { id: scheduleId },
+        select: {
+          id: true,
+          scheduledDate: true,
+          isCancelled: true,
+          cancellationReason: true,
         },
       });
 
-      // 수업권 복원 (차감되었던 출석 기록에 대해서만) — 2026-04-27 (N-9): User × Class 단위
-      if (deductedAttendances.length > 0) {
-        const userIds = deductedAttendances.map((a) => a.memberId); // memberId 는 User.id
-        const classId = schedule.class.id;
-        const now = new Date();
-
-        // 1) 해당 수업의 유효한 수업권 1회 조회 (userId 별 만료 임박순)
-        const memberCredits = await tx.memberCredit.findMany({
-          where: {
-            userId: { in: userIds },
-            classId,
-            expiresAt: { gte: now },
-            ...creditStartedWhere(now),
-          },
-          orderBy: { expiresAt: "asc" },
-          select: {
-            id: true,
-            userId: true,
-            totalSessions: true,
-            usedSessions: true,
-          },
-        });
-
-        // userId → 첫 번째 유효 수업권 매핑
-        const creditByUser = new Map<string, (typeof memberCredits)[0]>();
-        for (const c of memberCredits) {
-          if (!creditByUser.has(c.userId)) {
-            creditByUser.set(c.userId, c);
-          }
-        }
-
-        const creditIdsToRestore: string[] = [];
-        for (const attendance of deductedAttendances) {
-          const credit = creditByUser.get(attendance.memberId);
-          if (credit) {
-            creditIdsToRestore.push(credit.id);
-          }
-        }
-
-        if (creditIdsToRestore.length > 0) {
-          // PR-B (v0.5): CreditDomainService.bulkRestoreOne 위임
-          // (내부에서 updateMany + 가드 + CreditTransaction(restored) 일괄 INSERT)
-          const { restoredCount } = await this.creditDomain.bulkRestoreOne(tx, {
-            creditIds: creditIdsToRestore,
-            reason: `수업 일정 취소 - 수업권 복원 (사유: ${cancellationReason || "미기재"})`,
-            adjustedBy: coachUserId,
-            scheduleId,
-          });
-
-          if (restoredCount < creditIdsToRestore.length) {
-            this.logger.warn(
-              `수업권 복원 부분 실패: 대상 ${creditIdsToRestore.length}개 중 ${restoredCount}개만 복원 (나머지는 usedSessions=0 으로 이미 복원됨)`,
-            );
-          }
-
-          // PR-C (v0.6): AuditLog INSERT — 수업 일정 취소로 복원된 학생별
-          for (const attendance of deductedAttendances) {
-            await this.auditLog.record(tx, {
-              attendanceId: attendance.id,
-              scheduleId,
-              memberId: attendance.memberId,
-              actorUserId: coachUserId,
-              actionType: "clear",
-              fromStatus: "present",
-              toStatus: "cancelled",
-              creditDelta: 1,
-              reason: `수업 일정 취소 (사유: ${cancellationReason || "미기재"})`,
-            });
-          }
-        }
-      }
+      // 취소 부수효과 — apply-draft 와 공용 헬퍼 (설계 v4 §4.1-7).
+      await this.runScheduleCancelSideEffects(tx, {
+        scheduleId,
+        classId: schedule.class.id,
+        actorUserId: coachUserId,
+        cancellationReason,
+      });
 
       return updated;
     });
@@ -5344,6 +5342,474 @@ export class ClassesService {
       cancellationReason: cancelledSchedule.cancellationReason,
       updatedAt: new Date(),
     };
+  }
+
+  /**
+   * 일정 취소 부수효과 — 승자 게이트(isCancelled:false→true count=1) 통과 후에만 호출.
+   *  출석 cancelled 전환 · creditDeducted=false 해제(중복 복원 근원 제거) ·
+   *  수업권 복원(User×Class FIFO) · AuditLog. cancelClassSchedule/applyScheduleDraft 공용.
+   */
+  private async runScheduleCancelSideEffects(
+    tx: Prisma.TransactionClient,
+    args: {
+      scheduleId: string;
+      classId: string;
+      actorUserId: string;
+      cancellationReason?: string;
+    },
+  ): Promise<void> {
+    const { scheduleId, classId, actorUserId, cancellationReason } = args;
+    // 크레딧이 차감된 출석 기록 조회
+    const deductedAttendances = await tx.classAttendance.findMany({
+      where: { scheduleId, creditDeducted: true },
+    });
+
+    // 출석 상태 일괄 변경 — 차감 플래그는 아래에서 **실제 복원 성공분에만** 해제한다.
+    //   복원받지 못한 출석(유효 수업권 없음·usedSessions=0)의 플래그를 지우면
+    //   미복원 상태가 복원 완료처럼 고착되어 수동 복구 근거가 사라진다 (Codex R2-B1).
+    //   잔존 플래그의 중복 복원 위험은 취소 멱등 no-op(재취소가 부수효과에 도달하지
+    //   않음)과 apply-draft ledger replay 가 차단한다.
+    await tx.classAttendance.updateMany({
+      where: { scheduleId },
+      data: {
+        attendanceStatus: "cancelled",
+      },
+    });
+
+    // 수업권 복원 (차감되었던 출석 기록에 대해서만) — 2026-04-27 (N-9): User × Class 단위
+    if (deductedAttendances.length > 0) {
+      const userIds = deductedAttendances.map((a) => a.memberId); // memberId 는 User.id
+      const now = new Date();
+
+      // 1) 해당 수업의 유효한 수업권 1회 조회 (userId 별 만료 임박순)
+      const memberCredits = await tx.memberCredit.findMany({
+        where: {
+          userId: { in: userIds },
+          classId,
+          expiresAt: { gte: now },
+          ...creditStartedWhere(now),
+        },
+        orderBy: { expiresAt: "asc" },
+        select: {
+          id: true,
+          userId: true,
+          totalSessions: true,
+          usedSessions: true,
+        },
+      });
+
+      // userId → 첫 번째 유효 수업권 매핑
+      const creditByUser = new Map<string, (typeof memberCredits)[0]>();
+      for (const c of memberCredits) {
+        if (!creditByUser.has(c.userId)) {
+          creditByUser.set(c.userId, c);
+        }
+      }
+
+      const creditIdsToRestore: string[] = [];
+      for (const attendance of deductedAttendances) {
+        const credit = creditByUser.get(attendance.memberId);
+        if (credit) {
+          creditIdsToRestore.push(credit.id);
+        }
+      }
+
+      // 실제 감소 성공한 creditId 집합 — flag/audit 결합의 SoT (Codex R2-B1).
+      let restoredCreditIdSet = new Set<string>();
+      if (creditIdsToRestore.length > 0) {
+        // PR-B (v0.5): CreditDomainService.bulkRestoreOne 위임
+        // (성공분만 decrement + CreditTransaction(restored) INSERT, 성공 id 반환)
+        const { restoredCount, restoredCreditIds } =
+          await this.creditDomain.bulkRestoreOne(tx, {
+            creditIds: creditIdsToRestore,
+            reason: `수업 일정 취소 - 수업권 복원 (사유: ${cancellationReason || "미기재"})`,
+            adjustedBy: actorUserId,
+            scheduleId,
+          });
+        restoredCreditIdSet = new Set(restoredCreditIds);
+
+        if (restoredCount < creditIdsToRestore.length) {
+          this.logger.warn(
+            `수업권 복원 부분 실패: 대상 ${creditIdsToRestore.length}개 중 ${restoredCount}개만 복원 (나머지는 usedSessions=0 — 해당 출석의 creditDeducted 플래그는 보존)`,
+          );
+        }
+      }
+
+      // 복원 성공한 출석만 차감 플래그 해제 + AuditLog creditDelta:1.
+      const restoredAttendanceIds: string[] = [];
+      for (const attendance of deductedAttendances) {
+        const credit = creditByUser.get(attendance.memberId);
+        if (credit && restoredCreditIdSet.has(credit.id)) {
+          restoredAttendanceIds.push(attendance.id);
+        }
+      }
+      if (restoredAttendanceIds.length > 0) {
+        await tx.classAttendance.updateMany({
+          where: { id: { in: restoredAttendanceIds } },
+          data: { creditDeducted: false },
+        });
+      }
+      const restoredAttendanceIdSet = new Set(restoredAttendanceIds);
+
+      // PR-C (v0.6): AuditLog INSERT — creditDelta 는 실제 복원 성공 여부에 결합.
+      for (const attendance of deductedAttendances) {
+        await this.auditLog.record(tx, {
+          attendanceId: attendance.id,
+          scheduleId,
+          memberId: attendance.memberId,
+          actorUserId,
+          actionType: "clear",
+          fromStatus: "present",
+          toStatus: "cancelled",
+          creditDelta: restoredAttendanceIdSet.has(attendance.id) ? 1 : 0,
+          reason: `수업 일정 취소 (사유: ${cancellationReason || "미기재"})`,
+        });
+      }
+    }
+  }
+
+  /**
+   * [설계 v4 §4.1] 일정 draft 일괄 반영 — 단일 요청·단일 트랜잭션 all-or-nothing.
+   *  additions(신규) + edits(시간·장소, baseUpdatedAt 잠금) + cancellations(취소, 동일 잠금).
+   *  operationId 멱등: 같은 id·같은 payload 재요청은 저장 결과 replay(쓰기 0),
+   *  같은 id·다른 payload 는 409. 버전 불일치·이미 취소·부재는 전체 롤백 + 409
+   *  DRAFT_CONFLICT(conflicts 목록). 팀/학원 공용(expectedOwner 분기 — cancel 미러).
+   */
+  async applyScheduleDraft(
+    coachUserId: string,
+    classId: string,
+    dto: ApplyScheduleDraftDto,
+    expectedOwner?: { teamId?: string; academyId?: string },
+  ) {
+    const totalItems =
+      dto.additions.length + dto.edits.length + dto.cancellations.length;
+    // 빈 요청은 거부 — 조기 200 반환은 권한·lock·ledger(멱등 대조)를 전부 우회해
+    //   operationId 계약을 깨뜨린다 (Codex R1-2). 프론트는 dirty>0 에서만 저장한다.
+    if (totalItems === 0) {
+      throw new BadRequestException("반영할 변경이 없습니다.");
+    }
+    if (totalItems > 200) {
+      throw new ForbiddenException("한 번에 반영 가능한 변경은 최대 200건입니다.");
+    }
+
+    // 권한·owner 검증 — cancelClassSchedule 분기 미러.
+    const classRecord = await this.prisma.class.findUnique({
+      where: { id: classId },
+      select: { id: true, teamId: true, academyId: true, trainingType: true },
+    });
+    if (!classRecord) {
+      throw new NotFoundException("수업을 찾을 수 없습니다.");
+    }
+    if (expectedOwner?.teamId && classRecord.teamId !== expectedOwner.teamId) {
+      throw new ForbiddenException("이 수업의 일정을 변경할 권한이 없습니다.");
+    }
+    if (
+      expectedOwner?.academyId &&
+      classRecord.academyId !== expectedOwner.academyId
+    ) {
+      throw new ForbiddenException("이 수업의 일정을 변경할 권한이 없습니다.");
+    }
+    if (classRecord.teamId) {
+      await this.teamsService.assertTeamManagerPermission(
+        coachUserId,
+        classRecord.teamId,
+        "이 수업의 일정을 변경할 권한이 없습니다.",
+      );
+    } else if (classRecord.academyId) {
+      await this.assertAcademyManagerPermission(
+        coachUserId,
+        classRecord.academyId,
+        "이 수업의 일정을 변경할 권한이 없습니다.",
+      );
+    } else {
+      throw new ForbiddenException("이 수업의 일정을 변경할 권한이 없습니다.");
+    }
+
+    // 시각 형식 검증 — edits 는 빈 문자열(해제)을 허용해 DTO 정규식 대신 여기서 판정.
+    const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+    for (const e of dto.edits) {
+      for (const t of [e.startTime, e.endTime]) {
+        if (t !== undefined && t !== "" && !HHMM.test(t)) {
+          throw new BadRequestException("시각은 HH:mm 형식이어야 합니다.");
+        }
+      }
+    }
+
+    // additions 정규화 — 날짜 dedupe + 오름차순 (§4.1-6, 프론트 계약 외 호출 방어).
+    const additionByDate = new Map<string, (typeof dto.additions)[0]>();
+    for (const a of dto.additions) {
+      if (!additionByDate.has(a.date)) additionByDate.set(a.date, a);
+    }
+    const additions = Array.from(additionByDate.values()).sort((a, b) =>
+      a.date.localeCompare(b.date),
+    );
+
+    const today = kstTodayUtcMidnight();
+    for (const a of additions) {
+      // 엄격 달력 날짜 검증 — DTO IsDateString 은 full ISO 도 통과시키고, JS Date 는
+      //   2026-02-30 같은 무효 날짜를 자동 보정하므로 왕복 대조로 차단 (Codex R1-4).
+      const parsed = dateOnlyToUtc(a.date);
+      if (
+        !/^\d{4}-\d{2}-\d{2}$/.test(a.date) ||
+        Number.isNaN(parsed.getTime()) ||
+        dateOnlyToString(parsed) !== a.date
+      ) {
+        throw new BadRequestException(
+          "날짜는 YYYY-MM-DD 형식의 유효한 달력 날짜여야 합니다.",
+        );
+      }
+      if (parsed < today) {
+        throw new BadRequestException("지난 날짜에는 일정을 추가할 수 없습니다.");
+      }
+    }
+
+    // payload digest — actor 까지 결합(설계 §4.1-8 class/actor/body 바인딩).
+    //   같은 operationId 에 다른 내용/다른 행위자가 오면 409 (Codex R1-5).
+    const payloadDigest = createHash("sha256")
+      .update(
+        JSON.stringify({
+          classId,
+          actorId: coachUserId,
+          additions,
+          edits: dto.edits,
+          cancellations: dto.cancellations,
+        }),
+      )
+      .digest("hex");
+
+    const editIds = dto.edits.map((e) => e.scheduleId);
+    const cancelIds = dto.cancellations.map((c) => c.scheduleId);
+    // 수정+취소 동시 지시 금지 — 프론트 reducer invariant 의 서버 이중 방어.
+    const cancelIdSet = new Set(cancelIds);
+    if (
+      editIds.some((id) => cancelIdSet.has(id)) ||
+      new Set(editIds).size !== editIds.length ||
+      cancelIdSet.size !== cancelIds.length
+    ) {
+      throw new BadRequestException(
+        "같은 회차에 중복 지시가 있습니다. 새로고침 후 다시 시도해주세요.",
+      );
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      // [§4.1-3] schedule lock(무조건) → postpaid lock(IfNeeded) — writer 전체 직렬화.
+      await acquireClassScheduleAndPostpaidLocksIfNeeded(tx, classId);
+
+      // [§4.1-2] 멱등 replay — lock 획득 후 조회 (동시 같은 operationId 수렴).
+      const priorOp = await tx.scheduleApplyOperation.findUnique({
+        where: { id: dto.operationId },
+      });
+      if (priorOp) {
+        if (priorOp.payloadDigest !== payloadDigest) {
+          throw new ConflictException({
+            errorCode: "OPERATION_MISMATCH",
+            message:
+              "같은 요청 ID 로 다른 내용이 전송되었습니다. 새로고침 후 다시 시도해주세요.",
+          });
+        }
+        return priorOp.result as {
+          applied: boolean;
+          created: number;
+          skipped: number;
+          edited: number;
+          cancelled: number;
+        };
+      }
+
+      // [§4.1-4] 대상 row tx 내 재조회 (사전 조회값 재사용 금지 — TOCTOU 차단).
+      const targetIds = [...editIds, ...cancelIds];
+      const rows = targetIds.length
+        ? await tx.classSchedule.findMany({
+            where: { id: { in: targetIds } },
+            select: {
+              id: true,
+              classId: true,
+              scheduledDate: true,
+              isCancelled: true,
+              updatedAt: true,
+            },
+          })
+        : [];
+      const rowById = new Map(rows.map((r) => [r.id, r]));
+
+      // [§4.1-5] 버전·상태 검증 — 하나라도 어긋나면 전체 롤백 + 409 DRAFT_CONFLICT.
+      const conflicts: {
+        scheduleId: string;
+        type: "version" | "already_cancelled" | "not_found";
+      }[] = [];
+      const verify = (scheduleId: string, baseUpdatedAt: string) => {
+        const row = rowById.get(scheduleId);
+        if (!row || row.classId !== classId) {
+          conflicts.push({ scheduleId, type: "not_found" });
+          return null;
+        }
+        if (row.isCancelled) {
+          conflicts.push({ scheduleId, type: "already_cancelled" });
+          return null;
+        }
+        if (row.updatedAt.getTime() !== new Date(baseUpdatedAt).getTime()) {
+          conflicts.push({ scheduleId, type: "version" });
+          return null;
+        }
+        return row;
+      };
+      const editRows = dto.edits.map((e) => verify(e.scheduleId, e.baseUpdatedAt));
+      const cancelRows = dto.cancellations.map((c) =>
+        verify(c.scheduleId, c.baseUpdatedAt),
+      );
+      if (conflicts.length > 0) {
+        throw new ConflictException({
+          errorCode: "DRAFT_CONFLICT",
+          message:
+            "다른 곳에서 먼저 변경된 회차가 있습니다. 목록을 확인한 뒤 다시 저장해주세요.",
+          conflicts,
+        });
+      }
+
+      // 지난 회차 edit/cancel 거부 — 사실 기록 불가침 (전체 롤백).
+      for (const row of [...editRows, ...cancelRows]) {
+        if (row && row.scheduledDate < today) {
+          throw new ForbiddenException(
+            "지난 일정은 수정하거나 취소할 수 없습니다.",
+          );
+        }
+      }
+
+      // 정산 확정 월 검증 (cancel — P3-H1).
+      for (const c of dto.cancellations) {
+        await assertScheduleMonthNotSettled(tx, c.scheduleId);
+      }
+
+      // [§4.1-6] additions 활성 중복 skip (취소 날짜 재등록 허용 — 정확 날짜 매칭).
+      let skipped = 0;
+      let toCreate = additions;
+      if (additions.length > 0) {
+        const addDates = additions.map((a) => dateOnlyToUtc(a.date));
+        const addTimes = addDates.map((d) => d.getTime());
+        const existing = await tx.classSchedule.findMany({
+          where: {
+            classId,
+            scheduledDate: {
+              gte: new Date(Math.min(...addTimes)),
+              lte: new Date(Math.max(...addTimes)),
+            },
+            isCancelled: false,
+          },
+          select: { scheduledDate: true },
+        });
+        const existingSet = new Set(
+          existing.map((e) => dateOnlyToString(e.scheduledDate)),
+        );
+        toCreate = additions.filter((a) => !existingSet.has(a.date));
+        skipped = additions.length - toCreate.length;
+      }
+
+      // spot(1회용) — 활성(취소 예정 차감) + 신규 합산 1개 제한 (§7.1).
+      if (classRecord.trainingType === "spot") {
+        const activeCount = await tx.classSchedule.count({
+          where: { classId, isCancelled: false },
+        });
+        if (activeCount - dto.cancellations.length + toCreate.length > 1) {
+          throw new BadRequestException(
+            "1회용 수업은 일정을 1개만 등록할 수 있습니다.",
+          );
+        }
+      }
+
+      // [§4.1-7] 반영 — 전 항목 조건부 mutation (lock 과 이중 방어).
+      for (const e of dto.edits) {
+        const gate = await tx.classSchedule.updateMany({
+          where: {
+            id: e.scheduleId,
+            isCancelled: false,
+            updatedAt: new Date(e.baseUpdatedAt),
+          },
+          data: {
+            ...(e.startTime !== undefined
+              ? { startTime: e.startTime || null }
+              : {}),
+            ...(e.endTime !== undefined ? { endTime: e.endTime || null } : {}),
+            ...(e.venueId !== undefined ? { venueId: e.venueId || null } : {}),
+          },
+        });
+        if (gate.count !== 1) {
+          throw new ConflictException({
+            errorCode: "DRAFT_CONFLICT",
+            message:
+              "다른 곳에서 먼저 변경된 회차가 있습니다. 목록을 확인한 뒤 다시 저장해주세요.",
+            conflicts: [{ scheduleId: e.scheduleId, type: "version" }],
+          });
+        }
+      }
+      for (const c of dto.cancellations) {
+        const gate = await tx.classSchedule.updateMany({
+          where: {
+            id: c.scheduleId,
+            isCancelled: false,
+            updatedAt: new Date(c.baseUpdatedAt),
+          },
+          data: { isCancelled: true, cancellationReason: c.reason },
+        });
+        if (gate.count !== 1) {
+          throw new ConflictException({
+            errorCode: "DRAFT_CONFLICT",
+            message:
+              "다른 곳에서 먼저 변경된 회차가 있습니다. 목록을 확인한 뒤 다시 저장해주세요.",
+            conflicts: [{ scheduleId: c.scheduleId, type: "version" }],
+          });
+        }
+        // 승자만 부수효과 (출석 cancelled·creditDeducted=false·크레딧 복원·AuditLog).
+        await this.runScheduleCancelSideEffects(tx, {
+          scheduleId: c.scheduleId,
+          classId,
+          actorUserId: coachUserId,
+          cancellationReason: c.reason,
+        });
+      }
+      // createMany + skipDuplicates(ON CONFLICT DO NOTHING) — 부분 유니크 인덱스
+      //   충돌을 에러 없이 skip 으로 수렴. PostgreSQL 은 제약 위반(P2002) 발생 시
+      //   트랜잭션이 aborted 상태가 되어 catch 후 후속 쿼리가 전부 실패하므로,
+      //   개별 create+catch 방식은 같은 트랜잭션에서 성립하지 않는다 (Codex R1-1).
+      let created = 0;
+      if (toCreate.length > 0) {
+        const res = await tx.classSchedule.createMany({
+          data: toCreate.map((a) => ({
+            classId,
+            scheduledDate: dateOnlyToUtc(a.date),
+            startTime: a.startTime || null,
+            endTime: a.endTime || null,
+            venueId: a.venueId || null,
+          })),
+          skipDuplicates: true,
+        });
+        created = res.count;
+        skipped += toCreate.length - res.count;
+      }
+
+      const summary = {
+        applied: true,
+        created,
+        skipped,
+        edited: dto.edits.length,
+        cancelled: dto.cancellations.length,
+      };
+      // [§4.1-8] 멱등 ledger — 같은 트랜잭션에서 기록 (커밋과 원자).
+      await tx.scheduleApplyOperation.create({
+        data: {
+          id: dto.operationId,
+          classId,
+          actorId: coachUserId,
+          payloadDigest,
+          result: summary,
+        },
+      });
+      return summary;
+    });
+
+    this.logger.log(
+      `[AUDIT] 일정 draft 반영: classId=${classId}, op=${dto.operationId}, created=${result.created}, skipped=${result.skipped}, edited=${result.edited}, cancelled=${result.cancelled}, by=${coachUserId}`,
+    );
+    return result;
   }
 
   /**
@@ -5414,10 +5880,22 @@ export class ClassesService {
     if (dto.endTime !== undefined) data.endTime = dto.endTime || null;
     if (dto.venueId !== undefined) data.venueId = dto.venueId || null;
 
-    const updated = await this.prisma.classSchedule.update({
-      where: { id: scheduleId },
-      data,
-      include: { venue: { select: { id: true, name: true } } },
+    // [설계 v4 §4.3-③] schedule writer 공용 lock — 취소·bulk·apply-draft 와 직렬화.
+    //   취소 판정은 tx 밖 조회가 lock 대기 중 낡을 수 있어 조건부 update 로 재검증
+    //   (count=0 = 그 사이 취소됨 → 기존 메시지로 거부).
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await acquireClassScheduleLock(tx, schedule.class.id);
+      const gate = await tx.classSchedule.updateMany({
+        where: { id: scheduleId, isCancelled: false },
+        data,
+      });
+      if (gate.count !== 1) {
+        throw new ForbiddenException("취소된 일정은 수정할 수 없습니다.");
+      }
+      return tx.classSchedule.findUniqueOrThrow({
+        where: { id: scheduleId },
+        include: { venue: { select: { id: true, name: true } } },
+      });
     });
 
     return {

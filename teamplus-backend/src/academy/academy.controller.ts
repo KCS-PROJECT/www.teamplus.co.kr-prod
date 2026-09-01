@@ -36,6 +36,7 @@ import {
   CreateBulkScheduleDto,
   UpdateScheduleDto,
 } from "@/classes/dto/create-schedule.dto";
+import { ApplyScheduleDraftDto } from "@/classes/dto/apply-schedule-draft.dto";
 import { Roles } from "@/auth/roles.decorator";
 import { RolesGuard } from "@/auth/roles.guard";
 import { AuditAction } from "@/common/decorators";
@@ -534,6 +535,34 @@ export class AcademyController {
       classId,
       dto,
     );
+  }
+
+  /**
+   * [설계 v4 §4.1] 오픈클래스 일정 draft 일괄 반영 — 팀용 apply-draft 와 동일 계약.
+   */
+  @Post(":academyId/classes/:classId/schedules/apply-draft")
+  @Roles("COACH", "DIRECTOR", "ACADEMY_DIRECTOR")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "오픈클래스 일정 draft 일괄 반영",
+    description:
+      "추가·수정·취소를 all-or-nothing 트랜잭션으로 반영합니다 (operationId 멱등 + baseUpdatedAt 잠금, 409 DRAFT_CONFLICT).",
+  })
+  @ApiResponse({
+    status: 200,
+    schema: {
+      example: { applied: true, created: 12, skipped: 1, edited: 2, cancelled: 1 },
+    },
+  })
+  async applyAcademyScheduleDraft(
+    @Request() req: AuthenticatedRequest,
+    @Param("academyId") academyId: string,
+    @Param("classId") classId: string,
+    @Body() dto: ApplyScheduleDraftDto,
+  ) {
+    return this.classesService.applyScheduleDraft(req.user.id, classId, dto, {
+      academyId,
+    });
   }
 
   /**
