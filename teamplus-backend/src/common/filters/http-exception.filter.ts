@@ -29,6 +29,8 @@ interface ApiErrorResponse {
   message: string;
   errors?: ValidationError[];
   errorCode?: string;
+  /** 예외가 담은 구조화 부가 정보 passthrough (예: apply-draft 409 의 conflicts 목록) */
+  details?: Record<string, unknown>;
   /** 401 응답 시 클라이언트가 이동할 기본 경로 — 클라이언트 라우팅 힌트 */
   redirectTo?: string;
   /** v8.6: 에러 카테고리 (server·transaction·client·auth·database·external) — 응답 헤더 X-Error-Log-Category와 동일 */
@@ -72,7 +74,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
-    const { status, message, errors, errorCode } =
+    const { status, message, errors, errorCode, details } =
       this.getExceptionDetails(exception);
 
     // 민감정보 마스킹된 로깅
@@ -154,6 +156,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message: normalizedMessage,
       ...(errors && { errors }),
       ...(normalizedErrorCode && { errorCode: normalizedErrorCode }),
+      ...(details && { details }),
       ...(isUnauthorized && { redirectTo: "/login" }),
       // v8.6: 응답 body에도 errorCategory 포함 (응답 헤더 못 보는 클라이언트도 인지)
       ...(errorCategory && { errorCategory }),
@@ -169,6 +172,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     message: string;
     errors?: ValidationError[];
     errorCode?: string;
+    details?: Record<string, unknown>;
   } {
     // HttpException (NestJS 표준 예외)
     if (exception instanceof HttpException) {
@@ -200,10 +204,19 @@ export class AllExceptionsFilter implements ExceptionFilter {
           };
         }
 
+        // errorCode 키 우선 지원 — 도메인 예외가 { errorCode: "DRAFT_CONFLICT", ... }
+        // 형태로 던지는 계약(apply-draft 등)을 Nest 표준 { error } 형태와 함께 수용.
+        // 구조화 부가 필드는 details 로 passthrough (conflicts 는 details.conflicts 로 승격).
+        const passthroughDetails =
+          (response.details as Record<string, unknown> | undefined) ??
+          (response.conflicts !== undefined
+            ? { conflicts: response.conflicts }
+            : undefined);
         return {
           status,
           message: String(response.message || exception.message),
-          errorCode: String(response.error || "HTTP_ERROR"),
+          errorCode: String(response.errorCode || response.error || "HTTP_ERROR"),
+          ...(passthroughDetails && { details: passthroughDetails }),
         };
       }
 

@@ -68,14 +68,8 @@ export const MESSAGES = {
       packageNeedsUpdate: "미등록",
       renewRegisterButton: "등록하기",
       packageCreated: "새 달분으로 등록되었습니다.",
-      // [이번 달 구성에서 제외] — 새 행 없이 갱신 원본 행만 판매 중지(소진).
-      excludeButton: "이번 달 제외",
-      excludeTitle: "구성에서 제외",
-      excludeConfirm: (name: string, month: number) =>
-        `'${name}' 항목을 ${month}월 구성으로 넘기지 않고 목록에서 정리할까요? 이 항목은 더 이상 갱신 목록에 나타나지 않아요.`,
-      excludeSuccess: (name: string) => `'${name}' 항목을 구성에서 제외했습니다.`,
       retireFailed:
-        "이전 항목 정리에 실패했습니다. 항목이 갱신 목록에 남아 있으면 '이번 달 제외'로 정리해주세요.",
+        "이전 항목 정리에 실패했습니다. 남은 항목은 다음 달 준비 때 자동으로 정리돼요.",
       openSalesButton: "판매 시작하기",
       // 성공 토스트 — 행위("판매되었다")가 아니라 결과(학부모가 N월 훈련을 신청 가능)를 서술.
       openSalesSuccess: (month: number) =>
@@ -103,6 +97,9 @@ export const MESSAGES = {
         `${name} ${month}월 금액`,
       // 미등록 항목 입력 필드 라벨 — 이름/금액 input 구분용.
       renewNameLabel: "항목 이름",
+      // 선택 입력 명시 — 원래 설명이 없던 항목·일부러 비우는 편집 모두 정상 상태.
+      renewDescLabel: "설명 (선택)",
+      renewDescPlaceholder: "항목 설명을 입력해주세요",
       renewPriceLabel: (month: number) => `${month}월 금액`,
       // 수정 폼 월 수강료 — 귀속월 칩 + 등록 이관 안내(실행은 일정·판매 관리).
       monthTag: (month: number) => `${month}월분`,
@@ -111,12 +108,6 @@ export const MESSAGES = {
       // 수정 폼(edit) 일정 카드 대체 안내 — 일정 편집 이관.
       scheduleMovedHint:
         "일정 추가·변경·취소는 '일정·판매 관리'에서 진행할 수 있어요.",
-      // 모든 회차에 적용 — 일정·판매 관리 아코디언(즉시 반영이라 확인창 필수).
-      applyAllConfirm: (n: number) =>
-        `다가오는 ${n}개 회차에 이 시간·장소를 적용할까요? 지난 회차는 변경되지 않습니다.`,
-      applyAllDone: (n: number) => `${n}개 회차에 적용되었습니다.`,
-      applyAllPartialFailed: (n: number) =>
-        `${n}개 회차는 적용하지 못했습니다. 다시 시도해주세요.`,
       // 수정 완료 페이지 — 판매 승인 대기 수업의 일정·판매 관리 유도.
       completeOpenSalesTitle: (month: number) => `${month}월 판매 시작`,
       // 이력 잠금(지난 월분·판매 중지분) — 수정/삭제 불가, 기본 접힘.
@@ -142,13 +133,50 @@ export const MESSAGES = {
         "종료된 수업입니다. 수업 상세에서 종료를 취소한 뒤 일정을 등록할 수 있어요.",
       completePrepGuide:
         "일정이 준비되었습니다. 일정·판매 관리에서 월 수강 구성을 확인하고 판매를 시작해 주세요.",
+      // [draft 일괄 저장] 일정 섹션 draft 상태 칩·액션 (설계 v4.1 §3.8).
+      draftNewChip: "저장 전",
+      draftEditedChip: "수정됨",
+      draftCancelChip: "취소 예정",
+      draftCancelUndo: "취소 해제",
+      rowApplyButton: "적용하기",
+      draftRemoveAria: (label: string) => `${label} 추가 취소`,
+      // [설계 §3.8] 일괄 저장 바 + apply-draft 결과 안내.
+      saveBarButton: (n: number) => `저장하기 (${n}건)`,
+      discardAllButton: "모두 되돌리기",
+      discardAllTitle: "변경 되돌리기",
+      discardAllConfirm: (n: number) =>
+        `저장하지 않은 변경 ${n}건을 모두 되돌릴까요?`,
+      leaveTitle: "저장하지 않은 변경",
+      leaveConfirm: (n: number) =>
+        `저장하지 않은 변경 ${n}건이 있습니다. 저장하지 않고 나갈까요?`,
+      saveDone: (n: number) => `변경 ${n}건이 반영되었습니다.`,
+      saveFailed:
+        "저장하지 못했습니다. 변경 내용은 그대로 남아 있으니 다시 시도해주세요.",
+      // 서버가 실패 원인을 준 경우에도 draft 유지 + 재시도 행동 안내를 덧붙이는 접미 문구.
+      saveKeptHint:
+        "변경 내용은 그대로 남아 있어요. 잠시 후 다시 시도해주세요.",
+      saveConflict: (n: number) =>
+        `${n}건은 다른 곳에서 먼저 변경되어 반영하지 못했습니다. 목록을 확인한 뒤 다시 저장해주세요.`,
+      // DB cancellationReason 에 저장되는 기본 사유 (학부모 표면 노출 가능 문구).
+      draftCancelReason: "감독/코치 취소",
+      saveTimeUndecidedTitle: "시간 미정 회차",
+      saveTimeUndecidedConfirm: (n: number) =>
+        `시간 미정 회차 ${n}건이 포함되어 있습니다. 이대로 저장할까요?`,
+      prepLockedHint: "일정 변경을 저장한 뒤 진행할 수 있어요.",
       // 월분 갱신 제안 금액 — 대상월 실제 일정 수 × 1회 수업료(참고 단가). 눌러서 적용.
+      // 제안 금액 계산 — 회차 스테퍼(단가 × 회수) + 요일별 회차 정보 텍스트.
       renewCalcHint: (month: number, unit: string) =>
-        `1회 ${unit}원 기준 ${month}월 제안 금액이에요. 눌러서 적용할 수 있어요.`,
-      renewCalcDayChip: (day: string, count: number, amount: string) =>
-        `${day} ${count}회 ${amount}원`,
-      renewCalcAllChip: (count: number, amount: string) =>
-        `전체 ${count}회 ${amount}원`,
+        `1회 ${unit}원 기준 ${month}월 제안 금액이에요. 회차를 맞춰 적용해보세요.`,
+      renewCalcScheduleInfo: (month: number) => `${month}월 일정`,
+      renewCalcDayLabel: (day: string, count: number) => `${day} ${count}회`,
+      renewCalcAmount: (amount: string) => `${amount}원`,
+      renewCalcApplyButton: "적용하기",
+      renewCalcApplyAria: (count: number, amount: string) =>
+        `${count}회 ${amount}원 적용하기`,
+      renewCalcDecAria: "회차 줄이기",
+      renewCalcIncAria: "회차 늘리기",
+      renewCalcCountInputAria: "회차 직접 입력",
+      renewCalcCountUnit: "회",
     },
     endConfirmTitle: "수업을 종료할까요?",
     endConfirmMessage:
