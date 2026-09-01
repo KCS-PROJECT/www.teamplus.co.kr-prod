@@ -224,7 +224,9 @@ export const MESSAGES = {
     dayDefaults: {
       title: "정규 수업 요일",
       optional: "선택",
-      hint: "이 수업이 진행되는 요일이에요. 수업 정보에 '월·수·금'처럼 표시되고, 아래 '월 일정 일괄 생성'을 누르면 이 요일·시간·장소로 이번 달(남은 날짜가 없으면 다음 달) 날짜가 만들어져요.",
+      // 일괄 생성 연동 설명은 제거 — 버튼 라벨(fillMonthCount)이 자기설명적이고,
+      //   수정 모드에는 그 버튼이 없어(일정 편집 단일화) 부정확한 안내가 되던 문구.
+      hint: "이 수업이 진행되는 요일이에요. 수업 정보에 '월·수·금'처럼 표시돼요.",
       startTime: "시작 시간",
       endTime: "종료 시간",
       venueSelect: "장소 선택",
@@ -4481,11 +4483,11 @@ export const MESSAGES = {
     softDeletedToast: "결제 이력이 있어 비활성으로 전환되었습니다.",
     hardDeletedToast: "월 결제가 삭제되었습니다.",
     saveSuccess: "월 결제가 저장되었습니다.",
-    fieldProductName: "월 결제명",
-    fieldProductNamePlaceholder: "예) 주 2회 4주 정기권",
+    // "항목 이름" — 판매 준비(일정·판매 관리) renewNameLabel 과 동일 필드·동일 명칭.
+    fieldProductName: "항목 이름",
+    // 설명 라벨 — "(선택)" 표기는 fieldDescriptionHint(optionalHint)가 담당하므로 중복 금지.
     fieldDescription: "설명",
-    fieldDescriptionPlaceholder:
-      "예시) 주 단위 횟수로 결제진행(주 1회 수업 등 설정 가능)",
+    fieldDescriptionPlaceholder: "설명을 입력해주세요",
     fieldPrice: "가격(원)",
     fieldDurationDays: "유효기간(일)",
     fieldSessionsPerMonth: "월 횟수",
@@ -4503,7 +4505,7 @@ export const MESSAGES = {
     unavailableEndDateExceed: "수업 종료일을 초과하는 수강권입니다",
     unavailableClassEnded: "이 수업은 종료되었습니다",
     selectAnotherPackage: "다른 수강권을 선택해주세요",
-    validationProductName: "월 결제명을 입력해주세요.",
+    validationProductName: "항목 이름을 입력해주세요.",
     validationPrice: "가격을 올바르게 입력해주세요.",
     validationSessionsPerMonth: "월 횟수는 1 이상이어야 합니다.",
     validationDurationDays: "유효기간은 1일 이상이어야 합니다.",
@@ -4524,17 +4526,15 @@ export const MESSAGES = {
     //   회차는 가격 산정 보조값일 뿐 서버 미전송(sessionsPerMonth 크레딧 SoT 불변).
     priceCalc: {
       sectionTitle: "가격 자동 계산 (선택)",
-      daysLabel: "참여 요일",
-      dayChip: (day: string, count: number) => `${day} (${count}회)`,
+      // 제목 옆 단가 근거 — 산식 줄을 없애고 근거만 헤더로 이동(판매 준비 hint 와 동일 취지).
+      unitBasis: (won: string) => `1회 ${won}원 기준`,
+      dayChip: (day: string, count: number) => `${day} ${count}회`,
       dayClassName: (days: string) => `${days}요일반`,
-      countLabel: "참여 회차 수",
-      count: (n: number) => `${n}회`,
+      countUnit: "회",
+      countInputAria: "참여 회차 직접 입력",
       countDecrease: "참여 회차 줄이기",
       countIncrease: "참여 회차 늘리기",
-      summary: (month: number, total: number, count: number) =>
-        `${month}월 일정 ${total}회 중 ${count}회 참여`,
-      formula: (unit: number, count: number, total: number) =>
-        `${unit.toLocaleString("ko-KR")}원 × ${count}회 = ${total.toLocaleString("ko-KR")}원`,
+      amount: (won: string) => `${won}원`,
       applyButton: "적용하기",
       perSessionRate: (won: number) => `회당 ${won.toLocaleString("ko-KR")}원`,
       discountHint: (pct: number) => `1회 수업료 대비 ${pct}% 할인`,
