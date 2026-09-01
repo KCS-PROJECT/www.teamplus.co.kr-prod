@@ -481,16 +481,25 @@ export async function listTournamentRegistrations(
   );
 }
 
+/** 대회 결제 시작 응답 — pgProvider 는 서버가 시작 시점에 고정한 결제사. */
+export interface TournamentPaymentInitiateResult {
+  id: string;
+  orderNumber: string;
+  amount: number;
+  pgProvider?: 'toss' | 'nice';
+}
+
 /**
  * [추가 2026-05-15] 대회 참가 결제 시작 — 학부모 전용.
  *  · backend: POST /tournaments/:id/payment/initiate
- *  · 응답의 orderNumber 를 토스 위젯 requestPayment 의 orderId 로 사용.
+ *  · 응답의 orderNumber 를 PG 결제(토스 위젯/나이스 결제창)의 orderId 로 사용.
+ *  · 응답의 pgProvider 로 결제 UI 를 분기한다 (누락 시 toss 폴백).
  */
 export async function initiateTournamentPayment(
   tournamentId: string,
   body: { childId: string; amount: number; gamesCount?: number },
-): Promise<ApiResponse<{ id: string; orderNumber: string; amount: number }>> {
-  return api.post<{ id: string; orderNumber: string; amount: number }>(
+): Promise<ApiResponse<TournamentPaymentInitiateResult>> {
+  return api.post<TournamentPaymentInitiateResult>(
     `/tournaments/${encodeURIComponent(tournamentId)}/payment/initiate`,
     body,
   );

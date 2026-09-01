@@ -1078,7 +1078,10 @@ export const MESSAGES = {
     methodVbank: "가상계좌(무통장)",
     methodVbankHint: "발급된 계좌로 입금하시면 결제가 완료됩니다.",
     agreementTitle: "결제 진행 동의",
-    agreementRequired: "(필수) 결제 진행 및 환불 규정에 동의합니다.",
+    // 라벨 속 "환불 규정"만 링크(모달)로 렌더하기 위한 3분할 — 별도 보기 버튼 없이 규정 열람 제공.
+    agreementRequiredPrefix: "(필수) 결제 진행 및 ",
+    agreementRequiredLink: "환불 규정",
+    agreementRequiredSuffix: "에 동의합니다.",
     agreementNotChecked: "결제 진행에 동의해주세요.",
     windowOpenFailed: "결제창을 열 수 없어요. 새로고침 후 다시 시도해주세요.",
     // 결제창이 취소·인증 실패로 돌아왔을 때 — 백엔드 redirect 의 error 코드별 안내.

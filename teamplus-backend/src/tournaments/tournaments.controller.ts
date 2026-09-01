@@ -330,8 +330,9 @@ export class TournamentsController {
   /**
    * [추가 2026-05-15] 대회 참가 결제 시작 — 학부모(PARENT) 전용.
    *  · Payment row + TournamentRegistration 을 PENDING 으로 생성.
-   *  · 응답의 orderNumber 를 토스 위젯 requestPayment(orderId=...) 에 전달.
-   *  · 토스 confirm 성공 후 paymentsService 가 paymentStatus=PAID 갱신.
+   *  · 응답의 orderNumber 를 PG 결제(토스 위젯/나이스 결제창)의 orderId 로,
+   *    pgProvider 를 결제 UI 분기 기준으로 전달.
+   *  · PG 승인 성공 후 paymentsService 가 paymentStatus=PAID 갱신.
    */
   @Post(":id/payment/initiate")
   @Roles("PARENT", "ADMIN")
@@ -339,7 +340,7 @@ export class TournamentsController {
   @ApiOperation({
     summary: "대회 참가 결제 시작",
     description:
-      "대회 참가 신청에 대해 토스 결제용 Payment 와 TournamentRegistration(PENDING) 을 생성합니다.",
+      "대회 참가 신청에 대해 활성 결제사(pgProvider) 기준 Payment 와 TournamentRegistration(PENDING) 을 생성합니다.",
   })
   @ApiParam({ name: "id", description: "대회 ID" })
   @ApiResponse({
