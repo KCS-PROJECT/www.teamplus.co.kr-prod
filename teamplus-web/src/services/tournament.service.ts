@@ -966,6 +966,7 @@ export function mapTournamentUiStatus(
   raw: TournamentStatus,
   endDate?: string | null,
   now: Date = new Date(),
+  startDate?: string | null,
 ): TournamentUiStatus {
   if (raw === 'cancelled') return 'cancelled';
   if (raw === 'finished') return 'completed';
@@ -977,7 +978,7 @@ export function mapTournamentUiStatus(
   if (endDate) {
     const d = new Date(endDate);
     if (!Number.isNaN(d.getTime())) {
-      // day-level(KST): 종료일 당일까지 모집중, 다음날부터 종료.
+      // day-level(KST): 종료일 당일까지 유효, 다음날부터 종료.
       //   endDate 는 @db.Date(UTC 자정). now 를 KST 달력일의 UTC 자정으로 환산해 비교
       //   (백엔드 kstTodayUtcMidnight 기준과 일관). 시각 단위 비교 시 당일 대회가
       //   KST 09:00(UTC 자정)부터 종료로 오판되던 버그 수정.
@@ -990,6 +991,18 @@ export function mapTournamentUiStatus(
       );
       if (d.getTime() < kstTodayUtcMidnight) {
         return 'completed';
+      }
+      // 시작일 ≤ 오늘 ≤ 종료일 → 진행 중 — classes-manage 대회 카드
+      //   (resolvePeriodStatus 날짜 판정)와 표기 일치. 신청 가능 여부는 상태가
+      //   아니라 첫 경기 시작 가드가 담당하므로 신청 CTA 는 이 값에 의존하지 않는다.
+      if (startDate) {
+        const s = new Date(startDate);
+        if (
+          !Number.isNaN(s.getTime()) &&
+          s.getTime() <= kstTodayUtcMidnight
+        ) {
+          return 'in_progress';
+        }
       }
     }
   }

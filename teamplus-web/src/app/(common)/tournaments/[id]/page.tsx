@@ -333,6 +333,8 @@ export default function CommonTournamentDetailPage() {
     return mapTournamentUiStatus(
       tournament.status,
       tournament.endDate,
+      undefined,
+      tournament.startDate,
     );
   }, [tournament]);
 
@@ -670,15 +672,14 @@ export default function CommonTournamentDetailPage() {
           <button
             type="button"
             onClick={() => {
-              if (uiStatus === "recruiting" || uiStatus === "closing_soon") {
-                navigate(`/tournaments/${id}/apply`);
-              } else {
-                toast.info(
-                  uiStatus === "completed" || uiStatus === "cancelled"
-                    ? MESSAGES.tournamentStatus.finished
-                    : MESSAGES.tournament.viewOnlyHint,
-                );
+              // 신청 마감 판정은 상태 표기가 아니라 첫 경기 시작 가드
+              //   (applyDisabledReason — firstMatchStarted)가 담당한다.
+              //   날짜 보정으로 '진행 중'이 된 대회도 경기 시작 전이면 신청 가능.
+              if (uiStatus === "completed" || uiStatus === "cancelled") {
+                toast.info(MESSAGES.tournamentStatus.finished);
+                return;
               }
+              navigate(`/tournaments/${id}/apply`);
             }}
             className="flex h-14 w-full items-center justify-center gap-2 rounded-w-md bg-it-blue-500 text-w-body-lg font-bold text-white shadow-sh-1 hover:bg-it-blue-600 active:brightness-95 transition-colors motion-reduce:transition-none disabled:opacity-50"
             disabled={uiStatus === "completed" || uiStatus === "cancelled"}

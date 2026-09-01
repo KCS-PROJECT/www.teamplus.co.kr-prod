@@ -127,13 +127,44 @@ describe('tournament.service — mapTournamentUiStatus', () => {
     );
   });
 
-  // day-level(KST) 경계 — 종료일이 오늘(당일 대회)이면 하루 종일 모집중 유지.
+  // day-level(KST) 경계 — 종료일이 오늘인데 시작일 미전달(레거시 호출)이면 모집중 유지.
   //   endDate 는 @db.Date(UTC 자정). NOW(KST 19:00)의 당일이므로 recruiting 이어야 한다.
   //   (시각 단위 비교 시 KST 09:00 이후 종료로 오판되던 버그 회귀 방지.)
-  it('scheduled + 종료일=오늘(당일 대회) → recruiting', () => {
+  it('scheduled + 종료일=오늘 + 시작일 미전달 → recruiting', () => {
     expect(mapTournamentUiStatus('scheduled', '2026-04-12T00:00:00Z', NOW)).toBe(
       'recruiting',
     );
+  });
+
+  // 날짜 기반 진행 중 보정 — classes-manage 대회 카드(resolvePeriodStatus)와 표기 일치.
+  it('scheduled + 시작일 ≤ 오늘 ≤ 종료일 → in_progress (당일 대회 포함)', () => {
+    expect(
+      mapTournamentUiStatus(
+        'scheduled',
+        '2026-04-12T00:00:00Z',
+        NOW,
+        '2026-04-12T00:00:00Z',
+      ),
+    ).toBe('in_progress');
+    expect(
+      mapTournamentUiStatus(
+        'scheduled',
+        '2026-04-14T00:00:00Z',
+        NOW,
+        '2026-04-10T00:00:00Z',
+      ),
+    ).toBe('in_progress');
+  });
+
+  it('scheduled + 시작일 미래 → recruiting (신청 가능)', () => {
+    expect(
+      mapTournamentUiStatus(
+        'scheduled',
+        '2026-04-20T00:00:00Z',
+        NOW,
+        '2026-04-15T00:00:00Z',
+      ),
+    ).toBe('recruiting');
   });
 });
 

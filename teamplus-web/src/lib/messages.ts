@@ -1925,9 +1925,22 @@ export const MESSAGES = {
     //   명칭은 수업 축(/classes/[id]/students "선수정보")과 통일.
     rosterPageTitle: "선수정보",
     rosterManageCta: "선수정보",
-    rosterGamesCount: (n: number) => `${n}경기`,
+    rosterHeaderSummary: (total: number, paid: number) =>
+      `참가 ${total}명 · 완납 ${paid}명`,
+    rosterRefundSheetTitle: "환불 정보",
+    rosterRefundAmount: (amount: number) =>
+      `환불 금액 ${amount.toLocaleString()}원`,
+    // 선불 대회 미결제(UNSETTLED) — "미정산"(후불 용어)·"미수" 대신 사용.
+    //   선불 미결제는 미수금 계약상 미수가 아니다(결제 이탈).
+    rosterPrepaidUnpaid: "미결제",
+    settleRequestCtaCount: (n: number) => `결제요청 (${n}명)`,
     settleRequestCta: "결제요청",
     settleRequestCancelCta: "결제요청취소",
+    // 정산 확정 전 확인창 — 알림이 외부(보호자)로 즉시 발송되고 화면에 회수
+    //   수단이 없어(결제요청취소 임시 숨김) 실행 전 고지가 필요하다.
+    settleConfirmTitle: "결제요청 확인",
+    settleConfirmMessage: (count: number, total: number) =>
+      `${count}명에게 총 ${total.toLocaleString()}원을 청구할까요?\n결제 요청 알림이 발송됩니다.`,
     postpaidFeeLabel: "후불 정산 (종료 후 청구)",
     // [후불 참고 참가비 안내 — 감독이 사전 입력한 예상 금액 표시용]
     postpaidEstimateNote: "예상 금액 · 종료 후 정산에서 확정",
@@ -1937,12 +1950,14 @@ export const MESSAGES = {
     billingModePostpaid: "후불",
     settleCta: "정산하기",
     settleTitle: "후불 정산",
-    settleFeeLabel: "1인당 참가비",
-    settleFeePlaceholder: "참가비 (원)",
+    // 일괄 청구·단건 금액 수정 모달 공용 라벨 — "1인당" 접두는 붙이지 않는다
+    //   (인당 곱셈은 하단 "총 청구 금액" 미리보기가 보여준다).
+    settleFeeLabel: "청구 금액",
+    settleFeePlaceholder: "금액 (원)",
     settleTargetCount: (n: number) => `정산 대상 ${n}명`,
     settleTotalLabel: "총 청구 금액",
     settleNoTarget: "정산 대상 참가자가 없습니다.",
-    settleFeeRequired: "1인당 참가비를 입력해주세요.",
+    settleFeeRequired: "청구 금액을 입력해주세요.",
     settleSuccess: (count: number, total: number): string =>
       `${count}명에게 총 ${new Intl.NumberFormat("ko-KR").format(total)}원이 청구되었습니다.`,
     nameRequired: "대회명을 입력해주세요.",
@@ -2019,7 +2034,8 @@ export const MESSAGES = {
       `${games}경기 x ${new Intl.NumberFormat("ko-KR").format(fee)}원`,
     // 상태 라벨 (Tournament UI Status)
     statusLabel: {
-      recruiting: "접수중",
+      // "접수" 대신 앱 공식 동사 "신청" 계열로 통일(참가 신청 CTA·마감 안내와 일치).
+      recruiting: "신청 가능",
       closing_soon: "마감 임박",
       closed: "모집 완료",
       in_progress: "진행 중",

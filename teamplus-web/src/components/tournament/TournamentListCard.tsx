@@ -60,6 +60,8 @@ export function TournamentListCard({
   const uiStatus: TournamentUiStatus = mapTournamentUiStatus(
     tournament.status,
     tournament.endDate,
+    undefined,
+    tournament.startDate,
   );
   const dateRange = formatDateRange(tournament.startDate, tournament.endDate);
   // [2026-06-08] 대회장소 자유 텍스트(tournament.location) 최우선 표시 — 직접 입력한 장소 반영.
