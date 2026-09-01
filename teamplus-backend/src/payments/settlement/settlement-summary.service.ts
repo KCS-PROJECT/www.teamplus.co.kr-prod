@@ -1322,7 +1322,7 @@ export class SettlementSummaryService {
         refundedAmount: agg.refundedAmount,
         mixedBilling: false, // 대회는 단일 결제방식
         blockedReasonCode,
-        detailPath: `/tournaments/${src.sourceId}#settlement`,
+        detailPath: `/tournaments/${src.sourceId}/students`,
       });
     }
 

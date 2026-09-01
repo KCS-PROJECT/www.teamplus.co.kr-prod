@@ -83,6 +83,8 @@ interface PaymentsResponse {
   teamCode: string;
   total: number;
   totalPaidAmount: number;
+  /** 선택월 비취소 일정 수 — "출석 N/M회" 분모. 미제공(구 응답)이면 N회 단독 표기. */
+  totalSessions?: number;
   /** [만료 회원] 결제가 끊겨 자동 해제된(expired) 선수 — 월 필터 무관 재등록 대상 목록. */
   expiredMembers?: {
     userId: string;
@@ -536,6 +538,7 @@ export default function ClassStudentsPage() {
                       key={s.registrationId}
                       student={s}
                       variant="roster"
+                      totalSessions={data.totalSessions}
                       contact={contactByMember.get(s.memberId) ?? null}
                       isChatOpening={chatOpeningId !== null}
                       onChat={handleOpenChat}
@@ -728,7 +731,12 @@ export default function ClassStudentsPage() {
                   ) : (
                     <ul className="divide-y divide-it-line dark:divide-rink-700 border-t border-it-line dark:border-rink-700">
                       {paymentList.map((s) => (
-                        <StudentRow key={s.registrationId} student={s} variant="payment" />
+                        <StudentRow
+                          key={s.registrationId}
+                          student={s}
+                          variant="payment"
+                          totalSessions={data.totalSessions}
+                        />
                       ))}
                     </ul>
                   )}
@@ -762,12 +770,15 @@ export default function ClassStudentsPage() {
 function StudentRow({
   student,
   variant,
+  totalSessions,
   contact = null,
   isChatOpening = false,
   onChat,
 }: {
   student: PaymentStudent;
   variant: 'roster' | 'payment';
+  /** 선택월 비취소 일정 수 — 있으면 "출석 N/M회"로 표기. */
+  totalSessions?: number;
   /** [H-02] 부모 우선 연락 대상 — roster variant 전용, null 이면 버튼 미노출 */
   contact?: ClassContact | null;
   isChatOpening?: boolean;
@@ -794,6 +805,11 @@ function StudentRow({
         : (ROW_STATUS_META[student.billingStatus] ?? ROW_STATUS_META.UNSETTLED);
   const timing = TIMING_META[student.billingTiming] ?? TIMING_META.UNASSIGNED;
   const M = MESSAGES.academy.students;
+  // "이번 달 출석 N/M회" — 분모(선택월 비취소 일정 수) 있으면 비율 표기.
+  const attendanceLabel =
+    totalSessions && totalSessions > 0
+      ? M.attendanceThisMonthRatio(student.attendanceCount ?? 0, totalSessions)
+      : M.attendanceThisMonth(student.attendanceCount ?? 0);
   return (
     <li className="py-3 flex items-center gap-3">
       <div className="h-9 w-9 shrink-0 rounded-w-pill flex items-center justify-center bg-it-fill dark:bg-rink-700">
@@ -823,17 +839,22 @@ function StudentRow({
                   {M.playersEnrolledOn(formatDateKR(student.registrationDate))}
                 </span>
               )}
+              {/* 결제 상품명 — 감독이 명단에서 결제 내용과 출석을 함께 보는 1차 정보.
+                  월스코프 선불 미매칭 행은 productName null 로 내려와 생략된다. */}
+              {student.productName && (
+                <span className="truncate">· {student.productName}</span>
+              )}
               {student.payerName && (
                 <span className="truncate">· {M.payerLabel(student.payerName)}</span>
               )}
               <span className="font-num tabular-nums text-it-blue-500 dark:text-it-blue-300">
-                · {M.attendanceThisMonth(student.attendanceCount ?? 0)}
+                · {attendanceLabel}
               </span>
             </>
           ) : (
             <>
               <span className="font-num tabular-nums">
-                {M.attendanceThisMonth(student.attendanceCount ?? 0)}
+                {attendanceLabel}
               </span>
               {student.billingStatus === 'PAID' && student.paidAt && (
                 <span className="font-num tabular-nums">· {formatDateKR(student.paidAt)}</span>

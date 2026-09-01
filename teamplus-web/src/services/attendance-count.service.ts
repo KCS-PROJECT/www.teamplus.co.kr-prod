@@ -24,6 +24,8 @@ export interface MonthlyAttendanceCounts {
   billingMode: "PREPAID" | "POSTPAID";
   /** @deprecated 표시 중단 — 백엔드가 항상 null 반환 (하위호환 키). */
   nominalSessions: number | null;
+  /** 해당 월 비취소 일정 수 — "N/M회" 분모. 미제공(구 응답)이면 N회 단독 표기. */
+  totalSessions?: number;
   totalPresent: number;
   items: MonthlyAttendanceCountItem[];
 }

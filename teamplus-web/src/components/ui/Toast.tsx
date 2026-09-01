@@ -397,11 +397,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={contextValue}>
       {children}
-      {/* Toast Container — fixed 위치, BottomNav 위 (iOS Safe Area 반영) */}
+      {/* Toast Container — fixed 위치 (iOS Safe Area 반영).
+          offset 8.5rem(136px) 기준: 토스트는 주로 하단 고정 CTA 바가 있는 폼/결제 화면에서
+          발생하는데, 가장 높은 CTA 바(pt-4 + h-14 버튼 + pb-8 ≈ 108px)가 safe-area 0인
+          웹 환경에서 이전 값 6rem(96px)과 겹쳤다. 108px 위 여백을 확보하는 값. */}
       {/* width: calc(100vw - 32px) 로 모바일에서 좌우 16px 여백 유지, maxWidth 로 태블릿·데스크톱 상한 */}
       <div
         data-testid="toast-container"
-        className="fixed left-1/2 -translate-x-1/2 z-[60] flex flex-col gap-2 pointer-events-none bottom-[calc(6rem+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px)))]"
+        className="fixed left-1/2 -translate-x-1/2 z-[60] flex flex-col gap-2 pointer-events-none bottom-[calc(8.5rem+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px)))]"
         style={{ width: 'calc(100vw - 32px)', maxWidth: TOAST_MAX_WIDTH }}
       >
         <div className="flex flex-col gap-2 pointer-events-auto">

@@ -156,7 +156,7 @@ function makeRichSettlement(yearMonth: string) {
         refundedAmount: 0,
         mixedBilling: false,
         blockedReasonCode: null,
-        detailPath: '/tournaments/t1#settlement',
+        detailPath: '/tournaments/t1/students',
       },
     ],
     unpaid: { amount: 20000, count: 1 },

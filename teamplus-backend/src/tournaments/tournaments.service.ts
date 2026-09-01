@@ -64,21 +64,28 @@ export class TournamentsService {
 
   /**
    * [추가 2026-05-15] 대회 참가 결제 시작.
-   *  · 학부모(PARENT) 가 자녀 대회 참가비를 토스 위젯으로 결제하기 위한 endpoint.
-   *  · Payment row 생성(productId=null, paymentMethod=toss, status=pending)
+   *  · 학부모(PARENT) 가 자녀 대회 참가비를 PG 결제(토스 위젯/나이스 결제창)로
+   *    결제하기 위한 endpoint. 결제사는 활성 결제사 스위치를 따르며 시작 시점에 고정된다.
+   *  · Payment row 생성(productId=null, status=pending, pgProvider=활성 결제사)
    *    + TournamentRegistration upsert(paymentStatus=PENDING, paymentId 연결).
-   *  · 토스 결제 성공 후 /payments/toss/confirm 호출 시 paymentsService 가
+   *  · PG 승인(/payments/toss/confirm 또는 /payments/nice/authorize) 시 paymentsService 가
    *    Payment 와 연결된 tournamentRegistrations 를 PAID 로 갱신한다.
    *  · 멱등성: orderNumber 는 항상 새로 발급되므로 동일 사용자 동시 클릭 락은
    *    payments 모듈의 Redis 락에 위임 (5초). 본 endpoint 는 단순히 row 생성만.
    *
-   *  @returns { id, orderNumber, amount } — frontend 가 토스 위젯에 orderId 로 전달.
+   *  @returns { id, orderNumber, amount, pgProvider } — frontend 가 pgProvider 로
+   *    결제 UI(토스 위젯/나이스 결제창)를 분기하고 orderNumber 를 orderId 로 전달.
    */
   async initiateTournamentPayment(
     userId: string,
     tournamentId: string,
     body: { childId: string; amount: number; gamesCount?: number },
-  ): Promise<{ id: string; orderNumber: string; amount: number }> {
+  ): Promise<{
+    id: string;
+    orderNumber: string;
+    amount: number;
+    pgProvider: string;
+  }> {
     const tournament = await this.prisma.tournament.findUnique({
       where: { id: tournamentId },
       select: {
@@ -174,7 +181,7 @@ export class TournamentsService {
           productId: null,
           amount: body.amount,
           paymentStatus: "pending",
-          paymentMethod: "toss",
+          paymentMethod: pgProvider,
           pgProvider,
         },
       });
@@ -223,6 +230,7 @@ export class TournamentsService {
       id: payment.id,
       orderNumber: payment.orderNumber,
       amount: payment.amount,
+      pgProvider,
     };
   }
 

@@ -353,7 +353,10 @@ export class CreditDomainService {
    *
    * 동작:
    *   - 명시된 creditIds 중 usedSessions > 0 인 건만 decrement
-   *   - 성공 건수 반환 + 각 건에 대해 CreditTransaction(type='restored') 일괄 INSERT
+   *   - **UPDATE ... RETURNING 단일 문**으로 DB 가 실제 갱신한 row 만 성공으로 취급
+   *     (Codex R3-B1: 사전 조회 목록은 실제 성공 목록이 아니다 — schedule lock 을
+   *     공유하지 않는 credit writer 가 조회↔감소 사이에 낄 수 있다)
+   *   - CreditTransaction(type='restored')·반환 id 전부 RETURNING 결과에서만 파생
    */
   async bulkRestoreOne(
     tx: Prisma.TransactionClient,
@@ -363,39 +366,46 @@ export class CreditDomainService {
       adjustedBy: string;
       scheduleId?: string;
     },
-  ): Promise<{ restoredCount: number }> {
+  ): Promise<{ restoredCount: number; restoredCreditIds: string[] }> {
     if (params.creditIds.length === 0) {
-      return { restoredCount: 0 };
+      return { restoredCount: 0, restoredCreditIds: [] };
     }
 
-    const result = await tx.memberCredit.updateMany({
-      where: {
-        id: { in: params.creditIds },
-        usedSessions: { gt: 0 },
-      },
-      data: { usedSessions: { decrement: 1 } },
+    // 원자 갱신+성공 식별 — RETURNING 은 실제로 갱신된 row 만 반환한다.
+    //   balance 도 갱신 후 값이라 별도 재조회 불필요.
+    //   updated_at 명시 갱신 — raw SQL 은 Prisma @updatedAt 자동 갱신을 우회하므로
+    //   빠뜨리면 이 경로만 수정 시각이 멈춘다 (Codex R4-RG-01).
+    const restored = await tx.$queryRaw<
+      { id: string; total_sessions: number; used_sessions: number }[]
+    >`
+      UPDATE member_credits
+         SET used_sessions = used_sessions - 1,
+             updated_at = CURRENT_TIMESTAMP
+       WHERE id IN (${Prisma.join(params.creditIds)})
+         AND used_sessions > 0
+       RETURNING id, total_sessions, used_sessions
+    `;
+
+    if (restored.length === 0) {
+      return { restoredCount: 0, restoredCreditIds: [] };
+    }
+
+    await tx.creditTransaction.createMany({
+      data: restored.map((c) => ({
+        memberCreditId: c.id,
+        type: "restored",
+        amount: 1,
+        balanceAfter: c.total_sessions - c.used_sessions,
+        scheduleId: params.scheduleId ?? null,
+        reason: params.reason,
+        adjustedBy: params.adjustedBy,
+      })),
     });
 
-    if (result.count > 0) {
-      const restoredCredits = await tx.memberCredit.findMany({
-        where: { id: { in: params.creditIds } },
-        select: { id: true, totalSessions: true, usedSessions: true },
-      });
-
-      await tx.creditTransaction.createMany({
-        data: restoredCredits.map((c) => ({
-          memberCreditId: c.id,
-          type: "restored",
-          amount: 1,
-          balanceAfter: c.totalSessions - c.usedSessions,
-          scheduleId: params.scheduleId ?? null,
-          reason: params.reason,
-          adjustedBy: params.adjustedBy,
-        })),
-      });
-    }
-
-    return { restoredCount: result.count };
+    return {
+      restoredCount: restored.length,
+      restoredCreditIds: restored.map((c) => c.id),
+    };
   }
 
   /**

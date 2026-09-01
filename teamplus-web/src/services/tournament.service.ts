@@ -481,16 +481,25 @@ export async function listTournamentRegistrations(
   );
 }
 
+/** 대회 결제 시작 응답 — pgProvider 는 서버가 시작 시점에 고정한 결제사. */
+export interface TournamentPaymentInitiateResult {
+  id: string;
+  orderNumber: string;
+  amount: number;
+  pgProvider?: 'toss' | 'nice';
+}
+
 /**
  * [추가 2026-05-15] 대회 참가 결제 시작 — 학부모 전용.
  *  · backend: POST /tournaments/:id/payment/initiate
- *  · 응답의 orderNumber 를 토스 위젯 requestPayment 의 orderId 로 사용.
+ *  · 응답의 orderNumber 를 PG 결제(토스 위젯/나이스 결제창)의 orderId 로 사용.
+ *  · 응답의 pgProvider 로 결제 UI 를 분기한다 (누락 시 toss 폴백).
  */
 export async function initiateTournamentPayment(
   tournamentId: string,
   body: { childId: string; amount: number; gamesCount?: number },
-): Promise<ApiResponse<{ id: string; orderNumber: string; amount: number }>> {
-  return api.post<{ id: string; orderNumber: string; amount: number }>(
+): Promise<ApiResponse<TournamentPaymentInitiateResult>> {
+  return api.post<TournamentPaymentInitiateResult>(
     `/tournaments/${encodeURIComponent(tournamentId)}/payment/initiate`,
     body,
   );
@@ -957,6 +966,7 @@ export function mapTournamentUiStatus(
   raw: TournamentStatus,
   endDate?: string | null,
   now: Date = new Date(),
+  startDate?: string | null,
 ): TournamentUiStatus {
   if (raw === 'cancelled') return 'cancelled';
   if (raw === 'finished') return 'completed';
@@ -968,7 +978,7 @@ export function mapTournamentUiStatus(
   if (endDate) {
     const d = new Date(endDate);
     if (!Number.isNaN(d.getTime())) {
-      // day-level(KST): 종료일 당일까지 모집중, 다음날부터 종료.
+      // day-level(KST): 종료일 당일까지 유효, 다음날부터 종료.
       //   endDate 는 @db.Date(UTC 자정). now 를 KST 달력일의 UTC 자정으로 환산해 비교
       //   (백엔드 kstTodayUtcMidnight 기준과 일관). 시각 단위 비교 시 당일 대회가
       //   KST 09:00(UTC 자정)부터 종료로 오판되던 버그 수정.
@@ -981,6 +991,18 @@ export function mapTournamentUiStatus(
       );
       if (d.getTime() < kstTodayUtcMidnight) {
         return 'completed';
+      }
+      // 시작일 ≤ 오늘 ≤ 종료일 → 진행 중 — classes-manage 대회 카드
+      //   (resolvePeriodStatus 날짜 판정)와 표기 일치. 신청 가능 여부는 상태가
+      //   아니라 첫 경기 시작 가드가 담당하므로 신청 CTA 는 이 값에 의존하지 않는다.
+      if (startDate) {
+        const s = new Date(startDate);
+        if (
+          !Number.isNaN(s.getTime()) &&
+          s.getTime() <= kstTodayUtcMidnight
+        ) {
+          return 'in_progress';
+        }
       }
     }
   }

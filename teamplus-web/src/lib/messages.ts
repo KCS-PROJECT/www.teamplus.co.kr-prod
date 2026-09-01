@@ -68,6 +68,8 @@ export const MESSAGES = {
       packageNeedsUpdate: "미등록",
       renewRegisterButton: "등록하기",
       packageCreated: "새 달분으로 등록되었습니다.",
+      retireFailed:
+        "이전 항목 정리에 실패했습니다. 남은 항목은 다음 달 준비 때 자동으로 정리돼요.",
       openSalesButton: "판매 시작하기",
       // 성공 토스트 — 행위("판매되었다")가 아니라 결과(학부모가 N월 훈련을 신청 가능)를 서술.
       openSalesSuccess: (month: number) =>
@@ -95,6 +97,9 @@ export const MESSAGES = {
         `${name} ${month}월 금액`,
       // 미등록 항목 입력 필드 라벨 — 이름/금액 input 구분용.
       renewNameLabel: "항목 이름",
+      // 선택 입력 명시 — 원래 설명이 없던 항목·일부러 비우는 편집 모두 정상 상태.
+      renewDescLabel: "설명 (선택)",
+      renewDescPlaceholder: "항목 설명을 입력해주세요",
       renewPriceLabel: (month: number) => `${month}월 금액`,
       // 수정 폼 월 수강료 — 귀속월 칩 + 등록 이관 안내(실행은 일정·판매 관리).
       monthTag: (month: number) => `${month}월분`,
@@ -103,12 +108,6 @@ export const MESSAGES = {
       // 수정 폼(edit) 일정 카드 대체 안내 — 일정 편집 이관.
       scheduleMovedHint:
         "일정 추가·변경·취소는 '일정·판매 관리'에서 진행할 수 있어요.",
-      // 모든 회차에 적용 — 일정·판매 관리 아코디언(즉시 반영이라 확인창 필수).
-      applyAllConfirm: (n: number) =>
-        `다가오는 ${n}개 회차에 이 시간·장소를 적용할까요? 지난 회차는 변경되지 않습니다.`,
-      applyAllDone: (n: number) => `${n}개 회차에 적용되었습니다.`,
-      applyAllPartialFailed: (n: number) =>
-        `${n}개 회차는 적용하지 못했습니다. 다시 시도해주세요.`,
       // 수정 완료 페이지 — 판매 승인 대기 수업의 일정·판매 관리 유도.
       completeOpenSalesTitle: (month: number) => `${month}월 판매 시작`,
       // 이력 잠금(지난 월분·판매 중지분) — 수정/삭제 불가, 기본 접힘.
@@ -134,13 +133,50 @@ export const MESSAGES = {
         "종료된 수업입니다. 수업 상세에서 종료를 취소한 뒤 일정을 등록할 수 있어요.",
       completePrepGuide:
         "일정이 준비되었습니다. 일정·판매 관리에서 월 수강 구성을 확인하고 판매를 시작해 주세요.",
+      // [draft 일괄 저장] 일정 섹션 draft 상태 칩·액션 (설계 v4.1 §3.8).
+      draftNewChip: "저장 전",
+      draftEditedChip: "수정됨",
+      draftCancelChip: "취소 예정",
+      draftCancelUndo: "취소 해제",
+      rowApplyButton: "적용하기",
+      draftRemoveAria: (label: string) => `${label} 추가 취소`,
+      // [설계 §3.8] 일괄 저장 바 + apply-draft 결과 안내.
+      saveBarButton: (n: number) => `저장하기 (${n}건)`,
+      discardAllButton: "모두 되돌리기",
+      discardAllTitle: "변경 되돌리기",
+      discardAllConfirm: (n: number) =>
+        `저장하지 않은 변경 ${n}건을 모두 되돌릴까요?`,
+      leaveTitle: "저장하지 않은 변경",
+      leaveConfirm: (n: number) =>
+        `저장하지 않은 변경 ${n}건이 있습니다. 저장하지 않고 나갈까요?`,
+      saveDone: (n: number) => `변경 ${n}건이 반영되었습니다.`,
+      saveFailed:
+        "저장하지 못했습니다. 변경 내용은 그대로 남아 있으니 다시 시도해주세요.",
+      // 서버가 실패 원인을 준 경우에도 draft 유지 + 재시도 행동 안내를 덧붙이는 접미 문구.
+      saveKeptHint:
+        "변경 내용은 그대로 남아 있어요. 잠시 후 다시 시도해주세요.",
+      saveConflict: (n: number) =>
+        `${n}건은 다른 곳에서 먼저 변경되어 반영하지 못했습니다. 목록을 확인한 뒤 다시 저장해주세요.`,
+      // DB cancellationReason 에 저장되는 기본 사유 (학부모 표면 노출 가능 문구).
+      draftCancelReason: "감독/코치 취소",
+      saveTimeUndecidedTitle: "시간 미정 회차",
+      saveTimeUndecidedConfirm: (n: number) =>
+        `시간 미정 회차 ${n}건이 포함되어 있습니다. 이대로 저장할까요?`,
+      prepLockedHint: "일정 변경을 저장한 뒤 진행할 수 있어요.",
       // 월분 갱신 제안 금액 — 대상월 실제 일정 수 × 1회 수업료(참고 단가). 눌러서 적용.
+      // 제안 금액 계산 — 회차 스테퍼(단가 × 회수) + 요일별 회차 정보 텍스트.
       renewCalcHint: (month: number, unit: string) =>
-        `1회 ${unit}원 기준 ${month}월 제안 금액이에요. 눌러서 적용할 수 있어요.`,
-      renewCalcDayChip: (day: string, count: number, amount: string) =>
-        `${day} ${count}회 ${amount}원`,
-      renewCalcAllChip: (count: number, amount: string) =>
-        `전체 ${count}회 ${amount}원`,
+        `1회 ${unit}원 기준 ${month}월 제안 금액이에요. 회차를 맞춰 적용해보세요.`,
+      renewCalcScheduleInfo: (month: number) => `${month}월 일정`,
+      renewCalcDayLabel: (day: string, count: number) => `${day} ${count}회`,
+      renewCalcAmount: (amount: string) => `${amount}원`,
+      renewCalcApplyButton: "적용하기",
+      renewCalcApplyAria: (count: number, amount: string) =>
+        `${count}회 ${amount}원 적용하기`,
+      renewCalcDecAria: "회차 줄이기",
+      renewCalcIncAria: "회차 늘리기",
+      renewCalcCountInputAria: "회차 직접 입력",
+      renewCalcCountUnit: "회",
     },
     endConfirmTitle: "수업을 종료할까요?",
     endConfirmMessage:
@@ -188,7 +224,9 @@ export const MESSAGES = {
     dayDefaults: {
       title: "정규 수업 요일",
       optional: "선택",
-      hint: "이 수업이 진행되는 요일이에요. 수업 정보에 '월·수·금'처럼 표시되고, 아래 '월 일정 일괄 생성'을 누르면 이 요일·시간·장소로 이번 달(남은 날짜가 없으면 다음 달) 날짜가 만들어져요.",
+      // 일괄 생성 연동 설명은 제거 — 버튼 라벨(fillMonthCount)이 자기설명적이고,
+      //   수정 모드에는 그 버튼이 없어(일정 편집 단일화) 부정확한 안내가 되던 문구.
+      hint: "이 수업이 진행되는 요일이에요. 수업 정보에 '월·수·금'처럼 표시돼요.",
       startTime: "시작 시간",
       endTime: "종료 시간",
       venueSelect: "장소 선택",
@@ -222,6 +260,8 @@ export const MESSAGES = {
       fillMonth: (month: number) => `${month}월 일정 일괄 생성`,
       fillMonthCount: (month: number, count: number) =>
         `${month}월 일정 일괄 생성 (${count}일)`,
+      fillMonthFull: (month: number) =>
+        `${month}월 정규 요일 일정이 이미 모두 등록되어 있어요. 남은 일정이 끝나면 다음 달 일괄 생성이 열립니다.`,
       emptyResult: "새로 만들 날짜가 없습니다.",
       success: (count: number) =>
         `${count}개 날짜를 만들었어요. 등록·수정할 때 저장됩니다.`,
@@ -1068,7 +1108,10 @@ export const MESSAGES = {
     methodVbank: "가상계좌(무통장)",
     methodVbankHint: "발급된 계좌로 입금하시면 결제가 완료됩니다.",
     agreementTitle: "결제 진행 동의",
-    agreementRequired: "(필수) 결제 진행 및 환불 규정에 동의합니다.",
+    // 라벨 속 "환불 규정"만 링크(모달)로 렌더하기 위한 3분할 — 별도 보기 버튼 없이 규정 열람 제공.
+    agreementRequiredPrefix: "(필수) 결제 진행 및 ",
+    agreementRequiredLink: "환불 규정",
+    agreementRequiredSuffix: "에 동의합니다.",
     agreementNotChecked: "결제 진행에 동의해주세요.",
     windowOpenFailed: "결제창을 열 수 없어요. 새로고침 후 다시 시도해주세요.",
     // 결제창이 취소·인증 실패로 돌아왔을 때 — 백엔드 redirect 의 error 코드별 안내.
@@ -1908,8 +1951,26 @@ export const MESSAGES = {
     rosterParticipantCount: (n: number) => `참가 ${n}명`,
     rosterSelectAllAria: "청구 대상 전체 선택",
     rosterRowCheckAria: (name: string) => `${name} 결제요청 대상`,
+    // 선수정보 분리 페이지(/tournaments/[id]/students) — 상세는 진입 카드만 노출.
+    //   명칭은 수업 축(/classes/[id]/students "선수정보")과 통일.
+    rosterPageTitle: "선수정보",
+    rosterManageCta: "선수정보",
+    rosterHeaderSummary: (total: number, paid: number) =>
+      `참가 ${total}명 · 완납 ${paid}명`,
+    rosterRefundSheetTitle: "환불 정보",
+    rosterRefundAmount: (amount: number) =>
+      `환불 금액 ${amount.toLocaleString()}원`,
+    // 선불 대회 미결제(UNSETTLED) — "미정산"(후불 용어)·"미수" 대신 사용.
+    //   선불 미결제는 미수금 계약상 미수가 아니다(결제 이탈).
+    rosterPrepaidUnpaid: "미결제",
+    settleRequestCtaCount: (n: number) => `결제요청 (${n}명)`,
     settleRequestCta: "결제요청",
     settleRequestCancelCta: "결제요청취소",
+    // 정산 확정 전 확인창 — 알림이 외부(보호자)로 즉시 발송되고 화면에 회수
+    //   수단이 없어(결제요청취소 임시 숨김) 실행 전 고지가 필요하다.
+    settleConfirmTitle: "결제요청 확인",
+    settleConfirmMessage: (count: number, total: number) =>
+      `${count}명에게 총 ${total.toLocaleString()}원을 청구할까요?\n결제 요청 알림이 발송됩니다.`,
     postpaidFeeLabel: "후불 정산 (종료 후 청구)",
     // [후불 참고 참가비 안내 — 감독이 사전 입력한 예상 금액 표시용]
     postpaidEstimateNote: "예상 금액 · 종료 후 정산에서 확정",
@@ -1919,12 +1980,14 @@ export const MESSAGES = {
     billingModePostpaid: "후불",
     settleCta: "정산하기",
     settleTitle: "후불 정산",
-    settleFeeLabel: "1인당 참가비",
-    settleFeePlaceholder: "참가비 (원)",
+    // 일괄 청구·단건 금액 수정 모달 공용 라벨 — "1인당" 접두는 붙이지 않는다
+    //   (인당 곱셈은 하단 "총 청구 금액" 미리보기가 보여준다).
+    settleFeeLabel: "청구 금액",
+    settleFeePlaceholder: "금액 (원)",
     settleTargetCount: (n: number) => `정산 대상 ${n}명`,
     settleTotalLabel: "총 청구 금액",
     settleNoTarget: "정산 대상 참가자가 없습니다.",
-    settleFeeRequired: "1인당 참가비를 입력해주세요.",
+    settleFeeRequired: "청구 금액을 입력해주세요.",
     settleSuccess: (count: number, total: number): string =>
       `${count}명에게 총 ${new Intl.NumberFormat("ko-KR").format(total)}원이 청구되었습니다.`,
     nameRequired: "대회명을 입력해주세요.",
@@ -2001,7 +2064,8 @@ export const MESSAGES = {
       `${games}경기 x ${new Intl.NumberFormat("ko-KR").format(fee)}원`,
     // 상태 라벨 (Tournament UI Status)
     statusLabel: {
-      recruiting: "접수중",
+      // "접수" 대신 앱 공식 동사 "신청" 계열로 통일(참가 신청 CTA·마감 안내와 일치).
+      recruiting: "신청 가능",
       closing_soon: "마감 임박",
       closed: "모집 완료",
       in_progress: "진행 중",
@@ -3183,6 +3247,9 @@ export const MESSAGES = {
         "출석한 만큼 월말에 정산됩니다. 출석 횟수·정산 확정은 출석 관리에서 진행됩니다.",
       // [Phase C] 선수정보 탭 당월 출석 횟수
       attendanceThisMonth: (n: number) => `이번 달 출석 ${n}회`,
+      // 분모 포함 표기 — total=선택월 비취소 일정 수(getClassPayments.totalSessions).
+      attendanceThisMonthRatio: (n: number, total: number) =>
+        `이번 달 출석 ${n}/${total}회`,
       // [만료 회원] 결제가 끊겨 자동 해제된(expired) 선수 관리 목록 — 재등록 대상.
       //   복귀는 학부모 재결제 시 자동 복구 단일 경로(수동 배치 미사용 정책).
       //   명단제외 = expired → inactive 정리(감독 판단) — 재결제 시 자동 복귀는 동일.
@@ -4329,6 +4396,8 @@ export const MESSAGES = {
     prevMonth: "이전 달",
     nextMonth: "다음 달",
     countUnit: (n: number) => `${n}회`,
+    // 분모 포함 표기 — total=해당 월 비취소 일정 수(monthly-counts.totalSessions).
+    countRatioUnit: (n: number, total: number) => `${n}/${total}회`,
     postpaidProduct: "후불",
     total: "총 출석",
     empty: "이번 달 출석 기록이 없어요.",
@@ -4414,11 +4483,11 @@ export const MESSAGES = {
     softDeletedToast: "결제 이력이 있어 비활성으로 전환되었습니다.",
     hardDeletedToast: "월 결제가 삭제되었습니다.",
     saveSuccess: "월 결제가 저장되었습니다.",
-    fieldProductName: "월 결제명",
-    fieldProductNamePlaceholder: "예) 주 2회 4주 정기권",
+    // "항목 이름" — 판매 준비(일정·판매 관리) renewNameLabel 과 동일 필드·동일 명칭.
+    fieldProductName: "항목 이름",
+    // 설명 라벨 — "(선택)" 표기는 fieldDescriptionHint(optionalHint)가 담당하므로 중복 금지.
     fieldDescription: "설명",
-    fieldDescriptionPlaceholder:
-      "예시) 주 단위 횟수로 결제진행(주 1회 수업 등 설정 가능)",
+    fieldDescriptionPlaceholder: "설명을 입력해주세요",
     fieldPrice: "가격(원)",
     fieldDurationDays: "유효기간(일)",
     fieldSessionsPerMonth: "월 횟수",
@@ -4436,7 +4505,7 @@ export const MESSAGES = {
     unavailableEndDateExceed: "수업 종료일을 초과하는 수강권입니다",
     unavailableClassEnded: "이 수업은 종료되었습니다",
     selectAnotherPackage: "다른 수강권을 선택해주세요",
-    validationProductName: "월 결제명을 입력해주세요.",
+    validationProductName: "항목 이름을 입력해주세요.",
     validationPrice: "가격을 올바르게 입력해주세요.",
     validationSessionsPerMonth: "월 횟수는 1 이상이어야 합니다.",
     validationDurationDays: "유효기간은 1일 이상이어야 합니다.",
@@ -4457,17 +4526,15 @@ export const MESSAGES = {
     //   회차는 가격 산정 보조값일 뿐 서버 미전송(sessionsPerMonth 크레딧 SoT 불변).
     priceCalc: {
       sectionTitle: "가격 자동 계산 (선택)",
-      daysLabel: "참여 요일",
-      dayChip: (day: string, count: number) => `${day} (${count}회)`,
+      // 제목 옆 단가 근거 — 산식 줄을 없애고 근거만 헤더로 이동(판매 준비 hint 와 동일 취지).
+      unitBasis: (won: string) => `1회 ${won}원 기준`,
+      dayChip: (day: string, count: number) => `${day} ${count}회`,
       dayClassName: (days: string) => `${days}요일반`,
-      countLabel: "참여 회차 수",
-      count: (n: number) => `${n}회`,
+      countUnit: "회",
+      countInputAria: "참여 회차 직접 입력",
       countDecrease: "참여 회차 줄이기",
       countIncrease: "참여 회차 늘리기",
-      summary: (month: number, total: number, count: number) =>
-        `${month}월 일정 ${total}회 중 ${count}회 참여`,
-      formula: (unit: number, count: number, total: number) =>
-        `${unit.toLocaleString("ko-KR")}원 × ${count}회 = ${total.toLocaleString("ko-KR")}원`,
+      amount: (won: string) => `${won}원`,
       applyButton: "적용하기",
       perSessionRate: (won: number) => `회당 ${won.toLocaleString("ko-KR")}원`,
       discountHint: (pct: number) => `1회 수업료 대비 ${pct}% 할인`,

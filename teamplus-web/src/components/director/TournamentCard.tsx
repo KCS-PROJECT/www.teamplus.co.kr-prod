@@ -207,7 +207,7 @@ export function mapTournamentFromApi(t: {
   };
 
   const statusLabelMap: Record<TournamentStatus, string> = {
-    recruiting: '접수중',
+    recruiting: '신청 가능',
     closing_soon: '마감 임박',
     closed: '모집 완료',
     in_progress: '진행 중',

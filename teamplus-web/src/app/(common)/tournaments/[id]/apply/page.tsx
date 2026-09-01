@@ -6,21 +6,31 @@ export const dynamic = 'force-dynamic';
  * 대회 참가 결제 페이지 (2026-05-15 재작성).
  *
  * 기존: 자유 폼(팀명/연락처/메모) 기반 참가 신청.
- * 변경: 수업 결제(/payment/checkout) 와 동일한 토스 위젯 결제 화면.
+ * 변경: 수업 결제(/payment/checkout) 와 동일한 결제사(PG)별 분기 결제 화면.
+ *   결제사는 서버가 정하며(initiate 응답 pgProvider), 시작 시점에 고정된다.
  *
- * 흐름:
+ * 공통 흐름:
  *   1) 대회 정보 조회 (getTournament) — 이름/일정/참가비/자녀 후보
  *   2) 자녀 선택 (학부모가 여러 자녀 보유 시) — selectedParticipantIds 매칭만 노출
  *   3) POST /tournaments/:id/payment/initiate → Payment + TournamentRegistration(PENDING) 생성
- *      응답의 orderNumber 를 토스 위젯 orderId 로 사용
+ *      응답의 orderNumber 를 PG orderId 로, pgProvider 를 분기 기준으로 사용
+ *
+ * ─── 토스페이먼츠 (위젯) ───────────────────────────────────────────
  *   4) GET /payments/toss/client-key → TossPayments.widgets({customerKey})
  *   5) setAmount + renderPaymentMethods + renderAgreement
  *   6) 결제 버튼 → widgets.requestPayment({orderId, orderName, successUrl, failUrl})
  *   7) 토스 → /payment/complete (수업 결제 공용) → POST /payments/toss/confirm
  *      → backend 가 TournamentRegistration.paymentStatus=PAID 갱신 → 캘린더 노출.
  *
+ * ─── 나이스페이먼츠 (결제창) ──────────────────────────────────────
+ *   4) GET /payments/nice/client-key + SDK(pay.nicepay.co.kr) 프리로드
+ *   5) 결제수단 선택·약관 동의 UI 는 우리가 직접 그린다(위젯 없음 — checkout 과 동일)
+ *   6) 결제 버튼 → AUTHNICE.requestPay({ clientId, method, orderId, amount, returnUrl })
+ *   7) 나이스 → 백엔드 /payments/nice/authorize 가 서명 검증+승인 후
+ *      /payment/complete 로 303 리다이렉트 (후처리는 토스와 공용).
+ *
  * 테스트 결제(mock): 6) 대신 POST /payments/mock-confirm → /payment/complete?provider=mock
- *   으로 토스 위젯 없이 동일 후처리를 태운다. 선불 대회만 해당(후불·무료는 결제 위젯 미진입).
+ *   으로 결제창 없이 동일 후처리를 태운다. 선불 대회만 해당(후불·무료는 결제 위젯 미진입).
  */
 
 import { useEffect, useMemo, useRef, useState, Suspense, useCallback } from 'react';
@@ -39,7 +49,11 @@ import { useBlockBackNavigation } from '@/hooks/useBlockBackNavigation';
 import { usePageReady } from '@/hooks/usePageReady';
 import { useAuth } from '@/contexts/AuthContext';
 import { MESSAGES } from '@/lib/messages';
+import { env } from '@/lib/env';
+import { isNativeApp } from '@/lib/environment';
+import { loadNiceSdk } from '@/lib/nice-sdk';
 import { api } from '@/services/api-client';
+import { TermsDocumentModal } from '@/components/legal/TermsDocumentModal';
 import {
   getTournament,
   initiateTournamentPayment,
@@ -60,6 +74,12 @@ const GlobalMenu = nextDynamic(
 type TossPaymentsInstance = any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TossWidgets = any;
+
+/** 결제사 — 서버(initiate 응답 pgProvider)가 정하는 값. */
+type PaymentProvider = 'toss' | 'nice';
+
+/** 나이스 결제창 결제수단. 결제창 호출 시 method 로 그대로 전달된다. */
+type NiceMethod = 'card' | 'bank' | 'vbank';
 
 /** 신청 선수 옵션 — 판정 SoT 는 tournament.service 의 공용 util(상세 CTA 와 공유). */
 type ChildOption = TournamentChildOption;
@@ -101,11 +121,19 @@ function TournamentApplyContent() {
   const [orderId, setOrderId] = useState<string | null>(null);
   const [widgets, setWidgets] = useState<TossWidgets | null>(null);
   const [isReady, setIsReady] = useState(false);
+  // 결제사 — 확정 전에는 null 이라 어떤 결제 UI 도 그리지 않는다(토스 위젯 자리 깜빡임 방지).
+  const [provider, setProvider] = useState<PaymentProvider | null>(null);
+  const [niceClientKey, setNiceClientKey] = useState<string | null>(null);
+  // 나이스 전용 — 토스 위젯이 대신 그려주던 두 가지를 직접 관리한다.
+  const [niceMethod, setNiceMethod] = useState<NiceMethod>('card');
+  const [niceAgreed, setNiceAgreed] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [initStarted, setInitStarted] = useState(false);
   // [2026-06-16] 후불(POSTPAID) 대회 — 결제 위젯 없이 참가 신청만 처리 중 플래그.
   const [isRegistering, setIsRegistering] = useState(false);
+  // 환불 규정 '보기' — 결제 흐름 이탈 방지를 위해 모달로 표시(checkout 과 동일).
+  const [policyModalType, setPolicyModalType] = useState<string | null>(null);
 
   usePageReady(!isLoading);
 
@@ -182,14 +210,15 @@ function TournamentApplyContent() {
     [childOptions],
   );
 
-  // 2) 결제 시작 — 자녀 선택 후 사용자가 '결제 진행' 누르면 위젯 init.
+  // 2) 결제 시작 — 자녀 선택 후 사용자가 '결제 진행' 누르면 결제사 확정 + 결제 UI 준비.
   const startPayment = useCallback(async () => {
     if (initRef.current) return;
     if (!tournament || !selectedChildId || amount <= 0 || !user?.id) return;
     initRef.current = true;
     setInitStarted(true);
     try {
-      // a) initiate — Payment + TournamentRegistration(PENDING)
+      // a) initiate — Payment + TournamentRegistration(PENDING).
+      //    결제사는 서버가 시작 시점에 고정해 pgProvider 로 되돌려준다.
       const initRes = await initiateTournamentPayment(tournamentId, {
         childId: selectedChildId,
         amount,
@@ -199,15 +228,30 @@ function TournamentApplyContent() {
         throw new Error(initRes.error?.message ?? MESSAGES.payment2.initFailed);
       }
       setOrderId(initRes.data.orderNumber);
+      const resolved: PaymentProvider =
+        initRes.data.pgProvider === 'nice' ? 'nice' : 'toss';
+      setProvider(resolved);
 
-      // b) clientKey
+      if (resolved === 'nice') {
+        // b-N) 나이스 — clientKey 조회 + SDK 프리로드. 결제창은 버튼 클릭 시 연다.
+        const ckRes = await api.get<ClientKeyResponse>('/payments/nice/client-key');
+        if (!ckRes.success || !ckRes.data?.clientKey) {
+          throw new Error('클라이언트키 조회 실패');
+        }
+        setNiceClientKey(ckRes.data.clientKey);
+        await loadNiceSdk();
+        setIsReady(true);
+        return;
+      }
+
+      // b-T) 토스 — clientKey 조회
       const ckRes = await api.get<ClientKeyResponse>('/payments/toss/client-key');
       if (!ckRes.success || !ckRes.data?.clientKey) {
         throw new Error('클라이언트키 조회 실패');
       }
       const clientKey = ckRes.data.clientKey;
 
-      // c) SDK 로드 + 위젯 + setAmount + render
+      // c-T) SDK 로드 + 위젯 + setAmount + render
       const { loadTossPayments, ANONYMOUS } = await import('@tosspayments/tosspayments-sdk');
       const customerKey = user.id || ANONYMOUS;
       const tossPayments: TossPaymentsInstance = await loadTossPayments(clientKey);
@@ -228,9 +272,68 @@ function TournamentApplyContent() {
       setError(msg);
       toast.error(msg);
     }
-  }, [tournament, selectedChildId, amount, user?.id, user?.email, tournamentId, toast]);
+  }, [tournament, selectedChildId, amount, user?.id, tournamentId, toast]);
+
+  /**
+   * 나이스 결제창 호출 — checkout 과 동일 패턴.
+   *  returnUrl 은 **백엔드 절대 URL**. 나이스는 인증 결과를 form POST 로 보내는데
+   *  Next.js 페이지는 POST 를 받을 수 없다. 백엔드가 서명 검증 + 승인 후
+   *  /payment/complete 로 303 리다이렉트한다(성공/실패 모두).
+   *  requestPay 는 결제창을 열고 즉시 반환하므로 await 하지 않는다.
+   */
+  const handleNicePayment = useCallback(() => {
+    if (!orderId || !niceClientKey || isPaying) return;
+    if (!niceAgreed) {
+      toast.error(MESSAGES.payment2.agreementNotChecked);
+      return;
+    }
+    const authnice = typeof window !== 'undefined' ? window.AUTHNICE : undefined;
+    if (!authnice) {
+      const msg = MESSAGES.payment2.windowOpenFailed;
+      setError(msg);
+      toast.error(msg);
+      return;
+    }
+    setIsPaying(true);
+    try {
+      authnice.requestPay({
+        clientId: niceClientKey,
+        method: niceMethod,
+        orderId,
+        amount,
+        goodsName: orderName,
+        returnUrl: `${env.NEXT_PUBLIC_API_URL}/api/v1/payments/nice/authorize`,
+        // buyerEmail 미전달 — users.email 은 이메일이 아니라 로그인 ID 라 PG 에 보내지 않는다.
+        buyerName: user?.name ?? undefined,
+        // [필수] 함수 타입이 아니면 SDK 가 alert 후 결제창을 열지 않는다.
+        //   결제창을 띄우기 전 단계의 오류만 여기로 온다.
+        fnError: (result: { errorMsg?: string; resultMsg?: string }) => {
+          const msg =
+            result?.errorMsg ?? result?.resultMsg ?? MESSAGES.payment2.requestFailed;
+          setError(msg);
+          toast.error(msg);
+          setIsPaying(false);
+        },
+        // 가상계좌 채번 시 필수 — 입금자에게 표시될 예금주명.
+        ...(niceMethod === 'vbank'
+          ? { vbankHolder: user?.name ?? '팀플러스' }
+          : {}),
+        // 앱 WebView 에서 카드사 앱 인증 후 우리 앱으로 복귀시키는 스킴.
+        ...(isNativeApp() ? { appScheme: 'teamplus://' } : {}),
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : MESSAGES.payment2.requestFailed;
+      setError(msg);
+      toast.error(msg);
+      setIsPaying(false);
+    }
+  }, [orderId, niceClientKey, isPaying, niceAgreed, niceMethod, amount, orderName, user?.name, toast]);
 
   const handlePayment = useCallback(async () => {
+    if (provider === 'nice') {
+      handleNicePayment();
+      return;
+    }
     if (!widgets || !orderId || isPaying) return;
     setIsPaying(true);
     try {
@@ -241,7 +344,7 @@ function TournamentApplyContent() {
         orderName,
         successUrl,
         failUrl,
-        customerEmail: user?.email,
+        // customerEmail 미전달 — users.email 은 이메일이 아니라 로그인 ID.
         customerName: user?.name,
       });
     } catch (e) {
@@ -250,7 +353,7 @@ function TournamentApplyContent() {
       toast.error(msg);
       setIsPaying(false);
     }
-  }, [widgets, orderId, isPaying, orderName, tournamentId, user?.email, user?.name, toast]);
+  }, [provider, handleNicePayment, widgets, orderId, isPaying, orderName, tournamentId, user?.name, toast]);
 
   // 토스 위젯을 열지 않고 백엔드가 결제 완료 처리(mock). orderId 만 있으면 동작(위젯 isReady 무관).
   // 수업 결제(/payment/checkout)와 동일한 경로 — 완료 후처리도 공용(applyApprovedPayment)이라
@@ -535,10 +638,100 @@ function TournamentApplyContent() {
                 )}
                 {initStarted && (
                   <>
-                    <section aria-label="결제 수단 선택">
+                    {/* ── 나이스 분기: 결제수단 선택 (토스 위젯이 그려주던 것을 직접 구현 — checkout 동일) ── */}
+                    {provider === 'nice' && (
+                      <section aria-label={MESSAGES.payment2.methodSectionTitle}>
+                        <h2 className="text-w-small font-bold text-it-ink-600 dark:text-rink-100">
+                          {MESSAGES.payment2.methodSectionTitle}
+                        </h2>
+                        <div className="mt-2 flex flex-col" role="radiogroup" aria-label={MESSAGES.payment2.methodSectionTitle}>
+                          {(
+                            [
+                              { value: 'card', label: MESSAGES.payment2.methodCard, icon: 'credit_card' },
+                              { value: 'bank', label: MESSAGES.payment2.methodBank, icon: 'account_balance' },
+                              { value: 'vbank', label: MESSAGES.payment2.methodVbank, icon: 'receipt_long' },
+                            ] as { value: NiceMethod; label: string; icon: string }[]
+                          ).map((m) => {
+                            const selected = niceMethod === m.value;
+                            return (
+                              <button
+                                key={m.value}
+                                type="button"
+                                role="radio"
+                                aria-checked={selected}
+                                onClick={() => setNiceMethod(m.value)}
+                                disabled={isPaying}
+                                className="flex w-full items-center gap-3 border-b border-it-line dark:border-rink-700 py-3.5 text-left last:border-b-0 disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 rounded"
+                              >
+                                <span
+                                  aria-hidden="true"
+                                  className={
+                                    selected
+                                      ? 'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-[6px] border-it-blue-500'
+                                      : 'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-it-line-strong dark:border-rink-600'
+                                  }
+                                />
+                                <Icon
+                                  name={m.icon}
+                                  className="text-[18px] text-it-ink-500 dark:text-rink-300"
+                                  aria-hidden="true"
+                                />
+                                <span className="text-w-small font-semibold text-it-ink-800 dark:text-white">
+                                  {m.label}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {niceMethod === 'vbank' && (
+                          <p className="mt-2 text-w-caption text-it-ink-500 dark:text-rink-300">
+                            {MESSAGES.payment2.methodVbankHint}
+                          </p>
+                        )}
+                      </section>
+                    )}
+
+                    {/* ── 나이스 분기: 약관 동의 (토스 renderAgreement 대체) ── */}
+                    {provider === 'nice' && (
+                      <section aria-label={MESSAGES.payment2.agreementTitle}>
+                        <h2 className="text-w-small font-bold text-it-ink-600 dark:text-rink-100">
+                          {MESSAGES.payment2.agreementTitle}
+                        </h2>
+                        <label className="mt-2 flex items-start gap-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={niceAgreed}
+                            onChange={(e) => setNiceAgreed(e.target.checked)}
+                            disabled={isPaying}
+                            className="mt-0.5 h-5 w-5 shrink-0 rounded border-2 border-it-line-strong dark:border-rink-600 text-it-blue-500 focus:ring-2 focus:ring-it-blue-500/40"
+                          />
+                          <span className="text-w-small text-it-ink-600 dark:text-rink-100">
+                            {MESSAGES.payment2.agreementRequiredPrefix}
+                            {/* 라벨 속 링크 — preventDefault 로 체크박스 토글 없이 규정 모달만 연다. */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setPolicyModalType('refund');
+                              }}
+                              className="underline underline-offset-2 font-semibold text-it-blue-500 dark:text-it-blue-300 hover:text-it-blue-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 rounded"
+                            >
+                              {MESSAGES.payment2.agreementRequiredLink}
+                            </button>
+                            {MESSAGES.payment2.agreementRequiredSuffix}
+                          </span>
+                        </label>
+                      </section>
+                    )}
+
+                    {/* 토스 위젯 호스트 — nice 일 때만 숨긴다(checkout 과 동일한 이유:
+                        조건을 `provider === 'toss'` 로 뒤집으면 위젯 render 시점에 컨테이너가
+                        아직 없어 iframe 이 높이 0 으로 굳을 수 있다). */}
+                    <section aria-label="결제 수단 선택" className={provider === 'nice' ? 'hidden' : undefined}>
                       <div id="payment-method" className="min-h-[240px] overflow-visible" data-toss-widget-host />
                     </section>
-                    <section aria-label="약관 동의">
+                    <section aria-label="약관 동의" className={provider === 'nice' ? 'hidden' : undefined}>
                       <div id="agreement" className="min-h-[80px]" />
                     </section>
                     {!isReady && !error && (
@@ -556,13 +749,20 @@ function TournamentApplyContent() {
                       <div className="flex items-center justify-center gap-1.5 text-it-ink-400 dark:text-rink-300">
                         <Icon name="lock" filled className="text-w-small" />
                         <span className="text-w-caption font-medium">
-                          {MESSAGES.payment2.securePayment} (TossPayments)
+                          {MESSAGES.payment2.securePayment} (
+                          {provider === 'nice' ? 'NICEPAY' : 'TossPayments'})
                         </span>
                       </div>
                       <button
                         type="button"
                         onClick={handlePayment}
-                        disabled={!isReady || isPaying || !!error}
+                        // 나이스는 필수 동의 체크 전까지 비활성 — 토스는 위젯이 자체 검증한다.
+                        disabled={
+                          !isReady ||
+                          isPaying ||
+                          !!error ||
+                          (provider === 'nice' && !niceAgreed)
+                        }
                         className="w-full bg-it-blue-500 hover:bg-it-blue-600 active:brightness-95 transition-colors motion-reduce:transition-none text-white rounded-w-md py-4 px-6 shadow-sh-1 flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed font-bold text-w-title"
                       >
                         {isPaying ? (
@@ -604,6 +804,10 @@ function TournamentApplyContent() {
         )}
       </main>
 
+      <TermsDocumentModal
+        policyType={policyModalType}
+        onClose={() => setPolicyModalType(null)}
+      />
       <GlobalMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </MobileContainer>
   );

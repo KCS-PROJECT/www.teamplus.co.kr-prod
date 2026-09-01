@@ -108,6 +108,7 @@ export default function CommonTournamentsPage() {
         t.status,
         t.endDate,
         now,
+        t.startDate,
       );
       const isActive =
         ui === "recruiting" ||

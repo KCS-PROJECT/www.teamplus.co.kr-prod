@@ -218,18 +218,20 @@ export function PackageEditSheet({
   //   정기권 + 가격 잠금 아님 + 대상월 일정·1회 수업료가 있을 때만.
   const calcAvailable =
     !isPerSession && !priceLocked && totalCount > 0 && unitPrice > 0;
-  const calcMonthNum = calcMonth ? Number(calcMonth.slice(5, 7)) : 0;
   // 표시/계산용 회차 — 오픈 effect 전(초기 0)에도 1~전체 회차 범위로 보정.
   const calcCountSafe = Math.min(
     Math.max(totalCount, 1),
     Math.max(1, calcCount || totalCount),
   );
 
+  // 회차 직접 입력 임시 문자열 — null = calcCountSafe 표시를 따름, '' = 입력 중 빈 값.
+  const [calcCountInput, setCalcCountInput] = useState<string | null>(null);
   const toggleCalcDay = (dow: number) => {
     const next = calcDays.includes(dow)
       ? calcDays.filter((d) => d !== dow)
       : [...calcDays, dow];
     setCalcDays(next);
+    setCalcCountInput(null);
     const sum = next.reduce((acc, d) => acc + (dayCounts.get(d) ?? 0), 0);
     // 전부 해제하면 기본(전체 회차 참여)으로 복귀.
     setCalcCount(next.length > 0 ? Math.max(1, sum) : totalCount);
@@ -237,7 +239,20 @@ export function PackageEditSheet({
   const stepCalcCount = (delta: number) => {
     // 수동 조정은 요일 프리셋과 불일치할 수 있으므로 선택 해제.
     setCalcDays([]);
+    setCalcCountInput(null);
     setCalcCount(Math.min(totalCount, Math.max(1, calcCountSafe + delta)));
+  };
+  // 직접 입력 — 큰 회수 변경은 타이핑, ± 는 미세 조정 (일정·판매 관리 스테퍼와 동일 패턴).
+  const handleCalcCountInput = (value: string) => {
+    const digits = value.replace(/\D/g, '');
+    if (digits === '') {
+      setCalcCountInput('');
+      return;
+    }
+    const clamped = Math.min(parseInt(digits, 10), totalCount);
+    setCalcDays([]);
+    setCalcCountInput(String(clamped));
+    setCalcCount(Math.max(1, clamped));
   };
   const applyCalcPrice = () => {
     update('price', String(unitPrice * calcCountSafe));
@@ -448,94 +463,89 @@ export function PackageEditSheet({
             aria-label={MESSAGES.classProduct.priceCalc.sectionTitle}
             className="rounded-w-lg border border-wline dark:border-rink-700 bg-wbg dark:bg-rink-900/40 px-3 py-3 space-y-3"
           >
-            <p className="text-card-meta font-bold text-wtext-2 dark:text-rink-100">
-              {MESSAGES.classProduct.priceCalc.sectionTitle}
+            {/* 헤더 — 제목 + 단가 근거 한 줄 (소제목·요약·산식 줄 제거로 4줄 압축). */}
+            <p className="text-card-meta text-wtext-3 dark:text-rink-300 tabular-nums">
+              <span className="font-bold text-wtext-2 dark:text-rink-100">
+                {MESSAGES.classProduct.priceCalc.sectionTitle}
+              </span>
+              {' · '}
+              {MESSAGES.classProduct.priceCalc.unitBasis(
+                unitPrice.toLocaleString('ko-KR'),
+              )}
             </p>
 
-            {/* 참여 요일 — 대상월 일정에 존재하는 요일만 칩으로 노출 */}
-            <div className="space-y-1.5">
-              <p className="text-card-meta font-semibold text-wtext-3 dark:text-rink-300">
-                {MESSAGES.classProduct.priceCalc.daysLabel}
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {CALC_DAY_ORDER.filter((d) => dayCounts.has(d)).map((d) => {
-                  const active = calcDays.includes(d);
-                  return (
-                    <button
-                      key={d}
-                      type="button"
-                      onClick={() => toggleCalcDay(d)}
-                      aria-pressed={active}
-                      className={
-                        active
-                          ? 'h-8 px-3 rounded-w-pill border border-ice-500 bg-ice-50 dark:bg-rink-700 text-card-meta font-bold text-ice-600 dark:text-ice-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40'
-                          : 'h-8 px-3 rounded-w-pill border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-card-meta font-semibold text-wtext-2 dark:text-rink-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40'
-                      }
-                    >
-                      {MESSAGES.classProduct.priceCalc.dayChip(
-                        CALC_DAY_LABELS[d],
-                        dayCounts.get(d) ?? 0,
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+            {/* 참여 요일 토글 칩 — 누르면 회차 합산·이름 제안 자동 반영. */}
+            <div className="flex flex-wrap gap-1.5">
+              {CALC_DAY_ORDER.filter((d) => dayCounts.has(d)).map((d) => {
+                const active = calcDays.includes(d);
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => toggleCalcDay(d)}
+                    aria-pressed={active}
+                    className={
+                      active
+                        ? 'h-8 px-3 rounded-w-pill border border-ice-500 bg-ice-50 dark:bg-rink-700 text-card-meta font-bold text-ice-600 dark:text-ice-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40'
+                        : 'h-8 px-3 rounded-w-pill border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-card-meta font-semibold text-wtext-2 dark:text-rink-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40'
+                    }
+                  >
+                    {MESSAGES.classProduct.priceCalc.dayChip(
+                      CALC_DAY_LABELS[d],
+                      dayCounts.get(d) ?? 0,
+                    )}
+                  </button>
+                );
+              })}
             </div>
 
-            {/* 참여 회차 수 스테퍼 */}
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-card-meta font-semibold text-wtext-3 dark:text-rink-300">
-                {MESSAGES.classProduct.priceCalc.countLabel}
-              </p>
-              <div className="flex items-center gap-2">
+            {/* 스테퍼(직접 입력 포함) + 결과 금액 + 적용 — 일정·판매 관리와 동일 골격. */}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center rounded-w-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 overflow-hidden shrink-0">
                 <button
                   type="button"
                   onClick={() => stepCalcCount(-1)}
                   disabled={calcCountSafe <= 1}
                   aria-label={MESSAGES.classProduct.priceCalc.countDecrease}
-                  className="w-9 h-9 rounded-w-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-card-body font-bold text-wtext-1 dark:text-rink-100 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
+                  className="w-9 h-9 flex items-center justify-center text-card-body font-bold text-wtext-1 dark:text-rink-100 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
                 >
                   −
                 </button>
-                <span className="min-w-[48px] text-center text-card-body font-bold text-wtext-1 dark:text-rink-100 tabular-nums">
-                  {MESSAGES.classProduct.priceCalc.count(calcCountSafe)}
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={calcCountInput ?? String(calcCountSafe)}
+                  onChange={(e) => handleCalcCountInput(e.target.value)}
+                  onBlur={() => setCalcCountInput(null)}
+                  aria-label={MESSAGES.classProduct.priceCalc.countInputAria}
+                  className="w-9 bg-transparent text-center text-card-body font-bold tabular-nums text-wtext-1 dark:text-rink-100 focus:outline-none"
+                />
+                <span className="pr-2 text-card-body font-bold text-wtext-1 dark:text-rink-100">
+                  {MESSAGES.classProduct.priceCalc.countUnit}
                 </span>
                 <button
                   type="button"
                   onClick={() => stepCalcCount(1)}
                   disabled={calcCountSafe >= totalCount}
                   aria-label={MESSAGES.classProduct.priceCalc.countIncrease}
-                  className="w-9 h-9 rounded-w-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-card-body font-bold text-wtext-1 dark:text-rink-100 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
+                  className="w-9 h-9 flex items-center justify-center text-card-body font-bold text-wtext-1 dark:text-rink-100 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
                 >
                   ＋
                 </button>
               </div>
-            </div>
-
-            <p
-              className="text-card-meta text-wtext-3 dark:text-rink-300 tabular-nums"
-              aria-live="polite"
-            >
-              {MESSAGES.classProduct.priceCalc.summary(
-                calcMonthNum,
-                totalCount,
-                calcCountSafe,
-              )}
-            </p>
-
-            {/* 산식 + 가격 적용 */}
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-card-meta font-bold text-wtext-1 dark:text-rink-100 tabular-nums">
-                {MESSAGES.classProduct.priceCalc.formula(
-                  unitPrice,
-                  calcCountSafe,
-                  unitPrice * calcCountSafe,
+              <span
+                className="flex-1 text-right text-card-body font-bold tabular-nums text-wtext-1 dark:text-rink-100 truncate"
+                aria-live="polite"
+              >
+                {MESSAGES.classProduct.priceCalc.amount(
+                  (unitPrice * calcCountSafe).toLocaleString('ko-KR'),
                 )}
-              </p>
+              </span>
               <button
                 type="button"
                 onClick={applyCalcPrice}
-                className="shrink-0 h-9 px-3 rounded-w-lg bg-ice-500 text-white text-card-meta font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
+                disabled={calcCountInput === ''}
+                className="shrink-0 h-9 px-3 rounded-w-lg bg-ice-500 text-white text-card-meta font-bold disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40"
               >
                 {MESSAGES.classProduct.priceCalc.applyButton}
               </button>

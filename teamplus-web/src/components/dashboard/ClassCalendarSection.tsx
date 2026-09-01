@@ -1713,10 +1713,9 @@ export function SelectedDayClassList({
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      // [2026-06-16] 대회/경기는 classId 가 없으므로 대회 상세 참가자 섹션으로 분기.
-                      //   [2026-07-21] students 중복 페이지 통합 — 상세 #participants 앵커로 이동.
+                      // 대회/경기는 classId 가 없으므로 대회 명단·정산 관리 페이지로 분기.
                       if (isTournamentLike && cls.tournamentId) {
-                        navigate(`/tournaments/${cls.tournamentId}#participants`);
+                        navigate(`/tournaments/${cls.tournamentId}/students`);
                       } else {
                         navigate(`/classes/${cls.classId}/students`);
                       }

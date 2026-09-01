@@ -1,14 +1,14 @@
 /**
- * /tournaments/[id] 참가자 섹션 — 대회 축 정합(작업 A) 회귀 테스트.
+ * /tournaments/[id] — 명단·정산 관리 분리 후 상세 페이지 회귀 테스트.
  *
- * 계약 고정(SPEC §5-1 · §5-2 · §5-3):
- *   · 후불 대회: 5-state 칩(완납/청구/미정산/취소/환불) + POSTPAID 배지 + 정산 액션(결제요청·체크박스).
- *   · CANCELLED/REFUNDED 행: 명단 표시(보존)하되 결제요청 체크박스 미노출.
- *   · 선불 대회: 감독 참가자 섹션 노출 + PREPAID 배지, 정산 확정 액션(결제요청/체크박스) 미노출.
- *   · 해시 앵커(#participants·#settlement) 진입 시 scrollIntoView, 요소 없으면 no-op.
+ * 계약:
+ *   · 감독/코치: 관리 진입 카드(명단·정산 관리 + 활성 참가 인원) 노출,
+ *     탭 시 /tournaments/{id}/students 이동. 명단 행·정산 액션은 상세에 없음.
+ *   · 구 앵커(#participants·#settlement) 진입 시 관리 페이지로 replace(하위호환).
+ *   · 학부모: 진입 카드 미노출(공용 조회 화면) + 앵커 진입 no-op.
  */
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MESSAGES } from '@/lib/messages';
 import {
   getTournament,
@@ -30,6 +30,9 @@ let mockUser: { id: string; userType: string } | null = {
   userType: 'DIRECTOR',
 };
 
+const mockNavigate = jest.fn();
+const mockReplace = jest.fn();
+
 jest.mock('next/navigation', () => ({ useParams: () => ({ id: 't1' }) }));
 jest.mock('@/hooks/useSessionAuth', () => ({
   useSessionAuth: () => ({ user: mockUser }),
@@ -37,13 +40,17 @@ jest.mock('@/hooks/useSessionAuth', () => ({
 jest.mock('@/hooks/usePageReady', () => ({ usePageReady: () => {} }));
 jest.mock('@/hooks/useNativeUI', () => ({ useNativeUI: () => {} }));
 jest.mock('@/components/ui/NavLink', () => ({
-  useNavigation: () => ({ navigate: jest.fn() }),
+  useNavigation: () => ({ navigate: mockNavigate, replace: mockReplace }),
 }));
+// toast/modal 은 안정 참조 필수 — 렌더마다 새 객체면 load useCallback 의존성이
+//   매 렌더 변해 재조회 루프가 돈다(실구현은 안정 참조).
+const mockToast = { success: jest.fn(), error: jest.fn(), info: jest.fn() };
+const mockModal = { confirm: jest.fn() };
 jest.mock('@/components/ui/Toast', () => ({
-  useToast: () => ({ toast: { success: jest.fn(), error: jest.fn(), info: jest.fn() } }),
+  useToast: () => ({ toast: mockToast }),
 }));
 jest.mock('@/components/ui/Modal', () => ({
-  useModal: () => ({ modal: { confirm: jest.fn() } }),
+  useModal: () => ({ modal: mockModal }),
 }));
 jest.mock('@/services/api-client', () => ({
   api: { get: jest.fn().mockResolvedValue({ success: true, data: { children: [] } }) },
@@ -54,6 +61,9 @@ jest.mock('@/services/team.service', () => ({
 jest.mock('@/components/tournament', () => ({
   TournamentHeroSection: () => null,
   ChildPaymentRow: () => null,
+}));
+jest.mock('@/components/notice/UnitNoticeSection', () => ({
+  UnitNoticeSection: () => null,
 }));
 jest.mock('@/components/layout/MobileContainer', () => ({
   MobileContainer: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -115,14 +125,7 @@ function tournament(billingMode: 'PREPAID' | 'POSTPAID') {
   };
 }
 
-function reg(
-  id: string,
-  lastName: string,
-  firstName: string,
-  paymentStatus: string,
-  billingStatus: string,
-  billingTiming: 'PREPAID' | 'POSTPAID',
-) {
+function reg(id: string, paymentStatus: string, billingStatus: string) {
   return {
     id,
     userId: `u-${id}`,
@@ -131,16 +134,16 @@ function reg(
     calculatedFee: 30000,
     paymentStatus,
     registeredAt: '2026-07-01',
-    user: { id: `u-${id}`, lastName, firstName },
+    user: { id: `u-${id}`, lastName: '김', firstName: id },
     child: null,
     payment: { id: `p-${id}`, orderNumber: id, paymentStatus, amount: 30000 },
     billingStatus,
-    billingTiming,
-    billedAmount: billingStatus === 'PAID' || billingStatus === 'BILLED' ? 30000 : null,
+    billingTiming: 'POSTPAID',
+    billedAmount: 30000,
     paidAmount: billingStatus === 'PAID' ? 30000 : 0,
     refundedAmount: 0,
     estimatedAmount: 30000,
-    paidAt: billingStatus === 'PAID' ? '2026-07-02' : null,
+    paidAt: null,
   };
 }
 
@@ -148,129 +151,85 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockUser = { id: 'dir1', userType: 'DIRECTOR' };
   window.location.hash = '';
-  Element.prototype.scrollIntoView = jest.fn();
+  mockGetTournament.mockResolvedValue({ success: true, data: tournament('POSTPAID') });
+  mockListRegs.mockResolvedValue({
+    success: true,
+    data: {
+      tournamentId: 't1',
+      total: 5,
+      billingMode: 'POSTPAID',
+      registrations: [
+        reg('r1', 'PAID', 'PAID'),
+        reg('r2', 'PENDING', 'BILLED'),
+        reg('r3', 'UNPAID', 'UNSETTLED'),
+        reg('r4', 'CANCELLED', 'CANCELLED'),
+        reg('r5', 'REFUNDED', 'REFUNDED'),
+      ],
+    },
+  });
 });
 
-describe('대회 상세 — 후불 참가자 섹션 (5-state · 정산 액션)', () => {
-  beforeEach(() => {
-    mockGetTournament.mockResolvedValue({ success: true, data: tournament('POSTPAID') });
-    mockListRegs.mockResolvedValue({
-      success: true,
-      data: {
-        tournamentId: 't1',
-        total: 5,
-        billingMode: 'POSTPAID',
-        registrations: [
-          reg('r1', '김', '완납', 'PAID', 'PAID', 'POSTPAID'),
-          reg('r2', '이', '청구', 'PENDING', 'BILLED', 'POSTPAID'),
-          reg('r3', '박', '미정산', 'UNPAID', 'UNSETTLED', 'POSTPAID'),
-          reg('r4', '최', '취소', 'CANCELLED', 'CANCELLED', 'POSTPAID'),
-          reg('r5', '정', '환불', 'REFUNDED', 'REFUNDED', 'POSTPAID'),
-        ],
-      },
-    });
-  });
-
-  it('5-state 칩 5종 + POSTPAID 배지 + 결제요청 액션 노출', async () => {
+describe('대회 상세 — 감독 관리 진입 카드', () => {
+  it('진입 카드 노출(활성 참가 인원) + 탭 시 관리 페이지 이동', async () => {
     render(<TournamentDetailPage />);
-    await screen.findByText(MESSAGES.tournament.rosterSectionTitle, undefined, {
+    await screen.findByText(MESSAGES.tournament.rosterManageCta, undefined, {
       timeout: 4000,
     });
 
-    // 5-state 칩 라벨(완납/청구/미정산/취소/환불) — 수업 축 MESSAGES.settlement 재사용.
-    expect(screen.getByText(MESSAGES.settlement.rowStatusPaid)).toBeInTheDocument();
-    expect(screen.getByText(MESSAGES.settlement.rowStatusBilled)).toBeInTheDocument();
-    expect(screen.getByText(MESSAGES.settlement.rowStatusUnsettled)).toBeInTheDocument();
-    expect(screen.getByText(MESSAGES.settlement.rowStatusCancelled)).toBeInTheDocument();
-    expect(screen.getByText(MESSAGES.settlement.rowStatusRefunded)).toBeInTheDocument();
+    // 활성(취소·환불 제외) 3명 표기 — regRows 로드 완료 대기.
+    await screen.findByText(MESSAGES.tournament.rosterParticipantCount(3));
 
-    // POSTPAID 배지(후불) — 행마다 노출.
-    expect(screen.getAllByText(MESSAGES.settlement.postpaid).length).toBe(5);
+    fireEvent.click(screen.getByText(MESSAGES.tournament.rosterManageCta));
+    expect(mockNavigate).toHaveBeenCalledWith('/tournaments/t1/students');
+  });
 
-    // 정산 확정 액션(결제요청) 노출.
+  it('명단 행·정산 액션(체크박스·결제요청)은 상세에 없음', async () => {
+    render(<TournamentDetailPage />);
+    await screen.findByText(MESSAGES.tournament.rosterManageCta, undefined, {
+      timeout: 4000,
+    });
+
     expect(
-      screen.getByRole('button', { name: MESSAGES.tournament.settleRequestCta }),
-    ).toBeInTheDocument();
-  });
-
-  it('CANCELLED/REFUNDED 명단 보존하되 체크박스는 UNPAID·전체선택만', async () => {
-    render(<TournamentDetailPage />);
-    await screen.findByText(MESSAGES.tournament.rosterSectionTitle, undefined, {
-      timeout: 4000,
-    });
-
-    // 취소·환불 참가자 이름도 명단에 표시(보존).
-    expect(screen.getByText('최취소')).toBeInTheDocument();
-    expect(screen.getByText('정환불')).toBeInTheDocument();
-
-    // 체크박스 = 전체선택 1 + UNPAID(박미정산) 1 = 2개. CANCELLED/REFUNDED/PAID/BILLED 미노출.
-    expect(screen.getAllByRole('checkbox')).toHaveLength(2);
-  });
-
-  it('#participants 해시 진입 시 scrollIntoView 호출', async () => {
-    window.location.hash = '#participants';
-    render(<TournamentDetailPage />);
-    await screen.findByText(MESSAGES.tournament.rosterSectionTitle, undefined, {
-      timeout: 4000,
-    });
-    await waitFor(() => {
-      expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
-    });
-  });
-
-  it('해시 없는 진입은 자동 스크롤 없음(회귀)', async () => {
-    render(<TournamentDetailPage />);
-    await screen.findByText(MESSAGES.tournament.rosterSectionTitle, undefined, {
-      timeout: 4000,
-    });
-    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
-  });
-});
-
-describe('대회 상세 — 선불 참가자 섹션 (읽기전용 현황)', () => {
-  beforeEach(() => {
-    mockGetTournament.mockResolvedValue({ success: true, data: tournament('PREPAID') });
-    mockListRegs.mockResolvedValue({
-      success: true,
-      data: {
-        tournamentId: 't1',
-        total: 2,
-        billingMode: 'PREPAID',
-        registrations: [
-          reg('r1', '김', '완납', 'PAID', 'PAID', 'PREPAID'),
-          reg('r2', '박', '미정산', 'UNPAID', 'UNSETTLED', 'PREPAID'),
-        ],
-      },
-    });
-  });
-
-  it('선불 대회 감독 참가자 섹션 노출 + PREPAID 배지', async () => {
-    render(<TournamentDetailPage />);
-    await screen.findByText(MESSAGES.tournament.rosterSectionTitle, undefined, {
-      timeout: 4000,
-    });
-    expect(screen.getAllByText(MESSAGES.settlement.prepaid).length).toBeGreaterThanOrEqual(2);
-  });
-
-  it('선불 대회는 정산 확정 액션(결제요청·체크박스) 미노출', async () => {
-    render(<TournamentDetailPage />);
-    await screen.findByText(MESSAGES.tournament.rosterSectionTitle, undefined, {
-      timeout: 4000,
-    });
+      screen.queryByText(MESSAGES.tournament.rosterSectionTitle),
+    ).toBeNull();
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
     expect(
       screen.queryByRole('button', { name: MESSAGES.tournament.settleRequestCta }),
     ).toBeNull();
-    expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
   });
 
-  it('#settlement 해시는 선불 대회에서 #participants 로 폴백 스크롤', async () => {
+  it('구 앵커(#settlement) 진입 시 관리 페이지로 replace', async () => {
     window.location.hash = '#settlement';
     render(<TournamentDetailPage />);
-    await screen.findByText(MESSAGES.tournament.rosterSectionTitle, undefined, {
-      timeout: 4000,
-    });
     await waitFor(() => {
-      expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+      expect(mockReplace).toHaveBeenCalledWith('/tournaments/t1/students');
     });
+  });
+
+  it('구 앵커(#participants) 진입 시 관리 페이지로 replace', async () => {
+    window.location.hash = '#participants';
+    render(<TournamentDetailPage />);
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith('/tournaments/t1/students');
+    });
+  });
+});
+
+describe('대회 상세 — 학부모(비관리자)', () => {
+  beforeEach(() => {
+    mockUser = { id: 'p1', userType: 'PARENT' };
+  });
+
+  it('관리 진입 카드 미노출', async () => {
+    render(<TournamentDetailPage />);
+    await screen.findByText('대회 기간', undefined, { timeout: 4000 });
+    expect(screen.queryByText(MESSAGES.tournament.rosterManageCta)).toBeNull();
+  });
+
+  it('구 앵커 진입 no-op(replace 미호출)', async () => {
+    window.location.hash = '#participants';
+    render(<TournamentDetailPage />);
+    await screen.findByText('대회 기간', undefined, { timeout: 4000 });
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 });

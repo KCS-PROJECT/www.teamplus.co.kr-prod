@@ -23,6 +23,7 @@ import { Prisma } from "@prisma/client";
 const SALES_LOCK_PREFIX = "class-sales:";
 const POSTPAID_LOCK_PREFIX = "class-postpaid:";
 const SEAT_LOCK_PREFIX = "class-seats:";
+const SCHEDULE_LOCK_PREFIX = "class-schedule:";
 
 type LockableTx = Pick<Prisma.TransactionClient, "$queryRaw">;
 
@@ -73,6 +74,20 @@ export async function acquireClassSalesAndPostpaidLocks(
   await acquireClassPostpaidLock(tx, classId);
 }
 
+/**
+ * 일정(ClassSchedule) writer 직렬화 lock — billingMode 무관 **무조건** 획득.
+ *  ⚠️ postpaid lock(IfNeeded)은 PREPAID 수업에서 no-op 이라 일정 쓰기 직렬화
+ *  근거로 쓸 수 없다 — PREPAID 동시 취소가 둘 다 크레딧 복원을 실행하는 근원.
+ *  일정 생성(bulk)·수정(PUT)·취소(cancel)·apply-draft 는 전부 이 lock 을
+ *  tx 선두에서 공유한다. postpaid lock 이 함께 필요한 경로는 아래 조합 함수만 사용.
+ */
+export async function acquireClassScheduleLock(
+  tx: LockableTx,
+  classId: string,
+): Promise<void> {
+  await acquireAdvisoryLock(tx, `${SCHEDULE_LOCK_PREFIX}${classId}`);
+}
+
 /** postpaid lock 대상 수업 판정 — PREPAID 수업은 lock 없이 기존 동작 유지. */
 export function shouldUsePostpaidLock(
   billingMode: string | null | undefined,
@@ -106,4 +121,17 @@ export async function acquireClassPostpaidLockIfNeeded(
   if (shouldUsePostpaidLock(cls?.billingMode)) {
     await acquireClassPostpaidLock(tx, classId);
   }
+}
+
+/**
+ * 일정 writer 가 취소 부수효과(출석·정산 집계 변경)까지 수행할 때의 조합 —
+ * **schedule → postpaid(IfNeeded) 고정 순서** 강제 (sales→postpaid 규약과 동일한
+ * 역순 조합 deadlock 방지 원칙). 양쪽이 필요한 트랜잭션은 반드시 이 함수만 사용한다.
+ */
+export async function acquireClassScheduleAndPostpaidLocksIfNeeded(
+  tx: LockableTxWithClass,
+  classId: string,
+): Promise<void> {
+  await acquireClassScheduleLock(tx, classId);
+  await acquireClassPostpaidLockIfNeeded(tx, classId);
 }

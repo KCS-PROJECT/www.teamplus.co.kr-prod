@@ -64,6 +64,11 @@ export function MonthlyAttendanceCountSection({
   }, [load]);
 
   const items = data?.items ?? [];
+  // "N/M회" — 분모(해당 월 비취소 일정 수) 있으면 비율 표기. 구 응답은 N회 단독.
+  const countLabelOf = (n: number) =>
+    data?.totalSessions && data.totalSessions > 0
+      ? MESSAGES.monthlyAttendance.countRatioUnit(n, data.totalSessions)
+      : MESSAGES.monthlyAttendance.countUnit(n);
 
   // ICETIMES flat: 떠있는 rounded 카드 박스 제거 → full-bleed 흰 섹션 + hairline 행.
   //   페이지(attendance-manage)가 bg-it-canvas 회색이라 mt-2 갭으로 쌓이고, 섹션 배경은
@@ -137,7 +142,7 @@ export function MonthlyAttendanceCountSection({
                   )}
                 </div>
                 <span className="shrink-0 text-card-body font-bold text-it-blue-500 tabular-nums">
-                  {MESSAGES.monthlyAttendance.countUnit(it.attendanceCount)}
+                  {countLabelOf(it.attendanceCount)}
                 </span>
               </li>
             ))}
@@ -227,7 +232,7 @@ export function MonthlyAttendanceCountSection({
                 )}
               </div>
               <span className="shrink-0 text-card-body font-bold text-ice-500 tabular-nums">
-                {MESSAGES.monthlyAttendance.countUnit(it.attendanceCount)}
+                {countLabelOf(it.attendanceCount)}
               </span>
             </li>
           ))}
