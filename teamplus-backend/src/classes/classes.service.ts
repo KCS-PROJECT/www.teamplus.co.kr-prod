@@ -3404,6 +3404,9 @@ export class ClassesService {
       counts,
       billingStatusCounts,
       totalPaidAmount,
+      // 선택월 비취소 일정 수 — 프론트 "출석 N/M회" 분모(canonical 신규 키).
+      //   attendanceCount 와 같은 창(monthStart~monthEnd, isCancelled=false)이라 정합.
+      totalSessions: attendanceSchedules.length,
       // [만료 회원] 재등록 대상 관리 목록 — 월 필터 무관(additive).
       expiredMembers,
       students,

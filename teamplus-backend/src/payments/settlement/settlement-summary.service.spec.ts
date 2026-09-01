@@ -722,7 +722,7 @@ describe("SettlementSummaryService", () => {
       expect(res.tournaments).toHaveLength(1);
       expect(res.tournaments[0].tournamentId).toBe("t1");
       expect(res.tournaments[0].paidAmount).toBe(20000);
-      expect(res.tournaments[0].detailPath).toBe("/tournaments/t1#settlement");
+      expect(res.tournaments[0].detailPath).toBe("/tournaments/t1/students");
     });
   });
 

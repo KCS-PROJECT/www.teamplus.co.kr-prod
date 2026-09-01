@@ -15,10 +15,9 @@
  *  - Sticky Bottom CTA (관리자=대회 수정 / 일반=참가 신청)
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { usePageReady } from '@/hooks/usePageReady';
-import { cn } from "@/lib/utils";
 import { useSessionAuth } from "@/hooks/useSessionAuth";
 import { useNavigation } from "@/components/ui/NavLink";
 import { MobileContainer } from "@/components/layout/MobileContainer";
@@ -37,9 +36,7 @@ import {
   calculateDDay,
   canManageMatch,
   cancelTournamentRegistration,
-  confirmTournamentSettlement,
   deleteTournament,
-  cancelTournamentSettlement,
   getTournament,
   listTournamentRegistrations,
   mapTournamentUiStatus,
@@ -57,69 +54,13 @@ import { api } from "@/services/api-client";
 import { getTeamMembers } from "@/services/team.service";
 
 // [2026-06-08] 대진표/순위 탭 제거 — 경기일정만 표시(Tab 타입 불필요).
-
-// 후불 결제요청 활성화 대기 — 경기 시간이 30분~1시간이라 마지막 경기 시작 +1시간부터 종료로 본다.
-const SETTLE_OPEN_DELAY_MS = 60 * 60 * 1000;
-
-// [2026-07-21] 대회 축 5-state·결제방식 배지 — 수업 축(classes/[id]/students) TIMING_META/
-//   ROW_STATUS_META 값·토큰·MESSAGES 라벨을 동일 재사용(단일 SoT). 대회는 BOTH/UNASSIGNED 없음.
-type TournamentBillingStatus =
-  | "UNSETTLED"
-  | "BILLED"
-  | "PAID"
-  | "CANCELLED"
-  | "REFUNDED";
-type TournamentBillingTiming = "PREPAID" | "POSTPAID";
-
-const ROW_STATUS_META: Record<
-  TournamentBillingStatus,
-  { label: string; chip: string; dot: string }
-> = {
-  PAID: {
-    label: MESSAGES.settlement.rowStatusPaid,
-    chip: "bg-mint-100 text-rink-800 dark:bg-mint-500/20 dark:text-mint-100",
-    dot: "bg-mint-500",
-  },
-  BILLED: {
-    label: MESSAGES.settlement.rowStatusBilled,
-    chip: "bg-ice-500/10 text-ice-500 dark:bg-ice-500/20 dark:text-ice-100",
-    dot: "bg-ice-500",
-  },
-  UNSETTLED: {
-    label: MESSAGES.settlement.rowStatusUnsettled,
-    chip: "bg-wline-2 text-wtext-2 dark:bg-rink-700 dark:text-rink-100",
-    dot: "bg-wtext-3",
-  },
-  CANCELLED: {
-    label: MESSAGES.settlement.rowStatusCancelled,
-    chip: "bg-wline-2 text-wtext-3 dark:bg-rink-700 dark:text-rink-300",
-    dot: "bg-wtext-4",
-  },
-  REFUNDED: {
-    label: MESSAGES.settlement.rowStatusRefunded,
-    chip: "bg-wline-2 text-wtext-3 dark:bg-rink-700 dark:text-rink-300",
-    dot: "bg-wtext-4",
-  },
-};
-
-const TIMING_META: Record<
-  TournamentBillingTiming,
-  { label: string; cls: string }
-> = {
-  PREPAID: {
-    label: MESSAGES.settlement.prepaid,
-    cls: "bg-ice-500/10 text-ice-500 dark:bg-ice-500/15 dark:text-ice-100",
-  },
-  POSTPAID: {
-    label: MESSAGES.settlement.postpaid,
-    cls: "bg-sun-500/15 text-rink-800 dark:bg-sun-500/20 dark:text-sun-100",
-  },
-};
+// 참가자 명단·정산 액션은 /tournaments/[id]/students 관리 페이지로 분리 —
+//   이 화면은 대회 정보(기간·장소·경기 일정) 공용 조회 + 관리 진입 카드만 담당.
 
 export default function CommonTournamentDetailPage() {
   const { user } = useSessionAuth();
   const params = useParams();
-  const { navigate } = useNavigation();
+  const { navigate, replace } = useNavigation();
   const { toast } = useToast();
   const { modal } = useModal();
   const isManager = canManageMatch(user?.userType);
@@ -129,19 +70,9 @@ export default function CommonTournamentDetailPage() {
   const [tournament, setTournament] = useState<TournamentDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // [2026-06-16] 후불 정산 모달 — 1인당 참가비 입력 + 대상 인원 미리보기.
-  const [settleOpen, setSettleOpen] = useState(false);
-  const [settleFee, setSettleFee] = useState("");
-  const [settleTargetCount, setSettleTargetCount] = useState<number | null>(null);
-  const [settleSubmitting, setSettleSubmitting] = useState(false);
-
-  // [2026-06-17] 감독 — 참가선수목록(후불 결제 현황). 경기일정 밑 노출.
+  // 감독 — 참가 등록 목록. 관리 진입 카드의 참가 인원 표기에만 사용
+  //   (명단 행·정산 액션은 /tournaments/[id]/students 로 분리).
   const [regRows, setRegRows] = useState<TournamentRegistrationRow[]>([]);
-  // 선택 결제요청 — 체크한 등록(registrationId)에게만 청구. 정산 전(UNPAID)만 체크 대상
-  //   (PENDING 재청구는 행 단위 "금액 수정"으로 분리 — 반복 결제요청 방지).
-  const [selectedRegIds, setSelectedRegIds] = useState<Set<string>>(new Set());
-  // 정산 모달의 실제 청구 대상 — 결제요청(선택 목록) / 금액 수정(단건) 공용.
-  const [settleTargetIds, setSettleTargetIds] = useState<string[]>([]);
 
   // 풀스크린 로더 fast-path (v11) — fetch 완료 시점에 PageTransitionLoader OFF
   usePageReady(!isLoading);
@@ -272,22 +203,16 @@ export default function CommonTournamentDetailPage() {
     void loadRegRows();
   }, [loadRegRows]);
 
-  // [2026-07-21] DP4 — 해시 앵커(#participants·#settlement) 진입 스크롤.
-  //   데이터·regRows 렌더 완료 후 대상 요소로 scrollIntoView(하드코딩 px/좌표 금지).
-  //   #settlement 이 없는 선불 대회는 #participants 로 폴백. 요소 없으면 no-op(학부모 등).
-  const hashScrolledRef = useRef(false);
+  // 구 앵커 링크(#participants·#settlement) 하위호환 — 명단·정산이 관리 페이지로
+  //   분리되어 앵커 대상 섹션이 없다. 관리자는 관리 페이지로 이양, 그 외 역할은 no-op.
   useEffect(() => {
-    if (isLoading || !tournament) return;
     if (typeof window === "undefined") return;
-    if (hashScrolledRef.current) return;
+    if (!isManager || !id) return;
     const hash = window.location.hash.replace(/^#/, "");
-    if (!hash) return;
-    let el = document.getElementById(hash);
-    if (!el && hash === "settlement") el = document.getElementById("participants");
-    if (!el) return; // 대상 섹션 미렌더 — regRows 로드 후 재시도, 끝내 없으면 no-op
-    hashScrolledRef.current = true;
-    el.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [isLoading, tournament, regRows]);
+    if (hash === "participants" || hash === "settlement") {
+      void replace(`/tournaments/${encodeURIComponent(id)}/students`);
+    }
+  }, [isManager, id, replace]);
 
   // [2026-06-16] 참가 대상 명단 해석 — 역할별 조건부 fetch(불필요한 호출 회피).
   const loadParticipantNames = useCallback(async () => {
@@ -402,105 +327,6 @@ export default function CommonTournamentDetailPage() {
     },
     [id, modal, toast, load],
   );
-
-  // [2026-06-17] 정산 시트 열기 — 이미 로드된 참가선수목록(regRows)에서 정산 대상(UNPAID/PENDING) 카운트.
-  //   (기존: getTournamentRegistrations 재조회 → 응답이 배열이 아닌 {registrations} 객체라
-  //    .filter 가 터져 카운트가 null 로 남아 "불러오는중"에서 멈추던 버그 수정.)
-  // 참가선수목록 로드/갱신 시 정산 전(UNPAID) 대상만 기본 전체 선택.
-  //   PENDING(결제 대기)은 기본 제외 — 이미 요청된 건의 반복 발송 방지.
-  useEffect(() => {
-    const payable = regRows
-      .filter((r) => r.paymentStatus === "UNPAID")
-      .map((r) => r.id);
-    setSelectedRegIds(new Set(payable));
-  }, [regRows]);
-
-  const toggleRegSelection = useCallback((regId: string) => {
-    setSelectedRegIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(regId)) next.delete(regId);
-      else next.add(regId);
-      return next;
-    });
-  }, []);
-
-  const openSettlement = useCallback(() => {
-    // 감독이 대회 생성 시 입력한 참고 예상 금액(feePerGame)을 기본값으로 프리필 — 그대로/수정 확정.
-    const prefill =
-      tournament?.feePerGame != null ? Number(tournament.feePerGame) : 0;
-    setSettleFee(Number.isFinite(prefill) && prefill > 0 ? String(prefill) : "");
-    // 정산 대상 = 체크된 등록(UNPAID) 목록.
-    setSettleTargetIds([...selectedRegIds]);
-    setSettleTargetCount(selectedRegIds.size);
-    setSettleOpen(true);
-  }, [selectedRegIds, tournament]);
-
-  // PENDING(결제 대기) 단건 금액 수정 — 현재 청구액 프리필, 해당 등록 1건만 재청구.
-  const openAmountEdit = useCallback(
-    (row: TournamentRegistrationRow) => {
-      const current = row.calculatedFee != null ? Number(row.calculatedFee) : 0;
-      const prefill =
-        Number.isFinite(current) && current > 0
-          ? current
-          : tournament?.feePerGame != null
-            ? Number(tournament.feePerGame)
-            : 0;
-      setSettleFee(prefill > 0 ? String(prefill) : "");
-      setSettleTargetIds([row.id]);
-      setSettleTargetCount(1);
-      setSettleOpen(true);
-    },
-    [tournament],
-  );
-
-  const handleConfirmSettlement = useCallback(async () => {
-    const fee = Number(settleFee);
-    if (!Number.isFinite(fee) || fee < 1) {
-      toast.error(MESSAGES.tournament.settleFeeRequired);
-      return;
-    }
-    if (!settleTargetCount || settleTargetCount < 1) {
-      toast.error(MESSAGES.tournament.settleNoTarget);
-      return;
-    }
-    setSettleSubmitting(true);
-    const res = await confirmTournamentSettlement(id, fee, settleTargetIds);
-    setSettleSubmitting(false);
-    if (res.success && res.data) {
-      toast.success(
-        MESSAGES.tournament.settleSuccess(
-          res.data.billedCount,
-          res.data.totalAmount,
-        ),
-      );
-      setSettleOpen(false);
-      void load();
-    } else {
-      toast.error(res.error?.message ?? MESSAGES.error.general);
-    }
-  }, [id, settleFee, settleTargetCount, settleTargetIds, toast, load]);
-
-  // [2026-06-17] 결제요청 취소 — 정산(결제요청)으로 청구한 미결제 건을 UNPAID 로 환원.
-  const handleCancelSettlement = useCallback(async () => {
-    const ok = await modal.confirm({
-      title: "결제요청 취소",
-      message:
-        "참가자에게 보낸 결제 요청을 취소하시겠습니까?\n결제 완료된 건은 취소되지 않습니다.",
-      confirmText: "결제요청 취소",
-      cancelText: "닫기",
-      variant: "danger",
-    });
-    if (!ok) return;
-    const res = await cancelTournamentSettlement(id);
-    if (res.success && res.data) {
-      toast.success(
-        `결제 요청이 취소되었습니다. (${res.data.revertedCount}명)`,
-      );
-      void load();
-    } else {
-      toast.error(res.error?.message ?? MESSAGES.error.general);
-    }
-  }, [id, modal, toast, load]);
 
   const uiStatus: TournamentUiStatus = useMemo(() => {
     if (!tournament) return "recruiting";
@@ -684,249 +510,50 @@ export default function CommonTournamentDetailPage() {
         </>
       )}
 
-      {/* [2026-06-17] 감독 — 참가선수목록. [2026-07-21] 선불=읽기전용 현황 / 후불=정산 확정 액션. */}
-      {isManager && regRows.length > 0 && (() => {
-        // 행 5-state·결제방식 해석 — BE Dual Emit 우선, 미제공 시 레거시 paymentStatus·대회 모드 폴백.
-        const rowStatusOf = (r: TournamentRegistrationRow): TournamentBillingStatus =>
-          r.billingStatus ??
-          (r.paymentStatus === "PAID"
-            ? "PAID"
-            : r.paymentStatus === "PENDING"
-              ? "BILLED"
-              : r.paymentStatus === "CANCELLED"
-                ? "CANCELLED"
-                : r.paymentStatus === "REFUNDED"
-                  ? "REFUNDED"
-                  : "UNSETTLED");
-        const rowTimingOf = (
-          r: TournamentRegistrationRow,
-        ): TournamentBillingTiming =>
-          r.billingTiming ?? (isPostpaid ? "POSTPAID" : "PREPAID");
-        // 활성 참가자(취소·환불 제외) — 카운트/정산 분모.
-        const activeRows = regRows.filter((r) => {
-          const s = rowStatusOf(r);
+      {/* 감독/코치 — 명단·정산 관리 진입 카드. 명단 행·정산 액션은 분리 페이지가 담당. */}
+      {isManager && (() => {
+        // 활성 참가자(취소·환불 제외) — 진입 카드 인원 표기.
+        const activeCount = regRows.filter((r) => {
+          const s =
+            r.billingStatus ??
+            (r.paymentStatus === "CANCELLED"
+              ? "CANCELLED"
+              : r.paymentStatus === "REFUNDED"
+                ? "REFUNDED"
+                : "ACTIVE");
           return s !== "CANCELLED" && s !== "REFUNDED";
-        });
-        const needPay = regRows.filter(
-          (r) => r.paymentStatus === "UNPAID" || r.paymentStatus === "PENDING",
-        ).length;
-        // 결제요청 취소 가능 — 정산됨(PENDING) 미결제 건이 있을 때.
-        const pendingCount = regRows.filter(
-          (r) => r.paymentStatus === "PENDING",
-        ).length;
-        // 종료 판정 — status='finished' 또는 마지막 경기 시작 +1시간 경과(결제요청 활성화).
-        //   status 가 자동 전이되지 않으므로 시각 경과도 종료로 인정. 백엔드
-        //   confirmTournamentSettlement 가드와 동일 기준.
-        const isEnded = (() => {
-          if (tournament.status === "finished") return true;
-          if (tournament.status === "cancelled") return false;
-          const matchTimes = (tournament.matches ?? [])
-            .map((m) => new Date(m.scheduledAt).getTime())
-            .filter((t) => !Number.isNaN(t));
-          if (matchTimes.length > 0) {
-            return Math.max(...matchTimes) + SETTLE_OPEN_DELAY_MS <= Date.now();
-          }
-          // 경기 미등록 폴백 — endDate 는 @db.Date(시각 없음)라 다음날 0시부터 종료.
-          if (!tournament.endDate) return false;
-          const end = new Date(tournament.endDate).getTime();
-          if (Number.isNaN(end)) return false;
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          return end < today.getTime();
-        })();
-        const nameOf = (r: TournamentRegistrationRow) =>
-          r.child
-            ? `${r.child.lastName ?? ""}${r.child.firstName ?? ""}`.trim() ||
-              MESSAGES.tournament.participantNameUnknown
-            : `${r.user?.lastName ?? ""}${r.user?.firstName ?? ""}`.trim() ||
-              MESSAGES.tournament.participantNameUnknown;
-        // 결제요청취소 — 요청에 따라 임시 숨김. 로직(pendingCount/handleCancelSettlement)은 보존.
-        const SHOW_CANCEL_REQUEST = false;
-        // 체크박스 선택 대상 = 정산 전(UNPAID)만(후불 정산 액션 전용).
-        //   PENDING 은 행 단위 "금액 수정"으로 재청구 — 반복 결제요청 방지.
-        const payableIds = regRows
-          .filter((r) => r.paymentStatus === "UNPAID")
-          .map((r) => r.id);
-        const allPayableSelected =
-          payableIds.length > 0 &&
-          payableIds.every((pid) => selectedRegIds.has(pid));
-        const toggleAllPayable = () =>
-          setSelectedRegIds(
-            allPayableSelected ? new Set() : new Set(payableIds),
-          );
+        }).length;
         return (
           <section
-            id="participants"
-            aria-label={MESSAGES.tournament.rosterSectionTitle}
+            aria-label={MESSAGES.tournament.rosterManageCta}
             className="mt-2 bg-it-surface px-4 py-4 dark:bg-it-blue-950"
           >
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="flex items-center gap-1.5 text-card-title font-extrabold text-it-ink-800 dark:text-white">
-                <Icon name="groups" className="text-[18px] text-it-ink-400" aria-hidden="true" />
-                {MESSAGES.tournament.rosterSectionTitle}
-              </h2>
-              <span className="text-w-caption font-bold text-it-ink-400 dark:text-rink-300">
-                {isPostpaid
-                  ? MESSAGES.tournament.rosterPayNeeded(needPay, activeRows.length)
-                  : MESSAGES.tournament.rosterParticipantCount(activeRows.length)}
-              </span>
-            </div>
-            {isPostpaid && payableIds.length > 0 && (
-              <label className="mb-1 flex w-fit cursor-pointer items-center gap-2 py-1.5 text-w-small font-bold text-it-ink-600 dark:text-rink-100">
-                <input
-                  type="checkbox"
-                  checked={allPayableSelected}
-                  onChange={toggleAllPayable}
-                  aria-label={MESSAGES.tournament.rosterSelectAllAria}
-                  className="h-[18px] w-[18px] shrink-0 cursor-pointer accent-it-blue-500"
+            <button
+              type="button"
+              onClick={() => navigate(`/tournaments/${id}/students`)}
+              className="flex w-full items-center justify-between gap-3 rounded-w-md border border-it-line px-3.5 py-3.5 text-left transition-colors hover:bg-it-fill motion-reduce:transition-none dark:border-rink-700 dark:hover:bg-rink-700"
+            >
+              <span className="flex min-w-0 items-center gap-2.5">
+                <Icon
+                  name="groups"
+                  className="shrink-0 text-[20px] text-it-blue-500"
+                  aria-hidden="true"
                 />
-                <span>
-                  {MESSAGES.tournament.participantSelectAllCount(
-                    selectedRegIds.size,
-                    payableIds.length,
-                  )}
+                <span className="min-w-0">
+                  <span className="block truncate text-card-body font-bold text-it-ink-800 dark:text-white">
+                    {MESSAGES.tournament.rosterManageCta}
+                  </span>
+                  <span className="block text-w-caption font-bold text-it-ink-400 dark:text-rink-300">
+                    {MESSAGES.tournament.rosterParticipantCount(activeCount)}
+                  </span>
                 </span>
-              </label>
-            )}
-            <div className="flex flex-col">
-              {regRows.map((r, idx) => {
-                const rowStatus = rowStatusOf(r);
-                const rowTiming = rowTimingOf(r);
-                const statusMeta =
-                  ROW_STATUS_META[rowStatus] ?? ROW_STATUS_META.UNSETTLED;
-                const timingMeta = TIMING_META[rowTiming] ?? TIMING_META.PREPAID;
-                // 정산 확정 액션(체크박스·금액수정)은 후불 대회만. 선불은 읽기전용.
-                const checkable = isPostpaid && r.paymentStatus === "UNPAID";
-                const editable = isPostpaid && r.paymentStatus === "PENDING";
-                // 표시 금액 — 완납=결제 금액 / 청구=청구 금액. BE 파생 우선, 미제공 시 폴백.
-                const rowFee =
-                  r.billedAmount != null
-                    ? Number(r.billedAmount)
-                    : r.paidAmount != null && r.paidAmount > 0
-                      ? Number(r.paidAmount)
-                      : r.calculatedFee != null
-                        ? Number(r.calculatedFee)
-                        : r.payment?.amount != null
-                          ? Number(r.payment.amount)
-                          : 0;
-                const amountLabel =
-                  rowStatus === "PAID" && rowFee > 0
-                    ? MESSAGES.tournament.settlePaidAmount(rowFee)
-                    : rowStatus === "BILLED" && rowFee > 0
-                      ? MESSAGES.tournament.settleBilledAmount(rowFee)
-                      : null;
-                return (
-                  <div
-                    key={r.id}
-                    className={`flex items-center justify-between gap-3 py-3.5 ${
-                      idx !== regRows.length - 1 ? "border-b border-it-line dark:border-rink-700" : ""
-                    }`}
-                  >
-                    <span className="flex items-center gap-2 min-w-0">
-                      {isPostpaid &&
-                        (checkable ? (
-                          <input
-                            type="checkbox"
-                            checked={selectedRegIds.has(r.id)}
-                            onChange={() => toggleRegSelection(r.id)}
-                            aria-label={MESSAGES.tournament.rosterRowCheckAria(
-                              nameOf(r),
-                            )}
-                            className="h-[18px] w-[18px] shrink-0 cursor-pointer accent-it-blue-500"
-                          />
-                        ) : (
-                          <span className="w-[18px] shrink-0" aria-hidden="true" />
-                        ))}
-                      <Icon name="person" className="text-[20px] text-it-ink-400" aria-hidden="true" />
-                      <span className="min-w-0">
-                        <span className="flex items-center gap-1.5">
-                          <span className="truncate font-bold text-it-ink-800 dark:text-white">
-                            {nameOf(r)}
-                          </span>
-                          <span
-                            className={cn(
-                              "shrink-0 inline-flex items-center rounded-w-pill px-1.5 py-0.5 text-w-caption font-extrabold",
-                              timingMeta.cls,
-                            )}
-                          >
-                            {timingMeta.label}
-                          </span>
-                        </span>
-                        {amountLabel && (
-                          <span className="block text-w-caption text-it-ink-400 dark:text-rink-300 tabular-nums">
-                            {amountLabel}
-                          </span>
-                        )}
-                      </span>
-                    </span>
-                    <span className="flex shrink-0 items-center gap-2">
-                      <span
-                        className={cn(
-                          "inline-flex items-center gap-1 rounded-w-pill px-2 py-0.5 text-w-caption font-extrabold",
-                          statusMeta.chip,
-                        )}
-                      >
-                        <span
-                          className={cn("h-1.5 w-1.5 rounded-w-pill", statusMeta.dot)}
-                          aria-hidden="true"
-                        />
-                        {statusMeta.label}
-                      </span>
-                      {editable && (
-                        <button
-                          type="button"
-                          disabled={!isEnded}
-                          title={
-                            !isEnded
-                              ? MESSAGES.tournament.settleAvailableAfterHour
-                              : undefined
-                          }
-                          onClick={() => openAmountEdit(r)}
-                          className="rounded-w-pill border border-it-line px-2.5 py-1 text-w-caption font-bold text-it-ink-600 hover:bg-it-fill disabled:opacity-40 dark:border-rink-700 dark:text-rink-100 dark:hover:bg-rink-700"
-                        >
-                          {MESSAGES.tournament.settleEditAmount}
-                        </button>
-                      )}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-            {/* [2026-07-21] 정산 확정 액션(결제요청) — 후불 대회만. 선불은 읽기전용 현황.
-                #settlement 앵커(팀 허브 detailPath 드릴다운 대상). */}
-            {isPostpaid && (
-              <div id="settlement" className="mt-3 flex flex-col items-end gap-2">
-                <Button
-                  variant="primary"
-                  size="sm"
-                  disabled={!isEnded || selectedRegIds.size === 0}
-                  title={
-                    !isEnded
-                      ? MESSAGES.tournament.settleAvailableAfterHour
-                      : undefined
-                  }
-                  onClick={() => void openSettlement()}
-                >
-                  {MESSAGES.tournament.settleRequestCta}
-                </Button>
-                {!isEnded && (
-                  <p className="text-w-caption text-it-ink-400 dark:text-rink-300">
-                    {MESSAGES.tournament.settleAvailableAfterHour}
-                  </p>
-                )}
-                {SHOW_CANCEL_REQUEST && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="border-it-red-500 text-it-red-500 hover:border-it-red-500 hover:bg-it-red-50 dark:border-it-red-500 dark:text-it-red-300 dark:hover:bg-it-red-500/10"
-                    disabled={pendingCount === 0}
-                    onClick={() => void handleCancelSettlement()}
-                  >
-                    {MESSAGES.tournament.settleRequestCancelCta}
-                  </Button>
-                )}
-              </div>
-            )}
+              </span>
+              <Icon
+                name="chevron_right"
+                className="shrink-0 text-[20px] text-it-ink-400"
+                aria-hidden="true"
+              />
+            </button>
           </section>
         );
       })()}
@@ -1067,19 +694,6 @@ export default function CommonTournamentDetailPage() {
       </div>
       </main>
 
-      {/* [2026-06-17] 후불 정산 시트 — 공통 BottomSheet 사용(버튼 잘림/safe-area 처리). */}
-      <SettlementModal
-        isOpen={settleOpen}
-        fee={settleFee}
-        onFeeChange={setSettleFee}
-        targetCount={settleTargetCount}
-        submitting={settleSubmitting}
-        onClose={() => {
-          if (!settleSubmitting) setSettleOpen(false);
-        }}
-        onConfirm={() => void handleConfirmSettlement()}
-      />
-
       {/* [2026-06-16] 감독/코치 — 참가 선수 전체 명단(스크롤). 인라인 5명 초과 시 노출. */}
       {isManager && (
         <BottomSheet
@@ -1115,107 +729,7 @@ export default function CommonTournamentDetailPage() {
   );
 }
 
-/**
- * [2026-06-16] 후불 대회 정산 모달.
- *  · 1인당 참가비(정수 ≥ 1) 입력 → 정산 대상 인원 × 단가 = 총 청구 금액 미리보기.
- *  · 대상 1명 이상 + 단가 ≥ 1원일 때만 정산하기 활성화.
- */
-function SettlementModal({
-  isOpen,
-  fee,
-  onFeeChange,
-  targetCount,
-  submitting,
-  onClose,
-  onConfirm,
-}: {
-  isOpen: boolean;
-  fee: string;
-  onFeeChange: (v: string) => void;
-  targetCount: number | null;
-  submitting: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-}) {
-  const feeNum = Number(fee);
-  const validFee = Number.isFinite(feeNum) && feeNum >= 1;
-  const count = targetCount ?? 0;
-  const total = validFee ? feeNum * count : 0;
-  const canConfirm = validFee && count >= 1 && !submitting;
-
-  return (
-    <BottomSheet
-      isOpen={isOpen}
-      onClose={onClose}
-      title={MESSAGES.tournament.settleTitle}
-      footer={
-        <div className="grid grid-cols-2 gap-2">
-          <Button
-            variant="outline"
-            size="lg"
-            fullWidth
-            onClick={onClose}
-            disabled={submitting}
-          >
-            {MESSAGES.common.cancel}
-          </Button>
-          <Button
-            variant="primary"
-            size="lg"
-            fullWidth
-            onClick={onConfirm}
-            disabled={!canConfirm}
-          >
-            {submitting
-              ? MESSAGES.common.processing
-              : MESSAGES.tournament.settleCta}
-          </Button>
-        </div>
-      }
-    >
-      <label className="flex flex-col gap-1.5">
-        <span className="text-w-caption font-bold text-it-ink-600 dark:text-rink-100">
-          {MESSAGES.tournament.settleFeeLabel}
-        </span>
-        <input
-          type="number"
-          inputMode="numeric"
-          min={1}
-          step={1000}
-          value={fee}
-          onChange={(e) => onFeeChange(e.target.value.replace(/[^0-9]/g, ""))}
-          placeholder={MESSAGES.tournament.settleFeePlaceholder}
-          aria-label={MESSAGES.tournament.settleFeeLabel}
-          className="h-11 w-full rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill px-3 text-w-body font-num tabular-nums text-it-ink-800 placeholder:text-it-ink-400 focus:border-it-blue-500 focus:bg-it-surface focus:outline-none dark:border-rink-700 dark:bg-rink-800 dark:text-white dark:focus:bg-rink-800"
-        />
-      </label>
-
-      <div className="mt-4 rounded-w-md bg-it-blue-50 px-3.5 py-3 dark:bg-it-blue-500/10">
-        <div className="flex items-center justify-between">
-          <span className="text-w-small font-bold text-it-ink-600 dark:text-rink-100">
-            {targetCount === null
-              ? MESSAGES.common.loading
-              : MESSAGES.tournament.settleTargetCount(count)}
-          </span>
-        </div>
-        <div className="mt-2 flex items-center justify-between">
-          <span className="text-w-small font-bold text-it-ink-600 dark:text-rink-100">
-            {MESSAGES.tournament.settleTotalLabel}
-          </span>
-          <span className="text-w-body font-extrabold text-it-blue-500 tabular-nums">
-            {new Intl.NumberFormat("ko-KR").format(total)}원
-          </span>
-        </div>
-      </div>
-
-      {targetCount !== null && count < 1 && (
-        <p className="mt-3 text-w-caption font-medium text-it-red-500">
-          {MESSAGES.tournament.settleNoTarget}
-        </p>
-      )}
-    </BottomSheet>
-  );
-}
+// SettlementModal — 명단·정산 관리 페이지(/tournaments/[id]/students)로 이동.
 
 // [2026-06-05 1단계] QuickAction / DetailCard / composeVenueBody / formatPrizeAmount /
 //   scrollToCard 제거 — 규정·장소·상금 카드 박스 삭제로 미사용.
@@ -1329,9 +843,8 @@ function ParticipantTargetRow({
             </>
           )}
         </p>
-        {/* "명단 보기"(같은 페이지 #participants 스크롤 단축) 버튼 제거 —
-            참가선수목록 섹션이 하단에 상시 노출되고, 선수 전체 명단은 "외 N명" 시트가 담당.
-            알림 딥링크의 #participants 해시 앵커 스크롤은 별도 로직으로 유지. */}
+        {/* 선수 전체 명단은 "외 N명" 시트가 담당. 참가 등록·정산 명단은
+            명단·정산 관리 페이지(/tournaments/[id]/students)로 분리. */}
       </div>
     </div>
   );

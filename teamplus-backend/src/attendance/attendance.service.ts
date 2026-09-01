@@ -3732,34 +3732,32 @@ export class AttendanceService {
       }
     }
 
-    // 회원 이름 + 회원별 활성 상품 — 상호 무관 쿼리라 병렬 실행 (2026-07-18 perf, 1 RTT 절감)
+    // 목록 기준 = 활성 수강생(Enrollment) ∪ 출석 회원 — 결제만 하고 출석 0회인
+    //   수강생도 목록에 노출한다(출석 회원만 담으면 미출석 수강생이 화면에서 사라짐).
     //   상품은 수강 등록(Enrollment)의 선택 상품(classProductId) 기준.
     //   paid 우선(같으면 최신), 상품 미연결(관리자 수동 등록 등)은 null → 라벨 미표시.
-    const userIds = [...counts.keys()];
-    const [users, enrollments] = await Promise.all([
-      userIds.length
-        ? this.prisma.user.findMany({
-            where: { id: { in: userIds } },
-            select: { id: true, firstName: true, lastName: true },
-          })
-        : Promise.resolve([]),
-      userIds.length
-        ? this.prisma.enrollment.findMany({
-            where: {
-              classId,
-              childId: { in: userIds },
-              status: { in: ["paid", "approved"] },
-              classProductId: { not: null },
-            },
-            select: {
-              childId: true,
-              status: true,
-              product: { select: { productName: true, billingTiming: true } },
-            },
-            orderBy: { updatedAt: "desc" },
-          })
-        : Promise.resolve([]),
-    ]);
+    const enrollments = await this.prisma.enrollment.findMany({
+      where: {
+        classId,
+        status: { in: ["paid", "approved"] },
+        classProductId: { not: null },
+      },
+      select: {
+        childId: true,
+        status: true,
+        product: { select: { productName: true, billingTiming: true } },
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+    const userIds = [
+      ...new Set([...counts.keys(), ...enrollments.map((e) => e.childId)]),
+    ];
+    const users = userIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, firstName: true, lastName: true },
+        })
+      : [];
     const nameOf = new Map(
       users.map((u) => [u.id, `${u.lastName ?? ""}${u.firstName ?? ""}`]),
     );
@@ -3779,18 +3777,22 @@ export class AttendanceService {
       });
     }
 
-    const items = [...counts.entries()]
-      .map(([userId, attendanceCount]) => {
+    const items = userIds
+      .map((userId) => {
         const product = productOf.get(userId);
         return {
           userId,
           name: nameOf.get(userId) ?? "",
-          attendanceCount,
+          attendanceCount: counts.get(userId) ?? 0,
           productName: product?.productName ?? null,
           productBillingTiming: product?.billingTiming ?? null,
         };
       })
-      .sort((a, b) => b.attendanceCount - a.attendanceCount);
+      .sort(
+        (a, b) =>
+          b.attendanceCount - a.attendanceCount ||
+          a.name.localeCompare(b.name, "ko"),
+      );
 
     return {
       classId,
@@ -3799,6 +3801,8 @@ export class AttendanceService {
       // 하위호환 키 — 표시 중단. sessionsPerMonth 는 컬럼명과 달리 "패키지 총 회수"
       // (발급 크레딧 수량)라 월 화면의 참고치로 부적합해 산출을 제거했다.
       nominalSessions: null,
+      // 해당 월 비취소 일정 수 — "출석 N/M회" 분모(수업 일정 실제 회차 기준).
+      totalSessions: schedules.length,
       totalPresent: items.reduce((sum, i) => sum + i.attendanceCount, 0),
       items,
     };

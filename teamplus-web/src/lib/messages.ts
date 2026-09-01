@@ -1918,6 +1918,10 @@ export const MESSAGES = {
     rosterParticipantCount: (n: number) => `참가 ${n}명`,
     rosterSelectAllAria: "청구 대상 전체 선택",
     rosterRowCheckAria: (name: string) => `${name} 결제요청 대상`,
+    // 명단·정산 관리 분리 페이지(/tournaments/[id]/students) — 상세는 진입 카드만 노출.
+    rosterPageTitle: "참가 선수 명단",
+    rosterManageCta: "명단·정산 관리",
+    rosterGamesCount: (n: number) => `${n}경기`,
     settleRequestCta: "결제요청",
     settleRequestCancelCta: "결제요청취소",
     postpaidFeeLabel: "후불 정산 (종료 후 청구)",
@@ -3193,6 +3197,9 @@ export const MESSAGES = {
         "출석한 만큼 월말에 정산됩니다. 출석 횟수·정산 확정은 출석 관리에서 진행됩니다.",
       // [Phase C] 선수정보 탭 당월 출석 횟수
       attendanceThisMonth: (n: number) => `이번 달 출석 ${n}회`,
+      // 분모 포함 표기 — total=선택월 비취소 일정 수(getClassPayments.totalSessions).
+      attendanceThisMonthRatio: (n: number, total: number) =>
+        `이번 달 출석 ${n}/${total}회`,
       // [만료 회원] 결제가 끊겨 자동 해제된(expired) 선수 관리 목록 — 재등록 대상.
       //   복귀는 학부모 재결제 시 자동 복구 단일 경로(수동 배치 미사용 정책).
       //   명단제외 = expired → inactive 정리(감독 판단) — 재결제 시 자동 복귀는 동일.
@@ -4339,6 +4346,8 @@ export const MESSAGES = {
     prevMonth: "이전 달",
     nextMonth: "다음 달",
     countUnit: (n: number) => `${n}회`,
+    // 분모 포함 표기 — total=해당 월 비취소 일정 수(monthly-counts.totalSessions).
+    countRatioUnit: (n: number, total: number) => `${n}/${total}회`,
     postpaidProduct: "후불",
     total: "총 출석",
     empty: "이번 달 출석 기록이 없어요.",

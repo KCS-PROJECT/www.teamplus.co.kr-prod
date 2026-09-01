@@ -607,7 +607,7 @@ export interface TournamentSettlementSummary {
   refundedAmount: number;
   mixedBilling: boolean;
   blockedReasonCode: SettlementBlockedReasonCode;
-  /** 드릴다운 경로 — "/tournaments/{id}#settlement". */
+  /** 드릴다운 경로 — "/tournaments/{id}/students" (명단·정산 관리 페이지). */
   detailPath: string;
 }
 
