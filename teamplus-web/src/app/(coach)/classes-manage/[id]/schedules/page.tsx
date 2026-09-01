@@ -261,7 +261,9 @@ export default function ClassSchedulesManagePage() {
     if (isUnapprovedPending && !isSpot) fetchMonthlyPkgs();
   }, [isUnapprovedPending, isSpot, fetchMonthlyPkgs]);
 
-  // 대상월 row 가 이미 있는 상품명 집합 — 같은 이름의 이전 분은 "갱신 완료" 취급.
+  // 대상월 row 가 이미 있는 상품명 집합 — 과거 데이터 보호용 보조 가드.
+  //   갱신 소진 판정은 원본 행(id) 판매 중지가 SoT 이고, 이 이름 필터는 예전
+  //   이름 매칭 방식으로 갱신되어 원본이 살아있는 기존 행의 중복 제안만 막는다.
   const updatedNames = new Set(
     (monthlyPkgs ?? [])
       .filter(
@@ -314,24 +316,22 @@ export default function ClassSchedulesManagePage() {
     return { counts, total };
   }, [schedules, targetMonthKey]);
 
-  // 구명칭 라인 판매 중지 — 이름 매칭 기반 승계 판정이라, 이름이 바뀌면 옛 이름의
-  //   활성 row 전부(무월 레거시·과거 월분, 대상월분 제외)를 중지해야 미등록으로
-  //   재등장하지 않는다 (동명 과거 월분이 여러 달일 수 있어 전수 처리).
-  const retireLineRows = useCallback(
-    async (oldName: string) => {
-      const targets = (monthlyPkgs ?? []).filter(
-        (p) =>
-          p.productName === oldName &&
-          p.isActive !== false &&
-          p.billingMonth?.slice(0, 7) !== targetMonthKey,
-      );
-      for (const t of targets) {
-        await api.patch(`/classes/${classId}/products/${t.id}`, {
-          isActive: false,
-        });
+  // 갱신 원본 행 소진 — 등록·제외 시 해당 행(id)만 판매 중지. 이름 매칭 승계 없음.
+  //   지난 월분도 판매 중지 단독 변경은 서버가 허용한다(지난 월분 잠금의 유일한 예외).
+  //   실패는 경고 토스트로 노출 (조용한 실패 금지 — 실패 시 행이 갱신 목록에 남는다).
+  const retireSourceRow = useCallback(
+    async (pkgId: string) => {
+      const res = await api.patch(`/classes/${classId}/products/${pkgId}`, {
+        isActive: false,
+      });
+      if (!res.success) {
+        toast.error(
+          res.error?.message ?? MESSAGES.class.salesCycle.retireFailed,
+        );
       }
+      return res.success;
     },
-    [classId, monthlyPkgs, targetMonthKey],
+    [classId, toast],
   );
 
   const handleCreateMonthPkg = useCallback(
@@ -362,15 +362,9 @@ export default function ClassSchedulesManagePage() {
           billingMonth: targetMonthKey,
         });
         if (res.success) {
-          if (name !== pkg.productName) {
-            // 이름 변경 — 구명칭 라인 전체를 새 이름으로 승계(판매 중지 처리).
-            await retireLineRows(pkg.productName);
-          } else if (!pkg.billingMonth) {
-            // 무월(레거시) 원본 — 월 필터를 우회해 새 달 상품과 중복 노출되는 것 방지.
-            await api.patch(`/classes/${classId}/products/${pkg.id}`, {
-              isActive: false,
-            });
-          }
+          // 원본 행 소진(id 기반) — 이름 변경 여부와 무관하게 방금 누른 행만 중지.
+          //   무월(레거시) 원본의 월 필터 우회 중복 노출 방지도 이 한 번으로 겸한다.
+          await retireSourceRow(pkg.id);
           toast.success(MESSAGES.class.salesCycle.packageCreated);
           await fetchMonthlyPkgs();
         } else if (res.error?.message) {
@@ -380,7 +374,35 @@ export default function ClassSchedulesManagePage() {
         setPkgSubmitting(null);
       }
     },
-    [classId, targetMonthKey, pkgPrices, pkgNames, toast, fetchMonthlyPkgs, retireLineRows],
+    [classId, targetMonthKey, pkgPrices, pkgNames, toast, fetchMonthlyPkgs, retireSourceRow],
+  );
+
+  // [이번 달 구성에서 제외] — 새 행을 만들지 않고 원본만 소진. 이번 달부터 팔지 않을
+  //   항목을 갱신 목록에서 정리하는 정식 경로 (예전 이름 매칭 잔재 행 정리도 겸용).
+  const handleExcludePkg = useCallback(
+    async (pkg: MonthlyPkg) => {
+      if (targetMonthLabel === null) return;
+      const ok = await modal.confirm({
+        title: MESSAGES.class.salesCycle.excludeTitle,
+        message: MESSAGES.class.salesCycle.excludeConfirm(
+          pkg.productName,
+          targetMonthLabel,
+        ),
+      });
+      if (!ok) return;
+      setPkgSubmitting(pkg.id);
+      try {
+        if (await retireSourceRow(pkg.id)) {
+          toast.success(
+            MESSAGES.class.salesCycle.excludeSuccess(pkg.productName),
+          );
+          await fetchMonthlyPkgs();
+        }
+      } finally {
+        setPkgSubmitting(null);
+      }
+    },
+    [modal, targetMonthLabel, retireSourceRow, toast, fetchMonthlyPkgs],
   );
 
   // ── 등록 완료(대상월분) 항목 수정 — [등록하기] 즉시 확정 이후의 정정 경로.
@@ -412,10 +434,6 @@ export default function ClassSchedulesManagePage() {
         price,
       });
       if (res.success) {
-        // 이름을 고치면 옛 이름의 이전 월분 라인이 미등록으로 재등장하므로 함께 승계 처리.
-        if (name !== pkg.productName) {
-          await retireLineRows(pkg.productName);
-        }
         toast.success(MESSAGES.save.success);
         setEditingDoneId(null);
         await fetchMonthlyPkgs();
@@ -508,7 +526,9 @@ export default function ClassSchedulesManagePage() {
   );
 
   // [월 일괄 생성] 정규 요일 템플릿(시간 채워진 요일)로 대상월 날짜를 즉시 등록 —
-  //   대상월: 이번 달 남은 날짜가 있으면 이번 달, 소진됐으면 다음 달(월말 선등록 지원).
+  //   대상월: 잔여 일정이 있으면 판매 준비 대상월(earliestRemainingMonth)에 고정 — 그 달이
+  //   가득 차도 다음 달로 넘어가지 않는다(생명주기와 무관하게 달이 앞서가는 혼동 방지).
+  //   다음 달 선등록은 잔여 일정이 모두 끝나 일정 등록 대기가 된 뒤에만 열린다.
   //   수정 폼의 동일 기능(로컬 draft)과 달리 여기서는 bulk API 로 바로 저장된다.
   const activeDayDefaults = useMemo(
     () => (cls?.daySchedules ?? []).filter((s) => s.startTime && s.endTime),
@@ -542,6 +562,15 @@ export default function ClassSchedulesManagePage() {
       return out;
     };
     const now = new Date();
+    // 잔여 일정이 있으면 대상월 고정 — 판매 준비 섹션과 동일 달을 가리킨다.
+    //   잔여 일정은 오늘 이후이므로 대상월은 이번 달 이상: 이번 달이면 오늘부터, 미래 달이면 1일부터.
+    if (targetMonthKey) {
+      const [ty, tm] = targetMonthKey.split('-').map(Number);
+      const fromDay =
+        ty === now.getFullYear() && tm - 1 === now.getMonth() ? now.getDate() : 1;
+      return { year: ty, month: tm, dates: collect(ty, tm - 1, fromDay) };
+    }
+    // 일정 등록 대기 — 이번 달 남은 날짜가 있으면 이번 달, 소진됐으면 다음 달(월말 선등록).
     const thisMonth = collect(now.getFullYear(), now.getMonth(), now.getDate());
     if (thisMonth.length > 0) {
       return { year: now.getFullYear(), month: now.getMonth() + 1, dates: thisMonth };
@@ -549,7 +578,7 @@ export default function ClassSchedulesManagePage() {
     const nextY = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
     const nextM0 = (now.getMonth() + 1) % 12;
     return { year: nextY, month: nextM0 + 1, dates: collect(nextY, nextM0, 1) };
-  }, [isSpot, activeDayDefaults, registeredDates]);
+  }, [isSpot, activeDayDefaults, registeredDates, targetMonthKey]);
 
   // [검토 단계] 월 일괄 생성 프리필 — 미니달력을 대상월·해당 날짜 선택 상태로 열고,
   //   감독이 가감 후 [확인]을 눌러야 등록된다(즉시 커밋 아님).
@@ -1069,7 +1098,8 @@ export default function ClassSchedulesManagePage() {
               달력에서 날짜를 선택하고 공통 시간·장소를 적용해 일정을 추가합니다.
               매달 단위로 필요할 때마다 계속 추가할 수 있어요.
             </p>
-            {/* 주 액션: 정규 요일 기반 월 일괄 생성 (이번 달 소진 시 다음 달 선등록). */}
+            {/* 주 액션: 정규 요일 기반 월 일괄 생성 — 대상월은 잔여 일정의 달에 고정,
+                일정 등록 대기일 때만 이번 달→다음 달 선등록. */}
             {monthFill !== null && (
               <button
                 type="button"
@@ -1112,6 +1142,14 @@ export default function ClassSchedulesManagePage() {
                   ? MESSAGES.class.scheduleAddSingle
                   : '일정 추가'}
             </button>
+            {/* 대상월이 가득 차 일괄 생성이 비활성일 때 이유 안내 — 다음 달로 넘어가지 않는 정책. */}
+            {monthFill !== null &&
+              monthFill.dates.length === 0 &&
+              targetMonthKey !== null && (
+                <p className="text-card-meta text-it-ink-500 dark:text-rink-300" role="status">
+                  {MESSAGES.class.rangeGen.fillMonthFull(monthFill.month)}
+                </p>
+              )}
             {spotLimitReached && (
               <p className="text-card-meta text-it-ink-500 dark:text-rink-300" role="status">
                 {MESSAGES.class.spotSingleScheduleLimit}
@@ -1487,14 +1525,25 @@ export default function ClassSchedulesManagePage() {
                             </div>
                           </div>
                         )}
-                      <button
-                        type="button"
-                        onClick={() => handleCreateMonthPkg(pkg)}
-                        disabled={pkgSubmitting === pkg.id}
-                        className="mt-2.5 w-full h-11 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-meta font-bold disabled:opacity-60 transition-colors motion-reduce:transition-none active:brightness-95"
-                      >
-                        {MESSAGES.class.salesCycle.renewRegisterButton}
-                      </button>
+                      <div className="flex gap-2 mt-2.5">
+                        {/* 보조: 새 행 없이 원본만 소진 — 이번 달부터 안 파는 항목 정리. */}
+                        <button
+                          type="button"
+                          onClick={() => handleExcludePkg(pkg)}
+                          disabled={pkgSubmitting === pkg.id}
+                          className="flex-1 h-11 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-600 text-it-ink-800 dark:text-rink-100 text-card-meta font-bold disabled:opacity-60 transition-colors motion-reduce:transition-none active:brightness-95"
+                        >
+                          {MESSAGES.class.salesCycle.excludeButton}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCreateMonthPkg(pkg)}
+                          disabled={pkgSubmitting === pkg.id}
+                          className="flex-1 h-11 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-meta font-bold disabled:opacity-60 transition-colors motion-reduce:transition-none active:brightness-95"
+                        >
+                          {MESSAGES.class.salesCycle.renewRegisterButton}
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>

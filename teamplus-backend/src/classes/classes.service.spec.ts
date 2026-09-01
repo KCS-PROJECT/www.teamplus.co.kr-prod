@@ -2281,6 +2281,18 @@ describe("ClassesService", () => {
   });
 
   describe("openClassSales (Phase 2 — 판매 시작 시 미갱신 선불 배치 해제)", () => {
+    // 날짜 픽스처 — 실행일(KST) 기준 동적 산출. 고정 연월은 일정이 과거가 되는 순간
+    //   잔여 일정 판정이 달라져 깨진다 (2026-09-01 롤오버로 실측).
+    //   대상월 = 다음 달(잔여 일정 5일) · 직전 판매월 = 이번 달.
+    const kstNow = new Date(Date.now() + 9 * 3600 * 1000);
+    const monthDay = (offset: number, day: number) =>
+      new Date(
+        Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth() + offset, day),
+      );
+    const prevSaleMonth = monthDay(0, 1); // 직전 판매월(salesOpenMonth) = 이번 달
+    const saleTargetSchedule = monthDay(1, 5); // 잔여 일정 → 대상월 = 다음 달
+    const renewedPaidAtIso = monthDay(0, 3).toISOString(); // 직전 판매월 결제 → 유지
+    const unrenewedPaidAtIso = monthDay(-1, 5).toISOString(); // 그 전달 결제 → 해제
     const mkUser = (id: string, name: string) => ({
       userId: id,
       user: { firstName: name, lastName: "김", email: `${id}@t.dev` },
@@ -2316,7 +2328,7 @@ describe("ClassesService", () => {
       payment: null,
     });
 
-    /** 8월 판매 시작(직전 판매월=7월) 상황의 공통 mock 배선. */
+    /** 다음 달 판매 시작(직전 판매월=이번 달) 상황의 공통 mock 배선. */
     const wireOpenSalesMocks = (opts: {
       salesOpenMonth: Date | null;
       registrations: ReturnType<typeof mkUser>[];
@@ -2334,7 +2346,7 @@ describe("ClassesService", () => {
           salesOpenMonth: opts.salesOpenMonth,
           trainingType: null,
           billingMode: "BOTH",
-          schedules: [{ scheduledDate: new Date("2026-08-05T00:00:00Z") }],
+          schedules: [{ scheduledDate: saleTargetSchedule }],
           products: [],
         });
       (prismaService as unknown as Record<string, unknown>).classRegistration = {
@@ -2345,7 +2357,7 @@ describe("ClassesService", () => {
         .mockResolvedValue(opts.enrollments as never);
       (mockTx.class.update as jest.Mock).mockResolvedValue({
         id: mockClassId,
-        salesOpenMonth: new Date("2026-08-01T00:00:00Z"),
+        salesOpenMonth: monthDay(1, 1),
       });
       // tx 내 재조회(§4-0 A)도 외부 조회와 동일 상태를 반환하도록 배선 —
       //   lifecycle 재산출용 trainingType·schedules 포함.
@@ -2353,7 +2365,7 @@ describe("ClassesService", () => {
         endedAt: null,
         salesOpenMonth: opts.salesOpenMonth,
         trainingType: null,
-        schedules: [{ scheduledDate: new Date("2026-08-05T00:00:00Z") }],
+        schedules: [{ scheduledDate: saleTargetSchedule }],
         products: [],
       });
       (mockTx as unknown as Record<string, unknown>).classProduct = {
@@ -2369,7 +2381,7 @@ describe("ClassesService", () => {
 
     it("미갱신 선불만 해제 — 직전월 결제·후불·배치전용은 유지", async () => {
       const { regUpdateMany } = wireOpenSalesMocks({
-        salesOpenMonth: new Date("2026-07-01T00:00:00Z"),
+        salesOpenMonth: prevSaleMonth,
         registrations: [
           mkUser("u-june", "미갱신"),
           mkUser("u-july", "갱신"),
@@ -2377,8 +2389,8 @@ describe("ClassesService", () => {
           mkUser("u-roster", "배치"),
         ],
         enrollments: [
-          prepaidEnroll("u-june", "2026-06-05T00:00:00Z"), // 6월 결제 후 미갱신 → 해제
-          prepaidEnroll("u-july", "2026-07-03T00:00:00Z"), // 직전 판매월(7월) 결제 → 유지
+          prepaidEnroll("u-june", unrenewedPaidAtIso), // 그 전달 결제 후 미갱신 → 해제
+          prepaidEnroll("u-july", renewedPaidAtIso), // 직전 판매월 결제 → 유지
           postpaidEnroll("u-post"), // 활성 후불 구독 → 유지
           // u-roster: enrollment 없음(감독 배치 전용) → 유지
         ],
@@ -2402,9 +2414,9 @@ describe("ClassesService", () => {
 
     it("dryRun — 해제 대상 미리보기만 반환, 쓰기 0", async () => {
       const { regUpdateMany } = wireOpenSalesMocks({
-        salesOpenMonth: new Date("2026-07-01T00:00:00Z"),
+        salesOpenMonth: prevSaleMonth,
         registrations: [mkUser("u-june", "미갱신")],
-        enrollments: [prepaidEnroll("u-june", "2026-06-05T00:00:00Z")],
+        enrollments: [prepaidEnroll("u-june", unrenewedPaidAtIso)],
       });
       const result = await service.openClassSales(
         mockCoachUserId,
@@ -2425,7 +2437,7 @@ describe("ClassesService", () => {
       const { regUpdateMany } = wireOpenSalesMocks({
         salesOpenMonth: null,
         registrations: [mkUser("u-june", "미갱신")],
-        enrollments: [prepaidEnroll("u-june", "2026-06-05T00:00:00Z")],
+        enrollments: [prepaidEnroll("u-june", unrenewedPaidAtIso)],
       });
       const result = (await service.openClassSales(
         mockCoachUserId,
@@ -2439,17 +2451,17 @@ describe("ClassesService", () => {
 
     it("tx 재산출 대상월이 외부 산출과 다르면 낡은 월을 커밋하지 않음 (P2-H1)", async () => {
       wireOpenSalesMocks({
-        salesOpenMonth: new Date("2026-07-01T00:00:00Z"),
+        salesOpenMonth: prevSaleMonth,
         registrations: [],
         enrollments: [],
       });
-      // 외부 조회는 8월 일정 → 대상월 8월. lock 획득 후 재조회는 9월 일정만 —
-      //   그 사이 일정이 변경된 상황 재현.
+      // 외부 조회는 다음 달 일정 → 대상월 다음 달. lock 획득 후 재조회는 다다음달
+      //   일정만 — 그 사이 일정이 변경된 상황 재현.
       (mockTx.class.findUniqueOrThrow as jest.Mock).mockResolvedValue({
         endedAt: null,
-        salesOpenMonth: new Date("2026-07-01T00:00:00Z"),
+        salesOpenMonth: prevSaleMonth,
         trainingType: null,
-        schedules: [{ scheduledDate: new Date("2026-09-05T00:00:00Z") }],
+        schedules: [{ scheduledDate: monthDay(2, 5) }],
         products: [],
       });
       await expect(
@@ -2460,8 +2472,16 @@ describe("ClassesService", () => {
   });
 
   describe("가격 잠금 가드 (Phase 2 — 판매 시작된 월분 수정 거부)", () => {
-    const JUL = new Date(Date.UTC(2026, 6, 1));
-    const AUG = new Date(Date.UTC(2026, 7, 1));
+    // 날짜 픽스처 — 실행일(KST) 기준 동적 산출. 고정 연월은 실행 시점이 그 달을
+    //   지나는 순간 지난 월분 가드에 걸려 깨진다 (2026-09-01 롤오버로 실측).
+    const kstNow = new Date(Date.now() + 9 * 3600 * 1000);
+    const monthStart = (offset: number) =>
+      new Date(
+        Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth() + offset, 1),
+      );
+    const CUR_MONTH = monthStart(0); // 판매 시작된 현재 월분
+    const NEXT_MONTH = monthStart(1); // 미판매 미래 월분
+    const PREV_MONTH = monthStart(-1); // 지난 월분
     const productId = "prod-lock-1";
 
     const wireProductMocks = (fresh: {
@@ -2512,8 +2532,8 @@ describe("ClassesService", () => {
     it("판매 시작된 현재 월분의 가격 변경 → 400 + 미반영", async () => {
       wireProductMocks({
         feeType: "MONTHLY_FIXED",
-        billingMonth: JUL,
-        salesOpenMonth: JUL,
+        billingMonth: CUR_MONTH,
+        salesOpenMonth: CUR_MONTH,
       });
       await expect(
         service.updateClassProductByClassId("u-1", "COACH", mockClassId, productId, {
@@ -2526,8 +2546,8 @@ describe("ClassesService", () => {
     it("잠긴 상품이라도 이름·설명만 변경하면 통과", async () => {
       wireProductMocks({
         feeType: "MONTHLY_FIXED",
-        billingMonth: JUL,
-        salesOpenMonth: JUL,
+        billingMonth: CUR_MONTH,
+        salesOpenMonth: CUR_MONTH,
       });
       await service.updateClassProductByClassId(
         "u-1",
@@ -2542,8 +2562,8 @@ describe("ClassesService", () => {
     it("동일 값 재저장(가격 불변)은 잠긴 상품에서도 통과", async () => {
       wireProductMocks({
         feeType: "MONTHLY_FIXED",
-        billingMonth: JUL,
-        salesOpenMonth: JUL,
+        billingMonth: CUR_MONTH,
+        salesOpenMonth: CUR_MONTH,
       });
       await service.updateClassProductByClassId(
         "u-1",
@@ -2558,8 +2578,8 @@ describe("ClassesService", () => {
     it("미판매 미래 월분은 가격 변경 허용", async () => {
       wireProductMocks({
         feeType: "MONTHLY_FIXED",
-        billingMonth: AUG,
-        salesOpenMonth: JUL,
+        billingMonth: NEXT_MONTH,
+        salesOpenMonth: CUR_MONTH,
       });
       await service.updateClassProductByClassId(
         "u-1",
@@ -2575,7 +2595,7 @@ describe("ClassesService", () => {
       wireProductMocks({
         feeType: "PER_SESSION",
         billingMonth: null,
-        salesOpenMonth: JUL,
+        salesOpenMonth: CUR_MONTH,
       });
       await service.updateClassProductByClassId(
         "u-1",
@@ -2591,7 +2611,7 @@ describe("ClassesService", () => {
       wireProductMocks({
         feeType: "PER_SESSION",
         billingMonth: null,
-        salesOpenMonth: JUL,
+        salesOpenMonth: CUR_MONTH,
       });
       await expect(
         service.updateClassProductByClassId("u-1", "COACH", mockClassId, productId, {
@@ -2674,7 +2694,7 @@ describe("ClassesService", () => {
       wireProductMocks({
         feeType: "MONTHLY_FIXED",
         billingMonth: null,
-        salesOpenMonth: JUL,
+        salesOpenMonth: CUR_MONTH,
       });
       (mockTx.classProduct.findUnique as jest.Mock).mockResolvedValue({
         feeType: "MONTHLY_FIXED",
@@ -2686,7 +2706,7 @@ describe("ClassesService", () => {
         sessionsPerMonth: 8,
         sessionsPerWeek: null,
         durationDays: 28,
-        class: { salesOpenMonth: JUL },
+        class: { salesOpenMonth: CUR_MONTH },
       });
       // 현재 판매월 월분 상품 존재 (isActive 무관 조회).
       (mockTx.classProduct.findFirst as jest.Mock).mockResolvedValue({
@@ -2704,8 +2724,8 @@ describe("ClassesService", () => {
     it("미판매 월분 가격 변경 시 학부모에게 가격 변경 알림 발송 (Phase 5)", async () => {
       wireProductMocks({
         feeType: "MONTHLY_FIXED",
-        billingMonth: AUG,
-        salesOpenMonth: JUL,
+        billingMonth: NEXT_MONTH,
+        salesOpenMonth: CUR_MONTH,
       });
       mockNotificationsService.createNotification.mockClear();
       jest
@@ -2748,8 +2768,8 @@ describe("ClassesService", () => {
     it("이름·설명만 변경하면 가격 변경 알림 미발송 (Phase 5)", async () => {
       wireProductMocks({
         feeType: "MONTHLY_FIXED",
-        billingMonth: AUG,
-        salesOpenMonth: JUL,
+        billingMonth: NEXT_MONTH,
+        salesOpenMonth: CUR_MONTH,
       });
       mockNotificationsService.createNotification.mockClear();
 
@@ -2764,11 +2784,42 @@ describe("ClassesService", () => {
       expect(mockNotificationsService.createNotification).not.toHaveBeenCalled();
     });
 
+    it("지난 월분도 판매 중지 단독 변경(isActive:false)은 허용 — 갱신 원본 소진 경로", async () => {
+      wireProductMocks({
+        feeType: "MONTHLY_FIXED",
+        billingMonth: PREV_MONTH,
+        salesOpenMonth: PREV_MONTH,
+      });
+      await service.updateClassProductByClassId(
+        "u-1",
+        "COACH",
+        mockClassId,
+        productId,
+        { isActive: false },
+      );
+      expect(mockTx.classProduct.update).toHaveBeenCalledTimes(1);
+    });
+
+    it("지난 월분에 판매 중지 외 필드가 섞이면 여전히 거부", async () => {
+      wireProductMocks({
+        feeType: "MONTHLY_FIXED",
+        billingMonth: PREV_MONTH,
+        salesOpenMonth: PREV_MONTH,
+      });
+      await expect(
+        service.updateClassProductByClassId("u-1", "COACH", mockClassId, productId, {
+          isActive: false,
+          price: 90000,
+        }),
+      ).rejects.toThrow("지난 월분");
+      expect(mockTx.classProduct.update).not.toHaveBeenCalled();
+    });
+
     it("월분 상품이 없는 legacy 수업의 재활성화는 허용 (과차단 방지)", async () => {
       wireProductMocks({
         feeType: "MONTHLY_FIXED",
         billingMonth: null,
-        salesOpenMonth: JUL,
+        salesOpenMonth: CUR_MONTH,
       });
       (mockTx.classProduct.findUnique as jest.Mock).mockResolvedValue({
         feeType: "MONTHLY_FIXED",
@@ -2780,7 +2831,7 @@ describe("ClassesService", () => {
         sessionsPerMonth: 8,
         sessionsPerWeek: null,
         durationDays: 28,
-        class: { salesOpenMonth: JUL },
+        class: { salesOpenMonth: CUR_MONTH },
       });
       (mockTx.classProduct.findFirst as jest.Mock).mockResolvedValue(null);
 

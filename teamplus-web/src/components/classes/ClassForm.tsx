@@ -340,7 +340,8 @@ export function ClassForm({
   // [월 일괄 생성] 정규 요일(daySchedules) 기준으로 대상월 날짜를 로컬 draft(dateSchedules)에만 생성.
   //   · API 호출 없음 — 실제 저장은 등록/수정 제출 시점. applyMultiDates 재사용(추가+기존/지난 회차 보존).
   //   · 시간이 채워진 요일만 대상(모달 validDayDefaults와 동일 기준).
-  //   · 대상월: 이번 달 남은 날짜가 있으면 이번 달, 소진됐으면 다음 달(월말 선등록 지원).
+  //   · 대상월: 오늘 이후 회차가 있으면 그중 가장 이른 달에 고정(일정·판매 관리 화면과 동일
+  //     규칙 — 가득 차도 다음 달로 넘어가지 않음). 없을 때만 이번 달→다음 달(월말 선등록).
   const activeDayDefaults = useMemo(
     () => formData.daySchedules.filter((s) => s.startTime && s.endTime),
     [formData.daySchedules],
@@ -362,12 +363,23 @@ export function ClassForm({
       }
       return out;
     };
-    // 오늘부터 이달 말까지 — 정규 요일에 해당하고 아직 없는 날짜만.
+    // 오늘 이후 회차가 있으면 대상월 = 가장 이른 잔여 회차의 달 고정.
+    const todayISO = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const earliestFuture = formData.dateSchedules
+      .map((s) => s.date)
+      .filter((d) => d && d >= todayISO)
+      .sort()[0];
+    if (earliestFuture) {
+      const [ty, tm] = earliestFuture.split('-').map(Number);
+      const fromDay =
+        ty === now.getFullYear() && tm - 1 === now.getMonth() ? now.getDate() : 1;
+      return { month: tm, dates: collect(ty, tm - 1, fromDay) };
+    }
+    // 잔여 회차 없음 — 오늘부터 이달 말까지, 소진됐으면 다음 달 전체를 대상으로 선등록.
     const thisMonth = collect(now.getFullYear(), now.getMonth(), now.getDate());
     if (thisMonth.length > 0) {
       return { month: now.getMonth() + 1, dates: thisMonth };
     }
-    // 이번 달 소진 — 다음 달 전체를 대상으로 선등록.
     const nextY = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
     const nextM0 = (now.getMonth() + 1) % 12;
     return { month: nextM0 + 1, dates: collect(nextY, nextM0, 1) };

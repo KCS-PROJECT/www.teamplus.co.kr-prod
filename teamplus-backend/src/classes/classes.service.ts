@@ -5648,7 +5648,11 @@ export class ClassesService {
     if (product.class.teamId !== teamId) {
       throw new NotFoundException("수강권을 찾을 수 없습니다.");
     }
-    this.assertProductMonthMutable(product.billingMonth, "수정");
+    // 판매 중지 단독 변경은 지난 월분에도 허용 — 판매 준비 화면이 갱신 원본 행을
+    //   소진 처리(id 기반)하는 경로. 중지는 row 보존이라 판매 이력을 훼손하지 않는다.
+    if (!this.isRetireOnlyUpdate(dto)) {
+      this.assertProductMonthMutable(product.billingMonth, "수정");
+    }
 
     // 판매 시작(openClassSales)과의 레이스 차단 — sales lock 획득 후 tx 안에서
     //   salesOpenMonth·상품을 재조회한 값으로 잠금 판정한다 (가격 잠금 §4-0 A).
@@ -6557,7 +6561,11 @@ export class ClassesService {
     if (!product || product.classId !== classId) {
       throw new NotFoundException("수강권을 찾을 수 없습니다.");
     }
-    this.assertProductMonthMutable(product.billingMonth, "수정");
+    // 판매 중지 단독 변경은 지난 월분에도 허용 — 판매 준비 화면이 갱신 원본 행을
+    //   소진 처리(id 기반)하는 경로. 중지는 row 보존이라 판매 이력을 훼손하지 않는다.
+    if (!this.isRetireOnlyUpdate(dto)) {
+      this.assertProductMonthMutable(product.billingMonth, "수정");
+    }
 
     // 판매 시작(openClassSales)과의 레이스 차단 — sales lock 획득 후 tx 안에서
     //   salesOpenMonth·상품을 재조회한 값으로 잠금 판정한다 (가격 잠금 §4-0 A).
@@ -6804,6 +6812,24 @@ export class ClassesService {
    *   billingMonth 가 이번 KST 달 이전인 row 는 그 달의 판매 기록이므로 수정/삭제를 거부한다
    *   (지난 회차 일정 잠금과 동일 원칙). 무월(레거시)·이번 달·미래 달은 대상 아님.
    */
+  /** 판매 중지 단독 변경(isActive:false 외 필드 없음) 여부 — 지난 월분 잠금의 유일한 예외.
+   *  금액·권리조건이 섞이면 예외 비대상이고, 재활성화(isActive:true)도 비대상이다. */
+  private isRetireOnlyUpdate(
+    dto: import("./dto/update-product.dto").UpdateClassProductDto,
+  ): boolean {
+    return (
+      dto.isActive === false &&
+      dto.productName === undefined &&
+      dto.description === undefined &&
+      dto.price === undefined &&
+      dto.sessionsPerMonth === undefined &&
+      dto.durationDays === undefined &&
+      dto.sessionsPerWeek === undefined &&
+      dto.feePerSession === undefined &&
+      dto.feeType === undefined
+    );
+  }
+
   private assertProductMonthMutable(
     billingMonth: Date | null | undefined,
     action: "수정" | "삭제",

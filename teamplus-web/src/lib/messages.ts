@@ -68,6 +68,14 @@ export const MESSAGES = {
       packageNeedsUpdate: "미등록",
       renewRegisterButton: "등록하기",
       packageCreated: "새 달분으로 등록되었습니다.",
+      // [이번 달 구성에서 제외] — 새 행 없이 갱신 원본 행만 판매 중지(소진).
+      excludeButton: "이번 달 제외",
+      excludeTitle: "구성에서 제외",
+      excludeConfirm: (name: string, month: number) =>
+        `'${name}' 항목을 ${month}월 구성으로 넘기지 않고 목록에서 정리할까요? 이 항목은 더 이상 갱신 목록에 나타나지 않아요.`,
+      excludeSuccess: (name: string) => `'${name}' 항목을 구성에서 제외했습니다.`,
+      retireFailed:
+        "이전 항목 정리에 실패했습니다. 항목이 갱신 목록에 남아 있으면 '이번 달 제외'로 정리해주세요.",
       openSalesButton: "판매 시작하기",
       // 성공 토스트 — 행위("판매되었다")가 아니라 결과(학부모가 N월 훈련을 신청 가능)를 서술.
       openSalesSuccess: (month: number) =>
@@ -222,6 +230,8 @@ export const MESSAGES = {
       fillMonth: (month: number) => `${month}월 일정 일괄 생성`,
       fillMonthCount: (month: number, count: number) =>
         `${month}월 일정 일괄 생성 (${count}일)`,
+      fillMonthFull: (month: number) =>
+        `${month}월 정규 요일 일정이 이미 모두 등록되어 있어요. 남은 일정이 끝나면 다음 달 일괄 생성이 열립니다.`,
       emptyResult: "새로 만들 날짜가 없습니다.",
       success: (count: number) =>
         `${count}개 날짜를 만들었어요. 등록·수정할 때 저장됩니다.`,
