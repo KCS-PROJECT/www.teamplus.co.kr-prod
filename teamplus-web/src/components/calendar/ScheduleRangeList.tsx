@@ -4,6 +4,7 @@ import { Fragment, useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { Icon } from '@/components/ui/Icon';
 import { useScreenMetrics } from '@/hooks/useScreenMetrics';
 import type { ScheduleGroup, ScheduleRangeKey } from '@/hooks/useScheduleRangeGroups';
+import { MESSAGES } from '@/lib/messages';
 import { cn } from '@/lib/utils';
 
 const RANGE_TABS = [
@@ -28,6 +29,10 @@ export interface ScheduleRangeListProps<T> {
   weekRangeLabel?: string;
   /** 기간 칩 노출 여부(학부모: 날짜 미선택 시에만). 기본 true. */
   showWeekRangeChip?: boolean;
+  /** 선택된 날짜 — 지정 시 기간 칩 자리에 해제 가능한 날짜 칩을 표시한다. */
+  selectedDateKey?: string | null;
+  /** 날짜 칩 탭 시 선택 해제. selectedDateKey 와 함께 전달. */
+  onClearSelectedDate?: () => void;
   /** 기간 탭과 리스트 헤더 사이 슬롯(감독 카테고리 칩 등). */
   categorySlot?: React.ReactNode;
   renderRow: (item: T) => React.ReactNode;
@@ -59,6 +64,8 @@ export function ScheduleRangeList<T>({
   headerTitle,
   weekRangeLabel,
   showWeekRangeChip = true,
+  selectedDateKey = null,
+  onClearSelectedDate,
   categorySlot,
   renderRow,
   getRowKey,
@@ -144,6 +151,9 @@ export function ScheduleRangeList<T>({
           )}
           {RANGE_TABS.map((tab) => {
             const isActive = rangeKey === tab.key;
+            // 날짜 선택 중에는 목록이 그 하루만 담겨 기간 탭이 아무 변화를 만들지 못한다.
+            //   누를 수 있게 두면 반응 없는 버튼이 되므로 비활성 — 해제 수단은 옆 칩이 안내.
+            const isRangeLocked = Boolean(selectedDateKey);
             return (
               <button
                 key={tab.key}
@@ -153,9 +163,11 @@ export function ScheduleRangeList<T>({
                 type="button"
                 role="tab"
                 aria-selected={isActive}
+                disabled={isRangeLocked}
                 onClick={() => onRangeChange(tab.key)}
                 className={cn(
-                  'relative z-[1] rounded-[10px] tracking-[-0.01em] motion-reduce:transition-none active:scale-[0.985]',
+                  'relative z-[1] rounded-[10px] tracking-[-0.01em] motion-reduce:transition-none',
+                  isRangeLocked ? 'cursor-not-allowed opacity-45' : 'active:scale-[0.985]',
                   // ICETIMES(시안): 13.5px/700 컴팩트 버튼(px16/py7) + 단순 색 전환.
                   //   기본: 16px/800 풀폭(h-38) + 인디케이터 동조 트랜지션.
                   iceTheme
@@ -182,11 +194,27 @@ export function ScheduleRangeList<T>({
           })}
         </div>
 
-        {/* ICETIMES(시안): 토글 우측의 날짜 범위 텍스트(num, it-ink-500) — 토글과 한 줄. */}
-        {iceTheme && rangeKey === 'week' && showWeekRangeChip && weekRangeLabel && (
-          <span className="shrink-0 text-card-meta font-semibold tabular-nums text-it-ink-500 dark:text-rink-300">
-            {weekRangeLabel}
-          </span>
+        {/* 토글 우측 — 선택 중이면 해제 칩, 아니면 기간 텍스트. 선택 중에는 목록이
+            그 하루만 담기므로 기간 텍스트를 두면 화면과 어긋난다. 날짜는 아래 그룹 헤더가 표시. */}
+        {iceTheme && selectedDateKey && onClearSelectedDate ? (
+          <button
+            type="button"
+            onClick={onClearSelectedDate}
+            aria-label={MESSAGES.calendar.clearSelectedDate}
+            className="inline-flex shrink-0 items-center gap-1 rounded-w-pill bg-it-blue-500/10 px-2.5 py-1 text-card-meta font-bold text-it-blue-600 transition-colors duration-150 hover:bg-it-blue-500/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 motion-reduce:transition-none dark:bg-it-blue-500/20 dark:text-it-blue-300"
+          >
+            {MESSAGES.calendar.selectedDateChip}
+            <Icon name="close" className="text-[14px]" aria-hidden="true" />
+          </button>
+        ) : (
+          iceTheme &&
+          rangeKey === 'week' &&
+          showWeekRangeChip &&
+          weekRangeLabel && (
+            <span className="shrink-0 text-card-meta font-semibold tabular-nums text-it-ink-500 dark:text-rink-300">
+              {weekRangeLabel}
+            </span>
+          )
         )}
       </section>
 

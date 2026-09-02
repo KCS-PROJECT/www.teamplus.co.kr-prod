@@ -3,7 +3,7 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { api } from '@/services/api-client';
 import { MESSAGES } from '@/lib/messages';
-import { weekColumnOf } from '@/lib/calendar-week';
+import { weekColumnOf, getWeekStart } from '@/lib/calendar-week';
 
 /**
  * useUnifiedCalendar
@@ -198,6 +198,8 @@ interface UseUnifiedCalendarReturn {
   selectedDateKey: string | null;
   setSelectedDateKey: (key: string | null) => void;
   calendarGrid: UnifiedCalendarDay[];
+  /** 날짜별 일정 조회 — 화면에 보이는 달 밖(예: 이번 주)도 조회 가능. */
+  getEventsForDate: (dateKey: string) => CalendarEvent[];
   selectedEvents: CalendarEvent[];
   selectedDateLabel: { month: number; day: number } | null;
   isLoading: boolean;
@@ -229,11 +231,30 @@ export function useUnifiedCalendar(
     setErrorMessage(null);
 
     const monthParam = formatMonthParam(currentYear, currentMonth);
+    // '이번 주' 목록은 오늘 기준 주를 표시하는데 그 주가 지난달로 걸칠 수 있다
+    //   (예: 8/30~9/5). 이 달을 보고 있을 때는 걸친 달도 함께 받아 둔다.
+    const monthParams = [monthParam];
+    if (
+      currentYear === today.getFullYear() &&
+      currentMonth === today.getMonth()
+    ) {
+      const weekStart = getWeekStart(today);
+      const weekStartParam = formatMonthParam(
+        weekStart.getFullYear(),
+        weekStart.getMonth(),
+      );
+      if (!monthParams.includes(weekStartParam)) monthParams.push(weekStartParam);
+    }
 
-    const response = await api.get<BackendCalendarDay[]>('/calendar', {
-      params: { month: monthParam, ...(childId ? { childId } : {}) },
-      retry: false,
-    });
+    const responses = await Promise.all(
+      monthParams.map((month) =>
+        api.get<BackendCalendarDay[]>('/calendar', {
+          params: { month, ...(childId ? { childId } : {}) },
+          retry: false,
+        }),
+      ),
+    );
+    const response = responses[0];
 
     if (!response.success) {
       setEventsMap({});
@@ -242,10 +263,22 @@ export function useUnifiedCalendar(
       return;
     }
 
-    const days = Array.isArray(response.data) ? response.data : [];
-    setEventsMap(mapBackendDaysToEvents(days));
+    const days = responses.flatMap((res) =>
+      res.success && Array.isArray(res.data) ? res.data : [],
+    );
+    // 조회한 달만 교체하고 다른 달(이전에 받아둔 이번 주 등)은 남긴다.
+    //   통째 교체하면 다른 달로 넘겼을 때 "이번 주" 목록이 빈 채로 표시된다.
+    const nextMap = mapBackendDaysToEvents(days);
+    setEventsMap((prev) => {
+      const retained = Object.fromEntries(
+        Object.entries(prev).filter(
+          ([dateKey]) => !monthParams.some((m) => dateKey.startsWith(`${m}-`)),
+        ),
+      );
+      return { ...retained, ...nextMap };
+    });
     setIsLoading(false);
-  }, [currentMonth, currentYear, childId]);
+  }, [currentMonth, currentYear, childId, today]);
 
   useEffect(() => {
     fetchCalendarData();
@@ -265,6 +298,13 @@ export function useUnifiedCalendar(
       };
     });
   }, [eventsMap, currentMonth, currentYear, today]);
+
+  // 달력 그리드는 보고 있는 달만 담으므로, 그리드에서 찾으면 이번 주가 다른 달로
+  //   넘어갔을 때 빈 결과가 된다. 전체 맵에서 직접 찾는다.
+  const getEventsForDate = useCallback(
+    (dateKey: string) => eventsMap[dateKey] ?? [],
+    [eventsMap],
+  );
 
   const selectedEvents = useMemo(() => {
     if (!selectedDateKey) return [];
@@ -320,6 +360,7 @@ export function useUnifiedCalendar(
     selectedDateKey,
     setSelectedDateKey,
     calendarGrid,
+    getEventsForDate,
     selectedEvents,
     selectedDateLabel,
     isLoading,

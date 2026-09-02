@@ -1582,6 +1582,12 @@ export const MESSAGES = {
   calendar: {
     title: "통합 캘린더",
     noEvents: "이 날짜에 예정된 일정이 없습니다.",
+    // 목록이 비었을 때 — 지금 보고 있는 범위에 맞춰 쓴다(날짜 선택/주/달).
+    noEventsWeek: "이번 주에 예정된 일정이 없습니다.",
+    noEventsMonth: "이 달에 예정된 일정이 없습니다.",
+    /** 날짜 선택 중 표시하는 칩 — 화면엔 상태(선택됨), 스크린리더엔 동작. */
+    selectedDateChip: "날짜 선택됨",
+    clearSelectedDate: "날짜 선택 해제",
     loadError: "캘린더 데이터를 불러올 수 없습니다.",
     eventCount: (count: number) => `일정 ${count}건`,
     historyTitle: "연간 훈련 이력",

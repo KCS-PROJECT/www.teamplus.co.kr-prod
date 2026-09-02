@@ -313,14 +313,30 @@ export function UnifiedCalendarGrid({
           />
         </button>
 
-        <h2
-          className={cn(
-            'text-base font-bold',
-            iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white',
-          )}
-        >
-          {monthLabel}
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2
+            className={cn(
+              'text-base font-bold',
+              iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white',
+            )}
+          >
+            {monthLabel}
+          </h2>
+          {/* 오늘 버튼 — 달을 여러 번 넘긴 뒤 되돌아올 수단(대시보드 달력과 동일 문구·역할). */}
+          <button
+            type="button"
+            onClick={onGoToToday}
+            className={cn(
+              'rounded-w-pill border px-2 py-1 text-card-meta font-semibold transition-colors duration-150 hover:bg-it-fill focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 motion-reduce:transition-none',
+              iceTheme
+                ? 'border-it-line text-it-blue-600 dark:border-it-blue-900 dark:text-it-blue-300 dark:hover:bg-it-blue-900'
+                : 'border-wline text-ice-600 dark:border-rink-700 dark:text-blue-300 dark:hover:bg-rink-800',
+            )}
+            aria-label={MESSAGES.dashboard.weekSchedule.goToTodayLabel}
+          >
+            {MESSAGES.dashboard.weekSchedule.goToToday}
+          </button>
+        </div>
 
         <button
           onClick={onNextMonth}

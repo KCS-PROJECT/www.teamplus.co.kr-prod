@@ -8,7 +8,7 @@ import {
   getDayScheduleForDate,
   type DaySchedule,
 } from '@/lib/class-categories';
-import { weekColumnOf } from '@/lib/calendar-week';
+import { weekColumnOf, getWeekStart } from '@/lib/calendar-week';
 
 // ────────────────────────────────────────────
 // Types
@@ -225,6 +225,8 @@ interface UseCalendarReturn {
   selectedDateKey: string | null;
   setSelectedDateKey: (key: string | null) => void;
   calendarGrid: CalendarDay[];
+  /** 날짜별 일정 조회 — 화면에 보이는 달 밖(예: 이번 주)도 조회 가능. */
+  getClassesForDate: (dateKey: string) => CalendarClass[];
   selectedClasses: CalendarClass[];
   selectedDateLabel: { month: number; day: number } | null;
   isLoading: boolean;
@@ -252,6 +254,19 @@ export function useCalendar(options: UseCalendarOptions = {}): UseCalendarReturn
 
     const monthStart = new Date(currentYear, currentMonth, 1);
     const monthEnd = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59, 999);
+    // '이번 주' 목록은 보고 있는 달과 무관하게 오늘 기준 주를 표시하므로, 그 주가
+    //   이 달 밖으로 걸치면 함께 조회한다 (대시보드 getDashboardCalendarQueryRange 와 동일 규칙).
+    if (
+      currentYear === today.getFullYear() &&
+      currentMonth === today.getMonth()
+    ) {
+      const weekStart = getWeekStart(today);
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 6);
+      weekEnd.setHours(23, 59, 59, 999);
+      if (weekStart < monthStart) monthStart.setTime(weekStart.getTime());
+      if (weekEnd > monthEnd) monthEnd.setTime(weekEnd.getTime());
+    }
 
     // 역할별 데이터 조회 — 'my' (학생/학부모) · 'managed-with-fallback' (코치/감독)
     //   둘 다 팀만 (팀↔오픈 도메인 분리). 'academy-only' (ACADEMY_DIRECTOR) 는 학원만.
@@ -602,9 +617,20 @@ export function useCalendar(options: UseCalendarOptions = {}): UseCalendarReturn
         .sort((left, right) => getTimeSortValue(left.time) - getTimeSortValue(right.time));
     });
 
-    setClassesMap(nextMap);
+    // 조회한 기간만 교체하고 그 밖(이전에 받아둔 달·이번 주)은 남긴다.
+    //   통째 교체하면 다른 달로 넘겼을 때 '이번 주' 목록이 빈 채로 표시된다.
+    const rangeStartKey = getDateKey(monthStart);
+    const rangeEndKey = getDateKey(monthEnd);
+    setClassesMap((prev) => {
+      const retained = Object.fromEntries(
+        Object.entries(prev).filter(
+          ([dateKey]) => dateKey < rangeStartKey || dateKey > rangeEndKey,
+        ),
+      );
+      return { ...retained, ...nextMap };
+    });
     setIsLoading(false);
-  }, [currentMonth, currentYear, clubFetchStrategy]);
+  }, [currentMonth, currentYear, clubFetchStrategy, today]);
 
   useEffect(() => {
     fetchCalendarData();
@@ -673,6 +699,13 @@ export function useCalendar(options: UseCalendarOptions = {}): UseCalendarReturn
     setSelectedDateKey(todayKey);
   }, [today, todayKey]);
 
+  // 달력 그리드는 보고 있는 달만 담으므로, 그리드에서 찾으면 이번 주가 다른 달로
+  //   넘어갔을 때 빈 결과가 된다. 전체 맵에서 직접 찾는다.
+  const getClassesForDate = useCallback(
+    (dateKey: string) => classesMap[dateKey] ?? [],
+    [classesMap],
+  );
+
   const monthLabel = `${currentYear}년 ${currentMonth + 1}월`;
 
   return {
@@ -684,6 +717,7 @@ export function useCalendar(options: UseCalendarOptions = {}): UseCalendarReturn
     selectedDateKey,
     setSelectedDateKey,
     calendarGrid,
+    getClassesForDate,
     selectedClasses,
     selectedDateLabel,
     isLoading,
