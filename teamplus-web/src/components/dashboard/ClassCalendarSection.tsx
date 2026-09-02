@@ -57,6 +57,11 @@ interface ClassSchedule {
   venue?: { id?: string | null; name?: string | null } | null;
 }
 
+/** 배치 일정 조회(`/classes/schedules/batch`) 응답 행 — 수업별 재분배용 classId 포함. */
+interface BatchSchedule extends ClassSchedule {
+  classId?: string | null;
+}
+
 export interface CalendarClass {
   /** ClassSchedule.id (선택일 목록에서 키로만 사용) */
   id: string;
@@ -575,26 +580,36 @@ export function ClassCalendarSection({
         return;
       }
 
-      const scheduleResults = await Promise.all(
-        allClasses.map(async (cls) => {
-          // 2026-05-14: owner 종류별 endpoint 분기.
-          //  [추가 2026-05-15] ownerKind='open' (visibility 매칭) → 단축 엔드포인트 사용.
-          const basePath =
-            cls.ownerKind === 'open'
-              ? `/classes/${cls.id}/schedules`
-              : cls.ownerKind === 'academy'
-                ? `/academies/${cls.academyId}/classes/${cls.id}/schedules`
-                : `/teams/${cls.teamId}/classes/${cls.id}/schedules`;
-          const res = await api.get<ClassSchedule[] | ApiDataWrapper<ClassSchedule[]>>(
-            basePath,
-            {
-              params: { startDate: queryStart.toISOString(), endDate: queryEnd.toISOString() },
-              retry: false,
-            },
-          );
-          return { cls, schedules: res.success ? unwrap<ClassSchedule[]>(res.data) ?? [] : [] };
-        }),
-      );
+      // 일정은 수업 수와 무관하게 요청 1건 — 수업마다 단건 조회를 돌면 월 전환 1회에
+      //   수업 수만큼 요청이 나가 rate limit(100req/min)을 소진해 429 가 발생한다.
+      //   owner(팀/학원/오픈)별 경로 분기도 필요 없어진다 — 배치는 classId 만으로 조회.
+      const batchRes = await api.get<
+        BatchSchedule[] | ApiDataWrapper<BatchSchedule[]>
+      >('/classes/schedules/batch', {
+        params: {
+          classIds: allClasses.map((cls) => cls.id).join(','),
+          startDate: queryStart.toISOString(),
+          endDate: queryEnd.toISOString(),
+        },
+        retry: false,
+      });
+      const batchRows = batchRes.success
+        ? (unwrap<BatchSchedule[]>(batchRes.data) ?? [])
+        : [];
+      // 응답 행을 classId 로 수업별 재분배 — 이후 매핑 로직은 종전과 동일.
+      const schedulesByClassId = new Map<string, ClassSchedule[]>();
+      if (Array.isArray(batchRows)) {
+        batchRows.forEach((row) => {
+          if (!row?.classId) return;
+          const list = schedulesByClassId.get(row.classId);
+          if (list) list.push(row);
+          else schedulesByClassId.set(row.classId, [row]);
+        });
+      }
+      const scheduleResults = allClasses.map((cls) => ({
+        cls,
+        schedules: schedulesByClassId.get(cls.id) ?? [],
+      }));
 
       const next: Record<string, CalendarClass[]> = {};
       scheduleResults.forEach(({ cls, schedules }) => {

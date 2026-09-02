@@ -72,6 +72,11 @@ interface ClassSchedule {
   isCancelled?: boolean;
 }
 
+/** 배치 일정 조회(`/classes/schedules/batch`) 응답 행 — 수업별 재분배용 classId 포함. */
+interface BatchSchedule extends ClassSchedule {
+  classId?: string | null;
+}
+
 const DAY_LABELS = WEEKDAY_HEADERS;
 const DAY_FULL_LABELS = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'] as const;
 
@@ -250,15 +255,34 @@ export default function CoachCalendarPage() {
       return;
     }
 
-    const scheduleResults = await Promise.all(
-      allClasses.map(async (cls) => {
-        const response = await api.get<ClassSchedule[] | ApiDataWrapper<ClassSchedule[]>>(
-          `/teams/${cls.clubId}/classes/${cls.id}/schedules`,
-          { params: { startDate: monthStart.toISOString(), endDate: monthEnd.toISOString() }, retry: false }
-        );
-        return { cls, schedules: response.success ? unwrapData<ClassSchedule[]>(response.data) ?? [] : [] };
-      })
-    );
+    // 일정은 수업 수와 무관하게 요청 1건 — 수업마다 단건 조회를 돌면 월 전환 1회에
+    //   수업 수만큼 요청이 나가 rate limit(100req/min)을 소진해 429 가 발생한다.
+    const batchResponse = await api.get<
+      BatchSchedule[] | ApiDataWrapper<BatchSchedule[]>
+    >('/classes/schedules/batch', {
+      params: {
+        classIds: allClasses.map((cls) => cls.id).join(','),
+        startDate: monthStart.toISOString(),
+        endDate: monthEnd.toISOString(),
+      },
+      retry: false,
+    });
+    const batchRows = batchResponse.success
+      ? (unwrapData<BatchSchedule[]>(batchResponse.data) ?? [])
+      : [];
+    const schedulesByClassId = new Map<string, ClassSchedule[]>();
+    if (Array.isArray(batchRows)) {
+      batchRows.forEach((row) => {
+        if (!row?.classId) return;
+        const list = schedulesByClassId.get(row.classId);
+        if (list) list.push(row);
+        else schedulesByClassId.set(row.classId, [row]);
+      });
+    }
+    const scheduleResults = allClasses.map((cls) => ({
+      cls,
+      schedules: schedulesByClassId.get(cls.id) ?? [],
+    }));
 
     const nextMap: Record<string, CalendarClass[]> = {};
     scheduleResults.forEach(({ cls, schedules }) => {

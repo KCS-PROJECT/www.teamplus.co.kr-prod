@@ -127,14 +127,24 @@ export default function ClassManagementPage() {
       const activeTeams = teamsList.filter((t) => t.isActive !== false);
       setTeams(activeTeams);
 
+      // 수업 목록은 팀 수와 무관하게 요청 1건 — 팀마다 단건 조회를 돌면 요청이
+      //   팀 수에 비례해 늘어 rate limit(100req/min)을 소진한다.
+      //   응답은 { [teamId]: 수업목록 } 이며 팀별 payload 는 단건 조회와 동일하다.
       const all: Record<string, TeamClass[]> = {};
-      await Promise.all(
-        activeTeams.map(async (t) => {
-          const res = await api.get<TeamClass[]>(`/teams/${t.id}/classes`);
-          const list = Array.isArray(res) ? res : unwrap<TeamClass[]>(res) ?? [];
+      if (activeTeams.length > 0) {
+        const batchRes = await api.get<Record<string, TeamClass[]>>(
+          '/classes/by-teams',
+          { params: { teamIds: activeTeams.map((t) => t.id).join(',') } },
+        );
+        const byTeam =
+          unwrap<Record<string, TeamClass[]>>(batchRes) ??
+          (batchRes as Record<string, TeamClass[]>) ??
+          {};
+        activeTeams.forEach((t) => {
+          const list = byTeam?.[t.id];
           all[t.id] = Array.isArray(list) ? list : [];
-        }),
-      );
+        });
+      }
       setClassesByTeam(all);
     } catch (e) {
       setError(e instanceof Error ? e.message : '데이터를 불러오지 못했습니다.');

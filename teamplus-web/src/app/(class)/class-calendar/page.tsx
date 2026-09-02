@@ -47,6 +47,11 @@ interface ClassScheduleItem {
   isCancelled?: boolean;
 }
 
+/** 배치 일정 조회(`/classes/schedules/batch`) 응답 행 — 수업별 재분배용 classId 포함. */
+interface BatchScheduleItem extends ClassScheduleItem {
+  classId?: string | null;
+}
+
 interface ClassEvent {
   id: string;
   title: string;
@@ -240,26 +245,34 @@ export default function ClassCalendarPage() {
         const monthStart = new Date(currentMonth.year, currentMonth.month - 1, 1);
         const monthEnd = new Date(currentMonth.year, currentMonth.month, 0, 23, 59, 59, 999);
 
-        const results = await Promise.all(
-          classes.map(async (cls) => {
-            try {
-              const res = await api.get<ClassScheduleItem[] | ApiDataWrapper<ClassScheduleItem[]>>(
-                `/teams/${clubId}/classes/${cls.id}/schedules`,
-                {
-                  params: {
-                    startDate: monthStart.toISOString(),
-                    endDate: monthEnd.toISOString(),
-                  },
-                  retry: false,
-                },
-              );
-              const schedules = res.success ? unwrapData<ClassScheduleItem[]>(res.data) ?? [] : [];
-              return { cls, schedules: Array.isArray(schedules) ? schedules : [] };
-            } catch {
-              return { cls, schedules: [] as ClassScheduleItem[] };
-            }
-          }),
-        );
+        // 일정은 수업 수와 무관하게 요청 1건 — 수업마다 단건 조회를 돌면 월 전환 1회에
+        //   수업 수만큼 요청이 나가 rate limit(100req/min)을 소진해 429 가 발생한다.
+        const batchRes = await api.get<
+          BatchScheduleItem[] | ApiDataWrapper<BatchScheduleItem[]>
+        >('/classes/schedules/batch', {
+          params: {
+            classIds: classes.map((cls) => cls.id).join(','),
+            startDate: monthStart.toISOString(),
+            endDate: monthEnd.toISOString(),
+          },
+          retry: false,
+        });
+        const batchRows = batchRes.success
+          ? (unwrapData<BatchScheduleItem[]>(batchRes.data) ?? [])
+          : [];
+        const schedulesByClassId = new Map<string, ClassScheduleItem[]>();
+        if (Array.isArray(batchRows)) {
+          batchRows.forEach((row) => {
+            if (!row?.classId) return;
+            const list = schedulesByClassId.get(row.classId);
+            if (list) list.push(row);
+            else schedulesByClassId.set(row.classId, [row]);
+          });
+        }
+        const results = classes.map((cls) => ({
+          cls,
+          schedules: schedulesByClassId.get(cls.id) ?? [],
+        }));
 
         const nextEvents: Record<number, ClassEvent[]> = {};
 

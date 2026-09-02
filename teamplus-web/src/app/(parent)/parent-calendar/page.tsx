@@ -12,7 +12,6 @@ import { EnrolledTrainingSection } from '@/components/calendar/EnrolledTrainingS
 import {
   useUnifiedCalendar,
   type CalendarEvent,
-  type UnifiedCalendarDay,
 } from '@/hooks/useUnifiedCalendar';
 import {
   useScheduleRangeGroups,
@@ -83,15 +82,11 @@ export default function ParentCalendarPage() {
     [weekRange.start, weekRange.end],
   );
 
-  const cellByKey = useMemo(() => {
-    const map = new Map<string, UnifiedCalendarDay>();
-    calendarGrid.forEach((day) => map.set(day.dateKey, day));
-    return map;
-  }, [calendarGrid]);
-
+  // 달력 그리드가 아니라 훅의 날짜별 조회를 쓴다 — 그리드는 보고 있는 달만 담고 있어
+  //   다른 달로 넘기면 "이번 주" 목록이 빈 채로 나온다.
   const getItems = useCallback(
-    (dateKey: string) => cellByKey.get(dateKey)?.events ?? [],
-    [cellByKey],
+    (dateKey: string) => calendar.getEventsForDate(dateKey),
+    [calendar],
   );
 
   const groups = useScheduleRangeGroups<CalendarEvent>({
@@ -105,6 +100,14 @@ export default function ParentCalendarPage() {
   const handleRangeChange = useCallback((key: ScheduleRangeKey) => {
     setRangeKey((prev) => (prev === key ? prev : key));
   }, []);
+
+  // 같은 날짜를 다시 누르면 선택 해제 — 그대로 연결하면 같은 값을 다시 넣어 해제되지 않는다.
+  const handleDateSelect = useCallback(
+    (dateKey: string) => {
+      calendar.setSelectedDateKey(selectedDateKey === dateKey ? null : dateKey);
+    },
+    [calendar, selectedDateKey],
+  );
 
   const renderRow = useCallback((event: CalendarEvent) => {
     const color = getCalendarEventColor(event.type);
@@ -160,6 +163,14 @@ export default function ParentCalendarPage() {
     );
   }, [navigate]);
 
+  // 빈 목록 문구는 지금 보고 있는 범위 기준 — 날짜를 고르지 않았는데 "이 날짜에" 라고
+  //   안내하면 화면(주/달)과 문구가 어긋난다.
+  const emptyMessage = selectedDateKey
+    ? MESSAGES.calendar.noEvents
+    : rangeKey === 'week'
+      ? MESSAGES.calendar.noEventsWeek
+      : MESSAGES.calendar.noEventsMonth;
+
   /* [ICETIMES flat 재작업 2026-06-24] 빈 상태 카드 박스(rounded-2xl border-dashed) 제거 →
      flat 면 위 아이콘+문구만. ScheduleRangeList 가 흰 섹션 안에서 렌더하므로 박스 불필요. */
   const emptyState = (
@@ -172,7 +183,7 @@ export default function ParentCalendarPage() {
         />
       </div>
       <p className="text-card-body font-medium text-it-ink-500 dark:text-rink-300">
-        {MESSAGES.calendar.noEvents}
+        {emptyMessage}
       </p>
     </div>
   );
@@ -201,7 +212,7 @@ export default function ParentCalendarPage() {
           currentMonth={calendar.currentMonth}
           monthLabel={calendar.monthLabel}
           selectedDateKey={selectedDateKey}
-          onDateSelect={calendar.setSelectedDateKey}
+          onDateSelect={handleDateSelect}
           selectedEvents={calendar.selectedEvents}
           selectedDateLabel={calendar.selectedDateLabel}
           onPrevMonth={calendar.goToPrevMonth}
@@ -221,6 +232,8 @@ export default function ParentCalendarPage() {
           headerTitle={{ week: '이번 주 일정', month: '이번 달 일정' }}
           weekRangeLabel={weekRangeLabel}
           showWeekRangeChip={!selectedDateKey}
+          selectedDateKey={selectedDateKey}
+          onClearSelectedDate={() => calendar.setSelectedDateKey(null)}
           renderRow={renderRow}
           getRowKey={(event) => event.id}
           emptyState={emptyState}

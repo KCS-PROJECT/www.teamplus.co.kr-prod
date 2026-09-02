@@ -12,7 +12,6 @@ import { ScheduleRangeList } from '@/components/calendar/ScheduleRangeList';
 import {
   useCalendar,
   type CalendarClass,
-  type CalendarDay,
   getDateKey,
 } from '@/hooks/useCalendar';
 import {
@@ -74,7 +73,13 @@ function formatShortDate(dateKey: string): string {
 // Empty State
 // ────────────────────────────────────────────
 
-function EmptyScheduleCard({ dateLabel }: { dateLabel?: string }) {
+function EmptyScheduleCard({
+  dateLabel,
+  message = MESSAGES.dashboard.noSchedule,
+}: {
+  dateLabel?: string;
+  message?: string;
+}) {
   // ICETIMES flat: 점선 카드 박스(rounded-2xl border-dashed bg) 제거 → /director 홈의
   //   DirectorEmptyCard(iceTheme) 와 동일한 박스 없는 flat empty state. 상위 흰 섹션 면을 그대로 사용.
   return (
@@ -88,7 +93,7 @@ function EmptyScheduleCard({ dateLabel }: { dateLabel?: string }) {
       </div>
       <p className="text-card-body font-medium text-it-ink-500 dark:text-rink-300">
         {dateLabel ? `${dateLabel}에 ` : ''}
-        {MESSAGES.dashboard.noSchedule}
+        {message}
       </p>
     </div>
   );
@@ -120,6 +125,8 @@ export default function DirectorSchedulesPage() {
     errorMessage,
     goToPrevMonth,
     goToNextMonth,
+    goToToday,
+    getClassesForDate,
   } = useCalendar({
     // 학원 감독은 팀 데이터 제외 — academy-only 전략으로 /academies/my/list 만 호출.
     clubFetchStrategy: isAcademyMode ? 'academy-only' : 'managed-with-fallback',
@@ -159,16 +166,20 @@ export default function DirectorSchedulesPage() {
     [categoryMatch],
   );
 
-  const cellByKey = useMemo(() => {
-    const map = new Map<string, CalendarDay>();
-    calendarGrid.forEach((day) => map.set(day.dateKey, day));
-    return map;
-  }, [calendarGrid]);
-
+  // 달력 그리드가 아니라 훅의 날짜별 조회를 쓴다 — 그리드는 보고 있는 달만 담고 있어
+  //   다른 달로 넘기면 "이번 주" 목록이 빈 채로 나온다.
   const getItems = useCallback(
-    (dateKey: string) => applyCategory(cellByKey.get(dateKey)?.classes ?? []),
-    [cellByKey, applyCategory],
+    (dateKey: string) => applyCategory(getClassesForDate(dateKey)),
+    [getClassesForDate, applyCategory],
   );
+
+  // 빈 목록 문구는 지금 보고 있는 범위 기준 — 주/달 목록에 "오늘 …없습니다" 를 쓰면
+  //   화면과 문구가 어긋난다.
+  const emptyMessage = selectedDateKey
+    ? MESSAGES.calendar.noEvents
+    : rangeKey === 'week'
+      ? MESSAGES.calendar.noEventsWeek
+      : MESSAGES.calendar.noEventsMonth;
 
   const groups = useScheduleRangeGroups<CalendarClass>({
     cells: calendarGrid,
@@ -186,6 +197,23 @@ export default function DirectorSchedulesPage() {
   const handleDateSelect = useCallback((dateKey: string) => {
     setSelectedDateKey((prev) => (prev === dateKey ? null : dateKey));
   }, []);
+
+  // 월 이동 시 선택 해제 — 선택 상태를 이 페이지가 따로 들고 있어 useCalendar 의
+  //   이동 함수만으로는 비워지지 않는다. 남기면 달력엔 표시가 없는데 목록만 이전 달을 가리킨다.
+  const handlePrevMonth = useCallback(() => {
+    setSelectedDateKey(null);
+    goToPrevMonth();
+  }, [goToPrevMonth]);
+
+  const handleNextMonth = useCallback(() => {
+    setSelectedDateKey(null);
+    goToNextMonth();
+  }, [goToNextMonth]);
+
+  const handleGoToToday = useCallback(() => {
+    setSelectedDateKey(null);
+    goToToday();
+  }, [goToToday]);
 
   const renderRow = useCallback(
     (cls: CalendarClass) => {
@@ -297,7 +325,7 @@ export default function DirectorSchedulesPage() {
             <div className="flex items-center justify-center gap-6 pb-3.5 pt-1">
               <button
                 type="button"
-                onClick={goToPrevMonth}
+                onClick={handlePrevMonth}
                 className="flex h-7 w-7 items-center justify-center bg-transparent transition-colors motion-reduce:transition-none active:brightness-95"
                 aria-label="이전 달"
               >
@@ -307,12 +335,23 @@ export default function DirectorSchedulesPage() {
                   aria-hidden="true"
                 />
               </button>
-              <h2 className="text-card-title font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
-                {monthLabel}
-              </h2>
+              <span className="flex items-center gap-2">
+                <h2 className="text-card-title font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
+                  {monthLabel}
+                </h2>
+                {/* 오늘 버튼 — 달을 여러 번 넘긴 뒤 되돌아올 수단(대시보드 달력과 동일). */}
+                <button
+                  type="button"
+                  onClick={handleGoToToday}
+                  className="rounded-w-pill border border-it-line px-2 py-1 text-card-meta font-semibold text-it-blue-600 transition-colors duration-150 hover:bg-it-fill focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500 motion-reduce:transition-none dark:border-it-blue-900 dark:text-it-blue-300 dark:hover:bg-it-blue-900"
+                  aria-label={MESSAGES.dashboard.weekSchedule.goToTodayLabel}
+                >
+                  {MESSAGES.dashboard.weekSchedule.goToToday}
+                </button>
+              </span>
               <button
                 type="button"
-                onClick={goToNextMonth}
+                onClick={handleNextMonth}
                 className="flex h-7 w-7 items-center justify-center bg-transparent transition-colors motion-reduce:transition-none active:brightness-95"
                 aria-label="다음 달"
               >
@@ -436,10 +475,12 @@ export default function DirectorSchedulesPage() {
           todayKey={todayKey}
           headerTitle={{ week: '이번 주 수업', month: '이번 달 수업' }}
           weekRangeLabel={weekRangeLabel}
+          selectedDateKey={selectedDateKey}
+          onClearSelectedDate={() => setSelectedDateKey(null)}
           categorySlot={categorySlot}
           renderRow={renderRow}
           getRowKey={(cls) => cls.id}
-          emptyState={<EmptyScheduleCard />}
+          emptyState={<EmptyScheduleCard message={emptyMessage} />}
           emptyDayMessage={MESSAGES.dashboard.noSchedule}
         />
 

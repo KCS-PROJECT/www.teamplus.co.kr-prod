@@ -8,7 +8,7 @@ import {
   getDayScheduleForDate,
   type DaySchedule,
 } from '@/lib/class-categories';
-import { weekColumnOf } from '@/lib/calendar-week';
+import { weekColumnOf, getWeekStart } from '@/lib/calendar-week';
 
 // ────────────────────────────────────────────
 // Types
@@ -68,6 +68,11 @@ interface ClassSchedule {
   endTime?: string | null;
   /** 회차별 장소 — 있으면 요일 기본일정·대표 장소보다 우선. */
   venue?: { id: string; name: string } | null;
+}
+
+/** 배치 일정 조회(`/classes/schedules/batch`) 응답 행 — 수업별 재분배용 classId 포함. */
+interface BatchSchedule extends ClassSchedule {
+  classId?: string | null;
 }
 
 export type ClubFetchStrategy = 'my' | 'managed-with-fallback' | 'academy-only';
@@ -220,6 +225,8 @@ interface UseCalendarReturn {
   selectedDateKey: string | null;
   setSelectedDateKey: (key: string | null) => void;
   calendarGrid: CalendarDay[];
+  /** 날짜별 일정 조회 — 화면에 보이는 달 밖(예: 이번 주)도 조회 가능. */
+  getClassesForDate: (dateKey: string) => CalendarClass[];
   selectedClasses: CalendarClass[];
   selectedDateLabel: { month: number; day: number } | null;
   isLoading: boolean;
@@ -247,6 +254,19 @@ export function useCalendar(options: UseCalendarOptions = {}): UseCalendarReturn
 
     const monthStart = new Date(currentYear, currentMonth, 1);
     const monthEnd = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59, 999);
+    // '이번 주' 목록은 보고 있는 달과 무관하게 오늘 기준 주를 표시하므로, 그 주가
+    //   이 달 밖으로 걸치면 함께 조회한다 (대시보드 getDashboardCalendarQueryRange 와 동일 규칙).
+    if (
+      currentYear === today.getFullYear() &&
+      currentMonth === today.getMonth()
+    ) {
+      const weekStart = getWeekStart(today);
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 6);
+      weekEnd.setHours(23, 59, 59, 999);
+      if (weekStart < monthStart) monthStart.setTime(weekStart.getTime());
+      if (weekEnd > monthEnd) monthEnd.setTime(weekEnd.getTime());
+    }
 
     // 역할별 데이터 조회 — 'my' (학생/학부모) · 'managed-with-fallback' (코치/감독)
     //   둘 다 팀만 (팀↔오픈 도메인 분리). 'academy-only' (ACADEMY_DIRECTOR) 는 학원만.
@@ -369,35 +389,38 @@ export function useCalendar(options: UseCalendarOptions = {}): UseCalendarReturn
     // [수정 2026-04-30] allClasses 가 비어도 tournament/match 는 fetch 하도록 early return 제거.
     // 수업별 스케줄 조회 (팀 수업 + 오픈클래스 통합)
     const mergedClasses = [...allClasses, ...openClassesAsClub];
-    const scheduleResults = mergedClasses.length === 0
-      ? [] as Array<{ cls: ClubClass & { clubId: string; clubName: string }; schedules: ClassSchedule[] }>
-      : await Promise.all(
-      mergedClasses.map(async (cls) => {
-        // 스케줄 엔드포인트 분기 — 대시보드 ClassCalendarSection ownerKind 패턴과 동일.
-        //   __open__   : visibility 매칭 오픈클래스 (단축 endpoint)
-        //   __academy__: 운영자 본인 학원 수업 (학원 직조회)
-        //   기본       : 팀 수업
-        const url = cls.clubId === '__open__'
-          ? `/classes/${cls.id}/schedules`
-          : cls.clubId === '__academy__' && cls.academyId
-            ? `/academies/${cls.academyId}/classes/${cls.id}/schedules`
-            : `/teams/${cls.clubId}/classes/${cls.id}/schedules`;
-        const response = await api.get<ClassSchedule[] | ApiDataWrapper<ClassSchedule[]>>(
-          url,
+    // 일정은 수업 수와 무관하게 요청 1건 — 수업마다 단건 조회를 돌면 월 전환 1회에
+    //   수업 수만큼 요청이 나가 rate limit(100req/min)을 소진해 429 가 발생한다.
+    //   배치는 classId 만으로 조회하므로 owner(팀/학원/오픈)별 경로 분기도 필요 없다.
+    const batchResponse = mergedClasses.length === 0
+      ? null
+      : await api.get<BatchSchedule[] | ApiDataWrapper<BatchSchedule[]>>(
+          '/classes/schedules/batch',
           {
             params: {
+              classIds: mergedClasses.map((cls) => cls.id).join(','),
               startDate: monthStart.toISOString(),
               endDate: monthEnd.toISOString(),
             },
             retry: false,
-          }
+          },
         );
-        return {
-          cls,
-          schedules: response.success ? unwrapData<ClassSchedule[]>(response.data) ?? [] : [],
-        };
-      })
-    );
+    const batchRows = batchResponse?.success
+      ? (unwrapData<BatchSchedule[]>(batchResponse.data) ?? [])
+      : [];
+    const schedulesByClassId = new Map<string, ClassSchedule[]>();
+    if (Array.isArray(batchRows)) {
+      batchRows.forEach((row) => {
+        if (!row?.classId) return;
+        const list = schedulesByClassId.get(row.classId);
+        if (list) list.push(row);
+        else schedulesByClassId.set(row.classId, [row]);
+      });
+    }
+    const scheduleResults = mergedClasses.map((cls) => ({
+      cls,
+      schedules: schedulesByClassId.get(cls.id) ?? [],
+    }));
 
     // 날짜별 수업 매핑
     const nextMap: Record<string, CalendarClass[]> = {};
@@ -594,9 +617,20 @@ export function useCalendar(options: UseCalendarOptions = {}): UseCalendarReturn
         .sort((left, right) => getTimeSortValue(left.time) - getTimeSortValue(right.time));
     });
 
-    setClassesMap(nextMap);
+    // 조회한 기간만 교체하고 그 밖(이전에 받아둔 달·이번 주)은 남긴다.
+    //   통째 교체하면 다른 달로 넘겼을 때 '이번 주' 목록이 빈 채로 표시된다.
+    const rangeStartKey = getDateKey(monthStart);
+    const rangeEndKey = getDateKey(monthEnd);
+    setClassesMap((prev) => {
+      const retained = Object.fromEntries(
+        Object.entries(prev).filter(
+          ([dateKey]) => dateKey < rangeStartKey || dateKey > rangeEndKey,
+        ),
+      );
+      return { ...retained, ...nextMap };
+    });
     setIsLoading(false);
-  }, [currentMonth, currentYear, clubFetchStrategy]);
+  }, [currentMonth, currentYear, clubFetchStrategy, today]);
 
   useEffect(() => {
     fetchCalendarData();
@@ -665,6 +699,13 @@ export function useCalendar(options: UseCalendarOptions = {}): UseCalendarReturn
     setSelectedDateKey(todayKey);
   }, [today, todayKey]);
 
+  // 달력 그리드는 보고 있는 달만 담으므로, 그리드에서 찾으면 이번 주가 다른 달로
+  //   넘어갔을 때 빈 결과가 된다. 전체 맵에서 직접 찾는다.
+  const getClassesForDate = useCallback(
+    (dateKey: string) => classesMap[dateKey] ?? [],
+    [classesMap],
+  );
+
   const monthLabel = `${currentYear}년 ${currentMonth + 1}월`;
 
   return {
@@ -676,6 +717,7 @@ export function useCalendar(options: UseCalendarOptions = {}): UseCalendarReturn
     selectedDateKey,
     setSelectedDateKey,
     calendarGrid,
+    getClassesForDate,
     selectedClasses,
     selectedDateLabel,
     isLoading,
