@@ -26,7 +26,8 @@ import { getCurrentUIConfig, syncLastAppliedConfig } from "@/hooks/useNativeUI";
 import { cn } from "@/lib/utils";
 import { resolveImageSrc } from "@/lib/image-url";
 import { PageAppBar } from "@/components/layout/PageAppBar";
-import { DrawerChildSwitcher } from "@/components/drawer";
+import { DrawerChildPicker } from "@/components/drawer";
+import { toChildPickerItem } from "@/components/parent/ChildPickerList";
 import { useRoleSwitch, type ViewAsRole } from "@/hooks/useRoleSwitch";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useAppMenus, type AppMenuTreeNode } from "@/hooks/useAppMenus";
@@ -97,16 +98,6 @@ interface MainMenuItem {
 interface GlobalMenuProps {
   isOpen: boolean;
   onClose: () => void;
-}
-
-/** 사이드 메뉴 학부모 자녀 항목 — 통계·프로필 표기용 */
-interface DrawerChildItem {
-  id: string;
-  name: string;
-  profileEmoji?: string;
-  clubName?: string;
-  email?: string | null;
-  age?: number | null;
 }
 
 // ─── 역할별 폴백 메뉴 (API 실패 시 사용) ────────────
@@ -353,7 +344,7 @@ function RoleSwitcherSection({ onClose }: { onClose: () => void }) {
 }
 
 export function GlobalMenu({ isOpen, onClose }: GlobalMenuProps) {
-  const { user, logout, isAuthenticated, refreshUser } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const { settings: appSettings } = useAppSettingsContext();
   const { modal } = useModal();
   const { unreadCount: noticeUnreadCount } = useNoticeUnreadCount();
@@ -376,11 +367,14 @@ export function GlobalMenu({ isOpen, onClose }: GlobalMenuProps) {
   const appVersionLabel = resolvedAppVersion
     ? `${appSettings?.appName ?? "TEAMPLUS"} v${resolvedAppVersion}`
     : "TEAMPLUS";
-  const [childrenList, setChildrenList] = useState<DrawerChildItem[]>([]);
-  // 자녀 선택 칩 — 전역 선택 상태(SelectedChildContext) + 선택 대상 자녀 SoT(useChildren.selectableChildren,
-  //   무소속 포함·pending/rejected 제외). 후속: childrenList(통계·프로필 부제) ↔ useChildren 통합 여지.
+  // 자녀 선택 — 전역 선택 상태(SelectedChildContext) + 선택 대상 자녀 SoT(useChildren.selectableChildren,
+  //   무소속 포함·pending/rejected 제외). 프로필 아래 한 줄 + 모달(DrawerChildPicker)로 전환.
   const { selectableChildren } = useChildren();
   const { selectedChildId, setSelectedChildId } = useSelectedChild();
+  const childPickerItems = useMemo(
+    () => selectableChildren.map((c) => toChildPickerItem(c)),
+    [selectableChildren],
+  );
   // [추가] 아코디언 — single-open 방식. 현재 펼친 그룹 id 1개만 보관(null = 전체 닫힘 / 기본값).
   //  다른 그룹을 열면 기존 그룹은 자동으로 닫혀(max-height transition), 한 번에 하나만 펼쳐진다.
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
@@ -441,7 +435,6 @@ export function GlobalMenu({ isOpen, onClose }: GlobalMenuProps) {
     (user?.userType?.toLowerCase() as UserRole) || "parent";
 
   // 자녀 선택 칩 노출 — PARENT 이고 선택 대상 자녀 2명 이상일 때만. '전체' 칩 없음(단일 자녀 모델).
-  const showChildChips = userRole === "parent" && selectableChildren.length >= 2;
 
   // ── JWT 세션으로 내 메뉴 조회 (모듈 캐시 1h staleTime/2h gcTime, cacheKey: my:${userId}) ──
   const {
@@ -484,55 +477,6 @@ export function GlobalMenu({ isOpen, onClose }: GlobalMenuProps) {
   // [2026-07-16] 약관/정책·접근성 항목을 메뉴 SoT(app-menu-spec.ts COMMON_SUPPORT_GROUP)로
   //   이관 → 서버 DB/spec 응답에 이미 포함되므로 코드 하드코딩 주입 제거. web/admin(앱메뉴관리)
   //   동일 표시. (기존 finalMenuItems + LEGAL_SUPPORT_ITEMS 삭제)
-
-  // 학부모: 자녀 목록 조회 (id · 이름 · 프로필 이모지 · 팀명)
-  useEffect(() => {
-    if (!isAuthenticated || userRole !== "parent") return;
-    const fetchChildren = async () => {
-      try {
-        // [수정 2026-05-11] /children 응답은 { success, data, total } 래핑 + 자녀는 firstName/lastName/fullName 보유.
-        //  Array.isArray(res.data) 만으로는 false → wrap 분기 + 이름 폴백 체인 필요.
-        type ChildItem = {
-          id: string;
-          firstName?: string;
-          lastName?: string;
-          fullName?: string;
-          name?: string;
-          profileEmoji?: string;
-          clubName?: string;
-          email?: string | null;
-          age?: number | null;
-          koreanAge?: number | null;
-        };
-        const res = await api.get<ChildItem[] | { data?: ChildItem[] }>(
-          "/children",
-        );
-        if (!res.success || !res.data) return;
-        const list: ChildItem[] = Array.isArray(res.data)
-          ? res.data
-          : ((res.data as { data?: ChildItem[] }).data ?? []);
-        if (list.length > 0) {
-          setChildrenList(
-            list.map((c) => ({
-              id: c.id,
-              name:
-                c.fullName ??
-                c.name ??
-                `${c.lastName ?? ""}${c.firstName ?? ""}`.trim(),
-              profileEmoji: c.profileEmoji,
-              clubName: c.clubName,
-              // [추가 2026-05-13] 자녀 정보 표기 — "신학생(10세) / ID"
-              email: c.email ?? null,
-              age: c.age ?? c.koreanAge ?? null,
-            })),
-          );
-        }
-      } catch {
-        // 자녀 조회 실패 시 무시
-      }
-    };
-    void fetchChildren();
-  }, [isAuthenticated, userRole]);
 
   // ESC 키 닫기
   useEffect(() => {
@@ -896,60 +840,61 @@ export function GlobalMenu({ isOpen, onClose }: GlobalMenuProps) {
             </span>
           </button>
 
-          {/* 사용자 정보 — 탭하면 프로필 페이지 이동 */}
-          <button
-            type="button"
-            onClick={() => handleQuickAction("/profile")}
-            className="flex-1 min-w-0 flex items-center text-left transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 rounded-2xl"
-            aria-label={`${MESSAGES.drawer.profile} 열기 — ${displayName}`}
-          >
-            <span className="flex-1 min-w-0 flex flex-col gap-1">
-              <span className="flex items-center gap-1.5 min-w-0">
-                <span className="shrink-0 text-card-title font-extrabold tracking-[-0.03em] text-wtext-1 dark:text-white truncate max-w-[55%]">
-                  {displayName}
-                </span>
-                {userRole === "parent" ? (
-                  // 학부모: 역할 배지 대신 본인 id(이메일/연락처)를 이름 옆에 노출
-                  (user?.email || user?.phone) && (
-                    <span className="min-w-0 text-card-meta text-wtext-4 dark:text-rink-300 tracking-[-0.01em] truncate">
-                      {user?.email ?? user?.phone}
-                    </span>
-                  )
-                ) : (
-                  <span
-                    className="shrink-0 inline-flex items-center text-card-meta font-bold px-[7px] py-[2px] rounded-md"
-                    style={{
-                      background: "var(--c-ice-100)",
-                      color: "var(--c-ice-700)",
-                    }}
-                  >
-                    {roleLabel}
-                  </span>
-                )}
+          {/* 사용자 정보 — 이름 줄은 프로필 페이지 이동, 학부모 자녀 줄은 자녀 선택 모달.
+              중첩 버튼을 피하려고 이름 버튼과 자녀 줄을 형제 요소로 둔다. */}
+          <div className="flex-1 min-w-0 flex flex-col gap-1">
+            <button
+              type="button"
+              onClick={() => handleQuickAction("/profile")}
+              className="w-full min-w-0 flex items-center gap-1.5 text-left transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ice-500/40 rounded-2xl"
+              aria-label={`${MESSAGES.drawer.profile} 열기 — ${displayName}`}
+            >
+              <span className="shrink-0 text-card-title font-extrabold tracking-[-0.03em] text-wtext-1 dark:text-white truncate max-w-[55%]">
+                {displayName}
               </span>
               {userRole === "parent" ? (
-                // 학부모: 선수명은 화면 한 곳에만 — 자녀 선택 카드(showChildChips)가 뜨는
-                //   2명 이상에서는 카드가 이름을 담당하므로 이 줄을 숨긴다. 카드가 없는
-                //   1명(또는 미로딩) 학부모만 부제 자리에 선수명을 정적 회색으로 노출.
-                !showChildChips &&
-                childrenList.length > 0 && (
-                  <span className="text-card-meta text-wtext-4 dark:text-rink-300 tracking-[-0.01em] truncate">
-                    {childrenList.map((c) => c.name).join(" · ")}
+                // 학부모: 역할 배지 대신 본인 id(이메일/연락처)를 이름 옆에 노출
+                (user?.email || user?.phone) && (
+                  <span className="min-w-0 text-card-meta text-wtext-4 dark:text-rink-300 tracking-[-0.01em] truncate">
+                    {user?.email ?? user?.phone}
                   </span>
                 )
               ) : (
-                <span className="text-card-meta text-wtext-4 dark:text-rink-300 tracking-[-0.01em] truncate">
-                  {displaySub}
+                <span
+                  className="shrink-0 inline-flex items-center text-card-meta font-bold px-[7px] py-[2px] rounded-md"
+                  style={{
+                    background: "var(--c-ice-100)",
+                    color: "var(--c-ice-700)",
+                  }}
+                >
+                  {roleLabel}
                 </span>
               )}
-              {/* 본인 소속 팀명 — 감독/코치/학생만. 학부모는 자녀별 팀이라 본인 소속 표시 안 함. */}
-              {userRole !== "parent" && myTeams.length > 0 && (
-                <span className="text-card-meta text-ice-600 dark:text-ice-400 tracking-[-0.01em] truncate font-semibold">
-                  소속: {myTeams.map((t) => t.name).join(" · ")}
-                </span>
-              )}
-            </span>
-          </button>
+            </button>
+            {userRole === "parent" ? (
+              // 학부모: 현재 선택 자녀 · 대표 팀 한 줄. 자녀 2명+ 면 눌러서 자녀 선택 모달.
+              //   자녀 0명·미로딩이면 아무것도 그리지 않는다.
+              <DrawerChildPicker
+                items={childPickerItems}
+                selectedChildId={selectedChildId}
+                drawerOpen={isOpen}
+                onSelect={(id) => {
+                  setSelectedChildId(id);
+                  onClose();
+                }}
+              />
+            ) : (
+              <span className="text-card-meta text-wtext-4 dark:text-rink-300 tracking-[-0.01em] truncate">
+                {displaySub}
+              </span>
+            )}
+            {/* 본인 소속 팀명 — 감독/코치/학생만. 학부모는 자녀별 팀이라 본인 소속 표시 안 함. */}
+            {userRole !== "parent" && myTeams.length > 0 && (
+              <span className="text-card-meta text-ice-600 dark:text-ice-400 tracking-[-0.01em] truncate font-semibold">
+                소속: {myTeams.map((t) => t.name).join(" · ")}
+              </span>
+            )}
+          </div>
 
           {/* 로그아웃 영역 — Profile 카드 우측 끝 (가로 pill, 표준 터치 타겟 ≥48px) */}
           <button
@@ -981,35 +926,11 @@ export function GlobalMenu({ isOpen, onClose }: GlobalMenuProps) {
           />
         </div>
 
-        {/* 자녀 선택 카드 — PARENT · 선택 대상 자녀 2명+ 일 때만. '전체' 카드 없음(단일 자녀 모델).
-            선택 시 전역 선택 변경 후 메뉴 닫음 — 홈 자녀 스트립·ChildPickerSheet 의
-            "선택 즉시 닫힘" 문법과 통일, 갱신된 홈이 바로 보여 전환 피드백 확보.
-            (navigate 미호출이므로 handleMenuNavigate race 로직과 무관) */}
-        {showChildChips ? (
-          <DrawerChildSwitcher
-            items={selectableChildren.map((child) => ({
-              id: child.id,
-              name: child.name,
-              clubName: child.club,
-              // 승인 대표 팀 로고 — 좌측 슬롯에 표시(무소속이면 null → 이모지/아이콘 폴백).
-              teamLogoUrl: child.teamLogoUrl ?? null,
-              // 이모지는 통계용 childrenList(/children 응답 profileEmoji)에서 보강 — 카드 아이콘 표시.
-              profileEmoji: childrenList.find((c) => c.id === child.id)
-                ?.profileEmoji,
-            }))}
-            activeChildId={selectedChildId}
-            onSelect={(id) => {
-              setSelectedChildId(id);
-              onClose();
-            }}
-          />
-        ) : (
-          // 자녀 선택 카드가 없을 때(감독·코치·자녀 1명) 프로필-메뉴 구분선 — 학부모 자녀카드와 동일 위치.
-          <div
-            className="border-b border-wline-2 dark:border-rink-800"
-            aria-hidden="true"
-          />
-        )}
+        {/* 프로필-메뉴 구분선 — 자녀 전환은 프로필 영역의 DrawerChildPicker(한 줄 + 모달)가 담당. */}
+        <div
+          className="border-b border-wline-2 dark:border-rink-800"
+          aria-hidden="true"
+        />
 
         {/* ── Scrollable nav (M1 패턴: 섹션 + DrawerRow) ── */}
         <div className="flex-1 touch-pan-y overflow-y-auto overscroll-contain">

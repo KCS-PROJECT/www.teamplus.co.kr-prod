@@ -15,5 +15,5 @@ export type { DrawerAccountItem } from './DrawerAccountSection';
 export { DrawerSupportSection } from './DrawerSupportSection';
 export type { DrawerSupportItem } from './DrawerSupportSection';
 
-export { DrawerChildSwitcher } from './DrawerChildSwitcher';
-export type { DrawerChildItem as DrawerChildSwitcherItem } from './DrawerChildSwitcher';
+export { DrawerChildPicker } from './DrawerChildPicker';
+export type { DrawerChildPickerProps } from './DrawerChildPicker';

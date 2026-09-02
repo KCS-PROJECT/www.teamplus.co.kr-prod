@@ -22,6 +22,7 @@ import { Icon } from '@/components/ui/Icon';
 import { useNavigation } from '@/components/ui/NavLink';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { ChildPickerSheet } from '@/components/parent/ChildPickerSheet';
+import { toChildPickerItem } from '@/components/parent/ChildPickerList';
 import { HomeIdentityStrip } from '@/components/common/HomeIdentityStrip';
 import { BrandWordmark } from '@/components/common/BrandWordmark';
 import { MobileContainer } from '@/components/layout/MobileContainer';
@@ -751,12 +752,13 @@ export default function ParentDashboardPage() {
       <ChildPickerSheet
         isOpen={isChildSheetOpen}
         onClose={() => setIsChildSheetOpen(false)}
-        items={approvedChildren.map((c) => ({
-          id: c.id,
-          name: c.name,
-          club: c.club || null,
-          logoUrl: teams?.find((t) => t.id === c.clubIds?.[0])?.logoUrl ?? null,
-        }))}
+        items={approvedChildren.map((c) =>
+          // 로고 출처는 종전대로 팀 훅 조회(대표 팀 = clubIds[0]) — 자녀 응답 로고와 동일 원소.
+          toChildPickerItem(
+            c,
+            teams?.find((t) => t.id === c.clubIds?.[0])?.logoUrl ?? null,
+          ),
+        )}
         selectedChildId={selectedChildId}
         onSelect={(id) => {
           setSelectedChildId(id);
