@@ -2223,6 +2223,24 @@ export class ClassesService {
   /**
    * 클럽의 수업 목록 조회 (캐싱 적용 - 5분)
    */
+  /**
+   * 여러 팀의 수업 목록 일괄 조회 — 팀 목록 화면 전용(어드민 출석 관리).
+   *
+   * 팀마다 단건 조회를 돌면 요청 수가 팀 수에 비례해 늘어 rate limit 을 소진한다.
+   * 응답 모양·필터·팀별 캐시는 getClubClasses 를 그대로 재사용해 화면 표시가 달라지지 않는다.
+   */
+  async getClassesByTeamIds(
+    teamIds: string[],
+  ): Promise<Record<string, Awaited<ReturnType<ClassesService["getClubClasses"]>>>> {
+    const entries = await Promise.all(
+      teamIds.map(
+        async (teamId) =>
+          [teamId, await this.getClubClasses(teamId)] as const,
+      ),
+    );
+    return Object.fromEntries(entries);
+  }
+
   async getClubClasses(
     teamId: string,
     query?: {
@@ -5951,6 +5969,48 @@ export class ClassesService {
     });
 
     return schedules;
+  }
+
+  /**
+   * 여러 수업의 기간 일정 일괄 조회 — 달력 화면 전용.
+   *
+   * 달력은 수업 N개의 같은 기간 일정을 함께 그린다. 수업마다 단건 조회를 돌면 요청 수가
+   * 수업 수에 비례해 늘어(월 전환 1회당 수업 수만큼) rate limit 을 소진하므로 한 번으로 묶는다.
+   * 응답 행의 classId 로 호출측이 수업별로 재분배한다. 출석(attendances)은 달력이 쓰지 않아 제외.
+   */
+  async getSchedulesByClassIds(
+    classIds: string[],
+    startDate?: Date,
+    endDate?: Date,
+  ) {
+    if (classIds.length === 0) return [];
+
+    // 경계 규칙은 단건 조회(getClassSchedulesByDateRange)와 동일 — date-only 입력의
+    // endDate 를 그 날 끝(23:59:59.999)까지 확장해 "그 날까지 포함" 의미를 유지.
+    const dateFilter: Prisma.DateTimeFilter = {};
+    if (startDate) dateFilter.gte = new Date(startDate);
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setUTCHours(23, 59, 59, 999);
+      dateFilter.lte = end;
+    }
+
+    return this.prisma.classSchedule.findMany({
+      where: {
+        classId: { in: classIds },
+        ...(startDate || endDate ? { scheduledDate: dateFilter } : {}),
+      },
+      select: {
+        id: true,
+        classId: true,
+        scheduledDate: true,
+        startTime: true,
+        endTime: true,
+        isCancelled: true,
+        venue: { select: { id: true, name: true } },
+      },
+      orderBy: { scheduledDate: "asc" },
+    });
   }
 
   /**

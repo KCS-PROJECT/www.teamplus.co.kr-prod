@@ -1575,6 +1575,56 @@ describe("ClassesService", () => {
     });
   });
 
+  // ─── 달력 배치 일정 조회 (수업당 1요청 → 1요청) ──────────────────
+  describe("getSchedulesByClassIds", () => {
+    it("여러 수업을 IN 절 1회로 조회하고 classId 를 함께 반환한다", async () => {
+      const findMany = jest
+        .spyOn(prismaService.classSchedule, "findMany")
+        .mockResolvedValue([] as any);
+
+      await service.getSchedulesByClassIds(
+        ["class-a", "class-b", "class-c"],
+        new Date("2026-05-01"),
+        new Date("2026-05-31"),
+      );
+
+      // 수업 수와 무관하게 조회는 정확히 1회.
+      expect(findMany).toHaveBeenCalledTimes(1);
+      const arg = findMany.mock.calls[0][0] as any;
+      expect(arg.where.classId).toEqual({
+        in: ["class-a", "class-b", "class-c"],
+      });
+      // 호출측 재분배 키(classId) 필수 · 달력 미사용 출석은 제외.
+      expect(arg.select.classId).toBe(true);
+      expect(arg.select.attendances).toBeUndefined();
+    });
+
+    it("종료일 경계는 단건 조회와 동일하게 그 날 끝까지 포함한다", async () => {
+      const findMany = jest
+        .spyOn(prismaService.classSchedule, "findMany")
+        .mockResolvedValue([] as any);
+
+      await service.getSchedulesByClassIds(
+        ["class-a"],
+        new Date("2026-05-01"),
+        new Date("2026-05-31"),
+      );
+
+      const arg = findMany.mock.calls[0][0] as any;
+      const lte: Date = arg.where.scheduledDate.lte;
+      expect(lte.toISOString()).toBe("2026-05-31T23:59:59.999Z");
+    });
+
+    it("빈 목록은 조회 없이 빈 배열을 반환한다", async () => {
+      const findMany = jest.spyOn(prismaService.classSchedule, "findMany");
+
+      const result = await service.getSchedulesByClassIds([]);
+
+      expect(result).toEqual([]);
+      expect(findMany).not.toHaveBeenCalled();
+    });
+  });
+
   // ─── Phase 2a: 선수별 5-state 정산 계약 ─────────────────────────
   describe("getClassPayments (Phase 2a 선수별 billingTiming resolver)", () => {
     const requester = {

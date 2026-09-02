@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -18,12 +19,18 @@ import {
   ApiResponse,
   ApiBearerAuth,
   ApiParam,
+  ApiQuery,
 } from "@nestjs/swagger";
 import { ClassesService } from "./classes.service";
 import { GetClassesQueryDto } from "./dto/get-classes-query.dto";
 import { Roles } from "@/auth/roles.decorator";
 import { RolesGuard } from "@/auth/roles.guard";
 import { AuthenticatedRequest } from "@/common/interfaces/authenticated-request.interface";
+
+/** 일정 배치 조회 1회당 수업 ID 상한 — 과도한 IN 절 방지. */
+const MAX_BATCH_CLASS_IDS = 200;
+/** 팀별 수업 배치 조회 1회당 팀 ID 상한. */
+const MAX_BATCH_TEAM_IDS = 100;
 
 @ApiTags("Classes")
 @Controller("api/v1/classes")
@@ -34,6 +41,92 @@ import { AuthenticatedRequest } from "@/common/interfaces/authenticated-request.
 // 각 엔드포인트에 @Roles() 명시로 접근 권한을 코드 레벨에 드러냄.
 export class ClassesListController {
   constructor(private readonly classesService: ClassesService) {}
+
+  /**
+   * 여러 수업의 기간 일정 일괄 조회 — 달력 화면 전용.
+   *
+   * 달력은 수업 N개의 같은 기간 일정을 함께 그린다. 단건 조회(`:classId/schedules`)를
+   * 수업마다 돌면 월 전환 1회에 수업 수만큼 요청이 나가 rate limit(100req/min)을 소진하므로,
+   * 한 번의 요청으로 묶는다. 응답 행의 classId 로 호출측이 수업별로 재분배한다.
+   *
+   * ⚠️ 동적 라우트(`:classId/schedules`)보다 먼저 선언해야 한다 — 뒤에 두면 "schedules"가
+   *    classId 로 매칭될 여지가 생긴다.
+   */
+  @Get("schedules/batch")
+  @Roles(
+    "PARENT",
+    "CHILD",
+    "TEEN",
+    "COACH",
+    "DIRECTOR",
+    "ACADEMY_DIRECTOR",
+    "ADMIN",
+  )
+  @ApiOperation({
+    summary: "수업 일정 일괄 조회 (classIds 배치)",
+    description:
+      "여러 수업의 기간 일정을 한 번에 조회합니다. 단건 조회와 동일한 노출 범위이며 달력 화면이 사용합니다.",
+  })
+  @ApiQuery({ name: "classIds", description: "수업 ID 목록 (쉼표 구분, 최대 200개)" })
+  @ApiQuery({ name: "startDate", required: false, description: "조회 시작일" })
+  @ApiQuery({ name: "endDate", required: false, description: "조회 종료일" })
+  async getSchedulesBatch(
+    @Query("classIds") classIds?: string,
+    @Query("startDate") startDate?: string,
+    @Query("endDate") endDate?: string,
+  ) {
+    // 빈 입력은 빈 배열 — 수업이 0개인 팀에서 호출측 분기를 단순화한다.
+    const ids = (classIds ?? "")
+      .split(",")
+      .map((v) => v.trim())
+      .filter((v) => v.length > 0);
+    if (ids.length === 0) return [];
+    if (ids.length > MAX_BATCH_CLASS_IDS) {
+      throw new BadRequestException(
+        `수업 ID 는 최대 ${MAX_BATCH_CLASS_IDS}개까지 조회할 수 있습니다.`,
+      );
+    }
+    return this.classesService.getSchedulesByClassIds(
+      Array.from(new Set(ids)),
+      startDate ? new Date(startDate) : undefined,
+      endDate ? new Date(endDate) : undefined,
+    );
+  }
+
+  /**
+   * 여러 팀의 수업 목록 일괄 조회 — 팀 목록 화면 전용(어드민 출석 관리).
+   *
+   * 팀마다 `/teams/:teamId/classes` 를 돌면 요청이 팀 수에 비례해 늘어 rate limit 을 소진한다.
+   * 응답은 `{ [teamId]: 수업목록 }` 이며 팀별 payload 는 단건 조회와 동일하다.
+   *
+   * ⚠️ 동적 라우트(`:classId`)보다 먼저 선언해야 한다.
+   */
+  @Get("by-teams")
+  @Roles(
+    "COACH",
+    "DIRECTOR",
+    "ACADEMY_DIRECTOR",
+    "ADMIN",
+  )
+  @ApiOperation({
+    summary: "팀별 수업 목록 일괄 조회 (teamIds 배치)",
+    description:
+      "여러 팀의 수업 목록을 한 번에 조회합니다. 팀별 응답은 단건 조회와 동일합니다.",
+  })
+  @ApiQuery({ name: "teamIds", description: "팀 ID 목록 (쉼표 구분, 최대 100개)" })
+  async getClassesByTeams(@Query("teamIds") teamIds?: string) {
+    const ids = (teamIds ?? "")
+      .split(",")
+      .map((v) => v.trim())
+      .filter((v) => v.length > 0);
+    if (ids.length === 0) return {};
+    if (ids.length > MAX_BATCH_TEAM_IDS) {
+      throw new BadRequestException(
+        `팀 ID 는 최대 ${MAX_BATCH_TEAM_IDS}개까지 조회할 수 있습니다.`,
+      );
+    }
+    return this.classesService.getClassesByTeamIds(Array.from(new Set(ids)));
+  }
 
   /**
    * 전체 수업 목록 조회 (클럽 무관)

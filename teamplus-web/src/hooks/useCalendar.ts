@@ -70,6 +70,11 @@ interface ClassSchedule {
   venue?: { id: string; name: string } | null;
 }
 
+/** 배치 일정 조회(`/classes/schedules/batch`) 응답 행 — 수업별 재분배용 classId 포함. */
+interface BatchSchedule extends ClassSchedule {
+  classId?: string | null;
+}
+
 export type ClubFetchStrategy = 'my' | 'managed-with-fallback' | 'academy-only';
 
 // ────────────────────────────────────────────
@@ -369,35 +374,38 @@ export function useCalendar(options: UseCalendarOptions = {}): UseCalendarReturn
     // [수정 2026-04-30] allClasses 가 비어도 tournament/match 는 fetch 하도록 early return 제거.
     // 수업별 스케줄 조회 (팀 수업 + 오픈클래스 통합)
     const mergedClasses = [...allClasses, ...openClassesAsClub];
-    const scheduleResults = mergedClasses.length === 0
-      ? [] as Array<{ cls: ClubClass & { clubId: string; clubName: string }; schedules: ClassSchedule[] }>
-      : await Promise.all(
-      mergedClasses.map(async (cls) => {
-        // 스케줄 엔드포인트 분기 — 대시보드 ClassCalendarSection ownerKind 패턴과 동일.
-        //   __open__   : visibility 매칭 오픈클래스 (단축 endpoint)
-        //   __academy__: 운영자 본인 학원 수업 (학원 직조회)
-        //   기본       : 팀 수업
-        const url = cls.clubId === '__open__'
-          ? `/classes/${cls.id}/schedules`
-          : cls.clubId === '__academy__' && cls.academyId
-            ? `/academies/${cls.academyId}/classes/${cls.id}/schedules`
-            : `/teams/${cls.clubId}/classes/${cls.id}/schedules`;
-        const response = await api.get<ClassSchedule[] | ApiDataWrapper<ClassSchedule[]>>(
-          url,
+    // 일정은 수업 수와 무관하게 요청 1건 — 수업마다 단건 조회를 돌면 월 전환 1회에
+    //   수업 수만큼 요청이 나가 rate limit(100req/min)을 소진해 429 가 발생한다.
+    //   배치는 classId 만으로 조회하므로 owner(팀/학원/오픈)별 경로 분기도 필요 없다.
+    const batchResponse = mergedClasses.length === 0
+      ? null
+      : await api.get<BatchSchedule[] | ApiDataWrapper<BatchSchedule[]>>(
+          '/classes/schedules/batch',
           {
             params: {
+              classIds: mergedClasses.map((cls) => cls.id).join(','),
               startDate: monthStart.toISOString(),
               endDate: monthEnd.toISOString(),
             },
             retry: false,
-          }
+          },
         );
-        return {
-          cls,
-          schedules: response.success ? unwrapData<ClassSchedule[]>(response.data) ?? [] : [],
-        };
-      })
-    );
+    const batchRows = batchResponse?.success
+      ? (unwrapData<BatchSchedule[]>(batchResponse.data) ?? [])
+      : [];
+    const schedulesByClassId = new Map<string, ClassSchedule[]>();
+    if (Array.isArray(batchRows)) {
+      batchRows.forEach((row) => {
+        if (!row?.classId) return;
+        const list = schedulesByClassId.get(row.classId);
+        if (list) list.push(row);
+        else schedulesByClassId.set(row.classId, [row]);
+      });
+    }
+    const scheduleResults = mergedClasses.map((cls) => ({
+      cls,
+      schedules: schedulesByClassId.get(cls.id) ?? [],
+    }));
 
     // 날짜별 수업 매핑
     const nextMap: Record<string, CalendarClass[]> = {};

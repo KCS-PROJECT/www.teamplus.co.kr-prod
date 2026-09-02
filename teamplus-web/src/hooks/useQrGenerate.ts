@@ -86,32 +86,49 @@ export function useQrGenerate(): UseQrGenerateReturn {
           : classesRes.data?.classes || classesRes.data?.data || [];
         if (classes.length === 0) continue;
 
-        // 3. 각 수업의 오늘 일정
-        const schedulePromises = classes.map(async (cls) => {
-          try {
-            const schedRes = await api.get<
-              | { id: string; scheduledDate: string; startTime?: string }[]
-              | { schedules?: { id: string; scheduledDate: string; startTime?: string }[]; data?: { id: string; scheduledDate: string; startTime?: string }[] }
-            >(
-              `/teams/${club.id}/classes/${cls.id}/schedules`,
-              { params: { startDate: today, endDate: today } }
-            );
-            const scheds = Array.isArray(schedRes.data)
-              ? schedRes.data
-              : schedRes.data?.schedules || schedRes.data?.data || [];
-            return scheds.map((s) => ({
-              scheduleId: s.id,
-              className: cls.className,
-              startTime: s.startTime || cls.startTime || '',
-              classId: cls.id,
-            }));
-          } catch {
-            return [];
-          }
-        });
-
-        const results = await Promise.all(schedulePromises);
-        allSchedules.push(...results.flat());
+        // 3. 수업들의 오늘 일정 — 수업 수와 무관하게 요청 1건.
+        //   수업마다 단건 조회를 돌면 요청이 수업 수에 비례해 늘어 rate limit 을 소진한다.
+        //   응답 행의 classId 로 수업별 재분배 후 매핑은 종전과 동일.
+        type BatchRow = {
+          id: string;
+          classId?: string | null;
+          scheduledDate: string;
+          startTime?: string;
+        };
+        try {
+          const schedRes = await api.get<
+            | BatchRow[]
+            | { schedules?: BatchRow[]; data?: BatchRow[] }
+          >('/classes/schedules/batch', {
+            params: {
+              classIds: classes.map((cls) => cls.id).join(','),
+              startDate: today,
+              endDate: today,
+            },
+          });
+          const scheds = Array.isArray(schedRes.data)
+            ? schedRes.data
+            : schedRes.data?.schedules || schedRes.data?.data || [];
+          const byClassId = new Map<string, BatchRow[]>();
+          scheds.forEach((row) => {
+            if (!row?.classId) return;
+            const list = byClassId.get(row.classId);
+            if (list) list.push(row);
+            else byClassId.set(row.classId, [row]);
+          });
+          classes.forEach((cls) => {
+            (byClassId.get(cls.id) ?? []).forEach((s) => {
+              allSchedules.push({
+                scheduleId: s.id,
+                className: cls.className,
+                startTime: s.startTime || cls.startTime || '',
+                classId: cls.id,
+              });
+            });
+          });
+        } catch {
+          // 조회 실패 시 이 팀의 일정만 건너뛴다 (기존 단건 실패 시 동작과 동일).
+        }
       }
 
       // startTime 기준 정렬
