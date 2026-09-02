@@ -223,8 +223,8 @@ export const DEFAULT_FORM_DATA: ClassFormData = {
   venueAddress: '',
   singlePrice: '',
   monthlyPrice: '',
-  // [Phase B-6] 기본 결제방식 = 선택형(BOTH). 학부모가 결제 시 선·후불 택1.
-  billingMode: 'BOTH',
+  // 기본 결제방식 = 선불. 선택형(BOTH)은 신규 생성 중단 — 기존 수업만 유지된다.
+  billingMode: 'PREPAID',
   category: '',
   autoGenerateSchedules: true,
   // [2026-08-04] 폼 기본값은 학부모공개 — DB 기본값(TEAM_ONLY)과 의도적으로 다르다.

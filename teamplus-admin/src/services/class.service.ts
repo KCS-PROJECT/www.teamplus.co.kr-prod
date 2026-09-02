@@ -73,6 +73,7 @@ export const createClass = async (
     ageMin?: number;
     ageMax?: number;
     capacity: number;
+    billingMode: 'PREPAID' | 'POSTPAID';
   }
 ): Promise<Class> => {
   try {

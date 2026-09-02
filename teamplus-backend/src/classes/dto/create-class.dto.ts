@@ -234,13 +234,15 @@ export class CreateClassDto {
   @IsString()
   category?: string;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
+    enum: ["PREPAID", "POSTPAID"],
     description:
-      "결제 방식 — PREPAID(선불 번들) | POSTPAID(후불 정산) | BOTH(선택형). 미전송 시 BOTH.",
+      "결제 방식 — PREPAID(선불 번들) | POSTPAID(후불 정산). 필수. 선택형(BOTH)은 신규 생성 중단이라 거부되며, 기존 BOTH 수업은 조회 경로에서만 유지된다.",
   })
-  @IsOptional()
-  @IsIn(["PREPAID", "POSTPAID", "BOTH"])
-  billingMode?: string;
+  @IsIn(["PREPAID", "POSTPAID"], {
+    message: "결제 방식(billingMode)은 PREPAID 또는 POSTPAID 여야 합니다.",
+  })
+  billingMode!: string;
 
   @ApiPropertyOptional({ description: "1회 수강료" })
   @IsOptional()

@@ -190,6 +190,8 @@ function nextOccurrence(base: Date, dayIdx: number, hour: number, minute: number
         ageMin: sample.ageMin,
         ageMax: sample.ageMax,
         levelRequired: sample.levelRequired,
+        // 선택형(BOTH)은 신규 생성 중단 — 시드도 선불로 만든다.
+        billingMode: "PREPAID",
         startTime: seasonStart,
         endTime: seasonEnd,
         isActive: true,

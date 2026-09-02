@@ -329,8 +329,8 @@ async function main() {
       INSERT INTO classes
         (id, team_id, academy_id, class_name, description, training_type, instructor_name, capacity,
          age_min, age_max, level_required, start_time, end_time, is_active, approval_status,
-         coach_id, category, required_coaches, created_at, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::timestamp,$13::timestamp,true,'APPROVED',$14,$15,$16,NOW(),NOW())`,
+         billing_mode, coach_id, category, required_coaches, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::timestamp,$13::timestamp,true,'APPROVED','PREPAID',$14,$15,$16,NOW(),NOW())`,
       id,
       teamId, academyId,
       className,

@@ -123,6 +123,8 @@ export class TrainingService {
         levelRequired: dto.levelRequired,
         startTime: new Date(dto.startTime),
         endTime: new Date(dto.endTime),
+        // 훈련은 상품 없이 생성되므로 선불 고정 — 선택형(BOTH)은 신규 생성 중단.
+        billingMode: "PREPAID",
         // [2026-08-04] 감독/코치 생성 = 자동 승인 — classes.service.createClass 와 동일 정책.
         //   누락 시 스키마 기본값 PENDING 이라 팀원 학부모의 수업목록(APPROVED 필터)에
         //   훈련이 영원히 노출되지 않는다.

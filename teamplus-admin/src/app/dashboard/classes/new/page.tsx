@@ -80,6 +80,8 @@ export default function NewClassPage() {
         capacity,
         ageMin,
         ageMax,
+        // 어드민 등록은 가격 입력이 없어 선불 고정 — 백엔드가 결제방식을 필수로 받는다.
+        billingMode: 'PREPAID',
       });
       setCreatedClassId(created.id);
       setMessage({ type: 'success', text: '수업이 등록되었습니다.' });

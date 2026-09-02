@@ -1659,21 +1659,17 @@ export function ClassForm({
                       <label className={cn('block text-card-meta font-bold uppercase tracking-wider', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                         {MESSAGES.classProduct.billingModeLabel}
                       </label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {(['PREPAID', 'POSTPAID', 'BOTH'] as const).map((bm) => {
+                      <div className="grid grid-cols-2 gap-2">
+                        {(['PREPAID', 'POSTPAID'] as const).map((bm) => {
                           const active = formData.billingMode === bm;
                           const label =
                             bm === 'PREPAID'
                               ? MESSAGES.classProduct.billingModePrepaid
-                              : bm === 'POSTPAID'
-                                ? MESSAGES.classProduct.billingModePostpaid
-                                : MESSAGES.classProduct.billingModeBoth;
+                              : MESSAGES.classProduct.billingModePostpaid;
                           return (
                             <button
                               key={bm}
                               type="button"
-                              // [spot] 정기권 전제인 선택형만 비활성 — 선불/후불은 일반 수업과 동일.
-                              disabled={isSpot && bm === 'BOTH'}
                               onClick={() => {
                                 handleChange('billingMode', bm);
                                 // 후불 전환 시 담아둔 정기권 draft 제거 — 후불 전용은 1회 수업료만 운영.
@@ -1691,7 +1687,6 @@ export function ClassForm({
                                   : active
                                     ? 'border-ice-500 bg-ice-50 text-ice-600 dark:bg-rink-700 dark:text-ice-400 dark:border-ice-500'
                                     : 'border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-wtext-2 dark:text-rink-200',
-                                isSpot && bm === 'BOTH' && 'opacity-40 cursor-not-allowed',
                               )}
                             >
                               {label}
