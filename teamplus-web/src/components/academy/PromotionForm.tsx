@@ -3,6 +3,8 @@
 import { useCallback, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { MESSAGES } from '@/lib/messages';
+import { Icon } from '@/components/ui/Icon';
+import { DatePickerModal, formatDateLabel, isoToLocalDate } from '@/components/ui/DatePickerModal';
 import type { LessonType, PromotionFormInput } from '@/hooks/usePromotions';
 
 export interface PromotionFormData extends PromotionFormInput {
@@ -65,6 +67,8 @@ export function PromotionForm({
   const [endDate, setEndDate] = useState(
     initialData?.endDate ? initialData.endDate.substring(0, 10) : '',
   );
+  // 모집 기간 달력 대상 — 'start' | 'end'. null 이면 닫힘.
+  const [openPicker, setOpenPicker] = useState<'start' | 'end' | null>(null);
   const [imageUrl, setImageUrl] = useState(initialData?.imageUrl ?? '');
   const [isActive, setIsActive] = useState<boolean>(initialData?.isActive ?? true);
 
@@ -344,25 +348,39 @@ export function PromotionForm({
           <label htmlFor="promo-start" className={labelClass}>
             {MESSAGES.promotion.fieldStartDate}
           </label>
-          <input
+          <button
             id="promo-start"
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className={inputClass}
-          />
+            type="button"
+            onClick={() => setOpenPicker('start')}
+            aria-haspopup="dialog"
+            aria-expanded={openPicker === 'start'}
+            aria-label={MESSAGES.promotion.fieldStartDate}
+            className={cn(inputClass, 'flex min-w-0 items-center justify-between gap-2 text-left')}
+          >
+            <span className={startDate ? 'truncate tabular-nums' : cn('truncate', iceTheme ? 'text-it-ink-400 dark:text-rink-300' : 'text-wtext-3')}>
+              {startDate ? formatDateLabel(startDate) : MESSAGES.promotion.fieldStartDate}
+            </span>
+            <Icon name="calendar_today" className={cn('shrink-0 text-base', iceTheme ? 'text-it-ink-400' : 'text-wtext-3')} aria-hidden="true" />
+          </button>
         </div>
         <div>
           <label htmlFor="promo-end" className={labelClass}>
             {MESSAGES.promotion.fieldEndDate}
           </label>
-          <input
+          <button
             id="promo-end"
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className={inputClass}
-          />
+            type="button"
+            onClick={() => setOpenPicker('end')}
+            aria-haspopup="dialog"
+            aria-expanded={openPicker === 'end'}
+            aria-label={MESSAGES.promotion.fieldEndDate}
+            className={cn(inputClass, 'flex min-w-0 items-center justify-between gap-2 text-left')}
+          >
+            <span className={endDate ? 'truncate tabular-nums' : cn('truncate', iceTheme ? 'text-it-ink-400 dark:text-rink-300' : 'text-wtext-3')}>
+              {endDate ? formatDateLabel(endDate) : MESSAGES.promotion.fieldEndDate}
+            </span>
+            <Icon name="calendar_today" className={cn('shrink-0 text-base', iceTheme ? 'text-it-ink-400' : 'text-wtext-3')} aria-hidden="true" />
+          </button>
         </div>
       </div>
 
@@ -473,6 +491,21 @@ export function PromotionForm({
           MESSAGES.promotion.editButton
         )}
       </button>
+      {/* 기간 달력 — native input[type=date] 는 앱 WebView 마다 모양이 달라 공용 모달로 통일.
+          시작일은 종료일 이전, 종료일은 시작일 이후로만 선택되게 min/max 를 교차 제한한다. */}
+      <DatePickerModal
+        isOpen={openPicker !== null}
+        value={openPicker === 'start' ? startDate : endDate}
+        minDate={openPicker === 'end' ? isoToLocalDate(startDate) : undefined}
+        maxDate={openPicker === 'start' ? isoToLocalDate(endDate) : undefined}
+        ariaLabel={openPicker === 'start' ? MESSAGES.promotion.fieldStartDate : MESSAGES.promotion.fieldEndDate}
+              iceTheme={iceTheme}
+        onClose={() => setOpenPicker(null)}
+        onSelect={(iso) => {
+          if (openPicker === 'start') setStartDate(iso);
+          else if (openPicker === 'end') setEndDate(iso);
+        }}
+      />
     </form>
   );
 }

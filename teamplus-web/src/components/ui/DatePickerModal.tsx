@@ -48,6 +48,13 @@ export function formatDateLabel(iso: string): string {
   return `${m[1]}. ${Number(m[2])}. ${Number(m[3])}.`;
 }
 
+/** YYYY-MM-DD → 로컬 자정 Date. minDate/maxDate 전달용 — 잘못된 문자열은 undefined. */
+export function isoToLocalDate(iso: string): Date | undefined {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return undefined;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
 function isoFromYMD(y: number, m: number, d: number): string {
   return `${y}-${pad2(m + 1)}-${pad2(d)}`;
 }

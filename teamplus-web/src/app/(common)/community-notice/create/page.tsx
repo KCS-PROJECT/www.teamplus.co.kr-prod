@@ -14,6 +14,7 @@ import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { Icon } from '@/components/ui/Icon';
+import { DatePickerModal, formatDateLabel, isoToLocalDate } from '@/components/ui/DatePickerModal';
 import { MESSAGES } from '@/lib/messages';
 import { useToast } from '@/components/ui/Toast';
 import { emitRefresh, REFRESH_KEYS } from '@/lib/refresh-bus';
@@ -106,6 +107,8 @@ export default function UnitNoticeCreatePage() {
   const [content, setContent] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  // 노출 기간 달력 대상 — 'start' | 'end'. null 이면 닫힘.
+  const [openPicker, setOpenPicker] = useState<'start' | 'end' | null>(null);
   const [target, setTarget] = useState<TargetValue>('');
   // 대상 픽커 바텀시트 — 네이티브 select 는 WebView 에서 OS 픽커가 떠 앱 디자인과
   // 이질적 · 관리 공지함 단위 필터와 동일한 공통 시트 패턴으로 통일
@@ -762,14 +765,20 @@ export default function UnitNoticeCreatePage() {
                 >
                   {MESSAGES.unitNotice.periodStart}
                 </label>
-                <input
+                <button
                   id="unit-notice-start-date"
-                  type="date"
-                  value={startDate}
-                  max={endDate || undefined}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full px-3 h-[46px] bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[14px] font-semibold text-it-ink-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 transition-colors motion-reduce:transition-none ease-ios"
-                />
+                  type="button"
+                  onClick={() => setOpenPicker('start')}
+                  aria-haspopup="dialog"
+                  aria-expanded={openPicker === 'start'}
+                  aria-label={MESSAGES.unitNotice.periodStart}
+                  className="w-full px-3 h-[46px] bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[14px] font-semibold text-it-ink-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 transition-colors motion-reduce:transition-none ease-ios flex min-w-0 items-center justify-between gap-2 text-left"
+                >
+                  <span className={startDate ? 'truncate tabular-nums' : 'truncate text-it-ink-400 dark:text-rink-300'}>
+                    {startDate ? formatDateLabel(startDate) : MESSAGES.unitNotice.periodStart}
+                  </span>
+                  <Icon name="calendar_today" className="shrink-0 text-base text-it-ink-400" aria-hidden="true" />
+                </button>
               </div>
               <div>
                 <label
@@ -778,14 +787,20 @@ export default function UnitNoticeCreatePage() {
                 >
                   {MESSAGES.unitNotice.periodEnd}
                 </label>
-                <input
+                <button
                   id="unit-notice-end-date"
-                  type="date"
-                  value={endDate}
-                  min={startDate || undefined}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full px-3 h-[46px] bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[14px] font-semibold text-it-ink-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 transition-colors motion-reduce:transition-none ease-ios"
-                />
+                  type="button"
+                  onClick={() => setOpenPicker('end')}
+                  aria-haspopup="dialog"
+                  aria-expanded={openPicker === 'end'}
+                  aria-label={MESSAGES.unitNotice.periodEnd}
+                  className="w-full px-3 h-[46px] bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[14px] font-semibold text-it-ink-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 transition-colors motion-reduce:transition-none ease-ios flex min-w-0 items-center justify-between gap-2 text-left"
+                >
+                  <span className={endDate ? 'truncate tabular-nums' : 'truncate text-it-ink-400 dark:text-rink-300'}>
+                    {endDate ? formatDateLabel(endDate) : MESSAGES.unitNotice.periodEnd}
+                  </span>
+                  <Icon name="calendar_today" className="shrink-0 text-base text-it-ink-400" aria-hidden="true" />
+                </button>
               </div>
             </div>
             {isScheduledStart && (
@@ -845,6 +860,21 @@ export default function UnitNoticeCreatePage() {
           />
         </button>
       </div>
+      {/* 노출 기간 달력 — native input[type=date] 는 앱 WebView 마다 모양이 달라 공용 모달로 통일.
+          시작일은 종료일 이전, 종료일은 시작일 이후로만 선택되게 min/max 를 교차 제한한다. */}
+      <DatePickerModal
+        isOpen={openPicker !== null}
+        value={openPicker === 'start' ? startDate : endDate}
+        minDate={openPicker === 'end' ? isoToLocalDate(startDate) : undefined}
+        maxDate={openPicker === 'start' ? isoToLocalDate(endDate) : undefined}
+        ariaLabel={openPicker === 'start' ? MESSAGES.unitNotice.periodStart : MESSAGES.unitNotice.periodEnd}
+        iceTheme
+        onClose={() => setOpenPicker(null)}
+        onSelect={(iso) => {
+          if (openPicker === 'start') setStartDate(iso);
+          else if (openPicker === 'end') setEndDate(iso);
+        }}
+      />
     </MobileContainer>
   );
 }
