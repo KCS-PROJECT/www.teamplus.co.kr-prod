@@ -483,10 +483,14 @@ function ClassCreatePageInner() {
           })(),
           packageMode: 'weeks' as const,
           // [Phase B-5/B-6] 결제 방식 복원 — 후불은 패키지 추가 차단, 선택형(BOTH)은 정액 운영 허용.
+          //   복사 등록은 신규 생성이므로 BOTH 를 선불로 강등한다 — 원본을 그대로 물면
+          //   생성 UI 에서 없앤 BOTH 수업이 복사 경로로 계속 만들어진다.
           billingMode: (d.billingMode === 'POSTPAID'
             ? 'POSTPAID'
             : d.billingMode === 'BOTH'
-              ? 'BOTH'
+              ? isCopyMode
+                ? 'PREPAID'
+                : 'BOTH'
               : 'PREPAID') as 'PREPAID' | 'POSTPAID' | 'BOTH',
           category: (d.category ?? '') as string,
           // [2026-08-04] 공개 범위 복원 — 응답값이 유효한 enum 일 때만 반영.

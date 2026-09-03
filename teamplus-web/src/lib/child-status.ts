@@ -71,6 +71,94 @@ export function compareChildDisplayOrder(
   return yearOf(a) - yearOf(b);
 }
 
+/** 대표 팀 기준 묶음 결과 — teamId null 은 무소속 그룹 */
+export interface RepresentativeTeamGroup<T> {
+  teamId: string | null;
+  teamName: string | null;
+  logoUrl: string | null;
+  items: T[];
+}
+
+/**
+ * 대표 팀(1개) 기준으로 항목을 묶는다 — 자녀 선택 목록(홈 시트·사이드 메뉴 모달) 공용.
+ *
+ *  · 항목은 대표 팀 그룹에만 1회 배치 (다중 소속을 여러 그룹에 중복 배치하지 않음 —
+ *    선택 표시가 두 곳에 뜨는 혼란 방지).
+ *  · 그룹 순서 = 입력에서 각 대표 팀이 처음 등장한 순서. 입력이 compareChildDisplayOrder 로
+ *    정렬돼 있으면 기본 선택 자녀([0])의 팀이 첫 그룹·첫 행이 된다.
+ *  · 무소속 그룹(teamId null)은 항상 마지막.
+ *  · 그룹 내 순서 = 입력 순서 그대로. 입력을 재정렬하지 않는다(정렬 SoT 는 호출부).
+ *  · 순수 함수 — 입력 배열·항목을 변경하지 않는다.
+ */
+export function groupByRepresentativeTeam<
+  T extends { teamId: string | null; teamName?: string | null; logoUrl?: string | null },
+>(sortedItems: readonly T[]): RepresentativeTeamGroup<T>[] {
+  const teamGroups: RepresentativeTeamGroup<T>[] = [];
+  const byTeamId = new Map<string, RepresentativeTeamGroup<T>>();
+  const noTeam: RepresentativeTeamGroup<T> = {
+    teamId: null,
+    teamName: null,
+    logoUrl: null,
+    items: [],
+  };
+
+  for (const item of sortedItems) {
+    if (!item.teamId) {
+      noTeam.items.push(item);
+      continue;
+    }
+    let group = byTeamId.get(item.teamId);
+    if (!group) {
+      group = {
+        teamId: item.teamId,
+        teamName: item.teamName ?? null,
+        logoUrl: item.logoUrl ?? null,
+        items: [],
+      };
+      byTeamId.set(item.teamId, group);
+      teamGroups.push(group);
+    }
+    group.items.push(item);
+  }
+
+  return noTeam.items.length > 0 ? [...teamGroups, noTeam] : teamGroups;
+}
+
+/** 자녀의 대표 팀 — `teams[0]` 우선, 없으면 `clubIds[0]`+`club` 폴백(구 응답 호환) */
+export function getRepresentativeTeam(
+  child: Pick<Child, 'teams' | 'clubIds' | 'club' | 'teamLogoUrl'>,
+): { id: string; name: string; logoUrl: string | null } | null {
+  const primary = child.teams?.[0];
+  if (primary) return primary;
+  const fallbackId = child.clubIds?.[0];
+  if (!fallbackId) return null;
+  return { id: fallbackId, name: child.club ?? '', logoUrl: child.teamLogoUrl ?? null };
+}
+
+/**
+ * 자녀 목록을 대표 팀별로 묶는다 — groupByRepresentativeTeam 의 Child 래퍼.
+ * 입력은 compareChildDisplayOrder 로 정렬된 목록이어야 한다(지역 재정렬 금지).
+ */
+export function groupChildrenByTeam(
+  sortedChildren: readonly Child[],
+): RepresentativeTeamGroup<Child>[] {
+  const keyed = sortedChildren.map((child) => {
+    const team = getRepresentativeTeam(child);
+    return {
+      child,
+      teamId: team?.id ?? null,
+      teamName: team?.name ?? null,
+      logoUrl: team?.logoUrl ?? null,
+    };
+  });
+  return groupByRepresentativeTeam(keyed).map((g) => ({
+    teamId: g.teamId,
+    teamName: g.teamName,
+    logoUrl: g.logoUrl,
+    items: g.items.map((k) => k.child),
+  }));
+}
+
 /** 비활성 사유 — 우선순위: rejected > pending > not_member */
 export type ChildInactiveReason = 'rejected' | 'pending' | 'not_member';
 

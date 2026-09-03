@@ -6,6 +6,13 @@ import { MESSAGES } from '@/lib/messages';
 import { formatBirthYear } from '@/lib/utils';
 import { resolveImageSrc } from '@/lib/image-url';
 
+/** 자녀의 승인 소속 팀 참조 — `/children` 응답 clubMemberships(approved) 1건에 대응 */
+export interface ChildTeamRef {
+  id: string;
+  name: string;
+  logoUrl: string | null;
+}
+
 export interface Child {
   id: string;
   name: string;
@@ -25,6 +32,11 @@ export interface Child {
   clubIds?: string[];
   /** 승인된 대표 팀 로고 URL — 사이드메뉴 자녀 스위처 좌측 표시. 무소속이면 null. */
   teamLogoUrl?: string | null;
+  /**
+   * 승인(approved) 소속 전체 — 대표 팀은 [0] 이며 `club`·`teamLogoUrl`·`clubIds[0]` 과 같은 원소.
+   * 다중 소속 표시·팀별 묶음용. 기존 `club`/`clubIds` 는 개명 없이 병행한다.
+   */
+  teams?: ChildTeamRef[];
   isActive: boolean;
   imageUrl: string | null;
   /** 학습 레벨 (1-5) - Phase 1 추가 */

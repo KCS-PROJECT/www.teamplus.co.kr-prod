@@ -324,6 +324,7 @@ describe("ClassesService", () => {
         ageMin: 4,
         ageMax: 7,
         levelRequired: "beginner",
+        billingMode: "PREPAID",
         startTime: new Date("2026-01-04T16:00:00Z"),
         endTime: new Date("2026-01-04T17:00:00Z"),
       };
@@ -356,6 +357,7 @@ describe("ClassesService", () => {
         className: "신규 수강생반",
         instructorName: "김철수",
         capacity: 15,
+        billingMode: "PREPAID",
         startTime: new Date("2026-01-04T16:00:00Z"),
         endTime: new Date("2026-01-04T17:00:00Z"),
       };
@@ -374,6 +376,7 @@ describe("ClassesService", () => {
         className: "신규 수강생반",
         instructorName: "김철수",
         capacity: 15,
+        billingMode: "PREPAID",
         startTime: new Date("2026-01-04T16:00:00Z"),
         endTime: new Date("2026-01-04T17:00:00Z"),
       };
@@ -390,6 +393,7 @@ describe("ClassesService", () => {
         className: "신규 수강생반",
         instructorName: "김철수",
         capacity: 15,
+        billingMode: "PREPAID",
         startTime: new Date("2026-01-04T17:00:00Z"),
         endTime: new Date("2026-01-04T16:00:00Z"),
       };

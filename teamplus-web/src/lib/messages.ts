@@ -2842,6 +2842,9 @@ export const MESSAGES = {
     // 자녀 스트립 (parent 홈 네이비 밴드) — 자녀 전환 버튼 + 바텀시트
     childStripSelectAction: "선택",
     childStripSheetTitle: "자녀 선택",
+    // 자녀 선택 목록(홈 시트·사이드 메뉴 모달 공용) — 대표 팀별 그룹 헤더 + 다중 소속 부제
+    childPickerNoTeamGroup: "소속 없음",
+    childPickerTeams: (names: string[]) => names.join(" · "),
 
     // 자녀 0명 안내 카드 (/parent · ParentChildSelector 자리)
     dashboardEmptyChildrenTitle: "등록된 자녀가 없습니다.",
@@ -3926,6 +3929,8 @@ export const MESSAGES = {
     profile: "프로필",
     activeChildChanged: (name: string) => `${name}(으)로 전환되었습니다.`,
     selectChild: "자녀 선택",
+    // 프로필 아래 현재 자녀 줄(자녀 2명+) — 누르면 자녀 선택 모달
+    changeChild: "자녀 변경",
     allChildren: "전체 자녀",
     childNoTeam: "소속없음",
   },

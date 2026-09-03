@@ -75,10 +75,11 @@ function formatShortDate(dateKey: string): string {
 
 function EmptyScheduleCard({
   dateLabel,
-  message = MESSAGES.dashboard.noSchedule,
+  message,
 }: {
   dateLabel?: string;
-  message?: string;
+  /** 보고 있는 범위에 맞는 문구 — 기본값을 두면 "오늘 …" 같은 어긋난 문구가 남는다. */
+  message: string;
 }) {
   // ICETIMES flat: 점선 카드 박스(rounded-2xl border-dashed bg) 제거 → /director 홈의
   //   DirectorEmptyCard(iceTheme) 와 동일한 박스 없는 flat empty state. 상위 흰 섹션 면을 그대로 사용.
@@ -481,7 +482,7 @@ export default function DirectorSchedulesPage() {
           renderRow={renderRow}
           getRowKey={(cls) => cls.id}
           emptyState={<EmptyScheduleCard message={emptyMessage} />}
-          emptyDayMessage={MESSAGES.dashboard.noSchedule}
+          emptyDayMessage={MESSAGES.calendar.noEvents}
         />
 
         {/* BottomNav 여백 */}

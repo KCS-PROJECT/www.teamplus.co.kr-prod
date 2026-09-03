@@ -58,9 +58,10 @@ function toChild(item: ChildApiItem): Child {
     approvedMembership || pendingMembership
       ? undefined
       : item.clubMemberships?.find((m) => m.approvalStatus === 'rejected');
-  const clubIds = (item.clubMemberships ?? [])
-    .filter((m) => m.approvalStatus === 'approved')
-    .map((m) => m.teamId);
+  const approvedMemberships = (item.clubMemberships ?? []).filter(
+    (m) => m.approvalStatus === 'approved',
+  );
+  const clubIds = approvedMemberships.map((m) => m.teamId);
 
   return {
     id: item.id,
@@ -79,6 +80,12 @@ function toChild(item: ChildApiItem): Child {
     clubIds,
     // 표시용 club(승인 대표 팀)과 동일 출처의 로고 — 사이드메뉴 스위처 좌측.
     teamLogoUrl: approvedMembership?.teamLogoUrl ?? null,
+    // 승인 소속 전체 — [0] 은 approvedMembership 과 같은 원소(같은 배열의 첫 approved).
+    teams: approvedMemberships.map((m) => ({
+      id: m.teamId,
+      name: m.clubName ?? '',
+      logoUrl: m.teamLogoUrl ?? null,
+    })),
     isActive: item.isActive ?? true,
     imageUrl: item.imageUrl && item.imageUrl.trim() !== '' ? item.imageUrl : null,
     currentLevel: item.currentLevel,

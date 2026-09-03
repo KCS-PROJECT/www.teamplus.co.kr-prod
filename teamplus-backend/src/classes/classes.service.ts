@@ -574,7 +574,7 @@ export class ClassesService {
     // [spot] 1회용 수업은 선불/후불 2택 — 정기권 전제인 선택형(BOTH)만 차단.
     if (
       createDto.trainingType === "spot" &&
-      (createDto.billingMode ?? "BOTH") === "BOTH"
+      createDto.billingMode === "BOTH"
     ) {
       throw new BadRequestException(
         "1회용 수업은 선불 또는 후불로만 등록할 수 있습니다.",
@@ -689,8 +689,8 @@ export class ClassesService {
             [],
           category,
           requiredCoaches: createDto.requiredCoaches ?? 1,
-          // 결제 방식 — 감독 지정 (PREPAID 선불 / POSTPAID 후불 / BOTH 선택형). 미전송 시 BOTH(기본).
-          billingMode: createDto.billingMode ?? "BOTH",
+          // 결제 방식 — 감독 지정 (PREPAID 선불 / POSTPAID 후불). DTO 필수라 폴백 없음.
+          billingMode: createDto.billingMode,
           // [2026-08-04] 공개 범위 — 미전송 시 TEAM_ONLY(기존 동작: 소속 팀에만 노출).
           visibility: createDto.visibility ?? ClassVisibility.TEAM_ONLY,
           // [2026-08-04] 수업 지역 — 감독/코치 선택값. 목록 카드에 "서울 강남구" 로 노출된다.
@@ -791,7 +791,6 @@ export class ClassesService {
       if (createDto.singlePrice || createDto.monthlyPrice) {
         const products = buildClassProducts(created.id, {
           ...createDto,
-          billingMode: createDto.billingMode ?? "BOTH",
         });
         if (products.length > 0) {
           const firstScheduleMonth = firstSched
@@ -1010,8 +1009,8 @@ export class ClassesService {
             representativeAcademy?.classDays ?? createDto.classDays ?? [],
           category,
           requiredCoaches: createDto.requiredCoaches ?? 1,
-          // 결제 방식 — 감독 지정 (PREPAID 선불 / POSTPAID 후불 / BOTH 선택형). 미전송 시 BOTH(기본).
-          billingMode: createDto.billingMode ?? "BOTH",
+          // 결제 방식 — 감독 지정 (PREPAID 선불 / POSTPAID 후불). DTO 필수라 폴백 없음.
+          billingMode: createDto.billingMode,
           // [2026-08-04] 공개 범위 — 미전송 시 TEAM_ONLY.
           //   기존 /classes 목록의 오픈클래스 노출(2026-06-29 정책 — PARENT 에게 팀 무관)은
           //   getAllClasses 가 그대로 유지하므로 이 값과 무관하다.
@@ -1249,7 +1248,6 @@ export class ClassesService {
       if (createDto.singlePrice || createDto.monthlyPrice) {
         const products = buildClassProducts(created.id, {
           ...createDto,
-          billingMode: createDto.billingMode ?? "BOTH",
         });
         if (products.length > 0) {
           const firstScheduleMonth = firstSched
