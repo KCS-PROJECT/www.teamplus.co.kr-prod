@@ -7,6 +7,7 @@ import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { Icon } from '@/components/ui/Icon';
+import { DatePickerModal, formatDateLabel, isoToLocalDate } from '@/components/ui/DatePickerModal';
 import { api } from '@/services/api-client';
 import { MESSAGES } from '@/lib/messages';
 import { useToast } from '@/components/ui/Toast';
@@ -109,6 +110,8 @@ export default function NoticeCreatePage() {
   // [2026-06-18] 공지 노출 기간 (등록기간) — 비우면 상시 노출. 백엔드 startDate/endDate 로 전송.
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  // 노출 기간 달력 대상 — 'start' | 'end'. null 이면 닫힘.
+  const [openPicker, setOpenPicker] = useState<'start' | 'end' | null>(null);
   // [Phase 3] 팀 공지는 TeamPost(/community-notice/create)로 이관 완결 —
   //   이 화면은 **서비스 공지 전용**이라 대상 팀 후보 조회·선택기를 제거했다.
   usePageReady(!isPrefilling);
@@ -187,7 +190,7 @@ export default function NoticeCreatePage() {
 
   /**
    * 시작일이 오늘(KST) 이후인가 — 예약 노출 안내 표시용.
-   * `<input type="date">` 값은 사용자의 달력 날짜라 KST 오늘과 문자열로 비교하면 충분하다.
+   * 날짜 선택 값(YYYY-MM-DD)은 사용자의 달력 날짜라 KST 오늘과 문자열로 비교하면 충분하다.
    */
   const isScheduledStart = (() => {
     if (!startDate) return false;
@@ -373,14 +376,20 @@ export default function NoticeCreatePage() {
                 >
                   시작일
                 </label>
-                <input
+                <button
                   id="notice-start-date"
-                  type="date"
-                  value={startDate}
-                  max={endDate || undefined}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full px-3 h-[46px] bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[14px] font-semibold text-it-ink-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 transition-colors motion-reduce:transition-none ease-ios"
-                />
+                  type="button"
+                  onClick={() => setOpenPicker('start')}
+                  aria-haspopup="dialog"
+                  aria-expanded={openPicker === 'start'}
+                  aria-label={MESSAGES.unitNotice.periodStart}
+                  className="w-full px-3 h-[46px] bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[14px] font-semibold text-it-ink-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 transition-colors motion-reduce:transition-none ease-ios flex min-w-0 items-center justify-between gap-2 text-left"
+                >
+                  <span className={startDate ? 'truncate tabular-nums' : 'truncate text-it-ink-400 dark:text-rink-300'}>
+                    {startDate ? formatDateLabel(startDate) : MESSAGES.unitNotice.periodStart}
+                  </span>
+                  <Icon name="calendar_today" className="shrink-0 text-base text-it-ink-400" aria-hidden="true" />
+                </button>
               </div>
               <div>
                 <label
@@ -389,14 +398,20 @@ export default function NoticeCreatePage() {
                 >
                   종료일
                 </label>
-                <input
+                <button
                   id="notice-end-date"
-                  type="date"
-                  value={endDate}
-                  min={startDate || undefined}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full px-3 h-[46px] bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[14px] font-semibold text-it-ink-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 transition-colors motion-reduce:transition-none ease-ios"
-                />
+                  type="button"
+                  onClick={() => setOpenPicker('end')}
+                  aria-haspopup="dialog"
+                  aria-expanded={openPicker === 'end'}
+                  aria-label={MESSAGES.unitNotice.periodEnd}
+                  className="w-full px-3 h-[46px] bg-it-fill dark:bg-rink-900 border-[1.5px] border-it-line-strong dark:border-rink-700 rounded-w-md text-[14px] font-semibold text-it-ink-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-it-blue-500/20 focus:border-it-blue-500 transition-colors motion-reduce:transition-none ease-ios flex min-w-0 items-center justify-between gap-2 text-left"
+                >
+                  <span className={endDate ? 'truncate tabular-nums' : 'truncate text-it-ink-400 dark:text-rink-300'}>
+                    {endDate ? formatDateLabel(endDate) : MESSAGES.unitNotice.periodEnd}
+                  </span>
+                  <Icon name="calendar_today" className="shrink-0 text-base text-it-ink-400" aria-hidden="true" />
+                </button>
               </div>
             </div>
             {/* [2026-08-07] 예약 노출 안내 — 도래 시점 푸시는 미지원(스케줄러 미도입).
@@ -451,6 +466,21 @@ export default function NoticeCreatePage() {
           <Icon name={isEditMode ? 'edit' : 'check'} className="text-[20px]" aria-hidden="true" />
         </button>
       </div>
+      {/* 기간 달력 — native input[type=date] 는 앱 WebView 마다 모양이 달라 공용 모달로 통일.
+          시작일은 종료일 이전, 종료일은 시작일 이후로만 선택되게 min/max 를 교차 제한한다. */}
+      <DatePickerModal
+        isOpen={openPicker !== null}
+        value={openPicker === 'start' ? startDate : endDate}
+        minDate={openPicker === 'end' ? isoToLocalDate(startDate) : undefined}
+        maxDate={openPicker === 'start' ? isoToLocalDate(endDate) : undefined}
+        ariaLabel={openPicker === 'start' ? MESSAGES.unitNotice.periodStart : MESSAGES.unitNotice.periodEnd}
+              iceTheme
+        onClose={() => setOpenPicker(null)}
+        onSelect={(iso) => {
+          if (openPicker === 'start') setStartDate(iso);
+          else if (openPicker === 'end') setEndDate(iso);
+        }}
+      />
     </MobileContainer>
   );
 }

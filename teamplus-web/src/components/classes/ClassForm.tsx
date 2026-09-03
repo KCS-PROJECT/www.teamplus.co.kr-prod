@@ -41,6 +41,7 @@ import {
 //     매년 1월 1일 최신 출생연도(currentYear-6)가 자동 추가된다. (예: 2026→2020, 2027→2021)
 import { useDateTime } from '@/hooks/useDateTime';
 import { MultiDatePickerModal, type MultiDateResolved } from '@/components/ui/MultiDatePickerModal';
+import { DatePickerModal } from '@/components/ui/DatePickerModal';
 import { TimePicker, addMinutes, nextFullHour } from '@/components/ui/TimePicker';
 
 /* ────────────────────────────────────────────
@@ -535,6 +536,9 @@ export function ClassForm({
   const [multiDateOpen, setMultiDateOpen] = useState(false);
   // [2026-06-30] 일정 목록 — 한 줄 압축 + 아코디언. 탭한 회차만 개별 수정 펼침.
   const [expandedDateKey, setExpandedDateKey] = useState<string | null>(null);
+  // 회차 날짜 수정 대상 key — native input[type=date] 는 앱 WebView(iOS 칩/Android 텍스트)마다
+  //   모양이 달라 시각·장소 버튼과 어긋나므로 공용 DatePickerModal 로 통일한다.
+  const [dateTargetKey, setDateTargetKey] = useState<string | null>(null);
   // 지난 회차 — 출석·정산이 물린 사실 기록이라 읽기 전용 잠금(기본 접힘·수정/삭제 불가).
   //   제출 payload·시간 검증에서도 제외되며(useClassForm), 백엔드 diff 가 불가침으로 보존한다.
   const [showPastSchedules, setShowPastSchedules] = useState(false);
@@ -1350,19 +1354,24 @@ export function ClassForm({
                           {/* 개별 수정 패널 */}
                           {expanded && (
                             <div className={cn('px-3 pb-3 space-y-2 border-t', iceTheme ? 'border-it-line dark:border-rink-700' : 'border-wline-2 dark:border-rink-700')}>
-                              <input
-                                type="date"
-                                value={s.date}
-                                // 지난 날짜로 변경 금지 — 잠금 그룹으로 빠져 수정 불가·payload 제외되는 것 방지.
-                                min={todayISO}
-                                onChange={(e) => updateDateSchedule(s.key, { date: e.target.value })}
+                              <button
+                                type="button"
+                                onClick={() => setDateTargetKey(s.key)}
+                                aria-haspopup="dialog"
+                                aria-expanded={dateTargetKey === s.key}
                                 className={
                                   iceTheme
-                                    ? 'mt-2 w-full h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-it-ink-800 dark:text-white focus:outline-none focus:border-it-blue-500'
-                                    : 'mt-2 w-full h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-wtext-1 dark:text-white focus:outline-none focus:border-ice-500'
+                                    ? 'mt-2 w-full flex items-center gap-2 h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-left text-it-ink-800 dark:text-white hover:border-it-blue-500/40 transition-colors motion-reduce:transition-none'
+                                    : 'mt-2 w-full flex items-center gap-2 h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-left text-wtext-1 dark:text-white hover:border-ice-500/40 transition-colors'
                                 }
                                 aria-label={`${idx + 1}회차 날짜`}
-                              />
+                              >
+                                <Icon name="calendar_month" className={cn('text-base', iceTheme ? 'text-it-ink-400' : 'text-wtext-3')} aria-hidden="true" />
+                                <span className={cn('tabular-nums', s.date ? '' : iceTheme ? 'text-it-ink-400' : 'text-wtext-3')}>
+                                  {dateLabel}
+                                </span>
+                                <Icon name="chevron_right" className={cn('text-base ml-auto', iceTheme ? 'text-it-ink-300' : 'text-wtext-4')} aria-hidden="true" />
+                              </button>
                               <div className="grid grid-cols-2 gap-2">
                                 <TimePicker
                                   value={s.startTime}
@@ -2166,6 +2175,19 @@ export function ClassForm({
         // 팝업은 날짜만 고른다 — 시간·장소는 아래 회차 목록에서 입력한다
         //   (행의 "모든 회차에 적용" 버튼으로 일괄 채움). requireCommonTime 미전달이라
         //   요일 기본값 없는 날짜는 빈 시간으로 추가되고, 제출 검증이 미입력을 막는다.
+      />
+
+      {/* 회차 날짜 수정 달력 — 지난 날짜로 변경 금지(잠금 그룹으로 빠져 수정 불가·payload 제외되는 것 방지). */}
+      <DatePickerModal
+        isOpen={dateTargetKey !== null}
+        value={formData.dateSchedules.find((s) => s.key === dateTargetKey)?.date ?? ''}
+        minDate={new Date()}
+        ariaLabel={`${formData.dateSchedules.findIndex((s) => s.key === dateTargetKey) + 1}회차 날짜 선택`}
+        iceTheme={iceTheme}
+        onClose={() => setDateTargetKey(null)}
+        onSelect={(iso) => {
+          if (dateTargetKey) updateDateSchedule(dateTargetKey, { date: iso });
+        }}
       />
 
       {/* ── 삭제 확인 모달 (Portal) ── */}
