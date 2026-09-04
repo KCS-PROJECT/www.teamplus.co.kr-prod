@@ -51,7 +51,7 @@ const String _flutterBridgeScript = '''
   // Web 이 `getAppBridgeVersion()` 로 읽어 호환성 검증. 계약 변경 시 MINOR bump.
   // 하위 호환 깨지는 변경은 MAJOR bump (Web 의 BRIDGE_MIN_APP_VERSION 과 동기화).
   window.FlutterBridge = {
-    __VERSION__: '1.1.0',  // A-3 (upload / ui.share / getAppVersion / requestNotificationPermission wrapper 추가)
+    __VERSION__: '1.1.1',  // PATCH: upload.openSettings wrapper 복구
     // 인증 모듈
     auth: {
       getToken: function() {
@@ -470,12 +470,13 @@ const String _flutterBridgeScript = '''
       },
 
       // ─── Sprint 5 (2026-04-22 추가): 웹 TS 타입 계약과 동기화 ───
-      // native-bridge.ts 는 이미 ui.share / ui.getAppVersion / ui.requestNotificationPermission
-      // wrapper 를 기대하지만 기존 JS 주입 스크립트에는 누락되어 있었다 (js_natvice1.md P0).
-      // Dart 쪽 `ui` 핸들러가 각 action 을 처리하지 못하면 Web 에서는 promise reject 로
-      // 안전하게 폴백한다 (native-bridge.ts:1516 주석 참고).
+      // native-bridge.ts 는 ui.share / ui.getAppVersion /
+      // ui.requestNotificationPermission wrapper 를 기대한다.
+      // ⚠️ wrapper 는 Dart `_handleUIRequestImpl` 에 대응 case 가 있을 때만
+      // 정의할 것 — case 없이 wrapper 만 있으면 웹의 typeof 가드를 통과한 뒤
+      // reject 되어 에러 토스트/로그 노이즈가 발생한다 (2026-07-28 share 구현으로 해소).
 
-      // 네이티브 공유 시트 열기
+      // 네이티브 공유 시트 열기 (Dart: ui.share case — share_plus)
       share: function(payload) {
         return new Promise(function(resolve, reject) {
           waitForInAppWebView(function() {
@@ -610,6 +611,23 @@ const String _flutterBridgeScript = '''
                   resolve(response.data);
                 } else {
                   reject(new Error(response?.error?.message || response?.error || '권한 확인 실패'));
+                }
+              })
+              .catch(reject);
+          });
+        });
+      },
+
+      // TEAMPLUS 앱의 OS 설정 화면 열기
+      openSettings: function() {
+        return new Promise(function(resolve, reject) {
+          waitForInAppWebView(function() {
+            window.flutter_inappwebview.callHandler('upload', { action: 'openSettings' })
+              .then(function(response) {
+                if (response && response.success) {
+                  resolve(response.data);
+                } else {
+                  reject(new Error(response?.error?.message || response?.error || '기기 설정 열기 실패'));
                 }
               })
               .catch(reject);

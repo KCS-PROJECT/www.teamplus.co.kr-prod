@@ -35,7 +35,7 @@ const isDev = process.env.NODE_ENV === "development";
 // ============================================
 
 /** Web 이 요구하는 Bridge 인터페이스 버전 (SemVer). */
-export const BRIDGE_WEB_VERSION = "1.1.0" as const;
+export const BRIDGE_WEB_VERSION = "1.1.1" as const;
 
 /** Web 이 동작하기 위한 최소 App Bridge 버전. 미만이면 앱 업데이트 유도. */
 export const BRIDGE_MIN_APP_VERSION = "1.0.0" as const;
@@ -435,8 +435,15 @@ export interface FlutterBridgeUI {
     build?: string;
     platform: "ios" | "android";
   }>;
-  /** 푸시 알림 권한 요청 */
-  requestNotificationPermission?(): Promise<{ granted: boolean }>;
+  /**
+   * 푸시 알림 권한 요청.
+   * permanentlyDenied: 영구 거부 상태라 OS 팝업이 표시되지 않은 경우 true —
+   * 호출부는 재요청 대신 설정 이동을 안내해야 한다 (2026-07-29 필드 추가).
+   */
+  requestNotificationPermission?(): Promise<{
+    granted: boolean;
+    permanentlyDenied?: boolean;
+  }>;
   /**
    * WebView 첫 paint 완료 신호 → Flutter native_splash hide 트리거 (2026-05-20 v18 신규).
    *
@@ -662,7 +669,7 @@ export interface FlutterBridgeUpload {
     kind: "camera" | "photos" | "microphone";
   }): Promise<UploadPermissionResult>;
   /** OS 설정 앱으로 이동 (permanentlyDenied 복구용) */
-  openSettings(): Promise<{ opened: boolean }>;
+  openSettings?: () => Promise<{ opened: boolean }>;
 }
 
 /** Flutter Bridge 전체 인터페이스 */

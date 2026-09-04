@@ -16,6 +16,7 @@ import { useNavigation } from "@/components/ui/NavLink";
 import { MobileContainer } from "@/components/layout/MobileContainer";
 import { PageAppBar } from "@/components/layout/PageAppBar";
 import { Icon } from "@/components/ui/Icon";
+import { ActionSheet } from "@/components/director/ActionSheet";
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { useToast } from "@/components/ui/Toast";
 import { useModal } from "@/components/ui/Modal";
@@ -48,6 +49,8 @@ export default function TeamGroupsListPage() {
   const canManage = isTeamManager(user);
 
   const [groups, setGroups] = useState<TeamGroupSummary[]>([]);
+  // ⋮ 액션 시트 대상 행 (null = 닫힘)
+  const [actionTarget, setActionTarget] = useState<TeamGroupSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // 풀스크린 로더 fast-path (v11) — fetch 완료 시점에 PageTransitionLoader OFF
@@ -157,14 +160,11 @@ export default function TeamGroupsListPage() {
             <div className="flex flex-col">
               {groups.map((g, idx) => {
                 const isLast = idx === groups.length - 1;
-                return (
-                  <div
-                    key={g.id}
-                    className={cn(
-                      "flex w-full items-center gap-3 py-[13px] min-h-[56px]",
-                      !isLast && "border-b border-it-line dark:border-it-blue-900",
-                    )}
-                  >
+                const meta = `${MESSAGES.team.groupMemberCountLabel(g._count.members)}${
+                  g.coachName ? ` · ${MESSAGES.team.groupCoachMetaLabel(g.coachName)}` : ""
+                }`;
+                const content = (
+                  <>
                     {/* 그룹 아이콘 타일 */}
                     <div
                       className="flex size-11 shrink-0 items-center justify-center rounded-w-md bg-it-blue-50 dark:bg-it-blue-500/15"
@@ -187,32 +187,46 @@ export default function TeamGroupsListPage() {
                         )}
                       </div>
                       <p className="mt-0.5 text-[13px] font-medium text-it-ink-500 dark:text-it-ink-300">
-                        {MESSAGES.team.groupMemberCountLabel(g._count.members)}
-                        {g.coachName &&
-                          ` · ${MESSAGES.team.groupCoachMetaLabel(g.coachName)}`}
+                        {meta}
                       </p>
                     </div>
-
-                    {/* 관리 버튼 (감독/코치만) */}
-                    {canManage && (
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            navigate(`/team/${teamId}/groups/${g.id}/edit`)
-                          }
-                          className="inline-flex h-8 items-center rounded-w-md border-[1.5px] border-it-line-strong bg-it-surface px-3 text-[12px] font-bold text-it-blue-500 transition-colors motion-reduce:transition-none hover:bg-it-fill active:brightness-95 dark:border-it-blue-900 dark:bg-it-blue-950 dark:text-it-blue-300 dark:hover:bg-it-blue-900"
-                        >
-                          수정하기
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(g.id, g.name)}
-                          className="inline-flex h-8 items-center rounded-w-md border-[1.5px] border-it-red-200 bg-it-surface px-3 text-[12px] font-bold text-it-red-500 transition-colors motion-reduce:transition-none hover:bg-it-red-50 active:brightness-95 dark:border-it-red-500/40 dark:bg-it-blue-950 dark:text-it-red-300 dark:hover:bg-it-red-500/10"
-                        >
-                          삭제하기
-                        </button>
+                  </>
+                );
+                return (
+                  <div
+                    key={g.id}
+                    className={cn(
+                      "flex w-full items-center gap-2 min-h-[56px]",
+                      !isLast && "border-b border-it-line dark:border-it-blue-900",
+                    )}
+                  >
+                    {/* 행 본문 — 감독/코치는 탭하면 수정 화면, 조회자는 정적 표시 */}
+                    {canManage ? (
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/team/${teamId}/groups/${g.id}/edit`)}
+                        aria-label={MESSAGES.team.groupRowAria(g.name)}
+                        className="flex min-w-0 flex-1 items-center gap-3 py-[13px] text-left transition-colors motion-reduce:transition-none hover:bg-it-fill active:brightness-95 dark:hover:bg-it-blue-900/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-it-blue-500/40"
+                      >
+                        {content}
+                      </button>
+                    ) : (
+                      <div className="flex min-w-0 flex-1 items-center gap-3 py-[13px]">
+                        {content}
                       </div>
+                    )}
+
+                    {/* ⋮ 관리 메뉴 (감독/코치만) — 수정/삭제는 액션 시트로 */}
+                    {canManage && (
+                      <button
+                        type="button"
+                        onClick={() => setActionTarget(g)}
+                        aria-label={MESSAGES.team.groupActionsAria(g.name)}
+                        aria-haspopup="dialog"
+                        className="flex size-10 shrink-0 items-center justify-center rounded-w-pill text-it-ink-400 transition-colors motion-reduce:transition-none hover:bg-it-fill hover:text-it-ink-700 active:brightness-95 dark:text-it-ink-300 dark:hover:bg-it-blue-900/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40"
+                      >
+                        <Icon name="more_vert" className="text-xl" aria-hidden="true" />
+                      </button>
                     )}
                   </div>
                 );
@@ -223,6 +237,37 @@ export default function TeamGroupsListPage() {
 
         <div className="h-6" aria-hidden="true" />
       </main>
+
+      <ActionSheet
+        isOpen={!!actionTarget}
+        onClose={() => setActionTarget(null)}
+        title={MESSAGES.team.groupActionsTitle}
+        items={
+          actionTarget
+            ? [
+                {
+                  icon: "edit",
+                  label: MESSAGES.common.edit,
+                  onClick: () => {
+                    const id = actionTarget.id;
+                    setActionTarget(null);
+                    navigate(`/team/${teamId}/groups/${id}/edit`);
+                  },
+                },
+                {
+                  icon: "delete",
+                  label: MESSAGES.common.delete,
+                  danger: true,
+                  onClick: () => {
+                    const { id, name } = actionTarget;
+                    setActionTarget(null);
+                    void handleDelete(id, name);
+                  },
+                },
+              ]
+            : []
+        }
+      />
     </MobileContainer>
   );
 }

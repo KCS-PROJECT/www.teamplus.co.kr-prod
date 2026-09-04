@@ -1,5 +1,11 @@
 import { Test, TestingModule } from "@nestjs/testing";
-import { BadRequestException, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+  ServiceUnavailableException,
+} from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { ConfigService } from "@nestjs/config";
 import { getQueueToken } from "@nestjs/bull";
 import { NotificationsService } from "./notifications.service";
@@ -102,6 +108,18 @@ describe("NotificationsService", () => {
             auditLog: {
               create: jest.fn().mockResolvedValue({ id: "audit-1" }),
             },
+            user: {
+              findUnique: jest.fn(),
+              findMany: jest.fn(),
+              update: jest.fn(),
+            },
+            userNotificationPreference: {
+              findUnique: jest.fn(),
+              upsert: jest.fn(),
+            },
+            appTerms: {
+              findFirst: jest.fn(),
+            },
             userDevice: {
               findMany: jest.fn().mockResolvedValue([]),
             },
@@ -139,10 +157,386 @@ describe("NotificationsService", () => {
 
     service = module.get<NotificationsService>(NotificationsService);
     prismaService = module.get<PrismaService>(PrismaService);
+    (prismaService.$transaction as jest.Mock).mockImplementation(
+      (operation: unknown) =>
+        typeof operation === "function"
+          ? operation(prismaService)
+          : Promise.all(operation as Promise<unknown>[]),
+    );
   });
 
   afterEach(() => {
     jest.clearAllMocks();
+  });
+
+  describe("notification preferences", () => {
+    const preference = {
+      id: "pref-1",
+      userId: "user-1",
+      pushEnabled: true,
+      smsEnabled: true,
+      emailEnabled: false,
+      soundEnabled: true,
+      vibrationEnabled: true,
+      quietHoursEnabled: false,
+      quietHoursStart: null,
+      quietHoursEnd: null,
+      categories: { class: true, marketing: false },
+      updatedAt: new Date("2026-09-04T00:00:00Z"),
+    };
+
+    it("GET normalizes legacy categories.marketing from User.marketingConsent", async () => {
+      (
+        prismaService.userNotificationPreference.upsert as jest.Mock
+      ).mockResolvedValue(preference);
+      (prismaService.user.findUnique as jest.Mock).mockResolvedValue({
+        marketingConsent: true,
+        userType: "PARENT",
+        birthDate: new Date("1990-01-01T00:00:00.000Z"),
+      });
+      (prismaService.appTerms.findFirst as jest.Mock).mockResolvedValue({
+        version: "1.1.0",
+      });
+
+      const result = await service.getMyNotificationPreference("user-1");
+
+      expect(result.marketingConsent).toBe(true);
+      expect(result.marketingConsentGrantAllowed).toBe(true);
+      expect(result.marketingConsentTermsVersion).toBe("1.1.0");
+      expect(result.categories).toMatchObject({
+        class: true,
+        marketing: true,
+      });
+    });
+
+    it("PATCH gives explicit marketingConsent priority and atomically audits an actual change", async () => {
+      (prismaService.user.findUnique as jest.Mock).mockResolvedValue({
+        marketingConsent: false,
+      });
+      (
+        prismaService.userNotificationPreference.findUnique as jest.Mock
+      ).mockResolvedValue(preference);
+      (prismaService.user.update as jest.Mock).mockResolvedValue({});
+      (prismaService.appTerms.findFirst as jest.Mock).mockResolvedValue({
+        version: "1.2.0",
+      });
+      (
+        prismaService.userNotificationPreference.upsert as jest.Mock
+      ).mockImplementation(({ update }: { update: Record<string, unknown> }) =>
+        Promise.resolve({ ...preference, ...update }),
+      );
+
+      const result = await service.updateMyNotificationPreference(
+        "user-1",
+        {
+          marketingConsent: true,
+          marketingConsentTermsVersion: "1.2.0",
+          categories: { marketing: false, notice: false },
+        },
+        {
+          ipAddress: "203.0.113.7",
+          platform: "app",
+          userAgent: "TEAMPLUS-iOS/1.2.3",
+        },
+      );
+
+      expect(result.marketingConsent).toBe(true);
+      expect(result.categories).toMatchObject({
+        marketing: true,
+        notice: false,
+      });
+      expect(prismaService.user.update).toHaveBeenCalledWith({
+        where: { id: "user-1" },
+        data: {
+          marketingConsent: true,
+          marketingConsentAt: expect.any(Date),
+        },
+      });
+      expect(prismaService.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: "user-1",
+          action: "marketing_consent_granted",
+          platform: "app",
+          ipAddress: "203.0.113.7",
+          oldValue: { marketingConsent: false },
+          newValue: expect.objectContaining({
+            marketingConsent: true,
+            userAgent: "TEAMPLUS-iOS/1.2.3",
+            termsVersion: "1.2.0",
+            termsVersionSource: "app_terms_current",
+          }),
+        }),
+      });
+    });
+
+    it("PATCH accepts legacy categories.marketing and skips audit when consent is unchanged", async () => {
+      (prismaService.user.findUnique as jest.Mock).mockResolvedValue({
+        marketingConsent: false,
+      });
+      (
+        prismaService.userNotificationPreference.findUnique as jest.Mock
+      ).mockResolvedValue(preference);
+      (prismaService.appTerms.findFirst as jest.Mock).mockResolvedValue({
+        version: "1.1.0",
+      });
+      (
+        prismaService.userNotificationPreference.upsert as jest.Mock
+      ).mockImplementation(({ update }: { update: Record<string, unknown> }) =>
+        Promise.resolve({ ...preference, ...update }),
+      );
+
+      const result = await service.updateMyNotificationPreference("user-1", {
+        categories: { marketing: false },
+      });
+
+      expect(result.marketingConsent).toBe(false);
+      expect(result.categories.marketing).toBe(false);
+      expect(prismaService.user.update).not.toHaveBeenCalled();
+      expect(prismaService.auditLog.create).not.toHaveBeenCalled();
+    });
+
+    it("PATCH uses legacy categories.marketing as consent when the explicit field is absent", async () => {
+      (prismaService.user.findUnique as jest.Mock).mockResolvedValue({
+        marketingConsent: false,
+      });
+      (
+        prismaService.userNotificationPreference.findUnique as jest.Mock
+      ).mockResolvedValue(preference);
+      (prismaService.user.update as jest.Mock).mockResolvedValue({});
+      (prismaService.appTerms.findFirst as jest.Mock).mockResolvedValue({
+        version: "1.1.0",
+      });
+      (
+        prismaService.userNotificationPreference.upsert as jest.Mock
+      ).mockImplementation(({ update }: { update: Record<string, unknown> }) =>
+        Promise.resolve({ ...preference, ...update }),
+      );
+
+      const result = await service.updateMyNotificationPreference("user-1", {
+        categories: { marketing: true },
+        marketingConsentTermsVersion: "1.1.0",
+      });
+
+      expect(result.marketingConsent).toBe(true);
+      expect(prismaService.user.update).toHaveBeenCalledWith({
+        where: { id: "user-1" },
+        data: {
+          marketingConsent: true,
+          marketingConsentAt: expect.any(Date),
+        },
+      });
+      expect(prismaService.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          action: "marketing_consent_granted",
+          newValue: expect.objectContaining({
+            termsVersion: "1.1.0",
+            termsVersionSource: "app_terms_current",
+          }),
+        }),
+      });
+    });
+
+    it("PATCH fails closed when granting consent without current marketing terms", async () => {
+      (prismaService.user.findUnique as jest.Mock).mockResolvedValue({
+        marketingConsent: false,
+      });
+      (
+        prismaService.userNotificationPreference.findUnique as jest.Mock
+      ).mockResolvedValue(preference);
+      (prismaService.appTerms.findFirst as jest.Mock).mockResolvedValue(null);
+
+      await expect(
+        service.updateMyNotificationPreference("user-1", {
+          marketingConsent: true,
+          marketingConsentTermsVersion: "1.1.0",
+        }),
+      ).rejects.toBeInstanceOf(ServiceUnavailableException);
+      expect(prismaService.user.update).not.toHaveBeenCalled();
+      expect(
+        prismaService.userNotificationPreference.upsert,
+      ).not.toHaveBeenCalled();
+      expect(prismaService.auditLog.create).not.toHaveBeenCalled();
+    });
+
+    it("PATCH rejects a grant that did not confirm the current terms version", async () => {
+      (prismaService.user.findUnique as jest.Mock).mockResolvedValue({
+        marketingConsent: false,
+        userType: "PARENT",
+        birthDate: new Date("1990-01-01T00:00:00.000Z"),
+      });
+      (
+        prismaService.userNotificationPreference.findUnique as jest.Mock
+      ).mockResolvedValue(preference);
+      (prismaService.appTerms.findFirst as jest.Mock).mockResolvedValue({
+        version: "1.1.0",
+      });
+
+      await expect(
+        service.updateMyNotificationPreference("user-1", {
+          marketingConsent: true,
+          marketingConsentTermsVersion: "1.0.0",
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prismaService.user.update).not.toHaveBeenCalled();
+      expect(
+        prismaService.userNotificationPreference.upsert,
+      ).not.toHaveBeenCalled();
+      expect(prismaService.auditLog.create).not.toHaveBeenCalled();
+    });
+
+    it("PATCH blocks a CHILD from granting marketing consent", async () => {
+      (prismaService.user.findUnique as jest.Mock).mockResolvedValue({
+        marketingConsent: false,
+        userType: "CHILD",
+        birthDate: new Date("2016-09-04T00:00:00.000Z"),
+      });
+      (
+        prismaService.userNotificationPreference.findUnique as jest.Mock
+      ).mockResolvedValue(preference);
+
+      await expect(
+        service.updateMyNotificationPreference("child-1", {
+          marketingConsent: true,
+          marketingConsentTermsVersion: "1.1.0",
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prismaService.appTerms.findFirst).not.toHaveBeenCalled();
+      expect(prismaService.user.update).not.toHaveBeenCalled();
+      expect(
+        prismaService.userNotificationPreference.upsert,
+      ).not.toHaveBeenCalled();
+      expect(prismaService.auditLog.create).not.toHaveBeenCalled();
+    });
+
+    it("PATCH blocks a TEEN who is still under fourteen from granting consent", async () => {
+      (prismaService.user.findUnique as jest.Mock).mockResolvedValue({
+        marketingConsent: false,
+        userType: "TEEN",
+        birthDate: new Date("2013-09-05T00:00:00.000Z"),
+      });
+      (
+        prismaService.userNotificationPreference.findUnique as jest.Mock
+      ).mockResolvedValue(preference);
+
+      await expect(
+        service.updateMyNotificationPreference("teen-1", {
+          marketingConsent: true,
+          marketingConsentTermsVersion: "1.1.0",
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prismaService.user.update).not.toHaveBeenCalled();
+      expect(
+        prismaService.userNotificationPreference.upsert,
+      ).not.toHaveBeenCalled();
+      expect(prismaService.auditLog.create).not.toHaveBeenCalled();
+    });
+
+    it("PATCH fails closed for a legacy TEEN without birthDate", async () => {
+      (prismaService.user.findUnique as jest.Mock).mockResolvedValue({
+        marketingConsent: false,
+        userType: "TEEN",
+        birthDate: null,
+      });
+      (
+        prismaService.userNotificationPreference.findUnique as jest.Mock
+      ).mockResolvedValue(preference);
+
+      await expect(
+        service.updateMyNotificationPreference("legacy-teen-1", {
+          marketingConsent: true,
+          marketingConsentTermsVersion: "1.1.0",
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prismaService.appTerms.findFirst).not.toHaveBeenCalled();
+      expect(prismaService.user.update).not.toHaveBeenCalled();
+      expect(
+        prismaService.userNotificationPreference.upsert,
+      ).not.toHaveBeenCalled();
+      expect(prismaService.auditLog.create).not.toHaveBeenCalled();
+    });
+
+    it("PATCH always allows a CHILD to revoke existing marketing consent", async () => {
+      (prismaService.user.findUnique as jest.Mock).mockResolvedValue({
+        marketingConsent: true,
+        userType: "CHILD",
+        birthDate: new Date("2016-09-04T00:00:00.000Z"),
+      });
+      (
+        prismaService.userNotificationPreference.findUnique as jest.Mock
+      ).mockResolvedValue({
+        ...preference,
+        categories: { ...preference.categories, marketing: true },
+      });
+      (prismaService.appTerms.findFirst as jest.Mock).mockResolvedValue(null);
+      (prismaService.user.update as jest.Mock).mockResolvedValue({});
+      (
+        prismaService.userNotificationPreference.upsert as jest.Mock
+      ).mockImplementation(({ update }: { update: Record<string, unknown> }) =>
+        Promise.resolve({ ...preference, ...update }),
+      );
+
+      await expect(
+        service.updateMyNotificationPreference("child-1", {
+          marketingConsent: false,
+        }),
+      ).resolves.toMatchObject({
+        marketingConsent: false,
+        categories: expect.objectContaining({ marketing: false }),
+      });
+      expect(prismaService.user.update).toHaveBeenCalled();
+      expect(prismaService.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          action: "marketing_consent_revoked",
+          newValue: expect.objectContaining({ marketingConsent: false }),
+        }),
+      });
+    });
+
+    it("PATCH retries a P2034 conflict with Serializable isolation", async () => {
+      (prismaService.user.findUnique as jest.Mock).mockResolvedValue({
+        marketingConsent: false,
+      });
+      (
+        prismaService.userNotificationPreference.findUnique as jest.Mock
+      ).mockResolvedValue(preference);
+      (prismaService.user.update as jest.Mock).mockResolvedValue({});
+      (prismaService.appTerms.findFirst as jest.Mock).mockResolvedValue({
+        version: "1.1.0",
+      });
+      (
+        prismaService.userNotificationPreference.upsert as jest.Mock
+      ).mockResolvedValue({
+        ...preference,
+        categories: { ...preference.categories, marketing: true },
+      });
+      const serializationConflict =
+        new Prisma.PrismaClientKnownRequestError("serialization conflict", {
+          code: "P2034",
+          clientVersion: "5.7.1",
+        });
+      let attempt = 0;
+      (prismaService.$transaction as jest.Mock).mockImplementation(
+        (operation: (tx: PrismaService) => Promise<unknown>) => {
+          attempt += 1;
+          return attempt === 1
+            ? Promise.reject(serializationConflict)
+            : operation(prismaService);
+        },
+      );
+
+      await expect(
+        service.updateMyNotificationPreference("user-1", {
+          marketingConsent: true,
+          marketingConsentTermsVersion: "1.1.0",
+        }),
+      ).resolves.toMatchObject({ marketingConsent: true });
+      expect(prismaService.$transaction).toHaveBeenCalledTimes(2);
+      for (const call of (prismaService.$transaction as jest.Mock).mock.calls) {
+        expect(call[1]).toEqual({
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        });
+      }
+    });
   });
 
   describe("getTeamManagerUserIds", () => {
@@ -1138,11 +1532,25 @@ describe("NotificationsService", () => {
       const where = (prismaService as any).userDevice.findMany.mock.calls[0][0]
         .where;
       expect(where.isActive).toBe(true);
-      expect(where.NOT).toEqual({
-        user: {
-          is: { notificationPreference: { is: { pushEnabled: false } } },
+      expect(where.NOT).toEqual([
+        {
+          user: {
+            is: { notificationPreference: { is: { pushEnabled: false } } },
+          },
         },
-      });
+        {
+          user: {
+            is: {
+              notificationPreference: {
+                is: {
+                  categories: { path: ["marketing"], equals: false },
+                },
+              },
+            },
+          },
+        },
+      ]);
+      expect(where.user).toEqual({ is: { marketingConsent: true } });
     });
 
     it("executeAdminPushJob: 대상 0건은 실패가 아니라 sent(대상없음) 로 종결", async () => {

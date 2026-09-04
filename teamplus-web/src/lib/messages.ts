@@ -652,6 +652,7 @@ export const MESSAGES = {
     },
     pendingMembers: "승인 대기 회원",
     pendingMembersBanner: (count: number) => `${count}명이 승인 대기 중입니다`,
+    unpaidOverdueBanner: (count: number) => `회원 미납 ${count}건이 있습니다`,
     quickLinks: "바로가기",
     viewAll: "전체보기",
     moreMembers: (count: number) => `대기 회원 ${count}명 더보기`,
@@ -1127,9 +1128,49 @@ export const MESSAGES = {
       "확인할 결제 정보가 없어요. 결제 내역에서 결제 상태를 확인해주세요.",
   },
   notification: {
+    pageTitle: "알림 설정",
+    pushLabel: "푸시 알림",
+    pushDescription: "모든 알림을 한 번에 켜거나 끕니다",
+    categoryTitle: "알림 카테고리",
+    classLabel: "수업 알림",
+    classDescription: "수업 일정 변경, 준비물 안내",
+    paymentLabel: "결제 알림",
+    paymentDescription: "결제 완료, 청구서, 환불 안내",
+    noticeLabel: "공지 알림",
+    noticeDescription: "팀 공지, 이벤트, 회원 승인",
+    systemLabel: "시스템 알림",
+    systemDescription: "시스템 점검, 업데이트 안내",
+    marketingLabel: "마케팅 정보 수신",
+    marketingDescription: "이벤트, 혜택, 프로모션 등 광고성 정보 (선택)",
+    marketingConsentTitle: "마케팅 정보 수신 동의",
+    marketingConsentSummary:
+      "신규 수업, 이벤트, 할인 혜택과 맞춤 추천 정보를 푸시 알림, 알림톡, 문자, 이메일로 오전 8시부터 오후 9시 사이에 받습니다. 선택 동의이며 언제든지 철회할 수 있습니다.",
+    marketingConsentConfirm: "동의하기",
+    marketingTermsLink: "마케팅 수신 동의 전문 보기",
+    marketingGuardianDescription:
+      "만 14세 미만 회원은 직접 동의할 수 없습니다. 보호자에게 문의해주세요.",
+    marketingTermsUnavailableDescription:
+      "현재 동의 내용을 불러올 수 없어 켤 수 없습니다. 잠시 후 다시 시도해주세요.",
+    quietHoursTitle: "방해금지 모드",
+    quietHoursDescription: "설정한 시간 동안 알림을 받지 않습니다",
+    quietHoursStart: "시작 시간",
+    quietHoursEnd: "종료 시간",
+    quietHoursRange: (start: string, end: string) =>
+      `${start} ~ ${end} 동안 알림을 받지 않습니다`,
+    resetTitle: "설정 초기화",
     settingsReset: "알림 설정을 초기화하시겠습니까?",
+    resetConfirm: "초기화",
+    saveFailed: "알림 설정을 저장하지 못했습니다. 다시 시도해주세요.",
+    openDeviceSettings: "기기 알림 설정 열기",
+    openingDeviceSettings: "기기 설정을 여는 중입니다.",
+    deviceSettingsUnavailable:
+      "기기 설정을 열 수 없습니다. 기기 설정 > 알림 > 팀플러스에서 확인해주세요.",
+    deviceSettingsOpenFailed:
+      "기기 설정을 열지 못했습니다. 잠시 후 다시 시도해주세요.",
     deviceSettingsHint:
       "앱 알림을 받으려면 기기 설정에서도 알림을 허용해야 합니다. 기기 설정 > 알림 > 팀플러스에서 확인하세요.",
+    legacyDeviceSettingsHint:
+      "현재 앱에서는 바로 열 수 없습니다. 앱을 업데이트하거나 기기 설정 > 알림 > 팀플러스에서 확인하세요.",
   },
   /**
    * 팀 멤버 푸시 발송 (코치/감독 → 팀 회원) — MemberPushComposer 전용.
@@ -2703,6 +2744,10 @@ export const MESSAGES = {
     groupDeleteConfirm: "이 하위그룹을 삭제하시겠습니까?",
     groupDeleteSuccess: "하위그룹이 삭제되었습니다.",
     groupMemberCountLabel: (n: number) => `회원 ${n}명`,
+    // 하위그룹 목록 행 — 탭=수정, ⋮=액션 시트(수정/삭제)
+    groupRowAria: (name: string) => `${name} 수정하기`,
+    groupActionsAria: (name: string) => `${name} 관리 메뉴`,
+    groupActionsTitle: "하위그룹 관리",
 
     // 팀 코드 (자녀 등록 시 팀 가입 신청 · 설계서 §4.5, 필수 입력)
     codeLabel: "팀 코드",
@@ -3141,6 +3186,36 @@ export const MESSAGES = {
     // 로스터 모달 submit 버튼 라벨 (한글 표준 버튼 라벨, MESSAGES SoT 일관화)
     rosterSubmit: "등록하기",
     rosterSubmitEdit: "수정하기",
+
+    // 내 팀 홈 — 감독·코치(관리 팀 1개)가 하단 탭 "팀"으로 들어왔을 때의 화면
+    titleHome: "내 팀",
+    homeAria: (teamName: string) => `${teamName} 팀 홈`,
+    homeHeroCounts: (players: number, staff: number) =>
+      `선수 ${players}명 · 감독/코치 ${staff}명`,
+    homePendingTitle: "감독님 승인을 기다리고 있어요",
+    homePendingHint: "승인이 완료되면 팀 홈이 열립니다.",
+    homeTodoSection: "처리 필요",
+    homeTodoPending: (count: number) => `가입 신청 ${count}건 승인 대기`,
+    homeTodoUnpaid: (count: number) => `회원 미납 ${count}건`,
+    homeNextSection: "다음 일정",
+    homeNextViewAll: "일정 보기",
+    homeNextToday: "오늘",
+    homeNextTomorrow: "내일",
+    homeEventPractice: "연습",
+    homeEventMatch: "경기",
+    homeOpsSection: "운영",
+    homeSetupSection: "구성",
+    homeHeroAria: (teamName: string) => `${teamName} 팀 정보 보기`,
+    homeMenuRoster: "선수 명단",
+    homeMenuRosterMeta: (count: number) => `${count}명`,
+    homeMenuStaff: "감독·코치",
+    homeMenuStaffMeta: (head: number, coach: number) => `감독 ${head} · 코치 ${coach}`,
+    homeMenuGroups: "하위그룹",
+    homeMenuGroupsEmpty: "아직 그룹이 없어요",
+    homeMenuNotices: "팀 공지",
+    homeMenuNoticesMeta: "공지 작성 · 관리",
+    homeMenuSettlement: "결제·정산",
+    homeMenuSettlementMeta: "거래 내역 · 정산 집계 · 미납",
   },
   academy: {
     created: "오픈클래스가 등록되었습니다.",
@@ -4326,21 +4401,6 @@ export const MESSAGES = {
       sessionPassCount: (n: number) => `회차권 ${n}회`,
     },
   },
-  coachDashboard: {
-    unpaidMembers: {
-      title: (month: string) => `${month} 미결제 회원`,
-      countLabel: (count: number) => `${count}명`,
-      viewAll: "전체 보기",
-      sendAlertAction: "알림 발송",
-      sendAlertComingSoon: "알림 발송 기능은 준비 중입니다.",
-      columnHeaderName: "학부모",
-      columnHeaderChild: "자녀",
-      columnHeaderClass: "수업",
-      emptyTitle: "미결제 회원이 없습니다",
-      emptyDescription: "모든 회원이 결제를 완료했습니다.",
-    },
-  },
-
   /**
    * 앱 설치 안내 — /get-app 페이지, AppInstallBanner, deeplink fallback 공용.
    * 외부 공유 링크(카카오톡 등)에서 진입한 미설치 사용자에게 노출된다.

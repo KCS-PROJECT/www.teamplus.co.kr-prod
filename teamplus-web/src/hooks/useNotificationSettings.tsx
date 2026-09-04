@@ -7,6 +7,8 @@ import {
 } from "@/types/notification";
 import { api } from "@/services/api-client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/components/ui/Toast";
+import { MESSAGES } from "@/lib/messages";
 
 /**
  * 알림 수신 설정 훅 — 서버 영속화 버전
@@ -28,6 +30,9 @@ interface ServerPreference {
   quietHoursStart: string | null;
   quietHoursEnd: string | null;
   categories: Record<string, boolean> | null;
+  marketingConsent?: boolean;
+  marketingConsentGrantAllowed?: boolean;
+  marketingConsentTermsVersion?: string | null;
   updatedAt?: string;
 }
 
@@ -41,11 +46,16 @@ interface ServerPatch {
   quietHoursStart?: string | null;
   quietHoursEnd?: string | null;
   categories?: Record<string, boolean>;
+  marketingConsent?: boolean;
+  marketingConsentTermsVersion?: string;
 }
 
 interface UseNotificationSettingsReturn {
   settings: NotificationSettings;
   isLoading: boolean;
+  isSaving: boolean;
+  marketingConsentGrantAllowed: boolean;
+  marketingConsentTermsVersion: string | null;
   togglePush: () => void;
   toggleCategory: (category: keyof NotificationSettings["categories"]) => void;
   toggleSound: () => void;
@@ -61,6 +71,7 @@ interface UseNotificationSettingsReturn {
 // ─── 변환기: 서버 shape ↔ 클라이언트 NotificationSettings ─────
 function fromServer(server: ServerPreference): NotificationSettings {
   const cats = server.categories ?? {};
+  const marketingConsent = server.marketingConsent ?? cats.marketing ?? false;
   return {
     pushEnabled: server.pushEnabled,
     categories: {
@@ -68,7 +79,8 @@ function fromServer(server: ServerPreference): NotificationSettings {
       payment: cats.payment ?? true,
       notice: cats.notice ?? true,
       system: cats.system ?? true,
-      marketing: cats.marketing ?? true,
+      // User.marketingConsent가 법적 SoT이며 categories.marketing은 호환 미러다.
+      marketing: marketingConsent,
     },
     soundEnabled: server.soundEnabled,
     vibrationEnabled: server.vibrationEnabled,
@@ -84,6 +96,7 @@ function fromServer(server: ServerPreference): NotificationSettings {
 function toServerPatch(
   prev: NotificationSettings,
   next: NotificationSettings,
+  marketingConsentTermsVersion: string | null,
 ): ServerPatch {
   const patch: ServerPatch = {};
   if (prev.pushEnabled !== next.pushEnabled)
@@ -116,23 +129,54 @@ function toServerPatch(
       marketing: next.categories.marketing,
     };
   }
+  if (prev.categories.marketing !== next.categories.marketing) {
+    patch.marketingConsent = next.categories.marketing;
+    if (next.categories.marketing && marketingConsentTermsVersion) {
+      patch.marketingConsentTermsVersion = marketingConsentTermsVersion;
+    }
+  }
   return patch;
 }
 
 export function useNotificationSettings(): UseNotificationSettingsReturn {
   const { isAuthenticated } = useAuth();
+  const { toast } = useToast();
   const [settings, setSettings] = useState<NotificationSettings>(
     DEFAULT_NOTIFICATION_SETTINGS,
   );
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [marketingConsentGrantAllowed, setMarketingConsentGrantAllowed] =
+    useState(false);
+  const [marketingConsentTermsVersion, setMarketingConsentTermsVersion] =
+    useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPatchRef = useRef<ServerPatch>({});
+  const currentSettingsRef = useRef<NotificationSettings>(
+    DEFAULT_NOTIFICATION_SETTINGS,
+  );
+  const confirmedSettingsRef = useRef<NotificationSettings>(
+    DEFAULT_NOTIFICATION_SETTINGS,
+  );
+  const isSavingRef = useRef(false);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // 서버에서 로드
   useEffect(() => {
     if (!isAuthenticated) {
       // 비로그인 시 기본값 유지, 로딩 종료
+      currentSettingsRef.current = DEFAULT_NOTIFICATION_SETTINGS;
+      confirmedSettingsRef.current = DEFAULT_NOTIFICATION_SETTINGS;
       setSettings(DEFAULT_NOTIFICATION_SETTINGS);
+      setMarketingConsentGrantAllowed(false);
+      setMarketingConsentTermsVersion(null);
       setIsLoading(false);
       return;
     }
@@ -144,7 +188,16 @@ export function useNotificationSettings(): UseNotificationSettingsReturn {
       );
       if (cancelled) return;
       if (res.success && res.data) {
-        setSettings(fromServer(res.data));
+        const confirmed = fromServer(res.data);
+        currentSettingsRef.current = confirmed;
+        confirmedSettingsRef.current = confirmed;
+        setSettings(confirmed);
+        setMarketingConsentGrantAllowed(
+          res.data.marketingConsentGrantAllowed ?? true,
+        );
+        setMarketingConsentTermsVersion(
+          res.data.marketingConsentTermsVersion ?? null,
+        );
       }
       // 실패 시 기본값 유지 (토스트는 페이지 레벨에서 처리)
       setIsLoading(false);
@@ -155,39 +208,89 @@ export function useNotificationSettings(): UseNotificationSettingsReturn {
     };
   }, [isAuthenticated]);
 
-  // 서버 저장 (디바운스)
-  const flushToServer = useCallback(() => {
-    if (!isAuthenticated) return;
+  // 서버 저장 (디바운스) — 응답의 전체 preference를 다음 rollback snapshot으로 확정한다.
+  const flushToServer = useCallback(async () => {
+    if (!isAuthenticated || isSavingRef.current) return;
     const patch = pendingPatchRef.current;
     if (Object.keys(patch).length === 0) return;
     pendingPatchRef.current = {};
-    void api.patch("/notifications/preferences/me", patch);
-  }, [isAuthenticated]);
+
+    const rollbackSnapshot = confirmedSettingsRef.current;
+    isSavingRef.current = true;
+    if (isMountedRef.current) setIsSaving(true);
+
+    try {
+      const res = await api.patch<ServerPreference>(
+        "/notifications/preferences/me",
+        patch,
+      );
+      if (!res.success || !res.data) {
+        throw new Error(res.error?.message ?? MESSAGES.notification.saveFailed);
+      }
+
+      const confirmed = fromServer(res.data);
+      currentSettingsRef.current = confirmed;
+      confirmedSettingsRef.current = confirmed;
+      if (isMountedRef.current) {
+        setSettings(confirmed);
+        setMarketingConsentGrantAllowed(
+          res.data.marketingConsentGrantAllowed ??
+            marketingConsentGrantAllowed,
+        );
+        setMarketingConsentTermsVersion(
+          res.data.marketingConsentTermsVersion ?? null,
+        );
+      }
+    } catch {
+      pendingPatchRef.current = {};
+      if (isMountedRef.current) {
+        currentSettingsRef.current = rollbackSnapshot;
+        setSettings(rollbackSnapshot);
+        toast.error(MESSAGES.notification.saveFailed);
+      }
+    } finally {
+      isSavingRef.current = false;
+      if (isMountedRef.current) setIsSaving(false);
+    }
+  }, [isAuthenticated, marketingConsentGrantAllowed, toast]);
 
   const applyChange = useCallback(
     (updater: (prev: NotificationSettings) => NotificationSettings) => {
-      setSettings((prev) => {
-        const next = updater(prev);
-        const patch = toServerPatch(prev, next);
-        // 누적 병합 (여러 토글 연속 호출 대응)
-        pendingPatchRef.current = { ...pendingPatchRef.current, ...patch };
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-        debounceRef.current = setTimeout(flushToServer, 500);
-        return next;
-      });
+      if (isSavingRef.current) return;
+      const prev = currentSettingsRef.current;
+      const next = updater(prev);
+      const patch = toServerPatch(
+        prev,
+        next,
+        marketingConsentTermsVersion,
+      );
+      currentSettingsRef.current = next;
+      // 누적 병합 (여러 토글 연속 호출 대응)
+      pendingPatchRef.current = { ...pendingPatchRef.current, ...patch };
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        debounceRef.current = null;
+        void flushToServer();
+      }, 500);
+      setSettings(next);
     },
-    [flushToServer],
+    [flushToServer, marketingConsentTermsVersion],
   );
 
-  // 언마운트 시 남은 변경사항 flush
+  // 언마운트 시 남은 변경사항은 UI 갱신 없이 최종 전송한다.
   useEffect(() => {
     return () => {
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
-        flushToServer();
+        debounceRef.current = null;
+      }
+      const patch = pendingPatchRef.current;
+      if (isAuthenticated && Object.keys(patch).length > 0) {
+        pendingPatchRef.current = {};
+        void api.patch("/notifications/preferences/me", patch);
       }
     };
-  }, [flushToServer]);
+  }, [isAuthenticated]);
 
   const togglePush = useCallback(() => {
     applyChange((prev) => ({ ...prev, pushEnabled: !prev.pushEnabled }));
@@ -245,7 +348,16 @@ export function useNotificationSettings(): UseNotificationSettingsReturn {
   );
 
   const resetSettings = useCallback(() => {
-    applyChange(() => DEFAULT_NOTIFICATION_SETTINGS);
+    applyChange((prev) => ({
+      ...DEFAULT_NOTIFICATION_SETTINGS,
+      // 법적 동의와 숨긴 레거시 필드는 일반 설정 초기화로 변경하지 않는다.
+      categories: {
+        ...DEFAULT_NOTIFICATION_SETTINGS.categories,
+        marketing: prev.categories.marketing,
+      },
+      soundEnabled: prev.soundEnabled,
+      vibrationEnabled: prev.vibrationEnabled,
+    }));
   }, [applyChange]);
 
   const isQuietTime = useCallback((): boolean => {
@@ -283,6 +395,9 @@ export function useNotificationSettings(): UseNotificationSettingsReturn {
   return {
     settings,
     isLoading,
+    isSaving,
+    marketingConsentGrantAllowed,
+    marketingConsentTermsVersion,
     togglePush,
     toggleCategory,
     toggleSound,

@@ -35,9 +35,7 @@ import {
   type TeamClassesSummaryActivity,
 } from '@/components/dashboard/TeamClassesSummary';
 import { ReadingContentSection } from '@/components/dashboard/ReadingContentSection';
-// [Step 10 2026-05-19] 미결제 학부모 위젯 — 매월 28일~다음달 5일 사이만 노출.
-//   백엔드 API 404/500/조건 미충족 시 컴포넌트 자체 비노출 (graceful degradation).
-import { UnpaidMembersSection } from '@/components/coach/UnpaidMembersSection';
+import { UnpaidOverdueBanner } from '@/components/dashboard/UnpaidOverdueBanner';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { usePageReady } from '@/hooks/usePageReady';
 import { useStableLayout } from '@/hooks/useStableLayout';
@@ -212,6 +210,8 @@ export default function CoachDashboardPage() {
           targetPath="/director-approvals"
           iceTheme
         />
+        {/* 1-β. 미수금 — 연체 미납 건수(정산 센터·팀 홈·감독 홈과 동일 정의). 0건이면 숨김. */}
+        <UnpaidOverdueBanner iceTheme />
 
         {/* 2. 공지사항 — 코치는 작성 권한 보유 → 섹션 하단 작성 버튼 노출.
               전체보기는 수정/삭제 가능한 관리 페이지(/director-notices)로 이동. */}
@@ -291,12 +291,7 @@ export default function CoachDashboardPage() {
           </div>
         </section>
 
-        {/* 4-α. 미결제 학부모 위젯 (Step 10 · 2026-05-19)
-              · 매월 28일~다음달 5일 등록 마감 그레이스 기간에만 자동 노출.
-              · 위 기간 외 또는 API 실패/0건 시 컴포넌트 내부에서 return null. */}
-        <UnpaidMembersSection />
-
-        {/* 포스트(기본 최하단) — 코치 최하단 = 조건부 UnpaidMembersSection 다음, safe-area 여백 이전.
+        {/* 포스트(기본 최하단) — safe-area 여백 이전.
             판정 전(activity === null)에는 렌더하지 않아 상·하단 이동이 없다. */}
         {activity !== null && !promoteReading && (
           <ReadingContentSection placement="footer" iceTheme />

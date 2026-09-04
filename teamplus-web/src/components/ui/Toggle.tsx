@@ -1,5 +1,6 @@
 'use client';
 
+import { useId } from 'react';
 import { cn } from '@/lib/utils';
 
 interface ToggleProps {
@@ -28,6 +29,10 @@ export function Toggle({
   description,
   className,
 }: ToggleProps) {
+  const generatedId = useId();
+  const toggleId = `toggle-${generatedId}`;
+  const labelId = `${toggleId}-label`;
+  const descriptionId = `${toggleId}-description`;
   const sizeStyles = {
     sm: {
       track: 'w-9 h-5',
@@ -50,14 +55,17 @@ export function Toggle({
 
   const toggle = (
     <button
+      id={toggleId}
       type="button"
       role="switch"
       aria-checked={checked}
+      aria-labelledby={label ? labelId : undefined}
+      aria-describedby={label && description ? descriptionId : undefined}
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
         'relative inline-flex shrink-0 cursor-pointer rounded-full border-2 border-transparent',
-        'transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 focus-visible-disabled',
+        'transition-colors duration-200 ease-in-out motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ice-500 focus-visible:ring-offset-2 focus-visible-disabled',
         styles.track,
         checked
           ? 'bg-ice-500'
@@ -68,7 +76,7 @@ export function Toggle({
       <span
         className={cn(
           'pointer-events-none inline-block rounded-full bg-white shadow-md ring-0',
-          'transform transition duration-200 ease-in-out',
+          'transform transition duration-200 ease-in-out motion-reduce:transition-none',
           styles.thumb,
           checked ? styles.translate : 'translate-x-0'
         )}
@@ -83,11 +91,18 @@ export function Toggle({
   return (
     <div className={cn('flex items-center justify-between', className)}>
       <div className="flex-1 mr-4">
-        <label className="text-sm font-semibold text-wtext-1 dark:text-white cursor-pointer">
+        <label
+          id={labelId}
+          htmlFor={toggleId}
+          className="text-sm font-semibold text-wtext-1 dark:text-white cursor-pointer"
+        >
           {label}
         </label>
         {description && (
-          <p className="text-xs text-wtext-3 dark:text-rink-300 mt-0.5">
+          <p
+            id={descriptionId}
+            className="text-xs text-wtext-3 dark:text-rink-300 mt-0.5"
+          >
             {description}
           </p>
         )}

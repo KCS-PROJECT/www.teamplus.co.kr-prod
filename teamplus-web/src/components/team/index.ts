@@ -26,6 +26,9 @@ export { TeamSearchBar } from './TeamSearchBar';
 
 export { TeamListCard, resolveLogoColor } from './TeamListCard';
 
+export { MyTeamHome, formatNextEventDate, formatNextEventTime } from './MyTeamHome';
+export type { MyTeamHomeProps } from './MyTeamHome';
+
 // Legacy (아직 일부 페이지에서 사용 중일 수 있어 유지)
 export { TeamHeaderCard } from './TeamHeaderCard';
 export { MemberCard } from './MemberCard';
