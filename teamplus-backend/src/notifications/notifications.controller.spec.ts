@@ -1,7 +1,13 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { NotificationsController } from "./notifications.controller";
 import { NotificationsService } from "./notifications.service";
-import { BadRequestException, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  NotFoundException,
+  ValidationPipe,
+} from "@nestjs/common";
+import { UpdateNotificationPreferenceDto } from "./dto/update-notification-preference.dto";
+import { AuthenticatedRequest } from "@/common/interfaces/authenticated-request.interface";
 
 describe("NotificationsController", () => {
   let controller: NotificationsController;
@@ -44,6 +50,8 @@ describe("NotificationsController", () => {
     deleteNotification: jest.fn(),
     getNotificationStats: jest.fn(),
     getFailedAlimtalks: jest.fn(),
+    getMyNotificationPreference: jest.fn(),
+    updateMyNotificationPreference: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -114,6 +122,96 @@ describe("NotificationsController", () => {
       const result = await controller.getUserNotifications(mockRequest);
 
       expect(result).toEqual([]);
+    });
+  });
+
+  describe("notification preferences", () => {
+    it("returns the current user's marketing consent with preferences", async () => {
+      const preference = {
+        pushEnabled: true,
+        categories: { marketing: false },
+        marketingConsent: false,
+      };
+      mockNotificationsService.getMyNotificationPreference.mockResolvedValue(
+        preference,
+      );
+
+      await expect(
+        controller.getMyNotificationPreference(mockRequest),
+      ).resolves.toEqual(preference);
+      expect(
+        mockNotificationsService.getMyNotificationPreference,
+      ).toHaveBeenCalledWith(mockUserId);
+    });
+
+    it("passes the validated patch and audit request context to the service", async () => {
+      const request = {
+        user: { id: mockUserId },
+        headers: {
+          "x-forwarded-for": "203.0.113.7, 10.0.0.1",
+          "x-client-platform": "ios",
+          "user-agent": "TEAMPLUS-iOS/1.2.3",
+        },
+        socket: {},
+      } as unknown as AuthenticatedRequest;
+      const patch: UpdateNotificationPreferenceDto = {
+        marketingConsent: true,
+        marketingConsentTermsVersion: "1.1.0",
+        categories: { marketing: false },
+      };
+      const preference = {
+        categories: { marketing: true },
+        marketingConsent: true,
+      };
+      mockNotificationsService.updateMyNotificationPreference.mockResolvedValue(
+        preference,
+      );
+
+      await expect(
+        controller.updateMyNotificationPreference(request, patch),
+      ).resolves.toEqual(preference);
+      expect(
+        mockNotificationsService.updateMyNotificationPreference,
+      ).toHaveBeenCalledWith(mockUserId, patch, {
+        ipAddress: "203.0.113.7",
+        platform: "app",
+        userAgent: "TEAMPLUS-iOS/1.2.3",
+      });
+    });
+
+    it("rejects string booleans with the production ValidationPipe options", async () => {
+      const pipe = new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+        transformOptions: { enableImplicitConversion: true },
+      });
+
+      await expect(
+        pipe.transform(
+          {
+            pushEnabled: "false",
+            marketingConsent: "false",
+            categories: { marketing: "false" },
+          },
+          { type: "body", metatype: UpdateNotificationPreferenceDto },
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      await expect(
+        pipe.transform(
+          {
+            pushEnabled: false,
+            marketingConsent: false,
+            categories: { marketing: false },
+          },
+          { type: "body", metatype: UpdateNotificationPreferenceDto },
+        ),
+      ).resolves.toMatchObject({
+        pushEnabled: false,
+        marketingConsent: false,
+        categories: { marketing: false },
+      });
     });
   });
 

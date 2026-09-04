@@ -28,6 +28,9 @@ import { AdminPushDto } from "./dto/admin-push.dto";
 import { SendTeamPushDto } from "./dto/send-team-push.dto";
 import { Roles } from "@/auth/roles.decorator";
 import { RolesGuard } from "@/auth/roles.guard";
+import { extractClientIp } from "@/common/utils/extract-client-ip.util";
+import { normalizeAuditPlatform } from "@/common/utils/client-platform.util";
+import { UpdateNotificationPreferenceDto } from "./dto/update-notification-preference.dto";
 
 @ApiTags("Notifications")
 @Controller("api/v1/notifications")
@@ -35,6 +38,24 @@ import { RolesGuard } from "@/auth/roles.guard";
 @ApiBearerAuth()
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
+
+  private extractPreferenceAuditContext(req: AuthenticatedRequest) {
+    const normalizedPlatform = normalizeAuditPlatform(
+      typeof req.headers["x-client-platform"] === "string"
+        ? req.headers["x-client-platform"]
+        : undefined,
+    );
+
+    return {
+      ipAddress: extractClientIp(req),
+      platform:
+        normalizedPlatform === "unknown" ? undefined : normalizedPlatform,
+      userAgent:
+        typeof req.headers["user-agent"] === "string"
+          ? req.headers["user-agent"]
+          : undefined,
+    };
+  }
 
   // ─── 정적 GET 라우트 (동적 :notificationId 보다 먼저 선언 필수) ───
 
@@ -175,6 +196,11 @@ export class NotificationsController {
     description:
       "사용자의 알림 수신 설정을 조회합니다. 최초 호출 시 기본값으로 생성됩니다.",
   })
+  @ApiResponse({
+    status: 200,
+    description:
+      "알림 설정, User 기준 marketingConsent, 마케팅 동의 가능 여부를 반환합니다. categories.marketing은 같은 값으로 정규화됩니다.",
+  })
   async getMyNotificationPreference(@Request() req: AuthenticatedRequest) {
     return this.notificationsService.getMyNotificationPreference(req.user.id);
   }
@@ -197,24 +223,19 @@ export class NotificationsController {
     summary: "내 알림 설정 수정",
     description: "사용자의 알림 수신 설정을 부분 업데이트합니다.",
   })
+  @ApiResponse({
+    status: 200,
+    description:
+      "수정된 알림 설정, marketingConsent, 마케팅 동의 가능 여부를 반환합니다. 명시한 marketingConsent가 레거시 categories.marketing보다 우선합니다.",
+  })
   async updateMyNotificationPreference(
     @Request() req: AuthenticatedRequest,
-    @Body()
-    body: {
-      pushEnabled?: boolean;
-      smsEnabled?: boolean;
-      emailEnabled?: boolean;
-      soundEnabled?: boolean;
-      vibrationEnabled?: boolean;
-      quietHoursEnabled?: boolean;
-      quietHoursStart?: string | null;
-      quietHoursEnd?: string | null;
-      categories?: Record<string, boolean>;
-    },
+    @Body() body: UpdateNotificationPreferenceDto,
   ) {
     return this.notificationsService.updateMyNotificationPreference(
       req.user.id,
       body,
+      this.extractPreferenceAuditContext(req),
     );
   }
 

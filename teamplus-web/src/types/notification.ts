@@ -92,7 +92,8 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
     payment: true,
     notice: true,
     system: true,
-    marketing: true,
+    // 선택 동의는 서버 값을 확인하기 전 임의로 opt-in 상태를 표시하지 않는다.
+    marketing: false,
   },
   soundEnabled: true,
   vibrationEnabled: true,

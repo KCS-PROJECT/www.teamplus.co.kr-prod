@@ -259,6 +259,14 @@ export const upload = {
     return Boolean(bridge?.upload);
   },
 
+  /** 최신 앱에 OS 설정 화면 wrapper가 실제 주입됐는지 런타임으로 확인한다. */
+  canOpenSettings(): boolean {
+    if (!isFlutterBridgeAvailable() || typeof window === "undefined") {
+      return false;
+    }
+    return typeof window.FlutterBridge?.upload?.openSettings === "function";
+  },
+
   /**
    * 카메라/갤러리로 이미지 선택.
    *
@@ -520,8 +528,9 @@ export const upload = {
    */
   async openSettings(): Promise<boolean> {
     const bridge = getBridge();
-    if (!bridge.upload)
-      throw new Error("네이티브 업로드 기능을 사용할 수 없습니다.");
+    if (!bridge.upload || typeof bridge.upload.openSettings !== "function") {
+      throw new Error("기기 설정 열기 기능을 사용할 수 없습니다.");
+    }
     try {
       const result = await bridge.upload.openSettings();
       return result.opened;

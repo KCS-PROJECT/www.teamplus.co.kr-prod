@@ -7,9 +7,11 @@ import {
   Inject,
   forwardRef,
   Optional,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import { InjectQueue } from "@nestjs/bull";
 import { Queue } from "bull";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
 import { NotificationQueue } from "./notification.queue";
@@ -29,6 +31,8 @@ import {
 } from "@/common/utils/advertising.util";
 import { ConfigService } from "@nestjs/config";
 import { NotificationsGateway } from "@/websocket/notifications.gateway";
+import { UpdateNotificationPreferenceDto } from "./dto/update-notification-preference.dto";
+import { requiresGuardianConsent } from "@/common/utils/age.util";
 
 // 🔥 unread-count 캐시 키 (고빈도 — 모든 페이지에서 뱃지 호출) — gateway 와 공유
 import {
@@ -73,6 +77,45 @@ export interface AdminPushJobData {
   data: FcmDataPayload;
 }
 
+export interface NotificationPreferenceAuditContext {
+  ipAddress?: string;
+  platform?: string;
+  userAgent?: string;
+}
+
+const DEFAULT_NOTIFICATION_CATEGORIES: Record<string, boolean> = {
+  class: true,
+  payment: true,
+  notice: true,
+  system: true,
+};
+const PREFERENCE_TX_MAX_RETRIES = 3;
+
+function notificationCategories(value: unknown): Record<string, boolean> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ...DEFAULT_NOTIFICATION_CATEGORIES };
+  }
+
+  const result: Record<string, boolean> = {};
+  for (const [key, categoryEnabled] of Object.entries(value)) {
+    if (typeof categoryEnabled === "boolean") {
+      result[key] = categoryEnabled;
+    }
+  }
+  return result;
+}
+
+function canGrantMarketingConsent(user: {
+  userType: string;
+  birthDate: Date | null;
+}): boolean {
+  if (user.userType === "CHILD") return false;
+  if (user.userType === "TEEN" && !user.birthDate) return false;
+  return (
+    !user.birthDate || !requiresGuardianConsent(user.birthDate)
+  );
+}
+
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
@@ -89,6 +132,29 @@ export class NotificationsService {
     @Inject(forwardRef(() => NotificationsGateway))
     private readonly notificationsGateway?: NotificationsGateway,
   ) {}
+
+  /** 마케팅 동의 SoT와 호환 미러가 동시 요청에서도 함께 커밋되도록 직렬화한다. */
+  private async withPreferenceSerializableRetry<T>(
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.prisma.$transaction(fn, {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        });
+      } catch (error) {
+        const isSerializationConflict =
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === "P2034";
+        if (
+          !isSerializationConflict ||
+          attempt >= PREFERENCE_TX_MAX_RETRIES
+        ) {
+          throw error;
+        }
+      }
+    }
+  }
 
   // ──────────────────────────────────────────────────────────────
   // 야간 마케팅 발송 제한 (정보통신망법 제50조)
@@ -1123,11 +1189,40 @@ export class NotificationsService {
    * 내 알림 설정 조회 — 없으면 기본값으로 upsert
    */
   async getMyNotificationPreference(userId: string) {
-    const pref = await this.prisma.userNotificationPreference.upsert({
-      where: { userId },
-      create: { userId },
-      update: {},
-    });
+    const queriedAt = new Date();
+    const [pref, user, marketingTerms] = await this.prisma.$transaction([
+      this.prisma.userNotificationPreference.upsert({
+        where: { userId },
+        create: { userId },
+        update: {},
+      }),
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          marketingConsent: true,
+          userType: true,
+          birthDate: true,
+        },
+      }),
+      this.prisma.appTerms.findFirst({
+        where: {
+          type: "marketing",
+          isActive: true,
+          publishedAt: { lte: queriedAt },
+        },
+        select: { version: true },
+        orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+      }),
+    ]);
+
+    if (!user) {
+      throw new NotFoundException("사용자를 찾을 수 없습니다.");
+    }
+
+    const categories = {
+      ...notificationCategories(pref.categories),
+      marketing: user.marketingConsent,
+    };
 
     return {
       pushEnabled: pref.pushEnabled,
@@ -1138,7 +1233,10 @@ export class NotificationsService {
       quietHoursEnabled: pref.quietHoursEnabled,
       quietHoursStart: pref.quietHoursStart,
       quietHoursEnd: pref.quietHoursEnd,
-      categories: pref.categories,
+      categories,
+      marketingConsent: user.marketingConsent,
+      marketingConsentGrantAllowed: canGrantMarketingConsent(user),
+      marketingConsentTermsVersion: marketingTerms?.version ?? null,
       updatedAt: pref.updatedAt,
     };
   }
@@ -1148,17 +1246,8 @@ export class NotificationsService {
    */
   async updateMyNotificationPreference(
     userId: string,
-    patch: {
-      pushEnabled?: boolean;
-      smsEnabled?: boolean;
-      emailEnabled?: boolean;
-      soundEnabled?: boolean;
-      vibrationEnabled?: boolean;
-      quietHoursEnabled?: boolean;
-      quietHoursStart?: string | null;
-      quietHoursEnd?: string | null;
-      categories?: Record<string, boolean>;
-    },
+    patch: UpdateNotificationPreferenceDto,
+    context: NotificationPreferenceAuditContext = {},
   ) {
     const sanitized: Record<string, unknown> = {};
     if (typeof patch.pushEnabled === "boolean")
@@ -1177,6 +1266,7 @@ export class NotificationsService {
       sanitized.quietHoursStart = patch.quietHoursStart;
     if (patch.quietHoursEnd !== undefined)
       sanitized.quietHoursEnd = patch.quietHoursEnd;
+    const categoryPatch: Record<string, boolean> = {};
     if (patch.categories && typeof patch.categories === "object") {
       // 허용 키만 화이트리스트 필터 (class/payment/notice/system/marketing)
       // marketing: 광고성 정보 수신 동의 토글 (iOS 4.5.4 · 정보통신망법 제50조).
@@ -1185,20 +1275,140 @@ export class NotificationsService {
       // (categoryOfNotificationType 이 marketing 계열 타입을 'marketing' 으로 매핑).
       // 법정 사전동의(opt-in) 자체는 User.marketingConsent 가 1순위 기준이다.
       const allowed = ["class", "payment", "notice", "system", "marketing"];
-      const filtered: Record<string, boolean> = {};
       for (const key of allowed) {
-        if (typeof patch.categories[key] === "boolean") {
-          filtered[key] = patch.categories[key];
+        const value = patch.categories[key as keyof typeof patch.categories];
+        if (typeof value === "boolean") {
+          categoryPatch[key] = value;
         }
       }
-      sanitized.categories = filtered;
     }
 
-    const pref = await this.prisma.userNotificationPreference.upsert({
-      where: { userId },
-      create: { userId, ...sanitized },
-      update: sanitized,
+    const result = await this.withPreferenceSerializableRetry(async (tx) => {
+      const [user, currentPref] = await Promise.all([
+        tx.user.findUnique({
+          where: { id: userId },
+          select: {
+            marketingConsent: true,
+            userType: true,
+            birthDate: true,
+          },
+        }),
+        tx.userNotificationPreference.findUnique({ where: { userId } }),
+      ]);
+
+      if (!user) {
+        throw new NotFoundException("사용자를 찾을 수 없습니다.");
+      }
+
+      const legacyMarketingConsent = categoryPatch.marketing;
+      const requestedMarketingConsent =
+        typeof patch.marketingConsent === "boolean"
+          ? patch.marketingConsent
+          : typeof legacyMarketingConsent === "boolean"
+            ? legacyMarketingConsent
+            : undefined;
+      const nextMarketingConsent =
+        requestedMarketingConsent ?? user.marketingConsent;
+      const consentChanged = nextMarketingConsent !== user.marketingConsent;
+      const processedAt = new Date();
+      const marketingConsentGrantAllowed = canGrantMarketingConsent(user);
+
+      if (
+        nextMarketingConsent &&
+        consentChanged &&
+        !marketingConsentGrantAllowed
+      ) {
+        throw new ForbiddenException(
+          "만 14세 미만 회원은 직접 마케팅 정보 수신에 동의할 수 없습니다.",
+        );
+      }
+
+      const marketingTerms = await tx.appTerms.findFirst({
+        where: {
+          type: "marketing",
+          isActive: true,
+          publishedAt: { lte: processedAt },
+        },
+        select: { version: true },
+        orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+      });
+
+      if (nextMarketingConsent && consentChanged && !marketingTerms) {
+        throw new ServiceUnavailableException(
+          "현재 마케팅 정보 수신 동의 약관을 확인할 수 없습니다.",
+        );
+      }
+
+      if (
+        nextMarketingConsent &&
+        consentChanged &&
+        patch.marketingConsentTermsVersion !== marketingTerms?.version
+      ) {
+        throw new BadRequestException(
+          "마케팅 정보 수신 동의 내용을 다시 확인해주세요.",
+        );
+      }
+
+      sanitized.categories = {
+        ...notificationCategories(currentPref?.categories),
+        ...categoryPatch,
+        marketing: nextMarketingConsent,
+      };
+
+      if (consentChanged) {
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            marketingConsent: nextMarketingConsent,
+            marketingConsentAt: processedAt,
+          },
+        });
+      }
+
+      const pref = await tx.userNotificationPreference.upsert({
+        where: { userId },
+        create: { userId, ...sanitized },
+        update: sanitized,
+      });
+
+      if (consentChanged) {
+        await tx.auditLog.create({
+          data: {
+            userId,
+            action: nextMarketingConsent
+              ? "marketing_consent_granted"
+              : "marketing_consent_revoked",
+            resource: "notification_preferences",
+            platform: context.platform ?? null,
+            ipAddress: context.ipAddress ?? null,
+            oldValue: { marketingConsent: user.marketingConsent },
+            newValue: {
+              marketingConsent: nextMarketingConsent,
+              processedAt: processedAt.toISOString(),
+              userAgent: context.userAgent ?? null,
+              termsVersion: marketingTerms?.version ?? null,
+              termsVersionSource: marketingTerms
+                ? "app_terms_current"
+                : "app_terms_current_missing",
+            },
+          },
+        });
+      }
+
+      return {
+        pref,
+        marketingConsent: nextMarketingConsent,
+        marketingConsentGrantAllowed,
+        marketingConsentTermsVersion: marketingTerms?.version ?? null,
+      };
     });
+
+    const {
+      pref,
+      marketingConsent,
+      marketingConsentGrantAllowed,
+      marketingConsentTermsVersion,
+    } = result;
 
     return {
       pushEnabled: pref.pushEnabled,
@@ -1209,7 +1419,13 @@ export class NotificationsService {
       quietHoursEnabled: pref.quietHoursEnabled,
       quietHoursStart: pref.quietHoursStart,
       quietHoursEnd: pref.quietHoursEnd,
-      categories: pref.categories,
+      categories: {
+        ...notificationCategories(pref.categories),
+        marketing: marketingConsent,
+      },
+      marketingConsent,
+      marketingConsentGrantAllowed,
+      marketingConsentTermsVersion,
       updatedAt: pref.updatedAt,
     };
   }
@@ -2036,9 +2252,24 @@ export class NotificationsService {
       // all + 광고성: 전체 디바이스를 userId 목록 없이 조회하므로, 옵트아웃
       // (pushEnabled=false) 사용자를 relation 필터로 제외한다(정보통신망법 §50).
       // preference 행이 없거나 pushEnabled=true 인 사용자는 그대로 포함된다.
-      deviceWhere.NOT = {
-        user: { is: { notificationPreference: { is: { pushEnabled: false } } } },
-      };
+      deviceWhere.NOT = [
+        {
+          user: {
+            is: { notificationPreference: { is: { pushEnabled: false } } },
+          },
+        },
+        {
+          user: {
+            is: {
+              notificationPreference: {
+                is: {
+                  categories: { path: ["marketing"], equals: false },
+                },
+              },
+            },
+          },
+        },
+      ];
       // 사전 수신동의(opt-in)가 없는 회원은 relation 필터로 원천 제외한다 (§50①).
       // 전 회원 목록을 메모리로 올리지 않기 위해 filterRecipients 대신 DB 조건으로 처리.
       deviceWhere.user = { is: { marketingConsent: true } };

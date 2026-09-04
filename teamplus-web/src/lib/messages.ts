@@ -1128,9 +1128,49 @@ export const MESSAGES = {
       "확인할 결제 정보가 없어요. 결제 내역에서 결제 상태를 확인해주세요.",
   },
   notification: {
+    pageTitle: "알림 설정",
+    pushLabel: "푸시 알림",
+    pushDescription: "모든 알림을 한 번에 켜거나 끕니다",
+    categoryTitle: "알림 카테고리",
+    classLabel: "수업 알림",
+    classDescription: "수업 일정 변경, 준비물 안내",
+    paymentLabel: "결제 알림",
+    paymentDescription: "결제 완료, 청구서, 환불 안내",
+    noticeLabel: "공지 알림",
+    noticeDescription: "팀 공지, 이벤트, 회원 승인",
+    systemLabel: "시스템 알림",
+    systemDescription: "시스템 점검, 업데이트 안내",
+    marketingLabel: "마케팅 정보 수신",
+    marketingDescription: "이벤트, 혜택, 프로모션 등 광고성 정보 (선택)",
+    marketingConsentTitle: "마케팅 정보 수신 동의",
+    marketingConsentSummary:
+      "신규 수업, 이벤트, 할인 혜택과 맞춤 추천 정보를 푸시 알림, 알림톡, 문자, 이메일로 오전 8시부터 오후 9시 사이에 받습니다. 선택 동의이며 언제든지 철회할 수 있습니다.",
+    marketingConsentConfirm: "동의하기",
+    marketingTermsLink: "마케팅 수신 동의 전문 보기",
+    marketingGuardianDescription:
+      "만 14세 미만 회원은 직접 동의할 수 없습니다. 보호자에게 문의해주세요.",
+    marketingTermsUnavailableDescription:
+      "현재 동의 내용을 불러올 수 없어 켤 수 없습니다. 잠시 후 다시 시도해주세요.",
+    quietHoursTitle: "방해금지 모드",
+    quietHoursDescription: "설정한 시간 동안 알림을 받지 않습니다",
+    quietHoursStart: "시작 시간",
+    quietHoursEnd: "종료 시간",
+    quietHoursRange: (start: string, end: string) =>
+      `${start} ~ ${end} 동안 알림을 받지 않습니다`,
+    resetTitle: "설정 초기화",
     settingsReset: "알림 설정을 초기화하시겠습니까?",
+    resetConfirm: "초기화",
+    saveFailed: "알림 설정을 저장하지 못했습니다. 다시 시도해주세요.",
+    openDeviceSettings: "기기 알림 설정 열기",
+    openingDeviceSettings: "기기 설정을 여는 중입니다.",
+    deviceSettingsUnavailable:
+      "기기 설정을 열 수 없습니다. 기기 설정 > 알림 > 팀플러스에서 확인해주세요.",
+    deviceSettingsOpenFailed:
+      "기기 설정을 열지 못했습니다. 잠시 후 다시 시도해주세요.",
     deviceSettingsHint:
       "앱 알림을 받으려면 기기 설정에서도 알림을 허용해야 합니다. 기기 설정 > 알림 > 팀플러스에서 확인하세요.",
+    legacyDeviceSettingsHint:
+      "현재 앱에서는 바로 열 수 없습니다. 앱을 업데이트하거나 기기 설정 > 알림 > 팀플러스에서 확인하세요.",
   },
   /**
    * 팀 멤버 푸시 발송 (코치/감독 → 팀 회원) — MemberPushComposer 전용.
