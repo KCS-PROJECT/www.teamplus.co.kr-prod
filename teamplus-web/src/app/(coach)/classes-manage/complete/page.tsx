@@ -13,6 +13,7 @@ import { MESSAGES } from '@/lib/messages';
 import { getClassCompleteData, type ClassCompletePayload } from '@/hooks/useClassForm';
 import { koreanAgeToBirthYear, formatBirthYearRangeLabel } from '@/lib/gradeToBirthYear';
 import { formatDaySchedulesFull } from '@/lib/class-categories';
+import { formatVenueRef } from '@/lib/venue-display';
 
 /* ────────────────────────────────────────────
    Helpers
@@ -100,6 +101,10 @@ export default function ClassCompletePage() {
   // [2026-06-05] 요일별 시간·장소 요약 — 규칙이 있으면 "월 17:00 ~ 18:00 A링크장 / 수 ..." 표시,
   //   없으면 기존 단일 시간 행 폴백.
   const dayScheduleSummary = formatDaySchedulesFull(data?.daySchedules);
+  // [venueText] 대표 장소 표시 — "링크장명 · 세부" 또는 텍스트 장소.
+  const topVenueLabel = formatVenueRef({ name: data?.venue, text: data?.venueText });
+  const rowVenue = (s: { venueName?: string; venueText?: string }) =>
+    formatVenueRef({ name: s.venueName, text: s.venueText }) ?? '';
 
   // 개별 날짜 일정(미니달력) — 상세 페이지와 동일하게 일정별 시간·장소 나열 + 기간(min~max·총 N회).
   const sortedDateSchedules = [...(data?.dateSchedules ?? [])].sort((a, b) =>
@@ -126,9 +131,9 @@ export default function ClassCompletePage() {
     : '';
   const uniformVenue = hasDateSchedules
     ? sortedDateSchedules.every(
-        (s) => (s.venueName ?? '') === (sortedDateSchedules[0].venueName ?? ''),
+        (s) => rowVenue(s) === rowVenue(sortedDateSchedules[0]),
       )
-      ? (sortedDateSchedules[0].venueName ?? '')
+      ? rowVenue(sortedDateSchedules[0])
       : MESSAGES.class.schedulesVary
     : '';
   const timeVaries = uniformTime === MESSAGES.class.schedulesVary;
@@ -152,7 +157,7 @@ export default function ClassCompletePage() {
       const time = s.startTime
         ? `${s.startTime}${s.endTime ? `~${s.endTime}` : ''}`
         : '';
-      const venue = s.venueName ?? '';
+      const venue = rowVenue(s);
       const groupKey = `${wd}|${time}|${venue}`;
       const group =
         monthEntry.groups.get(groupKey) ??
@@ -291,8 +296,8 @@ export default function ClassCompletePage() {
                     )}
 
                     {/* 요일별 규칙에 장소가 포함되면 위 일정에서 함께 표기되므로 단일 장소 행은 생략. */}
-                    {data.venue && !dayScheduleSummary && (
-                      <InfoRow label="훈련 장소" value={data.venue} />
+                    {topVenueLabel && !dayScheduleSummary && (
+                      <InfoRow label="훈련 장소" value={topVenueLabel} />
                     )}
                   </>
                 )}

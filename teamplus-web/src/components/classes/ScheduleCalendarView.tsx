@@ -18,6 +18,7 @@ import { useToast } from '@/components/ui/Toast';
 import { VenuePicker } from '@/components/common/VenuePicker';
 import { cn } from '@/lib/utils';
 import { MESSAGES } from '@/lib/messages';
+import { formatVenueRef } from '@/lib/venue-display';
 import { WEEKDAY_HEADERS, weekColumnOf, colIsSaturday, colIsSunday } from '@/lib/calendar-week';
 
 /** 회차 수정 시트의 시각 선택 간격(분) — 종료 하한("시작 + 1스텝") 계산 단위와 동일. */
@@ -29,6 +30,8 @@ export interface ScheduleCalendarItem {
   startTime?: string | null;
   endTime?: string | null;
   venue?: { id: string; name: string } | null;
+  /** [venueText] venue 있으면 세부 구역, 없으면 장소 전체. */
+  venueText?: string | null;
 }
 
 export interface ScheduleUpdatePayload {
@@ -462,7 +465,7 @@ export function ScheduleCalendarView({
                         <span className={cn('shrink-0 font-semibold tabular-nums', iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white')}>
                           {timeLabel(s)}
                         </span>
-                        {s.venue?.name && (
+                        {formatVenueRef({ name: s.venue?.name, text: s.venueText }) && (
                           <>
                             <span
                               className={cn('shrink-0', iceTheme ? 'text-it-ink-400 dark:text-rink-300' : 'text-wtext-4 dark:text-rink-300')}
@@ -471,7 +474,7 @@ export function ScheduleCalendarView({
                               ·
                             </span>
                             <span className={cn('min-w-0 truncate', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
-                              {s.venue.name}
+                              {formatVenueRef({ name: s.venue?.name, text: s.venueText })}
                             </span>
                           </>
                         )}
@@ -559,9 +562,9 @@ export function ScheduleCalendarView({
                           <span className={cn('text-card-meta font-semibold tabular-nums shrink-0', iceTheme ? 'text-it-ink-800 dark:text-white' : 'text-wtext-1 dark:text-white')}>
                             {timeLabel(s)}
                           </span>
-                          {s.venue?.name && (
+                          {formatVenueRef({ name: s.venue?.name, text: s.venueText }) && (
                             <span className={cn('text-w-caption truncate', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
-                              {s.venue.name}
+                              {formatVenueRef({ name: s.venue?.name, text: s.venueText })}
                             </span>
                           )}
                         </div>

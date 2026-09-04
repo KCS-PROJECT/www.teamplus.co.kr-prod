@@ -24,6 +24,7 @@ const SALES_LOCK_PREFIX = "class-sales:";
 const POSTPAID_LOCK_PREFIX = "class-postpaid:";
 const SEAT_LOCK_PREFIX = "class-seats:";
 const SCHEDULE_LOCK_PREFIX = "class-schedule:";
+const VENUE_LOCK_PREFIX = "venue:";
 
 type LockableTx = Pick<Prisma.TransactionClient, "$queryRaw">;
 
@@ -134,4 +135,38 @@ export async function acquireClassScheduleAndPostpaidLocksIfNeeded(
 ): Promise<void> {
   await acquireClassScheduleLock(tx, classId);
   await acquireClassPostpaidLockIfNeeded(tx, classId);
+}
+
+/**
+ * 링크장(Venue) 단위 직렬화 lock — Venue 삭제(텍스트 승격 → SetNull)와 수업 장소 pair writer
+ * (수업 생성/수정 · 일정 bulk/단건/apply-draft, venueText 단독 수정 포함)가 공유한다.
+ *  ⚠️ 텍스트 단독 UPDATE(FK 불변)는 부모 Venue 행 잠금으로 직렬화되지 않으므로, writer 는
+ *  "현재 venueId"(tx 내 재조회) 까지 잠근다. 락 순서: class 계열 lock → venue lock(정렬).
+ *  설계 SoT: claudedocs/class-venue-detail-design-2026-08-13.md §3.4-F
+ */
+export async function acquireVenueLock(
+  tx: LockableTx,
+  venueId: string,
+): Promise<void> {
+  await acquireAdvisoryLock(tx, `${VENUE_LOCK_PREFIX}${venueId}`);
+}
+
+/**
+ * 여러 venueId 를 잠글 때 — 중복 제거 후 **정렬 순서**로 획득(역순 조합 deadlock 방지).
+ * null/undefined/빈 문자열은 무시. class 계열 lock 을 이미 잡은 뒤에 호출한다.
+ */
+export async function acquireVenueLocks(
+  tx: LockableTx,
+  venueIds: (string | null | undefined)[],
+): Promise<void> {
+  const keys = [
+    ...new Set(
+      venueIds
+        .map((id) => id?.trim())
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ].sort();
+  for (const id of keys) {
+    await acquireVenueLock(tx, id);
+  }
 }

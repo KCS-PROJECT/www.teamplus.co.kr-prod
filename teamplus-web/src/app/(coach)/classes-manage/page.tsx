@@ -15,6 +15,7 @@ import { useSessionAuth } from '@/hooks/useSessionAuth';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { MESSAGES } from '@/lib/messages';
+import { formatVenueRef } from '@/lib/venue-display';
 import { openShareSheet } from '@/lib/share';
 import { resolveImageUrl } from '@/lib/image-url';
 import { api } from '@/services/api-client';
@@ -772,7 +773,11 @@ export default function ClassManagePage() {
             // [2026-08-04] 수업 지역 라벨 — 백엔드 getAllClasses 응답의 조합 문자열.
             regionLabel: (c.regionLabel as string | null | undefined) ?? null,
             location:
-              (c.location as string) ?? (c.venueName as string) ?? ((c.venue as { name?: string })?.name ?? ''),
+              formatVenueRef({
+                name:
+                  (c.location as string) ?? (c.venueName as string) ?? (c.venue as { name?: string })?.name,
+                text: c.venueText as string | null | undefined,
+              }) ?? '',
             studentCount: (c.studentCount as number) ?? 0,
             maxStudents: (c.maxStudents as number) ?? (c.capacity as number) ?? 0,
             level: (c.level as string) ?? (c.levelRequired as string) ?? '',
@@ -830,6 +835,7 @@ export default function ClassManagePage() {
         className?: string;
         venueName?: string;
         venue?: { name?: string };
+        venueText?: string | null;
         capacity?: number;
         levelRequired?: string;
         isActive?: boolean;
@@ -894,7 +900,7 @@ export default function ClassManagePage() {
         classDays: normalizedDays,
         // [2026-08-04] 수업 지역 라벨 — 백엔드 getAllClasses 응답의 조합 문자열.
         regionLabel: c.regionLabel ?? null,
-        location: c.location ?? c.venueName ?? c.venue?.name ?? '',
+        location: formatVenueRef({ name: c.location ?? c.venueName ?? c.venue?.name, text: c.venueText }) ?? '',
         studentCount: c.studentCount ?? 0,
         maxStudents: c.maxStudents ?? c.capacity ?? 0,
         level: c.level ?? c.levelRequired ?? '',

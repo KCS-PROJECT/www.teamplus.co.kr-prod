@@ -54,6 +54,7 @@ import {
   sortDaySchedules,
   type DaySchedule,
 } from "@/lib/class-categories";
+import { formatVenueRef } from "@/lib/venue-display";
 
 /* ────────────────────────────────────────────
    Types
@@ -130,6 +131,8 @@ interface ClassDetail {
   venueId?: string;
   venueName?: string;
   venueAddress?: string;
+  /** [venueText] venueName 있으면 세부 구역, 없으면 장소 전체(마스터 미등록 장소). */
+  venueText?: string | null;
   /** [2026-08-04] 수업 지역 "서울 강남구" — 등록 시 감독이 고른 시/도+시군구 조합. */
   regionLabel?: string | null;
   /** [2026-06-05] 요일별 시간·장소 규칙 — 백엔드 getClass 응답. 규칙 없으면 빈 배열. */
@@ -1145,7 +1148,7 @@ export default function ClassDetailPage() {
               }) ?? '')
             : '';
         })();
-    const venue = classData.venueName ?? '';
+    const venue = formatVenueRef({ name: classData.venueName, text: classData.venueText }) ?? '';
     const coach = classData.coachAssignments && classData.coachAssignments.length > 0
       ? formatCoachList(classData.coachAssignments)
       : classData.coachName
@@ -1410,7 +1413,9 @@ export default function ClassDetailPage() {
     return formatDate(scheduleRange.start) === formatDate(scheduleRange.end);
   })();
 
-  const hasVenue = !!(classData.venueName || classData.venueAddress);
+  // [venueText] 대표 장소 표시 문자열 — "링크장명 · 세부" 또는 텍스트 장소.
+  const venueLabel = formatVenueRef({ name: classData.venueName, text: classData.venueText });
+  const hasVenue = !!(venueLabel || classData.venueAddress);
 
   /* ── 히어로(네이비 밴드) 파생값 — 헤더·정보카드와 공유 ── */
   // eyebrow — 분류 · 레벨 (예: "정규 훈련 · 입문")
@@ -1568,7 +1573,7 @@ export default function ClassDetailPage() {
 
           {/* 시간 · 장소 — 신청 직전 화면이라 히어로에서 일정과 장소를 먼저 보여준다.
               지역 라벨은 탐색 화면(/classes-explore) 전용 — 상세에서는 표시하지 않는다. */}
-          {(heroScheduleText || classData.venueName) && (
+          {(heroScheduleText || venueLabel) && (
             <div className="mt-3 flex flex-col gap-1.5">
               {heroScheduleText && (
                 <div className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white/80">
@@ -1580,14 +1585,14 @@ export default function ClassDetailPage() {
                   <span className="truncate">{heroScheduleText}</span>
                 </div>
               )}
-              {classData.venueName && (
+              {venueLabel && (
                 <div className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white/80">
                   <Icon
                     name="place"
                     className="text-[15px] text-it-blue-200"
                     aria-hidden="true"
                   />
-                  <span className="truncate">{classData.venueName}</span>
+                  <span className="truncate">{venueLabel}</span>
                 </div>
               )}
             </div>
@@ -1748,13 +1753,13 @@ export default function ClassDetailPage() {
               const timeValue = "시간 미정";
               const timeSub = "—";
 
-              const venueValue = classData.venueName ?? "장소 미정";
+              const venueValue = venueLabel ?? "장소 미정";
               const venueSub = classData.venueAddress
                 ? "주소 등록"
-                : classData.venueName
+                : venueLabel
                   ? "—"
                   : "배정 필요";
-              const venueWarn = !classData.venueName;
+              const venueWarn = !venueLabel;
 
               // 오픈클래스(academyId) — 노출팀 대신 회당 훈련비(PER_SESSION 상품 가격) 표시.
               const isOpen = !!classData.academyId;
@@ -1870,9 +1875,9 @@ export default function ClassDetailPage() {
                               {d.startTime}
                               {d.endTime ? ` ~ ${d.endTime}` : ""}
                             </span>
-                            {d.venueName && (
+                            {formatVenueRef({ name: d.venueName, text: d.venueText }) && (
                               <span className="text-[12px] font-medium text-wtext-3 dark:text-rink-300">
-                                {d.venueName}
+                                {formatVenueRef({ name: d.venueName, text: d.venueText })}
                               </span>
                             )}
                           </li>
@@ -1941,7 +1946,7 @@ export default function ClassDetailPage() {
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-card-body font-bold text-wtext-1 dark:text-white truncate tracking-tight">
-                  {classData.venueName ?? "장소 미정"}
+                  {venueLabel ?? "장소 미정"}
                 </p>
                 {classData.venueAddress && (
                   <p className="text-card-meta text-wtext-3 dark:text-rink-300 truncate mt-0.5">

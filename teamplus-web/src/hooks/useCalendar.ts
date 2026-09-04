@@ -3,6 +3,7 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { api } from '@/services/api-client';
 import { MESSAGES } from '@/lib/messages';
+import { resolveVenueDisplay } from '@/lib/venue-display';
 import {
   classifyClass,
   getDayScheduleForDate,
@@ -57,6 +58,8 @@ interface ClubClass {
   daySchedules?: DaySchedule[];
   /** 수업 대표 장소명(venue.name) — 목록 응답의 location 필드. 회차/요일 장소 없을 때 폴백. */
   location?: string | null;
+  /** [venueText] 수업 대표 장소 텍스트 — location(링크장명) 있으면 세부, 없으면 장소 전체. */
+  venueText?: string | null;
 }
 
 interface ClassSchedule {
@@ -68,6 +71,8 @@ interface ClassSchedule {
   endTime?: string | null;
   /** 회차별 장소 — 있으면 요일 기본일정·대표 장소보다 우선. */
   venue?: { id: string; name: string } | null;
+  /** [venueText] 회차 장소 텍스트 — venue 있으면 세부, 없으면 장소 전체. */
+  venueText?: string | null;
 }
 
 /** 배치 일정 조회(`/classes/schedules/batch`) 응답 행 — 수업별 재분배용 classId 포함. */
@@ -343,6 +348,7 @@ export function useCalendar(options: UseCalendarOptions = {}): UseCalendarReturn
       academy?: { name?: string } | null;
       /** 수업 대표 장소 — /classes 응답의 venue 조인. */
       venue?: { id?: string; name?: string | null } | null;
+      venueText?: string | null;
       daySchedules?: DaySchedule[];
     }
     // ClassTeamVisibility 매칭 오픈클래스 fetch — 학부모/자녀('my') 시야에만 한정.
@@ -381,6 +387,7 @@ export function useCalendar(options: UseCalendarOptions = {}): UseCalendarReturn
         academyId: o.academyId ?? null,
         daySchedules: o.daySchedules,
         location: o.venue?.name ?? null,
+        venueText: o.venueText ?? null,
         // 오픈클래스: clubId=null sentinel, clubName=학원명
         clubId: '__open__',
         clubName: o.academy?.name ?? '오픈클래스',
@@ -457,8 +464,13 @@ export function useCalendar(options: UseCalendarOptions = {}): UseCalendarReturn
           coach: cls.instructorName,
           // 장소 — 회차 venue > 그 요일 기본일정 venue > 수업 대표 venue. 없으면 미표시.
           //   팀/학원명(clubName)은 장소가 아니므로 폴백으로 쓰지 않는다.
+          //   [venueText] 층별 {name, text} 쌍 단위로 채택 — 다른 층의 name 과 교차 조합하지 않는다.
           location:
-            schedule.venue?.name ?? daySchedule?.venueName ?? cls.location ?? '',
+            resolveVenueDisplay(
+              { name: schedule.venue?.name, text: schedule.venueText },
+              { name: daySchedule?.venueName, text: daySchedule?.venueText },
+              { name: cls.location, text: cls.venueText },
+            ) ?? '',
           type: inferTrainingType(cls),
         };
 

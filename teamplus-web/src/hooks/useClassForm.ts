@@ -24,6 +24,8 @@ export interface ClassCompletePayload {
   className: string;
   venue: string;
   venueAddress: string;
+  /** [venueText] 대표 장소 텍스트 — venue(링크장명) 있으면 세부, 없으면 장소 전체. */
+  venueText?: string;
   classDays: string[];
   startDate: string;
   endDate: string;
@@ -42,9 +44,9 @@ export interface ClassCompletePayload {
   packageTotalSessions?: number;
   packageSessionsPerWeek?: number;
   // [2026-06-05] 요일별 시간·장소 요약 — complete 화면에서 "월 17:00–18:00 A링크장" 표시용(선택).
-  daySchedules?: { dayOfWeek: string; startTime: string; endTime: string; venueName?: string }[];
+  daySchedules?: { dayOfWeek: string; startTime: string; endTime: string; venueName?: string; venueText?: string }[];
   // 개별 날짜 일정(미니달력) — complete 화면에서 날짜별 시간·장소 나열 + 기간(min~max·총 N회) 산출용.
-  dateSchedules?: { date: string; startTime: string; endTime: string; venueName?: string }[];
+  dateSchedules?: { date: string; startTime: string; endTime: string; venueName?: string; venueText?: string }[];
   // [2026-06-22] 수강료 표시용 전체 패키지 목록(1회권 + 정기권 전부). 있으면 complete 화면이
   //   singlePrice/monthlyPrice 대신 이 목록을 우선 표시 — 다중 정기권·변경 가격 정확 반영.
   feeItems?: { name: string; price: number }[];
@@ -79,6 +81,8 @@ export interface DayScheduleItem {
   endTime: string;
   venueId: string;
   venueName?: string;
+  /** [venueText] venueId 있으면 세부 구역, 없으면 장소 전체(마스터 미등록 장소). 전송 대상. */
+  venueText: string;
 }
 
 // [2026-06-09] 오픈클래스(academy) 날짜별 일정 — 미니달력으로 날짜 선택 + 시간 + 장소.
@@ -91,6 +95,8 @@ export interface DateScheduleItem {
   endTime: string;
   venueId: string;
   venueName?: string;
+  /** [venueText] venueId 있으면 세부 구역, 없으면 장소 전체. 전송 대상. */
+  venueText: string;
 }
 
 // daySchedules 정렬은 class-categories 의 제네릭 sortDaySchedules 를 SoT 로 사용.
@@ -128,6 +134,8 @@ export interface ClassFormData {
   venueId: string;
   venue: string;
   venueAddress: string;
+  /** [venueText] 대표 장소 텍스트(prefill 복원·폴백용 — 폼 입력은 요일/날짜 행에서). */
+  venueText: string;
   singlePrice: number | '';
   monthlyPrice: number | '';
   // [Phase B-5/B-6] 결제 방식 — 감독 지정. 선불 PREPAID / 후불 POSTPAID / 선택형 BOTH(학부모 택1).
@@ -221,6 +229,7 @@ export const DEFAULT_FORM_DATA: ClassFormData = {
   venueId: '',
   venue: '',
   venueAddress: '',
+  venueText: '',
   singlePrice: '',
   monthlyPrice: '',
   // 기본 결제방식 = 선불. 선택형(BOTH)은 신규 생성 중단 — 기존 수업만 유지된다.
@@ -280,13 +289,34 @@ export function isPastScheduleDate(date: string, todayISO: string): boolean {
   return Boolean(date) && date < todayISO;
 }
 
-/** 날짜별 일정 변경 여부 판정 — 키/표시필드(venueName) 제외, date·시간·장소만 순서 무관 비교. */
+/**
+ * 대표 장소 pair — [기본 장소] 폼 루트(감독이 입력한 기본 장소)에 장소(FK 또는 텍스트)가 있으면 **루트의 두 값**,
+ * 없으면 가장 이른 유효 요일 행(repDay)의 두 값. 층을 섞어 조합하지 않는다(다른 층 FK + 이 층 텍스트 금지).
+ * 백엔드 preferredVenuePair(루트 > 날짜 행 > 요일 행)와 같은 순서. 빈 값은 '' 로 돌려주며 제출 시 그대로
+ * 동반 전송한다 — 서버 normalizeVenuePair 가 "" → null 로 확정하므로 FK → 자유 텍스트 전환(venueId "")과
+ * 전부 해제가 "세부만 수정"으로 오해되지 않는다.
+ */
+export function deriveRepresentativeVenuePair(
+  repDay: Pick<DayScheduleItem, 'venueId' | 'venueText'> | undefined,
+  root: { venueId?: string; venueText?: string },
+): { venueId: string; venueText: string } {
+  if (root.venueId || root.venueText) {
+    return { venueId: root.venueId || '', venueText: root.venueText || '' };
+  }
+  if (repDay && (repDay.venueId || repDay.venueText)) {
+    return { venueId: repDay.venueId || '', venueText: repDay.venueText || '' };
+  }
+  return { venueId: '', venueText: '' };
+}
+
+/** 날짜별 일정 변경 여부 판정 — 키/표시필드(venueName) 제외, date·시간·장소(venueId+venueText)만 순서 무관 비교. */
 export function dateSchedulesEqual(
-  a: Pick<DateScheduleItem, 'date' | 'startTime' | 'endTime' | 'venueId'>[],
-  b: Pick<DateScheduleItem, 'date' | 'startTime' | 'endTime' | 'venueId'>[],
+  a: Pick<DateScheduleItem, 'date' | 'startTime' | 'endTime' | 'venueId' | 'venueText'>[],
+  b: Pick<DateScheduleItem, 'date' | 'startTime' | 'endTime' | 'venueId' | 'venueText'>[],
 ): boolean {
-  const norm = (arr: Pick<DateScheduleItem, 'date' | 'startTime' | 'endTime' | 'venueId'>[]) =>
-    arr.map((s) => `${s.date}|${s.startTime}|${s.endTime}|${s.venueId ?? ''}`).sort();
+  const norm = (arr: Pick<DateScheduleItem, 'date' | 'startTime' | 'endTime' | 'venueId' | 'venueText'>[]) =>
+    // [venueText] 직렬화 키에 포함 — 누락 시 "세부만 수정"이 무변경 판정되어 저장이 조용히 스킵된다.
+    arr.map((s) => `${s.date}|${s.startTime}|${s.endTime}|${s.venueId ?? ''}|${s.venueText ?? ''}`).sort();
   const na = norm(a);
   const nb = norm(b);
   if (na.length !== nb.length) return false;
@@ -297,13 +327,13 @@ export function dateSchedulesEqual(
  *  수정 모드에서 사용자가 요일 기본값 섹션을 건드렸는지(dirty) 판정해, 미변경 시 undefined 전송으로
  *  기존 템플릿을 보존(빈 배열 전송=명시적 전체 삭제와 구분). */
 export function daySchedulesEqual(
-  a: Pick<DayScheduleItem, 'dayOfWeek' | 'startTime' | 'endTime' | 'venueId'>[],
-  b: Pick<DayScheduleItem, 'dayOfWeek' | 'startTime' | 'endTime' | 'venueId'>[],
+  a: Pick<DayScheduleItem, 'dayOfWeek' | 'startTime' | 'endTime' | 'venueId' | 'venueText'>[],
+  b: Pick<DayScheduleItem, 'dayOfWeek' | 'startTime' | 'endTime' | 'venueId' | 'venueText'>[],
 ): boolean {
-  const norm = (arr: Pick<DayScheduleItem, 'dayOfWeek' | 'startTime' | 'endTime' | 'venueId'>[]) =>
+  const norm = (arr: Pick<DayScheduleItem, 'dayOfWeek' | 'startTime' | 'endTime' | 'venueId' | 'venueText'>[]) =>
     arr
       .filter((s) => s.startTime && s.endTime)
-      .map((s) => `${s.dayOfWeek}|${s.startTime}|${s.endTime}|${s.venueId ?? ''}`)
+      .map((s) => `${s.dayOfWeek}|${s.startTime}|${s.endTime}|${s.venueId ?? ''}|${s.venueText ?? ''}`)
       .sort();
   const na = norm(a);
   const nb = norm(b);
@@ -923,9 +953,10 @@ export function useClassForm({
       const repDay = validDaySchedules[0];
       const effStartTimeOnly = repDay ? repDay.startTime : data.startTimeOnly;
       const effEndTimeOnly = repDay ? repDay.endTime : data.endTimeOnly;
-      const effVenueId = repDay && repDay.venueId
-        ? repDay.venueId
-        : (data.venueId || '');
+      // [기본 장소] 대표 장소 pair — 폼 루트(기본 장소)가 있으면 루트, 없으면 대표 요일 행.
+      //   두 값을 같은 층에서만 고른다(교차 조합 금지) — 백엔드 preferredVenuePair 와 동일 순서.
+      const { venueId: effVenueId, venueText: effVenueText } =
+        deriveRepresentativeVenuePair(repDay, data);
 
       // startDate/endDate + startTimeOnly/endTimeOnly 조합으로 ISO 변환
       let startISO = data.startTime;
@@ -991,7 +1022,10 @@ export function useClassForm({
             ? data.selectedCoaches.map((c) => c.id)
             : undefined,
         // [2026-06-05] 대표 장소 — 정규/레슨이면 가장 이른 요일의 venueId(없으면 단일 venueId) 파생.
-        venueId: effVenueId || undefined,
+        //   [venueText] 두 값을 빈 문자열까지 항상 동반 전송 — 서버 normalizeVenuePair 가 "" → null 로 확정하므로
+        //   FK → 자유 텍스트 전환(venueId "")과 전부 해제가 "세부만 수정"(기존 FK 보존)으로 오해되지 않는다.
+        venueId: effVenueId,
+        venueText: effVenueText,
         // [2026-06-09] dateSchedules 사용 시 classDays 미전송 — 백엔드가 일정 날짜에서 파생.
         classDays: usesDateSchedules
           ? undefined
@@ -1009,6 +1043,7 @@ export function useClassForm({
                   startTime: s.startTime,
                   endTime: s.endTime,
                   venueId: s.venueId || undefined,
+                  venueText: s.venueText || undefined,
                 }))
               : undefined
             : daySchedulesDirty
@@ -1017,6 +1052,7 @@ export function useClassForm({
                   startTime: s.startTime,
                   endTime: s.endTime,
                   venueId: s.venueId || undefined,
+                  venueText: s.venueText || undefined,
                 }))
               : undefined,
         // [2026-06-09] 날짜별 일정 — 팀 정규·레슨·오픈클래스 공통 전송.
@@ -1035,6 +1071,7 @@ export function useClassForm({
                 startTime: s.startTime,
                 endTime: s.endTime,
                 venueId: s.venueId || undefined,
+                venueText: s.venueText || undefined,
               }))
           : undefined,
         // [2026-05-22 옵션 F-2] 가격 페이로드.
@@ -1115,6 +1152,7 @@ export function useClassForm({
           className: data.className,
           venue: data.venue,
           venueAddress: data.venueAddress,
+          venueText: effVenueText || undefined,
           classDays: data.classDays,
           startDate: data.startDate,
           endDate: data.endDate,
@@ -1128,6 +1166,7 @@ export function useClassForm({
                   startTime: s.startTime,
                   endTime: s.endTime,
                   venueName: s.venueName,
+                  venueText: s.venueText || undefined,
                 }))
               : undefined,
           // 개별 날짜 일정(미니달력) — complete 화면에서 일정별 시간·장소 나열·기간 산출.
@@ -1143,6 +1182,7 @@ export function useClassForm({
                     startTime: s.startTime,
                     endTime: s.endTime,
                     venueName: s.venueName,
+                    venueText: s.venueText || undefined,
                   }))
               : undefined,
           singlePrice: data.singlePrice,

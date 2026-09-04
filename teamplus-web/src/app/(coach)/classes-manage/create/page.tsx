@@ -390,6 +390,7 @@ function ClassCreatePageInner() {
           endTime: string;
           venueId: string;
           venueName?: string;
+          venueText: string;
         }> = [];
         // 모든 수업(팀 정규·레슨·오픈)이 등록 일정을 복원한다.
         //   copy 모드는 일정을 비워 새로 선택하게 하므로 조회 자체 생략(dateSchedules: []).
@@ -400,6 +401,7 @@ function ClassCreatePageInner() {
               startTime?: string | null;
               endTime?: string | null;
               venueId?: string | null;
+              venueText?: string | null;
               venue?: { name?: string } | null;
               isCancelled?: boolean;
             }>
@@ -418,6 +420,7 @@ function ClassCreatePageInner() {
                 endTime: s.endTime ?? '',
                 venueId: s.venueId ?? '',
                 venueName: s.venue?.name ?? '',
+                venueText: s.venueText ?? '',
               }));
           }
         }
@@ -469,6 +472,8 @@ function ClassCreatePageInner() {
           venueId: (d.venueId ?? '') as string,
           venue: (d.venueName ?? d.venue ?? '') as string,
           venueAddress: (d.venueAddress ?? d.venueSub ?? '') as string,
+          // [venueText] 대표 장소 텍스트 복원 — 링크장 있으면 세부, 없으면 텍스트 장소 전체.
+          venueText: (d.venueText ?? '') as string,
           singlePrice: (d.products as Array<{ feeType?: string; price?: number }>)?.find(p => p.feeType === 'PER_SESSION' || p.feeType === 'single')?.price ?? (d.price as number) ?? '',
           monthlyPrice: (d.products as Array<{ feeType?: string; price?: number }>)?.find(p => p.feeType === 'MONTHLY_FIXED')?.price ?? '',
           // PACKAGE_WEEKS_SPEC §3 — 응답의 packageWeeks 복원 (durationDays 폴백).
@@ -521,6 +526,7 @@ function ClassCreatePageInner() {
                 endTime: string;
                 venueId?: string | null;
                 venueName?: string | null;
+                venueText?: string | null;
               }>)
                 .map((s) => {
                   const dow = normalizeDaysKR([s.dayOfWeek])[0];
@@ -531,6 +537,7 @@ function ClassCreatePageInner() {
                     endTime: s.endTime ?? '',
                     venueId: s.venueId ?? '',
                     venueName: s.venueName ?? undefined,
+                    venueText: s.venueText ?? '',
                   };
                 })
                 .filter(

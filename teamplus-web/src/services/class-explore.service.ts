@@ -50,6 +50,8 @@ export interface ExploreClassItem {
   visibility: ClassVisibility;
   owner: ExploreClassOwner | null;
   venue: ExploreClassVenue | null;
+  /** [venueText] 대표 장소 텍스트 — venue 있으면 세부 구역, 없으면 장소 전체(마스터 미등록). */
+  venueText?: string | null;
   /** [2026-08-04] 수업 지역 — 감독이 등록 시 고른 시/도·시군구. */
   regionCity: string | null;
   regionDistrict: string | null;

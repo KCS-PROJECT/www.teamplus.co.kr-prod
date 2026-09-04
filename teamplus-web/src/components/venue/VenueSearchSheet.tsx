@@ -53,6 +53,11 @@ export interface VenueSearchSheetProps {
   onSelectVenue: (venue: VenueSearchSheetVenue) => void;
   /** 입력 텍스트 그대로 확정 — allowFreeText=true 일 때만 호출. 빈 문자열 = 해제. */
   onApplyText?: (text: string) => void;
+  /**
+   * 자유 텍스트 최대 길이 — 미지정 시 제한 없음(대회 등 기존 호출부 동작 보존).
+   * 수업 장소(venueText VarChar(100))는 100 을 전달해 DTO @MaxLength 와 입력 시점부터 일치시킨다.
+   */
+  maxLength?: number;
   /** ICETIMES(it-*) 토큰 변형 — 공유 컴포넌트 컨벤션상 기본 false */
   iceTheme?: boolean;
 }
@@ -66,6 +71,7 @@ export function VenueSearchSheet({
   allowFreeText = false,
   onSelectVenue,
   onApplyText,
+  maxLength,
   iceTheme = false,
 }: VenueSearchSheetProps) {
   const { venues } = useVenues();
@@ -89,7 +95,9 @@ export function VenueSearchSheet({
 
   const applyText = () => {
     if (!allowFreeText) return;
-    onApplyText?.(query.trim());
+    // maxLength 는 input 속성이 타이핑·붙여넣기를 절단하고, 프로그램 입력 대비로 한 번 더 자른다.
+    const text = query.trim();
+    onApplyText?.(maxLength ? text.slice(0, maxLength) : text);
     onClose();
   };
 
@@ -110,14 +118,14 @@ export function VenueSearchSheet({
   const msg = MESSAGES.venue.searchSheet;
 
   return (
-    // 고정 높이 — 검색 결과 개수에 따라 시트 크기가 출렁이지 않도록 h-[75vh] 고정,
-    // 목록은 내부 스크롤(ClassForm 훈련 장소 시트와 동일 방식).
+    // 고정 높이 — 검색 결과 개수에 따라 시트 크기가 출렁이지 않도록 60vh 고정, 목록은 내부 스크롤.
+    // 단 현재 뷰포트(래퍼)보다는 커지지 않는다 — 키보드가 뜨면 남는 영역에 맞춰 줄어든다.
     <BottomSheet
       isOpen={isOpen}
       onClose={onClose}
       title={title}
-      maxHeight="75vh"
-      className="h-[75vh]"
+      maxHeight="60vh"
+      className="h-[min(60vh,100%)]"
     >
       {/* 검색칸(상단 고정) + 목록(내부 스크롤) — 시트 높이 고정과 세트 */}
       <div className="flex h-full min-h-0 flex-col">
@@ -144,6 +152,7 @@ export function VenueSearchSheet({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
+            maxLength={maxLength}
             enterKeyHint={allowFreeText ? "done" : "search"}
             placeholder={msg.searchPrompt}
             aria-label={title}
@@ -186,6 +195,18 @@ export function VenueSearchSheet({
           </button>
         )}
       </div>
+      {/* 100자 도달 안내 — maxLength 를 전달한 호출(수업 장소)에서만. 대회 등 기존 호출은 무변경. */}
+      {maxLength !== undefined && query.length >= maxLength && (
+        <p
+          role="status"
+          className={cn(
+            "mt-1.5 text-[11px] leading-[15px]",
+            iceTheme ? "text-it-ink-500 dark:text-rink-300" : "text-wtext-3 dark:text-rink-300",
+          )}
+        >
+          {MESSAGES.class.dayDefaults.venueTextMax(maxLength)}
+        </p>
+      )}
 
       {/* 결과 목록 — 검색어가 있을 때만 노출 (VenuePicker·ClassForm 동일 패턴) */}
       <div className="min-h-0 flex-1 overflow-y-auto pb-4 pt-3">

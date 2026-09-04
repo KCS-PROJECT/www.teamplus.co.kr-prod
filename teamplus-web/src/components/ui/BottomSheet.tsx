@@ -45,7 +45,7 @@ interface BottomSheetProps {
   children: ReactNode;
   /** 하단 고정 푸터 (액션 버튼 등) */
   footer?: ReactNode;
-  /** 최대 높이 (기본: 85vh) */
+  /** 최대 높이 (기본: 85vh). 키보드 등으로 뷰포트가 줄면 래퍼(현재 뷰포트) 높이를 넘지 않게 자동 제한된다. */
   maxHeight?: string;
   /** 추가 클래스명 (시트 컨테이너) */
   className?: string;
@@ -182,7 +182,9 @@ export function BottomSheet({
           isClosing ? 'animate-sheet-down' : 'animate-sheet-up',
           className,
         )}
-        style={{ maxHeight }}
+        // 시트는 현재 뷰포트(래퍼 100dvh)보다 커질 수 없다 — 키보드로 뷰포트가 줄면 시트도 그 안으로 줄고
+        //   내용은 내부 스크롤. vh 고정 높이 시트가 위로 밀려 나가며 페이지가 끌려가는 현상 방지.
+        style={{ maxHeight: maxHeight === 'auto' ? '100%' : `min(${maxHeight}, 100%)` }}
       >
         {/* 핸들 바 — 40 × 4, Wallet v2 표준 */}
         <div

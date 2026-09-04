@@ -70,7 +70,9 @@ import {
   acquireClassScheduleLock,
   acquireClassScheduleAndPostpaidLocksIfNeeded,
   shouldUsePostpaidLock,
+  acquireVenueLocks,
 } from "./utils/class-locks.util";
+import { normalizeVenuePair, VenuePair } from "./utils/venue-pair.util";
 import {
   assertVisibilitySelection,
   buildClassVisibilityWhere,
@@ -226,7 +228,8 @@ type DayTimeInput = {
   dayOfWeek: string;
   startTime: string;
   endTime: string;
-  venueId?: string;
+  venueId?: string | null;
+  venueText?: string | null;
 };
 
 /**
@@ -240,7 +243,8 @@ function buildDayTimeMap(daySchedules?: DayTimeInput[]): Map<
     startMM: number;
     endHH: number;
     endMM: number;
-    venueId?: string;
+    venueId?: string | null;
+    venueText?: string | null;
   }
 > {
   const map = new Map<
@@ -250,7 +254,8 @@ function buildDayTimeMap(daySchedules?: DayTimeInput[]): Map<
       startMM: number;
       endHH: number;
       endMM: number;
-      venueId?: string;
+      venueId?: string | null;
+      venueText?: string | null;
     }
   >();
   if (!daySchedules || daySchedules.length === 0) return map;
@@ -263,9 +268,42 @@ function buildDayTimeMap(daySchedules?: DayTimeInput[]): Map<
       endHH,
       endMM,
       venueId: ds.venueId,
+      venueText: ds.venueText,
     });
   }
   return map;
+}
+
+/**
+ * [venueText v5.2 §3.4-C] 대표값 후보(가장 이른 요일/날짜 행)의 {venueId, venueText} 쌍.
+ * 같은 행의 두 값만 함께 승격한다(교차 조합 금지). 행에 장소가 전혀 없으면 null.
+ */
+function nonEmptyVenuePair(
+  rep: { venueId?: string | null; venueText?: string | null } | null | undefined,
+): VenuePair | null {
+  if (!rep) return null;
+  const pair = normalizeVenuePair(rep.venueId, rep.venueText);
+  return pair.venueId || pair.venueText ? pair : null;
+}
+
+const EMPTY_VENUE_PAIR: VenuePair = { venueId: null, venueText: null };
+
+/**
+ * [기본 장소] 대표 Class 장소 쌍 우선순위 — DTO 루트(감독이 폼에서 입력한 기본 장소) > 날짜 대표 행
+ * > 요일 대표 행. 각 후보는 같은 행의 {venueId, venueText} 만 쓰고(교차 조합 금지) 장소가 있는 첫 후보를
+ * 채택한다. 전부 비면 null — 생성은 {null, null}, 수정은 DTO 빈 루트/현재값 규칙으로 호출부가 처리.
+ * 수정 경로는 venueId 를 명시 전송한 DTO 만 root 로 넘긴다(venueText 단독 전송 = 세부만 갱신 계약 유지).
+ */
+function preferredVenuePair(
+  root: { venueId?: string | null; venueText?: string | null } | null,
+  dateRep: { venueId?: string | null; venueText?: string | null } | null | undefined,
+  dayRep: { venueId?: string | null; venueText?: string | null } | null | undefined,
+): VenuePair | null {
+  return (
+    nonEmptyVenuePair(root) ??
+    nonEmptyVenuePair(dateRep) ??
+    nonEmptyVenuePair(dayRep)
+  );
 }
 
 /**
@@ -281,6 +319,7 @@ function deriveRepresentative(daySchedules?: DayScheduleItemDto[]): {
   startTime: Date;
   endTime: Date;
   venueId?: string;
+  venueText?: string;
   classDays: string[];
 } | null {
   if (!daySchedules || daySchedules.length === 0) return null;
@@ -324,6 +363,7 @@ function deriveRepresentative(daySchedules?: DayScheduleItemDto[]): {
     startTime,
     endTime,
     venueId: earliest.venueId,
+    venueText: earliest.venueText,
     classDays: daySchedules.map((ds) => ds.dayOfWeek),
   };
 }
@@ -340,6 +380,7 @@ function deriveRepresentativeFromDateSchedules(
   startTime: Date;
   endTime: Date;
   venueId?: string;
+  venueText?: string;
   classDays: string[];
 } | null {
   if (!dateSchedules || dateSchedules.length === 0) return null;
@@ -411,7 +452,13 @@ function deriveRepresentativeFromDateSchedules(
     (a, b) => (KO_DAY_ORDER[a] ?? 99) - (KO_DAY_ORDER[b] ?? 99),
   );
 
-  return { startTime, endTime, venueId: earliest.venueId, classDays };
+  return {
+    startTime,
+    endTime,
+    venueId: earliest.venueId,
+    venueText: earliest.venueText,
+    classDays,
+  };
 }
 
 /** "HH:mm" → 분(0~1439). 형식은 DTO @Matches 가 보장. */
@@ -649,6 +696,15 @@ export class ClassesService {
       : null;
 
     const classRecord = await this.prisma.$transaction(async (tx) => {
+      // [venueText v5.2 §3.4-F] per-Venue 직렬화 — payload 의 모든 venueId(대표·요일·날짜별)를
+      //   첫 write 전에 정렬 잠금. 삭제 tx 가 승격 UPDATE 를 마친 뒤 Venue row 삭제 전에 새 참조가
+      //   끼어들면 그 행은 승격을 못 받고 SetNull 만 되어 링크장명이 유실된다(Codex IMPL-R1-H1).
+      //   생성 tx 에는 class 계열 lock 이 없어 venue lock 이 첫 lock.
+      await acquireVenueLocks(tx, [
+        createDto.venueId,
+        ...(createDto.daySchedules ?? []).map((ds) => ds.venueId),
+        ...(createDto.dateSchedules ?? []).map((s) => s.venueId),
+      ]);
       const created = await tx.class.create({
         data: {
           teamId,
@@ -675,12 +731,10 @@ export class ClassesService {
             (createDto.endTime ? new Date(createDto.endTime) : new Date()),
           trainingType: createDto.trainingType,
           coachId: primaryCoachId,
-          venueId:
-            dateRepresentative !== null
-              ? (dateRepresentative.venueId ?? null)
-              : representative?.venueId !== undefined
-                ? (representative.venueId ?? null)
-                : (createDto.venueId ?? null),
+          // [기본 장소] 대표 장소 쌍 — DTO 루트(감독 입력 기본 장소) > dateSchedules 대표 행 > daySchedules 대표 행.
+          //   같은 행의 {venueId, venueText} 만 함께 승격(교차 조합 금지). 셋 다 없으면 {null, null}.
+          ...(preferredVenuePair(createDto, dateRepresentative, representative) ??
+            EMPTY_VENUE_PAIR),
           // dateSchedules/daySchedules 있으면 날짜/요일 집합으로 자동 세팅.
           classDays:
             dateRepresentative?.classDays ??
@@ -726,7 +780,7 @@ export class ClassesService {
             dayOfWeek: ds.dayOfWeek,
             startTime: ds.startTime,
             endTime: ds.endTime,
-            venueId: ds.venueId ?? null,
+            ...normalizeVenuePair(ds.venueId, ds.venueText),
           })),
           skipDuplicates: true,
         });
@@ -740,7 +794,7 @@ export class ClassesService {
             scheduledDate: dateOnlyToUtc(s.date),
             startTime: s.startTime,
             endTime: s.endTime,
-            venueId: s.venueId ?? null,
+            ...normalizeVenuePair(s.venueId, s.venueText),
           })),
         });
       }
@@ -970,12 +1024,24 @@ export class ClassesService {
     const representativeAcademy = hasDaySchedulesAcademy
       ? deriveRepresentative(createDto.daySchedules)
       : null;
+    // [기본 장소] 날짜별 일정(dateSchedules) 대표 — 이 경로는 ClassSchedule 을 직접 생성하므로
+    //   W2 와 동일하게 대표 Class 쌍 후보(루트 > 날짜 행 > 요일 행)에 넣는다.
+    const dateRepresentativeAcademy =
+      (createDto.dateSchedules?.length ?? 0) > 0
+        ? deriveRepresentativeFromDateSchedules(createDto.dateSchedules)
+        : null;
     const dayTimeMapAcademy = hasDaySchedulesAcademy
       ? buildDayTimeMap(createDto.daySchedules)
       : new Map();
 
     let schedulesCreated = 0;
     const classRecord = await this.prisma.$transaction(async (tx) => {
+      // [venueText v5.2 §3.4-F] per-Venue 직렬화 — 팀 createClass 와 동일(IMPL-R1-H1).
+      await acquireVenueLocks(tx, [
+        createDto.venueId,
+        ...(createDto.daySchedules ?? []).map((ds) => ds.venueId),
+        ...(createDto.dateSchedules ?? []).map((s) => s.venueId),
+      ]);
       const created = await tx.class.create({
         data: {
           teamId: null,
@@ -1001,10 +1067,12 @@ export class ClassesService {
             (createDto.endTime ? new Date(createDto.endTime) : new Date()),
           trainingType: createDto.trainingType ?? "lesson",
           coachId: primaryCoachId,
-          venueId:
-            representativeAcademy?.venueId !== undefined
-              ? (representativeAcademy.venueId ?? null)
-              : (createDto.venueId ?? null),
+          // [기본 장소] 대표 장소 쌍 — DTO 루트(감독 입력 기본 장소) > dateSchedules 대표 행 > daySchedules 대표 행.
+          ...(preferredVenuePair(
+            createDto,
+            dateRepresentativeAcademy,
+            representativeAcademy,
+          ) ?? EMPTY_VENUE_PAIR),
           classDays:
             representativeAcademy?.classDays ?? createDto.classDays ?? [],
           category,
@@ -1038,7 +1106,7 @@ export class ClassesService {
             dayOfWeek: ds.dayOfWeek,
             startTime: ds.startTime,
             endTime: ds.endTime,
-            venueId: ds.venueId ?? null,
+            ...normalizeVenuePair(ds.venueId, ds.venueText),
           })),
           skipDuplicates: true,
         });
@@ -1053,7 +1121,7 @@ export class ClassesService {
             scheduledDate: dateOnlyToUtc(s.date),
             startTime: s.startTime,
             endTime: s.endTime,
-            venueId: s.venueId ?? null,
+            ...normalizeVenuePair(s.venueId, s.venueText),
           })),
         });
       }
@@ -1143,6 +1211,7 @@ export class ClassesService {
                 startTime: string | null;
                 endTime: string | null;
                 venueId: string | null;
+                venueText: string | null;
               }[] = [];
               // scheduledDate(@db.Date)는 UTC 자정 규약 — UTC 기준으로 순회·저장.
               const cursor = dateOnlyToUtc(createDto.startDate!);
@@ -1163,7 +1232,13 @@ export class ClassesService {
                     endTime: entry
                       ? `${pad2(entry.endHH)}:${pad2(entry.endMM)}`
                       : fallbackEndHHmm,
-                    venueId: entry?.venueId ?? createDto.venueId ?? null,
+                    // [venueText] 요일 규칙 행 쌍 > DTO 쌍 (쌍 단위 폴백 — 교차 조합 금지).
+                    ...(entry && (entry.venueId || entry.venueText)
+                      ? normalizeVenuePair(entry.venueId, entry.venueText)
+                      : normalizeVenuePair(
+                          createDto.venueId,
+                          createDto.venueText,
+                        )),
                   });
                 }
                 cursor.setUTCDate(cursor.getUTCDate() + 1);
@@ -1689,6 +1764,7 @@ export class ClassesService {
                 startTime: true,
                 endTime: true,
                 venueId: true,
+                venueText: true,
                 venue: { select: { id: true, name: true } },
               },
             },
@@ -1809,6 +1885,7 @@ export class ClassesService {
                 startTime: ds.startTime,
                 endTime: ds.endTime,
                 venueId: ds.venueId ?? null,
+                venueText: ds.venueText ?? null,
                 venueName: ds.venue?.name ?? null,
               }));
           })(),
@@ -2111,6 +2188,7 @@ export class ClassesService {
       coachProfileImage: null,
       venueId: classRecord.venue?.id ?? null,
       venueName: classRecord.venue?.name ?? null,
+      venueText: classRecord.venueText ?? null,
       venueAddress: classRecord.venue?.address ?? null,
       venueLatitude: classRecord.venue?.latitude
         ? Number(classRecord.venue.latitude)
@@ -2211,6 +2289,7 @@ export class ClassesService {
             startTime: ds.startTime,
             endTime: ds.endTime,
             venueId: ds.venueId ?? null,
+            venueText: ds.venueText ?? null,
             venueName: ds.venue?.name ?? null,
           }));
       })(),
@@ -2318,6 +2397,7 @@ export class ClassesService {
         // 오픈클래스(teamId=null) 로고 폴백용 — 소속 아카데미 대표 이미지.
         academy: { select: { imageUrl: true } },
         venue: { select: { id: true, name: true, address: true, city: true } },
+        venueText: true,
         products: {
           select: {
             id: true,
@@ -2357,6 +2437,7 @@ export class ClassesService {
             startTime: true,
             endTime: true,
             venueId: true,
+            venueText: true,
             venue: { select: { id: true, name: true } },
           },
         },
@@ -2405,6 +2486,8 @@ export class ClassesService {
         startTime: c.startTime,
         endTime: c.endTime,
         location: c.venue?.name ?? "",
+        // [venueText] 대표 장소 텍스트 — venue 있으면 세부 구역, 없으면 장소 전체. 목록 카드 "링크장 · 세부" 표시용.
+        venueText: c.venueText ?? null,
         venueAddress: c.venue?.address ?? "",
         // [2026-08-04] 지역 라벨 "서울 강남구" — 수업 지역(감독 선택) > 장소 시/도 > 팀 홈링크장 시/도.
         //   폴백 소스에는 시군구가 없어 구 수업은 시/도까지만 표시된다.
@@ -2509,6 +2592,7 @@ export class ClassesService {
               startTime: ds.startTime,
               endTime: ds.endTime,
               venueId: ds.venueId ?? null,
+              venueText: ds.venueText ?? null,
               venueName: ds.venue?.name ?? null,
             }));
         })(),
@@ -3638,6 +3722,58 @@ export class ClassesService {
     }
 
     const updatedClass = await this.prisma.$transaction(async (txUpdate) => {
+      // [venueText v5.2 §3.4-F] per-Venue 직렬화 — 대표 Class 의 현재 venueId(tx 내 재조회) +
+      //   payload 의 모든 venueId 를 정렬 획득. venueText 단독 부분 수정(venueId 미전송)도 현재
+      //   키로 참여한다. ⚠️ 현행 updateClass tx 에는 class 계열 lock 이 없어 venue lock 이 첫 lock —
+      //   class lock 이 추가되면 그 뒤에 둘 것(락 순서 class → venue).
+      const venueBefore = await txUpdate.class.findUnique({
+        where: { id: classId },
+        select: { venueId: true, venueText: true },
+      });
+      await acquireVenueLocks(txUpdate, [
+        venueBefore?.venueId,
+        updateDto.venueId,
+        ...(updateDto.daySchedules ?? []).map((ds) => ds.venueId),
+        ...(updateDto.dateSchedules ?? []).map((s) => s.venueId),
+      ]);
+      // 잠금 후 재검증 — 대기 중 Venue 삭제(텍스트 승격 → SetNull)로 현재 venueId 가 바뀌었으면
+      //   tx 밖 classRecord 값으로 덮지 않고 409 로 재조회를 유도한다.
+      const venueLocked = await txUpdate.class.findUnique({
+        where: { id: classId },
+        select: { venueId: true, venueText: true },
+      });
+      if (
+        (venueLocked?.venueId ?? null) !== (venueBefore?.venueId ?? null)
+      ) {
+        throw new ConflictException({
+          errorCode: "VENUE_CHANGED",
+          message:
+            "수업 장소 정보가 다른 곳에서 변경되었습니다. 새로고침 후 다시 시도해주세요.",
+        });
+      }
+      // 대표 Class 장소 쌍 — DTO 루트(감독 입력 기본 장소, 비어 있지 않을 때) > dateSchedules 대표 행
+      //   > daySchedules 대표 행 > DTO 빈 루트(venueId 전송 시 쌍 확정 / venueText 단독 전송 시 현재
+      //   venueId 유지 + 텍스트 갱신) > 잠금 후 재조회값 유지.
+      const representativeVenue: VenuePair =
+        //   루트는 venueId 를 명시 전송한 경우만 후보(venueText 단독 전송은 "세부만 갱신" 계약 유지).
+        preferredVenuePair(
+          updateDto.venueId !== undefined ? updateDto : null,
+          dateRepresentativeUpdate,
+          representativeUpdate,
+        ) ??
+        (updateDto.venueId !== undefined
+          ? normalizeVenuePair(updateDto.venueId, updateDto.venueText)
+          : updateDto.venueText !== undefined
+            ? {
+                venueId: venueLocked?.venueId ?? null,
+                venueText: normalizeVenuePair(null, updateDto.venueText)
+                  .venueText,
+              }
+            : {
+                venueId: venueLocked?.venueId ?? null,
+                venueText: venueLocked?.venueText ?? null,
+              });
+
       // [2026-06-05] daySchedules 전송 시: ClassDaySchedule 전체 교체
       if (updateDto.daySchedules !== undefined) {
         await txUpdate.classDaySchedule.deleteMany({ where: { classId } });
@@ -3648,7 +3784,7 @@ export class ClassesService {
               dayOfWeek: ds.dayOfWeek,
               startTime: ds.startTime,
               endTime: ds.endTime,
-              venueId: ds.venueId ?? null,
+              ...normalizeVenuePair(ds.venueId, ds.venueText),
             })),
             skipDuplicates: true,
           });
@@ -3707,6 +3843,7 @@ export class ClassesService {
           startTime: string;
           endTime: string;
           venueId: string | null;
+          venueText: string | null;
         }[] = [];
         for (const s of incoming) {
           const editableId = editableByDate.get(s.date);
@@ -3716,7 +3853,7 @@ export class ClassesService {
               data: {
                 startTime: s.startTime,
                 endTime: s.endTime,
-                venueId: s.venueId ?? null,
+                ...normalizeVenuePair(s.venueId, s.venueText),
               },
             });
           } else if (!immutableActiveDates.has(s.date)) {
@@ -3725,7 +3862,7 @@ export class ClassesService {
               scheduledDate: dateOnlyToUtc(s.date),
               startTime: s.startTime,
               endTime: s.endTime,
-              venueId: s.venueId ?? null,
+              ...normalizeVenuePair(s.venueId, s.venueText),
             });
           }
         }
@@ -3785,14 +3922,8 @@ export class ClassesService {
             (updateDto.coachId !== undefined
               ? updateDto.coachId
               : classRecord.coachId),
-          venueId:
-            dateRepresentativeUpdate !== null
-              ? (dateRepresentativeUpdate.venueId ?? null)
-              : representativeUpdate?.venueId !== undefined
-                ? (representativeUpdate.venueId ?? null)
-                : updateDto.venueId !== undefined
-                  ? updateDto.venueId
-                  : classRecord.venueId,
+          // [venueText v5.2] 대표 장소 쌍 — 잠금 후 재조회 기준 (tx 밖 classRecord 폴백 금지).
+          ...representativeVenue,
           // classDays 우선순위: dateSchedules 기반 요일 집합 > daySchedules 요일 집합 > updateDto.classDays > 기존 유지
           classDays:
             dateRepresentativeUpdate?.classDays !== undefined
@@ -4251,6 +4382,53 @@ export class ClassesService {
 
     const updatedClass = await this.prisma.$transaction(
       async (txAcademyUpdate) => {
+        // [venueText v5.2 §3.4-F] per-Venue 직렬화 — 팀 updateClass 와 동일 규약
+        //   (현재 venueId tx 내 재조회 → 정렬 잠금 → 잠금 후 재검증 409).
+        const venueBefore = await txAcademyUpdate.class.findUnique({
+          where: { id: classId },
+          select: { venueId: true, venueText: true },
+        });
+        await acquireVenueLocks(txAcademyUpdate, [
+          venueBefore?.venueId,
+          updateDto.venueId,
+          ...(updateDto.daySchedules ?? []).map((ds) => ds.venueId),
+          ...(updateDto.dateSchedules ?? []).map((s) => s.venueId),
+        ]);
+        const venueLocked = await txAcademyUpdate.class.findUnique({
+          where: { id: classId },
+          select: { venueId: true, venueText: true },
+        });
+        if (
+          (venueLocked?.venueId ?? null) !== (venueBefore?.venueId ?? null)
+        ) {
+          throw new ConflictException({
+            errorCode: "VENUE_CHANGED",
+            message:
+              "수업 장소 정보가 다른 곳에서 변경되었습니다. 새로고침 후 다시 시도해주세요.",
+          });
+        }
+        // [기본 장소] DTO 루트 > daySchedules 대표 행 > DTO 빈 루트 규칙 > 현재값.
+        //   날짜 후보 없음: 이 경로는 dateSchedules 를 저장하지 않는다(검증·잠금만 — 회차 수정은
+        //   apply-draft(W8) 전용이고 W8 은 대표 Class 를 갱신하지 않는다).
+        const representativeVenue: VenuePair =
+          preferredVenuePair(
+            updateDto.venueId !== undefined ? updateDto : null,
+            null,
+            representativeAcademyUpdate,
+          ) ??
+          (updateDto.venueId !== undefined
+            ? normalizeVenuePair(updateDto.venueId, updateDto.venueText)
+            : updateDto.venueText !== undefined
+              ? {
+                  venueId: venueLocked?.venueId ?? null,
+                  venueText: normalizeVenuePair(null, updateDto.venueText)
+                    .venueText,
+                }
+              : {
+                  venueId: venueLocked?.venueId ?? null,
+                  venueText: venueLocked?.venueText ?? null,
+                });
+
         // daySchedules 전송 시 — ClassDaySchedule 전체 교체
         if (updateDto.daySchedules !== undefined) {
           await txAcademyUpdate.classDaySchedule.deleteMany({
@@ -4263,7 +4441,7 @@ export class ClassesService {
                 dayOfWeek: ds.dayOfWeek,
                 startTime: ds.startTime,
                 endTime: ds.endTime,
-                venueId: ds.venueId ?? null,
+                ...normalizeVenuePair(ds.venueId, ds.venueText),
               })),
               skipDuplicates: true,
             });
@@ -4307,12 +4485,8 @@ export class ClassesService {
               (updateDto.coachId !== undefined
                 ? updateDto.coachId
                 : classRecord.coachId),
-            venueId:
-              representativeAcademyUpdate?.venueId !== undefined
-                ? (representativeAcademyUpdate.venueId ?? null)
-                : updateDto.venueId !== undefined
-                  ? updateDto.venueId
-                  : classRecord.venueId,
+            // [venueText v5.2] 대표 장소 쌍 — 잠금 후 재조회 기준 (tx 밖 classRecord 폴백 금지).
+            ...representativeVenue,
             classDays:
               representativeAcademyUpdate?.classDays !== undefined
                 ? representativeAcademyUpdate.classDays
@@ -4622,6 +4796,7 @@ export class ClassesService {
       endTime?: string;
       dates?: string[];
       venueId?: string;
+      venueText?: string;
     },
   ) {
     // 권한 검증 — 3가지 경로 중 하나 만족 (assertTeamManagerPermission)
@@ -4637,7 +4812,13 @@ export class ClassesService {
       // [2026-06-05] ClassDaySchedule 로드 — 요일별 시각 적용용
       include: {
         dayScheduleEntries: {
-          select: { dayOfWeek: true, startTime: true, endTime: true },
+          select: {
+            dayOfWeek: true,
+            startTime: true,
+            endTime: true,
+            venueId: true,
+            venueText: true,
+          },
         },
       },
     });
@@ -4662,6 +4843,7 @@ export class ClassesService {
         startTime: string | null;
         endTime: string | null;
         venueId: string | null;
+        venueText: string | null;
       }
     >();
     if (useDates) {
@@ -4712,6 +4894,8 @@ export class ClassesService {
           dayOfWeek: e.dayOfWeek,
           startTime: e.startTime,
           endTime: e.endTime,
+          venueId: e.venueId,
+          venueText: e.venueText,
         })) ?? [],
       );
       const hasBulkDaySchedules = bulkDayTimeMap.size > 0;
@@ -4753,7 +4937,11 @@ export class ClassesService {
               (entry
                 ? `${pad2Bulk(entry.endHH)}:${pad2Bulk(entry.endMM)}`
                 : null),
-            venueId: entry?.venueId ?? dto.venueId ?? null,
+            // [venueText] 요일 규칙 행 쌍 > DTO 공통 쌍 — 장소 없는 요일(둘 다 null)만 DTO 로 폴백
+            //   (truthy 판정 · 쌍 단위 · 교차 조합 금지, 설계 §3.4-C).
+            ...(entry && (entry.venueId || entry.venueText)
+              ? normalizeVenuePair(entry.venueId, entry.venueText)
+              : normalizeVenuePair(dto.venueId, dto.venueText)),
           });
           dates.push(dt);
         }
@@ -4836,7 +5024,7 @@ export class ClassesService {
       ? {
           startTime: dto.startTime ?? null,
           endTime: dto.endTime ?? null,
-          venueId: dto.venueId ?? null,
+          ...normalizeVenuePair(dto.venueId, dto.venueText),
         }
       : null;
 
@@ -4846,6 +5034,11 @@ export class ClassesService {
       //   tx 밖 중복 판정은 lock 대기 중 낡을 수 있어 lock 안에서 재검증한다
       //   (최종 방어는 활성 일정 부분 유니크 인덱스).
       await acquireClassScheduleLock(tx, classId);
+      // [venueText v5.2 §3.4-F] class lock 다음 per-Venue 잠금(정렬) — 신규 행 venueId 전부.
+      await acquireVenueLocks(tx, [
+        dto.venueId,
+        ...[...weekdayTimeByDate.values()].map((v) => v.venueId),
+      ]);
       const freshExisting = await tx.classSchedule.findMany({
         where: {
           classId,
@@ -4963,6 +5156,7 @@ export class ClassesService {
       endTime?: string;
       dates?: string[];
       venueId?: string;
+      venueText?: string;
     },
   ) {
     await this.assertAcademyManagerPermission(
@@ -4976,7 +5170,13 @@ export class ClassesService {
       // [2026-06-05] ClassDaySchedule 로드 — 요일별 시각 적용용
       include: {
         dayScheduleEntries: {
-          select: { dayOfWeek: true, startTime: true, endTime: true },
+          select: {
+            dayOfWeek: true,
+            startTime: true,
+            endTime: true,
+            venueId: true,
+            venueText: true,
+          },
         },
       },
     });
@@ -5001,6 +5201,7 @@ export class ClassesService {
         startTime: string | null;
         endTime: string | null;
         venueId: string | null;
+        venueText: string | null;
       }
     >();
     if (useDates) {
@@ -5048,6 +5249,8 @@ export class ClassesService {
           dayOfWeek: e.dayOfWeek,
           startTime: e.startTime,
           endTime: e.endTime,
+          venueId: e.venueId,
+          venueText: e.venueText,
         })) ?? [],
       );
       const hasBulkAcademyDaySchedules = bulkAcademyDayTimeMap.size > 0;
@@ -5088,7 +5291,11 @@ export class ClassesService {
               (entry
                 ? `${pad2AcademyBulk(entry.endHH)}:${pad2AcademyBulk(entry.endMM)}`
                 : null),
-            venueId: entry?.venueId ?? dto.venueId ?? null,
+            // [venueText] 요일 규칙 행 쌍 > DTO 공통 쌍 — 장소 없는 요일(둘 다 null)만 DTO 로 폴백
+            //   (truthy 판정 · 쌍 단위 · 교차 조합 금지, 설계 §3.4-C).
+            ...(entry && (entry.venueId || entry.venueText)
+              ? normalizeVenuePair(entry.venueId, entry.venueText)
+              : normalizeVenuePair(dto.venueId, dto.venueText)),
           });
           dates.push(dt);
         }
@@ -5151,7 +5358,7 @@ export class ClassesService {
       ? {
           startTime: dto.startTime ?? null,
           endTime: dto.endTime ?? null,
-          venueId: dto.venueId ?? null,
+          ...normalizeVenuePair(dto.venueId, dto.venueText),
         }
       : null;
 
@@ -5159,6 +5366,11 @@ export class ClassesService {
       // [설계 v4 §4.3-③] schedule writer 공용 lock + lock 안 중복 재검증
       //   (팀 bulk 와 동일 — 최종 방어는 활성 일정 부분 유니크 인덱스).
       await acquireClassScheduleLock(tx, classId);
+      // [venueText v5.2 §3.4-F] class lock 다음 per-Venue 잠금(정렬) — 신규 행 venueId 전부.
+      await acquireVenueLocks(tx, [
+        dto.venueId,
+        ...[...weekdayTimeByDate.values()].map((v) => v.venueId),
+      ]);
       const freshExisting = await tx.classSchedule.findMany({
         where: {
           classId,
@@ -5643,10 +5855,21 @@ export class ClassesService {
               scheduledDate: true,
               isCancelled: true,
               updatedAt: true,
+              // [venueText v5.2 §3.4-F] per-Venue 잠금 키 확보용 (현재 venueId).
+              venueId: true,
             },
           })
         : [];
       const rowById = new Map(rows.map((r) => [r.id, r]));
+
+      // [venueText v5.2 §3.4-F] schedule lock 다음 per-Venue 잠금(정렬) — 대상 행의 현재
+      //   venueId(텍스트 단독 수정 포함) + edits/additions 의 신규 venueId 전부. 대기 중 Venue
+      //   삭제가 승격(updated_at 갱신)했다면 아래 버전 검증·조건부 mutation 이 409 로 걸러낸다.
+      await acquireVenueLocks(tx, [
+        ...rows.map((r) => r.venueId),
+        ...dto.edits.map((e) => e.venueId),
+        ...additions.map((a) => a.venueId),
+      ]);
 
       // [§4.1-5] 버전·상태 검증 — 하나라도 어긋나면 전체 롤백 + 409 DRAFT_CONFLICT.
       const conflicts: {
@@ -5745,7 +5968,13 @@ export class ClassesService {
               ? { startTime: e.startTime || null }
               : {}),
             ...(e.endTime !== undefined ? { endTime: e.endTime || null } : {}),
-            ...(e.venueId !== undefined ? { venueId: e.venueId || null } : {}),
+            // [venueText v5.2 §3.4-B′] venueId 전송 시 쌍 동반 확정(venueText 미전송 = null) /
+            //   venueText 단독 전송 시 텍스트만 갱신(기존 venueId 유무 무관 — 재조회 불필요).
+            ...(e.venueId !== undefined
+              ? normalizeVenuePair(e.venueId, e.venueText)
+              : e.venueText !== undefined
+                ? { venueText: normalizeVenuePair(null, e.venueText).venueText }
+                : {}),
           },
         });
         if (gate.count !== 1) {
@@ -5794,7 +6023,7 @@ export class ClassesService {
             scheduledDate: dateOnlyToUtc(a.date),
             startTime: a.startTime || null,
             endTime: a.endTime || null,
-            venueId: a.venueId || null,
+            ...normalizeVenuePair(a.venueId, a.venueText),
           })),
           skipDuplicates: true,
         });
@@ -5837,7 +6066,12 @@ export class ClassesService {
   async updateClassSchedule(
     coachUserId: string,
     scheduleId: string,
-    dto: { startTime?: string; endTime?: string; venueId?: string },
+    dto: {
+      startTime?: string;
+      endTime?: string;
+      venueId?: string;
+      venueText?: string;
+    },
     expectedOwner?: { teamId?: string; academyId?: string },
   ) {
     const schedule = await this.prisma.classSchedule.findUnique({
@@ -5891,16 +6125,40 @@ export class ClassesService {
       startTime?: string | null;
       endTime?: string | null;
       venueId?: string | null;
+      venueText?: string | null;
     } = {};
     if (dto.startTime !== undefined) data.startTime = dto.startTime || null;
     if (dto.endTime !== undefined) data.endTime = dto.endTime || null;
-    if (dto.venueId !== undefined) data.venueId = dto.venueId || null;
+    // [venueText v5.2 §3.4-B′] venueId 전송 시 쌍 동반 확정(venueText 미전송 = null — 링크장이
+    //   바뀌는데 이전 세부가 남는 사고 방지) / venueText 단독 전송 시 텍스트만 갱신.
+    if (dto.venueId !== undefined) {
+      const pair = normalizeVenuePair(dto.venueId, dto.venueText);
+      data.venueId = pair.venueId;
+      data.venueText = pair.venueText;
+    } else if (dto.venueText !== undefined) {
+      data.venueText = normalizeVenuePair(null, dto.venueText).venueText;
+    }
 
     // [설계 v4 §4.3-③] schedule writer 공용 lock — 취소·bulk·apply-draft 와 직렬화.
     //   취소 판정은 tx 밖 조회가 lock 대기 중 낡을 수 있어 조건부 update 로 재검증
     //   (count=0 = 그 사이 취소됨 → 기존 메시지로 거부).
     const updated = await this.prisma.$transaction(async (tx) => {
       await acquireClassScheduleLock(tx, schedule.class.id);
+      // [venueText v5.2 §3.4-F] per-Venue 잠금(현재 venueId + 신규 venueId) → 잠금 후 재조회.
+      //   낙관적 잠금이 없는 레거시 경로라 venueId 가 잠금 시점과 달라졌으면(Venue 삭제로
+      //   텍스트 승격 → null 화) 승격 텍스트를 덮지 않도록 409 로 재조회를 유도한다.
+      await acquireVenueLocks(tx, [schedule.venueId, dto.venueId]);
+      const lockedRow = await tx.classSchedule.findUnique({
+        where: { id: scheduleId },
+        select: { venueId: true },
+      });
+      if ((lockedRow?.venueId ?? null) !== (schedule.venueId ?? null)) {
+        throw new ConflictException({
+          errorCode: "VENUE_CHANGED",
+          message:
+            "회차 장소 정보가 다른 곳에서 변경되었습니다. 새로고침 후 다시 시도해주세요.",
+        });
+      }
       const gate = await tx.classSchedule.updateMany({
         where: { id: scheduleId, isCancelled: false },
         data,
@@ -5921,6 +6179,7 @@ export class ClassesService {
       startTime: updated.startTime,
       endTime: updated.endTime,
       venue: updated.venue,
+      venueText: updated.venueText,
       isCancelled: updated.isCancelled,
       updatedAt: updated.updatedAt,
     };
@@ -6005,6 +6264,7 @@ export class ClassesService {
         startTime: true,
         endTime: true,
         isCancelled: true,
+        venueText: true,
         venue: { select: { id: true, name: true } },
       },
       orderBy: { scheduledDate: "asc" },

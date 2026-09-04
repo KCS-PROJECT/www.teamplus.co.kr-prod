@@ -33,6 +33,8 @@ export interface MultiDateResolved {
   endTime: string;
   venueId: string;
   venueName: string;
+  /** [venueText] venueId 있으면 세부 구역, 없으면 장소 전체 — 요일 기본값 행과 같은 행에서만 주입. */
+  venueText: string;
 }
 
 /** 요일별 기본값(ClassDaySchedule 템플릿) — 칩 표시·주입에 사용. dayOfWeek 한글 SoT("월"~"일"). */
@@ -42,6 +44,7 @@ export interface MultiDateDayDefault {
   endTime: string;
   venueId?: string | null;
   venueName?: string | null;
+  venueText?: string | null;
 }
 
 interface MultiDatePickerModalProps {
@@ -165,7 +168,8 @@ export function MultiDatePickerModal({
     return n;
   }, [requireCommonTime, picked, initialSelected, validDayDefaults]);
 
-  const commonTimeMissing = uncoveredCount > 0 && (!commonStart || !commonEnd);
+  const commonTimeMissing =
+    requireCommonTime && uncoveredCount > 0 && (!commonStart || !commonEnd);
 
   // 월 그리드 셀 (null = 빈칸). 항상 6주(42칸) 고정 — 달마다 주 수가 달라도
   //   그리드(=시트) 높이가 출렁이지 않도록 뒤를 빈칸으로 채운다.
@@ -254,14 +258,17 @@ export function MultiDatePickerModal({
           endTime: def.endTime,
           venueId: def.venueId ?? '',
           venueName: def.venueName ?? '',
+          venueText: def.venueText ?? '',
         };
       }
       return {
         date,
         startTime: requireCommonTime ? commonStart : '',
         endTime: requireCommonTime ? commonEnd : '',
+        // 장소는 비워 둔다 — 표시가 회차 → 요일 기본값 → 수업 기본 장소로 폴백하고, 예외는 아코디언에서 회차별로 지정.
         venueId: '',
         venueName: '',
+        venueText: '',
       };
     });
     onConfirm(sortedDates, resolved);
@@ -423,9 +430,11 @@ export function MultiDatePickerModal({
         {MESSAGES.class.dayDefaults.dateRestrictHint}
       </p>
 
-      {/* 공통 시간 입력 — requireCommonTime + 기본값 없는 날짜가 선택된 경우에만 노출(필수). */}
+      {/* 공통 시간 블록 — requireCommonTime 이고 기본값 없는 날짜가 선택된 경우에만. */}
       {requireCommonTime && uncoveredCount > 0 && (
         <div className="mt-3 pt-3 border-t border-wline-2 dark:border-rink-700">
+          {requireCommonTime && (
+          <>
           <p
             className={
               iceTheme
@@ -485,6 +494,8 @@ export function MultiDatePickerModal({
               aria-label={MESSAGES.class.dayDefaults.endTime}
             />
           </div>
+          </>
+          )}
         </div>
       )}
     </BottomSheet>
