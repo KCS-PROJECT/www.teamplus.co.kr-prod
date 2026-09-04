@@ -652,6 +652,7 @@ export const MESSAGES = {
     },
     pendingMembers: "승인 대기 회원",
     pendingMembersBanner: (count: number) => `${count}명이 승인 대기 중입니다`,
+    unpaidOverdueBanner: (count: number) => `회원 미납 ${count}건이 있습니다`,
     quickLinks: "바로가기",
     viewAll: "전체보기",
     moreMembers: (count: number) => `대기 회원 ${count}명 더보기`,
@@ -3146,7 +3147,7 @@ export const MESSAGES = {
     rosterSubmit: "등록하기",
     rosterSubmitEdit: "수정하기",
 
-    // 내 팀 홈 — 감독·코치(관리 팀 1개)가 하단 탭 "팀"으로 진입했을 때의 화면
+    // 내 팀 홈 — 감독·코치(관리 팀 1개)가 하단 탭 "팀"으로 들어왔을 때의 화면
     titleHome: "내 팀",
     homeAria: (teamName: string) => `${teamName} 팀 홈`,
     homeHeroCounts: (players: number, staff: number) =>
@@ -3155,13 +3156,16 @@ export const MESSAGES = {
     homePendingHint: "승인이 완료되면 팀 홈이 열립니다.",
     homeTodoSection: "처리 필요",
     homeTodoPending: (count: number) => `가입 신청 ${count}건 승인 대기`,
+    homeTodoUnpaid: (count: number) => `회원 미납 ${count}건`,
     homeNextSection: "다음 일정",
     homeNextViewAll: "일정 보기",
     homeNextToday: "오늘",
     homeNextTomorrow: "내일",
     homeEventPractice: "연습",
     homeEventMatch: "경기",
-    homeManageSection: "팀 관리",
+    homeOpsSection: "운영",
+    homeSetupSection: "구성",
+    homeHeroAria: (teamName: string) => `${teamName} 팀 정보 보기`,
     homeMenuRoster: "선수 명단",
     homeMenuRosterMeta: (count: number) => `${count}명`,
     homeMenuStaff: "감독·코치",
@@ -3170,8 +3174,8 @@ export const MESSAGES = {
     homeMenuGroupsEmpty: "아직 그룹이 없어요",
     homeMenuNotices: "팀 공지",
     homeMenuNoticesMeta: "공지 작성 · 관리",
-    homeMenuInfo: "팀 정보",
-    homeMenuInfoMeta: "슬로건 · 소개 · 수정하기",
+    homeMenuSettlement: "결제·정산",
+    homeMenuSettlementMeta: "거래 내역 · 정산 집계 · 미납",
   },
   academy: {
     created: "오픈클래스가 등록되었습니다.",
@@ -4357,21 +4361,6 @@ export const MESSAGES = {
       sessionPassCount: (n: number) => `회차권 ${n}회`,
     },
   },
-  coachDashboard: {
-    unpaidMembers: {
-      title: (month: string) => `${month} 미결제 회원`,
-      countLabel: (count: number) => `${count}명`,
-      viewAll: "전체 보기",
-      sendAlertAction: "알림 발송",
-      sendAlertComingSoon: "알림 발송 기능은 준비 중입니다.",
-      columnHeaderName: "학부모",
-      columnHeaderChild: "자녀",
-      columnHeaderClass: "수업",
-      emptyTitle: "미결제 회원이 없습니다",
-      emptyDescription: "모든 회원이 결제를 완료했습니다.",
-    },
-  },
-
   /**
    * 앱 설치 안내 — /get-app 페이지, AppInstallBanner, deeplink fallback 공용.
    * 외부 공유 링크(카카오톡 등)에서 진입한 미설치 사용자에게 노출된다.

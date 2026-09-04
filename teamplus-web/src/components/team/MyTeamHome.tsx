@@ -4,7 +4,8 @@
  * MyTeamHome — 감독·코치(관리 팀 1개)의 "팀" 탭 착지 화면.
  *
  * 팀 1개 원칙에서 목록(카드 1장)은 여백만 남기므로, 목록 대신 팀 운영 허브를 그린다.
- *  ① 네이비 히어로(로고·팀명·인원) → ② 처리 필요(가입 승인 대기) → ③ 다음 일정 → ④ 팀 관리 메뉴.
+ *  ① 네이비 히어로(로고·팀명·인원, 탭=팀 정보 상세) → ② 처리 필요(승인 대기·미수금) → ③ 다음 일정
+ *  → ④ 운영(공지·정산) / ⑤ 구성(명단·코치·하위그룹) 메뉴.
  * 데이터는 관리 팀 목록 응답(TeamListItem)에 상세·멤버 집계 2건만 보태고, 로더 hide 는
  * 부모가 `onLoaded` 로 받은 뒤 결정한다 (LOADING_TIMING_POLICY).
  */
@@ -18,6 +19,7 @@ import { MESSAGES } from "@/lib/messages";
 import { useRefreshSubscription, REFRESH_KEYS } from "@/lib/refresh-bus";
 import { api } from "@/services/api-client";
 import { getTeam, type TeamListItem } from "@/services/team.service";
+import { getTeamUnpaidTotal } from "@/services/payment";
 
 // ─── 다음 일정 날짜·시간 포맷 (팀 목록 카드와 공유) ──────────────
 export function formatNextEventDate(iso: string): string {
@@ -95,20 +97,24 @@ export function MyTeamHome({ team, onLoaded }: MyTeamHomeProps) {
   const { navigate } = useNavigation();
   const [groupNames, setGroupNames] = useState<string[]>([]);
   const [counts, setCounts] = useState<MemberCounts | null>(null);
+  // 연체 미납 청구 건수 — 실패/권한 없음은 0(fail-closed, 줄 미노출)
+  const [unpaidCount, setUnpaidCount] = useState(0);
   const [brokenLogo, setBrokenLogo] = useState<string | null>(null);
 
   const teamId = team.id;
   const teamName = team.name ?? MESSAGES.team.titleHome;
 
   const load = useCallback(async () => {
-    const [detailRes, memberCounts] = await Promise.all([
+    const [detailRes, memberCounts, unpaidRes] = await Promise.all([
       getTeam(teamId).catch(() => null),
       fetchMemberCounts(teamId).catch(() => null),
+      getTeamUnpaidTotal({ teamId }).catch(() => null),
     ]);
     if (detailRes?.success && detailRes.data) {
       setGroupNames((detailRes.data.groups ?? []).map((g) => g.name));
     }
     if (memberCounts) setCounts(memberCounts);
+    setUnpaidCount(unpaidRes?.success && unpaidRes.data ? unpaidRes.data.count : 0);
   }, [teamId]);
 
   useEffect(() => {
@@ -139,6 +145,26 @@ export function MyTeamHome({ team, onLoaded }: MyTeamHomeProps) {
 
   const pending = team.pendingApplications ?? 0;
 
+  // 처리 필요 — 건수가 있는 항목만. 승인 대기 → 승인 페이지, 미수금 → 인별 미수금.
+  const todos = [
+    ...(pending > 0
+      ? [{
+          key: "pending",
+          text: MESSAGES.team.homeTodoPending(pending),
+          aria: MESSAGES.team.pendingHandleAria(teamName),
+          href: "/director-approvals",
+        }]
+      : []),
+    ...(unpaidCount > 0
+      ? [{
+          key: "unpaid",
+          text: MESSAGES.team.homeTodoUnpaid(unpaidCount),
+          aria: MESSAGES.team.homeTodoUnpaid(unpaidCount),
+          href: "/director-payments/unpaid",
+        }]
+      : []),
+  ];
+
   const next = useMemo(() => {
     if (!team.nextEvent) return null;
     const isMatch =
@@ -153,8 +179,9 @@ export function MyTeamHome({ team, onLoaded }: MyTeamHomeProps) {
     };
   }, [team.nextEvent]);
 
-  // 순서 = 사용 빈도(공지) → 히어로 연결(팀 정보) → 구성 변경 시에만 여는 설정성 항목.
-  const menu = [
+  type MenuItem = { key: string; icon: string; label: string; meta: string; href: string };
+  // 운영 = 자주 하는 일 / 구성 = 가끔 바꾸는 것. 팀 정보는 히어로 탭으로 진입.
+  const opsMenu: MenuItem[] = [
     {
       key: "notices",
       icon: "campaign",
@@ -163,12 +190,14 @@ export function MyTeamHome({ team, onLoaded }: MyTeamHomeProps) {
       href: "/director-notices",
     },
     {
-      key: "info",
-      icon: "info",
-      label: MESSAGES.team.homeMenuInfo,
-      meta: MESSAGES.team.homeMenuInfoMeta,
-      href: `/team/${teamId}`,
+      key: "settlement",
+      icon: "receipt_long",
+      label: MESSAGES.team.homeMenuSettlement,
+      meta: MESSAGES.team.homeMenuSettlementMeta,
+      href: "/director-payments",
     },
+  ];
+  const setupMenu: MenuItem[] = [
     {
       key: "roster",
       icon: "badge",
@@ -190,13 +219,18 @@ export function MyTeamHome({ team, onLoaded }: MyTeamHomeProps) {
       meta: groupNames.length > 0 ? groupNames.join(" · ") : MESSAGES.team.homeMenuGroupsEmpty,
       href: `/team/${teamId}/groups`,
     },
-  ] as const;
+  ];
 
   return (
     <div className="flex flex-col" aria-label={MESSAGES.team.homeAria(teamName)}>
-      {/* ─── 히어로 — /team/[id] 상세의 네이비 밴드와 동일 규격 ─── */}
-      <section className="bg-it-blue-800 dark:bg-it-blue-950 px-5 pt-6 pb-7 text-white">
-        <div className="flex items-center gap-4">
+      {/* ─── 히어로 — /team/[id] 상세의 네이비 밴드와 동일 규격. 전체가 팀 정보 상세 진입 버튼 ─── */}
+      <section className="bg-it-blue-800 dark:bg-it-blue-950 text-white">
+        <button
+          type="button"
+          onClick={() => navigate(`/team/${teamId}`)}
+          aria-label={MESSAGES.team.homeHeroAria(teamName)}
+          className="flex w-full items-center gap-4 px-5 pt-6 pb-7 text-left transition-colors hover:bg-white/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/60 active:brightness-95 motion-reduce:transition-none"
+        >
           <div className="flex size-16 shrink-0 items-center justify-center rounded-w-2xl bg-white dark:bg-it-surface">
             {showLogo ? (
               /* eslint-disable-next-line @next/next/no-img-element */
@@ -222,35 +256,50 @@ export function MyTeamHome({ team, onLoaded }: MyTeamHomeProps) {
               {MESSAGES.team.homeHeroCounts(players, staff)}
             </p>
           </div>
-        </div>
+          <Icon
+            name="chevron_right"
+            className="shrink-0 text-[22px] text-white/70"
+            aria-hidden="true"
+          />
+        </button>
       </section>
 
-      {/* ─── 처리 필요 — 승인 대기 0건이면 섹션째 미노출 ─── */}
-      {pending > 0 && (
+      {/* ─── 처리 필요 — 승인 대기·미수금 모두 0건이면 섹션째 미노출 ─── */}
+      {todos.length > 0 && (
         <>
           <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
-          <section className="bg-it-surface dark:bg-it-blue-950" aria-label={MESSAGES.team.homeTodoSection}>
+          <section className="bg-it-surface dark:bg-it-blue-950 pb-2" aria-label={MESSAGES.team.homeTodoSection}>
             <SectionTitle title={MESSAGES.team.homeTodoSection} />
-            <div className="flex items-center gap-2.5 px-5 pb-4 pt-2">
-              <span
-                className="inline-flex size-6 shrink-0 items-center justify-center rounded-w-pill bg-flame-100 text-card-meta font-extrabold text-flame-500 dark:bg-flame-500/15"
-                aria-hidden="true"
-              >
-                !
-              </span>
-              <span className="flex-1 text-card-body font-bold text-it-ink-700 dark:text-it-ink-200">
-                {MESSAGES.team.homeTodoPending(pending)}
-              </span>
-              <button
-                type="button"
-                onClick={() => navigate("/director-approvals")}
-                aria-label={MESSAGES.team.pendingHandleAria(teamName)}
-                className="inline-flex shrink-0 items-center gap-1 rounded-md px-2.5 py-1 text-card-meta font-bold text-it-blue-500 transition-colors hover:bg-it-blue-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 active:brightness-95 motion-reduce:transition-none"
-              >
-                {MESSAGES.team.pendingHandleLabel}
-                <Icon name="arrow_forward" className="text-[14px]" aria-hidden="true" />
-              </button>
-            </div>
+            <ul className="flex flex-col" role="list">
+              {todos.map((t, i) => (
+                <li
+                  key={t.key}
+                  className={cn(
+                    "flex items-center gap-2.5 px-5 py-2.5",
+                    i > 0 && "border-t border-it-line dark:border-it-blue-900",
+                  )}
+                >
+                  <span
+                    className="inline-flex size-6 shrink-0 items-center justify-center rounded-w-pill bg-flame-100 text-card-meta font-extrabold text-flame-500 dark:bg-flame-500/15"
+                    aria-hidden="true"
+                  >
+                    !
+                  </span>
+                  <span className="flex-1 text-card-body font-bold text-it-ink-700 dark:text-it-ink-200">
+                    {t.text}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => navigate(t.href)}
+                    aria-label={t.aria}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-md px-2.5 py-1 text-card-meta font-bold text-it-blue-500 transition-colors hover:bg-it-blue-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 active:brightness-95 motion-reduce:transition-none"
+                  >
+                    {MESSAGES.team.pendingHandleLabel}
+                    <Icon name="arrow_forward" className="text-[14px]" aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
           </section>
         </>
       )}
@@ -306,47 +355,63 @@ export function MyTeamHome({ team, onLoaded }: MyTeamHomeProps) {
         </>
       )}
 
-      {/* ─── 팀 관리 메뉴 — hairline 행 (세로 구분선 금지 RULE-D04) ─── */}
+      {/* ─── 운영 / 구성 메뉴 — hairline 행 (세로 구분선 금지 RULE-D04) ─── */}
       <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
-      <section className="bg-it-surface dark:bg-it-blue-950 pb-2" aria-label={MESSAGES.team.homeManageSection}>
-        <SectionTitle title={MESSAGES.team.homeManageSection} />
-        <ul className="flex flex-col" role="list">
-          {menu.map((item, i) => (
-            <li
-              key={item.key}
-              className={cn(i > 0 && "border-t border-it-line dark:border-it-blue-900")}
-            >
-              <button
-                type="button"
-                onClick={() => navigate(item.href)}
-                className="flex w-full items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-it-fill focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-it-blue-500/40 active:brightness-95 motion-reduce:transition-none dark:hover:bg-it-blue-900/40"
-                aria-label={item.label}
-              >
-                <span
-                  className="flex size-9 shrink-0 items-center justify-center rounded-w-md bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-500/15"
-                  aria-hidden="true"
-                >
-                  <Icon name={item.icon} className="text-[20px]" aria-hidden="true" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-card-body font-extrabold tracking-[-0.01em] text-it-ink-800 dark:text-white">
-                    {item.label}
-                  </span>
-                  <span className="mt-0.5 block truncate text-card-meta font-semibold tabular-nums text-it-ink-500 dark:text-it-ink-400">
-                    {item.meta}
-                  </span>
-                </span>
-                <Icon
-                  name="chevron_right"
-                  className="shrink-0 text-[20px] text-it-ink-300 dark:text-it-ink-400"
-                  aria-hidden="true"
-                />
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
+      <MenuSection title={MESSAGES.team.homeOpsSection} items={opsMenu} onSelect={navigate} />
+      <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
+      <MenuSection title={MESSAGES.team.homeSetupSection} items={setupMenu} onSelect={navigate} />
     </div>
+  );
+}
+
+function MenuSection({
+  title,
+  items,
+  onSelect,
+}: {
+  title: string;
+  items: ReadonlyArray<{ key: string; icon: string; label: string; meta: string; href: string }>;
+  onSelect: (href: string) => void;
+}) {
+  return (
+    <section className="bg-it-surface dark:bg-it-blue-950 pb-2" aria-label={title}>
+      <SectionTitle title={title} />
+      <ul className="flex flex-col" role="list">
+        {items.map((item, i) => (
+          <li
+            key={item.key}
+            className={cn(i > 0 && "border-t border-it-line dark:border-it-blue-900")}
+          >
+            <button
+              type="button"
+              onClick={() => onSelect(item.href)}
+              className="flex w-full items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-it-fill focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-it-blue-500/40 active:brightness-95 motion-reduce:transition-none dark:hover:bg-it-blue-900/40"
+              aria-label={item.label}
+            >
+              <span
+                className="flex size-9 shrink-0 items-center justify-center rounded-w-md bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-500/15"
+                aria-hidden="true"
+              >
+                <Icon name={item.icon} className="text-[20px]" aria-hidden="true" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-card-body font-extrabold tracking-[-0.01em] text-it-ink-800 dark:text-white">
+                  {item.label}
+                </span>
+                <span className="mt-0.5 block truncate text-card-meta font-semibold tabular-nums text-it-ink-500 dark:text-it-ink-400">
+                  {item.meta}
+                </span>
+              </span>
+              <Icon
+                name="chevron_right"
+                className="shrink-0 text-[20px] text-it-ink-300 dark:text-it-ink-400"
+                aria-hidden="true"
+              />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

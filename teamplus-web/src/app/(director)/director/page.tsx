@@ -36,6 +36,7 @@ import {
 import { ReadingContentSection } from '@/components/dashboard/ReadingContentSection';
 // [2026-05-12] DirectorClassCalendar 사용 중단 — 코치/학부모와 동일 ClassCalendarSection 으로 통일.
 import { DirectorPendingApprovals } from '@/components/director/DirectorPendingApprovals';
+import { UnpaidOverdueBanner } from '@/components/dashboard/UnpaidOverdueBanner';
 import { DirectorEmptyCard } from '@/components/director/DirectorEmptyCard';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { usePageReady } from '@/hooks/usePageReady';
@@ -206,6 +207,8 @@ export default function DirectorDashboardPage() {
           isTeamsLoading={teams === null}
           iceTheme
         />
+        {/* 1-β. 미수금 — 연체 미납 건수(정산 센터·팀 홈과 동일 정의). 0건이면 숨김. */}
+        <UnpaidOverdueBanner iceTheme />
 
         {/* 2. 공지사항 — full-bleed flat 섹션. 감독은 작성 권한 보유 → 하단 작성 버튼.
               전체보기는 수정/삭제 가능한 관리 페이지(/director-notices)로 이동. */}
