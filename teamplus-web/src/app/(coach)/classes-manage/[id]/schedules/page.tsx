@@ -15,6 +15,7 @@ import { MultiDatePickerModal, type MultiDateResolved } from '@/components/ui/Mu
 import { ScheduleCalendarView } from '@/components/classes/ScheduleCalendarView';
 import { TimePicker, addMinutes, nextFullHour } from '@/components/ui/TimePicker';
 import { VenueSearchSheet } from '@/components/venue/VenueSearchSheet';
+import { formatVenueRef } from '@/lib/venue-display';
 import { formatDaySchedulesFull, sortDaySchedules } from '@/lib/class-categories';
 import { MESSAGES } from '@/lib/messages';
 import { api } from '@/services/api-client';
@@ -44,7 +45,12 @@ interface ClassHeader {
     endTime: string;
     venueId?: string | null;
     venueName?: string | null;
+    venueText?: string | null;
   }[];
+  // [venueText] 대표 장소 — getClass 가 이미 emit(venueId/venueName) + venueText. 후보 칩 소스.
+  venueId?: string | null;
+  venueName?: string | null;
+  venueText?: string | null;
   // [일정·판매 관리 승격] 수명주기 파생 상태(getClass 응답) — 판매 준비 섹션 분기.
   lifecycleStatus?: 'ON_SALE' | 'PENDING_SCHEDULE' | 'ENDED' | null;
   pendingReason?: 'NO_SCHEDULE' | 'UNAPPROVED_MONTH' | null;
@@ -75,6 +81,8 @@ interface ScheduleItem {
   startTime?: string | null;
   endTime?: string | null;
   venue?: { id: string; name: string } | null;
+  /** [venueText] venue 있으면 세부 구역, 없으면 장소 전체(자유 텍스트 장소). */
+  venueText?: string | null;
   isCancelled: boolean;
   cancellationReason?: string | null;
   createdAt?: string;
@@ -96,12 +104,14 @@ interface DraftAdd {
   endTime: string;
   venueId: string;
   venueName: string;
+  venueText: string;
 }
 interface DraftEditVal {
   startTime: string;
   endTime: string;
   venueId: string;
   venueName: string;
+  venueText: string;
   /** 저장 시 낙관적 잠금 기준 — 기록 시점 서버 row 의 updatedAt. */
   baseUpdatedAt: string;
 }
@@ -118,13 +128,13 @@ type DraftAction =
       type: "editServer";
       id: string;
       edit: DraftEditVal;
-      original: { startTime: string; endTime: string; venueId: string };
+      original: { startTime: string; endTime: string; venueId: string; venueText: string };
     }
   | { type: "toggleCancel"; id: string }
   | {
       type: "applyToAll";
       edit: Omit<DraftEditVal, "baseUpdatedAt">;
-      targets: { id: string; baseUpdatedAt: string; original: { startTime: string; endTime: string; venueId: string } }[];
+      targets: { id: string; baseUpdatedAt: string; original: { startTime: string; endTime: string; venueId: string; venueText: string } }[];
     }
   | { type: "dropConflicts"; scheduleIds: string[] } // 409 응답 — 충돌 항목만 제거 (Phase 3)
   | { type: "clearAll" };
@@ -144,13 +154,15 @@ function rowDate(row: RowItem): string {
 }
 
 function sameAsOriginal(
-  edit: { startTime: string; endTime: string; venueId: string },
-  original: { startTime: string; endTime: string; venueId: string },
+  edit: { startTime: string; endTime: string; venueId: string; venueText: string },
+  original: { startTime: string; endTime: string; venueId: string; venueText: string },
 ): boolean {
+  // [venueText] 비교식 포함 — 누락 시 "세부만 수정"이 무변경 판정되어 draft 에 담기지 않는다(설계 §6-E′).
   return (
     edit.startTime === original.startTime &&
     edit.endTime === original.endTime &&
-    edit.venueId === original.venueId
+    edit.venueId === original.venueId &&
+    edit.venueText === original.venueText
   );
 }
 
@@ -216,6 +228,7 @@ function draftReducer(state: DraftState, action: DraftAction): DraftState {
         endTime: action.edit.endTime,
         venueId: action.edit.venueId,
         venueName: action.edit.venueName,
+        venueText: action.edit.venueText,
       }));
       return { ...state, edits: nextEdits, adds };
     }
@@ -749,6 +762,7 @@ export default function ClassSchedulesManagePage() {
                 startTime: d.startTime,
                 endTime: d.endTime,
                 venueName: d.venueName ?? undefined,
+                venueText: d.venueText ?? undefined,
               },
             ]) ?? '',
         )
@@ -858,6 +872,7 @@ export default function ClassSchedulesManagePage() {
               startTime: e.startTime || null,
               endTime: e.endTime || null,
               venue: e.venueId ? { id: e.venueId, name: e.venueName } : null,
+              venueText: e.venueText || null,
             }
           : s;
       }),
@@ -867,6 +882,7 @@ export default function ClassSchedulesManagePage() {
         startTime: d.startTime || null,
         endTime: d.endTime || null,
         venue: d.venueId ? { id: d.venueId, name: d.venueName } : null,
+        venueText: d.venueText || null,
         isCancelled: false,
       })),
     ],
@@ -921,6 +937,7 @@ export default function ClassSchedulesManagePage() {
           endTime: r.endTime,
           venueId: r.venueId,
           venueName: r.venueName,
+          venueText: r.venueText,
         })),
         existingDates: registeredDates,
       });
@@ -953,6 +970,8 @@ export default function ClassSchedulesManagePage() {
   const [editEnd, setEditEnd] = useState('');
   const [editVenue, setEditVenue] = useState('');
   const [editVenueName, setEditVenueName] = useState('');
+  // [venueText] 회차 세부 장소(FK 시) / 장소 전체(자유 텍스트 시). 링크장 선택·변경·해제 시 초기화.
+  const [editVenueText, setEditVenueText] = useState('');
   const [venueSheetOpen, setVenueSheetOpen] = useState(false);
   // 종료가 시작보다 이르거나 같으면 적용 불가 — 달력 뷰 수정 시트와 동일 규칙
   //   (시간 미정 회차의 장소만 수정은 허용).
@@ -970,6 +989,7 @@ export default function ClassSchedulesManagePage() {
     setEditEnd(pending?.endTime ?? s.endTime ?? '');
     setEditVenue(pending?.venueId ?? s.venue?.id ?? '');
     setEditVenueName(pending?.venueName ?? s.venue?.name ?? '');
+    setEditVenueText(pending?.venueText ?? s.venueText ?? '');
   };
   const toggleExpandDraft = (a: DraftAdd) => {
     if (expandedId === a.key) {
@@ -981,6 +1001,7 @@ export default function ClassSchedulesManagePage() {
     setEditEnd(a.endTime);
     setEditVenue(a.venueId);
     setEditVenueName(a.venueName);
+    setEditVenueText(a.venueText);
   };
   // [적용하기] — 서버 행이면 edits 기록(원본 동일 시 자동 소멸), draft 행이면 갱신.
   const handleRowApply = (row: RowItem) => {
@@ -994,12 +1015,14 @@ export default function ClassSchedulesManagePage() {
           endTime: editEnd,
           venueId: editVenue,
           venueName: editVenueName,
+          venueText: editVenueText.trim(),
           baseUpdatedAt: row.s.updatedAt ?? '',
         },
         original: {
           startTime: row.s.startTime ?? '',
           endTime: row.s.endTime ?? '',
           venueId: row.s.venue?.id ?? '',
+          venueText: row.s.venueText ?? '',
         },
       });
     } else {
@@ -1011,6 +1034,7 @@ export default function ClassSchedulesManagePage() {
           endTime: editEnd,
           venueId: editVenue,
           venueName: editVenueName,
+          venueText: editVenueText.trim(),
         },
       });
     }
@@ -1028,6 +1052,7 @@ export default function ClassSchedulesManagePage() {
         endTime: editEnd,
         venueId: editVenue,
         venueName: editVenueName,
+        venueText: editVenueText.trim(),
       },
       targets: listUpcoming.map((s) => ({
         id: s.id,
@@ -1036,6 +1061,7 @@ export default function ClassSchedulesManagePage() {
           startTime: s.startTime ?? '',
           endTime: s.endTime ?? '',
           venueId: s.venue?.id ?? '',
+          venueText: s.venueText ?? '',
         },
       })),
     });
@@ -1055,16 +1081,33 @@ export default function ClassSchedulesManagePage() {
     }
     const SC = MESSAGES.class.salesCycle;
 
-    // [§3.7] 시간 미정 고지 — 추가·수정 draft 중 시작 시각이 빈 값인 회차 (저장은 허용).
-    const undecided =
-      draft.adds.filter((a) => !a.startTime).length +
-      Object.values(draft.edits).filter((e) => !e.startTime).length;
-    if (undecided > 0) {
-      const ok = await modal.confirm({
-        title: SC.saveTimeUndecidedTitle,
-        message: SC.saveTimeUndecidedConfirm(undecided),
+    // [§3.7 정정] 시간 필수 — 추가·수정 draft 중 시작/종료 시각이 빈 회차가 있으면 저장을 막는다
+    //   (등록 폼의 제출 검증과 동일 정책). 이번 draft 에 없는 기존 시간 미정 회차·지난 회차는 대상 아님.
+    //   미니달력은 날짜만 고르게 두고, 막힌 뒤 첫 미정 회차의 아코디언을 열어 바로 입력하게 안내한다.
+    const undecidedKeys = [
+      ...draft.adds.filter((a) => !a.startTime || !a.endTime).map((a) => a.key),
+      ...Object.entries(draft.edits)
+        .filter(([, e]) => !e.startTime || !e.endTime)
+        .map(([id]) => id),
+    ];
+    if (undecidedKeys.length > 0) {
+      toast.error(SC.saveTimeRequired(undecidedKeys.length));
+      const firstKey = undecidedKeys[0];
+      const add = draft.adds.find((a) => a.key === firstKey);
+      const srv = add ? undefined : schedules.find((s) => s.id === firstKey);
+      const pendingEdit = srv ? draft.edits[srv.id] : undefined;
+      setExpandedId(firstKey);
+      setEditStart(add?.startTime ?? pendingEdit?.startTime ?? srv?.startTime ?? '');
+      setEditEnd(add?.endTime ?? pendingEdit?.endTime ?? srv?.endTime ?? '');
+      setEditVenue(add?.venueId ?? pendingEdit?.venueId ?? srv?.venue?.id ?? '');
+      setEditVenueName(add?.venueName ?? pendingEdit?.venueName ?? srv?.venue?.name ?? '');
+      setEditVenueText(add?.venueText ?? pendingEdit?.venueText ?? srv?.venueText ?? '');
+      requestAnimationFrame(() => {
+        document
+          .getElementById(`schedule-row-${firstKey}`)
+          ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
       });
-      if (!ok) return;
+      return;
     }
 
     // 서버 목록에서 이미 사라진(다른 곳에서 취소·삭제) 회차의 취소 지시는 보내기 전에
@@ -1099,6 +1142,7 @@ export default function ClassSchedulesManagePage() {
         ...(a.startTime && { startTime: a.startTime }),
         ...(a.endTime && { endTime: a.endTime }),
         ...(a.venueId && { venueId: a.venueId }),
+        ...(a.venueText && { venueText: a.venueText }),
       }));
     // edits 는 빈 문자열 그대로 전송 — 서버 계약상 '' = 시간/장소 해제.
     const edits = Object.entries(draft.edits).map(([scheduleId, e]) => ({
@@ -1107,6 +1151,8 @@ export default function ClassSchedulesManagePage() {
       startTime: e.startTime,
       endTime: e.endTime,
       venueId: e.venueId,
+      // [venueText] venueId 와 항상 동반 전송 — 서버 계약(venueId 전송 시 쌍 확정, '' = 삭제).
+      venueText: e.venueText,
     }));
     const cancellations = draft.cancels.map((scheduleId) => ({
       scheduleId,
@@ -1161,7 +1207,6 @@ export default function ClassSchedulesManagePage() {
     draft,
     schedules,
     getOwnerPath,
-    modal,
     toast,
     refreshAll,
   ]);
@@ -1219,9 +1264,14 @@ export default function ClassSchedulesManagePage() {
     const cancelMarked = !!s && draft.cancels.includes(s.id);
     const effStart = isDraftRow ? row.d.startTime : (pending?.startTime ?? s?.startTime ?? '');
     const effEnd = isDraftRow ? row.d.endTime : (pending?.endTime ?? s?.endTime ?? '');
+    // [venueText] 표시 = 링크장명 · 세부 / 텍스트 장소 — 같은 층(draft 오버레이 or 서버 행)의 쌍만 조합.
     const effVenueName = isDraftRow
-      ? row.d.venueName
-      : (pending?.venueName ?? s?.venue?.name ?? '');
+      ? (formatVenueRef({ name: row.d.venueName, text: row.d.venueText }) ?? '')
+      : (formatVenueRef(
+          pending
+            ? { name: pending.venueName, text: pending.venueText }
+            : { name: s?.venue?.name, text: s?.venueText },
+        ) ?? '');
     const timeLabel = effStart
       ? `${effStart}${effEnd ? `-${effEnd}` : ''}`
       : MESSAGES.class.dayDefaults.timeUndecided;
@@ -1236,6 +1286,7 @@ export default function ClassSchedulesManagePage() {
     return (
       <li
         key={rowKey}
+        id={`schedule-row-${rowKey}`}
         role="listitem"
         className={cn(
           // 수정 폼 회차 박스 디자인 1:1 — it-fill 박스 + 1.5px 테두리 + 둥근 모서리.
@@ -1446,13 +1497,32 @@ export default function ClassSchedulesManagePage() {
               aria-label={`${dateLabel} 장소 선택`}
             >
               <Icon name="location_on" className="text-base text-it-ink-400" aria-hidden="true" />
-              <span className={editVenueName ? '' : 'text-it-ink-400'}>
-                {editVenueName || '장소 선택'}
+              <span className={(editVenueName || editVenueText) ? '' : 'text-it-ink-400'}>
+                {editVenueName || editVenueText || MESSAGES.class.dayDefaults.venueSelect}
               </span>
               <Icon name="chevron_right" className="text-base ml-auto text-it-ink-300" aria-hidden="true" />
             </button>
+            {/* [venueText] 세부 장소 — 링크장(FK) 선택 시에만. 자유 텍스트 장소는 위 한 칸이 전부. */}
+            {editVenue && (
+              <>
+              <input
+                type="text"
+                value={editVenueText}
+                maxLength={100}
+                onChange={(e) => setEditVenueText(e.target.value)}
+                placeholder={MESSAGES.class.dayDefaults.venueTextPlaceholder}
+                aria-label={MESSAGES.class.dayDefaults.venueTextAria(dateLabel)}
+                className={EDIT_FIELD_CLASS}
+              />
+              {editVenueText.length >= 100 && (
+                <p role="status" className="text-[11px] leading-[15px] text-it-ink-500 dark:text-rink-300">
+                  {MESSAGES.class.dayDefaults.venueTextMax(100)}
+                </p>
+              )}
+              </>
+            )}
             {/* 모든 회차에 적용 — 다가오는 회차(병합 기준) 2개 이상 + 값이 있을 때만. 로컬 draft 일괄 기록. */}
-            {displayUpcoming.length > 1 && (editStart || editEnd || editVenue) && (
+            {displayUpcoming.length > 1 && (editStart || editEnd || editVenue || editVenueText) && (
               <button
                 type="button"
                 onClick={handleApplyToAll}
@@ -2193,6 +2263,7 @@ export default function ClassSchedulesManagePage() {
         // spot(1회용) — 요일 빠른 선택 칩 차단 + 단일 선택 모드 (ClassForm 동일 패턴).
         daySchedules={isSpot ? [] : cls.daySchedules ?? []}
         singleSelect={isSpot}
+        // 날짜만 고른다 — 시간·장소는 아코디언에서 회차별 입력(장소는 기본 장소 폴백). requireCommonTime 미전달.
         onConfirm={handleConfirmDates}
         onClose={() => {
           setMultiDateOpen(false);
@@ -2207,12 +2278,23 @@ export default function ClassSchedulesManagePage() {
         onClose={() => setVenueSheetOpen(false)}
         title="훈련 장소 선택"
         selectedVenueId={editVenue}
-        initialQuery={editVenueName}
+        // FK 행은 링크장명, 자유 텍스트 행은 그 텍스트를 프리필.
+        initialQuery={editVenue ? editVenueName : editVenueText}
+        allowFreeText
+        maxLength={100}
         iceTheme
         onSelectVenue={(v) => {
+          // [venueText] 링크장 선택/변경 → 세부 초기화(이전 링크장 세부 잔존 방지).
           setEditVenue(v.id);
           setEditVenueName(v.name);
+          setEditVenueText('');
           setVenueSheetOpen(false);
+        }}
+        onApplyText={(text) => {
+          // [venueText] 자유 텍스트 장소 — FK 해제 + 텍스트가 장소 전부. 빈 텍스트 = 해제.
+          setEditVenue('');
+          setEditVenueName('');
+          setEditVenueText(text.trim());
         }}
       />
     </MobileContainer>

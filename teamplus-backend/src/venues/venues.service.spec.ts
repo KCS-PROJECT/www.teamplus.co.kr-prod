@@ -49,6 +49,7 @@ describe("VenuesService", () => {
     coachProfile: { findUnique: jest.Mock };
     clubMember: { findFirst: jest.Mock };
     user: { findUnique: jest.Mock };
+    $transaction: jest.Mock;
   } = {
     venue: {
       findUnique: jest.fn(),
@@ -76,9 +77,27 @@ describe("VenuesService", () => {
     user: {
       findUnique: jest.fn(),
     },
+    // [venueText v5.2] deleteVenue 단일 트랜잭션 — 콜백에 mockTx 주입.
+    $transaction: jest.fn((arg: unknown) =>
+      typeof arg === "function"
+        ? (arg as (tx: typeof mockTx) => unknown)(mockTx)
+        : Promise.all(arg as Promise<unknown>[]),
+    ),
+  };
+
+  // deleteVenue tx — per-Venue lock($queryRaw) + 3층 텍스트 승격($executeRaw) + venue 재조회/삭제.
+  let mockTx: {
+    $queryRaw: jest.Mock;
+    $executeRaw: jest.Mock;
+    venue: { findUnique: jest.Mock; delete: jest.Mock };
   };
 
   beforeEach(async () => {
+    mockTx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      $executeRaw: jest.fn().mockResolvedValue(0),
+      venue: { findUnique: jest.fn(), delete: jest.fn() },
+    };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         VenuesService,
@@ -220,26 +239,72 @@ describe("VenuesService", () => {
       );
     });
 
-    it("활성 예약이 남아있으면 Conflict", async () => {
-      mockPrismaService.venue.findUnique.mockResolvedValueOnce({
+    it("활성 예약이 남아있으면 Conflict (잠금 후 tx 내 재조회 기준)", async () => {
+      mockTx.venue.findUnique.mockResolvedValueOnce({
         id: "v1",
+        name: "선학빙상장",
         _count: { bookings: 2, rentalContracts: 0 },
       });
 
       await expect(service.deleteVenue("v1", "ADMIN")).rejects.toBeInstanceOf(
         ConflictException,
       );
+      expect(mockTx.$executeRaw).not.toHaveBeenCalled();
+      expect(mockTx.venue.delete).not.toHaveBeenCalled();
     });
 
-    it("예약/계약 없으면 ADMIN 삭제 성공", async () => {
-      mockPrismaService.venue.findUnique.mockResolvedValueOnce({
+    it("잠금 후 재조회에서 이미 삭제됐으면 NotFound (선행 삭제 대비)", async () => {
+      mockTx.venue.findUnique.mockResolvedValueOnce(null);
+
+      await expect(service.deleteVenue("v1", "ADMIN")).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(mockTx.venue.delete).not.toHaveBeenCalled();
+    });
+
+    // [venueText v5.2 §3.4-E] 단일 tx: per-Venue lock → 재검증 → 3층 승격 → delete.
+    it("예약/계약 없으면 per-Venue 잠금 → 수업 3층 텍스트 승격 → 삭제 순으로 한 트랜잭션에서 수행한다", async () => {
+      mockTx.venue.findUnique.mockResolvedValueOnce({
         id: "v1",
+        name: "선학빙상장",
         _count: { bookings: 0, rentalContracts: 0 },
       });
-      mockPrismaService.venue.delete.mockResolvedValueOnce({ id: "v1" });
+      mockTx.venue.delete.mockResolvedValueOnce({ id: "v1" });
 
       const result = await service.deleteVenue("v1", "ADMIN");
       expect(result).toEqual({ success: true, id: "v1" });
+
+      // 1) advisory lock — venue:{id}
+      expect(
+        mockTx.$queryRaw.mock.calls.some((c: unknown[]) =>
+          JSON.stringify(c).includes("venue:v1"),
+        ),
+      ).toBe(true);
+      // 2) 승격 UPDATE 3층 — classes / class_day_schedules / class_schedules,
+      //    링크장명·100자 절단·updated_at 갱신 포함.
+      expect(mockTx.$executeRaw).toHaveBeenCalledTimes(3);
+      const sqls = mockTx.$executeRaw.mock.calls.map((c: unknown[]) =>
+        (c[0] as readonly string[]).join("?"),
+      );
+      expect(sqls[0]).toMatch(/UPDATE classes/);
+      expect(sqls[1]).toMatch(/UPDATE class_day_schedules/);
+      expect(sqls[2]).toMatch(/UPDATE class_schedules/);
+      for (const sql of sqls) {
+        expect(sql).toMatch(
+          /left\(concat_ws\(' ', \?::text, venue_text\), 100\)/,
+        );
+        expect(sql).toMatch(/updated_at = now\(\)/);
+        expect(sql).toMatch(/WHERE venue_id = \?/);
+      }
+      // 승격 값 = 링크장명(첫 바인딩) — 삭제 후에도 이름이 텍스트로 보존된다.
+      expect(mockTx.$executeRaw.mock.calls[0][1]).toBe("선학빙상장");
+      // 3) 마지막에 delete — SetNull 은 승격 이후.
+      expect(mockTx.venue.delete).toHaveBeenCalledWith({ where: { id: "v1" } });
+      const lockOrder = mockTx.$queryRaw.mock.invocationCallOrder[0];
+      const promoteOrder = mockTx.$executeRaw.mock.invocationCallOrder[0];
+      const deleteOrder = mockTx.venue.delete.mock.invocationCallOrder[0];
+      expect(lockOrder).toBeLessThan(promoteOrder);
+      expect(promoteOrder).toBeLessThan(deleteOrder);
     });
   });
 

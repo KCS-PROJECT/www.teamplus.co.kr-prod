@@ -10,6 +10,7 @@ import {
   ValidateNested,
   Min,
   Max,
+  MaxLength,
 } from "class-validator";
 import { Type } from "class-transformer";
 import { ApiPropertyOptional } from "@nestjs/swagger";
@@ -145,6 +146,16 @@ export class UpdateClassDto {
   @IsOptional()
   @IsString()
   venueId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      '장소 텍스트 — venueId 있으면 세부 구역(예 "1층 A실"), 없으면 장소 전체(예 "인천 선학빙상장 1층 A실"). 최대 100자. 수정 계열에서 빈 문자열 = 삭제(null).',
+    example: "1층 A실",
+  })
+  @IsOptional()
+  @IsString({ message: "장소 텍스트는 문자열이어야 합니다." })
+  @MaxLength(100, { message: "장소 텍스트는 100자 이하여야 합니다." })
+  venueText?: string;
 
   @ApiPropertyOptional({ description: "수업 요일 배열" })
   @IsOptional()

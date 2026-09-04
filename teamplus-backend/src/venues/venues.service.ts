@@ -11,6 +11,7 @@ import { CreateBookingDto } from "./dto/create-booking.dto";
 import { CreateVenueDto } from "./dto/create-venue.dto";
 import { UpdateVenueDto } from "./dto/update-venue.dto";
 import { sanitizeStrict } from "@/common/utils/sanitize.util";
+import { acquireVenueLock } from "@/classes/utils/class-locks.util";
 
 /**
  * 구장 관리 권한 체계
@@ -734,30 +735,56 @@ export class VenuesService {
       throw new ForbiddenException("구장 삭제 권한이 없습니다.");
     }
 
-    const venue = await this.prisma.venue.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        _count: {
-          select: {
-            bookings: { where: { status: { in: ["pending", "confirmed"] } } },
-            rentalContracts: { where: { status: { in: ["active"] } } },
+    // [venueText v5.2 §3.4-E] 단일 트랜잭션 — per-Venue lock → 존재·삭제 가드 재검증 →
+    //   수업 3층(classes / class_day_schedules / class_schedules) 텍스트 승격 → delete(onDelete:SetNull).
+    //   승격 = venue_text ← "링크장명 + 기존 텍스트"(100자 절단, updated_at 갱신) : 승격 없이 SetNull
+    //   되면 세부 구역("1층 A실")이 장소 전체로 오독된다. lock 은 수업 장소 pair writer
+    //   (classes.service W1~W8)와 공유해 텍스트 단독 수정과의 경합에서 링크장명 유실을 막는다.
+    //   raw UPDATE 는 @updatedAt 을 우회하므로 updated_at 명시 — apply-draft 낙관적 잠금 무효화 겸함.
+    await this.prisma.$transaction(async (tx) => {
+      await acquireVenueLock(tx, id);
+      const venue = await tx.venue.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          name: true,
+          _count: {
+            select: {
+              bookings: { where: { status: { in: ["pending", "confirmed"] } } },
+              rentalContracts: { where: { status: { in: ["active"] } } },
+            },
           },
         },
-      },
+      });
+
+      if (!venue) {
+        throw new NotFoundException("구장을 찾을 수 없습니다.");
+      }
+
+      if (venue._count.bookings > 0 || venue._count.rentalContracts > 0) {
+        throw new ConflictException(
+          "진행 중인 예약 또는 활성 대관 계약이 있어 구장을 삭제할 수 없습니다.",
+        );
+      }
+
+      await tx.$executeRaw`
+        UPDATE classes
+           SET venue_text = left(concat_ws(' ', ${venue.name}::text, venue_text), 100),
+               updated_at = now()
+         WHERE venue_id = ${id}`;
+      await tx.$executeRaw`
+        UPDATE class_day_schedules
+           SET venue_text = left(concat_ws(' ', ${venue.name}::text, venue_text), 100),
+               updated_at = now()
+         WHERE venue_id = ${id}`;
+      await tx.$executeRaw`
+        UPDATE class_schedules
+           SET venue_text = left(concat_ws(' ', ${venue.name}::text, venue_text), 100),
+               updated_at = now()
+         WHERE venue_id = ${id}`;
+
+      await tx.venue.delete({ where: { id } });
     });
-
-    if (!venue) {
-      throw new NotFoundException("구장을 찾을 수 없습니다.");
-    }
-
-    if (venue._count.bookings > 0 || venue._count.rentalContracts > 0) {
-      throw new ConflictException(
-        "진행 중인 예약 또는 활성 대관 계약이 있어 구장을 삭제할 수 없습니다.",
-      );
-    }
-
-    await this.prisma.venue.delete({ where: { id } });
     return { success: true, id };
   }
 

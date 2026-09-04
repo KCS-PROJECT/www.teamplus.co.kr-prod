@@ -10,6 +10,7 @@ import { useModal } from '@/components/ui/Modal/ModalContext';
 import { useToast } from '@/components/ui/Toast';
 import { cn } from '@/lib/utils';
 import { MESSAGES } from '@/lib/messages';
+import { resolveVenueDisplay } from '@/lib/venue-display';
 import { api } from '@/services/api-client';
 import {
   CLASS_CATEGORIES,
@@ -42,6 +43,8 @@ interface TeamClass {
   endTime: string;
   /** 단일 대표 장소 — daySchedules 에 요일 규칙이 없을 때 폴백. */
   venue?: { id?: string | null; name?: string | null } | null;
+  /** [venueText] 대표 장소 텍스트 — venue 있으면 세부, 없으면 장소 전체. */
+  venueText?: string | null;
   /** [2026-06-05] 요일별 시간·장소 규칙 — 회차 요일에 맞는 시각 표시용. 없으면 단일 시간 폴백. */
   daySchedules?: DaySchedule[];
 }
@@ -55,6 +58,8 @@ interface ClassSchedule {
   endTime?: string | null;
   /** 회차별 장소 — 있으면 요일 기본일정·대표 장소보다 우선. */
   venue?: { id?: string | null; name?: string | null } | null;
+  /** [venueText] 회차 장소 텍스트 — venue 있으면 세부, 없으면 장소 전체. */
+  venueText?: string | null;
 }
 
 /** 배치 일정 조회(`/classes/schedules/batch`) 응답 행 — 수업별 재분배용 classId 포함. */
@@ -137,14 +142,24 @@ function resolveScheduleTime(
  *  - 셋 다 없으면 '' (카드에서 장소 줄 미표시). 팀/학원명은 장소가 아니므로 폴백 아님.
  */
 function resolveScheduleLocation(
-  cls: { venue?: { name?: string | null } | null; daySchedules?: DaySchedule[] },
+  cls: {
+    venue?: { name?: string | null } | null;
+    venueText?: string | null;
+    daySchedules?: DaySchedule[];
+  },
   scheduledDate: string,
   scheduleVenue?: { name?: string | null } | null,
+  scheduleVenueText?: string | null,
 ): string {
-  if (scheduleVenue?.name) return scheduleVenue.name;
+  // [venueText] 층별 {name, text} 쌍 단위로 채택 — 다른 층의 name 과 교차 조합하지 않는다.
   const match = getDayScheduleForDate(cls.daySchedules, scheduledDate);
-  if (match?.venueName) return match.venueName;
-  return cls.venue?.name ?? '';
+  return (
+    resolveVenueDisplay(
+      { name: scheduleVenue?.name, text: scheduleVenueText },
+      { name: match?.venueName, text: match?.venueText },
+      { name: cls.venue?.name, text: cls.venueText },
+    ) ?? ''
+  );
 }
 
 /**
@@ -644,7 +659,12 @@ export function ClassCalendarSection({
                 ?.endTime ??
               null,
             coach: cls.instructorName,
-            location: resolveScheduleLocation(cls, schedule.scheduledDate, schedule.venue),
+            location: resolveScheduleLocation(
+              cls,
+              schedule.scheduledDate,
+              schedule.venue,
+              schedule.venueText,
+            ),
             type: inferTrainingType(cls),
           };
           if (!next[dateKey]) next[dateKey] = [];

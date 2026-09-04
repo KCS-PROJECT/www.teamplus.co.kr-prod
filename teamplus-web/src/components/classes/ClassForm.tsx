@@ -26,6 +26,7 @@ import type { ClassVisibility } from '@/lib/class-visibility';
 // [2026-08-04] 수업 지역 SoT — 백엔드 regions.constant.ts 와 값 동기화 필수.
 import { REGIONS, districtsOf, SHOW_CLASS_REGION_SECTION } from '@/lib/regions';
 import { VenueSearchSheet } from '@/components/venue/VenueSearchSheet';
+import { formatVenueRef } from '@/lib/venue-display';
 import { AnimatedSection } from '@/components/ui/AnimatedSection';
 import { Toggle } from '@/components/ui/Toggle';
 import {
@@ -262,13 +263,15 @@ export function ClassForm({
 
   const isEditMode = mode === 'edit';
 
+  // [venueText] 장소 소스 전이(링크장 선택/변경/해제·자유 텍스트 적용) 시 venueText 를 초기화한다 —
+  //   FK 이름 아래 텍스트 중복 표기·이전 링크장 세부 잔존 방지(설계 §3.5 공통 규칙).
   const handleVenueSelect = (venueId: string, venueName: string, address: string) => {
     if (venueTargetDateKey) {
       // [2026-06-09] 오픈클래스 날짜별 일정 행의 장소 지정.
       setFormData(prev => ({
         ...prev,
         dateSchedules: prev.dateSchedules.map(s =>
-          s.key === venueTargetDateKey ? { ...s, venueId, venueName } : s,
+          s.key === venueTargetDateKey ? { ...s, venueId, venueName, venueText: '' } : s,
         ),
       }));
     } else if (venueTargetDay) {
@@ -276,15 +279,43 @@ export function ClassForm({
       setFormData(prev => ({
         ...prev,
         daySchedules: prev.daySchedules.map(s =>
-          s.dayOfWeek === venueTargetDay ? { ...s, venueId, venueName } : s,
+          s.dayOfWeek === venueTargetDay ? { ...s, venueId, venueName, venueText: '' } : s,
         ),
       }));
     } else {
       // 단일 장소 — 기존 동작 유지.
-      setFormData(prev => ({ ...prev, venueId, venue: venueName, venueAddress: address }));
+      setFormData(prev => ({ ...prev, venueId, venue: venueName, venueAddress: address, venueText: '' }));
     }
     setVenueSheetOpen(false);
   };
+
+  // [venueText] 자유 텍스트 장소([적용]) — 마스터에 없는 장소를 텍스트 전체로. FK 해제 + 텍스트 설정.
+  //   빈 텍스트 적용 = 장소 전부 해제.
+  const handleVenueApplyText = (text: string) => {
+    const venueText = text.trim();
+    if (venueTargetDateKey) {
+      setFormData(prev => ({
+        ...prev,
+        dateSchedules: prev.dateSchedules.map(s =>
+          s.key === venueTargetDateKey ? { ...s, venueId: '', venueName: '', venueText } : s,
+        ),
+      }));
+    } else if (venueTargetDay) {
+      setFormData(prev => ({
+        ...prev,
+        daySchedules: prev.daySchedules.map(s =>
+          s.dayOfWeek === venueTargetDay ? { ...s, venueId: '', venueName: '', venueText } : s,
+        ),
+      }));
+    } else {
+      setFormData(prev => ({ ...prev, venueId: '', venue: '', venueAddress: '', venueText }));
+    }
+    setVenueSheetOpen(false);
+  };
+
+  /** 행의 장소 표시 — 링크장명 있으면 "링크장명 · 세부", 없으면 텍스트 장소. */
+  const rowVenueLabel = (s: { venueName?: string; venueText?: string }) =>
+    formatVenueRef({ name: s.venueName, text: s.venueText });
 
   // 장소 BottomSheet 닫기 — 대상요일·대상일정은 리셋하지 않는다. 닫힘 애니메이션(300ms) 동안
   //   시트가 마운트를 유지하므로, 여기서 리셋하면 제목("N요일 장소 선택")이 기본값으로 바뀌는
@@ -322,16 +353,19 @@ export function ClassForm({
         .map(d => {
           const ex = existing.get(d);
           if (ex) return ex; // 기존 일정 — 개별 수정값 보존
-          // 신규 일정 — 요일 기본값 주입(없으면 빈 시간).
+          // 신규 일정 — 요일 기본값 주입(없으면 빈 시간). [기본 장소] 요일 기본값에 장소가 없으면 기본 장소.
           dateKeySeq.n += 1;
           const r = resolvedMap.get(d);
+          const hasRowVenue = Boolean(r?.venueId || r?.venueText);
+          const hasDefaultVenue = Boolean(prev.venueId || prev.venueText);
           return {
             key: `ds${dateKeySeq.n}`,
             date: d,
             startTime: r?.startTime ?? '',
             endTime: r?.endTime ?? '',
-            venueId: r?.venueId ?? '',
-            venueName: r?.venueName ?? '',
+            venueId: hasRowVenue ? (r?.venueId ?? '') : hasDefaultVenue ? prev.venueId : '',
+            venueName: hasRowVenue ? (r?.venueName ?? '') : hasDefaultVenue ? prev.venue : '',
+            venueText: hasRowVenue ? (r?.venueText ?? '') : hasDefaultVenue ? prev.venueText : '',
           };
         });
       return { ...prev, dateSchedules: [...past, ...next] };
@@ -407,6 +441,7 @@ export function ClassForm({
         endTime: def?.endTime ?? '',
         venueId: def?.venueId ?? '',
         venueName: def?.venueName ?? '',
+        venueText: def?.venueText ?? '',
       };
     });
     applyMultiDates(union, resolved);
@@ -424,7 +459,9 @@ export function ClassForm({
     setFormData(prev => {
       const exists = prev.daySchedules.some(s => s.dayOfWeek === day);
       // 새 요일은 이미 입력된 행의 시간·장소를 상속해 반복 입력을 줄인다.
-      const template = prev.daySchedules.find(s => s.startTime || s.endTime || s.venueId);
+      //   [기본 장소] 장소는 기본 장소가 있으면 그것을 우선 채운다(행별로 따로 바꿀 수 있음).
+      const template = prev.daySchedules.find(s => s.startTime || s.endTime || s.venueId || s.venueText);
+      const hasDefaultVenue = Boolean(prev.venueId || prev.venueText);
       return {
         ...prev,
         daySchedules: exists
@@ -435,12 +472,26 @@ export function ClassForm({
                 dayOfWeek: day,
                 startTime: template?.startTime ?? '',
                 endTime: template?.endTime ?? '',
-                venueId: template?.venueId ?? '',
-                venueName: template?.venueName ?? '',
+                venueId: hasDefaultVenue ? prev.venueId : (template?.venueId ?? ''),
+                venueName: hasDefaultVenue ? prev.venue : (template?.venueName ?? ''),
+                venueText: hasDefaultVenue ? prev.venueText : (template?.venueText ?? ''),
               },
             ],
       };
     });
+  };
+  // [기본 장소] 모든 요일 행의 장소를 기본 장소로 일괄 교체 — 기본 장소 변경은 기존 행을 자동으로 덮지 않으므로
+  //   감독이 명시적으로 누를 때만 반영한다.
+  const applyDefaultVenueToAllDays = () => {
+    setFormData(prev => ({
+      ...prev,
+      daySchedules: prev.daySchedules.map(s => ({
+        ...s,
+        venueId: prev.venueId,
+        venueName: prev.venue,
+        venueText: prev.venueText,
+      })),
+    }));
   };
   // 회차 전체 적용 — 정규 요일 applyDayScheduleToAll 과 동일 패턴.
   //   지난 회차는 읽기 전용 잠금(출석·정산 근거)이라 복사 대상에서 제외한다.
@@ -460,6 +511,7 @@ export function ClassForm({
                 endTime: source.endTime,
                 venueId: source.venueId,
                 venueName: source.venueName,
+                venueText: source.venueText,
               },
         ),
       };
@@ -481,6 +533,7 @@ export function ClassForm({
                 endTime: source.endTime,
                 venueId: source.venueId,
                 venueName: source.venueName,
+                venueText: source.venueText,
               },
         ),
       };
@@ -979,6 +1032,75 @@ export function ClassForm({
               </div>
             )}
 
+            {/* [기본 장소] 수업 대표 장소 — 감독이 직접 입력. 요일·날짜 행 추가 시 자동으로 채워지고 행별로 따로 바꿀 수 있다.
+                기본 장소를 나중에 바꿔도 기존 행은 건드리지 않는다(아래 "모든 요일에 기본 장소 적용" 으로만 일괄 반영).
+                저장 시 대표 장소 우선순위: 기본 장소 > 날짜 대표 행 > 요일 대표 행(백엔드 preferredVenuePair 동일). */}
+            <div className={cn(ic.card, 'space-y-3')}>
+              <div>
+                <label className={cn('block text-sm font-bold', iceTheme ? 'text-it-ink-600 dark:text-rink-100' : 'text-wtext-2 dark:text-rink-100')}>
+                  {MESSAGES.class.dayDefaults.defaultVenueLabel}
+                  <span className={cn('ml-1.5 text-card-meta font-medium', iceTheme ? 'text-it-ink-400 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
+                    ({MESSAGES.class.dayDefaults.optional})
+                  </span>
+                </label>
+                <p className={cn('mt-1 text-[11px] leading-[15px]', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
+                  {MESSAGES.class.dayDefaults.defaultVenueHint}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setVenueTargetDay(null);
+                  setVenueTargetDateKey(null);
+                  setVenueSheetOpen(true);
+                }}
+                className={iceTheme ? 'w-full flex items-center gap-2 h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-left text-it-ink-800 dark:text-white hover:border-it-blue-500/40 transition-colors motion-reduce:transition-none' : 'w-full flex items-center gap-2 h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-left text-wtext-1 dark:text-white hover:border-ice-500/40 transition-colors'}
+                aria-label={MESSAGES.class.dayDefaults.defaultVenueLabel}
+              >
+                <Icon name="location_on" className={cn('text-base', iceTheme ? 'text-it-ink-400' : 'text-wtext-3')} aria-hidden="true" />
+                <span className={(formData.venue || formData.venueText) ? '' : iceTheme ? 'text-it-ink-400' : 'text-wtext-3'}>
+                  {formData.venue || formData.venueText || MESSAGES.class.dayDefaults.venueSelect}
+                </span>
+                <Icon name="chevron_right" className={cn('text-base ml-auto', iceTheme ? 'text-it-ink-300' : 'text-wtext-4')} aria-hidden="true" />
+              </button>
+              {/* [venueText] 세부 장소 — 링크장(FK) 선택 시에만. 자유 텍스트 장소는 위 한 칸이 전부. */}
+              {formData.venueId && (
+                <>
+                <input
+                  type="text"
+                  value={formData.venueText}
+                  maxLength={100}
+                  onChange={(e) => setFormData(prev => ({ ...prev, venueText: e.target.value }))}
+                  placeholder={MESSAGES.class.dayDefaults.venueTextPlaceholder}
+                  aria-label={MESSAGES.class.dayDefaults.venueTextAria(MESSAGES.class.dayDefaults.defaultVenueLabel)}
+                  className={iceTheme ? 'w-full h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-it-ink-800 dark:text-white placeholder:text-it-ink-400 focus:outline-none focus:border-it-blue-500' : 'w-full h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-wtext-1 dark:text-white placeholder:text-wtext-3 focus:outline-none focus:border-ice-500'}
+                />
+                {formData.venueText.length >= 100 && (
+                  <p role="status" className={cn('text-[11px] leading-[15px]', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
+                    {MESSAGES.class.dayDefaults.venueTextMax(100)}
+                  </p>
+                )}
+                </>
+              )}
+              {!isSpot && (formData.venueId || formData.venueText) && formData.daySchedules.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    applyDefaultVenueToAllDays();
+                    toast.success(MESSAGES.class.dayDefaults.defaultVenueAppliedAll);
+                  }}
+                  className={cn(
+                    'rounded-md px-2 py-1 text-card-meta font-bold',
+                    iceTheme
+                      ? 'text-it-blue-500 hover:bg-it-blue-50 dark:text-it-blue-300 dark:hover:bg-it-blue-500/10'
+                      : 'text-ice-600 hover:bg-ice-50 dark:text-ice-400 dark:hover:bg-ice-500/10',
+                  )}
+                >
+                  {MESSAGES.class.dayDefaults.defaultVenueApplyAll}
+                </button>
+              )}
+            </div>
+
             {/* [2026-06-30] 요일별 기본 시간·장소(ClassDaySchedule 템플릿) — 선택.
                 미리 정해두면 아래 '일정 추가' 시 요일에 맞춰 시간·장소가 자동으로 채워진다.
                 단일 일정(spot)은 회차가 1개뿐이라 요일 템플릿이 무의미하므로 숨긴다. */}
@@ -1040,7 +1162,7 @@ export function ClassForm({
                           {MESSAGES.class.dayDefaults.weekdayLabel(s.dayOfWeek)}
                         </span>
                         <div className="flex items-center gap-1">
-                          {sortedDaySchedules.length > 1 && (s.startTime || s.endTime || s.venueId) && (
+                          {sortedDaySchedules.length > 1 && (s.startTime || s.endTime || s.venueId || s.venueText) && (
                             <button
                               type="button"
                               onClick={() => {
@@ -1133,11 +1255,34 @@ export function ClassForm({
                         aria-label={`${s.dayOfWeek}요일 ${MESSAGES.class.dayDefaults.venueSelect}`}
                       >
                         <Icon name="location_on" className={cn('text-base', iceTheme ? 'text-it-ink-400' : 'text-wtext-3')} aria-hidden="true" />
-                        <span className={s.venueName ? '' : iceTheme ? 'text-it-ink-400' : 'text-wtext-3'}>
-                          {s.venueName || MESSAGES.class.dayDefaults.venueSelect}
+                        <span className={(s.venueName || s.venueText) ? '' : iceTheme ? 'text-it-ink-400' : 'text-wtext-3'}>
+                          {s.venueName || s.venueText || MESSAGES.class.dayDefaults.venueSelect}
                         </span>
                         <Icon name="chevron_right" className={cn('text-base ml-auto', iceTheme ? 'text-it-ink-300' : 'text-wtext-4')} aria-hidden="true" />
                       </button>
+                      {/* [venueText] 세부 장소 — 링크장(FK) 선택 시에만. 자유 텍스트 장소는 위 한 칸이 전부. */}
+                      {s.venueId && (
+                        <>
+                        <input
+                          type="text"
+                          value={s.venueText}
+                          maxLength={100}
+                          onChange={(e) => updateDaySchedule(s.dayOfWeek, { venueText: e.target.value })}
+                          placeholder={MESSAGES.class.dayDefaults.venueTextPlaceholder}
+                          aria-label={MESSAGES.class.dayDefaults.venueTextAria(MESSAGES.class.dayDefaults.weekdayLabel(s.dayOfWeek))}
+                          className={
+                            iceTheme
+                              ? 'w-full h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-it-ink-800 dark:text-white placeholder:text-it-ink-400 focus:outline-none focus:border-it-blue-500'
+                              : 'w-full h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-wtext-1 dark:text-white placeholder:text-wtext-3 focus:outline-none focus:border-ice-500'
+                          }
+                        />
+                        {s.venueText.length >= 100 && (
+                          <p role="status" className={cn('text-[11px] leading-[15px]', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
+                            {MESSAGES.class.dayDefaults.venueTextMax(100)}
+                          </p>
+                        )}
+                        </>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -1265,10 +1410,10 @@ export function ClassForm({
                                   <span className={cn('text-card-meta font-medium tabular-nums truncate', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                                     {timeLabel}
                                   </span>
-                                  {s.venueName && (
+                                  {rowVenueLabel(s) && (
                                     <span className={cn('flex items-center gap-1 mt-0.5 min-w-0 text-card-meta font-medium', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                                       <Icon name="location_on" className="text-sm shrink-0" aria-hidden="true" />
-                                      <span className="truncate">{s.venueName}</span>
+                                      <span className="truncate">{rowVenueLabel(s)}</span>
                                     </span>
                                   )}
                                 </div>
@@ -1325,10 +1470,10 @@ export function ClassForm({
                                 <span className={cn('text-card-meta font-medium tabular-nums truncate', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                                   {timeLabel}
                                 </span>
-                                {s.venueName && (
+                                {rowVenueLabel(s) && (
                                   <span className={cn('flex items-center gap-1 mt-0.5 min-w-0 text-card-meta font-medium', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
                                     <Icon name="location_on" className="text-sm shrink-0" aria-hidden="true" />
-                                    <span className="truncate">{s.venueName}</span>
+                                    <span className="truncate">{rowVenueLabel(s)}</span>
                                   </span>
                                 )}
                               </span>
@@ -1435,13 +1580,36 @@ export function ClassForm({
                                 aria-label={`${idx + 1}회차 장소 선택`}
                               >
                                 <Icon name="location_on" className={cn('text-base', iceTheme ? 'text-it-ink-400' : 'text-wtext-3')} aria-hidden="true" />
-                                <span className={s.venueName ? '' : iceTheme ? 'text-it-ink-400' : 'text-wtext-3'}>
-                                  {s.venueName || '장소 선택'}
+                                <span className={(s.venueName || s.venueText) ? '' : iceTheme ? 'text-it-ink-400' : 'text-wtext-3'}>
+                                  {s.venueName || s.venueText || MESSAGES.class.dayDefaults.venueSelect}
                                 </span>
                                 <Icon name="chevron_right" className={cn('text-base ml-auto', iceTheme ? 'text-it-ink-300' : 'text-wtext-4')} aria-hidden="true" />
                               </button>
+                              {/* [venueText] 세부 장소 — 링크장(FK) 선택 시에만. */}
+                              {s.venueId && (
+                                <>
+                                <input
+                                  type="text"
+                                  value={s.venueText}
+                                  maxLength={100}
+                                  onChange={(e) => updateDateSchedule(s.key, { venueText: e.target.value })}
+                                  placeholder={MESSAGES.class.dayDefaults.venueTextPlaceholder}
+                                  aria-label={MESSAGES.class.dayDefaults.venueTextAria(`${idx + 1}회차`)}
+                                  className={
+                                    iceTheme
+                                      ? 'w-full h-10 px-3 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-sm font-medium text-it-ink-800 dark:text-white placeholder:text-it-ink-400 focus:outline-none focus:border-it-blue-500'
+                                      : 'w-full h-10 px-3 rounded-lg border border-wline dark:border-rink-700 bg-white dark:bg-rink-800 text-sm font-medium text-wtext-1 dark:text-white placeholder:text-wtext-3 focus:outline-none focus:border-ice-500'
+                                  }
+                                />
+                                {s.venueText.length >= 100 && (
+                                  <p role="status" className={cn('text-[11px] leading-[15px]', iceTheme ? 'text-it-ink-500 dark:text-rink-300' : 'text-wtext-3 dark:text-rink-300')}>
+                                    {MESSAGES.class.dayDefaults.venueTextMax(100)}
+                                  </p>
+                                )}
+                                </>
+                              )}
                               {formData.dateSchedules.length > 1 &&
-                                (s.startTime || s.endTime || s.venueId) && (
+                                (s.startTime || s.endTime || s.venueId || s.venueText) && (
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -1477,11 +1645,18 @@ export function ClassForm({
 
 
             {/* 훈련 장소 BottomSheet */}
-            {/* 훈련 장소 선택 — 공용 VenueSearchSheet (FK 전용: 자유 텍스트 [적용] 미노출) */}
+            {/* 훈련 장소 선택 — 공용 VenueSearchSheet. [venueText] 대회와 동일하게 자유 텍스트 [적용] 허용:
+                목록 탭 = 링크장(FK) + 아래 세부 장소 칸 / [적용] = 입력 텍스트가 장소 전부(마스터 미등록 장소). */}
             <VenueSearchSheet
               isOpen={venueSheetOpen}
               onClose={closeVenueSheet}
-              title={venueTargetDay ? `${venueTargetDay}요일 장소 선택` : '훈련 장소 선택'}
+              title={
+                venueTargetDay
+                  ? `${venueTargetDay}요일 장소 선택`
+                  : venueTargetDateKey
+                    ? '훈련 장소 선택'
+                    : MESSAGES.class.dayDefaults.defaultVenueSheetTitle
+              }
               selectedVenueId={
                 venueTargetDateKey
                   ? formData.dateSchedules.find((s) => s.key === venueTargetDateKey)?.venueId
@@ -1490,12 +1665,19 @@ export function ClassForm({
                     : formData.venueId
               }
               initialQuery={
-                (venueTargetDateKey
-                  ? formData.dateSchedules.find((s) => s.key === venueTargetDateKey)?.venueName
-                  : venueTargetDay
-                    ? formData.daySchedules.find((s) => s.dayOfWeek === venueTargetDay)?.venueName
-                    : formData.venue) ?? ''
+                (() => {
+                  // FK 선택 행은 링크장명, 자유 텍스트 행은 그 텍스트를 프리필(대회 폼 venue?.name ?? location 과 동일).
+                  const row = venueTargetDateKey
+                    ? formData.dateSchedules.find((s) => s.key === venueTargetDateKey)
+                    : venueTargetDay
+                      ? formData.daySchedules.find((s) => s.dayOfWeek === venueTargetDay)
+                      : { venueName: formData.venue, venueId: formData.venueId, venueText: formData.venueText };
+                  return (row?.venueId ? row.venueName : row?.venueText) ?? '';
+                })()
               }
+              allowFreeText
+              maxLength={100}
+              onApplyText={handleVenueApplyText}
               iceTheme={iceTheme}
               onSelectVenue={(v) => handleVenueSelect(v.id, v.name, v.address ?? '')}
             />

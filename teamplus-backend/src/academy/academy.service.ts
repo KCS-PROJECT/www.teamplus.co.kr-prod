@@ -622,6 +622,7 @@ export class AcademyService {
           select: { id: true, firstName: true, lastName: true, userType: true },
         },
         venue: { select: { id: true, name: true, address: true, city: true } },
+        venueText: true,
         // [2026-08-04] 수업 지역 — 오픈클래스 목록에도 "서울 강남구" 노출.
         regionCity: true,
         regionDistrict: true,
@@ -656,6 +657,7 @@ export class AcademyService {
             startTime: true,
             endTime: true,
             venueId: true,
+            venueText: true,
             venue: { select: { id: true, name: true } },
           },
         },
@@ -706,6 +708,8 @@ export class AcademyService {
         startTime: c.startTime,
         endTime: c.endTime,
         location: c.venue?.name ?? "",
+        // [venueText] 대표 장소 텍스트 — venue 있으면 세부 구역, 없으면 장소 전체. 목록 카드 "링크장 · 세부" 표시용.
+        venueText: c.venueText ?? null,
         venueAddress: c.venue?.address ?? "",
         // [2026-08-04] 지역 라벨 — 감독 선택값 우선, 없으면 장소 시/도 폴백(시군구 없음).
         regionLabel:
@@ -814,6 +818,7 @@ export class AcademyService {
               startTime: ds.startTime,
               endTime: ds.endTime,
               venueId: ds.venueId ?? null,
+              venueText: ds.venueText ?? null,
               venueName: ds.venue?.name ?? null,
             }));
         })(),

@@ -15,6 +15,7 @@
  *  - open        → Class.academyId IS NOT NULL
  *  - tournament  → Tournament 모델 (별 도메인)
  */
+import { formatVenueRef } from "@/lib/venue-display";
 
 import { MESSAGES } from '@/lib/messages';
 
@@ -253,6 +254,8 @@ export interface DaySchedule {
   endTime: string;
   venueId?: string | null;
   venueName?: string | null;
+  /** [venueText] venueName 있으면 세부 구역, 없으면 장소 전체(마스터 미등록 장소). */
+  venueText?: string | null;
 }
 
 // 한글 요일 정렬 우선순위 (월=0 … 일=6). DAY_OPTIONS(월→일) 컨벤션과 동일 SoT.
@@ -320,7 +323,8 @@ export function formatDaySchedulesShort(
 
 /**
  * 상세용 — "월 17:00 ~ 18:00 A링크장 / 수 19:00 ~ 20:00 B링크장" (장소 포함).
- * 장소(venueName)가 있으면 시간 뒤에 덧붙인다. 빈 배열이면 null → 호출부 폴백.
+ * 장소({venueName, venueText} — "링크장명 · 세부" 또는 텍스트 장소)가 있으면 시간 뒤에 덧붙인다.
+ * 빈 배열이면 null → 호출부 폴백.
  */
 export function formatDaySchedulesFull(
   items?: DaySchedule[] | null,
@@ -329,7 +333,8 @@ export function formatDaySchedulesFull(
   return sortDaySchedules(items)
     .map((d) => {
       const base = `${d.dayOfWeek} ${formatHHmmRange(d.startTime, d.endTime)}`.trim();
-      return d.venueName ? `${base} ${d.venueName}` : base;
+      const venue = formatVenueRef({ name: d.venueName, text: d.venueText });
+      return venue ? `${base} ${venue}` : base;
     })
     .join(' / ');
 }

@@ -3392,6 +3392,487 @@ describe("ClassesService", () => {
       expect(mockTx.classProduct.update).toHaveBeenCalledTimes(1);
     });
   });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // [venueText v5.2] 수업 장소 2필드 모델 — {venueId, venueText} 쌍 기록·부분 수정 계약·
+  //   per-Venue 잠금 참여. 설계 SoT: claudedocs/class-venue-detail-design-2026-08-13.md §3.4/§7
+  // ─────────────────────────────────────────────────────────────────────
+  describe("venueText — 수업 장소 2필드 모델 (설계 v5.2)", () => {
+    /** advisory lock 호출에 특정 키가 포함됐는지 — $queryRaw 는 tagged template(values 배열). */
+    const lockedKeys = () =>
+      mockTx.$queryRaw.mock.calls
+        .map((c: unknown[]) => JSON.stringify(c))
+        .filter((s: string) => s.includes("venue:"));
+
+    describe("createClass — W1 대표값 파생 + W2 3층 기록", () => {
+      const base = {
+        className: "장소 텍스트 수업",
+        instructorName: "김철수",
+        capacity: 10,
+        billingMode: "PREPAID",
+      };
+
+      // [기본 장소] 감독이 폼에서 입력한 DTO 루트 쌍이 행 파생보다 우선한다.
+      it("DTO 루트 기본 장소가 있으면 daySchedules 대표 행보다 우선해 대표 Class 에 승격한다", async () => {
+        jest
+          .spyOn(prismaService.team, "findUnique")
+          .mockResolvedValue(mockClub as any);
+        mockTx.class.create.mockResolvedValue({ ...mockClass, id: "c-new" } as any);
+
+        await service.createClass(mockCoachUserId, mockClubId, {
+          ...base,
+          venueId: "v-default",
+          venueText: " 1층 A실 ",
+          daySchedules: [
+            { dayOfWeek: "월", startTime: "17:00", endTime: "18:00", venueId: "vA", venueText: "A에리어" },
+          ],
+        } as any);
+
+        const created = mockTx.class.create.mock.calls[0][0].data;
+        expect(created.venueId).toBe("v-default");
+        expect(created.venueText).toBe("1층 A실");
+      });
+
+      it("daySchedules 가장 이른 요일 행의 {venueId, venueText} 를 같은 행에서 함께 승격한다", async () => {
+        jest
+          .spyOn(prismaService.team, "findUnique")
+          .mockResolvedValue(mockClub as any);
+        mockTx.class.create.mockResolvedValue({ ...mockClass, id: "c-new" } as any);
+
+        await service.createClass(mockCoachUserId, mockClubId, {
+          ...base,
+          daySchedules: [
+            { dayOfWeek: "수", startTime: "19:00", endTime: "20:00", venueId: "vB" },
+            {
+              dayOfWeek: "월",
+              startTime: "17:00",
+              endTime: "18:00",
+              venueId: "vA",
+              venueText: " A에리어 ",
+            },
+          ],
+        } as any);
+
+        const created = mockTx.class.create.mock.calls[0][0].data;
+        // 가장 이른(월 17:00) 행의 쌍 — 다른 행(수·vB) 과 교차 조합되지 않는다.
+        expect(created.venueId).toBe("vA");
+        expect(created.venueText).toBe("A에리어");
+        // 요일 기본값 3종 세트에도 쌍 기록(정규화 trim).
+        const rows = mockTx.classDaySchedule.createMany.mock.calls[0][0].data;
+        expect(rows).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ dayOfWeek: "월", venueId: "vA", venueText: "A에리어" }),
+            expect.objectContaining({ dayOfWeek: "수", venueId: "vB", venueText: null }),
+          ]),
+        );
+      });
+
+      it("자유 텍스트 장소 행(venueId 없음)도 그대로 승격 — 대표 Class = {null, text}", async () => {
+        jest
+          .spyOn(prismaService.team, "findUnique")
+          .mockResolvedValue(mockClub as any);
+        mockTx.class.create.mockResolvedValue({ ...mockClass, id: "c-new" } as any);
+
+        await service.createClass(mockCoachUserId, mockClubId, {
+          ...base,
+          daySchedules: [
+            { dayOfWeek: "월", startTime: "17:00", endTime: "18:00", venueText: "선학 1층" },
+          ],
+        } as any);
+
+        const created = mockTx.class.create.mock.calls[0][0].data;
+        expect(created.venueId).toBeNull();
+        expect(created.venueText).toBe("선학 1층");
+      });
+
+      // [Codex IMPL-R1-H1] 생성 tx 도 per-Venue 잠금 참여 — payload 전 venueId 를 class.create 보다 먼저 정렬 잠금.
+      it("W2 팀 생성: payload 의 모든 venueId(대표·요일·날짜별)를 class.create 보다 먼저 정렬 잠금한다", async () => {
+        jest
+          .spyOn(prismaService.team, "findUnique")
+          .mockResolvedValue(mockClub as any);
+        mockTx.class.create.mockResolvedValue({ ...mockClass, id: "c-new" } as any);
+
+        await service.createClass(mockCoachUserId, mockClubId, {
+          ...base,
+          venueId: "v-top",
+          daySchedules: [
+            { dayOfWeek: "월", startTime: "17:00", endTime: "18:00", venueId: "v-day" },
+          ],
+          dateSchedules: [
+            { date: "2099-01-05", startTime: "10:00", endTime: "11:00", venueId: "v-date" },
+          ],
+        } as any);
+
+        const venueLockCalls = mockTx.$queryRaw.mock.calls
+          .map((c: unknown[], i: number) => ({ json: JSON.stringify(c), order: mockTx.$queryRaw.mock.invocationCallOrder[i] }))
+          .filter((x) => x.json.includes("venue:"));
+        const keys = venueLockCalls.map((x) => x.json);
+        expect(keys.some((k) => k.includes("venue:v-top"))).toBe(true);
+        expect(keys.some((k) => k.includes("venue:v-day"))).toBe(true);
+        expect(keys.some((k) => k.includes("venue:v-date"))).toBe(true);
+        // 정렬 획득(v-date < v-day < v-top) + 전부 class.create 이전.
+        const createOrder = mockTx.class.create.mock.invocationCallOrder[0];
+        expect(venueLockCalls.every((x) => x.order < createOrder)).toBe(true);
+        expect(keys.map((k) => k.match(/venue:(v-[a-z]+)/)![1])).toEqual(["v-date", "v-day", "v-top"]);
+      });
+
+      it("W3 아카데미 생성: 동일하게 class.create 보다 먼저 venue 잠금 + 대표 행 쌍 승격", async () => {
+        jest.spyOn(prismaService.academy, "findUnique").mockResolvedValue({
+          id: "academy-vt",
+          directorId: mockCoachUserId,
+        } as any);
+        mockTx.class.create.mockResolvedValue({ ...mockClass, id: "c-new", academyId: "academy-vt" } as any);
+
+        await service.createAcademyClass(mockCoachUserId, "academy-vt", {
+          ...base,
+          trainingType: "lesson",
+          daySchedules: [
+            { dayOfWeek: "월", startTime: "17:00", endTime: "18:00", venueId: "vA", venueText: "A실" },
+          ],
+        } as any);
+
+        const created = mockTx.class.create.mock.calls[0][0].data;
+        expect(created).toEqual(expect.objectContaining({ venueId: "vA", venueText: "A실" }));
+        const lockOrders = mockTx.$queryRaw.mock.calls
+          .map((c: unknown[], i: number) => ({ json: JSON.stringify(c), order: mockTx.$queryRaw.mock.invocationCallOrder[i] }))
+          .filter((x) => x.json.includes("venue:vA"))
+          .map((x) => x.order);
+        expect(lockOrders).toHaveLength(1);
+        expect(lockOrders[0]).toBeLessThan(mockTx.class.create.mock.invocationCallOrder[0]);
+      });
+
+      // [기본 장소 R1-H1] W3 도 W2 와 같이 날짜 대표 행을 후보로 — 루트 없음 + 날짜 장소 + 요일 장소 → 날짜 pair.
+      it("W3 아카데미 생성: 기본 장소가 없으면 dateSchedules 대표 행이 daySchedules 행보다 우선한다", async () => {
+        jest.spyOn(prismaService.academy, "findUnique").mockResolvedValue({
+          id: "academy-vt",
+          directorId: mockCoachUserId,
+        } as any);
+        mockTx.class.create.mockResolvedValue({ ...mockClass, id: "c-new", academyId: "academy-vt" } as any);
+
+        await service.createAcademyClass(mockCoachUserId, "academy-vt", {
+          ...base,
+          trainingType: "lesson",
+          daySchedules: [
+            { dayOfWeek: "월", startTime: "17:00", endTime: "18:00", venueId: "vA", venueText: "A실" },
+          ],
+          dateSchedules: [
+            { date: "2099-01-05", startTime: "10:00", endTime: "11:00", venueId: "v-date", venueText: " 2층 " },
+          ],
+        } as any);
+
+        const created = mockTx.class.create.mock.calls[0][0].data;
+        expect(created).toEqual(expect.objectContaining({ venueId: "v-date", venueText: "2층" }));
+      });
+
+      it("대표 행에 장소가 전혀 없으면 DTO 최상위 쌍으로 폴백하고 공백 텍스트는 null 로 정규화한다", async () => {
+        jest
+          .spyOn(prismaService.team, "findUnique")
+          .mockResolvedValue(mockClub as any);
+        mockTx.class.create.mockResolvedValue({ ...mockClass, id: "c-new" } as any);
+
+        await service.createClass(mockCoachUserId, mockClubId, {
+          ...base,
+          venueId: "v-dto",
+          venueText: "   ",
+          daySchedules: [{ dayOfWeek: "월", startTime: "17:00", endTime: "18:00" }],
+        } as any);
+
+        const created = mockTx.class.create.mock.calls[0][0].data;
+        expect(created.venueId).toBe("v-dto");
+        expect(created.venueText).toBeNull();
+      });
+    });
+
+    describe("updateClass — W4 대표 Class 부분 수정 + per-Venue 잠금 (v5.2 §3.4-F)", () => {
+      const primeUpdate = (txVenue: { venueId: string | null; venueText: string | null }[]) => {
+        // tx 밖 classRecord 는 의도적으로 '낡은' venueId — 잠금 후 재조회값만 써야 한다.
+        jest
+          .spyOn(prismaService.class, "findUnique")
+          .mockResolvedValue({ ...mockClass, venueId: "stale-outside-tx", venueText: null } as any);
+        jest.spyOn(prismaService.classCoachAssignment, "findMany").mockResolvedValue([] as any);
+        mockTx.class.findUnique
+          .mockResolvedValueOnce(txVenue[0] as any) // 잠금 전 현재 키
+          .mockResolvedValueOnce(txVenue[1] as any); // 잠금 후 재검증
+        mockTx.class.update.mockResolvedValue({
+          ...mockClass,
+          team: { name: "서울 아이스 클럽" },
+        } as any);
+      };
+
+      it("venueText 단독 전송(venueId 미전송)은 tx 내 현재 venueId 를 잠그고 텍스트만 갱신한다", async () => {
+        primeUpdate([
+          { venueId: "v-cur", venueText: "A실" },
+          { venueId: "v-cur", venueText: "A실" },
+        ]);
+
+        await service.updateClass(mockCoachUserId, mockClubId, mockClassId, {
+          venueText: " B실 ",
+        } as any);
+
+        const data = mockTx.class.update.mock.calls[0][0].data;
+        expect(data.venueId).toBe("v-cur"); // tx 밖 'stale-outside-tx' 폴백 금지
+        expect(data.venueText).toBe("B실");
+        expect(lockedKeys().some((k) => k.includes("venue:v-cur"))).toBe(true);
+      });
+
+      it("venueId 전송 시 venueText 미전송이면 세부를 null 로 동반 확정한다(이전 링크장 세부 잔존 금지)", async () => {
+        primeUpdate([
+          { venueId: "v-cur", venueText: "A실" },
+          { venueId: "v-cur", venueText: "A실" },
+        ]);
+
+        await service.updateClass(mockCoachUserId, mockClubId, mockClassId, {
+          venueId: "v-new",
+        } as any);
+
+        const data = mockTx.class.update.mock.calls[0][0].data;
+        expect(data).toEqual(expect.objectContaining({ venueId: "v-new", venueText: null }));
+        // 현재 키 + 신규 키 모두 잠금.
+        const keys = lockedKeys();
+        expect(keys.some((k) => k.includes("venue:v-cur"))).toBe(true);
+        expect(keys.some((k) => k.includes("venue:v-new"))).toBe(true);
+      });
+
+      it("잠금 대기 중 Venue 삭제로 현재 venueId 가 바뀌었으면 409 VENUE_CHANGED — 승격 텍스트를 덮지 않는다", async () => {
+        primeUpdate([
+          { venueId: "v-cur", venueText: "A실" },
+          { venueId: null, venueText: "선학빙상장 A실" }, // 삭제 승격 후
+        ]);
+
+        await expect(
+          service.updateClass(mockCoachUserId, mockClubId, mockClassId, {
+            venueText: "B실",
+          } as any),
+        ).rejects.toMatchObject({
+          response: expect.objectContaining({ errorCode: "VENUE_CHANGED" }),
+        });
+        expect(mockTx.class.update).not.toHaveBeenCalled();
+      });
+
+      it("둘 다 미전송이면 잠금 후 재조회 쌍을 그대로 보존한다", async () => {
+        primeUpdate([
+          { venueId: "v-cur", venueText: "A실" },
+          { venueId: "v-cur", venueText: "A실" },
+        ]);
+
+        await service.updateClass(mockCoachUserId, mockClubId, mockClassId, {
+          className: "이름만 변경",
+        } as any);
+
+        const data = mockTx.class.update.mock.calls[0][0].data;
+        expect(data).toEqual(expect.objectContaining({ venueId: "v-cur", venueText: "A실" }));
+      });
+    });
+
+    // [Codex IMPL-R1-M1] W5 — 팀 updateClass 와 대칭(현재 venueId 잠금 · 잠금 후 재검증 409 · tx 밖 폴백 금지).
+    describe("updateAcademyClass — W5 대표 Class 부분 수정 + per-Venue 잠금 (v5.2 §3.4-F)", () => {
+      const ACADEMY = "academy-vt";
+      const primeAcademyUpdate = (
+        txVenue: { venueId: string | null; venueText: string | null }[],
+      ) => {
+        jest.spyOn(prismaService.academy, "findUnique").mockResolvedValue({
+          id: ACADEMY,
+          directorId: mockCoachUserId,
+        } as any);
+        jest.spyOn(prismaService.class, "findUnique").mockResolvedValue({
+          ...mockClass,
+          teamId: null,
+          academyId: ACADEMY,
+          trainingType: "lesson",
+          venueId: "stale-outside-tx",
+          venueText: null,
+        } as any);
+        mockTx.class.findUnique
+          .mockResolvedValueOnce(txVenue[0] as any)
+          .mockResolvedValueOnce(txVenue[1] as any);
+        mockTx.class.update.mockResolvedValue({ ...mockClass, academyId: ACADEMY } as any);
+      };
+
+      it("venueText 단독 전송 → 현재 venueId 잠금 + 텍스트만 갱신(tx 밖 classRecord 폴백 금지)", async () => {
+        primeAcademyUpdate([
+          { venueId: "v-cur", venueText: "A실" },
+          { venueId: "v-cur", venueText: "A실" },
+        ]);
+        await service.updateAcademyClass(mockCoachUserId, ACADEMY, mockClassId, {
+          venueText: " B실 ",
+        } as any);
+        const data = mockTx.class.update.mock.calls[0][0].data;
+        expect(data).toEqual(expect.objectContaining({ venueId: "v-cur", venueText: "B실" }));
+        expect(lockedKeys().some((k) => k.includes("venue:v-cur"))).toBe(true);
+      });
+
+      it("venueId 전송 시 venueText 미전송 → 세부 null 동반 확정 + 현재·신규 키 잠금", async () => {
+        primeAcademyUpdate([
+          { venueId: "v-cur", venueText: "A실" },
+          { venueId: "v-cur", venueText: "A실" },
+        ]);
+        await service.updateAcademyClass(mockCoachUserId, ACADEMY, mockClassId, {
+          venueId: "v-new",
+        } as any);
+        const data = mockTx.class.update.mock.calls[0][0].data;
+        expect(data).toEqual(expect.objectContaining({ venueId: "v-new", venueText: null }));
+        const keys = lockedKeys();
+        expect(keys.some((k) => k.includes("venue:v-cur"))).toBe(true);
+        expect(keys.some((k) => k.includes("venue:v-new"))).toBe(true);
+      });
+
+      it("잠금 후 재조회에서 venueId 가 바뀌었으면(삭제 승격) 409 VENUE_CHANGED", async () => {
+        primeAcademyUpdate([
+          { venueId: "v-cur", venueText: "A실" },
+          { venueId: null, venueText: "선학빙상장 A실" },
+        ]);
+        await expect(
+          service.updateAcademyClass(mockCoachUserId, ACADEMY, mockClassId, {
+            venueText: "B실",
+          } as any),
+        ).rejects.toMatchObject({
+          response: expect.objectContaining({ errorCode: "VENUE_CHANGED" }),
+        });
+        expect(mockTx.class.update).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("applyScheduleDraft — W8 edits/additions 쌍 계약 (v5.2 §3.4-B′)", () => {
+      const OP = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+      const BASE = new Date("2026-09-01T10:00:00.000Z");
+      const future = new Date(Date.now() + 7 * 86400000);
+      const primeDraft = (rowVenueId: string | null) => {
+        jest.spyOn(prismaService.class, "findUnique").mockResolvedValue({
+          id: mockClassId,
+          teamId: mockClubId,
+          academyId: null,
+          trainingType: "regular",
+        } as any);
+        mockTx.classSchedule.findMany.mockResolvedValue([
+          {
+            id: "sch-1",
+            classId: mockClassId,
+            scheduledDate: future,
+            isCancelled: false,
+            updatedAt: BASE,
+            venueId: rowVenueId,
+          },
+        ] as any);
+      };
+      const edit = (extra: Record<string, unknown>) =>
+        service.applyScheduleDraft(
+          mockCoachUserId,
+          mockClassId,
+          {
+            operationId: OP,
+            additions: [],
+            edits: [{ scheduleId: "sch-1", baseUpdatedAt: BASE.toISOString(), ...extra }],
+            cancellations: [],
+          } as any,
+          { teamId: mockClubId },
+        );
+      const editData = () => mockTx.classSchedule.updateMany.mock.calls[0][0].data;
+
+      it("venueId 전송 + venueText 미전송 → 쌍 동반 확정(venueText null)", async () => {
+        primeDraft("v-old");
+        await edit({ venueId: "v2" });
+        expect(editData()).toEqual(expect.objectContaining({ venueId: "v2", venueText: null }));
+        // 대상 행 현재 키(v-old) + 신규 키(v2) 잠금.
+        const keys = lockedKeys();
+        expect(keys.some((k) => k.includes("venue:v-old"))).toBe(true);
+        expect(keys.some((k) => k.includes("venue:v2"))).toBe(true);
+      });
+
+      it("venueId 빈 문자열 + venueText 미전송 → 쌍 전체 해제(null, null)", async () => {
+        primeDraft("v-old");
+        await edit({ venueId: "" });
+        expect(editData()).toEqual(expect.objectContaining({ venueId: null, venueText: null }));
+      });
+
+      it("venueId 빈 문자열 + venueText 전송 → 자유 텍스트 장소로 전환 {null, text} (프론트 [적용] 경로)", async () => {
+        primeDraft("v-old");
+        await edit({ venueId: "", venueText: " 인천 선학빙상장 1층 " });
+        expect(editData()).toEqual(
+          expect.objectContaining({ venueId: null, venueText: "인천 선학빙상장 1층" }),
+        );
+      });
+
+      it("venueText 단독 전송 → venueId 키 없이 텍스트만 갱신 (기존 venueId 유무 무관, 재조회 불필요)", async () => {
+        primeDraft(null); // 자유 텍스트 장소 행
+        await edit({ venueText: " 선학 2층 " });
+        const data = editData();
+        expect(data).not.toHaveProperty("venueId");
+        expect(data.venueText).toBe("선학 2층");
+      });
+
+      it("additions 는 {venueId, venueText} 쌍을 정규화해 createMany 에 싣는다", async () => {
+        primeDraft("v-old");
+        mockTx.classSchedule.createMany.mockResolvedValue({ count: 1 } as any);
+        const d = new Date(Date.now() + 14 * 86400000);
+        const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        await service.applyScheduleDraft(
+          mockCoachUserId,
+          mockClassId,
+          {
+            operationId: OP,
+            additions: [{ date, startTime: "17:00", endTime: "18:00", venueText: " 선학 1층 " }],
+            edits: [],
+            cancellations: [],
+          } as any,
+          { teamId: mockClubId },
+        );
+        const rows = mockTx.classSchedule.createMany.mock.calls[0][0].data;
+        expect(rows[0]).toEqual(expect.objectContaining({ venueId: null, venueText: "선학 1층" }));
+      });
+    });
+
+    describe("updateClassSchedule — W7 레거시 단건 수정 쌍 계약 + 잠금 후 재검증", () => {
+      const primeSchedule = (rowVenueId: string | null, lockedVenueId: string | null) => {
+        jest.spyOn(prismaService.classSchedule, "findUnique").mockResolvedValue({
+          id: mockScheduleId,
+          classId: mockClassId,
+          scheduledDate: new Date(Date.now() + 7 * 86400000),
+          isCancelled: false,
+          venueId: rowVenueId,
+          class: { id: mockClassId, teamId: mockClubId, academyId: null },
+        } as any);
+        mockTx.classSchedule.findUnique.mockResolvedValue({ venueId: lockedVenueId } as any);
+        mockTx.classSchedule.findUniqueOrThrow.mockResolvedValue({
+          id: mockScheduleId,
+          classId: mockClassId,
+          scheduledDate: new Date(),
+          startTime: null,
+          endTime: null,
+          venue: null,
+          venueText: "B실",
+          isCancelled: false,
+          updatedAt: new Date(),
+        } as any);
+      };
+      const data = () => mockTx.classSchedule.updateMany.mock.calls[0][0].data;
+
+      it("venueText 단독 전송 → 텍스트만 갱신, 현재 venueId 잠금", async () => {
+        primeSchedule("v-cur", "v-cur");
+        const res = await service.updateClassSchedule(mockCoachUserId, mockScheduleId, {
+          venueText: "B실",
+        });
+        expect(data()).toEqual({ venueText: "B실" });
+        expect(res.venueText).toBe("B실");
+        expect(lockedKeys().some((k) => k.includes("venue:v-cur"))).toBe(true);
+      });
+
+      it("venueId 전송 시 venueText 미전송 → 세부 null 동반 확정", async () => {
+        primeSchedule("v-cur", "v-cur");
+        await service.updateClassSchedule(mockCoachUserId, mockScheduleId, { venueId: "v2" });
+        expect(data()).toEqual({ venueId: "v2", venueText: null });
+      });
+
+      it("잠금 후 재조회에서 venueId 가 달라졌으면(삭제 승격) 409 VENUE_CHANGED", async () => {
+        primeSchedule("v-cur", null);
+        await expect(
+          service.updateClassSchedule(mockCoachUserId, mockScheduleId, { venueText: "B실" }),
+        ).rejects.toMatchObject({
+          response: expect.objectContaining({ errorCode: "VENUE_CHANGED" }),
+        });
+        expect(mockTx.classSchedule.updateMany).not.toHaveBeenCalled();
+      });
+    });
+  });
 });
 
 describe("buildClassProducts — spot 선불 단건", () => {

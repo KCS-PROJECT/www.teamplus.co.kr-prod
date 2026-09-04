@@ -167,7 +167,14 @@ export class ClassesExploreService {
    * ⚠️ 수강생 개인정보는 일절 포함하지 않는다(비로그인도 호출 가능한 경로).
    */
   private toCard(row: ExploreClassRow) {
-    const venue = row.venue ?? row.team?.homeVenue ?? null;
+    // [venueText] 장소 우선순위: 수업 링크장(FK) → 수업 텍스트 장소(venueId 없이 venueText) → 팀 홈링크장.
+    //   텍스트 장소는 그 자체가 장소 전체라 홈링크장 이름과 결합하지 않는다(교차 조합 금지).
+    //   지역 라벨의 시/도 폴백은 기존대로 링크장(수업 → 홈) 도시를 쓴다.
+    const ownVenue = row.venue ?? null;
+    const homeVenue = row.team?.homeVenue ?? null;
+    const textOnlyVenue = !ownVenue && !!row.venueText;
+    const venue = ownVenue ?? (textOnlyVenue ? null : homeVenue);
+    const regionVenue = ownVenue ?? homeVenue;
     const cheapest = row.products[0] ?? null;
     const enrolledCount = row._count.registrations;
     // capacity 0 = 무제한(생성 폼에서 미입력 시 0). 잔여석 개념이 없으므로 null.
@@ -204,13 +211,15 @@ export class ClassesExploreService {
             address: venue.address,
           }
         : null,
+      // [venueText] venue 있으면 세부 구역, 없으면 장소 전체. 홈링크장 폴백 시엔 항상 null(수업 텍스트가 없을 때만 폴백).
+      venueText: row.venueText ?? null,
       // [2026-08-04] 수업 지역 — 카드에 "서울 강남구" 로 노출해 타지역 오등록을 막는다.
       //   감독 선택값이 없으면(구 데이터) 장소 시/도로 폴백 — 이때 시군구는 표시되지 않는다.
       regionCity: row.regionCity,
       regionDistrict: row.regionDistrict,
       regionLabel:
         formatRegionLabel(row.regionCity, row.regionDistrict) ??
-        venue?.city ??
+        regionVenue?.city ??
         null,
       daySchedules: [...row.dayScheduleEntries].sort(
         (a, b) =>
@@ -266,6 +275,7 @@ const EXPLORE_CLASS_SELECT = {
   },
   academy: { select: { id: true, name: true, imageUrl: true } },
   venue: { select: { id: true, name: true, city: true, address: true } },
+  venueText: true,
   dayScheduleEntries: {
     select: { dayOfWeek: true, startTime: true, endTime: true },
   },

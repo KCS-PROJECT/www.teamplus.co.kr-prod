@@ -5,6 +5,7 @@ import { Icon } from '@/components/ui/Icon';
 import { MESSAGES } from '@/lib/messages';
 import { cn } from '@/lib/utils';
 import type { ExploreClassItem } from '@/services/class-explore.service';
+import { formatVenueRef } from '@/lib/venue-display';
 
 /**
  * ExploreClassCard — 전국 수업 찾기 목록 카드.
@@ -63,6 +64,7 @@ function ExploreClassCardBase({ item, onPress }: ExploreClassCardProps) {
     ? TRAINING_TYPE_LABEL[item.trainingType]
     : null;
   const isFull = item.remainingSeats === 0;
+  const venueLabel = formatVenueRef({ name: item.venue?.name, text: item.venueText });
 
   return (
     <button
@@ -96,7 +98,7 @@ function ExploreClassCardBase({ item, onPress }: ExploreClassCardProps) {
 
       {/* 지역 · 장소 — [2026-08-04] 지역(시군구 포함)을 앞에 굵게 둔다.
           전국 목록이라 "어디서 하는 수업인지" 가 가장 먼저 읽혀야 타지역 오등록을 막는다. */}
-      {(item.regionLabel || item.venue) && (
+      {(item.regionLabel || venueLabel) && (
         <p className="mt-2 flex items-center gap-1.5 text-[13px] font-medium text-it-ink-500 dark:text-wtext-4">
           <Icon name="place" className="text-[16px] shrink-0" aria-hidden="true" />
           <span className="truncate">
@@ -105,7 +107,7 @@ function ExploreClassCardBase({ item, onPress }: ExploreClassCardProps) {
                 {item.regionLabel}
               </span>
             )}
-            {item.venue?.name && `${item.regionLabel ? ' · ' : ''}${item.venue.name}`}
+            {venueLabel && `${item.regionLabel ? ' · ' : ''}${venueLabel}`}
           </span>
         </p>
       )}

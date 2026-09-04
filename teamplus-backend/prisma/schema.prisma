@@ -642,6 +642,12 @@ model Class {
   rejectionReason  String?         @map("rejection_reason")
   coachId          String?         @map("coach_id")
   venueId          String?         @map("venue_id")
+  /// 장소 텍스트 — venueId(링크장 마스터)가 있으면 그 안의 세부 구역("1층 A실"),
+  /// 없으면 마스터에 없는 장소 전체("인천 선학빙상장 1층 A실"). Tournament.location 과 동일 의미.
+  /// 표기 전용(충돌·정산·지역 탐색 판정 금지). 두 필드는 독립(DB 제약 없음) — 결합 규칙:
+  ///   ① FE 는 링크장 선택/변경/해제 시 venueText 를 초기화한다
+  ///   ② Venue 삭제 시 onDelete:SetNull 이전에 참조 행의 venueText 를 "venue.name + ' ' + venueText" 로 승격한다
+  venueText        String?         @map("venue_text") @db.VarChar(100)
   classDays        Json?           @map("class_days") @db.JsonB
   category         String?         @map("category") // KIDS|JUNIOR|ADULT
   requiredCoaches  Int             @default(1) @map("required_coaches") /// 필요 코치 수
@@ -816,6 +822,8 @@ model ClassDaySchedule {
   startTime String   @map("start_time") // "HH:mm" 문자열
   endTime   String   @map("end_time") // "HH:mm" 문자열
   venueId   String?  @map("venue_id")
+  /// 장소 텍스트 — Class.venueText 와 동일 의미(venueId 있으면 세부 구역, 없으면 장소 전체).
+  venueText String?  @map("venue_text") @db.VarChar(100)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -837,6 +845,8 @@ model ClassSchedule {
   startTime          String?   @map("start_time") /// "HH:mm"
   endTime            String?   @map("end_time") /// "HH:mm"
   venueId            String?   @map("venue_id")
+  /// 장소 텍스트 — Class.venueText 와 동일 의미(venueId 있으면 세부 구역, 없으면 장소 전체).
+  venueText          String?   @map("venue_text") @db.VarChar(100)
   isCancelled        Boolean   @default(false) @map("is_cancelled")
   cancellationReason String?   @map("cancellation_reason")
   rsvpDeadline       DateTime? @map("rsvp_deadline") @db.Timestamptz(3) /// RSVP 마감 시간 (null이면 수업 시작 24시간 전 자동 계산)

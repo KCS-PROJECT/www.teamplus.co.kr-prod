@@ -159,9 +159,9 @@ export const MESSAGES = {
         `${n}건은 다른 곳에서 먼저 변경되어 반영하지 못했습니다. 목록을 확인한 뒤 다시 저장해주세요.`,
       // DB cancellationReason 에 저장되는 기본 사유 (학부모 표면 노출 가능 문구).
       draftCancelReason: "감독/코치 취소",
-      saveTimeUndecidedTitle: "시간 미정 회차",
-      saveTimeUndecidedConfirm: (n: number) =>
-        `시간 미정 회차 ${n}건이 포함되어 있습니다. 이대로 저장할까요?`,
+      // 저장 시 시간 필수 — 추가·수정 draft 에 시간 미정 회차가 있으면 저장 차단(등록 폼과 동일 정책).
+      saveTimeRequired: (n: number) =>
+        `시간 미정 회차 ${n}건이 있어요. 시간을 입력한 뒤 저장해주세요.`,
       prepLockedHint: "일정 변경을 저장한 뒤 진행할 수 있어요.",
       // 월분 갱신 제안 금액 — 대상월 실제 일정 수 × 1회 수업료(참고 단가). 눌러서 적용.
       // 제안 금액 계산 — 회차 스테퍼(단가 × 회수) + 요일별 회차 정보 텍스트.
@@ -230,6 +230,19 @@ export const MESSAGES = {
       startTime: "시작 시간",
       endTime: "종료 시간",
       venueSelect: "장소 선택",
+      // [venueText] 장소 2필드 모델 — 링크장 선택 시 세부 구역 / 목록에 없으면 [적용]으로 텍스트 장소.
+      venueTextLabel: "세부 장소",
+      venueTextPlaceholder: "세부 장소 (예: 제1빙상장, A경기장, 주경기장)",
+      venueTextMax: (max: number) => `최대 ${max}자`,
+      venueTextAria: (target: string) => `${target} 세부 장소`,
+      venueSheetTitle: "장소 선택",
+      // [기본 장소] 수업 대표 장소 직접 입력 — 요일·날짜 행 추가 시 자동 채움(행별 독립 수정).
+      defaultVenueLabel: "기본 장소",
+      defaultVenueHint:
+        "이 수업의 대표 장소예요. 요일·날짜 일정을 추가할 때 자동으로 채워지고, 일정마다 따로 바꿀 수 있어요.",
+      defaultVenueSheetTitle: "기본 장소 선택",
+      defaultVenueApplyAll: "모든 요일에 기본 장소 적용",
+      defaultVenueAppliedAll: "모든 요일에 기본 장소를 적용했어요.",
       // 일정 추가 바텀시트 — 요일 칩 우선 흐름(§9).
       quickSelect: "요일 빠른 선택",
       quickSelectHint:

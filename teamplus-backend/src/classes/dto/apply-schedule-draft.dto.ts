@@ -38,6 +38,16 @@ export class ApplyDraftAdditionDto {
   @IsOptional()
   @IsString()
   venueId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      '장소 텍스트 — venueId 있으면 세부 구역, 없으면 장소 전체. 최대 100자.',
+    example: "1층 A실",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100, { message: "장소 텍스트는 100자 이하여야 합니다." })
+  venueText?: string;
 }
 
 export class ApplyDraftEditDto {
@@ -66,6 +76,15 @@ export class ApplyDraftEditDto {
   @IsOptional()
   @IsString()
   venueId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "장소 텍스트 — venueId 전송 시 함께 확정(미전송 = null), 단독 전송 시 텍스트만 갱신. 빈 문자열 = 삭제. 최대 100자.",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100, { message: "장소 텍스트는 100자 이하여야 합니다." })
+  venueText?: string;
 }
 
 export class ApplyDraftCancellationDto {

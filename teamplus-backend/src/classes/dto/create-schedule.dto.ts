@@ -6,6 +6,7 @@ import {
   IsIn,
   ArrayMinSize,
   IsString,
+  MaxLength,
 } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
@@ -83,6 +84,15 @@ export class CreateBulkScheduleDto {
   @IsOptional()
   @IsString({ message: "장소 ID는 문자열이어야 합니다." })
   venueId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "공통 장소 텍스트 — venueId 있으면 세부 구역, 없으면 장소 전체. 최대 100자.",
+  })
+  @IsOptional()
+  @IsString({ message: "장소 텍스트는 문자열이어야 합니다." })
+  @MaxLength(100, { message: "장소 텍스트는 100자 이하여야 합니다." })
+  venueText?: string;
 }
 
 /** 개별 회차 시간·장소 수정 (PUT :classId/schedules/:scheduleId) — 전달된 필드만 부분 반영. */
@@ -103,4 +113,13 @@ export class UpdateScheduleDto {
   @IsOptional()
   @IsString({ message: "장소 ID는 문자열이어야 합니다." })
   venueId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "장소 텍스트 — venueId 전송 시 함께 확정(미전송 = null), 단독 전송 시 텍스트만 갱신. 빈 문자열 = 삭제. 최대 100자.",
+  })
+  @IsOptional()
+  @IsString({ message: "장소 텍스트는 문자열이어야 합니다." })
+  @MaxLength(100, { message: "장소 텍스트는 100자 이하여야 합니다." })
+  venueText?: string;
 }
