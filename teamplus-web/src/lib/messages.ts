@@ -2703,6 +2703,10 @@ export const MESSAGES = {
     groupDeleteConfirm: "이 하위그룹을 삭제하시겠습니까?",
     groupDeleteSuccess: "하위그룹이 삭제되었습니다.",
     groupMemberCountLabel: (n: number) => `회원 ${n}명`,
+    // 하위그룹 목록 행 — 탭=수정, ⋮=액션 시트(수정/삭제)
+    groupRowAria: (name: string) => `${name} 수정하기`,
+    groupActionsAria: (name: string) => `${name} 관리 메뉴`,
+    groupActionsTitle: "하위그룹 관리",
 
     // 팀 코드 (자녀 등록 시 팀 가입 신청 · 설계서 §4.5, 필수 입력)
     codeLabel: "팀 코드",
@@ -3141,6 +3145,33 @@ export const MESSAGES = {
     // 로스터 모달 submit 버튼 라벨 (한글 표준 버튼 라벨, MESSAGES SoT 일관화)
     rosterSubmit: "등록하기",
     rosterSubmitEdit: "수정하기",
+
+    // 내 팀 홈 — 감독·코치(관리 팀 1개)가 하단 탭 "팀"으로 진입했을 때의 화면
+    titleHome: "내 팀",
+    homeAria: (teamName: string) => `${teamName} 팀 홈`,
+    homeHeroCounts: (players: number, staff: number) =>
+      `선수 ${players}명 · 감독/코치 ${staff}명`,
+    homePendingTitle: "감독님 승인을 기다리고 있어요",
+    homePendingHint: "승인이 완료되면 팀 홈이 열립니다.",
+    homeTodoSection: "처리 필요",
+    homeTodoPending: (count: number) => `가입 신청 ${count}건 승인 대기`,
+    homeNextSection: "다음 일정",
+    homeNextViewAll: "일정 보기",
+    homeNextToday: "오늘",
+    homeNextTomorrow: "내일",
+    homeEventPractice: "연습",
+    homeEventMatch: "경기",
+    homeManageSection: "팀 관리",
+    homeMenuRoster: "선수 명단",
+    homeMenuRosterMeta: (count: number) => `${count}명`,
+    homeMenuStaff: "감독·코치",
+    homeMenuStaffMeta: (head: number, coach: number) => `감독 ${head} · 코치 ${coach}`,
+    homeMenuGroups: "하위그룹",
+    homeMenuGroupsEmpty: "아직 그룹이 없어요",
+    homeMenuNotices: "팀 공지",
+    homeMenuNoticesMeta: "공지 작성 · 관리",
+    homeMenuInfo: "팀 정보",
+    homeMenuInfoMeta: "슬로건 · 소개 · 수정하기",
   },
   academy: {
     created: "오픈클래스가 등록되었습니다.",

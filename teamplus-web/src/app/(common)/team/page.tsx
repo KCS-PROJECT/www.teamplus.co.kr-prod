@@ -1,7 +1,12 @@
 "use client";
 
 /**
- * /team — 팀 목록 (관리 + 조회 겸용)
+ * /team — 역할별 3분기
+ *
+ *  - 감독·코치(관리 팀 1개): 내 팀 홈(MyTeamHome). 팀 1개 원칙에서 목록은 카드 1장뿐이라
+ *    목록 대신 팀 운영 허브를 그린다. 승인 대기 코치는 안내 화면.
+ *  - ADMIN(팀 다건): 관리 팀 카드 목록 → /team/[id].
+ *  - 학부모: 우리 아이 팀 카드 목록 → /team/[id].
  *
  * TEAMPLUS 디자인 7원칙 준수:
  *  ① 화면 분석 → 사용자 제공 HTML "팀 목록" 레퍼런스 기반
@@ -11,10 +16,6 @@
  *  ⑤ 명령어 필수 → 역할별 CRUD 분기 명령 중심
  *  ⑥ 원칙 표기 → 본 주석 + 하단 design-notes
  *  ⑦ 한글 존댓말 + MESSAGES 상수
- *
- * 권한 분기:
- *  - ADMIN/DIRECTOR/COACH: FAB(등록하기) + 카드 진입 시 관리 메뉴 노출
- *  - PARENT/TEEN/CHILD: 조회 전용
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -24,8 +25,13 @@ import { SubmainAppBar } from "@/components/layout/SubmainAppBar";
 import { Icon } from "@/components/ui/Icon";
 import { useToast } from "@/components/ui/Toast";
 import { EmptyState } from "@/components/ui/EmptyState";
-// 2026-04-12 재디자인 공통 컴포넌트 (학부모/일반 조회 뷰용)
-import { TeamListCard, TeamSearchBar } from "@/components/team";
+import {
+  MyTeamHome,
+  TeamListCard,
+  TeamSearchBar,
+  formatNextEventDate,
+  formatNextEventTime,
+} from "@/components/team";
 import { usePageReady } from '@/hooks/usePageReady';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { useSessionAuth } from "@/hooks/useSessionAuth";
@@ -42,13 +48,7 @@ import {
   type ParentChildTeamItem,
   type TeamListItem,
 } from "@/services/team.service";
-import { teamGroupService, type TeamGroupSummary, type TeamGroupMemberRow } from "@/services/team-group.service";
 
-// ─── 필터 정의 ───────────────────────────────────────────
-// [수정 2026-05-18 W2.B #1] 팀 카테고리 vs 하위그룹 카테고리 혼재 해소.
-//   기존: 팀 카테고리 칩에 U8/U9 등 하위그룹 카테고리가 표시되어 선택 시 리스트 비어짐.
-//   변경: 팀 카테고리는 '전체' 단일 (또는 부문 단일 필터)로 변경.
-//          하위그룹 U8/U9 는 팀 상세 화면(/team/[id]/groups) 내에서만 표시.
 // ─── 권한 유틸 ───────────────────────────────────────────
 function useCanManageTeams() {
   const { user } = useSessionAuth();
@@ -60,7 +60,10 @@ function useIsParent() {
   return user?.userType === "parent";
 }
 
-// 로고 폴백 컬러 및 `resolveLogoColor` 는 `TeamListCard` 로 이관 (2026-04-12).
+function useIsAdmin() {
+  const { user } = useSessionAuth();
+  return user?.userType === "admin";
+}
 
 // ─── 클라이언트 필터 로직 (공통) ──────────────────────
 /**
@@ -86,36 +89,40 @@ export default function TeamListPage() {
   const { toast } = useToast();
   const canManage = useCanManageTeams();
   const isParent = useIsParent();
-  // [BUG FIX 2026-05-19 W3 #5] 가입 신청 처리 라우팅 분기를 위해 user 가져옴 — 역할별 분기.
+  const isAdmin = useIsAdmin();
   const { user } = useSessionAuth();
 
   const [teams, setTeams] = useState<TeamListItem[]>([]);
   // 학부모 전용 뷰 상태
   const [myChildTeams, setMyChildTeams] = useState<ParentChildTeamItem[]>([]);
-  const [clubTeams, setClubTeams] = useState<TeamListItem[]>([]);
   const [totalChildren, setTotalChildren] = useState(0);
 
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  // 내 팀 홈은 상세·멤버 집계를 추가로 fetch 하므로, 홈이 준비됐다고 알릴 때까지 로더 유지.
+  const [homeReady, setHomeReady] = useState(false);
 
+  // 감독·코치가 관리 팀 1개를 가진 경우 → 목록 대신 내 팀 홈. ADMIN 은 전체 팀 다건이라 목록 유지.
+  const isManagerView = canManage && !isParent;
+  const soloTeam = isManagerView && !isAdmin && teams.length === 1 ? teams[0] : null;
+  const isPendingSolo = soloTeam?.myApprovalStatus === 'pending';
+  const showHome = !!soloTeam && !isPendingSolo;
 
-  // 풀스크린 로더 fast-path (v11) — fetch 완료 시점에 PageTransitionLoader OFF
+  const isReady = !isLoading && (!showHome || homeReady);
 
-  usePageReady(!isLoading);
+  // 풀스크린 로더 fast-path (v11) — 목록 fetch + (홈이면) 홈 데이터까지 끝난 뒤 OFF
+  usePageReady(isReady);
 
-  // [2026-05-09] Native (Flutter WebView) UI 상태 복원.
-  //   탭 전환 시 LoadingContext 가 ui.enterFullscreen() 으로 status bar 를 숨겼지만,
-  //   이 페이지가 useNativeUI 호출이 없으면 exitFullscreen 이 트리거되지 않아
-  //   iOS 시뮬레이터에서 status bar 가 ~2-3초 후에야 노출되는 현상 발생.
-  //   isDataLoaded 를 fetch 완료 신호로 전달 → useNativeUI 가 적시에 ui.stopLoading()
-  //   + exitFullscreen 을 호출하여 status bar 즉시 복원.
+  // Native (Flutter WebView) UI 상태 복원 — isDataLoaded 시그널로 status bar 즉시 복원.
   useNativeUI({
     showStatusBar: true,
     showAppBar: false, // SubmainAppBar (web DOM 헤더) 사용
     showBottomNav: true,
-    isDataLoaded: !isLoading,
+    isDataLoaded: isReady,
   });
-  const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
+
+  const handleHomeLoaded = useCallback(() => setHomeReady(true), []);
 
   // ─── 데이터 로딩 ───────────────────────────────────
   const fetchTeams = useCallback(async () => {
@@ -127,24 +134,18 @@ export default function TeamListPage() {
         const res = await listParentVisibleTeams();
         if (res.success && res.data) {
           setMyChildTeams(res.data.myChildTeams);
-          setClubTeams(res.data.clubTeams);
           setTotalChildren(res.data.totalChildren);
         } else {
           setMyChildTeams([]);
-          setClubTeams([]);
           setTotalChildren(0);
           if (res.error) {
             setError(res.error.message || MESSAGES.team.loadError);
           }
         }
       } else if (canManage) {
-        // [수정 2026-05-21] ADMIN/DIRECTOR/COACH 는 본인의 관리/소속 팀만 표시.
-        //  - includePending: true → 코치 가입 직후 'pending' 상태 팀도 함께 노출
-        //    (감독 승인 대기 안내).
-        //  - listPublicTeams 폴백 제거 → 가입 신청도 하지 않은 팀이 노출되어
-        //    "내가 어느 팀에 가입했는지" 가 흐려지는 문제 해결 (사용자 요청 2026-05-21).
-        //  - ADMIN 은 백엔드 getManageableTeams 의 ADMIN 분기에서 모든 active 팀을 반환하므로
-        //    이 변경의 영향을 받지 않음.
+        // ADMIN/DIRECTOR/COACH 는 본인의 관리/소속 팀만 표시.
+        //  - includePending: true → 코치 가입 직후 'pending' 상태 팀도 함께 노출(승인 대기 안내).
+        //  - ADMIN 은 백엔드 getManageableTeams 의 ADMIN 분기에서 모든 active 팀을 반환.
         const managedRes = await listManagedTeams({ includePending: true });
         if (managedRes.success && managedRes.data) {
           setTeams(managedRes.data);
@@ -169,7 +170,6 @@ export default function TeamListPage() {
       setError(MESSAGES.error.network);
       setTeams([]);
       setMyChildTeams([]);
-      setClubTeams([]);
     } finally {
       setIsLoading(false);
     }
@@ -179,9 +179,7 @@ export default function TeamListPage() {
     void fetchTeams();
   }, [fetchTeams]);
 
-  // [추가 2026-05-23 hotfix] 팀 정보 변경 후 목록 자동 갱신.
-  //   team/[id]/edit 의 emitRefresh(REFRESH_KEYS.TEAM) 발화 시 본 목록 페이지가 자동 재 fetch.
-  //   기존: list → detail → edit → save 후 list 로 돌아왔을 때 stale 이름·로고 노출.
+  // 팀 정보 변경 후 목록 자동 갱신 — team/[id]/edit 의 emitRefresh(REFRESH_KEYS.TEAM).
   useRefreshSubscription(REFRESH_KEYS.TEAM, () => {
     void fetchTeams();
   });
@@ -197,38 +195,21 @@ export default function TeamListPage() {
     [myChildTeams, searchQuery],
   );
 
-  const filteredClubTeams = useMemo(
-    () => applyClientFilter<TeamListItem>(clubTeams, searchQuery),
-    [clubTeams, searchQuery],
-  );
-
-  const hasAnyParentResult =
-    filteredMyChildTeams.length > 0 || filteredClubTeams.length > 0;
-
   // ─── 핸들러 ────────────────────────────────────────
-  //  [수정 2026-05-21 v2] pending 팀 카드 클릭 시 진입 자체 차단 (옵션 B).
-  //   백엔드 권한 가드(`assertTeamDetailViewable`)가 pending coach 의 getTeam 호출을
-  //   403 으로 차단하므로 진입해도 즉시 redirect 됨 → 어차피 의미 없음.
-  //   카드 단계에서 차단하면 토스트 중복(handleCardClick + loadTeam 403 + StrictMode 재실행)
-  //   문제 해소. 안내 토스트만 1회 노출.
+  //  pending 팀 카드 클릭 시 진입 자체 차단 — 백엔드 가드(`assertTeamDetailViewable`)가
+  //  pending coach 의 getTeam 을 403 으로 막으므로 카드 단계에서 안내 토스트만 1회 노출.
   const handleCardClick = useCallback(
     (teamId: string, myApprovalStatus?: 'approved' | 'pending' | null) => {
       if (myApprovalStatus === 'pending') {
         toast.info(MESSAGES.team.pendingClickHelperToast);
-        return; // navigate 차단 — 백엔드 가드와 중복되는 진입 시도 방지
+        return;
       }
       navigate(`/team/${teamId}`);
     },
     [navigate, toast],
   );
 
-  // [BUG FIX 2026-05-19 W3 #5] 가입 신청 처리 페이지로 라우팅 (팀 상세가 아닌 승인 페이지).
-  //   기존: handleCardClick → /team/:id (팀 상세로 이동, 가입 신청 처리 UI 없음).
-  //   [2026-06-23 통합] 매니저(director/academy_director/admin/coach) 전원 → /director-approvals
-  //     단일 승인 페이지. 코치 전용 /approval 분기 제거(전 계층 COACH 권한 보강으로 C1 해소).
-  //     기타 역할 → /team/:id fallback (가입 신청 처리 권한 없음).
-  //   [수정 2026-05-21 v3] pending coach 차단 — 본인 멤버십이 승인되지 않은 상태에서
-  //   다른 가입 신청을 처리할 권한이 없으므로 안내 토스트만 노출하고 navigate 차단.
+  // 가입 신청 처리 — 매니저 전원 /director-approvals 단일 승인 페이지, 그 외 /team/:id fallback.
   const handlePendingClick = useCallback(
     (teamId: string, myApprovalStatus?: 'approved' | 'pending' | null) => {
       if (myApprovalStatus === 'pending') {
@@ -253,11 +234,14 @@ export default function TeamListPage() {
   // ─── Render ────────────────────────────────────────
   const appBarTitle = isParent
     ? MESSAGES.team.titleParent
-    : MESSAGES.team.titleList;
+    : soloTeam
+      ? MESSAGES.team.titleHome
+      : MESSAGES.team.titleList;
 
-  // 카테고리별 카운트 (코치/관리자 뷰 04c 칩 배지용)
-  //  [수정 2026-05-18 W2.B #1] 팀 카테고리는 '전체' 단일 — U8/U9 등 하위그룹 카테고리는
-  //  팀 상세 (/team/[id]) 내부에서만 표시되므로 여기서는 전체 count 만 노출.
+  // 검색바 — 목록이 2건 이상일 때만 (홈·단건이면 검색 불필요)
+  const showManagerSearch = isManagerView && !soloTeam && teams.length > 1;
+  const showParentSearch = isParent && myChildTeams.length > 1;
+
   return (
     <MobileContainer hasBottomNav>
       <SubmainAppBar title={appBarTitle} />
@@ -267,52 +251,51 @@ export default function TeamListPage() {
         role="main"
         aria-label={appBarTitle}
       >
-        {/* ─── 검색바 ─── 팀이 2개 이상일 때만 노출 (1개면 검색 불필요). 부문 필터 칩은 제거됨. ─── */}
-        {canManage && !isParent
-          ? teams.length > 1 && (
-              <section className="bg-it-surface dark:bg-it-blue-950 px-5 pt-5 pb-4" aria-label="팀 검색">
-                <div className="relative">
-                  <Icon
-                    name="search"
-                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[20px] text-it-ink-400 dark:text-it-ink-300 pointer-events-none"
-                    aria-hidden="true"
-                  />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="팀 이름으로 검색"
-                    aria-label="팀 이름으로 검색"
-                    className="w-full h-12 bg-it-fill dark:bg-it-blue-950 border-[1.5px] border-it-line-strong dark:border-it-blue-900 rounded-w-md pl-11 pr-10 text-[15px] font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-it-ink-300 focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 outline-none focus:outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none"
-                  />
-                  {searchQuery && (
-                    <button
-                      type="button"
-                      onClick={() => setSearchQuery('')}
-                      aria-label="검색어 지우기"
-                      className="absolute right-3 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-w-pill text-it-ink-400 hover:bg-it-line dark:hover:bg-it-blue-900 transition-colors motion-reduce:transition-none"
-                    >
-                      <Icon name="close" className="text-[18px]" aria-hidden="true" />
-                    </button>
-                  )}
-                </div>
-              </section>
-            )
-          : myChildTeams.length + clubTeams.length > 1 && (
-              <section
-                className="border-b border-it-line bg-it-surface px-5 pb-3 pt-4 dark:border-it-blue-900 dark:bg-it-blue-950"
-                aria-label="팀 검색"
-              >
-                <TeamSearchBar
-                  value={searchQuery}
-                  onChange={setSearchQuery}
-                  placeholder={MESSAGES.team.searchPlaceholder}
-                />
-              </section>
-            )}
+        {/* ─── 검색바 ─── */}
+        {showManagerSearch && (
+          <section className="bg-it-surface dark:bg-it-blue-950 px-5 pt-5 pb-4" aria-label={MESSAGES.team.searchPlaceholder}>
+            <div className="relative">
+              <Icon
+                name="search"
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[20px] text-it-ink-400 dark:text-it-ink-300 pointer-events-none"
+                aria-hidden="true"
+              />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={MESSAGES.team.searchPlaceholder}
+                aria-label={MESSAGES.team.searchPlaceholder}
+                className="w-full h-12 bg-it-fill dark:bg-it-blue-950 border-[1.5px] border-it-line-strong dark:border-it-blue-900 rounded-w-md pl-11 pr-10 text-[15px] font-semibold text-it-ink-800 dark:text-white placeholder:text-it-ink-400 dark:placeholder:text-it-ink-300 focus:border-it-blue-500 focus:ring-2 focus:ring-it-blue-500/20 outline-none focus:outline-none transition-colors duration-150 ease-ios motion-reduce:transition-none"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  aria-label={MESSAGES.search.clear}
+                  className="absolute right-3 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-w-pill text-it-ink-400 hover:bg-it-line dark:hover:bg-it-blue-900 transition-colors motion-reduce:transition-none"
+                >
+                  <Icon name="close" className="text-[18px]" aria-hidden="true" />
+                </button>
+              )}
+            </div>
+          </section>
+        )}
+        {showParentSearch && (
+          <section
+            className="border-b border-it-line bg-it-surface px-5 pb-3 pt-4 dark:border-it-blue-900 dark:bg-it-blue-950"
+            aria-label={MESSAGES.team.searchPlaceholder}
+          >
+            <TeamSearchBar
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder={MESSAGES.team.searchPlaceholder}
+            />
+          </section>
+        )}
 
         {/* flat 섹션 사이 8px 회색 갭 (관리자 검색바 ↔ 목록) */}
-        {canManage && !isParent && teams.length > 1 && (
+        {showManagerSearch && (
           <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
         )}
 
@@ -320,21 +303,21 @@ export default function TeamListPage() {
         <section
           className={cn(
             // 하단 여백은 MobileContainer 가 main 에 pb-30 자동 부여 → 페이지에서 중복 금지.
-            canManage && !isParent ? 'pt-2' : 'px-4 pt-4',
+            isManagerView ? (showHome ? undefined : 'pt-2') : 'px-4 pt-4',
           )}
-          aria-label="팀 목록"
+          aria-label={appBarTitle}
         >
           {isLoading ? null : error ? (
             <ErrorView message={error} onRetry={fetchTeams} />
           ) : isParent ? (
-            // ─── 학부모 전용 뷰 ─────────────────
+            // ─── 학부모 전용 뷰 — 우리 아이 팀만 ─────────────────
             totalChildren === 0 ? (
               <EmptyState
                 icon="child_care"
                 title={MESSAGES.team.parentNoChildren}
                 description={MESSAGES.team.parentNoChildrenHint}
               />
-            ) : !hasAnyParentResult ? (
+            ) : filteredMyChildTeams.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
                 <h3 className="text-card-title font-bold text-it-ink-800 dark:text-white">
                   {searchQuery.trim()
@@ -348,94 +331,56 @@ export default function TeamListPage() {
                 </p>
               </div>
             ) : (
-              <div className="flex flex-col gap-8">
-                {/* 우리 아이 팀 섹션 */}
-                <div className="flex flex-col gap-3">
-                  <SectionHeader
-                    icon="favorite"
-                    title={MESSAGES.team.myChildTeamsSection}
-                    hint={MESSAGES.team.myChildTeamsSectionHint}
-                    count={filteredMyChildTeams.length}
-                  />
-                  {filteredMyChildTeams.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-                      <h3 className="text-card-title font-bold text-it-ink-800 dark:text-white">
-                        {MESSAGES.team.noChildTeamsYet}
-                      </h3>
-                      <p className="mt-2 text-card-body text-it-ink-500 dark:text-it-ink-400">
-                        {MESSAGES.team.noChildTeamsHint}
-                      </p>
-                    </div>
-                  ) : (
-                    <ul className="flex flex-col gap-3" aria-label="내 자녀 팀">
-                      {filteredMyChildTeams.map((team) => {
-                        const myChildren = Array.isArray(team.myChildren)
-                          ? team.myChildren
-                          : [];
+              <div className="flex flex-col gap-3">
+                <SectionHeader
+                  icon="favorite"
+                  title={MESSAGES.team.myChildTeamsSection}
+                  hint={MESSAGES.team.myChildTeamsSectionHint}
+                  count={filteredMyChildTeams.length}
+                />
+                <ul className="flex flex-col gap-3" aria-label={MESSAGES.team.myChildTeamsSection}>
+                  {filteredMyChildTeams.map((team) => {
+                    const myChildren = Array.isArray(team.myChildren)
+                      ? team.myChildren
+                      : [];
 
-                        return (
-                          <li key={team.id}>
-                            <TeamListCard
-                              team={team}
-                              onClick={() => handleCardClick(team.id)}
-                              highlight
-                              footerSlot={
-                                myChildren.length > 0 ? (
-                                  <ul
-                                    className="mt-3 flex flex-wrap gap-2"
-                                    aria-label="이 팀에 소속된 내 자녀 목록"
-                                  >
-                                    {myChildren.map((child) => (
-                                      <li key={child.rosterId}>
-                                        <ChildChip child={child} />
-                                      </li>
-                                    ))}
-                                  </ul>
-                                ) : null
-                              }
-                            />
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </div>
-
-                {/* 같은 팀의 다른 팀 섹션 */}
-                <div className="flex flex-col gap-3">
-                  <SectionHeader
-                    icon="apartment"
-                    title={MESSAGES.team.teamsSection}
-                    hint={MESSAGES.team.teamsSectionHint}
-                    count={filteredClubTeams.length}
-                  />
-                  {filteredClubTeams.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-                      <h3 className="text-card-title font-bold text-it-ink-800 dark:text-white">
-                        {MESSAGES.team.noOtherTeams}
-                      </h3>
-                      <p className="mt-2 text-card-body text-it-ink-500 dark:text-it-ink-400">
-                        {MESSAGES.team.emptyHint}
-                      </p>
-                    </div>
-                  ) : (
-                    <ul
-                      className="flex flex-col gap-3"
-                      aria-label="같은 팀의 다른 팀"
-                    >
-                      {filteredClubTeams.map((team) => (
-                        <li key={team.id}>
-                          <TeamListCard
-                            team={team}
-                            onClick={() => handleCardClick(team.id)}
-                          />
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
+                    return (
+                      <li key={team.id}>
+                        <TeamListCard
+                          team={team}
+                          onClick={() => handleCardClick(team.id)}
+                          highlight
+                          footerSlot={
+                            myChildren.length > 0 ? (
+                              <ul
+                                className="mt-3 flex flex-wrap gap-2"
+                                aria-label={MESSAGES.team.myChildTeamsSectionHint}
+                              >
+                                {myChildren.map((child) => (
+                                  <li key={child.rosterId}>
+                                    <ChildChip child={child} />
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : null
+                          }
+                        />
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
             )
+          ) : soloTeam && isPendingSolo ? (
+            // ─── 승인 대기 코치 — 상세는 백엔드 403 이라 홈 대신 안내 ───
+            <EmptyState
+              icon="hourglass_top"
+              title={MESSAGES.team.homePendingTitle}
+              description={MESSAGES.team.homePendingHint}
+            />
+          ) : soloTeam ? (
+            // ─── 감독·코치 내 팀 홈 ───
+            <MyTeamHome team={soloTeam} onLoaded={handleHomeLoaded} />
           ) : filteredTeams.length === 0 ? (
             // ─── 관리자/기타 조회자 빈 상태 ───
             <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
@@ -450,9 +395,9 @@ export default function TeamListPage() {
                   : MESSAGES.team.emptyHint}
               </p>
             </div>
-          ) : canManage && !isParent ? (
-            // ─── 04c 감독 팀 관리 카드 (코치/감독/관리자 전용) ───
-            <ul className="flex flex-col gap-2" aria-label="팀 카드 목록">
+          ) : isManagerView ? (
+            // ─── 04c 팀 관리 카드 (ADMIN 다건 · 코치 다팀 예외) ───
+            <ul className="flex flex-col gap-2" aria-label={MESSAGES.team.titleList}>
               {filteredTeams.map((team) => (
                 <li key={team.id} className="bg-it-surface dark:bg-it-blue-950">
                   <CoachTeamManageCard
@@ -460,13 +405,11 @@ export default function TeamListPage() {
                     onClick={() => handleCardClick(team.id, team.myApprovalStatus)}
                     onPendingClick={() => handlePendingClick(team.id, team.myApprovalStatus)}
                   />
-                  {/* 하위그룹 — 같은 팀 흰 블록 안에 hairline 으로 흡수 */}
-                  <TeamSubGroupsCard teamId={team.id} teamName={team.name ?? '팀'} />
                 </li>
               ))}
             </ul>
           ) : (
-            <ul className="flex flex-col gap-3" aria-label="팀 카드 목록">
+            <ul className="flex flex-col gap-3" aria-label={MESSAGES.team.titleList}>
               {filteredTeams.map((team) => (
                 <li key={team.id}>
                   <TeamListCard
@@ -480,45 +423,15 @@ export default function TeamListPage() {
         </section>
       </main>
 
-      {/* [제거] 팀 추가 생성 FAB — 설계상 감독 1인 = 가입 시 1팀 운영(멀티 팀 없음).
-          가입 후 별도 팀 생성 기능은 존재하지 않으므로 진입점(FAB)을 전 역할에서 제거.
+      {/* 팀 추가 생성 FAB 없음 — 감독 1인 = 가입 시 1팀 운영(멀티 팀 없음).
           근거: docs/Planning/SPEC_COACH_INVITE_SIGNUP.md(§감독 1인=1팀) ·
                 docs/specs/260423_회의_기능재설계_설계서.md(팀 생성=가입 시 1회). */}
     </MobileContainer>
   );
 }
 
-// ─── 다음 일정 날짜·시간 포맷 헬퍼 ─────────────────────
-function formatNextDate(iso: string): string {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfTarget = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const diffDays = Math.round(
-    (startOfTarget.getTime() - startOfToday.getTime()) / (24 * 60 * 60 * 1000),
-  );
-  if (diffDays === 0) return '오늘';
-  if (diffDays === 1) return '내일';
-  if (diffDays > 1 && diffDays < 7) {
-    const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
-    return `${dayNames[d.getDay()]} ${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
-  }
-  return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function formatNextTime(iso: string): string {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-}
-
-// ─── 04c 감독 팀 관리 카드 (Coach/Admin/Director 전용) ───────────
-// 참고 디자인 "04c · 감독 팀 관리 (개선)" 100% 매칭.
-// 데이터 미연결 영역(승무패·출석률·일정·gender·pending)은 placeholder/기본값으로
-// 시각 골격을 유지. 실제 백엔드 응답이 추가되면 props 매핑만으로 대체 가능.
-//
-// 그라디언트 정책: TEAMPLUS 토큰 SoT 준수 → linear-gradient 금지, 솔리드 + alpha hex.
+// ─── 04c 팀 관리 카드 (ADMIN 다건 목록 전용) ───────────
+// 참고 디자인 "04c · 감독 팀 관리 (개선)" 매칭. 솔리드 + alpha hex (gradient 금지).
 function CoachTeamManageCard({
   team,
   onClick,
@@ -526,12 +439,7 @@ function CoachTeamManageCard({
 }: {
   team: TeamListItem;
   onClick: () => void;
-  /**
-   * [추가 2026-05-18 W2.B #2] 가입 신청 처리하기 핸들러.
-   *   기존: pending footer "처리 →" 가 span 으로 렌더되어 onClick 누락 → 동작 없음.
-   *   변경: 별도 button 으로 분리 + onPendingClick 으로 위임.
-   *          기본 동작: 팀 상세 페이지 진입(onClick 과 동일 — pending 회원 처리는 상세 페이지 내에서 진행)
-   */
+  /** 가입 신청 처리하기 — 별도 button 으로 분리, 기본 동작은 onClick 과 동일 */
   onPendingClick?: () => void;
 }) {
   const teamColor = (team.primaryColor && /^#[0-9a-fA-F]{6}$/.test(team.primaryColor))
@@ -542,15 +450,19 @@ function CoachTeamManageCard({
   const pending = team.pendingApplications ?? 0;
 
   // 다음 일정 — 백엔드 nextEvent 응답을 04c 시각 모델로 변환
-  type NextSchedule = { type: '연습' | '경기'; date: string; time: string; place: string; urgent: boolean };
+  type NextSchedule = { type: string; isMatch: boolean; date: string; time: string; place: string; urgent: boolean };
   const next: NextSchedule | null = team.nextEvent
-    ? {
-        type: team.nextEvent.eventType === 'tournament' || team.nextEvent.eventType === 'friendly' ? '경기' : '연습',
-        date: formatNextDate(team.nextEvent.startAt),
-        time: formatNextTime(team.nextEvent.startAt),
-        place: team.nextEvent.location ?? team.nextEvent.title,
-        urgent: team.nextEvent.isUrgent,
-      }
+    ? (() => {
+        const isMatch = team.nextEvent.eventType === 'tournament' || team.nextEvent.eventType === 'friendly';
+        return {
+          type: isMatch ? MESSAGES.team.homeEventMatch : MESSAGES.team.homeEventPractice,
+          isMatch,
+          date: formatNextEventDate(team.nextEvent.startAt),
+          time: formatNextEventTime(team.nextEvent.startAt),
+          place: team.nextEvent.location ?? team.nextEvent.title,
+          urgent: team.nextEvent.isUrgent,
+        };
+      })()
     : null;
 
   return (
@@ -558,17 +470,16 @@ function CoachTeamManageCard({
       <button
         type="button"
         onClick={onClick}
-        aria-label={`${team.name ?? '팀'} 상세 보기`}
+        aria-label={MESSAGES.team.detailAriaLabel(team.name ?? '')}
         className="block w-full text-left active:brightness-95"
       >
-        {/* 헤더: 로고 + 이름 + 칩 + 상세 이동 표시 — 패딩 16/16/12 */}
+        {/* 헤더: 로고 + 이름 + 인원 + 상세 이동 표시 */}
         <div className="px-4 pt-4 pb-3 flex items-center gap-3">
-          {/* 로고 타일 (56x56, radius 16) — 업로드된 팀 로고 우선, 없으면 솔리드 + 하키 아이콘 폴백 */}
           {logoSrc ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
               src={logoSrc}
-              alt={`${team.name ?? '팀'} 로고`}
+              alt=""
               className="w-14 h-14 rounded-2xl object-cover shrink-0 border border-it-line dark:border-it-blue-900"
             />
           ) : (
@@ -582,35 +493,18 @@ function CoachTeamManageCard({
           )}
 
           <div className="flex-1 min-w-0">
-            {/* 팀명 — 17px (참고 동일) */}
             <div className="flex items-center gap-1.5 mb-1 min-w-0">
               <h3 className="text-[16px] font-extrabold text-it-ink-800 dark:text-white tracking-[-0.02em] truncate">
-                {team.name ?? '팀명 미지정'}
+                {team.name ?? MESSAGES.team.titleList}
               </h3>
             </div>
-            {/* 인원수 (실데이터) */}
             <div className="flex items-center gap-1.5 text-card-meta text-it-ink-500 dark:text-it-ink-400 min-w-0">
               <span className="font-bold text-it-ink-700 dark:text-it-ink-400 tabular-nums shrink-0">
-                {memberCount}명
+                {MESSAGES.team.homeMenuRosterMeta(memberCount)}
               </span>
             </div>
-            {/* [추가 2026-05-21 시나리오 B] 팀 코드 — 회원가입 시 입력한 식별 코드.
-                 감독/코치/관리자 카드에 노출하여 가입 안내 시 즉시 공유 가능하도록. */}
-            {team.teamCode && (
-              <div className="mt-1 inline-flex items-center gap-1 text-card-meta text-it-ink-500 dark:text-it-ink-400 min-w-0">
-                <Icon
-                  name="qr_code_2"
-                  className="shrink-0 text-[12px]"
-                  aria-hidden="true"
-                />
-                <span className="font-bold tabular-nums uppercase tracking-wider truncate">
-                  {team.teamCode}
-                </span>
-              </div>
-            )}
           </div>
 
-          {/* 상세 이동 표시 */}
           <span
             className="w-8 h-8 inline-flex items-center justify-center text-it-ink-300 dark:text-it-ink-400 shrink-0"
             aria-hidden="true"
@@ -619,11 +513,9 @@ function CoachTeamManageCard({
           </span>
         </div>
 
-        {/* 다음 일정 인라인 배너 — 예정된 일정이 있을 때만 표시.
-            [2026-06-17] '예정된 일정 없음' 빈 상태 박스 삭제 (사용자 직접 지시) — next 없으면 배너 자체 미렌더. */}
+        {/* 다음 일정 인라인 배너 — 예정된 일정이 있을 때만 표시 */}
         {next && (
           <div className="border-t border-it-line dark:border-it-blue-900 px-4 py-3 flex items-center gap-2.5">
-            {/* 좌측 8x8 캘린더 박스 */}
             <div
               className={cn(
                 'w-8 h-8 rounded-[10px] flex items-center justify-center shrink-0',
@@ -644,8 +536,8 @@ function CoachTeamManageCard({
                 <span
                   className="text-card-meta font-extrabold px-1.5 py-0.5 rounded"
                   style={{
-                    color: next.type === '경기' ? '#ff5a36' : teamColor,
-                    backgroundColor: next.type === '경기' ? '#fee4dc' : `${teamColor}18`,
+                    color: next.isMatch ? '#ff5a36' : teamColor,
+                    backgroundColor: next.isMatch ? '#fee4dc' : `${teamColor}18`,
                   }}
                 >
                   {next.type}
@@ -664,23 +556,14 @@ function CoachTeamManageCard({
                 className="px-2 py-1 rounded-md text-card-meta font-extrabold tracking-[0.02em] text-white shrink-0"
                 style={{ backgroundColor: teamColor }}
               >
-                오늘
+                {MESSAGES.team.homeNextToday}
               </span>
             )}
           </div>
         )}
-
-        {/* [제거 2026-06-17] 하단 '최근 출석률' + placeholder 아바타 스택 삭제 (사용자 직접 지시) */}
       </button>
 
-      {/* 가입 신청 footer — pending > 0 일 때만 표시 (조건부)
-          [수정 2026-05-18 W2.B #2] "처리 →" 텍스트 → 실제 button 으로 교체.
-            기존: span 으로 렌더되어 클릭이 외부 button(상세 진입)에 의해서만 작동하거나
-                  중첩 button 으로 인해 동작 안 함.
-            변경: <button onClick={onPendingClick}> 로 분리, e.stopPropagation 으로 외부 카드
-                  클릭 이벤트와 분리. 기본은 팀 상세 페이지로 이동. */}
-      {/* [수정 2026-05-21 v3] pending coach 에게는 footer 자체 미노출 — 본인 승인되지
-          않은 상태에서 다른 가입 신청 정보를 알 필요 없음 (옵션 B 진입 차단 정책과 정렬). */}
+      {/* 가입 신청 footer — pending > 0 이고 본인이 승인된 상태일 때만 */}
       {pending > 0 && team.myApprovalStatus !== 'pending' && (
         <div className="border-t border-it-line dark:border-it-blue-900 px-4 py-3 flex items-center gap-2">
           <span
@@ -690,9 +573,7 @@ function CoachTeamManageCard({
             !
           </span>
           <span className="flex-1 text-card-meta font-semibold text-it-ink-700 dark:text-it-ink-400">
-            가입 신청{' '}
-            <span className="font-extrabold text-flame-500">{pending}건</span>{' '}
-            승인 대기
+            {MESSAGES.team.homeTodoPending(pending)}
           </span>
           <button
             type="button"
@@ -701,7 +582,7 @@ function CoachTeamManageCard({
               if (onPendingClick) onPendingClick();
               else onClick();
             }}
-            aria-label={MESSAGES.team.pendingHandleAria(team.name ?? '팀')}
+            aria-label={MESSAGES.team.pendingHandleAria(team.name ?? '')}
             className="shrink-0 inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-card-meta font-bold text-it-blue-500 hover:bg-it-blue-500/10 active:brightness-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 transition-colors motion-reduce:transition-none"
           >
             {MESSAGES.team.pendingHandleLabel}
@@ -713,217 +594,8 @@ function CoachTeamManageCard({
   );
 }
 
-// ─── 하위그룹 카드 (2026-05-11 추가) ──────────────────────
-// 각 팀 카드 아래에 노출 — "하위그룹" 라벨 + 그룹 칩 리스트 (이름, 연령, 인원).
-// 예: 블리자드 팀 아래 → 블랙 블리자드(U12, 2명) · 화이트 블리자드(U11, 2명)
-// 그룹이 0개면 컴포넌트 자체 미렌더 (시각 노이즈 최소화).
-// 하위그룹 트리에서 그룹당 기본 노출 선수 수(초과분은 '더보기'로 펼침).
-const MEMBER_PREVIEW_LIMIT = 5;
-
-// 생년월일 ISO → "YYYY.MM.DD" (프로젝트 날짜 표기 컨벤션). 없거나 무효면 빈 문자열.
-function formatBirthDate(iso: string | null): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${y}.${m}.${dd}`;
-}
-
-function TeamSubGroupsCard({ teamId, teamName }: { teamId: string; teamName: string }) {
-  const { navigate } = useNavigation();
-  const [groups, setGroups] = useState<TeamGroupSummary[]>([]);
-  // 그룹별 선수 명단(트리 하위 행) — B 방안: 그룹 로드 직후 일괄(eager) fetch.
-  const [membersByGroup, setMembersByGroup] = useState<Record<string, TeamGroupMemberRow[]>>({});
-  const [isLoading, setIsLoading] = useState(true);
-  // 선수 많은 그룹은 기본 미리보기 MEMBER_PREVIEW_LIMIT 명 + '더보기'로 펼침(스크롤 폭주 방지).
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const list = await teamGroupService.listByTeam(teamId);
-        if (cancelled) return;
-        // 대상 설명(ageGroup)이 자유 텍스트로 전환되어 연령 정렬이 무의미 → 그룹명 가나다순.
-        const active = list
-          .filter((g) => g.isActive !== false)
-          .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'ko'));
-        setGroups(active);
-
-        // 각 그룹의 선수 명단을 일괄 fetch(팀당 그룹 2~3개 규모 → N+1 부담 없음).
-        //   실패한 그룹은 빈 명단으로 폴백(트리 행만 생략, 그룹 행은 유지).
-        const details = await Promise.all(
-          active.map((g) => teamGroupService.findById(g.id).catch(() => null)),
-        );
-        if (cancelled) return;
-        const map: Record<string, TeamGroupMemberRow[]> = {};
-        details.forEach((d, i) => {
-          if (d) map[active[i].id] = d.members;
-        });
-        setMembersByGroup(map);
-      } catch {
-        if (!cancelled) setGroups([]);
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [teamId]);
-
-  const toggleGroupExpand = useCallback((groupId: string) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(groupId)) next.delete(groupId);
-      else next.add(groupId);
-      return next;
-    });
-  }, []);
-
-  if (isLoading) return null;
-  if (groups.length === 0) return null;
-
-  return (
-    <section
-      aria-label={`${teamName} 하위그룹`}
-      className="border-t border-it-line dark:border-it-blue-900 px-4 pt-3 pb-1"
-    >
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <Icon
-            name="folder_open"
-            className="text-[14px] text-it-ink-500 dark:text-it-ink-400"
-            aria-hidden="true"
-          />
-          <span className="text-card-meta font-extrabold uppercase tracking-[0.04em] text-it-ink-700 dark:text-white">
-            하위그룹
-          </span>
-          <span className="text-card-meta font-bold text-it-ink-500 dark:text-it-ink-400 tabular-nums">
-            {groups.length}
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={() => navigate(`/team/${teamId}/groups`)}
-          className="text-card-meta font-bold text-it-blue-500 hover:text-it-blue-600 transition-colors motion-reduce:transition-none"
-          aria-label={`${teamName} 그룹 관리`}
-        >
-          관리하기
-        </button>
-      </div>
-
-      <ul className="flex flex-col" role="list">
-        {groups.map((g, gi) => {
-          const members = membersByGroup[g.id] ?? [];
-          const expanded = expandedGroups.has(g.id);
-          const visibleMembers = expanded
-            ? members
-            : members.slice(0, MEMBER_PREVIEW_LIMIT);
-          const hiddenCount = members.length - visibleMembers.length;
-          return (
-            <li
-              key={g.id}
-              className={cn(
-                gi !== groups.length - 1 && 'border-b border-it-line dark:border-it-blue-900',
-              )}
-            >
-              {/* 그룹 행 — 탭 시 그룹 편집(기존 동작 유지). */}
-              <button
-                type="button"
-                onClick={() => navigate(`/team/${teamId}/groups/${g.id}/edit`)}
-                className="w-full py-2.5 text-left flex items-center gap-2.5 active:brightness-95"
-                aria-label={`${g.name} 그룹 상세`}
-              >
-                <span
-                  className="shrink-0 w-8 h-8 rounded-w-md bg-it-blue-500/10 text-it-blue-500 inline-flex items-center justify-center"
-                  aria-hidden="true"
-                >
-                  <Icon name="groups" className="text-[15px]" />
-                </span>
-                <span className="flex-1 min-w-0">
-                  <span className="block text-card-meta font-extrabold text-it-ink-800 dark:text-white tracking-[-0.02em] truncate">
-                    {g.name}
-                  </span>
-                  <span className="block mt-0.5 text-card-meta font-semibold text-it-ink-500 dark:text-it-ink-400">
-                    {g.ageGroup ? `${g.ageGroup} · ` : ''}
-                    <span className="tabular-nums">{g._count?.members ?? 0}명</span>
-                  </span>
-                </span>
-                <Icon
-                  name="chevron_right"
-                  className="shrink-0 text-[20px] text-it-ink-400 dark:text-it-ink-400"
-                  aria-hidden="true"
-                />
-              </button>
-
-              {/* 선수 트리 — 이름 · 생년월일. 들여쓰기 + hairline(세로 구분선 금지 RULE-D04 준수).
-                  선수 많은 그룹은 미리보기 MEMBER_PREVIEW_LIMIT 명 + '더보기'로 펼침(스크롤 폭주 방지). */}
-              {members.length > 0 && (
-                <ul className="pl-[42px] pb-2" role="list" aria-label={`${g.name} 선수 목록`}>
-                  {visibleMembers.map((mem) => {
-                    const birth = formatBirthDate(mem.birthDate);
-                    return (
-                      <li
-                        key={mem.groupMemberId}
-                        className="flex items-center gap-2 py-1.5 border-t border-it-line/70 dark:border-it-blue-900/70"
-                      >
-                        <Icon
-                          name="person"
-                          className="shrink-0 text-[14px] text-it-ink-400 dark:text-it-ink-400"
-                          aria-hidden="true"
-                        />
-                        <span className="min-w-0 truncate text-card-meta font-bold text-it-ink-700 dark:text-it-ink-200">
-                          {mem.playerName}
-                        </span>
-                        {birth && (
-                          <span className="ml-auto shrink-0 text-card-meta font-semibold text-it-ink-500 dark:text-it-ink-400 tabular-nums">
-                            {birth}
-                          </span>
-                        )}
-                      </li>
-                    );
-                  })}
-
-                  {members.length > MEMBER_PREVIEW_LIMIT && (
-                    <li>
-                      <button
-                        type="button"
-                        onClick={() => toggleGroupExpand(g.id)}
-                        aria-expanded={expanded}
-                        aria-label={
-                          expanded
-                            ? `${g.name} 선수 목록 접기`
-                            : `${g.name} 선수 ${hiddenCount}명 더보기`
-                        }
-                        className="w-full flex items-center gap-1.5 py-1.5 border-t border-it-line/70 dark:border-it-blue-900/70 text-card-meta font-bold text-it-blue-500 hover:text-it-blue-600 active:brightness-95 transition-colors motion-reduce:transition-none"
-                      >
-                        <Icon
-                          name={expanded ? 'expand_less' : 'expand_more'}
-                          className="shrink-0 text-[16px]"
-                          aria-hidden="true"
-                        />
-                        {expanded
-                          ? MESSAGES.team.groupMemberCollapse
-                          : MESSAGES.team.groupMemberShowMore(hiddenCount)}
-                      </button>
-                    </li>
-                  )}
-                </ul>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-    </section>
-  );
-}
-
 // ─── Sub Components ──────────────────────────────────────
-// (2026-04-12) 레거시 inline TeamCard / ParentTeamCard 는 `@/components/team/TeamListCard` 로 이관.
-// 이 페이지는 공통 컴포넌트만 임포트하여 렌더링 로직을 위임한다.
+// 레거시 inline TeamCard / ParentTeamCard 는 `@/components/team/TeamListCard` 로 이관.
 
 function ErrorView({
   message,
@@ -977,7 +649,7 @@ function SectionHeader({
       </div>
       <div className="flex-1">
         <div className="flex items-center gap-2">
-          {/* [ICETIMES 시안 2026-07-18] 섹션 제목 17/800 + 카운트 plain 15/800 it-blue-500 */}
+          {/* [ICETIMES 시안] 섹션 제목 17/800 + 카운트 plain 15/800 it-blue-500 */}
           <h2 className="text-[17px] font-extrabold tracking-[-0.02em] text-it-ink-800 dark:text-white">
             {title}
           </h2>
@@ -999,7 +671,7 @@ function SectionHeader({
 }
 
 // ─── 학부모 "우리 아이 팀" 카드 ───────────────────────
-// (2026-04-12) ParentTeamCard 는 TeamListCard(highlight=true) + footerSlot 으로 대체.
+// ParentTeamCard 는 TeamListCard(highlight=true) + footerSlot 으로 대체.
 // ChildChip 은 footerSlot 내부에서만 사용되므로 이 파일에 남겨둔다.
 
 function ChildChip({ child }: { child: MyChildInTeam }) {
