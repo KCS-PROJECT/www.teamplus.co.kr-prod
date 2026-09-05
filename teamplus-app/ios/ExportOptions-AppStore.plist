@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- TEAMPLUS App Store Connect 업로드용 (2026-09-05).
+         사용: flutter build ipa --release -t lib/main_prod.dart --export-options-plist=ios/ExportOptions-AppStore.plist
+         destination=upload: xcodebuild -exportArchive 가 Xcode 에 로그인된 Apple ID(팀 VG2U99V32J) 세션으로
+         App Store Connect 에 직접 업로드한다. 세션/2FA 문제로 실패하면 destination 을 export 로 바꿔
+         build/ios/ipa/*.ipa 를 만들고 Transporter 또는 Xcode Organizer 로 수동 업로드한다.
+         빌드 번호는 pubspec.yaml version 의 +N 이 SoT (manageAppVersionAndBuildNumber=false). -->
+    <key>method</key>
+    <string>app-store-connect</string>
+    <key>destination</key>
+    <string>upload</string>
+    <key>signingStyle</key>
+    <string>automatic</string>
+    <key>teamID</key>
+    <string>VG2U99V32J</string>
+    <key>uploadSymbols</key>
+    <true/>
+    <key>manageAppVersionAndBuildNumber</key>
+    <false/>
+    <key>stripSwiftSymbols</key>
+    <true/>
+    <key>testFlightInternalTestingOnly</key>
+    <false/>
+</dict>
+</plist>
