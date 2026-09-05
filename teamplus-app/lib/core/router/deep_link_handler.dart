@@ -52,6 +52,23 @@ class DeepLinkHandler {
     return _instance!;
   }
 
+  /// [2026-07-29 중복 전달 방지] 콜드 스타트 시 동일 URI 가 getInitialLink 와
+  /// uriLinkStream 양쪽으로 연달아 전달되는 것을 실측 확인(app_links Android).
+  /// 같은 URI 를 3초 내 재수신하면 무시해 이중 네비게이션(뒤로가기 스택 오염 ·
+  /// 이중 로드)을 차단한다.
+  Uri? _lastHandledUri;
+  DateTime? _lastHandledAt;
+
+  bool _isDuplicateDelivery(Uri uri) {
+    final now = DateTime.now();
+    final isDup = _lastHandledUri?.toString() == uri.toString() &&
+        _lastHandledAt != null &&
+        now.difference(_lastHandledAt!) < const Duration(seconds: 3);
+    _lastHandledUri = uri;
+    _lastHandledAt = now;
+    return isDup;
+  }
+
   /// 딥링크 핸들러 초기화
   ///
   /// [navigatorKey]: 전역 NavigatorKey (GoRouter에 접근하기 위해 사용)
@@ -61,6 +78,8 @@ class DeepLinkHandler {
     final initialUri = await _appLinks.getInitialLink();
     if (initialUri != null) {
       debugPrint('[DeepLink] 앱 시작 딥링크: $initialUri');
+      // 스트림으로 동일 URI 가 한 번 더 들어오는 이중 발화 차단용 기록.
+      _isDuplicateDelivery(initialUri);
       // 앱 초기화 완료 후 처리 (약간의 지연 필요)
       Future.delayed(const Duration(milliseconds: 500), () {
         _handleUri(initialUri, navigatorKey: navigatorKey);
@@ -70,6 +89,10 @@ class DeepLinkHandler {
     // 앱 실행 중 딥링크 수신
     _linkSubscription = _appLinks.uriLinkStream.listen(
       (uri) {
+        if (_isDuplicateDelivery(uri)) {
+          debugPrint('[DeepLink] 중복 전달 무시 (initial/stream 이중 발화): $uri');
+          return;
+        }
         debugPrint('[DeepLink] 포그라운드 딥링크 수신: $uri');
         _handleUri(uri, navigatorKey: navigatorKey);
       },
@@ -241,11 +264,10 @@ class DeepLinkHandler {
         return '/attendance?scheduleId=$scheduleId';
 
       case 'payment':
-        final paymentId = pathSegments.isNotEmpty
-            ? pathSegments.first
-            : queryParams['paymentId'];
-        if (paymentId == null || paymentId.isEmpty) return null;
-        return '/payment/$paymentId';
+        // 웹에 /payment/[id] 동적 라우트가 없다(404) — 결제 이력 /payment/history
+        // 로 매핑한다 (push_route_resolver 와 동일 규약). 영수증 상세가 필요하면
+        // /payment/receipt/[id] 가 실존.
+        return '/payment/history';
 
       case 'notice':
         final noticeId = pathSegments.isNotEmpty
@@ -323,8 +345,8 @@ class DeepLinkHandler {
         return '/attendance?scheduleId=$scheduleId';
 
       case 'payment':
-        if (id == null) return '/payment';
-        return '/payment/$id';
+        // 웹에 /payment 인덱스도 /payment/[id] 도 없다(404) — 결제 이력으로 매핑.
+        return '/payment/history';
 
       case 'notice':
       case 'notices':

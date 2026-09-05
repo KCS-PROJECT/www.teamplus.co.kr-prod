@@ -1,7 +1,8 @@
 // AppProviderObserver — Riverpod 3 상태 변경 추적 (v8.6 P4-4, 2026-05-20)
 //
 // Provider 상태 변경 시 AppLogger.activity() 호출. 민감 Provider는
-// `runtimeType.toString()`에 `Auth/Token/Secret/Pin/Password` 포함 시 skip.
+// name(선언 시 지정) 또는 runtimeType 에 `Auth/Token/Secret/Pin/Password`
+// 포함 시 skip.
 //
 // Riverpod 3.x: ProviderObserverContext 단일 인자로 변경됨
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,8 +14,12 @@ base class AppLogProviderObserver extends ProviderObserver {
       RegExp(r'(auth|token|secret|pin|password|crypto)', caseSensitive: false);
 
   bool _shouldSkip(ProviderObserverContext context) {
-    final name = context.provider.runtimeType.toString();
-    return _sensitivePattern.hasMatch(name);
+    // runtimeType 은 FutureProviderImpl<bool> 처럼 제네릭 타입만 노출해
+    // authStateProvider 등 이름 기반 민감 provider 를 놓친다 — 로깅에 쓰는
+    // name 과 동일 기준으로 판정하되, 둘 중 하나라도 걸리면 skip 한다.
+    final name = context.provider.name ?? '';
+    final type = context.provider.runtimeType.toString();
+    return _sensitivePattern.hasMatch(name) || _sensitivePattern.hasMatch(type);
   }
 
   @override

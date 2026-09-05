@@ -81,6 +81,7 @@ class TbotChannel {
                 'ui',
                 'theme',
                 'upload',
+                'log',
                 'tbot',
               ],
               'channelEnabled': _enabled,

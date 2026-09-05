@@ -108,9 +108,9 @@ class _NativeBackGuardState extends State<NativeBackGuard> {
 
 /// 앱 종료 확인 다이얼로그 — 하우머치(ICETIMES) 스타일 공통 진입점.
 ///
-/// `NativeBackGuard`(페이지 백키 가드)와 `MainShellScreen`(홈 셸 백키 fallback)이
-/// 동일한 종료 컴펌 UI 를 공유하도록 top-level 로 노출한다. 기본 문구·라벨은
-/// `NativeBackGuard` 기본값과 일치(SoT).
+/// `NativeBackGuard`(페이지 백키 가드)와 `WebViewScreen._onHardwareBack`(홈 셸
+/// 백키 SoT)이 동일한 종료 컴펌 UI 를 공유하도록 top-level 로 노출한다.
+/// 기본 문구·라벨은 `NativeBackGuard` 기본값과 일치(SoT).
 Future<bool?> showAppExitConfirmDialog(
   BuildContext context, {
   String title = '팀플러스를\n완전히 종료하시겠습니까?',

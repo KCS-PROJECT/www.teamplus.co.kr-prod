@@ -44,7 +44,8 @@ class ApiClient {
   /// main.dart 가 `WebViewCookieSync.syncRefreshToken` 을 등록하여 WebView 쿠키
   /// 저장소의 httpOnly refresh 쿠키를 최신 토큰으로 유지한다 (미들웨어 판정 정합).
   /// core/network → core/webview 직접 의존을 피하기 위한 콜백 주입 (onAuthRequired 패턴).
-  void Function(String refreshToken)? onRefreshTokenRotated;
+  /// null 전달 = 강제 로그아웃으로 인한 쿠키 삭제.
+  void Function(String? refreshToken)? onRefreshTokenRotated;
 
   /// ETag 기반 GET 응답 캐시 — 로그아웃 시 외부에서 invalidate() 호출 가능
   late final EtagCacheInterceptor etagCache = EtagCacheInterceptor();
@@ -486,8 +487,20 @@ class _AuthInterceptor extends Interceptor {
   }
 
   /// 로그아웃 처리 (토큰 삭제)
+  ///
+  /// refresh 실패로 강제 로그아웃되는 경로다. secure storage 삭제만으로는
+  /// (1) TokenStorage 30초 메모리 캐시가 남아 authStateProvider 가 최대 30초
+  /// 인증됨을 stale 반환하고, (2) WebView refresh 쿠키가 잔존해 미들웨어가
+  /// "세션 있음" 오판한다 — 토큰 갱신 성공 경로(_refreshAccessToken)와 대칭으로
+  /// 캐시 무효화 + 쿠키 동기화(null)를 함께 수행한다.
   Future<void> _handleLogout() async {
     await storage.clearAll();
+    TokenStorage().invalidateAuthBundleCache();
+    try {
+      ApiClient().onRefreshTokenRotated?.call(null);
+    } catch (_) {
+      /* 쿠키 동기화 실패는 미들웨어 UA 폴백이 커버 */
+    }
   }
 
   bool _isPublicEndpoint(String path) {

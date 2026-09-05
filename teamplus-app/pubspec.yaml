@@ -2,7 +2,7 @@ name: teamplus_app
 description: "TEAMPLUS - Ice Hockey Club Management System"
 publish_to: "none"
 
-version: 1.0.4+17
+version: 1.0.5+18
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
@@ -115,7 +115,12 @@ dependencies:
   # SENTRY_DSN dart-define 미설정 시 enabled: false → no-op.
   # 2026-05-17: 8.x → 9.x 업그레이드 — sentry-cocoa 최신 SDK API 호환
   #   (Xcode 26 + SPM 자동 다운로드한 sentry-cocoa 8.46+ 와 8.14.2 API 미스매치 해결).
-  sentry_flutter: ^9.20.0
+  # 2026-09-05: 9.20 → 9.29 — 9.28.0 부터 Android R8 소비자 keep 규칙이 `io.sentry.**` 전체에서
+  #   bound 클래스 목록으로 축소(getsentry/sentry-dart#3972) → Play 권장 조치 ③(R8 최적화율) 대응.
+  #   앱이 쓰는 API(SentryFlutter.init · Sentry.captureException/captureMessage · options.dsn/
+  #   environment/tracesSampleRate/beforeSend)는 9.29 에서 불변. iOS Sentry/HybridSDK 8.58.4 요구 →
+  #   다음 iOS 빌드의 pod install 에서 Podfile.lock 갱신(이 작업에서는 실행하지 않음).
+  sentry_flutter: ^9.29.0
 
 dependency_overrides:
   # [2026-08-01 Play 권장 조치] "비트맵 다운샘플링" — 업스트림 file_picker 가

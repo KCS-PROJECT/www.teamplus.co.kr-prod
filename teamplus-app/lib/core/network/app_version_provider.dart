@@ -52,25 +52,5 @@ class _VersionCheckResult {
 /// 공개용 버전 체크 결과 타입 (외부 접근용)
 typedef VersionCheckResult = _VersionCheckResult;
 
-/// AppVersionInfo 확장 (copyWith)
-extension AppVersionInfoX on AppVersionInfo {
-  AppVersionInfo copyWith({
-    String? currentVersion,
-    String? minimumVersion,
-    String? latestVersion,
-    bool? forceUpdate,
-    String? updateMessage,
-    String? iosStoreUrl,
-    String? androidStoreUrl,
-  }) {
-    return AppVersionInfo(
-      currentVersion: currentVersion ?? this.currentVersion,
-      minimumVersion: minimumVersion ?? this.minimumVersion,
-      latestVersion: latestVersion ?? this.latestVersion,
-      forceUpdate: forceUpdate ?? this.forceUpdate,
-      updateMessage: updateMessage ?? this.updateMessage,
-      iosStoreUrl: iosStoreUrl ?? this.iosStoreUrl,
-      androidStoreUrl: androidStoreUrl ?? this.androidStoreUrl,
-    );
-  }
-}
+// [2026-07-24] copyWith 는 AppVersionInfo 인스턴스 메서드로 이관됨
+//   (app_version_service.dart) — 모델 단일 SoT. 기존 확장 제거.

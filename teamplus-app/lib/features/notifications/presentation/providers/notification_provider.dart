@@ -20,8 +20,10 @@ final notificationRepositoryProvider = Provider<NotificationRepository>((ref) {
 
 // Notifications List Provider (with pagination)
 // Using record type for stable parameter comparison
-final notificationsProvider =
-    FutureProvider.family<List<Notification>, ({int limit, int skip})>((
+// autoDispose: limit/skip 조합별 캐시가 앱 수명 동안 누적되지 않도록 화면
+// unmount 시 해제 (2026-07-28).
+final notificationsProvider = FutureProvider.autoDispose
+    .family<List<Notification>, ({int limit, int skip})>((
   ref,
   params,
 ) async {
@@ -36,14 +38,17 @@ final unreadCountProvider = FutureProvider<int>((ref) async {
 });
 
 // Single Notification Provider
-final singleNotificationProvider =
-    FutureProvider.family<Notification, String>((ref, notificationId) async {
+// autoDispose: id 별 캐시 무한 누적 방지 (2026-07-28).
+final singleNotificationProvider = FutureProvider.autoDispose
+    .family<Notification, String>((ref, notificationId) async {
   final repository = ref.watch(notificationRepositoryProvider);
   return repository.getNotification(notificationId);
 });
 
 // Mark as Read Mutation
-final markAsReadProvider = FutureProvider.family<void, String>((
+// autoDispose: 캐시 잔존 시 동일 id 재실행이 캐시로 스킵되는 문제 + id 별
+// 캐시 누적 방지 (2026-07-28).
+final markAsReadProvider = FutureProvider.autoDispose.family<void, String>((
   ref,
   notificationId,
 ) async {
@@ -56,7 +61,9 @@ final markAsReadProvider = FutureProvider.family<void, String>((
 });
 
 // Delete Notification Mutation
-final deleteNotificationProvider = FutureProvider.family<void, String>((
+// autoDispose: markAsReadProvider 와 동일 사유 (2026-07-28).
+final deleteNotificationProvider =
+    FutureProvider.autoDispose.family<void, String>((
   ref,
   notificationId,
 ) async {

@@ -77,11 +77,11 @@ class AuthGuard {
     }
 
     if (opts.navigate && context.mounted) {
-      final target =
-          opts.returnPath ?? GoRouterState.of(context).uri.toString();
-      // GoRouter query param 으로 returnPath 전달 → 로그인 성공 후 이동에 사용
-      final encoded = Uri.encodeQueryComponent(target);
-      context.go('/login?returnPath=$encoded');
+      // '/login' GoRoute 는 2026-05-19 제거됨 — extras 없는 '/webview' 진입은
+      // InitialDestinationGate 가 인증 상태를 보고 웹 로그인으로 자동 분기한다
+      // (브릿지 _navigateToLoginScreen 과 동일 규약, returnPath 는 웹 로그인의
+      // redirect 파라미터가 담당).
+      context.go('/webview');
     }
 
     return false;
