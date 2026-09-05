@@ -12,8 +12,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../main.dart' show navigatorKey, removeNativeSplashOnce;
 import '../logging/app_logger.dart';
 import '../constants/app_environment.dart';
-import '../auth/token_storage.dart';
 import '../auth/session_cleaner.dart';
+import '../auth/token_storage.dart';
 import '../system/app_exit.dart';
 import '../network/api_client.dart';
 import '../network/api_error.dart';
@@ -213,17 +213,6 @@ class WebViewBridge {
   ///   스캔된 UUID 문자열을 반환한다. 사용자 취소/실패 시 null.
   /// - 구현: `context.push<String>('/qr-scanner')` await → pop 결과 반환
   Future<String?> Function()? onQrScanRequest;
-
-  /// Android 하드웨어 백키 가로채기 요청 콜백 (WebViewScreen → MainShellScreen 으로 전파).
-  /// - Web 이 `navigation.setHardwareBackEnabled(true/false)` 호출 시 트리거된다.
-  /// - MainShellScreen 은 이 값을 기반으로 PopScope 백키 발생 시 Web 위임 여부 결정.
-  /// (2026-05-16 백키 통합 처리)
-  void Function(bool enabled)? onHardwareBackEnabledChange;
-
-  /// Web 이 하드웨어 백키 이벤트를 정상 수신했음을 알리는 ACK 콜백.
-  /// - MainShellScreen 의 1.5초 timeout fallback timer 즉시 취소용.
-  /// (2026-05-16 백키 통합 처리)
-  void Function()? onBackReceived;
 
   WebViewBridge(this.webViewController) {
     // 글로벌 instance 등록 — 업로드 핸들러 등 컨트롤러 컨텍스트 없는 곳에서 사용.
@@ -815,25 +804,6 @@ class WebViewBridge {
     }
   }
 
-  /// Android 하드웨어 백키 이벤트를 Web으로 push (2026-05-16 백키 통합 처리).
-  ///
-  /// Web 의 `navigation.onHardwareBack` 리스너가 본 메시지를 수신하여
-  /// SPA 라우팅(router.back / 종료 confirm / 역할 홈 replace) 결정을 수행한다.
-  /// Web 은 수신 즉시 `action: 'backReceived'` ACK 를 발송해 fallback timer 를 취소한다.
-  ///
-  /// 동일 push 패턴: `sendDeepLinkToWeb`, `sendDeviceMetricsToWeb`.
-  Future<void> sendHardwareBackToWeb() async {
-    try {
-      final message = BridgeMessage(
-        type: BridgeMessageType.navigation,
-        data: {'action': 'hardwareBackPressed'},
-      );
-      await sendMessageToWeb(message);
-    } catch (e) {
-      debugPrint('하드웨어 백키 전송 실패: $e');
-    }
-  }
-
   /// 본인인증 요청 처리
   Future<Map<String, dynamic>> _handleIdentityVerificationRequest(List<dynamic> args) =>
       _handleIdentityVerificationRequestImpl(args);
@@ -1171,8 +1141,6 @@ class WebViewBridge {
     onUIConfigChange = null;
     onThemeChange = null;
     onNavigationRequest = null;
-    onHardwareBackEnabledChange = null;
-    onBackReceived = null;
     // 글로벌 instance 가 본 객체를 가리키고 있을 때만 해제 (재진입 안전).
     if (identical(_instance, this)) {
       _instance = null;

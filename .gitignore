@@ -131,3 +131,7 @@ backdata/teamplus_하우머치스타일
 # agentmemory 데몬 런타임 상태 KV (프로젝트 코드와 무관 — 데몬이 cwd 기준으로 생성)
 # 2026-06-25 커밋에 mem%3Ahealth.bin 이 딸려 들어간 적 있어 재유입 차단 (2026-08-01 정리)
 data/state_store.db/
+
+# third_party 포크 Gradle 빌드 캐시 (AGP 9 승급 빌드가 각 포크 android/ 에 생성 —
+# 머신 로컬 캐시라 커밋·운영반영 대상 아님. 2026-08-08 git status 노이즈 차단)
+teamplus-app/third_party/*/android/.gradle/

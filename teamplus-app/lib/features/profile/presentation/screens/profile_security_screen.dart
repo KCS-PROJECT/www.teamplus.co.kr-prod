@@ -384,7 +384,10 @@ class ProfileSecurityScreen extends ConsumerWidget {
                       backgroundColor: AppColors.success,
                     ),
                   );
-                  context.go('/login');
+                  // '/login' GoRoute 는 2026-05-19 제거됨 — extras 없는
+                  // '/webview' 진입은 InitialDestinationGate 가 인증 상태를
+                  // 보고 웹 로그인으로 자동 분기한다.
+                  context.go('/webview');
                 }
               } catch (_) {
                 if (context.mounted) {

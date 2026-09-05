@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 import '../router/deep_link_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../constants/api_constants.dart';
+import '../auth/session_cleaner.dart';
 import '../auth/token_storage.dart';
 import '../system/app_exit.dart';
 import '../diagnostics/boot_timeline.dart';
@@ -60,16 +61,6 @@ class WebViewScreen extends ConsumerStatefulWidget {
   /// 흰색으로 잠깐 보이는 백화 깜빡임을 제거. Web 측에서 `useNativeUI({
   /// scaffoldBackgroundColor })` 호출하면 그 값이 우선.
   final Color? initialScaffoldBackgroundColor;
-  // ============================================================
-  // MainShellScreen 연동용 콜백 (외부 AppBar/네비게이션 제어)
-  // ============================================================
-  /// Web에서 요청한 헤더/UI 상태를 상위 위젯으로 전달
-  /// - 예: title, showBack, showMenu, hideAll 등
-  final void Function(Map<String, dynamic> data)? onHeaderUpdate;
-
-  /// Web에서 요청한 네비게이션 액션을 상위 위젯으로 전달
-  /// - 예: navigate, backPressed 등
-  final void Function(String action, dynamic data)? onNavigationAction;
 
   const WebViewScreen({
     super.key,
@@ -80,15 +71,13 @@ class WebViewScreen extends ConsumerStatefulWidget {
     this.userType,
     this.initialShowStatusBar = true,
     this.initialScaffoldBackgroundColor,
-    this.onHeaderUpdate,
-    this.onNavigationAction,
   });
 
   @override
   ConsumerState<WebViewScreen> createState() => WebViewScreenState();
 }
 
-/// `MainShellScreen` 등 외부에서 `GlobalKey<WebViewScreenState>`로 접근할 수 있도록
+/// 외부에서 `GlobalKey<WebViewScreenState>`로 접근할 수 있도록
 /// State 클래스를 public 으로 노출합니다.
 class WebViewScreenState extends ConsumerState<WebViewScreen>
     with WidgetsBindingObserver {
@@ -343,38 +332,6 @@ class WebViewScreenState extends ConsumerState<WebViewScreen>
 
     if (!mounted || _isDisposed) return;
 
-    // ============================================================
-    // 상위(MainShell 등)로 UI/헤더 상태 전달
-    // - WebViewScreen 내부 UI를 쓰지 않는 경우에도, 상위 AppBar를 갱신할 수 있게 함
-    // ============================================================
-    if (widget.onHeaderUpdate != null) {
-      final payload = <String, dynamic>{};
-
-      // 타이틀
-      if (config.appBarTitle != null) {
-        payload['title'] = config.appBarTitle;
-      }
-
-      // AppBar 버튼
-      if (config.showBackButton != null) {
-        payload['showBack'] = config.showBackButton;
-      }
-      if (config.showMenuButton != null) {
-        payload['showMenu'] = config.showMenuButton;
-      }
-
-      // 전체 UI 숨김(전체화면) 요청: AppBar/BottomNav가 모두 false인 경우로 해석
-      if (config.showAppBar != null || config.showBottomNav != null) {
-        final showAppBar = config.showAppBar ?? true;
-        final showBottomNav = config.showBottomNav ?? true;
-        payload['hideAll'] = (showAppBar == false && showBottomNav == false);
-      }
-
-      if (payload.isNotEmpty) {
-        widget.onHeaderUpdate!(payload);
-      }
-    }
-
     setState(() {
       // 🚀 클라이언트 사이드 네비게이션 로딩 상태 제어
       if (config.isLoading != null) {
@@ -426,7 +383,7 @@ class WebViewScreenState extends ConsumerState<WebViewScreen>
 
       // AppBar 제어
       //
-      // MainShellScreen은 WebView를 기본 showAppBar=false로 생성하지만, 탭 허브
+      // WebViewScreen 은 기본 showAppBar=false 로 생성되지만, 탭 허브
       // 화면은 Web의 useNativeUI({ showAppBar: true }) 요청으로 네이티브 AppBar를
       // 복원해야 한다. widget.showAppBar로 동적 활성화를 막으면 BottomNav 탭
       // 진입 시 상단 AppBar가 영구히 사라진다.
@@ -1309,35 +1266,6 @@ class WebViewScreenState extends ConsumerState<WebViewScreen>
                             }
                           };
 
-                          // 네비게이션 요청 콜백 설정 (Web → Native)
-                          _bridge!.onNavigationRequest = (route, params) {
-                            // 상위가 네비게이션을 제어하고 싶은 경우 전달
-                            widget.onNavigationAction?.call('navigate', {
-                              'route': route,
-                              'params': params,
-                            });
-                          };
-
-                          // 안드로이드 하드웨어 백키 가로채기 등록/해제 콜백
-                          // (2026-05-16 백키 통합 처리)
-                          //   Web 이 setHardwareBackEnabled(true/false) 호출 시 트리거.
-                          //   MainShellScreen 이 _hardwareBackEnabled 플래그 갱신.
-                          _bridge!.onHardwareBackEnabledChange = (enabled) {
-                            widget.onNavigationAction?.call(
-                              'hardwareBackEnabled',
-                              {'enabled': enabled},
-                            );
-                          };
-
-                          // Web 이 백키 이벤트를 정상 수신했음을 알리는 ACK 콜백
-                          //   MainShellScreen 의 1.5초 fallback timer 취소용.
-                          _bridge!.onBackReceived = () {
-                            widget.onNavigationAction?.call(
-                              'backReceived',
-                              null,
-                            );
-                          };
-
                           // QR 스캐너 실행 콜백 (Web → Native 카메라 스캐너)
                           // Web 이 http://<IP>:5001 로 WebView 에서 로드되면 Secure Context 가
                           // 아니어서 브라우저 카메라 API 사용 불가. 이 경로를 통해 네이티브
@@ -1476,9 +1404,8 @@ class WebViewScreenState extends ConsumerState<WebViewScreen>
                           _updateNavIndexFromUrl(url);
 
                           // Cold start 딥링크: WebView 준비 전에 수신된 경로 소비.
-                          // ⚠️ 로그인/인증 페이지가 첫 로드면 소비하지 '않는다' — 무조건
+                          // ⚠️ 로그인/인증 페이지가 첫 로드면 그대로 소비하지 않는다 — 무조건
                           // consume 하면 버퍼가 비워져 로그인 완료 후 목적지가 영구 유실된다.
-                          // 인증 페이지에선 버퍼를 남겨, 로그인 후 비인증 페이지 onLoadStop 이 소비.
                           if (!isAuthPage) {
                             final pendingPath =
                                 DeepLinkHandler.consumePendingPath();
@@ -1489,6 +1416,30 @@ class WebViewScreenState extends ConsumerState<WebViewScreen>
                                   const Duration(milliseconds: 300), () {
                                 if (!_isDisposed) {
                                   _handleDeepLinkNavigation(pendingPath);
+                                }
+                              });
+                            }
+                          } else if (currentUrl.contains('/login') &&
+                              !currentUrl.contains('redirect=')) {
+                            // [2026-07-29 SNS 딥링크 목적지 보존] 기존 설계("버퍼를 남겨
+                            // 로그인 후 비인증 페이지 onLoadStop 이 소비")는 로그인 성공
+                            // 이동이 router.replace(SPA) 뿐이라 onLoadStop 이 다시 발화하지
+                            // 않아 pending 이 영구 유실됨을 실측 확인(에뮬레이터 — SPA
+                            // 이동에서는 onLoadStop 미발화). 로그인 페이지가 이미 지원하는
+                            // ?redirect= 계약(login/page.tsx)으로 소비·전달해 로그인 성공 시
+                            // 원래 딥링크 목적지로 복귀시킨다.
+                            final pendingPath =
+                                DeepLinkHandler.consumePendingPath();
+                            if (pendingPath != null && pendingPath != '/') {
+                              final encoded =
+                                  Uri.encodeQueryComponent(pendingPath);
+                              debugPrint(
+                                  '[WebView] 로그인 페이지 → pending 딥링크를 redirect 쿼리로 전달: $pendingPath');
+                              Future.delayed(
+                                  const Duration(milliseconds: 300), () {
+                                if (!_isDisposed) {
+                                  _handleDeepLinkNavigation(
+                                      '/login/?redirect=$encoded');
                                 }
                               });
                             }
@@ -2139,6 +2090,10 @@ Content Type: ${errorResponse.contentType}
     for (var i = currentIndex - 1; i >= 0; i--) {
       final entryUrl = items[i].url;
       final path = normalizePath(entryUrl);
+      // 외부 도메인(토스 결제창 등) 엔트리 → 되짚기 중단. 결제 세션은 이탈 즉시
+      // 만료라 되돌아가면 버튼 없는 토스 오류 화면에 갇힌다. 인증 진입 화면과 같은
+      // 취급으로 0 을 반환해 호출부의 역할 홈 폴백을 태운다.
+      if (!_isAppWebEntry(entryUrl)) return 0;
       if (path == currentPath) continue; // 같은 경로 중복 엔트리 스킵
       if (path.isEmpty || _isAuthPathUrl(entryUrl?.toString())) return 0;
       return currentIndex - i;
@@ -3126,9 +3081,11 @@ Content Type: ${errorResponse.contentType}
               HapticFeedback.mediumImpact();
               Navigator.of(context).pop(); // Drawer 닫기
 
-              // 로그아웃 처리: 토큰 삭제 및 로그인 페이지로 이동
-              await _tokenStorage.clearAll();
-              _navigateInWebView('/login');
+              // 로그아웃은 SessionCleaner SoT 경유 — clearAll 만 부르면 WebView
+              // refresh 쿠키가 잔존해 미들웨어가 "세션 있음" 오판한다.
+              await SessionCleaner.clearSession();
+              if (!mounted || _isDisposed) return;
+              _navigateInWebView('/login/');
             },
             icon: Icon(
               Icons.logout_rounded,

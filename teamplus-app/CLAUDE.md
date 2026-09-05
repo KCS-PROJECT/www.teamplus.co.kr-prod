@@ -10,8 +10,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **아키텍처**: Flutter Native Shell (15-20%) + Next.js WebView (80-85%)
 - **Flutter SDK**: >=3.4.0 <4.0.0
-- **215개 .dart 파일** (`lib/`, 2026-06-24 실측), `.g.dart` 코드 생성 파일 9개 포함
-- **26개 feature 모듈**, **37개 GoRoute**, **16개 JS Bridge 핸들러** (`addJavaScriptHandler` 등록 기준 — 아래 WebView Bridge 표는 web-facing 핵심 핸들러 위주)
+- **219개 .dart 파일** (`lib/`, 2026-07-28 실측), `.g.dart` 코드 생성 파일 9개 포함
+- **25개 feature 모듈**, **36개 GoRoute**, **메인 브릿지 핸들러 13개** (auth·qrScan·payment·biometric·notification·navigation·identityVerification·api·cancelRequest·ui·theme·upload·log, + `tbot` 조건부. `addJavaScriptHandler` 전체 등록은 16건 — 결제(`paymentResult`)·본인인증(`identityResult`) 전용 WebView 핸들러 포함)
 
 Next.js 웹앱(`teamplus-web`)을 `flutter_inappwebview`로 로드하고, JavaScript Bridge를 통해 네이티브 기능(생체인증, QR, 푸시, 보안 저장소, 결제) 제공.
 
@@ -43,14 +43,17 @@ flutter test                     # 테스트
 
 ```
 Flutter Native Shell
-  ├── Native screens (37개 GoRoute: login, QR, dashboard, profile 등)
-  ├── WebViewScreen (Next.js teamplus-web 로드)
-  │     └── WebViewBridge (10개 JS 핸들러)
-  └── MainShellScreen (멀티탭 WebView + 동적 헤더/하단 네비)
+  ├── Native screens (36개 GoRoute: 온보딩, QR, dashboard, profile 등)
+  └── WebViewScreen (Next.js teamplus-web 로드 — 하이브리드 메인 화면)
+        └── WebViewBridge (메인 13개 JS 핸들러)
 ```
 
-1. **네이티브 화면** — 로그인, 회원가입, 대시보드, QR, 프로필 등 (GoRouter 관리)
+1. **네이티브 화면** — 온보딩, 회원가입, 대시보드, QR, 프로필 등 (GoRouter 관리)
 2. **WebView 모드** — `WebViewScreen`이 `teamplus-web` 로드, `WebViewBridge`로 통신
+
+> `MainShellScreen`(멀티탭 셸)·`WebViewExampleScreen`·`/identity-gateway` 라우트는
+> 데드코드로 확인되어 2026-07-28 삭제됨. 백키 SoT 는 `WebViewScreen._onHardwareBack`
+> 단일 경로, 로그인 진입은 `/webview`(extras 없음) → `InitialDestinationGate` 분기.
 
 ### 핵심 레이어
 
@@ -73,11 +76,10 @@ lib/
 │   ├── theme/         # Material 3 테마, 컬러 상수
 │   ├── websocket/     # Socket.IO 서비스
 │   └── webview/       # WebViewBridge, WebViewScreen, JsBridge 모델
-├── features/          # 24개 기능 모듈
+├── features/          # 25개 기능 모듈
 │   ├── [Full CA 7개]  # auth, notifications, attendance, classes, clubs, dashboard, payments
-│   ├── [data+pres 2개] # community, main
+│   ├── [data+pres 2개] # community, main (main 은 screens 없이 data/providers 만 — MainShellScreen 2026-07-28 삭제)
 │   └── [pres only 14개] # calendar, children, coach, home, identity, lessons, matches, onboarding, profile, qr, rinks, shop, splash, tournaments
-│   └── webview/       # WebView 전용 (presentation 없음)
 └── shared/            # 공유 위젯 + 유틸리티 (13개 파일)
     ├── utils/         # CancelableTimer
     └── widgets/       # AppButton, AppCard, AppInput, AppDrawer, teamplusAppBar, teamplusBottomNav,
@@ -118,19 +120,19 @@ class MyWidget extends ConsumerWidget {
 
 ---
 
-## 네비게이션: GoRouter (37개 라우트)
+## 네비게이션: GoRouter (36개 라우트)
 
 `lib/core/router/app_router.dart` — Riverpod `Provider<GoRouter>`.
 
-**인증 리다이렉트**: `authStateProvider` 확인 → 미인증 시 `/login`으로 리다이렉트. 코치는 `/coach-dashboard`로 분기.
+**인증 리다이렉트**: `authStateProvider` 확인 → 미인증 시 `/webview`(extras 없음) 진입 후 `InitialDestinationGate`가 웹 로그인으로 분기. 코치는 `/coach-dashboard`로 분기. (`/login` GoRoute 는 2026-05-19 제거됨)
 
-**Public 라우트** (인증 불필요): `/onboarding`, `/login`, `/register`, `/home`, `/webview`
+**Public 라우트** (인증 불필요): `/onboarding`, `/register`, `/home`, `/webview`
 
 **전체 라우트 맵:**
 
 | 카테고리      | 라우트                                                                                                                                             |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Core**      | `/` (splash), `/onboarding`, `/login`, `/register`, `/biometric-lock`                                                                              |
+| **Core**      | `/onboarding`, `/signup/permissions`, `/signup/agreements`, `/signup/child-register`, `/signup/welcome`, `/register`, `/biometric-lock`            |
 | **Dashboard** | `/dashboard` (학부모), `/coach-dashboard` (코치)                                                                                                   |
 | **QR**        | `/qr-scanner`, `/qr-checkin`                                                                                                                       |
 | **수업/클럽** | `/classes`, `/club-join`, `/club-feed`, `/club-events`                                                                                             |
@@ -143,7 +145,7 @@ class MyWidget extends ConsumerWidget {
 
 ---
 
-## WebView Bridge (10개 핸들러)
+## WebView Bridge (메인 13개 핸들러)
 
 `lib/core/webview/webview_bridge.dart` (구현) + `js_bridge.dart` (메시지/응답 모델)
 
@@ -158,7 +160,10 @@ class MyWidget extends ConsumerWidget {
 | `identityVerification` | 본인인증 (딥링크 + WebView)                               |
 | `api`                  | 네이티브 Dio 클라이언트로 API 프록시 (SSL pinned)         |
 | `cancelRequest`        | 진행 중인 API 요청 취소                                   |
-| `ui`                   | 네이티브 UI 제어: StatusBar, AppBar, BottomNav, 로딩 상태 |
+| `ui`                   | 네이티브 UI 제어: StatusBar, AppBar, BottomNav, 로딩 상태, share, requestNotificationPermission |
+| `theme`                | Web → Native 테마(light/dark) 동기화                      |
+| `upload`               | 카메라/갤러리/문서 픽커 파일 업로드                       |
+| `log`                  | Web 콘솔 로그를 BridgeLogger 로 수집                      |
 
 **UIConfig** (웹이 네이티브 크롬 제어): `showStatusBar`, `showAppBar`, `appBarTitle`, `showBackButton`, `showMenuButton`, `showBottomNav`, `isLoading` 등.
 
@@ -189,10 +194,10 @@ Flutter `WidgetsBindingObserver.didChangeMetrics()` 가 회전·키보드·접�
 
 | Env       | API Host                          | Web Host | Port (API/Web) | HTTPS | 활성 조건                              |
 | --------- | --------------------------------- | -------- | -------------- | ----- | -------------------------------------- |
-| **LOCAL** | `127.0.0.1` (시뮬레이터 전용)     | 동일     | 5003 / 5001    | No    | debug 자동 / `APP_ENV=local`           |
+| **LOCAL** | `127.0.0.1` (시뮬레이터 전용)     | 동일     | 5003 / 5001    | No    | `APP_ENV=local` 명시                   |
 | **HOME**  | `192.168.0.100` (Mac LAN IP, en0) | 동일     | 5003 / 5001    | No    | `APP_ENV=home` 명시 (실기기/외부 단말) |
-| **DEV**   | `211.236.174.115`                 | 동일     | 5003 / 5001    | No    | `APP_ENV=dev`                          |
-| **PROD**  | `211.236.174.230`                 | 동일     | 5003 / 5001    | Yes   | release 자동 / `APP_ENV=prod`          |
+| **DEV**   | `211.236.174.115`                 | 동일     | 5003 / 5001    | No    | debug 자동 / `APP_ENV=dev`             |
+| **PROD**  | `teamplusweb.icetimes.co.kr`      | 동일     | 443 / 443      | Yes   | release 자동 / `APP_ENV=prod`          |
 
 ```dart
 // main.dart
@@ -200,7 +205,7 @@ AppEnvironment.instance.initialize(forceEnvironment: EnvironmentType.local);
 // 또는 빌드 시 --dart-define APP_ENV=home 으로 LAN IP 활성화
 ```
 
-자동 감지: `kReleaseMode` → PROD, 그 외 → LOCAL. HOME 은 자동 감지에서 제외 (실기기 사용 시 `APP_ENV=home` 명시).
+자동 감지: `kReleaseMode` → PROD, 그 외 → **DEV** (로컬 서버는 `APP_ENV=local` 명시). HOME 은 자동 감지에서 제외 (실기기 사용 시 `APP_ENV=home` 명시).
 전역 접근: `appEnv.apiBaseUrl`, `appEnv.webAppUrl`.
 
 > **주의**: HOME IP(`_homeMachineIp`)는 개발 머신 LAN IP이므로 Wi-Fi 변경 시 동기화 대상 (`app_environment.dart` · `teamplus-backend/src/main.ts` CORS · `ios/Runner/Info.plist` NSExceptionDomains).
@@ -234,7 +239,7 @@ AppEnvironment.instance.initialize(forceEnvironment: EnvironmentType.local);
 | **생체인증**       | `local_auth` + `AppLockManager` 비활성 추적. 앱 재개 시 잠금 확인 → `BiometricPromptScreen`                                                      |
 | **SSL Pinning**    | `assets/certificates/dev/` · `prod/` — release 빌드 **fail-closed**(인증서 불일치 시 연결 거부). 인증서 provisioning 은 ops 담당                  |
 | **루팅/탈옥 감지** | `flutter_jailbreak_detection` — `JailbreakDetectionService` 로 **실제 연동됨**(release 전용, 감지 시 SEVERE 로그 + Sentry 리포트, 앱 차단 안 함)  |
-| **암호화**         | `encrypt` + `pointycastle` (AES, 본인인증용)                                                                                                     |
+| **암호화**         | `encrypt` (AES, 본인인증용 — `pointycastle` 은 transitive, 직접 선언 제거 2026-07-28)                                                            |
 
 ---
 
@@ -246,14 +251,14 @@ AppEnvironment.instance.initialize(forceEnvironment: EnvironmentType.local);
 | **WebView**    | `flutter_inappwebview` 6                                                                            |
 | **상태관리**   | `flutter_riverpod` 2.6, `riverpod`                                                                  |
 | **네비게이션** | `go_router` 17, `app_links` (딥링크)                                                                |
-| **보안**       | `flutter_secure_storage` 10, `local_auth`, `flutter_jailbreak_detection`, `encrypt`, `pointycastle` |
+| **보안**       | `flutter_secure_storage` 10, `local_auth`, `flutter_jailbreak_detection`, `encrypt`                 |
 | **알림**       | `firebase_messaging` 16, `flutter_local_notifications` 21                                           |
 | **QR**         | `mobile_scanner` 7, `qr_flutter` 4                                                                  |
 | **저장**       | `shared_preferences`, `hive` + `hive_flutter` (오프라인 캐시)                                       |
-| **UI**         | `flutter_svg`, `flutter_native_splash`, `flutter_launcher_icons`                                    |
+| **UI**         | `flutter_native_splash`, `flutter_launcher_icons` (`flutter_svg` 미사용 확인 후 제거 2026-07-28)    |
 | **유틸**       | `intl`, `url_launcher`, `package_info_plus`, `permission_handler`                                   |
 | **코드 생성**  | `json_annotation` / `json_serializable` + `build_runner`                                            |
-| **테스트**     | `mockito`, `mocktail`, `flutter_lints`                                                              |
+| **테스트**     | `mocktail`, `flutter_lints` (`mockito` 미사용 확인 후 제거 2026-07-28)                              |
 
 ---
 
@@ -275,7 +280,7 @@ flutter pub run build_runner build --delete-conflicting-outputs
 
 |               | iOS                                                                                  | Android                                                |
 | ------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------ |
-| **최소 버전** | **iOS 15.0** (2026-05-12 상향 — firebase_core 4.x / file_picker 12 요구)             | SDK 21                                                 |
+| **최소 버전** | **iOS 15.0** (2026-05-12 상향 — firebase_core 4.x / file_picker 12 요구)             | minSdk **24**                                          |
 | **권한**      | `Info.plist`: Camera, FaceID                                                         | `AndroidManifest.xml`: Camera                          |
 | **의존성 후** | `cd ios && pod install`                                                              | 자동                                                   |
 | **특이사항**  | Podfile `platform :ios, '15.0'` · 메이저 업그레이드 시 deployment target 동기화 필수 | 에뮬레이터 localhost → `10.0.2.2` (환경 설정에서 처리) |
@@ -317,5 +322,5 @@ flutter pub run build_runner build --delete-conflicting-outputs
 
 ---
 
-**Last Updated**: 2026-06-24 | **Version**: 2.3 (보안 하드닝 + 실측 동기화 — 루팅/탈옥 감지 `JailbreakDetectionService` 실제 연동(release 전용 surface&monitor) · SSL Pinning release fail-closed 명시 · main.dart 부팅 `print()`→`debugPrint()` 8건 정리 · 실측 스냅샷 갱신: 210 .dart · 9 .g.dart · 26 feature · 37 GoRoute · 16 JS Bridge 등록 · deps 표 firebase_messaging 16 / flutter_local_notifications 21)
-**Version History** — v2.0(초기) → v2.1(API Lifecycle v8.5 — Dio 4-interceptor + 1초 SLA) → v2.2(Flutter 3.41 메이저 업그레이드) → **v2.3(보안 하드닝 + 실측 동기화)**
+**Last Updated**: 2026-07-28 | **Version**: 2.4 (감사 기반 버그 수정 + 데드코드 정리 + 실측 동기화 — `SessionCleaner` 세션 클리어 SoT 신설(브릿지 clearToken·Drawer 로그아웃·AppExit·logoutAll 경유) · 강제 401 로그아웃 캐시/쿠키 정리 · 죽은 `/login` GoRoute 참조 `/webview` 교체 · 결제 딥링크 `/payment/history` 매핑 · `ui.share`/`ui.requestNotificationPermission` Dart 구현 · AppLogger print 릴리스 가드 · 전역 uncaught 핸들러 · autoDispose 적용 · MainShellScreen/WebViewExampleScreen/`/identity-gateway` 삭제 · 실측 스냅샷: 219 .dart · 9 .g.dart · 25 feature · 36 GoRoute · 메인 브릿지 13 핸들러 · deps 정리 flutter_svg/mockito/pointycastle 제거)
+**Version History** — v2.0(초기) → v2.1(API Lifecycle v8.5 — Dio 4-interceptor + 1초 SLA) → v2.2(Flutter 3.41 메이저 업그레이드) → v2.3(보안 하드닝 + 실측 동기화) → **v2.4(감사 기반 버그 수정 + 데드코드 정리)**

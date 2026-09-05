@@ -65,6 +65,12 @@ const securityHeaders = [
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=(), payment=()",
   },
+  {
+    // [2026-08-04 SECURITY] 어드민 콘솔 검색엔진 색인 전면 차단 — Bing 이 dev 서버
+    //   IP:5002 를 색인해 노출된 사례. meta robots(layout.tsx)와 이중 적용 (web 5001 동일 정책).
+    key: "X-Robots-Tag",
+    value: "noindex, nofollow",
+  },
 ];
 
 const nextConfig = {

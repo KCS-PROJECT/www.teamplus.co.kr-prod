@@ -38,13 +38,6 @@ const NATIVE_LOADING_MIN_DURATION_MS = 300;
 const FULLSCREEN_GUARD_MAX_MS = 5000;
 let _fullscreenGuardTimer: ReturnType<typeof setTimeout> | null = null;
 
-function clearFullscreenGuardTimer(): void {
-  if (_fullscreenGuardTimer !== null) {
-    clearTimeout(_fullscreenGuardTimer);
-    _fullscreenGuardTimer = null;
-  }
-}
-
 // ─── 오버레이 열림 중 native PullToRefresh 억제 ───────────────────────
 // 모달/바텀시트/라이트박스가 떠 있는 동안 배경 페이지가 당겨서-새로고침되는
 // 오동작 방지. 오버레이는 중첩될 수 있어 refcount 로 관리하고, 페이지가
@@ -74,6 +67,13 @@ export function releasePullToRefreshForOverlay(): void {
   _overlayPullToRefreshSuppress = Math.max(0, _overlayPullToRefreshSuppress - 1);
   if (_overlayPullToRefreshSuppress === 0) {
     void rawSetPullToRefresh(_pagePullToRefresh ?? true);
+  }
+}
+
+function clearFullscreenGuardTimer(): void {
+  if (_fullscreenGuardTimer !== null) {
+    clearTimeout(_fullscreenGuardTimer);
+    _fullscreenGuardTimer = null;
   }
 }
 
@@ -512,19 +512,26 @@ export const ui = {
 
   /**
    * 푸시 알림 권한 요청.
-   * - native 미구현이면 `{ available: false, granted: false }` 반환.
+   * - native 미구현이면 `{ available: false, granted: false, permanentlyDenied: false }` 반환.
+   * - `permanentlyDenied` true 면 영구 거부 상태라 OS 팝업이 표시되지 않은 것 —
+   *   재요청 대신 "설정 > 팀플러스" 이동을 안내해야 한다 (2026-07-29 필드 추가).
    */
   async requestNotificationPermission(): Promise<{
     available: boolean;
     granted: boolean;
+    permanentlyDenied: boolean;
   }> {
     try {
       const bridge = getBridge();
       if (typeof bridge.ui.requestNotificationPermission !== "function") {
-        return { available: false, granted: false };
+        return { available: false, granted: false, permanentlyDenied: false };
       }
       const result = await bridge.ui.requestNotificationPermission();
-      return { available: true, granted: !!result?.granted };
+      return {
+        available: true,
+        granted: !!result?.granted,
+        permanentlyDenied: !!result?.permanentlyDenied,
+      };
     } catch (error) {
       handleBridgeError(
         "ui",
@@ -534,7 +541,7 @@ export const ui = {
         },
         { operation: "requestNotificationPermission" },
       );
-      return { available: false, granted: false };
+      return { available: false, granted: false, permanentlyDenied: false };
     }
   },
 

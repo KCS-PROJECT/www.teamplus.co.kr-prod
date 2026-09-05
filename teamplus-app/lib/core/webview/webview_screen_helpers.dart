@@ -41,6 +41,22 @@ bool _isAuthPathUrl(String? url) {
   return false;
 }
 
+/// 히스토리 엔트리가 **앱 웹(teamplus-web) 소속**인지 판별.
+///
+/// 토스 결제창처럼 외부 도메인으로 나갔다 돌아오면 그 엔트리가 WebView 히스토리에
+/// 그대로 남는다. 결제 세션은 이탈 즉시 만료되므로 되짚어 들어가면 토스가 소유한
+/// "이미 종료된 세션입니다" 화면(버튼 없음 — 앱에서 빠져나올 수단 없음)이 뜬다.
+/// `_safeHistoryBackSteps` 는 이 판정으로 외부 엔트리에서 되짚기를 중단한다.
+///
+/// 호스트만 비교한다 — dev/prod 로 scheme·port 가 달라지지만 앱 웹 호스트는 하나다.
+/// base 파싱 실패 등 판정 불가 시에는 true(기존 동작 유지)로 보수적 폴백한다.
+bool _isAppWebEntry(Uri? url) {
+  if (url == null) return true;
+  final base = Uri.tryParse(ApiConstants.webAppUrl);
+  if (base == null || base.host.isEmpty || url.host.isEmpty) return true;
+  return url.host == base.host;
+}
+
 /// 현재 URL 이 **로그인 화면**(`/login`)인지 정확히 판별.
 ///
 /// `_isAuthPathUrl` 은 회원가입·비밀번호찾기 등 인증 플로우 전체를 포함하지만,

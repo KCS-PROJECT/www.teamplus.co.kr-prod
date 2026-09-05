@@ -119,8 +119,9 @@ configurations.all {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
-    // [2026-08-01 Play 권장 조치] enableEdgeToEdge() (MainActivity) — androidx.activity 1.8+
-    implementation("androidx.activity:activity-ktx:1.9.3")
+    // [2026-09-05 Play 권장 조치 ②] androidx.activity:activity-ktx:1.9.3 명시 의존 제거 —
+    //   MainActivity 의 enableEdgeToEdge() 를 걷어내 직접 참조가 없고, 실제 해석 버전은
+    //   Flutter 임베딩 transitive 1.12.4 였으므로(1.9.3 -> 1.12.4 승격) 해석 결과 불변.
 }
 
 flutter {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../shared/widgets/teamplus_app_bar.dart';
 import '../providers/profile_provider.dart';
@@ -9,6 +10,10 @@ import '../providers/profile_provider.dart';
 /// 푸시 알림 항목별 ON/OFF를 제어합니다.
 /// 백엔드 `GET /api/v1/notifications/settings` 조회 후
 /// `PATCH /api/v1/notifications/settings` 로 저장합니다.
+///
+/// [2026-07-29] OS 알림 권한 배너 추가 — 여기 토글은 서버 설정일 뿐이라,
+/// 기기 알림 권한이 거부된 상태에선 전부 켜도 실제 푸시가 도착하지 않는다.
+/// 권한 미허용 시 상단 배너로 알리고 설정 이동을 안내한다 (A5 권한 안내와 동일 패턴).
 class ProfileNotificationSettingsScreen extends ConsumerStatefulWidget {
   const ProfileNotificationSettingsScreen({super.key});
 
@@ -18,11 +23,50 @@ class ProfileNotificationSettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileNotificationSettingsScreenState
-    extends ConsumerState<ProfileNotificationSettingsScreen> {
+    extends ConsumerState<ProfileNotificationSettingsScreen>
+    with WidgetsBindingObserver {
   // 로컬 편집 상태 (서버 응답으로 초기화)
   Map<String, bool>? _localSettings;
   bool _isDirty = false;
   bool _isSaving = false;
+
+  /// 기기(OS) 알림 권한이 거부되어 실제 푸시가 차단된 상태인지.
+  bool _osPermissionBlocked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _checkOsNotificationPermission();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// 설정 앱에 다녀온 뒤(resume) 배너 상태를 자동 갱신한다.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkOsNotificationPermission();
+    }
+  }
+
+  Future<void> _checkOsNotificationPermission() async {
+    try {
+      final status = await Permission.notification.status;
+      final blocked = status.isDenied ||
+          status.isPermanentlyDenied ||
+          status.isRestricted;
+      if (mounted && blocked != _osPermissionBlocked) {
+        setState(() => _osPermissionBlocked = blocked);
+      }
+    } catch (_) {
+      // 상태 조회 실패는 배너 미표시로 폴백 (기능 차단 없음)
+    }
+  }
 
   /// 서버 응답 → 로컬 상태 초기화 (최초 1회)
   void _initLocalSettings(Map<String, dynamic> serverSettings) {
@@ -149,6 +193,9 @@ class _ProfileNotificationSettingsScreenState
             child: ListView(
               padding: const EdgeInsets.symmetric(vertical: 8),
               children: [
+                // ── OS 알림 권한 배너 (권한 거부 시에만) ────
+                if (_osPermissionBlocked) _buildOsPermissionBanner(),
+
                 // ── 전체 푸시 알림 ──────────────────────────
                 _buildSection(
                   children: [
@@ -251,6 +298,49 @@ class _ProfileNotificationSettingsScreenState
             ),
           );
         },
+      ),
+    );
+  }
+
+  /// OS 알림 권한 거부 상태 안내 배너 — 토글(서버 설정)과 무관하게 실제 푸시가
+  /// 차단되어 있음을 알리고 설정 이동을 안내한다.
+  Widget _buildOsPermissionBanner() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border:
+            Border.all(color: AppColors.warning.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.notifications_off_outlined,
+              size: 20, color: AppColors.warning),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              '기기 알림 권한이 꺼져 있어\n푸시 알림이 도착하지 않아요.',
+              style: TextStyle(fontSize: 13, height: 1.4),
+            ),
+          ),
+          TextButton(
+            onPressed: openAppSettings,
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              minimumSize: const Size(0, 36),
+            ),
+            child: const Text(
+              '설정으로 이동',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: AppColors.primary,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

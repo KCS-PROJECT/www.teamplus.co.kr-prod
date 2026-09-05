@@ -5,6 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../auth/token_storage.dart';
 import '../constants/api_constants.dart';
 import '../maintenance/maintenance_service.dart';
+import '../network/app_update_dialog.dart';
+import '../network/app_version_service.dart';
+import '../version/app_version_gate.dart';
 import '../webview/webview_cookie_sync.dart';
 import '../webview/webview_screen.dart';
 import '../../features/maintenance/presentation/screens/system_maintenance_screen.dart';
@@ -151,6 +154,12 @@ class _InitialDestinationGateState
   /// 시작 시점(여기)과 포그라운드 복귀(app.dart) 가 동일 서비스를 재사용.
   Future<MaintenanceStatus>? _maintenance;
 
+  /// 📦 앱 버전 게이트 — 점검 체크와 병렬로 서버 최신/최소 버전을 조회한다.
+  ///   webview 마운트를 막지 않고(콜드스타트 영향 0), splash 가 걷힌 뒤 결과에 따라
+  ///   강제/권장 업데이트 다이얼로그를 1회 띄운다. fail-open(오류 시 무동작).
+  VersionGateDecision? _versionDecision;
+  bool _updateDialogTriggered = false;
+
   bool _splashReady = false;
   final bool _hideSplash = false;
 
@@ -204,6 +213,14 @@ class _InitialDestinationGateState
     //   대기하므로, 점검 중이면 로그인/홈 어떤 화면도 마운트되지 않는다.
     final maintenanceFuture = ref.read(maintenanceServiceProvider).check();
     _maintenance = maintenanceFuture;
+
+    // 트랙 0.5: 앱 버전 게이트 — 점검 체크와 병렬(서버 왕복 중첩)로 실행해
+    //   콜드스타트 추가 지연을 0에 가깝게 유지한다. webview 마운트를 막지 않으므로,
+    //   결과가 늦게 와도 앱 진입은 지연되지 않는다(점검 중이면 결과는 그냥 무시).
+    //   evaluate() 는 어떤 실패든 삼켜 none 을 반환한다(fail-open).
+    ref.read(appVersionGateProvider).evaluate().then((decision) {
+      if (mounted) setState(() => _versionDecision = decision);
+    });
 
     // 점검이 아닐 때만 인증 분기 + splash 트랙을 진행한다.
     //   (점검 중에는 토큰 read·WebView 마운트가 불필요하므로 생략 → 자원 절약)
@@ -268,6 +285,39 @@ class _InitialDestinationGateState
     );
   }
 
+  /// 📦 버전 판정 결과에 따라 업데이트 다이얼로그를 1회 띄운다.
+  ///
+  /// - 강제(promptForce): 닫기 불가 다이얼로그(스토어 이동 / Android 앱 종료).
+  /// - 권장(promptOptional): 닫을 수 있는 다이얼로그. 닫히면 24h 억제 기록.
+  /// - none: 아무 것도 안 함.
+  ///
+  /// build 중 호출되지만 실제 표시는 post-frame 으로 미뤄 프레임 안정성을 보장하고,
+  /// `_updateDialogTriggered` 로 중복 표시를 막는다. webview 는 이미 마운트되어 뒤에
+  /// 있고, 강제 시에는 barrier(비-dismissible) + PopScope 로 상호작용이 차단된다.
+  void _maybeShowUpdateDialog() {
+    if (_updateDialogTriggered) return;
+    final decision = _versionDecision;
+    if (decision == null || !decision.shouldPrompt) return;
+
+    _updateDialogTriggered = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      AppUpdateDialogHelper.show(
+        context: context,
+        updateType: decision.compareResult!,
+        versionInfo: decision.versionInfo!,
+      ).then((_) {
+        // 권장 업데이트 다이얼로그가 닫히면(나중에/바깥탭) 24h 억제 기록.
+        //   강제는 억제 대상이 아니다(항상 차단).
+        if (decision.compareResult == VersionCompareResult.optionalUpdate) {
+          ref
+              .read(appVersionGateProvider)
+              .recordOptionalDismissed(decision.versionInfo!.latestVersion);
+        }
+      });
+    });
+  }
+
   /// 점검이 아닐 때의 기존 정상 진입 트리 (인증 분기 → WebView + splash overlay).
   Widget _buildNormalTree() {
     // splash 가 살아있는 동안은 AnnotatedRegion 으로 statusbar 청색 강제.
@@ -282,6 +332,10 @@ class _InitialDestinationGateState
         //   ② splash 최소 노출 200ms + 이미지 precache 완료
         // 한 쪽이라도 미완이면 splash 가 위에서 WebView 의 흰 frame 을 가려준다.
         final shouldFadeOut = destReady && _splashReady;
+        // splash 가 걷히고 정상 진입이 확정된 뒤에만 업데이트 다이얼로그를 띄운다
+        //   (splash 위에 겹치지 않도록). 버전 판정이 아직 안 왔으면 이번엔 스킵되고,
+        //   판정 도착 시 setState 로 재빌드되며 여기서 다시 평가된다.
+        if (shouldFadeOut) _maybeShowUpdateDialog();
         return Stack(
           fit: StackFit.expand,
           children: [

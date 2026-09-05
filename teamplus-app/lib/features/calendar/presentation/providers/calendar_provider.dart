@@ -26,9 +26,10 @@ final selectedMonthProvider =
 ///
 /// 백엔드 `GET /api/v1/dashboard/calendar?month=YYYY-MM` 를 호출합니다.
 /// 색상 코드: red(팀 훈련), green(개인레슨), blue(대회)
-final calendarEventsProvider =
-    FutureProvider.family<List<Map<String, dynamic>>, String>(
-        (ref, month) async {
+/// autoDispose: 월 스크롤 시 month 별 캐시가 앱 수명 동안 누적되지 않도록
+/// 화면 unmount 시 해제 (2026-07-28).
+final calendarEventsProvider = FutureProvider.autoDispose
+    .family<List<Map<String, dynamic>>, String>((ref, month) async {
   final apiClient = ref.watch(apiClientProvider);
   try {
     final response = await apiClient.get(

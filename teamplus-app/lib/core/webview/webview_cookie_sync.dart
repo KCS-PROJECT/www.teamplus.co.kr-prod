@@ -19,11 +19,14 @@ import '../constants/app_environment.dart';
 ///   로그인과 동일한 쿠키 토폴로지를 만든다. 백엔드가 웹 브라우저에 설정하는 것과
 ///   동일 쿠키(이름·httpOnly·SameSite=Lax·path=/·7일)이므로 신규 공격면 없음.
 ///
-/// **호출 지점 (토큰 생명주기 전체 커버)**:
+/// **호출 지점 (토큰 생명주기 전체 커버, 2026-07-28 갱신)**:
 ///   1. `resolveInitialDestination` — 콜드 스타트, WebView 첫 문서 요청 **이전**
 ///   2. Bridge `auth.saveToken` — 로그인/회원가입/웹발 refresh (web `saveTokens` 경유)
-///   3. Bridge `auth.clearToken` — 로그아웃 (쿠키 삭제)
+///   3. `SessionCleaner.clearSession` — 모든 로그아웃/세션 클리어 경로 SoT
+///      (Bridge `auth.clearToken` · 네이티브 Drawer 로그아웃 ·
+///       `AppExit.terminateWithSessionClear` · `logoutAllProvider` 가 경유, 쿠키 삭제)
 ///   4. `ApiClient.onRefreshTokenRotated` — Flutter Dio 인터셉터의 401 자동 갱신
+///      (강제 로그아웃 시 null 전달 → 쿠키 삭제)
 class WebViewCookieSync {
   const WebViewCookieSync._();
 

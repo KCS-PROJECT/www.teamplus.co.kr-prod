@@ -12,6 +12,9 @@ import { env } from "@/lib/env";
 export const metadata: Metadata = {
   title: "TEAMPLUS - 팀플러스",
   description: "아이스 하키 클럽 관리 플랫폼",
+  // 어드민 콘솔 — 검색엔진 색인 차단 (실제로 Bing이 dev 서버 IP:5002를 색인해 노출된 사례).
+  // 관리자 로그인 화면이 검색에 노출되면 공격 대상 목록에 오르기 쉬워 환경 무관 전면 noindex.
+  robots: { index: false, follow: false },
   keywords: [
     "아이스하키",
     "클럽 관리",

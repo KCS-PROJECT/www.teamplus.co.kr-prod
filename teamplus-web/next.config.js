@@ -166,13 +166,20 @@ const nextConfig = {
   // 배포 시 SSR 모드 또는 generateStaticParams 서버 컴포넌트 래퍼 필요
   // output: 'export',
 
-  // 개발 서버에서 허용할 호스트 (Flutter WebView 네트워크 접근용)
-  allowedDevOrigins: ["http://192.168.0.105:3000", "http://localhost:5001"],
+  // 개발 서버에서 허용할 호스트 (Flutter WebView · 원격 DEV 접속용)
+  // ⚠️ hostname 만 기재 — Next 15.5 는 Origin 의 hostname 만 비교하므로
+  //    "http://ip:port" 전체 URL 형식은 매칭되지 않아 /_next/* 403 + HMR 차단을 유발한다.
+  //    (localhost 는 Next 기본 허용이라 기재 불필요)
+  allowedDevOrigins: ["211.236.174.115", "192.168.0.105"],
 
-  // 실험적 기능: 서버 액션 및 외부 호스트 허용
+  // 실험적 기능: 서버 액션 및 외부 호스트 허용 (이쪽은 host:port 형식)
   experimental: {
     serverActions: {
-      allowedOrigins: ["192.168.0.105:3000", "localhost:5001"],
+      allowedOrigins: [
+        "211.236.174.115:5001",
+        "192.168.0.105:3000",
+        "localhost:5001",
+      ],
     },
     // 🎯 대형 모듈 barrel import 최적화 — tree-shaking 강화 (2026-04-30 확장)
     // 번들 크기 10-30% 감소 → 초기 JS 파싱 시간 단축

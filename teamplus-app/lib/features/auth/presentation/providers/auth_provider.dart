@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/auth/session_cleaner.dart';
 import '../../../../core/auth/token_storage.dart';
+import '../../../../core/notification/push_notification_service.dart';
 import '../../../../core/providers/shared_providers.dart';
 import '../../../../core/security/app_lock_manager.dart';
 import '../../data/datasources/auth_remote_datasource.dart';
@@ -67,10 +69,25 @@ final logoutProvider = FutureProvider<void>((ref) async {
 final logoutAllProvider = FutureProvider<void>((ref) async {
   final repository = ref.watch(authRepositoryProvider);
 
+  // FCM 디바이스 해제는 인증 토큰이 유효한 동안에만 가능하므로
+  // 서버 tokenVersion 증가 전에 수행 (실패는 무시 — 로그아웃을 막지 않음).
+  try {
+    await PushNotificationService()
+        .unregisterTokenFromServer()
+        .timeout(const Duration(seconds: 2));
+  } catch (_) {
+    /* 해제 실패해도 서버 tokenVersion 증가로 푸시 대상에서 제외됨 */
+  }
+
   // 모든 기기 로그아웃 (서버 tokenVersion 증가 + 로컬 토큰 삭제)
   await repository.logoutAll();
 
-  // 인증 상태 갱신 → GoRouter 가 /login 으로 리다이렉트
+  // 세션 클리어 SoT — repository 는 SecureStorage 만 지우므로 TokenStorage
+  // 30초 메모리 캐시 무효화 + WebView refresh 쿠키 삭제를 여기서 보장한다.
+  // (누락 시 authStateProvider 가 최대 30초 stale 인증 상태를 반환)
+  await SessionCleaner.clearSession();
+
+  // 인증 상태 갱신 → GoRouter 가 로그인 게이트로 리다이렉트
   ref.invalidate(authStateProvider);
 });
 

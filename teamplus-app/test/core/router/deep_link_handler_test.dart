@@ -63,12 +63,14 @@ void main() {
       );
     });
 
-    test('결제 /payment/7 → /payment/7', () {
+    test('결제 /payment/7 → /payment/history (웹에 /payment/[id] 라우트 없음)', () {
+      // 2026-07-28: 웹 payment 하위에 [id] 동적 라우트가 없어 /payment/7 은
+      // 404 였다 — 결제 딥링크는 결제 이력으로 매핑한다 (push_route_resolver 규약).
       expect(
         DeepLinkHandler.resolveWebPath(
           Uri.parse('https://teamplusweb.icetimes.co.kr/payment/7'),
         ),
-        '/payment/7',
+        '/payment/history',
       );
     });
 

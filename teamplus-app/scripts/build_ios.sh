@@ -27,7 +27,7 @@ case "$ENV" in
     echo "  환경:"
     echo "    local  - 로컬 개발 (211.236.174.86)"
     echo "    dev    - 개발 서버 (211.236.174.115)"
-    echo "    prod   - 운영 서버 (211.236.174.230)"
+    echo "    prod   - 운영 서버 (teamplusweb.icetimes.co.kr)"
     echo ""
     echo "  액션:"
     echo "    run    - Debug 실행 (기본값)"

@@ -3,9 +3,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/services.dart';
 
-import '../auth/token_storage.dart';
-import '../notification/push_notification_service.dart';
-import '../webview/webview_cookie_sync.dart';
+import '../auth/session_cleaner.dart';
 
 /// 앱 완전 종료 SoT (Android 전용).
 ///
@@ -70,35 +68,12 @@ class AppExit {
   /// clearToken → exitApp)가 이미 클리어를 마친 뒤 호출해도 이중 실행은 무해하다
   /// (clearAll 멱등 · FCM 해제는 토큰 없으면 조용히 실패).
   ///
-  /// 순서가 중요하다:
-  ///  1) FCM 디바이스 서버 해제 — 인증 토큰이 유효한 동안에만 가능하므로 선행.
-  ///     네트워크 hang 이 종료를 막지 않도록 2초 타임아웃.
-  ///  2) secure storage 전체 삭제 (authBundle 메모리 캐시 무효화 포함)
-  ///  3) WebView refresh 쿠키 삭제 — 재실행 시 미들웨어 stale 세션 오판 방지
-  ///  4) terminate()
+  /// 세션 클리어는 [SessionCleaner] SoT 로 위임한다 (FCM 해제 → 토큰 삭제 →
+  /// 쿠키 삭제, 각 단계 독립 try). 2초 단계별 타임아웃은 platform channel hang
+  /// 시 terminate 에 영영 도달하지 못해 "종료를 눌렀는데 앱이 안 꺼지는" 상태를
+  /// 막기 위함이다.
   static Future<void> terminateWithSessionClear() async {
-    try {
-      await PushNotificationService()
-          .unregisterTokenFromServer()
-          .timeout(const Duration(seconds: 2));
-    } catch (e) {
-      debugPrint('[AppExit] FCM 해제 실패/타임아웃 — 무시하고 진행: $e');
-    }
-    // clearAll 과 쿠키 삭제를 각각 독립 try + timeout 으로 분리한다.
-    //   한 try 로 묶으면 clearAll(keystore 오류 등) throw 시 쿠키 삭제가 스킵되고,
-    //   timeout 이 없으면 platform channel hang 시 terminate 에 영영 도달하지 못해
-    //   "종료를 눌렀는데 앱이 안 꺼지는" 상태가 된다.
-    try {
-      await TokenStorage().clearAll().timeout(const Duration(seconds: 2));
-    } catch (e) {
-      debugPrint('[AppExit] secure storage 클리어 실패/타임아웃: $e');
-    }
-    try {
-      await WebViewCookieSync.syncRefreshToken(null)
-          .timeout(const Duration(seconds: 2));
-    } catch (e) {
-      debugPrint('[AppExit] refresh 쿠키 삭제 실패/타임아웃: $e');
-    }
+    await SessionCleaner.clearSession(stepTimeout: const Duration(seconds: 2));
     await terminate();
   }
 }

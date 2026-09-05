@@ -20,6 +20,11 @@ class AppPreferencesService {
   static const String _currentClubIdKey = 'current_club_id';
   static const String _logSessionIdKey = 'teamplus_log_session_id';
 
+  /// 권장 업데이트 "나중에" 억제 타임스탬프 키 접두사.
+  /// 실제 키 = `optional_update_dismissed_at:{platform}:{latestVersion}`.
+  static const String _optionalUpdateDismissedPrefix =
+      'optional_update_dismissed_at';
+
   /// SharedPreferences 초기화
   Future<void> init() async {
     _prefs ??= await SharedPreferences.getInstance();
@@ -85,6 +90,21 @@ class AppPreferencesService {
       await prefs.setString(_logSessionIdKey, id);
     }
     return id;
+  }
+
+  // 권장 업데이트 억제 (24h) — 앱 버전 게이트에서 사용
+  //
+  // [storeKey] 는 플랫폼·버전을 분리한 부분 키(예: "ios:1.2.0"). 접두사는 서비스가
+  // 소유해 키 네임스페이스를 단일 지점에서 관리한다.
+  Future<void> setOptionalUpdateDismissedAt(
+      String storeKey, int epochMillis) async {
+    final prefs = await _getPrefs();
+    await prefs.setInt('$_optionalUpdateDismissedPrefix:$storeKey', epochMillis);
+  }
+
+  Future<int?> getOptionalUpdateDismissedAt(String storeKey) async {
+    final prefs = await _getPrefs();
+    return prefs.getInt('$_optionalUpdateDismissedPrefix:$storeKey');
   }
 
   /// 모든 설정 초기화

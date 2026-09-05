@@ -21,22 +21,33 @@ class AppUpdateDialog extends StatelessWidget {
 
   bool get _isForceUpdate => updateType == VersionCompareResult.forceUpdate;
 
-  String get _storeUrl {
-    if (defaultTargetPlatform == TargetPlatform.iOS) {
-      return versionInfo.iosStoreUrl ??
-          'https://apps.apple.com/kr/app/id0000000000';
-    }
-    return versionInfo.androidStoreUrl ??
-        'https://play.google.com/store/apps/details?id=com.teamplus.app';
-  }
+  bool get _isIOS => defaultTargetPlatform == TargetPlatform.iOS;
+
+  /// 스토어 URL 은 서버(`AppVersion.storeUrl`)가 유일 출처다. 하드코딩 플레이스홀더
+  /// 없음 — 게이트가 유효 URL 이 있을 때만 다이얼로그를 띄우므로 정상 경로에서는
+  /// 항상 값이 존재한다(방어적으로 null 허용).
+  String? get _storeUrl =>
+      _isIOS ? versionInfo.iosStoreUrl : versionInfo.androidStoreUrl;
+
+  /// 강제 업데이트에서 보조 버튼("앱 종료") 노출 여부.
+  ///
+  /// iOS 는 `AppExit.terminate()` 가 no-op(Apple 정책상 프로그램적 종료 금지)이라
+  /// 동작하지 않는 버튼이 되고, 심사에서 문제될 수 있어 숨긴다. Android 강제일 때만
+  /// "앱 종료"를 노출하고, 선택적 업데이트는 항상 "나중에"를 노출한다.
+  bool get _showSecondaryButton => !_isForceUpdate || !_isIOS;
 
   Future<void> _openStore() async {
-    final uri = Uri.parse(_storeUrl);
+    final url = _storeUrl;
+    if (url == null || url.trim().isEmpty) {
+      debugPrint('[AppUpdateDialog] 스토어 URL 없음 — 열기 스킵');
+      return;
+    }
+    final uri = Uri.parse(url);
     try {
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {
-        debugPrint('[AppUpdateDialog] 스토어 URL 열기 실패: $_storeUrl');
+        debugPrint('[AppUpdateDialog] 스토어 URL 열기 실패: $url');
       }
     } catch (e) {
       debugPrint('[AppUpdateDialog] 스토어 열기 오류: $e');
@@ -202,37 +213,39 @@ class AppUpdateDialog extends StatelessWidget {
                 ),
               ),
 
-              // 강제 업데이트: 앱 종료 버튼 / 선택적 업데이트: 나중에 버튼
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: TextButton(
-                  onPressed: () {
-                    if (_isForceUpdate) {
-                      // 강제 업데이트: 앱 실제 종료 (finishAndRemoveTask).
-                      // [2026-07-15 BACKKEY FIX] SystemNavigator.pop 은
-                      //   moveTaskToBack(백그라운드)로 동작해 종료되지 않음.
-                      AppExit.terminate();
-                    } else {
-                      // 선택적 업데이트: 다이얼로그 닫기
-                      Navigator.of(context).pop();
-                    }
-                  },
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    foregroundColor: _isForceUpdate
-                        ? const Color(0xFFDC2626)
-                        : const Color(0xFF6B7280),
-                  ),
-                  child: Text(
-                    _isForceUpdate ? '앱 종료' : '나중에',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
+              // 강제(Android): 앱 종료 / 선택적: 나중에 / 강제(iOS): 숨김
+              if (_showSecondaryButton) ...[
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton(
+                    onPressed: () {
+                      if (_isForceUpdate) {
+                        // 강제 업데이트: 앱 실제 종료 (finishAndRemoveTask).
+                        // [2026-07-15 BACKKEY FIX] SystemNavigator.pop 은
+                        //   moveTaskToBack(백그라운드)로 동작해 종료되지 않음.
+                        AppExit.terminate();
+                      } else {
+                        // 선택적 업데이트: 다이얼로그 닫기
+                        Navigator.of(context).pop();
+                      }
+                    },
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      foregroundColor: _isForceUpdate
+                          ? const Color(0xFFDC2626)
+                          : const Color(0xFF6B7280),
+                    ),
+                    child: Text(
+                      _isForceUpdate ? '앱 종료' : '나중에',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ],
           ),
         ),

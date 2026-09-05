@@ -11,6 +11,10 @@
 //   오류(6): server · transaction · client · auth · database · external
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
+
+import '../constants/app_environment.dart';
+
 import 'file_log_sink.dart';
 import 'remote_log_sink.dart';
 
@@ -193,9 +197,13 @@ class AppLogger {
 
   /// 코어 라우팅 — 4 sink로 fan-out
   void _route(LogEntry entry) {
-    // 1) Console
-    // ignore: avoid_print
-    print('[${entry.level.name.toUpperCase()}] ${entry.category ?? 'system'} | ${entry.message}');
+    // 1) Console — release 로그 유출 방지 가드. main.dart 의 debugPrint no-op
+    //   처리(prod)는 print() 를 막지 못하므로 여기서 직접 가드한다.
+    //   (auth/payment 카테고리 로그가 릴리스 logcat 에 노출되던 유일 경로)
+    if (kDebugMode || appEnv.enableLogging) {
+      // ignore: avoid_print
+      print('[${entry.level.name.toUpperCase()}] ${entry.category ?? 'system'} | ${entry.message}');
+    }
 
     // 2) In-memory ring buffer
     _memoryBuffer.add(entry);

@@ -35,8 +35,10 @@ class CheckInResult {
 /// Backend 스펙: `POST /attendance/check-in` body `{ qrData: UUID, childId?: string }`
 /// - `qrData`: 코치 발급 QR 의 UUID v4 (AttendanceQR.qrData)
 /// - `childId`: 학부모 대리 체크인 시 자녀 User ID (선택)
-final checkInAttendanceProvider =
-    FutureProvider.family<CheckInResult, ({String qrData, String? childId})>(
+/// autoDispose: qrData 별 캐시 무한 누적 방지 + 동일 QR 재스캔 시 캐시로
+/// 체크인이 스킵되지 않도록 해제 (2026-07-28).
+final checkInAttendanceProvider = FutureProvider.autoDispose
+    .family<CheckInResult, ({String qrData, String? childId})>(
   (ref, params) async {
     final apiClient = ref.watch(apiClientProvider);
 
