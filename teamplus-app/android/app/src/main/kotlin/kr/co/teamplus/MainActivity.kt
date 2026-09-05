@@ -31,11 +31,15 @@ class MainActivity : FlutterFragmentActivity() {
         //   (R8 mapping e.s/e.t/e.v/e.x) 를 끌어들였고, 그 구현이 SDK 가드 없이
         //   Window.setStatusBarColor/setNavigationBarColor(API 35 deprecated) 를 호출해 Play 콘솔
         //   "지원 중단된 API 사용(더 넓은 화면)" 권장 조치 ② 의 원인이 됐다(16/1.0.4 mapping 역추적).
-        //   edge-to-edge 자체는 아래 clearFlags(FLAG_FULLSCREEN) + setDecorFitsSystemWindows(false)
-        //   (비 deprecated 경로)로 보장되고, 시스템바 투명·아이콘 밝기는 Flutter
+        //   edge-to-edge 자체는 아래 clearFlags(FLAG_FULLSCREEN) + WindowCompat.setDecorFitsSystemWindows(false)
+        //   (androidx WindowCompat 경로 — Play 미지적. 위임 대상인 플랫폼 Window.setDecorFitsSystemWindows 는
+        //   API 35 에서 deprecated·무시되지만 35+ 는 OS 가 edge-to-edge 를 강제하므로 결과 동일)로 보장되고,
+        //   시스템바 투명·아이콘 밝기는 Flutter
         //   SystemChrome.setSystemUIOverlayStyle(엔진 PlatformPlugin, API<35 가드 경유)이 수행한다.
         //   API 35+ 는 OS 강제 edge-to-edge 라 무관.
         //   ⚠️ enableEdgeToEdge()/EdgeToEdge.enable() 를 다시 넣지 말 것 — ② 재발.
+        //   ① "더 넓은 화면 미표시" 카드는 이 제거 후에도 남을 수 있음(flutter/flutter#169810: 사용자 영향 없음)
+        //      — 코드 조치 없이 관찰. ① 을 없애려고 enableEdgeToEdge() 를 되살리면 ② 가 되돌아온다.
         //   Flutter 쪽 SystemUiMode 는 불변(appstatus 회귀 이력상 네이티브에서 건드리지 않는다).
         super.onCreate(savedInstanceState)
         // FLAG_FULLSCREEN 잔존 시 강제 해제 → 시스템 status bar inset 복원

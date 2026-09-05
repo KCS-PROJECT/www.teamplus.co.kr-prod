@@ -34,7 +34,7 @@ test-results/
 .next/
 **/.next/
 out/
-#.vscode
+.vscode
 
 # MS Office 임시·락 파일 (Excel/Word/PowerPoint)
 ~$*

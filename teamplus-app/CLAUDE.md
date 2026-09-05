@@ -288,6 +288,16 @@ flutter pub run build_runner build --delete-conflicting-outputs
 **폰트**: **Pretendard** (한글 최적화) — Regular 400, Medium 500, SemiBold 600, Bold 700
 **스플래시**: 배경 `#1E40AF`, 아이콘 `splash_logo.png`
 
+### Play Console 권장 조치 이력 (Android)
+
+| 날짜 | 콘솔 지적 | 조치 | 결과 |
+|---|---|---|---|
+| 2026-07-20 | 권장 조치 3건 최초(edge-to-edge · 비트맵 다운샘플링 · R8) | edge-to-edge 는 `setDecorFitsSystemWindows(false)` 로 충족 판단 · 비트맵은 file_picker 정적 지적으로 대응 불필요 판단 · R8 은 `optimizedResourceShrinking` 만 추가(불완전 — `isMinifyEnabled` 부재) (`3d529502`) | 3건 잔존 |
+| 2026-08-01 | 같은 3건 + "AGP 9.0 이상" | `isMinifyEnabled/isShrinkResources` + `proguard-rules.pro`(`4f09b385` "안드로이드 개선조치사항3개", 03:53 · 당시 1.0.3+14) · 이어서 AGP 8.11.1→9.0.0 · Gradle 9.1.0 · KGP 2.2.20 · **`MainActivity.enableEdgeToEdge()` + `activity-ktx:1.9.3` 추가** (2026-09-05 철회: androidx EdgeToEdge 가 ② 유발) · file_picker 포크 다운샘플링 (1.0.3+15, `07a9ae7a`, 05:03) | 08-08 16(1.0.4) 업로드 후: 비트맵 소멸 · ① 잔존 · **② "지원 중단 API(`Window.setStatusBarColor/NavigationBarColor`)" 신규** · ③ R8 48/48/48 |
+| 2026-09-05 | ① 넓은 화면 미표시 · ② deprecated API · ③ R8 48% | ② 원인 = 08-01 `enableEdgeToEdge()` 가 끌어들인 androidx.activity `EdgeToEdgeApi23/26/29/35`(mapping `e.s/e.t/e.v/e.x`)의 **무가드** 호출 → `enableEdgeToEdge()`·import·`activity-ktx` 명시 의존 제거(`clearFlags(FLAG_FULLSCREEN)`+`setDecorFitsSystemWindows(false)`+Flutter `SystemChrome` 유지) · ③ `sentry_flutter ^9.29.0`(keep `io.sentry.**` → bound 56줄) · `settings.gradle.kts` `-Pr8Analyzer` 가드 R8 9.4.17 override(측정 전용, 속성 없으면 no-op) · ① 코드 조치 없음 | mapping EdgeToEdge 8→0 · dex `Window.set*BarColor` 호출 = 엔진 `PlatformPlugin`·`FlutterFragmentActivity`(SDK<35 가드)뿐 · io.sentry kept 1,163→261 · 전체 kept 34.09%→22.88%(운영 경로 R8 9.0.32) · analyzer 66.1/65.8/66.2→77.4/76.9/77.5 · 상세 [docs/solutions/2026-09-05-play-console-edge-to-edge-r8.md](../docs/solutions/2026-09-05-play-console-edge-to-edge-r8.md) |
+
+**금지·주의**: `enableEdgeToEdge()`/`EdgeToEdge.enable()` 재추가 금지(② 재발 · ① 은 flutter/flutter#169810 상 사용자 영향 없는 관찰 항목이라 코드로 없애려 하지 말 것) · 직접 `./gradlew` 는 `JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"`(JDK 17 — 쉘 기본 java 16 은 실패) · `sentry_flutter` 버전 변경 직후 첫 빌드는 `./gradlew :sentry_flutter:clean` 선행 · `-Pr8Analyzer` 측정용 AAB 업로드 금지 · iOS 는 다음 빌드 전 `cd ios && pod install --repo-update`(Sentry/HybridSDK 8.58.4) · Play ③ 기준 = 축소/최적화/난독화 각 25% 이상(2027-02 시행), 현재 48% 충족, 분석기 % 와 Play % 절대 비교 금지 · 2026-09-04 수신 "[최종 알림] Android 개발자 인증 요구사항 … 2026-09-30 전까지 앱과 서명 키를 등록" 메일(googleplay-noreply, Gmail 스레드 `1a06a824d497e517`)은 ADI 전 개발자 일괄 알림으로 ① 과 무관 — `kr.co.teamplus` 는 ADI **등록 완료**(키 3, 2026-07-01 갱신, ID 탭 경고 0) 상태라 조치 불필요, 재조사하지 말 것.
+
 ---
 
 ## 디버깅
