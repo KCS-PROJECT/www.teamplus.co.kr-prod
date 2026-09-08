@@ -227,7 +227,7 @@ function ClassCreatePageInner() {
   // [2026-06-22] 완료 페이지 수강료 목록 — 수정: draft 전체(1회권+정기권) / 등록: 폼 1회권 + 추가 정기권.
   //   PER_SESSION → 정기권(회차 오름차순) 순으로 정렬. 변경 가격·다중 정기권을 정확히 반영한다.
   const buildCompleteFeeItems = useCallback(
-    (formSinglePrice: number | '') => {
+    (formSinglePrice: number | '', opts?: { spotOnly?: boolean }) => {
       // 지난 월분(이력)·판매 중지분 제외 — 안 하면 모든 달의 동명 row 가 전부 나열된다.
       //   (PackageManageSection 의 isPastLocked/isRetired 와 동일 판정)
       const nowMonthKey = localTodayISO().slice(0, 7);
@@ -245,7 +245,11 @@ function ClassCreatePageInner() {
             : 1_000_000;
       const sorted = [...active].sort((a, b) => order(a) - order(b));
       if (isEditMode) {
-        return sorted.map((d) => ({ name: d.productName, price: d.price }));
+        // 1회용 수업은 1회권만 — 정기권은 숨김 보존된 draft 라 완료 화면에 노출하지 않는다.
+        const rows = opts?.spotOnly
+          ? sorted.filter((d) => d.feeType === 'PER_SESSION')
+          : sorted;
+        return rows.map((d) => ({ name: d.productName, price: d.price }));
       }
       // 등록 — 1회권은 폼 입력값(백엔드 자동 생성), 정기권은 추가 draft.
       const items: { name: string; price: number }[] = [];
@@ -255,9 +259,11 @@ function ClassCreatePageInner() {
           price: Number(formSinglePrice),
         });
       }
-      sorted
-        .filter((d) => d.feeType !== 'PER_SESSION')
-        .forEach((d) => items.push({ name: d.productName, price: d.price }));
+      if (!opts?.spotOnly) {
+        sorted
+          .filter((d) => d.feeType !== 'PER_SESSION')
+          .forEach((d) => items.push({ name: d.productName, price: d.price }));
+      }
       return items;
     },
     [draftProducts, isEditMode],

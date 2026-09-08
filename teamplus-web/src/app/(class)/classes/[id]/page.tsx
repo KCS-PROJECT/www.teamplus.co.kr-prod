@@ -186,7 +186,12 @@ interface MyEnrollment {
   paymentId?: string | null;
   /** [2026-06-18] 결제한 수강 플랜(ClassProduct) — 결제완료 패키지 표시·잠금용.
    *  billingTiming: 선택형(BOTH) 수업의 행별 선/후불 판정용 (백엔드 resolveRowBillingTiming 규칙 미러). */
-  product?: { id: string; billingTiming?: string | null } | null;
+  product?: {
+    id: string;
+    billingTiming?: string | null;
+    /** 0 이면 무료 건 — 환불이 아니라 신청취소로 되돌린다. */
+    price?: number | null;
+  } | null;
   /** 선불 paid 의 "현재 수강 중" 여부 (백엔드 emit — 기간권/배치 상태 기반).
    *  명시적 false 만 만료로 본다. null/undefined(후불·구 응답)는 수강 중 유지. */
   hasValidPass?: boolean | null;
@@ -525,7 +530,9 @@ export default function ClassDetailPage() {
   }, [myEnrollments, classId, user?.id, isPostpaid, isBoth]);
 
   // 자녀 ID → paid Enrollment 매핑 (결제취소 진입 판정용)
-  //   - status='paid' 이고 paymentId 가 존재하는 항목만 포함.
+  //   - status='paid' 인 항목. 결제 연결(paymentId) 유무는 보지 않는다 — 배지는 상태만
+  //     보고 '결제완료'를 띄우므로, 연결이 없다고 CTA 만 열어두면 배지와 버튼이 모순되고
+  //     중복 신청(서버 409)으로 이어진다. 결제취소 진입은 paymentId 있는 건만 노출한다.
   //   - hasValidPass=false(기간권 만료·배치 해제)는 지난 결제 이력일 뿐 "수강 중"이
   //     아니므로 제외 — 포함하면 CTA 가 "결제완료"로 잠겨 재결제 경로가 막힌다.
   const paidByChildId = useMemo(() => {
@@ -533,7 +540,6 @@ export default function ClassDetailPage() {
     for (const e of myEnrollments) {
       if (e.class?.id !== classId) continue;
       if (e.status !== "paid") continue;
-      if (!e.paymentId) continue;
       if (!e.child?.id) continue;
       if (e.hasValidPass === false) continue;
       map.set(e.child.id, e);
@@ -789,8 +795,13 @@ export default function ClassDetailPage() {
     };
   }, [user?.userType, user?.id]);
 
+  // 무료(0원) 결제 — 환불할 금액이 없어 결제취소가 아니라 신청취소로 되돌린다.
+  const isFreePaidEnrollment =
+    paidEnrollment != null && Number(paidEnrollment.product?.price ?? -1) === 0;
+
   const handleCancelPayment = async () => {
-    if (!paidEnrollment?.paymentId) return;
+    if (!paidEnrollment) return;
+    if (!isFreePaidEnrollment && !paidEnrollment.paymentId) return;
     // [수정 2026-05-18] 자녀명·수업명 명시 (다자녀 시나리오 — 자녀 A 결제취소 시 B 와 혼동 방지).
     const selectedChild = parentChildren.find((c) => c.id === selectedChildId);
     const childName = selectedChild?.name ?? "";
@@ -804,9 +815,11 @@ export default function ClassDetailPage() {
     if (!ok) return;
     setIsCancelling(true);
     try {
-      const res = await api.post(`/payments/${paidEnrollment.paymentId}/cancel`, {
-        cancelReason: "학부모 요청 (수업 상세에서 결제취소)",
-      });
+      const res = isFreePaidEnrollment
+        ? await api.delete(`/enrollments/${paidEnrollment.id}`)
+        : await api.post(`/payments/${paidEnrollment.paymentId}/cancel`, {
+            cancelReason: "학부모 요청 (수업 상세에서 결제취소)",
+          });
       if (!res.success) {
         // [환불 정책 1단계] 이용 개시(출석) 결제 — 서버 가드(403) 거절 사유를 모달로 안내.
         if (res.error?.statusCode === 403 && res.error.message) {
@@ -2387,8 +2400,14 @@ export default function ClassDetailPage() {
                   <button
                     type="button"
                     onClick={handleEnrollClick}
-                    disabled={rightDisabled || !!postpaidEnrollment}
-                    aria-disabled={rightDisabled || !!postpaidEnrollment}
+                    // 결제 완료(선불 paid)·후불 수강 중은 상태 표시 전용 — 다시 누르면
+                    //   중복 신청이 되어 서버가 409 로 막는다. 버튼 자체를 잠근다.
+                    disabled={
+                      rightDisabled || !!postpaidEnrollment || !!paidEnrollment
+                    }
+                    aria-disabled={
+                      rightDisabled || !!postpaidEnrollment || !!paidEnrollment
+                    }
                     className="flex-[6] min-w-0 h-12 rounded-xl bg-it-blue-500 hover:bg-it-blue-600 text-white font-extrabold text-card-body tracking-tight transition-colors motion-reduce:transition-none active:brightness-95 disabled:bg-wline dark:disabled:bg-rink-700 disabled:text-wtext-3 disabled:cursor-not-allowed disabled:hover:bg-wline dark:disabled:hover:bg-rink-700"
                   >
                     {postpaidEnrollment

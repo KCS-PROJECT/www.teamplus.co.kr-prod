@@ -170,6 +170,13 @@ export class EnrollmentResponseDto {
   @ApiPropertyOptional({ description: "결제 ID" })
   paymentId?: string;
 
+  @ApiPropertyOptional({
+    description:
+      "무료(0원) 확정 시 생성된 결제 주문번호 — 결제 완료 화면이 영수증을 조회하는 키",
+    example: "FREE-1757000000000-enr_abc",
+  })
+  freeOrderNumber?: string;
+
   @ApiPropertyOptional({ description: "결제 일시" })
   paidAt?: Date;
 

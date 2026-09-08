@@ -5,6 +5,13 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
+import {
+  applyPaymentToEnrollments,
+  applyPaymentToTournamentRegistrations,
+  isOrphanPayment,
+  PAYMENT_APPLICABLE_ENROLLMENT_STATUSES,
+  recordOrphanPaymentRefundRequest,
+} from "./services/payment-enrollment-transition.util";
 import { isAdminRole } from "@/auth/constants/chldiv.constants";
 import { PaymentWebhookService } from "./services/payment-webhook.service";
 import { PaymentCreateService } from "./services/payment-create.service";
@@ -31,6 +38,7 @@ import {
 import { NotificationsService } from "@/notifications/notifications.service";
 import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
 import { acquireClassSeatLock } from "@/classes/utils/class-locks.util";
+import { resolveRefundRequestRecipients } from "./refund-requests/refund-request-recipients.util";
 import { Logger } from "@nestjs/common";
 
 export interface InitiatePaymentDto {
@@ -224,6 +232,7 @@ export class PaymentsService {
         tid: paymentKey,
         approvedAt: new Date(tossResult.approvedAt ?? new Date()),
         orderId,
+        claimFrom: ["pending", "cancelled"],
       });
 
       // [2026-06-19 사용자 직접 지시] 결제 완료 → 팀 감독/코치에게 결제 알림 (수업/대회).
@@ -427,6 +436,7 @@ export class PaymentsService {
         tid: result.tid,
         approvedAt: this.parseNicePaidAt(result.paidAt),
         orderId,
+        claimFrom: ["pending", "cancelled"],
       });
 
       void this.notifyManagersOfCompletedPayment(
@@ -553,15 +563,30 @@ export class PaymentsService {
   private async claimSeatsBeforeApproval(
     paymentId: string,
   ): Promise<SeatClaim[]> {
+    // 결제를 기다리는(pending·approved) 등록만 선점 — 그 사이 취소된 등록의 명단을 되살리지 않는다.
+    //   조회와 선점 사이에 취소가 끼어드는 경우는 잠금 안 재확인이 닫는다.
     const enrollments = await this.prisma.enrollment.findMany({
-      where: { paymentId },
-      select: { classId: true, childId: true },
+      where: {
+        paymentId,
+        status: { in: PAYMENT_APPLICABLE_ENROLLMENT_STATUSES },
+      },
+      select: { id: true, classId: true, childId: true },
     });
     const claims: SeatClaim[] = [];
     try {
       for (const en of enrollments) {
         const claim = await this.prisma.$transaction(async (tx) => {
           await acquireClassSeatLock(tx, en.classId);
+          // 잠금 안 재확인 — 조회 이후 취소된 등록의 좌석은 선점하지 않는다.
+          //   취소도 같은 좌석 잠금을 잡으므로 두 경로는 직렬화된다.
+          const still = await tx.enrollment.findFirst({
+            where: {
+              id: en.id,
+              status: { in: PAYMENT_APPLICABLE_ENROLLMENT_STATUSES },
+            },
+            select: { id: true },
+          });
+          if (!still) return null;
           const cls = await tx.class.findUnique({
             where: { id: en.classId },
             select: { capacity: true },
@@ -651,13 +676,27 @@ export class PaymentsService {
       tid: string;
       approvedAt: Date;
       orderId: string;
+      /**
+       * 완료로 확정할 수 있는 직전 결제 상태.
+       *  · 실결제(토스·나이스): pending 과 cancelled — 돈이 실제로 나갔으므로 로컬에서만
+       *    취소된 결제도 completed 로 바로잡고, 연결 등록이 없으면 환불 요청을 접수한다.
+       *  · mock: pending 만 — 결제사 승인이 없어 취소된 결제를 완료로 바꾸면 돈이 나가지
+       *    않은 거래가 매출로 남는다.
+       */
+      claimFrom: string[];
     },
   ): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
+    const orphanRefundRequestId = await this.prisma.$transaction(async (tx) => {
       // 완료 전이를 조건부 claim 으로 선점한다. Redis 락은 프로세스 레벨 방어라
       //   락 소실·우회 경로에서 동시 진입이 가능하므로 DB 에서도 단일 실행을 보장한다.
+      // 허용 상태는 호출부가 정한다(opts.claimFrom). 실결제는 돈이 이미 나갔으므로 그 사이
+      //   로컬에서만 cancelled 로 바뀐 결제도 completed 로 바로잡고 연결 등록이 없으면 아래
+      //   고아 처리로 환불 요청을 접수한다. mock 은 결제사 승인이 없어 pending 만 허용한다.
       const claimed = await tx.payment.updateMany({
-        where: { id: payment.id, paymentStatus: "pending" },
+        where: {
+          id: payment.id,
+          paymentStatus: { in: opts.claimFrom },
+        },
         data: {
           paymentStatus: "completed",
           tid: opts.tid,
@@ -676,50 +715,80 @@ export class PaymentsService {
         return;
       }
       // [Phase B-5-4] POSTPAID 후불 청구 라인 paid 처리 (해당 결제가 후불 청구면 — 아니면 no-op).
-      await tx.monthlyPostpaidBillingLine.updateMany({
+      const paidLines = await tx.monthlyPostpaidBillingLine.updateMany({
         where: { paymentId: payment.id },
         data: { paymentStatus: "paid" },
       });
-      // Payment 와 연결된 enrollment 모두 paid 처리
-      const enrollments = await tx.enrollment.findMany({
-        where: { paymentId: payment.id },
-        select: { id: true, classId: true, childId: true },
+      // 등록 전이 — 결제를 기다리던(pending·approved) 등록만 paid 로. 그 사이 취소·만료됐거나
+      //   후불 재활용으로 연결이 끊긴 등록은 되살리지 않는다(취소가 최종).
+      //   ⚠️ KG 웹훅(payment-webhook.service)은 이 경로를 쓰지 않고 자체 규칙으로 처리한다
+      //   (미사용 결제사 — 활성 결제사는 나이스). 규칙 공용은 confirm 3진입점에 한한다.
+      const transition = await applyPaymentToEnrollments(
+        tx,
+        payment.id,
+        opts.approvedAt,
+      );
+      // [추가 2026-05-15] Payment 와 연결된 TournamentRegistration PAID 처리.
+      //  · 대회 참가 결제 흐름: /tournaments/:id/payment/initiate → 결제창 → confirm.
+      //  · 결제 완료 시 학부모 자녀 캘린더에 대회가 자동 노출되도록 PAID 갱신.
+      //  · 결제를 기다리던(PENDING) 등록만 전이한다. 그 사이 취소(CANCELLED)된 등록은
+      //    되살리지 않고 아래 고아 처리로 환불 요청을 접수한다 — 수업 등록과 같은 규칙.
+      const tournamentTransition = await applyPaymentToTournamentRegistrations(
+        tx,
+        payment.id,
+      );
+      // 고아 결제 — 선불 수업 또는 대회 결제인데 전이된 등록이 없음: 돈은 보존(completed)하고
+      //   수업권·명단은 건드리지 않으며 환불 요청을 자동 접수한다(승인제 환불 흐름으로 처리).
+      const orphan = isOrphanPayment({
+        product: payment.product,
+        enrollments: transition,
+        tournaments: tournamentTransition,
+        linkedBillingLines: paidLines.count,
       });
-      for (const e of enrollments) {
-        await tx.enrollment.update({
-          where: { id: e.id },
-          data: {
-            status: "paid",
-            paidAt: opts.approvedAt,
-          },
-        });
-        // ClassRegistration active 보장 (코치가 미리 inactive 로 둔 경우 active 로 복구)
-        await tx.classRegistration.upsert({
-          where: {
-            classId_userId: { classId: e.classId, userId: e.childId },
-          },
-          update: { status: "active" },
-          create: {
-            classId: e.classId,
-            userId: e.childId,
-            status: "active",
-          },
-        });
+      // 스코프를 알 수 없는 미연결 결제 — 상품도 대회 링크도 없어 환불 요청을 접수할
+      //   대상을 특정할 수 없다(후불 정산 취소가 대회 연결을 끊은 뒤 승인이 도착한 경우 등).
+      //   돈만 남고 아무 기록이 없는 상태를 피하려 경고로 남겨 운영 대사 대상으로 만든다.
+      const unlinked =
+        !orphan &&
+        transition.transitioned.length === 0 &&
+        tournamentTransition.transitioned.length === 0 &&
+        paidLines.count === 0;
+      if (unlinked) {
+        this.logger.warn(
+          `[UNLINKED_PAYMENT] 연결 대상 없는 결제 완료 — paymentId=${payment.id} orderId=${opts.orderId} productId=${payment.productId ?? "(없음)"}. 수동 확인 대상.`,
+        );
       }
-
-      // PR-D 후속 (v0.8): MemberCredit 발급 — 토스 confirm 흐름 버그 수정
-      //   - KG이니시스 webhook (payment-webhook.service.ts) 의 발급 로직과 정합
-      //   - product 정보 (sessionsPerMonth/durationDays/classId) 가 있을 때만 발급
-      //   - 발급 대상자: 첫 enrollment.childId 우선, 없으면 payment.userId (결제자 본인)
-      //   - 토스 응답의 approvedAt 을 기준으로 expiresAt 계산
-      // [B4 정합] 후불 상품(billingTiming=POSTPAID)은 크레딧 미발급 — 출석 횟수 × feePerSession
-      //   으로 월말 정산. BOTH 수업의 후불 선택분이 토스 confirm 으로 오발급되지 않도록 차단.
+      let orphanRefundRequestId: string | null = null;
+      if (orphan) {
+        orphanRefundRequestId = await recordOrphanPaymentRefundRequest(tx, {
+          paymentId: payment.id,
+          payerUserId: payment.userId,
+          amount: Number(payment.amount),
+          classId: payment.product?.classId ?? null,
+          tournamentId: tournamentTransition.stale[0]?.tournamentId ?? null,
+          childId:
+            transition.stale[0]?.childId ??
+            tournamentTransition.stale[0]?.childId ??
+            null,
+        });
+        const staleLabel =
+          [
+            ...transition.stale.map((e) => `${e.id}:${e.status}`),
+            ...tournamentTransition.stale.map(
+              (t) => `${t.id}:${t.paymentStatus}`,
+            ),
+          ].join(",") || "(연결 없음)";
+        this.logger.warn(
+          `고아 결제(취소·만료된 신청에 결제 완료): paymentId=${payment.id} orderId=${opts.orderId} stale=${staleLabel} refundRequest=${orphanRefundRequestId ?? "(기존 요청 있음)"}`,
+        );
+      }
       const isPostpaidProduct = payment.product?.billingTiming === "POSTPAID";
 
       if (
         payment.product &&
         payment.product.sessionsPerMonth > 0 &&
-        !isPostpaidProduct
+        !isPostpaidProduct &&
+        !orphan
       ) {
         // 유효기간 산정은 resolveCreditExpiry 단일 SoT — 승인 경로(토스/KG 웹훅)와
         //   관리자 수동 발급이 같은 식을 쓰도록 통일했다(경로별 식 복제 금지).
@@ -730,7 +799,8 @@ export class PaymentsService {
           at: opts.approvedAt,
         });
 
-        const targetUserId = enrollments[0]?.childId ?? payment.userId;
+        const targetUserId =
+          transition.transitioned[0]?.childId ?? payment.userId;
 
         await this.creditDomain.issueFromPayment(tx, {
           paymentId: payment.id,
@@ -751,20 +821,74 @@ export class PaymentsService {
           `토스 결제 수업권 발급 skip: productId=${payment.productId} sessionsPerMonth=0 또는 product 없음 (대회 참가비 등)`,
         );
       }
-      // [추가 2026-05-15] Payment 와 연결된 TournamentRegistration 모두 PAID 처리.
-      //  · 대회 참가 결제 흐름: /tournaments/:id/payment/initiate → 토스 위젯 → confirm.
-      //  · 결제 완료 시 학부모 자녀 캘린더에 대회가 자동 노출되도록 PAID 갱신.
-      const tRegs = await tx.tournamentRegistration.findMany({
-        where: { paymentId: payment.id },
-        select: { id: true },
-      });
-      for (const r of tRegs) {
-        await tx.tournamentRegistration.update({
-          where: { id: r.id },
-          data: { paymentStatus: "PAID" },
-        });
-      }
+      return orphanRefundRequestId;
     });
+    if (orphanRefundRequestId) {
+      await this.notifyOrphanPayment(payment.userId, orphanRefundRequestId);
+    }
+  }
+
+  /**
+   * 고아 결제 알림 — 결제자에게 환불 접수 사실을, 승인 권한자에게 확인 요청을 보낸다.
+   *  수신자·상세 링크는 학부모 직접 요청 알림과 같은 SoT(resolveRefundRequestRecipients)를 쓴다
+   *  — 팀 수업뿐 아니라 오픈클래스(아카데미 원장)·대회까지 같은 경로로 라우팅된다.
+   */
+  private async notifyOrphanPayment(
+    payerUserId: string,
+    refundRequestId: string,
+  ): Promise<void> {
+    try {
+      const rr = await this.prisma.refundRequest.findUnique({
+        where: { id: refundRequestId },
+        select: {
+          id: true,
+          teamId: true,
+          academyId: true,
+          sourceType: true,
+          paymentId: true,
+          classId: true,
+          tournamentId: true,
+        },
+      });
+      if (!rr) return;
+      // RefundRequest 는 스코프 스냅샷(id)만 들고 있어 이름은 원본에서 읽는다.
+      const [cls, tournament] = await Promise.all([
+        rr.classId
+          ? this.prisma.class.findUnique({
+              where: { id: rr.classId },
+              select: { className: true },
+            })
+          : Promise.resolve(null),
+        rr.tournamentId
+          ? this.prisma.tournament.findUnique({
+              where: { id: rr.tournamentId },
+              select: { name: true },
+            })
+          : Promise.resolve(null),
+      ]);
+      const subject = cls?.className ?? tournament?.name ?? "신청";
+      await this.notificationsService.notifyUsers([payerUserId], {
+        notificationType: "refund_request_created",
+        title: "환불 요청 자동 접수",
+        message: `"${subject}" 신청이 취소된 뒤 결제가 완료되어 환불 요청이 자동 접수되었습니다.`,
+        linkUrl: "/payment/history",
+      });
+      const { userIds, linkUrl } = await resolveRefundRequestRecipients(
+        this.prisma,
+        rr,
+      );
+      if (userIds.length === 0) return;
+      await this.notificationsService.notifyUsers(userIds, {
+        notificationType: "refund_request_created",
+        title: "환불 요청 확인 필요",
+        message: `"${subject}" 취소된 신청에 결제가 완료되어 환불 요청이 접수되었습니다. 확인해주세요.`,
+        linkUrl,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `고아 결제 알림 실패: refundRequestId=${refundRequestId}, error=${(err as Error).message}`,
+      );
+    }
   }
 
   /**
@@ -855,6 +979,8 @@ export class PaymentsService {
         tid: `MOCK-${Date.now()}`,
         approvedAt,
         orderId,
+        // 결제사 승인이 없으므로 취소된 결제는 완료로 바꾸지 않는다(돈 안 나간 매출 방지).
+        claimFrom: ["pending"],
       });
 
       // 실결제와 동일하게 감독/코치 결제 알림 (best-effort — 실패해도 승인 흐름 유지).

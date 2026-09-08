@@ -397,6 +397,9 @@ function PaymentCompleteContent() {
     niceError,
   ]);
 
+  // 무료(0원) 결제 — 세금 영수증 발행 대상이 아니고 결제사 영수증도 없다.
+  const isFreeReceipt = Number(receipt?.totalAmount ?? -1) === 0;
+
   const handleDownloadReceipt = async () => {
     if (!receipt) return;
     setIsDownloading(true);
@@ -443,6 +446,8 @@ function PaymentCompleteContent() {
 
             {/* Action buttons — 흰 섹션 (8px 회색 갭) */}
             <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-5 flex gap-3">
+              {/* 무료(0원)는 결제사 영수증이 없어 조회가 실패한다 — 버튼 자체를 감춘다. */}
+              {!isFreeReceipt && (
               <button
                 onClick={handleDownloadReceipt}
                 disabled={isDownloading}
@@ -455,6 +460,7 @@ function PaymentCompleteContent() {
                 )}
                 {MESSAGES.payment2.viewReceipt}
               </button>
+              )}
               {payQueue && payQueue.pairs.length > 0 ? (
                 <button
                   type="button"

@@ -811,8 +811,10 @@ interface UseClassFormOptions {
   initialDaySchedules?: DayScheduleItem[];
   // [2026-06-22] 완료 페이지 수강료 목록 빌더 — 폼 1회 수강료 입력값을 받아 전체 항목 배열 반환.
   //   수정: draftProducts(1회권+정기권) 기준 / 등록: 폼 1회권 + 추가 정기권. 미전달 시 기존 표시.
+  //   spotOnly: 1회용 수업 — 1회권만 남긴다(숨김 보존된 정기권 draft 누출 방지).
   buildCompleteFeeItems?: (
     formSinglePrice: number | '',
+    opts?: { spotOnly?: boolean },
   ) => { name: string; price: number }[];
 }
 
@@ -1189,11 +1191,12 @@ export function useClassForm({
           monthlyPrice: data.monthlyPrice,
           // 완료 화면 수강료 — 전체 패키지 목록(빌더 제공 시). 변경 가격·다중 정기권 정확 반영.
           isSpot: data.trainingType === 'spot',
-          // [spot 선불 단건] 완료 화면에도 1회 수업료만 — 숨김 보존된 정기권 draft 누출 방지.
-          feeItems:
-            data.trainingType === 'spot'
-              ? undefined
-              : buildCompleteFeeItems?.(data.singlePrice),
+          // [spot 선불 단건] 1회용 수업도 빌더를 쓰되 1회권만 남긴다. 폼 입력값(singlePrice)은
+          //   수정 모드에서 서버로 전송되지 않는 표시 전용 값이라, 그것만 보면 패키지 시트에서
+          //   바꾼 가격이 완료 화면에 반영되지 않는다(저장은 정상, 표시만 옛 금액).
+          feeItems: buildCompleteFeeItems?.(data.singlePrice, {
+            spotOnly: data.trainingType === 'spot',
+          }),
           capacity: data.capacity,
           ageMin: data.ageMin,
           ageMax: data.ageMax,

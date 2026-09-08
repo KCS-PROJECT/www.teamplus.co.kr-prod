@@ -3103,15 +3103,38 @@ export class TournamentsService {
       return { id: registrationId, cancelledAt: new Date(), refunded: true };
     }
 
-    // 미결제(PENDING/UNPAID) 건 — 돈이 오가지 않았으므로 등록 상태만 취소 전환.
+    // 돈이 오가지 않은 건 — 등록 상태만 취소 전환하고, 아직 결제사에 가지 않은 결제
+    //   요청(pending)은 함께 무효화한다. 그러지 않으면 취소 뒤 열려 있던 결제창에서 결제가
+    //   완료돼 돈만 나가는 상태가 된다(결제 확인 진입점이 cancelled 를 거부).
+    //   paymentId 연결은 유지 — 재신청 시 initiate 가 새 결제로 덮는다.
+    //   전이 조건은 위에서 읽은 상태 그대로다. 미결제(PENDING·UNPAID)뿐 아니라 무료 대회의
+    //   즉시 PAID(결제 없음)도 여기로 오므로 상태 집합을 고정하면 무료 취소가 막힌다.
     await this.prisma.$transaction(async (tx) => {
-      await tx.tournamentRegistration.update({
-        where: { id: registrationId },
+      const updated = await tx.tournamentRegistration.updateMany({
+        where: {
+          id: registrationId,
+          paymentStatus: registration.paymentStatus,
+        },
         data: {
           paymentStatus: "CANCELLED",
           cancelledAt: new Date(),
         },
       });
+      if (updated.count !== 1) {
+        throw new ConflictException("이미 처리된 참가 신청입니다.");
+      }
+      // 결제 개시(initiate)가 그 사이 새 결제로 재연결했을 수 있어 연결은 트랜잭션 안에서
+      //   다시 읽는다(위 전이가 같은 행을 잠갔으므로 여기서 읽은 값이 최종).
+      const current = await tx.tournamentRegistration.findUnique({
+        where: { id: registrationId },
+        select: { paymentId: true },
+      });
+      if (current?.paymentId) {
+        await tx.payment.updateMany({
+          where: { id: current.paymentId, paymentStatus: "pending" },
+          data: { paymentStatus: "cancelled" },
+        });
+      }
     });
 
     return { id: registrationId, cancelledAt: new Date(), refunded: false };
