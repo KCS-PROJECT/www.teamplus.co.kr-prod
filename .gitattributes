@@ -1,0 +1,6 @@
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 외부 수령 자료 — 받은 그대로 보관(줄끝 변환 없음)
+backdata/** -text
