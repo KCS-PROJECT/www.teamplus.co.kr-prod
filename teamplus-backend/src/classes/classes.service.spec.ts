@@ -234,7 +234,9 @@ describe("ClassesService", () => {
             classSchedule: {
               create: jest.fn(),
               findUnique: jest.fn(),
-              findMany: jest.fn(),
+              // §4-6 getClass sellableMonths 보정 조회(take 없는 잔여 일정) 기본값 — 개별
+              //   테스트는 필요 시 jest.spyOn(...).mockResolvedValue(...) 로 오버라이드한다.
+              findMany: jest.fn().mockResolvedValue([]),
               update: jest.fn(),
               createMany: jest.fn(),
               count: jest.fn(),
@@ -2836,10 +2838,15 @@ describe("ClassesService", () => {
       new Date(
         Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth() + offset, day),
       );
-    const prevSaleMonth = monthDay(0, 1); // 직전 판매월(salesOpenMonth) = 이번 달
+    const ym = (d: Date) =>
+      `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+    // 직전 판매월은 "이미 끝난 달"이어야 해제 후보가 산출된다(§4-6 — 진행 중인 달이면
+    //   후보 0, 별도 테스트로 검증). 대상월 = 다음 달(잔여 일정 5일).
+    const prevSaleMonth = monthDay(-1, 1); // 직전 판매월(salesOpenMonth) = 지난달(이미 종료)
     const saleTargetSchedule = monthDay(1, 5); // 잔여 일정 → 대상월 = 다음 달
-    const renewedPaidAtIso = monthDay(0, 3).toISOString(); // 직전 판매월 결제 → 유지
-    const unrenewedPaidAtIso = monthDay(-1, 5).toISOString(); // 그 전달 결제 → 해제
+    const targetMonthYm = ym(monthDay(1, 1));
+    const renewedPaidAtIso = monthDay(-1, 3).toISOString(); // 직전 판매월(지난달) 결제 → 유지
+    const unrenewedPaidAtIso = monthDay(-2, 5).toISOString(); // 그 전전달 결제 → 해제
     const mkUser = (id: string, name: string) => ({
       userId: id,
       user: { firstName: name, lastName: "김", email: `${id}@t.dev` },
@@ -2946,6 +2953,8 @@ describe("ClassesService", () => {
         mockCoachUserId,
         "COACH",
         mockClassId,
+        false,
+        targetMonthYm,
       )) as { releasedCount: number; releasedNames: string[] };
       expect(regUpdateMany).toHaveBeenCalledTimes(1);
       expect(regUpdateMany.mock.calls[0][0].where.userId.in).toEqual([
@@ -2959,7 +2968,25 @@ describe("ClassesService", () => {
       expect(result.releasedNames).toEqual(["김미갱신"]);
     });
 
-    it("dryRun — 해제 대상 미리보기만 반환, 쓰기 0", async () => {
+    it("직전 판매월이 진행 중(오늘 달)이면 해제 후보 0건 — 월 중 다음 달을 미리 열어도 유예자 보호", async () => {
+      const { regUpdateMany } = wireOpenSalesMocks({
+        salesOpenMonth: monthDay(0, 1), // 진행 중인 달(오늘 달) — 아직 끝나지 않음
+        registrations: [mkUser("u-june", "미갱신")],
+        enrollments: [prepaidEnroll("u-june", unrenewedPaidAtIso)],
+      });
+      const result = (await service.openClassSales(
+        mockCoachUserId,
+        "COACH",
+        mockClassId,
+        false,
+        targetMonthYm,
+      )) as { releasedCount: number; releasedNames: string[] };
+      expect(regUpdateMany).not.toHaveBeenCalled();
+      expect(result.releasedCount).toBe(0);
+      expect(result.releasedNames).toEqual([]);
+    });
+
+    it("dryRun — 해제 대상 미리보기만 반환, 쓰기 0, targetMonth는 YYYY-MM 문자열", async () => {
       const { regUpdateMany } = wireOpenSalesMocks({
         salesOpenMonth: prevSaleMonth,
         registrations: [mkUser("u-june", "미갱신")],
@@ -2973,10 +3000,24 @@ describe("ClassesService", () => {
       );
       expect(result).toMatchObject({
         dryRun: true,
+        targetMonth: targetMonthYm,
         releaseCandidates: [{ userId: "u-june", name: "김미갱신" }],
       });
+      expect(result).not.toHaveProperty("targetMonthCandidates");
       expect(prismaService.$transaction).not.toHaveBeenCalled();
       expect(regUpdateMany).not.toHaveBeenCalled();
+      expect(mockTx.class.update).not.toHaveBeenCalled();
+    });
+
+    it("확인 호출(dryRun 미전송/false)은 targetMonth 미전송 시 400", async () => {
+      wireOpenSalesMocks({
+        salesOpenMonth: prevSaleMonth,
+        registrations: [],
+        enrollments: [],
+      });
+      await expect(
+        service.openClassSales(mockCoachUserId, "COACH", mockClassId),
+      ).rejects.toThrow("판매 시작 달을 지정해주세요.");
       expect(mockTx.class.update).not.toHaveBeenCalled();
     });
 
@@ -2990,6 +3031,8 @@ describe("ClassesService", () => {
         mockCoachUserId,
         "COACH",
         mockClassId,
+        false,
+        targetMonthYm,
       )) as { releasedCount: number; releasedNames: string[] };
       expect(regUpdateMany).not.toHaveBeenCalled();
       expect(result.releasedCount).toBe(0);
@@ -3012,7 +3055,13 @@ describe("ClassesService", () => {
         products: [],
       });
       await expect(
-        service.openClassSales(mockCoachUserId, "COACH", mockClassId),
+        service.openClassSales(
+          mockCoachUserId,
+          "COACH",
+          mockClassId,
+          false,
+          targetMonthYm,
+        ),
       ).rejects.toThrow("수업 일정이 방금 변경되었습니다");
       expect(mockTx.class.update).not.toHaveBeenCalled();
     });

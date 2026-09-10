@@ -143,4 +143,123 @@ describe("PaymentCreateService", () => {
       expect(result.receipt.billingTiming).toBeNull();
     });
   });
+
+  describe("initiatePayment: 중복 차단 조회는 billingMonth NULL 행도 함께 본다", () => {
+    const userId = "parent-1";
+    const childId = "child-1";
+    const classId = "class-1";
+
+    /** 정상 완주(토스 분기 — 결제창이 이어받아 KG 게이트웨이 URL 생성이 불필요) 최소 배선. */
+    function buildInitiate() {
+      const future = new Date();
+      future.setUTCDate(future.getUTCDate() + 10);
+      future.setUTCHours(0, 0, 0, 0);
+      const salesOpenMonth = new Date(
+        Date.UTC(future.getUTCFullYear(), future.getUTCMonth(), 1),
+      );
+
+      const tx = {
+        payment: { create: jest.fn().mockResolvedValue({ id: "pay-1" }) },
+        enrollment: { create: jest.fn().mockResolvedValue({}) },
+      };
+      const prisma = {
+        classProduct: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: "prod-1",
+            productName: "입문반",
+            feeType: "PER_SESSION",
+            price: 10000,
+            sessionsPerWeek: null,
+            feePerSession: 10000,
+            durationDays: null,
+            isActive: true,
+            billingMonth: null,
+            billingTiming: "PREPAID",
+            classId,
+            class: { id: classId, billingMode: "PREPAID", salesOpenMonth },
+          }),
+        },
+        // saleGate(assertClassOnSale) · classForTeam · classForAge · classCapacity —
+        //   select 키로 분기(다른 select 를 공유 배선하면 서로 다른 값이 필요한 4곳이 섞인다).
+        class: {
+          findUnique: jest.fn(async (args: { select?: Record<string, unknown> }) => {
+            const select = args.select ?? {};
+            if ("schedules" in select) {
+              return {
+                endedAt: null,
+                salesOpenMonth,
+                trainingType: "regular",
+                schedules: [{ scheduledDate: future }],
+              };
+            }
+            if ("teamId" in select) return { teamId: null };
+            if ("ageMin" in select) {
+              return { ageMin: null, ageMax: null, targetBirthYears: [] };
+            }
+            if ("capacity" in select) return { capacity: 0 };
+            return null;
+          }),
+        },
+        parentChild: {
+          findUnique: jest.fn().mockResolvedValue({ parentId: userId }),
+        },
+        enrollment: {
+          findFirst: jest.fn().mockResolvedValue(null), // paid 이력·재활용 대상 모두 없음
+        },
+        user: {
+          findUnique: jest
+            .fn()
+            .mockResolvedValue({ email: "a@a.com", phone: "010-0000-0000" }),
+        },
+        $transaction: jest.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
+      };
+      const redis = {
+        setIfNotExists: jest.fn().mockResolvedValue(true),
+        del: jest.fn(),
+        get: jest.fn().mockResolvedValue(null),
+        set: jest.fn(),
+        exists: jest.fn().mockResolvedValue(false),
+      };
+      const config = {
+        get: jest.fn().mockReturnValue({
+          keyPrefix: { payment: "payment:" },
+          cacheTTL: { paymentIdempotency: 86400 },
+        }),
+      };
+      const calculation = {
+        calculatePrepaidFee: jest
+          .fn()
+          .mockReturnValue({ baseAmount: { toNumber: () => 10000 } }),
+      };
+      const kgGateway = { verifyAmount: jest.fn().mockReturnValue(true) };
+      const svc = new PaymentCreateService(
+        prisma as never,
+        redis as never,
+        config as never,
+        kgGateway as never,
+        calculation as never,
+        {} as never,
+      );
+      return { svc, prisma };
+    }
+
+    it("hasActivePaidEnrollment·existingEnrollment 조회가 OR billingMonth null 을 포함한다", async () => {
+      const { svc, prisma } = buildInitiate();
+      // paymentMethod: toss — 결제창이 결제를 이어받으므로 KG URL 생성 없이 조기 반환.
+      await svc.initiatePayment(userId, "prod-1", 10000, {
+        classId,
+        childId,
+        paymentMethod: "toss",
+      });
+
+      const calls = (prisma.enrollment.findFirst as jest.Mock).mock
+        .calls as Array<[{ where?: { status?: unknown; OR?: unknown } }]>;
+      expect(calls.length).toBe(2);
+      for (const [args] of calls) {
+        expect(args.where?.OR).toEqual(
+          expect.arrayContaining([{ billingMonth: null }]),
+        );
+      }
+    });
+  });
 });

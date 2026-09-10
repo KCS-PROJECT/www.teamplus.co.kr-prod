@@ -23,6 +23,7 @@ import {
 } from "@nestjs/swagger";
 import { ClassesService } from "./classes.service";
 import { GetClassesQueryDto } from "./dto/get-classes-query.dto";
+import { OpenClassSalesDto } from "./dto/open-class-sales.dto";
 import { Roles } from "@/auth/roles.decorator";
 import { RolesGuard } from "@/auth/roles.guard";
 import { AuthenticatedRequest } from "@/common/interfaces/authenticated-request.interface";
@@ -405,14 +406,15 @@ export class ClassesListController {
     @Request() req: AuthenticatedRequest,
     @Param("classId") classId: string,
     // [Phase 2] dryRun=true — 검증 + 미갱신 선불 선수 해제 대상 미리보기(쓰기 0).
-    //   FE 판매 시작 확인 다이얼로그의 사전 고지용.
-    @Body() body?: { dryRun?: boolean },
+    //   FE 판매 시작 확인 다이얼로그의 사전 고지용. targetMonth — 후보가 여럿일 때만 필요.
+    @Body() body?: OpenClassSalesDto,
   ) {
     return this.classesService.openClassSales(
       req.user.id,
       req.user.userType,
       classId,
       body?.dryRun === true,
+      body?.targetMonth,
     );
   }
 }

@@ -56,20 +56,18 @@ export default function ClassCompletePage() {
       const res = await api.get<{
         lifecycleStatus?: string;
         pendingReason?: string | null;
-        earliestRemainingMonth?: string | null;
+        // [판매 창 2개월] 판매 시작 대상월 SoT — earliestRemainingMonth 는 백엔드 판매
+        //   후보 산출과 갈릴 수 있어 nextSalesMonth 로 교체.
+        nextSalesMonth?: string | null;
         endedAt?: string | null;
       }>(`/classes/${classId}`);
       if (!mounted || !res.success || !res.data) return;
-      const { lifecycleStatus, pendingReason, earliestRemainingMonth, endedAt } =
-        res.data;
-      if (
-        lifecycleStatus === 'PENDING_SCHEDULE' &&
-        pendingReason === 'UNAPPROVED_MONTH' &&
-        earliestRemainingMonth &&
-        !endedAt
-      ) {
+      const { lifecycleStatus, nextSalesMonth, endedAt } = res.data;
+      // [R1] 게이트를 nextSalesMonth 유무로 단순화 — 이번 달 판매 중(ON_SALE)에 다음 달을
+      //   여는 흐름도 포함(기존엔 PENDING_SCHEDULE+UNAPPROVED_MONTH 조합만 인정했음).
+      if (nextSalesMonth && lifecycleStatus !== 'ENDED' && !endedAt) {
         // 상세 페이지와 동일 규칙 — @db.Date ISO 직렬화는 UTC 기준으로 월 추출.
-        setSalesOfferMonth(new Date(earliestRemainingMonth).getUTCMonth() + 1);
+        setSalesOfferMonth(new Date(nextSalesMonth).getUTCMonth() + 1);
       }
     })();
     return () => {

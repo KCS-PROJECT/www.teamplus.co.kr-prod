@@ -61,6 +61,9 @@ interface ClassInfo {
   academyId?: string | null;
   /** [Phase B-6] 결제 방식 — PREPAID/POSTPAID/BOTH(선택형: 학부모가 선·후불 택1). */
   billingMode?: string | null;
+  /** [판매 창 2개월] 판매 중인 달 목록("YYYY-MM" 오름차순) — 기본 선택 상품(이번 달분) 판정용.
+   *  구버전 응답(필드 없음)은 undefined. */
+  sellableMonths?: string[];
 }
 
 // 수업 나이 범위를 사용자에게 보여줄 레이블로 포맷 (null-safe, 한국나이 기준)
@@ -371,10 +374,19 @@ function PaymentOptionsContent() {
         if (classData) setClassInfo(classData);
 
         if (productsData.length > 0) {
+          // [판매 창 2개월] 같은 결제유형 상품이 이번 달·다음 달 두 건 내려올 수 있어
+          //   billingMonth 오름차순 정렬(무월 레거시는 뒤로) — 정렬 없이 배열 순서에
+          //   기대면 더 싼(혹은 임의) 달이 기본 선택될 수 있다. 같은 달 안에서는 원래 순서 유지.
+          productsData = [...productsData].sort((a, b) => {
+            if (a.billingMonth == null && b.billingMonth == null) return 0;
+            if (a.billingMonth == null) return 1;
+            if (b.billingMonth == null) return -1;
+            return a.billingMonth.localeCompare(b.billingMonth);
+          });
           setAllProducts(productsData);
-          // PACKAGE_END_GUARD (2026-05-22): URL productId 우선 → 결제 가능한 패키지 우선 →
-          // 첫 항목 폴백. URL 지정 패키지가 비활성이면 사용자에게 노출은 하되 선택은 불가
-          // 처리되도록 가능한 첫 항목으로 자동 전환.
+          // PACKAGE_END_GUARD (2026-05-22): URL productId 우선 → 이번 달분 정액 → 결제
+          // 가능한 정액 패키지 → 첫 항목 폴백. URL 지정 패키지가 비활성이면 사용자에게
+          // 노출은 하되 선택은 불가 처리되도록 가능한 첫 항목으로 자동 전환.
           //   [Phase B-6] 구매목록 필터(:일관)와 동일하게 isActive 도 함께 검사(방어적).
           const isUsable = (p: ClassProduct) =>
             p.isPurchasable !== false && p.isActive !== false;
@@ -382,6 +394,18 @@ function PaymentOptionsContent() {
             ? productsData.find((p) => p.id === productId)
             : null;
           const fromUrlUsable = fromUrl && isUsable(fromUrl) ? fromUrl : null;
+          // [판매 창 2개월] 이번 달(sellableMonths[0]) 정액 상품을 우선 — 백엔드가 명시한
+          //   "이번 달"을 SoT 로 두고, 없으면 정렬 순서상 가장 이른 정액 상품으로 폴백.
+          const thisSellableMonth = classData?.sellableMonths?.[0] ?? null;
+          const monthlyFixedThisMonth = thisSellableMonth
+            ? (productsData.find(
+                (p) =>
+                  isUsable(p) &&
+                  p.feeType === "MONTHLY_FIXED" &&
+                  // billingMonth 는 ISO 일시 문자열, sellableMonths 는 "YYYY-MM" — 앞 7자리로 비교.
+                  p.billingMonth?.slice(0, 7) === thisSellableMonth,
+              ) ?? null)
+            : null;
           // [Phase B-6] 선택형(BOTH) 선불 우선 노출 — 정액 패키지가 있으면 선불 정액을 기본 선택.
           //   상품 배열 순서상 후불(PER_SESSION)이 앞서 와도 후불 기본으로 열리지 않도록 한다.
           const firstPrepaidFixed =
@@ -390,7 +414,12 @@ function PaymentOptionsContent() {
             ) ?? null;
           const firstUsable = productsData.find(isUsable) ?? null;
           const selected =
-            fromUrlUsable ?? firstPrepaidFixed ?? firstUsable ?? productsData[0] ?? null;
+            fromUrlUsable ??
+            monthlyFixedThisMonth ??
+            firstPrepaidFixed ??
+            firstUsable ??
+            productsData[0] ??
+            null;
           setProduct(selected);
           if (selected?.feeType) {
             setSelectedFeeType(selected.feeType as FeeType);

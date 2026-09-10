@@ -88,6 +88,8 @@ export const MESSAGES = {
       // 대상월 등록 0건 사전 차단 — 서버 400("팔 물건 없음") 가드의 FE 미러.
       openSalesNeedOnePkg:
         "판매를 시작하려면 최소 1개 항목을 등록해주세요.",
+      // [판매 창 2개월] nextSalesMonth 없음 — 일정이 판매 창(오늘 달 ~ +1) 밖이라 지금은 열 수 있는 달이 없음.
+      noSalesTargetMonth: "지금은 판매를 시작할 달이 없습니다.",
       unrenewedInlineHint: (month: number) =>
         `등록하지 않은 항목은 ${month}월에 판매되지 않아요. 다음 달 준비 때 다시 확인할 수 있어요.`,
       ctaPreparing: "일정 준비 중",

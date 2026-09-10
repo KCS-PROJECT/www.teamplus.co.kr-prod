@@ -203,7 +203,6 @@ export class EnrollmentsService {
         ageMin: true,
         ageMax: true,
         billingMode: true,
-        salesOpenMonth: true,
       },
     });
 
@@ -211,10 +210,10 @@ export class EnrollmentsService {
       throw new NotFoundException("수업 정보를 찾을 수 없습니다.");
     }
 
-    // [Lifecycle v4.1 §9.4] 판매 게이트 — 대기(일정 미확정)/종료 수업은 수강신청 차단.
-    //   프론트 숨김과 별개의 최종 집행 지점 (직접 API 호출 우회 방지). 반환값은
-    //   Enrollment.billingMonth 폴백(후불·스팟·무월 레거시)에 재사용한다.
-    const lifecycle = await assertClassOnSale(this.prisma, dto.classId);
+    // [Lifecycle v4.1 §9.4 · §4-6] 판매 게이트 — 대기(일정 미확정)/종료 수업은
+    //   수강신청 차단(직접 API 호출 우회 방지). 반환값(판매 중인 달 집합)은 상품 판매월
+    //   검증·Enrollment.billingMonth 폴백(후불·스팟·무월 레거시)에 재사용한다.
+    const saleGate = await assertClassOnSale(this.prisma, dto.classId);
 
     // 3-0. 팀 소속 승인 검증 (설계서 §4.5 + BR-12)
     //  - 팀 수업 (Class.teamId != null) 은 자녀가 해당 클럽의 approved ClubMember 여야 수강 가능.
@@ -292,7 +291,7 @@ export class EnrollmentsService {
     const selectedProduct = await this.resolveSelectedProductTiming(
       dto.classId,
       classInfo.billingMode,
-      classInfo.salesOpenMonth,
+      saleGate.sellableMonths,
       dto.classProductId,
     );
     const selectedProductTiming = selectedProduct?.billingTiming ?? null;
@@ -345,9 +344,26 @@ export class EnrollmentsService {
         }
       };
 
-      // paid 이력은 "현재 수강 중"일 때만 차단 — 만료(배치 해제·크레딧 소진) 자녀의
-      //   재신청(갱신)은 통과시킨다. 판정 SoT 는 표시(hasValidPass)와 동일.
-      if (await hasActivePaidEnrollment(tx, dto.childId, dto.classId)) {
+      // 귀속월·결제 방식 스냅샷 — 중복 차단 검사(귀속월 단위)가 이 값을 먼저 쓰므로
+      //   여기서 확정한다. 입력은 잠금 후 fresh.billingMode + 잠금 전 상품·판매 중인
+      //   달의 가장 이른 달(saleGate.primaryMonth).
+      const enrollmentBilling = resolveEnrollmentBilling(
+        fresh.billingMode,
+        selectedProductTiming,
+        selectedProduct?.billingMonth,
+        saleGate.primaryMonth,
+      );
+
+      // paid 이력은 "그 달"에 이미 있을 때만 차단 — 다른 달 재결제(갱신)는 통과시킨다.
+      //   판정 SoT 는 표시(hasValidPass)와 동일 조건식(§1).
+      if (
+        await hasActivePaidEnrollment(
+          tx,
+          dto.childId,
+          dto.classId,
+          enrollmentBilling.billingMonth,
+        )
+      ) {
         throw new ConflictException("이미 신청 중이거나 수강 중인 수업입니다.");
       }
 
@@ -355,6 +371,12 @@ export class EnrollmentsService {
         where: {
           childId: dto.childId,
           classId: dto.classId,
+          // 같은 달만 차단 — 다른 달(갱신·다음 달 선구매)은 별개 신청으로 허용.
+          //   billingMonth 백필 전 NULL 행은 귀속월 결정 불능이라 보수적으로 함께 차단.
+          OR: [
+            { billingMonth: enrollmentBilling.billingMonth },
+            { billingMonth: null },
+          ],
           status: {
             // 중복 신청 차단 3종 — approved(후불 수강 중) 포함. 만료 cron 집합과 다름.
             in: BLOCKING_APPLICATION,
@@ -371,14 +393,6 @@ export class EnrollmentsService {
         (fresh.billingMode === "BOTH" && selectedProductTiming === "POSTPAID");
       // 무료 선불 — 결제할 금액이 없으므로 결제사·결제 화면을 거치지 않는다.
       const isFreePrepaid = !isPostpaid && selectedProduct?.price === 0;
-      // 귀속월·결제 방식 스냅샷 — 재활용 전환·신규 생성 양쪽에 같은 값. 입력이 전부
-      //   위에서 확정돼 1회 계산.
-      const enrollmentBilling = resolveEnrollmentBilling(
-        fresh.billingMode,
-        selectedProductTiming,
-        selectedProduct?.billingMonth,
-        lifecycle.earliestRemainingMonth,
-      );
 
       if (existingEnrollment) {
         // 중단된 선불 결제 시도가 남긴 "미결제 pending"(payment-create:enrollment.create)을
@@ -1337,7 +1351,7 @@ export class EnrollmentsService {
   private async resolveSelectedProductTiming(
     classId: string,
     billingMode: string,
-    salesOpenMonth: Date | null,
+    sellableMonths: Date[],
     classProductId?: string,
   ): Promise<SelectedProduct | null> {
     if (!classProductId) {
@@ -1376,8 +1390,7 @@ export class EnrollmentsService {
     }
     if (
       product.billingMonth &&
-      (!salesOpenMonth ||
-        product.billingMonth.getTime() !== salesOpenMonth.getTime())
+      !sellableMonths.some((m) => m.getTime() === product.billingMonth!.getTime())
     ) {
       throw new BadRequestException(
         "판매 기간이 지난 상품입니다. 화면을 새로고침한 후 다시 시도해주세요.",

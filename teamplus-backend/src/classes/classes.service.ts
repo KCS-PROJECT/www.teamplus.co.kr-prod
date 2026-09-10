@@ -24,6 +24,7 @@ import {
 import {
   dateOnlyToUtc,
   dateOnlyToString,
+  dateOnlyToYearMonth,
   kstTodayUtcMidnight,
   kstDayEndExclusive,
 } from "@/common/utils/kst-date.util";
@@ -31,6 +32,8 @@ import { createHash } from "crypto";
 import { ApplyScheduleDraftDto } from "./dto/apply-schedule-draft.dto";
 import {
   deriveClassLifecycle,
+  toLifecycleInput,
+  computeSalesWindow,
   utcMonthStart,
 } from "@/common/utils/class-lifecycle.util";
 import { filterSellableProducts } from "@/common/billing/sales-gate.util";
@@ -42,7 +45,6 @@ import {
   resolvePrepaidAttribution,
   isRosterMemberForMonth,
   instantToKstYearMonth,
-  dbDateToKstYearMonth,
   type AttributionResult,
 } from "@/payments/settlement/attribution.util";
 import {
@@ -88,6 +90,7 @@ import {
   assertPostpaidUnitPriceMutable,
   assertScheduleMonthNotSettled,
   findUnsettledPostpaidMonths,
+  monthRangeUtc,
 } from "@/payments/settlement/postpaid-attendance.util";
 import { CreateClassDto, DayScheduleItemDto } from "./dto/create-class.dto";
 import { UpdateClassDto } from "./dto/update-class.dto";
@@ -1788,11 +1791,11 @@ export class ClassesService {
         // PACKAGE_WEEKS_SPEC §6 정기 패키지 단위 응답 필드 — FE 카드 가격 라벨 SoT.
         // PACKAGE_END_GUARD (v3 SoT): 대표가는 isActive=true 패키지 우선, 없으면 첫 매칭 폴백.
         //   isClassEnded 는 utils/package-guard.util.ts:isClassEnded() 단일화.
-        // [Lifecycle v4.1 §9.2] 대표가 산정도 판매 노출분(승인월+무월)만 — 지난 월분 가격 오염 방지.
-        const sellable = filterSellableProducts(
-          c.products ?? [],
-          c.salesOpenMonth,
-        );
+        // [Lifecycle v4.1 §9.2 · §4-6] 대표가 산정도 판매 중인 달(+무월)만 — 지난 월분 가격 오염 방지.
+        const lifecycleInputForSales = toLifecycleInput(c, c.schedules ?? []);
+        const salesWindow = computeSalesWindow(lifecycleInputForSales);
+        const { sellableMonths } = salesWindow;
+        const sellable = filterSellableProducts(c.products ?? [], sellableMonths);
         const monthlyProduct =
           sellable.find(
             (p) => p.feeType === "MONTHLY_FIXED" && p.isActive !== false,
@@ -1812,18 +1815,16 @@ export class ClassesService {
 
         // [Lifecycle v4.1] 파생 상태 SoT (class-lifecycle.util) — 배지 판정 일원화.
         //   isClassEnded(역산)는 BC 용으로 유지, 신규 소비처는 lifecycleStatus 사용.
-        const lifecycle = deriveClassLifecycle({
-          endedAt: c.endedAt,
-          salesOpenMonth: c.salesOpenMonth,
-          trainingType: c.trainingType,
-          schedules: c.schedules ?? [],
-        });
+        const lifecycle = salesWindow.lifecycle;
 
         return {
           ...c,
           // [Lifecycle v4.1 §9.2] ...c 가 실어온 raw products 를 판매 노출분으로 덮어쓰기 —
           //   지난/미래 월분이 응답에 새지 않도록 (대표가 산정과 동일 모집단).
           products: sellable,
+          // [§4-6] additive — 판매 중인 달 집합·다음 판매 개시 대상월.
+          sellableMonths: salesWindow.sellableMonthKeys,
+          nextSalesMonth: salesWindow.nextSalesMonthKey,
           // 수업목록 카드 좌측 아이콘에 팀 프로필(로고) 표시용 — 없으면 프론트가 기본 아이콘 폴백.
           // 오픈클래스는 팀이 없으므로 소속 아카데미 대표 이미지로 폴백.
           teamLogoUrl: c.team?.logoUrl ?? c.academy?.imageUrl ?? null,
@@ -2134,12 +2135,20 @@ export class ClassesService {
     // [추가 2026-05-15] 결제이력(paid Enrollment) 카운트 — 기존 UI 표시용.
     // [추가 2026-06-29] deletable — 삭제 가능 여부(B안). countClassBlockingRefs 헬퍼로
     //   유효 신청/크레딧/후불청구/출석 4종이 모두 0 일 때만 삭제 허용. 가드와 동일 기준.
-    const [paidEnrollmentCount, blockingRefCount] = await Promise.all([
-      this.prisma.enrollment.count({
-        where: { classId, status: "paid" },
-      }),
-      this.countClassBlockingRefs(classId),
-    ]);
+    // [sellableMonths 보정] 위 schedules select 는 표시용 take:10 상한이 있어 한 달에
+    //   회차가 많은 수업은 다음 달 일정이 안 잡힌다(getClassProducts 와 판단 불일치). 판매
+    //   중인 달 산출용 일정은 take 없이 별도 조회한다 — 표시용 schedules 는 그대로 둔다.
+    const [paidEnrollmentCount, blockingRefCount, futureSchedulesForSales] =
+      await Promise.all([
+        this.prisma.enrollment.count({
+          where: { classId, status: "paid" },
+        }),
+        this.countClassBlockingRefs(classId),
+        this.prisma.classSchedule.findMany({
+          where: { classId, isCancelled: false, scheduledDate: { gte: today } },
+          select: { scheduledDate: true },
+        }),
+      ]);
     const deletable = blockingRefCount === 0;
 
     const coachName = classRecord.coach
@@ -2148,6 +2157,23 @@ export class ClassesService {
       : classRecord.team && classRecord.team.coach
         ? `${classRecord.team.coach.lastName ?? ""}${classRecord.team.coach.firstName ?? ""}`.trim()
         : classRecord.instructorName;
+
+    // [Lifecycle v4.1 · §4-6] 파생 상태·판매 중인 달·다음 판매 개시 대상월 — 전부
+    //   take 없는 전체 잔여 일정(futureSchedulesForSales) 한 벌에서 함께 파생한다.
+    //   표시용 schedules(take:10 상한)로 따로 파생하면 회차가 많은 달에서 lifecycleStatus
+    //   와 sellableMonths 가 서로 다른 모집단을 보고 어긋난다 — 표시용 목록은 응답의
+    //   `schedules` 필드에만 쓰고 파생 입력에는 관여하지 않는다.
+    const classDetailLifecycleInput = toLifecycleInput(
+      classRecord,
+      futureSchedulesForSales,
+      (classRecord._count?.schedules ?? 0) > 0,
+    );
+    const classDetailSalesWindow = computeSalesWindow(
+      classDetailLifecycleInput,
+      today,
+    );
+    const classDetailLifecycle = classDetailSalesWindow.lifecycle;
+    const classDetailSellableMonths = classDetailSalesWindow.sellableMonths;
 
     return {
       id: classRecord.id,
@@ -2223,10 +2249,10 @@ export class ClassesService {
       products: (() => {
         // classEndDate 메타 — 대표값(Class.endTime)은 날짜부가 등록일로 오염되어 폐기(null 고정).
         //   차단 로직은 isActive 만 사용(수업 종료일 기반 차단 폐기)·FE 실사용 0건 확인.
-        // [Lifecycle v4.1 §9.2] 판매 노출 = 현재 승인월 분(+무월 레거시)만 — 지난 월분 자동 숨김.
+        // [Lifecycle v4.1 §9.2 · §4-6] 판매 노출 = 판매 중인 달(+무월 레거시)만.
         const productsWithMeta = filterSellableProducts(
           classRecord.products ?? [],
-          classRecord.salesOpenMonth,
+          classDetailSellableMonths,
         ).map((p) => ({
           ...p,
           ...computePackageGuardMeta(p, null),
@@ -2236,26 +2262,16 @@ export class ClassesService {
           : productsWithMeta;
       })(),
       // [Lifecycle v4.1] 파생 상태 — 상세 결제 CTA 분기(학부모 "일정 준비 중")용.
-      ...(() => {
-        const lc = deriveClassLifecycle({
-          endedAt: classRecord.endedAt,
-          salesOpenMonth: classRecord.salesOpenMonth,
-          trainingType: classRecord.trainingType,
-          schedules: (classRecord.schedules ?? []).filter(
-            (sch) => !sch.isCancelled,
-          ),
-          hadAnySchedule: (classRecord._count?.schedules ?? 0) > 0,
-        });
-        return {
-          lifecycleStatus: lc.state,
-          pendingReason: lc.pendingReason,
-          earliestRemainingMonth:
-            lc.earliestRemainingMonth?.toISOString() ?? null,
-          // 명시 종료 시점 — [종료 취소] 버튼 분기용 (spot 파생 자동 종료는 endedAt null
-          //   이라 취소 대상 아님 — 버튼 분기는 endedAt 기준이어야 정확).
-          endedAt: classRecord.endedAt?.toISOString() ?? null,
-        };
-      })(),
+      lifecycleStatus: classDetailLifecycle.state,
+      pendingReason: classDetailLifecycle.pendingReason,
+      earliestRemainingMonth:
+        classDetailLifecycle.earliestRemainingMonth?.toISOString() ?? null,
+      // [§4-6] additive — 판매 중인 달 집합·다음 판매 개시 대상월.
+      sellableMonths: classDetailSalesWindow.sellableMonthKeys,
+      nextSalesMonth: classDetailSalesWindow.nextSalesMonthKey,
+      // 명시 종료 시점 — [종료 취소] 버튼 분기용 (spot 파생 자동 종료는 endedAt null
+      //   이라 취소 대상 아님 — 버튼 분기는 endedAt 기준이어야 정확).
+      endedAt: classRecord.endedAt?.toISOString() ?? null,
       // 2026-05-12: ClassCoachAssignment 다중 코치 배정 (LEAD/ASSISTANT)
       coachAssignments: (classRecord.coachAssignments ?? []).map((a) => ({
         id: a.id,
@@ -2334,7 +2350,9 @@ export class ClassesService {
     const redisConfig = this.configService.get("redis");
     const keyPrefix = redisConfig.keyPrefix.class;
     const cacheTTL = redisConfig.cacheTTL.classList;
-    const cacheKey = `${keyPrefix}list:${teamId}`;
+    // [§4-6] 날짜 파생 필드(lifecycleStatus·sellableMonths·nextSalesMonth)가 TTL 내내
+    //   캐시되므로 키에 KST 오늘 날짜를 넣어 자정 전환 시 자연 무효화한다(구 키는 TTL 로 소멸).
+    const cacheKey = `${keyPrefix}list:${teamId}:${dateOnlyToString(kstTodayUtcMidnight())}`;
 
     if (!hasFilters) {
       const cachedClasses = await this.redisService.get<any[]>(cacheKey);
@@ -2459,18 +2477,19 @@ export class ClassesService {
       const nextSched = (c.schedules ?? []).find(
         (s) => s.scheduledDate >= sdTodayList,
       );
-      // [Lifecycle v4.1] 파생 상태 — 배지 판정 일원화 (class-lifecycle.util SoT).
-      const lifecycle = deriveClassLifecycle({
-        endedAt: c.endedAt,
-        salesOpenMonth: c.salesOpenMonth,
-        trainingType: c.trainingType,
-        schedules: c.schedules ?? [],
-      });
+      // [Lifecycle v4.1 · §4-6] 파생 상태·판매 중인 달 — 배지 판정 일원화.
+      const clubLifecycleInput = toLifecycleInput(c, c.schedules ?? []);
+      const clubSalesWindow = computeSalesWindow(clubLifecycleInput);
+      const lifecycle = clubSalesWindow.lifecycle;
+      const clubSellableMonths = clubSalesWindow.sellableMonths;
       return {
         id: c.id,
         className: c.className,
         trainingType: c.trainingType,
         lifecycleStatus: lifecycle.state,
+        // [§4-6] additive — 판매 중인 달 집합·다음 판매 개시 대상월.
+        sellableMonths: clubSalesWindow.sellableMonthKeys,
+        nextSalesMonth: clubSalesWindow.nextSalesMonthKey,
         pendingReason: lifecycle.pendingReason,
         teamId: c.teamId,
         // 오픈클래스는 팀이 없으므로 소속 아카데미 대표 이미지로 폴백.
@@ -2547,7 +2566,7 @@ export class ClassesService {
         ...(() => {
           const sellableList = filterSellableProducts(
             c.products ?? [],
-            c.salesOpenMonth,
+            clubSellableMonths,
           );
           const single = sellableList.find((p) => p.feeType === "PER_SESSION");
           const monthly = sellableList.find(
@@ -6343,13 +6362,23 @@ export class ClassesService {
         id: true,
         endTime: true,
         academyId: true,
+        endedAt: true,
         salesOpenMonth: true,
+        trainingType: true,
+        // [§4-6] 판매 중인 달 산출용 — 잔여(오늘 이후) 비취소 일정만.
+        schedules: {
+          where: { isCancelled: false, scheduledDate: { gte: kstTodayUtcMidnight() } },
+          select: { scheduledDate: true },
+        },
       },
     });
 
     if (!classRecord) {
       throw new NotFoundException("수업을 찾을 수 없습니다.");
     }
+    const productsSellableMonths = computeSalesWindow(
+      toLifecycleInput(classRecord, classRecord.schedules ?? []),
+    ).sellableMonths;
 
     const products = await this.prisma.classProduct.findMany({
       where: { classId },
@@ -6378,12 +6407,12 @@ export class ClassesService {
     //   classes/utils/package-guard.util.ts:computePackageGuardMeta() 호출로 메타 주입.
     //   shouldHideInactiveFor(requester?.userType) — PARENT/CHILD/TEEN 비활성 제외.
     // classEndDate 메타 — 대표값(Class.endTime)은 날짜부가 등록일로 오염되어 폐기(null 고정).
-    // [Lifecycle v4.1 §9.2] 학부모행(PARENT/CHILD/TEEN — shouldHideInactiveFor 와 동일 기준)
-    //   요청은 판매 노출분(승인월+무월 레거시)만 — 결제 옵션 1차 소스가 이 API 라서
-    //   미필터 시 지난 월분 카드가 노출됨 (Reviewer F2. 결제는 race 가드로 봉인되나 UX 갭).
+    // [Lifecycle v4.1 §9.2 · §4-6] 학부모행(PARENT/CHILD/TEEN — shouldHideInactiveFor
+    //   와 동일 기준) 요청은 판매 중인 달(+무월 레거시)만 — 결제 옵션 1차 소스가 이 API 라서
+    //   미필터 시 지난/미승인 월분 카드가 노출됨 (Reviewer F2. 결제는 race 가드로 봉인되나 UX 갭).
     //   감독/관리자는 이력 확인용 전체 유지 (확인 플로우 needsUpdate 산출에 이전 분 필요).
     const roleScoped = shouldHideInactiveFor(requester?.userType)
-      ? filterSellableProducts(products, classRecord.salesOpenMonth)
+      ? filterSellableProducts(products, productsSellableMonths)
       : products;
 
     // [가격 잠금 Phase 5] 잠금 상태 3필드 emit — FE 가 저장 400 대신 사전 disabled 로
@@ -6884,11 +6913,36 @@ export class ClassesService {
   }
 
   /**
-   * [Lifecycle v4.1 §9.3] [판매 시작] — 감독의 명시 승인으로만 판매 월 전환 (자동 전환 금지).
-   * 검증: ① 미종료 ② 가장 이른 잔여 달 M 존재 ③ 월권 이력(billingMonth 有)이 있는 수업은
-   *   대상월 분 패키지가 1건 이상 존재 (지난 월분 row 는 §9.2 설계상 "보존"이므로 전부-갱신을
-   *   강제하지 않는다 — 노출 차단은 filterSellableProducts, 갱신 유도는 FE needsUpdate 게이트.
-   *   월 패키지 0개 = 후불 전용·무월 레거시만 있는 수업은 ③ 통과).
+   * [§4-6] [판매 시작] 대상월 후보 검증 — dto.targetMonth 가 오면 서버 산출 후보와
+   *   일치해야 하고, 미전송이면 후보를 그대로 쓴다. 후보가 없으면(새로 열 달 없음) 400.
+   *   확인 호출(dryRun=false)은 호출부에서 targetMonthInput 필수를 이미 강제하므로
+   *   여기 도달하는 미전송은 dryRun 미리보기뿐이다.
+   */
+  private resolveOpenSalesTargetMonth(
+    candidate: Date | null,
+    targetMonthInput?: string,
+  ): Date {
+    if (targetMonthInput) {
+      const requested = monthRangeUtc(targetMonthInput).start;
+      if (!candidate || requested.getTime() !== candidate.getTime()) {
+        throw new BadRequestException("선택한 달은 판매를 시작할 수 없습니다.");
+      }
+      return requested;
+    }
+    if (!candidate) {
+      throw new BadRequestException("판매를 시작할 달이 없습니다.");
+    }
+    return candidate;
+  }
+
+  /**
+   * [Lifecycle v4.1 §9.3 · §4-6] [판매 시작] — 감독의 명시 승인으로만 판매 창 확장
+   * (자동 전환 금지). 대상월 후보 = computeSalesWindow().nextSalesMonth(하한 max(오늘 달,
+   * salesOpenMonth+1), 상한 오늘 달+1) — 진행 중인 달을 종료 전에 다음 달 판매를 열 수 있다(판매 창 최대 2개월).
+   * 검증: ① 미종료 ② 후보 존재(또는 dto.targetMonth 가 후보와 일치) ③ 월권 이력(billingMonth
+   *   有)이 있는 수업은 대상월 분 패키지가 1건 이상 존재 (지난 월분 row 는 §9.2 설계상
+   *   "보존"이므로 전부-갱신을 강제하지 않는다 — 노출 차단은 filterSellableProducts, 갱신
+   *   유도는 FE needsUpdate 게이트. 월 패키지 0개 = 후불 전용·무월 레거시만 있는 수업은 ③ 통과).
    */
   async openClassSales(
     userId: string,
@@ -6896,6 +6950,8 @@ export class ClassesService {
     classId: string,
     // [Phase 2] true 면 검증·미갱신 해제 대상 산출까지만 수행(쓰기 0) — FE 사전 고지용.
     dryRun = false,
+    // [§4-6] 후보가 여럿일 때만 필요(현재 규칙상 항상 0·1개라 대개 미전송).
+    targetMonthInput?: string,
   ) {
     const { ownerType, ownerId } = await this.assertClassManagerPermission(
       userId,
@@ -6924,20 +6980,22 @@ export class ClassesService {
     if (klass.endedAt) {
       throw new BadRequestException("종료된 수업입니다. 재개 후 진행해주세요.");
     }
-    const lifecycle = deriveClassLifecycle({
-      endedAt: klass.endedAt,
-      salesOpenMonth: klass.salesOpenMonth,
-      trainingType: klass.trainingType,
-      schedules: klass.schedules,
-    });
-    const targetMonth = lifecycle.earliestRemainingMonth;
-    if (!targetMonth) {
-      throw new BadRequestException(
-        "다가오는 일정이 없습니다. 다음 달 일정을 먼저 등록해주세요.",
-      );
+    // [§4-6] 확인 호출(dryRun→쓰기)은 dryRun 응답이 돌려준 targetMonth 를 그대로 되돌려
+    //   받아야 한다 — 생략을 허용하면 그 사이 월이 바뀌어도 서버가 조용히 새 후보로
+    //   진행해, 감독이 미리보기에서 확인한 달과 실제 승인된 달이 달라질 수 있다.
+    if (!dryRun && !targetMonthInput) {
+      throw new BadRequestException("판매 시작 달을 지정해주세요.");
     }
-    // salesOpenMonth 비감소 불변식 — 이른 달 일정 추가로 대상월이 과거로 이동하면
-    //   이미 판매된 월분이 잠금 판정(billingMonth ≤ salesOpenMonth)을 빠져나가므로 거부.
+    const targetMonthCandidate = computeSalesWindow(
+      toLifecycleInput(klass, klass.schedules),
+    ).nextSalesMonth;
+    const targetMonth = this.resolveOpenSalesTargetMonth(
+      targetMonthCandidate,
+      targetMonthInput,
+    );
+    // salesOpenMonth 비감소 불변식 — 후보 하한 규칙상 정상 경로에서는 도달하지 않지만,
+    //   대상월이 과거로 가면 이미 판매된 월분이 잠금 판정(billingMonth ≤ salesOpenMonth)을
+    //   빠져나가므로 방어선으로 유지.
     assertSalesMonthNotRolledBack(targetMonth, klass.salesOpenMonth);
     // §9.2 — 지난 월분 row 는 판매 이력으로 "보존"되는 설계이므로 전부-갱신을 강제하지
     //   않는다 (강제 시 2차 사이클부터 항상 실패 — Reviewer C-1). 검증은 "판매할 물건이
@@ -6962,15 +7020,23 @@ export class ClassesService {
     // ── [Phase 2] 미갱신 선불 선수 배치 해제 대상 산출 ─────────────────────
     //   크레딧 미사용 운영에선 선불 좌석이 자동 반납되지 않으므로, 감독의 [판매 시작]
     //   시점에 "직전 판매월에 유효 결제가 없는 선불 이력 선수"를 명단(active)에서 내린다.
-    //   · 판정월 = 직전 salesOpenMonth (첫 판매/동월 재실행은 대상 0 — 1개월 유예 설계)
+    //   · 판정월 = 직전 salesOpenMonth
+    //   · 후보 발생 조건 = 직전 판매월이 이미 끝난 달일 때만(salesOpenMonth < 오늘 달).
+    //     진행 중인 달(salesOpenMonth ≥ 오늘 달)이면 후보 0 — 판매 창을 월 중에 다음
+    //     달까지 미리 열어도(§4-6 2개월 창) 이번 달 유예 중인 선수가 즉시 해제되지 않는다.
+    //     첫 판매(salesOpenMonth null)도 대상 0.
     //   · 제외: 활성 후불 등록(구독형) · 결제 이력 0(감독 배치 전용 명단)
     //   · 해제 후 재결제하면 결제 완료 경로 upsert 가 active 로 자동 복구한다.
+    const todayMonthForRelease = utcMonthStart(kstTodayUtcMidnight());
+    const prevCycleEnded =
+      klass.salesOpenMonth != null &&
+      klass.salesOpenMonth.getTime() < todayMonthForRelease.getTime();
     const prevSalesYm = klass.salesOpenMonth
-      ? dbDateToKstYearMonth(klass.salesOpenMonth)
+      ? dateOnlyToYearMonth(klass.salesOpenMonth)
       : null;
-    const targetYm = dbDateToKstYearMonth(targetMonth);
+    const targetYm = dateOnlyToYearMonth(targetMonth);
     const releaseCandidates: { userId: string; name: string }[] = [];
-    if (prevSalesYm != null && targetYm > prevSalesYm) {
+    if (prevCycleEnded && prevSalesYm != null && targetYm > prevSalesYm) {
       const activeRegs = await this.prisma.classRegistration.findMany({
         where: { classId, status: "active" },
         select: {
@@ -7063,12 +7129,14 @@ export class ClassesService {
     }
 
     // dryRun — 검증·해제 대상 미리보기만 반환(쓰기 0). FE 판매 시작 확인 다이얼로그용.
+    //   확인 호출은 이 targetMonth("YYYY-MM")를 그대로 targetMonthInput 에 실어 되돌려야
+    //   한다(위 필수 가드) — dryRun→확인 사이 월 전환을 감독의 눈에 보이는 값으로 고정.
     if (dryRun) {
       return {
         id: classId,
         salesOpenMonth: klass.salesOpenMonth,
         dryRun: true as const,
-        targetMonth,
+        targetMonth: dateOnlyToYearMonth(targetMonth),
         releaseCandidates,
       };
     }
@@ -7076,12 +7144,12 @@ export class ClassesService {
     //   미갱신 무월(레거시) 정기권을 같은 트랜잭션에서 판매 중단한다 — 무월은 월 필터를
     //   우회해 상시 노출되므로, 안 하면 "갱신 안 함 = 이번 달 판매 안 함" 선택이 무시되고
     //   새 월분과 중복 노출된다. 무월만 있는 수업은 폴백 판매(§9.2 점진 전환) 유지.
-    const { updated, retiredLegacyCount, releasedCount } =
+    const { updated, retiredLegacyCount, releasedCount, sellableMonthsAfter } =
       await this.prisma.$transaction(async (tx) => {
         // 상품 수정·생성 경로와의 레이스 차단 — sales lock 획득 후 tx 안에서
-        //   lifecycle 입력(일정·trainingType)까지 재조회해 대상월을 재산출한다 (§4-0 A).
-        //   일정 writer 는 sales lock 미참여라, 외부에서 계산한 targetMonth 는 tx 진입
-        //   시점에 이미 낡았을 수 있다.
+        //   lifecycle 입력(일정·trainingType)까지 재조회해 대상월 후보를 재산출한다
+        //   (§4-0 A). 일정 writer 는 sales lock 미참여라, 외부에서 계산한 targetMonth 는
+        //   tx 진입 시점에 이미 낡았을 수 있다.
         await acquireClassSalesLock(tx, classId);
         const freshClass = await tx.class.findUniqueOrThrow({
           where: { id: classId },
@@ -7104,25 +7172,17 @@ export class ClassesService {
             "종료된 수업입니다. 재개 후 진행해주세요.",
           );
         }
-        const freshLifecycle = deriveClassLifecycle({
-          endedAt: freshClass.endedAt,
-          salesOpenMonth: freshClass.salesOpenMonth,
-          trainingType: freshClass.trainingType,
-          schedules: freshClass.schedules,
-        });
-        const freshTargetMonth = freshLifecycle.earliestRemainingMonth;
-        if (!freshTargetMonth) {
-          throw new BadRequestException(
-            "다가오는 일정이 없습니다. 다음 달 일정을 먼저 등록해주세요.",
-          );
-        }
-        // 외부 산출 대상월과 다르면 낡은 값 — 외부에서 계산한 해제 대상 명단과
-        //   섞어 커밋하지 않고 재시도로 유도한다.
-        if (freshTargetMonth.getTime() !== targetMonth.getTime()) {
+        const freshCandidate = computeSalesWindow(
+          toLifecycleInput(freshClass, freshClass.schedules),
+        ).nextSalesMonth;
+        // 외부 산출 대상월과 다르면(후보 소멸 포함) 낡은 값 — 외부에서 계산한 해제
+        //   대상 명단과 섞어 커밋하지 않고 재시도로 유도한다.
+        if (!freshCandidate || freshCandidate.getTime() !== targetMonth.getTime()) {
           throw new ConflictException(
             "수업 일정이 방금 변경되었습니다. 다시 시도해주세요.",
           );
         }
+        const freshTargetMonth = freshCandidate;
         assertSalesMonthNotRolledBack(
           freshTargetMonth,
           freshClass.salesOpenMonth,
@@ -7173,10 +7233,18 @@ export class ClassesService {
           });
           released = res.count;
         }
+        // [§4-6] additive — 커밋된 salesOpenMonth 기준 판매 중인 달 집합.
+        const sellableAfter = computeSalesWindow(
+          toLifecycleInput(
+            { ...freshClass, salesOpenMonth: freshTargetMonth },
+            freshClass.schedules,
+          ),
+        ).sellableMonths;
         return {
           updated: cls,
           retiredLegacyCount: retired,
           releasedCount: released,
+          sellableMonthsAfter: sellableAfter,
         };
       });
     this.logger.log(
@@ -7203,6 +7271,8 @@ export class ClassesService {
       // [Phase 2] additive — 기존 소비처(id·salesOpenMonth)는 그대로 유지.
       releasedCount,
       releasedNames: releaseCandidates.map((c) => c.name),
+      // [§4-6] additive — 판매 중인 달 집합.
+      sellableMonths: sellableMonthsAfter.map((m) => dateOnlyToYearMonth(m)),
     };
   }
 
@@ -8150,7 +8220,8 @@ export class ClassesService {
 
     const redisConfig = this.configService.get("redis");
     const keyPrefix = redisConfig.keyPrefix.class;
-    const cacheKey = `${keyPrefix}list:${teamId}`;
+    // getClubClasses 와 동일한 날짜 접미(오늘자 키만 실존) — 어제 이전 키는 이미 TTL 로 소멸.
+    const cacheKey = `${keyPrefix}list:${teamId}:${dateOnlyToString(kstTodayUtcMidnight())}`;
 
     await this.redisService.del(cacheKey);
   }

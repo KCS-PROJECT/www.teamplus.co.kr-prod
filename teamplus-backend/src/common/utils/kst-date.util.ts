@@ -44,6 +44,14 @@ export function dateOnlyToString(at: Date): string {
 }
 
 /**
+ * `@db.Date` read → "YYYY-MM" (dateOnlyToString 과 동일 계약, 월만 절단).
+ * 판매 창(salesOpenMonth 등) 월 키 포맷 SoT — class-lifecycle.util 의 sellableMonths 등이 사용.
+ */
+export function dateOnlyToYearMonth(at: Date): string {
+  return dateOnlyToString(at).slice(0, 7);
+}
+
+/**
  * `@db.Date` 날짜 + "HH:mm"(KST 벽시계)을 KST 시각 instant 로 합성.
  * date 성분은 UTC 로 추출(자정이라 KST 날짜와 동일)하고 시각에 `+09:00` 를 부여한다.
  */
@@ -89,6 +97,16 @@ export function addUtcDays(base: Date, days: number): Date {
   const next = new Date(base);
   next.setUTCDate(next.getUTCDate() + days);
   return next;
+}
+
+/**
+ * 그 달 1일 UTC 자정 값에 n개월을 더한 새 달 1일 UTC 자정.
+ * `@db.Date` 판매 창 계산(class-lifecycle.util computeSalesWindow) 전용 — UTC 월 산술이라 DST/TZ 무관.
+ */
+export function addUtcMonths(monthStart: Date, n: number): Date {
+  return new Date(
+    Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + n, 1),
+  );
 }
 
 /**

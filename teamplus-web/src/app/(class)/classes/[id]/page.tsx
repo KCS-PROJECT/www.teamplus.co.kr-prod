@@ -52,6 +52,7 @@ import {
   formatNextScheduleLabel,
   formatNextScheduleSummary,
   sortDaySchedules,
+  isSalesWindowEmpty,
   type DaySchedule,
 } from "@/lib/class-categories";
 import { formatVenueRef } from "@/lib/venue-display";
@@ -89,8 +90,13 @@ interface ClassDetail {
   /** [Lifecycle v4.1] 서버 파생 상태 — 신청 CTA 분기(일정 준비 중/종료) + 감독 관리 액션. */
   lifecycleStatus?: 'ON_SALE' | 'PENDING_SCHEDULE' | 'ENDED';
   pendingReason?: 'NO_SCHEDULE' | 'UNAPPROVED_MONTH' | null;
-  /** 판매 승인 사이클 대상 달(그 달 1일 ISO) — 확인 플로우 "N월분" 표기·패키지 복제 대상. */
-  earliestRemainingMonth?: string | null;
+  /** [판매 창 2개월] 판매를 다음에 시작할 수 있는 달(그 달 1일 ISO) — 감독 관리 배너
+   *  "N월 판매 준비" 표기 대상월 SoT. earliestRemainingMonth(잔여 일정 최이른 달)는
+   *  백엔드 판매 후보 산출과 갈릴 수 있어 사용하지 않는다. */
+  nextSalesMonth?: string | null;
+  /** [판매 창 2개월] 판매 중인 달 목록("YYYY-MM" 오름차순) — 비어 있으면 ON_SALE 이어도
+   *  지금 신청 가능한 달이 없는 구간(방학 등). 구버전 응답(필드 없음)은 undefined. */
+  sellableMonths?: string[];
   /** 명시 종료 시점 — [종료 취소] 분기 (spot 파생 자동 종료는 null). */
   endedAt?: string | null;
   startTime?: string;
@@ -1082,7 +1088,7 @@ export default function ClassDetailPage() {
   };
 
   /* ── [Lifecycle v4.1] 감독 관리 — 판매 승인 사이클 + 수업 종료/재개 ──
-     데이터 소스: getClass 응답(lifecycleStatus/pendingReason/earliestRemainingMonth/endedAt).
+     데이터 소스: getClass 응답(lifecycleStatus/pendingReason/nextSalesMonth/endedAt).
      [일정·판매 관리 승격] 패키지 월분 갱신·판매 시작 실행은
      /classes-manage/[id]/schedules 로 이관 — 상세는 상태 요약 + 진입 CTA 만 담당. */
   const [lifecycleActing, setLifecycleActing] = useState(false);
@@ -1093,7 +1099,7 @@ export default function ClassDetailPage() {
     if (res.success && res.data) setClassData(res.data);
   }, [classId]);
 
-  const targetMonthIso = classData?.earliestRemainingMonth ?? null;
+  const targetMonthIso = classData?.nextSalesMonth ?? null;
   const targetMonthLabel = targetMonthIso
     ? new Date(targetMonthIso).getUTCMonth() + 1
     : null;
@@ -1375,6 +1381,10 @@ export default function ClassDetailPage() {
   const occupancy = capacity > 0 ? Math.round((enrolled / capacity) * 100) : 0;
   const isFull = capacity > 0 && remaining === 0;
   const isUrgent = !isFull && remaining > 0 && remaining <= 3;
+  // [판매 창 2개월] ON_SALE 이어도 지금 판매 중인 달이 없는 구간(예: 방학 달) — sellableMonths
+  //   가 응답에 없으면(구버전) 판정하지 않고 기존 lifecycleStatus 분기에만 맡긴다.
+  //   판정 로직은 목록 카드(classes/page.tsx)와 공유 SoT(@/lib/class-categories).
+  const salesWindowEmpty = isSalesWindowEmpty(classData);
 
   // classes 도메인 SoT (class-categories.ts) — regular/lesson + deprecated/training 도메인 키 호환.
   const rawTypeLabel = classData.trainingType
@@ -2362,7 +2372,7 @@ export default function ClassDetailPage() {
               // disabled 라벨 — 선택 자녀 사유 우선순위 반영
               let disabledRightLabel: string | null = null;
               // [Lifecycle v4.1 §9.4] 대기/종료 수업 — 신청 CTA 차단 (서버 게이트의 1차 표시).
-              if (classData.lifecycleStatus === 'PENDING_SCHEDULE')
+              if (classData.lifecycleStatus === 'PENDING_SCHEDULE' || salesWindowEmpty)
                 disabledRightLabel = MESSAGES.class.salesCycle.ctaPreparing;
               else if (classData.lifecycleStatus === 'ENDED')
                 disabledRightLabel = MESSAGES.class.salesCycle.ctaEnded;
@@ -2382,6 +2392,7 @@ export default function ClassDetailPage() {
 
               const rightDisabled =
                 classData.lifecycleStatus === 'PENDING_SCHEDULE' ||
+                salesWindowEmpty ||
                 classData.lifecycleStatus === 'ENDED' ||
                 !!paidEnrollment ||
                 !hasProducts ||
@@ -2462,7 +2473,7 @@ export default function ClassDetailPage() {
             일정 등록·판매 시작·종료 등 관리 액션은 하단 관리 영역에 모은다. */}
         {isManager && classData.lifecycleStatus === 'PENDING_SCHEDULE' && !classData.endedAt && (
           <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4" aria-label={MESSAGES.class.salesCycle.pendingBannerAria}>
-            {classData.pendingReason === 'NO_SCHEDULE' || !targetMonthLabel ? (
+            {classData.pendingReason === 'NO_SCHEDULE' ? (
               /* 일정 없음 — 감독의 결정 지점: 계속 운영(일정 등록) vs 종료.
                  종료 가드(다가오는 일정 0)가 실제로 통과 가능한 상태도 여기뿐이라
                  종료 버튼을 이 분기에만 노출한다(판매 승인 대기 중 헛클릭 차단). */
@@ -2499,6 +2510,15 @@ export default function ClassDetailPage() {
                   </button>
                 </div>
               </>
+            ) : !targetMonthLabel ? (
+              // [판매 창 2개월] 일정은 있으나 nextSalesMonth 가 없음 — 판매 창(오늘 달 ~ +1)
+              //   밖이라 지금은 열 수 있는 달이 없는 구간. 사유만 안내(일정 등록 유도 아님).
+              <div className="flex items-center gap-2">
+                <Icon name="storefront" className="text-xl text-it-ink-400" aria-hidden="true" />
+                <p className="text-card-body text-wtext-2 dark:text-rink-100" role="status">
+                  {MESSAGES.class.salesCycle.noSalesTargetMonth}
+                </p>
+              </div>
             ) : (
               <>
                 <div className="flex items-center gap-2 mb-1">

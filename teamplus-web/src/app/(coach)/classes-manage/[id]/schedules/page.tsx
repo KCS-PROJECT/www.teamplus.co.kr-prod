@@ -54,7 +54,11 @@ interface ClassHeader {
   // [일정·판매 관리 승격] 수명주기 파생 상태(getClass 응답) — 판매 준비 섹션 분기.
   lifecycleStatus?: 'ON_SALE' | 'PENDING_SCHEDULE' | 'ENDED' | null;
   pendingReason?: 'NO_SCHEDULE' | 'UNAPPROVED_MONTH' | null;
-  earliestRemainingMonth?: string | null;
+  // [판매 창 2개월] 판매 중인 달 목록("YYYY-MM" 오름차순) — ON_SALE 칩("N월 판매 중")
+  //   표시 전용. 비어 있으면 칩 미표시, 여러 달이면 달마다 칩.
+  sellableMonths?: string[];
+  // [판매 창 2개월] 판매를 다음에 시작할 수 있는 달 — 판매 시작·월분 상품 생성 대상월 SoT.
+  nextSalesMonth?: string | null;
   endedAt?: string | null;
 }
 
@@ -431,15 +435,22 @@ export default function ClassSchedulesManagePage() {
   const isNoSchedulePending =
     cls?.lifecycleStatus === 'PENDING_SCHEDULE' &&
     cls?.pendingReason === 'NO_SCHEDULE';
-  const isUnapprovedPending =
-    cls?.lifecycleStatus === 'PENDING_SCHEDULE' &&
-    cls?.pendingReason === 'UNAPPROVED_MONTH';
-  const targetMonthIso = cls?.earliestRemainingMonth ?? null;
+  // [판매 창 2개월] 판매 시작·월분 상품 생성·일괄 생성 대상월 — earliestRemainingMonth(잔여
+  //   일정 최이른 달)는 백엔드 판매 후보 산출과 갈릴 수 있어 nextSalesMonth 로 교체.
+  const targetMonthIso = cls?.nextSalesMonth ?? null;
   // @db.Date ISO 직렬화(UTC 자정) — UTC getter 로 월 추출 (상세 페이지와 동일 규칙).
   const targetMonthLabel = targetMonthIso
     ? new Date(targetMonthIso).getUTCMonth() + 1
     : null;
   const targetMonthKey = targetMonthIso ? targetMonthIso.slice(0, 7) : null;
+  // [일정·판매 관리 승격 v2] 판매 준비 섹션 게이트 — 이번 달 판매 중(ON_SALE)에 다음 달을
+  //   여는 흐름도 커버해야 하므로 UNAPPROVED_MONTH 전용에서 "다음 판매월이 있는 모든 상태"로
+  //   확장한다. NO_SCHEDULE(일정 자체가 없음)만 상단 별도 안내로 남기고 여기서 제외.
+  const canPrepareSales = !isSpot && !isEnded && !isNoSchedulePending;
+  // ON_SALE 칩 전용(표시 용도) — 판매 중인 달 목록(sellableMonths) 오름차순 월 번호.
+  const onSaleMonthLabels = (cls?.sellableMonths ?? [])
+    .map((m) => Number(m.slice(5, 7)))
+    .filter((n) => Number.isFinite(n));
 
   const [monthlyPkgs, setMonthlyPkgs] = useState<MonthlyPkg[] | null>(null);
   // 소진(isActive:false) 포함 전체 월정액 행 — 앵커 달(가장 가까운 스냅샷 달) 판정 전용.
@@ -479,8 +490,8 @@ export default function ClassSchedulesManagePage() {
   }, [classId]);
 
   useEffect(() => {
-    if (isUnapprovedPending && !isSpot) fetchMonthlyPkgs();
-  }, [isUnapprovedPending, isSpot, fetchMonthlyPkgs]);
+    if (canPrepareSales) fetchMonthlyPkgs();
+  }, [canPrepareSales, fetchMonthlyPkgs]);
 
   // 대상월 row 가 이미 있는 상품명 집합 — 과거 데이터 보호용 보조 가드.
   //   갱신 소진 판정은 원본 행(id) 판매 중지가 SoT 이고, 이 이름 필터는 예전
@@ -664,11 +675,18 @@ export default function ClassSchedulesManagePage() {
     try {
       // [Phase 2] 미갱신 선불 선수 해제 사전 고지 — dryRun으로 대상을 먼저 조회하고,
       //   해제 대상이 있으면 감독 확인 후에만 실제 판매 시작을 실행한다.
+      //   [R1] dryRun 응답 targetMonth 는 "YYYY-MM" 문자열(단일) — 확인 호출에 그대로 전달.
       const preview = await api.post<{
         releaseCandidates?: { userId: string; name: string }[];
+        targetMonth?: string;
       }>(`/classes/${classId}/open-sales`, { dryRun: true });
       if (!preview.success) {
         if (preview.error?.message) toast.error(preview.error.message);
+        return;
+      }
+      const targetMonth = preview.data?.targetMonth;
+      if (!targetMonth) {
+        toast.error(MESSAGES.class.salesCycle.noSalesTargetMonth);
         return;
       }
       const candidates = preview.data?.releaseCandidates ?? [];
@@ -705,6 +723,7 @@ export default function ClassSchedulesManagePage() {
       }
       const res = await api.post<{ releasedCount?: number }>(
         `/classes/${classId}/open-sales`,
+        { targetMonth },
       );
       if (res.success) {
         if (targetMonthLabel !== null) {
@@ -740,7 +759,7 @@ export default function ClassSchedulesManagePage() {
   );
 
   // [월 일괄 생성] 정규 요일 템플릿(시간 채워진 요일)로 대상월 날짜를 즉시 등록 —
-  //   대상월: 잔여 일정이 있으면 판매 준비 대상월(earliestRemainingMonth)에 고정 — 그 달이
+  //   대상월: 잔여 일정이 있으면 판매 시작 대상월(nextSalesMonth)에 고정 — 그 달이
   //   가득 차도 다음 달로 넘어가지 않는다(생명주기와 무관하게 달이 앞서가는 혼동 방지).
   //   다음 달 선등록은 잔여 일정이 모두 끝나 일정 등록 대기가 된 뒤에만 열린다.
   //   수정 폼의 동일 기능(로컬 draft)과 달리 여기서는 bulk API 로 바로 저장된다.
@@ -1586,7 +1605,7 @@ export default function ClassSchedulesManagePage() {
               isEnded={isEnded}
               lifecycleStatus={cls.lifecycleStatus}
               pendingReason={cls.pendingReason}
-              targetMonthLabel={targetMonthLabel}
+              onSaleMonths={onSaleMonthLabels}
             />
           </div>
           {/* 기본 일정(정규 요일 템플릿) 요약 — 요일·시간·장소가 등록돼 있을 때만, 요일별 한 줄. */}
@@ -1802,14 +1821,32 @@ export default function ClassSchedulesManagePage() {
           )}
         </section>
 
-        {/* ─── 판매 준비 — 대상월 확정(UNAPPROVED_MONTH) 시에만 활성 ───
+        {/* ─── 판매 준비 — 다음 판매월(nextSalesMonth)이 있을 때 활성 ───
             ② 월 정기권 월분 확인 → ③ 판매 시작. 일정 등록(①) 직후 재조회로 이 섹션이
-            같은 화면에서 열린다. spot 은 판매 승인 사이클 미적용(§7.2)이라 제외. */}
+            같은 화면에서 열린다. 이번 달 판매 중(ON_SALE)에 다음 달을 여는 흐름도 포함하고,
+            spot(§7.2)·NO_SCHEDULE(상단 별도 안내)만 제외한다. */}
         {/* [설계 §3.5] dirty 게이트 — 미저장 draft 가 있는 동안 구성 확인·판매 시작 잠금.
             저장 후 서버 파생 상태 기준으로만 판매 준비를 진행한다. */}
-        {isUnapprovedPending &&
-          !isSpot &&
-          !isEnded &&
+        {/* [판매 창 2개월] nextSalesMonth 없음 — 일정은 있으나 판매 창(오늘 달 ~ +1) 밖이라
+            지금은 열 수 있는 달이 없는 구간. 판매 시작 버튼 자체를 비활성(섹션 미노출) 대신
+            사유를 안내한다. */}
+        {canPrepareSales && targetMonthLabel === null && (
+          <section
+            className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-5"
+            aria-label={MESSAGES.class.salesCycle.pendingBannerAria}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <Icon name="storefront" className="text-xl text-it-ink-400" aria-hidden="true" />
+              <h2 className="text-[15px] font-extrabold text-it-ink-800 dark:text-white tracking-tight">
+                {MESSAGES.class.salesOpenNeededBadge}
+              </h2>
+            </div>
+            <p className="text-card-meta text-it-ink-500 dark:text-rink-300" role="status">
+              {MESSAGES.class.salesCycle.noSalesTargetMonth}
+            </p>
+          </section>
+        )}
+        {canPrepareSales &&
           targetMonthLabel !== null &&
           dirtyCount > 0 && (
             <section
@@ -1827,9 +1864,7 @@ export default function ClassSchedulesManagePage() {
               </p>
             </section>
           )}
-        {isUnapprovedPending &&
-          !isSpot &&
-          !isEnded &&
+        {canPrepareSales &&
           targetMonthLabel !== null &&
           dirtyCount === 0 && (
           <section
@@ -2308,39 +2343,54 @@ function LifecycleChip({
   isEnded,
   lifecycleStatus,
   pendingReason,
-  targetMonthLabel,
+  onSaleMonths,
 }: {
   isEnded: boolean;
   lifecycleStatus?: ClassHeader['lifecycleStatus'];
   pendingReason?: ClassHeader['pendingReason'];
-  targetMonthLabel: number | null;
+  /** ON_SALE 칩 전용 — 판매 중인 달 번호(오름차순). 비어 있으면 칩 미표시, 여러 달이면 달마다 칩. */
+  onSaleMonths: number[];
 }) {
-  let label: string | null = null;
-  let tone = '';
+  let chips: { label: string; tone: string }[] = [];
   if (isEnded || lifecycleStatus === 'ENDED') {
-    label = MESSAGES.class.salesCycle.ctaEnded;
-    tone = 'bg-it-fill text-it-ink-500 dark:bg-rink-700 dark:text-rink-300';
+    chips = [
+      {
+        label: MESSAGES.class.salesCycle.ctaEnded,
+        tone: 'bg-it-fill text-it-ink-500 dark:bg-rink-700 dark:text-rink-300',
+      },
+    ];
   } else if (lifecycleStatus === 'PENDING_SCHEDULE') {
-    label =
-      pendingReason === 'UNAPPROVED_MONTH'
-        ? MESSAGES.class.salesOpenNeededBadge
-        : MESSAGES.class.pendingScheduleBadge;
-    tone = 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400';
-  } else if (lifecycleStatus === 'ON_SALE' && targetMonthLabel !== null) {
-    label = MESSAGES.class.salesCycle.onSaleChip(targetMonthLabel);
-    tone = 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400';
+    chips = [
+      {
+        label:
+          pendingReason === 'UNAPPROVED_MONTH'
+            ? MESSAGES.class.salesOpenNeededBadge
+            : MESSAGES.class.pendingScheduleBadge,
+        tone: 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400',
+      },
+    ];
+  } else if (lifecycleStatus === 'ON_SALE' && onSaleMonths.length > 0) {
+    chips = onSaleMonths.map((month) => ({
+      label: MESSAGES.class.salesCycle.onSaleChip(month),
+      tone: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400',
+    }));
   }
-  if (!label) return null;
+  if (chips.length === 0) return null;
   return (
-    <span
-      className={cn(
-        'shrink-0 inline-flex items-center px-2.5 py-1 rounded-full text-card-meta font-bold',
-        tone,
-      )}
-      role="status"
-    >
-      {label}
-    </span>
+    <div className="flex flex-wrap justify-end gap-1.5 shrink-0">
+      {chips.map((chip) => (
+        <span
+          key={chip.label}
+          className={cn(
+            'inline-flex items-center px-2.5 py-1 rounded-full text-card-meta font-bold',
+            chip.tone,
+          )}
+          role="status"
+        >
+          {chip.label}
+        </span>
+      ))}
+    </div>
   );
 }
 
