@@ -26,6 +26,7 @@ import { isAdminRole } from "@/auth/constants/chldiv.constants";
 import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
 import { ResourceAccessService } from "@/common/access/resource-access.service";
 import { instantToKstDateOnly } from "@/common/utils/kst-date.util";
+import { hasOtherValidEnrollment } from "@/common/billing/roster-retention.util";
 import {
   countPresentAttendanceSincePayment,
   hasElapsedScheduleSincePayment,
@@ -765,10 +766,11 @@ export class PaymentRefundService {
     let pgRefundSucceededAt: Date;
     try {
       // PG 분기: mock(DEV) / 토스 / KG이니시스
-      if ((payment.paymentMethod || "").toLowerCase() === "mock") {
-        // [DEV] mock 결제는 실제 PG 승인이 없으므로 PG 호출을 건너뛰고 DB 트랜잭션만 진행.
+      const method = (payment.paymentMethod || "").toLowerCase();
+      if (method === "mock" || method === "free") {
+        // mock(DEV)·무료(0원) 결제는 PG 승인이 없으므로 PG 호출을 건너뛰고 DB 트랜잭션만 진행.
         this.logger.log(
-          `mock 결제 취소 — PG 호출 생략: paymentId=${paymentId}`,
+          `${method} 결제 취소 — PG 호출 생략: paymentId=${paymentId}`,
         );
       } else if (isNicePayment(payment)) {
         // [나이스] 토스와 두 가지가 결정적으로 다르다.
@@ -1140,11 +1142,26 @@ export class PaymentRefundService {
           where: { paymentId },
           select: { id: true, classId: true, childId: true },
         });
+        const refundedIds = enrollments.map((e) => e.id);
         for (const e of enrollments) {
-          await tx.enrollment.update({
-            where: { id: e.id },
+          // 돈이 오간 상태(paid·approved)만 refunded 로. 이미 취소·만료된 등록을 덮지 않는다.
+          await tx.enrollment.updateMany({
+            where: {
+              id: e.id,
+              status: {
+                in: [ENROLLMENT_STATUS.PAID, ENROLLMENT_STATUS.APPROVED],
+              },
+            },
             data: { status: ENROLLMENT_STATUS.REFUNDED },
           });
+          // 같은 자녀에게 이 수업의 다른 유효 등록이 남아 있으면 명단을 유지한다
+          //   (지난 달 만료 이력이 아니라 현재 유효한 수강만 명단을 지킨다).
+          const keepRoster = await hasOtherValidEnrollment(tx, {
+            classId: e.classId,
+            childId: e.childId,
+            excludeEnrollmentIds: refundedIds,
+          });
+          if (keepRoster) continue;
           await tx.classRegistration.updateMany({
             where: { classId: e.classId, userId: e.childId, status: "active" },
             data: { status: "inactive" },

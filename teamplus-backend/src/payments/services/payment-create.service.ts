@@ -409,14 +409,25 @@ export class PaymentCreateService {
           }
           const expiresAt = new Date();
           expiresAt.setHours(expiresAt.getHours() + 72);
-          await tx.enrollment.update({
-            where: { id: myPendingEnrollmentId },
+          // 읽었던 상태(pending)·결제 연결 그대로일 때만 재연결 — 그 사이 취소·후불 전환된
+          //   등록에 새 결제를 붙이지 않는다(실패 시 위 Payment 생성도 함께 롤백).
+          const relinked = await tx.enrollment.updateMany({
+            where: {
+              id: myPendingEnrollmentId,
+              status: "pending",
+              paymentId: oldPaymentId ?? null,
+            },
             data: {
               paymentId: created.id,
               classProductId: productId,
               expiresAt,
             },
           });
+          if (relinked.count !== 1) {
+            throw new ConflictException(
+              "수강신청 상태가 바뀌었습니다. 화면을 새로고침한 후 다시 시도해주세요.",
+            );
+          }
           this.logger.log(
             `Enrollment 재활용: enrollmentId=${myPendingEnrollmentId}, 새 paymentId=${created.id}`,
           );

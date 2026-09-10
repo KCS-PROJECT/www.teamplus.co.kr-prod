@@ -261,6 +261,15 @@ export const webTokenStorage: TokenStorage & {
    * @param data 저장할 토큰 데이터
    */
   async saveToken(data: TokenData): Promise<void> {
+    // setItem 은 undefined 를 문자열 "undefined" 로 저장한다 — 빈 토큰은 저장을 거부해
+    //   다음 요청이 "Bearer undefined" 로 나가는 사고를 막는다.
+    if (
+      typeof data.accessToken !== "string" ||
+      !data.accessToken ||
+      typeof data.refreshToken !== "string"
+    ) {
+      throw new Error("[WebTokenStorage] 토큰 값이 비어 있어 저장하지 않습니다.");
+    }
     try {
       setItem(TOKEN_KEY, data.accessToken);
       setItem(REFRESH_TOKEN_KEY, data.refreshToken);

@@ -9,6 +9,11 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "@/prisma/prisma.service";
+import { isOrphanAutoRefundRequest } from "../services/payment-enrollment-transition.util";
+import {
+  resolvePickupMatchManagerId,
+  resolveRefundRequestRecipients,
+} from "./refund-request-recipients.util";
 import { ResourceAccessService } from "@/common/access/resource-access.service";
 import { NotificationsService } from "@/notifications/notifications.service";
 import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
@@ -31,9 +36,6 @@ import {
   REFUND_REQUEST_ACTIVE_STATUSES as ACTIVE_STATUSES,
   REFUND_PG_UNCONFIRMED_CODES,
 } from "./refund-request.constants";
-
-/** Team.coachId(owner) 외에 팀 관리자로 인정하는 승인 멤버 역할(N1 알림 라우팅). */
-const TEAM_MANAGER_ROLES = ["HEAD_COACH", "COACH", "MANAGER"];
 
 /**
  * 법정 청약철회 기간(전자상거래법 §17①) — 결제일 기준 7일.
@@ -170,6 +172,13 @@ export class RefundRequestService {
     // 완료된 결제만.
     if (payment.paymentStatus !== "completed") {
       throw new BadRequestException("완료된 결제만 환불을 요청할 수 있습니다.");
+    }
+    // 무료(0원) 결제 — 돌려받을 금액이 없어 환불 절차가 성립하지 않는다.
+    //   신청 취소는 수업·대회 화면의 취소 경로로 처리한다.
+    if (Number(payment.amount) <= 0) {
+      throw new BadRequestException(
+        "결제 금액이 없는 신청입니다. 수업(대회) 화면에서 신청을 취소해주세요.",
+      );
     }
     // 요청 접수 상한 — 기간 경과분도 비례 환급으로 접수하되 무기한 소급만 차단한다.
     const paidAt = payment.completedAt ?? payment.createdAt;
@@ -1210,17 +1219,6 @@ export class RefundRequestService {
     return null; // 쇼핑 등 — 지원하지 않음(422).
   }
 
-  /** 픽업매치 결제의 주최자 User.id — 승인 권한·알림 라우팅 SoT(스냅샷 컬럼 부재 대체). */
-  private async resolvePickupManagerId(
-    paymentId: string,
-  ): Promise<string | null> {
-    const applicant = await this.prisma.pickupMatchApplicant.findFirst({
-      where: { paymentId },
-      select: { match: { select: { managerId: true } } },
-    });
-    return applicant?.match?.managerId ?? null;
-  }
-
   /** 역할별 소속 범위 필터(SoT = 저장된 team_id/academy_id 스냅샷). */
   private async buildPermissionWhere(
     user: JwtUserPayload,
@@ -1312,7 +1310,7 @@ export class RefundRequestService {
     // 픽업매치는 팀/아카데미 스냅샷이 없으므로 주최자만 관리 가능.
     if (rr.sourceType === "PICKUP_MATCH") {
       const managerId = rr.paymentId
-        ? await this.resolvePickupManagerId(rr.paymentId)
+        ? await resolvePickupMatchManagerId(this.prisma, rr.paymentId)
         : null;
       if (managerId && managerId === user.id) return;
       throw new ForbiddenException(
@@ -1484,6 +1482,8 @@ export class RefundRequestService {
     sourceType: string;
     paymentId: string;
     tournamentId: string | null;
+    classId?: string | null;
+    requestReason?: string;
   }): Promise<{ sourceOk: boolean; [k: string]: unknown }> {
     if (rr.sourceType === "CLASS_PREPAID") {
       const payment = await this.prisma.payment.findUnique({
@@ -1529,11 +1529,19 @@ export class RefundRequestService {
         usedCount += c;
         perClass.push({ classId: e.classId, count: c });
       }
+      // 취소·만료된 신청에 결제가 완료되어 자동 접수된 요청은 연결 등록이 없을 수 있다
+      //   (후불 재활용이 연결을 끊음). 수업이 기록돼 있으면 사용 0회로 판단 가능하게 둔다.
+      //   일반 요청의 연결 누락은 그대로 fail-closed.
+      const orphanAuto =
+        enrollments.length === 0 &&
+        isOrphanAutoRefundRequest(rr) &&
+        Boolean(rr.classId);
       return {
         kind: "CLASS_PREPAID",
-        sourceOk: enrollments.length > 0,
+        sourceOk: enrollments.length > 0 || orphanAuto,
         usedCount,
-        perClass,
+        perClass: orphanAuto ? [{ classId: rr.classId!, count: 0 }] : perClass,
+        orphanAuto,
       };
     }
 
@@ -1682,7 +1690,7 @@ export class RefundRequestService {
     }
   }
 
-  /** N1/N3 수신자 라우팅 — 팀=owner+관리멤버 / 아카데미=directorId / 픽업=주최자. */
+  /** N1/N3 수신자 라우팅 — 고아 결제 자동 접수 알림과 공용 SoT(util). */
   private async resolveRequestRecipients(rr: {
     id: string;
     teamId: string | null;
@@ -1690,51 +1698,7 @@ export class RefundRequestService {
     sourceType?: string;
     paymentId?: string;
   }): Promise<{ userIds: string[]; linkUrl: string }> {
-    if (rr.sourceType === "PICKUP_MATCH" && rr.paymentId) {
-      const managerId = await this.resolvePickupManagerId(rr.paymentId);
-      return {
-        userIds: managerId ? [managerId] : [],
-        linkUrl: `/director-payments/refunds/${rr.id}`,
-      };
-    }
-    if (rr.academyId) {
-      const academy = await this.prisma.academy.findUnique({
-        where: { id: rr.academyId },
-        select: { directorId: true },
-      });
-      return {
-        userIds: academy ? [academy.directorId] : [],
-        linkUrl: `/academy/${rr.academyId}/refunds/${rr.id}`,
-      };
-    }
-    if (rr.teamId) {
-      const [team, managers] = await Promise.all([
-        this.prisma.team.findUnique({
-          where: { id: rr.teamId },
-          select: { coachId: true },
-        }),
-        this.prisma.teamMember.findMany({
-          where: {
-            teamId: rr.teamId,
-            approvalStatus: "approved",
-            leftAt: null,
-            roleInTeam: { in: TEAM_MANAGER_ROLES },
-          },
-          select: { userId: true },
-        }),
-      ]);
-      const ids = new Set<string>();
-      if (team?.coachId) ids.add(team.coachId);
-      for (const m of managers) ids.add(m.userId);
-      return {
-        userIds: Array.from(ids),
-        linkUrl: `/director-payments/refunds/${rr.id}`,
-      };
-    }
-    return {
-      userIds: [],
-      linkUrl: `/director-payments/refunds/${rr.id}`,
-    };
+    return resolveRefundRequestRecipients(this.prisma, rr);
   }
 
   private fullName(

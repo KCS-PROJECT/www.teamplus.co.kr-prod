@@ -304,10 +304,27 @@ describe("TournamentsService — 일정 미정(기간 null) 대회", () => {
     expect(call("ongoing", null)).toBe("IN_PROGRESS");
   });
 
-  it("startDate null + 경기 0건 — 날짜 가드 미적용, 취소 성공", async () => {
+  /** 미결제 취소 경로 공용 배선 — 등록 상태·연결 결제만 바꿔 끼운다. */
+  const wireUnpaidCancel = (over: {
+    paymentStatus?: string;
+    paymentId?: string | null;
+    cancelledCount?: number;
+    /** 결제 개시가 그 사이 새 결제로 재연결한 경우. */
+    relinkedPaymentId?: string | null;
+  }) => {
     const tx = {
-      payment: { update: jest.fn() },
-      tournamentRegistration: { update: jest.fn().mockResolvedValue({}) },
+      payment: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      tournamentRegistration: {
+        updateMany: jest
+          .fn()
+          .mockResolvedValue({ count: over.cancelledCount ?? 1 }),
+        findUnique: jest.fn().mockResolvedValue({
+          paymentId:
+            over.relinkedPaymentId !== undefined
+              ? over.relinkedPaymentId
+              : (over.paymentId ?? null),
+        }),
+      },
     };
     const prisma = {
       tournamentRegistration: {
@@ -315,8 +332,8 @@ describe("TournamentsService — 일정 미정(기간 null) 대회", () => {
           id: "reg-1",
           tournamentId: "trn-tbd",
           userId: "u-1",
-          paymentStatus: "PENDING",
-          paymentId: null,
+          paymentStatus: over.paymentStatus ?? "PENDING",
+          paymentId: over.paymentId ?? null,
           tournament: { startDate: null, status: "scheduled" },
         }),
       },
@@ -325,14 +342,72 @@ describe("TournamentsService — 일정 미정(기간 null) 대회", () => {
       },
       $transaction: jest.fn(async (fn: any) => fn(tx)),
     };
-    const service = makeService(prisma);
+    return { tx, service: makeService(prisma) };
+  };
+
+  it("startDate null + 경기 0건 — 날짜 가드 미적용, 취소 성공", async () => {
+    const { tx, service } = wireUnpaidCancel({});
     const res = await service.cancelRegistration("trn-tbd", "reg-1", "u-1");
     expect(res.refunded).toBe(false);
-    expect(tx.tournamentRegistration.update).toHaveBeenCalledWith(
+    expect(tx.tournamentRegistration.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ paymentStatus: "CANCELLED" }),
       }),
     );
+  });
+
+  it("미결제 취소 — 연결된 pending 결제를 무효화해 취소 뒤 결제창 완료를 막는다", async () => {
+    const { tx, service } = wireUnpaidCancel({ paymentId: "pay-1" });
+    await service.cancelRegistration("trn-tbd", "reg-1", "u-1");
+    expect(tx.payment.updateMany).toHaveBeenCalledWith({
+      where: { id: "pay-1", paymentStatus: "pending" },
+      data: { paymentStatus: "cancelled" },
+    });
+  });
+
+  it("미결제 취소 — 연결 결제가 없으면 결제 무효화를 시도하지 않는다", async () => {
+    const { tx, service } = wireUnpaidCancel({ paymentId: null });
+    await service.cancelRegistration("trn-tbd", "reg-1", "u-1");
+    expect(tx.payment.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("무료 대회(즉시 PAID·결제 없음) 취소 — 환불 위임 없이 정상 취소된다", async () => {
+    const { tx, service } = wireUnpaidCancel({
+      paymentStatus: "PAID",
+      paymentId: null,
+    });
+    const res = await service.cancelRegistration("trn-tbd", "reg-1", "u-1");
+    expect(res.refunded).toBe(false);
+    expect(tx.tournamentRegistration.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "reg-1", paymentStatus: "PAID" },
+        data: expect.objectContaining({ paymentStatus: "CANCELLED" }),
+      }),
+    );
+    expect(tx.payment.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("미결제 취소 — 결제 개시가 재연결한 새 결제를 무효화한다", async () => {
+    const { tx, service } = wireUnpaidCancel({
+      paymentId: "pay-old",
+      relinkedPaymentId: "pay-new",
+    });
+    await service.cancelRegistration("trn-tbd", "reg-1", "u-1");
+    expect(tx.payment.updateMany).toHaveBeenCalledWith({
+      where: { id: "pay-new", paymentStatus: "pending" },
+      data: { paymentStatus: "cancelled" },
+    });
+  });
+
+  it("미결제 취소 — 전이 0건(동시 처리 패배)이면 409", async () => {
+    const { tx, service } = wireUnpaidCancel({
+      paymentId: "pay-1",
+      cancelledCount: 0,
+    });
+    await expect(
+      service.cancelRegistration("trn-tbd", "reg-1", "u-1"),
+    ).rejects.toThrow("이미 처리된 참가 신청입니다.");
+    expect(tx.payment.updateMany).not.toHaveBeenCalled();
   });
 
   it("PAID 취소 — 환불 엔진(cancelPayment)에 위임, 등록 상태는 엔진 트랜잭션이 동기화", async () => {

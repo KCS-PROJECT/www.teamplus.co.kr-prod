@@ -92,6 +92,9 @@ describe("user-anonymize.util", () => {
           deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
         userDevice: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        notification: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        noticeRead: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        dailyViewLog: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
         identityVerification: {
           updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
@@ -125,6 +128,15 @@ describe("user-anonymize.util", () => {
         where: { userId: "parent1" },
       });
       expect(tx.userDevice.deleteMany).toHaveBeenCalledWith({
+        where: { userId: "parent1" },
+      });
+      expect(tx.notification.deleteMany).toHaveBeenCalledWith({
+        where: { userId: "parent1" },
+      });
+      expect(tx.noticeRead.deleteMany).toHaveBeenCalledWith({
+        where: { userId: "parent1" },
+      });
+      expect(tx.dailyViewLog.deleteMany).toHaveBeenCalledWith({
         where: { userId: "parent1" },
       });
       expect(tx.teamMember.updateMany).toHaveBeenCalledWith({

@@ -116,6 +116,9 @@ export default function ReceiptDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [receiptId]);
 
+  // 무료(0원) 결제 — 세금 영수증 발행 대상이 아니고 결제사 영수증도 없다.
+  const isFreeReceipt = Number(receipt?.totalAmount ?? -1) === 0;
+
   const handleDownloadImage = async () => {
     if (!receiptId) return;
 
@@ -196,6 +199,9 @@ export default function ReceiptDetailPage() {
       {!isLoading && !error && receipt && (
         <footer className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-it-surface dark:bg-rink-900 border-t border-it-line dark:border-rink-800 px-5 pt-4 pb-8 z-20">
           <div className="flex flex-col gap-3">
+            {/* 무료(0원)는 결제사 승인이 없어 호스팅 영수증 URL 자체가 없다 —
+                버튼을 두면 눌러도 조회 실패만 나므로 감춘다. 내역 확인은 위 카드로 한다. */}
+            {!isFreeReceipt && (
             <Button onClick={handleDownloadImage} disabled={isDownloading} fullWidth>
               {/* Button 은 children 을 내부 span 으로 감싸므로 flex 정렬은 children 쪽에 걸어야
                   아이콘·문구에 실제 적용된다 — 바깥 className 의 flex/gap 은 도달하지 않는다. */}
@@ -208,6 +214,7 @@ export default function ReceiptDetailPage() {
                 <span>영수증 보기</span>
               </span>
             </Button>
+            )}
 
             <Button
               variant="ghost"

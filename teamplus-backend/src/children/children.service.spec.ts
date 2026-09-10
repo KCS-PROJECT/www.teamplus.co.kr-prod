@@ -53,6 +53,9 @@ describe("ChildrenService - deleteChild", () => {
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       userDevice: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      notification: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      noticeRead: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      dailyViewLog: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
       identityVerification: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },

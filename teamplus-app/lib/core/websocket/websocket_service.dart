@@ -611,7 +611,14 @@ class WebSocketService with WidgetsBindingObserver {
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        final data = response.data;
+        final raw = response.data;
+        // 서버 전역 ResponseEnvelopeInterceptor 가 { success, requestId, data } 로
+        //   래핑한다 — 토큰은 data 내부. 이 Dio 는 인터셉터가 없어 여기서 직접 벗긴다
+        //   (api_client·app_version_service 와 동일 관례 · 비래핑 응답도 방어적으로 허용).
+        final data =
+            raw is Map<String, dynamic> && raw['data'] is Map<String, dynamic>
+            ? raw['data'] as Map<String, dynamic>
+            : raw;
         final newAccessToken = data['accessToken'] as String?;
         final newRefreshToken = data['refreshToken'] as String?;
         if (newAccessToken != null && newRefreshToken != null) {

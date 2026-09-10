@@ -311,6 +311,33 @@ class ApiClient {
 }
 
 // Auth Interceptor with Token Refresh
+/// 갱신 실패 분류 — 서버가 거부한 경우(unauthorized)만 로컬 토큰을 버린다.
+///  - unauthorized: 갱신 응답 4xx(429·408 제외) — 세션 판정이 내려짐.
+///  - unavailable: 갱신 요청이 서버에 닿지 못했거나 서버가 지금은 답할 수 없음
+///    (연결 오류·타임아웃·5xx·429·408) — 세션 미판정. 토큰 유지, 요청만 실패.
+///  - unauthenticated: 갱신 토큰이 없거나 형식 불량.
+enum _RefreshFailure { unauthorized, unavailable, unauthenticated }
+
+class _RefreshOutcome {
+  const _RefreshOutcome.success(this.token) : failure = null, cause = null;
+  const _RefreshOutcome.failed(this.failure, {this.cause}) : token = null;
+
+  final String? token;
+  final _RefreshFailure? failure;
+
+  /// 갱신 요청의 원 오류 — unavailable 이면 원 요청의 실패 사유로 쓴다.
+  final Object? cause;
+}
+
+_RefreshFailure _classifyRefreshFailure(DioException e) {
+  final status = e.response?.statusCode;
+  final isServerVerdict =
+      status != null && status < 500 && status != 429 && status != 408;
+  return isServerVerdict
+      ? _RefreshFailure.unauthorized
+      : _RefreshFailure.unavailable;
+}
+
 class _AuthInterceptor extends Interceptor {
   final SecureStorageService storage;
   final Dio _dio;
@@ -359,7 +386,8 @@ class _AuthInterceptor extends Interceptor {
 
       try {
         // 토큰 갱신 시도
-        final newToken = await _refreshToken();
+        final outcome = await _refreshToken();
+        final newToken = outcome.token;
 
         if (newToken != null) {
           // 원래 요청 재시도
@@ -369,17 +397,32 @@ class _AuthInterceptor extends Interceptor {
           _retryPendingRequests(newToken);
 
           return handler.resolve(response);
-        } else {
-          // 갱신 실패 → 로그아웃 처리
-          await _handleLogout();
-          _rejectPendingRequests(err);
-          return handler.reject(err);
         }
-      } catch (e) {
-        // 갱신 중 에러 → 로그아웃 처리
+
+        if (outcome.failure == _RefreshFailure.unavailable) {
+          // 갱신 요청이 서버에 닿지 못함 — 세션 미판정이므로 토큰을 유지한다.
+          //   원 요청·대기 요청은 전송 오류로 돌려주고, 다음 401 에서 다시 갱신한다.
+          final transport = _asTransportError(
+            err.requestOptions,
+            outcome.cause,
+          );
+          _rejectPendingRequests(transport);
+          return handler.reject(transport);
+        }
+
+        // 서버 거부(4xx) 또는 갱신 토큰 부재 → 로그아웃 처리
         await _handleLogout();
         _rejectPendingRequests(err);
         return handler.reject(err);
+      } catch (e) {
+        // 재시도 요청 자체가 실패한 경우 — 새 토큰으로도 401 이면 서버 판정으로 보고
+        //   로그아웃하고, 그 외(네트워크·5xx)는 세션 미판정이라 토큰을 유지한다.
+        final rejectWith = e is DioException ? e : err;
+        if (e is DioException && e.response?.statusCode == 401) {
+          await _handleLogout();
+        }
+        _rejectPendingRequests(rejectWith);
+        return handler.reject(rejectWith);
       } finally {
         _isRefreshing = false;
       }
@@ -388,8 +431,8 @@ class _AuthInterceptor extends Interceptor {
     return handler.next(err);
   }
 
-  /// 토큰 갱신 API 호출
-  Future<String?> _refreshToken() async {
+  /// 토큰 갱신 API 호출 — 실패는 원인별로 분류해 돌려준다(로그아웃 판단은 호출자).
+  Future<_RefreshOutcome> _refreshToken() async {
     try {
       final refreshToken = await storage.getRefreshToken();
       // [2026-05-14] JWT 형식 사전 검증 — 백엔드 RefreshTokenDto @IsJWT 가
@@ -404,7 +447,7 @@ class _AuthInterceptor extends Interceptor {
             debugPrint('🧹 invalid refresh token 감지 → SecureStorage 에서 정리됨');
           }
         }
-        return null;
+        return const _RefreshOutcome.failed(_RefreshFailure.unauthenticated);
       }
 
       // 토큰 갱신 API 호출 (인터셉터 우회를 위해 새 Dio 인스턴스 사용)
@@ -422,7 +465,14 @@ class _AuthInterceptor extends Interceptor {
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        final data = response.data;
+        final raw = response.data;
+        // 서버 전역 ResponseEnvelopeInterceptor 가 { success, requestId, data } 로
+        //   래핑한다 — 토큰은 data 내부. 갱신 Dio 는 인터셉터가 없어 여기서 직접 벗긴다
+        //   (app_version_service 와 동일 관례 · 비래핑 응답도 방어적으로 허용).
+        final data =
+            raw is Map<String, dynamic> && raw['data'] is Map<String, dynamic>
+            ? raw['data'] as Map<String, dynamic>
+            : raw;
         final newAccessToken = data['accessToken'] as String?;
         final newRefreshToken = data['refreshToken'] as String?;
 
@@ -447,16 +497,50 @@ class _AuthInterceptor extends Interceptor {
             /* 쿠키 동기화 실패는 미들웨어 UA 폴백이 커버 */
           }
 
-          return newAccessToken;
+          return _RefreshOutcome.success(newAccessToken);
         }
+        // 200 인데 토큰이 없음 — 응답 계약 불일치. 서버가 거부한 것이 아니므로
+        //   저장하지 않고 토큰도 지우지 않는다.
+        if (kDebugMode) {
+          debugPrint(
+            'Token refresh: 응답에 토큰 없음 (${raw is Map ? raw.keys.toList() : raw.runtimeType})',
+          );
+        }
+        return const _RefreshOutcome.failed(_RefreshFailure.unavailable);
       }
-      return null;
+      return const _RefreshOutcome.failed(_RefreshFailure.unavailable);
+    } on DioException catch (e) {
+      if (kDebugMode) {
+        debugPrint('Token refresh failed: $e');
+      }
+      return _RefreshOutcome.failed(_classifyRefreshFailure(e), cause: e);
     } catch (e) {
       if (kDebugMode) {
         debugPrint('Token refresh failed: $e');
       }
-      return null;
+      // 저장소 오류 등 — 서버 판정이 아니므로 토큰을 유지한다.
+      return _RefreshOutcome.failed(_RefreshFailure.unavailable, cause: e);
     }
+  }
+
+  /// unavailable 실패를 원 요청의 전송 오류로 바꾼다 — 화면이 401 이 아니라
+  ///   네트워크 오류로 처리하게 한다(로그인 가드·세션 만료 안내를 타지 않음).
+  DioException _asTransportError(RequestOptions options, Object? cause) {
+    if (cause is DioException) {
+      return DioException(
+        requestOptions: options,
+        type: cause.type,
+        response: cause.response,
+        error: cause.error,
+        message: cause.message,
+      );
+    }
+    return DioException(
+      requestOptions: options,
+      type: DioExceptionType.connectionError,
+      error: cause,
+      message: 'token refresh unavailable',
+    );
   }
 
   /// 원래 요청 재시도

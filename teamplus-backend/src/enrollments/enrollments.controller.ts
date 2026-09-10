@@ -193,6 +193,7 @@ export class EnrollmentsController {
   @ApiParam({ name: "enrollmentId", description: "수강신청 ID" })
   @ApiResponse({ status: 204, description: "수강신청 취소 성공" })
   @ApiResponse({ status: 400, description: "취소 불가 상태" })
+  @ApiResponse({ status: 409, description: "이미 처리된 수강신청(동시 취소 등)" })
   @ApiResponse({ status: 404, description: "수강신청을 찾을 수 없음" })
   async cancelEnrollment(
     @Request() req: AuthenticatedRequest,
@@ -261,6 +262,7 @@ export class EnrollmentsController {
     type: EnrollmentSingleResponseDto,
   })
   @ApiResponse({ status: 400, description: "승인 대기 상태가 아님 또는 만료" })
+  @ApiResponse({ status: 409, description: "처리 중 상태가 바뀜(취소 등)" })
   @ApiResponse({ status: 403, description: "주 보호자만 승인 가능" })
   @ApiResponse({ status: 404, description: "수강신청을 찾을 수 없음" })
   async approveEnrollment(
@@ -306,6 +308,7 @@ export class EnrollmentsController {
     type: EnrollmentSingleResponseDto,
   })
   @ApiResponse({ status: 400, description: "승인 대기 상태가 아님" })
+  @ApiResponse({ status: 409, description: "처리 중 상태가 바뀜(취소 등)" })
   @ApiResponse({ status: 403, description: "주 보호자만 거절 가능" })
   @ApiResponse({ status: 404, description: "수강신청을 찾을 수 없음" })
   async rejectEnrollment(

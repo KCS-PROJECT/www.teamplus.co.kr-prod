@@ -220,6 +220,9 @@ function PaymentHistoryCard({
   // [수정 2026-05-13] 'cancelled' 또는 'refunded' 모두 환불 처리 — 토스 cancel 응답은 'refunded' 로 갱신됨.
   const isCancelled = item.status === 'cancelled' || item.status === 'refunded';
   const isCompleted = item.status === 'completed';
+  // 무료(0원) 결제 — 돌려받을 금액이 없어 환불 절차 자체가 성립하지 않는다.
+  //   신청 취소는 각 수업·대회 화면에서 한다(결제 내역은 지불 기록 조회 전용).
+  const isFreePayment = Number(item.amount ?? -1) === 0;
   // 환불 요청 상태 파생 — 활성(대기/처리중/실패)=요청 중 배지, 거절=배지+재요청 허용.
   const refundActive = refundStatus ? ACTIVE_REFUND_STATUSES.includes(refundStatus) : false;
   const refundRejected = refundStatus === 'rejected';
@@ -357,7 +360,10 @@ function PaymentHistoryCard({
                     {MESSAGES.refund.requestRejectedBadge}
                   </span>
                 )}
-                {isCompleted && isWithinRefundWindow(item.paidAtIso) && onRequestRefund && (
+                {isCompleted &&
+                  !isFreePayment &&
+                  isWithinRefundWindow(item.paidAtIso) &&
+                  onRequestRefund && (
                   <button
                     type="button"
                     onClick={() => onRequestRefund(item.id, item.productName)}

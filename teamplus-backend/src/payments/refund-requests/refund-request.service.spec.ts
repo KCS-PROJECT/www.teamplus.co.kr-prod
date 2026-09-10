@@ -258,6 +258,17 @@ describe("RefundRequestService", () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
+    it("무료(0원) 결제 → 400, 요청 생성 안 함 (돌려받을 금액 없음)", async () => {
+      prismaMock.payment.findUnique.mockResolvedValue({
+        ...completedPayment,
+        amount: 0,
+      });
+      await expect(
+        service.create({ paymentId: "pay-1", reason: "r" }, parent),
+      ).rejects.toThrow("결제 금액이 없는 신청입니다");
+      expect(prismaMock.refundRequest.create).not.toHaveBeenCalled();
+    });
+
     it("접수 상한(365일) 초과 → 400 (요청 생성 안 함)", async () => {
       const longAgo = new Date(Date.now() - 366 * 24 * 60 * 60 * 1000);
       prismaMock.payment.findUnique.mockResolvedValue({

@@ -10,12 +10,23 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "@/prisma/prisma.service";
 import { NotificationsService } from "@/notifications/notifications.service";
 import { WaitlistService } from "@/waitlist/waitlist.service";
-import { CreditDomainService } from "@/credits/credit-domain.service";
+import {
+  CreditDomainService,
+  MEMBER_CREDIT_EXTRA_USABLE_DAYS,
+} from "@/credits/credit-domain.service";
 import { endOfMonthKst, monthlyPassWindow } from "@/common/billing/billing-date.util";
 import { assertClassOnSale } from "@/common/billing/sales-gate.util";
 import { BLOCKING_APPLICATION } from "@/common/enrollment/enrollment-status.constants";
 import { hasActivePaidEnrollment } from "@/common/billing/paid-enrollment-guard.util";
+import { hasOtherValidEnrollment } from "@/common/billing/roster-retention.util";
 import { calculateKoreanAge } from "@/common/utils/age.util";
+import { hasElapsedScheduleSincePayment } from "@/common/utils/enrollment-usage.util";
+import { instantToKstDateOnly } from "@/common/utils/kst-date.util";
+import { acquireClassSeatLock } from "@/classes/utils/class-locks.util";
+import {
+  assertPaymentAllowed,
+  PACKAGE_PAYMENT_BLOCK_MESSAGES,
+} from "@/classes/utils/package-guard.util";
 import {
   CreateEnrollmentDto,
   ApproveEnrollmentDto,
@@ -23,6 +34,16 @@ import {
   EnrollmentResponseDto,
   EnrollmentStatus,
 } from "./dto";
+
+/** 선택된 수강 상품 — 결제방식 판정 + 무료(0원) 여부·수업권 발급 조건 판정에 쓴다. */
+type SelectedProduct = {
+  billingTiming: string;
+  price: number;
+  sessionsPerMonth: number;
+  feeType: string;
+  durationDays: number | null;
+  billingMonth: Date | null;
+};
 
 /**
  * 수강신청 상세 조회 시 필요한 필드만 select — N+1 방지 및 over-fetching 제거
@@ -175,8 +196,13 @@ export class EnrollmentsService {
     // 3. 수업 존재 확인
     const classInfo = await this.prisma.class.findUnique({
       where: { id: dto.classId },
-      include: {
-        team: { select: { id: true, name: true } },
+      select: {
+        teamId: true,
+        targetBirthYears: true,
+        ageMin: true,
+        ageMax: true,
+        billingMode: true,
+        salesOpenMonth: true,
       },
     });
 
@@ -260,25 +286,14 @@ export class EnrollmentsService {
     //       시스템 차원의 "월 단위 등록 마감"은 의미가 없음.
     //       만료 임박 시 학부모별로 인앱 알림(D-7/D-3/D-Day) 발송 → 추가 결제 유도.
 
-    // 4. 상품 확인 (선택 사항) — 선택 시 billingTiming 을 캡처해 BOTH 선·후불 분기에 사용.
-    let selectedProductTiming: string | null = null;
-    if (dto.classProductId) {
-      const product = await this.prisma.classProduct.findUnique({
-        where: { id: dto.classProductId },
-        select: { classId: true, billingTiming: true },
-      });
-
-      if (!product || product.classId !== dto.classId) {
-        throw new BadRequestException("유효하지 않은 상품입니다.");
-      }
-      selectedProductTiming = product.billingTiming;
-    }
-
-    // 4-1. [B6] BOTH(선택형) 수업은 결제방식(선불 정액 / 후불)을 택1해야 하므로 상품 선택 필수.
-    //   전용 PREPAID/POSTPAID 수업은 기존대로 상품 선택이 선택 사항.
-    if (classInfo.billingMode === "BOTH" && !dto.classProductId) {
-      throw new BadRequestException("선불/후불을 선택해주세요.");
-    }
+    // 4. 상품 확인 (선택 사항) — 소속·판매 여부·월분·결제방식 정합. BOTH 는 상품 필수.
+    const selectedProduct = await this.resolveSelectedProductTiming(
+      dto.classId,
+      classInfo.billingMode,
+      classInfo.salesOpenMonth,
+      dto.classProductId,
+    );
+    const selectedProductTiming = selectedProduct?.billingTiming ?? null;
 
     // 5~6. 중복 신청 확인 + 정원 체크 + 수강신청 생성을 원자적으로 수행
     // - 중복/정원/생성 을 한 트랜잭션에 묶어 race condition (동시 신청으로 정원 초과 저장) 방지.
@@ -287,7 +302,47 @@ export class EnrollmentsService {
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + this.ENROLLMENT_EXPIRY_HOURS);
 
-    const enrollment = await this.prisma.$transaction(async (tx) => {
+    let freeOrderNumber: string | undefined;
+    const enrollment = await this.runEnrollmentTransaction(async (tx) => {
+      // 좌석 잠금 — 결제 좌석 선점(payments.service claimSeatsBeforeApproval)과 같은 키.
+      //   같은 잠금을 잡는 쓰기(등록 생성·결제 좌석 선점)끼리만 직렬화한다. 판매 상태·상품
+      //   판매 여부의 쓰기는 다른 잠금 아래이므로 여기서 보장하지 않는다.
+      await acquireClassSeatLock(tx, dto.classId);
+      const fresh = await tx.class.findUnique({
+        where: { id: dto.classId },
+        select: { billingMode: true, capacity: true },
+      });
+      if (!fresh) {
+        throw new NotFoundException("수업 정보를 찾을 수 없습니다.");
+      }
+      // 잠금 전에 검사한 상품 timing 과 잠금 후 결제방식이 어긋나면(그 사이 변경) 재시도 유도
+      if (
+        selectedProductTiming &&
+        (fresh.billingMode === "PREPAID" || fresh.billingMode === "POSTPAID") &&
+        selectedProductTiming !== fresh.billingMode
+      ) {
+        throw new ConflictException(
+          "수업 결제 방식이 변경되었습니다. 화면을 새로고침한 후 다시 시도해주세요.",
+        );
+      }
+      // 정원 — 신청 자녀 본인의 활성 좌석은 제외(갱신 신청이 본인 좌석 때문에 막히지 않도록,
+      //   결제 좌석 선점과 동일 의미). 0 = 무제한.
+      const assertSeatAvailable = async () => {
+        if (!fresh.capacity || fresh.capacity <= 0) return;
+        const activeCount = await tx.classRegistration.count({
+          where: {
+            classId: dto.classId,
+            status: "active",
+            userId: { not: dto.childId },
+          },
+        });
+        if (activeCount >= fresh.capacity) {
+          throw new ConflictException(
+            "수업 정원이 마감되었습니다. 대기 등록을 이용해주세요.",
+          );
+        }
+      };
+
       // paid 이력은 "현재 수강 중"일 때만 차단 — 만료(배치 해제·크레딧 소진) 자녀의
       //   재신청(갱신)은 통과시킨다. 판정 SoT 는 표시(hasValidPass)와 동일.
       if (await hasActivePaidEnrollment(tx, dto.childId, dto.classId)) {
@@ -310,9 +365,10 @@ export class EnrollmentsService {
       //   [B5c] BOTH+선불(PREPAID 상품)은 일반 결제대기(PENDING)로 흘러간다.
       //   (재활용 분기·신규 생성 분기 양쪽에서 쓰므로 블록 상단에서 1회 계산)
       const isPostpaid =
-        classInfo.billingMode === "POSTPAID" ||
-        (classInfo.billingMode === "BOTH" &&
-          selectedProductTiming === "POSTPAID");
+        fresh.billingMode === "POSTPAID" ||
+        (fresh.billingMode === "BOTH" && selectedProductTiming === "POSTPAID");
+      // 무료 선불 — 결제할 금액이 없으므로 결제사·결제 화면을 거치지 않는다.
+      const isFreePrepaid = !isPostpaid && selectedProduct?.price === 0;
 
       if (existingEnrollment) {
         // 중단된 선불 결제 시도가 남긴 "미결제 pending"(payment-create:enrollment.create)을
@@ -336,29 +392,31 @@ export class EnrollmentsService {
         if (isPostpaid && reusable) {
           // orphan Payment 정리 (미완료만 cancel — completed 는 위에서 이미 배제).
           if (existingEnrollment.paymentId) {
-            await tx.payment.updateMany({
+            const voided = await tx.payment.updateMany({
               where: {
                 id: existingEnrollment.paymentId,
                 paymentStatus: { not: "completed" },
               },
               data: { paymentStatus: "cancelled" },
             });
-          }
-          // 정원 가드 — 재활용 후불 전환도 새 active 좌석을 만들므로 신규 create 경로와
-          //   동일 기준·동일 메시지로 정원 마감을 차단(본인 prepaid pending 은 active 아님 → 미집계).
-          if (classInfo.capacity && classInfo.capacity > 0) {
-            const activeCount = await tx.classRegistration.count({
-              where: { classId: dto.classId, status: "active" },
-            });
-            if (activeCount >= classInfo.capacity) {
+            // 그 사이 결제가 완료됐으면 승인 후처리가 이 등록을 paid 로 가져간다 — 덮어쓰지 않음
+            if (voided.count !== 1) {
               throw new ConflictException(
-                "수업 정원이 마감되었습니다. 대기 등록을 이용해주세요.",
+                "결제가 완료된 신청입니다. 화면을 새로고침한 후 확인해주세요.",
               );
             }
           }
+          // 정원 가드 — 재활용 후불 전환도 새 active 좌석을 만들므로 신규 create 경로와
+          //   동일 기준·동일 메시지로 정원 마감을 차단(본인 prepaid pending 은 active 아님 → 미집계).
+          await assertSeatAvailable();
 
-          const converted = await tx.enrollment.update({
-            where: { id: existingEnrollment.id },
+          // 읽었던 상태·결제 연결 그대로일 때만 전환(취소·결제 완료와의 경합 차단)
+          const transitioned = await tx.enrollment.updateMany({
+            where: {
+              id: existingEnrollment.id,
+              status: EnrollmentStatus.PENDING,
+              paymentId: existingEnrollment.paymentId,
+            },
             data: {
               classProductId: dto.classProductId,
               status: EnrollmentStatus.APPROVED,
@@ -368,6 +426,12 @@ export class EnrollmentsService {
               expiresAt,
               note: dto.note,
             },
+          });
+          if (transitioned.count !== 1) {
+            throw new ConflictException("이미 처리된 수강신청입니다.");
+          }
+          const converted = await tx.enrollment.findUniqueOrThrow({
+            where: { id: existingEnrollment.id },
             select: ENROLLMENT_DETAIL_SELECT,
           });
           await tx.classRegistration.upsert({
@@ -389,16 +453,7 @@ export class EnrollmentsService {
       }
 
       // 정원 초과 시 차단 (대기 등록은 별도 /api/v1/waitlist 엔드포인트 사용)
-      if (classInfo.capacity && classInfo.capacity > 0) {
-        const activeCount = await tx.classRegistration.count({
-          where: { classId: dto.classId, status: "active" },
-        });
-        if (activeCount >= classInfo.capacity) {
-          throw new ConflictException(
-            "수업 정원이 마감되었습니다. 대기 등록을 이용해주세요.",
-          );
-        }
-      }
+      await assertSeatAvailable();
 
       // [Phase B] 후불 수업 — 선결제 없이 즉시 수강 등록(구독형).
       //   enrollment=approved + ClassRegistration active 로 바로 수강생. 출석분만 월말 정산.
@@ -432,6 +487,26 @@ export class EnrollmentsService {
             status: "active",
           },
         });
+        return created;
+      }
+      // 무료(0원) 선불 — 결제 단계를 건너뛰고 즉시 수강 확정. 학부모 직접 신청만 해당하며,
+      //   자녀 요청(승인 대기)은 승인 시점에 같은 처리를 한다(approveEnrollment).
+      if (isFreePrepaid && created.status === EnrollmentStatus.PENDING) {
+        const free = await this.completeFreeEnrollment(tx, {
+          enrollmentId: created.id,
+          classId: dto.classId,
+          childId: dto.childId,
+          payerUserId: userId,
+          classProductId: dto.classProductId!,
+          fromStatuses: [EnrollmentStatus.PENDING],
+          product: selectedProduct,
+        });
+        const row = await tx.enrollment.findUniqueOrThrow({
+          where: { id: created.id },
+          select: ENROLLMENT_DETAIL_SELECT,
+        });
+        freeOrderNumber = free.orderNumber;
+        return row;
       }
       return created;
     });
@@ -468,7 +543,11 @@ export class EnrollmentsService {
       }
     }
 
-    return this.mapToEnrollmentResponse(enrollment);
+    return {
+      ...this.mapToEnrollmentResponse(enrollment),
+      // 무료 확정 건만 — 결제 완료 화면이 영수증을 조회하는 키.
+      ...(freeOrderNumber ? { freeOrderNumber } : {}),
+    };
   }
 
   /**
@@ -645,50 +724,129 @@ export class EnrollmentsService {
       enrollmentId,
     );
 
-    // 결제 완료된 건은 취소 불가 (환불 절차 필요)
-    if (enrollment.status === EnrollmentStatus.PAID) {
+    // 결제 완료된 건은 취소 불가 (환불 절차 필요).
+    //   단 무료(0원)는 환불할 금액이 없어 승인제 환불로 보낼 수 없다 — 본인이 바로 취소한다.
+    //   상세 select 에 결제 금액이 없어 연결 결제를 따로 확인한다(무료 건에서만 1회).
+    let isFreePaid = false;
+    if (enrollment.status === EnrollmentStatus.PAID && enrollment.paymentId) {
+      const linked = await this.prisma.payment.findUnique({
+        where: { id: enrollment.paymentId },
+        select: { amount: true, paymentStatus: true },
+      });
+      isFreePaid =
+        Number(linked?.amount ?? -1) === 0 &&
+        linked?.paymentStatus === "completed";
+    }
+    if (enrollment.status === EnrollmentStatus.PAID && !isFreePaid) {
       throw new BadRequestException(
         "결제 완료된 수강신청은 환불 절차를 통해 취소해주세요.",
       );
     }
+    // 무료라도 이용 개시 판정은 유료와 같다 — 신청 이후 수업이 한 번이라도 진행됐으면
+    //   본인 취소를 막는다(출석 기록이 남은 채 등록만 사라지는 모순 방지).
+    //   유료는 환불 요청으로 넘기지만 무료는 환불이 없어 감독 문의로 안내한다.
+    if (isFreePaid) {
+      const paidDayUtc = instantToKstDateOnly(enrollment.paidAt ?? new Date());
+      if (
+        await hasElapsedScheduleSincePayment(
+          this.prisma,
+          { classId: enrollment.classId },
+          paidDayUtc,
+        )
+      ) {
+        throw new BadRequestException(
+          "이미 수업이 진행되어 취소할 수 없습니다. 감독님께 문의해주세요.",
+        );
+      }
+    }
 
-    // 이미 취소/거절/만료된 건
-    if (
-      [
+    // 취소 가능 = 결제/승인을 기다리는 상태뿐. 종결 상태(취소·거절·만료)와 돈이 오간
+    //   상태(완료·환불)는 취소로 덮지 않는다.
+    if (!isFreePaid && !BLOCKING_APPLICATION.includes(enrollment.status)) {
+      const terminal = [
         EnrollmentStatus.CANCELLED,
         EnrollmentStatus.REJECTED,
         EnrollmentStatus.EXPIRED,
-      ].includes(enrollment.status as EnrollmentStatus)
-    ) {
-      throw new BadRequestException("이미 취소/거절/만료된 수강신청입니다.");
+      ].includes(enrollment.status as EnrollmentStatus);
+      throw new BadRequestException(
+        terminal
+          ? "이미 취소/거절/만료된 수강신청입니다."
+          : "취소할 수 없는 수강신청 상태입니다.",
+      );
     }
 
-    const cancelledEnrollment = await this.prisma.enrollment.update({
-      where: { id: enrollmentId },
-      data: { status: EnrollmentStatus.CANCELLED },
-      select: { classId: true, childId: true },
-    });
-
-    // [Phase B] 수강 종료 — ClassRegistration inactive 처리(후불 active 등록 해지).
-    //   선불(미결제 → active 등록 없음)은 매칭 행 없어 no-op.
-    await this.prisma.classRegistration.updateMany({
-      where: {
-        classId: cancelledEnrollment.classId,
-        userId: cancelledEnrollment.childId,
-      },
-      data: { status: "inactive" },
+    // 상태 전이 + 결제 무효화 + 명단 해지를 한 트랜잭션으로 — 일부만 반영된 상태(취소된
+    //   등록·활성 명단, 취소된 등록·살아있는 결제 요청)를 남기지 않는다. 위에서 읽은 상태를
+    //   조건으로 걸어 동시 이중 취소는 한쪽만 성공한다.
+    const releasedSeats = await this.runEnrollmentTransaction(async (tx) => {
+      // 좌석 잠금 — 결제 좌석 선점과 같은 키. 선점이 잠금 안에서 등록 상태를 다시 읽으므로
+      //   "취소 → 늦은 승인" 순서에서도 취소가 이긴다.
+      await acquireClassSeatLock(tx, enrollment.classId);
+      const transitioned = await tx.enrollment.updateMany({
+        where: {
+          id: enrollmentId,
+          status: {
+            in: isFreePaid
+              ? [EnrollmentStatus.PAID]
+              : (BLOCKING_APPLICATION as EnrollmentStatus[]),
+          },
+        },
+        data: { status: EnrollmentStatus.CANCELLED },
+      });
+      if (transitioned.count !== 1) {
+        throw new ConflictException("이미 처리된 수강신청입니다.");
+      }
+      // 연결된 결제 요청 무효화 — 아직 결제사에 가지 않은 pending 결제만. 이후 결제 확인
+      //   진입점(토스·나이스·mock)이 cancelled 를 거부해 취소 뒤 결제가 실행되지 않는다.
+      //   결제 개시(payment-create)가 그 사이 새 결제로 재연결했을 수 있어 연결은 트랜잭션
+      //   안에서 다시 읽는다 — 위 전이가 같은 행을 잠갔으므로 여기서 읽은 값이 최종이다.
+      //   (밖에서 읽은 값을 쓰면 옛 결제만 취소되고 새 결제가 살아남아 취소 뒤 결제가 된다.)
+      const current = await tx.enrollment.findUnique({
+        where: { id: enrollmentId },
+        select: { paymentId: true },
+      });
+      if (current?.paymentId) {
+        await tx.payment.updateMany({
+          where: {
+            id: current.paymentId,
+            // 무료 건은 완료로 기록돼 있으므로 그 상태도 취소로 되돌린다(돈이 오간 적 없음).
+            paymentStatus: { in: isFreePaid ? ["completed"] : ["pending"] },
+          },
+          data: { paymentStatus: "cancelled" },
+        });
+      }
+      // [Phase B] 수강 종료 — 활성 명단 해지(후불 active 등록). 선불 미결제는 명단이 없어 0건.
+      //   같은 자녀에게 이 수업의 다른 유효 등록이 남아 있으면 명단을 유지한다(갱신 신청 취소가
+      //   현 수강을 끊지 않도록).
+      const keepRoster = await hasOtherValidEnrollment(tx, {
+        classId: enrollment.classId,
+        childId: enrollment.childId,
+        excludeEnrollmentIds: [enrollmentId],
+      });
+      if (keepRoster) return 0;
+      const released = await tx.classRegistration.updateMany({
+        where: {
+          classId: enrollment.classId,
+          userId: enrollment.childId,
+          status: "active",
+        },
+        data: { status: "inactive" },
+      });
+      return released.count;
     });
 
     this.logger.log(`수강신청 취소 완료: enrollmentId=${enrollmentId}`);
 
-    // 취소로 빈 자리 발생 → 대기자 자동 승격
-    this.waitlistService
-      .promoteNextWaitlist(cancelledEnrollment.classId)
-      .catch((err) =>
-        this.logger.warn(
-          `대기자 승격 실패: classId=${cancelledEnrollment.classId}, error=${err.message}`,
-        ),
-      );
+    // 실제로 좌석이 비었을 때만 대기자 자동 승격(미결제 pending 취소는 좌석 무변동)
+    if (releasedSeats > 0) {
+      this.waitlistService
+        .promoteNextWaitlist(enrollment.classId)
+        .catch((err) =>
+          this.logger.warn(
+            `대기자 승격 실패: classId=${enrollment.classId}, error=${err.message}`,
+          ),
+        );
+    }
   }
 
   // ================ 방식2 전용 메서드 ================
@@ -763,8 +921,8 @@ export class EnrollmentsService {
 
     // 3. 만료 여부 확인
     if (new Date() > enrollment.expiresAt) {
-      await this.prisma.enrollment.update({
-        where: { id: enrollmentId },
+      await this.prisma.enrollment.updateMany({
+        where: { id: enrollmentId, status: EnrollmentStatus.PENDING_APPROVAL },
         data: { status: EnrollmentStatus.EXPIRED },
       });
       throw new BadRequestException("승인 기한이 만료되었습니다.");
@@ -781,19 +939,54 @@ export class EnrollmentsService {
       throw new ForbiddenException("주 보호자만 승인할 수 있습니다.");
     }
 
-    // 5. 승인 처리
-    const updatedEnrollment = await this.prisma.enrollment.update({
-      where: { id: enrollmentId },
-      data: {
-        status: EnrollmentStatus.APPROVED,
-        approvedBy: userId,
-        approvedAt: new Date(),
-        note: dto.note
-          ? `${enrollment.note || ""}\n[승인메모] ${dto.note}`
-          : enrollment.note,
-      },
-      select: ENROLLMENT_DETAIL_SELECT,
-    });
+    // 5. 승인 처리 — 읽었던 상태(승인 대기) 그대로일 때만 전이한다. 조건부 update 가 그
+    //   판정을 하므로(0행이면 409) 별도의 사전 재확인은 두지 않는다.
+    const approvedNote = dto.note
+      ? `${enrollment.note || ""}\n[승인메모] ${dto.note}`
+      : enrollment.note;
+    // 무료(0원) 선불은 승인이 곧 수강 확정 — 결제할 금액이 없어 결제 단계가 없다.
+    //   학부모 직접 신청은 createEnrollment 가 신청 시점에 같은 처리를 한다.
+    const isFreePrepaid =
+      enrollment.product != null &&
+      Number(enrollment.product.price) === 0 &&
+      enrollment.product.billingTiming !== "POSTPAID" &&
+      enrollment.class?.billingMode !== "POSTPAID";
+    const updatedEnrollment = isFreePrepaid
+      ? await this.prisma.$transaction(async (tx) => {
+          const product = await tx.classProduct.findUnique({
+            where: { id: enrollment.product!.id },
+            select: {
+              sessionsPerMonth: true,
+              feeType: true,
+              durationDays: true,
+              billingMonth: true,
+            },
+          });
+          await this.completeFreeEnrollment(tx, {
+            enrollmentId,
+            classId: enrollment.classId,
+            childId: enrollment.childId,
+            payerUserId: userId,
+            classProductId: enrollment.product!.id,
+            fromStatuses: [EnrollmentStatus.PENDING_APPROVAL],
+            product,
+          });
+          return tx.enrollment.update({
+            where: { id: enrollmentId },
+            data: {
+              approvedBy: userId,
+              approvedAt: new Date(),
+              note: approvedNote,
+            },
+            select: ENROLLMENT_DETAIL_SELECT,
+          });
+        })
+      : await this.updateIfStillPendingApproval(enrollmentId, {
+          status: EnrollmentStatus.APPROVED,
+          approvedBy: userId,
+          approvedAt: new Date(),
+          note: approvedNote,
+        });
 
     this.logger.log(`수강신청 승인 완료: enrollmentId=${enrollmentId}`);
 
@@ -856,16 +1049,15 @@ export class EnrollmentsService {
       throw new ForbiddenException("주 보호자만 거절할 수 있습니다.");
     }
 
-    // 4. 거절 처리
-    const updatedEnrollment = await this.prisma.enrollment.update({
-      where: { id: enrollmentId },
-      data: {
+    // 4. 거절 처리 — 읽었던 상태(승인 대기) 그대로일 때만(조건부 update 가 판정).
+    const updatedEnrollment = await this.updateIfStillPendingApproval(
+      enrollmentId,
+      {
         status: EnrollmentStatus.REJECTED,
         rejectedAt: new Date(),
         rejectionReason: dto.reason,
       },
-      select: ENROLLMENT_DETAIL_SELECT,
-    });
+    );
 
     this.logger.log(`수강신청 거절 완료: enrollmentId=${enrollmentId}`);
 
@@ -976,7 +1168,14 @@ export class EnrollmentsService {
         },
       });
 
-      // 5-2) Enrollment → PAID 전환
+      // 5-2) Enrollment → PAID 전환 — 읽었던 상태 그대로일 때만(그 사이 취소되면 되살리지 않음)
+      const claimed = await tx.enrollment.updateMany({
+        where: { id: enrollmentId, status: enrollment.status },
+        data: { status: EnrollmentStatus.PAID },
+      });
+      if (claimed.count !== 1) {
+        throw new ConflictException("이미 처리된 수강신청입니다.");
+      }
       const updated = await tx.enrollment.update({
         where: { id: enrollmentId },
         data: {
@@ -1118,6 +1317,222 @@ export class EnrollmentsService {
   }
 
   // ================ Helper Methods ================
+
+  /**
+   * 선택 상품 검증 — 수업 소속 · 판매 가능(공용 가드) · 판매 월분 · 수업 결제방식과 timing 일치.
+   *   BOTH 수업은 상품 선택이 필수. 통과 시 billingTiming, 미선택 시 null.
+   */
+  private async resolveSelectedProductTiming(
+    classId: string,
+    billingMode: string,
+    salesOpenMonth: Date | null,
+    classProductId?: string,
+  ): Promise<SelectedProduct | null> {
+    if (!classProductId) {
+      // [B6] BOTH(선택형) 수업은 결제방식(선불 정액 / 후불)을 택1해야 하므로 상품 선택 필수.
+      if (billingMode === "BOTH") {
+        throw new BadRequestException("선불/후불을 선택해주세요.");
+      }
+      return null;
+    }
+    const product = await this.prisma.classProduct.findUnique({
+      where: { id: classProductId },
+      select: {
+        classId: true,
+        billingTiming: true,
+        isActive: true,
+        feeType: true,
+        durationDays: true,
+        billingMonth: true,
+        price: true,
+        sessionsPerMonth: true,
+      },
+    });
+    if (!product || product.classId !== classId) {
+      throw new BadRequestException("유효하지 않은 상품입니다.");
+    }
+    // 결제 개시 경로(payment-create)와 같은 판매 가능 규칙·문구
+    const blockReason = assertPaymentAllowed({
+      feeType: product.feeType,
+      durationDays: product.durationDays,
+      isActive: product.isActive,
+    });
+    if (blockReason) {
+      throw new BadRequestException(
+        PACKAGE_PAYMENT_BLOCK_MESSAGES[blockReason],
+      );
+    }
+    if (
+      product.billingMonth &&
+      (!salesOpenMonth ||
+        product.billingMonth.getTime() !== salesOpenMonth.getTime())
+    ) {
+      throw new BadRequestException(
+        "판매 기간이 지난 상품입니다. 화면을 새로고침한 후 다시 시도해주세요.",
+      );
+    }
+    if (
+      (billingMode === "PREPAID" || billingMode === "POSTPAID") &&
+      product.billingTiming !== billingMode
+    ) {
+      throw new BadRequestException("수업 결제 방식과 맞지 않는 상품입니다.");
+    }
+    return {
+      billingTiming: product.billingTiming,
+      price: product.price,
+      sessionsPerMonth: product.sessionsPerMonth,
+      feeType: product.feeType,
+      durationDays: product.durationDays,
+      billingMonth: product.billingMonth,
+    };
+  }
+
+  /**
+   * 무료(0원) 선불 등록 완료 — 결제사를 거치지 않고 우리 DB 상태만 확정한다.
+   *  대회의 무료 참가(참가비 0 → 신청 즉시 PAID, Payment 미생성)와 같은 계약이며,
+   *  결제 개시(payment-create)는 최소 100원을 요구하므로 0원은 애초에 그 경로를 타지 않는다.
+   *  Payment 행은 만들지 않는다 — 돈이 오간 적이 없어 결제 이력·정산 집계 대상이 아니다.
+   */
+  private async completeFreeEnrollment(
+    tx: Prisma.TransactionClient,
+    input: {
+      enrollmentId: string;
+      classId: string;
+      childId: string;
+      /** 결제 이력의 소유자 — 신청한 학부모. */
+      payerUserId: string;
+      classProductId: string;
+      fromStatuses: EnrollmentStatus[];
+      product: Pick<
+        SelectedProduct,
+        "sessionsPerMonth" | "feeType" | "durationDays" | "billingMonth"
+      > | null;
+    },
+  ): Promise<{ orderNumber: string }> {
+    const now = new Date();
+    // 0원 결제 이력 — 결제사 승인은 없지만 내부 원장에는 남긴다. 사용자가 결제 내역에서
+    //   무엇을 신청했는지 확인할 수 있어야 하고, 취소·환불이 유료 건과 같은 흐름을 타야 한다.
+    //   paymentMethod='free' 는 환불 엔진이 PG 호출을 건너뛰는 판정 키다(mock 과 같은 규약).
+    const orderNumber = `FREE-${Date.now()}-${input.enrollmentId}`;
+    const freePayment = await tx.payment.create({
+      data: {
+        orderNumber,
+        userId: input.payerUserId,
+        productId: input.classProductId,
+        amount: 0,
+        paymentStatus: "completed",
+        paymentMethod: "free",
+        pgProvider: "free",
+        completedAt: now,
+      },
+      select: { id: true },
+    });
+    const moved = await tx.enrollment.updateMany({
+      where: { id: input.enrollmentId, status: { in: input.fromStatuses } },
+      data: {
+        status: EnrollmentStatus.PAID,
+        paidAt: now,
+        paymentId: freePayment.id,
+      },
+    });
+    if (moved.count !== 1) {
+      throw new ConflictException("이미 처리된 수강신청입니다.");
+    }
+    await tx.classRegistration.upsert({
+      where: {
+        classId_userId: { classId: input.classId, userId: input.childId },
+      },
+      update: { status: "active" },
+      create: {
+        classId: input.classId,
+        userId: input.childId,
+        status: "active",
+      },
+    });
+    // 발급형 상품만 수업권 발급 — 비발급(sessionsPerMonth=0, 1회용 수업 등)은 명단이 SoT.
+    const sessions = input.product?.sessionsPerMonth ?? 0;
+    if (sessions > 0) {
+      const passWindow =
+        input.product?.feeType === "MONTHLY_FIXED" && input.product.billingMonth
+          ? monthlyPassWindow(input.product.billingMonth)
+          : null;
+      const expiresAt =
+        passWindow?.expiresAt ??
+        (input.product?.feeType === "MONTHLY_FIXED"
+          ? endOfMonthKst(now)
+          : (() => {
+              const durationDays = input.product?.durationDays ?? 28;
+              const e = new Date(now);
+              e.setDate(
+                e.getDate() + durationDays + MEMBER_CREDIT_EXTRA_USABLE_DAYS,
+              );
+              e.setHours(23, 59, 59, 999);
+              return e;
+            })());
+      await this.creditDomain.issueFromPayment(tx, {
+        paymentId: freePayment.id,
+        userId: input.childId,
+        classId: input.classId,
+        sessions,
+        startsAt: passWindow?.startsAt ?? null,
+        expiresAt,
+        sourceLabel: `무료 수업 수강권 발급 (enrollmentId: ${input.enrollmentId})`,
+      });
+    }
+    return { orderNumber };
+  }
+
+  /**
+   * 승인 대기 상태일 때만 갱신 — 조건부 update 가 0행이면 Prisma 는 P2025 를 던지는데, 이를
+   *   404 가 아니라 "그 사이 처리됨" 409 로 돌려준다(재확인 조회와 update 사이의 틈까지 닫음).
+   */
+  private async updateIfStillPendingApproval(
+    enrollmentId: string,
+    data: Prisma.EnrollmentUncheckedUpdateInput,
+  ) {
+    try {
+      return await this.prisma.enrollment.update({
+        where: { id: enrollmentId, status: EnrollmentStatus.PENDING_APPROVAL },
+        data,
+        select: ENROLLMENT_DETAIL_SELECT,
+      });
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === "P2025"
+      ) {
+        throw new ConflictException("이미 처리된 수강신청입니다.");
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * 좌석 잠금을 잡는 트랜잭션 실행 — 잠금 대기가 기본 timeout(5s)에 포함되므로 여유를 두고,
+   *   잠금 대기 초과·풀 고갈은 재시도 가능한 409 로 바꾼다(그 외 예외는 그대로).
+   */
+  private async runEnrollmentTransaction<T>(
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await this.prisma.$transaction(fn, {
+        maxWait: 5_000,
+        timeout: 15_000,
+      });
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        // P2028 잠금 대기 초과 · P2024 풀 고갈 · P2034 쓰기 충돌/교착 —
+        //   모두 같은 요청을 다시 보내면 풀리는 일시적 경합이다.
+        (err.code === "P2028" || err.code === "P2024" || err.code === "P2034")
+      ) {
+        throw new ConflictException(
+          "신청이 몰려 처리하지 못했습니다. 잠시 후 다시 시도해주세요.",
+        );
+      }
+      throw err;
+    }
+  }
 
   /**
    * 수강신청 조회 + 접근 권한 검증

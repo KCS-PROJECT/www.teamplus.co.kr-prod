@@ -358,7 +358,7 @@ class WebSocketBridgeService {
     // [2026-05-13 Phase D-4] WebSocket 토큰 갱신 흐름.
     //   서버가 토큰 만료 임박/만료 감지 시 emit 하는 이벤트를 처리한다.
     //
-    //   - `token:refresh_required`: 만료 5분 이내. hybridAuth.refreshToken() 후
+    //   - `token:refresh_required`: 만료 5분 이내. 새 토큰 발급 후
     //     새 토큰으로 socket.auth 갱신 + 재연결. 연결 끊김은 발생하지 않음.
     //   - `token_expired`: 이미 만료/유효하지 않음. 서버가 disconnect 직전 emit.
     //     클라이언트는 갱신 후 재연결 시도.
@@ -377,6 +377,10 @@ class WebSocketBridgeService {
 
   /**
    * 서버의 token:refresh_required / token_expired 수신 시 호출.
+   *
+   * 저장소를 읽기만 하면 만료된 토큰을 그대로 다시 써서 서버가 또 거부한다 —
+   *   ensureFreshAccessToken() 은 만료 임박·만료 시 실제로 갱신한다(api-client 와 단일 비행 공유).
+   * 갱신이 서버에 닿지 못하면 세션 판정이 아니므로 포기하지 않고 백오프 재연결에 맡긴다.
    *  - hybridAuth.refreshToken() 로 새 access token 발급
    *  - socket.auth.token 갱신 후 disconnect → connect 사이클로 재연결
    *  - 갱신 실패 시 fatal 처리 (Error 상태)
@@ -389,12 +393,12 @@ class WebSocketBridgeService {
     this.isRefreshingWsToken = true;
     try {
       // 동적 import 로 순환 의존성 회피 (api-client → websocket-bridge 가능성).
-      const { hybridAuth } = await import('./hybrid-auth');
-      const refreshed = await hybridAuth.getToken();
-      const newToken = refreshed?.accessToken;
+      const { ensureFreshAccessToken } = await import('./api-client');
+      const newToken = await ensureFreshAccessToken();
       if (!newToken) {
         devWarn('[WebSocketBridge] Token refresh returned no token');
         this.updateStatus(WebSocketStatus.Error);
+        this.attemptReconnect();
         return;
       }
       this.options.token = newToken;
@@ -417,6 +421,7 @@ class WebSocketBridgeService {
     } catch (e) {
       devError(`[WebSocketBridge] refreshTokenAndReconnect error: ${e}`);
       this.updateStatus(WebSocketStatus.Error);
+      this.attemptReconnect();
     } finally {
       this.isRefreshingWsToken = false;
     }

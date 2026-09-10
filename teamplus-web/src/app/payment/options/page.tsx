@@ -28,6 +28,7 @@ import type { FeeType as PaymentFeeType } from "@/types/payment";
 import { usePageReady } from '@/hooks/usePageReady';
 import { useChildren } from "@/hooks/useChildren";
 import { useSessionAuth } from "@/hooks/useSessionAuth";
+import { useToast } from "@/components/ui/Toast";
 import { useNativeUI } from "@/hooks/useNativeUI";
 import { MESSAGES } from "@/lib/messages";
 import { cn } from "@/lib/utils";
@@ -132,6 +133,7 @@ function PaymentOptionsContent() {
   const { back } = useNavigation();
   const router = useRouter();
   const { user } = useSessionAuth();
+  const { toast } = useToast();
   const searchParams = useSearchParams();
   const classId = searchParams?.get("classId") ?? "";
   const productId = searchParams?.get("productId") ?? "";
@@ -151,6 +153,7 @@ function PaymentOptionsContent() {
   const [policyModalType, setPolicyModalType] = useState<string | null>(null);
   // 동의 없이 다음 단계를 누른 경우의 안내 (기존에는 약관 시트를 띄워 대체했음).
   const [termsError, setTermsError] = useState(false);
+  const [isEnrollingFree, setIsEnrollingFree] = useState(false);
 
   const [classInfo, setClassInfo] = useState<ClassInfo | null>(null);
   const [product, setProduct] = useState<ClassProduct | null>(null);
@@ -424,6 +427,38 @@ function PaymentOptionsContent() {
 
   const calculatedPrice = calculatePrice();
   const finalPrice = calculatedPrice;
+  // 무료(0원) 수업 — 결제할 금액이 없어 결제사·결제 화면을 거치지 않는다.
+  //   결제 개시는 최소 100원을 요구하므로 이 경로로 보내면 결제가 시작되지 않고 화면이 멈춘다.
+  //   대회의 무료 참가(참가비 0 → 신청 즉시 확정)와 같은 계약.
+  const isFree = !!product && finalPrice === 0;
+
+  const handleFreeEnroll = async () => {
+    if (!classId || !selectedChild || !product || isEnrollingFree) return;
+    setIsEnrollingFree(true);
+    try {
+      const res = await api.post("/enrollments", {
+        childId: selectedChild,
+        classId,
+        classProductId: product.id,
+      });
+      if (!res.success) {
+        toast.error(res.error?.message ?? MESSAGES.error.general);
+        return;
+      }
+      // 유료와 같은 완료 화면 — 0원 결제 이력을 영수증으로 확인한다.
+      const orderNumber = (res.data as { freeOrderNumber?: string } | undefined)
+        ?.freeOrderNumber;
+      router.replace(
+        orderNumber
+          ? `/payment/complete?orderNumber=${encodeURIComponent(orderNumber)}`
+          : `/classes/${classId}`,
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : MESSAGES.error.general);
+    } finally {
+      setIsEnrollingFree(false);
+    }
+  };
 
   // [2026-06-10] 복수선택 전체 내역 — 자녀/플랜 매핑 + 합계 + 현재 진행 인덱스.
   const payItems = paySession
@@ -917,14 +952,43 @@ function PaymentOptionsContent() {
               product?.isPurchasable !== false &&
               !isAgeBlocked;
             // options 는 정액(선불) 결제 전용. 후불은 수업 상세에서 즉시 등록되므로 본 페이지 미경유.
-            return (
-          <NavLink
-            href={`/payment/checkout?classId=${classId}&productId=${product?.id ?? productId}&childId=${selectedChild}&amount=${finalPrice}&feeType=${selectedFeeType}${selectedFeeType === "PER_SESSION" ? `&sessionCount=${sessionCount}` : ""}`}
-            className={`w-full flex items-center justify-center gap-2 rounded-w-md py-4 font-bold text-card-title shadow-sh-1 transition-colors motion-reduce:transition-none active:brightness-95 ${
+            const ctaClass = `w-full flex items-center justify-center gap-2 rounded-w-md py-4 font-bold text-card-title shadow-sh-1 transition-colors motion-reduce:transition-none active:brightness-95 ${
               canProceed
                 ? "bg-it-blue-500 hover:bg-it-blue-600 text-white"
                 : "bg-it-line dark:bg-rink-700 text-it-ink-400 cursor-not-allowed shadow-none"
-            }`}
+            }`;
+            // 무료 수업 — 0원 금액을 확인한 뒤 같은 CTA 로 신청을 확정한다.
+            //   결제할 금액이 없어 결제수단 선택(체크아웃) 단계는 거치지 않는다.
+            if (isFree) {
+              return (
+                <button
+                  type="button"
+                  className={ctaClass}
+                  disabled={!canProceed || isEnrollingFree}
+                  onClick={() => {
+                    if (!termsAccepted) {
+                      setTermsError(true);
+                      document.getElementById("terms")?.focus();
+                      return;
+                    }
+                    void handleFreeEnroll();
+                  }}
+                >
+                  {isEnrollingFree ? (
+                    <Spinner className="w-5 h-5" />
+                  ) : (
+                    <>
+                      <span>다음 단계로</span>
+                      <Icon name="arrow_forward" className="text-xl" />
+                    </>
+                  )}
+                </button>
+              );
+            }
+            return (
+          <NavLink
+            href={`/payment/checkout?classId=${classId}&productId=${product?.id ?? productId}&childId=${selectedChild}&amount=${finalPrice}&feeType=${selectedFeeType}${selectedFeeType === "PER_SESSION" ? `&sessionCount=${sessionCount}` : ""}`}
+            className={ctaClass}
             aria-disabled={!canProceed}
             onClick={(e) => {
               if (product?.isPurchasable === false) {

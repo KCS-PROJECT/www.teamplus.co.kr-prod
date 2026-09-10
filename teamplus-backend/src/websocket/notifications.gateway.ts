@@ -170,7 +170,7 @@ export class NotificationsGateway
       }
 
       // [2026-05-13 Phase D-4] 토큰 만료 임박(5분 이내) 시 클라이언트에 갱신 요청.
-      //   클라이언트는 hybridAuth.refreshToken() 후 새 토큰으로 재연결한다.
+      //   클라이언트는 새 access token 을 발급받아 재연결한다.
       //   연결 자체는 유지 — 즉시 끊지 않고 클라이언트 결정에 맡긴다.
       if (payload.exp && payload.exp * 1000 - Date.now() < 5 * 60 * 1000) {
         client.emit("token:refresh_required", {

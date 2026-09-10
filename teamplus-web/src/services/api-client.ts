@@ -132,11 +132,54 @@ function getSessionProfile(): SessionProfile | null {
 // Token Refresh State Management (통합 갱신 시스템)
 // ============================================
 let isRefreshing = false;
-let refreshPromise: Promise<string | null> | null = null;
+let refreshPromise: Promise<RefreshOutcome> | null = null;
 let refreshSubscribers: Array<{
   resolve: (token: string) => void;
   reject: (error: Error) => void;
 }> = [];
+
+/**
+ * 갱신 실패 분류.
+ *  - unauthorized: 갱신 요청에 서버가 4xx(401 포함)로 답함 — 세션 판정이 내려진 경우.
+ *  - unavailable: 갱신 요청이 서버에 닿지 못했거나 서버가 지금은 답할 수 없음
+ *    (연결 거부·타임아웃·5xx·429 요청 제한·408 시간 초과) — 세션은 미판정.
+ *    토큰을 유지하고 원 요청을 전송 오류로 돌려준다. 다음 요청·선제 갱신이 재시도한다.
+ *  - unauthenticated: 갱신 토큰이 없거나 형식이 깨짐.
+ */
+type RefreshFailureKind = "unauthorized" | "unavailable" | "unauthenticated";
+
+class TokenRefreshError extends Error {
+  constructor(
+    readonly kind: RefreshFailureKind,
+    /** 갱신 요청의 원 오류 — unavailable 이면 이 오류를 원 요청의 실패 사유로 쓴다. */
+    readonly transportError?: unknown,
+  ) {
+    super(`token refresh failed: ${kind}`);
+    this.name = "TokenRefreshError";
+  }
+}
+
+interface RefreshOutcome {
+  token: string | null;
+  failure?: TokenRefreshError;
+}
+
+function toRefreshError(e: unknown): TokenRefreshError {
+  return e instanceof TokenRefreshError
+    ? e
+    : new TokenRefreshError("unavailable", e);
+}
+
+/** 갱신 응답 상태로 실패 종류 판정 — 4xx 중 429·408 은 세션 판정이 아니라 unavailable. */
+function classifyRefreshFailure(error: unknown): TokenRefreshError {
+  const status = (error as AxiosError)?.response?.status;
+  const isServerVerdict =
+    status !== undefined && status < 500 && status !== 429 && status !== 408;
+  return new TokenRefreshError(
+    isServerVerdict ? "unauthorized" : "unavailable",
+    error,
+  );
+}
 
 /**
  * 토큰 갱신 완료 시 대기 중인 요청들에게 새 토큰 전달
@@ -149,7 +192,7 @@ function onTokenRefreshed(newToken: string): void {
 /**
  * 토큰 갱신 실패 시 대기 중인 요청들에게 에러 전달
  */
-function onRefreshFailed(error: Error): void {
+function onRefreshFailed(error: TokenRefreshError): void {
   refreshSubscribers.forEach(({ reject }) => reject(error));
   refreshSubscribers = [];
 }
@@ -188,13 +231,13 @@ export function syncAccessTokenCookie(accessToken: string): void {
  * 통합 토큰 갱신 함수 (모든 갱신 요청을 하나로 처리)
  * Race condition 방지를 위해 단일 Promise 사용
  */
-async function refreshAccessToken(): Promise<string | null> {
+async function refreshAccessToken(): Promise<RefreshOutcome> {
   // 이미 갱신 중이면 해당 Promise 재사용
   if (isRefreshing && refreshPromise) {
     try {
-      return await waitForTokenRefresh();
-    } catch {
-      return null;
+      return { token: await waitForTokenRefresh() };
+    } catch (e) {
+      return { token: null, failure: toRefreshError(e) };
     }
   }
 
@@ -205,8 +248,9 @@ async function refreshAccessToken(): Promise<string | null> {
       const tokenInfo = await hybridAuth.getToken();
       if (!tokenInfo?.refreshToken) {
         // 미인증 상태 (정상): 리프레시 토큰 없음 → 에러/clearToken 없이 조용히 처리
-        onRefreshFailed(new Error("unauthenticated"));
-        return null;
+        const failure = new TokenRefreshError("unauthenticated");
+        onRefreshFailed(failure);
+        return { token: null, failure };
       }
 
       // [2026-05-14] JWT 형식 사전 검증 — 백엔드 RefreshTokenDto @IsJWT 가
@@ -221,8 +265,9 @@ async function refreshAccessToken(): Promise<string | null> {
           document.cookie = "teamplus_access_token=; path=/; max-age=0";
           document.cookie = "teamplus_refresh_token=; path=/; max-age=0";
         }
-        onRefreshFailed(new Error("invalid_refresh_token"));
-        return null;
+        const failure = new TokenRefreshError("unauthenticated");
+        onRefreshFailed(failure);
+        return { token: null, failure };
       }
 
       devLog("[API Client] 토큰 갱신 시작");
@@ -239,7 +284,35 @@ async function refreshAccessToken(): Promise<string | null> {
         },
       );
 
-      const { accessToken, refreshToken } = refreshResponse.data;
+      // 백엔드 전역 envelope({ success, data }) — raw axios 호출이라 apiRequest 의 자동
+      //   언랩을 거치지 않는다. 벗기지 않으면 두 값이 undefined 로 저장돼 다음 요청부터
+      //   401 → 갱신 토큰 형식 탈락 → 토큰 삭제로 이어진다.
+      const unwrapped = unwrapEnvelope<{
+        accessToken?: unknown;
+        refreshToken?: unknown;
+      }>(refreshResponse.data);
+      const accessToken = unwrapped.success
+        ? unwrapped.data?.accessToken
+        : undefined;
+      const refreshToken = unwrapped.success
+        ? unwrapped.data?.refreshToken
+        : undefined;
+      if (
+        typeof accessToken !== "string" ||
+        typeof refreshToken !== "string" ||
+        !accessToken ||
+        !refreshToken
+      ) {
+        // 200 인데 토큰이 없음 — 응답 계약 불일치. 서버가 세션을 거부한 것이 아니므로
+        //   저장하지 않고 토큰도 지우지 않는다(unavailable).
+        devError(
+          "[API Client] 토큰 갱신 응답에 토큰 없음:",
+          Object.keys((refreshResponse.data as object | null) ?? {}),
+        );
+        const failure = new TokenRefreshError("unavailable");
+        onRefreshFailed(failure);
+        return { token: null, failure };
+      }
 
       // 새 토큰 저장
       await hybridAuth.saveToken({ accessToken, refreshToken });
@@ -252,13 +325,12 @@ async function refreshAccessToken(): Promise<string | null> {
       devLog("[API Client] 토큰 갱신 성공");
 
       onTokenRefreshed(accessToken);
-      return accessToken;
+      return { token: accessToken };
     } catch (error) {
       // 실제 갱신 실패 (만료된 리프레시 토큰, 네트워크 오류 등)
       devError("[API Client] 토큰 갱신 실패:", error);
-      onRefreshFailed(
-        error instanceof Error ? error : new Error("Token refresh failed"),
-      );
+      const failure = classifyRefreshFailure(error);
+      onRefreshFailed(failure);
 
       // WEB-032 연장 (2026-04-22): 401 (서버가 명시적으로 세션 무효 판정)만 clearToken.
       // 타임아웃·5xx·네트워크 오류는 토큰 유지 → 다음 요청에서 자연 재시도.
@@ -301,7 +373,7 @@ async function refreshAccessToken(): Promise<string | null> {
         }
       }
 
-      return null;
+      return { token: null, failure };
     } finally {
       isRefreshing = false;
       refreshPromise = null;
@@ -547,7 +619,7 @@ async function preemptiveTokenRefresh(): Promise<string | null> {
     }
 
     // 통합된 갱신 함수 사용 (race condition 방지)
-    return await refreshAccessToken();
+    return (await refreshAccessToken()).token;
   } catch {
     // 선제적 갱신 실패는 무시 (401 응답 시 재시도됨)
     return null;
@@ -692,7 +764,7 @@ apiClient.interceptors.request.use(
         const isExpired = expiry ? Date.now() > expiry : false;
 
         if (isExpired && tokenInfo.refreshToken) {
-          const newToken = await refreshAccessToken();
+          const newToken = (await refreshAccessToken()).token;
           if (newToken) {
             config.headers.Authorization = `Bearer ${newToken}`;
             return config;
@@ -791,7 +863,13 @@ apiClient.interceptors.response.use(
       !isAuthEndpoint;
 
     // === API Lifecycle — 에러 후처리 발사 헬퍼 ===
-    const fireOnError = () => {
+    //   override — 갱신이 서버에 닿지 못한 경우 401 컨텍스트 대신 전송 오류로 기록한다
+    //   (401 그대로 넘기면 lifecycle 훅이 세션 만료로 분류해 로그아웃 안내가 뜬다).
+    const fireOnError = (override?: {
+      status?: number;
+      code?: string;
+      message?: string;
+    }) => {
       const lifecycleCtx = originalRequest?._lifecycle;
       if (!lifecycleCtx) return;
       const now =
@@ -806,6 +884,7 @@ apiClient.interceptors.response.use(
         error,
         message: responseData?.message ?? error.message,
         code: responseErrorCode,
+        ...override,
       });
     };
 
@@ -837,12 +916,23 @@ apiClient.interceptors.response.use(
     if (is401Retryable) {
       originalRequest._retry = true;
 
+      // 갱신이 서버에 닿지 못한 경우 — 세션은 미판정이므로 토큰을 유지하고 원 요청을
+      //   전송 오류로 돌려준다. 호출 화면은 네트워크 오류로 처리하고, 다음 요청·선제
+      //   갱신이 다시 시도한다. 세션 만료 안내는 서버가 갱신을 거부했을 때만 띄운다.
+      const rejectAsUnavailable = (failure: TokenRefreshError) => {
+        fireOnError({ status: undefined, code: "REFRESH_UNAVAILABLE" });
+        return Promise.reject(failure.transportError ?? failure);
+      };
+
       try {
         // 통합된 갱신 함수 사용 (race condition 방지)
-        const newToken = await refreshAccessToken();
+        const outcome = await refreshAccessToken();
 
-        if (!newToken) {
-          // 갱신 실패 — api-unauthorized(reason=expired) 발사만 한다.
+        if (!outcome.token) {
+          if (outcome.failure?.kind === "unavailable") {
+            return rejectAsUnavailable(outcome.failure);
+          }
+          // 갱신 거부 — api-unauthorized(reason=expired) 발사만 한다.
           //   SessionExpiredGate 가 자동 로그아웃 안내 모달을 띄우고, 사용자가
           //   '재로그인' 버튼으로 직접 이동을 선택한다. 여기서 window.location 으로
           //   하드 리다이렉트하면 모달이 한순간 깜빡이고 곧바로 /login 으로 튕기는
@@ -853,12 +943,11 @@ apiClient.interceptors.response.use(
 
         // 원래 요청 재시도 (갱신 성공 → 로그아웃 이벤트 발사하지 않음).
         if (originalRequest.headers) {
-          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          originalRequest.headers.Authorization = `Bearer ${outcome.token}`;
         }
         return apiClient(originalRequest);
       } catch (refreshError) {
-        fireOnError();
-        return Promise.reject(refreshError);
+        return rejectAsUnavailable(toRefreshError(refreshError));
       }
     }
 

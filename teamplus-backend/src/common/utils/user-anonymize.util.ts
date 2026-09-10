@@ -144,6 +144,11 @@ export async function anonymizeUserWithinTx(
   await tx.userNotificationPreference.deleteMany({ where: { userId } });
   await tx.userDevice.deleteMany({ where: { userId } });
 
+  // 법정 보존 대상이 아닌 개인 전용 기록 — 보유 목적이 소멸해 함께 파기한다.
+  await tx.notification.deleteMany({ where: { userId } });
+  await tx.noticeRead.deleteMany({ where: { userId } });
+  await tx.dailyViewLog.deleteMany({ where: { userId } });
+
   // 본인인증 기록의 실명·전화·생년월일·CI/DI 파기. onDelete: SetNull 이라 User update
   // 만으로는 정리되지 않아 userId 링크로 완전 재식별이 가능했다.
   await tx.identityVerification.updateMany({

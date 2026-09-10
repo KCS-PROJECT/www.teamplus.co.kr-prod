@@ -768,6 +768,16 @@ describe("PaymentsService", () => {
           findMany: jest.fn().mockResolvedValue([]),
           update: jest.fn(),
         },
+        // 연결 등록 0건 + 선불 수업 상품 → 고아 결제 경로(환불 요청 자동 접수)가 도는 fixture
+        refundRequest: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: "rr-1" }),
+        },
+        class: {
+          findUnique: jest
+            .fn()
+            .mockResolvedValue({ teamId: null, academyId: null }),
+        },
       };
       jest
         .spyOn(prismaService, "$transaction")
@@ -799,10 +809,15 @@ describe("PaymentsService", () => {
       );
 
       // 공용 후처리(applyApprovedPayment) 가 mock 결제 표식으로 완료 갱신.
-      //   where 에 pending 조건이 있어야 동시 진입 시 단일 실행이 보장된다.
+      //   where 에 상태 조건이 있어야 동시 진입 시 단일 실행이 보장된다. mock 은 결제사
+      //   승인이 없어 pending 만 허용한다(취소된 결제를 완료로 바꾸면 돈이 나가지 않은
+      //   거래가 매출로 남는다 — 실결제 경로만 cancelled 를 바로잡는다).
       expect(txPaymentUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: mockPaymentId, paymentStatus: "pending" },
+          where: {
+            id: mockPaymentId,
+            paymentStatus: { in: ["pending"] },
+          },
           data: expect.objectContaining({
             paymentStatus: "completed",
             paymentMethod: "mock",
@@ -877,11 +892,19 @@ describe("PaymentsService", () => {
         },
         enrollment: {
           findMany: jest.fn().mockResolvedValue([]), // apply 후처리 루프 스킵
+          // 잠금 안 재확인 — 기본은 "아직 결제 대기"(선점 진행)
+          findFirst: jest.fn().mockResolvedValue({ id: "enr-1" }),
           update: jest.fn(),
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
         tournamentRegistration: {
           updateMany: jest.fn().mockResolvedValue({ count: 0 }),
           findMany: jest.fn().mockResolvedValue([]),
+        },
+        // 연결 등록 0건 fixture 는 고아 결제 경로를 타므로 환불 요청 delegate 필요
+        refundRequest: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({ id: "rr-1" }),
         },
       };
       // clearAllMocks 가 모듈 스코프 기본값을 지우므로 매 배선에서 재설정.
@@ -891,7 +914,7 @@ describe("PaymentsService", () => {
       );
       // claim 쌍 조회(서비스 루트 prisma) — 자녀 1명 수업 결제
       (prismaService.enrollment.findMany as jest.Mock).mockResolvedValue([
-        { classId: "cls-1", childId: "child-1" },
+        { id: "enr-1", classId: "cls-1", childId: "child-1" },
       ]);
       (prismaService as unknown as Record<string, unknown>).classRegistration =
         {

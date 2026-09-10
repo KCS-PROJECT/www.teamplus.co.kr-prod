@@ -199,21 +199,31 @@ class ChatSocketService {
     this.updateStatus('disconnected');
   }
 
+  /**
+   * 서버의 `token:refresh_required`(만료 5분 이내) / `token_expired` 수신 시 호출.
+   *
+   * 저장소를 읽기만 하면 만료된 토큰을 그대로 다시 써서 서버가 또 거부한다 —
+   *   `ensureFreshAccessToken()` 은 만료 임박·만료 시 실제로 갱신하고(api-client 와
+   *   단일 비행 공유), 여유가 있으면 현재 토큰을 그대로 돌려준다.
+   * 갱신이 서버에 닿지 못하면 세션 판정이 아니므로 포기하지 않고 백오프 재연결에 맡긴다.
+   */
   private async refreshTokenAndReconnect(): Promise<void> {
     if (this.isRefreshingToken) return;
     this.isRefreshingToken = true;
     try {
-      const refreshed = await hybridAuth.getToken();
-      const newToken = refreshed?.accessToken;
+      const { ensureFreshAccessToken } = await import('./api-client');
+      const newToken = await ensureFreshAccessToken();
       if (!newToken) {
         devWarn('[ChatSocket] token refresh returned no token');
         this.updateStatus('error');
+        if (this.consumers > 0) this.attemptReconnect();
         return;
       }
       this.createSocket(newToken);
     } catch (e) {
       devError(`[ChatSocket] refreshTokenAndReconnect error: ${e}`);
       this.updateStatus('error');
+      if (this.consumers > 0) this.attemptReconnect();
     } finally {
       this.isRefreshingToken = false;
     }
