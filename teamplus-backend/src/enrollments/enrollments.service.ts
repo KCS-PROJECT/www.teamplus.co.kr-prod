@@ -16,6 +16,7 @@ import {
 } from "@/credits/credit-domain.service";
 import { endOfMonthKst, monthlyPassWindow } from "@/common/billing/billing-date.util";
 import { assertClassOnSale } from "@/common/billing/sales-gate.util";
+import { resolveEnrollmentBilling } from "@/common/billing/enrollment-billing.util";
 import { BLOCKING_APPLICATION } from "@/common/enrollment/enrollment-status.constants";
 import { hasActivePaidEnrollment } from "@/common/billing/paid-enrollment-guard.util";
 import { hasOtherValidEnrollment } from "@/common/billing/roster-retention.util";
@@ -211,8 +212,9 @@ export class EnrollmentsService {
     }
 
     // [Lifecycle v4.1 §9.4] 판매 게이트 — 대기(일정 미확정)/종료 수업은 수강신청 차단.
-    //   프론트 숨김과 별개의 최종 집행 지점 (직접 API 호출 우회 방지).
-    await assertClassOnSale(this.prisma, dto.classId);
+    //   프론트 숨김과 별개의 최종 집행 지점 (직접 API 호출 우회 방지). 반환값은
+    //   Enrollment.billingMonth 폴백(후불·스팟·무월 레거시)에 재사용한다.
+    const lifecycle = await assertClassOnSale(this.prisma, dto.classId);
 
     // 3-0. 팀 소속 승인 검증 (설계서 §4.5 + BR-12)
     //  - 팀 수업 (Class.teamId != null) 은 자녀가 해당 클럽의 approved ClubMember 여야 수강 가능.
@@ -369,6 +371,14 @@ export class EnrollmentsService {
         (fresh.billingMode === "BOTH" && selectedProductTiming === "POSTPAID");
       // 무료 선불 — 결제할 금액이 없으므로 결제사·결제 화면을 거치지 않는다.
       const isFreePrepaid = !isPostpaid && selectedProduct?.price === 0;
+      // 귀속월·결제 방식 스냅샷 — 재활용 전환·신규 생성 양쪽에 같은 값. 입력이 전부
+      //   위에서 확정돼 1회 계산.
+      const enrollmentBilling = resolveEnrollmentBilling(
+        fresh.billingMode,
+        selectedProductTiming,
+        selectedProduct?.billingMonth,
+        lifecycle.earliestRemainingMonth,
+      );
 
       if (existingEnrollment) {
         // 중단된 선불 결제 시도가 남긴 "미결제 pending"(payment-create:enrollment.create)을
@@ -425,6 +435,7 @@ export class EnrollmentsService {
               requestType,
               expiresAt,
               note: dto.note,
+              ...enrollmentBilling,
             },
           });
           if (transitioned.count !== 1) {
@@ -472,6 +483,7 @@ export class EnrollmentsService {
               : EnrollmentStatus.PENDING_APPROVAL,
           expiresAt,
           note: dto.note,
+          ...enrollmentBilling,
         },
         select: ENROLLMENT_DETAIL_SELECT,
       });

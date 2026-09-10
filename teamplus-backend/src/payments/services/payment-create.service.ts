@@ -28,6 +28,7 @@ import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
 import { calculateKoreanAge } from "@/common/utils/age.util";
 import { assertClassOnSale } from "@/common/billing/sales-gate.util";
+import { resolveEnrollmentBilling } from "@/common/billing/enrollment-billing.util";
 import { hasActivePaidEnrollment } from "@/common/billing/paid-enrollment-guard.util";
 import { KgInicisGateway } from "../kg-inicis.gateway";
 import {
@@ -96,6 +97,7 @@ export class PaymentCreateService {
         durationDays: true,
         isActive: true,
         billingMonth: true,
+        billingTiming: true,
         classId: true,
         class: {
           select: {
@@ -111,8 +113,16 @@ export class PaymentCreateService {
       throw new NotFoundException("상품을 찾을 수 없습니다.");
     }
 
+    // 상품과 요청 수업 불일치 차단 — 아래 판매 게이트·자격 스냅샷은 상품의 수업 기준으로
+    //   계산되고 Enrollment 는 options.classId 로 기록되므로, 어긋나면 타 수업의 달·결제
+    //   방식이 영속된다. 수강신청 경로(enrollments.service)와 같은 가드.
+    if (options?.classId && product.classId !== options.classId) {
+      throw new BadRequestException("유효하지 않은 상품입니다.");
+    }
+
     // [Lifecycle v4.1 §9.4] 판매 게이트 — 대기/종료 수업은 결제 생성 차단 (최종 집행 지점).
-    await assertClassOnSale(this.prisma, product.classId);
+    //   반환값은 Enrollment.billingMonth 폴백(후불·스팟·무월 레거시)에 재사용한다.
+    const lifecycle = await assertClassOnSale(this.prisma, product.classId);
 
     // [Lifecycle v4.1 §9.2] 지난 월분 결제 차단 — 결제창을 열어둔 사이 판매 월이 전환되는
     //   race 방어. 월별 패키지(billingMonth 有)는 현재 승인월 분만 결제 가능.
@@ -382,6 +392,15 @@ export class PaymentCreateService {
       this.redisService,
     );
 
+    // Enrollment.billingTiming/billingMonth 스냅샷 — 재활용 relink·신규 생성 두 지점이
+    //   공유. product/lifecycle 은 위에서 이미 확정됐으므로 tx 밖에서 1회 계산.
+    const enrollmentBilling = resolveEnrollmentBilling(
+      product.class?.billingMode,
+      product.billingTiming,
+      product.billingMonth,
+      lifecycle.earliestRemainingMonth,
+    );
+
     const payment = await this.prisma.$transaction(async (tx) => {
       const created = await tx.payment.create({
         data: {
@@ -421,6 +440,7 @@ export class PaymentCreateService {
               paymentId: created.id,
               classProductId: productId,
               expiresAt,
+              ...enrollmentBilling,
             },
           });
           if (relinked.count !== 1) {
@@ -444,6 +464,7 @@ export class PaymentCreateService {
               status: "pending",
               paymentId: created.id,
               expiresAt,
+              ...enrollmentBilling,
             },
           });
           this.logger.log(

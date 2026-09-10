@@ -2017,6 +2017,11 @@ model Enrollment {
   paymentId String?   @map("payment_id") /// 결제 완료 시 연결되는 Payment ID
   paidAt    DateTime? @map("paid_at") @db.Timestamptz(3)
 
+  /// 대상월(그 달 1일 UTC 자정) — 어느 달을 다니려고 신청했나. 생성 시 확정, 상품 교체 재활용 경로에서만 재설정. 신청일·결제일 파생 금지.
+  billingMonth  DateTime? @map("billing_month") @db.Date
+  /// 신청 시점 결제 방식 스냅샷 PREPAID | POSTPAID — 상품 join 없이 자격 조건을 닫기 위함.
+  billingTiming String?   @map("billing_timing")
+
   // 타임스탬프
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   requestedAt DateTime @default(now()) @map("requested_at") @db.Timestamptz(3)
@@ -2042,6 +2047,7 @@ model Enrollment {
   @@index([requestType])
   @@index([expiresAt])
   @@index([status, requestedAt]) // P0: 72h 만료 스케줄러 최적화
+  @@index([childId, classId, billingMonth])
   @@map("enrollments")
 }
 
