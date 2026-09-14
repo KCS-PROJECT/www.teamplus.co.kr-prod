@@ -7518,18 +7518,36 @@ export class ClassesService {
       // 판매 시작(openClassSales)과의 레이스 차단 — lock 후 salesOpenMonth 재조회로
       //   월분 동결(§3-4) 판정 (판매 시작된 달의 신규 생성 = 판매중지+재등록 우회 차단).
       await acquireClassSalesLock(tx, classId);
-      if (dto.feeType === "MONTHLY_FIXED" && dto.billingMonth) {
-        const basis = await tx.class.findUniqueOrThrow({
-          where: { id: classId },
-          select: { salesOpenMonth: true },
-        });
+      // 갱신 원본은 INSERT 앞에서 검증 — 다른 수업 행이면 쓰기 없이 404.
+      const source = dto.sourceProductId
+        ? await this.loadRenewalSource(tx, classId, dto.sourceProductId)
+        : null;
+      const isMonthlyWithMonth =
+        dto.feeType === "MONTHLY_FIXED" && !!dto.billingMonth;
+      // 월분 동결 판정과 원본 판매 창 판정이 같은 class 행을 쓰므로 한 번만 읽는다.
+      const basis =
+        isMonthlyWithMonth || source
+          ? await tx.class.findUniqueOrThrow({
+              where: { id: classId },
+              select: {
+                endedAt: true,
+                salesOpenMonth: true,
+                trainingType: true,
+                schedules: {
+                  where: { isCancelled: false },
+                  select: { scheduledDate: true },
+                },
+              },
+            })
+          : null;
+      if (isMonthlyWithMonth && basis) {
         assertMonthNotFrozen(
           new Date(`${dto.billingMonth}-01T00:00:00.000Z`),
           basis.salesOpenMonth,
         );
       }
 
-      return tx.classProduct.create({
+      const created = await tx.classProduct.create({
         data: {
           classId,
           productName: dto.productName,
@@ -7563,6 +7581,12 @@ export class ClassesService {
           createdAt: true,
         },
       });
+
+      if (source && basis) {
+        await this.retireRenewalSourceIfUnsellable(tx, source, basis);
+      }
+
+      return created;
     });
 
     // 캐시 무효화 — 팀 수업만 (오픈클래스 캐시 키 별도)
@@ -7571,6 +7595,55 @@ export class ClassesService {
     }
 
     return product;
+  }
+
+  /** 월분 갱신의 복사 원본 행 — 같은 수업의 행이어야 한다. */
+  private async loadRenewalSource(
+    tx: Prisma.TransactionClient,
+    classId: string,
+    sourceProductId: string,
+  ): Promise<{ id: string; billingMonth: Date | null; isActive: boolean }> {
+    const source = await tx.classProduct.findUnique({
+      where: { id: sourceProductId },
+      select: { id: true, classId: true, billingMonth: true, isActive: true },
+    });
+    if (!source || source.classId !== classId) {
+      throw new NotFoundException("갱신 원본 수강권을 찾을 수 없습니다.");
+    }
+    return source;
+  }
+
+  /**
+   * 월분 갱신의 복사 원본 행 정리 — 원본 달이 판매 중인 달 밖일 때만 판매 중지.
+   *
+   * 판매 창은 이번 달~판매 시작된 달의 2개월이라, 이번 달분이 팔리는 중에 다음 달분을
+   * 등록해도 원본(이번 달분)은 계속 팔려야 한다. 무조건 소진하면 이번 달 잔여 회차가
+   * 결제 불가가 된다. 무월(레거시) 원본은 판매 창 판정이 불가능하므로 소진한다.
+   */
+  private async retireRenewalSourceIfUnsellable(
+    tx: Prisma.TransactionClient,
+    source: { id: string; billingMonth: Date | null; isActive: boolean },
+    basis: {
+      endedAt: Date | null;
+      salesOpenMonth: Date | null;
+      trainingType: string | null;
+      schedules: Array<{ scheduledDate: Date }>;
+    },
+  ): Promise<void> {
+    if (!source.isActive) return;
+
+    if (source.billingMonth) {
+      const { sellableMonths } = computeSalesWindow(
+        toLifecycleInput(basis, basis.schedules ?? []),
+      );
+      const sourceMonth = source.billingMonth.getTime();
+      if (sellableMonths.some((m) => m.getTime() === sourceMonth)) return;
+    }
+
+    await tx.classProduct.update({
+      where: { id: source.id },
+      data: { isActive: false },
+    });
   }
 
   /**

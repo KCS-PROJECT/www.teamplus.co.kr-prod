@@ -456,6 +456,9 @@ export default function ClassSchedulesManagePage() {
   // 소진(isActive:false) 포함 전체 월정액 행 — 앵커 달(가장 가까운 스냅샷 달) 판정 전용.
   //   감독 조회는 서버가 비활성 행도 내려준다(shouldHideInactiveFor 는 학부모 계열만 숨김).
   const [monthlyRowsAll, setMonthlyRowsAll] = useState<MonthlyPkg[] | null>(null);
+  // 이번 화면에서 갱신 원본으로 쓴 행 id — 원본 달이 아직 판매 중이면 서버가 살려 두므로,
+  //   이름을 바꿔 등록한 경우 이름 기준 제외만으로는 원본이 다시 제안된다.
+  const [renewedSourceIds, setRenewedSourceIds] = useState<Set<string>>(new Set());
   const [pkgPrices, setPkgPrices] = useState<Record<string, string>>({});
   // 제안 금액 회차 스테퍼 — 항목별 선택 회수의 원시 입력 문자열
   //   (미지정 = 대상월 전체 회차 기본값 · '' = 입력 중 임시 빈 값 허용).
@@ -525,6 +528,7 @@ export default function ClassSchedulesManagePage() {
       const inWindow =
         anchorMonth !== null ? month === anchorMonth : month === null;
       if (!inWindow) return false;
+      if (renewedSourceIds.has(pkg.id)) return false;
       if (updatedNames.has(pkg.productName) || seen.has(pkg.productName)) {
         return false;
       }
@@ -557,24 +561,6 @@ export default function ClassSchedulesManagePage() {
     return { counts, total };
   }, [schedules, targetMonthKey]);
 
-  // 갱신 원본 행 소진 — 등록·제외 시 해당 행(id)만 판매 중지. 이름 매칭 승계 없음.
-  //   지난 월분도 판매 중지 단독 변경은 서버가 허용한다(지난 월분 잠금의 유일한 예외).
-  //   실패는 경고 토스트로 노출 (조용한 실패 금지 — 실패 시 행이 갱신 목록에 남는다).
-  const retireSourceRow = useCallback(
-    async (pkgId: string) => {
-      const res = await api.patch(`/classes/${classId}/products/${pkgId}`, {
-        isActive: false,
-      });
-      if (!res.success) {
-        toast.error(
-          res.error?.message ?? MESSAGES.class.salesCycle.retireFailed,
-        );
-      }
-      return res.success;
-    },
-    [classId, toast],
-  );
-
   const handleCreateMonthPkg = useCallback(
     async (pkg: MonthlyPkg) => {
       if (!targetMonthKey) return;
@@ -595,6 +581,8 @@ export default function ClassSchedulesManagePage() {
       const desc = (rawDesc === undefined ? (pkg.description ?? '') : rawDesc).trim();
       try {
         // §9.2 "동일 내용 복제" — 단위 필드 3종 패스스루.
+        // 원본 행(id) 처리는 서버가 생성과 같은 트랜잭션에서 결정한다 — 원본 달이 아직
+        //   판매 중이면 두 월분을 함께 팔고, 판매 창 밖(지난 달·무월)이면 판매 중지.
         const res = await api.post(`/classes/${classId}/products`, {
           productName: name,
           description: desc || undefined,
@@ -604,11 +592,10 @@ export default function ClassSchedulesManagePage() {
           sessionsPerMonth: pkg.sessionsPerMonth ?? undefined,
           sessionsPerWeek: pkg.sessionsPerWeek ?? undefined,
           billingMonth: targetMonthKey,
+          sourceProductId: pkg.id,
         });
         if (res.success) {
-          // 원본 행 소진(id 기반) — 이름 변경 여부와 무관하게 방금 누른 행만 중지.
-          //   무월(레거시) 원본의 월 필터 우회 중복 노출 방지도 이 한 번으로 겸한다.
-          await retireSourceRow(pkg.id);
+          setRenewedSourceIds((prev) => new Set(prev).add(pkg.id));
           toast.success(MESSAGES.class.salesCycle.packageCreated);
           await fetchMonthlyPkgs();
         } else if (res.error?.message) {
@@ -618,7 +605,7 @@ export default function ClassSchedulesManagePage() {
         setPkgSubmitting(null);
       }
     },
-    [classId, targetMonthKey, pkgPrices, pkgNames, pkgDescs, toast, fetchMonthlyPkgs, retireSourceRow],
+    [classId, targetMonthKey, pkgPrices, pkgNames, pkgDescs, toast, fetchMonthlyPkgs],
   );
 
   // [이번 달 제외] 버튼은 앵커 규칙 도입으로 제거(2026-09-01) — 안 팔 항목은 등록하지

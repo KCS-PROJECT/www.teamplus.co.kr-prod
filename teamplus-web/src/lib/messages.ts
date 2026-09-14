@@ -488,6 +488,9 @@ export const MESSAGES = {
     // 결제 옵션 — 월분 상품이 2개(이번 달·다음 달) 노출될 때의 섹션 제목·다음 달 배지.
     monthSelectTitle: "결제할 달 선택",
     prepayNextMonthBadge: "다음 달 미리 결제",
+    // 훈련 상세 수업료 — 월분 상품이 두 달분 이상일 때의 달별 탭. 결제한 달은 탭에서 바로 표시.
+    monthTabLabel: (month: number) => `${month}월분`,
+    monthTabPaidLabel: (month: number) => `${month}월분 · 결제 완료`,
   },
   attendance: {
     ...SHARED_MESSAGES.attendance,

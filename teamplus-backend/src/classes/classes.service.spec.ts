@@ -133,6 +133,7 @@ describe("ClassesService", () => {
       updateMany: jest.Mock;
     };
     classProduct: {
+      create: jest.Mock;
       createMany: jest.Mock;
       findUnique: jest.Mock;
       findFirst: jest.Mock;
@@ -180,6 +181,7 @@ describe("ClassesService", () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       classProduct: {
+        create: jest.fn(),
         createMany: jest.fn(),
         findUnique: jest.fn(),
         findFirst: jest.fn(),
@@ -3075,6 +3077,154 @@ describe("ClassesService", () => {
         ),
       ).rejects.toThrow("수업 일정이 방금 변경되었습니다");
       expect(mockTx.class.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("createClassProductByClassId — 갱신 원본 소진(sourceProductId)", () => {
+    // 날짜 픽스처 — 실행일(KST) 기준 동적 산출(고정 연월은 달이 바뀌면 판매 창 밖으로 밀린다).
+    const kstNow = new Date(Date.now() + 9 * 3600 * 1000);
+    const monthStart = (offset: number) =>
+      new Date(
+        Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth() + offset, 1),
+      );
+    const monthEnd = (offset: number) =>
+      new Date(
+        Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth() + offset + 1, 0),
+      );
+    const CUR_MONTH = monthStart(0);
+    const NEXT_MONTH = monthStart(1);
+    const PREV_MONTH = monthStart(-1);
+    const nextMonthKey = NEXT_MONTH.toISOString().slice(0, 7);
+    const sourceId = "prod-source-1";
+
+    const wireCreateMocks = (source: {
+      classId?: string;
+      billingMonth: Date | null;
+      isActive?: boolean;
+    } | null) => {
+      jest
+        .spyOn(
+          service as never as { assertClassManagerPermission: () => unknown },
+          "assertClassManagerPermission" as never,
+        )
+        .mockResolvedValue({
+          ownerType: "team",
+          ownerId: mockClubId,
+          billingMode: "PREPAID",
+        } as never);
+      jest
+        .spyOn(
+          service as never as { invalidateClassCache: () => unknown },
+          "invalidateClassCache" as never,
+        )
+        .mockResolvedValue(undefined as never);
+      // 판매 시작된 달 = 이번 달, 잔여 일정 = 이번 달 말일·다음 달 말일 → 판매 창 [이번 달].
+      (mockTx.class.findUniqueOrThrow as jest.Mock).mockResolvedValue({
+        endedAt: null,
+        salesOpenMonth: CUR_MONTH,
+        trainingType: null,
+        schedules: [
+          { scheduledDate: monthEnd(0) },
+          { scheduledDate: monthEnd(1) },
+        ],
+      });
+      (mockTx.classProduct.create as jest.Mock).mockResolvedValue({
+        id: "prod-new",
+        classId: mockClassId,
+      });
+      (mockTx.classProduct.findUnique as jest.Mock).mockResolvedValue(
+        source
+          ? {
+              id: sourceId,
+              classId: source.classId ?? mockClassId,
+              billingMonth: source.billingMonth,
+              isActive: source.isActive ?? true,
+            }
+          : null,
+      );
+      (mockTx.classProduct.update as jest.Mock).mockResolvedValue({
+        id: sourceId,
+      });
+    };
+
+    const createNextMonth = (sourceProductId?: string) =>
+      service.createClassProductByClassId(mockCoachUserId, "COACH", mockClassId, {
+        productName: "월 8회",
+        price: 200000,
+        feeType: "MONTHLY_FIXED",
+        billingMonth: nextMonthKey,
+        ...(sourceProductId ? { sourceProductId } : {}),
+      });
+
+    it("원본 달이 판매 중(이번 달)이면 원본을 그대로 두고 다음 달분만 생성한다", async () => {
+      wireCreateMocks({ billingMonth: CUR_MONTH });
+
+      const result = await createNextMonth(sourceId);
+
+      expect(result).toEqual({ id: "prod-new", classId: mockClassId });
+      expect(mockTx.classProduct.create).toHaveBeenCalledTimes(1);
+      expect(mockTx.classProduct.update).not.toHaveBeenCalled();
+      // 판매 창 판정은 잔여 일정이 필요 — class 행은 한 번만 읽되 schedules 를 포함해야 한다.
+      expect(mockTx.class.findUniqueOrThrow).toHaveBeenCalledTimes(1);
+      expect(mockTx.class.findUniqueOrThrow).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({
+            salesOpenMonth: true,
+            schedules: expect.objectContaining({
+              where: { isCancelled: false },
+            }),
+          }),
+        }),
+      );
+    });
+
+    it("원본 달이 지난 달(판매 창 밖)이면 원본을 판매 중지한다", async () => {
+      wireCreateMocks({ billingMonth: PREV_MONTH });
+
+      await createNextMonth(sourceId);
+
+      expect(mockTx.classProduct.update).toHaveBeenCalledWith({
+        where: { id: sourceId },
+        data: { isActive: false },
+      });
+    });
+
+    it("무월(레거시) 원본은 판매 창 판정 없이 판매 중지한다", async () => {
+      wireCreateMocks({ billingMonth: null });
+
+      await createNextMonth(sourceId);
+
+      expect(mockTx.classProduct.update).toHaveBeenCalledWith({
+        where: { id: sourceId },
+        data: { isActive: false },
+      });
+    });
+
+    it("이미 판매 중지된 원본은 다시 쓰지 않는다", async () => {
+      wireCreateMocks({ billingMonth: PREV_MONTH, isActive: false });
+
+      await createNextMonth(sourceId);
+
+      expect(mockTx.classProduct.update).not.toHaveBeenCalled();
+    });
+
+    it("원본이 다른 수업의 행이면 404 — INSERT 전에 막는다", async () => {
+      wireCreateMocks({ classId: "other-class", billingMonth: PREV_MONTH });
+
+      await expect(createNextMonth(sourceId)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(mockTx.classProduct.create).not.toHaveBeenCalled();
+      expect(mockTx.classProduct.update).not.toHaveBeenCalled();
+    });
+
+    it("sourceProductId 미전송이면 원본 조회·판매 중지 모두 하지 않는다", async () => {
+      wireCreateMocks({ billingMonth: PREV_MONTH });
+
+      await createNextMonth();
+
+      expect(mockTx.classProduct.findUnique).not.toHaveBeenCalled();
+      expect(mockTx.classProduct.update).not.toHaveBeenCalled();
     });
   });
 
