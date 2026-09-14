@@ -16,6 +16,7 @@ import {
   BillingTiming,
 } from "./payment-calculation.service";
 import { deriveSource } from "./payment-source.util";
+import { resolveActivePaymentProvider } from "./payment-provider.util";
 import {
   aggregatePostpaidAttendance,
   monthRangeUtc,
@@ -318,6 +319,10 @@ export class PostpaidSettlementService {
 
     const { start, end } = this.monthRange(yearMonth);
 
+    // 청구행에도 결제사를 남긴다 — 결제사 없는 Payment 행을 만들지 않는 원장 규약.
+    //   실제 승인 결제사는 applyApprovedPayment 가 다시 확정하므로 여기 값은 청구 시점 기록이다.
+    const pgProvider = await resolveActivePaymentProvider(this.prisma);
+
     // 단가 수정·present 출석 기록과의 직렬화 — postpaid lock 획득 후 tx 안에서
     //   단가·확정 상태·출석 집계를 재조회한다 (가격 잠금 §4-0 B). lock 없이 밖에서
     //   집계하면 확정 직전에 끼어든 단가 변경·출석이 낡은 청구로 굳는다.
@@ -393,13 +398,20 @@ export class PostpaidSettlementService {
           const orderNumber = `POSTPAID-${head.id}-${ln.userId}`;
           const payment = await tx.payment.upsert({
             where: { orderNumber },
-            update: { amount: ln.amount, paymentStatus: "pending" },
+            update: {
+              amount: ln.amount,
+              paymentStatus: "pending",
+              paymentMethod: pgProvider,
+              pgProvider,
+            },
             create: {
               orderNumber,
               userId: txPayerOf.get(ln.userId) ?? ln.userId,
               productId: product.id,
               amount: ln.amount,
               paymentStatus: "pending",
+              paymentMethod: pgProvider,
+              pgProvider,
             },
             select: { id: true },
           });

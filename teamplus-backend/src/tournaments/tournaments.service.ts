@@ -2713,6 +2713,12 @@ export class TournamentsService {
 
     // 정산 트랜잭션 — 대회 단가 기록 + 참가자별 Payment(pending) upsert + 상태 전환.
     const fee = new Decimal(feePerPerson);
+    // 청구행 결제사 — 결제사 없는 Payment 행을 만들지 않는 원장 규약. 실제 승인 결제사는
+    //   applyApprovedPayment 가 다시 확정한다.
+    const pgProvider = await resolveActivePaymentProvider(
+      this.prisma,
+      this.redis,
+    );
     const billed = await this.prisma.$transaction(async (tx) => {
       // 1. 대회 단위 1인당 금액 보관 (feePerGame + TOTAL_FIXED = 고정 총액 의미).
       await tx.tournament.update({
@@ -2740,19 +2746,29 @@ export class TournamentsService {
             productId: null,
             amount: feePerPerson,
             paymentStatus: "pending",
-            paymentMethod: "toss",
+            paymentMethod: pgProvider,
+            pgProvider,
           },
           select: { id: true },
         });
 
-        // 동시 결제 방어 — 대상 조회~커밋 사이 결제 완료(completed)된 건은 되돌리지
-        //   않고 건너뛴다. userId 도 갱신해 주 보호자 변경 시 결제 권한 불일치 방지.
+        // 동시 결제 방어 — 대상 조회~커밋 사이에 승인·환불이 진행된 건은 되돌리지 않고
+        //   건너뛴다. 재청구가 허용되는 행은 돈이 나가지 않은 승인 전 상태(미결제 pending ·
+        //   결제요청 취소 cancelled · PG 승인 거절 failed)뿐이며, completedAt 이 있으면
+        //   승인을 거친 행이라 금액·결제사를 보존한다.
+        //   userId 도 갱신해 주 보호자 변경 시 결제 권한 불일치 방지.
         const payUpd = await tx.payment.updateMany({
-          where: { id: payment.id, paymentStatus: { not: "completed" } },
+          where: {
+            id: payment.id,
+            paymentStatus: { in: ["pending", "cancelled", "failed"] },
+            completedAt: null,
+          },
           data: {
             amount: feePerPerson,
             paymentStatus: "pending",
             userId: payerId,
+            paymentMethod: pgProvider,
+            pgProvider,
           },
         });
         if (payUpd.count === 0) continue;
