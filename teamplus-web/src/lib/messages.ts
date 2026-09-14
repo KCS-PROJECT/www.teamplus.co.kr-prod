@@ -3328,6 +3328,8 @@ export const MESSAGES = {
       actionPlayersAriaLabel: "선수정보",
       playersTitle: "선수정보",
       playersEnrolledOn: (date: string) => `등록 ${date}`,
+      // 선수 행 1줄 — 이름 우측 좁은 자리용 축약형("7.22 등록").
+      playersEnrolledOnShort: (date: string) => `${date} 등록`,
       // 선수정보 페이지 2탭 — 1차 명단(roster) / 2차 결제(payment)
       tabRoster: "선수정보",
       tabPayment: "결제 현황",

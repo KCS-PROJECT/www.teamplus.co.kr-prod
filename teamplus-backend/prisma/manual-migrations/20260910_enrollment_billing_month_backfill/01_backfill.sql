@@ -27,7 +27,10 @@
 --                                                     (감독이 해제한 선수 = registration inactive 는 여기 안 옴)
 --   4. POSTPAID + 그 외(종결·해제)                  → created_at 의 KST 달 1일(종결 행에 미래 달 금지)
 --   5. 그 외(무월 레거시 회차권 — 미사용 잔재)      → payments.completed_at 의 KST 달, 없으면 paid_at 의 KST 달
---   6. 전부 없으면 NULL 유지 = 결정 불능 행(02_audit.sql 로 추출, Phase 4 NOT NULL 전 해소 필요)
+--   6. 전부 없으면 created_at 의 KST 달 1일 — 근거가 남지 않은 행의 마지막 폴백.
+--      대상은 상품 월도 결제 시각도 없는 선불 행이며 실측상 전부 종결 상태다(개발 8행 · 운영 16행,
+--      2026-09-10 조회 시점 모두 expired/cancelled). 종결 행이라 자격 판정에 쓰이지 않고,
+--      Phase 4 NOT NULL 을 막지 않도록 월을 채운다. 살아 있는 행이 여기까지 오면 02_audit.sql 3-1 이 잡는다.
 
 BEGIN;
 
@@ -66,7 +69,7 @@ src AS (
         THEN date_trunc('month', (p.completed_at AT TIME ZONE 'Asia/Seoul'))::date
       WHEN e.paid_at IS NOT NULL
         THEN date_trunc('month', (e.paid_at AT TIME ZONE 'Asia/Seoul'))::date
-      ELSE NULL
+      ELSE date_trunc('month', (e.created_at AT TIME ZONE 'Asia/Seoul'))::date
     END AS month
   FROM icehockey.enrollments e
   CROSS JOIN params

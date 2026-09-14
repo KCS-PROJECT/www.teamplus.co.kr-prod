@@ -3,6 +3,7 @@
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { Icon } from '@/components/ui/Icon';
 import { cn } from '@/lib/utils';
+import { MESSAGES } from '@/lib/messages';
 import type { CoachAttendanceStatus } from '@/hooks/useCoachAttendanceManage';
 import { useNativeScrim } from '@/hooks/useNativeScrim';
 
@@ -13,7 +14,7 @@ import { useNativeScrim } from '@/hooks/useNativeScrim';
  *   - 학생 행 클릭 → 시트 열림 → 2개 명시적 옵션 (출석/결석)
  *   - 현재 상태 옵션은 disabled + "현재" 배지
  *   - 출석 시 결제권 차감 / 결석 시 출석권 복원 — 옵션 라벨에 명시
- *   - "처리 취소(미확인)" 옵션은 별도 라인으로 분리 (attendanceId 있을 때만)
+ *   - "체크 전으로 되돌리기" 옵션은 별도 라인으로 분리 (attendanceId 있을 때만)
  *   - DESIGN.md wallet v2 토큰 — mint/flame/wsurface/wline (emerald/red 직접 사용 금지)
  */
 
@@ -27,18 +28,18 @@ interface AttendanceStatusSheetProps {
   startHHMM: string;
   currentStatus: CoachAttendanceStatus;
   /**
-   * 출석 레코드 ID — 처리 취소(미확인 복귀) 노출 조건.
-   * null 이면 이미 미확인 상태이므로 처리 취소 옵션은 숨겨짐.
+   * 출석 레코드 ID — 체크 전 되돌리기 노출 조건.
+   * null 이면 이미 체크 전 상태이므로 되돌리기 옵션은 숨겨짐.
    */
   attendanceId: string | null;
   /**
    * 마지막 처리 시각 (ISO string) — 헤더 "현재 상태" 줄에 "16:05 처리" 로 표시.
-   * 미확인(레코드 없음) 일 때는 null.
+   * 체크 전(레코드 없음) 일 때는 null.
    */
   processedAt: string | null;
   isSubmitting: boolean;
   onSelect: (next: ChangeableStatus) => void;
-  /** 처리 취소(미확인 복귀) 콜백. */
+  /** 체크 전 되돌리기 콜백. */
   onClear: () => void;
 }
 
@@ -77,9 +78,9 @@ const OPTION_ICON_CLASS: Record<ChangeableStatus, string> = {
 };
 
 const CURRENT_LABEL: Record<CoachAttendanceStatus, string> = {
-  present: '출석',
-  absent: '결석',
-  unchecked: '미확인',
+  present: MESSAGES.attendance.statusPresent,
+  absent: MESSAGES.attendance.statusAbsent,
+  unchecked: MESSAGES.attendance.statusPending,
 };
 
 // ISO → "HH:MM" 로컬 시각. 잘못된 입력은 null.
@@ -171,7 +172,7 @@ export function AttendanceStatusSheet({
       </ul>
 
       {/*
-       * 처리 취소 (미확인 복귀)
+       * 체크 전으로 되돌리기
        * attendance 레코드가 있을 때만 노출. 학생 도착 전 코치가 실수로 입력한 경우 사용.
        */}
       {attendanceId !== null && (
@@ -187,7 +188,7 @@ export function AttendanceStatusSheet({
               if (!isSubmitting) onClear();
             }}
             disabled={isSubmitting}
-            aria-label="출석 처리 취소 — 미확인 상태로 되돌리기"
+            aria-label={MESSAGES.attendance.revertToPending}
             className={cn(
               'flex w-full items-center gap-3 rounded-w-md border border-wline bg-wbg px-4 py-3 text-left text-wtext-2 transition-colors motion-reduce:transition-none',
               'hover:border-wline hover:bg-wline-2',
@@ -198,7 +199,7 @@ export function AttendanceStatusSheet({
           >
             <Icon name="restart_alt" className="text-xl shrink-0" aria-hidden="true" />
             <div className="flex-1 min-w-0">
-              <p className="text-card-body font-bold">처리 취소 (미확인으로 되돌리기)</p>
+              <p className="text-card-body font-bold">{MESSAGES.attendance.revertToPending}</p>
               <p className="text-card-meta opacity-80 mt-0.5">
                 결제권 복원 + 출석 기록 삭제
               </p>

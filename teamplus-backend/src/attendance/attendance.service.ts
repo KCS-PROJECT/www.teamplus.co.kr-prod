@@ -30,6 +30,8 @@ import {
   kstTodayUtcMidnight,
   addUtcDays,
 } from "@/common/utils/kst-date.util";
+import { utcMonthStart } from "@/common/utils/class-lifecycle.util";
+import { eligibleChildIdsForMonth } from "@/common/billing/enrollment-eligibility.util";
 
 /** 출석 상태 변경 시 학부모에게 나가는 인앱/푸시 알림 제목 (최초 마킹·정정·취소 공용) */
 const ATTENDANCE_NOTIFY_TITLE = "자녀 출석 안내";
@@ -3524,7 +3526,7 @@ export class AttendanceService {
     const sdTomorrow = addUtcDays(sdToday, 1);
     const studentCount = cls.registrations.length;
 
-    // 1) 전체 통계 집계 (출석 상태별 카운트)
+    // 1) 누적 출석 집계 (출석 상태별 카운트)
     const statusCounts = await this.prisma.classAttendance.groupBy({
       by: ["attendanceStatus"],
       where: {
@@ -3536,18 +3538,22 @@ export class AttendanceService {
       statusCounts.map((s) => [s.attendanceStatus, s._count.attendanceStatus]),
     );
     const presentTotal = countMap.get("present") ?? 0;
-    const absentTotal = countMap.get("absent") ?? 0;
-    const attendanceTotal = presentTotal + absentTotal;
 
-    // 2) 완료된 일정 수 (오늘 이전 KST 달력일)
+    // 2) 완료된 일정 전체 (오늘 이전 KST 달력일) — 회차별 체크 진척 집계용.
+    //    회차 명단은 그 회차가 속한 달 기준이라 count 만으로는 진척을 낼 수 없다.
     const completedDateThreshold = sdToday;
-    const completedCount = await this.prisma.classSchedule.count({
+    const completedAll = await this.prisma.classSchedule.findMany({
       where: {
         classId,
         isCancelled: false,
         scheduledDate: { lt: completedDateThreshold },
       },
+      select: {
+        scheduledDate: true,
+        attendances: { select: { memberId: true, attendanceStatus: true } },
+      },
     });
+    const completedCount = completedAll.length;
 
     // 3) 진행 중 일정 (오늘 KST 달력일, 최대 3건)
     const inProgressRaw = await this.prisma.classSchedule.findMany({
@@ -3568,7 +3574,7 @@ export class AttendanceService {
         startTime: true,
         endTime: true,
         attendances: {
-          select: { attendanceStatus: true },
+          select: { memberId: true, attendanceStatus: true },
         },
       },
     });
@@ -3591,7 +3597,7 @@ export class AttendanceService {
         startTime: true,
         endTime: true,
         attendances: {
-          select: { attendanceStatus: true },
+          select: { memberId: true, attendanceStatus: true },
         },
       },
     });
@@ -3612,19 +3618,53 @@ export class AttendanceService {
       },
     });
 
-    // 6) 통계 계산
-    const avgAttendanceRate =
-      attendanceTotal > 0
-        ? Math.round((presentTotal / attendanceTotal) * 100)
-        : 0;
+    // 6) 회차 명단 = 그 회차가 속한 달의 수강 자격자 ∪ 그 회차에 출석 기록이 있는 회원.
+    //    현재 시점 active 등록 수를 분모로 쓰면 환불·이탈로 등록이 해제될 때 과거 회차의
+    //    인원이 소급해 줄어들고(기록은 남으므로) 체크 전 인원이 음수가 된다.
+    //    기록 보유자를 분모에 포함하면 present + absent <= total 이 구조적으로 성립한다.
+    const monthKeys = new Set<number>();
+    for (const s of [...inProgressRaw, ...completedRaw, ...completedAll]) {
+      monthKeys.add(utcMonthStart(s.scheduledDate).getTime());
+    }
+    const eligibleByMonth = new Map<number, Set<string>>();
+    await Promise.all(
+      Array.from(monthKeys).map(async (key) => {
+        eligibleByMonth.set(
+          key,
+          await eligibleChildIdsForMonth(this.prisma, classId, new Date(key)),
+        );
+      }),
+    );
+    const rosterSizeOf = (
+      scheduledDate: Date,
+      attendances: { memberId: string }[],
+    ): number => {
+      const roster = new Set(
+        eligibleByMonth.get(utcMonthStart(scheduledDate).getTime()) ?? [],
+      );
+      for (const a of attendances) roster.add(a.memberId);
+      return roster.size;
+    };
 
-    // 7) 응답 매핑
+    // 7) 출석 체크 진척 — 완료 회차 중 체크 전 인원이 남지 않은 회차 수.
+    let checkedCount = 0;
+    for (const s of completedAll) {
+      const marked = s.attendances.filter(
+        (a) =>
+          a.attendanceStatus === "present" || a.attendanceStatus === "absent",
+      ).length;
+      if (marked >= rosterSizeOf(s.scheduledDate, s.attendances)) {
+        checkedCount += 1;
+      }
+    }
+
+    // 8) 응답 매핑
     const mapItem = (s: {
       id: string;
       scheduledDate: Date;
       startTime: string | null;
       endTime: string | null;
-      attendances: { attendanceStatus: string }[];
+      attendances: { memberId: string; attendanceStatus: string }[];
     }) => {
       const present = s.attendances.filter(
         (a) => a.attendanceStatus === "present",
@@ -3632,9 +3672,7 @@ export class AttendanceService {
       const absent = s.attendances.filter(
         (a) => a.attendanceStatus === "absent",
       ).length;
-      const unchecked = studentCount - present - absent;
-      const rate =
-        studentCount > 0 ? Math.round((present / studentCount) * 100) : 0;
+      const total = rosterSizeOf(s.scheduledDate, s.attendances);
       return {
         scheduleId: s.id,
         scheduledDate: s.scheduledDate.toISOString(),
@@ -3643,9 +3681,8 @@ export class AttendanceService {
         endTime: s.endTime,
         present,
         absent,
-        unchecked: unchecked > 0 ? unchecked : 0,
-        total: studentCount,
-        rate,
+        unchecked: total - present - absent,
+        total,
       };
     };
 
@@ -3664,9 +3701,11 @@ export class AttendanceService {
       stats: {
         totalSchedules: cls._count.schedules,
         completedCount,
-        avgAttendanceRate,
+        // 출석률은 결석을 찍지 않는 운영에서 항상 100% 라 지표가 되지 못한다.
+        //   대신 완료 회차의 체크 진척을 보여준다.
+        checkedCount,
+        pendingCheckCount: completedCount - checkedCount,
         totalPresent: presentTotal,
-        totalAbsent: absentTotal,
       },
       inProgress: inProgressRaw.map(mapItem),
       completed: {
