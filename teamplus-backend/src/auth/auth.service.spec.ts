@@ -94,7 +94,9 @@ describe("AuthService", () => {
       findMany: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockResolvedValue({}),
     },
-    enrollment: { count: jest.fn() },
+    enrollment: { count: jest.fn(), findMany: jest.fn() },
+    classAttendance: { findMany: jest.fn() },
+    monthlyPostpaidBilling: { findMany: jest.fn() },
     monthlyPostpaidBillingLine: { count: jest.fn() },
     tournamentRegistration: { count: jest.fn() },
     refundRequest: { count: jest.fn() },
@@ -821,6 +823,10 @@ describe("AuthService", () => {
       mockPrismaService.tournament.count.mockResolvedValue(0);
       mockPrismaService.academy.count.mockResolvedValue(0);
       mockPrismaService.enrollment.count.mockResolvedValue(0);
+      // 정산 전 후불 출석 축 — 후불 수강 쌍 없음(빈 배열)이면 출석·정산 조회 없이 0
+      mockPrismaService.enrollment.findMany.mockResolvedValue([]);
+      mockPrismaService.classAttendance.findMany.mockResolvedValue([]);
+      mockPrismaService.monthlyPostpaidBilling.findMany.mockResolvedValue([]);
     };
 
     beforeEach(() => {
@@ -928,8 +934,8 @@ describe("AuthService", () => {
       ).rejects.toThrow("운영 중인 팀 1개, 활성 수업 3개");
     });
 
-    // 24. PARENT + 자녀 진행 중 수강신청 → 차단 / 그 외 상태만이면 통과
-    it("PARENT + 자녀 진행 중 수강신청 있으면 차단", async () => {
+    // 24. PARENT + 자녀 수강 중(이번 달·다음 달 자격) → 차단 / 자격 없으면 통과
+    it("PARENT + 자녀 수강 중이면 차단", async () => {
       mockPrismaService.user.findUnique.mockResolvedValue(
         buildUser({ userType: UserType.PARENT }),
       );
@@ -937,12 +943,13 @@ describe("AuthService", () => {
 
       await expect(
         service.requestWithdraw("u-1", undefined, undefined, WITHDRAW_CONFIRM),
-      ).rejects.toThrow("자녀의 진행 중인 수강신청");
+      ).rejects.toThrow("자녀의 이번 달·다음 달 수강");
+      // 판정은 withdrawal-guard.util 에 위임 — 상태 목록이 아니라 자녀 스코프 + 자격 OR 조각.
       expect(mockPrismaService.enrollment.count).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            status: { in: ["pending", "pending_approval", "approved"] },
             child: { childParents: { some: { parentId: "u-1" } } },
+            OR: expect.any(Array),
           }),
         }),
       );
