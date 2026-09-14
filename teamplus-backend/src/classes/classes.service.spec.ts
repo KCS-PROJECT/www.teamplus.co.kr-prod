@@ -252,7 +252,9 @@ describe("ClassesService", () => {
               findUnique: jest.fn(),
             },
             enrollment: {
-              findMany: jest.fn(),
+              // [Phase 3] getClasses/getClubClasses 가 운영월 자격자 배치 조회에 사용 —
+              //   기본값 빈 배열(호출 자체를 다루는 테스트만 개별 override).
+              findMany: jest.fn().mockResolvedValue([]),
               count: jest.fn(),
             },
             memberCredit: {
@@ -1681,6 +1683,8 @@ describe("ClassesService", () => {
       paymentId: null,
       paidAt: null,
       classProductId: "prod-post",
+      billingMonth: new Date("2026-06-01T00:00:00Z"),
+      billingTiming: "POSTPAID",
       product: {
         id: "prod-post",
         productName: "후불(회당)",
@@ -1893,6 +1897,8 @@ describe("ClassesService", () => {
     it("[UNASSIGNED] BOTH + 상품 없는 enrollment → UNSETTLED·미수금 0(허위 미수 방지)", async () => {
       wireBillingMocks({
         billing: null,
+        // [Phase 3] 결정 불능(billingTiming NULL)은 자격이 아니므로 활동 증거로 명단 유지.
+        attendanceSchedules: [{ attendances: [{ memberId: "child-1" }] }],
         enrollments: [
           {
             id: "enr-x",
@@ -1901,6 +1907,8 @@ describe("ClassesService", () => {
             paymentId: null,
             paidAt: null,
             classProductId: null,
+            billingMonth: null,
+            billingTiming: null,
             product: null, // 유효 상품 없음 → UNASSIGNED
             payment: null,
           },
@@ -1946,6 +1954,8 @@ describe("ClassesService", () => {
             paymentId: null,
             paidAt: null,
             classProductId: "prod-pre",
+            billingMonth: new Date("2026-06-01T00:00:00Z"),
+            billingTiming: "PREPAID",
             product: {
               id: "prod-pre",
               productName: "월권",
@@ -2006,6 +2016,8 @@ describe("ClassesService", () => {
             paymentId: null,
             paidAt: null,
             classProductId: "pp-1",
+            billingMonth: new Date("2026-06-01T00:00:00Z"),
+            billingTiming: "POSTPAID",
             product: productA, // 학생은 A 등록, A 단가 null
             payment: null,
           },
@@ -2053,6 +2065,9 @@ describe("ClassesService", () => {
       paymentId: "pay-pre",
       paidAt: new Date("2026-06-05T00:00:00Z"),
       classProductId: "prod-pre",
+      // [Phase 3] 신청 확정월 스냅샷 — 이 describe 블록은 전부 6월 상품 시나리오.
+      billingMonth: new Date("2026-06-01T00:00:00Z"),
+      billingTiming: "PREPAID",
       product: prepaidProduct,
       payment,
     });
@@ -2209,7 +2224,7 @@ describe("ClassesService", () => {
       user: null,
     };
 
-    it("[선불 월스코프] 6월 완료 결제를 7월로 조회 → UNSETTLED·금액 0(타월 배제)", async () => {
+    it("[Phase 3] 6월 귀속 결제를 7월로 조회 → 7월 자격·활동 없음 → 명단 제외(§1 미갱신=명단 없음)", async () => {
       wireBillingMocks({
         billing: null,
         classRecord: prepaidClassRecord,
@@ -2221,15 +2236,8 @@ describe("ClassesService", () => {
         undefined,
         "2026-07",
       );
-      const row = result.students[0];
-      expect(row.billingTiming).toBe("PREPAID");
-      expect(row.billingStatus).toBe("UNSETTLED");
-      expect(row.paymentState).toBe("unpaid");
-      expect(row.billedAmount).toBeNull();
-      expect(row.paidAmount).toBe(0);
-      expect(row.outstandingAmount).toBe(0);
-      expect(row.amount).toBeNull();
-      expect(row.paidAt).toBeNull();
+      // 6월 결제 신청은 billingMonth=6월 고정이라 7월엔 자격도 활동 증거도 없다 — 명단에서 빠진다.
+      expect(result.students).toHaveLength(0);
       expect(result.totalPaidAmount).toBe(0); // 타월 수납이 이 달 총수납에 섞이지 않는다
     });
 
@@ -2284,6 +2292,7 @@ describe("ClassesService", () => {
           createdAt: new Date("2026-07-03T00:00:00Z"),
         }),
         id: "enr-jul",
+        billingMonth: new Date("2026-07-01T00:00:00Z"),
         paidAt: new Date("2026-07-03T00:00:00Z"),
       };
       // updatedAt desc 정렬 계약 — 최신(7월) 이 먼저 온다.
@@ -2600,6 +2609,8 @@ describe("ClassesService", () => {
         paymentId: "pay-refunded",
         paidAt: new Date("2026-06-05T00:00:00Z"),
         classProductId: "prod-pre",
+        billingMonth: new Date("2026-06-01T00:00:00Z"),
+        billingTiming: "PREPAID",
         product: {
           id: "prod-pre",
           productName: "월권",
@@ -2634,6 +2645,9 @@ describe("ClassesService", () => {
         paymentId: null,
         paidAt: null,
         classProductId: "prod-pre",
+        // 결정 불능(재결제 이탈 — 완료 결제 없음) — billingMonth 는 백필로도 확정 불가.
+        billingMonth: null,
+        billingTiming: "PREPAID",
         product: {
           id: "prod-pre",
           productName: "월권",
@@ -2646,7 +2660,7 @@ describe("ClassesService", () => {
         payment: null,
       };
 
-      it("[반례 1] refunded(구)+expired(신) — 무거래 월 행의 결제자·상태가 이탈 행에 가려지지 않음", async () => {
+      it("[Phase 3][반례 1] refunded(구)+expired(신) — 둘 다 7월 무관 → 7월 조회는 명단 제외", async () => {
         wireBillingMocks({
           billing: null,
           classRecord: prepaidClassRecord,
@@ -2657,13 +2671,10 @@ describe("ClassesService", () => {
           mockClassId,
           requester,
           undefined,
-          "2026-07", // 6월 환불 거래는 7월에 귀속되지 않음 → 무거래 행
+          "2026-07", // 6월 환불 거래는 7월 귀속이 아니고, expired 행은 결정 불능(billingMonth null)
         );
-        const row = result.students[0];
-        expect(row.billingStatus).toBe("UNSETTLED");
-        // 종전(최신 행 스냅샷)은 expired 행이라 결제자 null·상태 expired 로 오표기됐다.
-        expect(row.payerName).toBe("학부");
-        expect(row.enrollmentStatus).toBe("refunded");
+        // 자격도 그 달 활동 증거도 없다 — 무거래 월 placeholder 행 대신 명단 자체에서 제외된다.
+        expect(result.students).toHaveLength(0);
       });
 
       it("[반례 1-b] refunded 귀속월 조회 시 REFUNDED·순수납 유지 (거래 이력 보존)", async () => {
@@ -2698,7 +2709,11 @@ describe("ClassesService", () => {
           billing: null,
           classRecord: bothClass,
           // 후불 approved 가 최신 — 종전 코드도 통과하던 케이스(비회귀 확인).
-          enrollments: [postpaidEnrollment, oldPrepaidPaid],
+          //   [Phase 3] 후불은 매달 재신청이라 7월 조회엔 7월 귀속 신청이 있어야 자격이 있다.
+          enrollments: [
+            { ...postpaidEnrollment, billingMonth: new Date("2026-07-01T00:00:00Z") },
+            oldPrepaidPaid,
+          ],
         });
         const result = await service.getClassPayments(
           mockClassId,
@@ -2726,7 +2741,11 @@ describe("ClassesService", () => {
           billing: null,
           classRecord: bothClass,
           // completed 선불이 첫 번째(최신) — 종전 최신 스냅샷은 PREPAID 로 오판했다.
-          enrollments: [completedPrepaid, postpaidEnrollment],
+          //   [Phase 3] 후불은 매달 재신청이라 7월 조회엔 7월 귀속 신청이 있어야 자격이 있다.
+          enrollments: [
+            completedPrepaid,
+            { ...postpaidEnrollment, billingMonth: new Date("2026-07-01T00:00:00Z") },
+          ],
         });
         const result = await service.getClassPayments(
           mockClassId,
@@ -2756,6 +2775,7 @@ describe("ClassesService", () => {
         };
         const refundedJuly = {
           ...refundedJuneEnrollment,
+          billingMonth: new Date("2026-07-01T00:00:00Z"),
           payment: {
             ...refundedJuneEnrollment.payment,
             amount: 600000,
@@ -2789,6 +2809,7 @@ describe("ClassesService", () => {
           ...refundedJuneEnrollment,
           id: "enr-july-paid",
           status: "paid",
+          billingMonth: new Date("2026-07-01T00:00:00Z"),
           paidAt: new Date("2026-07-03T00:00:00Z"),
           payment: {
             ...refundedJuneEnrollment.payment,
@@ -2851,35 +2872,25 @@ describe("ClassesService", () => {
       userId: id,
       user: { firstName: name, lastName: "김", email: `${id}@t.dev` },
     });
+    // [Phase 3] openClassSales 배치 해제는 신청 자체의 billingMonth·billingTiming 을
+    //   직접 비교한다(product join 제거) — completedAtIso 와 같은 달의 1일로 맞춘다.
     const prepaidEnroll = (childId: string, completedAtIso: string) => ({
       childId,
       status: "paid",
-      paidAt: new Date(completedAtIso),
-      product: {
-        billingTiming: "PREPAID",
-        feeType: "MONTHLY_FIXED",
-        billingMonth: null,
-        price: 50000,
-      },
-      payment: {
-        amount: 50000,
-        paymentStatus: "completed",
-        completedAt: new Date(completedAtIso),
-        createdAt: new Date(completedAtIso),
-        refundLogs: [],
-      },
+      billingTiming: "PREPAID",
+      billingMonth: new Date(
+        Date.UTC(
+          new Date(completedAtIso).getUTCFullYear(),
+          new Date(completedAtIso).getUTCMonth(),
+          1,
+        ),
+      ),
     });
     const postpaidEnroll = (childId: string) => ({
       childId,
       status: "approved",
-      paidAt: null,
-      product: {
-        billingTiming: "POSTPAID",
-        feeType: "PER_SESSION",
-        billingMonth: null,
-        price: 0,
-      },
-      payment: null,
+      billingTiming: "POSTPAID",
+      billingMonth: null,
     });
 
     /** 다음 달 판매 시작(직전 판매월=이번 달) 상황의 공통 mock 배선. */

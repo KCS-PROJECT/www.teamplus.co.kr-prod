@@ -4,7 +4,10 @@ import {
   resolveScheduleTimeByTemplate,
   resolveScheduleEndTimeByTemplate,
 } from "@/common/utils/schedule-time.util";
-import { scheduleEligibleClassFilter } from "@/common/billing/schedule-eligibility.util";
+import {
+  scheduleEligibleClassFilter,
+  monthsInRange,
+} from "@/common/billing/schedule-eligibility.util";
 import { resolveParticipatingTournamentIds } from "@/common/utils/tournament-participation.util";
 
 /**
@@ -179,9 +182,14 @@ export class CalendarDashboardService {
         class: {
           AND: [
             ...(ownerFilters ? [{ OR: ownerFilters }] : []),
-            // [Phase B] 일정 노출 자격 — 공통 SoT (선불 paid OR 후불 approved).
+            // [Phase 3] 일정 노출 자격 — 공통 SoT (billingMonth·billingTiming 직접 판독).
             ...(enrollmentUserIds
-              ? [scheduleEligibleClassFilter(enrollmentUserIds)]
+              ? [
+                  scheduleEligibleClassFilter(
+                    enrollmentUserIds,
+                    monthsInRange(sdMonthStart, sdMonthEnd),
+                  ),
+                ]
               : []),
           ],
           isActive: true,
@@ -268,9 +276,14 @@ export class CalendarDashboardService {
         class: {
           AND: [
             ...(ownerFilters ? [{ OR: ownerFilters }] : []),
-            // [Phase B] 일정 노출 자격 — 공통 SoT (선불 paid OR 후불 approved).
+            // [Phase 3] 일정 노출 자격 — 공통 SoT (billingMonth·billingTiming 직접 판독).
             ...(enrollmentUserIds
-              ? [scheduleEligibleClassFilter(enrollmentUserIds)]
+              ? [
+                  scheduleEligibleClassFilter(
+                    enrollmentUserIds,
+                    monthsInRange(sdMonthStart, sdMonthEnd),
+                  ),
+                ]
               : []),
           ],
           isActive: true,

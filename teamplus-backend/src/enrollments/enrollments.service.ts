@@ -19,10 +19,19 @@ import { assertClassOnSale } from "@/common/billing/sales-gate.util";
 import { resolveEnrollmentBilling } from "@/common/billing/enrollment-billing.util";
 import { BLOCKING_APPLICATION } from "@/common/enrollment/enrollment-status.constants";
 import { hasActivePaidEnrollment } from "@/common/billing/paid-enrollment-guard.util";
+import { eligibleChildIdsForMonth } from "@/common/billing/enrollment-eligibility.util";
 import { hasOtherValidEnrollment } from "@/common/billing/roster-retention.util";
 import { calculateKoreanAge } from "@/common/utils/age.util";
 import { hasElapsedScheduleSincePayment } from "@/common/utils/enrollment-usage.util";
-import { instantToKstDateOnly } from "@/common/utils/kst-date.util";
+import {
+  instantToKstDateOnly,
+  kstTodayUtcMidnight,
+  addUtcMonths,
+  dateOnlyToUtc,
+  dateOnlyToYearMonth,
+} from "@/common/utils/kst-date.util";
+import { resolveRowBillingTiming } from "@/payments/settlement/attribution.util";
+import { utcMonthStart } from "@/common/utils/class-lifecycle.util";
 import { acquireClassSeatLock } from "@/classes/utils/class-locks.util";
 import {
   assertPaymentAllowed,
@@ -66,6 +75,9 @@ const ENROLLMENT_DETAIL_SELECT = {
   requestedAt: true,
   expiresAt: true,
   note: true,
+  // [Phase 3] 자격·귀속월 SoT — 상품 join 없이 판독(enrollment-eligibility.util).
+  billingMonth: true,
+  billingTiming: true,
   child: {
     select: {
       id: true,
@@ -296,6 +308,30 @@ export class EnrollmentsService {
     );
     const selectedProductTiming = selectedProduct?.billingTiming ?? null;
 
+    // [Phase 3] 후불 신청 대상월(dto.billingMonth) 검증 — 선불은 상품이 월을 고정하므로
+    //   지정 불가, 후불은 판매 중인 달(saleGate.sellableMonths) 안에서만 허용한다.
+    const requestedTiming = resolveRowBillingTiming(
+      classInfo.billingMode,
+      selectedProductTiming,
+    );
+    let requestedBillingMonth: Date | null = null;
+    if (dto.billingMonth) {
+      if (requestedTiming === "PREPAID") {
+        throw new BadRequestException(
+          "선불 수업은 결제 대상월을 별도로 지정할 수 없습니다.",
+        );
+      }
+      requestedBillingMonth = dateOnlyToUtc(`${dto.billingMonth}-01`);
+      const inSellableMonths = saleGate.sellableMonths.some(
+        (m) => m.getTime() === requestedBillingMonth!.getTime(),
+      );
+      if (!inSellableMonths) {
+        throw new BadRequestException(
+          "선택한 달은 신청할 수 없습니다. 판매 중인 달을 확인해주세요.",
+        );
+      }
+    }
+
     // 5~6. 중복 신청 확인 + 정원 체크 + 수강신청 생성을 원자적으로 수행
     // - 중복/정원/생성 을 한 트랜잭션에 묶어 race condition (동시 신청으로 정원 초과 저장) 방지.
     // - 정원 기준: ClassRegistration.status='active' 개수 (실제 결제 완료·수강 중인 등록자)
@@ -326,18 +362,19 @@ export class EnrollmentsService {
           "수업 결제 방식이 변경되었습니다. 화면을 새로고침한 후 다시 시도해주세요.",
         );
       }
-      // 정원 — 신청 자녀 본인의 활성 좌석은 제외(갱신 신청이 본인 좌석 때문에 막히지 않도록,
+      // 정원 — 신청 자녀 본인의 좌석은 제외(갱신 신청이 본인 좌석 때문에 막히지 않도록,
       //   결제 좌석 선점과 동일 의미). 0 = 무제한.
+      // [Phase 3] ClassRegistration(active) 카운트 대신 대상월 자격자 수로 판정한다 —
+      //   장부가 아니라 그 달 실제 자리를 차지하는 신청(billingMonth·billingTiming) 기준.
       const assertSeatAvailable = async () => {
         if (!fresh.capacity || fresh.capacity <= 0) return;
-        const activeCount = await tx.classRegistration.count({
-          where: {
-            classId: dto.classId,
-            status: "active",
-            userId: { not: dto.childId },
-          },
-        });
-        if (activeCount >= fresh.capacity) {
+        const eligibleIds = await eligibleChildIdsForMonth(
+          tx,
+          dto.classId,
+          enrollmentBilling.billingMonth,
+        );
+        eligibleIds.delete(dto.childId);
+        if (eligibleIds.size >= fresh.capacity) {
           throw new ConflictException(
             "수업 정원이 마감되었습니다. 대기 등록을 이용해주세요.",
           );
@@ -345,13 +382,13 @@ export class EnrollmentsService {
       };
 
       // 귀속월·결제 방식 스냅샷 — 중복 차단 검사(귀속월 단위)가 이 값을 먼저 쓰므로
-      //   여기서 확정한다. 입력은 잠금 후 fresh.billingMode + 잠금 전 상품·판매 중인
-      //   달의 가장 이른 달(saleGate.primaryMonth).
+      //   여기서 확정한다. 입력은 잠금 후 fresh.billingMode + 잠금 전 상품·후불 지정
+      //   대상월(requestedBillingMonth, 미지정 시 판매 중인 달의 가장 이른 달).
       const enrollmentBilling = resolveEnrollmentBilling(
         fresh.billingMode,
         selectedProductTiming,
         selectedProduct?.billingMonth,
-        saleGate.primaryMonth,
+        requestedBillingMonth ?? saleGate.primaryMonth,
       );
 
       // paid 이력은 "그 달"에 이미 있을 때만 차단 — 다른 달 재결제(갱신)는 통과시킨다.
@@ -661,10 +698,8 @@ export class EnrollmentsService {
       }
     }
 
-    // 비발급 선불(sessionsPerMonth=0) paid 행은 크레딧이 없어 기간권으로 판정 불가 —
-    //   "수강 중" SoT 는 배치 상태(ClassRegistration active)다. 판매 시작 시 미갱신
-    //   배치 해제(status=expired)가 그대로 반영되어야 만료 자녀가 표시에서 빠진다.
-    const activeRegSet = new Set<string>();
+    // [Phase 3] "수강 중" SoT = 신청 자체의 귀속월(billingMonth) — 이번 달 또는 다음 달
+    //   (판매 창 §4-6)이면 유효. ClassRegistration(active) 근사는 더 이상 보지 않는다.
     // 해제 시점(등록이 active 가 아닌 행의 updatedAt) — 만료 paid 의 "재결제 필요"
     //   노출 시한 판정용(프론트). 해제 이후 다시 건드리지 않는 값이라 앵커로 안정적.
     const regEndedAtByPair = new Map<string, Date>();
@@ -673,18 +708,17 @@ export class EnrollmentsService {
         where: {
           userId: { in: [...new Set(paidRows.map((e) => e.childId))] },
           classId: { in: [...new Set(paidRows.map((e) => e.classId))] },
+          status: { not: "active" },
         },
-        select: { userId: true, classId: true, status: true, updatedAt: true },
+        select: { userId: true, classId: true, updatedAt: true },
       });
       for (const r of regs) {
-        const key = `${r.userId}:${r.classId}`;
-        if (r.status === "active") {
-          activeRegSet.add(key);
-        } else {
-          regEndedAtByPair.set(key, r.updatedAt);
-        }
+        regEndedAtByPair.set(`${r.userId}:${r.classId}`, r.updatedAt);
       }
     }
+
+    const todayMonth = utcMonthStart(kstTodayUtcMidnight());
+    const nextMonth = addUtcMonths(todayMonth, 1);
 
     return enrollments.map((e) => {
       // 후불 축(상품 billingTiming 또는 수업 billingMode = POSTPAID)은 크레딧 미발급이
@@ -693,15 +727,19 @@ export class EnrollmentsService {
       const isPostpaidAxis =
         e.product?.billingTiming === "POSTPAID" ||
         e.class?.billingMode === "POSTPAID";
-      // 선불 "수강 중" 단일 공식 — 등록(ClassRegistration) active AND
+      // 선불 "수강 중" 단일 공식 — 이번 달 또는 다음 달 귀속(billingMonth) AND
       //   (발급형이면 유효 크레딧 보유). 비발급(sessionsPerMonth=0)은 크레딧
-      //   미발급이 정상이라 크레딧 항을 평가하지 않는다(등록만).
+      //   미발급이 정상이라 크레딧 항을 평가하지 않는다(귀속월만).
       //   재결제 게이트(paid-enrollment-guard.util)·출석 API 와 동일 기준.
       const isNonIssuingProduct = e.product?.sessionsPerMonth === 0;
       const pairKey = `${e.childId}:${e.classId}`;
+      const billingMonthEligible =
+        e.billingMonth != null &&
+        (e.billingMonth.getTime() === todayMonth.getTime() ||
+          e.billingMonth.getTime() === nextMonth.getTime());
       const hasValidPass =
         e.status === "paid" && !isPostpaidAxis
-          ? activeRegSet.has(pairKey) &&
+          ? billingMonthEligible &&
             (isNonIssuingProduct || validPassSet.has(pairKey))
           : null;
       return {
@@ -1681,6 +1719,12 @@ export class EnrollmentsService {
       expiresAt: enrollment.expiresAt,
       note: enrollment.note ?? undefined,
       remainingSeconds,
+      // 귀속월은 "YYYY-MM" 로 내보낸다 — 소비처가 판매 중인 달(sellableMonths)과 직접
+      //   비교하므로 @db.Date 의 ISO 풀 문자열을 그대로 주면 비교가 영구히 실패한다.
+      billingMonth: enrollment.billingMonth
+        ? dateOnlyToYearMonth(enrollment.billingMonth)
+        : undefined,
+      billingTiming: enrollment.billingTiming ?? undefined,
     };
   }
 }

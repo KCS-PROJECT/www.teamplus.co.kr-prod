@@ -18,6 +18,7 @@ import {
   isRosterMemberForMonth,
   SettlementBillingStatus,
 } from "./attribution.util";
+import { isEligibleForMonth } from "@/common/billing/enrollment-eligibility.util";
 import { deriveSource } from "../payment-source.util";
 
 /** 소계 결제 상태 — 취소·환불 제외한 유효 청구 기준. */
@@ -680,9 +681,6 @@ export class SettlementSummaryService {
             billingMode: true,
             teamId: true,
             team: { select: { name: true } },
-            // 선택월 멤버십 계약(HIGH-1) — 종료/비활성 수업의 로스터-only 누수 차단용.
-            endedAt: true,
-            isActive: true,
             products: {
               select: { billingTiming: true, feePerSession: true },
             },
@@ -710,6 +708,9 @@ export class SettlementSummaryService {
             paidAt: true,
             // open 계약(후불·미결제) 시작월 폴백 — 불변 생성 시점(미래 계약의 과거월 역류 차단, Codex Cycle4 HIGH-1).
             createdAt: true,
+            // [Phase 3] 자격·귀속월 SoT — 상품 join 없이 판독(enrollment-eligibility.util).
+            billingMonth: true,
+            billingTiming: true,
             product: {
               select: {
                 feeType: true,
@@ -843,14 +844,6 @@ export class SettlementSummaryService {
           ? Number(postpaidProducts[0].feePerSession)
           : null;
 
-      // 선택월 멤버십 계약(HIGH-1) — 수업 진행 여부는 오늘이 아니라 "그 달" 기준(Codex HIGH-3).
-      //   endedAt 이 선택월 이후(또는 미종료)면 그 달엔 진행 중. 미종료 + 현재 비활성만 진행 아님(보수적).
-      const classEndedMonth =
-        cls.endedAt != null ? instantToKstYearMonth(cls.endedAt) : null;
-      const classActiveForMonth =
-        classEndedMonth != null
-          ? classEndedMonth >= yearMonth
-          : cls.isActive !== false;
       const billingUserIds = new Set<string>(
         billing?.items.map((i) => i.userId) ?? [],
       );
@@ -878,10 +871,8 @@ export class SettlementSummaryService {
         }
         const att = resolvePrepaidAttribution({
           billingTiming: timing,
-          feeType: en.product?.feeType,
-          billingMonth: en.product?.billingMonth,
+          enrollmentBillingMonth: en.billingMonth,
           enrollmentStatus: en.status,
-          enrollmentPaidAt: en.paidAt,
           productPrice: en.product?.price,
           payment: en.payment,
         });
@@ -936,27 +927,23 @@ export class SettlementSummaryService {
         }
       }
 
-      // ── 선택월 로스터 멤버십 계약(HIGH-1·HIGH-3) — 그 달 대상자만 정규화 ──
-      //   · registrationDate 의 KST 월 > 선택월 → 제외(그 달엔 아직 등록 전)
-      //   · registrationDate 의 KST 월 == 선택월 → 포함(그 달 등록·탈퇴여도 그 달 명단 보존)
-      //   · 그 달 활동 증거(출석·선택월 청구라인) 있으면 포함(탈퇴/inactive 여도 보존)
-      //   · 그 외 → status=active AND 그 달 수업 진행(classActiveForMonth)일 때만 포함 —
-      //     종료/inactive 수업의 로스터-only 행이 무관 월로 새지 않도록(종료월 이전 달은 진행 인정).
-      //   ⚠️ 한계: 정밀 탈퇴/재가입 이력은 단일 가변 ClassRegistration 행으로 복원 불가.
-      //      이력 테이블은 향후 마이그레이션 과제(Codex HIGH-1·HIGH-3 명시).
+      // ── 선택월 로스터 멤버십 계약(Phase 3) — 그 달 대상자만 정규화 ──
+      //   명단 = 그 달 자격(billingMonth·billingTiming 직접 판독) ∪ 그 달 활동 증거
+      //   (출석·선택월 청구라인). registrationDate·classActiveForMonth 근사는 더 이상
+      //   보지 않는다(attribution.util isRosterMemberForMonth 참고).
       const targetUsers = new Set<string>();
-      for (const [userId, entry] of roster) {
+      for (const [userId] of roster) {
         const hasMonthActivity =
           (attByUser.get(userId) ?? 0) > 0 || billingUserIds.has(userId);
-        if (
-          isRosterMemberForMonth(
-            entry.registrationDate,
-            entry.status,
-            yearMonth,
-            classActiveForMonth,
-            hasMonthActivity,
-          )
-        ) {
+        const eligible = clsEnrollments.some(
+          (e) =>
+            e.childId === userId &&
+            isEligibleForMonth(
+              { status: e.status, billingTiming: e.billingTiming, billingMonth: e.billingMonth },
+              monthStart,
+            ),
+        );
+        if (isRosterMemberForMonth(eligible, hasMonthActivity)) {
           targetUsers.add(userId);
         }
       }

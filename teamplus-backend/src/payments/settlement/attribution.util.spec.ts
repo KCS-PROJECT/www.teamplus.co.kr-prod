@@ -6,6 +6,7 @@ import {
   resolveSettlementYearMonth,
   instantToKstYearMonth,
   dbDateToKstYearMonth,
+  isRosterMemberForMonth,
 } from "./attribution.util";
 
 /**
@@ -56,16 +57,15 @@ describe("attribution.util", () => {
     });
   });
 
-  describe("resolvePrepaidAttribution — 월귀속 6경우", () => {
-    it("① MONTHLY_FIXED + billingMonth → billingMonth 월(completedAt보다 우선)", () => {
+  describe("resolvePrepaidAttribution — [Phase 3] enrollments.billing_month 직접 판독", () => {
+    it("① billing_month 있음 + 완료 결제 → billing_month 월(completedAt과 달라도 무관)", () => {
       const r = resolvePrepaidAttribution({
         billingTiming: "PREPAID",
-        feeType: "MONTHLY_FIXED",
-        billingMonth: JUNE_DBDATE,
+        enrollmentBillingMonth: JUNE_DBDATE,
         enrollmentStatus: "paid",
         payment: {
           paymentStatus: "completed",
-          completedAt: JULY_INSTANT, // 7월 결제지만 귀속은 billingMonth(6월)
+          completedAt: JULY_INSTANT, // 7월 결제여도 귀속은 신청 확정월(6월)
           amount: 100000,
           refundLogs: [],
         },
@@ -76,26 +76,10 @@ describe("attribution.util", () => {
       expect(r.paidAmount).toBe(100000);
     });
 
-    it("② billingMonth 없는 완료 선불 → completedAt 월", () => {
+    it("② pending 선불(결제 진행 중/이탈) → billing_month 귀속 유지 · UNSETTLED 집계 제외", () => {
       const r = resolvePrepaidAttribution({
         billingTiming: "PREPAID",
-        feeType: "PER_SESSION",
-        payment: {
-          paymentStatus: "completed",
-          completedAt: JULY_INSTANT,
-          amount: 80000,
-          refundLogs: [],
-        },
-      });
-      expect(r.yearMonth).toBe("2026-07");
-      expect(r.billingStatus).toBe("PAID");
-      expect(r.paidAmount).toBe(80000);
-    });
-
-    it("③ pending 선불(결제 진행 중/이탈) → createdAt 월 귀속 유지 · UNSETTLED 집계 제외", () => {
-      const r = resolvePrepaidAttribution({
-        billingTiming: "PREPAID",
-        feeType: "PER_SESSION",
+        enrollmentBillingMonth: JUNE_DBDATE,
         payment: {
           paymentStatus: "pending",
           createdAt: JULY_INSTANT,
@@ -103,31 +87,16 @@ describe("attribution.util", () => {
           refundLogs: [],
         },
       });
-      expect(r.yearMonth).toBe("2026-07"); // 귀속만 유지(attributionUnknown 방지)
+      expect(r.yearMonth).toBe("2026-06"); // 귀속만 유지(attributionUnknown 방지)
       expect(r.billingStatus).toBe("UNSETTLED");
       expect(r.billedAmount).toBeNull(); // 확정 청구 아님 — 미수금·매출 미집계
       expect(r.paidAmount).toBe(0);
     });
 
-    it("④ 레거시 paid(completedAt 없음) → paidAt 월", () => {
+    it("③ 환불(부분) → billing_month 유지 · 순수납 = 청구−환불", () => {
       const r = resolvePrepaidAttribution({
         billingTiming: "PREPAID",
-        feeType: "PER_SESSION",
-        enrollmentStatus: "paid",
-        enrollmentPaidAt: new Date("2026-05-20T05:00:00Z"),
-        productPrice: 60000,
-        payment: null,
-      });
-      expect(r.yearMonth).toBe("2026-05");
-      expect(r.billingStatus).toBe("PAID");
-      expect(r.billedAmount).toBe(60000);
-      expect(r.paidAmount).toBe(60000);
-    });
-
-    it("⑤ 환불(부분) → 원결제 월(completedAt) 유지 · 순수납 = 청구−환불", () => {
-      const r = resolvePrepaidAttribution({
-        billingTiming: "PREPAID",
-        feeType: "PER_SESSION",
+        enrollmentBillingMonth: JUNE_DBDATE,
         payment: {
           paymentStatus: "partially_refunded",
           completedAt: JULY_INSTANT,
@@ -135,17 +104,16 @@ describe("attribution.util", () => {
           refundLogs: [{ refundAmount: 30000 }],
         },
       });
-      expect(r.yearMonth).toBe("2026-07"); // 원결제 월 유지
+      expect(r.yearMonth).toBe("2026-06"); // 신청 확정월 유지
       expect(r.billingStatus).toBe("REFUNDED");
       expect(r.billedAmount).toBeNull(); // 유효 청구 제외
       expect(r.refundedAmount).toBe(30000);
       expect(r.paidAmount).toBe(70000); // 순수납
     });
 
-    it("⑥ 귀속 근거 없음 → yearMonth=null + attributionUnknown(현재월 임의 귀속 금지)", () => {
+    it("④ 귀속 근거 없음(billing_month NULL — 백필 전·결정 불능) → yearMonth=null + attributionUnknown", () => {
       const r = resolvePrepaidAttribution({
         billingTiming: "PREPAID",
-        feeType: "PER_SESSION",
         enrollmentStatus: "approved",
         payment: null,
       });
@@ -159,7 +127,7 @@ describe("attribution.util", () => {
     it("취소(enrollment cancelled) → CANCELLED · billedAmount null", () => {
       const r = resolvePrepaidAttribution({
         billingTiming: "PREPAID",
-        feeType: "PER_SESSION",
+        enrollmentBillingMonth: JUNE_DBDATE,
         enrollmentStatus: "cancelled",
         payment: {
           paymentStatus: "cancelled",
@@ -169,7 +137,7 @@ describe("attribution.util", () => {
         },
       });
       expect(r.billingStatus).toBe("CANCELLED");
-      expect(r.yearMonth).toBe("2026-07"); // 원결제 월 유지
+      expect(r.yearMonth).toBe("2026-06"); // 신청 확정월 유지
       expect(r.billedAmount).toBeNull();
       expect(r.paidAmount).toBe(0);
     });
@@ -177,7 +145,7 @@ describe("attribution.util", () => {
     it("UNASSIGNED(BOTH 상품 미배정) → UNSETTLED · 금액 제외", () => {
       const r = resolvePrepaidAttribution({
         billingTiming: "UNASSIGNED",
-        feeType: "PER_SESSION",
+        enrollmentBillingMonth: JUNE_DBDATE,
         payment: {
           paymentStatus: "completed",
           completedAt: JULY_INSTANT,
@@ -188,6 +156,21 @@ describe("attribution.util", () => {
       expect(r.billingStatus).toBe("UNSETTLED");
       expect(r.billedAmount).toBeNull();
       expect(r.paidAmount).toBe(0);
+    });
+  });
+
+  describe("isRosterMemberForMonth — [Phase 3] 자격 ∪ 활동 증거", () => {
+    it("자격 있으면 활동 증거 없어도 명단 포함", () => {
+      expect(isRosterMemberForMonth(true, false)).toBe(true);
+    });
+    it("자격 없어도 그 달 활동 증거 있으면 명단 포함", () => {
+      expect(isRosterMemberForMonth(false, true)).toBe(true);
+    });
+    it("자격도 활동도 없으면 명단 제외", () => {
+      expect(isRosterMemberForMonth(false, false)).toBe(false);
+    });
+    it("자격·활동 모두 있어도 포함(중복 조건 무관)", () => {
+      expect(isRosterMemberForMonth(true, true)).toBe(true);
     });
   });
 

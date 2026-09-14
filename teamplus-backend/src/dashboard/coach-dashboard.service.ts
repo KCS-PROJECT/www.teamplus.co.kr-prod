@@ -13,6 +13,7 @@ import {
   addUtcDays,
   composeKstInstant,
 } from "@/common/utils/kst-date.util";
+import { eligibleChildIdsForClasses } from "@/common/billing/enrollment-eligibility.util";
 
 @Injectable()
 export class CoachDashboardService {
@@ -618,32 +619,19 @@ export class CoachDashboardService {
     const userMap = new Map(users.map((u) => [u.id, u]));
     const classMap = new Map(classes.map((c) => [c.id, c]));
 
-    // 해당 월 paid Enrollment 집합 구성 (childId+classId 키)
-    const billingPeriodStart = new Date(targetYear, targetMonth - 1, 1);
-    const billingPeriodEnd = new Date(targetYear, targetMonth, 0, 23, 59, 59);
-
-    const paidEnrollments = await this.prisma.enrollment.findMany({
-      where: {
-        status: "paid",
-        paidAt: {
-          gte: billingPeriodStart,
-          lte: billingPeriodEnd,
-        },
-        class: { teamId: { in: teamIds } },
-      },
-      select: {
-        childId: true,
-        classId: true,
-      },
-    });
-
-    const paidSet = new Set(
-      paidEnrollments.map((e) => `${e.childId}::${e.classId}`),
+    // [Phase 3] 그 달 자격(billingMonth·billingTiming 직접 판독) 집합 —
+    //   Enrollment.paidAt 이 대상월에 속하는지로 판정하던 방식은 신청 확정월이 아니라
+    //   결제 실행 시각을 보는 것이라 "8/29 결제한 9월분"을 8월로 오분류했다(§1).
+    const targetMonthDate = new Date(Date.UTC(targetYear, targetMonth - 1, 1));
+    const eligibleByClass = await eligibleChildIdsForClasses(
+      this.prisma,
+      uniqueClassIds,
+      targetMonthDate,
     );
 
-    // 미결제 필터링
+    // 미결제 필터링 — 그 달 자격이 없는 등록만 미결제로 본다.
     const unpaidMembers = activeRegistrations
-      .filter((reg) => !paidSet.has(`${reg.userId}::${reg.classId}`))
+      .filter((reg) => !eligibleByClass.get(reg.classId)?.has(reg.userId))
       .map((reg) => {
         const child = userMap.get(reg.userId);
         const cls = classMap.get(reg.classId);

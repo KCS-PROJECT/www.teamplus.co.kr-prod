@@ -311,6 +311,8 @@ describe("EnrollmentsService — 취소 원자화 · 전이 재확인 · 상품 
             id: "enr-old",
             status: "paid",
             paidAt: new Date("2026-09-01T00:00:00Z"),
+            billingMonth: new Date(Date.UTC(2026, 8, 1)),
+            billingTiming: "PREPAID",
             product: {
               billingTiming: "PREPAID",
               feeType: "MONTHLY_FIXED",
@@ -342,6 +344,8 @@ describe("EnrollmentsService — 취소 원자화 · 전이 재확인 · 상품 
             id: "enr-old",
             status: "paid",
             paidAt: new Date("2026-06-01T00:00:00Z"),
+            billingMonth: new Date(Date.UTC(2026, 5, 1)),
+            billingTiming: "PREPAID",
             product: {
               billingTiming: "PREPAID",
               feeType: "MONTHLY_FIXED",

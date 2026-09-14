@@ -191,6 +191,17 @@ export class EnrollmentResponseDto {
 
   @ApiPropertyOptional({ description: "남은 시간 (초)" })
   remainingSeconds?: number;
+
+  @ApiPropertyOptional({
+    description: "귀속월(대상월) \"YYYY-MM\" — 월별 자격 판정 SoT",
+    example: "2026-09",
+  })
+  billingMonth?: string;
+
+  @ApiPropertyOptional({
+    description: "신청 시점 결제 방식 스냅샷 (PREPAID / POSTPAID)",
+  })
+  billingTiming?: string;
 }
 
 /**

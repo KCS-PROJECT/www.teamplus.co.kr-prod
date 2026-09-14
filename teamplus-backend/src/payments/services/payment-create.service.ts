@@ -30,6 +30,7 @@ import { calculateKoreanAge } from "@/common/utils/age.util";
 import { assertClassOnSale } from "@/common/billing/sales-gate.util";
 import { resolveEnrollmentBilling } from "@/common/billing/enrollment-billing.util";
 import { hasActivePaidEnrollment } from "@/common/billing/paid-enrollment-guard.util";
+import { eligibleChildIdsForMonth } from "@/common/billing/enrollment-eligibility.util";
 import { KgInicisGateway } from "../kg-inicis.gateway";
 import {
   PaymentCalculationService,
@@ -310,15 +311,20 @@ export class PaymentCreateService {
       }
 
       // 수업 정원 검증 (parent_direct 결제 플로우 최종 방어선)
+      // [Phase 3] ClassRegistration(active) 카운트 대신 대상월 자격자 수로 판정한다 —
+      //   장부가 아니라 그 달 실제 자리를 차지하는 신청(billingMonth·billingTiming) 기준.
       const classCapacity = await this.prisma.class.findUnique({
         where: { id: options.classId },
         select: { capacity: true },
       });
       if (classCapacity?.capacity && classCapacity.capacity > 0) {
-        const activeCount = await this.prisma.classRegistration.count({
-          where: { classId: options.classId, status: "active" },
-        });
-        if (activeCount >= classCapacity.capacity) {
+        const eligibleIds = await eligibleChildIdsForMonth(
+          this.prisma,
+          options.classId,
+          enrollmentBilling.billingMonth,
+        );
+        eligibleIds.delete(options.childId);
+        if (eligibleIds.size >= classCapacity.capacity) {
           await this.redisService.del(userProductLockKey);
           throw new ConflictException(
             "수업 정원이 마감되었습니다. 대기 등록을 이용해주세요.",

@@ -14,7 +14,9 @@ import {
   scheduleEligibleClassFilter,
   scheduleVisibleChildIds,
   canCheckInForClass,
+  monthsInRange,
 } from "@/common/billing/schedule-eligibility.util";
+import { eligibleEnrollmentWhere } from "@/common/billing/enrollment-eligibility.util";
 
 @Injectable()
 export class ParentDashboardService {
@@ -229,8 +231,12 @@ export class ParentDashboardService {
         childUserIds.length > 0
           ? this.prisma.classSchedule.findMany({
               where: {
-                // [Phase B] 일정 노출 자격 — 공통 SoT (선불 paid OR 후불 approved).
-                class: scheduleEligibleClassFilter(childUserIds),
+                // [Phase 3] 일정 노출 자격 — 공통 SoT (billingMonth·billingTiming 직접 판독).
+                //   조회 범위(sdToday~sdMonthEnd)가 이번 달 안에서만 움직이므로 이번 달 하나면 충분.
+                class: scheduleEligibleClassFilter(
+                  childUserIds,
+                  monthsInRange(sdToday, sdMonthEnd),
+                ),
                 // 2026-04-27: 오늘 자정부터 — 이미 시작된 오늘 일정도 카드에 표시되도록.
                 // 이미 끝난 일정은 시간 윈도우 검증으로 출석 버튼만 비활성화됨.
                 scheduledDate: { gte: sdToday, lte: sdMonthEnd },
@@ -266,12 +272,12 @@ export class ParentDashboardService {
                       select: { userId: true },
                     },
                     // [추가 2026-05-13] paid enrollments 의 childId — frontend 가 자녀별 매핑 시 교집합 필터링용.
+                    // [Phase 3] 이번 달 자격(billingMonth·billingTiming 직접 판독)만 — status
+                    //   블랑켓(paid|approved)은 지난 달 결제·과거 후불 이력까지 새어 들어갔다.
                     enrollments: {
                       where: {
                         childId: { in: childUserIds },
-                        // [Phase B] 후불(approved)도 포함 — FE 가 active 등록과 교집합하므로
-                        //   선불 미결제(approved·active 등록 없음)는 자연 제외된다.
-                        status: { in: ["paid", "approved"] },
+                        ...eligibleEnrollmentWhere(sdMonthStart),
                       },
                       // [B5b] BOTH 수업에서 후불 상품 선택 자녀를 판별하기 위해 billingTiming 동반.
                       select: {

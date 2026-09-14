@@ -1067,6 +1067,20 @@ const DefaultClassCard = memo(function DefaultClassCard({
   } else if (!hasAgeEligibleChild) {
     registerLabel = "등록불가";
     registerClass = "bg-wline-2 text-wtext-3 dark:bg-rink-700 dark:text-rink-300";
+  } else {
+    // [수강 자격 월별 판정] 이번 달 일정이 없어(방학 등) 다음 달분만 판매 중인 구간 —
+    //   상세 진입 전에 "몇 월분"이 신청 가능한지 알려준다(§4-6 화면 어휘).
+    const sellableMonths = item.sellableMonths;
+    const todayYearMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+    if (
+      sellableMonths &&
+      sellableMonths.length > 0 &&
+      !sellableMonths.includes(todayYearMonth)
+    ) {
+      registerLabel = MESSAGES.enrollment.sellableMonthChip(
+        Number(sellableMonths[0].slice(5, 7)),
+      );
+    }
   }
 
   const scheduleLine =

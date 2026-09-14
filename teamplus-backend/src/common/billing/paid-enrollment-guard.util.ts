@@ -20,6 +20,11 @@ type Db = Prisma.TransactionClient | PrismaClient;
  * billingMonth 는 `OR: [{billingMonth}, {billingMonth: null}]`로 조회한다 — 백필 전
  * NULL 행은 어느 달 귀속인지 결정 불능이라, 정확한 매치만 보면 그 행을 지나쳐 중복
  * 결제가 통과한다. 결정 불능 행은 보수적으로 함께 차단한다.
+ *
+ * ⚠️ `enrollment-eligibility.util.ts`의 자격 판정은 반대로 NULL 을 비자격 처리한다 —
+ * 여기는 "결정 불능 행을 지나쳐 중복 결제가 통과하면 안 된다"(차단 방향 보수적)이고
+ * 저쪽은 "결정 불능 행이 명단·출석에 새어 들어가면 안 된다"(배제 방향 보수적)라
+ * 같은 NULL 이라도 질문이 반대라 기본값이 다르다.
  */
 export async function hasActivePaidEnrollment(
   db: Db,

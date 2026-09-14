@@ -479,6 +479,15 @@ export const MESSAGES = {
     childSelectorAriaLabel: "자녀 선택",
     selectedChildAriaLabel: "선택된 수강생",
     selectedChildLoading: "수강생 정보를 불러오는 중...",
+    // [수강 자격 월별 판정] 결제 대상월이 이번 달이면 "신청하기", 아직 오지 않은 달을
+    //   미리 결제하는 경우는 "미리 결제" — 같은 CTA 자리에서 문구만 갈린다.
+    applyForMonthCta: (month: number) => `${month}월분 신청하기`,
+    prepayForMonthCta: (month: number) => `${month}월분 미리 결제`,
+    // 목록 카드 — 이번 달 일정이 없어 다음 달분만 판매 중일 때, 진입 전에 알리는 칩.
+    sellableMonthChip: (month: number) => `${month}월분 신청 가능`,
+    // 결제 옵션 — 월분 상품이 2개(이번 달·다음 달) 노출될 때의 섹션 제목·다음 달 배지.
+    monthSelectTitle: "결제할 달 선택",
+    prepayNextMonthBadge: "다음 달 미리 결제",
   },
   attendance: {
     ...SHARED_MESSAGES.attendance,

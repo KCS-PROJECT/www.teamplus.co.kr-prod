@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { useState, useEffect, useMemo, Suspense } from "react";
+import { useState, useEffect, useMemo, useRef, Suspense } from "react";
 import nextDynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { NavLink, useNavigation } from "@/components/ui/NavLink";
@@ -113,6 +113,9 @@ interface EnrollmentItem {
   status: string;
   /** 선불 paid 의 "현재 수강 중" 여부 (백엔드 emit). 명시적 false = 만료(재결제 대상). */
   hasValidPass?: boolean | null;
+  /** [수강 자격 월별 판정] 이 신청이 귀속되는 달("YYYY-MM"). 구버전 응답(필드 없음)은
+   *  undefined — 월별 판정 불가로 보고 기존 동작(전체 잠금)으로 폴백한다. */
+  billingMonth?: string | null;
 }
 
 const ENROLLED_STATUSES = new Set([
@@ -183,10 +186,60 @@ function PaymentOptionsContent() {
   // 자녀 목록 — 바텀시트와 동일한 훅으로 통일 (응답 래핑/필드 매핑 일관 처리)
   const { children } = useChildren();
 
-  // 현재 수업에 이미 수강 중/신청 중인 자녀 ID 집합
-  const [enrolledChildIds, setEnrolledChildIds] = useState<Set<string>>(
-    new Set(),
-  );
+  // [수강 자격 월별 판정] /enrollments 원본 목록 — enrolledChildIds(잠금)·
+  //   paidMonthsForSelectedChild(월분 카드 기본 선택) 이 공용으로 파생한다.
+  const [enrollmentsList, setEnrollmentsList] = useState<EnrollmentItem[]>([]);
+  // 이번 선택 자녀가 이미 결제 완료(paid)한 귀속월 집합 — 월분 카드 기본 선택에 사용.
+  //   billingMonth 미기재 행이 하나라도 있으면(구버전 응답) 판정 불가이므로 빈 Set 유지
+  //   (아래 enrolledChildIds 폴백과 동일하게 안전한 쪽 — 전체 잠금 — 으로 넘어간다).
+  const paidMonthsForSelectedChild = useMemo(() => {
+    const rows = enrollmentsList.filter(
+      (e) =>
+        e.class?.id === classId &&
+        e.child?.id === selectedChild &&
+        e.status === "paid" &&
+        e.hasValidPass !== false,
+    );
+    if (rows.length === 0 || rows.some((e) => !e.billingMonth)) return new Set<string>();
+    return new Set(rows.map((e) => e.billingMonth as string));
+  }, [enrollmentsList, classId, selectedChild]);
+  // 현재 수업에 이미 수강 중/신청 중인 자녀 ID 집합.
+  //   [수강 자격 월별 판정] paid 는 판매 중인 달(sellableMonths)을 전부 채웠을 때만 잠근다 —
+  //   그렇지 않으면 다음 달 미결제 자녀가 결제 옵션 진입 자체를 못 하게 된다(§1·§4-6).
+  //   pending/pending_approval/approved(결제 대기)는 월 무관 잠금을 유지한다(중복 결제창 방지).
+  const enrolledChildIds = useMemo(() => {
+    const myUserId = user?.id;
+    const sellableMonths = classInfo?.sellableMonths;
+    const rowsByChild = new Map<string, EnrollmentItem[]>();
+    for (const e of enrollmentsList) {
+      if (e.class?.id !== classId) continue;
+      if (!ENROLLED_STATUSES.has(e.status)) continue;
+      if (!e.child?.id) continue;
+      if (e.status === "pending" && e.requester?.id === myUserId) continue;
+      if (e.status === "paid" && e.hasValidPass === false) continue;
+      const arr = rowsByChild.get(e.child.id) ?? [];
+      arr.push(e);
+      rowsByChild.set(e.child.id, arr);
+    }
+    const ids = new Set<string>();
+    for (const [childId, rows] of rowsByChild) {
+      if (rows.some((e) => e.status !== "paid")) {
+        ids.add(childId);
+        continue;
+      }
+      if (!sellableMonths || sellableMonths.length === 0) {
+        ids.add(childId);
+        continue;
+      }
+      if (rows.some((e) => !e.billingMonth)) {
+        ids.add(childId);
+        continue;
+      }
+      const paidMonths = new Set(rows.map((e) => e.billingMonth as string));
+      if (sellableMonths.every((m) => paidMonths.has(m))) ids.add(childId);
+    }
+    return ids;
+  }, [enrollmentsList, classId, user?.id, classInfo?.sellableMonths]);
 
   // 수업 대상 연령(targetBirthYears 우선, ageMin/ageMax 폴백)에 맞지 않는 자녀 ID 집합.
   //   공용 isChildAgeEligibleForClass 사용 — 출생연도 비연속 선택까지 정확히 매칭. 수업 상세와 동일.
@@ -256,7 +309,8 @@ function PaymentOptionsContent() {
     }
   }, [classId]);
 
-  // 수강 중인 자녀 목록 로드
+  // 수강 중인 자녀 목록 로드 — enrolledChildIds/paidMonthsForSelectedChild 는
+  //   위 useMemo 가 이 원본 목록에서 파생한다.
   useEffect(() => {
     if (!classId) return;
     let cancelled = false;
@@ -268,23 +322,7 @@ function PaymentOptionsContent() {
       const res = await api.get<EnrollmentItem[]>("/enrollments");
       if (cancelled) return;
       const list = res.success && Array.isArray(res.data) ? res.data : [];
-      const myUserId = user?.id;
-      const ids = new Set(
-        list
-          .filter((e) => {
-            if (e.class?.id !== classId) return false;
-            if (!ENROLLED_STATUSES.has(e.status)) return false;
-            if (!e.child?.id) return false;
-            // 본인이 만든 pending 은 결제 재시도 가능하므로 잠금 제외
-            if (e.status === "pending" && e.requester?.id === myUserId)
-              return false;
-            // 만료된 paid(수강 종료 — 배치 해제·크레딧 소진)는 재결제 대상이므로 잠금 제외
-            if (e.status === "paid" && e.hasValidPass === false) return false;
-            return true;
-          })
-          .map((e) => e.child!.id),
-      );
-      setEnrolledChildIds(ids);
+      setEnrollmentsList(list);
     };
     loadEnrollments();
     return () => {
@@ -431,6 +469,33 @@ function PaymentOptionsContent() {
     };
     load();
   }, [classId, productId]);
+
+  // [수강 자격 월별 판정] 정액(MONTHLY_FIXED) 상품 — 최대 2건(이번 달·다음 달), billingMonth
+  //   오름차순(위 load() 에서 이미 정렬). 2건 이상일 때만 "결제할 달 선택" 카드를 노출한다.
+  const monthlyFixedProducts = useMemo(
+    () => allProducts.filter((p) => p.feeType === "MONTHLY_FIXED"),
+    [allProducts],
+  );
+  // 사용자가 직접 월분 카드를 고른 뒤에는 아래 자동 보정 effect 가 되돌리지 않도록 하는 플래그.
+  const hasManuallyPickedMonth = useRef(false);
+  // 이번 달 정액 상품이 이미 결제 완료(paidMonthsForSelectedChild)면 판매 중인 다음 달(미리
+  //   결제) 상품으로 기본 선택을 넘긴다. enrollmentsList 는 별도 비동기 호출이라 위 load()
+  //   보다 늦게 도착할 수 있어 별도 effect 로 사후 보정한다.
+  useEffect(() => {
+    if (hasManuallyPickedMonth.current) return;
+    if (paidMonthsForSelectedChild.size === 0) return;
+    if (monthlyFixedProducts.length < 2) return;
+    const currentMonth = product?.billingMonth?.slice(0, 7) ?? null;
+    if (!currentMonth || !paidMonthsForSelectedChild.has(currentMonth)) return;
+    const alternative = monthlyFixedProducts.find(
+      (p) =>
+        p.billingMonth && !paidMonthsForSelectedChild.has(p.billingMonth.slice(0, 7)),
+    );
+    if (alternative && alternative.id !== product?.id) {
+      setProduct(alternative);
+      setSelectedFeeType("MONTHLY_FIXED");
+    }
+  }, [paidMonthsForSelectedChild, monthlyFixedProducts, product]);
 
   // feeType 변경 시 해당 상품으로 전환.
   // PACKAGE_END_GUARD: 같은 feeType 내 결제 가능한 패키지(isPurchasable=true) 우선.
@@ -647,6 +712,50 @@ function PaymentOptionsContent() {
               결제는 한 건씩 순차로 진행됩니다. 이번 결제 완료 후 다음 건을 이어
               결제할 수 있어요.
             </p>
+          </section>
+        )}
+
+        {/* [수강 자격 월별 판정] 결제할 달 선택 — 판매 중인 달이 2개(이번 달·다음 달)일 때만
+            노출. 이번 달분을 위에, 다음 달분(미리 결제)을 아래에 — 오름차순 정렬을 그대로 쓴다.
+            오픈클래스 복수선택·단건 재시도(isMultiPay)는 이미 상세에서 특정 상품을 골라
+            들어오므로 이 섹션에서 다시 흔들지 않는다. */}
+        {!isLoading && !isOpenClass && !isMultiPay && monthlyFixedProducts.length > 1 && (
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4">
+            <h3 className="text-card-emphasis font-bold text-it-ink-900 dark:text-white mb-3">
+              {MESSAGES.enrollment.monthSelectTitle}
+            </h3>
+            <div className="grid grid-cols-1 gap-3">
+              {monthlyFixedProducts.slice(0, 2).map((p, idx) => (
+                <div key={p.id} className="flex flex-col gap-1.5">
+                  {idx > 0 && (
+                    <span className="self-start px-2 py-0.5 rounded-w-pill bg-it-blue-50 dark:bg-it-blue-500/15 text-it-blue-500 text-[11px] font-bold">
+                      {MESSAGES.enrollment.prepayNextMonthBadge}
+                    </span>
+                  )}
+                  <PaymentOptionCard
+                    feeType="MONTHLY_FIXED"
+                    pricePerUnit={p.price}
+                    monthlyFixedAmount={p.price}
+                    billingMonth={p.billingMonth}
+                    productName={p.productName}
+                    productDescription={p.description}
+                    selected={product?.id === p.id}
+                    onSelect={() => {
+                      hasManuallyPickedMonth.current = true;
+                      setProduct(p);
+                      setSelectedFeeType("MONTHLY_FIXED");
+                    }}
+                    disabled={p.isPurchasable === false}
+                    disabledBadge={
+                      p.isPurchasable === false
+                        ? (p.disabledReason ?? MESSAGES.classProduct.unavailableEndDateExceed)
+                        : null
+                    }
+                    iceTheme
+                  />
+                </div>
+              ))}
+            </div>
           </section>
         )}
 
