@@ -68,8 +68,6 @@ export const MESSAGES = {
       packageNeedsUpdate: "미등록",
       renewRegisterButton: "등록하기",
       packageCreated: "새 달분으로 등록되었습니다.",
-      retireFailed:
-        "이전 항목 정리에 실패했습니다. 남은 항목은 다음 달 준비 때 자동으로 정리돼요.",
       openSalesButton: "판매 시작하기",
       // 성공 토스트 — 행위("판매되었다")가 아니라 결과(학부모가 N월 훈련을 신청 가능)를 서술.
       openSalesSuccess: (month: number) =>

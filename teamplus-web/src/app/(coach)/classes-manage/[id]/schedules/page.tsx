@@ -1656,11 +1656,11 @@ export default function ClassSchedulesManagePage() {
           aria-disabled={!isApproved || isEnded}
         >
           <h2 className="text-card-section font-bold text-it-ink-800 dark:text-white mb-3">일정 추가</h2>
-          {/* 미니달력으로 복수 날짜 + 공통 시간·장소 추가 */}
+          {/* 미니달력으로 복수 날짜 선택 — 시간·장소는 추가 시 기본값이 채워지고 회차별로 고친다. */}
           <div className="space-y-3">
             <p className="text-card-meta text-it-ink-500 dark:text-rink-300 leading-relaxed">
-              달력에서 날짜를 선택하고 공통 시간·장소를 적용해 일정을 추가합니다.
-              매달 단위로 필요할 때마다 계속 추가할 수 있어요.
+              달력에서 날짜를 선택해 일정을 추가합니다. 시간·장소는 정규 수업 요일과
+              기본 장소로 채워지고, 회차를 눌러 따로 바꿀 수 있어요.
             </p>
             {/* 주 액션: 정규 요일 기반 월 일괄 생성 — 대상월은 잔여 일정의 달에 고정,
                 일정 등록 대기일 때만 이번 달→다음 달 선등록. */}
