@@ -36,8 +36,8 @@ interface ClassHeader {
   /** regular | lesson | spot — spot(1회용)은 일정 1개 제한. */
   trainingType?: string | null;
   classDays?: string[];
-  startTime?: string;
-  endTime?: string;
+  // Class.startTime/endTime 은 받지 않는다 — 날짜부가 등록일로 오염돼 폐기된 ISO 값이라
+  //   "HH:mm" 으로 쓸 수 없다. 수업 기본 시간은 아래 daySchedules(정규 수업 요일)가 SoT.
   // 요일별 기본값(ClassDaySchedule 템플릿) — getClass 응답 매핑. 미니달력 "요일별 기본값 적용"에 사용.
   daySchedules?: {
     dayOfWeek: string;
@@ -97,7 +97,7 @@ interface ScheduleItem {
 /* ── [설계 v4.1 §3.1] 일정 draft reducer — 저장 전까지 서버 무접촉 ──
    invariant (reducer 가 강제):
      1) cancels 에 있는 id 는 edits 에 공존 불가 — toggleCancel ON 시 edits 제거,
-        editServer/applyToAll 은 cancels 포함 id 를 대상에서 제외.
+        editServer 는 cancels 포함 id 를 대상에서 제외(applyToAdds 는 adds 만 다뤄 무관).
      2) edits 는 원본과 동일 값이면 항목을 갖지 않는다 (no-op 미기록).
      3) adds 는 중복 날짜·서버 활성 날짜와 겹치지 않는다 (addDates 에서 skip). */
 
@@ -136,9 +136,9 @@ type DraftAction =
     }
   | { type: "toggleCancel"; id: string }
   | {
-      type: "applyToAll";
+      // 이번에 추가한(저장 전) 회차에만 일괄 적용 — 이미 저장된 회차는 대상이 아니다.
+      type: "applyToAdds";
       edit: Omit<DraftEditVal, "baseUpdatedAt">;
-      targets: { id: string; baseUpdatedAt: string; original: { startTime: string; endTime: string; venueId: string; venueText: string } }[];
     }
   | { type: "dropConflicts"; scheduleIds: string[] } // 409 응답 — 충돌 항목만 제거 (Phase 3)
   | { type: "clearAll" };
@@ -215,17 +215,7 @@ function draftReducer(state: DraftState, action: DraftAction): DraftState {
       delete nextEdits[action.id]; // invariant 1 — 취소 마킹 시 수정 draft 제거
       return { ...state, edits: nextEdits, cancels: [...state.cancels, action.id] };
     }
-    case "applyToAll": {
-      const nextEdits = { ...state.edits };
-      for (const t of action.targets) {
-        if (state.cancels.includes(t.id)) continue; // invariant 1 — 취소 예정 제외
-        const edit: DraftEditVal = { ...action.edit, baseUpdatedAt: t.baseUpdatedAt };
-        if (sameAsOriginal(edit, t.original)) {
-          delete nextEdits[t.id];
-        } else {
-          nextEdits[t.id] = edit;
-        }
-      }
+    case "applyToAdds": {
       const adds = state.adds.map((a) => ({
         ...a,
         startTime: action.edit.startTime,
@@ -234,7 +224,7 @@ function draftReducer(state: DraftState, action: DraftAction): DraftState {
         venueName: action.edit.venueName,
         venueText: action.edit.venueText,
       }));
-      return { ...state, edits: nextEdits, adds };
+      return { ...state, adds };
     }
     case "dropConflicts": {
       const drop = new Set(action.scheduleIds);
@@ -935,20 +925,58 @@ export default function ClassSchedulesManagePage() {
         toast.error(MESSAGES.class.spotSingleScheduleLimit);
         return;
       }
+      // 추가 회차의 시간·장소 기본값 — 그 요일의 기본값 > 수업 기본값 > 기존 회차 > 빈 값.
+      //   기존 회차 기준은 다가오는 첫 회차, 없으면 가장 최근 지난 회차(지금 하는 수업과 같은 값).
+      //   시간(시작·종료)과 장소(링크장·세부 텍스트)는 각각 한 묶음이라 쌍 단위로만 넘긴다 —
+      //   필드별로 섞으면 "요일 기본값 링크장 + 수업 기본 세부 구역" 같은 없는 조합이 생긴다.
+      //   ⚠ 수업 기본 시간은 정규 수업 요일(daySchedules)이다. Class.startTime/endTime 은
+      //     날짜부가 등록일로 오염돼 폐기된 ISO 값이라 "HH:mm" 자리에 쓸 수 없다.
+      const refSchedule = listUpcoming[0] ?? listPast[0] ?? null;
+      const defaultDayTime = activeDayDefaults[0];
+      const fallbackTime =
+        defaultDayTime
+          ? { startTime: defaultDayTime.startTime, endTime: defaultDayTime.endTime }
+          : refSchedule?.startTime && refSchedule?.endTime
+            ? { startTime: refSchedule.startTime, endTime: refSchedule.endTime }
+            : { startTime: '', endTime: '' };
+      const fallbackVenue =
+        cls.venueId || cls.venueText
+          ? {
+              venueId: cls.venueId ?? '',
+              venueName: cls.venueName ?? '',
+              venueText: cls.venueText ?? '',
+            }
+          : refSchedule?.venue || refSchedule?.venueText
+            ? {
+                venueId: refSchedule.venue?.id ?? '',
+                venueName: refSchedule.venue?.name ?? '',
+                venueText: refSchedule.venueText ?? '',
+              }
+            : { venueId: '', venueName: '', venueText: '' };
+
       dispatchDraft({
         type: 'addDates',
-        items: resolved.map((r) => ({
-          date: r.date,
-          startTime: r.startTime,
-          endTime: r.endTime,
-          venueId: r.venueId,
-          venueName: r.venueName,
-          venueText: r.venueText,
-        })),
+        items: resolved.map((r) => {
+          const hasOwnTime = !!r.startTime && !!r.endTime;
+          const hasOwnVenue = !!r.venueId || !!r.venueText;
+          return {
+            date: r.date,
+            ...(hasOwnTime
+              ? { startTime: r.startTime, endTime: r.endTime }
+              : fallbackTime),
+            ...(hasOwnVenue
+              ? {
+                  venueId: r.venueId,
+                  venueName: r.venueName,
+                  venueText: r.venueText,
+                }
+              : fallbackVenue),
+          };
+        }),
         existingDates: registeredDates,
       });
     },
-    [cls, isApproved, saving, isSpot, schedules.length, draft.cancels.length, draft.adds.length, registeredDates, toast],
+    [cls, isApproved, saving, isSpot, schedules.length, draft.cancels.length, draft.adds.length, registeredDates, toast, listUpcoming, listPast, activeDayDefaults],
   );
 
   // [월 일괄 생성] 즉시 등록이 아니라 미니달력을 대상월·프리필 선택 상태로 연다 —
@@ -1047,12 +1075,13 @@ export default function ClassSchedulesManagePage() {
     setExpandedId(null);
   };
 
-  // 모든 회차에 적용 — 로컬 draft 일괄 기록(가역이라 확인창 불필요 — 설계 §3.2).
-  //   취소 예정 행은 invariant 로 제외, draft 추가 행도 함께 갱신.
-  const handleApplyToAll = () => {
+  // 추가한 회차에 일괄 적용 — 로컬 draft 일괄 기록(가역이라 확인창 불필요 — 설계 §3.2).
+  //   이미 저장된 회차는 건드리지 않는다. 요일마다 시간이 다른 수업에서 한 회차의 값이
+  //   다른 요일 회차까지 덮던 문제를 없앤다(버튼도 추가한 회차 패널에서만 노출).
+  const handleApplyToAdds = () => {
     if (isEditTimeInvalid || saving) return;
     dispatchDraft({
-      type: 'applyToAll',
+      type: 'applyToAdds',
       edit: {
         startTime: editStart,
         endTime: editEnd,
@@ -1060,18 +1089,8 @@ export default function ClassSchedulesManagePage() {
         venueName: editVenueName,
         venueText: editVenueText.trim(),
       },
-      targets: listUpcoming.map((s) => ({
-        id: s.id,
-        baseUpdatedAt: s.updatedAt ?? '',
-        original: {
-          startTime: s.startTime ?? '',
-          endTime: s.endTime ?? '',
-          venueId: s.venue?.id ?? '',
-          venueText: s.venueText ?? '',
-        },
-      })),
     });
-    toast.success(MESSAGES.class.dayDefaults.appliedToAllDates);
+    toast.success(MESSAGES.class.dayDefaults.appliedToAdds(draft.adds.length));
     setExpandedId(null);
   };
 
@@ -1527,26 +1546,33 @@ export default function ClassSchedulesManagePage() {
               )}
               </>
             )}
-            {/* 모든 회차에 적용 — 다가오는 회차(병합 기준) 2개 이상 + 값이 있을 때만. 로컬 draft 일괄 기록. */}
-            {displayUpcoming.length > 1 && (editStart || editEnd || editVenue || editVenueText) && (
+            {/* 추가한 회차에 일괄 적용 — 추가한(저장 전) 회차를 펼쳤을 때만, 추가분이 2건 이상이고
+                값이 있을 때만. 이미 저장된 회차에서 누르면 펼친 그 회차가 안 바뀌어 혼란스럽다. */}
+            {/* 둘 다 누르는 즉시 draft 에 기록하고 패널을 닫는 같은 성격의 동작이라 한 줄에 나란히
+                둔다. 이 회차만 = 채운 버튼(대부분의 경우), 여러 건 = 테두리 버튼(영향 범위가 넓다). */}
+            <div className="flex gap-2">
               <button
                 type="button"
-                onClick={handleApplyToAll}
+                onClick={() => handleRowApply(row)}
                 disabled={isEditTimeInvalid || saving}
-                className="self-start rounded-md px-2 py-1 text-card-meta font-bold text-it-blue-500 hover:bg-it-blue-50 dark:text-it-blue-300 dark:hover:bg-it-blue-500/10 disabled:opacity-50"
-                aria-label={MESSAGES.class.dayDefaults.applyToAllDatesAria(seq ?? 0)}
+                className="flex-1 h-10 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-meta font-bold disabled:opacity-50 transition-colors motion-reduce:transition-none active:brightness-95"
               >
-                {MESSAGES.class.dayDefaults.applyToAllDates}
+                {SC.rowApplyButton}
               </button>
-            )}
-            <button
-              type="button"
-              onClick={() => handleRowApply(row)}
-              disabled={isEditTimeInvalid || saving}
-              className="w-full h-10 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-meta font-bold disabled:opacity-50 transition-colors motion-reduce:transition-none active:brightness-95"
-            >
-              {SC.rowApplyButton}
-            </button>
+              {isDraftRow &&
+                draft.adds.length > 1 &&
+                (editStart || editEnd || editVenue || editVenueText) && (
+                <button
+                  type="button"
+                  onClick={handleApplyToAdds}
+                  disabled={isEditTimeInvalid || saving}
+                  className="flex-[1.4] h-10 rounded-w-md border-[1.5px] border-it-blue-500 text-it-blue-500 hover:bg-it-blue-50 dark:text-it-blue-300 dark:hover:bg-it-blue-500/10 text-card-meta font-bold disabled:opacity-50 transition-colors motion-reduce:transition-none active:brightness-95"
+                  aria-label={MESSAGES.class.dayDefaults.applyToAddsAria(draft.adds.length)}
+                >
+                  {MESSAGES.class.dayDefaults.applyToAdds(draft.adds.length)}
+                </button>
+              )}
+            </div>
           </div>
         )}
       </li>
@@ -2285,7 +2311,8 @@ export default function ClassSchedulesManagePage() {
         // spot(1회용) — 요일 빠른 선택 칩 차단 + 단일 선택 모드 (ClassForm 동일 패턴).
         daySchedules={isSpot ? [] : cls.daySchedules ?? []}
         singleSelect={isSpot}
-        // 날짜만 고른다 — 시간·장소는 아코디언에서 회차별 입력(장소는 기본 장소 폴백). requireCommonTime 미전달.
+        // 날짜만 고른다(requireCommonTime 미전달) — 시간은 아코디언에서 회차별 입력,
+        //   장소는 handleConfirmDates 가 수업 기본 장소로 채운다.
         onConfirm={handleConfirmDates}
         onClose={() => {
           setMultiDateOpen(false);

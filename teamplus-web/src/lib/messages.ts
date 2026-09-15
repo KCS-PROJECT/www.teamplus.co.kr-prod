@@ -266,6 +266,12 @@ export const MESSAGES = {
       applyToAllDatesAria: (index: number) =>
         `${index}회차 시간·장소를 모든 회차에 적용`,
       appliedToAllDates: "모든 회차에 적용되었습니다.",
+      // 일정·판매 관리 — 이번에 추가한(저장 전) 회차에만 일괄 적용. 이미 저장된 회차는 건드리지 않는다.
+      applyToAdds: (count: number) => `추가한 ${count}건에 적용`,
+      applyToAddsAria: (count: number) =>
+        `입력한 시간·장소를 추가한 회차 ${count}건에 적용`,
+      appliedToAdds: (count: number) =>
+        `추가한 회차 ${count}건에 적용되었습니다.`,
       timeUndecided: "시간 미정",
       dateUndecided: "날짜 미정",
     },
