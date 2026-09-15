@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
   Optional,
 } from "@nestjs/common";
@@ -778,7 +779,8 @@ export class TournamentsService {
   /**
    * 토너먼트 상세 조회 (매치 목록 포함)
    */
-  async getTournamentById(id: string, userId?: string) {
+  async getTournamentById(id: string, requester?: JwtUserPayload) {
+    const userId = requester?.id;
     const tournament = await this.prisma.tournament.findUnique({
       where: { id },
       include: {
@@ -913,12 +915,102 @@ export class TournamentsService {
       }));
     }
 
+    // 참가 대상 이름 해석 — 프론트가 팀 명단과 대조하며 탈퇴자·이탈자를 조용히
+    //   누락시키던 것을 서버 단일 판정으로 교체. selectedParticipantIds(id 배열)은
+    //   그대로 유지하고(자격 판정·정원 표시가 계속 사용) participants 는 추가 필드.
+    const rawParticipantIds = Array.isArray(tournament.selectedParticipantIds)
+      ? (tournament.selectedParticipantIds as unknown as string[])
+      : [];
+    const participants = await this.resolveTournamentParticipants(
+      rawParticipantIds,
+      tournament.teamId,
+      requester,
+    );
+
     return {
       ...tournament,
       paidParticipantIds,
       paidRegistrations,
       myRegistrations,
+      participants,
     };
+  }
+
+  /**
+   * 대회 참가 대상(selectedParticipantIds) 의 이름을 서버가 해석한다.
+   *
+   *  판정과 이름 출처를 분리한다 — ① users 조회로 "식별 가능" 여부만 판정
+   *  (행 있음 AND status !== WITHDRAWN), ② 식별 가능한 경우에만 TeamMember.playerName
+   *  을 조회한다. 식별 불가(탈퇴 · 행 없음)로 판정되면 TeamMember.playerName 은
+   *  아예 조회하지 않는다 — 익명화가 User.firstName 은 지워도 TeamMember.playerName
+   *  은 그대로 남겨두므로, 식별 불가 대상의 실명이 여기로 새어나가면 안 된다.
+   *  익명화 문자열("탈퇴회원") 자체를 판정 근거로 쓰지 않는 것도 같은 이유 —
+   *  구현이 바뀌거나 보존기간이 끝나 행이 파기돼도 결과가 달라지면 안 된다.
+   *
+   *  학부모/학생 요청자는 본인(+ 자녀)에 해당하는 항목만 돌려받는다 — 타인 자녀
+   *  노출 방지. 감독/코치 등은 전체를 받는다.
+   */
+  private async resolveTournamentParticipants(
+    participantIds: string[],
+    teamId: string | null,
+    requester?: JwtUserPayload,
+  ): Promise<Array<{ userId: string; name: string | null }>> {
+    // 요청자 없이 호출하면 스코프를 적용할 수 없다. 빈 배열로 눙치면 "참가 대상 전체"
+    //   (selectedParticipantIds 가 비어 있을 때의 의미)와 구분되지 않으므로 실패시킨다 —
+    //   개인정보 필터의 기본값은 닫힌 쪽이어야 한다. JWT 가드 뒤 정상 경로에선 도달하지 않는다.
+    if (!requester) {
+      throw new InternalServerErrorException(
+        "참가 대상 조회에 요청자 정보가 필요합니다.",
+      );
+    }
+    if (participantIds.length === 0) return [];
+
+    let scopedIds = participantIds;
+    if (["PARENT", "TEEN", "CHILD"].includes(requester.userType)) {
+      const childIds = await resolveScopedChildUserIds(
+        this.prisma,
+        requester.id,
+      );
+      const scope = new Set([requester.id, ...childIds]);
+      scopedIds = participantIds.filter((pid) => scope.has(pid));
+    }
+    if (scopedIds.length === 0) return [];
+
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: scopedIds } },
+      select: { id: true, status: true, firstName: true, lastName: true },
+    });
+    const userMap = new Map(users.map((u) => [u.id, u]));
+
+    const identifiableIds = new Set(
+      scopedIds.filter((pid) => {
+        const u = userMap.get(pid);
+        return !!u && u.status !== "WITHDRAWN";
+      }),
+    );
+
+    const playerNameMap = new Map<string, string>();
+    if (teamId && identifiableIds.size > 0) {
+      const members = await this.prisma.teamMember.findMany({
+        where: { teamId, userId: { in: Array.from(identifiableIds) } },
+        select: { userId: true, playerName: true },
+      });
+      for (const m of members) {
+        if (m.playerName) playerNameMap.set(m.userId, m.playerName);
+      }
+    }
+
+    return scopedIds.map((pid) => {
+      if (!identifiableIds.has(pid)) {
+        return { userId: pid, name: null };
+      }
+      const u = userMap.get(pid)!;
+      const fallbackName = `${u.lastName ?? ""}${u.firstName ?? ""}`.trim();
+      return {
+        userId: pid,
+        name: playerNameMap.get(pid) ?? (fallbackName || null),
+      };
+    });
   }
 
   /**

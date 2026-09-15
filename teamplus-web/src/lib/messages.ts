@@ -2111,6 +2111,9 @@ export const MESSAGES = {
     // participantViewList("명단 보기")는 상세 스크롤 단축 버튼 제거로 폐기 — 재도입 대비 보존.
     participantViewList: "명단 보기",
     participantNameUnknown: "선수",
+    // 서버가 이름을 내려주지 못한 참가자 — 탈퇴·파기·잘못된 id 를 구분하지 않고 하나로 표시한다.
+    //   (구분하려 들면 보존 기간이 끝난 뒤 판정이 흔들린다)
+    participantUnavailable: "탈퇴회원",
     // 학부모 뷰 참가 대상 문장 — 이름 끝 받침에 따라 주격조사 이/가 자동 선택.
     participantParentNotice: (namesStr: string) => {
       const last = namesStr.trim().slice(-1);
