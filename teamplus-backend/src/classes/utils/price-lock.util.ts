@@ -329,7 +329,8 @@ export function resolveNewProductBillingMonth(
 /**
  * 판매 승인 월 역행 거부 — `billingMonth ≤ salesOpenMonth` 잠금 비교가
  * "과거에 판매됐던 월분"을 포함하려면 salesOpenMonth 가 비감소여야 한다.
- * (이른 달 일정 추가로 earliestRemainingMonth 가 과거로 이동하는 경우 차단)
+ * 대상월 후보가 하한 max(오늘 달, salesOpenMonth+1) 을 지키므로 정상 경로에서는
+ * 도달하지 않는다 — 후보 규칙이 바뀌어도 잠금 불변식을 지키는 방어선으로 둔다.
  */
 export function assertSalesMonthNotRolledBack(
   targetMonth: Date,

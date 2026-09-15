@@ -23,7 +23,12 @@ describe("ChildrenService - deleteChild", () => {
     parentChild: {
       findUnique: jest.fn(),
       count: jest.fn(),
+      delete: jest.fn().mockResolvedValue(undefined),
+      findFirst: jest.fn().mockResolvedValue(null),
+      update: jest.fn().mockResolvedValue(undefined),
     },
+    // unlinkChild 는 트랜잭션 밖에서 prisma 를 직접 쓴다(deleteChild 의 tx 와 별개)
+    monthlyPostpaidBillingLine: { count: jest.fn().mockResolvedValue(0) },
     $transaction: jest.fn(),
   };
 
@@ -39,7 +44,13 @@ describe("ChildrenService - deleteChild", () => {
         findFirst: jest.fn().mockResolvedValue(null),
         update: jest.fn().mockResolvedValue(undefined),
       },
-      enrollment: { count: jest.fn().mockResolvedValue(0) },
+      enrollment: {
+        count: jest.fn().mockResolvedValue(0),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      classAttendance: { findMany: jest.fn().mockResolvedValue([]) },
+      monthlyPostpaidBilling: { findMany: jest.fn().mockResolvedValue([]) },
+      monthlyPostpaidBillingLine: { count: jest.fn().mockResolvedValue(0) },
       user: {
         findUnique: jest.fn().mockResolvedValue({ avatarUrl: null }),
         update: jest.fn().mockResolvedValue(undefined),
@@ -172,5 +183,53 @@ describe("ChildrenService - deleteChild", () => {
     expect(mockUploadCleanupService.cleanupReplacedUpload).toHaveBeenCalledWith(
       "/uploads/child/photo.display.webp",
     );
+  });
+
+  // 18. 확정 청구된 미납 — 무보호자 삭제 차단(링크가 끊기면 부모 탈퇴 가드가 못 본다)
+  it("무보호자 자녀에 미납 후불 정산이 있으면 차단하고 익명화하지 않는다", async () => {
+    mockPrisma.parentChild.findUnique.mockResolvedValue(primaryLink);
+    mockPrisma.parentChild.count.mockResolvedValue(0);
+    txMock.monthlyPostpaidBillingLine.count.mockResolvedValue(1);
+
+    await expect(service.deleteChild(PARENT_ID, CHILD_ID)).rejects.toThrow(
+      "미납된 후불 정산",
+    );
+    expect(txMock.monthlyPostpaidBillingLine.count).toHaveBeenCalledWith({
+      where: { paymentStatus: "pending", userId: CHILD_ID },
+    });
+    expect(txMock.user.update).not.toHaveBeenCalled();
+    expect(txMock.parentChild.deleteMany).not.toHaveBeenCalled();
+  });
+
+  // 19. 다른 보호자가 있어도 미납이면 링크를 끊지 못한다(책임 회피 차단)
+  it("다른 보호자가 있어도 미납 후불 정산이 있으면 관계 해제를 차단한다", async () => {
+    mockPrisma.parentChild.findUnique.mockResolvedValue(primaryLink);
+    mockPrisma.parentChild.count.mockResolvedValue(1);
+    txMock.monthlyPostpaidBillingLine.count.mockResolvedValue(2);
+
+    await expect(service.deleteChild(PARENT_ID, CHILD_ID)).rejects.toThrow(
+      "미납된 후불 정산",
+    );
+    expect(txMock.parentChild.delete).not.toHaveBeenCalled();
+  });
+
+  // 20. 연결 해제(unlinkChild)도 같은 규칙 — 수강 중은 막지 않고 미납만 막는다
+  it("연결 해제는 미납 후불 정산이 있으면 차단하고, 없으면 관계를 삭제한다", async () => {
+    mockPrisma.parentChild.findUnique.mockResolvedValue({ isPrimary: false });
+    mockPrisma.parentChild.count.mockResolvedValue(2);
+    mockPrisma.monthlyPostpaidBillingLine.count.mockResolvedValue(1);
+
+    await expect(service.unlinkChild(PARENT_ID, CHILD_ID)).rejects.toThrow(
+      "미납된 후불 정산",
+    );
+    expect(mockPrisma.parentChild.delete).not.toHaveBeenCalled();
+
+    mockPrisma.monthlyPostpaidBillingLine.count.mockResolvedValue(0);
+    await expect(
+      service.unlinkChild(PARENT_ID, CHILD_ID),
+    ).resolves.toBeUndefined();
+    expect(mockPrisma.parentChild.delete).toHaveBeenCalledWith({
+      where: { parentId_childId: { parentId: PARENT_ID, childId: CHILD_ID } },
+    });
   });
 });

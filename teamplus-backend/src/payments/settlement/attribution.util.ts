@@ -84,27 +84,20 @@ export function resolveRowBillingTiming(
 }
 
 /**
- * [선택월 로스터 멤버십] "그 달의 수강생" 판정 — 정산 허브(settlement-summary)와
- * 선수정보 화면(getClassPayments 월 스코프)이 공유하는 단일 계약.
- *  · 등록월 > 선택월 → 제외 (그 달엔 아직 등록 전)
- *  · 등록월 == 선택월 → 포함 (그 달 등록·탈퇴여도 그 달 명단 보존)
- *  · 그 달 활동 증거(출석·청구 라인·선불 귀속 거래) → 포함 (inactive 여도 보존)
- *  · 그 외 → status=active AND 그 달 수업 진행 중일 때만
- *  ⚠️ 한계: 단일 가변 ClassRegistration 행으로 정밀 탈퇴/재가입 이력은 복원 불가.
+ * [Phase 3] "그 달의 수강생" 판정 — 정산 허브(settlement-summary)·선수정보 화면
+ * (getClassPayments 월 스코프)·어드민 팀 결제 요약이 공유하는 단일 계약.
+ *
+ * 명단 = 그 달 수강 자격(`enrollment-eligibility.util.ts` isEligibleForMonth) ∪
+ *   그 달 활동 증거(출석·확정 청구 라인·선불 귀속 거래). registrationDate·
+ *   ClassRegistration.status·classActiveForMonth 는 더 이상 보지 않는다 — 자격이
+ *   신청 파생(billingMonth·billingTiming)으로 통일되어 등록일 근사가 불필요해졌다
+ *   (설계: enrollment-monthly-eligibility-design-2026-09-09.md §4-2).
  */
 export function isRosterMemberForMonth(
-  registrationDate: Date | null,
-  status: string,
-  selectedYearMonth: string,
-  classActiveForMonth: boolean,
+  eligible: boolean,
   hasMonthActivity: boolean,
 ): boolean {
-  const regMonth =
-    registrationDate != null ? instantToKstYearMonth(registrationDate) : null;
-  if (regMonth != null && regMonth > selectedYearMonth) return false;
-  if (regMonth === selectedYearMonth) return true;
-  if (hasMonthActivity) return true;
-  return status === "active" && classActiveForMonth;
+  return eligible || hasMonthActivity;
 }
 
 function sumRefund(
@@ -116,11 +109,13 @@ function sumRefund(
 export interface PrepaidAttributionInput {
   /** resolveRowBillingTiming 로 산출한 유효 결제방식. */
   billingTiming: RowBillingTiming;
-  feeType?: string | null;
-  /** MONTHLY_FIXED 전용 귀속월(@db.Date). 다른 유형은 무시. */
-  billingMonth?: Date | null;
+  /**
+   * [Phase 3] `enrollments.billing_month` — 대상월(신청 시 확정, 상품 join 없이 판독).
+   * 이전의 3단 폴백(MONTHLY_FIXED 상품 billingMonth → completedAt 월 → createdAt 월 →
+   * paidAt 월)을 대체한다 — 신청 파생 컬럼이 이미 귀속월의 SoT.
+   */
+  enrollmentBillingMonth?: Date | null;
   enrollmentStatus?: string | null;
-  enrollmentPaidAt?: Date | null;
   /** payment.amount 미존재 시 폴백(상품가). */
   productPrice?: number | null;
   payment?: {
@@ -133,18 +128,17 @@ export interface PrepaidAttributionInput {
 }
 
 /**
- * [R1] 선불 월귀속·상태·순수납 — Phase 2a 선불(PREPAID)/미배정(UNASSIGNED) 로직과 동일 계약.
+ * [Phase 3] 선불 월귀속·상태·순수납 — 선불(PREPAID)/미배정(UNASSIGNED) 로직.
  *
- * 월귀속(순서대로): MONTHLY_FIXED+billingMonth → billingMonth 월 / 완료 선불 → completedAt 월 /
- *   pending 선불 → createdAt 월(UNSETTLED — 귀속만 유지, 집계 제외) / 레거시 paid(completedAt 없음) → paidAt 월 /
- *   환불·취소 → 위 규칙으로 산출한 원결제 월 유지(상태·환불액만 반영) / 근거 없음 → null + attributionUnknown.
+ * 월귀속 = `enrollments.billing_month` 그대로(§1 조건식과 동일 컬럼). 환불·취소도
+ *   신청 생성 시 확정된 월을 유지한다(상태·환불액만 반영). 근거 없음(NULL) → attributionUnknown.
  * 상태: terminal(Payment) 우선 — 환불→REFUNDED / 취소→CANCELLED / 완료→PAID / else UNSETTLED.
  *   선불 pending(결제 진행 중/이탈)은 확정 청구가 아니므로 BILLED 로 치지 않는다(파일 헤더 정책).
  */
 export function resolvePrepaidAttribution(
   input: PrepaidAttributionInput,
 ): AttributionResult {
-  const { billingTiming, feeType, billingMonth, enrollmentStatus, enrollmentPaidAt, productPrice, payment } = input;
+  const { billingTiming, enrollmentBillingMonth, enrollmentStatus, productPrice, payment } = input;
   const payStatus = payment?.paymentStatus ?? null;
   const legacyAmount = payment?.amount ?? productPrice ?? null;
   const refundedAmount = sumRefund(payment?.refundLogs);
@@ -171,19 +165,10 @@ export function resolvePrepaidAttribution(
     billingStatus = "UNSETTLED";
   }
 
-  // 원결제 귀속 월 산출 — 환불·취소도 이 규칙으로 산출한 월을 유지한다.
-  let yearMonth: string | null = null;
-  if (feeType === "MONTHLY_FIXED" && billingMonth != null) {
-    yearMonth = dbDateToKstYearMonth(billingMonth);
-  } else if (payment?.completedAt != null) {
-    yearMonth = instantToKstYearMonth(payment.completedAt);
-  } else if (payStatus === "pending" && payment?.createdAt != null) {
-    yearMonth = instantToKstYearMonth(payment.createdAt);
-  } else if (enrollmentPaidAt != null) {
-    yearMonth = instantToKstYearMonth(enrollmentPaidAt);
-  } else {
-    yearMonth = null;
-  }
+  const yearMonth =
+    enrollmentBillingMonth != null
+      ? dbDateToKstYearMonth(enrollmentBillingMonth)
+      : null;
 
   // 선불은 BILLED 를 산출하지 않으므로(정책 — pending 은 UNSETTLED) 청구액 = 완료 결제만.
   const billedAmount = billingStatus === "PAID" ? legacyAmount : null;

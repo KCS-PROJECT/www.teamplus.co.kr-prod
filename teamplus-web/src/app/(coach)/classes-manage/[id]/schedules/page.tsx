@@ -36,8 +36,8 @@ interface ClassHeader {
   /** regular | lesson | spot — spot(1회용)은 일정 1개 제한. */
   trainingType?: string | null;
   classDays?: string[];
-  startTime?: string;
-  endTime?: string;
+  // Class.startTime/endTime 은 받지 않는다 — 날짜부가 등록일로 오염돼 폐기된 ISO 값이라
+  //   "HH:mm" 으로 쓸 수 없다. 수업 기본 시간은 아래 daySchedules(정규 수업 요일)가 SoT.
   // 요일별 기본값(ClassDaySchedule 템플릿) — getClass 응답 매핑. 미니달력 "요일별 기본값 적용"에 사용.
   daySchedules?: {
     dayOfWeek: string;
@@ -54,7 +54,11 @@ interface ClassHeader {
   // [일정·판매 관리 승격] 수명주기 파생 상태(getClass 응답) — 판매 준비 섹션 분기.
   lifecycleStatus?: 'ON_SALE' | 'PENDING_SCHEDULE' | 'ENDED' | null;
   pendingReason?: 'NO_SCHEDULE' | 'UNAPPROVED_MONTH' | null;
-  earliestRemainingMonth?: string | null;
+  // [판매 창 2개월] 판매 중인 달 목록("YYYY-MM" 오름차순) — ON_SALE 칩("N월 판매 중")
+  //   표시 전용. 비어 있으면 칩 미표시, 여러 달이면 달마다 칩.
+  sellableMonths?: string[];
+  // [판매 창 2개월] 판매를 다음에 시작할 수 있는 달 — 판매 시작·월분 상품 생성 대상월 SoT.
+  nextSalesMonth?: string | null;
   endedAt?: string | null;
 }
 
@@ -93,7 +97,7 @@ interface ScheduleItem {
 /* ── [설계 v4.1 §3.1] 일정 draft reducer — 저장 전까지 서버 무접촉 ──
    invariant (reducer 가 강제):
      1) cancels 에 있는 id 는 edits 에 공존 불가 — toggleCancel ON 시 edits 제거,
-        editServer/applyToAll 은 cancels 포함 id 를 대상에서 제외.
+        editServer 는 cancels 포함 id 를 대상에서 제외(applyToAdds 는 adds 만 다뤄 무관).
      2) edits 는 원본과 동일 값이면 항목을 갖지 않는다 (no-op 미기록).
      3) adds 는 중복 날짜·서버 활성 날짜와 겹치지 않는다 (addDates 에서 skip). */
 
@@ -132,9 +136,9 @@ type DraftAction =
     }
   | { type: "toggleCancel"; id: string }
   | {
-      type: "applyToAll";
+      // 이번에 추가한(저장 전) 회차에만 일괄 적용 — 이미 저장된 회차는 대상이 아니다.
+      type: "applyToAdds";
       edit: Omit<DraftEditVal, "baseUpdatedAt">;
-      targets: { id: string; baseUpdatedAt: string; original: { startTime: string; endTime: string; venueId: string; venueText: string } }[];
     }
   | { type: "dropConflicts"; scheduleIds: string[] } // 409 응답 — 충돌 항목만 제거 (Phase 3)
   | { type: "clearAll" };
@@ -211,17 +215,7 @@ function draftReducer(state: DraftState, action: DraftAction): DraftState {
       delete nextEdits[action.id]; // invariant 1 — 취소 마킹 시 수정 draft 제거
       return { ...state, edits: nextEdits, cancels: [...state.cancels, action.id] };
     }
-    case "applyToAll": {
-      const nextEdits = { ...state.edits };
-      for (const t of action.targets) {
-        if (state.cancels.includes(t.id)) continue; // invariant 1 — 취소 예정 제외
-        const edit: DraftEditVal = { ...action.edit, baseUpdatedAt: t.baseUpdatedAt };
-        if (sameAsOriginal(edit, t.original)) {
-          delete nextEdits[t.id];
-        } else {
-          nextEdits[t.id] = edit;
-        }
-      }
+    case "applyToAdds": {
       const adds = state.adds.map((a) => ({
         ...a,
         startTime: action.edit.startTime,
@@ -230,7 +224,7 @@ function draftReducer(state: DraftState, action: DraftAction): DraftState {
         venueName: action.edit.venueName,
         venueText: action.edit.venueText,
       }));
-      return { ...state, edits: nextEdits, adds };
+      return { ...state, adds };
     }
     case "dropConflicts": {
       const drop = new Set(action.scheduleIds);
@@ -431,20 +425,30 @@ export default function ClassSchedulesManagePage() {
   const isNoSchedulePending =
     cls?.lifecycleStatus === 'PENDING_SCHEDULE' &&
     cls?.pendingReason === 'NO_SCHEDULE';
-  const isUnapprovedPending =
-    cls?.lifecycleStatus === 'PENDING_SCHEDULE' &&
-    cls?.pendingReason === 'UNAPPROVED_MONTH';
-  const targetMonthIso = cls?.earliestRemainingMonth ?? null;
+  // [판매 창 2개월] 판매 시작·월분 상품 생성·일괄 생성 대상월 — earliestRemainingMonth(잔여
+  //   일정 최이른 달)는 백엔드 판매 후보 산출과 갈릴 수 있어 nextSalesMonth 로 교체.
+  const targetMonthIso = cls?.nextSalesMonth ?? null;
   // @db.Date ISO 직렬화(UTC 자정) — UTC getter 로 월 추출 (상세 페이지와 동일 규칙).
   const targetMonthLabel = targetMonthIso
     ? new Date(targetMonthIso).getUTCMonth() + 1
     : null;
   const targetMonthKey = targetMonthIso ? targetMonthIso.slice(0, 7) : null;
+  // [일정·판매 관리 승격 v2] 판매 준비 섹션 게이트 — 이번 달 판매 중(ON_SALE)에 다음 달을
+  //   여는 흐름도 커버해야 하므로 UNAPPROVED_MONTH 전용에서 "다음 판매월이 있는 모든 상태"로
+  //   확장한다. NO_SCHEDULE(일정 자체가 없음)만 상단 별도 안내로 남기고 여기서 제외.
+  const canPrepareSales = !isSpot && !isEnded && !isNoSchedulePending;
+  // ON_SALE 칩 전용(표시 용도) — 판매 중인 달 목록(sellableMonths) 오름차순 월 번호.
+  const onSaleMonthLabels = (cls?.sellableMonths ?? [])
+    .map((m) => Number(m.slice(5, 7)))
+    .filter((n) => Number.isFinite(n));
 
   const [monthlyPkgs, setMonthlyPkgs] = useState<MonthlyPkg[] | null>(null);
   // 소진(isActive:false) 포함 전체 월정액 행 — 앵커 달(가장 가까운 스냅샷 달) 판정 전용.
   //   감독 조회는 서버가 비활성 행도 내려준다(shouldHideInactiveFor 는 학부모 계열만 숨김).
   const [monthlyRowsAll, setMonthlyRowsAll] = useState<MonthlyPkg[] | null>(null);
+  // 이번 화면에서 갱신 원본으로 쓴 행 id — 원본 달이 아직 판매 중이면 서버가 살려 두므로,
+  //   이름을 바꿔 등록한 경우 이름 기준 제외만으로는 원본이 다시 제안된다.
+  const [renewedSourceIds, setRenewedSourceIds] = useState<Set<string>>(new Set());
   const [pkgPrices, setPkgPrices] = useState<Record<string, string>>({});
   // 제안 금액 회차 스테퍼 — 항목별 선택 회수의 원시 입력 문자열
   //   (미지정 = 대상월 전체 회차 기본값 · '' = 입력 중 임시 빈 값 허용).
@@ -479,8 +483,8 @@ export default function ClassSchedulesManagePage() {
   }, [classId]);
 
   useEffect(() => {
-    if (isUnapprovedPending && !isSpot) fetchMonthlyPkgs();
-  }, [isUnapprovedPending, isSpot, fetchMonthlyPkgs]);
+    if (canPrepareSales) fetchMonthlyPkgs();
+  }, [canPrepareSales, fetchMonthlyPkgs]);
 
   // 대상월 row 가 이미 있는 상품명 집합 — 과거 데이터 보호용 보조 가드.
   //   갱신 소진 판정은 원본 행(id) 판매 중지가 SoT 이고, 이 이름 필터는 예전
@@ -514,6 +518,7 @@ export default function ClassSchedulesManagePage() {
       const inWindow =
         anchorMonth !== null ? month === anchorMonth : month === null;
       if (!inWindow) return false;
+      if (renewedSourceIds.has(pkg.id)) return false;
       if (updatedNames.has(pkg.productName) || seen.has(pkg.productName)) {
         return false;
       }
@@ -546,24 +551,6 @@ export default function ClassSchedulesManagePage() {
     return { counts, total };
   }, [schedules, targetMonthKey]);
 
-  // 갱신 원본 행 소진 — 등록·제외 시 해당 행(id)만 판매 중지. 이름 매칭 승계 없음.
-  //   지난 월분도 판매 중지 단독 변경은 서버가 허용한다(지난 월분 잠금의 유일한 예외).
-  //   실패는 경고 토스트로 노출 (조용한 실패 금지 — 실패 시 행이 갱신 목록에 남는다).
-  const retireSourceRow = useCallback(
-    async (pkgId: string) => {
-      const res = await api.patch(`/classes/${classId}/products/${pkgId}`, {
-        isActive: false,
-      });
-      if (!res.success) {
-        toast.error(
-          res.error?.message ?? MESSAGES.class.salesCycle.retireFailed,
-        );
-      }
-      return res.success;
-    },
-    [classId, toast],
-  );
-
   const handleCreateMonthPkg = useCallback(
     async (pkg: MonthlyPkg) => {
       if (!targetMonthKey) return;
@@ -584,6 +571,8 @@ export default function ClassSchedulesManagePage() {
       const desc = (rawDesc === undefined ? (pkg.description ?? '') : rawDesc).trim();
       try {
         // §9.2 "동일 내용 복제" — 단위 필드 3종 패스스루.
+        // 원본 행(id) 처리는 서버가 생성과 같은 트랜잭션에서 결정한다 — 원본 달이 아직
+        //   판매 중이면 두 월분을 함께 팔고, 판매 창 밖(지난 달·무월)이면 판매 중지.
         const res = await api.post(`/classes/${classId}/products`, {
           productName: name,
           description: desc || undefined,
@@ -593,11 +582,10 @@ export default function ClassSchedulesManagePage() {
           sessionsPerMonth: pkg.sessionsPerMonth ?? undefined,
           sessionsPerWeek: pkg.sessionsPerWeek ?? undefined,
           billingMonth: targetMonthKey,
+          sourceProductId: pkg.id,
         });
         if (res.success) {
-          // 원본 행 소진(id 기반) — 이름 변경 여부와 무관하게 방금 누른 행만 중지.
-          //   무월(레거시) 원본의 월 필터 우회 중복 노출 방지도 이 한 번으로 겸한다.
-          await retireSourceRow(pkg.id);
+          setRenewedSourceIds((prev) => new Set(prev).add(pkg.id));
           toast.success(MESSAGES.class.salesCycle.packageCreated);
           await fetchMonthlyPkgs();
         } else if (res.error?.message) {
@@ -607,7 +595,7 @@ export default function ClassSchedulesManagePage() {
         setPkgSubmitting(null);
       }
     },
-    [classId, targetMonthKey, pkgPrices, pkgNames, pkgDescs, toast, fetchMonthlyPkgs, retireSourceRow],
+    [classId, targetMonthKey, pkgPrices, pkgNames, pkgDescs, toast, fetchMonthlyPkgs],
   );
 
   // [이번 달 제외] 버튼은 앵커 규칙 도입으로 제거(2026-09-01) — 안 팔 항목은 등록하지
@@ -664,11 +652,18 @@ export default function ClassSchedulesManagePage() {
     try {
       // [Phase 2] 미갱신 선불 선수 해제 사전 고지 — dryRun으로 대상을 먼저 조회하고,
       //   해제 대상이 있으면 감독 확인 후에만 실제 판매 시작을 실행한다.
+      //   [R1] dryRun 응답 targetMonth 는 "YYYY-MM" 문자열(단일) — 확인 호출에 그대로 전달.
       const preview = await api.post<{
         releaseCandidates?: { userId: string; name: string }[];
+        targetMonth?: string;
       }>(`/classes/${classId}/open-sales`, { dryRun: true });
       if (!preview.success) {
         if (preview.error?.message) toast.error(preview.error.message);
+        return;
+      }
+      const targetMonth = preview.data?.targetMonth;
+      if (!targetMonth) {
+        toast.error(MESSAGES.class.salesCycle.noSalesTargetMonth);
         return;
       }
       const candidates = preview.data?.releaseCandidates ?? [];
@@ -705,6 +700,7 @@ export default function ClassSchedulesManagePage() {
       }
       const res = await api.post<{ releasedCount?: number }>(
         `/classes/${classId}/open-sales`,
+        { targetMonth },
       );
       if (res.success) {
         if (targetMonthLabel !== null) {
@@ -740,7 +736,7 @@ export default function ClassSchedulesManagePage() {
   );
 
   // [월 일괄 생성] 정규 요일 템플릿(시간 채워진 요일)로 대상월 날짜를 즉시 등록 —
-  //   대상월: 잔여 일정이 있으면 판매 준비 대상월(earliestRemainingMonth)에 고정 — 그 달이
+  //   대상월: 잔여 일정이 있으면 판매 시작 대상월(nextSalesMonth)에 고정 — 그 달이
   //   가득 차도 다음 달로 넘어가지 않는다(생명주기와 무관하게 달이 앞서가는 혼동 방지).
   //   다음 달 선등록은 잔여 일정이 모두 끝나 일정 등록 대기가 된 뒤에만 열린다.
   //   수정 폼의 동일 기능(로컬 draft)과 달리 여기서는 bulk API 로 바로 저장된다.
@@ -929,20 +925,58 @@ export default function ClassSchedulesManagePage() {
         toast.error(MESSAGES.class.spotSingleScheduleLimit);
         return;
       }
+      // 추가 회차의 시간·장소 기본값 — 그 요일의 기본값 > 수업 기본값 > 기존 회차 > 빈 값.
+      //   기존 회차 기준은 다가오는 첫 회차, 없으면 가장 최근 지난 회차(지금 하는 수업과 같은 값).
+      //   시간(시작·종료)과 장소(링크장·세부 텍스트)는 각각 한 묶음이라 쌍 단위로만 넘긴다 —
+      //   필드별로 섞으면 "요일 기본값 링크장 + 수업 기본 세부 구역" 같은 없는 조합이 생긴다.
+      //   ⚠ 수업 기본 시간은 정규 수업 요일(daySchedules)이다. Class.startTime/endTime 은
+      //     날짜부가 등록일로 오염돼 폐기된 ISO 값이라 "HH:mm" 자리에 쓸 수 없다.
+      const refSchedule = listUpcoming[0] ?? listPast[0] ?? null;
+      const defaultDayTime = activeDayDefaults[0];
+      const fallbackTime =
+        defaultDayTime
+          ? { startTime: defaultDayTime.startTime, endTime: defaultDayTime.endTime }
+          : refSchedule?.startTime && refSchedule?.endTime
+            ? { startTime: refSchedule.startTime, endTime: refSchedule.endTime }
+            : { startTime: '', endTime: '' };
+      const fallbackVenue =
+        cls.venueId || cls.venueText
+          ? {
+              venueId: cls.venueId ?? '',
+              venueName: cls.venueName ?? '',
+              venueText: cls.venueText ?? '',
+            }
+          : refSchedule?.venue || refSchedule?.venueText
+            ? {
+                venueId: refSchedule.venue?.id ?? '',
+                venueName: refSchedule.venue?.name ?? '',
+                venueText: refSchedule.venueText ?? '',
+              }
+            : { venueId: '', venueName: '', venueText: '' };
+
       dispatchDraft({
         type: 'addDates',
-        items: resolved.map((r) => ({
-          date: r.date,
-          startTime: r.startTime,
-          endTime: r.endTime,
-          venueId: r.venueId,
-          venueName: r.venueName,
-          venueText: r.venueText,
-        })),
+        items: resolved.map((r) => {
+          const hasOwnTime = !!r.startTime && !!r.endTime;
+          const hasOwnVenue = !!r.venueId || !!r.venueText;
+          return {
+            date: r.date,
+            ...(hasOwnTime
+              ? { startTime: r.startTime, endTime: r.endTime }
+              : fallbackTime),
+            ...(hasOwnVenue
+              ? {
+                  venueId: r.venueId,
+                  venueName: r.venueName,
+                  venueText: r.venueText,
+                }
+              : fallbackVenue),
+          };
+        }),
         existingDates: registeredDates,
       });
     },
-    [cls, isApproved, saving, isSpot, schedules.length, draft.cancels.length, draft.adds.length, registeredDates, toast],
+    [cls, isApproved, saving, isSpot, schedules.length, draft.cancels.length, draft.adds.length, registeredDates, toast, listUpcoming, listPast, activeDayDefaults],
   );
 
   // [월 일괄 생성] 즉시 등록이 아니라 미니달력을 대상월·프리필 선택 상태로 연다 —
@@ -1041,12 +1075,13 @@ export default function ClassSchedulesManagePage() {
     setExpandedId(null);
   };
 
-  // 모든 회차에 적용 — 로컬 draft 일괄 기록(가역이라 확인창 불필요 — 설계 §3.2).
-  //   취소 예정 행은 invariant 로 제외, draft 추가 행도 함께 갱신.
-  const handleApplyToAll = () => {
+  // 추가한 회차에 일괄 적용 — 로컬 draft 일괄 기록(가역이라 확인창 불필요 — 설계 §3.2).
+  //   이미 저장된 회차는 건드리지 않는다. 요일마다 시간이 다른 수업에서 한 회차의 값이
+  //   다른 요일 회차까지 덮던 문제를 없앤다(버튼도 추가한 회차 패널에서만 노출).
+  const handleApplyToAdds = () => {
     if (isEditTimeInvalid || saving) return;
     dispatchDraft({
-      type: 'applyToAll',
+      type: 'applyToAdds',
       edit: {
         startTime: editStart,
         endTime: editEnd,
@@ -1054,18 +1089,8 @@ export default function ClassSchedulesManagePage() {
         venueName: editVenueName,
         venueText: editVenueText.trim(),
       },
-      targets: listUpcoming.map((s) => ({
-        id: s.id,
-        baseUpdatedAt: s.updatedAt ?? '',
-        original: {
-          startTime: s.startTime ?? '',
-          endTime: s.endTime ?? '',
-          venueId: s.venue?.id ?? '',
-          venueText: s.venueText ?? '',
-        },
-      })),
     });
-    toast.success(MESSAGES.class.dayDefaults.appliedToAllDates);
+    toast.success(MESSAGES.class.dayDefaults.appliedToAdds(draft.adds.length));
     setExpandedId(null);
   };
 
@@ -1521,26 +1546,33 @@ export default function ClassSchedulesManagePage() {
               )}
               </>
             )}
-            {/* 모든 회차에 적용 — 다가오는 회차(병합 기준) 2개 이상 + 값이 있을 때만. 로컬 draft 일괄 기록. */}
-            {displayUpcoming.length > 1 && (editStart || editEnd || editVenue || editVenueText) && (
+            {/* 추가한 회차에 일괄 적용 — 추가한(저장 전) 회차를 펼쳤을 때만, 추가분이 2건 이상이고
+                값이 있을 때만. 이미 저장된 회차에서 누르면 펼친 그 회차가 안 바뀌어 혼란스럽다. */}
+            {/* 둘 다 누르는 즉시 draft 에 기록하고 패널을 닫는 같은 성격의 동작이라 한 줄에 나란히
+                둔다. 이 회차만 = 채운 버튼(대부분의 경우), 여러 건 = 테두리 버튼(영향 범위가 넓다). */}
+            <div className="flex gap-2">
               <button
                 type="button"
-                onClick={handleApplyToAll}
+                onClick={() => handleRowApply(row)}
                 disabled={isEditTimeInvalid || saving}
-                className="self-start rounded-md px-2 py-1 text-card-meta font-bold text-it-blue-500 hover:bg-it-blue-50 dark:text-it-blue-300 dark:hover:bg-it-blue-500/10 disabled:opacity-50"
-                aria-label={MESSAGES.class.dayDefaults.applyToAllDatesAria(seq ?? 0)}
+                className="flex-1 h-10 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-meta font-bold disabled:opacity-50 transition-colors motion-reduce:transition-none active:brightness-95"
               >
-                {MESSAGES.class.dayDefaults.applyToAllDates}
+                {SC.rowApplyButton}
               </button>
-            )}
-            <button
-              type="button"
-              onClick={() => handleRowApply(row)}
-              disabled={isEditTimeInvalid || saving}
-              className="w-full h-10 rounded-w-md bg-it-blue-500 hover:bg-it-blue-600 text-white text-card-meta font-bold disabled:opacity-50 transition-colors motion-reduce:transition-none active:brightness-95"
-            >
-              {SC.rowApplyButton}
-            </button>
+              {isDraftRow &&
+                draft.adds.length > 1 &&
+                (editStart || editEnd || editVenue || editVenueText) && (
+                <button
+                  type="button"
+                  onClick={handleApplyToAdds}
+                  disabled={isEditTimeInvalid || saving}
+                  className="flex-[1.4] h-10 rounded-w-md border-[1.5px] border-it-blue-500 text-it-blue-500 hover:bg-it-blue-50 dark:text-it-blue-300 dark:hover:bg-it-blue-500/10 text-card-meta font-bold disabled:opacity-50 transition-colors motion-reduce:transition-none active:brightness-95"
+                  aria-label={MESSAGES.class.dayDefaults.applyToAddsAria(draft.adds.length)}
+                >
+                  {MESSAGES.class.dayDefaults.applyToAdds(draft.adds.length)}
+                </button>
+              )}
+            </div>
           </div>
         )}
       </li>
@@ -1586,7 +1618,7 @@ export default function ClassSchedulesManagePage() {
               isEnded={isEnded}
               lifecycleStatus={cls.lifecycleStatus}
               pendingReason={cls.pendingReason}
-              targetMonthLabel={targetMonthLabel}
+              onSaleMonths={onSaleMonthLabels}
             />
           </div>
           {/* 기본 일정(정규 요일 템플릿) 요약 — 요일·시간·장소가 등록돼 있을 때만, 요일별 한 줄. */}
@@ -1624,11 +1656,11 @@ export default function ClassSchedulesManagePage() {
           aria-disabled={!isApproved || isEnded}
         >
           <h2 className="text-card-section font-bold text-it-ink-800 dark:text-white mb-3">일정 추가</h2>
-          {/* 미니달력으로 복수 날짜 + 공통 시간·장소 추가 */}
+          {/* 미니달력으로 복수 날짜 선택 — 시간·장소는 추가 시 기본값이 채워지고 회차별로 고친다. */}
           <div className="space-y-3">
             <p className="text-card-meta text-it-ink-500 dark:text-rink-300 leading-relaxed">
-              달력에서 날짜를 선택하고 공통 시간·장소를 적용해 일정을 추가합니다.
-              매달 단위로 필요할 때마다 계속 추가할 수 있어요.
+              달력에서 날짜를 선택해 일정을 추가합니다. 시간·장소는 정규 수업 요일과
+              기본 장소로 채워지고, 회차를 눌러 따로 바꿀 수 있어요.
             </p>
             {/* 주 액션: 정규 요일 기반 월 일괄 생성 — 대상월은 잔여 일정의 달에 고정,
                 일정 등록 대기일 때만 이번 달→다음 달 선등록. */}
@@ -1802,14 +1834,32 @@ export default function ClassSchedulesManagePage() {
           )}
         </section>
 
-        {/* ─── 판매 준비 — 대상월 확정(UNAPPROVED_MONTH) 시에만 활성 ───
+        {/* ─── 판매 준비 — 다음 판매월(nextSalesMonth)이 있을 때 활성 ───
             ② 월 정기권 월분 확인 → ③ 판매 시작. 일정 등록(①) 직후 재조회로 이 섹션이
-            같은 화면에서 열린다. spot 은 판매 승인 사이클 미적용(§7.2)이라 제외. */}
+            같은 화면에서 열린다. 이번 달 판매 중(ON_SALE)에 다음 달을 여는 흐름도 포함하고,
+            spot(§7.2)·NO_SCHEDULE(상단 별도 안내)만 제외한다. */}
         {/* [설계 §3.5] dirty 게이트 — 미저장 draft 가 있는 동안 구성 확인·판매 시작 잠금.
             저장 후 서버 파생 상태 기준으로만 판매 준비를 진행한다. */}
-        {isUnapprovedPending &&
-          !isSpot &&
-          !isEnded &&
+        {/* [판매 창 2개월] nextSalesMonth 없음 — 일정은 있으나 판매 창(오늘 달 ~ +1) 밖이라
+            지금은 열 수 있는 달이 없는 구간. 판매 시작 버튼 자체를 비활성(섹션 미노출) 대신
+            사유를 안내한다. */}
+        {canPrepareSales && targetMonthLabel === null && (
+          <section
+            className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-5"
+            aria-label={MESSAGES.class.salesCycle.pendingBannerAria}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <Icon name="storefront" className="text-xl text-it-ink-400" aria-hidden="true" />
+              <h2 className="text-[15px] font-extrabold text-it-ink-800 dark:text-white tracking-tight">
+                {MESSAGES.class.salesOpenNeededBadge}
+              </h2>
+            </div>
+            <p className="text-card-meta text-it-ink-500 dark:text-rink-300" role="status">
+              {MESSAGES.class.salesCycle.noSalesTargetMonth}
+            </p>
+          </section>
+        )}
+        {canPrepareSales &&
           targetMonthLabel !== null &&
           dirtyCount > 0 && (
             <section
@@ -1827,9 +1877,7 @@ export default function ClassSchedulesManagePage() {
               </p>
             </section>
           )}
-        {isUnapprovedPending &&
-          !isSpot &&
-          !isEnded &&
+        {canPrepareSales &&
           targetMonthLabel !== null &&
           dirtyCount === 0 && (
           <section
@@ -2263,7 +2311,8 @@ export default function ClassSchedulesManagePage() {
         // spot(1회용) — 요일 빠른 선택 칩 차단 + 단일 선택 모드 (ClassForm 동일 패턴).
         daySchedules={isSpot ? [] : cls.daySchedules ?? []}
         singleSelect={isSpot}
-        // 날짜만 고른다 — 시간·장소는 아코디언에서 회차별 입력(장소는 기본 장소 폴백). requireCommonTime 미전달.
+        // 날짜만 고른다(requireCommonTime 미전달) — 시간은 아코디언에서 회차별 입력,
+        //   장소는 handleConfirmDates 가 수업 기본 장소로 채운다.
         onConfirm={handleConfirmDates}
         onClose={() => {
           setMultiDateOpen(false);
@@ -2308,39 +2357,54 @@ function LifecycleChip({
   isEnded,
   lifecycleStatus,
   pendingReason,
-  targetMonthLabel,
+  onSaleMonths,
 }: {
   isEnded: boolean;
   lifecycleStatus?: ClassHeader['lifecycleStatus'];
   pendingReason?: ClassHeader['pendingReason'];
-  targetMonthLabel: number | null;
+  /** ON_SALE 칩 전용 — 판매 중인 달 번호(오름차순). 비어 있으면 칩 미표시, 여러 달이면 달마다 칩. */
+  onSaleMonths: number[];
 }) {
-  let label: string | null = null;
-  let tone = '';
+  let chips: { label: string; tone: string }[] = [];
   if (isEnded || lifecycleStatus === 'ENDED') {
-    label = MESSAGES.class.salesCycle.ctaEnded;
-    tone = 'bg-it-fill text-it-ink-500 dark:bg-rink-700 dark:text-rink-300';
+    chips = [
+      {
+        label: MESSAGES.class.salesCycle.ctaEnded,
+        tone: 'bg-it-fill text-it-ink-500 dark:bg-rink-700 dark:text-rink-300',
+      },
+    ];
   } else if (lifecycleStatus === 'PENDING_SCHEDULE') {
-    label =
-      pendingReason === 'UNAPPROVED_MONTH'
-        ? MESSAGES.class.salesOpenNeededBadge
-        : MESSAGES.class.pendingScheduleBadge;
-    tone = 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400';
-  } else if (lifecycleStatus === 'ON_SALE' && targetMonthLabel !== null) {
-    label = MESSAGES.class.salesCycle.onSaleChip(targetMonthLabel);
-    tone = 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400';
+    chips = [
+      {
+        label:
+          pendingReason === 'UNAPPROVED_MONTH'
+            ? MESSAGES.class.salesOpenNeededBadge
+            : MESSAGES.class.pendingScheduleBadge,
+        tone: 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400',
+      },
+    ];
+  } else if (lifecycleStatus === 'ON_SALE' && onSaleMonths.length > 0) {
+    chips = onSaleMonths.map((month) => ({
+      label: MESSAGES.class.salesCycle.onSaleChip(month),
+      tone: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400',
+    }));
   }
-  if (!label) return null;
+  if (chips.length === 0) return null;
   return (
-    <span
-      className={cn(
-        'shrink-0 inline-flex items-center px-2.5 py-1 rounded-full text-card-meta font-bold',
-        tone,
-      )}
-      role="status"
-    >
-      {label}
-    </span>
+    <div className="flex flex-wrap justify-end gap-1.5 shrink-0">
+      {chips.map((chip) => (
+        <span
+          key={chip.label}
+          className={cn(
+            'inline-flex items-center px-2.5 py-1 rounded-full text-card-meta font-bold',
+            chip.tone,
+          )}
+          role="status"
+        >
+          {chip.label}
+        </span>
+      ))}
+    </div>
   );
 }
 

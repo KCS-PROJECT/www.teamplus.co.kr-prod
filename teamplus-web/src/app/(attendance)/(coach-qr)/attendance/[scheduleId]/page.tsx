@@ -4,7 +4,7 @@
  * /attendance/[scheduleId] — 코치/감독 출석확인 페이지 (2026-05-12)
  *
  * - 등록 학생 전체 표시 (미체크 학생 포함)
- * - 3-state: 출석(present) / 결석(absent) / 미확인(unchecked)
+ * - 3-state: 출석(present) / 결석(absent) / 체크 전(unchecked)
  * - 시점 모드 자동 분기:
  *     - upcoming: 수업 시작 -60분 이전 — 명단 확인만, 상태 변경 불가
  *     - active:   -60분 ~ +120분 — 출석 처리 활성 (회의록 22:31 정합)
@@ -78,7 +78,7 @@ interface RosterResponse {
 
 type ScheduleMode = 'upcoming' | 'active' | 'past';
 
-// 일괄 처리 가능한 상태 — 미확인(unchecked) 제외
+// 일괄 처리 가능한 상태 — 체크 전(unchecked) 제외
 type BulkStatus = Exclude<CoachAttendanceStatus, 'unchecked'>;
 
 // 회의록 22:31 정합 — 수업 시작 -60분 ~ +120분 윈도우.
@@ -125,23 +125,23 @@ function getScheduleMode(
   return 'past';
 }
 
-// flat 출석상태 색 (SoT §3): 출석=초록(emerald) · 결석=it-red · 미확인=ink
+// flat 출석상태 색 (SoT §3): 출석=초록(emerald) · 결석=it-red · 체크 전=ink
 const STATUS_META: Record<
   CoachAttendanceStatus,
   { label: string; chip: string; dot: string }
 > = {
   present: {
-    label: '출석',
+    label: MESSAGES.attendance.statusPresent,
     chip: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200',
     dot: 'bg-emerald-500',
   },
   absent: {
-    label: '결석',
+    label: MESSAGES.attendance.statusAbsent,
     chip: 'bg-it-red-50 text-it-red-500 dark:bg-it-red-500/20 dark:text-it-red-300',
     dot: 'bg-it-red-500',
   },
   unchecked: {
-    label: '미확인',
+    label: MESSAGES.attendance.statusPending,
     chip: 'bg-it-fill text-it-ink-500 dark:bg-rink-700 dark:text-rink-300',
     dot: 'bg-it-ink-400',
   },
@@ -357,9 +357,9 @@ export default function AttendanceCheckPage() {
         {data && !isLoading && (
           <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4">
             <div className="grid grid-cols-3 gap-2">
-              <CountBlock label="출석" value={data.counts.present} dotClass="bg-emerald-500" />
-              <CountBlock label="결석" value={data.counts.absent} dotClass="bg-it-red-500" />
-              <CountBlock label="미확인" value={data.counts.unchecked} dotClass="bg-it-ink-400" />
+              <CountBlock label={MESSAGES.attendance.statusPresent} value={data.counts.present} dotClass="bg-emerald-500" />
+              <CountBlock label={MESSAGES.attendance.statusAbsent} value={data.counts.absent} dotClass="bg-it-red-500" />
+              <CountBlock label={MESSAGES.attendance.statusPending} value={data.counts.unchecked} dotClass="bg-it-ink-400" />
             </div>
           </section>
         )}
@@ -642,7 +642,10 @@ function StatusEditSheet({
             <p className="text-card-title font-bold text-it-ink-800 dark:text-white truncate">
               {student.memberName}{' '}
               <span className="ml-1 text-card-meta text-it-ink-500 dark:text-rink-300">
-                현재: {STATUS_META[student.attendanceStatus]?.label ?? '미확인'}
+                {MESSAGES.attendance.currentStatus(
+                  STATUS_META[student.attendanceStatus]?.label ??
+                    MESSAGES.attendance.statusPending,
+                )}
               </span>
             </p>
           </div>
@@ -683,7 +686,7 @@ function StatusEditSheet({
               );
             })}
 
-            {/* 처리 취소(미확인) — attendance 레코드가 있을 때만 노출 */}
+            {/* 체크 전으로 되돌리기 — attendance 레코드가 있을 때만 노출 */}
             {student.attendanceId && (
               <li>
                 <button
@@ -693,7 +696,7 @@ function StatusEditSheet({
                   className="w-full flex items-center gap-3 rounded-w-md border-[1.5px] border-dashed border-it-line-strong dark:border-rink-700 px-4 py-3 text-left text-card-body font-semibold text-it-ink-700 dark:text-rink-100 hover:bg-it-fill dark:hover:bg-rink-700 disabled:cursor-wait"
                 >
                   <Icon name="undo" className="text-[18px] text-it-ink-500 dark:text-rink-300" aria-hidden="true" />
-                  처리 취소 (미확인으로)
+                  {MESSAGES.attendance.revertToPending}
                 </button>
               </li>
             )}

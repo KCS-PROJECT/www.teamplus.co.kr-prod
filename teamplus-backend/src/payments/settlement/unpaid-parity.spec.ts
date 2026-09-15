@@ -94,7 +94,6 @@ describe("미수금 정의 parity — 결제 관리 ↔ 매출 리포트", () =>
     // 결제 관리 경로 — 선불 행 판정: pending 은 UNSETTLED(billed null) → 기여 0.
     const att = resolvePrepaidAttribution({
       billingTiming: "PREPAID",
-      feeType: "PER_SESSION",
       payment: {
         paymentStatus: "pending",
         createdAt: new Date("2026-07-10T03:00:00Z"),

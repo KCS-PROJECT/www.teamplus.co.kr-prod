@@ -2717,7 +2717,7 @@ export class AuthService {
    * 탈퇴를 막는 운영 자산 보유 여부 검증.
    * - 감독(DIRECTOR/ACADEMY_DIRECTOR): 운영 팀·활성 수업·진행 대회·오픈클래스가 남아 있으면 차단
    *   (이관/정리 없이 탈퇴 시 소속 회원의 수업/대회가 고아가 되는 것을 방지)
-   * - 학부모(PARENT): 자녀의 진행 중 수강신청이 있으면 차단
+   * - 학부모(PARENT): 자녀가 수강 중(이번 달·다음 달 자격)이거나 정산 전 후불 출석·미납·환불 처리 중이면 차단
    */
   private async assertNoBlockingOwnership(
     userId: string,
@@ -2940,8 +2940,11 @@ function resolveWithdrawBlockerLink(
     case "refundInProgress":
       if (isParent) return "/payment/history";
       return isAcademyDirector ? "/academy" : "/director-payments/refunds";
+    // 수강 정리(선불 결제취소·후불 신청 종료)는 수업 상세에서 — 후불은 결제 행이 없어
+    // 결제 내역엔 안 뜬다. 정산 전 출석은 감독 확정을 기다리는 것이라 같은 랜딩.
     case "enrollmentActive":
-      return "/payment/history?tab=pending";
+    case "postpaidUnbilled":
+      return "/classes";
     // UNPAID(청구 전)는 결제 대기 탭에 안 뜨므로(주문 미생성) 대회 상세로 —
     // 참가 취소(UNPAID)와 결제하기(PENDING)가 모두 있는 단일 랜딩.
     case "tournamentPostpaid":

@@ -68,8 +68,6 @@ export const MESSAGES = {
       packageNeedsUpdate: "미등록",
       renewRegisterButton: "등록하기",
       packageCreated: "새 달분으로 등록되었습니다.",
-      retireFailed:
-        "이전 항목 정리에 실패했습니다. 남은 항목은 다음 달 준비 때 자동으로 정리돼요.",
       openSalesButton: "판매 시작하기",
       // 성공 토스트 — 행위("판매되었다")가 아니라 결과(학부모가 N월 훈련을 신청 가능)를 서술.
       openSalesSuccess: (month: number) =>
@@ -88,6 +86,8 @@ export const MESSAGES = {
       // 대상월 등록 0건 사전 차단 — 서버 400("팔 물건 없음") 가드의 FE 미러.
       openSalesNeedOnePkg:
         "판매를 시작하려면 최소 1개 항목을 등록해주세요.",
+      // [판매 창 2개월] nextSalesMonth 없음 — 일정이 판매 창(오늘 달 ~ +1) 밖이라 지금은 열 수 있는 달이 없음.
+      noSalesTargetMonth: "지금은 판매를 시작할 달이 없습니다.",
       unrenewedInlineHint: (month: number) =>
         `등록하지 않은 항목은 ${month}월에 판매되지 않아요. 다음 달 준비 때 다시 확인할 수 있어요.`,
       ctaPreparing: "일정 준비 중",
@@ -264,6 +264,12 @@ export const MESSAGES = {
       applyToAllDatesAria: (index: number) =>
         `${index}회차 시간·장소를 모든 회차에 적용`,
       appliedToAllDates: "모든 회차에 적용되었습니다.",
+      // 일정·판매 관리 — 이번에 추가한(저장 전) 회차에만 일괄 적용. 이미 저장된 회차는 건드리지 않는다.
+      applyToAdds: (count: number) => `추가한 ${count}건에 적용`,
+      applyToAddsAria: (count: number) =>
+        `입력한 시간·장소를 추가한 회차 ${count}건에 적용`,
+      appliedToAdds: (count: number) =>
+        `추가한 회차 ${count}건에 적용되었습니다.`,
       timeUndecided: "시간 미정",
       dateUndecided: "날짜 미정",
     },
@@ -477,6 +483,18 @@ export const MESSAGES = {
     childSelectorAriaLabel: "자녀 선택",
     selectedChildAriaLabel: "선택된 수강생",
     selectedChildLoading: "수강생 정보를 불러오는 중...",
+    // [수강 자격 월별 판정] 결제 대상월이 이번 달이면 "신청하기", 아직 오지 않은 달을
+    //   미리 결제하는 경우는 "미리 결제" — 같은 CTA 자리에서 문구만 갈린다.
+    applyForMonthCta: (month: number) => `${month}월분 신청하기`,
+    prepayForMonthCta: (month: number) => `${month}월분 미리 결제`,
+    // 목록 카드 — 이번 달 일정이 없어 다음 달분만 판매 중일 때, 진입 전에 알리는 칩.
+    sellableMonthChip: (month: number) => `${month}월분 신청 가능`,
+    // 결제 옵션 — 월분 상품이 2개(이번 달·다음 달) 노출될 때의 섹션 제목·다음 달 배지.
+    monthSelectTitle: "결제할 달 선택",
+    prepayNextMonthBadge: "다음 달 미리 결제",
+    // 훈련 상세 수업료 — 월분 상품이 두 달분 이상일 때의 달별 탭. 결제한 달은 탭에서 바로 표시.
+    monthTabLabel: (month: number) => `${month}월분`,
+    monthTabPaidLabel: (month: number) => `${month}월분 · 결제 완료`,
   },
   attendance: {
     ...SHARED_MESSAGES.attendance,
@@ -2093,6 +2111,9 @@ export const MESSAGES = {
     // participantViewList("명단 보기")는 상세 스크롤 단축 버튼 제거로 폐기 — 재도입 대비 보존.
     participantViewList: "명단 보기",
     participantNameUnknown: "선수",
+    // 서버가 이름을 내려주지 못한 참가자 — 탈퇴·파기·잘못된 id 를 구분하지 않고 하나로 표시한다.
+    //   (구분하려 들면 보존 기간이 끝난 뒤 판정이 흔들린다)
+    participantUnavailable: "탈퇴회원",
     // 학부모 뷰 참가 대상 문장 — 이름 끝 받침에 따라 주격조사 이/가 자동 선택.
     participantParentNotice: (namesStr: string) => {
       const last = namesStr.trim().slice(-1);
@@ -2637,7 +2658,7 @@ export const MESSAGES = {
     creditExpire:
       "보유 중인 잔여 결제권은 탈퇴 확정 시 전액 소멸되며, 복구할 수 없습니다.",
     assetGuard:
-      "운영 중인 팀·수업·대회와 미정산 내역(감독) 또는 자녀의 진행 중인 수강신청·미납·환불 처리 중 내역(학부모)이 있는 경우 탈퇴 신청이 제한됩니다. 먼저 정리한 후 신청해주세요.",
+      "운영 중인 팀·수업·대회와 미정산 내역(감독) 또는 자녀의 이번 달·다음 달 수강, 정산 전 후불 출석, 미납·환불 처리 중 내역(학부모)이 있는 경우 탈퇴 신청이 제한됩니다. 먼저 정리한 후 신청해주세요.",
     // 탈퇴 전 정리 체크리스트 (GET /auth/withdraw/eligibility)
     blockerTitle: "탈퇴 전 정리가 필요합니다",
     blockerGuide:
@@ -3326,6 +3347,8 @@ export const MESSAGES = {
       actionPlayersAriaLabel: "선수정보",
       playersTitle: "선수정보",
       playersEnrolledOn: (date: string) => `등록 ${date}`,
+      // 선수 행 1줄 — 이름 우측 좁은 자리용 축약형("7.22 등록").
+      playersEnrolledOnShort: (date: string) => `${date} 등록`,
       // 선수정보 페이지 2탭 — 1차 명단(roster) / 2차 결제(payment)
       tabRoster: "선수정보",
       tabPayment: "결제 현황",

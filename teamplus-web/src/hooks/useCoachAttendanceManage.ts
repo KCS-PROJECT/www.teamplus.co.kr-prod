@@ -7,7 +7,7 @@ import { apiRequest } from "@/services/api-client";
  * 2026-05-12: 출석 도메인 훅 모음 (3-state 단순화 + 수업별 일정 이력 페이징).
  *
  * 회의록(`backdata/20260423_teamplus.txt`) 결정 반영:
- *   - 25:03 "왔다 안 왔다" — 출석 상태 2-state (present/absent) + 미확인(unchecked)
+ *   - 25:03 "왔다 안 왔다" — 출석 상태 2-state (present/absent) + 체크 전(unchecked)
  *   - 24:54 "내 수업에 얘 안 왔네" — 수업별 일정 이력 페이지 신설
  *   - 22:31 "엄마가 밖에서 출석 누르면" — 시점별 모드 분기 ([scheduleId] 페이지)
  *
@@ -51,9 +51,10 @@ export interface ClassScheduleHistoryItem {
   endTime?: string | null;
   present: number;
   absent: number;
+  /** 아직 출석·결석 어느 쪽으로도 처리하지 않은 인원 (화면 문구: "체크 전") */
   unchecked: number;
+  /** 회차 명단 = 그 달 수강 자격자 ∪ 그 회차 출석 기록 보유자 — present + absent 이상이 보장된다. */
   total: number;
-  rate: number;
 }
 
 export interface ClassScheduleHistoryResponse {
@@ -70,9 +71,11 @@ export interface ClassScheduleHistoryResponse {
   stats: {
     totalSchedules: number;
     completedCount: number;
-    avgAttendanceRate: number;
+    /** 완료 회차 중 체크 전 인원이 남지 않은 회차 수 */
+    checkedCount: number;
+    /** 완료 회차 중 아직 체크할 인원이 남은 회차 수 */
+    pendingCheckCount: number;
     totalPresent: number;
-    totalAbsent: number;
   };
   inProgress: ClassScheduleHistoryItem[];
   completed: {

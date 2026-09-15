@@ -255,7 +255,8 @@ export class ChildrenController {
   })
   @ApiResponse({
     status: 400,
-    description: "마지막 보호자는 연결을 해제할 수 없습니다.",
+    description:
+      "마지막 보호자는 연결을 해제할 수 없거나, 미납된 후불 정산이 있습니다.",
   })
   @ApiResponse({ status: 404, description: "자녀 연결 정보를 찾을 수 없음" })
   async unlinkChild(
@@ -288,7 +289,7 @@ export class ChildrenController {
   })
   @ApiParam({ name: "childId", description: "자녀 ID" })
   @ApiResponse({ status: 204, description: "자녀 삭제 성공" })
-  @ApiResponse({ status: 400, description: "진행 중인 수강신청이 있음" })
+  @ApiResponse({ status: 400, description: "수강 중이거나 정산 전 후불 출석이 있음" })
   @ApiResponse({ status: 403, description: "주 보호자만 삭제 가능" })
   @ApiResponse({ status: 404, description: "자녀를 찾을 수 없음" })
   async deleteChild(

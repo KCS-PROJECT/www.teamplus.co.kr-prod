@@ -26,6 +26,10 @@ import { resolveImageUrl, resolveImageSrc } from "@/lib/image-url";
 //  결제 옵션 페이지는 readonly SelectedChildDisplay 로 통일.
 import { ChildSelector } from "@/components/payment/ChildSelector";
 import { ScheduleCalendarView } from "@/components/classes/ScheduleCalendarView";
+// [수강 자격 월별 판정] 결제 옵션 카드와 동일한 "N월분 · N/말일까지" 표기를
+//   수강권 선택 목록 행에도 재사용 — 같은 feeType 상품이 2개월 노출될 때 구분자.
+import { formatMonthlyPeriodNote } from "@/components/payment/PaymentOptionCard";
+import { MatchSegmentedTabs } from "@/components/match/MatchSegmentedTabs";
 
 /** [spot] 판매 중인 선불 1회권 — 정액 없는 1회용 수업의 결제 대상 상품 판정.
  *  일반 선불의 1회권은 비판매(isActive false, 참고용)라 걸리지 않는다 —
@@ -52,6 +56,7 @@ import {
   formatNextScheduleLabel,
   formatNextScheduleSummary,
   sortDaySchedules,
+  isSalesWindowEmpty,
   type DaySchedule,
 } from "@/lib/class-categories";
 import { formatVenueRef } from "@/lib/venue-display";
@@ -72,6 +77,9 @@ interface ClassProduct {
   // 패키지 유효기간 — PackageEditSheet 수정 모드 초기값 채움용.
   durationDays?: number | null;
   billingTiming?: string;
+  /** [판매 창 2개월] 정액 상품의 귀속월(ISO) — 같은 feeType 상품이 이번 달·다음 달
+   *  2건 내려올 때 구분자. 무월(레거시) 상품은 null. */
+  billingMonth?: string | null;
   // PACKAGE_END_GUARD (2026-05-22) — 백엔드 getClassProducts 계산 필드.
   // 본 페이지의 수강료 카드에서 비활성 패키지를 grayscale + 배지로 표시.
   isActive?: boolean;
@@ -89,8 +97,13 @@ interface ClassDetail {
   /** [Lifecycle v4.1] 서버 파생 상태 — 신청 CTA 분기(일정 준비 중/종료) + 감독 관리 액션. */
   lifecycleStatus?: 'ON_SALE' | 'PENDING_SCHEDULE' | 'ENDED';
   pendingReason?: 'NO_SCHEDULE' | 'UNAPPROVED_MONTH' | null;
-  /** 판매 승인 사이클 대상 달(그 달 1일 ISO) — 확인 플로우 "N월분" 표기·패키지 복제 대상. */
-  earliestRemainingMonth?: string | null;
+  /** [판매 창 2개월] 판매를 다음에 시작할 수 있는 달(그 달 1일 ISO) — 감독 관리 배너
+   *  "N월 판매 준비" 표기 대상월 SoT. earliestRemainingMonth(잔여 일정 최이른 달)는
+   *  백엔드 판매 후보 산출과 갈릴 수 있어 사용하지 않는다. */
+  nextSalesMonth?: string | null;
+  /** [판매 창 2개월] 판매 중인 달 목록("YYYY-MM" 오름차순) — 비어 있으면 ON_SALE 이어도
+   *  지금 신청 가능한 달이 없는 구간(방학 등). 구버전 응답(필드 없음)은 undefined. */
+  sellableMonths?: string[];
   /** 명시 종료 시점 — [종료 취소] 분기 (spot 파생 자동 종료는 null). */
   endedAt?: string | null;
   startTime?: string;
@@ -195,6 +208,10 @@ interface MyEnrollment {
   /** 선불 paid 의 "현재 수강 중" 여부 (백엔드 emit — 기간권/배치 상태 기반).
    *  명시적 false 만 만료로 본다. null/undefined(후불·구 응답)는 수강 중 유지. */
   hasValidPass?: boolean | null;
+  /** [수강 자격 월별 판정] 이 신청이 귀속되는 달("YYYY-MM"). 선불=상품 월 복사·
+   *  후불=신청 대상월. 구버전 응답(필드 없음)은 undefined — 월별 판정 불가로 보고
+   *  기존 전체 잠금 동작으로 폴백한다. */
+  billingMonth?: string | null;
 }
 
 // [추가 2026-05-18] 결제 옵션 페이지와 동일 — 본 수업에 신청/수강 중으로 간주할 상태.
@@ -278,6 +295,14 @@ function formatDateCompact(iso?: string): string {
 
 function formatPrice(price: number): string {
   return price.toLocaleString("ko-KR");
+}
+
+/** 오늘이 속한 달 "YYYY-MM" — CTA 문구가 "이번 달 신청"(applyForMonthCta) 인지
+ *  "미리 결제"(prepayForMonthCta) 인지를 가르는 기준. 화면 표시 전용 판정이라
+ *  로컬 시간 기준으로 충분하다(저장·서버 자격 판정에는 관여하지 않음). */
+function getCurrentYearMonth(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
 function translateLevel(level?: string): string | null {
@@ -437,20 +462,9 @@ export default function ClassDetailPage() {
 
   // [2026-06-09] 결제 회차 기본 선택 — 정액(MONTHLY_FIXED) 패키지만 자동 선택.
   //   [2026-06-29] 1회 수업료(PER_SESSION)는 참고가로만 노출(선불=패키지)하므로 자동 선택 대상에서 제외.
-  //   정액 패키지가 없으면 아무것도 자동 선택하지 않는다 — 과거 products[0](=PER_SESSION) 폴백이
-  //   패키지 없는 오픈클래스를 1회 수업료로 결제 진행시키던 문제를 차단한다.
-  //   [spot] 예외 — 판매 중인 선불 1회권은 결제 대상이므로 자동 선택에 포함.
-  useEffect(() => {
-    const products = classData?.products ?? [];
-    if (products.length === 0) return;
-    setSelectedProductIds((prev) => {
-      if (prev.size > 0) return prev;
-      const fullProduct =
-        products.find((p) => p.feeType === 'MONTHLY_FIXED') ??
-        products.find(isSellableSingleFee);
-      return fullProduct ? new Set([fullProduct.id]) : new Set();
-    });
-  }, [classData?.products]);
+  //   [수강 자격 월별 판정] monthlyEligibility(귀속월 판정) 계산 이후로 이동 — 이번 달 상품이
+  //   이미 결제됐으면 다음 달(미리 결제) 상품을 기본 선택해야 하는데, 그 판정에 selectedChildId
+  //   가 필요해 이 지점(선택 자녀 확정 전)에는 둘 수 없다. 아래 monthlyEligibility 선언부 참조.
   // [2026-05-15] 수업 수정 폼 경로 — 오픈클래스(academyId)는 academy 전용 라우트로,
   //   팀 수업은 기존 classes-manage 폼으로. academy 라우트는 isAcademyMode=true 로 동작.
   const editClassPath = isOpenClass
@@ -772,6 +786,129 @@ export default function ClassDetailPage() {
     [paidEnrollment],
   );
 
+  // [수강 자격 월별 판정] 선불 paid / 후불 approved 를 귀속월(billingMonth) 기준으로 판정 —
+  //   "그 달 자격 있음" 을 (선불) 결제 상태·(후불) 승인 상태와 대상월의 곱으로 본다(§1 조건식).
+  //   billingMonth 가 없는 응답(구버전 백엔드·결정 불능 잔여 행)에서는 월별 판정이 불가능하므로
+  //   기존 동작(해당 자녀 전체 잠금)으로 안전하게 폴백한다.
+  const monthlyEligibility = useMemo(() => {
+    const noMonths = new Set<string>();
+    if (!selectedChildId) {
+      return {
+        targetBillingMonth: null as string | null,
+        allSellableMonthsPaid: false,
+        coveredMonths: noMonths,
+      };
+    }
+    const sellableMonths = classData?.sellableMonths;
+    const coveringRows = myEnrollments.filter((e) => {
+      if (e.class?.id !== classId || e.child?.id !== selectedChildId) return false;
+      const isRowPostpaid =
+        isPostpaid || (isBoth && e.product?.billingTiming === "POSTPAID");
+      return isRowPostpaid
+        ? e.status === "approved"
+        : e.status === "paid" && e.hasValidPass !== false;
+    });
+    if (coveringRows.length === 0) {
+      return {
+        targetBillingMonth: sellableMonths?.[0] ?? null,
+        allSellableMonthsPaid: false,
+        coveredMonths: noMonths,
+      };
+    }
+    const coveredMonths = new Set(
+      coveringRows
+        .map((e) => e.billingMonth)
+        .filter((m): m is string => !!m),
+    );
+    const hasUnknownMonth = coveringRows.some((e) => !e.billingMonth);
+    if (!sellableMonths || sellableMonths.length === 0 || hasUnknownMonth) {
+      return {
+        targetBillingMonth: null as string | null,
+        allSellableMonthsPaid: true,
+        coveredMonths,
+      };
+    }
+    const remaining = sellableMonths.filter((m) => !coveredMonths.has(m));
+    return {
+      targetBillingMonth: remaining[0] ?? null,
+      allSellableMonthsPaid: remaining.length === 0,
+      coveredMonths,
+    };
+  }, [myEnrollments, classId, selectedChildId, classData?.sellableMonths, isPostpaid, isBoth]);
+
+  // [월분 탭] 판매 중인 정액 상품의 귀속월 목록 — 2개 이상(이번 달·다음 달)이면 수업료
+  //   목록을 달별 탭으로 묶어, 첫 진입에 다음 달분이 이번 달분을 가리지 않게 한다.
+  const productMonths = useMemo(() => {
+    const months = new Set<string>();
+    for (const p of classData?.products ?? []) {
+      if (p.isActive === false || p.feeType !== "MONTHLY_FIXED" || !p.billingMonth) continue;
+      months.add(p.billingMonth.slice(0, 7));
+    }
+    return Array.from(months).sort();
+  }, [classData?.products]);
+  // 사용자가 고른 탭은 자녀와 묶어 둔다 — 자녀를 바꾸면 리셋 이펙트 없이 그 자녀의
+  //   미결제 대상월로 바로 돌아간다.
+  const [productMonthPick, setProductMonthPick] = useState<{
+    childId: string;
+    month: string;
+  } | null>(null);
+  const pickedMonth =
+    productMonthPick?.childId === selectedChildId ? productMonthPick.month : null;
+  // 기본 탭 = 선택 자녀의 가장 이른 미결제 판매 달. 자녀 미선택(감독 열람 포함)은 가장 이른 달.
+  const activeProductMonth = useMemo(() => {
+    if (productMonths.length === 0) return null;
+    if (pickedMonth && productMonths.includes(pickedMonth)) return pickedMonth;
+    const target = monthlyEligibility.targetBillingMonth;
+    return target && productMonths.includes(target) ? target : productMonths[0];
+  }, [productMonths, pickedMonth, monthlyEligibility.targetBillingMonth]);
+  // 탭 기준 잠금은 탭이 보일 때만 — 판매 창은 두 달인데 상품이 한 달분뿐이면 다음 달분
+  //   CTA 는 기존 판정(allSellableMonthsPaid)에 맡긴다.
+  const hasMonthTabs = productMonths.length >= 2;
+  const isActiveMonthPaid =
+    hasMonthTabs &&
+    activeProductMonth !== null &&
+    monthlyEligibility.coveredMonths.has(activeProductMonth);
+
+  // [2026-06-09] 결제 회차 기본 선택 — 정액(MONTHLY_FIXED) 패키지만 자동 선택.
+  //   [2026-06-29] 1회 수업료(PER_SESSION)는 참고가로만 노출(선불=패키지)하므로 자동 선택 대상에서 제외.
+  //   정액 패키지가 없으면 아무것도 자동 선택하지 않는다 — 과거 products[0](=PER_SESSION) 폴백이
+  //   패키지 없는 오픈클래스를 1회 수업료로 결제 진행시키던 문제를 차단한다.
+  //   [spot] 예외 — 판매 중인 선불 1회권은 결제 대상이므로 자동 선택에 포함.
+  //   [수강 자격 월별 판정] monthlyEligibility.targetBillingMonth(미결제 대상월)가 가리키는
+  //   상품이 있으면 그것을 우선 — 이번 달분이 이미 결제됐다면 응답 배열 순서와 무관하게
+  //   다음 달(미리 결제) 상품을 기본 선택한다.
+  //   [월분 탭] 탭을 고르면 그 달 상품을 선택하고, 이미 결제한 달 탭에서는 선택을 비운다.
+  useEffect(() => {
+    const products = classData?.products ?? [];
+    if (products.length === 0) return;
+    const targetMonth = activeProductMonth ?? monthlyEligibility.targetBillingMonth;
+    setSelectedProductIds((prev) => {
+      if (isActiveMonthPaid) return prev.size === 0 ? prev : new Set();
+      const monthlyFixedProducts = products.filter(
+        (p) => p.feeType === 'MONTHLY_FIXED',
+      );
+      const targetProduct = targetMonth
+        ? (monthlyFixedProducts.find(
+            (p) => p.billingMonth?.slice(0, 7) === targetMonth,
+          ) ?? null)
+        : null;
+      if (targetProduct) {
+        return prev.size === 1 && prev.has(targetProduct.id)
+          ? prev
+          : new Set([targetProduct.id]);
+      }
+      if (prev.size > 0) return prev;
+      const fullProduct =
+        monthlyFixedProducts[0] ?? products.find(isSellableSingleFee);
+      return fullProduct ? new Set([fullProduct.id]) : new Set();
+    });
+  }, [
+    classData?.products,
+    monthlyEligibility.targetBillingMonth,
+    activeProductMonth,
+    isActiveMonthPaid,
+  ]);
+
   const [isCancelling, setIsCancelling] = useState(false);
   // 캘린더 보기 아코디언 — 기본 접힘.
   const [showCalendar, setShowCalendar] = useState(false);
@@ -954,12 +1091,19 @@ export default function ClassDetailPage() {
             parentChildren.some((c) => c.id === id),
           )
         : [selectedChildId];
+      // [수강 자격 월별 판정] 대상월은 selectedChildId 기준 판정이라 자녀 복수 선택(오픈클래스)
+      //   시에는 다른 자녀에게 그대로 적용할 근거가 없다 — 그 경우 생략해 서버 기본값
+      //   (판매 중인 가장 이른 달)에 맡긴다.
+      const targetBillingMonth = !isOpenClass
+        ? monthlyEligibility.targetBillingMonth
+        : null;
       try {
         const newEntries: MyEnrollment[] = [];
         for (const cid of childIds) {
           const res = await api.post<{ id: string }>('/enrollments', {
             classId,
             childId: cid,
+            ...(targetBillingMonth ? { billingMonth: targetBillingMonth } : {}),
           });
           if (!res.success) {
             throw new Error(res.error?.message ?? MESSAGES.error.general);
@@ -971,6 +1115,7 @@ export default function ClassDetailPage() {
             status: 'approved',
             requester: { id: user?.id ?? '' },
             paymentId: null,
+            billingMonth: targetBillingMonth ?? undefined,
           });
         }
         setMyEnrollments((prev) => [...prev, ...newEntries]);
@@ -989,10 +1134,12 @@ export default function ClassDetailPage() {
           return;
         }
         try {
+          const targetBillingMonth = monthlyEligibility.targetBillingMonth;
           const res = await api.post<{ id: string }>("/enrollments", {
             classId,
             childId: selectedChildId,
             classProductId: bothPostpaidProduct.id,
+            ...(targetBillingMonth ? { billingMonth: targetBillingMonth } : {}),
           });
           if (!res.success) {
             throw new Error(res.error?.message ?? MESSAGES.error.general);
@@ -1007,6 +1154,7 @@ export default function ClassDetailPage() {
               requester: { id: user?.id ?? "" },
               paymentId: null,
               product: { id: bothPostpaidProduct.id },
+              billingMonth: targetBillingMonth ?? undefined,
             },
           ]);
           toast.success(MESSAGES.enrollment.postpaidEnrolled);
@@ -1082,7 +1230,7 @@ export default function ClassDetailPage() {
   };
 
   /* ── [Lifecycle v4.1] 감독 관리 — 판매 승인 사이클 + 수업 종료/재개 ──
-     데이터 소스: getClass 응답(lifecycleStatus/pendingReason/earliestRemainingMonth/endedAt).
+     데이터 소스: getClass 응답(lifecycleStatus/pendingReason/nextSalesMonth/endedAt).
      [일정·판매 관리 승격] 패키지 월분 갱신·판매 시작 실행은
      /classes-manage/[id]/schedules 로 이관 — 상세는 상태 요약 + 진입 CTA 만 담당. */
   const [lifecycleActing, setLifecycleActing] = useState(false);
@@ -1093,7 +1241,7 @@ export default function ClassDetailPage() {
     if (res.success && res.data) setClassData(res.data);
   }, [classId]);
 
-  const targetMonthIso = classData?.earliestRemainingMonth ?? null;
+  const targetMonthIso = classData?.nextSalesMonth ?? null;
   const targetMonthLabel = targetMonthIso
     ? new Date(targetMonthIso).getUTCMonth() + 1
     : null;
@@ -1375,6 +1523,10 @@ export default function ClassDetailPage() {
   const occupancy = capacity > 0 ? Math.round((enrolled / capacity) * 100) : 0;
   const isFull = capacity > 0 && remaining === 0;
   const isUrgent = !isFull && remaining > 0 && remaining <= 3;
+  // [판매 창 2개월] ON_SALE 이어도 지금 판매 중인 달이 없는 구간(예: 방학 달) — sellableMonths
+  //   가 응답에 없으면(구버전) 판정하지 않고 기존 lifecycleStatus 분기에만 맡긴다.
+  //   판정 로직은 목록 카드(classes/page.tsx)와 공유 SoT(@/lib/class-categories).
+  const salesWindowEmpty = isSalesWindowEmpty(classData);
 
   // classes 도메인 SoT (class-categories.ts) — regular/lesson + deprecated/training 도메인 키 호환.
   const rawTypeLabel = classData.trainingType
@@ -2108,7 +2260,7 @@ export default function ClassDetailPage() {
                 //   · [선택형(BOTH)] 후불 PER_SESSION/POSTPAID 제외(결제방식 토글에서 별도 처리).
                 //   · [선불 전용·오픈클래스·매니저] PER_SESSION 제외 — 상단 참고 카드로 분리(선불=패키지).
                 //   후불 전용 학부모만 PER_SESSION 목록 노출 유지(즉시 등록 경로).
-                const products = [...(classData.products ?? [])]
+                const sellableRows = [...(classData.products ?? [])]
                   .filter((p) => {
                     // 판매 중단(soft delete·월 갱신 편입 완료)된 상품은 감독 시점에서도 숨김 —
                     // 월 판매 사이클로 매달 누적되므로 회색 표시 대신 목록에서 제외(2026-07-09).
@@ -2133,7 +2285,36 @@ export default function ClassDetailPage() {
                     p.feeType === 'MONTHLY_FIXED' ? 100000 : (p.sessionsPerMonth ?? 0);
                   return order(a) - order(b);
                 });
-                return products.map((p, idx) => {
+                // [월분 탭] 정액 상품이 두 달분 이상이면 활성 탭의 달만 목록에 남긴다.
+                //   회차권·무월 행은 달과 무관하므로 어느 탭에서나 그대로 보인다.
+                const showMonthTabs = hasMonthTabs && activeProductMonth !== null;
+                const products = showMonthTabs
+                  ? sellableRows.filter(
+                      (p) =>
+                        p.feeType !== 'MONTHLY_FIXED' ||
+                        !p.billingMonth ||
+                        p.billingMonth.slice(0, 7) === activeProductMonth,
+                    )
+                  : sellableRows;
+                return (
+                  <>
+                    {showMonthTabs && (
+                      <MatchSegmentedTabs
+                        iceTheme
+                        className="mt-3 mb-1"
+                        tabs={productMonths.map((m) => ({
+                          value: m,
+                          label: monthlyEligibility.coveredMonths.has(m)
+                            ? MESSAGES.enrollment.monthTabPaidLabel(Number(m.slice(5, 7)))
+                            : MESSAGES.enrollment.monthTabLabel(Number(m.slice(5, 7))),
+                        }))}
+                        value={activeProductMonth}
+                        onChange={(month) =>
+                          setProductMonthPick({ childId: selectedChildId, month })
+                        }
+                      />
+                    )}
+                    {products.map((p, idx) => {
                   const isLast = idx === products.length - 1;
                   // [2026-06-09] 오픈클래스는 '수업 종료일 초과' 오판정으로 비활성/문구가 뜨지 않도록
                   //   항상 활성 처리(오픈클래스는 종료일 개념이 날짜별 일정과 맞지 않음).
@@ -2148,7 +2329,14 @@ export default function ClassDetailPage() {
                   const isLocked =
                     !isManager && fullSelected && p.feeType !== 'MONTHLY_FIXED';
                   // [2026-06-18] 선택 자녀가 이미 결제완료한 패키지 — 재선택 불가, '결제완료' 표시.
-                  const isPaidPackage = !isManager && !!paidProductId && p.id === paidProductId;
+                  //   월분 상품은 그 달을 결제했으면(coveredMonths) 같은 표시 — 행 id 가 아니라
+                  //   귀속월 기준이라 갱신으로 행이 바뀌어도 결제한 달은 그대로 표시된다.
+                  const isPaidPackage =
+                    !isManager &&
+                    ((!!paidProductId && p.id === paidProductId) ||
+                      (p.feeType === 'MONTHLY_FIXED' &&
+                        !!p.billingMonth &&
+                        monthlyEligibility.coveredMonths.has(p.billingMonth.slice(0, 7))));
                   const isDisabled = baseDisabled || isLocked || isPaidPackage;
                   const isSelected = !isManager && selectedProductIds.has(p.id);
                   const disabledBadge = baseDisabled
@@ -2207,6 +2395,13 @@ export default function ClassDetailPage() {
                             </span>
                           )}
                         </div>
+                        {/* [판매 창 2개월] 같은 feeType 정액 상품이 이번 달·다음 달 2건 노출될 때
+                            귀속월 구분자 — "9월분 · 9/30까지" / "10월분 · 10/31까지". */}
+                        {p.feeType === 'MONTHLY_FIXED' && p.billingMonth && (
+                          <p className="mt-0.5 text-card-meta font-semibold text-it-blue-500">
+                            {formatMonthlyPeriodNote(p.billingMonth)}
+                          </p>
+                        )}
                         {/* 상품 설명 — 구성 안내(총 회수·주당 회수 등)는 감독의 설명 입력이 SoT.
                             상품명을 그대로 복붙한 데이터는 같은 글자 반복이라 숨김.
                             ⚠ text-card-caption 은 미정의 유령 클래스(16px 상속)라 사용 금지 — meta(12px) 사용. */}
@@ -2245,7 +2440,9 @@ export default function ClassDetailPage() {
                       </div>
                     </div>
                   );
-                });
+                    })}
+                  </>
+                );
               })()}
             </div>
           ) : (
@@ -2362,7 +2559,7 @@ export default function ClassDetailPage() {
               // disabled 라벨 — 선택 자녀 사유 우선순위 반영
               let disabledRightLabel: string | null = null;
               // [Lifecycle v4.1 §9.4] 대기/종료 수업 — 신청 CTA 차단 (서버 게이트의 1차 표시).
-              if (classData.lifecycleStatus === 'PENDING_SCHEDULE')
+              if (classData.lifecycleStatus === 'PENDING_SCHEDULE' || salesWindowEmpty)
                 disabledRightLabel = MESSAGES.class.salesCycle.ctaPreparing;
               else if (classData.lifecycleStatus === 'ENDED')
                 disabledRightLabel = MESSAGES.class.salesCycle.ctaEnded;
@@ -2380,16 +2577,32 @@ export default function ClassDetailPage() {
               else if (isSelectedAgeIncompatible)
                 disabledRightLabel = MESSAGES.enrollment.disabledAgeLabel;
 
+              // [수강 자격 월별 판정] "이미 신청함" 잠금은 판매 중인 달을 전부 채웠을 때만 —
+              //   다음 달분이 남아 있으면 CTA 는 그 달을 향해 열려 있어야 한다(§1·§4-6).
               const rightDisabled =
                 classData.lifecycleStatus === 'PENDING_SCHEDULE' ||
+                salesWindowEmpty ||
                 classData.lifecycleStatus === 'ENDED' ||
-                !!paidEnrollment ||
+                monthlyEligibility.allSellableMonthsPaid ||
+                isActiveMonthPaid ||
                 !hasProducts ||
                 isFull ||
                 !selectedChildId ||
                 isSelectedEnrolled ||
                 isSelectedNotApproved ||
                 isSelectedAgeIncompatible;
+
+              // 미결제(또는 다음 달 미결제) 대상월 CTA 문구 — 이번 달이면 "N월분 신청하기",
+              //   아직 오지 않은 달이면 "N월분 미리 결제"(§4-6 화면 어휘).
+              //   [월분 탭] 탭을 고르면 CTA 도 그 달을 따라간다.
+              const targetMonth = activeProductMonth ?? monthlyEligibility.targetBillingMonth;
+              const ctaMonthLabel = targetMonth
+                ? targetMonth === getCurrentYearMonth()
+                  ? MESSAGES.enrollment.applyForMonthCta(Number(targetMonth.slice(5, 7)))
+                  : MESSAGES.enrollment.prepayForMonthCta(Number(targetMonth.slice(5, 7)))
+                : isPostpaid
+                  ? MESSAGES.enrollment.postpaidEnrollCta
+                  : "신청하기";
 
               return (
                 // [2026-06-18 사용자 직접 지시] 배치·문구 변경 —
@@ -2400,28 +2613,20 @@ export default function ClassDetailPage() {
                   <button
                     type="button"
                     onClick={handleEnrollClick}
-                    // 결제 완료(선불 paid)·후불 수강 중은 상태 표시 전용 — 다시 누르면
-                    //   중복 신청이 되어 서버가 409 로 막는다. 버튼 자체를 잠근다.
-                    disabled={
-                      rightDisabled || !!postpaidEnrollment || !!paidEnrollment
-                    }
-                    aria-disabled={
-                      rightDisabled || !!postpaidEnrollment || !!paidEnrollment
-                    }
+                    // 그 달 자격을 이미 채웠으면(선불 paid·후불 approved 모두 귀속월 기준)
+                    //   상태 표시 전용 — 다시 누르면 중복 신청이 되어 서버가 409 로 막는다.
+                    disabled={rightDisabled}
+                    aria-disabled={rightDisabled}
                     className="flex-[6] min-w-0 h-12 rounded-xl bg-it-blue-500 hover:bg-it-blue-600 text-white font-extrabold text-card-body tracking-tight transition-colors motion-reduce:transition-none active:brightness-95 disabled:bg-wline dark:disabled:bg-rink-700 disabled:text-wtext-3 disabled:cursor-not-allowed disabled:hover:bg-wline dark:disabled:hover:bg-rink-700"
                   >
-                    {postpaidEnrollment
+                    {monthlyEligibility.allSellableMonthsPaid || isActiveMonthPaid
                       ? MESSAGES.enrollment.enrolledLabel
-                      : paidEnrollment
-                        ? "신청완료"
-                        : disabledRightLabel ??
-                          (isParentBoth
-                            ? billingChoice === "POSTPAID"
-                              ? MESSAGES.enrollment.bothPostpaidCta
-                              : MESSAGES.enrollment.bothPrepaidCta
-                            : isPostpaid
-                              ? MESSAGES.enrollment.postpaidEnrollCta
-                              : "신청하기")}
+                      : disabledRightLabel ??
+                        (isParentBoth
+                          ? billingChoice === "POSTPAID"
+                            ? MESSAGES.enrollment.bothPostpaidCta
+                            : MESSAGES.enrollment.bothPrepaidCta
+                          : ctaMonthLabel)}
                   </button>
                   {/* 우 — 보조: 돌아가기 / 신청취소 / (후불) 수강 종료 */}
                   <button
@@ -2462,7 +2667,7 @@ export default function ClassDetailPage() {
             일정 등록·판매 시작·종료 등 관리 액션은 하단 관리 영역에 모은다. */}
         {isManager && classData.lifecycleStatus === 'PENDING_SCHEDULE' && !classData.endedAt && (
           <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4" aria-label={MESSAGES.class.salesCycle.pendingBannerAria}>
-            {classData.pendingReason === 'NO_SCHEDULE' || !targetMonthLabel ? (
+            {classData.pendingReason === 'NO_SCHEDULE' ? (
               /* 일정 없음 — 감독의 결정 지점: 계속 운영(일정 등록) vs 종료.
                  종료 가드(다가오는 일정 0)가 실제로 통과 가능한 상태도 여기뿐이라
                  종료 버튼을 이 분기에만 노출한다(판매 승인 대기 중 헛클릭 차단). */
@@ -2499,6 +2704,15 @@ export default function ClassDetailPage() {
                   </button>
                 </div>
               </>
+            ) : !targetMonthLabel ? (
+              // [판매 창 2개월] 일정은 있으나 nextSalesMonth 가 없음 — 판매 창(오늘 달 ~ +1)
+              //   밖이라 지금은 열 수 있는 달이 없는 구간. 사유만 안내(일정 등록 유도 아님).
+              <div className="flex items-center gap-2">
+                <Icon name="storefront" className="text-xl text-it-ink-400" aria-hidden="true" />
+                <p className="text-card-body text-wtext-2 dark:text-rink-100" role="status">
+                  {MESSAGES.class.salesCycle.noSalesTargetMonth}
+                </p>
+              </div>
             ) : (
               <>
                 <div className="flex items-center gap-2 mb-1">

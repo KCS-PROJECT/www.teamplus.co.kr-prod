@@ -6,7 +6,10 @@ import {
   dayTemplateForDate,
 } from "@/common/utils/schedule-time.util";
 import { composeKstInstant } from "@/common/utils/kst-date.util";
-import { scheduleEligibleClassFilter } from "@/common/billing/schedule-eligibility.util";
+import {
+  scheduleEligibleClassFilter,
+  monthsInRange,
+} from "@/common/billing/schedule-eligibility.util";
 import { resolveScopedChildUserIds } from "@/common/utils/team-scope.util";
 import { resolveParticipatingTournamentIds } from "@/common/utils/tournament-participation.util";
 
@@ -197,7 +200,12 @@ export class CalendarService {
                   ...(useOwnerFilter ? [{ OR: ownerFilters }] : []),
                   // [Phase B] 일정 노출 자격 — 공통 SoT (선불 paid OR 후불 approved).
                   ...(registrationUserIds
-                    ? [scheduleEligibleClassFilter(registrationUserIds)]
+                    ? [
+                        scheduleEligibleClassFilter(
+                          registrationUserIds,
+                          monthsInRange(sdYearStart, sdYearEnd),
+                        ),
+                      ]
                     : []),
                 ],
               },
@@ -393,7 +401,12 @@ export class CalendarService {
             // [Phase B] 일정 노출 자격 — 공통 SoT (선불 paid OR 후불 approved).
             //  코치 자동배치(Enrollment 없음)·선불 미결제는 제외.
             ...(registrationUserIds
-              ? [scheduleEligibleClassFilter(registrationUserIds)]
+              ? [
+                  scheduleEligibleClassFilter(
+                    registrationUserIds,
+                    monthsInRange(sdStart, sdEnd),
+                  ),
+                ]
               : []),
           ],
         },

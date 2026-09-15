@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useSessionAuth } from "@/hooks/useSessionAuth";
 import { useLoading } from "@/contexts/LoadingContext";
+import { LoadingPuck } from "@/components/ui/LoadingPuck";
 import { useLoginRateLimit } from "@/hooks/useLoginRateLimit";
 import { useAuthUI } from "@/hooks/useNativeUI";
 import { MobileContainer } from "@/components/layout/MobileContainer";
@@ -800,10 +801,18 @@ export default function LoginPage() {
     }
   };
 
-  // (로그인 페이지는 게스트 페이지이므로 인증 확인 중에도 폼 사용 가능해야 함)
   const isSubmitting = loading || loginSuccess || isLocked;
 
   const isSignupEnabled = settings?.signupEnabled ?? true;
+
+  // 인증 확인이 끝나기 전에는 폼을 그리지 않는다.
+  //   전역 로더는 기본이 꺼져 있어(LoadingContext useState(false)) 주소 직접 입력·미들웨어
+  //   통과로 들어온 하드 로드에서는 켜지지 않는다. 그 사이 폼이 먼저 그려지면 로그인 상태인
+  //   사용자에게 "로그인 화면이 깜빡였다가 대시보드로 넘어가는" 잔상이 남는다.
+  //   미들웨어는 access 쿠키가 살아 있을 때만 서버에서 대시보드로 돌려보내므로(만료 시 통과)
+  //   이 구간은 access 수명을 줄일수록 자주 발생한다.
+  //   인증됨(=대시보드로 이동 중)도 같은 이유로 폼 대신 로더를 유지한다.
+  if (isAuthLoading || isAuthenticated) return <LoadingPuck />;
 
   return (
     <MobileContainer hasBottomNav={false} className="bg-it-surface dark:bg-puck">

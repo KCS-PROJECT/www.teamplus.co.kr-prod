@@ -24,13 +24,17 @@ import {
 import {
   dateOnlyToUtc,
   dateOnlyToString,
+  dateOnlyToYearMonth,
   kstTodayUtcMidnight,
   kstDayEndExclusive,
+  addUtcMonths,
 } from "@/common/utils/kst-date.util";
 import { createHash } from "crypto";
 import { ApplyScheduleDraftDto } from "./dto/apply-schedule-draft.dto";
 import {
   deriveClassLifecycle,
+  toLifecycleInput,
+  computeSalesWindow,
   utcMonthStart,
 } from "@/common/utils/class-lifecycle.util";
 import { filterSellableProducts } from "@/common/billing/sales-gate.util";
@@ -41,10 +45,14 @@ import {
 import {
   resolvePrepaidAttribution,
   isRosterMemberForMonth,
-  instantToKstYearMonth,
-  dbDateToKstYearMonth,
   type AttributionResult,
 } from "@/payments/settlement/attribution.util";
+import {
+  isEligibleForMonth,
+  eligibleChildIdsForMonth,
+  eligibleChildIdsForClasses,
+} from "@/common/billing/enrollment-eligibility.util";
+import { hasOtherValidEnrollment } from "@/common/billing/roster-retention.util";
 import {
   MONTHLY_PASS_CREDIT_FILTER,
   creditStartedWhere,
@@ -71,6 +79,7 @@ import {
   acquireClassScheduleAndPostpaidLocksIfNeeded,
   shouldUsePostpaidLock,
   acquireVenueLocks,
+  acquireClassSeatLock,
 } from "./utils/class-locks.util";
 import { normalizeVenuePair, VenuePair } from "./utils/venue-pair.util";
 import {
@@ -88,6 +97,7 @@ import {
   assertPostpaidUnitPriceMutable,
   assertScheduleMonthNotSettled,
   findUnsettledPostpaidMonths,
+  monthRangeUtc,
 } from "@/payments/settlement/postpaid-attendance.util";
 import { CreateClassDto, DayScheduleItemDto } from "./dto/create-class.dto";
 import { UpdateClassDto } from "./dto/update-class.dto";
@@ -1734,10 +1744,6 @@ export class ClassesService {
                 isActive: true,
               },
             },
-            registrations: {
-              where: { status: "active" },
-              select: { id: true },
-            },
             // 2026-05-12: 다중 코치 배정 (LEAD/ASSISTANT)
             coachAssignments: {
               where: { status: "ACCEPTED" },
@@ -1783,16 +1789,38 @@ export class ClassesService {
 
     const [classes, total] = await runList(where);
 
+    // [Phase 3] 운영월(진행 중인 달) 배치 계산 — lifecycle 을 먼저 뽑아 같은 운영월끼리
+    //   묶어 자격자 집합을 배치 조회한다(수업마다 개별 조회하면 목록 크기만큼 N+1).
+    const salesWindowByClassId = new Map<string, ReturnType<typeof computeSalesWindow>>();
+    const rosterMonthByClassId = new Map<string, Date>();
+    const classIdsByMonthKey = new Map<string, { month: Date; classIds: string[] }>();
+    for (const c of classes) {
+      const salesWindow = computeSalesWindow(toLifecycleInput(c, c.schedules ?? []));
+      salesWindowByClassId.set(c.id, salesWindow);
+      const rosterMonth =
+        salesWindow.lifecycle.earliestRemainingMonth ??
+        utcMonthStart(kstTodayUtcMidnight());
+      rosterMonthByClassId.set(c.id, rosterMonth);
+      const key = rosterMonth.toISOString();
+      const entry = classIdsByMonthKey.get(key);
+      if (entry) entry.classIds.push(c.id);
+      else classIdsByMonthKey.set(key, { month: rosterMonth, classIds: [c.id] });
+    }
+    const eligibleChildIdsByClassId = new Map<string, Set<string>>();
+    for (const { month, classIds } of classIdsByMonthKey.values()) {
+      const batch = await eligibleChildIdsForClasses(this.prisma, classIds, month);
+      for (const [cid, set] of batch) eligibleChildIdsByClassId.set(cid, set);
+    }
+
     return {
       data: classes.map((c) => {
         // PACKAGE_WEEKS_SPEC §6 정기 패키지 단위 응답 필드 — FE 카드 가격 라벨 SoT.
         // PACKAGE_END_GUARD (v3 SoT): 대표가는 isActive=true 패키지 우선, 없으면 첫 매칭 폴백.
         //   isClassEnded 는 utils/package-guard.util.ts:isClassEnded() 단일화.
-        // [Lifecycle v4.1 §9.2] 대표가 산정도 판매 노출분(승인월+무월)만 — 지난 월분 가격 오염 방지.
-        const sellable = filterSellableProducts(
-          c.products ?? [],
-          c.salesOpenMonth,
-        );
+        // [Lifecycle v4.1 §9.2 · §4-6] 대표가 산정도 판매 중인 달(+무월)만 — 지난 월분 가격 오염 방지.
+        const salesWindow = salesWindowByClassId.get(c.id)!;
+        const { sellableMonths } = salesWindow;
+        const sellable = filterSellableProducts(c.products ?? [], sellableMonths);
         const monthlyProduct =
           sellable.find(
             (p) => p.feeType === "MONTHLY_FIXED" && p.isActive !== false,
@@ -1812,18 +1840,16 @@ export class ClassesService {
 
         // [Lifecycle v4.1] 파생 상태 SoT (class-lifecycle.util) — 배지 판정 일원화.
         //   isClassEnded(역산)는 BC 용으로 유지, 신규 소비처는 lifecycleStatus 사용.
-        const lifecycle = deriveClassLifecycle({
-          endedAt: c.endedAt,
-          salesOpenMonth: c.salesOpenMonth,
-          trainingType: c.trainingType,
-          schedules: c.schedules ?? [],
-        });
+        const lifecycle = salesWindow.lifecycle;
 
         return {
           ...c,
           // [Lifecycle v4.1 §9.2] ...c 가 실어온 raw products 를 판매 노출분으로 덮어쓰기 —
           //   지난/미래 월분이 응답에 새지 않도록 (대표가 산정과 동일 모집단).
           products: sellable,
+          // [§4-6] additive — 판매 중인 달 집합·다음 판매 개시 대상월.
+          sellableMonths: salesWindow.sellableMonthKeys,
+          nextSalesMonth: salesWindow.nextSalesMonthKey,
           // 수업목록 카드 좌측 아이콘에 팀 프로필(로고) 표시용 — 없으면 프론트가 기본 아이콘 폴백.
           // 오픈클래스는 팀이 없으므로 소속 아카데미 대표 이미지로 폴백.
           teamLogoUrl: c.team?.logoUrl ?? c.academy?.imageUrl ?? null,
@@ -1844,7 +1870,10 @@ export class ClassesService {
             c.venue?.city ??
             c.team?.homeVenue?.city ??
             null,
-          enrolledCount: c.registrations?.length ?? 0,
+          // [Phase 3] 자격자 수(billingMonth·billingTiming 판독) — ClassRegistration
+          //   active 개수 대신 운영월(rosterMonth) 자격자 수로 교체(§2·§4-2).
+          enrolledCount: eligibleChildIdsByClassId.get(c.id)?.size ?? 0,
+          rosterMonth: dateOnlyToYearMonth(rosterMonthByClassId.get(c.id)!),
           coachAssignments: (c.coachAssignments ?? []).map((a) => ({
             id: a.id,
             coachUserId: a.coachUserId,
@@ -2134,12 +2163,20 @@ export class ClassesService {
     // [추가 2026-05-15] 결제이력(paid Enrollment) 카운트 — 기존 UI 표시용.
     // [추가 2026-06-29] deletable — 삭제 가능 여부(B안). countClassBlockingRefs 헬퍼로
     //   유효 신청/크레딧/후불청구/출석 4종이 모두 0 일 때만 삭제 허용. 가드와 동일 기준.
-    const [paidEnrollmentCount, blockingRefCount] = await Promise.all([
-      this.prisma.enrollment.count({
-        where: { classId, status: "paid" },
-      }),
-      this.countClassBlockingRefs(classId),
-    ]);
+    // [sellableMonths 보정] 위 schedules select 는 표시용 take:10 상한이 있어 한 달에
+    //   회차가 많은 수업은 다음 달 일정이 안 잡힌다(getClassProducts 와 판단 불일치). 판매
+    //   중인 달 산출용 일정은 take 없이 별도 조회한다 — 표시용 schedules 는 그대로 둔다.
+    const [paidEnrollmentCount, blockingRefCount, futureSchedulesForSales] =
+      await Promise.all([
+        this.prisma.enrollment.count({
+          where: { classId, status: "paid" },
+        }),
+        this.countClassBlockingRefs(classId),
+        this.prisma.classSchedule.findMany({
+          where: { classId, isCancelled: false, scheduledDate: { gte: today } },
+          select: { scheduledDate: true },
+        }),
+      ]);
     const deletable = blockingRefCount === 0;
 
     const coachName = classRecord.coach
@@ -2148,6 +2185,33 @@ export class ClassesService {
       : classRecord.team && classRecord.team.coach
         ? `${classRecord.team.coach.lastName ?? ""}${classRecord.team.coach.firstName ?? ""}`.trim()
         : classRecord.instructorName;
+
+    // [Lifecycle v4.1 · §4-6] 파생 상태·판매 중인 달·다음 판매 개시 대상월 — 전부
+    //   take 없는 전체 잔여 일정(futureSchedulesForSales) 한 벌에서 함께 파생한다.
+    //   표시용 schedules(take:10 상한)로 따로 파생하면 회차가 많은 달에서 lifecycleStatus
+    //   와 sellableMonths 가 서로 다른 모집단을 보고 어긋난다 — 표시용 목록은 응답의
+    //   `schedules` 필드에만 쓰고 파생 입력에는 관여하지 않는다.
+    const classDetailLifecycleInput = toLifecycleInput(
+      classRecord,
+      futureSchedulesForSales,
+      (classRecord._count?.schedules ?? 0) > 0,
+    );
+    const classDetailSalesWindow = computeSalesWindow(
+      classDetailLifecycleInput,
+      today,
+    );
+    const classDetailLifecycle = classDetailSalesWindow.lifecycle;
+    const classDetailSellableMonths = classDetailSalesWindow.sellableMonths;
+    // 정원 표시(currentEnrollment)는 목록·좌석 게이트와 같은 운영월 자격자 수를 쓴다.
+    //   장부(ClassRegistration active) 개수를 쓰면 미갱신 행이 남은 정원제 수업에서
+    //   서버는 신청을 받는데 화면은 "정원 마감"으로 CTA 를 잠근다.
+    const classDetailRosterMonth =
+      classDetailLifecycle.earliestRemainingMonth ?? utcMonthStart(today);
+    const classDetailEligibleIds = await eligibleChildIdsForMonth(
+      this.prisma,
+      classId,
+      classDetailRosterMonth,
+    );
 
     return {
       id: classRecord.id,
@@ -2196,7 +2260,8 @@ export class ClassesService {
       venueLongitude: classRecord.venue?.longitude
         ? Number(classRecord.venue.longitude)
         : null,
-      currentEnrollment: classRecord.registrations?.length ?? 0,
+      currentEnrollment: classDetailEligibleIds.size,
+      rosterMonth: dateOnlyToYearMonth(classDetailRosterMonth),
       // [추가 2026-05-13] 명단관리용 — 배치된 학생 목록 (ClassRegistration active).
       //  결제 흐름(Enrollment) 과 별개. 코치가 직접 배치한 학생도 여기에 포함된다.
       enrollments: (classRecord.registrations ?? []).map((r) => ({
@@ -2223,10 +2288,10 @@ export class ClassesService {
       products: (() => {
         // classEndDate 메타 — 대표값(Class.endTime)은 날짜부가 등록일로 오염되어 폐기(null 고정).
         //   차단 로직은 isActive 만 사용(수업 종료일 기반 차단 폐기)·FE 실사용 0건 확인.
-        // [Lifecycle v4.1 §9.2] 판매 노출 = 현재 승인월 분(+무월 레거시)만 — 지난 월분 자동 숨김.
+        // [Lifecycle v4.1 §9.2 · §4-6] 판매 노출 = 판매 중인 달(+무월 레거시)만.
         const productsWithMeta = filterSellableProducts(
           classRecord.products ?? [],
-          classRecord.salesOpenMonth,
+          classDetailSellableMonths,
         ).map((p) => ({
           ...p,
           ...computePackageGuardMeta(p, null),
@@ -2236,26 +2301,16 @@ export class ClassesService {
           : productsWithMeta;
       })(),
       // [Lifecycle v4.1] 파생 상태 — 상세 결제 CTA 분기(학부모 "일정 준비 중")용.
-      ...(() => {
-        const lc = deriveClassLifecycle({
-          endedAt: classRecord.endedAt,
-          salesOpenMonth: classRecord.salesOpenMonth,
-          trainingType: classRecord.trainingType,
-          schedules: (classRecord.schedules ?? []).filter(
-            (sch) => !sch.isCancelled,
-          ),
-          hadAnySchedule: (classRecord._count?.schedules ?? 0) > 0,
-        });
-        return {
-          lifecycleStatus: lc.state,
-          pendingReason: lc.pendingReason,
-          earliestRemainingMonth:
-            lc.earliestRemainingMonth?.toISOString() ?? null,
-          // 명시 종료 시점 — [종료 취소] 버튼 분기용 (spot 파생 자동 종료는 endedAt null
-          //   이라 취소 대상 아님 — 버튼 분기는 endedAt 기준이어야 정확).
-          endedAt: classRecord.endedAt?.toISOString() ?? null,
-        };
-      })(),
+      lifecycleStatus: classDetailLifecycle.state,
+      pendingReason: classDetailLifecycle.pendingReason,
+      earliestRemainingMonth:
+        classDetailLifecycle.earliestRemainingMonth?.toISOString() ?? null,
+      // [§4-6] additive — 판매 중인 달 집합·다음 판매 개시 대상월.
+      sellableMonths: classDetailSalesWindow.sellableMonthKeys,
+      nextSalesMonth: classDetailSalesWindow.nextSalesMonthKey,
+      // 명시 종료 시점 — [종료 취소] 버튼 분기용 (spot 파생 자동 종료는 endedAt null
+      //   이라 취소 대상 아님 — 버튼 분기는 endedAt 기준이어야 정확).
+      endedAt: classRecord.endedAt?.toISOString() ?? null,
       // 2026-05-12: ClassCoachAssignment 다중 코치 배정 (LEAD/ASSISTANT)
       coachAssignments: (classRecord.coachAssignments ?? []).map((a) => ({
         id: a.id,
@@ -2334,7 +2389,9 @@ export class ClassesService {
     const redisConfig = this.configService.get("redis");
     const keyPrefix = redisConfig.keyPrefix.class;
     const cacheTTL = redisConfig.cacheTTL.classList;
-    const cacheKey = `${keyPrefix}list:${teamId}`;
+    // [§4-6] 날짜 파생 필드(lifecycleStatus·sellableMonths·nextSalesMonth)가 TTL 내내
+    //   캐시되므로 키에 KST 오늘 날짜를 넣어 자정 전환 시 자연 무효화한다(구 키는 TTL 로 소멸).
+    const cacheKey = `${keyPrefix}list:${teamId}:${dateOnlyToString(kstTodayUtcMidnight())}`;
 
     if (!hasFilters) {
       const cachedClasses = await this.redisService.get<any[]>(cacheKey);
@@ -2419,14 +2476,10 @@ export class ClassesService {
           select: { scheduledDate: true, startTime: true, endTime: true },
           orderBy: { scheduledDate: "asc" },
         },
-        // 2026-05-09: 학생 카운트는 ClassRegistration(active 등록) 기준 — 수업상세(currentEnrollment)와
-        // 동일 source 로 정합. 기존엔 Enrollment(결제 흐름) 기반이라 결제 전 학생이 0으로 표시되던 버그.
-        // 2026-05-20: registrations 카운트에 status='active' 필터 추가 — 상세(getClass)와 동일하게
-        //  배치 해제(inactive) 학생을 제외. 필터 누락 시 만료/해제 학생까지 카운트되어 목록>상세 불일치 발생.
+        // [Phase 3] 학생 카운트는 studentCount(운영월 자격자 배치 조회)로 이관 —
+        //   ClassRegistration(active) 카운트는 장부일 뿐 자격 SoT 가 아니다(§2·§4-2).
         _count: {
           select: {
-            registrations: { where: { status: "active" } },
-            enrollments: true,
             waitlists: true,
           },
         },
@@ -2446,6 +2499,29 @@ export class ClassesService {
     });
 
     const sdTodayList = kstTodayUtcMidnight();
+
+    // [Phase 3] 운영월 배치 계산 — getClasses 와 동일 패턴(월별로 묶어 N+1 방지).
+    const clubSalesWindowByClassId = new Map<string, ReturnType<typeof computeSalesWindow>>();
+    const clubRosterMonthByClassId = new Map<string, Date>();
+    const clubClassIdsByMonthKey = new Map<string, { month: Date; classIds: string[] }>();
+    for (const c of classes) {
+      const salesWindow = computeSalesWindow(toLifecycleInput(c, c.schedules ?? []));
+      clubSalesWindowByClassId.set(c.id, salesWindow);
+      const rosterMonth =
+        salesWindow.lifecycle.earliestRemainingMonth ??
+        utcMonthStart(kstTodayUtcMidnight());
+      clubRosterMonthByClassId.set(c.id, rosterMonth);
+      const key = rosterMonth.toISOString();
+      const entry = clubClassIdsByMonthKey.get(key);
+      if (entry) entry.classIds.push(c.id);
+      else clubClassIdsByMonthKey.set(key, { month: rosterMonth, classIds: [c.id] });
+    }
+    const clubEligibleChildIdsByClassId = new Map<string, Set<string>>();
+    for (const { month, classIds } of clubClassIdsByMonthKey.values()) {
+      const batch = await eligibleChildIdsForClasses(this.prisma, classIds, month);
+      for (const [cid, set] of batch) clubEligibleChildIdsByClassId.set(cid, set);
+    }
+
     const result = classes.map((c) => {
       const days = Array.isArray(c.classDays)
         ? (c.classDays as string[]).join(", ")
@@ -2459,18 +2535,18 @@ export class ClassesService {
       const nextSched = (c.schedules ?? []).find(
         (s) => s.scheduledDate >= sdTodayList,
       );
-      // [Lifecycle v4.1] 파생 상태 — 배지 판정 일원화 (class-lifecycle.util SoT).
-      const lifecycle = deriveClassLifecycle({
-        endedAt: c.endedAt,
-        salesOpenMonth: c.salesOpenMonth,
-        trainingType: c.trainingType,
-        schedules: c.schedules ?? [],
-      });
+      // [Lifecycle v4.1 · §4-6] 파생 상태·판매 중인 달 — 배지 판정 일원화.
+      const clubSalesWindow = clubSalesWindowByClassId.get(c.id)!;
+      const lifecycle = clubSalesWindow.lifecycle;
+      const clubSellableMonths = clubSalesWindow.sellableMonths;
       return {
         id: c.id,
         className: c.className,
         trainingType: c.trainingType,
         lifecycleStatus: lifecycle.state,
+        // [§4-6] additive — 판매 중인 달 집합·다음 판매 개시 대상월.
+        sellableMonths: clubSalesWindow.sellableMonthKeys,
+        nextSalesMonth: clubSalesWindow.nextSalesMonthKey,
         pendingReason: lifecycle.pendingReason,
         teamId: c.teamId,
         // 오픈클래스는 팀이 없으므로 소속 아카데미 대표 이미지로 폴백.
@@ -2496,7 +2572,9 @@ export class ClassesService {
           c.venue?.city ??
           c.team?.homeVenue?.city ??
           null,
-        studentCount: c._count.registrations,
+        // [Phase 3] 운영월 자격자 수 — _count.registrations(active) 대신 교체(§2·§4-2).
+        studentCount: clubEligibleChildIdsByClassId.get(c.id)?.size ?? 0,
+        rosterMonth: dateOnlyToYearMonth(clubRosterMonthByClassId.get(c.id)!),
         maxStudents: c.capacity,
         level: c.levelRequired,
         category: c.category,
@@ -2547,7 +2625,7 @@ export class ClassesService {
         ...(() => {
           const sellableList = filterSellableProducts(
             c.products ?? [],
-            c.salesOpenMonth,
+            clubSellableMonths,
           );
           const single = sellableList.find((p) => p.feeType === "PER_SESSION");
           const monthly = sellableList.find(
@@ -2705,6 +2783,9 @@ export class ClassesService {
             paymentId: true,
             paidAt: true,
             classProductId: true,
+            // [Phase 3] 자격·귀속월 SoT — 상품 join 없이 판독(enrollment-eligibility.util).
+            billingMonth: true,
+            billingTiming: true,
             product: {
               select: {
                 id: true,
@@ -2765,12 +2846,19 @@ export class ClassesService {
     //   행을 가리는 오표기를 만들었다(환불 이력이 expired 에 가려지는 실측 반례).
     //   "현재 수강 기록"과 "최근 실거래"는 다른 질문이라 각각 고른다.
 
-    // paid 유효성 batch 판정 — hasActivePaidEnrollment(paid-enrollment-guard.util)
-    //   단일 공식 미러: 수강 중 = ClassRegistration active AND (발급형이면 유효 크레딧).
+    // [Phase 3] paid 유효성 batch 판정 — hasActivePaidEnrollment(paid-enrollment-guard.util)
+    //   단일 공식 미러: 수강 중 = 이번 달 귀속(billingMonth) paid 존재 AND (발급형이면
+    //   유효 크레딧). ClassRegistration(active)은 장부일 뿐이라 더 이상 보지 않는다 —
+    //   지난 달 결제만 있고 이번 달 미갱신인 자녀가 "수강 중"으로 남는 결함이 있었다.
     //   자녀별 반복 쿼리(N+1) 대신 필요한 자녀만 모아 크레딧을 1회 일괄 조회한다.
-    const activeRegChildIds = new Set(
-      registrations.filter((r) => r.status === "active").map((r) => r.userId),
-    );
+    const todayMonthForContract = utcMonthStart(kstTodayUtcMidnight());
+    // 판정 창 — 월 스코프 요청이면 그 달만, 아니면 이번 달 ∪ 다음 달.
+    //   enrollments.service 의 hasValidPass 와 같은 창을 써야 한다. 이번 달만 보면
+    //   말일에 다음 달분만 결제한 자녀가 학부모 화면에서는 "수강 중", 감독 화면에서는
+    //   "재결제 필요"로 갈린다. 지난 달 조회에 오늘을 쓰면 명단 전체가 미갱신으로 보인다.
+    const contractMonths: Date[] = yearMonth
+      ? [dateOnlyToUtc(`${yearMonth}-01`)]
+      : [todayMonthForContract, addUtcMonths(todayMonthForContract, 1)];
     const paidRowsByChild = new Map<string, typeof enrollments>();
     for (const [childId, list] of enrollmentsByChild) {
       const paidRows = list.filter(
@@ -2778,15 +2866,24 @@ export class ClassesService {
       );
       if (paidRows.length > 0) paidRowsByChild.set(childId, paidRows);
     }
-    // 크레딧 조회가 필요한 자녀 = 등록 active + paid 전부가 발급형(비발급 0 없음).
-    //   비발급(sessionsPerMonth=0) paid 보유 자녀는 등록만으로 유효 — 크레딧 항 미평가.
+    // 이번 달 귀속 paid 행만 "현재 계약" 후보 — 지난 달 결제 이력은 제외.
+    const currentMonthPaidByChild = new Map<
+      string,
+      (typeof enrollments)[number]
+    >();
+    for (const [childId, rows] of paidRowsByChild) {
+      const row = rows.find(
+        (e) =>
+          e.billingMonth != null &&
+          contractMonths.some((m) => e.billingMonth!.getTime() === m.getTime()),
+      );
+      if (row) currentMonthPaidByChild.set(childId, row);
+    }
+    // 크레딧 조회가 필요한 자녀 = 이번 달 계약이 발급형(비발급 0 아님).
+    //   비발급(sessionsPerMonth=0) 계약 보유 자녀는 계약만으로 유효 — 크레딧 항 미평가.
     //   product 미연결 행은 발급형으로 폴백(가드 util 과 동일 해석).
-    const creditCheckChildIds = [...paidRowsByChild.entries()]
-      .filter(
-        ([childId, rows]) =>
-          activeRegChildIds.has(childId) &&
-          !rows.some((e) => e.product?.sessionsPerMonth === 0),
-      )
+    const creditCheckChildIds = [...currentMonthPaidByChild.entries()]
+      .filter(([, row]) => row.product?.sessionsPerMonth !== 0)
       .map(([childId]) => childId);
     const validCreditChildIds = new Set<string>();
     if (creditCheckChildIds.length > 0) {
@@ -2803,14 +2900,8 @@ export class ClassesService {
       }
     }
     const hasValidPassByChild = new Map<string, boolean>();
-    for (const [childId, rows] of paidRowsByChild) {
-      if (!activeRegChildIds.has(childId)) {
-        hasValidPassByChild.set(childId, false);
-        continue;
-      }
-      const hasNonIssuing = rows.some(
-        (e) => e.product?.sessionsPerMonth === 0,
-      );
+    for (const [childId, row] of currentMonthPaidByChild) {
+      const hasNonIssuing = row.product?.sessionsPerMonth === 0;
       hasValidPassByChild.set(
         childId,
         hasNonIssuing || validCreditChildIds.has(childId),
@@ -2874,10 +2965,8 @@ export class ClassesService {
           }
           const att = resolvePrepaidAttribution({
             billingTiming: "PREPAID",
-            feeType: en.product?.feeType,
-            billingMonth: en.product?.billingMonth,
+            enrollmentBillingMonth: en.billingMonth,
             enrollmentStatus: en.status,
-            enrollmentPaidAt: en.paidAt,
             productPrice: en.product?.price,
             payment: en.payment,
           });
@@ -3075,10 +3164,8 @@ export class ClassesService {
             }
             const att = resolvePrepaidAttribution({
               billingTiming: "PREPAID",
-              feeType: cand.product?.feeType,
-              billingMonth: cand.product?.billingMonth,
+              enrollmentBillingMonth: cand.billingMonth,
               enrollmentStatus: cand.status,
-              enrollmentPaidAt: cand.paidAt,
               productPrice: cand.product?.price,
               payment: cand.payment,
             });
@@ -3095,29 +3182,29 @@ export class ClassesService {
     }
 
     // ── 선택월 로스터 멤버십 (월 스코프 전용 · 허브와 동일 계약) ─────────
-    //   "그 달의 수강생"만 명단·집계에 포함. 활동 증거 = 출석·후불 라인·선불 귀속 거래.
+    //   [Phase 3] 명단 = 그 달 자격(billingMonth·billingTiming 직접 판독) ∪ 그 달
+    //   활동 증거(출석·후불 라인·선불 귀속 거래). registrationDate·classActiveForMonth
+    //   근사는 더 이상 보지 않는다(attribution.util isRosterMemberForMonth 참고).
     //   미전송(admin) 호출은 종전 전체 명단 유지.
-    const classEndedMonth =
-      cls.endedAt != null ? instantToKstYearMonth(cls.endedAt) : null;
-    const classActiveForMonth =
-      classEndedMonth != null
-        ? classEndedMonth >= selectedYearMonth
-        : cls.isActive !== false;
     const billingLineUserIds = new Set(
       (monthlyBilling?.items ?? []).map((i) => i.userId),
     );
     const visibleRegistrations = monthScoped
-      ? registrations.filter((reg) =>
-          isRosterMemberForMonth(
-            reg.registrationDate,
-            reg.status,
-            selectedYearMonth,
-            classActiveForMonth,
+      ? registrations.filter((reg) => {
+          const eligible = (enrollmentsByChild.get(reg.userId) ?? []).some(
+            (e) =>
+              isEligibleForMonth(
+                { status: e.status, billingTiming: e.billingTiming, billingMonth: e.billingMonth },
+                monthStart,
+              ),
+          );
+          return isRosterMemberForMonth(
+            eligible,
             (attendanceByUser.get(reg.userId) ?? 0) > 0 ||
               billingLineUserIds.has(reg.userId) ||
               prepaidMatchedByChild.has(reg.userId),
-          ),
-        )
+          );
+        })
       : registrations;
 
     const students = visibleRegistrations.map((reg) => {
@@ -4696,19 +4783,26 @@ export class ClassesService {
     userId: string;
     status: string;
   }> {
+    // [Phase 3 — 사용자 결정] 감독 직접 배치 미채택: 선불은 결제가 필요해 배치로 대신할
+    //   수 없고, 후불 대행 신청은 이번 설계 범위 밖이다(§4-3). 제품 비채택·개발 DB
+    //   배치 전용 명단 0건 실측(설계 §3) — 아래 코드는 지우지 않고 dead 유지, 호출만 차단.
+    throw new BadRequestException(
+      "학생 직접 배치는 더 이상 지원하지 않습니다. 학부모의 수강 신청/결제를 이용해주세요.",
+    );
+    // eslint-disable-next-line no-unreachable
     const cls = await this.prisma.class.findUnique({
       where: { id: classId },
       select: { id: true, teamId: true, capacity: true },
     });
     if (!cls) throw new NotFoundException("수업을 찾을 수 없습니다.");
-    if (!cls.teamId) {
+    if (!cls!.teamId) {
       throw new BadRequestException(
         "팀 소속 수업에서만 명단을 관리할 수 있습니다.",
       );
     }
     await this.teamsService.assertTeamManagerPermission(
       coachUserId,
-      cls.teamId,
+      cls!.teamId!,
       "이 수업의 감독/코치만 학생을 배치할 수 있습니다.",
     );
     const student = await this.prisma.user.findUnique({
@@ -4718,11 +4812,11 @@ export class ClassesService {
     if (!student) throw new NotFoundException("학생을 찾을 수 없습니다.");
 
     // 정원 체크 — 0 = 무제한(정원 미운영). 신청 경로(createEnrollment)와 동일 해석.
-    if (cls.capacity != null && cls.capacity > 0) {
+    if (cls!.capacity != null && cls!.capacity > 0) {
       const activeCount = await this.prisma.classRegistration.count({
         where: { classId, status: "active" },
       });
-      if (activeCount >= cls.capacity) {
+      if (activeCount >= cls!.capacity!) {
         throw new BadRequestException("정원이 모두 찼습니다.");
       }
     }
@@ -4734,7 +4828,7 @@ export class ClassesService {
       create: { classId, userId: studentUserId, status: "active" },
       select: { id: true, status: true },
     });
-    await this.invalidateClassCache(cls.teamId);
+    await this.invalidateClassCache(cls!.teamId!);
     return {
       success: true,
       classId,
@@ -4744,8 +4838,13 @@ export class ClassesService {
   }
 
   /**
-   * [신규 2026-05-13] 명단관리 — 학생 배치 해제(soft).
-   *  ClassRegistration.status = 'inactive' 로 변경.
+   * [Phase 3] 명단관리 — 학생 배치 해제. §4-3 결제 방식·상태별 정책:
+   *   · 후불(approved·paid) — 이번 달·다음 달 신청만 cancelled(기출석분은 확정 청구
+   *     라인이 있는 달은 제외해 보존). 다른 유효 신청이 남아 있으면 명단은 유지.
+   *   · 선불 paid(유료) — 취소하지 않음. 환불 절차 안내(400).
+   *   · 선불 paid(무료)·pending·pending_approval·approved(결제 대기) — cancelled(돈 없음).
+   *   신청 자체를 바꾸지 않고 ClassRegistration 만 inactive 로 돌리던 구현은 자격을
+   *   신청 파생으로 옮긴 뒤에는 해제해도 자격이 남는 결함이 있었다(설계 §4-3).
    */
   async unassignStudentFromClass(
     coachUserId: string,
@@ -4767,10 +4866,112 @@ export class ClassesService {
       cls.teamId,
       "이 수업의 감독/코치만 학생 배치를 해제할 수 있습니다.",
     );
-    await this.prisma.classRegistration.updateMany({
-      where: { classId, userId: studentUserId },
-      data: { status: "inactive" },
+
+    const todayMonth = utcMonthStart(kstTodayUtcMidnight());
+    const nextMonth = addUtcMonths(todayMonth, 1);
+
+    await this.prisma.$transaction(async (tx) => {
+      // 좌석 잠금 — 신청 생성·취소와 같은 키(§4-3, enrollments.service 와 동일 규약).
+      await acquireClassSeatLock(tx, classId);
+
+      const liveEnrollments = await tx.enrollment.findMany({
+        where: {
+          classId,
+          childId: studentUserId,
+          status: { in: ["pending", "pending_approval", "approved", "paid"] },
+        },
+        select: {
+          id: true,
+          status: true,
+          billingTiming: true,
+          billingMonth: true,
+          payment: { select: { amount: true } },
+        },
+      });
+
+      // 해제는 이번 달·다음 달 신청만 대상으로 한다. 지난 달 행은 이미 끝난 달의
+      //   기록이라 손대지 않는다 — 전 기간을 훑으면 (1) 지난 달 유료 paid 가 남아
+      //   있다는 이유로 해제가 영구히 막히고, (2) 결제 연결이 없는 무료 paid 가
+      //   유료 가드를 통과해 지난 달까지 취소되어 그 달 명단·정산에서 사라진다.
+      //   귀속월이 없는 행(결정 불능)도 창 밖으로 보고 건드리지 않는다.
+      const inCancelWindow = (m: Date | null): boolean =>
+        m != null &&
+        (m.getTime() === todayMonth.getTime() ||
+          m.getTime() === nextMonth.getTime());
+      const windowEnrollments = liveEnrollments.filter((e) =>
+        inCancelWindow(e.billingMonth),
+      );
+
+      // 선불(또는 결정 불능) 유료 paid 는 해제 불가 — 환불 절차로 안내한다. 하나라도
+      //   있으면 전체 차단(부분 해제로 유료 건만 남기지 않는다).
+      const hasPaidFee = windowEnrollments.some(
+        (e) =>
+          e.status === "paid" &&
+          e.billingTiming !== "POSTPAID" &&
+          Number(e.payment?.amount ?? 0) > 0,
+      );
+      if (hasPaidFee) {
+        throw new BadRequestException(
+          "결제 완료된 수강신청은 환불 절차를 통해 취소해주세요.",
+        );
+      }
+
+      // 취소 대상 = 지금 그 달 자격을 만들고 있는 신청뿐이다(§1 자격 조건과 동일 집합).
+      //   해제의 목적은 "이 학생을 그 달 명단에서 뺀다"이고, 자격은 신청에서 파생되므로
+      //   자격을 주는 신청만 끊으면 된다. 결제 전 선불 신청(pending·approved)은 아직
+      //   자격이 아니라 건드리지 않는다 — 만료 회원이 재등록 결제 중일 때 그 신청을
+      //   덮어 "돈은 냈는데 취소된 상태"를 만들던 경로가 여기였다.
+      const cancelIds: string[] = [];
+      for (const e of windowEnrollments) {
+        if (e.billingTiming === "POSTPAID") {
+          if (e.status !== "approved" && e.status !== "paid") continue;
+          const billingYm = dateOnlyToYearMonth(e.billingMonth as Date);
+          const billing = await tx.monthlyPostpaidBilling.findUnique({
+            where: { classId_yearMonth: { classId, yearMonth: billingYm } },
+            select: { status: true },
+          });
+          if (billing?.status === "confirmed") continue; // 기출석분 정산 보존.
+          cancelIds.push(e.id);
+        } else {
+          // 선불은 paid 만 자격 — 유료 paid 는 위에서 차단됐으니 여기 오는 것은 무료 paid.
+          if (e.status !== "paid") continue;
+          cancelIds.push(e.id);
+        }
+      }
+
+      if (cancelIds.length > 0) {
+        // 조건부 전이 — 읽은 뒤 쓰기 전에 다른 경로(환불·웹훅)가 상태를 바꿨으면 덮지 않는다.
+        //   자격 상태(approved·paid) 밖으로 이동한 행은 매치되지 않으므로 count 가 줄고,
+        //   그때는 재조회 없이 충돌로 알린다(enrollment-cancel-atomicity 규약과 동일).
+        const transition = await tx.enrollment.updateMany({
+          where: {
+            id: { in: cancelIds },
+            status: { in: ["approved", "paid"] },
+          },
+          data: { status: "cancelled" },
+        });
+        if (transition.count !== cancelIds.length) {
+          throw new ConflictException(
+            "수강신청 상태가 방금 변경되었습니다. 명단을 새로고침한 뒤 다시 시도해주세요.",
+          );
+        }
+      }
+
+      // 같은 자녀에게 남은 유효 신청이 있으면 명단을 유지한다(§4-3 — 신청 파생 자격과
+      //   ClassRegistration 정합).
+      const keepRoster = await hasOtherValidEnrollment(tx, {
+        classId,
+        childId: studentUserId,
+        excludeEnrollmentIds: cancelIds,
+      });
+      if (!keepRoster) {
+        await tx.classRegistration.updateMany({
+          where: { classId, userId: studentUserId },
+          data: { status: "inactive" },
+        });
+      }
     });
+
     await this.invalidateClassCache(cls.teamId);
     return { success: true };
   }
@@ -6343,13 +6544,23 @@ export class ClassesService {
         id: true,
         endTime: true,
         academyId: true,
+        endedAt: true,
         salesOpenMonth: true,
+        trainingType: true,
+        // [§4-6] 판매 중인 달 산출용 — 잔여(오늘 이후) 비취소 일정만.
+        schedules: {
+          where: { isCancelled: false, scheduledDate: { gte: kstTodayUtcMidnight() } },
+          select: { scheduledDate: true },
+        },
       },
     });
 
     if (!classRecord) {
       throw new NotFoundException("수업을 찾을 수 없습니다.");
     }
+    const productsSellableMonths = computeSalesWindow(
+      toLifecycleInput(classRecord, classRecord.schedules ?? []),
+    ).sellableMonths;
 
     const products = await this.prisma.classProduct.findMany({
       where: { classId },
@@ -6378,12 +6589,12 @@ export class ClassesService {
     //   classes/utils/package-guard.util.ts:computePackageGuardMeta() 호출로 메타 주입.
     //   shouldHideInactiveFor(requester?.userType) — PARENT/CHILD/TEEN 비활성 제외.
     // classEndDate 메타 — 대표값(Class.endTime)은 날짜부가 등록일로 오염되어 폐기(null 고정).
-    // [Lifecycle v4.1 §9.2] 학부모행(PARENT/CHILD/TEEN — shouldHideInactiveFor 와 동일 기준)
-    //   요청은 판매 노출분(승인월+무월 레거시)만 — 결제 옵션 1차 소스가 이 API 라서
-    //   미필터 시 지난 월분 카드가 노출됨 (Reviewer F2. 결제는 race 가드로 봉인되나 UX 갭).
+    // [Lifecycle v4.1 §9.2 · §4-6] 학부모행(PARENT/CHILD/TEEN — shouldHideInactiveFor
+    //   와 동일 기준) 요청은 판매 중인 달(+무월 레거시)만 — 결제 옵션 1차 소스가 이 API 라서
+    //   미필터 시 지난/미승인 월분 카드가 노출됨 (Reviewer F2. 결제는 race 가드로 봉인되나 UX 갭).
     //   감독/관리자는 이력 확인용 전체 유지 (확인 플로우 needsUpdate 산출에 이전 분 필요).
     const roleScoped = shouldHideInactiveFor(requester?.userType)
-      ? filterSellableProducts(products, classRecord.salesOpenMonth)
+      ? filterSellableProducts(products, productsSellableMonths)
       : products;
 
     // [가격 잠금 Phase 5] 잠금 상태 3필드 emit — FE 가 저장 400 대신 사전 disabled 로
@@ -6817,6 +7028,17 @@ export class ClassesService {
         `남은 일정 ${upcoming}건 · 잔여 결제권(월 정기권 ${monthlyPassCount}건 · 회차권 ${sessionRemainderCount}건)을 정리한 후 종료할 수 있습니다.`,
       );
     }
+    // [Phase 3] 후불 미정산 출석이 있으면 종료 차단 — 정산 확정 전 종료로 출석
+    //   기록에 접근할 길이 막히는 것을 방지(§4-3 endClass 가드 추가).
+    const unsettledMonths = await findUnsettledPostpaidMonths(
+      this.prisma,
+      classId,
+    );
+    if (unsettledMonths.length > 0) {
+      throw new BadRequestException(
+        `정산되지 않은 후불 출석이 있어 종료할 수 없습니다. ${unsettledMonths.join(", ")} 정산 확정 후 종료해주세요.`,
+      );
+    }
     const updated = await this.prisma.class.update({
       where: { id: classId },
       data: { endedAt: new Date() },
@@ -6884,11 +7106,36 @@ export class ClassesService {
   }
 
   /**
-   * [Lifecycle v4.1 §9.3] [판매 시작] — 감독의 명시 승인으로만 판매 월 전환 (자동 전환 금지).
-   * 검증: ① 미종료 ② 가장 이른 잔여 달 M 존재 ③ 월권 이력(billingMonth 有)이 있는 수업은
-   *   대상월 분 패키지가 1건 이상 존재 (지난 월분 row 는 §9.2 설계상 "보존"이므로 전부-갱신을
-   *   강제하지 않는다 — 노출 차단은 filterSellableProducts, 갱신 유도는 FE needsUpdate 게이트.
-   *   월 패키지 0개 = 후불 전용·무월 레거시만 있는 수업은 ③ 통과).
+   * [§4-6] [판매 시작] 대상월 후보 검증 — dto.targetMonth 가 오면 서버 산출 후보와
+   *   일치해야 하고, 미전송이면 후보를 그대로 쓴다. 후보가 없으면(새로 열 달 없음) 400.
+   *   확인 호출(dryRun=false)은 호출부에서 targetMonthInput 필수를 이미 강제하므로
+   *   여기 도달하는 미전송은 dryRun 미리보기뿐이다.
+   */
+  private resolveOpenSalesTargetMonth(
+    candidate: Date | null,
+    targetMonthInput?: string,
+  ): Date {
+    if (targetMonthInput) {
+      const requested = monthRangeUtc(targetMonthInput).start;
+      if (!candidate || requested.getTime() !== candidate.getTime()) {
+        throw new BadRequestException("선택한 달은 판매를 시작할 수 없습니다.");
+      }
+      return requested;
+    }
+    if (!candidate) {
+      throw new BadRequestException("판매를 시작할 달이 없습니다.");
+    }
+    return candidate;
+  }
+
+  /**
+   * [Lifecycle v4.1 §9.3 · §4-6] [판매 시작] — 감독의 명시 승인으로만 판매 창 확장
+   * (자동 전환 금지). 대상월 후보 = computeSalesWindow().nextSalesMonth(하한 max(오늘 달,
+   * salesOpenMonth+1), 상한 오늘 달+1) — 진행 중인 달을 종료 전에 다음 달 판매를 열 수 있다(판매 창 최대 2개월).
+   * 검증: ① 미종료 ② 후보 존재(또는 dto.targetMonth 가 후보와 일치) ③ 월권 이력(billingMonth
+   *   有)이 있는 수업은 대상월 분 패키지가 1건 이상 존재 (지난 월분 row 는 §9.2 설계상
+   *   "보존"이므로 전부-갱신을 강제하지 않는다 — 노출 차단은 filterSellableProducts, 갱신
+   *   유도는 FE needsUpdate 게이트. 월 패키지 0개 = 후불 전용·무월 레거시만 있는 수업은 ③ 통과).
    */
   async openClassSales(
     userId: string,
@@ -6896,6 +7143,8 @@ export class ClassesService {
     classId: string,
     // [Phase 2] true 면 검증·미갱신 해제 대상 산출까지만 수행(쓰기 0) — FE 사전 고지용.
     dryRun = false,
+    // [§4-6] 후보가 여럿일 때만 필요(현재 규칙상 항상 0·1개라 대개 미전송).
+    targetMonthInput?: string,
   ) {
     const { ownerType, ownerId } = await this.assertClassManagerPermission(
       userId,
@@ -6924,20 +7173,22 @@ export class ClassesService {
     if (klass.endedAt) {
       throw new BadRequestException("종료된 수업입니다. 재개 후 진행해주세요.");
     }
-    const lifecycle = deriveClassLifecycle({
-      endedAt: klass.endedAt,
-      salesOpenMonth: klass.salesOpenMonth,
-      trainingType: klass.trainingType,
-      schedules: klass.schedules,
-    });
-    const targetMonth = lifecycle.earliestRemainingMonth;
-    if (!targetMonth) {
-      throw new BadRequestException(
-        "다가오는 일정이 없습니다. 다음 달 일정을 먼저 등록해주세요.",
-      );
+    // [§4-6] 확인 호출(dryRun→쓰기)은 dryRun 응답이 돌려준 targetMonth 를 그대로 되돌려
+    //   받아야 한다 — 생략을 허용하면 그 사이 월이 바뀌어도 서버가 조용히 새 후보로
+    //   진행해, 감독이 미리보기에서 확인한 달과 실제 승인된 달이 달라질 수 있다.
+    if (!dryRun && !targetMonthInput) {
+      throw new BadRequestException("판매 시작 달을 지정해주세요.");
     }
-    // salesOpenMonth 비감소 불변식 — 이른 달 일정 추가로 대상월이 과거로 이동하면
-    //   이미 판매된 월분이 잠금 판정(billingMonth ≤ salesOpenMonth)을 빠져나가므로 거부.
+    const targetMonthCandidate = computeSalesWindow(
+      toLifecycleInput(klass, klass.schedules),
+    ).nextSalesMonth;
+    const targetMonth = this.resolveOpenSalesTargetMonth(
+      targetMonthCandidate,
+      targetMonthInput,
+    );
+    // salesOpenMonth 비감소 불변식 — 후보 하한 규칙상 정상 경로에서는 도달하지 않지만,
+    //   대상월이 과거로 가면 이미 판매된 월분이 잠금 판정(billingMonth ≤ salesOpenMonth)을
+    //   빠져나가므로 방어선으로 유지.
     assertSalesMonthNotRolledBack(targetMonth, klass.salesOpenMonth);
     // §9.2 — 지난 월분 row 는 판매 이력으로 "보존"되는 설계이므로 전부-갱신을 강제하지
     //   않는다 (강제 시 2차 사이클부터 항상 실패 — Reviewer C-1). 검증은 "판매할 물건이
@@ -6962,15 +7213,23 @@ export class ClassesService {
     // ── [Phase 2] 미갱신 선불 선수 배치 해제 대상 산출 ─────────────────────
     //   크레딧 미사용 운영에선 선불 좌석이 자동 반납되지 않으므로, 감독의 [판매 시작]
     //   시점에 "직전 판매월에 유효 결제가 없는 선불 이력 선수"를 명단(active)에서 내린다.
-    //   · 판정월 = 직전 salesOpenMonth (첫 판매/동월 재실행은 대상 0 — 1개월 유예 설계)
+    //   · 판정월 = 직전 salesOpenMonth
+    //   · 후보 발생 조건 = 직전 판매월이 이미 끝난 달일 때만(salesOpenMonth < 오늘 달).
+    //     진행 중인 달(salesOpenMonth ≥ 오늘 달)이면 후보 0 — 판매 창을 월 중에 다음
+    //     달까지 미리 열어도(§4-6 2개월 창) 이번 달 유예 중인 선수가 즉시 해제되지 않는다.
+    //     첫 판매(salesOpenMonth null)도 대상 0.
     //   · 제외: 활성 후불 등록(구독형) · 결제 이력 0(감독 배치 전용 명단)
     //   · 해제 후 재결제하면 결제 완료 경로 upsert 가 active 로 자동 복구한다.
+    const todayMonthForRelease = utcMonthStart(kstTodayUtcMidnight());
+    const prevCycleEnded =
+      klass.salesOpenMonth != null &&
+      klass.salesOpenMonth.getTime() < todayMonthForRelease.getTime();
     const prevSalesYm = klass.salesOpenMonth
-      ? dbDateToKstYearMonth(klass.salesOpenMonth)
+      ? dateOnlyToYearMonth(klass.salesOpenMonth)
       : null;
-    const targetYm = dbDateToKstYearMonth(targetMonth);
+    const targetYm = dateOnlyToYearMonth(targetMonth);
     const releaseCandidates: { userId: string; name: string }[] = [];
-    if (prevSalesYm != null && targetYm > prevSalesYm) {
+    if (prevCycleEnded && prevSalesYm != null && targetYm > prevSalesYm) {
       const activeRegs = await this.prisma.classRegistration.findMany({
         where: { classId, status: "active" },
         select: {
@@ -6981,30 +7240,16 @@ export class ClassesService {
         },
       });
       const regUserIds = activeRegs.map((r) => r.userId);
+      // [Phase 3] 장부 정리로 격하 — resolvePrepaidAttribution(product join) 대신
+      //   신청 자체의 billingMonth·billingTiming 을 직접 비교한다(§4-4).
       const enrolls = regUserIds.length
         ? await this.prisma.enrollment.findMany({
             where: { classId, childId: { in: regUserIds } },
             select: {
               childId: true,
               status: true,
-              paidAt: true,
-              product: {
-                select: {
-                  billingTiming: true,
-                  feeType: true,
-                  billingMonth: true,
-                  price: true,
-                },
-              },
-              payment: {
-                select: {
-                  amount: true,
-                  paymentStatus: true,
-                  completedAt: true,
-                  createdAt: true,
-                  refundLogs: { select: { refundAmount: true } },
-                },
-              },
+              billingMonth: true,
+              billingTiming: true,
             },
           })
         : [];
@@ -7017,36 +7262,26 @@ export class ClassesService {
           enrollsByChild.set(e.childId, [e]);
         }
       }
+      const prevSalesOpenMonth = klass.salesOpenMonth as Date; // prevCycleEnded 가드로 non-null 보장
       for (const reg of activeRegs) {
         let hasPrepaidPaidHistory = false;
         let hasPaidSincePrevCycle = false;
         let hasActivePostpaid = false;
         for (const en of enrollsByChild.get(reg.userId) ?? []) {
-          const timing = this.resolveRowBillingTiming(
-            klass.billingMode,
-            en.product?.billingTiming,
-          );
-          if (timing === "POSTPAID") {
+          if (en.billingTiming === "POSTPAID") {
             // 후불 계약은 월 단위 만료가 없는 구독형 — 활성이면 해제 대상 아님.
             if (en.status === "approved" || en.status === "paid") {
               hasActivePostpaid = true;
             }
             continue;
           }
-          if (timing !== "PREPAID") continue;
-          const att = resolvePrepaidAttribution({
-            billingTiming: "PREPAID",
-            feeType: en.product?.feeType,
-            billingMonth: en.product?.billingMonth,
-            enrollmentStatus: en.status,
-            enrollmentPaidAt: en.paidAt,
-            productPrice: en.product?.price,
-            payment: en.payment,
-          });
-          if (att.billingStatus === "PAID" && att.yearMonth != null) {
-            hasPrepaidPaidHistory = true;
-            // 직전 판매월 이후 귀속 유효 결제(선구매 포함)가 있으면 유지.
-            if (att.yearMonth >= prevSalesYm) hasPaidSincePrevCycle = true;
+          // 결정 불능(NULL)은 해제 후보 판정에서 건너뛴다(보수적 — §4-3).
+          if (en.billingTiming !== "PREPAID") continue;
+          if (en.status !== "paid" || en.billingMonth == null) continue;
+          hasPrepaidPaidHistory = true;
+          // 직전 판매월 이후 귀속 유효 결제(선구매 포함)가 있으면 유지.
+          if (en.billingMonth.getTime() >= prevSalesOpenMonth.getTime()) {
+            hasPaidSincePrevCycle = true;
           }
         }
         if (
@@ -7063,12 +7298,14 @@ export class ClassesService {
     }
 
     // dryRun — 검증·해제 대상 미리보기만 반환(쓰기 0). FE 판매 시작 확인 다이얼로그용.
+    //   확인 호출은 이 targetMonth("YYYY-MM")를 그대로 targetMonthInput 에 실어 되돌려야
+    //   한다(위 필수 가드) — dryRun→확인 사이 월 전환을 감독의 눈에 보이는 값으로 고정.
     if (dryRun) {
       return {
         id: classId,
         salesOpenMonth: klass.salesOpenMonth,
         dryRun: true as const,
-        targetMonth,
+        targetMonth: dateOnlyToYearMonth(targetMonth),
         releaseCandidates,
       };
     }
@@ -7076,12 +7313,12 @@ export class ClassesService {
     //   미갱신 무월(레거시) 정기권을 같은 트랜잭션에서 판매 중단한다 — 무월은 월 필터를
     //   우회해 상시 노출되므로, 안 하면 "갱신 안 함 = 이번 달 판매 안 함" 선택이 무시되고
     //   새 월분과 중복 노출된다. 무월만 있는 수업은 폴백 판매(§9.2 점진 전환) 유지.
-    const { updated, retiredLegacyCount, releasedCount } =
+    const { updated, retiredLegacyCount, releasedCount, sellableMonthsAfter } =
       await this.prisma.$transaction(async (tx) => {
         // 상품 수정·생성 경로와의 레이스 차단 — sales lock 획득 후 tx 안에서
-        //   lifecycle 입력(일정·trainingType)까지 재조회해 대상월을 재산출한다 (§4-0 A).
-        //   일정 writer 는 sales lock 미참여라, 외부에서 계산한 targetMonth 는 tx 진입
-        //   시점에 이미 낡았을 수 있다.
+        //   lifecycle 입력(일정·trainingType)까지 재조회해 대상월 후보를 재산출한다
+        //   (§4-0 A). 일정 writer 는 sales lock 미참여라, 외부에서 계산한 targetMonth 는
+        //   tx 진입 시점에 이미 낡았을 수 있다.
         await acquireClassSalesLock(tx, classId);
         const freshClass = await tx.class.findUniqueOrThrow({
           where: { id: classId },
@@ -7104,25 +7341,17 @@ export class ClassesService {
             "종료된 수업입니다. 재개 후 진행해주세요.",
           );
         }
-        const freshLifecycle = deriveClassLifecycle({
-          endedAt: freshClass.endedAt,
-          salesOpenMonth: freshClass.salesOpenMonth,
-          trainingType: freshClass.trainingType,
-          schedules: freshClass.schedules,
-        });
-        const freshTargetMonth = freshLifecycle.earliestRemainingMonth;
-        if (!freshTargetMonth) {
-          throw new BadRequestException(
-            "다가오는 일정이 없습니다. 다음 달 일정을 먼저 등록해주세요.",
-          );
-        }
-        // 외부 산출 대상월과 다르면 낡은 값 — 외부에서 계산한 해제 대상 명단과
-        //   섞어 커밋하지 않고 재시도로 유도한다.
-        if (freshTargetMonth.getTime() !== targetMonth.getTime()) {
+        const freshCandidate = computeSalesWindow(
+          toLifecycleInput(freshClass, freshClass.schedules),
+        ).nextSalesMonth;
+        // 외부 산출 대상월과 다르면(후보 소멸 포함) 낡은 값 — 외부에서 계산한 해제
+        //   대상 명단과 섞어 커밋하지 않고 재시도로 유도한다.
+        if (!freshCandidate || freshCandidate.getTime() !== targetMonth.getTime()) {
           throw new ConflictException(
             "수업 일정이 방금 변경되었습니다. 다시 시도해주세요.",
           );
         }
+        const freshTargetMonth = freshCandidate;
         assertSalesMonthNotRolledBack(
           freshTargetMonth,
           freshClass.salesOpenMonth,
@@ -7173,10 +7402,18 @@ export class ClassesService {
           });
           released = res.count;
         }
+        // [§4-6] additive — 커밋된 salesOpenMonth 기준 판매 중인 달 집합.
+        const sellableAfter = computeSalesWindow(
+          toLifecycleInput(
+            { ...freshClass, salesOpenMonth: freshTargetMonth },
+            freshClass.schedules,
+          ),
+        ).sellableMonths;
         return {
           updated: cls,
           retiredLegacyCount: retired,
           releasedCount: released,
+          sellableMonthsAfter: sellableAfter,
         };
       });
     this.logger.log(
@@ -7203,6 +7440,8 @@ export class ClassesService {
       // [Phase 2] additive — 기존 소비처(id·salesOpenMonth)는 그대로 유지.
       releasedCount,
       releasedNames: releaseCandidates.map((c) => c.name),
+      // [§4-6] additive — 판매 중인 달 집합.
+      sellableMonths: sellableMonthsAfter.map((m) => dateOnlyToYearMonth(m)),
     };
   }
 
@@ -7279,18 +7518,36 @@ export class ClassesService {
       // 판매 시작(openClassSales)과의 레이스 차단 — lock 후 salesOpenMonth 재조회로
       //   월분 동결(§3-4) 판정 (판매 시작된 달의 신규 생성 = 판매중지+재등록 우회 차단).
       await acquireClassSalesLock(tx, classId);
-      if (dto.feeType === "MONTHLY_FIXED" && dto.billingMonth) {
-        const basis = await tx.class.findUniqueOrThrow({
-          where: { id: classId },
-          select: { salesOpenMonth: true },
-        });
+      // 갱신 원본은 INSERT 앞에서 검증 — 다른 수업 행이면 쓰기 없이 404.
+      const source = dto.sourceProductId
+        ? await this.loadRenewalSource(tx, classId, dto.sourceProductId)
+        : null;
+      const isMonthlyWithMonth =
+        dto.feeType === "MONTHLY_FIXED" && !!dto.billingMonth;
+      // 월분 동결 판정과 원본 판매 창 판정이 같은 class 행을 쓰므로 한 번만 읽는다.
+      const basis =
+        isMonthlyWithMonth || source
+          ? await tx.class.findUniqueOrThrow({
+              where: { id: classId },
+              select: {
+                endedAt: true,
+                salesOpenMonth: true,
+                trainingType: true,
+                schedules: {
+                  where: { isCancelled: false },
+                  select: { scheduledDate: true },
+                },
+              },
+            })
+          : null;
+      if (isMonthlyWithMonth && basis) {
         assertMonthNotFrozen(
           new Date(`${dto.billingMonth}-01T00:00:00.000Z`),
           basis.salesOpenMonth,
         );
       }
 
-      return tx.classProduct.create({
+      const created = await tx.classProduct.create({
         data: {
           classId,
           productName: dto.productName,
@@ -7324,6 +7581,12 @@ export class ClassesService {
           createdAt: true,
         },
       });
+
+      if (source && basis) {
+        await this.retireRenewalSourceIfUnsellable(tx, source, basis);
+      }
+
+      return created;
     });
 
     // 캐시 무효화 — 팀 수업만 (오픈클래스 캐시 키 별도)
@@ -7332,6 +7595,55 @@ export class ClassesService {
     }
 
     return product;
+  }
+
+  /** 월분 갱신의 복사 원본 행 — 같은 수업의 행이어야 한다. */
+  private async loadRenewalSource(
+    tx: Prisma.TransactionClient,
+    classId: string,
+    sourceProductId: string,
+  ): Promise<{ id: string; billingMonth: Date | null; isActive: boolean }> {
+    const source = await tx.classProduct.findUnique({
+      where: { id: sourceProductId },
+      select: { id: true, classId: true, billingMonth: true, isActive: true },
+    });
+    if (!source || source.classId !== classId) {
+      throw new NotFoundException("갱신 원본 수강권을 찾을 수 없습니다.");
+    }
+    return source;
+  }
+
+  /**
+   * 월분 갱신의 복사 원본 행 정리 — 원본 달이 판매 중인 달 밖일 때만 판매 중지.
+   *
+   * 판매 창은 이번 달~판매 시작된 달의 2개월이라, 이번 달분이 팔리는 중에 다음 달분을
+   * 등록해도 원본(이번 달분)은 계속 팔려야 한다. 무조건 소진하면 이번 달 잔여 회차가
+   * 결제 불가가 된다. 무월(레거시) 원본은 판매 창 판정이 불가능하므로 소진한다.
+   */
+  private async retireRenewalSourceIfUnsellable(
+    tx: Prisma.TransactionClient,
+    source: { id: string; billingMonth: Date | null; isActive: boolean },
+    basis: {
+      endedAt: Date | null;
+      salesOpenMonth: Date | null;
+      trainingType: string | null;
+      schedules: Array<{ scheduledDate: Date }>;
+    },
+  ): Promise<void> {
+    if (!source.isActive) return;
+
+    if (source.billingMonth) {
+      const { sellableMonths } = computeSalesWindow(
+        toLifecycleInput(basis, basis.schedules ?? []),
+      );
+      const sourceMonth = source.billingMonth.getTime();
+      if (sellableMonths.some((m) => m.getTime() === sourceMonth)) return;
+    }
+
+    await tx.classProduct.update({
+      where: { id: source.id },
+      data: { isActive: false },
+    });
   }
 
   /**
@@ -8150,7 +8462,8 @@ export class ClassesService {
 
     const redisConfig = this.configService.get("redis");
     const keyPrefix = redisConfig.keyPrefix.class;
-    const cacheKey = `${keyPrefix}list:${teamId}`;
+    // getClubClasses 와 동일한 날짜 접미(오늘자 키만 실존) — 어제 이전 키는 이미 TTL 로 소멸.
+    const cacheKey = `${keyPrefix}list:${teamId}:${dateOnlyToString(kstTodayUtcMidnight())}`;
 
     await this.redisService.del(cacheKey);
   }

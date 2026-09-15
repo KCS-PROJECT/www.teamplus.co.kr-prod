@@ -32,9 +32,9 @@ jest.mock('@/hooks/useCoachAttendanceManage', () => ({
       stats: {
         totalSchedules: 10,
         completedCount: 2,
-        avgAttendanceRate: 80,
+        checkedCount: 1,
+        pendingCheckCount: 1,
         totalPresent: 16,
-        totalAbsent: 4,
       },
       inProgress: [],
       completed: { items: [], hasMore: false },

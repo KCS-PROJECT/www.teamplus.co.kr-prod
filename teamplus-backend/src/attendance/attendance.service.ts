@@ -30,6 +30,11 @@ import {
   kstTodayUtcMidnight,
   addUtcDays,
 } from "@/common/utils/kst-date.util";
+import { utcMonthStart } from "@/common/utils/class-lifecycle.util";
+import {
+  hasEligibleEnrollment,
+  eligibleChildIdsForMonth,
+} from "@/common/billing/enrollment-eligibility.util";
 
 /** 출석 상태 변경 시 학부모에게 나가는 인앱/푸시 알림 제목 (최초 마킹·정정·취소 공용) */
 const ATTENDANCE_NOTIFY_TITLE = "자녀 출석 안내";
@@ -137,6 +142,27 @@ export class AttendanceService {
   }
 
   /**
+   * [Phase 3] 일정 달의 수강 자격 판정 — `enrollment-eligibility.util.ts` 위임.
+   * `ClassRegistration`은 장부·캐시일 뿐 자격 SoT 가 아니다(설계 §4-2·§4-3) — 출석
+   * 생성·변경 전 경로 전부(7곳)가 이 판정을 통과해야 한다. 하나라도 빠뜨리면 명단에서
+   * 자연 만료된 미갱신자가 그 경로로 계속 출석 처리되는 구멍이 남는다.
+   */
+  private async assertEligibleForSchedule(
+    tx: Prisma.TransactionClient | PrismaService,
+    classId: string,
+    userId: string,
+    scheduledDate: Date,
+  ): Promise<void> {
+    const month = utcMonthStart(scheduledDate);
+    const eligible = await hasEligibleEnrollment(tx, userId, classId, month);
+    if (!eligible) {
+      throw new ForbiddenException(
+        "해당 수업에 수강 등록되지 않았습니다. 수강 신청 후 이용해주세요.",
+      );
+    }
+  }
+
+  /**
    * [Phase B-3] 후불 정산이 확정된 월의 출석은 정정 차단 — 청구액과 출석 불일치 방지.
    * POSTPAID 수업만 MonthlyPostpaidBilling 이 존재하므로 PREPAID 수업은 자연 통과한다.
    */
@@ -216,6 +242,7 @@ export class AttendanceService {
         schedule: {
           select: {
             isCancelled: true,
+            scheduledDate: true,
             class: {
               select: {
                 id: true,
@@ -298,22 +325,16 @@ export class AttendanceService {
       }
     }
 
-    // ── 3.5) 해당 수업 수강 등록 여부 확인 (User 기반 통일 — N-9) ──
+    // ── 3.5) 그 달 수강 자격 확인 (User 기반 통일 — N-9) ──
     // 이 검증이 없으면 등록 안 한 수업의 QR 도 출석 처리됨 (OWASP A01 결함 방지)
-    const registration = await this.prisma.classRegistration.findFirst({
-      where: {
-        classId,
-        userId: targetUserId,
-        status: "active",
-      },
-      select: { id: true },
-    });
-
-    if (!registration) {
-      throw new ForbiddenException(
-        "해당 수업에 수강 등록되지 않았습니다. 수강 신청 후 이용해주세요.",
-      );
-    }
+    // [Phase 3] ClassRegistration.status="active" 는 장부일 뿐 자격 SoT 가 아니다 —
+    //   일정 달의 신청 자격(billingMonth·billingTiming)을 직접 판정한다.
+    await this.assertEligibleForSchedule(
+      this.prisma,
+      classId,
+      targetUserId,
+      qr.schedule.scheduledDate,
+    );
 
     // ── 4) 중복 출석 확인 + 결석 잠금 (2026-05-12 옵션 D) ──
     //    · present: 이미 처리됨 → 차단
@@ -654,6 +675,7 @@ export class AttendanceService {
       select: {
         id: true,
         isCancelled: true,
+        scheduledDate: true,
         class: { select: { id: true, teamId: true, academyId: true } }, // P1-5 (v0.5)
       },
     });
@@ -709,21 +731,13 @@ export class AttendanceService {
       }
     }
 
-    // 해당 수업 수강 등록 여부 확인 (User 기반 통일)
-    const registration = await this.prisma.classRegistration.findFirst({
-      where: {
-        classId,
-        userId: memberId,
-        status: "active",
-      },
-      select: { id: true },
-    });
-
-    if (!registration) {
-      throw new ForbiddenException(
-        "해당 수업에 수강 등록되지 않았습니다. 수강 신청 후 이용해주세요.",
-      );
-    }
+    // 그 달 수강 자격 확인 (User 기반 통일) — [Phase 3] ClassRegistration 은 장부일 뿐.
+    await this.assertEligibleForSchedule(
+      this.prisma,
+      classId,
+      memberId,
+      schedule.scheduledDate,
+    );
 
     // 수업권 확인 (User × Class 단위 — N-9)
     const now = new Date();
@@ -959,7 +973,18 @@ export class AttendanceService {
       attendanceByMember.set(a.memberId, a);
     }
 
-    const students = registrations.map((reg) => {
+    // [Phase 3] 명단 = 일정 달 자격 ∪ 그 달 활동 증거(이미 이 일정에 출석 기록이 있음).
+    //   ClassRegistration(active) 은 장부일 뿐이라 미갱신자가 그대로 남아 있을 수 있다.
+    const eligibleIds = await eligibleChildIdsForMonth(
+      this.prisma,
+      schedule.classId,
+      utcMonthStart(schedule.scheduledDate),
+    );
+    const visibleRegistrations = registrations.filter(
+      (reg) => eligibleIds.has(reg.userId) || attendanceByMember.has(reg.userId),
+    );
+
+    const students = visibleRegistrations.map((reg) => {
       const a = attendanceByMember.get(reg.userId) ?? null;
       const fullName =
         `${reg.user.lastName ?? ""}${reg.user.firstName ?? ""}`.trim() ||
@@ -2173,16 +2198,13 @@ export class AttendanceService {
       }
     }
 
-    // 5) 수업 등록 자격 검증 (User × Class 단위)
-    const registration = await this.prisma.classRegistration.findFirst({
-      where: { classId, userId: childId, status: "active" },
-      select: { id: true },
-    });
-    if (!registration) {
-      throw new ForbiddenException(
-        "자녀가 해당 수업에 수강 등록되어 있지 않습니다.",
-      );
-    }
+    // 5) 그 달 수강 자격 검증 (User × Class 단위) — [Phase 3] ClassRegistration 은 장부일 뿐.
+    await this.assertEligibleForSchedule(
+      this.prisma,
+      classId,
+      childId,
+      schedule.scheduledDate,
+    );
 
     // 6) 중복 출석 확인 + 결석 잠금 (2026-05-12 회의록 정합 — 옵션 D)
     //    · present: 이미 처리됨 → 차단
@@ -2382,14 +2404,13 @@ export class AttendanceService {
       }
     }
 
-    // 4) 수업 등록 자격 검증 (User × Class 단위)
-    const registration = await this.prisma.classRegistration.findFirst({
-      where: { classId, userId: studentId, status: "active" },
-      select: { id: true },
-    });
-    if (!registration) {
-      throw new ForbiddenException("해당 수업에 수강 등록되어 있지 않습니다.");
-    }
+    // 4) 그 달 수강 자격 검증 (User × Class 단위) — [Phase 3] ClassRegistration 은 장부일 뿐.
+    await this.assertEligibleForSchedule(
+      this.prisma,
+      classId,
+      studentId,
+      schedule.scheduledDate,
+    );
 
     // 5) 중복 출석 확인 + 결석 잠금 (2026-05-12 회의록 정합 — 옵션 D)
     const existingAttendance = await this.prisma.classAttendance.findUnique({
@@ -2622,17 +2643,15 @@ export class AttendanceService {
     const results: CoachResult[] = [];
 
     // [2026-07-18 perf] 코치 일괄 경로 N+1 해소 — training.service.ts(:838) 검증 패턴 이식.
-    //   회원당 3 read(등록/기존출석/크레딧) × N → 사전 벌크 3 쿼리 + Set/Map O(1) 조회.
+    //   회원당 3 read(자격/기존출석/크레딧) × N → 사전 벌크 3 쿼리 + Set/Map O(1) 조회.
     //   쓰기 트랜잭션은 기존 그대로 회원별 개별 유지(N-4: 한 명 실패가 다른 명 차단 안 함).
     //   크레딧은 게이트(잔량 확인)용 사전조회일 뿐, 실제 차감은 트랜잭션 내
     //   creditDomain.deductOne 이 race-safe 하게 재검증한다 — 기존 의미 불변.
-    const activeRegistrationIds = new Set(
-      (
-        await this.prisma.classRegistration.findMany({
-          where: { classId, userId: { in: memberIds }, status: "active" },
-          select: { userId: true },
-        })
-      ).map((r) => r.userId),
+    // [Phase 3] ClassRegistration.status="active" 대신 일정 달의 신청 자격으로 게이트.
+    const eligibleMemberIds = await eligibleChildIdsForMonth(
+      this.prisma,
+      classId,
+      utcMonthStart(schedule.scheduledDate),
     );
 
     const existingAttendanceMap = new Map(
@@ -2674,8 +2693,8 @@ export class AttendanceService {
 
     for (const memberId of memberIds) {
       try {
-        // 등록 자격 검증 (사전 벌크조회 Set)
-        if (!activeRegistrationIds.has(memberId)) {
+        // 그 달 수강 자격 검증 (사전 벌크조회 Set)
+        if (!eligibleMemberIds.has(memberId)) {
           results.push({ memberId, status: "no_registration" });
           continue;
         }
@@ -3083,19 +3102,27 @@ export class AttendanceService {
     }
 
     // 2) 등록 검증 — 미등록 학생을 코치가 강제 출석 처리하지 못하도록 차단
-    // P1-2 (v0.5): inactive(미납/만료/환불) 학생도 차단하여 7개 진입점 일관성 보장
+    // P1-2 (v0.5): 그 달 자격 없는(미납/만료/환불) 학생도 차단하여 7개 진입점 일관성 보장
+    // [Phase 3] ClassRegistration 존재는 장부 확인용으로 유지, 실제 자격 판정은
+    //   일정 달의 신청(billingMonth·billingTiming)으로 한다.
     const registration = await this.prisma.classRegistration.findUnique({
       where: {
         classId_userId: { classId: schedule.class.id, userId: memberId },
       },
-      select: { id: true, status: true },
+      select: { id: true },
     });
     if (!registration) {
       throw new ForbiddenException(
         "해당 학생은 이 수업에 등록되어 있지 않습니다.",
       );
     }
-    if (registration.status !== "active") {
+    const eligible = await hasEligibleEnrollment(
+      this.prisma,
+      memberId,
+      schedule.class.id,
+      utcMonthStart(schedule.scheduledDate),
+    );
+    if (!eligible) {
       throw new BadRequestException("해당 학생은 이번 달 결제가 필요합니다.");
     }
 
@@ -3524,7 +3551,7 @@ export class AttendanceService {
     const sdTomorrow = addUtcDays(sdToday, 1);
     const studentCount = cls.registrations.length;
 
-    // 1) 전체 통계 집계 (출석 상태별 카운트)
+    // 1) 누적 출석 집계 (출석 상태별 카운트)
     const statusCounts = await this.prisma.classAttendance.groupBy({
       by: ["attendanceStatus"],
       where: {
@@ -3536,18 +3563,22 @@ export class AttendanceService {
       statusCounts.map((s) => [s.attendanceStatus, s._count.attendanceStatus]),
     );
     const presentTotal = countMap.get("present") ?? 0;
-    const absentTotal = countMap.get("absent") ?? 0;
-    const attendanceTotal = presentTotal + absentTotal;
 
-    // 2) 완료된 일정 수 (오늘 이전 KST 달력일)
+    // 2) 완료된 일정 전체 (오늘 이전 KST 달력일) — 회차별 체크 진척 집계용.
+    //    회차 명단은 그 회차가 속한 달 기준이라 count 만으로는 진척을 낼 수 없다.
     const completedDateThreshold = sdToday;
-    const completedCount = await this.prisma.classSchedule.count({
+    const completedAll = await this.prisma.classSchedule.findMany({
       where: {
         classId,
         isCancelled: false,
         scheduledDate: { lt: completedDateThreshold },
       },
+      select: {
+        scheduledDate: true,
+        attendances: { select: { memberId: true, attendanceStatus: true } },
+      },
     });
+    const completedCount = completedAll.length;
 
     // 3) 진행 중 일정 (오늘 KST 달력일, 최대 3건)
     const inProgressRaw = await this.prisma.classSchedule.findMany({
@@ -3568,7 +3599,7 @@ export class AttendanceService {
         startTime: true,
         endTime: true,
         attendances: {
-          select: { attendanceStatus: true },
+          select: { memberId: true, attendanceStatus: true },
         },
       },
     });
@@ -3591,7 +3622,7 @@ export class AttendanceService {
         startTime: true,
         endTime: true,
         attendances: {
-          select: { attendanceStatus: true },
+          select: { memberId: true, attendanceStatus: true },
         },
       },
     });
@@ -3612,19 +3643,53 @@ export class AttendanceService {
       },
     });
 
-    // 6) 통계 계산
-    const avgAttendanceRate =
-      attendanceTotal > 0
-        ? Math.round((presentTotal / attendanceTotal) * 100)
-        : 0;
+    // 6) 회차 명단 = 그 회차가 속한 달의 수강 자격자 ∪ 그 회차에 출석 기록이 있는 회원.
+    //    현재 시점 active 등록 수를 분모로 쓰면 환불·이탈로 등록이 해제될 때 과거 회차의
+    //    인원이 소급해 줄어들고(기록은 남으므로) 체크 전 인원이 음수가 된다.
+    //    기록 보유자를 분모에 포함하면 present + absent <= total 이 구조적으로 성립한다.
+    const monthKeys = new Set<number>();
+    for (const s of [...inProgressRaw, ...completedRaw, ...completedAll]) {
+      monthKeys.add(utcMonthStart(s.scheduledDate).getTime());
+    }
+    const eligibleByMonth = new Map<number, Set<string>>();
+    await Promise.all(
+      Array.from(monthKeys).map(async (key) => {
+        eligibleByMonth.set(
+          key,
+          await eligibleChildIdsForMonth(this.prisma, classId, new Date(key)),
+        );
+      }),
+    );
+    const rosterSizeOf = (
+      scheduledDate: Date,
+      attendances: { memberId: string }[],
+    ): number => {
+      const roster = new Set(
+        eligibleByMonth.get(utcMonthStart(scheduledDate).getTime()) ?? [],
+      );
+      for (const a of attendances) roster.add(a.memberId);
+      return roster.size;
+    };
 
-    // 7) 응답 매핑
+    // 7) 출석 체크 진척 — 완료 회차 중 체크 전 인원이 남지 않은 회차 수.
+    let checkedCount = 0;
+    for (const s of completedAll) {
+      const marked = s.attendances.filter(
+        (a) =>
+          a.attendanceStatus === "present" || a.attendanceStatus === "absent",
+      ).length;
+      if (marked >= rosterSizeOf(s.scheduledDate, s.attendances)) {
+        checkedCount += 1;
+      }
+    }
+
+    // 8) 응답 매핑
     const mapItem = (s: {
       id: string;
       scheduledDate: Date;
       startTime: string | null;
       endTime: string | null;
-      attendances: { attendanceStatus: string }[];
+      attendances: { memberId: string; attendanceStatus: string }[];
     }) => {
       const present = s.attendances.filter(
         (a) => a.attendanceStatus === "present",
@@ -3632,9 +3697,7 @@ export class AttendanceService {
       const absent = s.attendances.filter(
         (a) => a.attendanceStatus === "absent",
       ).length;
-      const unchecked = studentCount - present - absent;
-      const rate =
-        studentCount > 0 ? Math.round((present / studentCount) * 100) : 0;
+      const total = rosterSizeOf(s.scheduledDate, s.attendances);
       return {
         scheduleId: s.id,
         scheduledDate: s.scheduledDate.toISOString(),
@@ -3643,9 +3706,8 @@ export class AttendanceService {
         endTime: s.endTime,
         present,
         absent,
-        unchecked: unchecked > 0 ? unchecked : 0,
-        total: studentCount,
-        rate,
+        unchecked: total - present - absent,
+        total,
       };
     };
 
@@ -3664,9 +3726,11 @@ export class AttendanceService {
       stats: {
         totalSchedules: cls._count.schedules,
         completedCount,
-        avgAttendanceRate,
+        // 출석률은 결석을 찍지 않는 운영에서 항상 100% 라 지표가 되지 못한다.
+        //   대신 완료 회차의 체크 진척을 보여준다.
+        checkedCount,
+        pendingCheckCount: completedCount - checkedCount,
         totalPresent: presentTotal,
-        totalAbsent: absentTotal,
       },
       inProgress: inProgressRaw.map(mapItem),
       completed: {

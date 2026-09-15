@@ -51,7 +51,6 @@ import {
 } from "@/services/tournament.service";
 import { useModal } from "@/components/ui/Modal";
 import { api } from "@/services/api-client";
-import { getTeamMembers } from "@/services/team.service";
 
 // [2026-06-08] 대진표/순위 탭 제거 — 경기일정만 표시(Tab 타입 불필요).
 // 참가자 명단·정산 액션은 /tournaments/[id]/students 관리 페이지로 분리 —
@@ -122,10 +121,8 @@ export default function CommonTournamentDetailPage() {
   >([]);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
-  // [2026-06-16] 참가 대상 = selectedParticipantIds 명단(User.id).
-  //  · 감독/코치: 팀 멤버 조회 → 대상 선수 이름(playerName) 목록 + 전체 명단 시트.
-  //  · 학부모/학생: 본인 자녀 중 대상 자녀 이름만(타 자녀 이름 노출 금지).
-  const [participantNames, setParticipantNames] = useState<string[]>([]);
+  // 참가 대상 이름 표시 — 서버가 역할별로 이미 필터링해 내려주는 tournament.participants 사용.
+  //  · 감독/코치: 전원. 학부모/학생: 본인 자녀 중 대상 자녀만(서버가 필터링, 프론트 재필터 금지).
   const [playersSheetOpen, setPlayersSheetOpen] = useState(false);
 
   // 내 자녀 목록 — 학부모 시점 1회 조회 후 결제내역 이름 매핑·참가대상 이름·신청 가능 판정이 공유.
@@ -213,60 +210,6 @@ export default function CommonTournamentDetailPage() {
       void replace(`/tournaments/${encodeURIComponent(id)}/students`);
     }
   }, [isManager, id, replace]);
-
-  // [2026-06-16] 참가 대상 명단 해석 — 역할별 조건부 fetch(불필요한 호출 회피).
-  const loadParticipantNames = useCallback(async () => {
-    if (!tournament) {
-      setParticipantNames([]);
-      return;
-    }
-    const ids = Array.isArray(tournament.selectedParticipantIds)
-      ? tournament.selectedParticipantIds
-      : [];
-    if (ids.length === 0) {
-      setParticipantNames([]);
-      return;
-    }
-    const idSet = new Set(ids);
-
-    if (isManager) {
-      // 감독/코치: 팀 멤버에서 대상 선수 이름(playerName) 해석. teamId 없으면 이름 생략.
-      if (!tournament.teamId) {
-        setParticipantNames([]);
-        return;
-      }
-      const res = await getTeamMembers(tournament.teamId);
-      if (res.success && res.data) {
-        const names = res.data.members
-          .filter((m) => idSet.has(m.userId))
-          .map(
-            (m) =>
-              m.playerName?.trim() ||
-              `${m.user?.lastName ?? ""}${m.user?.firstName ?? ""}`.trim() ||
-              MESSAGES.tournament.participantNameUnknown,
-          );
-        setParticipantNames(names);
-      } else {
-        setParticipantNames([]);
-      }
-      return;
-    }
-
-    // 학부모/학생: 본인 자녀 중 대상 자녀 이름만(타 자녀 노출 금지).
-    if (myChildren === null) return; // 자녀 목록 로딩 전
-    const names = myChildren
-      .filter((c) => idSet.has(c.id))
-      .map(
-        (c) =>
-          `${c.lastName ?? ""}${c.firstName ?? ""}`.trim() ||
-          MESSAGES.tournament.participantNameUnknown,
-      );
-    setParticipantNames(names);
-  }, [isManager, tournament, myChildren]);
-
-  useEffect(() => {
-    void loadParticipantNames();
-  }, [loadParticipantNames]);
 
   // [신청 가능 자녀 판정] 신청 페이지와 동일 규칙(공용 util) — 남은 자녀가 없으면 CTA 비활성.
   const applyOptions = useMemo(
@@ -403,6 +346,16 @@ export default function CommonTournamentDetailPage() {
   const participantCount = Array.isArray(tournament.selectedParticipantIds)
     ? tournament.selectedParticipantIds.length
     : 0;
+  // 서버가 역할별로 이미 필터링해 내려준 명단 — 프론트 재필터링 없이 그대로 표시.
+  //   목록은 식별 불가(name=null)도 자리를 지켜 "탈퇴회원" 으로 보이지만, 학부모 안내는
+  //   "~가 참가 대상이에요" 문장이라 그 자리에 넣으면 문장이 성립하지 않는다.
+  const participantEntries = tournament.participants ?? [];
+  const participantNames = participantEntries.map(
+    (p) => p.name ?? MESSAGES.tournament.participantUnavailable,
+  );
+  const participantSentenceNames = participantEntries
+    .map((p) => p.name)
+    .filter((n): n is string => !!n);
   const ageGroupLabel = formatEligibleBirthYearsLabel(
     tournament.eligibleBirthYears,
     tournament.eligibleBirthYearFrom,
@@ -457,6 +410,7 @@ export default function CommonTournamentDetailPage() {
         <ParticipantTargetRow
           isManager={isManager}
           names={participantNames}
+          sentenceNames={participantSentenceNames}
           totalCount={participantCount}
           inlineLimit={INLINE_NAME_LIMIT}
           fallbackLabel={ageGroupLabel}
@@ -760,6 +714,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 function ParticipantTargetRow({
   isManager,
   names,
+  sentenceNames,
   totalCount,
   inlineLimit,
   fallbackLabel,
@@ -767,6 +722,8 @@ function ParticipantTargetRow({
 }: {
   isManager: boolean;
   names: string[];
+  /** 학부모 안내 문장용 — 식별 불가(name=null)를 제외한 실제 이름만. */
+  sentenceNames: string[];
   totalCount: number;
   inlineLimit: number;
   fallbackLabel: string;
@@ -780,7 +737,7 @@ function ParticipantTargetRow({
 
   // 학부모/학생 — 본인 자녀 이름으로 문장형 안내(없으면 라벨-값 폴백).
   if (!isManager) {
-    if (names.length === 0) {
+    if (sentenceNames.length === 0) {
       return (
         <div className="grid grid-cols-[25%_1fr] gap-x-4 border-t border-it-line py-4 dark:border-rink-700">
           {labelCell}
@@ -800,7 +757,7 @@ function ParticipantTargetRow({
             className="shrink-0 text-[18px] text-it-blue-500"
             aria-hidden="true"
           />
-          {MESSAGES.tournament.participantParentNotice(names.join(" · "))}
+          {MESSAGES.tournament.participantParentNotice(sentenceNames.join(" · "))}
         </p>
       </div>
     );

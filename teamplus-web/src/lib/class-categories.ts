@@ -137,6 +137,22 @@ export function getCategoryDef(code: ClassCategoryCode): ClassCategoryDef {
   return CLASS_CATEGORIES[code];
 }
 
+/**
+ * [판매 창 2개월] ON_SALE 이어도 지금 판매 중인 달이 없는 구간(예: 방학 달).
+ * sellableMonths 가 응답에 없으면(구버전) false — 기존 lifecycleStatus 판정에만 맡긴다.
+ * 목록 카드(classes/page.tsx)·상세 감독 배너(classes/[id]/page.tsx) 공용 SoT.
+ */
+export function isSalesWindowEmpty(item: {
+  lifecycleStatus?: 'ON_SALE' | 'PENDING_SCHEDULE' | 'ENDED' | null;
+  sellableMonths?: string[];
+}): boolean {
+  return (
+    item.lifecycleStatus !== 'ENDED' &&
+    Array.isArray(item.sellableMonths) &&
+    item.sellableMonths.length === 0
+  );
+}
+
 // ─── 세부 형태 (폼 · 카드 배지) ─────────────────────────────────────
 // classes 도메인의 학부모용 카테고리.
 //   - regular: 팀 정기 수업 (teamId 기반)

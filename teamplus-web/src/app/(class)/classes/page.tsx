@@ -30,6 +30,7 @@ import {
   formatDaySchedulesShort,
   formatNextScheduleSummary,
   formatPeriodSummary,
+  isSalesWindowEmpty,
   type ClassCategoryCode,
   type DaySchedule,
   type NextScheduleInfo,
@@ -107,6 +108,9 @@ interface ClassItem {
   /** [Lifecycle v4.1] 대기 사유 — NO_SCHEDULE=잔여 일정 없음 · UNAPPROVED_MONTH=판매 미승인.
    *  두 사유는 학부모 시점 의미가 달라(전자만 "수강할 회차 없음") 칩 분기에서 구분한다. */
   pendingReason?: 'NO_SCHEDULE' | 'UNAPPROVED_MONTH' | null;
+  /** [판매 창 2개월] 판매 중인 달 목록("YYYY-MM") — 비어 있으면 ON_SALE 이어도 지금
+   *  신청 가능한 달이 없는 구간. 구버전 응답(필드 없음)은 undefined. */
+  sellableMonths?: string[];
   /** 수업 장소 (Venue 모델) */
   venue?: { id: string; name: string } | null;
   /** [2026-08-04] 수업 지역 라벨 "서울 강남구" — 백엔드 조합 문자열(regionCity+regionDistrict).
@@ -688,7 +692,10 @@ const ChildClassCard = memo(function ChildClassCard({
   }
   // [Lifecycle v4.1 §7.3] 일정 준비 중 — 미등록자의 등록 칩 자리를 상태 칩으로 대체.
   //   "등록완료"(본인 수강 상태)는 우선 유지.
-  if (!isAlreadyEnrolled && item.lifecycleStatus === 'PENDING_SCHEDULE') {
+  if (
+    !isAlreadyEnrolled &&
+    (item.lifecycleStatus === 'PENDING_SCHEDULE' || isSalesWindowEmpty(item))
+  ) {
     registerLabel = MESSAGES.class.preparingSchedule;
     registerClass =
       "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400";
@@ -840,7 +847,10 @@ const TeenClassCard = memo(function TeenClassCard({
   }
   // [Lifecycle v4.1 §7.3] 일정 준비 중 — 미등록자의 등록 칩 자리를 상태 칩으로 대체.
   //   "등록완료"(본인 수강 상태)는 우선 유지.
-  if (!isAlreadyEnrolled && item.lifecycleStatus === 'PENDING_SCHEDULE') {
+  if (
+    !isAlreadyEnrolled &&
+    (item.lifecycleStatus === 'PENDING_SCHEDULE' || isSalesWindowEmpty(item))
+  ) {
     registerLabel = MESSAGES.class.preparingSchedule;
     registerClass =
       "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400";
@@ -1049,7 +1059,7 @@ const DefaultClassCard = memo(function DefaultClassCard({
     registerLabel = MESSAGES.class.pendingTeamApproval;
     registerClass =
       "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400";
-  } else if (item.lifecycleStatus === 'PENDING_SCHEDULE') {
+  } else if (item.lifecycleStatus === 'PENDING_SCHEDULE' || isSalesWindowEmpty(item)) {
     // [Lifecycle v4.1 §7.3] 일정 준비 중 — 미등록자의 등록 칩 자리를 상태 칩으로 대체.
     registerLabel = MESSAGES.class.preparingSchedule;
     registerClass =
@@ -1057,6 +1067,20 @@ const DefaultClassCard = memo(function DefaultClassCard({
   } else if (!hasAgeEligibleChild) {
     registerLabel = "등록불가";
     registerClass = "bg-wline-2 text-wtext-3 dark:bg-rink-700 dark:text-rink-300";
+  } else {
+    // [수강 자격 월별 판정] 이번 달 일정이 없어(방학 등) 다음 달분만 판매 중인 구간 —
+    //   상세 진입 전에 "몇 월분"이 신청 가능한지 알려준다(§4-6 화면 어휘).
+    const sellableMonths = item.sellableMonths;
+    const todayYearMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+    if (
+      sellableMonths &&
+      sellableMonths.length > 0 &&
+      !sellableMonths.includes(todayYearMonth)
+    ) {
+      registerLabel = MESSAGES.enrollment.sellableMonthChip(
+        Number(sellableMonths[0].slice(5, 7)),
+      );
+    }
   }
 
   const scheduleLine =

@@ -169,6 +169,17 @@ function formatDateKR(iso?: string | null) {
   return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}`;
 }
 
+/** 선수 행 등록일 — 이름 옆 좁은 자리라 올해면 연도를 생략한다("7.22" / "2025.12.3"). */
+function formatDateCompact(iso?: string | null) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const md = `${d.getMonth() + 1}.${d.getDate()}`;
+  return d.getFullYear() === new Date().getFullYear()
+    ? md
+    : `${d.getFullYear()}.${md}`;
+}
+
 
 /**
  * [1:1 문의 잠금 — 2026-08-21 사용자 결정] 1:1 채팅의 사용 시점·채팅 목록 배치가
@@ -816,8 +827,18 @@ function StudentRow({
         <Icon name="person" className="text-[18px] text-it-ink-500 dark:text-rink-100" aria-hidden="true" />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <p className="truncate text-card-body font-bold text-it-ink-800 dark:text-white">
+        {/* 1줄 — 사람: 이름 + (roster) 학부모·등록일.
+            이름은 식별 축이라 잘리면 안 되므로 폭을 먼저 확보하고(최대 45%),
+            부가 정보가 먼저 줄어들게 한다. */}
+        <div className="flex items-baseline gap-1.5">
+          <p
+            className={cn(
+              'text-card-body font-bold text-it-ink-800 dark:text-white',
+              variant === 'roster'
+                ? 'shrink-0 max-w-[45%] truncate'
+                : 'truncate',
+            )}
+          >
             {student.memberName}
           </p>
           {variant === 'payment' && (
@@ -830,36 +851,71 @@ function StudentRow({
               {timing.label}
             </span>
           )}
-        </div>
-        <div className="mt-0.5 flex items-center gap-2 text-card-meta text-it-ink-500 dark:text-rink-300">
-          {variant === 'roster' ? (
-            <>
-              {student.registrationDate && (
-                <span className="font-num tabular-nums">
-                  {M.playersEnrolledOn(formatDateKR(student.registrationDate))}
+          {variant === 'roster' && (student.payerName || student.registrationDate) && (
+            <div className="min-w-0 flex items-baseline gap-1 text-card-meta text-it-ink-500 dark:text-rink-300">
+              {student.payerName && (
+                <span className="truncate">{M.payerLabel(student.payerName)}</span>
+              )}
+              {student.payerName && student.registrationDate && (
+                <span
+                  className="shrink-0 [[data-screen-bp='xs']_&]:hidden"
+                  aria-hidden="true"
+                >
+                  ·
                 </span>
               )}
+              {/* 좁은 폭(≤359px)에서는 우선순위 최하위인 등록일부터 숨긴다. */}
+              {student.registrationDate && (
+                <span className="shrink-0 whitespace-nowrap font-num tabular-nums [[data-screen-bp='xs']_&]:hidden">
+                  {M.playersEnrolledOnShort(
+                    formatDateCompact(student.registrationDate),
+                  )}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+        {/* 2줄 — 수업: 출석 + 상품명. 구분점은 텍스트에서 분리해 잘림 조각("· 주 1회…")을 막는다. */}
+        <div className="mt-0.5 flex items-baseline gap-1 text-card-meta text-it-ink-500 dark:text-rink-300">
+          {variant === 'roster' ? (
+            <>
+              <span className="shrink-0 whitespace-nowrap font-num tabular-nums text-it-blue-500 dark:text-it-blue-300">
+                {attendanceLabel}
+              </span>
               {/* 결제 상품명 — 감독이 명단에서 결제 내용과 출석을 함께 보는 1차 정보.
                   월스코프 선불 미매칭 행은 productName null 로 내려와 생략된다. */}
               {student.productName && (
-                <span className="truncate">· {student.productName}</span>
+                <>
+                  <span className="shrink-0" aria-hidden="true">
+                    ·
+                  </span>
+                  <span className="min-w-0 truncate">{student.productName}</span>
+                </>
               )}
-              {student.payerName && (
-                <span className="truncate">· {M.payerLabel(student.payerName)}</span>
-              )}
-              <span className="font-num tabular-nums text-it-blue-500 dark:text-it-blue-300">
-                · {attendanceLabel}
-              </span>
             </>
           ) : (
             <>
-              <span className="font-num tabular-nums">
+              <span className="shrink-0 whitespace-nowrap font-num tabular-nums">
                 {attendanceLabel}
               </span>
               {student.billingStatus === 'PAID' && student.paidAt && (
-                <span className="font-num tabular-nums">· {formatDateKR(student.paidAt)}</span>
+                <>
+                  <span className="shrink-0" aria-hidden="true">
+                    ·
+                  </span>
+                  <span className="shrink-0 whitespace-nowrap font-num tabular-nums">
+                    {formatDateKR(student.paidAt)}
+                  </span>
+                </>
               )}
-              {student.productName && <span className="truncate">· {student.productName}</span>}
+              {student.productName && (
+                <>
+                  <span className="shrink-0" aria-hidden="true">
+                    ·
+                  </span>
+                  <span className="min-w-0 truncate">{student.productName}</span>
+                </>
+              )}
             </>
           )}
         </div>

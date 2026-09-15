@@ -25,7 +25,10 @@ import {
 } from "@/common/utils/viewer-birth-years.util";
 import { sanitizeStrict } from "@/common/utils/sanitize.util";
 import { kstTodayUtcMidnight } from "@/common/utils/kst-date.util";
-import { deriveClassLifecycle } from "@/common/utils/class-lifecycle.util";
+import {
+  toLifecycleInput,
+  computeSalesWindow,
+} from "@/common/utils/class-lifecycle.util";
 import { filterSellableProducts } from "@/common/billing/sales-gate.util";
 import { UploadCleanupService } from "@/common/upload-cleanup.service";
 import { formatRegionLabel } from "@/classes/utils/class-region.util";
@@ -682,10 +685,13 @@ export class AcademyService {
           : firstSched.startTime
         : "";
 
-      // [Lifecycle v4.1 §9.2] 대표가 산정은 판매 노출분(승인월+무월 레거시)만.
+      // [Lifecycle v4.1 §9.2 · §4-6] 대표가 산정은 판매 중인 달(+무월 레거시)만.
+      const academyLifecycleInput = toLifecycleInput(c, c.schedules ?? []);
+      const academySalesWindow = computeSalesWindow(academyLifecycleInput);
+      const academySellableMonths = academySalesWindow.sellableMonths;
       const sellable = filterSellableProducts(
         c.products ?? [],
-        c.salesOpenMonth,
+        academySellableMonths,
       );
       const singleProduct = sellable.find((p) => p.feeType === "PER_SESSION");
       const monthlyProduct = sellable.find(
@@ -741,15 +747,11 @@ export class AcademyService {
           s.scheduledDate.toISOString(),
         ),
         // [Lifecycle v4.1] 파생 상태 — 배지 판정 일원화 (class-lifecycle.util SoT).
-        ...(() => {
-          const lc = deriveClassLifecycle({
-            endedAt: c.endedAt,
-            salesOpenMonth: c.salesOpenMonth,
-            trainingType: c.trainingType,
-            schedules: c.schedules ?? [],
-          });
-          return { lifecycleStatus: lc.state, pendingReason: lc.pendingReason };
-        })(),
+        lifecycleStatus: academySalesWindow.lifecycle.state,
+        pendingReason: academySalesWindow.lifecycle.pendingReason,
+        // [§4-6] additive — 판매 중인 달 집합·다음 판매 개시 대상월.
+        sellableMonths: academySalesWindow.sellableMonthKeys,
+        nextSalesMonth: academySalesWindow.nextSalesMonthKey,
         // 비취소 총 회차 수 — 카드 "총 N회" 표기용 (팀 목록 getClubClasses 와 동일 계약).
         scheduleCount: (c.schedules ?? []).length,
         // 다음 회차 (비취소·오늘 이후) — 기본 일정 없는 수업 카드의 날짜(+회차 시간) 표시용.

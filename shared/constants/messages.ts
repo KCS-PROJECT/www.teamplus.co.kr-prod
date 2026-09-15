@@ -52,7 +52,29 @@ export const MESSAGES = {
     selectSchedule: '수업을 선택하여 QR 코드를 생성해주세요.',
     // 2026-05-12: 3-state 단순화 + 시점 모드 분기 (회의록 결정)
     statusChanged: '출석 상태가 변경되었습니다.',
-    alreadyUnchecked: '이미 미확인 상태입니다.',
+    alreadyUnchecked: '이미 체크 전 상태입니다.',
+    // 출석 상태 라벨 — 미처리 상태를 '미확인'으로 부르면 무엇을 확인하지 않았는지 드러나지 않고
+    //   공지 목록의 '미확인(안 읽은 공지)'과도 겹쳐 '체크 전'으로 통일한다.
+    statusPresent: '출석',
+    statusAbsent: '결석',
+    statusPending: '체크 전',
+    pendingCount: (count: number) => `체크 전 ${count}명`,
+    absentCount: (count: number) => `결석 ${count}명`,
+    presentOfTotal: (present: number, total: number) =>
+      `출석 ${present}/${total}명`,
+    allPresent: '전원 출석',
+    noTarget: '대상 없음',
+    revertToPending: '체크 전으로 되돌리기',
+    currentStatus: (label: string) => `현재: ${label}`,
+    // 출석 이력 상단 지표 — 결석을 찍지 않는 운영에서 출석률은 항상 100% 라 진척으로 대체.
+    checkProgressLabel: '출석 체크',
+    checkProgressValue: (checked: number, total: number) =>
+      `${checked}/${total}회차`,
+    pendingScheduleLabel: '체크 전',
+    scheduleCountValue: (count: number) => `${count}회차`,
+    totalPresentLabel: '누적 출석',
+    totalPresentValue: (count: number) => `${count}회`,
+    currentStudents: (count: number) => `현재 수강생 ${count}명`,
     notYetActive: '수업 시작 1시간 전부터 출석 처리할 수 있습니다.',
     classRequired: '수업을 먼저 선택해 주세요.',
     // 2026-05-12: 코치/감독 결석 처리 잠금 (회의록 25:33 — 코치 결정 우선)

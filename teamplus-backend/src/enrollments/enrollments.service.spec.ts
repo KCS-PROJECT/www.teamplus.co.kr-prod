@@ -311,6 +311,8 @@ describe("EnrollmentsService — 취소 원자화 · 전이 재확인 · 상품 
             id: "enr-old",
             status: "paid",
             paidAt: new Date("2026-09-01T00:00:00Z"),
+            billingMonth: new Date(Date.UTC(2026, 8, 1)),
+            billingTiming: "PREPAID",
             product: {
               billingTiming: "PREPAID",
               feeType: "MONTHLY_FIXED",
@@ -342,6 +344,8 @@ describe("EnrollmentsService — 취소 원자화 · 전이 재확인 · 상품 
             id: "enr-old",
             status: "paid",
             paidAt: new Date("2026-06-01T00:00:00Z"),
+            billingMonth: new Date(Date.UTC(2026, 5, 1)),
+            billingTiming: "PREPAID",
             product: {
               billingTiming: "PREPAID",
               feeType: "MONTHLY_FIXED",
@@ -422,7 +426,11 @@ describe("EnrollmentsService — 취소 원자화 · 전이 재확인 · 상품 
       const run = (service as any).resolveSelectedProductTiming(
         "class-1",
         opts.billingMode ?? "POSTPAID",
-        opts.salesOpenMonth === undefined ? month : opts.salesOpenMonth,
+        opts.salesOpenMonth === undefined
+          ? [month]
+          : opts.salesOpenMonth
+            ? [opts.salesOpenMonth]
+            : [],
         opts.classProductId,
       ) as Promise<{ billingTiming: string } | null>;
       return { run, prisma };
@@ -583,12 +591,19 @@ describe("EnrollmentsService — 등록 생성 재활용 분기 CAS · 잠금 �
       },
       enrollment: {
         findMany: jest.fn().mockResolvedValue([]), // paid 이력 없음
-        findFirst: jest.fn().mockResolvedValue({
-          id: "enr-pending",
-          status: "pending",
-          requestedBy: userId,
-          paymentId: "pay-old",
-        }),
+        // hasActivePaidEnrollment(status: "paid") 호출과 existingEnrollment(BLOCKING_APPLICATION)
+        //   호출이 같은 findFirst 를 공유하므로 where.status 로 분기한다.
+        findFirst: jest.fn(
+          async (args: { where?: { status?: unknown } }) => {
+            if (args?.where?.status === "paid") return null;
+            return {
+              id: "enr-pending",
+              status: "pending",
+              requestedBy: userId,
+              paymentId: "pay-old",
+            };
+          },
+        ),
         updateMany: jest
           .fn()
           .mockResolvedValue({ count: opts.transitionedCount }),
@@ -693,6 +708,27 @@ describe("EnrollmentsService — 등록 생성 재활용 분기 CAS · 잠금 �
     });
     await service.createEnrollment(userId, dto as never);
     expect(tx.classRegistration.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it("중복 차단 조회(hasActivePaidEnrollment·existingEnrollment) 는 billingMonth NULL 행도 함께 본다", async () => {
+    const { service, tx } = buildReuse({
+      voidedCount: 1,
+      transitionedCount: 1,
+    });
+    await service.createEnrollment(userId, dto as never);
+    const calls = (tx.enrollment.findFirst as jest.Mock).mock.calls as Array<
+      [{ where?: { status?: unknown; OR?: unknown } }]
+    >;
+    // hasActivePaidEnrollment(status: "paid") 호출.
+    const paidCall = calls.find(([args]) => args?.where?.status === "paid");
+    expect(paidCall?.[0].where?.OR).toEqual(
+      expect.arrayContaining([{ billingMonth: null }]),
+    );
+    // existingEnrollment(BLOCKING_APPLICATION) 호출.
+    const blockingCall = calls.find(([args]) => args?.where?.status !== "paid");
+    expect(blockingCall?.[0].where?.OR).toEqual(
+      expect.arrayContaining([{ billingMonth: null }]),
+    );
   });
 
   it("좌석 잠금 트랜잭션의 P2028/P2024 는 409 로, 그 외 예외는 그대로", async () => {

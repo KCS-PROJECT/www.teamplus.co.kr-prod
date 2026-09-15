@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsEnum,
   MaxLength,
+  Matches,
 } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
@@ -62,7 +63,17 @@ export class CreateEnrollmentDto {
   @MaxLength(500, { message: "메모는 500자 이하이어야 합니다." })
   note?: string;
 
-  // 2026-05-19: billingMonth 필드 폐기.
-  // 사유: 학부모별 결제일(N주 패키지 만료일)이 모두 다르므로 "월 단위 결제 대상"
-  //       개념 자체가 시스템에서 의미가 없음. 만료 임박 시 학부모별 알림으로 대체.
+  // [Phase 3] 후불 신청 대상월 — 판매 중인 달(이번 달·다음 달) 중 학부모가 선택.
+  //   선불은 상품 자체가 월을 고정하므로 이 필드를 보내면 400. 미전달 시
+  //   판매 중인 달 중 가장 이른 달(saleGate.primaryMonth)로 폴백한다.
+  @ApiPropertyOptional({
+    description:
+      "후불 신청 대상월(YYYY-MM). 선불 수업은 지정 불가(400) — 상품 자체가 귀속월을 고정한다. 미전달 시 판매 중인 달 중 가장 이른 달로 자동 결정.",
+    example: "2026-09",
+  })
+  @IsOptional()
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, {
+    message: "결제 대상월은 YYYY-MM 형식이어야 합니다.",
+  })
+  billingMonth?: string;
 }

@@ -508,7 +508,9 @@ export class PaymentReceiptService {
         },
         // 출처 라벨링 파생용 관계 — N+1 방지 take:1 select
         tournamentRegistrations: {
-          select: { tournament: { select: { billingMode: true } } },
+          select: {
+            tournament: { select: { billingMode: true, name: true } },
+          },
           take: 1,
         },
         monthlyBillingLines: {
@@ -565,12 +567,17 @@ export class PaymentReceiptService {
       ? `${enrollment.child.lastName}${enrollment.child.firstName}`
       : undefined;
 
+    const tournament = payment.tournamentRegistrations?.[0]?.tournament;
     const src = deriveSource({
       productBillingTiming: payment.product?.billingTiming,
       hasMonthlyBillingLine: (payment.monthlyBillingLines?.length ?? 0) > 0,
-      tournamentBillingMode:
-        payment.tournamentRegistrations?.[0]?.tournament?.billingMode ?? null,
+      tournamentBillingMode: tournament?.billingMode ?? null,
     });
+    // 대회 결제는 상품 연결이 없어 상품명이 비어 있다 — 배지(대회)와 어긋나지 않게 대회명으로 채운다.
+    //   빈 문자열 상품명도 폴백 대상이다(?? 는 ""를 통과시켜 영수증 상품명이 공란이 된다).
+    const productName =
+      payment.product?.productName?.trim() ||
+      (tournament ? `${tournament.name} 참가비` : "수업 결제");
 
     return {
       receipt: {
@@ -581,7 +588,7 @@ export class PaymentReceiptService {
         storeName: "TEAMPLUS",
         paymentDate: formatDate(payment.completedAt ?? payment.createdAt),
         paymentMethod: payment.paymentMethod ?? "card",
-        productName: payment.product?.productName ?? "수업 결제",
+        productName,
         totalAmount: Number(payment.amount),
         creditsIssued,
         // enrollment 있을 때만 수업명·자녀명 반환 (없으면 undefined → 프론트 조건부 렌더)

@@ -28,7 +28,9 @@ import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
 import { calculateKoreanAge } from "@/common/utils/age.util";
 import { assertClassOnSale } from "@/common/billing/sales-gate.util";
+import { resolveEnrollmentBilling } from "@/common/billing/enrollment-billing.util";
 import { hasActivePaidEnrollment } from "@/common/billing/paid-enrollment-guard.util";
+import { eligibleChildIdsForMonth } from "@/common/billing/enrollment-eligibility.util";
 import { KgInicisGateway } from "../kg-inicis.gateway";
 import {
   PaymentCalculationService,
@@ -96,6 +98,7 @@ export class PaymentCreateService {
         durationDays: true,
         isActive: true,
         billingMonth: true,
+        billingTiming: true,
         classId: true,
         class: {
           select: {
@@ -111,22 +114,41 @@ export class PaymentCreateService {
       throw new NotFoundException("상품을 찾을 수 없습니다.");
     }
 
-    // [Lifecycle v4.1 §9.4] 판매 게이트 — 대기/종료 수업은 결제 생성 차단 (최종 집행 지점).
-    await assertClassOnSale(this.prisma, product.classId);
+    // 상품과 요청 수업 불일치 차단 — 아래 판매 게이트·자격 스냅샷은 상품의 수업 기준으로
+    //   계산되고 Enrollment 는 options.classId 로 기록되므로, 어긋나면 타 수업의 달·결제
+    //   방식이 영속된다. 수강신청 경로(enrollments.service)와 같은 가드.
+    if (options?.classId && product.classId !== options.classId) {
+      throw new BadRequestException("유효하지 않은 상품입니다.");
+    }
 
-    // [Lifecycle v4.1 §9.2] 지난 월분 결제 차단 — 결제창을 열어둔 사이 판매 월이 전환되는
-    //   race 방어. 월별 패키지(billingMonth 有)는 현재 승인월 분만 결제 가능.
+    // [Lifecycle v4.1 §9.4 · §4-6] 판매 게이트 — 대기/종료 수업은 결제 생성 차단
+    //   (최종 집행 지점). 반환값(판매 중인 달 집합)은 §9.2 지난 월분 검증·
+    //   Enrollment.billingMonth 폴백(후불·스팟·무월 레거시)에 재사용한다.
+    const saleGate = await assertClassOnSale(this.prisma, product.classId);
+
+    // [Lifecycle v4.1 §9.2 · §4-6] 지난 월분 결제 차단 — 결제창을 열어둔 사이
+    //   판매 창이 전환되는 race 방어. 월별 패키지(billingMonth 有)는 판매 중인 달
+    //   집합에 속할 때만 결제 가능(두 달 열려 있으면 둘 다 허용).
     //   무월(NULL) 레거시 상품은 폴백 허용 (결제일 달 귀속 — §9.2 점진 전환).
     if (
       product.billingMonth &&
-      (!product.class?.salesOpenMonth ||
-        product.billingMonth.getTime() !==
-          product.class.salesOpenMonth.getTime())
+      !saleGate.sellableMonths.some(
+        (m) => m.getTime() === product.billingMonth!.getTime(),
+      )
     ) {
       throw new BadRequestException(
         "판매 기간이 지난 상품입니다. 화면을 새로고침한 후 다시 시도해주세요.",
       );
     }
+
+    // Enrollment.billingTiming/billingMonth 스냅샷 — 재활용 relink·신규 생성 두 지점이
+    //   공유. 중복 차단 검사(귀속월 단위)가 이 값을 먼저 쓰므로 여기서 확정한다.
+    const enrollmentBilling = resolveEnrollmentBilling(
+      product.class?.billingMode,
+      product.billingTiming,
+      product.billingMonth,
+      saleGate.primaryMonth,
+    );
 
     // [B6] BOTH(선택형) 수업의 enrollment 는 반드시 선택 상품(classProductId)을 가져야 한다.
     //   결제 경로는 항상 특정 상품(productId)로 진행되어 아래 enrollment 생성 시
@@ -289,15 +311,20 @@ export class PaymentCreateService {
       }
 
       // 수업 정원 검증 (parent_direct 결제 플로우 최종 방어선)
+      // [Phase 3] ClassRegistration(active) 카운트 대신 대상월 자격자 수로 판정한다 —
+      //   장부가 아니라 그 달 실제 자리를 차지하는 신청(billingMonth·billingTiming) 기준.
       const classCapacity = await this.prisma.class.findUnique({
         where: { id: options.classId },
         select: { capacity: true },
       });
       if (classCapacity?.capacity && classCapacity.capacity > 0) {
-        const activeCount = await this.prisma.classRegistration.count({
-          where: { classId: options.classId, status: "active" },
-        });
-        if (activeCount >= classCapacity.capacity) {
+        const eligibleIds = await eligibleChildIdsForMonth(
+          this.prisma,
+          options.classId,
+          enrollmentBilling.billingMonth,
+        );
+        eligibleIds.delete(options.childId);
+        if (eligibleIds.size >= classCapacity.capacity) {
           await this.redisService.del(userProductLockKey);
           throw new ConflictException(
             "수업 정원이 마감되었습니다. 대기 등록을 이용해주세요.",
@@ -305,13 +332,14 @@ export class PaymentCreateService {
         }
       }
 
-      // paid 이력은 "현재 수강 중"일 때만 차단 — 만료(배치 해제·크레딧 소진) 자녀의
-      //   재결제(갱신)는 통과시킨다. 판정 SoT 는 표시(hasValidPass)와 동일.
+      // paid 이력은 "그 달"에 이미 있을 때만 차단 — 다른 달 재결제(갱신)는 통과시킨다.
+      //   판정 SoT 는 표시(hasValidPass)와 동일 조건식(§1).
       if (
         await hasActivePaidEnrollment(
           this.prisma,
           options.childId,
           options.classId,
+          enrollmentBilling.billingMonth,
         )
       ) {
         await this.redisService.del(userProductLockKey);
@@ -322,6 +350,12 @@ export class PaymentCreateService {
         where: {
           childId: options.childId,
           classId: options.classId,
+          // 같은 달만 차단 — 다른 달(갱신·다음 달 선구매)은 별개 신청으로 허용.
+          //   billingMonth 백필 전 NULL 행은 귀속월 결정 불능이라 보수적으로 함께 차단.
+          OR: [
+            { billingMonth: enrollmentBilling.billingMonth },
+            { billingMonth: null },
+          ],
           status: {
             in: ["pending", "pending_approval", "approved"],
           },
@@ -421,6 +455,7 @@ export class PaymentCreateService {
               paymentId: created.id,
               classProductId: productId,
               expiresAt,
+              ...enrollmentBilling,
             },
           });
           if (relinked.count !== 1) {
@@ -444,6 +479,7 @@ export class PaymentCreateService {
               status: "pending",
               paymentId: created.id,
               expiresAt,
+              ...enrollmentBilling,
             },
           });
           this.logger.log(

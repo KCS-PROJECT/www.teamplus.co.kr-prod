@@ -85,4 +85,16 @@ export class CreateClassProductDto {
   @IsNumber({}, { message: "주당 수업 횟수는 숫자여야 합니다." })
   @Min(1, { message: "주당 수업 횟수는 1 이상이어야 합니다." })
   sessionsPerWeek?: number;
+
+  // 월분 갱신의 복사 원본 행 id — 같은 수업의 월정액 행이어야 한다.
+  //   원본 달이 판매 중인 달 밖(지난 달·무월 레거시)일 때만 서버가 판매 중지한다.
+  //   판매 중인 달이면 두 월분이 함께 팔리므로 원본을 그대로 둔다.
+  @ApiPropertyOptional({
+    example: "clx0abc123",
+    description:
+      "갱신 원본 상품 id — 원본 달이 판매 중인 달 밖이면 생성과 같은 트랜잭션에서 판매 중지",
+  })
+  @IsOptional()
+  @IsString({ message: "갱신 원본 상품 id는 문자열이어야 합니다." })
+  sourceProductId?: string;
 }

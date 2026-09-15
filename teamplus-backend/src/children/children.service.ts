@@ -13,8 +13,15 @@ import { RedisService } from "@/redis/redis.service";
 import { NotificationsService } from "@/notifications/notifications.service";
 import { securityConfig } from "@/config/security.config";
 import { calculateKoreanAge } from "@/common/utils/age.util";
-import { dateOnlyToUtc } from "@/common/utils/kst-date.util";
+import { dateOnlyToUtc, kstTodayUtcMidnight } from "@/common/utils/kst-date.util";
 import { anonymizeUserWithinTx } from "@/common/utils/user-anonymize.util";
+import { utcMonthStart } from "@/common/utils/class-lifecycle.util";
+import {
+  activeChildEnrollmentWhere,
+  countUnbilledPostpaidAttendance,
+  countUnpaidPostpaidLines,
+  UNPAID_POSTPAID_LINE_MESSAGE,
+} from "@/common/utils/withdrawal-guard.util";
 import { UploadCleanupService } from "@/common/upload-cleanup.service";
 import { Prisma } from "@prisma/client";
 import {
@@ -772,6 +779,13 @@ export class ChildrenService {
     const collectedFileUrls: string[] = [];
 
     await this.prisma.$transaction(async (tx) => {
+      // 두 갈래 모두 부모–자녀 링크를 끊으므로, 링크를 타고 찾는 부모 탈퇴 가드의
+      //   미납 축이 이후 이 자녀를 못 본다. 확정 청구된 미납은 여기서 막는다.
+      const unpaidLines = await countUnpaidPostpaidLines(tx, childId);
+      if (unpaidLines > 0) {
+        throw new BadRequestException(UNPAID_POSTPAID_LINE_MESSAGE);
+      }
+
       if (otherGuardians > 0) {
         // 3.1 다른 보호자가 있으면 관계만 해제 + 다른 보호자를 주 보호자로
         await tx.parentChild.delete({
@@ -794,17 +808,19 @@ export class ChildrenService {
         }
       } else {
         // 3.2 다른 보호자가 없으면 자녀 User 를 비식별화 (배치 탈퇴와 동일 수준)
-        // 진행 중인 수강신청이 있는지 확인
-        const activeEnrollments = await tx.enrollment.count({
-          where: {
-            childId,
-            status: { in: ["pending", "pending_approval", "approved"] },
-          },
-        });
+        // 수강 중·정산 전 후불 출석 판정은 학부모 탈퇴 가드(withdrawal-guard.util)와 같은 규칙 —
+        //   같은 익명화로 끝나는 두 경로가 정의를 달리하면 한쪽으로 우회된다.
+        const todayMonth = utcMonthStart(kstTodayUtcMidnight());
+        const [activeEnrollments, unbilledAttendance] = await Promise.all([
+          tx.enrollment.count({
+            where: { childId, ...activeChildEnrollmentWhere(todayMonth) },
+          }),
+          countUnbilledPostpaidAttendance(tx, { childId }),
+        ]);
 
-        if (activeEnrollments > 0) {
+        if (activeEnrollments > 0 || unbilledAttendance > 0) {
           throw new BadRequestException(
-            "진행 중인 수강신청이 있어 삭제할 수 없습니다. 먼저 수강신청을 취소해주세요.",
+            "수강 중이거나 정산 전 후불 출석이 있어 삭제할 수 없습니다. 먼저 수강을 정리해주세요.",
           );
         }
 
@@ -931,14 +947,21 @@ export class ChildrenService {
       );
     }
 
-    // 3. 관계 삭제
+    // 3. 확정 청구된 미납 — 링크를 끊으면 부모 탈퇴 가드가 이 자녀를 못 본다(deleteChild 와 동일 규칙).
+    //    수강 중은 막지 않는다 — 다른 보호자가 이어받는 정상적인 보호자 변경이다.
+    const unpaidLines = await countUnpaidPostpaidLines(this.prisma, childId);
+    if (unpaidLines > 0) {
+      throw new BadRequestException(UNPAID_POSTPAID_LINE_MESSAGE);
+    }
+
+    // 4. 관계 삭제
     await this.prisma.parentChild.delete({
       where: {
         parentId_childId: { parentId, childId },
       },
     });
 
-    // 4. 삭제한 보호자가 주 보호자였으면 다른 보호자를 주 보호자로 승격
+    // 5. 삭제한 보호자가 주 보호자였으면 다른 보호자를 주 보호자로 승격
     if (parentChild.isPrimary) {
       const nextPrimary = await this.prisma.parentChild.findFirst({
         where: { childId },

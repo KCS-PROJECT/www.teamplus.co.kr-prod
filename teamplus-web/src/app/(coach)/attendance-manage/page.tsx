@@ -185,8 +185,10 @@ export default function AttendanceManagePage() {
                 {data.classInfo.className}
               </h1>
               <p className="mt-1 text-card-body font-num text-white/80 tabular-nums">
-                코치 {data.classInfo.coachName} · 학생{" "}
-                {data.classInfo.studentCount}명
+                코치 {data.classInfo.coachName} ·{" "}
+                {MESSAGES.attendance.currentStudents(
+                  data.classInfo.studentCount,
+                )}
               </p>
               <p className="mt-1 text-card-meta font-num text-white/60 tabular-nums">
                 {data.classInfo.completedCount}/
@@ -203,18 +205,25 @@ export default function AttendanceManagePage() {
           <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-4 sm:px-5 py-4">
             <div className="grid grid-cols-3 gap-2">
               <StatBlock
-                label="평균 출석률"
-                value={`${data.stats.avgAttendanceRate}%`}
+                label={MESSAGES.attendance.checkProgressLabel}
+                value={MESSAGES.attendance.checkProgressValue(
+                  data.stats.checkedCount,
+                  data.stats.completedCount,
+                )}
                 dotClass="bg-mint-500"
               />
               <StatBlock
-                label="누적 결석"
-                value={`${data.stats.totalAbsent}회`}
-                dotClass="bg-it-red-500"
+                label={MESSAGES.attendance.pendingScheduleLabel}
+                value={MESSAGES.attendance.scheduleCountValue(
+                  data.stats.pendingCheckCount,
+                )}
+                dotClass="bg-it-ink-400"
               />
               <StatBlock
-                label="누적 출석"
-                value={`${data.stats.totalPresent}회`}
+                label={MESSAGES.attendance.totalPresentLabel}
+                value={MESSAGES.attendance.totalPresentValue(
+                  data.stats.totalPresent,
+                )}
                 dotClass="bg-it-blue-500"
               />
             </div>
@@ -430,7 +439,7 @@ function ScheduleList({
             type="button"
             onClick={() => onClick(item.scheduleId)}
             className="w-full flex items-center gap-3 px-4 sm:px-5 py-3.5 text-left border-b border-it-line dark:border-rink-700 hover:bg-it-fill dark:hover:bg-rink-700/30 transition-colors duration-150 motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-it-blue-500 focus:outline-none"
-            aria-label={`${formatDateLabel(item.scheduledDate)} ${item.startTime ?? formatTimeLabel(item.scheduledDate)} 일정, 출석 ${item.present}/${item.total}명${item.unchecked > 0 ? `, 미확인 ${item.unchecked}명` : ""}${item.absent > 0 ? `, 결석 ${item.absent}명` : ""}, 출석 확인하기`}
+            aria-label={`${formatDateLabel(item.scheduledDate)} ${item.startTime ?? formatTimeLabel(item.scheduledDate)} 일정, ${MESSAGES.attendance.presentOfTotal(item.present, item.total)}${item.unchecked > 0 ? `, ${MESSAGES.attendance.pendingCount(item.unchecked)}` : ""}${item.absent > 0 ? `, ${MESSAGES.attendance.absentCount(item.absent)}` : ""}, 출석 확인하기`}
           >
             <div className="min-w-0 flex-1">
               <p className="text-card-title font-bold text-it-ink-800 dark:text-white">
@@ -440,13 +449,14 @@ function ScheduleList({
                 </span>
               </p>
               <p className="mt-0.5 text-card-meta font-num text-it-ink-500 dark:text-rink-300 tabular-nums">
-                출석 {item.present}/{item.total}명
-                {item.unchecked > 0 && ` · 미확인 ${item.unchecked}`}
+                {MESSAGES.attendance.presentOfTotal(item.present, item.total)}
+                {item.unchecked > 0 &&
+                  ` · ${MESSAGES.attendance.pendingCount(item.unchecked)}`}
               </p>
             </div>
-            <RateBadge
-              rate={item.rate}
+            <StatusBadge
               variant={variant}
+              total={item.total}
               unchecked={item.unchecked}
               absent={item.absent}
             />
@@ -462,14 +472,14 @@ function ScheduleList({
   );
 }
 
-function RateBadge({
-  rate,
+function StatusBadge({
   variant,
+  total,
   unchecked,
   absent,
 }: {
-  rate: number;
   variant: "inProgress" | "completed";
+  total: number;
   unchecked: number;
   absent: number;
 }) {
@@ -490,24 +500,33 @@ function RateBadge({
       </span>
     );
   }
-  // completed — 미확인=중립 / 결석=it-red / 출석률=mint
+  // completed — 체크 전=중립 / 결석=it-red / 전원 출석=mint
+  //   비율 표기를 두지 않는다. 이 배지가 노출되는 조건(체크 전·결석 0)에서는
+  //   출석률이 언제나 100% 라 숫자가 정보를 담지 못한다.
   if (unchecked > 0) {
     return (
       <span className="inline-flex items-center gap-1 rounded-w-pill bg-it-fill px-2 py-1 text-card-meta font-extrabold text-it-ink-800 dark:bg-rink-700 dark:text-rink-100 font-num tabular-nums">
-        미확인 {unchecked}
+        {MESSAGES.attendance.pendingCount(unchecked)}
       </span>
     );
   }
   if (absent > 0) {
     return (
       <span className="inline-flex items-center gap-1 rounded-w-pill bg-it-red-50 px-2 py-1 text-card-meta font-extrabold text-it-red-500 dark:bg-it-red-700/20 dark:text-it-red-300 font-num tabular-nums">
-        결석 {absent}
+        {MESSAGES.attendance.absentCount(absent)}
+      </span>
+    );
+  }
+  if (total === 0) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-w-pill bg-it-fill px-2 py-1 text-card-meta font-bold text-it-ink-500 dark:bg-rink-700 dark:text-rink-300">
+        {MESSAGES.attendance.noTarget}
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded-w-pill bg-mint-100 px-2 py-1 text-card-meta font-extrabold text-rink-800 dark:bg-mint-500/20 dark:text-mint-100 font-num tabular-nums">
-      {rate}%
+    <span className="inline-flex items-center gap-1 rounded-w-pill bg-mint-100 px-2 py-1 text-card-meta font-extrabold text-rink-800 dark:bg-mint-500/20 dark:text-mint-100">
+      {MESSAGES.attendance.allPresent}
     </span>
   );
 }

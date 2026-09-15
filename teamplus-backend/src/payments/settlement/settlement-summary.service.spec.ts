@@ -77,6 +77,10 @@ describe("SettlementSummaryService", () => {
     userType: "ADMIN",
   };
 
+  // [Phase 3] 자격·귀속월 SoT — enrollment 최상위 billingMonth·billingTiming.
+  //   이 describe 블록은 대부분 선택월(YM="2026-07")=결제월 시나리오라 기본값을 7월로 둔다.
+  //   다른 달을 나타내는 테스트는 overrides 로 billingMonth 를 직접 지정한다.
+  const JULY_MONTH = new Date("2026-07-01T00:00:00Z");
   const prepaidEnrollment = (
     childId: string,
     amount: number,
@@ -86,6 +90,8 @@ describe("SettlementSummaryService", () => {
     childId,
     status: "paid",
     paidAt: null,
+    billingMonth: JULY_MONTH,
+    billingTiming: "PREPAID",
     product: {
       feeType: "PER_SESSION",
       billingTiming: "PREPAID",
@@ -240,6 +246,7 @@ describe("SettlementSummaryService", () => {
         prepaidEnrollment("u1", 50000, {
           status: "approved",
           paidAt: null,
+          billingMonth: null, // 결정 불능(백필 전·레거시) — 어느 달인지 알 수 없다.
           payment: {
             paymentStatus: "completed",
             completedAt: null,
@@ -387,7 +394,7 @@ describe("SettlementSummaryService", () => {
 
   // ── 회귀 4: 로스터 대상자 (HIGH-4) ─────────────────────────────
   describe("[HIGH-4] Enrollment 없는 등록 선수 포함", () => {
-    it("BOTH 미배정=UNASSIGNED, PREPAID 미구매자=미수 없는 대상", async () => {
+    it("[Phase 3] BOTH 미배정·PREPAID 미구매자 — 자격도 활동도 없어 그 달 대상에서 제외", async () => {
       mockClassQueries([
         classDetail("cA", "BOTH"),
         classDetail("cB", "PREPAID"),
@@ -400,15 +407,10 @@ describe("SettlementSummaryService", () => {
       resourceAccessMock.assertAcademyManager.mockResolvedValue(undefined);
 
       const res = await service.getAcademySettlementSummary("a1", coach, YM);
-      const byId = Object.fromEntries(res.classes.map((c) => [c.classId, c]));
-      // BOTH + 상품 없음 → 대상 1명, 미배정 사유.
-      expect(byId["cA"].total).toBe(1);
-      expect(byId["cA"].blockedReasonCode).toBe("BILLING_TIMING_UNASSIGNED");
-      // PREPAID 미구매자 → 대상 1명, 유효 청구 없음(NONE).
-      expect(byId["cB"].total).toBe(1);
-      expect(byId["cB"].paymentStatus).toBe("NONE");
-      expect(byId["cB"].billedAmount).toBe(0);
-      expect(byId["cB"].settlementStatus).toBe("NOT_REQUIRED");
+      // [Phase 3] 신청(Enrollment) 자체가 없으면 자격 판정 근거가 없고 그 달 활동
+      //   증거도 없다 — §1 "미납 없음(안 냈으면 명단에 없음)"이 등록만 있고 신청이
+      //   없는 이 경우에도 동일하게 적용되어 그 달 요약 자체에서 제외된다.
+      expect(res.classes).toHaveLength(0);
     });
   });
 
@@ -732,7 +734,8 @@ describe("SettlementSummaryService", () => {
 
   const JUNE_YM = "2026-06";
 
-  // 후불 open enrollment(결제 없음) — 그 달 미확정 계약.
+  // 후불 open enrollment(결제 없음) — 그 달 미확정 계약. 기본 귀속월=7월(YM) —
+  //   다른 달(주로 6월) 시나리오는 overrides 로 billingMonth 를 직접 지정한다.
   const postpaidOpenEnrollment = (
     childId: string,
     feePerSession: number,
@@ -742,6 +745,8 @@ describe("SettlementSummaryService", () => {
     childId,
     status: "approved",
     paidAt: null,
+    billingMonth: JULY_MONTH,
+    billingTiming: "POSTPAID",
     product: {
       feeType: "PER_SESSION",
       billingTiming: "POSTPAID",
@@ -865,6 +870,7 @@ describe("SettlementSummaryService", () => {
       // 최신 enrollment 는 8월 선불(다른 달) — 7월 후불 성분에 영향 없어야
       prismaMock.enrollment.findMany.mockResolvedValue([
         prepaidEnrollment("u1", 30000, {
+          billingMonth: new Date("2026-08-01T00:00:00Z"),
           payment: {
             paymentStatus: "completed",
             completedAt: new Date("2026-08-10T05:00:00Z"),
@@ -925,7 +931,7 @@ describe("SettlementSummaryService", () => {
 
   // ── C5: 미배정 우선 노출 (MED-3) ──
   describe("[C5/MED-3] 당월 혼합 미배정 선수 우선 노출", () => {
-    it("BOTH 당월(미종료)에 후불+미배정 → BILLING_TIMING_UNASSIGNED", async () => {
+    it("[Phase 3] BOTH 당월에 후불+미배정 — enrollment 없는 u2 는 자격·활동 없어 대상 제외", async () => {
       mockClassQueries([classDetail("c1", "BOTH")]);
       prismaMock.classRegistration.findMany.mockResolvedValue([
         {
@@ -952,8 +958,10 @@ describe("SettlementSummaryService", () => {
 
       const res = await service.getAcademySettlementSummary("a1", coach, YM);
       const c = res.classes[0];
-      // 당월(미종료)이라 원래 MONTH_NOT_ENDED 로 가려졌던 설정 문제를 우선 노출.
-      expect(c.blockedReasonCode).toBe("BILLING_TIMING_UNASSIGNED");
+      // [Phase 3] enrollment 없는 u2 는 자격 판정 근거도 그 달 활동 증거도 없어
+      //   대상에서 제외된다 — u1(후불 open, 7월 귀속)만 남아 미배정 사유는 없다.
+      expect(c.total).toBe(1);
+      expect(c.blockedReasonCode).not.toBe("BILLING_TIMING_UNASSIGNED");
     });
   });
 
@@ -986,7 +994,7 @@ describe("SettlementSummaryService", () => {
 
   // ── C7: timing별 인원 distinct·합=total (MED-5) ──
   describe("[C7/MED-5] timing별 인원 distinct·합=total", () => {
-    it("선불·후불·미배정 혼합 → 각 1명, 합=total", async () => {
+    it("[Phase 3] 선불·후불 각 1명 — enrollment 없는 u3 는 자격·활동 없어 제외, 합=total", async () => {
       mockClassQueries([classDetail("c1", "BOTH")]);
       prismaMock.classRegistration.findMany.mockResolvedValue([
         {
@@ -1020,9 +1028,10 @@ describe("SettlementSummaryService", () => {
 
       const res = await service.getAcademySettlementSummary("a1", coach, YM);
       const c = res.classes[0];
+      // [Phase 3] u3 는 enrollment 자체가 없어 자격 판정 근거도 활동 증거도 없다 — 제외.
       expect(c.prepaidCount).toBe(1);
       expect(c.postpaidCount).toBe(1);
-      expect(c.unassignedCount).toBe(1);
+      expect(c.unassignedCount).toBe(0);
       expect(c.prepaidCount + c.postpaidCount + c.unassignedCount).toBe(c.total);
     });
   });
@@ -1153,9 +1162,12 @@ describe("SettlementSummaryService", () => {
     });
   });
 
-  // ── R4/HIGH-3: 이후 종료 수업의 그 달 로스터 보존 ──
+  // ── [Phase 3] R4/HIGH-3(폐기) — registrationDate·classActiveForMonth 근사 제거 ──
+  //   자격은 이제 enrollment.billingMonth·billingTiming 직접 판독으로만 판정한다
+  //   (attribution.util isRosterMemberForMonth 참고). enrollment 자체가 없으면
+  //   등록(ClassRegistration)만으로는 더 이상 로스터에 포함되지 않는다.
   describe("[R4/HIGH-3] 선택월 이후 종료된 수업도 그 달 로스터 포함", () => {
-    it("8월 종료 수업을 7월 조회 시 진행 중으로 보고 로스터 포함", async () => {
+    it("[Phase 3] enrollment 없으면 등록만으로는 포함 안 됨(자격·활동 근거 없음)", async () => {
       mockClassQueries([
         classDetail("c1", "POSTPAID", {
           endedAt: new Date("2026-08-20T00:00:00Z"), // 선택월(7월) 이후 종료
@@ -1169,18 +1181,17 @@ describe("SettlementSummaryService", () => {
           status: "active",
         },
       ]);
-      // 7월 출석·청구 전무 — 오직 로스터 멤버십으로만 포함돼야.
+      // 7월 출석·청구·신청 전무 — 자격 판정 근거가 없다.
       resourceAccessMock.assertAcademyManager.mockResolvedValue(undefined);
 
       const res = await service.getAcademySettlementSummary("a1", coach, YM);
-      expect(res.classes).toHaveLength(1);
-      expect(res.classes[0].total).toBe(1);
+      expect(res.classes).toHaveLength(0);
     });
   });
 
-  // ── R5/HIGH-3: 당월 등록·탈퇴 선수 보존 ──
+  // ── [Phase 3] R5/HIGH-3(폐기) — 등록일 일치만으로는 더 이상 명단 보존 안 됨 ──
   describe("[R5/HIGH-3] 선택월 등록·탈퇴 선수는 활동 없어도 그 달 명단 보존", () => {
-    it("7월 등록 후 inactive·활동 없음 → 7월 명단 포함", async () => {
+    it("[Phase 3] 신청(billingMonth) 없이 등록만 있으면 그 달 명단에서 제외", async () => {
       mockClassQueries([classDetail("c1", "POSTPAID")]);
       prismaMock.classRegistration.findMany.mockResolvedValue([
         {
@@ -1190,12 +1201,11 @@ describe("SettlementSummaryService", () => {
           status: "inactive", // 그 달 중 탈퇴
         },
       ]);
-      // 출석·청구라인 전무.
+      // 출석·청구라인·신청 전무 — 자격 판정 근거가 없다.
       resourceAccessMock.assertAcademyManager.mockResolvedValue(undefined);
 
       const res = await service.getAcademySettlementSummary("a1", coach, YM);
-      expect(res.classes).toHaveLength(1);
-      expect(res.classes[0].total).toBe(1);
+      expect(res.classes).toHaveLength(0);
     });
   });
 
@@ -1275,9 +1285,11 @@ describe("SettlementSummaryService", () => {
     });
   });
 
-  // ── R8/HIGH-2: 월정액 타월 구매가 다른 달 미구매를 숨기지 않음 ──
+  // ── [Phase 3] R8/HIGH-2(재정의) — 7월 귀속 신청은 8월 자격을 만들지 않는다 ──
+  //   설계 §1: "미갱신자(7월만 결제) 8월 조회 시" 명단에서 사라지는 것이 의도된 수정이다
+  //   (구 registrationDate·classActiveForMonth 근사가 만들던 "미갱신자 영구 잔류" 버그 해소).
   describe("[R8/HIGH-2] 월정액 타월 구매가 선택월 미구매를 억제하지 않음", () => {
-    it("7월 월정액 구매 선수를 8월 조회 시 PREPAID/UNSETTLED 로 노출", async () => {
+    it("[Phase 3] 7월 월정액 구매(billingMonth=7월) 선수를 8월 조회 시 자격·활동 없어 제외", async () => {
       mockClassQueries([classDetail("c1", "PREPAID")]);
       prismaMock.classRegistration.findMany.mockResolvedValue([
         {
@@ -1294,6 +1306,8 @@ describe("SettlementSummaryService", () => {
           status: "paid",
           paidAt: JULY,
           createdAt: JULY,
+          billingMonth: new Date("2026-07-01T00:00:00Z"), // 대상월=7월(불변)
+          billingTiming: "PREPAID",
           product: {
             feeType: "MONTHLY_FIXED",
             billingTiming: "PREPAID",
@@ -1313,11 +1327,7 @@ describe("SettlementSummaryService", () => {
       resourceAccessMock.assertAcademyManager.mockResolvedValue(undefined);
 
       const res = await service.getAcademySettlementSummary("a1", coach, AUG_YM);
-      const c = res.classes[0];
-      expect(c.total).toBe(1); // 8월 로스터 유지(7월 구매가 숨기지 않음)
-      expect(c.prepaidCount).toBe(1);
-      expect(c.billedAmount).toBe(0); // 8월 미구매 → 유효 청구 없음
-      expect(c.paymentStatus).toBe("NONE");
+      expect(res.classes).toHaveLength(0);
     });
   });
 

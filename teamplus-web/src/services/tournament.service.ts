@@ -159,6 +159,9 @@ export interface TournamentDetail extends TournamentListItem {
     amount: number;
     orderNumber: string | null;
   }>;
+  /** [추가] 참가 대상 이름 — 역할별로 서버가 이미 필터링해 내려준다(감독/코치=전원,
+   *  학부모/학생=본인 자녀만). name=null 은 이름을 확정할 수 없는 참가자(탈퇴 등). */
+  participants?: Array<{ userId: string; name: string | null }>;
 }
 
 /** 경기 summary — 대진표 카드용 */

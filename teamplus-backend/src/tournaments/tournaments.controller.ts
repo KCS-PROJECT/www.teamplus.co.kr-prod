@@ -132,7 +132,7 @@ export class TournamentsController {
     @Param("id") id: string,
     @Request() req: AuthenticatedRequest,
   ) {
-    return this.tournamentsService.getTournamentById(id, req.user?.id);
+    return this.tournamentsService.getTournamentById(id, req.user);
   }
 
   /**
