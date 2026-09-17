@@ -855,9 +855,10 @@ export default function TournamentStudentsPage() {
               settleBlockedReason &&
               payableTotal === 0 &&
               paymentList.some((r) => r.paymentStatus === "PENDING") && (
-                <p className="mt-2 text-w-small leading-relaxed text-it-ink-500 dark:text-rink-300">
-                  {settleBlockedReason}
-                </p>
+                <div className="mt-2 flex items-start gap-2.5 rounded-w-md border-[1.5px] border-it-blue-500/30 bg-it-blue-50 p-4 text-w-small text-it-ink-600 dark:bg-it-blue-500/10 dark:text-rink-100">
+                  <Icon name="info" className="text-[18px] text-it-blue-500 shrink-0 mt-0.5" aria-hidden="true" />
+                  <p className="min-w-0 leading-relaxed">{settleBlockedReason}</p>
+                </div>
               )}
 
             {/* 결제 리스트 */}
@@ -1015,9 +1016,10 @@ export default function TournamentStudentsPage() {
                 버튼은 자리를 지키되 진짜 비활성(조건이 풀리면 같은 자리가 살아난다).
                 참가자 미선택만 버튼 검증으로 남긴다 — 같은 화면에서 바로 고칠 수 있는 일이다. */}
             {settleBlockedReason && (
-              <p className="mb-2 text-center text-w-small leading-relaxed text-it-ink-500 dark:text-rink-300">
-                {settleBlockedReason}
-              </p>
+              <div className="mb-2 flex items-start gap-2.5 rounded-w-md border-[1.5px] border-it-blue-500/30 bg-it-blue-50 p-4 text-w-small text-it-ink-600 dark:bg-it-blue-500/10 dark:text-rink-100">
+                <Icon name="info" className="text-[18px] text-it-blue-500 shrink-0 mt-0.5" aria-hidden="true" />
+                <p className="min-w-0 leading-relaxed">{settleBlockedReason}</p>
+              </div>
             )}
             <Button
               variant="primary"
