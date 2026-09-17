@@ -460,6 +460,8 @@ export interface TournamentRegistrationRow {
   billingStatus?: 'UNSETTLED' | 'BILLED' | 'PAID' | 'CANCELLED' | 'REFUNDED';
   /** 대회 billingMode 상속 — 대회는 BOTH/UNASSIGNED 없음(고정 모드). */
   billingTiming?: 'PREPAID' | 'POSTPAID';
+  /** 서버 참가자 판정 — 선불은 결제 완료만, 후불은 취소·환불 제외. 없으면 옛 규칙으로 폴백. */
+  isParticipant?: boolean;
   billedAmount?: number | null;
   paidAmount?: number;
   refundedAmount?: number;

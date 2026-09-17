@@ -235,6 +235,20 @@ export default function TournamentStudentsPage() {
 
   const isPostpaid = tournament?.billingMode === "POSTPAID";
 
+  // 결제 현황 탭의 행 — 선불은 결제가 실제로 일어난 행(완납·환불)만 둔다. 결제하다 만 신청은
+  //   참여자가 아니므로 명단은 물론 결제 탭에도 올리지 않는다(학부모 본인 화면에서만 이어 결제).
+  //   후불은 미정산·청구가 감독이 직접 다루는 데이터라 전부 보인다.
+  const paymentRows = useMemo(
+    () =>
+      isPostpaid
+        ? regRows
+        : regRows.filter((r) => {
+            const s = rowStatusOf(r);
+            return s === "PAID" || s === "REFUNDED";
+          }),
+    [regRows, isPostpaid],
+  );
+
   // 요약 집계 — 상태별 인원 + 수납/미수 총액. 활성=취소·환불 제외.
   const summary = useMemo(() => {
     const counts: Record<TournamentBillingStatus, number> = {
@@ -246,7 +260,7 @@ export default function TournamentStudentsPage() {
     };
     let paidTotal = 0;
     let outstandingTotal = 0;
-    for (const r of regRows) {
+    for (const r of paymentRows) {
       const s = rowStatusOf(r);
       counts[s] += 1;
       if (s === "PAID") {
@@ -257,16 +271,28 @@ export default function TournamentStudentsPage() {
       }
       if (s === "BILLED") outstandingTotal += rowFeeOf(r);
     }
-    const active = regRows.length - counts.CANCELLED - counts.REFUNDED;
+    const active = paymentRows.length - counts.CANCELLED - counts.REFUNDED;
     return { counts, paidTotal, outstandingTotal, active };
-  }, [regRows]);
+  }, [paymentRows]);
 
-  // 탭① 선수정보 — 이름 부분일치 검색.
+  // 명단 탭·헤더의 "참가"는 서버 판정(isParticipant)을 따른다 — 선불은 결제 완료만.
+  //   옛 응답(필드 없음)은 취소·환불 제외로 폴백. 결제 현황 탭은 미결제 확인용이라 전체 행을 쓴다.
+  const participants = useMemo(
+    () =>
+      regRows.filter((r) => {
+        if (r.isParticipant != null) return r.isParticipant;
+        const s = rowStatusOf(r);
+        return s !== "CANCELLED" && s !== "REFUNDED";
+      }),
+    [regRows],
+  );
+
+  // 탭① 선수정보 — 참가자 명단 + 이름 부분일치 검색.
   const rosterList = useMemo(() => {
     const q = search.trim();
-    if (!q) return regRows;
-    return regRows.filter((r) => nameOf(r).includes(q));
-  }, [regRows, search]);
+    if (!q) return participants;
+    return participants.filter((r) => nameOf(r).includes(q));
+  }, [participants, search]);
 
   // 탭② 결제 현황 — 수납 전(정산전·청구) 우선 정렬 후 필터.
   //   "미수" 필터는 미수금 계약(미수=확정 청구됐는데 미결제)대로 후불은 청구됨(BILLED)만.
@@ -284,7 +310,7 @@ export default function TournamentStudentsPage() {
       const s = rowStatusOf(r);
       return s === "UNSETTLED" || s === "BILLED" ? 0 : 1;
     };
-    const sorted = [...regRows].sort((a, b) => sortKey(a) - sortKey(b));
+    const sorted = [...paymentRows].sort((a, b) => sortKey(a) - sortKey(b));
     if (payFilter === "unsettled") {
       return sorted.filter((r) => rowStatusOf(r) === "UNSETTLED");
     }
@@ -295,7 +321,7 @@ export default function TournamentStudentsPage() {
       return sorted.filter((r) => rowStatusOf(r) === "PAID");
     }
     return sorted;
-  }, [regRows, payFilter, isOutstanding]);
+  }, [paymentRows, payFilter, isOutstanding]);
 
   // 체크박스 선택 대상 = 결제 탭에 "보이는" 정산 전(UNPAID) 행만 — 필터로 숨은
   //   행에 청구가 나가는 사고 방지(선택은 항상 노출 목록의 부분집합으로 유지).
@@ -308,11 +334,11 @@ export default function TournamentStudentsPage() {
   // 목록 로드/갱신 시 정산 전(UNPAID) 대상만 기본 전체 선택.
   //   PENDING(결제 대기)은 기본 제외 — 이미 요청된 건의 반복 발송 방지.
   useEffect(() => {
-    const payable = regRows
+    const payable = paymentRows
       .filter((r) => r.paymentStatus === "UNPAID")
       .map((r) => r.id);
     setSelectedRegIds(new Set(payable));
-  }, [regRows]);
+  }, [paymentRows]);
 
   // 필터 전환 시 숨은 행 선택 해제(가지치기).
   useEffect(() => {
@@ -440,17 +466,42 @@ export default function TournamentStudentsPage() {
     return end < today.getTime();
   }, [tournament]);
 
+  // 결제요청이 아직 안 되는 사유. null 이면 지금 요청할 수 있다는 뜻이다.
+  //   막힌 이유는 경우마다 다르다 — 경기도 종료일도 없는 대회에
+  //   "경기 시작을 기다리라"고 안내하면 거짓말이 된다.
+  const settleBlockedReason = useMemo((): string | null => {
+    if (isEnded) return null;
+    if (!tournament) return MESSAGES.tournament.settleAvailableAfterHour;
+    if (tournament.status === "cancelled") {
+      return MESSAGES.tournament.settleCancelledTournament;
+    }
+    const hasMatch = (tournament.matches ?? []).some(
+      (m) => !Number.isNaN(new Date(m.scheduledAt).getTime()),
+    );
+    if (hasMatch) return MESSAGES.tournament.settleAvailableAfterHour;
+    if (!tournament.endDate) {
+      return MESSAGES.tournament.settleNeedScheduleOrEndDate;
+    }
+    const end = new Date(tournament.endDate);
+    if (Number.isNaN(end.getTime())) {
+      return MESSAGES.tournament.settleNeedScheduleOrEndDate;
+    }
+    return MESSAGES.tournament.settleAvailableAfterDate(
+      `${end.getUTCMonth() + 1}월 ${end.getUTCDate()}일`,
+    );
+  }, [isEnded, tournament]);
+
   if (isLoading || !tournament) {
     return null;
   }
 
   // 결제요청 취소 가능 — 정산됨(PENDING) 미결제 건이 있을 때.
-  const pendingCount = regRows.filter(
+  const pendingCount = paymentRows.filter(
     (r) => r.paymentStatus === "PENDING",
   ).length;
   // 결제요청취소 — 요청에 따라 임시 숨김. 로직(pendingCount/handleCancelSettlement)은 보존.
   const SHOW_CANCEL_REQUEST = false;
-  const payableTotal = regRows.filter(
+  const payableTotal = paymentRows.filter(
     (r) => r.paymentStatus === "UNPAID",
   ).length;
   const allVisiblePayableSelected =
@@ -508,9 +559,14 @@ export default function TournamentStudentsPage() {
     <MobileContainer hasBottomNav>
       <PageAppBar title={MESSAGES.tournament.rosterPageTitle} forceNative />
 
+      {/* BottomNav 자리는 MobileContainer 바깥 껍데기가 이미 비워 둔다. 공용
+          [&>main]:pb-30(120px)까지 남겨 두면 sticky 바가 그 120px 위에 멈춰
+          BottomNav 사이에 빈 띠가 생기고 목록 마지막 줄이 바에 가린다.
+          (classes/[id] 상세도 같은 이유로 inline paddingBottom 으로 덮는다.) */}
       <main
         data-no-enter
         className="flex flex-1 min-h-0 flex-col overflow-y-auto bg-it-canvas dark:bg-puck"
+        style={{ paddingBottom: 0 }}
         role="main"
         aria-label={MESSAGES.tournament.rosterPageTitle}
       >
@@ -534,10 +590,13 @@ export default function TournamentStudentsPage() {
             {periodLabelOf(tournament)}
           </p>
           <p className="mt-1.5 text-w-small font-bold text-it-ink-600 dark:text-rink-100">
-            {MESSAGES.tournament.rosterHeaderSummary(
-              summary.active,
-              summary.counts.PAID,
-            )}
+            {isPostpaid
+              ? MESSAGES.tournament.rosterHeaderSummary(
+                  participants.length,
+                  summary.counts.PAID,
+                )
+              : // 선불은 참가=완납이라 완납 수를 따로 적지 않는다.
+                MESSAGES.tournament.rosterParticipantCount(participants.length)}
           </p>
         </section>
 
@@ -601,7 +660,7 @@ export default function TournamentStudentsPage() {
             </label>
             {rosterList.length === 0 ? (
               <p className="py-8 text-center text-w-small text-it-ink-400 dark:text-rink-300">
-                {regRows.length === 0
+                {participants.length === 0
                   ? M.emptyRoster
                   : MESSAGES.tournament.participantSearchEmpty}
               </p>
@@ -665,23 +724,39 @@ export default function TournamentStudentsPage() {
                   </span>
                 </span>
               </div>
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                <CountBlock
-                  label={MESSAGES.settlement.rowStatusPaid}
-                  value={summary.counts.PAID}
-                  dotClass="bg-mint-500"
-                />
-                <CountBlock
-                  label={MESSAGES.settlement.rowStatusBilled}
-                  value={summary.counts.BILLED}
-                  dotClass="bg-ice-500"
-                />
-                <CountBlock
-                  label={unsettledLabel}
-                  value={summary.counts.UNSETTLED}
-                  dotClass="bg-wtext-3"
-                />
-              </div>
+              {/* 선불은 청구·미결제 개념이 없다(결제 완료만 참가) — 완납·환불 두 칸. */}
+              {isPostpaid ? (
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  <CountBlock
+                    label={MESSAGES.settlement.rowStatusPaid}
+                    value={summary.counts.PAID}
+                    dotClass="bg-mint-500"
+                  />
+                  <CountBlock
+                    label={MESSAGES.settlement.rowStatusBilled}
+                    value={summary.counts.BILLED}
+                    dotClass="bg-ice-500"
+                  />
+                  <CountBlock
+                    label={unsettledLabel}
+                    value={summary.counts.UNSETTLED}
+                    dotClass="bg-wtext-3"
+                  />
+                </div>
+              ) : (
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <CountBlock
+                    label={MESSAGES.settlement.rowStatusPaid}
+                    value={summary.counts.PAID}
+                    dotClass="bg-mint-500"
+                  />
+                  <CountBlock
+                    label={MESSAGES.settlement.rowStatusRefunded}
+                    value={summary.counts.REFUNDED}
+                    dotClass="bg-wtext-4"
+                  />
+                </div>
+              )}
               {isPostpaid && summary.outstandingTotal > 0 && (
                 <div className="mt-3 border-t border-it-line-strong pt-3 text-card-meta text-it-ink-600 dark:border-rink-700 dark:text-rink-100">
                   {MESSAGES.settlement.outstanding}{" "}
@@ -704,7 +779,7 @@ export default function TournamentStudentsPage() {
                   {
                     key: "all" as const,
                     label: M.filterAllPay,
-                    count: regRows.length,
+                    count: paymentRows.length,
                   },
                   // 미정산(청구 전)은 미수가 아니다 — 후불만 별도 칩으로 분리.
                   //   이 필터에서 체크박스 전체선택 = 청구 대상 일괄 선택 동선.
@@ -717,13 +792,16 @@ export default function TournamentStudentsPage() {
                         },
                       ]
                     : []),
-                  {
-                    key: "outstanding" as const,
-                    label: outstandingLabel,
-                    count: isPostpaid
-                      ? summary.counts.BILLED
-                      : summary.counts.UNSETTLED + summary.counts.BILLED,
-                  },
+                  // 미수(청구) 칩도 후불만 — 선불 결제 탭엔 결제 완료·환불 행만 있다.
+                  ...(isPostpaid
+                    ? [
+                        {
+                          key: "outstanding" as const,
+                          label: outstandingLabel,
+                          count: summary.counts.BILLED,
+                        },
+                      ]
+                    : []),
                   {
                     key: "paid" as const,
                     label: MESSAGES.settlement.rowStatusPaid,
@@ -771,10 +849,23 @@ export default function TournamentStudentsPage() {
               </label>
             )}
 
+            {/* 금액 수정이 막힌 사유 — 모바일에서 툴팁은 뜨지 않으므로 목록 위에 둔다.
+                미정산 행이 있으면 아래 sticky 바가 같은 문구를 이미 들고 있어 생략한다. */}
+            {isPostpaid &&
+              settleBlockedReason &&
+              payableTotal === 0 &&
+              paymentList.some((r) => r.paymentStatus === "PENDING") && (
+                <p className="mt-2 text-w-small leading-relaxed text-it-ink-500 dark:text-rink-300">
+                  {settleBlockedReason}
+                </p>
+              )}
+
             {/* 결제 리스트 */}
             {paymentList.length === 0 ? (
               <p className="py-8 text-center text-w-small text-it-ink-400 dark:text-rink-300">
-                {regRows.length === 0 ? M.emptyRoster : M.emptyPaymentFilter}
+                {paymentRows.length === 0
+                  ? M.emptyRoster
+                  : M.emptyPaymentFilter}
               </p>
             ) : (
               <ul className="mt-1 divide-y divide-it-line dark:divide-rink-700">
@@ -864,12 +955,7 @@ export default function TournamentStudentsPage() {
                           {editable && (
                             <button
                               type="button"
-                              disabled={!isEnded}
-                              title={
-                                !isEnded
-                                  ? MESSAGES.tournament.settleAvailableAfterHour
-                                  : undefined
-                              }
+                              disabled={settleBlockedReason !== null}
                               onClick={() => openAmountEdit(r)}
                               className="rounded-w-pill border border-it-line px-2.5 py-1 text-w-caption font-bold text-it-ink-600 hover:bg-it-fill disabled:opacity-40 dark:border-rink-700 dark:text-rink-100 dark:hover:bg-rink-700"
                             >
@@ -920,28 +1006,37 @@ export default function TournamentStudentsPage() {
 
         <div className="min-h-4 flex-1" aria-hidden="true" />
 
-        {/* ── (후불 · 결제 탭 전용) sticky 결제요청 바 ── */}
+        {/* ── (후불 · 결제 탭 전용) sticky 결제요청 바 ──
+            BottomNav 자리는 MobileContainer 바깥 껍데기가 이미 비워 두므로 여기선
+            안쪽 여백만 준다(.pb-fab-safe 를 쓰면 60px+safe 가 이중으로 붙는다). */}
         {tab === "payment" && isPostpaid && payableTotal > 0 && (
-          <div className="sticky bottom-0 border-t border-it-line bg-it-surface px-4 pb-3 pt-3 dark:border-rink-700 dark:bg-it-blue-950">
+          <div className="sticky bottom-0 border-t border-it-line bg-it-surface px-4 pt-3 pb-3 dark:border-rink-700 dark:bg-it-blue-950">
+            {/* 막힌 동안에는 사유를 버튼 위에 둔다 — 눌러야 이유를 아는 구조는 헛수고를 시킨다.
+                버튼은 자리를 지키되 진짜 비활성(조건이 풀리면 같은 자리가 살아난다).
+                참가자 미선택만 버튼 검증으로 남긴다 — 같은 화면에서 바로 고칠 수 있는 일이다. */}
+            {settleBlockedReason && (
+              <p className="mb-2 text-center text-w-small leading-relaxed text-it-ink-500 dark:text-rink-300">
+                {settleBlockedReason}
+              </p>
+            )}
             <Button
               variant="primary"
               size="lg"
               fullWidth
-              disabled={!isEnded || selectedRegIds.size === 0}
-              title={
-                !isEnded
-                  ? MESSAGES.tournament.settleAvailableAfterHour
-                  : undefined
-              }
-              onClick={() => void openSettlement()}
+              disabled={settleBlockedReason !== null}
+              onClick={() => {
+                if (selectedRegIds.size === 0) {
+                  toast.error(MESSAGES.tournament.settleSelectTargets);
+                  return;
+                }
+                void openSettlement();
+              }}
             >
-              {MESSAGES.tournament.settleRequestCtaCount(selectedRegIds.size)}
+              {/* 막혀 있는 동안 인원수는 지금 보낼 수 있다는 뜻으로 읽힌다 — 풀렸을 때만 붙인다. */}
+              {settleBlockedReason === null && selectedRegIds.size > 0
+                ? MESSAGES.tournament.settleRequestCtaCount(selectedRegIds.size)
+                : MESSAGES.tournament.settleRequestCta}
             </Button>
-            {!isEnded && (
-              <p className="mt-1.5 text-center text-w-caption text-it-ink-400 dark:text-rink-300">
-                {MESSAGES.tournament.settleAvailableAfterHour}
-              </p>
-            )}
           </div>
         )}
       </main>

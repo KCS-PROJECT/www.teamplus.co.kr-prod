@@ -147,7 +147,11 @@ export class ReminderScheduler {
         this.prisma.tournamentRegistration.findMany({
           where: {
             paymentStatus: "PENDING",
-            tournament: { billingMode: "POSTPAID" },
+            // 취소된 대회의 청구는 독촉하지 않는다(미수금 집계와 같은 방어 조건).
+            tournament: {
+              billingMode: "POSTPAID",
+              status: { not: "cancelled" },
+            },
             payment: {
               paymentStatus: "pending",
               createdAt: { lt: billedBefore },
@@ -485,9 +489,13 @@ export class ReminderScheduler {
       );
     } catch (error) {
       this.logger.error("판매 준비 리마인더 처리 실패", error);
-      this.systemLog.cron("SALES_PREP_REMINDER", "판매 준비 리마인더 처리 실패", {
-        level: "ERROR",
-      });
+      this.systemLog.cron(
+        "SALES_PREP_REMINDER",
+        "판매 준비 리마인더 처리 실패",
+        {
+          level: "ERROR",
+        },
+      );
     }
   }
 }

@@ -36,6 +36,7 @@ import {
   calculateDDay,
   canManageMatch,
   cancelTournamentRegistration,
+  changeTournamentStatus,
   deleteTournament,
   getTournament,
   listTournamentRegistrations,
@@ -72,6 +73,8 @@ export default function CommonTournamentDetailPage() {
   // 감독 — 참가 등록 목록. 관리 진입 카드의 참가 인원 표기에만 사용
   //   (명단 행·정산 액션은 /tournaments/[id]/students 로 분리).
   const [regRows, setRegRows] = useState<TournamentRegistrationRow[]>([]);
+  // 명단 조회가 끝나기 전(또는 실패)에는 "신청 0건"으로 보이면 안 된다 — 삭제 버튼이 잘못 뜬다.
+  const [regRowsLoaded, setRegRowsLoaded] = useState(false);
 
   // 풀스크린 로더 fast-path (v11) — fetch 완료 시점에 PageTransitionLoader OFF
   usePageReady(!isLoading);
@@ -191,8 +194,10 @@ export default function CommonTournamentDetailPage() {
     const res = await listTournamentRegistrations(id);
     if (res.success && res.data) {
       setRegRows(res.data.registrations ?? []);
+      setRegRowsLoaded(true);
     } else {
       setRegRows([]);
+      setRegRowsLoaded(false);
     }
   }, [isManager, tournament, id]);
 
@@ -283,6 +288,36 @@ export default function CommonTournamentDetailPage() {
 
   // 종료/취소(또는 종료일 경과) 대회 — 수정 잠금 판정.
   const isEnded = uiStatus === "completed" || uiStatus === "cancelled";
+
+  // 대회 취소 가능 여부 판정 — 취소·환불된 신청은 이미 이탈이라 제외.
+  const activeRegRows = useMemo(
+    () =>
+      regRows.filter(
+        (r) => r.paymentStatus !== "CANCELLED" && r.paymentStatus !== "REFUNDED",
+      ),
+    [regRows],
+  );
+  // 실결제만 — 무료 대회는 신청 즉시 PAID 라 결제행이 없고, 환불할 것도 없어 취소를 막지 않는다.
+  const paidRegCount = useMemo(
+    () =>
+      activeRegRows.filter(
+        (r) =>
+          r.paymentStatus === "PAID" && r.payment?.paymentStatus === "completed",
+      ).length,
+    [activeRegRows],
+  );
+  const pendingRegCount = useMemo(
+    () => activeRegRows.filter((r) => r.paymentStatus === "PENDING").length,
+    [activeRegRows],
+  );
+  // 왼쪽 버튼 한 자리 — 신청이 없으면 삭제, 있으면 취소. 명단을 아직 못 받았으면 삭제를
+  //   보이지 않고, 종료(finished)된 대회는 전이표가 취소를 막으므로 아무것도 두지 않는다.
+  const leftAction: "delete" | "cancel" | "none" =
+    regRowsLoaded && activeRegRows.length === 0
+      ? "delete"
+      : tournament?.status === "finished"
+        ? "none"
+        : "cancel";
 
   const dDay = useMemo(
     () =>
@@ -468,8 +503,11 @@ export default function CommonTournamentDetailPage() {
 
       {/* 감독/코치 — 명단·정산 관리 진입 카드. 명단 행·정산 액션은 분리 페이지가 담당. */}
       {isManager && (() => {
-        // 활성 참가자(취소·환불 제외) — 진입 카드 인원 표기.
+        // 참가자 수 — 서버 판정(isParticipant, 선불은 결제 완료만)을 따르고, 옛 응답은
+        //   취소·환불 제외로 폴백. 아래 삭제/취소 분기(activeRegRows)는 결제 대기도
+        //   포함한 신청 행 기준이라 이 수와 다르다(미결제 신청은 취소로 닫아야 한다).
         const activeCount = regRows.filter((r) => {
+          if (r.isParticipant != null) return r.isParticipant;
           const s =
             r.billingStatus ??
             (r.paymentStatus === "CANCELLED"
@@ -563,54 +601,107 @@ export default function CommonTournamentDetailPage() {
           화면에 고정하지 않고 스크롤 끝에서 자연 노출. */}
       <div className="w-full min-w-0 bg-it-surface px-4 pt-4 pb-6 dark:bg-it-blue-950 mt-2">
         {isManager ? (
-          // [수정 2026-05-30] 대회 수정(파랑) : 삭제 = 6 : 4 — 수정 버튼을 더 크게(col-span-3 : col-span-2).
-          //   공통 Button 통일 + 아이콘 제거. 위계: 삭제=outline(red) / 수정=primary(ice solid).
-          <>
-            {/* [2026-06-17] 후불 정산(결제요청)은 위 "참가선수목록" 섹션의 결제요청 버튼으로 통합. */}
+          tournament.status === "cancelled" ? (
+            // 취소된 대회 — 삭제/취소 모두 의미 없음, 안내만 전체 폭으로.
             <div className="grid grid-cols-5 gap-2 w-full min-w-0">
-            <Button
-              variant="outline"
-              size="lg"
-              fullWidth
-              className="col-span-2 border-it-red-500 text-it-red-500 hover:border-it-red-500 hover:bg-it-red-50 dark:border-it-red-500 dark:text-it-red-300 dark:hover:bg-it-red-500/10"
-              onClick={async () => {
-                const ok = await modal.confirm({
-                  title: "대회 삭제",
-                  message:
-                    "이 대회를 삭제하시겠습니까?\n삭제된 대회는 복구할 수 없으며, 참가 신청도 모두 함께 삭제됩니다.",
-                  confirmText: "삭제하기",
-                  cancelText: "취소",
-                  variant: "danger",
-                });
-                if (!ok) return;
-                const res = await deleteTournament(id);
-                if (res.success) {
-                  toast.success(MESSAGES.tournament.deleteSuccess);
-                  navigate("/tournaments");
-                } else {
-                  toast.error(res.error?.message ?? MESSAGES.error.general);
-                }
-              }}
-            >
-              대회 삭제
-            </Button>
-            {isEnded ? (
-              <div className="col-span-3 flex items-center justify-center rounded-w-md border border-it-line-strong dark:border-rink-700 px-2 text-center text-w-caption font-semibold text-it-ink-500 dark:text-rink-300">
-                {MESSAGES.tournament.endedNoEdit}
+              {/* 옆에 버튼이 없어 행이 늘어나지 않으므로 버튼(lg) 높이를 직접 맞춘다. */}
+              <div className="col-span-5 flex min-h-14 items-center justify-center rounded-w-md border border-it-line-strong dark:border-rink-700 px-2 text-center text-w-caption font-semibold text-it-ink-500 dark:text-rink-300">
+                {MESSAGES.tournament.cancelledNoEdit}
               </div>
-            ) : (
-              <Button
-                variant="primary"
-                size="lg"
-                fullWidth
-                className="col-span-3"
-                onClick={() => navigate(`/tournaments/create?edit=${id}`)}
-              >
-                대회 수정
-              </Button>
-            )}
             </div>
-          </>
+          ) : (
+            // [수정 2026-05-30] 대회 수정(파랑) : 삭제/취소 = 6 : 4 — 수정 버튼을 더 크게(col-span-3 : col-span-2).
+            //   공통 Button 통일 + 아이콘 제거. 위계: 삭제·취소=outline(red) / 수정=primary(ice solid).
+            <>
+              {/* [2026-06-17] 후불 정산(결제요청)은 위 "참가선수목록" 섹션의 결제요청 버튼으로 통합. */}
+              {paidRegCount > 0 && (
+                <p className="mb-2 text-center text-w-small leading-relaxed text-it-ink-500 dark:text-rink-300">
+                  {MESSAGES.tournament.cancelBlockedPaid(paidRegCount)}
+                </p>
+              )}
+              <div className="grid grid-cols-5 gap-2 w-full min-w-0">
+              {leftAction === "delete" ? (
+                <Button
+                  variant="outline"
+                  size="lg"
+                  fullWidth
+                  className="col-span-2 border-it-red-500 text-it-red-500 hover:border-it-red-500 hover:bg-it-red-50 dark:border-it-red-500 dark:text-it-red-300 dark:hover:bg-it-red-500/10"
+                  onClick={async () => {
+                    const ok = await modal.confirm({
+                      title: "대회 삭제",
+                      message:
+                        "이 대회를 삭제하시겠습니까?\n삭제된 대회는 복구할 수 없으며, 참가 신청도 모두 함께 삭제됩니다.",
+                      confirmText: "삭제하기",
+                      cancelText: "취소",
+                      variant: "danger",
+                    });
+                    if (!ok) return;
+                    const res = await deleteTournament(id);
+                    if (res.success) {
+                      toast.success(MESSAGES.tournament.deleteSuccess);
+                      navigate("/tournaments");
+                    } else {
+                      toast.error(res.error?.message ?? MESSAGES.error.general);
+                    }
+                  }}
+                >
+                  대회 삭제
+                </Button>
+              ) : leftAction === "cancel" ? (
+                <Button
+                  variant="outline"
+                  size="lg"
+                  fullWidth
+                  disabled={paidRegCount > 0}
+                  className="col-span-2 border-it-red-500 text-it-red-500 hover:border-it-red-500 hover:bg-it-red-50 dark:border-it-red-500 dark:text-it-red-300 dark:hover:bg-it-red-500/10"
+                  onClick={async () => {
+                    const message =
+                      tournament.billingMode === "POSTPAID" && pendingRegCount > 0
+                        ? MESSAGES.tournament.cancelConfirmPostpaid(pendingRegCount)
+                        : tournament.billingMode === "PREPAID" && pendingRegCount > 0
+                          ? MESSAGES.tournament.cancelConfirmPrepaid(pendingRegCount)
+                          : MESSAGES.tournament.cancelConfirmPlain;
+                    const ok = await modal.confirm({
+                      title: MESSAGES.tournament.cancelConfirmTitle,
+                      message,
+                      confirmText: MESSAGES.tournament.cancelConfirmCta,
+                      cancelText: MESSAGES.common.close,
+                      variant: "danger",
+                    });
+                    if (!ok) return;
+                    const res = await changeTournamentStatus(id, "cancelled");
+                    if (res.success) {
+                      toast.success(MESSAGES.tournament.cancelSuccess);
+                      await load();
+                      await loadRegRows();
+                    } else {
+                      toast.error(res.error?.message ?? MESSAGES.error.general);
+                    }
+                  }}
+                >
+                  {MESSAGES.tournament.cancelCta}
+                </Button>
+              ) : null}
+              {isEnded ? (
+                <div
+                  className={`${leftAction === "none" ? "col-span-5" : "col-span-3"} flex items-center justify-center rounded-w-md border border-it-line-strong dark:border-rink-700 px-2 text-center text-w-caption font-semibold text-it-ink-500 dark:text-rink-300`}
+                >
+                  {MESSAGES.tournament.endedNoEdit}
+                </div>
+              ) : (
+                <Button
+                  variant="primary"
+                  size="lg"
+                  fullWidth
+                  className="col-span-3"
+                  onClick={() => navigate(`/tournaments/create?edit=${id}`)}
+                >
+                  대회 수정
+                </Button>
+              )}
+              </div>
+            </>
+          )
         ) : applyDisabledReason ? (
           // 비활성 사유(신청 마감·대상 자녀 없음 등)는 행동이 아닌 상태 안내 — apply 후불 안내 배너와 동일 패턴.
           <div className="flex items-start gap-2.5 rounded-w-md border-[1.5px] border-it-blue-500/30 bg-it-blue-50 p-4 text-w-small text-it-ink-600 dark:bg-it-blue-500/10 dark:text-rink-100">

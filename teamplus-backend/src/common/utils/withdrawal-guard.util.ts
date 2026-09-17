@@ -2,7 +2,10 @@ import { Prisma } from "@prisma/client";
 import { REFUND_REQUEST_ACTIVE_STATUSES } from "@/payments/refund-requests/refund-request.constants";
 import { eligibleEnrollmentWhereAnyOf } from "@/common/billing/enrollment-eligibility.util";
 import { utcMonthStart } from "@/common/utils/class-lifecycle.util";
-import { addUtcMonths, kstTodayUtcMidnight } from "@/common/utils/kst-date.util";
+import {
+  addUtcMonths,
+  kstTodayUtcMidnight,
+} from "@/common/utils/kst-date.util";
 
 /**
  * 탈퇴 차단 사유 카운트 유틸 — 운영 자산(팀·수업·대회·오픈클래스·자녀 수강 자격)과
@@ -267,11 +270,13 @@ export async function findBlockingOwnershipDetailed(
           billing: { class: { OR: ownedClassScope } },
         },
       }),
-      // 후불 대회 미정산 — 대회 status 와 무관(종료 후 청구가 정상 플로우)
+      // 후불 대회 미정산 — 종료 여부와 무관(종료 후 청구가 정상 플로우)하되,
+      //   취소된 대회는 청구할 길이 없으므로 채무로 세지 않는다.
       db.tournament.count({
         where: {
           team: { coachId: userId },
           billingMode: "POSTPAID",
+          status: { not: "cancelled" },
           registrations: {
             some: {
               cancelledAt: null,
@@ -398,7 +403,7 @@ export async function findBlockingOwnershipDetailed(
           userId,
           cancelledAt: null,
           paymentStatus: { in: UNSETTLED_TOURNAMENT_REG_STATUSES },
-          tournament: { billingMode: "POSTPAID" },
+          tournament: { billingMode: "POSTPAID", status: { not: "cancelled" } },
         },
       }),
     ]);

@@ -501,7 +501,7 @@ export class PostpaidSettlementService {
         where: {
           paymentStatus: "PENDING",
           payment: { userId: payerUserId, paymentStatus: "pending" },
-          tournament: { billingMode: "POSTPAID" },
+          tournament: { billingMode: "POSTPAID", status: { not: "cancelled" } },
         },
         select: {
           id: true,

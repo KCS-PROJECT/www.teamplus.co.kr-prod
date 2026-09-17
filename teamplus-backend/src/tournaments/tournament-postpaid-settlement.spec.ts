@@ -62,7 +62,11 @@ function buildHarness(opts: {
   if (opts.existing) rows.set(opts.existing.orderNumber, opts.existing);
 
   const tx = {
-    tournament: { update: jest.fn().mockResolvedValue({}) },
+    $queryRaw: jest.fn().mockResolvedValue(undefined),
+    tournament: {
+      update: jest.fn().mockResolvedValue({}),
+      findUnique: jest.fn().mockResolvedValue({ status: "finished" }),
+    },
     payment: {
       upsert: jest.fn(async (args: any) => {
         const found = rows.get(args.where.orderNumber);
