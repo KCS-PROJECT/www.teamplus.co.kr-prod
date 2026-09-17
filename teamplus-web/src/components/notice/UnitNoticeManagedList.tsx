@@ -98,6 +98,12 @@ export interface UnitNoticeManagedListProps {
    * 보이지 않게 한다 (globals.css 의 `main[data-no-enter]` 마커).
    */
   disableEnterMotion?: boolean;
+  /**
+   * 팀 공지 작성 진입(버튼·FAB) 노출 여부 — 팀이 없는 오픈클래스 감독은 false.
+   * 작성 화면은 프리셋 없는 진입을 팀 공지로 확정하므로 팀 탭에서만 노출하고,
+   * 훈련·대회 공지는 각 상세 화면에서 작성한다.
+   */
+  canWrite?: boolean;
 }
 
 // [P2-R2-M01] 페이지 크기 — 초과분은 offset 더보기로 이어 붙인다 (50건 잘림 방지)
@@ -106,7 +112,9 @@ const PAGE_SIZE = 50;
 export function UnitNoticeManagedList({
   axis = 'unit',
   disableEnterMotion = false,
+  canWrite = true,
 }: UnitNoticeManagedListProps = {}) {
+  const showWrite = axis === 'team' && canWrite;
   const { toast } = useToast();
   const { navigate } = useNavigation();
   const [posts, setPosts] = useState<UnitNoticePost[]>([]);
@@ -476,20 +484,22 @@ export function UnitNoticeManagedList({
                   ? MESSAGES.unitNotice.emptyManagedTeamHint
                   : MESSAGES.unitNotice.emptyManagedHint}
               </p>
-              <button
-                type="button"
-                onClick={() => navigate('/community-notice/create')}
-                className="mt-2 inline-flex items-center gap-1.5 rounded-w-md bg-it-blue-500 px-4 py-2 text-card-meta font-bold text-white transition-colors motion-reduce:transition-none hover:bg-it-blue-600 active:brightness-95"
-              >
-                <Icon name="edit" className="text-card-emphasis" aria-hidden="true" />
-                {MESSAGES.unitNotice.write}
-              </button>
+              {showWrite && (
+                <button
+                  type="button"
+                  onClick={() => navigate('/community-notice/create')}
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-w-md bg-it-blue-500 px-4 py-2 text-card-meta font-bold text-white transition-colors motion-reduce:transition-none hover:bg-it-blue-600 active:brightness-95"
+                >
+                  <Icon name="edit" className="text-card-emphasis" aria-hidden="true" />
+                  {MESSAGES.unitNotice.write}
+                </button>
+              )}
             </div>
           </section>
         )}
       </main>
 
-      {posts.length > 0 && (
+      {showWrite && posts.length > 0 && (
         <FloatingActionButton
           href="/community-notice/create"
           icon="add"
