@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
 import { useNativeUI } from '@/hooks/useNativeUI';
+import { useSessionAuth } from '@/hooks/useSessionAuth';
 import { cn } from '@/lib/utils';
 import { MESSAGES } from '@/lib/messages';
 import { UnitNoticeManagedList } from '@/components/notice/UnitNoticeManagedList';
@@ -21,6 +22,10 @@ const TABS = [
 type TabKey = (typeof TABS)[number]['key'];
 
 export default function DirectorNoticesPage() {
+  const { user } = useSessionAuth();
+  // 팀 공지 작성 주체는 팀을 가진 감독·코치 — 오픈클래스 감독은 팀이 없어 제외 (team-notices 와 동일 축)
+  const canWriteTeam =
+    user?.userType === 'director' || user?.userType === 'coach';
   const [activeTab, setActiveTab] = useState<TabKey>('team');
   // 페이지 첫 진입 여부 — 첫 탭 인스턴스만 진입 모션(slideUp)을 재생하고,
   // 탭 전환으로 재마운트되는 인스턴스는 즉시 전환한다 (모션 재생 시 "화면이
@@ -105,6 +110,7 @@ export default function DirectorNoticesPage() {
           <UnitNoticeManagedList
             key="team"
             axis="team"
+            canWrite={canWriteTeam}
             disableEnterMotion={enteredRef.current}
           />
         ) : (

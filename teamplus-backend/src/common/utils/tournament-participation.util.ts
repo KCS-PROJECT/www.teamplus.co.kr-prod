@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "@/prisma/prisma.service";
 
 /**
@@ -51,9 +52,7 @@ export async function resolveParticipatingTournamentIds(
   // 미결제(UNPAID/PENDING) 등록은 후불 대회만 참여로 인정 — 선불 결제대기는 제외.
   const unpaidIds = Array.from(
     new Set(
-      regs
-        .filter((r) => r.paymentStatus !== "PAID")
-        .map((r) => r.tournamentId),
+      regs.filter((r) => r.paymentStatus !== "PAID").map((r) => r.tournamentId),
     ),
   ).filter((id) => !participating.has(id));
   if (unpaidIds.length > 0) {
@@ -64,4 +63,34 @@ export async function resolveParticipatingTournamentIds(
     for (const t of postpaid) participating.add(t.id);
   }
   return participating;
+}
+
+/**
+ * "이 대회의 참가자" 조건 — 인원 집계·정원 판정·공지 수신자가 공유하는 단일 기준.
+ *   · 선불(PREPAID): 결제 완료(PAID)만. 신청만 하고 결제하지 않은 PENDING 은 참가가 아니다.
+ *   · 후불(POSTPAID): 취소·환불을 뺀 전부(UNPAID/PENDING/PAID). 금액은 종료 후 정산된다.
+ *   위 resolveParticipatingTournamentIds(달력)와 같은 규칙이며, 정원 도입 시 "자리 점유"
+ *   판정은 이 파일에 함수를 하나 더 두어 나눈다(이 함수의 의미는 바꾸지 않는다).
+ *
+ * 학부모 본인의 "신청한 대회"(결제하러 돌아와야 하는 PENDING 포함) 판정에는 쓰지 않는다.
+ */
+export function participantRegistrationWhere(
+  billingMode: string | null | undefined,
+): Prisma.TournamentRegistrationWhereInput {
+  return {
+    cancelledAt: null,
+    paymentStatus:
+      billingMode === "PREPAID" ? "PAID" : { notIn: ["CANCELLED", "REFUNDED"] },
+  };
+}
+
+/** participantRegistrationWhere 와 같은 규칙의 메모리 판정 — 이미 불러온 참가 행에 쓴다. */
+export function isParticipantRegistration(
+  billingMode: string | null | undefined,
+  reg: { paymentStatus: string; cancelledAt?: Date | null },
+): boolean {
+  if (reg.cancelledAt != null) return false;
+  return billingMode === "PREPAID"
+    ? reg.paymentStatus === "PAID"
+    : reg.paymentStatus !== "CANCELLED" && reg.paymentStatus !== "REFUNDED";
 }

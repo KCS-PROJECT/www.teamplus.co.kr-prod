@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useRef, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback, ReactNode } from 'react';
 import { ui as nativeUI } from '@/services/native-bridge';
 import { isNativeApp } from '@/lib/environment';
 
@@ -270,16 +270,17 @@ export function ModalProvider({ children }: ModalProviderProps) {
     modalBackController.closeTop = () => close();
   }, [modals, close]);
 
-  const value: ModalContextType = {
-    modals,
-    modal: {
-      confirm,
-      alert,
-      open,
-      close,
-      closeAll,
-    },
-  };
+  // modal API 객체는 참조를 고정한다 — 매 렌더 새 객체면 이를 deps 로 쓰는 훅
+  //   (useAuthClickGuard → useNavigation → 각 페이지 load)이 모달을 여는 순간 전부
+  //   재생성되어, 페이지가 첫 로딩 상태로 되돌아가며 스크롤이 맨 위로 튄다.
+  const modalApi = useMemo(
+    () => ({ confirm, alert, open, close, closeAll }),
+    [confirm, alert, open, close, closeAll],
+  );
+  const value: ModalContextType = useMemo(
+    () => ({ modals, modal: modalApi }),
+    [modals, modalApi],
+  );
 
   return (
     <ModalContext.Provider value={value}>

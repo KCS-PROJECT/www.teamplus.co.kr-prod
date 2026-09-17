@@ -160,6 +160,11 @@ function reg(
     payment: { id: `p-${id}`, orderNumber: id, paymentStatus, amount: 30000 },
     billingStatus,
     billingTiming,
+    // 서버 참가자 판정과 동일 — 선불은 결제 완료만, 후불은 취소·환불 제외.
+    isParticipant:
+      billingTiming === 'PREPAID'
+        ? billingStatus === 'PAID'
+        : billingStatus !== 'CANCELLED' && billingStatus !== 'REFUNDED',
     billedAmount: billingStatus === 'PAID' || billingStatus === 'BILLED' ? 30000 : null,
     paidAmount: billingStatus === 'PAID' ? 30000 : 0,
     refundedAmount: billingStatus === 'REFUNDED' ? 30000 : 0,
@@ -268,11 +273,15 @@ describe('대회 선수정보 — 후불', () => {
     expect(screen.queryByText('박미정산')).toBeNull();
     expect(screen.queryByText('최취소')).toBeNull();
 
-    expect(
-      screen.getByRole('button', {
-        name: MESSAGES.tournament.settleRequestCtaCount(0),
-      }),
-    ).toBeDisabled();
+    // 0명 선택 — 버튼은 잠그지 않고(막힌 사유가 아니라 이 화면에서 바로 고칠 일) 누르면 안내한다.
+    const cta = screen.getByRole('button', {
+      name: MESSAGES.tournament.settleRequestCta,
+    });
+    expect(cta).toBeEnabled();
+    fireEvent.click(cta);
+    expect(mockToast.error).toHaveBeenCalledWith(
+      MESSAGES.tournament.settleSelectTargets,
+    );
   });
 
   it('탭② 필터(미정산) — 정산 전만 표시 + 청구 대상 선택·결제요청 유지', async () => {
@@ -389,31 +398,34 @@ describe('대회 선수정보 — 선불 (읽기전용)', () => {
     });
   });
 
-  it('탭① — UNSETTLED 는 "미결제" 라벨("미정산" 미노출)', async () => {
+  it('탭① — 결제 완료만 명단(결제하다 만 신청은 참가자가 아님)', async () => {
     render(<TournamentStudentsPage />);
     await screen.findByText('김완납', undefined, { timeout: 4000 });
 
-    expect(screen.queryByText(MESSAGES.settlement.rowStatusUnsettled)).toBeNull();
+    expect(screen.queryByText('박미정산')).toBeNull();
     expect(
-      screen.getAllByText(MESSAGES.tournament.rosterPrepaidUnpaid).length,
-    ).toBeGreaterThanOrEqual(1);
+      screen.getByText(MESSAGES.tournament.rosterParticipantCount(1)),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(MESSAGES.settlement.rowStatusUnsettled)).toBeNull();
+    expect(screen.queryByText(MESSAGES.tournament.rosterPrepaidUnpaid)).toBeNull();
   });
 
-  it('탭② — 정산 액션(체크박스·결제요청) 없음 + 미결제 라벨 + 미수 미노출', async () => {
+  it('탭② — 정산 액션 없음 + 결제 완료·환불만(미결제 신청·미수 미노출)', async () => {
     render(<TournamentStudentsPage />);
     await screen.findByText('김완납', undefined, { timeout: 4000 });
     openPaymentTab();
 
     expect(screen.queryByRole('button', { name: /결제요청/ })).toBeNull();
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
-    // 미정산(후불 용어)·미수 미노출, 미결제 = CountBlock + 필터 + 행 칩.
+    // 결제하다 만 신청(박미정산)은 결제 탭에도 없고, 미결제·미정산·미수 표기도 없다.
+    expect(screen.getByText('김완납')).toBeInTheDocument();
+    expect(screen.queryByText('박미정산')).toBeNull();
+    expect(screen.queryByText(MESSAGES.tournament.rosterPrepaidUnpaid)).toBeNull();
     expect(screen.queryByText(MESSAGES.settlement.rowStatusUnsettled)).toBeNull();
     expect(screen.queryByText(MESSAGES.settlement.outstanding)).toBeNull();
-    expect(
-      screen.getAllByText(MESSAGES.tournament.rosterPrepaidUnpaid).length,
-    ).toBeGreaterThanOrEqual(3);
-    // 결제 탭 요약(총 수납)은 선불도 노출(수업 결제 탭 동형).
+    // 결제 탭 요약(총 수납·완납·환불)은 선불도 노출.
     expect(screen.getByText(MESSAGES.settlement.totalCollected)).toBeInTheDocument();
+    expect(screen.getByText(MESSAGES.settlement.rowStatusRefunded)).toBeInTheDocument();
   });
 });
 

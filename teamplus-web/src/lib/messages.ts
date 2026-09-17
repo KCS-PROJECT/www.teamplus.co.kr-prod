@@ -1741,13 +1741,12 @@ export const MESSAGES = {
     filterAriaTeam: "팀별 필터",
     filterAll: "전체",
     emptyManaged: "등록한 훈련·대회 공지가 없습니다.",
-    emptyManagedHint: "훈련·대회 참가자에게 첫 공지를 보내보세요",
+    emptyManagedHint: "훈련·대회 공지는 각 훈련·대회 상세 화면에서 작성할 수 있습니다",
     emptyManagedTeam: "등록한 팀 공지가 없습니다.",
     emptyManagedTeamHint: "팀 구성원에게 첫 공지를 보내보세요",
     emptyUnit: "등록된 공지가 없습니다.",
     emptyUnitHint: "공지가 올라오면 이곳에서 알려드릴게요",
     write: "공지 작성하기",
-    writeTitle: "훈련·대회 공지 작성",
     writeTitleClass: "훈련 공지 작성",
     writeTitleTournament: "대회 공지 작성",
     writeTitleTeam: "팀 공지 작성",
@@ -1755,12 +1754,9 @@ export const MESSAGES = {
     editTitleClass: "훈련 공지 수정",
     editTitleTournament: "대회 공지 수정",
     editTitleTeam: "팀 공지 수정",
-    targetLabel: "공지 대상",
-    targetPlaceholder: "공지를 보낼 대상을 선택해주세요",
     targetClassGroup: "훈련",
     targetTournamentGroup: "대회",
     targetTeamGroup: "팀",
-    targetEmpty: "공지를 작성할 수 있는 대상이 없습니다.",
     targetNotManaged: "이 대상에 공지를 작성할 권한이 없습니다.",
     titleLabel: "제목",
     titlePlaceholder: "공지 제목을 입력해주세요",
@@ -1807,7 +1803,6 @@ export const MESSAGES = {
     expiresLabel: "게시 종료",
     loadFailed: "공지를 불러오지 못했습니다.",
     notFoundOrForbidden: "공지를 찾을 수 없거나 접근 권한이 없습니다.",
-    requiredTarget: "공지 대상을 선택해주세요.",
     requiredTitle: "제목을 입력해주세요.",
     requiredContent: "내용을 입력해주세요.",
     // ── 표시 문구 상수화 (Codex R1 M-03 — 하드코딩 제거) ──
@@ -1828,7 +1823,6 @@ export const MESSAGES = {
     viewImageLarge: "이미지 크게 보기",
     profileAlt: (name: string) => `${name} 프로필`,
     commentsTitle: "댓글",
-    targetFallback: "공지 대상",
     contentSectionAria: "공지 내용",
     optionsSectionAria: "공지 옵션",
     imagePick: "이미지 선택",
@@ -2013,8 +2007,18 @@ export const MESSAGES = {
       "감독님의 팀 가입 승인이 완료된 후 참가 신청할 수 있습니다.",
     // 참가 신청 CTA 비활성 사유 — 첫 경기 시작 후 신청 마감.
     applyClosedAfterStart: "대회가 시작되어 참가 신청이 마감되었습니다.",
-    // 후불 결제요청 버튼 비활성 안내 — 마지막 경기 시작 +1시간부터 활성.
-    settleAvailableAfterHour: "경기 시작 1시간 후 결제요청 가능합니다.",
+    // 후불 결제요청을 아직 못 하는 사유 — 비활성 버튼 위에 안내로 띄운다.
+    //   공통 조건은 "대회가 끝나야 한다" 하나이고, 무엇이 없어서 못 끝났는지만 다르다.
+    //   기준: 마지막 경기 시작 +1시간 / 종료일은 그 날이 지난 다음날 0시부터.
+    settleAvailableAfterHour:
+      "마지막 경기 시작 1시간 후부터 결제요청할 수 있어요.",
+    settleNeedScheduleOrEndDate:
+      "대회가 끝난 뒤 결제요청할 수 있어요. 경기 일정이나 종료일을 먼저 등록해주세요.",
+    settleAvailableAfterDate: (label: string) =>
+      `종료일(${label})이 지나면 결제요청할 수 있어요.`,
+    //   취소된 대회는 종료 판정이 서지 않아 영원히 막힌다 — 기다리라고 하면 거짓이 된다.
+    settleCancelledTournament: "취소된 대회는 결제요청할 수 없어요.",
+    settleSelectTargets: "결제요청할 참가자를 선택해주세요.",
     // 결제 대기(PENDING) 행 단건 재청구 액션 — 청구 금액 정정.
     settleEditAmount: "금액 수정",
     // 참가선수목록 행 금액 표시 — 결제 대기=청구액 / 결제완료=결제액.
@@ -2156,6 +2160,19 @@ export const MESSAGES = {
     // 권한 관련
     viewOnlyHint: "조회만 가능합니다. 수정은 감독/코치 권한이 필요합니다.",
     endedNoEdit: "종료된 대회는 수정할 수 없습니다.",
+    // 대회 취소 — 결제 완료 신청이 없을 때만 가능(있으면 환불 후 취소).
+    cancelCta: "대회 취소",
+    cancelConfirmTitle: "대회 취소",
+    cancelConfirmCta: "취소하기",
+    cancelConfirmPlain: "참가 신청이 마감됩니다. 취소할까요?",
+    cancelConfirmPostpaid: (n: number) =>
+      `참가 신청이 마감되고 청구 ${n}건이 함께 철회됩니다. 학부모에게 알림이 갑니다.`,
+    cancelConfirmPrepaid: (n: number) =>
+      `참가 신청이 마감되고 결제 대기 중인 신청 ${n}건이 함께 취소됩니다. 결제가 이미 진행됐다면 환불 요청이 자동 접수됩니다.`,
+    cancelBlockedPaid: (n: number) =>
+      `결제 완료 ${n}건이 있어요. 환불 후 취소할 수 있어요.`,
+    cancelSuccess: "대회가 취소되었습니다.",
+    cancelledNoEdit: "취소된 대회입니다.",
     applyCta: "참가 신청(결제)하기",
     bracketTitle: (round: string) => `${round} 대진표`,
     // 탭 라벨

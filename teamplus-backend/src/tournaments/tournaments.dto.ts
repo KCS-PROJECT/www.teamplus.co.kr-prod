@@ -360,6 +360,8 @@ export class UpdateTournamentDto {
   })
   @IsOptional()
   @IsString()
+  // 대문자 등 다른 값이 그대로 저장되면 취소 부수효과·전이표·취소 대회 제외 필터가 전부 비켜간다.
+  @IsIn(["scheduled", "ongoing", "finished", "cancelled"])
   status?: string;
 
   // [수정 2026-05-15 db-keeper] T02/T04 협업 — ageGroup=ALL 변경 시
@@ -536,28 +538,14 @@ export class ConfirmTournamentSettlementDto {
 
 export class ChangeTournamentStatusDto {
   @ApiProperty({
-    description: "변경할 상태",
-    example: "ACTIVE",
-    enum: [
-      "DRAFT",
-      "ACTIVE",
-      "REGISTRATION_OPEN",
-      "REGISTRATION_CLOSED",
-      "IN_PROGRESS",
-      "COMPLETED",
-      "CANCELLED",
-    ],
+    description:
+      "변경할 상태 — 서비스 전이표(scheduled → ongoing → finished, 또는 cancelled)와 같은 어휘",
+    example: "cancelled",
+    enum: ["scheduled", "ongoing", "finished", "cancelled"],
   })
   @IsString()
-  @IsIn([
-    "DRAFT",
-    "ACTIVE",
-    "REGISTRATION_OPEN",
-    "REGISTRATION_CLOSED",
-    "IN_PROGRESS",
-    "COMPLETED",
-    "CANCELLED",
-  ])
+  // Tournament.status 저장값과 동일한 어휘여야 한다 — 어긋나면 어떤 값도 전이표를 통과하지 못한다.
+  @IsIn(["scheduled", "ongoing", "finished", "cancelled"])
   status!: string;
 }
 

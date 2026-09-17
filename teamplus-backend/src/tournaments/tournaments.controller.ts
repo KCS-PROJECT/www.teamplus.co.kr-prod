@@ -204,7 +204,8 @@ export class TournamentsController {
    * 토너먼트 상태 변경
    */
   @Patch(":id/status")
-  @Roles("ADMIN", "DIRECTOR")
+  // 삭제(DELETE :id)가 COACH 에게 열려 있으므로 덜 파괴적인 취소도 같은 범위로 맞춘다.
+  @Roles("ADMIN", "DIRECTOR", "COACH")
   @ApiOperation({
     summary: "대회 상태 변경",
     description:
@@ -406,7 +407,10 @@ export class TournamentsController {
   })
   @ApiParam({ name: "id", description: "대회 ID" })
   @ApiResponse({ status: 200, description: "결제요청 취소 성공" })
-  @ApiResponse({ status: 400, description: "후불 대회 아님 / 취소할 결제요청 없음" })
+  @ApiResponse({
+    status: 400,
+    description: "후불 대회 아님 / 취소할 결제요청 없음",
+  })
   @ApiResponse({ status: 404, description: "대회를 찾을 수 없습니다." })
   async cancelTournamentSettlement(
     @Param("id") id: string,

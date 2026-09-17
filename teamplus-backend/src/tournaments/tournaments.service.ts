@@ -4,9 +4,11 @@ import {
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
   Optional,
 } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
 import { PrismaService } from "@/prisma/prisma.service";
 import { NotificationsService } from "@/notifications/notifications.service";
@@ -33,6 +35,11 @@ import {
 import { PaymentRefundService } from "@/payments/services/payment-refund.service";
 import { RedisService } from "@/redis/redis.service";
 import { resolveActivePaymentProvider } from "@/payments/payment-provider.util";
+import { acquireTournamentBillingLock } from "./utils/tournament-locks.util";
+import {
+  isParticipantRegistration,
+  participantRegistrationWhere,
+} from "@/common/utils/tournament-participation.util";
 import {
   CreateTournamentDto,
   UpdateTournamentDto,
@@ -49,6 +56,17 @@ import {
 
 /** 후불 정산 활성화 대기 — 경기 시간이 30분~1시간이라 마지막 경기 시작 +1시간부터 종료로 본다. */
 const SETTLE_OPEN_DELAY_MS = 60 * 60 * 1000;
+
+/** 대회 취소 알림 근거 스냅샷 — applyTournamentCancellation 이 만들고 notifyTournamentCancelled 가 소비. */
+type TournamentCancelSnapshot = {
+  tournamentId: string;
+  tournamentName: string;
+  recipients: {
+    userId: string;
+    childId: string | null;
+    postpaidReverted: boolean;
+  }[];
+};
 
 @Injectable()
 export class TournamentsService {
@@ -726,11 +744,15 @@ export class TournamentsService {
         return this.isBirthYearEligible(birthYear, tournament);
       })
       .map((tournament) => {
-        const activeRegistrations = tournament.registrations.filter(
+        // 인원은 "참가자"(선불=결제 완료만) 기준, "내가 신청했는가"는 결제 전 신청도 포함한다 —
+        //   학부모가 결제하러 돌아올 대회를 신청됨으로 봐야 하기 때문.
+        const notCancelled = tournament.registrations.filter(
           (registration) => registration.paymentStatus !== "CANCELLED",
         );
-        const currentParticipants = activeRegistrations.length;
-        const isRegistered = activeRegistrations.some(
+        const currentParticipants = notCancelled.filter((registration) =>
+          isParticipantRegistration(tournament.billingMode, registration),
+        ).length;
+        const isRegistered = notCancelled.some(
           (registration) => registration.userId === userId,
         );
         const maxParticipants = Math.max(
@@ -1598,78 +1620,91 @@ export class TournamentsService {
       }
     }
 
-    const updated = await this.prisma.$transaction(async (tx) => {
-      const t = await tx.tournament.update({
-        where: { id },
-        data: {
-          name: dto.name ?? tournament.name,
-          description: dto.description ?? tournament.description,
-          teamId: nextTeamId,
-          rinkId: dto.rinkId ?? tournament.rinkId,
-          venueId: dto.venueId ?? tournament.venueId,
-          startDate,
-          endDate,
-          status: dto.status ?? tournament.status,
-          eligibleBirthYearFrom: nextBirthYearFrom,
-          eligibleBirthYearTo: nextBirthYearTo,
-          eligibleBirthYears: nextBirthYears,
-          feePerGame: dto.feePerGame
-            ? new Decimal(dto.feePerGame)
-            : tournament.feePerGame,
-          totalGames: dto.totalGames ?? tournament.totalGames,
-          feeType: dto.feeType ?? tournament.feeType,
-          maxParticipants: dto.maxParticipants ?? tournament.maxParticipants,
-          registrationDeadline: dto.registrationDeadline
-            ? new Date(dto.registrationDeadline)
-            : tournament.registrationDeadline,
-          // [수정 2026-05-15 db-keeper] T03/H1 + T02/T04 협업 — ageGroup 명시 변경 보장.
-          //  `nextAgeGroup` 변수로 birth year 정합성 (resolveBirthYear) 과 동기화.
-          //  U8 → ALL 다운그레이드 시 birth year 도 함께 자동 클리어됨.
-          ageGroup: nextAgeGroup,
-          // [재설계 2026-06-16] selectedParticipantIds 는 명시 시에만 갱신 (생략 시 기존 유지).
-          //   자격 SoT 이며, 위에서 eligibleBirthYears 를 이 명단 기준으로 파생 재계산했다.
-          selectedParticipantIds: nextParticipantIds,
-          // [재설계 2026-06-16] eligibleGroupIds 자격 의미 폐기 — 명단 전송 시 빈 배열로 클리어,
-          //   미전송 시 기존값 보존(레거시 데이터 무변경).
-          eligibleGroupIds:
-            dto.selectedParticipantIds !== undefined
-              ? []
-              : ((tournament as { eligibleGroupIds?: unknown })
-                  .eligibleGroupIds ?? undefined),
-          // [추가 2026-05-15 db-keeper] T03/H2 — 대회 정보 페이지 신규 필드.
-          rules: dto.rules !== undefined ? dto.rules : tournament.rules,
-          // 빈 문자열 전송 = 클리어(null) — 링크장 선택 전환 시 스테일 텍스트가 폴백 최우선으로
-          //   새 링크장 이름을 가리는 것을 방지.
-          location:
-            dto.location !== undefined
-              ? dto.location.trim() || null
-              : tournament.location,
-          prizeAmount:
-            dto.prizeAmount !== undefined
-              ? new Decimal(dto.prizeAmount)
-              : tournament.prizeAmount,
-          // 결제 모드 — 명시 시에만 갱신 (생략 시 기존 유지).
-          billingMode: dto.billingMode ?? tournament.billingMode,
-        },
-      });
+    const { t: updated, snapshot } = await this.prisma.$transaction(
+      async (tx) => {
+        // 취소 적용은 tx 선두 — advisory lock·PAID 재검증이 이후 update 보다 먼저 자리잡아야 한다.
+        const isCancelling =
+          dto.status === "cancelled" && tournament.status !== "cancelled";
+        const snapshot = isCancelling
+          ? await this.applyTournamentCancellation(tx, tournament)
+          : null;
 
-      if (matchPlan) {
-        if (matchPlan.deleteIds.length > 0) {
-          // 불가침 검증을 통과한 경기만 도달 — periods/events 는 비어 있어 Cascade 유실 없음.
-          await tx.hockeyMatch.deleteMany({
-            where: { id: { in: matchPlan.deleteIds }, tournamentId: id },
-          });
-        }
-        for (const u of matchPlan.updates) {
-          await tx.hockeyMatch.update({ where: { id: u.id }, data: u.data });
-        }
-        if (matchPlan.creates.length > 0) {
-          await tx.hockeyMatch.createMany({ data: matchPlan.creates });
-        }
-      }
+        const t = await tx.tournament.update({
+          where: { id },
+          data: {
+            name: dto.name ?? tournament.name,
+            description: dto.description ?? tournament.description,
+            teamId: nextTeamId,
+            rinkId: dto.rinkId ?? tournament.rinkId,
+            venueId: dto.venueId ?? tournament.venueId,
+            startDate,
+            endDate,
+            status: dto.status ?? tournament.status,
+            eligibleBirthYearFrom: nextBirthYearFrom,
+            eligibleBirthYearTo: nextBirthYearTo,
+            eligibleBirthYears: nextBirthYears,
+            feePerGame: dto.feePerGame
+              ? new Decimal(dto.feePerGame)
+              : tournament.feePerGame,
+            totalGames: dto.totalGames ?? tournament.totalGames,
+            feeType: dto.feeType ?? tournament.feeType,
+            maxParticipants: dto.maxParticipants ?? tournament.maxParticipants,
+            registrationDeadline: dto.registrationDeadline
+              ? new Date(dto.registrationDeadline)
+              : tournament.registrationDeadline,
+            // [수정 2026-05-15 db-keeper] T03/H1 + T02/T04 협업 — ageGroup 명시 변경 보장.
+            //  `nextAgeGroup` 변수로 birth year 정합성 (resolveBirthYear) 과 동기화.
+            //  U8 → ALL 다운그레이드 시 birth year 도 함께 자동 클리어됨.
+            ageGroup: nextAgeGroup,
+            // [재설계 2026-06-16] selectedParticipantIds 는 명시 시에만 갱신 (생략 시 기존 유지).
+            //   자격 SoT 이며, 위에서 eligibleBirthYears 를 이 명단 기준으로 파생 재계산했다.
+            selectedParticipantIds: nextParticipantIds,
+            // [재설계 2026-06-16] eligibleGroupIds 자격 의미 폐기 — 명단 전송 시 빈 배열로 클리어,
+            //   미전송 시 기존값 보존(레거시 데이터 무변경).
+            eligibleGroupIds:
+              dto.selectedParticipantIds !== undefined
+                ? []
+                : ((tournament as { eligibleGroupIds?: unknown })
+                    .eligibleGroupIds ?? undefined),
+            // [추가 2026-05-15 db-keeper] T03/H2 — 대회 정보 페이지 신규 필드.
+            rules: dto.rules !== undefined ? dto.rules : tournament.rules,
+            // 빈 문자열 전송 = 클리어(null) — 링크장 선택 전환 시 스테일 텍스트가 폴백 최우선으로
+            //   새 링크장 이름을 가리는 것을 방지.
+            location:
+              dto.location !== undefined
+                ? dto.location.trim() || null
+                : tournament.location,
+            prizeAmount:
+              dto.prizeAmount !== undefined
+                ? new Decimal(dto.prizeAmount)
+                : tournament.prizeAmount,
+            // 결제 모드 — 명시 시에만 갱신 (생략 시 기존 유지).
+            billingMode: dto.billingMode ?? tournament.billingMode,
+          },
+        });
 
-      return t;
-    });
+        if (matchPlan) {
+          if (matchPlan.deleteIds.length > 0) {
+            // 불가침 검증을 통과한 경기만 도달 — periods/events 는 비어 있어 Cascade 유실 없음.
+            await tx.hockeyMatch.deleteMany({
+              where: { id: { in: matchPlan.deleteIds }, tournamentId: id },
+            });
+          }
+          for (const u of matchPlan.updates) {
+            await tx.hockeyMatch.update({ where: { id: u.id }, data: u.data });
+          }
+          if (matchPlan.creates.length > 0) {
+            await tx.hockeyMatch.createMany({ data: matchPlan.creates });
+          }
+        }
+
+        return { t, snapshot };
+      },
+    );
+
+    if (snapshot) {
+      await this.notifyTournamentCancelled(snapshot);
+    }
 
     return updated;
   }
@@ -2234,13 +2269,20 @@ export class TournamentsService {
         eligibleBirthYears: true,
         registrationDeadline: true,
         maxParticipants: true,
-        _count: { select: { registrations: true } },
+        billingMode: true,
       },
     });
 
     if (!tournament) {
       throw new NotFoundException("대회를 찾을 수 없습니다.");
     }
+
+    const currentParticipants = await this.prisma.tournamentRegistration.count({
+      where: {
+        tournamentId,
+        ...participantRegistrationWhere(tournament.billingMode),
+      },
+    });
 
     const calculatedFee = this.calculateFee(
       tournament.feeType,
@@ -2257,7 +2299,7 @@ export class TournamentsService {
       feePerGame: tournament.feePerGame,
       totalGames: tournament.totalGames,
       calculatedFee,
-      currentParticipants: tournament._count.registrations,
+      currentParticipants,
       maxParticipants: tournament.maxParticipants,
       registrationDeadline: tournament.registrationDeadline,
     };
@@ -2461,11 +2503,6 @@ export class TournamentsService {
   ) {
     const tournament = await this.prisma.tournament.findUnique({
       where: { id: tournamentId },
-      // include 사용 시 모델의 모든 스칼라(feeType/feePerGame/billingMode 등)가
-      //   자동 반환되므로 후불 분기에 필요한 billingMode 도 포함된다.
-      include: {
-        _count: { select: { registrations: true } },
-      },
     });
 
     if (!tournament) {
@@ -2493,12 +2530,18 @@ export class TournamentsService {
       throw new BadRequestException("대회 등록 마감일이 지났습니다.");
     }
 
-    // 2. 최대 참가 인원 검증
-    if (
-      tournament.maxParticipants &&
-      tournament._count.registrations >= tournament.maxParticipants
-    ) {
-      throw new BadRequestException("대회 참가 인원이 마감되었습니다.");
+    // 2. 최대 참가 인원 검증 — 취소·환불(선불은 미결제까지) 행이 자리를 차지하지 않도록
+    //    참가자 조건으로 센다. 정원이 비어 있는 대회는 count 를 건너뛴다.
+    if (tournament.maxParticipants) {
+      const participantCount = await this.prisma.tournamentRegistration.count({
+        where: {
+          tournamentId,
+          ...participantRegistrationWhere(tournament.billingMode),
+        },
+      });
+      if (participantCount >= tournament.maxParticipants) {
+        throw new BadRequestException("대회 참가 인원이 마감되었습니다.");
+      }
     }
 
     // 3. 참가 자격 검증 — selectedParticipantIds(선수 명단 스냅샷) 단독 SoT.
@@ -2812,6 +2855,16 @@ export class TournamentsService {
       this.redis,
     );
     const billed = await this.prisma.$transaction(async (tx) => {
+      await acquireTournamentBillingLock(tx, tournamentId);
+      // 재조회 — tx 밖 취소 판정(L2762)과 이 지점 사이 대회가 취소됐을 수 있다.
+      const current = await tx.tournament.findUnique({
+        where: { id: tournamentId },
+        select: { status: true },
+      });
+      if (current?.status === "cancelled") {
+        throw new BadRequestException("취소된 대회는 정산할 수 없습니다.");
+      }
+
       // 1. 대회 단위 1인당 금액 보관 (feePerGame + TOTAL_FIXED = 고정 총액 의미).
       await tx.tournament.update({
         where: { id: tournamentId },
@@ -2925,6 +2978,229 @@ export class TournamentsService {
   }
 
   /**
+   * 후불 청구 철회(DB 부분) — 대회 취소·결제요청 취소 두 경로가 공유한다.
+   *  · scope="settlement-cancel"(결제요청 취소): 연결 Payment 가 미결제(pending)인 건만.
+   *  · scope="tournament-cancel"(대회 취소): 승인 전 Payment(pending·failed·cancelled)
+   *    또는 Payment 미연결(paymentId null)까지 포함 — 대회 자체가 사라지므로 더 넓게 회수한다.
+   *  갱신은 조건부 updateMany 로 수행해, 대상 조회 이후 다른 트랜잭션이 먼저 바꾼 행은
+   *  결과에서 제외한다(호출부가 이 반환값을 스냅샷·알림 근거로 쓴다).
+   *  알림은 이 함수에서 보내지 않는다 — 호출부 책임.
+   */
+  private async revertTournamentPostpaidBillingInTx(
+    tx: Prisma.TransactionClient,
+    tournamentId: string,
+    scope: "settlement-cancel" | "tournament-cancel",
+  ): Promise<
+    {
+      id: string;
+      userId: string;
+      childId: string | null;
+      paymentId: string | null;
+    }[]
+  > {
+    const targets = await tx.tournamentRegistration.findMany({
+      where: {
+        tournamentId,
+        paymentStatus: "PENDING",
+        ...(scope === "settlement-cancel"
+          ? { payment: { is: { paymentStatus: "pending" } } }
+          : {
+              OR: [
+                { paymentId: null },
+                {
+                  payment: {
+                    is: {
+                      paymentStatus: { in: ["pending", "failed", "cancelled"] },
+                    },
+                  },
+                },
+              ],
+            }),
+      },
+      select: { id: true, userId: true, childId: true, paymentId: true },
+    });
+
+    if (targets.length === 0) return [];
+
+    // 벌크 갱신 — lock 을 쥔 채 참가자 수만큼 왕복하면 트랜잭션 시한에 걸린다.
+    //   조건부(PENDING 인 행만)라 다른 트랜잭션이 먼저 바꾼 행은 자연히 빠지고,
+    //   갱신 뒤 UNPAID 가 된 행만 골라 실제 되돌린 집합으로 삼는다.
+    //   결제 연결(paymentId)은 결제요청 취소에서만 끊는다 — 대회 취소에서는 남겨 두어야
+    //   뒤늦게 도착한 승인이 고아 결제로 잡혀 환불 요청이 자동 접수된다.
+    const ids = targets.map((r) => r.id);
+    await tx.tournamentRegistration.updateMany({
+      where: { id: { in: ids }, paymentStatus: "PENDING" },
+      data: {
+        paymentStatus: "UNPAID",
+        calculatedFee: new Decimal(0),
+        ...(scope === "settlement-cancel" ? { paymentId: null } : {}),
+      },
+    });
+    const moved = await tx.tournamentRegistration.findMany({
+      where: { id: { in: ids }, paymentStatus: "UNPAID" },
+      select: { id: true },
+    });
+    const movedIds = new Set(moved.map((m) => m.id));
+    const reverted = targets.filter((r) => movedIds.has(r.id));
+
+    const paymentIds = reverted
+      .map((r) => r.paymentId)
+      .filter((pid): pid is string => !!pid);
+    if (paymentIds.length > 0) {
+      await tx.payment.updateMany({
+        where: { id: { in: paymentIds }, paymentStatus: { not: "completed" } },
+        data: { paymentStatus: "cancelled" },
+      });
+    }
+    return reverted;
+  }
+
+  /**
+   * 대회 취소 적용(tx 선두 전용) — PAID 사전/사후 재검증으로 불변식(결제 완료 건이
+   * 있으면 취소 불가)을 보장하고, 후불이면 청구를 철회, 선불이면 PENDING 참가를
+   * CANCELLED 로 전환한다. 대회 status 갱신은 호출부 책임(이 함수는 하지 않는다).
+   */
+  private async applyTournamentCancellation(
+    tx: Prisma.TransactionClient,
+    tournament: { id: string; name: string; billingMode: string | null },
+  ): Promise<TournamentCancelSnapshot> {
+    await acquireTournamentBillingLock(tx, tournament.id);
+
+    // 실결제만 센다 — 무료 대회는 신청 즉시 PAID 가 되므로 결제행 없는 PAID 는
+    //   환불할 것도 없어 취소를 막을 이유가 없다(삭제 가드와 같은 기준).
+    const paidWhere = {
+      tournamentId: tournament.id,
+      paymentStatus: "PAID",
+      paymentId: { not: null },
+    } as const;
+    const paidCount = await tx.tournamentRegistration.count({
+      where: paidWhere,
+    });
+    if (paidCount > 0) {
+      throw new BadRequestException(
+        `결제 완료 ${paidCount}건이 있어 취소할 수 없어요. 환불 후 취소해주세요.`,
+      );
+    }
+
+    // 알림 스냅샷 — 행 전이 직전의 미결제 참가자.
+    const snapshotTargets = await tx.tournamentRegistration.findMany({
+      where: {
+        tournamentId: tournament.id,
+        paymentStatus: { in: ["PENDING", "UNPAID"] },
+      },
+      select: { id: true, userId: true, childId: true },
+    });
+
+    const revertedIds = new Set<string>();
+    if (tournament.billingMode === "POSTPAID") {
+      const reverted = await this.revertTournamentPostpaidBillingInTx(
+        tx,
+        tournament.id,
+        "tournament-cancel",
+      );
+      for (const r of reverted) revertedIds.add(r.id);
+    } else {
+      // 선불 — PENDING 행만 CANCELLED 전환. paymentId 는 그대로 둔다(고아 결제
+      //   자동 환불 접수가 이 링크로 대회를 식별한다).
+      const pendingRegs = await tx.tournamentRegistration.findMany({
+        where: { tournamentId: tournament.id, paymentStatus: "PENDING" },
+        select: { id: true, paymentId: true },
+      });
+      if (pendingRegs.length > 0) {
+        await tx.tournamentRegistration.updateMany({
+          where: {
+            id: { in: pendingRegs.map((r) => r.id) },
+            paymentStatus: "PENDING",
+          },
+          data: { paymentStatus: "CANCELLED", cancelledAt: new Date() },
+        });
+        const paymentIds = pendingRegs
+          .map((r) => r.paymentId)
+          .filter((pid): pid is string => !!pid);
+        if (paymentIds.length > 0) {
+          await tx.payment.updateMany({
+            where: { id: { in: paymentIds }, paymentStatus: "pending" },
+            data: { paymentStatus: "cancelled" },
+          });
+        }
+      }
+    }
+
+    // 사후 재검증 — 위 전환 사이 다른 트랜잭션이 결제를 완료했으면 전체 롤백.
+    const paidRecheck = await tx.tournamentRegistration.count({
+      where: paidWhere,
+    });
+    if (paidRecheck > 0) {
+      throw new BadRequestException(
+        `결제 완료 ${paidRecheck}건이 있어 취소할 수 없어요. 환불 후 취소해주세요.`,
+      );
+    }
+
+    return {
+      tournamentId: tournament.id,
+      tournamentName: tournament.name,
+      recipients: snapshotTargets.map((r) => ({
+        userId: r.userId,
+        childId: r.childId,
+        postpaidReverted: revertedIds.has(r.id),
+      })),
+    };
+  }
+
+  /**
+   * 대회 취소 알림 (tx 밖 · best-effort). 결제자 해석은 결제요청 취소 알림과 동일
+   * (자녀는 주 보호자, 없으면 신청자 본인) — payerId 로 dedupe 하고 후불 철회 여부는
+   * OR 로 합산해 한쪽만 철회여도 문구에 반영한다.
+   */
+  private async notifyTournamentCancelled(
+    snapshot: TournamentCancelSnapshot,
+  ): Promise<void> {
+    const childIds = snapshot.recipients
+      .map((r) => r.childId)
+      .filter((c): c is string => !!c);
+    const parentLinks = childIds.length
+      ? await this.prisma.parentChild.findMany({
+          where: { childId: { in: childIds }, isPrimary: true },
+          select: { childId: true, parentId: true },
+        })
+      : [];
+    const primaryParentOf = new Map<string, string>();
+    for (const pl of parentLinks) {
+      primaryParentOf.set(pl.childId, pl.parentId);
+    }
+
+    const revertedByPayer = new Map<string, boolean>();
+    for (const r of snapshot.recipients) {
+      const payerId = r.childId
+        ? (primaryParentOf.get(r.childId) ?? r.userId)
+        : r.userId;
+      revertedByPayer.set(
+        payerId,
+        (revertedByPayer.get(payerId) ?? false) || r.postpaidReverted,
+      );
+    }
+
+    for (const [payerId, postpaidReverted] of revertedByPayer) {
+      try {
+        await this.notificationsService.createNotification({
+          userId: payerId,
+          notificationType: "tournament_cancelled",
+          title: "대회 취소",
+          message: `${snapshot.tournamentName} 대회가 취소되었습니다.${
+            postpaidReverted ? " 발송된 참가비 청구도 함께 철회되었습니다." : ""
+          }`,
+          linkUrl: `/tournaments/${snapshot.tournamentId}`,
+        });
+      } catch (e) {
+        Logger.warn(
+          `대회 취소 알림 실패 — tournamentId=${snapshot.tournamentId} payerId=${payerId}: ${String(e)}`,
+          TournamentsService.name,
+        );
+      }
+    }
+  }
+
+  /**
    * [2026-06-17 결제요청 취소] — 후불 정산(결제요청)으로 청구한 미결제 건을 되돌린다.
    *  · 대상: paymentStatus='PENDING' 이고 연결 Payment 가 미결제(pending)인 참가자.
    *    (이미 결제(PAID)·결제완료(completed) 건은 환원 불가 — 제외.)
@@ -2953,40 +3229,18 @@ export class TournamentsService {
       );
     }
 
-    // 환원 대상 — PENDING + 연결 Payment 가 미결제(pending). 결제완료 건은 제외.
-    const targets = await this.prisma.tournamentRegistration.findMany({
-      where: {
+    const targets = await this.prisma.$transaction(async (tx) => {
+      await acquireTournamentBillingLock(tx, tournamentId);
+      return this.revertTournamentPostpaidBillingInTx(
+        tx,
         tournamentId,
-        paymentStatus: "PENDING",
-        payment: { is: { paymentStatus: "pending" } },
-      },
-      select: { id: true, userId: true, childId: true, paymentId: true },
+        "settlement-cancel",
+      );
     });
 
     if (targets.length === 0) {
       throw new BadRequestException("취소할 결제요청이 없습니다.");
     }
-
-    await this.prisma.$transaction(async (tx) => {
-      for (const reg of targets) {
-        // 1. 참가자 상태 환원 — UNPAID(정산 전), 금액·결제 연결 해제.
-        await tx.tournamentRegistration.update({
-          where: { id: reg.id },
-          data: {
-            paymentStatus: "UNPAID",
-            calculatedFee: new Decimal(0),
-            paymentId: null,
-          },
-        });
-        // 2. 결제행 취소 표시(이력 보존 · 재정산 시 동일 orderNumber upsert 재사용).
-        if (reg.paymentId) {
-          await tx.payment.update({
-            where: { id: reg.paymentId },
-            data: { paymentStatus: "cancelled" },
-          });
-        }
-      }
-    });
 
     // 결제요청 취소 알림 (트랜잭션 밖 — best-effort).
     const childIds = targets
@@ -3107,6 +3361,9 @@ export class TournamentsService {
         ...reg,
         billingStatus: att.billingStatus,
         billingTiming,
+        // 명단·인원의 "참가자" 판정 — 목록 인원·정원·공지·달력과 같은 규칙(선불은 결제 완료만).
+        //   화면이 규칙을 복제하지 않도록 서버가 정해서 내려준다.
+        isParticipant: isParticipantRegistration(tournament.billingMode, reg),
         billedAmount: att.billedAmount,
         paidAmount: att.paidAmount,
         refundedAmount: att.refundedAmount,
@@ -3282,10 +3539,31 @@ export class TournamentsService {
       );
     }
 
-    const updated = await this.prisma.tournament.update({
-      where: { id },
-      data: { status: newStatus },
+    const { updated, snapshot } = await this.prisma.$transaction(async (tx) => {
+      const snapshot =
+        newStatus === "cancelled"
+          ? await this.applyTournamentCancellation(tx, tournament)
+          : null;
+
+      // 전이표 판정과 실제 쓰기 사이의 간극을 닫는다 — 판정 당시 status 여야만 쓴다.
+      const moved = await tx.tournament.updateMany({
+        where: { id, status: tournament.status },
+        data: { status: newStatus },
+      });
+      if (moved.count !== 1) {
+        throw new ConflictException(
+          "대회 상태가 그 사이에 바뀌었습니다. 다시 확인해주세요.",
+        );
+      }
+      const updated = await tx.tournament.findUniqueOrThrow({
+        where: { id },
+      });
+      return { updated, snapshot };
     });
+
+    if (snapshot) {
+      await this.notifyTournamentCancelled(snapshot);
+    }
 
     return updated;
   }

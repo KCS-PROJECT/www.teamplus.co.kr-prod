@@ -139,11 +139,14 @@ describe("TournamentsService.getTournamentRegistrations — 파생 필드/명단
     expect(res.billingMode).toBe("POSTPAID");
     expect(res.total).toBe(5);
 
-    const byId = Object.fromEntries(res.registrations.map((r: any) => [r.id, r]));
+    const byId = Object.fromEntries(
+      res.registrations.map((r: any) => [r.id, r]),
+    );
 
     // PAID
     expect(byId["r-paid"].billingStatus).toBe("PAID");
     expect(byId["r-paid"].billingTiming).toBe("POSTPAID");
+    expect(byId["r-paid"].isParticipant).toBe(true);
     expect(byId["r-paid"].billedAmount).toBe(30000);
     expect(byId["r-paid"].paidAmount).toBe(30000);
     expect(byId["r-paid"].refundedAmount).toBe(0);
@@ -156,23 +159,27 @@ describe("TournamentsService.getTournamentRegistrations — 파생 필드/명단
 
     // PENDING → BILLED
     expect(byId["r-pending"].billingStatus).toBe("BILLED");
+    expect(byId["r-pending"].isParticipant).toBe(true);
     expect(byId["r-pending"].billedAmount).toBe(30000);
     expect(byId["r-pending"].paidAmount).toBe(0);
     expect(byId["r-pending"].paidAt).toBeNull();
 
     // UNPAID → UNSETTLED (estimated = amount, billed null)
     expect(byId["r-unpaid"].billingStatus).toBe("UNSETTLED");
+    expect(byId["r-unpaid"].isParticipant).toBe(true);
     expect(byId["r-unpaid"].billedAmount).toBeNull();
     expect(byId["r-unpaid"].paidAmount).toBe(0);
     expect(byId["r-unpaid"].estimatedAmount).toBe(30000);
 
     // CANCELLED (명단 보존)
     expect(byId["r-cancelled"].billingStatus).toBe("CANCELLED");
+    expect(byId["r-cancelled"].isParticipant).toBe(false);
     expect(byId["r-cancelled"].billedAmount).toBeNull();
     expect(byId["r-cancelled"].paidAmount).toBe(0);
 
     // REFUNDED (전액 환불 → net 0)
     expect(byId["r-refunded"].billingStatus).toBe("REFUNDED");
+    expect(byId["r-refunded"].isParticipant).toBe(false);
     expect(byId["r-refunded"].refundedAmount).toBe(30000);
     expect(byId["r-refunded"].paidAmount).toBe(0);
     expect(byId["r-refunded"].paidAt).toBeNull();
@@ -299,7 +306,9 @@ describe("TournamentsService — 일정 미정(기간 null) 대회", () => {
         now,
       );
     expect(call("scheduled", null)).toBe("UPCOMING");
-    expect(call("scheduled", new Date("2026-04-01T00:00:00.000Z"))).toBe("OPEN");
+    expect(call("scheduled", new Date("2026-04-01T00:00:00.000Z"))).toBe(
+      "OPEN",
+    );
     expect(call("finished", null)).toBe("COMPLETED");
     expect(call("ongoing", null)).toBe("IN_PROGRESS");
   });
@@ -457,7 +466,9 @@ describe("TournamentsService — 일정 미정(기간 null) 대회", () => {
     const refund = {
       cancelPayment: jest
         .fn()
-        .mockRejectedValue(new BadRequestException("토스 결제 취소에 실패했습니다.")),
+        .mockRejectedValue(
+          new BadRequestException("토스 결제 취소에 실패했습니다."),
+        ),
     };
     const prisma = {
       tournamentRegistration: {

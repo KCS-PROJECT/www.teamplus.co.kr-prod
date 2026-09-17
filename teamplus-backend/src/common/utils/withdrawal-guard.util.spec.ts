@@ -156,6 +156,7 @@ describe("findBlockingOwnership", () => {
       where: {
         team: { coachId: "u-1" },
         billingMode: "POSTPAID",
+        status: { not: "cancelled" },
         registrations: {
           some: {
             cancelledAt: null,
@@ -244,21 +245,35 @@ describe("findBlockingOwnership", () => {
       attendances: [
         {
           memberId: "c-1",
-          schedule: { classId: "cls-1", scheduledDate: new Date("2026-08-05T00:00:00Z") },
+          schedule: {
+            classId: "cls-1",
+            scheduledDate: new Date("2026-08-05T00:00:00Z"),
+          },
         },
         {
           memberId: "c-1",
-          schedule: { classId: "cls-1", scheduledDate: new Date("2026-08-12T00:00:00Z") },
+          schedule: {
+            classId: "cls-1",
+            scheduledDate: new Date("2026-08-12T00:00:00Z"),
+          },
         },
         // 후불 수강자가 아닌 (자녀, 수업) 조합의 출석은 제외
         {
           memberId: "c-1",
-          schedule: { classId: "cls-9", scheduledDate: new Date("2026-08-19T00:00:00Z") },
+          schedule: {
+            classId: "cls-9",
+            scheduledDate: new Date("2026-08-19T00:00:00Z"),
+          },
         },
       ],
     });
 
-    const detailed = await findBlockingOwnershipDetailed(db, "p-1", "PARENT", TODAY);
+    const detailed = await findBlockingOwnershipDetailed(
+      db,
+      "p-1",
+      "PARENT",
+      TODAY,
+    );
 
     // 같은 (자녀, 수업, 월)은 출석 횟수와 무관하게 1건
     expect(detailed).toEqual([
@@ -290,7 +305,10 @@ describe("findBlockingOwnership", () => {
       attendances: [
         {
           memberId: "c-1",
-          schedule: { classId: "cls-1", scheduledDate: new Date("2026-08-05T00:00:00Z") },
+          schedule: {
+            classId: "cls-1",
+            scheduledDate: new Date("2026-08-05T00:00:00Z"),
+          },
         },
       ],
       confirmedBillings: [{ classId: "cls-1", yearMonth: "2026-08" }],
@@ -302,7 +320,9 @@ describe("findBlockingOwnership", () => {
   it("countUnbilledPostpaidAttendance: 후불 수강 쌍이 없으면 출석·정산을 조회하지 않고 0", async () => {
     const db = buildDb({});
 
-    expect(await countUnbilledPostpaidAttendance(db, { childId: "c-1" })).toBe(0);
+    expect(await countUnbilledPostpaidAttendance(db, { childId: "c-1" })).toBe(
+      0,
+    );
     expect(db.classAttendance.findMany).not.toHaveBeenCalled();
     expect(db.monthlyPostpaidBilling.findMany).not.toHaveBeenCalled();
   });
@@ -319,10 +339,7 @@ describe("findBlockingOwnership", () => {
 
     const where = db.enrollment.count.mock.calls[0][0].where;
     expect(where.OR[0].billingMonth).toEqual({
-      in: [
-        new Date("2026-12-01T00:00:00Z"),
-        new Date("2027-01-01T00:00:00Z"),
-      ],
+      in: [new Date("2026-12-01T00:00:00Z"), new Date("2027-01-01T00:00:00Z")],
     });
     expect(where.OR[1].billingMonth).toEqual({
       gte: new Date("2026-12-01T00:00:00Z"),
@@ -351,7 +368,7 @@ describe("findBlockingOwnership", () => {
         userId: "p-1",
         cancelledAt: null,
         paymentStatus: { in: ["UNPAID", "PENDING"] },
-        tournament: { billingMode: "POSTPAID" },
+        tournament: { billingMode: "POSTPAID", status: { not: "cancelled" } },
       },
     });
   });

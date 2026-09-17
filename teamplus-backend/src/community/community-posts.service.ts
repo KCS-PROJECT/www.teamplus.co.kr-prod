@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { participantRegistrationWhere } from "@/common/utils/tournament-participation.util";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "@/prisma/prisma.service";
 import { ViewCounterService } from "@/common/view-counter/view-counter.service";
@@ -85,9 +86,9 @@ export class CommunityPostsService {
 
   // ==================== 축/권한 판정 ====================
 
-  private async getPostScope(postId: string): Promise<
-    PostScope & PublicationWindow & { authorId: string }
-  > {
+  private async getPostScope(
+    postId: string,
+  ): Promise<PostScope & PublicationWindow & { authorId: string }> {
     const post = await this.prisma.teamPost.findUnique({
       where: { id: postId },
       select: {
@@ -279,13 +280,7 @@ export class CommunityPostsService {
   private tournamentEligibleWhere(
     billingMode: string,
   ): Prisma.TournamentRegistrationWhereInput {
-    return {
-      cancelledAt: null,
-      paymentStatus:
-        billingMode === "PREPAID"
-          ? "PAID"
-          : { notIn: ["CANCELLED", "REFUNDED"] },
-    };
+    return participantRegistrationWhere(billingMode);
   }
 
   private async findEligibleTournamentRegistration(
@@ -986,21 +981,20 @@ export class CommunityPostsService {
       //   [Codex P2-R1-H05] childId 표시 필터는 대회 축에도 적용 —
       //   TournamentRegistration.childId 로 선택 자녀의 신청만 남긴다
       //   (userId=requester 조건과 결합되어 타인 자녀 지정은 자연히 0건).
-      const tournamentRegs =
-        await this.prisma.tournamentRegistration.findMany({
-          where: {
-            userId: requester.id,
-            ...(opts.childId ? { childId: opts.childId } : {}),
-            cancelledAt: null,
-            paymentStatus: { notIn: ["CANCELLED", "REFUNDED"] },
-          },
-          select: {
-            tournamentId: true,
-            childId: true,
-            paymentStatus: true,
-            tournament: { select: { billingMode: true } },
-          },
-        });
+      const tournamentRegs = await this.prisma.tournamentRegistration.findMany({
+        where: {
+          userId: requester.id,
+          ...(opts.childId ? { childId: opts.childId } : {}),
+          cancelledAt: null,
+          paymentStatus: { notIn: ["CANCELLED", "REFUNDED"] },
+        },
+        select: {
+          tournamentId: true,
+          childId: true,
+          paymentStatus: true,
+          tournament: { select: { billingMode: true } },
+        },
+      });
       const eligibleTournamentRegs = tournamentRegs.filter((r) =>
         r.tournament.billingMode === "PREPAID"
           ? r.paymentStatus === "PAID"
@@ -1517,7 +1511,10 @@ export class CommunityPostsService {
     if (targets.length > 0) {
       await this.notificationsService.notifyUsers(targets, payload);
     }
-    return { reminded: targets.length, skipped: unreadIds.length - targets.length };
+    return {
+      reminded: targets.length,
+      skipped: unreadIds.length - targets.length,
+    };
   }
 
   // ==================== 댓글 ====================

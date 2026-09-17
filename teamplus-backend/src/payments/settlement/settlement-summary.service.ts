@@ -435,10 +435,15 @@ export class SettlementSummaryService {
       } satisfies Prisma.MonthlyPostpaidBillingLineWhereInput,
       regWhere: {
         paymentStatus: "PENDING",
-        payment: { is: { paymentStatus: "pending", createdAt: { lte: cutoff } } },
+        payment: {
+          is: { paymentStatus: "pending", createdAt: { lte: cutoff } },
+        },
         tournament: {
           teamId: { in: scopeTeamIds },
           billingMode: "POSTPAID",
+          // 취소된 대회의 청구는 미납이 아니다 — 취소 흐름이 청구를 철회하지만,
+          // 다른 경로로 취소된 대회가 남아 있어도 독촉 대상에서 빠지도록 방어한다.
+          status: { not: "cancelled" },
         },
       } satisfies Prisma.TournamentRegistrationWhereInput,
     };
@@ -812,7 +817,8 @@ export class SettlementSummaryService {
       const clsEnrollments = enrollmentsByClass.get(cls.id) ?? [];
       const roster =
         rosterByClass.get(cls.id) ?? new Map<string, RosterEntry>();
-      const attByUser = attendanceByClass.get(cls.id) ?? new Map<string, number>();
+      const attByUser =
+        attendanceByClass.get(cls.id) ?? new Map<string, number>();
       const billing = billingByClass.get(cls.id);
       const rows: SettlementRow[] = [];
       // 확정 후불 라인의 userId → 출석수(인별 상세 표기용). BILLED/PAID 라인만 채워짐.
@@ -840,7 +846,8 @@ export class SettlementSummaryService {
         (p) => p.billingTiming === "POSTPAID",
       );
       const classPostpaidUnit =
-        postpaidProducts.length === 1 && postpaidProducts[0].feePerSession != null
+        postpaidProducts.length === 1 &&
+        postpaidProducts[0].feePerSession != null
           ? Number(postpaidProducts[0].feePerSession)
           : null;
 
@@ -939,7 +946,11 @@ export class SettlementSummaryService {
           (e) =>
             e.childId === userId &&
             isEligibleForMonth(
-              { status: e.status, billingTiming: e.billingTiming, billingMonth: e.billingMonth },
+              {
+                status: e.status,
+                billingTiming: e.billingTiming,
+                billingMonth: e.billingMonth,
+              },
               monthStart,
             ),
         );
@@ -1026,7 +1037,9 @@ export class SettlementSummaryService {
         sourceName: cls.className,
         teamName: cls.team?.name ?? null,
         billingTiming:
-          r.timing === "POSTPAID" ? ("POSTPAID" as const) : ("PREPAID" as const),
+          r.timing === "POSTPAID"
+            ? ("POSTPAID" as const)
+            : ("PREPAID" as const),
         yearMonth,
         attendanceCount:
           r.timing === "POSTPAID"
@@ -1387,10 +1400,7 @@ export class SettlementSummaryService {
       { hasCharge: boolean; allPaid: boolean }
     >();
     // 선수별 결제방식 파티션(POSTPAID>PREPAID>UNASSIGNED) — 합=total 보장(Codex MED-5).
-    const userTiming = new Map<
-      string,
-      "PREPAID" | "POSTPAID" | "UNASSIGNED"
-    >();
+    const userTiming = new Map<string, "PREPAID" | "POSTPAID" | "UNASSIGNED">();
     let billedAmount = 0;
     let paidAmount = 0;
     let refundedAmount = 0;
