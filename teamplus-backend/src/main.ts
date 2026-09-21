@@ -52,6 +52,15 @@ async function bootstrap() {
     }),
   );
 
+  // === 나이스 구모듈 전용 raw 파서 (인증 응답 · 결제통보) ===
+  // 두 경로 모두 나이스가 charset 을 정하는 form POST 다. 전역 urlencoded 는 UTF-8 전제라
+  // `charset=euc-kr` 이 오면 415(UnsupportedMediaTypeError)로 끊겨 인증 응답이 결과 화면
+  // 대신 500 이 된다. 원본 Buffer 로 받아 컨트롤러가 charset 을 보고 직접 디코드한다.
+  app.use(
+    ["/api/v1/payments/nicestd/authorize", "/api/v1/payments/nicestd/webhook"],
+    express.raw({ type: "*/*", limit: "64kb" }),
+  );
+
   // === Body Parser 한도 ===
   // - 기본 100KB → 10MB. base64 인코딩 이미지/문서 첨부 시 413 회피.
   // - JSON 본문은 application/json 만, urlencoded 은 form data.

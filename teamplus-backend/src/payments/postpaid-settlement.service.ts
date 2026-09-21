@@ -396,14 +396,12 @@ export class PostpaidSettlementService {
 
         for (const ln of txLines) {
           const orderNumber = `POSTPAID-${head.id}-${ln.userId}`;
+          // 갱신은 조건부로만 한다 — upsert 의 update 는 무조건 덮으므로 tid 가 남은
+          //   (PG 캡처를 거친) 행까지 금액을 바꿔버린다. 그러면 나이스 구모듈 승인 재진입이
+          //   그 행을 "승인 완료, 후처리만 남음"으로 읽어 바뀐 금액으로 후처리한다.
           const payment = await tx.payment.upsert({
             where: { orderNumber },
-            update: {
-              amount: ln.amount,
-              paymentStatus: "pending",
-              paymentMethod: pgProvider,
-              pgProvider,
-            },
+            update: {},
             create: {
               orderNumber,
               userId: txPayerOf.get(ln.userId) ?? ln.userId,
@@ -415,6 +413,20 @@ export class PostpaidSettlementService {
             },
             select: { id: true },
           });
+          const payUpd = await tx.payment.updateMany({
+            where: { id: payment.id, tid: null, completedAt: null },
+            data: {
+              amount: ln.amount,
+              paymentStatus: "pending",
+              paymentMethod: pgProvider,
+              pgProvider,
+            },
+          });
+          if (payUpd.count === 0) {
+            this.logger.warn(
+              `후불 청구 금액 갱신 제외 — 캡처 흔적 있는 결제: orderNumber=${orderNumber}`,
+            );
+          }
           await tx.monthlyPostpaidBillingLine.upsert({
             where: {
               billingId_userId: { billingId: head.id, userId: ln.userId },

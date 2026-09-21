@@ -10,7 +10,11 @@ import {
   TossPaymentsGateway,
   TossCancelAmbiguousError,
 } from "../toss-payments.gateway";
-import { NicePaymentsGateway } from "../nice-payments.gateway";
+import {
+  NicePaymentsGateway,
+  NiceCancelAmbiguousError,
+} from "../nice-payments.gateway";
+import { NiceStdPaymentsGateway } from "../nice-std-payments.gateway";
 import { CreditDomainService } from "@/credits/credit-domain.service";
 
 describe("PaymentRefundService", () => {
@@ -49,6 +53,10 @@ describe("PaymentRefundService", () => {
   };
 
   const mockNiceGateway = {
+    cancel: jest.fn(),
+  };
+
+  const mockNiceStdGateway = {
     cancel: jest.fn(),
   };
 
@@ -99,6 +107,7 @@ describe("PaymentRefundService", () => {
         { provide: KgInicisGateway, useValue: mockKgGateway },
         { provide: TossPaymentsGateway, useValue: mockTossGateway },
         { provide: NicePaymentsGateway, useValue: mockNiceGateway },
+        { provide: NiceStdPaymentsGateway, useValue: mockNiceStdGateway },
         { provide: CreditDomainService, useValue: mockCreditDomain },
       ],
     }).compile();
@@ -1104,6 +1113,153 @@ describe("PaymentRefundService", () => {
     // given: kgGateway.cancelPayment 성공, payment 존재
     // when: cancelPayment(paymentId, userId, { refundReason: '회원 요청' })
     // then: $transaction 1회, 반환값 { refundId, cancelledAmount, restoredCreditIds } 포함
+  });
+
+  // ── PG 취소 라우팅 (pgProvider 우선) ──────────────────────────
+
+  describe("cancelPayment — PG 라우팅", () => {
+    /** 관리자 환불 경로로 가드를 건너뛰고 PG 분기까지 곱바로 도달시킨다. */
+    const runAdminCancel = () =>
+      service.cancelPayment(
+        "pay-1",
+        "관리자 환불",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { id: "admin-1", userType: "ADMIN" },
+      );
+
+    beforeEach(() => {
+      // 실패로 흐름을 끝내고 "어느 게이트웨이로 갔는가"만 본다.
+      mockKgGateway.cancelPayment.mockResolvedValue({
+        success: false,
+        message: "PG 실패",
+      });
+      mockNiceGateway.cancel.mockResolvedValue({ status: "unknown" });
+      mockNiceStdGateway.cancel.mockRejectedValue(new Error("PG 실패"));
+      mockTossGateway.cancel.mockResolvedValue({ status: "UNKNOWN" });
+    });
+
+    it("pgProvider='nicestd' 는 구모듈 게이트웨이로 간다", async () => {
+      mockPrisma.payment.findUnique.mockResolvedValue({
+        ...kgPayment,
+        paymentMethod: "nicestd",
+        pgProvider: "nicestd",
+        tid: "nicestdtid001",
+        orderNumber: "ORD-1",
+      });
+
+      await expect(runAdminCancel()).rejects.toThrow();
+
+      expect(mockNiceStdGateway.cancel).toHaveBeenCalledTimes(1);
+      expect(mockNiceGateway.cancel).not.toHaveBeenCalled();
+      expect(mockKgGateway.cancelPayment).not.toHaveBeenCalled();
+      // 취소 Moid 는 주문번호가 아니라 환불요청 기반 짧은 고유값이다(64byte 한도).
+      const arg = mockNiceStdGateway.cancel.mock.calls[0][0];
+      expect(arg.cancelMoid).toBe("RF-sys-rr-1");
+      expect(arg.partial).toBe(false);
+    });
+
+    it("pgProvider='nice' 는 신모듈 게이트웨이로 간다", async () => {
+      mockPrisma.payment.findUnique.mockResolvedValue({
+        ...kgPayment,
+        paymentMethod: "nice",
+        pgProvider: "nice",
+        tid: "nicetid001",
+        orderNumber: "ORD-1",
+      });
+
+      await expect(runAdminCancel()).rejects.toThrow();
+
+      expect(mockNiceGateway.cancel).toHaveBeenCalledTimes(1);
+      expect(mockNiceStdGateway.cancel).not.toHaveBeenCalled();
+    });
+
+    it("pgProvider 대문자('NICESTD')도 같은 경로로 간다", async () => {
+      mockPrisma.payment.findUnique.mockResolvedValue({
+        ...kgPayment,
+        paymentMethod: "NICESTD",
+        pgProvider: "NICESTD",
+        tid: "nicestdtid001",
+        orderNumber: "ORD-1",
+      });
+
+      await expect(runAdminCancel()).rejects.toThrow();
+
+      expect(mockNiceStdGateway.cancel).toHaveBeenCalledTimes(1);
+      expect(mockNiceGateway.cancel).not.toHaveBeenCalled();
+    });
+
+    it("pgProvider 가 null 인 레거시 행은 기존 폴백 규칙(KG)을 유지한다", async () => {
+      mockPrisma.payment.findUnique.mockResolvedValue({
+        ...kgPayment,
+        pgProvider: null,
+        orderNumber: "ORD-1",
+      });
+
+      await expect(runAdminCancel()).rejects.toThrow();
+
+      expect(mockKgGateway.cancelPayment).toHaveBeenCalledTimes(1);
+      expect(mockNiceStdGateway.cancel).not.toHaveBeenCalled();
+      expect(mockNiceGateway.cancel).not.toHaveBeenCalled();
+    });
+
+    it("pgProvider=nicestd 라도 tid 가 KG 패턴이면 KG 로 간다", async () => {
+      // pgProvider 는 KG 결제에도 활성 결제사가 찍히므로 TID 형태가 더 강한 증거다.
+      mockPrisma.payment.findUnique.mockResolvedValue({
+        ...kgPayment,
+        paymentMethod: "card",
+        pgProvider: "nicestd",
+        tid: "StdpayCARD_INI0001",
+        orderNumber: "ORD-1",
+      });
+
+      await expect(runAdminCancel()).rejects.toThrow();
+
+      expect(mockKgGateway.cancelPayment).toHaveBeenCalledTimes(1);
+      expect(mockNiceStdGateway.cancel).not.toHaveBeenCalled();
+    });
+
+    it("알 수 없는 pgProvider 는 어느 게이트웨이도 호출하지 않고 멈춘다", async () => {
+      mockPrisma.payment.findUnique.mockResolvedValue({
+        ...kgPayment,
+        pgProvider: "unknown_pg",
+        tid: "unknown-tid-0001",
+        orderNumber: "ORD-1",
+      });
+
+      await expect(runAdminCancel()).rejects.toMatchObject({
+        code: "PG_ROUTE_UNKNOWN",
+      });
+
+      expect(mockKgGateway.cancelPayment).not.toHaveBeenCalled();
+      expect(mockNiceGateway.cancel).not.toHaveBeenCalled();
+      expect(mockNiceStdGateway.cancel).not.toHaveBeenCalled();
+    });
+
+    it("구모듈 취소 모호는 NICE_UNCONFIRMED 격리 — Payment 를 복원하지 않는다", async () => {
+      mockPrisma.payment.findUnique.mockResolvedValue({
+        ...kgPayment,
+        paymentMethod: "nicestd",
+        pgProvider: "nicestd",
+        tid: "nicestdtid001",
+        orderNumber: "ORD-1",
+      });
+      mockNiceStdGateway.cancel.mockRejectedValue(
+        new NiceCancelAmbiguousError("응답 유실"),
+      );
+
+      await expect(runAdminCancel()).rejects.toMatchObject({
+        code: "NICE_UNCONFIRMED",
+      });
+
+      // completed 복원 updateMany 가 불리면 안 된다(취소 여부 불명 → 격리).
+      const restore = mockPrisma.payment.updateMany.mock.calls.find(
+        (c: any) => c[0]?.data?.paymentStatus === "completed",
+      );
+      expect(restore).toBeUndefined();
+    });
   });
 
   it.skip("cancelPayment: 이미 취소된 결제 재시도 시 ConflictException — 멱등성", async () => {

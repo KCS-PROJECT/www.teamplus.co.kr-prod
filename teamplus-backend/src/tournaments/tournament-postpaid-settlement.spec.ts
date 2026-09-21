@@ -200,6 +200,8 @@ describe("TournamentsService.confirmTournamentSettlement — 청구행 결제사
       id: "pay-1",
       paymentStatus: { in: ["pending", "cancelled", "failed"] },
       completedAt: null,
+      // 캡처 흔적(tid)이 남은 행은 금액을 덮지 않는다 — 승인 재진입이 바뀐 금액으로 후처리한다.
+      tid: null,
     });
   });
 

@@ -9,6 +9,7 @@ import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
 import { TossPaymentsGateway } from "./toss-payments.gateway";
 import { NicePaymentsGateway } from "./nice-payments.gateway";
+import { NiceStdPaymentsGateway } from "./nice-std-payments.gateway";
 import { CreditDomainService } from "@/credits/credit-domain.service";
 import { NotificationsService } from "@/notifications/notifications.service";
 import { PaymentWebhookService } from "./services/payment-webhook.service";
@@ -74,6 +75,17 @@ describe("PaymentsService", () => {
     confirm: jest.fn(),
     getPayment: jest.fn(),
   };
+  const mockNiceStdGateway = {
+    isConfigured: jest.fn().mockReturnValue(true),
+    buildPayRequest: jest.fn(),
+    verifyAuthResult: jest.fn().mockReturnValue({ ok: true }),
+    approve: jest.fn(),
+    netCancel: jest.fn(),
+    cancel: jest.fn(),
+    parseNotifyBody: jest.fn(),
+    isTrustedNotify: jest.fn().mockReturnValue(true),
+  };
+
   const mockNiceGateway = {
     approve: jest.fn(),
     netCancel: jest.fn(),
@@ -125,6 +137,7 @@ describe("PaymentsService", () => {
         { provide: PaymentReceiptService, useValue: mockReceiptService },
         { provide: TossPaymentsGateway, useValue: mockTossGateway },
         { provide: NicePaymentsGateway, useValue: mockNiceGateway },
+        { provide: NiceStdPaymentsGateway, useValue: mockNiceStdGateway },
         { provide: RedisService, useValue: mockRedisService },
         { provide: CreditDomainService, useValue: mockCreditDomain },
         { provide: NotificationsService, useValue: mockNotificationsService },

@@ -729,7 +729,13 @@ export class RefundRequestService {
     //   TOSS_UNCONFIRMED 는 여기서 막지 않는다 — 토스는 멱등키 재시도가 공식 보장되므로, 아래
     //   refund_processing 분기에서 resumeProcessing(같은 idempotencyKey)으로 PG 를 재호출해 원 결과를
     //   반환받아 해소한다. 단 아래 유효기간·본문충돌 가드를 통과한 경우에만.
-    if (rr.failureCode === "KG_UNCONFIRMED" && !hasSelfPgEvidence) {
+    // 나이스도 같은 이유로 막는다 — 멱등 키가 없어 같은 키 재시도라는 안전망이 없다.
+    //   취소통보가 도착해 자기 증거(DB_AFTER_PG)를 남긴 건은 아래 DB-only 경로로 통과한다.
+    if (
+      (rr.failureCode === "KG_UNCONFIRMED" ||
+        rr.failureCode === "NICE_UNCONFIRMED") &&
+      !hasSelfPgEvidence
+    ) {
       throw new ConflictException(
         "PG 결과 미확정 — 자동 재처리할 수 없습니다. 운영자 수동 확인이 필요합니다.",
       );

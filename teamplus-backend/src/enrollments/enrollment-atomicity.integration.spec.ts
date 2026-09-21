@@ -60,6 +60,7 @@ function buildPaymentsService(prisma: PrismaService) {
     {} as never,
     {} as never,
     {} as never,
+    {} as never, // niceStdGateway
     {} as never,
     new CreditDomainService(),
     notifications as never,

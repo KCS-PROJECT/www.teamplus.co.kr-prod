@@ -30,6 +30,7 @@ import { PaymentsController } from "./payments.controller";
 import { KgInicisGateway } from "./kg-inicis.gateway";
 import { TossPaymentsGateway } from "./toss-payments.gateway";
 import { NicePaymentsGateway } from "./nice-payments.gateway";
+import { NiceStdPaymentsGateway } from "./nice-std-payments.gateway";
 import { PaymentCalculationService } from "./payment-calculation.service";
 import { PostpaidSettlementService } from "./postpaid-settlement.service";
 import { SettlementSummaryService } from "./settlement/settlement-summary.service";
@@ -248,6 +249,7 @@ describe("Payment System Integration Tests (7 Scenarios)", () => {
             verifyWebhookSignature: jest.fn().mockReturnValue(true),
           },
         },
+        { provide: NiceStdPaymentsGateway, useValue: {} },
         {
           provide: PaymentCalculationService,
           useValue: mockCalculationService,

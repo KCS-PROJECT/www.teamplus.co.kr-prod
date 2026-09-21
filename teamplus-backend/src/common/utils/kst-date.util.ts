@@ -119,6 +119,40 @@ export function kstDayEndExclusive(at: Date): Date {
   return new Date(dayUtcMidnight.getTime() + 15 * 60 * 60 * 1000);
 }
 
+/**
+ * `YYMMDDHHMISS`(KST 벽시계) → UTC instant. PG 응답의 승인일시 표기 전용.
+ * 세기는 2000년대 고정 — 이 포맷은 결제 응답에만 쓰여 1900년대 값이 오지 않는다.
+ * `composeKstInstant` 과 같이 `+09:00` 을 명시해 파싱하고, 해석 불가·부존재 날짜는 던진다
+ * (Invalid Date 를 흘리면 호출부가 `@db.Timestamptz` 에 그대로 write 해 조용히 깨진다).
+ */
+export function kstCompactToInstant(compact: string): Date {
+  if (!/^\d{12}$/.test(compact)) {
+    throw new Error(`KST 12자리 시각 형식이 아닙니다: ${compact}`);
+  }
+  const yy = compact.slice(0, 2);
+  const mm = compact.slice(2, 4);
+  const dd = compact.slice(4, 6);
+  const hh = compact.slice(6, 8);
+  const mi = compact.slice(8, 10);
+  const ss = compact.slice(10, 12);
+  const at = new Date(`20${yy}-${mm}-${dd}T${hh}:${mi}:${ss}+09:00`);
+  if (Number.isNaN(at.getTime())) {
+    throw new Error(`KST 시각을 해석할 수 없습니다: ${compact}`);
+  }
+  // ISO 파서는 2월 31일 같은 부존재 날짜를 다음 달로 굴려서 통과시키므로 왕복 대조로 걸러낸다.
+  const k = new Date(at.getTime() + KST_OFFSET_MS);
+  const p = (n: number) => String(n).padStart(2, "0");
+  const roundTrip = `${String(k.getUTCFullYear()).slice(2)}${p(
+    k.getUTCMonth() + 1,
+  )}${p(k.getUTCDate())}${p(k.getUTCHours())}${p(k.getUTCMinutes())}${p(
+    k.getUTCSeconds(),
+  )}`;
+  if (roundTrip !== compact) {
+    throw new Error(`존재하지 않는 KST 시각입니다: ${compact}`);
+  }
+  return at;
+}
+
 /*
  * [2026-08-07] 게시 기간(A군 `@db.Timestamptz`) 변환 helper 는 **백엔드에 두지 않는다.**
  *   규약(`CLAUDE_STANDARDS.md` ⏰): 절대 시점은 UTC 로 주고받고, KST 벽시계 ↔ 절대시각

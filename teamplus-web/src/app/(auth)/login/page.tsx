@@ -34,6 +34,7 @@ import {
   getDashboardPathByUserType,
   isInternalRedirectPath,
   safeRedirectTarget,
+  withTrailingSlashOnPath,
 } from "@/lib/auth-routing";
 import { MESSAGES } from "@/lib/messages";
 import { useToast } from "@/components/ui/Toast";
@@ -357,11 +358,9 @@ export default function LoginPage() {
       // 라우트가 이미 바뀌었으면 이동 성공 — 복구 불필요
       if (!window.location.pathname.startsWith("/login")) return;
       try {
-        // trailingSlash: true 정합 — /parent → /parent/ (308 리다이렉트 왕복 제거)
-        const normalized = targetPath.endsWith("/")
-          ? targetPath
-          : `${targetPath}/`;
-        window.location.replace(normalized);
+        // trailingSlash: true 정합 — /parent → /parent/ (308 리다이렉트 왕복 제거).
+        //   쿼리가 딸린 복귀 주소는 경로에만 붙인다 — 끝에 붙이면 마지막 쿼리 값이 깨진다.
+        window.location.replace(withTrailingSlashOnPath(targetPath));
       } catch {
         /* 하드 네비게이션 실패 — loginSuccess useEffect(12초) 가 폼 복구 담당 */
       }

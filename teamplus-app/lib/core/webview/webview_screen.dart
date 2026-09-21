@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:collection';
 import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, kDebugMode, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -236,6 +237,17 @@ class WebViewScreenState extends ConsumerState<WebViewScreen>
         source: _flutterBridgeScript,
         injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
       ),
+      // Android WebView 는 POST 요청에 shouldOverrideUrlLoading 을 호출하지 않는다 —
+      //   결제창이 카드사 앱 스킴으로 보내는 폼 POST 는 가로채기 없이 프레임에 로드돼
+      //   ERR_UNKNOWN_URL_SCHEME 페이지로 남는다. 앱 스킴 POST 를 같은 주소의 GET 이동으로
+      //   바꿔 가로채기 경로에 태운다(같은 주소 중복은 _launchIntentUrl 이 무시).
+      //   결제창 프레임(교차 출처) 안에서 동작해야 하므로 모든 프레임에 주입한다.
+      if (defaultTargetPlatform == TargetPlatform.android)
+        UserScript(
+          source: _appSchemeFormGuardScript,
+          injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+          forMainFrameOnly: false,
+        ),
     ]);
 
     // Pull-to-refresh 컨트롤러 초기화 (웹 플랫폼에서는 미지원)
@@ -1108,6 +1120,13 @@ class WebViewScreenState extends ConsumerState<WebViewScreen>
                         initialSettings: InAppWebViewSettings(
                           // 기본 설정
                           useShouldOverrideUrlLoading: true,
+                          // Android 네이티브는 서브프레임(iframe) 이동을 Dart 가 CANCEL 해도
+                          //   그대로 로드한다(재로드 수단이 없어 허용) — 결제창 iframe 의
+                          //   intent://·카드사 스킴이 ERR_UNKNOWN_URL_SCHEME 페이지로 남는 원인.
+                          //   웹 스킴이 아닌 서브프레임 이동은 여기서 취소시키고, 앱 실행은
+                          //   shouldOverrideUrlLoading 콜백(서브프레임에도 호출됨)이 맡는다.
+                          regexToCancelSubFramesLoading:
+                              r'^(?!(https?|about|data|blob|javascript|file):).*',
                           mediaPlaybackRequiresUserGesture: false,
                           allowsInlineMediaPlayback: true,
                           iframeAllow: "camera; microphone",
@@ -1600,10 +1619,15 @@ Content Type: ${errorResponse.contentType}
                             // 외부 앱 스킴(kakaolink 등)이면 외부 앱으로 위임
                             if (_isExternalAppScheme(url.scheme)) {
                               try {
-                                await launchUrl(
+                                final launched = await launchUrl(
                                   url,
                                   mode: LaunchMode.externalApplication,
                                 );
+                                if (!launched) {
+                                  debugPrint(
+                                    '[WebView] onCreateWindow ${url.scheme} 처리 앱 없음',
+                                  );
+                                }
                               } catch (e) {
                                 debugPrint(
                                   '[WebView] onCreateWindow external launch failed: $e',
@@ -1682,10 +1706,16 @@ Content Type: ${errorResponse.contentType}
                           // Kakao.Share.sendDefault 같은 SDK 호출이 [object Object] 에러로 끊긴다.
                           if (_isExternalAppScheme(uri.scheme)) {
                             try {
-                              await launchUrl(
+                              final launched = await launchUrl(
                                 uri,
                                 mode: LaunchMode.externalApplication,
                               );
+                              // 패키지명을 모르는 직접 스킴은 스토어 안내를 페이지에 맡긴다.
+                              if (!launched) {
+                                debugPrint(
+                                  '[WebView] ${uri.scheme} 처리 앱 없음',
+                                );
+                              }
                             } catch (e) {
                               debugPrint(
                                 '[WebView] External scheme launch failed: ${uri.scheme} - $e',

@@ -7,6 +7,7 @@ import { WebhookRetryService } from "./webhook-retry.service";
 import { KgInicisGateway } from "./kg-inicis.gateway";
 import { TossPaymentsGateway } from "./toss-payments.gateway";
 import { NicePaymentsGateway } from "./nice-payments.gateway";
+import { NiceStdPaymentsGateway } from "./nice-std-payments.gateway";
 import { PaymentCalculationService } from "./payment-calculation.service";
 import { PostpaidSettlementService } from "./postpaid-settlement.service";
 import { SettlementSummaryService } from "./settlement/settlement-summary.service";
@@ -70,6 +71,7 @@ describe("PaymentsController — 나이스페이먼츠", () => {
         { provide: KgInicisGateway, useValue: {} },
         { provide: TossPaymentsGateway, useValue: {} },
         { provide: NicePaymentsGateway, useValue: niceGateway },
+        { provide: NiceStdPaymentsGateway, useValue: {} },
         { provide: PaymentCalculationService, useValue: {} },
         { provide: PostpaidSettlementService, useValue: {} },
         { provide: SettlementSummaryService, useValue: {} },

@@ -19,4 +19,6 @@ export const REFUND_PG_UNCONFIRMED_CODES: string[] = [
   "KG_UNCONFIRMED",
   "TOSS_UNCONFIRMED",
   "TOSS_IDEMPOTENCY_CONFLICT",
+  // 나이스(신·구모듈 공용) — 멱등 키가 없어 자동 재호출이 이중 취소가 된다.
+  "NICE_UNCONFIRMED",
 ];

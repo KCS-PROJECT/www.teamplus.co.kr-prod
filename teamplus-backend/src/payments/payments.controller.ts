@@ -30,7 +30,11 @@ import {
   SettlementResponseDto,
 } from "./dto/responses/settlement-response.dto";
 import { ConfirmPostpaidBillingDto } from "./dto/confirm-postpaid-billing.dto";
-import { PaymentsService } from "./payments.service";
+import {
+  PaymentsService,
+  NiceStdResultPendingError,
+  NiceStdPaymentVoidedError,
+} from "./payments.service";
 import { WebhookRetryService } from "./webhook-retry.service";
 import { RefundDto } from "./dto/refund.dto";
 import { RefundByManagerDto } from "./refund-requests/dto/refund-by-manager.dto";
@@ -58,6 +62,11 @@ import {
   NICE_RESULT_OK,
   type NiceAuthResult,
 } from "./nice-payments.gateway";
+import {
+  NiceStdPaymentsGateway,
+  type NiceStdAuthResult,
+} from "./nice-std-payments.gateway";
+import { NiceStdSignDto } from "./dto/nicestd-sign.dto";
 import { Public } from "@/auth/public.decorator";
 import { RedisService } from "@/redis/redis.service";
 import { AuditAction } from "@/common/decorators";
@@ -85,6 +94,7 @@ export class PaymentsController {
     private readonly kgInicisGateway: KgInicisGateway,
     private readonly tossGateway: TossPaymentsGateway,
     private readonly niceGateway: NicePaymentsGateway,
+    private readonly niceStdGateway: NiceStdPaymentsGateway,
     private readonly calculationService: PaymentCalculationService,
     private readonly postpaidSettlementService: PostpaidSettlementService,
     private readonly settlementSummaryService: SettlementSummaryService,
@@ -419,10 +429,12 @@ export class PaymentsController {
       success?: boolean;
       error?: string;
       message?: string;
+      /** 결과 화면이 어느 결제사 흐름인지 구분한다. 기존 신모듈 호출부는 생략해 'nice' 유지. */
+      provider?: string;
     },
   ) {
     const base = this.configService.get<string>("NICE_RETURN_BASE_URL", "");
-    const query = new URLSearchParams({ provider: "nice" });
+    const query = new URLSearchParams({ provider: params.provider ?? "nice" });
     if (params.orderId) query.set("orderNumber", params.orderId);
     if (params.error) query.set("error", params.error);
     if (params.message) query.set("message", params.message);
@@ -469,6 +481,230 @@ export class PaymentsController {
     } catch (e) {
       this.logger.error(
         `나이스 webhook 처리 실패: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+    return "OK";
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //   나이스페이먼츠 구모듈(표준결제)
+  //   신모듈 `/payments/nice/*` 와 병행. 활성 결제사는 AppSettings 가 결정한다.
+  // ────────────────────────────────────────────────────────────────────
+
+  /**
+   * 구모듈 결제창 폼 필드 발급.
+   *
+   *  결제창에 실릴 값 중 금액·MID·SignData·ReturnURL 은 전부 서버가 만든다. 프론트는
+   *  받은 필드를 그대로 제출만 하며, 하나라도 고치면 인증 단계에서 서명이 깨진다.
+   */
+  @Post("nicestd/sign")
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @ApiBearerAuth()
+  @Roles("PARENT", "ADMIN")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "나이스 구모듈 결제창 폼 필드 발급",
+    description:
+      "주문번호로 결제 금액·상품명을 복원하고 SignData 를 생성해 결제창 폼 필드를 반환합니다.",
+  })
+  async signNiceStdPayment(
+    @Request() req: AuthenticatedRequest,
+    @Body() dto: NiceStdSignDto,
+  ) {
+    return this.paymentsService.buildNiceStdPayRequest({
+      orderNumber: dto.orderNumber,
+      userId: req.user.id,
+      payMethod: dto.payMethod,
+      wapUrl: dto.wapUrl,
+      ispCancelUrl: dto.ispCancelUrl,
+    });
+  }
+
+  /**
+   * 구모듈 인증 응답 본문 해석.
+   *
+   *  나이스가 `charset=euc-kr` 로 POST 하면 전역 urlencoded 파서가 415 로 끊어 사용자에게
+   *  결과 화면 대신 500 이 간다. 그래서 이 경로는 raw Buffer 로 받고 여기서 charset 을 보고
+   *  디코드한다. 어떤 본문이 와도 예외를 올리지 않는다 — 판정은 호출부가 주문번호 유무로 한다.
+   */
+  private readNiceStdAuthBody(req: ExpressRequest): NiceStdAuthResult {
+    const raw = req.body;
+    if (!Buffer.isBuffer(raw)) {
+      // raw 파서를 거치지 않은 경로(테스트·프록시 구성 차이) — 이미 객체로 파싱돼 있다.
+      return (raw ?? {}) as NiceStdAuthResult;
+    }
+    try {
+      const charset = /charset\s*=\s*"?([\w-]+)/i
+        .exec(req.headers["content-type"] ?? "")?.[1]
+        ?.toLowerCase();
+      if (
+        charset === "euc-kr" ||
+        charset === "euckr" ||
+        charset === "ks_c_5601-1987"
+      ) {
+        // parseNotifyBody 는 이름과 달리 범용 EUC-KR urlencoded 디코더다.
+        return this.niceStdGateway.parseNotifyBody(raw) as NiceStdAuthResult;
+      }
+      const out: Record<string, string> = {};
+      for (const [key, value] of new URLSearchParams(raw.toString("utf8"))) {
+        out[key] = value;
+      }
+      return out as NiceStdAuthResult;
+    } catch (e) {
+      this.logger.error(
+        `나이스 구모듈 인증 응답 본문 파싱 실패: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return {} as NiceStdAuthResult;
+    }
+  }
+
+  /**
+   * 인증 결과 주소를 브라우저가 GET 으로 여는 경우 — 인증 결과 POST 가 막혀 주소만 남은 뒤
+   *  새로고침했거나, 완료 화면에서 뒤로가기로 돌아온 경로다.
+   *
+   *  인증 데이터가 없어 결제 성사 여부를 알 수 없으므로 상태를 조회·변경하지 않고 중립 안내로만
+   *  보낸다 — 재시도를 유도하면 이미 승인된 건에서 이중 결제가 된다.
+   */
+  @Get("nicestd/authorize")
+  @Public()
+  @ApiOperation({
+    summary: "나이스 구모듈 인증 결과 주소 직접 진입",
+    description:
+      "POST 전용 경로를 브라우저가 GET 으로 열었을 때 404 대신 결제 결과 화면으로 보냅니다. 결제 상태는 변경하지 않습니다.",
+  })
+  async authorizeNiceStdPaymentDirectAccess(@Res() res: ExpressResponse) {
+    return this.redirectToPaymentResult(res, {
+      orderId: "",
+      provider: "nicestd",
+      error: "direct_access",
+    });
+  }
+
+  /**
+   * 구모듈 결제창 인증 결과 수신 → 승인 → 결과 화면으로 리다이렉트.
+   *
+   *  신모듈 `/nice/authorize` 와 같은 이유로 @Public 이고 응답은 303 리다이렉트만이다.
+   *  정당성은 JWT 가 아니라 인증 응답 서명 + 서버 보관 금액 대조로 확인한다.
+   *  본문은 `CharSet=utf-8` 로 받으므로 전역 urlencoded 파서로 충분하다.
+   */
+  @Post("nicestd/authorize")
+  @Public()
+  @ApiOperation({
+    summary: "나이스 구모듈 인증 결과 수신 및 승인",
+    description:
+      "구모듈 결제창이 ReturnURL 로 POST 하는 인증 결과를 검증하고 승인한 뒤 결제 결과 화면으로 리다이렉트합니다.",
+  })
+  async authorizeNiceStdPayment(
+    @Req() req: ExpressRequest,
+    @Res() res: ExpressResponse,
+  ) {
+    const body = this.readNiceStdAuthBody(req);
+    const orderId = body?.Moid ?? "";
+    // 결과 화면은 `error` 유무로 성공을 판정한다(신모듈 경로와 동일 계약).
+    const redirect = (error?: string, message?: string) =>
+      this.redirectToPaymentResult(res, {
+        orderId,
+        provider: "nicestd",
+        error,
+        message,
+      });
+
+    if (!orderId) {
+      this.logger.error("나이스 구모듈 인증 응답에 주문번호(Moid) 없음");
+      return redirect("approve_failed");
+    }
+
+    // 금액은 우리 DB 가 정본이다 — 응답값을 기준으로 검증하면 위변조를 걸러낼 수 없다.
+    const expectedAmount =
+      await this.paymentsService.getPaymentAmountByOrderNumber(orderId);
+    if (expectedAmount === null) {
+      this.logger.error(
+        `나이스 구모듈 인증 응답의 주문을 찾을 수 없음 — orderId=${orderId}`,
+      );
+      return redirect("approve_failed");
+    }
+
+    const verified = this.niceStdGateway.verifyAuthResult(body, expectedAmount);
+    if (!verified.ok) {
+      this.logger.warn(
+        `나이스 구모듈 인증 검증 실패 — orderId=${orderId} reason=${verified.reason} msg=${body?.AuthResultMsg ?? ""}`,
+      );
+      return redirect(verified.reason, body?.AuthResultMsg);
+    }
+
+    try {
+      await this.paymentsService.confirmNiceStdPayment({
+        orderNumber: orderId,
+        tid: body.TxTid ?? "",
+        authToken: body.AuthToken ?? "",
+        amount: expectedAmount,
+        nextAppUrl: body.NextAppURL ?? "",
+        netCancelUrl: body.NetCancelURL ?? "",
+      });
+      return redirect();
+    } catch (e) {
+      if (e instanceof NiceStdResultPendingError) {
+        this.logger.error(
+          `나이스 구모듈 승인 결과 미확정 — orderId=${orderId} ${e.message}`,
+        );
+        return redirect("result_pending", e.message);
+      }
+      // 승인이 성사되지 않았음이 확인된 경우 — 돈이 나가지 않았으니 재결제를 안내한다.
+      if (e instanceof NiceStdPaymentVoidedError) {
+        this.logger.warn(
+          `나이스 구모듈 승인 취소 확정 — orderId=${orderId} ${e.message}`,
+        );
+        return redirect("retry_payment", e.message);
+      }
+      const message = e instanceof Error ? e.message : String(e);
+      this.logger.error(
+        `나이스 구모듈 승인 처리 실패: orderId=${orderId} ${message}`,
+      );
+      return redirect("approve_failed", message);
+    }
+  }
+
+  /**
+   * 구모듈 결제통보(노티) 수신.
+   *
+   *  ⚠️ 통보에는 서명 필드가 없다. 신뢰 근거는 발신 IP 허용목록 + MID 일치뿐이고,
+   *  그래서 이 핸들러는 결제 상태를 바꾸지 않는다(대사 증거만 남긴다).
+   *  본문은 EUC-KR urlencoded 라 전역 파서를 거치지 않고 raw Buffer 로 받아 직접 디코드한다.
+   *  어떤 경우에도 본문 `"OK"` 를 돌려준다 — 없으면 나이스가 최대 10회 재전송한다.
+   */
+  @Post("nicestd/webhook")
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @Header("Content-Type", "text/html;charset=utf-8")
+  @ApiOperation({ summary: "나이스 구모듈 결제통보 수신" })
+  async niceStdWebhook(@Req() req: ExpressRequest): Promise<string> {
+    let fields: Record<string, string> = {};
+    try {
+      const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+      fields = this.niceStdGateway.parseNotifyBody(raw);
+    } catch (e) {
+      this.logger.error(
+        `나이스 구모듈 통보 본문 파싱 실패: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      return "OK";
+    }
+
+    const trusted = this.niceStdGateway.isTrustedNotify({
+      remoteIp: req.ip ?? "",
+      mid: fields.MID ?? "",
+    });
+    if (!trusted) {
+      this.logger.warn(
+        `나이스 구모듈 통보 신뢰 판정 실패 — 무시 (moid=${fields.MOID ?? "none"}, stateCd=${fields.StateCd ?? "none"})`,
+      );
+      return "OK";
+    }
+
+    try {
+      await this.paymentsService.handleNiceStdNotify(fields);
+    } catch (e) {
+      this.logger.error(
+        `나이스 구모듈 통보 처리 실패: ${e instanceof Error ? e.message : String(e)}`,
       );
     }
     return "OK";

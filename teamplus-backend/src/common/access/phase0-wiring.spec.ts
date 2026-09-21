@@ -41,10 +41,13 @@ describe("Phase 0 controller wiring — attendance/payments/classes", () => {
       {} as any, // webhookRetryService
       {} as any, // kgInicisGateway
       {} as any, // tossGateway
+      {} as any, // niceGateway
+      {} as any, // niceStdGateway
       {} as any, // calculationService
       postpaid as any,
       {} as any, // settlementSummaryService (Phase 2b)
       {} as any, // redisService
+      {} as any, // configService
     );
 
     await controller.getPostpaidDraft(

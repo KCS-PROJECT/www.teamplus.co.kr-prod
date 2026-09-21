@@ -199,5 +199,55 @@
             <data
                 android:scheme="storylink"/>
         </intent>
+        <!-- 💳 결제 3rd 앱 (카드사·간편결제·계좌이체·인증·백신) — Android 11+ 패키지 가시성.
+             미등록 시 앱이 설치돼 있어도 스토어로 이동한다.
+             목록 SoT: docs/Reference/NICEPAY_STD_PAYMENT_API.md §8.0 (나이스 공식 표) -->
+        <package android:name="kr.co.samsungcard.mpocket"/>
+        <package android:name="net.ib.android.smcard"/>
+        <package android:name="com.shcard.smartpay"/>
+        <package android:name="com.shinhancard.smartshinhan"/>
+        <package android:name="com.shinhan.smartcaremgr"/>
+        <package android:name="com.hyundaicard.appcard"/>
+        <package android:name="com.kbcard.cxh.appcard"/>
+        <package android:name="com.kbstar.kbbank"/>
+        <package android:name="com.kbstar.reboot"/>
+        <package android:name="com.kbstar.liivbank"/>
+        <package android:name="kvp.jjy.MispAndroid320"/>
+        <package android:name="com.hanaskcard.paycla"/>
+        <package android:name="com.hanaskcard.rocomo.potal"/>
+        <package android:name="kr.co.hanamembers.hmscustomer"/>
+        <package android:name="com.lcacApp"/>
+        <package android:name="com.lottemembers.android"/>
+        <package android:name="nh.smart.nhallonepay"/>
+        <package android:name="com.wooricard.smartapp"/>
+        <package android:name="com.wooribank.smart.npib"/>
+        <package android:name="kr.co.citibank.citimobile"/>
+        <package android:name="com.kakaobank.channel"/>
+        <package android:name="com.lumensoft.touchenappfree"/>
+        <package android:name="com.TouchEn.mVaccine.webs"/>
+        <package android:name="com.ahnlab.v3mobileplus"/>
+        <package android:name="kr.co.shiftworks.vguardweb"/>
+        <package android:name="com.samsung.android.spay"/>
+        <package android:name="com.samsung.android.spaylite"/>
+        <package android:name="com.nhn.android.search"/>
+        <package android:name="com.ssg.serviceapp.android.egiftcertificate"/>
+        <package android:name="com.nhnent.payapp"/>
+        <package android:name="com.lge.lgpay"/>
+        <package android:name="com.tencent.mm"/>
+        <package android:name="viva.republica.toss"/>
+        <package android:name="com.coupang.mobile"/>
+        <package android:name="com.coupangpay.rocketpay"/>
+        <package android:name="com.kftc.bankpay.android"/>
+        <package android:name="com.kbankwith.smartbank"/>
+        <package android:name="com.sktelecom.tauth"/>
+        <package android:name="com.kt.ktauth"/>
+        <package android:name="com.lguplus.smartotp"/>
+        <!-- 앱 미설치 시 스토어 이동 폴백(market://details?id=…) -->
+        <intent>
+            <action
+                android:name="android.intent.action.VIEW"/>
+            <data
+                android:scheme="market"/>
+        </intent>
     </queries>
 </manifest>

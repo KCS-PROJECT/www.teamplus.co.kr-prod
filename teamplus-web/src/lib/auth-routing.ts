@@ -444,3 +444,18 @@ export function safeRedirectTarget(
 ): string {
   return isInternalRedirectPath(target) ? target : fallback;
 }
+
+/**
+ * trailingSlash: true 정합 — 경로 부분에만 `/` 를 붙이고 쿼리·해시는 그대로 둔다.
+ *  문자열 끝에 붙이면 `/payment/complete/?orderNumber=ORD-…` 의 마지막 쿼리 값이
+ *  `ORD-…/` 로 깨져 서버 조회(404)가 실패한다.
+ */
+export function withTrailingSlashOnPath(target: string): string {
+  const hashIdx = target.indexOf("#");
+  const hash = hashIdx >= 0 ? target.slice(hashIdx) : "";
+  const beforeHash = hashIdx >= 0 ? target.slice(0, hashIdx) : target;
+  const qIdx = beforeHash.indexOf("?");
+  const query = qIdx >= 0 ? beforeHash.slice(qIdx) : "";
+  const path = qIdx >= 0 ? beforeHash.slice(0, qIdx) : beforeHash;
+  return `${path.endsWith("/") ? path : `${path}/`}${query}${hash}`;
+}

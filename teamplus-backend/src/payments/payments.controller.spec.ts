@@ -5,6 +5,7 @@ import { PaymentsService } from "./payments.service";
 import { KgInicisGateway } from "./kg-inicis.gateway";
 import { TossPaymentsGateway } from "./toss-payments.gateway";
 import { NicePaymentsGateway } from "./nice-payments.gateway";
+import { NiceStdPaymentsGateway } from "./nice-std-payments.gateway";
 import { PaymentCalculationService } from "./payment-calculation.service";
 import { PostpaidSettlementService } from "./postpaid-settlement.service";
 import { SettlementSummaryService } from "./settlement/settlement-summary.service";
@@ -129,6 +130,7 @@ describe("PaymentsController", () => {
             netCancel: jest.fn(),
           },
         },
+        { provide: NiceStdPaymentsGateway, useValue: {} },
         {
           provide: PaymentCalculationService,
           useValue: mockCalculationService,

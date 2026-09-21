@@ -33,6 +33,18 @@ export const PAYMENT_PROVIDERS = {
     checkoutImplemented: true,
     requiredEnv: ["NICE_CLIENT_KEY", "NICE_SECRET_KEY"],
   },
+  nicestd: {
+    // 구모듈(표준결제 웹표준 v3) — 결제창 폼 POST → ReturnURL 인증 응답 → 서버 승인.
+    //   자격이 Client/Secret 키가 아니라 MID + MerchantKey 이고, 인증 응답을 받을
+    //   ReturnURL 이 서버 설정값이어야 하므로 세 값을 모두 요구한다.
+    label: "나이스페이먼츠(표준결제)",
+    checkoutImplemented: true,
+    requiredEnv: [
+      "NICE_STD_MID",
+      "NICE_STD_MERCHANT_KEY",
+      "NICE_STD_RETURN_URL",
+    ],
+  },
 } as const satisfies Record<string, PaymentProviderMeta>;
 
 export type PaymentProviderCode = keyof typeof PAYMENT_PROVIDERS;

@@ -111,7 +111,14 @@ const securityHeaders = [
       //   [추가 2026-08-27] 나이스 결제창도 동일하게 form submit 방식이다.
       //   AUTHNICE.requestPay() 가 우리 문서에 form 을 만들어 nicepay 로 POST 하므로
       //   *.nicepay.co.kr 이 없으면 결제창이 뜨지 않는다.
-      "form-action 'self' https://*.inicis.com https://*.portone.io https://*.iamport.co https://*.iamport.kr https://*.kakao.com https://*.kakaopay.com https://*.naver.com https://*.nice.co.kr https://*.passauth.co.kr https://nice.checkplus.co.kr https://*.nicepay.co.kr",
+      // next dev 에서는 middleware 의 CSP 가 적용되지 않아 이 form-action 이 그대로 쓰인다.
+      //   웹(5001)과 API(5003) 오리진이 달라, 나이스 인증 결과를 백엔드로 보내는 폼(신모듈 SDK 생성 폼·
+      //   구모듈 hidden form 모두)이 백엔드 오리진 없이는 차단된다.
+      //   브라우저는 폼 제출 URL 뿐 아니라 그 응답의 리다이렉트 대상까지 form-action 으로 검사한다 —
+      //   authorize 는 결과 화면(웹 5001)으로 넘기므로 API 포트만 넣으면 리다이렉트 단계에서 막힌다.
+      //   'self' 는 페이지를 연 오리진만 덮어 localhost 접속 시 LAN IP 5001 을 커버하지 못한다.
+      //   img-src·connect-src 와 같은 dev 오리진 목록을 dev 한정으로 허용한다.
+      `form-action 'self'${isDev ? " http://localhost:5001 http://localhost:5003 http://127.0.0.1:5001 http://127.0.0.1:5003 http://192.168.0.105:5001 http://192.168.0.105:5003 http://211.236.174.86:5001 http://211.236.174.86:5003 http://211.236.174.110:5001 http://211.236.174.110:5003 http://211.236.174.90:5001 http://211.236.174.90:5003 http://211.236.174.115:5001 http://211.236.174.115:5003" : ""} https://*.inicis.com https://*.portone.io https://*.iamport.co https://*.iamport.kr https://*.kakao.com https://*.kakaopay.com https://*.naver.com https://*.nice.co.kr https://*.passauth.co.kr https://nice.checkplus.co.kr https://*.nicepay.co.kr`,
       "worker-src 'self' blob:",
     ].join("; "),
   },
