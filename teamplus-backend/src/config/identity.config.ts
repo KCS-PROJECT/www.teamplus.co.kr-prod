@@ -1,6 +1,13 @@
 import { registerAs } from "@nestjs/config";
 
 /**
+ * KG 공식 샘플에 공개된 테스트 자격증명 — 비교 전용이며 설정 폴백으로 쓰지 않는다.
+ * 운영에서 이 값으로 인증을 시도하지 못하도록 Gateway 가 사용 시점에 대조한다.
+ */
+export const INICIS_IDENTITY_SAMPLE_MID = "INIiasTest";
+export const INICIS_IDENTITY_SAMPLE_API_KEY = "TGdxb2l3enJDWFRTbTgvREU3MGYwUT09";
+
+/**
  * 본인인증 설정
  *
  * 4개 제공자 지원:
@@ -20,34 +27,67 @@ export default registerAs("identity", () => {
     );
   }
 
+  // [R1 #6] reqSvcCd 와 authUrl 이 규격상 짝이다 — 01/02 는 sa.inicis.com/auth,
+  // 03(본인확인, DI 필요) 은 sa.inicis.com/id/auth. 둘을 별개 env 로 두면
+  // INICIS_IDENTITY_REQ_SVC_CD 만 03 으로 바꿨을 때 authUrl 이 그대로 남아
+  // 잘못된 엔드포인트로 요청이 나가고 KG 쪽 에러로만 드러난다. reqSvcCd 에서
+  // authUrl 을 파생시키고, env 로 authUrl 을 직접 지정한 경우에는 그 값을
+  // 우선하되 파생값과 다르면 경고만 남긴다(의도된 override 일 수 있어 강제하지 않음).
+  const kgReqSvcCd = process.env.INICIS_IDENTITY_REQ_SVC_CD || "01";
+  const kgDerivedAuthUrl =
+    kgReqSvcCd === "03"
+      ? "https://sa.inicis.com/id/auth"
+      : "https://sa.inicis.com/auth";
+  const kgEnvAuthUrl = process.env.INICIS_IDENTITY_AUTH_URL;
+  if (kgEnvAuthUrl && kgEnvAuthUrl !== kgDerivedAuthUrl) {
+    // eslint-disable-next-line no-console -- config factory 는 Nest Logger 컨텍스트 생성 이전에 실행된다.
+    console.warn(
+      `[본인인증 설정 경고] INICIS_IDENTITY_AUTH_URL="${kgEnvAuthUrl}" 이 ` +
+        `reqSvcCd="${kgReqSvcCd}" 규격 URL("${kgDerivedAuthUrl}")과 다릅니다. ` +
+        "환경변수 값을 그대로 사용하지만, 의도한 설정인지 확인하세요.",
+    );
+  }
+  const kgAuthUrl = kgEnvAuthUrl || kgDerivedAuthUrl;
+
   return {
-    // ==================== KG이니시스 본인인증 ====================
+    // ==================== KG이니시스 통합인증 (직계약) ====================
+    //
+    // 규격 SoT: docs/Reference/INICIS_UNIFIED_IDENTITY_API.md
+    // 포트원 경유 경로와 별개이며, 포트원 설정은 아래 portone 블록만 참조한다.
     kgInicis: {
-    // 상점 ID (MID) - 결제 MID와 별도
-    storeId: process.env.INICIS_IDENTITY_STORE_ID || "test-identity-store-id",
+      // 상점아이디 (계약 시 발급). 코드 폴백을 두지 않는다 — .env 가 유일한 출처여야
+      // 로딩 실패가 테스트 키로 위장되지 않는다. 비면 Gateway 가 사용 시점에 거부한다.
+      mid: process.env.INICIS_IDENTITY_MID?.trim() ?? "",
 
-    // 상점 인증 키
-    merchantKey:
-      process.env.INICIS_IDENTITY_MERCHANT_KEY || "test-identity-merchant-key",
+      // 대칭키 — authHash / userHash 생성에 사용
+      apiKey: process.env.INICIS_IDENTITY_API_KEY?.trim() ?? "",
 
-    // 서비스 ID (본인인증 전용)
-    serviceId: process.env.INICIS_IDENTITY_SERVICE_ID || "test-service-id",
+      // SEED/CBC 복호화 IV (16 byte) — 상점별 발급값. mid·apiKey 와 같은 이유로 폴백 없음.
+      seedIv: process.env.INICIS_IDENTITY_SEED_IV?.trim() ?? "",
 
-    // 결제 모드 (sandbox | production)
-    mode: process.env.NODE_ENV === "production" ? "production" : "sandbox",
+      // 서비스 구분 — 01 간편인증 / 02 전자서명 / 03 본인확인(DI 제공)
+      reqSvcCd: kgReqSvcCd,
 
-    // 엔드포인트
-    endpoints: {
-      sandbox: {
-        request: "https://testpg.inicis.com/auth/auth",
-        result: "https://testpg.inicis.com/auth/result",
-      },
-      production: {
-        request: "https://pg.inicis.com/auth/auth",
-        result: "https://pg.inicis.com/auth/result",
-      },
+      // 인증창 호출 URL — reqSvcCd 에서 파생(위 kgAuthUrl 계산 참조).
+      // 본인확인(03)은 https://sa.inicis.com/id/auth, 그 외는 https://sa.inicis.com/auth.
+      authUrl: kgAuthUrl,
+
+      // STEP2 authRequestUrl 허용 호스트 — 정확 일치 검증(SSRF 차단)
+      allowedResultHosts: (
+        process.env.INICIS_IDENTITY_RESULT_HOSTS ||
+        "kssa.inicis.com,fcsa.inicis.com"
+      )
+        .split(",")
+        .map((host) => host.trim().toLowerCase())
+        .filter(Boolean),
+
+      // CI 미제공(카카오 등 제한적 제공) 허용 여부 — 기본 false(인증 실패 처리).
+      //
+      // ⚠️ 부작용: CI 가 없으면 identity.service 가 ciHash 를 null 로 저장하고,
+      //   auth.service 의 중복가입 차단이 `if (verification.ciHash)` 가드라 통째로 건너뛴다.
+      //   즉 이 스위치는 "CI 없이 진행"이 아니라 "1인 1계정 차단 해제"를 겸한다.
+      allowMissingCi: process.env.INICIS_IDENTITY_ALLOW_MISSING_CI === "true",
     },
-  },
 
   // ==================== 카카오 인증 ====================
   kakao: {
@@ -172,15 +212,51 @@ export default registerAs("identity", () => {
 
   // ==================== 공통 설정 ====================
   common: {
+    // Phase 2 — provider 전환 스위치. initiate-anonymous 요청은 이 값만 쓴다
+    // (R1 #4 — 클라이언트 provider 무시). 운영 기본값은 portone(현재 운영 경로)
+    // 유지 — kg_inicis 로 바꾸면 직결 전환. 허용값 이외는 portone 으로 강등하되,
+    // [R1 #5] 오타(예: "kg-inicis")를 조용히 삼키면 운영자가 스위치를 넘기고
+    // 재배포했는데도 원인 추적이 안 되므로 경고 로그를 남긴다.
+    activeProvider: (() => {
+      const raw = (process.env.IDENTITY_PROVIDER || "portone")
+        .trim()
+        .toLowerCase();
+      if (raw === "portone" || raw === "kg_inicis") return raw;
+      // eslint-disable-next-line no-console -- config factory 는 Nest Logger 컨텍스트 생성 이전에 실행된다.
+      console.warn(
+        `[본인인증 설정 경고] IDENTITY_PROVIDER="${raw}" 는 허용값(portone|kg_inicis)이 ` +
+          "아닙니다. portone 으로 강등합니다.",
+      );
+      return "portone";
+    })(),
+
     // 콜백 URL (백엔드)
     callbackBaseUrl:
       process.env.IDENTITY_CALLBACK_BASE_URL ||
       "http://localhost:5003/api/v1/identity/callback",
 
     // 리턴 URL (프론트엔드/앱)
+    // [R1 #3] 기존 기본값 ".../identity/result" 는 실재하지 않는 라우트였다
+    // (teamplus-web/src/app/identity/ 아래엔 callback 뿐) — resolveKgReturnUrl 이
+    // 허용목록 밖 origin 을 이 값으로 강등하면 인증 성공 사용자가 404 로 떨어지고
+    // idv:pending 도 소비되지 못했다. 실재하는 /identity/callback 으로 고정한다.
     returnBaseUrl:
       process.env.IDENTITY_RETURN_BASE_URL ||
-      "http://localhost:5001/identity/result",
+      "http://localhost:5001/identity/callback",
+
+    // 백엔드 공개 진입점 — KG successUrl/failUrl 조립 기준 (외부에서 접근 가능한 주소)
+    publicBaseUrl: (
+      process.env.IDENTITY_PUBLIC_BASE_URL || "http://localhost:5003"
+    ).replace(/\/+$/, ""),
+
+    // 인증 완료 후 리다이렉트 허용 origin — 목록 밖이면 returnBaseUrl 로 강등(open redirect 차단)
+    returnUrlAllowlist: (
+      process.env.IDENTITY_RETURN_URL_ALLOWLIST ||
+      "http://localhost:5001,https://www.teamplus.co.kr"
+    )
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean),
 
     // Deep Link 스킴 (Flutter 앱)
     deepLinkScheme: process.env.IDENTITY_DEEP_LINK_SCHEME || "teamplus",
@@ -236,7 +312,18 @@ export default registerAs("identity", () => {
     maskSensitiveData: true,
 
     // 마스킹 대상 필드
-    sensitiveFields: ["ci", "di", "name", "phone", "birthDate", "password"],
+    // token 은 KG 통합인증의 SEED 복호화 키다 — webhook 로그 JSONB 에 평문 적재를 막는다.
+    sensitiveFields: [
+      "ci",
+      "di",
+      "name",
+      "phone",
+      "birthDate",
+      "password",
+      "token",
+      "authHash",
+      "userHash",
+    ],
 
     // 웹훅 페이로드 로깅
     logWebhookPayload: process.env.IDENTITY_LOG_WEBHOOK !== "false",

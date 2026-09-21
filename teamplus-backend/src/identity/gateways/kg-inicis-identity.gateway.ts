@@ -1,6 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import * as crypto from "crypto";
 import axios from "axios";
 import {
   IIdentityGateway,
@@ -11,428 +10,503 @@ import {
   SignatureVerificationResult,
   IdentityProvider,
 } from "./identity-gateway.interface";
+import {
+  INICIS_IDENTITY_SAMPLE_API_KEY,
+  INICIS_IDENTITY_SAMPLE_MID,
+} from "@/config/identity.config";
+import {
+  SEED_UNAVAILABLE_MESSAGE,
+  assertAuthRequestUrl,
+  buildAuthHash,
+  buildAutoSubmitForm,
+  buildUserHash,
+  deriveMTxId,
+  isSeedCipherAvailable,
+  seedDecrypt,
+} from "./kg-inicis.crypto";
+
+/** STEP3 결과조회 타임아웃 — 매뉴얼 권고 5초 */
+const RESULT_QUERY_TIMEOUT_MS = 5000;
+
+/** STEP3 결과조회 최대 시도 횟수 (최초 1 + 재시도 1) */
+const RESULT_QUERY_MAX_ATTEMPTS = 2;
+
+/** 재시도 백오프 */
+const RESULT_QUERY_RETRY_DELAY_MS = 300;
+
+/** 성공 결과코드 */
+const RESULT_CODE_SUCCESS = "0000";
+
+/** STEP4 결과조회 응답 (복호화 전) */
+interface KgResultQueryResponse {
+  resultCode?: string;
+  resultMsg?: string;
+  txId?: string;
+  mTxId?: string;
+  svcCd?: string;
+  providerDevCd?: string;
+  userName?: string;
+  userPhone?: string;
+  userBirthday?: string;
+  userCi?: string;
+}
 
 /**
- * KG이니시스 본인인증 Gateway
+ * KG이니시스 통합인증 Gateway (직계약)
  *
- * KG이니시스의 본인인증 서비스(SafeKey)를 연동합니다.
+ * 규격 SoT: docs/Reference/INICIS_UNIFIED_IDENTITY_API.md
  *
- * 주요 기능:
- * - 본인인증 요청 URL 생성
- * - 콜백 데이터 처리 및 검증
- * - 서명 생성/검증
- * - 암호화된 개인정보 복호화
+ * 흐름
+ *   STEP1 createAuthRequest() → 자동 submit 폼 HTML (브라우저가 KG 인증창으로 POST)
+ *   STEP2 KG → successUrl/failUrl 폼 POST (브라우저) → authRequestUrl · txId · token
+ *   STEP3 processCallback() → authRequestUrl 로 서버-서버 결과조회 (JSON POST)
+ *   STEP4 SEED 복호화 → 이름 · 휴대폰 · 생년월일 · CI
  *
- * 보안:
- * - HMAC-SHA256 서명
- * - AES-256-CBC 암호화
- * - IP 화이트리스트
+ * CI 암호화·ciHash·상태 전이는 IdentityService 가 담당한다.
+ * `reqSvcCd=01`(간편인증)은 DI · 성별 · 외국인 여부를 제공하지 않는다.
  */
 @Injectable()
 export class KgInicisIdentityGateway implements IIdentityGateway {
   private readonly logger = new Logger(KgInicisIdentityGateway.name);
   private readonly config: any;
   private readonly commonConfig: any;
-  private readonly securityConfig: any;
 
   readonly providerName: IdentityProvider = "kg_inicis";
-
-  // KG이니시스 IP 화이트리스트 (프로덕션)
-  private readonly ipWhitelist: string[] = [
-    "203.238.37.0/24", // KG이니시스 서버 IP 대역
-    "211.219.96.0/24",
-    "121.133.104.0/24",
-  ];
 
   constructor(private readonly configService: ConfigService) {
     const identityConfig = this.configService.get("identity");
     this.config = identityConfig.kgInicis;
     this.commonConfig = identityConfig.common;
-    this.securityConfig = identityConfig.security;
-
-    // HTTP 클라이언트 초기화 (향후 API 호출 시 사용 예정)
-    void axios.create({
-      timeout: this.commonConfig.httpTimeout,
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        Accept: "application/json",
-      },
-    });
 
     this.logger.log(
-      `KG이니시스 본인인증 Gateway 초기화 완료 (모드: ${this.config.mode}, 상점ID: ${this.config.storeId})`,
+      `KG이니시스 통합인증 Gateway 초기화 (mid=${this.config.mid}, reqSvcCd=${this.config.reqSvcCd}, ` +
+        `authUrl=${this.config.authUrl}, allowMissingCi=${this.config.allowMissingCi})`,
     );
+
+    // 부팅은 막지 않는다 — 현재 운영 경로는 포트원이고, 여기서 끊으면 API 전체가 내려간다.
+    if (!isSeedCipherAvailable()) {
+      this.logger.warn(SEED_UNAVAILABLE_MESSAGE);
+    }
+    if (!this.hasCredentials()) {
+      this.logger.warn(
+        "KG 자격증명(INICIS_IDENTITY_MID / INICIS_IDENTITY_API_KEY / INICIS_IDENTITY_SEED_IV)이 비어 있습니다. " +
+          ".env 에서 읽히지 않으면 KG 직결 인증 요청은 거부됩니다.",
+      );
+    }
   }
 
   /**
-   * 인증 요청 생성
+   * STEP1 — 통합인증 요청 폼 생성
    *
-   * 사용자를 KG이니시스 본인인증 페이지로 리다이렉트할 정보를 생성합니다.
+   * 회원가입은 인증 결과로 입력값을 자동채움하는 흐름이라 기본은 `flgFixedUser=N`.
+   * 이름·휴대폰·생년월일이 모두 주어지면(기존 회원 재인증) 사용자 고정 + userHash 를 세팅한다.
    */
   async createAuthRequest(
     params: IdentityRequestParams,
   ): Promise<IdentityRequestResult> {
-    const {
-      requestId,
-      purpose,
-      userId,
-      returnUrl,
-      clientIp: _clientIp,
-      userAgent: _userAgent,
-      metadata,
-    } = params;
+    const { requestId, purpose, userId, metadata } = params;
 
-    this.logger.log(
-      `본인인증 요청 생성: requestId=${requestId}, purpose=${purpose}, userId=${userId || "anonymous"}`,
-    );
-
-    try {
-      const timestamp = Date.now().toString();
-      const endpoints = this.config.endpoints[this.config.mode];
-
-      // 콜백 URL 구성
-      const callbackUrl = `${this.commonConfig.callbackBaseUrl}/kg_inicis`;
-      const finalReturnUrl =
-        returnUrl ||
-        `${this.commonConfig.returnBaseUrl}?requestId=${requestId}`;
-
-      // 요청 데이터
-      const requestData: Record<string, string> = {
-        mid: this.config.storeId,
-        reqSvcCd: "Auth", // 본인인증 서비스
-        mTxId: requestId,
-        authType: "M", // 휴대폰 인증
-        flgFixedUser: "N", // 사용자 정보 고정 안함
-        returnUrl: callbackUrl,
-        closeUrl: finalReturnUrl,
-        timestamp,
-        charset: "UTF-8",
-        format: "JSON",
-      };
-
-      // 추가 메타데이터
-      if (metadata) {
-        if (metadata.userName) {
-          requestData.userName = metadata.userName;
-          requestData.flgFixedUser = "Y"; // 사용자 정보 고정
-        }
-        if (metadata.userPhone) {
-          requestData.userPhone = metadata.userPhone;
-        }
-        if (metadata.userBirth) {
-          requestData.userBirth = metadata.userBirth;
-        }
-      }
-
-      // 서명 생성
-      requestData.signature = this.generateSignature({
-        mid: this.config.storeId,
-        mTxId: requestId,
-        timestamp,
-      });
-
-      // 인증 URL 생성
-      const authUrl = `${endpoints.request}?${new URLSearchParams(requestData).toString()}`;
-
-      this.logger.debug(`인증 URL 생성 완료: ${authUrl.substring(0, 100)}...`);
-
-      return {
-        success: true,
-        authUrl,
-        requestId,
-      };
-    } catch (error) {
+    // .env 가 유일한 출처다 — 코드 폴백을 두지 않아야 로딩 실패가 테스트 키로 위장되지 않는다.
+    if (!this.hasCredentials()) {
       this.logger.error(
-        `본인인증 요청 생성 실패: ${error.message}`,
-        error.stack,
+        "KG 자격증명이 비어 있어 인증 요청을 중단합니다. " +
+          "INICIS_IDENTITY_MID / INICIS_IDENTITY_API_KEY / INICIS_IDENTITY_SEED_IV 를 .env 에 설정하세요.",
       );
-
       return {
         success: false,
         requestId,
-        errorCode: "INICIS_REQUEST_ERROR",
+        errorCode: "INICIS_CREDENTIALS_NOT_CONFIGURED",
+        errorMessage: "본인인증 설정이 완료되지 않았습니다.",
+      };
+    }
+
+    // 운영에서 공개 샘플 자격증명으로 인증이 나가는 것을 사용 시점에 차단한다.
+    if (this.isProduction() && this.hasSampleCredentials()) {
+      this.logger.error(
+        "운영 환경에서 KG 공개 샘플 자격증명이 감지되어 인증 요청을 중단합니다. " +
+          "INICIS_IDENTITY_MID / INICIS_IDENTITY_API_KEY 를 계약 값으로 설정하세요.",
+      );
+      return {
+        success: false,
+        requestId,
+        errorCode: "INICIS_CREDENTIALS_NOT_CONFIGURED",
+        errorMessage: "본인인증 설정이 완료되지 않았습니다.",
+      };
+    }
+
+    try {
+      const mid: string = this.config.mid;
+      const reqSvcCd: string = this.config.reqSvcCd;
+      const mTxId = deriveMTxId(requestId);
+      const baseUrl: string = this.commonConfig.publicBaseUrl;
+
+      const fields: Record<string, string | undefined> = {
+        mid,
+        reqSvcCd,
+        mTxId,
+        successUrl: `${baseUrl}/api/v1/identity/kg-inicis/success/${requestId}`,
+        failUrl: `${baseUrl}/api/v1/identity/kg-inicis/fail/${requestId}`,
+        authHash: buildAuthHash(mid, mTxId, this.config.apiKey),
+        flgFixedUser: "N",
+        // token 방식 SEED 복호화를 쓰려면 고정값
+        reservedMsg: "isUseToken=Y",
+      };
+
+      const userName = metadata?.userName as string | undefined;
+      const userPhone = metadata?.userPhone as string | undefined;
+      const userBirth = metadata?.userBirth as string | undefined;
+      if (userName && userPhone && userBirth) {
+        fields.flgFixedUser = "Y";
+        fields.userName = userName;
+        fields.userPhone = userPhone;
+        fields.userBirth = userBirth;
+        fields.userHash = buildUserHash(
+          userName,
+          mid,
+          userPhone,
+          mTxId,
+          userBirth,
+          reqSvcCd,
+        );
+      }
+
+      this.logger.log(
+        `KG 통합인증 요청 생성: requestId=${requestId}, purpose=${purpose}, ` +
+          `userId=${userId ?? "anonymous"}, flgFixedUser=${fields.flgFixedUser}`,
+      );
+
+      return {
+        success: true,
+        requestId,
+        authHtml: buildAutoSubmitForm(this.config.authUrl, fields),
+      };
+    } catch (error: any) {
+      this.logger.error(
+        `KG 통합인증 요청 생성 실패: requestId=${requestId}, message=${error?.message}`,
+      );
+      return {
+        success: false,
+        requestId,
+        errorCode: "AUTH_REQUEST_BUILD_FAILED",
         errorMessage: "본인인증 요청 생성에 실패했습니다.",
       };
     }
   }
 
   /**
-   * 콜백 처리
+   * STEP2 수신값 검증 → STEP3 결과조회 → STEP4 복호화
    *
-   * KG이니시스로부터 받은 콜백 데이터를 처리하여 인증 결과를 반환합니다.
+   * 앞 단계가 실패하면 다음 단계로 진행하지 않는다.
    */
   async processCallback(
     params: IdentityCallbackParams,
   ): Promise<IdentityVerificationResult> {
-    const { requestId, responseData, signature, clientIp } = params;
+    const { requestId, responseData } = params;
 
-    this.logger.log(
-      `콜백 처리 시작: requestId=${requestId}, ip=${clientIp || "unknown"}`,
-    );
+    const resultCode: string = responseData.resultCode ?? "";
+    const resultMsg = this.decodeMsg(responseData.resultMsg);
 
-    try {
-      // IP 화이트리스트 검증
-      if (clientIp && !this.verifyIpWhitelist(clientIp)) {
-        this.logger.warn(`허용되지 않은 IP에서 콜백 요청: ${clientIp}`);
-        return {
-          success: false,
-          requestId,
-          errorCode: "IP_NOT_ALLOWED",
-          errorMessage: "허용되지 않은 IP에서의 요청입니다.",
-        };
-      }
-
-      // 결과 코드 확인
-      const resultCode = responseData.resultCode || responseData.result_cd;
-      const resultMsg = responseData.resultMsg || responseData.result_msg;
-
-      if (resultCode !== "0000") {
-        this.logger.warn(
-          `인증 실패: resultCode=${resultCode}, resultMsg=${resultMsg}`,
-        );
-        return {
-          success: false,
-          requestId,
-          errorCode: resultCode,
-          errorMessage: resultMsg || "본인인증에 실패했습니다.",
-        };
-      }
-
-      // [2026-06-10 SECURITY] 프로덕션에서는 서명 + 암호화 데이터 필수.
-      //   기존: 둘 다 선택적이라 평문 responseData 폴백 → 서명·암호화 없이 위조 CI/DI 가입 가능(CRITICAL).
-      const strict = this.config.mode === "production";
-      const encryptedData = responseData.encData || responseData.enc_data;
-
-      if (strict && (!signature || !encryptedData)) {
-        this.logger.error(
-          `[SECURITY] 본인인증 콜백 서명/암호화 누락 차단: requestId=${requestId}, signature=${!!signature}, encData=${!!encryptedData}`,
-        );
-        return {
-          success: false,
-          requestId,
-          errorCode: "SIGNATURE_REQUIRED",
-          errorMessage: "본인인증 서명/암호화 정보가 누락되었습니다.",
-        };
-      }
-
-      // 서명 검증
-      if (signature) {
-        const verifyResult = this.verifySignature(responseData, signature);
-        if (!verifyResult.valid) {
-          this.logger.error("서명 검증 실패");
-          return {
-            success: false,
-            requestId,
-            errorCode: "SIGNATURE_INVALID",
-            errorMessage: "서명 검증에 실패했습니다.",
-          };
-        }
-      }
-
-      // 암호화된 데이터 복호화
-      let decryptedData: Record<string, any>;
-
-      if (encryptedData) {
-        decryptedData = await this.decryptData(encryptedData);
-      } else {
-        // 비프로덕션(sandbox/dev)에서만 평문 데이터 허용 — 위 strict 가드가 프로덕션 차단.
-        decryptedData = responseData;
-      }
-
-      // 개인정보 추출
-      const ci = decryptedData.ci || decryptedData.CI;
-      const di = decryptedData.di || decryptedData.DI;
-      const name = decryptedData.name || decryptedData.userName;
-      const phone = decryptedData.phone || decryptedData.userPhone;
-      const birthDate = decryptedData.birthDate || decryptedData.userBirth;
-      const gender = decryptedData.gender || decryptedData.userGender;
-
-      this.logger.log(
-        `인증 성공: requestId=${requestId}, name=${this.maskName(name)}`,
+    // 1) STEP2 결과코드
+    if (resultCode !== RESULT_CODE_SUCCESS) {
+      this.logger.warn(
+        `KG 통합인증 실패 수신: requestId=${requestId}, resultCode=${resultCode}`,
       );
-
-      return {
-        success: true,
-        requestId,
-        ci,
-        di,
-        name,
-        phone,
-        birthDate,
-        gender: this.normalizeGender(gender),
-        verifiedAt: new Date(),
-      };
-    } catch (error) {
-      this.logger.error(`콜백 처리 실패: ${error.message}`, error.stack);
-
       return {
         success: false,
         requestId,
-        errorCode: "CALLBACK_PROCESS_ERROR",
-        errorMessage: "콜백 처리 중 오류가 발생했습니다.",
+        errorCode: `KG_AUTH_${resultCode || "UNKNOWN"}`,
+        errorMessage: resultMsg || "본인인증에 실패했습니다.",
       };
     }
+
+    // 2) 결과조회 URL 검증 — 실패 시 절대 호출하지 않는다 (SSRF)
+    const authRequestUrl: string | undefined = responseData.authRequestUrl;
+    try {
+      assertAuthRequestUrl(authRequestUrl, this.config.allowedResultHosts);
+    } catch (error: any) {
+      // 정상 흐름에서는 나올 수 없는 값 — 위변조 시도 신호로 취급한다.
+      this.logger.error(
+        `KG 결과조회 URL 검증 실패(위변조 의심): requestId=${requestId}, reason=${error?.message}`,
+      );
+      return {
+        success: false,
+        requestId,
+        errorCode: "INVALID_RESULT_URL",
+        errorMessage: "인증 결과 조회 주소가 유효하지 않습니다.",
+      };
+    }
+
+    const txId: string | undefined = responseData.txId;
+    if (!txId) {
+      this.logger.warn(`KG txId 누락: requestId=${requestId}`);
+      return {
+        success: false,
+        requestId,
+        errorCode: "TXID_MISSING",
+        errorMessage: "인증 트랜잭션 정보가 없습니다.",
+      };
+    }
+
+    const token: string | undefined = responseData.token;
+    if (!token) {
+      this.logger.warn(`KG token 누락: requestId=${requestId}`);
+      return {
+        success: false,
+        requestId,
+        errorCode: "TOKEN_MISSING",
+        errorMessage: "인증 결과를 복호화할 수 없습니다.",
+      };
+    }
+
+    // 3) STEP3 결과조회 (서버-서버)
+    //    결과조회는 멱등하므로 타임아웃·5xx·네트워크 오류는 1회 재시도한다.
+    //    (한 번 실패로 끊으면 인증 1건이 영구 소각된다)
+    let queried: KgResultQueryResponse | undefined;
+    for (let attempt = 1; attempt <= RESULT_QUERY_MAX_ATTEMPTS; attempt++) {
+      try {
+        const res = await axios.post<KgResultQueryResponse>(
+          authRequestUrl as string,
+          { mid: this.config.mid, txId },
+          {
+            timeout: RESULT_QUERY_TIMEOUT_MS,
+            maxRedirects: 0,
+            headers: {
+              "Content-Type": "application/json;charset=utf-8",
+              Accept: "application/json",
+            },
+          },
+        );
+        queried = res.data ?? {};
+        break;
+      } catch (error: any) {
+        const status: number | undefined = error?.response?.status;
+        // 응답이 없으면(타임아웃·네트워크) 또는 5xx 면 재시도 대상. 4xx 는 재시도해도 같다.
+        const retryable = status === undefined || status >= 500;
+        const canRetry = attempt < RESULT_QUERY_MAX_ATTEMPTS && retryable;
+
+        this.logger.error(
+          `KG 결과조회 호출 실패(${attempt}/${RESULT_QUERY_MAX_ATTEMPTS}): requestId=${requestId}, ` +
+            `status=${status ?? "NETWORK"}, code=${error?.code ?? "-"}, retry=${canRetry}`,
+        );
+
+        if (canRetry) {
+          await this.delay(RESULT_QUERY_RETRY_DELAY_MS);
+          continue;
+        }
+
+        return {
+          success: false,
+          requestId,
+          errorCode: `RESULT_QUERY_FAILED_${status ?? error?.code ?? "NETWORK"}`,
+          errorMessage: "인증 결과 조회에 실패했습니다.",
+        };
+      }
+    }
+
+    if (!queried) {
+      return {
+        success: false,
+        requestId,
+        errorCode: "RESULT_QUERY_FAILED_EMPTY",
+        errorMessage: "인증 결과 조회에 실패했습니다.",
+      };
+    }
+
+    // 4) STEP4 결과코드
+    if (queried.resultCode !== RESULT_CODE_SUCCESS) {
+      this.logger.warn(
+        `KG 결과조회 실패: requestId=${requestId}, resultCode=${queried.resultCode}`,
+      );
+      return {
+        success: false,
+        requestId,
+        errorCode: `KG_RESULT_${queried.resultCode || "UNKNOWN"}`,
+        errorMessage:
+          this.decodeMsg(queried.resultMsg) || "본인인증에 실패했습니다.",
+      };
+    }
+
+    // 5) 최초 요청자 일치 확인 — 다른 트랜잭션 결과가 섞여 들어오는 것을 차단
+    const expectedMTxId = deriveMTxId(requestId);
+    if (queried.mTxId !== expectedMTxId) {
+      this.logger.error(
+        `KG mTxId 불일치: requestId=${requestId} (위변조 의심)`,
+      );
+      return {
+        success: false,
+        requestId,
+        errorCode: "MTXID_MISMATCH",
+        errorMessage: "인증 요청 정보가 일치하지 않습니다.",
+      };
+    }
+    if (queried.txId !== txId) {
+      this.logger.error(`KG txId 불일치: requestId=${requestId} (위변조 의심)`);
+      return {
+        success: false,
+        requestId,
+        errorCode: "TXID_MISMATCH",
+        errorMessage: "인증 요청 정보가 일치하지 않습니다.",
+      };
+    }
+
+    // 6) SEED 복호화 — 실패 시 평문 폴백 없이 실패 처리
+    let name: string | undefined;
+    let phone: string | undefined;
+    let birthDate: string | undefined;
+    let ci: string | undefined;
+    try {
+      const iv: string = this.config.seedIv;
+      name = this.decryptOptional(queried.userName, token, iv);
+      phone = this.decryptOptional(queried.userPhone, token, iv);
+      birthDate = this.decryptOptional(queried.userBirthday, token, iv);
+      ci = this.decryptOptional(queried.userCi, token, iv);
+    } catch (error: any) {
+      this.logger.error(
+        `KG SEED 복호화 실패: requestId=${requestId}, message=${error?.message}`,
+      );
+      return {
+        success: false,
+        requestId,
+        errorCode: "DECRYPT_FAILED",
+        errorMessage: "인증 정보를 복호화하지 못했습니다.",
+      };
+    }
+
+    // 7) CI 부재 — 카카오 등 제한적 제공 케이스. 기본은 실패, 스위치로만 통과.
+    if (!ci) {
+      if (!this.config.allowMissingCi) {
+        this.logger.warn(`KG CI 미제공: requestId=${requestId}`);
+        return {
+          success: false,
+          requestId,
+          errorCode: "CI_MISSING",
+          errorMessage: "인증 기관에서 연계정보(CI)를 제공하지 않았습니다.",
+        };
+      }
+      this.logger.warn(
+        `KG CI 미제공이나 허용 설정으로 진행: requestId=${requestId}, provider=${queried.providerDevCd ?? "-"}`,
+      );
+    }
+
+    this.logger.log(
+      `KG 통합인증 완료: requestId=${requestId}, provider=${queried.providerDevCd ?? "-"}`,
+    );
+
+    return {
+      success: true,
+      requestId,
+      ci,
+      name,
+      phone: this.normalizePhone(phone),
+      birthDate: this.normalizeBirthDate(birthDate),
+      verifiedAt: new Date(),
+    };
   }
 
   /**
    * 서명 검증
+   *
+   * 통합인증은 가맹점 → KG 방향의 authHash 만 규정하고, 콜백 방향 서명은 없다.
+   * 무결성은 STEP3 서버-서버 결과조회 + mTxId/txId 대조로 보장한다.
    */
   verifySignature(
-    data: Record<string, any>,
-    signature: string,
+    _data: Record<string, any>,
+    _signature: string,
   ): SignatureVerificationResult {
-    try {
-      // 검증용 서명 생성
-      const expectedSignature = this.generateCallbackSignature(data);
-
-      const isValid = signature === expectedSignature;
-
-      if (!isValid) {
-        this.logger.error(
-          `서명 검증 실패: 예상=${expectedSignature}, 실제=${signature}`,
-        );
-      }
-
-      return {
-        valid: isValid,
-        errorMessage: isValid ? undefined : "서명이 일치하지 않습니다.",
-      };
-    } catch (error) {
-      return {
-        valid: false,
-        errorMessage: `서명 검증 오류: ${error.message}`,
-      };
-    }
+    return { valid: true };
   }
 
   /**
-   * IP 화이트리스트 검증
+   * IP 화이트리스트 검증 — 항상 허용.
+   *
+   * STEP2 successUrl/failUrl 은 KG 서버가 아니라 **사용자 브라우저**가 폼 POST 한다.
+   * 따라서 KG IP 대역으로 검사하면 정상 인증이 전부 차단된다.
+   * 실제 신뢰 경계는 STEP3 서버-서버 결과조회이며, 그 결과만 인증 성공 근거로 쓴다.
    */
-  verifyIpWhitelist(ip: string): boolean {
-    // 개발/샌드박스 모드에서는 모든 IP 허용
-    if (this.config.mode !== "production") {
-      return true;
-    }
-
-    // 설정된 화이트리스트 확인
-    const configWhitelist = this.securityConfig.ipWhitelist;
-    if (configWhitelist && configWhitelist.length > 0) {
-      return configWhitelist.includes(ip);
-    }
-
-    // 기본 화이트리스트 확인 (CIDR 범위)
-    return this.isIpInCidrRanges(ip, this.ipWhitelist);
+  verifyIpWhitelist(_ip: string): boolean {
+    return true;
   }
 
   /**
-   * 암호화된 데이터 복호화
+   * SEED 복호화 유틸 (배치·점검용).
+   *
+   * SEED 키는 트랜잭션마다 다른 STEP2 token 이라 단일 인자로는 복호화할 수 없다.
+   * `{"token":"<base64>","fields":{"userCi":"<base64>"}}` 형태 JSON 을 받는다.
    */
   async decryptData(encryptedData: string): Promise<Record<string, any>> {
-    try {
-      const key = Buffer.from(this.config.merchantKey.substring(0, 32), "utf8");
-      const iv = Buffer.from(this.config.merchantKey.substring(0, 16), "utf8");
-
-      const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
-      let decrypted = decipher.update(encryptedData, "base64", "utf8");
-      decrypted += decipher.final("utf8");
-
-      // JSON 파싱 시도
-      try {
-        return JSON.parse(decrypted);
-      } catch {
-        // URL 인코딩된 데이터 파싱
-        const params = new URLSearchParams(decrypted);
-        const result: Record<string, any> = {};
-        params.forEach((value, key) => {
-          result[key] = value;
-        });
-        return result;
-      }
-    } catch (error) {
-      this.logger.error(`데이터 복호화 실패: ${error.message}`);
-      throw new Error("데이터 복호화에 실패했습니다.");
+    const parsed = JSON.parse(encryptedData) as {
+      token?: string;
+      fields?: Record<string, string>;
+    };
+    if (!parsed?.token || !parsed?.fields) {
+      throw new Error(
+        "복호화 입력 형식이 올바르지 않습니다. { token, fields } 가 필요합니다.",
+      );
     }
-  }
-
-  /**
-   * 요청 서명 생성 (HMAC-SHA256)
-   */
-  private generateSignature(data: Record<string, string>): string {
-    const sortedKeys = Object.keys(data).sort();
-    const signatureData = sortedKeys
-      .map((key) => `${key}=${data[key]}`)
-      .join("&");
-
-    const signature = crypto
-      .createHmac("sha256", this.config.merchantKey)
-      .update(signatureData)
-      .digest("hex");
-
-    return signature;
-  }
-
-  /**
-   * 콜백 서명 생성
-   */
-  private generateCallbackSignature(data: Record<string, any>): string {
-    const mTxId = data.mTxId || data.m_tx_id;
-    const resultCode = data.resultCode || data.result_cd;
-    const timestamp = data.timestamp || data.ts;
-
-    const signatureData = `${mTxId}|${resultCode}|${timestamp}`;
-
-    return crypto
-      .createHmac("sha256", this.config.merchantKey)
-      .update(signatureData)
-      .digest("hex");
-  }
-
-  /**
-   * IP가 CIDR 범위에 포함되는지 확인
-   */
-  private isIpInCidrRanges(ip: string, cidrRanges: string[]): boolean {
-    const ipNum = this.ipToNumber(ip);
-
-    for (const cidr of cidrRanges) {
-      const [rangeIp, bits] = cidr.split("/");
-      const mask = ~((1 << (32 - parseInt(bits, 10))) - 1);
-      const rangeNum = this.ipToNumber(rangeIp);
-
-      if ((ipNum & mask) === (rangeNum & mask)) {
-        return true;
-      }
+    const result: Record<string, string> = {};
+    for (const [key, value] of Object.entries(parsed.fields)) {
+      result[key] = seedDecrypt(value, parsed.token, this.config.seedIv);
     }
-
-    return false;
+    return result;
   }
 
-  /**
-   * IP 주소를 숫자로 변환
-   */
-  private ipToNumber(ip: string): number {
-    const parts = ip.split(".").map((p) => parseInt(p, 10));
+  // ─────────────────────────────────────────────────────────
+  // Private helpers
+  // ─────────────────────────────────────────────────────────
+
+  private isProduction(): boolean {
+    return (process.env.NODE_ENV ?? "").toLowerCase() === "production";
+  }
+
+  /** mid · apiKey · seedIv 가 전부 채워져 있는지 — .env 로딩 실패를 사용 시점에 드러내기 위한 검사. */
+  private hasCredentials(): boolean {
     return (
-      ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0
+      Boolean(this.config.mid) &&
+      Boolean(this.config.apiKey) &&
+      Boolean(this.config.seedIv)
     );
   }
 
-  /**
-   * 이름 마스킹
-   */
-  private maskName(name: string): string {
-    if (!name || name.length < 2) return name;
-    if (name.length === 2) return name[0] + "*";
-    return name[0] + "*".repeat(name.length - 2) + name[name.length - 1];
+  /** 공개 샘플 자격증명 사용 여부 — mid 또는 apiKey 둘 중 하나라도 샘플이면 미설정으로 본다. */
+  private hasSampleCredentials(): boolean {
+    return (
+      this.config.mid === INICIS_IDENTITY_SAMPLE_MID ||
+      this.config.apiKey === INICIS_IDENTITY_SAMPLE_API_KEY
+    );
   }
 
-  /**
-   * 성별 정규화
-   */
-  private normalizeGender(gender: string): string {
-    if (!gender) return "";
-    const g = gender.toUpperCase();
-    if (g === "M" || g === "MALE" || g === "1") return "M";
-    if (g === "F" || g === "FEMALE" || g === "2") return "F";
-    return gender;
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private decryptOptional(
+    value: string | undefined,
+    token: string,
+    iv: string,
+  ): string | undefined {
+    if (!value) return undefined;
+    return seedDecrypt(value, token, iv);
+  }
+
+  /** resultMsg 는 UTF-8 urlEncoding 으로 온다. 디코딩 실패 시 원문 유지. */
+  private decodeMsg(msg: string | undefined): string | undefined {
+    if (!msg) return undefined;
+    try {
+      return decodeURIComponent(msg);
+    } catch {
+      return msg;
+    }
+  }
+
+  private normalizePhone(phone: string | undefined): string | undefined {
+    if (!phone) return undefined;
+    return phone.replace(/[^0-9]/g, "");
+  }
+
+  /** 다른 Gateway 와 통일해 YYYYMMDD 로 정규화 */
+  private normalizeBirthDate(birth: string | undefined): string | undefined {
+    if (!birth) return undefined;
+    const digits = birth.replace(/[^0-9]/g, "");
+    return digits.length === 8 ? digits : birth;
   }
 }

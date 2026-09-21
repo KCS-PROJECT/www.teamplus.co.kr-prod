@@ -29,13 +29,18 @@ export enum IdentityPurpose {
  * 본인인증 시작 요청 DTO
  */
 export class InitiateIdentityDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
     enum: IdentityProviderType,
-    description: "본인인증 제공자",
+    description:
+      "본인인증 제공자. " +
+      "[R1 #4] POST /identity/initiate-anonymous 는 하위호환을 위해 필드는 받되 " +
+      "이 값을 사용하지 않는다 — activeProvider(IDENTITY_PROVIDER 환경변수)만 쓴다. " +
+      "인증된 POST /identity/initiate 는 이 값을 그대로 사용한다(기존 동작 유지).",
     example: IdentityProviderType.KAKAO,
   })
+  @IsOptional()
   @IsEnum(IdentityProviderType)
-  provider!: IdentityProviderType;
+  provider?: IdentityProviderType;
 
   @ApiProperty({
     enum: IdentityPurpose,
@@ -47,7 +52,7 @@ export class InitiateIdentityDto {
 
   @ApiPropertyOptional({
     description: "인증 완료 후 리다이렉트 URL",
-    example: "https://example.com/identity/result",
+    example: "https://example.com/identity/callback",
   })
   @IsOptional()
   @IsString()
@@ -78,6 +83,15 @@ export class InitiateIdentityResponseDto {
   requestId!: string;
 
   @ApiPropertyOptional({
+    enum: IdentityProviderType,
+    description:
+      "실제로 사용된 본인인증 제공자. 요청에 provider 를 생략했을 때 서버가 " +
+      "결정한 값이 여기 담긴다 — 프론트는 이 값으로 SDK 호출 여부를 분기한다.",
+    example: IdentityProviderType.PORTONE,
+  })
+  provider?: IdentityProviderType;
+
+  @ApiPropertyOptional({
     description: "인증 페이지 URL (제공자 페이지로 리다이렉트)",
     example: "https://auth.provider.com/verify?token=xyz",
   })
@@ -99,4 +113,15 @@ export class InitiateIdentityResponseDto {
     example: "인증 요청 생성에 실패했습니다.",
   })
   errorMessage?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "실패 시 클라이언트 envelope 규약용 오류 객체 — errorMessage 와 같은 내용을 " +
+      "`error.{code,message}` 형태로도 내보낸다(dual emit). 성공 시 없음.",
+    example: {
+      code: "INICIS_CREDENTIALS_NOT_CONFIGURED",
+      message: "본인인증 설정이 완료되지 않았습니다.",
+    },
+  })
+  error?: { code: string; message: string };
 }

@@ -236,6 +236,10 @@ export class LoggerService implements OnModuleInit {
     "clientsecret",
     "apisecret",
     "signature",
+    // KG 통합인증 — token 은 SEED 복호화 키, 두 해시는 대칭키 기반 서명값.
+    "token",
+    "authhash",
+    "userhash",
   ];
 
   constructor() {

@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { useState, useEffect, useRef, useId } from "react";
+import { useState, useEffect, useCallback, useRef, useId } from "react";
 import { NavLink, useNavigation } from "@/components/ui/NavLink";
 import { Icon } from "@/components/ui/Icon";
 import { PageAppBar } from "@/components/layout/PageAppBar";
@@ -42,6 +42,15 @@ type TermsModalKey = "terms_of_service" | "privacy_policy" | "marketing";
 const ID_REGEX = /^[a-z][a-z0-9_]{7,19}$/;
 const ID_RULE_MESSAGE =
   "아이디는 영문 소문자로 시작하는 8~20자로 입력해주세요. 숫자와 언더스코어(_)도 사용할 수 있습니다.";
+
+// KG이니시스 직결 본인인증(Phase 2, 2026-09-18) — document.write 로 페이지 전체가
+// 교체되며 React state 가 전부 날아간다. IdentityVerifyInput 이 인증 시작 직전에
+// onBeforeRedirect 로 이 스냅샷을 저장하고, 복귀 후 아래 restore effect 가 소비한다.
+// 비밀번호/비밀번호 확인은 평문 보관이 부적절하므로 스냅샷에서 제외한다 — 복귀 후
+// 사용자가 다시 입력해야 하며, 이는 toast(MESSAGES.verify.passwordReentryRequired)로 안내한다.
+// idv:pending/idv:result 와 동일한 네이밍 규칙(`idv:` 접두사) · 동일 TTL(30분) · 1회 소비 후 삭제.
+const IDV_FORM_SNAPSHOT_KEY = "idv:form-snapshot";
+const IDV_FORM_SNAPSHOT_TTL_MS = 30 * 60 * 1000;
 
 // ========== 역할 타입 ==========
 interface RoleOption {
@@ -141,6 +150,15 @@ interface Agreements {
   terms: boolean;
   privacy: boolean;
   marketing: boolean;
+}
+
+// KG이니시스 직결 본인인증 페이지 전환 전 스냅샷 — password/passwordConfirm 제외.
+interface SignupFormSnapshot {
+  formData: Omit<FormData, "password" | "passwordConfirm">;
+  agreements: Agreements;
+  teamCodeStatus: "unchecked" | "valid" | "invalid";
+  verifiedTeamName: string;
+  timestamp: number;
 }
 
 export default function SignupPage() {
@@ -298,6 +316,53 @@ export default function SignupPage() {
     marketing: false,
   });
   const [errors, setErrors] = useState<FormErrors>({});
+
+  // KG이니시스 직결 본인인증 복귀 — document.write 페이지 전환으로 날아간 폼 상태 복원.
+  //  1회 소비 후 즉시 삭제(idv:pending/idv:result 와 동일한 소비 규칙). TTL 초과 시 무시.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.sessionStorage.getItem(IDV_FORM_SNAPSHOT_KEY);
+      if (!raw) return;
+      window.sessionStorage.removeItem(IDV_FORM_SNAPSHOT_KEY);
+      const snapshot = JSON.parse(raw) as SignupFormSnapshot;
+      if (Date.now() - snapshot.timestamp > IDV_FORM_SNAPSHOT_TTL_MS) return;
+      setFormData((prev) => ({ ...prev, ...snapshot.formData }));
+      setAgreements(snapshot.agreements);
+      setTeamCodeStatus(snapshot.teamCodeStatus);
+      setVerifiedTeamName(snapshot.verifiedTeamName);
+      toast.info(MESSAGES.verify.passwordReentryRequired);
+    } catch {
+      // sessionStorage 접근/파싱 실패 시 복원 없이 진행
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 본인인증(KG 직결) 페이지 전환 직전 폼 스냅샷 저장 — IdentityVerifyInput.onBeforeRedirect.
+  //  password/passwordConfirm 은 평문 보관이 부적절하므로 스냅샷에서 제외한다.
+  const saveFormSnapshotBeforeIdentityRedirect = useCallback(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const {
+        password: _password,
+        passwordConfirm: _passwordConfirm,
+        ...rest
+      } = formData;
+      const snapshot: SignupFormSnapshot = {
+        formData: rest,
+        agreements,
+        teamCodeStatus,
+        verifiedTeamName,
+        timestamp: Date.now(),
+      };
+      window.sessionStorage.setItem(
+        IDV_FORM_SNAPSHOT_KEY,
+        JSON.stringify(snapshot),
+      );
+    } catch {
+      // 저장 실패 시 스냅샷 없이 진행 — 인증 자체는 계속된다.
+    }
+  }, [formData, agreements, teamCodeStatus, verifiedTeamName]);
 
   // 팀명 입력 디바운스 값 — 400ms 정지 후 중복 확인 API 호출
   const debouncedClubName = useDebounce(formData.clubName, 400);
@@ -968,6 +1033,7 @@ export default function SignupPage() {
                     }));
                   }}
                   onError={(msg) => setErrors((prev) => ({ ...prev, general: msg }))}
+                  onBeforeRedirect={saveFormSnapshotBeforeIdentityRedirect}
                   disabled={isSubmitting}
                 />
               ) : (
