@@ -78,7 +78,7 @@ export class IdentityService {
    */
   async initiateVerification(
     userId: string | null,
-    provider: IdentityProviderType,
+    provider: IdentityProviderType | undefined,
     purpose: IdentityPurpose,
     options?: {
       returnUrl?: string;
@@ -89,8 +89,13 @@ export class IdentityService {
   ): Promise<InitiateIdentityResponseDto> {
     const { returnUrl, metadata, clientIp, userAgent } = options || {};
 
+    // Phase 2 — 프론트가 provider 를 생략하면 서버 스위치(activeProvider)가 결정한다.
+    // 전환·롤백을 배포 없이 환경변수 하나로 끝내기 위함.
+    const resolvedProvider: IdentityProviderType =
+      provider || (this.config.common.activeProvider as IdentityProviderType);
+
     this.logger.log(
-      `본인인증 시작: userId=${userId || "guest"}, provider=${provider}, purpose=${purpose}`,
+      `본인인증 시작: userId=${userId || "guest"}, provider=${resolvedProvider}, purpose=${purpose}`,
     );
 
     // Rate Limiting 확인
@@ -104,10 +109,10 @@ export class IdentityService {
     }
 
     // Gateway 확인
-    const gateway = this.gateways.get(provider as IdentityProvider);
+    const gateway = this.gateways.get(resolvedProvider as IdentityProvider);
     if (!gateway) {
       throw new BadRequestException(
-        `지원하지 않는 인증 제공자입니다: ${provider}`,
+        `지원하지 않는 인증 제공자입니다: ${resolvedProvider}`,
       );
     }
 
@@ -134,14 +139,20 @@ export class IdentityService {
       });
 
       if (!authResult.success) {
+        const message =
+          authResult.errorMessage || "인증 요청 생성에 실패했습니다.";
+        const code = authResult.errorCode || "IDENTITY_INITIATE_FAILED";
         this.logger.warn(
-          `인증 요청 생성 실패: requestId=${requestId}, error=${authResult.errorMessage}`,
+          `인증 요청 생성 실패: requestId=${requestId}, code=${code}, error=${message}`,
         );
+        // 클라이언트 envelope 규약은 `success:false` 일 때 `error.{code,message}` 만 읽는다.
+        // errorMessage 는 기존 소비자를 위해 유지하고 error 를 함께 내보낸다(dual emit).
         return {
           success: false,
           requestId,
-          errorMessage:
-            authResult.errorMessage || "인증 요청 생성에 실패했습니다.",
+          provider: resolvedProvider,
+          errorMessage: message,
+          error: { code, message },
         };
       }
 
@@ -150,7 +161,7 @@ export class IdentityService {
         data: {
           requestId,
           userId: userId || null,
-          provider,
+          provider: resolvedProvider,
           purpose,
           status: "pending",
           returnUrl: finalReturnUrl,
@@ -168,6 +179,7 @@ export class IdentityService {
       return {
         success: true,
         requestId,
+        provider: resolvedProvider,
         authUrl: authResult.authUrl,
         authHtml: authResult.authHtml,
         expiresAt: expiresAt.toISOString(),

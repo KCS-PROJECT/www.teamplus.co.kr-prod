@@ -81,26 +81,6 @@ export class IdentityCallbackDto {
 }
 
 /**
- * KG이니시스 본인인증 콜백 DTO
- */
-export class KgInicisIdentityCallbackDto extends IdentityCallbackDto {
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  mid?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  txId?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  authToken?: string;
-}
-
-/**
  * 카카오 인증 콜백 DTO
  */
 export class KakaoIdentityCallbackDto extends IdentityCallbackDto {

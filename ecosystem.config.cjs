@@ -40,7 +40,10 @@ module.exports = {
       cwd: `${APP_DIR}/teamplus-backend`,
       // node + crypto-polyfill preload + dist/main (= start:prod)
       script: 'dist/main.js',
-      node_args: '-r ./scripts/crypto-polyfill.js',
+      // --openssl-legacy-provider: KG이니시스 본인인증 SEED/CBC 복호화용.
+      //   Node 22 + OpenSSL 3 은 이 플래그 없이는 seed-cbc 를 노출하지 않는다.
+      //   pm2 restart/reload 는 node_args 변경을 반영하지 않으므로 delete 후 start 필요.
+      node_args: '-r ./scripts/crypto-polyfill.js --openssl-legacy-provider',
       ...COMMON,
     },
     {

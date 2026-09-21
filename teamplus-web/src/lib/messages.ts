@@ -560,6 +560,32 @@ export const MESSAGES = {
     expired: "인증시간이 만료되었습니다.",
     sent: "인증번호가 발송되었습니다.",
     success: "인증이 완료되었습니다.",
+    // KG이니시스 직결 본인인증 — provider 전환(Phase 2) 관련 카피
+    identityChannelUnavailable: "본인인증 페이지를 불러올 수 없습니다.",
+    identityFailed: "본인인증이 완료되지 않았습니다. 다시 시도해주세요.",
+    // [R1 #7] 백엔드가 자체 정의한 실패 코드만 세분화 매핑한다 — identity.controller.ts
+    // 의 completeKgInicis/mapKgErrorCode 가 내는 코드만 대상. KG resultCode 원문(예:
+    // KG_AUTH_9999)은 연동정의서 미확보 상태라 매핑하지 않고 identityFailed 로 폴백한다.
+    identityFailedByCode: {
+      INVALID_CALLBACK_PAYLOAD:
+        "본인인증 요청이 올바르지 않습니다. 처음부터 다시 시도해주세요.",
+      ALREADY_PROCESSED:
+        "이미 처리된 본인인증 요청입니다. 처음부터 다시 시도해주세요.",
+      REQUEST_NOT_FOUND:
+        "본인인증 요청을 찾을 수 없습니다. 처음부터 다시 시도해주세요.",
+      INVALID_REQUEST:
+        "본인인증 요청이 올바르지 않습니다. 처음부터 다시 시도해주세요.",
+      CALLBACK_ERROR: "본인인증 처리 중 오류가 발생했습니다. 다시 시도해주세요.",
+      VERIFICATION_FAILED: "본인인증에 실패했습니다. 다시 시도해주세요.",
+    } as Record<string, string>,
+    // KG 직결 복귀 시 가입 폼 스냅샷에서 비밀번호를 제외했음을 안내.
+    // 인증 성공·실패 양쪽에서 복원되므로 결과를 단정하지 않는다.
+    passwordReentryRequired:
+      "입력하신 정보를 복원했어요. 보안을 위해 비밀번호를 다시 입력해주세요.",
+    // [R1 #2] 팝업 모드에서 window.close() 가 무시되는 경우(스크립트로 열리지
+    // 않은 창 등) 대비 — 결과는 이미 postMessage/크럼으로 부모에 전달됐으므로
+    // 리다이렉트 없이 안내만 남긴다.
+    popupCloseManually: "인증 처리가 끝났습니다. 이 창을 닫아주세요.",
   },
   signup: {
     success: "회원가입이 완료되었습니다. 로그인해주세요.",
@@ -1150,6 +1176,25 @@ export const MESSAGES = {
     niceAuthFailed: "결제가 취소되었거나 인증에 실패했어요. 다시 시도해주세요.",
     niceVerifyFailed:
       "결제 정보 검증에 실패했어요. 결제가 진행되지 않았습니다. 고객센터로 문의해주세요.",
+    // 나이스 구모듈(nicestd) 전환 — 결제사 판정 실패·망취소 실패 안내.
+    unknownProvider: "결제 수단을 확인할 수 없어요. 새로고침 후 다시 시도해주세요.",
+    niceResultPending: "결제 결과를 확인하는 중이에요. 잠시 후 결제 내역에서 확인해주세요.",
+    niceRetryPayment:
+      "결제가 완료되지 않았어요. 결제 금액은 청구되지 않았으니 다시 결제해주세요.",
+    // 승인은 끝났지만 영수증/결제권 조회만 실패한 경우 — 승인 실패로 오인해 재결제를
+    //   유도하면 안 되므로 confirmFailed 와 분리된 전용 문구를 쓴다.
+    niceReceiptLoadFailed:
+      "결제는 완료되었어요. 결제 내역을 불러오지 못했으니 잠시 후 결제 내역에서 확인해주세요.",
+    // 인증 결과 주소를 새로고침·뒤로가기로 직접 연 경우 — 성공인지 실패인지 알 수 없으므로
+    //   재결제를 유도하지 않는다(이미 승인된 건이면 이중 결제가 된다).
+    niceDirectAccess:
+      "결제 결과를 확인하지 못했어요. 결제 내역에서 상태를 확인해주세요.",
+    // 결제 화면 하단 보안 문구 옆 PG 브랜드 표기 — nicestd(구모듈)도 브랜드는 nice 와 동일 NICEPAY.
+    providerLabelMap: {
+      toss: "TossPayments",
+      nice: "NICEPAY",
+      nicestd: "NICEPAY",
+    } as Record<"toss" | "nice" | "nicestd", string>,
     usageLoadError:
       "사용 내역을 가져오지 못했어요. 새로고침 후 다시 시도해주세요.",
     cancelFailed: "결제 취소에 실패했어요. 잠시 후 다시 시도해주세요.",

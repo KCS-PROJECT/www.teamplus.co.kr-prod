@@ -193,7 +193,9 @@ export const PUBLIC_API_PATTERNS: readonly RegExp[] = [
   /(^|\/)auth\/email\/verify-code(\/|\?|$)/,
   /(^|\/)child-auth\//,
   // [추가 2026-05-26] /identity/initiate-anonymous 는 회원가입 전(JWT 없음) 호출이므로 화이트리스트.
-  /(^|\/)identity\/(callback|result|initiate-anonymous)(\/|\?|$)/,
+  //   active-provider 도 동일 — 회원가입 화면 마운트 시 인증사(포트원/KG) 판별에 쓰이며,
+  //   누락 시 AUTH_REQUIRED 로 막혀 팝업 분기가 조용히 꺼진다.
+  /(^|\/)identity\/(callback|result|initiate-anonymous|active-provider)(\/|\?|$)/,
   /(^|\/)sms\/(send|verify|resend-status)(\/|\?|$)/,
   /(^|\/)app\/settings(\/|\?|$)/,
   /(^|\/)app\/banners(\/|\?|$)/,
