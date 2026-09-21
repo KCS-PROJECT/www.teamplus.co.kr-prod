@@ -200,7 +200,15 @@ const plain = Buffer.concat([
 ]).toString("utf8");
 ```
 
-**적용 시 필요한 변경**: `ecosystem.config.cjs` 의 `node_args` 에 `--openssl-legacy-provider` 추가 (dev · prod 양쪽).
+**플래그가 들어오는 위치는 환경마다 다르다** — 한 곳만 넣고 다른 환경을 빠뜨리면 인증창·결과조회까지 다 되고 마지막 복호화에서 `DECRYPT_FAILED` 로 실패한다.
+
+| 환경 | 기동 방식 | 플래그 위치 |
+| --- | --- | --- |
+| 로컬 · 개발서버 | `npm run start:dev` | `teamplus-backend/package.json` scripts — `cross-env NODE_OPTIONS=--openssl-legacy-provider` |
+| 운영 | `pm2 startOrReload <운영 저장소 루트>/ecosystem.config.cjs` | **운영 저장소 루트** `ecosystem.config.cjs` 의 `node_args` |
+| `teamplus-backend/ecosystem.config.cjs` | (현재 파이프라인 미사용 — 옛 배포 잔재) | 여기에 넣어도 **어느 환경에도 효과 없음** |
+
+운영 pm2 는 `restart` / `startOrReload` 로 `node_args` 변경을 반영하지 않으므로 최초 1회 `pm2 delete teamplus-backend` 후 `pm2 start ecosystem.config.cjs` 가 필요하다.
 플래그 사용이 어려우면 npm `kisa-seed`(TypeScript 구현, MIT) 등 순수 JS 구현이 대안이다.
 
 ---
@@ -262,7 +270,7 @@ TEAMPLUS 적용 시: `IdentityVerification` 레코드(`requestId` · `clientIp` 
 | `identity/gateways/kg-inicis-identity.gateway.ts` | 재작성 (4-step · SHA256 해시 2종 · SEED 복호화 · `authRequestUrl` 검증) |
 | `identity/identity.controller.ts` | `successUrl` / `failUrl` 수신 엔드포인트 신설 (폼 POST → 리다이렉트 응답) |
 | `config/identity.config.ts` · `.env` | `mid` / `apikey` / `seediv` 로 정리 |
-| `teamplus-backend/ecosystem.config.cjs` | `node_args` 에 `--openssl-legacy-provider` |
+| 실행 플래그 `--openssl-legacy-provider` | 환경별 위치가 다르다 — §8 표 참조. 로컬·개발서버는 `package.json` scripts, 운영은 **운영 저장소 루트** `ecosystem.config.cjs`. `teamplus-backend/ecosystem.config.cjs` 는 미사용 잔재 |
 | `components/identity/IdentityVerifyInput.tsx` | PortOne SDK 호출 → 폼 POST |
 | `app/identity/callback/page.tsx` · `services/identity.ts` | KG 결과 수신 흐름으로 교체 |
 | 인프라 | 운영 서버 OUTBOUND 방화벽 허용 |
