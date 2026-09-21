@@ -35,6 +35,7 @@
 import { api } from '@/services/api-client';
 import type { ApiResponse } from '@/types';
 import type { PlayerTournamentStats } from '@/types/portfolio';
+import type { PaymentProvider } from '@/lib/payment-provider';
 
 // ============================================
 // Types
@@ -491,7 +492,7 @@ export interface TournamentPaymentInitiateResult {
   id: string;
   orderNumber: string;
   amount: number;
-  pgProvider?: 'toss' | 'nice';
+  pgProvider?: PaymentProvider;
 }
 
 /**

@@ -21,11 +21,13 @@ describe("refund atomicity/concurrency (real PostgreSQL)", () => {
   const kgStub = { cancelPayment: jest.fn() } as any;
   const tossStub = { cancel: jest.fn() } as any;
   const niceStub = { cancel: jest.fn() } as any;
+  const niceStdStub = { cancel: jest.fn() } as any;
   const service = new PaymentRefundService(
     prisma,
     kgStub,
     tossStub,
     niceStub,
+    niceStdStub,
     creditDomain,
   );
 

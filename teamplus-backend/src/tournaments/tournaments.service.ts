@@ -2907,6 +2907,9 @@ export class TournamentsService {
             id: payment.id,
             paymentStatus: { in: ["pending", "cancelled", "failed"] },
             completedAt: null,
+            // tid 가 있으면 PG 캡처를 거친 행이다. 금액만 바꿔 재청구하면 나이스 구모듈
+            //   승인 재진입이 이 행을 "승인 완료, 후처리만 남음"으로 보고 후처리를 돌린다.
+            tid: null,
           },
           data: {
             amount: feePerPerson,
@@ -2916,7 +2919,13 @@ export class TournamentsService {
             pgProvider,
           },
         });
-        if (payUpd.count === 0) continue;
+        if (payUpd.count === 0) {
+          Logger.warn(
+            `대회 재청구 대상에서 제외 — 캡처 흔적 또는 진행 중 결제: registrationId=${reg.id} orderNumber=${orderNumber}`,
+            TournamentsService.name,
+          );
+          continue;
+        }
 
         // 3. 참가자 확정 청구액·상태·결제 연결 — 미결제 상태일 때만(동시 PAID 방어).
         const regUpd = await tx.tournamentRegistration.updateMany({

@@ -503,7 +503,8 @@ export class PaymentCreateService {
     //    백엔드 /nice/authorize 가 승인까지 마친다.
     if (
       options?.paymentMethod === "toss" ||
-      options?.paymentMethod === "nice"
+      options?.paymentMethod === "nice" ||
+      options?.paymentMethod === "nicestd"
     ) {
       this.logger.log(
         `[${(options.paymentMethod ?? "").toUpperCase()}] Payment 발급 — orderNumber=${orderNumber} (결제창이 결제 후 승인 호출)`,

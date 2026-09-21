@@ -6,6 +6,7 @@ import { PaymentsController } from "./payments.controller";
 import { KgInicisGateway } from "./kg-inicis.gateway";
 import { TossPaymentsGateway } from "./toss-payments.gateway";
 import { NicePaymentsGateway } from "./nice-payments.gateway";
+import { NiceStdPaymentsGateway } from "./nice-std-payments.gateway";
 import { PaymentCalculationService } from "./payment-calculation.service";
 import { PostpaidSettlementService } from "./postpaid-settlement.service";
 import { WebhookRetryService } from "./webhook-retry.service";
@@ -40,6 +41,7 @@ import paymentConfig from "@/config/payment.config";
     KgInicisGateway,
     TossPaymentsGateway,
     NicePaymentsGateway,
+    NiceStdPaymentsGateway,
     PaymentCalculationService,
     PostpaidSettlementService,
     WebhookRetryService,
@@ -55,6 +57,7 @@ import paymentConfig from "@/config/payment.config";
     KgInicisGateway,
     TossPaymentsGateway,
     NicePaymentsGateway,
+    NiceStdPaymentsGateway,
     PaymentCalculationService,
     WebhookRetryService,
     LessonConfirmationService,

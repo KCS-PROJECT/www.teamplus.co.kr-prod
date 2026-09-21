@@ -40,6 +40,8 @@ import {
   NicePaymentsGateway,
   NiceCancelAmbiguousError,
 } from "../nice-payments.gateway";
+import { NiceStdPaymentsGateway } from "../nice-std-payments.gateway";
+import { REFUND_PG_UNCONFIRMED_CODES } from "../refund-requests/refund-request.constants";
 import { ENROLLMENT_STATUS } from "@/common/enrollment/enrollment-status.constants";
 
 /**
@@ -141,19 +143,54 @@ export class RefundExecutionError extends BadRequestException {
  *   3) tid 가 't' 로 시작하고 영숫자만 + 길이 12~40 → 토스
  *   4) 기타 → KG (보수적 fallback)
  */
+/** 취소를 보낼 PG 경로. `none` 은 PG 호출 없이 DB 만 정리하는 결제(mock·무료). */
+export type PgRoute = "toss" | "nice" | "nicestd" | "kg" | "none";
+
 /**
- * 나이스 결제 판별 — 승인 시 applyApprovedPayment 가 paymentMethod/pgProvider 를 'nice' 로
- *  기록하므로 둘 중 하나만 맞아도 나이스로 본다(과거 행 대비 pgProvider 도 함께 확인).
- *  토스처럼 tid 패턴 추론에 기대지 않는다 — 나이스 tid 는 상점별 접두가 달라 패턴이 불안정하다.
+ * 취소 라우팅 판정 — `pgProvider` 가 있으면 그것이 정본이다.
+ *
+ *  결제사가 다르면 tid 체계도 다르므로, 잘못 라우팅하면 남의 거래번호로 취소를 시도하게 된다.
+ *  그래서 `pgProvider` 에 알 수 없는 값이 들어 있으면 폴백하지 않고 에러로 끊는다.
+ *  `pgProvider` 가 비어 있는 레거시 행만 기존 paymentMethod·tid 패턴 규칙으로 판정한다.
  */
-function isNicePayment(payment: {
+export function resolvePgRoute(payment: {
   paymentMethod?: string | null;
   pgProvider?: string | null;
-}): boolean {
-  return (
-    (payment.paymentMethod || "").toLowerCase() === "nice" ||
-    (payment.pgProvider || "").toLowerCase() === "nice"
-  );
+  tid?: string | null;
+}): PgRoute {
+  // `pgProvider` 는 결제 시작 시점의 활성 결제사를 KG 결제에도 그대로 찍는다
+  //   (payment-create.service). KG TID 형태는 그 스탬프보다 강한 증거다.
+  if (/^St[a-z]pay/i.test(payment.tid || "")) return "kg";
+
+  const provider = (payment.pgProvider || "").trim().toLowerCase();
+  if (provider) {
+    switch (provider) {
+      case "nicestd":
+        return "nicestd";
+      case "nice":
+        return "nice";
+      case "toss":
+        return "toss";
+      case "inicis":
+        return "kg";
+      case "mock":
+      case "free":
+        return "none";
+      default:
+        throw new RefundExecutionError(
+          "PG",
+          "PG_ROUTE_UNKNOWN",
+          `알 수 없는 결제사(${provider}) — 취소 경로를 결정할 수 없습니다.`,
+        );
+    }
+  }
+
+  const method = (payment.paymentMethod || "").toLowerCase();
+  if (method === "mock" || method === "free") return "none";
+  if (method === "nicestd") return "nicestd";
+  if (method === "nice") return "nice";
+  if (isTossPayment(payment)) return "toss";
+  return "kg";
 }
 
 function isTossPayment(payment: {
@@ -176,6 +213,7 @@ export class PaymentRefundService {
     private readonly kgInicisGateway: KgInicisGateway,
     private readonly tossPaymentsGateway: TossPaymentsGateway,
     private readonly nicePaymentsGateway: NicePaymentsGateway,
+    private readonly niceStdPaymentsGateway: NiceStdPaymentsGateway,
     private readonly creditDomain: CreditDomainService, // PR-B (v0.5): 환불 단일 진입점
     // 감독 승인 부분환불(refundByManager)의 소속 스코프 검증에만 쓰는 부수 의존.
     //   @Global 모듈이라 런타임에는 항상 주입되며, 미주입 시 관리자 외 요청은 fail-closed.
@@ -765,14 +803,55 @@ export class PaymentRefundService {
     // PG 취소 성공 시점 스냅샷 — DB 트랜잭션 실패 시 DB_AFTER_PG(PG 재호출 금지) 구분용.
     let pgRefundSucceededAt: Date;
     try {
-      // PG 분기: mock(DEV) / 토스 / KG이니시스
-      const method = (payment.paymentMethod || "").toLowerCase();
-      if (method === "mock" || method === "free") {
+      // PG 분기 — pgProvider 우선 판정(레거시 행만 paymentMethod·tid 폴백).
+      const route = resolvePgRoute(payment);
+      if (route === "none") {
         // mock(DEV)·무료(0원) 결제는 PG 승인이 없으므로 PG 호출을 건너뛰고 DB 트랜잭션만 진행.
         this.logger.log(
-          `${method} 결제 취소 — PG 호출 생략: paymentId=${paymentId}`,
+          `PG 미경유 결제 취소 — PG 호출 생략: paymentId=${paymentId}`,
         );
-      } else if (isNicePayment(payment)) {
+      } else if (route === "nicestd") {
+        // [나이스 구모듈] 멱등 키가 없어 stale 재개(resumeProcessing)는 자동 재호출 금지·격리.
+        //   취소 Moid 는 주문번호와 분리한다 — 후불·대회 주문번호가 이미 64byte 한도라
+        //   접미사를 붙이면 초과하고, 이 값이 취소통보의 CancelMOID 로 되돌아와 매칭 키가 된다.
+        if (refundContext?.resumeProcessing) {
+          throw new RefundExecutionError(
+            "PG",
+            "NICE_UNCONFIRMED",
+            "PG 결과 미확정 — 수동 확인이 필요합니다.",
+          );
+        }
+        if (!ctx?.refundRequestId) {
+          throw new RefundExecutionError(
+            "PG",
+            "NICE_CANCEL_FAILED",
+            "취소 요청 식별자가 없어 나이스 취소를 진행할 수 없습니다.",
+          );
+        }
+        const isFullCancel = finalCancelAmount === Number(payment.amount);
+        let stdRes: Awaited<ReturnType<NiceStdPaymentsGateway["cancel"]>>;
+        try {
+          stdRes = await this.niceStdPaymentsGateway.cancel({
+            tid: payment.tid,
+            cancelMoid: `RF-${ctx.refundRequestId}`,
+            amount: finalCancelAmount,
+            reason: cancelReason,
+            partial: !isFullCancel,
+          });
+        } catch (stdErr) {
+          if (stdErr instanceof NiceCancelAmbiguousError) {
+            throw new RefundExecutionError(
+              "PG",
+              "NICE_UNCONFIRMED",
+              stdErr.message,
+            );
+          }
+          throw stdErr;
+        }
+        this.logger.log(
+          `나이스 구모듈 취소 ${stdRes.status}: paymentId=${paymentId}, tid=${payment.tid.slice(0, 12)}***, cancelAmt=${stdRes.cancelAmount}`,
+        );
+      } else if (route === "nice") {
         // [나이스] 토스와 두 가지가 결정적으로 다르다.
         //  1) 멱등 키가 없다 → 같은 키 재호출로 원 결과를 되받는 안전망이 없으므로,
         //     stale 재개(resumeProcessing)는 KG 와 동일하게 자동 재호출을 금지하고 격리한다.
@@ -826,7 +905,7 @@ export class PaymentRefundService {
         this.logger.log(
           `나이스 결제 취소 성공: paymentId=${paymentId}, tid=${payment.tid.slice(0, 12)}***, cancelledTid=${niceRes.cancelledTid ?? "none"}`,
         );
-      } else if (isTossPayment(payment)) {
+      } else if (route === "toss") {
         // 토스는 paymentKey(=Payment.tid) 와 reason 만 필요. cancelAmount 미지정 시 전액 취소.
         //   idempotencyKey 전달 → 재처리(resumeProcessing) 시 이중 취소 없이 원 결과 반환.
         // [멱등 payload 결정성] 같은 멱등키에는 항상 같은 body(reason·amount)가 가야 토스가 동일
@@ -974,10 +1053,9 @@ export class PaymentRefundService {
       const isDbAfterPg = refundErr.stage === "DB_AFTER_PG";
       // PG 결과 불확실/불변조건 위반(공급자 무관) → Payment 복원 금지·격리.
       //   원장·idempotencyKey 를 보존해 해소(토스=같은 키 reprocess / KG·토스만료·CONFLICT=reconcile)로 이어간다.
-      const isUnconfirmed =
-        refundErr.code === "KG_UNCONFIRMED" ||
-        refundErr.code === "TOSS_UNCONFIRMED" ||
-        refundErr.code === "TOSS_IDEMPOTENCY_CONFLICT";
+      const isUnconfirmed = REFUND_PG_UNCONFIRMED_CODES.includes(
+        refundErr.code,
+      );
       if (!refundContext?.resumeProcessing && !isDbAfterPg && !isUnconfirmed) {
         const restore = await this.prisma.payment.updateMany({
           where: { id: paymentId, paymentStatus: "refund_processing" },

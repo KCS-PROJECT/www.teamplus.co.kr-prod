@@ -2,11 +2,10 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState, useEffect, useRef, Suspense } from 'react';
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { NavLink, useNavigation } from '@/components/ui/NavLink';
-import { verifyPaymentCompletion, getReceiptDownloadUrl } from '@/services/payment';
-import { navigation } from '@/services/native-bridge';
+import { verifyPaymentCompletion } from '@/services/payment';
 import { api } from '@/services/api-client';
 import type { Receipt } from '@/types/payment';
 import { Icon } from '@/components/ui/Icon';
@@ -197,11 +196,30 @@ function ReceiptCard({ receipt }: { receipt: Receipt }) {
   );
 }
 
+/**
+ * 나이스(신모듈·구모듈) authorize 리다이렉트 `error` 코드 → 완결된 안내 문구 매핑.
+ *  mid_mismatch·amount_mismatch·bad_next_url 은 검증 실패라는 점에서 invalid_signature·
+ *  no_tid 와 같은 갈래(niceVerifyFailed·고객센터 문의)로 묶는다. approve_failed 는 승인 자체가
+ *  실패한 경우라 범용 confirmFailed(잠시 후 다시 시도)를 그대로 쓴다.
+ */
+const NICE_AUTHORIZE_ERROR_MESSAGE_MAP: Record<string, string> = {
+  auth_failed: MESSAGES.payment2.niceAuthFailed,
+  invalid_signature: MESSAGES.payment2.niceVerifyFailed,
+  no_tid: MESSAGES.payment2.niceVerifyFailed,
+  mid_mismatch: MESSAGES.payment2.niceVerifyFailed,
+  amount_mismatch: MESSAGES.payment2.niceVerifyFailed,
+  bad_next_url: MESSAGES.payment2.niceVerifyFailed,
+  result_pending: MESSAGES.payment2.niceResultPending,
+  retry_payment: MESSAGES.payment2.niceRetryPayment,
+  // 인증 결과 주소를 GET 으로 직접 연 경우 — 결제 성사 여부를 알 수 없어 재시도를 유도하지 않는다.
+  direct_access: MESSAGES.payment2.niceDirectAccess,
+  approve_failed: MESSAGES.payment2.confirmFailed,
+};
+
 function PaymentCompleteContent() {
   const searchParams = useSearchParams();
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [creditsIssued, setCreditsIssued] = useState(0);
-  const [isDownloading, setIsDownloading] = useState(false);
   // [수정 2026-05-13] React 19 strict mode 더블 마운트 방지 — 토스 confirm 중복 호출 차단.
   //   백엔드 Redis 락(60s)이 두 번째 호출을 "결제 승인이 이미 진행 중입니다" 로 거절하므로
   //   클라이언트 ref 가드로 1회 보장.
@@ -228,13 +246,19 @@ function PaymentCompleteContent() {
   const tossOrderId = searchParams?.get('orderId') || '';
   const tossAmount = Number(searchParams?.get('amount') ?? '0');
 
-  // [추가 2026-08-27] 나이스 결제창 복귀 파라미터.
-  //  나이스는 토스와 달리 **백엔드가 승인까지 끝낸 뒤** 여기로 303 리다이렉트한다.
+  // 나이스(신모듈·구모듈) 결제창 복귀 파라미터.
+  //  나이스(신모듈·구모듈)는 토스와 달리 **백엔드가 승인까지 끝낸 뒤** 여기로 303 리다이렉트한다.
   //  따라서 이 화면은 confirm 을 호출하지 않고 영수증 조회만 한다.
-  //  실패 시 error 코드가 함께 오며, 그 경우 결제는 발생하지 않았다.
+  //  실패 시 error 코드가 함께 오며, 그 경우 결제는 발생하지 않았다(result_pending 예외 — 아래).
   const niceError = searchParams?.get('error') || '';
 
   const [confirmError, setConfirmError] = useState<string | null>(null);
+  // 나이스(신모듈·구모듈) 인증 실패/대기 문구는 이미 완결된 문장이라 아래 배너에서
+  //   confirmFailed 접두사를 붙이지 않는다 — 붙이면 "다시 시도해주세요" 가 앞에 끼어들어
+  //   result_pending(재시도 금지 안내)과 모순되고, 그 외 코드도 같은 문장이 두 번 나온다.
+  const [confirmErrorIsFinal, setConfirmErrorIsFinal] = useState(false);
+  // 나이스 영수증 조회가 실패했을 때만 true — 재시도 버튼 노출 조건.
+  const [verifyRetryable, setVerifyRetryable] = useState(false);
   // 결제 확인에 필요한 파라미터가 하나라도 있는지 — 세션 만료 재로그인 복귀 등으로
   // 쿼리가 소실된 채 진입하면 어떤 분기도 타지 못해 무한 스피너가 되므로 안내로 대체.
   const hasPaymentParams =
@@ -243,7 +267,8 @@ function PaymentCompleteContent() {
     (provider === 'mock' && Boolean(tossOrderId)) ||
     // 나이스는 인증 실패 시 orderId 조차 비어 올 수 있다 — 그래도 안내 화면은 보여줘야 하므로
     //   무한 스피너로 빠지지 않게 파라미터 있음으로 취급한다.
-    provider === 'nice';
+    provider === 'nice' ||
+    provider === 'nicestd';
   // [2026-06-09] 오픈클래스 자녀 복수 결제 — 다음 자녀 순차 큐.
   const { navigate } = useNavigation();
   const { user } = useAuth();
@@ -290,33 +315,42 @@ function PaymentCompleteContent() {
     },
   });
 
+  // 승인은 백엔드가 이미 끝낸 상태 — 여기서는 영수증만 조회한다. 실패해도 재결제를 유도하면
+  //   안 되므로(돈이 나갔을 수 있음) "결과 미확인"으로만 안내하고 재시도 버튼을 둔다.
+  //   409 = 서버가 아직 확인 중 · 404/403 = 기록 없음·권한 없음(세션/계정 불일치) · 그 외 네트워크.
+  const loadNiceReceipt = useCallback(async () => {
+    const detail = await verifyPaymentCompletion({ orderNumber });
+    if (detail.success && detail.data) {
+      setReceipt(detail.data.receipt);
+      setCreditsIssued(detail.data.creditsIssued);
+      setConfirmError(null);
+      setVerifyRetryable(false);
+      return;
+    }
+    setConfirmErrorIsFinal(true);
+    setConfirmError(
+      detail.error?.statusCode === 409
+        ? MESSAGES.payment2.niceResultPending
+        : MESSAGES.payment2.niceReceiptLoadFailed,
+    );
+    setVerifyRetryable(true);
+  }, [orderNumber]);
+
   useEffect(() => {
-    // ── 나이스 분기: 백엔드가 이미 승인을 마치고 리다이렉트한 상태.
-    //    confirm 호출 없이 영수증/결제권만 조회한다. error 가 있으면 승인 자체가 없었다.
-    if (provider === 'nice') {
+    // ── 나이스 분기(신모듈·구모듈 공용): 백엔드가 이미 승인을 마치고 리다이렉트한 상태.
+    //    confirm 호출 없이 영수증/결제권만 조회한다. error 가 있으면 승인 자체가 없었다
+    //    (단, result_pending·retry_payment 은 예외 — 재시도 금지/재결제 안내가 별도로 필요).
+    if (provider === 'nice' || provider === 'nicestd') {
       if (confirmCalledRef.current) return; // strict mode 더블 마운트 방지
       confirmCalledRef.current = true;
       if (niceError) {
+        setConfirmErrorIsFinal(true);
         setConfirmError(
-          niceError === 'auth_failed'
-            ? MESSAGES.payment2.niceAuthFailed
-            : niceError === 'invalid_signature' || niceError === 'no_tid'
-              ? MESSAGES.payment2.niceVerifyFailed
-              : MESSAGES.payment2.confirmFailed,
+          NICE_AUTHORIZE_ERROR_MESSAGE_MAP[niceError] ?? MESSAGES.payment2.confirmFailed,
         );
         return;
       }
-      const loadNice = async () => {
-        const detail = await verifyPaymentCompletion({ orderNumber });
-        if (detail.success && detail.data) {
-          setReceipt(detail.data.receipt);
-          setCreditsIssued(detail.data.creditsIssued);
-        } else {
-          // 승인은 끝났고 영수증 조회만 실패 — 무한 스피너 대신 에러를 표면화한다.
-          setConfirmError(detail.error?.message ?? MESSAGES.payment2.loadError);
-        }
-      };
-      void loadNice();
+      void loadNiceReceipt();
       return;
     }
     // ── 토스 분기: provider=toss + paymentKey/orderId/amount 모두 있을 때 confirm 호출
@@ -388,6 +422,7 @@ function PaymentCompleteContent() {
     void load();
   }, [
     orderNumber,
+    loadNiceReceipt,
     tid,
     resultCode,
     provider,
@@ -400,18 +435,6 @@ function PaymentCompleteContent() {
   // 무료(0원) 결제 — 세금 영수증 발행 대상이 아니고 결제사 영수증도 없다.
   const isFreeReceipt = Number(receipt?.totalAmount ?? -1) === 0;
 
-  const handleDownloadReceipt = async () => {
-    if (!receipt) return;
-    setIsDownloading(true);
-    try {
-      const res = await getReceiptDownloadUrl(receipt.id);
-      if (res.success && res.data?.downloadUrl) {
-        await navigation.openExternal(res.data.downloadUrl);
-      }
-    } finally {
-      setIsDownloading(false);
-    }
-  };
 
   return (
     <MobileContainer>
@@ -421,7 +444,7 @@ function PaymentCompleteContent() {
       <main className="flex-1 flex flex-col overflow-y-auto bg-it-canvas dark:bg-puck [&>*]:shrink-0">
         {confirmError && (
           <div className="mx-5 mt-[calc(var(--safe-area-inset-top,0px)+16px)] rounded-w-md border border-it-red-500/30 bg-it-red-50 dark:bg-it-red-500/15 p-4 text-card-body text-it-red-600 dark:text-it-red-200">
-            {MESSAGES.payment2.confirmFailed}: {confirmError}
+            {confirmErrorIsFinal ? confirmError : `${MESSAGES.payment2.confirmFailed}: ${confirmError}`}
           </div>
         )}
         {receipt ? (
@@ -446,20 +469,15 @@ function PaymentCompleteContent() {
 
             {/* Action buttons — 흰 섹션 (8px 회색 갭) */}
             <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-5 flex gap-3">
-              {/* 무료(0원)는 결제사 영수증이 없어 조회가 실패한다 — 버튼 자체를 감춘다. */}
+              {/* 무료(0원)는 영수증 발급 대상이 아니다 — 버튼을 감춘다. */}
               {!isFreeReceipt && (
-              <button
-                onClick={handleDownloadReceipt}
-                disabled={isDownloading}
+              <NavLink
+                href={`/payment/receipt/${receipt.id}`}
                 className="flex-1 flex items-center justify-center gap-2 h-14 rounded-w-md border border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 text-it-ink-600 dark:text-rink-100 font-bold text-card-emphasis hover:bg-it-fill dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none active:brightness-95 disabled:opacity-50"
               >
-                {isDownloading ? (
-                  <div className="w-5 h-5 rounded-w-pill border-2 border-it-line-strong border-t-it-ink-500 animate-spin motion-reduce:animate-none"></div>
-                ) : (
-                  <Icon name="open_in_new" className="text-xl" />
-                )}
+                <Icon name="receipt_long" className="text-xl" />
                 {MESSAGES.payment2.viewReceipt}
-              </button>
+              </NavLink>
               )}
               {payQueue && payQueue.pairs.length > 0 ? (
                 <button
@@ -505,9 +523,22 @@ function PaymentCompleteContent() {
                 {MESSAGES.payment2.completeNoInfo}
               </p>
             )}
+            {verifyRetryable && (
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmError(null);
+                  setVerifyRetryable(false);
+                  void loadNiceReceipt();
+                }}
+                className="mb-3 flex items-center justify-center h-14 px-10 rounded-w-md bg-it-blue-500 text-white font-bold text-card-emphasis shadow-sh-1 hover:bg-it-blue-600 transition-colors motion-reduce:transition-none active:brightness-95"
+              >
+                {MESSAGES.payment2.retryVerify}
+              </button>
+            )}
             <NavLink
               href={homePath}
-              className="flex items-center justify-center h-14 px-10 rounded-w-md bg-it-blue-500 text-white font-bold text-card-emphasis shadow-sh-1 hover:bg-it-blue-600 transition-colors motion-reduce:transition-none active:brightness-95"
+              className={verifyRetryable ? "flex items-center justify-center h-14 px-10 rounded-w-md border border-it-line-strong bg-it-surface text-it-ink-900 dark:border-rink-700 dark:bg-it-blue-950 dark:text-white font-bold text-card-emphasis transition-colors motion-reduce:transition-none active:brightness-95" : "flex items-center justify-center h-14 px-10 rounded-w-md bg-it-blue-500 text-white font-bold text-card-emphasis shadow-sh-1 hover:bg-it-blue-600 transition-colors motion-reduce:transition-none active:brightness-95"}
             >
               홈으로 이동
             </NavLink>

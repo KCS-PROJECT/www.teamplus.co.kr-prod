@@ -128,7 +128,7 @@ export default function ReceiptDetailPage() {
     if (response.success && response.data?.downloadUrl) {
       await navigation.openExternal(response.data.downloadUrl);
     } else {
-      toast.error(response.error?.message ?? MESSAGES.error.general);
+      toast.error(response.error?.message ?? MESSAGES.payment2.receiptUnavailable);
     }
     setIsDownloading(false);
   };

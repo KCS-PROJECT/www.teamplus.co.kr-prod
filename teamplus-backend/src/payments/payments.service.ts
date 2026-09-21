@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import { PrismaService } from "@/prisma/prisma.service";
 import {
@@ -28,6 +29,11 @@ import {
   NicePaymentsGateway,
   NiceApproveAmbiguousError,
 } from "./nice-payments.gateway";
+import {
+  NiceStdPaymentsGateway,
+  NiceStdApproveAmbiguousError,
+  buildNiceStdReceiptUrl,
+} from "./nice-std-payments.gateway";
 import { RedisService } from "@/redis/redis.service";
 import { resolveActivePaymentProvider } from "./payment-provider.util";
 import type { PaymentProviderCode } from "./constants/payment-provider.constant";
@@ -36,6 +42,7 @@ import {
   resolveCreditExpiry,
 } from "@/credits/credit-domain.service";
 import { NotificationsService } from "@/notifications/notifications.service";
+import { kstCompactToInstant } from "@/common/utils/kst-date.util";
 import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
 import { acquireClassSeatLock } from "@/classes/utils/class-locks.util";
 import { resolveRefundRequestRecipients } from "./refund-requests/refund-request-recipients.util";
@@ -91,6 +98,59 @@ type SeatClaim = {
   prevStatus: string | null;
 };
 
+/** 결제 담당자 알림 수신 대상 — 완료 알림과 사고 경보가 공유한다. */
+type PaymentManagerTarget =
+  | {
+      kind: "team";
+      teamId: string;
+      scope: "class" | "tournament";
+      subject: string;
+      linkUrl: string;
+    }
+  | {
+      kind: "users";
+      userIds: string[];
+      scope: "academy";
+      subject: string;
+      linkUrl: string;
+    };
+
+/**
+ * 승인 결과도 망취소 결과도 확인하지 못한 상태.
+ *  컨트롤러가 이 예외만 `result_pending` 리다이렉트로 매핑한다 — 일반 승인 실패와
+ *  구분하지 않으면 사용자가 재결제를 시도해 이중 결제가 된다.
+ */
+export class NiceStdResultPendingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NiceStdResultPendingError";
+  }
+}
+
+/**
+ * 승인이 성사되지 않았음이 확인된 상태(망취소 성공 · 거래조회 취소/거래없음).
+ *  돈이 나가지 않았으므로 사용자는 그대로 다시 결제하면 된다.
+ */
+export class NiceStdPaymentVoidedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NiceStdPaymentVoidedError";
+  }
+}
+
+/** 승인 모호 해소 결과 — 승인이 확인됐거나(후처리 진행), 취소가 확인됐거나(재결제 안내). */
+type AmbiguousApprovalOutcome =
+  | { kind: "voided" }
+  | { kind: "approved"; tid: string; approvedAt?: Date };
+
+/** 조회 전 대기 — 나이스 원장에 승인이 반영될 시간을 준다. */
+const NICESTD_INQUIRY_DELAY_MS = 1500;
+/**
+ * 해소 단계 호출 타임아웃 — 사용자가 결과 화면을 기다리는 중이라 기본 30초로는 길다.
+ * 승인 30 + 망취소 8 + 대기 1.5 + 조회 8 ≈ 48초가 최악이다.
+ */
+const NICESTD_RESOLVE_TIMEOUT_MS = 8000;
+
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
@@ -103,6 +163,7 @@ export class PaymentsService {
     private readonly receiptService: PaymentReceiptService,
     private readonly tossGateway: TossPaymentsGateway,
     private readonly niceGateway: NicePaymentsGateway,
+    private readonly niceStdGateway: NiceStdPaymentsGateway,
     private readonly redisService: RedisService,
     private readonly creditDomain: CreditDomainService, // PR-D 후속 (v0.8): 토스 confirm MemberCredit 발급
     private readonly notificationsService: NotificationsService, // [2026-06-19] 결제 완료 → 감독/코치 알림
@@ -546,6 +607,746 @@ export class PaymentsService {
     if (status === "paid" && payment.paymentStatus === "pending") {
       this.logger.warn(
         `[NICE_WEBHOOK_PAID] 승인 응답 유실 의심 — orderId=${orderId} 는 나이스 기준 paid 이나 DB 는 pending. 대사 대상.`,
+      );
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  //  나이스페이먼츠 구모듈(표준결제) 승인 / 결제통보 처리
+  //  신모듈(위 confirmNicePayment)과 정책은 같고 프로토콜만 다르다.
+  //  공통 정책(좌석 선점·격리·후처리)을 고칠 때는 두 경로를 함께 고친다.
+  // ────────────────────────────────────────────────────────────────────
+
+  /**
+   * 구모듈 결제창 폼 필드 생성 — 컨트롤러의 `/payments/nicestd/sign` 이 호출한다.
+   *
+   *  금액·상품명은 클라이언트 입력을 쓰지 않고 주문번호로 서버에서 복원한다.
+   *  `BuyerEmail` 은 넣지 않는다 — `users.email` 은 로그인 ID 라 외부 PG 에 이메일로
+   *  전달하면 안 된다.
+   */
+  async buildNiceStdPayRequest(params: {
+    orderNumber: string;
+    userId: string;
+    payMethod: "CARD" | "BANK";
+    wapUrl?: string;
+    ispCancelUrl?: string;
+  }) {
+    const { orderNumber, userId, payMethod } = params;
+    if (!this.niceStdGateway.isConfigured()) {
+      throw new ServiceUnavailableException(
+        "나이스 구모듈 결제 설정이 없어 결제를 시작할 수 없습니다.",
+      );
+    }
+
+    const payment = await this.prisma.payment.findUnique({
+      where: { orderNumber },
+      select: {
+        id: true,
+        userId: true,
+        amount: true,
+        paymentStatus: true,
+        product: { select: { productName: true } },
+        user: { select: { firstName: true, lastName: true, phone: true } },
+      },
+    });
+    // 남의 주문번호로 서명을 받아가지 못하도록, 소유자가 아니면 존재 여부도 알리지 않는다.
+    if (!payment || payment.userId !== userId) {
+      throw new NotFoundException("주문 정보를 찾을 수 없습니다.");
+    }
+    if (payment.paymentStatus !== "pending") {
+      throw new BadRequestException(
+        "결제를 진행할 수 없는 주문입니다. 최신 결제 요청을 확인해주세요.",
+      );
+    }
+
+    const goodsName = await this.resolveGoodsName(
+      payment.id,
+      payment.product?.productName ?? null,
+    );
+
+    return this.niceStdGateway.buildPayRequest({
+      orderNumber,
+      amount: Number(payment.amount),
+      goodsName,
+      payMethod,
+      buyerName:
+        `${payment.user?.lastName ?? ""}${payment.user?.firstName ?? ""}`.trim() ||
+        undefined,
+      buyerTel: payment.user?.phone?.replace(/\D/g, "") || undefined,
+      wapUrl: params.wapUrl,
+      ispCancelUrl: params.ispCancelUrl,
+    });
+  }
+
+  /**
+   * 결제창에 띄울 상품명 — 상품 → 대회 → 후불 청구 순으로 서버에서 파생한다.
+   *  대회·후불 결제는 `productId` 가 없어 상품명이 비므로 각 원본에서 읽는다.
+   */
+  private async resolveGoodsName(
+    paymentId: string,
+    productName: string | null,
+  ): Promise<string> {
+    if (productName) return productName;
+
+    const tournamentReg = await this.prisma.tournamentRegistration.findFirst({
+      where: { paymentId },
+      select: { tournament: { select: { name: true } } },
+    });
+    if (tournamentReg?.tournament?.name) {
+      return `${tournamentReg.tournament.name} 대회 참가비`;
+    }
+
+    const billingLine = await this.prisma.monthlyPostpaidBillingLine.findFirst({
+      where: { paymentId },
+      select: {
+        billing: {
+          select: { yearMonth: true, class: { select: { className: true } } },
+        },
+      },
+    });
+    if (billingLine?.billing) {
+      const className = billingLine.billing.class?.className ?? "수업";
+      return `${className} ${billingLine.billing.yearMonth} 수업료`;
+    }
+    return "TEAMPLUS 결제";
+  }
+
+  /**
+   * 주문번호로 결제 금액만 조회 — 인증 응답 검증의 기준 금액이다.
+   *  결제창이 돌려준 `Amt` 를 기준으로 삼으면 금액 위변조를 걸러낼 수 없다.
+   *  주문이 없으면 null.
+   */
+  async getPaymentAmountByOrderNumber(
+    orderNumber: string,
+  ): Promise<number | null> {
+    if (!orderNumber) return null;
+    const payment = await this.prisma.payment.findUnique({
+      where: { orderNumber },
+      select: { amount: true },
+    });
+    return payment ? Number(payment.amount) : null;
+  }
+
+  /**
+   * 구모듈 결제 승인.
+   *  1) Payment 조회 — completed 멱등 · cancelled/failed 거부 · 금액 대조
+   *  2) Redis 락 `nicestd:confirm:{orderNumber}` 24h
+   *  3) 재진입 판정 — pending 인데 tid 가 이미 있으면 캡처는 끝났고 후처리만 남았다.
+   *     같은 AuthToken 재승인은 나이스가 거절하므로 승인 호출을 건너뛰어야 복구된다.
+   *  4) 좌석 선점 → 승인 → 금액 대조 → `tid` 즉시 기록(재진입 근거)
+   *  5) 공용 후처리(applyApprovedPayment) → 영수증 → 감독 알림
+   *
+   *  컨트롤러가 인증 응답 서명·MID·금액·URL 호스트를 이미 검증한 요청만 넘긴다.
+   */
+  async confirmNiceStdPayment(body: {
+    orderNumber: string;
+    tid: string;
+    authToken: string;
+    amount: number;
+    nextAppUrl: string;
+    netCancelUrl: string;
+  }) {
+    const { orderNumber, tid, authToken, amount, nextAppUrl, netCancelUrl } =
+      body;
+    if (!orderNumber || !tid || !authToken || !amount || amount <= 0) {
+      throw new BadRequestException("승인 요청값이 유효하지 않습니다.");
+    }
+
+    const payment = await this.prisma.payment.findUnique({
+      where: { orderNumber },
+      select: {
+        id: true,
+        userId: true,
+        amount: true,
+        paymentStatus: true,
+        productId: true,
+        tid: true,
+        product: {
+          select: {
+            classId: true,
+            durationDays: true,
+            sessionsPerMonth: true,
+            feeType: true,
+            billingTiming: true,
+            billingMonth: true,
+          },
+        },
+      },
+    });
+    if (!payment) {
+      throw new NotFoundException("주문 정보를 찾을 수 없습니다.");
+    }
+    if (payment.paymentStatus === "completed") {
+      this.logger.log(
+        `나이스 구모듈 confirm 멱등 응답 — orderNumber=${orderNumber} already completed`,
+      );
+      return { success: true, paymentId: payment.id, idempotent: true };
+    }
+    if (payment.paymentStatus === "cancelled") {
+      throw new BadRequestException(
+        "취소된 결제 요청입니다. 최신 결제 요청을 확인해주세요.",
+      );
+    }
+    if (payment.paymentStatus === "failed") {
+      // 망취소 실패로 결과를 알 수 없는 주문 — 같은 주문번호 재결제를 막아야 이중 결제가 없다.
+      throw new BadRequestException(
+        "결제 결과를 확인 중인 주문입니다. 고객센터로 문의해주세요.",
+      );
+    }
+    if (Math.abs(Number(payment.amount) - amount) > 0) {
+      throw new BadRequestException(
+        `결제 금액 불일치 — 주문 ${payment.amount}원, 요청 ${amount}원`,
+      );
+    }
+
+    const lockKey = `nicestd:confirm:${orderNumber}`;
+    const acquired = await this.redisService.setIfNotExists(
+      lockKey,
+      "1",
+      86400,
+    );
+    if (!acquired) {
+      this.logger.warn(
+        `나이스 구모듈 confirm 동시 호출 차단: orderNumber=${orderNumber}`,
+      );
+      throw new BadRequestException(
+        "결제 승인이 이미 진행 중입니다. 잠시 후 다시 시도해주세요.",
+      );
+    }
+
+    // 캡처 완료 증거 — 승인 성공 직후 기록되므로, 남아 있으면 승인을 다시 부르면 안 된다.
+    const alreadyCaptured = Boolean(payment.tid);
+    let seatClaims: SeatClaim[] = [];
+    let captured = alreadyCaptured;
+    // 승인 여부를 끝내 확인하지 못한 격리 건은 좌석을 반납하지 않는다 — 돈이 나갔을 수 있다.
+    let keepSeats = false;
+    let capturedTid = payment.tid ?? tid;
+    let approvedAt = new Date();
+    let payMethod: string | undefined;
+
+    try {
+      if (!alreadyCaptured) {
+        seatClaims = await this.claimSeatsBeforeApproval(payment.id);
+
+        // 승인 결과가 모호하면 여기서 해소한다 — 바깥 catch 로 새면 좌석이 먼저 풀려
+        //   승인이 확인된 거래의 정원이 사라진다.
+        let outcome: {
+          tid: string;
+          approvedAt?: Date;
+          payMethod?: string;
+        };
+        try {
+          const approved = await this.niceStdGateway.approve({
+            nextAppUrl,
+            netCancelUrl,
+            tid,
+            authToken,
+            amount,
+            orderNumber,
+          });
+          // 금액 대조는 승인 응답에만 한다 — 거래조회 응답에는 금액이 없고,
+          //   요청 금액은 컨트롤러가 이미 DB 금액으로 검증했다.
+          if (Number(approved.amount) !== amount) {
+            throw new BadRequestException(
+              `나이스 응답 금액 불일치 — 응답 ${approved.amount}원`,
+            );
+          }
+          outcome = {
+            tid: approved.tid,
+            approvedAt: approved.approvedAt,
+            payMethod: approved.payMethod,
+          };
+        } catch (approveErr) {
+          if (!(approveErr instanceof NiceStdApproveAmbiguousError)) {
+            throw approveErr;
+          }
+          // 해소에 들어가는 순간부터 좌석은 반납하지 않는다 — 해소 도중 어디서 실패해도
+          //   돈이 나갔을 가능성이 남아 있다. 되돌린 것이 확인되면 아래에서 다시 푼다.
+          keepSeats = true;
+          const resolved = await this.resolveAmbiguousApproval({
+            error: approveErr,
+            paymentId: payment.id,
+            orderNumber,
+            amount,
+          });
+          if (resolved.kind === "voided") {
+            // 되돌린 것이 확인됐으므로 좌석을 붙들고 있을 이유가 없다.
+            keepSeats = false;
+            throw new NiceStdPaymentVoidedError(
+              "결제 결과를 확인하지 못해 취소 처리했습니다. 다시 시도해주세요.",
+            );
+          }
+          outcome = { tid: resolved.tid, approvedAt: resolved.approvedAt };
+        }
+        captured = true;
+        capturedTid = outcome.tid;
+        approvedAt = outcome.approvedAt ?? new Date();
+        payMethod = outcome.payMethod;
+
+        // 후처리보다 먼저 기록한다 — 후처리가 죽어도 재진입이 승인을 건너뛸 수 있어야 한다.
+        await this.prisma.payment.updateMany({
+          where: { id: payment.id, paymentStatus: "pending" },
+          data: { tid: capturedTid },
+        });
+      } else {
+        this.logger.warn(
+          `[NICESTD_REENTRY] 캡처 완료 주문 재진입 — 승인 호출 생략: orderNumber=${orderNumber}`,
+        );
+        // 승인 시각은 원장에만 있다 — 재진입 시각을 쓰면 매출 귀속월이 틀어질 수 있다.
+        approvedAt =
+          (await this.lookupApprovedAt(capturedTid, orderNumber)) ?? approvedAt;
+      }
+
+      try {
+        await this.applyApprovedPayment(payment, {
+          paymentMethod: "nicestd",
+          pgProvider: "nicestd",
+          tid: capturedTid,
+          approvedAt,
+          orderId: orderNumber,
+          claimFrom: ["pending", "cancelled"],
+        });
+      } catch (postErr) {
+        // 돈은 나갔는데 DB 가 따라오지 못한 상태 — tid 는 기록돼 있어 재진입으로 복구된다.
+        this.logger.error(
+          `[PAYMENT_CAPTURED_DB_FAILED] orderNumber=${orderNumber} tid=${capturedTid.slice(0, 12)}*** ${(postErr as Error).message}`,
+        );
+        void this.notifyManagersOfPaymentIncident(payment.id, {
+          title: "결제 후처리 실패",
+          message: `주문번호 ${orderNumber} 결제는 승인되었으나 후처리가 실패했습니다. 확인이 필요합니다.`,
+        }).catch(() => undefined);
+        throw postErr;
+      }
+
+      void this.notifyManagersOfCompletedPayment(
+        payment.id,
+        Number(amount),
+      ).catch((err) =>
+        this.logger.warn(
+          `결제 완료 감독/코치 알림 실패: paymentId=${payment.id} ${(err as Error).message}`,
+        ),
+      );
+
+      try {
+        await this.receiptService.createReceipt(
+          payment.id,
+          buildNiceStdReceiptUrl(capturedTid),
+        );
+      } catch (receiptErr) {
+        this.logger.warn(
+          `나이스 구모듈 영수증 발급 실패(무시): orderNumber=${orderNumber} ${(receiptErr as Error).message}`,
+        );
+      }
+
+      this.logger.log(
+        `나이스 구모듈 결제 승인 완료: orderNumber=${orderNumber} amount=${amount} method=${payMethod ?? "unknown"}`,
+      );
+      return {
+        success: true,
+        paymentId: payment.id,
+        orderId: orderNumber,
+        amount,
+        method: payMethod ?? null,
+        receiptUrl: buildNiceStdReceiptUrl(capturedTid),
+        approvedAt: approvedAt.toISOString(),
+      };
+    } catch (e) {
+      try {
+        if (!captured && !keepSeats) {
+          await this.releaseClaimedSeats(seatClaims);
+        }
+        throw e;
+      } finally {
+        // 락은 승인 여부 불명 구간을 닫은 뒤에 푼다 — 망취소·failed 전이 전에 풀면
+        //   같은 AuthToken 으로 들어온 재요청이 재승인을 시도한다.
+        await this.redisService.del(lockKey);
+      }
+    }
+  }
+
+  /**
+   * 승인 모호 해소 — 망취소 1회 → 거래조회 1회로 결과를 확정한다.
+   *
+   *  호출부의 Redis 락이 살아 있는 동안 실행돼야 한다(같은 AuthToken 재승인 차단).
+   *  망취소 재시도는 두지 않는다 — 실패 코드는 대부분 확정 실패(허용시간 초과 등)라
+   *  같은 요청을 한 번 더 보내도 결과가 바뀌지 않고 사용자 대기만 늘어난다.
+   *  결과를 끝내 알 수 없으면(`거래없음` 포함) 격리하고 예외를 던진다.
+   */
+  private async resolveAmbiguousApproval(params: {
+    error: NiceStdApproveAmbiguousError;
+    paymentId: string;
+    orderNumber: string;
+    amount: number;
+  }): Promise<AmbiguousApprovalOutcome> {
+    const { error: e, paymentId, orderNumber, amount } = params;
+
+    // ① 망취소 — 성공하면 승인은 없던 일이 된다.
+    if (await this.tryNetCancel(e, amount, orderNumber)) {
+      return { kind: "voided" };
+    }
+
+    // ② 망취소로 못 되돌렸다 — 원장에 무엇이 남았는지 조회로 확인한다.
+    try {
+      await this.sleep(NICESTD_INQUIRY_DELAY_MS);
+      const status = await this.niceStdGateway.getTransactionStatus(e.tid, {
+        timeoutMs: NICESTD_RESOLVE_TIMEOUT_MS,
+      });
+      if (status.status === "approved") {
+        // 거래번호는 조회 응답이 아니라 인증 단계에서 서명으로 검증한 TxTid 를 쓴다 —
+        //   조회 응답에는 서명이 없어 값을 그대로 원장에 기록할 근거가 없다.
+        this.logger.warn(
+          `[NICESTD_APPROVED_BY_INQUIRY] 망취소 실패 후 조회로 승인 확인: orderNumber=${orderNumber} tid=${this.maskTid(e.tid)}`,
+        );
+        return {
+          kind: "approved",
+          tid: e.tid,
+          approvedAt: this.parseNiceStdAuthDate(status.authDate),
+        };
+      }
+      if (status.status === "cancelled") {
+        // 우리가 되돌린 게 아니므로, 뒤늦은 승인 통보를 가려낼 표식을 남긴다.
+        //   표식 기록이 실패해도 "취소됨"이라는 확인 자체는 뒤집히지 않는다 —
+        //   여기서 throw 로 새면 돈이 나가지 않은 거래가 격리로 넘어간다.
+        try {
+          await this.redisService.set(
+            `nicestd:voided:${orderNumber}`,
+            e.tid,
+            86400,
+          );
+        } catch (markErr) {
+          this.logger.warn(
+            `[NICESTD_VOIDED_BY_INQUIRY] 미승인 표식 기록 실패: orderNumber=${orderNumber} ${(markErr as Error).message}`,
+          );
+        }
+        this.logger.warn(
+          `[NICESTD_VOIDED_BY_INQUIRY] 조회 결과 취소 확정: orderNumber=${orderNumber} tid=${this.maskTid(e.tid)}`,
+        );
+        return { kind: "voided" };
+      }
+      // `거래없음` — 원장 반영 지연과 진짜 미승인을 구분할 수 없다. 미승인으로 단정하면
+      //   뒤늦게 반영된 승인 위에 재결제가 얹힌다. 격리해 사람이 확인하게 한다.
+      throw new Error(`거래조회 결과 거래없음 — tid=${this.maskTid(e.tid)}`);
+    } catch (inquiryErr) {
+      // 승인 여부도 취소 여부도 끝내 모른다 — 재결제를 막고 사람이 확인하게 한다.
+      //   tid 도 함께 남긴다: 재청구는 tid 가 없는 행만 갱신하므로 이 행이 pending 으로
+      //   되살아나 재결제되는 경로가 닫히고, 운영자·취소통보 대사에 거래번호가 남는다.
+      try {
+        await this.prisma.payment.updateMany({
+          where: { id: paymentId, paymentStatus: "pending" },
+          data: { paymentStatus: "failed", tid: e.tid },
+        });
+      } catch (markErr) {
+        // 격리 표시를 못 남겼어도 경보와 격리 예외는 그대로 간다 — 여기서 새면
+        //   사용자에게 일반 실패로 보여 재결제를 유도하게 된다.
+        this.logger.error(
+          `[NICESTD_QUARANTINE_WRITE_FAILED] orderNumber=${orderNumber} ${(markErr as Error).message}`,
+        );
+      }
+      this.logger.error(
+        `[NICESTD_NETCANCEL_FAILED] 수동 확인 필요: orderNumber=${orderNumber} tid=${this.maskTid(e.tid)} ${(inquiryErr as Error).message}`,
+      );
+      void this.notifyManagersOfPaymentIncident(paymentId, {
+        title: "결제 결과 확인 실패",
+        message: `주문번호 ${orderNumber} 의 승인 결과를 확인하지 못했고 망취소·거래조회도 실패했습니다. 가맹점관리자에서 거래 상태를 확인해주세요.`,
+      }).catch(() => undefined);
+      throw new NiceStdResultPendingError(
+        "결제 결과를 확인 중입니다. 잠시 후 결제 내역을 확인해주세요.",
+      );
+    }
+  }
+
+  /** 재진입 시 원장에서 승인 시각을 복원한다. 조회·파싱 실패는 undefined(현재 시각 폴백). */
+  private async lookupApprovedAt(
+    tid: string,
+    orderNumber: string,
+  ): Promise<Date | undefined> {
+    try {
+      const status = await this.niceStdGateway.getTransactionStatus(tid, {
+        timeoutMs: NICESTD_RESOLVE_TIMEOUT_MS,
+      });
+      const at = this.parseNiceStdAuthDate(status.authDate);
+      if (at) return at;
+      this.logger.warn(
+        `[NICESTD_REENTRY] 승인 시각 복원 실패(응답에 AuthDate 없음) — orderNumber=${orderNumber}`,
+      );
+      return undefined;
+    } catch (err) {
+      this.logger.warn(
+        `[NICESTD_REENTRY] 승인 시각 조회 실패 — orderNumber=${orderNumber} ${(err as Error).message}`,
+      );
+      return undefined;
+    }
+  }
+
+  /** 망취소 1회 — 성공 여부만 돌려주고 실패는 로그로 남긴다. */
+  private async tryNetCancel(
+    e: NiceStdApproveAmbiguousError,
+    amount: number,
+    orderNumber: string,
+  ): Promise<boolean> {
+    try {
+      await this.niceStdGateway.netCancel({
+        netCancelUrl: e.netCancelUrl,
+        tid: e.tid,
+        authToken: e.authToken,
+        amount,
+        orderNumber,
+        timeoutMs: NICESTD_RESOLVE_TIMEOUT_MS,
+      });
+      this.logger.warn(
+        `[NICESTD_NETCANCEL] 승인 미확정 거래 망취소 완료: orderNumber=${orderNumber}`,
+      );
+      return true;
+    } catch (ncErr) {
+      this.logger.warn(
+        `[NICESTD_NETCANCEL] 망취소 실패: orderNumber=${orderNumber} ${(ncErr as Error).message}`,
+      );
+      return false;
+    }
+  }
+
+  /** 거래조회 `AuthDate`(`YYMMDDHHMISS` KST) → instant. 해석 실패는 undefined. */
+  private parseNiceStdAuthDate(authDate?: string): Date | undefined {
+    if (!authDate) return undefined;
+    try {
+      return kstCompactToInstant(authDate);
+    } catch {
+      return undefined;
+    }
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * 구모듈 결제통보(노티) 처리.
+   *
+   *  ⚠️ 이 핸들러는 `Payment` 상태를 절대 직접 바꾸지 않는다. 통보에는 서명이 없고,
+   *  환불은 승인제 엔진(RefundRequest)이 크레딧 회수·등록 롤백까지 함께 처리하므로
+   *  통보가 Payment 를 refunded 로 바꾸면 그 모든 보상이 건너뛰어진다.
+   *  통보가 하는 일은 격리된 환불요청에 "PG 취소는 성공했다"는 증거를 남기는 것뿐이다.
+   */
+  async handleNiceStdNotify(fields: Record<string, string>): Promise<void> {
+    const stateCd = fields.StateCd ?? "";
+    const tid = fields.TID ?? "";
+    const moid = fields.MOID ?? "";
+    // 통보의 `Amt` 는 규격상 상품금액(원 결제금액)이다 — 취소 통보에서도 환불액이 아니다.
+    const amt = Number(fields.Amt ?? 0);
+
+    // StateCd 1(전취소)·2(후취소) — 취소 통보.
+    if (stateCd === "1" || stateCd === "2") {
+      const cancelMoid = fields.CancelMOID ?? "";
+      const refundRequestId = cancelMoid.startsWith("RF-")
+        ? cancelMoid.slice(3)
+        : "";
+      const rr = refundRequestId
+        ? await this.prisma.refundRequest.findUnique({
+            where: { id: refundRequestId },
+            select: {
+              id: true,
+              status: true,
+              failureCode: true,
+              payment: { select: { tid: true, amount: true } },
+            },
+          })
+        : null;
+
+      // 우리 취소 기록을 못 찾았거나 다른 거래의 통보 — 외부 취소일 수 있어 사람이 봐야 한다.
+      if (!rr || !rr.payment?.tid || rr.payment.tid !== tid) {
+        this.logger.warn(
+          `[NICESTD_NOTIFY_UNMATCHED] 취소 통보와 환불 기록이 맞지 않음 — cancelMoid=${cancelMoid || "none"} tid=${this.maskTid(tid)} moid=${moid}`,
+        );
+        await this.notifyPaymentIncidentByTid(
+          tid,
+          "외부 취소 감지",
+          `우리 환불 기록과 맞지 않는 취소 통보를 받았습니다. (주문 ${moid}) 가맹점관리자에서 확인해주세요.`,
+        );
+        return;
+      }
+      if (amt !== Number(rr.payment.amount)) {
+        this.logger.warn(
+          `[NICESTD_NOTIFY_UNMATCHED] 취소 통보 금액 불일치 — refundRequestId=${rr.id} 통보=${amt} 결제=${rr.payment.amount}`,
+        );
+        await this.notifyPaymentIncidentByTid(
+          tid,
+          "취소 통보 불일치",
+          `취소 통보(주문 ${moid})의 결제금액이 기록과 다릅니다. 확인이 필요합니다.`,
+        );
+        return;
+      }
+
+      // 격리된 건만 자기 증거를 남긴다. 확정은 운영자 재처리가 DB-only 경로로 수행한다.
+      if (
+        rr.status !== "execution_failed" ||
+        rr.failureCode !== "NICE_UNCONFIRMED"
+      ) {
+        // 이미 정상 종결(또는 진행 중)된 환불의 통보 — 정상 동작이라 경보 대상이 아니다.
+        this.logger.log(
+          `[NICESTD_NOTIFY] 취소 통보 수신(조치 없음): refundRequestId=${rr.id} status=${rr.status}`,
+        );
+        return;
+      }
+      await this.prisma.refundRequest.update({
+        where: { id: rr.id },
+        data: {
+          failureStage: "DB_AFTER_PG",
+          pgRefundSucceededAt: new Date(),
+        },
+      });
+      this.logger.log(
+        `[NICESTD_NOTIFY] 격리 환불요청에 PG 취소 증거 기록: refundRequestId=${rr.id}`,
+      );
+      return;
+    }
+
+    // StateCd 0 — 승인 통보. 상태는 바꾸지 않고(F2) 위험한 조합만 경보로 올린다.
+    if (stateCd === "0" && moid) {
+      const payment = await this.prisma.payment.findUnique({
+        where: { orderNumber: moid },
+        select: { id: true, paymentStatus: true, tid: true },
+      });
+      if (!payment) return;
+
+      // (a) 우리가 미승인으로 확정하고 재결제를 허용한 거래가 뒤늦게 승인됐다 — 이중 결제 위험.
+      const voidedTid = await this.redisService.get<string>(
+        `nicestd:voided:${moid}`,
+      );
+      // (b) 완료된 주문인데 통보의 거래번호가 우리 기록과 다르다 — 같은 주문에 두 건이 승인됐다.
+      const foreignApproval =
+        payment.paymentStatus === "completed" &&
+        !!payment.tid &&
+        !!tid &&
+        payment.tid !== tid;
+
+      // (c) 격리(failed)해 둔 바로 그 거래가 승인됐다 — 운영자가 완료 처리해야 한다.
+      if (
+        payment.paymentStatus === "failed" &&
+        !!payment.tid &&
+        payment.tid === tid
+      ) {
+        this.logger.error(
+          `[NICESTD_NOTIFY_PAID_QUARANTINED] orderNumber=${moid} tid=${this.maskTid(tid)}`,
+        );
+        await this.notifyManagersOfPaymentIncident(payment.id, {
+          title: "격리 주문 승인 확인됨",
+          message: `주문 ${moid} 의 거래가 나이스에서 승인된 것으로 통보되었습니다. 가맹점관리자에서 확인 후 완료 처리해주세요.`,
+        });
+        return;
+      }
+
+      if ((voidedTid && tid && voidedTid === tid) || foreignApproval) {
+        this.logger.error(
+          `[NICESTD_NOTIFY_PAID_AFTER_VOID] orderNumber=${moid} 통보tid=${this.maskTid(tid)} 기록tid=${this.maskTid(payment.tid ?? "")} status=${payment.paymentStatus}`,
+        );
+        await this.notifyManagersOfPaymentIncident(payment.id, {
+          title: "재결제 허용 후 옛 거래 승인",
+          message: `주문 ${moid} 의 이전 거래가 뒤늦게 승인되었습니다. 가맹점관리자에서 취소해주세요.`,
+        });
+        return;
+      }
+
+      // 승인 후처리가 아직 도는 중일 수 있어 경보 대상이 아니다 — 흔적만 남긴다.
+      if (payment.paymentStatus === "pending") {
+        this.logger.warn(
+          `[NICESTD_NOTIFY_PAID_PENDING] 나이스는 승인, DB 는 pending — orderNumber=${moid} tid=${this.maskTid(tid)}. 대사 대상.`,
+        );
+      }
+    }
+  }
+
+  /** 로그에 거래번호 전체를 남기지 않는다. */
+  private maskTid(tid: string): string {
+    return tid ? `${tid.slice(0, 12)}***` : "none";
+  }
+
+  /** 통보에 실린 TID 로 결제를 역추적해 담당자 경보를 보낸다(찾지 못하면 로그만). */
+  private async notifyPaymentIncidentByTid(
+    tid: string,
+    title: string,
+    message: string,
+  ): Promise<void> {
+    const payment = tid
+      ? await this.prisma.payment.findFirst({
+          where: { tid },
+          select: { id: true },
+        })
+      : null;
+    if (!payment) {
+      // 결제를 역추적하지 못해도 운영자에게는 알린다 — 외부 취소는 사람이 봐야 한다.
+      await this.notifyOperatorsOfPaymentIncident({ title, message });
+      return;
+    }
+    await this.notifyManagersOfPaymentIncident(payment.id, { title, message });
+  }
+
+  /** 담당자를 특정할 수 없을 때의 수신자 — 운영자 전원. */
+  private async notifyOperatorsOfPaymentIncident(body: {
+    title: string;
+    message: string;
+  }): Promise<void> {
+    try {
+      const operators = await this.prisma.user.findMany({
+        where: {
+          userType: { in: ["ADMIN", "SYSTEM", "OPER"] },
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      if (operators.length === 0) return;
+      await this.notificationsService.notifyUsers(
+        operators.map((o) => o.id),
+        {
+          notificationType: "payment_failed",
+          title: body.title,
+          message: body.message,
+          linkUrl: "/director-payments",
+        },
+      );
+    } catch (err) {
+      this.logger.warn(`결제 사고 운영자 알림 실패: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * 결제 사고 경보 — 수신자 해석은 결제 완료 알림과 같은 규칙을 공유한다.
+   *  실패해도 원 흐름을 막지 않도록 내부에서 삼킨다.
+   */
+  private async notifyManagersOfPaymentIncident(
+    paymentId: string,
+    body: { title: string; message: string },
+  ): Promise<void> {
+    try {
+      // 팀 대상은 수신자까지 펼쳐서 센다 — 감독·코치가 없는 팀은 대상이 있어도 발송 0건이라,
+      //   대상 개수만 보면 경보가 조용히 사라진다.
+      const targets = await this.resolvePaymentManagerTargets(paymentId);
+      const recipients = new Set<string>();
+      for (const target of targets) {
+        if (target.kind === "team") {
+          const managerIds =
+            await this.notificationsService.getTeamManagerUserIds(
+              target.teamId,
+            );
+          for (const id of managerIds) recipients.add(id);
+        } else {
+          for (const id of target.userIds) recipients.add(id);
+        }
+      }
+      if (recipients.size === 0) {
+        // 담당자를 특정할 수 없는 결제(미연결·고아·관리자 부재)라도 경보가 사라지면 안 된다.
+        await this.notifyOperatorsOfPaymentIncident(body);
+        return;
+      }
+      for (const target of targets) {
+        await this.sendToPaymentManagerTarget(target, {
+          notificationType: "payment_failed",
+          title: body.title,
+          message: body.message,
+        });
+      }
+    } catch (err) {
+      this.logger.warn(
+        `결제 사고 알림 실패: paymentId=${paymentId} ${(err as Error).message}`,
       );
     }
   }
@@ -1028,6 +1829,39 @@ export class PaymentsService {
     amount: number,
   ): Promise<void> {
     const won = `₩${amount.toLocaleString("ko-KR")}`;
+    const targets = await this.resolvePaymentManagerTargets(paymentId);
+
+    for (const target of targets) {
+      const body =
+        target.scope === "tournament"
+          ? {
+              title: "대회 결제 알림",
+              message: `"${target.subject}" 대회 참가비 결제가 완료되었어요. (${won})`,
+            }
+          : target.scope === "academy"
+            ? {
+                title: "오픈클래스 결제 알림",
+                message: `"${target.subject}" 오픈클래스 결제가 완료되었어요. (${won})`,
+              }
+            : {
+                title: "수업 결제 알림",
+                message: `"${target.subject}" 수업 결제가 완료되었어요. (${won})`,
+              };
+      await this.sendToPaymentManagerTarget(target, {
+        notificationType: "payment_success",
+        ...body,
+      });
+    }
+  }
+
+  /**
+   * 결제 담당자(감독·코치·오픈클래스 원장) 수신 대상 해석.
+   *  완료 알림과 사고 경보가 같은 라우팅을 쓰도록 분리했다 — 한쪽만 고쳐 수신자가
+   *  갈라지는 것을 막는다.
+   */
+  private async resolvePaymentManagerTargets(
+    paymentId: string,
+  ): Promise<PaymentManagerTarget[]> {
     const CLASS_SELECT = {
       select: {
         id: true,
@@ -1059,13 +1893,15 @@ export class PaymentsService {
       if (l.billing?.class) classMap.set(l.billing.class.id, l.billing.class);
     }
 
+    const targets: PaymentManagerTarget[] = [];
     for (const cls of classMap.values()) {
       if (cls.teamId) {
         // 정규 수업 → 팀 감독/코치. 착지 = 결제 관리(수납 현황) — director/coach 모두 접근 가능.
-        await this.notificationsService.notifyTeamManagers(cls.teamId, {
-          notificationType: "payment_success",
-          title: "수업 결제 알림",
-          message: `"${cls.className}" 수업 결제가 완료되었어요. (${won})`,
+        targets.push({
+          kind: "team",
+          teamId: cls.teamId,
+          scope: "class",
+          subject: cls.className,
           linkUrl: "/director-payments",
         });
       } else if (cls.academyId) {
@@ -1076,10 +1912,11 @@ export class PaymentsService {
           select: { directorId: true },
         });
         if (academy?.directorId) {
-          await this.notificationsService.notifyUsers([academy.directorId], {
-            notificationType: "payment_success",
-            title: "오픈클래스 결제 알림",
-            message: `"${cls.className}" 오픈클래스 결제가 완료되었어요. (${won})`,
+          targets.push({
+            kind: "users",
+            userIds: [academy.directorId],
+            scope: "academy",
+            subject: cls.className,
             linkUrl: `/academy/${cls.academyId}?tab=settlement`,
           });
         }
@@ -1097,13 +1934,33 @@ export class PaymentsService {
         tourTeams.set(r.tournament.teamId, r.tournament.name);
     }
     for (const [teamId, name] of tourTeams) {
-      await this.notificationsService.notifyTeamManagers(teamId, {
-        notificationType: "payment_success",
-        title: "대회 결제 알림",
-        message: `"${name}" 대회 참가비 결제가 완료되었어요. (${won})`,
+      targets.push({
+        kind: "team",
+        teamId,
+        scope: "tournament",
+        subject: name,
         linkUrl: "/director-payments",
       });
     }
+    return targets;
+  }
+
+  private async sendToPaymentManagerTarget(
+    target: PaymentManagerTarget,
+    body: { notificationType: string; title: string; message: string },
+  ): Promise<void> {
+    if (target.kind === "team") {
+      await this.notificationsService.notifyTeamManagers(target.teamId, {
+        ...body,
+        linkUrl: target.linkUrl,
+      });
+      return;
+    }
+    if (target.userIds.length === 0) return;
+    await this.notificationsService.notifyUsers(target.userIds, {
+      ...body,
+      linkUrl: target.linkUrl,
+    });
   }
 
   /**
@@ -2231,6 +3088,7 @@ export class PaymentsService {
         id: true,
         userId: true,
         tid: true,
+        pgProvider: true,
         paymentStatus: true,
         receipt: { select: { receiptUrl: true } },
       },
@@ -2253,8 +3111,24 @@ export class PaymentsService {
       return { downloadUrl: payment.receipt.receiptUrl };
     }
 
-    // 2) 사후 보충 — 완료 결제 + tid(=토스 paymentKey) 있을 때 토스에서 영수증 URL 조회.
-    if (payment.paymentStatus === "completed" && payment.tid) {
+    // 2) 나이스 구모듈 — 승인 응답에 영수증 URL 이 없어 거래번호로 매출전표 주소를 조합한다.
+    //    이 수정 전에 만들어진 영수증 행(URL 없음)도 처음 열 때 여기서 보충·저장된다.
+    if (
+      payment.pgProvider === "nicestd" &&
+      payment.paymentStatus === "completed" &&
+      payment.tid
+    ) {
+      const url = buildNiceStdReceiptUrl(payment.tid);
+      await this.receiptService.createReceipt(paymentId, url);
+      return { downloadUrl: url };
+    }
+    // 3) 토스 사후 보충 — 완료 결제 + tid(=토스 paymentKey) 있을 때 토스에서 영수증 URL 조회.
+    //    결제사가 토스일 때만 — 다른 결제사 거래번호로 토스를 조회하면 실패 로그만 남는다.
+    if (
+      payment.pgProvider === "toss" &&
+      payment.paymentStatus === "completed" &&
+      payment.tid
+    ) {
       let url: string | null = null;
       try {
         const toss = await this.tossGateway.getPayment(payment.tid);

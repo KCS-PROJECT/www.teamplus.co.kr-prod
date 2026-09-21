@@ -567,6 +567,7 @@ describe("RefundRequestService", () => {
               "KG_UNCONFIRMED",
               "TOSS_UNCONFIRMED",
               "TOSS_IDEMPOTENCY_CONFLICT",
+              "NICE_UNCONFIRMED",
             ],
           },
         },
