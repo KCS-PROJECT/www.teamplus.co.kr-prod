@@ -43,10 +43,10 @@ bool _isAuthPathUrl(String? url) {
 
 /// 히스토리 엔트리가 **앱 웹(teamplus-web) 소속**인지 판별.
 ///
-/// 토스 결제창처럼 외부 도메인으로 나갔다 돌아오면 그 엔트리가 WebView 히스토리에
-/// 그대로 남는다. 결제 세션은 이탈 즉시 만료되므로 되짚어 들어가면 토스가 소유한
+/// 결제창처럼 외부 도메인으로 나갔다 돌아오면 그 엔트리가 WebView 히스토리에
+/// 그대로 남는다. 결제 세션은 이탈 즉시 만료되므로 그 위에 서면 결제사가 소유한
 /// "이미 종료된 세션입니다" 화면(버튼 없음 — 앱에서 빠져나올 수단 없음)이 뜬다.
-/// `_safeHistoryBackSteps` 는 이 판정으로 외부 엔트리에서 되짚기를 중단한다.
+/// `_safeHistoryBackSteps` 는 이 판정으로 외부 엔트리를 착지 대상에서 뺀다.
 ///
 /// 호스트만 비교한다 — dev/prod 로 scheme·port 가 달라지지만 앱 웹 호스트는 하나다.
 /// base 파싱 실패 등 판정 불가 시에는 true(기존 동작 유지)로 보수적 폴백한다.
@@ -57,6 +57,14 @@ bool _isAppWebEntry(Uri? url) {
   return url.host == base.host;
 }
 
+/// [_isAppWebEntry] 의 문자열 URL 판. 결제창·카드사 페이지처럼 외부 도메인에 머무는
+/// 동안에는 경로만 보는 홈/로그인 판정이 오작동한다 — 외부 페이지에서 `/parent/` 같은
+/// 경로가 나오면 홈으로 오판해 종료 확인(세션 삭제)까지 띄운다. 호스트를 먼저 본다.
+bool _isAppWebUrl(String? url) {
+  if (url == null || url.isEmpty) return true;
+  return _isAppWebEntry(Uri.tryParse(url));
+}
+
 /// 현재 URL 이 **로그인 화면**(`/login`)인지 정확히 판별.
 ///
 /// `_isAuthPathUrl` 은 회원가입·비밀번호찾기 등 인증 플로우 전체를 포함하지만,
@@ -65,6 +73,7 @@ bool _isAppWebEntry(Uri? url) {
 ///  기존 history back 로직을 그대로 탄다. — 2026-05-26 사용자 직접 지시)
 bool _isLoginRootUrl(String? url) {
   if (url == null || url.isEmpty) return false;
+  if (!_isAppWebUrl(url)) return false;
   String path;
   try {
     path = Uri.parse(url).path;
@@ -84,6 +93,7 @@ bool _isLoginRootUrl(String? url) {
 /// trailing slash 를 정규화하고 루트 경로만 정확히 비교한다.
 bool _isSignupRootUrl(String? url) {
   if (url == null || url.isEmpty) return false;
+  if (!_isAppWebUrl(url)) return false;
   String path;
   try {
     path = Uri.parse(url).path;
@@ -109,6 +119,7 @@ bool _isSignupRootUrl(String? url) {
 /// 경로 집합은 web `ROLE_HOME_PATHS`(nav-home-paths.ts) 와 동기화한다.
 bool _isRoleHomeUrl(String? url) {
   if (url == null || url.isEmpty) return false;
+  if (!_isAppWebUrl(url)) return false;
   String path;
   try {
     path = Uri.parse(url).path;
@@ -175,6 +186,8 @@ String _getDashboardPathByUserType(String? userType) {
       return '/child/';
     case 'director':
       return '/director/';
+    case 'academy_director':
+      return '/academy-director/';
     default:
       return '/login/';
   }

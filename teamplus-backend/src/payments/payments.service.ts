@@ -728,6 +728,67 @@ export class PaymentsService {
   }
 
   /**
+   * 사용자가 결제창을 스스로 닫았을 때 되돌려 보낼 결제 화면 경로.
+   *  토스 failUrl 이 쓰는 쿼리 계약(`error=fail` + 화면별 식별자)과 같은 형식이라 웹 화면은
+   *  결제사를 구분하지 않는다. 값은 전부 DB 에서 복원한다 — 결제창 응답값으로 만들면
+   *  오픈 리다이렉트가 된다. 복원 재료가 없으면 null(호출부가 결과 화면으로 폴백).
+   */
+  async getRetryPathByOrderNumber(
+    orderNumber: string,
+    options: {
+      /** 결제사 결과 코드 — 웹이 로그·문구에 참고 */
+      code?: string;
+      /** 사용자가 결제창을 스스로 닫은 경우 — 웹이 "취소" 문구를 고르는 단일 근거 */
+      cancelled?: boolean;
+    } = {},
+  ): Promise<string | null> {
+    if (!orderNumber) return null;
+    // 복귀 쿼리는 여기서만 조립한다(호출부 문자열 접합 금지).
+    const withReturnQuery = (
+      path: string,
+      params: Record<string, string>,
+    ): string => {
+      const query = new URLSearchParams({ ...params, error: "fail" });
+      if (options.code) query.set("code", options.code);
+      if (options.cancelled) query.set("cancel", "1");
+      return `${path}?${query.toString()}`;
+    };
+    // 미결(pending) 주문만 되돌린다 — 이미 승인·취소된 주문에 늦게 온 취소 응답이나 주문번호만
+    //   아는 위조 요청으로 "취소했어요" 안내가 뜨면 안 된다.
+    const payment = await this.prisma.payment.findFirst({
+      where: { orderNumber, paymentStatus: "pending", deletedAt: null },
+      select: {
+        productId: true,
+        amount: true,
+        enrollments: { select: { classId: true, childId: true }, take: 1 },
+        tournamentRegistrations: { select: { tournamentId: true }, take: 1 },
+      },
+    });
+    if (!payment) return null;
+    // 후불 청구는 수업(`POSTPAID-`)·대회(`TRN-POSTPAID-`) 모두 후불 결제 화면에서 낸다.
+    //   대회 후불은 대회 신청이 연결돼 있어도 참가 화면으로 보내면 이미 신청된 자녀라
+    //   결제할 수 없으므로 대회 분기보다 먼저 본다.
+    if (/^(TRN-)?POSTPAID-/.test(orderNumber)) {
+      return withReturnQuery("/payment/postpaid", { orderNumber });
+    }
+    const tournamentId = payment.tournamentRegistrations[0]?.tournamentId;
+    if (tournamentId) {
+      return withReturnQuery(
+        `/tournaments/${encodeURIComponent(tournamentId)}/apply`,
+        {},
+      );
+    }
+    const enrollment = payment.enrollments[0];
+    if (!payment.productId || !enrollment) return null;
+    return withReturnQuery("/payment/checkout", {
+      productId: payment.productId,
+      childId: enrollment.childId,
+      classId: enrollment.classId,
+      amount: String(Number(payment.amount)),
+    });
+  }
+
+  /**
    * 구모듈 결제 승인.
    *  1) Payment 조회 — completed 멱등 · cancelled/failed 거부 · 금액 대조
    *  2) Redis 락 `nicestd:confirm:{orderNumber}` 24h

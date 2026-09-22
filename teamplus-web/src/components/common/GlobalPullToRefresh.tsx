@@ -3,7 +3,8 @@
 /**
  * GlobalPullToRefresh — 전역 당겨서 새로고침 (2026-06-04)
  *
- * 모든 페이지에서 스크롤 컨테이너 최상단을 아래로 당기면 `location.reload()`.
+ * 모든 페이지(브라우저·네이티브 WebView 공통)에서 스크롤 컨테이너 최상단을 아래로 당기면
+ * `location.reload()`. 네이티브에서는 마운트 시 네이티브 PTR 을 끄고 이 컴포넌트가 대신한다.
  * web 은 페이지마다 자체 `<main className="overflow-y-auto">` 가 스크롤 컨테이너이므로
  * (body 가 아님) document 레벨 touch 리스너로 동작 대상 컨테이너를 동적으로 찾는다.
  *
@@ -19,6 +20,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '@/components/ui/Icon';
 import { isNativeApp } from '@/lib/environment';
+import { ui } from '@/services/native-bridge';
 
 const THRESHOLD = 80; // 새로고침 트리거 거리(px)
 const MAX_DISTANCE = 140; // 최대 당김 거리(px)
@@ -49,11 +51,15 @@ export function GlobalPullToRefresh() {
   const containerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    // [2026-06-05] 네이티브(Flutter WebView)에서는 비활성화 — Flutter 가 자체 네이티브
-    //   PullToRefreshController(당기면 webViewController.reload())를 제공한다.
-    //   web JS PTR 이 touchmove 를 preventDefault 로 가로채면 네이티브 PTR 제스처
-    //   (SwipeRefreshLayout/UIRefreshControl)가 발동하지 못하므로, 브라우저 환경에서만 동작.
-    if (isNativeApp()) return;
+    // 네이티브(Flutter WebView)에서도 이 컴포넌트가 새로고침을 담당한다.
+    //   네이티브 PullToRefreshController 는 "문서 자체가 스크롤되지 않는 페이지에서는
+    //   발동하지 않는" 플러그인 규칙(Android PullToRefreshLayout.canChildScrollUp) 때문에
+    //   MobileContainer(fixed 껍데기 + 내부 main 스크롤) 구조에서는 동작하지 않는다.
+    //   스크롤 범위 오보고 순간에만 우연히 발동해 이중 새로고침이 날 수 있으므로 명시적으로 끈다.
+    //   (페이지 정책으로 기록되어 오버레이 닫힘·SPA 이동 뒤에도 꺼진 상태가 유지된다.)
+    if (isNativeApp()) {
+      void ui.setPullToRefresh(false);
+    }
 
     const setPullBoth = (v: number) => {
       pullRef.current = v;

@@ -64,6 +64,8 @@ import {
 } from "./nice-payments.gateway";
 import {
   NiceStdPaymentsGateway,
+  NICE_STD_AUTH_OK,
+  isNiceStdUserCancel,
   type NiceStdAuthResult,
 } from "./nice-std-payments.gateway";
 import { NiceStdSignDto } from "./dto/nicestd-sign.dto";
@@ -431,16 +433,26 @@ export class PaymentsController {
       message?: string;
       /** 결과 화면이 어느 결제사 흐름인지 구분한다. 기존 신모듈 호출부는 생략해 'nice' 유지. */
       provider?: string;
+      /** 결제사 결과 코드 — 결과 화면이 실패 문구를 코드별로 가른다(카드사 인증 실패·시간 초과 등). */
+      code?: string;
     },
   ) {
-    const base = this.configService.get<string>("NICE_RETURN_BASE_URL", "");
     const query = new URLSearchParams({ provider: params.provider ?? "nice" });
     if (params.orderId) query.set("orderNumber", params.orderId);
     if (params.error) query.set("error", params.error);
     if (params.message) query.set("message", params.message);
-    const target = `${base}/payment/complete?${query.toString()}`;
-    // 303 See Other — POST 를 GET 으로 전환해 새로고침 재전송(이중 승인)을 차단.
-    return res.redirect(HttpStatus.SEE_OTHER, target);
+    if (params.code) query.set("code", params.code);
+    return this.redirectToWebPath(res, `/payment/complete?${query.toString()}`);
+  }
+
+  /**
+   * 서버가 만든 웹 상대 경로로 303 — 결제 결과·재시도 화면 공용.
+   *  base 는 서버 설정값만, path 는 서버가 조립한 값만 받는다(요청 본문 값 금지).
+   *  303 See Other — POST 를 GET 으로 전환해 새로고침 재전송(이중 승인)을 차단.
+   */
+  private redirectToWebPath(res: ExpressResponse, path: string) {
+    const base = this.configService.get<string>("NICE_RETURN_BASE_URL", "");
+    return res.redirect(HttpStatus.SEE_OTHER, `${base}${path}`);
   }
 
   /**
@@ -601,12 +613,13 @@ export class PaymentsController {
     const body = this.readNiceStdAuthBody(req);
     const orderId = body?.Moid ?? "";
     // 결과 화면은 `error` 유무로 성공을 판정한다(신모듈 경로와 동일 계약).
-    const redirect = (error?: string, message?: string) =>
+    const redirect = (error?: string, message?: string, code?: string) =>
       this.redirectToPaymentResult(res, {
         orderId,
         provider: "nicestd",
         error,
         message,
+        code,
       });
 
     if (!orderId) {
@@ -626,10 +639,40 @@ export class PaymentsController {
 
     const verified = this.niceStdGateway.verifyAuthResult(body, expectedAmount);
     if (!verified.ok) {
+      // 결제창 단계 실패(사용자 취소·카드사 인증 실패·최소 금액·시간 초과 등, 인증 결과
+      //   코드 ≠ 0000)는 승인이 호출되지 않아 돈이 나가지 않은 상태다. 결제창이 이미 팝업으로
+      //   이유를 알렸으므로 결과 화면을 또 띄우지 않고 원래 결제 화면으로 보내 바로 다시
+      //   시도하게 한다(토스 failUrl·포트원 redirect 와 같은 계약). 코드를 함께 실어 웹이
+      //   취소/실패 문구를 가른다. 복귀 경로는 주문번호로 서버가 복원하고, 복원이 안 되면
+      //   결과 화면. 서명·금액·MID 불일치는 무결성 오류라 여기 오지 않는다(reason 이 다름).
+      //   `auth_failed` 는 게이트웨이 미설정(`isConfigured()==false`)에도 나오므로 코드가
+      //   실제 실패 코드(≠ 0000)인지까지 본다 — 설정 오류를 재시도 루프로 감추지 않는다.
+      const resultCode = body?.AuthResultCode ?? "";
+      if (
+        verified.reason === "auth_failed" &&
+        resultCode &&
+        resultCode !== NICE_STD_AUTH_OK
+      ) {
+        const cancelled = isNiceStdUserCancel(resultCode);
+        const retryPath = await this.paymentsService.getRetryPathByOrderNumber(
+          orderId,
+          { code: resultCode, cancelled },
+        );
+        if (retryPath) {
+          this.logger.warn(
+            `나이스 구모듈 결제창 ${cancelled ? "사용자 취소" : "실패"} — orderId=${orderId} code=${resultCode} msg=${body?.AuthResultMsg ?? ""} → ${retryPath}`,
+          );
+          return this.redirectToWebPath(res, retryPath);
+        }
+      }
       this.logger.warn(
-        `나이스 구모듈 인증 검증 실패 — orderId=${orderId} reason=${verified.reason} msg=${body?.AuthResultMsg ?? ""}`,
+        `나이스 구모듈 인증 검증 실패 — orderId=${orderId} reason=${verified.reason} code=${body?.AuthResultCode ?? ""} msg=${body?.AuthResultMsg ?? ""}`,
       );
-      return redirect(verified.reason, body?.AuthResultMsg);
+      return redirect(
+        verified.reason,
+        body?.AuthResultMsg,
+        verified.reason === "auth_failed" ? body?.AuthResultCode : undefined,
+      );
     }
 
     try {

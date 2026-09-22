@@ -30,6 +30,18 @@ class AppColors {
   static const Color contentBackgroundDark =
       Color(0xFF0F172A); // slate-900 (Dark)
 
+  // 웹 PageAppBar 동기 토큰 — 외부 페이지(결제창) 위에 네이티브로 잇는 헤더 전용.
+  //   SoT 는 teamplus-web/tailwind.config.cjs (bg-white / dark:bg-rink-900 ·
+  //   border-wline-2 / dark:border-rink-800 · text-wtext-1 / dark:text-white).
+  //   Dart 와 Tailwind 가 토큰을 공유할 통로가 없어 값을 옮겨 적는다 — 웹 토큰을 바꾸면
+  //   여기도 같이 바꾼다.
+  static const Color webAppBarBackground = Color(0xFFFFFFFF);
+  static const Color webAppBarBackgroundDark = Color(0xFF141826); // rink-900
+  static const Color webAppBarLine = Color(0xFFEEF1F7); // wline-2
+  static const Color webAppBarLineDark = Color(0xFF1F2536); // rink-800
+  static const Color webAppBarText = Color(0xFF0A0D14); // wtext-1
+  static const Color webAppBarTextDark = Color(0xFFFFFFFF);
+
   // Border Colors
   static const Color borderColor = Color(0xFFE2E8F0); // slate-200
   static const Color borderFocus = Color(0xFF1E40AF); // Primary focus

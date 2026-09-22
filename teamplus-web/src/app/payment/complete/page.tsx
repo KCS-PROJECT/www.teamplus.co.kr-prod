@@ -9,6 +9,7 @@ import { verifyPaymentCompletion } from '@/services/payment';
 import { api } from '@/services/api-client';
 import type { Receipt } from '@/types/payment';
 import { Icon } from '@/components/ui/Icon';
+import { ErrorState } from '@/components/common/ErrorState';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { useBlockBackNavigation } from '@/hooks/useBlockBackNavigation';
@@ -16,6 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getDashboardPathByUserType } from '@/lib/auth-routing';
 import { MESSAGES } from '@/lib/messages';
 import { usePageReady } from '@/hooks/usePageReady';
+import { clearExternalDeparture } from '@/lib/nav-stack';
 import { PaymentSourceBadge } from '@/components/payment/PaymentSourceBadge';
 
 /**
@@ -216,6 +218,13 @@ const NICE_AUTHORIZE_ERROR_MESSAGE_MAP: Record<string, string> = {
   approve_failed: MESSAGES.payment2.confirmFailed,
 };
 
+/**
+ * 결제 성사 여부를 이 화면이 단정할 수 없는 error 코드 — "결제 안 됨" 제목을 달면 안 된다.
+ *  result_pending: 승인 결과 미확정 · direct_access: 인증 결과 주소 직접 진입(성사 여부 불명).
+ *  영수증 조회 실패(승인은 끝남)도 같은 부류이며 verifyRetryable 로 별도 판정한다.
+ */
+const OUTCOME_UNKNOWN_ERRORS = new Set(['result_pending', 'direct_access']);
+
 function PaymentCompleteContent() {
   const searchParams = useSearchParams();
   const [receipt, setReceipt] = useState<Receipt | null>(null);
@@ -251,6 +260,9 @@ function PaymentCompleteContent() {
   //  따라서 이 화면은 confirm 을 호출하지 않고 영수증 조회만 한다.
   //  실패 시 error 코드가 함께 오며, 그 경우 결제는 발생하지 않았다(result_pending 예외 — 아래).
   const niceError = searchParams?.get('error') || '';
+  // 나이스가 보낸 실패 사유 원문(AuthResultMsg). 코드와 메시지가 어긋나는 경우가 실측됐으므로
+  //   (코드 0204 + "[W090] 최소 금액" 메시지) 코드 표 대신 메시지를 그대로 보여 준다.
+  const niceMessage = (searchParams?.get('message') || '').trim();
 
   const [confirmError, setConfirmError] = useState<string | null>(null);
   // 나이스(신모듈·구모듈) 인증 실패/대기 문구는 이미 완결된 문장이라 아래 배너에서
@@ -259,6 +271,9 @@ function PaymentCompleteContent() {
   const [confirmErrorIsFinal, setConfirmErrorIsFinal] = useState(false);
   // 나이스 영수증 조회가 실패했을 때만 true — 재시도 버튼 노출 조건.
   const [verifyRetryable, setVerifyRetryable] = useState(false);
+  // 승인은 끝났는데 영수증 조회만 실패한 상태(토스·이니시스 경로) — 결제 성사 여부를 이 화면이
+  //   단정하면 안 되므로 실패 제목 대신 "결과 미확인" 으로 보여 준다.
+  const [outcomeUnknown, setOutcomeUnknown] = useState(false);
   // 결제 확인에 필요한 파라미터가 하나라도 있는지 — 세션 만료 재로그인 복귀 등으로
   // 쿼리가 소실된 채 진입하면 어떤 분기도 타지 못해 무한 스피너가 되므로 안내로 대체.
   const hasPaymentParams =
@@ -269,6 +284,13 @@ function PaymentCompleteContent() {
     //   무한 스피너로 빠지지 않게 파라미터 있음으로 취급한다.
     provider === 'nice' ||
     provider === 'nicestd';
+  // 성사 여부를 이 화면이 단정할 수 없는 상태 — 승인 결과 미확정·인증 주소 직접 진입·영수증
+  //   조회 실패·쿼리 소실(세션 만료 재로그인 복귀 등). 실패 제목 대신 "결과 미확인" 으로 그린다.
+  const isOutcomeUnknown =
+    OUTCOME_UNKNOWN_ERRORS.has(niceError) ||
+    verifyRetryable ||
+    outcomeUnknown ||
+    !hasPaymentParams;
   // [2026-06-09] 오픈클래스 자녀 복수 결제 — 다음 자녀 순차 큐.
   const { navigate } = useNavigation();
   const { user } = useAuth();
@@ -346,7 +368,9 @@ function PaymentCompleteContent() {
       if (niceError) {
         setConfirmErrorIsFinal(true);
         setConfirmError(
-          NICE_AUTHORIZE_ERROR_MESSAGE_MAP[niceError] ?? MESSAGES.payment2.confirmFailed,
+          (niceError === 'auth_failed' && niceMessage) ||
+            NICE_AUTHORIZE_ERROR_MESSAGE_MAP[niceError] ||
+            MESSAGES.payment2.confirmFailed,
         );
         return;
       }
@@ -385,6 +409,7 @@ function PaymentCompleteContent() {
           setCreditsIssued(detail.data.creditsIssued);
         } else {
           // 승인은 끝났고 영수증 조회만 실패한 상태 — 무한 스피너 대신 에러 표면화.
+          setOutcomeUnknown(true);
           setConfirmError(detail.error?.message ?? MESSAGES.payment2.loadError);
         }
       };
@@ -402,6 +427,7 @@ function PaymentCompleteContent() {
           setReceipt(detail.data.receipt);
           setCreditsIssued(detail.data.creditsIssued);
         } else {
+          setOutcomeUnknown(true);
           setConfirmError(detail.error?.message ?? MESSAGES.payment2.confirmFailed);
         }
       };
@@ -416,6 +442,8 @@ function PaymentCompleteContent() {
         setReceipt(res.data.receipt);
         setCreditsIssued(res.data.creditsIssued);
       } else {
+        // 결제사 승인 뒤 조회만 실패 — 성사 여부 단정 금지.
+        setOutcomeUnknown(true);
         setConfirmError(res.error?.message ?? MESSAGES.payment2.loadError);
       }
     };
@@ -430,7 +458,14 @@ function PaymentCompleteContent() {
     tossOrderId,
     tossAmount,
     niceError,
+    niceMessage,
   ]);
+
+  // 결제창으로 떠나며 남긴 히스토리 기록은 이 화면(성공·실패 결과)에 도착한 시점에 역할이 끝난다.
+  //   남겨 두면 뒤의 다른 결제 흐름에서 엉뚱한 칸 수로 되짚을 수 있다.
+  useEffect(() => {
+    clearExternalDeparture();
+  }, []);
 
   // 무료(0원) 결제 — 세금 영수증 발행 대상이 아니고 결제사 영수증도 없다.
   const isFreeReceipt = Number(receipt?.totalAmount ?? -1) === 0;
@@ -442,11 +477,6 @@ function PaymentCompleteContent() {
           [수정 2026-05-18] AppBar 제거로 상단 padding을 safe-area 기반으로 보강.
           [&>*]:shrink-0 으로 flex 자식 압축 방지. */}
       <main className="flex-1 flex flex-col overflow-y-auto bg-it-canvas dark:bg-puck [&>*]:shrink-0">
-        {confirmError && (
-          <div className="mx-5 mt-[calc(var(--safe-area-inset-top,0px)+16px)] rounded-w-md border border-it-red-500/30 bg-it-red-50 dark:bg-it-red-500/15 p-4 text-card-body text-it-red-600 dark:text-it-red-200">
-            {confirmErrorIsFinal ? confirmError : `${MESSAGES.payment2.confirmFailed}: ${confirmError}`}
-          </div>
-        )}
         {receipt ? (
           <>
             {/* 성공 안내 — 흰 섹션 (full-bleed) */}
@@ -515,27 +545,36 @@ function PaymentCompleteContent() {
             </section>
           </>
         ) : confirmError || !hasPaymentParams ? (
-          // 에러 또는 파라미터 소실 진입 — 무한 스피너 대신 안내 + 홈 복귀 동선 제공.
-          //   confirmError 는 상단 배너로 이미 표시되므로 여기서는 중복 출력하지 않는다.
-          <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
-            {!confirmError && (
-              <p className="mb-6 text-it-ink-500 dark:text-rink-300 text-card-body">
-                {MESSAGES.payment2.completeNoInfo}
-              </p>
-            )}
-            {verifyRetryable && (
-              <button
-                type="button"
-                onClick={() => {
-                  setConfirmError(null);
-                  setVerifyRetryable(false);
-                  void loadNiceReceipt();
-                }}
-                className="mb-3 flex items-center justify-center h-14 px-10 rounded-w-md bg-it-blue-500 text-white font-bold text-card-emphasis shadow-sh-1 hover:bg-it-blue-600 transition-colors motion-reduce:transition-none active:brightness-95"
-              >
-                {MESSAGES.payment2.retryVerify}
-              </button>
-            )}
+          // 실패·파라미터 소실 진입 — 공통 ErrorState 로 "무엇이 안 됐는지" 를 본문에 그린다.
+          //   버튼은 홈 복귀만 둔다(사용자 취소는 결제 화면으로 바로 돌아가므로 여기 오지 않는다).
+          //   영수증 조회 실패(verifyRetryable)만 재시도 버튼을 ErrorState 의 onRetry 로 제공.
+          <div className="flex-1 flex flex-col items-center justify-center pt-[var(--safe-area-inset-top,0px)] px-6 text-center">
+            <ErrorState
+              size="lg"
+              icon={isOutcomeUnknown ? 'help_outline' : 'error_outline'}
+              title={
+                isOutcomeUnknown
+                  ? MESSAGES.payment2.resultUnknownTitle
+                  : MESSAGES.payment2.failedTitle
+              }
+              message={
+                confirmError
+                  ? confirmErrorIsFinal
+                    ? confirmError
+                    : `${MESSAGES.payment2.confirmFailed}: ${confirmError}`
+                  : MESSAGES.payment2.completeNoInfo
+              }
+              retryLabel={MESSAGES.payment2.retryVerify}
+              onRetry={
+                verifyRetryable
+                  ? () => {
+                      setConfirmError(null);
+                      setVerifyRetryable(false);
+                      void loadNiceReceipt();
+                    }
+                  : undefined
+              }
+            />
             <NavLink
               href={homePath}
               className={verifyRetryable ? "flex items-center justify-center h-14 px-10 rounded-w-md border border-it-line-strong bg-it-surface text-it-ink-900 dark:border-rink-700 dark:bg-it-blue-950 dark:text-white font-bold text-card-emphasis transition-colors motion-reduce:transition-none active:brightness-95" : "flex items-center justify-center h-14 px-10 rounded-w-md bg-it-blue-500 text-white font-bold text-card-emphasis shadow-sh-1 hover:bg-it-blue-600 transition-colors motion-reduce:transition-none active:brightness-95"}

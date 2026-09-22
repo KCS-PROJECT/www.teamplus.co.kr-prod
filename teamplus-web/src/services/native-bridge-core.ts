@@ -207,6 +207,8 @@ export interface FlutterBridgeAuth {
   saveToken(tokenData: {
     accessToken: string;
     refreshToken: string;
+    /** JWT exp (초). 네이티브 token_expiry 저장용 — 없으면 네이티브가 JWT 에서 파생 */
+    expiryTimestamp?: number;
   }): Promise<void>;
   clearToken(): Promise<void>;
   isAuthenticated(): Promise<boolean>;

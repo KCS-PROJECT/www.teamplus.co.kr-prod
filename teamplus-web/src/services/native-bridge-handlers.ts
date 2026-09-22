@@ -7,6 +7,7 @@ import { isFlutterBridgeAvailable } from "@/lib/environment";
 import { buildUrlWithParams, normalizeExternalUrl } from "@/lib/utils";
 import type { IdentityProvider, IdentityPurpose, IdentityVerificationResult, UserIdentityStatus } from "@/types";
 import { handleBridgeError } from "./bridge-error-handler";
+import { decodeAccessTokenClaims } from "@/lib/jwt";
 
 
 /**
@@ -38,7 +39,13 @@ export const auth = {
   }): Promise<boolean> {
     try {
       const bridge = getBridge();
-      await bridge.auth.saveToken(tokenData);
+      // 네이티브 TokenStorage 는 만료값(token_expiry)이 없으면 토큰이 있어도 만료로
+      // 판정한다. 웹 로그인 경로는 Dio 갱신을 거치지 않아 만료값이 저장되지 않으므로
+      // JWT exp(초)를 함께 넘겨 네이티브 판정을 웹과 일치시킨다.
+      const exp = decodeAccessTokenClaims(tokenData.accessToken)?.exp;
+      await bridge.auth.saveToken(
+        exp !== undefined ? { ...tokenData, expiryTimestamp: exp } : tokenData,
+      );
       return true;
     } catch (error) {
       handleBridgeError(
