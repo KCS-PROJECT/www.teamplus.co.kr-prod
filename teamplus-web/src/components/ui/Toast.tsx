@@ -15,7 +15,8 @@ const TOAST_DEFAULT_DURATION_MS = 4000;
 // 1000ms 로 설정해 의도적 연속 동작(보통 1초 이상 간격, 예: 항목 여러 개 연속 삭제)은
 // 정상적으로 각각 표시되도록 한다 (정상 동작을 막지 않는 보수적 window).
 const TOAST_DEDUP_WINDOW_MS = 1000;
-// 모바일에서는 `calc(100vw - 32px)` 로 전폭 활용, 태블릿/데스크톱에서는 이 상한값으로 중앙 정렬.
+// 토스트 폭은 내용 길이만큼(max-content) 잡고, 긴 문장만 이 상한(또는 화면 폭 - 32px 중 작은 값)에서 줄바꿈한다.
+// 이전에는 항상 화면 전폭(calc(100vw - 32px))이라 짧은 문구도 배너처럼 펼쳐졌다.
 // 340px 은 iPhone SE 기준으로도 좁아 텍스트가 자주 줄바꿈되던 문제가 있어 440px 로 상향.
 const TOAST_MAX_WIDTH = 440;
 
@@ -256,7 +257,6 @@ const ToastItem = memo(function ToastItem({ toast, onRemove }: ToastItemProps) {
         ${isExiting ? 'opacity-0 translate-y-2' : 'opacity-100 translate-y-0 animate-slide-up'}
       `}
       style={{
-        width: '100%',
         letterSpacing: '-0.02em',
         boxShadow:
           '0 12px 28px rgba(15, 23, 42, 0.22), 0 2px 6px rgba(15, 23, 42, 0.10)',
@@ -401,11 +401,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           offset 8.5rem(136px) 기준: 토스트는 주로 하단 고정 CTA 바가 있는 폼/결제 화면에서
           발생하는데, 가장 높은 CTA 바(pt-4 + h-14 버튼 + pb-8 ≈ 108px)가 safe-area 0인
           웹 환경에서 이전 값 6rem(96px)과 겹쳤다. 108px 위 여백을 확보하는 값. */}
-      {/* width: calc(100vw - 32px) 로 모바일에서 좌우 16px 여백 유지, maxWidth 로 태블릿·데스크톱 상한 */}
+      {/* 폭은 내용 길이만큼, 상한은 화면 폭 - 32px(좌우 16px 여백)과 TOAST_MAX_WIDTH 중 작은 값.
+          fit-content 를 쓰면 안 된다 — left: 50% 배치라 가용 폭이 화면의 절반으로 계산되어
+          폰에서 토스트가 화면 절반 폭을 넘지 못하고 글이 접힌다. max-content 는 가용 폭의
+          영향을 받지 않고 maxWidth 로만 잘린다. */}
       <div
         data-testid="toast-container"
         className="fixed left-1/2 -translate-x-1/2 z-[60] flex flex-col gap-2 pointer-events-none bottom-[calc(8.5rem+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px)))]"
-        style={{ width: 'calc(100vw - 32px)', maxWidth: TOAST_MAX_WIDTH }}
+        style={{ width: 'max-content', maxWidth: `min(calc(100vw - 32px), ${TOAST_MAX_WIDTH}px)` }}
       >
         <div className="flex flex-col gap-2 pointer-events-auto">
           {toasts.map((t) => (
