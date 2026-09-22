@@ -276,6 +276,113 @@ describe("PaymentsService — 나이스 구모듈", () => {
     });
   });
 
+  describe("getRetryPathByOrderNumber", () => {
+    const pendingWhere = (orderNumber: string) =>
+      expect.objectContaining({
+        where: { orderNumber, paymentStatus: "pending", deletedAt: null },
+      });
+
+    it("수업 후불 주문은 후불 결제 화면으로 만든다 (pending 주문만)", async () => {
+      mockPrisma.payment.findFirst.mockResolvedValue({
+        productId: null,
+        amount: 50000,
+        enrollments: [],
+        tournamentRegistrations: [],
+      });
+
+      const path = await service.getRetryPathByOrderNumber(
+        "POSTPAID-bill-1-user-1",
+      );
+
+      expect(path).toBe(
+        "/payment/postpaid?orderNumber=POSTPAID-bill-1-user-1&error=fail",
+      );
+      expect(mockPrisma.payment.findFirst).toHaveBeenCalledWith(
+        pendingWhere("POSTPAID-bill-1-user-1"),
+      );
+    });
+
+    it("코드·취소 여부를 받으면 복귀 쿼리에 code·cancel 을 함께 싣는다", async () => {
+      mockPrisma.payment.findFirst.mockResolvedValue({
+        productId: null,
+        amount: 50000,
+        enrollments: [],
+        tournamentRegistrations: [{ tournamentId: "tour-1" }],
+      });
+
+      expect(
+        await service.getRetryPathByOrderNumber("TRN-1", {
+          code: "I002",
+          cancelled: true,
+        }),
+      ).toBe("/tournaments/tour-1/apply?error=fail&code=I002&cancel=1");
+      expect(
+        await service.getRetryPathByOrderNumber("TRN-1", { code: "W090" }),
+      ).toBe("/tournaments/tour-1/apply?error=fail&code=W090");
+    });
+
+    it("대회 후불(TRN-POSTPAID-)은 대회 신청이 연결돼 있어도 후불 결제 화면으로 만든다", async () => {
+      mockPrisma.payment.findFirst.mockResolvedValue({
+        productId: null,
+        amount: 30000,
+        enrollments: [],
+        tournamentRegistrations: [{ tournamentId: "tour-1" }],
+      });
+
+      const path = await service.getRetryPathByOrderNumber(
+        "TRN-POSTPAID-tour-1-reg-1",
+      );
+
+      expect(path).toBe(
+        "/payment/postpaid?orderNumber=TRN-POSTPAID-tour-1-reg-1&error=fail",
+      );
+    });
+
+    it("대회 선불은 연결된 대회 신청의 대회 id 로 참가 화면을 만든다", async () => {
+      mockPrisma.payment.findFirst.mockResolvedValue({
+        productId: null,
+        amount: 30000,
+        enrollments: [],
+        tournamentRegistrations: [{ tournamentId: "tour-1" }],
+      });
+
+      const path = await service.getRetryPathByOrderNumber("TRN-1");
+
+      expect(path).toBe("/tournaments/tour-1/apply?error=fail");
+    });
+
+    it("수업 선불은 결제 행과 수강 신청으로 토스 failUrl 과 같은 쿼리를 만든다", async () => {
+      mockPrisma.payment.findFirst.mockResolvedValue({
+        productId: "prod-1",
+        amount: 1004,
+        enrollments: [{ classId: "class-1", childId: "child-1" }],
+        tournamentRegistrations: [],
+      });
+
+      const path = await service.getRetryPathByOrderNumber("ORD-1");
+
+      expect(path).toBe(
+        "/payment/checkout?productId=prod-1&childId=child-1&classId=class-1&amount=1004&error=fail",
+      );
+      expect(mockPrisma.payment.findFirst).toHaveBeenCalledWith(
+        pendingWhere("ORD-1"),
+      );
+    });
+
+    it("pending 이 아니거나 없는 주문, 복원 재료가 없는 주문은 null", async () => {
+      mockPrisma.payment.findFirst.mockResolvedValueOnce(null);
+      expect(await service.getRetryPathByOrderNumber("ORD-x")).toBeNull();
+
+      mockPrisma.payment.findFirst.mockResolvedValueOnce({
+        productId: "prod-1",
+        amount: 1004,
+        enrollments: [],
+        tournamentRegistrations: [],
+      });
+      expect(await service.getRetryPathByOrderNumber("ORD-y")).toBeNull();
+    });
+  });
+
   describe("confirmNiceStdPayment", () => {
     it("승인 성공 직후 tid 를 기록한 뒤 후처리한다", async () => {
       mockPrisma.payment.findUnique.mockResolvedValue(pendingPayment);

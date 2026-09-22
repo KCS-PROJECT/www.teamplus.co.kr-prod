@@ -1,4 +1,5 @@
 import { MESSAGES } from '@/lib/messages';
+import { clearExternalDeparture, markExternalDeparture } from '@/lib/nav-stack';
 
 /**
  * 나이스페이먼츠 구모듈(표준결제) 결제창 전역.
@@ -144,11 +145,17 @@ export function openNiceStdPayWindow({
     cleanup();
   };
 
+  // 모바일은 결제창이 다른 도메인 페이지로 화면 전체를 이동시킨다 — 취소 복귀 후 뒤로가기가
+  //   결제창 블록을 건너뛰어 원래 항목으로 돌아갈 수 있게 떠나기 직전 history 길이를 적는다.
+  markExternalDeparture();
   try {
     window.goPay(form);
   } catch (e) {
     // goPay 가 던지면 폼·전역 콜백이 등록된 채로 남는다 — cleanup 후 그대로 다시 던진다.
+    //   떠나지 않았으므로 출발 기록도 지운다(표식 항목은 history 에서 못 빼지만, 기록이 없으면
+    //   복귀 계산에 쓰이지 않는다).
     cleanup();
+    clearExternalDeparture();
     throw e;
   }
 

@@ -69,11 +69,15 @@
         android:networkSecurityConfig="@xml/network_security_config"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules">
+        <!-- taskAffinity 는 기본값(패키지명)을 유지한다 — 명시하지 않는다.
+             비워 두면(taskAffinity="") 카드사·간편결제 앱이 결제 복귀 스킴(teamplus://)을
+             새 태스크로 열 때 기존 태스크와 묶이지 않아, 결제 화면이 있던 앱 대신
+             새 인스턴스(스플래시)가 뜬다. singleTop + 기본 affinity 면 기존 액티비티가
+             onNewIntent 로 재사용된다 (PG WebView 가이드 공통 권장). -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
-            android:taskAffinity=""
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"

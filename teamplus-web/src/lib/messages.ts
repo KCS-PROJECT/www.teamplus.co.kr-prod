@@ -578,10 +578,6 @@ export const MESSAGES = {
       CALLBACK_ERROR: "본인인증 처리 중 오류가 발생했습니다. 다시 시도해주세요.",
       VERIFICATION_FAILED: "본인인증에 실패했습니다. 다시 시도해주세요.",
     } as Record<string, string>,
-    // KG 직결 복귀 시 가입 폼 스냅샷에서 비밀번호를 제외했음을 안내.
-    // 인증 성공·실패 양쪽에서 복원되므로 결과를 단정하지 않는다.
-    passwordReentryRequired:
-      "입력하신 정보를 복원했어요. 보안을 위해 비밀번호를 다시 입력해주세요.",
     // [R1 #2] 팝업 모드에서 window.close() 가 무시되는 경우(스크립트로 열리지
     // 않은 창 등) 대비 — 결과는 이미 postMessage/크럼으로 부모에 전달됐으므로
     // 리다이렉트 없이 안내만 남긴다.
@@ -589,6 +585,9 @@ export const MESSAGES = {
   },
   signup: {
     success: "회원가입이 완료되었습니다. 로그인해주세요.",
+    // 본인인증 단계 — 인증이 끝나야 아래 입력 구간이 펼쳐진다.
+    identityStepHelper: "본인인증이 끝나면 아래 정보를 입력할 수 있어요.",
+    identityStepDone: "본인인증이 완료됐어요. 아래 정보를 입력해주세요.",
   },
   // [추가 2026-05-20 Phase 2] 인증 흐름 관련 표준 카피 (login/find-id/find-password 공용).
   //   clarify 원칙: "오류 발생"이라는 기술 표현 → "어려움이 있었어요" 같은 사용자 친화 톤 X
@@ -1173,7 +1172,18 @@ export const MESSAGES = {
     agreementNotChecked: "결제 진행에 동의해주세요.",
     windowOpenFailed: "결제창을 열 수 없어요. 새로고침 후 다시 시도해주세요.",
     // 결제창이 취소·인증 실패로 돌아왔을 때 — 백엔드 redirect 의 error 코드별 안내.
+    //   구모듈 사용자 취소는 원래 결제 화면(`error=fail`)으로 돌아가지만, 신모듈 취소와
+    //   복귀 주소를 복원하지 못한 취소는 여전히 이 화면으로 오므로 두 경우를 함께 적는다.
     niceAuthFailed: "결제가 취소되었거나 인증에 실패했어요. 다시 시도해주세요.",
+    // 결제 실패 화면(결제 완료 페이지의 실패 분기) 제목 + 나이스 결과 코드별 설명.
+    //   결제창 단계 실패는 승인이 호출되지 않아 돈이 나가지 않았음을 함께 알린다.
+    failedTitle: "결제가 완료되지 않았어요",
+    // 승인 결과 미확정·인증 주소 직접 진입·영수증 조회 실패 — 결제 성사 여부를 단정하지 않는다.
+    resultUnknownTitle: "결제 결과를 확인하지 못했어요",
+    // 결제창에서 결제 화면으로 돌아왔을 때(나이스·토스 공통, `error=fail`) — 취소 / 그 외 실패.
+    //   결제창이 이미 팝업으로 이유를 알렸으므로 한 줄로 짧게 둔다.
+    paymentCancelledReturn: "결제를 취소했어요. 다시 시도할 수 있어요.",
+    paymentFailedReturn: "결제가 진행되지 않았어요. 다시 시도해주세요.",
     niceVerifyFailed:
       "결제 정보 검증에 실패했어요. 결제가 진행되지 않았습니다. 고객센터로 문의해주세요.",
     // 나이스 구모듈(nicestd) 전환 — 결제사 판정 실패·망취소 실패 안내.
@@ -2231,6 +2241,9 @@ export const MESSAGES = {
     },
   },
   common: {
+    // 앱이 외부 페이지(결제창·본인인증) 위에 잇는 네이티브 헤더 제목 — useNativeUI appBarTitle.
+    externalPaymentHeader: "결제하기",
+    externalIdentityHeader: "본인인증",
     retry: "다시 시도",
     unknown: "알 수 없음",
     processing: "처리 중...",

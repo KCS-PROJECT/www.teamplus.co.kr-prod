@@ -153,6 +153,19 @@ class WebViewScreenState extends ConsumerState<WebViewScreen>
 
   // AppBar 버튼 제어 상태
   bool _showBackButton = false; // 뒤로가기 버튼 (<)
+
+  /// WebView 가 우리 웹이 아닌 외부 도메인(나이스 결제창·카드사 페이지 등)을 표시 중.
+  ///
+  /// 외부 페이지에는 브릿지 스크립트도 CSS 변수도 없어 세 가지가 동시에 깨진다 —
+  /// 백키 폴백(JS 주입 홈 이동)이 먹지 않고, iOS 는 되돌아갈 수단 자체가 없으며,
+  /// Android 하단 네비게이션 바 높이(`--safe-area-inset-bottom`)를 페이지가 모른다.
+  /// 이 상태 하나로 헤더 · 네이티브 히스토리 복귀 · 하단 패딩을 함께 건다.
+  bool _onExternalPage = false;
+
+  /// 외부 페이지 위에 잇는 헤더 제목. 외부 페이지로 넘어가는 순간 직전 우리 화면이
+  /// 넘긴 `appBarTitle` 을 스냅샷한다 — onLoadStop 의 `_resetUIToDefault` 가
+  /// `_dynamicAppBarTitle` 을 지우므로 그때까지 붙들어 둔다.
+  String? _externalHeaderTitle;
   bool _showMenuButton = false; // 햄버거 메뉴 버튼
   String _menuButtonPosition = 'left'; // 메뉴 버튼 위치 ('left' | 'right')
   bool _showRefreshButton = false; // 새로고침 버튼 (pull-to-refresh로 대체)
@@ -676,6 +689,56 @@ class WebViewScreenState extends ConsumerState<WebViewScreen>
     await webViewController?.reload();
   }
 
+  /// 외부 페이지(결제창·카드사 페이지) 위에 잇는 헤더 — 웹 `PageAppBar` detail 규격.
+  ///
+  /// 우리 웹 화면의 헤더는 웹이 그리므로 외부 페이지로 넘어가면 함께 사라진다. 같은
+  /// 모양(높이 60 · 좌측 ← 24px · 제목 22px bold · 하단 1px 선)으로 네이티브가 이어
+  /// 그려 "앱 안에서 결제 중" 맥락을 유지한다. ← 는 결제 화면 복귀([_leaveExternalPage]).
+  PreferredSizeWidget _buildExternalPageHeader(bool isDarkMode) {
+    final textColor =
+        isDarkMode ? AppColors.webAppBarTextDark : AppColors.webAppBarText;
+    return AppBar(
+      backgroundColor: isDarkMode
+          ? AppColors.webAppBarBackgroundDark
+          : AppColors.webAppBarBackground,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      toolbarHeight: 60,
+      automaticallyImplyLeading: false,
+      leadingWidth: 48,
+      titleSpacing: 4,
+      centerTitle: false,
+      shape: Border(
+        bottom: BorderSide(
+          color: isDarkMode
+              ? AppColors.webAppBarLineDark
+              : AppColors.webAppBarLine,
+        ),
+      ),
+      leading: Padding(
+        padding: const EdgeInsets.only(left: 8),
+        child: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, size: 24),
+          color: textColor,
+          onPressed: _leaveExternalPage,
+          tooltip: '뒤로 가기',
+        ),
+      ),
+      title: _externalHeaderTitle == null
+          ? null
+          : Text(
+              _externalHeaderTitle!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                color: textColor,
+              ),
+            ),
+    );
+  }
+
   /// AppBar Leading 위젯 빌드 (뒤로가기 또는 왼쪽 햄버거 메뉴)
   Widget? _buildAppBarLeading() {
     // 뒤로가기 버튼 우선
@@ -1005,10 +1068,28 @@ class WebViewScreenState extends ConsumerState<WebViewScreen>
     // 입력창이 키보드 위로 올라와 보이고, BottomNav 가 있는 페이지는 키보드 열림 중에만
     // BottomNav 를 숨겨 키보드와 겹치지 않게 한다.
     final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
-    final isNativeAppBarVisible = (widget.showAppBar || _showAppBarDynamic) &&
-        _state != WebViewState.loading;
+    // 외부 페이지(결제창)에서는 웹 설정과 무관하게 우리 헤더(뒤로가기 + 제목)를 잇는다.
+    final showExternalCloseBar =
+        _onExternalPage && _state != WebViewState.loading;
+    final isNativeAppBarVisible = showExternalCloseBar ||
+        ((widget.showAppBar || _showAppBarDynamic) &&
+            _state != WebViewState.loading);
     final webViewTopSafeInset =
         isNativeAppBarVisible ? 0.0 : MediaQuery.of(context).viewPadding.top;
+    final showNativeBottomNav = !keyboardOpen &&
+        widget.showBottomNav &&
+        _showBottomNavDynamic &&
+        _userType != null;
+    // 하단 inset 은 우리 웹이 CSS 변수(`--safe-area-inset-bottom`)로 직접 비우므로
+    // 네이티브에서는 넣지 않는다. 외부 페이지는 그 변수를 모르고 Android WebView 의
+    // `env(safe-area-inset-bottom)` 은 0 이라 바텀시트가 네비게이션 바 밑으로 들어간다 —
+    // 이때만 네이티브가 대신 비운다. BottomNav 가 떠 있으면 Scaffold 가 이미 처리한다.
+    final webViewBottomSafeInset = Platform.isAndroid &&
+            _onExternalPage &&
+            !keyboardOpen &&
+            !showNativeBottomNav
+        ? MediaQuery.of(context).viewPadding.bottom
+        : 0.0;
 
     // Drawer 위젯 (위치에 따라 drawer/endDrawer 설정)
     final drawerWidget =
@@ -1043,8 +1124,10 @@ class WebViewScreenState extends ConsumerState<WebViewScreen>
       endDrawer: _drawerPosition == 'right' ? drawerWidget : null,
       // AppBar: widget.showAppBar 또는 동적 _showAppBarDynamic이 true이고, 로딩 중이 아닐 때 표시
       // 로딩 중에는 전체화면 스피너가 표시되므로 AppBar 숨김
-      appBar: (widget.showAppBar || _showAppBarDynamic) &&
-              _state != WebViewState.loading
+      appBar: showExternalCloseBar
+          ? _buildExternalPageHeader(isDarkMode)
+          : (widget.showAppBar || _showAppBarDynamic) &&
+                  _state != WebViewState.loading
           ? AppBar(
               // AppBar 배경색: 커스텀 색상 또는 콘텐츠 영역과 동일
               backgroundColor: _appBarColor ?? backgroundColor,
@@ -1073,7 +1156,7 @@ class WebViewScreenState extends ConsumerState<WebViewScreen>
       // 위로 밀려 올라와 입력 영역과 겹치는 현상을 방지한다. 키보드가 닫히면 다시 표시.
       bottomNavigationBar: keyboardOpen
           ? null
-          : (widget.showBottomNav && _showBottomNavDynamic && _userType != null
+          : (showNativeBottomNav
               ? TeamplusBottomNav(
                   userType: _userType!,
                   currentIndex: _currentNavIndex,
@@ -1089,7 +1172,10 @@ class WebViewScreenState extends ConsumerState<WebViewScreen>
           // status bar 영역이 나타나는 점프를 만든다. viewPadding.top은 시스템 UI
           // 표시/숨김과 무관한 영구 inset 이므로 WebView 레이아웃 기준으로 사용한다.
           Padding(
-            padding: EdgeInsets.only(top: webViewTopSafeInset),
+            padding: EdgeInsets.only(
+              top: webViewTopSafeInset,
+              bottom: webViewBottomSafeInset,
+            ),
             child: MediaQuery.removePadding(
               context: context,
               removeTop: true,
@@ -1313,6 +1399,7 @@ class WebViewScreenState extends ConsumerState<WebViewScreen>
                           if (_isDisposed) return; // dispose 상태 체크
                           // [2026-07-15 BACKKEY FIX] 백키 동기 판정용 URL 캐시 갱신.
                           _currentLoadedUrl = url?.toString();
+                          _syncExternalPageState(url?.toString());
                           BootTimeline.instance.mark('webview_load_start');
                           _bootFallbackTimer?.cancel();
                           _bootFallbackTimer = null;
@@ -1349,6 +1436,7 @@ class WebViewScreenState extends ConsumerState<WebViewScreen>
                           // (router.push/replace) 로 URL 이 바뀔 때도 백키 동기
                           // 판정용 캐시를 갱신한다.
                           _currentLoadedUrl = url?.toString();
+                          _syncExternalPageState(url?.toString());
                           // SPA pushState/replaceState 시에도 PTR 상태 재동기화.
                           // (예: /parent → /login 으로 router.replace 했을 때)
                           _syncPullToRefreshEnabled(url?.toString());
@@ -1886,6 +1974,33 @@ Content Type: ${errorResponse.contentType}
     }
     if (!mounted) return;
 
+    // 0) 외부 페이지(결제창·카드사 페이지) → 우리 페이지까지 네이티브 복귀.
+    //   아래 폴백들은 현재 페이지에 JS 를 주입해 Next 라우터를 부르는데, 외부 페이지엔
+    //   라우터가 없어 주소만 바뀌고 화면은 그대로다 — 백키가 죽은 것처럼 보인다.
+    if (!_isAppWebUrl(currentUrl)) {
+      debugPrint(
+        '[WebViewScreen] hardware back on external page ($currentUrl) → return to app web',
+      );
+      await _leaveExternalPage();
+      return;
+    }
+
+    // 0.5) 웹이 뒤로가기를 관리 중인 페이지(결제 완료·취소 복귀 등, `useBlockBackNavigation`
+    //   보초) → 한 칸만 되돌려 보초를 빼고 웹의 popstate 정책에 맡긴다. 여기서 여러 칸을
+    //   건너뛰면 완료 화면 백키가 결제 화면 원본에 착지해 새 주문을 만드는 등 웹 정책과
+    //   어긋난다. 표식 조회는 플랫폼 채널 왕복이라 타임아웃 시 false 로 간주.
+    if (await _isWebBackSentinelArmed()) {
+      debugPrint(
+        '[WebViewScreen] hardware back ($currentUrl) → web sentinel armed, goBack 1',
+      );
+      try {
+        await webViewController?.goBack();
+        return;
+      } catch (e) {
+        debugPrint('[WebViewScreen] goBack 실패: $e');
+      }
+    }
+
     // 1) 로그인 화면(루트) → "한 번 더 누르면 종료".
     //   [2026-05-26 사용자 직접 지시] 백키 연타 시 이전 화면 복귀 회귀 차단.
     //   네이티브 '/login' 폐기(2026-05-19) 후 로그인은 WebView '/login/' 페이지라
@@ -1964,6 +2079,90 @@ Content Type: ${errorResponse.contentType}
 
     // 4) 역할 홈을 못 구한 경우 native fallback (canGoBack/pop/종료).
     await _onHardwareBackNative(currentUrl);
+  }
+
+  /// 웹 `useBlockBackNavigation` 이 보초를 쌓아 둔 상태인지 (window 표식, 300ms 타임아웃).
+  Future<bool> _isWebBackSentinelArmed() async {
+    final controller = webViewController;
+    if (controller == null) return false;
+    try {
+      final result = await controller
+          .evaluateJavascript(
+            source: '!!window.__teamplusBackSentinelArmed',
+          )
+          .timeout(const Duration(milliseconds: 300), onTimeout: () => null);
+      return result == true;
+    } catch (e) {
+      debugPrint('[WebViewScreen] 웹 보초 표식 조회 실패: $e');
+      return false;
+    }
+  }
+
+  /// 현재 URL 기준으로 [_onExternalPage] 를 갱신한다 (변화가 있을 때만 rebuild).
+  void _syncExternalPageState(String? url) {
+    final external = !_isAppWebUrl(url);
+    if (external == _onExternalPage) return;
+    // 외부 진입 순간의 제목을 스냅샷하되, 웹이 제목을 다시 안 보낸 경우(히스토리 복원으로
+    //   effect 미실행 등)에는 직전 스냅샷을 유지한다 — 두 번째 결제 시도에서 빈 헤더 방지.
+    if (external) {
+      _externalHeaderTitle = _dynamicAppBarTitle ?? _externalHeaderTitle;
+    }
+    if (!mounted || _isDisposed) {
+      _onExternalPage = external;
+      return;
+    }
+    setState(() => _onExternalPage = external);
+  }
+
+  /// 외부 페이지(결제창·카드사 페이지)에서 우리 웹으로 복귀 — 닫기(×)·백키 공용.
+  ///
+  /// 결제창 안에서 쌓인 외부 엔트리를 모두 건너뛰어 마지막 우리 페이지(결제 화면)로
+  /// 한 번에 돌아간다. 한 장씩 되짚으면 만료된 결제 세션 페이지에 다시 갇힌다.
+  /// 되돌아갈 우리 페이지가 없으면(외부 페이지로 시작한 경우) 역할 홈을 실제 로드한다.
+  Future<void> _leaveExternalPage() async {
+    final controller = webViewController;
+    if (controller == null || !mounted) return;
+    final backSteps = await _safeHistoryBackSteps();
+    if (!mounted) return;
+    if (backSteps > 0) {
+      debugPrint('[WebViewScreen] leave external page → history -$backSteps');
+      try {
+        await controller.goBackOrForward(steps: -backSteps);
+        return;
+      } catch (e) {
+        debugPrint('[WebViewScreen] goBackOrForward 실패: $e');
+      }
+    }
+    // 되짚을 우리 페이지를 못 찾은 경우 — 히스토리 조회 타임아웃과 "정말 없음" 을 여기서는
+    //   구분할 수 없다. 결제 화면 상태를 버리고 홈을 로드하기 전에 한 단계 goBack 을 먼저
+    //   시도한다(외부 페이지에 머물면 헤더가 남아 다시 누를 수 있다). 되돌아갈 곳 자체가
+    //   없을 때만 역할 홈을 로드한다.
+    bool canBack = false;
+    try {
+      canBack = await controller.canGoBack().timeout(
+            const Duration(milliseconds: 300),
+            onTimeout: () => false,
+          );
+    } catch (e) {
+      debugPrint('[WebViewScreen] canGoBack 조회 실패: $e');
+    }
+    if (!mounted) return;
+    if (canBack) {
+      try {
+        await controller.goBack();
+        return;
+      } catch (e) {
+        debugPrint('[WebViewScreen] goBack 실패: $e');
+      }
+    }
+    final roleHome = await _roleHomePathOrNull() ?? '/';
+    if (!mounted) return;
+    debugPrint('[WebViewScreen] leave external page → load $roleHome');
+    await controller.loadUrl(
+      urlRequest: URLRequest(
+        url: WebUri('${ApiConstants.webAppUrl}$roleHome'),
+      ),
+    );
   }
 
   /// 현재 인증 사용자의 역할 홈(메인 탭) 경로. 미인증/역할 미확정이면 null.
@@ -2117,13 +2316,32 @@ Content Type: ${errorResponse.contentType}
     }
 
     final currentPath = normalizePath(items[currentIndex].url);
+    final currentIsExternal = !_isAppWebEntry(items[currentIndex].url);
     for (var i = currentIndex - 1; i >= 0; i--) {
       final entryUrl = items[i].url;
       final path = normalizePath(entryUrl);
-      // 외부 도메인(토스 결제창 등) 엔트리 → 되짚기 중단. 결제 세션은 이탈 즉시
-      // 만료라 되돌아가면 버튼 없는 토스 오류 화면에 갇힌다. 인증 진입 화면과 같은
-      // 취급으로 0 을 반환해 호출부의 역할 홈 폴백을 태운다.
-      if (!_isAppWebEntry(entryUrl)) return 0;
+      // 외부 도메인(결제창 등) 엔트리 처리:
+      //  · 외부 페이지 안(결제창 → 카드사)에서는 외부 엔트리를 건너뛰고 첫 우리 페이지
+      //    (결제 화면)에 착지한다.
+      //  · 우리 페이지에서 만나면 되짚기 중단(0) — 결제 세션은 이탈 즉시 만료라 그 위에
+      //    서면 버튼 없는 오류 화면에 갇힌다. 결제창을 다녀온 뒤의 뒤로가기(완료 → 홈,
+      //    취소 복귀 → 외부 블록 너머 상세)는 웹 보초 페이지가 맡는다(0.5 분기).
+      if (!_isAppWebEntry(entryUrl)) {
+        if (currentIsExternal) continue;
+        return 0;
+      }
+      if (currentIsExternal) {
+        // 웹은 결제창으로 떠나기 직전 같은 주소의 출발 표식 항목을 push 한다
+        //   (nav-stack `markExternalDeparture`). 같은 경로가 이어지면 표식이 아니라 그 앞의
+        //   실제 결제 화면 항목까지 한 번에 내려가 "제자리 뒤로가기"를 없앤다.
+        var target = i;
+        while (target - 1 >= 0 &&
+            _isAppWebEntry(items[target - 1].url) &&
+            normalizePath(items[target - 1].url) == path) {
+          target--;
+        }
+        return currentIndex - target;
+      }
       if (path == currentPath) continue; // 같은 경로 중복 엔트리 스킵
       if (path.isEmpty || _isAuthPathUrl(entryUrl?.toString())) return 0;
       return currentIndex - i;

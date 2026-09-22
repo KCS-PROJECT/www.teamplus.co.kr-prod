@@ -113,6 +113,127 @@ export function isBackTargetAuthEntry(): boolean {
 }
 
 /**
+ * 외부 도메인(결제창 등)으로 떠나기 직전의 history 길이 기록 (2026-09-22).
+ *
+ * 모바일에서 나이스 결제창은 다른 도메인 페이지로 화면 전체가 이동하고, 취소·실패 시
+ * 서버 303 으로 우리 페이지에 **새 문서**로 돌아온다. 그 문서에서 Navigation API 는 같은
+ * 출처의 연속 구간만 보여 주므로 결제창 앞의 목록·상세 항목이 "없는 것처럼" 보인다 —
+ * 실제 브라우저 히스토리에는 그대로 남아 있다. 떠날 때 길이를 적어 두면 돌아온 뒤
+ * `history.go(-n)` 으로 외부 페이지 블록을 건너뛰어 원래 항목에 착지할 수 있다.
+ */
+const EXTERNAL_DEPARTURE_KEY = "teamplus:nav:externalDeparture";
+/** 기록 유효 시간 — 결제창에 머무는 시간보다 넉넉하되, 오래된 기록이 다른 흐름에 쓰이지 않게. */
+const EXTERNAL_DEPARTURE_TTL_MS = 30 * 60 * 1000;
+
+/** 출발 표식 history.state. `depth` = 연속된 표식 개수(결제창에서 빠져나와 재시도하면 2, 3…). */
+type DepartureMarkerState = { teamplusDeparture: true; depth: number };
+
+/**
+ * 외부 도메인으로 떠나기 직전(결제창 호출 직전)에 호출 — 같은 주소의 **출발 표식 항목**을
+ * push 한 뒤 history 길이·떠나는 경로·시각을 기록한다.
+ *
+ * 표식을 push 하는 이유: `history.length` 는 앞으로가기 항목까지 센다. 결제창에서 한 번
+ * 빠져나와(히스토리 되짚기) 다시 결제하면 만료된 결제창 항목이 앞으로가기 쪽에 남아 있어
+ * 길이가 현재 위치보다 크고, 그대로 기록하면 복귀 시 되짚기 칸 수가 어긋나 만료된
+ * 결제창에 착지한다. push 는 앞으로가기 항목을 잘라내므로 기록 시점의 길이 = 현재 위치 + 1
+ * 이 보장된다. 표식은 떠나는 화면과 같은 주소라 되돌아와도 같은 화면이 보이고, 앱의
+ * 히스토리 복귀(`_safeHistoryBackSteps`)는 같은 경로가 이어지면 그 앞까지 한 번에 내려간다.
+ * 경로는 복귀 시 "같은 화면으로 돌아왔을 때만" 쓰기 위한 대조 키다.
+ *
+ * 알려진 부작용: 앱이 아닌 모바일 브라우저에서 결제창을 브라우저 뒤로가기로 빠져나오면 표식
+ * 위에 서게 되고, 그때 헤더 ← 는 같은 주소의 원본 항목으로 한 칸 이동해 화면이 그대로다
+ * (한 번 더 눌러야 이전 화면). 결제창을 실제로 열지 못한 경우(goPay 예외)도 같다. 표식
+ * 항목은 history 에서 제거할 수 없어 감수한다.
+ */
+export function markExternalDeparture(): void {
+  if (typeof window === "undefined") return;
+  // 결제창에서 되짚어 나와(표식 위에 서 있음) 다시 떠나는 경우 표식이 연속으로 쌓인다.
+  //   복귀 계산이 "떠난 페이지 = 표식 바로 앞" 을 전제하므로 깊이를 함께 적어 그만큼 더 되짚는다.
+  const current = window.history.state as Partial<DepartureMarkerState> | null;
+  const depth =
+    current?.teamplusDeparture && typeof current.depth === "number"
+      ? current.depth + 1
+      : 1;
+  try {
+    const marker: DepartureMarkerState = { teamplusDeparture: true, depth };
+    window.history.pushState(
+      marker,
+      "",
+      window.location.pathname + window.location.search + window.location.hash,
+    );
+  } catch {
+    // History API 차단 환경 — 표식 없이 진행(길이가 어긋날 수 있어 아래 기록도 생략)
+    return;
+  }
+  try {
+    window.sessionStorage.setItem(
+      EXTERNAL_DEPARTURE_KEY,
+      JSON.stringify({
+        length: window.history.length,
+        depth,
+        path: window.location.pathname.replace(/\/+$/, "") || "/",
+        at: Date.now(),
+      }),
+    );
+  } catch {
+    // sessionStorage 차단 환경 — 기록 없음 (호출부는 replace 폴백)
+  }
+}
+
+export function clearExternalDeparture(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(EXTERNAL_DEPARTURE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * 외부 도메인을 거쳐 돌아온 문서에서, **떠난 페이지의 직전 항목**까지 되짚는 step 수.
+ *
+ * `currentLength` 는 복귀 문서 마운트 시점(보초 push 전)의 `history.length`.
+ *   기록길이 = 마지막 출발 표식 index + 1, 표식은 depth 개 연속, 떠난 페이지는 그 앞이므로
+ *   직전 항목 index = 기록길이 - 2 - depth, 복귀 페이지 index = currentLength - 1
+ *   → step = currentLength - 기록길이 + 1 + depth.
+ *   기록이 없거나 길이가 맞지 않으면(새로고침·다른 경로 진입) null — 호출부가 기존
+ *   replace 폴백을 쓴다.
+ */
+export function stepsBackPastExternalReturn(
+  currentLength: number,
+): number | null {
+  if (typeof window === "undefined") return null;
+  type Departure = {
+    length?: unknown;
+    depth?: unknown;
+    path?: unknown;
+    at?: unknown;
+  };
+  let saved: Departure | null = null;
+  try {
+    const raw = window.sessionStorage.getItem(EXTERNAL_DEPARTURE_KEY);
+    saved = raw ? (JSON.parse(raw) as Departure) : null;
+  } catch {
+    saved = null;
+  }
+  // 기록은 한 번만 쓴다 — 결제 성공·다른 결제사 흐름 등 이 복귀와 무관한 곳에서 되살아나
+  //   엉뚱한 칸 수로 되짚지 않도록 읽는 즉시 지운다.
+  clearExternalDeparture();
+  if (!saved || typeof saved.length !== "number" || saved.length < 3) return null;
+  if (typeof saved.at !== "number" || Date.now() - saved.at > EXTERNAL_DEPARTURE_TTL_MS) {
+    return null;
+  }
+  // 떠난 화면과 같은 화면으로 돌아온 경우에만 유효(결제 화면 ↔ 결제 화면).
+  const here = window.location.pathname.replace(/\/+$/, "") || "/";
+  if (saved.path !== here) return null;
+  const depth =
+    typeof saved.depth === "number" && saved.depth >= 1 ? saved.depth : 1;
+  const steps = currentLength - saved.length + 1 + depth;
+  // 최소 = 외부 페이지 1개 이상 + 표식 depth 개 + 떠난 페이지 1개. 그보다 작으면 이 복귀의 기록이 아니다.
+  return steps >= 2 + depth ? steps : null;
+}
+
+/**
  * 홈 페이지인지 확인 (BottomNav 의 홈 탭 + 5개 메인 대시보드)
  */
 export function isHomePath(pathname: string | null | undefined): boolean {

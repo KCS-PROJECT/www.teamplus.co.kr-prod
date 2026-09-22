@@ -58,6 +58,9 @@ export default function FindAccountPage() {
     showAppBar: false,
     showBottomNav: false,
     showBackButton: true,
+    // 외부 페이지(결제창·본인인증)로 넘어가면 웹 헤더가 사라진다 — 앱이 같은 제목으로
+    //   네이티브 헤더를 이어 그리도록 제목만 넘긴다(showAppBar:false 라 여기선 안 뜸).
+    appBarTitle: MESSAGES.common.externalIdentityHeader,
   });
   usePageReady(true);
 

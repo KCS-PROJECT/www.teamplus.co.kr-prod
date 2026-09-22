@@ -34,6 +34,7 @@ describe("PaymentsController — 나이스 구모듈", () => {
   let paymentsService: {
     buildNiceStdPayRequest: jest.Mock;
     getPaymentAmountByOrderNumber: jest.Mock;
+    getRetryPathByOrderNumber: jest.Mock;
     confirmNiceStdPayment: jest.Mock;
     handleNiceStdNotify: jest.Mock;
   };
@@ -84,6 +85,7 @@ describe("PaymentsController — 나이스 구모듈", () => {
         fields: { MID: "nictest00m", Amt: "1004", SignData: "sign" },
       }),
       getPaymentAmountByOrderNumber: jest.fn().mockResolvedValue(1004),
+      getRetryPathByOrderNumber: jest.fn().mockResolvedValue(null),
       confirmNiceStdPayment: jest.fn().mockResolvedValue({ success: true }),
       handleNiceStdNotify: jest.fn().mockResolvedValue(undefined),
     };
@@ -227,6 +229,123 @@ describe("PaymentsController — 나이스 구모듈", () => {
         expect(res.redirect.mock.calls[0][1]).toContain(`error=${reason}`);
       },
     );
+
+    it("사용자 취소(I002)는 결과 화면이 아니라 원래 결제 화면으로 303 한다", async () => {
+      niceStdGateway.verifyAuthResult.mockReturnValue({
+        ok: false,
+        reason: "auth_failed",
+      });
+      paymentsService.getRetryPathByOrderNumber.mockResolvedValue(
+        "/payment/checkout?productId=prod-1&childId=child-1&classId=class-1&amount=1004&error=fail&code=I002&cancel=1",
+      );
+      const res = makeRes();
+
+      await controller.authorizeNiceStdPayment(
+        makeAuthReq({ ...authBody, AuthResultCode: "I002" }),
+        res,
+      );
+
+      expect(paymentsService.confirmNiceStdPayment).not.toHaveBeenCalled();
+      // 취소 여부·코드는 서버가 판정해 서비스에 넘긴다 — 쿼리 조립은 서비스 한 곳.
+      expect(paymentsService.getRetryPathByOrderNumber).toHaveBeenCalledWith(
+        "ORD-1",
+        { code: "I002", cancelled: true },
+      );
+      const [status, url] = res.redirect.mock.calls[0];
+      expect(status).toBe(HttpStatus.SEE_OTHER);
+      expect(url).toBe(
+        "http://localhost:5001/payment/checkout?productId=prod-1&childId=child-1&classId=class-1&amount=1004&error=fail&code=I002&cancel=1",
+      );
+    });
+
+    it("사용자 취소라도 복귀 경로를 복원하지 못하면 결과 화면으로 간다", async () => {
+      niceStdGateway.verifyAuthResult.mockReturnValue({
+        ok: false,
+        reason: "auth_failed",
+      });
+      const res = makeRes();
+
+      await controller.authorizeNiceStdPayment(
+        makeAuthReq({ ...authBody, AuthResultCode: "9993" }),
+        res,
+      );
+
+      expect(paymentsService.confirmNiceStdPayment).not.toHaveBeenCalled();
+      expect(res.redirect.mock.calls[0][1]).toContain(
+        "/payment/complete?provider=nicestd",
+      );
+      expect(res.redirect.mock.calls[0][1]).toContain("error=auth_failed");
+    });
+
+    it("취소가 아닌 결제창 단계 실패도 코드와 함께 원래 결제 화면으로 303 한다", async () => {
+      niceStdGateway.verifyAuthResult.mockReturnValue({
+        ok: false,
+        reason: "auth_failed",
+      });
+      paymentsService.getRetryPathByOrderNumber.mockResolvedValue(
+        "/tournaments/tour-1/apply?error=fail&code=W090",
+      );
+      const res = makeRes();
+
+      await controller.authorizeNiceStdPayment(
+        makeAuthReq({ ...authBody, AuthResultCode: "W090" }),
+        res,
+      );
+
+      expect(paymentsService.confirmNiceStdPayment).not.toHaveBeenCalled();
+      expect(paymentsService.getRetryPathByOrderNumber).toHaveBeenCalledWith(
+        "ORD-1",
+        { code: "W090", cancelled: false },
+      );
+      expect(res.redirect.mock.calls[0][1]).toBe(
+        "http://localhost:5001/tournaments/tour-1/apply?error=fail&code=W090",
+      );
+    });
+
+    it("게이트웨이 미설정으로 auth_failed 가 났지만 코드가 0000 이면 결제 화면으로 되돌리지 않는다", async () => {
+      niceStdGateway.verifyAuthResult.mockReturnValue({
+        ok: false,
+        reason: "auth_failed",
+      });
+      const res = makeRes();
+
+      await controller.authorizeNiceStdPayment(makeAuthReq(authBody), res);
+
+      expect(paymentsService.getRetryPathByOrderNumber).not.toHaveBeenCalled();
+      expect(res.redirect.mock.calls[0][1]).toContain("error=auth_failed");
+    });
+
+    it("결제창 단계 실패인데 복귀 경로를 복원하지 못하면 코드와 함께 결과 화면으로 간다", async () => {
+      niceStdGateway.verifyAuthResult.mockReturnValue({
+        ok: false,
+        reason: "auth_failed",
+      });
+      const res = makeRes();
+
+      await controller.authorizeNiceStdPayment(
+        makeAuthReq({ ...authBody, AuthResultCode: "F100" }),
+        res,
+      );
+
+      expect(res.redirect.mock.calls[0][1]).toContain("/payment/complete?");
+      expect(res.redirect.mock.calls[0][1]).toContain("error=auth_failed");
+      expect(res.redirect.mock.calls[0][1]).toContain("code=F100");
+    });
+
+    it("무결성 오류(서명 불일치 등)는 복귀 경로를 조회하지 않고 결과 화면으로 간다", async () => {
+      niceStdGateway.verifyAuthResult.mockReturnValue({
+        ok: false,
+        reason: "invalid_signature",
+      });
+      const res = makeRes();
+
+      await controller.authorizeNiceStdPayment(makeAuthReq(authBody), res);
+
+      expect(paymentsService.getRetryPathByOrderNumber).not.toHaveBeenCalled();
+      expect(res.redirect.mock.calls[0][1]).toContain(
+        "error=invalid_signature",
+      );
+    });
 
     it("charset=euc-kr form 본문도 415 없이 승인까지 간다", async () => {
       const res = makeRes();

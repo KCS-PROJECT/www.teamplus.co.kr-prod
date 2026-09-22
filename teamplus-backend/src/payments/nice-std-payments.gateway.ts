@@ -58,6 +58,14 @@ export const NICE_STD_NOTIFY_IPS: readonly string[] = [
 ];
 
 export const NICE_STD_AUTH_OK = "0000";
+/** 사용자가 결제창을 스스로 닫은 경우의 인증 결과 코드 (규격 §2.3 `I002`·`9993`). */
+export const NICE_STD_AUTH_USER_CANCEL_CODES: ReadonlySet<string> = new Set([
+  "I002",
+  "9993",
+]);
+export function isNiceStdUserCancel(code: string | undefined): boolean {
+  return !!code && NICE_STD_AUTH_USER_CANCEL_CODES.has(code);
+}
 export const NICE_STD_INQUIRY_OK = "0000";
 export const NICE_STD_APPROVE_CARD_OK = "3001";
 export const NICE_STD_APPROVE_BANK_OK = "4000";

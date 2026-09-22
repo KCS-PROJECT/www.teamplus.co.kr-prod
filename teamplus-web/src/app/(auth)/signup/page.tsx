@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { useState, useEffect, useCallback, useRef, useId } from "react";
+import { useState, useEffect, useRef, useId } from "react";
 import { NavLink, useNavigation } from "@/components/ui/NavLink";
 import { Icon } from "@/components/ui/Icon";
 import { PageAppBar } from "@/components/layout/PageAppBar";
@@ -42,15 +42,6 @@ type TermsModalKey = "terms_of_service" | "privacy_policy" | "marketing";
 const ID_REGEX = /^[a-z][a-z0-9_]{7,19}$/;
 const ID_RULE_MESSAGE =
   "아이디는 영문 소문자로 시작하는 8~20자로 입력해주세요. 숫자와 언더스코어(_)도 사용할 수 있습니다.";
-
-// KG이니시스 직결 본인인증(Phase 2, 2026-09-18) — document.write 로 페이지 전체가
-// 교체되며 React state 가 전부 날아간다. IdentityVerifyInput 이 인증 시작 직전에
-// onBeforeRedirect 로 이 스냅샷을 저장하고, 복귀 후 아래 restore effect 가 소비한다.
-// 비밀번호/비밀번호 확인은 평문 보관이 부적절하므로 스냅샷에서 제외한다 — 복귀 후
-// 사용자가 다시 입력해야 하며, 이는 toast(MESSAGES.verify.passwordReentryRequired)로 안내한다.
-// idv:pending/idv:result 와 동일한 네이밍 규칙(`idv:` 접두사) · 동일 TTL(30분) · 1회 소비 후 삭제.
-const IDV_FORM_SNAPSHOT_KEY = "idv:form-snapshot";
-const IDV_FORM_SNAPSHOT_TTL_MS = 30 * 60 * 1000;
 
 // ========== 역할 타입 ==========
 interface RoleOption {
@@ -152,15 +143,6 @@ interface Agreements {
   marketing: boolean;
 }
 
-// KG이니시스 직결 본인인증 페이지 전환 전 스냅샷 — password/passwordConfirm 제외.
-interface SignupFormSnapshot {
-  formData: Omit<FormData, "password" | "passwordConfirm">;
-  agreements: Agreements;
-  teamCodeStatus: "unchecked" | "valid" | "invalid";
-  verifiedTeamName: string;
-  timestamp: number;
-}
-
 export default function SignupPage() {
   const { navigate } = useNavigation();
   const { toast } = useToast();
@@ -183,6 +165,9 @@ export default function SignupPage() {
     showStatusBar: true,
     showAppBar: false,
     showBottomNav: false,
+    // 외부 페이지(결제창·본인인증)로 넘어가면 웹 헤더가 사라진다 — 앱이 같은 제목으로
+    //   네이티브 헤더를 이어 그리도록 제목만 넘긴다(showAppBar:false 라 여기선 안 뜸).
+    appBarTitle: MESSAGES.common.externalIdentityHeader,
   });
 
   // ─── Accessibility IDs ────────────────────────────
@@ -316,53 +301,6 @@ export default function SignupPage() {
     marketing: false,
   });
   const [errors, setErrors] = useState<FormErrors>({});
-
-  // KG이니시스 직결 본인인증 복귀 — document.write 페이지 전환으로 날아간 폼 상태 복원.
-  //  1회 소비 후 즉시 삭제(idv:pending/idv:result 와 동일한 소비 규칙). TTL 초과 시 무시.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = window.sessionStorage.getItem(IDV_FORM_SNAPSHOT_KEY);
-      if (!raw) return;
-      window.sessionStorage.removeItem(IDV_FORM_SNAPSHOT_KEY);
-      const snapshot = JSON.parse(raw) as SignupFormSnapshot;
-      if (Date.now() - snapshot.timestamp > IDV_FORM_SNAPSHOT_TTL_MS) return;
-      setFormData((prev) => ({ ...prev, ...snapshot.formData }));
-      setAgreements(snapshot.agreements);
-      setTeamCodeStatus(snapshot.teamCodeStatus);
-      setVerifiedTeamName(snapshot.verifiedTeamName);
-      toast.info(MESSAGES.verify.passwordReentryRequired);
-    } catch {
-      // sessionStorage 접근/파싱 실패 시 복원 없이 진행
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // 본인인증(KG 직결) 페이지 전환 직전 폼 스냅샷 저장 — IdentityVerifyInput.onBeforeRedirect.
-  //  password/passwordConfirm 은 평문 보관이 부적절하므로 스냅샷에서 제외한다.
-  const saveFormSnapshotBeforeIdentityRedirect = useCallback(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const {
-        password: _password,
-        passwordConfirm: _passwordConfirm,
-        ...rest
-      } = formData;
-      const snapshot: SignupFormSnapshot = {
-        formData: rest,
-        agreements,
-        teamCodeStatus,
-        verifiedTeamName,
-        timestamp: Date.now(),
-      };
-      window.sessionStorage.setItem(
-        IDV_FORM_SNAPSHOT_KEY,
-        JSON.stringify(snapshot),
-      );
-    } catch {
-      // 저장 실패 시 스냅샷 없이 진행 — 인증 자체는 계속된다.
-    }
-  }, [formData, agreements, teamCodeStatus, verifiedTeamName]);
 
   // 팀명 입력 디바운스 값 — 400ms 정지 후 중복 확인 API 호출
   const debouncedClubName = useDebounce(formData.clubName, 400);
@@ -729,6 +667,11 @@ export default function SignupPage() {
     : Boolean(formData.lastName.trim()) &&
       Boolean(formData.firstName.trim()) &&
       Boolean(formData.phone.trim());
+  // 본인인증 대상 역할은 가입 유형 바로 아래 본인인증 단계가 오고, 인증이 끝나야
+  // 팀 정보·계정 정보·비밀번호·약관·가입 버튼이 나타난다. 앱(페이지 전환)에서
+  // 인증창을 다녀와도 그 아래 구간은 입력한 적이 없어 잃을 것이 없다(폼 스냅샷 불필요).
+  // 가입 유형·감독 유형은 sessionStorage(signup:role)로 따로 보존된다.
+  const isIdentityGateOpen = !isIdentityRequiredRole || identityVerified !== null;
 
   const hasRequiredFields =
     Boolean(selectedRole) &&
@@ -855,6 +798,39 @@ export default function SignupPage() {
           {/* selectedRole 선택 후에만 입력 섹션 + 가입 버튼 노출 */}
           {selectedRole && (
           <div className="space-y-7">
+          {/* 본인인증 단계 — 본인인증 대상 역할은 여기서 인증을 끝내야 아래 구간이 펼쳐진다.
+              KG 직결은 화면에 이름·휴대폰을 돌려주지 않으므로 입력란이 아니라 독립 단계로 둔다
+              (이름·휴대폰·생년월일은 가입 시 서버가 인증 결과로 채운다). */}
+          {isIdentityRequiredRole && (
+            <section>
+              <h2 className="text-[16px] font-extrabold tracking-[-0.01em] text-it-ink-800 dark:text-rink-100 mb-1.5 flex items-center gap-1">
+                본인인증 <span className="text-it-red-500">*</span>
+              </h2>
+              <p className="text-[13px] text-it-ink-500 dark:text-rink-300 mb-3">
+                {identityVerified
+                  ? MESSAGES.signup.identityStepDone
+                  : MESSAGES.signup.identityStepHelper}
+              </p>
+              <IdentityVerifyInput
+                verified={identityVerified}
+                onVerified={(result) => {
+                  setIdentityVerified(result);
+                  setErrors((prev) => ({
+                    ...prev,
+                    general: undefined,
+                    lastName: undefined,
+                    firstName: undefined,
+                    phone: undefined,
+                  }));
+                }}
+                onError={(msg) => setErrors((prev) => ({ ...prev, general: msg }))}
+                disabled={isSubmitting}
+              />
+            </section>
+          )}
+
+          {isIdentityGateOpen && (
+          <>
           {/* 감독 정보 입력 — selectedRole === 'director' 일 때만 노출.
               감독 유형 선택 카드는 제거: 일반 가입은 '팀 감독'(team) 고정이며,
               오픈클래스 감독(academy)은 별도 공유 URL(`?director=academy`)로 진입한
@@ -1008,35 +984,14 @@ export default function SignupPage() {
             </section>
           )}
 
-          {/* 기본 정보 */}
+          {/* 계정 정보 — 본인인증 대상 역할은 이름·휴대폰이 인증 결과로 채워지므로 아이디만 입력한다. */}
           <section>
             <h2 className="text-[16px] font-extrabold tracking-[-0.01em] text-it-ink-800 dark:text-rink-100 mb-4">
-              기본 정보
+              계정 정보
             </h2>
 
             <div className="space-y-4">
-              {/* B안 (2026-05-26) — 본인인증 강제 대상은 이름 입력란을 IdentityVerifyInput 으로 교체.
-                  PARENT/COACH/DIRECTOR 선택 시 KG 통합인증 (PASS/SMS/카카오/네이버 등) 후
-                  이름·휴대폰·생년월일·성별·통신사를 verification 에서 자동 채움. */}
-              {isIdentityRequiredRole ? (
-                <IdentityVerifyInput
-                  label="이름 (본인인증 필수)"
-                  verified={identityVerified}
-                  onVerified={(result) => {
-                    setIdentityVerified(result);
-                    setErrors((prev) => ({
-                      ...prev,
-                      general: undefined,
-                      lastName: undefined,
-                      firstName: undefined,
-                      phone: undefined,
-                    }));
-                  }}
-                  onError={(msg) => setErrors((prev) => ({ ...prev, general: msg }))}
-                  onBeforeRedirect={saveFormSnapshotBeforeIdentityRedirect}
-                  disabled={isSubmitting}
-                />
-              ) : (
+              {!isIdentityRequiredRole && (
                 <div className="grid grid-cols-2 gap-3">
                   <Input
                     iceTheme
@@ -1433,6 +1388,8 @@ export default function SignupPage() {
           >
             가입하기
           </Button>
+          </>
+          )}
           </div>
           )}
 

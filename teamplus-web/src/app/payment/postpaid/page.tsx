@@ -32,6 +32,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { useBlockBackNavigation } from '@/hooks/useBlockBackNavigation';
+import { usePaymentCancelReturnNotice } from '@/hooks/usePaymentCancelReturnNotice';
 import { usePageReady } from '@/hooks/usePageReady';
 import { useAuth } from '@/contexts/AuthContext';
 import { MESSAGES } from '@/lib/messages';
@@ -74,6 +75,9 @@ function PostpaidPayContent() {
     showAppBar: false,
     showBottomNav: false,
     showBackButton: true,
+    // 외부 페이지(결제창·본인인증)로 넘어가면 웹 헤더가 사라진다 — 앱이 같은 제목으로
+    //   네이티브 헤더를 이어 그리도록 제목만 넘긴다(showAppBar:false 라 여기선 안 뜸).
+    appBarTitle: MESSAGES.common.externalPaymentHeader,
   });
   const { toast } = useToast();
   const { user } = useAuth();
@@ -153,8 +157,10 @@ function PostpaidPayContent() {
   const isTossReturn = (searchParams?.get('error') ?? '') === 'fail';
   useBlockBackNavigation({
     enabled: isTossReturn,
+    returnPastExternal: true,
     getRedirectTarget: () => '/payment/history?tab=pending',
   });
+  usePaymentCancelReturnNotice();
 
   const init = useCallback(async () => {
     if (initRef.current || !payable || !user?.id) return;
