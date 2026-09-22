@@ -56,12 +56,18 @@ extension WebViewBridgeHandlers on WebViewBridge {
           //   있으므로, 실패 시 쿠키를 롤백해 "Keychain 은 비고 쿠키만 남은
           //   반쪽 세션"(미들웨어 통과 + 전 API 401)을 차단한다.
           final refreshTokenValue = tokenData['refreshToken'] as String?;
+          final accessTokenValue = tokenData['accessToken'] as String;
+          // 만료값이 없으면 readAuthBundle 이 토큰을 만료로 판정해 웹은 로그인 상태인데
+          // 네이티브만 미인증이 된다. 웹이 안 실어 보내면 JWT exp 로 직접 채운다.
+          final expiryTimestamp =
+              (tokenData['expiryTimestamp'] as num?)?.toInt() ??
+                  _jwtExpSeconds(accessTokenValue);
           try {
             await Future.wait(<Future<void>>[
               _tokenStorage.saveTokenInfo(
-                accessToken: tokenData['accessToken'] as String,
+                accessToken: accessTokenValue,
                 refreshToken: refreshTokenValue,
-                expiryTimestamp: tokenData['expiryTimestamp'] as int?,
+                expiryTimestamp: expiryTimestamp,
                 userId: tokenData['userId'] as String?,
                 userType: tokenData['userType'] as String?,
                 userName: tokenData['userName'] as String?,
@@ -1146,5 +1152,30 @@ extension WebViewBridgeHandlers on WebViewBridge {
     } catch (e) {
       return BridgeResponse.error(error: '본인인증 처리 중 오류: $e').toJson();
     }
+  }
+}
+
+/// JWT payload 의 `exp`(초 단위)를 꺼낸다. 형식이 깨졌으면 null.
+int? _jwtExpSeconds(String token) {
+  try {
+    final parts = token.split('.');
+    if (parts.length != 3) return null;
+    String payload = parts[1];
+    switch (payload.length % 4) {
+      case 2:
+        payload += '==';
+        break;
+      case 3:
+        payload += '=';
+        break;
+    }
+    payload = payload.replaceAll('-', '+').replaceAll('_', '/');
+    final decoded = String.fromCharCodes(
+      Uri.parse('data:text/plain;base64,$payload').data!.contentAsBytes(),
+    );
+    final m = RegExp(r'"exp"\s*:\s*(\d+)').firstMatch(decoded);
+    return m == null ? null : int.tryParse(m.group(1)!);
+  } catch (_) {
+    return null;
   }
 }

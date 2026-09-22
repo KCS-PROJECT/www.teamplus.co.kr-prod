@@ -2281,9 +2281,15 @@ Content Type: ${errorResponse.contentType}
         debugPrint('[WebView] 로그인 페이지로 리다이렉트 완료: $loginUrl');
       } else {
         // 로그인된 경우: 현재 URL이 홈('/')이거나 비어있으면 역할별 대시보드로 이동
-        final isAtRoot = currentUrl.endsWith('/') ||
-            currentUrl == ApiConstants.webAppUrl ||
-            currentUrl == '${ApiConstants.webAppUrl}/';
+        // 웹은 trailingSlash 라 모든 페이지가 '/' 로 끝나므로 URL 끝 문자가 아니라
+        // 실제 경로로 판정한다 (끝 문자 판정은 /classes/ 등 일반 화면도 홈으로 오판).
+        String currentPath;
+        try {
+          currentPath = Uri.parse(currentUrl).path;
+        } catch (_) {
+          currentPath = currentUrl.split('?').first.split('#').first;
+        }
+        final isAtRoot = currentPath.isEmpty || currentPath == '/';
 
         if (isAtRoot) {
           final dashboardPath = _getDashboardPathByUserType(userType);
