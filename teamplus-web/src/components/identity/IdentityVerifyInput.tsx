@@ -53,6 +53,7 @@ import {
 } from "@/services/identity";
 import { isNativeApp } from "@/lib/environment";
 import { MESSAGES } from "@/lib/messages";
+import { Icon } from "@/components/ui/Icon";
 import {
   IDV_AUTH_WINDOW_QUERY_PARAM,
   IDV_AUTH_WINDOW_POPUP_VALUE,
@@ -108,7 +109,7 @@ export interface IdentityVerifyInputProps {
   onBeforeRedirect?: () => void;
   /** 이미 인증된 상태 표시 (부모가 form 상태로 유지) */
   verified?: IdentityVerifyResult | null;
-  /** 라벨 (기본: "이름") */
+  /** 라벨 — 생략하면 라벨 없이 카드만 그린다(가입 화면의 독립 본인인증 단계) */
   label?: string;
   /** disabled */
   disabled?: boolean;
@@ -121,7 +122,7 @@ export default function IdentityVerifyInput({
   onError,
   onBeforeRedirect,
   verified,
-  label = "이름",
+  label,
   disabled,
   id,
 }: IdentityVerifyInputProps) {
@@ -550,44 +551,34 @@ export default function IdentityVerifyInput({
   // 인증 완료 상태
   if (verified) {
     return (
-      <div className="space-y-1">
-        <label
-          htmlFor={id}
-          className="block text-sm font-medium text-slate-700 dark:text-slate-300"
-        >
-          {label}
-        </label>
+      <div className="space-y-1.5">
+        {label && (
+          <label
+            htmlFor={id}
+            className="block text-[13.5px] font-bold text-it-ink-700 dark:text-rink-100"
+          >
+            {label}
+          </label>
+        )}
         <div
           id={id}
-          className="flex items-center justify-between rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 dark:border-emerald-700 dark:bg-emerald-900/20"
+          className="flex h-[50px] items-center justify-between rounded-w-md border-[1.5px] border-mint-500 bg-mint-100 px-4 dark:bg-mint-500/15"
         >
-          <span className="text-sm font-medium text-slate-900 dark:text-white">
+          <span className="flex items-center gap-2 text-[15.5px] font-semibold text-it-ink-800 dark:text-white">
+            <Icon name="check_circle" className="text-mint-600 text-[20px]" />
             {verified.maskedName ?? "본인인증 완료"}
             {verified.maskedPhone && (
-              <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">
+              <span className="text-[13px] font-medium text-it-ink-500 dark:text-rink-300">
                 {verified.maskedPhone}
               </span>
             )}
           </span>
-          <span className="flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              aria-hidden="true"
-            >
-              <path
-                fillRule="evenodd"
-                d="M16.7 5.3a1 1 0 010 1.4l-7 7a1 1 0 01-1.4 0l-4-4a1 1 0 011.4-1.4L9 11.6l6.3-6.3a1 1 0 011.4 0z"
-                clipRule="evenodd"
-              />
-            </svg>
+          <span className="text-[13px] font-bold text-mint-600 dark:text-mint-100">
             인증완료
           </span>
         </div>
         {verified.needsGuardianConsent && (
-          <p className="text-xs text-amber-600 dark:text-amber-400">
+          <p className="text-card-body text-sun-500">
             만 14세 미만은 보호자 동의가 필요합니다.
           </p>
         )}
@@ -597,43 +588,33 @@ export default function IdentityVerifyInput({
 
   // 미인증 상태
   return (
-    <div className="space-y-1">
-      <label
-        htmlFor={id}
-        className="block text-sm font-medium text-slate-700 dark:text-slate-300"
-      >
-        {label} <span className="text-rose-500">*</span>
-      </label>
+    <div className="space-y-1.5">
+      {label && (
+        <label
+          htmlFor={id}
+          className="block text-[13.5px] font-bold text-it-ink-700 dark:text-rink-100"
+        >
+          {label} <span className="text-it-red-500">*</span>
+        </label>
+      )}
       <button
         type="button"
         id={id}
         onClick={handleStartVerify}
         disabled={disabled || loading}
-        className="flex w-full items-center justify-between rounded-lg border border-slate-300 bg-white px-4 py-3 text-left text-sm text-slate-500 transition hover:border-blue-500 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400 dark:hover:border-blue-400 dark:hover:bg-slate-700"
+        className="flex h-[50px] w-full items-center justify-between rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill px-4 text-left text-[15.5px] font-semibold text-it-ink-700 transition-colors motion-reduce:transition-none hover:border-it-blue-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rink-700 dark:bg-puck dark:text-rink-100 dark:hover:border-it-blue-500"
         aria-label="본인인증 시작"
       >
-        <span>
-          {loading
-            ? "본인인증 진행 중..."
-            : "탭하여 본인인증 시작 (휴대폰 인증)"}
+        <span className="flex items-center gap-2">
+          <Icon name="verified_user" className="text-it-blue-500 text-[20px]" />
+          {loading ? "본인인증 진행 중..." : "휴대폰 본인인증 하기"}
         </span>
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 20 20"
-          fill="currentColor"
-          aria-hidden="true"
-          className="text-slate-400"
-        >
-          <path
-            fillRule="evenodd"
-            d="M7.3 5.3a1 1 0 011.4 0l4 4a1 1 0 010 1.4l-4 4a1 1 0 01-1.4-1.4L10.6 10 7.3 6.7a1 1 0 010-1.4z"
-            clipRule="evenodd"
-          />
-        </svg>
+        <Icon name="chevron_right" className="text-it-ink-300 text-[20px]" />
       </button>
       {errorMsg && (
-        <p className="text-xs text-rose-600 dark:text-rose-400">{errorMsg}</p>
+        <p role="alert" className="text-card-body text-flame-500">
+          {errorMsg}
+        </p>
       )}
     </div>
   );
