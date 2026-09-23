@@ -84,7 +84,7 @@ type TossPaymentsInstance = any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TossWidgets = any;
 
-/** 나이스 결제창 결제수단. 결제창 호출 시 method 로 그대로 전달된다(구모듈은 vbank 제외). */
+/** 나이스 결제창 결제수단. 결제창 호출 시 method 로 그대로 전달된다(구모듈은 card 만 노출). */
 type NiceMethod = 'card' | 'bank' | 'vbank';
 
 /** 신청 선수 옵션 — 판정 SoT 는 tournament.service 의 공용 util(상세 CTA 와 공유). */
@@ -718,7 +718,8 @@ function TournamentApplyContent() {
                 {initStarted && (
                   <>
                     {/* ── 나이스 분기: 결제수단 선택 (토스 위젯이 그려주던 것을 직접 구현 — checkout 동일) ──
-                        구모듈(nicestd)은 1차 범위 밖인 가상계좌를 목록에서 제외한다. */}
+                        구모듈(nicestd)은 카드만 노출한다 — 가상계좌는 1차 범위 밖, 계좌이체는 뱅크페이 앱
+                        설치·인증 절차 때문에 완료율이 낮아 뺐다(백엔드 BANK 경로는 유지, 재도입은 배열만). */}
                     {(provider === 'nice' || provider === 'nicestd') && (
                       <section aria-label={MESSAGES.payment2.methodSectionTitle}>
                         <h2 className="text-w-small font-bold text-it-ink-600 dark:text-rink-100">
@@ -729,7 +730,6 @@ function TournamentApplyContent() {
                             (provider === 'nicestd'
                               ? [
                                   { value: 'card', label: MESSAGES.payment2.methodCard, icon: 'credit_card' },
-                                  { value: 'bank', label: MESSAGES.payment2.methodBank, icon: 'account_balance' },
                                 ]
                               : [
                                   { value: 'card', label: MESSAGES.payment2.methodCard, icon: 'credit_card' },
