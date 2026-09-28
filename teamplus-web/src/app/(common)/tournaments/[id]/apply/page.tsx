@@ -152,8 +152,12 @@ function TournamentApplyContent() {
   //   이 상태에서는 히스토리 되짚기 대신 대회 상세로 내보낸다.
   const searchParams = useSearchParams();
   const isTossReturn = (searchParams?.get('error') ?? '') === 'fail';
+  // [임시] 앱에서는 취소 복귀 보초를 쌓지 않는다 — 현재 스토어 앱의 백키가 `goBack()` 으로
+  //   보초를 빼면서 복귀 문서까지 건너뛰어(Chromium 건너뛰기 규칙) 만료된 결제창에 착지한다.
+  //   보초가 없으면 앱이 "직전 항목이 외부 페이지" 판정으로 역할 홈으로 보낸다. 스크립트
+  //   되짚기로 고친 앱이 배포되면 이 조건을 지워 상세 복귀를 되살린다.
   useBlockBackNavigation({
-    enabled: isTossReturn && Boolean(tournamentId),
+    enabled: isTossReturn && Boolean(tournamentId) && !isNativeApp(),
     returnPastExternal: true,
     getRedirectTarget: () => `/tournaments/${tournamentId}`,
   });

@@ -18,6 +18,7 @@ import { getDashboardPathByUserType } from '@/lib/auth-routing';
 import { MESSAGES } from '@/lib/messages';
 import { usePageReady } from '@/hooks/usePageReady';
 import { clearExternalDeparture } from '@/lib/nav-stack';
+import { isNativeApp } from '@/lib/environment';
 import { PaymentSourceBadge } from '@/components/payment/PaymentSourceBadge';
 
 /**
@@ -324,7 +325,12 @@ function PaymentCompleteContent() {
   //    남아, homePath 한 겹 차단 후 추가 뒤로가기로 결제창에 재진입할 수 있다.
   //    완전 차단(유지)으로 봉쇄하고, 홈 이동은 하단 "홈으로" CTA 로만 제공.
   //  - 그 외(선불): 기존대로 역할별 홈으로 replace.
+  // [임시] 앱 + 나이스 결제창 복귀 문서에서는 보초를 쌓지 않는다 — 결제 화면과 같은 이유
+  //   (현재 스토어 앱의 `goBack()` 이 복귀 문서를 건너뛰어 만료된 결제창에 착지). 보초가
+  //   없어도 앱은 직전 항목이 결제창이면 역할 홈으로 보내므로 결과는 같다(홈). 스크립트
+  //   되짚기로 고친 앱이 배포되면 이 조건을 지운다.
   useBlockBackNavigation({
+    enabled: !(isNativeApp() && (provider === 'nice' || provider === 'nicestd')),
     getRedirectTarget: () => {
       if (payQueue && payQueue.pairs.length > 0) return null;
       // 서버 파생 billingTiming 우선 + 접두사 폴백 병행 — receipt 로드 전(null) 구간 대비.
