@@ -90,6 +90,11 @@ const nextConfig = {
   compress: true,
   generateEtags: true,
   poweredByHeader: false,
+  // Next 14.2.x 에는 이미지 최적화 API(AVIF) RCE 패치가 없어 최적화 자체를 끈다.
+  // 내부 관리 도구라 원본 크기 서빙으로 충분. Next 15 마이그레이션 시 재검토.
+  images: {
+    unoptimized: true,
+  },
   experimental: {
     optimizePackageImports: [
       "lucide-react",
